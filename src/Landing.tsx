@@ -81,7 +81,7 @@ export function Landing() {
           </figure>
         </section>
 
-        <section className="library" aria-labelledby="lib-h">
+        <section className="parts-library" aria-labelledby="lib-h">
           <div className="section-head">
             <h2 id="lib-h">Parts library</h2>
             <p>

@@ -77,7 +77,7 @@ h1 { font: 600 clamp(34px, 5vw, 54px)/1.05 "Fredoka", system-ui, sans-serif; mar
 .sticker figcaption { padding: 10px 14px 12px; font-size: 14px; color: #56615B; border-top: 1.5px solid #D6DCD2; }
 .sheet { display: block; width: 100%; height: auto; font-family: "Atkinson Hyperlegible", system-ui, sans-serif; }
 
-.library { display: grid; gap: 22px; padding-block: 8px 56px; }
+.parts-library { display: grid; gap: 22px; padding-block: 8px 56px; }
 .section-head { display: grid; gap: 6px; max-width: 70ch; }
 h2 { font: 600 30px/1.15 "Fredoka", system-ui, sans-serif; margin: 0; }
 .section-head p { margin: 0; color: var(--muted); }
