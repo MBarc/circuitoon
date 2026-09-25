@@ -10,7 +10,7 @@
       "name": "IN+",
       "side": "left",
       "type": "power_in",
-      "supply": "5V/9V/12V/24V"
+      "supply": "5V/7.4V/9V/12V/24V"
     },
     {
       "spacer": true,
@@ -41,7 +41,7 @@
       "name": "OUT+",
       "side": "right",
       "type": "power_out",
-      "supply": "VOUT"
+      "supply": "ADJ"
     },
     {
       "spacer": true,

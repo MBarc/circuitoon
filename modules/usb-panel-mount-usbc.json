@@ -24,7 +24,7 @@
     {
       "name": "GND",
       "side": "right",
-      "type": "ground"
+      "type": "passive"
     },
     {
       "spacer": true,

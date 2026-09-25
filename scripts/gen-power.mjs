@@ -40,7 +40,7 @@ function sop(x, y, w, h, n, label, labelSize = 5) {
 {
   const wu = 12, hu = 10, W = wu * 10, H = hu * 10
   const types = {
-    'B+': { type: 'power_in', supply: 'VBAT' }, 'B-': { type: 'ground' }, K: { type: 'input' },
+    'B+': { type: 'power_in', supply: '3.7V' }, 'B-': { type: 'ground' }, K: { type: 'input' },
     '5V+': { type: 'power_out', supply: '5V' }, '5V-': { type: 'ground' },
   }
   const left = side('left', ['B-', null, 'B+'], types, hu)
@@ -76,7 +76,7 @@ function sop(x, y, w, h, n, label, labelSize = 5) {
   const wu = 13, hu = 9, W = wu * 10, H = hu * 10
   const types = {
     'IN+': { type: 'power_in', supply: '5V' }, 'IN-': { type: 'ground' },
-    'OUT+': { type: 'power_out', supply: 'VBAT' }, 'B+': { type: 'power_in', supply: 'VBAT' },
+    'OUT+': { type: 'power_out', supply: '3.7V' }, 'B+': { type: 'power_in', supply: '3.7V' },
     'B-': { type: 'ground' }, 'OUT-': { type: 'ground' },
   }
   const left = side('left', ['IN+', null, null, null, null, null, 'IN-'], types, hu)
@@ -135,12 +135,12 @@ function sop(x, y, w, h, n, label, labelSize = 5) {
 // 4. LM2596 adjustable buck converter (the common blue 43 x 21 mm board with the blue trimmer).
 //    Seen from the component side with the LM2596 at the left: IN+ top left, IN- bottom left,
 //    OUT+ top right, OUT- bottom right. Input and output grounds are one net. The output voltage
-//    is set with the trimmer; it is the part's editable value.
+//    is set with the trimmer; it is the part's editable value, so OUT+ supplies "ADJ" (user-set).
 {
   const wu = 17, hu = 9, W = wu * 10, H = hu * 10
   const types = {
-    'IN+': { type: 'power_in', supply: '5V/9V/12V/24V' }, 'IN-': { type: 'ground' },
-    'OUT+': { type: 'power_out', supply: 'VOUT' }, 'OUT-': { type: 'ground' },
+    'IN+': { type: 'power_in', supply: '5V/7.4V/9V/12V/24V' }, 'IN-': { type: 'ground' },
+    'OUT+': { type: 'power_out', supply: 'ADJ' }, 'OUT-': { type: 'ground' },
   }
   const gap = [null, null, null, null, null]
   const left = side('left', ['IN+', ...gap, 'IN-'], types, hu)

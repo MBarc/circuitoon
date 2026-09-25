@@ -87,7 +87,7 @@ describe('built-in boards keep the physical header order', () => {
     expect(m.internal).toContainEqual(['RST', 'RST 2'])
     const pin = (n: string) => m.pins.find((p) => !isSpacer(p) && p.name === n)
     for (const n of ['A6', 'A7', 'AREF']) expect(pin(n)).toMatchObject({ type: 'input' })
-    expect(pin('VIN')).toMatchObject({ type: 'power_in' })
+    expect(pin('VIN')).toMatchObject({ type: 'power_in', supply: '7V/7.4V/9V/12V' })
     expect(pin('3V3')).toMatchObject({ type: 'power_out', supply: '3V3' })
   })
 })

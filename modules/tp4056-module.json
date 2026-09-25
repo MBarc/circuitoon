@@ -41,7 +41,7 @@
       "name": "OUT+",
       "side": "right",
       "type": "power_out",
-      "supply": "VBAT"
+      "supply": "3.7V"
     },
     {
       "spacer": true,
@@ -51,7 +51,7 @@
       "name": "B+",
       "side": "right",
       "type": "power_in",
-      "supply": "VBAT"
+      "supply": "3.7V"
     },
     {
       "spacer": true,

@@ -62,20 +62,21 @@ describe('built-in power modules keep the physical pad order', () => {
     })
   }
 
-  it('types the rails: battery in is VBAT, outputs name their rail, grounds are ground', () => {
+  it('types the rails: battery-side pins are the 3.7 V cell, the adjustable output is ADJ, inputs list what they accept, grounds are ground', () => {
     const ip = load('ip5306-usbc-module.json')
-    expect(pin(ip, 'B+')).toMatchObject({ type: 'power_in', supply: 'VBAT' })
+    expect(pin(ip, 'B+')).toMatchObject({ type: 'power_in', supply: '3.7V' })
     expect(pin(ip, '5V+')).toMatchObject({ type: 'power_out', supply: '5V' })
     expect(pin(ip, 'K')).toMatchObject({ type: 'input' })
     const tp = load('tp4056-module.json')
     expect(pin(tp, 'IN+')).toMatchObject({ type: 'power_in', supply: '5V' })
-    expect(pin(tp, 'B+')).toMatchObject({ type: 'power_in', supply: 'VBAT' })
-    expect(pin(tp, 'OUT+')).toMatchObject({ type: 'power_out', supply: 'VBAT' })
+    expect(pin(tp, 'B+')).toMatchObject({ type: 'power_in', supply: '3.7V' })
+    expect(pin(tp, 'OUT+')).toMatchObject({ type: 'power_out', supply: '3.7V' })
     const ams = load('ams1117-33-module.json')
     expect(pin(ams, 'OUT')).toMatchObject({ type: 'power_out', supply: '3V3' })
     expect(pin(ams, 'VIN')?.supply?.split('/')).toContain('5V')
     const lm = load('lm2596-buck-module.json')
-    expect(pin(lm, 'OUT+')).toMatchObject({ type: 'power_out' })
+    expect(pin(lm, 'OUT+')).toMatchObject({ type: 'power_out', supply: 'ADJ' })
+    expect(pin(lm, 'IN+')?.supply?.split('/')).toContain('7.4V')
     for (const m of [ip, tp, ams, lm]) for (const p of pinsOf(m)) if (/-$|^GND$/.test(p.name)) expect(p.type).toBe('ground')
   })
 

@@ -61,7 +61,7 @@ describe('Raspberry Pi Pico family keeps the physical header order', () => {
       const pins = m.pins.flatMap((p) => (isSpacer(p) ? [] : [p]))
       const byName = new Map(pins.map((p) => [p.name, p]))
       expect(byName.get('VBUS')).toMatchObject({ type: 'power_in', supply: '5V' })
-      expect(byName.get('VSYS')).toMatchObject({ type: 'power_in', supply: 'VSYS' })
+      expect(byName.get('VSYS')).toMatchObject({ type: 'power_in', supply: '5V/3.7V/3V3' })
       expect(byName.get('3V3(OUT)')).toMatchObject({ type: 'power_out', supply: '3V3' })
       for (const n of ['3V3_EN', 'RUN', 'ADC_VREF', 'SWCLK']) expect(byName.get(n)?.type).toBe('input')
       expect(byName.get('AGND')?.type).toBe('ground')

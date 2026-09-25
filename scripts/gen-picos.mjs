@@ -37,12 +37,13 @@ const RIGHT = [
 const BOTTOM = ['SWCLK', 'GND DBG|GND', 'SWDIO']
 
 // Types per the datasheets' pin descriptions (VBUS = micro-USB 5 V, VSYS = 1.8-5.5 V system input,
-// 3V3(OUT) = on-board SMPS output). AGND is the analog ground reference for GP26-28; the
+// so its supply lists the 5 V, single Li-ion cell and 3.3 V rails it accepts, 3V3(OUT) = on-board
+// SMPS output). AGND is the analog ground reference for GP26-28; the
 // datasheet treats it as a separate analog ground plane ("can be connected to digital ground"),
 // so it is a ground pin but not joined to GND here.
 const TYPES = {
   VBUS: { type: 'power_in', supply: '5V' },
-  VSYS: { type: 'power_in', supply: 'VSYS' },
+  VSYS: { type: 'power_in', supply: '5V/3.7V/3V3' },
   '3V3(OUT)': { type: 'power_out', supply: '3V3' },
   '3V3_EN': { type: 'input' },
   RUN: { type: 'input' },

@@ -94,6 +94,9 @@ describe('Spirit Typewriter parts keep the physical pin order', () => {
 
   it('connector positions are labeled so pin 1 always shows, even on 2-way parts', () => {
     for (const f of ['jst-xh-2.json', 'dupont-1x2.json']) for (const p of pinsOf(load(f))) expect(p.label).toBe(p.name)
-    expect(pin(load('usb-panel-mount-usbc.json'), 'GND')?.type).toBe('ground')
+  })
+
+  it('USB panel-mount cables pass every conductor through: VBUS and GND are passive, not a supply or a ground', () => {
+    for (const f of ['usb-panel-mount-microusb.json', 'usb-panel-mount-usbc.json']) for (const p of pinsOf(load(f))) expect(p.type).toBe('passive')
   })
 })

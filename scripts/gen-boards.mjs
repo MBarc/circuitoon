@@ -242,7 +242,7 @@ build({
   top: 1, wu: 8,
   types: typer({
     gnd: ['GND'], v33: ['3V3'], v5: ['5V'], inputs: ['AREF', 'A6', 'A7', 'RST', 'RST 2'],
-    other: { VIN: { type: 'power_in', supply: '7V/9V/12V' } },
+    other: { VIN: { type: 'power_in', supply: '7V/7.4V/9V/12V' } },
   }),
   internal: [['GND', 'GND 2'], ['RST', 'RST 2']],
   art: {

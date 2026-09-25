@@ -19,7 +19,7 @@
       "name": "B+",
       "side": "left",
       "type": "power_in",
-      "supply": "VBAT"
+      "supply": "3.7V"
     },
     {
       "name": "K",

@@ -190,10 +190,12 @@ tactile({ file: 'tactile-switch-6mm-4pin.json', id: 'tactile-switch-6mm-4pin', n
 //      short cable to a plug (right). The pins are the plug's conductors in USB cable order
 //      (VBUS red, D- white, D+ green, GND black). Micro-B: pin 4 (ID) is left as a gap; it is
 //      not wired to anything in a flashing or charging hookup. USB-C: CC is carried through as
-//      well, since a C-to-C link needs it for the two ends to detect each other.
+//      well, since a C-to-C link needs it for the two ends to detect each other. Every conductor,
+//      VBUS and GND included, is passive: the cable passes power through, it neither supplies nor
+//      grounds anything itself.
 function usbPanel({ file, id, name, source, list, hu, tip }) {
   const wu = 12, W = wu * 10, H = hu * 10
-  const types = { VBUS: passive, 'D-': passive, 'D+': passive, GND: { type: 'ground' }, CC: passive }
+  const types = { VBUS: passive, 'D-': passive, 'D+': passive, GND: passive, CC: passive }
   const right = side('right', list, types, hu)
   const ys = Object.values(right.pos)
   const y0 = ys[0] - 8, y1 = ys[ys.length - 1] + 8
