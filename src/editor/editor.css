@@ -60,6 +60,7 @@
 .lib-item:hover { border-color: #23282F; }
 .lib-item svg { width: 56px; height: 38px; }
 .hint { color: var(--muted); font-size: 13.5px; margin: 0; }
+.hint.warn { color: var(--error); font-weight: 700; }
 
 .canvas-wrap { grid-area: canvas; position: relative; overflow: hidden; }
 .canvas { display: block; width: 100%; height: 100%; touch-action: none; user-select: none; font-family: "Atkinson Hyperlegible", system-ui, sans-serif; }
@@ -70,6 +71,10 @@
 .wire-hit { stroke: transparent; cursor: pointer; }
 .wire-end-handle { cursor: grab; }
 .wire-end-handle:hover { stroke-width: 3; }
+.wire-seg-handle, .wire-bend-handle { transition: stroke-width 80ms ease-out; }
+.wire-seg-handle:hover { stroke-width: 2.5; fill: var(--focus); }
+.wire-bend-handle { cursor: pointer; }
+.wire-bend-handle:hover { stroke-width: 2.5; fill: var(--focus); }
 .zoom-readout { position: absolute; right: 10px; bottom: 8px; font-size: 13px; color: #56615B; background: var(--paper); border: 1px solid #D6DCD2; border-radius: 6px; padding: 2px 6px; }
 .wire-label-editor {
   position: absolute; transform: translate(-50%, -50%);
