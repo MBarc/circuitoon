@@ -50,6 +50,15 @@ describe('validateModule', () => {
     expect(r.ok).toBe(false)
     if (!r.ok) expect(r.errors).toEqual(['art.shapes[0].label: must be a string'])
   })
+  it('accepts a supply list of rails separated by "/" and rejects empty tokens', () => {
+    const pin = (supply: string) => validateModule({ ...base, pins: [{ name: 'VCC', side: 'left', type: 'power_in', supply }] })
+    for (const ok of ['5V', '3V3', 'VDD', '3V3/5V', '1V8/3V3/5V']) expect(pin(ok).ok).toBe(true)
+    for (const bad of ['', '/', '3V3/', '/5V', '3V3//5V', ' 3V3/5V', '3V3 / 5V']) {
+      const r = pin(bad)
+      expect(r.ok).toBe(false)
+      if (!r.ok) expect(r.errors).toEqual(['pins[0].supply: must be one or more rail names separated by "/", for example "3V3/5V"'])
+    }
+  })
   it('checks the other optional fields rendering reads', () => {
     const r = validateModule({
       ...base,

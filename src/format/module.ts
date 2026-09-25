@@ -116,6 +116,8 @@ export function validateModule(raw: unknown): ValidationResult {
         errors.push(`${at}.bus: must be { "length": <whole number, 2 or more> }`)
       if (p.label !== undefined && typeof p.label !== 'string') errors.push(`${at}.label: must be a string`)
       if (p.supply !== undefined && typeof p.supply !== 'string') errors.push(`${at}.supply: must be a string`)
+      else if (typeof p.supply === 'string' && !/^[^/\s]+(\/[^/\s]+)*$/.test(p.supply))
+        errors.push(`${at}.supply: must be one or more rail names separated by "/", for example "3V3/5V"`)
     })
 
   if (raw.internal !== undefined) {

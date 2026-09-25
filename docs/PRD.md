@@ -133,7 +133,7 @@ A module is one self-contained JSON file: name, pins by side and order, optional
 | pin `side` | yes | `top`, `bottom`, `left` or `right`. |
 | pin `label` | no | Display text when it differs from `name`. |
 | pin `type` | no | `power_in`, `power_out`, `ground`, `input`, `output`, `io`, `passive`, `nc`. Default `io`. |
-| pin `supply` | no | Named voltage for power pins, for example `5V`, `3V3`, `VBAT`. Drives the power conflict warning. |
+| pin `supply` | no | Named voltage for power pins, for example `5V`, `3V3`, `VBAT`. Drives the power conflict warning. A power input that accepts several rails lists them separated by '/', for example '3V3/5V'. |
 | pin `bus` | no | `{ "length": 40 }`: the pin is a bar `length` grid units long along its side that accepts many wires, each at its own offset (breadboard rails and strips). |
 | spacer | - | `{ "spacer": true, "side": "..." }`: an empty pin slot; takes no name. |
 | `internal` | no | Groups of pin names joined permanently inside the part, for example `[["GND1", "GND2"]]`. Never used for switchable connections. |

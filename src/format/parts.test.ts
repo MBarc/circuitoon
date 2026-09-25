@@ -77,7 +77,9 @@ describe('built-in chips and displays keep the physical pin order', () => {
       if (grounds.length > 1) expect(m.internal?.some((g) => grounds.every((n) => g.includes(n)))).toBe(true)
       const power = pins.filter((p) => !isSpacer(p) && p.type === 'power_in')
       expect(power.length).toBeGreaterThan(0)
-      for (const p of power) if (!isSpacer(p)) expect(p.supply).toMatch(want.category === 'Chips' ? /^VDD$/ : /^(3V3|5V)$/)
+      // A 3.3 V only module lists 3V3; one that takes either rail lists both.
+      const only3v3 = file === 'tft-st7789-154-spi.json'
+      for (const p of power) if (!isSpacer(p)) expect(p.supply).toBe(only3v3 ? '3V3' : '3V3/5V')
     })
   }
 
@@ -89,6 +91,10 @@ describe('built-in chips and displays keep the physical pin order', () => {
     expect(names(b)).not.toContain('A0')
     // NC pins are typed nc so nothing suggests wiring them.
     for (const m of [a, b]) for (const p of m.pins) if (!isSpacer(p) && (p.label ?? p.name) === 'NC') expect(p.type).toBe('nc')
+  })
+
+  it('names the 2.4" TFT for both versions (T_ pins wired only on touch)', () => {
+    expect(load('tft-ili9341-24-spi.json').name).toBe('2.4" TFT 240x320 ILI9341 (SPI; T_ pins on touch version)')
   })
 
   it('displays use the display electrical model', () => {

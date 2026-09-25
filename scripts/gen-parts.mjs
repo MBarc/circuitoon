@@ -108,7 +108,7 @@ function numberDuplicates(names) {
 }
 
 const chipTypes = (extra) => typer({
-  VDD: { type: 'power_in', supply: 'VDD' }, VSS: { type: 'ground' }, NC: { type: 'nc' },
+  VDD: { type: 'power_in', supply: '3V3/5V' }, VSS: { type: 'ground' }, NC: { type: 'nc' },
   SCL: { type: 'input' }, SDA: { type: 'io' }, RESET: { type: 'input' }, INTA: { type: 'output' }, INTB: { type: 'output' },
   ...extra,
 })
@@ -144,7 +144,7 @@ dip28({
 // SD card header sits on the opposite edge, SD_CS (square pad) at the top.
 
 const tftTypes = typer({
-  VCC: { type: 'power_in', supply: '5V' }, GND: { type: 'ground' },
+  VCC: { type: 'power_in', supply: '3V3/5V' }, GND: { type: 'ground' },
   CS: { type: 'input' }, RESET: { type: 'input' }, 'DC/RS': { type: 'input' }, DC: { type: 'input' }, A0: { type: 'input' },
   'SDI(MOSI)': { type: 'input' }, SDA: { type: 'input' }, SCK: { type: 'input' }, LED: { type: 'input' }, 'SDO(MISO)': { type: 'output' },
   T_CLK: { type: 'input' }, T_CS: { type: 'input' }, T_DIN: { type: 'input' }, T_DO: { type: 'output' }, T_IRQ: { type: 'output' },
@@ -191,7 +191,7 @@ tft({
 // 5. 2.4" 240x320 ILI9341 (lcdwiki MSP2401/MSP2402). The same 14-pin header on both; the T_ pins
 //    only connect on the touch version (MSP2402).
 tft({
-  file: 'tft-ili9341-24-spi.json', id: 'tft-ili9341-24-spi', name: '2.4" TFT 240x320 ILI9341 (SPI)',
+  file: 'tft-ili9341-24-spi.json', id: 'tft-ili9341-24-spi', name: '2.4" TFT 240x320 ILI9341 (SPI; T_ pins on touch version)',
   source: 'https://www.lcdwiki.com/2.4inch_SPI_Module_ILI9341_SKU:MSP2402 https://www.lcdwiki.com/res/MSP2402/MSP2402-2.4-SPI.pdf',
   left: tft14('DC'), right: SD4, wu: 31, hu: 18, lx: 58, rx: 48, touch: false, mark: '240x320 ILI9341',
 })
@@ -206,7 +206,7 @@ tft({
 // ---------------------------------------------------------------------------------------------
 // Small modules with the header along the top edge (or the left edge of the 0.91" OLED).
 
-const oledTypes = typer({ VCC: { type: 'power_in', supply: '3V3' }, GND: { type: 'ground' }, SCL: { type: 'input' }, SDA: { type: 'io' } })
+const oledTypes = typer({ VCC: { type: 'power_in', supply: '3V3/5V' }, GND: { type: 'ground' }, SCL: { type: 'input' }, SDA: { type: 'io' } })
 
 /** Blue PCB, black glass with a yellow/blue text hint, FPC tail under the glass. */
 function oled({ file, id, name, source, top, wu, hu }) {

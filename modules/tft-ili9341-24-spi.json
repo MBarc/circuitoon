@@ -2,7 +2,7 @@
   "format": "circuitoon-module/1",
   "id": "tft-ili9341-24-spi",
   "version": 1,
-  "name": "2.4\" TFT 240x320 ILI9341 (SPI)",
+  "name": "2.4\" TFT 240x320 ILI9341 (SPI; T_ pins on touch version)",
   "category": "Displays",
   "source": "https://www.lcdwiki.com/2.4inch_SPI_Module_ILI9341_SKU:MSP2402 https://www.lcdwiki.com/res/MSP2402/MSP2402-2.4-SPI.pdf",
   "pins": [
@@ -10,7 +10,7 @@
       "name": "VCC",
       "side": "left",
       "type": "power_in",
-      "supply": "5V"
+      "supply": "3V3/5V"
     },
     {
       "name": "GND",

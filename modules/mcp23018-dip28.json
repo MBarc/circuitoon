@@ -52,7 +52,7 @@
       "name": "VDD",
       "side": "left",
       "type": "power_in",
-      "supply": "VDD"
+      "supply": "3V3/5V"
     },
     {
       "name": "SCL",

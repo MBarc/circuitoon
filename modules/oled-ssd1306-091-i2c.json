@@ -20,7 +20,7 @@
       "name": "VCC",
       "side": "left",
       "type": "power_in",
-      "supply": "3V3"
+      "supply": "3V3/5V"
     },
     {
       "name": "GND",
