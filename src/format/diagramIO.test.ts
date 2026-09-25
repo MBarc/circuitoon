@@ -96,7 +96,30 @@ describe('validateDiagram', () => {
     ;(d.parts[2].values as Record<string, unknown>).resistance = 'lots'
     const r = validateDiagram(d)
     expect(r.ok).toBe(true)
-    if (r.ok) expect(r.warnings).toEqual(['parts[2].values.resistance: value must be a finite number with a string unit'])
+    if (r.ok) expect(r.warnings).toEqual(['parts[2].values.resistance: R1 has resistance "lots", which is not a number with a unit; it was dropped and the module default is shown'])
+    if (r.ok) expect(r.diagram.parts[2].values).toEqual({})
+  })
+  it('drops an out-of-range or wrong-unit value override, naming the part and the bad value', () => {
+    const d = structuredClone(buttonLed)
+    d.parts[2].values = { resistance: { value: -220, unit: 'ohm' } }
+    d.parts[0].values = { voltage: { value: 9, unit: 'mV' } }
+    const r = validateDiagram(d)
+    expect(r.ok).toBe(true)
+    if (!r.ok) return
+    expect(r.warnings).toEqual([
+      'parts[0].values.voltage: BT1 has voltage 9 mV, but voltage must be in V; it was dropped and the module default is shown',
+      'parts[2].values.resistance: R1 has resistance -220 ohm, but resistance must be a finite number, 0 or more; it was dropped and the module default is shown',
+    ])
+    expect(r.diagram.parts[2].values).toEqual({})
+    expect(r.diagram.parts[0].values).toEqual({})
+    expect(d.parts[2].values).toEqual({ resistance: { value: -220, unit: 'ohm' } })
+  })
+  it('keeps a 0 ohm resistor without a warning', () => {
+    const d = structuredClone(buttonLed)
+    d.parts[2].values = { resistance: { value: 0, unit: 'ohm' } }
+    const r = validateDiagram(d)
+    expect(r.ok && r.warnings).toEqual([])
+    expect(r.ok && r.diagram.parts[2].values).toEqual({ resistance: { value: 0, unit: 'ohm' } })
   })
   it('does not warn about a value-less entry that is not a known value param, such as an LED color', () => {
     const r = validateDiagram(JSON.parse(serializeDiagram(buttonLed)))

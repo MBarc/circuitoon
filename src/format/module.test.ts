@@ -92,6 +92,23 @@ describe('validateModule', () => {
       ])
     expect(r2.ok).toBe(false)
   })
+  it('checks resistance, capacitance and voltage params for their unit and a valid default', () => {
+    const params = (p: unknown) => validateModule({ ...base, pins: [{ name: 'A', side: 'left' }], electrical: { params: p } })
+    expect(params({ resistance: { unit: 'ohm', default: 0 }, capacitance: { unit: 'F', default: 1e-7 }, voltage: { unit: 'V', default: -5 } }).ok).toBe(true)
+    expect(params({ forwardVoltage: { unit: 'V', default: 2 }, color: { default: 'red' } }).ok).toBe(true)
+    const r = params({ resistance: { unit: 'F', default: -1 }, capacitance: { unit: 'F', default: 0 }, voltage: { default: 'high' } })
+    expect(r.ok).toBe(false)
+    if (!r.ok)
+      expect(r.errors).toEqual([
+        'electrical.params.resistance.unit: must be "ohm"',
+        'electrical.params.resistance.default: must be a finite number, 0 or more',
+        'electrical.params.capacitance.default: must be a finite number above 0',
+        'electrical.params.voltage.unit: must be "V"',
+        'electrical.params.voltage.default: must be a finite number',
+      ])
+    const bad = params([])
+    expect(!bad.ok && bad.errors).toEqual(['electrical.params: must be an object'])
+  })
   it('accepts a shape band from 1 to 4', () => {
     const r = validateModule({
       ...base,

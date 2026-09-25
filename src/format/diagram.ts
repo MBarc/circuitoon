@@ -1,9 +1,8 @@
 // Diagram format (circuitoon-diagram/1): types plus the wire geometry the renderer needs.
 
-import { type ModuleDef, layoutModule, validateModule, isObj, isNum } from './module.ts'
+import { type ModuleDef, PARAM_RULES, layoutModule, validateModule, validParamValue, isObj, isNum } from './module.ts'
 import { type Pt, type Rect, type Rotation, type WorldPin, bodyRect, simplify, worldPins } from './geometry.ts'
 import { addToOccupancy, Occupancy, routeOrthogonal } from './router.ts'
-import { PRIMARY_PARAM_NAMES } from './values.ts'
 import { manualRouteBlocked, tidy } from './wireEdit.ts'
 
 export const DIAGRAM_FORMAT = 'circuitoon-diagram/1'
@@ -372,6 +371,7 @@ export function validateDiagram(raw: unknown): DiagramResult {
   // Fixes applied to a loadable file (a clamped position, a dropped route), by list index. The
   // input is never mutated; the returned diagram carries fixed copies of just those entries.
   const partFixes = new Map<number, Partial<PartInstance>>()
+  const fix = (i: number, patch: Partial<PartInstance>) => partFixes.set(i, { ...partFixes.get(i), ...patch })
   const droppedRoutes = new Set<number>()
 
   const partModule = new Map<string, string>()
@@ -390,23 +390,45 @@ export function validateDiagram(raw: unknown): DiagramResult {
       if (!isNum(p.x) || !isNum(p.y)) errors.push(`${at}: x and y must be numbers`)
       else if (Math.abs(p.x) > COORD_LIMIT || Math.abs(p.y) > COORD_LIMIT) {
         const clamp = (v: number) => Math.min(COORD_LIMIT, Math.max(-COORD_LIMIT, v))
-        partFixes.set(i, { x: clamp(p.x), y: clamp(p.y) })
+        fix(i, { x: clamp(p.x), y: clamp(p.y) })
         warnings.push(`${at}: position (${p.x}, ${p.y}) is beyond +-${COORD_LIMIT}, so it was clamped to (${clamp(p.x)}, ${clamp(p.y)})`)
       }
       if (p.rotation !== undefined && ![0, 90, 180, 270].includes(p.rotation as number))
         errors.push(`${at}.rotation: must be 0, 90, 180 or 270`)
       if (p.values !== undefined) {
         if (!isObj(p.values)) errors.push(`${at}.values: must be an object`)
-        else
+        else {
+          const who = typeof p.designator === 'string' && p.designator !== '' ? p.designator : `part ${i}`
+          const dropped: string[] = []
           for (const [key, entry] of Object.entries(p.values)) {
-            // Only entries meant to carry a number-with-unit are checked here: the primary
-            // value param names, and any entry that already looks like one (has a "value" key).
-            // Other part state (an LED's color, a switch's default) is opaque and left alone.
-            const looksLikeValue = PRIMARY_PARAM_NAMES.includes(key) || (isObj(entry) && 'value' in entry)
-            if (!looksLikeValue) continue
-            if (!(isObj(entry) && isNum(entry.value) && typeof entry.unit === 'string'))
+            // An override of an editable value param (resistance, capacitance, voltage) that is
+            // malformed, in the wrong unit or out of range is dropped with a warning, so the
+            // module default is shown and the user is told, rather than a different value being
+            // substituted silently.
+            if (Object.hasOwn(PARAM_RULES, key)) {
+              const rule = PARAM_RULES[key]
+              const where = `${at}.values.${key}: ${who} has ${key}`
+              const problem =
+                !(isObj(entry) && isNum(entry.value) && typeof entry.unit === 'string') ? `${where} ${JSON.stringify(entry)}, which is not a number with a unit`
+                : entry.unit !== rule.unit ? `${where} ${entry.value} ${entry.unit}, but ${key} must be in ${rule.unit}`
+                : !validParamValue(key, entry.value) ? `${where} ${entry.value} ${entry.unit}, but ${key} must be ${rule.range}`
+                : null
+              if (problem) {
+                dropped.push(key)
+                warnings.push(`${problem}; it was dropped and the module default is shown`)
+              }
+              continue
+            }
+            // Any other entry that looks like a number-with-unit (has a "value" key) is checked
+            // for shape. Other part state (an LED's color, a switch's default) is opaque.
+            if (isObj(entry) && 'value' in entry && !(isNum(entry.value) && typeof entry.unit === 'string'))
               warnings.push(`${at}.values.${key}: value must be a finite number with a string unit`)
           }
+          if (dropped.length) {
+            const values = p.values
+            fix(i, { values: Object.fromEntries(Object.entries(values).filter(([k]) => !dropped.includes(k))) })
+          }
+        }
       }
     })
 

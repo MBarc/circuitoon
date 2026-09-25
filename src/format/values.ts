@@ -1,7 +1,7 @@
 // Part values: SI-prefixed formatting and parsing, standard value series, and resistor color
 // bands. Pure and unit-tested; the editor and renderer just call into these.
 
-import { isNum, isObj, type ArtShape, type ModuleDef } from './module.ts'
+import { PARAM_RULES, isObj, validParamValue, type ArtShape, type ModuleDef } from './module.ts'
 
 const OHM = 'Ω' // ohm sign, U+2126 (not the Greek capital omega, U+03A9)
 const OMEGA = 'Ω'
@@ -181,10 +181,10 @@ const NEUTRAL_BAND_FILL = '#E6D3A8'
 
 /**
  * Fill color for each numbered band shape (1-based slot) in a module's art. Uses the standard
- * 4-band resistor code when the part's resistance forms a clean 2-digit mantissa; otherwise every
- * band shows the resistor body color instead of a stale or misleading code, using the largest
- * non-band shape's own fill (the body the bands sit on) or a neutral tan when there is none.
- * Null when the module has no band shapes at all.
+ * 4-band resistor code when the part's resistance forms a clean 2-digit mantissa, and a single
+ * black band for 0 ohm; otherwise every band shows the resistor body color instead of a stale or
+ * misleading code, using the largest non-band shape's own fill (the body the bands sit on) or a
+ * neutral tan when there is none. Null when the module has no band shapes at all.
  */
 export function bandFills(m: ModuleDef, values?: Record<string, unknown>): string[] | null {
   const bandShapes = m.art?.shapes.filter((s) => s.band) ?? []
@@ -196,7 +196,17 @@ export function bandFills(m: ModuleDef, values?: Record<string, unknown>): strin
   const bodyShapes = m.art!.shapes.filter((s) => !s.band)
   const body = bodyShapes.reduce<ArtShape | undefined>((best, s) => (!best || s.w * s.h > best.w * best.h ? s : best), undefined)
   const fallback = body?.fill ?? NEUTRAL_BAND_FILL
-  return Array.from({ length: maxBand }, () => fallback)
+  const fills = Array.from({ length: maxBand }, () => fallback)
+  // A 0 ohm resistor is marked with one black band in the middle: the band slot nearest the
+  // center of the band group.
+  if (resolved?.name === 'resistance' && resolved.value === 0) {
+    const lo = Math.min(...bandShapes.map((s) => s.x))
+    const hi = Math.max(...bandShapes.map((s) => s.x + s.w))
+    const mid = (lo + hi) / 2
+    const center = bandShapes.reduce((best, s) => (Math.abs(s.x + s.w / 2 - mid) < Math.abs(best.x + best.w / 2 - mid) ? s : best))
+    fills[center.band! - 1] = DIGIT_COLORS[0]
+  }
+  return fills
 }
 
 /**
@@ -205,34 +215,36 @@ export function bandFills(m: ModuleDef, values?: Record<string, unknown>): strin
  * current) that are not meant to be user-editable values here, so those are never picked, no
  * matter how plausible their unit looks.
  */
-export const PRIMARY_PARAM_NAMES = ['resistance', 'capacitance', 'voltage']
+export const PRIMARY_PARAM_NAMES = Object.keys(PARAM_RULES)
 
-/** The first of `resistance`, `capacitance` or `voltage` present with a matching unit and a numeric default. */
+/**
+ * The first of `resistance`, `capacitance` or `voltage` present in its own unit (ohm, F, V) with
+ * a default in range for it (see PARAM_RULES). A param in another unit is skipped, so a
+ * resistance given in farads is never shown as ohms.
+ */
 export function primaryParam(m: ModuleDef): { name: string; unit: string; default: number } | null {
   const electrical = m.electrical
   if (!isObj(electrical) || !isObj(electrical.params)) return null
   for (const name of PRIMARY_PARAM_NAMES) {
     const param = electrical.params[name]
     if (!isObj(param)) continue
-    const unit = param.unit
     const def = param.default
-    if ((unit === 'ohm' || unit === 'F' || unit === 'V') && isNum(def)) return { name, unit, default: def }
+    if (param.unit === PARAM_RULES[name].unit && validParamValue(name, def)) return { name, unit: PARAM_RULES[name].unit, default: def }
   }
   return null
 }
 
 /**
  * The part's chosen value for its primary param, or the module default when unset. A stored
- * override is only trusted when its unit matches the param's declared unit and its value is a
- * finite, positive number; anything else (a stale unit from an edited module, a negative or
- * zero value, or malformed data from an untrusted import) falls back to the module default
- * instead of drawing something misleading.
+ * override is only used when its unit matches the param's unit and its value is in range for the
+ * param (see PARAM_RULES). Loading a file drops any other override with a warning
+ * (`validateDiagram`), so the fallback to the default here is never silent for an imported sheet.
  */
 export function partValue(part: { values?: Record<string, unknown> }, m: ModuleDef): { name: string; unit: string; value: number } | null {
   const p = primaryParam(m)
   if (!p) return null
   const stored = part.values?.[p.name]
-  if (isObj(stored) && stored.unit === p.unit && isNum(stored.value) && stored.value > 0) return { name: p.name, unit: p.unit, value: stored.value }
+  if (isObj(stored) && stored.unit === p.unit && validParamValue(p.name, stored.value)) return { name: p.name, unit: p.unit, value: stored.value }
   return { name: p.name, unit: p.unit, value: p.default }
 }
 
