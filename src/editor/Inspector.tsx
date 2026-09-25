@@ -3,7 +3,8 @@
 import { useState } from 'react'
 import { type EditorStore, useEditorState } from './store.ts'
 import { deleteSelection, rotateParts, updatePart, updateWire } from './ops.ts'
-import { NAMED_COLORS, isValidColor, moduleOf, wireColor } from '../format/diagram.ts'
+import { NAMED_COLORS, isValidColor, moduleOf } from '../format/diagram.ts'
+import { hexEditChanged, shownHex } from './color.ts'
 
 const GAUGES = Array.from({ length: 15 }, (_, i) => 16 + i)
 
@@ -29,7 +30,7 @@ function CommitInput({ id, label, value, onCommit }: { id: string; label: string
 
 function WireHexInput({ wireKey, color, onCommit }: { wireKey: string; color: string; onCommit: (v: string) => void }) {
   const [invalid, setInvalid] = useState(false)
-  const shown = color.startsWith('#') ? color : wireColor(color)
+  const shown = shownHex(color)
   return (
     <label className="field" htmlFor="wire-hex">
       Custom color
@@ -41,7 +42,7 @@ function WireHexInput({ wireKey, color, onCommit }: { wireKey: string; color: st
         aria-invalid={invalid || undefined}
         onBlur={(e) => {
           const v = e.target.value.trim()
-          if (v.toLowerCase() === color.toLowerCase()) {
+          if (!hexEditChanged(color, v)) {
             e.target.value = shown
             return
           }
