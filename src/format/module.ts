@@ -80,6 +80,22 @@ export const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 
 export const isNum = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v)
 const isPos = (v: unknown): v is number => isNum(v) && v > 0
 
+/**
+ * The editable value params: each has one unit and a valid range, shared by module defaults and
+ * the per-part overrides a diagram stores. A 0 ohm resistor is a real part (a jumper); a
+ * capacitance must be above 0; a voltage may be negative.
+ */
+export const PARAM_RULES: Record<string, { unit: string; valid: (v: number) => boolean; range: string }> = {
+  resistance: { unit: 'ohm', valid: (v) => v >= 0, range: 'a finite number, 0 or more' },
+  capacitance: { unit: 'F', valid: (v) => v > 0, range: 'a finite number above 0' },
+  voltage: { unit: 'V', valid: () => true, range: 'a finite number' },
+}
+
+/** True when `v` is a valid value for the named param (see PARAM_RULES). */
+export function validParamValue(name: string, v: unknown): v is number {
+  return Object.hasOwn(PARAM_RULES, name) && isNum(v) && PARAM_RULES[name].valid(v)
+}
+
 /** Checks a parsed JSON value against the module format. Errors name the exact path. */
 export function validateModule(raw: unknown): ValidationResult {
   const errors: string[] = []
@@ -154,6 +170,23 @@ export function validateModule(raw: unknown): ValidationResult {
           errors.push(`${at}.band: must be a whole number from 1 to 4`)
       })
     }
+  }
+
+  if (isObj(raw.electrical) && raw.electrical.params !== undefined) {
+    const params = raw.electrical.params
+    if (!isObj(params)) errors.push('electrical.params: must be an object')
+    else
+      for (const [name, rule] of Object.entries(PARAM_RULES)) {
+        if (!Object.hasOwn(params, name)) continue
+        const p = params[name]
+        const at = `electrical.params.${name}`
+        if (!isObj(p)) {
+          errors.push(`${at}: must be { "unit": "${rule.unit}", "default": <number> }`)
+          continue
+        }
+        if (p.unit !== rule.unit) errors.push(`${at}.unit: must be "${rule.unit}"`)
+        if (!validParamValue(name, p.default)) errors.push(`${at}.default: must be ${rule.range}`)
+      }
   }
 
   return errors.length ? { ok: false, errors } : { ok: true, module: raw as unknown as ModuleDef }

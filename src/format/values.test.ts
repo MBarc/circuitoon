@@ -10,7 +10,7 @@ import {
   primaryParam,
   resistorBands,
 } from './values.ts'
-import type { ModuleDef } from './module.ts'
+import { validParamValue, type ModuleDef } from './module.ts'
 
 const OHM = 'Ω' // ohm sign
 const MICRO = 'µ' // micro sign
@@ -66,14 +66,29 @@ describe('parseValue', () => {
   it('parses the embedded-decimal form', () => {
     expect(parseValue('4k7', 'ohm')).toBe(4700)
   })
-  it('rejects empty, negative, zero, non-numeric and wrong-unit input', () => {
+  it('rejects empty, out-of-range, non-numeric and wrong-unit input', () => {
     expect(parseValue('', 'ohm')).toBeNull()
     expect(parseValue('   ', 'ohm')).toBeNull()
     expect(parseValue('-5', 'ohm')).toBeNull()
-    expect(parseValue('0', 'ohm')).toBeNull()
+    expect(parseValue('0', 'F')).toBeNull()
+    expect(parseValue('-100n', 'F')).toBeNull()
     expect(parseValue('abc', 'ohm')).toBeNull()
     expect(parseValue('4.7F', 'ohm')).toBeNull()
     expect(parseValue('3.7ohm', 'V')).toBeNull()
+  })
+  it('accepts what loading a file accepts (PARAM_RULES): 0 ohm, and 0 or negative volts', () => {
+    expect(parseValue('0', 'ohm')).toBe(0)
+    expect(parseValue(`0 ${OHM}`, 'ohm')).toBe(0)
+    expect(parseValue('0', 'V')).toBe(0)
+    expect(parseValue('-12', 'V')).toBe(-12)
+    expect(parseValue('-3.3V', 'V')).toBe(-3.3)
+    expect(parseValue('-1k5', 'V')).toBe(-1500)
+    for (const [text, unit, name] of [['0', 'ohm', 'resistance'], ['-5', 'V', 'voltage'], ['0', 'F', 'capacitance'], ['-5', 'ohm', 'resistance']] as const)
+      expect(parseValue(text, unit) !== null).toBe(validParamValue(name, Number(text)))
+  })
+  it('round-trips a shown 0 ohm or negative voltage through the value field', () => {
+    expect(parseValue(formatValue(0, 'ohm'), 'ohm')).toBe(0)
+    expect(parseValue(formatValue(-12, 'V'), 'V')).toBe(-12)
   })
   it('rejects a magnitude above 1e12 or below 1e-15', () => {
     expect(parseValue('5000G', 'ohm')).toBeNull()
@@ -145,6 +160,18 @@ describe('primaryParam', () => {
   it('is null with no electrical params at all', () => {
     expect(primaryParam({ ...base })).toBeNull()
   })
+  it('only takes each name in its own unit: resistance in ohm, capacitance in F, voltage in V', () => {
+    const wrong: ModuleDef = { ...base, electrical: { params: { resistance: { unit: 'F', default: 1e-6 }, capacitance: { unit: 'V', default: 5 }, voltage: { unit: 'ohm', default: 10 } } } }
+    expect(primaryParam(wrong)).toBeNull()
+    const fallsThrough: ModuleDef = { ...base, electrical: { params: { resistance: { unit: 'V', default: 5 }, voltage: { unit: 'V', default: 5 } } } }
+    expect(primaryParam(fallsThrough)).toEqual({ name: 'voltage', unit: 'V', default: 5 })
+  })
+  it('skips a default out of range for its param (a zero or negative capacitance, a negative resistance)', () => {
+    expect(primaryParam({ ...base, electrical: { params: { capacitance: { unit: 'F', default: 0 } } } })).toBeNull()
+    expect(primaryParam({ ...base, electrical: { params: { resistance: { unit: 'ohm', default: -1 } } } })).toBeNull()
+    expect(primaryParam({ ...base, electrical: { params: { resistance: { unit: 'ohm', default: 0 } } } })?.default).toBe(0)
+    expect(primaryParam({ ...base, electrical: { params: { voltage: { unit: 'V', default: -5 } } } })?.default).toBe(-5)
+  })
 })
 
 describe('partValue', () => {
@@ -164,9 +191,15 @@ describe('partValue', () => {
   it('falls back to the default when the stored unit does not match the param unit', () => {
     expect(partValue({ values: { resistance: { value: 220, unit: 'kohm' } } }, m)).toEqual({ name: 'resistance', unit: 'ohm', value: 1000 })
   })
-  it('falls back to the default when the stored value is not positive', () => {
+  it('falls back to the default when the stored value is out of range for the param', () => {
     expect(partValue({ values: { resistance: { value: -220, unit: 'ohm' } } }, m)).toEqual({ name: 'resistance', unit: 'ohm', value: 1000 })
-    expect(partValue({ values: { resistance: { value: 0, unit: 'ohm' } } }, m)).toEqual({ name: 'resistance', unit: 'ohm', value: 1000 })
+    const cap: ModuleDef = { ...m, electrical: { params: { capacitance: { unit: 'F', default: 1e-7 } } } }
+    expect(partValue({ values: { capacitance: { value: 0, unit: 'F' } } }, cap)?.value).toBe(1e-7)
+  })
+  it('keeps a 0 ohm resistor (a real part) and a negative voltage', () => {
+    expect(partValue({ values: { resistance: { value: 0, unit: 'ohm' } } }, m)).toEqual({ name: 'resistance', unit: 'ohm', value: 0 })
+    const supply: ModuleDef = { ...m, electrical: { params: { voltage: { unit: 'V', default: 5 } } } }
+    expect(partValue({ values: { voltage: { value: -12, unit: 'V' } } }, supply)?.value).toBe(-12)
   })
 })
 
@@ -181,6 +214,9 @@ describe('partCaption', () => {
   })
   it('is just the designator when the module has no primary param', () => {
     expect(partCaption({ designator: 'D1' }, led)).toBe('D1')
+  })
+  it('captions a 0 ohm resistor as "0 Ω"', () => {
+    expect(partCaption({ designator: 'R1', values: { resistance: { value: 0, unit: 'ohm' } } }, resistor)).toBe(`R1  0 ${OHM}`)
   })
   it('falls back to the default caption when the stored value has the wrong unit', () => {
     expect(partCaption({ designator: 'R1', values: { resistance: { value: 220, unit: 'kohm' } } }, resistor)).toBe(`R1  1 k${OHM}`)
@@ -211,6 +247,9 @@ describe('bandFills', () => {
   })
   it('uses the module default value (1k) when the part has no override', () => {
     expect(bandFills(resistorArt, undefined)).toEqual(resistorBands(1000))
+  })
+  it('draws a 0 ohm resistor as one black band in the middle, the other slots in the body color', () => {
+    expect(bandFills(resistorArt, { resistance: { value: 0, unit: 'ohm' } })).toEqual(['#F1D9A7', '#F1D9A7', '#1B1B1B', '#F1D9A7'])
   })
   it('is null for a module with no band shapes', () => {
     expect(bandFills({ format: 'circuitoon-module/1', id: 'x', name: 'X', pins: [{ name: 'A', side: 'left' }] })).toBeNull()

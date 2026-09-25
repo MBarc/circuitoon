@@ -9,6 +9,7 @@
     "preview": "vite preview",
     "test": "vitest run",
     "validate": "node scripts/validate-modules.ts",
+    "check:gen": "node scripts/check-gen.mjs",
     "deploy": "bash scripts/deploy.sh"
   },
   "dependencies": {

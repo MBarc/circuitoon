@@ -255,12 +255,12 @@ V1 ships a starter library drawn in the same cartoon style, all defined in the s
 | Group | Parts | Editable values |
 | --- | --- | --- |
 | Power | 9V battery, 18650 cell, 18650 holder (1 cell), 18650 holder (2S) | Voltage |
-| Microcontrollers | ESP32 DevKitC V4, ESP32 DevKit V1 (30 pin, DOIT), ESP32-S3-DevKitC-1, ESP32-C3 SuperMini, Seeed XIAO ESP32-C3, Seeed XIAO ESP32-S3, ESP32-CAM (AI Thinker) | - |
+| Microcontrollers | ESP32 DevKitC V4, ESP32 DevKit V1 (30 pin, DOIT), ESP32-S3-DevKitC-1, ESP32-C3 SuperMini, Seeed XIAO ESP32-C3, Seeed XIAO ESP32-S3, ESP32-CAM (AI Thinker), Raspberry Pi Pico, Pico H, Pico W, Pico 2, Pico 2 W | - |
 | Passives | Resistor (1/4 W, 1/2 W), capacitor (ceramic, electrolytic, film, tantalum), potentiometer | Resistance, capacitance |
 | Indicators | LED | Color |
 | Switches | Push button | - |
 
-Not built yet: RGB LED, buzzer, slide switch, rocker switch, toggle switch, diode, NPN and PNP transistor, N-channel MOSFET, USB power, DC barrel jack, 3.3V and 5V regulators, Arduino Uno, Arduino Nano, Raspberry Pi Pico, breadboards, pin header.
+Not built yet: RGB LED, buzzer, slide switch, rocker switch, toggle switch, diode, NPN and PNP transistor, N-channel MOSFET, USB power, DC barrel jack, 3.3V and 5V regulators, Arduino Uno, Arduino Nano, full-size Raspberry Pi boards, breadboards, pin header.
 
 Part values (220 ohm, 10 uF) show as a label on the part and are stored with their units in `parts[].values` so V2 can simulate them. The properties panel offers a resistance or capacitance value through a standard-value picker (E12 for resistors, E6 for capacitors) with free entry for anything else; a resistor's color bands update to match whatever value is chosen.
 

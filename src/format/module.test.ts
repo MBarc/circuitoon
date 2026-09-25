@@ -92,6 +92,23 @@ describe('validateModule', () => {
       ])
     expect(r2.ok).toBe(false)
   })
+  it('checks resistance, capacitance and voltage params for their unit and a valid default', () => {
+    const params = (p: unknown) => validateModule({ ...base, pins: [{ name: 'A', side: 'left' }], electrical: { params: p } })
+    expect(params({ resistance: { unit: 'ohm', default: 0 }, capacitance: { unit: 'F', default: 1e-7 }, voltage: { unit: 'V', default: -5 } }).ok).toBe(true)
+    expect(params({ forwardVoltage: { unit: 'V', default: 2 }, color: { default: 'red' } }).ok).toBe(true)
+    const r = params({ resistance: { unit: 'F', default: -1 }, capacitance: { unit: 'F', default: 0 }, voltage: { default: 'high' } })
+    expect(r.ok).toBe(false)
+    if (!r.ok)
+      expect(r.errors).toEqual([
+        'electrical.params.resistance.unit: must be "ohm"',
+        'electrical.params.resistance.default: must be a finite number, 0 or more',
+        'electrical.params.capacitance.default: must be a finite number above 0',
+        'electrical.params.voltage.unit: must be "V"',
+        'electrical.params.voltage.default: must be a finite number',
+      ])
+    const bad = params([])
+    expect(!bad.ok && bad.errors).toEqual(['electrical.params: must be an object'])
+  })
   it('accepts a shape band from 1 to 4', () => {
     const r = validateModule({
       ...base,
@@ -164,11 +181,12 @@ describe('usesInsideLabels', () => {
     expect(insideLabelSides(m())).toEqual([])
     expect(insideLabelSides(m({ art: { w: 10, h: 10, shapes: [], pinLabels: 'inside' } })).sort()).toEqual(['bottom', 'left', 'right', 'top'])
   })
-  it('is set only on the header and pad parts (boards, DIP chips, display, storage, power, sensor, relay, motor driver and radio modules, multi-lead LEDs, terminal adapter, USB panel-mount cables), never on any other built-in module', () => {
+  it('is set only on the header and pad parts (ESP32, Pico, Arduino Nano and D1 mini boards, DIP chips, display, storage, power, sensor, relay, motor driver and radio modules, multi-lead LEDs, terminal adapter, USB panel-mount cables), never on any other built-in module', () => {
     const dir = join(import.meta.dirname, '..', '..', 'modules')
     const boardFiles = new Set([
       'esp32-devkitc-v4.json', 'esp32-devkit-v1-30.json', 'esp32-s3-devkitc-1.json',
       'esp32-c3-supermini.json', 'xiao-esp32c3.json', 'xiao-esp32s3.json', 'esp32-cam.json',
+      'rpi-pico.json', 'rpi-pico-h.json', 'rpi-pico-w.json', 'rpi-pico-2.json', 'rpi-pico-2-w.json',
       'mcp23017-dip28.json', 'mcp23018-dip28.json',
       'lcd-st7796s-4in-spi-touch.json', 'tft-ili9341-28-spi-touch.json', 'tft-ili9341-24-spi.json', 'tft-st7735-18-spi.json',
       'tft-st7789-154-spi.json', 'oled-ssd1306-091-i2c.json', 'oled-ssd1306-096-i2c.json', 'oled-ssd1306-096-i2c-vcc-gnd.json',

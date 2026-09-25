@@ -40,3 +40,18 @@ export function groupLibrary(modules: ModuleDef[]): LibraryGroup[] {
     modules: [...byCategory.get(category)!].sort((a, b) => a.name.localeCompare(b.name)),
   }))
 }
+
+/**
+ * The groups filtered to modules whose name, id or category contains `query` (case-insensitive,
+ * trimmed), dropping groups left empty. An empty query returns `groups` itself.
+ */
+export function searchLibrary(groups: LibraryGroup[], query: string): LibraryGroup[] {
+  const q = query.trim().toLowerCase()
+  if (!q) return groups
+  return groups
+    .map((g) => ({
+      ...g,
+      modules: g.category.toLowerCase().includes(q) ? g.modules : g.modules.filter((m) => m.name.toLowerCase().includes(q) || m.id.toLowerCase().includes(q)),
+    }))
+    .filter((g) => g.modules.length > 0)
+}

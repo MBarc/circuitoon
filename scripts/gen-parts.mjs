@@ -3,10 +3,10 @@
 // lists are transcribed from the sources cited on each part below (Microchip datasheets; the
 // module maker's pinout table and board photos for the displays and microSD modules).
 //
-// Run from the repo root: `node scripts/gen-parts.mjs`
+// Run from the repo root: `node scripts/gen-parts.mjs` (add `--check` to compare with modules/ without writing).
 // It overwrites those files in modules/ in place; re-run after changing a part's pin list or art,
 // then `git diff` the result before committing. src/format/parts.test.ts pins the order.
-import { writeFileSync } from 'node:fs'
+import { emit, finish, log } from './lib/gen-output.mjs'
 import { fileURLToPath } from 'node:url'
 const OUT = fileURLToPath(new URL('../modules/', import.meta.url))
 
@@ -59,9 +59,9 @@ const mountHoles = (W, H, inset = 5, s = 8) => [
 ].map(([x, y]) => r(x, y, s, s, MOUNT, { radius: s / 2, outline: false }))
 
 function write(file, m) {
-  writeFileSync(OUT + file, JSON.stringify(m, null, 2) + '\n')
+  emit(OUT + file, JSON.stringify(m, null, 2) + '\n')
   const n = m.pins.filter((p) => !p.spacer).length
-  console.log(file, 'pins', n, 'body', m.art.w, 'x', m.art.h)
+  log(file, 'pins', n, 'body', m.art.w, 'x', m.art.h)
 }
 
 function moduleJson({ id, name, category, source, pins, wu, hu, electrical, shapes }) {
@@ -358,3 +358,5 @@ const sdSocket = (x, y, w, h) => [
     pins: pinsFor('left', left, sdTypes({ name: 'VCC', supply: '5V' })), wu, hu, electrical: { model: 'storage', params: {} }, shapes,
   }))
 }
+
+finish('gen-parts.mjs')
