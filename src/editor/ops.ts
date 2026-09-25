@@ -17,9 +17,9 @@ export interface WireStyle {
 }
 
 export function nextUid(d: Diagram, prefix: 'p' | 'w' | 'a'): string {
-  // Endpoint part uids count too: a wire to a missing part must not latch onto a new part.
+  // Endpoint and mount target uids count too: a wire or mount to a missing part must not latch onto a new part.
   const used = new Set([
-    ...d.parts.map((p) => p.uid),
+    ...d.parts.flatMap((p) => (p.mount ? [p.uid, p.mount.board] : [p.uid])),
     ...d.connections.flatMap((c) => [c.uid, c.from.part, c.to.part]),
     ...(d.annotations ?? []).map((a) => a.uid),
   ])

@@ -61,6 +61,9 @@ export interface HoleGroup {
   rail?: '+' | '-'
   /** "pad" draws each position as a header pad instead of a breadboard hole. */
   holeStyle?: 'pad'
+  /** Electrical type and supply rails, as on a pin (an interior header pad). Breadboard rails set neither: + and - are markings, not voltages. */
+  type?: PinType
+  supply?: string
 }
 
 export interface ModuleDef {
@@ -117,6 +120,16 @@ export function validateModule(raw: unknown): ValidationResult {
   if (raw.category !== undefined && typeof raw.category !== 'string') errors.push('category: must be a string')
   if (raw.source !== undefined && typeof raw.source !== 'string') errors.push('source: must be a string (one or more URLs)')
 
+  // Electrical metadata shared by pins and hole groups.
+  const checkType = (t: Record<string, unknown>, at: string) => {
+    if (t.type !== undefined && !PIN_TYPES.includes(t.type as PinType)) errors.push(`${at}.type: must be one of ${PIN_TYPES.join(', ')}`)
+  }
+  const checkSupply = (t: Record<string, unknown>, at: string) => {
+    if (t.supply !== undefined && typeof t.supply !== 'string') errors.push(`${at}.supply: must be a string`)
+    else if (typeof t.supply === 'string' && !/^[^/\s]+(\/[^/\s]+)*$/.test(t.supply))
+      errors.push(`${at}.supply: must be one or more rail names separated by "/", for example "3V3/5V"`)
+  }
+
   const names = new Set<string>()
   // A board has only hole groups, so its pin list may be empty.
   const hasHoles = Array.isArray(raw.holes) && raw.holes.length > 0
@@ -134,14 +147,11 @@ export function validateModule(raw: unknown): ValidationResult {
       if (typeof p.name !== 'string' || p.name === '') return void errors.push(`${at}.name: required`)
       if (names.has(p.name)) errors.push(`${at}.name: duplicate pin name "${p.name}"`)
       names.add(p.name)
-      if (p.type !== undefined && !PIN_TYPES.includes(p.type as PinType))
-        errors.push(`${at}.type: must be one of ${PIN_TYPES.join(', ')}`)
+      checkType(p, at)
       if (p.bus !== undefined && !(isObj(p.bus) && Number.isInteger(p.bus.length) && (p.bus.length as number) >= 2))
         errors.push(`${at}.bus: must be { "length": <whole number, 2 or more> }`)
       if (p.label !== undefined && typeof p.label !== 'string') errors.push(`${at}.label: must be a string`)
-      if (p.supply !== undefined && typeof p.supply !== 'string') errors.push(`${at}.supply: must be a string`)
-      else if (typeof p.supply === 'string' && !/^[^/\s]+(\/[^/\s]+)*$/.test(p.supply))
-        errors.push(`${at}.supply: must be one or more rail names separated by "/", for example "3V3/5V"`)
+      checkSupply(p, at)
     })
 
   const positions = new Set<string>()
@@ -157,6 +167,8 @@ export function validateModule(raw: unknown): ValidationResult {
         if (g.label !== undefined && typeof g.label !== 'string') errors.push(`${at}.label: must be a string`)
         if (g.rail !== undefined && g.rail !== '+' && g.rail !== '-') errors.push(`${at}.rail: must be "+" or "-"`)
         if (g.holeStyle !== undefined && g.holeStyle !== 'pad') errors.push(`${at}.holeStyle: must be "pad"`)
+        checkType(g, at)
+        checkSupply(g, at)
         if (!Array.isArray(g.at) || g.at.length === 0) return void errors.push(`${at}.at: required, at least one [x, y] position`)
         g.at.forEach((p, j) => {
           if (!(Array.isArray(p) && p.length === 2 && isNum(p[0]) && isNum(p[1]))) return void errors.push(`${at}.at[${j}]: must be [x, y]`)

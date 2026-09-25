@@ -5,6 +5,7 @@ import { type Pt, type Rect, type Rotation, type WorldPin, bodyRect, simplify, t
 import { addToOccupancy, Occupancy, routeOrthogonal } from './router.ts'
 import { PRIMARY_PARAM_NAMES } from './values.ts'
 import { manualRouteBlocked, tidy } from './wireEdit.ts'
+import { mountIssues } from './breadboard.ts'
 
 export const DIAGRAM_FORMAT = 'circuitoon-diagram/1'
 
@@ -490,7 +491,19 @@ export function validateDiagram(raw: unknown): DiagramResult {
       })
   }
 
-  return errors.length ? { ok: false, errors } : { ok: true, diagram: raw as unknown as Diagram, warnings }
+  if (errors.length) return { ok: false, errors }
+  const diagram = raw as unknown as Diagram
+  // Mounts that load but plug nothing. A missing or non-board target, a self mount and a missing
+  // module are already warned about above.
+  for (const { part, board, reason } of mountIssues(diagram)) {
+    const i = diagram.parts.findIndex((p) => p.uid === part)
+    const at = `parts[${i}].mount`
+    if (reason === 'cannot-mount' && board !== part && modules.has(diagram.parts[i].module))
+      warnings.push(`${at}: part "${part}" cannot mount (boards, parts with a bus pin and parts with no pins never do)`)
+    else if (reason === 'partial') warnings.push(`${at}: not every leg of "${part}" sits on a hole of board "${board}", so it plugs into nothing`)
+    else if (reason === 'conflict') warnings.push(`${at}: a leg of "${part}" sits on a hole another mounted part already uses, so it plugs into nothing`)
+  }
+  return { ok: true, diagram, warnings }
 }
 
 export function serializeDiagram(d: Diagram): string {

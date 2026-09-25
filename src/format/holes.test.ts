@@ -59,6 +59,15 @@ describe('hole groups in modules', () => {
   it('refuses a hole outside the body', () => {
     expect(errorsOf({ ...bb, holes: [{ name: 'far', at: [[200, 10]] }] })).toEqual(['holes[0].at[0]: outside the body (0 to 100, 0 to 60)'])
   })
+  it('accepts a type and supply on a hole group, checked like a pin', () => {
+    const pad = (g: Record<string, unknown>) => ({ ...bb, holes: [...bb.holes!, { name: 'VCC', at: [[60, 60]], holeStyle: 'pad', ...g }] })
+    expect(validateModule(pad({ type: 'power_in', supply: '3V3/5V' })).ok).toBe(true)
+    expect(errorsOf(pad({ type: 'volts', supply: '3V3//5V' }))).toEqual([
+      'holes[9].type: must be one of power_in, power_out, ground, input, output, io, passive, nc',
+      'holes[9].supply: must be one or more rail names separated by "/", for example "3V3/5V"',
+    ])
+    expect(errorsOf(pad({ supply: 5 }))).toEqual(['holes[9].supply: must be a string'])
+  })
   it('lets internal join hole groups', () => {
     expect(validateModule({ ...bb, internal: [['s1', 's9']] }).ok).toBe(true)
   })
@@ -123,6 +132,31 @@ describe('hole endpoints and mounts in diagrams', () => {
       'parts[2].mount.board: part "p" is not a board (a module with holes and "obstacle": false)',
       'parts[3].mount.board: a part cannot be mounted on itself',
     ])
+  })
+})
+
+describe('mounts that load but do not plug', () => {
+  it('warns about a partial fit, a hole conflict and a part that cannot mount', () => {
+    const d = sheet()
+    d.modules.busy = { format: 'circuitoon-module/1', id: 'busy', name: 'Busy', pins: [{ name: 'X', side: 'left' }, { name: 'bus', side: 'right', bus: { length: 2 } }] }
+    d.parts.push(
+      { uid: 'c', designator: 'R3', module: 'two', x: 10, y: 0, mount: { board: 'b' } },
+      { uid: 'e', designator: 'R4', module: 'two', x: 70, y: 0, mount: { board: 'b' } },
+      { uid: 'f', designator: 'U1', module: 'busy', x: 10, y: 20, mount: { board: 'b' } },
+    )
+    const r = validateDiagram(d)
+    expect(r.ok && r.warnings).toEqual([
+      'parts[3].mount: a leg of "c" sits on a hole another mounted part already uses, so it plugs into nothing',
+      'parts[4].mount: not every leg of "e" sits on a hole of board "b", so it plugs into nothing',
+      'parts[5].mount: part "f" cannot mount (boards, parts with a bus pin and parts with no pins never do)',
+    ])
+    expect(r.ok && r.diagram.parts[3].mount).toEqual({ board: 'b' })
+  })
+  it('warns once about a mounted part whose module is not embedded', () => {
+    const d = sheet()
+    d.parts[1] = { ...d.parts[1], module: 'gone' }
+    const r = validateDiagram(d)
+    expect(r.ok && r.warnings).toEqual(['parts[1]: module "gone" is not embedded in this file'])
   })
 })
 

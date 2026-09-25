@@ -1,6 +1,6 @@
 // Nets: sets of pins and hole groups joined by wires, mounted legs and `internal` groups. Feeds
 // hover highlighting now and the V2 simulation later. Pure.
-import { type Diagram, moduleOf } from './diagram.ts'
+import { type Diagram, moduleOf, resolveEndpoint } from './diagram.ts'
 import { type Plug, plugsOf } from './breadboard.ts'
 
 /** One key per part pin or hole group; JSON keeps any character in a uid or name unambiguous. */
@@ -11,6 +11,8 @@ export interface Netlist {
   nets: string[][]
   /** Node key to its index in `nets`. */
   netOf: Map<string, number>
+  /** Uids of connections left out because an end names a missing part, pin, group or hole; sorted. */
+  broken: string[]
 }
 
 export function netlist(d: Diagram, plugs: Plug[] = plugsOf(d)): Netlist {
@@ -32,7 +34,12 @@ export function netlist(d: Diagram, plugs: Plug[] = plugsOf(d)): Netlist {
     const rb = find(b)
     if (ra !== rb) parent.set(ra, rb)
   }
-  for (const c of d.connections) join(nodeKey(c.from.part, c.from.pin), nodeKey(c.to.part, c.to.pin))
+  // A wire conducts only when both ends resolve; a broken one stays in the file for repair.
+  const broken: string[] = []
+  for (const c of d.connections) {
+    if (resolveEndpoint(d, c.from) && resolveEndpoint(d, c.to)) join(nodeKey(c.from.part, c.from.pin), nodeKey(c.to.part, c.to.pin))
+    else broken.push(c.uid)
+  }
   for (const p of d.parts) {
     const m = moduleOf(d, p.module)
     for (const group of m?.internal ?? []) for (let i = 1; i < group.length; i++) join(nodeKey(p.uid, group[0]), nodeKey(p.uid, group[i]))
@@ -50,5 +57,5 @@ export function netlist(d: Diagram, plugs: Plug[] = plugsOf(d)): Netlist {
   nets.sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0))
   const netOf = new Map<string, number>()
   nets.forEach((n, i) => n.forEach((k) => netOf.set(k, i)))
-  return { nets, netOf }
+  return { nets, netOf, broken: broken.sort() }
 }

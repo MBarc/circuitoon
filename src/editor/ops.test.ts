@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { addPart, addWire, clearWireRoute, deleteSelection, setWireRoute, designatorPrefix, moveParts, nextDesignator, reconnectWire, rotateParts, updatePart, updatePartValue, updateWire } from './ops.ts'
+import { addPart, addWire, nextUid, clearWireRoute, deleteSelection, setWireRoute, designatorPrefix, moveParts, nextDesignator, reconnectWire, rotateParts, updatePart, updatePartValue, updateWire } from './ops.ts'
 import { emptyDiagram } from '../format/diagram.ts'
 import type { ModuleDef } from '../format/module.ts'
 import { parseValue } from '../format/values.ts'
@@ -200,5 +200,15 @@ describe('wire routes', () => {
     expect(d.connections[0].route).toEqual([[60, 20]])
     expect(clearWireRoute(next, 'w1')).toBe(next)
     expect(clearWireRoute(next, 'nope')).toBe(next)
+  })
+})
+
+describe('nextUid', () => {
+  it('skips the uid a dangling mount points at, so a new part cannot become its board', () => {
+    const d = emptyDiagram()
+    d.modules.resistor = resistor
+    d.parts = [{ uid: 'p3', designator: 'R1', module: 'resistor', x: 0, y: 0, mount: { board: 'p1' } }]
+    expect(nextUid(d, 'p')).toBe('p2')
+    expect(addPart(d, resistor, 100, 0).uid).toBe('p2')
   })
 })

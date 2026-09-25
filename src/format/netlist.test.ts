@@ -64,4 +64,36 @@ describe('netlist', () => {
   it('keeps pin and part names apart even with separators in them', () => {
     expect(k('a b', 'c')).not.toBe(k('a', 'b c'))
   })
+  it('lists no broken wires when every end resolves', () => {
+    expect(netlist(netSheet()).broken).toEqual([])
+  })
+  it('does not conduct through a wire into a hole that does not exist', () => {
+    const d = netSheet()
+    d.connections[0] = { ...d.connections[0], from: { part: 'b', pin: 's9', hole: 99 } }
+    const n = netlist(d)
+    expect(n.nets[n.netOf.get(k('b', 's9'))!]).toEqual([k('b', 's9'), k('p2', 'R')].sort())
+    expect(n.netOf.has(k('p3', 'L'))).toBe(false)
+    expect(n.broken).toEqual(['w1'])
+  })
+  it('does not bridge two circuits through wires to the same missing pin', () => {
+    const d = netSheet()
+    d.parts.push({ uid: 'p5', designator: 'R5', module: 'two', x: 400, y: 0 }, { uid: 'p6', designator: 'R6', module: 'two', x: 500, y: 0 })
+    d.connections.push(
+      { uid: 'w4', from: { part: 'p6', pin: 'L' }, to: { part: 'p5', pin: 'nope' } },
+      { uid: 'w3', from: { part: 'p5', pin: 'L' }, to: { part: 'p5', pin: 'nope' } },
+      { uid: 'w5', from: { part: 'p5', pin: 'R' }, to: { part: 'gone', pin: 'L' } },
+    )
+    const n = netlist(d)
+    expect(n.netOf.has(k('p5', 'L'))).toBe(false)
+    expect(n.netOf.has(k('p6', 'L'))).toBe(false)
+    expect(n.netOf.has(k('p5', 'nope'))).toBe(false)
+    expect(n.broken).toEqual(['w3', 'w4', 'w5'])
+  })
+  it('still conducts through a valid wire whose route runs through a part', () => {
+    const d = netSheet()
+    d.connections[1] = { ...d.connections[1], route: [[240, 20], [320, 20], [320, 40]] }
+    const n = netlist(d)
+    expect(n.netOf.get(k('p3', 'R'))).toBe(n.netOf.get(k('p4', 'A')))
+    expect(n.broken).toEqual([])
+  })
 })
