@@ -3,7 +3,7 @@
 // Normally each generated file is written to modules/. With `--check` nothing is written: each file
 // is built in memory and compared with the copy on disk (CRLF normalized to LF, since a Windows
 // checkout may convert line endings), and the generator exits 1 listing every file that differs.
-// `npm run check:gen` runs every generator this way; the deploy script calls it before building.
+// `npm run check:gen` (scripts/check-gen.mjs) runs every generator this way; the deploy calls it.
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { basename } from 'node:path'
 

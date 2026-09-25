@@ -6,7 +6,7 @@
 // Run from the repo root: `node scripts/gen-parts.mjs` (add `--check` to compare with modules/ without writing).
 // It overwrites those files in modules/ in place; re-run after changing a part's pin list or art,
 // then `git diff` the result before committing. src/format/parts.test.ts pins the order.
-import { emit, finish, log } from './gen-output.mjs'
+import { emit, finish, log } from './lib/gen-output.mjs'
 import { fileURLToPath } from 'node:url'
 const OUT = fileURLToPath(new URL('../modules/', import.meta.url))
 

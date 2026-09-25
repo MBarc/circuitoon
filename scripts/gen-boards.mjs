@@ -5,7 +5,7 @@
 // Run from the repo root: `node scripts/gen-boards.mjs` (add `--check` to compare with modules/ without writing).
 // It overwrites the 7 files in modules/ in place; re-run after changing a board's pin list,
 // art or the shared header/pinLabels rules here, then `git diff` the result before committing.
-import { emit, finish, log } from './gen-output.mjs'
+import { emit, finish, log } from './lib/gen-output.mjs'
 import { fileURLToPath } from 'node:url'
 const OUT = fileURLToPath(new URL('../modules/', import.meta.url))
 

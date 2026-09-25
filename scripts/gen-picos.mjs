@@ -14,7 +14,7 @@
 // (Pico / Pico 2: pads on the bottom edge; Pico H: 3-pin JST SH on the bottom edge, pin 1 = SWCLK;
 // Pico W / Pico 2 W: three pads inside the board above the wireless module, drawn in the art at
 // their real spot with traces to the bottom-edge pins, as the official diagram leads them out).
-import { emit, finish, log } from './gen-output.mjs'
+import { emit, finish, log } from './lib/gen-output.mjs'
 import { fileURLToPath } from 'node:url'
 const OUT = fileURLToPath(new URL('../modules/', import.meta.url))
 
