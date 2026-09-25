@@ -1,6 +1,7 @@
 // Hand editing of a wire's polyline: shift a straight run, add a bend, remove a bend. Every
 // function is pure, takes the full polyline (pin stub tip to pin stub tip) and returns a new one
-// that stays horizontal-or-vertical everywhere. Collinear bends the user added are kept, so a
+// that stays horizontal-or-vertical everywhere. A polyline with a diagonal step (the straight
+// fallback drawn for a wire that cannot be routed) comes back unchanged: there is no run to edit. Collinear bends the user added are kept, so a
 // straight run can be split and its halves moved on their own.
 import { GRID } from './module.ts'
 import type { Pt, Rect } from './geometry.ts'
@@ -32,6 +33,12 @@ function straight(r: Pt, q: Pt, p: Pt): boolean {
 /** True when q is on the line r..p but the wire folds back at it (a spike). */
 function spike(r: Pt, q: Pt, p: Pt): boolean {
   return ((r.x === q.x && q.x === p.x) || (r.y === q.y && q.y === p.y)) && !straight(r, q, p)
+}
+
+/** True when every step of the polyline is horizontal or vertical. */
+export function isOrthogonal(points: Pt[]): boolean {
+  for (let i = 1; i < points.length; i++) if (points[i].x !== points[i - 1].x && points[i].y !== points[i - 1].y) return false
+  return true
 }
 
 /** Every non-zero-length segment of a polyline, with its axis. */
@@ -66,15 +73,29 @@ function unit(a: Pt, b: Pt): Pt {
 }
 
 /**
+ * Length of the stub on a pin whose tip is `p` and whose run leaves along unit `u`: out to the
+ * first grid line at least STUB px from the tip, so the bend it ends at is stored on the grid.
+ */
+function stubLength(p: Pt, u: Pt): number {
+  const v = u.x !== 0 ? p.x : p.y
+  const s = u.x !== 0 ? u.x : u.y
+  const end = s > 0 ? Math.ceil((v + STUB) / GRID) * GRID : Math.floor((v - STUB) / GRID) * GRID
+  return (end - v) * s
+}
+
+/**
  * Moves segment i (points[i]..points[i + 1]) sideways by `delta` px, snapped to the grid. A
  * neighbor at right angles stretches to follow; a neighbor on the same line (a split run) stays
  * put and a short connector joins them. The first and last segments touch pins, so moving one
- * leaves a stub of STUB px on the pin, along its original direction, and moves the rest.
+ * leaves a stub on the pin, along its original direction, out to the first grid line at least
+ * STUB px from the tip (see `stubLength`), and moves the rest; when the stub would take up the
+ * whole run, nothing moves.
  */
 export function moveSegment(points: Pt[], i: number, delta: number): Pt[] {
   let d = snap(delta)
   const n = points.length - 1
-  if (d === 0 || i < 0 || i >= n || same(points[i], points[i + 1])) return points.map((p) => ({ ...p }))
+  const unchanged = () => points.map((p) => ({ ...p }))
+  if (d === 0 || i < 0 || i >= n || same(points[i], points[i + 1]) || !isOrthogonal(points)) return unchanged()
   const axis = axisOf(points[i], points[i + 1])
   const perpendicular = (j: number) => axisOf(points[j], points[j + 1]) !== axis && !same(points[j], points[j + 1])
   // Moving the run next to a pin's run slides that run's far end along it: never let the pin's
@@ -85,19 +106,25 @@ export function moveSegment(points: Pt[], i: number, delta: number): Pt[] {
     const along = (points[next].x - points[pin].x) * u.x + (points[next].y - points[pin].y) * u.y
     const sign = axis === 'h' ? u.y : u.x // how d moves points[next] along u
     const change = d * sign
-    const min = Math.min(0, STUB - along)
+    const min = Math.min(0, stubLength(points[pin], u) - along)
     if (change < min) d = min * sign
   }
   if (i === 1) keepStub(0, 1)
   if (i === n - 2 && n >= 2) keepStub(n, n - 1)
-  if (d === 0) return points.map((p) => ({ ...p }))
+  if (d === 0) return unchanged()
   const shift = (p: Pt): Pt => (axis === 'h' ? { x: p.x, y: p.y + d } : { x: p.x + d, y: p.y })
 
   let head: Pt[]
   let start: Pt
+  // The stub on a pin, or null when it would reach (or pass) the far end of the pin's run.
+  const stubOf = (pin: number, next: number): Pt | null => {
+    const u = unit(points[pin], points[next])
+    const l = stubLength(points[pin], u)
+    return l < len(points[pin], points[next]) ? { x: points[pin].x + u.x * l, y: points[pin].y + u.y * l } : null
+  }
   if (i === 0) {
-    const u = unit(points[0], points[1])
-    const stub = { x: points[0].x + u.x * STUB, y: points[0].y + u.y * STUB }
+    const stub = stubOf(0, 1)
+    if (!stub) return unchanged()
     head = [points[0], stub]
     start = shift(stub)
   } else {
@@ -107,8 +134,8 @@ export function moveSegment(points: Pt[], i: number, delta: number): Pt[] {
   let tail: Pt[]
   let end: Pt
   if (i + 1 === n) {
-    const u = unit(points[n], points[n - 1])
-    const stub = { x: points[n].x + u.x * STUB, y: points[n].y + u.y * STUB }
+    const stub = stubOf(n, n - 1)
+    if (!stub) return unchanged()
     tail = [stub, points[n]]
     end = shift(stub)
   } else {
@@ -120,6 +147,7 @@ export function moveSegment(points: Pt[], i: number, delta: number): Pt[] {
 
 /** Adds a vertex where `at`, projected onto the nearest segment and snapped to the grid, lands. */
 export function insertBend(points: Pt[], at: Pt): Pt[] {
+  if (!isOrthogonal(points)) return points.map((p) => ({ ...p }))
   let best: { i: number; p: Pt; dist: number } | null = null
   for (const s of segmentsOf(points)) {
     const clamp = (v: number, lo: number, hi: number) => Math.min(Math.max(v, Math.min(lo, hi)), Math.max(lo, hi))
@@ -154,31 +182,23 @@ function reversed(before: Pt | null, after: Pt | null): boolean {
 }
 
 /**
- * Removes interior vertex k. When its neighbors no longer line up, one corner joins them: in an
- * orthogonal wire that is the opposite corner of the pair (so the bend flips across), otherwise
- * the corner that keeps the longer neighbor's axis. Bends that end up straight because of the
+ * Removes interior vertex k. When its neighbors no longer line up, one corner joins them: the
+ * opposite corner of the pair, so the bend flips across. Bends that end up straight because of the
  * removal are merged away; collinear bends the user placed elsewhere are kept. Refused (the
  * polyline comes back unchanged) for an endpoint, or when the result would leave a pin in the
  * opposite direction (back over the part); leaving it sideways is allowed.
  */
 export function removeBend(points: Pt[], k: number): Pt[] {
   const copy = points.map((p) => ({ ...p }))
-  if (k <= 0 || k >= points.length - 1) return copy
+  if (k <= 0 || k >= points.length - 1 || !isOrthogonal(points)) return copy
   const a = points[k - 1]
   const q = points[k]
   const b = points[k + 1]
   const mid: Pt[] = []
   if (a.x !== b.x && a.y !== b.y) {
+    // Orthogonal steps a..q..b that do not line up make q one corner of their box; use the other.
     const c1 = { x: b.x, y: a.y } // a..c runs horizontally
-    const c2 = { x: a.x, y: b.y } // a..c runs vertically
-    if (same(c1, q)) mid.push(c2)
-    else if (same(c2, q)) mid.push(c1)
-    else {
-      const aLonger = len(a, q) >= len(q, b)
-      const keep = aLonger ? axisOf(a, q) : axisOf(q, b)
-      // Keep a..c on the longer axis when a's side is longer, else c..b.
-      mid.push(aLonger ? (keep === 'h' ? c1 : c2) : keep === 'h' ? c2 : c1)
-    }
+    mid.push(same(c1, q) ? { x: a.x, y: b.y } : c1)
   }
   const userStraight = new Set<string>()
   for (let j = 1; j < points.length - 1; j++) if (straight(points[j - 1], points[j], points[j + 1])) userStraight.add(key(points[j]))
@@ -199,8 +219,12 @@ export function toRoute(points: Pt[]): [number, number][] {
   return points.slice(1, -1).map((p) => [p.x, p.y])
 }
 
-/** True when any segment passes through the inside of a part body (running along its edge is fine). */
+/**
+ * True when any segment passes through the inside of a part body (running along its edge is
+ * fine), or is diagonal (a hand-shaped wire should never have one, so it is drawn as blocked).
+ */
 export function manualRouteBlocked(points: Pt[], obstacles: Rect[]): boolean {
+  if (!isOrthogonal(points)) return true
   for (let i = 1; i < points.length; i++) {
     const a = points[i - 1]
     const b = points[i]
@@ -239,4 +263,30 @@ export function segmentHandleAt(seg: Segment, drawn: Pt[]): Pt {
   }
   if (best === null) return mid
   return h ? { x: mid.x, y: best } : { x: best, y: mid.y }
+}
+
+/**
+ * Where to draw a bend's handle: on the drawn wire where the renderer nudged it a few px clear of
+ * another wire. The nearest drawn corner within MAX_NUDGE on both axes wins; failing that (a
+ * collinear bend, which the drawn wire has no corner for), the bend moves straight across onto a
+ * drawn run within MAX_NUDGE that passes it.
+ */
+export function bendHandleAt(bend: Pt, drawn: Pt[]): Pt {
+  let best: Pt | null = null
+  for (const p of drawn) {
+    if (Math.abs(p.x - bend.x) > MAX_NUDGE || Math.abs(p.y - bend.y) > MAX_NUDGE) continue
+    if (!best || len(p, bend) < len(best, bend)) best = p
+  }
+  if (best) return { x: best.x, y: best.y }
+  for (const s of segmentsOf(drawn)) {
+    const h = s.axis === 'h'
+    const offset = Math.abs(h ? s.a.y - bend.y : s.a.x - bend.x)
+    const along = h ? bend.x : bend.y
+    const lo = h ? Math.min(s.a.x, s.b.x) : Math.min(s.a.y, s.b.y)
+    const hi = h ? Math.max(s.a.x, s.b.x) : Math.max(s.a.y, s.b.y)
+    if (offset > MAX_NUDGE || along < lo || along > hi) continue
+    const p = h ? { x: bend.x, y: s.a.y } : { x: s.a.x, y: bend.y }
+    if (!best || len(p, bend) < len(best, bend)) best = p
+  }
+  return best ?? { x: bend.x, y: bend.y }
 }

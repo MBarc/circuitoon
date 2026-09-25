@@ -6,7 +6,7 @@ import type { Pt } from '../format/geometry.ts'
 import { Part, INK } from '../render/Part.tsx'
 import { WireLabel } from '../render/WireLabel.tsx'
 import { addPart, addWire, EMPTY_SELECTION, moveParts, reconnectWire, setWireRoute, updateWire } from './ops.ts'
-import { insertBend, moveSegment, removeBend, segmentHandleAt, segmentsOf, toRoute, type Axis } from '../format/wireEdit.ts'
+import { bendHandleAt, insertBend, isOrthogonal, moveSegment, removeBend, segmentHandleAt, segmentsOf, toRoute, type Axis } from '../format/wireEdit.ts'
 import { modulesById } from '../library.ts'
 import { bodyRect, worldPins } from '../format/geometry.ts'
 import { layoutModule, type ModuleDef } from '../format/module.ts'
@@ -30,6 +30,8 @@ type Drag = { pointer: number } & (
 
 /** Segments shorter than this get no handle: there is no room to grab one. A 20 px pin run gets one. */
 const MIN_HANDLE_SEGMENT = 20
+
+const samePoints = (a: Pt[], b: Pt[]) => a.length === b.length && a.every((p, i) => p.x === b[i].x && p.y === b[i].y)
 
 /**
  * One part's pin hit-targets (the invisible circles wires attach to). Memoized so dragging a
@@ -174,8 +176,17 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
     // Nothing changed (Alt+click on an existing corner, a refused bend removal): no commit, so an
     // automatic wire stays automatic and no empty undo step is added.
     const current = routes.get(uid)?.points
-    if (current && current.length === points.length && current.every((p, i) => p.x === points[i].x && p.y === points[i].y)) return
+    if (current && samePoints(current, points)) return
     if (s.diagram.connections.some((c) => c.uid === uid)) store.commit(setWireRoute(s.diagram, uid, toRoute(points)))
+  }
+  /**
+   * The routed polyline of a wire that can be reshaped by hand, or null. A wire that cannot be
+   * routed is drawn as a straight diagonal; it has no runs to move or bends to edit.
+   */
+  function editablePoints(uid: string): Pt[] | null {
+    const points = routes.get(uid)?.points
+    const drawn = wires.find((w) => w.conn.uid === uid)?.points
+    return points && drawn && isOrthogonal(points) && isOrthogonal(drawn) ? points : null
   }
   function onDoubleClick(e: React.MouseEvent<SVGSVGElement>) {
     if (e.altKey) return // Alt+click adds bends; a quick second one must not open the name editor
@@ -185,8 +196,8 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
     const bendEl = under?.closest('[data-vertex-index]')
     if (bendEl) {
       const uid = bendEl.getAttribute('data-wire-uid')!
-      const route = routes.get(uid)
-      if (route) commitShape(uid, removeBend(route.points, Number(bendEl.getAttribute('data-vertex-index'))))
+      const points = editablePoints(uid)
+      if (points) commitShape(uid, removeBend(points, Number(bendEl.getAttribute('data-vertex-index'))))
       return
     }
     const wireEl = under?.closest('[data-wire]')
@@ -236,7 +247,7 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
     if (segEl) {
       const uid = segEl.getAttribute('data-wire-uid')!
       const index = Number(segEl.getAttribute('data-seg-index'))
-      const points = routes.get(uid)?.points
+      const points = editablePoints(uid)
       const seg = points && segmentsOf(points).find((sg) => sg.i === index)
       if (seg) {
         setDrag({ pointer, kind: 'segment', uid, index, axis: seg.axis, start: toWorld(e), points, base: store.begin() })
@@ -252,8 +263,8 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
       const uid = wireEl.getAttribute('data-wire')!
       const sel = store.getState().selection
       if (e.altKey && sel.parts.length === 0 && sel.wires.length === 1 && sel.wires[0] === uid) {
-        const route = routes.get(uid)
-        if (route) commitShape(uid, insertBend(route.points, toWorld(e)))
+        const points = editablePoints(uid)
+        if (points) commitShape(uid, insertBend(points, toWorld(e)))
         return
       }
       if (e.shiftKey) store.select({ parts: sel.parts, wires: sel.wires.includes(uid) ? sel.wires.filter((u) => u !== uid) : [...sel.wires, uid] })
@@ -294,9 +305,11 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
       if (!store.dragging) return
       const p = toWorld(e)
       const delta = drag.axis === 'h' ? p.y - drag.start.y : p.x - drag.start.x
-      // Back where it began: show the starting diagram, so an automatic wire stays automatic.
-      if (snap(delta) === 0) store.preview(drag.base)
-      else store.preview(setWireRoute(drag.base, drag.uid, toRoute(moveSegment(drag.points, drag.index, delta))))
+      const moved = moveSegment(drag.points, drag.index, delta)
+      // Back where it began, or a move the stub rule cancels out: show the starting diagram, so an
+      // automatic wire stays automatic and no undo step is recorded.
+      if (samePoints(moved, drag.points)) store.preview(drag.base)
+      else store.preview(setWireRoute(drag.base, drag.uid, toRoute(moved)))
     } else if (drag.kind === 'wire') setDrag({ ...drag, cursor: toWorld(e), over: pinUnder(e) })
     else if (drag.kind === 'reconnect') setDrag({ ...drag, cursor: toWorld(e), over: pinUnder(e) })
   }
@@ -455,7 +468,8 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
             // Handles index the routed geometry the edits work on (with its collinear bends); the
             // segment bars are drawn on the drawn path, which may be nudged a few px clear of
             // another wire.
-            const pts = routes.get(w.conn.uid)?.points ?? []
+            // A wire drawn as a straight diagonal (it cannot be routed) gets no segment or bend handles.
+            const pts = editablePoints(w.conn.uid) ?? []
             const segHandles = segmentsOf(pts)
               .filter((sg) => Math.abs(sg.b.x - sg.a.x) + Math.abs(sg.b.y - sg.a.y) >= MIN_HANDLE_SEGMENT)
               .map((sg) => {
@@ -483,23 +497,27 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
                 )
               })
             const bendHandles = w.conn.route
-              ? pts.slice(1, -1).map((p, k) => (
-                  <rect
-                    key={`bend-${k + 1}`}
-                    className="wire-bend-handle"
-                    data-vertex-index={k + 1}
-                    data-wire-uid={w.conn.uid}
-                    x={p.x - 2.5}
-                    y={p.y - 2.5}
-                    width={5}
-                    height={5}
-                    fill="white"
-                    stroke="var(--focus)"
-                    strokeWidth={1.5}
-                  >
-                    <title>Double-click to remove this bend</title>
-                  </rect>
-                ))
+              ? pts.slice(1, -1).map((bend, k) => {
+                  // On the drawn corner, which may be nudged a few px clear of another wire.
+                  const p = bendHandleAt(bend, w.points)
+                  return (
+                    <rect
+                      key={`bend-${k + 1}`}
+                      className="wire-bend-handle"
+                      data-vertex-index={k + 1}
+                      data-wire-uid={w.conn.uid}
+                      x={p.x - 2.5}
+                      y={p.y - 2.5}
+                      width={5}
+                      height={5}
+                      fill="white"
+                      stroke="var(--focus)"
+                      strokeWidth={1.5}
+                    >
+                      <title>Double-click to remove this bend</title>
+                    </rect>
+                  )
+                })
               : []
             return [...segHandles, ...bendHandles, ...(['from', 'to'] as const).map((end, i) => (
               <circle

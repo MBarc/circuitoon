@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { insertBend, manualRouteBlocked, moveSegment, removeBend, segmentHandleAt, segmentsOf, tidy, toRoute } from './wireEdit.ts'
+import { bendHandleAt, insertBend, isOrthogonal, manualRouteBlocked, moveSegment, removeBend, segmentHandleAt, segmentsOf, tidy, toRoute } from './wireEdit.ts'
 import type { Pt } from './geometry.ts'
 
 const P = (...xy: [number, number][]): Pt[] => xy.map(([x, y]) => ({ x, y }))
@@ -8,6 +8,20 @@ const P = (...xy: [number, number][]): Pt[] => xy.map(([x, y]) => ({ x, y }))
 function orthogonal(pts: Pt[]) {
   return pts.every((p, i) => i === 0 || p.x === pts[i - 1].x || p.y === pts[i - 1].y)
 }
+
+/** The straight fallback drawn for a wire that cannot be routed. */
+const diagonal = P([48, 20], [300, 180])
+
+describe('isOrthogonal', () => {
+  it('is true when every step is horizontal or vertical', () => {
+    expect(isOrthogonal(P([0, 0], [50, 0], [50, 40], [50, 40]))).toBe(true)
+    expect(isOrthogonal(P([0, 0]))).toBe(true)
+  })
+  it('is false when any step is diagonal', () => {
+    expect(isOrthogonal(diagonal)).toBe(false)
+    expect(isOrthogonal(P([0, 0], [50, 0], [60, 10]))).toBe(false)
+  })
+})
 
 describe('segmentsOf', () => {
   it('lists each segment with its start index and axis', () => {
@@ -42,15 +56,29 @@ describe('moveSegment', () => {
     expect(moveSegment(u, 2, 37)).toEqual(moveSegment(u, 2, 40))
     expect(moveSegment(u, 2, 4)).toEqual(u)
   })
-  it('keeps a short stub at the start pin when moving the first segment', () => {
-    const out = moveSegment(u, 0, 30)
-    expect(out).toEqual(P([48, 20], [58, 20], [58, 50], [60, 50], [60, 60], [80, 60], [80, 20], [92, 20]))
+  // A wider U whose pin runs (48..80 and 120..152) have room past the stub.
+  const wide = P([48, 20], [80, 20], [80, 60], [120, 60], [120, 20], [152, 20])
+
+  it('keeps a stub at the start pin, ending on the first grid line 10 px out, when moving the first segment', () => {
+    const out = moveSegment(wide, 0, 30)
+    expect(out).toEqual(P([48, 20], [60, 20], [60, 50], [80, 50], [80, 60], [120, 60], [120, 20], [152, 20]))
     expect(orthogonal(out)).toBe(true)
   })
-  it('keeps a short stub at the end pin when moving the last segment', () => {
-    const out = moveSegment(u, 4, -30)
-    expect(out).toEqual(P([48, 20], [60, 20], [60, 60], [80, 60], [80, -10], [82, -10], [82, 20], [92, 20]))
+  it('keeps a stub at the end pin, ending on the first grid line 10 px out, when moving the last segment', () => {
+    const out = moveSegment(wide, 4, -30)
+    expect(out).toEqual(P([48, 20], [80, 20], [80, 60], [120, 60], [120, -10], [140, -10], [140, 20], [152, 20]))
     expect(orthogonal(out)).toBe(true)
+  })
+  it('leaves every stored point on the 10 px grid', () => {
+    for (const [i, dd] of [[0, 30], [4, -30], [1, -40], [3, 40], [2, 20]]) {
+      const bends = toRoute(moveSegment(wide, i, dd))
+      for (const [x, y] of bends) expect(x % 10 === 0 && y % 10 === 0).toBe(true)
+    }
+  })
+  it('does nothing when the stub would take up the whole pin run', () => {
+    // u's pin runs are 12 px: the stub reaches the grid line at 60 (and 80), their far ends.
+    expect(moveSegment(u, 0, 30)).toEqual(u)
+    expect(moveSegment(u, 4, -30)).toEqual(u)
   })
   it('turns a straight two-pin wire into a U with a stub at each pin', () => {
     const out = moveSegment(P([0, 0], [100, 0]), 0, 40)
@@ -72,15 +100,18 @@ describe('moveSegment', () => {
         expect(orthogonal(out)).toBe(true)
       }
   })
-  it('never shortens the run on a pin below the stub when moving the run next to it', () => {
-    const out = moveSegment(u, 1, -20)
-    expect(out[1].x).toBeGreaterThanOrEqual(58)
-    expect(out).toEqual(P([48, 20], [58, 20], [58, 60], [80, 60], [80, 20], [92, 20]))
-    const end = moveSegment(u, 3, 30) // the run before the last one, toward the end pin
-    expect(end.at(-2)!.x).toBeLessThanOrEqual(82)
-    expect(moveSegment(u, 3, 30)).toEqual(P([48, 20], [60, 20], [60, 60], [82, 60], [82, 20], [92, 20]))
+  it('never shortens the run on a pin past the stub when moving the run next to it', () => {
+    expect(moveSegment(wide, 1, -40)).toEqual(P([48, 20], [60, 20], [60, 60], [120, 60], [120, 20], [152, 20]))
+    // the run before the last one, toward the end pin
+    expect(moveSegment(wide, 3, 40)).toEqual(P([48, 20], [80, 20], [80, 60], [140, 60], [140, 20], [152, 20]))
+    // u's pin runs already end at the stub, so the run next to them cannot come any closer.
+    expect(moveSegment(u, 1, -20)).toEqual(u)
+    expect(moveSegment(u, 3, 30)).toEqual(u)
     // Moving away from the pin is not limited.
     expect(moveSegment(u, 1, 10)[1]).toEqual({ x: 70, y: 20 })
+  })
+  it('returns a diagonal fallback unchanged', () => {
+    expect(moveSegment(diagonal, 0, 40)).toEqual(diagonal)
   })
   it('does not mutate its input', () => {
     const copy = structuredClone(u)
@@ -97,6 +128,9 @@ describe('insertBend', () => {
   })
   it('does nothing when the snapped point lands on an existing vertex', () => {
     expect(insertBend(l, { x: 99, y: 2 })).toEqual(l)
+  })
+  it('returns a diagonal fallback unchanged', () => {
+    expect(insertBend(diagonal, { x: 170, y: 100 })).toEqual(diagonal)
   })
 })
 
@@ -126,9 +160,10 @@ describe('removeBend', () => {
     expect(out).toEqual(P([0, 0], [20, 0], [20, 80], [100, 80]))
     expect(orthogonal(out)).toBe(true)
   })
-  it('keeps the longer neighbor\'s axis when the neighbors are not orthogonal', () => {
-    // Long horizontal lead-in, then a short diagonal: the corner keeps the horizontal run.
-    expect(removeBend(P([0, 0], [100, 0], [110, 10], [110, 50]), 2)).toEqual(P([0, 0], [110, 0], [110, 50]))
+  it('returns a polyline with a diagonal step unchanged', () => {
+    const skew = P([0, 0], [100, 0], [110, 10], [110, 50])
+    expect(removeBend(skew, 2)).toEqual(skew)
+    expect(removeBend(P([0, 0], [40, 0], [300, 180]), 1)).toEqual(P([0, 0], [40, 0], [300, 180]))
   })
   it('never removes an endpoint', () => {
     const l = P([0, 0], [100, 0], [100, 60])
@@ -163,6 +198,10 @@ describe('manualRouteBlocked', () => {
     expect(manualRouteBlocked(P([48, 20], [200, 20]), [body])).toBe(true)
     expect(manualRouteBlocked(P([120, -20], [120, 60]), [body])).toBe(true)
   })
+  it('is true for any diagonal segment, even one clear of every body', () => {
+    expect(manualRouteBlocked(diagonal, [])).toBe(true)
+    expect(manualRouteBlocked(P([0, 200], [10, 210]), [body])).toBe(true)
+  })
   it('is false for a wire that only runs along or around a body edge', () => {
     expect(manualRouteBlocked(P([48, 0], [200, 0]), [body])).toBe(false)
     expect(manualRouteBlocked(P([48, 20], [60, 20], [60, 60], [200, 60]), [body])).toBe(false)
@@ -182,5 +221,21 @@ describe('segmentHandleAt', () => {
   it('ignores drawn segments that are far away or do not span the midpoint', () => {
     expect(segmentHandleAt(seg, P([48, 20], [60, 20], [60, 80], [100, 80]))).toEqual({ x: 80, y: 60 })
     expect(segmentHandleAt(seg, P([0, 64], [50, 64]))).toEqual({ x: 80, y: 60 })
+  })
+})
+
+describe('bendHandleAt', () => {
+  it('is the bend itself when the drawn wire matches the route', () => {
+    expect(bendHandleAt({ x: 60, y: 60 }, P([48, 20], [60, 20], [60, 60], [100, 60]))).toEqual({ x: 60, y: 60 })
+  })
+  it('follows the drawn corner where separation nudged it a few px', () => {
+    expect(bendHandleAt({ x: 60, y: 60 }, P([48, 20], [64, 20], [64, 64], [100, 64]))).toEqual({ x: 64, y: 64 })
+    expect(bendHandleAt({ x: 60, y: 60 }, P([48, 20], [60, 20], [60, 52], [100, 52]))).toEqual({ x: 60, y: 52 })
+  })
+  it('puts a collinear bend (no drawn corner) onto the nudged run', () => {
+    expect(bendHandleAt({ x: 80, y: 60 }, P([48, 20], [60, 20], [60, 64], [120, 64], [120, 20]))).toEqual({ x: 80, y: 64 })
+  })
+  it('stays put when nothing drawn is within 8 px', () => {
+    expect(bendHandleAt({ x: 60, y: 60 }, P([48, 20], [70, 20], [70, 80], [100, 80]))).toEqual({ x: 60, y: 60 })
   })
 })
