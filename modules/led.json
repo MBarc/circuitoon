@@ -1,0 +1,21 @@
+{
+  "format": "circuitoon-module/1",
+  "id": "led",
+  "version": 1,
+  "name": "LED",
+  "category": "Indicators",
+  "pins": [
+    { "name": "A", "label": "+", "side": "left", "type": "passive" },
+    { "name": "K", "label": "-", "side": "right", "type": "passive" }
+  ],
+  "electrical": {
+    "model": "led",
+    "terminals": { "anode": "A", "cathode": "K" },
+    "params": {
+      "color": { "default": "red" },
+      "forwardVoltage": { "unit": "V", "default": 2.0 },
+      "maxCurrent": { "unit": "A", "default": 0.02 }
+    }
+  },
+  "states": ["off", "lit", "burnt"]
+}

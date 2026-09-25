@@ -1,0 +1,16 @@
+{
+  "format": "circuitoon-module/1",
+  "id": "capacitor-ceramic",
+  "version": 1,
+  "name": "Ceramic capacitor",
+  "category": "Passives",
+  "pins": [
+    { "name": "1", "side": "left", "type": "passive" },
+    { "name": "2", "side": "right", "type": "passive" }
+  ],
+  "electrical": {
+    "model": "capacitor",
+    "terminals": { "a": "1", "b": "2" },
+    "params": { "capacitance": { "unit": "F", "default": 1e-7 } }
+  }
+}

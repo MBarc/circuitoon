@@ -1,0 +1,17 @@
+{
+  "format": "circuitoon-module/1",
+  "id": "push-button",
+  "version": 1,
+  "name": "Push button",
+  "category": "Switches",
+  "pins": [
+    { "name": "1", "side": "left", "type": "passive" },
+    { "name": "2", "side": "right", "type": "passive" }
+  ],
+  "electrical": {
+    "model": "switch",
+    "terminals": { "a": "1", "b": "2" },
+    "params": { "normallyOpen": { "default": true } }
+  },
+  "states": ["released", "pressed"]
+}

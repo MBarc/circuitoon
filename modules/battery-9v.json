@@ -1,0 +1,16 @@
+{
+  "format": "circuitoon-module/1",
+  "id": "battery-9v",
+  "version": 1,
+  "name": "9V battery",
+  "category": "Power",
+  "pins": [
+    { "name": "+", "side": "top", "type": "power_out", "supply": "9V" },
+    { "name": "-", "side": "top", "type": "ground" }
+  ],
+  "electrical": {
+    "model": "voltage_source",
+    "terminals": { "pos": "+", "neg": "-" },
+    "params": { "voltage": { "unit": "V", "default": 9 } }
+  }
+}

@@ -2,13 +2,13 @@
 
 Sep 24, 2026 · @Michael
 
-> Living copy: https://claude.ai/code/artifact/5333f69b-af12-49ba-975f-2721100a5d97 (this file is a snapshot for review).
+> Living copy: https://claude.ai/code/artifact/5333f69b-af12-49ba-975f-2721100a5d97. This file is a snapshot of it, updated after the Astra review (2026-09-24).
 
 ## Overview
 
 Circuitoon is Lucidchart specialized for electronics wiring diagrams: drag cartoon pictures of real modules onto a canvas, wire pin to pin, and move anything while the wires follow.
 
-**Problem.** Hobbyist wiring diagrams today are either hand-built static drawings or tools that assume you can find a good photo or footprint for every module. The Spirit Typewriter wiring page is the reference: it reads clearly (part pictures, pins in real order, colored nets, wire hops, breadboard rails) but every coordinate was placed by hand. Moving one part means redrawing every wire.
+**Problem.** Hobbyist wiring diagrams today are either hand-built static drawings or tools that assume you can find a good photo or footprint for every module. The hand-built Spirit Typewriter wiring sheet shows the kind of output Circuitoon should make for any project: it reads clearly (part pictures, pins in real order, colored nets, wire hops, breadboard rails) but every coordinate was placed by hand. Moving one part means redrawing every wire.
 
 **What Circuitoon adds.**
 
@@ -25,7 +25,7 @@ The target user is a maker wiring an ESP32, Arduino or Pi project from breakout 
 
 **Goals**
 
-- Recreate the Spirit Typewriter diagram in Circuitoon in under an hour, with every wire correct.
+- Produce a wiring sheet as clear as the hand-built Spirit Typewriter one, for any project, without placing a single coordinate by hand.
 - Any module can be added in minutes: write JSON, or draw it in the art studio.
 - Dragging a part never leaves a wire disconnected or crossing through a part.
 - Diagrams round-trip: export JSON, reload, get the identical diagram.
@@ -56,115 +56,155 @@ Parts and wires are both first-class objects you click, drag, select and delete,
 **Canvas**
 
 - Infinite canvas with pan (space-drag, middle-drag, trackpad) and zoom (wheel, pinch, fit-to-content).
-- Snap to a grid (default 10 px, toggleable) and alignment guides while dragging.
-- Undo and redo for every edit, including wire reshapes (Ctrl+Z, Ctrl+Shift+Z).
+- Snap to a 10 px grid (toggleable). Alignment guides are deferred past V1.
+- Undo and redo for every completed edit, including wire reshapes (Ctrl+Z, Ctrl+Shift+Z). A drag is one undo step, not one per mouse move.
 - Box select, shift-click select, select all; copy, paste, duplicate, delete.
-- Free text labels and grouping frames (for example a dashed "main breadboard" outline).
+- Free text labels and rectangular frames (for example a dashed "main breadboard" outline). Frames are drawings only; they do not group or move their contents in V1.
 
 **Parts (module instances)**
 
-- Drag from the parts library onto the canvas; each instance gets a unique id (U1, R1, X2) editable in a side panel.
-- Drag to move; rotate in 90 degree steps. Pins keep their order and rotate with the part.
-- Pin labels render beside each pin, readable at 100% zoom.
-- Duplicating a part assigns the next free id automatically.
+- Drag from the parts library onto the canvas. Each instance has an immutable internal `uid` and an editable designator (U1, R1, X2) shown on the canvas.
+- Renaming a designator is always allowed; connections reference `uid`, so nothing breaks.
+- Drag to move; rotate 90 degrees clockwise per press (R) around the body center. Pins keep their order and rotate with the part; pin labels and designators stay upright for readability.
+- Deleting a part deletes its attached wires, as one undo step.
+- Paste and duplicate create new `uid`s and next-free designators; wires are copied only when both ends are inside the copied selection.
+- Parts may overlap while dragging. A part dropped overlapping another shows an overlap warning outline.
 
 **Wires**
 
-- Draw: drag from a pin to another pin. Pins highlight when a dragged wire end is within snapping range.
-- Auto-routing: orthogonal (right-angle) paths that avoid passing through parts; hop arcs where wires cross, as in the reference diagram.
-- Drag a segment sideways to shift it; neighboring segments stretch to follow.
-- Drag the middle of a segment to add a bend; double-click a bend to remove it.
-- Drag a wire end off a pin and drop it on another pin to reconnect.
-- Select a wire to recolor it, label it, or delete it.
-- A hand-routed wire keeps its shape: when an attached part moves, only the segments next to that part adjust.
-- A wire end cannot be left dangling; dropping it on empty canvas cancels the drag.
+- Draw: drag from a pin to another pin, or onto a bus pin (rail or strip) at the spot where it should land. Pins highlight when a dragged wire end is within snapping range.
+- Auto-routing: orthogonal paths that avoid part bodies; hop arcs where wires cross, drawn on the wire that is later in the file. Overlapping collinear segments are nudged apart by 4 px.
+- Editing gestures on a selected wire:
+    - Segment handle (small bar at each segment's midpoint): drag perpendicular to shift the segment; neighbors stretch to stay orthogonal.
+    - Alt+click on a segment: split it into two with a new bend, keeping it orthogonal.
+    - Double-click a bend: remove it and re-straighten the adjacent segments.
+    - End handle: drag off a pin and drop on another pin to reconnect; dropping on empty canvas cancels.
+- Select a wire to recolor it, give it a label, or delete it.
+- Once any gesture edits a wire, it is **manual** and stores its bends. Auto wires store nothing.
+
+**Routing precedence**
+
+1. Connections are never broken by moving anything.
+2. When a part moves, auto wires attached to it re-route, and so do auto wires the moved part now obstructs.
+3. Manual wires keep their bends; only the first and last segments stretch to reach a moved pin.
+4. A manual wire that ends up crossing a part body is not re-routed; it is highlighted with a "route blocked" badge and an action to reset it to auto.
+5. If no clear route exists for an auto wire (for example parts overlap), it draws as a dashed straight-line fallback with the same badge.
+6. During a drag, only wires in (2) and (3) re-route, so dense diagrams stay fast; everything settles on drop.
 
 **Electrical helpers**
 
-- Hovering a pin highlights every pin on the same net, including through breadboard rails and other internally joined pins.
-- Warning badge when two different power nets are shorted (for example 5V wired to 3V3 or GND).
+- Hovering a pin highlights every pin on the same net, including through bus pins and `internal` joins.
+- Power conflict warning: when one net contains pins with different declared `supply` voltages (5V and 3V3, or a supply and ground). Pins with no declared supply never trigger it.
 - Net colors: wires can take a named color class (power, ground, I2C, SPI, signal) or a custom color.
 
 ## Module definition format
 
-A module is one self-contained JSON file: name, pins by side and order, optional art, and optional electrical data reserved for V2. Only `name` and `pins` are required; everything else has a default.
+A module is one self-contained JSON file: name, pins by side and order, optional art, and optional electrical data. Module files live in the repo's `modules/` folder (built-ins) or in the user's browser library (custom).
 
 ```json
 {
   "format": "circuitoon-module/1",
   "id": "mcp23017-breakout",
+  "version": 1,
   "name": "MCP23017 I/O Expander",
   "category": "IO expander",
   "pins": [
-    { "name": "VCC", "side": "bottom", "type": "power_in" },
+    { "name": "VCC", "side": "bottom", "type": "power_in", "supply": "3V3" },
     { "name": "GND", "side": "bottom", "type": "ground" },
     { "name": "SCL", "side": "bottom" },
     { "name": "SDA", "side": "bottom" },
     { "spacer": true, "side": "bottom" },
     { "name": "GPA0", "side": "top" },
     { "name": "GPA1", "side": "top" }
-  ],
-  "internal": [],
-  "art": null,
-  "electrical": null
+  ]
 }
 ```
 
 | Field | Required | Meaning |
 | --- | --- | --- |
-| `format` | no | Format version; defaults to the current one. Lets later versions migrate old files. |
-| `id` | no | Stable library key; derived from `name` when absent. |
+| `format` | yes | Format version. A file without it is rejected with a message, never guessed. Older versions are migrated on load; a newer version than the app knows is refused with "update Circuitoon". |
+| `id` | yes | Stable library key, lowercase kebab-case. Importing an `id` that already exists asks: replace, keep both (suffix `-2`), or cancel. |
+| `version` | no | Integer, default 1. Bumped when pins change, so diagrams can detect an outdated embedded copy. |
 | `name` | yes | Display name. |
 | `category` | no | Groups the parts library. |
-| `pins[].name` | yes | Unique within the module; what connections reference. |
-| `pins[].side` | yes | `top`, `bottom`, `left` or `right`. |
-| `pins[].label` | no | Display text when it differs from `name`. |
-| `pins[].type` | no | `power_in`, `power_out`, `ground`, `input`, `output`, `io`, `passive`, `nc`. Default `io`. Drives short warnings now and simulation in V2. |
-| `pins[].spacer` | no | An empty slot, so pins can line up with the physical header. |
-| `pins[].bus` | no | Pin drawn as a long bar that accepts many wires anywhere along it (breadboard rails and strips). |
-| `internal` | no | Groups of pins joined inside the part, for example `[["GND1", "GND2"]]`. |
-| `size` | no | Body size override; by default the body grows to fit the pins. |
+| `pins[]` | yes | Each entry is either a **pin** or a **spacer**. |
+| pin `name` | yes | Unique within the module; what connections reference. Renaming a pin in the art studio rewrites references in `internal`. |
+| pin `side` | yes | `top`, `bottom`, `left` or `right`. |
+| pin `label` | no | Display text when it differs from `name`. |
+| pin `type` | no | `power_in`, `power_out`, `ground`, `input`, `output`, `io`, `passive`, `nc`. Default `io`. |
+| pin `supply` | no | Named voltage for power pins, for example `5V`, `3V3`, `VBAT`. Drives the power conflict warning. |
+| pin `bus` | no | `{ "length": 40 }`: the pin is a bar `length` grid units long along its side that accepts many wires, each at its own offset (breadboard rails and strips). |
+| spacer | - | `{ "spacer": true, "side": "..." }`: an empty pin slot; takes no name. |
+| `internal` | no | Groups of pin names joined permanently inside the part, for example `[["GND1", "GND2"]]`. Never used for switchable connections. |
+| `size` | no | `{ "w", "h" }` in grid units. |
 | `art` | no | Art studio drawing (see Art studio). Absent means a plain labeled box. |
-| `electrical` | no | Reserved for V2 (values such as resistance, forward voltage, max current). |
+| `electrical` | no | Extensible block for V2, for example `{ "model": "resistor", "terminals": { "a": "1", "b": "2" }, "params": { "resistance": { "unit": "ohm", "default": 1000 } } }`. V1 stores and round-trips it untouched. |
+| `states` | no | Reserved for V3 (for example `lit`, `burnt`, `on`); art shapes may bind to them later. |
 
-**Order rule.** Within a side, pins appear in array order: left to right on `top` and `bottom`, top to bottom on `left` and `right`. Pins are spaced evenly on the grid.
+**Geometry.**
 
-**Validation.** Import rejects a file with a clear message on duplicate pin names, unknown sides, or `internal` naming a pin that does not exist.
+- The grid unit is 10 px at 100% zoom. Pin pitch is 1 grid unit (matching 0.1 inch headers); spacers take one pitch.
+- Body size is the largest of: explicit `size`, `art.w/h`, and the size needed to fit the pins on each side plus one unit of margin at each corner. Pins are centered along their side.
+- Order rule: within a side, pins appear in array order, left to right on `top` and `bottom`, top to bottom on `left` and `right`.
+- A part's `x, y` is the top-left of its unrotated body; rotation is about the body center.
+
+**Validation.** Import rejects a file, with the exact reason and path, on: missing `format`, `id` or `name`; duplicate pin names; unknown `side`; a spacer with a name; `internal` naming a missing pin; malformed `bus` or `art`.
 
 ## Diagram format
 
-The diagram file is the source of truth: loading it draws the diagram, and every canvas edit updates it. It is self-contained, so a diagram opened in another browser renders even if that browser has never seen its custom modules.
+The diagram file is the source of truth: loading it draws the diagram, and every canvas edit updates it. It is fully self-contained: every module it uses, built-in or custom, is embedded, so it renders the same in any browser and any later app version.
+
+A complete, valid example (a battery lighting an LED through a resistor on a breadboard):
 
 ```json
 {
   "format": "circuitoon-diagram/1",
-  "title": "Spirit Typewriter",
+  "title": "LED blink",
   "modules": {
-    "esp32-devkit-38": { "name": "ESP32 DevKit (38 pin)", "pins": [] },
-    "breadboard-full": { "name": "Breadboard", "pins": [] }
+    "battery-9v": { "format": "circuitoon-module/1", "id": "battery-9v", "version": 1, "name": "9V battery",
+      "pins": [ { "name": "+", "side": "top", "type": "power_out", "supply": "9V" },
+                { "name": "-", "side": "top", "type": "ground" } ] },
+    "resistor": { "format": "circuitoon-module/1", "id": "resistor", "version": 1, "name": "Resistor",
+      "pins": [ { "name": "1", "side": "left", "type": "passive" },
+                { "name": "2", "side": "right", "type": "passive" } ] },
+    "led": { "format": "circuitoon-module/1", "id": "led", "version": 1, "name": "LED",
+      "pins": [ { "name": "A", "label": "+", "side": "left", "type": "passive" },
+                { "name": "K", "label": "-", "side": "right", "type": "passive" } ] },
+    "rail-pair": { "format": "circuitoon-module/1", "id": "rail-pair", "version": 1, "name": "Power rails",
+      "pins": [ { "name": "+ rail", "side": "top", "bus": { "length": 40 } },
+                { "name": "- rail", "side": "bottom", "bus": { "length": 40 } } ] }
   },
   "parts": [
-    { "id": "U1", "module": "esp32-devkit-38", "x": 700, "y": 730, "rotation": 0 },
-    { "id": "BB", "module": "breadboard-full", "x": 0, "y": 430 },
-    { "id": "X1", "module": "mcp23017-breakout", "x": 110, "y": 210 },
-    { "id": "R1", "module": "resistor", "x": 400, "y": 600, "values": { "resistance": "220" } }
+    { "uid": "p1", "designator": "BT1", "module": "battery-9v", "x": 0,   "y": 200, "rotation": 0 },
+    { "uid": "p2", "designator": "R1",  "module": "resistor",   "x": 160, "y": 60,  "rotation": 0,
+      "values": { "resistance": { "value": 470, "unit": "ohm" } } },
+    { "uid": "p3", "designator": "D1",  "module": "led",        "x": 300, "y": 60,  "rotation": 0,
+      "values": { "color": "red" } },
+    { "uid": "p4", "designator": "BB",  "module": "rail-pair",  "x": 100, "y": 140, "rotation": 0 }
   ],
   "connections": [
-    { "id": "W1", "from": ["U1", "GND"], "to": ["BB", "GND rail"], "color": "ground" },
-    { "id": "W2", "from": ["X1", "SDA"], "to": ["BB", "SDA strip"], "color": "i2c",
-      "route": [[240, 360], [240, 518]] }
+    { "uid": "w1", "from": { "part": "p1", "pin": "+" }, "to": { "part": "p4", "pin": "+ rail", "offset": 2 }, "color": "power" },
+    { "uid": "w2", "from": { "part": "p1", "pin": "-" }, "to": { "part": "p4", "pin": "- rail", "offset": 2 }, "color": "ground" },
+    { "uid": "w3", "from": { "part": "p4", "pin": "+ rail", "offset": 8 }, "to": { "part": "p2", "pin": "1" }, "color": "power" },
+    { "uid": "w4", "from": { "part": "p2", "pin": "2" }, "to": { "part": "p3", "pin": "A" }, "color": "signal", "label": "LED+" },
+    { "uid": "w5", "from": { "part": "p3", "pin": "K" }, "to": { "part": "p4", "pin": "- rail", "offset": 30 }, "color": "ground",
+      "route": [[340, 120], [420, 120], [420, 180]] }
   ],
   "annotations": [
-    { "type": "frame", "x": 6, "y": 432, "w": 1540, "h": 272, "label": "Main breadboard" }
+    { "uid": "a1", "type": "frame", "x": 90, "y": 130, "w": 420, "h": 80, "label": "Breadboard" },
+    { "uid": "a2", "type": "text", "x": 0, "y": 0, "text": "9V to red LED" }
   ]
 }
 ```
 
-- **`parts[].id`** is separate from the module type, so three MCP23017s can each be wired individually.
-- **`connections`** reference `[part id, pin name]` pairs. This is the netlist; positions and colors are presentation.
-- **`route`** is stored only for hand-shaped wires. Auto-routed wires store no path and are recomputed on load, so a hand-written file stays short and diff-friendly.
-- **`modules`** embeds a copy of every module the diagram uses. Built-in modules may be referenced by id without a copy.
-- A connection naming a missing part or pin loads with that wire flagged red and listed in a problems panel, never silently dropped.
+- **Identity.** Every part, connection and annotation has an immutable `uid`, unique in the file. `designator` is the editable name shown on the canvas. Connections reference `uid`s, never designators.
+- **Endpoints.** `{ part, pin }`, plus `offset` (grid units from the bus start) when the pin is a bus. Without `offset`, a bus endpoint lands at the nearest free spot.
+- **`connections` is the netlist.** Positions, colors, labels and routes are presentation.
+- **`route`** exists only on manual wires: the bend points between the two pin ends, in diagram coordinates, each segment horizontal or vertical. Auto wires omit it.
+- **Modules are embedded** at export, built-ins included. If the library has a newer `version` of an embedded module, the diagram shows an "update available" badge; updating is always the user's choice, and pins that disappear flag their wires.
+- **Round-trip guarantee.** Export then import yields identical document data (same uids, positions, values, routes, embedded modules). Auto wire paths are recomputed and may differ after a router upgrade; making a wire manual pins its shape.
+- **Broken references.** A connection naming a missing part, pin or bus offset past the end still loads: its valid end draws a short red stub with a warning marker, and it is listed in a problems panel. It is never silently dropped.
+- **Validation.** Duplicate `uid`s, unknown `format`, or malformed JSON refuse the load with the exact reason.
 - The file saves as `<title>.circuitoon.json`.
 
 ## Art studio
@@ -177,7 +217,7 @@ The art studio is a small rectangle-drawing editor that outputs a complete modul
 - Per rectangle: fill color, border color and width, corner radius, optional text label (for chip markings like "ESP32").
 - Color picker plus a preset palette tuned for parts: PCB green, PCB blue, black IC, silver metal, gold header, white connector, LED colors.
 - Layer order (bring forward, send back), duplicate, delete, undo and redo, snap to grid.
-- Start from a template: blank board, breakout board with header row, DIP chip, two-lead component.
+- Start from a blank board, or from an existing module. More templates are deferred past V1.
 
 **Pins**
 
@@ -189,7 +229,7 @@ The art studio is a small rectangle-drawing editor that outputs a complete modul
 
 - Art is stored in the module's `art` field as a list of shapes in module-local units, so it scales cleanly on the canvas and in PDF.
 - Save to library, download the `.json`, or copy it to the clipboard.
-- Editing a module updates every instance in open diagrams; a diagram keeps its embedded copy until you accept the update.
+- Saving a changed module bumps its version. Diagrams that use it show an "update available" badge and keep their embedded copy until you accept.
 
 ```json
 "art": {
@@ -205,7 +245,7 @@ V3 extends each shape with an optional state binding (for example "fill yellow w
 
 ## Built-in parts
 
-V1 ships a starter library drawn in the same cartoon style, all defined in the same module format as user parts.
+V1 ships a starter library drawn in the same cartoon style, all defined in the same module format as user parts, stored in `modules/`.
 
 | Group | Parts | Editable values |
 | --- | --- | --- |
@@ -217,72 +257,79 @@ V1 ships a starter library drawn in the same cartoon style, all defined in the s
 | Boards | ESP32 DevKit 38 pin, Arduino Uno, Arduino Nano, Raspberry Pi Pico | - |
 | Prototyping | Full and half breadboard (rails and strips as bus pins), pin header | Rows |
 
-Part values (220 ohm, 10 uF) show as a label on the part and are stored in `parts[].values` so V2 can simulate them.
+Part values (220 ohm, 10 uF) show as a label on the part and are stored with their units in `parts[].values` so V2 can simulate them.
 
 ## Import, export and saving
 
-Files are the unit of sharing; the browser keeps your working copy so a refresh never loses work.
+Files are the unit of sharing; the browser keeps a working copy so a refresh does not lose work.
 
 | Action | Format | Notes |
 | --- | --- | --- |
-| Export diagram | `.circuitoon.json` | Full diagram with embedded modules. |
-| Export diagram | PDF | Vector output, sharp at any zoom. Page size (Letter, A4, A3, fit to diagram) and orientation chosen at export. Optional parts list and connection table pages. |
-| Export diagram | SVG, PNG | Nice to have in V1; cheap once PDF exists. |
+| Export diagram | `.circuitoon.json` | Full diagram with every module embedded. |
+| Export diagram | PDF | Vector output. Page size (Letter, A4, A3) and orientation chosen at export; 10 mm margins. The diagram scales to fit one page, and the export dialog warns when pin labels would print smaller than 6 pt, suggesting a larger page. |
 | Import diagram | `.circuitoon.json` | File picker or drag-and-drop onto the canvas. |
 | Import module | module `.json` | Adds to the parts library; one file or many at once. |
 | Export module | module `.json` | From the library or the art studio. |
+| Export library | `.circuitoon-library.json` | `{ "format": "circuitoon-library/1", "modules": [ ... ] }`, for backup or moving browsers. |
+
+Deferred past V1: SVG and PNG export, multi-page tiling, parts-list and connection-table pages.
 
 **Persistence**
 
-- Autosave the open diagram to browser storage (IndexedDB) on every change.
+- Each completed edit (a drop, a rename, a delete; not every mouse move) is written to IndexedDB as one transaction, debounced to at most once per 500 ms.
+- A status indicator shows **Saved in this browser**, **Saving**, or **Not saved** (with the error). A separate dot shows when there are changes not yet exported to a file.
+- Opening the same diagram in a second tab makes that tab read-only, with a "take over editing" button.
 - A home screen lists diagrams saved in this browser, with open, rename, duplicate, delete.
-- The module library lives in browser storage and can be exported whole as one file and re-imported, for backup or moving browsers.
-- Clear warning that browser storage is per device: export to keep a copy.
+- The app requests persistent storage (`navigator.storage.persist()`) and states plainly that browser storage is per device and can be cleared: export to keep a copy.
 
 ## Hosting and technical approach
 
 Circuitoon is a static single-page app served from GitHub Pages, with no backend: all editing, routing, export and (later) simulation run in the browser.
 
 - **Stack:** TypeScript, React for the app chrome (panels, library, dialogs), Vite for the build.
-- **Rendering:** SVG for the canvas. Parts, wires and art are vector, which gives crisp zoom, per-element hit testing, and a direct path to vector PDF. Target 200 parts and 500 wires with smooth dragging.
-- **Routing:** orthogonal connector routing with obstacle avoidance. Evaluate `libavoid-js` (the WebAssembly build of the router used by Inkscape and similar editors) against a custom grid A* router; pick one in the first spike.
-- **PDF:** client-side, SVG to PDF (`jsPDF` plus `svg2pdf.js` or equivalent).
+- **Rendering:** SVG for the canvas: crisp zoom, per-element hit testing, and a direct path to vector PDF. If wires ever move to a canvas layer for speed, hit testing and PDF export keep their own vector path.
+- **Routing:** orthogonal connector routing with obstacle avoidance; `libavoid-js` (WebAssembly) versus a custom grid A* router, decided by a spike.
+- **Routing spike exit criteria:** on a 200-part, 500-wire test diagram built around breadboard bus pins, the chosen router must (1) keep dragging at 60 fps on a mid-range laptop in Chrome, (2) honor manual routes and every rule in Routing precedence, (3) re-route wires the moved part obstructs, (4) place hop arcs correctly, and (5) load its WASM, if any, from the deployed Pages subpath.
+- **PDF:** `jsPDF` plus `svg2pdf.js`. It supports a subset of SVG, so the canvas uses only that subset (paths, rects, text, no filters). A bundled font covers symbols such as ohm and micro. Rotated labels, hop arcs and symbols are tested in the first PDF milestone.
 - **State:** one document model in memory; the diagram JSON is a direct serialization of it. Undo and redo as a command history.
-- **Deploy:** GitHub Actions builds on push to `main` and publishes to Pages.
+- **Deploy:** GitHub Actions builds on push to `main` and publishes to Pages. The site is served from the `/circuitoon/` subpath, so Vite's `base`, asset URLs and any WASM load paths must respect it.
 - **Browsers:** current Chrome, Edge, Firefox, Safari on desktop. Touch and phone editing are out of scope for V1; viewing a diagram on a phone should work.
 
-**Repo and Pages.** GitHub Pages on a private repo requires a paid GitHub plan, and the published site is public regardless. Decide before the first deploy: public repo, paid plan with a private repo, or a private repo deployed elsewhere (for example Cloudflare Pages).
+**Repo and Pages.** On a personal account, GitHub Pages needs a public repo or a paid plan for a private one, and a personal-account Pages site is publicly reachable either way.
 
 ## V2 simulation and V3 animation
 
-V2 computes real voltages and currents in the browser; V3 draws that state on the parts. Both are outlined here so V1's data model does not need to change.
+V2 computes real voltages and currents in the browser; V3 draws that state on the parts. V1 reserves the fields they need (`electrical`, `states`, pin `supply`, valued `parts[].values`); if V2 needs more, the `format` version bumps and old files migrate automatically on load.
 
 **V2: electrical simulation**
 
 - DC operating point plus simple transient analysis (RC charge and discharge), solved with modified nodal analysis in the browser, in the style of the Falstad circuit simulator. An ngspice WebAssembly build is the fallback if accuracy demands it.
-- Models: resistor, capacitor, inductor, diode and LED, BJT, MOSFET, switches, voltage sources, regulators.
+- Each module's `electrical.model` names a built-in model (resistor, capacitor, inductor, diode, LED, BJT, MOSFET, switch, voltage source, regulator) and maps its terminals to pins. A part with no model is treated as open at every pin and flagged "not simulated".
+- Switches are models with switchable connectivity, never `internal` joins, which are permanent.
 - Microcontroller and module pins are modeled at the pin level (a GPIO is a source you set high or low, a sensor pin is a load). No firmware emulation.
-- Run and stop control; hover a pin or wire to read its voltage and current.
+- Run and stop control. Hover a net to read its voltage; hover a part to read the current through each of its terminals. Current is not shown per drawn wire, because parallel ideal wires on one net have no single well-defined current.
 - Warnings: overcurrent on a part, short circuit, floating input, LED without a current-limiting resistor.
 
 **V3: animation**
 
-- LED: glows with brightness tied to current; turns dark gray and shows smoke when over its max current, staying burnt until reset.
+- LED: glows with brightness tied to current; turns dark gray and shows smoke when over its max current.
 - Switches and buttons: click to flip or press during simulation, with the lever or cap visibly moving.
 - Later candidates: buzzer vibrating, motor spinning, current flow dots along wires.
-- Art studio gains states: each shape can change color, visibility or position based on a part state (lit, burnt, on, off).
+- Art studio gains state bindings: each shape can change color, visibility or position based on a part state.
+- A switch's starting position is saved in the diagram (`parts[].values`). Runtime states such as lit or burnt are never saved; they reset when the simulation stops.
 
 ## Success criteria, risks and open questions
 
-V1 is done when the Spirit Typewriter diagram can be rebuilt in Circuitoon, dragged around freely, and exported to a PDF that is as readable as the hand-made original.
+V1 is done when someone can build a wiring sheet for a real breadboard project from scratch, rearrange it freely, and print a PDF as readable as the hand-made Spirit Typewriter sheet.
 
-**Success criteria (V1)**
+**Success criteria (V1)**, each a repeatable check:
 
-- Spirit Typewriter rebuilt in under 1 hour, every connection matching the reference.
-- Dragging a part with 20 attached wires stays smooth (60 fps) on a diagram of 200 parts.
-- Export then import produces an identical diagram (same parts, positions, connections, hand routes).
-- A new module with 20 pins drawn in the art studio in under 10 minutes.
-- PDF on A3 is legible without zooming: every pin label and part id readable.
+- **Benchmark rebuild:** the Spirit Typewriter reference SVG and its expected connection list are committed under `test/fixtures/`. A rebuilt diagram's netlist, compared by script, matches that list exactly.
+- **Round-trip:** an automated test exports then imports every fixture diagram and compares document data field by field.
+- **Performance:** on the 200-part, 500-wire fixture, dragging a part with 20 wires attached holds 60 fps in Chrome on a mid-range laptop (the dev machine is the reference).
+- **Module authoring:** a 20-pin module drawn in the art studio in under 10 minutes by a first-time user.
+- **Print:** the benchmark exported to A3 prints every pin label and designator at 6 pt or larger.
+- **Format:** every file in `modules/` passes validation in CI.
 
 **Decisions made**
 
@@ -294,15 +341,17 @@ V1 is done when the Spirit Typewriter diagram can be rebuilt in Circuitoon, drag
 
 | Risk | Impact | Mitigation |
 | --- | --- | --- |
-| Auto-routing looks messy or slow on dense diagrams | Core experience fails | Routing spike first; hand-shaped routes always win; route only affected wires during drag |
-| SVG slows down with hundreds of parts and wires | Laggy dragging | Measure early with a 200-part test diagram; fall back to canvas rendering for wires if needed |
-| Breadboard modeling is awkward with bus pins | Breadboard diagrams are the main use case | Prototype the breadboard module in the first milestone |
-| Art studio grows into a full vector editor | V1 slips | Rectangles and text only in V1; circles and lines only if cheap |
-| Browser storage is cleared | Lost work | Autosave plus prominent export; export reminder on unsaved changes |
+| Auto-routing looks messy or slow on dense diagrams | Core experience fails | Routing spike with exit criteria first; manual routes always win; route only affected wires during drag |
+| SVG slows down with hundreds of parts and wires | Laggy dragging | Measure early on the 200-part fixture; canvas layer for wires as fallback |
+| Bus pins feel awkward for real breadboards | Breadboard sheets are the main use case | Build the breadboard module and the benchmark rebuild in the first milestone |
+| Art studio grows into a full vector editor | V1 slips | Rectangles and text only in V1 |
+| Browser storage is cleared | Lost work | Persistent storage request, save status, unexported-changes dot |
+| PDF renders differently from the canvas | Unreadable prints | Restrict canvas to the svg2pdf subset; test symbols and rotation early |
 
 **Open questions**
 
-- [ ] Repo visibility and Pages hosting: public repo, paid plan, or another host?
 - [ ] Name availability: `circuitoon.com` and related handles not yet checked.
-- [ ] Should built-in boards (ESP32, Uno) match physical pin order exactly, or group pins by function?
-- [ ] Does V1 need hole-level breadboards (wire to row 12, column C), or are bus-level rails and strips enough?
+- [ ] T-junctions: should V1 allow a wire to end on another wire?
+- [x] Built-in boards follow physical pin order, because the sheet is something you build from.
+- [x] Breadboards are modeled at rail and strip level (bus pins with offsets); hole-level is deferred.
+- [x] Hosting: GitHub Pages from repo `MBarc/circuitoon`.

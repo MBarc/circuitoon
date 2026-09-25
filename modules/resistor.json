@@ -1,0 +1,16 @@
+{
+  "format": "circuitoon-module/1",
+  "id": "resistor",
+  "version": 1,
+  "name": "Resistor",
+  "category": "Passives",
+  "pins": [
+    { "name": "1", "side": "left", "type": "passive" },
+    { "name": "2", "side": "right", "type": "passive" }
+  ],
+  "electrical": {
+    "model": "resistor",
+    "terminals": { "a": "1", "b": "2" },
+    "params": { "resistance": { "unit": "ohm", "default": 1000 } }
+  }
+}
