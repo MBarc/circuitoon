@@ -217,6 +217,38 @@ describe('wirePaths', () => {
     })
   })
 
+  describe('separation next to a pin', () => {
+    // w1 runs down x=60 and w3 down x=64, both through y=20..70. w2 leaves a pin a few px left of
+    // x=60 and turns down at x=60 too, so its run there must move: +4 hits w3, and -4 would pull
+    // it back past (or to within 2 px of) its own pin tip, so it has to go to +8.
+    const sheet = (a2x: number): Diagram => ({
+      format: 'circuitoon-diagram/1', title: 't', modules: { two },
+      parts: [
+        { uid: 'a1', designator: 'A1', module: 'two', x: 0, y: 0 },
+        { uid: 'b1', designator: 'B1', module: 'two', x: 150, y: 0 },
+        { uid: 'a3', designator: 'A3', module: 'two', x: 0, y: 200 },
+        { uid: 'b3', designator: 'B3', module: 'two', x: 150, y: 200 },
+        { uid: 'a2', designator: 'A2', module: 'two', x: a2x, y: 0 },
+        { uid: 'b2', designator: 'B2', module: 'two', x: 160, y: 0 },
+      ],
+      connections: [
+        { uid: 'w1', from: { part: 'a1', pin: 'R' }, to: { part: 'b1', pin: 'L' }, route: [[60, 20], [60, 60], [100, 60], [100, 20]] },
+        { uid: 'w3', from: { part: 'a3', pin: 'R' }, to: { part: 'b3', pin: 'L' }, route: [[64, 220], [64, 0], [130, 0], [130, 220]] },
+        { uid: 'w2', from: { part: 'a2', pin: 'R' }, to: { part: 'b2', pin: 'L' }, route: [[60, 20], [60, 70], [110, 70], [110, 20]] },
+      ],
+    })
+    it('never nudges a run so the wire doubles back over its pin', () => {
+      const w2 = wirePaths(sheet(10)).find((w) => w.conn.uid === 'w2')!.points // pin tip at x=58
+      expect(w2[0]).toEqual({ x: 58, y: 20 })
+      expect(w2[1].x).toBe(68)
+    })
+    it('never nudges a run so the run on the pin gets shorter than 2 px', () => {
+      const w2 = wirePaths(sheet(7)).find((w) => w.conn.uid === 'w2')!.points // pin tip at x=55
+      expect(w2[0]).toEqual({ x: 55, y: 20 })
+      expect(w2[1].x).toBe(68)
+    })
+  })
+
   describe('hand-routed wires', () => {
     const bends: [number, number][] = [[60, 20], [60, 60], [80, 60], [80, 20]]
     const manual = () => d([{ uid: 'w', from: { part: 'a', pin: 'R' }, to: { part: 'b', pin: 'L' }, route: bends }])

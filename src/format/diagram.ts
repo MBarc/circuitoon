@@ -214,15 +214,19 @@ function overlapsAt(segs: Seg[], at: number, lo: number, hi: number): boolean {
   return false
 }
 
-/** Perpendicular nudges tried, in order, until one clears the earlier wire (or the last is used regardless). */
+/** Perpendicular nudges tried, in order, until one clears the earlier wire (or the last allowed one is used regardless). */
 const NUDGES = [4, -4, 8, -8]
+/** Shortest the run on a pin may be left by a nudge (unless it was already shorter). */
+const MIN_PIN_RUN = 2
 
 /**
  * Nudges each interior segment (every segment but the first and last, which attach to pins and
  * never move) sideways when it runs along the same grid line as an already-drawn wire's segment,
  * so both stay visible even where the router itself left them sharing a lane (a manual route, or
  * an obstacle that forces two auto routes together). Moving a segment moves both its endpoints,
- * so the segments on either side of it stretch to keep up rather than detach from it.
+ * so the segments on either side of it stretch to keep up rather than detach from it. A nudge
+ * that would turn the run on a pin back over the pin, or leave it shorter than MIN_PIN_RUN px, is
+ * skipped; when no nudge is allowed the segment stays where it is.
  */
 function separate(points: Pt[], verticals: Seg[], horizontals: Seg[]): Pt[] {
   const pts = points.map((p) => ({ ...p }))
@@ -236,12 +240,25 @@ function separate(points: Pt[], verticals: Seg[], horizontals: Seg[]): Pt[] {
     const lo = horiz ? Math.min(a.x, b.x) : Math.min(a.y, b.y)
     const hi = horiz ? Math.max(a.x, b.x) : Math.max(a.y, b.y)
     if (!overlapsAt(segs, at, lo, hi)) continue
-    for (let t = 0; t < NUDGES.length; t++) {
-      const moved = at + NUDGES[t]
-      if (t === NUDGES.length - 1 || !overlapsAt(segs, moved, lo, hi)) {
-        if (horiz) { a.y = moved; b.y = moved } else { a.x = moved; b.x = moved }
-        break
-      }
+    // The runs on the pins, when this segment touches one: pts[0]..a, and b..pts[last].
+    const pinRuns: Pt[] = []
+    if (k === 2) pinRuns.push(pts[0])
+    if (k === pts.length - 2) pinRuns.push(pts[pts.length - 1])
+    const allowed = (moved: number) =>
+      pinRuns.every((tip) => {
+        const before = at - (horiz ? tip.y : tip.x)
+        const after = (moved - (horiz ? tip.y : tip.x)) * Math.sign(before)
+        return after >= Math.min(MIN_PIN_RUN, Math.abs(before))
+      })
+    let pick: number | null = null
+    for (const nudge of NUDGES) {
+      const moved = at + nudge
+      if (!allowed(moved)) continue
+      pick = moved
+      if (!overlapsAt(segs, moved, lo, hi)) break
+    }
+    if (pick !== null) {
+      if (horiz) { a.y = pick; b.y = pick } else { a.x = pick; b.x = pick }
     }
   }
   return pts
@@ -402,6 +419,12 @@ export function validateDiagram(raw: unknown): DiagramResult {
         errors.push(`${at}.gauge: must be a whole number from 16 to 30`)
       if (c.route !== undefined && !(Array.isArray(c.route) && c.route.every((p) => Array.isArray(p) && p.length === 2 && isNum(p[0]) && isNum(p[1]))))
         errors.push(`${at}.route: must be a list of [x, y] points`)
+      else if (Array.isArray(c.route))
+        for (let k = 1; k < c.route.length; k++) {
+          const [px, py] = c.route[k - 1] as [number, number]
+          const [qx, qy] = c.route[k] as [number, number]
+          if (px !== qx && py !== qy) warnings.push(`${at}.route[${k}]: diagonal step from route[${k - 1}] (each step should be horizontal or vertical)`)
+        }
       if (c.label !== undefined && typeof c.label !== 'string') errors.push(`${at}.label: must be a string`)
     })
 

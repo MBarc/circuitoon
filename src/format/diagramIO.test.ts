@@ -42,6 +42,13 @@ describe('validateDiagram', () => {
         'annotations[0].text: must be a string',
       ])
   })
+  it('warns (and still loads) when a route has a step that is neither horizontal nor vertical', () => {
+    const d = structuredClone(buttonLed)
+    d.connections[1].route = [[100, 20], [100, 60], [140, 90], [140, 120]]
+    const r = validateDiagram(d)
+    expect(r.ok).toBe(true)
+    if (r.ok) expect(r.warnings).toEqual(['connections[1].route[2]: diagonal step from route[1] (each step should be horizontal or vertical)'])
+  })
   it('requires parts[i].values to be an object when present', () => {
     const d = structuredClone(buttonLed) as unknown as { parts: Record<string, unknown>[] }
     d.parts[0].values = 7
