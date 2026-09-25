@@ -79,7 +79,7 @@ Parts and wires are both first-class objects you click, drag, select and delete,
     - Alt+click on a segment: split it into two with a new bend, keeping it orthogonal.
     - Double-click a bend: remove it and re-straighten the adjacent segments.
     - End handle: drag off a pin and drop on another pin to reconnect; dropping on empty canvas cancels.
-- Select a wire to recolor it, give it a label, or delete it.
+- Select a wire to set its color and gauge, give it a label, or delete it. Every wire has both a color and a gauge; new wires use the last color and gauge picked.
 - Once any gesture edits a wire, it is **manual** and stores its bends. Auto wires store nothing.
 
 **Routing precedence**
@@ -95,7 +95,7 @@ Parts and wires are both first-class objects you click, drag, select and delete,
 
 - Hovering a pin highlights every pin on the same net, including through bus pins and `internal` joins.
 - Power conflict warning: when one net contains pins with different declared `supply` voltages (5V and 3V3, or a supply and ground). Pins with no declared supply never trigger it.
-- Net colors: wires can take a named color class (power, ground, I2C, SPI, signal) or a custom color.
+- Wire color: a named color (red, black, blue, green, yellow, orange, white, purple, gray, brown, pink) or any hex value such as #2458C6. Wire gauge: AWG 16 to 30, default 22 (standard breadboard jumper). Drawn thickness scales with gauge, so thick power runs look thick.
 
 ## Module definition format
 
@@ -183,11 +183,11 @@ A complete, valid example (a battery lighting an LED through a resistor on a bre
     { "uid": "p4", "designator": "BB",  "module": "rail-pair",  "x": 100, "y": 140, "rotation": 0 }
   ],
   "connections": [
-    { "uid": "w1", "from": { "part": "p1", "pin": "+" }, "to": { "part": "p4", "pin": "+ rail", "offset": 2 }, "color": "power" },
-    { "uid": "w2", "from": { "part": "p1", "pin": "-" }, "to": { "part": "p4", "pin": "- rail", "offset": 2 }, "color": "ground" },
-    { "uid": "w3", "from": { "part": "p4", "pin": "+ rail", "offset": 8 }, "to": { "part": "p2", "pin": "1" }, "color": "power" },
-    { "uid": "w4", "from": { "part": "p2", "pin": "2" }, "to": { "part": "p3", "pin": "A" }, "color": "signal", "label": "LED+" },
-    { "uid": "w5", "from": { "part": "p3", "pin": "K" }, "to": { "part": "p4", "pin": "- rail", "offset": 30 }, "color": "ground",
+    { "uid": "w1", "from": { "part": "p1", "pin": "+" }, "to": { "part": "p4", "pin": "+ rail", "offset": 2 }, "color": "red", "gauge": 22 },
+    { "uid": "w2", "from": { "part": "p1", "pin": "-" }, "to": { "part": "p4", "pin": "- rail", "offset": 2 }, "color": "black", "gauge": 22 },
+    { "uid": "w3", "from": { "part": "p4", "pin": "+ rail", "offset": 8 }, "to": { "part": "p2", "pin": "1" }, "color": "red", "gauge": 22 },
+    { "uid": "w4", "from": { "part": "p2", "pin": "2" }, "to": { "part": "p3", "pin": "A" }, "color": "#F4B400", "gauge": 24, "label": "LED+" },
+    { "uid": "w5", "from": { "part": "p3", "pin": "K" }, "to": { "part": "p4", "pin": "- rail", "offset": 30 }, "color": "black", "gauge": 22,
       "route": [[340, 120], [420, 120], [420, 180]] }
   ],
   "annotations": [
@@ -199,7 +199,7 @@ A complete, valid example (a battery lighting an LED through a resistor on a bre
 
 - **Identity.** Every part, connection and annotation has an immutable `uid`, unique in the file. `designator` is the editable name shown on the canvas. Connections reference `uid`s, never designators.
 - **Endpoints.** `{ part, pin }`, plus `offset` (grid units from the bus start) when the pin is a bus. Without `offset`, a bus endpoint lands at the nearest free spot.
-- **`connections` is the netlist.** Positions, colors, labels and routes are presentation.
+- **`connections` is the netlist.** Positions, labels and routes are presentation. Each connection also carries `color` (a named color or `#RRGGBB`, default black) and `gauge` (AWG integer 16 to 30, default 22); V2 can use gauge for wire current warnings.
 - **`route`** exists only on manual wires: the bend points between the two pin ends, in diagram coordinates, each segment horizontal or vertical. Auto wires omit it.
 - **Modules are embedded** at export, built-ins included. If the library has a newer `version` of an embedded module, the diagram shows an "update available" badge; updating is always the user's choice, and pins that disappear flag their wires.
 - **Round-trip guarantee.** Export then import yields identical document data (same uids, positions, values, routes, embedded modules). Auto wire paths are recomputed and may differ after a router upgrade; making a wire manual pins its shape.
