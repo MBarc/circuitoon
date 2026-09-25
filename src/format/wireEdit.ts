@@ -72,12 +72,26 @@ function unit(a: Pt, b: Pt): Pt {
  * leaves a stub of STUB px on the pin, along its original direction, and moves the rest.
  */
 export function moveSegment(points: Pt[], i: number, delta: number): Pt[] {
-  const d = snap(delta)
+  let d = snap(delta)
   const n = points.length - 1
   if (d === 0 || i < 0 || i >= n || same(points[i], points[i + 1])) return points.map((p) => ({ ...p }))
   const axis = axisOf(points[i], points[i + 1])
-  const shift = (p: Pt): Pt => (axis === 'h' ? { x: p.x, y: p.y + d } : { x: p.x + d, y: p.y })
   const perpendicular = (j: number) => axisOf(points[j], points[j + 1]) !== axis && !same(points[j], points[j + 1])
+  // Moving the run next to a pin's run slides that run's far end along it: never let the pin's
+  // run get shorter than the stub (or shorter than it already is, if it is below that).
+  const keepStub = (pin: number, next: number) => {
+    if (!perpendicular(Math.min(pin, next))) return // a split run: a connector is inserted instead
+    const u = unit(points[pin], points[next])
+    const along = (points[next].x - points[pin].x) * u.x + (points[next].y - points[pin].y) * u.y
+    const sign = axis === 'h' ? u.y : u.x // how d moves points[next] along u
+    const change = d * sign
+    const min = Math.min(0, STUB - along)
+    if (change < min) d = min * sign
+  }
+  if (i === 1) keepStub(0, 1)
+  if (i === n - 2 && n >= 2) keepStub(n, n - 1)
+  if (d === 0) return points.map((p) => ({ ...p }))
+  const shift = (p: Pt): Pt => (axis === 'h' ? { x: p.x, y: p.y + d } : { x: p.x + d, y: p.y })
 
   let head: Pt[]
   let start: Pt
@@ -127,13 +141,16 @@ export function insertBend(points: Pt[], at: Pt): Pt[] {
   return copy
 }
 
-/** Direction the wire leaves its first point (or, with `last`, its final point) along its first non-zero segment. */
-function endDir(points: Pt[], last: boolean): string {
+/** Unit direction the wire leaves its first point (or, with `last`, its final point). */
+function endDir(points: Pt[], last: boolean): Pt | null {
   const segs = segmentsOf(points)
   const s = last ? segs[segs.length - 1] : segs[0]
-  if (!s) return ''
-  const u = last ? unit(s.b, s.a) : unit(s.a, s.b)
-  return `${u.x},${u.y}`
+  if (!s) return null
+  return last ? unit(s.b, s.a) : unit(s.a, s.b)
+}
+/** True when the wire now leaves a pin straight back the way it used to come out (over the part). */
+function reversed(before: Pt | null, after: Pt | null): boolean {
+  return !!before && !!after && before.x * after.x + before.y * after.y < 0
 }
 
 /**
@@ -141,8 +158,8 @@ function endDir(points: Pt[], last: boolean): string {
  * orthogonal wire that is the opposite corner of the pair (so the bend flips across), otherwise
  * the corner that keeps the longer neighbor's axis. Bends that end up straight because of the
  * removal are merged away; collinear bends the user placed elsewhere are kept. Refused (the
- * polyline comes back unchanged) for an endpoint, or when the result would leave a pin in a
- * different direction (sideways, or back over the part).
+ * polyline comes back unchanged) for an endpoint, or when the result would leave a pin in the
+ * opposite direction (back over the part); leaving it sideways is allowed.
  */
 export function removeBend(points: Pt[], k: number): Pt[] {
   const copy = points.map((p) => ({ ...p }))
@@ -173,7 +190,7 @@ export function removeBend(points: Pt[], k: number): Pt[] {
     else j++
   }
   out = tidy(out)
-  if (endDir(out, false) !== endDir(points, false) || endDir(out, true) !== endDir(points, true)) return copy
+  if (reversed(endDir(points, false), endDir(out, false)) || reversed(endDir(points, true), endDir(out, true))) return copy
   return out
 }
 
@@ -196,4 +213,30 @@ export function manualRouteBlocked(points: Pt[], obstacles: Rect[]): boolean {
     }
   }
   return false
+}
+
+/** Largest sideways nudge the renderer's lane separation applies (see `separate` in diagram.ts). */
+const MAX_NUDGE = 8
+
+/**
+ * Where to draw a routed segment's handle: its midpoint, moved onto the drawn wire where the
+ * renderer nudged that run a few px clear of another wire. `drawn` is the wire's drawn polyline;
+ * the nearest drawn segment on the same axis, within MAX_NUDGE, that spans the midpoint wins.
+ */
+export function segmentHandleAt(seg: Segment, drawn: Pt[]): Pt {
+  const mid = { x: (seg.a.x + seg.b.x) / 2, y: (seg.a.y + seg.b.y) / 2 }
+  const h = seg.axis === 'h'
+  let best: number | null = null
+  for (const s of segmentsOf(drawn)) {
+    if (s.axis !== seg.axis) continue
+    const fixed = h ? s.a.y : s.a.x
+    const offset = Math.abs(fixed - (h ? mid.y : mid.x))
+    const along = h ? mid.x : mid.y
+    const lo = h ? Math.min(s.a.x, s.b.x) : Math.min(s.a.y, s.b.y)
+    const hi = h ? Math.max(s.a.x, s.b.x) : Math.max(s.a.y, s.b.y)
+    if (offset > MAX_NUDGE || along < lo || along > hi) continue
+    if (best === null || offset < Math.abs(best - (h ? mid.y : mid.x))) best = fixed
+  }
+  if (best === null) return mid
+  return h ? { x: mid.x, y: best } : { x: best, y: mid.y }
 }

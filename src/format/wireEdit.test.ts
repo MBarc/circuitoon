@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { insertBend, manualRouteBlocked, moveSegment, removeBend, segmentsOf, tidy, toRoute } from './wireEdit.ts'
+import { insertBend, manualRouteBlocked, moveSegment, removeBend, segmentHandleAt, segmentsOf, tidy, toRoute } from './wireEdit.ts'
 import type { Pt } from './geometry.ts'
 
 const P = (...xy: [number, number][]): Pt[] => xy.map(([x, y]) => ({ x, y }))
@@ -72,6 +72,16 @@ describe('moveSegment', () => {
         expect(orthogonal(out)).toBe(true)
       }
   })
+  it('never shortens the run on a pin below the stub when moving the run next to it', () => {
+    const out = moveSegment(u, 1, -20)
+    expect(out[1].x).toBeGreaterThanOrEqual(58)
+    expect(out).toEqual(P([48, 20], [58, 20], [58, 60], [80, 60], [80, 20], [92, 20]))
+    const end = moveSegment(u, 3, 30) // the run before the last one, toward the end pin
+    expect(end.at(-2)!.x).toBeLessThanOrEqual(82)
+    expect(moveSegment(u, 3, 30)).toEqual(P([48, 20], [60, 20], [60, 60], [82, 60], [82, 20], [92, 20]))
+    // Moving away from the pin is not limited.
+    expect(moveSegment(u, 1, 10)[1]).toEqual({ x: 70, y: 20 })
+  })
   it('does not mutate its input', () => {
     const copy = structuredClone(u)
     moveSegment(u, 2, 40)
@@ -100,8 +110,9 @@ describe('removeBend', () => {
   })
   it('keeps collinear bends the user added elsewhere on the wire', () => {
     const u = P([48, 20], [60, 20], [60, 60], [70, 60], [80, 60], [80, 100], [92, 100])
-    expect(removeBend(u, 1)).toEqual(u)
-    expect(removeBend(u, 5)).toEqual(u)
+    // Corners next to a pin flip; the untouched collinear bend at (70, 60) stays.
+    expect(removeBend(u, 1)).toEqual(P([48, 20], [48, 60], [70, 60], [80, 60], [80, 100], [92, 100]))
+    expect(removeBend(u, 5)).toEqual(P([48, 20], [60, 20], [60, 60], [70, 60], [92, 60], [92, 100]))
     expect(removeBend(u, 3)).toEqual(P([48, 20], [60, 20], [60, 60], [80, 60], [80, 100], [92, 100]))
     // Flipping the corner at (60, 40) merges runs; the corners it straightens go, but the
     // user's own collinear bend at (30, 0) stays.
@@ -129,9 +140,13 @@ describe('removeBend', () => {
     const w = P([458, 50], [478, 50], [478, 34], [110, 34], [110, 82])
     expect(removeBend(w, 2)).toEqual(w)
   })
-  it('refuses a removal that would turn the wire sideways where it leaves a pin', () => {
-    const l = P([0, 0], [100, 0], [100, 60])
-    expect(removeBend(l, 1)).toEqual(l)
+  it('flips the corner of an L, even though the wire then leaves its pin sideways', () => {
+    expect(removeBend(P([0, 0], [100, 0], [100, 60]), 1)).toEqual(P([0, 0], [0, 60], [100, 60]))
+  })
+  it('removes either bend of a Z', () => {
+    const z = P([0, 0], [40, 0], [40, 60], [100, 60])
+    expect(removeBend(z, 1)).toEqual(P([0, 0], [0, 60], [100, 60]))
+    expect(removeBend(z, 2)).toEqual(P([0, 0], [100, 0], [100, 60]))
   })
 })
 
@@ -151,5 +166,21 @@ describe('manualRouteBlocked', () => {
   it('is false for a wire that only runs along or around a body edge', () => {
     expect(manualRouteBlocked(P([48, 0], [200, 0]), [body])).toBe(false)
     expect(manualRouteBlocked(P([48, 20], [60, 20], [60, 60], [200, 60]), [body])).toBe(false)
+  })
+})
+
+describe('segmentHandleAt', () => {
+  const seg = { i: 2, a: { x: 60, y: 60 }, b: { x: 100, y: 60 }, axis: 'h' as const }
+  it('is the segment midpoint when the drawn wire matches the route', () => {
+    expect(segmentHandleAt(seg, P([48, 20], [60, 20], [60, 60], [100, 60], [100, 20]))).toEqual({ x: 80, y: 60 })
+  })
+  it('follows the drawn segment where separation nudged it a few px', () => {
+    expect(segmentHandleAt(seg, P([48, 20], [60, 20], [60, 64], [100, 64], [100, 20]))).toEqual({ x: 80, y: 64 })
+    const v = { i: 1, a: { x: 60, y: 20 }, b: { x: 60, y: 60 }, axis: 'v' as const }
+    expect(segmentHandleAt(v, P([48, 20], [56, 20], [56, 60], [100, 60]))).toEqual({ x: 56, y: 40 })
+  })
+  it('ignores drawn segments that are far away or do not span the midpoint', () => {
+    expect(segmentHandleAt(seg, P([48, 20], [60, 20], [60, 80], [100, 80]))).toEqual({ x: 80, y: 60 })
+    expect(segmentHandleAt(seg, P([0, 64], [50, 64]))).toEqual({ x: 80, y: 60 })
   })
 })
