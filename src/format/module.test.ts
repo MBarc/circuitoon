@@ -164,11 +164,12 @@ describe('usesInsideLabels', () => {
     expect(insideLabelSides(m())).toEqual([])
     expect(insideLabelSides(m({ art: { w: 10, h: 10, shapes: [], pinLabels: 'inside' } })).sort()).toEqual(['bottom', 'left', 'right', 'top'])
   })
-  it('is set only on the header parts (ESP32 boards, DIP chips, display modules), never on any other built-in module', () => {
+  it('is set only on the header parts (ESP32 and Pico boards, DIP chips, display modules), never on any other built-in module', () => {
     const dir = join(import.meta.dirname, '..', '..', 'modules')
     const boardFiles = new Set([
       'esp32-devkitc-v4.json', 'esp32-devkit-v1-30.json', 'esp32-s3-devkitc-1.json',
       'esp32-c3-supermini.json', 'xiao-esp32c3.json', 'xiao-esp32s3.json', 'esp32-cam.json',
+      'rpi-pico.json', 'rpi-pico-h.json', 'rpi-pico-w.json', 'rpi-pico-2.json', 'rpi-pico-2-w.json',
       'mcp23017-dip28.json', 'mcp23018-dip28.json',
       'lcd-st7796s-4in-spi-touch.json', 'tft-ili9341-28-spi-touch.json', 'tft-ili9341-24-spi.json', 'tft-st7735-18-spi.json',
       'tft-st7789-154-spi.json', 'oled-ssd1306-091-i2c.json', 'oled-ssd1306-096-i2c.json', 'oled-ssd1306-096-i2c-vcc-gnd.json',
