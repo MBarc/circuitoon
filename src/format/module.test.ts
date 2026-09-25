@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { layoutModule, validateModule, type ModuleDef } from './module.ts'
+import { readFileSync, readdirSync } from 'node:fs'
+import { join } from 'node:path'
+import { layoutModule, usesInsideLabels, validateModule, type ModuleDef } from './module.ts'
 
 const base = { format: 'circuitoon-module/1', id: 'thing', name: 'Thing' }
 
@@ -26,6 +28,13 @@ describe('validateModule', () => {
         'pins[2]: a spacer takes no name',
         'internal[0][1]: no pin named "B"',
       ])
+  })
+  it('accepts a string source and rejects any other type', () => {
+    const pins = [{ name: 'A', side: 'left' }]
+    expect(validateModule({ ...base, pins, source: 'https://example.com/a https://example.com/b' }).ok).toBe(true)
+    const r = validateModule({ ...base, pins, source: ['https://example.com/a'] })
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.errors).toEqual(['source: must be a string (one or more URLs)'])
   })
   it('rejects an object-valued pin label', () => {
     const r = validateModule({ ...base, pins: [{ name: 'A', side: 'left', label: { x: 1 } }] })
@@ -74,6 +83,36 @@ describe('validateModule', () => {
       ])
     expect(r2.ok).toBe(false)
   })
+  it('accepts a shape band from 1 to 4', () => {
+    const r = validateModule({
+      ...base,
+      pins: [{ name: 'A', side: 'left' }],
+      art: { w: 4, h: 3, shapes: [{ type: 'rect', x: 0, y: 0, w: 4, h: 3, fill: '#fff', band: 4 }] },
+    })
+    expect(r.ok).toBe(true)
+  })
+  it('accepts art.pinLabels "inside" and rejects any other value', () => {
+    const pins = [{ name: 'A', side: 'left' }]
+    expect(validateModule({ ...base, pins, art: { w: 10, h: 10, shapes: [], pinLabels: 'inside' } }).ok).toBe(true)
+    const r = validateModule({ ...base, pins, art: { w: 10, h: 10, shapes: [], pinLabels: 'outside' } })
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.errors).toEqual(['art.pinLabels: must be "inside"'])
+  })
+  it('rejects a shape band outside 1 to 4 or non-integer', () => {
+    const r = validateModule({
+      ...base,
+      pins: [{ name: 'A', side: 'left' }],
+      art: { w: 4, h: 3, shapes: [{ type: 'rect', x: 0, y: 0, w: 4, h: 3, fill: '#fff', band: 5 }] },
+    })
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.errors).toEqual(['art.shapes[0].band: must be a whole number from 1 to 4'])
+    const r2 = validateModule({
+      ...base,
+      pins: [{ name: 'A', side: 'left' }],
+      art: { w: 4, h: 3, shapes: [{ type: 'rect', x: 0, y: 0, w: 4, h: 3, fill: '#fff', band: 1.5 }] },
+    })
+    expect(r2.ok).toBe(false)
+  })
 })
 
 describe('layoutModule', () => {
@@ -99,5 +138,31 @@ describe('layoutModule', () => {
   })
   it('art can make the body bigger than the pins need', () => {
     expect(layoutModule(m([{ name: 'A', side: 'left' }], { art: { w: 120, h: 90, shapes: [] } }))).toMatchObject({ w: 120, h: 90 })
+  })
+})
+
+describe('usesInsideLabels', () => {
+  const pins: ModuleDef['pins'] = [{ name: 'A', side: 'left' }]
+  const m = (extra: Partial<ModuleDef> = {}): ModuleDef => ({ ...base, pins, ...extra }) as ModuleDef
+  it('is false with no art and false with art but no pinLabels flag', () => {
+    expect(usesInsideLabels(m())).toBe(false)
+    expect(usesInsideLabels(m({ art: { w: 10, h: 10, shapes: [] } }))).toBe(false)
+  })
+  it('is true only when art.pinLabels is "inside"', () => {
+    expect(usesInsideLabels(m({ art: { w: 10, h: 10, shapes: [], pinLabels: 'inside' } }))).toBe(true)
+  })
+  it('is set only on the 7 built-in ESP32 boards, never on any other built-in module', () => {
+    const dir = join(import.meta.dirname, '..', '..', 'modules')
+    const boardFiles = new Set([
+      'esp32-devkitc-v4.json', 'esp32-devkit-v1-30.json', 'esp32-s3-devkitc-1.json',
+      'esp32-c3-supermini.json', 'xiao-esp32c3.json', 'xiao-esp32s3.json', 'esp32-cam.json',
+    ])
+    const files = readdirSync(dir).filter((f) => f.endsWith('.json'))
+    expect(files.filter((f) => boardFiles.has(f))).toHaveLength(7)
+    for (const file of files) {
+      const r = validateModule(JSON.parse(readFileSync(join(dir, file), 'utf8')))
+      if (!r.ok) throw new Error(`${file}: ${r.errors.join('; ')}`)
+      expect(usesInsideLabels(r.module)).toBe(boardFiles.has(file))
+    }
   })
 })

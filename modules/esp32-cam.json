@@ -1,0 +1,418 @@
+{
+  "format": "circuitoon-module/1",
+  "id": "esp32-cam",
+  "version": 1,
+  "name": "ESP32-CAM (AI Thinker)",
+  "category": "Microcontrollers",
+  "source": "https://randomnerdtutorials.com/esp32-cam-ai-thinker-pinout/ https://mischianti.org/esp32-cam-high-resolution-pinout-and-specs/ https://github.com/prusa3d/Prusa-Firmware-ESP32-Cam/blob/master/doc/AI_Thinker-ESP32-cam/README.md",
+  "pins": [
+    {
+      "name": "5V",
+      "side": "left",
+      "type": "power_in",
+      "supply": "5V"
+    },
+    {
+      "name": "GND",
+      "side": "left",
+      "type": "ground"
+    },
+    {
+      "name": "IO12",
+      "side": "left"
+    },
+    {
+      "name": "IO13",
+      "side": "left"
+    },
+    {
+      "name": "IO15",
+      "side": "left"
+    },
+    {
+      "name": "IO14",
+      "side": "left"
+    },
+    {
+      "name": "IO2",
+      "side": "left"
+    },
+    {
+      "name": "IO4",
+      "side": "left"
+    },
+    {
+      "spacer": true,
+      "side": "left"
+    },
+    {
+      "spacer": true,
+      "side": "left"
+    },
+    {
+      "spacer": true,
+      "side": "left"
+    },
+    {
+      "spacer": true,
+      "side": "left"
+    },
+    {
+      "spacer": true,
+      "side": "left"
+    },
+    {
+      "spacer": true,
+      "side": "left"
+    },
+    {
+      "name": "3V3",
+      "side": "right",
+      "type": "power_out",
+      "supply": "3V3"
+    },
+    {
+      "name": "IO16",
+      "side": "right"
+    },
+    {
+      "name": "IO0",
+      "side": "right"
+    },
+    {
+      "name": "GND 2",
+      "side": "right",
+      "label": "GND",
+      "type": "ground"
+    },
+    {
+      "name": "VCC",
+      "side": "right",
+      "type": "power_out",
+      "supply": "3V3"
+    },
+    {
+      "name": "U0R",
+      "side": "right"
+    },
+    {
+      "name": "U0T",
+      "side": "right"
+    },
+    {
+      "name": "GND/R",
+      "side": "right",
+      "type": "passive"
+    },
+    {
+      "spacer": true,
+      "side": "right"
+    },
+    {
+      "spacer": true,
+      "side": "right"
+    },
+    {
+      "spacer": true,
+      "side": "right"
+    },
+    {
+      "spacer": true,
+      "side": "right"
+    },
+    {
+      "spacer": true,
+      "side": "right"
+    },
+    {
+      "spacer": true,
+      "side": "right"
+    }
+  ],
+  "internal": [
+    [
+      "GND",
+      "GND 2"
+    ]
+  ],
+  "size": {
+    "w": 11,
+    "h": 16
+  },
+  "electrical": {
+    "model": "mcu",
+    "params": {}
+  },
+  "art": {
+    "w": 110,
+    "h": 160,
+    "pinLabels": "inside",
+    "shapes": [
+      {
+        "type": "rect",
+        "x": 0,
+        "y": 0,
+        "w": 110,
+        "h": 160,
+        "fill": "#2B2F36",
+        "radius": 5
+      },
+      {
+        "type": "rect",
+        "x": 2,
+        "y": 15,
+        "w": 8,
+        "h": 80,
+        "fill": "#E0B43C",
+        "radius": 2,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 4.5,
+        "y": 18.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 4.5,
+        "y": 28.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 4.5,
+        "y": 38.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 4.5,
+        "y": 48.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 4.5,
+        "y": 58.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 4.5,
+        "y": 68.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 4.5,
+        "y": 78.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 4.5,
+        "y": 88.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 100,
+        "y": 15,
+        "w": 8,
+        "h": 80,
+        "fill": "#E0B43C",
+        "radius": 2,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 102.5,
+        "y": 18.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 102.5,
+        "y": 28.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 102.5,
+        "y": 38.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 102.5,
+        "y": 48.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 102.5,
+        "y": 58.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 102.5,
+        "y": 68.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 102.5,
+        "y": 78.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 102.5,
+        "y": 88.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 34,
+        "y": 4,
+        "w": 42,
+        "h": 44,
+        "fill": "#C9CED6",
+        "radius": 3
+      },
+      {
+        "type": "rect",
+        "x": 39,
+        "y": 10,
+        "w": 32,
+        "h": 32,
+        "fill": "#1B1F24",
+        "radius": 3
+      },
+      {
+        "type": "rect",
+        "x": 47,
+        "y": 18,
+        "w": 16,
+        "h": 16,
+        "fill": "#3A3F47",
+        "radius": 8
+      },
+      {
+        "type": "rect",
+        "x": 51,
+        "y": 22,
+        "w": 8,
+        "h": 8,
+        "fill": "#141414",
+        "radius": 4,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 49,
+        "y": 48,
+        "w": 12,
+        "h": 38,
+        "fill": "#C8742B",
+        "radius": 1
+      },
+      {
+        "type": "rect",
+        "x": 32,
+        "y": 104,
+        "w": 46,
+        "h": 12,
+        "fill": "#E8E4D8",
+        "radius": 2
+      },
+      {
+        "type": "rect",
+        "x": 80,
+        "y": 122,
+        "w": 12,
+        "h": 12,
+        "fill": "#FFE08A",
+        "radius": 2
+      },
+      {
+        "type": "rect",
+        "x": 12,
+        "y": 134,
+        "w": 86,
+        "h": 16,
+        "fill": "#2B2F36",
+        "outline": false,
+        "label": "ESP32-CAM",
+        "labelColor": "#F4F1EA",
+        "labelSize": 9
+      }
+    ]
+  }
+}

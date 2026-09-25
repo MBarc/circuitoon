@@ -20,21 +20,33 @@ function useEditorKeys(store: EditorStore) {
         if (e.key === 'Escape') store.cancel()
         return
       }
+      // A wire-draw or reconnect drag lives only in Canvas state, so the store would not
+      // otherwise know to hold off; store.gestureActive covers that gap.
+      const gesture = store.gestureActive
       if (mod && key === 'z') {
+        if (gesture) return
         e.preventDefault()
         if (e.shiftKey) store.redo()
         else store.undo()
       } else if (mod && key === 'y') {
+        if (gesture) return
         e.preventDefault()
         store.redo()
       } else if (e.key === 'Delete' || e.key === 'Backspace') {
+        if (gesture) return
         if (s.selection.parts.length || s.selection.wires.length) {
           e.preventDefault()
           store.commit(deleteSelection(s.diagram, s.selection))
         }
       } else if (key === 'r' && !mod) {
+        if (gesture) return
         if (s.selection.parts.length) store.commit(rotateParts(s.diagram, s.selection.parts))
-      } else if (e.key === 'Escape') store.select(EMPTY_SELECTION)
+      } else if (e.key === 'Escape') {
+        // A wire-draw or reconnect gesture handles its own Escape (Canvas.tsx cancels the drag);
+        // clearing the selection here too would fight with that.
+        if (gesture) return
+        store.select(EMPTY_SELECTION)
+      }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)

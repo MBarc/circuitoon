@@ -42,6 +42,25 @@ describe('validateDiagram', () => {
         'annotations[0].text: must be a string',
       ])
   })
+  it('requires parts[i].values to be an object when present', () => {
+    const d = structuredClone(buttonLed) as unknown as { parts: Record<string, unknown>[] }
+    d.parts[0].values = 7
+    const r = validateDiagram(d)
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.errors).toEqual(['parts[0].values: must be an object'])
+  })
+  it('warns when a value-shaped entry is missing a finite number value or string unit', () => {
+    const d = structuredClone(buttonLed) as unknown as { parts: Record<string, unknown>[] }
+    ;(d.parts[2].values as Record<string, unknown>).resistance = 'lots'
+    const r = validateDiagram(d)
+    expect(r.ok).toBe(true)
+    if (r.ok) expect(r.warnings).toEqual(['parts[2].values.resistance: value must be a finite number with a string unit'])
+  })
+  it('does not warn about a value-less entry that is not a known value param, such as an LED color', () => {
+    const r = validateDiagram(JSON.parse(serializeDiagram(buttonLed)))
+    expect(r.ok).toBe(true)
+    if (r.ok) expect(r.warnings).toEqual([])
+  })
   it('checks wire color and gauge', () => {
     const d = structuredClone(buttonLed) as unknown as { connections: Record<string, unknown>[] }
     d.connections[0].color = 'chartreuse'

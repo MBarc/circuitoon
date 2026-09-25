@@ -113,6 +113,29 @@ describe('EditorStore drag safety', () => {
   })
 })
 
+describe('EditorStore gesture flag', () => {
+  it('tracks a canvas-only gesture without touching undo history', () => {
+    const s = new EditorStore(emptyDiagram())
+    expect(s.gestureActive).toBe(false)
+    s.setGesture(true)
+    expect(s.gestureActive).toBe(true)
+    s.setGesture(false)
+    expect(s.gestureActive).toBe(false)
+    expect(s.canUndo).toBe(false)
+  })
+  it('notifies subscribers only when the flag actually changes', () => {
+    const s = new EditorStore(emptyDiagram())
+    let calls = 0
+    const off = s.subscribe(() => calls++)
+    s.setGesture(true)
+    s.setGesture(true)
+    expect(calls).toBe(1)
+    s.setGesture(false)
+    expect(calls).toBe(2)
+    off()
+  })
+})
+
 describe('EditorStore dirty flag', () => {
   it('starts clean and is set by commit', () => {
     const s = new EditorStore(emptyDiagram())

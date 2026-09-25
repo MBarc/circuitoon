@@ -1,0 +1,363 @@
+{
+  "format": "circuitoon-module/1",
+  "id": "esp32-c3-supermini",
+  "version": 1,
+  "name": "ESP32-C3 SuperMini",
+  "category": "Microcontrollers",
+  "source": "https://www.nologo.tech/en/product/esp32/esp32c3SuperMini/esp32C3SuperMini.html https://lastminuteengineers.com/esp32-c3-super-mini-pinout-reference/",
+  "pins": [
+    {
+      "name": "5",
+      "side": "left"
+    },
+    {
+      "name": "6",
+      "side": "left"
+    },
+    {
+      "name": "7",
+      "side": "left"
+    },
+    {
+      "name": "8",
+      "side": "left"
+    },
+    {
+      "name": "9",
+      "side": "left"
+    },
+    {
+      "name": "10",
+      "side": "left"
+    },
+    {
+      "name": "20",
+      "side": "left"
+    },
+    {
+      "name": "21",
+      "side": "left"
+    },
+    {
+      "name": "5V",
+      "side": "right",
+      "type": "power_in",
+      "supply": "5V"
+    },
+    {
+      "name": "G",
+      "side": "right",
+      "type": "ground"
+    },
+    {
+      "name": "3.3",
+      "side": "right",
+      "type": "power_out",
+      "supply": "3V3"
+    },
+    {
+      "name": "4",
+      "side": "right"
+    },
+    {
+      "name": "3",
+      "side": "right"
+    },
+    {
+      "name": "2",
+      "side": "right"
+    },
+    {
+      "name": "1",
+      "side": "right"
+    },
+    {
+      "name": "0",
+      "side": "right"
+    }
+  ],
+  "size": {
+    "w": 8,
+    "h": 10
+  },
+  "electrical": {
+    "model": "mcu",
+    "params": {}
+  },
+  "art": {
+    "w": 80,
+    "h": 100,
+    "pinLabels": "inside",
+    "shapes": [
+      {
+        "type": "rect",
+        "x": 0,
+        "y": 0,
+        "w": 80,
+        "h": 100,
+        "fill": "#2B2F36",
+        "radius": 5
+      },
+      {
+        "type": "rect",
+        "x": 2,
+        "y": 15,
+        "w": 8,
+        "h": 80,
+        "fill": "#E0B43C",
+        "radius": 2,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 4.5,
+        "y": 18.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 4.5,
+        "y": 28.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 4.5,
+        "y": 38.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 4.5,
+        "y": 48.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 4.5,
+        "y": 58.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 4.5,
+        "y": 68.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 4.5,
+        "y": 78.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 4.5,
+        "y": 88.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 70,
+        "y": 15,
+        "w": 8,
+        "h": 80,
+        "fill": "#E0B43C",
+        "radius": 2,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 72.5,
+        "y": 18.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 72.5,
+        "y": 28.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 72.5,
+        "y": 38.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 72.5,
+        "y": 48.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 72.5,
+        "y": 58.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 72.5,
+        "y": 68.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 72.5,
+        "y": 78.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 72.5,
+        "y": 88.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 27,
+        "y": -6,
+        "w": 26,
+        "h": 22,
+        "fill": "#C9CED6",
+        "radius": 3
+      },
+      {
+        "type": "rect",
+        "x": 25,
+        "y": 20,
+        "w": 11,
+        "h": 11,
+        "fill": "#3A3F47",
+        "radius": 2
+      },
+      {
+        "type": "rect",
+        "x": 27.5,
+        "y": 22.5,
+        "w": 6,
+        "h": 6,
+        "fill": "#1B1F24",
+        "radius": 3,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 44,
+        "y": 20,
+        "w": 11,
+        "h": 11,
+        "fill": "#3A3F47",
+        "radius": 2
+      },
+      {
+        "type": "rect",
+        "x": 46.5,
+        "y": 22.5,
+        "w": 6,
+        "h": 6,
+        "fill": "#1B1F24",
+        "radius": 3,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 24,
+        "y": 40,
+        "w": 32,
+        "h": 30,
+        "fill": "#1B1F24",
+        "radius": 2,
+        "label": "ESP32-C3",
+        "labelColor": "#D5DAE1",
+        "labelSize": 5.5
+      },
+      {
+        "type": "rect",
+        "x": 48,
+        "y": 33,
+        "w": 5,
+        "h": 4,
+        "fill": "#3D6FD6",
+        "radius": 1
+      },
+      {
+        "type": "rect",
+        "x": 25,
+        "y": 82,
+        "w": 30,
+        "h": 12,
+        "fill": "#D8413A",
+        "radius": 2,
+        "label": "C3",
+        "labelColor": "#FFFFFF",
+        "labelSize": 7
+      }
+    ]
+  }
+}

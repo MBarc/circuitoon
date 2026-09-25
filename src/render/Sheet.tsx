@@ -1,6 +1,8 @@
 // A diagram drawn on graph paper: parts, then wires on top with hop arcs and pin dots.
-import { type Diagram, moduleOf, wireColor, wirePaths, wireWidth } from '../format/diagram.ts'
+import { computeRoutes, labelAnchor, type Diagram, moduleOf, wireColor, wirePaths, wireWidth } from '../format/diagram.ts'
+import { partCaption } from '../format/values.ts'
 import { Part, INK } from './Part.tsx'
+import { WireLabel } from './WireLabel.tsx'
 
 export function Sheet({ diagram, captions = {}, box, label, decorative = false }: {
   diagram: Diagram
@@ -11,7 +13,8 @@ export function Sheet({ diagram, captions = {}, box, label, decorative = false }
   /** Hide from assistive tech, for a preview inside a control that is already labelled. */
   decorative?: boolean
 }) {
-  const wires = wirePaths(diagram)
+  const routes = computeRoutes(diagram)
+  const wires = wirePaths(diagram, routes)
   return (
     <svg className="sheet" viewBox={`${box.x} ${box.y} ${box.w} ${box.h}`} {...(decorative ? { 'aria-hidden': true } : { role: 'img', 'aria-label': label })}>
       <defs>
@@ -23,13 +26,15 @@ export function Sheet({ diagram, captions = {}, box, label, decorative = false }
       <rect x={box.x} y={box.y} width={box.w} height={box.h} fill="url(#grid)" />
       {diagram.parts.map((p) => {
         const m = moduleOf(diagram, p.module)
-        return m ? <Part key={p.uid} module={m} x={p.x} y={p.y} rotation={p.rotation} caption={captions[p.uid] ?? p.designator} /> : null
+        return m ? (
+          <Part key={p.uid} module={m} x={p.x} y={p.y} rotation={p.rotation} caption={captions[p.uid] ?? partCaption(p, m)} values={p.values} />
+        ) : null
       })}
       <g fill="none" strokeLinecap="round" strokeLinejoin="round">
         {wires.map(({ conn, d, blocked }) => {
           const w = wireWidth(conn.gauge)
           return (
-            <g key={conn.uid}>
+            <g key={conn.uid} data-wire={conn.uid}>
               <path d={d} stroke={INK} strokeWidth={w + 2.2} strokeDasharray={blocked ? '6 5' : undefined} />
               <path d={d} stroke={wireColor(conn.color)} strokeWidth={w} strokeDasharray={blocked ? '6 5' : undefined} />
             </g>
@@ -37,6 +42,18 @@ export function Sheet({ diagram, captions = {}, box, label, decorative = false }
         })}
       </g>
       {wires.flatMap(({ conn, ends }) => ends.map((e, i) => <circle key={`${conn.uid}-${i}`} cx={e.x} cy={e.y} r={2.4} fill={INK} />))}
+      {/* Name tags in their own layer after every wire, so a labeled wire crossing under a later
+          one still shows its tag on top. Each tag keeps data-wire, matching the editor's canvas. */}
+      <g>
+        {wires.map(({ conn }) => {
+          const anchor = conn.label ? labelAnchor(routes.get(conn.uid)?.points ?? []) : null
+          return anchor ? (
+            <g key={conn.uid} data-wire={conn.uid}>
+              <WireLabel x={anchor.x} y={anchor.y} text={conn.label!} />
+            </g>
+          ) : null
+        })}
+      </g>
     </svg>
   )
 }

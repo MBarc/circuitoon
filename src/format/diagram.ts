@@ -3,6 +3,7 @@
 import { type ModuleDef, layoutModule, validateModule, isObj, isNum } from './module.ts'
 import { type Pt, type Rect, type Rotation, type WorldPin, bodyRect, simplify, worldPins } from './geometry.ts'
 import { routeOrthogonal } from './router.ts'
+import { PRIMARY_PARAM_NAMES } from './values.ts'
 
 export const DIAGRAM_FORMAT = 'circuitoon-diagram/1'
 
@@ -220,6 +221,24 @@ export function wirePaths(d: Diagram, routes: Routes = computeRoutes(d)) {
   return out
 }
 
+/**
+ * Midpoint of a routed wire's longest straight run, for placing its name tag. Ties keep the
+ * first longest segment found. Null for a route with fewer than two points (nothing to anchor to).
+ */
+export function labelAnchor(points: Pt[]): { x: number; y: number; horizontal: boolean } | null {
+  if (points.length < 2) return null
+  let best = { i: 1, len: -1 }
+  for (let i = 1; i < points.length; i++) {
+    const a = points[i - 1]
+    const b = points[i]
+    const len = Math.abs(a.x - b.x) + Math.abs(a.y - b.y) // segments are axis-aligned, so Manhattan length is true length
+    if (len > best.len) best = { i, len }
+  }
+  const a = points[best.i - 1]
+  const b = points[best.i]
+  return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2, horizontal: a.y === b.y }
+}
+
 export function isValidColor(c: string): boolean {
   return /^#[0-9a-f]{6}$/i.test(c) || Object.hasOwn(NAMED_COLORS, c.toLowerCase())
 }
@@ -273,6 +292,19 @@ export function validateDiagram(raw: unknown): DiagramResult {
       if (!isNum(p.x) || !isNum(p.y)) errors.push(`${at}: x and y must be numbers`)
       if (p.rotation !== undefined && ![0, 90, 180, 270].includes(p.rotation as number))
         errors.push(`${at}.rotation: must be 0, 90, 180 or 270`)
+      if (p.values !== undefined) {
+        if (!isObj(p.values)) errors.push(`${at}.values: must be an object`)
+        else
+          for (const [key, entry] of Object.entries(p.values)) {
+            // Only entries meant to carry a number-with-unit are checked here: the primary
+            // value param names, and any entry that already looks like one (has a "value" key).
+            // Other part state (an LED's color, a switch's default) is opaque and left alone.
+            const looksLikeValue = PRIMARY_PARAM_NAMES.includes(key) || (isObj(entry) && 'value' in entry)
+            if (!looksLikeValue) continue
+            if (!(isObj(entry) && isNum(entry.value) && typeof entry.unit === 'string'))
+              warnings.push(`${at}.values.${key}: value must be a finite number with a string unit`)
+          }
+      }
     })
 
   const checkEnd = (ep: unknown, at: string) => {

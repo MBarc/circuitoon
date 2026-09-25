@@ -36,10 +36,15 @@ export interface ArtShape {
   label?: string
   labelColor?: string
   labelSize?: number
+  /** Resistor color band slot 1 to 4; the renderer colors it from the part's resistance. */
+  band?: 1 | 2 | 3 | 4
 }
 export interface Art {
   w: number
   h: number
+  /** "inside" draws pin names inside the body next to each pin, like board silkscreen, instead
+   * of beside the pin stub. Opt-in: set on the built-in dev boards, off by default. */
+  pinLabels?: 'inside'
   shapes: ArtShape[]
 }
 
@@ -49,6 +54,8 @@ export interface ModuleDef {
   version?: number
   name: string
   category?: string
+  /** Where the pinout came from: one URL, or several joined by a space. */
+  source?: string
   pins: PinEntry[]
   internal?: string[][]
   size?: { w: number; h: number }
@@ -58,6 +65,10 @@ export interface ModuleDef {
 }
 
 export const isSpacer = (p: PinEntry): p is SpacerDef => 'spacer' in p && p.spacer === true
+
+/** Opt-in flag (`art.pinLabels: "inside"`) for drawing pin names inside the body, like board
+ * silkscreen, instead of beside the pin stub. Off for every module that does not set it. */
+export const usesInsideLabels = (m: ModuleDef): boolean => m.art?.pinLabels === 'inside'
 
 export type ValidationResult = { ok: true; module: ModuleDef } | { ok: false; errors: string[] }
 
@@ -78,6 +89,7 @@ export function validateModule(raw: unknown): ValidationResult {
   if (raw.version !== undefined && !(Number.isInteger(raw.version) && (raw.version as number) >= 1))
     errors.push('version: must be a whole number, 1 or more')
   if (raw.category !== undefined && typeof raw.category !== 'string') errors.push('category: must be a string')
+  if (raw.source !== undefined && typeof raw.source !== 'string') errors.push('source: must be a string (one or more URLs)')
 
   const names = new Set<string>()
   if (!Array.isArray(raw.pins) || raw.pins.length === 0) errors.push('pins: required, at least one pin')
@@ -120,7 +132,8 @@ export function validateModule(raw: unknown): ValidationResult {
     const art = raw.art
     if (!isObj(art) || !isPos(art.w) || !isPos(art.h) || !Array.isArray(art.shapes))
       errors.push('art: must be { "w", "h", "shapes": [...] } with positive w and h')
-    else
+    else {
+      if (art.pinLabels !== undefined && art.pinLabels !== 'inside') errors.push('art.pinLabels: must be "inside"')
       art.shapes.forEach((s, i) => {
         const at = `art.shapes[${i}]`
         if (!isObj(s) || s.type !== 'rect') return void errors.push(`${at}: only "rect" shapes are supported`)
@@ -131,7 +144,10 @@ export function validateModule(raw: unknown): ValidationResult {
         if (s.label !== undefined && typeof s.label !== 'string') errors.push(`${at}.label: must be a string`)
         if (s.labelColor !== undefined && typeof s.labelColor !== 'string') errors.push(`${at}.labelColor: must be a string`)
         if (s.labelSize !== undefined && !isPos(s.labelSize)) errors.push(`${at}.labelSize: must be a positive number`)
+        if (s.band !== undefined && !(Number.isInteger(s.band) && (s.band as number) >= 1 && (s.band as number) <= 4))
+          errors.push(`${at}.band: must be a whole number from 1 to 4`)
       })
+    }
   }
 
   return errors.length ? { ok: false, errors } : { ok: true, module: raw as unknown as ModuleDef }

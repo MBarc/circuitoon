@@ -3,6 +3,7 @@
 import { type Connection, type Diagram, type Endpoint, type PartInstance, moduleOf } from '../format/diagram.ts'
 import type { ModuleDef } from '../format/module.ts'
 import type { Rotation } from '../format/geometry.ts'
+import { partValue } from '../format/values.ts'
 
 export interface Selection {
   parts: string[]
@@ -28,6 +29,7 @@ export function nextUid(d: Diagram, prefix: 'p' | 'w' | 'a'): string {
 }
 
 const PREFIXES: [RegExp, string][] = [
+  [/^potentiometer/, 'RV'],
   [/^resistor/, 'R'],
   [/^capacitor/, 'C'],
   [/^led/, 'D'],
@@ -88,10 +90,46 @@ export function addWire(d: Diagram, from: Endpoint, to: Endpoint, style: WireSty
   return { uid, diagram: { ...d, connections: [...d.connections, wire] } }
 }
 
+/**
+ * Moves one end of an existing wire onto a different pin, keeping its color, gauge, label and
+ * route. Refused (returns null) for a missing wire, a self-loop, dropping back onto the pin the
+ * end is already on, or a duplicate of another wire's endpoints in either direction.
+ */
+export function reconnectWire(d: Diagram, uid: string, end: 'from' | 'to', target: Endpoint): Diagram | null {
+  const wire = d.connections.find((c) => c.uid === uid)
+  if (!wire) return null
+  const current = wire[end]
+  const other = wire[end === 'from' ? 'to' : 'from']
+  if (sameEnd(target, other)) return null
+  if (sameEnd(target, current)) return null
+  const from = end === 'from' ? target : wire.from
+  const to = end === 'to' ? target : wire.to
+  const dup = d.connections.some(
+    (c) => c.uid !== uid && ((sameEnd(c.from, from) && sameEnd(c.to, to)) || (sameEnd(c.from, to) && sameEnd(c.to, from))),
+  )
+  if (dup) return null
+  return { ...d, connections: d.connections.map((c) => (c.uid === uid ? { ...c, [end]: target } : c)) }
+}
+
 export function updatePart(d: Diagram, uid: string, patch: { designator?: string }): Diagram {
   return { ...d, parts: d.parts.map((p) => (p.uid === uid ? { ...p, ...patch } : p)) }
 }
 
 export function updateWire(d: Diagram, uid: string, patch: { color?: string; gauge?: number; label?: string }): Diagram {
   return { ...d, connections: d.connections.map((c) => (c.uid === uid ? { ...c, ...patch } : c)) }
+}
+
+/**
+ * Sets a part's value for one electrical param, for example resistance. Returns the same
+ * diagram object, unchanged, when the part or its module is missing, or when the new value
+ * matches what the part already resolves to (its stored override, or the module default).
+ */
+export function updatePartValue(d: Diagram, uid: string, param: string, value: number, unit: string): Diagram {
+  const part = d.parts.find((p) => p.uid === uid)
+  const m = part && moduleOf(d, part.module)
+  if (!part || !m) return d
+  const current = partValue(part, m)
+  if (current && current.name === param && current.value === value && current.unit === unit) return d
+  const values = { ...part.values, [param]: { value, unit } }
+  return { ...d, parts: d.parts.map((p) => (p.uid === uid ? { ...p, values } : p)) }
 }

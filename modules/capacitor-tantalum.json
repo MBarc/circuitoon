@@ -1,0 +1,78 @@
+{
+  "format": "circuitoon-module/1",
+  "id": "capacitor-tantalum",
+  "version": 1,
+  "name": "Tantalum capacitor",
+  "category": "Passives",
+  "pins": [
+    {
+      "name": "+",
+      "label": "+",
+      "side": "left",
+      "type": "passive"
+    },
+    {
+      "name": "-",
+      "label": "-",
+      "side": "right",
+      "type": "passive"
+    }
+  ],
+  "electrical": {
+    "model": "capacitor",
+    "polarized": true,
+    "terminals": {
+      "a": "+",
+      "b": "-"
+    },
+    "params": {
+      "capacitance": {
+        "unit": "F",
+        "default": 1e-5
+      }
+    }
+  },
+  "art": {
+    "w": 40,
+    "h": 40,
+    "shapes": [
+      {
+        "type": "rect",
+        "x": 0,
+        "y": 18.5,
+        "w": 14,
+        "h": 3,
+        "fill": "#B8BEC7",
+        "radius": 1.5
+      },
+      {
+        "type": "rect",
+        "x": 26,
+        "y": 18.5,
+        "w": 14,
+        "h": 3,
+        "fill": "#B8BEC7",
+        "radius": 1.5
+      },
+      {
+        "type": "rect",
+        "x": 9,
+        "y": 9,
+        "w": 22,
+        "h": 20,
+        "fill": "#E8A33D",
+        "radius": 8
+      },
+      {
+        "type": "rect",
+        "x": 10,
+        "y": 10,
+        "w": 4,
+        "h": 18,
+        "fill": "#4A3216",
+        "outline": false,
+        "radius": 2
+      }
+    ]
+  }
+}

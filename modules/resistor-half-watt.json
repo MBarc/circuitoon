@@ -1,8 +1,8 @@
 {
   "format": "circuitoon-module/1",
-  "id": "resistor",
+  "id": "resistor-half-watt",
   "version": 1,
-  "name": "Resistor (1/4 W)",
+  "name": "Resistor (1/2 W)",
   "category": "Passives",
   "pins": [
     {
@@ -30,72 +30,72 @@
     }
   },
   "art": {
-    "w": 60,
-    "h": 40,
+    "w": 80,
+    "h": 60,
     "shapes": [
       {
         "type": "rect",
         "x": 0,
-        "y": 18.5,
-        "w": 12,
+        "y": 28.5,
+        "w": 16,
         "h": 3,
         "fill": "#B8BEC7",
         "radius": 1.5
       },
       {
         "type": "rect",
-        "x": 48,
-        "y": 18.5,
-        "w": 12,
+        "x": 64,
+        "y": 28.5,
+        "w": 16,
         "h": 3,
         "fill": "#B8BEC7",
         "radius": 1.5
       },
       {
         "type": "rect",
-        "x": 8,
-        "y": 12,
-        "w": 44,
-        "h": 16,
+        "x": 14,
+        "y": 19,
+        "w": 52,
+        "h": 22,
         "fill": "#F1D9A7",
-        "radius": 8
+        "radius": 10
       },
       {
         "type": "rect",
-        "x": 16,
-        "y": 13,
-        "w": 4,
-        "h": 14,
+        "x": 24,
+        "y": 20,
+        "w": 5,
+        "h": 20,
         "fill": "#8B5A2B",
         "outline": false,
         "band": 1
       },
       {
         "type": "rect",
-        "x": 23,
-        "y": 13,
-        "w": 4,
-        "h": 14,
+        "x": 33,
+        "y": 20,
+        "w": 5,
+        "h": 20,
         "fill": "#1B1B1B",
         "outline": false,
         "band": 2
       },
       {
         "type": "rect",
-        "x": 30,
-        "y": 13,
-        "w": 4,
-        "h": 14,
+        "x": 42,
+        "y": 20,
+        "w": 5,
+        "h": 20,
         "fill": "#D8413A",
         "outline": false,
         "band": 3
       },
       {
         "type": "rect",
-        "x": 41,
-        "y": 13,
-        "w": 4,
-        "h": 14,
+        "x": 56,
+        "y": 20,
+        "w": 5,
+        "h": 20,
         "fill": "#E0B43C",
         "outline": false,
         "band": 4

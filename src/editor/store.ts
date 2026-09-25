@@ -21,6 +21,7 @@ export class EditorStore {
   private future: Diagram[] = []
   private txBase: Diagram | null = null
   private unsaved = false
+  private gesture = false
   private listeners = new Set<() => void>()
 
   constructor(diagram: Diagram) {
@@ -49,6 +50,17 @@ export class EditorStore {
   /** True when the document changed since it was loaded or last saved. */
   get dirty() {
     return this.unsaved
+  }
+  /** True while a canvas-only gesture (wire draw, reconnect drag) is in progress. Not undo history. */
+  get gestureActive() {
+    return this.gesture
+  }
+
+  /** Marks whether such a gesture is active, so keyboard shortcuts can stay quiet during it. */
+  setGesture(active: boolean) {
+    if (this.gesture === active) return
+    this.gesture = active
+    this.set({})
   }
 
   private set(patch: Partial<EditorState>) {

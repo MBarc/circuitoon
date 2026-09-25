@@ -1,0 +1,647 @@
+{
+  "format": "circuitoon-module/1",
+  "id": "esp32-devkit-v1-30",
+  "version": 1,
+  "name": "ESP32 DevKit V1 (30 pin, DOIT)",
+  "category": "Microcontrollers",
+  "source": "https://mischianti.org/doit-esp32-dev-kit-v1-high-resolution-pinout-and-specs/ https://lastminuteengineers.com/esp32-pinout-reference/",
+  "pins": [
+    {
+      "spacer": true,
+      "side": "left"
+    },
+    {
+      "spacer": true,
+      "side": "left"
+    },
+    {
+      "name": "EN",
+      "side": "left",
+      "type": "input"
+    },
+    {
+      "name": "VP",
+      "side": "left",
+      "type": "input"
+    },
+    {
+      "name": "VN",
+      "side": "left",
+      "type": "input"
+    },
+    {
+      "name": "D34",
+      "side": "left",
+      "type": "input"
+    },
+    {
+      "name": "D35",
+      "side": "left",
+      "type": "input"
+    },
+    {
+      "name": "D32",
+      "side": "left"
+    },
+    {
+      "name": "D33",
+      "side": "left"
+    },
+    {
+      "name": "D25",
+      "side": "left"
+    },
+    {
+      "name": "D26",
+      "side": "left"
+    },
+    {
+      "name": "D27",
+      "side": "left"
+    },
+    {
+      "name": "D14",
+      "side": "left"
+    },
+    {
+      "name": "D12",
+      "side": "left"
+    },
+    {
+      "name": "D13",
+      "side": "left"
+    },
+    {
+      "name": "GND",
+      "side": "left",
+      "type": "ground"
+    },
+    {
+      "name": "VIN",
+      "side": "left",
+      "type": "power_in",
+      "supply": "5V"
+    },
+    {
+      "spacer": true,
+      "side": "right"
+    },
+    {
+      "spacer": true,
+      "side": "right"
+    },
+    {
+      "name": "D23",
+      "side": "right"
+    },
+    {
+      "name": "D22",
+      "side": "right"
+    },
+    {
+      "name": "TX0",
+      "side": "right"
+    },
+    {
+      "name": "RX0",
+      "side": "right"
+    },
+    {
+      "name": "D21",
+      "side": "right"
+    },
+    {
+      "name": "D19",
+      "side": "right"
+    },
+    {
+      "name": "D18",
+      "side": "right"
+    },
+    {
+      "name": "D5",
+      "side": "right"
+    },
+    {
+      "name": "TX2",
+      "side": "right"
+    },
+    {
+      "name": "RX2",
+      "side": "right"
+    },
+    {
+      "name": "D4",
+      "side": "right"
+    },
+    {
+      "name": "D2",
+      "side": "right"
+    },
+    {
+      "name": "D15",
+      "side": "right"
+    },
+    {
+      "name": "GND 2",
+      "side": "right",
+      "label": "GND",
+      "type": "ground"
+    },
+    {
+      "name": "3V3",
+      "side": "right",
+      "type": "power_out",
+      "supply": "3V3"
+    }
+  ],
+  "internal": [
+    [
+      "GND",
+      "GND 2"
+    ]
+  ],
+  "size": {
+    "w": 12,
+    "h": 19
+  },
+  "electrical": {
+    "model": "mcu",
+    "params": {}
+  },
+  "art": {
+    "w": 120,
+    "h": 190,
+    "pinLabels": "inside",
+    "shapes": [
+      {
+        "type": "rect",
+        "x": 0,
+        "y": 0,
+        "w": 120,
+        "h": 190,
+        "fill": "#2B2F36",
+        "radius": 5
+      },
+      {
+        "type": "rect",
+        "x": 2,
+        "y": 35,
+        "w": 8,
+        "h": 150,
+        "fill": "#E0B43C",
+        "radius": 2,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 4.5,
+        "y": 38.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 4.5,
+        "y": 48.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 4.5,
+        "y": 58.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 4.5,
+        "y": 68.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 4.5,
+        "y": 78.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 4.5,
+        "y": 88.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 4.5,
+        "y": 98.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 4.5,
+        "y": 108.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 4.5,
+        "y": 118.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 4.5,
+        "y": 128.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 4.5,
+        "y": 138.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 4.5,
+        "y": 148.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 4.5,
+        "y": 158.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 4.5,
+        "y": 168.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 4.5,
+        "y": 178.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 110,
+        "y": 35,
+        "w": 8,
+        "h": 150,
+        "fill": "#E0B43C",
+        "radius": 2,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 112.5,
+        "y": 38.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 112.5,
+        "y": 48.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 112.5,
+        "y": 58.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 112.5,
+        "y": 68.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 112.5,
+        "y": 78.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 112.5,
+        "y": 88.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 112.5,
+        "y": 98.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 112.5,
+        "y": 108.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 112.5,
+        "y": 118.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 112.5,
+        "y": 128.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 112.5,
+        "y": 138.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 112.5,
+        "y": 148.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 112.5,
+        "y": 158.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 112.5,
+        "y": 168.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 112.5,
+        "y": 178.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 34,
+        "y": 4,
+        "w": 52,
+        "h": 30,
+        "fill": "#1B1F24",
+        "radius": 2
+      },
+      {
+        "type": "rect",
+        "x": 42,
+        "y": 12,
+        "w": 36,
+        "h": 2.5,
+        "fill": "#E0B43C",
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 42,
+        "y": 12,
+        "w": 2.5,
+        "h": 12,
+        "fill": "#E0B43C",
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 53.166666666666664,
+        "y": 12,
+        "w": 2.5,
+        "h": 12,
+        "fill": "#E0B43C",
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 64.33333333333333,
+        "y": 12,
+        "w": 2.5,
+        "h": 12,
+        "fill": "#E0B43C",
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 75.5,
+        "y": 12,
+        "w": 2.5,
+        "h": 12,
+        "fill": "#E0B43C",
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 34,
+        "y": 34,
+        "w": 52,
+        "h": 60,
+        "fill": "#D5DAE1",
+        "radius": 3,
+        "label": "ESP32",
+        "labelSize": 10
+      },
+      {
+        "type": "rect",
+        "x": 51,
+        "y": 124,
+        "w": 18,
+        "h": 18,
+        "fill": "#1B1F24",
+        "radius": 2
+      },
+      {
+        "type": "rect",
+        "x": 40,
+        "y": 106,
+        "w": 5,
+        "h": 4,
+        "fill": "#E5484D",
+        "radius": 1
+      },
+      {
+        "type": "rect",
+        "x": 75,
+        "y": 106,
+        "w": 5,
+        "h": 4,
+        "fill": "#3D6FD6",
+        "radius": 1
+      },
+      {
+        "type": "rect",
+        "x": 36,
+        "y": 162,
+        "w": 12,
+        "h": 12,
+        "fill": "#3A3F47",
+        "radius": 2
+      },
+      {
+        "type": "rect",
+        "x": 39,
+        "y": 165,
+        "w": 6,
+        "h": 6,
+        "fill": "#1B1F24",
+        "radius": 3,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 72,
+        "y": 162,
+        "w": 12,
+        "h": 12,
+        "fill": "#3A3F47",
+        "radius": 2
+      },
+      {
+        "type": "rect",
+        "x": 75,
+        "y": 165,
+        "w": 6,
+        "h": 6,
+        "fill": "#1B1F24",
+        "radius": 3,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 49,
+        "y": 178,
+        "w": 22,
+        "h": 17,
+        "fill": "#C9CED6",
+        "radius": 2
+      }
+    ]
+  }
+}

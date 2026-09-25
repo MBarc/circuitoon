@@ -1,0 +1,68 @@
+{
+  "format": "circuitoon-module/1",
+  "id": "capacitor-film",
+  "version": 1,
+  "name": "Film capacitor",
+  "category": "Passives",
+  "pins": [
+    {
+      "name": "1",
+      "side": "left",
+      "type": "passive"
+    },
+    {
+      "name": "2",
+      "side": "right",
+      "type": "passive"
+    }
+  ],
+  "electrical": {
+    "model": "capacitor",
+    "terminals": {
+      "a": "1",
+      "b": "2"
+    },
+    "params": {
+      "capacitance": {
+        "unit": "F",
+        "default": 1e-7
+      }
+    }
+  },
+  "art": {
+    "w": 40,
+    "h": 40,
+    "shapes": [
+      {
+        "type": "rect",
+        "x": 0,
+        "y": 18.5,
+        "w": 14,
+        "h": 3,
+        "fill": "#B8BEC7",
+        "radius": 1.5
+      },
+      {
+        "type": "rect",
+        "x": 26,
+        "y": 18.5,
+        "w": 14,
+        "h": 3,
+        "fill": "#B8BEC7",
+        "radius": 1.5
+      },
+      {
+        "type": "rect",
+        "x": 9,
+        "y": 8,
+        "w": 22,
+        "h": 22,
+        "fill": "#C8372D",
+        "radius": 4,
+        "label": "104",
+        "labelColor": "#FFF3E0",
+        "labelSize": 7
+      }
+    ]
+  }
+}

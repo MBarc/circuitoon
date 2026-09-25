@@ -1,15 +1,17 @@
 // The editing surface: an SVG sheet you can pan (drag the background) and zoom (wheel).
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import { type EditorStore, useEditorState } from './store.ts'
-import { computeRoutes, moduleOf, wireColor, wirePaths, wireWidth, type Routes } from '../format/diagram.ts'
+import { computeRoutes, labelAnchor, moduleOf, wireColor, wirePaths, wireWidth, type PartInstance, type Routes } from '../format/diagram.ts'
 import type { Pt } from '../format/geometry.ts'
 import { Part, INK } from '../render/Part.tsx'
-import { addPart, addWire, EMPTY_SELECTION, moveParts } from './ops.ts'
+import { WireLabel } from '../render/WireLabel.tsx'
+import { addPart, addWire, EMPTY_SELECTION, moveParts, reconnectWire, updateWire } from './ops.ts'
 import { modulesById } from '../library.ts'
 import { bodyRect, worldPins } from '../format/geometry.ts'
-import { layoutModule } from '../format/module.ts'
+import { layoutModule, type ModuleDef } from '../format/module.ts'
 import { MODULE_MIME } from './LibraryPanel.tsx'
 import type { Diagram, Endpoint } from '../format/diagram.ts'
+import { partCaption } from '../format/values.ts'
 
 export type View = { x: number; y: number; scale: number }
 const MIN_SCALE = 0.25
@@ -21,7 +23,34 @@ type Drag = { pointer: number } & (
   | { kind: 'pan'; client: Pt; view: View }
   | { kind: 'parts'; start: Pt; uids: string[]; base: Diagram }
   | { kind: 'wire'; from: Endpoint; origin: Pt; cursor: Pt; over: Endpoint | null }
+  | { kind: 'reconnect'; uid: string; end: 'from' | 'to'; origin: Pt; cursor: Pt; over: Endpoint | null }
 )
+
+/**
+ * One part's pin hit-targets (the invisible circles wires attach to). Memoized so dragging a
+ * wire across the sheet, which changes `hoveredPin` every pointer move, only re-renders the one
+ * part whose pin is actually being hovered instead of rebuilding this layer for every part on
+ * the sheet each frame.
+ */
+const PinTargets = memo(function PinTargets({ part, m, hoveredPin }: { part: PartInstance; m: ModuleDef; hoveredPin: string | null }) {
+  return (
+    <>
+      {worldPins(part, m).map((wp) => (
+        <circle
+          key={wp.name}
+          className={hoveredPin === wp.name ? 'pin-hit target' : 'pin-hit'}
+          data-pin={wp.name}
+          data-pin-part={part.uid}
+          cx={wp.end.x}
+          cy={wp.end.y}
+          r={6}
+        >
+          <title>{`${part.designator} ${wp.label ?? wp.name}`}</title>
+        </circle>
+      ))}
+    </>
+  )
+})
 
 export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api: { addAtCenter: (moduleId: string) => void }) => void }) {
   const { diagram, selection } = useEditorState(store)
@@ -30,6 +59,16 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
   const [view, setView] = useState<View>({ x: -20, y: -40, scale: 1.5 })
   const [drag, setDrag] = useState<Drag | null>(null)
   const settled = useRef<Routes>(new Map())
+  const [editing, setEditing] = useState<{ uid: string; anchor: Pt; initial: string; token: number } | null>(null)
+  const editRef = useRef<HTMLInputElement>(null)
+  // Only ever increases, so every label-editor session gets a token no earlier session can match.
+  const tokenSeqRef = useRef(0)
+  // The token of the currently open session, or null when none is open (cleared on commit or
+  // cancel). Enter commits without blurring the input, so a blur can still land afterward (or,
+  // worse, after a later session has already opened on another wire and taken over editRef);
+  // commit/cancel only act when the token they were called with still matches this, so a stale
+  // call from an already-closed session is a no-op instead of a wrong-wire re-commit.
+  const activeTokenRef = useRef<number | null>(null)
 
   useEffect(() => {
     const el = svgRef.current!
@@ -93,6 +132,50 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
   const vw = size.w / view.scale
   const vh = size.h / view.scale
 
+  function openLabelEditor(uid: string) {
+    const anchor = labelAnchor(routes.get(uid)?.points ?? [])
+    if (!anchor) return
+    const wire = diagram.connections.find((c) => c.uid === uid)
+    store.select({ parts: [], wires: [uid] })
+    const token = ++tokenSeqRef.current
+    activeTokenRef.current = token
+    setEditing({ uid, anchor, initial: wire?.label ?? '', token })
+  }
+  function commitLabelEdit(token: number) {
+    if (token !== activeTokenRef.current) return // a stale commit from an already-closed session
+    activeTokenRef.current = null
+    const cur = editing
+    setEditing(null)
+    if (!cur) return
+    const value = (editRef.current?.value ?? cur.initial).trim()
+    const label = value || undefined
+    const s = store.getState()
+    const wire = s.diagram.connections.find((c) => c.uid === cur.uid)
+    if (wire && (wire.label ?? undefined) !== label) store.commit(updateWire(s.diagram, cur.uid, { label }))
+  }
+  function cancelLabelEdit(token: number) {
+    if (token !== activeTokenRef.current) return // a stale cancel from an already-closed session
+    activeTokenRef.current = null
+    setEditing(null)
+  }
+  function onDoubleClick(e: React.MouseEvent<SVGSVGElement>) {
+    // A drag holds pointer capture on the svg itself, so e.target is always the svg; look up
+    // what is actually under the cursor, as pinUnder does.
+    const wireEl = document.elementFromPoint(e.clientX, e.clientY)?.closest('[data-wire]')
+    if (wireEl) openLabelEditor(wireEl.getAttribute('data-wire')!)
+  }
+  // Panning or zooming moves the anchor out from under the editor, so either one closes it (with a commit).
+  useEffect(() => {
+    if (editing) commitLabelEdit(editing.token)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [view.x, view.y, view.scale])
+  useEffect(() => {
+    if (editing) {
+      editRef.current?.focus()
+      editRef.current?.select()
+    }
+  }, [editing])
+
   function onPointerDown(e: React.PointerEvent<SVGSVGElement>) {
     // Commit a half-typed inspector field (it saves on blur) before the selection changes and unmounts it.
     const active = document.activeElement
@@ -108,6 +191,17 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
       const from = { part: pinEl.getAttribute('data-pin-part')!, pin: pinEl.getAttribute('data-pin')! }
       const origin = { x: Number(pinEl.getAttribute('cx')), y: Number(pinEl.getAttribute('cy')) }
       setDrag({ pointer, kind: 'wire', from, origin, cursor: toWorld(e), over: null })
+      store.setGesture(true)
+      return
+    }
+    const handleEl = e.button === 0 ? target.closest('[data-wire-end]') : null
+    if (handleEl) {
+      const uid = handleEl.getAttribute('data-wire-uid')!
+      const end = handleEl.getAttribute('data-wire-end') as 'from' | 'to'
+      const w = wires.find((w) => w.conn.uid === uid)
+      const origin = w ? w.ends[end === 'from' ? 1 : 0] : toWorld(e)
+      setDrag({ pointer, kind: 'reconnect', uid, end, origin, cursor: toWorld(e), over: null })
+      store.setGesture(true)
       return
     }
     const wireEl = e.button === 0 ? target.closest('[data-wire]') : null
@@ -126,7 +220,10 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
       if (e.shiftKey) parts = parts.includes(uid) ? parts.filter((u) => u !== uid) : [...parts, uid]
       else if (!parts.includes(uid)) parts = [uid]
       store.select({ parts, wires: e.shiftKey ? sel.wires : [] })
-      if (parts.includes(uid)) setDrag({ pointer, kind: 'parts', start: toWorld(e), uids: parts, base: store.begin() })
+      if (parts.includes(uid)) {
+        setDrag({ pointer, kind: 'parts', start: toWorld(e), uids: parts, base: store.begin() })
+        store.setGesture(true)
+      }
       return
     }
     if (!e.shiftKey) store.select(EMPTY_SELECTION)
@@ -146,6 +243,7 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
       const p = toWorld(e)
       store.preview(moveParts(drag.base, drag.uids, snap(p.x - drag.start.x), snap(p.y - drag.start.y)))
     } else if (drag.kind === 'wire') setDrag({ ...drag, cursor: toWorld(e), over: pinUnder(e) })
+    else if (drag.kind === 'reconnect') setDrag({ ...drag, cursor: toWorld(e), over: pinUnder(e) })
   }
   function onPointerUp(e: React.PointerEvent<SVGSVGElement>) {
     if (!drag || e.pointerId !== drag.pointer) return
@@ -161,18 +259,32 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
         store.select({ parts: [], wires: [added.uid] })
       }
     }
+    if (drag.kind === 'reconnect') {
+      const to = pinUnder(e)
+      const next = to && reconnectWire(store.getState().diagram, drag.uid, drag.end, to)
+      if (next) {
+        store.commit(next)
+        store.select({ parts: [], wires: [drag.uid] })
+      }
+    }
+    if (drag.kind !== 'pan') store.setGesture(false)
     setDrag(null)
   }
   function onPointerCancel(e: React.PointerEvent<SVGSVGElement>) {
     if (!drag || e.pointerId !== drag.pointer) return
     if (drag.kind === 'parts') store.end()
+    if (drag.kind !== 'pan') store.setGesture(false)
     setDrag(null)
   }
 
   // Escape abandons a wire or part drag. For parts, the editor's key handler calls store.cancel().
   useEffect(() => {
-    if (drag?.kind !== 'wire' && drag?.kind !== 'parts') return
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setDrag(null)
+    if (drag?.kind !== 'wire' && drag?.kind !== 'parts' && drag?.kind !== 'reconnect') return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return
+      store.setGesture(false)
+      setDrag(null)
+    }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [drag?.kind])
@@ -203,6 +315,7 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerCancel}
         onLostPointerCapture={onPointerCancel}
+        onDoubleClick={onDoubleClick}
         role="application"
         aria-label="Wiring sheet editor"
       >
@@ -221,7 +334,7 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
                 const r = bodyRect(p, layoutModule(m))
                 return <rect x={r.x - 6} y={r.y - 6} width={r.w + 12} height={r.h + 12} rx={6} fill="none" stroke="var(--focus)" strokeWidth={1.5} strokeDasharray="5 4" />
               })()}
-              <Part module={m} x={p.x} y={p.y} rotation={p.rotation} caption={p.designator} />
+              <Part module={m} x={p.x} y={p.y} rotation={p.rotation} caption={partCaption(p, m)} values={p.values} />
             </g>
           ) : null
         })}
@@ -230,8 +343,9 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
             const w = wireWidth(conn.gauge)
             const dash = blocked ? '6 5' : undefined
             const selected = selection.wires.includes(conn.uid)
+            const dimmed = drag?.kind === 'reconnect' && drag.uid === conn.uid
             return (
-              <g key={conn.uid} data-wire={conn.uid}>
+              <g key={conn.uid} data-wire={conn.uid} opacity={dimmed ? 0.3 : undefined}>
                 {selected && <path d={d} stroke="var(--focus)" strokeOpacity={0.35} strokeWidth={w + 10} />}
                 <path d={d} stroke={INK} strokeWidth={w + 2.2} strokeDasharray={dash} />
                 <path d={d} stroke={wireColor(conn.color)} strokeWidth={w} strokeDasharray={dash} />
@@ -241,34 +355,84 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
           })}
         </g>
         {wires.flatMap(({ conn, ends }) => ends.map((e, i) => <circle key={`${conn.uid}-${i}`} cx={e.x} cy={e.y} r={2.4} fill={INK} />))}
+        {/* Name tags in their own layer after every wire, so a labeled wire crossing under a
+            later one still shows its tag on top. Each tag keeps data-wire so a click or
+            double-click on it still selects or edits that wire. */}
+        <g>
+          {wires.map(({ conn }) => {
+            const dimmed = drag?.kind === 'reconnect' && drag.uid === conn.uid
+            const anchor = conn.label && !dimmed ? labelAnchor(routes.get(conn.uid)?.points ?? []) : null
+            return anchor ? (
+              <g key={conn.uid} data-wire={conn.uid}>
+                <WireLabel x={anchor.x} y={anchor.y} text={conn.label!} />
+              </g>
+            ) : null
+          })}
+        </g>
         {drag?.kind === 'wire' && (
           <line
             x1={drag.origin.x} y1={drag.origin.y} x2={drag.cursor.x} y2={drag.cursor.y}
             stroke={wireColor(store.getState().wireStyle.color)} strokeWidth={2.5} strokeDasharray="6 4" strokeLinecap="round"
           />
         )}
-        {diagram.parts.flatMap((p) => {
+        {drag?.kind === 'reconnect' && (
+          <line
+            x1={drag.origin.x} y1={drag.origin.y} x2={drag.cursor.x} y2={drag.cursor.y}
+            stroke={wireColor(diagram.connections.find((c) => c.uid === drag.uid)?.color)}
+            strokeWidth={2.5} strokeDasharray="6 4" strokeLinecap="round"
+          />
+        )}
+        {diagram.parts.map((p) => {
           const m = moduleOf(diagram, p.module)
-          if (!m) return []
-          return worldPins(p, m).map((wp) => {
-            const over = drag?.kind === 'wire' && drag.over?.part === p.uid && drag.over.pin === wp.name
-            return (
-              <circle
-                key={`${p.uid}:${wp.name}`}
-                className={over ? 'pin-hit target' : 'pin-hit'}
-                data-pin={wp.name}
-                data-pin-part={p.uid}
-                cx={wp.end.x}
-                cy={wp.end.y}
-                r={6}
-              >
-                <title>{`${p.designator} ${wp.label ?? wp.name}`}</title>
-              </circle>
-            )
-          })
+          if (!m) return null
+          const hoveredPin =
+            (drag?.kind === 'wire' || drag?.kind === 'reconnect') && drag.over?.part === p.uid ? drag.over.pin : null
+          return <PinTargets key={p.uid} part={p} m={m} hoveredPin={hoveredPin} />
         })}
+        {selection.wires.length === 1 &&
+          !drag &&
+          (() => {
+            const w = wires.find((w) => w.conn.uid === selection.wires[0])
+            if (!w) return null
+            return (['from', 'to'] as const).map((end, i) => (
+              <circle
+                key={`handle-${end}`}
+                className="wire-end-handle"
+                data-wire-end={end}
+                data-wire-uid={w.conn.uid}
+                cx={w.ends[i].x}
+                cy={w.ends[i].y}
+                r={6}
+                fill="white"
+                stroke="var(--focus)"
+                strokeWidth={2}
+              >
+                <title>Drag to reconnect</title>
+              </circle>
+            ))
+          })()}
       </svg>
       <div className="zoom-readout" aria-live="polite">{Math.round((view.scale / 1.5) * 100)}%</div>
+      {editing && (
+        <input
+          ref={editRef}
+          key={editing.uid}
+          className="wire-label-editor"
+          style={{ left: (editing.anchor.x - view.x) * view.scale, top: (editing.anchor.y - view.y) * view.scale }}
+          defaultValue={editing.initial}
+          aria-label="Wire label"
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault()
+              commitLabelEdit(editing.token)
+            } else if (e.key === 'Escape') {
+              e.preventDefault()
+              cancelLabelEdit(editing.token)
+            }
+          }}
+          onBlur={() => commitLabelEdit(editing.token)}
+        />
+      )}
     </div>
   )
 }
