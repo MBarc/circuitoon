@@ -1,0 +1,175 @@
+{
+  "format": "circuitoon-module/1",
+  "id": "pir-hc-sr501",
+  "version": 1,
+  "name": "PIR motion sensor HC-SR501 (dome side: GND OUT VCC)",
+  "category": "Sensors",
+  "source": "https://protosupplies.com/product/hc-sr501-pir-motion-sensing-module/ https://lastminuteengineers.com/pir-sensor-arduino-tutorial/ http://www.handsontec.com/dataspecs/SR501%20Motion%20Sensor.pdf",
+  "pins": [
+    {
+      "name": "GND",
+      "side": "bottom",
+      "type": "ground"
+    },
+    {
+      "name": "OUT",
+      "side": "bottom",
+      "type": "output"
+    },
+    {
+      "name": "VCC",
+      "side": "bottom",
+      "type": "power_in",
+      "supply": "5V/9V/12V"
+    }
+  ],
+  "size": {
+    "w": 12,
+    "h": 12
+  },
+  "electrical": {
+    "model": "sensor",
+    "params": {}
+  },
+  "art": {
+    "w": 120,
+    "h": 120,
+    "pinLabels": "inside",
+    "shapes": [
+      {
+        "type": "rect",
+        "x": 0,
+        "y": 8,
+        "w": 120,
+        "h": 112,
+        "fill": "#2F9E6E",
+        "radius": 4
+      },
+      {
+        "type": "rect",
+        "x": 8,
+        "y": 0,
+        "w": 8,
+        "h": 12,
+        "fill": "#1E2126",
+        "radius": 1
+      },
+      {
+        "type": "rect",
+        "x": 9,
+        "y": 1,
+        "w": 6,
+        "h": 4,
+        "fill": "#F4B400",
+        "radius": 1,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 34,
+        "y": 1,
+        "w": 16,
+        "h": 10,
+        "fill": "#F08A24",
+        "radius": 3
+      },
+      {
+        "type": "rect",
+        "x": 70,
+        "y": 1,
+        "w": 16,
+        "h": 10,
+        "fill": "#F08A24",
+        "radius": 3
+      },
+      {
+        "type": "rect",
+        "x": 6,
+        "y": 52,
+        "w": 8,
+        "h": 8,
+        "fill": "#E9EDF0",
+        "radius": 4,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 106,
+        "y": 52,
+        "w": 8,
+        "h": 8,
+        "fill": "#E9EDF0",
+        "radius": 4,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 22,
+        "y": 14,
+        "w": 76,
+        "h": 76,
+        "fill": "#DDE2E7",
+        "radius": 6
+      },
+      {
+        "type": "rect",
+        "x": 26,
+        "y": 18,
+        "w": 68,
+        "h": 68,
+        "fill": "#F4F6F8",
+        "radius": 34
+      },
+      {
+        "type": "rect",
+        "x": 38,
+        "y": 28,
+        "w": 14,
+        "h": 10,
+        "fill": "#FFFFFF",
+        "radius": 5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 45,
+        "y": 110,
+        "w": 30,
+        "h": 8,
+        "fill": "#E0B43C",
+        "radius": 2,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 48.5,
+        "y": 112.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 58.5,
+        "y": 112.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 68.5,
+        "y": 112.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      }
+    ]
+  }
+}

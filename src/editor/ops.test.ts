@@ -72,6 +72,12 @@ describe('ops', () => {
     expect(designatorPrefix(mk('led'))).toBe('D')
     expect(designatorPrefix(mk('tftp-server'))).toBe('U')
   })
+  it('gives addressable LEDs (WS2812 strip and 5 mm LED) D, and sensor modules U', () => {
+    const mk = (id: string): ModuleDef => ({ format: 'circuitoon-module/1', id, name: id, pins: [{ name: 'GND', side: 'left' }] })
+    for (const id of ['ws2812b-strip', 'ws2812b-5mm']) expect(designatorPrefix(mk(id))).toBe('D')
+    for (const id of ['dht22-module', 'dht22-bare', 'bme280-i2c-module', 'bme280-module-6pin', 'pir-hc-sr501', 'ultrasonic-hc-sr04'])
+      expect(designatorPrefix(mk(id))).toBe('U')
+  })
   it('moves and rotates only the given parts', () => {
     const d = rotateParts(moveParts(twoResistors(), ['p2'], 20, -10), ['p2'])
     expect(d.parts[0]).toMatchObject({ x: 0, y: 0, rotation: 0 })
