@@ -3,18 +3,9 @@
 // (datasheets, vendor photos with legible silkscreen, cross-checked against a second source).
 // A wrong pin is worse than a missing part, so a change here must be re-checked against the source.
 import { describe, expect, it } from 'vitest'
-import { readFileSync } from 'node:fs'
-import { join } from 'node:path'
-import { isSpacer, layoutModule, validateModule, type ModuleDef, type PinDef, type Side } from './module.ts'
+import { isSpacer, layoutModule, type Side } from './module.ts'
+import { load, pinsOf, pin } from './builtinModules.testing.ts'
 
-const dir = join(import.meta.dirname, '..', '..', 'modules')
-const load = (file: string): ModuleDef => {
-  const r = validateModule(JSON.parse(readFileSync(join(dir, file), 'utf8')))
-  if (!r.ok) throw new Error(`${file}: ${r.errors.join('; ')}`)
-  return r.module
-}
-const pinsOf = (m: ModuleDef): PinDef[] => m.pins.filter((p): p is PinDef => !isSpacer(p))
-const pin = (m: ModuleDef, name: string) => pinsOf(m).find((p) => p.name === name)
 
 type Want = { category: string; sides: Partial<Record<Side, string[]>>; internal: string[][] }
 const parts: Record<string, Want> = {
