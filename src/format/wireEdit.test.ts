@@ -124,6 +124,11 @@ describe('removeBend', () => {
     expect(removeBend(l, 0)).toEqual(l)
     expect(removeBend(l, 2)).toEqual(l)
   })
+  it('refuses a removal that would send the wire back over its pin', () => {
+    // The sample's black wire: leaves the pin going right, then up, then far left.
+    const w = P([458, 50], [478, 50], [478, 34], [110, 34], [110, 82])
+    expect(removeBend(w, 2)).toEqual(w)
+  })
   it('refuses a removal that would turn the wire sideways where it leaves a pin', () => {
     const l = P([0, 0], [100, 0], [100, 60])
     expect(removeBend(l, 1)).toEqual(l)

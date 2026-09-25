@@ -127,11 +127,13 @@ export function insertBend(points: Pt[], at: Pt): Pt[] {
   return copy
 }
 
-/** Axis of the first (or, with `last`, final) non-zero segment. */
-function endAxis(points: Pt[], last: boolean): Axis | null {
+/** Direction the wire leaves its first point (or, with `last`, its final point) along its first non-zero segment. */
+function endDir(points: Pt[], last: boolean): string {
   const segs = segmentsOf(points)
   const s = last ? segs[segs.length - 1] : segs[0]
-  return s ? s.axis : null
+  if (!s) return ''
+  const u = last ? unit(s.b, s.a) : unit(s.a, s.b)
+  return `${u.x},${u.y}`
 }
 
 /**
@@ -139,7 +141,8 @@ function endAxis(points: Pt[], last: boolean): Axis | null {
  * orthogonal wire that is the opposite corner of the pair (so the bend flips across), otherwise
  * the corner that keeps the longer neighbor's axis. Bends that end up straight because of the
  * removal are merged away; collinear bends the user placed elsewhere are kept. Refused (the
- * polyline comes back unchanged) for an endpoint, or when the result would leave a pin sideways.
+ * polyline comes back unchanged) for an endpoint, or when the result would leave a pin in a
+ * different direction (sideways, or back over the part).
  */
 export function removeBend(points: Pt[], k: number): Pt[] {
   const copy = points.map((p) => ({ ...p }))
@@ -170,7 +173,7 @@ export function removeBend(points: Pt[], k: number): Pt[] {
     else j++
   }
   out = tidy(out)
-  if (endAxis(out, false) !== endAxis(points, false) || endAxis(out, true) !== endAxis(points, true)) return copy
+  if (endDir(out, false) !== endDir(points, false) || endDir(out, true) !== endDir(points, true)) return copy
   return out
 }
 
