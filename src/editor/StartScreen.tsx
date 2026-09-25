@@ -35,7 +35,9 @@ export function StartScreen({ onOpen }: { onOpen: (d: Diagram, notice?: string) 
               e.preventDefault()
               setDragOver(true)
             }}
-            onDragLeave={() => setDragOver(false)}
+            onDragLeave={(e) => {
+              if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDragOver(false)
+            }}
             onDrop={(e) => {
               e.preventDefault()
               setDragOver(false)
