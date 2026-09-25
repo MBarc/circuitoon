@@ -27,6 +27,13 @@ describe('validateModule', () => {
         'internal[0][1]: no pin named "B"',
       ])
   })
+  it('accepts a string source and rejects any other type', () => {
+    const pins = [{ name: 'A', side: 'left' }]
+    expect(validateModule({ ...base, pins, source: 'https://example.com/a https://example.com/b' }).ok).toBe(true)
+    const r = validateModule({ ...base, pins, source: ['https://example.com/a'] })
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.errors).toEqual(['source: must be a string (one or more URLs)'])
+  })
   it('rejects an object-valued pin label', () => {
     const r = validateModule({ ...base, pins: [{ name: 'A', side: 'left', label: { x: 1 } }] })
     expect(r.ok).toBe(false)

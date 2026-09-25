@@ -127,6 +127,7 @@ A module is one self-contained JSON file: name, pins by side and order, optional
 | `version` | no | Integer, default 1. Bumped when pins change, so diagrams can detect an outdated embedded copy. |
 | `name` | yes | Display name. |
 | `category` | no | Groups the parts library. |
+| `source` | no | Where the pinout came from: a URL, or several URLs joined by a space. Built-in boards cite the vendor's pinout page. |
 | `pins[]` | yes | Each entry is either a **pin** or a **spacer**. |
 | pin `name` | yes | Unique within the module; what connections reference. Renaming a pin in the art studio rewrites references in `internal`. |
 | pin `side` | yes | `top`, `bottom`, `left` or `right`. |

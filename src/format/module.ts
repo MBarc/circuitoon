@@ -51,6 +51,8 @@ export interface ModuleDef {
   version?: number
   name: string
   category?: string
+  /** Where the pinout came from: one URL, or several joined by a space. */
+  source?: string
   pins: PinEntry[]
   internal?: string[][]
   size?: { w: number; h: number }
@@ -80,6 +82,7 @@ export function validateModule(raw: unknown): ValidationResult {
   if (raw.version !== undefined && !(Number.isInteger(raw.version) && (raw.version as number) >= 1))
     errors.push('version: must be a whole number, 1 or more')
   if (raw.category !== undefined && typeof raw.category !== 'string') errors.push('category: must be a string')
+  if (raw.source !== undefined && typeof raw.source !== 'string') errors.push('source: must be a string (one or more URLs)')
 
   const names = new Set<string>()
   if (!Array.isArray(raw.pins) || raw.pins.length === 0) errors.push('pins: required, at least one pin')

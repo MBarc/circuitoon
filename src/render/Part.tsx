@@ -1,6 +1,6 @@
 // Draws one module in the Sticker style: flat fills, dark ink outline on every shape.
 import { memo } from 'react'
-import { type ModuleDef, type PinType, type PlacedPin, layoutModule, LEAD } from '../format/module.ts'
+import { isSpacer, type ModuleDef, type PinType, type PlacedPin, type Side, layoutModule, LEAD } from '../format/module.ts'
 import { bodyRect, pivot, worldPins, type Rect, type Rotation, type WorldPin } from '../format/geometry.ts'
 import { partValue, resistorBands } from '../format/values.ts'
 
@@ -10,6 +10,18 @@ const METAL = '#C9CED6'
 
 function showLabel(m: ModuleDef, p: { label?: string; type?: PinType }) {
   return p.label !== undefined || m.pins.length > 2 || p.type === 'power_out' || p.type === 'power_in' || p.type === 'ground'
+}
+
+/**
+ * A drawn part with a row of 3 or more pins on its left or right edge is a header (a dev board):
+ * its labels go inside the body beside each pin, like silkscreen, because labels above the stubs
+ * would sit between two pins at 0.1 inch pitch. Board art keeps its header strip in the outer
+ * HEADER_INSET px so the labels clear it.
+ */
+const HEADER_INSET = 12
+function headerSides(m: ModuleDef): Set<Side> {
+  const count = (side: Side) => m.pins.filter((p) => p.side === side && !isSpacer(p)).length
+  return new Set((['left', 'right'] as Side[]).filter((s) => count(s) >= 3))
 }
 
 function PinStub({ p }: { p: PlacedPin }) {
@@ -31,9 +43,9 @@ function PinStub({ p }: { p: PlacedPin }) {
  * horizontal beside pins on a left or right edge, reading bottom to top beside pins on a top
  * or bottom edge (the pitch is too tight for horizontal text there). `box` is the rotated body.
  */
-function PinLabel({ p, box, outside }: { p: WorldPin; box: Rect; outside: boolean }) {
+function PinLabel({ p, box, outside, pad = 4 }: { p: WorldPin; box: Rect; outside: boolean; pad?: number }) {
   const text = p.label ?? p.name
-  const common = { fontSize: 7, fontWeight: 700, fill: INK, stroke: '#FFFFFF', strokeWidth: 2.4, paintOrder: 'stroke' }
+  const common = { fontSize: 7, fontWeight: 700, fill: INK, stroke: '#FFFFFF', strokeWidth: 2.4, strokeLinejoin: 'round' as const, paintOrder: 'stroke' }
   // Drawn parts keep their art clean: labels sit beside the pin stub, outside the body.
   if (outside) {
     const midX = (p.edge.x + p.end.x) / 2
@@ -41,7 +53,6 @@ function PinLabel({ p, box, outside }: { p: WorldPin; box: Rect; outside: boolea
     if (p.dir.x !== 0) return <text x={midX} y={p.edge.y - 5} textAnchor="middle" {...common}>{text}</text>
     return <text x={p.edge.x + 4} y={midY} dominantBaseline="central" {...common}>{text}</text>
   }
-  const pad = 4
   const inside = { ...common, dominantBaseline: 'central' as const }
   if (p.dir.x < 0) return <text x={box.x + pad} y={p.edge.y} {...inside}>{text}</text>
   if (p.dir.x > 0) return <text x={box.x + box.w - pad} y={p.edge.y} textAnchor="end" {...inside}>{text}</text>
@@ -79,6 +90,7 @@ export const Part = memo(function Part({ module: m, x = 0, y = 0, rotation = 0, 
   const box = bodyRect({ x: 0, y: 0, rotation }, lay)
   const pins = worldPins({ x: 0, y: 0, rotation }, m)
   const stubsDown = pins.some((p) => p.dir.y > 0)
+  const headers = headerSides(m)
   const captionY = box.y + box.h + (stubsDown ? LEAD : 0) + 15
   return (
     <g transform={`translate(${x} ${y})`}>
@@ -114,7 +126,11 @@ export const Part = memo(function Part({ module: m, x = 0, y = 0, rotation = 0, 
           </>
         )}
       </g>
-      {pins.filter((p) => showLabel(m, p)).map((p) => <PinLabel key={p.name} p={p} box={box} outside={!!art} />)}
+      {pins.map((p, i) => {
+        if (!showLabel(m, p)) return null
+        const header = !!art && headers.has(lay.pins[i].side)
+        return <PinLabel key={p.name} p={p} box={box} outside={!!art && !header} pad={header ? HEADER_INSET : 4} />
+      })}
       {caption && (
         <text x={box.x + box.w / 2} y={captionY} textAnchor="middle" fontSize={8.5} fontWeight={700} fill={INK}>
           {caption}

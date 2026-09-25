@@ -43,6 +43,12 @@ describe('ops', () => {
     expect(designatorPrefix(potentiometer)).toBe('RV')
     expect(designatorPrefix(resistor)).toBe('R')
   })
+  it('gives ESP32 and XIAO boards the U prefix', () => {
+    for (const id of ['esp32-devkitc-v4', 'esp32-devkit-v1-30', 'esp32-s3-devkitc-1', 'esp32-c3-supermini', 'esp32-cam', 'xiao-esp32c3', 'xiao-esp32s3']) {
+      const board: ModuleDef = { format: 'circuitoon-module/1', id, name: id, pins: [{ name: 'GND', side: 'left' }] }
+      expect(designatorPrefix(board)).toBe('U')
+    }
+  })
   it('moves and rotates only the given parts', () => {
     const d = rotateParts(moveParts(twoResistors(), ['p2'], 20, -10), ['p2'])
     expect(d.parts[0]).toMatchObject({ x: 0, y: 0, rotation: 0 })
