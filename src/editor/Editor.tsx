@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useRef } from 'react'
+import type { Diagram } from '../format/diagram.ts'
 import { EditorStore } from './store.ts'
 import { Canvas } from './Canvas.tsx'
 import { Inspector } from './Inspector.tsx'
 import { LibraryPanel } from './LibraryPanel.tsx'
 import { deleteSelection, EMPTY_SELECTION, rotateParts } from './ops.ts'
-import { buttonLed } from '../samples/buttonLed.ts'
 import './editor.css'
 
 function useEditorKeys(store: EditorStore) {
@@ -35,15 +35,15 @@ function useEditorKeys(store: EditorStore) {
   }, [store])
 }
 
-export function Editor() {
-  // Opens on the sample sheet so the first view shows what the editor does.
-  const store = useMemo(() => new EditorStore(structuredClone(buttonLed)), [])
+export function Editor({ initial, notice, onClose }: { initial: Diagram; notice?: string; onClose: () => void }) {
+  const store = useMemo(() => new EditorStore(initial), [initial])
   const canvasApi = useRef<{ addAtCenter: (moduleId: string) => void } | null>(null)
   useEditorKeys(store)
   return (
     <div className="editor">
       <header className="toolbar">
-        <a className="wordmark" href="#/">Circuitoon</a>
+        <button type="button" className="wordmark" onClick={onClose} title="Back to the start screen">Circuitoon</button>
+        {notice && <p className="message">{notice}</p>}
       </header>
       <LibraryPanel onAdd={(id) => canvasApi.current?.addAtCenter(id)} />
       <Canvas store={store} onReady={(api) => (canvasApi.current = api)} />

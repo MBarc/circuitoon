@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Landing } from './Landing.tsx'
-import { Editor } from './editor/Editor.tsx'
+import { EditorApp } from './editor/EditorApp.tsx'
 
 // Hash routes keep deep links working on GitHub Pages, which has no server-side routing.
 function useHash() {
@@ -15,5 +15,5 @@ function useHash() {
 
 export function App() {
   const hash = useHash()
-  return hash.startsWith('#/editor') ? <Editor /> : <Landing />
+  return hash.startsWith('#/editor') ? <EditorApp /> : <Landing />
 }
