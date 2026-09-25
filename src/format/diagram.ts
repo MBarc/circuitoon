@@ -3,6 +3,7 @@
 import { type ModuleDef, layoutModule, validateModule, isObj, isNum } from './module.ts'
 import { type Pt, type Rect, type Rotation, type WorldPin, bodyRect, simplify, worldPins } from './geometry.ts'
 import { routeOrthogonal } from './router.ts'
+import { PRIMARY_PARAM_NAMES } from './values.ts'
 
 export const DIAGRAM_FORMAT = 'circuitoon-diagram/1'
 
@@ -291,6 +292,19 @@ export function validateDiagram(raw: unknown): DiagramResult {
       if (!isNum(p.x) || !isNum(p.y)) errors.push(`${at}: x and y must be numbers`)
       if (p.rotation !== undefined && ![0, 90, 180, 270].includes(p.rotation as number))
         errors.push(`${at}.rotation: must be 0, 90, 180 or 270`)
+      if (p.values !== undefined) {
+        if (!isObj(p.values)) errors.push(`${at}.values: must be an object`)
+        else
+          for (const [key, entry] of Object.entries(p.values)) {
+            // Only entries meant to carry a number-with-unit are checked here: the primary
+            // value param names, and any entry that already looks like one (has a "value" key).
+            // Other part state (an LED's color, a switch's default) is opaque and left alone.
+            const looksLikeValue = PRIMARY_PARAM_NAMES.includes(key) || (isObj(entry) && 'value' in entry)
+            if (!looksLikeValue) continue
+            if (!(isObj(entry) && isNum(entry.value) && typeof entry.unit === 'string'))
+              warnings.push(`${at}.values.${key}: value must be a finite number with a string unit`)
+          }
+      }
     })
 
   const checkEnd = (ep: unknown, at: string) => {
