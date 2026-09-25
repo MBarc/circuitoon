@@ -101,7 +101,15 @@ export function LibraryPanel({ onAdd }: { onAdd: (moduleId: string) => void }) {
         const expanded = searching || !collapsed.has(g.category)
         return (
           <div className="lib-group" key={g.category}>
-            <button type="button" className="lib-group-head" aria-expanded={expanded} onClick={() => toggle(g.category)}>
+            <button
+              type="button"
+              className="lib-group-head"
+              aria-expanded={expanded}
+              aria-disabled={searching || undefined}
+              onClick={() => {
+                if (!searching) toggle(g.category)
+              }}
+            >
               <span>{g.category}</span>
               <span className="lib-group-count">{g.modules.length}</span>
             </button>
