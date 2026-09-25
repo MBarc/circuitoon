@@ -49,6 +49,41 @@ describe('validateDiagram', () => {
     expect(r.ok).toBe(true)
     if (r.ok) expect(r.warnings).toEqual(['connections[1].route[2]: diagonal step from route[1] (each step should be horizontal or vertical)'])
   })
+  it('drops a route with a point beyond +-100000, with a warning, so the wire routes automatically and quickly', () => {
+    const d = structuredClone(buttonLed)
+    d.connections[3].route = [[478, 50], [478, 1e20], [110, 1e20], [110, 14]]
+    const r = validateDiagram(d)
+    expect(r.ok).toBe(true)
+    if (!r.ok) return
+    expect(r.warnings).toEqual(['connections[3].route: a point is beyond +-100000, so the route was dropped and the wire is routed automatically'])
+    expect(r.diagram.connections[3].route).toBeUndefined()
+    expect(d.connections[3].route).toBeDefined() // the input is not mutated
+    const t = performance.now()
+    const routes = computeRoutes(r.diagram)
+    wirePaths(r.diagram, routes)
+    expect(performance.now() - t).toBeLessThan(1000)
+    expect(routes.get('w4')?.blocked).toBe(false)
+  })
+  it('drops a route of more than 200 points, with a warning', () => {
+    const d = structuredClone(buttonLed)
+    d.connections[3].route = Array.from({ length: 201 }, (_, i) => [478, 50 + (i % 2)] as [number, number])
+    const r = validateDiagram(d)
+    expect(r.ok).toBe(true)
+    if (!r.ok) return
+    expect(r.warnings).toEqual(['connections[3].route: more than 200 points, so the route was dropped and the wire is routed automatically'])
+    expect(r.diagram.connections[3].route).toBeUndefined()
+  })
+  it('clamps a part position beyond +-100000, with a warning', () => {
+    const d = structuredClone(buttonLed)
+    d.parts[1].x = 1e20
+    d.parts[1].y = -5e5
+    const r = validateDiagram(d)
+    expect(r.ok).toBe(true)
+    if (!r.ok) return
+    expect(r.warnings).toEqual(['parts[1]: position (100000000000000000000, -500000) is beyond +-100000, so it was clamped to (100000, -100000)'])
+    expect(r.diagram.parts[1]).toMatchObject({ x: 100000, y: -100000 })
+    expect(d.parts[1].x).toBe(1e20)
+  })
   it('requires parts[i].values to be an object when present', () => {
     const d = structuredClone(buttonLed) as unknown as { parts: Record<string, unknown>[] }
     d.parts[0].values = 7

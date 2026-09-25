@@ -139,6 +139,24 @@ describe('routeOrthogonal', () => {
       expect(Array.from(out)).toEqual([0, 0, 0, 0, 0, 1, 1, 1])
     })
 
+    it('returns quickly for huge or far-off segments, and still reports long runs', () => {
+      const occ = occupancyOf([])
+      const t = performance.now()
+      addToOccupancy(occ, [{ x: 0, y: 0 }, { x: 1e20, y: 0 }, { x: 1e20, y: 1e20 }]) // float precision stalls a cell-by-cell walk
+      addToOccupancy(occ, [{ x: 1e17, y: 1e17 }, { x: 1e17, y: 1e17 + 10 }])
+      addToOccupancy(occ, [{ x: -1e9, y: 100 }, { x: 1e9, y: 100 }])
+      addToOccupancy(occ, [{ x: NaN, y: 0 }, { x: Infinity, y: 0 }])
+      expect(performance.now() - t).toBeLessThan(200)
+      expect([occ.at(0, 0), occ.at(500_000, 0), occ.at(-10, 0)]).toEqual([1, 1, 0])
+      expect([occ.at(0, 100), occ.at(-3_000_000, 100), occ.at(0, 110)]).toEqual([1, 1, 0])
+      const out = new Uint8Array(3 * 3)
+      occ.copyWindow(-10, 90, 3, 3, 10, out)
+      expect(Array.from(out)).toEqual([0, 0, 0, 1, 1, 1, 0, 0, 0])
+      // A route beside the long run still takes its own lane.
+      const p = routeOrthogonal({ from: { x: 0, y: 130 }, fromDir: right, to: { x: 200, y: 130 }, toDir: left, obstacles: [], occupied: occ })
+      expect(p).not.toBeNull()
+    })
+
     it('adds no cost for crossing an occupied run perpendicular to the path', () => {
       // A horizontal run occupied at y=50 from x=0 to x=100; a straight vertical route from
       // (50,0) to (50,100) crosses it at a right angle, never running along it on the same axis.

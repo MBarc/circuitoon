@@ -333,6 +333,11 @@ export function isValidColor(c: string): boolean {
 
 export type DiagramResult = { ok: true; diagram: Diagram; warnings: string[] } | { ok: false; errors: string[] }
 
+/** Largest |x| or |y|, in px, a part position or a stored route point may have. */
+export const COORD_LIMIT = 100_000
+/** Most points a stored route may have. */
+export const ROUTE_POINT_LIMIT = 200
+
 /**
  * Checks a parsed diagram file. Structural problems refuse the load (errors); a connection
  * that names a missing part or pin still loads (warning), so no wire is silently dropped.
@@ -364,6 +369,11 @@ export function validateDiagram(raw: unknown): DiagramResult {
     else uids.add(uid)
   }
 
+  // Fixes applied to a loadable file (a clamped position, a dropped route), by list index. The
+  // input is never mutated; the returned diagram carries fixed copies of just those entries.
+  const partFixes = new Map<number, Partial<PartInstance>>()
+  const droppedRoutes = new Set<number>()
+
   const partModule = new Map<string, string>()
   if (!Array.isArray(raw.parts)) errors.push('parts: required list')
   else
@@ -378,6 +388,11 @@ export function validateDiagram(raw: unknown): DiagramResult {
         if (!modules.has(p.module)) warnings.push(`${at}: module "${p.module}" is not embedded in this file`)
       }
       if (!isNum(p.x) || !isNum(p.y)) errors.push(`${at}: x and y must be numbers`)
+      else if (Math.abs(p.x) > COORD_LIMIT || Math.abs(p.y) > COORD_LIMIT) {
+        const clamp = (v: number) => Math.min(COORD_LIMIT, Math.max(-COORD_LIMIT, v))
+        partFixes.set(i, { x: clamp(p.x), y: clamp(p.y) })
+        warnings.push(`${at}: position (${p.x}, ${p.y}) is beyond +-${COORD_LIMIT}, so it was clamped to (${clamp(p.x)}, ${clamp(p.y)})`)
+      }
       if (p.rotation !== undefined && ![0, 90, 180, 270].includes(p.rotation as number))
         errors.push(`${at}.rotation: must be 0, 90, 180 or 270`)
       if (p.values !== undefined) {
@@ -419,7 +434,13 @@ export function validateDiagram(raw: unknown): DiagramResult {
         errors.push(`${at}.gauge: must be a whole number from 16 to 30`)
       if (c.route !== undefined && !(Array.isArray(c.route) && c.route.every((p) => Array.isArray(p) && p.length === 2 && isNum(p[0]) && isNum(p[1]))))
         errors.push(`${at}.route: must be a list of [x, y] points`)
-      else if (Array.isArray(c.route))
+      else if (Array.isArray(c.route) && c.route.length > ROUTE_POINT_LIMIT) {
+        droppedRoutes.add(i)
+        warnings.push(`${at}.route: more than ${ROUTE_POINT_LIMIT} points, so the route was dropped and the wire is routed automatically`)
+      } else if (Array.isArray(c.route) && (c.route as [number, number][]).some(([x, y]) => Math.abs(x) > COORD_LIMIT || Math.abs(y) > COORD_LIMIT)) {
+        droppedRoutes.add(i)
+        warnings.push(`${at}.route: a point is beyond +-${COORD_LIMIT}, so the route was dropped and the wire is routed automatically`)
+      } else if (Array.isArray(c.route))
         for (let k = 1; k < c.route.length; k++) {
           const [px, py] = c.route[k - 1] as [number, number]
           const [qx, qy] = c.route[k] as [number, number]
@@ -439,7 +460,19 @@ export function validateDiagram(raw: unknown): DiagramResult {
       })
   }
 
-  return errors.length ? { ok: false, errors } : { ok: true, diagram: raw as unknown as Diagram, warnings }
+  if (errors.length) return { ok: false, errors }
+  let diagram = raw as unknown as Diagram
+  if (partFixes.size || droppedRoutes.size)
+    diagram = {
+      ...diagram,
+      parts: diagram.parts.map((p, i) => (partFixes.has(i) ? { ...p, ...partFixes.get(i) } : p)),
+      connections: diagram.connections.map((c, i) => {
+        if (!droppedRoutes.has(i)) return c
+        const { route: _dropped, ...rest } = c
+        return rest
+      }),
+    }
+  return { ok: true, diagram, warnings }
 }
 
 export function serializeDiagram(d: Diagram): string {

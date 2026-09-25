@@ -34,6 +34,19 @@ const CELL_LIMIT = 2 ** 25
 const packCell = (cx: number, cy: number) => (cx + CELL_LIMIT) * 2 ** 26 + (cy + CELL_LIMIT)
 /** Largest dense occupancy grid, in cells (bytes); a wire drawn beyond it goes to the sparse map. */
 const DENSE_MAX = 1 << 22
+/**
+ * Runs longer than this many cells are kept as one interval instead of being marked cell by cell,
+ * so adding a wire costs at most this much per segment however long the segment is.
+ */
+const LONG_RUN = 4096
+
+/** A long run on one grid line: `at` is the row (horizontal, H_BIT) or column (vertical, V_BIT), `lo..hi` the cells it covers. */
+interface Run {
+  bit: number
+  at: number
+  lo: number
+  hi: number
+}
 
 /**
  * Grid nodes used by earlier wires, bit 1 = a horizontal run passes through, bit 2 = a vertical run
@@ -53,7 +66,9 @@ export class Occupancy {
   cells = new Uint8Array(0)
   /** Nodes outside the dense grid, keyed by `packCell`. */
   far = new Map<number, number>()
-  /** Number of occupied nodes. */
+  /** Runs longer than LONG_RUN cells, kept whole rather than marked cell by cell. */
+  runs: Run[] = []
+  /** Number of occupied nodes, counting each long run as one; zero only when nothing is occupied. */
   size = 0
 
   constructor(grid = 10) {
@@ -66,8 +81,20 @@ export class Occupancy {
     if (x % g !== 0 || y % g !== 0) return 0
     const cx = x / g - this.cx0
     const cy = y / g - this.cy0
-    if (cx >= 0 && cy >= 0 && cx < this.cols && cy < this.rows) return this.cells[cy * this.cols + cx]
-    return this.far.size ? (this.far.get(packCell(x / g, y / g)) ?? 0) : 0
+    let bits = 0
+    if (cx >= 0 && cy >= 0 && cx < this.cols && cy < this.rows) bits = this.cells[cy * this.cols + cx]
+    else if (this.far.size) bits = this.far.get(packCell(x / g, y / g)) ?? 0
+    for (const r of this.runs) {
+      const [at, along] = r.bit === H_BIT ? [y / g, x / g] : [x / g, y / g]
+      if (at === r.at && along >= r.lo && along <= r.hi) bits |= r.bit
+    }
+    return bits
+  }
+
+  /** Records a run longer than LONG_RUN cells as one interval. */
+  addRun(bit: number, at: number, lo: number, hi: number) {
+    this.runs.push({ bit, at, lo, hi })
+    this.size++
   }
 
   /** Grows the dense grid to cover cells cxLo..cxHi x cyLo..cyHi if that stays within DENSE_MAX; false if it cannot. */
@@ -123,6 +150,7 @@ export class Occupancy {
       for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) out[r * cols + c] = this.at(x0 + c * g, y0 + r * g)
       return
     }
+    this.copyRuns(x0 / g, y0 / g, cols, rows, out)
     const wx = x0 / g - this.cx0 // window column 0, in dense-grid columns
     const wy = y0 / g - this.cy0
     const c0 = Math.max(0, -wx)
@@ -145,32 +173,57 @@ export class Occupancy {
       if (c >= 0 && r >= 0 && c < cols && r < rows) out[r * cols + c] |= bits
     }
   }
+
+  /** ORs the long runs into a window whose top-left node is grid cell (cxLo, cyLo); each run costs at most one window row or column. */
+  private copyRuns(cxLo: number, cyLo: number, cols: number, rows: number, out: Uint8Array) {
+    for (const run of this.runs) {
+      if (run.bit === H_BIT) {
+        const r = run.at - cyLo
+        if (r < 0 || r >= rows) continue
+        const c0 = Math.max(0, run.lo - cxLo)
+        const c1 = Math.min(cols - 1, run.hi - cxLo)
+        for (let c = c0; c <= c1; c++) out[r * cols + c] |= H_BIT
+      } else {
+        const c = run.at - cxLo
+        if (c < 0 || c >= cols) continue
+        const r0 = Math.max(0, run.lo - cyLo)
+        const r1 = Math.min(rows - 1, run.hi - cyLo)
+        for (let r = r0; r <= r1; r++) out[r * cols + c] |= V_BIT
+      }
+    }
+  }
 }
 
-/** Adds one polyline's axis-aligned segments to `occ`. Linear in the polyline's total length. */
+/**
+ * Adds one polyline's axis-aligned segments to `occ`. The work per segment is bounded (at most
+ * LONG_RUN cells are marked; a longer run is kept as one interval), and coordinates are clamped to
+ * the recordable range first, so a wire of any length or position (even a malformed one far off the
+ * sheet, or at a size where stepping one cell no longer changes a float) finishes quickly.
+ */
 export function addToOccupancy(occ: Occupancy, polyline: Pt[]) {
   const g = occ.grid
+  const clampCell = (v: number) => Math.min(CELL_LIMIT - 1, Math.max(1 - CELL_LIMIT, v))
+  const add = (bit: number, at: number, a: number, b: number) => {
+    // A run off the grid line (a pin tip between grid lines) holds no node the search visits.
+    if (at % g !== 0 || !Number.isFinite(a) || !Number.isFinite(b)) return
+    const line = at / g
+    if (Math.abs(line) >= CELL_LIMIT) return
+    const lo = clampCell(Math.ceil(Math.min(a, b) / g))
+    const hi = clampCell(Math.floor(Math.max(a, b) / g))
+    if (lo > hi) return
+    if (hi - lo > LONG_RUN) return occ.addRun(bit, line, lo, hi)
+    if (bit === H_BIT) occ.reserve(lo, line, hi, line)
+    else occ.reserve(line, lo, line, hi)
+    for (let c = lo; c <= hi; c++) {
+      if (bit === H_BIT) occ.mark(c, line, H_BIT)
+      else occ.mark(line, c, V_BIT)
+    }
+  }
   for (let i = 1; i < polyline.length; i++) {
     const a = polyline[i - 1]
     const b = polyline[i]
-    // A run off the grid line (a pin tip between grid lines) holds no node the search visits.
-    if (a.y === b.y) {
-      if (a.y % g !== 0) continue
-      const lo = Math.ceil(Math.min(a.x, b.x) / g)
-      const hi = Math.floor(Math.max(a.x, b.x) / g)
-      const cy = a.y / g
-      if (lo > hi) continue
-      occ.reserve(lo, cy, hi, cy)
-      for (let cx = lo; cx <= hi; cx++) occ.mark(cx, cy, H_BIT)
-    } else if (a.x === b.x) {
-      if (a.x % g !== 0) continue
-      const lo = Math.ceil(Math.min(a.y, b.y) / g)
-      const hi = Math.floor(Math.max(a.y, b.y) / g)
-      const cx = a.x / g
-      if (lo > hi) continue
-      occ.reserve(cx, lo, cx, hi)
-      for (let cy = lo; cy <= hi; cy++) occ.mark(cx, cy, V_BIT)
-    }
+    if (a.y === b.y) add(H_BIT, a.y, a.x, b.x)
+    else if (a.x === b.x) add(V_BIT, a.x, a.y, b.y)
     // A diagonal segment cannot come from the router or a manual route; skip it rather than guess an axis.
   }
 }
