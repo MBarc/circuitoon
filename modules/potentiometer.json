@@ -1,0 +1,107 @@
+{
+  "format": "circuitoon-module/1",
+  "id": "potentiometer",
+  "version": 1,
+  "name": "Potentiometer",
+  "category": "Passives",
+  "pins": [
+    {
+      "name": "1",
+      "side": "bottom",
+      "type": "passive"
+    },
+    {
+      "spacer": true,
+      "side": "bottom"
+    },
+    {
+      "name": "W",
+      "label": "W",
+      "side": "bottom",
+      "type": "passive"
+    },
+    {
+      "spacer": true,
+      "side": "bottom"
+    },
+    {
+      "name": "3",
+      "side": "bottom",
+      "type": "passive"
+    }
+  ],
+  "electrical": {
+    "model": "potentiometer",
+    "terminals": {
+      "a": "1",
+      "wiper": "W",
+      "b": "3"
+    },
+    "params": {
+      "resistance": {
+        "unit": "ohm",
+        "default": 10000
+      }
+    }
+  },
+  "art": {
+    "w": 70,
+    "h": 50,
+    "shapes": [
+      {
+        "type": "rect",
+        "x": 4,
+        "y": 30,
+        "w": 60,
+        "h": 8,
+        "fill": "#2B2F36",
+        "radius": 2
+      },
+      {
+        "type": "rect",
+        "x": 8,
+        "y": 4,
+        "w": 54,
+        "h": 28,
+        "fill": "#3D6FD6",
+        "radius": 6
+      },
+      {
+        "type": "rect",
+        "x": 32,
+        "y": 8,
+        "w": 6,
+        "h": 8,
+        "fill": "#C9CED6",
+        "radius": 2
+      },
+      {
+        "type": "rect",
+        "x": 18,
+        "y": 30,
+        "w": 4,
+        "h": 20,
+        "fill": "#B8BEC7",
+        "radius": 1.5
+      },
+      {
+        "type": "rect",
+        "x": 38,
+        "y": 30,
+        "w": 4,
+        "h": 20,
+        "fill": "#B8BEC7",
+        "radius": 1.5
+      },
+      {
+        "type": "rect",
+        "x": 58,
+        "y": 30,
+        "w": 4,
+        "h": 20,
+        "fill": "#B8BEC7",
+        "radius": 1.5
+      }
+    ]
+  }
+}

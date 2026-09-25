@@ -1,0 +1,87 @@
+{
+  "format": "circuitoon-module/1",
+  "id": "capacitor-electrolytic",
+  "version": 1,
+  "name": "Electrolytic capacitor",
+  "category": "Passives",
+  "pins": [
+    {
+      "name": "+",
+      "side": "left",
+      "type": "passive"
+    },
+    {
+      "name": "-",
+      "side": "right",
+      "type": "passive"
+    }
+  ],
+  "electrical": {
+    "model": "capacitor",
+    "polarized": true,
+    "terminals": {
+      "a": "+",
+      "b": "-"
+    },
+    "params": {
+      "capacitance": {
+        "unit": "F",
+        "default": 1e-4
+      }
+    }
+  },
+  "art": {
+    "w": 50,
+    "h": 40,
+    "shapes": [
+      {
+        "type": "rect",
+        "x": 0,
+        "y": 18.5,
+        "w": 14,
+        "h": 3,
+        "fill": "#B8BEC7",
+        "radius": 1.5
+      },
+      {
+        "type": "rect",
+        "x": 36,
+        "y": 18.5,
+        "w": 14,
+        "h": 3,
+        "fill": "#B8BEC7",
+        "radius": 1.5
+      },
+      {
+        "type": "rect",
+        "x": 12,
+        "y": 4,
+        "w": 26,
+        "h": 32,
+        "fill": "#2F4F8F",
+        "radius": 6
+      },
+      {
+        "type": "rect",
+        "x": 12,
+        "y": 4,
+        "w": 26,
+        "h": 6,
+        "fill": "#C9D3E3",
+        "radius": 4
+      },
+      {
+        "type": "rect",
+        "x": 31,
+        "y": 11,
+        "w": 5,
+        "h": 22,
+        "fill": "#8FA6D6",
+        "outline": false,
+        "label": "-",
+        "labelColor": "#1B2A4A",
+        "labelSize": 9
+      }
+    ]
+  }
+}
