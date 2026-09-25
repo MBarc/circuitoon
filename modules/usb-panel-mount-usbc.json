@@ -1,0 +1,129 @@
+{
+  "format": "circuitoon-module/1",
+  "id": "usb-panel-mount-usbc",
+  "version": 1,
+  "name": "USB panel-mount extension (USB-C)",
+  "category": "Connectors",
+  "source": "https://en.wikipedia.org/wiki/USB-C#Receptacles https://en.wikipedia.org/wiki/USB_hardware#Pinouts",
+  "pins": [
+    {
+      "name": "VBUS",
+      "side": "right",
+      "type": "passive"
+    },
+    {
+      "name": "D-",
+      "side": "right",
+      "type": "passive"
+    },
+    {
+      "name": "D+",
+      "side": "right",
+      "type": "passive"
+    },
+    {
+      "name": "GND",
+      "side": "right",
+      "type": "ground"
+    },
+    {
+      "spacer": true,
+      "side": "right"
+    },
+    {
+      "name": "CC",
+      "side": "right",
+      "type": "passive"
+    }
+  ],
+  "size": {
+    "w": 12,
+    "h": 8
+  },
+  "electrical": {
+    "model": "connector",
+    "params": {}
+  },
+  "art": {
+    "w": 120,
+    "h": 80,
+    "pinLabels": "inside",
+    "shapes": [
+      {
+        "type": "rect",
+        "x": 4,
+        "y": 10,
+        "w": 26,
+        "h": 60,
+        "fill": "#2B2F36",
+        "radius": 4
+      },
+      {
+        "type": "rect",
+        "x": 10,
+        "y": 14,
+        "w": 14,
+        "h": 8,
+        "fill": "#15181C",
+        "radius": 4,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 10,
+        "y": 58,
+        "w": 14,
+        "h": 8,
+        "fill": "#15181C",
+        "radius": 4,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 9,
+        "y": 30,
+        "w": 16,
+        "h": 20,
+        "fill": "#C9CED6",
+        "radius": 8
+      },
+      {
+        "type": "rect",
+        "x": 13,
+        "y": 36,
+        "w": 8,
+        "h": 8,
+        "fill": "#1B1F24",
+        "radius": 2,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 30,
+        "y": 36,
+        "w": 38,
+        "h": 8,
+        "fill": "#2B2F36",
+        "radius": 3
+      },
+      {
+        "type": "rect",
+        "x": 66,
+        "y": 12,
+        "w": 44,
+        "h": 66,
+        "fill": "#3A3F47",
+        "radius": 4
+      },
+      {
+        "type": "rect",
+        "x": 108,
+        "y": 16,
+        "w": 12,
+        "h": 58,
+        "fill": "#C9CED6",
+        "radius": 2
+      }
+    ]
+  }
+}

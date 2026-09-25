@@ -1,0 +1,162 @@
+{
+  "format": "circuitoon-module/1",
+  "id": "potentiometer-panel-10k",
+  "version": 1,
+  "name": "Panel potentiometer 10 k (WH148, with knob)",
+  "category": "Passives",
+  "source": "https://rhtecp.com/upload/202205/23/WH148.pdf https://www.handsontec.com/dataspecs/passive/WH148%20Pot-meter.pdf",
+  "pins": [
+    {
+      "name": "1",
+      "side": "bottom",
+      "type": "passive"
+    },
+    {
+      "spacer": true,
+      "side": "bottom"
+    },
+    {
+      "name": "2",
+      "side": "bottom",
+      "label": "W",
+      "type": "passive"
+    },
+    {
+      "spacer": true,
+      "side": "bottom"
+    },
+    {
+      "name": "3",
+      "side": "bottom",
+      "type": "passive"
+    }
+  ],
+  "size": {
+    "w": 8,
+    "h": 9
+  },
+  "electrical": {
+    "model": "potentiometer",
+    "terminals": {
+      "a": "1",
+      "wiper": "2",
+      "b": "3"
+    },
+    "params": {
+      "resistance": {
+        "unit": "ohm",
+        "default": 10000
+      }
+    }
+  },
+  "art": {
+    "w": 80,
+    "h": 90,
+    "shapes": [
+      {
+        "type": "rect",
+        "x": 18,
+        "y": 68,
+        "w": 4,
+        "h": 22,
+        "fill": "#B8BEC7",
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 38,
+        "y": 68,
+        "w": 4,
+        "h": 22,
+        "fill": "#B8BEC7",
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 58,
+        "y": 68,
+        "w": 4,
+        "h": 22,
+        "fill": "#B8BEC7",
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 10,
+        "y": 2,
+        "w": 60,
+        "h": 60,
+        "fill": "#B8BEC7",
+        "radius": 30
+      },
+      {
+        "type": "rect",
+        "x": 18,
+        "y": 10,
+        "w": 44,
+        "h": 44,
+        "fill": "#2B2F36",
+        "radius": 22
+      },
+      {
+        "type": "rect",
+        "x": 24,
+        "y": 16,
+        "w": 32,
+        "h": 32,
+        "fill": "#3A3F47",
+        "radius": 16,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 38.5,
+        "y": 14,
+        "w": 3,
+        "h": 16,
+        "fill": "#FFFFFF",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 12,
+        "y": 58,
+        "w": 56,
+        "h": 12,
+        "fill": "#C8742B",
+        "radius": 2
+      },
+      {
+        "type": "rect",
+        "x": 17,
+        "y": 61,
+        "w": 6,
+        "h": 6,
+        "fill": "#D5DAE1",
+        "radius": 3,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 37,
+        "y": 61,
+        "w": 6,
+        "h": 6,
+        "fill": "#D5DAE1",
+        "radius": 3,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 57,
+        "y": 61,
+        "w": 6,
+        "h": 6,
+        "fill": "#D5DAE1",
+        "radius": 3,
+        "outline": false
+      }
+    ]
+  }
+}
