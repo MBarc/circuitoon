@@ -81,11 +81,12 @@ export function deleteSelection(d: Diagram, sel: Selection): Diagram {
   }
 }
 
-const sameEnd = (a: Endpoint, b: Endpoint) => a.part === b.part && a.pin === b.pin
+/** Same part, same pin or hole group, and the same hole (a missing hole is hole 0). */
+export const sameEndpoint = (a: Endpoint, b: Endpoint): boolean => a.part === b.part && a.pin === b.pin && (a.hole ?? 0) === (b.hole ?? 0)
 
 export function addWire(d: Diagram, from: Endpoint, to: Endpoint, style: WireStyle): { diagram: Diagram; uid: string } | null {
-  if (sameEnd(from, to)) return null
-  if (d.connections.some((c) => (sameEnd(c.from, from) && sameEnd(c.to, to)) || (sameEnd(c.from, to) && sameEnd(c.to, from)))) return null
+  if (sameEndpoint(from, to)) return null
+  if (d.connections.some((c) => (sameEndpoint(c.from, from) && sameEndpoint(c.to, to)) || (sameEndpoint(c.from, to) && sameEndpoint(c.to, from)))) return null
   const uid = nextUid(d, 'w')
   const wire: Connection = { uid, from, to, color: style.color, gauge: style.gauge }
   return { uid, diagram: { ...d, connections: [...d.connections, wire] } }
@@ -101,12 +102,12 @@ export function reconnectWire(d: Diagram, uid: string, end: 'from' | 'to', targe
   if (!wire) return null
   const current = wire[end]
   const other = wire[end === 'from' ? 'to' : 'from']
-  if (sameEnd(target, other)) return null
-  if (sameEnd(target, current)) return null
+  if (sameEndpoint(target, other)) return null
+  if (sameEndpoint(target, current)) return null
   const from = end === 'from' ? target : wire.from
   const to = end === 'to' ? target : wire.to
   const dup = d.connections.some(
-    (c) => c.uid !== uid && ((sameEnd(c.from, from) && sameEnd(c.to, to)) || (sameEnd(c.from, to) && sameEnd(c.to, from))),
+    (c) => c.uid !== uid && ((sameEndpoint(c.from, from) && sameEndpoint(c.to, to)) || (sameEndpoint(c.from, to) && sameEndpoint(c.to, from))),
   )
   if (dup) return null
   return {

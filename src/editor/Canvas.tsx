@@ -1,8 +1,8 @@
 // The editing surface: an SVG sheet you can pan (drag the background) and zoom (wheel).
 import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import { type EditorStore, useEditorState } from './store.ts'
-import { computeRoutes, labelAnchor, moduleOf, wireColor, wirePaths, wireWidth, type PartInstance, type Routes } from '../format/diagram.ts'
-import { plugsOf, splitBoards } from '../format/breadboard.ts'
+import { computeRoutes, labelAnchor, moduleOf, resolveEndpoint, wireColor, wirePaths, wireWidth, type PartInstance, type Routes } from '../format/diagram.ts'
+import { holeAtPoint, plugsOf, splitBoards } from '../format/breadboard.ts'
 import type { Pt } from '../format/geometry.ts'
 import { Part, INK } from '../render/Part.tsx'
 import { LegDots, TakenHoles } from '../render/Boards.tsx'
@@ -11,7 +11,7 @@ import { addPart, addWire, EMPTY_SELECTION, moveParts, reconnectWire, setWireRou
 import { bendHandleAt, insertBend, isOrthogonal, moveSegment, removeBend, segmentHandleAt, segmentsOf, toRoute, type Axis } from '../format/wireEdit.ts'
 import { modulesById } from '../library.ts'
 import { bodyRect, worldPins } from '../format/geometry.ts'
-import { layoutModule, type ModuleDef } from '../format/module.ts'
+import { isBoard, layoutModule, type ModuleDef } from '../format/module.ts'
 import { MODULE_MIME } from './LibraryPanel.tsx'
 import type { Diagram, Endpoint } from '../format/diagram.ts'
 import { partCaption } from '../format/values.ts'
@@ -123,7 +123,7 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
   const reshaping = drag?.kind === 'segment' ? drag.uid : null
   // Routes depend only on parts, modules and each wire's ends and fixed route, so title, color and label edits skip re-routing.
   const endpointsKey = useMemo(
-    () => diagram.connections.map((c) => `${c.uid}:${c.from.part}.${c.from.pin}>${c.to.part}.${c.to.pin}:${JSON.stringify(c.route ?? null)}`).join('|'),
+    () => diagram.connections.map((c) => `${c.uid}:${c.from.part}.${c.from.pin}.${c.from.hole ?? ''}>${c.to.part}.${c.to.pin}.${c.to.hole ?? ''}:${JSON.stringify(c.route ?? null)}`).join('|'),
     [diagram.connections],
   )
   const routes = useMemo(() => {
@@ -276,6 +276,16 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
       else store.select({ parts: [], wires: [uid] })
       return
     }
+    // A press on a board's hole starts a wire there; between holes, it drags the board as usual.
+    const hole = e.button === 0 ? holeUnder(e) : null
+    if (hole) {
+      const at = resolveEndpoint(store.getState().diagram, hole)
+      if (at) {
+        setDrag({ pointer, kind: 'wire', from: hole, origin: at.end, cursor: toWorld(e), over: null })
+        store.setGesture(true)
+        return
+      }
+    }
     const partEl = e.button === 0 ? target.closest('[data-part]') : null
     if (partEl) {
       const uid = partEl.getAttribute('data-part')!
@@ -298,6 +308,34 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
     const el = document.elementFromPoint(e.clientX, e.clientY)?.closest('[data-pin]')
     return el ? { part: el.getAttribute('data-pin-part')!, pin: el.getAttribute('data-pin')! } : null
   }
+  /**
+   * The hole under the pointer on the topmost part there, if that part is a board and a hole is
+   * within 3.5 px. Walks the full elementsFromPoint stack, not just the topmost element, so a
+   * wire or label drawn over a board does not hide the hole beneath it; a part drawn above the
+   * board (which has no holes of its own there) still occludes it, since it is the first part found.
+   */
+  function holeUnder(e: { clientX: number; clientY: number }): Endpoint | null {
+    const stack = document.elementsFromPoint(e.clientX, e.clientY)
+    let partEl: Element | null = null
+    for (const el of stack) {
+      const found = el.closest('[data-part]')
+      if (found) {
+        partEl = found
+        break
+      }
+    }
+    if (!partEl) return null
+    const d = store.getState().diagram
+    const part = d.parts.find((p) => p.uid === partEl!.getAttribute('data-part'))
+    const m = part && moduleOf(d, part.module)
+    if (!part || !m || !isBoard(m)) return null
+    const hit = holeAtPoint(part, m, toWorld(e))
+    return hit && { part: hit.board, pin: hit.group, hole: hit.hole }
+  }
+  /** What a wire end would attach to under the pointer: a pin first (its target sits on top), else a hole. */
+  function endUnder(e: { clientX: number; clientY: number }): Endpoint | null {
+    return pinUnder(e) ?? holeUnder(e)
+  }
   function onPointerMove(e: React.PointerEvent<SVGSVGElement>) {
     if (!drag || e.pointerId !== drag.pointer) return
     if (drag.kind === 'pan')
@@ -315,14 +353,14 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
       // automatic wire stays automatic and no undo step is recorded.
       if (samePoints(moved, drag.points)) store.preview(drag.base)
       else store.preview(setWireRoute(drag.base, drag.uid, toRoute(moved)))
-    } else if (drag.kind === 'wire') setDrag({ ...drag, cursor: toWorld(e), over: pinUnder(e) })
-    else if (drag.kind === 'reconnect') setDrag({ ...drag, cursor: toWorld(e), over: pinUnder(e) })
+    } else if (drag.kind === 'wire') setDrag({ ...drag, cursor: toWorld(e), over: endUnder(e) })
+    else if (drag.kind === 'reconnect') setDrag({ ...drag, cursor: toWorld(e), over: endUnder(e) })
   }
   function onPointerUp(e: React.PointerEvent<SVGSVGElement>) {
     if (!drag || e.pointerId !== drag.pointer) return
     if (drag.kind === 'parts' || drag.kind === 'segment') store.end()
     if (drag.kind === 'wire') {
-      const to = pinUnder(e)
+      const to = endUnder(e)
       const s = store.getState()
       // The start part may have been deleted or undone away while the wire was being drawn.
       const exists = (ep: Endpoint) => s.diagram.parts.some((p) => p.uid === ep.part)
@@ -333,7 +371,7 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
       }
     }
     if (drag.kind === 'reconnect') {
-      const to = pinUnder(e)
+      const to = endUnder(e)
       const next = to && reconnectWire(store.getState().diagram, drag.uid, drag.end, to)
       if (next) {
         store.commit(next)
@@ -454,6 +492,7 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
           <line
             x1={drag.origin.x} y1={drag.origin.y} x2={drag.cursor.x} y2={drag.cursor.y}
             stroke={wireColor(store.getState().wireStyle.color)} strokeWidth={2.5} strokeDasharray="6 4" strokeLinecap="round"
+            pointerEvents="none"
           />
         )}
         {drag?.kind === 'reconnect' && (
@@ -461,8 +500,13 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
             x1={drag.origin.x} y1={drag.origin.y} x2={drag.cursor.x} y2={drag.cursor.y}
             stroke={wireColor(diagram.connections.find((c) => c.uid === drag.uid)?.color)}
             strokeWidth={2.5} strokeDasharray="6 4" strokeLinecap="round"
+            pointerEvents="none"
           />
         )}
+        {(drag?.kind === 'wire' || drag?.kind === 'reconnect') && drag.over?.hole !== undefined && (() => {
+          const at = resolveEndpoint(diagram, drag.over!)
+          return at ? <circle className="hole-target" cx={at.end.x} cy={at.end.y} r={4.5} /> : null
+        })()}
         {diagram.parts.map((p) => {
           const m = moduleOf(diagram, p.module)
           if (!m) return null

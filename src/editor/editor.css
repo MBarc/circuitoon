@@ -68,6 +68,7 @@
 .canvas [data-part] { cursor: move; }
 .pin-hit { fill: transparent; cursor: crosshair; }
 .pin-hit:hover, .pin-hit.target { fill: rgba(61, 111, 214, 0.35); stroke: #3D6FD6; stroke-width: 1.5; }
+.hole-target { fill: rgba(61, 111, 214, 0.35); stroke: #3D6FD6; stroke-width: 1.5; pointer-events: none; }
 .wire-hit { stroke: transparent; cursor: pointer; }
 .wire-end-handle { cursor: grab; }
 .wire-end-handle:hover { stroke-width: 3; }

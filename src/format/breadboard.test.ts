@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { holeAt, holeIndex, mountIssues, plugsOf, pointKey, seatOf, seatOn, splitBoards } from './breadboard.ts'
+import { holeAt, holeAtPoint, holeIndex, mountIssues, plugsOf, pointKey, seatOf, seatOn, splitBoards } from './breadboard.ts'
 import type { Diagram } from './diagram.ts'
 import type { ModuleDef } from './module.ts'
 
@@ -153,6 +153,23 @@ describe('splitBoards', () => {
     const { boards, others } = splitBoards(d)
     expect(boards.map((p) => p.uid)).toEqual(['b'])
     expect(others.map((p) => p.uid)).toEqual(['p1', 'p2'])
+  })
+})
+
+describe('holeAtPoint', () => {
+  it('finds the hole within 3.5 px of the pointer', () => {
+    const d = sheet()
+    expect(holeAtPoint(d.parts[0], bb, { x: 11, y: 12 })).toEqual({ board: 'b', group: 's1', hole: 0 })
+    expect(holeAtPoint(d.parts[0], bb, { x: 52, y: 48 })).toEqual({ board: 'b', group: 's5', hole: 4 })
+  })
+  it('finds nothing between holes or off the board', () => {
+    const d = sheet()
+    expect(holeAtPoint(d.parts[0], bb, { x: 14, y: 14 })).toBeNull()
+    expect(holeAtPoint(d.parts[0], bb, { x: 100, y: 10 })).toBeNull()
+  })
+  it('follows a rotated board', () => {
+    const turned = { ...sheet().parts[0], x: 100, y: 100, rotation: 90 as const }
+    expect(holeAtPoint(turned, bb, { x: 170, y: 90 })).toEqual({ board: 'b', group: 's1', hole: 0 })
   })
 })
 

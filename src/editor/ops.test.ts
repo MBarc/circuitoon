@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { addPart, addWire, nextUid, clearWireRoute, deleteSelection, setWireRoute, designatorPrefix, moveParts, nextDesignator, reconnectWire, rotateParts, updatePart, updatePartValue, updateWire } from './ops.ts'
+import { addPart, addWire, nextUid, clearWireRoute, deleteSelection, sameEndpoint, setWireRoute, designatorPrefix, moveParts, nextDesignator, reconnectWire, rotateParts, updatePart, updatePartValue, updateWire } from './ops.ts'
 import { emptyDiagram } from '../format/diagram.ts'
 import type { ModuleDef } from '../format/module.ts'
 import { parseValue } from '../format/values.ts'
@@ -210,5 +210,36 @@ describe('nextUid', () => {
     d.parts = [{ uid: 'p3', designator: 'R1', module: 'resistor', x: 0, y: 0, mount: { board: 'p1' } }]
     expect(nextUid(d, 'p')).toBe('p2')
     expect(addPart(d, resistor, 100, 0).uid).toBe('p2')
+  })
+})
+
+describe('hole endpoints', () => {
+  const bb: ModuleDef = {
+    format: 'circuitoon-module/1', id: 'bb', name: 'Test board', pins: [], size: { w: 10, h: 6 }, obstacle: false,
+    holes: Array.from({ length: 9 }, (_, i) => ({
+      name: `s${i + 1}`, label: `${i + 1}`, at: [10, 20, 30, 40, 50].map((y) => [(i + 1) * 10, y] as [number, number]),
+    })),
+  }
+  function boardAndResistor() {
+    const a = addPart(emptyDiagram(), bb, 0, 0)
+    return addPart(a.diagram, resistor, 200, 0).diagram
+  }
+  it('treats a missing hole as hole 0 when comparing ends', () => {
+    expect(sameEndpoint({ part: 'p1', pin: 's1' }, { part: 'p1', pin: 's1', hole: 0 })).toBe(true)
+    expect(sameEndpoint({ part: 'p1', pin: 's1', hole: 1 }, { part: 'p1', pin: 's1', hole: 0 })).toBe(false)
+  })
+  it('allows wires into two holes of one strip, and refuses a repeat of the same hole', () => {
+    const d = boardAndResistor()
+    const w1 = addWire(d, { part: 'p1', pin: 's1', hole: 0 }, { part: 'p2', pin: '1' }, style)!
+    const w2 = addWire(w1.diagram, { part: 'p1', pin: 's1', hole: 3 }, { part: 'p2', pin: '1' }, style)
+    expect(w2).not.toBeNull()
+    expect(addWire(w1.diagram, { part: 'p2', pin: '1' }, { part: 'p1', pin: 's1', hole: 0 }, style)).toBeNull()
+  })
+  it('reconnects a wire end onto a hole', () => {
+    const d = boardAndResistor()
+    const w = addWire(d, { part: 'p1', pin: 's1', hole: 0 }, { part: 'p2', pin: '1' }, style)!
+    const next = reconnectWire(w.diagram, w.uid, 'from', { part: 'p1', pin: 's2', hole: 2 })!
+    expect(next.connections[0].from).toEqual({ part: 'p1', pin: 's2', hole: 2 })
+    expect(reconnectWire(next, w.uid, 'from', { part: 'p1', pin: 's2', hole: 2 })).toBeNull()
   })
 })

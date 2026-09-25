@@ -4,7 +4,7 @@
 // board simply gets a fresh index.
 import { type Diagram, type PartInstance, moduleOf } from './diagram.ts'
 import { type PlugPoint, type Pt, type WorldHoleGroup, plugPoints, worldHoles } from './geometry.ts'
-import { type ModuleDef, isBoard, isSpacer } from './module.ts'
+import { GRID, type ModuleDef, isBoard, isSpacer } from './module.ts'
 
 const OFF = 2 ** 25
 /**
@@ -45,6 +45,22 @@ export function holeAt(index: HoleIndex, pt: Pt): [number, number] | null {
   if (!hit) return null
   const at = index.groups[hit[0]].at[hit[1]]
   return at.x === pt.x && at.y === pt.y ? hit : null
+}
+
+export interface HoleRef {
+  board: string
+  group: string
+  hole: number
+}
+
+/** The hole of `part` whose center is within `radius` px of `p`, or null. Holes sit on grid points. */
+export function holeAtPoint(part: PartInstance, m: ModuleDef, p: Pt, radius = 3.5): HoleRef | null {
+  const gx = Math.round(p.x / GRID) * GRID
+  const gy = Math.round(p.y / GRID) * GRID
+  if (Math.hypot(p.x - gx, p.y - gy) > radius) return null
+  const idx = holeIndex(part, m)
+  const hit = holeAt(idx, { x: gx, y: gy })
+  return hit ? { board: part.uid, group: idx.groups[hit[0]].name, hole: hit[1] } : null
 }
 
 export interface Plug {
