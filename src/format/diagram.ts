@@ -1,6 +1,6 @@
 // Diagram format (circuitoon-diagram/1): types plus the wire geometry the renderer needs.
 
-import { type ModuleDef, layoutModule } from './module.ts'
+import { type ModuleDef, layoutModule, validateModule, isObj, isNum } from './module.ts'
 import { type Pt, type Rect, type Rotation, bodyRect, worldPins } from './geometry.ts'
 import { routeOrthogonal } from './router.ts'
 
@@ -165,4 +165,100 @@ export function wirePaths(d: Diagram, routes: Routes = computeRoutes(d)) {
     out.push({ conn, d: path, ends: [pts[0], pts[pts.length - 1]], blocked: route.blocked })
   }
   return out
+}
+
+export function isValidColor(c: string): boolean {
+  return /^#[0-9a-f]{6}$/i.test(c) || c.toLowerCase() in NAMED_COLORS
+}
+
+export type DiagramResult = { ok: true; diagram: Diagram; warnings: string[] } | { ok: false; errors: string[] }
+
+/**
+ * Checks a parsed diagram file. Structural problems refuse the load (errors); a connection
+ * that names a missing part or pin still loads (warning), so no wire is silently dropped.
+ */
+export function validateDiagram(raw: unknown): DiagramResult {
+  const errors: string[] = []
+  const warnings: string[] = []
+  if (!isObj(raw)) return { ok: false, errors: ['diagram must be a JSON object'] }
+
+  if (raw.format === undefined) errors.push(`format: missing (expected "${DIAGRAM_FORMAT}")`)
+  else if (raw.format !== DIAGRAM_FORMAT) errors.push(`format: unsupported "${String(raw.format)}" (expected "${DIAGRAM_FORMAT}")`)
+  if (typeof raw.title !== 'string') errors.push('title: required')
+
+  const modules: Record<string, ModuleDef> = {}
+  if (!isObj(raw.modules)) errors.push('modules: required, an object of embedded modules')
+  else
+    for (const [key, m] of Object.entries(raw.modules)) {
+      const r = validateModule(m)
+      if (!r.ok) errors.push(...r.errors.map((e) => `modules.${key}: ${e}`))
+      else if (r.module.id !== key) errors.push(`modules.${key}: id "${r.module.id}" does not match its key`)
+      else modules[key] = r.module
+    }
+
+  const uids = new Set<string>()
+  const claim = (uid: unknown, at: string) => {
+    if (typeof uid !== 'string' || uid === '') errors.push(`${at}.uid: required`)
+    else if (uids.has(uid)) errors.push(`${at}.uid: duplicate "${uid}"`)
+    else uids.add(uid)
+  }
+
+  const partModule = new Map<string, string>()
+  if (!Array.isArray(raw.parts)) errors.push('parts: required list')
+  else
+    raw.parts.forEach((p, i) => {
+      const at = `parts[${i}]`
+      if (!isObj(p)) return void errors.push(`${at}: must be an object`)
+      claim(p.uid, at)
+      if (typeof p.designator !== 'string') errors.push(`${at}.designator: required`)
+      if (typeof p.module !== 'string') errors.push(`${at}.module: required`)
+      else {
+        if (typeof p.uid === 'string') partModule.set(p.uid, p.module)
+        if (!(p.module in modules)) warnings.push(`${at}: module "${p.module}" is not embedded in this file`)
+      }
+      if (!isNum(p.x) || !isNum(p.y)) errors.push(`${at}: x and y must be numbers`)
+      if (p.rotation !== undefined && ![0, 90, 180, 270].includes(p.rotation as number))
+        errors.push(`${at}.rotation: must be 0, 90, 180 or 270`)
+    })
+
+  const checkEnd = (ep: unknown, at: string) => {
+    if (!isObj(ep) || typeof ep.part !== 'string' || typeof ep.pin !== 'string')
+      return void errors.push(`${at}: must be { "part": <uid>, "pin": <name> }`)
+    if (ep.offset !== undefined && !isNum(ep.offset)) errors.push(`${at}.offset: must be a number`)
+    const modId = partModule.get(ep.part)
+    if (modId === undefined) return void warnings.push(`${at}: no part with uid "${ep.part}"`)
+    const m = modules[modId]
+    if (m && !m.pins.some((p) => 'name' in p && p.name === ep.pin)) warnings.push(`${at}: part "${ep.part}" has no pin "${ep.pin}"`)
+  }
+
+  if (!Array.isArray(raw.connections)) errors.push('connections: required list')
+  else
+    raw.connections.forEach((c, i) => {
+      const at = `connections[${i}]`
+      if (!isObj(c)) return void errors.push(`${at}: must be an object`)
+      claim(c.uid, at)
+      checkEnd(c.from, `${at}.from`)
+      checkEnd(c.to, `${at}.to`)
+      if (c.color !== undefined && !(typeof c.color === 'string' && isValidColor(c.color)))
+        errors.push(`${at}.color: must be a named color or #RRGGBB`)
+      if (c.gauge !== undefined && !(Number.isInteger(c.gauge) && (c.gauge as number) >= 16 && (c.gauge as number) <= 30))
+        errors.push(`${at}.gauge: must be a whole number from 16 to 30`)
+      if (c.route !== undefined && !(Array.isArray(c.route) && c.route.every((p) => Array.isArray(p) && p.length === 2 && isNum(p[0]) && isNum(p[1]))))
+        errors.push(`${at}.route: must be a list of [x, y] points`)
+    })
+
+  if (raw.annotations !== undefined) {
+    if (!Array.isArray(raw.annotations)) errors.push('annotations: must be a list')
+    else raw.annotations.forEach((a, i) => (isObj(a) ? claim(a.uid, `annotations[${i}]`) : errors.push(`annotations[${i}]: must be an object`)))
+  }
+
+  return errors.length ? { ok: false, errors } : { ok: true, diagram: raw as unknown as Diagram, warnings }
+}
+
+export function serializeDiagram(d: Diagram): string {
+  return JSON.stringify(d, null, 2) + '\n'
+}
+
+export function emptyDiagram(title = 'Untitled sheet'): Diagram {
+  return { format: DIAGRAM_FORMAT, title, modules: {}, parts: [], connections: [] }
 }
