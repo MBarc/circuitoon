@@ -63,8 +63,14 @@ function WireHexInput({ wireKey, color, onCommit }: { wireKey: string; color: st
 }
 
 const VALUE_LISTS: Record<string, number[]> = { ohm: RESISTOR_VALUES, F: CAPACITOR_VALUES }
+const VALUE_LABELS: Record<string, string> = { resistance: 'Resistance', capacitance: 'Capacitance', voltage: 'Voltage' }
 
-function ValueInput({ fieldKey, label, unit, value, onCommit }: { fieldKey: string; label: string; unit: string; value: number; onCommit: (v: number) => void }) {
+/**
+ * Not given a `key` here; the caller keys the whole component on part uid plus the resolved
+ * value, so switching parts (or an undo/redo that changes the value) remounts it from scratch,
+ * including `invalid`, rather than leaving a stale hint from a previous part or value showing.
+ */
+function ValueInput({ label, unit, value, onCommit }: { label: string; unit: string; value: number; onCommit: (v: number) => void }) {
   const [invalid, setInvalid] = useState(false)
   const shown = formatValue(value, unit)
   const list = VALUE_LISTS[unit] ?? []
@@ -73,11 +79,11 @@ function ValueInput({ fieldKey, label, unit, value, onCommit }: { fieldKey: stri
       {label}
       <input
         id="part-value"
-        key={fieldKey}
         defaultValue={shown}
         list={list.length ? 'part-value-options' : undefined}
         aria-invalid={invalid || undefined}
         onBlur={(e) => {
+          if (e.target.value === shown) return // unchanged: nothing to parse or commit
           const parsed = parseValue(e.target.value, unit)
           if (parsed === null) {
             setInvalid(true)
@@ -149,8 +155,8 @@ export function Inspector({ store }: { store: EditorStore }) {
         />
         {pp && resolved && (
           <ValueInput
-            fieldKey={`${part.uid}:${resolved.value}:${resolved.unit}`}
-            label={pp.name.charAt(0).toUpperCase() + pp.name.slice(1)}
+            key={`${part.uid}:${resolved.value}:${resolved.unit}`}
+            label={VALUE_LABELS[pp.name] ?? pp.name}
             unit={pp.unit}
             value={resolved.value}
             onCommit={(v) => store.commit(updatePartValue(diagram, part.uid, pp.name, v, pp.unit))}

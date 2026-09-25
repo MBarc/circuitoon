@@ -8,16 +8,10 @@ import { WireLabel } from '../render/WireLabel.tsx'
 import { addPart, addWire, EMPTY_SELECTION, moveParts, reconnectWire, updateWire } from './ops.ts'
 import { modulesById } from '../library.ts'
 import { bodyRect, worldPins } from '../format/geometry.ts'
-import { layoutModule, type ModuleDef } from '../format/module.ts'
+import { layoutModule } from '../format/module.ts'
 import { MODULE_MIME } from './LibraryPanel.tsx'
 import type { Diagram, Endpoint } from '../format/diagram.ts'
-import { formatValue, partValue } from '../format/values.ts'
-
-/** "R1  4.7 kΩ" when the part has an editable value, else just its designator. */
-function partCaption(p: Diagram['parts'][number], m: ModuleDef): string {
-  const v = partValue(p, m)
-  return v ? `${p.designator}  ${formatValue(v.value, v.unit)}` : p.designator
-}
+import { partCaption } from '../format/values.ts'
 
 export type View = { x: number; y: number; scale: number }
 const MIN_SCALE = 0.25

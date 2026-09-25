@@ -2,11 +2,17 @@ import { describe, expect, it } from 'vitest'
 import { addPart, addWire, deleteSelection, moveParts, nextDesignator, reconnectWire, rotateParts, updatePart, updatePartValue, updateWire } from './ops.ts'
 import { emptyDiagram } from '../format/diagram.ts'
 import type { ModuleDef } from '../format/module.ts'
+import { parseValue } from '../format/values.ts'
 
 const resistor: ModuleDef = {
   format: 'circuitoon-module/1', id: 'resistor', name: 'Resistor',
   pins: [{ name: '1', side: 'left' }, { name: '2', side: 'right' }],
   electrical: { params: { resistance: { unit: 'ohm', default: 1000 } } },
+}
+const capacitor: ModuleDef = {
+  format: 'circuitoon-module/1', id: 'capacitor-ceramic', name: 'Ceramic capacitor',
+  pins: [{ name: '1', side: 'left' }, { name: '2', side: 'right' }],
+  electrical: { params: { capacitance: { unit: 'F', default: 1e-7 } } },
 }
 const style = { color: 'red', gauge: 22 }
 
@@ -127,5 +133,13 @@ describe('ops', () => {
   it('ignores a missing part or module', () => {
     const d = emptyDiagram()
     expect(updatePartValue(d, 'nope', 'resistance', 4700, 'ohm')).toBe(d)
+  })
+  it('is a no-op for a capacitor default parsed back from its own formatted text', () => {
+    // Regression: "100 nF" used to parse to 1.0000000000000001e-7, one float epsilon away from
+    // the module's exact 1e-7 default, which broke the no-op comparison in updatePartValue.
+    const d = addPart(emptyDiagram(), capacitor, 0, 0).diagram
+    const parsed = parseValue('100 nF', 'F')!
+    expect(parsed).toBe(1e-7)
+    expect(updatePartValue(d, 'p1', 'capacitance', parsed, 'F')).toBe(d)
   })
 })

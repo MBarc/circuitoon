@@ -36,10 +36,16 @@ export function formatValue(value: number, unit: string): string {
   const symbol = UNIT_SYMBOLS[unit] ?? unit
   if (value === 0) return `0 ${symbol}`
   const abs = Math.abs(value)
-  let chosen = PREFIXES[0]
-  for (const p of PREFIXES) if (abs / Math.pow(10, p.exp) >= 1) chosen = p
-  const scaled = roundSig(value / Math.pow(10, chosen.exp), 3)
-  return `${scaled} ${chosen.symbol}${symbol}`
+  let idx = 0
+  for (let i = 0; i < PREFIXES.length; i++) if (abs / Math.pow(10, PREFIXES[i].exp) >= 1) idx = i
+  let scaled = roundSig(value / Math.pow(10, PREFIXES[idx].exp), 3)
+  // Rounding can push the mantissa up to 1000 (for example 999999 rounds to "1000 kΩ"); when
+  // that happens and a larger prefix exists, re-round against it instead.
+  if (Math.abs(scaled) >= 1000 && idx < PREFIXES.length - 1) {
+    idx += 1
+    scaled = roundSig(value / Math.pow(10, PREFIXES[idx].exp), 3)
+  }
+  return `${scaled} ${PREFIXES[idx].symbol}${symbol}`
 }
 
 /** Single-character SI prefixes accepted on input; case matters (M is mega, m is milli). */
@@ -62,8 +68,14 @@ function splitPrefix(suffix: string): { mult: number; rest: string } {
   return { mult: 1, rest: suffix }
 }
 
+/**
+ * Rejects non-finite, negative or zero values; otherwise rounds to 6 significant digits, so a
+ * multiplication like `100 * 1e-9` (which lands on 1.0000000000000001e-7 in floating point)
+ * comes out as the clean 1e-7 rather than carrying that noise into the diagram.
+ */
 function finish(v: number): number | null {
-  return Number.isFinite(v) && v > 0 ? v : null
+  if (!Number.isFinite(v) || v <= 0) return null
+  return roundSig(v, 6)
 }
 
 /**
@@ -94,11 +106,16 @@ export function parseValue(text: string, unit: string): number | null {
   return finish(n * mult)
 }
 
-/** Builds a standard value series: `decades` steps of x1, x10, x100, ... over `mantissas`, then one final value. */
+/**
+ * Builds a standard value series: `decades` steps of x1, x10, x100, ... over `mantissas`, then
+ * one final value. Each entry is rounded to 6 significant digits (see `finish`), because the
+ * mantissa-times-power-of-ten multiplication otherwise leaves float noise like
+ * 2.1999999999999998e-11 instead of the exact 2.2e-11.
+ */
 function series(mantissas: number[], base: number, decades: number, final: number): number[] {
   const values: number[] = []
-  for (let k = 0; k < decades; k++) for (const m of mantissas) values.push(m * base * Math.pow(10, k))
-  values.push(final)
+  for (let k = 0; k < decades; k++) for (const m of mantissas) values.push(roundSig(m * base * Math.pow(10, k), 6))
+  values.push(roundSig(final, 6))
   return values
 }
 
@@ -155,11 +172,20 @@ export function resistorBands(ohms: number): [string, string, string, string] | 
   return [DIGIT_COLORS[d1], DIGIT_COLORS[d2], mult, GOLD]
 }
 
-/** The first `electrical.params` entry with a user-editable unit and a numeric default. */
+/**
+ * The only param names the value field, caption and (for resistance) band coloring apply to,
+ * in priority order. A module can carry other numeric params (an LED's forward voltage, its max
+ * current) that are not meant to be user-editable values here, so those are never picked, no
+ * matter how plausible their unit looks.
+ */
+const PRIMARY_PARAM_NAMES = ['resistance', 'capacitance', 'voltage']
+
+/** The first of `resistance`, `capacitance` or `voltage` present with a matching unit and a numeric default. */
 export function primaryParam(m: ModuleDef): { name: string; unit: string; default: number } | null {
   const electrical = m.electrical
   if (!isObj(electrical) || !isObj(electrical.params)) return null
-  for (const [name, param] of Object.entries(electrical.params)) {
+  for (const name of PRIMARY_PARAM_NAMES) {
+    const param = electrical.params[name]
     if (!isObj(param)) continue
     const unit = param.unit
     const def = param.default
@@ -175,4 +201,10 @@ export function partValue(part: { values?: Record<string, unknown> }, m: ModuleD
   const stored = part.values?.[p.name]
   if (isObj(stored) && isNum(stored.value) && typeof stored.unit === 'string') return { name: p.name, unit: stored.unit, value: stored.value }
   return { name: p.name, unit: p.unit, value: p.default }
+}
+
+/** "R1  4.7 kΩ" when the part has an editable value, else just its designator. Shared by the live editor canvas and the read-only sheet preview. */
+export function partCaption(part: { designator: string; values?: Record<string, unknown> }, m: ModuleDef): string {
+  const v = partValue(part, m)
+  return v ? `${part.designator}  ${formatValue(v.value, v.unit)}` : part.designator
 }
