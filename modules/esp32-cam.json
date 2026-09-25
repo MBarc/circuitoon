@@ -146,6 +146,7 @@
   "art": {
     "w": 110,
     "h": 160,
+    "pinLabels": "inside",
     "shapes": [
       {
         "type": "rect",

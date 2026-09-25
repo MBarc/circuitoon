@@ -87,6 +87,7 @@
   "art": {
     "w": 80,
     "h": 100,
+    "pinLabels": "inside",
     "shapes": [
       {
         "type": "rect",
