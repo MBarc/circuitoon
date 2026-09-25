@@ -1,5 +1,6 @@
 // Properties of whatever is selected. Text fields commit on Enter or when they lose focus,
 // so typing a name is one undo step, not one per keystroke.
+import { useState } from 'react'
 import { type EditorStore, useEditorState } from './store.ts'
 import { deleteSelection, rotateParts, updatePart, updateWire } from './ops.ts'
 import { NAMED_COLORS, isValidColor, wireColor } from '../format/diagram.ts'
@@ -14,9 +15,47 @@ function CommitInput({ id, label, value, onCommit }: { id: string; label: string
         id={id}
         key={value}
         defaultValue={value}
-        onBlur={(e) => e.target.value !== value && onCommit(e.target.value)}
+        onBlur={(e) => {
+          if (e.target.value !== value) onCommit(e.target.value)
+          // A rejected or normalized edit leaves the diagram's value unchanged, so no remount
+          // happens; put the real value back so the field never shows stale text.
+          e.target.value = value
+        }}
         onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
       />
+    </label>
+  )
+}
+
+function WireHexInput({ wireKey, color, onCommit }: { wireKey: string; color: string; onCommit: (v: string) => void }) {
+  const [invalid, setInvalid] = useState(false)
+  const shown = color.startsWith('#') ? color : wireColor(color)
+  return (
+    <label className="field" htmlFor="wire-hex">
+      Custom color
+      <input
+        id="wire-hex"
+        key={wireKey}
+        defaultValue={shown}
+        placeholder="#3D6FD6"
+        aria-invalid={invalid || undefined}
+        onBlur={(e) => {
+          const v = e.target.value.trim()
+          if (v.toLowerCase() === color.toLowerCase()) {
+            e.target.value = shown
+            return
+          }
+          if (isValidColor(v)) {
+            setInvalid(false)
+            onCommit(v)
+          } else {
+            setInvalid(true)
+            e.target.value = shown
+          }
+        }}
+        onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
+      />
+      {invalid && <p className="hint" role="status">Use a color name or #RRGGBB, for example #3D6FD6</p>}
     </label>
   )
 }
@@ -74,8 +113,21 @@ export function Inspector({ store }: { store: EditorStore }) {
   const color = wire.color ?? 'black'
   const gauge = wire.gauge ?? 22
   const setWire = (patch: { color?: string; gauge?: number; label?: string }) => {
+    // Skip the commit (and the undo entry it would create) when the patch matches what's
+    // already stored, e.g. clicking the swatch for the wire's current color.
+    const noChange = (['color', 'gauge', 'label'] as const).every((k) => {
+      if (!(k in patch)) return true
+      if (k === 'color') return (patch.color ?? '').toLowerCase() === color.toLowerCase()
+      if (k === 'gauge') return patch.gauge === gauge
+      return (patch.label ?? undefined) === (wire.label ?? undefined)
+    })
+    if (noChange) return
     store.commit(updateWire(diagram, wire.uid, patch))
-    store.setWireStyle({ color: patch.color ?? color, gauge: patch.gauge ?? gauge })
+    // Only a color or gauge edit should steer the next wire drawn; a label edit shouldn't
+    // reset the working style back to this wire's own values, so fall back to the current
+    // wireStyle (not this wire's color/gauge) for whichever field the patch didn't touch.
+    if ('color' in patch || 'gauge' in patch)
+      store.setWireStyle({ color: patch.color ?? wireStyle.color, gauge: patch.gauge ?? wireStyle.gauge })
   }
   return (
     <aside className="inspector" aria-label="Properties">
@@ -97,20 +149,7 @@ export function Inspector({ store }: { store: EditorStore }) {
           ))}
         </div>
       </div>
-      <label className="field" htmlFor="wire-hex">
-        Custom color
-        <input
-          id="wire-hex"
-          key={color}
-          defaultValue={color.startsWith('#') ? color : wireColor(color)}
-          placeholder="#2458C6"
-          onBlur={(e) => {
-            const v = e.target.value.trim()
-            if (v !== color && isValidColor(v)) setWire({ color: v })
-          }}
-          onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
-        />
-      </label>
+      <WireHexInput wireKey={`${wire.uid}:${color}`} color={color} onCommit={(v) => setWire({ color: v })} />
       <label className="field" htmlFor="wire-gauge">
         Gauge (AWG)
         <select id="wire-gauge" value={gauge} onChange={(e) => setWire({ gauge: Number(e.target.value) })}>
