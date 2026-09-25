@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { EditorStore } from './store.ts'
-import { addPart, moveParts, settleMounts } from './ops.ts'
+import { addPart, moveParts, settleDrop, settleMounts } from './ops.ts'
 import { emptyDiagram, type Diagram } from '../format/diagram.ts'
 import type { ModuleDef } from '../format/module.ts'
 
@@ -226,6 +226,17 @@ describe('EditorStore part drags that mount or unmount', () => {
     s.redo()
     expect(u(s).x).toBe(70)
     expect(u(s)).not.toHaveProperty('mount')
+  })
+  it('a press without movement changes no mount and adds no history', () => {
+    // u is seated but not mounted (a file saved that way): only a real move may mount it.
+    const start = sheet(10, false)
+    const s = new EditorStore(start)
+    const base = s.begin()
+    s.preview(settleDrop(base, s.getState().diagram, ['u']))
+    s.end()
+    expect(s.getState().diagram).toBe(start)
+    expect(u(s)).not.toHaveProperty('mount')
+    expect(s.canUndo).toBe(false)
   })
   it('Escape during a drag leaves mounts untouched', () => {
     const start = sheet(10, true)

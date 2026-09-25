@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { addPart, addWire, nextUid, clearWireRoute, deleteSelection, sameEndpoint, setWireRoute, designatorPrefix, moveParts, nextDesignator, reconnectWire, rotateParts, settleMounts, updatePart, updatePartValue, updateWire } from './ops.ts'
+import { addPart, addWire, nextUid, clearWireRoute, deleteSelection, sameEndpoint, setWireRoute, designatorPrefix, moveParts, nextDesignator, reconnectWire, rotateParts, settleDrop, settleMounts, settleSeats, updatePart, updatePartValue, updateWire } from './ops.ts'
 import { emptyDiagram, type Diagram } from '../format/diagram.ts'
 import type { ModuleDef } from '../format/module.ts'
 import { parseValue } from '../format/values.ts'
+import { plugsOf, seatOf } from '../format/breadboard.ts'
 
 const resistor: ModuleDef = {
   format: 'circuitoon-module/1', id: 'resistor', name: 'Resistor',
@@ -319,6 +320,36 @@ describe('settleMounts', () => {
     const next = settleMounts(d, ['u', 'v'])
     expect(next.parts[0]).toBe(d.parts[0])
     expect(next.parts[2]).toBe(d.parts[2])
+  })
+  it("while dragging a part over a later part's holes, sees them taken, as the drop does", () => {
+    // u (index 1) still carries its old mount mid-drag and now sits on v's holes (x = 50 and 90).
+    const d = at(50, 0, true)
+    d.parts.push({ uid: 'v', designator: 'R2', module: 'two', x: 50, y: 0, mount: { board: 'b' } })
+    // A plain seatOf on this frame's plugs is fooled: u's stale mount pushes v out of the plugs.
+    expect(seatOf(d, 'u', plugsOf(d), new Set(['u']))!.status).toBe('seated')
+    const { seats, plugs } = settleSeats(d, ['u'])
+    expect(seats.get('u')!.status).toBe('partial')
+    expect(plugs.map((pl) => pl.part)).toEqual(['v', 'v'])
+    const dropped = settleMounts(d, ['u'])
+    expect(dropped.parts[1]).not.toHaveProperty('mount')
+    expect(dropped.parts[2].mount).toEqual({ board: 'b' })
+  })
+  it('shows the second of two overlapping dragged parts as not seated, as the drop does', () => {
+    const d = at(10, 0, true)
+    d.parts.push({ uid: 'v', designator: 'R2', module: 'two', x: 50, y: 0, mount: { board: 'b' } })
+    const { seats, plugs } = settleSeats(d, ['v', 'u'])
+    expect([...seats.keys()]).toEqual(['u', 'v'])
+    expect(seats.get('u')!.status).toBe('seated')
+    expect(seats.get('v')!.status).toBe('partial')
+    expect(plugs).toEqual([])
+    const dropped = settleMounts(d, ['u', 'v'])
+    expect(dropped.parts[1].mount).toEqual({ board: 'b' })
+    expect(dropped.parts[2]).not.toHaveProperty('mount')
+  })
+  it('a press without movement settles nothing, even a seated loose part', () => {
+    const base = at(10, 0)
+    expect(settleDrop(base, base, ['u'])).toBe(base)
+    expect(settleDrop(base, { ...base }, ['u']).parts[1].mount).toEqual({ board: 'b' })
   })
   it('mounts a part added from the library straight onto a board (placeModule)', () => {
     const board = addPart(emptyDiagram(), bb, 0, 0)

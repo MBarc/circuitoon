@@ -8,7 +8,7 @@ import { netlist } from './netlist.ts'
 import type { Diagram, PartInstance } from './diagram.ts'
 import type { Rotation } from './geometry.ts'
 import { validateModule, type ModuleDef } from './module.ts'
-import { moveParts, settleMounts } from '../editor/ops.ts'
+import { moveParts, settleMounts, settleSeats } from '../editor/ops.ts'
 
 const dir = join(import.meta.dirname, '..', '..', 'modules')
 const load = (id: string): ModuleDef => {
@@ -63,6 +63,15 @@ describe('full breadboard with 20 parts', () => {
       const plugs = plugsOf(d)
       for (const u of uids) seatOf(d, u, plugs)
     })
+    expect(ms).toBeLessThanOrEqual(4)
+  })
+  it('runs the drag highlight check (settleSeats) for 20 dragged mounted parts in 4 ms or less (median)', () => {
+    const d = loaded(true)
+    let seated = 0
+    const ms = median(() => {
+      seated = [...settleSeats(d, uids).seats.values()].filter((s) => s?.status === 'seated').length
+    })
+    expect(seated).toBe(20)
     expect(ms).toBeLessThanOrEqual(4)
   })
   // Skipped until Task 9 makes moveParts carry mounted parts; Task 9 Step 5 removes the .skip.

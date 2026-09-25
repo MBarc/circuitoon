@@ -2,12 +2,12 @@
 import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import { type EditorStore, useEditorState } from './store.ts'
 import { computeRoutes, labelAnchor, moduleOf, resolveEndpoint, wireColor, wirePaths, wireWidth, type PartInstance, type Routes } from '../format/diagram.ts'
-import { holeAtPoint, plugsOf, seatOf, splitBoards } from '../format/breadboard.ts'
+import { holeAtPoint, plugsOf, splitBoards } from '../format/breadboard.ts'
 import type { Pt } from '../format/geometry.ts'
 import { Part, INK } from '../render/Part.tsx'
 import { LegDots, TakenHoles } from '../render/Boards.tsx'
 import { WireLabel } from '../render/WireLabel.tsx'
-import { addPart, addWire, EMPTY_SELECTION, moveParts, reconnectWire, setWireRoute, settleMounts, updateWire } from './ops.ts'
+import { addPart, addWire, EMPTY_SELECTION, moveParts, reconnectWire, setWireRoute, settleDrop, settleMounts, settleSeats, updateWire } from './ops.ts'
 import { bendHandleAt, insertBend, isOrthogonal, moveSegment, removeBend, segmentHandleAt, segmentsOf, toRoute, type Axis } from '../format/wireEdit.ts'
 import { modulesById } from '../library.ts'
 import { bodyRect, worldPins } from '../format/geometry.ts'
@@ -145,13 +145,15 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
   const wires = useMemo(() => wirePaths(diagram, routes), [routes, diagram.connections])
   // Boards draw below every other part; the leg overlays follow mounts and positions.
   const layers = useMemo(() => splitBoards(diagram), [diagram.parts, diagram.modules])
-  const plugs = useMemo(() => plugsOf(diagram), [diagram.parts, diagram.modules])
-  // While parts are dragged: which holes each dragged part's legs land on (green seated, red partial).
-  const seats = useMemo(() => {
-    if (drag?.kind !== 'parts') return []
-    const moving = new Set(drag.uids)
-    return drag.uids.flatMap((uid) => seatOf(diagram, uid, plugs, moving) ?? [])
-  }, [diagram, plugs, drag])
+  // While parts are dragged, the same seat check the drop runs: the dragged parts count as loose
+  // (their old legs neither show nor push a part that stays put out of its holes), and each seat
+  // is green when the drop would mount it, red when only some legs land.
+  const settling = useMemo(
+    () => (drag?.kind === 'parts' ? settleSeats(diagram, drag.uids) : null),
+    [diagram.parts, diagram.modules, drag],
+  )
+  const plugs = useMemo(() => settling?.plugs ?? plugsOf(diagram), [settling, diagram.parts, diagram.modules])
+  const seats = useMemo(() => (settling ? [...settling.seats.values()].flatMap((s) => s ?? []) : []), [settling])
 
   const vw = size.w / view.scale
   const vh = size.h / view.scale
@@ -229,9 +231,8 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
 
   /** Ends a part drag as one undo step: moved parts that are seated mount, the rest unmount. */
   function finishPartsDrag(d: Extract<Drag, { kind: 'parts' }>) {
-    const now = store.getState().diagram
-    // A press without movement changes nothing, mounts included.
-    if (store.dragging && now !== d.base) store.preview(settleMounts(now, d.uids))
+    // A press without movement changes nothing, mounts included (settleDrop returns `now` then).
+    if (store.dragging) store.preview(settleDrop(d.base, store.getState().diagram, d.uids))
     store.end()
   }
 
