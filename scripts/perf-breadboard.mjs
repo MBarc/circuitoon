@@ -1,0 +1,428 @@
+// Browser check for breadboards, in the built app: loads a full 830-hole board with 20 seated
+// resistors and 10 rail jumpers, then through the real UI checks hole and rail hover, leg snapping
+// (red partial, green seated, mount and unmount on drop), dragging the board with its parts while
+// recording frame times, rotating it, and deleting it. On fresh sheets it then checks a Parts panel
+// drop mounting in one undo step, a second part on the same holes staying loose, the green and red
+// drag highlight, a wire drawn from a pin into a free hole (confirmed in the exported JSON), a wire
+// from a hole under a mounted part routing with square corners, and a wire to a missing hole drawn
+// as a dashed red stub that can be selected and deleted. Last, the Parts panel and the dark theme.
+//
+// Usage (repo root, after `npm run build`):
+//   node scripts/perf-breadboard.mjs [--out <dir>] [--port 4191]
+// Budget: median frame <= 17 ms and 95th percentile <= 33 ms while dragging the board. Exits 1
+// when any check fails. Launches its own Chrome through playwright-core; never use the shared
+// Playwright MCP browser.
+import { spawn, execSync } from 'node:child_process'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { join, resolve } from 'node:path'
+import { tmpdir } from 'node:os'
+import { chromium } from 'playwright-core'
+
+const args = process.argv.slice(2)
+const opt = (name, dflt) => {
+  const i = args.indexOf(name)
+  return i < 0 ? dflt : args[i + 1]
+}
+const out = resolve(opt('--out', join(tmpdir(), 'circuitoon-breadboard')))
+const port = Number(opt('--port', '4191'))
+if (!existsSync('dist/index.html')) {
+  console.error('No build found. Run `npm run build` first.')
+  process.exit(2)
+}
+mkdirSync(out, { recursive: true })
+
+// The sheet: the full board at (0, 0); 20 resistors seated in rows a, e and h (a resistor body is
+// 60 x 40 with its legs at local (0, 20) and (60, 20)); 10 jumpers from the top + rail to row c
+// of columns no resistor covers.
+const board = JSON.parse(readFileSync('modules/breadboard-full.json', 'utf8'))
+const resistor = JSON.parse(readFileSync('modules/resistor.json', 'utf8'))
+const parts = [{ uid: 'bb', designator: 'BB1', module: board.id, x: 0, y: 0, rotation: 0 }]
+let n = 0
+for (const row of [60, 100, 150])
+  for (let k = 0; k < 7 && n < 20; k++) {
+    n++
+    parts.push({ uid: `r${n}`, designator: `R${n}`, module: resistor.id, x: 30 + k * 90, y: row - 20, rotation: 0, mount: { board: 'bb' } })
+  }
+const freeColumns = [8, 17, 26, 35, 44, 53, 62, 9, 18, 27]
+const connections = freeColumns.map((c, i) => ({
+  uid: `w${i + 1}`, from: { part: 'bb', pin: 'top+', hole: i * 5 }, to: { part: 'bb', pin: `c${c}-top`, hole: 2 }, color: 'red', gauge: 22,
+}))
+/** Writes a diagram file into the output folder and returns its path. */
+function sheetFile(name, title, sheetParts, sheetConnections, modules = { [board.id]: board, [resistor.id]: resistor }) {
+  const file = join(out, `${name}.circuitoon.json`)
+  writeFileSync(file, JSON.stringify({ format: 'circuitoon-diagram/1', title, modules, parts: sheetParts, connections: sheetConnections }))
+  return file
+}
+const file = sheetFile('breadboard-check', 'Breadboard check', parts, connections)
+
+const server = spawn('npx', ['vite', 'preview', '--port', String(port), '--strictPort'], { shell: true, stdio: 'ignore' })
+const stopServer = () => {
+  try {
+    if (process.platform === 'win32') execSync(`taskkill /pid ${server.pid} /T /F`, { stdio: 'ignore' })
+    else server.kill('SIGTERM')
+  } catch {
+    // already gone
+  }
+}
+process.on('exit', stopServer)
+const base = `http://localhost:${port}/circuitoon/`
+for (let i = 0; i < 60; i++) {
+  try {
+    if ((await fetch(base)).ok) break
+  } catch {
+    // not up yet
+  }
+  await new Promise((r) => setTimeout(r, 500))
+}
+
+const browser = await chromium.launch({ channel: 'chrome', headless: true })
+const page = await browser.newPage({ viewport: { width: 1400, height: 900 } })
+const errors = []
+const watch = (p) => {
+  p.on('pageerror', (e) => errors.push(e.message))
+  p.on('console', (m) => m.type() === 'error' && errors.push(m.text()))
+  p.on('dialog', (d) => d.accept())
+}
+watch(page)
+
+const failures = []
+const check = (ok, what) => {
+  console.log(`${ok ? 'ok  ' : 'FAIL'} ${what}`)
+  if (!ok) failures.push(what)
+}
+const shot = async (name) => {
+  await page.locator('.canvas-wrap').screenshot({ path: join(out, name) })
+  console.log('saved', join(out, name))
+}
+/** Screen point of a world point, through the canvas SVG's own transform. */
+const toScreen = (x, y) =>
+  page.evaluate(([wx, wy]) => {
+    const svg = document.querySelector('svg.canvas')
+    const p = new DOMPoint(wx, wy).matrixTransform(svg.getScreenCTM())
+    return { x: p.x, y: p.y }
+  }, [x, y])
+const count = (selector) => page.locator(selector).count()
+const pause = (ms = 120) => page.waitForTimeout(ms)
+/** How many dots the net highlight draws: it is one path, one `M` per lit point. */
+const litPoints = () => page.evaluate(() => (document.querySelector('.net-hi')?.getAttribute('d')?.match(/M/g) ?? []).length)
+/** Leg dot centers, as "x,y" strings, sorted. */
+const legDots = () => page.evaluate(() => [...document.querySelectorAll('[data-legs] circle')].map((c) => `${c.getAttribute('cx')},${c.getAttribute('cy')}`).sort())
+/** Uids of the parts on the sheet, in drawing order. */
+const partUids = () => page.evaluate(() => [...document.querySelectorAll('[data-part]')].map((g) => g.getAttribute('data-part')))
+/**
+ * Wires whose drawn path has a step that is neither horizontal nor vertical. Reads the drawn path
+ * data (moves, lines and the small hop arcs, which start and end on the same line).
+ */
+const diagonalWires = () =>
+  page.evaluate(() => {
+    const bad = []
+    for (const hit of document.querySelectorAll('[data-wire] path.wire-hit')) {
+      const d = hit.getAttribute('d') ?? ''
+      let cur = null
+      for (const [, cmd, rest] of d.matchAll(/([MLA])([^MLA]*)/g)) {
+        const v = rest.trim().split(/[\s,]+/).map(Number)
+        const next = { x: v[v.length - 2], y: v[v.length - 1] }
+        if (cmd === 'L' && cur && cur.x !== next.x && cur.y !== next.y) bad.push(hit.closest('[data-wire]').getAttribute('data-wire'))
+        cur = next
+      }
+    }
+    return bad
+  })
+/** Drags from world point `from` by world delta (dx, dy) in `steps` pointer moves, calling `during(step)` after each. */
+async function drag(from, dx, dy, steps, during) {
+  const a = await toScreen(from.x, from.y)
+  const b = await toScreen(from.x + dx, from.y + dy)
+  await page.mouse.move(a.x, a.y)
+  await page.mouse.down()
+  for (let i = 1; i <= steps; i++) {
+    await page.mouse.move(a.x + ((b.x - a.x) * i) / steps, a.y + ((b.y - a.y) * i) / steps)
+    await page.waitForTimeout(8)
+    if (during) await during(i)
+  }
+  return async () => {
+    await page.mouse.up()
+    await pause()
+  }
+}
+/** Opens a fresh editor (default view) from the start screen. Leaves the page first: the same
+ * #/editor URL would reuse the open editor instead of the start screen. */
+async function openEditor() {
+  await page.goto('about:blank')
+  await page.goto(base + '#/editor', { waitUntil: 'networkidle' })
+  await page.getByRole('button', { name: /New diagram/ }).click()
+  await page.waitForSelector('.toolbar')
+}
+/** Imports a diagram file into a fresh editor and waits for part `uid`. */
+async function load(path, uid) {
+  await openEditor()
+  await page.locator('input[type=file]').setInputFiles(path)
+  await page.waitForSelector(`[data-part="${uid}"]`)
+  await pause(200)
+}
+/** Exports the sheet through the toolbar and returns the saved JSON. */
+async function exported() {
+  const [download] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: 'Export JSON' }).click()])
+  return JSON.parse(readFileSync(await download.path(), 'utf8'))
+}
+/** Drags a part from the Parts panel onto world point (wx, wy) with a real HTML drag and drop. */
+async function dropFromPanel(name, wx, wy) {
+  await page.getByRole('searchbox', { name: 'Search parts' }).fill(name)
+  const at = await toScreen(wx, wy)
+  const wrap = await page.locator('.canvas-wrap').boundingBox()
+  await page
+    .locator('.lib-item', { hasText: name })
+    .first()
+    .dragTo(page.locator('.canvas-wrap'), { targetPosition: { x: at.x - wrap.x, y: at.y - wrap.y } })
+  await page.getByRole('searchbox', { name: 'Search parts' }).fill('')
+  await pause()
+}
+/** Zooms out around the canvas center until part `uid` fits, then drags the paper to center it. */
+async function frame(uid) {
+  const wrap = await page.locator('.canvas-wrap').boundingBox()
+  const mid = { x: wrap.x + wrap.width / 2, y: wrap.y + wrap.height / 2 }
+  await page.mouse.move(mid.x, mid.y)
+  for (let i = 0; i < 30; i++) {
+    const b = await page.locator(`[data-part="${uid}"]`).boundingBox()
+    if (b.width < wrap.width * 0.9 && b.height < wrap.height * 0.9) break
+    await page.mouse.wheel(0, 120)
+    await page.waitForTimeout(30)
+  }
+  const b = await page.locator(`[data-part="${uid}"]`).boundingBox()
+  const from = { x: wrap.x + 10, y: wrap.y + wrap.height - 10 }
+  await page.mouse.move(from.x, from.y)
+  await page.mouse.down()
+  await page.mouse.move(from.x + mid.x - (b.x + b.width / 2), from.y + mid.y - (b.y + b.height / 2), { steps: 5 })
+  await page.mouse.up()
+  await pause()
+}
+/** Presses at world `from` and releases at world `to`, moving in steps (a wire draw). */
+async function stroke(from, to) {
+  const release = await drag(from, to.x - from.x, to.y - from.y, 12)
+  await release()
+}
+
+await openEditor()
+const t0 = Date.now()
+await page.locator('input[type=file]').setInputFiles(file)
+await page.waitForSelector('[data-part="bb"]')
+console.log(`loaded the 830-hole board with 20 parts in ${Date.now() - t0} ms`)
+await pause(300)
+await shot('loaded.png')
+check((await count('[data-legs] circle')) === 40, 'all 40 legs plugged in on load')
+
+// Hover row d of column 8: a free hole next to the jumper's end (row c), so no wire covers it. The
+// strip is joined to the top + rail by a jumper, like the other 9 jumper strips.
+const hole = await toScreen(100, 90)
+await page.mouse.move(hole.x, hole.y)
+await pause()
+let lit = await litPoints()
+check(lit === 100, `hovering a hole lights its net: rail 50 + 10 strips x 5 = 100 holes (got ${lit})`)
+await shot('hover.png')
+
+// Hover the top + rail itself, on a hole no jumper starts from: the same whole net lights.
+const rail = await toScreen(300, 20)
+await page.mouse.move(rail.x, rail.y)
+await pause()
+lit = await litPoints()
+check(lit === 100, `hovering the + rail lights the whole net, rail and jumper strips (got ${lit})`)
+await shot('hover-rail.png')
+await page.mouse.move(5, 5)
+await pause()
+
+// Drag R1 (legs at (30, 60) and (90, 60)) down by 200 px: at +140 only its right leg meets the
+// bottom - rail (red); at +200 it is off the board, and dropping there unmounts it.
+const releaseOff = await drag({ x: 60, y: 60 }, 0, 200, 20, async (step) => {
+  if (step !== 14) return
+  await pause()
+  check((await count('.seat-bad')) === 1, 'half on a rail: one red leg')
+  await shot('partial.png')
+})
+await releaseOff()
+check((await count('[data-legs] circle')) === 38, 'dropped off the board: R1 unmounted (38 legs)')
+
+// Drag it back to where it was: both legs green, and dropping mounts it again.
+const releaseBack = await drag({ x: 60, y: 260 }, 0, -200, 20)
+await pause()
+check((await count('.seat-ok')) === 2, 'back on its holes: two green legs')
+await shot('seated.png')
+await releaseBack()
+check((await count('[data-legs] circle')) === 40, 'dropped seated: R1 mounted again (40 legs)')
+
+// Drag the board by its center channel in a free column, recording frame times.
+await page.evaluate(() => {
+  window.__frames = []
+  let last = performance.now()
+  const tick = (t) => {
+    window.__frames.push(t - last)
+    last = t
+    requestAnimationFrame(tick)
+  }
+  requestAnimationFrame(tick)
+})
+const f0 = await page.evaluate(() => window.__frames.length)
+const releaseBoard = await drag({ x: 100, y: 115 }, 200, 0, 60)
+const frames = await page.evaluate((i) => window.__frames.slice(i), f0)
+await releaseBoard()
+frames.sort((a, b) => a - b)
+const med = frames[frames.length >> 1]
+const p95 = frames[Math.floor(frames.length * 0.95)]
+console.log(`board drag: ${frames.length} frames, median ${med.toFixed(1)} ms, p95 ${p95.toFixed(1)} ms`)
+check(med <= 17 && p95 <= 33, 'board drag frame budget (median <= 17 ms, p95 <= 33 ms)')
+const leg = await page.locator('[data-legs] circle').first()
+check((await leg.getAttribute('cx')) === '290' && (await leg.getAttribute('cy')) === '60', 'the board carried R1 by 200 px (its first leg dot, pin 2 on the right, is at 290, 60)')
+check((await count('[data-legs] circle')) === 40, 'all 40 legs still plugged after the board drag')
+check((await diagonalWires()).length === 0, 'no jumper has a diagonal step after the board drag')
+await shot('board-moved.png')
+
+// Rotate the (selected) board: its parts turn with it and stay plugged.
+await page.keyboard.press('r')
+await pause(300)
+check((await count('[data-legs] circle')) === 40, 'rotating the board keeps all 40 legs plugged')
+check((await diagonalWires()).length === 0, 'no jumper has a diagonal step after rotating the board')
+const afterRotate = await exported()
+check(afterRotate.parts.filter((p) => p.mount?.board === 'bb').length === 20, 'after rotating, the saved file still has all 20 resistors mounted on the board')
+// Zoom out and pan so the whole turned board is in the picture (panning clears the selection),
+// then select it again with a click on the middle of its center channel, which has no holes.
+await frame('bb')
+const middle = await toScreen(540, 115)
+await page.mouse.click(middle.x, middle.y)
+await pause()
+check((await count('[data-legs] circle')) === 40, 'clicking the turned board changes no mount')
+await shot('board-rotated.png')
+
+// Delete the board: the resistors stay, unmounted; the jumpers go with it.
+await page.keyboard.press('Delete')
+await pause(300)
+check((await count('[data-part="bb"]')) === 0, 'board deleted')
+check((await count('[data-part^="r"]')) === 20, 'its 20 resistors remain')
+check((await count('[data-legs] circle')) === 0, 'no legs plugged after deleting the board')
+const afterDelete = await exported()
+check(afterDelete.parts.length === 20 && afterDelete.parts.every((p) => !p.mount) && afterDelete.connections.length === 0, 'the saved file keeps the 20 resistors, none mounted, and no jumpers')
+await shot('board-deleted.png')
+
+// --- A fresh sheet with an empty board: everything below is done through the UI. ---
+await load(sheetFile('empty-board', 'Empty board', [{ uid: 'bb2', designator: 'BB1', module: board.id, x: 0, y: 0, rotation: 0 }], []), 'bb2')
+
+// A wire from a hole into a hole: c30-top row c (320, 80) to the top + rail over column 34 (350, 20).
+await stroke({ x: 320, y: 80 }, { x: 350, y: 20 })
+let saved = await exported()
+const holeWire = saved.connections[0]
+check(
+  saved.connections.length === 1 && [holeWire.from, holeWire.to].some((e) => e.pin === 'c30-top' && e.hole === 2) && [holeWire.from, holeWire.to].some((e) => e.pin === 'top+' && e.hole === 25),
+  `a wire drawn from a hole to a rail hole is saved hole to hole (${JSON.stringify(holeWire && [holeWire.from, holeWire.to])})`,
+)
+
+// Drop a resistor from the Parts panel with its center at (330, 80): it lands at (300, 60) with its
+// legs on c28-top and c34-top row c, covering the wire's end at (320, 80), and mounts.
+await dropFromPanel('Resistor (1/4 W)', 330, 80)
+const [ra] = (await partUids()).filter((u) => u !== 'bb2')
+check((await legDots()).join(' ') === '300,80 360,80', `a resistor dropped from the Parts panel onto free holes mounts (legs ${(await legDots()).join(' ')})`)
+await shot('panel-drop.png')
+await page.getByRole('button', { name: 'Undo' }).click()
+await pause()
+check((await partUids()).length === 1 && (await count('[data-legs] circle')) === 0, 'one Undo removes the dropped part and its mount together')
+await page.getByRole('button', { name: 'Redo' }).click()
+await pause()
+check((await legDots()).length === 2, 'Redo brings it back mounted')
+
+// The wire from the covered hole now leaves through the resistor's body: square corners only.
+await page.mouse.move(5, 5)
+await pause()
+check((await diagonalWires()).length === 0, 'the wire from a hole under the mounted resistor has no diagonal step')
+await shot('covered-hole-wire.png')
+
+// A second resistor dropped on the same holes stays loose: only the first is mounted.
+await dropFromPanel('Resistor (1/4 W)', 330, 80)
+const [rb] = (await partUids()).filter((u) => u !== 'bb2' && u !== ra)
+check((await legDots()).length === 2, 'a second resistor dropped on the same holes does not mount (still 2 legs)')
+saved = await exported()
+check(saved.parts.filter((p) => p.mount).map((p) => p.uid).join() === ra, `only the first resistor is mounted in the saved file (${saved.parts.filter((p) => p.mount).map((p) => p.uid).join()})`)
+await shot('panel-drop-same-holes.png')
+
+// Drag the second one (drawn on top) down 70 px onto free holes in row h: green; back up over
+// the first one's holes: red, since those holes are taken; then down again and drop: it mounts.
+const releaseB = await drag({ x: 330, y: 80 }, 0, 70, 10)
+await pause()
+check((await count('.seat-ok')) === 2 && (await count('.seat-bad')) === 0, 'dragged over free holes: both legs green')
+await shot('drag-green.png')
+const back = await toScreen(330, 80)
+await page.mouse.move(back.x, back.y - 4, { steps: 4 })
+await page.mouse.move(back.x, back.y, { steps: 2 })
+await pause()
+check((await count('.seat-bad')) >= 1 && (await count('.seat-ok')) === 0, `dragged over taken holes: red, not green (${await count('.seat-bad')} red)`)
+await shot('drag-red.png')
+const down = await toScreen(330, 150)
+await page.mouse.move(down.x, down.y, { steps: 6 })
+await pause()
+await releaseB()
+check((await legDots()).length === 4, 'dropped on free holes: the second resistor mounts (4 legs)')
+
+// A wire drawn from a pin into a free hole: the second resistor's pin 1 to the top - rail over
+// column 22 (230, 30).
+const pin = await page.evaluate((uid) => {
+  const c = document.querySelector(`[data-pin-part="${uid}"][data-pin="1"]`)
+  return { x: Number(c.getAttribute('cx')), y: Number(c.getAttribute('cy')) }
+}, rb)
+await stroke(pin, { x: 230, y: 30 })
+saved = await exported()
+const pinWire = saved.connections.find((c) => c.uid !== holeWire.uid)
+const ends = pinWire ? [pinWire.from, pinWire.to] : []
+check(
+  ends.some((e) => e.part === rb && e.pin === '1' && e.hole === undefined) && ends.some((e) => e.part === 'bb2' && e.pin === 'top-' && e.hole === 15),
+  `a wire drawn from a pin into a free hole is saved pin to hole (${JSON.stringify(ends)})`,
+)
+check((await diagonalWires()).length === 0, 'no wire on this sheet has a diagonal step')
+await page.mouse.move(5, 5)
+await pause()
+await shot('pin-to-hole-wire.png')
+
+// --- A wire to a hole that does not exist (c2-top has 5 holes): a dashed red stub. ---
+await load(
+  sheetFile('broken-wire', 'Broken wire', [{ uid: 'bb3', designator: 'BB1', module: board.id, x: 0, y: 0, rotation: 0 }], [
+    { uid: 'w1', from: { part: 'bb3', pin: 'c1-top', hole: 0 }, to: { part: 'bb3', pin: 'c2-top', hole: 99 } },
+  ]),
+  'bb3',
+)
+await page.mouse.move(5, 5)
+await pause()
+check((await count('.wire-broken')) === 1, 'a wire to a missing hole draws one dashed red stub')
+await shot('broken-stub.png')
+const stub = await page.evaluate(() => {
+  const r = document.querySelector('.wire-broken').getBoundingClientRect()
+  return { x: r.x + r.width / 2, y: r.y + r.height / 2 }
+})
+await page.mouse.click(stub.x, stub.y)
+await pause()
+check((await page.locator('[data-wire="w1"] path').count()) === 3, 'clicking the stub selects it (a selection halo is drawn)')
+await shot('broken-stub-selected.png')
+await page.keyboard.press('Delete')
+await pause()
+check((await count('.wire-broken')) === 0 && (await exported()).connections.length === 0, 'Delete removes the broken wire')
+
+// --- The Parts panel and the dark theme. ---
+const heads = await page.locator('.lib-group-head').evaluateAll((els) => els.map((e) => [e.children[0].textContent, e.children[1].textContent]))
+const bi = heads.findIndex(([c]) => c === 'Batteries')
+check(bi >= 0 && heads[bi + 1]?.[0] === 'Prototyping' && heads[bi + 1]?.[1] === '5', `Parts panel: "Prototyping" (5) right after "Batteries" (${JSON.stringify(heads[bi + 1])})`)
+await page.locator('.lib-group', { hasText: 'Prototyping' }).first().scrollIntoViewIfNeeded()
+await page.locator('.library').screenshot({ path: join(out, 'parts-panel-prototyping.png') })
+console.log('saved', join(out, 'parts-panel-prototyping.png'))
+
+const dark = await browser.newPage({ viewport: { width: 1400, height: 900 }, colorScheme: 'dark' })
+watch(dark)
+await dark.goto(base + '#/editor', { waitUntil: 'networkidle' })
+await dark.getByRole('button', { name: /New diagram/ }).click()
+await dark.waitForSelector('.toolbar')
+await dark.locator('input[type=file]').setInputFiles(file)
+await dark.waitForSelector('[data-part="bb"]')
+await dark.waitForTimeout(300)
+await dark.screenshot({ path: join(out, 'dark-editor.png') })
+console.log('saved', join(out, 'dark-editor.png'))
+
+check(errors.length === 0, `no page errors${errors.length ? `: ${errors.join(' | ')}` : ''}`)
+await browser.close()
+stopServer()
+if (failures.length) {
+  console.error(`\n${failures.length} check(s) failed`)
+  process.exit(1)
+}
+console.log('\nall breadboard checks passed')
