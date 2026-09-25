@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { addPart, addWire, deleteSelection, designatorPrefix, moveParts, nextDesignator, reconnectWire, rotateParts, updatePart, updatePartValue, updateWire } from './ops.ts'
+import { addPart, addWire, clearWireRoute, deleteSelection, setWireRoute, designatorPrefix, moveParts, nextDesignator, reconnectWire, rotateParts, updatePart, updatePartValue, updateWire } from './ops.ts'
 import { emptyDiagram } from '../format/diagram.ts'
 import type { ModuleDef } from '../format/module.ts'
 import { parseValue } from '../format/values.ts'
@@ -156,5 +156,33 @@ describe('ops', () => {
     const parsed = parseValue('100 nF', 'F')!
     expect(parsed).toBe(1e-7)
     expect(updatePartValue(d, 'p1', 'capacitance', parsed, 'F')).toBe(d)
+  })
+})
+
+describe('wire routes', () => {
+  const wired = () => addWire(twoResistors(), { part: 'p1', pin: '2' }, { part: 'p2', pin: '1' }, style)!.diagram
+  it('sets a hand-shaped route without touching the input or other wires', () => {
+    const d = wired()
+    const before = structuredClone(d)
+    const next = setWireRoute(d, 'w1', [[60, 20], [60, 60]])
+    expect(next.connections[0].route).toEqual([[60, 20], [60, 60]])
+    expect(next.connections[0]).toMatchObject({ color: 'red', gauge: 22 })
+    expect(d).toEqual(before)
+  })
+  it('returns the same diagram when the route is unchanged or the wire is missing', () => {
+    const d = setWireRoute(wired(), 'w1', [[60, 20], [60, 60]])
+    expect(setWireRoute(d, 'w1', [[60, 20], [60, 60]])).toBe(d)
+    expect(setWireRoute(d, 'nope', [[1, 2]])).toBe(d)
+  })
+  it('keeps an empty route as a manual wire with no bends', () => {
+    expect(setWireRoute(wired(), 'w1', []).connections[0].route).toEqual([])
+  })
+  it('clears a route back to automatic, removing the key', () => {
+    const d = setWireRoute(wired(), 'w1', [[60, 20]])
+    const next = clearWireRoute(d, 'w1')
+    expect('route' in next.connections[0]).toBe(false)
+    expect(d.connections[0].route).toEqual([[60, 20]])
+    expect(clearWireRoute(next, 'w1')).toBe(next)
+    expect(clearWireRoute(next, 'nope')).toBe(next)
   })
 })

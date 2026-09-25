@@ -119,6 +119,34 @@ export function updateWire(d: Diagram, uid: string, patch: { color?: string; gau
   return { ...d, connections: d.connections.map((c) => (c.uid === uid ? { ...c, ...patch } : c)) }
 }
 
+const sameRoute = (a: [number, number][] | undefined, b: [number, number][]) =>
+  !!a && a.length === b.length && a.every((p, i) => p[0] === b[i][0] && p[1] === b[i][1])
+
+/**
+ * Makes a wire manual with the given bends (the points between its two pin stub tips). An empty
+ * list is still manual: a wire with no bends. Returns the same diagram when nothing changes.
+ */
+export function setWireRoute(d: Diagram, uid: string, route: [number, number][]): Diagram {
+  const wire = d.connections.find((c) => c.uid === uid)
+  if (!wire || sameRoute(wire.route, route)) return d
+  const copy = route.map(([x, y]) => [x, y] as [number, number])
+  return { ...d, connections: d.connections.map((c) => (c === wire ? { ...c, route: copy } : c)) }
+}
+
+/** Hands a wire back to the router. Returns the same diagram when it is already automatic or missing. */
+export function clearWireRoute(d: Diagram, uid: string): Diagram {
+  const wire = d.connections.find((c) => c.uid === uid)
+  if (!wire || wire.route === undefined) return d
+  return {
+    ...d,
+    connections: d.connections.map((c) => {
+      if (c !== wire) return c
+      const { route: _dropped, ...rest } = c
+      return rest
+    }),
+  }
+}
+
 /**
  * Sets a part's value for one electrical param, for example resistance. Returns the same
  * diagram object, unchanged, when the part or its module is missing, or when the new value
