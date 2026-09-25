@@ -1,6 +1,6 @@
 // Draws one module in the Sticker style: flat fills, dark ink outline on every shape.
 import { memo } from 'react'
-import { usesInsideLabels, type ModuleDef, type PinType, type PlacedPin, type Side, layoutModule, LEAD } from '../format/module.ts'
+import { insideLabelSides, type ModuleDef, type PinType, type PlacedPin, type Side, layoutModule, LEAD } from '../format/module.ts'
 import { bodyRect, pivot, worldPins, type Rect, type Rotation, type WorldPin } from '../format/geometry.ts'
 import { bandFills } from '../format/values.ts'
 
@@ -13,14 +13,15 @@ function showLabel(m: ModuleDef, p: { label?: string; type?: PinType }) {
 }
 
 /**
- * A module opted into `art.pinLabels: "inside"` (the built-in dev boards) draws its left and
- * right pin labels inside the body beside each pin, like silkscreen, instead of beside the pin
- * stub: at 0.1 inch pitch a label above the stub would sit between two pins. Board art keeps its
- * header strip in the outer HEADER_INSET px so the labels clear it.
+ * A module opted into `art.pinLabels: "inside"` (the built-in dev boards, DIP chips and display
+ * modules) draws its pin labels inside the body beside each pin, like silkscreen, instead of
+ * beside the pin stub: at 0.1 inch pitch a label beside the stub would sit between two pins.
+ * Left and right labels read horizontally, top and bottom ones bottom to top. Header art keeps its
+ * strip in the outer HEADER_INSET px so the labels clear it.
  */
 const HEADER_INSET = 12
 function headerSides(m: ModuleDef): Set<Side> {
-  return usesInsideLabels(m) ? new Set(['left', 'right']) : new Set()
+  return new Set(insideLabelSides(m))
 }
 
 function PinStub({ p }: { p: PlacedPin }) {
