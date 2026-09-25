@@ -2,12 +2,12 @@
 import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import { type EditorStore, useEditorState } from './store.ts'
 import { computeRoutes, labelAnchor, moduleOf, resolveEndpoint, wireColor, wirePaths, wireWidth, type PartInstance, type Routes } from '../format/diagram.ts'
-import { holeAtPoint, plugsOf, splitBoards } from '../format/breadboard.ts'
+import { holeAtPoint, plugsOf, seatOf, splitBoards } from '../format/breadboard.ts'
 import type { Pt } from '../format/geometry.ts'
 import { Part, INK } from '../render/Part.tsx'
 import { LegDots, TakenHoles } from '../render/Boards.tsx'
 import { WireLabel } from '../render/WireLabel.tsx'
-import { addPart, addWire, EMPTY_SELECTION, moveParts, reconnectWire, setWireRoute, updateWire } from './ops.ts'
+import { addPart, addWire, EMPTY_SELECTION, moveParts, reconnectWire, setWireRoute, settleMounts, updateWire } from './ops.ts'
 import { bendHandleAt, insertBend, isOrthogonal, moveSegment, removeBend, segmentHandleAt, segmentsOf, toRoute, type Axis } from '../format/wireEdit.ts'
 import { modulesById } from '../library.ts'
 import { bodyRect, worldPins } from '../format/geometry.ts'
@@ -111,7 +111,8 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
     if (!m) return
     const lay = layoutModule(m)
     const { diagram: next, uid } = addPart(store.getState().diagram, m, snap(at.x - lay.w / 2), snap(at.y - lay.h / 2))
-    store.commit(next)
+    // Dropped with every leg on free holes of a board, the new part plugs in: one undo step.
+    store.commit(settleMounts(next, [uid]))
     store.select({ parts: [uid], wires: [] })
   }
 
@@ -145,6 +146,12 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
   // Boards draw below every other part; the leg overlays follow mounts and positions.
   const layers = useMemo(() => splitBoards(diagram), [diagram.parts, diagram.modules])
   const plugs = useMemo(() => plugsOf(diagram), [diagram.parts, diagram.modules])
+  // While parts are dragged: which holes each dragged part's legs land on (green seated, red partial).
+  const seats = useMemo(() => {
+    if (drag?.kind !== 'parts') return []
+    const moving = new Set(drag.uids)
+    return drag.uids.flatMap((uid) => seatOf(diagram, uid, plugs, moving) ?? [])
+  }, [diagram, plugs, drag])
 
   const vw = size.w / view.scale
   const vh = size.h / view.scale
@@ -219,6 +226,14 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
       editRef.current?.select()
     }
   }, [editing])
+
+  /** Ends a part drag as one undo step: moved parts that are seated mount, the rest unmount. */
+  function finishPartsDrag(d: Extract<Drag, { kind: 'parts' }>) {
+    const now = store.getState().diagram
+    // A press without movement changes nothing, mounts included.
+    if (store.dragging && now !== d.base) store.preview(settleMounts(now, d.uids))
+    store.end()
+  }
 
   function onPointerDown(e: React.PointerEvent<SVGSVGElement>) {
     // Commit a half-typed inspector field (it saves on blur) before the selection changes and unmounts it.
@@ -358,7 +373,8 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
   }
   function onPointerUp(e: React.PointerEvent<SVGSVGElement>) {
     if (!drag || e.pointerId !== drag.pointer) return
-    if (drag.kind === 'parts' || drag.kind === 'segment') store.end()
+    if (drag.kind === 'parts') finishPartsDrag(drag)
+    if (drag.kind === 'segment') store.end()
     if (drag.kind === 'wire') {
       const to = endUnder(e)
       const s = store.getState()
@@ -383,7 +399,7 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
   }
   function onPointerCancel(e: React.PointerEvent<SVGSVGElement>) {
     if (!drag || e.pointerId !== drag.pointer) return
-    if (drag.kind === 'parts') store.end()
+    if (drag.kind === 'parts') finishPartsDrag(drag)
     // A reshape the browser took away (lost capture, cancelled touch) is abandoned, not kept.
     if (drag.kind === 'segment') store.cancel()
     if (drag.kind !== 'pan') store.setGesture(false)
@@ -457,6 +473,11 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
         <TakenHoles plugs={plugs} />
         {layers.others.map(renderPart)}
         <LegDots plugs={plugs} />
+        <g pointerEvents="none">
+          {seats.flatMap((s, i) =>
+            s.holes.map((h, j) => <circle key={`${i}-${j}`} className={s.status === 'seated' ? 'seat-ok' : 'seat-bad'} cx={h.x} cy={h.y} r={4} />),
+          )}
+        </g>
         <g fill="none" strokeLinecap="round" strokeLinejoin="round">
           {wires.map(({ conn, d, blocked }) => {
             const w = wireWidth(conn.gauge)

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { addPart, addWire, nextUid, clearWireRoute, deleteSelection, sameEndpoint, setWireRoute, designatorPrefix, moveParts, nextDesignator, reconnectWire, rotateParts, updatePart, updatePartValue, updateWire } from './ops.ts'
-import { emptyDiagram } from '../format/diagram.ts'
+import { addPart, addWire, nextUid, clearWireRoute, deleteSelection, sameEndpoint, setWireRoute, designatorPrefix, moveParts, nextDesignator, reconnectWire, rotateParts, settleMounts, updatePart, updatePartValue, updateWire } from './ops.ts'
+import { emptyDiagram, type Diagram } from '../format/diagram.ts'
 import type { ModuleDef } from '../format/module.ts'
 import { parseValue } from '../format/values.ts'
 
@@ -249,5 +249,82 @@ describe('board designators', () => {
     const board = (id: string): ModuleDef => ({ format: 'circuitoon-module/1', id, name: id, pins: [] })
     expect(designatorPrefix(board('breadboard-full'))).toBe('BB')
     expect(designatorPrefix(board('power-rail-strip'))).toBe('BB')
+  })
+})
+
+describe('settleMounts', () => {
+  const bb: ModuleDef = {
+    format: 'circuitoon-module/1', id: 'bb', name: 'Test board', pins: [], size: { w: 10, h: 6 }, obstacle: false,
+    holes: Array.from({ length: 9 }, (_, i) => ({
+      name: `s${i + 1}`, label: `${i + 1}`, at: [10, 20, 30, 40, 50].map((y) => [(i + 1) * 10, y] as [number, number]),
+    })),
+  }
+  const two: ModuleDef = { format: 'circuitoon-module/1', id: 'two', name: 'Two', pins: [{ name: 'L', side: 'left' }, { name: 'R', side: 'right' }] }
+  const at = (x: number, y: number, mounted = false): Diagram => ({
+    format: 'circuitoon-diagram/1', title: 't', modules: { bb, two },
+    parts: [
+      { uid: 'b', designator: 'BB1', module: 'bb', x: 0, y: 0 },
+      { uid: 'u', designator: 'R1', module: 'two', x, y, ...(mounted ? { mount: { board: 'b' } } : {}) },
+    ],
+    connections: [],
+  })
+  it('mounts a part dropped seated on a board', () => {
+    expect(settleMounts(at(10, 0), ['u']).parts[1].mount).toEqual({ board: 'b' })
+  })
+  it('unmounts a part dropped half on or off the board', () => {
+    expect(settleMounts(at(70, 0, true), ['u']).parts[1]).not.toHaveProperty('mount')
+    expect(settleMounts(at(300, 0, true), ['u']).parts[1]).not.toHaveProperty('mount')
+  })
+  it('returns the same diagram when nothing changes, and skips boards', () => {
+    const d = at(10, 0, true)
+    expect(settleMounts(d, ['u', 'b'])).toBe(d)
+    const loose = at(300, 0)
+    expect(settleMounts(loose, ['u'])).toBe(loose)
+  })
+  it('in keep mode never mounts, only drops a mount that no longer fits', () => {
+    const d = at(10, 0)
+    expect(settleMounts(d, ['u'], 'keep')).toBe(d)
+    expect(settleMounts(at(70, 0, true), ['u'], 'keep').parts[1]).not.toHaveProperty('mount')
+  })
+  it("in keep mode checks the part's own board, so an overlapping board never unmounts it", () => {
+    // Board c overlaps b 40 px to the right (holes at x = 50..130) and comes first, so seatOf would pick c.
+    const d = at(50, 0)
+    d.parts = [{ uid: 'c', designator: 'BB2', module: 'bb', x: 40, y: 0 }, d.parts[0], { ...d.parts[1], mount: { board: 'b' } }]
+    expect(settleMounts(d, ['u'], 'keep')).toBe(d)
+    // Off its own board but still on c: keep mode drops the mount rather than moving it.
+    d.parts[2] = { ...d.parts[2], x: 90 }
+    expect(settleMounts(d, ['u'], 'keep').parts[2]).not.toHaveProperty('mount')
+  })
+  it('lets the first of two dragged parts with legs on the same hole mount, not the second', () => {
+    // u legs at x = 10 and 50; v legs at x = 50 and 90, same row.
+    const d = at(10, 0)
+    d.parts.push({ uid: 'v', designator: 'R2', module: 'two', x: 50, y: 0 })
+    const next = settleMounts(d, ['v', 'u'])
+    expect(next.parts[1].mount).toEqual({ board: 'b' })
+    expect(next.parts[2]).not.toHaveProperty('mount')
+    // The same in d.parts order with both starting mounted: v loses its (invalid) mount.
+    const both = { ...d, parts: d.parts.map((p) => (p.uid === 'b' ? p : { ...p, mount: { board: 'b' } })) }
+    const settled = settleMounts(both, ['u', 'v'])
+    expect(settled.parts[1].mount).toEqual({ board: 'b' })
+    expect(settled.parts[2]).not.toHaveProperty('mount')
+  })
+  it('never seats a dragged part onto a hole a part that stays put holds', () => {
+    const d = at(10, 0, true)
+    d.parts.push({ uid: 'v', designator: 'R2', module: 'two', x: 50, y: 0 })
+    expect(settleMounts(d, ['v'])).toBe(d)
+  })
+  it('keeps unchanged parts as the same objects', () => {
+    const d = at(10, 0)
+    d.parts.push({ uid: 'v', designator: 'R2', module: 'two', x: 300, y: 0 })
+    const next = settleMounts(d, ['u', 'v'])
+    expect(next.parts[0]).toBe(d.parts[0])
+    expect(next.parts[2]).toBe(d.parts[2])
+  })
+  it('mounts a part added from the library straight onto a board (placeModule)', () => {
+    const board = addPart(emptyDiagram(), bb, 0, 0)
+    const placed = addPart(board.diagram, two, 10, 0)
+    expect(settleMounts(placed.diagram, [placed.uid]).parts[1].mount).toEqual({ board: board.uid })
+    const away = addPart(board.diagram, two, 300, 0)
+    expect(settleMounts(away.diagram, [away.uid])).toBe(away.diagram)
   })
 })

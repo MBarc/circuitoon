@@ -1,7 +1,8 @@
 // Immutable diagram edits. Every function returns a new Diagram and never mutates its input,
 // so the store can keep old versions for undo.
 import { type Connection, type Diagram, type Endpoint, type PartInstance, moduleOf } from '../format/diagram.ts'
-import type { ModuleDef } from '../format/module.ts'
+import { isBoard, type ModuleDef } from '../format/module.ts'
+import { plugsOf, seatOf, seatOn } from '../format/breadboard.ts'
 import type { Rotation } from '../format/geometry.ts'
 import { partValue } from '../format/values.ts'
 
@@ -62,6 +63,44 @@ export function moveParts(d: Diagram, uids: string[], dx: number, dy: number): D
   if (!dx && !dy) return d
   const s = new Set(uids)
   return { ...d, parts: d.parts.map((p) => (s.has(p.uid) ? { ...p, x: p.x + dx, y: p.y + dy } : p)) }
+}
+
+const withoutMount = (p: PartInstance): PartInstance => {
+  const { mount: _gone, ...rest } = p
+  return rest
+}
+
+/**
+ * Re-checks the mount of each listed part. 'drop' (a finished drag): a seated part gets, or keeps,
+ * `mount.board`; anything else loses its mount. 'keep' (after a rotation): a part is never newly
+ * mounted, and a mounted part keeps its mount only while it is still seated on its own board, so
+ * an overlapping board can never take it away. Parts settle in `d.parts` order: holes held by
+ * parts that are not listed, and by listed parts already settled in this call, are taken; listed
+ * parts not yet settled never block. Boards are skipped. Returns `d` itself when nothing changes.
+ */
+export function settleMounts(d: Diagram, uids: string[], mode: 'drop' | 'keep' = 'drop'): Diagram {
+  const listed = new Set(uids)
+  const settle = d.parts.filter((p) => listed.has(p.uid) && !isBoard(moduleOf(d, p.module)) && (mode === 'drop' || p.mount))
+  if (!settle.length) return d
+  const settling = new Set(settle.map((p) => p.uid))
+  // Settling parts start loose, so only the other parts' legs (and each part settled so far) hold holes.
+  let work: Diagram = { ...d, parts: d.parts.map((p) => (settling.has(p.uid) && p.mount ? withoutMount(p) : p)) }
+  let plugs = plugsOf(work)
+  for (const p of settle) {
+    const seat = mode === 'keep' ? seatOn(work, p.uid, p.mount!.board, plugs) : seatOf(work, p.uid, plugs)
+    if (seat?.status !== 'seated') continue
+    const board = seat.board
+    work = { ...work, parts: work.parts.map((q) => (q.uid === p.uid ? { ...q, mount: { board } } : q)) }
+    plugs = plugsOf(work)
+  }
+  // Unchanged parts keep their identity (and their cached hole lookups).
+  let changed = false
+  const parts = d.parts.map((p, i) => {
+    if (p.mount?.board === work.parts[i].mount?.board) return p
+    changed = true
+    return work.parts[i].mount ? { ...p, mount: work.parts[i].mount } : withoutMount(p)
+  })
+  return changed ? { ...d, parts } : d
 }
 
 export function rotateParts(d: Diagram, uids: string[]): Diagram {

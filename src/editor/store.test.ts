@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { EditorStore } from './store.ts'
-import { addPart, moveParts } from './ops.ts'
-import { emptyDiagram } from '../format/diagram.ts'
+import { addPart, moveParts, settleMounts } from './ops.ts'
+import { emptyDiagram, type Diagram } from '../format/diagram.ts'
 import type { ModuleDef } from '../format/module.ts'
 
 const m: ModuleDef = { format: 'circuitoon-module/1', id: 'x', name: 'X', pins: [{ name: 'A', side: 'left' }] }
@@ -174,5 +174,67 @@ describe('EditorStore dirty flag', () => {
     const s = new EditorStore(emptyDiagram())
     s.commit(s.getState().diagram)
     expect(s.dirty).toBe(false)
+  })
+})
+
+describe('EditorStore part drags that mount or unmount', () => {
+  const bb: ModuleDef = {
+    format: 'circuitoon-module/1', id: 'bb', name: 'Test board', pins: [], size: { w: 10, h: 6 }, obstacle: false,
+    holes: Array.from({ length: 9 }, (_, i) => ({
+      name: `s${i + 1}`, label: `${i + 1}`, at: [10, 20, 30, 40, 50].map((y) => [(i + 1) * 10, y] as [number, number]),
+    })),
+  }
+  const two: ModuleDef = { format: 'circuitoon-module/1', id: 'two', name: 'Two', pins: [{ name: 'L', side: 'left' }, { name: 'R', side: 'right' }] }
+  /** Board b at the origin; part u with legs at x = u.x and u.x + 40, row y = 20 when u.y is 0. */
+  const sheet = (x: number, mounted: boolean): Diagram => ({
+    format: 'circuitoon-diagram/1', title: 't', modules: { bb, two },
+    parts: [
+      { uid: 'b', designator: 'BB1', module: 'bb', x: 0, y: 0 },
+      { uid: 'u', designator: 'R1', module: 'two', x, y: 0, ...(mounted ? { mount: { board: 'b' } } : {}) },
+    ],
+    connections: [],
+  })
+  /** What the canvas does: move previews while dragging, then settle the moved parts and end. */
+  function drag(s: EditorStore, dx: number) {
+    const base = s.begin()
+    for (let i = 1; i <= 3; i++) s.preview(moveParts(base, ['u'], (dx * i) / 3, 0))
+    s.preview(settleMounts(s.getState().diagram, ['u']))
+    s.end()
+  }
+  const u = (s: EditorStore) => s.getState().diagram.parts[1]
+
+  it('a drag that mounts undoes and redoes as one step', () => {
+    const s = new EditorStore(sheet(300, false))
+    drag(s, -270)
+    expect(u(s)).toMatchObject({ x: 30, mount: { board: 'b' } })
+    s.undo()
+    expect(u(s).x).toBe(300)
+    expect(u(s)).not.toHaveProperty('mount')
+    expect(s.canUndo).toBe(false)
+    s.redo()
+    expect(u(s)).toMatchObject({ x: 30, mount: { board: 'b' } })
+    expect(s.canRedo).toBe(false)
+  })
+  it('a drag that unmounts undoes and redoes as one step', () => {
+    const s = new EditorStore(sheet(10, true))
+    drag(s, 60)
+    expect(u(s).x).toBe(70)
+    expect(u(s)).not.toHaveProperty('mount')
+    s.undo()
+    expect(u(s)).toMatchObject({ x: 10, mount: { board: 'b' } })
+    expect(s.canUndo).toBe(false)
+    s.redo()
+    expect(u(s).x).toBe(70)
+    expect(u(s)).not.toHaveProperty('mount')
+  })
+  it('Escape during a drag leaves mounts untouched', () => {
+    const start = sheet(10, true)
+    const s = new EditorStore(start)
+    const base = s.begin()
+    s.preview(moveParts(base, ['u'], 300, 0))
+    s.cancel()
+    expect(s.getState().diagram).toBe(start)
+    expect(u(s).mount).toEqual({ board: 'b' })
+    expect(s.canUndo).toBe(false)
   })
 })
