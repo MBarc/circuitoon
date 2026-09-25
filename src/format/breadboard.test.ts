@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { holeAt, holeIndex, mountIssues, plugsOf, pointKey, seatOf, seatOn } from './breadboard.ts'
+import { holeAt, holeIndex, mountIssues, plugsOf, pointKey, seatOf, seatOn, splitBoards } from './breadboard.ts'
 import type { Diagram } from './diagram.ts'
 import type { ModuleDef } from './module.ts'
 
@@ -143,6 +143,16 @@ describe('seatOn', () => {
     expect(seatOn(d, 'u', 'c', [])).toEqual({ status: 'seated', board: 'c', holes: [{ x: 90, y: 20 }, { x: 50, y: 20 }] })
     expect(seatOn(d, 'u', 'u', [])).toBeNull()
     expect(seatOn(d, 'u', 'zz', [])).toBeNull()
+  })
+})
+
+describe('splitBoards', () => {
+  it('puts boards first, keeping file order within each layer', () => {
+    const d = sheet()
+    d.parts = [d.parts[1], d.parts[0], d.parts[2]]
+    const { boards, others } = splitBoards(d)
+    expect(boards.map((p) => p.uid)).toEqual(['b'])
+    expect(others.map((p) => p.uid)).toEqual(['p1', 'p2'])
   })
 })
 

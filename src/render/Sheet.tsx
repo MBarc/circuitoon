@@ -1,7 +1,9 @@
-// A diagram drawn on graph paper: parts, then wires on top with hop arcs and pin dots.
-import { computeRoutes, labelAnchor, type Diagram, moduleOf, wireColor, wirePaths, wireWidth } from '../format/diagram.ts'
+// A diagram drawn on graph paper: boards, then parts, then wires on top with hop arcs and pin dots.
+import { computeRoutes, labelAnchor, type Diagram, moduleOf, wireColor, wirePaths, wireWidth, type PartInstance } from '../format/diagram.ts'
+import { plugsOf, splitBoards } from '../format/breadboard.ts'
 import { partCaption } from '../format/values.ts'
 import { Part, INK } from './Part.tsx'
+import { LegDots, TakenHoles } from './Boards.tsx'
 import { WireLabel } from './WireLabel.tsx'
 
 export function Sheet({ diagram, captions = {}, box, label, decorative = false }: {
@@ -15,6 +17,14 @@ export function Sheet({ diagram, captions = {}, box, label, decorative = false }
 }) {
   const routes = computeRoutes(diagram)
   const wires = wirePaths(diagram, routes)
+  const { boards, others } = splitBoards(diagram)
+  const plugs = plugsOf(diagram)
+  const part = (p: PartInstance) => {
+    const m = moduleOf(diagram, p.module)
+    return m ? (
+      <Part key={p.uid} module={m} x={p.x} y={p.y} rotation={p.rotation} caption={captions[p.uid] ?? partCaption(p, m)} values={p.values} />
+    ) : null
+  }
   return (
     <svg className="sheet" viewBox={`${box.x} ${box.y} ${box.w} ${box.h}`} {...(decorative ? { 'aria-hidden': true } : { role: 'img', 'aria-label': label })}>
       <defs>
@@ -24,12 +34,10 @@ export function Sheet({ diagram, captions = {}, box, label, decorative = false }
       </defs>
       <rect x={box.x} y={box.y} width={box.w} height={box.h} fill="var(--paper)" />
       <rect x={box.x} y={box.y} width={box.w} height={box.h} fill="url(#grid)" />
-      {diagram.parts.map((p) => {
-        const m = moduleOf(diagram, p.module)
-        return m ? (
-          <Part key={p.uid} module={m} x={p.x} y={p.y} rotation={p.rotation} caption={captions[p.uid] ?? partCaption(p, m)} values={p.values} />
-        ) : null
-      })}
+      {boards.map(part)}
+      <TakenHoles plugs={plugs} />
+      {others.map(part)}
+      <LegDots plugs={plugs} />
       <g fill="none" strokeLinecap="round" strokeLinejoin="round">
         {wires.map(({ conn, d, blocked }) => {
           const w = wireWidth(conn.gauge)

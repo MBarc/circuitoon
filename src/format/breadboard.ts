@@ -195,3 +195,11 @@ export function plugsOf(d: Diagram): Plug[] {
 export function mountIssues(d: Diagram): MountIssue[] {
   return mounts(d).issues
 }
+
+/** Boards first, so parts on a board draw above it whatever the file order; file order is kept within each list. */
+export function splitBoards(d: Diagram): { boards: PartInstance[]; others: PartInstance[] } {
+  const boards: PartInstance[] = []
+  const others: PartInstance[] = []
+  for (const p of d.parts) (isBoard(moduleOf(d, p.module)) ? boards : others).push(p)
+  return { boards, others }
+}

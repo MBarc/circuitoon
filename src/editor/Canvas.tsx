@@ -2,8 +2,10 @@
 import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import { type EditorStore, useEditorState } from './store.ts'
 import { computeRoutes, labelAnchor, moduleOf, wireColor, wirePaths, wireWidth, type PartInstance, type Routes } from '../format/diagram.ts'
+import { plugsOf, splitBoards } from '../format/breadboard.ts'
 import type { Pt } from '../format/geometry.ts'
 import { Part, INK } from '../render/Part.tsx'
+import { LegDots, TakenHoles } from '../render/Boards.tsx'
 import { WireLabel } from '../render/WireLabel.tsx'
 import { addPart, addWire, EMPTY_SELECTION, moveParts, reconnectWire, setWireRoute, updateWire } from './ops.ts'
 import { bendHandleAt, insertBend, isOrthogonal, moveSegment, removeBend, segmentHandleAt, segmentsOf, toRoute, type Axis } from '../format/wireEdit.ts'
@@ -140,6 +142,9 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
   }, [diagram.parts, diagram.modules, endpointsKey, draggingParts, reshaping])
   // Path data only changes with the routes or the wires themselves, not with pan, zoom or selection.
   const wires = useMemo(() => wirePaths(diagram, routes), [routes, diagram.connections])
+  // Boards draw below every other part; the leg overlays follow mounts and positions.
+  const layers = useMemo(() => splitBoards(diagram), [diagram.parts, diagram.modules])
+  const plugs = useMemo(() => plugsOf(diagram), [diagram.parts, diagram.modules])
 
   const vw = size.w / view.scale
   const vh = size.h / view.scale
@@ -360,6 +365,19 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
     return () => window.removeEventListener('keydown', onKey)
   }, [drag?.kind])
 
+  const renderPart = (p: PartInstance) => {
+    const m = moduleOf(diagram, p.module)
+    return m ? (
+      <g key={p.uid} data-part={p.uid}>
+        {selection.parts.includes(p.uid) && (() => {
+          const r = bodyRect(p, layoutModule(m))
+          return <rect x={r.x - 6} y={r.y - 6} width={r.w + 12} height={r.h + 12} rx={6} fill="none" stroke="var(--focus)" strokeWidth={1.5} strokeDasharray="5 4" />
+        })()}
+        <Part module={m} x={p.x} y={p.y} rotation={p.rotation} caption={partCaption(p, m)} values={p.values} />
+      </g>
+    ) : null
+  }
+
   return (
     <div
       className="canvas-wrap"
@@ -397,18 +415,10 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
         </defs>
         <rect x={view.x} y={view.y} width={vw} height={vh} fill="var(--paper)" />
         <rect x={view.x} y={view.y} width={vw} height={vh} fill="url(#editor-grid)" />
-        {diagram.parts.map((p) => {
-          const m = moduleOf(diagram, p.module)
-          return m ? (
-            <g key={p.uid} data-part={p.uid}>
-              {selection.parts.includes(p.uid) && (() => {
-                const r = bodyRect(p, layoutModule(m))
-                return <rect x={r.x - 6} y={r.y - 6} width={r.w + 12} height={r.h + 12} rx={6} fill="none" stroke="var(--focus)" strokeWidth={1.5} strokeDasharray="5 4" />
-              })()}
-              <Part module={m} x={p.x} y={p.y} rotation={p.rotation} caption={partCaption(p, m)} values={p.values} />
-            </g>
-          ) : null
-        })}
+        {layers.boards.map(renderPart)}
+        <TakenHoles plugs={plugs} />
+        {layers.others.map(renderPart)}
+        <LegDots plugs={plugs} />
         <g fill="none" strokeLinecap="round" strokeLinejoin="round">
           {wires.map(({ conn, d, blocked }) => {
             const w = wireWidth(conn.gauge)
