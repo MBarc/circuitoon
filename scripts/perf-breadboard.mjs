@@ -4,7 +4,8 @@
 // recording frame times, rotating it, and deleting it. On fresh sheets it then checks a Parts panel
 // drop mounting in one undo step, a second part on the same holes staying loose, the green and red
 // drag highlight, a wire drawn from a pin into a free hole (confirmed in the exported JSON), a wire
-// from a hole under a mounted part routing with square corners, and a wire to a missing hole drawn
+// from a hole under a mounted part routing with square corners, the hole next to a plugged leg
+// staying its own hole (hover, press and drop), and a wire to a missing hole drawn
 // as a dashed red stub that can be selected and deleted. Last, the Parts panel and the dark theme.
 //
 // Usage (repo root, after `npm run build`):
@@ -375,6 +376,51 @@ check((await diagonalWires()).length === 0, 'no wire on this sheet has a diagona
 await page.mouse.move(5, 5)
 await pause()
 await shot('pin-to-hole-wire.png')
+
+// --- The hole next to a plugged leg is its own hole. R1 at (30, 40) plugs pin 1 into c1-top row a
+// (30, 60) and pin 2 into c7-top row a (90, 60); pin 2's stub tip sits 2 px from c8-top row a
+// (100, 60), so a pin target left there would catch everything aimed at column 8. ---
+await load(
+  sheetFile('leg-neighbour', 'Leg neighbour', [
+    { uid: 'bb4', designator: 'BB1', module: board.id, x: 0, y: 0, rotation: 0 },
+    { uid: 'rl', designator: 'R1', module: resistor.id, x: 30, y: 40, rotation: 0, mount: { board: 'bb4' } },
+  ], []),
+  'bb4',
+)
+check((await legDots()).join(' ') === '30,60 90,60', `R1 plugged into c1 and c7 row a (legs ${(await legDots()).join(' ')})`)
+const pinAt = await page.evaluate(() => {
+  const c = document.querySelector('[data-pin-part="rl"][data-pin="2"]')
+  return `${c.getAttribute('cx')},${c.getAttribute('cy')}`
+})
+check(pinAt === '90,60', `a plugged leg's hit target sits on its own hole (pin 2 at ${pinAt})`)
+/** X of every point the net highlight lights (each dot is drawn from `M x-r y`, so this is x - r). */
+const litXs = () => page.evaluate(() => [...(document.querySelector('.net-hi')?.getAttribute('d') ?? '').matchAll(/M(-?[\d.]+)/g)].map((m) => Number(m[1])))
+const neighbour = await toScreen(100, 60)
+await page.mouse.move(neighbour.x, neighbour.y)
+await pause()
+const col8 = await litXs()
+const legHole = await toScreen(90, 60)
+await page.mouse.move(legHole.x, legHole.y)
+await pause()
+const col7 = await litXs()
+check(
+  col8.length >= 5 && new Set(col8).size === 1 && col7.length >= 5 && new Set(col7).size === 1 && col8[0] - col7[0] === 10,
+  `hovering the hole next to the leg lights column 8, hovering the leg's hole lights column 7 (x-r ${[...new Set(col8)]} vs ${[...new Set(col7)]})`,
+)
+await shot('leg-neighbour-hover.png')
+// Press on the neighbouring hole and draw to the top + rail over column 14 (150, 20); then draw
+// from the top + rail over column 25 (260, 20) and drop onto that same neighbouring hole.
+await stroke({ x: 100, y: 60 }, { x: 150, y: 20 })
+await stroke({ x: 260, y: 20 }, { x: 100, y: 60 })
+saved = await exported()
+const neighbourEnds = saved.connections.flatMap((c) => [c.from, c.to]).filter((e) => e.pin !== 'top+')
+check(
+  saved.connections.length === 2 && neighbourEnds.length === 2 && neighbourEnds.every((e) => e.part === 'bb4' && e.pin === 'c8-top' && (e.hole ?? 0) === 0),
+  `a wire started on, and a wire dropped on, the hole next to a plugged leg both land in that hole's own strip (${JSON.stringify(neighbourEnds)})`,
+)
+await page.mouse.move(5, 5)
+await pause()
+await shot('leg-neighbour-wires.png')
 
 // --- A wire to a hole that does not exist (c2-top has 5 holes): a dashed red stub. ---
 await load(

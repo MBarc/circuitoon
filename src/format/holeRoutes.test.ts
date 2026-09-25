@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { computeRoutes, routeWire, partObstacles, resolveEndpoint, type Diagram } from './diagram.ts'
+import { computeRoutes, pinTargets, routeWire, partObstacles, resolveEndpoint, type Diagram } from './diagram.ts'
 import { bodyRect, type Pt } from './geometry.ts'
 import { layoutModule, validateModule, type ModuleDef } from './module.ts'
 import { routeOrthogonal } from './router.ts'
@@ -197,5 +197,20 @@ describe('a wire to a plugged leg (Ruling 25)', () => {
     const r = computeRoutes(d).get('w')!
     expect(r.points[0]).toEqual({ x: 30, y: 60 })
     expect(orthogonal(r.points)).toBe(true)
+  })
+  it("puts a plugged leg's hit target on its own hole, not by the neighbouring one", () => {
+    const d = legSheet(true)
+    const targets = pinTargets(d, d.parts[1], resistor)
+    expect(Object.fromEntries(targets.map((t) => [t.name, t.at]))).toEqual({ '1': { x: 30, y: 60 }, '2': { x: 90, y: 60 } })
+  })
+  it('keeps the hit target at the stub tip for an unplugged leg', () => {
+    const partial = legSheet(true)
+    partial.parts = partial.parts.map((p) => (p.uid === 'r1' ? { ...p, x: 35 } : p))
+    for (const d of [legSheet(false), partial]) {
+      const part = d.parts[1]
+      const targets = pinTargets(d, part, resistor)
+      expect(targets.map((t) => t.at)).toEqual(targets.map((t) => resolveEndpoint(d, { part: part.uid, pin: t.name })!.end))
+      expect(targets.find((t) => t.name === '1')!.at.x).toBeLessThan(part.x)
+    }
   })
 })

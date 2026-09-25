@@ -135,6 +135,26 @@ export function resolveEndpoint(d: Diagram, ep: Endpoint): ResolvedEnd | null {
   return hole ? { end: hole, dir: null } : { end: pin.end, dir: pin.dir }
 }
 
+/** Where a pin's hit target sits in world px, so pressing, hovering or dropping there picks that pin. */
+export interface PinTarget {
+  name: string
+  label?: string
+  at: Pt
+}
+
+/**
+ * A part's pin hit targets: at the stub tip, or for a validly plugged leg on the leg's own hole
+ * (where `resolveEndpoint` puts its wire end). The stub tip of a plugged leg sits over the
+ * neighbouring hole, so a target there would catch a wire aimed at that hole's strip.
+ */
+export function pinTargets(d: Diagram, part: PartInstance, m: ModuleDef): PinTarget[] {
+  return worldPins(part, m).map((wp) => ({
+    name: wp.name,
+    label: wp.label,
+    at: (part.mount && plugOfPin(d, part.uid, wp.name)) || wp.end,
+  }))
+}
+
 /**
  * A broken connection's one resolvable end, so the editor can still draw a short repair stub
  * there (the other end names a missing part, pin, group or hole and has no coordinate at all).

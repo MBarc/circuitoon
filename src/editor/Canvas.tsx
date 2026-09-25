@@ -1,7 +1,7 @@
 // The editing surface: an SVG sheet you can pan (drag the background) and zoom (wheel).
 import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import { type EditorStore, useEditorState } from './store.ts'
-import { brokenStub, computeRoutes, labelAnchor, moduleOf, resolveEndpoint, wireColor, wirePaths, wireWidth, type PartInstance, type Routes } from '../format/diagram.ts'
+import { brokenStub, computeRoutes, labelAnchor, moduleOf, pinTargets, resolveEndpoint, wireColor, wirePaths, wireWidth, type PartInstance, type PinTarget, type Routes } from '../format/diagram.ts'
 import { holeAtPoint, plugsOf, splitBoards } from '../format/breadboard.ts'
 import type { Pt } from '../format/geometry.ts'
 import { Part, INK } from '../render/Part.tsx'
@@ -11,8 +11,8 @@ import { addPart, addWire, EMPTY_SELECTION, moveParts, reconnectWire, sameEndpoi
 import { netlist, netPoints } from '../format/netlist.ts'
 import { bendHandleAt, insertBend, isOrthogonal, moveSegment, removeBend, segmentHandleAt, segmentsOf, toRoute, type Axis } from '../format/wireEdit.ts'
 import { modulesById } from '../library.ts'
-import { bodyRect, worldPins } from '../format/geometry.ts'
-import { isBoard, layoutModule, type ModuleDef } from '../format/module.ts'
+import { bodyRect } from '../format/geometry.ts'
+import { isBoard, layoutModule } from '../format/module.ts'
 import { MODULE_MIME } from './LibraryPanel.tsx'
 import type { Diagram, Endpoint } from '../format/diagram.ts'
 import { partCaption } from '../format/values.ts'
@@ -43,30 +43,38 @@ const BROKEN_STUB = 20
 const circlePath = (p: Pt, r: number) => `M${p.x - r} ${p.y}a${r} ${r} 0 1 0 ${2 * r} 0a${r} ${r} 0 1 0 ${-2 * r} 0`
 
 /**
- * One part's pin hit-targets (the invisible circles wires attach to). Memoized so dragging a
- * wire across the sheet, which changes `hoveredPin` every pointer move, only re-renders the one
- * part whose pin is actually being hovered instead of rebuilding this layer for every part on
- * the sheet each frame.
+ * One part's pin hit-targets (the invisible circles wires attach to), at the stub tips or, for a
+ * plugged leg, on the leg's own hole (`pinTargets`). Memoized so dragging a wire across the
+ * sheet, which changes `hoveredPin` every pointer move, only re-renders the one part whose pin is
+ * actually being hovered instead of rebuilding this layer for every part on the sheet each frame.
+ * The targets are a new array each render, so they are compared by position.
  */
-const PinTargets = memo(function PinTargets({ part, m, hoveredPin }: { part: PartInstance; m: ModuleDef; hoveredPin: string | null }) {
-  return (
-    <>
-      {worldPins(part, m).map((wp) => (
-        <circle
-          key={wp.name}
-          className={hoveredPin === wp.name ? 'pin-hit target' : 'pin-hit'}
-          data-pin={wp.name}
-          data-pin-part={part.uid}
-          cx={wp.end.x}
-          cy={wp.end.y}
-          r={6}
-        >
-          <title>{`${part.designator} ${wp.label ?? wp.name}`}</title>
-        </circle>
-      ))}
-    </>
-  )
-})
+const PinTargets = memo(
+  function PinTargets({ part, targets, hoveredPin }: { part: PartInstance; targets: PinTarget[]; hoveredPin: string | null }) {
+    return (
+      <>
+        {targets.map((t) => (
+          <circle
+            key={t.name}
+            className={hoveredPin === t.name ? 'pin-hit target' : 'pin-hit'}
+            data-pin={t.name}
+            data-pin-part={part.uid}
+            cx={t.at.x}
+            cy={t.at.y}
+            r={6}
+          >
+            <title>{`${part.designator} ${t.label ?? t.name}`}</title>
+          </circle>
+        ))}
+      </>
+    )
+  },
+  (a, b) =>
+    a.part === b.part &&
+    a.hoveredPin === b.hoveredPin &&
+    a.targets.length === b.targets.length &&
+    a.targets.every((t, i) => t.name === b.targets[i].name && t.label === b.targets[i].label && t.at.x === b.targets[i].at.x && t.at.y === b.targets[i].at.y),
+)
 
 export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api: { addAtCenter: (moduleId: string) => void }) => void }) {
   const { diagram, selection } = useEditorState(store)
@@ -584,7 +592,7 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
           if (!m) return null
           const hoveredPin =
             (drag?.kind === 'wire' || drag?.kind === 'reconnect') && drag.over?.part === p.uid ? drag.over.pin : null
-          return <PinTargets key={p.uid} part={p} m={m} hoveredPin={hoveredPin} />
+          return <PinTargets key={p.uid} part={p} targets={pinTargets(diagram, p, m)} hoveredPin={hoveredPin} />
         })}
         {selection.wires.length === 1 &&
           !drag &&
