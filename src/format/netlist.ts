@@ -1,7 +1,8 @@
 // Nets: sets of pins and hole groups joined by wires, mounted legs and `internal` groups. Feeds
 // hover highlighting now and the V2 simulation later. Pure.
-import { type Diagram, moduleOf, resolveEndpoint } from './diagram.ts'
+import { type Diagram, type Endpoint, moduleOf, resolveEndpoint } from './diagram.ts'
 import { type Plug, plugsOf } from './breadboard.ts'
+import { type Pt, worldHoles, worldPins } from './geometry.ts'
 
 /** One key per part pin or hole group; JSON keeps any character in a uid or name unambiguous. */
 export const nodeKey = (part: string, pin: string): string => JSON.stringify([part, pin])
@@ -59,3 +60,30 @@ export function netlist(d: Diagram, plugs: Plug[] = plugsOf(d)): Netlist {
   nets.forEach((n, i) => n.forEach((k) => netOf.set(k, i)))
   return { nets, netOf, broken: broken.sort() }
 }
+
+/**
+ * Everything to light up while hovering `ep`: every hole of every hole group on its net and every
+ * pin stub tip on it. A pin or group on no net lights only itself (a strip lights its own holes).
+ */
+export function netPoints(d: Diagram, ep: Endpoint, n: Netlist = netlist(d)): Pt[] {
+  const key = nodeKey(ep.part, ep.pin)
+  const i = n.netOf.get(key)
+  const members = i === undefined ? [key] : n.nets[i]
+  const out: Pt[] = []
+  for (const k of members) {
+    const [uid, name] = JSON.parse(k) as [string, string]
+    const part = d.parts.find((p) => p.uid === uid)
+    const m = part && moduleOf(d, part.module)
+    if (!part || !m) continue
+    const group = worldHoles(part, m).find((g) => g.name === name)
+    if (group) out.push(...group.at)
+    else {
+      const pin = worldPins(part, m).find((p) => p.name === name)
+      if (pin) out.push(pin.end)
+    }
+  }
+  return out
+}
+
+/** CSS class for a wire the netlist could not join into a net (a broken endpoint), so it renders visibly broken. */
+export const wireClass = (broken: string[], uid: string): string | undefined => (broken.includes(uid) ? 'wire-broken' : undefined)

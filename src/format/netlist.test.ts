@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { netlist, nodeKey } from './netlist.ts'
+import { netlist, netPoints, nodeKey, wireClass } from './netlist.ts'
 import type { Diagram } from './diagram.ts'
 import type { ModuleDef } from './module.ts'
 
@@ -95,5 +95,38 @@ describe('netlist', () => {
     const n = netlist(d)
     expect(n.netOf.get(k('p3', 'R'))).toBe(n.netOf.get(k('p4', 'A')))
     expect(n.broken).toEqual([])
+  })
+})
+
+describe('netPoints', () => {
+  const sorted = (pts: { x: number; y: number }[]) => [...pts].sort((a, b) => a.x - b.x || a.y - b.y)
+  it('lights every hole of the strip plus the pins plugged into it', () => {
+    const pts = netPoints(netSheet(), { part: 'b', pin: 's5', hole: 3 })
+    expect(sorted(pts)).toEqual(sorted([
+      { x: 50, y: 10 }, { x: 50, y: 20 }, { x: 50, y: 30 }, { x: 50, y: 40 }, { x: 50, y: 50 },
+      { x: 58, y: 20 }, // p1 R stub tip
+      { x: 42, y: 30 }, // p2 L stub tip
+    ]))
+  })
+  it('follows wires and internal joins from a pin', () => {
+    const pts = netPoints(netSheet(), { part: 'p4', pin: 'B' })
+    expect(sorted(pts)).toEqual(sorted([
+      { x: 248, y: 20 }, // p3 R stub tip
+      { x: 292, y: 20 }, // p4 A stub tip
+      { x: 348, y: 20 }, // p4 B stub tip
+    ]))
+  })
+  it('lights just the strip itself when nothing connects to it', () => {
+    expect(netPoints(netSheet(), { part: 'b', pin: 's2' })).toHaveLength(5)
+  })
+})
+
+describe('wireClass', () => {
+  it('marks a broken wire and leaves a good one alone', () => {
+    const n = netlist(netSheet())
+    expect(n.broken).toEqual([])
+    expect(wireClass(n.broken, 'w1')).toBeUndefined()
+    expect(wireClass(['w1'], 'w1')).toBe('wire-broken')
+    expect(wireClass(['w1'], 'w2')).toBeUndefined()
   })
 })

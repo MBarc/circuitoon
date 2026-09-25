@@ -132,6 +132,15 @@ export function resolveEndpoint(d: Diagram, ep: Endpoint): ResolvedEnd | null {
 }
 
 /**
+ * A broken connection's one resolvable end, so the editor can still draw a short repair stub
+ * there (the other end names a missing part, pin, group or hole and has no coordinate at all).
+ * Null when neither end resolves.
+ */
+export function brokenStub(d: Diagram, c: Connection): ResolvedEnd | null {
+  return resolveEndpoint(d, c.from) ?? resolveEndpoint(d, c.to)
+}
+
+/**
  * A hand-routed wire keeps its stored bends; only its end segments stretch to reach a moved
  * pin. Where a pin tip and its neighbouring bend no longer line up, a corner is added so the
  * wire still leaves the pin along its stub, and every segment stays horizontal or vertical.

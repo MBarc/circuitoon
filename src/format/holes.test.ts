@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { isBoard, validateModule, type ModuleDef } from './module.ts'
-import { computeRoutes, partObstacles, resolveEndpoint, routeWire, serializeDiagram, validateDiagram, type Diagram } from './diagram.ts'
+import { brokenStub, computeRoutes, partObstacles, resolveEndpoint, routeWire, serializeDiagram, validateDiagram, type Diagram } from './diagram.ts'
 import { plugPoints, worldHoles } from './geometry.ts'
 import { netlist } from './netlist.ts'
 
@@ -216,6 +216,21 @@ describe('resolveEndpoint', () => {
   })
   it('resolves a pin to its stub tip and direction', () => {
     expect(resolveEndpoint(d(), { part: 'q', pin: 'R' })).toEqual({ end: { x: 48, y: 20 }, dir: { x: 1, y: 0 } })
+  })
+})
+
+describe('brokenStub', () => {
+  const d = (): Diagram => ({
+    format: 'circuitoon-diagram/1', title: 't', modules: { bb, two },
+    parts: [{ uid: 'b', designator: 'BB1', module: 'bb', x: 0, y: 0 }, { uid: 'q', designator: 'R1', module: 'two', x: 0, y: 0 }],
+    connections: [],
+  })
+  it('finds the one end that resolves, from either side', () => {
+    expect(brokenStub(d(), { uid: 'w1', from: { part: 'b', pin: 's1', hole: 0 }, to: { part: 'b', pin: 's1', hole: 99 } })).toEqual({ end: { x: 10, y: 10 }, dir: null })
+    expect(brokenStub(d(), { uid: 'w2', from: { part: 'b', pin: 's1', hole: 99 }, to: { part: 'q', pin: 'L' } })).toEqual({ end: { x: -8, y: 20 }, dir: { x: -1, y: 0 } })
+  })
+  it('is null when neither end resolves', () => {
+    expect(brokenStub(d(), { uid: 'w3', from: { part: 'zz', pin: 'x' }, to: { part: 'b', pin: 'nope' } })).toBeNull()
   })
 })
 

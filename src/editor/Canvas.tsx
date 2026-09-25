@@ -1,13 +1,14 @@
 // The editing surface: an SVG sheet you can pan (drag the background) and zoom (wheel).
 import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import { type EditorStore, useEditorState } from './store.ts'
-import { computeRoutes, labelAnchor, moduleOf, resolveEndpoint, wireColor, wirePaths, wireWidth, type PartInstance, type Routes } from '../format/diagram.ts'
+import { brokenStub, computeRoutes, labelAnchor, moduleOf, resolveEndpoint, wireColor, wirePaths, wireWidth, type PartInstance, type Routes } from '../format/diagram.ts'
 import { holeAtPoint, plugsOf, splitBoards } from '../format/breadboard.ts'
 import type { Pt } from '../format/geometry.ts'
 import { Part, INK } from '../render/Part.tsx'
 import { LegDots, TakenHoles } from '../render/Boards.tsx'
 import { WireLabel } from '../render/WireLabel.tsx'
-import { addPart, addWire, EMPTY_SELECTION, moveParts, reconnectWire, setWireRoute, settleDrop, settleMounts, settleSeats, settlingOf, updateWire, withMounted } from './ops.ts'
+import { addPart, addWire, EMPTY_SELECTION, moveParts, reconnectWire, sameEndpoint, setWireRoute, settleDrop, settleMounts, settleSeats, settlingOf, updateWire, withMounted } from './ops.ts'
+import { netlist, netPoints, wireClass } from '../format/netlist.ts'
 import { bendHandleAt, insertBend, isOrthogonal, moveSegment, removeBend, segmentHandleAt, segmentsOf, toRoute, type Axis } from '../format/wireEdit.ts'
 import { modulesById } from '../library.ts'
 import { bodyRect, worldPins } from '../format/geometry.ts'
@@ -34,6 +35,10 @@ type Drag = { pointer: number } & (
 const MIN_HANDLE_SEGMENT = 20
 
 const samePoints = (a: Pt[], b: Pt[]) => a.length === b.length && a.every((p, i) => p.x === b[i].x && p.y === b[i].y)
+
+/** Path data for a filled circle at `p` with radius `r`, as two arcs: draws a whole net's worth of
+ * highlight dots as one `<path>` instead of one `<circle>` element per point (Ruling 19). */
+const circlePath = (p: Pt, r: number) => `M${p.x - r} ${p.y}a${r} ${r} 0 1 0 ${2 * r} 0a${r} ${r} 0 1 0 ${-2 * r} 0`
 
 /**
  * One part's pin hit-targets (the invisible circles wires attach to). Memoized so dragging a
@@ -67,6 +72,8 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
   const [size, setSize] = useState({ w: 800, h: 600 })
   const [view, setView] = useState<View>({ x: -20, y: -40, scale: 1.5 })
   const [drag, setDrag] = useState<Drag | null>(null)
+  // The pin or hole under the pointer while nothing is being dragged, for net highlighting.
+  const [hover, setHover] = useState<Endpoint | null>(null)
   const settled = useRef<Routes>(new Map())
   const [editing, setEditing] = useState<{ uid: string; anchor: Pt; initial: string; token: number } | null>(null)
   const editRef = useRef<HTMLInputElement>(null)
@@ -155,6 +162,10 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
   )
   const plugs = useMemo(() => settling?.plugs ?? plugsOf(diagram), [settling, diagram.parts, diagram.modules])
   const seats = useMemo(() => (settling ? [...settling.seats.values()].flatMap((s) => s ?? []) : []), [settling])
+  // Rebuilt only when parts, connections or modules actually change, so moving the pointer between
+  // hover targets (which changes `hover` every frame) never rebuilds the netlist itself.
+  const nl = useMemo(() => netlist(diagram), [diagram.parts, diagram.connections, diagram.modules])
+  const net = useMemo(() => (hover && !drag ? netPoints(diagram, hover, nl) : []), [hover, drag, diagram, nl])
 
   const vw = size.w / view.scale
   const vh = size.h / view.scale
@@ -355,7 +366,12 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
     return pinUnder(e) ?? holeUnder(e)
   }
   function onPointerMove(e: React.PointerEvent<SVGSVGElement>) {
-    if (!drag || e.pointerId !== drag.pointer) return
+    if (!drag) {
+      const over = endUnder(e)
+      setHover((h) => (h === over || (h && over && sameEndpoint(h, over)) ? h : over))
+      return
+    }
+    if (e.pointerId !== drag.pointer) return
     if (drag.kind === 'pan')
       setView({ ...drag.view, x: drag.view.x - (e.clientX - drag.client.x) / view.scale, y: drag.view.y - (e.clientY - drag.client.y) / view.scale })
     else if (drag.kind === 'parts') {
@@ -460,6 +476,7 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerCancel}
+        onPointerLeave={() => setHover(null)}
         onLostPointerCapture={onPointerCancel}
         onDoubleClick={onDoubleClick}
         role="application"
@@ -487,16 +504,41 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
             const dash = blocked ? '6 5' : undefined
             const selected = selection.wires.includes(conn.uid)
             const dimmed = drag?.kind === 'reconnect' && drag.uid === conn.uid
+            const broken = wireClass(nl.broken, conn.uid)
             return (
               <g key={conn.uid} data-wire={conn.uid} opacity={dimmed ? 0.3 : undefined}>
                 {selected && <path d={d} stroke="var(--focus)" strokeOpacity={0.35} strokeWidth={w + 10} />}
-                <path d={d} stroke={INK} strokeWidth={w + 2.2} strokeDasharray={dash} />
-                <path d={d} stroke={wireColor(conn.color)} strokeWidth={w} strokeDasharray={dash} />
+                <path d={d} className={broken} stroke={INK} strokeWidth={w + 2.2} strokeDasharray={dash} />
+                <path d={d} className={broken} stroke={wireColor(conn.color)} strokeWidth={w} strokeDasharray={dash} />
                 <path d={d} className="wire-hit" strokeWidth={Math.max(12, w + 8)} />
               </g>
             )
           })}
         </g>
+        {/* A connection the netlist could not join (a missing part, pin, group or hole) has no
+            route to draw, but a short dashed red stub at whichever end still resolves lets a
+            user find and repair it instead of a wire silently vanishing from the sheet. */}
+        {diagram.connections.map((c) => {
+          if (!nl.broken.includes(c.uid)) return null
+          const at = brokenStub(diagram, c)
+          if (!at) return null
+          const dir = at.dir ?? { x: 0, y: -1 }
+          const tip = { x: at.end.x + dir.x * 14, y: at.end.y + dir.y * 14 }
+          return (
+            <path
+              key={c.uid}
+              data-wire={c.uid}
+              className="wire-broken"
+              d={`M${at.end.x} ${at.end.y}L${tip.x} ${tip.y}`}
+              fill="none"
+              strokeWidth={2.5}
+              strokeLinecap="round"
+              pointerEvents="none"
+            >
+              <title>{`${c.uid}: cannot resolve both ends`}</title>
+            </path>
+          )
+        })}
         {wires.flatMap(({ conn, ends }) => ends.map((e, i) => <circle key={`${conn.uid}-${i}`} cx={e.x} cy={e.y} r={2.4} fill={INK} />))}
         {/* Name tags in their own layer after every wire, so a labeled wire crossing under a
             later one still shows its tag on top. Each tag keeps data-wire so a click or
@@ -512,6 +554,7 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
             ) : null
           })}
         </g>
+        {net.length > 0 && <path className="net-hi" d={net.map((p) => circlePath(p, 4)).join('')} pointerEvents="none" />}
         {drag?.kind === 'wire' && (
           <line
             x1={drag.origin.x} y1={drag.origin.y} x2={drag.cursor.x} y2={drag.cursor.y}

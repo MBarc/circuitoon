@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { plugsOf, seatOf } from './breadboard.ts'
-import { netlist } from './netlist.ts'
+import { netlist, netPoints } from './netlist.ts'
 import type { Diagram, PartInstance } from './diagram.ts'
 import type { Rotation } from './geometry.ts'
 import { validateModule, type ModuleDef } from './module.ts'
@@ -86,6 +86,29 @@ describe('full breadboard with 20 parts', () => {
   it('builds the netlist in 5 ms or less (median)', () => {
     const d = loaded(true)
     expect(median(() => netlist(d))).toBeLessThanOrEqual(5)
+  })
+})
+
+describe('hover highlighting on the full breadboard', () => {
+  /** A resistor mounted on columns 1 and 5, row a, with the + rail jumpered to three columns
+   * (one of them the resistor's own), so hovering the rail lights the whole rail plus every
+   * jumped column plus the resistor's leg: a realistic, sizeable net for the hover budget. */
+  function railWired(): Diagram {
+    const parts: PartInstance[] = [board, { uid: 'r1', designator: 'R1', module: 'two', x: 30, y: 40, mount: { board: 'bb' } }]
+    const connections = [
+      { uid: 'w1', from: { part: 'bb', pin: 'top+', hole: 0 }, to: { part: 'bb', pin: 'c1-top', hole: 0 } },
+      { uid: 'w2', from: { part: 'bb', pin: 'top+', hole: 1 }, to: { part: 'bb', pin: 'c9-top', hole: 0 } },
+      { uid: 'w3', from: { part: 'bb', pin: 'top+', hole: 2 }, to: { part: 'bb', pin: 'c13-top', hole: 0 } },
+    ]
+    return { format: 'circuitoon-diagram/1', title: 'perf', modules: { [full.id]: full, two }, parts, connections }
+  }
+  it('lights a jumpered rail (memoized netlist) in 2 ms or less (median)', () => {
+    const d = railWired()
+    const n = netlist(d) // built once, as Canvas.tsx memoizes it per diagram
+    const pts = netPoints(d, { part: 'bb', pin: 'top+' }, n)
+    // The whole rail (50 holes) plus three 5-hole columns plus the resistor's plugged leg.
+    expect(pts.length).toBe(50 + 3 * 5 + 1)
+    expect(median(() => netPoints(d, { part: 'bb', pin: 'top+' }, n))).toBeLessThanOrEqual(2)
   })
 })
 
