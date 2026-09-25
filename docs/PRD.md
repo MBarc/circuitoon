@@ -139,6 +139,7 @@ A module is one self-contained JSON file: name, pins by side and order, optional
 | `internal` | no | Groups of pin names joined permanently inside the part, for example `[["GND1", "GND2"]]`. Never used for switchable connections. |
 | `size` | no | `{ "w", "h" }` in grid units. |
 | `art` | no | Art studio drawing (see Art studio). Absent means a plain labeled box. |
+| `art.pinLabels` | no | `"inside"` draws pin names inside the body next to each pin, like board silkscreen; default draws them beside the pin stub. |
 | `art.shapes[].band` | no | Resistor color band slot 1 to 4; the renderer colors it from the part's resistance. |
 | `electrical` | no | Extensible block for V2, for example `{ "model": "resistor", "terminals": { "a": "1", "b": "2" }, "params": { "resistance": { "unit": "ohm", "default": 1000 } } }`. V1 stores and round-trips it untouched. |
 | `states` | no | Reserved for V3 (for example `lit`, `burnt`, `on`); art shapes may bind to them later. |
@@ -253,12 +254,13 @@ V1 ships a starter library drawn in the same cartoon style, all defined in the s
 
 | Group | Parts | Editable values |
 | --- | --- | --- |
-| Passives | Resistor, capacitor (ceramic, electrolytic), potentiometer, inductor | Resistance, capacitance, inductance |
-| Indicators | LED (5 colors), RGB LED, buzzer or piezo | Color, forward voltage |
-| Switches | Push button, slide switch, rocker switch, toggle switch | Default state |
-| Semiconductors | Diode, NPN and PNP transistor, N-channel MOSFET | Part number |
-| Power | Battery (AA, 9V, 18650 holder), USB power, DC barrel jack, 3.3V and 5V regulators | Voltage |
-| Boards | ESP32 DevKit 38 pin, Arduino Uno, Arduino Nano, Raspberry Pi Pico | - |
+| Power | 9V battery, 18650 cell, 18650 holder (1 cell), 18650 holder (2S) | Voltage |
+| Microcontrollers | ESP32 DevKitC V4, ESP32 DevKit V1 (30 pin, DOIT), ESP32-S3-DevKitC-1, ESP32-C3 SuperMini, Seeed XIAO ESP32-C3, Seeed XIAO ESP32-S3, ESP32-CAM (AI Thinker) | - |
+| Passives | Resistor (1/4 W, 1/2 W), capacitor (ceramic, electrolytic, film, tantalum), potentiometer | Resistance, capacitance |
+| Indicators | LED | Color |
+| Switches | Push button | - |
+
+Not built yet: RGB LED, buzzer, slide switch, rocker switch, toggle switch, diode, NPN and PNP transistor, N-channel MOSFET, USB power, DC barrel jack, 3.3V and 5V regulators, Arduino Uno, Arduino Nano, Raspberry Pi Pico, breadboards, pin header.
 | Prototyping | Full and half breadboard (rails and strips as bus pins), pin header | Rows |
 
 Part values (220 ohm, 10 uF) show as a label on the part and are stored with their units in `parts[].values` so V2 can simulate them. The properties panel offers a resistance or capacitance value through a standard-value picker (E12 for resistors, E6 for capacitors) with free entry for anything else; a resistor's color bands update to match whatever value is chosen.
