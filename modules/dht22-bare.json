@@ -2,7 +2,7 @@
   "format": "circuitoon-module/1",
   "id": "dht22-bare",
   "version": 1,
-  "name": "DHT22 / AM2302 sensor (bare, 4-pin: VCC DATA NC GND)",
+  "name": "DHT22 / AM2302 temperature/humidity sensor (bare, 4-pin: VCC DATA NC GND)",
   "category": "Sensors",
   "source": "https://www.sparkfun.com/datasheets/Sensors/Temperature/DHT22.pdf https://lastminuteengineers.com/dht11-dht22-arduino-tutorial/",
   "pins": [

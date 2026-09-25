@@ -24,13 +24,13 @@ const parts: Record<string, Want> = {
     internal: [['GND', 'GND 2'], ['5V', '5V 2']],
   },
   // WS2812D-F5 datasheet front elevation: legs 4, 3, 2, 1 left to right (flat side at pin 1).
-  'ws2812b-5mm.json': { category: 'Indicators', sides: { bottom: ['DIN', 'GND', 'VDD', 'DOUT'] }, internal: [] },
+  'ws2812d-5mm.json': { category: 'Indicators', sides: { bottom: ['DIN', 'GND', 'VDD', 'DOUT'] }, internal: [] },
   // Grille side, header at the bottom: silkscreen "+ out -".
   'dht22-module.json': { category: 'Sensors', sides: { bottom: ['+', 'out', '-'] }, internal: [] },
   // Aosong datasheet: pins 1 to 4 left to right from the grille side.
   'dht22-bare.json': { category: 'Sensors', sides: { bottom: ['VCC', 'DATA', 'NC', 'GND'] }, internal: [] },
   // Sensor side, header at the bottom.
-  'bme280-i2c-module.json': { category: 'Sensors', sides: { bottom: ['VIN', 'GND', 'SCL', 'SDA'] }, internal: [] },
+  'bme280-module-4pin.json': { category: 'Sensors', sides: { bottom: ['VIN', 'GND', 'SCL', 'SDA'] }, internal: [] },
   'bme280-module-6pin.json': { category: 'Sensors', sides: { bottom: ['VCC', 'GND', 'SCL', 'SDA', 'CSB', 'SDO'] }, internal: [] },
   // Dome side, header at the bottom (the pot side reads VCC OUT GND).
   'pir-hc-sr501.json': { category: 'Sensors', sides: { bottom: ['GND', 'OUT', 'VCC'] }, internal: [] },
@@ -68,7 +68,7 @@ describe('built-in addressable LEDs and sensors keep the physical pin order', ()
     const strip = load('ws2812b-strip.json')
     expect(pin(strip, 'DIN')?.type).toBe('input')
     expect(pin(strip, 'DOUT')?.type).toBe('output')
-    const led = load('ws2812b-5mm.json')
+    const led = load('ws2812d-5mm.json')
     expect(pin(led, 'VDD')).toMatchObject({ type: 'power_in', supply: '5V' })
     expect(pin(led, 'DIN')?.type).toBe('input')
     expect(pin(led, 'DOUT')?.type).toBe('output')
@@ -77,11 +77,19 @@ describe('built-in addressable LEDs and sensors keep the physical pin order', ()
     expect(pin(load('dht22-module.json'), '-')).toMatchObject({ type: 'ground', label: 'GND' })
     // The 6-pin GY-BME280 has no regulator; the 4-pin board does.
     expect(pin(load('bme280-module-6pin.json'), 'VCC')?.supply).toBe('3V3')
-    expect(pin(load('bme280-i2c-module.json'), 'VIN')?.supply?.split('/')).toContain('5V')
+    expect(pin(load('bme280-module-4pin.json'), 'VIN')?.supply?.split('/')).toContain('5V')
     expect(pin(load('pir-hc-sr501.json'), 'OUT')?.type).toBe('output')
     expect(pin(load('ultrasonic-hc-sr04.json'), 'Trig')?.type).toBe('input')
     expect(pin(load('ultrasonic-hc-sr04.json'), 'Echo')?.type).toBe('output')
     for (const file of Object.keys(parts))
       for (const p of pinsOf(load(file))) if ((p.label ?? p.name) === 'GND') expect(p.type).toBe('ground')
+  })
+
+  it('sensor names lead with the model, so the two BME280 boards and the two DHT22s sort together', () => {
+    const names = Object.keys(parts).map((f) => load(f)).filter((m) => m.category === 'Sensors').map((m) => m.name)
+    for (const prefix of ['BME280 ', 'DHT22 ', 'HC-SR501 ', 'HC-SR04 ']) expect(names.some((n) => n.startsWith(prefix))).toBe(true)
+    for (const n of names) expect(n).toMatch(/^(BME280|DHT22|HC-SR501|HC-SR04) /)
+    expect(load('bme280-module-4pin.json').name.startsWith('BME280 sensor module (')).toBe(true)
+    expect(load('bme280-module-6pin.json').name.startsWith('BME280 sensor module (')).toBe(true)
   })
 })

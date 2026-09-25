@@ -2,7 +2,7 @@
   "format": "circuitoon-module/1",
   "id": "ultrasonic-hc-sr04",
   "version": 1,
-  "name": "Ultrasonic distance sensor HC-SR04 (VCC Trig Echo GND)",
+  "name": "HC-SR04 ultrasonic distance sensor (VCC Trig Echo GND)",
   "category": "Sensors",
   "source": "https://cdn.sparkfun.com/datasheets/Sensors/Proximity/HCSR04.pdf https://lastminuteengineers.com/arduino-sr04-ultrasonic-sensor-tutorial/",
   "pins": [

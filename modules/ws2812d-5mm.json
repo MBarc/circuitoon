@@ -1,6 +1,6 @@
 {
   "format": "circuitoon-module/1",
-  "id": "ws2812b-5mm",
+  "id": "ws2812d-5mm",
   "version": 1,
   "name": "WS2812 5 mm through-hole RGB LED (WS2812D-F5, DIN GND VDD DOUT)",
   "category": "Indicators",

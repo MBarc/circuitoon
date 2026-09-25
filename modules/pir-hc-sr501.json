@@ -2,7 +2,7 @@
   "format": "circuitoon-module/1",
   "id": "pir-hc-sr501",
   "version": 1,
-  "name": "PIR motion sensor HC-SR501 (dome side: GND OUT VCC)",
+  "name": "HC-SR501 PIR motion sensor (dome side: GND OUT VCC)",
   "category": "Sensors",
   "source": "https://protosupplies.com/product/hc-sr501-pir-motion-sensing-module/ https://lastminuteengineers.com/pir-sensor-arduino-tutorial/ http://www.handsontec.com/dataspecs/SR501%20Motion%20Sensor.pdf",
   "pins": [

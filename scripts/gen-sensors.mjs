@@ -99,8 +99,8 @@ const legs = (H, at, y0) => at.map((x) => r(x - 1.5, y0, 3, H - y0, LEAD, { outl
     r(38, 28, 4, 5, LED_B, { radius: 1, outline: false }),
     r(52, 42, 3, 10, '#8E96A1', { outline: false }),
   ]
-  write('ws2812b-5mm.json', moduleJson({
-    inside: true, id: 'ws2812b-5mm', name: 'WS2812 5 mm through-hole RGB LED (WS2812D-F5, DIN GND VDD DOUT)', category: 'Indicators',
+  write('ws2812d-5mm.json', moduleJson({
+    inside: true, id: 'ws2812d-5mm', name: 'WS2812 5 mm through-hole RGB LED (WS2812D-F5, DIN GND VDD DOUT)', category: 'Indicators',
     source: 'https://www.tme.eu/Document/6ea29838e05beac06400c47a846319d2/WS2812D-F5.pdf https://www.hobbyelectronica.nl/en/product/rgb-led-ws2812d-f5/',
     pins: bottom.pins, wu, hu, electrical: { model: 'addressable_led', params: {} }, shapes,
   }))
@@ -156,7 +156,7 @@ function dht22Case(x, y) {
   const bottom = side('bottom', ['VCC', 'DATA', 'NC', 'GND'], types, wu)
   const shapes = [...legs(H, bottom.at, 90), ...dht22Case(5, 2)]
   write('dht22-bare.json', moduleJson({
-    inside: true, id: 'dht22-bare', name: 'DHT22 / AM2302 sensor (bare, 4-pin: VCC DATA NC GND)', category: 'Sensors',
+    inside: true, id: 'dht22-bare', name: 'DHT22 / AM2302 temperature/humidity sensor (bare, 4-pin: VCC DATA NC GND)', category: 'Sensors',
     source: 'https://www.sparkfun.com/datasheets/Sensors/Temperature/DHT22.pdf https://lastminuteengineers.com/dht11-dht22-arduino-tutorial/',
     pins: bottom.pins, wu, hu, electrical: { model: 'sensor', params: {} }, shapes,
   }))
@@ -180,8 +180,8 @@ function dht22Case(x, y) {
     r(30, 12, 8, 5, SMD, { radius: 1, outline: false }),
     ...bottomHeader(H, bottom.at),
   ]
-  write('bme280-i2c-module.json', moduleJson({
-    inside: true, id: 'bme280-i2c-module', name: 'BME280 sensor module (I2C, 4-pin: VIN GND SCL SDA)', category: 'Sensors',
+  write('bme280-module-4pin.json', moduleJson({
+    inside: true, id: 'bme280-module-4pin', name: 'BME280 sensor module (4-pin, I2C: VIN GND SCL SDA)', category: 'Sensors',
     source: 'https://lastminuteengineers.com/bme280-arduino-tutorial/ https://www.makerguides.com/how-to-interface-bme280-pressure-sensor-with-arduino/',
     pins: bottom.pins, wu, hu, electrical: { model: 'sensor', params: {} }, shapes,
   }))
@@ -212,7 +212,7 @@ function dht22Case(x, y) {
     ...bottomHeader(H, bottom.at),
   ]
   write('bme280-module-6pin.json', moduleJson({
-    inside: true, id: 'bme280-module-6pin', name: 'GY-BME280 sensor module (6-pin, 3.3 V: VCC GND SCL SDA CSB SDO)', category: 'Sensors',
+    inside: true, id: 'bme280-module-6pin', name: 'BME280 sensor module (GY-BME280, 6-pin, 3.3 V: VCC GND SCL SDA CSB SDO)', category: 'Sensors',
     source: 'https://shillehtek.com/blogs/shillehtek-product-manuals/bme280-environmental-sensor-raspberry-pi-arduino-esp32-i2c-humidity-pressure-and-temperature-measurement https://protosupplies.com/product/gy-bme280-pressure-humidity-temperature-sensor-module/',
     pins: bottom.pins, wu, hu, electrical: { model: 'sensor', params: {} }, shapes,
   }))
@@ -246,7 +246,7 @@ function dht22Case(x, y) {
     ...bottomHeader(H, bottom.at),
   ]
   write('pir-hc-sr501.json', moduleJson({
-    inside: true, id: 'pir-hc-sr501', name: 'PIR motion sensor HC-SR501 (dome side: GND OUT VCC)', category: 'Sensors',
+    inside: true, id: 'pir-hc-sr501', name: 'HC-SR501 PIR motion sensor (dome side: GND OUT VCC)', category: 'Sensors',
     source: 'https://protosupplies.com/product/hc-sr501-pir-motion-sensing-module/ https://lastminuteengineers.com/pir-sensor-arduino-tutorial/ http://www.handsontec.com/dataspecs/SR501%20Motion%20Sensor.pdf',
     pins: bottom.pins, wu, hu, electrical: { model: 'sensor', params: {} }, shapes,
   }))
@@ -275,7 +275,7 @@ function dht22Case(x, y) {
     ...bottomHeader(H, bottom.at),
   ]
   write('ultrasonic-hc-sr04.json', moduleJson({
-    inside: true, id: 'ultrasonic-hc-sr04', name: 'Ultrasonic distance sensor HC-SR04 (VCC Trig Echo GND)', category: 'Sensors',
+    inside: true, id: 'ultrasonic-hc-sr04', name: 'HC-SR04 ultrasonic distance sensor (VCC Trig Echo GND)', category: 'Sensors',
     source: 'https://cdn.sparkfun.com/datasheets/Sensors/Proximity/HCSR04.pdf https://lastminuteengineers.com/arduino-sr04-ultrasonic-sensor-tutorial/',
     pins: bottom.pins, wu, hu, electrical: { model: 'sensor', params: {} }, shapes,
   }))

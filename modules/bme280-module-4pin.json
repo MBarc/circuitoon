@@ -1,8 +1,8 @@
 {
   "format": "circuitoon-module/1",
-  "id": "bme280-i2c-module",
+  "id": "bme280-module-4pin",
   "version": 1,
-  "name": "BME280 sensor module (I2C, 4-pin: VIN GND SCL SDA)",
+  "name": "BME280 sensor module (4-pin, I2C: VIN GND SCL SDA)",
   "category": "Sensors",
   "source": "https://lastminuteengineers.com/bme280-arduino-tutorial/ https://www.makerguides.com/how-to-interface-bme280-pressure-sensor-with-arduino/",
   "pins": [

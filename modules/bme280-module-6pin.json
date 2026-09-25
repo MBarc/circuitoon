@@ -2,7 +2,7 @@
   "format": "circuitoon-module/1",
   "id": "bme280-module-6pin",
   "version": 1,
-  "name": "GY-BME280 sensor module (6-pin, 3.3 V: VCC GND SCL SDA CSB SDO)",
+  "name": "BME280 sensor module (GY-BME280, 6-pin, 3.3 V: VCC GND SCL SDA CSB SDO)",
   "category": "Sensors",
   "source": "https://shillehtek.com/blogs/shillehtek-product-manuals/bme280-environmental-sensor-raspberry-pi-arduino-esp32-i2c-humidity-pressure-and-temperature-measurement https://protosupplies.com/product/gy-bme280-pressure-humidity-temperature-sensor-module/",
   "pins": [
