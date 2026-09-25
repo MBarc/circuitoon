@@ -124,7 +124,7 @@ export function Inspector({ store }: { store: EditorStore }) {
       <aside className="inspector" aria-label="Properties">
         <h2>Sheet</h2>
         <CommitInput id="sheet-title" label="Title" value={diagram.title} onCommit={(title) => store.commit({ ...diagram, title: title.trim() || 'Untitled sheet' })} />
-        <p className="hint">Drag from a pin tip to another pin to add a wire. Drag the paper to pan, scroll to zoom. R rotates, Delete removes, Ctrl+Z undoes.</p>
+        <p className="hint">Drag from a pin tip or a hole to another pin or hole to add a wire. Drag the paper to pan, scroll to zoom. R rotates, Delete removes, Ctrl+Z undoes.</p>
       </aside>
     )
 

@@ -45,7 +45,7 @@ Read `docs/PRD.md` ("Module definition format", "Art studio", "Built-in parts") 
 - Polarized two-lead parts label their pins "+" and "-".
 - Header pins drawn inside the body next to each pin, like silkscreen, are opt-in with `"art": { ..., "pinLabels": "inside" }`; use it for boards, chips and display modules with dense headers.
 - Two-lead parts: art height must give an even number of grid units so the single left/right pin lands on the drawn lead center (the geometry test enforces this).
-- Pins in the interior of a body (a 2x20 header in its true position) are hole groups: `"holes": [{ "name": "GPIO2", "label": "GPIO2", "at": [[x, y]], "holeStyle": "pad" }]`, one single-position group per header pin, each on a 10 px grid point inside the body. Names share the pin namespace. Never fake an interior header by spreading its rows onto opposite edges.
+- Pins in the interior of a body (a 2x20 header in its true position) are hole groups: `"holes": [{ "name": "GPIO2", "label": "GPIO2", "at": [[x, y]], "holeStyle": "pad" }]`, one single-position group per header pin, each on a 10 px grid point inside the body. A pad takes `type` and `supply` exactly as a pin does (`{ "name": "3V3", "at": [[x, y]], "holeStyle": "pad", "type": "power_out", "supply": "3V3" }`); breadboard strips and rails set neither. Names share the pin namespace. Never fake an interior header by spreading its rows onto opposite edges.
 
 ## Things that went wrong before (keep them from recurring)
 
