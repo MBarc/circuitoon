@@ -1,8 +1,8 @@
 {
   "format": "circuitoon-module/1",
-  "id": "battery-18650-cell",
-  "version": 2,
-  "name": "18650 cell",
+  "id": "battery-aa",
+  "version": 1,
+  "name": "AA battery",
   "category": "Batteries",
   "pins": [
     {
@@ -14,7 +14,7 @@
       "name": "+",
       "side": "right",
       "type": "power_out",
-      "supply": "3.7V"
+      "supply": "1.5V"
     }
   ],
   "electrical": {
@@ -26,28 +26,28 @@
     "params": {
       "voltage": {
         "unit": "V",
-        "default": 3.7
+        "default": 1.5
       }
     }
   },
   "art": {
-    "w": 70,
+    "w": 60,
     "h": 40,
     "shapes": [
       {
         "type": "rect",
         "x": 0,
         "y": 18.5,
-        "w": 12,
+        "w": 10,
         "h": 3,
         "fill": "#B8BEC7",
         "radius": 1.5
       },
       {
         "type": "rect",
-        "x": 58,
+        "x": 50,
         "y": 18.5,
-        "w": 12,
+        "w": 10,
         "h": 3,
         "fill": "#B8BEC7",
         "radius": 1.5
@@ -56,28 +56,28 @@
         "type": "rect",
         "x": 9,
         "y": 9,
-        "w": 52,
+        "w": 42,
         "h": 22,
-        "fill": "#3D6FD6",
+        "fill": "#C9852E",
         "radius": 11,
-        "label": "18650",
-        "labelColor": "#EAF6FF",
-        "labelSize": 6
+        "label": "AA",
+        "labelColor": "#FFFFFF",
+        "labelSize": 9
       },
       {
         "type": "rect",
-        "x": 8,
-        "y": 11,
-        "w": 6,
-        "h": 18,
-        "fill": "#D5DAE1",
-        "radius": 3
+        "x": 9,
+        "y": 9,
+        "w": 13,
+        "h": 22,
+        "fill": "#232323",
+        "radius": 11
       },
       {
         "type": "rect",
-        "x": 58,
+        "x": 45,
         "y": 15,
-        "w": 6,
+        "w": 7,
         "h": 10,
         "fill": "#D5DAE1",
         "radius": 3

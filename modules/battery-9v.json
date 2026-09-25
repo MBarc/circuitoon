@@ -1,9 +1,9 @@
 {
   "format": "circuitoon-module/1",
   "id": "battery-9v",
-  "version": 1,
+  "version": 2,
   "name": "9V battery",
-  "category": "Power",
+  "category": "Batteries",
   "pins": [
     {
       "name": "+",

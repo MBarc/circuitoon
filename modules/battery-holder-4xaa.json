@@ -1,15 +1,15 @@
 {
   "format": "circuitoon-module/1",
-  "id": "battery-18650-holder-2s",
-  "version": 2,
-  "name": "18650 holder (2 cells, series)",
+  "id": "battery-holder-4xaa",
+  "version": 1,
+  "name": "4 x AA holder",
   "category": "Batteries",
   "pins": [
     {
       "name": "+",
       "side": "right",
       "type": "power_out",
-      "supply": "7.4V"
+      "supply": "6V"
     },
     {
       "spacer": true,
@@ -30,13 +30,13 @@
     "params": {
       "voltage": {
         "unit": "V",
-        "default": 7.4
+        "default": 6
       }
     }
   },
   "art": {
     "w": 100,
-    "h": 70,
+    "h": 130,
     "shapes": [
       {
         "type": "rect",
@@ -53,8 +53,11 @@
         "y": 9,
         "w": 52,
         "h": 16,
-        "fill": "#3D6FD6",
-        "radius": 8
+        "fill": "#C9852E",
+        "radius": 8,
+        "label": "AA",
+        "labelColor": "#FFFFFF",
+        "labelSize": 7
       },
       {
         "type": "rect",
@@ -89,13 +92,37 @@
         "y": 39,
         "w": 52,
         "h": 16,
-        "fill": "#3D6FD6",
-        "radius": 8
+        "fill": "#C9852E",
+        "radius": 8,
+        "label": "AA",
+        "labelColor": "#FFFFFF",
+        "labelSize": 7
+      },
+      {
+        "type": "rect",
+        "x": 4,
+        "y": 64,
+        "w": 70,
+        "h": 26,
+        "fill": "#2B2F36",
+        "radius": 5
+      },
+      {
+        "type": "rect",
+        "x": 10,
+        "y": 69,
+        "w": 52,
+        "h": 16,
+        "fill": "#C9852E",
+        "radius": 8,
+        "label": "AA",
+        "labelColor": "#FFFFFF",
+        "labelSize": 7
       },
       {
         "type": "rect",
         "x": 58,
-        "y": 40,
+        "y": 70,
         "w": 8,
         "h": 14,
         "fill": "#D5DAE1",
@@ -103,8 +130,38 @@
       },
       {
         "type": "rect",
+        "x": 4,
+        "y": 94,
+        "w": 70,
+        "h": 26,
+        "fill": "#2B2F36",
+        "radius": 5
+      },
+      {
+        "type": "rect",
+        "x": 6,
+        "y": 103,
+        "w": 6,
+        "h": 10,
+        "fill": "#C9CED6",
+        "radius": 2
+      },
+      {
+        "type": "rect",
+        "x": 10,
+        "y": 99,
+        "w": 52,
+        "h": 16,
+        "fill": "#C9852E",
+        "radius": 8,
+        "label": "AA",
+        "labelColor": "#FFFFFF",
+        "labelSize": 7
+      },
+      {
+        "type": "rect",
         "x": 72,
-        "y": 28.5,
+        "y": 58.5,
         "w": 28,
         "h": 3,
         "fill": "#D8413A",
@@ -113,7 +170,7 @@
       {
         "type": "rect",
         "x": 72,
-        "y": 48.5,
+        "y": 78.5,
         "w": 28,
         "h": 3,
         "fill": "#1B1B1B",
