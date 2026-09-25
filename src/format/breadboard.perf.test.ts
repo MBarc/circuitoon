@@ -106,8 +106,9 @@ describe('hover highlighting on the full breadboard', () => {
     const d = railWired()
     const n = netlist(d) // built once, as Canvas.tsx memoizes it per diagram
     const pts = netPoints(d, { part: 'bb', pin: 'top+' }, n)
-    // The whole rail (50 holes) plus three 5-hole columns plus the resistor's plugged leg.
-    expect(pts.length).toBe(50 + 3 * 5 + 1)
+    // The whole rail (50 holes) plus three 5-hole columns; the resistor's plugged leg lights its own
+    // hole (Ruling 25), which is one of those rail holes.
+    expect(pts.length).toBe(50 + 3 * 5)
     expect(median(() => netPoints(d, { part: 'bb', pin: 'top+' }, n))).toBeLessThanOrEqual(2)
   })
 })

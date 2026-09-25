@@ -6,6 +6,7 @@ import { computeRoutes, routeWire, partObstacles, resolveEndpoint, type Diagram 
 import { bodyRect, type Pt } from './geometry.ts'
 import { layoutModule, validateModule, type ModuleDef } from './module.ts'
 import { routeOrthogonal } from './router.ts'
+import { moveParts } from '../editor/ops.ts'
 
 const dir = join(import.meta.dirname, '..', '..', 'modules')
 const load = (id: string): ModuleDef => {
@@ -144,5 +145,57 @@ describe('no diagonal ever', () => {
     expect(pts[1].y).toBe(23) // leaves along its stub
     expect(pts.at(-1)).toEqual({ x: 157, y: 67 })
     expect(pts.at(-2)!.x).toBe(157) // arrives along its stub
+  })
+})
+
+describe('a wire to a plugged leg (Ruling 25)', () => {
+  const resistor = load('resistor')
+  /** R1 at (30, 40): leg 1 in c1 row a (30, 60), leg 2 in c7 row a (90, 60). R2 off the board, above it. */
+  function legSheet(mounted: boolean): Diagram {
+    return {
+      format: 'circuitoon-diagram/1', title: 't', modules: { 'breadboard-full': board, resistor },
+      parts: [
+        { uid: 'bb', designator: 'BB1', module: 'breadboard-full', x: 0, y: 0 },
+        { uid: 'r1', designator: 'R1', module: 'resistor', x: 30, y: 40, ...(mounted ? { mount: { board: 'bb' } } : {}) },
+        { uid: 'r2', designator: 'R2', module: 'resistor', x: 200, y: -120 },
+      ],
+      connections: [{ uid: 'w', from: { part: 'r1', pin: '1' }, to: { part: 'r2', pin: '2' } }],
+    }
+  }
+  it('starts on the leg hole, orthogonal and not blocked', () => {
+    const d = legSheet(true)
+    expect(resolveEndpoint(d, d.connections[0].from)).toEqual({ end: { x: 30, y: 60 }, dir: null })
+    const r = computeRoutes(d).get('w')!
+    expect(r.blocked).toBe(false)
+    expect(orthogonal(r.points)).toBe(true)
+    expect(r.points[0]).toEqual({ x: 30, y: 60 })
+  })
+  it('starts at the stub tip, along the stub, when the part is not mounted', () => {
+    const d = legSheet(false)
+    const tip = resolveEndpoint(d, d.connections[0].from)!
+    expect(tip.dir).toEqual({ x: -1, y: 0 })
+    expect(tip.end.x).toBeLessThan(30)
+    expect(tip.end.y).toBe(60)
+    expect(computeRoutes(d).get('w')!.points[0]).toEqual(tip.end)
+  })
+  it('keeps the stub tip for a mount that plugs nothing (partial)', () => {
+    const d = legSheet(true)
+    d.parts = d.parts.map((p) => (p.uid === 'r1' ? { ...p, x: 35 } : p))
+    expect(resolveEndpoint(d, d.connections[0].from)!.dir).toEqual({ x: -1, y: 0 })
+  })
+  it('carries the wire end with the leg when the board moves', () => {
+    const d = moveParts(legSheet(true), ['bb'], 50, 30)
+    expect(d.parts[1]).toMatchObject({ x: 80, y: 70 })
+    const r = computeRoutes(d).get('w')!
+    expect(r.points[0]).toEqual({ x: 80, y: 90 })
+    expect(r.blocked).toBe(false)
+    expect(orthogonal(r.points)).toBe(true)
+  })
+  it('keeps a hand-routed wire orthogonal from the leg hole', () => {
+    const d = legSheet(true)
+    d.connections = [{ ...d.connections[0], route: [[100, -40]] }]
+    const r = computeRoutes(d).get('w')!
+    expect(r.points[0]).toEqual({ x: 30, y: 60 })
+    expect(orthogonal(r.points)).toBe(true)
   })
 })

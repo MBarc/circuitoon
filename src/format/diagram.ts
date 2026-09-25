@@ -5,7 +5,7 @@ import { type Pt, type Rect, type Rotation, bodyRect, simplify, toWorld, worldPi
 import { addToOccupancy, inGrown, Occupancy, onGrid, routeOrthogonal } from './router.ts'
 import { PRIMARY_PARAM_NAMES } from './values.ts'
 import { manualRouteBlocked, tidy } from './wireEdit.ts'
-import { mountIssues } from './breadboard.ts'
+import { mountIssues, plugOfPin } from './breadboard.ts'
 
 export const DIAGRAM_FORMAT = 'circuitoon-diagram/1'
 
@@ -116,7 +116,9 @@ export interface ResolvedEnd {
 /**
  * Resolves a connection end. A pin resolves to its stub tip and outward direction; a hole group
  * resolves to the center of hole `ep.hole` (default 0), which a wire may leave in any direction.
- * Null when the part, pin, group or hole does not exist.
+ * A pin whose leg is validly plugged into a board (Ruling 25) resolves to that leg's hole, also
+ * with no direction: a jumper to that pin goes into the same strip as the leg, and the stub tip
+ * would sit over the neighbouring hole. Null when the part, pin, group or hole does not exist.
  */
 export function resolveEndpoint(d: Diagram, ep: Endpoint): ResolvedEnd | null {
   const part = d.parts.find((p) => p.uid === ep.part)
@@ -128,7 +130,9 @@ export function resolveEndpoint(d: Diagram, ep: Endpoint): ResolvedEnd | null {
     return local ? { end: toWorld(part, layoutModule(mod), { x: local[0], y: local[1] }), dir: null } : null
   }
   const pin = worldPins(part, mod).find((p) => p.name === ep.pin)
-  return pin ? { end: pin.end, dir: pin.dir } : null
+  if (!pin) return null
+  const hole = part.mount ? plugOfPin(d, part.uid, pin.name) : null
+  return hole ? { end: hole, dir: null } : { end: pin.end, dir: pin.dir }
 }
 
 /**

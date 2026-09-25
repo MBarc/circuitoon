@@ -1,7 +1,7 @@
 // Nets: sets of pins and hole groups joined by wires, mounted legs and `internal` groups. Feeds
 // hover highlighting now and the V2 simulation later. Pure.
 import { type Diagram, type Endpoint, moduleOf, resolveEndpoint } from './diagram.ts'
-import { type Plug, plugsOf } from './breadboard.ts'
+import { type Plug, plugOfPin, plugsOf } from './breadboard.ts'
 import { type Pt, worldHoles, worldPins } from './geometry.ts'
 
 /** One key per part pin or hole group; JSON keeps any character in a uid or name unambiguous. */
@@ -63,7 +63,10 @@ export function netlist(d: Diagram, plugs: Plug[] = plugsOf(d)): Netlist {
 
 /**
  * Everything to light up while hovering `ep`: every hole of every hole group on its net and every
- * pin stub tip on it. A pin or group on no net lights only itself (a strip lights its own holes).
+ * pin stub tip on it. A pin whose leg is plugged lights its hole instead of its stub tip, the
+ * same point its wires end on (Ruling 25); that hole is already in the lit strip, which is on the
+ * same net, so it adds no point of its own. A pin or group on no net lights only itself (a strip
+ * lights its own holes).
  */
 export function netPoints(d: Diagram, ep: Endpoint, n: Netlist = netlist(d)): Pt[] {
   const key = nodeKey(ep.part, ep.pin)
@@ -79,7 +82,9 @@ export function netPoints(d: Diagram, ep: Endpoint, n: Netlist = netlist(d)): Pt
     if (group) out.push(...group.at)
     else {
       const pin = worldPins(part, m).find((p) => p.name === name)
-      if (pin) out.push(pin.end)
+      if (!pin) continue
+      // A plugged leg's hole comes with its strip (the plug joins them), so only a loose pin adds a point.
+      if (!part.mount || !plugOfPin(d, uid, name)) out.push(pin.end)
     }
   }
   return out

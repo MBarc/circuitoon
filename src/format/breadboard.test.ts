@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { holeAt, holeAtPoint, holeIndex, mountIssues, plugsOf, pointKey, seatOf, seatOn, splitBoards } from './breadboard.ts'
+import { holeAt, holeAtPoint, holeIndex, mountIssues, plugOfPin, plugsOf, pointKey, seatOf, seatOn, splitBoards } from './breadboard.ts'
 import type { Diagram } from './diagram.ts'
 import type { ModuleDef } from './module.ts'
 
@@ -203,5 +203,21 @@ describe('mounts that do not fit', () => {
   })
   it('has no issues when every mount fits', () => {
     expect(mountIssues(sheet())).toEqual([])
+  })
+})
+
+describe('plug cache', () => {
+  it('is shared per parts array and answers plugOfPin from it', () => {
+    const d = sheet()
+    expect(plugsOf(d)).toBe(plugsOf({ ...d }))
+    expect(plugOfPin(d, 'p1', 'R')).toEqual({ x: 50, y: 20 })
+    expect(plugOfPin(d, 'p1', 'nope')).toBeNull()
+  })
+  it('never serves a stale answer after a part is replaced in place', () => {
+    const d = sheet()
+    expect(plugsOf(d)).toHaveLength(4)
+    d.parts[1] = { ...d.parts[1], x: 15 } // legs now between holes: the mount plugs nothing
+    expect(plugsOf(d)).toHaveLength(2)
+    expect(plugOfPin(d, 'p1', 'R')).toBeNull()
   })
 })

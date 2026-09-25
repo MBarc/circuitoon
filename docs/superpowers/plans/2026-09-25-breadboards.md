@@ -35,7 +35,7 @@ Each is also noted in the task that implements it.
 - A **board** is a module with hole groups and `"obstacle": false`. Only boards accept mounts; a pad-header module (future Pi) is an obstacle and does not.
 - `hole` omitted on a hole-group endpoint means hole 0. A non-integer `hole` refuses the load; an out-of-range one loads with a warning.
 - Hole group names share one namespace with pin names; hole positions must be on the 10 px grid, inside the body, and never on top of another hole.
-- Plug point equals the pin's edge point, which is the hole center, so the existing stub already starts at the hole: mounted parts keep their stubs (wires still attach at the stub tip) and a metal leg dot is drawn on the hole.
+- Plug point equals the pin's edge point, which is the hole center, so the existing stub already starts at the hole: mounted parts keep their stubs and a metal leg dot is drawn on the hole. Superseded for wire ends by Ruling 25 (Task 13b): a wire to a validly plugged pin ends in the leg's hole, not at the stub tip.
 - Parts with a bus pin, parts with no pins and boards never mount. When legs land on more than one board, the board with the most landed legs is the candidate.
 - Only the dragged parts mount or unmount on drop; parts carried by a dragged board keep their mounts; a click without movement never changes a mount.
 - Rotating a board carries its mounted parts around the board's pivot (they stay seated). Rotating a part never mounts it; it only drops a mount that no longer fits.

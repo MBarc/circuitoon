@@ -195,13 +195,51 @@ function mounts(d: Diagram): { plugs: Plug[]; issues: MountIssue[] } {
   return { plugs, issues }
 }
 
+interface MountCache {
+  /** Each part with the module it resolved to when this entry was built, to spot an in-place edit. */
+  seen: [PartInstance, ModuleDef | undefined][]
+  result: { plugs: Plug[]; issues: MountIssue[] }
+  /** Plug point per plugged pin (key from pinKey), built on first use. */
+  byPin?: Map<string, Pt>
+}
+
+/**
+ * `mounts` depends only on the parts and their modules, so it is cached per parts array (a new
+ * array on every edit). The entry is rechecked part by part (identity of each part and its
+ * module), which is cheap next to the fit itself, so an array or module map edited in place never
+ * serves a stale answer. Each drag frame builds one entry that the renderer, the router and
+ * `resolveEndpoint` all share.
+ */
+const mountCache = new WeakMap<PartInstance[], MountCache>()
+
+function cachedMounts(d: Diagram): MountCache {
+  const hit = mountCache.get(d.parts)
+  if (hit && hit.seen.length === d.parts.length && hit.seen.every(([p, m], i) => d.parts[i] === p && moduleOf(d, p.module) === m))
+    return hit
+  const entry: MountCache = { seen: d.parts.map((p) => [p, moduleOf(d, p.module)]), result: mounts(d) }
+  mountCache.set(d.parts, entry)
+  return entry
+}
+
+const pinKey = (part: string, pin: string): string => JSON.stringify([part, pin])
+
 /**
  * Every plugged leg on the sheet, from each part's `mount` and positions: each pin of a validly
  * mounted part plugs into the hole its plug point sits on. An invalid mount plugs nothing (see
- * `mountIssues`).
+ * `mountIssues`). Cached per diagram parts: the array is shared, so callers must not mutate it.
  */
 export function plugsOf(d: Diagram): Plug[] {
-  return mounts(d).plugs
+  return cachedMounts(d).result.plugs
+}
+
+/**
+ * The hole center pin `pin` of part `part` is plugged into, or null when that leg is not validly
+ * plugged. A map lookup after the first call per diagram parts.
+ */
+export function plugOfPin(d: Diagram, part: string, pin: string): Pt | null {
+  const entry = cachedMounts(d)
+  if (!entry.byPin) entry.byPin = new Map(entry.result.plugs.map((pl) => [pinKey(pl.part, pl.pin), pl.at]))
+  return entry.byPin.get(pinKey(part, pin)) ?? null
 }
 
 /**
@@ -209,7 +247,7 @@ export function plugsOf(d: Diagram): Plug[] {
  * mount, not every leg lands on a hole, or a hole is already taken by an earlier valid mount.
  */
 export function mountIssues(d: Diagram): MountIssue[] {
-  return mounts(d).issues
+  return cachedMounts(d).result.issues
 }
 
 /** Boards first, so parts on a board draw above it whatever the file order; file order is kept within each list. */

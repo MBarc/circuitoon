@@ -100,13 +100,15 @@ describe('netlist', () => {
 
 describe('netPoints', () => {
   const sorted = (pts: { x: number; y: number }[]) => [...pts].sort((a, b) => a.x - b.x || a.y - b.y)
-  it('lights every hole of the strip plus the pins plugged into it', () => {
+  it('lights every hole of the strip; the legs plugged into it light their holes, not their stub tips', () => {
     const pts = netPoints(netSheet(), { part: 'b', pin: 's5', hole: 3 })
-    expect(sorted(pts)).toEqual(sorted([
-      { x: 50, y: 10 }, { x: 50, y: 20 }, { x: 50, y: 30 }, { x: 50, y: 40 }, { x: 50, y: 50 },
-      { x: 58, y: 20 }, // p1 R stub tip
-      { x: 42, y: 30 }, // p2 L stub tip
-    ]))
+    // p1 R is in (50, 20) and p2 L in (50, 30), both holes of the strip itself.
+    expect(sorted(pts)).toEqual(sorted([{ x: 50, y: 10 }, { x: 50, y: 20 }, { x: 50, y: 30 }, { x: 50, y: 40 }, { x: 50, y: 50 }]))
+  })
+  it('lights the leg hole, not the stub tip, when hovering a plugged pin', () => {
+    const pts = netPoints(netSheet(), { part: 'p1', pin: 'R' })
+    expect(pts).toContainEqual({ x: 50, y: 20 })
+    expect(pts).not.toContainEqual({ x: 58, y: 20 })
   })
   it('follows wires and internal joins from a pin', () => {
     const pts = netPoints(netSheet(), { part: 'p4', pin: 'B' })

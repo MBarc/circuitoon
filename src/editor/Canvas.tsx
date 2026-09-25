@@ -36,6 +36,8 @@ const MIN_HANDLE_SEGMENT = 20
 
 const samePoints = (a: Pt[], b: Pt[]) => a.length === b.length && a.every((p, i) => p.x === b[i].x && p.y === b[i].y)
 
+/** Length in px of the red stub drawn at a broken connection's resolvable end. */
+const BROKEN_STUB = 20
 /** Path data for a filled circle at `p` with radius `r`, as two arcs: draws a whole net's worth of
  * highlight dots as one `<path>` instead of one `<circle>` element per point (Ruling 19). */
 const circlePath = (p: Pt, r: number) => `M${p.x - r} ${p.y}a${r} ${r} 0 1 0 ${2 * r} 0a${r} ${r} 0 1 0 ${-2 * r} 0`
@@ -264,7 +266,8 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
     const pinEl = e.button === 0 ? target.closest('[data-pin]') : null
     if (pinEl) {
       const from = { part: pinEl.getAttribute('data-pin-part')!, pin: pinEl.getAttribute('data-pin')! }
-      const origin = { x: Number(pinEl.getAttribute('cx')), y: Number(pinEl.getAttribute('cy')) }
+      // Where the wire will end: the stub tip, or the leg's hole for a plugged leg (Ruling 25).
+      const origin = resolveEndpoint(store.getState().diagram, from)?.end ?? { x: Number(pinEl.getAttribute('cx')), y: Number(pinEl.getAttribute('cy')) }
       setDrag({ pointer, kind: 'wire', from, origin, cursor: toWorld(e), over: null })
       store.setGesture(true)
       return
@@ -520,26 +523,6 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
             )
           })}
         </g>
-        {/* A connection the netlist could not join (a missing part, pin, group or hole) has no
-            route to draw, but a short dashed red stub at whichever end still resolves lets a
-            user find and repair it instead of a wire silently vanishing from the sheet. It carries
-            data-wire like any wire, so a click selects it and Delete removes the connection. */}
-        {diagram.connections.map((c) => {
-          if (!nl.broken.includes(c.uid)) return null
-          const at = brokenStub(diagram, c)
-          if (!at) return null
-          const dir = at.dir ?? { x: 0, y: -1 }
-          const tip = { x: at.end.x + dir.x * 14, y: at.end.y + dir.y * 14 }
-          const d = `M${at.end.x} ${at.end.y}L${tip.x} ${tip.y}`
-          return (
-            <g key={c.uid} data-wire={c.uid} fill="none" strokeLinecap="round">
-              <title>{`${c.uid}: cannot resolve both ends`}</title>
-              {selection.wires.includes(c.uid) && <path d={d} stroke="var(--focus)" strokeOpacity={0.35} strokeWidth={12} />}
-              <path className="wire-broken" d={d} strokeWidth={2.5} />
-              <path className="wire-hit" d={d} strokeWidth={12} />
-            </g>
-          )
-        })}
         {wires.flatMap(({ conn, ends }) => ends.map((e, i) => <circle key={`${conn.uid}-${i}`} cx={e.x} cy={e.y} r={2.4} fill={INK} />))}
         {/* Name tags in their own layer after every wire, so a labeled wire crossing under a
             later one still shows its tag on top. Each tag keeps data-wire so a click or
@@ -555,6 +538,27 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
             ) : null
           })}
         </g>
+        {/* A connection the netlist could not join (a missing part, pin, group or hole) has no
+            route to draw, but a short dashed red stub at whichever end still resolves lets a
+            user find and repair it instead of a wire silently vanishing from the sheet. Drawn after the
+            name tags so no label (a tag or a board's column number) hides it. It carries
+            data-wire like any wire, so a click selects it and Delete removes the connection. */}
+        {diagram.connections.map((c) => {
+          if (!nl.broken.includes(c.uid)) return null
+          const at = brokenStub(diagram, c)
+          if (!at) return null
+          const dir = at.dir ?? { x: 0, y: -1 }
+          const tip = { x: at.end.x + dir.x * BROKEN_STUB, y: at.end.y + dir.y * BROKEN_STUB }
+          const d = `M${at.end.x} ${at.end.y}L${tip.x} ${tip.y}`
+          return (
+            <g key={c.uid} data-wire={c.uid} fill="none" strokeLinecap="round">
+              <title>{`${c.uid}: cannot resolve both ends`}</title>
+              {selection.wires.includes(c.uid) && <path d={d} stroke="var(--focus)" strokeOpacity={0.35} strokeWidth={12} />}
+              <path className="wire-broken" d={d} strokeWidth={2.5} />
+              <path className="wire-hit" d={d} strokeWidth={12} />
+            </g>
+          )
+        })}
         {net.length > 0 && <path className="net-hi" d={net.map((p) => circlePath(p, 4)).join('')} pointerEvents="none" />}
         {drag?.kind === 'wire' && (
           <line
