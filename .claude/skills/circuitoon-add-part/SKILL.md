@@ -22,7 +22,7 @@ Read `docs/PRD.md` ("Module definition format", "Art studio", "Built-in parts") 
 
 4. **Encode the pins.** See "Pin rules" below. Physical order is the whole point: lay pins out as seen from the component side in the vendor's diagram orientation.
 
-5. **Draw the art** in the Sticker style (rectangles only; the renderer adds the ink outline). See `references/conventions.md`. For families of similar parts, extend or add a generator script in `scripts/` (existing: `gen-boards.mjs` for ESP32 boards, `gen-parts.mjs` for chips, displays and microSD modules, `gen-power.mjs` for power modules, `gen-sensors.mjs` for addressable LEDs and sensor modules) so pin lists live in one readable table; the generator must reproduce the committed JSON byte for byte.
+5. **Draw the art** in the Sticker style (rectangles only; the renderer adds the ink outline). See `references/conventions.md`. For families of similar parts, extend or add a generator script in `scripts/` (existing: `gen-boards.mjs` for ESP32, Arduino Nano and D1 mini boards, `gen-parts.mjs` for chips, displays and microSD modules, `gen-power.mjs` for power modules, `gen-sensors.mjs` for addressable LEDs and sensor modules, `gen-outputs.mjs` for relay, servo, motor driver, radio and level shifter modules) so pin lists live in one readable table; the generator must reproduce the committed JSON byte for byte.
 
 6. **Validate and test.** `npm run validate` (every module), `npm test` (includes the two-lead geometry test and board/part tests; add a test pinning the pin order for multi-pin parts, like `src/format/boards.test.ts` and `parts.test.ts` do), `npm run build`.
 

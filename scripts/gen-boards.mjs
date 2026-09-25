@@ -1,9 +1,9 @@
-// Generates the 7 built-in ESP32 board module JSON files (the DevKitC V4, DevKit V1 30-pin,
-// S3-DevKitC-1, C3 SuperMini, XIAO ESP32-C3/S3 and ESP32-CAM). Pin lists are transcribed from the
-// sources cited on each board below.
+// Generates the 9 built-in microcontroller board module JSON files (the ESP32 DevKitC V4, DevKit V1
+// 30-pin, S3-DevKitC-1, C3 SuperMini, XIAO ESP32-C3/S3, ESP32-CAM, the Arduino Nano and the
+// Wemos / LOLIN D1 mini). Pin lists are transcribed from the sources cited on each board below.
 //
 // Run from the repo root: `node scripts/gen-boards.mjs`
-// It overwrites the 7 files in modules/ in place; re-run after changing a board's pin list,
+// It overwrites the 9 files in modules/ in place; re-run after changing a board's pin list,
 // art or the shared header/pinLabels rules here, then `git diff` the result before committing.
 import { writeFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
@@ -225,6 +225,66 @@ build({
       r(W / 2 - 23, 104, 46, 12, '#E8E4D8', { radius: 2 }),
       r(W - 30, 122, 12, 12, '#FFE08A', { radius: 2 }),
       r(12, H - 26, W - 24, 16, PCB, { outline: false, label: 'ESP32-CAM', labelColor: '#F4F1EA', labelSize: 9 }),
+    ],
+  },
+})
+
+// 8. Arduino Nano (ATmega328P, 2 x 15 pins). Arduino's full pinout (A000005) shows the component
+//    side with the mini-USB at the top: D13, 3V3, AREF (silkscreen "REF"), A0-A7, 5V, RST, GND,
+//    VIN down the left and D12 ... D2, GND, RST, RX0, TX1 down the right (Last Minute Engineers'
+//    pinout draws the same rows and silkscreen). The two RST pins and the two GND pins are
+//    each one net. The 2 x 3 ICSP header at the bottom end is a two-row header: drawn, not pinned.
+build({
+  file: 'arduino-nano.json', id: 'arduino-nano', name: 'Arduino Nano (ATmega328P)',
+  source: 'https://docs.arduino.cc/resources/pinouts/A000005-full-pinout.pdf https://docs.arduino.cc/hardware/nano/ https://lastminuteengineers.com/arduino-nano-pinout/',
+  left: ['D13', '3V3', 'AREF|REF', 'A0', 'A1', 'A2', 'A3', 'A4', 'A5', 'A6', 'A7', '5V', 'RST', 'GND', 'VIN'],
+  right: ['D12', 'D11', 'D10', 'D9', 'D8', 'D7', 'D6', 'D5', 'D4', 'D3', 'D2', 'GND 2|GND', 'RST 2|RST', 'RX0', 'TX1'],
+  top: 1, wu: 8,
+  types: typer({
+    gnd: ['GND'], v33: ['3V3'], v5: ['5V'], inputs: ['AREF', 'A6', 'A7', 'RST', 'RST 2'],
+    other: { VIN: { type: 'power_in', supply: '7V/9V/12V' } },
+  }),
+  internal: [['GND', 'GND 2'], ['RST', 'RST 2']],
+  art: {
+    pcb: '#17708A',
+    shapes: (W, H) => [
+      // Mini-USB overhanging the top edge.
+      r(W / 2 - 13, -8, 26, 24, METAL, { radius: 2 }),
+      r(W / 2 - 8, -6, 16, 4, '#8A9099', { radius: 1, outline: false }),
+      r(W / 2 - 16, 50, 32, 32, DARK, { radius: 2, label: 'ATMEGA', labelColor: CAN, labelSize: 5 }),
+      r(W / 2 - 16, 72, 32, 8, DARK, { outline: false, label: '328P', labelColor: CAN, labelSize: 5 }),
+      ...button(W / 2 - 7, 96, 14),
+      led(W / 2 - 16, 122, '#F4B400'), led(W / 2 - 7, 122, '#E5484D'), led(W / 2 + 2, 122, '#3FB56B'), led(W / 2 + 11, 122, '#F4B400'),
+      // ICSP header (2 x 3) at the bottom end, not wired on the sheet.
+      r(W / 2 - 9, H - 26, 18, 14, GOLD, { radius: 2, outline: false }),
+      ...[0, 1, 2].flatMap((i) => [4, 10].map((dy) => r(W / 2 - 7.5 + i * 6, H - 26 + dy - 1.5, 3, 3, HOLE, { radius: 1.5, outline: false }))),
+    ],
+  },
+})
+
+// 9. Wemos / LOLIN D1 mini (ESP8266). LOLIN's v3.1.0 photos: component side with the antenna at the
+//    top and micro-USB at the bottom reads RST, A0, D0, D5, D6, D7, D8, 3V3 down the left and TX, RX,
+//    D1, D2, D3, D4, GND, 5V down the right (the back silkscreen gives the same rows by GPIO
+//    number, mirrored; Random Nerd Tutorials' pinout of the older ESP-12 board agrees). Older boards
+//    and clones print "G" for GND.
+build({
+  file: 'wemos-d1-mini.json', id: 'wemos-d1-mini', name: 'Wemos / LOLIN D1 mini (ESP8266)',
+  source: 'https://www.wemos.cc/en/latest/d1/d1_mini_3.1.0.html https://www.wemos.cc/en/latest/_static/boards/d1_mini_v3.1.0_1_16x16.jpg https://www.wemos.cc/en/latest/_static/boards/d1_mini_v3.1.0_2_16x16.jpg https://randomnerdtutorials.com/esp8266-pinout-reference-gpios/',
+  left: ['RST', 'A0', 'D0', 'D5', 'D6', 'D7', 'D8', '3V3'],
+  right: ['TX', 'RX', 'D1', 'D2', 'D3', 'D4', 'GND', '5V'],
+  top: 2, bottom: 2, wu: 10,
+  types: typer({ gnd: ['GND'], v33: ['3V3'], v5: ['5V'], inputs: ['RST', 'A0'] }),
+  art: {
+    pcb: '#1E4F8A',
+    shapes: (W, H) => [
+      // PCB antenna meander along the top edge.
+      r(18, 6, W - 36, 2.5, GOLD, { outline: false }),
+      ...[0, 1, 2, 3, 4].map((i) => r(18 + i * (W - 38.5) / 4, 6, 2.5, 12, GOLD, { outline: false })),
+      r(W / 2 - 14, 36, 28, 28, DARK, { radius: 2, label: 'ESP8266', labelColor: CAN, labelSize: 4.5 }),
+      r(W / 2 - 4, 72, 22, 16, DARK, { radius: 1, label: '4MB', labelColor: CAN, labelSize: 4.5 }),
+      // Reset button at the bottom left, micro-USB at the bottom centre.
+      r(8, H - 20, 12, 14, '#E9EDF0', { radius: 2 }),
+      r(W / 2 - 11, H - 14, 22, 17, METAL, { radius: 2 }),
     ],
   },
 })

@@ -45,6 +45,16 @@ const boards: Record<string, { left: string[]; right: string[] }> = {
     left: ['5V', 'GND', 'IO12', 'IO13', 'IO15', 'IO14', 'IO2', 'IO4'],
     right: ['3V3', 'IO16', 'IO0', 'GND', 'VCC', 'U0R', 'U0T', 'GND/R'],
   },
+  // Arduino A000005 full pinout, component side, mini-USB at the top (AREF is silkscreened REF).
+  'arduino-nano.json': {
+    left: ['D13', '3V3', 'REF', 'A0', 'A1', 'A2', 'A3', 'A4', 'A5', 'A6', 'A7', '5V', 'RST', 'GND', 'VIN'],
+    right: ['D12', 'D11', 'D10', 'D9', 'D8', 'D7', 'D6', 'D5', 'D4', 'D3', 'D2', 'GND', 'RST', 'RX0', 'TX1'],
+  },
+  // LOLIN D1 mini v3.1.0, component side, antenna at the top, USB at the bottom.
+  'wemos-d1-mini.json': {
+    left: ['RST', 'A0', 'D0', 'D5', 'D6', 'D7', 'D8', '3V3'],
+    right: ['TX', 'RX', 'D1', 'D2', 'D3', 'D4', 'GND', '5V'],
+  },
 }
 
 describe('built-in boards keep the physical header order', () => {
@@ -71,4 +81,13 @@ describe('built-in boards keep the physical header order', () => {
       for (const p of pins) if (!isSpacer(p) && (p.type === 'power_in' || p.type === 'power_out')) expect(p.supply).toBeTruthy()
     })
   }
+
+  it('the Nano joins its two RST pins and types its analog-only and supply pins', () => {
+    const m = load('arduino-nano.json')
+    expect(m.internal).toContainEqual(['RST', 'RST 2'])
+    const pin = (n: string) => m.pins.find((p) => !isSpacer(p) && p.name === n)
+    for (const n of ['A6', 'A7', 'AREF']) expect(pin(n)).toMatchObject({ type: 'input' })
+    expect(pin('VIN')).toMatchObject({ type: 'power_in' })
+    expect(pin('3V3')).toMatchObject({ type: 'power_out', supply: '3V3' })
+  })
 })

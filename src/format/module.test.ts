@@ -164,7 +164,7 @@ describe('usesInsideLabels', () => {
     expect(insideLabelSides(m())).toEqual([])
     expect(insideLabelSides(m({ art: { w: 10, h: 10, shapes: [], pinLabels: 'inside' } })).sort()).toEqual(['bottom', 'left', 'right', 'top'])
   })
-  it('is set only on the header and pad parts (boards, DIP chips, display, storage, power and sensor modules, multi-lead LEDs), never on any other built-in module', () => {
+  it('is set only on the header and pad parts (boards, DIP chips, display, storage, power, sensor, relay, motor driver and radio modules, multi-lead LEDs), never on any other built-in module', () => {
     const dir = join(import.meta.dirname, '..', '..', 'modules')
     const boardFiles = new Set([
       'esp32-devkitc-v4.json', 'esp32-devkit-v1-30.json', 'esp32-s3-devkitc-1.json',
@@ -177,6 +177,8 @@ describe('usesInsideLabels', () => {
       'ip5306-usbc-module.json', 'tp4056-module.json', 'ams1117-33-module.json', 'lm2596-buck-module.json',
       'ws2812b-strip.json', 'ws2812b-5mm.json', 'dht22-module.json', 'dht22-bare.json',
       'bme280-i2c-module.json', 'bme280-module-6pin.json', 'pir-hc-sr501.json', 'ultrasonic-hc-sr04.json',
+      'arduino-nano.json', 'wemos-d1-mini.json', 'relay-module-1ch-5v.json', 'l298n-module.json',
+      'rfm95-lora-breakout.json', 'level-shifter-bss138-4ch.json', 'servo-sg90.json',
     ])
     const files = readdirSync(dir).filter((f) => f.endsWith('.json'))
     expect(files.filter((f) => boardFiles.has(f))).toHaveLength(boardFiles.size)

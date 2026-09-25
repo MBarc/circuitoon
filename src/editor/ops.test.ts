@@ -79,6 +79,13 @@ describe('ops', () => {
     for (const id of ['dht22-module', 'dht22-bare', 'bme280-i2c-module', 'bme280-module-6pin', 'pir-hc-sr501', 'ultrasonic-hc-sr04'])
       expect(designatorPrefix(mk(id))).toBe('U')
   })
+  it('gives relay modules K, servos M, and motor drivers, radios, level shifters and boards U', () => {
+    const mk = (id: string): ModuleDef => ({ format: 'circuitoon-module/1', id, name: id, pins: [{ name: 'GND', side: 'left' }] })
+    expect(designatorPrefix(mk('relay-module-1ch-5v'))).toBe('K')
+    expect(designatorPrefix(mk('servo-sg90'))).toBe('M')
+    for (const id of ['l298n-module', 'rfm95-lora-breakout', 'level-shifter-bss138-4ch', 'arduino-nano', 'wemos-d1-mini'])
+      expect(designatorPrefix(mk(id))).toBe('U')
+  })
   it('moves and rotates only the given parts', () => {
     const d = rotateParts(moveParts(twoResistors(), ['p2'], 20, -10), ['p2'])
     expect(d.parts[0]).toMatchObject({ x: 0, y: 0, rotation: 0 })
