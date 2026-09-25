@@ -1,5 +1,6 @@
 // Draws one module in the Sticker style: flat fills, dark ink outline on every shape.
 import { type ModuleDef, type PlacedPin, layoutModule, LEAD } from '../format/module.ts'
+import { bodyRect, pivot, worldPins, type Rotation } from '../format/geometry.ts'
 
 export const INK = '#23282F'
 const OUTLINE = 1.6
@@ -45,50 +46,59 @@ function PinLabel({ p, h, w, outside }: { p: PlacedPin; w: number; h: number; ou
   )
 }
 
-export function Part({ module: m, x = 0, y = 0, caption }: { module: ModuleDef; x?: number; y?: number; caption?: string }) {
+export function Part({ module: m, x = 0, y = 0, rotation = 0, caption }: {
+  module: ModuleDef
+  x?: number
+  y?: number
+  rotation?: Rotation
+  caption?: string
+}) {
   const lay = layoutModule(m)
   const art = m.art
-  // Art is centered in the body when the body grew larger than the drawing.
   const ax = art ? (lay.w - art.w) / 2 : 0
   const ay = art ? (lay.h - art.h) / 2 : 0
+  const c = pivot(lay.w, lay.h)
+  // Caption goes under the rotated body, below any pin stubs that now point down.
+  const box = bodyRect({ x: 0, y: 0, rotation }, lay)
+  const stubsDown = worldPins({ x: 0, y: 0, rotation }, m).some((p) => p.dir.y > 0)
+  const captionY = box.y + box.h + (stubsDown ? LEAD : 0) + 15
   return (
     <g transform={`translate(${x} ${y})`}>
-      {lay.pins.map((p) => <PinStub key={p.name} p={p} />)}
-      {art ? (
-        <g transform={`translate(${ax} ${ay})`}>
-          {art.shapes.map((s, i) => (
-            <g key={i}>
-              <rect
-                x={s.x} y={s.y} width={s.w} height={s.h} rx={s.radius ?? 0}
-                fill={s.fill}
-                stroke={s.outline === false ? 'none' : INK}
-                strokeWidth={OUTLINE}
-              />
-              {s.label && (
-                <text
-                  x={s.x + s.w / 2} y={s.y + s.h / 2} textAnchor="middle" dominantBaseline="central"
-                  fontSize={s.labelSize ?? 8} fontWeight={700} fill={s.labelColor ?? INK}
-                >
-                  {s.label}
-                </text>
-              )}
-            </g>
-          ))}
-        </g>
-      ) : (
-        <>
-          <rect width={lay.w} height={lay.h} rx={4} fill="#DDE7E1" stroke={INK} strokeWidth={OUTLINE} />
-          <text x={lay.w / 2} y={lay.h / 2} textAnchor="middle" dominantBaseline="central" fontSize={8} fontWeight={700} fill={INK}>
-            {m.name}
-          </text>
-        </>
-      )}
-      {lay.pins.filter((p) => showLabel(m, p)).map((p) => <PinLabel key={p.name} p={p} w={lay.w} h={lay.h} outside={!!art} />)}
+      <g transform={rotation ? `rotate(${rotation} ${c.x} ${c.y})` : undefined}>
+        {lay.pins.map((p) => <PinStub key={p.name} p={p} />)}
+        {art ? (
+          <g transform={`translate(${ax} ${ay})`}>
+            {art.shapes.map((s, i) => (
+              <g key={i}>
+                <rect
+                  x={s.x} y={s.y} width={s.w} height={s.h} rx={s.radius ?? 0}
+                  fill={s.fill}
+                  stroke={s.outline === false ? 'none' : INK}
+                  strokeWidth={OUTLINE}
+                />
+                {s.label && (
+                  <text
+                    x={s.x + s.w / 2} y={s.y + s.h / 2} textAnchor="middle" dominantBaseline="central"
+                    fontSize={s.labelSize ?? 8} fontWeight={700} fill={s.labelColor ?? INK}
+                  >
+                    {s.label}
+                  </text>
+                )}
+              </g>
+            ))}
+          </g>
+        ) : (
+          <>
+            <rect width={lay.w} height={lay.h} rx={4} fill="#DDE7E1" stroke={INK} strokeWidth={OUTLINE} />
+            <text x={lay.w / 2} y={lay.h / 2} textAnchor="middle" dominantBaseline="central" fontSize={8} fontWeight={700} fill={INK}>
+              {m.name}
+            </text>
+          </>
+        )}
+        {lay.pins.filter((p) => showLabel(m, p)).map((p) => <PinLabel key={p.name} p={p} w={lay.w} h={lay.h} outside={!!art} />)}
+      </g>
       {caption && (
-        <text
-          x={lay.w / 2} y={lay.h + (lay.pins.some((p) => p.side === 'bottom') ? LEAD : 0) + 15}
-          textAnchor="middle" fontSize={8.5} fontWeight={700} fill={INK}
-        >
+        <text x={box.x + box.w / 2} y={captionY} textAnchor="middle" fontSize={8.5} fontWeight={700} fill={INK}>
           {caption}
         </text>
       )}

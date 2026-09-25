@@ -6,7 +6,7 @@ export const GRID = 10 // px per grid unit at 100% zoom; also the pin pitch
 export const LEAD = 8 // px a pin stub sticks out from the body
 
 export type Side = 'top' | 'bottom' | 'left' | 'right'
-export const SIDES: Side[] = ['top', 'right', 'bottom', 'left']
+export const SIDES: Side[] = ['top', 'left', 'bottom', 'right']
 export const PIN_TYPES = ['power_in', 'power_out', 'ground', 'input', 'output', 'io', 'passive', 'nc'] as const
 export type PinType = (typeof PIN_TYPES)[number]
 
@@ -61,8 +61,8 @@ export const isSpacer = (p: PinEntry): p is SpacerDef => 'spacer' in p && p.spac
 
 export type ValidationResult = { ok: true; module: ModuleDef } | { ok: false; errors: string[] }
 
-const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v)
-const isNum = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v)
+export const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v)
+export const isNum = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v)
 
 /** Checks a parsed JSON value against the module format. Errors name the exact path. */
 export function validateModule(raw: unknown): ValidationResult {
@@ -155,7 +155,7 @@ const slotsOn = (m: ModuleDef, side: Side) =>
  * `art`, and what the pins need plus one unit of corner margin; pins sit on grid points,
  * centered along their side, in array order (left to right, top to bottom).
  */
-export function layoutModule(m: ModuleDef): ModuleLayout {
+function computeLayout(m: ModuleDef): ModuleLayout {
   const wu = Math.max(
     m.size?.w ?? 0,
     Math.ceil((m.art?.w ?? 0) / GRID),
@@ -200,4 +200,13 @@ export function layoutModule(m: ModuleDef): ModuleLayout {
     }
   }
   return { w: wu * GRID, h: hu * GRID, pins }
+}
+
+// Modules are never mutated after load, so layouts can be cached by object identity.
+const layoutCache = new WeakMap<ModuleDef, ModuleLayout>()
+
+export function layoutModule(m: ModuleDef): ModuleLayout {
+  let lay = layoutCache.get(m)
+  if (!lay) layoutCache.set(m, (lay = computeLayout(m)))
+  return lay
 }
