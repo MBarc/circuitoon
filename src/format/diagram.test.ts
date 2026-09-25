@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { computeRoutes, labelAnchor, partObstacles, routeWire, wireColor, wireWidth, wirePaths, type Diagram } from './diagram.ts'
+import { computeRoutes, labelAnchor, partObstacles, routeWire, routingKey, wireColor, wireWidth, wirePaths, type Diagram } from './diagram.ts'
 import type { ModuleDef } from './module.ts'
 
 describe('wire color and gauge', () => {
@@ -12,6 +12,21 @@ describe('wire color and gauge', () => {
     expect(wireWidth(16)).toBeGreaterThan(wireWidth(22))
     expect(wireWidth(22)).toBe(3)
     expect(wireWidth(30)).toBeGreaterThanOrEqual(1.5)
+  })
+})
+
+describe('routingKey', () => {
+  const wire = (from: { part: string; pin: string }, to: { part: string; pin: string }, route?: [number, number][]) => ({ uid: 'w', from, to, route })
+  it('differs for endpoints whose joined names would collide', () => {
+    const a = routingKey([wire({ part: 'p.a', pin: 'R' }, { part: 'q', pin: '1' })])
+    const b = routingKey([wire({ part: 'p', pin: 'a.R' }, { part: 'q', pin: '1' })])
+    expect(a).not.toBe(b)
+    expect(routingKey([wire({ part: 'a', pin: 'b>c' }, { part: 'd', pin: 'e' })])).not.toBe(routingKey([wire({ part: 'a', pin: 'b' }, { part: 'c.d', pin: 'e' })]))
+  })
+  it('changes with the route and not with color or label', () => {
+    const base = wire({ part: 'a', pin: '1' }, { part: 'b', pin: '2' })
+    expect(routingKey([{ ...base, color: 'red', label: 'x' }])).toBe(routingKey([base]))
+    expect(routingKey([{ ...base, route: [[0, 0]] }])).not.toBe(routingKey([base]))
   })
 })
 

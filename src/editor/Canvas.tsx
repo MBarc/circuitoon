@@ -1,7 +1,7 @@
 // The editing surface: an SVG sheet you can pan (drag the background) and zoom (wheel).
 import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import { type EditorStore, useEditorState } from './store.ts'
-import { computeRoutes, labelAnchor, moduleOf, wireColor, wirePaths, wireWidth, type PartInstance, type Routes } from '../format/diagram.ts'
+import { computeRoutes, labelAnchor, moduleOf, routingKey, wireColor, wirePaths, wireWidth, type PartInstance, type Routes } from '../format/diagram.ts'
 import type { Pt } from '../format/geometry.ts'
 import { Part, INK } from '../render/Part.tsx'
 import { WireLabel } from '../render/WireLabel.tsx'
@@ -120,10 +120,7 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
   const draggingParts = drag?.kind === 'parts' ? drag.uids : null
   const reshaping = drag?.kind === 'segment' ? drag.uid : null
   // Routes depend only on parts, modules and each wire's ends and fixed route, so title, color and label edits skip re-routing.
-  const endpointsKey = useMemo(
-    () => diagram.connections.map((c) => `${c.uid}:${c.from.part}.${c.from.pin}>${c.to.part}.${c.to.pin}:${JSON.stringify(c.route ?? null)}`).join('|'),
-    [diagram.connections],
-  )
+  const endpointsKey = useMemo(() => routingKey(diagram.connections), [diagram.connections])
   const routes = useMemo(() => {
     if (draggingParts) {
       const moving = new Set(draggingParts)

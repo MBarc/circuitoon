@@ -167,6 +167,15 @@ export function computeRoutes(d: Diagram, opts: { only?: Set<string>; prev?: Rou
   return out
 }
 
+/**
+ * A key that changes exactly when some wire's routing inputs change: its uid, both endpoints and
+ * its stored route. Serialized as structured tuples, so no two different sets of endpoints share a
+ * key however their names are spelled (part "p.a" pin "R" and part "p" pin "a.R" differ).
+ */
+export function routingKey(connections: Connection[]): string {
+  return JSON.stringify(connections.map((c) => [c.uid, c.from.part, c.from.pin, c.to.part, c.to.pin, c.route ?? null]))
+}
+
 const HOP = 5
 
 /** Axis-aligned segments of drawn wires, kept sorted by their fixed coordinate. */
