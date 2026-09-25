@@ -74,8 +74,7 @@ describe('full breadboard with 20 parts', () => {
     expect(seated).toBe(20)
     expect(ms).toBeLessThanOrEqual(4)
   })
-  // Skipped until Task 9 makes moveParts carry mounted parts; Task 9 Step 5 removes the .skip.
-  it.skip('moves the board with its 20 parts and re-plugs them in 4 ms or less per frame (median)', () => {
+  it('moves the board with its 20 parts and re-plugs them in 4 ms or less per frame (median)', () => {
     const d = loaded(true)
     let dx = 0
     const ms = median(() => {

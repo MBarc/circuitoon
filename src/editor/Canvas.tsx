@@ -7,7 +7,7 @@ import type { Pt } from '../format/geometry.ts'
 import { Part, INK } from '../render/Part.tsx'
 import { LegDots, TakenHoles } from '../render/Boards.tsx'
 import { WireLabel } from '../render/WireLabel.tsx'
-import { addPart, addWire, EMPTY_SELECTION, moveParts, reconnectWire, setWireRoute, settleDrop, settleMounts, settleSeats, updateWire } from './ops.ts'
+import { addPart, addWire, EMPTY_SELECTION, moveParts, reconnectWire, setWireRoute, settleDrop, settleMounts, settleSeats, updateWire, withMounted } from './ops.ts'
 import { bendHandleAt, insertBend, isOrthogonal, moveSegment, removeBend, segmentHandleAt, segmentsOf, toRoute, type Axis } from '../format/wireEdit.ts'
 import { modulesById } from '../library.ts'
 import { bodyRect, worldPins } from '../format/geometry.ts'
@@ -24,7 +24,7 @@ const snap = (v: number) => Math.round(v / GRID) * GRID
 
 type Drag = { pointer: number } & (
   | { kind: 'pan'; client: Pt; view: View }
-  | { kind: 'parts'; start: Pt; uids: string[]; base: Diagram }
+  | { kind: 'parts'; start: Pt; uids: string[]; moving: string[]; base: Diagram }
   | { kind: 'wire'; from: Endpoint; origin: Pt; cursor: Pt; over: Endpoint | null }
   | { kind: 'reconnect'; uid: string; end: 'from' | 'to'; origin: Pt; cursor: Pt; over: Endpoint | null }
   | { kind: 'segment'; uid: string; index: number; axis: Axis; start: Pt; points: Pt[]; base: Diagram }
@@ -120,7 +120,8 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
     onReady?.({ addAtCenter: (id) => placeModule(id, { x: view.x + size.w / view.scale / 2, y: view.y + size.h / view.scale / 2 }) })
   })
 
-  const draggingParts = drag?.kind === 'parts' ? drag.uids : null
+  // Parts that move this drag: the selection plus whatever is mounted on a dragged board.
+  const draggingParts = drag?.kind === 'parts' ? drag.moving : null
   const reshaping = drag?.kind === 'segment' ? drag.uid : null
   // Routes depend only on parts, modules and each wire's ends and fixed route, so title, color and label edits skip re-routing.
   const endpointsKey = useMemo(
@@ -311,7 +312,8 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
       else if (!parts.includes(uid)) parts = [uid]
       store.select({ parts, wires: e.shiftKey ? sel.wires : [] })
       if (parts.includes(uid)) {
-        setDrag({ pointer, kind: 'parts', start: toWorld(e), uids: parts, base: store.begin() })
+        const base = store.begin()
+        setDrag({ pointer, kind: 'parts', start: toWorld(e), uids: parts, moving: withMounted(base, parts), base })
         store.setGesture(true)
       }
       return

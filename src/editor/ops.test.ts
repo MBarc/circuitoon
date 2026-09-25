@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { addPart, addWire, nextUid, clearWireRoute, deleteSelection, sameEndpoint, setWireRoute, designatorPrefix, moveParts, nextDesignator, reconnectWire, rotateParts, settleDrop, settleMounts, settleSeats, updatePart, updatePartValue, updateWire } from './ops.ts'
+import { addPart, addWire, nextUid, clearWireRoute, deleteSelection, sameEndpoint, setWireRoute, designatorPrefix, moveParts, nextDesignator, reconnectWire, rotateParts, settleDrop, settleMounts, settleSeats, updatePart, updatePartValue, updateWire, withMounted } from './ops.ts'
 import { emptyDiagram, type Diagram } from '../format/diagram.ts'
 import type { ModuleDef } from '../format/module.ts'
 import { parseValue } from '../format/values.ts'
@@ -357,5 +357,88 @@ describe('settleMounts', () => {
     expect(settleMounts(placed.diagram, [placed.uid]).parts[1].mount).toEqual({ board: board.uid })
     const away = addPart(board.diagram, two, 300, 0)
     expect(settleMounts(away.diagram, [away.uid])).toBe(away.diagram)
+  })
+})
+
+describe('boards carry their parts', () => {
+  const bb: ModuleDef = {
+    format: 'circuitoon-module/1', id: 'bb', name: 'Test board', pins: [], size: { w: 10, h: 6 }, obstacle: false,
+    holes: Array.from({ length: 9 }, (_, i) => ({
+      name: `s${i + 1}`, label: `${i + 1}`, at: [10, 20, 30, 40, 50].map((y) => [(i + 1) * 10, y] as [number, number]),
+    })),
+  }
+  const two: ModuleDef = { format: 'circuitoon-module/1', id: 'two', name: 'Two', pins: [{ name: 'L', side: 'left' }, { name: 'R', side: 'right' }] }
+  /** Square part, body 40 x 40 with its pivot at the exact center (20, 20). */
+  const sq: ModuleDef = { format: 'circuitoon-module/1', id: 'sq', name: 'Sq', size: { w: 4, h: 4 }, pins: [{ name: 'L', side: 'left' }, { name: 'R', side: 'right' }] }
+  const loaded = (): Diagram => ({
+    format: 'circuitoon-diagram/1', title: 't', modules: { bb, two, sq },
+    parts: [
+      { uid: 'b', designator: 'BB1', module: 'bb', x: 0, y: 0, rotation: 0 },
+      { uid: 'p1', designator: 'R1', module: 'two', x: 10, y: 0, rotation: 0, mount: { board: 'b' } },
+      { uid: 'x', designator: 'R2', module: 'two', x: 300, y: 0, rotation: 0 },
+    ],
+    connections: [{ uid: 'w1', from: { part: 'b', pin: 's9', hole: 0 }, to: { part: 'x', pin: 'L' } }],
+  })
+
+  it('lists a board with the parts mounted on it', () => {
+    expect(withMounted(loaded(), ['b'])).toEqual(['b', 'p1'])
+    expect(withMounted(loaded(), ['p1'])).toEqual(['p1'])
+  })
+  it('moves mounted parts with their board, and a mounted part alone without it', () => {
+    const d = moveParts(loaded(), ['b'], 30, 20)
+    expect(d.parts.map((p) => [p.uid, p.x, p.y])).toEqual([['b', 30, 20], ['p1', 40, 20], ['x', 300, 0]])
+    expect(plugsOf(d)).toHaveLength(2)
+    const alone = moveParts(loaded(), ['p1'], 30, 0)
+    expect(alone.parts.map((p) => [p.uid, p.x])).toEqual([['b', 0], ['p1', 40], ['x', 300]])
+  })
+  it('keeps a carried part exactly seated: every leg on the same hole, moved by the same amount', () => {
+    const before = plugsOf(loaded())
+    const d = moveParts(loaded(), ['b'], 130, -70)
+    expect(plugsOf(d)).toEqual(before.map((p) => ({ ...p, at: { x: p.at.x + 130, y: p.at.y - 70 } })))
+    expect(seatOf(d, 'p1', plugsOf(d))!.status).toBe('seated')
+  })
+  it('moves a hand-shaped wire whose both ends move, and leaves one with an end that stays', () => {
+    const d = loaded()
+    d.connections = [
+      { uid: 'w1', from: { part: 'b', pin: 's9', hole: 0 }, to: { part: 'p1', pin: 'L' }, route: [[90, -20], [0, -20]] },
+      { uid: 'w2', from: { part: 'p1', pin: 'R' }, to: { part: 'x', pin: 'L' }, route: [[100, 20], [100, 60]] },
+      { uid: 'w3', from: { part: 'b', pin: 's1', hole: 4 }, to: { part: 'b', pin: 's2', hole: 4 } },
+    ]
+    const moved = moveParts(d, ['b'], 30, 20).connections
+    expect(moved[0].route).toEqual([[120, 0], [30, 0]])
+    expect(moved[1]).toBe(d.connections[1])
+    expect(moved[2]).toBe(d.connections[2])
+    // Plain parts too: both ends on moved parts carry the bends.
+    expect(moveParts(d, ['p1', 'x'], 10, 0).connections[1].route).toEqual([[110, 20], [110, 60]])
+    // No hand-shaped wire moves: the wires list is the same object.
+    const plain = loaded()
+    expect(moveParts(plain, ['b'], 10, 0).connections).toBe(plain.connections)
+  })
+  it('turns mounted parts with a rotated board, so they stay seated', () => {
+    const d = rotateParts(loaded(), ['b'])
+    expect(d.parts[1]).toMatchObject({ uid: 'p1', x: 50, y: 0, rotation: 90, mount: { board: 'b' } })
+    expect(seatOf(d, 'p1', plugsOf(d))!.status).toBe('seated')
+    expect(plugsOf(d).map((p) => p.group)).toEqual(['s5', 's1'])
+  })
+  it('turns a mounted part once when it is selected along with its board', () => {
+    expect(rotateParts(loaded(), ['b', 'p1']).parts[1]).toMatchObject({ x: 50, y: 0, rotation: 90 })
+  })
+  it('unmounts a rotated part that no longer fits, and keeps one that still does', () => {
+    expect(rotateParts(loaded(), ['p1']).parts[1]).not.toHaveProperty('mount')
+    const d = loaded()
+    d.parts[1] = { uid: 'p1', designator: 'R1', module: 'sq', x: 10, y: 10, rotation: 90, mount: { board: 'b' } }
+    expect(seatOf(d, 'p1', [])!.status).toBe('seated')
+    expect(rotateParts(d, ['p1']).parts[1]).toMatchObject({ rotation: 180, mount: { board: 'b' } })
+  })
+  it('never mounts a part by rotating it', () => {
+    const d = loaded()
+    d.parts[1] = { uid: 'p1', designator: 'R1', module: 'sq', x: 10, y: 10, rotation: 90 }
+    expect(rotateParts(d, ['p1']).parts[1]).not.toHaveProperty('mount')
+  })
+  it('deletes a board but keeps its parts, unmounted, and drops wires to its holes', () => {
+    const d = deleteSelection(loaded(), { parts: ['b'], wires: [] })
+    expect(d.parts.map((p) => p.uid)).toEqual(['p1', 'x'])
+    expect(d.parts[0]).not.toHaveProperty('mount')
+    expect(d.connections).toEqual([])
   })
 })

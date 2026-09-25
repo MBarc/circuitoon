@@ -1,9 +1,9 @@
 // Immutable diagram edits. Every function returns a new Diagram and never mutates its input,
 // so the store can keep old versions for undo.
 import { type Connection, type Diagram, type Endpoint, type PartInstance, moduleOf } from '../format/diagram.ts'
-import { isBoard, type ModuleDef } from '../format/module.ts'
+import { isBoard, layoutModule, type ModuleDef } from '../format/module.ts'
 import { type Plug, type Seat, plugsOf, seatOf, seatOn } from '../format/breadboard.ts'
-import type { Rotation } from '../format/geometry.ts'
+import { pivot, rotateVec, type Rotation } from '../format/geometry.ts'
 import { partValue } from '../format/values.ts'
 
 export interface Selection {
@@ -59,10 +59,28 @@ export function addPart(d: Diagram, m: ModuleDef, x: number, y: number): { diagr
   return { uid, diagram: { ...d, modules, parts: [...d.parts, part] } }
 }
 
+/** The given parts plus every part mounted on a board among them, each once, in diagram order. */
+export function withMounted(d: Diagram, uids: string[]): string[] {
+  const s = new Set(uids)
+  return d.parts.filter((p) => s.has(p.uid) || (p.mount !== undefined && s.has(p.mount.board))).map((p) => p.uid)
+}
+
+/**
+ * Moves parts; a board carries every part mounted on it, so its legs stay in the same holes. A
+ * hand-shaped wire whose two ends both move (on moved parts, or on holes of a moved board) moves
+ * with them, bends and all; any other wire keeps its bends and only its end segments stretch.
+ */
 export function moveParts(d: Diagram, uids: string[], dx: number, dy: number): Diagram {
   if (!dx && !dy) return d
-  const s = new Set(uids)
-  return { ...d, parts: d.parts.map((p) => (s.has(p.uid) ? { ...p, x: p.x + dx, y: p.y + dy } : p)) }
+  const s = new Set(withMounted(d, uids))
+  const carried = (c: Connection) => c.route !== undefined && s.has(c.from.part) && s.has(c.to.part)
+  return {
+    ...d,
+    parts: d.parts.map((p) => (s.has(p.uid) ? { ...p, x: p.x + dx, y: p.y + dy } : p)),
+    connections: d.connections.some(carried)
+      ? d.connections.map((c) => (carried(c) ? { ...c, route: c.route!.map(([x, y]) => [x + dx, y + dy] as [number, number]) } : c))
+      : d.connections,
+  }
 }
 
 const withoutMount = (p: PartInstance): PartInstance => {
@@ -134,12 +152,44 @@ export function settleDrop(base: Diagram, now: Diagram, uids: string[]): Diagram
   return now === base ? now : settleMounts(now, uids)
 }
 
+const turn = (r: Rotation | undefined) => (((r ?? 0) + 90) % 360) as Rotation
+
+/**
+ * Where part `p` goes when its board turns a quarter clockwise about the board's pivot: its own
+ * pivot swings around the board's, so every leg lands on the hole it was in.
+ */
+function swungAbout(p: PartInstance, m: ModuleDef, board: PartInstance, bm: ModuleDef): { x: number; y: number } {
+  const lay = layoutModule(m)
+  const c = pivot(lay.w, lay.h)
+  const blay = layoutModule(bm)
+  const bc = pivot(blay.w, blay.h)
+  const bx = board.x + bc.x
+  const by = board.y + bc.y
+  const v = rotateVec({ x: p.x + c.x - bx, y: p.y + c.y - by }, 90)
+  return { x: bx + v.x - c.x, y: by + v.y - c.y }
+}
+
+/**
+ * Rotates each part 90 degrees clockwise about its own pivot. A rotated board turns its mounted
+ * parts with it (about the board's pivot), so they stay seated. Any other rotated part keeps its
+ * mount only while it still fits; rotating never mounts a part.
+ */
 export function rotateParts(d: Diagram, uids: string[]): Diagram {
   const s = new Set(uids)
-  return {
-    ...d,
-    parts: d.parts.map((p) => (s.has(p.uid) ? { ...p, rotation: (((p.rotation ?? 0) + 90) % 360) as Rotation } : p)),
+  const byUid = new Map(d.parts.map((p) => [p.uid, p]))
+  const carriedBy = new Map<string, PartInstance>()
+  for (const p of d.parts) {
+    const board = p.mount && s.has(p.mount.board) ? byUid.get(p.mount.board) : undefined
+    if (board) carriedBy.set(p.uid, board)
   }
+  const parts = d.parts.map((p) => {
+    const board = carriedBy.get(p.uid)
+    const m = moduleOf(d, p.module)
+    const bm = board && moduleOf(d, board.module)
+    if (board && m && bm) return { ...p, ...swungAbout(p, m, board, bm), rotation: turn(p.rotation) }
+    return s.has(p.uid) ? { ...p, rotation: turn(p.rotation) } : p
+  })
+  return settleMounts({ ...d, parts }, uids.filter((u) => !carriedBy.has(u)), 'keep')
 }
 
 export function deleteSelection(d: Diagram, sel: Selection): Diagram {
@@ -147,7 +197,8 @@ export function deleteSelection(d: Diagram, sel: Selection): Diagram {
   const wires = new Set(sel.wires)
   return {
     ...d,
-    parts: d.parts.filter((p) => !parts.has(p.uid)),
+    // A deleted board's parts stay on the sheet, unmounted.
+    parts: d.parts.filter((p) => !parts.has(p.uid)).map((p) => (p.mount && parts.has(p.mount.board) ? withoutMount(p) : p)),
     connections: d.connections.filter((c) => !wires.has(c.uid) && !parts.has(c.from.part) && !parts.has(c.to.part)),
   }
 }
