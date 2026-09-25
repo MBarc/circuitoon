@@ -60,4 +60,12 @@ describe('routeOrthogonal', () => {
     }
     expect(performance.now() - t0).toBeLessThan(400)
   })
+  it('gives up quickly on endpoints too far apart to search', () => {
+    const t0 = performance.now()
+    const far = routeOrthogonal({ from: { x: 0, y: 0 }, fromDir: right, to: { x: 200000, y: 200000 }, toDir: left, obstacles: [] })
+    const wide = routeOrthogonal({ from: { x: 0, y: 0 }, fromDir: right, to: { x: 200000, y: 0 }, toDir: left, obstacles: [] })
+    expect(far).toBeNull()
+    expect(wide).toBeNull()
+    expect(performance.now() - t0).toBeLessThan(50)
+  })
 })

@@ -18,6 +18,9 @@ export interface RouteOptions {
   margins?: number[]
 }
 
+/** Largest search window, in grid cells, before a margin is skipped (keeps memory and time bounded). */
+const MAX_CELLS = 250_000
+
 const DIRS: Pt[] = [{ x: 1, y: 0 }, { x: 0, y: 1 }, { x: -1, y: 0 }, { x: 0, y: -1 }]
 const dirIndex = (d: Pt) => DIRS.findIndex((v) => v.x === d.x && v.y === d.y)
 
@@ -93,6 +96,7 @@ function search(start: Pt, goal: Pt, req: RouteRequest, g: number, clearance: nu
   const y1 = Math.ceil((Math.max(start.y, goal.y) + margin) / g) * g
   const cols = (x1 - x0) / g + 1
   const rows = (y1 - y0) / g + 1
+  if (cols * rows > MAX_CELLS) return null
 
   const blocked = new Uint8Array(cols * rows)
   for (const r of req.obstacles) {
