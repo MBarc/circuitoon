@@ -4,6 +4,7 @@ import { EditorStore } from './store.ts'
 import { Canvas } from './Canvas.tsx'
 import { Inspector } from './Inspector.tsx'
 import { LibraryPanel } from './LibraryPanel.tsx'
+import { Toolbar } from './Toolbar.tsx'
 import { deleteSelection, EMPTY_SELECTION, rotateParts } from './ops.ts'
 import './editor.css'
 
@@ -41,10 +42,7 @@ export function Editor({ initial, notice, onClose }: { initial: Diagram; notice?
   useEditorKeys(store)
   return (
     <div className="editor">
-      <header className="toolbar">
-        <button type="button" className="wordmark" onClick={onClose} title="Back to the start screen">Circuitoon</button>
-        {notice && <p className="message">{notice}</p>}
-      </header>
+      <Toolbar store={store} notice={notice} onClose={onClose} />
       <LibraryPanel onAdd={(id) => canvasApi.current?.addAtCenter(id)} />
       <Canvas store={store} onReady={(api) => (canvasApi.current = api)} />
       <Inspector store={store} />

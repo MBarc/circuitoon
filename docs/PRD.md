@@ -146,7 +146,7 @@ A module is one self-contained JSON file: name, pins by side and order, optional
 - The grid unit is 10 px at 100% zoom. Pin pitch is 1 grid unit (matching 0.1 inch headers); spacers take one pitch.
 - Body size is the largest of: explicit `size`, `art.w/h`, and the size needed to fit the pins on each side plus one unit of margin at each corner. Pins are centered along their side.
 - Order rule: within a side, pins appear in array order, left to right on `top` and `bottom`, top to bottom on `left` and `right`.
-- A part's `x, y` is the top-left of its unrotated body; rotation is about the body center.
+- A part's `x, y` is the top-left of its unrotated body; rotation is about the grid point at or up-left of the body center, so pins stay on the 10 px grid.
 
 **Validation.** Import rejects a file, with the exact reason and path, on: missing `format`, `id` or `name`; duplicate pin names; unknown `side`; a spacer with a name; `internal` naming a missing pin; malformed `bus` or `art`.
 
