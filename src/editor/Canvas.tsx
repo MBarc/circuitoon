@@ -1,14 +1,14 @@
 // The editing surface: an SVG sheet you can pan (drag the background) and zoom (wheel).
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import { type EditorStore, useEditorState } from './store.ts'
-import { computeRoutes, labelAnchor, moduleOf, wireColor, wirePaths, wireWidth, type Routes } from '../format/diagram.ts'
+import { computeRoutes, labelAnchor, moduleOf, wireColor, wirePaths, wireWidth, type PartInstance, type Routes } from '../format/diagram.ts'
 import type { Pt } from '../format/geometry.ts'
 import { Part, INK } from '../render/Part.tsx'
 import { WireLabel } from '../render/WireLabel.tsx'
 import { addPart, addWire, EMPTY_SELECTION, moveParts, reconnectWire, updateWire } from './ops.ts'
 import { modulesById } from '../library.ts'
 import { bodyRect, worldPins } from '../format/geometry.ts'
-import { layoutModule } from '../format/module.ts'
+import { layoutModule, type ModuleDef } from '../format/module.ts'
 import { MODULE_MIME } from './LibraryPanel.tsx'
 import type { Diagram, Endpoint } from '../format/diagram.ts'
 import { partCaption } from '../format/values.ts'
@@ -26,6 +26,32 @@ type Drag = { pointer: number } & (
   | { kind: 'reconnect'; uid: string; end: 'from' | 'to'; origin: Pt; cursor: Pt; over: Endpoint | null }
 )
 
+/**
+ * One part's pin hit-targets (the invisible circles wires attach to). Memoized so dragging a
+ * wire across the sheet, which changes `hoveredPin` every pointer move, only re-renders the one
+ * part whose pin is actually being hovered instead of rebuilding this layer for every part on
+ * the sheet each frame.
+ */
+const PinTargets = memo(function PinTargets({ part, m, hoveredPin }: { part: PartInstance; m: ModuleDef; hoveredPin: string | null }) {
+  return (
+    <>
+      {worldPins(part, m).map((wp) => (
+        <circle
+          key={wp.name}
+          className={hoveredPin === wp.name ? 'pin-hit target' : 'pin-hit'}
+          data-pin={wp.name}
+          data-pin-part={part.uid}
+          cx={wp.end.x}
+          cy={wp.end.y}
+          r={6}
+        >
+          <title>{`${part.designator} ${wp.label ?? wp.name}`}</title>
+        </circle>
+      ))}
+    </>
+  )
+})
+
 export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api: { addAtCenter: (moduleId: string) => void }) => void }) {
   const { diagram, selection } = useEditorState(store)
   const svgRef = useRef<SVGSVGElement>(null)
@@ -35,12 +61,14 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
   const settled = useRef<Routes>(new Map())
   const [editing, setEditing] = useState<{ uid: string; anchor: Pt; initial: string; token: number } | null>(null)
   const editRef = useRef<HTMLInputElement>(null)
-  // Bumped each time the label editor opens, and cleared (to 0, which no session ever has) by
-  // the first commit or cancel. Enter commits without blurring the input, so a blur can still
-  // land afterward (or, worse, after a later session has already opened on another wire and
-  // taken over editRef); commit/cancel only act when the token they were called with still
-  // matches, so a stale call from a closed session is a no-op instead of a wrong-wire re-commit.
-  const editTokenRef = useRef(0)
+  // Only ever increases, so every label-editor session gets a token no earlier session can match.
+  const tokenSeqRef = useRef(0)
+  // The token of the currently open session, or null when none is open (cleared on commit or
+  // cancel). Enter commits without blurring the input, so a blur can still land afterward (or,
+  // worse, after a later session has already opened on another wire and taken over editRef);
+  // commit/cancel only act when the token they were called with still matches this, so a stale
+  // call from an already-closed session is a no-op instead of a wrong-wire re-commit.
+  const activeTokenRef = useRef<number | null>(null)
 
   useEffect(() => {
     const el = svgRef.current!
@@ -109,11 +137,13 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
     if (!anchor) return
     const wire = diagram.connections.find((c) => c.uid === uid)
     store.select({ parts: [], wires: [uid] })
-    setEditing({ uid, anchor, initial: wire?.label ?? '', token: ++editTokenRef.current })
+    const token = ++tokenSeqRef.current
+    activeTokenRef.current = token
+    setEditing({ uid, anchor, initial: wire?.label ?? '', token })
   }
   function commitLabelEdit(token: number) {
-    if (token !== editTokenRef.current) return // a stale commit from an already-closed session
-    editTokenRef.current = 0
+    if (token !== activeTokenRef.current) return // a stale commit from an already-closed session
+    activeTokenRef.current = null
     const cur = editing
     setEditing(null)
     if (!cur) return
@@ -124,8 +154,8 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
     if (wire && (wire.label ?? undefined) !== label) store.commit(updateWire(s.diagram, cur.uid, { label }))
   }
   function cancelLabelEdit(token: number) {
-    if (token !== editTokenRef.current) return // a stale cancel from an already-closed session
-    editTokenRef.current = 0
+    if (token !== activeTokenRef.current) return // a stale cancel from an already-closed session
+    activeTokenRef.current = null
     setEditing(null)
   }
   function onDoubleClick(e: React.MouseEvent<SVGSVGElement>) {
@@ -314,19 +344,31 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
             const dash = blocked ? '6 5' : undefined
             const selected = selection.wires.includes(conn.uid)
             const dimmed = drag?.kind === 'reconnect' && drag.uid === conn.uid
-            const anchor = conn.label && !dimmed ? labelAnchor(routes.get(conn.uid)?.points ?? []) : null
             return (
               <g key={conn.uid} data-wire={conn.uid} opacity={dimmed ? 0.3 : undefined}>
                 {selected && <path d={d} stroke="var(--focus)" strokeOpacity={0.35} strokeWidth={w + 10} />}
                 <path d={d} stroke={INK} strokeWidth={w + 2.2} strokeDasharray={dash} />
                 <path d={d} stroke={wireColor(conn.color)} strokeWidth={w} strokeDasharray={dash} />
                 <path d={d} className="wire-hit" strokeWidth={Math.max(12, w + 8)} />
-                {anchor && <WireLabel x={anchor.x} y={anchor.y} text={conn.label!} />}
               </g>
             )
           })}
         </g>
         {wires.flatMap(({ conn, ends }) => ends.map((e, i) => <circle key={`${conn.uid}-${i}`} cx={e.x} cy={e.y} r={2.4} fill={INK} />))}
+        {/* Name tags in their own layer after every wire, so a labeled wire crossing under a
+            later one still shows its tag on top. Each tag keeps data-wire so a click or
+            double-click on it still selects or edits that wire. */}
+        <g>
+          {wires.map(({ conn }) => {
+            const dimmed = drag?.kind === 'reconnect' && drag.uid === conn.uid
+            const anchor = conn.label && !dimmed ? labelAnchor(routes.get(conn.uid)?.points ?? []) : null
+            return anchor ? (
+              <g key={conn.uid} data-wire={conn.uid}>
+                <WireLabel x={anchor.x} y={anchor.y} text={conn.label!} />
+              </g>
+            ) : null
+          })}
+        </g>
         {drag?.kind === 'wire' && (
           <line
             x1={drag.origin.x} y1={drag.origin.y} x2={drag.cursor.x} y2={drag.cursor.y}
@@ -340,25 +382,12 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
             strokeWidth={2.5} strokeDasharray="6 4" strokeLinecap="round"
           />
         )}
-        {diagram.parts.flatMap((p) => {
+        {diagram.parts.map((p) => {
           const m = moduleOf(diagram, p.module)
-          if (!m) return []
-          return worldPins(p, m).map((wp) => {
-            const over = (drag?.kind === 'wire' || drag?.kind === 'reconnect') && drag.over?.part === p.uid && drag.over.pin === wp.name
-            return (
-              <circle
-                key={`${p.uid}:${wp.name}`}
-                className={over ? 'pin-hit target' : 'pin-hit'}
-                data-pin={wp.name}
-                data-pin-part={p.uid}
-                cx={wp.end.x}
-                cy={wp.end.y}
-                r={6}
-              >
-                <title>{`${p.designator} ${wp.label ?? wp.name}`}</title>
-              </circle>
-            )
-          })
+          if (!m) return null
+          const hoveredPin =
+            (drag?.kind === 'wire' || drag?.kind === 'reconnect') && drag.over?.part === p.uid ? drag.over.pin : null
+          return <PinTargets key={p.uid} part={p} m={m} hoveredPin={hoveredPin} />
         })}
         {selection.wires.length === 1 &&
           !drag &&
