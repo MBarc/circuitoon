@@ -68,4 +68,8 @@ describe('routeOrthogonal', () => {
     expect(wide).toBeNull()
     expect(performance.now() - t0).toBeLessThan(50)
   })
+  it('returns null when facing tips share a grid cell inside an obstacle', () => {
+    const obstacles = [{ x: 40, y: 10, w: 20, h: 20 }]
+    expect(routeOrthogonal({ from: { x: 48, y: 20 }, fromDir: right, to: { x: 52, y: 20 }, toDir: left, obstacles })).toBeNull()
+  })
 })

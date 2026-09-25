@@ -89,7 +89,6 @@ export function routeOrthogonal(req: RouteRequest, opts: RouteOptions = {}): Pt[
 }
 
 function search(start: Pt, goal: Pt, req: RouteRequest, g: number, clearance: number, bendCost: number, margin: number): Pt[] | null {
-  if (start.x === goal.x && start.y === goal.y) return [start]
   const x0 = Math.floor((Math.min(start.x, goal.x) - margin) / g) * g
   const y0 = Math.floor((Math.min(start.y, goal.y) - margin) / g) * g
   const x1 = Math.ceil((Math.max(start.x, goal.x) + margin) / g) * g
@@ -112,6 +111,8 @@ function search(start: Pt, goal: Pt, req: RouteRequest, g: number, clearance: nu
   const startCell = cellOf(start)
   const goalCell = cellOf(goal)
   if (blocked[startCell] || blocked[goalCell]) return null
+  // Checked after the obstacle map, so a shared cell inside a part body is still refused.
+  if (startCell === goalCell) return [start]
 
   const gc = goalCell % cols
   const gr = Math.floor(goalCell / cols)
