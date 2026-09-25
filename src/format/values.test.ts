@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   CAPACITOR_VALUES,
   RESISTOR_VALUES,
+  bandFills,
   formatValue,
   parseValue,
   partCaption,
@@ -38,6 +39,9 @@ describe('formatValue', () => {
     expect(formatValue(999.5, 'ohm')).toBe(`1 k${OHM}`)
     expect(formatValue(0.9999e-6, 'F')).toBe(`1 ${MICRO}F`)
   })
+  it('adds the G prefix past 1e9', () => {
+    expect(formatValue(2.2e9, 'ohm')).toBe(`2.2 G${OHM}`)
+  })
 })
 
 describe('parseValue', () => {
@@ -70,6 +74,10 @@ describe('parseValue', () => {
     expect(parseValue('abc', 'ohm')).toBeNull()
     expect(parseValue('4.7F', 'ohm')).toBeNull()
     expect(parseValue('3.7ohm', 'V')).toBeNull()
+  })
+  it('rejects a magnitude above 1e12 or below 1e-15', () => {
+    expect(parseValue('5000G', 'ohm')).toBeNull()
+    expect(parseValue('0.0001p', 'F')).toBeNull()
   })
 })
 
@@ -153,6 +161,13 @@ describe('partValue', () => {
   it('is null when the module has no primary param', () => {
     expect(partValue({}, { format: 'circuitoon-module/1', id: 'x', name: 'X', pins: [{ name: 'A', side: 'left' }] })).toBeNull()
   })
+  it('falls back to the default when the stored unit does not match the param unit', () => {
+    expect(partValue({ values: { resistance: { value: 220, unit: 'kohm' } } }, m)).toEqual({ name: 'resistance', unit: 'ohm', value: 1000 })
+  })
+  it('falls back to the default when the stored value is not positive', () => {
+    expect(partValue({ values: { resistance: { value: -220, unit: 'ohm' } } }, m)).toEqual({ name: 'resistance', unit: 'ohm', value: 1000 })
+    expect(partValue({ values: { resistance: { value: 0, unit: 'ohm' } } }, m)).toEqual({ name: 'resistance', unit: 'ohm', value: 1000 })
+  })
 })
 
 describe('partCaption', () => {
@@ -166,5 +181,38 @@ describe('partCaption', () => {
   })
   it('is just the designator when the module has no primary param', () => {
     expect(partCaption({ designator: 'D1' }, led)).toBe('D1')
+  })
+  it('falls back to the default caption when the stored value has the wrong unit', () => {
+    expect(partCaption({ designator: 'R1', values: { resistance: { value: 220, unit: 'kohm' } } }, resistor)).toBe(`R1  1 k${OHM}`)
+  })
+})
+
+describe('bandFills', () => {
+  const resistorArt: ModuleDef = {
+    format: 'circuitoon-module/1', id: 'r', name: 'R', pins: [{ name: '1', side: 'left' }, { name: '2', side: 'right' }],
+    electrical: { params: { resistance: { unit: 'ohm', default: 1000 } } },
+    art: {
+      w: 60, h: 40,
+      shapes: [
+        { type: 'rect', x: 8, y: 12, w: 44, h: 16, fill: '#F1D9A7', radius: 8 },
+        { type: 'rect', x: 16, y: 13, w: 4, h: 14, fill: '#8B5A2B', band: 1 },
+        { type: 'rect', x: 23, y: 13, w: 4, h: 14, fill: '#1B1B1B', band: 2 },
+        { type: 'rect', x: 30, y: 13, w: 4, h: 14, fill: '#D8413A', band: 3 },
+        { type: 'rect', x: 41, y: 13, w: 4, h: 14, fill: '#E0B43C', band: 4 },
+      ],
+    },
+  }
+  it('gives the 4-band code fills for 1k and 4.7k, values with a clean 2-digit code', () => {
+    expect(bandFills(resistorArt, { resistance: { value: 1000, unit: 'ohm' } })).toEqual(resistorBands(1000))
+    expect(bandFills(resistorArt, { resistance: { value: 4700, unit: 'ohm' } })).toEqual(resistorBands(4700))
+  })
+  it('falls back to the body fill on every band for 4.75k, which needs 3 significant digits', () => {
+    expect(bandFills(resistorArt, { resistance: { value: 4750, unit: 'ohm' } })).toEqual(['#F1D9A7', '#F1D9A7', '#F1D9A7', '#F1D9A7'])
+  })
+  it('uses the module default value (1k) when the part has no override', () => {
+    expect(bandFills(resistorArt, undefined)).toEqual(resistorBands(1000))
+  })
+  it('is null for a module with no band shapes', () => {
+    expect(bandFills({ format: 'circuitoon-module/1', id: 'x', name: 'X', pins: [{ name: 'A', side: 'left' }] })).toBeNull()
   })
 })

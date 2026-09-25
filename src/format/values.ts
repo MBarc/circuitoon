@@ -1,7 +1,7 @@
 // Part values: SI-prefixed formatting and parsing, standard value series, and resistor color
 // bands. Pure and unit-tested; the editor and renderer just call into these.
 
-import { isNum, isObj, type ModuleDef } from './module.ts'
+import { isNum, isObj, type ArtShape, type ModuleDef } from './module.ts'
 
 const OHM = 'Ω' // ohm sign, U+2126 (not the Greek capital omega, U+03A9)
 const OMEGA = 'Ω'
@@ -18,6 +18,7 @@ const PREFIXES: { exp: number; symbol: string }[] = [
   { exp: 0, symbol: '' },
   { exp: 3, symbol: 'k' },
   { exp: 6, symbol: 'M' },
+  { exp: 9, symbol: 'G' },
 ]
 
 /** Rounds to `digits` significant digits, avoiding float noise like 4.699999999999999. */
@@ -49,7 +50,7 @@ export function formatValue(value: number, unit: string): string {
 }
 
 /** Single-character SI prefixes accepted on input; case matters (M is mega, m is milli). */
-const PREFIX_MULT: Record<string, number> = { M: 1e6, k: 1e3, K: 1e3, m: 1e-3, u: 1e-6, [MICRO]: 1e-6, n: 1e-9, p: 1e-12 }
+const PREFIX_MULT: Record<string, number> = { G: 1e9, M: 1e6, k: 1e3, K: 1e3, m: 1e-3, u: 1e-6, [MICRO]: 1e-6, n: 1e-9, p: 1e-12 }
 
 /** True when `s` spells out the given unit (its full name or sign), case-insensitively. Empty means the unit was left implied, which is always accepted. */
 function matchesUnit(s: string, unit: string): boolean {
@@ -69,12 +70,13 @@ function splitPrefix(suffix: string): { mult: number; rest: string } {
 }
 
 /**
- * Rejects non-finite, negative or zero values; otherwise rounds to 6 significant digits, so a
- * multiplication like `100 * 1e-9` (which lands on 1.0000000000000001e-7 in floating point)
- * comes out as the clean 1e-7 rather than carrying that noise into the diagram.
+ * Rejects non-finite, negative, zero, or out-of-range (above 1e12 or below 1e-15) values;
+ * otherwise rounds to 6 significant digits, so a multiplication like `100 * 1e-9` (which lands
+ * on 1.0000000000000001e-7 in floating point) comes out as the clean 1e-7 rather than carrying
+ * that noise into the diagram.
  */
 function finish(v: number): number | null {
-  if (!Number.isFinite(v) || v <= 0) return null
+  if (!Number.isFinite(v) || v <= 0 || v > 1e12 || v < 1e-15) return null
   return roundSig(v, 6)
 }
 
@@ -172,13 +174,38 @@ export function resistorBands(ohms: number): [string, string, string, string] | 
   return [DIGIT_COLORS[d1], DIGIT_COLORS[d2], mult, GOLD]
 }
 
+/** A resistor body color used when the value has no clean 2-digit band code (or the module has
+ * no `resistance` value at all): a neutral tan, close to the paper-toned body most resistor art
+ * uses. */
+const NEUTRAL_BAND_FILL = '#E6D3A8'
+
+/**
+ * Fill color for each numbered band shape (1-based slot) in a module's art. Uses the standard
+ * 4-band resistor code when the part's resistance forms a clean 2-digit mantissa; otherwise every
+ * band shows the resistor body color instead of a stale or misleading code, using the largest
+ * non-band shape's own fill (the body the bands sit on) or a neutral tan when there is none.
+ * Null when the module has no band shapes at all.
+ */
+export function bandFills(m: ModuleDef, values?: Record<string, unknown>): string[] | null {
+  const bandShapes = m.art?.shapes.filter((s) => s.band) ?? []
+  if (bandShapes.length === 0) return null
+  const maxBand = Math.max(...bandShapes.map((s) => s.band!))
+  const resolved = partValue({ values }, m)
+  const bands = resolved?.name === 'resistance' ? resistorBands(resolved.value) : null
+  if (bands) return bands.slice(0, maxBand)
+  const bodyShapes = m.art!.shapes.filter((s) => !s.band)
+  const body = bodyShapes.reduce<ArtShape | undefined>((best, s) => (!best || s.w * s.h > best.w * best.h ? s : best), undefined)
+  const fallback = body?.fill ?? NEUTRAL_BAND_FILL
+  return Array.from({ length: maxBand }, () => fallback)
+}
+
 /**
  * The only param names the value field, caption and (for resistance) band coloring apply to,
  * in priority order. A module can carry other numeric params (an LED's forward voltage, its max
  * current) that are not meant to be user-editable values here, so those are never picked, no
  * matter how plausible their unit looks.
  */
-const PRIMARY_PARAM_NAMES = ['resistance', 'capacitance', 'voltage']
+export const PRIMARY_PARAM_NAMES = ['resistance', 'capacitance', 'voltage']
 
 /** The first of `resistance`, `capacitance` or `voltage` present with a matching unit and a numeric default. */
 export function primaryParam(m: ModuleDef): { name: string; unit: string; default: number } | null {
@@ -194,12 +221,18 @@ export function primaryParam(m: ModuleDef): { name: string; unit: string; defaul
   return null
 }
 
-/** The part's chosen value for its primary param, or the module default when unset. */
+/**
+ * The part's chosen value for its primary param, or the module default when unset. A stored
+ * override is only trusted when its unit matches the param's declared unit and its value is a
+ * finite, positive number; anything else (a stale unit from an edited module, a negative or
+ * zero value, or malformed data from an untrusted import) falls back to the module default
+ * instead of drawing something misleading.
+ */
 export function partValue(part: { values?: Record<string, unknown> }, m: ModuleDef): { name: string; unit: string; value: number } | null {
   const p = primaryParam(m)
   if (!p) return null
   const stored = part.values?.[p.name]
-  if (isObj(stored) && isNum(stored.value) && typeof stored.unit === 'string') return { name: p.name, unit: stored.unit, value: stored.value }
+  if (isObj(stored) && stored.unit === p.unit && isNum(stored.value) && stored.value > 0) return { name: p.name, unit: p.unit, value: stored.value }
   return { name: p.name, unit: p.unit, value: p.default }
 }
 
