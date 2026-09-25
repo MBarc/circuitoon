@@ -21,15 +21,15 @@ export function Sheet({ diagram, captions = {}, box, label }: {
       <rect x={box.x} y={box.y} width={box.w} height={box.h} fill="url(#grid)" />
       {diagram.parts.map((p) => {
         const m = diagram.modules[p.module]
-        return m ? <Part key={p.uid} module={m} x={p.x} y={p.y} caption={captions[p.uid] ?? p.designator} /> : null
+        return m ? <Part key={p.uid} module={m} x={p.x} y={p.y} rotation={p.rotation} caption={captions[p.uid] ?? p.designator} /> : null
       })}
       <g fill="none" strokeLinecap="round" strokeLinejoin="round">
-        {wires.map(({ conn, d }) => {
+        {wires.map(({ conn, d, blocked }) => {
           const w = wireWidth(conn.gauge)
           return (
             <g key={conn.uid}>
-              <path d={d} stroke={INK} strokeWidth={w + 2.2} />
-              <path d={d} stroke={wireColor(conn.color)} strokeWidth={w} />
+              <path d={d} stroke={INK} strokeWidth={w + 2.2} strokeDasharray={blocked ? '6 5' : undefined} />
+              <path d={d} stroke={wireColor(conn.color)} strokeWidth={w} strokeDasharray={blocked ? '6 5' : undefined} />
             </g>
           )
         })}

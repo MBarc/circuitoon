@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { wireColor, wireWidth, wirePaths, type Diagram } from './diagram.ts'
+import { computeRoutes, wireColor, wireWidth, wirePaths, type Diagram } from './diagram.ts'
 import type { ModuleDef } from './module.ts'
 
 describe('wire color and gauge', () => {
@@ -50,5 +50,32 @@ describe('wirePaths', () => {
   })
   it('skips a connection whose pin does not exist', () => {
     expect(wirePaths(d([{ uid: 'w', from: { part: 'a', pin: 'nope' }, to: { part: 'b', pin: 'L' } }]))).toEqual([])
+  })
+  it('routes around a part that sits between two pins', () => {
+    const diagram = d([{ uid: 'w', from: { part: 'a', pin: 'R' }, to: { part: 'b', pin: 'L' } }])
+    diagram.parts[1] = { ...diagram.parts[1], x: 200 }
+    diagram.parts.push({ uid: 'c', designator: 'C', module: 'two', x: 100, y: 0 })
+    const r = computeRoutes(diagram).get('w')!
+    expect(r.blocked).toBe(false)
+    expect(r.points.length).toBeGreaterThan(2)
+    // No horizontal segment may pass through c's body (x 100..140, y 0..30).
+    const throughC = r.points.some((p, i) => {
+      const q = r.points[i - 1]
+      return i > 0 && p.y === q.y && p.y > 0 && p.y < 30 && Math.min(p.x, q.x) < 140 && Math.max(p.x, q.x) > 100
+    })
+    expect(throughC).toBe(false)
+  })
+  it('follows a rotated part', () => {
+    const diagram = d([{ uid: 'w', from: { part: 'a', pin: 'R' }, to: { part: 'b', pin: 'L' } }])
+    diagram.parts[1] = { ...diagram.parts[1], rotation: 90 }
+    const r = computeRoutes(diagram).get('w')!
+    // b is at (100, 0), body 40 x 30, pivot (20, 10); its L stub tip, local (-8, 20), turns to world (110, -18)
+    expect(r.points[r.points.length - 1]).toEqual({ x: 110, y: -18 })
+  })
+  it('reuses previous routes for wires not listed in only', () => {
+    const diagram = d([{ uid: 'w', from: { part: 'a', pin: 'R' }, to: { part: 'b', pin: 'L' } }])
+    const prev = computeRoutes(diagram)
+    const moved = { ...diagram, parts: diagram.parts.map((p) => (p.uid === 'b' ? { ...p, y: 50 } : p)) }
+    expect(computeRoutes(moved, { only: new Set(), prev }).get('w')).toBe(prev.get('w'))
   })
 })
