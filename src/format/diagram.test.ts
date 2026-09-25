@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { computeRoutes, labelAnchor, wireColor, wireWidth, wirePaths, type Diagram } from './diagram.ts'
+import { computeRoutes, labelAnchor, partObstacles, routeWire, wireColor, wireWidth, wirePaths, type Diagram } from './diagram.ts'
 import type { ModuleDef } from './module.ts'
 
 describe('wire color and gauge', () => {
@@ -27,6 +27,10 @@ describe('labelAnchor', () => {
   })
   it('breaks a tie between equal-length segments by taking the first', () => {
     expect(labelAnchor([{ x: 0, y: 0 }, { x: 40, y: 0 }, { x: 40, y: 40 }, { x: 80, y: 40 }])).toEqual({ x: 20, y: 0, horizontal: true })
+  })
+  it('treats a run split by a collinear bend as one run', () => {
+    // 30 + 30 on one line beats the single 50 px leg.
+    expect(labelAnchor([{ x: 0, y: 0 }, { x: 30, y: 0 }, { x: 60, y: 0 }, { x: 60, y: 50 }])).toEqual({ x: 30, y: 0, horizontal: true })
   })
   it('is null for a degenerate route', () => {
     expect(labelAnchor([])).toBeNull()
@@ -90,6 +94,31 @@ describe('wirePaths', () => {
     const r = computeRoutes(diagram).get('w')!
     // b is at (100, 0), body 40 x 30, pivot (20, 10); its L stub tip, local (-8, 20), turns to world (110, -18)
     expect(r.points[r.points.length - 1]).toEqual({ x: 110, y: -18 })
+  })
+  it('routes without lanes when occupancy is off, exactly as each wire alone would', () => {
+    // Same shape as the occupancy fixture below: with lanes, the second wire takes its own lane.
+    const src2: ModuleDef = {
+      format: 'circuitoon-module/1', id: 'src2', name: 'Src2',
+      pins: [{ name: 'P1', side: 'top' }, { spacer: true, side: 'top' }, { spacer: true, side: 'top' }, { spacer: true, side: 'top' }, { name: 'P2', side: 'top' }],
+    }
+    const tgt2: ModuleDef = { format: 'circuitoon-module/1', id: 'tgt2', name: 'Tgt2', pins: [{ name: 'T1', side: 'left' }, { name: 'T2', side: 'left' }] }
+    const diagram: Diagram = {
+      format: 'circuitoon-diagram/1', title: 't', modules: { src2, tgt2 },
+      parts: [{ uid: 'bat', designator: 'BAT', module: 'src2', x: 0, y: 0 }, { uid: 'dev', designator: 'DEV', module: 'tgt2', x: 200, y: 120 }],
+      connections: [
+        { uid: 'w1', from: { part: 'bat', pin: 'P1' }, to: { part: 'dev', pin: 'T1' } },
+        { uid: 'w2', from: { part: 'bat', pin: 'P2' }, to: { part: 'dev', pin: 'T2' } },
+      ],
+    }
+    const obstacles = partObstacles(diagram)
+    const alone = new Map(diagram.connections.map((c) => [c.uid, routeWire(diagram, c, obstacles)]))
+    expect(computeRoutes(diagram, { occupancy: false })).toEqual(alone)
+    expect(computeRoutes(diagram)).not.toEqual(alone) // the option really does switch lanes off
+    // During a drag (only + prev), too.
+    const prev = computeRoutes(diagram)
+    const out = computeRoutes(diagram, { only: new Set(['w2']), prev, occupancy: false })
+    expect(out.get('w1')).toBe(prev.get('w1'))
+    expect(out.get('w2')).toEqual(alone.get('w2'))
   })
   it('reuses previous routes for wires not listed in only', () => {
     const diagram = d([{ uid: 'w', from: { part: 'a', pin: 'R' }, to: { part: 'b', pin: 'L' } }])
@@ -211,6 +240,34 @@ describe('wirePaths', () => {
     it('stretches only the end segments when an end part moves by (10, 0)', () => {
       expect(check(edit(manual(), 'b', { x: 110 })).at(-1)).toEqual({ x: 102, y: 20 })
       expect(check(edit(manual(), 'a', { x: 10 }))[0]).toEqual({ x: 58, y: 20 })
+    })
+    it('keeps a collinear bend the user added, and keeps every interior bend when a part moves', () => {
+      const split = d([{ uid: 'w', from: { part: 'a', pin: 'R' }, to: { part: 'b', pin: 'L' }, route: [[60, 20], [60, 60], [70, 60], [80, 60], [80, 20]] }])
+      expect(computeRoutes(split).get('w')!.points).toEqual([
+        { x: 48, y: 20 }, { x: 60, y: 20 }, { x: 60, y: 60 }, { x: 70, y: 60 }, { x: 80, y: 60 }, { x: 80, y: 20 }, { x: 92, y: 20 },
+      ])
+      const moved = computeRoutes(edit(split, 'b', { x: 150, y: 30 })).get('w')!.points
+      expect(moved.slice(2, 5)).toEqual([{ x: 60, y: 60 }, { x: 70, y: 60 }, { x: 80, y: 60 }])
+      moved.forEach((p, i) => i > 0 && expect(p.x === moved[i - 1].x || p.y === moved[i - 1].y).toBe(true))
+    })
+    it('draws a manual wire with no bends left as an orthogonal L, not a diagonal', () => {
+      const pts = computeRoutes(edit(d([{ uid: 'w', from: { part: 'a', pin: 'R' }, to: { part: 'b', pin: 'L' }, route: [] }]), 'b', { y: 40 })).get('w')!.points
+      expect(pts).toEqual([{ x: 48, y: 20 }, { x: 92, y: 20 }, { x: 92, y: 60 }])
+    })
+    it('is flagged blocked when it runs through a part body, and not otherwise', () => {
+      const through = d([{ uid: 'w', from: { part: 'a', pin: 'R' }, to: { part: 'b', pin: 'L' }, route: [[60, 20], [60, 60], [80, 60], [80, 20]] }])
+      expect(computeRoutes(through).get('w')!.blocked).toBe(false)
+      through.parts.push({ uid: 'c', designator: 'C', module: 'two', x: 50, y: 40 })
+      expect(computeRoutes(through).get('w')!.blocked).toBe(true)
+      expect(routeWire(through, through.connections[0], partObstacles(through))!.blocked).toBe(true)
+    })
+    it('draws a split run that has to be nudged clear without any diagonal', () => {
+      const diagram = d([
+        { uid: 'w1', from: { part: 'a', pin: 'R' }, to: { part: 'b', pin: 'L' }, route: [[60, 20], [60, 60], [80, 60], [80, 20]] },
+        { uid: 'w2', from: { part: 'a', pin: 'L' }, to: { part: 'b', pin: 'R' }, route: [[-10, 20], [-10, 60], [30, 60], [70, 60], [150, 60], [150, 20]] },
+      ])
+      const w2 = wirePaths(diagram).find((w) => w.conn.uid === 'w2')!.points
+      w2.forEach((p, i) => i > 0 && expect(p.x === w2[i - 1].x || p.y === w2[i - 1].y).toBe(true))
     })
     it('stays orthogonal after the end part is rotated 90 degrees', () => {
       const pts = check(edit(edit(manual(), 'b', { y: 10 }), 'b', { rotation: 90 }))

@@ -4,6 +4,7 @@ import { type ModuleDef, layoutModule, validateModule, isObj, isNum } from './mo
 import { type Pt, type Rect, type Rotation, type WorldPin, bodyRect, simplify, worldPins } from './geometry.ts'
 import { addToOccupancy, routeOrthogonal, type Occupancy } from './router.ts'
 import { PRIMARY_PARAM_NAMES } from './values.ts'
+import { manualRouteBlocked, tidy } from './wireEdit.ts'
 
 export const DIAGRAM_FORMAT = 'circuitoon-diagram/1'
 
@@ -110,6 +111,8 @@ function endpoint(d: Diagram, ep: Endpoint) {
  * A hand-routed wire keeps its stored bends; only its end segments stretch to reach a moved
  * pin. Where a pin tip and its neighbouring bend no longer line up, a corner is added so the
  * wire still leaves the pin along its stub, and every segment stays horizontal or vertical.
+ * Collinear bends are kept (the user may have split a run to move its halves separately), so
+ * this polyline is also what the editing handles work on; only spikes and repeats are dropped.
  */
 function manualPoints(a: WorldPin, b: WorldPin, route: [number, number][]): Pt[] {
   const bends = route.map(([x, y]) => ({ x, y }))
@@ -117,16 +120,20 @@ function manualPoints(a: WorldPin, b: WorldPin, route: [number, number][]): Pt[]
     if (!next || next.x === pin.end.x || next.y === pin.end.y) return []
     return [pin.dir.x !== 0 ? { x: next.x, y: pin.end.y } : { x: pin.end.x, y: next.y }]
   }
-  const head = corner(a, bends[0])
+  // No bends left (every one removed by hand): still one corner, never a diagonal.
+  const head = corner(a, bends.length ? bends[0] : b.end)
   const tail = bends.length ? corner(b, bends[bends.length - 1]) : []
-  return simplify([a.end, ...head, ...bends, ...tail, b.end])
+  return tidy([a.end, ...head, ...bends, ...tail, b.end])
 }
 
 export function routeWire(d: Diagram, c: Connection, obstacles: Rect[], occupied?: Occupancy): WireRoute | null {
   const a = endpoint(d, c.from)
   const b = endpoint(d, c.to)
   if (!a || !b) return null
-  if (c.route) return { points: manualPoints(a, b, c.route), blocked: false }
+  if (c.route) {
+    const points = manualPoints(a, b, c.route)
+    return { points, blocked: manualRouteBlocked(points, obstacles) }
+  }
   const points = routeOrthogonal({ from: a.end, fromDir: a.dir, to: b.end, toDir: b.dir, obstacles, occupied })
   return points ? { points, blocked: false } : { points: [a.end, b.end], blocked: true }
 }
@@ -164,12 +171,22 @@ function seedOccupancy(d: Diagram, only: Set<string>, prev: Routes): Occupancy {
   return occupied
 }
 
-export function computeRoutes(d: Diagram, opts: { only?: Set<string>; prev?: Routes } = {}): Routes {
+/**
+ * `occupancy: false` routes every wire as if it were alone on the sheet (no lanes), which is much
+ * cheaper; the editor uses it for the wires it re-routes on each frame of a part drag, and the
+ * full route on drop applies lanes again.
+ */
+export function computeRoutes(d: Diagram, opts: { only?: Set<string>; prev?: Routes; occupancy?: boolean } = {}): Routes {
   const obstacles = partObstacles(d)
   const out: Routes = new Map()
+  const lanes = opts.occupancy !== false
   // A fresh copy: the cached seed is reused across frames, so routes computed below must not
   // mutate it, only this call's own working copy.
-  const occupied: Occupancy = opts.only && opts.prev ? new Map(seedOccupancy(d, opts.only, opts.prev)) : new Map()
+  const occupied: Occupancy | undefined = !lanes
+    ? undefined
+    : opts.only && opts.prev
+      ? new Map(seedOccupancy(d, opts.only, opts.prev))
+      : new Map()
   for (const c of d.connections) {
     if (opts.only && !opts.only.has(c.uid) && opts.prev?.has(c.uid)) out.set(c.uid, opts.prev.get(c.uid)!)
   }
@@ -177,7 +194,7 @@ export function computeRoutes(d: Diagram, opts: { only?: Set<string>; prev?: Rou
     if (out.has(c.uid)) continue
     const route = routeWire(d, c, obstacles, occupied)
     out.set(c.uid, route)
-    if (route) addToOccupancy(occupied, route.points)
+    if (route && occupied) addToOccupancy(occupied, route.points)
   }
   return out
 }
@@ -275,7 +292,9 @@ export function wirePaths(d: Diagram, routes: Routes = computeRoutes(d)) {
   for (const conn of d.connections) {
     const route = routes.get(conn.uid)
     if (!route) continue
-    const pts = separate(route.points, verticals, horizontals)
+    // Drawn geometry drops collinear bends: nudging one half of a split run would otherwise
+    // pull the other half into a diagonal.
+    const pts = separate(simplify(route.points), verticals, horizontals)
     let path = `M${pts[0].x} ${pts[0].y}`
     for (let i = 1; i < pts.length; i++) {
       const s = pts[i - 1]
@@ -307,7 +326,8 @@ export function wirePaths(d: Diagram, routes: Routes = computeRoutes(d)) {
  * Midpoint of a routed wire's longest straight run, for placing its name tag. Ties keep the
  * first longest segment found. Null for a route with fewer than two points (nothing to anchor to).
  */
-export function labelAnchor(points: Pt[]): { x: number; y: number; horizontal: boolean } | null {
+export function labelAnchor(route: Pt[]): { x: number; y: number; horizontal: boolean } | null {
+  const points = simplify(route) // a run split by a collinear bend is still one run
   if (points.length < 2) return null
   let best = { i: 1, len: -1 }
   for (let i = 1; i < points.length; i++) {
