@@ -91,8 +91,8 @@ export function addWire(d: Diagram, from: Endpoint, to: Endpoint, style: WireSty
 }
 
 /**
- * Moves one end of an existing wire onto a different pin, keeping its color, gauge, label and
- * route. Refused (returns null) for a missing wire, a self-loop, dropping back onto the pin the
+ * Moves one end of an existing wire onto a different pin, keeping its color, gauge and label. A
+ * hand-shaped wire becomes automatic again, since its bends were made for the old pin. Refused (returns null) for a missing wire, a self-loop, dropping back onto the pin the
  * end is already on, or a duplicate of another wire's endpoints in either direction.
  */
 export function reconnectWire(d: Diagram, uid: string, end: 'from' | 'to', target: Endpoint): Diagram | null {
@@ -108,7 +108,14 @@ export function reconnectWire(d: Diagram, uid: string, end: 'from' | 'to', targe
     (c) => c.uid !== uid && ((sameEnd(c.from, from) && sameEnd(c.to, to)) || (sameEnd(c.from, to) && sameEnd(c.to, from))),
   )
   if (dup) return null
-  return { ...d, connections: d.connections.map((c) => (c.uid === uid ? { ...c, [end]: target } : c)) }
+  return {
+    ...d,
+    connections: d.connections.map((c) => {
+      if (c.uid !== uid) return c
+      const { route: _dropped, ...rest } = c
+      return { ...rest, [end]: target }
+    }),
+  }
 }
 
 export function updatePart(d: Diagram, uid: string, patch: { designator?: string }): Diagram {

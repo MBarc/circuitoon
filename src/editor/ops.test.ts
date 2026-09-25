@@ -75,7 +75,7 @@ describe('ops', () => {
     expect(d.parts[0].designator).toBe('RLIM')
     expect(d.connections[0]).toMatchObject({ color: '#123456', gauge: 18, label: 'LED+' })
   })
-  it('reconnects a wire end to another pin, keeping color, gauge, label and route', () => {
+  it('reconnects a wire end to another pin, keeping color, gauge and label, and makes a hand-shaped wire automatic', () => {
     const d0 = threeResistors()
     const w = addWire(d0, { part: 'p1', pin: '2', offset: 0.5 }, { part: 'p2', pin: '1' }, style)!
     const withRoute = updateWire(w.diagram, 'w1', { label: 'A' })
@@ -90,8 +90,9 @@ describe('ops', () => {
       color: 'red',
       gauge: 22,
       label: 'A',
-      route: [[50, 20]],
     })
+    // The bends were made for the old pin, so the wire goes back to the router.
+    expect('route' in r.connections[0]).toBe(false)
     // input diagram is untouched
     expect(d).toEqual(frozen)
   })
