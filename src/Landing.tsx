@@ -29,6 +29,16 @@ export function sourceLinks(source: string | undefined): string[] {
     })
 }
 
+/** "4 pins", "1 pin", "830 holes" for a board, or both when a module has pins and holes. */
+export function countLabel(m: ModuleDef): string {
+  const pins = m.pins.filter((p) => !isSpacer(p)).length
+  const holes = (m.holes ?? []).reduce((n, g) => n + g.at.length, 0)
+  const out: string[] = []
+  if (pins || !holes) out.push(`${pins} ${pins === 1 ? 'pin' : 'pins'}`)
+  if (holes) out.push(`${holes} ${holes === 1 ? 'hole' : 'holes'}`)
+  return out.join(', ')
+}
+
 function PartCard({ entry }: { entry: LibraryEntry }) {
   const [open, setOpen] = useState(false)
   if (!entry.ok)
@@ -42,7 +52,6 @@ function PartCard({ entry }: { entry: LibraryEntry }) {
   const m = entry.module
   const b = partBounds(m)
   const pad = 16
-  const pinCount = m.pins.filter((p) => !isSpacer(p)).length
   const links = sourceLinks(m.source)
   return (
     <article className="card">
@@ -54,7 +63,7 @@ function PartCard({ entry }: { entry: LibraryEntry }) {
       </svg>
       <div className="card-body">
         <h3>{m.name}</h3>
-        <p className="meta">{m.category ?? 'Uncategorized'}, {pinCount} {pinCount === 1 ? 'pin' : 'pins'}</p>
+        <p className="meta">{m.category ?? 'Uncategorized'}, {countLabel(m)}</p>
         {links.length > 0 && (
           <div className="source-links">
             <span className="meta">Pinout source</span>

@@ -6,7 +6,7 @@
 import type { ModuleDef } from '../format/module.ts'
 
 /** Fixed display order for these categories; anything else is appended alphabetically. */
-export const CATEGORY_ORDER = ['Batteries', 'Power', 'Microcontrollers', 'Displays', 'Chips', 'Passives', 'Indicators', 'Switches']
+export const CATEGORY_ORDER = ['Batteries', 'Prototyping', 'Power', 'Microcontrollers', 'Displays', 'Chips', 'Passives', 'Indicators', 'Switches']
 
 const UNCATEGORIZED = 'Uncategorized'
 

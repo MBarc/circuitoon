@@ -7,10 +7,19 @@ function mod(id: string, name: string, category?: string): ModuleDef {
 }
 
 describe('groupLibrary', () => {
-  it('fixes the category order as Batteries, Power, Microcontrollers, Displays, Chips, Passives, Indicators, Switches', () => {
+  it('fixes the category order as Batteries, Prototyping, Power, Microcontrollers, Displays, Chips, Passives, Indicators, Switches', () => {
     expect(CATEGORY_ORDER).toEqual([
-      'Batteries', 'Power', 'Microcontrollers', 'Displays', 'Chips', 'Passives', 'Indicators', 'Switches',
+      'Batteries', 'Prototyping', 'Power', 'Microcontrollers', 'Displays', 'Chips', 'Passives', 'Indicators', 'Switches',
     ])
+  })
+
+  it('puts Prototyping right after Batteries', () => {
+    const groups = groupLibrary([
+      mod('resistor', 'Resistor', 'Passives'),
+      mod('breadboard-full', 'Full breadboard (830)', 'Prototyping'),
+      mod('battery-9v', '9V battery', 'Batteries'),
+    ])
+    expect(groups.map((g) => g.category)).toEqual(['Batteries', 'Prototyping', 'Passives'])
   })
 
   it('orders known categories Batteries, Power, Passives, Switches, then leftovers alphabetically', () => {
