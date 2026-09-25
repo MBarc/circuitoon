@@ -65,7 +65,7 @@ Parts and wires are both first-class objects you click, drag, select and delete,
 
 - Drag from the parts library onto the canvas. Each instance has an immutable internal `uid` and an editable designator (U1, R1, X2) shown on the canvas.
 - Renaming a designator is always allowed; connections reference `uid`, so nothing breaks.
-- Drag to move; rotate 90 degrees clockwise per press (R) around the body center. Pins keep their order and rotate with the part; pin labels and designators stay upright for readability.
+- Drag to move; rotate 90 degrees clockwise per press (R) around the grid point at or up-left of the body center. Pins keep their order and rotate with the part; pin labels and designators stay upright for readability.
 - Deleting a part deletes its attached wires, as one undo step.
 - Paste and duplicate create new `uid`s and next-free designators; wires are copied only when both ends are inside the copied selection.
 - Parts may overlap while dragging. A part dropped overlapping another shows an overlap warning outline.
@@ -146,7 +146,7 @@ A module is one self-contained JSON file: name, pins by side and order, optional
 - The grid unit is 10 px at 100% zoom. Pin pitch is 1 grid unit (matching 0.1 inch headers); spacers take one pitch.
 - Body size is the largest of: explicit `size`, `art.w/h`, and the size needed to fit the pins on each side plus one unit of margin at each corner. Pins are centered along their side.
 - Order rule: within a side, pins appear in array order, left to right on `top` and `bottom`, top to bottom on `left` and `right`.
-- A part's `x, y` is the top-left of its unrotated body; rotation is about the body center.
+- A part's `x, y` is the top-left of its unrotated body; rotation is about the grid point at or up-left of the body center, so pins stay on the 10 px grid.
 
 **Validation.** Import rejects a file, with the exact reason and path, on: missing `format`, `id` or `name`; duplicate pin names; unknown `side`; a spacer with a name; `internal` naming a missing pin; malformed `bus` or `art`.
 

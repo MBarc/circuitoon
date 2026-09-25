@@ -2,7 +2,7 @@
 
 Lucidchart for electronics wiring diagrams. Drag cartoon pictures of real modules onto a canvas, wire them pin to pin, and move anything while the wires follow.
 
-Early development. Live at https://mbarc.github.io/circuitoon/ (currently the parts library and drawing style; the editor is next).
+Early development. Live at https://mbarc.github.io/circuitoon/; the editor is at https://mbarc.github.io/circuitoon/#/editor (place parts, draw wires, import and export JSON).
 
 ```bash
 npm install

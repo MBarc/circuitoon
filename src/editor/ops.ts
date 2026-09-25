@@ -1,0 +1,97 @@
+// Immutable diagram edits. Every function returns a new Diagram and never mutates its input,
+// so the store can keep old versions for undo.
+import { type Connection, type Diagram, type Endpoint, type PartInstance, moduleOf } from '../format/diagram.ts'
+import type { ModuleDef } from '../format/module.ts'
+import type { Rotation } from '../format/geometry.ts'
+
+export interface Selection {
+  parts: string[]
+  wires: string[]
+}
+export const EMPTY_SELECTION: Selection = { parts: [], wires: [] }
+
+export interface WireStyle {
+  color: string
+  gauge: number
+}
+
+export function nextUid(d: Diagram, prefix: 'p' | 'w' | 'a'): string {
+  // Endpoint part uids count too: a wire to a missing part must not latch onto a new part.
+  const used = new Set([
+    ...d.parts.map((p) => p.uid),
+    ...d.connections.flatMap((c) => [c.uid, c.from.part, c.to.part]),
+    ...(d.annotations ?? []).map((a) => a.uid),
+  ])
+  let n = 1
+  while (used.has(prefix + n)) n++
+  return prefix + n
+}
+
+const PREFIXES: [RegExp, string][] = [
+  [/^resistor/, 'R'],
+  [/^capacitor/, 'C'],
+  [/^led/, 'D'],
+  [/button|switch/, 'S'],
+  [/^battery/, 'BT'],
+]
+
+export function designatorPrefix(m: ModuleDef): string {
+  return PREFIXES.find(([re]) => re.test(m.id))?.[1] ?? 'U'
+}
+
+export function nextDesignator(d: Diagram, m: ModuleDef): string {
+  const prefix = designatorPrefix(m)
+  const used = new Set(d.parts.map((p) => p.designator))
+  let n = 1
+  while (used.has(prefix + n)) n++
+  return prefix + n
+}
+
+export function addPart(d: Diagram, m: ModuleDef, x: number, y: number): { diagram: Diagram; uid: string } {
+  const uid = nextUid(d, 'p')
+  const part: PartInstance = { uid, designator: nextDesignator(d, m), module: m.id, x, y, rotation: 0 }
+  const modules = moduleOf(d, m.id) ? d.modules : { ...d.modules, [m.id]: m }
+  return { uid, diagram: { ...d, modules, parts: [...d.parts, part] } }
+}
+
+export function moveParts(d: Diagram, uids: string[], dx: number, dy: number): Diagram {
+  if (!dx && !dy) return d
+  const s = new Set(uids)
+  return { ...d, parts: d.parts.map((p) => (s.has(p.uid) ? { ...p, x: p.x + dx, y: p.y + dy } : p)) }
+}
+
+export function rotateParts(d: Diagram, uids: string[]): Diagram {
+  const s = new Set(uids)
+  return {
+    ...d,
+    parts: d.parts.map((p) => (s.has(p.uid) ? { ...p, rotation: (((p.rotation ?? 0) + 90) % 360) as Rotation } : p)),
+  }
+}
+
+export function deleteSelection(d: Diagram, sel: Selection): Diagram {
+  const parts = new Set(sel.parts)
+  const wires = new Set(sel.wires)
+  return {
+    ...d,
+    parts: d.parts.filter((p) => !parts.has(p.uid)),
+    connections: d.connections.filter((c) => !wires.has(c.uid) && !parts.has(c.from.part) && !parts.has(c.to.part)),
+  }
+}
+
+const sameEnd = (a: Endpoint, b: Endpoint) => a.part === b.part && a.pin === b.pin
+
+export function addWire(d: Diagram, from: Endpoint, to: Endpoint, style: WireStyle): { diagram: Diagram; uid: string } | null {
+  if (sameEnd(from, to)) return null
+  if (d.connections.some((c) => (sameEnd(c.from, from) && sameEnd(c.to, to)) || (sameEnd(c.from, to) && sameEnd(c.to, from)))) return null
+  const uid = nextUid(d, 'w')
+  const wire: Connection = { uid, from, to, color: style.color, gauge: style.gauge }
+  return { uid, diagram: { ...d, connections: [...d.connections, wire] } }
+}
+
+export function updatePart(d: Diagram, uid: string, patch: { designator?: string }): Diagram {
+  return { ...d, parts: d.parts.map((p) => (p.uid === uid ? { ...p, ...patch } : p)) }
+}
+
+export function updateWire(d: Diagram, uid: string, patch: { color?: string; gauge?: number; label?: string }): Diagram {
+  return { ...d, connections: d.connections.map((c) => (c.uid === uid ? { ...c, ...patch } : c)) }
+}

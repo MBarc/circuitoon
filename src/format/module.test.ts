@@ -27,6 +27,53 @@ describe('validateModule', () => {
         'internal[0][1]: no pin named "B"',
       ])
   })
+  it('rejects an object-valued pin label', () => {
+    const r = validateModule({ ...base, pins: [{ name: 'A', side: 'left', label: { x: 1 } }] })
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.errors).toEqual(['pins[0].label: must be a string'])
+  })
+  it('rejects an object-valued shape label', () => {
+    const r = validateModule({
+      ...base,
+      pins: [{ name: 'A', side: 'left' }],
+      art: { w: 40, h: 30, shapes: [{ type: 'rect', x: 0, y: 0, w: 40, h: 30, fill: '#fff', label: { t: 'x' } }] },
+    })
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.errors).toEqual(['art.shapes[0].label: must be a string'])
+  })
+  it('checks the other optional fields rendering reads', () => {
+    const r = validateModule({
+      ...base,
+      category: 7,
+      pins: [{ name: 'A', side: 'left', supply: 5 }],
+      size: { w: 0, h: 3 },
+      art: {
+        w: -1, h: 30,
+        shapes: [{ type: 'rect', x: 0, y: 0, w: 4, h: 3, fill: '#fff', radius: '2', outline: 'yes', labelColor: 1, labelSize: 0 }],
+      },
+    })
+    expect(r.ok).toBe(false)
+    if (!r.ok)
+      expect(r.errors).toEqual([
+        'category: must be a string',
+        'pins[0].supply: must be a string',
+        'size: must be { "w": <units>, "h": <units> } with positive numbers',
+        'art: must be { "w", "h", "shapes": [...] } with positive w and h',
+      ])
+    const r2 = validateModule({
+      ...base,
+      pins: [{ name: 'A', side: 'left' }],
+      art: { w: 4, h: 3, shapes: [{ type: 'rect', x: 0, y: 0, w: 4, h: 3, fill: '#fff', radius: '2', outline: 'yes', labelColor: 1, labelSize: 0 }] },
+    })
+    if (!r2.ok)
+      expect(r2.errors).toEqual([
+        'art.shapes[0].radius: must be a number',
+        'art.shapes[0].outline: must be true or false',
+        'art.shapes[0].labelColor: must be a string',
+        'art.shapes[0].labelSize: must be a positive number',
+      ])
+    expect(r2.ok).toBe(false)
+  })
 })
 
 describe('layoutModule', () => {
