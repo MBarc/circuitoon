@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { computeRoutes, wireColor, wireWidth, wirePaths, type Diagram } from './diagram.ts'
+import { computeRoutes, labelAnchor, wireColor, wireWidth, wirePaths, type Diagram } from './diagram.ts'
 import type { ModuleDef } from './module.ts'
 
 describe('wire color and gauge', () => {
@@ -12,6 +12,25 @@ describe('wire color and gauge', () => {
     expect(wireWidth(16)).toBeGreaterThan(wireWidth(22))
     expect(wireWidth(22)).toBe(3)
     expect(wireWidth(30)).toBeGreaterThanOrEqual(1.5)
+  })
+})
+
+describe('labelAnchor', () => {
+  it('anchors a straight wire at its midpoint', () => {
+    expect(labelAnchor([{ x: 0, y: 20 }, { x: 100, y: 20 }])).toEqual({ x: 50, y: 20, horizontal: true })
+  })
+  it('picks the longer leg of an L-shaped wire', () => {
+    // horizontal leg length 80, vertical leg length 30: the horizontal leg wins.
+    expect(labelAnchor([{ x: 0, y: 0 }, { x: 80, y: 0 }, { x: 80, y: 30 }])).toEqual({ x: 40, y: 0, horizontal: true })
+    // now the vertical leg (50) is longer than the horizontal leg (20).
+    expect(labelAnchor([{ x: 0, y: 0 }, { x: 20, y: 0 }, { x: 20, y: 50 }])).toEqual({ x: 20, y: 25, horizontal: false })
+  })
+  it('breaks a tie between equal-length segments by taking the first', () => {
+    expect(labelAnchor([{ x: 0, y: 0 }, { x: 40, y: 0 }, { x: 40, y: 40 }, { x: 80, y: 40 }])).toEqual({ x: 20, y: 0, horizontal: true })
+  })
+  it('is null for a degenerate route', () => {
+    expect(labelAnchor([])).toBeNull()
+    expect(labelAnchor([{ x: 0, y: 0 }])).toBeNull()
   })
 })
 

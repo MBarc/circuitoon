@@ -1,6 +1,7 @@
 // A diagram drawn on graph paper: parts, then wires on top with hop arcs and pin dots.
-import { type Diagram, moduleOf, wireColor, wirePaths, wireWidth } from '../format/diagram.ts'
+import { computeRoutes, labelAnchor, type Diagram, moduleOf, wireColor, wirePaths, wireWidth } from '../format/diagram.ts'
 import { Part, INK } from './Part.tsx'
+import { WireLabel } from './WireLabel.tsx'
 
 export function Sheet({ diagram, captions = {}, box, label, decorative = false }: {
   diagram: Diagram
@@ -11,7 +12,8 @@ export function Sheet({ diagram, captions = {}, box, label, decorative = false }
   /** Hide from assistive tech, for a preview inside a control that is already labelled. */
   decorative?: boolean
 }) {
-  const wires = wirePaths(diagram)
+  const routes = computeRoutes(diagram)
+  const wires = wirePaths(diagram, routes)
   return (
     <svg className="sheet" viewBox={`${box.x} ${box.y} ${box.w} ${box.h}`} {...(decorative ? { 'aria-hidden': true } : { role: 'img', 'aria-label': label })}>
       <defs>
@@ -28,10 +30,12 @@ export function Sheet({ diagram, captions = {}, box, label, decorative = false }
       <g fill="none" strokeLinecap="round" strokeLinejoin="round">
         {wires.map(({ conn, d, blocked }) => {
           const w = wireWidth(conn.gauge)
+          const anchor = conn.label ? labelAnchor(routes.get(conn.uid)?.points ?? []) : null
           return (
-            <g key={conn.uid}>
+            <g key={conn.uid} data-wire={conn.uid}>
               <path d={d} stroke={INK} strokeWidth={w + 2.2} strokeDasharray={blocked ? '6 5' : undefined} />
               <path d={d} stroke={wireColor(conn.color)} strokeWidth={w} strokeDasharray={blocked ? '6 5' : undefined} />
+              {anchor && <WireLabel x={anchor.x} y={anchor.y} text={conn.label!} />}
             </g>
           )
         })}

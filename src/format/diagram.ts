@@ -220,6 +220,24 @@ export function wirePaths(d: Diagram, routes: Routes = computeRoutes(d)) {
   return out
 }
 
+/**
+ * Midpoint of a routed wire's longest straight run, for placing its name tag. Ties keep the
+ * first longest segment found. Null for a route with fewer than two points (nothing to anchor to).
+ */
+export function labelAnchor(points: Pt[]): { x: number; y: number; horizontal: boolean } | null {
+  if (points.length < 2) return null
+  let best = { i: 1, len: -1 }
+  for (let i = 1; i < points.length; i++) {
+    const a = points[i - 1]
+    const b = points[i]
+    const len = Math.abs(a.x - b.x) + Math.abs(a.y - b.y) // segments are axis-aligned, so Manhattan length is true length
+    if (len > best.len) best = { i, len }
+  }
+  const a = points[best.i - 1]
+  const b = points[best.i]
+  return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2, horizontal: a.y === b.y }
+}
+
 export function isValidColor(c: string): boolean {
   return /^#[0-9a-f]{6}$/i.test(c) || Object.hasOwn(NAMED_COLORS, c.toLowerCase())
 }

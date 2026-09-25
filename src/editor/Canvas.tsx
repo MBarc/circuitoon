@@ -1,10 +1,11 @@
 // The editing surface: an SVG sheet you can pan (drag the background) and zoom (wheel).
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { type EditorStore, useEditorState } from './store.ts'
-import { computeRoutes, moduleOf, wireColor, wirePaths, wireWidth, type Routes } from '../format/diagram.ts'
+import { computeRoutes, labelAnchor, moduleOf, wireColor, wirePaths, wireWidth, type Routes } from '../format/diagram.ts'
 import type { Pt } from '../format/geometry.ts'
 import { Part, INK } from '../render/Part.tsx'
-import { addPart, addWire, EMPTY_SELECTION, moveParts, reconnectWire } from './ops.ts'
+import { WireLabel } from '../render/WireLabel.tsx'
+import { addPart, addWire, EMPTY_SELECTION, moveParts, reconnectWire, updateWire } from './ops.ts'
 import { modulesById } from '../library.ts'
 import { bodyRect, worldPins } from '../format/geometry.ts'
 import { layoutModule } from '../format/module.ts'
@@ -31,6 +32,8 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
   const [view, setView] = useState<View>({ x: -20, y: -40, scale: 1.5 })
   const [drag, setDrag] = useState<Drag | null>(null)
   const settled = useRef<Routes>(new Map())
+  const [editing, setEditing] = useState<{ uid: string; anchor: Pt; initial: string } | null>(null)
+  const editRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     const el = svgRef.current!
@@ -94,6 +97,44 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
   const vw = size.w / view.scale
   const vh = size.h / view.scale
 
+  function openLabelEditor(uid: string) {
+    const anchor = labelAnchor(routes.get(uid)?.points ?? [])
+    if (!anchor) return
+    const wire = diagram.connections.find((c) => c.uid === uid)
+    store.select({ parts: [], wires: [uid] })
+    setEditing({ uid, anchor, initial: wire?.label ?? '' })
+  }
+  function commitLabelEdit() {
+    const cur = editing
+    if (!cur) return
+    setEditing(null)
+    const value = (editRef.current?.value ?? cur.initial).trim()
+    const label = value || undefined
+    const s = store.getState()
+    const wire = s.diagram.connections.find((c) => c.uid === cur.uid)
+    if (wire && (wire.label ?? undefined) !== label) store.commit(updateWire(s.diagram, cur.uid, { label }))
+  }
+  function cancelLabelEdit() {
+    setEditing(null)
+  }
+  function onDoubleClick(e: React.MouseEvent<SVGSVGElement>) {
+    // A drag holds pointer capture on the svg itself, so e.target is always the svg; look up
+    // what is actually under the cursor, as pinUnder does.
+    const wireEl = document.elementFromPoint(e.clientX, e.clientY)?.closest('[data-wire]')
+    if (wireEl) openLabelEditor(wireEl.getAttribute('data-wire')!)
+  }
+  // Panning or zooming moves the anchor out from under the editor, so either one closes it (with a commit).
+  useEffect(() => {
+    if (editing) commitLabelEdit()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [view.x, view.y, view.scale])
+  useEffect(() => {
+    if (editing) {
+      editRef.current?.focus()
+      editRef.current?.select()
+    }
+  }, [editing])
+
   function onPointerDown(e: React.PointerEvent<SVGSVGElement>) {
     // Commit a half-typed inspector field (it saves on blur) before the selection changes and unmounts it.
     const active = document.activeElement
@@ -109,6 +150,7 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
       const from = { part: pinEl.getAttribute('data-pin-part')!, pin: pinEl.getAttribute('data-pin')! }
       const origin = { x: Number(pinEl.getAttribute('cx')), y: Number(pinEl.getAttribute('cy')) }
       setDrag({ pointer, kind: 'wire', from, origin, cursor: toWorld(e), over: null })
+      store.setGesture(true)
       return
     }
     const handleEl = e.button === 0 ? target.closest('[data-wire-end]') : null
@@ -118,6 +160,7 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
       const w = wires.find((w) => w.conn.uid === uid)
       const origin = w ? w.ends[end === 'from' ? 1 : 0] : toWorld(e)
       setDrag({ pointer, kind: 'reconnect', uid, end, origin, cursor: toWorld(e), over: null })
+      store.setGesture(true)
       return
     }
     const wireEl = e.button === 0 ? target.closest('[data-wire]') : null
@@ -136,7 +179,10 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
       if (e.shiftKey) parts = parts.includes(uid) ? parts.filter((u) => u !== uid) : [...parts, uid]
       else if (!parts.includes(uid)) parts = [uid]
       store.select({ parts, wires: e.shiftKey ? sel.wires : [] })
-      if (parts.includes(uid)) setDrag({ pointer, kind: 'parts', start: toWorld(e), uids: parts, base: store.begin() })
+      if (parts.includes(uid)) {
+        setDrag({ pointer, kind: 'parts', start: toWorld(e), uids: parts, base: store.begin() })
+        store.setGesture(true)
+      }
       return
     }
     if (!e.shiftKey) store.select(EMPTY_SELECTION)
@@ -180,18 +226,24 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
         store.select({ parts: [], wires: [drag.uid] })
       }
     }
+    if (drag.kind !== 'pan') store.setGesture(false)
     setDrag(null)
   }
   function onPointerCancel(e: React.PointerEvent<SVGSVGElement>) {
     if (!drag || e.pointerId !== drag.pointer) return
     if (drag.kind === 'parts') store.end()
+    if (drag.kind !== 'pan') store.setGesture(false)
     setDrag(null)
   }
 
   // Escape abandons a wire or part drag. For parts, the editor's key handler calls store.cancel().
   useEffect(() => {
     if (drag?.kind !== 'wire' && drag?.kind !== 'parts' && drag?.kind !== 'reconnect') return
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setDrag(null)
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return
+      store.setGesture(false)
+      setDrag(null)
+    }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [drag?.kind])
@@ -222,6 +274,7 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerCancel}
         onLostPointerCapture={onPointerCancel}
+        onDoubleClick={onDoubleClick}
         role="application"
         aria-label="Wiring sheet editor"
       >
@@ -250,12 +303,14 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
             const dash = blocked ? '6 5' : undefined
             const selected = selection.wires.includes(conn.uid)
             const dimmed = drag?.kind === 'reconnect' && drag.uid === conn.uid
+            const anchor = conn.label && !dimmed ? labelAnchor(routes.get(conn.uid)?.points ?? []) : null
             return (
               <g key={conn.uid} data-wire={conn.uid} opacity={dimmed ? 0.3 : undefined}>
                 {selected && <path d={d} stroke="var(--focus)" strokeOpacity={0.35} strokeWidth={w + 10} />}
                 <path d={d} stroke={INK} strokeWidth={w + 2.2} strokeDasharray={dash} />
                 <path d={d} stroke={wireColor(conn.color)} strokeWidth={w} strokeDasharray={dash} />
                 <path d={d} className="wire-hit" strokeWidth={Math.max(12, w + 8)} />
+                {anchor && <WireLabel x={anchor.x} y={anchor.y} text={conn.label!} />}
               </g>
             )
           })}
@@ -318,6 +373,26 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
           })()}
       </svg>
       <div className="zoom-readout" aria-live="polite">{Math.round((view.scale / 1.5) * 100)}%</div>
+      {editing && (
+        <input
+          ref={editRef}
+          key={editing.uid}
+          className="wire-label-editor"
+          style={{ left: (editing.anchor.x - view.x) * view.scale, top: (editing.anchor.y - view.y) * view.scale }}
+          defaultValue={editing.initial}
+          aria-label="Wire label"
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault()
+              commitLabelEdit()
+            } else if (e.key === 'Escape') {
+              e.preventDefault()
+              cancelLabelEdit()
+            }
+          }}
+          onBlur={() => commitLabelEdit()}
+        />
+      )}
     </div>
   )
 }
