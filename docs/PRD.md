@@ -261,7 +261,6 @@ V1 ships a starter library drawn in the same cartoon style, all defined in the s
 | Switches | Push button | - |
 
 Not built yet: RGB LED, buzzer, slide switch, rocker switch, toggle switch, diode, NPN and PNP transistor, N-channel MOSFET, USB power, DC barrel jack, 3.3V and 5V regulators, Arduino Uno, Arduino Nano, Raspberry Pi Pico, breadboards, pin header.
-| Prototyping | Full and half breadboard (rails and strips as bus pins), pin header | Rows |
 
 Part values (220 ohm, 10 uF) show as a label on the part and are stored with their units in `parts[].values` so V2 can simulate them. The properties panel offers a resistance or capacitance value through a standard-value picker (E12 for resistors, E6 for capacitors) with free entry for anything else; a resistor's color bands update to match whatever value is chosen.
 
