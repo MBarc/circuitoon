@@ -74,6 +74,29 @@ describe('validateModule', () => {
       ])
     expect(r2.ok).toBe(false)
   })
+  it('accepts a shape band from 1 to 4', () => {
+    const r = validateModule({
+      ...base,
+      pins: [{ name: 'A', side: 'left' }],
+      art: { w: 4, h: 3, shapes: [{ type: 'rect', x: 0, y: 0, w: 4, h: 3, fill: '#fff', band: 4 }] },
+    })
+    expect(r.ok).toBe(true)
+  })
+  it('rejects a shape band outside 1 to 4 or non-integer', () => {
+    const r = validateModule({
+      ...base,
+      pins: [{ name: 'A', side: 'left' }],
+      art: { w: 4, h: 3, shapes: [{ type: 'rect', x: 0, y: 0, w: 4, h: 3, fill: '#fff', band: 5 }] },
+    })
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.errors).toEqual(['art.shapes[0].band: must be a whole number from 1 to 4'])
+    const r2 = validateModule({
+      ...base,
+      pins: [{ name: 'A', side: 'left' }],
+      art: { w: 4, h: 3, shapes: [{ type: 'rect', x: 0, y: 0, w: 4, h: 3, fill: '#fff', band: 1.5 }] },
+    })
+    expect(r2.ok).toBe(false)
+  })
 })
 
 describe('layoutModule', () => {

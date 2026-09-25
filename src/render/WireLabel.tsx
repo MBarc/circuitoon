@@ -11,6 +11,8 @@ function shownText(text: string): string {
 export function WireLabel({ x, y, text }: { x: number; y: number; text: string }) {
   const shown = shownText(text)
   const truncated = shown !== text
+  // Sized to the displayed (possibly truncated) text on purpose, so the tag never grows past
+  // MAX_CHARS worth of width even for a very long label.
   const width = shown.length * 4.9 + 10
   const height = 13
   return (

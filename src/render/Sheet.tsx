@@ -1,7 +1,15 @@
 // A diagram drawn on graph paper: parts, then wires on top with hop arcs and pin dots.
 import { computeRoutes, labelAnchor, type Diagram, moduleOf, wireColor, wirePaths, wireWidth } from '../format/diagram.ts'
+import type { ModuleDef } from '../format/module.ts'
+import { formatValue, partValue } from '../format/values.ts'
 import { Part, INK } from './Part.tsx'
 import { WireLabel } from './WireLabel.tsx'
+
+/** "R1  4.7 kΩ" when the part has an editable value, else just its designator. */
+function defaultCaption(p: Diagram['parts'][number], m: ModuleDef): string {
+  const v = partValue(p, m)
+  return v ? `${p.designator}  ${formatValue(v.value, v.unit)}` : p.designator
+}
 
 export function Sheet({ diagram, captions = {}, box, label, decorative = false }: {
   diagram: Diagram
@@ -25,7 +33,9 @@ export function Sheet({ diagram, captions = {}, box, label, decorative = false }
       <rect x={box.x} y={box.y} width={box.w} height={box.h} fill="url(#grid)" />
       {diagram.parts.map((p) => {
         const m = moduleOf(diagram, p.module)
-        return m ? <Part key={p.uid} module={m} x={p.x} y={p.y} rotation={p.rotation} caption={captions[p.uid] ?? p.designator} /> : null
+        return m ? (
+          <Part key={p.uid} module={m} x={p.x} y={p.y} rotation={p.rotation} caption={captions[p.uid] ?? defaultCaption(p, m)} values={p.values} />
+        ) : null
       })}
       <g fill="none" strokeLinecap="round" strokeLinejoin="round">
         {wires.map(({ conn, d, blocked }) => {

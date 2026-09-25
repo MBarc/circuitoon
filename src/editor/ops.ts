@@ -3,6 +3,7 @@
 import { type Connection, type Diagram, type Endpoint, type PartInstance, moduleOf } from '../format/diagram.ts'
 import type { ModuleDef } from '../format/module.ts'
 import type { Rotation } from '../format/geometry.ts'
+import { partValue } from '../format/values.ts'
 
 export interface Selection {
   parts: string[]
@@ -115,4 +116,19 @@ export function updatePart(d: Diagram, uid: string, patch: { designator?: string
 
 export function updateWire(d: Diagram, uid: string, patch: { color?: string; gauge?: number; label?: string }): Diagram {
   return { ...d, connections: d.connections.map((c) => (c.uid === uid ? { ...c, ...patch } : c)) }
+}
+
+/**
+ * Sets a part's value for one electrical param, for example resistance. Returns the same
+ * diagram object, unchanged, when the part or its module is missing, or when the new value
+ * matches what the part already resolves to (its stored override, or the module default).
+ */
+export function updatePartValue(d: Diagram, uid: string, param: string, value: number, unit: string): Diagram {
+  const part = d.parts.find((p) => p.uid === uid)
+  const m = part && moduleOf(d, part.module)
+  if (!part || !m) return d
+  const current = partValue(part, m)
+  if (current && current.name === param && current.value === value && current.unit === unit) return d
+  const values = { ...part.values, [param]: { value, unit } }
+  return { ...d, parts: d.parts.map((p) => (p.uid === uid ? { ...p, values } : p)) }
 }

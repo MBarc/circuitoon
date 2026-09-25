@@ -2,6 +2,7 @@
 import { memo } from 'react'
 import { type ModuleDef, type PinType, type PlacedPin, layoutModule, LEAD } from '../format/module.ts'
 import { bodyRect, pivot, worldPins, type Rect, type Rotation, type WorldPin } from '../format/geometry.ts'
+import { partValue, resistorBands } from '../format/values.ts'
 
 export const INK = '#23282F'
 const OUTLINE = 1.6
@@ -57,18 +58,23 @@ function PinLabel({ p, box, outside }: { p: WorldPin; box: Rect; outside: boolea
  * Memoized: props are primitives plus a module object that keeps its identity, so pan, zoom
  * and selection changes do not re-render every part.
  */
-export const Part = memo(function Part({ module: m, x = 0, y = 0, rotation = 0, caption }: {
+export const Part = memo(function Part({ module: m, x = 0, y = 0, rotation = 0, caption, values }: {
   module: ModuleDef
   x?: number
   y?: number
   rotation?: Rotation
   caption?: string
+  /** The part instance's chosen values, for example `{ resistance: { value: 4700, unit: "ohm" } }`. */
+  values?: Record<string, unknown>
 }) {
   const lay = layoutModule(m)
   const art = m.art
   const ax = art ? (lay.w - art.w) / 2 : 0
   const ay = art ? (lay.h - art.h) / 2 : 0
   const c = pivot(lay.w, lay.h)
+  // Only a resistor's own value picks band colors; other parts' shapes always keep their own fill.
+  const resolved = partValue({ values }, m)
+  const bands = resolved?.name === 'resistance' ? resistorBands(resolved.value) : null
   // Caption goes under the rotated body, below any pin stubs that now point down.
   const box = bodyRect({ x: 0, y: 0, rotation }, lay)
   const pins = worldPins({ x: 0, y: 0, rotation }, m)
@@ -84,7 +90,7 @@ export const Part = memo(function Part({ module: m, x = 0, y = 0, rotation = 0, 
               <g key={i}>
                 <rect
                   x={s.x} y={s.y} width={s.w} height={s.h} rx={s.radius ?? 0}
-                  fill={s.fill}
+                  fill={s.band && bands ? bands[s.band - 1] : s.fill}
                   stroke={s.outline === false ? 'none' : INK}
                   strokeWidth={OUTLINE}
                 />

@@ -138,6 +138,7 @@ A module is one self-contained JSON file: name, pins by side and order, optional
 | `internal` | no | Groups of pin names joined permanently inside the part, for example `[["GND1", "GND2"]]`. Never used for switchable connections. |
 | `size` | no | `{ "w", "h" }` in grid units. |
 | `art` | no | Art studio drawing (see Art studio). Absent means a plain labeled box. |
+| `art.shapes[].band` | no | Resistor color band slot 1 to 4; the renderer colors it from the part's resistance. |
 | `electrical` | no | Extensible block for V2, for example `{ "model": "resistor", "terminals": { "a": "1", "b": "2" }, "params": { "resistance": { "unit": "ohm", "default": 1000 } } }`. V1 stores and round-trips it untouched. |
 | `states` | no | Reserved for V3 (for example `lit`, `burnt`, `on`); art shapes may bind to them later. |
 
@@ -259,7 +260,7 @@ V1 ships a starter library drawn in the same cartoon style, all defined in the s
 | Boards | ESP32 DevKit 38 pin, Arduino Uno, Arduino Nano, Raspberry Pi Pico | - |
 | Prototyping | Full and half breadboard (rails and strips as bus pins), pin header | Rows |
 
-Part values (220 ohm, 10 uF) show as a label on the part and are stored with their units in `parts[].values` so V2 can simulate them.
+Part values (220 ohm, 10 uF) show as a label on the part and are stored with their units in `parts[].values` so V2 can simulate them. The properties panel offers a resistance or capacitance value through a standard-value picker (E12 for resistors, E6 for capacitors) with free entry for anything else; a resistor's color bands update to match whatever value is chosen.
 
 ## Import, export and saving
 

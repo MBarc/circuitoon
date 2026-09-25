@@ -2,9 +2,10 @@
 // so typing a name is one undo step, not one per keystroke.
 import { useState } from 'react'
 import { type EditorStore, useEditorState } from './store.ts'
-import { deleteSelection, rotateParts, updatePart, updateWire } from './ops.ts'
+import { deleteSelection, rotateParts, updatePart, updatePartValue, updateWire } from './ops.ts'
 import { NAMED_COLORS, isValidColor, moduleOf } from '../format/diagram.ts'
 import { hexEditChanged, shownHex } from './color.ts'
+import { CAPACITOR_VALUES, RESISTOR_VALUES, formatValue, parseValue, partValue, primaryParam } from '../format/values.ts'
 
 const GAUGES = Array.from({ length: 15 }, (_, i) => 16 + i)
 
@@ -61,6 +62,48 @@ function WireHexInput({ wireKey, color, onCommit }: { wireKey: string; color: st
   )
 }
 
+const VALUE_LISTS: Record<string, number[]> = { ohm: RESISTOR_VALUES, F: CAPACITOR_VALUES }
+
+function ValueInput({ fieldKey, label, unit, value, onCommit }: { fieldKey: string; label: string; unit: string; value: number; onCommit: (v: number) => void }) {
+  const [invalid, setInvalid] = useState(false)
+  const shown = formatValue(value, unit)
+  const list = VALUE_LISTS[unit] ?? []
+  return (
+    <label className="field" htmlFor="part-value">
+      {label}
+      <input
+        id="part-value"
+        key={fieldKey}
+        defaultValue={shown}
+        list={list.length ? 'part-value-options' : undefined}
+        aria-invalid={invalid || undefined}
+        onBlur={(e) => {
+          const parsed = parseValue(e.target.value, unit)
+          if (parsed === null) {
+            setInvalid(true)
+            e.target.value = shown
+            return
+          }
+          setInvalid(false)
+          onCommit(parsed)
+          // A no-op edit (same value, different notation) leaves the diagram unchanged, so no
+          // remount happens; put the canonical text back so the field never shows raw input.
+          e.target.value = shown
+        }}
+        onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
+      />
+      {list.length > 0 && (
+        <datalist id="part-value-options">
+          {list.map((v) => (
+            <option key={v} value={formatValue(v, unit)} />
+          ))}
+        </datalist>
+      )}
+      {invalid && <p className="hint" role="status">Use a value like 4.7k, 220 or 100n</p>}
+    </label>
+  )
+}
+
 export function Inspector({ store }: { store: EditorStore }) {
   const { diagram, selection, wireStyle } = useEditorState(store)
   const count = selection.parts.length + selection.wires.length
@@ -93,6 +136,8 @@ export function Inspector({ store }: { store: EditorStore }) {
   const part = diagram.parts.find((p) => p.uid === selection.parts[0])
   if (part) {
     const m = moduleOf(diagram, part.module)
+    const pp = m && primaryParam(m)
+    const resolved = pp && m && partValue(part, m)
     return (
       <aside className="inspector" aria-label="Properties">
         <h2>{m?.name ?? part.module}</h2>
@@ -102,6 +147,15 @@ export function Inspector({ store }: { store: EditorStore }) {
           value={part.designator}
           onCommit={(v) => v.trim() && store.commit(updatePart(diagram, part.uid, { designator: v.trim() }))}
         />
+        {pp && resolved && (
+          <ValueInput
+            fieldKey={`${part.uid}:${resolved.value}:${resolved.unit}`}
+            label={pp.name.charAt(0).toUpperCase() + pp.name.slice(1)}
+            unit={pp.unit}
+            value={resolved.value}
+            onCommit={(v) => store.commit(updatePartValue(diagram, part.uid, pp.name, v, pp.unit))}
+          />
+        )}
         <p className="hint">Rotation: {part.rotation ?? 0} degrees</p>
         <button type="button" className="tool" onClick={() => store.commit(rotateParts(diagram, [part.uid]))}>Rotate 90 degrees</button>
         {remove}

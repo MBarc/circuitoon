@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { addPart, addWire, deleteSelection, moveParts, nextDesignator, reconnectWire, rotateParts, updatePart, updateWire } from './ops.ts'
+import { addPart, addWire, deleteSelection, moveParts, nextDesignator, reconnectWire, rotateParts, updatePart, updatePartValue, updateWire } from './ops.ts'
 import { emptyDiagram } from '../format/diagram.ts'
 import type { ModuleDef } from '../format/module.ts'
 
 const resistor: ModuleDef = {
   format: 'circuitoon-module/1', id: 'resistor', name: 'Resistor',
   pins: [{ name: '1', side: 'left' }, { name: '2', side: 'right' }],
+  electrical: { params: { resistance: { unit: 'ohm', default: 1000 } } },
 }
 const style = { color: 'red', gauge: 22 }
 
@@ -110,5 +111,21 @@ describe('ops', () => {
     expect(r.uid).toBe('p2')
     expect(r.diagram.parts.some((p) => p.uid === 'p1')).toBe(false)
     expect(r.diagram.connections[0].from.part).toBe('p1')
+  })
+  it('sets a part value, overriding the module default', () => {
+    const d = addPart(emptyDiagram(), resistor, 0, 0).diagram
+    const next = updatePartValue(d, 'p1', 'resistance', 4700, 'ohm')
+    expect(next.parts[0].values).toEqual({ resistance: { value: 4700, unit: 'ohm' } })
+    expect(d.parts[0].values).toBeUndefined() // input diagram untouched
+  })
+  it('is a no-op when the new value matches the resolved current one, even the module default', () => {
+    const d = addPart(emptyDiagram(), resistor, 0, 0).diagram
+    expect(updatePartValue(d, 'p1', 'resistance', 1000, 'ohm')).toBe(d)
+    const withOverride = updatePartValue(d, 'p1', 'resistance', 4700, 'ohm')
+    expect(updatePartValue(withOverride, 'p1', 'resistance', 4700, 'ohm')).toBe(withOverride)
+  })
+  it('ignores a missing part or module', () => {
+    const d = emptyDiagram()
+    expect(updatePartValue(d, 'nope', 'resistance', 4700, 'ohm')).toBe(d)
   })
 })

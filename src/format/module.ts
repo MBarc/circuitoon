@@ -36,6 +36,8 @@ export interface ArtShape {
   label?: string
   labelColor?: string
   labelSize?: number
+  /** Resistor color band slot 1 to 4; the renderer colors it from the part's resistance. */
+  band?: 1 | 2 | 3 | 4
 }
 export interface Art {
   w: number
@@ -131,6 +133,8 @@ export function validateModule(raw: unknown): ValidationResult {
         if (s.label !== undefined && typeof s.label !== 'string') errors.push(`${at}.label: must be a string`)
         if (s.labelColor !== undefined && typeof s.labelColor !== 'string') errors.push(`${at}.labelColor: must be a string`)
         if (s.labelSize !== undefined && !isPos(s.labelSize)) errors.push(`${at}.labelSize: must be a positive number`)
+        if (s.band !== undefined && !(Number.isInteger(s.band) && (s.band as number) >= 1 && (s.band as number) <= 4))
+          errors.push(`${at}.band: must be a whole number from 1 to 4`)
       })
   }
 

@@ -67,7 +67,8 @@
         "w": 4,
         "h": 14,
         "fill": "#D8413A",
-        "outline": false
+        "outline": false,
+        "band": 1
       },
       {
         "type": "rect",
@@ -76,7 +77,8 @@
         "w": 4,
         "h": 14,
         "fill": "#D8413A",
-        "outline": false
+        "outline": false,
+        "band": 2
       },
       {
         "type": "rect",
@@ -85,7 +87,8 @@
         "w": 4,
         "h": 14,
         "fill": "#8B5A2B",
-        "outline": false
+        "outline": false,
+        "band": 3
       },
       {
         "type": "rect",
@@ -94,7 +97,8 @@
         "w": 4,
         "h": 14,
         "fill": "#E0B43C",
-        "outline": false
+        "outline": false,
+        "band": 4
       }
     ]
   }

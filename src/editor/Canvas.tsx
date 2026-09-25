@@ -8,9 +8,16 @@ import { WireLabel } from '../render/WireLabel.tsx'
 import { addPart, addWire, EMPTY_SELECTION, moveParts, reconnectWire, updateWire } from './ops.ts'
 import { modulesById } from '../library.ts'
 import { bodyRect, worldPins } from '../format/geometry.ts'
-import { layoutModule } from '../format/module.ts'
+import { layoutModule, type ModuleDef } from '../format/module.ts'
 import { MODULE_MIME } from './LibraryPanel.tsx'
 import type { Diagram, Endpoint } from '../format/diagram.ts'
+import { formatValue, partValue } from '../format/values.ts'
+
+/** "R1  4.7 kΩ" when the part has an editable value, else just its designator. */
+function partCaption(p: Diagram['parts'][number], m: ModuleDef): string {
+  const v = partValue(p, m)
+  return v ? `${p.designator}  ${formatValue(v.value, v.unit)}` : p.designator
+}
 
 export type View = { x: number; y: number; scale: number }
 const MIN_SCALE = 0.25
@@ -32,8 +39,14 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
   const [view, setView] = useState<View>({ x: -20, y: -40, scale: 1.5 })
   const [drag, setDrag] = useState<Drag | null>(null)
   const settled = useRef<Routes>(new Map())
-  const [editing, setEditing] = useState<{ uid: string; anchor: Pt; initial: string } | null>(null)
+  const [editing, setEditing] = useState<{ uid: string; anchor: Pt; initial: string; token: number } | null>(null)
   const editRef = useRef<HTMLInputElement>(null)
+  // Bumped each time the label editor opens, and cleared (to 0, which no session ever has) by
+  // the first commit or cancel. Enter commits without blurring the input, so a blur can still
+  // land afterward (or, worse, after a later session has already opened on another wire and
+  // taken over editRef); commit/cancel only act when the token they were called with still
+  // matches, so a stale call from a closed session is a no-op instead of a wrong-wire re-commit.
+  const editTokenRef = useRef(0)
 
   useEffect(() => {
     const el = svgRef.current!
@@ -102,19 +115,23 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
     if (!anchor) return
     const wire = diagram.connections.find((c) => c.uid === uid)
     store.select({ parts: [], wires: [uid] })
-    setEditing({ uid, anchor, initial: wire?.label ?? '' })
+    setEditing({ uid, anchor, initial: wire?.label ?? '', token: ++editTokenRef.current })
   }
-  function commitLabelEdit() {
+  function commitLabelEdit(token: number) {
+    if (token !== editTokenRef.current) return // a stale commit from an already-closed session
+    editTokenRef.current = 0
     const cur = editing
-    if (!cur) return
     setEditing(null)
+    if (!cur) return
     const value = (editRef.current?.value ?? cur.initial).trim()
     const label = value || undefined
     const s = store.getState()
     const wire = s.diagram.connections.find((c) => c.uid === cur.uid)
     if (wire && (wire.label ?? undefined) !== label) store.commit(updateWire(s.diagram, cur.uid, { label }))
   }
-  function cancelLabelEdit() {
+  function cancelLabelEdit(token: number) {
+    if (token !== editTokenRef.current) return // a stale cancel from an already-closed session
+    editTokenRef.current = 0
     setEditing(null)
   }
   function onDoubleClick(e: React.MouseEvent<SVGSVGElement>) {
@@ -125,7 +142,7 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
   }
   // Panning or zooming moves the anchor out from under the editor, so either one closes it (with a commit).
   useEffect(() => {
-    if (editing) commitLabelEdit()
+    if (editing) commitLabelEdit(editing.token)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [view.x, view.y, view.scale])
   useEffect(() => {
@@ -293,7 +310,7 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
                 const r = bodyRect(p, layoutModule(m))
                 return <rect x={r.x - 6} y={r.y - 6} width={r.w + 12} height={r.h + 12} rx={6} fill="none" stroke="var(--focus)" strokeWidth={1.5} strokeDasharray="5 4" />
               })()}
-              <Part module={m} x={p.x} y={p.y} rotation={p.rotation} caption={p.designator} />
+              <Part module={m} x={p.x} y={p.y} rotation={p.rotation} caption={partCaption(p, m)} values={p.values} />
             </g>
           ) : null
         })}
@@ -384,13 +401,13 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
           onKeyDown={(e) => {
             if (e.key === 'Enter') {
               e.preventDefault()
-              commitLabelEdit()
+              commitLabelEdit(editing.token)
             } else if (e.key === 'Escape') {
               e.preventDefault()
-              cancelLabelEdit()
+              cancelLabelEdit(editing.token)
             }
           }}
-          onBlur={() => commitLabelEdit()}
+          onBlur={() => commitLabelEdit(editing.token)}
         />
       )}
     </div>
