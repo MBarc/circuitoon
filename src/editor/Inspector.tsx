@@ -2,8 +2,8 @@
 // so typing a name is one undo step, not one per keystroke.
 import { useState } from 'react'
 import { type EditorStore, useEditorState } from './store.ts'
-import { deleteSelection, rotateParts, updatePart, updatePartValue, updateWire } from './ops.ts'
-import { NAMED_COLORS, isValidColor, moduleOf } from '../format/diagram.ts'
+import { clearWireRoute, deleteSelection, rotateParts, updatePart, updatePartValue, updateWire } from './ops.ts'
+import { NAMED_COLORS, isValidColor, moduleOf, partObstacles, routeWire } from '../format/diagram.ts'
 import { hexEditChanged, shownHex } from './color.ts'
 import { CAPACITOR_VALUES, RESISTOR_VALUES, formatValue, parseValue, partValue, primaryParam } from '../format/values.ts'
 
@@ -221,6 +221,19 @@ export function Inspector({ store }: { store: EditorStore }) {
       </label>
       <CommitInput id="wire-label" label="Label" value={wire.label ?? ''} onCommit={(v) => setWire({ label: v.trim() || undefined })} />
       <p className="hint">New wires use {wireStyle.color}, {wireStyle.gauge} AWG.</p>
+      {wire.route && (
+        <div className="field" role="group" aria-label="Shape">
+          <p className="hint">Shaped by hand</p>
+          {/* A hand-shaped wire is never re-routed, so it can end up running through a part. */}
+          {routeWire(diagram, wire, partObstacles(diagram))?.blocked && (
+            <p className="hint warn" role="status">This wire passes through a part.</p>
+          )}
+          <button type="button" className="tool" onClick={() => store.commit(clearWireRoute(diagram, wire.uid))}>
+            Reset to automatic
+          </button>
+        </div>
+      )}
+      <p className="hint">Drag the small handles to reshape the wire. Alt+click adds a bend.</p>
       {remove}
     </aside>
   )

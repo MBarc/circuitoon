@@ -5,7 +5,8 @@ import { computeRoutes, labelAnchor, moduleOf, wireColor, wirePaths, wireWidth, 
 import type { Pt } from '../format/geometry.ts'
 import { Part, INK } from '../render/Part.tsx'
 import { WireLabel } from '../render/WireLabel.tsx'
-import { addPart, addWire, EMPTY_SELECTION, moveParts, reconnectWire, updateWire } from './ops.ts'
+import { addPart, addWire, EMPTY_SELECTION, moveParts, reconnectWire, setWireRoute, updateWire } from './ops.ts'
+import { bendHandleAt, insertBend, isOrthogonal, moveSegment, removeBend, segmentHandleAt, segmentsOf, toRoute, type Axis } from '../format/wireEdit.ts'
 import { modulesById } from '../library.ts'
 import { bodyRect, worldPins } from '../format/geometry.ts'
 import { layoutModule, type ModuleDef } from '../format/module.ts'
@@ -24,7 +25,13 @@ type Drag = { pointer: number } & (
   | { kind: 'parts'; start: Pt; uids: string[]; base: Diagram }
   | { kind: 'wire'; from: Endpoint; origin: Pt; cursor: Pt; over: Endpoint | null }
   | { kind: 'reconnect'; uid: string; end: 'from' | 'to'; origin: Pt; cursor: Pt; over: Endpoint | null }
+  | { kind: 'segment'; uid: string; index: number; axis: Axis; start: Pt; points: Pt[]; base: Diagram }
 )
+
+/** Segments shorter than this get no handle: there is no room to grab one. A 20 px pin run gets one. */
+const MIN_HANDLE_SEGMENT = 20
+
+const samePoints = (a: Pt[], b: Pt[]) => a.length === b.length && a.every((p, i) => p.x === b[i].x && p.y === b[i].y)
 
 /**
  * One part's pin hit-targets (the invisible circles wires attach to). Memoized so dragging a
@@ -111,6 +118,7 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
   })
 
   const draggingParts = drag?.kind === 'parts' ? drag.uids : null
+  const reshaping = drag?.kind === 'segment' ? drag.uid : null
   // Routes depend only on parts, modules and each wire's ends and fixed route, so title, color and label edits skip re-routing.
   const endpointsKey = useMemo(
     () => diagram.connections.map((c) => `${c.uid}:${c.from.part}.${c.from.pin}>${c.to.part}.${c.to.pin}:${JSON.stringify(c.route ?? null)}`).join('|'),
@@ -120,12 +128,16 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
     if (draggingParts) {
       const moving = new Set(draggingParts)
       const only = new Set(diagram.connections.filter((c) => moving.has(c.from.part) || moving.has(c.to.part)).map((c) => c.uid))
-      return computeRoutes(diagram, { only, prev: settled.current })
+      // Lanes are skipped while dragging (much cheaper per frame); the full route on drop applies them.
+      return computeRoutes(diagram, { only, prev: settled.current, occupancy: false })
     }
+    // Reshaping one wire changes only that wire's route; everything else keeps its settled route
+    // until the drag ends and the full route (with lanes) runs again.
+    if (reshaping) return computeRoutes(diagram, { only: new Set([reshaping]), prev: settled.current, occupancy: false })
     const all = computeRoutes(diagram)
     settled.current = all
     return all
-  }, [diagram.parts, diagram.modules, endpointsKey, draggingParts])
+  }, [diagram.parts, diagram.modules, endpointsKey, draggingParts, reshaping])
   // Path data only changes with the routes or the wires themselves, not with pan, zoom or selection.
   const wires = useMemo(() => wirePaths(diagram, routes), [routes, diagram.connections])
 
@@ -133,7 +145,7 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
   const vh = size.h / view.scale
 
   function openLabelEditor(uid: string) {
-    const anchor = labelAnchor(routes.get(uid)?.points ?? [])
+    const anchor = labelAnchor(wires.find((w) => w.conn.uid === uid)?.points ?? [])
     if (!anchor) return
     const wire = diagram.connections.find((c) => c.uid === uid)
     store.select({ parts: [], wires: [uid] })
@@ -158,10 +170,37 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
     activeTokenRef.current = null
     setEditing(null)
   }
+  /** Commits a new shape for one wire, from its full polyline, as one undo step. */
+  function commitShape(uid: string, points: Pt[]) {
+    const s = store.getState()
+    // Nothing changed (Alt+click on an existing corner, a refused bend removal): no commit, so an
+    // automatic wire stays automatic and no empty undo step is added.
+    const current = routes.get(uid)?.points
+    if (current && samePoints(current, points)) return
+    if (s.diagram.connections.some((c) => c.uid === uid)) store.commit(setWireRoute(s.diagram, uid, toRoute(points)))
+  }
+  /**
+   * The routed polyline of a wire that can be reshaped by hand, or null. A wire that cannot be
+   * routed is drawn as a straight diagonal; it has no runs to move or bends to edit.
+   */
+  function editablePoints(uid: string): Pt[] | null {
+    const points = routes.get(uid)?.points
+    const drawn = wires.find((w) => w.conn.uid === uid)?.points
+    return points && drawn && isOrthogonal(points) && isOrthogonal(drawn) ? points : null
+  }
   function onDoubleClick(e: React.MouseEvent<SVGSVGElement>) {
+    if (e.altKey) return // Alt+click adds bends; a quick second one must not open the name editor
     // A drag holds pointer capture on the svg itself, so e.target is always the svg; look up
     // what is actually under the cursor, as pinUnder does.
-    const wireEl = document.elementFromPoint(e.clientX, e.clientY)?.closest('[data-wire]')
+    const under = document.elementFromPoint(e.clientX, e.clientY)
+    const bendEl = under?.closest('[data-vertex-index]')
+    if (bendEl) {
+      const uid = bendEl.getAttribute('data-wire-uid')!
+      const points = editablePoints(uid)
+      if (points) commitShape(uid, removeBend(points, Number(bendEl.getAttribute('data-vertex-index'))))
+      return
+    }
+    const wireEl = under?.closest('[data-wire]')
     if (wireEl) openLabelEditor(wireEl.getAttribute('data-wire')!)
   }
   // Panning or zooming moves the anchor out from under the editor, so either one closes it (with a commit).
@@ -204,10 +243,30 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
       store.setGesture(true)
       return
     }
+    const segEl = e.button === 0 ? target.closest('[data-seg-index]') : null
+    if (segEl) {
+      const uid = segEl.getAttribute('data-wire-uid')!
+      const index = Number(segEl.getAttribute('data-seg-index'))
+      const points = editablePoints(uid)
+      const seg = points && segmentsOf(points).find((sg) => sg.i === index)
+      if (seg) {
+        setDrag({ pointer, kind: 'segment', uid, index, axis: seg.axis, start: toWorld(e), points, base: store.begin() })
+        store.setGesture(true)
+      }
+      return
+    }
+    // A single press on a bend does nothing (double-click removes it); it must not fall
+    // through to the paper and clear the selection.
+    if (e.button === 0 && target.closest('[data-vertex-index]')) return
     const wireEl = e.button === 0 ? target.closest('[data-wire]') : null
     if (wireEl) {
       const uid = wireEl.getAttribute('data-wire')!
       const sel = store.getState().selection
+      if (e.altKey && sel.parts.length === 0 && sel.wires.length === 1 && sel.wires[0] === uid) {
+        const points = editablePoints(uid)
+        if (points) commitShape(uid, insertBend(points, toWorld(e)))
+        return
+      }
       if (e.shiftKey) store.select({ parts: sel.parts, wires: sel.wires.includes(uid) ? sel.wires.filter((u) => u !== uid) : [...sel.wires, uid] })
       else store.select({ parts: [], wires: [uid] })
       return
@@ -242,12 +301,21 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
       if (!store.dragging) return
       const p = toWorld(e)
       store.preview(moveParts(drag.base, drag.uids, snap(p.x - drag.start.x), snap(p.y - drag.start.y)))
+    } else if (drag.kind === 'segment') {
+      if (!store.dragging) return
+      const p = toWorld(e)
+      const delta = drag.axis === 'h' ? p.y - drag.start.y : p.x - drag.start.x
+      const moved = moveSegment(drag.points, drag.index, delta)
+      // Back where it began, or a move the stub rule cancels out: show the starting diagram, so an
+      // automatic wire stays automatic and no undo step is recorded.
+      if (samePoints(moved, drag.points)) store.preview(drag.base)
+      else store.preview(setWireRoute(drag.base, drag.uid, toRoute(moved)))
     } else if (drag.kind === 'wire') setDrag({ ...drag, cursor: toWorld(e), over: pinUnder(e) })
     else if (drag.kind === 'reconnect') setDrag({ ...drag, cursor: toWorld(e), over: pinUnder(e) })
   }
   function onPointerUp(e: React.PointerEvent<SVGSVGElement>) {
     if (!drag || e.pointerId !== drag.pointer) return
-    if (drag.kind === 'parts') store.end()
+    if (drag.kind === 'parts' || drag.kind === 'segment') store.end()
     if (drag.kind === 'wire') {
       const to = pinUnder(e)
       const s = store.getState()
@@ -273,13 +341,16 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
   function onPointerCancel(e: React.PointerEvent<SVGSVGElement>) {
     if (!drag || e.pointerId !== drag.pointer) return
     if (drag.kind === 'parts') store.end()
+    // A reshape the browser took away (lost capture, cancelled touch) is abandoned, not kept.
+    if (drag.kind === 'segment') store.cancel()
     if (drag.kind !== 'pan') store.setGesture(false)
     setDrag(null)
   }
 
-  // Escape abandons a wire or part drag. For parts, the editor's key handler calls store.cancel().
+  // Escape abandons a wire, part or segment drag. For parts and segments, the editor's key
+  // handler calls store.cancel().
   useEffect(() => {
-    if (drag?.kind !== 'wire' && drag?.kind !== 'parts' && drag?.kind !== 'reconnect') return
+    if (drag?.kind !== 'wire' && drag?.kind !== 'parts' && drag?.kind !== 'reconnect' && drag?.kind !== 'segment') return
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return
       store.setGesture(false)
@@ -359,9 +430,9 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
             later one still shows its tag on top. Each tag keeps data-wire so a click or
             double-click on it still selects or edits that wire. */}
         <g>
-          {wires.map(({ conn }) => {
+          {wires.map(({ conn, points }) => {
             const dimmed = drag?.kind === 'reconnect' && drag.uid === conn.uid
-            const anchor = conn.label && !dimmed ? labelAnchor(routes.get(conn.uid)?.points ?? []) : null
+            const anchor = conn.label && !dimmed ? labelAnchor(points) : null
             return anchor ? (
               <g key={conn.uid} data-wire={conn.uid}>
                 <WireLabel x={anchor.x} y={anchor.y} text={conn.label!} />
@@ -394,7 +465,61 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
           (() => {
             const w = wires.find((w) => w.conn.uid === selection.wires[0])
             if (!w) return null
-            return (['from', 'to'] as const).map((end, i) => (
+            // Handles index the routed geometry the edits work on (with its collinear bends); the
+            // segment bars are drawn on the drawn path, which may be nudged a few px clear of
+            // another wire.
+            // A wire drawn as a straight diagonal (it cannot be routed) gets no segment or bend handles.
+            const pts = editablePoints(w.conn.uid) ?? []
+            const segHandles = segmentsOf(pts)
+              .filter((sg) => Math.abs(sg.b.x - sg.a.x) + Math.abs(sg.b.y - sg.a.y) >= MIN_HANDLE_SEGMENT)
+              .map((sg) => {
+                const h = sg.axis === 'h'
+                // Indices come from the routed polyline; the bar sits on the drawn line.
+                const { x: cx, y: cy } = segmentHandleAt(sg, w.points)
+                return (
+                  <rect
+                    key={`seg-${sg.i}`}
+                    className="wire-seg-handle"
+                    data-seg-index={sg.i}
+                    data-wire-uid={w.conn.uid}
+                    x={cx - (h ? 6 : 2.5)}
+                    y={cy - (h ? 2.5 : 6)}
+                    width={h ? 12 : 5}
+                    height={h ? 5 : 12}
+                    rx={2.5}
+                    fill="white"
+                    stroke="var(--focus)"
+                    strokeWidth={1.5}
+                    style={{ cursor: h ? 'ns-resize' : 'ew-resize' }}
+                  >
+                    <title>Drag to move this part of the wire</title>
+                  </rect>
+                )
+              })
+            const bendHandles = w.conn.route
+              ? pts.slice(1, -1).map((bend, k) => {
+                  // On the drawn corner, which may be nudged a few px clear of another wire.
+                  const p = bendHandleAt(bend, w.points)
+                  return (
+                    <rect
+                      key={`bend-${k + 1}`}
+                      className="wire-bend-handle"
+                      data-vertex-index={k + 1}
+                      data-wire-uid={w.conn.uid}
+                      x={p.x - 2.5}
+                      y={p.y - 2.5}
+                      width={5}
+                      height={5}
+                      fill="white"
+                      stroke="var(--focus)"
+                      strokeWidth={1.5}
+                    >
+                      <title>Double-click to remove this bend</title>
+                    </rect>
+                  )
+                })
+              : []
+            return [...segHandles, ...bendHandles, ...(['from', 'to'] as const).map((end, i) => (
               <circle
                 key={`handle-${end}`}
                 className="wire-end-handle"
@@ -409,7 +534,7 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
               >
                 <title>Drag to reconnect</title>
               </circle>
-            ))
+            ))]
           })()}
       </svg>
       <div className="zoom-readout" aria-live="polite">{Math.round((view.scale / 1.5) * 100)}%</div>

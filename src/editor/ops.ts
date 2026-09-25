@@ -92,8 +92,8 @@ export function addWire(d: Diagram, from: Endpoint, to: Endpoint, style: WireSty
 }
 
 /**
- * Moves one end of an existing wire onto a different pin, keeping its color, gauge, label and
- * route. Refused (returns null) for a missing wire, a self-loop, dropping back onto the pin the
+ * Moves one end of an existing wire onto a different pin, keeping its color, gauge and label. A
+ * hand-shaped wire becomes automatic again, since its bends were made for the old pin. Refused (returns null) for a missing wire, a self-loop, dropping back onto the pin the
  * end is already on, or a duplicate of another wire's endpoints in either direction.
  */
 export function reconnectWire(d: Diagram, uid: string, end: 'from' | 'to', target: Endpoint): Diagram | null {
@@ -109,7 +109,14 @@ export function reconnectWire(d: Diagram, uid: string, end: 'from' | 'to', targe
     (c) => c.uid !== uid && ((sameEnd(c.from, from) && sameEnd(c.to, to)) || (sameEnd(c.from, to) && sameEnd(c.to, from))),
   )
   if (dup) return null
-  return { ...d, connections: d.connections.map((c) => (c.uid === uid ? { ...c, [end]: target } : c)) }
+  return {
+    ...d,
+    connections: d.connections.map((c) => {
+      if (c.uid !== uid) return c
+      const { route: _dropped, ...rest } = c
+      return { ...rest, [end]: target }
+    }),
+  }
 }
 
 export function updatePart(d: Diagram, uid: string, patch: { designator?: string }): Diagram {
@@ -118,6 +125,34 @@ export function updatePart(d: Diagram, uid: string, patch: { designator?: string
 
 export function updateWire(d: Diagram, uid: string, patch: { color?: string; gauge?: number; label?: string }): Diagram {
   return { ...d, connections: d.connections.map((c) => (c.uid === uid ? { ...c, ...patch } : c)) }
+}
+
+const sameRoute = (a: [number, number][] | undefined, b: [number, number][]) =>
+  !!a && a.length === b.length && a.every((p, i) => p[0] === b[i][0] && p[1] === b[i][1])
+
+/**
+ * Makes a wire manual with the given bends (the points between its two pin stub tips). An empty
+ * list is still manual: a wire with no bends. Returns the same diagram when nothing changes.
+ */
+export function setWireRoute(d: Diagram, uid: string, route: [number, number][]): Diagram {
+  const wire = d.connections.find((c) => c.uid === uid)
+  if (!wire || sameRoute(wire.route, route)) return d
+  const copy = route.map(([x, y]) => [x, y] as [number, number])
+  return { ...d, connections: d.connections.map((c) => (c === wire ? { ...c, route: copy } : c)) }
+}
+
+/** Hands a wire back to the router. Returns the same diagram when it is already automatic or missing. */
+export function clearWireRoute(d: Diagram, uid: string): Diagram {
+  const wire = d.connections.find((c) => c.uid === uid)
+  if (!wire || wire.route === undefined) return d
+  return {
+    ...d,
+    connections: d.connections.map((c) => {
+      if (c !== wire) return c
+      const { route: _dropped, ...rest } = c
+      return rest
+    }),
+  }
 }
 
 /**
