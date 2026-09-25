@@ -178,6 +178,21 @@ export function routingKey(connections: Connection[]): string {
 
 const HOP = 5
 
+/**
+ * Groups sorted crossing positions into bridges: crossings closer together than a hop's width
+ * (2 * HOP) share one bridge, so arcs never overlap or join with a line running backward.
+ * Returns each bridge's first and last crossing, in the order given.
+ */
+function bridges(hits: number[]): [number, number][] {
+  const out: [number, number][] = []
+  for (const h of hits) {
+    const last = out[out.length - 1]
+    if (last && Math.abs(h - last[1]) < 2 * HOP) last[1] = h
+    else out.push([h, h])
+  }
+  return out
+}
+
 /** Axis-aligned segments of drawn wires, kept sorted by their fixed coordinate. */
 type Seg = { at: number; lo: number; hi: number }
 
@@ -224,6 +239,53 @@ function overlapsAt(segs: Seg[], at: number, lo: number, hi: number): boolean {
 
 /** Perpendicular nudges tried, in order, until one clears the earlier wire (or the last allowed one is used regardless). */
 const NUDGES = [4, -4, 8, -8]
+const MAX_NUDGE = 8
+
+/** Bucket size, in px, of the part-body index separation checks nudges against. */
+const BUCKET = 160
+/** A query or body covering more buckets than this just scans every body instead. */
+const MAX_BUCKETS = 256
+
+/**
+ * Part bodies bucketed on a coarse grid, so checking a nudge against the bodies near one segment
+ * does not scan every part on the sheet.
+ */
+class ObstacleIndex {
+  private buckets = new Map<number, Rect[]>()
+  private wide: Rect[] = []
+  readonly all: Rect[]
+  constructor(rects: Rect[]) {
+    this.all = rects
+    for (const r of rects) {
+      const [c0, r0, c1, r1] = this.span(r.x, r.y, r.x + r.w, r.y + r.h)
+      if ((c1 - c0 + 1) * (r1 - r0 + 1) > MAX_BUCKETS) {
+        this.wide.push(r)
+        continue
+      }
+      for (let cy = r0; cy <= r1; cy++)
+        for (let cx = c0; cx <= c1; cx++) {
+          const k = cx * 1_000_003 + cy
+          const list = this.buckets.get(k)
+          if (list) list.push(r)
+          else this.buckets.set(k, [r])
+        }
+    }
+  }
+  private span(x0: number, y0: number, x1: number, y1: number): [number, number, number, number] {
+    return [Math.floor(x0 / BUCKET), Math.floor(y0 / BUCKET), Math.floor(x1 / BUCKET), Math.floor(y1 / BUCKET)]
+  }
+  /** Bodies overlapping the box x0..x1, y0..y1 (each once). */
+  near(x0: number, y0: number, x1: number, y1: number): Rect[] {
+    const hit = (r: Rect) => r.x <= x1 && r.x + r.w >= x0 && r.y <= y1 && r.y + r.h >= y0
+    const [c0, r0, c1, r1] = this.span(x0, y0, x1, y1)
+    if (!((c1 - c0 + 1) * (r1 - r0 + 1) <= MAX_BUCKETS)) return this.all.filter(hit)
+    const out = new Set<Rect>()
+    for (let cy = r0; cy <= r1; cy++)
+      for (let cx = c0; cx <= c1; cx++) for (const r of this.buckets.get(cx * 1_000_003 + cy) ?? []) if (hit(r)) out.add(r)
+    for (const r of this.wide) if (hit(r)) out.add(r)
+    return [...out]
+  }
+}
 /** Shortest the run on a pin may be left by a nudge (unless it was already shorter). */
 const MIN_PIN_RUN = 2
 
@@ -233,11 +295,15 @@ const MIN_PIN_RUN = 2
  * so both stay visible even where the router itself left them sharing a lane (a manual route, or
  * an obstacle that forces two auto routes together). Moving a segment moves both its endpoints,
  * so the segments on either side of it stretch to keep up rather than detach from it. A nudge
- * that would turn the run on a pin back over the pin, or leave it shorter than MIN_PIN_RUN px, is
- * skipped; when no nudge is allowed the segment stays where it is.
+ * that would turn the run on a pin back over the pin, leave it shorter than MIN_PIN_RUN px, or put
+ * the moved segment or either stretched neighbour inside a part body (where it was clear before)
+ * is skipped; when no nudge is allowed the segment stays where it is. Every segment a nudge
+ * moves or stretches is checked at that point, so a wire clear before separation is still clear
+ * after it. `forced` reports a nudge applied where the geometry was already blocked.
  */
-function separate(points: Pt[], verticals: Seg[], horizontals: Seg[]): Pt[] {
+function separate(points: Pt[], verticals: Seg[], horizontals: Seg[], index: ObstacleIndex): { pts: Pt[]; forced: boolean } {
   const pts = points.map((p) => ({ ...p }))
+  let forced = false
   for (let k = 2; k <= pts.length - 2; k++) {
     const a = pts[k - 1]
     const b = pts[k]
@@ -252,12 +318,22 @@ function separate(points: Pt[], verticals: Seg[], horizontals: Seg[]): Pt[] {
     const pinRuns: Pt[] = []
     if (k === 2) pinRuns.push(pts[0])
     if (k === pts.length - 2) pinRuns.push(pts[pts.length - 1])
+    // The moved segment and the two it stretches, before and after a nudge.
+    const local = (moved: number): Pt[] => {
+      const shift = (p: Pt): Pt => (horiz ? { x: p.x, y: moved } : { x: moved, y: p.y })
+      return [pts[k - 2], shift(a), shift(b), pts[k + 1]]
+    }
+    const before = local(at)
+    const xs = before.map((p) => p.x)
+    const ys = before.map((p) => p.y)
+    const bodies = index.near(Math.min(...xs) - MAX_NUDGE, Math.min(...ys) - MAX_NUDGE, Math.max(...xs) + MAX_NUDGE, Math.max(...ys) + MAX_NUDGE)
+    const wasBlocked = bodies.length > 0 && manualRouteBlocked(before, bodies)
     const allowed = (moved: number) =>
       pinRuns.every((tip) => {
         const before = at - (horiz ? tip.y : tip.x)
         const after = (moved - (horiz ? tip.y : tip.x)) * Math.sign(before)
         return after >= Math.min(MIN_PIN_RUN, Math.abs(before))
-      })
+      }) && (wasBlocked || bodies.length === 0 || !manualRouteBlocked(local(moved), bodies))
     let pick: number | null = null
     for (const nudge of NUDGES) {
       const moved = at + nudge
@@ -267,9 +343,10 @@ function separate(points: Pt[], verticals: Seg[], horizontals: Seg[]): Pt[] {
     }
     if (pick !== null) {
       if (horiz) { a.y = pick; b.y = pick } else { a.x = pick; b.x = pick }
+      if (wasBlocked) forced = true
     }
   }
-  return pts
+  return { pts, forced }
 }
 
 /**
@@ -280,6 +357,7 @@ function separate(points: Pt[], verticals: Seg[], horizontals: Seg[]): Pt[] {
  * `separate`), so the hop and label-anchor geometry below is already the drawn, separated shape.
  */
 export function wirePaths(d: Diagram, routes: Routes = computeRoutes(d)) {
+  const index = new ObstacleIndex(partObstacles(d))
   const verticals: Seg[] = [] // at = x, lo..hi = y range
   const horizontals: Seg[] = [] // at = y, lo..hi = x range
   const out: { conn: Connection; d: string; points: Pt[]; ends: Pt[]; blocked: boolean }[] = []
@@ -288,7 +366,8 @@ export function wirePaths(d: Diagram, routes: Routes = computeRoutes(d)) {
     if (!route) continue
     // Drawn geometry drops collinear bends: nudging one half of a split run would otherwise
     // pull the other half into a diagonal.
-    const pts = separate(simplify(route.points), verticals, horizontals)
+    const simple = simplify(route.points)
+    const { pts, forced } = separate(simple, verticals, horizontals, index)
     let path = `M${pts[0].x} ${pts[0].y}`
     for (let i = 1; i < pts.length; i++) {
       const s = pts[i - 1]
@@ -298,10 +377,14 @@ export function wirePaths(d: Diagram, routes: Routes = computeRoutes(d)) {
       const dir = Math.sign(horiz ? e.x - s.x : e.y - s.y)
       const hits = horiz === vert ? [] : horiz ? crossings(verticals, s.x, e.x, s.y) : crossings(horizontals, s.y, e.y, s.x)
       hits.sort((p, q) => (p - q) * dir)
-      for (const hit of hits) {
+      for (const [first, last] of bridges(hits)) {
         const sweep = dir > 0 ? 1 : 0
-        if (horiz) path += ` L${hit - HOP * dir} ${s.y} A${HOP} ${HOP} 0 0 ${sweep} ${hit + HOP * dir} ${s.y}`
-        else path += ` L${s.x} ${hit - HOP * dir} A${HOP} ${HOP} 0 0 ${sweep} ${s.x} ${hit + HOP * dir}`
+        // One arc HOP high over the whole group; its half-width stretches to span every crossing.
+        const rx = HOP + Math.abs(last - first) / 2
+        const start = first - HOP * dir
+        const end = last + HOP * dir
+        if (horiz) path += ` L${start} ${s.y} A${rx} ${HOP} 0 0 ${sweep} ${end} ${s.y}`
+        else path += ` L${s.x} ${start} A${HOP} ${rx} 0 0 ${sweep} ${s.x} ${end}`
       }
       path += ` L${e.x} ${e.y}`
     }
@@ -311,7 +394,12 @@ export function wirePaths(d: Diagram, routes: Routes = computeRoutes(d)) {
       if (s.x === e.x) insert(verticals, { at: s.x, lo: Math.min(s.y, e.y), hi: Math.max(s.y, e.y) })
       if (s.y === e.y) insert(horizontals, { at: s.y, lo: Math.min(s.x, e.x), hi: Math.max(s.x, e.x) })
     }
-    out.push({ conn, d: path, points: pts, ends: [pts[0], pts[pts.length - 1]], blocked: route.blocked })
+    // Blocked describes what is drawn. Separation keeps a clear wire clear (see `separate`), so
+    // the drawn geometry only needs checking again when the wire started out blocked or a nudge
+    // was forced through a body.
+    const moved = pts.some((p, i) => p.x !== simple[i].x || p.y !== simple[i].y)
+    const blocked = moved && (route.blocked || forced) ? manualRouteBlocked(pts, index.all) : route.blocked
+    out.push({ conn, d: path, points: pts, ends: [pts[0], pts[pts.length - 1]], blocked })
   }
   return out
 }
