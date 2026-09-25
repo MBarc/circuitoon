@@ -1,8 +1,8 @@
 // Draws one module in the Sticker style: flat fills, dark ink outline on every shape.
 import { memo } from 'react'
-import { isSpacer, type ModuleDef, type PinType, type PlacedPin, type Side, layoutModule, LEAD } from '../format/module.ts'
+import { usesInsideLabels, type ModuleDef, type PinType, type PlacedPin, type Side, layoutModule, LEAD } from '../format/module.ts'
 import { bodyRect, pivot, worldPins, type Rect, type Rotation, type WorldPin } from '../format/geometry.ts'
-import { partValue, resistorBands } from '../format/values.ts'
+import { bandFills } from '../format/values.ts'
 
 export const INK = '#23282F'
 const OUTLINE = 1.6
@@ -13,15 +13,14 @@ function showLabel(m: ModuleDef, p: { label?: string; type?: PinType }) {
 }
 
 /**
- * A drawn part with a row of 3 or more pins on its left or right edge is a header (a dev board):
- * its labels go inside the body beside each pin, like silkscreen, because labels above the stubs
- * would sit between two pins at 0.1 inch pitch. Board art keeps its header strip in the outer
- * HEADER_INSET px so the labels clear it.
+ * A module opted into `art.pinLabels: "inside"` (the built-in dev boards) draws its left and
+ * right pin labels inside the body beside each pin, like silkscreen, instead of beside the pin
+ * stub: at 0.1 inch pitch a label above the stub would sit between two pins. Board art keeps its
+ * header strip in the outer HEADER_INSET px so the labels clear it.
  */
 const HEADER_INSET = 12
 function headerSides(m: ModuleDef): Set<Side> {
-  const count = (side: Side) => m.pins.filter((p) => p.side === side && !isSpacer(p)).length
-  return new Set((['left', 'right'] as Side[]).filter((s) => count(s) >= 3))
+  return usesInsideLabels(m) ? new Set(['left', 'right']) : new Set()
 }
 
 function PinStub({ p }: { p: PlacedPin }) {
@@ -83,9 +82,8 @@ export const Part = memo(function Part({ module: m, x = 0, y = 0, rotation = 0, 
   const ax = art ? (lay.w - art.w) / 2 : 0
   const ay = art ? (lay.h - art.h) / 2 : 0
   const c = pivot(lay.w, lay.h)
-  // Only a resistor's own value picks band colors; other parts' shapes always keep their own fill.
-  const resolved = partValue({ values }, m)
-  const bands = resolved?.name === 'resistance' ? resistorBands(resolved.value) : null
+  // Only a module with band shapes (a resistor) ever gets non-null fills here.
+  const bands = bandFills(m, values)
   // Caption goes under the rotated body, below any pin stubs that now point down.
   const box = bodyRect({ x: 0, y: 0, rotation }, lay)
   const pins = worldPins({ x: 0, y: 0, rotation }, m)
