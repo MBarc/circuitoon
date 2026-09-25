@@ -33,17 +33,27 @@ export function Sheet({ diagram, captions = {}, box, label, decorative = false }
       <g fill="none" strokeLinecap="round" strokeLinejoin="round">
         {wires.map(({ conn, d, blocked }) => {
           const w = wireWidth(conn.gauge)
-          const anchor = conn.label ? labelAnchor(routes.get(conn.uid)?.points ?? []) : null
           return (
             <g key={conn.uid} data-wire={conn.uid}>
               <path d={d} stroke={INK} strokeWidth={w + 2.2} strokeDasharray={blocked ? '6 5' : undefined} />
               <path d={d} stroke={wireColor(conn.color)} strokeWidth={w} strokeDasharray={blocked ? '6 5' : undefined} />
-              {anchor && <WireLabel x={anchor.x} y={anchor.y} text={conn.label!} />}
             </g>
           )
         })}
       </g>
       {wires.flatMap(({ conn, ends }) => ends.map((e, i) => <circle key={`${conn.uid}-${i}`} cx={e.x} cy={e.y} r={2.4} fill={INK} />))}
+      {/* Name tags in their own layer after every wire, so a labeled wire crossing under a later
+          one still shows its tag on top. Each tag keeps data-wire, matching the editor's canvas. */}
+      <g>
+        {wires.map(({ conn }) => {
+          const anchor = conn.label ? labelAnchor(routes.get(conn.uid)?.points ?? []) : null
+          return anchor ? (
+            <g key={conn.uid} data-wire={conn.uid}>
+              <WireLabel x={anchor.x} y={anchor.y} text={conn.label!} />
+            </g>
+          ) : null
+        })}
+      </g>
     </svg>
   )
 }

@@ -17,6 +17,9 @@ export function WireLabel({ x, y, text }: { x: number; y: number; text: string }
   const height = 13
   return (
     <g>
+      {/* On the <g> (not the truncated <text>, which has pointerEvents="none") so hovering the
+          tag anywhere actually triggers the browser's native tooltip. */}
+      {truncated && <title>{text}</title>}
       <rect
         x={x - width / 2}
         y={y - height / 2}
@@ -30,7 +33,6 @@ export function WireLabel({ x, y, text }: { x: number; y: number; text: string }
       />
       <text x={x} y={y} textAnchor="middle" dominantBaseline="central" fontSize={8} fontWeight="bold" fill={INK} pointerEvents="none">
         {shown}
-        {truncated && <title>{text}</title>}
       </text>
     </g>
   )
