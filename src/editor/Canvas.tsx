@@ -7,7 +7,7 @@ import type { Pt } from '../format/geometry.ts'
 import { Part, INK } from '../render/Part.tsx'
 import { LegDots, TakenHoles } from '../render/Boards.tsx'
 import { WireLabel } from '../render/WireLabel.tsx'
-import { addPart, addWire, EMPTY_SELECTION, moveParts, reconnectWire, setWireRoute, settleDrop, settleMounts, settleSeats, updateWire, withMounted } from './ops.ts'
+import { addPart, addWire, EMPTY_SELECTION, moveParts, reconnectWire, setWireRoute, settleDrop, settleMounts, settleSeats, settlingOf, updateWire, withMounted } from './ops.ts'
 import { bendHandleAt, insertBend, isOrthogonal, moveSegment, removeBend, segmentHandleAt, segmentsOf, toRoute, type Axis } from '../format/wireEdit.ts'
 import { modulesById } from '../library.ts'
 import { bodyRect, worldPins } from '../format/geometry.ts'
@@ -24,7 +24,7 @@ const snap = (v: number) => Math.round(v / GRID) * GRID
 
 type Drag = { pointer: number } & (
   | { kind: 'pan'; client: Pt; view: View }
-  | { kind: 'parts'; start: Pt; uids: string[]; moving: string[]; base: Diagram }
+  | { kind: 'parts'; start: Pt; uids: string[]; moving: string[]; settling: string[]; base: Diagram }
   | { kind: 'wire'; from: Endpoint; origin: Pt; cursor: Pt; over: Endpoint | null }
   | { kind: 'reconnect'; uid: string; end: 'from' | 'to'; origin: Pt; cursor: Pt; over: Endpoint | null }
   | { kind: 'segment'; uid: string; index: number; axis: Axis; start: Pt; points: Pt[]; base: Diagram }
@@ -150,7 +150,7 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
   // (their old legs neither show nor push a part that stays put out of its holes), and each seat
   // is green when the drop would mount it, red when only some legs land.
   const settling = useMemo(
-    () => (drag?.kind === 'parts' ? settleSeats(diagram, drag.uids) : null),
+    () => (drag?.kind === 'parts' ? settleSeats(diagram, drag.settling) : null),
     [diagram.parts, diagram.modules, drag],
   )
   const plugs = useMemo(() => settling?.plugs ?? plugsOf(diagram), [settling, diagram.parts, diagram.modules])
@@ -233,7 +233,7 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
   /** Ends a part drag as one undo step: moved parts that are seated mount, the rest unmount. */
   function finishPartsDrag(d: Extract<Drag, { kind: 'parts' }>) {
     // A press without movement changes nothing, mounts included (settleDrop returns `now` then).
-    if (store.dragging) store.preview(settleDrop(d.base, store.getState().diagram, d.uids))
+    if (store.dragging) store.preview(settleDrop(d.base, store.getState().diagram, d.settling))
     store.end()
   }
 
@@ -313,7 +313,7 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
       store.select({ parts, wires: e.shiftKey ? sel.wires : [] })
       if (parts.includes(uid)) {
         const base = store.begin()
-        setDrag({ pointer, kind: 'parts', start: toWorld(e), uids: parts, moving: withMounted(base, parts), base })
+        setDrag({ pointer, kind: 'parts', start: toWorld(e), uids: parts, moving: withMounted(base, parts), settling: settlingOf(base, parts), base })
         store.setGesture(true)
       }
       return

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { addPart, addWire, nextUid, clearWireRoute, deleteSelection, sameEndpoint, setWireRoute, designatorPrefix, moveParts, nextDesignator, reconnectWire, rotateParts, settleDrop, settleMounts, settleSeats, updatePart, updatePartValue, updateWire, withMounted } from './ops.ts'
+import { addPart, addWire, nextUid, clearWireRoute, deleteSelection, sameEndpoint, setWireRoute, designatorPrefix, moveParts, nextDesignator, reconnectWire, rotateParts, settleDrop, settleMounts, settleSeats, updatePart, updatePartValue, updateWire, withMounted, settlingOf } from './ops.ts'
 import { emptyDiagram, type Diagram } from '../format/diagram.ts'
 import type { ModuleDef } from '../format/module.ts'
 import { parseValue } from '../format/values.ts'
@@ -434,6 +434,47 @@ describe('boards carry their parts', () => {
     const d = loaded()
     d.parts[1] = { uid: 'p1', designator: 'R1', module: 'sq', x: 10, y: 10, rotation: 90 }
     expect(rotateParts(d, ['p1']).parts[1]).not.toHaveProperty('mount')
+  })
+  it('carries only valid mounts: never a board, and never a part mounted on itself', () => {
+    const d = loaded()
+    d.parts.push(
+      { uid: 'b2', designator: 'BB2', module: 'bb', x: 0, y: 200, mount: { board: 'b' } },
+      { uid: 'self', designator: 'R3', module: 'two', x: 500, y: 0, mount: { board: 'self' } },
+      { uid: 'onPart', designator: 'R4', module: 'two', x: 600, y: 0, mount: { board: 'x' } },
+    )
+    expect(withMounted(d, ['b'])).toEqual(['b', 'p1'])
+    expect(withMounted(d, ['self', 'x'])).toEqual(['x', 'self'])
+    const r = rotateParts(d, ['b'])
+    expect(r.parts.find((p) => p.uid === 'b2')).toBe(d.parts.find((p) => p.uid === 'b2'))
+  })
+  it('settles only the dragged parts a dragged board is not carrying', () => {
+    const d = loaded()
+    d.parts.push({ uid: 'b2', designator: 'BB2', module: 'bb', x: 0, y: 200, mount: { board: 'b' } })
+    expect(settlingOf(d, ['b', 'p1', 'x', 'b2'])).toEqual(['b', 'p1', 'x', 'b2'].filter((u) => u !== 'p1'))
+    expect(settlingOf(d, ['p1'])).toEqual(['p1'])
+  })
+  it('keeps a part selected with its board on that board when dragged over another board', () => {
+    const d: Diagram = {
+      format: 'circuitoon-diagram/1', title: 't', modules: { bb, two },
+      parts: [
+        { uid: 'B0', designator: 'BB1', module: 'bb', x: 0, y: 0 },
+        { uid: 'B1', designator: 'BB2', module: 'bb', x: 300, y: 0 },
+        { uid: 'P', designator: 'R1', module: 'two', x: 310, y: 0, mount: { board: 'B1' } },
+        { uid: 'Q', designator: 'R2', module: 'two', x: 330, y: 10, mount: { board: 'B1' } },
+      ],
+      connections: [],
+    }
+    const now = moveParts(d, ['B1', 'P'], -300, 0)
+    // The repro: settling the whole selection moves P to B0, the board it now also sits on.
+    expect(settleDrop(d, now, ['B1', 'P']).parts[2].mount).toEqual({ board: 'B0' })
+    const done = settleDrop(d, now, settlingOf(d, ['B1', 'P']))
+    expect(done.parts.map((p) => [p.uid, p.mount?.board])).toEqual([['B0', undefined], ['B1', undefined], ['P', 'B1'], ['Q', 'B1']])
+    expect(settleSeats(now, settlingOf(d, ['B1', 'P'])).seats.size).toBe(0)
+  })
+  it('deletes a board but keeps a wire to the own pin of a part it carried', () => {
+    const d = loaded()
+    d.connections.push({ uid: 'w2', from: { part: 'p1', pin: 'R' }, to: { part: 'x', pin: 'R' } })
+    expect(deleteSelection(d, { parts: ['b'], wires: [] }).connections.map((c) => c.uid)).toEqual(['w2'])
   })
   it('deletes a board but keeps its parts, unmounted, and drops wires to its holes', () => {
     const d = deleteSelection(loaded(), { parts: ['b'], wires: [] })

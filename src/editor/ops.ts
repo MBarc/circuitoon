@@ -59,10 +59,42 @@ export function addPart(d: Diagram, m: ModuleDef, x: number, y: number): { diagr
   return { uid, diagram: { ...d, modules, parts: [...d.parts, part] } }
 }
 
-/** The given parts plus every part mounted on a board among them, each once, in diagram order. */
+/**
+ * The board part `p` is validly mounted on, looked up in `byUid`: a board, and not `p` itself.
+ * A board mounted on a board (a hand-edited file) is never carried.
+ */
+function carrierOf(d: Diagram, p: PartInstance, byUid: Map<string, PartInstance>): PartInstance | undefined {
+  if (!p.mount || p.mount.board === p.uid || isBoard(moduleOf(d, p.module))) return undefined
+  const board = byUid.get(p.mount.board)
+  return board && isBoard(moduleOf(d, board.module)) ? board : undefined
+}
+
+/** Parts that a board among `uids` carries, mapped to that board. */
+function carriedBy(d: Diagram, uids: string[]): Map<string, PartInstance> {
+  const s = new Set(uids)
+  const byUid = new Map(d.parts.map((p) => [p.uid, p]))
+  const carried = new Map<string, PartInstance>()
+  for (const p of d.parts) {
+    const board = p.mount && s.has(p.mount.board) ? carrierOf(d, p, byUid) : undefined
+    if (board) carried.set(p.uid, board)
+  }
+  return carried
+}
+
+/** The given parts plus every part validly mounted on a board among them, each once, in diagram order. */
 export function withMounted(d: Diagram, uids: string[]): string[] {
   const s = new Set(uids)
-  return d.parts.filter((p) => s.has(p.uid) || (p.mount !== undefined && s.has(p.mount.board))).map((p) => p.uid)
+  const carried = carriedBy(d, uids)
+  return d.parts.filter((p) => s.has(p.uid) || carried.has(p.uid)).map((p) => p.uid)
+}
+
+/**
+ * The dragged or rotated parts whose mounts get re-checked: `uids` without the parts a board
+ * among them carries (those stay on their board). Used by the drag highlight and the drop.
+ */
+export function settlingOf(d: Diagram, uids: string[]): string[] {
+  const carried = carriedBy(d, uids)
+  return uids.filter((u) => !carried.has(u))
 }
 
 /**
@@ -176,20 +208,15 @@ function swungAbout(p: PartInstance, m: ModuleDef, board: PartInstance, bm: Modu
  */
 export function rotateParts(d: Diagram, uids: string[]): Diagram {
   const s = new Set(uids)
-  const byUid = new Map(d.parts.map((p) => [p.uid, p]))
-  const carriedBy = new Map<string, PartInstance>()
-  for (const p of d.parts) {
-    const board = p.mount && s.has(p.mount.board) ? byUid.get(p.mount.board) : undefined
-    if (board) carriedBy.set(p.uid, board)
-  }
+  const carried = carriedBy(d, uids)
   const parts = d.parts.map((p) => {
-    const board = carriedBy.get(p.uid)
+    const board = carried.get(p.uid)
     const m = moduleOf(d, p.module)
     const bm = board && moduleOf(d, board.module)
     if (board && m && bm) return { ...p, ...swungAbout(p, m, board, bm), rotation: turn(p.rotation) }
     return s.has(p.uid) ? { ...p, rotation: turn(p.rotation) } : p
   })
-  return settleMounts({ ...d, parts }, uids.filter((u) => !carriedBy.has(u)), 'keep')
+  return settleMounts({ ...d, parts }, uids.filter((u) => !carried.has(u)), 'keep')
 }
 
 export function deleteSelection(d: Diagram, sel: Selection): Diagram {
