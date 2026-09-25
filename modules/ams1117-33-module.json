@@ -2,7 +2,7 @@
   "format": "circuitoon-module/1",
   "id": "ams1117-33-module",
   "version": 1,
-  "name": "AMS1117 3.3 V regulator module (3-pin, GND OUT VIN)",
+  "name": "AMS1117 3.3 V regulator module (3-pin)",
   "category": "Power",
   "source": "https://www.amazon.com/dp/B07CP4P5XJ https://protosupplies.com/product/ams1117-5v-to-3-3v-step-down-regulator-module/",
   "pins": [
@@ -105,16 +105,6 @@
         "label": "3.3",
         "labelColor": "#C9CED6",
         "labelSize": 5
-      },
-      {
-        "type": "rect",
-        "x": 64,
-        "y": 8,
-        "w": 6,
-        "h": 4,
-        "fill": "#E0483E",
-        "radius": 1,
-        "outline": false
       },
       {
         "type": "rect",

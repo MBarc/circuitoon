@@ -57,7 +57,8 @@ describe('ops', () => {
   })
   it('gives piezo and buzzer ids the BZ prefix, rocker switches S and power modules U', () => {
     const mk = (id: string): ModuleDef => ({ format: 'circuitoon-module/1', id, name: id, pins: [{ name: '+', side: 'left' }] })
-    expect(designatorPrefix(mk('piezo-12mm-passive'))).toBe('BZ')
+    expect(designatorPrefix(mk('buzzer-12mm-passive'))).toBe('BZ')
+    expect(designatorPrefix(mk('piezo-disc-27mm'))).toBe('BZ')
     expect(designatorPrefix(mk('buzzer-active-5v'))).toBe('BZ')
     expect(designatorPrefix(mk('rocker-switch-kcd1'))).toBe('S')
     for (const id of ['ip5306-usbc-module', 'tp4056-module', 'ams1117-33-module', 'lm2596-buck-module', 'microsd-spi-3v3', 'microsd-spi-5v'])

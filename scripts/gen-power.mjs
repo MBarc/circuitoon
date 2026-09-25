@@ -149,7 +149,9 @@ function moduleJson({ id, name, source, pins, internal, wu, hu, electrical, shap
 // ---------------------------------------------------------------------------------------------
 // 3. AMS1117-3.3 regulator, the small 3-pin board. Silkscreen (on the capacitor side) GND OUT VIN;
 //    seen from the regulator side with the header at the bottom the pins run GND, OUT, VIN left to
-//    right, straight below the SOT-223's own GND, OUT, VIN legs. Input 4.75 to 12 V.
+//    right, straight below the SOT-223's own GND, OUT, VIN legs (the silkscreen side reads the
+//    other way, so the name carries no order). Input 4.75 to 12 V. The power LED sits on the
+//    capacitor side and is not drawn.
 {
   const wu = 8, hu = 10, W = wu * 10, H = hu * 10
   const types = {
@@ -163,11 +165,10 @@ function moduleJson({ id, name, source, pins, internal, wu, hu, electrical, shap
     ...xs.map((x) => r(x - 2, 44, 4, 12, METAL, { outline: false })),
     r(14, 16, 52, 30, CHIP, { radius: 1, label: 'AMS1117', labelColor: METAL, labelSize: 6 }),
     r(26, 34, 28, 8, CHIP, { outline: false, label: '3.3', labelColor: METAL, labelSize: 5 }),
-    r(64, 8, 6, 4, LED_RED, { radius: 1, outline: false }),
     ...xs.flatMap((x) => pad(x, H - 7)),
   ]
   write('ams1117-33-module.json', moduleJson({
-    id: 'ams1117-33-module', name: 'AMS1117 3.3 V regulator module (3-pin, GND OUT VIN)',
+    id: 'ams1117-33-module', name: 'AMS1117 3.3 V regulator module (3-pin)',
     source: 'https://www.amazon.com/dp/B07CP4P5XJ https://protosupplies.com/product/ams1117-5v-to-3-3v-step-down-regulator-module/',
     pins: bottom.pins, wu, hu, electrical: { model: 'regulator', params: {} }, shapes,
   }))

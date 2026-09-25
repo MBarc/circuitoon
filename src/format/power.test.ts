@@ -1,5 +1,5 @@
 // Regression test for the built-in power modules (scripts/gen-power.mjs), the rocker switch and
-// the piezo buzzer: every pad must sit in the physical order transcribed from the sources in each
+// the passive buzzer: every pad must sit in the physical order transcribed from the sources in each
 // module's `source` (vendor photos with legible silkscreen, cross-checked against a second source).
 // A wrong pad is worse than a missing part, so a change here must be re-checked against the source.
 import { describe, expect, it } from 'vitest'
@@ -84,7 +84,7 @@ describe('built-in power modules keep the physical pad order', () => {
   })
 })
 
-describe('rocker switch and piezo buzzer', () => {
+describe('rocker switch and passive buzzer', () => {
   it('KCD1-101 is a two-terminal switch with pins 1 and 2', () => {
     const m = load('rocker-switch-kcd1.json')
     expect(m.category).toBe('Switches')
@@ -92,9 +92,10 @@ describe('rocker switch and piezo buzzer', () => {
     expect(m.electrical).toMatchObject({ model: 'switch', terminals: { a: '1', b: '2' } })
   })
 
-  it('the 12 mm piezo is polarized with + on the left, - on the right, both labeled', () => {
-    const m = load('piezo-12mm-passive.json')
+  it('the 12 mm passive buzzer is polarized with + on the left, - on the right, both labeled', () => {
+    const m = load('buzzer-12mm-passive.json')
     expect(m.category).toBe('Indicators')
+    expect(m.name).toBe('Passive buzzer 12 mm')
     expect(pinsOf(m).map((p) => [p.name, p.label, p.side])).toEqual([['+', '+', 'left'], ['-', '-', 'right']])
   })
 })

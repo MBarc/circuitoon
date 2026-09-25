@@ -1,8 +1,8 @@
 {
   "format": "circuitoon-module/1",
-  "id": "piezo-12mm-passive",
+  "id": "buzzer-12mm-passive",
   "version": 1,
-  "name": "Piezo buzzer 12 mm (passive)",
+  "name": "Passive buzzer 12 mm",
   "category": "Indicators",
   "source": "https://cdn.sparkfun.com/datasheets/Components/General/cem-1203-42-.pdf https://www.sameskydevices.com/product/audio/buzzers/audio-transducers/cem-1203(42)",
   "pins": [
