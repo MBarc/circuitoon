@@ -70,6 +70,19 @@ describe('ops', () => {
     expect(d.parts[1]).toMatchObject({ x: 120, y: -10, rotation: 90 })
     expect(rotateParts(rotateParts(rotateParts(d, ['p2']), ['p2']), ['p2']).parts[1].rotation).toBe(0)
   })
+  it('moves a hand-routed wire with its parts when both its ends move together', () => {
+    const d = setWireRoute(addWire(threeResistors(), { part: 'p1', pin: '2' }, { part: 'p2', pin: '1' }, style)!.diagram, 'w1', [[60, 20], [60, 60], [80, 60], [80, 20]])
+    const withOther = setWireRoute(addWire(d, { part: 'p2', pin: '2' }, { part: 'p3', pin: '1' }, style)!.diagram, 'w2', [[160, 20], [160, 70], [180, 70], [180, 20]])
+    const moved = moveParts(withOther, ['p1', 'p2'], 100, 100)
+    expect(moved.connections[0].route).toEqual([[160, 120], [160, 160], [180, 160], [180, 120]])
+    // Only one end of w2 moved: its bends stay where the user put them.
+    expect(moved.connections[1]).toBe(withOther.connections[1])
+    expect(withOther.connections[0].route).toEqual([[60, 20], [60, 60], [80, 60], [80, 20]]) // input untouched
+  })
+  it('leaves an automatic wire as it is when both its ends move', () => {
+    const d = addWire(twoResistors(), { part: 'p1', pin: '2' }, { part: 'p2', pin: '1' }, style)!.diagram
+    expect(moveParts(d, ['p1', 'p2'], 10, 0).connections[0]).toBe(d.connections[0])
+  })
   it('adds a wire, refusing self-loops and duplicates in either direction', () => {
     const d = twoResistors()
     const w = addWire(d, { part: 'p1', pin: '2' }, { part: 'p2', pin: '1' }, style)!
