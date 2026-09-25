@@ -36,8 +36,8 @@ const parts: Record<string, Want> = {
   // Omron B3F top view: 4 top left, 3 top right, 2 bottom left, 1 bottom right; 4-3 and 2-1 joined.
   'tactile-switch-12mm-4pin.json': { category: 'Switches', sides: { left: ['4', null, '2'], right: ['3', null, '1'] }, internal: [['4', '3'], ['2', '1']] },
   'tactile-switch-6mm-4pin.json': { category: 'Switches', sides: { left: ['4', null, '2'], right: ['3', null, '1'] }, internal: [['4', '3'], ['2', '1']] },
-  // WH148 front view: lugs 1, 2 (wiper), 3 left to right, 5 mm pitch.
-  'potentiometer-panel-10k.json': { category: 'Passives', sides: { bottom: ['1', null, '2', null, '3'] }, internal: [] },
+  // WH148 front view: lugs 1, 2 (wiper, named W), 3 left to right, 5 mm pitch.
+  'potentiometer-panel-10k.json': { category: 'Passives', sides: { bottom: ['1', null, 'W', null, '3'] }, internal: [] },
   // Plug conductors in USB cable order; micro-B's ID (pin 4) is a gap.
   'usb-panel-mount-microusb.json': { category: 'Connectors', sides: { right: ['VBUS', 'D-', 'D+', null, 'GND'] }, internal: [] },
   'usb-panel-mount-usbc.json': { category: 'Connectors', sides: { right: ['VBUS', 'D-', 'D+', 'GND', null, 'CC'] }, internal: [] },
@@ -86,10 +86,10 @@ describe('Spirit Typewriter parts keep the physical pin order', () => {
       expect(load(f).electrical).toMatchObject({ model: 'switch', terminals: { a: '1', b: '3' } })
   })
 
-  it('the panel pot is 10 k with 2 as the wiper, labeled W', () => {
+  it('the panel pot is 10 k with W as the wiper (lug 2), matching the trimmer pot', () => {
     const m = load('potentiometer-panel-10k.json')
-    expect(pin(m, '2')?.label).toBe('W')
-    expect(m.electrical).toMatchObject({ model: 'potentiometer', terminals: { a: '1', wiper: '2', b: '3' }, params: { resistance: { unit: 'ohm', default: 10000 } } })
+    expect(pin(m, 'W')).toBeDefined()
+    expect(m.electrical).toMatchObject({ model: 'potentiometer', terminals: { a: '1', wiper: 'W', b: '3' }, params: { resistance: { unit: 'ohm', default: 10000 } } })
   })
 
   it('connector positions are labeled so pin 1 always shows, even on 2-way parts', () => {
