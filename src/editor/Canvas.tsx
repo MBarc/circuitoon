@@ -133,7 +133,7 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
   const vh = size.h / view.scale
 
   function openLabelEditor(uid: string) {
-    const anchor = labelAnchor(routes.get(uid)?.points ?? [])
+    const anchor = labelAnchor(wires.find((w) => w.conn.uid === uid)?.points ?? [])
     if (!anchor) return
     const wire = diagram.connections.find((c) => c.uid === uid)
     store.select({ parts: [], wires: [uid] })
@@ -359,9 +359,9 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
             later one still shows its tag on top. Each tag keeps data-wire so a click or
             double-click on it still selects or edits that wire. */}
         <g>
-          {wires.map(({ conn }) => {
+          {wires.map(({ conn, points }) => {
             const dimmed = drag?.kind === 'reconnect' && drag.uid === conn.uid
-            const anchor = conn.label && !dimmed ? labelAnchor(routes.get(conn.uid)?.points ?? []) : null
+            const anchor = conn.label && !dimmed ? labelAnchor(points) : null
             return anchor ? (
               <g key={conn.uid} data-wire={conn.uid}>
                 <WireLabel x={anchor.x} y={anchor.y} text={conn.label!} />

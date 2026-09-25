@@ -98,6 +98,92 @@ describe('wirePaths', () => {
     expect(computeRoutes(moved, { only: new Set(), prev }).get('w')).toBe(prev.get('w'))
   })
 
+  describe('occupancy across the sheet', () => {
+    // Modeled on the battery-to-adjacent-pins bug report: a two-pin power part whose pins are
+    // far apart (like a 9V battery's + and -) wired to a two-pin part whose pins are right next
+    // to each other (like adjacent header pins), with both source pins facing away from the
+    // target. Both wires' shortest paths run up, across the top and down the same lane.
+    const src2: ModuleDef = {
+      format: 'circuitoon-module/1', id: 'src2', name: 'Src2',
+      pins: [
+        { name: 'P1', side: 'top' },
+        { spacer: true, side: 'top' },
+        { spacer: true, side: 'top' },
+        { spacer: true, side: 'top' },
+        { name: 'P2', side: 'top' },
+      ],
+    }
+    const tgt2: ModuleDef = {
+      format: 'circuitoon-module/1', id: 'tgt2', name: 'Tgt2',
+      pins: [{ name: 'T1', side: 'left' }, { name: 'T2', side: 'left' }],
+    }
+    const diagram: Diagram = {
+      format: 'circuitoon-diagram/1', title: 't', modules: { src2, tgt2 },
+      parts: [
+        { uid: 'bat', designator: 'BAT', module: 'src2', x: 0, y: 0 },
+        { uid: 'dev', designator: 'DEV', module: 'tgt2', x: 200, y: 120 },
+      ],
+      connections: [
+        { uid: 'w1', from: { part: 'bat', pin: 'P1' }, to: { part: 'dev', pin: 'T1' } },
+        { uid: 'w2', from: { part: 'bat', pin: 'P2' }, to: { part: 'dev', pin: 'T2' } },
+      ],
+    }
+
+    function interiorSegments(pts: { x: number; y: number }[]) {
+      const segs: { axis: 'h' | 'v'; at: number; lo: number; hi: number }[] = []
+      for (let i = 2; i < pts.length - 1; i++) {
+        const a = pts[i - 1], b = pts[i]
+        if (a.y === b.y) segs.push({ axis: 'h', at: a.y, lo: Math.min(a.x, b.x), hi: Math.max(a.x, b.x) })
+        else if (a.x === b.x) segs.push({ axis: 'v', at: a.x, lo: Math.min(a.y, b.y), hi: Math.max(a.y, b.y) })
+      }
+      return segs
+    }
+
+    it('keeps the two routes off each other\'s interior horizontal and vertical runs', () => {
+      const routes = computeRoutes(diagram)
+      const w1 = routes.get('w1')!
+      const w2 = routes.get('w2')!
+      expect(w1.blocked).toBe(false)
+      expect(w2.blocked).toBe(false)
+      const s1 = interiorSegments(w1.points)
+      const s2 = interiorSegments(w2.points)
+      const overlap = s1.some((a) => s2.some((b) => a.axis === b.axis && a.at === b.at && Math.min(a.hi, b.hi) - Math.max(a.lo, b.lo) > 0))
+      expect(overlap).toBe(false)
+    })
+  })
+
+  describe('render-time separation of remaining overlaps', () => {
+    // Two hand-routed wires whose middle run sits on the same grid line (60..100 and 70..110 at
+    // y=60 both cross y=60): the router itself never sees these (they are manual), so wirePaths'
+    // own fallback has to nudge the later one clear. Their vertical legs sit at different x, so
+    // only that one interior segment needs to move; the terminal (pin-attached) segments should
+    // not move at all.
+    const diagram: Diagram = {
+      format: 'circuitoon-diagram/1', title: 't', modules: { two },
+      parts: [
+        { uid: 'a1', designator: 'A1', module: 'two', x: 0, y: 0 },
+        { uid: 'b1', designator: 'B1', module: 'two', x: 150, y: 0 },
+        { uid: 'a2', designator: 'A2', module: 'two', x: 20, y: 0 },
+        { uid: 'b2', designator: 'B2', module: 'two', x: 160, y: 0 },
+      ],
+      connections: [
+        { uid: 'w1', from: { part: 'a1', pin: 'R' }, to: { part: 'b1', pin: 'L' }, route: [[60, 20], [60, 60], [100, 60], [100, 20]] },
+        { uid: 'w2', from: { part: 'a2', pin: 'R' }, to: { part: 'b2', pin: 'L' }, route: [[70, 20], [70, 60], [110, 60], [110, 20]] },
+      ],
+    }
+
+    it('nudges the later wire\'s shared interior run 4 px clear, leaving its terminal segments untouched', () => {
+      const wires = wirePaths(diagram)
+      const w1 = wires.find((w) => w.conn.uid === 'w1')!
+      const w2 = wires.find((w) => w.conn.uid === 'w2')!
+      expect(w1.points).toEqual([{ x: 48, y: 20 }, { x: 60, y: 20 }, { x: 60, y: 60 }, { x: 100, y: 60 }, { x: 100, y: 20 }, { x: 142, y: 20 }])
+      expect(w2.points).toEqual([{ x: 68, y: 20 }, { x: 70, y: 20 }, { x: 70, y: 64 }, { x: 110, y: 64 }, { x: 110, y: 20 }, { x: 152, y: 20 }])
+      // Terminal segments (the ones that attach to a2's and b2's pins) are pixel-for-pixel unchanged.
+      expect([w2.points[0], w2.points[1]]).toEqual([{ x: 68, y: 20 }, { x: 70, y: 20 }])
+      expect([w2.points[4], w2.points[5]]).toEqual([{ x: 110, y: 20 }, { x: 152, y: 20 }])
+    })
+  })
+
   describe('hand-routed wires', () => {
     const bends: [number, number][] = [[60, 20], [60, 60], [80, 60], [80, 20]]
     const manual = () => d([{ uid: 'w', from: { part: 'a', pin: 'R' }, to: { part: 'b', pin: 'L' }, route: bends }])

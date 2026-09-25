@@ -1,6 +1,22 @@
 import { describe, expect, it } from 'vitest'
-import { routeOrthogonal } from './router.ts'
+import { routeOrthogonal, occupancyOf } from './router.ts'
 import type { Pt, Rect } from './geometry.ts'
+
+/** Axis-aligned segments of a route, skipping the first and last (they attach to pins). */
+function interiorSegments(pts: Pt[]) {
+  const segs: { axis: 'h' | 'v'; at: number; lo: number; hi: number }[] = []
+  for (let i = 2; i < pts.length - 1; i++) {
+    const a = pts[i - 1], b = pts[i]
+    if (a.y === b.y) segs.push({ axis: 'h', at: a.y, lo: Math.min(a.x, b.x), hi: Math.max(a.x, b.x) })
+    else if (a.x === b.x) segs.push({ axis: 'v', at: a.x, lo: Math.min(a.y, b.y), hi: Math.max(a.y, b.y) })
+  }
+  return segs
+}
+function sharesInteriorRun(a: Pt[], b: Pt[]) {
+  const segsA = interiorSegments(a)
+  const segsB = interiorSegments(b)
+  return segsA.some((sa) => segsB.some((sb) => sa.axis === sb.axis && sa.at === sb.at && Math.min(sa.hi, sb.hi) - Math.max(sa.lo, sb.lo) > 0))
+}
 
 const right = { x: 1, y: 0 }
 const left = { x: -1, y: 0 }
@@ -71,5 +87,38 @@ describe('routeOrthogonal', () => {
   it('returns null when facing tips share a grid cell inside an obstacle', () => {
     const obstacles = [{ x: 40, y: 10, w: 20, h: 20 }]
     expect(routeOrthogonal({ from: { x: 48, y: 20 }, fromDir: right, to: { x: 52, y: 20 }, toDir: left, obstacles })).toBeNull()
+  })
+
+  describe('occupancy', () => {
+    // A wall forces both wires to detour the same way: over the top, across, and back down.
+    // Like adjacent header pins 10 px apart, both routes' shortest paths coincide on that detour.
+    const wall: Rect = { x: 40, y: -20, w: 20, h: 150 }
+    const req = (fromY: number, toY: number, occupied?: ReturnType<typeof occupancyOf>) => ({
+      from: { x: 0, y: fromY }, fromDir: right, to: { x: 100, y: toY }, toDir: left, obstacles: [wall], occupied,
+    })
+
+    it('lets the shortest paths of two parallel routes overlap without occupancy', () => {
+      const p1 = routeOrthogonal(req(0, 0))!
+      const p2 = routeOrthogonal(req(10, 10))!
+      expect(sharesInteriorRun(p1, p2)).toBe(true)
+    })
+
+    it('gives the second route its own lane when it sees the first route as occupied', () => {
+      const p1 = routeOrthogonal(req(0, 0))!
+      const occ = occupancyOf([p1])
+      const p2 = routeOrthogonal(req(10, 10, occ))!
+      expect(orthogonal(p2)).toBe(true)
+      expect(crosses(p2, wall)).toBe(false)
+      expect(sharesInteriorRun(p1, p2)).toBe(false)
+    })
+
+    it('still reaches adjacent facing pins 10 px apart when the shared cell is occupied', () => {
+      // Pin pair at x=0/10, facing each other, 10 px apart vertically: the very first and last
+      // steps necessarily land on grid nodes the other wire already used, and must not be blocked.
+      const p1 = routeOrthogonal({ from: { x: 0, y: 0 }, fromDir: right, to: { x: 20, y: 0 }, toDir: left, obstacles: [] })!
+      const occ = occupancyOf([p1])
+      const p2 = routeOrthogonal({ from: { x: 0, y: 10 }, fromDir: right, to: { x: 20, y: 10 }, toDir: left, obstacles: [], occupied: occ })
+      expect(p2).not.toBeNull()
+    })
   })
 })

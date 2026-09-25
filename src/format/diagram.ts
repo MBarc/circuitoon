@@ -2,7 +2,7 @@
 
 import { type ModuleDef, layoutModule, validateModule, isObj, isNum } from './module.ts'
 import { type Pt, type Rect, type Rotation, type WorldPin, bodyRect, simplify, worldPins } from './geometry.ts'
-import { routeOrthogonal } from './router.ts'
+import { addToOccupancy, routeOrthogonal, type Occupancy } from './router.ts'
 import { PRIMARY_PARAM_NAMES } from './values.ts'
 
 export const DIAGRAM_FORMAT = 'circuitoon-diagram/1'
@@ -122,25 +122,38 @@ function manualPoints(a: WorldPin, b: WorldPin, route: [number, number][]): Pt[]
   return simplify([a.end, ...head, ...bends, ...tail, b.end])
 }
 
-export function routeWire(d: Diagram, c: Connection, obstacles: Rect[]): WireRoute | null {
+export function routeWire(d: Diagram, c: Connection, obstacles: Rect[], occupied?: Occupancy): WireRoute | null {
   const a = endpoint(d, c.from)
   const b = endpoint(d, c.to)
   if (!a || !b) return null
   if (c.route) return { points: manualPoints(a, b, c.route), blocked: false }
-  const points = routeOrthogonal({ from: a.end, fromDir: a.dir, to: b.end, toDir: b.dir, obstacles })
+  const points = routeOrthogonal({ from: a.end, fromDir: a.dir, to: b.end, toDir: b.dir, obstacles, occupied })
   return points ? { points, blocked: false } : { points: [a.end, b.end], blocked: true }
 }
 
 /**
- * Routes every connection. With `only`, connections outside the set keep their route from
- * `prev` (used while dragging so only the moving part's wires are re-routed each frame).
+ * Routes every connection in file order, feeding each auto route the grid lanes every earlier
+ * route (auto or manual) already used, so a wire whose shortest path would run alongside an
+ * earlier one takes its own lane instead. With `only`, connections outside the set keep their
+ * route from `prev` (used while dragging so only the moving part's wires are re-routed each
+ * frame); those kept routes still seed the occupancy the `only` routes see, in file order.
  */
 export function computeRoutes(d: Diagram, opts: { only?: Set<string>; prev?: Routes } = {}): Routes {
   const obstacles = partObstacles(d)
   const out: Routes = new Map()
+  const occupied: Occupancy = new Map()
   for (const c of d.connections) {
-    if (opts.only && !opts.only.has(c.uid) && opts.prev?.has(c.uid)) out.set(c.uid, opts.prev.get(c.uid)!)
-    else out.set(c.uid, routeWire(d, c, obstacles))
+    if (opts.only && !opts.only.has(c.uid) && opts.prev?.has(c.uid)) {
+      const kept = opts.prev.get(c.uid)!
+      out.set(c.uid, kept)
+      if (kept) addToOccupancy(occupied, kept.points)
+    }
+  }
+  for (const c of d.connections) {
+    if (out.has(c.uid)) continue
+    const route = routeWire(d, c, obstacles, occupied)
+    out.set(c.uid, route)
+    if (route) addToOccupancy(occupied, route.points)
   }
   return out
 }
@@ -181,19 +194,64 @@ function insert(segs: Seg[], seg: Seg) {
   segs.splice(upper(segs, seg.at), 0, seg)
 }
 
+/** True when a segment at cross-coordinate `at` spanning `lo..hi` overlaps an indexed one. */
+function overlapsAt(segs: Seg[], at: number, lo: number, hi: number): boolean {
+  let i = upper(segs, at)
+  while (i > 0 && segs[i - 1].at === at) {
+    i--
+    if (Math.min(hi, segs[i].hi) - Math.max(lo, segs[i].lo) > 0) return true
+  }
+  return false
+}
+
+/** Perpendicular nudges tried, in order, until one clears the earlier wire (or the last is used regardless). */
+const NUDGES = [4, -4, 8, -8]
+
+/**
+ * Nudges each interior segment (every segment but the first and last, which attach to pins and
+ * never move) sideways when it runs along the same grid line as an already-drawn wire's segment,
+ * so both stay visible even where the router itself left them sharing a lane (a manual route, or
+ * an obstacle that forces two auto routes together). Moving a segment moves both its endpoints,
+ * so the segments on either side of it stretch to keep up rather than detach from it.
+ */
+function separate(points: Pt[], verticals: Seg[], horizontals: Seg[]): Pt[] {
+  const pts = points.map((p) => ({ ...p }))
+  for (let k = 2; k <= pts.length - 2; k++) {
+    const a = pts[k - 1]
+    const b = pts[k]
+    const horiz = a.y === b.y
+    if (!horiz && a.x !== b.x) continue // not axis-aligned, so not a lane to share; leave it
+    const segs = horiz ? horizontals : verticals
+    const at = horiz ? a.y : a.x
+    const lo = horiz ? Math.min(a.x, b.x) : Math.min(a.y, b.y)
+    const hi = horiz ? Math.max(a.x, b.x) : Math.max(a.y, b.y)
+    if (!overlapsAt(segs, at, lo, hi)) continue
+    for (let t = 0; t < NUDGES.length; t++) {
+      const moved = at + NUDGES[t]
+      if (t === NUDGES.length - 1 || !overlapsAt(segs, moved, lo, hi)) {
+        if (horiz) { a.y = moved; b.y = moved } else { a.x = moved; b.x = moved }
+        break
+      }
+    }
+  }
+  return pts
+}
+
 /**
  * SVG path data for each routed wire. Where a wire crosses a wire earlier in the file, the
  * later one gets a small hop arc, as in hand-drawn wiring sheets. Earlier wires' segments are
- * indexed by position, so each new segment only checks the ones in its span.
+ * indexed by position, so each new segment only checks the ones in its span. An interior segment
+ * that would otherwise run right on top of an earlier wire is nudged 4 px clear first (see
+ * `separate`), so the hop and label-anchor geometry below is already the drawn, separated shape.
  */
 export function wirePaths(d: Diagram, routes: Routes = computeRoutes(d)) {
   const verticals: Seg[] = [] // at = x, lo..hi = y range
   const horizontals: Seg[] = [] // at = y, lo..hi = x range
-  const out: { conn: Connection; d: string; ends: Pt[]; blocked: boolean }[] = []
+  const out: { conn: Connection; d: string; points: Pt[]; ends: Pt[]; blocked: boolean }[] = []
   for (const conn of d.connections) {
     const route = routes.get(conn.uid)
     if (!route) continue
-    const pts = route.points
+    const pts = separate(route.points, verticals, horizontals)
     let path = `M${pts[0].x} ${pts[0].y}`
     for (let i = 1; i < pts.length; i++) {
       const s = pts[i - 1]
@@ -216,7 +274,7 @@ export function wirePaths(d: Diagram, routes: Routes = computeRoutes(d)) {
       if (s.x === e.x) insert(verticals, { at: s.x, lo: Math.min(s.y, e.y), hi: Math.max(s.y, e.y) })
       if (s.y === e.y) insert(horizontals, { at: s.y, lo: Math.min(s.x, e.x), hi: Math.max(s.x, e.x) })
     }
-    out.push({ conn, d: path, ends: [pts[0], pts[pts.length - 1]], blocked: route.blocked })
+    out.push({ conn, d: path, points: pts, ends: [pts[0], pts[pts.length - 1]], blocked: route.blocked })
   }
   return out
 }

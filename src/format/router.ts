@@ -9,6 +9,8 @@ export interface RouteRequest {
   to: Pt
   toDir: Pt
   obstacles: Rect[]
+  /** Grid nodes already used by earlier wires, so this route can take its own lane next to them. */
+  occupied?: Occupancy
 }
 export interface RouteOptions {
   grid?: number
@@ -16,6 +18,47 @@ export interface RouteOptions {
   bendCost?: number
   /** Search windows around the endpoints, tried in order until one finds a route. */
   margins?: number[]
+  /** Extra cost for a step onto a grid node another wire already runs along on the same axis. */
+  parallelCost?: number
+}
+
+/**
+ * Grid nodes used by earlier wires, keyed `"x,y"`, bit 1 = a horizontal run passes through,
+ * bit 2 = a vertical run does. Only nodes on the routing grid (multiples of `grid`) are kept,
+ * since those are the only ones the search ever visits.
+ */
+export type Occupancy = Map<string, number>
+
+const H_BIT = 1
+const V_BIT = 2
+
+/** Adds one polyline's axis-aligned segments to `occ`. Linear in the polyline's total length. */
+export function addToOccupancy(occ: Occupancy, polyline: Pt[], grid = 10) {
+  for (let i = 1; i < polyline.length; i++) {
+    const a = polyline[i - 1]
+    const b = polyline[i]
+    if (a.y === b.y) {
+      const lo = Math.min(a.x, b.x), hi = Math.max(a.x, b.x)
+      for (let x = Math.ceil(lo / grid) * grid; x <= hi; x += grid) {
+        const k = `${x},${a.y}`
+        occ.set(k, (occ.get(k) ?? 0) | H_BIT)
+      }
+    } else if (a.x === b.x) {
+      const lo = Math.min(a.y, b.y), hi = Math.max(a.y, b.y)
+      for (let y = Math.ceil(lo / grid) * grid; y <= hi; y += grid) {
+        const k = `${a.x},${y}`
+        occ.set(k, (occ.get(k) ?? 0) | V_BIT)
+      }
+    }
+    // A diagonal segment cannot come from the router or a manual route; skip it rather than guess an axis.
+  }
+}
+
+/** Occupancy built from several wires' polylines, so a later wire can avoid running alongside them. */
+export function occupancyOf(polylines: Pt[][], grid = 10): Occupancy {
+  const occ: Occupancy = new Map()
+  for (const p of polylines) addToOccupancy(occ, p, grid)
+  return occ
 }
 
 /** Largest search window, in grid cells, before a margin is skipped (keeps memory and time bounded). */
@@ -79,16 +122,26 @@ export function routeOrthogonal(req: RouteRequest, opts: RouteOptions = {}): Pt[
   const g = opts.grid ?? 10
   const clearance = opts.clearance ?? 4
   const bendCost = opts.bendCost ?? 30
+  const parallelCost = opts.parallelCost ?? 40
   const start = leave(req.from, req.fromDir, g)
   const goal = leave(req.to, req.toDir, g)
   for (const margin of opts.margins ?? [60, 240]) {
-    const path = search(start, goal, req, g, clearance, bendCost, margin)
+    const path = search(start, goal, req, g, clearance, bendCost, parallelCost, margin)
     if (path) return simplify([req.from, ...path, req.to])
   }
   return null
 }
 
-function search(start: Pt, goal: Pt, req: RouteRequest, g: number, clearance: number, bendCost: number, margin: number): Pt[] | null {
+function search(
+  start: Pt,
+  goal: Pt,
+  req: RouteRequest,
+  g: number,
+  clearance: number,
+  bendCost: number,
+  parallelCost: number,
+  margin: number,
+): Pt[] | null {
   const x0 = Math.floor((Math.min(start.x, goal.x) - margin) / g) * g
   const y0 = Math.floor((Math.min(start.y, goal.y) - margin) / g) * g
   const x1 = Math.ceil((Math.max(start.x, goal.x) + margin) / g) * g
@@ -113,6 +166,20 @@ function search(start: Pt, goal: Pt, req: RouteRequest, g: number, clearance: nu
   if (blocked[startCell] || blocked[goalCell]) return null
   // Checked after the obstacle map, so a shared cell inside a part body is still refused.
   if (startCell === goalCell) return [start]
+
+  // Read every occupied node the search window could reach once, up front, rather than hashing
+  // a "x,y" string per candidate edge: at up to 12 edge tries per cell, that dwarfs one Map.get
+  // per cell for any window big enough to matter.
+  let parallel: Uint8Array | null = null
+  if (req.occupied?.size) {
+    parallel = new Uint8Array(cols * rows)
+    for (let row = 0; row < rows; row++) {
+      for (let col = 0; col < cols; col++) {
+        const used = req.occupied.get(`${x0 + col * g},${y0 + row * g}`)
+        if (used) parallel[row * cols + col] = used
+      }
+    }
+  }
 
   const gc = goalCell % cols
   const gr = Math.floor(goalCell / cols)
@@ -149,6 +216,12 @@ function search(start: Pt, goal: Pt, req: RouteRequest, g: number, clearance: nu
       if (blocked[ncell]) continue
       let c = cost[state] + g + (nd !== d ? bendCost : 0)
       if (ncell === goalCell && nd !== endDir) c += bendCost
+      // Neither the first step out of the start nor the last step into the goal is penalized,
+      // so two pins 10 px apart can still be wired even when that shared cell is another wire's lane.
+      if (parallel && state !== s && ncell !== goalCell) {
+        const bit = nd === 0 || nd === 2 ? H_BIT : V_BIT
+        if (parallel[ncell] & bit) c += parallelCost
+      }
       const ns = ncell * 4 + nd
       if (c < cost[ns]) {
         cost[ns] = c
