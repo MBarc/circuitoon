@@ -5,64 +5,16 @@
 // 1x4). Pin orders are transcribed from the sources cited on each part below (maker datasheets,
 // vendor photos with legible silkscreen, cross-checked against a second, independent source).
 //
-// Run from the repo root: `node scripts/gen-typewriter.mjs`
+// Run from the repo root: `node scripts/gen-typewriter.mjs` (add `--check` to compare with modules/ without writing).
 // It overwrites those files in modules/ in place; re-run after changing a part's pins or art,
 // then `git diff` the result before committing. src/format/typewriter.test.ts pins the order.
-import { writeFileSync } from 'node:fs'
-import { fileURLToPath } from 'node:url'
-const OUT = fileURLToPath(new URL('../modules/', import.meta.url))
+import { finish } from './lib/gen-output.mjs'
+import { moduleJson, r, side, slots, write } from './lib/parts.mjs'
 
 const METAL = '#C9CED6', TIN = '#D5DAE1', LEAD = '#B8BEC7', DARK = '#1B1F24', BLACK = '#2B2F36'
 const GREY = '#3A3F47', GOLD = '#E0B43C', RED = '#E0483E', HOLE = '#6B727C', MOUNT = '#15181C'
-const TERMINAL = '#3FA34D', TERMINAL_DARK = '#2E7D3A', NATURAL = '#EEF0EC', NATURAL_IN = '#D6DAD2'
+const TERMINAL = '#3FA34D', NATURAL = '#EEF0EC', NATURAL_IN = '#D6DAD2'
 const PHENOLIC = '#C8742B', CAN = '#B8BEC7', WHITE = '#FFFFFF'
-
-const r = (x, y, w, h, fill, extra = {}) => ({ type: 'rect', x, y, w, h, fill, ...extra })
-
-/** Pin positions (px) along a side `len` units long with `n` slots, per computeLayout. */
-function slots(len, n) {
-  const s0 = Math.ceil((len - (n - 1)) / 2)
-  return Array.from({ length: n }, (_, i) => (s0 + i) * 10)
-}
-
-/**
- * Pins for one side from a slot list: 'NAME' or 'NAME|label' is a pin, null is a spacer (a
- * physical gap). `types` maps the label (or the name) to { type, supply }. Returns the pins and
- * the px position of every pin along the side, by name.
- */
-function side(sideName, list, types, len) {
-  const at = slots(len, list.length)
-  const pos = {}
-  const pins = list.map((s, i) => {
-    if (s === null) return { spacer: true, side: sideName }
-    const [name, label] = s.split('|')
-    const p = { name, side: sideName }
-    if (label) p.label = label
-    const t = types[label ?? name] ?? {}
-    if (t.type) p.type = t.type
-    if (t.supply) p.supply = t.supply
-    pos[name] = at[i]
-    return p
-  })
-  return { pins, pos }
-}
-
-function write(file, m) {
-  writeFileSync(OUT + file, JSON.stringify(m, null, 2) + '\n')
-  const n = m.pins.filter((p) => !p.spacer).length
-  console.log(file, 'pins', n, 'body', m.art.w, 'x', m.art.h)
-}
-
-/** `inside`: draw pin names inside the body, like silkscreen (dense headers only). */
-function moduleJson({ id, name, category, source, pins, internal, wu, hu, electrical, states, inside, shapes }) {
-  const m = { format: 'circuitoon-module/1', id, version: 1, name, category, source, pins }
-  if (internal) m.internal = internal
-  m.size = { w: wu, h: hu }
-  m.electrical = electrical
-  if (states) m.states = states
-  m.art = inside ? { w: wu * 10, h: hu * 10, pinLabels: 'inside', shapes } : { w: wu * 10, h: hu * 10, shapes }
-  return m
-}
 
 const passive = { type: 'passive' }
 
@@ -320,3 +272,5 @@ function dupont(n) {
   }))
 }
 for (const n of [2, 3, 4]) dupont(n)
+
+finish('gen-typewriter.mjs')

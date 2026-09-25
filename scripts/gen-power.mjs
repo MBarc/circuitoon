@@ -3,42 +3,15 @@
 // Pad names and positions are transcribed from the sources cited on each part below (vendor
 // photos with legible silkscreen, cross-checked against a second, independent source).
 //
-// Run from the repo root: `node scripts/gen-power.mjs`
+// Run from the repo root: `node scripts/gen-power.mjs` (add `--check` to compare with modules/ without writing).
 // It overwrites those files in modules/ in place; re-run after changing a part's pins or art,
 // then `git diff` the result before committing. src/format/power.test.ts pins the order.
-import { writeFileSync } from 'node:fs'
-import { fileURLToPath } from 'node:url'
-const OUT = fileURLToPath(new URL('../modules/', import.meta.url))
+import { finish } from './lib/gen-output.mjs'
+import { moduleJson, r, side, write } from './lib/parts.mjs'
 
-const METAL = '#C9CED6', TIN = '#D5DAE1', HOLE = '#6B727C', CHIP = '#1E2126', CHIP_MARK = '#3A3F47'
+const METAL = '#C9CED6', TIN = '#D5DAE1', HOLE = '#6B727C', CHIP = '#1E2126'
 const BLUE = '#1E4F8A', BLACK_PCB = '#2B2F36', MOUNT = '#123356', CAP = '#B8BEC7', CAP_TOP = '#8E96A1'
 const SMD = '#C8A27A', LED_RED = '#E0483E', LED_BLUE = '#4FA3F7', POT = '#3D6FD6', BRASS = '#D9A93B'
-
-const r = (x, y, w, h, fill, extra = {}) => ({ type: 'rect', x, y, w, h, fill, ...extra })
-
-/** Pin positions (px) along a side `len` units long with `n` slots, per computeLayout. */
-function slots(len, n) {
-  const s0 = Math.ceil((len - (n - 1)) / 2)
-  return Array.from({ length: n }, (_, i) => (s0 + i) * 10)
-}
-
-/**
- * Pins for one side from a slot list: a string is a pin name, null is a spacer. `types` maps a
- * name to { type, supply }. Returns the pins and the px position of every slot along the side.
- */
-function side(sideName, list, types, len) {
-  const at = slots(len, list.length)
-  const pins = list.map((n) => {
-    if (n === null) return { spacer: true, side: sideName }
-    const p = { name: n, side: sideName }
-    const t = types[n] ?? {}
-    if (t.type) p.type = t.type
-    if (t.supply) p.supply = t.supply
-    return p
-  })
-  const pos = Object.fromEntries(list.flatMap((n, i) => (n === null ? [] : [[n, at[i]]])))
-  return { pins, pos }
-}
 
 /** A tinned through-hole solder pad with its hole, centered on (cx, cy), kept in the outer 12 px. */
 const pad = (cx, cy, s = 8) => [
@@ -55,22 +28,6 @@ function sop(x, y, w, h, n, label, labelSize = 5) {
     legs.push(r(lx, y - 3, 3, 3, METAL, { outline: false }), r(lx, y + h, 3, 3, METAL, { outline: false }))
   }
   return [...legs, r(x, y, w, h, CHIP, { radius: 1, label, labelColor: METAL, labelSize })]
-}
-
-function write(file, m) {
-  writeFileSync(OUT + file, JSON.stringify(m, null, 2) + '\n')
-  const n = m.pins.filter((p) => !p.spacer).length
-  console.log(file, 'pins', n, 'body', m.art.w, 'x', m.art.h)
-}
-
-function moduleJson({ id, name, source, pins, internal, wu, hu, electrical, shapes }) {
-  const m = { format: 'circuitoon-module/1', id, version: 1, name, category: 'Power', source, pins }
-  if (internal) m.internal = internal
-  m.size = { w: wu, h: hu }
-  m.electrical = electrical
-  // Pad names drawn inside the body beside each pad, like the silkscreen.
-  m.art = { w: wu * 10, h: hu * 10, pinLabels: 'inside', shapes }
-  return m
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -103,7 +60,7 @@ function moduleJson({ id, name, source, pins, internal, wu, hu, electrical, shap
     ...[bottom.pos.K, bottom.pos['5V+'], bottom.pos['5V-']].flatMap((x) => pad(x, H - 7)),
   ]
   write('ip5306-usbc-module.json', moduleJson({
-    id: 'ip5306-usbc-module', name: 'IP5306 USB-C charge/boost module (18650, 5 V out)',
+    category: 'Power', inside: true, id: 'ip5306-usbc-module', name: 'IP5306 USB-C charge/boost module (18650, 5 V out)',
     source: 'https://done.land/components/power/powersupplies/battery/chargers/charge-discharge/ip5306/x-150/ https://www.amazon.com/dp/B0DDLF99HN',
     pins: [...left.pins, ...bottom.pins], internal: [['B-', '5V-']], wu, hu,
     electrical: { model: 'power_bank', params: {} }, shapes,
@@ -139,7 +96,7 @@ function moduleJson({ id, name, source, pins, internal, wu, hu, electrical, shap
     ...['OUT+', 'B+', 'B-', 'OUT-'].flatMap((n) => pad(W - 7, right.pos[n])),
   ]
   write('tp4056-module.json', moduleJson({
-    id: 'tp4056-module', name: 'TP4056 Li-ion charger (USB-C, with protection)',
+    category: 'Power', inside: true, id: 'tp4056-module', name: 'TP4056 Li-ion charger (USB-C, with protection)',
     source: 'https://www.amazon.com/dp/B07PKND8KG https://www.addicore.com/products/tp4056-tc4056a-lithium-battery-charger-and-protection-module https://www.teachmemicro.com/tp4056-charging-module-pinout-wiring-charging-current-and-arduino-use/',
     pins: [...left.pins, ...right.pins], internal: [['IN-', 'OUT-'], ['B+', 'OUT+']], wu, hu,
     electrical: { model: 'charger', params: {} }, shapes,
@@ -168,7 +125,7 @@ function moduleJson({ id, name, source, pins, internal, wu, hu, electrical, shap
     ...xs.flatMap((x) => pad(x, H - 7)),
   ]
   write('ams1117-33-module.json', moduleJson({
-    id: 'ams1117-33-module', name: 'AMS1117 3.3 V regulator module (3-pin)',
+    category: 'Power', inside: true, id: 'ams1117-33-module', name: 'AMS1117 3.3 V regulator module (3-pin)',
     source: 'https://www.amazon.com/dp/B07CP4P5XJ https://protosupplies.com/product/ams1117-5v-to-3-3v-step-down-regulator-module/',
     pins: bottom.pins, wu, hu, electrical: { model: 'regulator', params: {} }, shapes,
   }))
@@ -210,9 +167,11 @@ function moduleJson({ id, name, source, pins, internal, wu, hu, electrical, shap
     ...pad(W - 7, right.pos['OUT+']), ...pad(W - 7, right.pos['OUT-']),
   ]
   write('lm2596-buck-module.json', moduleJson({
-    id: 'lm2596-buck-module', name: 'LM2596 buck converter module (adjustable)',
+    category: 'Power', inside: true, id: 'lm2596-buck-module', name: 'LM2596 buck converter module (adjustable)',
     source: 'https://www.amazon.com/dp/B08NV3JCBC https://www.instructables.com/How-to-Use-DC-to-DC-Buck-Converter-LM2596/',
     pins: [...left.pins, ...right.pins], internal: [['IN-', 'OUT-']], wu, hu,
     electrical: { model: 'buck_converter', params: { voltage: { unit: 'V', default: 5 } } }, shapes,
   }))
 }
+
+finish('gen-power.mjs')

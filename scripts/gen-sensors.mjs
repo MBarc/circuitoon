@@ -5,46 +5,17 @@
 // each part below (datasheets, vendor photos with legible silkscreen, cross-checked against a
 // second, independent source).
 //
-// Run from the repo root: `node scripts/gen-sensors.mjs`
+// Run from the repo root: `node scripts/gen-sensors.mjs` (add `--check` to compare with modules/ without writing).
 // It overwrites those files in modules/ in place; re-run after changing a part's pins or art,
 // then `git diff` the result before committing. src/format/sensors.test.ts pins the order.
-import { writeFileSync } from 'node:fs'
-import { fileURLToPath } from 'node:url'
-const OUT = fileURLToPath(new URL('../modules/', import.meta.url))
+import { finish } from './lib/gen-output.mjs'
+import { moduleJson, r, side, write } from './lib/parts.mjs'
 
-const METAL = '#C9CED6', TIN = '#D5DAE1', HOLE = '#6B727C', LEAD = '#B8BEC7', CHIP = '#1E2126'
+const METAL = '#C9CED6', HOLE = '#6B727C', LEAD = '#B8BEC7', CHIP = '#1E2126'
 const GOLD = '#E0B43C', GOLD_HOLE = '#8A6A1E', COPPER = '#D98C2B', BLACK_PCB = '#2B2F36'
 const BLUE = '#1E4F8A', GREEN = '#2F9E6E', PURPLE = '#7B3FA0', MOUNT_DARK = '#1B1F24'
 const WHITE_CASE = '#EEF0EC', GRILLE = '#9AA0A6', LENS = '#F4F6F8', LENS_SHADE = '#DDE2E7'
 const LED_BODY = '#F2F2EE', POT = '#F08A24', SMD = '#C8A27A', LED_R = '#E0483E', LED_G = '#3FB56B', LED_B = '#4F8EF7'
-
-const r = (x, y, w, h, fill, extra = {}) => ({ type: 'rect', x, y, w, h, fill, ...extra })
-
-/** Pin positions (px) along a side `len` units long with `n` slots, per computeLayout. */
-function slots(len, n) {
-  const s0 = Math.ceil((len - (n - 1)) / 2)
-  return Array.from({ length: n }, (_, i) => (s0 + i) * 10)
-}
-
-/**
- * Pins for one side: each entry is 'NAME' or 'NAME|label'; `types` maps the label (or the name)
- * to { type, supply }. Returns the pins and the px position of every pin along the side.
- */
-function side(sideName, list, types, len) {
-  const at = slots(len, list.length)
-  const pos = {}
-  const pins = list.map((s, i) => {
-    const [name, label] = s.split('|')
-    const p = { name, side: sideName }
-    if (label) p.label = label
-    const t = types[label ?? name] ?? {}
-    if (t.type) p.type = t.type
-    if (t.supply) p.supply = t.supply
-    pos[name] = at[i]
-    return p
-  })
-  return { pins, pos, at }
-}
 
 /** A gold header strip along the bottom edge with a hole per pin, kept in the outer 12 px. */
 function bottomHeader(H, at) {
@@ -57,22 +28,6 @@ function bottomHeader(H, at) {
 
 /** Component legs running from `y0` straight down to the body's bottom edge. */
 const legs = (H, at, y0) => at.map((x) => r(x - 1.5, y0, 3, H - y0, LEAD, { outline: false }))
-
-function write(file, m) {
-  writeFileSync(OUT + file, JSON.stringify(m, null, 2) + '\n')
-  const n = m.pins.filter((p) => !p.spacer).length
-  console.log(file, 'pins', n, 'body', m.art.w, 'x', m.art.h)
-}
-
-function moduleJson({ id, name, category, source, pins, internal, wu, hu, electrical, shapes }) {
-  const m = { format: 'circuitoon-module/1', id, version: 1, name, category, source, pins }
-  if (internal) m.internal = internal
-  m.size = { w: wu, h: hu }
-  m.electrical = electrical
-  // Pin names drawn inside the body beside each pin, like the silkscreen.
-  m.art = { w: wu * 10, h: hu * 10, pinLabels: 'inside', shapes }
-  return m
-}
 
 // =============================================================================================
 // Addressable LEDs (Indicators)
@@ -115,7 +70,7 @@ function moduleJson({ id, name, category, source, pins, internal, wu, hu, electr
     ...right.at.map((y) => copper(W - 6, y)),
   ]
   write('ws2812b-strip.json', moduleJson({
-    id: 'ws2812b-strip', name: 'WS2812B LED strip (5-LED segment, pads GND DIN 5V)', category: 'Indicators',
+    inside: true, id: 'ws2812b-strip', name: 'WS2812B LED strip (5-LED segment, pads GND DIN 5V)', category: 'Indicators',
     source: 'https://www.pololu.com/product/2547 https://a.pololu-files.com/picture/0J5802.1200.jpg https://lastminuteengineers.com/ws2812b-arduino-tutorial/',
     pins: [...left.pins, ...right.pins], internal: [['GND', 'GND 2'], ['5V', '5V 2']], wu, hu,
     electrical: { model: 'addressable_led', params: {} }, shapes,
@@ -145,7 +100,7 @@ function moduleJson({ id, name, category, source, pins, internal, wu, hu, electr
     r(52, 42, 3, 10, '#8E96A1', { outline: false }),
   ]
   write('ws2812b-5mm.json', moduleJson({
-    id: 'ws2812b-5mm', name: 'WS2812 5 mm through-hole RGB LED (WS2812D-F5, DIN GND VDD DOUT)', category: 'Indicators',
+    inside: true, id: 'ws2812b-5mm', name: 'WS2812 5 mm through-hole RGB LED (WS2812D-F5, DIN GND VDD DOUT)', category: 'Indicators',
     source: 'https://www.tme.eu/Document/6ea29838e05beac06400c47a846319d2/WS2812D-F5.pdf https://www.hobbyelectronica.nl/en/product/rgb-led-ws2812d-f5/',
     pins: bottom.pins, wu, hu, electrical: { model: 'addressable_led', params: {} }, shapes,
   }))
@@ -185,7 +140,7 @@ function dht22Case(x, y) {
     ...bottomHeader(H, bottom.at),
   ]
   write('dht22-module.json', moduleJson({
-    id: 'dht22-module', name: 'DHT22 temperature/humidity module (3-pin: + out -)', category: 'Sensors',
+    inside: true, id: 'dht22-module', name: 'DHT22 temperature/humidity module (3-pin: + out -)', category: 'Sensors',
     source: 'https://components101.com/sensors/dht22-pinout-specs-datasheet https://components101.com/sites/default/files/components/DHT22-Sensor.jpg https://shillehtek.com/blogs/shillehtek-product-manuals/dht22-digital-temperature-and-humidity-sensor-module-with-cable',
     pins: bottom.pins, wu, hu, electrical: { model: 'sensor', params: {} }, shapes,
   }))
@@ -201,7 +156,7 @@ function dht22Case(x, y) {
   const bottom = side('bottom', ['VCC', 'DATA', 'NC', 'GND'], types, wu)
   const shapes = [...legs(H, bottom.at, 90), ...dht22Case(5, 2)]
   write('dht22-bare.json', moduleJson({
-    id: 'dht22-bare', name: 'DHT22 / AM2302 sensor (bare, 4-pin: VCC DATA NC GND)', category: 'Sensors',
+    inside: true, id: 'dht22-bare', name: 'DHT22 / AM2302 sensor (bare, 4-pin: VCC DATA NC GND)', category: 'Sensors',
     source: 'https://www.sparkfun.com/datasheets/Sensors/Temperature/DHT22.pdf https://lastminuteengineers.com/dht11-dht22-arduino-tutorial/',
     pins: bottom.pins, wu, hu, electrical: { model: 'sensor', params: {} }, shapes,
   }))
@@ -226,7 +181,7 @@ function dht22Case(x, y) {
     ...bottomHeader(H, bottom.at),
   ]
   write('bme280-i2c-module.json', moduleJson({
-    id: 'bme280-i2c-module', name: 'BME280 sensor module (I2C, 4-pin: VIN GND SCL SDA)', category: 'Sensors',
+    inside: true, id: 'bme280-i2c-module', name: 'BME280 sensor module (I2C, 4-pin: VIN GND SCL SDA)', category: 'Sensors',
     source: 'https://lastminuteengineers.com/bme280-arduino-tutorial/ https://www.makerguides.com/how-to-interface-bme280-pressure-sensor-with-arduino/',
     pins: bottom.pins, wu, hu, electrical: { model: 'sensor', params: {} }, shapes,
   }))
@@ -257,7 +212,7 @@ function dht22Case(x, y) {
     ...bottomHeader(H, bottom.at),
   ]
   write('bme280-module-6pin.json', moduleJson({
-    id: 'bme280-module-6pin', name: 'GY-BME280 sensor module (6-pin, 3.3 V: VCC GND SCL SDA CSB SDO)', category: 'Sensors',
+    inside: true, id: 'bme280-module-6pin', name: 'GY-BME280 sensor module (6-pin, 3.3 V: VCC GND SCL SDA CSB SDO)', category: 'Sensors',
     source: 'https://shillehtek.com/blogs/shillehtek-product-manuals/bme280-environmental-sensor-raspberry-pi-arduino-esp32-i2c-humidity-pressure-and-temperature-measurement https://protosupplies.com/product/gy-bme280-pressure-humidity-temperature-sensor-module/',
     pins: bottom.pins, wu, hu, electrical: { model: 'sensor', params: {} }, shapes,
   }))
@@ -291,7 +246,7 @@ function dht22Case(x, y) {
     ...bottomHeader(H, bottom.at),
   ]
   write('pir-hc-sr501.json', moduleJson({
-    id: 'pir-hc-sr501', name: 'PIR motion sensor HC-SR501 (dome side: GND OUT VCC)', category: 'Sensors',
+    inside: true, id: 'pir-hc-sr501', name: 'PIR motion sensor HC-SR501 (dome side: GND OUT VCC)', category: 'Sensors',
     source: 'https://protosupplies.com/product/hc-sr501-pir-motion-sensing-module/ https://lastminuteengineers.com/pir-sensor-arduino-tutorial/ http://www.handsontec.com/dataspecs/SR501%20Motion%20Sensor.pdf',
     pins: bottom.pins, wu, hu, electrical: { model: 'sensor', params: {} }, shapes,
   }))
@@ -320,8 +275,10 @@ function dht22Case(x, y) {
     ...bottomHeader(H, bottom.at),
   ]
   write('ultrasonic-hc-sr04.json', moduleJson({
-    id: 'ultrasonic-hc-sr04', name: 'Ultrasonic distance sensor HC-SR04 (VCC Trig Echo GND)', category: 'Sensors',
+    inside: true, id: 'ultrasonic-hc-sr04', name: 'Ultrasonic distance sensor HC-SR04 (VCC Trig Echo GND)', category: 'Sensors',
     source: 'https://cdn.sparkfun.com/datasheets/Sensors/Proximity/HCSR04.pdf https://lastminuteengineers.com/arduino-sr04-ultrasonic-sensor-tutorial/',
     pins: bottom.pins, wu, hu, electrical: { model: 'sensor', params: {} }, shapes,
   }))
 }
+
+finish('gen-sensors.mjs')

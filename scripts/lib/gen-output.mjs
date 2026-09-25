@@ -1,4 +1,5 @@
-// Output shared by the module generators (gen-boards, gen-parts, gen-picos).
+// Output shared by the module generators (every scripts/gen-*.mjs; the part generators reach it
+// through lib/parts.mjs `write`).
 //
 // Normally each generated file is written to modules/. With `--check` nothing is written: each file
 // is built in memory and compared with the copy on disk (CRLF normalized to LF, since a Windows

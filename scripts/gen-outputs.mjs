@@ -4,47 +4,17 @@
 // sources cited on each part below (maker pages and datasheets, vendor photos with legible
 // silkscreen, cross-checked against a second, independent source).
 //
-// Run from the repo root: `node scripts/gen-outputs.mjs`
+// Run from the repo root: `node scripts/gen-outputs.mjs` (add `--check` to compare with modules/ without writing).
 // It overwrites those files in modules/ in place; re-run after changing a part's pins or art,
 // then `git diff` the result before committing. src/format/outputs.test.ts pins the order.
-import { writeFileSync } from 'node:fs'
-import { fileURLToPath } from 'node:url'
-const OUT = fileURLToPath(new URL('../modules/', import.meta.url))
+import { finish } from './lib/gen-output.mjs'
+import { moduleJson, r, side, write } from './lib/parts.mjs'
 
 const METAL = '#C9CED6', TIN = '#D5DAE1', HOLE = '#6B727C', CHIP = '#1E2126', GOLD = '#E0B43C', GOLD_HOLE = '#8A6A1E'
-const RED_PCB = '#C8322B', BLUE = '#1E4F8A', TERMINAL = '#2F7FD0', TERMINAL_DARK = '#1F5FA8', RELAY = '#2B5FB8'
+const RED_PCB = '#C8322B', BLUE = '#1E4F8A', TERMINAL = '#2F7FD0', RELAY = '#2B5FB8'
 const SMD = '#C8A27A', LED_RED = '#E0483E', LED_GREEN = '#3FB56B', BLACK = '#2B2F36', CAP = '#B8BEC7', CAP_TOP = '#8E96A1'
 const SERVO = '#3D7BE0', SERVO_DARK = '#2A5FB8', WHITE = '#F4F6F8'
 const WIRE_BROWN = '#8B5A2B', WIRE_RED = '#E0483E', WIRE_ORANGE = '#F08A24'
-
-const r = (x, y, w, h, fill, extra = {}) => ({ type: 'rect', x, y, w, h, fill, ...extra })
-
-/** Pin positions (px) along a side `len` units long with `n` slots, per computeLayout. */
-function slots(len, n) {
-  const s0 = Math.ceil((len - (n - 1)) / 2)
-  return Array.from({ length: n }, (_, i) => (s0 + i) * 10)
-}
-
-/**
- * Pins for one side from a slot list: 'NAME' or 'NAME|label' is a pin, null a spacer. `types` maps
- * the label (or the name) to { type, supply }. Returns the pins and the px position of each pin.
- */
-function side(sideName, list, types, len) {
-  const at = slots(len, list.length)
-  const pos = {}
-  const pins = list.map((s, i) => {
-    if (s === null) return { spacer: true, side: sideName }
-    const [name, label] = s.split('|')
-    const p = { name, side: sideName }
-    if (label) p.label = label
-    const t = types[label ?? name] ?? types[name] ?? {}
-    if (t.type) p.type = t.type
-    if (t.supply) p.supply = t.supply
-    pos[name] = at[i]
-    return p
-  })
-  return { pins, pos, at: list.flatMap((s, i) => (s === null ? [] : [at[i]])) }
-}
 
 /** A screw terminal block of `n` ways along a vertical edge; `x` its left, `ys` the screw centres. */
 function terminalV(x, ys, w = 22) {
@@ -77,22 +47,6 @@ function headerH(y, at) {
     r(a0, y, a1 - a0, 8, GOLD, { radius: 2, outline: false }),
     ...at.map((x) => r(x - 1.5, y + 2.5, 3, 3, GOLD_HOLE, { radius: 1.5, outline: false })),
   ]
-}
-
-function write(file, m) {
-  writeFileSync(OUT + file, JSON.stringify(m, null, 2) + '\n')
-  const n = m.pins.filter((p) => !p.spacer).length
-  console.log(file, 'pins', n, 'body', m.art.w, 'x', m.art.h)
-}
-
-function moduleJson({ id, name, category, source, pins, internal, wu, hu, electrical, shapes, inside = true }) {
-  const m = { format: 'circuitoon-module/1', id, version: 1, name, category, source, pins }
-  if (internal) m.internal = internal
-  m.size = { w: wu, h: hu }
-  m.electrical = electrical
-  // Header and terminal parts draw pin names inside the body beside each pin, like silkscreen.
-  m.art = inside ? { w: wu * 10, h: hu * 10, pinLabels: 'inside', shapes } : { w: wu * 10, h: hu * 10, shapes }
-  return m
 }
 
 // =============================================================================================
@@ -134,7 +88,7 @@ function moduleJson({ id, name, category, source, pins, internal, wu, hu, electr
     r(34, 86, 120, 10, RED_PCB, { outline: false, label: 'high/low level trigger', labelColor: '#FFFFFF', labelSize: 5 }),
   ]
   write('relay-module-1ch-5v.json', moduleJson({
-    id: 'relay-module-1ch-5v', name: 'Relay module 1 channel 5 V (SRD-05VDC, high/low trigger jumper)', category: 'Motors and actuators',
+    inside: true, id: 'relay-module-1ch-5v', name: 'Relay module 1 channel 5 V (SRD-05VDC, high/low trigger jumper)', category: 'Motors and actuators',
     source: 'https://www.amazon.com/dp/B00LW15A4W https://konnected.io/products/1-channel-5v-relay-module-with-high-low-level-trigger',
     pins: [...left.pins, ...right.pins], wu, hu, electrical: { model: 'relay', params: {} }, shapes,
   }))
@@ -168,7 +122,7 @@ function moduleJson({ id, name, category, source, pins, internal, wu, hu, electr
     r(72, 44, 36, 12, SERVO, { outline: false, label: 'SG90', labelColor: '#FFFFFF', labelSize: 8 }),
   ]
   write('servo-sg90.json', moduleJson({
-    id: 'servo-sg90', name: 'Micro servo SG90', category: 'Motors and actuators',
+    inside: true, id: 'servo-sg90', name: 'Micro servo SG90', category: 'Motors and actuators',
     source: 'https://handsontec.com/dataspecs/motor_fan/SG90-Servo.pdf https://www.airsupplylab.com/embedded-info/emb_hardware-information/emb-hwinfo_tower-pro-sg90-micro-servo.html',
     pins: left.pins, wu, hu, electrical: { model: 'servo', params: {} }, shapes,
   }))
@@ -222,7 +176,7 @@ function moduleJson({ id, name, category, source, pins, internal, wu, hu, electr
     r(bottom.pos.ENB - 4, H - 56, 8, 14, BLACK, { radius: 1 }),
   ]
   write('l298n-module.json', moduleJson({
-    id: 'l298n-module', name: 'L298N dual H-bridge motor driver module', category: 'Motors and actuators',
+    inside: true, id: 'l298n-module', name: 'L298N dual H-bridge motor driver module', category: 'Motors and actuators',
     source: 'https://lastminuteengineers.com/l298n-dc-stepper-driver-arduino-tutorial/ https://randomnerdtutorials.com/esp32-dc-motor-l298n-motor-driver-control-speed-direction/',
     pins: [...left.pins, ...right.pins, ...bottom.pins], wu, hu, electrical: { model: 'motor_driver', params: {} }, shapes,
   }))
@@ -264,7 +218,7 @@ function moduleJson({ id, name, category, source, pins, internal, wu, hu, electr
     r(12, 82, 8, 5, SMD, { radius: 1, outline: false }),
   ]
   write('rfm95-lora-breakout.json', moduleJson({
-    id: 'rfm95-lora-breakout', name: 'LoRa RFM95W breakout (Adafruit 3072, 868/915 MHz)', category: 'Communication',
+    inside: true, id: 'rfm95-lora-breakout', name: 'LoRa RFM95W breakout (Adafruit 3072, 868/915 MHz)', category: 'Communication',
     source: 'https://learn.adafruit.com/adafruit-rfm69hcw-and-rfm96-rfm95-rfm98-lora-packet-padio-breakouts/pinouts https://www.adafruit.com/product/3072 https://cdn-shop.adafruit.com/970x728/3072-14.jpg',
     pins: [...top.pins, ...bottom.pins], wu, hu, electrical: { model: 'radio', params: {} }, shapes,
   }))
@@ -299,8 +253,10 @@ function moduleJson({ id, name, category, source, pins, internal, wu, hu, electr
     ...fets,
   ]
   write('level-shifter-bss138-4ch.json', moduleJson({
-    id: 'level-shifter-bss138-4ch', name: 'Logic level shifter 4 channel (BSS138, SparkFun layout)', category: 'Communication',
+    inside: true, id: 'level-shifter-bss138-4ch', name: 'Logic level shifter 4 channel (BSS138, SparkFun layout)', category: 'Communication',
     source: 'https://learn.sparkfun.com/tutorials/bi-directional-logic-level-converter-hookup-guide/all https://cdn.sparkfun.com/assets/f/d/5/8/4/526842ae757b7f5c108b456b.png https://www.fredscave.com/interface/int-04logic-level-shifter.html',
     pins: [...top.pins, ...bottom.pins], internal: [['GND', 'GND 2']], wu, hu, electrical: { model: 'level_shifter', params: {} }, shapes,
   }))
 }
+
+finish('gen-outputs.mjs')
