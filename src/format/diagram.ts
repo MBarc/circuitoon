@@ -1,7 +1,7 @@
 // Diagram format (circuitoon-diagram/1): types plus the wire geometry the renderer needs.
 
 import { type ModuleDef, isBoard, layoutModule, validateModule, isObj, isNum } from './module.ts'
-import { type Pt, type Rect, type Rotation, type WorldPin, bodyRect, simplify, worldPins } from './geometry.ts'
+import { type Pt, type Rect, type Rotation, type WorldPin, bodyRect, simplify, toWorld, worldPins } from './geometry.ts'
 import { addToOccupancy, Occupancy, routeOrthogonal } from './router.ts'
 import { PRIMARY_PARAM_NAMES } from './values.ts'
 import { manualRouteBlocked, tidy } from './wireEdit.ts'
@@ -109,6 +109,30 @@ function endpoint(d: Diagram, ep: Endpoint) {
   const part = d.parts.find((p) => p.uid === ep.part)
   const mod = part && moduleOf(d, part.module)
   return (part && mod && worldPins(part, mod).find((p) => p.name === ep.pin)) || null
+}
+
+/** A wire end in world px: where the wire attaches, and the way it must leave (null: any way, a hole). */
+export interface ResolvedEnd {
+  end: Pt
+  dir: Pt | null
+}
+
+/**
+ * Resolves a connection end. A pin resolves to its stub tip and outward direction; a hole group
+ * resolves to the center of hole `ep.hole` (default 0), which a wire may leave in any direction.
+ * Null when the part, pin, group or hole does not exist.
+ */
+export function resolveEndpoint(d: Diagram, ep: Endpoint): ResolvedEnd | null {
+  const part = d.parts.find((p) => p.uid === ep.part)
+  const mod = part && moduleOf(d, part.module)
+  if (!part || !mod) return null
+  const group = mod.holes?.find((g) => g.name === ep.pin)
+  if (group) {
+    const local = group.at[ep.hole ?? 0]
+    return local ? { end: toWorld(part, layoutModule(mod), { x: local[0], y: local[1] }), dir: null } : null
+  }
+  const pin = worldPins(part, mod).find((p) => p.name === ep.pin)
+  return pin ? { end: pin.end, dir: pin.dir } : null
 }
 
 /**

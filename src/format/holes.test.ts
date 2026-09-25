@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { isBoard, validateModule, type ModuleDef } from './module.ts'
-import { serializeDiagram, validateDiagram, type Diagram } from './diagram.ts'
+import { resolveEndpoint, serializeDiagram, validateDiagram, type Diagram } from './diagram.ts'
+import { plugPoints, worldHoles } from './geometry.ts'
 
 /** A 100 x 60 test board (pivot 50, 30): nine vertical strips s1..s9 at x = 10..90, five holes each at y = 10..50. */
 const bb: ModuleDef = {
@@ -122,5 +123,54 @@ describe('hole endpoints and mounts in diagrams', () => {
       'parts[2].mount.board: part "p" is not a board (a module with holes and "obstacle": false)',
       'parts[3].mount.board: a part cannot be mounted on itself',
     ])
+  })
+})
+
+describe('hole geometry', () => {
+  it('places hole centers in world px, in list order', () => {
+    const [s1] = worldHoles({ x: 100, y: 100 }, bb)
+    expect(s1.name).toBe('s1')
+    expect(s1.style).toBe('hole')
+    expect(s1.at).toEqual([{ x: 110, y: 110 }, { x: 110, y: 120 }, { x: 110, y: 130 }, { x: 110, y: 140 }, { x: 110, y: 150 }])
+  })
+  it('turns holes with the board', () => {
+    // local (10, 10) is (-40, -20) from the pivot (50, 30); a quarter turn makes it (20, -40)
+    expect(worldHoles({ x: 100, y: 100, rotation: 90 }, bb)[0].at[0]).toEqual({ x: 170, y: 90 })
+  })
+  it('has no holes for a module without hole groups', () => {
+    expect(worldHoles({ x: 0, y: 0 }, two)).toEqual([])
+  })
+  it('plugs each pin in at its edge point, rotated with the part', () => {
+    expect(plugPoints({ x: 110, y: 100 }, two)).toEqual([{ pin: 'R', at: { x: 150, y: 120 } }, { pin: 'L', at: { x: 110, y: 120 } }])
+    expect(plugPoints({ x: 0, y: 0, rotation: 90 }, two)).toEqual([{ pin: 'R', at: { x: 10, y: 30 } }, { pin: 'L', at: { x: 10, y: -10 } }])
+  })
+  it('gives a bus pin no plug point', () => {
+    const rail: ModuleDef = {
+      format: 'circuitoon-module/1', id: 'rail', name: 'Rail',
+      pins: [{ name: 'bus', side: 'top', bus: { length: 5 } }, { name: 'X', side: 'bottom' }],
+    }
+    expect(plugPoints({ x: 0, y: 0 }, rail).map((p) => p.pin)).toEqual(['X'])
+  })
+})
+
+describe('resolveEndpoint', () => {
+  const d = (): Diagram => ({
+    format: 'circuitoon-diagram/1', title: 't', modules: { bb, two },
+    parts: [{ uid: 'b', designator: 'BB1', module: 'bb', x: 100, y: 100, rotation: 90 }, { uid: 'q', designator: 'R1', module: 'two', x: 0, y: 0 }],
+    connections: [],
+  })
+  it('resolves a hole to its rotated center with a free direction', () => {
+    expect(resolveEndpoint(d(), { part: 'b', pin: 's1', hole: 0 })).toEqual({ end: { x: 170, y: 90 }, dir: null })
+  })
+  it('treats a missing hole index as hole 0', () => {
+    expect(resolveEndpoint(d(), { part: 'b', pin: 's1' })).toEqual({ end: { x: 170, y: 90 }, dir: null })
+  })
+  it('is null for a hole past the end, a missing group or a missing part', () => {
+    expect(resolveEndpoint(d(), { part: 'b', pin: 's1', hole: 5 })).toBeNull()
+    expect(resolveEndpoint(d(), { part: 'b', pin: 'nope' })).toBeNull()
+    expect(resolveEndpoint(d(), { part: 'zz', pin: 's1' })).toBeNull()
+  })
+  it('resolves a pin to its stub tip and direction', () => {
+    expect(resolveEndpoint(d(), { part: 'q', pin: 'R' })).toEqual({ end: { x: 48, y: 20 }, dir: { x: 1, y: 0 } })
   })
 })
