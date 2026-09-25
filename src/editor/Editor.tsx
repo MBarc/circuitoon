@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef } from 'react'
 import { EditorStore } from './store.ts'
 import { Canvas } from './Canvas.tsx'
+import { Inspector } from './Inspector.tsx'
 import { LibraryPanel } from './LibraryPanel.tsx'
 import { deleteSelection, EMPTY_SELECTION, rotateParts } from './ops.ts'
 import { buttonLed } from '../samples/buttonLed.ts'
@@ -46,7 +47,7 @@ export function Editor() {
       </header>
       <LibraryPanel onAdd={(id) => canvasApi.current?.addAtCenter(id)} />
       <Canvas store={store} onReady={(api) => (canvasApi.current = api)} />
-      <aside className="inspector" aria-label="Properties" />
+      <Inspector store={store} />
     </div>
   )
 }
