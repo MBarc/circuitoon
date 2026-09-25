@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { netlist, netPoints, nodeKey, wireClass } from './netlist.ts'
+import { netlist, netPoints, nodeKey } from './netlist.ts'
 import type { Diagram } from './diagram.ts'
 import type { ModuleDef } from './module.ts'
 
@@ -118,15 +118,5 @@ describe('netPoints', () => {
   })
   it('lights just the strip itself when nothing connects to it', () => {
     expect(netPoints(netSheet(), { part: 'b', pin: 's2' })).toHaveLength(5)
-  })
-})
-
-describe('wireClass', () => {
-  it('marks a broken wire and leaves a good one alone', () => {
-    const n = netlist(netSheet())
-    expect(n.broken).toEqual([])
-    expect(wireClass(n.broken, 'w1')).toBeUndefined()
-    expect(wireClass(['w1'], 'w1')).toBe('wire-broken')
-    expect(wireClass(['w1'], 'w2')).toBeUndefined()
   })
 })

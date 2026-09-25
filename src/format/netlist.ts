@@ -84,6 +84,3 @@ export function netPoints(d: Diagram, ep: Endpoint, n: Netlist = netlist(d)): Pt
   }
   return out
 }
-
-/** CSS class for a wire the netlist could not join into a net (a broken endpoint), so it renders visibly broken. */
-export const wireClass = (broken: string[], uid: string): string | undefined => (broken.includes(uid) ? 'wire-broken' : undefined)

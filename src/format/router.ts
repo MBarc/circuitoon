@@ -24,6 +24,9 @@ export interface RouteOptions {
   parallelCost?: number
 }
 
+/** Default gap kept between a routed wire and a part body, in px. */
+export const CLEARANCE = 4
+
 const H_BIT = 1
 const V_BIT = 2
 
@@ -285,17 +288,32 @@ const STEP_Y = [0, 1, 0, -1]
 
 export function routeOrthogonal(req: RouteRequest, opts: RouteOptions = {}): Pt[] | null {
   const g = opts.grid ?? 10
-  const clearance = opts.clearance ?? 4
+  const clearance = opts.clearance ?? CLEARANCE
   const bendCost = opts.bendCost ?? 30
   const parallelCost = opts.parallelCost ?? 40
   const start = req.fromDir ? leave(req.from, req.fromDir, g) : onGrid(req.from, g)
   const goal = req.toDir ? leave(req.to, req.toDir, g) : onGrid(req.to, g)
   for (const margin of opts.margins ?? [60, 240]) {
     const path = search(start, goal, req, g, clearance, bendCost, parallelCost, margin)
-    if (path) return simplify([req.from, ...path, req.to])
+    if (path) {
+      // A tip off the grid (a part loaded between grid lines) meets the first and last grid node
+      // with a corner, turned so the wire still leaves and enters along the stub.
+      const first = path[0]
+      const last = path[path.length - 1]
+      const head = skew(req.from, first) ? [req.fromDir?.x === 0 ? { x: req.from.x, y: first.y } : { x: first.x, y: req.from.y }] : []
+      const tail = skew(last, req.to) ? [req.toDir?.x === 0 ? { x: req.to.x, y: last.y } : { x: last.x, y: req.to.y }] : []
+      return simplify([req.from, ...head, ...path, ...tail, req.to])
+    }
   }
   return null
 }
+
+/** True when a and b differ on both axes, so a straight line between them would be a diagonal. */
+const skew = (a: Pt, b: Pt) => a.x !== b.x && a.y !== b.y
+
+/** True when `p` lies inside `r` grown by `clearance` on every side (the cells the router blocks). */
+export const inGrown = (p: Pt, r: Rect, clearance = CLEARANCE) =>
+  p.x >= r.x - clearance && p.x <= r.x + r.w + clearance && p.y >= r.y - clearance && p.y <= r.y + r.h + clearance
 
 function search(
   start: Pt,

@@ -2,7 +2,7 @@
 
 import { type ModuleDef, isBoard, layoutModule, validateModule, isObj, isNum } from './module.ts'
 import { type Pt, type Rect, type Rotation, bodyRect, simplify, toWorld, worldPins } from './geometry.ts'
-import { addToOccupancy, Occupancy, routeOrthogonal } from './router.ts'
+import { addToOccupancy, inGrown, Occupancy, routeOrthogonal } from './router.ts'
 import { PRIMARY_PARAM_NAMES } from './values.ts'
 import { manualRouteBlocked, tidy } from './wireEdit.ts'
 import { mountIssues } from './breadboard.ts'
@@ -85,7 +85,7 @@ export function wireWidth(gauge = 22): number {
 
 export interface WireRoute {
   points: Pt[]
-  /** True when no clear route exists and the wire is drawn as a straight fallback. */
+  /** True when no clear route exists and the wire is drawn as an orthogonal L fallback (dashed). */
   blocked: boolean
 }
 /** Route per connection uid; null means an endpoint names a missing part or pin. */
@@ -161,16 +161,36 @@ function manualPoints(a: ResolvedEnd, b: ResolvedEnd, route: [number, number][])
   return tidy([a.end, ...head, ...bends, ...tail, b.end])
 }
 
+/**
+ * The obstacles one wire must avoid: all of them, minus any body over one of its hole ends. A
+ * hole under a part (a leg's hole, a hole under a DIP body) has no exit direction and every grid
+ * node around it is inside that body, so the wire may leave through the part covering it, as a
+ * real jumper slides out from under one. Only this wire's obstacle list changes; every other
+ * wire still routes around the part. A pin end always has an exit (its stub), so it drops nothing.
+ */
+function obstaclesFor(obstacles: Rect[], a: ResolvedEnd, b: ResolvedEnd): Rect[] {
+  const free = [a, b].filter((e) => e.dir === null).map((e) => e.end)
+  if (!free.length) return obstacles
+  return obstacles.filter((r) => !free.some((p) => inGrown(p, r)))
+}
+
+/** Stand-in for a wire with no clear route: an L that turns horizontally first, like manualPoints' corner. */
+function blockedPoints(a: ResolvedEnd, b: ResolvedEnd): Pt[] {
+  return tidy([a.end, { x: b.end.x, y: a.end.y }, b.end])
+}
+
 export function routeWire(d: Diagram, c: Connection, obstacles: Rect[], occupied?: Occupancy): WireRoute | null {
   const a = resolveEndpoint(d, c.from)
   const b = resolveEndpoint(d, c.to)
   if (!a || !b) return null
+  const own = obstaclesFor(obstacles, a, b)
   if (c.route) {
     const points = manualPoints(a, b, c.route)
-    return { points, blocked: manualRouteBlocked(points, obstacles) }
+    return { points, blocked: manualRouteBlocked(points, own) }
   }
-  const points = routeOrthogonal({ from: a.end, fromDir: a.dir, to: b.end, toDir: b.dir, obstacles, occupied })
-  return points ? { points, blocked: false } : { points: [a.end, b.end], blocked: true }
+  const points = routeOrthogonal({ from: a.end, fromDir: a.dir, to: b.end, toDir: b.dir, obstacles: own, occupied })
+  // Never a diagonal: an unroutable wire is still drawn orthogonal, dashed, and flagged.
+  return points ? { points, blocked: false } : { points: blockedPoints(a, b), blocked: true }
 }
 
 /**

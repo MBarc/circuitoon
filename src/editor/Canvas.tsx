@@ -8,7 +8,7 @@ import { Part, INK } from '../render/Part.tsx'
 import { LegDots, TakenHoles } from '../render/Boards.tsx'
 import { WireLabel } from '../render/WireLabel.tsx'
 import { addPart, addWire, EMPTY_SELECTION, moveParts, reconnectWire, sameEndpoint, setWireRoute, settleDrop, settleMounts, settleSeats, settlingOf, updateWire, withMounted } from './ops.ts'
-import { netlist, netPoints, wireClass } from '../format/netlist.ts'
+import { netlist, netPoints } from '../format/netlist.ts'
 import { bendHandleAt, insertBend, isOrthogonal, moveSegment, removeBend, segmentHandleAt, segmentsOf, toRoute, type Axis } from '../format/wireEdit.ts'
 import { modulesById } from '../library.ts'
 import { bodyRect, worldPins } from '../format/geometry.ts'
@@ -206,8 +206,8 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
     if (s.diagram.connections.some((c) => c.uid === uid)) store.commit(setWireRoute(s.diagram, uid, toRoute(points)))
   }
   /**
-   * The routed polyline of a wire that can be reshaped by hand, or null. A wire that cannot be
-   * routed is drawn as a straight diagonal; it has no runs to move or bends to edit.
+   * The routed polyline of a wire that can be reshaped by hand, or null. Every route is orthogonal
+   * (a blocked one is a dashed L the user can reshape clear); this guards against a diagonal anyway.
    */
   function editablePoints(uid: string): Pt[] | null {
     const points = routes.get(uid)?.points
@@ -254,6 +254,9 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
     if (active instanceof HTMLElement && active !== document.body) active.blur()
     // One gesture at a time: a second finger or button does not start another drag.
     if (drag) return
+    // A press starts a gesture (or a selection change); the net lit by hovering goes out, and the
+    // next pointer move after the gesture lights whatever is under the pointer then.
+    setHover(null)
     if (e.button !== 0 && e.button !== 1) return
     const target = e.target as Element
     const pointer = e.pointerId
@@ -415,6 +418,7 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
     }
     if (drag.kind !== 'pan') store.setGesture(false)
     setDrag(null)
+    setHover(null)
   }
   function onPointerCancel(e: React.PointerEvent<SVGSVGElement>) {
     if (!drag || e.pointerId !== drag.pointer) return
@@ -423,6 +427,7 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
     if (drag.kind === 'segment') store.cancel()
     if (drag.kind !== 'pan') store.setGesture(false)
     setDrag(null)
+    setHover(null)
   }
 
   // Escape abandons a wire, part or segment drag. For parts and segments, the editor's key
@@ -433,6 +438,7 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
       if (e.key !== 'Escape') return
       store.setGesture(false)
       setDrag(null)
+      setHover(null)
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
@@ -504,12 +510,11 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
             const dash = blocked ? '6 5' : undefined
             const selected = selection.wires.includes(conn.uid)
             const dimmed = drag?.kind === 'reconnect' && drag.uid === conn.uid
-            const broken = wireClass(nl.broken, conn.uid)
             return (
               <g key={conn.uid} data-wire={conn.uid} opacity={dimmed ? 0.3 : undefined}>
                 {selected && <path d={d} stroke="var(--focus)" strokeOpacity={0.35} strokeWidth={w + 10} />}
-                <path d={d} className={broken} stroke={INK} strokeWidth={w + 2.2} strokeDasharray={dash} />
-                <path d={d} className={broken} stroke={wireColor(conn.color)} strokeWidth={w} strokeDasharray={dash} />
+                <path d={d} stroke={INK} strokeWidth={w + 2.2} strokeDasharray={dash} />
+                <path d={d} stroke={wireColor(conn.color)} strokeWidth={w} strokeDasharray={dash} />
                 <path d={d} className="wire-hit" strokeWidth={Math.max(12, w + 8)} />
               </g>
             )
@@ -517,26 +522,22 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
         </g>
         {/* A connection the netlist could not join (a missing part, pin, group or hole) has no
             route to draw, but a short dashed red stub at whichever end still resolves lets a
-            user find and repair it instead of a wire silently vanishing from the sheet. */}
+            user find and repair it instead of a wire silently vanishing from the sheet. It carries
+            data-wire like any wire, so a click selects it and Delete removes the connection. */}
         {diagram.connections.map((c) => {
           if (!nl.broken.includes(c.uid)) return null
           const at = brokenStub(diagram, c)
           if (!at) return null
           const dir = at.dir ?? { x: 0, y: -1 }
           const tip = { x: at.end.x + dir.x * 14, y: at.end.y + dir.y * 14 }
+          const d = `M${at.end.x} ${at.end.y}L${tip.x} ${tip.y}`
           return (
-            <path
-              key={c.uid}
-              data-wire={c.uid}
-              className="wire-broken"
-              d={`M${at.end.x} ${at.end.y}L${tip.x} ${tip.y}`}
-              fill="none"
-              strokeWidth={2.5}
-              strokeLinecap="round"
-              pointerEvents="none"
-            >
+            <g key={c.uid} data-wire={c.uid} fill="none" strokeLinecap="round">
               <title>{`${c.uid}: cannot resolve both ends`}</title>
-            </path>
+              {selection.wires.includes(c.uid) && <path d={d} stroke="var(--focus)" strokeOpacity={0.35} strokeWidth={12} />}
+              <path className="wire-broken" d={d} strokeWidth={2.5} />
+              <path className="wire-hit" d={d} strokeWidth={12} />
+            </g>
           )
         })}
         {wires.flatMap(({ conn, ends }) => ends.map((e, i) => <circle key={`${conn.uid}-${i}`} cx={e.x} cy={e.y} r={2.4} fill={INK} />))}
@@ -589,7 +590,7 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
             // Handles index the routed geometry the edits work on (with its collinear bends); the
             // segment bars are drawn on the drawn path, which may be nudged a few px clear of
             // another wire.
-            // A wire drawn as a straight diagonal (it cannot be routed) gets no segment or bend handles.
+            // A polyline with a diagonal step (never routed, only guarded) gets no segment or bend handles.
             const pts = editablePoints(w.conn.uid) ?? []
             const segHandles = segmentsOf(pts)
               .filter((sg) => Math.abs(sg.b.x - sg.a.x) + Math.abs(sg.b.y - sg.a.y) >= MIN_HANDLE_SEGMENT)

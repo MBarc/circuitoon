@@ -1,7 +1,7 @@
 // Hand editing of a wire's polyline: shift a straight run, add a bend, remove a bend. Every
 // function is pure, takes the full polyline (pin stub tip to pin stub tip) and returns a new one
-// that stays horizontal-or-vertical everywhere. A polyline with a diagonal step (the straight
-// fallback drawn for a wire that cannot be routed) comes back unchanged: there is no run to edit. Collinear bends the user added are kept, so a
+// that stays horizontal-or-vertical everywhere. A polyline with a diagonal step (routing never
+// produces one, but a hand-edited file might) comes back unchanged: there is no run to edit. Collinear bends the user added are kept, so a
 // straight run can be split and its halves moved on their own.
 import { GRID } from './module.ts'
 import type { Pt, Rect } from './geometry.ts'
