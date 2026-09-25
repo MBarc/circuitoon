@@ -49,6 +49,12 @@ describe('ops', () => {
       expect(designatorPrefix(board)).toBe('U')
     }
   })
+  it('gives coin cell and other battery ids the BT prefix', () => {
+    for (const id of ['battery-cr2032', 'battery-cr2025', 'battery-cr2016', 'battery-cr1220', 'battery-lr44', 'battery-aa', 'battery-aaa', 'battery-holder-2xaa']) {
+      const battery: ModuleDef = { format: 'circuitoon-module/1', id, name: id, pins: [{ name: '-', side: 'left' }, { name: '+', side: 'right' }] }
+      expect(designatorPrefix(battery)).toBe('BT')
+    }
+  })
   it('moves and rotates only the given parts', () => {
     const d = rotateParts(moveParts(twoResistors(), ['p2'], 20, -10), ['p2'])
     expect(d.parts[0]).toMatchObject({ x: 0, y: 0, rotation: 0 })
