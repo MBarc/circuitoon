@@ -200,8 +200,8 @@ function leave(p: Pt, d: Pt, g: number): Pt {
   return { x: snap(p.x, d.x), y: snap(p.y, d.y) }
 }
 
-/** Nearest grid point to `p` (a hole center is already on the grid). */
-const onGrid = (p: Pt, g: number): Pt => ({ x: Math.round(p.x / g) * g, y: Math.round(p.y / g) * g })
+/** Nearest grid point to `p` (a hole center is already on the grid); where a free end's search starts. */
+export const onGrid = (p: Pt, g: number): Pt => ({ x: Math.round(p.x / g) * g, y: Math.round(p.y / g) * g })
 
 /**
  * Binary min-heap of (state, priority) pairs in typed arrays that grow as needed. One instance is

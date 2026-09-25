@@ -50,6 +50,17 @@ describe('hole ends under a part', () => {
     expect(r.blocked).toBe(false)
     expect(orthogonal(r.points)).toBe(true)
   })
+  it('treats a hole on an off-grid board as covered where the router starts, its grid node', () => {
+    // Board 5 px left of the grid: c1-top hole 0 is at (25, 60), just outside the resistor body
+    // grown by the clearance (x from 26), but its grid node (30, 60) is inside it.
+    const d = sheet({ module: load('resistor'), x: 30, y: 40 }, { pin: 'c1-top', hole: 0 })
+    d.parts[0] = { ...d.parts[0], x: -5 }
+    d.parts[1] = { ...d.parts[1], mount: undefined }
+    expect(resolveEndpoint(d, d.connections[0].from)!.end).toEqual({ x: 25, y: 60 })
+    const r = computeRoutes(d).get('w')!
+    expect(r.blocked).toBe(false)
+    expect(orthogonal(r.points)).toBe(true)
+  })
   it('still routes around a part that covers neither end', () => {
     const d = sheet({ module: load('resistor'), x: 30, y: 40 }, { pin: 'c10-top', hole: 0 })
     const r = computeRoutes(d).get('w')!
@@ -92,6 +103,38 @@ describe('no diagonal ever', () => {
     const routes = [...computeRoutes({ format: 'circuitoon-diagram/1', title: 't', modules: { two }, parts, connections }).values()]
     expect(routes.some((r) => r?.blocked)).toBe(true)
     for (const r of routes) expect(orthogonal(r!.points)).toBe(true)
+  })
+  it('starts a blocked wire from a top pin vertically, along its stub', () => {
+    const vert: ModuleDef = { format: 'circuitoon-module/1', id: 'vert', name: 'Vert', pins: [{ name: 'T', side: 'top' }, { name: 'B', side: 'bottom' }] }
+    const d: Diagram = {
+      format: 'circuitoon-diagram/1', title: 't', modules: { vert, two },
+      parts: [
+        { uid: 'a', designator: 'A', module: 'vert', x: 0, y: 100 },
+        { uid: 'b', designator: 'B', module: 'two', x: 200, y: 0 },
+        // Sits right on a's T stub, so the router cannot leave the pin.
+        { uid: 'c', designator: 'C', module: 'two', x: 0, y: 60 },
+      ],
+      connections: [{ uid: 'w', from: { part: 'a', pin: 'T' }, to: { part: 'b', pin: 'L' } }],
+    }
+    const r = routeWire(d, d.connections[0], partObstacles(d))!
+    const a0 = resolveEndpoint(d, d.connections[0].from)!.end
+    const b0 = resolveEndpoint(d, d.connections[0].to)!.end
+    expect(r.blocked).toBe(true)
+    expect(r.points).toEqual([a0, { x: a0.x, y: b0.y }, b0])
+  })
+  it('puts a corner between stored bends that do not line up', () => {
+    // A loaded file whose second bend is off both axes of the first.
+    const d: Diagram = {
+      format: 'circuitoon-diagram/1', title: 't', modules: { two },
+      parts: [
+        { uid: 'a', designator: 'A', module: 'two', x: 0, y: 0 },
+        { uid: 'b', designator: 'B', module: 'two', x: 200, y: 40 },
+      ],
+      connections: [{ uid: 'w', from: { part: 'a', pin: 'R' }, to: { part: 'b', pin: 'L' }, route: [[80, 20], [120, 60]] }],
+    }
+    const r = computeRoutes(d).get('w')!
+    expect(r.points).toEqual([{ x: 48, y: 20 }, { x: 80, y: 20 }, { x: 120, y: 20 }, { x: 120, y: 60 }, { x: 192, y: 60 }])
+    expect(orthogonal(r.points)).toBe(true)
   })
   it('joins an off-grid pin tip to the grid without a diagonal', () => {
     // A tip between grid lines on both axes (a part loaded off the grid).

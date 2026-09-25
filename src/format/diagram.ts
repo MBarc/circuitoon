@@ -1,8 +1,8 @@
 // Diagram format (circuitoon-diagram/1): types plus the wire geometry the renderer needs.
 
-import { type ModuleDef, isBoard, layoutModule, validateModule, isObj, isNum } from './module.ts'
+import { GRID, type ModuleDef, isBoard, layoutModule, validateModule, isObj, isNum } from './module.ts'
 import { type Pt, type Rect, type Rotation, bodyRect, simplify, toWorld, worldPins } from './geometry.ts'
-import { addToOccupancy, inGrown, Occupancy, routeOrthogonal } from './router.ts'
+import { addToOccupancy, inGrown, Occupancy, onGrid, routeOrthogonal } from './router.ts'
 import { PRIMARY_PARAM_NAMES } from './values.ts'
 import { manualRouteBlocked, tidy } from './wireEdit.ts'
 import { mountIssues } from './breadboard.ts'
@@ -144,8 +144,10 @@ export function brokenStub(d: Diagram, c: Connection): ResolvedEnd | null {
  * A hand-routed wire keeps its stored bends; only its end segments stretch to reach a moved
  * pin. Where a pin tip and its neighbouring bend no longer line up, a corner is added so the
  * wire still leaves the pin along its stub, and every segment stays horizontal or vertical.
- * Collinear bends are kept (the user may have split a run to move its halves separately), so
- * this polyline is also what the editing handles work on; only spikes and repeats are dropped.
+ * Two stored bends that do not line up (a hand-edited file) get a corner between them too,
+ * horizontal first. Collinear bends are kept (the user may have split a run to move its halves
+ * separately), so this polyline is also what the editing handles work on; only spikes and
+ * repeats are dropped.
  */
 function manualPoints(a: ResolvedEnd, b: ResolvedEnd, route: [number, number][]): Pt[] {
   const bends = route.map(([x, y]) => ({ x, y }))
@@ -158,7 +160,15 @@ function manualPoints(a: ResolvedEnd, b: ResolvedEnd, route: [number, number][])
   // No bends left (every one removed by hand): still one corner, never a diagonal.
   const head = corner(a, bends.length ? bends[0] : b.end)
   const tail = bends.length ? corner(b, bends[bends.length - 1]) : []
-  return tidy([a.end, ...head, ...bends, ...tail, b.end])
+  const pts = [a.end, ...head, ...bends, ...tail, b.end]
+  const out: Pt[] = [pts[0]]
+  for (let i = 1; i < pts.length; i++) {
+    const p = pts[i - 1]
+    const q = pts[i]
+    if (p.x !== q.x && p.y !== q.y) out.push({ x: q.x, y: p.y })
+    out.push(q)
+  }
+  return tidy(out)
 }
 
 /**
@@ -169,14 +179,20 @@ function manualPoints(a: ResolvedEnd, b: ResolvedEnd, route: [number, number][])
  * wire still routes around the part. A pin end always has an exit (its stub), so it drops nothing.
  */
 function obstaclesFor(obstacles: Rect[], a: ResolvedEnd, b: ResolvedEnd): Rect[] {
-  const free = [a, b].filter((e) => e.dir === null).map((e) => e.end)
+  // The router starts a hole end at its grid node, so that is the point a body must cover (a
+  // board placed off the grid has its holes between grid lines).
+  const free = [a, b].filter((e) => e.dir === null).map((e) => onGrid(e.end, GRID))
   if (!free.length) return obstacles
   return obstacles.filter((r) => !free.some((p) => inGrown(p, r)))
 }
 
-/** Stand-in for a wire with no clear route: an L that turns horizontally first, like manualPoints' corner. */
+/**
+ * Stand-in for a wire with no clear route: an L leaving `a` along its stub (vertically from a top
+ * or bottom pin, horizontally from a side pin or a hole), like manualPoints' corner rule.
+ */
 function blockedPoints(a: ResolvedEnd, b: ResolvedEnd): Pt[] {
-  return tidy([a.end, { x: b.end.x, y: a.end.y }, b.end])
+  const vertical = a.dir !== null && a.dir.x === 0
+  return tidy([a.end, vertical ? { x: a.end.x, y: b.end.y } : { x: b.end.x, y: a.end.y }, b.end])
 }
 
 export function routeWire(d: Diagram, c: Connection, obstacles: Rect[], occupied?: Occupancy): WireRoute | null {
