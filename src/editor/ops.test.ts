@@ -48,4 +48,11 @@ describe('ops', () => {
     expect(d.parts[0].designator).toBe('RLIM')
     expect(d.connections[0]).toMatchObject({ color: '#123456', gauge: 18, label: 'LED+' })
   })
+  it('never reuses a uid that a broken wire still references', () => {
+    const d = { ...emptyDiagram(), connections: [{ uid: 'w1', from: { part: 'p1', pin: '1' }, to: { part: 'p9', pin: '2' } }] }
+    const r = addPart(d, resistor, 0, 0)
+    expect(r.uid).toBe('p2')
+    expect(r.diagram.parts.some((p) => p.uid === 'p1')).toBe(false)
+    expect(r.diagram.connections[0].from.part).toBe('p1')
+  })
 })

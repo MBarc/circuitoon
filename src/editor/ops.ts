@@ -16,7 +16,12 @@ export interface WireStyle {
 }
 
 export function nextUid(d: Diagram, prefix: 'p' | 'w' | 'a'): string {
-  const used = new Set([...d.parts.map((p) => p.uid), ...d.connections.map((c) => c.uid), ...(d.annotations ?? []).map((a) => a.uid)])
+  // Endpoint part uids count too: a wire to a missing part must not latch onto a new part.
+  const used = new Set([
+    ...d.parts.map((p) => p.uid),
+    ...d.connections.flatMap((c) => [c.uid, c.from.part, c.to.part]),
+    ...(d.annotations ?? []).map((a) => a.uid),
+  ])
   let n = 1
   while (used.has(prefix + n)) n++
   return prefix + n
