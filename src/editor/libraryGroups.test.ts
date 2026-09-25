@@ -7,23 +7,29 @@ function mod(id: string, name: string, category?: string): ModuleDef {
 }
 
 describe('groupLibrary', () => {
-  it('fixes the category order as Batteries, Power, Microcontrollers, Displays, Chips, Passives, Indicators, Switches', () => {
+  it('fixes the category order from Batteries through Connectors', () => {
     expect(CATEGORY_ORDER).toEqual([
-      'Batteries', 'Power', 'Microcontrollers', 'Displays', 'Chips', 'Passives', 'Indicators', 'Switches',
+      'Batteries', 'Power', 'Microcontrollers', 'Sensors', 'Communication', 'Displays', 'Motors and actuators',
+      'Chips', 'Semiconductors', 'Passives', 'Indicators', 'Switches', 'Connectors',
     ])
   })
 
-  it('orders known categories Batteries, Power, Passives, Switches, then leftovers alphabetically', () => {
+  it('orders known categories by CATEGORY_ORDER, then leftovers alphabetically', () => {
     const modules = [
       mod('switch-1', 'Toggle switch', 'Switches'),
       mod('sensor-1', 'Temperature sensor', 'Sensors'),
       mod('resistor', 'Resistor', 'Passives'),
       mod('regulator', '5V regulator', 'Power'),
       mod('battery-9v', '9V battery', 'Batteries'),
-      mod('actuator-1', 'Servo motor', 'Actuators'),
+      mod('servo-1', 'Servo motor', 'Motors and actuators'),
+      mod('terminal-1', 'Screw terminal', 'Connectors'),
+      mod('misc-1', 'Widget', 'Zeta'),
+      mod('misc-2', 'Gadget', 'Alpha'),
     ]
     const groups = groupLibrary(modules)
-    expect(groups.map((g) => g.category)).toEqual(['Batteries', 'Power', 'Passives', 'Switches', 'Actuators', 'Sensors'])
+    expect(groups.map((g) => g.category)).toEqual([
+      'Batteries', 'Power', 'Sensors', 'Motors and actuators', 'Passives', 'Switches', 'Connectors', 'Alpha', 'Zeta',
+    ])
   })
 
   it('omits a category from CATEGORY_ORDER that has no modules', () => {

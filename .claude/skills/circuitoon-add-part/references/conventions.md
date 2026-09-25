@@ -31,7 +31,7 @@ Art coordinates are px at 100% zoom, 10 px per grid unit, origin at the body's t
 - Leave one grid unit of margin at body corners (the layout adds it if the art does not).
 
 ## Categories (src/editor/libraryGroups.ts CATEGORY_ORDER)
-Batteries, Power, Microcontrollers, Displays, Chips, Passives, Indicators, Switches, then others alphabetically. Planned: "Prototyping" (breadboards) after Batteries; "Microcontrollers" becomes "Boards" once full-size Raspberry Pis land. Empty groups are hidden.
+Batteries, Power, Microcontrollers, Sensors, Communication, Displays, Motors and actuators, Chips, Semiconductors, Passives, Indicators, Switches, Connectors, then others alphabetically. Planned: "Prototyping" (breadboards) after Batteries; "Microcontrollers" becomes "Boards" once full-size Raspberry Pis land. Empty groups are hidden.
 
 ## Sources that have worked
 - Espressif esp-dev-kits user guides (DevKitC, S3-DevKitC-1) with J1/J2/J3 tables and pin-layout images.
