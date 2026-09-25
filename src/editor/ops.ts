@@ -35,6 +35,7 @@ const PREFIXES: [RegExp, string][] = [
   [/^led/, 'D'],
   [/button|switch/, 'S'],
   [/^battery/, 'BT'],
+  [/^(breadboard|power-rail)/, 'BB'],
   [/^(lcd|oled|tft)-/, 'DS'],
 ]
 

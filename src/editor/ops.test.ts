@@ -243,3 +243,11 @@ describe('hole endpoints', () => {
     expect(reconnectWire(next, w.uid, 'from', { part: 'p1', pin: 's2', hole: 2 })).toBeNull()
   })
 })
+
+describe('board designators', () => {
+  it('uses BB for breadboards and rail strips', () => {
+    const board = (id: string): ModuleDef => ({ format: 'circuitoon-module/1', id, name: id, pins: [] })
+    expect(designatorPrefix(board('breadboard-full'))).toBe('BB')
+    expect(designatorPrefix(board('power-rail-strip'))).toBe('BB')
+  })
+})
