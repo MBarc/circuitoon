@@ -3,7 +3,7 @@ import { addPart, addWire, nextUid, clearWireRoute, deleteSelection, sameEndpoin
 import { emptyDiagram, type Diagram } from '../format/diagram.ts'
 import type { ModuleDef } from '../format/module.ts'
 import { parseValue } from '../format/values.ts'
-import { plugsOf, seatOf } from '../format/breadboard.ts'
+import { mountIssues, plugsOf, seatOf } from '../format/breadboard.ts'
 
 const resistor: ModuleDef = {
   format: 'circuitoon-module/1', id: 'resistor', name: 'Resistor',
@@ -226,8 +226,17 @@ describe('hole endpoints', () => {
     return addPart(a.diagram, resistor, 200, 0).diagram
   }
   it('treats a missing hole as hole 0 when comparing ends', () => {
-    expect(sameEndpoint({ part: 'p1', pin: 's1' }, { part: 'p1', pin: 's1', hole: 0 })).toBe(true)
-    expect(sameEndpoint({ part: 'p1', pin: 's1', hole: 1 }, { part: 'p1', pin: 's1', hole: 0 })).toBe(false)
+    const d = boardAndResistor()
+    expect(sameEndpoint(d, { part: 'p1', pin: 's1' }, { part: 'p1', pin: 's1', hole: 0 })).toBe(true)
+    expect(sameEndpoint(d, { part: 'p1', pin: 's1', hole: 1 }, { part: 'p1', pin: 's1', hole: 0 })).toBe(false)
+  })
+  it('ignores a stray hole on a pin end: only a hole group has holes', () => {
+    const d = boardAndResistor()
+    expect(sameEndpoint(d, { part: 'p2', pin: '1', hole: 3 }, { part: 'p2', pin: '1' })).toBe(true)
+    expect(sameEndpoint(d, { part: 'p2', pin: '1', hole: 3 }, { part: 'p2', pin: '1', hole: 1 })).toBe(true)
+    expect(sameEndpoint(d, { part: 'p2', pin: '1', hole: 3 }, { part: 'p2', pin: '2' })).toBe(false)
+    const w = addWire(d, { part: 'p1', pin: 's1', hole: 0 }, { part: 'p2', pin: '1', hole: 2 }, style)!
+    expect(addWire(w.diagram, { part: 'p2', pin: '1' }, { part: 'p1', pin: 's1' }, style)).toBeNull()
   })
   it('allows wires into two holes of one strip, and refuses a repeat of the same hole', () => {
     const d = boardAndResistor()
@@ -446,6 +455,17 @@ describe('boards carry their parts', () => {
     expect(withMounted(d, ['self', 'x'])).toEqual(['x', 'self'])
     const r = rotateParts(d, ['b'])
     expect(r.parts.find((p) => p.uid === 'b2')).toBe(d.parts.find((p) => p.uid === 'b2'))
+  })
+  it('leaves a part whose mount plugs nothing (partial) where it is when its board moves', () => {
+    const d = loaded()
+    d.parts[1] = { ...d.parts[1], x: 15 }
+    expect(mountIssues(d)).toEqual([{ part: 'p1', board: 'b', reason: 'partial' }])
+    expect(withMounted(d, ['b'])).toEqual(['b'])
+    const moved = moveParts(d, ['b'], 30, 20)
+    expect(moved.parts[1]).toBe(d.parts[1])
+    expect(moved.parts[1]).toMatchObject({ x: 15, y: 0, mount: { board: 'b' } })
+    expect(mountIssues(moved)).toEqual([{ part: 'p1', board: 'b', reason: 'partial' }])
+    expect(rotateParts(d, ['b']).parts[1]).toBe(d.parts[1])
   })
   it('settles only the dragged parts a dragged board is not carrying', () => {
     const d = loaded()

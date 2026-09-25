@@ -2,7 +2,7 @@
 // so the store can keep old versions for undo.
 import { type Connection, type Diagram, type Endpoint, type PartInstance, moduleOf } from '../format/diagram.ts'
 import { isBoard, layoutModule, type ModuleDef } from '../format/module.ts'
-import { type Plug, type Seat, plugsOf, seatOf, seatOn } from '../format/breadboard.ts'
+import { type Plug, type Seat, mountIssues, plugsOf, seatOf, seatOn } from '../format/breadboard.ts'
 import { pivot, rotateVec, type Rotation } from '../format/geometry.ts'
 import { partValue } from '../format/values.ts'
 
@@ -60,22 +60,24 @@ export function addPart(d: Diagram, m: ModuleDef, x: number, y: number): { diagr
 }
 
 /**
- * The board part `p` is validly mounted on, looked up in `byUid`: a board, and not `p` itself.
- * A board mounted on a board (a hand-edited file) is never carried.
+ * The board part `p` is validly mounted on, looked up in `byUid`: a board, not `p` itself, and a
+ * mount with no `mountIssues` entry (every leg on a free hole). A board mounted on a board (a
+ * hand-edited file) is never carried; neither is a mount that plugs nothing, which stays where it is.
  */
-function carrierOf(d: Diagram, p: PartInstance, byUid: Map<string, PartInstance>): PartInstance | undefined {
-  if (!p.mount || p.mount.board === p.uid || isBoard(moduleOf(d, p.module))) return undefined
+function carrierOf(d: Diagram, p: PartInstance, byUid: Map<string, PartInstance>, invalid: Set<string>): PartInstance | undefined {
+  if (!p.mount || p.mount.board === p.uid || invalid.has(p.uid) || isBoard(moduleOf(d, p.module))) return undefined
   const board = byUid.get(p.mount.board)
   return board && isBoard(moduleOf(d, board.module)) ? board : undefined
 }
 
-/** Parts that a board among `uids` carries, mapped to that board. */
+/** Parts that a board among `uids` validly carries, mapped to that board. */
 function carriedBy(d: Diagram, uids: string[]): Map<string, PartInstance> {
   const s = new Set(uids)
   const byUid = new Map(d.parts.map((p) => [p.uid, p]))
+  const invalid = new Set(mountIssues(d).map((i) => i.part))
   const carried = new Map<string, PartInstance>()
   for (const p of d.parts) {
-    const board = p.mount && s.has(p.mount.board) ? carrierOf(d, p, byUid) : undefined
+    const board = p.mount && s.has(p.mount.board) ? carrierOf(d, p, byUid, invalid) : undefined
     if (board) carried.set(p.uid, board)
   }
   return carried
@@ -230,12 +232,23 @@ export function deleteSelection(d: Diagram, sel: Selection): Diagram {
   }
 }
 
-/** Same part, same pin or hole group, and the same hole (a missing hole is hole 0). */
-export const sameEndpoint = (a: Endpoint, b: Endpoint): boolean => a.part === b.part && a.pin === b.pin && (a.hole ?? 0) === (b.hole ?? 0)
+/** Whether `ep` names a hole group (its `hole` counts) rather than a pin (a stray `hole` means nothing). */
+function isHoleEnd(d: Diagram, ep: Endpoint): boolean {
+  const part = d.parts.find((p) => p.uid === ep.part)
+  const m = part && moduleOf(d, part.module)
+  return !!m?.holes?.some((g) => g.name === ep.pin)
+}
+
+/**
+ * Same part, same pin or hole group, and for a hole group the same hole (a missing hole is hole
+ * 0). A pin end ignores `hole`: only a hole group has holes.
+ */
+export const sameEndpoint = (d: Diagram, a: Endpoint, b: Endpoint): boolean =>
+  a.part === b.part && a.pin === b.pin && ((a.hole ?? 0) === (b.hole ?? 0) || !isHoleEnd(d, a))
 
 export function addWire(d: Diagram, from: Endpoint, to: Endpoint, style: WireStyle): { diagram: Diagram; uid: string } | null {
-  if (sameEndpoint(from, to)) return null
-  if (d.connections.some((c) => (sameEndpoint(c.from, from) && sameEndpoint(c.to, to)) || (sameEndpoint(c.from, to) && sameEndpoint(c.to, from)))) return null
+  if (sameEndpoint(d, from, to)) return null
+  if (d.connections.some((c) => (sameEndpoint(d, c.from, from) && sameEndpoint(d, c.to, to)) || (sameEndpoint(d, c.from, to) && sameEndpoint(d, c.to, from)))) return null
   const uid = nextUid(d, 'w')
   const wire: Connection = { uid, from, to, color: style.color, gauge: style.gauge }
   return { uid, diagram: { ...d, connections: [...d.connections, wire] } }
@@ -251,12 +264,12 @@ export function reconnectWire(d: Diagram, uid: string, end: 'from' | 'to', targe
   if (!wire) return null
   const current = wire[end]
   const other = wire[end === 'from' ? 'to' : 'from']
-  if (sameEndpoint(target, other)) return null
-  if (sameEndpoint(target, current)) return null
+  if (sameEndpoint(d, target, other)) return null
+  if (sameEndpoint(d, target, current)) return null
   const from = end === 'from' ? target : wire.from
   const to = end === 'to' ? target : wire.to
   const dup = d.connections.some(
-    (c) => c.uid !== uid && ((sameEndpoint(c.from, from) && sameEndpoint(c.to, to)) || (sameEndpoint(c.from, to) && sameEndpoint(c.to, from))),
+    (c) => c.uid !== uid && ((sameEndpoint(d, c.from, from) && sameEndpoint(d, c.to, to)) || (sameEndpoint(d, c.from, to) && sameEndpoint(d, c.to, from))),
   )
   if (dup) return null
   return {

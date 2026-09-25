@@ -374,7 +374,7 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
   function onPointerMove(e: React.PointerEvent<SVGSVGElement>) {
     if (!drag) {
       const over = endUnder(e)
-      setHover((h) => (h === over || (h && over && sameEndpoint(h, over)) ? h : over))
+      setHover((h) => (h === over || (h && over && sameEndpoint(store.getState().diagram, h, over)) ? h : over))
       return
     }
     if (e.pointerId !== drag.pointer) return
