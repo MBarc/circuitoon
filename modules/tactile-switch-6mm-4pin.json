@@ -1,0 +1,137 @@
+{
+  "format": "circuitoon-module/1",
+  "id": "tactile-switch-6mm-4pin",
+  "version": 1,
+  "name": "Tactile switch 6 mm (4-pin)",
+  "category": "Switches",
+  "source": "https://omronfs.omron.com/en_US/ecb/products/pdf/en-b3f.pdf https://www.sameskydevices.com/product/resource/ts13.pdf",
+  "pins": [
+    {
+      "name": "4",
+      "side": "left",
+      "type": "passive"
+    },
+    {
+      "spacer": true,
+      "side": "left"
+    },
+    {
+      "name": "2",
+      "side": "left",
+      "type": "passive"
+    },
+    {
+      "name": "3",
+      "side": "right",
+      "type": "passive"
+    },
+    {
+      "spacer": true,
+      "side": "right"
+    },
+    {
+      "name": "1",
+      "side": "right",
+      "type": "passive"
+    }
+  ],
+  "internal": [
+    [
+      "4",
+      "3"
+    ],
+    [
+      "2",
+      "1"
+    ]
+  ],
+  "size": {
+    "w": 6,
+    "h": 6
+  },
+  "electrical": {
+    "model": "switch",
+    "terminals": {
+      "a": "1",
+      "b": "3"
+    },
+    "params": {
+      "normallyOpen": {
+        "default": true
+      }
+    }
+  },
+  "states": [
+    "released",
+    "pressed"
+  ],
+  "art": {
+    "w": 60,
+    "h": 60,
+    "shapes": [
+      {
+        "type": "rect",
+        "x": 0,
+        "y": 18.5,
+        "w": 12,
+        "h": 3,
+        "fill": "#B8BEC7",
+        "radius": 1.5
+      },
+      {
+        "type": "rect",
+        "x": 0,
+        "y": 38.5,
+        "w": 12,
+        "h": 3,
+        "fill": "#B8BEC7",
+        "radius": 1.5
+      },
+      {
+        "type": "rect",
+        "x": 48,
+        "y": 18.5,
+        "w": 12,
+        "h": 3,
+        "fill": "#B8BEC7",
+        "radius": 1.5
+      },
+      {
+        "type": "rect",
+        "x": 48,
+        "y": 38.5,
+        "w": 12,
+        "h": 3,
+        "fill": "#B8BEC7",
+        "radius": 1.5
+      },
+      {
+        "type": "rect",
+        "x": 10,
+        "y": 10,
+        "w": 40,
+        "h": 40,
+        "fill": "#2B2F36",
+        "radius": 2
+      },
+      {
+        "type": "rect",
+        "x": 13,
+        "y": 13,
+        "w": 34,
+        "h": 34,
+        "fill": "#C9CED6",
+        "radius": 2
+      },
+      {
+        "type": "rect",
+        "x": 21,
+        "y": 21,
+        "w": 18,
+        "h": 18,
+        "fill": "#1B1F24",
+        "radius": 9
+      }
+    ]
+  }
+}

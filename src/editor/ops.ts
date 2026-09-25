@@ -40,6 +40,7 @@ const PREFIXES: [RegExp, string][] = [
   [/^(piezo|buzzer)/, 'BZ'],
   [/^relay/, 'K'],
   [/^servo/, 'M'],
+  [/^(jst-|dupont-|usb-panel-)/, 'J'],
 ]
 
 export function designatorPrefix(m: ModuleDef): string {

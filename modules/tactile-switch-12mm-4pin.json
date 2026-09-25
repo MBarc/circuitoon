@@ -1,0 +1,177 @@
+{
+  "format": "circuitoon-module/1",
+  "id": "tactile-switch-12mm-4pin",
+  "version": 1,
+  "name": "Tactile switch 12 mm (4-pin)",
+  "category": "Switches",
+  "source": "https://omronfs.omron.com/en_US/ecb/products/pdf/en-b3f.pdf https://www.sameskydevices.com/product/resource/ts13.pdf",
+  "pins": [
+    {
+      "name": "4",
+      "side": "left",
+      "type": "passive"
+    },
+    {
+      "spacer": true,
+      "side": "left"
+    },
+    {
+      "name": "2",
+      "side": "left",
+      "type": "passive"
+    },
+    {
+      "name": "3",
+      "side": "right",
+      "type": "passive"
+    },
+    {
+      "spacer": true,
+      "side": "right"
+    },
+    {
+      "name": "1",
+      "side": "right",
+      "type": "passive"
+    }
+  ],
+  "internal": [
+    [
+      "4",
+      "3"
+    ],
+    [
+      "2",
+      "1"
+    ]
+  ],
+  "size": {
+    "w": 10,
+    "h": 10
+  },
+  "electrical": {
+    "model": "switch",
+    "terminals": {
+      "a": "1",
+      "b": "3"
+    },
+    "params": {
+      "normallyOpen": {
+        "default": true
+      }
+    }
+  },
+  "states": [
+    "released",
+    "pressed"
+  ],
+  "art": {
+    "w": 100,
+    "h": 100,
+    "shapes": [
+      {
+        "type": "rect",
+        "x": 0,
+        "y": 38.5,
+        "w": 12,
+        "h": 3,
+        "fill": "#B8BEC7",
+        "radius": 1.5
+      },
+      {
+        "type": "rect",
+        "x": 0,
+        "y": 58.5,
+        "w": 12,
+        "h": 3,
+        "fill": "#B8BEC7",
+        "radius": 1.5
+      },
+      {
+        "type": "rect",
+        "x": 88,
+        "y": 38.5,
+        "w": 12,
+        "h": 3,
+        "fill": "#B8BEC7",
+        "radius": 1.5
+      },
+      {
+        "type": "rect",
+        "x": 88,
+        "y": 58.5,
+        "w": 12,
+        "h": 3,
+        "fill": "#B8BEC7",
+        "radius": 1.5
+      },
+      {
+        "type": "rect",
+        "x": 10,
+        "y": 10,
+        "w": 80,
+        "h": 80,
+        "fill": "#2B2F36",
+        "radius": 2
+      },
+      {
+        "type": "rect",
+        "x": 13,
+        "y": 13,
+        "w": 74,
+        "h": 74,
+        "fill": "#C9CED6",
+        "radius": 2
+      },
+      {
+        "type": "rect",
+        "x": 15,
+        "y": 15,
+        "w": 8,
+        "h": 8,
+        "fill": "#2B2F36",
+        "radius": 4,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 77,
+        "y": 15,
+        "w": 8,
+        "h": 8,
+        "fill": "#2B2F36",
+        "radius": 4,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 15,
+        "y": 77,
+        "w": 8,
+        "h": 8,
+        "fill": "#2B2F36",
+        "radius": 4,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 77,
+        "y": 77,
+        "w": 8,
+        "h": 8,
+        "fill": "#2B2F36",
+        "radius": 4,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 28,
+        "y": 28,
+        "w": 44,
+        "h": 44,
+        "fill": "#E0483E",
+        "radius": 22
+      }
+    ]
+  }
+}

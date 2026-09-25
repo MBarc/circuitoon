@@ -64,6 +64,15 @@ describe('ops', () => {
     for (const id of ['ip5306-usbc-module', 'tp4056-module', 'ams1117-33-module', 'lm2596-buck-module', 'microsd-spi-3v3', 'microsd-spi-5v'])
       expect(designatorPrefix(mk(id))).toBe('U')
   })
+  it('gives connector ids (JST, Dupont, USB panel-mount) J, tilt and tactile switches S, the panel pot RV', () => {
+    const mk = (id: string): ModuleDef => ({ format: 'circuitoon-module/1', id, name: id, pins: [{ name: '1', side: 'left' }] })
+    for (const id of ['jst-xh-2', 'jst-xh-3', 'jst-xh-4', 'dupont-1x2', 'dupont-1x3', 'dupont-1x4', 'usb-panel-mount-microusb', 'usb-panel-mount-usbc'])
+      expect(designatorPrefix(mk(id))).toBe('J')
+    for (const id of ['tilt-switch-sw520d', 'tilt-switch-sw460d', 'tactile-switch-6mm-4pin', 'tactile-switch-12mm-4pin'])
+      expect(designatorPrefix(mk(id))).toBe('S')
+    expect(designatorPrefix(mk('potentiometer-panel-10k'))).toBe('RV')
+    expect(designatorPrefix(mk('esp32-terminal-board-38'))).toBe('U')
+  })
   it('gives display ids (lcd, oled, tft) the DS prefix and keeps chips on U', () => {
     const mk = (id: string): ModuleDef => ({ format: 'circuitoon-module/1', id, name: id, pins: [{ name: 'GND', side: 'left' }] })
     for (const id of ['lcd-st7796s-4in-spi-touch', 'oled-ssd1306-096-i2c', 'oled-ssd1306-091-i2c', 'oled-sh1106-13-i2c', 'tft-st7735-18-spi', 'tft-ili9341-24-spi', 'tft-ili9341-28-spi-touch', 'tft-st7789-154-spi'])

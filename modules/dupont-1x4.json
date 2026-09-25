@@ -1,0 +1,178 @@
+{
+  "format": "circuitoon-module/1",
+  "id": "dupont-1x4",
+  "version": 1,
+  "name": "Dupont housing 1x4 (0.1 in)",
+  "category": "Connectors",
+  "source": "https://www.pololu.com/product/1903 https://www.pololu.com/category/71/0.1-inch-2.54mm-crimp-connector-housings",
+  "pins": [
+    {
+      "name": "1",
+      "side": "bottom",
+      "label": "1",
+      "type": "passive"
+    },
+    {
+      "name": "2",
+      "side": "bottom",
+      "label": "2",
+      "type": "passive"
+    },
+    {
+      "name": "3",
+      "side": "bottom",
+      "label": "3",
+      "type": "passive"
+    },
+    {
+      "name": "4",
+      "side": "bottom",
+      "label": "4",
+      "type": "passive"
+    }
+  ],
+  "size": {
+    "w": 7,
+    "h": 5
+  },
+  "electrical": {
+    "model": "connector",
+    "params": {}
+  },
+  "art": {
+    "w": 70,
+    "h": 50,
+    "shapes": [
+      {
+        "type": "rect",
+        "x": 18.5,
+        "y": 36,
+        "w": 3,
+        "h": 14,
+        "fill": "#C9CED6",
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 28.5,
+        "y": 36,
+        "w": 3,
+        "h": 14,
+        "fill": "#C9CED6",
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 38.5,
+        "y": 36,
+        "w": 3,
+        "h": 14,
+        "fill": "#C9CED6",
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 48.5,
+        "y": 36,
+        "w": 3,
+        "h": 14,
+        "fill": "#C9CED6",
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 13,
+        "y": 6,
+        "w": 44,
+        "h": 32,
+        "fill": "#1B1F24",
+        "radius": 1
+      },
+      {
+        "type": "rect",
+        "x": 17,
+        "y": 13,
+        "w": 6,
+        "h": 6,
+        "fill": "#3A3F47",
+        "radius": 0.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 27,
+        "y": 13,
+        "w": 6,
+        "h": 6,
+        "fill": "#3A3F47",
+        "radius": 0.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 37,
+        "y": 13,
+        "w": 6,
+        "h": 6,
+        "fill": "#3A3F47",
+        "radius": 0.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 47,
+        "y": 13,
+        "w": 6,
+        "h": 6,
+        "fill": "#3A3F47",
+        "radius": 0.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 19,
+        "y": 15,
+        "w": 2,
+        "h": 2,
+        "fill": "#C9CED6",
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 29,
+        "y": 15,
+        "w": 2,
+        "h": 2,
+        "fill": "#C9CED6",
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 39,
+        "y": 15,
+        "w": 2,
+        "h": 2,
+        "fill": "#C9CED6",
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 49,
+        "y": 15,
+        "w": 2,
+        "h": 2,
+        "fill": "#C9CED6",
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 18,
+        "y": 8,
+        "w": 4,
+        "h": 3,
+        "fill": "#9AA0A6",
+        "outline": false
+      }
+    ]
+  }
+}

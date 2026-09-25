@@ -1,0 +1,89 @@
+{
+  "format": "circuitoon-module/1",
+  "id": "tilt-switch-sw520d",
+  "version": 1,
+  "name": "SW-520D ball tilt switch",
+  "category": "Sensors",
+  "source": "https://www.tme.com/Document/f1e6cedd8cb7feeb250b353b6213ec6c/SW-520D.pdf https://www.sunrom.com/p/sw520d-sw-520d-tilt-sensor",
+  "pins": [
+    {
+      "name": "1",
+      "side": "bottom",
+      "type": "passive"
+    },
+    {
+      "name": "2",
+      "side": "bottom",
+      "type": "passive"
+    }
+  ],
+  "size": {
+    "w": 5,
+    "h": 6
+  },
+  "electrical": {
+    "model": "switch",
+    "terminals": {
+      "a": "1",
+      "b": "2"
+    },
+    "params": {}
+  },
+  "states": [
+    "open",
+    "closed"
+  ],
+  "art": {
+    "w": 50,
+    "h": 60,
+    "shapes": [
+      {
+        "type": "rect",
+        "x": 18.5,
+        "y": 38,
+        "w": 3,
+        "h": 22,
+        "fill": "#B8BEC7",
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 28.5,
+        "y": 38,
+        "w": 3,
+        "h": 22,
+        "fill": "#B8BEC7",
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 12,
+        "y": 3,
+        "w": 26,
+        "h": 38,
+        "fill": "#2B2F36",
+        "radius": 5
+      },
+      {
+        "type": "rect",
+        "x": 16,
+        "y": 8,
+        "w": 4,
+        "h": 22,
+        "fill": "#3A3F47",
+        "radius": 2,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 14,
+        "y": 34,
+        "w": 22,
+        "h": 6,
+        "fill": "#3A3F47",
+        "radius": 1,
+        "outline": false
+      }
+    ]
+  }
+}
