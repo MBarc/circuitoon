@@ -42,6 +42,9 @@ export interface ArtShape {
 export interface Art {
   w: number
   h: number
+  /** "inside" draws pin names inside the body next to each pin, like board silkscreen, instead
+   * of beside the pin stub. Opt-in: set on the built-in dev boards, off by default. */
+  pinLabels?: 'inside'
   shapes: ArtShape[]
 }
 
@@ -62,6 +65,10 @@ export interface ModuleDef {
 }
 
 export const isSpacer = (p: PinEntry): p is SpacerDef => 'spacer' in p && p.spacer === true
+
+/** Opt-in flag (`art.pinLabels: "inside"`) for drawing pin names inside the body, like board
+ * silkscreen, instead of beside the pin stub. Off for every module that does not set it. */
+export const usesInsideLabels = (m: ModuleDef): boolean => m.art?.pinLabels === 'inside'
 
 export type ValidationResult = { ok: true; module: ModuleDef } | { ok: false; errors: string[] }
 
@@ -125,7 +132,8 @@ export function validateModule(raw: unknown): ValidationResult {
     const art = raw.art
     if (!isObj(art) || !isPos(art.w) || !isPos(art.h) || !Array.isArray(art.shapes))
       errors.push('art: must be { "w", "h", "shapes": [...] } with positive w and h')
-    else
+    else {
+      if (art.pinLabels !== undefined && art.pinLabels !== 'inside') errors.push('art.pinLabels: must be "inside"')
       art.shapes.forEach((s, i) => {
         const at = `art.shapes[${i}]`
         if (!isObj(s) || s.type !== 'rect') return void errors.push(`${at}: only "rect" shapes are supported`)
@@ -139,6 +147,7 @@ export function validateModule(raw: unknown): ValidationResult {
         if (s.band !== undefined && !(Number.isInteger(s.band) && (s.band as number) >= 1 && (s.band as number) <= 4))
           errors.push(`${at}.band: must be a whole number from 1 to 4`)
       })
+    }
   }
 
   return errors.length ? { ok: false, errors } : { ok: true, module: raw as unknown as ModuleDef }
