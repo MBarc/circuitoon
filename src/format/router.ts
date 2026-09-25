@@ -150,7 +150,6 @@ export class Occupancy {
       for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) out[r * cols + c] = this.at(x0 + c * g, y0 + r * g)
       return
     }
-    this.copyRuns(x0 / g, y0 / g, cols, rows, out)
     const wx = x0 / g - this.cx0 // window column 0, in dense-grid columns
     const wy = y0 / g - this.cy0
     const c0 = Math.max(0, -wx)
@@ -162,7 +161,6 @@ export class Occupancy {
         const from = (r + wy) * this.cols + wx
         out.set(this.cells.subarray(from + c0, from + c1), r * cols + c0)
       }
-    if (!this.far.size) return
     const cxLo = x0 / g
     const cyLo = y0 / g
     for (const [k, bits] of this.far) {
@@ -172,6 +170,8 @@ export class Occupancy {
       const r = cy - cyLo
       if (c >= 0 && r >= 0 && c < cols && r < rows) out[r * cols + c] |= bits
     }
+    // Last: the dense copy above overwrites its rows, so long runs are ORed in after it.
+    this.copyRuns(cxLo, cyLo, cols, rows, out)
   }
 
   /** ORs the long runs into a window whose top-left node is grid cell (cxLo, cyLo); each run costs at most one window row or column. */

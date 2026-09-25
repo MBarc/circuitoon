@@ -157,6 +157,16 @@ describe('routeOrthogonal', () => {
       expect(p).not.toBeNull()
     })
 
+    it('keeps a long run in a window that also covers the dense grid', () => {
+      const occ = occupancyOf([[{ x: 0, y: 200 }, { x: 0, y: 300 }]]) // creates the dense grid around (0, 200..300)
+      addToOccupancy(occ, [{ x: -50_000, y: 100 }, { x: 50_000, y: 100 }]) // a long run, kept as an interval
+      expect(occ.at(0, 100)).toBe(1)
+      const out = new Uint8Array(5 * 3)
+      occ.copyWindow(-20, 90, 5, 3, 10, out)
+      expect(Array.from(out.subarray(5, 10))).toEqual([1, 1, 1, 1, 1])
+      expect(Array.from(out.subarray(0, 5))).toEqual([0, 0, 0, 0, 0])
+    })
+
     it('adds no cost for crossing an occupied run perpendicular to the path', () => {
       // A horizontal run occupied at y=50 from x=0 to x=100; a straight vertical route from
       // (50,0) to (50,100) crosses it at a right angle, never running along it on the same axis.
