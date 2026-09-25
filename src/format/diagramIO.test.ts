@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { emptyDiagram, isValidColor, serializeDiagram, validateDiagram, type Diagram } from './diagram.ts'
+import { computeRoutes, emptyDiagram, isValidColor, serializeDiagram, validateDiagram, wireColor, wirePaths, type Diagram } from './diagram.ts'
 import { buttonLed } from '../samples/buttonLed.ts'
 
 describe('validateDiagram', () => {
@@ -40,6 +40,30 @@ describe('validateDiagram', () => {
         'connections[0].color: must be a named color or #RRGGBB',
         'connections[1].gauge: must be a whole number from 16 to 30',
       ])
+  })
+})
+
+describe('prototype keys are plain names', () => {
+  it('warns about a part whose module is "constructor" instead of throwing, and it still draws', () => {
+    const d = structuredClone(buttonLed)
+    d.parts[0].module = 'constructor'
+    const r = validateDiagram(JSON.parse(serializeDiagram(d)))
+    expect(r.ok).toBe(true)
+    if (!r.ok) return
+    expect(r.warnings).toContain('parts[0]: module "constructor" is not embedded in this file')
+    expect(() => wirePaths(r.diagram, computeRoutes(r.diagram))).not.toThrow()
+  })
+  it('warns about a module named "toString" too', () => {
+    const d = structuredClone(buttonLed)
+    d.parts[1].module = 'toString'
+    const r = validateDiagram(JSON.parse(serializeDiagram(d)))
+    expect(r.ok).toBe(true)
+    if (r.ok) expect(r.warnings[0]).toBe('parts[1]: module "toString" is not embedded in this file')
+  })
+  it('does not treat Object prototype names as colors', () => {
+    expect(isValidColor('constructor')).toBe(false)
+    expect(isValidColor('toString')).toBe(false)
+    expect(wireColor('constructor')).toBe(wireColor('black'))
   })
 })
 

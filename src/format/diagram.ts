@@ -66,7 +66,8 @@ export const NAMED_COLORS: Record<string, string> = {
 export function wireColor(c: string | undefined): string {
   if (!c) return NAMED_COLORS.black
   if (/^#[0-9a-f]{6}$/i.test(c)) return c
-  return NAMED_COLORS[c.toLowerCase()] ?? NAMED_COLORS.black
+  const key = c.toLowerCase()
+  return Object.hasOwn(NAMED_COLORS, key) ? NAMED_COLORS[key] : NAMED_COLORS.black
 }
 
 /** Drawn width in px for an AWG gauge (16 to 30, default 22). Thicker wire, smaller number. */
@@ -83,16 +84,24 @@ export interface WireRoute {
 /** Route per connection uid; null means an endpoint names a missing part or pin. */
 export type Routes = Map<string, WireRoute | null>
 
+/**
+ * The embedded module a part uses. Own keys only, so a module named "constructor" or
+ * "toString" in a file is simply missing rather than an Object prototype member.
+ */
+export function moduleOf(d: Pick<Diagram, 'modules'>, id: string): ModuleDef | undefined {
+  return Object.hasOwn(d.modules, id) ? d.modules[id] : undefined
+}
+
 export function partObstacles(d: Diagram): Rect[] {
   return d.parts.flatMap((p) => {
-    const m = d.modules[p.module]
+    const m = moduleOf(d, p.module)
     return m ? [bodyRect(p, layoutModule(m))] : []
   })
 }
 
 function endpoint(d: Diagram, ep: Endpoint) {
   const part = d.parts.find((p) => p.uid === ep.part)
-  const mod = part && d.modules[part.module]
+  const mod = part && moduleOf(d, part.module)
   return (part && mod && worldPins(part, mod).find((p) => p.name === ep.pin)) || null
 }
 
@@ -168,7 +177,7 @@ export function wirePaths(d: Diagram, routes: Routes = computeRoutes(d)) {
 }
 
 export function isValidColor(c: string): boolean {
-  return /^#[0-9a-f]{6}$/i.test(c) || c.toLowerCase() in NAMED_COLORS
+  return /^#[0-9a-f]{6}$/i.test(c) || Object.hasOwn(NAMED_COLORS, c.toLowerCase())
 }
 
 export type DiagramResult = { ok: true; diagram: Diagram; warnings: string[] } | { ok: false; errors: string[] }
@@ -186,14 +195,15 @@ export function validateDiagram(raw: unknown): DiagramResult {
   else if (raw.format !== DIAGRAM_FORMAT) errors.push(`format: unsupported "${String(raw.format)}" (expected "${DIAGRAM_FORMAT}")`)
   if (typeof raw.title !== 'string') errors.push('title: required')
 
-  const modules: Record<string, ModuleDef> = {}
+  // A Map, so keys such as "__proto__" or "constructor" are ordinary names.
+  const modules = new Map<string, ModuleDef>()
   if (!isObj(raw.modules)) errors.push('modules: required, an object of embedded modules')
   else
     for (const [key, m] of Object.entries(raw.modules)) {
       const r = validateModule(m)
       if (!r.ok) errors.push(...r.errors.map((e) => `modules.${key}: ${e}`))
       else if (r.module.id !== key) errors.push(`modules.${key}: id "${r.module.id}" does not match its key`)
-      else modules[key] = r.module
+      else modules.set(key, r.module)
     }
 
   const uids = new Set<string>()
@@ -214,7 +224,7 @@ export function validateDiagram(raw: unknown): DiagramResult {
       if (typeof p.module !== 'string') errors.push(`${at}.module: required`)
       else {
         if (typeof p.uid === 'string') partModule.set(p.uid, p.module)
-        if (!(p.module in modules)) warnings.push(`${at}: module "${p.module}" is not embedded in this file`)
+        if (!modules.has(p.module)) warnings.push(`${at}: module "${p.module}" is not embedded in this file`)
       }
       if (!isNum(p.x) || !isNum(p.y)) errors.push(`${at}: x and y must be numbers`)
       if (p.rotation !== undefined && ![0, 90, 180, 270].includes(p.rotation as number))
@@ -227,7 +237,7 @@ export function validateDiagram(raw: unknown): DiagramResult {
     if (ep.offset !== undefined && !isNum(ep.offset)) errors.push(`${at}.offset: must be a number`)
     const modId = partModule.get(ep.part)
     if (modId === undefined) return void warnings.push(`${at}: no part with uid "${ep.part}"`)
-    const m = modules[modId]
+    const m = modules.get(modId)
     if (m && !m.pins.some((p) => 'name' in p && p.name === ep.pin)) warnings.push(`${at}: part "${ep.part}" has no pin "${ep.pin}"`)
   }
 

@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { type EditorStore, useEditorState } from './store.ts'
 import { deleteSelection, rotateParts, updatePart, updateWire } from './ops.ts'
-import { NAMED_COLORS, isValidColor, wireColor } from '../format/diagram.ts'
+import { NAMED_COLORS, isValidColor, moduleOf, wireColor } from '../format/diagram.ts'
 
 const GAUGES = Array.from({ length: 15 }, (_, i) => 16 + i)
 
@@ -91,7 +91,7 @@ export function Inspector({ store }: { store: EditorStore }) {
 
   const part = diagram.parts.find((p) => p.uid === selection.parts[0])
   if (part) {
-    const m = diagram.modules[part.module]
+    const m = moduleOf(diagram, part.module)
     return (
       <aside className="inspector" aria-label="Properties">
         <h2>{m?.name ?? part.module}</h2>

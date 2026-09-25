@@ -1,7 +1,7 @@
 // The editing surface: an SVG sheet you can pan (drag the background) and zoom (wheel).
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { type EditorStore, useEditorState } from './store.ts'
-import { computeRoutes, wireColor, wirePaths, wireWidth, type Routes } from '../format/diagram.ts'
+import { computeRoutes, moduleOf, wireColor, wirePaths, wireWidth, type Routes } from '../format/diagram.ts'
 import type { Pt } from '../format/geometry.ts'
 import { Part, INK } from '../render/Part.tsx'
 import { addPart, addWire, EMPTY_SELECTION, moveParts } from './ops.ts'
@@ -59,7 +59,7 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
   }
 
   function placeModule(moduleId: string, at: Pt) {
-    const m = modulesById[moduleId]
+    const m = Object.hasOwn(modulesById, moduleId) ? modulesById[moduleId] : undefined
     if (!m) return
     const lay = layoutModule(m)
     const { diagram: next, uid } = addPart(store.getState().diagram, m, snap(at.x - lay.w / 2), snap(at.y - lay.h / 2))
@@ -208,7 +208,7 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
         <rect x={view.x} y={view.y} width={vw} height={vh} fill="var(--paper)" />
         <rect x={view.x} y={view.y} width={vw} height={vh} fill="url(#editor-grid)" />
         {diagram.parts.map((p) => {
-          const m = diagram.modules[p.module]
+          const m = moduleOf(diagram, p.module)
           return m ? (
             <g key={p.uid} data-part={p.uid}>
               {selection.parts.includes(p.uid) && (() => {
@@ -242,7 +242,7 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
           />
         )}
         {diagram.parts.flatMap((p) => {
-          const m = diagram.modules[p.module]
+          const m = moduleOf(diagram, p.module)
           if (!m) return []
           return worldPins(p, m).map((wp) => {
             const over = drag?.kind === 'wire' && drag.over?.part === p.uid && drag.over.pin === wp.name

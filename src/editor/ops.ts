@@ -1,6 +1,6 @@
 // Immutable diagram edits. Every function returns a new Diagram and never mutates its input,
 // so the store can keep old versions for undo.
-import type { Connection, Diagram, Endpoint, PartInstance } from '../format/diagram.ts'
+import { type Connection, type Diagram, type Endpoint, type PartInstance, moduleOf } from '../format/diagram.ts'
 import type { ModuleDef } from '../format/module.ts'
 import type { Rotation } from '../format/geometry.ts'
 
@@ -45,7 +45,7 @@ export function nextDesignator(d: Diagram, m: ModuleDef): string {
 export function addPart(d: Diagram, m: ModuleDef, x: number, y: number): { diagram: Diagram; uid: string } {
   const uid = nextUid(d, 'p')
   const part: PartInstance = { uid, designator: nextDesignator(d, m), module: m.id, x, y, rotation: 0 }
-  const modules = d.modules[m.id] ? d.modules : { ...d.modules, [m.id]: m }
+  const modules = moduleOf(d, m.id) ? d.modules : { ...d.modules, [m.id]: m }
   return { uid, diagram: { ...d, modules, parts: [...d.parts, part] } }
 }
 

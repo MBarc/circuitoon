@@ -1,5 +1,5 @@
 // A diagram drawn on graph paper: parts, then wires on top with hop arcs and pin dots.
-import { type Diagram, wireColor, wirePaths, wireWidth } from '../format/diagram.ts'
+import { type Diagram, moduleOf, wireColor, wirePaths, wireWidth } from '../format/diagram.ts'
 import { Part, INK } from './Part.tsx'
 
 export function Sheet({ diagram, captions = {}, box, label }: {
@@ -20,7 +20,7 @@ export function Sheet({ diagram, captions = {}, box, label }: {
       <rect x={box.x} y={box.y} width={box.w} height={box.h} fill="var(--paper)" />
       <rect x={box.x} y={box.y} width={box.w} height={box.h} fill="url(#grid)" />
       {diagram.parts.map((p) => {
-        const m = diagram.modules[p.module]
+        const m = moduleOf(diagram, p.module)
         return m ? <Part key={p.uid} module={m} x={p.x} y={p.y} rotation={p.rotation} caption={captions[p.uid] ?? p.designator} /> : null
       })}
       <g fill="none" strokeLinecap="round" strokeLinejoin="round">
