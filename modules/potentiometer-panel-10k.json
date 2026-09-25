@@ -16,9 +16,8 @@
       "side": "bottom"
     },
     {
-      "name": "2",
+      "name": "W",
       "side": "bottom",
-      "label": "W",
       "type": "passive"
     },
     {
@@ -39,7 +38,7 @@
     "model": "potentiometer",
     "terminals": {
       "a": "1",
-      "wiper": "2",
+      "wiper": "W",
       "b": "3"
     },
     "params": {

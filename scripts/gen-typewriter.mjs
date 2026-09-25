@@ -207,11 +207,11 @@ tactile({ file: 'tactile-switch-6mm-4pin.json', id: 'tactile-switch-6mm-4pin', n
 
 // ---------------------------------------------------------------------------------------------
 // 6. WH148 16 mm panel potentiometer, 10 kOhm linear (B103), with a round knob on the shaft.
-//    Front view (shaft toward you, lugs down): lugs 1, 2 (wiper), 3 left to right at 5 mm pitch.
+//    Front view (shaft toward you, lugs down): lugs 1, 2 (wiper, named W like the trimmer pot so parts swap), 3 left to right at 5 mm pitch.
 {
   const wu = 8, hu = 9, W = wu * 10, H = hu * 10
-  const bottom = side('bottom', ['1', null, '2|W', null, '3'], { 1: passive, W: passive, 3: passive }, wu)
-  const xs = [bottom.pos['1'], bottom.pos['2'], bottom.pos['3']]
+  const bottom = side('bottom', ['1', null, 'W', null, '3'], { 1: passive, W: passive, 3: passive }, wu)
+  const xs = [bottom.pos['1'], bottom.pos['W'], bottom.pos['3']]
   const shapes = [
     ...xs.map((x) => r(x - 2, 68, 4, H - 68, LEAD, { outline: false })),
     r(10, 2, 60, 60, CAN, { radius: 30 }),
@@ -225,7 +225,7 @@ tactile({ file: 'tactile-switch-6mm-4pin.json', id: 'tactile-switch-6mm-4pin', n
     id: 'potentiometer-panel-10k', name: 'Panel potentiometer 10 k (WH148, with knob)', category: 'Passives',
     source: 'https://rhtecp.com/upload/202205/23/WH148.pdf https://www.handsontec.com/dataspecs/passive/WH148%20Pot-meter.pdf',
     pins: bottom.pins, wu, hu,
-    electrical: { model: 'potentiometer', terminals: { a: '1', wiper: '2', b: '3' }, params: { resistance: { unit: 'ohm', default: 10000 } } },
+    electrical: { model: 'potentiometer', terminals: { a: '1', wiper: 'W', b: '3' }, params: { resistance: { unit: 'ohm', default: 10000 } } },
     shapes,
   }))
 }
