@@ -51,6 +51,16 @@ const parts: Record<string, Want> = {
   'oled-sh1106-13-i2c-vcc-gnd.json': { category: 'Displays', sides: { top: ['VCC', 'GND', 'SCL', 'SDA'] } },
   // Header on the short left edge: GND is the square pad at the bottom.
   'oled-ssd1306-091-i2c.json': { category: 'Displays', sides: { left: ['SDA', 'SCL', 'VCC', 'GND'] } },
+  // Socket side up, header at the left, top to bottom.
+  'microsd-spi-3v3.json': { category: 'Communication', sides: { left: ['3V3', 'CS', 'MOSI', 'CLK', 'MISO', 'GND'] } },
+  'microsd-spi-5v.json': { category: 'Communication', sides: { left: ['GND', 'VCC', 'MISO', 'MOSI', 'SCK', 'CS'] } },
+}
+
+/** Supply of the power input where it is not the usual '3V3/5V'. */
+const supplies: Record<string, string> = {
+  'tft-st7789-154-spi.json': '3V3',
+  'microsd-spi-3v3.json': '3V3',
+  'microsd-spi-5v.json': '5V',
 }
 
 describe('built-in chips and displays keep the physical pin order', () => {
@@ -77,9 +87,8 @@ describe('built-in chips and displays keep the physical pin order', () => {
       if (grounds.length > 1) expect(m.internal?.some((g) => grounds.every((n) => g.includes(n)))).toBe(true)
       const power = pins.filter((p) => !isSpacer(p) && p.type === 'power_in')
       expect(power.length).toBeGreaterThan(0)
-      // A 3.3 V only module lists 3V3; one that takes either rail lists both.
-      const only3v3 = file === 'tft-st7789-154-spi.json'
-      for (const p of power) if (!isSpacer(p)) expect(p.supply).toBe(only3v3 ? '3V3' : '3V3/5V')
+      // A 3.3 V only module lists 3V3, a 5 V only one 5V; one that takes either rail lists both.
+      for (const p of power) if (!isSpacer(p)) expect(p.supply).toBe(supplies[file] ?? '3V3/5V')
     })
   }
 
@@ -95,6 +104,14 @@ describe('built-in chips and displays keep the physical pin order', () => {
 
   it('names the 2.4" TFT for both versions (T_ pins wired only on touch)', () => {
     expect(load('tft-ili9341-24-spi.json').name).toBe('2.4" TFT 240x320 ILI9341 (SPI; T_ pins on touch version)')
+  })
+
+  it('names the two microSD modules by supply, and only the 3.3 V one lacks a regulator', () => {
+    expect(load('microsd-spi-3v3.json').name).toContain('3.3 V only')
+    expect(load('microsd-spi-5v.json').name).toContain('5 V with level shifter')
+    // MISO is the card's output on both.
+    for (const f of ['microsd-spi-3v3.json', 'microsd-spi-5v.json'])
+      expect(load(f).pins.find((p) => !isSpacer(p) && p.name === 'MISO')).toMatchObject({ type: 'output' })
   })
 
   it('displays use the display electrical model', () => {

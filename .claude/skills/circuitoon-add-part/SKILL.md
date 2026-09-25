@@ -16,13 +16,13 @@ Read `docs/PRD.md` ("Module definition format", "Art studio", "Built-in parts") 
 2. **Source the pinout.** Fetch the manufacturer's documentation: datasheets (Microchip, Espressif, Raspberry Pi), maker wikis (Seeed wiki, lcdwiki.com, Adafruit, Waveshare, SparkFun). For generic clones with no maker page, use the best vendor image plus one independent source that agrees. Record every URL in the module's `source` field (space-separated). If you cannot verify a pin, leave the part out and say so. Never fill gaps from memory.
 
 3. **Choose id, name and category.**
-   - `id`: lowercase kebab-case, descriptive and stable (`tft-ili9341-28-spi-touch`). Designator prefixes key off the id (see `src/editor/ops.ts` PREFIXES): `battery*` gives BT, `resistor*` R, `capacitor*` C, `potentiometer*` RV, `led*` D, `*button*|*switch*` S, `lcd-|oled-|tft-` DS, everything else U. Add a prefix rule (with a test) if a new family needs one.
+   - `id`: lowercase kebab-case, descriptive and stable (`tft-ili9341-28-spi-touch`). Designator prefixes key off the id (see `src/editor/ops.ts` PREFIXES): `battery*` gives BT, `resistor*` R, `capacitor*` C, `potentiometer*` RV, `led*` D, `*button*|*switch*` S, `lcd-|oled-|tft-` DS, `piezo*|buzzer*` BZ, everything else U. Add a prefix rule (with a test) if a new family needs one.
    - `name`: what a maker would call it, with the distinguishing detail ("ESP32 DevKit V1 (30 pin, DOIT)").
    - `category`: an existing group from `CATEGORY_ORDER` in `src/editor/libraryGroups.ts`. Michael asked that the Parts panel stay organized as it grows: if a new family does not fit, add a category there deliberately (in a sensible position, with the test updated) instead of dumping it into a loosely related one. Look at how full each group is; when one gets crowded, propose a split.
 
 4. **Encode the pins.** See "Pin rules" below. Physical order is the whole point: lay pins out as seen from the component side in the vendor's diagram orientation.
 
-5. **Draw the art** in the Sticker style (rectangles only; the renderer adds the ink outline). See `references/conventions.md`. For families of similar parts, extend or add a generator script in `scripts/` (existing: `gen-boards.mjs` for ESP32 boards, `gen-parts.mjs` for chips and displays) so pin lists live in one readable table; the generator must reproduce the committed JSON byte for byte.
+5. **Draw the art** in the Sticker style (rectangles only; the renderer adds the ink outline). See `references/conventions.md`. For families of similar parts, extend or add a generator script in `scripts/` (existing: `gen-boards.mjs` for ESP32 boards, `gen-parts.mjs` for chips, displays and microSD modules, `gen-power.mjs` for power modules) so pin lists live in one readable table; the generator must reproduce the committed JSON byte for byte.
 
 6. **Validate and test.** `npm run validate` (every module), `npm test` (includes the two-lead geometry test and board/part tests; add a test pinning the pin order for multi-pin parts, like `src/format/boards.test.ts` and `parts.test.ts` do), `npm run build`.
 

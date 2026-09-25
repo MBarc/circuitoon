@@ -1,0 +1,181 @@
+{
+  "format": "circuitoon-module/1",
+  "id": "ams1117-33-module",
+  "version": 1,
+  "name": "AMS1117 3.3 V regulator module (3-pin, GND OUT VIN)",
+  "category": "Power",
+  "source": "https://www.amazon.com/dp/B07CP4P5XJ https://protosupplies.com/product/ams1117-5v-to-3-3v-step-down-regulator-module/",
+  "pins": [
+    {
+      "name": "GND",
+      "side": "bottom",
+      "type": "ground"
+    },
+    {
+      "name": "OUT",
+      "side": "bottom",
+      "type": "power_out",
+      "supply": "3V3"
+    },
+    {
+      "name": "VIN",
+      "side": "bottom",
+      "type": "power_in",
+      "supply": "5V/9V/12V"
+    }
+  ],
+  "size": {
+    "w": 8,
+    "h": 10
+  },
+  "electrical": {
+    "model": "regulator",
+    "params": {}
+  },
+  "art": {
+    "w": 80,
+    "h": 100,
+    "pinLabels": "inside",
+    "shapes": [
+      {
+        "type": "rect",
+        "x": 0,
+        "y": 0,
+        "w": 80,
+        "h": 100,
+        "fill": "#1E4F8A",
+        "radius": 4
+      },
+      {
+        "type": "rect",
+        "x": 24,
+        "y": 6,
+        "w": 32,
+        "h": 12,
+        "fill": "#C9CED6",
+        "radius": 1
+      },
+      {
+        "type": "rect",
+        "x": 28,
+        "y": 44,
+        "w": 4,
+        "h": 12,
+        "fill": "#C9CED6",
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 38,
+        "y": 44,
+        "w": 4,
+        "h": 12,
+        "fill": "#C9CED6",
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 48,
+        "y": 44,
+        "w": 4,
+        "h": 12,
+        "fill": "#C9CED6",
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 14,
+        "y": 16,
+        "w": 52,
+        "h": 30,
+        "fill": "#1E2126",
+        "radius": 1,
+        "label": "AMS1117",
+        "labelColor": "#C9CED6",
+        "labelSize": 6
+      },
+      {
+        "type": "rect",
+        "x": 26,
+        "y": 34,
+        "w": 28,
+        "h": 8,
+        "fill": "#1E2126",
+        "outline": false,
+        "label": "3.3",
+        "labelColor": "#C9CED6",
+        "labelSize": 5
+      },
+      {
+        "type": "rect",
+        "x": 64,
+        "y": 8,
+        "w": 6,
+        "h": 4,
+        "fill": "#E0483E",
+        "radius": 1,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 26,
+        "y": 89,
+        "w": 8,
+        "h": 8,
+        "fill": "#D5DAE1",
+        "radius": 4,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 28.5,
+        "y": 91.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#6B727C",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 36,
+        "y": 89,
+        "w": 8,
+        "h": 8,
+        "fill": "#D5DAE1",
+        "radius": 4,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 38.5,
+        "y": 91.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#6B727C",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 46,
+        "y": 89,
+        "w": 8,
+        "h": 8,
+        "fill": "#D5DAE1",
+        "radius": 4,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 48.5,
+        "y": 91.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#6B727C",
+        "radius": 1.5,
+        "outline": false
+      }
+    ]
+  }
+}

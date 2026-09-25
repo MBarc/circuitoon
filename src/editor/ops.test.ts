@@ -55,6 +55,14 @@ describe('ops', () => {
       expect(designatorPrefix(battery)).toBe('BT')
     }
   })
+  it('gives piezo and buzzer ids the BZ prefix, rocker switches S and power modules U', () => {
+    const mk = (id: string): ModuleDef => ({ format: 'circuitoon-module/1', id, name: id, pins: [{ name: '+', side: 'left' }] })
+    expect(designatorPrefix(mk('piezo-12mm-passive'))).toBe('BZ')
+    expect(designatorPrefix(mk('buzzer-active-5v'))).toBe('BZ')
+    expect(designatorPrefix(mk('rocker-switch-kcd1'))).toBe('S')
+    for (const id of ['ip5306-usbc-module', 'tp4056-module', 'ams1117-33-module', 'lm2596-buck-module', 'microsd-spi-3v3', 'microsd-spi-5v'])
+      expect(designatorPrefix(mk(id))).toBe('U')
+  })
   it('gives display ids (lcd, oled, tft) the DS prefix and keeps chips on U', () => {
     const mk = (id: string): ModuleDef => ({ format: 'circuitoon-module/1', id, name: id, pins: [{ name: 'GND', side: 'left' }] })
     for (const id of ['lcd-st7796s-4in-spi-touch', 'oled-ssd1306-096-i2c', 'oled-ssd1306-091-i2c', 'oled-sh1106-13-i2c', 'tft-st7735-18-spi', 'tft-ili9341-24-spi', 'tft-ili9341-28-spi-touch', 'tft-st7789-154-spi'])

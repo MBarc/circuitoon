@@ -1,7 +1,7 @@
-// Generates the built-in chip and display module JSON files: the MCP23017/MCP23018 DIP-28 I/O
-// expanders and the small SPI TFT and I2C OLED display modules. Pin lists are transcribed from the
-// sources cited on each part below (Microchip datasheets; the module maker's pinout table and
-// board photos for the displays).
+// Generates the built-in chip, display and storage module JSON files: the MCP23017/MCP23018 DIP-28
+// I/O expanders, the small SPI TFT and I2C OLED display modules and the SPI microSD modules. Pin
+// lists are transcribed from the sources cited on each part below (Microchip datasheets; the
+// module maker's pinout table and board photos for the displays and microSD modules).
 //
 // Run from the repo root: `node scripts/gen-parts.mjs`
 // It overwrites those files in modules/ in place; re-run after changing a part's pin list or art,
@@ -293,5 +293,68 @@ oled({
     id: 'tft-st7789-154-spi', name: '1.54" TFT 240x240 ST7789 (SPI, 8-pin with CS)', category: 'Displays',
     source: 'https://www.lcdwiki.com/1.54inch_IPS_Module https://www.makerfocus.com/products/1-54inch-tft-lcd-display-module',
     pins: pinsFor('top', top, types), wu, hu, electrical: { model: 'display', params: {} }, shapes,
+  }))
+}
+
+// ---------------------------------------------------------------------------------------------
+// microSD card modules (SPI), 6-pin header along the left edge seen from the socket side.
+
+const sdTypes = (vcc) => typer({
+  [vcc.name]: { type: 'power_in', supply: vcc.supply }, GND: { type: 'ground' },
+  CS: { type: 'input' }, MOSI: { type: 'input' }, CLK: { type: 'input' }, SCK: { type: 'input' }, MISO: { type: 'output' },
+})
+const SOCKET = '#C9CED6', SOCKET_IN = '#AEB5BF', CARD = '#1B1F24'
+
+/** Metal push-push socket with its row of contacts toward the header and the card slot at the right. */
+const sdSocket = (x, y, w, h) => [
+  ...Array.from({ length: 8 }, (_, i) => r(x - 6, y + 8 + i * ((h - 16) / 7) - 1, 8, 2, GOLD, { outline: false })),
+  r(x, y, w, h, SOCKET, { radius: 2 }),
+  r(x + 6, y + 6, w - 12, h - 12, SOCKET_IN, { radius: 1, outline: false }),
+  r(x + w - 10, y + h / 2 - 10, 8, 20, CARD, { radius: 1 }),
+]
+
+// 13. microSD module, 3.3 V only (no regulator, no level shifter; 10k pull-ups), 20 x 18 mm.
+//     Back silkscreen 3V3, CS, MOSI, CLK, MISO, GND along the header; the same order top to bottom
+//     from the socket side with the header at the left.
+{
+  const wu = 13, hu = 10, W = wu * 10, H = hu * 10
+  const left = ['3V3', 'CS', 'MOSI', 'CLK', 'MISO', 'GND']
+  const ys = slots(hu, left.length)
+  const shapes = [
+    r(0, 0, W, H, BLUE, { radius: 4 }),
+    ...header('left', W, H, ys),
+    ...ys.slice(1, 5).map((y) => r(42, y - 2, 8, 4, '#2B2F36', { radius: 1, outline: false })),
+    ...sdSocket(62, 12, 60, H - 24),
+  ]
+  write('microsd-spi-3v3.json', moduleJson({
+    id: 'microsd-spi-3v3', name: 'microSD card module (SPI, 3.3 V only: 3V3 CS MOSI CLK MISO GND)', category: 'Communication',
+    source: 'https://protosupplies.com/product/microsd-card-module/ https://www.amazon.com/dp/B0H67347LH',
+    pins: pinsFor('left', left, sdTypes({ name: '3V3', supply: '3V3' })), wu, hu, electrical: { model: 'storage', params: {} }, shapes,
+  }))
+}
+
+// 14. microSD module, 5 V (AMS1117-3.3 regulator and 74LVC125A level shifter; silkscreen "MicroSD
+//     Card Adapter"), 42 x 24 mm. Front silkscreen GND, VCC, MISO, MOSI, SCK, CS top to bottom with
+//     the header at the left.
+{
+  const wu = 18, hu = 10, W = wu * 10, H = hu * 10
+  const left = ['GND', 'VCC', 'MISO', 'MOSI', 'SCK', 'CS']
+  const ys = slots(hu, left.length)
+  const shapes = [
+    r(0, 0, W, H, BLUE, { radius: 4 }),
+    // Three corner holes; the header covers the top left one.
+    ...mountHoles(W, H, 4, 9).slice(1),
+    ...header('left', W, H, ys),
+    r(52, 8, 30, 8, METAL, { radius: 1 }),
+    r(48, 14, 38, 26, CHIP, { radius: 1, label: 'AMS1117', labelColor: METAL, labelSize: 5.5 }),
+    ...Array.from({ length: 7 }, (_, i) => r(50 + i * 5, 55, 2.5, 3, METAL, { outline: false })),
+    ...Array.from({ length: 7 }, (_, i) => r(50 + i * 5, 78, 2.5, 3, METAL, { outline: false })),
+    r(48, 58, 38, 20, CHIP, { radius: 1, label: 'LVC125A', labelColor: METAL, labelSize: 5 }),
+    ...sdSocket(106, 12, 62, H - 24),
+  ]
+  write('microsd-spi-5v.json', moduleJson({
+    id: 'microsd-spi-5v', name: 'microSD card module (SPI, 5 V with level shifter: GND VCC MISO MOSI SCK CS)', category: 'Communication',
+    source: 'https://www.amazon.com/dp/B0B779R5TZ https://envistiamall.com/blogs/learn/micro-sd-card-spi-module-user-guide',
+    pins: pinsFor('left', left, sdTypes({ name: 'VCC', supply: '5V' })), wu, hu, electrical: { model: 'storage', params: {} }, shapes,
   }))
 }

@@ -164,7 +164,7 @@ describe('usesInsideLabels', () => {
     expect(insideLabelSides(m())).toEqual([])
     expect(insideLabelSides(m({ art: { w: 10, h: 10, shapes: [], pinLabels: 'inside' } })).sort()).toEqual(['bottom', 'left', 'right', 'top'])
   })
-  it('is set only on the header parts (ESP32 boards, DIP chips, display modules), never on any other built-in module', () => {
+  it('is set only on the header and pad parts (boards, DIP chips, display, storage and power modules), never on any other built-in module', () => {
     const dir = join(import.meta.dirname, '..', '..', 'modules')
     const boardFiles = new Set([
       'esp32-devkitc-v4.json', 'esp32-devkit-v1-30.json', 'esp32-s3-devkitc-1.json',
@@ -173,6 +173,8 @@ describe('usesInsideLabels', () => {
       'lcd-st7796s-4in-spi-touch.json', 'tft-ili9341-28-spi-touch.json', 'tft-ili9341-24-spi.json', 'tft-st7735-18-spi.json',
       'tft-st7789-154-spi.json', 'oled-ssd1306-091-i2c.json', 'oled-ssd1306-096-i2c.json', 'oled-ssd1306-096-i2c-vcc-gnd.json',
       'oled-sh1106-13-i2c.json', 'oled-sh1106-13-i2c-vcc-gnd.json',
+      'microsd-spi-3v3.json', 'microsd-spi-5v.json',
+      'ip5306-usbc-module.json', 'tp4056-module.json', 'ams1117-33-module.json', 'lm2596-buck-module.json',
     ])
     const files = readdirSync(dir).filter((f) => f.endsWith('.json'))
     expect(files.filter((f) => boardFiles.has(f))).toHaveLength(boardFiles.size)

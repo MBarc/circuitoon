@@ -36,6 +36,7 @@ const PREFIXES: [RegExp, string][] = [
   [/button|switch/, 'S'],
   [/^battery/, 'BT'],
   [/^(lcd|oled|tft)-/, 'DS'],
+  [/^(piezo|buzzer)/, 'BZ'],
 ]
 
 export function designatorPrefix(m: ModuleDef): string {
