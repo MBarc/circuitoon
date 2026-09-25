@@ -1,7 +1,7 @@
 // Diagram format (circuitoon-diagram/1): types plus the wire geometry the renderer needs.
 
 import { type ModuleDef, layoutModule, validateModule, isObj, isNum } from './module.ts'
-import { type Pt, type Rect, type Rotation, bodyRect, worldPins } from './geometry.ts'
+import { type Pt, type Rect, type Rotation, type WorldPin, bodyRect, simplify, worldPins } from './geometry.ts'
 import { routeOrthogonal } from './router.ts'
 
 export const DIAGRAM_FORMAT = 'circuitoon-diagram/1'
@@ -105,11 +105,27 @@ function endpoint(d: Diagram, ep: Endpoint) {
   return (part && mod && worldPins(part, mod).find((p) => p.name === ep.pin)) || null
 }
 
+/**
+ * A hand-routed wire keeps its stored bends; only its end segments stretch to reach a moved
+ * pin. Where a pin tip and its neighbouring bend no longer line up, a corner is added so the
+ * wire still leaves the pin along its stub, and every segment stays horizontal or vertical.
+ */
+function manualPoints(a: WorldPin, b: WorldPin, route: [number, number][]): Pt[] {
+  const bends = route.map(([x, y]) => ({ x, y }))
+  const corner = (pin: WorldPin, next: Pt | undefined): Pt[] => {
+    if (!next || next.x === pin.end.x || next.y === pin.end.y) return []
+    return [pin.dir.x !== 0 ? { x: next.x, y: pin.end.y } : { x: pin.end.x, y: next.y }]
+  }
+  const head = corner(a, bends[0])
+  const tail = bends.length ? corner(b, bends[bends.length - 1]) : []
+  return simplify([a.end, ...head, ...bends, ...tail, b.end])
+}
+
 export function routeWire(d: Diagram, c: Connection, obstacles: Rect[]): WireRoute | null {
   const a = endpoint(d, c.from)
   const b = endpoint(d, c.to)
   if (!a || !b) return null
-  if (c.route) return { points: [a.end, ...c.route.map(([x, y]) => ({ x, y })), b.end], blocked: false }
+  if (c.route) return { points: manualPoints(a, b, c.route), blocked: false }
   const points = routeOrthogonal({ from: a.end, fromDir: a.dir, to: b.end, toDir: b.dir, obstacles })
   return points ? { points, blocked: false } : { points: [a.end, b.end], blocked: true }
 }

@@ -78,4 +78,39 @@ describe('wirePaths', () => {
     const moved = { ...diagram, parts: diagram.parts.map((p) => (p.uid === 'b' ? { ...p, y: 50 } : p)) }
     expect(computeRoutes(moved, { only: new Set(), prev }).get('w')).toBe(prev.get('w'))
   })
+
+  describe('hand-routed wires', () => {
+    const bends: [number, number][] = [[60, 20], [60, 60], [80, 60], [80, 20]]
+    const manual = () => d([{ uid: 'w', from: { part: 'a', pin: 'R' }, to: { part: 'b', pin: 'L' }, route: bends }])
+    const edit = (diagram: Diagram, uid: string, patch: Partial<Diagram['parts'][number]>): Diagram =>
+      ({ ...diagram, parts: diagram.parts.map((p) => (p.uid === uid ? { ...p, ...patch } : p)) })
+    const check = (diagram: Diagram) => {
+      const pts = computeRoutes(diagram).get('w')!.points
+      pts.forEach((p, i) => i > 0 && expect(p.x === pts[i - 1].x || p.y === pts[i - 1].y).toBe(true))
+      // The interior bends are untouched; the end bends may slide along their stretched segment.
+      expect(pts).toEqual(expect.arrayContaining([{ x: 60, y: 60 }, { x: 80, y: 60 }]))
+      return pts
+    }
+
+    it('keeps its bends and stays orthogonal as it is drawn', () => {
+      expect(check(manual())).toEqual([{ x: 48, y: 20 }, { x: 60, y: 20 }, { x: 60, y: 60 }, { x: 80, y: 60 }, { x: 80, y: 20 }, { x: 92, y: 20 }])
+    })
+    it('stretches only the end segments when an end part moves by (0, 10)', () => {
+      expect(check(edit(manual(), 'b', { y: 10 }))).toEqual([
+        { x: 48, y: 20 }, { x: 60, y: 20 }, { x: 60, y: 60 }, { x: 80, y: 60 }, { x: 80, y: 30 }, { x: 92, y: 30 },
+      ])
+      expect(check(edit(manual(), 'a', { y: 10 }))).toEqual([
+        { x: 48, y: 30 }, { x: 60, y: 30 }, { x: 60, y: 60 }, { x: 80, y: 60 }, { x: 80, y: 20 }, { x: 92, y: 20 },
+      ])
+    })
+    it('stretches only the end segments when an end part moves by (10, 0)', () => {
+      expect(check(edit(manual(), 'b', { x: 110 })).at(-1)).toEqual({ x: 102, y: 20 })
+      expect(check(edit(manual(), 'a', { x: 10 }))[0]).toEqual({ x: 58, y: 20 })
+    })
+    it('stays orthogonal after the end part is rotated 90 degrees', () => {
+      const pts = check(edit(edit(manual(), 'b', { y: 10 }), 'b', { rotation: 90 }))
+      expect(pts.at(-1)).toEqual({ x: 110, y: -8 })
+      expect(check(edit(manual(), 'a', { rotation: 90 }))[0]).toEqual({ x: 10, y: 38 })
+    })
+  })
 })
