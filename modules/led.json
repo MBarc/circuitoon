@@ -5,17 +5,94 @@
   "name": "LED",
   "category": "Indicators",
   "pins": [
-    { "name": "A", "label": "+", "side": "left", "type": "passive" },
-    { "name": "K", "label": "-", "side": "right", "type": "passive" }
+    {
+      "name": "A",
+      "label": "+",
+      "side": "left",
+      "type": "passive"
+    },
+    {
+      "name": "K",
+      "label": "-",
+      "side": "right",
+      "type": "passive"
+    }
   ],
   "electrical": {
     "model": "led",
-    "terminals": { "anode": "A", "cathode": "K" },
+    "terminals": {
+      "anode": "A",
+      "cathode": "K"
+    },
     "params": {
-      "color": { "default": "red" },
-      "forwardVoltage": { "unit": "V", "default": 2.0 },
-      "maxCurrent": { "unit": "A", "default": 0.02 }
+      "color": {
+        "default": "red"
+      },
+      "forwardVoltage": {
+        "unit": "V",
+        "default": 2.0
+      },
+      "maxCurrent": {
+        "unit": "A",
+        "default": 0.02
+      }
     }
   },
-  "states": ["off", "lit", "burnt"]
+  "states": [
+    "off",
+    "lit",
+    "burnt"
+  ],
+  "art": {
+    "w": 40,
+    "h": 40,
+    "shapes": [
+      {
+        "type": "rect",
+        "x": 0,
+        "y": 18.5,
+        "w": 14,
+        "h": 3,
+        "fill": "#B8BEC7",
+        "radius": 1.5
+      },
+      {
+        "type": "rect",
+        "x": 26,
+        "y": 18.5,
+        "w": 14,
+        "h": 3,
+        "fill": "#B8BEC7",
+        "radius": 1.5
+      },
+      {
+        "type": "rect",
+        "x": 11,
+        "y": 4,
+        "w": 18,
+        "h": 24,
+        "fill": "#FF6B6B",
+        "radius": 9
+      },
+      {
+        "type": "rect",
+        "x": 9,
+        "y": 25,
+        "w": 22,
+        "h": 6,
+        "fill": "#C93C3C",
+        "radius": 1.5
+      },
+      {
+        "type": "rect",
+        "x": 14,
+        "y": 8,
+        "w": 4,
+        "h": 9,
+        "fill": "#FFC9C9",
+        "radius": 2,
+        "outline": false
+      }
+    ]
+  }
 }

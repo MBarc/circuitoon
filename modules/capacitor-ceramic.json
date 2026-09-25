@@ -5,12 +5,64 @@
   "name": "Ceramic capacitor",
   "category": "Passives",
   "pins": [
-    { "name": "1", "side": "left", "type": "passive" },
-    { "name": "2", "side": "right", "type": "passive" }
+    {
+      "name": "1",
+      "side": "left",
+      "type": "passive"
+    },
+    {
+      "name": "2",
+      "side": "right",
+      "type": "passive"
+    }
   ],
   "electrical": {
     "model": "capacitor",
-    "terminals": { "a": "1", "b": "2" },
-    "params": { "capacitance": { "unit": "F", "default": 1e-7 } }
+    "terminals": {
+      "a": "1",
+      "b": "2"
+    },
+    "params": {
+      "capacitance": {
+        "unit": "F",
+        "default": 1e-07
+      }
+    }
+  },
+  "art": {
+    "w": 40,
+    "h": 40,
+    "shapes": [
+      {
+        "type": "rect",
+        "x": 0,
+        "y": 18.5,
+        "w": 14,
+        "h": 3,
+        "fill": "#B8BEC7",
+        "radius": 1.5
+      },
+      {
+        "type": "rect",
+        "x": 26,
+        "y": 18.5,
+        "w": 14,
+        "h": 3,
+        "fill": "#B8BEC7",
+        "radius": 1.5
+      },
+      {
+        "type": "rect",
+        "x": 9,
+        "y": 7,
+        "w": 22,
+        "h": 24,
+        "fill": "#E8A33D",
+        "radius": 10,
+        "label": "104",
+        "labelColor": "#23282F",
+        "labelSize": 7
+      }
+    ]
   }
 }

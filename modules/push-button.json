@@ -5,13 +5,73 @@
   "name": "Push button",
   "category": "Switches",
   "pins": [
-    { "name": "1", "side": "left", "type": "passive" },
-    { "name": "2", "side": "right", "type": "passive" }
+    {
+      "name": "1",
+      "side": "left",
+      "type": "passive"
+    },
+    {
+      "name": "2",
+      "side": "right",
+      "type": "passive"
+    }
   ],
   "electrical": {
     "model": "switch",
-    "terminals": { "a": "1", "b": "2" },
-    "params": { "normallyOpen": { "default": true } }
+    "terminals": {
+      "a": "1",
+      "b": "2"
+    },
+    "params": {
+      "normallyOpen": {
+        "default": true
+      }
+    }
   },
-  "states": ["released", "pressed"]
+  "states": [
+    "released",
+    "pressed"
+  ],
+  "art": {
+    "w": 50,
+    "h": 40,
+    "shapes": [
+      {
+        "type": "rect",
+        "x": 0,
+        "y": 18.5,
+        "w": 12,
+        "h": 3,
+        "fill": "#B8BEC7",
+        "radius": 1.5
+      },
+      {
+        "type": "rect",
+        "x": 38,
+        "y": 18.5,
+        "w": 12,
+        "h": 3,
+        "fill": "#B8BEC7",
+        "radius": 1.5
+      },
+      {
+        "type": "rect",
+        "x": 9,
+        "y": 6,
+        "w": 32,
+        "h": 28,
+        "fill": "#3A3F47",
+        "radius": 3
+      },
+      {
+        "type": "rect",
+        "x": 16,
+        "y": 12,
+        "w": 18,
+        "h": 16,
+        "fill": "#E0483E",
+        "radius": 8
+      }
+    ]
+  }
 }

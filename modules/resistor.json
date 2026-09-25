@@ -5,12 +5,97 @@
   "name": "Resistor",
   "category": "Passives",
   "pins": [
-    { "name": "1", "side": "left", "type": "passive" },
-    { "name": "2", "side": "right", "type": "passive" }
+    {
+      "name": "1",
+      "side": "left",
+      "type": "passive"
+    },
+    {
+      "name": "2",
+      "side": "right",
+      "type": "passive"
+    }
   ],
   "electrical": {
     "model": "resistor",
-    "terminals": { "a": "1", "b": "2" },
-    "params": { "resistance": { "unit": "ohm", "default": 1000 } }
+    "terminals": {
+      "a": "1",
+      "b": "2"
+    },
+    "params": {
+      "resistance": {
+        "unit": "ohm",
+        "default": 1000
+      }
+    }
+  },
+  "art": {
+    "w": 60,
+    "h": 40,
+    "shapes": [
+      {
+        "type": "rect",
+        "x": 0,
+        "y": 18.5,
+        "w": 12,
+        "h": 3,
+        "fill": "#B8BEC7",
+        "radius": 1.5
+      },
+      {
+        "type": "rect",
+        "x": 48,
+        "y": 18.5,
+        "w": 12,
+        "h": 3,
+        "fill": "#B8BEC7",
+        "radius": 1.5
+      },
+      {
+        "type": "rect",
+        "x": 8,
+        "y": 12,
+        "w": 44,
+        "h": 16,
+        "fill": "#F1D9A7",
+        "radius": 8
+      },
+      {
+        "type": "rect",
+        "x": 16,
+        "y": 13,
+        "w": 4,
+        "h": 14,
+        "fill": "#D8413A",
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 23,
+        "y": 13,
+        "w": 4,
+        "h": 14,
+        "fill": "#D8413A",
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 30,
+        "y": 13,
+        "w": 4,
+        "h": 14,
+        "fill": "#8B5A2B",
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 41,
+        "y": 13,
+        "w": 4,
+        "h": 14,
+        "fill": "#E0B43C",
+        "outline": false
+      }
+    ]
   }
 }

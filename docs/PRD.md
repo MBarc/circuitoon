@@ -211,6 +211,8 @@ A complete, valid example (a battery lighting an LED through a resistor on a bre
 
 The art studio is a small rectangle-drawing editor that outputs a complete module JSON: you draw the part, place its pins, and save it to your library.
 
+**Art style: Sticker** (chosen 2026-09-24). Flat fills inside a dark ink outline, on graph-paper sheets. The renderer applies the outline, so module art only lists shapes and fills; a shape can opt out with `"outline": false` (resistor bands, fine details). Art coordinates are in pixels at 100% zoom (10 px per grid unit).
+
 **Drawing**
 
 - Click and drag to draw a rectangle; drag to move, handles to resize.
@@ -354,4 +356,4 @@ V1 is done when someone can build a wiring sheet for a real breadboard project f
 - [ ] T-junctions: should V1 allow a wire to end on another wire?
 - [x] Built-in boards follow physical pin order, because the sheet is something you build from.
 - [x] Breadboards are modeled at rail and strip level (bus pins with offsets); hole-level is deferred.
-- [x] Hosting: GitHub Pages from repo `MBarc/circuitoon`.
+- [x] Hosting: GitHub Pages from the public repo `MBarc/circuitoon` (https://mbarc.github.io/circuitoon/).

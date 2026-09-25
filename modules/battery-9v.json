@@ -5,12 +5,99 @@
   "name": "9V battery",
   "category": "Power",
   "pins": [
-    { "name": "+", "side": "top", "type": "power_out", "supply": "9V" },
-    { "name": "-", "side": "top", "type": "ground" }
+    {
+      "name": "+",
+      "side": "top",
+      "type": "power_out",
+      "supply": "9V"
+    },
+    {
+      "spacer": true,
+      "side": "top"
+    },
+    {
+      "spacer": true,
+      "side": "top"
+    },
+    {
+      "spacer": true,
+      "side": "top"
+    },
+    {
+      "spacer": true,
+      "side": "top"
+    },
+    {
+      "name": "-",
+      "side": "top",
+      "type": "ground"
+    }
   ],
   "electrical": {
     "model": "voltage_source",
-    "terminals": { "pos": "+", "neg": "-" },
-    "params": { "voltage": { "unit": "V", "default": 9 } }
+    "terminals": {
+      "pos": "+",
+      "neg": "-"
+    },
+    "params": {
+      "voltage": {
+        "unit": "V",
+        "default": 9
+      }
+    }
+  },
+  "art": {
+    "w": 80,
+    "h": 90,
+    "shapes": [
+      {
+        "type": "rect",
+        "x": 13,
+        "y": 0,
+        "w": 14,
+        "h": 10,
+        "fill": "#D5DAE1",
+        "radius": 2
+      },
+      {
+        "type": "rect",
+        "x": 62,
+        "y": 0,
+        "w": 16,
+        "h": 10,
+        "fill": "#D5DAE1",
+        "radius": 4
+      },
+      {
+        "type": "rect",
+        "x": 4,
+        "y": 8,
+        "w": 72,
+        "h": 14,
+        "fill": "#3A3F47",
+        "radius": 3
+      },
+      {
+        "type": "rect",
+        "x": 4,
+        "y": 20,
+        "w": 72,
+        "h": 68,
+        "fill": "#D98C2B",
+        "radius": 5
+      },
+      {
+        "type": "rect",
+        "x": 5,
+        "y": 44,
+        "w": 70,
+        "h": 26,
+        "fill": "#2B2F36",
+        "outline": false,
+        "label": "9V",
+        "labelColor": "#F4B400",
+        "labelSize": 15
+      }
+    ]
   }
 }
