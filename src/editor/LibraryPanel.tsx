@@ -63,14 +63,18 @@ export function LibraryPanel({ onAdd }: { onAdd: (moduleId: string) => void }) {
 
   const q = query.trim().toLowerCase()
   const searching = q !== ''
-  const visibleGroups = groups
-    .map((g) => ({
-      ...g,
-      modules: searching
-        ? g.modules.filter((m) => m.name.toLowerCase().includes(q) || g.category.toLowerCase().includes(q))
-        : g.modules,
-    }))
-    .filter((g) => g.modules.length > 0)
+  const visibleGroups = useMemo(
+    () =>
+      groups
+        .map((g) => ({
+          ...g,
+          modules: searching
+            ? g.modules.filter((m) => m.name.toLowerCase().includes(q) || g.category.toLowerCase().includes(q))
+            : g.modules,
+        }))
+        .filter((g) => g.modules.length > 0),
+    [groups, searching, q],
+  )
 
   function toggle(category: string) {
     const next = new Set(collapsed)

@@ -35,14 +35,21 @@
 .lib-group-head {
   display: flex; align-items: center; justify-content: space-between; gap: 8px;
   border: none; background: transparent; color: var(--text); padding: 2px 0; cursor: pointer;
-  font: 700 13px/1.2 "Atkinson Hyperlegible", system-ui, sans-serif; text-transform: uppercase; letter-spacing: 0.03em;
+  font: 700 13.5px/1.2 "Atkinson Hyperlegible", system-ui, sans-serif;
 }
 .lib-group-head:hover { color: #23282F; }
-.lib-group-head::before { content: "▾"; margin-right: 6px; font-size: 11px; }
-.lib-group-head[aria-expanded="false"]::before { content: "▸"; }
+/* A CSS-drawn triangle, not a Unicode glyph: some fonts render ▸/▾ as a flat dash, so this is
+   guaranteed to look like a chevron everywhere. Points right when collapsed, rotates to point
+   down when expanded. */
+.lib-group-head::before {
+  content: ""; display: inline-block; width: 0; height: 0; flex-shrink: 0; margin-right: 8px;
+  border-style: solid; border-width: 5px 0 5px 7px; border-color: transparent transparent transparent currentColor;
+  transition: transform 0.15s ease;
+}
+.lib-group-head[aria-expanded="true"]::before { transform: rotate(90deg); }
 .lib-group-count {
   margin-left: auto; color: var(--muted); background: var(--bg); border-radius: 10px;
-  padding: 1px 7px; font-size: 12px; font-weight: 700; letter-spacing: normal; text-transform: none;
+  padding: 1px 7px; font-size: 12px; font-weight: 700;
 }
 .lib-group-items { display: grid; gap: 6px; }
 .lib-item {

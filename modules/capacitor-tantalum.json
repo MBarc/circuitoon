@@ -7,11 +7,13 @@
   "pins": [
     {
       "name": "+",
+      "label": "+",
       "side": "left",
       "type": "passive"
     },
     {
       "name": "-",
+      "label": "-",
       "side": "right",
       "type": "passive"
     }
