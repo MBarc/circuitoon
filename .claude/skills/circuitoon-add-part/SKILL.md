@@ -22,7 +22,7 @@ Read `docs/PRD.md` ("Module definition format", "Art studio", "Built-in parts") 
 
 4. **Encode the pins.** See "Pin rules" below. Physical order is the whole point: lay pins out as seen from the component side in the vendor's diagram orientation.
 
-5. **Draw the art** in the Sticker style (rectangles only; the renderer adds the ink outline). See `references/conventions.md`. For families of similar parts, extend or add a generator script in `scripts/` (existing: `gen-boards.mjs` for ESP32 boards, `gen-parts.mjs` for chips and displays) so pin lists live in one readable table; the generator must reproduce the committed JSON byte for byte.
+5. **Draw the art** in the Sticker style (rectangles only; the renderer adds the ink outline). See `references/conventions.md`. For families of similar parts, extend or add a generator script in `scripts/` (existing: `gen-boards.mjs` for ESP32 boards, `gen-parts.mjs` for chips and displays, `gen-breadboards.mjs` for breadboards and rail strips) so pin lists live in one readable table; the generator must reproduce the committed JSON byte for byte.
 
 6. **Validate and test.** `npm run validate` (every module), `npm test` (includes the two-lead geometry test and board/part tests; add a test pinning the pin order for multi-pin parts, like `src/format/boards.test.ts` and `parts.test.ts` do), `npm run build`.
 
@@ -45,7 +45,7 @@ Read `docs/PRD.md` ("Module definition format", "Art studio", "Built-in parts") 
 - Polarized two-lead parts label their pins "+" and "-".
 - Header pins drawn inside the body next to each pin, like silkscreen, are opt-in with `"art": { ..., "pinLabels": "inside" }`; use it for boards, chips and display modules with dense headers.
 - Two-lead parts: art height must give an even number of grid units so the single left/right pin lands on the drawn lead center (the geometry test enforces this).
-- Pins in the interior of a body (a 2x20 header in its true position, breadboard holes) need the interior-pin format from the breadboard work; until that lands, do not fake an interior header by spreading its rows onto opposite edges. Say so and defer the part.
+- Pins in the interior of a body (a 2x20 header in its true position) are hole groups: `"holes": [{ "name": "GPIO2", "label": "GPIO2", "at": [[x, y]], "holeStyle": "pad" }]`, one single-position group per header pin, each on a 10 px grid point inside the body. Names share the pin namespace. Never fake an interior header by spreading its rows onto opposite edges.
 
 ## Things that went wrong before (keep them from recurring)
 
