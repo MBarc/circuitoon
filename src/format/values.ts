@@ -69,21 +69,30 @@ function splitPrefix(suffix: string): { mult: number; rest: string } {
   return { mult: 1, rest: suffix }
 }
 
+/** The value param that uses `unit` (resistance for ohm, capacitance for F, voltage for V), if any. */
+const paramForUnit = (unit: string): string | undefined => Object.keys(PARAM_RULES).find((name) => PARAM_RULES[name].unit === unit)
+
 /**
- * Rejects non-finite, negative, zero, or out-of-range (above 1e12 or below 1e-15) values;
- * otherwise rounds to 6 significant digits, so a multiplication like `100 * 1e-9` (which lands
- * on 1.0000000000000001e-7 in floating point) comes out as the clean 1e-7 rather than carrying
- * that noise into the diagram.
+ * Rejects non-finite values, magnitudes above 1e12 or nonzero ones below 1e-15, and values the
+ * unit's param does not allow (PARAM_RULES, the same rule loading a file applies: 0 ohm is fine,
+ * a voltage may be 0 or negative, a capacitance must be above 0; a unit with no param must be
+ * positive). Otherwise rounds to 6 significant digits, so a multiplication like `100 * 1e-9`
+ * (which lands on 1.0000000000000001e-7 in floating point) comes out as the clean 1e-7 rather than
+ * carrying that noise into the diagram.
  */
-function finish(v: number): number | null {
-  if (!Number.isFinite(v) || v <= 0 || v > 1e12 || v < 1e-15) return null
-  return roundSig(v, 6)
+function finish(v: number, unit: string): number | null {
+  const abs = Math.abs(v)
+  if (!Number.isFinite(v) || abs > 1e12 || (abs !== 0 && abs < 1e-15)) return null
+  const param = paramForUnit(unit)
+  if (param ? !validParamValue(param, v) : v <= 0) return null
+  return roundSig(v, 6) + 0 // + 0 turns -0 into 0
 }
 
 /**
  * Parses free-typed value text for a param of the given unit: "4.7k", "4k7", "4.7 kΩ",
- * "4.7kohm", "220", "1M", "100n", "100nF", "0.1u", "10µ", "10uF", "3.7", "3.7V". Returns null
- * for empty, negative, zero, non-numeric or wrong-unit-suffix input.
+ * "4.7kohm", "220", "1M", "100n", "100nF", "0.1u", "10µ", "10uF", "3.7", "3.7V", "-12", "0".
+ * Returns null for empty, non-numeric or wrong-unit-suffix input, and for a value out of range for
+ * the unit (see `finish`).
  */
 export function parseValue(text: string, unit: string): number | null {
   const t = text.trim()
@@ -94,7 +103,7 @@ export function parseValue(text: string, unit: string): number | null {
   if (embedded) {
     const [, whole, letter, frac, rest] = embedded
     if (!Object.hasOwn(PREFIX_MULT, letter) || !matchesUnit(rest, unit)) return null
-    return finish(Number(`${whole}.${frac}`) * PREFIX_MULT[letter])
+    return finish(Number(`${whole}.${frac}`) * PREFIX_MULT[letter], unit)
   }
 
   const m = /^(-?\d*\.?\d+)\s*([A-Za-zµΩΩ]*)$/.exec(t)
@@ -102,10 +111,10 @@ export function parseValue(text: string, unit: string): number | null {
   const [, numStr, suffixRaw] = m
   const n = Number(numStr)
   if (!Number.isFinite(n)) return null
-  if (suffixRaw === '') return finish(n)
+  if (suffixRaw === '') return finish(n, unit)
   const { mult, rest } = splitPrefix(suffixRaw)
   if (!matchesUnit(rest, unit)) return null
-  return finish(n * mult)
+  return finish(n * mult, unit)
 }
 
 /**

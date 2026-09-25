@@ -10,7 +10,7 @@ import {
   primaryParam,
   resistorBands,
 } from './values.ts'
-import type { ModuleDef } from './module.ts'
+import { validParamValue, type ModuleDef } from './module.ts'
 
 const OHM = 'Ω' // ohm sign
 const MICRO = 'µ' // micro sign
@@ -66,14 +66,29 @@ describe('parseValue', () => {
   it('parses the embedded-decimal form', () => {
     expect(parseValue('4k7', 'ohm')).toBe(4700)
   })
-  it('rejects empty, negative, zero, non-numeric and wrong-unit input', () => {
+  it('rejects empty, out-of-range, non-numeric and wrong-unit input', () => {
     expect(parseValue('', 'ohm')).toBeNull()
     expect(parseValue('   ', 'ohm')).toBeNull()
     expect(parseValue('-5', 'ohm')).toBeNull()
-    expect(parseValue('0', 'ohm')).toBeNull()
+    expect(parseValue('0', 'F')).toBeNull()
+    expect(parseValue('-100n', 'F')).toBeNull()
     expect(parseValue('abc', 'ohm')).toBeNull()
     expect(parseValue('4.7F', 'ohm')).toBeNull()
     expect(parseValue('3.7ohm', 'V')).toBeNull()
+  })
+  it('accepts what loading a file accepts (PARAM_RULES): 0 ohm, and 0 or negative volts', () => {
+    expect(parseValue('0', 'ohm')).toBe(0)
+    expect(parseValue(`0 ${OHM}`, 'ohm')).toBe(0)
+    expect(parseValue('0', 'V')).toBe(0)
+    expect(parseValue('-12', 'V')).toBe(-12)
+    expect(parseValue('-3.3V', 'V')).toBe(-3.3)
+    expect(parseValue('-1k5', 'V')).toBe(-1500)
+    for (const [text, unit, name] of [['0', 'ohm', 'resistance'], ['-5', 'V', 'voltage'], ['0', 'F', 'capacitance'], ['-5', 'ohm', 'resistance']] as const)
+      expect(parseValue(text, unit) !== null).toBe(validParamValue(name, Number(text)))
+  })
+  it('round-trips a shown 0 ohm or negative voltage through the value field', () => {
+    expect(parseValue(formatValue(0, 'ohm'), 'ohm')).toBe(0)
+    expect(parseValue(formatValue(-12, 'V'), 'V')).toBe(-12)
   })
   it('rejects a magnitude above 1e12 or below 1e-15', () => {
     expect(parseValue('5000G', 'ohm')).toBeNull()
