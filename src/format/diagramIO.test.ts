@@ -29,6 +29,19 @@ describe('validateDiagram', () => {
     expect(r.ok).toBe(true)
     if (r.ok) expect(r.warnings).toEqual(['connections[0].to: part "p2" has no pin "nope"'])
   })
+  it('refuses non-string wire labels and annotation text', () => {
+    const d = structuredClone(buttonLed) as unknown as { connections: Record<string, unknown>[]; annotations?: unknown[] }
+    d.connections[0].label = { a: 1 }
+    d.annotations = [{ uid: 'a1', type: 'text', x: 0, y: 0, text: 5, label: [] }]
+    const r = validateDiagram(d)
+    expect(r.ok).toBe(false)
+    if (!r.ok)
+      expect(r.errors).toEqual([
+        'connections[0].label: must be a string',
+        'annotations[0].label: must be a string',
+        'annotations[0].text: must be a string',
+      ])
+  })
   it('checks wire color and gauge', () => {
     const d = structuredClone(buttonLed) as unknown as { connections: Record<string, unknown>[] }
     d.connections[0].color = 'chartreuse'

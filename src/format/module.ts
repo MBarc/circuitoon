@@ -63,6 +63,7 @@ export type ValidationResult = { ok: true; module: ModuleDef } | { ok: false; er
 
 export const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v)
 export const isNum = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v)
+const isPos = (v: unknown): v is number => isNum(v) && v > 0
 
 /** Checks a parsed JSON value against the module format. Errors name the exact path. */
 export function validateModule(raw: unknown): ValidationResult {
@@ -76,6 +77,7 @@ export function validateModule(raw: unknown): ValidationResult {
   if (typeof raw.name !== 'string' || raw.name.trim() === '') errors.push('name: required')
   if (raw.version !== undefined && !(Number.isInteger(raw.version) && (raw.version as number) >= 1))
     errors.push('version: must be a whole number, 1 or more')
+  if (raw.category !== undefined && typeof raw.category !== 'string') errors.push('category: must be a string')
 
   const names = new Set<string>()
   if (!Array.isArray(raw.pins) || raw.pins.length === 0) errors.push('pins: required, at least one pin')
@@ -96,6 +98,8 @@ export function validateModule(raw: unknown): ValidationResult {
         errors.push(`${at}.type: must be one of ${PIN_TYPES.join(', ')}`)
       if (p.bus !== undefined && !(isObj(p.bus) && Number.isInteger(p.bus.length) && (p.bus.length as number) >= 2))
         errors.push(`${at}.bus: must be { "length": <whole number, 2 or more> }`)
+      if (p.label !== undefined && typeof p.label !== 'string') errors.push(`${at}.label: must be a string`)
+      if (p.supply !== undefined && typeof p.supply !== 'string') errors.push(`${at}.supply: must be a string`)
     })
 
   if (raw.internal !== undefined) {
@@ -109,19 +113,24 @@ export function validateModule(raw: unknown): ValidationResult {
       })
   }
 
-  if (raw.size !== undefined && !(isObj(raw.size) && isNum(raw.size.w) && isNum(raw.size.h)))
-    errors.push('size: must be { "w": <units>, "h": <units> }')
+  if (raw.size !== undefined && !(isObj(raw.size) && isPos(raw.size.w) && isPos(raw.size.h)))
+    errors.push('size: must be { "w": <units>, "h": <units> } with positive numbers')
 
   if (raw.art !== undefined) {
     const art = raw.art
-    if (!isObj(art) || !isNum(art.w) || !isNum(art.h) || !Array.isArray(art.shapes))
-      errors.push('art: must be { "w", "h", "shapes": [...] }')
+    if (!isObj(art) || !isPos(art.w) || !isPos(art.h) || !Array.isArray(art.shapes))
+      errors.push('art: must be { "w", "h", "shapes": [...] } with positive w and h')
     else
       art.shapes.forEach((s, i) => {
         const at = `art.shapes[${i}]`
         if (!isObj(s) || s.type !== 'rect') return void errors.push(`${at}: only "rect" shapes are supported`)
         for (const k of ['x', 'y', 'w', 'h']) if (!isNum(s[k])) errors.push(`${at}.${k}: must be a number`)
         if (typeof s.fill !== 'string') errors.push(`${at}.fill: required color`)
+        if (s.radius !== undefined && !isNum(s.radius)) errors.push(`${at}.radius: must be a number`)
+        if (s.outline !== undefined && typeof s.outline !== 'boolean') errors.push(`${at}.outline: must be true or false`)
+        if (s.label !== undefined && typeof s.label !== 'string') errors.push(`${at}.label: must be a string`)
+        if (s.labelColor !== undefined && typeof s.labelColor !== 'string') errors.push(`${at}.labelColor: must be a string`)
+        if (s.labelSize !== undefined && !isPos(s.labelSize)) errors.push(`${at}.labelSize: must be a positive number`)
       })
   }
 

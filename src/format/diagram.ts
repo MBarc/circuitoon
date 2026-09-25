@@ -255,11 +255,18 @@ export function validateDiagram(raw: unknown): DiagramResult {
         errors.push(`${at}.gauge: must be a whole number from 16 to 30`)
       if (c.route !== undefined && !(Array.isArray(c.route) && c.route.every((p) => Array.isArray(p) && p.length === 2 && isNum(p[0]) && isNum(p[1]))))
         errors.push(`${at}.route: must be a list of [x, y] points`)
+      if (c.label !== undefined && typeof c.label !== 'string') errors.push(`${at}.label: must be a string`)
     })
 
   if (raw.annotations !== undefined) {
     if (!Array.isArray(raw.annotations)) errors.push('annotations: must be a list')
-    else raw.annotations.forEach((a, i) => (isObj(a) ? claim(a.uid, `annotations[${i}]`) : errors.push(`annotations[${i}]: must be an object`)))
+    else
+      raw.annotations.forEach((a, i) => {
+        const at = `annotations[${i}]`
+        if (!isObj(a)) return void errors.push(`${at}: must be an object`)
+        claim(a.uid, at)
+        for (const k of ['label', 'text']) if (a[k] !== undefined && typeof a[k] !== 'string') errors.push(`${at}.${k}: must be a string`)
+      })
   }
 
   return errors.length ? { ok: false, errors } : { ok: true, diagram: raw as unknown as Diagram, warnings }
