@@ -6,7 +6,7 @@ import type { Pt } from '../format/geometry.ts'
 import { Part, INK } from '../render/Part.tsx'
 import { WireLabel } from '../render/WireLabel.tsx'
 import { addPart, addWire, EMPTY_SELECTION, moveParts, reconnectWire, setWireRoute, updateWire } from './ops.ts'
-import { insertBend, moveSegment, removeBend, segmentsOf, toRoute, type Axis } from '../format/wireEdit.ts'
+import { insertBend, moveSegment, removeBend, segmentHandleAt, segmentsOf, toRoute, type Axis } from '../format/wireEdit.ts'
 import { modulesById } from '../library.ts'
 import { bodyRect, worldPins } from '../format/geometry.ts'
 import { layoutModule, type ModuleDef } from '../format/module.ts'
@@ -28,7 +28,7 @@ type Drag = { pointer: number } & (
   | { kind: 'segment'; uid: string; index: number; axis: Axis; start: Pt; points: Pt[]; base: Diagram }
 )
 
-/** Segments shorter than this get no handle: there is no room to grab one. */
+/** Segments shorter than this get no handle: there is no room to grab one. A 20 px pin run gets one. */
 const MIN_HANDLE_SEGMENT = 20
 
 /**
@@ -116,6 +116,7 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
   })
 
   const draggingParts = drag?.kind === 'parts' ? drag.uids : null
+  const reshaping = drag?.kind === 'segment' ? drag.uid : null
   // Routes depend only on parts, modules and each wire's ends and fixed route, so title, color and label edits skip re-routing.
   const endpointsKey = useMemo(
     () => diagram.connections.map((c) => `${c.uid}:${c.from.part}.${c.from.pin}>${c.to.part}.${c.to.pin}:${JSON.stringify(c.route ?? null)}`).join('|'),
@@ -128,10 +129,13 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
       // Lanes are skipped while dragging (much cheaper per frame); the full route on drop applies them.
       return computeRoutes(diagram, { only, prev: settled.current, occupancy: false })
     }
+    // Reshaping one wire changes only that wire's route; everything else keeps its settled route
+    // until the drag ends and the full route (with lanes) runs again.
+    if (reshaping) return computeRoutes(diagram, { only: new Set([reshaping]), prev: settled.current, occupancy: false })
     const all = computeRoutes(diagram)
     settled.current = all
     return all
-  }, [diagram.parts, diagram.modules, endpointsKey, draggingParts])
+  }, [diagram.parts, diagram.modules, endpointsKey, draggingParts, reshaping])
   // Path data only changes with the routes or the wires themselves, not with pan, zoom or selection.
   const wires = useMemo(() => wirePaths(diagram, routes), [routes, diagram.connections])
 
@@ -167,9 +171,14 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
   /** Commits a new shape for one wire, from its full polyline, as one undo step. */
   function commitShape(uid: string, points: Pt[]) {
     const s = store.getState()
+    // Nothing changed (Alt+click on an existing corner, a refused bend removal): no commit, so an
+    // automatic wire stays automatic and no empty undo step is added.
+    const current = routes.get(uid)?.points
+    if (current && current.length === points.length && current.every((p, i) => p.x === points[i].x && p.y === points[i].y)) return
     if (s.diagram.connections.some((c) => c.uid === uid)) store.commit(setWireRoute(s.diagram, uid, toRoute(points)))
   }
   function onDoubleClick(e: React.MouseEvent<SVGSVGElement>) {
+    if (e.altKey) return // Alt+click adds bends; a quick second one must not open the name editor
     // A drag holds pointer capture on the svg itself, so e.target is always the svg; look up
     // what is actually under the cursor, as pinUnder does.
     const under = document.elementFromPoint(e.clientX, e.clientY)
@@ -443,15 +452,16 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
           (() => {
             const w = wires.find((w) => w.conn.uid === selection.wires[0])
             if (!w) return null
-            // Handles sit on the routed geometry the edits work on (with its collinear bends),
-            // not the drawn path, which may be nudged a few px clear of another wire.
+            // Handles index the routed geometry the edits work on (with its collinear bends); the
+            // segment bars are drawn on the drawn path, which may be nudged a few px clear of
+            // another wire.
             const pts = routes.get(w.conn.uid)?.points ?? []
             const segHandles = segmentsOf(pts)
-              .filter((sg) => Math.abs(sg.b.x - sg.a.x) + Math.abs(sg.b.y - sg.a.y) > MIN_HANDLE_SEGMENT)
+              .filter((sg) => Math.abs(sg.b.x - sg.a.x) + Math.abs(sg.b.y - sg.a.y) >= MIN_HANDLE_SEGMENT)
               .map((sg) => {
                 const h = sg.axis === 'h'
-                const cx = (sg.a.x + sg.b.x) / 2
-                const cy = (sg.a.y + sg.b.y) / 2
+                // Indices come from the routed polyline; the bar sits on the drawn line.
+                const { x: cx, y: cy } = segmentHandleAt(sg, w.points)
                 return (
                   <rect
                     key={`seg-${sg.i}`}
