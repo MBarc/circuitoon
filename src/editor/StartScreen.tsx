@@ -62,7 +62,7 @@ export function StartScreen({ onOpen }: { onOpen: (d: Diagram, notice?: string) 
             />
           </div>
           <button type="button" className="start-card sample" onClick={() => onOpen(structuredClone(buttonLed))}>
-            <Sheet diagram={buttonLed} captions={captions} box={{ x: 20, y: -6, w: 480, h: 212 }} label="Sample sheet preview" />
+            <Sheet diagram={buttonLed} captions={captions} box={{ x: 20, y: -6, w: 480, h: 212 }} label="Sample sheet preview" decorative />
             <strong>Try the sample</strong>
             <span>A battery, button, resistor and LED, ready to rearrange.</span>
           </button>

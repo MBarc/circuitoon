@@ -2,16 +2,18 @@
 import { type Diagram, moduleOf, wireColor, wirePaths, wireWidth } from '../format/diagram.ts'
 import { Part, INK } from './Part.tsx'
 
-export function Sheet({ diagram, captions = {}, box, label }: {
+export function Sheet({ diagram, captions = {}, box, label, decorative = false }: {
   diagram: Diagram
   captions?: Record<string, string>
   /** Visible area in diagram coordinates. */
   box: { x: number; y: number; w: number; h: number }
   label: string
+  /** Hide from assistive tech, for a preview inside a control that is already labelled. */
+  decorative?: boolean
 }) {
   const wires = wirePaths(diagram)
   return (
-    <svg className="sheet" viewBox={`${box.x} ${box.y} ${box.w} ${box.h}`} role="img" aria-label={label}>
+    <svg className="sheet" viewBox={`${box.x} ${box.y} ${box.w} ${box.h}`} {...(decorative ? { 'aria-hidden': true } : { role: 'img', 'aria-label': label })}>
       <defs>
         <pattern id="grid" width="10" height="10" patternUnits="userSpaceOnUse">
           <path d="M10 0H0V10" fill="none" stroke="var(--grid)" strokeWidth="0.6" />

@@ -16,7 +16,7 @@
 .toolbar .title { font: 600 18px/1.2 "Fredoka", system-ui, sans-serif; margin-right: auto; }
 .toolbar .sep { width: 1px; align-self: stretch; background: var(--rule); margin: 0 4px; }
 .toolbar .message { flex-basis: 100%; margin: 0; font-size: 14px; }
-.toolbar .message.error { color: #C53A31; }
+.toolbar .message.error { color: var(--error); }
 .tool {
   font: 700 14px/1 "Atkinson Hyperlegible", system-ui, sans-serif;
   color: var(--text); background: transparent;
@@ -68,7 +68,7 @@
 .start-card {
   display: grid; gap: 8px; align-content: start; justify-items: start; text-align: left;
   font: 400 15px/1.45 "Atkinson Hyperlegible", system-ui, sans-serif; color: var(--text);
-  background: var(--panel); border: 2.5px solid var(--ink); border-radius: 12px; box-shadow: 4px 5px 0 var(--shadow);
+  background: var(--panel); border: 2.5px solid var(--card-edge); border-radius: 12px; box-shadow: 4px 5px 0 var(--shadow);
   padding: 18px; cursor: pointer;
 }
 .start-card strong { font: 600 21px/1.2 "Fredoka", system-ui, sans-serif; }
@@ -80,5 +80,5 @@
   display: grid; place-items: center; width: 44px; height: 44px; border-radius: 10px;
   background: var(--yellow); color: #23282F; border: 2px solid var(--ink); font: 600 26px/1 "Fredoka", system-ui, sans-serif;
 }
-.start-error { margin: 0; color: #C53A31; font-weight: 700; }
+.start-error { margin: 0; color: var(--error); font-weight: 700; }
 button.wordmark { background: none; border: 0; padding: 0; cursor: pointer; }

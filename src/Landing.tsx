@@ -4,15 +4,9 @@ import { Part, partBounds } from './render/Part.tsx'
 import { Sheet } from './render/Sheet.tsx'
 import { buttonLed, captions } from './samples/buttonLed.ts'
 import { isSpacer } from './format/module.ts'
+import { downloadText } from './editor/files.ts'
 
 const REPO = 'https://github.com/MBarc/circuitoon'
-
-function download(filename: string, data: unknown) {
-  const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2) + '\n'], { type: 'application/json' }))
-  const a = Object.assign(document.createElement('a'), { href: url, download: filename })
-  a.click()
-  URL.revokeObjectURL(url)
-}
 
 function PartCard({ entry }: { entry: LibraryEntry }) {
   const [open, setOpen] = useState(false)
@@ -43,7 +37,7 @@ function PartCard({ entry }: { entry: LibraryEntry }) {
           <button type="button" onClick={() => setOpen(!open)} aria-expanded={open}>
             {open ? 'Hide JSON' : 'Show JSON'}
           </button>
-          <button type="button" onClick={() => download(entry.file, entry.raw)}>Download JSON</button>
+          <button type="button" onClick={() => downloadText(entry.file, JSON.stringify(entry.raw, null, 2) + '\n')}>Download JSON</button>
         </div>
         {open && <pre className="json">{JSON.stringify(entry.raw, null, 2)}</pre>}
       </div>

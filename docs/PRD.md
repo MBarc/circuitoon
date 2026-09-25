@@ -65,7 +65,7 @@ Parts and wires are both first-class objects you click, drag, select and delete,
 
 - Drag from the parts library onto the canvas. Each instance has an immutable internal `uid` and an editable designator (U1, R1, X2) shown on the canvas.
 - Renaming a designator is always allowed; connections reference `uid`, so nothing breaks.
-- Drag to move; rotate 90 degrees clockwise per press (R) around the body center. Pins keep their order and rotate with the part; pin labels and designators stay upright for readability.
+- Drag to move; rotate 90 degrees clockwise per press (R) around the grid point at or up-left of the body center. Pins keep their order and rotate with the part; pin labels and designators stay upright for readability.
 - Deleting a part deletes its attached wires, as one undo step.
 - Paste and duplicate create new `uid`s and next-free designators; wires are copied only when both ends are inside the copied selection.
 - Parts may overlap while dragging. A part dropped overlapping another shows an overlap warning outline.

@@ -24,7 +24,7 @@
 
 ## Out of scope for M1 (later plans)
 
-Autosave and the home screen (IndexedDB), manual wire editing gestures and stored bends from the canvas, hop-aware net highlighting and power conflict warnings, broken-reference red stubs and problems panel, art studio, PDF export, copy/paste, box select, text labels and frames.
+Autosave and the home screen (IndexedDB), manual wire editing gestures and stored bends from the canvas, hop-aware net highlighting and power conflict warnings, broken-reference red stubs and problems panel, art studio, PDF export, copy/paste, box select, text labels and frames, an overlap warning outline for dropped parts, and a 4 px nudge for overlapping collinear wire segments.
 
 ## File Structure
 

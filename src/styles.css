@@ -11,6 +11,8 @@
   --yellow: #F4B400;
   --focus: #3D6FD6;
   --shadow: #23282F;
+  --error: #B8342B; /* 5:1 on --bg, 5.7:1 on --panel */
+  --card-edge: #23282F;
   color-scheme: light;
 }
 @media (prefers-color-scheme: dark) {
@@ -22,6 +24,8 @@
     --rule: #334039;
     --focus: #8AB0FF;
     --shadow: #4A5A50;
+    --error: #FF7A70;
+    --card-edge: #9AA79F;
     color-scheme: dark;
   }
 }

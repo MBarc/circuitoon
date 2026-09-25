@@ -27,7 +27,8 @@ export function downloadText(filename: string, text: string) {
   const url = URL.createObjectURL(new Blob([text], { type: 'application/json' }))
   const a = Object.assign(document.createElement('a'), { href: url, download: filename })
   a.click()
-  URL.revokeObjectURL(url)
+  // Some browsers start the download after click() returns, so revoke on the next task.
+  setTimeout(() => URL.revokeObjectURL(url), 0)
 }
 
 export function exportFileName(title: string): string {

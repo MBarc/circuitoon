@@ -72,6 +72,8 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
   })
 
   const draggingParts = drag?.kind === 'parts' ? drag.uids : null
+  // Routes depend only on parts, modules and each wire's ends and fixed route, so title, color and label edits skip re-routing.
+  const endpointsKey = diagram.connections.map((c) => `${c.uid}:${c.from.part}.${c.from.pin}>${c.to.part}.${c.to.pin}:${JSON.stringify(c.route ?? null)}`).join('|')
   const routes = useMemo(() => {
     if (draggingParts) {
       const moving = new Set(draggingParts)
@@ -81,7 +83,7 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
     const all = computeRoutes(diagram)
     settled.current = all
     return all
-  }, [diagram, draggingParts])
+  }, [diagram.parts, diagram.modules, endpointsKey, draggingParts])
   const wires = wirePaths(diagram, routes)
 
   const vw = size.w / view.scale
