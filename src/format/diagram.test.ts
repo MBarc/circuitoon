@@ -119,6 +119,10 @@ describe('wirePaths', () => {
     const out = computeRoutes(diagram, { only: new Set(['w2']), prev, occupancy: false })
     expect(out.get('w1')).toBe(prev.get('w1'))
     expect(out.get('w2')).toEqual(alone.get('w2'))
+    // With lanes, the kept routes seed the lanes the re-routed wire sees, as in a full route.
+    const laned = computeRoutes(diagram, { only: new Set(['w2']), prev })
+    expect(laned.get('w2')).toEqual(prev.get('w2'))
+    expect(laned.get('w2')).not.toEqual(alone.get('w2'))
   })
   it('reuses previous routes for wires not listed in only', () => {
     const diagram = d([{ uid: 'w', from: { part: 'a', pin: 'R' }, to: { part: 'b', pin: 'L' } }])
@@ -276,14 +280,34 @@ describe('wirePaths', () => {
     })
   })
 
-  it('draws 200 parts and 500 wires within the frame budget', () => {
+  /** The stress sheet: 200 parts on a 20 x 10 grid and 500 wires between them. */
+  function stressSheet(): Diagram {
     const parts = Array.from({ length: 200 }, (_, i) => ({ uid: `p${i}`, designator: `U${i}`, module: 'two', x: (i % 20) * 100, y: Math.floor(i / 20) * 80 }))
     const connections = Array.from({ length: 500 }, (_, i) => {
       const from = i % 200
       const to = (from + 1 + ((i * 37) % 199)) % 200
       return { uid: `w${i}`, from: { part: `p${from}`, pin: 'R' }, to: { part: `p${to}`, pin: 'L' } }
     })
-    const diagram: Diagram = { format: 'circuitoon-diagram/1', title: 'big', modules: { two }, parts, connections }
+    return { format: 'circuitoon-diagram/1', title: 'big', modules: { two }, parts, connections }
+  }
+
+  it('routes 200 parts and 500 wires, with lanes, within budget', () => {
+    const diagram = stressSheet()
+    computeRoutes(diagram) // warm-up
+    // Best of three, so one GC pause or a busy CI machine does not fail the run. About 430 to 480 ms on
+    // the development machine (the pre-lanes router took about 335 ms); the limit is 3x the upper figure.
+    let ms = Infinity
+    for (let k = 0; k < 3; k++) {
+      const t = performance.now()
+      computeRoutes(diagram)
+      ms = Math.min(ms, performance.now() - t)
+    }
+    console.log(`computeRoutes 200 parts / 500 wires: ${ms.toFixed(1)} ms`)
+    expect(ms).toBeLessThan(1400)
+  }, 60_000)
+
+  it('draws 200 parts and 500 wires within the frame budget', () => {
+    const diagram = stressSheet()
     const routes = computeRoutes(diagram)
     wirePaths(diagram, routes) // warm-up
     // Best of three, so one GC pause or a busy CI machine does not fail the run.

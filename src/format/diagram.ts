@@ -2,7 +2,7 @@
 
 import { type ModuleDef, layoutModule, validateModule, isObj, isNum } from './module.ts'
 import { type Pt, type Rect, type Rotation, type WorldPin, bodyRect, simplify, worldPins } from './geometry.ts'
-import { addToOccupancy, routeOrthogonal, type Occupancy } from './router.ts'
+import { addToOccupancy, Occupancy, routeOrthogonal } from './router.ts'
 import { PRIMARY_PARAM_NAMES } from './values.ts'
 import { manualRouteBlocked, tidy } from './wireEdit.ts'
 
@@ -142,53 +142,22 @@ export function routeWire(d: Diagram, c: Connection, obstacles: Rect[], occupied
  * Routes every connection in file order, feeding each auto route the grid lanes every earlier
  * route (auto or manual) already used, so a wire whose shortest path would run alongside an
  * earlier one takes its own lane instead. With `only`, connections outside the set keep their
- * route from `prev` (used while dragging so only the moving part's wires are re-routed each
- * frame); those kept routes still seed the occupancy the `only` routes see, in file order.
- */
-/**
- * Per drag frame, `computeRoutes` is called with the same `prev` (the routes settled before the
- * drag started) and an `only` set whose membership does not change while the same part(s) stay
- * selected, even though a fresh `Set` object is built for it every frame. Keyed on `prev` (so a
- * new drag, with a new settled snapshot, never reuses a stale entry, and old entries are dropped
- * once GC reclaims the `prev` they belong to), this caches the occupancy seeded from the routes
- * `only` leaves alone, so a pointer-move frame only pays for building it once per drag rather than
- * re-running `addToOccupancy` over the whole rest of the sheet on every frame.
- */
-const seedCache = new WeakMap<Routes, { onlyKey: string; occupied: Occupancy }>()
-
-function seedOccupancy(d: Diagram, only: Set<string>, prev: Routes): Occupancy {
-  const onlyKey = Array.from(only).sort().join(',')
-  const cached = seedCache.get(prev)
-  if (cached && cached.onlyKey === onlyKey) return cached.occupied
-  const occupied: Occupancy = new Map()
-  for (const c of d.connections) {
-    if (!only.has(c.uid)) {
-      const kept = prev.get(c.uid)
-      if (kept) addToOccupancy(occupied, kept.points)
-    }
-  }
-  seedCache.set(prev, { onlyKey, occupied })
-  return occupied
-}
-
-/**
+ * route from `prev` (used while dragging so only the moving part's or reshaped wire's routes are
+ * recomputed each frame); those kept routes still seed the lanes the `only` routes see.
  * `occupancy: false` routes every wire as if it were alone on the sheet (no lanes), which is much
- * cheaper; the editor uses it for the wires it re-routes on each frame of a part drag, and the
- * full route on drop applies lanes again.
+ * cheaper; the editor uses it for the wires it re-routes on each drag frame, and the full route
+ * on drop applies lanes again.
  */
 export function computeRoutes(d: Diagram, opts: { only?: Set<string>; prev?: Routes; occupancy?: boolean } = {}): Routes {
   const obstacles = partObstacles(d)
   const out: Routes = new Map()
-  const lanes = opts.occupancy !== false
-  // A fresh copy: the cached seed is reused across frames, so routes computed below must not
-  // mutate it, only this call's own working copy.
-  const occupied: Occupancy | undefined = !lanes
-    ? undefined
-    : opts.only && opts.prev
-      ? new Map(seedOccupancy(d, opts.only, opts.prev))
-      : new Map()
+  const occupied = opts.occupancy === false ? undefined : new Occupancy()
   for (const c of d.connections) {
-    if (opts.only && !opts.only.has(c.uid) && opts.prev?.has(c.uid)) out.set(c.uid, opts.prev.get(c.uid)!)
+    if (opts.only && !opts.only.has(c.uid) && opts.prev?.has(c.uid)) {
+      const kept = opts.prev.get(c.uid)!
+      out.set(c.uid, kept)
+      if (kept && occupied) addToOccupancy(occupied, kept.points)
+    }
   }
   for (const c of d.connections) {
     if (out.has(c.uid)) continue

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { routeOrthogonal, occupancyOf } from './router.ts'
+import { addToOccupancy, routeOrthogonal, occupancyOf } from './router.ts'
 import type { Pt, Rect } from './geometry.ts'
 
 /** Axis-aligned segments of a route, skipping the first and last (they attach to pins). */
@@ -120,6 +120,23 @@ describe('routeOrthogonal', () => {
       const occ = occupancyOf([p1])
       const p2 = routeOrthogonal({ from: { x: 0, y: 10 }, fromDir: right, to: { x: 20, y: 10 }, toDir: left, obstacles: [], occupied: occ })
       expect(p2).not.toBeNull()
+    })
+
+    it('records each run on its own axis, keeps earlier runs as it grows, and stores far-off runs too', () => {
+      const occ = occupancyOf([[{ x: 0, y: 0 }, { x: 30, y: 0 }]])
+      addToOccupancy(occ, [{ x: 30, y: -2000 }, { x: 30, y: 4000 }]) // grows the dense grid
+      addToOccupancy(occ, [{ x: 9_000_000, y: 50 }, { x: 9_000_020, y: 50 }]) // past the dense limit
+      addToOccupancy(occ, [{ x: 48, y: 5 }, { x: 48, y: 25 }]) // off the grid: nothing the search visits
+      expect([occ.at(0, 0), occ.at(10, 0), occ.at(30, 0), occ.at(40, 0)]).toEqual([1, 1, 3, 0])
+      expect([occ.at(30, -2000), occ.at(30, 4000), occ.at(30, 4010)]).toEqual([2, 2, 0])
+      expect([occ.at(9_000_000, 50), occ.at(9_000_020, 50), occ.at(9_000_030, 50)]).toEqual([1, 1, 0])
+      expect(occ.at(48, 10)).toBe(0)
+      expect(occ.size).toBe(4 + 600 + 3) // the vertical run shares (30, 0) with the first
+      const out = new Uint8Array(4 * 2)
+      occ.copyWindow(8_999_990, 40, 4, 2, 10, out)
+      expect(Array.from(out)).toEqual([0, 0, 0, 0, 0, 1, 1, 1])
+      occ.copyWindow(-10, -10, 4, 2, 10, out)
+      expect(Array.from(out)).toEqual([0, 0, 0, 0, 0, 1, 1, 1])
     })
 
     it('adds no cost for crossing an occupied run perpendicular to the path', () => {
