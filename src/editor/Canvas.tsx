@@ -17,10 +17,11 @@ const MAX_SCALE = 4
 const GRID = 10
 const snap = (v: number) => Math.round(v / GRID) * GRID
 
-type Drag =
+type Drag = { pointer: number } & (
   | { kind: 'pan'; client: Pt; view: View }
   | { kind: 'parts'; start: Pt; uids: string[]; base: Diagram }
   | { kind: 'wire'; from: Endpoint; origin: Pt; cursor: Pt; over: Endpoint | null }
+)
 
 export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api: { addAtCenter: (moduleId: string) => void }) => void }) {
   const { diagram, selection } = useEditorState(store)
@@ -87,14 +88,20 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
   const vh = size.h / view.scale
 
   function onPointerDown(e: React.PointerEvent<SVGSVGElement>) {
+    // Commit a half-typed inspector field (it saves on blur) before the selection changes and unmounts it.
+    const active = document.activeElement
+    if (active instanceof HTMLElement && active !== document.body) active.blur()
+    // One gesture at a time: a second finger or button does not start another drag.
+    if (drag) return
     if (e.button !== 0 && e.button !== 1) return
     const target = e.target as Element
-    e.currentTarget.setPointerCapture(e.pointerId)
+    const pointer = e.pointerId
+    e.currentTarget.setPointerCapture(pointer)
     const pinEl = e.button === 0 ? target.closest('[data-pin]') : null
     if (pinEl) {
       const from = { part: pinEl.getAttribute('data-pin-part')!, pin: pinEl.getAttribute('data-pin')! }
       const origin = { x: Number(pinEl.getAttribute('cx')), y: Number(pinEl.getAttribute('cy')) }
-      setDrag({ kind: 'wire', from, origin, cursor: toWorld(e), over: null })
+      setDrag({ pointer, kind: 'wire', from, origin, cursor: toWorld(e), over: null })
       return
     }
     const wireEl = e.button === 0 ? target.closest('[data-wire]') : null
@@ -113,11 +120,11 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
       if (e.shiftKey) parts = parts.includes(uid) ? parts.filter((u) => u !== uid) : [...parts, uid]
       else if (!parts.includes(uid)) parts = [uid]
       store.select({ parts, wires: e.shiftKey ? sel.wires : [] })
-      if (parts.includes(uid)) setDrag({ kind: 'parts', start: toWorld(e), uids: parts, base: store.begin() })
+      if (parts.includes(uid)) setDrag({ pointer, kind: 'parts', start: toWorld(e), uids: parts, base: store.begin() })
       return
     }
     if (!e.shiftKey) store.select(EMPTY_SELECTION)
-    setDrag({ kind: 'pan', client: { x: e.clientX, y: e.clientY }, view })
+    setDrag({ pointer, kind: 'pan', client: { x: e.clientX, y: e.clientY }, view })
   }
   // With pointer capture the event target is always the svg, so look up what is under the cursor.
   function pinUnder(e: { clientX: number; clientY: number }): Endpoint | null {
@@ -125,19 +132,24 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
     return el ? { part: el.getAttribute('data-pin-part')!, pin: el.getAttribute('data-pin')! } : null
   }
   function onPointerMove(e: React.PointerEvent<SVGSVGElement>) {
-    if (drag?.kind === 'pan')
+    if (!drag || e.pointerId !== drag.pointer) return
+    if (drag.kind === 'pan')
       setView({ ...drag.view, x: drag.view.x - (e.clientX - drag.client.x) / view.scale, y: drag.view.y - (e.clientY - drag.client.y) / view.scale })
-    else if (drag?.kind === 'parts') {
+    else if (drag.kind === 'parts') {
+      if (!store.dragging) return
       const p = toWorld(e)
       store.preview(moveParts(drag.base, drag.uids, snap(p.x - drag.start.x), snap(p.y - drag.start.y)))
-    } else if (drag?.kind === 'wire') setDrag({ ...drag, cursor: toWorld(e), over: pinUnder(e) })
+    } else if (drag.kind === 'wire') setDrag({ ...drag, cursor: toWorld(e), over: pinUnder(e) })
   }
   function onPointerUp(e: React.PointerEvent<SVGSVGElement>) {
-    if (drag?.kind === 'parts') store.end()
-    if (drag?.kind === 'wire') {
+    if (!drag || e.pointerId !== drag.pointer) return
+    if (drag.kind === 'parts') store.end()
+    if (drag.kind === 'wire') {
       const to = pinUnder(e)
       const s = store.getState()
-      const added = to && addWire(s.diagram, drag.from, to, s.wireStyle)
+      // The start part may have been deleted or undone away while the wire was being drawn.
+      const exists = (ep: Endpoint) => s.diagram.parts.some((p) => p.uid === ep.part)
+      const added = to && exists(drag.from) && exists(to) && addWire(s.diagram, drag.from, to, s.wireStyle)
       if (added) {
         store.commit(added.diagram)
         store.select({ parts: [], wires: [added.uid] })
@@ -145,9 +157,15 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
     }
     setDrag(null)
   }
+  function onPointerCancel(e: React.PointerEvent<SVGSVGElement>) {
+    if (!drag || e.pointerId !== drag.pointer) return
+    if (drag.kind === 'parts') store.end()
+    setDrag(null)
+  }
 
+  // Escape abandons a wire or part drag. For parts, the editor's key handler calls store.cancel().
   useEffect(() => {
-    if (drag?.kind !== 'wire') return
+    if (drag?.kind !== 'wire' && drag?.kind !== 'parts') return
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setDrag(null)
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
@@ -177,7 +195,8 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
-        onPointerCancel={() => { if (drag?.kind === 'parts') store.end(); setDrag(null) }}
+        onPointerCancel={onPointerCancel}
+        onLostPointerCapture={onPointerCancel}
         role="application"
         aria-label="Wiring sheet editor"
       >
