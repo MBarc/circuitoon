@@ -1,12 +1,12 @@
 // Draws one module in the Sticker style: flat fills, dark ink outline on every shape.
-import { type ModuleDef, type PlacedPin, layoutModule, LEAD } from '../format/module.ts'
-import { bodyRect, pivot, worldPins, type Rotation } from '../format/geometry.ts'
+import { type ModuleDef, type PinType, type PlacedPin, layoutModule, LEAD } from '../format/module.ts'
+import { bodyRect, pivot, worldPins, type Rect, type Rotation, type WorldPin } from '../format/geometry.ts'
 
 export const INK = '#23282F'
 const OUTLINE = 1.6
 const METAL = '#C9CED6'
 
-function showLabel(m: ModuleDef, p: PlacedPin) {
+function showLabel(m: ModuleDef, p: { label?: string; type?: PinType }) {
   return p.label !== undefined || m.pins.length > 2 || p.type === 'power_out' || p.type === 'power_in' || p.type === 'ground'
 }
 
@@ -24,7 +24,12 @@ function PinStub({ p }: { p: PlacedPin }) {
   return <rect x={x} y={y} width={horiz ? LEAD : 3.5} height={horiz ? 3.5 : LEAD} rx={1.2} fill={METAL} stroke={INK} strokeWidth={1.1} />
 }
 
-function PinLabel({ p, h, w, outside }: { p: PlacedPin; w: number; h: number; outside: boolean }) {
+/**
+ * A pin label, placed from the pin's rotated position so it stays upright at any rotation:
+ * horizontal beside pins on a left or right edge, reading bottom to top beside pins on a top
+ * or bottom edge (the pitch is too tight for horizontal text there). `box` is the rotated body.
+ */
+function PinLabel({ p, box, outside }: { p: WorldPin; box: Rect; outside: boolean }) {
   const text = p.label ?? p.name
   const common = { fontSize: 7, fontWeight: 700, fill: INK, stroke: '#FFFFFF', strokeWidth: 2.4, paintOrder: 'stroke' }
   // Drawn parts keep their art clean: labels sit beside the pin stub, outside the body.
@@ -36,11 +41,12 @@ function PinLabel({ p, h, w, outside }: { p: PlacedPin; w: number; h: number; ou
   }
   const pad = 4
   const inside = { ...common, dominantBaseline: 'central' as const }
-  if (p.side === 'left') return <text x={pad} y={p.edge.y} {...inside}>{text}</text>
-  if (p.side === 'right') return <text x={w - pad} y={p.edge.y} textAnchor="end" {...inside}>{text}</text>
-  const y = p.side === 'top' ? pad : h - pad
+  if (p.dir.x < 0) return <text x={box.x + pad} y={p.edge.y} {...inside}>{text}</text>
+  if (p.dir.x > 0) return <text x={box.x + box.w - pad} y={p.edge.y} textAnchor="end" {...inside}>{text}</text>
+  const top = p.dir.y < 0
+  const y = top ? box.y + pad : box.y + box.h - pad
   return (
-    <text x={p.edge.x} y={y} transform={`rotate(-90 ${p.edge.x} ${y})`} textAnchor={p.side === 'top' ? 'end' : 'start'} {...inside}>
+    <text x={p.edge.x} y={y} transform={`rotate(-90 ${p.edge.x} ${y})`} textAnchor={top ? 'end' : 'start'} {...inside}>
       {text}
     </text>
   )
@@ -60,7 +66,8 @@ export function Part({ module: m, x = 0, y = 0, rotation = 0, caption }: {
   const c = pivot(lay.w, lay.h)
   // Caption goes under the rotated body, below any pin stubs that now point down.
   const box = bodyRect({ x: 0, y: 0, rotation }, lay)
-  const stubsDown = worldPins({ x: 0, y: 0, rotation }, m).some((p) => p.dir.y > 0)
+  const pins = worldPins({ x: 0, y: 0, rotation }, m)
+  const stubsDown = pins.some((p) => p.dir.y > 0)
   const captionY = box.y + box.h + (stubsDown ? LEAD : 0) + 15
   return (
     <g transform={`translate(${x} ${y})`}>
@@ -95,8 +102,8 @@ export function Part({ module: m, x = 0, y = 0, rotation = 0, caption }: {
             </text>
           </>
         )}
-        {lay.pins.filter((p) => showLabel(m, p)).map((p) => <PinLabel key={p.name} p={p} w={lay.w} h={lay.h} outside={!!art} />)}
       </g>
+      {pins.filter((p) => showLabel(m, p)).map((p) => <PinLabel key={p.name} p={p} box={box} outside={!!art} />)}
       {caption && (
         <text x={box.x + box.w / 2} y={captionY} textAnchor="middle" fontSize={8.5} fontWeight={700} fill={INK}>
           {caption}
