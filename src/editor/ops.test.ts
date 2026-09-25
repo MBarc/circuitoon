@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { addPart, addWire, deleteSelection, moveParts, nextDesignator, reconnectWire, rotateParts, updatePart, updatePartValue, updateWire } from './ops.ts'
+import { addPart, addWire, deleteSelection, designatorPrefix, moveParts, nextDesignator, reconnectWire, rotateParts, updatePart, updatePartValue, updateWire } from './ops.ts'
 import { emptyDiagram } from '../format/diagram.ts'
 import type { ModuleDef } from '../format/module.ts'
 import { parseValue } from '../format/values.ts'
@@ -33,6 +33,15 @@ describe('ops', () => {
     expect(d.parts.map((p) => [p.uid, p.designator])).toEqual([['p1', 'R1'], ['p2', 'R2']])
     expect(Object.keys(d.modules)).toEqual(['resistor'])
     expect(nextDesignator(d, resistor)).toBe('R3')
+  })
+  it('gives the potentiometer its own RV prefix, not the resistor prefix', () => {
+    const potentiometer: ModuleDef = {
+      format: 'circuitoon-module/1', id: 'potentiometer', name: 'Potentiometer',
+      pins: [{ name: '1', side: 'bottom' }, { name: 'W', side: 'bottom' }, { name: '3', side: 'bottom' }],
+      electrical: { params: { resistance: { unit: 'ohm', default: 10000 } } },
+    }
+    expect(designatorPrefix(potentiometer)).toBe('RV')
+    expect(designatorPrefix(resistor)).toBe('R')
   })
   it('moves and rotates only the given parts', () => {
     const d = rotateParts(moveParts(twoResistors(), ['p2'], 20, -10), ['p2'])

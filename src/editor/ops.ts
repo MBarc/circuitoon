@@ -29,6 +29,7 @@ export function nextUid(d: Diagram, prefix: 'p' | 'w' | 'a'): string {
 }
 
 const PREFIXES: [RegExp, string][] = [
+  [/^potentiometer/, 'RV'],
   [/^resistor/, 'R'],
   [/^capacitor/, 'C'],
   [/^led/, 'D'],

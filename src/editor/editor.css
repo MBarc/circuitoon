@@ -27,13 +27,31 @@
 
 .library { grid-area: lib; overflow-y: auto; border-right: 1px solid var(--rule); background: var(--panel); padding: 12px; display: grid; gap: 10px; align-content: start; }
 .library h2, .inspector h2 { font: 600 17px/1.2 "Fredoka", system-ui, sans-serif; margin: 0; }
+.lib-search {
+  font: 400 14px/1.2 "Atkinson Hyperlegible", system-ui, sans-serif; color: var(--text);
+  background: var(--bg); border: 1.5px solid var(--rule); border-radius: 6px; padding: 6px 8px;
+}
+.lib-group { display: grid; gap: 6px; }
+.lib-group-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  border: none; background: transparent; color: var(--text); padding: 2px 0; cursor: pointer;
+  font: 700 13px/1.2 "Atkinson Hyperlegible", system-ui, sans-serif; text-transform: uppercase; letter-spacing: 0.03em;
+}
+.lib-group-head:hover { color: #23282F; }
+.lib-group-head::before { content: "▾"; margin-right: 6px; font-size: 11px; }
+.lib-group-head[aria-expanded="false"]::before { content: "▸"; }
+.lib-group-count {
+  margin-left: auto; color: var(--muted); background: var(--bg); border-radius: 10px;
+  padding: 1px 7px; font-size: 12px; font-weight: 700; letter-spacing: normal; text-transform: none;
+}
+.lib-group-items { display: grid; gap: 6px; }
 .lib-item {
-  display: grid; grid-template-columns: 64px 1fr; gap: 8px; align-items: center;
+  display: grid; grid-template-columns: 56px 1fr; gap: 8px; align-items: center;
   border: 1px solid var(--rule); border-radius: 8px; background: var(--paper); color: #23282F;
-  padding: 6px; cursor: grab; text-align: left; font: 700 14px/1.2 "Atkinson Hyperlegible", system-ui, sans-serif;
+  padding: 5px; cursor: grab; text-align: left; font: 700 13px/1.2 "Atkinson Hyperlegible", system-ui, sans-serif;
 }
 .lib-item:hover { border-color: #23282F; }
-.lib-item svg { width: 64px; height: 44px; }
+.lib-item svg { width: 56px; height: 38px; }
 .hint { color: var(--muted); font-size: 13.5px; margin: 0; }
 
 .canvas-wrap { grid-area: canvas; position: relative; overflow: hidden; }

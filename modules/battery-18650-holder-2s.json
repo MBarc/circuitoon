@@ -12,6 +12,10 @@
       "supply": "7.4V"
     },
     {
+      "spacer": true,
+      "side": "right"
+    },
+    {
       "name": "-",
       "side": "right",
       "type": "ground"
@@ -109,7 +113,7 @@
       {
         "type": "rect",
         "x": 72,
-        "y": 38.5,
+        "y": 48.5,
         "w": 28,
         "h": 3,
         "fill": "#1B1B1B",
