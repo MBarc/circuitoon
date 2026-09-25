@@ -1,8 +1,8 @@
 {
   "format": "circuitoon-module/1",
-  "id": "battery-18650-cell",
-  "version": 2,
-  "name": "18650 cell",
+  "id": "battery-lr44",
+  "version": 1,
+  "name": "LR44 button cell",
   "category": "Batteries",
   "pins": [
     {
@@ -14,7 +14,7 @@
       "name": "+",
       "side": "right",
       "type": "power_out",
-      "supply": "3.7V"
+      "supply": "1.5V"
     }
   ],
   "electrical": {
@@ -26,61 +26,52 @@
     "params": {
       "voltage": {
         "unit": "V",
-        "default": 3.7
+        "default": 1.5
       }
     }
   },
   "art": {
-    "w": 70,
+    "w": 40,
     "h": 40,
     "shapes": [
       {
         "type": "rect",
         "x": 0,
         "y": 18.5,
-        "w": 12,
+        "w": 8,
         "h": 3,
         "fill": "#B8BEC7",
         "radius": 1.5
       },
       {
         "type": "rect",
-        "x": 58,
+        "x": 32,
         "y": 18.5,
-        "w": 12,
+        "w": 8,
         "h": 3,
         "fill": "#B8BEC7",
         "radius": 1.5
       },
       {
         "type": "rect",
-        "x": 9,
-        "y": 9,
-        "w": 52,
-        "h": 22,
-        "fill": "#3D6FD6",
-        "radius": 11,
-        "label": "18650",
-        "labelColor": "#EAF6FF",
-        "labelSize": 6
-      },
-      {
-        "type": "rect",
-        "x": 8,
+        "x": 10,
         "y": 11,
-        "w": 6,
+        "w": 20,
         "h": 18,
         "fill": "#D5DAE1",
-        "radius": 3
+        "radius": 9
       },
       {
         "type": "rect",
-        "x": 58,
-        "y": 15,
-        "w": 6,
-        "h": 10,
-        "fill": "#D5DAE1",
-        "radius": 3
+        "x": 13,
+        "y": 14,
+        "w": 14,
+        "h": 12,
+        "fill": "#9AA0AC",
+        "radius": 6,
+        "label": "LR44",
+        "labelColor": "#20242B",
+        "labelSize": 5
       }
     ]
   }

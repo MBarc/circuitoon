@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
-import { layoutModule, usesInsideLabels, validateModule, type ModuleDef } from './module.ts'
+import { insideLabelSides, layoutModule, usesInsideLabels, validateModule, type ModuleDef } from './module.ts'
 
 const base = { format: 'circuitoon-module/1', id: 'thing', name: 'Thing' }
 
@@ -49,6 +49,15 @@ describe('validateModule', () => {
     })
     expect(r.ok).toBe(false)
     if (!r.ok) expect(r.errors).toEqual(['art.shapes[0].label: must be a string'])
+  })
+  it('accepts a supply list of rails separated by "/" and rejects empty tokens', () => {
+    const pin = (supply: string) => validateModule({ ...base, pins: [{ name: 'VCC', side: 'left', type: 'power_in', supply }] })
+    for (const ok of ['5V', '3V3', 'VDD', '3V3/5V', '1V8/3V3/5V']) expect(pin(ok).ok).toBe(true)
+    for (const bad of ['', '/', '3V3/', '/5V', '3V3//5V', ' 3V3/5V', '3V3 / 5V']) {
+      const r = pin(bad)
+      expect(r.ok).toBe(false)
+      if (!r.ok) expect(r.errors).toEqual(['pins[0].supply: must be one or more rail names separated by "/", for example "3V3/5V"'])
+    }
   })
   it('checks the other optional fields rendering reads', () => {
     const r = validateModule({
@@ -151,14 +160,22 @@ describe('usesInsideLabels', () => {
   it('is true only when art.pinLabels is "inside"', () => {
     expect(usesInsideLabels(m({ art: { w: 10, h: 10, shapes: [], pinLabels: 'inside' } }))).toBe(true)
   })
-  it('is set only on the 7 built-in ESP32 boards, never on any other built-in module', () => {
+  it('draws inside labels on every side, so a top header (a small OLED) reads like one on the left or right', () => {
+    expect(insideLabelSides(m())).toEqual([])
+    expect(insideLabelSides(m({ art: { w: 10, h: 10, shapes: [], pinLabels: 'inside' } })).sort()).toEqual(['bottom', 'left', 'right', 'top'])
+  })
+  it('is set only on the header parts (ESP32 boards, DIP chips, display modules), never on any other built-in module', () => {
     const dir = join(import.meta.dirname, '..', '..', 'modules')
     const boardFiles = new Set([
       'esp32-devkitc-v4.json', 'esp32-devkit-v1-30.json', 'esp32-s3-devkitc-1.json',
       'esp32-c3-supermini.json', 'xiao-esp32c3.json', 'xiao-esp32s3.json', 'esp32-cam.json',
+      'mcp23017-dip28.json', 'mcp23018-dip28.json',
+      'lcd-st7796s-4in-spi-touch.json', 'tft-ili9341-28-spi-touch.json', 'tft-ili9341-24-spi.json', 'tft-st7735-18-spi.json',
+      'tft-st7789-154-spi.json', 'oled-ssd1306-091-i2c.json', 'oled-ssd1306-096-i2c.json', 'oled-ssd1306-096-i2c-vcc-gnd.json',
+      'oled-sh1106-13-i2c.json', 'oled-sh1106-13-i2c-vcc-gnd.json',
     ])
     const files = readdirSync(dir).filter((f) => f.endsWith('.json'))
-    expect(files.filter((f) => boardFiles.has(f))).toHaveLength(7)
+    expect(files.filter((f) => boardFiles.has(f))).toHaveLength(boardFiles.size)
     for (const file of files) {
       const r = validateModule(JSON.parse(readFileSync(join(dir, file), 'utf8')))
       if (!r.ok) throw new Error(`${file}: ${r.errors.join('; ')}`)

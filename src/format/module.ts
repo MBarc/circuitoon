@@ -70,6 +70,10 @@ export const isSpacer = (p: PinEntry): p is SpacerDef => 'spacer' in p && p.spac
  * silkscreen, instead of beside the pin stub. Off for every module that does not set it. */
 export const usesInsideLabels = (m: ModuleDef): boolean => m.art?.pinLabels === 'inside'
 
+/** Sides whose pin names draw inside the body: every side for an "inside" module (a board's
+ * left/right headers, a small OLED's top header), none otherwise. */
+export const insideLabelSides = (m: ModuleDef): Side[] => (usesInsideLabels(m) ? [...SIDES] : [])
+
 export type ValidationResult = { ok: true; module: ModuleDef } | { ok: false; errors: string[] }
 
 export const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v)
@@ -112,6 +116,8 @@ export function validateModule(raw: unknown): ValidationResult {
         errors.push(`${at}.bus: must be { "length": <whole number, 2 or more> }`)
       if (p.label !== undefined && typeof p.label !== 'string') errors.push(`${at}.label: must be a string`)
       if (p.supply !== undefined && typeof p.supply !== 'string') errors.push(`${at}.supply: must be a string`)
+      else if (typeof p.supply === 'string' && !/^[^/\s]+(\/[^/\s]+)*$/.test(p.supply))
+        errors.push(`${at}.supply: must be one or more rail names separated by "/", for example "3V3/5V"`)
     })
 
   if (raw.internal !== undefined) {

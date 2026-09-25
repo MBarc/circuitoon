@@ -1,0 +1,473 @@
+{
+  "format": "circuitoon-module/1",
+  "id": "mcp23018-dip28",
+  "version": 1,
+  "name": "MCP23018 I/O expander (DIP-28)",
+  "category": "Chips",
+  "source": "https://ww1.microchip.com/downloads/aemDocuments/documents/APID/ProductDocuments/DataSheets/MCP23018-Data-Sheet-DS20002103.pdf",
+  "pins": [
+    {
+      "name": "VSS",
+      "side": "left",
+      "type": "ground"
+    },
+    {
+      "name": "NC",
+      "side": "left",
+      "type": "nc"
+    },
+    {
+      "name": "GPB0",
+      "side": "left"
+    },
+    {
+      "name": "GPB1",
+      "side": "left"
+    },
+    {
+      "name": "GPB2",
+      "side": "left"
+    },
+    {
+      "name": "GPB3",
+      "side": "left"
+    },
+    {
+      "name": "GPB4",
+      "side": "left"
+    },
+    {
+      "name": "GPB5",
+      "side": "left"
+    },
+    {
+      "name": "GPB6",
+      "side": "left"
+    },
+    {
+      "name": "GPB7",
+      "side": "left"
+    },
+    {
+      "name": "VDD",
+      "side": "left",
+      "type": "power_in",
+      "supply": "3V3/5V"
+    },
+    {
+      "name": "SCL",
+      "side": "left",
+      "type": "input"
+    },
+    {
+      "name": "SDA",
+      "side": "left",
+      "type": "io"
+    },
+    {
+      "name": "NC 2",
+      "side": "left",
+      "label": "NC",
+      "type": "nc"
+    },
+    {
+      "name": "NC 4",
+      "side": "right",
+      "label": "NC",
+      "type": "nc"
+    },
+    {
+      "name": "GPA7",
+      "side": "right"
+    },
+    {
+      "name": "GPA6",
+      "side": "right"
+    },
+    {
+      "name": "GPA5",
+      "side": "right"
+    },
+    {
+      "name": "GPA4",
+      "side": "right"
+    },
+    {
+      "name": "GPA3",
+      "side": "right"
+    },
+    {
+      "name": "GPA2",
+      "side": "right"
+    },
+    {
+      "name": "GPA1",
+      "side": "right"
+    },
+    {
+      "name": "GPA0",
+      "side": "right"
+    },
+    {
+      "name": "INTA",
+      "side": "right",
+      "type": "output"
+    },
+    {
+      "name": "INTB",
+      "side": "right",
+      "type": "output"
+    },
+    {
+      "name": "NC 3",
+      "side": "right",
+      "label": "NC",
+      "type": "nc"
+    },
+    {
+      "name": "RESET",
+      "side": "right",
+      "type": "input"
+    },
+    {
+      "name": "ADDR",
+      "side": "right",
+      "type": "input"
+    }
+  ],
+  "size": {
+    "w": 10,
+    "h": 19
+  },
+  "electrical": {
+    "model": "io-expander",
+    "params": {}
+  },
+  "art": {
+    "w": 100,
+    "h": 190,
+    "pinLabels": "inside",
+    "shapes": [
+      {
+        "type": "rect",
+        "x": 0,
+        "y": 0,
+        "w": 100,
+        "h": 190,
+        "fill": "#1E2126",
+        "radius": 3
+      },
+      {
+        "type": "rect",
+        "x": 1,
+        "y": 28,
+        "w": 8,
+        "h": 4,
+        "fill": "#C9CED6",
+        "radius": 1,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 91,
+        "y": 28,
+        "w": 8,
+        "h": 4,
+        "fill": "#C9CED6",
+        "radius": 1,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 1,
+        "y": 38,
+        "w": 8,
+        "h": 4,
+        "fill": "#C9CED6",
+        "radius": 1,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 91,
+        "y": 38,
+        "w": 8,
+        "h": 4,
+        "fill": "#C9CED6",
+        "radius": 1,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 1,
+        "y": 48,
+        "w": 8,
+        "h": 4,
+        "fill": "#C9CED6",
+        "radius": 1,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 91,
+        "y": 48,
+        "w": 8,
+        "h": 4,
+        "fill": "#C9CED6",
+        "radius": 1,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 1,
+        "y": 58,
+        "w": 8,
+        "h": 4,
+        "fill": "#C9CED6",
+        "radius": 1,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 91,
+        "y": 58,
+        "w": 8,
+        "h": 4,
+        "fill": "#C9CED6",
+        "radius": 1,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 1,
+        "y": 68,
+        "w": 8,
+        "h": 4,
+        "fill": "#C9CED6",
+        "radius": 1,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 91,
+        "y": 68,
+        "w": 8,
+        "h": 4,
+        "fill": "#C9CED6",
+        "radius": 1,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 1,
+        "y": 78,
+        "w": 8,
+        "h": 4,
+        "fill": "#C9CED6",
+        "radius": 1,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 91,
+        "y": 78,
+        "w": 8,
+        "h": 4,
+        "fill": "#C9CED6",
+        "radius": 1,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 1,
+        "y": 88,
+        "w": 8,
+        "h": 4,
+        "fill": "#C9CED6",
+        "radius": 1,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 91,
+        "y": 88,
+        "w": 8,
+        "h": 4,
+        "fill": "#C9CED6",
+        "radius": 1,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 1,
+        "y": 98,
+        "w": 8,
+        "h": 4,
+        "fill": "#C9CED6",
+        "radius": 1,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 91,
+        "y": 98,
+        "w": 8,
+        "h": 4,
+        "fill": "#C9CED6",
+        "radius": 1,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 1,
+        "y": 108,
+        "w": 8,
+        "h": 4,
+        "fill": "#C9CED6",
+        "radius": 1,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 91,
+        "y": 108,
+        "w": 8,
+        "h": 4,
+        "fill": "#C9CED6",
+        "radius": 1,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 1,
+        "y": 118,
+        "w": 8,
+        "h": 4,
+        "fill": "#C9CED6",
+        "radius": 1,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 91,
+        "y": 118,
+        "w": 8,
+        "h": 4,
+        "fill": "#C9CED6",
+        "radius": 1,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 1,
+        "y": 128,
+        "w": 8,
+        "h": 4,
+        "fill": "#C9CED6",
+        "radius": 1,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 91,
+        "y": 128,
+        "w": 8,
+        "h": 4,
+        "fill": "#C9CED6",
+        "radius": 1,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 1,
+        "y": 138,
+        "w": 8,
+        "h": 4,
+        "fill": "#C9CED6",
+        "radius": 1,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 91,
+        "y": 138,
+        "w": 8,
+        "h": 4,
+        "fill": "#C9CED6",
+        "radius": 1,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 1,
+        "y": 148,
+        "w": 8,
+        "h": 4,
+        "fill": "#C9CED6",
+        "radius": 1,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 91,
+        "y": 148,
+        "w": 8,
+        "h": 4,
+        "fill": "#C9CED6",
+        "radius": 1,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 1,
+        "y": 158,
+        "w": 8,
+        "h": 4,
+        "fill": "#C9CED6",
+        "radius": 1,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 91,
+        "y": 158,
+        "w": 8,
+        "h": 4,
+        "fill": "#C9CED6",
+        "radius": 1,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 42,
+        "y": 2,
+        "w": 16,
+        "h": 8,
+        "fill": "#3A3F47",
+        "radius": 4
+      },
+      {
+        "type": "rect",
+        "x": 13,
+        "y": 11,
+        "w": 5,
+        "h": 5,
+        "fill": "#3A3F47",
+        "radius": 2.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 15,
+        "y": 170,
+        "w": 70,
+        "h": 12,
+        "fill": "#1E2126",
+        "outline": false,
+        "label": "MCP23018",
+        "labelColor": "#C9CED6",
+        "labelSize": 7
+      }
+    ]
+  }
+}
