@@ -6,7 +6,7 @@ export const GRID = 10 // px per grid unit at 100% zoom; also the pin pitch
 export const LEAD = 8 // px a pin stub sticks out from the body
 
 export type Side = 'top' | 'bottom' | 'left' | 'right'
-export const SIDES: Side[] = ['top', 'left', 'bottom', 'right']
+export const SIDES: Side[] = ['top', 'right', 'bottom', 'left']
 export const PIN_TYPES = ['power_in', 'power_out', 'ground', 'input', 'output', 'io', 'passive', 'nc'] as const
 export type PinType = (typeof PIN_TYPES)[number]
 

@@ -28,7 +28,9 @@ describe('rotation', () => {
     expect(bodyRect({ x: 0, y: 0, rotation: 90 }, { w: 40, h: 30 })).toEqual({ x: 0, y: -10, w: 30, h: 40 })
   })
   it('keeps pins on the grid and turns their direction', () => {
-    const [l, r] = worldPins({ x: 100, y: 100, rotation: 90 }, two)
+    const pins = worldPins({ x: 100, y: 100, rotation: 90 }, two)
+    const l = pins.find((p) => p.name === 'L')!
+    const r = pins.find((p) => p.name === 'R')!
     // L edge is local (0, 20): 20 left and 10 below the pivot (20, 10); turned, 10 left and 20 above
     expect(l.edge).toEqual({ x: 110, y: 90 })
     expect(l.dir).toEqual({ x: 0, y: -1 })
