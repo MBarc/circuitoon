@@ -9,6 +9,7 @@ GitHub Actions is disabled on the MBarc account, so there is no CI: this workflo
 
 ## Before merging
 - The work passed its reviews (task reviews and a final whole-branch review for multi-part work). Parts with pinouts need an independent pinout check (see `circuitoon-add-part`).
+- Astra (the `consult-astra` skill) reviewed the branch: a code review plus a review of its main technical decisions. Michael asked for this on every branch. Implement what you agree with, tell him what you declined and why. If Astra cannot run (limit, auth), tell Michael and ask before shipping without it.
 - The branch is clean (`git status`), and nothing else is mid-flight on it. Check `git worktree list`: never switch branches inside a worktree another agent is using; do the merge from a checkout that is free.
 
 ## Steps
