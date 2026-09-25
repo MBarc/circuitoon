@@ -21,6 +21,7 @@ function sharesInteriorRun(a: Pt[], b: Pt[]) {
 const right = { x: 1, y: 0 }
 const left = { x: -1, y: 0 }
 const up = { x: 0, y: -1 }
+const down = { x: 0, y: 1 }
 
 function orthogonal(pts: Pt[]) {
   return pts.every((p, i) => i === 0 || p.x === pts[i - 1].x || p.y === pts[i - 1].y)
@@ -119,6 +120,15 @@ describe('routeOrthogonal', () => {
       const occ = occupancyOf([p1])
       const p2 = routeOrthogonal({ from: { x: 0, y: 10 }, fromDir: right, to: { x: 20, y: 10 }, toDir: left, obstacles: [], occupied: occ })
       expect(p2).not.toBeNull()
+    })
+
+    it('adds no cost for crossing an occupied run perpendicular to the path', () => {
+      // A horizontal run occupied at y=50 from x=0 to x=100; a straight vertical route from
+      // (50,0) to (50,100) crosses it at a right angle, never running along it on the same axis.
+      const occ = occupancyOf([[{ x: 0, y: 50 }, { x: 100, y: 50 }]])
+      const plain = routeOrthogonal({ from: { x: 50, y: 0 }, fromDir: down, to: { x: 50, y: 100 }, toDir: up, obstacles: [] })
+      const withOcc = routeOrthogonal({ from: { x: 50, y: 0 }, fromDir: down, to: { x: 50, y: 100 }, toDir: up, obstacles: [], occupied: occ })
+      expect(withOcc).toEqual(plain)
     })
   })
 })

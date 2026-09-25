@@ -169,14 +169,27 @@ function search(
 
   // Read every occupied node the search window could reach once, up front, rather than hashing
   // a "x,y" string per candidate edge: at up to 12 edge tries per cell, that dwarfs one Map.get
-  // per cell for any window big enough to matter.
+  // per cell for any window big enough to matter. Below `MAX_CELLS`, cols*rows can still be huge
+  // (a wide-margin fallback search), so pick whichever side is smaller: walk the window's cells
+  // when occupancy is the bigger set, or walk occupancy's entries (parsed back to x/y once each)
+  // and drop the ones outside this window when the window is the bigger set.
   let parallel: Uint8Array | null = null
   if (req.occupied?.size) {
     parallel = new Uint8Array(cols * rows)
-    for (let row = 0; row < rows; row++) {
-      for (let col = 0; col < cols; col++) {
-        const used = req.occupied.get(`${x0 + col * g},${y0 + row * g}`)
-        if (used) parallel[row * cols + col] = used
+    if (req.occupied.size < cols * rows) {
+      for (const [key, bits] of req.occupied) {
+        const comma = key.indexOf(',')
+        const x = +key.slice(0, comma)
+        const y = +key.slice(comma + 1)
+        if (x < x0 || x > x1 || y < y0 || y > y1) continue
+        parallel[((y - y0) / g) * cols + (x - x0) / g] = bits
+      }
+    } else {
+      for (let row = 0; row < rows; row++) {
+        for (let col = 0; col < cols; col++) {
+          const used = req.occupied.get(`${x0 + col * g},${y0 + row * g}`)
+          if (used) parallel[row * cols + col] = used
+        }
       }
     }
   }

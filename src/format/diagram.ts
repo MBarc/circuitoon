@@ -138,16 +138,40 @@ export function routeWire(d: Diagram, c: Connection, obstacles: Rect[], occupied
  * route from `prev` (used while dragging so only the moving part's wires are re-routed each
  * frame); those kept routes still seed the occupancy the `only` routes see, in file order.
  */
+/**
+ * Per drag frame, `computeRoutes` is called with the same `prev` (the routes settled before the
+ * drag started) and an `only` set whose membership does not change while the same part(s) stay
+ * selected, even though a fresh `Set` object is built for it every frame. Keyed on `prev` (so a
+ * new drag, with a new settled snapshot, never reuses a stale entry, and old entries are dropped
+ * once GC reclaims the `prev` they belong to), this caches the occupancy seeded from the routes
+ * `only` leaves alone, so a pointer-move frame only pays for building it once per drag rather than
+ * re-running `addToOccupancy` over the whole rest of the sheet on every frame.
+ */
+const seedCache = new WeakMap<Routes, { onlyKey: string; occupied: Occupancy }>()
+
+function seedOccupancy(d: Diagram, only: Set<string>, prev: Routes): Occupancy {
+  const onlyKey = Array.from(only).sort().join(',')
+  const cached = seedCache.get(prev)
+  if (cached && cached.onlyKey === onlyKey) return cached.occupied
+  const occupied: Occupancy = new Map()
+  for (const c of d.connections) {
+    if (!only.has(c.uid)) {
+      const kept = prev.get(c.uid)
+      if (kept) addToOccupancy(occupied, kept.points)
+    }
+  }
+  seedCache.set(prev, { onlyKey, occupied })
+  return occupied
+}
+
 export function computeRoutes(d: Diagram, opts: { only?: Set<string>; prev?: Routes } = {}): Routes {
   const obstacles = partObstacles(d)
   const out: Routes = new Map()
-  const occupied: Occupancy = new Map()
+  // A fresh copy: the cached seed is reused across frames, so routes computed below must not
+  // mutate it, only this call's own working copy.
+  const occupied: Occupancy = opts.only && opts.prev ? new Map(seedOccupancy(d, opts.only, opts.prev)) : new Map()
   for (const c of d.connections) {
-    if (opts.only && !opts.only.has(c.uid) && opts.prev?.has(c.uid)) {
-      const kept = opts.prev.get(c.uid)!
-      out.set(c.uid, kept)
-      if (kept) addToOccupancy(occupied, kept.points)
-    }
+    if (opts.only && !opts.only.has(c.uid) && opts.prev?.has(c.uid)) out.set(c.uid, opts.prev.get(c.uid)!)
   }
   for (const c of d.connections) {
     if (out.has(c.uid)) continue
