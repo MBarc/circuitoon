@@ -24,4 +24,6 @@ export const buttonLed: Diagram = {
   ],
 }
 
-export const captions: Record<string, string> = { p1: 'BT1  9 V', p2: 'S1', p3: 'R1  220 \u2126', p4: 'D1  red' }
+// Only the LED's color needs an explicit caption: partCaption already derives BT1's voltage and
+// R1's resistance from their stored values, and S1 has no primary param at all.
+export const captions: Record<string, string> = { p4: 'D1  red' }
