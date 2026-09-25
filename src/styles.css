@@ -86,6 +86,9 @@ h1 { font: 600 clamp(34px, 5vw, 54px)/1.05 "Fredoka", system-ui, sans-serif; mar
 h2 { font: 600 30px/1.15 "Fredoka", system-ui, sans-serif; margin: 0; }
 .section-head p { margin: 0; color: var(--muted); }
 
+.landing-group { display: grid; gap: 12px; }
+.landing-group-head { margin: 0; font: 600 15px/1 "Atkinson Hyperlegible", system-ui, sans-serif; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); }
+
 .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 196px), 1fr)); gap: 18px; align-items: start; }
 .card { background: var(--panel); border: 1px solid var(--rule); border-radius: 10px; overflow: hidden; }
 .preview {
@@ -99,6 +102,9 @@ h2 { font: 600 30px/1.15 "Fredoka", system-ui, sans-serif; margin: 0; }
 .card-body { padding: 12px 14px 14px; display: grid; gap: 8px; }
 .card h3 { margin: 0; font: 600 19px/1.2 "Fredoka", system-ui, sans-serif; }
 .meta { margin: 0; color: var(--muted); font-size: 14.5px; }
+.source-links { display: grid; gap: 4px; }
+.source-links ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 2px; }
+.source-links a { font-size: 13px; word-break: break-all; }
 .actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .actions button {
   font: 700 13.5px/1 "Atkinson Hyperlegible", system-ui, sans-serif;

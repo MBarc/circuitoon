@@ -3,10 +3,31 @@ import { library, type LibraryEntry } from './library.ts'
 import { Part, partBounds } from './render/Part.tsx'
 import { Sheet } from './render/Sheet.tsx'
 import { buttonLed, captions } from './samples/buttonLed.ts'
-import { isSpacer } from './format/module.ts'
+import { isSpacer, type ModuleDef } from './format/module.ts'
 import { downloadText } from './editor/files.ts'
+import { groupLibrary } from './editor/libraryGroups.ts'
 
 const REPO = 'https://github.com/MBarc/circuitoon'
+
+/**
+ * A module's `source` field is one or more URLs joined by whitespace. Only http: and https:
+ * links are ever shown or followed: anything else (a malformed string, or another scheme such as
+ * javascript:) is silently dropped rather than rendered as a clickable link.
+ */
+export function sourceLinks(source: string | undefined): string[] {
+  if (!source) return []
+  return source
+    .split(/\s+/)
+    .filter(Boolean)
+    .filter((u) => {
+      try {
+        const parsed = new URL(u)
+        return parsed.protocol === 'http:' || parsed.protocol === 'https:'
+      } catch {
+        return false
+      }
+    })
+}
 
 function PartCard({ entry }: { entry: LibraryEntry }) {
   const [open, setOpen] = useState(false)
@@ -22,6 +43,7 @@ function PartCard({ entry }: { entry: LibraryEntry }) {
   const b = partBounds(m)
   const pad = 16
   const pinCount = m.pins.filter((p) => !isSpacer(p)).length
+  const links = sourceLinks(m.source)
   return (
     <article className="card">
       <svg
@@ -33,6 +55,18 @@ function PartCard({ entry }: { entry: LibraryEntry }) {
       <div className="card-body">
         <h3>{m.name}</h3>
         <p className="meta">{m.category ?? 'Uncategorized'}, {pinCount} {pinCount === 1 ? 'pin' : 'pins'}</p>
+        {links.length > 0 && (
+          <div className="source-links">
+            <span className="meta">Pinout source</span>
+            <ul>
+              {links.map((u) => (
+                <li key={u}>
+                  <a href={u} target="_blank" rel="noopener noreferrer">{u}</a>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
         <div className="actions">
           <button type="button" onClick={() => setOpen(!open)} aria-expanded={open}>
             {open ? 'Hide JSON' : 'Show JSON'}
@@ -46,6 +80,10 @@ function PartCard({ entry }: { entry: LibraryEntry }) {
 }
 
 export function Landing() {
+  const errorEntries = library.filter((e): e is LibraryEntry & { ok: false } => !e.ok)
+  const okEntries = library.filter((e): e is LibraryEntry & { ok: true } => e.ok)
+  const entryByModule = new Map<ModuleDef, LibraryEntry>(okEntries.map((e) => [e.module, e]))
+  const groups = groupLibrary(okEntries.map((e) => e.module))
   return (
     <>
       <header className="topbar">
@@ -83,9 +121,19 @@ export function Landing() {
               name, its pins, and which side each pin sits on. Pins on a side appear in list order.
             </p>
           </div>
-          <div className="grid">
-            {library.map((e) => <PartCard key={e.file} entry={e} />)}
-          </div>
+          {errorEntries.length > 0 && (
+            <div className="grid">
+              {errorEntries.map((e) => <PartCard key={e.file} entry={e} />)}
+            </div>
+          )}
+          {groups.map((g) => (
+            <div className="landing-group" key={g.category}>
+              <h3 className="landing-group-head">{g.category}</h3>
+              <div className="grid">
+                {g.modules.map((m) => <PartCard key={entryByModule.get(m)!.file} entry={entryByModule.get(m)!} />)}
+              </div>
+            </div>
+          ))}
         </section>
       </main>
       <footer>
