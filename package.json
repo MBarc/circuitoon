@@ -8,7 +8,8 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "test": "vitest run",
-    "validate": "node scripts/validate-modules.ts"
+    "validate": "node scripts/validate-modules.ts",
+    "deploy": "bash scripts/deploy.sh"
   },
   "dependencies": {
     "react": "^19.3.0",

@@ -2,7 +2,15 @@
 
 Lucidchart for electronics wiring diagrams. Drag cartoon pictures of real modules onto a canvas, wire them pin to pin, and move anything while the wires follow.
 
-Early development. Nothing to run yet.
+Early development. Live at https://mbarc.github.io/circuitoon/ (currently the parts library and drawing style; the editor is next).
+
+```bash
+npm install
+npm run dev       # local dev server
+npm test          # unit tests
+npm run validate  # check every file in modules/
+npm run deploy    # validate, test, build, publish to GitHub Pages
+```
 
 - `docs/PRD.md` - product requirements (V1 editor and art studio, V2 simulation, V3 animation)
 - `modules/` - module definitions: one JSON file per part, listing its pins and which side each sits on

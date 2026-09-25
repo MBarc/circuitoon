@@ -294,7 +294,7 @@ Circuitoon is a static single-page app served from GitHub Pages, with no backend
 - **Routing spike exit criteria:** on a 200-part, 500-wire test diagram built around breadboard bus pins, the chosen router must (1) keep dragging at 60 fps on a mid-range laptop in Chrome, (2) honor manual routes and every rule in Routing precedence, (3) re-route wires the moved part obstructs, (4) place hop arcs correctly, and (5) load its WASM, if any, from the deployed Pages subpath.
 - **PDF:** `jsPDF` plus `svg2pdf.js`. It supports a subset of SVG, so the canvas uses only that subset (paths, rects, text, no filters). A bundled font covers symbols such as ohm and micro. Rotated labels, hop arcs and symbols are tested in the first PDF milestone.
 - **State:** one document model in memory; the diagram JSON is a direct serialization of it. Undo and redo as a command history.
-- **Deploy:** GitHub Actions builds on push to `main` and publishes to Pages. The site is served from the `/circuitoon/` subpath, so Vite's `base`, asset URLs and any WASM load paths must respect it.
+- **Deploy:** `npm run deploy` validates, tests, builds and force-pushes `dist/` to the `gh-pages` branch, which Pages serves. (GitHub Actions is disabled on the account, so there is no CI workflow.) The site is served from the `/circuitoon/` subpath, so Vite's `base`, asset URLs and any WASM load paths must respect it.
 - **Browsers:** current Chrome, Edge, Firefox, Safari on desktop. Touch and phone editing are out of scope for V1; viewing a diagram on a phone should work.
 
 **Repo and Pages.** On a personal account, GitHub Pages needs a public repo or a paid plan for a private one, and a personal-account Pages site is publicly reachable either way.
