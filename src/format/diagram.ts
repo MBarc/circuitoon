@@ -1,7 +1,7 @@
 // Diagram format (circuitoon-diagram/1): types plus the wire geometry the renderer needs.
 
 import { type ModuleDef, isBoard, layoutModule, validateModule, isObj, isNum } from './module.ts'
-import { type Pt, type Rect, type Rotation, type WorldPin, bodyRect, simplify, toWorld, worldPins } from './geometry.ts'
+import { type Pt, type Rect, type Rotation, bodyRect, simplify, toWorld, worldPins } from './geometry.ts'
 import { addToOccupancy, Occupancy, routeOrthogonal } from './router.ts'
 import { PRIMARY_PARAM_NAMES } from './values.ts'
 import { manualRouteBlocked, tidy } from './wireEdit.ts'
@@ -99,17 +99,12 @@ export function moduleOf(d: Pick<Diagram, 'modules'>, id: string): ModuleDef | u
   return Object.hasOwn(d.modules, id) ? d.modules[id] : undefined
 }
 
+/** Part bodies wires must route around. A module with `obstacle: false` (a breadboard) is not one. */
 export function partObstacles(d: Diagram): Rect[] {
   return d.parts.flatMap((p) => {
     const m = moduleOf(d, p.module)
-    return m ? [bodyRect(p, layoutModule(m))] : []
+    return m && m.obstacle !== false ? [bodyRect(p, layoutModule(m))] : []
   })
-}
-
-function endpoint(d: Diagram, ep: Endpoint) {
-  const part = d.parts.find((p) => p.uid === ep.part)
-  const mod = part && moduleOf(d, part.module)
-  return (part && mod && worldPins(part, mod).find((p) => p.name === ep.pin)) || null
 }
 
 /** A wire end in world px: where the wire attaches, and the way it must leave (null: any way, a hole). */
@@ -143,11 +138,13 @@ export function resolveEndpoint(d: Diagram, ep: Endpoint): ResolvedEnd | null {
  * Collinear bends are kept (the user may have split a run to move its halves separately), so
  * this polyline is also what the editing handles work on; only spikes and repeats are dropped.
  */
-function manualPoints(a: WorldPin, b: WorldPin, route: [number, number][]): Pt[] {
+function manualPoints(a: ResolvedEnd, b: ResolvedEnd, route: [number, number][]): Pt[] {
   const bends = route.map(([x, y]) => ({ x, y }))
-  const corner = (pin: WorldPin, next: Pt | undefined): Pt[] => {
+  const corner = (pin: ResolvedEnd, next: Pt | undefined): Pt[] => {
     if (!next || next.x === pin.end.x || next.y === pin.end.y) return []
-    return [pin.dir.x !== 0 ? { x: next.x, y: pin.end.y } : { x: pin.end.x, y: next.y }]
+    // A hole end may leave any way; it turns horizontally first, like a pin on a left or right edge.
+    const horizontal = pin.dir === null || pin.dir.x !== 0
+    return [horizontal ? { x: next.x, y: pin.end.y } : { x: pin.end.x, y: next.y }]
   }
   // No bends left (every one removed by hand): still one corner, never a diagonal.
   const head = corner(a, bends.length ? bends[0] : b.end)
@@ -156,8 +153,8 @@ function manualPoints(a: WorldPin, b: WorldPin, route: [number, number][]): Pt[]
 }
 
 export function routeWire(d: Diagram, c: Connection, obstacles: Rect[], occupied?: Occupancy): WireRoute | null {
-  const a = endpoint(d, c.from)
-  const b = endpoint(d, c.to)
+  const a = resolveEndpoint(d, c.from)
+  const b = resolveEndpoint(d, c.to)
   if (!a || !b) return null
   if (c.route) {
     const points = manualPoints(a, b, c.route)
@@ -493,13 +490,16 @@ export function validateDiagram(raw: unknown): DiagramResult {
 
   if (errors.length) return { ok: false, errors }
   const diagram = raw as unknown as Diagram
-  // Mounts that load but plug nothing. A missing or non-board target, a self mount and a missing
-  // module are already warned about above.
+  // Mounts that load but plug nothing. A missing target, a self mount, and a non-board target
+  // whose module is embedded are already warned about above; a non-board target whose module is
+  // not embedded is caught below instead (its own "not embedded" warning is separate).
   for (const { part, board, reason } of mountIssues(diagram)) {
     const i = diagram.parts.findIndex((p) => p.uid === part)
     const at = `parts[${i}].mount`
     if (reason === 'cannot-mount' && board !== part && modules.has(diagram.parts[i].module))
       warnings.push(`${at}: part "${part}" cannot mount (boards, parts with a bus pin and parts with no pins never do)`)
+    else if (reason === 'not-a-board' && !modules.has(partModule.get(board)!))
+      warnings.push(`${at}: part "${board}" is not a board (its module "${partModule.get(board)}" is not embedded in this file)`)
     else if (reason === 'partial') warnings.push(`${at}: not every leg of "${part}" sits on a hole of board "${board}", so it plugs into nothing`)
     else if (reason === 'conflict') warnings.push(`${at}: a leg of "${part}" sits on a hole another mounted part already uses, so it plugs into nothing`)
   }

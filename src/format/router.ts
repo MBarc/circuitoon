@@ -5,9 +5,11 @@ import { type Pt, type Rect, simplify } from './geometry.ts'
 
 export interface RouteRequest {
   from: Pt
-  fromDir: Pt
+  /** Outward direction at `from`; null for a hole, which a wire may leave in any direction. */
+  fromDir: Pt | null
   to: Pt
-  toDir: Pt
+  /** Outward direction at `to`; null for a hole, which a wire may enter from any side. */
+  toDir: Pt | null
   obstacles: Rect[]
   /** Grid nodes already used by earlier wires, so this route can take its own lane next to them. */
   occupied?: Occupancy
@@ -195,6 +197,9 @@ function leave(p: Pt, d: Pt, g: number): Pt {
   return { x: snap(p.x, d.x), y: snap(p.y, d.y) }
 }
 
+/** Nearest grid point to `p` (a hole center is already on the grid). */
+const onGrid = (p: Pt, g: number): Pt => ({ x: Math.round(p.x / g) * g, y: Math.round(p.y / g) * g })
+
 /**
  * Binary min-heap of (state, priority) pairs in typed arrays that grow as needed. One instance is
  * reused by every search (routing is synchronous), so a sheet's worth of searches does not
@@ -283,8 +288,8 @@ export function routeOrthogonal(req: RouteRequest, opts: RouteOptions = {}): Pt[
   const clearance = opts.clearance ?? 4
   const bendCost = opts.bendCost ?? 30
   const parallelCost = opts.parallelCost ?? 40
-  const start = leave(req.from, req.fromDir, g)
-  const goal = leave(req.to, req.toDir, g)
+  const start = req.fromDir ? leave(req.from, req.fromDir, g) : onGrid(req.from, g)
+  const goal = req.toDir ? leave(req.to, req.toDir, g) : onGrid(req.to, g)
   for (const margin of opts.margins ?? [60, 240]) {
     const path = search(start, goal, req, g, clearance, bendCost, parallelCost, margin)
     if (path) return simplify([req.from, ...path, req.to])
@@ -336,13 +341,19 @@ function search(
 
   const gc = goalCell % cols
   const gr = Math.floor(goalCell / cols)
-  const endDir = dirIndex({ x: -req.toDir.x, y: -req.toDir.y })
+  // -1: a free goal (a hole) accepts any arrival heading.
+  const endDir = req.toDir ? dirIndex({ x: -req.toDir.x, y: -req.toDir.y }) : -1
   const { cost, prev, closed, heap } = buffers(cols * rows * 4)
 
-  const s = startCell * 4 + dirIndex(req.fromDir)
-  cost[s] = 0
-  prev[s] = -1 // the scratch back-pointers are not cleared; every other state on a path is written before it is read
-  heap.push(s, (Math.abs((startCell % cols) - gc) + Math.abs(Math.floor(startCell / cols) - gr)) * g)
+  // A pin starts along its stub; a free start (a hole) is seeded with all four headings.
+  const seeds = req.fromDir ? [dirIndex(req.fromDir)] : [0, 1, 2, 3]
+  const h0 = (Math.abs((startCell % cols) - gc) + Math.abs(Math.floor(startCell / cols) - gr)) * g
+  for (const sd of seeds) {
+    const s = startCell * 4 + sd
+    cost[s] = 0
+    prev[s] = -1 // the scratch back-pointers are not cleared; every other state on a path is written before it is read
+    heap.push(s, h0)
+  }
   let found = -1
   while (heap.size) {
     const state = heap.pop()
@@ -360,7 +371,8 @@ function search(
     const here = cost[state]
     // Neither the first step out of the start nor the last step into the goal is penalized,
     // so two pins 10 px apart can still be wired even when that shared cell is another wire's lane.
-    const lanes = parallel !== null && state !== s
+    // Only seed states cost 0 (every other state is at least one step in).
+    const lanes = parallel !== null && !(here === 0 && cell === startCell)
     for (let nd = 0; nd < 4; nd++) {
       if (nd === back) continue
       const nc = col + STEP_X[nd]
@@ -370,7 +382,7 @@ function search(
       if (blocked[ncell]) continue
       let c = here + g + (nd !== d ? bendCost : 0)
       if (ncell === goalCell) {
-        if (nd !== endDir) c += bendCost
+        if (endDir >= 0 && nd !== endDir) c += bendCost
       } else if (lanes && parallel![ncell] & (nd & 1 ? V_BIT : H_BIT)) c += parallelCost
       const ns = ncell * 4 + nd
       if (c < cost[ns]) {

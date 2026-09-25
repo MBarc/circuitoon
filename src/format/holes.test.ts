@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { isBoard, validateModule, type ModuleDef } from './module.ts'
-import { resolveEndpoint, serializeDiagram, validateDiagram, type Diagram } from './diagram.ts'
+import { computeRoutes, partObstacles, resolveEndpoint, routeWire, serializeDiagram, validateDiagram, type Diagram } from './diagram.ts'
 import { plugPoints, worldHoles } from './geometry.ts'
+import { netlist } from './netlist.ts'
 
 /** A 100 x 60 test board (pivot 50, 30): nine vertical strips s1..s9 at x = 10..90, five holes each at y = 10..50. */
 const bb: ModuleDef = {
@@ -158,6 +159,15 @@ describe('mounts that load but do not plug', () => {
     const r = validateDiagram(d)
     expect(r.ok && r.warnings).toEqual(['parts[1]: module "gone" is not embedded in this file'])
   })
+  it('warns about a mount onto a part whose module is not embedded (not a board, unknown module)', () => {
+    const d = sheet()
+    d.parts[0] = { ...d.parts[0], module: 'gone' }
+    const r = validateDiagram(d)
+    expect(r.ok && r.warnings).toEqual([
+      'parts[0]: module "gone" is not embedded in this file',
+      'parts[1].mount: part "b" is not a board (its module "gone" is not embedded in this file)',
+    ])
+  })
 })
 
 describe('hole geometry', () => {
@@ -206,5 +216,75 @@ describe('resolveEndpoint', () => {
   })
   it('resolves a pin to its stub tip and direction', () => {
     expect(resolveEndpoint(d(), { part: 'q', pin: 'R' })).toEqual({ end: { x: 48, y: 20 }, dir: { x: 1, y: 0 } })
+  })
+})
+
+describe('routing with boards and holes', () => {
+  it('routes wires straight over a board, which is not an obstacle', () => {
+    const d: Diagram = {
+      format: 'circuitoon-diagram/1', title: 't', modules: { bb, two },
+      parts: [
+        { uid: 'a', designator: 'R1', module: 'two', x: 0, y: 0 },
+        { uid: 'b', designator: 'BB1', module: 'bb', x: 60, y: -10 },
+        { uid: 'c', designator: 'R2', module: 'two', x: 200, y: 0 },
+      ],
+      connections: [{ uid: 'w', from: { part: 'a', pin: 'R' }, to: { part: 'c', pin: 'L' } }],
+    }
+    expect(partObstacles(d)).toHaveLength(2)
+    expect(computeRoutes(d).get('w')).toEqual({ points: [{ x: 48, y: 20 }, { x: 192, y: 20 }], blocked: false })
+  })
+  it('routes a wire from a hole center', () => {
+    const d: Diagram = {
+      format: 'circuitoon-diagram/1', title: 't', modules: { bb, two },
+      parts: [{ uid: 'b', designator: 'BB1', module: 'bb', x: 0, y: 0 }, { uid: 'a', designator: 'R1', module: 'two', x: 100, y: -10 }],
+      connections: [{ uid: 'w', from: { part: 'b', pin: 's1', hole: 0 }, to: { part: 'a', pin: 'L' } }],
+    }
+    expect(computeRoutes(d).get('w')).toEqual({ points: [{ x: 10, y: 10 }, { x: 92, y: 10 }], blocked: false })
+  })
+  it('turns a manual route horizontally first at a hole end', () => {
+    const d: Diagram = {
+      format: 'circuitoon-diagram/1', title: 't', modules: { bb, two },
+      parts: [{ uid: 'b', designator: 'BB1', module: 'bb', x: 0, y: 0 }, { uid: 'a', designator: 'R1', module: 'two', x: 100, y: 50 }],
+      connections: [{ uid: 'w', from: { part: 'b', pin: 's1', hole: 0 }, to: { part: 'a', pin: 'L' }, route: [[50, 40]] }],
+    }
+    expect(computeRoutes(d).get('w')).toEqual({
+      points: [{ x: 10, y: 10 }, { x: 50, y: 10 }, { x: 50, y: 40 }, { x: 50, y: 70 }, { x: 92, y: 70 }],
+      blocked: false,
+    })
+  })
+})
+
+describe('wires with unresolved hole ends are skipped, not crashed on', () => {
+  const twoParts = (boardModule: string, modules: Diagram['modules']): Diagram => ({
+    format: 'circuitoon-diagram/1', title: 't', modules,
+    parts: [
+      { uid: 'b', designator: 'BB1', module: boardModule, x: 0, y: 0 },
+      { uid: 'a', designator: 'R1', module: 'two', x: 200, y: 0 },
+    ],
+    connections: [{ uid: 'w', from: { part: 'b', pin: 's9', hole: 4 }, to: { part: 'a', pin: 'L' } }],
+  })
+
+  it('does not route a wire whose hole group was removed from the board', () => {
+    const shrunk: ModuleDef = { ...bb, holes: bb.holes!.filter((g) => g.name !== 's9') }
+    const d = twoParts('bb', { bb: shrunk, two })
+    expect(resolveEndpoint(d, d.connections[0].from)).toBeNull()
+    expect(routeWire(d, d.connections[0], partObstacles(d))).toBeNull()
+    expect(computeRoutes(d).get('w')).toBeNull()
+    expect(netlist(d).broken).toEqual(['w'])
+  })
+  it('does not route a wire whose hole index is beyond a shortened group', () => {
+    const shortened: ModuleDef = { ...bb, holes: bb.holes!.map((g) => (g.name === 's9' ? { ...g, at: g.at.slice(0, 2) } : g)) }
+    const d = twoParts('bb', { bb: shortened, two })
+    expect(resolveEndpoint(d, d.connections[0].from)).toBeNull()
+    expect(routeWire(d, d.connections[0], partObstacles(d))).toBeNull()
+    expect(computeRoutes(d).get('w')).toBeNull()
+    expect(netlist(d).broken).toEqual(['w'])
+  })
+  it('does not route a wire whose board part has no embedded module', () => {
+    const d = twoParts('gone', { two })
+    expect(resolveEndpoint(d, d.connections[0].from)).toBeNull()
+    expect(routeWire(d, d.connections[0], partObstacles(d))).toBeNull()
+    expect(computeRoutes(d).get('w')).toBeNull()
+    expect(netlist(d).broken).toEqual(['w'])
   })
 })
