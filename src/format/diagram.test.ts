@@ -113,4 +113,27 @@ describe('wirePaths', () => {
       expect(check(edit(manual(), 'a', { rotation: 90 }))[0]).toEqual({ x: 10, y: 38 })
     })
   })
+
+  it('draws 200 parts and 500 wires within the frame budget', () => {
+    const parts = Array.from({ length: 200 }, (_, i) => ({ uid: `p${i}`, designator: `U${i}`, module: 'two', x: (i % 20) * 100, y: Math.floor(i / 20) * 80 }))
+    const connections = Array.from({ length: 500 }, (_, i) => {
+      const from = i % 200
+      const to = (from + 1 + ((i * 37) % 199)) % 200
+      return { uid: `w${i}`, from: { part: `p${from}`, pin: 'R' }, to: { part: `p${to}`, pin: 'L' } }
+    })
+    const diagram: Diagram = { format: 'circuitoon-diagram/1', title: 'big', modules: { two }, parts, connections }
+    const routes = computeRoutes(diagram)
+    wirePaths(diagram, routes) // warm-up
+    // Best of three, so one GC pause or a busy CI machine does not fail the run.
+    let ms = Infinity
+    let out = wirePaths(diagram, routes)
+    for (let k = 0; k < 3; k++) {
+      const t = performance.now()
+      out = wirePaths(diagram, routes)
+      ms = Math.min(ms, performance.now() - t)
+    }
+    console.log(`wirePaths 200 parts / 500 wires: ${ms.toFixed(2)} ms, ${out.reduce((n, w) => n + (w.d.match(/A/g)?.length ?? 0), 0)} hops`)
+    expect(out).toHaveLength(500)
+    expect(ms).toBeLessThan(30)
+  }, 60_000)
 })

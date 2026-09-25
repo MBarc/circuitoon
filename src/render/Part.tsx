@@ -1,4 +1,5 @@
 // Draws one module in the Sticker style: flat fills, dark ink outline on every shape.
+import { memo } from 'react'
 import { type ModuleDef, type PinType, type PlacedPin, layoutModule, LEAD } from '../format/module.ts'
 import { bodyRect, pivot, worldPins, type Rect, type Rotation, type WorldPin } from '../format/geometry.ts'
 
@@ -52,7 +53,11 @@ function PinLabel({ p, box, outside }: { p: WorldPin; box: Rect; outside: boolea
   )
 }
 
-export function Part({ module: m, x = 0, y = 0, rotation = 0, caption }: {
+/**
+ * Memoized: props are primitives plus a module object that keeps its identity, so pan, zoom
+ * and selection changes do not re-render every part.
+ */
+export const Part = memo(function Part({ module: m, x = 0, y = 0, rotation = 0, caption }: {
   module: ModuleDef
   x?: number
   y?: number
@@ -111,7 +116,7 @@ export function Part({ module: m, x = 0, y = 0, rotation = 0, caption }: {
       )}
     </g>
   )
-}
+})
 
 /** Bounding box of a part including pin stubs, in part-local px. */
 export function partBounds(m: ModuleDef) {

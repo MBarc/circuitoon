@@ -73,7 +73,10 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
 
   const draggingParts = drag?.kind === 'parts' ? drag.uids : null
   // Routes depend only on parts, modules and each wire's ends and fixed route, so title, color and label edits skip re-routing.
-  const endpointsKey = diagram.connections.map((c) => `${c.uid}:${c.from.part}.${c.from.pin}>${c.to.part}.${c.to.pin}:${JSON.stringify(c.route ?? null)}`).join('|')
+  const endpointsKey = useMemo(
+    () => diagram.connections.map((c) => `${c.uid}:${c.from.part}.${c.from.pin}>${c.to.part}.${c.to.pin}:${JSON.stringify(c.route ?? null)}`).join('|'),
+    [diagram.connections],
+  )
   const routes = useMemo(() => {
     if (draggingParts) {
       const moving = new Set(draggingParts)
@@ -84,7 +87,8 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
     settled.current = all
     return all
   }, [diagram.parts, diagram.modules, endpointsKey, draggingParts])
-  const wires = wirePaths(diagram, routes)
+  // Path data only changes with the routes or the wires themselves, not with pan, zoom or selection.
+  const wires = useMemo(() => wirePaths(diagram, routes), [routes, diagram.connections])
 
   const vw = size.w / view.scale
   const vh = size.h / view.scale

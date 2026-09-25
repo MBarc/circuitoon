@@ -146,12 +146,48 @@ export function computeRoutes(d: Diagram, opts: { only?: Set<string>; prev?: Rou
 
 const HOP = 5
 
+/** Axis-aligned segments of drawn wires, kept sorted by their fixed coordinate. */
+type Seg = { at: number; lo: number; hi: number }
+
+/** Index of the first segment whose `at` is greater than `v`. */
+function upper(segs: Seg[], v: number): number {
+  let lo = 0
+  let hi = segs.length
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1
+    if (segs[mid].at <= v) lo = mid + 1
+    else hi = mid
+  }
+  return lo
+}
+
+/**
+ * Positions along a segment (spanning `from..to` at cross coordinate `c`) where it crosses a
+ * perpendicular segment in `segs`, at least HOP away from either end so the arc fits.
+ */
+function crossings(segs: Seg[], from: number, to: number, c: number): number[] {
+  const hits: number[] = []
+  const min = Math.min(from, to)
+  const max = Math.max(from, to)
+  for (let i = upper(segs, min + HOP); i < segs.length && segs[i].at < max - HOP; i++) {
+    const o = segs[i]
+    if (c > o.lo && c < o.hi) hits.push(o.at)
+  }
+  return hits
+}
+
+function insert(segs: Seg[], seg: Seg) {
+  segs.splice(upper(segs, seg.at), 0, seg)
+}
+
 /**
  * SVG path data for each routed wire. Where a wire crosses a wire earlier in the file, the
- * later one gets a small hop arc, as in hand-drawn wiring sheets.
+ * later one gets a small hop arc, as in hand-drawn wiring sheets. Earlier wires' segments are
+ * indexed by position, so each new segment only checks the ones in its span.
  */
 export function wirePaths(d: Diagram, routes: Routes = computeRoutes(d)) {
-  const drawn: Pt[][] = []
+  const verticals: Seg[] = [] // at = x, lo..hi = y range
+  const horizontals: Seg[] = [] // at = y, lo..hi = x range
   const out: { conn: Connection; d: string; ends: Pt[]; blocked: boolean }[] = []
   for (const conn of d.connections) {
     const route = routes.get(conn.uid)
@@ -164,20 +200,7 @@ export function wirePaths(d: Diagram, routes: Routes = computeRoutes(d)) {
       const horiz = s.y === e.y
       const vert = s.x === e.x
       const dir = Math.sign(horiz ? e.x - s.x : e.y - s.y)
-      const hits: number[] = []
-      if (horiz !== vert)
-        for (const other of drawn)
-          for (let j = 1; j < other.length; j++) {
-            const os = other[j - 1]
-            const oe = other[j]
-            if (horiz && os.x === oe.x) {
-              const within = os.x - Math.min(s.x, e.x) > HOP && Math.max(s.x, e.x) - os.x > HOP
-              if (within && s.y > Math.min(os.y, oe.y) && s.y < Math.max(os.y, oe.y)) hits.push(os.x)
-            } else if (vert && os.y === oe.y) {
-              const within = os.y - Math.min(s.y, e.y) > HOP && Math.max(s.y, e.y) - os.y > HOP
-              if (within && s.x > Math.min(os.x, oe.x) && s.x < Math.max(os.x, oe.x)) hits.push(os.y)
-            }
-          }
+      const hits = horiz === vert ? [] : horiz ? crossings(verticals, s.x, e.x, s.y) : crossings(horizontals, s.y, e.y, s.x)
       hits.sort((p, q) => (p - q) * dir)
       for (const hit of hits) {
         const sweep = dir > 0 ? 1 : 0
@@ -186,7 +209,12 @@ export function wirePaths(d: Diagram, routes: Routes = computeRoutes(d)) {
       }
       path += ` L${e.x} ${e.y}`
     }
-    drawn.push(pts)
+    for (let i = 1; i < pts.length; i++) {
+      const s = pts[i - 1]
+      const e = pts[i]
+      if (s.x === e.x) insert(verticals, { at: s.x, lo: Math.min(s.y, e.y), hi: Math.max(s.y, e.y) })
+      if (s.y === e.y) insert(horizontals, { at: s.y, lo: Math.min(s.x, e.x), hi: Math.max(s.x, e.x) })
+    }
     out.push({ conn, d: path, ends: [pts[0], pts[pts.length - 1]], blocked: route.blocked })
   }
   return out
