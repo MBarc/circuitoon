@@ -4,7 +4,7 @@ import { type EditorStore, useEditorState } from './store.ts'
 import { computeRoutes, moduleOf, wireColor, wirePaths, wireWidth, type Routes } from '../format/diagram.ts'
 import type { Pt } from '../format/geometry.ts'
 import { Part, INK } from '../render/Part.tsx'
-import { addPart, addWire, EMPTY_SELECTION, moveParts } from './ops.ts'
+import { addPart, addWire, EMPTY_SELECTION, moveParts, reconnectWire } from './ops.ts'
 import { modulesById } from '../library.ts'
 import { bodyRect, worldPins } from '../format/geometry.ts'
 import { layoutModule } from '../format/module.ts'
@@ -21,6 +21,7 @@ type Drag = { pointer: number } & (
   | { kind: 'pan'; client: Pt; view: View }
   | { kind: 'parts'; start: Pt; uids: string[]; base: Diagram }
   | { kind: 'wire'; from: Endpoint; origin: Pt; cursor: Pt; over: Endpoint | null }
+  | { kind: 'reconnect'; uid: string; end: 'from' | 'to'; origin: Pt; cursor: Pt; over: Endpoint | null }
 )
 
 export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api: { addAtCenter: (moduleId: string) => void }) => void }) {
@@ -110,6 +111,15 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
       setDrag({ pointer, kind: 'wire', from, origin, cursor: toWorld(e), over: null })
       return
     }
+    const handleEl = e.button === 0 ? target.closest('[data-wire-end]') : null
+    if (handleEl) {
+      const uid = handleEl.getAttribute('data-wire-uid')!
+      const end = handleEl.getAttribute('data-wire-end') as 'from' | 'to'
+      const w = wires.find((w) => w.conn.uid === uid)
+      const origin = w ? w.ends[end === 'from' ? 1 : 0] : toWorld(e)
+      setDrag({ pointer, kind: 'reconnect', uid, end, origin, cursor: toWorld(e), over: null })
+      return
+    }
     const wireEl = e.button === 0 ? target.closest('[data-wire]') : null
     if (wireEl) {
       const uid = wireEl.getAttribute('data-wire')!
@@ -146,6 +156,7 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
       const p = toWorld(e)
       store.preview(moveParts(drag.base, drag.uids, snap(p.x - drag.start.x), snap(p.y - drag.start.y)))
     } else if (drag.kind === 'wire') setDrag({ ...drag, cursor: toWorld(e), over: pinUnder(e) })
+    else if (drag.kind === 'reconnect') setDrag({ ...drag, cursor: toWorld(e), over: pinUnder(e) })
   }
   function onPointerUp(e: React.PointerEvent<SVGSVGElement>) {
     if (!drag || e.pointerId !== drag.pointer) return
@@ -161,6 +172,14 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
         store.select({ parts: [], wires: [added.uid] })
       }
     }
+    if (drag.kind === 'reconnect') {
+      const to = pinUnder(e)
+      const next = to && reconnectWire(store.getState().diagram, drag.uid, drag.end, to)
+      if (next) {
+        store.commit(next)
+        store.select({ parts: [], wires: [drag.uid] })
+      }
+    }
     setDrag(null)
   }
   function onPointerCancel(e: React.PointerEvent<SVGSVGElement>) {
@@ -171,7 +190,7 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
 
   // Escape abandons a wire or part drag. For parts, the editor's key handler calls store.cancel().
   useEffect(() => {
-    if (drag?.kind !== 'wire' && drag?.kind !== 'parts') return
+    if (drag?.kind !== 'wire' && drag?.kind !== 'parts' && drag?.kind !== 'reconnect') return
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setDrag(null)
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
@@ -230,8 +249,9 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
             const w = wireWidth(conn.gauge)
             const dash = blocked ? '6 5' : undefined
             const selected = selection.wires.includes(conn.uid)
+            const dimmed = drag?.kind === 'reconnect' && drag.uid === conn.uid
             return (
-              <g key={conn.uid} data-wire={conn.uid}>
+              <g key={conn.uid} data-wire={conn.uid} opacity={dimmed ? 0.3 : undefined}>
                 {selected && <path d={d} stroke="var(--focus)" strokeOpacity={0.35} strokeWidth={w + 10} />}
                 <path d={d} stroke={INK} strokeWidth={w + 2.2} strokeDasharray={dash} />
                 <path d={d} stroke={wireColor(conn.color)} strokeWidth={w} strokeDasharray={dash} />
@@ -247,11 +267,18 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
             stroke={wireColor(store.getState().wireStyle.color)} strokeWidth={2.5} strokeDasharray="6 4" strokeLinecap="round"
           />
         )}
+        {drag?.kind === 'reconnect' && (
+          <line
+            x1={drag.origin.x} y1={drag.origin.y} x2={drag.cursor.x} y2={drag.cursor.y}
+            stroke={wireColor(diagram.connections.find((c) => c.uid === drag.uid)?.color)}
+            strokeWidth={2.5} strokeDasharray="6 4" strokeLinecap="round"
+          />
+        )}
         {diagram.parts.flatMap((p) => {
           const m = moduleOf(diagram, p.module)
           if (!m) return []
           return worldPins(p, m).map((wp) => {
-            const over = drag?.kind === 'wire' && drag.over?.part === p.uid && drag.over.pin === wp.name
+            const over = (drag?.kind === 'wire' || drag?.kind === 'reconnect') && drag.over?.part === p.uid && drag.over.pin === wp.name
             return (
               <circle
                 key={`${p.uid}:${wp.name}`}
@@ -267,6 +294,28 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
             )
           })
         })}
+        {selection.wires.length === 1 &&
+          !drag &&
+          (() => {
+            const w = wires.find((w) => w.conn.uid === selection.wires[0])
+            if (!w) return null
+            return (['from', 'to'] as const).map((end, i) => (
+              <circle
+                key={`handle-${end}`}
+                className="wire-end-handle"
+                data-wire-end={end}
+                data-wire-uid={w.conn.uid}
+                cx={w.ends[i].x}
+                cy={w.ends[i].y}
+                r={6}
+                fill="white"
+                stroke="var(--focus)"
+                strokeWidth={2}
+              >
+                <title>Drag to reconnect</title>
+              </circle>
+            ))
+          })()}
       </svg>
       <div className="zoom-readout" aria-live="polite">{Math.round((view.scale / 1.5) * 100)}%</div>
     </div>

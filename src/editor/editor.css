@@ -43,6 +43,8 @@
 .pin-hit { fill: transparent; cursor: crosshair; }
 .pin-hit:hover, .pin-hit.target { fill: rgba(61, 111, 214, 0.35); stroke: #3D6FD6; stroke-width: 1.5; }
 .wire-hit { stroke: transparent; cursor: pointer; }
+.wire-end-handle { cursor: grab; }
+.wire-end-handle:hover { stroke-width: 3; }
 .zoom-readout { position: absolute; right: 10px; bottom: 8px; font-size: 13px; color: #56615B; background: var(--paper); border: 1px solid #D6DCD2; border-radius: 6px; padding: 2px 6px; }
 
 .inspector { grid-area: inspector; overflow-y: auto; border-left: 1px solid var(--rule); background: var(--panel); padding: 12px; display: grid; gap: 12px; align-content: start; }
