@@ -2,10 +2,10 @@
 // S3-DevKitC-1, C3 SuperMini, XIAO ESP32-C3/S3 and ESP32-CAM). Pin lists are transcribed from the
 // sources cited on each board below.
 //
-// Run from the repo root: `node scripts/gen-boards.mjs`
+// Run from the repo root: `node scripts/gen-boards.mjs` (add `--check` to compare with modules/ without writing).
 // It overwrites the 7 files in modules/ in place; re-run after changing a board's pin list,
 // art or the shared header/pinLabels rules here, then `git diff` the result before committing.
-import { writeFileSync } from 'node:fs'
+import { emit, finish, log } from './gen-output.mjs'
 import { fileURLToPath } from 'node:url'
 const OUT = fileURLToPath(new URL('../modules/', import.meta.url))
 
@@ -66,8 +66,8 @@ function build({ file, id, name, source, left, right, top = 0, bottom = 0, wu, t
   // Every generated board is a two-row header part: pin names always draw inside the body,
   // beside each pin, like the board's own silkscreen (see art.pinLabels in the PRD).
   m.art = { w: W, h: H, pinLabels: 'inside', shapes }
-  writeFileSync(OUT + file, JSON.stringify(m, null, 2) + '\n')
-  console.log(file, 'pins', left.length + right.length, 'body', W, 'x', H, 'first/last pin y', pinYs[0], pinYs[pinYs.length - 1])
+  emit(OUT + file, JSON.stringify(m, null, 2) + '\n')
+  log(file, 'pins', left.length + right.length, 'body', W, 'x', H, 'first/last pin y', pinYs[0], pinYs[pinYs.length - 1])
 }
 
 // Type rule shared by all boards (brief: 3V3 power_out, 5V/VIN power_in, GND ground, input-only GPIO input).
@@ -228,3 +228,5 @@ build({
     ],
   },
 })
+
+finish('gen-boards.mjs')

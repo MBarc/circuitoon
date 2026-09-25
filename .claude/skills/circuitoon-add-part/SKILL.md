@@ -22,11 +22,11 @@ Read `docs/PRD.md` ("Module definition format", "Art studio", "Built-in parts") 
 
 4. **Encode the pins.** See "Pin rules" below. Physical order is the whole point: lay pins out as seen from the component side in the vendor's diagram orientation.
 
-5. **Draw the art** in the Sticker style (rectangles only; the renderer adds the ink outline). See `references/conventions.md`. For families of similar parts, extend or add a generator script in `scripts/` (existing: `gen-boards.mjs` for ESP32 boards, `gen-parts.mjs` for chips and displays) so pin lists live in one readable table; the generator must reproduce the committed JSON byte for byte.
+5. **Draw the art** in the Sticker style (rectangles only; the renderer adds the ink outline). See `references/conventions.md`. For families of similar parts, extend or add a generator script in `scripts/` (existing: `gen-boards.mjs` for ESP32 boards, `gen-parts.mjs` for chips and displays, `gen-picos.mjs` for the Raspberry Pi Picos) so pin lists live in one readable table; the generator must reproduce the committed JSON byte for byte. Write its files through `emit`/`log`/`finish` from `scripts/gen-output.mjs` so it supports `--check`, and add a new generator to `npm run check:gen` in package.json.
 
 6. **Update the lists that name parts.** If the part uses `pinLabels: "inside"`, add it to the allowed list in `src/format/module.test.ts`; add it to the Built-in parts table in `docs/PRD.md` (move it out of the "Not built yet" line if it was there).
 
-7. **Validate and test.** `npm run validate` (every module), `npm test` (includes the two-lead geometry test and board/part tests; add a test pinning the pin order for multi-pin parts, like `src/format/boards.test.ts` and `parts.test.ts` do), `npm run build`.
+7. **Validate and test.** `npm run validate` (every module), `npm run check:gen` (for a generator family: every generator rebuilds its files in memory and fails if one differs from modules/, so a hand edit to a generated file or a generator change without re-running it is caught; the deploy runs it too), `npm test` (includes the two-lead geometry test and board/part tests; add a test pinning the pin order for multi-pin parts, like `src/format/boards.test.ts` and `parts.test.ts` do), `npm run build`.
 
 8. **Look at it.** `npm run build`, then
    `node .claude/skills/circuitoon-add-part/scripts/shoot-parts.mjs <id> [more ids] --out <scratchpad dir> [--panel] [--rotate 90] [--dark] [--fill 0.8]`

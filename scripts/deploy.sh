@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
 # Publishes the site to GitHub Pages (https://mbarc.github.io/circuitoon/).
 # GitHub Actions is disabled on the MBarc account, so Pages serves the gh-pages branch and
-# this script is the deploy: validate, test, build, then force-push dist/ to gh-pages.
+# this script is the deploy: validate, check the generated modules, test, build, then force-push
+# dist/ to gh-pages.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
 npm run validate
+npm run check:gen
 npm test
 npm run build
 touch dist/.nojekyll

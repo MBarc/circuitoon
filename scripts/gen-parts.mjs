@@ -3,10 +3,10 @@
 // sources cited on each part below (Microchip datasheets; the module maker's pinout table and
 // board photos for the displays).
 //
-// Run from the repo root: `node scripts/gen-parts.mjs`
+// Run from the repo root: `node scripts/gen-parts.mjs` (add `--check` to compare with modules/ without writing).
 // It overwrites those files in modules/ in place; re-run after changing a part's pin list or art,
 // then `git diff` the result before committing. src/format/parts.test.ts pins the order.
-import { writeFileSync } from 'node:fs'
+import { emit, finish, log } from './gen-output.mjs'
 import { fileURLToPath } from 'node:url'
 const OUT = fileURLToPath(new URL('../modules/', import.meta.url))
 
@@ -59,9 +59,9 @@ const mountHoles = (W, H, inset = 5, s = 8) => [
 ].map(([x, y]) => r(x, y, s, s, MOUNT, { radius: s / 2, outline: false }))
 
 function write(file, m) {
-  writeFileSync(OUT + file, JSON.stringify(m, null, 2) + '\n')
+  emit(OUT + file, JSON.stringify(m, null, 2) + '\n')
   const n = m.pins.filter((p) => !p.spacer).length
-  console.log(file, 'pins', n, 'body', m.art.w, 'x', m.art.h)
+  log(file, 'pins', n, 'body', m.art.w, 'x', m.art.h)
 }
 
 function moduleJson({ id, name, category, source, pins, wu, hu, electrical, shapes }) {
@@ -295,3 +295,5 @@ oled({
     pins: pinsFor('top', top, types), wu, hu, electrical: { model: 'display', params: {} }, shapes,
   }))
 }
+
+finish('gen-parts.mjs')
