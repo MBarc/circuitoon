@@ -2,10 +2,15 @@
 //
 // Usage (from the repo root, after `npm run build`):
 //   node .claude/skills/circuitoon-add-part/scripts/shoot-parts.mjs <module-id> [more ids...]
-//        [--out <dir>] [--port 4190] [--dark] [--panel] [--rotate 90]
+//        [--out <dir>] [--port 4190] [--dark] [--panel] [--rotate 90] [--fill 0.55]
 //
 // For each id it imports a one-part diagram into #/editor, zooms onto the part and saves
-// <out>/<id>.png (and <id>-rot<N>.png with --rotate). --panel also saves the Parts panel.
+// <out>/<id>.png (and <id>-rot<N>.png with --rotate). --panel also saves the Parts panel, filtered by
+// the search box to the given ids' names so their group is in view. --fill sets how much of the canvas
+// width the part should fill (0.55 default; raise it for tall boards to get larger labels).
+// --dark switches the app chrome to dark mode; the sheet paper stays light by design, so the part
+// itself should look the same. The designator is always "X1" here; the real prefix comes from
+// src/editor/ops.ts and is covered by tests, not by these screenshots.
 // It starts `vite preview` on --port and stops it afterwards, drives the locally installed
 // Chrome through playwright-core (a devDependency), and prints any page errors.
 // Never use the shared Playwright MCP browser for this.
@@ -32,6 +37,7 @@ const bool = (name) => {
 const out = resolve(flag('--out', join(tmpdir(), 'circuitoon-shots')))
 const port = Number(flag('--port', '4190'))
 const rotate = Number(flag('--rotate', '0'))
+const fill = Number(flag('--fill', '0.55'))
 const dark = bool('--dark')
 const panel = bool('--panel')
 const ids = args
@@ -86,6 +92,12 @@ async function openEditor() {
 
 if (panel) {
   await openEditor()
+  // Filter to the first given part's name so its group is on screen.
+  if (ids.length && existsSync(join('modules', `${ids[0]}.json`))) {
+    const first = JSON.parse(readFileSync(join('modules', `${ids[0]}.json`), 'utf8'))
+    const word = String(first.name).split(/[\s(]/)[0]
+    await page.getByPlaceholder('Search parts').fill(word)
+  }
   await page.locator('.library').screenshot({ path: join(out, 'parts-panel.png') })
   console.log('saved', join(out, 'parts-panel.png'))
 }
@@ -113,11 +125,11 @@ for (const id of ids) {
   for (let step = 0; step < 40; step++) {
     const b = await page.locator('[data-part]').first().boundingBox()
     if (!b || !wrap) break
-    const fits = b.width < wrap.width * 0.55 && b.height < wrap.height * 0.8
+    const fits = b.width < wrap.width * fill && b.height < wrap.height * 0.85
     const cx = b.x + b.width / 2
     const cy = b.y + b.height / 2
     await page.mouse.move(cx, cy)
-    if (fits && b.height < wrap.height * 0.55 && b.width < wrap.width * 0.4) await page.mouse.wheel(0, -120)
+    if (fits && b.height < wrap.height * 0.6 && b.width < wrap.width * (fill - 0.15)) await page.mouse.wheel(0, -120)
     else if (!fits) await page.mouse.wheel(0, 120)
     else break
     await page.waitForTimeout(30)
