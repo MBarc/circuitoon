@@ -1,6 +1,6 @@
 // Diagram format (circuitoon-diagram/1): types plus the wire geometry the renderer needs.
 
-import { type ModuleDef, layoutModule, validateModule, isObj, isNum } from './module.ts'
+import { type ModuleDef, isBoard, layoutModule, validateModule, isObj, isNum } from './module.ts'
 import { type Pt, type Rect, type Rotation, type WorldPin, bodyRect, simplify, worldPins } from './geometry.ts'
 import { addToOccupancy, Occupancy, routeOrthogonal } from './router.ts'
 import { PRIMARY_PARAM_NAMES } from './values.ts'
@@ -16,11 +16,15 @@ export interface PartInstance {
   y: number
   rotation?: Rotation
   values?: Record<string, unknown>
+  /** The board this part is plugged into. Its pins join the hole groups their plug points sit on. */
+  mount?: { board: string }
 }
 export interface Endpoint {
   part: string
   pin: string
   offset?: number
+  /** Which hole of a hole group the wire ends in (default 0). */
+  hole?: number
 }
 export interface Connection {
   uid: string
@@ -380,6 +384,8 @@ export function validateDiagram(raw: unknown): DiagramResult {
       if (!isNum(p.x) || !isNum(p.y)) errors.push(`${at}: x and y must be numbers`)
       if (p.rotation !== undefined && ![0, 90, 180, 270].includes(p.rotation as number))
         errors.push(`${at}.rotation: must be 0, 90, 180 or 270`)
+      if (p.mount !== undefined && !(isObj(p.mount) && typeof p.mount.board === 'string' && p.mount.board !== ''))
+        errors.push(`${at}.mount: must be { "board": <part uid> }`)
       if (p.values !== undefined) {
         if (!isObj(p.values)) errors.push(`${at}.values: must be an object`)
         else
@@ -395,14 +401,35 @@ export function validateDiagram(raw: unknown): DiagramResult {
       }
     })
 
+  // Mount targets are checked once every part is known, since a board may come later in the list.
+  if (Array.isArray(raw.parts))
+    raw.parts.forEach((p, i) => {
+      if (!isObj(p) || !isObj(p.mount) || typeof p.mount.board !== 'string' || p.mount.board === '') return
+      const board = p.mount.board
+      const at = `parts[${i}].mount.board`
+      if (board === p.uid) return void warnings.push(`${at}: a part cannot be mounted on itself`)
+      const modId = partModule.get(board)
+      if (modId === undefined) return void warnings.push(`${at}: no part with uid "${board}"`)
+      const m = modules.get(modId)
+      if (m && !isBoard(m)) warnings.push(`${at}: part "${board}" is not a board (a module with holes and "obstacle": false)`)
+    })
+
   const checkEnd = (ep: unknown, at: string) => {
     if (!isObj(ep) || typeof ep.part !== 'string' || typeof ep.pin !== 'string')
       return void errors.push(`${at}: must be { "part": <uid>, "pin": <name> }`)
     if (ep.offset !== undefined && !isNum(ep.offset)) errors.push(`${at}.offset: must be a number`)
+    if (ep.hole !== undefined && !(Number.isInteger(ep.hole) && (ep.hole as number) >= 0))
+      errors.push(`${at}.hole: must be a whole number, 0 or more`)
     const modId = partModule.get(ep.part)
     if (modId === undefined) return void warnings.push(`${at}: no part with uid "${ep.part}"`)
     const m = modules.get(modId)
-    if (m && !m.pins.some((p) => 'name' in p && p.name === ep.pin)) warnings.push(`${at}: part "${ep.part}" has no pin "${ep.pin}"`)
+    if (!m) return
+    const group = m.holes?.find((g) => g.name === ep.pin)
+    if (group) {
+      if (typeof ep.hole === 'number' && Number.isInteger(ep.hole) && ep.hole >= group.at.length)
+        warnings.push(`${at}.hole: group "${ep.pin}" has ${group.at.length} holes (0 to ${group.at.length - 1})`)
+    } else if (!m.pins.some((p) => 'name' in p && p.name === ep.pin)) warnings.push(`${at}: part "${ep.part}" has no pin "${ep.pin}"`)
+    else if (ep.hole !== undefined) warnings.push(`${at}.hole: pin "${ep.pin}" is not a hole group`)
   }
 
   if (!Array.isArray(raw.connections)) errors.push('connections: required list')
