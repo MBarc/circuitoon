@@ -251,13 +251,17 @@ function sourceOf(t: Terminal): Source | null {
 /** How a source is named in a message: a pin on external power says so ("U1 VIN (USB)"). */
 const sourceName = (s: Source) => (s.external ? `${termName(s.term)} (${s.external.via})` : termName(s.term))
 
+/** A resolved supply: a pin on USB power or a power output that is not a pass-through. */
+const isSource = (t: Terminal) => sourceOf(t) !== null
 /**
- * Something on a power input's net that may feed it: a supply (a power output or a pin on USB
- * power), a passive pin (a switch, a fuse, a jumper) or an untyped pin, which could pass power on
- * from elsewhere. Another part's power input feeds nothing, and a bare breadboard strip only conducts.
+ * Something on a power input's net that may feed it: a resolved supply, a passive pin (a switch,
+ * a fuse, a jumper) or an untyped pin, which could pass power on from elsewhere. A pass-through
+ * output (a charger's OUT+, which is its B+) and another part's power input feed nothing, and a
+ * bare breadboard strip only conducts.
  */
-const mayFeed = (t: Terminal) => !t.bare && (t.type === undefined || t.type === 'power_out' || t.type === 'passive' || t.info.external.has(t.name))
-const supplies = (t: Terminal) => t.type === 'power_out' || t.info.external.has(t.name)
+const mayFeed = (t: Terminal) => !t.bare && (t.type === undefined || t.type === 'passive' || isSource(t))
+/** A pin that drives its net from its own part: shorted when that part's ground is on the same net. */
+const drives = (t: Terminal) => t.type === 'power_out' || t.info.external.has(t.name)
 
 // ---- The checker ----
 
@@ -317,7 +321,7 @@ export function checkDiagram(d: Diagram): Finding[] {
     // (BT1 + to BT2 -) are fine; a cell's + on a board ground that is wired back to its - is not.
     const shorted = new Set<string>()
     for (const t of terms) {
-      if (!supplies(t)) continue
+      if (!drives(t)) continue
       const id = JSON.stringify([t.part.uid, t.info.comp.get(t.name)])
       const own = t.info.grounds.find((g) => onNet.has(nodeKey(t.part.uid, g)))
       if (own === undefined || shorted.has(id)) continue
@@ -408,7 +412,7 @@ export function checkDiagram(d: Diagram): Finding[] {
     if (ins.length && !moduleInfo(m).external.size) {
       const fed =
         ins.some((t) => others(t).some(mayFeed)) ||
-        terms.some((t) => t.type === 'power_out' && others(t).some(supplies))
+        terms.some((t) => t.type === 'power_out' && others(t).some(isSource))
       if (!fed) {
         const wired = [...new Set(ins.filter((t) => others(t).length).map((t) => t.label))]
         const message = wired.length

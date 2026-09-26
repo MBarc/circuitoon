@@ -372,6 +372,13 @@ describe('checkDiagram', () => {
         'U2 has no power: VCC is connected but nothing supplies it.',
       ])
     })
+    it('does not count a pass-through output as a feed', () => {
+      const d = sheet([part('U1', 'charger'), part('U2', 'charger')], [wire('w1', 'u1.OUT+', 'u2.OUT+'), wire('w2', 'u1.GND', 'u2.GND')])
+      expect(only(d, 'no-power').map((f) => f.message)).toEqual([
+        'U1 has no power: B+ is connected but nothing supplies it.',
+        'U2 has no power: B+ is connected but nothing supplies it.',
+      ])
+    })
     it('does not count a bare breadboard strip as a feed', () => {
       const d = sheet([part('BB1', 'bb', { x: 0, y: 0 }), part('U1', 'chipAny'), part('BT1', 'bat5')], [
         wire('w1', 'u1.VCC', 'bb1.s1'), wire('w2', 'u1.GND', 'bt1.-'),
