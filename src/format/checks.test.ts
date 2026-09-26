@@ -346,6 +346,22 @@ describe('checkDiagram', () => {
     })
   })
 
+  describe('reversed', () => {
+    it('flags a part whose power input sits below its ground, naming the wires to swap, and not as unpowered', () => {
+      const d = sheet([part('U1', 'mcu'), part('U2', 'chipAny')], [wire('w1', 'u2.VCC', 'u1.GND'), wire('w2', 'u2.GND', 'u1.3V3')])
+      const f = checkDiagram(d)
+      expect(f.map((x) => `${x.severity} ${x.rule}: ${x.message}`)).toEqual([
+        'error reversed: U2 VCC is wired to U1 GND and U2 GND to U1 3V3: the power is reversed and will damage U2. Swap the two wires.',
+      ])
+    })
+    it('names a battery wired in backwards', () => {
+      const d = sheet([part('BT1', 'cell'), part('U1', 'chipAny')], [wire('w1', 'bt1.+', 'u1.GND'), wire('w2', 'bt1.-', 'u1.VCC')])
+      expect(checkDiagram(d).map((x) => x.message)).toEqual([
+        'BT1 is wired in backwards: U1 VCC is wired to BT1 - and U1 GND to BT1 +. This will damage U1. Swap the two wires.',
+      ])
+    })
+  })
+
   describe('switches', () => {
     const toggle = mod('toggle', [{ name: '1', side: 'left', type: 'passive' }, { name: '2', side: 'right', type: 'passive' }],
       { electrical: { model: 'switch', terminals: { a: '1', b: '2' } } })

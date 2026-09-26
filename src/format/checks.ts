@@ -13,6 +13,7 @@ import { partValue, primaryParam } from './values.ts'
 export type Severity = 'error' | 'warning'
 export type RuleId =
   | 'short'
+  | 'reversed'
   | 'supply-too-high'
   | 'supply-too-low'
   | 'supply-unknown'
@@ -29,6 +30,7 @@ export type RuleId =
 export const RULES: Record<RuleId, { severity: Severity; title: string }> = {
   broken: { severity: 'error', title: 'Broken connection' },
   short: { severity: 'error', title: 'Short circuit' },
+  reversed: { severity: 'error', title: 'Power reversed' },
   'supplies-fight': { severity: 'error', title: 'Supplies fight' },
   'supply-too-high': { severity: 'error', title: 'Voltage too high' },
   'supply-too-low': { severity: 'warning', title: 'Voltage too low' },
@@ -374,7 +376,7 @@ export function checkDiagram(d: Diagram): Finding[] {
         parts: drivers.map((t) => t.part.uid), pins: drivers.map(termPin), wires, causes: drivers.map((t) => t.key) })
   })
 
-  checkPotentials({ d, nl, netTerms, netWires, terminal, shorted, add })
+  const { reversed } = checkPotentials({ d, nl, netTerms, netWires, terminal, shorted, add })
 
   // Per part: power and ground reach it from another part.
   const others = (t: Terminal) => {
@@ -389,7 +391,8 @@ export function checkDiagram(d: Diagram): Finding[] {
     const terms = [...moduleInfo(m).defs.keys()].map((n) => terminal(nodeKey(p.uid, n))).filter((t): t is Terminal => t !== null)
     const ins = terms.filter((t) => t.type === 'power_in')
     // A part with a pin on USB power is its own supply.
-    if (ins.length && !moduleInfo(m).external.size) {
+    // A part with its power reversed is reported as such, not as unpowered.
+    if (ins.length && !moduleInfo(m).external.size && !reversed.has(p.uid)) {
       const fed =
         ins.some((t) => others(t).some(mayFeed)) ||
         terms.some((t) => t.type === 'power_out' && others(t).some(isSource))
@@ -535,7 +538,8 @@ interface PotentialInput {
  * supplies fighting; a loop that agrees is supplies in parallel. A load gets the potential of its
  * power input over that of its own ground, so a series stack adds up.
  */
-function checkPotentials({ d, nl, netTerms, netWires, terminal, shorted, add }: PotentialInput) {
+function checkPotentials({ d, nl, netTerms, netWires, terminal, shorted, add }: PotentialInput): { reversed: Set<string> } {
+  const reversed = new Set<string>()
   const netOfKey = (key: string) => {
     const i = nl.netOf.get(key)
     return i === undefined ? key : `#${i}`
@@ -792,7 +796,13 @@ function checkPotentials({ d, nl, netTerms, netWires, terminal, shorted, add }: 
       let v: number | null = null
       let from: Source[] = []
       const group = groupOf.get(net)
-      const groundPin = group === undefined ? undefined : t.info.grounds.find((g) => groupOf.get(netOfKey(nodeKey(t.part.uid, g))) === group)
+      // Its ground in the same group, preferring one wired to another part (a charger's B- over its IN-).
+      const inGroup = group === undefined ? [] : t.info.grounds.filter((g) => groupOf.get(netOfKey(nodeKey(t.part.uid, g))) === group)
+      const wiredOut = (g: string) => {
+        const k = netOfKey(nodeKey(t.part.uid, g))
+        return k.startsWith('#') && netTerms[Number(k.slice(1))].some((o) => o.part !== t.part && !o.bare)
+      }
+      const groundPin = inGroup.find(wiredOut) ?? inGroup[0]
       const ground = groundPin === undefined ? undefined : netOfKey(nodeKey(t.part.uid, groundPin))
       const base = (list: Source[]) => ({
         subject: t.part.designator, target: termName(t), wires: netWires[i],
@@ -824,7 +834,28 @@ function checkPotentials({ d, nl, netTerms, netWires, terminal, shorted, add }: 
           continue
         }
         v = diff.c
-        if (v <= EPS || !from.length) continue
+        if (!from.length) continue
+        if (v < -EPS) {
+          // The input sits below its own ground: the supply is wired the wrong way round.
+          const on = (k: string, prefer: (o: Terminal) => boolean) => {
+            if (!k.startsWith('#')) return undefined
+            const others = netTerms[Number(k.slice(1))].filter((o) => o.part !== t.part && !o.bare)
+            return others.find(prefer) ?? others[0]
+          }
+          const g = terminal(nodeKey(t.part.uid, groundPin!))!
+          const x = on(net, (o) => o.type === 'ground')
+          const y = on(ground, (o) => o.type === 'power_out' || o.info.external.has(o.name))
+          const cell = from.length === 1 && (from[0].term.info.module.electrical as { model?: string } | undefined)?.model === 'voltage_source' ? from[0].term.part.designator : undefined
+          const message = x && y && cell
+            ? `${cell} is wired in backwards: ${termName(t)} is wired to ${termName(x)} and ${termName(g)} to ${termName(y)}. This will damage ${t.part.designator}. Swap the two wires.`
+            : x && y
+            ? `${termName(t)} is wired to ${termName(x)} and ${termName(g)} to ${termName(y)}: the power is reversed and will damage ${t.part.designator}. Swap the two wires.`
+            : `${termName(t)} sits ${volts(-v)} below ${termName(g)}: the power is reversed and will damage ${t.part.designator}. Swap its power wires.`
+          reversed.add(t.part.uid)
+          add({ rule: 'reversed', message, ...base(from), pins: [termPin(t), termPin(g), ...from.map((s) => termPin(s.term))], wires: [...netWires[i], ...wiresOf(ground)] })
+          continue
+        }
+        if (v <= EPS) continue
       } else {
         // The load's ground does not reach the return of what feeds it: no voltage can be stated.
         // No ground already says so when the ground is not wired at all.
@@ -849,6 +880,7 @@ function checkPotentials({ d, nl, netTerms, netWires, terminal, shorted, add }: 
         add({ rule: 'supply-too-low', message: `${termName(t)} needs at least ${floor.toFixed(1)} V; ${what} ${from.length === 1 ? 'gives' : 'give'} only ${volts(v)}.`, ...base(from) })
     }
   })
+  return { reversed }
 }
 
 function mountMessage(p: PartInstance, board: PartInstance | undefined, issue: MountIssue): string {
