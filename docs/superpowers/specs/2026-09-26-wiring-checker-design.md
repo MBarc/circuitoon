@@ -42,6 +42,15 @@ Not in v1 (needs simulation or pin roles we do not have): LED without a resistor
 - esp32-terminal-board-38 is the DevKitC V4 on the terminal board, drawn seated.
 - No power reuses the resolved sources: pass-through outputs feed nothing.
 
+## Third review changes (2026-09-26, Astra re-review 2)
+Principle: never state a definite voltage or give setting advice when any part of the path is unknown or ambiguous; say what is unknown instead.
+- Unknown and adjustable supplies are unknown steps in the walk; potentials carry the unknowns they depend on. Too high / too low only on a fully known difference; setting advice only with one adjustable unknown, counting series offsets; otherwise "cannot be checked".
+- `electrical.external` entries take `diode: true` (per schematic) and `max`. A diode-fed pin only raises its net: fine at or above its voltage up to its limit; a lower supply there is an error (USB pushes current through the diode). Direct pins keep the round-2 behavior.
+- A contradiction blocks only loads whose path runs through its loop.
+- `electrical.commonReturn` declares grounds that are one return (TP4056 B-/OUT-); the pass-through ground join is gone.
+- `electrical.returns` names each supply's ground; else the only ground component; else unknown. The largest-ground guess is gone. Picos return to GND.
+- A load whose ground misses the return of its supply gets no voltage finding (No ground, or "cannot be checked").
+
 ## Where it lives
 - `src/format/checks.ts`: pure `checkDiagram(d): Finding[]`, sorted errors first, then by designator. `parseSupply(s)`. No React.
 - The editor computes it memoized per diagram content, never per drag frame (reuse the drag-free memo pattern of the broken list).
