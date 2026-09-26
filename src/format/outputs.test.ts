@@ -70,6 +70,18 @@ describe('built-in relay, servo, motor driver, radio and level shifter keep the 
     for (const [h, l] of [['HV1', 'LV1'], ['HV', 'LV'], ['GND', 'GND 2'], ['HV4', 'LV4']]) expect(x(h)).toBe(x(l))
   })
 
+  it('the level shifter pads sit on its pins', () => {
+    const m = load('level-shifter-bss138-4ch.json')
+    const lay = layoutModule(m)
+    // Pads are the 8 px tinned rings; art matches the body, so art x is body x.
+    const pads = m.art!.shapes.filter((s) => s.fill === '#D5DAE1' && s.w === 8 && s.h === 8)
+    const padX = (top: boolean) => pads.filter((s) => (s.y < lay.h / 2) === top).map((s) => s.x + s.w / 2)
+    const pinX = (side: string) => lay.pins.filter((p) => p.side === side).map((p) => p.edge.x)
+    expect(padX(true)).toEqual(pinX('top'))
+    expect(padX(false)).toEqual(pinX('bottom'))
+    expect(pinX('top')).toEqual([20, 30, 40, 50, 60, 70])
+  })
+
   it('types the rails and signals', () => {
     const relay = load('relay-module-1ch-5v.json')
     expect(pin(relay, 'DC+')).toMatchObject({ type: 'power_in', supply: '5V' })

@@ -1,5 +1,6 @@
 // Checks that hold for every built-in part in modules/, whatever generator or hand made it.
 import { describe, expect, it } from 'vitest'
+import { layoutModule } from './module.ts'
 import { load, moduleFiles, pinsOf } from './builtinModules.testing.ts'
 
 describe('every built-in module', () => {
@@ -18,6 +19,16 @@ describe('every built-in module', () => {
         expect(typeof pinName, `${role}`).toBe('string')
         expect(names.has(pinName as string), `terminal ${role} -> "${String(pinName)}"`).toBe(true)
       }
+    })
+
+    // The renderer centers the art in the laid-out body, so art smaller than the body shifts by
+    // half the difference and every drawn pad or lead lands off its pin (the level shifter once
+    // drew its pads 5 px left of the pins). Art drawn at the laid-out size is never re-centered.
+    it(`${file}: art is drawn at the laid-out body size`, () => {
+      const m = load(file)
+      const lay = layoutModule(m)
+      expect(m.art, 'built-in parts carry art').toBeDefined()
+      expect({ w: m.art?.w, h: m.art?.h }).toEqual({ w: lay.w, h: lay.h })
     })
   }
 })

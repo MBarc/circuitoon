@@ -230,16 +230,18 @@ function headerH(y, at) {
 //    HV3, HV4 left to right; the low-voltage row at the bottom: LV1, LV2, LV, GND, LV3, LV4
 //    (SparkFun's annotated photo; the blue clone in Fred's Cave's guide has the same silkscreen).
 //    Both GND pads are one net. LV takes the low rail (1.8 to 3.3 V), HV the high rail (to 5 V).
+//    8 units wide: six pins a row plus a unit of corner margin each side is what the layout gives
+//    the body, so the art is drawn at that size and its pads sit exactly on the pins.
 {
-  const wu = 7, hu = 8, W = wu * 10, H = hu * 10
+  const wu = 8, hu = 8, W = wu * 10, H = hu * 10
   const data = Object.fromEntries(['HV1', 'HV2', 'HV3', 'HV4', 'LV1', 'LV2', 'LV3', 'LV4'].map((n) => [n, { type: 'io' }]))
   const types = { ...data, HV: { type: 'power_in', supply: '3V3/5V' }, LV: { type: 'power_in', supply: '1V8/3V3' }, GND: { type: 'ground' } }
   const top = side('top', ['HV1', 'HV2', 'HV', 'GND', 'HV3', 'HV4'], types, wu)
   const bottom = side('bottom', ['LV1', 'LV2', 'LV', 'GND 2|GND', 'LV3', 'LV4'], types, wu)
   const pad = (x, y) => [r(x - 4, y - 4, 8, 8, TIN, { radius: 4, outline: false }), r(x - 1.5, y - 1.5, 3, 3, HOLE, { radius: 1.5, outline: false })]
-  // Four BSS138 (SOT-23) FETs across the middle, one per channel.
+  // Four BSS138 (SOT-23) FETs across the middle, one per channel, centred on the board.
   const fets = [0, 1, 2, 3].flatMap((i) => {
-    const x = 5 + i * 16, y = H / 2 - 5
+    const x = W / 2 - 30 + i * 16, y = H / 2 - 5
     return [
       r(x + 1, y - 3, 2.5, 3, METAL, { outline: false }), r(x + 8.5, y - 3, 2.5, 3, METAL, { outline: false }),
       r(x + 4.75, y + 10, 2.5, 3, METAL, { outline: false }),
