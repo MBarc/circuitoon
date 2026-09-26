@@ -5,6 +5,10 @@ import { type Pt, type Rect, type Rotation, type WorldPin, bodyRect, simplify, w
 import { addToOccupancy, Occupancy, routeOrthogonal } from './router.ts'
 import { manualRouteBlocked, tidy } from './wireEdit.ts'
 
+/** How every load warning about a dropped value override ends: the part now shows its module
+ * default instead of the value the file asked for. The editor lists these warnings first. */
+export const VALUE_DROPPED = 'it was dropped and the module default is shown'
+
 export const DIAGRAM_FORMAT = 'circuitoon-diagram/1'
 
 export interface PartInstance {
@@ -512,7 +516,7 @@ export function validateDiagram(raw: unknown): DiagramResult {
                 : null
               if (problem) {
                 dropped.push(key)
-                warnings.push(`${problem}; it was dropped and the module default is shown`)
+                warnings.push(`${problem}; ${VALUE_DROPPED}`)
               }
               continue
             }
