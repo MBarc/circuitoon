@@ -172,7 +172,8 @@
       {
         "pin": "VIN",
         "volts": 5,
-        "via": "USB"
+        "via": "USB",
+        "diode": true
       }
     ]
   },

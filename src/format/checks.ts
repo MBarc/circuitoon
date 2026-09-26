@@ -531,6 +531,7 @@ function checkPotentials({ d, nl, netTerms, netWires, terminal, shorted, add }: 
   // Every supply, one per electrical component of a part, and the edges.
   const sources = new Map<string, Source>()
   const edges: Edge[] = []
+  const diodes: Edge[] = []
   const unknownOn = new Map<string, Source[]>()
   const outOn = new Map<string, Source[]>()
   for (const p of d.parts) {
@@ -557,7 +558,9 @@ function checkPotentials({ d, nl, netTerms, netWires, terminal, shorted, add }: 
       // A supply wired to its own ground is reported as a short already; it places nothing.
       if (shorted.has(s.id)) continue
       const ret = info.returnOf.get(s.term.name)
-      if (ret) edges.push({ from: netOfKey(nodeKey(p.uid, ret)), to: out, v: s.v, src: s })
+      // A USB pin behind a diode only raises its net: placed after the first walk (see below).
+      if (ret && s.external?.diode) diodes.push({ from: netOfKey(nodeKey(p.uid, ret)), to: out, v: s.v, src: s })
+      else if (ret) edges.push({ from: netOfKey(nodeKey(p.uid, ret)), to: out, v: s.v, src: s })
       else if (info.grounds.length) {
         // Several grounds and no declared return: its voltage over any of them is unknown.
         s.refUnknown = true
@@ -567,44 +570,47 @@ function checkPotentials({ d, nl, netTerms, netWires, terminal, shorted, add }: 
   }
 
   // Walk each group once: potentials, the tree edge that reached each net, and the loops.
-  const adj = new Map<string, number[]>()
-  edges.forEach((e, i) => {
-    for (const n of [e.from, e.to]) adj.set(n, [...(adj.get(n) ?? []), i])
-  })
   const pot = new Map<string, Lin>()
   const up = new Map<string, number>()
   const depth = new Map<string, number>()
   const groupOf = new Map<string, string>()
   const loops: number[] = []
-  const treeEdge = new Set<number>()
-  const seenEdge = new Set<number>()
-  for (const root of adj.keys()) {
-    if (pot.has(root)) continue
-    pot.set(root, lin0())
-    depth.set(root, 0)
-    groupOf.set(root, root)
-    const queue = [root]
-    for (let q = 0; q < queue.length; q++) {
-      const n = queue[q]
-      for (const i of adj.get(n)!) {
-        if (seenEdge.has(i)) continue
-        seenEdge.add(i)
-        const e = edges[i]
-        const other = e.from === n ? e.to : e.from
-        if (other === n) continue
-        if (pot.has(other)) {
-          loops.push(i)
-          continue
+  const walk = () => {
+    for (const m of [pot, up, depth, groupOf]) m.clear()
+    loops.length = 0
+    const adj = new Map<string, number[]>()
+    edges.forEach((e, i) => {
+      for (const n of [e.from, e.to]) (adj.get(n) ?? adj.set(n, []).get(n)!).push(i)
+    })
+    const seenEdge = new Set<number>()
+    for (const root of adj.keys()) {
+      if (pot.has(root)) continue
+      pot.set(root, lin0())
+      depth.set(root, 0)
+      groupOf.set(root, root)
+      const queue = [root]
+      for (let q = 0; q < queue.length; q++) {
+        const n = queue[q]
+        for (const i of adj.get(n)!) {
+          if (seenEdge.has(i)) continue
+          seenEdge.add(i)
+          const e = edges[i]
+          const other = e.from === n ? e.to : e.from
+          if (other === n) continue
+          if (pot.has(other)) {
+            loops.push(i)
+            continue
+          }
+          pot.set(other, step(pot.get(n)!, e, e.from === n ? 1 : -1))
+          up.set(other, i)
+          depth.set(other, depth.get(n)! + 1)
+          groupOf.set(other, root)
+          queue.push(other)
         }
-        pot.set(other, step(pot.get(n)!, e, e.from === n ? 1 : -1))
-        up.set(other, i)
-        depth.set(other, depth.get(n)! + 1)
-        groupOf.set(other, root)
-        treeEdge.add(i)
-        queue.push(other)
       }
     }
   }
+  walk()
 
   /** The tree path from net `a` to net `b`: each edge with whether it is walked from its `from` to its `to`. */
   const path = (a: string, b: string): { e: Edge; forward: boolean }[] => {
@@ -628,6 +634,7 @@ function checkPotentials({ d, nl, netTerms, netWires, terminal, shorted, add }: 
   }
 
   const sorted = (list: Source[]) => [...list].sort((a, b) => natural.compare(termName(a.term), termName(b.term)))
+  const reason = (x: Source) => (x.refUnknown ? 'its return is not known' : x.unknown === 'adjustable' ? 'adjustable' : 'voltage not known')
   const involve = (list: Source[]) => ({
     parts: list.map((s) => s.term.part.uid),
     pins: list.map((s) => termPin(s.term)),
@@ -682,6 +689,53 @@ function checkPotentials({ d, nl, netTerms, netWires, terminal, shorted, add }: 
     }
   }
 
+  // USB pins behind a diode only raise their net. Where the rest of the sheet already sets the
+  // net over the board's ground, the pin is a load: fine at or above its USB voltage (up to its
+  // own limit); below it, USB pushes current into what holds the net down. Elsewhere it is a
+  // supply like any other.
+  const placed: Edge[] = []
+  const joinedTo = new Map<string, string>()
+  const top = (n: string): string => {
+    let r = groupOf.get(n) ?? n
+    while (joinedTo.has(r)) r = joinedTo.get(r)!
+    return r
+  }
+  for (const e of diodes) {
+    const s = e.src!
+    const ext = s.external!
+    const pin = s.term
+    const [a, b] = [top(e.from), top(e.to)]
+    if (a !== b) {
+      placed.push(e)
+      joinedTo.set(a, b)
+      continue
+    }
+    const g = groupOf.get(e.from)
+    if (g === undefined || g !== groupOf.get(e.to)) continue // tied only through another diode pin: both only raise it
+    const way = path(e.from, e.to)
+    if (way.some((x) => broken.has(x.e))) continue
+    const diff = minus(pot.get(e.to)!, pot.get(e.from)!)
+    const under = sorted(way.filter((x) => x.e.src).map((x) => x.e.src!))
+    const what = under.length === 1 ? termName(under[0].term) : `${andList(under.map((x) => termName(x.term)))} in series`
+    const base = { subject: pin.part.designator, target: termName(pin), ...involve([s, ...under]) }
+    if (diff.u.size) {
+      const open = [...diff.u.keys()].map((id) => sources.get(id)!)
+      add({ rule: 'supply-unknown', message: `${termName(pin)} voltage depends on ${andList(sorted(open).map((x) => `${termName(x.term)} (${reason(x)})`))} and cannot be checked.`, ...base })
+    } else if (diff.c < ext.volts - EPS)
+      add({ rule: 'supplies-fight', ...base,
+        message: `${termName(pin)} (${volts(ext.volts)} from ${ext.via}) is above ${what} (${volts(diff.c)}): ${ext.via} will push current into ${what} through the ${pin.label} diode.` })
+    else {
+      const rails = knownRails(pin.supply)
+      const max = ext.max ?? (rails ? Math.max(...rails) : undefined)
+      if (max !== undefined && diff.c > max + EPS)
+        add({ rule: 'supply-too-high', ...base, message: `${termName(pin)} accepts up to ${volts(max)} but gets ${volts(diff.c)} from ${what}.` })
+    }
+  }
+  if (placed.length) {
+    edges.push(...placed)
+    walk()
+  }
+
   // A supply of unknown voltage tied to another supply cannot be placed: say they are tied.
   for (const [net, unknown] of unknownOn) {
     const list = sorted([...unknown, ...(outOn.get(net) ?? [])])
@@ -701,7 +755,6 @@ function checkPotentials({ d, nl, netTerms, netWires, terminal, shorted, add }: 
       return i !== undefined && netTerms[i].some((o) => o.part !== p && !o.bare)
     })
   }
-  const reason = (x: Source) => (x.refUnknown ? 'its return is not known' : x.unknown === 'adjustable' ? 'adjustable' : 'voltage not known')
   nl.nets.forEach((_, i) => {
     const net = `#${i}`
     for (const t of netTerms[i]) {

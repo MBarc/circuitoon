@@ -233,7 +233,9 @@
       {
         "pin": "VSYS",
         "volts": 5,
-        "via": "USB through the VSYS diode"
+        "via": "USB",
+        "diode": true,
+        "max": 5.5
       }
     ],
     "returns": {

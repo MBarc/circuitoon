@@ -136,8 +136,9 @@ const passive = { type: 'passive' }
     source: 'https://protosupplies.com/product/esp32-s-screw-terminal-adapter/ https://www.otronic.nl/en/breakout-board-for-esp32-s-38-pins.html',
     pins: [...top.pins, ...bottom.pins], internal: [['GND', 'GND 2', 'GND 3']], wu, hu,
     // Its 5V terminal is the seated DevKitC's 5V pin, which carries that board's USB 5 V (see
-    // gen-boards.mjs: VBUS through a Schottky diode to EXT_5V), a 5 V source while it is on USB.
-    electrical: { model: 'breakout', params: {}, external: [{ pin: '5V', volts: 5, via: "the DevKit's USB" }] }, inside: true, shapes,
+    // gen-boards.mjs: VBUS through a Schottky diode, D3, to EXT_5V), a 5 V source while it is on
+    // USB that can only raise its net.
+    electrical: { model: 'breakout', params: {}, external: [{ pin: '5V', volts: 5, via: "the DevKit's USB", diode: true }] }, inside: true, shapes,
   }))
 }
 

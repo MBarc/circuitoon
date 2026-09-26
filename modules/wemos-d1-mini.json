@@ -121,7 +121,8 @@
       {
         "pin": "5V",
         "volts": 5,
-        "via": "USB"
+        "via": "USB",
+        "diode": true
       }
     ]
   },

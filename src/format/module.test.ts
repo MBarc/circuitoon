@@ -124,6 +124,10 @@ describe('validateModule', () => {
       'electrical.external[1].volts: must be a number above 0',
       'electrical.external[2]: must be { "pin", "volts", "via" }',
     ])
+    const diode = ext([{ pin: '5V', volts: 5, via: 'USB', diode: true, max: 5.5 }])
+    expect(diode.ok && externalPower(diode.module)).toEqual([{ pin: '5V', volts: 5, via: 'USB', diode: true, max: 5.5 }])
+    const badDiode = ext([{ pin: '5V', volts: 5, via: 'USB', diode: 'yes', max: 4 }])
+    expect(!badDiode.ok && badDiode.errors).toEqual(['electrical.external[0].diode: must be true or false', 'electrical.external[0].max: must be a number, at least volts'])
   })
   it('checks electrical.commonReturn: groups of 2 or more ground pins', () => {
     const pins = [{ name: 'G1', side: 'left', type: 'ground' }, { name: 'G2', side: 'left', type: 'ground' }, { name: 'X', side: 'left' }]

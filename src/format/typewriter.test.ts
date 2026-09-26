@@ -62,7 +62,7 @@ describe('Spirit Typewriter parts keep the physical pin order', () => {
   it("is the DevKitC V4 on the terminal board: its rails and USB 5 V are the DevKit's", () => {
     const m = load('esp32-terminal-board-38.json')
     expect(m.name).toBe('ESP32 DevKitC V4 on 38-pin screw terminal board')
-    expect(externalPower(m)).toEqual([{ pin: '5V', volts: 5, via: "the DevKit's USB" }])
+    expect(externalPower(m)).toEqual([{ pin: '5V', volts: 5, via: "the DevKit's USB", diode: true }])
     expect(m.art?.pinLabels).toBe('inside')
     expect(pin(m, '3V3')).toMatchObject({ type: 'power_out', supply: '3V3' })
     expect(pin(m, '5V')).toMatchObject({ type: 'power_in', supply: '5V' })

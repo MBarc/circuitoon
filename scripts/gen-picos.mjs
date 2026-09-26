@@ -137,7 +137,10 @@ function build({ id, name, source, shapes }) {
     // joined inside: the diode sits between them.
     electrical: {
       model: 'mcu', params: {},
-      external: [{ pin: 'VBUS', volts: 5, via: 'USB' }, { pin: 'VSYS', volts: 5, via: 'USB through the VSYS diode' }],
+      // VBUS is the USB pin itself; VSYS sits behind the VBUS-VSYS Schottky (diode: it can only
+      // raise VSYS) and takes up to 5.5 V (datasheet: "VSYS ... can vary in the allowed range 1.8 V
+      // to 5.5 V"), the limit the checker uses when something else drives VSYS higher than USB.
+      external: [{ pin: 'VBUS', volts: 5, via: 'USB' }, { pin: 'VSYS', volts: 5, via: 'USB', diode: true, max: 5.5 }],
       // AGND is a separate analog ground (see above), so say which ground the supplies return to.
       returns: { '3V3(OUT)': 'GND', VBUS: 'GND', VSYS: 'GND' },
     },

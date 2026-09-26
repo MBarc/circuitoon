@@ -4,7 +4,7 @@
 import { describe, expect, it } from 'vitest'
 import { checkDiagram } from './checks.ts'
 import type { Connection, Diagram, PartInstance } from './diagram.ts'
-import { type ModuleDef, validateModule } from './module.ts'
+import { type ModuleDef, externalPower, validateModule } from './module.ts'
 import { load } from './builtinModules.testing.ts'
 
 type Wire = [string, string]
@@ -70,22 +70,31 @@ describe('a drawn supply on a pin that also carries USB power (the board is assu
   const lm2596 = (v: number, board: string, pin: string) => sheet(
     [at('bt1', 'BT1', 'battery-9v', -300), at('u1', 'U1', 'lm2596-buck-module', 0, volts(v)), at('u2', 'U2', board, 400)],
     [['bt1|+', 'u1|IN+'], ['bt1|-', 'u1|IN-'], ['u1|OUT+', `u2|${pin}`], ['u1|OUT-', 'u2|GND']])
-  const both = (pin: string) => `supplies-parallel: U2 ${pin} also gets 5 V from USB; do not power ${pin} and USB at the same time.`
-  it('an LM2596 at 5 V into ESP32 VIN or Pico VBUS: a warning not to power both', () => {
-    expect(found(lm2596(5, 'esp32-devkit-v1-30', 'VIN'))).toEqual([both('VIN')])
-    expect(found(lm2596(5, 'rpi-pico', 'VBUS'))).toEqual([both('VBUS')])
+  const pushes = (pin: string, what: string, v: string) =>
+    `supplies-fight: U2 ${pin} (5 V from USB) is above ${what} (${v}): USB will push current into ${what} through the ${pin} diode.`
+  it('a pin wired straight to USB (Pico VBUS): an LM2596 at 5 V is a warning not to power both', () => {
+    expect(found(lm2596(5, 'rpi-pico', 'VBUS'))).toEqual(['supplies-parallel: U2 VBUS also gets 5 V from USB; do not power VBUS and USB at the same time.'])
   })
-  it('an LM2596 left at its 5 V default counts as 5 V too', () => {
+  it('a pin behind the USB diode (ESP32 VIN): an LM2596 at 5 V, set or default, is fine', () => {
+    expect(found(lm2596(5, 'esp32-devkit-v1-30', 'VIN'))).toEqual([])
     const d = sheet([at('bt1', 'BT1', 'battery-9v', -300), at('u1', 'U1', 'lm2596-buck-module'), at('u2', 'U2', 'esp32-devkit-v1-30', 400)],
       [['bt1|+', 'u1|IN+'], ['bt1|-', 'u1|IN-'], ['u1|OUT+', 'u2|VIN'], ['u1|OUT-', 'u2|GND']])
-    expect(found(d)).toEqual([both('VIN')])
+    expect(found(d)).toEqual([])
   })
-  it('an LM2596 set to 12 V into ESP32 VIN fights the USB 5 V', () => {
+  it('an LM2596 at 12 V into ESP32 VIN: the diode blocks USB, and VIN is fed too much', () => {
     expect(checkDiagram(lm2596(12, 'esp32-devkit-v1-30', 'VIN')).map((x) => `${x.severity} ${x.rule}: ${x.message}`)).toEqual([
-      'error supplies-fight: U1 OUT+ (12 V) and U2 VIN (5 V from USB) are wired together: the two supplies fight.',
+      'error supply-too-high: U2 VIN accepts up to 5 V but gets 12 V from U1 OUT+.',
     ])
   })
-  it('USB-C panel into a TP4056 charging an 18650, boosted by an IP5306 into ESP32 VIN: only the both-powered warning', () => {
+  it('an LM2596 at 5.2 V into Pico VSYS is fine (VSYS takes up to 5.5 V); at 6 V it is too high', () => {
+    expect(found(lm2596(5.2, 'rpi-pico', 'VSYS'))).toEqual([])
+    expect(found(lm2596(6, 'rpi-pico', 'VSYS'))).toEqual(['supply-too-high: U2 VSYS accepts up to 5.5 V but gets 6 V from U1 OUT+.'])
+  })
+  it('an 18650 into Pico VSYS: USB pushes current into the cell through the diode', () => {
+    const d = sheet([at('bt1', 'BT1', 'battery-18650-holder'), at('u2', 'U2', 'rpi-pico', 400)], [['bt1|+', 'u2|VSYS'], ['bt1|-', 'u2|GND']])
+    expect(found(d)).toEqual([pushes('VSYS', 'BT1 +', '3.7 V')])
+  })
+  it('USB-C panel into a TP4056 charging an 18650, boosted by an IP5306 into ESP32 VIN: fine', () => {
     const d = sheet([
       at('u1', 'U1', 'tp4056-module'), at('bt1', 'BT1', 'battery-18650-holder', -300), at('u2', 'U2', 'ip5306-usbc-module', 300),
       at('u3', 'U3', 'esp32-devkit-v1-30', 600), at('j1', 'J1', 'usb-panel-mount-usbc', -600),
@@ -93,16 +102,36 @@ describe('a drawn supply on a pin that also carries USB power (the board is assu
       ['j1|VBUS', 'u1|IN+'], ['j1|GND', 'u1|IN-'], ['bt1|+', 'u1|B+'], ['bt1|-', 'u1|B-'],
       ['u1|OUT+', 'u2|B+'], ['u1|OUT-', 'u2|B-'], ['u2|5V+', 'u3|VIN'], ['u2|5V-', 'u3|GND'],
     ])
-    expect(found(d)).toEqual(['supplies-parallel: U3 VIN also gets 5 V from USB; do not power VIN and USB at the same time.'])
+    expect(found(d)).toEqual([])
   })
-  it('a TP4056 output (one cell, 3.7 V) straight into ESP32 VIN fights the USB 5 V', () => {
-    const d = sheet([at('u1', 'U1', 'tp4056-module'), at('bt1', 'BT1', 'battery-18650-cell', -300), at('u3', 'U3', 'esp32-devkit-v1-30', 600)],
-      [['bt1|+', 'u1|B+'], ['bt1|-', 'u1|B-'], ['u1|OUT+', 'u3|VIN'], ['u1|OUT-', 'u3|GND']])
-    expect(found(d)).toEqual(['supplies-fight: U3 VIN (5 V from USB) and BT1 + (3.7 V) are wired together: the two supplies fight.'])
+  it('a TP4056 output (one cell, 3.7 V) straight into ESP32 VIN: USB pushes current into the cell', () => {
+    const d = sheet([at('u1', 'U1', 'tp4056-module'), at('bt1', 'BT1', 'battery-18650-cell', -300), at('u2', 'U2', 'esp32-devkit-v1-30', 600)],
+      [['bt1|+', 'u1|B+'], ['bt1|-', 'u1|B-'], ['u1|OUT+', 'u2|VIN'], ['u1|OUT-', 'u2|GND']])
+    expect(found(d)).toEqual([pushes('VIN', 'BT1 +', '3.7 V')])
   })
-  it('a 3.7 V cell into a Nano 5V pin fights the USB 5 V', () => {
-    const d = sheet([at('u1', 'U1', 'arduino-nano'), at('bt1', 'BT1', 'battery-18650-holder', 400)], [['bt1|+', 'u1|5V'], ['bt1|-', 'u1|GND']])
-    expect(found(d)).toEqual(['supplies-fight: U1 5V (5 V from USB) and BT1 + (3.7 V) are wired together: the two supplies fight.'])
+  it('a 3.7 V cell into a Nano 5V pin: USB pushes current into the cell', () => {
+    const d = sheet([at('u2', 'U2', 'arduino-nano'), at('bt1', 'BT1', 'battery-18650-holder', 400)], [['bt1|+', 'u2|5V'], ['bt1|-', 'u2|GND']])
+    expect(found(d)).toEqual([pushes('5V', 'BT1 +', '3.7 V')])
+  })
+  it('a pin wired straight to USB (ESP32-C3 5V) still fights a 9 V battery', () => {
+    const d = sheet([at('u2', 'U2', 'esp32-c3-supermini'), at('bt1', 'BT1', 'battery-9v', 400)], [['bt1|+', 'u2|5V'], ['bt1|-', 'u2|G']])
+    expect(rules(d)).toEqual(['supplies-fight'])
+  })
+  it('which USB pins sit behind a diode, per board schematic', () => {
+    const diode = (id: string) => Object.fromEntries(externalPower(load(id)).map((e) => [e.pin, e.diode === true]))
+    expect(diode('esp32-devkitc-v4')).toEqual({ '5V': true })
+    expect(diode('esp32-devkit-v1-30')).toEqual({ VIN: true })
+    expect(diode('esp32-s3-devkitc-1')).toEqual({ '5V': true })
+    expect(diode('arduino-nano')).toEqual({ '5V': true })
+    expect(diode('wemos-d1-mini')).toEqual({ '5V': true })
+    expect(diode('esp32-terminal-board-38')).toEqual({ '5V': true })
+    expect(diode('esp32-c3-supermini')).toEqual({ '5V': false })
+    expect(diode('xiao-esp32c3')).toEqual({ '5V': false })
+    expect(diode('xiao-esp32s3')).toEqual({ '5V': false })
+    for (const id of ['rpi-pico', 'rpi-pico-h', 'rpi-pico-w', 'rpi-pico-2', 'rpi-pico-2-w']) {
+      expect(diode(id)).toEqual({ VBUS: false, VSYS: true })
+      expect(externalPower(load(id)).find((e) => e.pin === 'VSYS')?.max).toBe(5.5)
+    }
   })
 })
 
@@ -132,7 +161,7 @@ describe('series stacks and references', () => {
 describe('Pico VSYS carries USB power through its diode', () => {
   it('VSYS into a 3.3 V only BME280 is too high', () => {
     const d = sheet([at('u1', 'U1', 'rpi-pico'), at('u2', 'U2', 'bme280-module-6pin', 400)], [['u2|VCC', 'u1|VSYS'], ['u2|GND', 'u1|GND']])
-    expect(found(d)).toEqual(['supply-too-high: U2 VCC accepts up to 3.3 V but gets 5 V from U1 VSYS (USB through the VSYS diode).'])
+    expect(found(d)).toEqual(['supply-too-high: U2 VCC accepts up to 3.3 V but gets 5 V from U1 VSYS (USB).'])
   })
   it('VSYS into an OLED that takes 5 V is fine', () => {
     const d = sheet([at('u1', 'U1', 'rpi-pico-w'), at('u2', 'U2', 'oled-ssd1306-096-i2c', 400)], [['u2|VCC', 'u1|VSYS'], ['u2|GND', 'u1|GND']])
@@ -190,10 +219,10 @@ describe('damaging or dead circuits are caught', () => {
     const d = sheet([at('u1', 'U1', 'esp32-devkit-v1-30'), at('bt1', 'BT1', 'battery-18650-holder', 400)], [['bt1|+', 'u1|GND'], ['bt1|-', 'u1|GND 2']])
     expect(found(d)).toEqual(['short: BT1 + is wired to U1 GND, which leads back to BT1 -: short circuit.'])
   })
-  it('a Nano on USB, its 5V pin into ESP32 3V3: the two supplies fight', () => {
+  it('a Nano on USB, its 5V pin into ESP32 3V3: USB pushes current into the 3.3 V rail through the diode', () => {
     const d = sheet([at('u1', 'U1', 'esp32-devkit-v1-30'), at('u2', 'U2', 'arduino-nano', 400)], [['u2|5V', 'u1|3V3'], ['u2|GND', 'u1|GND']])
     expect(checkDiagram(d).map((f) => `${f.severity} ${f.rule}: ${f.message}`)).toEqual([
-      'error supplies-fight: U2 5V (5 V from USB) and U1 3V3 (3.3 V) are wired together: the two supplies fight.',
+      'error supplies-fight: U2 5V (5 V from USB) is above U1 3V3 (3.3 V): USB will push current into U1 3V3 through the 5V diode.',
     ])
   })
   it('ESP32 VIN (USB 5 V) into a 3.3 V only BME280 is too high', () => {

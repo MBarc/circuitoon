@@ -283,6 +283,8 @@ export function validateModule(raw: unknown): ValidationResult {
         if (typeof e.pin !== 'string' || !names.has(e.pin)) errors.push(`${at}.pin: no pin named "${String(e.pin)}"`)
         if (!isPos(e.volts)) errors.push(`${at}.volts: must be a number above 0`)
         if (typeof e.via !== 'string' || e.via.trim() === '') errors.push(`${at}.via: required, what powers the pin (for example "USB")`)
+        if (e.diode !== undefined && typeof e.diode !== 'boolean') errors.push(`${at}.diode: must be true or false`)
+        if (e.max !== undefined && !(isNum(e.max) && isPos(e.volts) && e.max >= e.volts)) errors.push(`${at}.max: must be a number, at least volts`)
       })
   }
 
@@ -375,6 +377,10 @@ export interface ExternalPower {
   pin: string
   volts: number
   via: string
+  /** A diode sits between the connector and the pin (per the board's schematic): the pin can raise its net, never pull it down. */
+  diode?: boolean
+  /** The most the pin itself takes when something else raises it (Pico VSYS: 5.5 V); else its accepted rails. */
+  max?: number
 }
 
 /** The module's `electrical.external` entries that are well formed (validateModule reports the rest). */
