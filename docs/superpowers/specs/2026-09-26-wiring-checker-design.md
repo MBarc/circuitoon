@@ -23,7 +23,7 @@ Each finding has a stable rule id, a severity (error: likely to damage parts or 
 10. `leg-hole-shared` (warning): a wire end in the exact hole a plugged leg occupies ("physically, one hole takes one leg").
 11. `broken` (error): each connection in netlist(d).broken (already listed today; the checker absorbs that list).
 
-Not in v1 (needs simulation or pin roles we do not have): LED without a resistor, floating inputs, current limits, I2C pull-ups, level mismatch on signal pins, reversed polarity. Also deferred after review (2026-09-26): structured voltage ranges (nominal / operating / absolute max) instead of "/" rail lists; per-board external-power on/off state (every `electrical.external` pin is assumed powered); a dismissal UI (ids are canonical already, so it can key on them); output drive types (push-pull / open-drain / tri-state) for `outputs-fight`; negative and differential rails (a negative rail parses as unknown).
+Not in v1 (needs simulation or pin roles we do not have): LED without a resistor, floating inputs, current limits, I2C pull-ups, level mismatch on signal pins, reversed battery polarity, shorts through switches or other passives (switch state is not modeled). Also deferred after review (2026-09-26): structured voltage ranges (nominal / operating / absolute max) instead of "/" rail lists; per-board external-power on/off state (every `electrical.external` pin is assumed powered); a dismissal UI (ids are canonical already, so it can key on them); output drive types (push-pull / open-drain / tri-state) for `outputs-fight`; negative and differential rails (a negative rail parses as unknown).
 
 ## Review changes (2026-09-26, Astra and Claude reviews)
 - A source's voltage is the part's value when the module has a `voltage` param (batteries, the LM2596, whose value replaces ADJ).
@@ -33,6 +33,14 @@ Not in v1 (needs simulation or pin roles we do not have): LED without a resistor
 - Short: a source on the same net as its own part's ground.
 - parseSupply keeps the unknown reason (adjustable / unknown); finite rails only.
 - Ids: rule plus sorted causal terminal keys.
+
+## Second review changes (2026-09-26, Astra re-review)
+- Reference-aware voltages: each supply is an edge from its return net to its output net; one BFS per group assigns potentials. A disagreeing loop is a shorted stack (every supply the same way round) or a fight; an agreeing loop is supplies in parallel. Loads see potential(input) minus potential(own ground), so series stacks add up; with the ground outside the group the supply on the input net counts. A pass-through part's grounds are joined at 0 V.
+- No USB suppression: USB pins are always sources; a drawn supply beside one at the same voltage warns not to power both, at another voltage they fight.
+- Pico VSYS is a USB pin too (through the VBUS diode), 5 V worst case, not joined to VBUS.
+- `electrical.voltageOutputs` binds a voltage param to named outputs (required with more than one power_out).
+- esp32-terminal-board-38 is the DevKitC V4 on the terminal board, drawn seated.
+- No power reuses the resolved sources: pass-through outputs feed nothing.
 
 ## Where it lives
 - `src/format/checks.ts`: pure `checkDiagram(d): Finding[]`, sorted errors first, then by designator. `parseSupply(s)`. No React.
