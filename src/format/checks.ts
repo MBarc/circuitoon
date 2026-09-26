@@ -344,8 +344,9 @@ export function checkDiagram(d: Diagram): Finding[] {
   }
 
   const netTerms = nl.nets.map((keys) => keys.map(terminal).filter((t): t is Terminal => t !== null))
-  /** Supplies (by source id) already reported as wired to their own ground. */
+  /** Supplies (by source id) already reported as wired to their own ground, and their parts. */
   const shorted = new Set<string>()
+  const shortedParts = new Set<string>()
 
   nl.nets.forEach((keys, i) => {
     const terms = netTerms[i]
@@ -360,6 +361,7 @@ export function checkDiagram(d: Diagram): Finding[] {
       const own = t.info.grounds.find((g) => onNet.has(nodeKey(t.part.uid, g)))
       if (own === undefined || shorted.has(id)) continue
       shorted.add(id)
+      shortedParts.add(t.part.uid)
       const ownTerm = terms.find((o) => o.part === t.part && o.name === own)!
       const via = terms.find((o) => o.type === 'ground' && o.part !== t.part)
       const message = via
@@ -405,12 +407,19 @@ export function checkDiagram(d: Diagram): Finding[] {
       }
     }
     const grounds = terms.filter((t) => t.type === 'ground')
-    if (grounds.length && !grounds.some((t) => others(t).some((o) => !o.bare))) {
+    // A part already reported as shorted gets no second finding about its ground.
+    if (grounds.length && !shortedParts.has(p.uid) && !grounds.some((t) => others(t).some((o) => !o.bare))) {
       const wired = [...new Set(grounds.filter((t) => others(t).length).map((t) => t.label))]
+      const ownOnly = [...new Set(grounds.filter((t) => {
+        const i = nl.netOf.get(t.key)
+        return !others(t).length && i !== undefined && netTerms[i].some((o) => o.part === t.part && o.name !== t.name && t.info.comp.get(o.name) !== t.info.comp.get(t.name))
+      }).map((t) => t.label))]
       const labels = [...new Set(grounds.map((t) => t.label))]
       const what = labels.length > 3 ? `${labels[0]} or another of its ground pins` : orList(labels)
       const message = wired.length
         ? `${p.designator} has no ground: ${andList(wired)} ${isAre(wired.length)} connected but ${wired.length === 1 ? 'leads' : 'lead'} to no other part.`
+        : ownOnly.length
+        ? `${p.designator} has no ground: ${andList(ownOnly)} ${isAre(ownOnly.length)} wired only to ${p.designator}'s own pins. Connect ${ownOnly.length === 1 ? 'it' : 'them'} to the ground of the circuit.`
         : `${p.designator} has no ground: connect ${what}.`
       add({ rule: 'no-ground', subject: p.designator, target: p.designator, message, parts: [p.uid], pins: grounds.map(termPin), wires: [], causes: grounds.map((t) => t.key) })
     }
@@ -860,7 +869,8 @@ function checkPotentials({ d, nl, netTerms, netWires, terminal, shorted, add }: 
         // The load's ground does not reach the return of what feeds it: no voltage can be stated.
         // No ground already says so when the ground is not wired at all.
         const feeding = sorted([...direct, ...unknown])
-        if (feeding.length && !groundless(t.part)) {
+        // Nothing to add about a load fed by a supply already reported as shorted.
+        if (feeding.length && !groundless(t.part) && !feeding.some((x) => shorted.has(x.id))) {
           const g = t.info.grounds.length ? termName(terminal(nodeKey(t.part.uid, t.info.grounds[0]))!) : `${t.part.designator} (no ground pin)`
           add({ rule: 'supply-unknown', message: `${termName(t)} voltage cannot be checked: ${g} does not connect back to the return of ${andList(feeding.map((x) => termName(x.term)))}.`, ...base(feeding) })
         }

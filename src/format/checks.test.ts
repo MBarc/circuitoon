@@ -462,6 +462,14 @@ describe('checkDiagram', () => {
       ])
       expect(only(d, 'no-ground').map((f) => f.parts[0])).toEqual(['bt1', 'u1'])
     })
+    it("says when the ground is wired only to the part's own pins", () => {
+      const d = sheet([part('U1', 'mcu')], [wire('w1', 'u1.GND', 'u1.IO')])
+      expect(only(d, 'no-ground')[0].message).toBe("U1 has no ground: GND is wired only to U1's own pins. Connect it to the ground of the circuit.")
+    })
+    it('adds nothing about the ground of a supply already reported as shorted', () => {
+      const d = sheet([part('BT1', 'bat5')], [wire('w1', 'bt1.+', 'bt1.-')])
+      expect(rules(d)).toEqual(['short'])
+    })
     it('passes a ground wired to another part', () => {
       expect(rules(powered('bat5', 'chipAny'))).not.toContain('no-ground')
     })
@@ -537,7 +545,6 @@ describe('checkDiagram', () => {
     ])
     expect(checkDiagram(d).map((f) => `${f.severity} ${f.rule} ${f.subject}`)).toEqual([
       'error short BT1',
-      'warning no-ground BT1',
       'warning no-power U2',
       'warning no-ground U2',
       'warning no-power U10',
