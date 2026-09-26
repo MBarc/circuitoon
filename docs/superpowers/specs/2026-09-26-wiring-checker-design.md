@@ -23,7 +23,7 @@ Each finding has a stable rule id, a severity (error: likely to damage parts or 
 10. `leg-hole-shared` (warning): a wire end in the exact hole a plugged leg occupies ("physically, one hole takes one leg").
 11. `broken` (error): each connection in netlist(d).broken (already listed today; the checker absorbs that list).
 
-Not in v1 (needs simulation or pin roles we do not have): LED without a resistor, floating inputs, current limits, I2C pull-ups, level mismatch on signal pins, reversed battery polarity, shorts through switches or other passives (switch state is not modeled). Also deferred after review (2026-09-26): structured voltage ranges (nominal / operating / absolute max) instead of "/" rail lists; per-board external-power on/off state (every `electrical.external` pin is assumed powered); a dismissal UI (ids are canonical already, so it can key on them); output drive types (push-pull / open-drain / tri-state) for `outputs-fight`; negative and differential rails (a negative rail parses as unknown).
+Not in v1 (needs simulation or pin roles we do not have): LED without a resistor, floating inputs, current limits, I2C pull-ups, level mismatch on signal pins, shorts through switches or other passives (switch state is not modeled). Reversed polarity is checked since round 4. Also deferred after review (2026-09-26): structured voltage ranges (nominal / operating / absolute max) instead of "/" rail lists; per-board external-power on/off state (every `electrical.external` pin is assumed powered); a dismissal UI (ids are canonical already, so it can key on them); output drive types (push-pull / open-drain / tri-state) for `outputs-fight`; negative and differential rails (a negative rail parses as unknown).
 
 ## Review changes (2026-09-26, Astra and Claude reviews)
 - A source's voltage is the part's value when the module has a `voltage` param (batteries, the LM2596, whose value replaces ADJ).
@@ -50,6 +50,17 @@ Principle: never state a definite voltage or give setting advice when any part o
 - `electrical.commonReturn` declares grounds that are one return (TP4056 B-/OUT-); the pass-through ground join is gone.
 - `electrical.returns` names each supply's ground; else the only ground component; else unknown. The largest-ground guess is gone. Picos return to GND.
 - A load whose ground misses the return of its supply gets no voltage finding (No ground, or "cannot be checked").
+
+## Fourth review changes (2026-09-26, hobbyist review of 58 sheets)
+- `reversed` (error): a load's input below its own ground; names the wires to swap or the battery in backwards; no no-power for that part.
+- Switches (`electrical.model` "switch") are closed for voltages; a loop through one is never a short or a fight.
+- Too low only below 90% of the lowest rail until real ranges exist.
+- Data: DevKit V1 VIN 5V/7V/9V/12V (NCP1117 20 V / AMS1117 15 V LDO); L298N kept at 12 V with its jumper fitted (module guide: the jumper must come off above 12 V).
+- Joined power pins are checked once.
+- `no-common-ground` (warning): a signal between two separately grounded parts.
+- No follow-up noise after a short; "wired only to its own pins" wording for No ground.
+- Fights name the pin on the net ("U1 OUT+ (3.7 V from BT1)").
+- Messages carry actions: stakes, the wire to remove, how to fix a voltage, which ground to connect.
 
 ## Where it lives
 - `src/format/checks.ts`: pure `checkDiagram(d): Finding[]`, sorted errors first, then by designator. `parseSupply(s)`. No React.
