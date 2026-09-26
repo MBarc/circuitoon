@@ -106,23 +106,31 @@ Parts and wires are both first-class objects you click, drag, select and delete,
 
 **Wiring checker**
 
-It never claims more than the data supports: a pin with no `type` is unknown and never triggers a rule. A `supply` is a "/" list of rails (`3V3` is 3.3 V, `5V`, `3.7V`); `ADJ` and anything unparseable are unknown. A net's source voltage is that of the `power_out` pins on it; a `power_out` joined inside its part to a `power_in` (a charger's OUT+) passes a supply on and is not a source of its own, and joined outputs of one part count once. Each finding has a severity, one plain sentence naming designators and pin labels, and the parts, pins and wires involved.
+It never claims more than the data supports: a pin with no `type` is unknown and never triggers a rule. A `supply` is a "/" list of rails (`3V3` is 3.3 V, `5V`, `3.7V`); one `ADJ` rail makes the supply adjustable, and any other rail that does not parse to a finite voltage makes it unknown (negative rails such as `-5V` are unknown until differential sources exist).
+
+The supplies on a net are its `power_out` pins and the pins a board powers from its USB connector (`electrical.external`, assumed on USB):
+- A part with a `voltage` value (a battery, the LM2596) supplies the value set on the sheet, the same value the Inspector shows; for the LM2596 it replaces ADJ.
+- Supplies count once per electrical component of a part (the closure of its `internal` joins over pins and hole groups): joined outputs are one supply, separate outputs stay separate. A `power_out` whose component holds a `power_in` (a charger's OUT+ is its B+) passes a supply on and is not a source.
+- A USB pin gives way when a supply drawn on the sheet (not another board's regulator) feeds the same net: the board then runs from that supply, so the pin is checked as an input.
+- A supply's return is its own part's ground: a short is a supply on the same net as that ground. Two cells in series (BT1 + to BT2 -) are fine.
+
+Each finding has a severity, one plain sentence naming designators and pin labels, the parts, pins and wires involved, what Select selects, and an id made of the rule and the sorted terminals that cause it, so it stays the same whatever order wires are drawn in and whatever else joins the net.
 
 | Rule | Severity | Fires when |
 |---|---|---|
-| Short circuit | error | a net holds a `power_out` and a `ground` |
+| Short circuit | error | a supply shares a net with its own part's ground (directly, or through another part's ground wired back to it) |
 | Voltage too high | error | a source on a `power_in`'s net exceeds its highest rail |
 | Voltage too low | warning | every source is known and the highest is below the input's lowest rail |
-| Set the supply voltage | warning | an `ADJ` source feeds an input that lists voltages |
-| Supplies fight / tied together | error / warning | two parts' supplies share a net, at different / the same (or unknown) voltages |
+| Set the supply voltage | warning | an adjustable source (any `ADJ` rail, with no value set on the part) feeds an input that lists voltages |
+| Supplies fight / tied together | error / warning | two supplies (separate parts, or separate components of one part) share a net, at different / the same (or unknown) voltages |
 | Outputs fight | warning | two `output` pins share a net |
-| No power | warning | a wired or plugged part has `power_in` pins and none can be fed: fed means another part's supply, power input (a board's 5V pin carries its USB power), passive pin (a switch, a fuse) or untyped pin is on the net, or the part's own `power_out` shares a net with another supply. Dev boards (`electrical.model` "mcu") are left out: they take USB power the sheet does not draw |
+| No power | warning | a wired or plugged part has `power_in` pins and none can be fed: fed means another part's supply (a `power_out` or a USB pin), passive pin (a switch, a fuse) or untyped pin is on the net, or the part's own `power_out` shares a net with another supply. Another part's power input feeds nothing. A board with a USB pin is its own supply; one without (the ESP32-CAM) is checked like any part. The message says when a pin is connected but nothing supplies it |
 | No ground | warning | a wired or plugged part has `ground` pins and none shares a net with another part's pin (a bare breadboard strip does not count) |
 | Not plugged in | warning | a mount plugs nothing (see Breadboards) |
-| Two in one hole | warning | a wire end names the exact hole a plugged leg fills (a wire to the plugged pin itself is fine) |
+| Two in one hole | warning | a wire end names the exact hole a plugged leg fills (a wire to the plugged pin itself is fine); Select selects the wire |
 | Broken connection | error | a wire end names a missing part, pin, group or hole |
 
-The side panel (with nothing selected) lists the findings, errors first, then by designator. Each row has Select, which selects the parts and wires involved and pans them into view, and, for a broken connection, Delete. Hovering or focusing a row lights its parts, pins and wires on the sheet. The toolbar badge counts the problems and is red when any is an error. The check runs once per edit, never per drag frame. Not in V1 (these need simulation or pin roles the modules do not have): an LED without a resistor, floating inputs, current limits, I2C pull-ups, logic level mismatch.
+The side panel (with nothing selected) lists the findings, errors first, then by designator. Each row has Select, which selects what the finding is about (the parts and wires involved; just the wire for a hole or broken problem; the part, not its board, for a mount problem) and pans it into view, and, for a broken connection, Delete. Each Select is named by its pin or wire and rule and described by the row's message. Hovering or focusing a row lights its parts, pins and wires on the sheet; the light follows its finding and goes out when the finding does, and on undo, redo and load. The toolbar badge counts the problems, is red when any is an error, and its name gives the counts by severity. The check runs once per edit, never per drag frame. Not in V1 (these need simulation or pin roles the modules do not have): an LED without a resistor, floating inputs, current limits, I2C pull-ups, logic level mismatch, reversed polarity; structured voltage ranges (nominal, operating, absolute maximum) instead of rail lists; whether a board is actually on USB (every USB pin is assumed on); dismissing a finding; output drive types (push-pull, open-drain, tri-state); negative and differential rails.
 - Wire color: a named color (red, black, blue, green, yellow, orange, white, purple, gray, brown, pink) or any hex value such as #2458C6. Wire gauge: AWG 16 to 30, default 22 (standard breadboard jumper). Drawn thickness scales with gauge, so thick power runs look thick.
 
 ## Module definition format
