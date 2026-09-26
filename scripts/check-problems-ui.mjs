@@ -139,8 +139,8 @@ for (const scheme of ['light', 'dark']) {
   for (const t of ['Error: Short circuit', 'Error: Supplies fight', 'Error: Broken connection', 'Warning: No power', 'Warning: No ground', 'Warning: Two in one hole'])
     check(titles.includes(t), `${scheme}: the list has "${t}"`)
   const messages = await page.locator('.problem-message').allTextContents()
-  check(messages.includes('U2 5V+ (5 V) and U1 3V3 (3.3 V) are wired together: the two supplies fight.'), `${scheme}: the supplies-fight message names both pins`)
-  check(messages.includes('BT1 + is wired to U1 GND, which leads back to BT1 -: short circuit.'), `${scheme}: the short message names the way back`)
+  check(messages.includes('U2 5V+ (5 V) and U1 3V3 (3.3 V) are wired together: the two supplies fight, and the higher one drives current into the lower one, which can damage both. Remove the wire from U2 5V+ to U1 3V3.'), `${scheme}: the supplies-fight message names both pins`)
+  check(messages.includes('BT1 + is wired to U1 GND, which leads back to BT1 -: short circuit. Nothing limits the current, so BT1 and the wires can overheat. Remove the wire from BT1 + to U1 GND.'), `${scheme}: the short message names the way back and the wire to remove`)
   await saved(page.locator('.toolbar'), 'problems-badge')
   await saved(page.locator('.inspector'), 'problems-list')
 

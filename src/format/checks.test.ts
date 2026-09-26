@@ -136,7 +136,7 @@ describe('checkDiagram', () => {
       const d = sheet([part('BT1', 'bat5'), part('U1', 'chip33')], [wire('w1', 'bt1.+', 'u1.GND'), wire('w2', 'bt1.-', 'u1.GND')])
       const [f] = only(d, 'short')
       expect(f.severity).toBe('error')
-      expect(f.message).toBe('BT1 + is wired to U1 GND, which leads back to BT1 -: short circuit.')
+      expect(f.message).toBe('BT1 + is wired to U1 GND, which leads back to BT1 -: short circuit. Nothing limits the current, so BT1 and the wires can overheat. Remove the wire from BT1 + to U1 GND.')
       expect(f.parts).toEqual(['bt1', 'u1'])
       expect(f.pins).toEqual([{ part: 'bt1', pin: '+' }, { part: 'u1', pin: 'GND' }, { part: 'bt1', pin: '-' }])
       expect(f.wires).toEqual(['w1', 'w2'])
@@ -151,11 +151,11 @@ describe('checkDiagram', () => {
     })
     it("flags a board's USB power pin wired to its own ground", () => {
       const d = sheet([part('U1', 'mcu')], [wire('w1', 'u1.5V', 'u1.GND')])
-      expect(only(d, 'short')[0].message).toBe('U1 5V is wired straight to ground (U1 GND): short circuit.')
+      expect(only(d, 'short')[0].message).toBe('U1 5V is wired straight to ground (U1 GND): short circuit. Nothing limits the current, so U1 and the wires can overheat. Remove the wire from U1 5V to U1 GND.')
     })
     it('flags a battery wired across itself', () => {
       const d = sheet([part('BT1', 'bat5')], [wire('w1', 'bt1.+', 'bt1.-')])
-      expect(only(d, 'short')[0].message).toBe('BT1 + is wired straight to ground (BT1 -): short circuit.')
+      expect(only(d, 'short')[0].message).toBe('BT1 + is wired straight to ground (BT1 -): short circuit. Nothing limits the current, so BT1 and the wires can overheat. Remove the wire from BT1 + to BT1 -.')
     })
     it('passes a supply wired to a power input and a ground wired to ground', () => {
       expect(rules(powered('bat5', 'chipAny'))).not.toContain('short')
@@ -172,7 +172,7 @@ describe('checkDiagram', () => {
     it('flags a power input fed more than its highest rail', () => {
       const [f] = only(powered('bat5', 'chip33'), 'supply-too-high')
       expect(f.severity).toBe('error')
-      expect(f.message).toBe('U1 VCC accepts up to 3.3 V but gets 5 V from BT1 +.')
+      expect(f.message).toBe('U1 VCC accepts up to 3.3 V but gets 5 V from BT1 +. Use a 3.3 V supply instead.')
       expect(f.pins).toEqual([{ part: 'u1', pin: 'VCC' }, { part: 'bt1', pin: '+' }])
       expect(f.wires).toEqual(['w1'])
     })
@@ -190,7 +190,7 @@ describe('checkDiagram', () => {
     })
     it('uses the pin label the board prints', () => {
       const d = sheet([part('BT1', 'bat5'), part('U1', 'labelled')], [wire('w1', 'bt1.+', 'u1.P'), wire('w2', 'bt1.-', 'u1.G')])
-      expect(only(d, 'supply-too-high')[0].message).toBe('U1 VDD accepts up to 3.3 V but gets 5 V from BT1 +.')
+      expect(only(d, 'supply-too-high')[0].message).toBe('U1 VDD accepts up to 3.3 V but gets 5 V from BT1 +. Use a 3.3 V supply instead.')
     })
     it('reaches the input through a breadboard strip and a switch-free wire chain', () => {
       const d = sheet(
@@ -209,12 +209,12 @@ describe('checkDiagram', () => {
     it('flags a power input fed less than its lowest rail', () => {
       const [f] = only(powered('bat37', 'vin'), 'supply-too-low')
       expect(f.severity).toBe('warning')
-      expect(f.message).toBe('U1 VIN needs at least 6.3 V; BT1 + gives only 3.7 V.')
+      expect(f.message).toBe('U1 VIN needs at least 6.3 V; BT1 + gives only 3.7 V. Use a 7 V supply instead.')
     })
     it('takes down to 90% of the lowest rail: 3 V on a 3.3 V part is fine, 2.9 V is not', () => {
       const cell = (v: number) => sheet([part('BT1', 'cell', { values: { voltage: { value: v, unit: 'V' } } }), part('U1', 'chip33')], [wire('w1', 'bt1.+', 'u1.VCC'), wire('w2', 'bt1.-', 'u1.GND')])
       expect(rules(cell(3))).toEqual([])
-      expect(only(cell(2.9), 'supply-too-low')[0].message).toBe('U1 VCC needs at least 3.0 V; BT1 + gives only 2.9 V.')
+      expect(only(cell(2.9), 'supply-too-low')[0].message).toBe('U1 VCC needs at least 3.0 V; BT1 + gives only 2.9 V. Use a 3.3 V supply instead.')
     })
     it('passes a voltage inside the range', () => {
       expect(rules(powered('bat9', 'vin'))).not.toContain('supply-too-low')
@@ -246,7 +246,7 @@ describe('checkDiagram', () => {
       const d = sheet([part('BT1', 'bat5'), part('BT2', 'bat37')], [wire('w1', 'bt1.+', 'bt2.+'), wire('w2', 'bt1.-', 'bt2.-')])
       const [f] = only(d, 'supplies-fight')
       expect(f.severity).toBe('error')
-      expect(f.message).toBe('BT1 + (5 V) and BT2 + (3.7 V) are wired together: the two supplies fight.')
+      expect(f.message).toBe('BT1 + (5 V) and BT2 + (3.7 V) are wired together: the two supplies fight, and the higher one drives current into the lower one, which can damage both. Remove the wire from BT2 + to BT1 +.')
       expect(rules(d)).not.toContain('supplies-parallel')
     })
     it('warns about two supplies of the same voltage tied together', () => {
@@ -260,14 +260,14 @@ describe('checkDiagram', () => {
       const d = sheet([part('BT1', 'bat37'), part('U1', 'charger'), part('U2', 'mcu')], [
         wire('w1', 'bt1.+', 'u1.B+'), wire('w2', 'bt1.-', 'u1.GND'), wire('w3', 'u1.OUT+', 'u2.3V3'), wire('w4', 'u1.GND', 'u2.GND'),
       ])
-      expect(only(d, 'supplies-fight')[0].message).toBe('U1 OUT+ (3.7 V from BT1) and U2 3V3 (3.3 V) are wired together: the two supplies fight.')
+      expect(only(d, 'supplies-fight')[0].message).toBe('U1 OUT+ (3.7 V from BT1) and U2 3V3 (3.3 V) are wired together: the two supplies fight, and the higher one drives current into the lower one, which can damage both. Remove the wire from U2 3V3 to U1 OUT+.')
     })
     it('names a series stack as one side of a fight', () => {
       const d = sheet([part('BT1', 'bat5'), part('BT2', 'bat5'), part('BT3', 'bat9')], [
         wire('w1', 'bt1.+', 'bt2.-'), wire('w2', 'bt2.+', 'bt3.+'), wire('w3', 'bt1.-', 'bt3.-'),
       ])
       expect(checkDiagram(d).map((f) => `${f.rule}: ${f.message}`)).toEqual([
-        'supplies-fight: BT1 + and BT2 + (10 V in series) and BT3 + (9 V) are wired together: the supplies fight.',
+        'supplies-fight: BT1 + and BT2 + (10 V in series) and BT3 + (9 V) are wired together: the supplies fight, and the higher one drives current into the lower one, which can damage both. Separate them.',
       ])
     })
     it('leaves two supplies alone when only their + are tied: no loop, no current', () => {
@@ -290,7 +290,7 @@ describe('checkDiagram', () => {
     const at = (v: number) => ({ values: { voltage: { value: v, unit: 'V' } } })
     it('is the voltage of its supply, over the module supply string', () => {
       const d = sheet([part('BT1', 'cell', at(9)), part('U1', 'chipAny')], [wire('w1', 'bt1.+', 'u1.VCC'), wire('w2', 'bt1.-', 'u1.GND')])
-      expect(only(d, 'supply-too-high')[0].message).toBe('U1 VCC accepts up to 5 V but gets 9 V from BT1 +.')
+      expect(only(d, 'supply-too-high')[0].message).toBe('U1 VCC accepts up to 5 V but gets 9 V from BT1 +. Use a 5 V supply instead.')
       const low = sheet([part('BT1', 'cell', at(3.3)), part('U1', 'chip33')], [wire('w1', 'bt1.+', 'u1.VCC'), wire('w2', 'bt1.-', 'u1.GND')])
       expect(checkDiagram(low)).toEqual([])
     })
@@ -303,13 +303,13 @@ describe('checkDiagram', () => {
       const d = sheet([part('U1', 'chip33'), part('U2', 'chip33')], [wire('w1', 'u2.5V', 'u1.VCC'), wire('w2', 'u2.GND', 'u1.GND')])
       d.modules = { ...d.modules, reg }
       d.parts[1] = { ...d.parts[1], module: 'reg' }
-      expect(only(d, 'supply-too-high')[0].message).toBe('U1 VCC accepts up to 3.3 V but gets 5 V from U2 5V.')
+      expect(only(d, 'supply-too-high')[0].message).toBe('U1 VCC accepts up to 3.3 V but gets 5 V from U2 5V. Use a 3.3 V supply instead.')
       d.connections = [wire('w1', 'u2.ADJ', 'u1.VCC'), wire('w2', 'u2.GND', 'u1.GND')]
       expect(checkDiagram(d)).toEqual([])
     })
     it('falls back to the module default when the part sets none', () => {
       const d = sheet([part('BT1', 'cell'), part('U1', 'chip33')], [wire('w1', 'bt1.+', 'u1.VCC'), wire('w2', 'bt1.-', 'u1.GND')])
-      expect(only(d, 'supply-too-high')[0].message).toBe('U1 VCC accepts up to 3.3 V but gets 3.7 V from BT1 +.')
+      expect(only(d, 'supply-too-high')[0].message).toBe('U1 VCC accepts up to 3.3 V but gets 3.7 V from BT1 +. Use a 3.3 V supply instead.')
     })
   })
 
@@ -318,16 +318,16 @@ describe('checkDiagram', () => {
       sheet([part('BT1', src, extra), part('U1', 'mcu')], [wire('w1', 'bt1.+', 'u1.5V'), wire('w2', 'bt1.-', 'u1.GND')])
     it('are 5 V sources: a 3.3 V part on one is fed too much', () => {
       const d = sheet([part('U1', 'mcu'), part('U2', 'chip33')], [wire('w1', 'u1.5V', 'u2.VCC'), wire('w2', 'u1.GND', 'u2.GND')])
-      expect(only(d, 'supply-too-high')[0].message).toBe('U2 VCC accepts up to 3.3 V but gets 5 V from U1 5V (USB).')
+      expect(only(d, 'supply-too-high')[0].message).toBe('U2 VCC accepts up to 3.3 V but gets 5 V from U1 5V (USB). Move the wire to a 3.3 V pin.')
     })
     it('fight another board\'s regulator output', () => {
       const d = sheet([part('U1', 'mcu'), part('U2', 'mcu')], [wire('w1', 'u1.5V', 'u2.3V3'), wire('w2', 'u1.GND', 'u2.GND')])
-      expect(only(d, 'supplies-fight')[0].message).toBe('U1 5V (5 V from USB) and U2 3V3 (3.3 V) are wired together: the two supplies fight.')
+      expect(only(d, 'supplies-fight')[0].message).toBe('U1 5V (5 V from USB) and U2 3V3 (3.3 V) are wired together: the two supplies fight, and the higher one drives current into the lower one, which can damage both. Remove the wire from U2 3V3 to U1 5V.')
       expect(rules(d)).not.toContain('supply-too-low')
     })
     it('stay on beside a supply drawn on the sheet: the same voltage is a warning, another a fight', () => {
       expect(checkDiagram(board('bat5')).map((f) => f.message)).toEqual(['U1 5V also gets 5 V from USB; do not power 5V and USB at the same time.'])
-      expect(only(board('bat37'), 'supplies-fight')[0].message).toBe('U1 5V (5 V from USB) and BT1 + (3.7 V) are wired together: the two supplies fight.')
+      expect(only(board('bat37'), 'supplies-fight')[0].message).toBe('U1 5V (5 V from USB) and BT1 + (3.7 V) are wired together: the two supplies fight, and the higher one drives current into the lower one, which can damage both. Remove the wire from U1 5V to BT1 +.')
       expect(rules(board('bat9'))).toEqual(['supplies-fight'])
     })
   })
@@ -335,7 +335,7 @@ describe('checkDiagram', () => {
   describe('independent supplies on one part', () => {
     it('stay independent: wiring a part\'s 3V3 and 5V outputs together is a fight', () => {
       const d = sheet([part('U1', 'dual')], [wire('w1', 'u1.3V3', 'u1.5V')])
-      expect(only(d, 'supplies-fight')[0].message).toBe('U1 5V (5 V) and U1 3V3 (3.3 V) are wired together: the two supplies fight.')
+      expect(only(d, 'supplies-fight')[0].message).toBe('U1 5V (5 V) and U1 3V3 (3.3 V) are wired together: the two supplies fight, and the higher one drives current into the lower one, which can damage both. Remove the wire from U1 5V to U1 3V3.')
     })
     it('lets a known output not hide an unknown one on the same part', () => {
       const adj = mod('adjTwo', [

@@ -71,7 +71,7 @@ describe('a drawn supply on a pin that also carries USB power (the board is assu
     [at('bt1', 'BT1', 'battery-9v', -300), at('u1', 'U1', 'lm2596-buck-module', 0, volts(v)), at('u2', 'U2', board, 400)],
     [['bt1|+', 'u1|IN+'], ['bt1|-', 'u1|IN-'], ['u1|OUT+', `u2|${pin}`], ['u1|OUT-', 'u2|GND']])
   const pushes = (pin: string, what: string, v: string) =>
-    `supplies-fight: U2 ${pin} (5 V from USB) is above ${what} (${v}): USB will push current into ${what} through the ${pin} diode.`
+    `supplies-fight: When USB is plugged in, U2 ${pin} gets 5 V from USB, which pushes current back into ${what} (${v}) and can damage the cells. Add a diode from ${what} + to ${pin}, or unplug ${what} before plugging in USB.`
   it('a pin wired straight to USB (Pico VBUS): an LM2596 at 5 V is a warning not to power both', () => {
     expect(found(lm2596(5, 'rpi-pico', 'VBUS'))).toEqual(['supplies-parallel: U2 VBUS also gets 5 V from USB; do not power VBUS and USB at the same time.'])
   })
@@ -83,16 +83,16 @@ describe('a drawn supply on a pin that also carries USB power (the board is assu
   })
   it('an LM2596 at 15 V into ESP32 VIN: the diode blocks USB, and VIN is fed too much', () => {
     expect(checkDiagram(lm2596(15, 'esp32-devkit-v1-30', 'VIN')).map((x) => `${x.severity} ${x.rule}: ${x.message}`)).toEqual([
-      'error supply-too-high: U2 VIN accepts up to 12 V but gets 15 V from U1 OUT+.',
+      'error supply-too-high: U2 VIN accepts up to 12 V but U1 OUT+ is set to 15 V. Set U1 to 12 V or move the wire to a 12 V pin.',
     ])
   })
   it('an LM2596 at 5.2 V into Pico VSYS is fine (VSYS takes up to 5.5 V); at 6 V it is too high', () => {
     expect(found(lm2596(5.2, 'rpi-pico', 'VSYS'))).toEqual([])
-    expect(found(lm2596(6, 'rpi-pico', 'VSYS'))).toEqual(['supply-too-high: U2 VSYS accepts up to 5.5 V but gets 6 V from U1 OUT+.'])
+    expect(found(lm2596(6, 'rpi-pico', 'VSYS'))).toEqual(['supply-too-high: U2 VSYS accepts up to 5.5 V but U1 OUT+ is set to 6 V. Set U1 to 5.5 V or move the wire to a 5.5 V pin.'])
   })
   it('an 18650 into Pico VSYS: USB pushes current into the cell through the diode', () => {
     const d = sheet([at('bt1', 'BT1', 'battery-18650-holder'), at('u2', 'U2', 'rpi-pico', 400)], [['bt1|+', 'u2|VSYS'], ['bt1|-', 'u2|GND']])
-    expect(found(d)).toEqual([pushes('VSYS', 'BT1 +', '3.7 V')])
+    expect(found(d)).toEqual([pushes('VSYS', 'BT1', '3.7 V')])
   })
   it('USB-C panel into a TP4056 charging an 18650, boosted by an IP5306 into ESP32 VIN: fine', () => {
     const d = sheet([
@@ -107,11 +107,11 @@ describe('a drawn supply on a pin that also carries USB power (the board is assu
   it('a TP4056 output (one cell, 3.7 V) straight into ESP32 VIN: USB pushes current into the cell', () => {
     const d = sheet([at('u1', 'U1', 'tp4056-module'), at('bt1', 'BT1', 'battery-18650-cell', -300), at('u2', 'U2', 'esp32-devkit-v1-30', 600)],
       [['bt1|+', 'u1|B+'], ['bt1|-', 'u1|B-'], ['u1|OUT+', 'u2|VIN'], ['u1|OUT-', 'u2|GND']])
-    expect(found(d)).toEqual([pushes('VIN', 'BT1 +', '3.7 V')])
+    expect(found(d)).toEqual([pushes('VIN', 'BT1', '3.7 V')])
   })
   it('a 3.7 V cell into a Nano 5V pin: USB pushes current into the cell', () => {
     const d = sheet([at('u2', 'U2', 'arduino-nano'), at('bt1', 'BT1', 'battery-18650-holder', 400)], [['bt1|+', 'u2|5V'], ['bt1|-', 'u2|GND']])
-    expect(found(d)).toEqual([pushes('5V', 'BT1 +', '3.7 V')])
+    expect(found(d)).toEqual([pushes('5V', 'BT1', '3.7 V')])
   })
   it('a pin wired straight to USB (ESP32-C3 5V) still fights a 9 V battery', () => {
     const d = sheet([at('u2', 'U2', 'esp32-c3-supermini'), at('bt1', 'BT1', 'battery-9v', 400)], [['bt1|+', 'u2|5V'], ['bt1|-', 'u2|G']])
@@ -140,13 +140,13 @@ describe('series stacks and references', () => {
     const d = sheet([at('bt1', 'BT1', 'battery-holder-2xaa'), at('bt2', 'BT2', 'battery-holder-2xaa', 200), at('u1', 'U1', 'bme280-module-6pin', 400)],
       [['bt1|-', 'u1|GND'], ['bt1|+', 'bt2|-'], ['bt2|+', 'u1|VCC']])
     expect(checkDiagram(d).map((x) => `${x.severity} ${x.rule}: ${x.message}`)).toEqual([
-      'error supply-too-high: U1 VCC accepts up to 3.3 V but gets 6 V from BT1 + and BT2 + in series.',
+      'error supply-too-high: U1 VCC accepts up to 3.3 V but gets 6 V from BT1 + and BT2 + in series. Use a 3.3 V supply instead.',
     ])
   })
   it('two cells wired + to - both ways round are a shorted stack', () => {
     const d = sheet([at('bt1', 'BT1', 'battery-aa'), at('bt2', 'BT2', 'battery-aa', 200)], [['bt1|+', 'bt2|-'], ['bt2|+', 'bt1|-']])
     expect(checkDiagram(d).map((x) => `${x.severity} ${x.rule}: ${x.message}`)).toEqual([
-      'error short: BT1 + and BT2 + are wired in a loop, each + to the next -: short circuit.',
+      'error short: BT1 + and BT2 + are wired in a loop, each + to the next -: short circuit. Nothing limits the current, so they can overheat. Remove one of the wires that close the loop.',
     ])
   })
   it('a single cell and the junction of a series pair stay quiet', () => {
@@ -161,7 +161,7 @@ describe('series stacks and references', () => {
 describe('Pico VSYS carries USB power through its diode', () => {
   it('VSYS into a 3.3 V only BME280 is too high', () => {
     const d = sheet([at('u1', 'U1', 'rpi-pico'), at('u2', 'U2', 'bme280-module-6pin', 400)], [['u2|VCC', 'u1|VSYS'], ['u2|GND', 'u1|GND']])
-    expect(found(d)).toEqual(['supply-too-high: U2 VCC accepts up to 3.3 V but gets 5 V from U1 VSYS (USB).'])
+    expect(found(d)).toEqual(['supply-too-high: U2 VCC accepts up to 3.3 V but gets 5 V from U1 VSYS (USB). Move the wire to a 3.3 V pin.'])
   })
   it('VSYS into an OLED that takes 5 V is fine', () => {
     const d = sheet([at('u1', 'U1', 'rpi-pico-w'), at('u2', 'U2', 'oled-ssd1306-096-i2c', 400)], [['u2|VCC', 'u1|VSYS'], ['u2|GND', 'u1|GND']])
@@ -193,7 +193,7 @@ describe('damaging or dead circuits are caught', () => {
     const d = sheet([at('u2', 'U2', 'bme280-module-6pin', 400)], [['u1|5V', 'u2|VCC'], ['u1|GND', 'u2|GND']])
     d.modules = { ...d.modules, 'mixed-reg': mixed.module }
     d.parts = [at('u1', 'U1', 'mixed-reg'), ...d.parts]
-    expect(found(d)).toEqual(['supply-too-high: U2 VCC accepts up to 3.3 V but gets 5 V from U1 5V.'])
+    expect(found(d)).toEqual(['supply-too-high: U2 VCC accepts up to 3.3 V but gets 5 V from U1 5V. Use a 3.3 V supply instead.'])
   })
   it('two unpowered TP4056 boards tied B+ to B+: a pass-through output feeds nothing', () => {
     const d = sheet([at('u1', 'U1', 'tp4056-module'), at('u2', 'U2', 'tp4056-module', 300)], [['u1|OUT+', 'u2|OUT+'], ['u1|OUT-', 'u2|OUT-']])
@@ -208,7 +208,7 @@ describe('damaging or dead circuits are caught', () => {
     const d = sheet([at('u1', 'U1', 'esp32-devkit-v1-30'), at('u2', 'U2', 'ip5306-usbc-module', 400), at('bt1', 'BT1', 'battery-18650-holder', 700)],
       [['bt1|+', 'u2|B+'], ['bt1|-', 'u2|B-'], ['u2|5V+', 'u1|3V3'], ['u2|5V-', 'u1|GND']])
     expect(checkDiagram(d).map((f) => `${f.severity} ${f.rule}: ${f.message}`)).toEqual([
-      'error supplies-fight: U2 5V+ (5 V) and U1 3V3 (3.3 V) are wired together: the two supplies fight.',
+      'error supplies-fight: U2 5V+ (5 V) and U1 3V3 (3.3 V) are wired together: the two supplies fight, and the higher one drives current into the lower one, which can damage both. Remove the wire from U2 5V+ to U1 3V3.',
     ])
   })
   it('a 9 V battery into ESP32-C3 3.3 fights its regulator', () => {
@@ -217,17 +217,17 @@ describe('damaging or dead circuits are caught', () => {
   })
   it('a battery + to a board ground that leads back to its - is a short', () => {
     const d = sheet([at('u1', 'U1', 'esp32-devkit-v1-30'), at('bt1', 'BT1', 'battery-18650-holder', 400)], [['bt1|+', 'u1|GND'], ['bt1|-', 'u1|GND 2']])
-    expect(found(d)).toEqual(['short: BT1 + is wired to U1 GND, which leads back to BT1 -: short circuit.'])
+    expect(found(d)).toEqual(['short: BT1 + is wired to U1 GND, which leads back to BT1 -: short circuit. Nothing limits the current, so BT1 and the wires can overheat. Remove the wire from BT1 + to U1 GND.'])
   })
   it('a Nano on USB, its 5V pin into ESP32 3V3: USB pushes current into the 3.3 V rail through the diode', () => {
     const d = sheet([at('u1', 'U1', 'esp32-devkit-v1-30'), at('u2', 'U2', 'arduino-nano', 400)], [['u2|5V', 'u1|3V3'], ['u2|GND', 'u1|GND']])
     expect(checkDiagram(d).map((f) => `${f.severity} ${f.rule}: ${f.message}`)).toEqual([
-      'error supplies-fight: U2 5V (5 V from USB) is above U1 3V3 (3.3 V): USB will push current into U1 3V3 through the 5V diode.',
+      'error supplies-fight: When USB is plugged in, U2 5V gets 5 V from USB, which pushes current back into U1 3V3 (3.3 V) and can damage it. Remove the wire from U2 5V to U1 3V3.',
     ])
   })
   it('ESP32 VIN (USB 5 V) into a 3.3 V only BME280 is too high', () => {
     const d = sheet([at('u1', 'U1', 'esp32-devkit-v1-30'), at('u2', 'U2', 'bme280-module-6pin', 400)], [['u2|VCC', 'u1|VIN'], ['u2|GND', 'u1|GND']])
-    expect(found(d)).toEqual(['supply-too-high: U2 VCC accepts up to 3.3 V but gets 5 V from U1 VIN (USB).'])
+    expect(found(d)).toEqual(['supply-too-high: U2 VCC accepts up to 3.3 V but gets 5 V from U1 VIN (USB). Move the wire to a 3.3 V pin.'])
   })
   it('two sensors with their VCCs tied only to each other have no power', () => {
     const d = sheet([at('u1', 'U1', 'esp32-devkit-v1-30'), at('u2', 'U2', 'bme280-module-4pin', 400), at('u3', 'U3', 'oled-ssd1306-096-i2c', 700)], [
@@ -326,7 +326,7 @@ describe("a load whose ground does not reach its supply's return", () => {
       [['u2|GND', 'u1|GND'], ['bt1|+', 'u2|VCC'], ['u2|SDA', 'u1|D21']])
     expect(found(d)).toEqual([
       'no-ground: BT1 has no ground: connect -.',
-      'supply-unknown: U2 VCC voltage cannot be checked: U2 GND does not connect back to the return of BT1 +.',
+      'supply-unknown: U2 GND is not connected to BT1 -, the ground of the supply feeding U2 VCC: connect them.',
     ])
   })
 })
@@ -345,7 +345,7 @@ describe('each output returns to a known ground, or nothing definite is said', (
   })
   it('with returns declared, output B sits on the pack: 8 V is too high', () => {
     expect(found(sheetWith([twin({ A: 'GA', B: 'GB' })], parts, wires))).toEqual([
-      'supply-too-high: U3 VCC accepts up to 5 V but gets 8 V from BT1 + and U2 B in series.',
+      'supply-too-high: U3 VCC accepts up to 5 V but gets 8 V from BT1 + and U2 B in series. Use a 5 V supply instead.',
     ])
   })
   it('every Pico output and USB pin returns to GND, not AGND', () => {
@@ -365,8 +365,8 @@ describe('a fight stays with the nets it touches', () => {
       at('u2', 'U2', 'bme280-module-6pin', 700), at('u3', 'U3', 'oled-ssd1306-096-i2c', 900)],
     [['bt1|+', 'bt3|+'], ['bt1|-', 'bt3|-'], ['bt2|-', 'bt1|-'], ['bt2|+', 'u2|VCC'], ['u2|GND', 'bt1|-'], ['u3|VCC', 'bt1|+'], ['u3|GND', 'bt1|-']])
     expect(found(d)).toEqual([
-      'supplies-fight: BT3 + (3.7 V) and BT1 + (3 V) are wired together: the two supplies fight.',
-      'supply-too-high: U2 VCC accepts up to 3.3 V but gets 9 V from BT2 +.',
+      'supplies-fight: BT3 + (3.7 V) and BT1 + (3 V) are wired together: the two supplies fight, and the higher one drives current into the lower one, which can damage both. Remove the wire from BT3 + to BT1 +.',
+      'supply-too-high: U2 VCC accepts up to 3.3 V but gets 9 V from BT2 +. Use a 3.3 V supply instead.',
     ])
   })
 })

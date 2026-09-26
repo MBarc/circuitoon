@@ -23,8 +23,8 @@ describe('checkDiagram on built-in parts', () => {
       ],
     )
     const msgs = checkDiagram(d).map((f) => `${f.rule}: ${f.message}`)
-    expect(msgs).toContain('supplies-fight: U2 5V+ (5 V) and U1 3V3 (3.3 V) are wired together: the two supplies fight.')
-    expect(msgs).toContain('short: BT1 + is wired to U1 GND, which leads back to BT1 -: short circuit.')
+    expect(msgs).toContain('supplies-fight: U2 5V+ (5 V) and U1 3V3 (3.3 V) are wired together: the two supplies fight, and the higher one drives current into the lower one, which can damage both. Remove the wire from U2 5V+ to U1 3V3.')
+    expect(msgs).toContain('short: BT1 + is wired to U1 GND, which leads back to BT1 -: short circuit. Nothing limits the current, so BT1 and the wires can overheat. Remove the wire from BT1 + to U1 GND.')
   })
   it('flags a 3.3 V only sensor on 5 V, and a buck set above what a display takes', () => {
     const d = sheet(
@@ -37,8 +37,8 @@ describe('checkDiagram on built-in parts', () => {
       ],
     )
     const msgs = checkDiagram(d).map((f) => f.message)
-    expect(msgs).toContain('U2 VCC accepts up to 3.3 V but gets 5 V from U1 5V+.')
-    expect(msgs).toContain('U4 VCC accepts up to 5 V but gets 12 V from U3 OUT+.')
+    expect(msgs).toContain('U2 VCC accepts up to 3.3 V but gets 5 V from U1 5V+. Use a 3.3 V supply instead.')
+    expect(msgs).toContain('U4 VCC accepts up to 5 V but U3 OUT+ is set to 12 V. Set U3 to 5 V or move the wire to a 5 V pin.')
   })
 
   it('checks 200 parts and 500 wires in 20 ms or less (median)', () => {

@@ -298,6 +298,33 @@ const mayFeed = (t: Terminal) => !t.bare && (t.type === undefined || t.type === 
 /** A pin that drives its net from its own part: shorted when that part's ground is on the same net. */
 const drives = (t: Terminal) => t.type === 'power_out' || t.info.external.has(t.name)
 
+// ---- Wording ----
+
+/** The wire that joins two terminals directly, if one does. */
+function wireBetween(d: Diagram, a: Terminal, b: Terminal): Connection | undefined {
+  const is = (ep: Endpoint, t: Terminal) => ep.part === t.part.uid && ep.pin === t.name
+  return d.connections.find((c) => (is(c.from, a) && is(c.to, b)) || (is(c.from, b) && is(c.to, a)))
+}
+/** "Remove the wire from A to B." when one joins them directly, else the fallback. */
+const removeWire = (d: Diagram, a: Terminal, b: Terminal, fallback: string) =>
+  wireBetween(d, a, b) ? `Remove the wire from ${termName(a)} to ${termName(b)}.` : fallback
+/**
+ * The ground pin to name as a supply's return: its declared or only return, preferring the
+ * ground joined to it that matches the output's name (OUT- for OUT+ on a buck whose IN- and
+ * OUT- are one net).
+ */
+function returnPinName(t: Terminal): string | undefined {
+  const ret = t.info.returnOf.get(t.name)
+  if (!ret) return undefined
+  const twin = t.name.replace(/\+$/, '-')
+  const same = t.info.grounds.filter((g) => t.info.comp.get(g) === t.info.comp.get(ret))
+  return same.includes(twin) ? twin : ret
+}
+/** True for a battery or cell (a voltage source module). */
+const isCell = (t: Terminal) => (t.info.module.electrical as { model?: string } | undefined)?.model === 'voltage_source'
+/** A supply named for advice: a battery by its designator, anything else by its pin. */
+const supplyName = (t: Terminal) => (isCell(t) ? t.part.designator : termName(t))
+
 // ---- The checker ----
 
 /** Natural order, so U2 sorts before U10. */
@@ -365,10 +392,13 @@ export function checkDiagram(d: Diagram): Finding[] {
       shorted.add(id)
       shortedParts.add(t.part.uid)
       const ownTerm = terms.find((o) => o.part === t.part && o.name === own)!
-      const via = terms.find((o) => o.type === 'ground' && o.part !== t.part)
+      // Name the ground the supply is wired to directly, when it is.
+      const grounds = terms.filter((o) => o.type === 'ground' && o.part !== t.part)
+      const via = grounds.find((o) => wireBetween(d, t, o)) ?? grounds[0]
+      const stakes = `Nothing limits the current, so ${t.part.designator} and the wires can overheat.`
       const message = via
-        ? `${termName(t)} is wired to ${termName(via)}, which leads back to ${termName(ownTerm)}: short circuit.`
-        : `${termName(t)} is wired straight to ground (${termName(ownTerm)}): short circuit.`
+        ? `${termName(t)} is wired to ${termName(via)}, which leads back to ${termName(ownTerm)}: short circuit. ${stakes} ${removeWire(d, t, via, 'Remove the wire that joins them.')}`
+        : `${termName(t)} is wired straight to ground (${termName(ownTerm)}): short circuit. ${stakes} ${removeWire(d, t, ownTerm, 'Remove the wire that joins them.')}`
       const involved = via ? [t, via, ownTerm] : [t, ownTerm]
       add({ rule: 'short', subject: t.part.designator, target: termName(t), message, parts: involved.map((x) => x.part.uid), pins: involved.map(termPin), wires, causes: [t.key, ownTerm.key] })
     }
@@ -392,7 +422,10 @@ export function checkDiagram(d: Diagram): Finding[] {
     if (!connected.has(p.uid)) continue
     const m = moduleOf(d, p.module)
     if (!m) continue
-    const terms = [...moduleInfo(m).defs.keys()].map((n) => terminal(nodeKey(p.uid, n))).filter((t): t is Terminal => t !== null)
+    // Only the power and ground pins matter here (a breadboard's many strips are skipped).
+    const terms = [...moduleInfo(m).defs.entries()]
+      .filter(([, def]) => { const ty = (def.pin ?? def.group)!.type; return ty === 'power_in' || ty === 'power_out' || ty === 'ground' })
+      .map(([n]) => terminal(nodeKey(p.uid, n))).filter((t): t is Terminal => t !== null)
     const ins = terms.filter((t) => t.type === 'power_in')
     // A part with a pin on USB power is its own supply.
     // A part with its power reversed is reported as such, not as unpowered.
@@ -428,10 +461,15 @@ export function checkDiagram(d: Diagram): Finding[] {
   }
 
   // A signal between two parts that are each grounded, but not to each other: no reference.
+  const groundedCache = new Map<string, Terminal[]>()
   const groundedPins = (p: PartInstance) => {
-    const m = moduleOf(d, p.module)
-    if (!m) return []
-    return moduleInfo(m).grounds.map((g) => terminal(nodeKey(p.uid, g))!).filter((t) => others(t).some((o) => !o.bare))
+    let list = groundedCache.get(p.uid)
+    if (!list) {
+      const m = moduleOf(d, p.module)
+      list = m ? moduleInfo(m).grounds.map((g) => terminal(nodeKey(p.uid, g))!).filter((t) => others(t).some((o) => !o.bare)) : []
+      groundedCache.set(p.uid, list)
+    }
+    return list
   }
   const pairs = new Set<string>()
   nl.nets.forEach((_, i) => {
@@ -755,14 +793,15 @@ function checkPotentials({ d, nl, netTerms, netWires, terminal, shorted, add }: 
     if (around.some((x) => x.e.closedSwitch)) continue
     if (mismatch && (!ahead.length || !back.length)) {
       add({ rule: 'short', subject: all[0].term.part.designator, target: termName(all[0].term),
-        message: `${andList(all.map((s) => termName(s.term)))} are wired in a loop, each + to the next -: short circuit.`, ...involve(all) })
+        message: `${andList(all.map((s) => termName(s.term)))} are wired in a loop, each + to the next -: short circuit. Nothing limits the current, so they can overheat. Remove one of the wires that close the loop.`, ...involve(all) })
     } else if (mismatch) {
       const [a, b] = [side(ahead), side(back)]
       const [hi, lo] = a.v >= b.v ? [a, b] : [b, a]
       const lead = (a.v >= b.v ? sorted(ahead) : sorted(back))[0]
       const two = ahead.length === 1 && back.length === 1
+      const fix = two ? removeWire(d, shownPin(ahead[0]), shownPin(back[0]), 'Separate them.') : 'Separate them.'
       add({ rule: 'supplies-fight', subject: lead.term.part.designator, target: termName(lead.term),
-        message: `${hi.text} and ${lo.text} are wired together: the ${two ? 'two ' : ''}supplies fight.`, ...involve(all) })
+        message: `${hi.text} and ${lo.text} are wired together: the ${two ? 'two ' : ''}supplies fight, and the higher one drives current into the lower one, which can damage both. ${fix}`, ...involve(all) })
     } else if (ahead.length && back.length) {
       const ext = all.find((s) => s.external)
       const plain = all.filter((s) => !s.external)
@@ -774,6 +813,34 @@ function checkPotentials({ d, nl, netTerms, netWires, terminal, shorted, add }: 
         add({ rule: 'supplies-parallel', subject: all[0].term.part.designator, target: termName(all[0].term),
           message: `${andList(all.map(sourceName))} are ${all.length === 2 ? 'two' : all.length} supplies tied together; power this net from one of them.`, ...involve(all) })
     }
+  }
+
+  /** A supply whose voltage is a setting on the part (a buck's output), not a battery's voltage. */
+  const settable = (x: Source) => !x.external && x.term.info.valued.has(x.term.name) && !isCell(x.term)
+  /** How to bring a supply to `target` volts: set it when it is a value on the part, else move the wire or change the supply. */
+  const fixTo = (from: Source[], target: number) => {
+    const one = from.length === 1 ? from[0] : undefined
+    if (one && settable(one)) return `Set ${one.term.part.designator} to ${volts(target)} or move the wire to a ${volts(target)} pin.`
+    if (one && (one.external || one.term.info.external.size)) return `Move the wire to a ${volts(target)} pin.`
+    return `Use a ${volts(target)} supply instead.`
+  }
+  /** Too high: where the voltage comes from ("is set to" for a value on the part) and the fix. */
+  const tooHigh = (t: Terminal, max: number, v: number, from: Source[], what: string) => {
+    const one = from.length === 1 ? from[0] : undefined
+    const gets = one && settable(one)
+      ? `but ${termName(one.term)} is set to ${volts(v)}`
+      : `but gets ${volts(v)} from ${what}`
+    return `${termName(t)} accepts up to ${volts(max)} ${gets}. ${fixTo(from, max)}`
+  }
+  /** A diode-fed USB pin above what holds its net down: what happens and what to do. */
+  const backFeed = (pin: Terminal, ext: ExternalPower, under: Source[], what: string, v: number) => {
+    const low = under.length === 1 ? under[0].term : undefined
+    const name = low ? supplyName(low) : what
+    const harm = low && isCell(low) ? 'the cells' : under.length > 1 ? 'them' : 'it'
+    const fix = low && isCell(low)
+      ? `Add a diode from ${termName(low)} to ${pin.label}, or unplug ${low.part.designator} before plugging in ${ext.via}.`
+      : low ? removeWire(d, pin, low, `Do not wire ${termName(low)} to ${termName(pin)}.`) : `Do not wire ${what} to ${termName(pin)}.`
+    return `When ${ext.via} is plugged in, ${termName(pin)} gets ${volts(ext.volts)} from ${ext.via}, which pushes current back into ${name} (${volts(v)}) and can damage ${harm}. ${fix}`
   }
 
   // USB pins behind a diode only raise their net. Where the rest of the sheet already sets the
@@ -810,12 +877,12 @@ function checkPotentials({ d, nl, netTerms, netWires, terminal, shorted, add }: 
       add({ rule: 'supply-unknown', message: `${termName(pin)} voltage depends on ${andList(sorted(open).map((x) => `${termName(x.term)} (${reason(x)})`))} and cannot be checked.`, ...base })
     } else if (diff.c < ext.volts - EPS)
       add({ rule: 'supplies-fight', ...base,
-        message: `${termName(pin)} (${volts(ext.volts)} from ${ext.via}) is above ${what} (${volts(diff.c)}): ${ext.via} will push current into ${what} through the ${pin.label} diode.` })
+        message: backFeed(pin, ext, under, what, diff.c) })
     else {
       const rails = knownRails(pin.supply)
       const max = ext.max ?? (rails ? Math.max(...rails) : undefined)
       if (max !== undefined && diff.c > max + EPS)
-        add({ rule: 'supply-too-high', ...base, message: `${termName(pin)} accepts up to ${volts(max)} but gets ${volts(diff.c)} from ${what}.` })
+        add({ rule: 'supply-too-high', ...base, message: tooHigh(pin, max, diff.c, under, what) })
     }
   }
   if (placed.length) {
@@ -925,7 +992,12 @@ function checkPotentials({ d, nl, netTerms, netWires, terminal, shorted, add }: 
         // Nothing to add about a load fed by a supply already reported as shorted.
         if (feeding.length && !groundless(t.part) && !feeding.some((x) => shorted.has(x.id))) {
           const g = t.info.grounds.length ? termName(terminal(nodeKey(t.part.uid, t.info.grounds[0]))!) : `${t.part.designator} (no ground pin)`
-          add({ rule: 'supply-unknown', message: `${termName(t)} voltage cannot be checked: ${g} does not connect back to the return of ${andList(feeding.map((x) => termName(x.term)))}.`, ...base(feeding) })
+          const src = feeding[0]
+          const ret = returnPinName(src.term)
+          const message = feeding.length === 1 && ret
+            ? `${g} is not connected to ${termName(terminal(nodeKey(src.term.part.uid, ret))!)}, the ground of the supply feeding ${termName(t)}: connect them.`
+            : `${termName(t)} voltage cannot be checked: ${g} does not connect back to the return of ${andList(feeding.map((x) => termName(x.term)))}. Connect ${g} to the ground of that supply.`
+          add({ rule: 'supply-unknown', message, ...base(feeding) })
         }
         continue
       }
@@ -933,14 +1005,14 @@ function checkPotentials({ d, nl, netTerms, netWires, terminal, shorted, add }: 
       const min = Math.min(...accepts)
       const what = from.length === 1 ? sourceName(from[0]) : `${andList(from.map((s) => termName(s.term)))} in series`
       if (v !== null && v > max + EPS) {
-        add({ rule: 'supply-too-high', message: `${termName(t)} accepts up to ${volts(max)} but gets ${volts(v)} from ${what}.`, ...base(from) })
+        add({ rule: 'supply-too-high', message: tooHigh(t, max, v, from, what), ...base(from) })
         continue
       }
       // Until parts carry real ranges, an input takes down to 90% of its lowest rail (3.0 V for a
       // 3.3 V part, 4.5 V for a 5 V one).
       const floor = LOW_TOLERANCE * min
       if (v !== null && !unknown.length && v < floor - EPS)
-        add({ rule: 'supply-too-low', message: `${termName(t)} needs at least ${floor.toFixed(1)} V; ${what} ${from.length === 1 ? 'gives' : 'give'} only ${volts(v)}.`, ...base(from) })
+        add({ rule: 'supply-too-low', message: `${termName(t)} needs at least ${floor.toFixed(1)} V; ${what} ${from.length === 1 ? 'gives' : 'give'} only ${volts(v)}. ${fixTo(from, min)}`, ...base(from) })
     }
   })
   // Two ground nets meet when they are one net or joined through supplies (one potential group).
