@@ -155,7 +155,11 @@ build({
   left: ['3V3', '3V3 2|3V3', 'RST', '4', '5', '6', '7', '15', '16', '17', '18', '8', '3', '46', '9', '10', '11', '12', '13', '14', '5V', 'G'],
   right: ['G 2|G', 'TX', 'RX', '1', '2', '42', '41', '40', '39', '38', '37', '36', '35', '0', '45', '48', '47', '21', '20', '19', 'G 3|G', 'G 4|G'],
   top: 2, wu: 12, usb: '5V', usbDiode: true, // schematic: both USB ports' VBUS through 1N5819 diodes to VCC_5V, header J1 pin 21
-  types: typer({ gnd: ['G'], v33: ['3V3'], v5: ['5V'], inputs: ['RST'], gpio: (n) => /^\d+$/.test(n) || n === 'TX' || n === 'RX' }),
+  // GPIO35-37 stay untyped: the user guide says "For boards with Octal SPI flash/PSRAM memory
+  // embedded ESP32-S3-WROOM-1/1U modules, and boards with ESP32-S3-WROOM-2 modules, the pins GPIO35,
+  // GPIO36 and GPIO37 are used for the internal communication between ESP32-S3 and SPI flash/PSRAM
+  // memory, thus not available for external use" (the N8R8 and similar), so no rule fires on them.
+  types: typer({ gnd: ['G'], v33: ['3V3'], v5: ['5V'], inputs: ['RST'], gpio: (n) => (/^\d+$/.test(n) && !['35', '36', '37'].includes(n)) || n === 'TX' || n === 'RX' }),
   internal: [['G', 'G 2', 'G 3', 'G 4'], ['3V3', '3V3 2']],
   art: {
     shapes: (W, H) => [
