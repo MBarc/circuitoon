@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { brokenConnections, endpointName } from './problems.ts'
-import { netlist } from '../format/netlist.ts'
-import type { Diagram } from '../format/diagram.ts'
-import type { ModuleDef } from '../format/module.ts'
+import { brokenConnections, endpointName } from './checks.ts'
+import { netlist } from './netlist.ts'
+import type { Diagram } from './diagram.ts'
+import type { ModuleDef } from './module.ts'
 
 const bb: ModuleDef = {
   format: 'circuitoon-module/1', id: 'bb', name: 'Board', pins: [], size: { w: 4, h: 2 }, obstacle: false,
