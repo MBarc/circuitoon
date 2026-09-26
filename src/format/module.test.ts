@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
-import { insideLabelSides, layoutModule, usesInsideLabels, validParamValue, validateModule, type ModuleDef } from './module.ts'
+import { insideLabelSides, layoutModule, usesInsideLabels, validParamValue, commonReturn, declaredReturns, externalPower, validateModule, voltageOutputs, type ModuleDef } from './module.ts'
+import { load } from './builtinModules.testing.ts'
 
 const base = { format: 'circuitoon-module/1', id: 'thing', name: 'Thing' }
 
@@ -108,6 +109,77 @@ describe('validateModule', () => {
       ])
     const bad = params([])
     expect(!bad.ok && bad.errors).toEqual(['electrical.params: must be an object'])
+  })
+  it('checks electrical.external: an existing pin, volts above 0 and what powers it', () => {
+    const ext = (e: unknown) => validateModule({ ...base, pins: [{ name: '5V', side: 'left', type: 'power_in', supply: '5V' }], electrical: { model: 'mcu', external: e } })
+    const good = ext([{ pin: '5V', volts: 5, via: 'USB' }])
+    expect(good.ok).toBe(true)
+    if (good.ok) expect(externalPower(good.module)).toEqual([{ pin: '5V', volts: 5, via: 'USB' }])
+    expect(!ext({}).ok && (ext({}) as { errors: string[] }).errors).toEqual(['electrical.external: must be a list of { "pin", "volts", "via" }'])
+    const bad = ext([{ pin: 'VIN', volts: 0, via: '' }, { pin: '5V', volts: Infinity, via: 'USB' }, 'x'])
+    expect(!bad.ok && bad.errors).toEqual([
+      'electrical.external[0].pin: no pin named "VIN"',
+      'electrical.external[0].volts: must be a number above 0',
+      'electrical.external[0].via: required, what powers the pin (for example "USB")',
+      'electrical.external[1].volts: must be a number above 0',
+      'electrical.external[2]: must be { "pin", "volts", "via" }',
+    ])
+    const diode = ext([{ pin: '5V', volts: 5, via: 'USB', diode: true, max: 5.5 }])
+    expect(diode.ok && externalPower(diode.module)).toEqual([{ pin: '5V', volts: 5, via: 'USB', diode: true, max: 5.5 }])
+    const badDiode = ext([{ pin: '5V', volts: 5, via: 'USB', diode: 'yes', max: 4 }])
+    expect(!badDiode.ok && badDiode.errors).toEqual(['electrical.external[0].diode: must be true or false', 'electrical.external[0].max: must be a number, at least volts'])
+  })
+  it('checks electrical.commonReturn: groups of 2 or more ground pins', () => {
+    const pins = [{ name: 'G1', side: 'left', type: 'ground' }, { name: 'G2', side: 'left', type: 'ground' }, { name: 'X', side: 'left' }]
+    const v = (commonReturn: unknown) => validateModule({ ...base, pins, electrical: { commonReturn } })
+    const ok = v([['G1', 'G2']])
+    expect(ok.ok && commonReturn(ok.module)).toEqual([['G1', 'G2']])
+    const bad = v([['G1'], ['G1', 'X'], 'G2'])
+    expect(!bad.ok && bad.errors).toEqual([
+      'electrical.commonReturn[0]: needs 2 or more ground pin names',
+      'electrical.commonReturn[1][1]: no ground pin named "X"',
+      'electrical.commonReturn[2]: needs 2 or more ground pin names',
+    ])
+    expect(!v({}).ok).toBe(true)
+  })
+  it('checks electrical.returns: an output or USB pin to a ground pin', () => {
+    const pins = [
+      { name: 'OUT', side: 'left', type: 'power_out', supply: '5V' }, { name: '5V', side: 'left', type: 'power_in', supply: '5V' },
+      { name: 'G', side: 'left', type: 'ground' }, { name: 'X', side: 'left' },
+    ]
+    const v = (returns: unknown) => validateModule({ ...base, pins, electrical: { external: [{ pin: '5V', volts: 5, via: 'USB' }], returns } })
+    const ok = v({ OUT: 'G', '5V': 'G' })
+    expect(ok.ok && declaredReturns(ok.module)).toEqual({ OUT: 'G', '5V': 'G' })
+    const bad = v({ X: 'G', OUT: 'X' })
+    expect(!bad.ok && bad.errors).toEqual([
+      'electrical.returns.X: no power_out or external pin named "X"',
+      'electrical.returns.OUT: no ground pin named "X"',
+    ])
+    expect(!v([]).ok).toBe(true)
+  })
+  it('binds a voltage value to named outputs: required when there are several, the only one otherwise', () => {
+    const pins = [
+      { name: '5V', side: 'left', type: 'power_out', supply: '5V' },
+      { name: 'ADJ', side: 'left', type: 'power_out', supply: 'ADJ' },
+      { name: 'IN', side: 'left', type: 'power_in', supply: '12V' },
+    ]
+    const v = (electrical: Record<string, unknown>, p: unknown[] = pins) => validateModule({ ...base, pins: p, electrical })
+    const params = { voltage: { unit: 'V', default: 3.3 } }
+    const two = v({ params })
+    expect(!two.ok && two.errors).toEqual(['electrical.voltageOutputs: required, the module has a voltage value and 2 power_out pins; name the ones the value sets'])
+    const named = v({ params, voltageOutputs: ['ADJ'] })
+    expect(named.ok).toBe(true)
+    if (named.ok) expect(voltageOutputs(named.module)).toEqual(['ADJ'])
+    const bad = v({ params, voltageOutputs: ['IN', 'X'] })
+    expect(!bad.ok && bad.errors).toEqual([
+      'electrical.voltageOutputs[0]: no power_out pin named "IN"',
+      'electrical.voltageOutputs[1]: no power_out pin named "X"',
+    ])
+    expect(!v({ voltageOutputs: ['5V'] }).ok).toBe(true)
+    const single = v({ params }, [pins[0], pins[2]])
+    expect(single.ok && voltageOutputs(single.module)).toEqual(['5V'])
+    expect(voltageOutputs(load('battery-9v'))).toEqual(['+'])
+    expect(voltageOutputs(load('lm2596-buck-module'))).toEqual(['OUT+'])
   })
   it('shares one magnitude contract with value entry: 0 where allowed, else 1e-15 to 1e12', () => {
     const at = (name: string, v: number) => validParamValue(name, v)

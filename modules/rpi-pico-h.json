@@ -8,11 +8,13 @@
   "pins": [
     {
       "name": "GP0",
-      "side": "left"
+      "side": "left",
+      "type": "io"
     },
     {
       "name": "GP1",
-      "side": "left"
+      "side": "left",
+      "type": "io"
     },
     {
       "name": "GND",
@@ -21,19 +23,23 @@
     },
     {
       "name": "GP2",
-      "side": "left"
+      "side": "left",
+      "type": "io"
     },
     {
       "name": "GP3",
-      "side": "left"
+      "side": "left",
+      "type": "io"
     },
     {
       "name": "GP4",
-      "side": "left"
+      "side": "left",
+      "type": "io"
     },
     {
       "name": "GP5",
-      "side": "left"
+      "side": "left",
+      "type": "io"
     },
     {
       "name": "GND 2",
@@ -43,19 +49,23 @@
     },
     {
       "name": "GP6",
-      "side": "left"
+      "side": "left",
+      "type": "io"
     },
     {
       "name": "GP7",
-      "side": "left"
+      "side": "left",
+      "type": "io"
     },
     {
       "name": "GP8",
-      "side": "left"
+      "side": "left",
+      "type": "io"
     },
     {
       "name": "GP9",
-      "side": "left"
+      "side": "left",
+      "type": "io"
     },
     {
       "name": "GND 3",
@@ -65,19 +75,23 @@
     },
     {
       "name": "GP10",
-      "side": "left"
+      "side": "left",
+      "type": "io"
     },
     {
       "name": "GP11",
-      "side": "left"
+      "side": "left",
+      "type": "io"
     },
     {
       "name": "GP12",
-      "side": "left"
+      "side": "left",
+      "type": "io"
     },
     {
       "name": "GP13",
-      "side": "left"
+      "side": "left",
+      "type": "io"
     },
     {
       "name": "GND 4",
@@ -87,11 +101,13 @@
     },
     {
       "name": "GP14",
-      "side": "left"
+      "side": "left",
+      "type": "io"
     },
     {
       "name": "GP15",
-      "side": "left"
+      "side": "left",
+      "type": "io"
     },
     {
       "name": "VBUS",
@@ -129,7 +145,8 @@
     },
     {
       "name": "GP28/ADC2",
-      "side": "right"
+      "side": "right",
+      "type": "io"
     },
     {
       "name": "AGND",
@@ -138,11 +155,13 @@
     },
     {
       "name": "GP27/ADC1",
-      "side": "right"
+      "side": "right",
+      "type": "io"
     },
     {
       "name": "GP26/ADC0",
-      "side": "right"
+      "side": "right",
+      "type": "io"
     },
     {
       "name": "RUN",
@@ -151,7 +170,8 @@
     },
     {
       "name": "GP22",
-      "side": "right"
+      "side": "right",
+      "type": "io"
     },
     {
       "name": "GND 6",
@@ -161,19 +181,23 @@
     },
     {
       "name": "GP21",
-      "side": "right"
+      "side": "right",
+      "type": "io"
     },
     {
       "name": "GP20",
-      "side": "right"
+      "side": "right",
+      "type": "io"
     },
     {
       "name": "GP19",
-      "side": "right"
+      "side": "right",
+      "type": "io"
     },
     {
       "name": "GP18",
-      "side": "right"
+      "side": "right",
+      "type": "io"
     },
     {
       "name": "GND 7",
@@ -183,11 +207,13 @@
     },
     {
       "name": "GP17",
-      "side": "right"
+      "side": "right",
+      "type": "io"
     },
     {
       "name": "GP16",
-      "side": "right"
+      "side": "right",
+      "type": "io"
     },
     {
       "name": "SWCLK",
@@ -212,6 +238,7 @@
       "GND 3",
       "GND 4",
       "GND 5",
+      "AGND",
       "GND 6",
       "GND 7",
       "GND DBG"
@@ -223,7 +250,21 @@
   },
   "electrical": {
     "model": "mcu",
-    "params": {}
+    "params": {},
+    "external": [
+      {
+        "pin": "VBUS",
+        "volts": 5,
+        "via": "USB"
+      },
+      {
+        "pin": "VSYS",
+        "volts": 5,
+        "via": "USB",
+        "diode": true,
+        "max": 5.5
+      }
+    ]
   },
   "art": {
     "w": 120,

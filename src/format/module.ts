@@ -273,7 +273,121 @@ export function validateModule(raw: unknown): ValidationResult {
       }
   }
 
+  if (isObj(raw.electrical) && raw.electrical.external !== undefined) {
+    const ext = raw.electrical.external
+    if (!Array.isArray(ext)) errors.push('electrical.external: must be a list of { "pin", "volts", "via" }')
+    else
+      ext.forEach((e, i) => {
+        const at = `electrical.external[${i}]`
+        if (!isObj(e)) return void errors.push(`${at}: must be { "pin", "volts", "via" }`)
+        if (typeof e.pin !== 'string' || !names.has(e.pin)) errors.push(`${at}.pin: no pin named "${String(e.pin)}"`)
+        if (!isPos(e.volts)) errors.push(`${at}.volts: must be a number above 0`)
+        if (typeof e.via !== 'string' || e.via.trim() === '') errors.push(`${at}.via: required, what powers the pin (for example "USB")`)
+        if (e.diode !== undefined && typeof e.diode !== 'boolean') errors.push(`${at}.diode: must be true or false`)
+        if (e.max !== undefined && !(isNum(e.max) && isPos(e.volts) && e.max >= e.volts)) errors.push(`${at}.max: must be a number, at least volts`)
+      })
+  }
+
+  // Ground pins that are one return for checking (across a switch the checker does not model).
+  if (isObj(raw.electrical) && raw.electrical.commonReturn !== undefined) {
+    const groups = raw.electrical.commonReturn
+    const grounds = new Set([...(Array.isArray(raw.pins) ? raw.pins : []), ...(Array.isArray(raw.holes) ? raw.holes : [])]
+      .filter((p): p is Record<string, unknown> => isObj(p) && p.type === 'ground' && typeof p.name === 'string').map((p) => p.name as string))
+    if (!Array.isArray(groups)) errors.push('electrical.commonReturn: must be a list of ground pin name groups')
+    else
+      groups.forEach((g, i) => {
+        if (!Array.isArray(g) || g.length < 2) return void errors.push(`electrical.commonReturn[${i}]: needs 2 or more ground pin names`)
+        g.forEach((n, j) => {
+          if (typeof n !== 'string' || !grounds.has(n)) errors.push(`electrical.commonReturn[${i}][${j}]: no ground pin named "${String(n)}"`)
+        })
+      })
+  }
+
+  // Which ground each output (or USB pin) returns to.
+  if (isObj(raw.electrical) && raw.electrical.returns !== undefined) {
+    const returns = raw.electrical.returns
+    const items = [...(Array.isArray(raw.pins) ? raw.pins : []), ...(Array.isArray(raw.holes) ? raw.holes : [])]
+      .filter((p): p is Record<string, unknown> => isObj(p) && typeof p.name === 'string')
+    const ext = Array.isArray(raw.electrical.external) ? raw.electrical.external.filter(isObj).map((e) => e.pin) : []
+    const outs = new Set(items.filter((p) => p.type === 'power_out' || ext.includes(p.name)).map((p) => p.name as string))
+    const grounds = new Set(items.filter((p) => p.type === 'ground').map((p) => p.name as string))
+    if (!isObj(returns)) errors.push('electrical.returns: must be an object of output pin name to ground pin name')
+    else
+      for (const [out, g] of Object.entries(returns)) {
+        if (!outs.has(out)) errors.push(`electrical.returns.${out}: no power_out or external pin named "${out}"`)
+        if (typeof g !== 'string' || !grounds.has(g)) errors.push(`electrical.returns.${out}: no ground pin named "${String(g)}"`)
+      }
+  }
+
+  // A voltage value is the voltage of named outputs: required when there is more than one to choose from.
+  if (isObj(raw.electrical)) {
+    const el = raw.electrical
+    const hasVoltage = isObj(el.params) && el.params.voltage !== undefined
+    const outs = [...(Array.isArray(raw.pins) ? raw.pins : []), ...(Array.isArray(raw.holes) ? raw.holes : [])]
+      .filter((p): p is Record<string, unknown> => isObj(p) && p.type === 'power_out' && typeof p.name === 'string')
+      .map((p) => p.name as string)
+    if (el.voltageOutputs !== undefined) {
+      if (!hasVoltage) errors.push('electrical.voltageOutputs: only for a module with a voltage param')
+      if (!Array.isArray(el.voltageOutputs) || el.voltageOutputs.length === 0) errors.push('electrical.voltageOutputs: must be a list of power_out pin names')
+      else
+        el.voltageOutputs.forEach((n, i) => {
+          if (typeof n !== 'string' || !outs.includes(n)) errors.push(`electrical.voltageOutputs[${i}]: no power_out pin named "${String(n)}"`)
+        })
+    } else if (hasVoltage && outs.length > 1)
+      errors.push(`electrical.voltageOutputs: required, the module has a voltage value and ${outs.length} power_out pins; name the ones the value sets`)
+  }
+
   return errors.length ? { ok: false, errors } : { ok: true, module: raw as unknown as ModuleDef }
+}
+
+/**
+ * Groups of ground pins the wiring checker treats as one return (`electrical.commonReturn`): a
+ * charger's B- and OUT- on either side of its protection switch. Not joined on the sheet.
+ */
+export function commonReturn(m: ModuleDef): string[][] {
+  const e = m.electrical
+  if (!isObj(e) || !Array.isArray(e.commonReturn)) return []
+  return e.commonReturn.filter((g): g is string[] => Array.isArray(g) && g.every((n) => typeof n === 'string'))
+}
+
+/** The ground pin each output or USB pin returns to (`electrical.returns`), as declared. */
+export function declaredReturns(m: ModuleDef): Record<string, string> {
+  const e = m.electrical
+  if (!isObj(e) || !isObj(e.returns)) return {}
+  return Object.fromEntries(Object.entries(e.returns).filter((x): x is [string, string] => typeof x[1] === 'string'))
+}
+
+/**
+ * The outputs whose voltage is the part's `voltage` value: `electrical.voltageOutputs`, or the
+ * module's only power_out. Empty when the module has no voltage param.
+ */
+export function voltageOutputs(m: ModuleDef): string[] {
+  const e = m.electrical
+  if (!isObj(e) || !isObj(e.params) || e.params.voltage === undefined) return []
+  if (Array.isArray(e.voltageOutputs)) return e.voltageOutputs.filter((n): n is string => typeof n === 'string')
+  const outs = [...m.pins.filter((p): p is PinDef => !isSpacer(p)), ...(m.holes ?? [])].filter((p) => p.type === 'power_out')
+  return outs.length === 1 ? [outs[0].name] : []
+}
+
+/**
+ * A pin that carries a voltage when the part is powered through a connector the sheet does not
+ * draw: a dev board's 5V pin while it sits on USB (`via` "USB"). From `electrical.external`.
+ */
+export interface ExternalPower {
+  pin: string
+  volts: number
+  via: string
+  /** A diode sits between the connector and the pin (per the board's schematic): the pin can raise its net, never pull it down. */
+  diode?: boolean
+  /** The most the pin itself takes when something else raises it (Pico VSYS: 5.5 V); else its accepted rails. */
+  max?: number
+}
+
+/** The module's `electrical.external` entries that are well formed (validateModule reports the rest). */
+export function externalPower(m: ModuleDef): ExternalPower[] {
+  const e = m.electrical
+  if (!isObj(e) || !Array.isArray(e.external)) return []
+  return e.external.filter((x): x is ExternalPower => isObj(x) && typeof x.pin === 'string' && isPos(x.volts) && typeof x.via === 'string')
 }
 
 export interface PlacedPin {

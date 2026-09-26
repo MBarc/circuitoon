@@ -45,7 +45,7 @@ function headers(W, ys) {
 
 const r = (x, y, w, h, fill, extra = {}) => ({ type: 'rect', x, y, w, h, fill, ...extra })
 
-function build({ file, id, name, source, left, right, top = 0, bottom = 0, wu, types, art, internal }) {
+function build({ file, id, name, source, left, right, top = 0, bottom = 0, wu, types, art, internal, usb, usbDiode = false }) {
   const nl = left.length + top + bottom, nr = right.length + top + bottom
   const hu = Math.max(nl, nr) + 2
   const W = wu * 10, H = hu * 10
@@ -63,6 +63,11 @@ function build({ file, id, name, source, left, right, top = 0, bottom = 0, wu, t
   if (internal) m.internal = internal
   m.size = { w: wu, h: hu }
   m.electrical = { model: 'mcu', params: {} }
+  // The header pin that carries the USB connector's 5 V, per the board's schematic or maker docs
+  // cited in `source`. The wiring checker treats it as a 5 V source, assuming the board sits on
+  // USB. `usbDiode` only where the schematic shows a diode between USB VBUS and that pin: then the
+  // pin can raise its net but never pull it down. Left out where no source says which pin it is.
+  if (usb) m.electrical.external = [{ pin: usb, volts: 5, via: 'USB', ...(usbDiode ? { diode: true } : {}) }]
   // Every generated board is a two-row header part: pin names always draw inside the body,
   // beside each pin, like the board's own silkscreen (see art.pinLabels in the PRD).
   m.art = { w: W, h: H, pinLabels: 'inside', shapes }
@@ -71,13 +76,17 @@ function build({ file, id, name, source, left, right, top = 0, bottom = 0, wu, t
 }
 
 // Type rule shared by all boards (brief: 3V3 power_out, 5V/VIN power_in, GND ground, input-only GPIO input).
-function typer({ gnd = [], v33 = [], v5 = [], inputs = [], other = {} }) {
+// `gpio` picks the general-purpose I/O pins (the board's GPIO names per its cited pinout, UART
+// TX/RX included): they are `io`, so the wiring checker treats them as signal pins. Pins tied to
+// the module's flash (DevKitC SD0-SD3, CMD, CLK), control pins and anything else keep no type.
+function typer({ gnd = [], v33 = [], v5 = [], inputs = [], other = {}, gpio = () => false }) {
   return (name) => {
     if (other[name]) return other[name]
     if (gnd.some((g) => name === g || name.startsWith(g + ' '))) return { type: 'ground' }
     if (v33.some((g) => name === g || name.startsWith(g + ' '))) return { type: 'power_out', supply: '3V3' }
     if (v5.includes(name)) return { type: 'power_in', supply: '5V' }
     if (inputs.includes(name)) return { type: 'input' }
+    if (gpio(name)) return { type: 'io' }
     return {}
   }
 }
@@ -94,11 +103,12 @@ const antennaBars = (x, y, w) => [
 // 1. ESP32-DevKitC V4 (Espressif). Vendor diagram: antenna at top, micro USB at bottom.
 build({
   file: 'esp32-devkitc-v4.json', id: 'esp32-devkitc-v4', name: 'ESP32 DevKitC V4 (38 pin)',
-  source: 'https://docs.espressif.com/projects/esp-dev-kits/en/latest/esp32/esp32-devkitc/user_guide.html https://docs.espressif.com/projects/esp-dev-kits/en/latest/esp32/_images/esp32_devkitC_v4_pinlayout.png',
+  source: 'https://docs.espressif.com/projects/esp-dev-kits/en/latest/esp32/esp32-devkitc/user_guide.html https://docs.espressif.com/projects/esp-dev-kits/en/latest/esp32/_images/esp32_devkitC_v4_pinlayout.png https://dl.espressif.com/dl/schematics/esp32_devkitc_v4-sch.pdf',
   left: ['3V3', 'EN', 'VP', 'VN', 'IO34', 'IO35', 'IO32', 'IO33', 'IO25', 'IO26', 'IO27', 'IO14', 'IO12', 'GND', 'IO13', 'D2', 'D3', 'CMD', '5V'],
   right: ['GND 2|GND', 'IO23', 'IO22', 'TX', 'RX', 'IO21', 'GND 3|GND', 'IO19', 'IO18', 'IO5', 'IO17', 'IO16', 'IO4', 'IO0', 'IO2', 'IO15', 'D1', 'D0', 'CLK'],
-  top: 2, wu: 12,
-  types: typer({ gnd: ['GND'], v33: ['3V3'], v5: ['5V'], inputs: ['EN', 'VP', 'VN', 'IO34', 'IO35'] }),
+  top: 2, wu: 12, usb: '5V', usbDiode: true, // schematic: VBUS through D3 (BAT760) to EXT_5V, header J2 pin 19
+  // GPIO: IOnn and the UART0 pins; D0-D3, CMD and CLK are the module's flash pins (untyped).
+  types: typer({ gnd: ['GND'], v33: ['3V3'], v5: ['5V'], inputs: ['EN', 'VP', 'VN', 'IO34', 'IO35'], gpio: (n) => /^IO\d+$/.test(n) || n === 'TX' || n === 'RX' }),
   internal: [['GND', 'GND 2', 'GND 3']],
   art: {
     shapes: (W, H) => [
@@ -113,13 +123,18 @@ build({
 })
 
 // 2. DOIT ESP32 DevKit V1, 30 pin. No official DOIT page; photo-based pinouts from two independent sites agree.
+//    VIN feeds the 3.3 V LDO: the DOIT schematic (mischianti's copy; the host answers 403 to plain
+//    fetchers but serves browsers, and the schematic is also linked from the cited pinout page)
+//    shows an NCP1117 (onsemi datasheet: input 20 V max); clones fit an AMS1117 (Advanced Monolithic
+//    datasheet ds1117: input 15 V max). VIN therefore lists 5 V up to 12 V, well inside both.
 build({
   file: 'esp32-devkit-v1-30.json', id: 'esp32-devkit-v1-30', name: 'ESP32 DevKit V1 (30 pin, DOIT)',
-  source: 'https://mischianti.org/doit-esp32-dev-kit-v1-high-resolution-pinout-and-specs/ https://lastminuteengineers.com/esp32-pinout-reference/',
+  source: 'https://mischianti.org/doit-esp32-dev-kit-v1-high-resolution-pinout-and-specs/ https://lastminuteengineers.com/esp32-pinout-reference/ https://mischianti.org/wp-content/uploads/2024/11/DOIT-ESP32-DevKit-V1-schematics.pdf',
   left: ['EN', 'VP', 'VN', 'D34', 'D35', 'D32', 'D33', 'D25', 'D26', 'D27', 'D14', 'D12', 'D13', 'GND', 'VIN'],
   right: ['D23', 'D22', 'TX0', 'RX0', 'D21', 'D19', 'D18', 'D5', 'TX2', 'RX2', 'D4', 'D2', 'D15', 'GND 2|GND', '3V3'],
-  top: 2, wu: 12,
-  types: typer({ gnd: ['GND'], v33: ['3V3'], v5: ['VIN'], inputs: ['EN', 'VP', 'VN', 'D34', 'D35'] }),
+  top: 2, wu: 12, usb: 'VIN', usbDiode: true, // DOIT schematic: VCCUSB through D1 (SS14) to VIN, header J1 pin 1
+  types: typer({ gnd: ['GND'], v33: ['3V3'], inputs: ['EN', 'VP', 'VN', 'D34', 'D35'], other: { VIN: { type: 'power_in', supply: '5V/7V/9V/12V' } },
+    gpio: (n) => /^D\d+$/.test(n) || /^(TX|RX)[02]$/.test(n) }),
   internal: [['GND', 'GND 2']],
   art: {
     shapes: (W, H) => [
@@ -136,11 +151,15 @@ build({
 // 3. ESP32-S3-DevKitC-1 v1.1 (Espressif). Antenna at top, two USB-C at bottom.
 build({
   file: 'esp32-s3-devkitc-1.json', id: 'esp32-s3-devkitc-1', name: 'ESP32-S3-DevKitC-1',
-  source: 'https://docs.espressif.com/projects/esp-dev-kits/en/latest/esp32s3/esp32-s3-devkitc-1/user_guide_v1.1.html https://docs.espressif.com/projects/esp-dev-kits/en/latest/esp32s3/_images/ESP32-S3_DevKitC-1_pinlayout_v1.1.jpg',
+  source: 'https://docs.espressif.com/projects/esp-dev-kits/en/latest/esp32s3/esp32-s3-devkitc-1/user_guide_v1.1.html https://docs.espressif.com/projects/esp-dev-kits/en/latest/esp32s3/_images/ESP32-S3_DevKitC-1_pinlayout_v1.1.jpg https://dl.espressif.com/dl/schematics/SCH_ESP32-S3-DevKitC-1_V1.1_20221130.pdf',
   left: ['3V3', '3V3 2|3V3', 'RST', '4', '5', '6', '7', '15', '16', '17', '18', '8', '3', '46', '9', '10', '11', '12', '13', '14', '5V', 'G'],
   right: ['G 2|G', 'TX', 'RX', '1', '2', '42', '41', '40', '39', '38', '37', '36', '35', '0', '45', '48', '47', '21', '20', '19', 'G 3|G', 'G 4|G'],
-  top: 2, wu: 12,
-  types: typer({ gnd: ['G'], v33: ['3V3'], v5: ['5V'], inputs: ['RST'] }),
+  top: 2, wu: 12, usb: '5V', usbDiode: true, // schematic: both USB ports' VBUS through 1N5819 diodes to VCC_5V, header J1 pin 21
+  // GPIO35-37 stay untyped: the user guide says "For boards with Octal SPI flash/PSRAM memory
+  // embedded ESP32-S3-WROOM-1/1U modules, and boards with ESP32-S3-WROOM-2 modules, the pins GPIO35,
+  // GPIO36 and GPIO37 are used for the internal communication between ESP32-S3 and SPI flash/PSRAM
+  // memory, thus not available for external use" (the N8R8 and similar), so no rule fires on them.
+  types: typer({ gnd: ['G'], v33: ['3V3'], v5: ['5V'], inputs: ['RST'], gpio: (n) => (/^\d+$/.test(n) && !['35', '36', '37'].includes(n)) || n === 'TX' || n === 'RX' }),
   internal: [['G', 'G 2', 'G 3', 'G 4'], ['3V3', '3V3 2']],
   art: {
     shapes: (W, H) => [
@@ -161,8 +180,8 @@ build({
   source: 'https://www.nologo.tech/en/product/esp32/esp32c3SuperMini/esp32C3SuperMini.html https://lastminuteengineers.com/esp32-c3-super-mini-pinout-reference/',
   left: ['5', '6', '7', '8', '9', '10', '20', '21'],
   right: ['5V', 'G', '3.3', '4', '3', '2', '1', '0'],
-  wu: 8,
-  types: typer({ gnd: ['G'], v33: ['3.3'], v5: ['5V'] }),
+  wu: 8, usb: '5V', // Nologo schematic (on the source page): header H2 pin 8 is VBUS itself, no diode (BAT60J sits between VBUS and VSYS)
+  types: typer({ gnd: ['G'], v33: ['3.3'], v5: ['5V'], gpio: (n) => /^\d+$/.test(n) }),
   art: {
     shapes: (W, H) => [
       r(W / 2 - 13, -6, 26, 22, METAL, { radius: 3 }),
@@ -177,11 +196,11 @@ build({
 // 5/6. Seeed XIAO ESP32-C3 / ESP32-S3, front view with USB-C at top.
 const xiaoLeft = ['D0', 'D1', 'D2', 'D3', 'D4', 'D5', 'D6']
 const xiaoRight = ['5V', 'GND', '3V3', 'D10', 'D9', 'D8', 'D7']
-const xiaoTypes = typer({ gnd: ['GND'], v33: ['3V3'], v5: ['5V'] })
+const xiaoTypes = typer({ gnd: ['GND'], v33: ['3V3'], v5: ['5V'], gpio: (n) => /^D\d+$/.test(n) })
 build({
   file: 'xiao-esp32c3.json', id: 'xiao-esp32c3', name: 'Seeed XIAO ESP32-C3',
   source: 'https://wiki.seeedstudio.com/XIAO_ESP32C3_Getting_Started/ https://files.seeedstudio.com/wiki/XIAO_WiFi/XIAO_ESP32-C3_front_pinout.png',
-  left: xiaoLeft, right: xiaoRight, wu: 9, types: xiaoTypes,
+  left: xiaoLeft, right: xiaoRight, wu: 9, types: xiaoTypes, usb: '5V', // Seeed wiki: "5V - This is 5v out from the USB port"; no diode documented (feed it only through your own diode)
   art: {
     pcb: XIAO,
     shapes: (W, H) => [
@@ -195,7 +214,7 @@ build({
 build({
   file: 'xiao-esp32s3.json', id: 'xiao-esp32s3', name: 'Seeed XIAO ESP32-S3',
   source: 'https://wiki.seeedstudio.com/xiao_esp32s3_getting_started/ https://files.seeedstudio.com/wiki/SeeedStudio-XIAO-ESP32S3/img/XIAO_ESP32-S3_front_pinout.png',
-  left: xiaoLeft, right: xiaoRight, wu: 9, types: xiaoTypes,
+  left: xiaoLeft, right: xiaoRight, wu: 9, types: xiaoTypes, usb: '5V', // Seeed wiki: "5V - This is 5v out from the USB port"; no diode documented (feed it only through your own diode)
   art: {
     pcb: XIAO,
     shapes: (W, H) => [
@@ -215,7 +234,7 @@ build({
   left: ['5V', 'GND', 'IO12', 'IO13', 'IO15', 'IO14', 'IO2', 'IO4'],
   right: ['3V3', 'IO16', 'IO0', 'GND 2|GND', 'VCC', 'U0R', 'U0T', 'GND/R'],
   bottom: 6, wu: 11,
-  types: typer({ gnd: ['GND'], v33: ['3V3', 'VCC'], v5: ['5V'], other: { 'GND/R': { type: 'passive' } } }),
+  types: typer({ gnd: ['GND'], v33: ['3V3', 'VCC'], v5: ['5V'], other: { 'GND/R': { type: 'passive' } }, gpio: (n) => /^IO\d+$/.test(n) || n === 'U0R' || n === 'U0T' }),
   internal: [['GND', 'GND 2']],
   art: {
     shapes: (W, H) => [
@@ -236,12 +255,14 @@ build({
 //    each one net. The 2 x 3 ICSP header at the bottom end is a two-row header: drawn, not pinned.
 build({
   file: 'arduino-nano.json', id: 'arduino-nano', name: 'Arduino Nano (ATmega328P)',
-  source: 'https://docs.arduino.cc/resources/pinouts/A000005-full-pinout.pdf https://docs.arduino.cc/hardware/nano/ https://lastminuteengineers.com/arduino-nano-pinout/',
+  source: 'https://docs.arduino.cc/resources/pinouts/A000005-full-pinout.pdf https://docs.arduino.cc/hardware/nano/ https://lastminuteengineers.com/arduino-nano-pinout/ https://docs.arduino.cc/resources/schematics/A000005-schematics.pdf',
   left: ['D13', '3V3', 'AREF|REF', 'A0', 'A1', 'A2', 'A3', 'A4', 'A5', 'A6', 'A7', '5V', 'RST', 'GND', 'VIN'],
   right: ['D12', 'D11', 'D10', 'D9', 'D8', 'D7', 'D6', 'D5', 'D4', 'D3', 'D2', 'GND 2|GND', 'RST 2|RST', 'RX0', 'TX1'],
-  top: 1, wu: 8,
+  top: 1, wu: 8, usb: '5V', usbDiode: true, // schematic: VUSB through D1 (SS1P3L, the '+5V auto selector') to +5V, J2 pin 4; VIN feeds the 5 V regulator, not USB
   types: typer({
     gnd: ['GND'], v33: ['3V3'], v5: ['5V'], inputs: ['AREF', 'A6', 'A7', 'RST', 'RST 2'],
+    // D0-D13 (RX0/TX1 are D0/D1) and A0-A5 are digital I/O; A6/A7 are analog inputs only.
+    gpio: (n) => /^D\d+$/.test(n) || /^A[0-5]$/.test(n) || n === 'RX0' || n === 'TX1',
     other: { VIN: { type: 'power_in', supply: '7V/7.4V/9V/12V' } },
   }),
   internal: [['GND', 'GND 2'], ['RST', 'RST 2']],
@@ -269,11 +290,11 @@ build({
 //    and clones print "G" for GND.
 build({
   file: 'wemos-d1-mini.json', id: 'wemos-d1-mini', name: 'Wemos / LOLIN D1 mini (ESP8266)',
-  source: 'https://www.wemos.cc/en/latest/d1/d1_mini_3.1.0.html https://www.wemos.cc/en/latest/_static/boards/d1_mini_v3.1.0_1_16x16.jpg https://www.wemos.cc/en/latest/_static/boards/d1_mini_v3.1.0_2_16x16.jpg https://randomnerdtutorials.com/esp8266-pinout-reference-gpios/',
+  source: 'https://www.wemos.cc/en/latest/d1/d1_mini_3.1.0.html https://www.wemos.cc/en/latest/_static/boards/d1_mini_v3.1.0_1_16x16.jpg https://www.wemos.cc/en/latest/_static/boards/d1_mini_v3.1.0_2_16x16.jpg https://randomnerdtutorials.com/esp8266-pinout-reference-gpios/ https://www.wemos.cc/en/latest/_static/files/sch_d1_mini_v3.0.0.pdf',
   left: ['RST', 'A0', 'D0', 'D5', 'D6', 'D7', 'D8', '3V3'],
   right: ['TX', 'RX', 'D1', 'D2', 'D3', 'D4', 'GND', '5V'],
-  top: 2, bottom: 2, wu: 10,
-  types: typer({ gnd: ['GND'], v33: ['3V3'], v5: ['5V'], inputs: ['RST', 'A0'] }),
+  top: 2, bottom: 2, wu: 10, usb: '5V', usbDiode: true, // v3.0.0 schematic: VBUS through D2 (B5819W) and fuse F1 to +5V, P1 pin 9
+  types: typer({ gnd: ['GND'], v33: ['3V3'], v5: ['5V'], inputs: ['RST', 'A0'], gpio: (n) => /^D\d$/.test(n) || n === 'TX' || n === 'RX' }),
   art: {
     pcb: '#1E4F8A',
     shapes: (W, H) => [

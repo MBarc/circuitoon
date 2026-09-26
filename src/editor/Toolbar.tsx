@@ -2,7 +2,8 @@ import { useRef, useState } from 'react'
 import { type EditorStore, useEditorState } from './store.ts'
 import type { Diagram } from '../format/diagram.ts'
 import { deleteSelection, EMPTY_SELECTION, rotateParts } from './ops.ts'
-import { useBrokenConnections } from './problems.ts'
+import { severityCounts, useProblems } from './problems.ts'
+import { SeverityMark } from './SeverityMark.tsx'
 import { emptyDiagram, serializeDiagram } from '../format/diagram.ts'
 import { downloadText, exportFileName, readDiagramFile } from './files.ts'
 import { LoadWarnings } from './LoadWarnings.tsx'
@@ -17,7 +18,8 @@ export function Toolbar({ store, warnings, onClose }: { store: EditorStore; warn
   // Warnings the open sheet was loaded with; every one stays reachable until dismissed.
   const [loadWarnings, setLoadWarnings] = useState<{ list: string[]; key: number } | null>(warnings?.length ? { list: warnings, key: 0 } : null)
   const hasSel = selection.parts.length + selection.wires.length > 0
-  const broken = useBrokenConnections(diagram)
+  const findings = useProblems(store)
+  const errors = findings.filter((f) => f.severity === 'error').length
 
   /** True when there is nothing to lose, or the user agrees to discard it. */
   const okToDiscard = () => !store.dirty || window.confirm(`Discard unsaved changes to ${diagram.title}?`)
@@ -62,18 +64,20 @@ export function Toolbar({ store, warnings, onClose }: { store: EditorStore; warn
         downloadText(exportFileName(diagram.title), serializeDiagram(diagram))
         store.markSaved()
       }}>Export JSON</button>
-      {broken.length > 0 && (
+      {findings.length > 0 && (
         <button
           type="button"
-          className="tool broken-badge"
-          title="Show the broken connections in the side panel"
+          className={`tool problems-badge ${errors ? 'error' : 'warning'}`}
+          title="Show the wiring problems in the side panel"
+          aria-label={`${findings.length === 1 ? '1 problem' : `${findings.length} problems`}: ${severityCounts(findings)}. Show them in the side panel`}
           onClick={() => {
             // With nothing selected the side panel lists them; move focus to that list.
             store.select(EMPTY_SELECTION)
-            requestAnimationFrame(() => document.getElementById('broken-title')?.focus())
+            requestAnimationFrame(() => document.getElementById('problems-title')?.focus())
           }}
         >
-          {broken.length === 1 ? '1 broken connection' : `${broken.length} broken connections`}
+          <SeverityMark severity={errors ? 'error' : 'warning'} />
+          {findings.length === 1 ? '1 problem' : `${findings.length} problems`}
         </button>
       )}
       <input

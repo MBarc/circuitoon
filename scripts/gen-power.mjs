@@ -99,7 +99,10 @@ function sop(x, y, w, h, n, label, labelSize = 5) {
     category: 'Power', inside: true, id: 'tp4056-module', name: 'TP4056 Li-ion charger (USB-C, with protection)',
     source: 'https://www.amazon.com/dp/B07PKND8KG https://www.addicore.com/products/tp4056-tc4056a-lithium-battery-charger-and-protection-module https://www.teachmemicro.com/tp4056-charging-module-pinout-wiring-charging-current-and-arduino-use/',
     pins: [...left.pins, ...right.pins], internal: [['IN-', 'OUT-'], ['B+', 'OUT+']], wu, hu,
-    electrical: { model: 'charger', params: {} }, shapes,
+    // commonReturn: the DW01A/8205A protection switch sits between B- and OUT-. It conducts in
+    // normal use, so the wiring checker treats both as one return (an approximation: it opens on
+    // over-discharge, overcharge or overcurrent). They stay separate nets on the sheet.
+    electrical: { model: 'charger', params: {}, commonReturn: [['B-', 'OUT-']] }, shapes,
   }))
 }
 

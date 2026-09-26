@@ -9,7 +9,7 @@
 // wire (a click between holes still selects the wire, and the selected wire's end handle still
 // wins), holes of a board placed off the world grid, pads on a module that is not a board, and a
 // wire to a missing hole drawn as a dashed red stub that can be selected and deleted, and the
-// broken connections badge and list (select, delete, a connection with neither end on the sheet,
+// problems badge and list with the broken connections (select, delete, a connection with neither end on the sheet,
 // where focus goes after each), the selected wire's Alt+click, bend and segment handles winning over
 // the holes beneath them, and Select then Delete from the side panel for a connection with neither
 // end on the sheet. Last, the Parts panel and the dark theme.
@@ -569,17 +569,17 @@ await page.mouse.move(5, 5)
 await pause()
 check((await count('.wire-broken')) === 1, 'a wire to a missing hole draws one dashed red stub')
 await shot('broken-stub.png')
-const badge = page.locator('.broken-badge')
-check((await badge.textContent()) === '2 broken connections', `the toolbar shows a broken connections badge (${await badge.textContent()})`)
-const brokenNames = await page.locator('.broken .broken-name').allTextContents()
-check(brokenNames.join(' | ') === 'BB1 c1-top hole 0 to BB1 c2-top hole 99 | Sensor power', `the side panel lists both broken connections (${brokenNames.join(' | ')})`)
+const badge = page.locator('.problems-badge')
+check((await badge.textContent()) === '2 problems', `the toolbar's problems badge counts both broken connections (${await badge.textContent()})`)
+const brokenNames = await page.locator('.problems .problem-message').allTextContents()
+check(brokenNames.join(' | ') === 'The wire BB1 c1-top hole 0 to BB1 c2-top hole 99 is broken: BB1 c2-top hole 99 is not on the sheet, so it connects nothing. Delete it, and draw it again if you still need it. | The wire Sensor power is broken: gone1 1 and gone2 VCC are not on the sheet, so it connects nothing. Delete it, and draw it again if you still need it.', `the Problems list names both broken connections (${brokenNames.join(' | ')})`)
 await page.locator('.inspector').screenshot({ path: join(out, 'broken-list-light.png') })
 console.log('saved', join(out, 'broken-list-light.png'))
 // The badge brings the list back while something else is selected.
-await page.getByRole('button', { name: 'Select BB1 c1-top hole 0 to BB1 c2-top hole 99' }).click()
+await page.getByRole('button', { name: 'Select BB1 c1-top hole 0 to BB1 c2-top hole 99, broken connection' }).click()
 await pause()
 const focusId = () => page.evaluate(() => document.activeElement?.id ?? '')
-const focusSelects = () => page.evaluate(() => document.activeElement?.getAttribute('data-broken-select') ?? '')
+const focusSelects = () => page.evaluate(() => (document.activeElement?.getAttribute('data-problem-select') ?? '').split('|').pop())
 check((await focusId()) === 'wire-title', `Select moves focus to the wire panel's heading (focus on "${await focusId()}")`)
 check((await page.locator('.inspector .hint.warn').textContent())?.startsWith('Broken: BB1 c2-top hole 99 is not on the sheet'), 'Select shows the broken wire in the side panel, with no promise of handles')
 check((await page.locator('[data-wire="w1"] path').count()) === 3, 'Select highlights its stub on the sheet')
@@ -587,13 +587,13 @@ await page.locator('.inspector').screenshot({ path: join(out, 'broken-wire-selec
 console.log('saved', join(out, 'broken-wire-selected.png'))
 await badge.click()
 await pause()
-check((await page.locator('.broken li').count()) === 2 && (await page.evaluate(() => document.activeElement?.id)) === 'broken-title', 'the badge clears the selection and moves focus to the list')
+check((await page.locator('.problems li').count()) === 2 && (await page.evaluate(() => document.activeElement?.id)) === 'problems-title', 'the badge clears the selection and moves focus to the list')
 await page.getByRole('button', { name: 'Delete Sensor power' }).click()
 await pause()
 check((await focusSelects()) === 'w1', `deleting the last row moves focus to the row before it, its Select button (focus on "${await focusSelects()}")`)
 const afterListDelete = await exported()
 check(afterListDelete.connections.map((c) => c.uid).join() === 'w1', `Delete in the list removes the connection with no end on the sheet (${afterListDelete.connections.map((c) => c.uid).join()})`)
-check((await badge.textContent()) === '1 broken connection', 'the badge counts down')
+check((await badge.textContent()) === '1 problem', 'the badge counts down')
 const stub = await page.evaluate(() => {
   const r = document.querySelector('.wire-broken').getBoundingClientRect()
   return { x: r.x + r.width / 2, y: r.y + r.height / 2 }
@@ -612,7 +612,7 @@ await load(brokenFile, 'bb3')
 await page.getByRole('button', { name: 'Delete BB1 c1-top hole 0 to BB1 c2-top hole 99' }).click()
 await pause()
 check((await focusSelects()) === 'w2', `deleting a row moves focus to the next row's Select button (focus on "${await focusSelects()}")`)
-await page.getByRole('button', { name: 'Select Sensor power' }).click()
+await page.getByRole('button', { name: 'Select Sensor power, broken connection' }).click()
 await pause()
 check((await focusId()) === 'wire-title', 'Select on a connection with no end on the sheet opens its wire panel, focused')
 await page.locator('.inspector > button.tool', { hasText: 'Delete' }).click()
@@ -623,7 +623,7 @@ await page.getByRole('button', { name: 'Delete Sensor power' }).click()
 await pause()
 await page.getByRole('button', { name: 'Delete BB1 c1-top hole 0 to BB1 c2-top hole 99' }).click()
 await pause()
-check((await focusId()) === 'sheet-heading', `deleting the only row left moves focus to the panel heading (focus on "${await focusId()}")`)
+check((await focusId()) === 'problems-title' && (await page.locator('#problems-title').textContent()) === 'No wiring problems found', `deleting the only row left moves focus to the list heading, now the clean line (focus on "${await focusId()}")`)
 
 // --- The Parts panel and the dark theme. ---
 const heads = await page.locator('.lib-group-head').evaluateAll((els) => els.map((e) => [e.children[0].textContent, e.children[1].textContent]))

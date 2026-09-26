@@ -4,7 +4,7 @@
   "version": 1,
   "name": "ESP32 DevKit V1 (30 pin, DOIT)",
   "category": "Microcontrollers",
-  "source": "https://mischianti.org/doit-esp32-dev-kit-v1-high-resolution-pinout-and-specs/ https://lastminuteengineers.com/esp32-pinout-reference/",
+  "source": "https://mischianti.org/doit-esp32-dev-kit-v1-high-resolution-pinout-and-specs/ https://lastminuteengineers.com/esp32-pinout-reference/ https://mischianti.org/wp-content/uploads/2024/11/DOIT-ESP32-DevKit-V1-schematics.pdf",
   "pins": [
     {
       "spacer": true,
@@ -41,35 +41,43 @@
     },
     {
       "name": "D32",
-      "side": "left"
+      "side": "left",
+      "type": "io"
     },
     {
       "name": "D33",
-      "side": "left"
+      "side": "left",
+      "type": "io"
     },
     {
       "name": "D25",
-      "side": "left"
+      "side": "left",
+      "type": "io"
     },
     {
       "name": "D26",
-      "side": "left"
+      "side": "left",
+      "type": "io"
     },
     {
       "name": "D27",
-      "side": "left"
+      "side": "left",
+      "type": "io"
     },
     {
       "name": "D14",
-      "side": "left"
+      "side": "left",
+      "type": "io"
     },
     {
       "name": "D12",
-      "side": "left"
+      "side": "left",
+      "type": "io"
     },
     {
       "name": "D13",
-      "side": "left"
+      "side": "left",
+      "type": "io"
     },
     {
       "name": "GND",
@@ -80,7 +88,7 @@
       "name": "VIN",
       "side": "left",
       "type": "power_in",
-      "supply": "5V"
+      "supply": "5V/7V/9V/12V"
     },
     {
       "spacer": true,
@@ -92,55 +100,68 @@
     },
     {
       "name": "D23",
-      "side": "right"
+      "side": "right",
+      "type": "io"
     },
     {
       "name": "D22",
-      "side": "right"
+      "side": "right",
+      "type": "io"
     },
     {
       "name": "TX0",
-      "side": "right"
+      "side": "right",
+      "type": "io"
     },
     {
       "name": "RX0",
-      "side": "right"
+      "side": "right",
+      "type": "io"
     },
     {
       "name": "D21",
-      "side": "right"
+      "side": "right",
+      "type": "io"
     },
     {
       "name": "D19",
-      "side": "right"
+      "side": "right",
+      "type": "io"
     },
     {
       "name": "D18",
-      "side": "right"
+      "side": "right",
+      "type": "io"
     },
     {
       "name": "D5",
-      "side": "right"
+      "side": "right",
+      "type": "io"
     },
     {
       "name": "TX2",
-      "side": "right"
+      "side": "right",
+      "type": "io"
     },
     {
       "name": "RX2",
-      "side": "right"
+      "side": "right",
+      "type": "io"
     },
     {
       "name": "D4",
-      "side": "right"
+      "side": "right",
+      "type": "io"
     },
     {
       "name": "D2",
-      "side": "right"
+      "side": "right",
+      "type": "io"
     },
     {
       "name": "D15",
-      "side": "right"
+      "side": "right",
+      "type": "io"
     },
     {
       "name": "GND 2",
@@ -167,7 +188,15 @@
   },
   "electrical": {
     "model": "mcu",
-    "params": {}
+    "params": {},
+    "external": [
+      {
+        "pin": "VIN",
+        "volts": 5,
+        "via": "USB",
+        "diode": true
+      }
+    ]
   },
   "art": {
     "w": 120,

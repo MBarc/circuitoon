@@ -4,7 +4,7 @@
   "version": 1,
   "name": "ESP32 DevKitC V4 (38 pin)",
   "category": "Microcontrollers",
-  "source": "https://docs.espressif.com/projects/esp-dev-kits/en/latest/esp32/esp32-devkitc/user_guide.html https://docs.espressif.com/projects/esp-dev-kits/en/latest/esp32/_images/esp32_devkitC_v4_pinlayout.png",
+  "source": "https://docs.espressif.com/projects/esp-dev-kits/en/latest/esp32/esp32-devkitc/user_guide.html https://docs.espressif.com/projects/esp-dev-kits/en/latest/esp32/_images/esp32_devkitC_v4_pinlayout.png https://dl.espressif.com/dl/schematics/esp32_devkitc_v4-sch.pdf",
   "pins": [
     {
       "spacer": true,
@@ -47,31 +47,38 @@
     },
     {
       "name": "IO32",
-      "side": "left"
+      "side": "left",
+      "type": "io"
     },
     {
       "name": "IO33",
-      "side": "left"
+      "side": "left",
+      "type": "io"
     },
     {
       "name": "IO25",
-      "side": "left"
+      "side": "left",
+      "type": "io"
     },
     {
       "name": "IO26",
-      "side": "left"
+      "side": "left",
+      "type": "io"
     },
     {
       "name": "IO27",
-      "side": "left"
+      "side": "left",
+      "type": "io"
     },
     {
       "name": "IO14",
-      "side": "left"
+      "side": "left",
+      "type": "io"
     },
     {
       "name": "IO12",
-      "side": "left"
+      "side": "left",
+      "type": "io"
     },
     {
       "name": "GND",
@@ -80,7 +87,8 @@
     },
     {
       "name": "IO13",
-      "side": "left"
+      "side": "left",
+      "type": "io"
     },
     {
       "name": "D2",
@@ -116,23 +124,28 @@
     },
     {
       "name": "IO23",
-      "side": "right"
+      "side": "right",
+      "type": "io"
     },
     {
       "name": "IO22",
-      "side": "right"
+      "side": "right",
+      "type": "io"
     },
     {
       "name": "TX",
-      "side": "right"
+      "side": "right",
+      "type": "io"
     },
     {
       "name": "RX",
-      "side": "right"
+      "side": "right",
+      "type": "io"
     },
     {
       "name": "IO21",
-      "side": "right"
+      "side": "right",
+      "type": "io"
     },
     {
       "name": "GND 3",
@@ -142,39 +155,48 @@
     },
     {
       "name": "IO19",
-      "side": "right"
+      "side": "right",
+      "type": "io"
     },
     {
       "name": "IO18",
-      "side": "right"
+      "side": "right",
+      "type": "io"
     },
     {
       "name": "IO5",
-      "side": "right"
+      "side": "right",
+      "type": "io"
     },
     {
       "name": "IO17",
-      "side": "right"
+      "side": "right",
+      "type": "io"
     },
     {
       "name": "IO16",
-      "side": "right"
+      "side": "right",
+      "type": "io"
     },
     {
       "name": "IO4",
-      "side": "right"
+      "side": "right",
+      "type": "io"
     },
     {
       "name": "IO0",
-      "side": "right"
+      "side": "right",
+      "type": "io"
     },
     {
       "name": "IO2",
-      "side": "right"
+      "side": "right",
+      "type": "io"
     },
     {
       "name": "IO15",
-      "side": "right"
+      "side": "right",
+      "type": "io"
     },
     {
       "name": "D1",
@@ -202,7 +224,15 @@
   },
   "electrical": {
     "model": "mcu",
-    "params": {}
+    "params": {},
+    "external": [
+      {
+        "pin": "5V",
+        "volts": 5,
+        "via": "USB",
+        "diode": true
+      }
+    ]
   },
   "art": {
     "w": 120,

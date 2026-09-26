@@ -4,7 +4,7 @@
   "version": 1,
   "name": "Micro servo SG90",
   "category": "Motors and actuators",
-  "source": "https://handsontec.com/dataspecs/motor_fan/SG90-Servo.pdf https://www.airsupplylab.com/embedded-info/emb_hardware-information/emb-hwinfo_tower-pro-sg90-micro-servo.html",
+  "source": "https://handsontec.com/dataspecs/motor_fan/SG90-Servo.pdf https://www.airsupplylab.com/embedded-info/emb_hardware-information/emb-hwinfo_tower-pro-sg90-micro-servo.html https://www.towerpro.com.tw/product/sg90-7/",
   "pins": [
     {
       "name": "GND",
@@ -15,7 +15,7 @@
       "name": "VCC",
       "side": "left",
       "type": "power_in",
-      "supply": "5V"
+      "supply": "4.8V/5V/6V"
     },
     {
       "name": "PWM",

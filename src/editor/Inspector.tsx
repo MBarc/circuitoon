@@ -1,11 +1,13 @@
 // Properties of whatever is selected. Text fields commit on Enter or when they lose focus,
 // so typing a name is one undo step, not one per keystroke.
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { type EditorStore, useEditorState } from './store.ts'
 import { clearWireRoute, deleteSelection, rotateParts, updatePart, updatePartValue, updateWire } from './ops.ts'
 import { NAMED_COLORS, isValidColor, moduleOf, partObstacles, routeWire } from '../format/diagram.ts'
 import { hexEditChanged, shownHex } from './color.ts'
-import { type BrokenConnection, useBrokenConnections } from './problems.ts'
+import { highlightOf, severityCounts, useProblems } from './problems.ts'
+import { type Finding, RULES, brokenConnection } from '../format/checks.ts'
+import { SeverityMark } from './SeverityMark.tsx'
 import { CAPACITOR_VALUES, RESISTOR_VALUES, formatValue, parseValue, partValue, primaryParam } from '../format/values.ts'
 
 const GAUGES = Array.from({ length: 15 }, (_, i) => 16 + i)
@@ -111,79 +113,122 @@ function ValueInput({ label, unit, value, onCommit }: { label: string; unit: str
   )
 }
 
-/** The dashed red stub the sheet draws at a broken connection, as the mark for each entry. */
-function StubMark() {
-  return (
-    <svg className="broken-mark" viewBox="0 0 22 10" aria-hidden="true">
-      <circle cx={3} cy={5} r={2.4} />
-      <path d="M3 5H20" />
-    </svg>
-  )
-}
-
-/** Focuses the element with this id once React has drawn the next state (the panel swaps content). */
+/** Focuses the element found once React has drawn the next state (the panel swaps content). */
 function focusSoon(find: () => HTMLElement | null) {
   requestAnimationFrame(() => find()?.focus())
 }
 
+
 /**
- * Every broken connection on the sheet, with Select and Delete. A connection whose two ends both
- * fail has nothing to draw on the canvas; this list is where it can still be found and removed.
- * Focus never falls to the page: Select moves it to the wire panel's heading; Delete moves it to
- * the next row's Select (the previous row's after the last one), or to the panel heading once the
- * list is gone.
+ * Each row's Select button name, "Select U1 VCC, voltage too high": its target and rule, with a
+ * number added where two rows would otherwise read the same.
  */
-function BrokenList({ store, broken }: { store: EditorStore; broken: BrokenConnection[] }) {
-  const one = broken.length === 1
+function selectLabels(findings: Finding[]): string[] {
+  const base = findings.map((f) => `Select ${f.target}, ${RULES[f.rule].title.toLowerCase()}`)
+  const total = new Map<string, number>()
+  for (const b of base) total.set(b, (total.get(b) ?? 0) + 1)
+  const seen = new Map<string, number>()
+  return base.map((b) => {
+    if (total.get(b) === 1) return b
+    const n = (seen.get(b) ?? 0) + 1
+    seen.set(b, n)
+    return `${b} (${n} of ${total.get(b)})`
+  })
+}
+
+/**
+ * The wiring checker's findings, errors first, with Select (the parts and wires involved, panned
+ * into view) and, for a broken connection, Delete. Hovering or focusing a row lights its parts,
+ * pins and wires on the canvas. Focus never falls to the page: Select moves it to the panel
+ * heading of what it selected; Delete moves it to the next row's Select (the previous row's after
+ * the last one), or to the list heading once no row is left.
+ */
+function ProblemList({ store, findings }: { store: EditorStore; findings: Finding[] }) {
+  const errors = findings.filter((f) => f.severity === 'error').length
+  // The canvas light belongs to this list: it goes out when the list does (a selection, an empty list).
+  useEffect(() => () => store.setHighlight(null), [store])
+  if (!findings.length)
+    return (
+      <section className="problems clean" aria-labelledby="problems-title">
+        <h3 id="problems-title" tabIndex={-1}>
+          <SeverityMark severity="ok" />
+          No wiring problems found
+        </h3>
+      </section>
+    )
+  const light = (f: Finding) => store.setHighlight(highlightOf(f))
+  const unlight = () => store.setHighlight(null)
+  const labels = selectLabels(findings)
   return (
-    <section className="broken" aria-labelledby="broken-title">
-      <h3 id="broken-title" tabIndex={-1}>
-        {one ? '1 broken connection' : `${broken.length} broken connections`}
+    <section className={`problems ${errors ? 'has-errors' : 'has-warnings'}`} aria-labelledby="problems-title">
+      <h3 id="problems-title" tabIndex={-1}>
+        Problems
+        <span className="problems-count">{severityCounts(findings)}</span>
       </h3>
-      <p className="hint">
-        {one ? 'It names' : 'Each names'} a part, pin or hole that is not on the sheet, so it connects nothing. Delete it, and draw the wire again if you still need it.
-      </p>
-      <ul>
-        {broken.map((b, i) => (
-          <li key={b.uid}>
-            <StubMark />
-            <div className="broken-text">
-              <span className="broken-name">{b.name}</span>
-              <span className="broken-missing">Not found: {b.missing.join(', ')}</span>
-            </div>
-            <div className="broken-actions">
-              <button
-                type="button"
-                className="tool small"
-                data-broken-select={b.uid}
-                aria-label={`Select ${b.name}`}
-                onClick={() => {
-                  store.select({ parts: [], wires: [b.uid] })
-                  focusSoon(() => document.getElementById('wire-title'))
-                }}
-              >
-                Select
-              </button>
-              <button
-                type="button"
-                className="tool small danger"
-                aria-label={`Delete ${b.name}`}
-                onClick={() => {
-                  const s = store.getState()
-                  store.commit(deleteSelection(s.diagram, { parts: [], wires: [b.uid] }))
-                  const next = (broken[i + 1] ?? broken[i - 1])?.uid
-                  focusSoon(() =>
-                    (next !== undefined
-                      ? document.querySelector<HTMLElement>(`[data-broken-select="${CSS.escape(next)}"]`)
-                      : null) ?? document.getElementById('broken-title') ?? document.getElementById('sheet-heading'),
-                  )
-                }}
-              >
-                Delete
-              </button>
-            </div>
-          </li>
-        ))}
+      <ul onMouseLeave={unlight}>
+        {findings.map((f, i) => {
+          const title = RULES[f.rule].title
+          const broken = f.rule === 'broken'
+          return (
+            <li
+              key={f.id}
+              className={f.severity}
+              onMouseEnter={() => light(f)}
+              onFocus={() => light(f)}
+              onBlur={(e) => {
+                if (!e.currentTarget.contains(e.relatedTarget as Node | null)) unlight()
+              }}
+            >
+              <SeverityMark severity={f.severity} />
+              <div className="problem-text">
+                <span className="problem-title">
+                  <span className="sr-only">{f.severity === 'error' ? 'Error: ' : 'Warning: '}</span>
+                  {title}
+                </span>
+                <span className="problem-message" id={`problem-message-${i}`}>{f.message}</span>
+              </div>
+              <div className="problem-actions">
+                <button
+                  type="button"
+                  className="tool small"
+                  data-problem-select={f.id}
+                  aria-label={labels[i]}
+                  aria-describedby={`problem-message-${i}`}
+                  onClick={() => {
+                    const sel = f.select
+                    store.setHighlight(null)
+                    store.select(sel)
+                    store.reveal()
+                    focusSoon(() => document.getElementById(sel.parts.length === 0 && sel.wires.length === 1 ? 'wire-title' : 'selection-title'))
+                  }}
+                >
+                  Select
+                </button>
+                {broken && (
+                  <button
+                    type="button"
+                    className="tool small danger"
+                    aria-label={`Delete ${f.subject}`}
+                    aria-describedby={`problem-message-${i}`}
+                    onClick={() => {
+                      const s = store.getState()
+                      store.setHighlight(null)
+                      store.commit(deleteSelection(s.diagram, { parts: [], wires: f.wires }))
+                      const next = (findings[i + 1] ?? findings[i - 1])?.id
+                      focusSoon(() =>
+                        (next !== undefined
+                          ? document.querySelector<HTMLElement>(`[data-problem-select="${CSS.escape(next)}"]`)
+                          : null) ?? document.getElementById('problems-title') ?? document.getElementById('sheet-heading'),
+                      )
+                    }}
+                  >
+                    Delete
+                  </button>
+                )}
+              </div>
+            </li>
+          )
+        })}
       </ul>
     </section>
   )
@@ -191,7 +236,7 @@ function BrokenList({ store, broken }: { store: EditorStore; broken: BrokenConne
 
 export function Inspector({ store }: { store: EditorStore }) {
   const { diagram, selection, wireStyle } = useEditorState(store)
-  const broken = useBrokenConnections(diagram)
+  const findings = useProblems(store)
   const count = selection.parts.length + selection.wires.length
   const remove = (
     <button type="button" className="tool" onClick={() => store.commit(deleteSelection(diagram, selection))}>
@@ -205,14 +250,14 @@ export function Inspector({ store }: { store: EditorStore }) {
         <h2 id="sheet-heading" tabIndex={-1}>Sheet</h2>
         <CommitInput id="sheet-title" label="Title" value={diagram.title} onCommit={(title) => store.commit({ ...diagram, title: title.trim() || 'Untitled sheet' })} />
         <p className="hint">Drag from a pin tip or a hole to another pin or hole to add a wire. Drag the paper to pan, scroll to zoom. R rotates, Delete removes, Ctrl+Z undoes.</p>
-        {broken.length > 0 && <BrokenList store={store} broken={broken} />}
+        <ProblemList store={store} findings={findings} />
       </aside>
     )
 
   if (count > 1)
     return (
       <aside className="inspector" aria-label="Properties">
-        <h2>{count} items selected</h2>
+        <h2 id="selection-title" tabIndex={-1}>{count} items selected</h2>
         {selection.parts.length > 0 && (
           <button type="button" className="tool" onClick={() => store.commit(rotateParts(diagram, selection.parts))}>Rotate parts</button>
         )}
@@ -227,7 +272,7 @@ export function Inspector({ store }: { store: EditorStore }) {
     const resolved = pp && m && partValue(part, m)
     return (
       <aside className="inspector" aria-label="Properties">
-        <h2>{m?.name ?? part.module}</h2>
+        <h2 id="selection-title" tabIndex={-1}>{m?.name ?? part.module}</h2>
         <CommitInput
           id="part-designator"
           label="Name on sheet"
@@ -252,7 +297,8 @@ export function Inspector({ store }: { store: EditorStore }) {
 
   const wire = diagram.connections.find((c) => c.uid === selection.wires[0])
   if (!wire) return <aside className="inspector" aria-label="Properties" />
-  const brokenWire = broken.find((b) => b.uid === wire.uid)
+  // The Problems list has the broken wires; the notice names this one's missing ends.
+  const brokenWire = findings.some((f) => f.rule === 'broken' && f.wires[0] === wire.uid) ? brokenConnection(diagram, wire) : null
   const color = wire.color ?? 'black'
   const gauge = wire.gauge ?? 22
   const setWire = (patch: { color?: string; gauge?: number; label?: string }) => {

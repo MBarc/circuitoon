@@ -38,9 +38,11 @@ const BOTTOM = ['SWCLK', 'GND DBG|GND', 'SWDIO']
 
 // Types per the datasheets' pin descriptions (VBUS = micro-USB 5 V, VSYS = 1.8-5.5 V system input,
 // so its supply lists the 5 V, single Li-ion cell and 3.3 V rails it accepts, 3V3(OUT) = on-board
-// SMPS output). AGND is the analog ground reference for GP26-28; the
-// datasheet treats it as a separate analog ground plane ("can be connected to digital ground"),
-// so it is a ground pin but not joined to GND here.
+// SMPS output). AGND is the analog ground reference for GP26-28, with its own ground plane under
+// those signals, but electrically it is ground: Raspberry Pi's pin documentation lists "AGND at
+// pin 33 (also a GND pin). An analogue ground used to provide noise-free ground for sensors"
+// (https://www.raspberrypi.com/documentation/microcontrollers/pico-series.html#pin-functions),
+// so it is joined to the GND pins in `internal`.
 const TYPES = {
   VBUS: { type: 'power_in', supply: '5V' },
   VSYS: { type: 'power_in', supply: '5V/3.7V/3V3' },
@@ -51,7 +53,8 @@ const TYPES = {
   AGND: { type: 'ground' },
   SWCLK: { type: 'input' },
 }
-const typeOf = (name) => TYPES[name] ?? (name === 'GND' || name.startsWith('GND ') ? { type: 'ground' } : {})
+// GP0-GP28 are general-purpose I/O (the ADC-capable GP26-28 too): `io`. SWDIO stays untyped.
+const typeOf = (name) => TYPES[name] ?? (name === 'GND' || name.startsWith('GND ') ? { type: 'ground' } : /^GP\d+/.test(name) ? { type: 'io' } : {})
 
 function pinsFor(side, list) {
   return list.map((s) => {
@@ -64,7 +67,7 @@ function pinsFor(side, list) {
     return p
   })
 }
-const GROUNDS = [...LEFT, ...RIGHT, ...BOTTOM].map((s) => s.split('|')[0]).filter((n) => n === 'GND' || n.startsWith('GND '))
+const GROUNDS = [...LEFT, ...RIGHT, ...BOTTOM].map((s) => s.split('|')[0]).filter((n) => n === 'GND' || n.startsWith('GND ') || n === 'AGND')
 
 const r = (x, y, w, h, fill, extra = {}) => ({ type: 'rect', x, y, w, h, fill, ...extra })
 
@@ -128,7 +131,20 @@ function build({ id, name, source, shapes }) {
     pins: [...pinsFor('left', LEFT), ...pinsFor('right', RIGHT), ...pinsFor('bottom', BOTTOM)],
     internal: [GROUNDS],
     size: { w: WU, h: HU },
-    electrical: { model: 'mcu', params: {} },
+    // Datasheet: "VBUS is the micro-USB input voltage, connected to micro-USB port pin 1. This is
+    // nominally 5 V", and (power section) "VBUS is the 5 V input from the micro-USB port, which is
+    // fed through a Schottky diode to generate VSYS". So on USB both carry power: VBUS 5 V, VSYS a
+    // diode drop below it, listed at 5 V as the worst case. The RP2040 hardware design guide,
+    // section 3.1.1 "Power input", names USB, VBUS and VSYS as the three ways to power the board.
+    // The wiring checker treats both as sources while the board sits on USB. VSYS and VBUS are not
+    // joined inside: the diode sits between them.
+    electrical: {
+      model: 'mcu', params: {},
+      // VBUS is the USB pin itself; VSYS sits behind the VBUS-VSYS Schottky (diode: it can only
+      // raise VSYS) and takes up to 5.5 V (datasheet: "VSYS ... can vary in the allowed range 1.8 V
+      // to 5.5 V"), the limit the checker uses when something else drives VSYS higher than USB.
+      external: [{ pin: 'VBUS', volts: 5, via: 'USB' }, { pin: 'VSYS', volts: 5, via: 'USB', diode: true, max: 5.5 }],
+    },
     art: { w: W, h: H, pinLabels: 'inside', shapes: [r(0, 0, W, H, PCB, { radius: 4 }), ...shapes] },
   }
   emit(OUT + id + '.json', JSON.stringify(m, null, 2) + '\n')

@@ -8,31 +8,38 @@
   "pins": [
     {
       "name": "D0",
-      "side": "left"
+      "side": "left",
+      "type": "io"
     },
     {
       "name": "D1",
-      "side": "left"
+      "side": "left",
+      "type": "io"
     },
     {
       "name": "D2",
-      "side": "left"
+      "side": "left",
+      "type": "io"
     },
     {
       "name": "D3",
-      "side": "left"
+      "side": "left",
+      "type": "io"
     },
     {
       "name": "D4",
-      "side": "left"
+      "side": "left",
+      "type": "io"
     },
     {
       "name": "D5",
-      "side": "left"
+      "side": "left",
+      "type": "io"
     },
     {
       "name": "D6",
-      "side": "left"
+      "side": "left",
+      "type": "io"
     },
     {
       "name": "5V",
@@ -53,19 +60,23 @@
     },
     {
       "name": "D10",
-      "side": "right"
+      "side": "right",
+      "type": "io"
     },
     {
       "name": "D9",
-      "side": "right"
+      "side": "right",
+      "type": "io"
     },
     {
       "name": "D8",
-      "side": "right"
+      "side": "right",
+      "type": "io"
     },
     {
       "name": "D7",
-      "side": "right"
+      "side": "right",
+      "type": "io"
     }
   ],
   "size": {
@@ -74,7 +85,14 @@
   },
   "electrical": {
     "model": "mcu",
-    "params": {}
+    "params": {},
+    "external": [
+      {
+        "pin": "5V",
+        "volts": 5,
+        "via": "USB"
+      }
+    ]
   },
   "art": {
     "w": 90,

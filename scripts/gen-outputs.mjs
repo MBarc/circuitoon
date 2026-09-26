@@ -96,13 +96,15 @@ function headerH(y, at) {
 
 // ---------------------------------------------------------------------------------------------
 // 2. Tower Pro SG90 micro servo, seen from above with its three-wire lead leaving at the left. The
-//    JR connector carries, in lead order, brown Ground, red +V (4.8 to 6 V), orange PWM signal
+//    JR connector carries, in lead order, brown Ground, red +V (4.8 to 6 V: Tower Pro's product page gives
+//    "Operating voltage: 4.8v" and "Voltages from 4.8V - 6V are fine"; the Handsontec sheet gives
+//    torque and speed at 4.8 V only), orange PWM signal
 //    (Tower Pro / Handsontec datasheet: "PWM=Orange, Vcc=Red, Ground=Brown", connector pinout
 //    Ground, +V Power, Signal). The pins are the connector's contacts; the wires are drawn in their
 //    colors from the connector to the case.
 {
   const wu = 15, hu = 7, W = wu * 10, H = hu * 10
-  const types = { GND: { type: 'ground' }, VCC: { type: 'power_in', supply: '5V' }, PWM: { type: 'input' } }
+  const types = { GND: { type: 'ground' }, VCC: { type: 'power_in', supply: '4.8V/5V/6V' }, PWM: { type: 'input' } }
   const left = side('left', ['GND', 'VCC', 'PWM'], types, hu)
   const colors = { GND: WIRE_BROWN, VCC: WIRE_RED, PWM: WIRE_ORANGE }
   const shapes = [
@@ -123,7 +125,7 @@ function headerH(y, at) {
   ]
   write('servo-sg90.json', moduleJson({
     inside: true, id: 'servo-sg90', name: 'Micro servo SG90', category: 'Motors and actuators',
-    source: 'https://handsontec.com/dataspecs/motor_fan/SG90-Servo.pdf https://www.airsupplylab.com/embedded-info/emb_hardware-information/emb-hwinfo_tower-pro-sg90-micro-servo.html',
+    source: 'https://handsontec.com/dataspecs/motor_fan/SG90-Servo.pdf https://www.airsupplylab.com/embedded-info/emb_hardware-information/emb-hwinfo_tower-pro-sg90-micro-servo.html https://www.towerpro.com.tw/product/sg90-7/',
     pins: left.pins, wu, hu, electrical: { model: 'servo', params: {} }, shapes,
   }))
 }
@@ -141,6 +143,10 @@ function headerH(y, at) {
 //    Modelled as shipped, jumper fitted: +12V takes 7 to 12 V (the 78M05 needs about 2 V of
 //    headroom to hold 5 V, and the jumper must come off above 12 V) and +5V is a 5 V output. The
 //    name says so; a jumper-off variant (+12V to 35 V, +5V a logic input) would be its own part.
+//    Checked again (2026-09-26): the 78M05's own input rating is higher, but the module guide
+//    cited in `source` says "If your motor power supply is higher than 12V, you must remove the
+//    jumper to prevent damage to the onboard 5V regulator", so with the jumper fitted 12 V stays
+//    the top rail.
 {
   const wu = 17, hu = 17, W = wu * 10, H = hu * 10
   const types = {

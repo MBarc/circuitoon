@@ -4,7 +4,7 @@
   "version": 1,
   "name": "Wemos / LOLIN D1 mini (ESP8266)",
   "category": "Microcontrollers",
-  "source": "https://www.wemos.cc/en/latest/d1/d1_mini_3.1.0.html https://www.wemos.cc/en/latest/_static/boards/d1_mini_v3.1.0_1_16x16.jpg https://www.wemos.cc/en/latest/_static/boards/d1_mini_v3.1.0_2_16x16.jpg https://randomnerdtutorials.com/esp8266-pinout-reference-gpios/",
+  "source": "https://www.wemos.cc/en/latest/d1/d1_mini_3.1.0.html https://www.wemos.cc/en/latest/_static/boards/d1_mini_v3.1.0_1_16x16.jpg https://www.wemos.cc/en/latest/_static/boards/d1_mini_v3.1.0_2_16x16.jpg https://randomnerdtutorials.com/esp8266-pinout-reference-gpios/ https://www.wemos.cc/en/latest/_static/files/sch_d1_mini_v3.0.0.pdf",
   "pins": [
     {
       "spacer": true,
@@ -26,23 +26,28 @@
     },
     {
       "name": "D0",
-      "side": "left"
+      "side": "left",
+      "type": "io"
     },
     {
       "name": "D5",
-      "side": "left"
+      "side": "left",
+      "type": "io"
     },
     {
       "name": "D6",
-      "side": "left"
+      "side": "left",
+      "type": "io"
     },
     {
       "name": "D7",
-      "side": "left"
+      "side": "left",
+      "type": "io"
     },
     {
       "name": "D8",
-      "side": "left"
+      "side": "left",
+      "type": "io"
     },
     {
       "name": "3V3",
@@ -68,27 +73,33 @@
     },
     {
       "name": "TX",
-      "side": "right"
+      "side": "right",
+      "type": "io"
     },
     {
       "name": "RX",
-      "side": "right"
+      "side": "right",
+      "type": "io"
     },
     {
       "name": "D1",
-      "side": "right"
+      "side": "right",
+      "type": "io"
     },
     {
       "name": "D2",
-      "side": "right"
+      "side": "right",
+      "type": "io"
     },
     {
       "name": "D3",
-      "side": "right"
+      "side": "right",
+      "type": "io"
     },
     {
       "name": "D4",
-      "side": "right"
+      "side": "right",
+      "type": "io"
     },
     {
       "name": "GND",
@@ -116,7 +127,15 @@
   },
   "electrical": {
     "model": "mcu",
-    "params": {}
+    "params": {},
+    "external": [
+      {
+        "pin": "5V",
+        "volts": 5,
+        "via": "USB",
+        "diode": true
+      }
+    ]
   },
   "art": {
     "w": 100,

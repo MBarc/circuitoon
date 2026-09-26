@@ -3,7 +3,8 @@
 // (commit, undo, redo, load) made while a drag is open closes the drag first, so the history
 // never mixes a half-finished gesture with another change.
 import { useSyncExternalStore } from 'react'
-import type { Diagram } from '../format/diagram.ts'
+import type { Diagram, Endpoint } from '../format/diagram.ts'
+import type { Severity } from '../format/checks.ts'
 import { EMPTY_SELECTION, type Selection, type WireStyle } from './ops.ts'
 
 export interface EditorState {
@@ -11,6 +12,19 @@ export interface EditorState {
   selection: Selection
   /** Color and gauge for the next wire drawn; follows the last values picked. */
   wireStyle: WireStyle
+  /** What a hovered or focused problem row lights on the canvas; not undo history. */
+  highlight: Highlight | null
+  /** Counts requests to pan the canvas to the selection (a problem's Select). */
+  reveal: number
+}
+
+export interface Highlight {
+  /** The finding it lights, so the light can follow it or go out with it. */
+  id?: string
+  severity: Severity
+  parts: string[]
+  pins: Endpoint[]
+  wires: string[]
 }
 
 const HISTORY_LIMIT = 200
@@ -25,7 +39,7 @@ export class EditorStore {
   private listeners = new Set<() => void>()
 
   constructor(diagram: Diagram) {
-    this.state = { diagram, selection: EMPTY_SELECTION, wireStyle: { color: 'black', gauge: 22 } }
+    this.state = { diagram, selection: EMPTY_SELECTION, wireStyle: { color: 'black', gauge: 22 }, highlight: null, reveal: 0 }
   }
 
   getState = (): EditorState => this.state
@@ -131,7 +145,7 @@ export class EditorStore {
     if (!prev) return
     this.future.push(this.state.diagram)
     this.unsaved = true
-    this.set({ diagram: prev, selection: this.prune(prev, this.state.selection) })
+    this.set({ diagram: prev, selection: this.prune(prev, this.state.selection), highlight: null })
   }
 
   redo() {
@@ -140,7 +154,7 @@ export class EditorStore {
     if (!next) return
     this.past.push(this.state.diagram)
     this.unsaved = true
-    this.set({ diagram: next, selection: this.prune(next, this.state.selection) })
+    this.set({ diagram: next, selection: this.prune(next, this.state.selection), highlight: null })
   }
 
   select(selection: Selection) {
@@ -151,13 +165,22 @@ export class EditorStore {
     this.set({ wireStyle })
   }
 
+  setHighlight(highlight: Highlight | null) {
+    if (highlight !== this.state.highlight) this.set({ highlight })
+  }
+
+  /** Asks the canvas to bring the current selection into view. */
+  reveal() {
+    this.set({ reveal: this.state.reveal + 1 })
+  }
+
   /** Replaces the whole document (import, new sheet) and clears history. */
   load(diagram: Diagram) {
     this.end()
     this.past = []
     this.future = []
     this.unsaved = false
-    this.set({ diagram, selection: EMPTY_SELECTION })
+    this.set({ diagram, selection: EMPTY_SELECTION, highlight: null })
   }
 }
 

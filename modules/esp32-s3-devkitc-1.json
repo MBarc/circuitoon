@@ -4,7 +4,7 @@
   "version": 1,
   "name": "ESP32-S3-DevKitC-1",
   "category": "Microcontrollers",
-  "source": "https://docs.espressif.com/projects/esp-dev-kits/en/latest/esp32s3/esp32-s3-devkitc-1/user_guide_v1.1.html https://docs.espressif.com/projects/esp-dev-kits/en/latest/esp32s3/_images/ESP32-S3_DevKitC-1_pinlayout_v1.1.jpg",
+  "source": "https://docs.espressif.com/projects/esp-dev-kits/en/latest/esp32s3/esp32-s3-devkitc-1/user_guide_v1.1.html https://docs.espressif.com/projects/esp-dev-kits/en/latest/esp32s3/_images/ESP32-S3_DevKitC-1_pinlayout_v1.1.jpg https://dl.espressif.com/dl/schematics/SCH_ESP32-S3-DevKitC-1_V1.1_20221130.pdf",
   "pins": [
     {
       "spacer": true,
@@ -34,71 +34,88 @@
     },
     {
       "name": "4",
-      "side": "left"
+      "side": "left",
+      "type": "io"
     },
     {
       "name": "5",
-      "side": "left"
+      "side": "left",
+      "type": "io"
     },
     {
       "name": "6",
-      "side": "left"
+      "side": "left",
+      "type": "io"
     },
     {
       "name": "7",
-      "side": "left"
+      "side": "left",
+      "type": "io"
     },
     {
       "name": "15",
-      "side": "left"
+      "side": "left",
+      "type": "io"
     },
     {
       "name": "16",
-      "side": "left"
+      "side": "left",
+      "type": "io"
     },
     {
       "name": "17",
-      "side": "left"
+      "side": "left",
+      "type": "io"
     },
     {
       "name": "18",
-      "side": "left"
+      "side": "left",
+      "type": "io"
     },
     {
       "name": "8",
-      "side": "left"
+      "side": "left",
+      "type": "io"
     },
     {
       "name": "3",
-      "side": "left"
+      "side": "left",
+      "type": "io"
     },
     {
       "name": "46",
-      "side": "left"
+      "side": "left",
+      "type": "io"
     },
     {
       "name": "9",
-      "side": "left"
+      "side": "left",
+      "type": "io"
     },
     {
       "name": "10",
-      "side": "left"
+      "side": "left",
+      "type": "io"
     },
     {
       "name": "11",
-      "side": "left"
+      "side": "left",
+      "type": "io"
     },
     {
       "name": "12",
-      "side": "left"
+      "side": "left",
+      "type": "io"
     },
     {
       "name": "13",
-      "side": "left"
+      "side": "left",
+      "type": "io"
     },
     {
       "name": "14",
-      "side": "left"
+      "side": "left",
+      "type": "io"
     },
     {
       "name": "5V",
@@ -127,39 +144,48 @@
     },
     {
       "name": "TX",
-      "side": "right"
+      "side": "right",
+      "type": "io"
     },
     {
       "name": "RX",
-      "side": "right"
+      "side": "right",
+      "type": "io"
     },
     {
       "name": "1",
-      "side": "right"
+      "side": "right",
+      "type": "io"
     },
     {
       "name": "2",
-      "side": "right"
+      "side": "right",
+      "type": "io"
     },
     {
       "name": "42",
-      "side": "right"
+      "side": "right",
+      "type": "io"
     },
     {
       "name": "41",
-      "side": "right"
+      "side": "right",
+      "type": "io"
     },
     {
       "name": "40",
-      "side": "right"
+      "side": "right",
+      "type": "io"
     },
     {
       "name": "39",
-      "side": "right"
+      "side": "right",
+      "type": "io"
     },
     {
       "name": "38",
-      "side": "right"
+      "side": "right",
+      "type": "io"
     },
     {
       "name": "37",
@@ -175,31 +201,38 @@
     },
     {
       "name": "0",
-      "side": "right"
+      "side": "right",
+      "type": "io"
     },
     {
       "name": "45",
-      "side": "right"
+      "side": "right",
+      "type": "io"
     },
     {
       "name": "48",
-      "side": "right"
+      "side": "right",
+      "type": "io"
     },
     {
       "name": "47",
-      "side": "right"
+      "side": "right",
+      "type": "io"
     },
     {
       "name": "21",
-      "side": "right"
+      "side": "right",
+      "type": "io"
     },
     {
       "name": "20",
-      "side": "right"
+      "side": "right",
+      "type": "io"
     },
     {
       "name": "19",
-      "side": "right"
+      "side": "right",
+      "type": "io"
     },
     {
       "name": "G 3",
@@ -232,7 +265,15 @@
   },
   "electrical": {
     "model": "mcu",
-    "params": {}
+    "params": {},
+    "external": [
+      {
+        "pin": "5V",
+        "volts": 5,
+        "via": "USB",
+        "diode": true
+      }
+    ]
   },
   "art": {
     "w": 120,
