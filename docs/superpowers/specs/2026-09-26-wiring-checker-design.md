@@ -62,6 +62,13 @@ Principle: never state a definite voltage or give setting advice when any part o
 - Fights name the pin on the net ("U1 OUT+ (3.7 V from BT1)").
 - Messages carry actions: stakes, the wire to remove, how to fix a voltage, which ground to connect.
 
+## Fifth review changes (2026-09-26, Astra re-review 3+4)
+- Pico AGND joined to GND ("also a GND pin"); the Picos need no returns.
+- Diode-fed USB pins resolved to a fixed point before loads, independent of part order; a shuffle property test over every circuit fixture.
+- Shorts use the supply's resolved return; ambiguous returns claim none.
+- Board GPIOs typed io (input-only pins input; flash and control pins untyped).
+- Every message ends with an instruction (tested over every fixture).
+
 ## Where it lives
 - `src/format/checks.ts`: pure `checkDiagram(d): Finding[]`, sorted errors first, then by designator. `parseSupply(s)`. No React.
 - The editor computes it memoized per diagram content, never per drag frame (reuse the drag-free memo pattern of the broken list).
