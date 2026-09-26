@@ -171,6 +171,20 @@ describe('holeAtPoint', () => {
     const turned = { ...sheet().parts[0], x: 100, y: 100, rotation: 90 as const }
     expect(holeAtPoint(turned, bb, { x: 170, y: 90 })).toEqual({ board: 'b', group: 's1', hole: 0 })
   })
+  it('finds the holes of a board placed off the world grid, in its own coordinates', () => {
+    // At x = 5 the holes sit between world grid lines: s1 hole 0 is at (15, 10).
+    const off = { ...sheet().parts[0], x: 5 }
+    expect(holeAtPoint(off, bb, { x: 15, y: 10 })).toEqual({ board: 'b', group: 's1', hole: 0 })
+    expect(holeAtPoint(off, bb, { x: 17, y: 12 })).toEqual({ board: 'b', group: 's1', hole: 0 })
+    expect(holeAtPoint(off, bb, { x: 10, y: 10 })).toBeNull()
+    expect(holeAtPoint(off, bb, { x: 20, y: 10 })).toBeNull()
+    const frac = { ...sheet().parts[0], x: 2.5, y: 0.25, rotation: 270 as const }
+    const at = holeIndex(frac, bb).groups[8].at[4]
+    expect(holeAtPoint(frac, bb, { x: at.x + 1, y: at.y - 1 })).toEqual({ board: 'b', group: 's9', hole: 4 })
+  })
+  it('finds nothing on a module without holes', () => {
+    expect(holeAtPoint({ uid: 'p', designator: 'R1', module: 'two', x: 0, y: 0 }, two, { x: 0, y: 20 })).toBeNull()
+  })
 })
 
 describe('mounts that do not fit', () => {

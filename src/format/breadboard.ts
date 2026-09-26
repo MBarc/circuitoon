@@ -3,8 +3,8 @@
 // by part object identity, and parts are replaced (never mutated) on every edit, so a moved
 // board simply gets a fresh index.
 import { type Diagram, type PartInstance, moduleOf } from './diagram.ts'
-import { type PlugPoint, type Pt, type WorldHoleGroup, plugPoints, worldHoles } from './geometry.ts'
-import { GRID, type ModuleDef, isBoard, isSpacer } from './module.ts'
+import { type PlugPoint, type Pt, type Rotation, type WorldHoleGroup, pivot, plugPoints, rotateVec, worldHoles } from './geometry.ts'
+import { GRID, type ModuleDef, isBoard, isSpacer, layoutModule } from './module.ts'
 
 const OFF = 2 ** 25
 /**
@@ -53,14 +53,39 @@ export interface HoleRef {
   hole: number
 }
 
-/** The hole of `part` whose center is within `radius` px of `p`, or null. Holes sit on grid points. */
+/** Module-local hole centers ("x,y") to [group index, hole index], per module. */
+const localCache = new WeakMap<ModuleDef, Map<string, [number, number]>>()
+
+function localHoles(m: ModuleDef): Map<string, [number, number]> {
+  let map = localCache.get(m)
+  if (!map) {
+    map = new Map()
+    for (const [gi, g] of (m.holes ?? []).entries()) for (const [hi, [x, y]] of g.at.entries()) map.set(`${x},${y}`, [gi, hi])
+    localCache.set(m, map)
+  }
+  return map
+}
+
+const UNDO: Record<Rotation, Rotation> = { 0: 0, 90: 270, 180: 180, 270: 90 }
+
+/**
+ * The hole of `part` whose center is within `radius` px of pointer `p`, or null. The pointer is
+ * mapped into the part's own coordinates (the inverse of its placement), where every hole sits on
+ * the 10 px grid, so a board placed off the world grid still has clickable holes. Picking only:
+ * electrical matching (`holeAt`) stays exact.
+ */
 export function holeAtPoint(part: PartInstance, m: ModuleDef, p: Pt, radius = 3.5): HoleRef | null {
-  const gx = Math.round(p.x / GRID) * GRID
-  const gy = Math.round(p.y / GRID) * GRID
-  if (Math.hypot(p.x - gx, p.y - gy) > radius) return null
-  const idx = holeIndex(part, m)
-  const hit = holeAt(idx, { x: gx, y: gy })
-  return hit ? { board: part.uid, group: idx.groups[hit[0]].name, hole: hit[1] } : null
+  if (!m.holes?.length) return null
+  const lay = layoutModule(m)
+  const c = pivot(lay.w, lay.h)
+  const v = rotateVec({ x: p.x - part.x - c.x, y: p.y - part.y - c.y }, UNDO[part.rotation ?? 0])
+  const local = { x: v.x + c.x, y: v.y + c.y }
+  const gx = Math.round(local.x / GRID) * GRID
+  const gy = Math.round(local.y / GRID) * GRID
+  // Rotation keeps distances, so the radius is the same in local and world px.
+  if (Math.hypot(local.x - gx, local.y - gy) > radius) return null
+  const hit = localHoles(m).get(`${gx},${gy}`)
+  return hit ? { board: part.uid, group: m.holes[hit[0]].name, hole: hit[1] } : null
 }
 
 export interface Plug {
