@@ -200,7 +200,12 @@ describe('checkDiagram', () => {
     it('flags a power input fed less than its lowest rail', () => {
       const [f] = only(powered('bat37', 'vin'), 'supply-too-low')
       expect(f.severity).toBe('warning')
-      expect(f.message).toBe('U1 VIN needs at least 7 V; BT1 + gives only 3.7 V.')
+      expect(f.message).toBe('U1 VIN needs at least 6.3 V; BT1 + gives only 3.7 V.')
+    })
+    it('takes down to 90% of the lowest rail: 3 V on a 3.3 V part is fine, 2.9 V is not', () => {
+      const cell = (v: number) => sheet([part('BT1', 'cell', { values: { voltage: { value: v, unit: 'V' } } }), part('U1', 'chip33')], [wire('w1', 'bt1.+', 'u1.VCC'), wire('w2', 'bt1.-', 'u1.GND')])
+      expect(rules(cell(3))).toEqual([])
+      expect(only(cell(2.9), 'supply-too-low')[0].message).toBe('U1 VCC needs at least 3.0 V; BT1 + gives only 2.9 V.')
     })
     it('passes a voltage inside the range', () => {
       expect(rules(powered('bat9', 'vin'))).not.toContain('supply-too-low')

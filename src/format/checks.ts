@@ -103,6 +103,8 @@ function knownRails(supply: string | undefined): number[] | null {
 }
 
 const EPS = 1e-9
+/** An input is taken to work down to this share of its lowest listed rail (no real ranges yet). */
+const LOW_TOLERANCE = 0.9
 const volts = (v: number) => `${Number(v.toFixed(2))} V`
 
 /** "A", "A or B", "A, B or C". */
@@ -816,8 +818,11 @@ function checkPotentials({ d, nl, netTerms, netWires, terminal, shorted, add }: 
         add({ rule: 'supply-too-high', message: `${termName(t)} accepts up to ${volts(max)} but gets ${volts(v)} from ${what}.`, ...base(from) })
         continue
       }
-      if (v !== null && !unknown.length && v < min - EPS)
-        add({ rule: 'supply-too-low', message: `${termName(t)} needs at least ${volts(min)}; ${what} ${from.length === 1 ? 'gives' : 'give'} only ${volts(v)}.`, ...base(from) })
+      // Until parts carry real ranges, an input takes down to 90% of its lowest rail (3.0 V for a
+      // 3.3 V part, 4.5 V for a 5 V one).
+      const floor = LOW_TOLERANCE * min
+      if (v !== null && !unknown.length && v < floor - EPS)
+        add({ rule: 'supply-too-low', message: `${termName(t)} needs at least ${floor.toFixed(1)} V; ${what} ${from.length === 1 ? 'gives' : 'give'} only ${volts(v)}.`, ...base(from) })
     }
   })
 }
