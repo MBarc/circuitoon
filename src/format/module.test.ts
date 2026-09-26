@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
-import { insideLabelSides, layoutModule, usesInsideLabels, validateModule, type ModuleDef } from './module.ts'
+import { insideLabelSides, layoutModule, usesInsideLabels, validParamValue, validateModule, type ModuleDef } from './module.ts'
 
 const base = { format: 'circuitoon-module/1', id: 'thing', name: 'Thing' }
 
@@ -101,13 +101,30 @@ describe('validateModule', () => {
     if (!r.ok)
       expect(r.errors).toEqual([
         'electrical.params.resistance.unit: must be "ohm"',
-        'electrical.params.resistance.default: must be a finite number, 0 or more',
-        'electrical.params.capacitance.default: must be a finite number above 0',
+        'electrical.params.resistance.default: must be 0, or from 1e-15 to 1e12',
+        'electrical.params.capacitance.default: must be from 1e-15 to 1e12',
         'electrical.params.voltage.unit: must be "V"',
-        'electrical.params.voltage.default: must be a finite number',
+        'electrical.params.voltage.default: must be 0, or a magnitude from 1e-15 to 1e12',
       ])
     const bad = params([])
     expect(!bad.ok && bad.errors).toEqual(['electrical.params: must be an object'])
+  })
+  it('shares one magnitude contract with value entry: 0 where allowed, else 1e-15 to 1e12', () => {
+    const at = (name: string, v: number) => validParamValue(name, v)
+    for (const name of ['resistance', 'capacitance', 'voltage']) {
+      expect(at(name, 1e-15)).toBe(true)
+      expect(at(name, 1e12)).toBe(true)
+      expect(at(name, 1e-320)).toBe(false)
+      expect(at(name, 9.99e-16)).toBe(false)
+      expect(at(name, 1.01e12)).toBe(false)
+    }
+    expect(at('resistance', 0)).toBe(true)
+    expect(at('voltage', 0)).toBe(true)
+    expect(at('voltage', -1e-320)).toBe(false)
+    expect(at('voltage', -2e12)).toBe(false)
+    expect(at('capacitance', 0)).toBe(false)
+    const tiny = validateModule({ ...base, pins: [{ name: 'A', side: 'left' }], electrical: { params: { resistance: { unit: 'ohm', default: 1e-320 } } } })
+    expect(!tiny.ok && tiny.errors).toEqual([`electrical.params.resistance.default: must be ${'0, or from 1e-15 to 1e12'}`])
   })
   it('accepts a shape band from 1 to 4', () => {
     const r = validateModule({

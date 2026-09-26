@@ -16,6 +16,18 @@ const OHM = 'Ω' // ohm sign
 const MICRO = 'µ' // micro sign
 
 describe('formatValue', () => {
+  it('shows a number for every value a file or the value field can hold', () => {
+    const edges = [1e-15, 1.5e-15, 9.99e-13, 1e-12, 1e-3, 0.999, 1, 999.9, 999999, 1e9, 9.995e11, 1e12]
+    for (const v of edges)
+      for (const [unit, name] of [['ohm', 'resistance'], ['F', 'capacitance'], ['V', 'voltage']] as const) {
+        for (const x of [v, -v]) {
+          if (!validParamValue(name, x)) continue
+          const shown = formatValue(x, unit)
+          expect(shown, `${x} ${unit}`).not.toMatch(/NaN|Infinity|e[-+]/)
+        }
+      }
+    for (let e = -15; e <= 12; e += 0.25) expect(formatValue(Math.pow(10, e), 'ohm')).not.toMatch(/NaN|Infinity/)
+  })
   it('formats ohms with the ohm sign, adding an SI prefix past 1000', () => {
     expect(formatValue(220, 'ohm')).toBe(`220 ${OHM}`)
     expect(formatValue(4700, 'ohm')).toBe(`4.7 k${OHM}`)
@@ -93,6 +105,12 @@ describe('parseValue', () => {
   it('rejects a magnitude above 1e12 or below 1e-15', () => {
     expect(parseValue('5000G', 'ohm')).toBeNull()
     expect(parseValue('0.0001p', 'F')).toBeNull()
+  })
+  it('accepts exactly what loading a file accepts, at the magnitude limits too', () => {
+    for (const [text, unit, name, v] of [['1000G', 'ohm', 'resistance', 1e12], ['0.001p', 'F', 'capacitance', 1e-15], ['-1000G', 'V', 'voltage', -1e12], ['1001G', 'ohm', 'resistance', 1.001e12], ['0.0009p', 'V', 'voltage', 9e-16]] as const)
+      expect(parseValue(text, unit) !== null, text).toBe(validParamValue(name, v))
+    expect(parseValue('1000G', 'ohm')).toBe(1e12)
+    expect(parseValue('0.001p', 'F')).toBe(1e-15)
   })
 })
 

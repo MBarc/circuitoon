@@ -108,11 +108,22 @@ describe('validateDiagram', () => {
     if (!r.ok) return
     expect(r.warnings).toEqual([
       'parts[0].values.voltage: BT1 has voltage 9 mV, but voltage must be in V; it was dropped and the module default is shown',
-      'parts[2].values.resistance: R1 has resistance -220 ohm, but resistance must be a finite number, 0 or more; it was dropped and the module default is shown',
+      'parts[2].values.resistance: R1 has resistance -220 ohm, but resistance must be 0, or from 1e-15 to 1e12; it was dropped and the module default is shown',
     ])
     expect(r.diagram.parts[2].values).toEqual({})
     expect(r.diagram.parts[0].values).toEqual({})
     expect(d.parts[2].values).toEqual({ resistance: { value: -220, unit: 'ohm' } })
+  })
+  it('drops an imported value too small or large to show, never captioning NaN', () => {
+    const d = structuredClone(buttonLed)
+    d.parts[2].values = { resistance: { value: 1e-320, unit: 'ohm' } }
+    const r = validateDiagram(d)
+    expect(r.ok).toBe(true)
+    if (!r.ok) return
+    expect(r.warnings).toEqual([
+      'parts[2].values.resistance: R1 has resistance 1e-320 ohm, but resistance must be 0, or from 1e-15 to 1e12; it was dropped and the module default is shown',
+    ])
+    expect(r.diagram.parts[2].values).toEqual({})
   })
   it('keeps a 0 ohm resistor without a warning', () => {
     const d = structuredClone(buttonLed)

@@ -81,19 +81,33 @@ export const isNum = (v: unknown): v is number => typeof v === 'number' && Numbe
 const isPos = (v: unknown): v is number => isNum(v) && v > 0
 
 /**
- * The editable value params: each has one unit and a valid range, shared by module defaults and
- * the per-part overrides a diagram stores. A 0 ohm resistor is a real part (a jumper); a
- * capacitance must be above 0; a voltage may be negative.
+ * The magnitudes a part value can have, shared by module defaults, the overrides a diagram
+ * stores and the value field: exactly 0 (where the param allows it), or 1e-15 to 1e12 either
+ * sign. formatValue shows every one of them with an SI prefix (p to G); anything smaller or larger
+ * is no real part and cannot be shown (1e-320 once captioned as "NaN pΩ").
+ */
+export const VALUE_MIN = 1e-15
+export const VALUE_MAX = 1e12
+
+/** True when `v` is a finite number that is 0 or has a magnitude from VALUE_MIN to VALUE_MAX. */
+export const representableValue = (v: unknown): v is number =>
+  isNum(v) && (v === 0 || (Math.abs(v) >= VALUE_MIN && Math.abs(v) <= VALUE_MAX))
+
+/**
+ * The editable value params: each has one unit and a valid range, shared by module defaults, the
+ * per-part overrides a diagram stores and the value field (parseValue). Every value must be
+ * representable (see VALUE_MIN); on top of that a 0 ohm resistor is a real part (a jumper), a
+ * capacitance must be above 0 and a voltage may be negative.
  */
 export const PARAM_RULES: Record<string, { unit: string; valid: (v: number) => boolean; range: string }> = {
-  resistance: { unit: 'ohm', valid: (v) => v >= 0, range: 'a finite number, 0 or more' },
-  capacitance: { unit: 'F', valid: (v) => v > 0, range: 'a finite number above 0' },
-  voltage: { unit: 'V', valid: () => true, range: 'a finite number' },
+  resistance: { unit: 'ohm', valid: (v) => v >= 0, range: '0, or from 1e-15 to 1e12' },
+  capacitance: { unit: 'F', valid: (v) => v > 0, range: 'from 1e-15 to 1e12' },
+  voltage: { unit: 'V', valid: () => true, range: '0, or a magnitude from 1e-15 to 1e12' },
 }
 
-/** True when `v` is a valid value for the named param (see PARAM_RULES). */
+/** True when `v` is a valid value for the named param: representable and allowed by PARAM_RULES. */
 export function validParamValue(name: string, v: unknown): v is number {
-  return Object.hasOwn(PARAM_RULES, name) && isNum(v) && PARAM_RULES[name].valid(v)
+  return Object.hasOwn(PARAM_RULES, name) && representableValue(v) && PARAM_RULES[name].valid(v)
 }
 
 /** Checks a parsed JSON value against the module format. Errors name the exact path. */

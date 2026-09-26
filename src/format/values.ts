@@ -1,7 +1,7 @@
 // Part values: SI-prefixed formatting and parsing, standard value series, and resistor color
 // bands. Pure and unit-tested; the editor and renderer just call into these.
 
-import { PARAM_RULES, isObj, validParamValue, type ArtShape, type ModuleDef } from './module.ts'
+import { PARAM_RULES, isObj, representableValue, validParamValue, type ArtShape, type ModuleDef } from './module.ts'
 
 const OHM = 'Ω' // ohm sign, U+2126 (not the Greek capital omega, U+03A9)
 const OMEGA = 'Ω'
@@ -73,19 +73,20 @@ function splitPrefix(suffix: string): { mult: number; rest: string } {
 const paramForUnit = (unit: string): string | undefined => Object.keys(PARAM_RULES).find((name) => PARAM_RULES[name].unit === unit)
 
 /**
- * Rejects non-finite values, magnitudes above 1e12 or nonzero ones below 1e-15, and values the
- * unit's param does not allow (PARAM_RULES, the same rule loading a file applies: 0 ohm is fine,
- * a voltage may be 0 or negative, a capacitance must be above 0; a unit with no param must be
- * positive). Otherwise rounds to 6 significant digits, so a multiplication like `100 * 1e-9`
- * (which lands on 1.0000000000000001e-7 in floating point) comes out as the clean 1e-7 rather than
- * carrying that noise into the diagram.
+ * Rejects what a file could not hold either: a value that is not representable (0, or a magnitude
+ * from 1e-15 to 1e12; VALUE_MIN in module.ts) or that the unit's param does not allow (PARAM_RULES:
+ * 0 ohm is fine, a voltage may be 0 or negative, a capacitance must be above 0; a unit with no
+ * param must be positive). Otherwise rounds to 6 significant digits, so a multiplication like
+ * `100 * 1e-9` (which lands on 1.0000000000000001e-7 in floating point) comes out as the clean
+ * 1e-7 rather than carrying that noise into the diagram; the rounded value is checked again, so
+ * rounding can never carry it past a limit.
  */
 function finish(v: number, unit: string): number | null {
-  const abs = Math.abs(v)
-  if (!Number.isFinite(v) || abs > 1e12 || (abs !== 0 && abs < 1e-15)) return null
   const param = paramForUnit(unit)
-  if (param ? !validParamValue(param, v) : v <= 0) return null
-  return roundSig(v, 6) + 0 // + 0 turns -0 into 0
+  const ok = (x: number) => (param ? validParamValue(param, x) : representableValue(x) && x > 0)
+  if (!ok(v)) return null
+  const rounded = roundSig(v, 6) + 0 // + 0 turns -0 into 0
+  return ok(rounded) ? rounded : null
 }
 
 /**
