@@ -324,3 +324,20 @@ describe('each output returns to a known ground, or nothing definite is said', (
       expect((load(id).electrical as { returns?: unknown }).returns).toEqual({ '3V3(OUT)': 'GND', VBUS: 'GND', VSYS: 'GND' })
   })
 })
+
+describe('a fight stays with the nets it touches', () => {
+  it('a 3 V pack against Nano USB on 5V, and a 9 V battery into a BME280, one ground: both are found', () => {
+    const d = sheet([at('u1', 'U1', 'arduino-nano'), at('bt1', 'BT1', 'battery-holder-2xaa', 300), at('bt2', 'BT2', 'battery-9v', 500), at('u2', 'U2', 'bme280-module-6pin', 700)],
+      [['bt1|+', 'u1|5V'], ['bt1|-', 'u1|GND'], ['bt2|-', 'u1|GND 2'], ['bt2|+', 'u2|VCC'], ['u2|GND', 'u1|GND']])
+    expect(rules(d)).toEqual(['supplies-fight', 'supply-too-high'])
+  })
+  it('two cells fighting, and a 9 V battery into a BME280, one ground: both are found; a load on the fight is not', () => {
+    const d = sheet([at('bt1', 'BT1', 'battery-holder-2xaa'), at('bt3', 'BT3', 'battery-18650-holder', 200), at('bt2', 'BT2', 'battery-9v', 500),
+      at('u2', 'U2', 'bme280-module-6pin', 700), at('u3', 'U3', 'oled-ssd1306-096-i2c', 900)],
+    [['bt1|+', 'bt3|+'], ['bt1|-', 'bt3|-'], ['bt2|-', 'bt1|-'], ['bt2|+', 'u2|VCC'], ['u2|GND', 'bt1|-'], ['u3|VCC', 'bt1|+'], ['u3|GND', 'bt1|-']])
+    expect(found(d)).toEqual([
+      'supplies-fight: BT3 + (3.7 V) and BT1 + (3 V) are wired together: the two supplies fight.',
+      'supply-too-high: U2 VCC accepts up to 3.3 V but gets 9 V from BT2 +.',
+    ])
+  })
+})

@@ -644,10 +644,12 @@ function checkPotentials({ d, nl, netTerms, netWires, terminal, shorted, add }: 
     return { v, text: `${andList(sorted(list).map((s) => termName(s.term)))} (${volts(v)} in series)` }
   }
 
-  const broken = new Set<string>()
+  /** Edges of a loop that disagrees: a voltage whose path uses one of them cannot be stated. */
+  const broken = new Set<Edge>()
   for (const i of loops) {
     const e = edges[i]
-    const cycle = [{ e, forward: true }, ...path(e.to, e.from)].filter((x) => x.e.src)
+    const around = [{ e, forward: true }, ...path(e.to, e.from)]
+    const cycle = around.filter((x) => x.e.src)
     if (!cycle.length) continue
     // A loop through a supply of unknown voltage says nothing definite (the tie is reported below).
     const residual = minus(minus(pot.get(e.to)!, pot.get(e.from)!), step(lin0(), e, 1))
@@ -656,7 +658,7 @@ function checkPotentials({ d, nl, netTerms, netWires, terminal, shorted, add }: 
     const ahead = cycle.filter((x) => x.forward).map((x) => x.e.src!)
     const back = cycle.filter((x) => !x.forward).map((x) => x.e.src!)
     const all = sorted([...ahead, ...back])
-    if (mismatch) broken.add(groupOf.get(e.from)!)
+    if (mismatch) for (const x of around) broken.add(x.e)
     if (mismatch && (!ahead.length || !back.length)) {
       add({ rule: 'short', subject: all[0].term.part.designator, target: termName(all[0].term),
         message: `${andList(all.map((s) => termName(s.term)))} are wired in a loop, each + to the next -: short circuit.`, ...involve(all) })
@@ -711,7 +713,6 @@ function checkPotentials({ d, nl, netTerms, netWires, terminal, shorted, add }: 
       let v: number | null = null
       let from: Source[] = []
       const group = groupOf.get(net)
-      if (group !== undefined && broken.has(group)) continue
       const groundPin = group === undefined ? undefined : t.info.grounds.find((g) => groupOf.get(netOfKey(nodeKey(t.part.uid, g))) === group)
       const ground = groundPin === undefined ? undefined : netOfKey(nodeKey(t.part.uid, groundPin))
       const base = (list: Source[]) => ({
@@ -720,8 +721,11 @@ function checkPotentials({ d, nl, netTerms, netWires, terminal, shorted, add }: 
       })
       if (ground !== undefined) {
         if (ground === net) continue
+        const way = path(ground, net)
+        // Only a path through a fight is in doubt; loads elsewhere on the same ground are still checked.
+        if (way.some((x) => broken.has(x.e))) continue
         const diff = minus(pot.get(net)!, pot.get(ground)!)
-        from = sorted(path(ground, net).filter((x) => x.e.src).map((x) => x.e.src!))
+        from = sorted(way.filter((x) => x.e.src).map((x) => x.e.src!))
         if (diff.u.size) {
           // Some supply on the way has no known voltage: advise a setting only when one adjustable
           // supply is the only unknown, counting what sits below it; otherwise say it cannot be checked.
