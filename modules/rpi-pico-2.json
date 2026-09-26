@@ -235,7 +235,12 @@
         "volts": 5,
         "via": "USB through the VSYS diode"
       }
-    ]
+    ],
+    "returns": {
+      "3V3(OUT)": "GND",
+      "VBUS": "GND",
+      "VSYS": "GND"
+    }
   },
   "art": {
     "w": 120,

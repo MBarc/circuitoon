@@ -301,6 +301,22 @@ export function validateModule(raw: unknown): ValidationResult {
       })
   }
 
+  // Which ground each output (or USB pin) returns to.
+  if (isObj(raw.electrical) && raw.electrical.returns !== undefined) {
+    const returns = raw.electrical.returns
+    const items = [...(Array.isArray(raw.pins) ? raw.pins : []), ...(Array.isArray(raw.holes) ? raw.holes : [])]
+      .filter((p): p is Record<string, unknown> => isObj(p) && typeof p.name === 'string')
+    const ext = Array.isArray(raw.electrical.external) ? raw.electrical.external.filter(isObj).map((e) => e.pin) : []
+    const outs = new Set(items.filter((p) => p.type === 'power_out' || ext.includes(p.name)).map((p) => p.name as string))
+    const grounds = new Set(items.filter((p) => p.type === 'ground').map((p) => p.name as string))
+    if (!isObj(returns)) errors.push('electrical.returns: must be an object of output pin name to ground pin name')
+    else
+      for (const [out, g] of Object.entries(returns)) {
+        if (!outs.has(out)) errors.push(`electrical.returns.${out}: no power_out or external pin named "${out}"`)
+        if (typeof g !== 'string' || !grounds.has(g)) errors.push(`electrical.returns.${out}: no ground pin named "${String(g)}"`)
+      }
+  }
+
   // A voltage value is the voltage of named outputs: required when there is more than one to choose from.
   if (isObj(raw.electrical)) {
     const el = raw.electrical
@@ -330,6 +346,13 @@ export function commonReturn(m: ModuleDef): string[][] {
   const e = m.electrical
   if (!isObj(e) || !Array.isArray(e.commonReturn)) return []
   return e.commonReturn.filter((g): g is string[] => Array.isArray(g) && g.every((n) => typeof n === 'string'))
+}
+
+/** The ground pin each output or USB pin returns to (`electrical.returns`), as declared. */
+export function declaredReturns(m: ModuleDef): Record<string, string> {
+  const e = m.electrical
+  if (!isObj(e) || !isObj(e.returns)) return {}
+  return Object.fromEntries(Object.entries(e.returns).filter((x): x is [string, string] => typeof x[1] === 'string'))
 }
 
 /**

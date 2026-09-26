@@ -6,7 +6,7 @@
 // docs/superpowers/specs/2026-09-26-wiring-checker-design.md.
 import { type Connection, type Diagram, type Endpoint, type PartInstance, moduleOf, resolveEndpoint } from './diagram.ts'
 import { type MountIssue, mountIssues, plugsOf } from './breadboard.ts'
-import { type ExternalPower, type HoleGroup, type ModuleDef, type PinDef, type PinType, commonReturn, externalPower, isSpacer, voltageOutputs } from './module.ts'
+import { type ExternalPower, type HoleGroup, type ModuleDef, type PinDef, type PinType, commonReturn, declaredReturns, externalPower, isSpacer, voltageOutputs } from './module.ts'
 import { netlist, nodeKey } from './netlist.ts'
 import { partValue, primaryParam } from './values.ts'
 
@@ -165,10 +165,10 @@ interface ModuleInfo {
   /** The part's `ground` pins and hole groups, in module order. */
   grounds: string[]
   /**
-   * One ground per ground component, the largest component first (ties in module order): the
-   * first is the reference the part's supplies return to (a battery's -, a board's GND).
+   * The ground each supply pin returns to: `electrical.returns`, else the part's only ground
+   * component (grounds in one commonReturn group count as one); null when that is ambiguous.
    */
-  groundComps: string[]
+  returnOf: Map<string, string | null>
   /** Pins and hole groups that may be supplies: power outputs and pins on USB power. */
   sourceNames: string[]
   /** Ground pins the module declares one return for checking (`electrical.commonReturn`). */
@@ -204,13 +204,18 @@ function moduleInfo(m: ModuleDef): ModuleInfo {
   const pass = new Set([...defs.keys()].filter((n) => type(n) === 'power_out' && fedComps.has(comp.get(n))))
   const external = new Map(externalPower(m).filter((e) => defs.has(e.pin)).map((e) => [e.pin, e]))
   const grounds = [...defs.keys()].filter((n) => type(n) === 'ground')
-  const size = new Map<string, number>()
-  for (const g of grounds) size.set(comp.get(g)!, (size.get(comp.get(g)!) ?? 0) + 1)
-  const groundComps = [...new Map(grounds.map((g) => [comp.get(g)!, g])).entries()]
-    .map(([c]) => grounds.find((g) => comp.get(g) === c)!)
-    .sort((a, b) => size.get(comp.get(b)!)! - size.get(comp.get(a)!)! || grounds.indexOf(a) - grounds.indexOf(b))
   const sourceNames = [...defs.keys()].filter((n) => (type(n) === 'power_out' && !pass.has(n)) || external.has(n))
-  info = { module: m, defs, comp, pass, external, grounds, groundComps, sourceNames, commonReturn: commonReturn(m).filter((g) => g.every((n) => defs.has(n))), valued: new Set(primaryParam(m)?.name === 'voltage' ? voltageOutputs(m) : []) }
+  // Ground components, with commonReturn groups merged: one of them is the only possible return.
+  const joined = commonReturn(m).filter((g) => g.every((n) => defs.has(n)))
+  const retComp = (g: string) => {
+    const group = joined.find((j) => j.includes(g))
+    return group ? comp.get(group[0])! : comp.get(g)!
+  }
+  const comps = new Set(grounds.map(retComp))
+  const declared = declaredReturns(m)
+  const only = comps.size === 1 ? grounds[0] : null
+  const returnOf = new Map(sourceNames.map((n) => [n, declared[n] !== undefined && defs.has(declared[n]) ? declared[n] : only]))
+  info = { module: m, defs, comp, pass, external, grounds, returnOf, sourceNames, commonReturn: joined, valued: new Set(primaryParam(m)?.name === 'voltage' ? voltageOutputs(m) : []) }
   infoCache.set(m, info)
   return info
 }
@@ -243,6 +248,8 @@ interface Source {
   unknown: UnknownReason | null
   /** Set when the voltage comes from a connector the sheet does not draw (a board on USB). */
   external?: ExternalPower
+  /** True when the part has several ground components and does not say which one this returns to. */
+  refUnknown?: boolean
 }
 
 /** The supply `t` makes, if any. Pass-through outputs make none. */
@@ -534,7 +541,6 @@ function checkPotentials({ d, nl, netTerms, netWires, terminal, shorted, add }: 
     for (const g of info.commonReturn)
       for (const n of g.slice(1)) edges.push({ from: netOfKey(nodeKey(p.uid, g[0])), to: netOfKey(nodeKey(p.uid, n)), v: 0 })
     if (!info.sourceNames.length) continue
-    const ref = info.groundComps.length ? netOfKey(nodeKey(p.uid, info.groundComps[0])) : null
     const own = new Map<string, Source>()
     for (const n of info.sourceNames) {
       const t = terminal(nodeKey(p.uid, n))
@@ -550,7 +556,13 @@ function checkPotentials({ d, nl, netTerms, netWires, terminal, shorted, add }: 
       list.set(out, [...(list.get(out) ?? []), s])
       // A supply wired to its own ground is reported as a short already; it places nothing.
       if (shorted.has(s.id)) continue
-      edges.push({ from: ref ?? `(${s.id})`, to: out, v: s.v, src: s })
+      const ret = info.returnOf.get(s.term.name)
+      if (ret) edges.push({ from: netOfKey(nodeKey(p.uid, ret)), to: out, v: s.v, src: s })
+      else if (info.grounds.length) {
+        // Several grounds and no declared return: its voltage over any of them is unknown.
+        s.refUnknown = true
+        edges.push({ from: netOfKey(nodeKey(p.uid, info.grounds[0])), to: out, v: null, src: s })
+      } else edges.push({ from: `(${s.id})`, to: out, v: s.v, src: s })
     }
   }
 
@@ -687,7 +699,7 @@ function checkPotentials({ d, nl, netTerms, netWires, terminal, shorted, add }: 
       return i !== undefined && netTerms[i].some((o) => o.part !== p && !o.bare)
     })
   }
-  const reason = (x: Source) => (x.unknown === 'adjustable' ? 'adjustable' : 'voltage not known')
+  const reason = (x: Source) => (x.refUnknown ? 'its return is not known' : x.unknown === 'adjustable' ? 'adjustable' : 'voltage not known')
   nl.nets.forEach((_, i) => {
     const net = `#${i}`
     for (const t of netTerms[i]) {
@@ -715,7 +727,7 @@ function checkPotentials({ d, nl, netTerms, netWires, terminal, shorted, add }: 
           // supply is the only unknown, counting what sits below it; otherwise say it cannot be checked.
           const ids = [...diff.u.keys()]
           const open = ids.map((id) => sources.get(id)!)
-          const adj = open.length === 1 && open[0].unknown === 'adjustable' && diff.u.get(ids[0]) === 1 ? open[0] : undefined
+          const adj = open.length === 1 && open[0].unknown === 'adjustable' && !open[0].refUnknown && diff.u.get(ids[0]) === 1 ? open[0] : undefined
           const rails = [...new Set(accepts)].sort((a, b) => a - b)
           const settings = rails.map((r) => r - diff.c)
           const gname = termName(terminal(nodeKey(t.part.uid, groundPin!))!)

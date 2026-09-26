@@ -301,3 +301,26 @@ describe("a load whose ground does not reach its supply's return", () => {
     ])
   })
 })
+
+describe('each output returns to a known ground, or nothing definite is said', () => {
+  const twin = (returns?: Record<string, string>) => custom({
+    id: 'twin-iso', pins: [
+      { name: 'A', side: 'right', type: 'power_out', supply: '5V' }, { name: 'GA', side: 'right', type: 'ground' },
+      { name: 'B', side: 'right', type: 'power_out', supply: '5V' }, { name: 'GB', side: 'right', type: 'ground' },
+    ], ...(returns ? { electrical: { returns } } : {}),
+  })
+  const wires: Wire[] = [['bt1|-', 'u2|GA'], ['bt1|+', 'u2|GB'], ['u2|B', 'u3|VCC'], ['u3|GND', 'u2|GA']]
+  const parts = [at('u2', 'U2', 'twin-iso'), at('bt1', 'BT1', 'battery-holder-2xaa', 200), at('u3', 'U3', 'oled-ssd1306-096-i2c', 400)]
+  it('two isolated outputs with no returns declared: the load cannot be checked', () => {
+    expect(found(sheetWith([twin()], parts, wires))).toEqual(['supply-unknown: U3 VCC voltage depends on U2 B (its return is not known) and cannot be checked.'])
+  })
+  it('with returns declared, output B sits on the pack: 8 V is too high', () => {
+    expect(found(sheetWith([twin({ A: 'GA', B: 'GB' })], parts, wires))).toEqual([
+      'supply-too-high: U3 VCC accepts up to 5 V but gets 8 V from BT1 + and U2 B in series.',
+    ])
+  })
+  it('every Pico output and USB pin returns to GND, not AGND', () => {
+    for (const id of ['rpi-pico', 'rpi-pico-h', 'rpi-pico-w', 'rpi-pico-2', 'rpi-pico-2-w'])
+      expect((load(id).electrical as { returns?: unknown }).returns).toEqual({ '3V3(OUT)': 'GND', VBUS: 'GND', VSYS: 'GND' })
+  })
+})

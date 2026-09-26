@@ -138,6 +138,8 @@ function build({ id, name, source, shapes }) {
     electrical: {
       model: 'mcu', params: {},
       external: [{ pin: 'VBUS', volts: 5, via: 'USB' }, { pin: 'VSYS', volts: 5, via: 'USB through the VSYS diode' }],
+      // AGND is a separate analog ground (see above), so say which ground the supplies return to.
+      returns: { '3V3(OUT)': 'GND', VBUS: 'GND', VSYS: 'GND' },
     },
     art: { w: W, h: H, pinLabels: 'inside', shapes: [r(0, 0, W, H, PCB, { radius: 4 }), ...shapes] },
   }
