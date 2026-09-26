@@ -12,22 +12,23 @@ const sheet = (parts: PartInstance[], connections: Connection[]): Diagram => ({ 
 const at = (uid: string, designator: string, module: string, x: number): PartInstance => ({ uid, designator, module, x, y: 0 })
 
 describe('checkDiagram on built-in parts', () => {
-  it('flags a 5 V supply wired into an ESP32 3V3 pin, and a cell wired to ground', () => {
+  it('flags a 5 V supply wired into an ESP32 3V3 pin, and a cell wired to a ground that leads back to it', () => {
     const d = sheet(
       [at('u1', 'U1', 'esp32-devkitc-v4', 0), at('u2', 'U2', 'ip5306-usbc-module', 400), at('bt1', 'BT1', 'battery-18650-holder', 800)],
       [
         { uid: 'w1', from: { part: 'u2', pin: '5V+' }, to: { part: 'u1', pin: '3V3' } },
         { uid: 'w2', from: { part: 'u2', pin: '5V-' }, to: { part: 'u1', pin: 'GND' } },
         { uid: 'w3', from: { part: 'bt1', pin: '+' }, to: { part: 'u1', pin: 'GND' } },
+        { uid: 'w4', from: { part: 'bt1', pin: '-' }, to: { part: 'u1', pin: 'GND 2' } },
       ],
     )
     const msgs = checkDiagram(d).map((f) => `${f.rule}: ${f.message}`)
     expect(msgs).toContain('supplies-fight: U2 5V+ (5 V) and U1 3V3 (3.3 V) are wired together: the two supplies fight.')
-    expect(msgs).toContain('short: BT1 + is wired straight to ground (U1 GND): short circuit.')
+    expect(msgs).toContain('short: BT1 + is wired to U1 GND, which leads back to BT1 -: short circuit.')
   })
-  it('flags a 3.3 V only sensor on 5 V and asks for the buck output to be set', () => {
+  it('flags a 3.3 V only sensor on 5 V, and a buck set above what a display takes', () => {
     const d = sheet(
-      [at('u1', 'U1', 'ip5306-usbc-module', 0), at('u2', 'U2', 'bme280-module-6pin', 400), at('u3', 'U3', 'lm2596-buck-module', 800), at('u4', 'U4', 'oled-ssd1306-096-i2c', 1200)],
+      [at('u1', 'U1', 'ip5306-usbc-module', 0), at('u2', 'U2', 'bme280-module-6pin', 400), { ...at('u3', 'U3', 'lm2596-buck-module', 800), values: { voltage: { value: 12, unit: 'V' } } }, at('u4', 'U4', 'oled-ssd1306-096-i2c', 1200)],
       [
         { uid: 'w1', from: { part: 'u1', pin: '5V+' }, to: { part: 'u2', pin: 'VCC' } },
         { uid: 'w2', from: { part: 'u1', pin: '5V-' }, to: { part: 'u2', pin: 'GND' } },
@@ -37,7 +38,7 @@ describe('checkDiagram on built-in parts', () => {
     )
     const msgs = checkDiagram(d).map((f) => f.message)
     expect(msgs).toContain('U2 VCC accepts up to 3.3 V but gets 5 V from U1 5V+.')
-    expect(msgs).toContain('U3 OUT+ is adjustable; set it to a voltage U4 VCC accepts (3.3 V or 5 V).')
+    expect(msgs).toContain('U4 VCC accepts up to 5 V but gets 12 V from U3 OUT+.')
   })
 
   it('checks 200 parts and 500 wires in 20 ms or less (median)', () => {
