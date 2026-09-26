@@ -1,10 +1,10 @@
 // Regression test for the Spirit Typewriter parts (scripts/gen-typewriter.mjs): tilt switches,
-// the ESP32 screw terminal adapter, tactile switches, the panel pot, USB panel-mount cables, JST-XH
+// the ESP32 DevKitC V4 on its screw terminal board, tactile switches, the panel pot, USB panel-mount cables, JST-XH
 // headers and Dupont housings. Every pin must sit in the physical order transcribed from the
 // sources in each module's `source`. A wrong pin is worse than a missing part, so a change here
 // must be re-checked against the source.
 import { describe, expect, it } from 'vitest'
-import { isSpacer, layoutModule, type Side } from './module.ts'
+import { externalPower, isSpacer, layoutModule, type Side } from './module.ts'
 import { load, pinsOf, pin } from './builtinModules.testing.ts'
 
 
@@ -59,8 +59,10 @@ describe('Spirit Typewriter parts keep the physical pin order', () => {
     })
   }
 
-  it('the terminal adapter types its rails like the DevKitC it carries', () => {
+  it("is the DevKitC V4 on the terminal board: its rails and USB 5 V are the DevKit's", () => {
     const m = load('esp32-terminal-board-38.json')
+    expect(m.name).toBe('ESP32 DevKitC V4 on 38-pin screw terminal board')
+    expect(externalPower(m)).toEqual([{ pin: '5V', volts: 5, via: "the DevKit's USB" }])
     expect(m.art?.pinLabels).toBe('inside')
     expect(pin(m, '3V3')).toMatchObject({ type: 'power_out', supply: '3V3' })
     expect(pin(m, '5V')).toMatchObject({ type: 'power_in', supply: '5V' })

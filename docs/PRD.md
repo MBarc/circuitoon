@@ -299,7 +299,7 @@ V1 ships a starter library drawn in the same cartoon style, all defined in the s
 | Batteries | 9V battery, AA, AAA, 18650 cell, 18650 holder (1 cell), 18650 holder (2S), 2 x AA, 3 x AAA and 4 x AA holders, CR1220, CR2016, CR2025 and CR2032 coin cells, CR2032 holder, LR44 button cell | Voltage |
 | Prototyping | Full breadboard (830), half breadboard (400), mini breadboard (170), tiny breadboard (25), power rail strip | - |
 | Power | AMS1117 3.3 V regulator module (3-pin), IP5306 USB-C charge/boost module, LM2596 buck converter (adjustable), TP4056 USB-C Li-ion charger with protection | Voltage (LM2596 output) |
-| Microcontrollers | ESP32 DevKitC V4, ESP32 DevKit V1 (30 pin, DOIT), ESP32-S3-DevKitC-1, ESP32-C3 SuperMini, Seeed XIAO ESP32-C3, Seeed XIAO ESP32-S3, ESP32-CAM (AI Thinker), ESP32 38-pin screw terminal adapter, Raspberry Pi Pico, Pico H, Pico W, Pico 2, Pico 2 W, Arduino Nano, Wemos / LOLIN D1 mini | - |
+| Microcontrollers | ESP32 DevKitC V4, ESP32 DevKit V1 (30 pin, DOIT), ESP32-S3-DevKitC-1, ESP32-C3 SuperMini, Seeed XIAO ESP32-C3, Seeed XIAO ESP32-S3, ESP32-CAM (AI Thinker), ESP32 DevKitC V4 on 38-pin screw terminal board, Raspberry Pi Pico, Pico H, Pico W, Pico 2, Pico 2 W, Arduino Nano, Wemos / LOLIN D1 mini | - |
 | Sensors | BME280 module (4-pin I2C, 6-pin GY-BME280), DHT22 (3-pin module, bare 4-pin), HC-SR04 ultrasonic distance sensor, HC-SR501 PIR motion sensor, SW-520D tilt switch, SW-460D vibration switch | - |
 | Communication | microSD card module (3.3 V, 5 V with level shifter), Adafruit RFM95W LoRa breakout, BSS138 4-channel logic level shifter | - |
 | Displays | 0.91" and 0.96" SSD1306 OLEDs, 1.3" SH1106 OLEDs (both 4-pin orders), 1.54" ST7789, 1.8" ST7735, 2.4" and 2.8" ILI9341 and 4.0" ST7796S SPI TFTs | - |

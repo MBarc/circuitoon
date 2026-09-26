@@ -70,7 +70,7 @@ const passive = { type: 'passive' }
 }
 
 // =============================================================================================
-// Microcontrollers: ESP32 38-pin screw terminal adapter
+// Microcontrollers: ESP32 DevKitC V4 on the 38-pin screw terminal board
 
 // ---------------------------------------------------------------------------------------------
 // 3. "FOR ESP32 TERMINAL ADAPTER" (77 x 63 mm black board, four M3 corner holes, two rows of
@@ -80,6 +80,9 @@ const passive = { type: 'passive' }
 //    DevKitC V4's two headers (3V3 ... 5V and GND ... CLK), so the DevKit seats antenna to the
 //    right. Silkscreen names are used as printed (P13, SD2, SVP; "3U3" and "5U" are the board
 //    font's V). No power input of its own: power comes through the DevKit.
+//    The part is the pair Michael uses, the adapter with a DevKitC V4 seated in its outer (1.0 in)
+//    sockets, drawn antenna to the right and micro-USB to the left. Its 3V3 is the DevKit's
+//    regulator and its 5V the DevKit's USB 5 V; the terminals and their order are the adapter's.
 {
   const wu = 26, hu = 21, W = wu * 10, H = hu * 10
   const types = {
@@ -102,20 +105,38 @@ const passive = { type: 'passive' }
     r(x0 + 20, y, x1 - x0 - 40, 8, DARK, { radius: 1 }),
     ...xs.slice(2, 17).map((x) => r(x - 1.5, y + 2.5, 3, 3, GREY, { outline: false })),
   ]
+  // The seated DevKitC V4: its headers sit in the outer sockets (y 48 and H - 56).
+  const devkit = () => [
+    r(24, 40, 216, 130, BLACK, { radius: 5 }),
+    ...[48, H - 56].flatMap((y) => [
+      r(xs[0] - 5, y, xs[18] - xs[0] + 10, 8, GOLD, { radius: 2, outline: false }),
+      ...xs.map((x) => r(x - 1.5, y + 2.5, 3, 3, HOLE, { radius: 1.5, outline: false })),
+    ]),
+    // Micro-USB overhanging the left end, the two buttons beside it, a power LED.
+    r(12, 91, 22, 28, METAL, { radius: 2 }),
+    ...[64, 130].flatMap((y) => [r(42, y, 14, 14, GREY, { radius: 2 }), r(46, y + 4, 6, 6, DARK, { radius: 3, outline: false })]),
+    r(66, 102, 6, 5, RED, { radius: 1, outline: false }),
+    r(84, 94, 22, 22, DARK, { radius: 2 }),
+    // ESP32-WROOM-32 can and its PCB antenna at the right end.
+    r(142, 62, 72, 86, CAN, { radius: 3, label: 'ESP32', labelSize: 12 }),
+    r(214, 62, 22, 86, DARK, { radius: 2 }),
+    r(218, 68, 2.5, 74, GOLD, { outline: false }),
+    ...[0, 1, 2, 3].map((i) => r(218, 68 + i * 23.8, 14, 2.5, GOLD, { outline: false })),
+    r(100, 124, 36, 10, BLACK, { outline: false, label: 'DevKitC V4', labelColor: WHITE, labelSize: 6 }),
+  ]
   const shapes = [
     r(0, 0, W, H, BLACK, { radius: 4 }),
     ...[[4, 4], [W - 14, 4], [4, H - 14], [W - 14, H - 14]].map(([x, y]) => r(x, y, 10, 10, MOUNT, { radius: 5 })),
     ...strip(1), ...strip(H - 11),
     ...socket(48), ...socket(62), ...socket(H - 70), ...socket(H - 56),
-    r(W / 2 - 60, 86, 120, 16, BLACK, { outline: false, label: 'FOR ESP32', labelColor: WHITE, labelSize: 11 }),
-    r(W / 2 - 60, 106, 120, 14, BLACK, { outline: false, label: 'TERMINAL ADAPTER', labelColor: WHITE, labelSize: 8 }),
+    ...devkit(),
   ]
   write('esp32-terminal-board-38.json', moduleJson({
-    id: 'esp32-terminal-board-38', name: 'ESP32 38-pin screw terminal adapter', category: 'Microcontrollers',
+    id: 'esp32-terminal-board-38', name: 'ESP32 DevKitC V4 on 38-pin screw terminal board', category: 'Microcontrollers',
     source: 'https://protosupplies.com/product/esp32-s-screw-terminal-adapter/ https://www.otronic.nl/en/breakout-board-for-esp32-s-38-pins.html',
     pins: [...top.pins, ...bottom.pins], internal: [['GND', 'GND 2', 'GND 3']], wu, hu,
     // Its 5V terminal is the seated DevKitC's 5V pin, which carries that board's USB 5 V (see
-    // gen-boards.mjs), so it is a 5 V source while the DevKit sits on USB.
+    // gen-boards.mjs: VBUS through a Schottky diode to EXT_5V), a 5 V source while it is on USB.
     electrical: { model: 'breakout', params: {}, external: [{ pin: '5V', volts: 5, via: "the DevKit's USB" }] }, inside: true, shapes,
   }))
 }

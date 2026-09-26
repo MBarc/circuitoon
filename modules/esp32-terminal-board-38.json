@@ -2,7 +2,7 @@
   "format": "circuitoon-module/1",
   "id": "esp32-terminal-board-38",
   "version": 1,
-  "name": "ESP32 38-pin screw terminal adapter",
+  "name": "ESP32 DevKitC V4 on 38-pin screw terminal board",
   "category": "Microcontrollers",
   "source": "https://protosupplies.com/product/esp32-s-screw-terminal-adapter/ https://www.otronic.nl/en/breakout-board-for-esp32-s-38-pins.html",
   "pins": [
@@ -1563,27 +1563,555 @@
       },
       {
         "type": "rect",
-        "x": 70,
-        "y": 86,
-        "w": 120,
-        "h": 16,
+        "x": 24,
+        "y": 40,
+        "w": 216,
+        "h": 130,
         "fill": "#2B2F36",
-        "outline": false,
-        "label": "FOR ESP32",
-        "labelColor": "#FFFFFF",
-        "labelSize": 11
+        "radius": 5
       },
       {
         "type": "rect",
-        "x": 70,
-        "y": 106,
-        "w": 120,
+        "x": 35,
+        "y": 48,
+        "w": 190,
+        "h": 8,
+        "fill": "#E0B43C",
+        "radius": 2,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 38.5,
+        "y": 50.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#6B727C",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 48.5,
+        "y": 50.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#6B727C",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 58.5,
+        "y": 50.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#6B727C",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 68.5,
+        "y": 50.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#6B727C",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 78.5,
+        "y": 50.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#6B727C",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 88.5,
+        "y": 50.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#6B727C",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 98.5,
+        "y": 50.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#6B727C",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 108.5,
+        "y": 50.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#6B727C",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 118.5,
+        "y": 50.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#6B727C",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 128.5,
+        "y": 50.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#6B727C",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 138.5,
+        "y": 50.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#6B727C",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 148.5,
+        "y": 50.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#6B727C",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 158.5,
+        "y": 50.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#6B727C",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 168.5,
+        "y": 50.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#6B727C",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 178.5,
+        "y": 50.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#6B727C",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 188.5,
+        "y": 50.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#6B727C",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 198.5,
+        "y": 50.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#6B727C",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 208.5,
+        "y": 50.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#6B727C",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 218.5,
+        "y": 50.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#6B727C",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 35,
+        "y": 154,
+        "w": 190,
+        "h": 8,
+        "fill": "#E0B43C",
+        "radius": 2,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 38.5,
+        "y": 156.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#6B727C",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 48.5,
+        "y": 156.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#6B727C",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 58.5,
+        "y": 156.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#6B727C",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 68.5,
+        "y": 156.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#6B727C",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 78.5,
+        "y": 156.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#6B727C",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 88.5,
+        "y": 156.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#6B727C",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 98.5,
+        "y": 156.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#6B727C",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 108.5,
+        "y": 156.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#6B727C",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 118.5,
+        "y": 156.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#6B727C",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 128.5,
+        "y": 156.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#6B727C",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 138.5,
+        "y": 156.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#6B727C",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 148.5,
+        "y": 156.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#6B727C",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 158.5,
+        "y": 156.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#6B727C",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 168.5,
+        "y": 156.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#6B727C",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 178.5,
+        "y": 156.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#6B727C",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 188.5,
+        "y": 156.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#6B727C",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 198.5,
+        "y": 156.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#6B727C",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 208.5,
+        "y": 156.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#6B727C",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 218.5,
+        "y": 156.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#6B727C",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 12,
+        "y": 91,
+        "w": 22,
+        "h": 28,
+        "fill": "#C9CED6",
+        "radius": 2
+      },
+      {
+        "type": "rect",
+        "x": 42,
+        "y": 64,
+        "w": 14,
         "h": 14,
+        "fill": "#3A3F47",
+        "radius": 2
+      },
+      {
+        "type": "rect",
+        "x": 46,
+        "y": 68,
+        "w": 6,
+        "h": 6,
+        "fill": "#1B1F24",
+        "radius": 3,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 42,
+        "y": 130,
+        "w": 14,
+        "h": 14,
+        "fill": "#3A3F47",
+        "radius": 2
+      },
+      {
+        "type": "rect",
+        "x": 46,
+        "y": 134,
+        "w": 6,
+        "h": 6,
+        "fill": "#1B1F24",
+        "radius": 3,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 66,
+        "y": 102,
+        "w": 6,
+        "h": 5,
+        "fill": "#E0483E",
+        "radius": 1,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 84,
+        "y": 94,
+        "w": 22,
+        "h": 22,
+        "fill": "#1B1F24",
+        "radius": 2
+      },
+      {
+        "type": "rect",
+        "x": 142,
+        "y": 62,
+        "w": 72,
+        "h": 86,
+        "fill": "#B8BEC7",
+        "radius": 3,
+        "label": "ESP32",
+        "labelSize": 12
+      },
+      {
+        "type": "rect",
+        "x": 214,
+        "y": 62,
+        "w": 22,
+        "h": 86,
+        "fill": "#1B1F24",
+        "radius": 2
+      },
+      {
+        "type": "rect",
+        "x": 218,
+        "y": 68,
+        "w": 2.5,
+        "h": 74,
+        "fill": "#E0B43C",
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 218,
+        "y": 68,
+        "w": 14,
+        "h": 2.5,
+        "fill": "#E0B43C",
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 218,
+        "y": 91.8,
+        "w": 14,
+        "h": 2.5,
+        "fill": "#E0B43C",
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 218,
+        "y": 115.6,
+        "w": 14,
+        "h": 2.5,
+        "fill": "#E0B43C",
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 218,
+        "y": 139.4,
+        "w": 14,
+        "h": 2.5,
+        "fill": "#E0B43C",
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 100,
+        "y": 124,
+        "w": 36,
+        "h": 10,
         "fill": "#2B2F36",
         "outline": false,
-        "label": "TERMINAL ADAPTER",
+        "label": "DevKitC V4",
         "labelColor": "#FFFFFF",
-        "labelSize": 8
+        "labelSize": 6
       }
     ]
   }
