@@ -53,7 +53,8 @@ const TYPES = {
   AGND: { type: 'ground' },
   SWCLK: { type: 'input' },
 }
-const typeOf = (name) => TYPES[name] ?? (name === 'GND' || name.startsWith('GND ') ? { type: 'ground' } : {})
+// GP0-GP28 are general-purpose I/O (the ADC-capable GP26-28 too): `io`. SWDIO stays untyped.
+const typeOf = (name) => TYPES[name] ?? (name === 'GND' || name.startsWith('GND ') ? { type: 'ground' } : /^GP\d+/.test(name) ? { type: 'io' } : {})
 
 function pinsFor(side, list) {
   return list.map((s) => {

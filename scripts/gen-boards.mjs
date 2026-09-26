@@ -76,13 +76,17 @@ function build({ file, id, name, source, left, right, top = 0, bottom = 0, wu, t
 }
 
 // Type rule shared by all boards (brief: 3V3 power_out, 5V/VIN power_in, GND ground, input-only GPIO input).
-function typer({ gnd = [], v33 = [], v5 = [], inputs = [], other = {} }) {
+// `gpio` picks the general-purpose I/O pins (the board's GPIO names per its cited pinout, UART
+// TX/RX included): they are `io`, so the wiring checker treats them as signal pins. Pins tied to
+// the module's flash (DevKitC SD0-SD3, CMD, CLK), control pins and anything else keep no type.
+function typer({ gnd = [], v33 = [], v5 = [], inputs = [], other = {}, gpio = () => false }) {
   return (name) => {
     if (other[name]) return other[name]
     if (gnd.some((g) => name === g || name.startsWith(g + ' '))) return { type: 'ground' }
     if (v33.some((g) => name === g || name.startsWith(g + ' '))) return { type: 'power_out', supply: '3V3' }
     if (v5.includes(name)) return { type: 'power_in', supply: '5V' }
     if (inputs.includes(name)) return { type: 'input' }
+    if (gpio(name)) return { type: 'io' }
     return {}
   }
 }
@@ -103,7 +107,8 @@ build({
   left: ['3V3', 'EN', 'VP', 'VN', 'IO34', 'IO35', 'IO32', 'IO33', 'IO25', 'IO26', 'IO27', 'IO14', 'IO12', 'GND', 'IO13', 'D2', 'D3', 'CMD', '5V'],
   right: ['GND 2|GND', 'IO23', 'IO22', 'TX', 'RX', 'IO21', 'GND 3|GND', 'IO19', 'IO18', 'IO5', 'IO17', 'IO16', 'IO4', 'IO0', 'IO2', 'IO15', 'D1', 'D0', 'CLK'],
   top: 2, wu: 12, usb: '5V', usbDiode: true, // schematic: VBUS through D3 (BAT760) to EXT_5V, header J2 pin 19
-  types: typer({ gnd: ['GND'], v33: ['3V3'], v5: ['5V'], inputs: ['EN', 'VP', 'VN', 'IO34', 'IO35'] }),
+  // GPIO: IOnn and the UART0 pins; D0-D3, CMD and CLK are the module's flash pins (untyped).
+  types: typer({ gnd: ['GND'], v33: ['3V3'], v5: ['5V'], inputs: ['EN', 'VP', 'VN', 'IO34', 'IO35'], gpio: (n) => /^IO\d+$/.test(n) || n === 'TX' || n === 'RX' }),
   internal: [['GND', 'GND 2', 'GND 3']],
   art: {
     shapes: (W, H) => [
@@ -128,7 +133,8 @@ build({
   left: ['EN', 'VP', 'VN', 'D34', 'D35', 'D32', 'D33', 'D25', 'D26', 'D27', 'D14', 'D12', 'D13', 'GND', 'VIN'],
   right: ['D23', 'D22', 'TX0', 'RX0', 'D21', 'D19', 'D18', 'D5', 'TX2', 'RX2', 'D4', 'D2', 'D15', 'GND 2|GND', '3V3'],
   top: 2, wu: 12, usb: 'VIN', usbDiode: true, // DOIT schematic: VCCUSB through D1 (SS14) to VIN, header J1 pin 1
-  types: typer({ gnd: ['GND'], v33: ['3V3'], inputs: ['EN', 'VP', 'VN', 'D34', 'D35'], other: { VIN: { type: 'power_in', supply: '5V/7V/9V/12V' } } }),
+  types: typer({ gnd: ['GND'], v33: ['3V3'], inputs: ['EN', 'VP', 'VN', 'D34', 'D35'], other: { VIN: { type: 'power_in', supply: '5V/7V/9V/12V' } },
+    gpio: (n) => /^D\d+$/.test(n) || /^(TX|RX)[02]$/.test(n) }),
   internal: [['GND', 'GND 2']],
   art: {
     shapes: (W, H) => [
@@ -149,7 +155,7 @@ build({
   left: ['3V3', '3V3 2|3V3', 'RST', '4', '5', '6', '7', '15', '16', '17', '18', '8', '3', '46', '9', '10', '11', '12', '13', '14', '5V', 'G'],
   right: ['G 2|G', 'TX', 'RX', '1', '2', '42', '41', '40', '39', '38', '37', '36', '35', '0', '45', '48', '47', '21', '20', '19', 'G 3|G', 'G 4|G'],
   top: 2, wu: 12, usb: '5V', usbDiode: true, // schematic: both USB ports' VBUS through 1N5819 diodes to VCC_5V, header J1 pin 21
-  types: typer({ gnd: ['G'], v33: ['3V3'], v5: ['5V'], inputs: ['RST'] }),
+  types: typer({ gnd: ['G'], v33: ['3V3'], v5: ['5V'], inputs: ['RST'], gpio: (n) => /^\d+$/.test(n) || n === 'TX' || n === 'RX' }),
   internal: [['G', 'G 2', 'G 3', 'G 4'], ['3V3', '3V3 2']],
   art: {
     shapes: (W, H) => [
@@ -171,7 +177,7 @@ build({
   left: ['5', '6', '7', '8', '9', '10', '20', '21'],
   right: ['5V', 'G', '3.3', '4', '3', '2', '1', '0'],
   wu: 8, usb: '5V', // Nologo schematic (on the source page): header H2 pin 8 is VBUS itself, no diode (BAT60J sits between VBUS and VSYS)
-  types: typer({ gnd: ['G'], v33: ['3.3'], v5: ['5V'] }),
+  types: typer({ gnd: ['G'], v33: ['3.3'], v5: ['5V'], gpio: (n) => /^\d+$/.test(n) }),
   art: {
     shapes: (W, H) => [
       r(W / 2 - 13, -6, 26, 22, METAL, { radius: 3 }),
@@ -186,7 +192,7 @@ build({
 // 5/6. Seeed XIAO ESP32-C3 / ESP32-S3, front view with USB-C at top.
 const xiaoLeft = ['D0', 'D1', 'D2', 'D3', 'D4', 'D5', 'D6']
 const xiaoRight = ['5V', 'GND', '3V3', 'D10', 'D9', 'D8', 'D7']
-const xiaoTypes = typer({ gnd: ['GND'], v33: ['3V3'], v5: ['5V'] })
+const xiaoTypes = typer({ gnd: ['GND'], v33: ['3V3'], v5: ['5V'], gpio: (n) => /^D\d+$/.test(n) })
 build({
   file: 'xiao-esp32c3.json', id: 'xiao-esp32c3', name: 'Seeed XIAO ESP32-C3',
   source: 'https://wiki.seeedstudio.com/XIAO_ESP32C3_Getting_Started/ https://files.seeedstudio.com/wiki/XIAO_WiFi/XIAO_ESP32-C3_front_pinout.png',
@@ -224,7 +230,7 @@ build({
   left: ['5V', 'GND', 'IO12', 'IO13', 'IO15', 'IO14', 'IO2', 'IO4'],
   right: ['3V3', 'IO16', 'IO0', 'GND 2|GND', 'VCC', 'U0R', 'U0T', 'GND/R'],
   bottom: 6, wu: 11,
-  types: typer({ gnd: ['GND'], v33: ['3V3', 'VCC'], v5: ['5V'], other: { 'GND/R': { type: 'passive' } } }),
+  types: typer({ gnd: ['GND'], v33: ['3V3', 'VCC'], v5: ['5V'], other: { 'GND/R': { type: 'passive' } }, gpio: (n) => /^IO\d+$/.test(n) || n === 'U0R' || n === 'U0T' }),
   internal: [['GND', 'GND 2']],
   art: {
     shapes: (W, H) => [
@@ -251,6 +257,8 @@ build({
   top: 1, wu: 8, usb: '5V', usbDiode: true, // schematic: VUSB through D1 (SS1P3L, the '+5V auto selector') to +5V, J2 pin 4; VIN feeds the 5 V regulator, not USB
   types: typer({
     gnd: ['GND'], v33: ['3V3'], v5: ['5V'], inputs: ['AREF', 'A6', 'A7', 'RST', 'RST 2'],
+    // D0-D13 (RX0/TX1 are D0/D1) and A0-A5 are digital I/O; A6/A7 are analog inputs only.
+    gpio: (n) => /^D\d+$/.test(n) || /^A[0-5]$/.test(n) || n === 'RX0' || n === 'TX1',
     other: { VIN: { type: 'power_in', supply: '7V/7.4V/9V/12V' } },
   }),
   internal: [['GND', 'GND 2'], ['RST', 'RST 2']],
@@ -282,7 +290,7 @@ build({
   left: ['RST', 'A0', 'D0', 'D5', 'D6', 'D7', 'D8', '3V3'],
   right: ['TX', 'RX', 'D1', 'D2', 'D3', 'D4', 'GND', '5V'],
   top: 2, bottom: 2, wu: 10, usb: '5V', usbDiode: true, // v3.0.0 schematic: VBUS through D2 (B5819W) and fuse F1 to +5V, P1 pin 9
-  types: typer({ gnd: ['GND'], v33: ['3V3'], v5: ['5V'], inputs: ['RST', 'A0'] }),
+  types: typer({ gnd: ['GND'], v33: ['3V3'], v5: ['5V'], inputs: ['RST', 'A0'], gpio: (n) => /^D\d$/.test(n) || n === 'TX' || n === 'RX' }),
   art: {
     pcb: '#1E4F8A',
     shapes: (W, H) => [

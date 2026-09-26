@@ -26,23 +26,28 @@
     },
     {
       "name": "D0",
-      "side": "left"
+      "side": "left",
+      "type": "io"
     },
     {
       "name": "D5",
-      "side": "left"
+      "side": "left",
+      "type": "io"
     },
     {
       "name": "D6",
-      "side": "left"
+      "side": "left",
+      "type": "io"
     },
     {
       "name": "D7",
-      "side": "left"
+      "side": "left",
+      "type": "io"
     },
     {
       "name": "D8",
-      "side": "left"
+      "side": "left",
+      "type": "io"
     },
     {
       "name": "3V3",
@@ -68,27 +73,33 @@
     },
     {
       "name": "TX",
-      "side": "right"
+      "side": "right",
+      "type": "io"
     },
     {
       "name": "RX",
-      "side": "right"
+      "side": "right",
+      "type": "io"
     },
     {
       "name": "D1",
-      "side": "right"
+      "side": "right",
+      "type": "io"
     },
     {
       "name": "D2",
-      "side": "right"
+      "side": "right",
+      "type": "io"
     },
     {
       "name": "D3",
-      "side": "right"
+      "side": "right",
+      "type": "io"
     },
     {
       "name": "D4",
-      "side": "right"
+      "side": "right",
+      "type": "io"
     },
     {
       "name": "GND",

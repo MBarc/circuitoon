@@ -19,27 +19,33 @@
     },
     {
       "name": "IO12",
-      "side": "left"
+      "side": "left",
+      "type": "io"
     },
     {
       "name": "IO13",
-      "side": "left"
+      "side": "left",
+      "type": "io"
     },
     {
       "name": "IO15",
-      "side": "left"
+      "side": "left",
+      "type": "io"
     },
     {
       "name": "IO14",
-      "side": "left"
+      "side": "left",
+      "type": "io"
     },
     {
       "name": "IO2",
-      "side": "left"
+      "side": "left",
+      "type": "io"
     },
     {
       "name": "IO4",
-      "side": "left"
+      "side": "left",
+      "type": "io"
     },
     {
       "spacer": true,
@@ -73,11 +79,13 @@
     },
     {
       "name": "IO16",
-      "side": "right"
+      "side": "right",
+      "type": "io"
     },
     {
       "name": "IO0",
-      "side": "right"
+      "side": "right",
+      "type": "io"
     },
     {
       "name": "GND 2",
@@ -93,11 +101,13 @@
     },
     {
       "name": "U0R",
-      "side": "right"
+      "side": "right",
+      "type": "io"
     },
     {
       "name": "U0T",
-      "side": "right"
+      "side": "right",
+      "type": "io"
     },
     {
       "name": "GND/R",

@@ -26,7 +26,8 @@
     },
     {
       "name": "P13",
-      "side": "top"
+      "side": "top",
+      "type": "io"
     },
     {
       "name": "GND",
@@ -35,31 +36,38 @@
     },
     {
       "name": "P12",
-      "side": "top"
+      "side": "top",
+      "type": "io"
     },
     {
       "name": "P14",
-      "side": "top"
+      "side": "top",
+      "type": "io"
     },
     {
       "name": "P27",
-      "side": "top"
+      "side": "top",
+      "type": "io"
     },
     {
       "name": "P26",
-      "side": "top"
+      "side": "top",
+      "type": "io"
     },
     {
       "name": "P25",
-      "side": "top"
+      "side": "top",
+      "type": "io"
     },
     {
       "name": "P33",
-      "side": "top"
+      "side": "top",
+      "type": "io"
     },
     {
       "name": "P32",
-      "side": "top"
+      "side": "top",
+      "type": "io"
     },
     {
       "name": "P35",
@@ -106,39 +114,48 @@
     },
     {
       "name": "P15",
-      "side": "bottom"
+      "side": "bottom",
+      "type": "io"
     },
     {
       "name": "P2",
-      "side": "bottom"
+      "side": "bottom",
+      "type": "io"
     },
     {
       "name": "P0",
-      "side": "bottom"
+      "side": "bottom",
+      "type": "io"
     },
     {
       "name": "P4",
-      "side": "bottom"
+      "side": "bottom",
+      "type": "io"
     },
     {
       "name": "P16",
-      "side": "bottom"
+      "side": "bottom",
+      "type": "io"
     },
     {
       "name": "P17",
-      "side": "bottom"
+      "side": "bottom",
+      "type": "io"
     },
     {
       "name": "P5",
-      "side": "bottom"
+      "side": "bottom",
+      "type": "io"
     },
     {
       "name": "P18",
-      "side": "bottom"
+      "side": "bottom",
+      "type": "io"
     },
     {
       "name": "P19",
-      "side": "bottom"
+      "side": "bottom",
+      "type": "io"
     },
     {
       "name": "GND 2",
@@ -148,23 +165,28 @@
     },
     {
       "name": "P21",
-      "side": "bottom"
+      "side": "bottom",
+      "type": "io"
     },
     {
       "name": "RX",
-      "side": "bottom"
+      "side": "bottom",
+      "type": "io"
     },
     {
       "name": "TX",
-      "side": "bottom"
+      "side": "bottom",
+      "type": "io"
     },
     {
       "name": "P22",
-      "side": "bottom"
+      "side": "bottom",
+      "type": "io"
     },
     {
       "name": "P23",
-      "side": "bottom"
+      "side": "bottom",
+      "type": "io"
     },
     {
       "name": "GND 3",

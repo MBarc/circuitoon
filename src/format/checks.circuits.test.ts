@@ -516,6 +516,33 @@ describe("a short needs the supply's own return", () => {
   })
 })
 
+describe('board GPIOs are signal pins', () => {
+  it('two Picos, each powering an OLED, UART between them with no shared ground: no common ground', () => {
+    const d = sheet([at('u1', 'U1', 'rpi-pico'), at('u2', 'U2', 'rpi-pico', 300), at('d1', 'DS1', 'oled-ssd1306-096-i2c', 600), at('d2', 'DS2', 'oled-ssd1306-096-i2c', 900)],
+      [['u1|3V3(OUT)', 'd1|VCC'], ['u1|GND', 'd1|GND'], ['u2|3V3(OUT)', 'd2|VCC'], ['u2|GND', 'd2|GND'], ['u1|GP0', 'u2|GP1']])
+    expect(rules(d)).toEqual(['no-common-ground'])
+  })
+  it('the same with the grounds joined is quiet', () => {
+    const d = sheet([at('u1', 'U1', 'rpi-pico'), at('u2', 'U2', 'rpi-pico', 300)], [['u1|GND', 'u2|GND'], ['u1|GP0', 'u2|GP1'], ['u1|GP1', 'u2|GP0']])
+    expect(rules(d)).toEqual([])
+  })
+  it('GPIOs are io (input-only pins input); power, ground, flash and control pins keep their types', () => {
+    const type = (id: string, pin: string) => (load(id).pins.find((p) => 'name' in p && p.name === pin) as { type?: string } | undefined)?.type
+    expect(['IO23', 'IO0', 'TX', 'RX'].map((n) => type('esp32-devkitc-v4', n))).toEqual(['io', 'io', 'io', 'io'])
+    expect(['IO34', 'VP', 'CMD', 'CLK', 'D0'].map((n) => type('esp32-devkitc-v4', n))).toEqual(['input', 'input', undefined, undefined, undefined])
+    expect(['D23', 'TX0', 'RX2', 'D34'].map((n) => type('esp32-devkit-v1-30', n))).toEqual(['io', 'io', 'io', 'input'])
+    expect(['4', '0', '48', 'TX', 'RST'].map((n) => type('esp32-s3-devkitc-1', n))).toEqual(['io', 'io', 'io', 'io', 'input'])
+    expect(['0', '10', '21'].map((n) => type('esp32-c3-supermini', n))).toEqual(['io', 'io', 'io'])
+    for (const id of ['xiao-esp32c3', 'xiao-esp32s3']) expect(['D0', 'D10'].map((n) => type(id, n))).toEqual(['io', 'io'])
+    expect(['IO4', 'U0R', 'U0T', 'GND/R'].map((n) => type('esp32-cam', n))).toEqual(['io', 'io', 'io', 'passive'])
+    expect(['D2', 'D13', 'A0', 'A5', 'RX0', 'TX1', 'A6', 'REF'].map((n) => type('arduino-nano', n === 'REF' ? 'AREF' : n))).toEqual(['io', 'io', 'io', 'io', 'io', 'io', 'input', 'input'])
+    expect(['D0', 'D8', 'TX', 'RX', 'A0', 'RST'].map((n) => type('wemos-d1-mini', n))).toEqual(['io', 'io', 'io', 'io', 'input', 'input'])
+    for (const id of ['rpi-pico', 'rpi-pico-h', 'rpi-pico-w', 'rpi-pico-2', 'rpi-pico-2-w'])
+      expect(['GP0', 'GP28/ADC2', 'SWDIO', 'RUN'].map((n) => type(id, n))).toEqual(['io', 'io', undefined, 'input'])
+    expect(['P13', 'P0', 'RX', 'TX', 'SD2', 'CMD', 'P34'].map((n) => type('esp32-terminal-board-38', n))).toEqual(['io', 'io', 'io', 'io', undefined, undefined, 'input'])
+  })
+})
+
 describe('order independence (every sheet built above)', () => {
   it('shuffling the parts and the wires never changes the findings', () => {
     expect(fixtures.length).toBeGreaterThan(80)

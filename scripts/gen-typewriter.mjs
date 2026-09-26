@@ -88,6 +88,9 @@ const passive = { type: 'passive' }
   const types = {
     '3V3': { type: 'power_out', supply: '3V3' }, '5V': { type: 'power_in', supply: '5V' }, GND: { type: 'ground' },
     EN: { type: 'input' }, SVP: { type: 'input' }, SVN: { type: 'input' }, P34: { type: 'input' }, P35: { type: 'input' },
+    // The DevKitC's GPIOs (Pnn) and UART0 are io; SD0-SD3, CMD and CLK are its flash pins (untyped).
+    RX: { type: 'io' }, TX: { type: 'io' },
+    ...Object.fromEntries([0, 2, 4, 5, 12, 13, 14, 15, 16, 17, 18, 19, 21, 22, 23, 25, 26, 27, 32, 33].map((n) => [`P${n}`, { type: 'io' }])),
   }
   const topList = ['5V', 'CMD', 'SD3', 'SD2', 'P13', 'GND', 'P12', 'P14', 'P27', 'P26', 'P25', 'P33', 'P32', 'P35', 'P34', 'SVN', 'SVP', 'EN', '3V3']
   const bottomList = ['CLK', 'SD0', 'SD1', 'P15', 'P2', 'P0', 'P4', 'P16', 'P17', 'P5', 'P18', 'P19', 'GND 2|GND', 'P21', 'RX', 'TX', 'P22', 'P23', 'GND 3|GND']

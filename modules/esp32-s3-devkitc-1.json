@@ -34,71 +34,88 @@
     },
     {
       "name": "4",
-      "side": "left"
+      "side": "left",
+      "type": "io"
     },
     {
       "name": "5",
-      "side": "left"
+      "side": "left",
+      "type": "io"
     },
     {
       "name": "6",
-      "side": "left"
+      "side": "left",
+      "type": "io"
     },
     {
       "name": "7",
-      "side": "left"
+      "side": "left",
+      "type": "io"
     },
     {
       "name": "15",
-      "side": "left"
+      "side": "left",
+      "type": "io"
     },
     {
       "name": "16",
-      "side": "left"
+      "side": "left",
+      "type": "io"
     },
     {
       "name": "17",
-      "side": "left"
+      "side": "left",
+      "type": "io"
     },
     {
       "name": "18",
-      "side": "left"
+      "side": "left",
+      "type": "io"
     },
     {
       "name": "8",
-      "side": "left"
+      "side": "left",
+      "type": "io"
     },
     {
       "name": "3",
-      "side": "left"
+      "side": "left",
+      "type": "io"
     },
     {
       "name": "46",
-      "side": "left"
+      "side": "left",
+      "type": "io"
     },
     {
       "name": "9",
-      "side": "left"
+      "side": "left",
+      "type": "io"
     },
     {
       "name": "10",
-      "side": "left"
+      "side": "left",
+      "type": "io"
     },
     {
       "name": "11",
-      "side": "left"
+      "side": "left",
+      "type": "io"
     },
     {
       "name": "12",
-      "side": "left"
+      "side": "left",
+      "type": "io"
     },
     {
       "name": "13",
-      "side": "left"
+      "side": "left",
+      "type": "io"
     },
     {
       "name": "14",
-      "side": "left"
+      "side": "left",
+      "type": "io"
     },
     {
       "name": "5V",
@@ -127,79 +144,98 @@
     },
     {
       "name": "TX",
-      "side": "right"
+      "side": "right",
+      "type": "io"
     },
     {
       "name": "RX",
-      "side": "right"
+      "side": "right",
+      "type": "io"
     },
     {
       "name": "1",
-      "side": "right"
+      "side": "right",
+      "type": "io"
     },
     {
       "name": "2",
-      "side": "right"
+      "side": "right",
+      "type": "io"
     },
     {
       "name": "42",
-      "side": "right"
+      "side": "right",
+      "type": "io"
     },
     {
       "name": "41",
-      "side": "right"
+      "side": "right",
+      "type": "io"
     },
     {
       "name": "40",
-      "side": "right"
+      "side": "right",
+      "type": "io"
     },
     {
       "name": "39",
-      "side": "right"
+      "side": "right",
+      "type": "io"
     },
     {
       "name": "38",
-      "side": "right"
+      "side": "right",
+      "type": "io"
     },
     {
       "name": "37",
-      "side": "right"
+      "side": "right",
+      "type": "io"
     },
     {
       "name": "36",
-      "side": "right"
+      "side": "right",
+      "type": "io"
     },
     {
       "name": "35",
-      "side": "right"
+      "side": "right",
+      "type": "io"
     },
     {
       "name": "0",
-      "side": "right"
+      "side": "right",
+      "type": "io"
     },
     {
       "name": "45",
-      "side": "right"
+      "side": "right",
+      "type": "io"
     },
     {
       "name": "48",
-      "side": "right"
+      "side": "right",
+      "type": "io"
     },
     {
       "name": "47",
-      "side": "right"
+      "side": "right",
+      "type": "io"
     },
     {
       "name": "21",
-      "side": "right"
+      "side": "right",
+      "type": "io"
     },
     {
       "name": "20",
-      "side": "right"
+      "side": "right",
+      "type": "io"
     },
     {
       "name": "19",
-      "side": "right"
+      "side": "right",
+      "type": "io"
     },
     {
       "name": "G 3",

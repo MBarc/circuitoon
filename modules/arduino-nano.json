@@ -12,7 +12,8 @@
     },
     {
       "name": "D13",
-      "side": "left"
+      "side": "left",
+      "type": "io"
     },
     {
       "name": "3V3",
@@ -28,27 +29,33 @@
     },
     {
       "name": "A0",
-      "side": "left"
+      "side": "left",
+      "type": "io"
     },
     {
       "name": "A1",
-      "side": "left"
+      "side": "left",
+      "type": "io"
     },
     {
       "name": "A2",
-      "side": "left"
+      "side": "left",
+      "type": "io"
     },
     {
       "name": "A3",
-      "side": "left"
+      "side": "left",
+      "type": "io"
     },
     {
       "name": "A4",
-      "side": "left"
+      "side": "left",
+      "type": "io"
     },
     {
       "name": "A5",
-      "side": "left"
+      "side": "left",
+      "type": "io"
     },
     {
       "name": "A6",
@@ -88,47 +95,58 @@
     },
     {
       "name": "D12",
-      "side": "right"
+      "side": "right",
+      "type": "io"
     },
     {
       "name": "D11",
-      "side": "right"
+      "side": "right",
+      "type": "io"
     },
     {
       "name": "D10",
-      "side": "right"
+      "side": "right",
+      "type": "io"
     },
     {
       "name": "D9",
-      "side": "right"
+      "side": "right",
+      "type": "io"
     },
     {
       "name": "D8",
-      "side": "right"
+      "side": "right",
+      "type": "io"
     },
     {
       "name": "D7",
-      "side": "right"
+      "side": "right",
+      "type": "io"
     },
     {
       "name": "D6",
-      "side": "right"
+      "side": "right",
+      "type": "io"
     },
     {
       "name": "D5",
-      "side": "right"
+      "side": "right",
+      "type": "io"
     },
     {
       "name": "D4",
-      "side": "right"
+      "side": "right",
+      "type": "io"
     },
     {
       "name": "D3",
-      "side": "right"
+      "side": "right",
+      "type": "io"
     },
     {
       "name": "D2",
-      "side": "right"
+      "side": "right",
+      "type": "io"
     },
     {
       "name": "GND 2",
@@ -144,11 +162,13 @@
     },
     {
       "name": "RX0",
-      "side": "right"
+      "side": "right",
+      "type": "io"
     },
     {
       "name": "TX1",
-      "side": "right"
+      "side": "right",
+      "type": "io"
     }
   ],
   "internal": [

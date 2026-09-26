@@ -41,35 +41,43 @@
     },
     {
       "name": "D32",
-      "side": "left"
+      "side": "left",
+      "type": "io"
     },
     {
       "name": "D33",
-      "side": "left"
+      "side": "left",
+      "type": "io"
     },
     {
       "name": "D25",
-      "side": "left"
+      "side": "left",
+      "type": "io"
     },
     {
       "name": "D26",
-      "side": "left"
+      "side": "left",
+      "type": "io"
     },
     {
       "name": "D27",
-      "side": "left"
+      "side": "left",
+      "type": "io"
     },
     {
       "name": "D14",
-      "side": "left"
+      "side": "left",
+      "type": "io"
     },
     {
       "name": "D12",
-      "side": "left"
+      "side": "left",
+      "type": "io"
     },
     {
       "name": "D13",
-      "side": "left"
+      "side": "left",
+      "type": "io"
     },
     {
       "name": "GND",
@@ -92,55 +100,68 @@
     },
     {
       "name": "D23",
-      "side": "right"
+      "side": "right",
+      "type": "io"
     },
     {
       "name": "D22",
-      "side": "right"
+      "side": "right",
+      "type": "io"
     },
     {
       "name": "TX0",
-      "side": "right"
+      "side": "right",
+      "type": "io"
     },
     {
       "name": "RX0",
-      "side": "right"
+      "side": "right",
+      "type": "io"
     },
     {
       "name": "D21",
-      "side": "right"
+      "side": "right",
+      "type": "io"
     },
     {
       "name": "D19",
-      "side": "right"
+      "side": "right",
+      "type": "io"
     },
     {
       "name": "D18",
-      "side": "right"
+      "side": "right",
+      "type": "io"
     },
     {
       "name": "D5",
-      "side": "right"
+      "side": "right",
+      "type": "io"
     },
     {
       "name": "TX2",
-      "side": "right"
+      "side": "right",
+      "type": "io"
     },
     {
       "name": "RX2",
-      "side": "right"
+      "side": "right",
+      "type": "io"
     },
     {
       "name": "D4",
-      "side": "right"
+      "side": "right",
+      "type": "io"
     },
     {
       "name": "D2",
-      "side": "right"
+      "side": "right",
+      "type": "io"
     },
     {
       "name": "D15",
-      "side": "right"
+      "side": "right",
+      "type": "io"
     },
     {
       "name": "GND 2",
