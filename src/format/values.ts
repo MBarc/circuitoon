@@ -1,7 +1,7 @@
 // Part values: SI-prefixed formatting and parsing, standard value series, and resistor color
 // bands. Pure and unit-tested; the editor and renderer just call into these.
 
-import { isNum, isObj, type ArtShape, type ModuleDef } from './module.ts'
+import { PARAM_RULES, isObj, representableValue, validParamValue, type ArtShape, type ModuleDef } from './module.ts'
 
 const OHM = 'Ω' // ohm sign, U+2126 (not the Greek capital omega, U+03A9)
 const OMEGA = 'Ω'
@@ -69,21 +69,31 @@ function splitPrefix(suffix: string): { mult: number; rest: string } {
   return { mult: 1, rest: suffix }
 }
 
+/** The value param that uses `unit` (resistance for ohm, capacitance for F, voltage for V), if any. */
+const paramForUnit = (unit: string): string | undefined => Object.keys(PARAM_RULES).find((name) => PARAM_RULES[name].unit === unit)
+
 /**
- * Rejects non-finite, negative, zero, or out-of-range (above 1e12 or below 1e-15) values;
- * otherwise rounds to 6 significant digits, so a multiplication like `100 * 1e-9` (which lands
- * on 1.0000000000000001e-7 in floating point) comes out as the clean 1e-7 rather than carrying
- * that noise into the diagram.
+ * Rejects what a file could not hold either: a value that is not representable (0, or a magnitude
+ * from 1e-15 to 1e12; VALUE_MIN in module.ts) or that the unit's param does not allow (PARAM_RULES:
+ * 0 ohm is fine, a voltage may be 0 or negative, a capacitance must be above 0; a unit with no
+ * param must be positive). Otherwise rounds to 6 significant digits, so a multiplication like
+ * `100 * 1e-9` (which lands on 1.0000000000000001e-7 in floating point) comes out as the clean
+ * 1e-7 rather than carrying that noise into the diagram; the rounded value is checked again, so
+ * rounding can never carry it past a limit.
  */
-function finish(v: number): number | null {
-  if (!Number.isFinite(v) || v <= 0 || v > 1e12 || v < 1e-15) return null
-  return roundSig(v, 6)
+function finish(v: number, unit: string): number | null {
+  const param = paramForUnit(unit)
+  const ok = (x: number) => (param ? validParamValue(param, x) : representableValue(x) && x > 0)
+  if (!ok(v)) return null
+  const rounded = roundSig(v, 6) + 0 // + 0 turns -0 into 0
+  return ok(rounded) ? rounded : null
 }
 
 /**
  * Parses free-typed value text for a param of the given unit: "4.7k", "4k7", "4.7 kΩ",
- * "4.7kohm", "220", "1M", "100n", "100nF", "0.1u", "10µ", "10uF", "3.7", "3.7V". Returns null
- * for empty, negative, zero, non-numeric or wrong-unit-suffix input.
+ * "4.7kohm", "220", "1M", "100n", "100nF", "0.1u", "10µ", "10uF", "3.7", "3.7V", "-12", "0".
+ * Returns null for empty, non-numeric or wrong-unit-suffix input, and for a value out of range for
+ * the unit (see `finish`).
  */
 export function parseValue(text: string, unit: string): number | null {
   const t = text.trim()
@@ -94,7 +104,7 @@ export function parseValue(text: string, unit: string): number | null {
   if (embedded) {
     const [, whole, letter, frac, rest] = embedded
     if (!Object.hasOwn(PREFIX_MULT, letter) || !matchesUnit(rest, unit)) return null
-    return finish(Number(`${whole}.${frac}`) * PREFIX_MULT[letter])
+    return finish(Number(`${whole}.${frac}`) * PREFIX_MULT[letter], unit)
   }
 
   const m = /^(-?\d*\.?\d+)\s*([A-Za-zµΩΩ]*)$/.exec(t)
@@ -102,10 +112,10 @@ export function parseValue(text: string, unit: string): number | null {
   const [, numStr, suffixRaw] = m
   const n = Number(numStr)
   if (!Number.isFinite(n)) return null
-  if (suffixRaw === '') return finish(n)
+  if (suffixRaw === '') return finish(n, unit)
   const { mult, rest } = splitPrefix(suffixRaw)
   if (!matchesUnit(rest, unit)) return null
-  return finish(n * mult)
+  return finish(n * mult, unit)
 }
 
 /**
@@ -181,10 +191,10 @@ const NEUTRAL_BAND_FILL = '#E6D3A8'
 
 /**
  * Fill color for each numbered band shape (1-based slot) in a module's art. Uses the standard
- * 4-band resistor code when the part's resistance forms a clean 2-digit mantissa; otherwise every
- * band shows the resistor body color instead of a stale or misleading code, using the largest
- * non-band shape's own fill (the body the bands sit on) or a neutral tan when there is none.
- * Null when the module has no band shapes at all.
+ * 4-band resistor code when the part's resistance forms a clean 2-digit mantissa, and a single
+ * black band for 0 ohm; otherwise every band shows the resistor body color instead of a stale or
+ * misleading code, using the largest non-band shape's own fill (the body the bands sit on) or a
+ * neutral tan when there is none. Null when the module has no band shapes at all.
  */
 export function bandFills(m: ModuleDef, values?: Record<string, unknown>): string[] | null {
   const bandShapes = m.art?.shapes.filter((s) => s.band) ?? []
@@ -196,7 +206,17 @@ export function bandFills(m: ModuleDef, values?: Record<string, unknown>): strin
   const bodyShapes = m.art!.shapes.filter((s) => !s.band)
   const body = bodyShapes.reduce<ArtShape | undefined>((best, s) => (!best || s.w * s.h > best.w * best.h ? s : best), undefined)
   const fallback = body?.fill ?? NEUTRAL_BAND_FILL
-  return Array.from({ length: maxBand }, () => fallback)
+  const fills = Array.from({ length: maxBand }, () => fallback)
+  // A 0 ohm resistor is marked with one black band in the middle: the band slot nearest the
+  // center of the band group.
+  if (resolved?.name === 'resistance' && resolved.value === 0) {
+    const lo = Math.min(...bandShapes.map((s) => s.x))
+    const hi = Math.max(...bandShapes.map((s) => s.x + s.w))
+    const mid = (lo + hi) / 2
+    const center = bandShapes.reduce((best, s) => (Math.abs(s.x + s.w / 2 - mid) < Math.abs(best.x + best.w / 2 - mid) ? s : best))
+    fills[center.band! - 1] = DIGIT_COLORS[0]
+  }
+  return fills
 }
 
 /**
@@ -205,34 +225,36 @@ export function bandFills(m: ModuleDef, values?: Record<string, unknown>): strin
  * current) that are not meant to be user-editable values here, so those are never picked, no
  * matter how plausible their unit looks.
  */
-export const PRIMARY_PARAM_NAMES = ['resistance', 'capacitance', 'voltage']
+export const PRIMARY_PARAM_NAMES = Object.keys(PARAM_RULES)
 
-/** The first of `resistance`, `capacitance` or `voltage` present with a matching unit and a numeric default. */
+/**
+ * The first of `resistance`, `capacitance` or `voltage` present in its own unit (ohm, F, V) with
+ * a default in range for it (see PARAM_RULES). A param in another unit is skipped, so a
+ * resistance given in farads is never shown as ohms.
+ */
 export function primaryParam(m: ModuleDef): { name: string; unit: string; default: number } | null {
   const electrical = m.electrical
   if (!isObj(electrical) || !isObj(electrical.params)) return null
   for (const name of PRIMARY_PARAM_NAMES) {
     const param = electrical.params[name]
     if (!isObj(param)) continue
-    const unit = param.unit
     const def = param.default
-    if ((unit === 'ohm' || unit === 'F' || unit === 'V') && isNum(def)) return { name, unit, default: def }
+    if (param.unit === PARAM_RULES[name].unit && validParamValue(name, def)) return { name, unit: PARAM_RULES[name].unit, default: def }
   }
   return null
 }
 
 /**
  * The part's chosen value for its primary param, or the module default when unset. A stored
- * override is only trusted when its unit matches the param's declared unit and its value is a
- * finite, positive number; anything else (a stale unit from an edited module, a negative or
- * zero value, or malformed data from an untrusted import) falls back to the module default
- * instead of drawing something misleading.
+ * override is only used when its unit matches the param's unit and its value is in range for the
+ * param (see PARAM_RULES). Loading a file drops any other override with a warning
+ * (`validateDiagram`), so the fallback to the default here is never silent for an imported sheet.
  */
 export function partValue(part: { values?: Record<string, unknown> }, m: ModuleDef): { name: string; unit: string; value: number } | null {
   const p = primaryParam(m)
   if (!p) return null
   const stored = part.values?.[p.name]
-  if (isObj(stored) && stored.unit === p.unit && isNum(stored.value) && stored.value > 0) return { name: p.name, unit: p.unit, value: stored.value }
+  if (isObj(stored) && stored.unit === p.unit && validParamValue(p.name, stored.value)) return { name: p.name, unit: p.unit, value: stored.value }
   return { name: p.name, unit: p.unit, value: p.default }
 }
 

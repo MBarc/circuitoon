@@ -254,13 +254,20 @@ V1 ships a starter library drawn in the same cartoon style, all defined in the s
 
 | Group | Parts | Editable values |
 | --- | --- | --- |
-| Power | 9V battery, 18650 cell, 18650 holder (1 cell), 18650 holder (2S) | Voltage |
-| Microcontrollers | ESP32 DevKitC V4, ESP32 DevKit V1 (30 pin, DOIT), ESP32-S3-DevKitC-1, ESP32-C3 SuperMini, Seeed XIAO ESP32-C3, Seeed XIAO ESP32-S3, ESP32-CAM (AI Thinker), Raspberry Pi Pico, Pico H, Pico W, Pico 2, Pico 2 W | - |
-| Passives | Resistor (1/4 W, 1/2 W), capacitor (ceramic, electrolytic, film, tantalum), potentiometer | Resistance, capacitance |
-| Indicators | LED | Color |
-| Switches | Push button | - |
+| Batteries | 9V battery, AA, AAA, 18650 cell, 18650 holder (1 cell), 18650 holder (2S), 2 x AA, 3 x AAA and 4 x AA holders, CR1220, CR2016, CR2025 and CR2032 coin cells, CR2032 holder, LR44 button cell | Voltage |
+| Power | AMS1117 3.3 V regulator module (3-pin), IP5306 USB-C charge/boost module, LM2596 buck converter (adjustable), TP4056 USB-C Li-ion charger with protection | Voltage (LM2596 output) |
+| Microcontrollers | ESP32 DevKitC V4, ESP32 DevKit V1 (30 pin, DOIT), ESP32-S3-DevKitC-1, ESP32-C3 SuperMini, Seeed XIAO ESP32-C3, Seeed XIAO ESP32-S3, ESP32-CAM (AI Thinker), ESP32 38-pin screw terminal adapter, Raspberry Pi Pico, Pico H, Pico W, Pico 2, Pico 2 W, Arduino Nano, Wemos / LOLIN D1 mini | - |
+| Sensors | BME280 module (4-pin I2C, 6-pin GY-BME280), DHT22 (3-pin module, bare 4-pin), HC-SR04 ultrasonic distance sensor, HC-SR501 PIR motion sensor, SW-520D tilt switch, SW-460D vibration switch | - |
+| Communication | microSD card module (3.3 V, 5 V with level shifter), Adafruit RFM95W LoRa breakout, BSS138 4-channel logic level shifter | - |
+| Displays | 0.91" and 0.96" SSD1306 OLEDs, 1.3" SH1106 OLEDs (both 4-pin orders), 1.54" ST7789, 1.8" ST7735, 2.4" and 2.8" ILI9341 and 4.0" ST7796S SPI TFTs | - |
+| Motors and actuators | 1-channel 5 V relay module, SG90 micro servo, L298N dual H-bridge motor driver (5V jumper fitted) | - |
+| Chips | MCP23017 and MCP23018 I/O expanders (DIP-28) | - |
+| Passives | Resistor (1/4 W, 1/2 W), capacitor (ceramic, electrolytic, film, tantalum), potentiometer, WH148 panel potentiometer 10 k | Resistance, capacitance |
+| Indicators | LED, WS2812B LED strip segment, WS2812D 5 mm addressable RGB LED, 12 mm passive buzzer | Color (LED) |
+| Switches | Push button, 6 mm and 12 mm 4-pin tactile switches, KCD1 rocker switch | - |
+| Connectors | JST-XH 2/3/4-pin, Dupont housing 1x2/1x3/1x4, USB panel-mount extension (micro-USB, USB-C) | - |
 
-Not built yet: RGB LED, buzzer, slide switch, rocker switch, toggle switch, diode, NPN and PNP transistor, N-channel MOSFET, USB power, DC barrel jack, 3.3V and 5V regulators, Arduino Uno, Arduino Nano, full-size Raspberry Pi boards, breadboards, pin header.
+Not built yet: RGB LED (common anode/cathode), slide switch, toggle switch, diode, NPN and PNP transistor, N-channel MOSFET, USB power breakout, DC barrel jack, fixed 5V regulator, Arduino Uno, full-size Raspberry Pi boards, breadboards, pin header.
 
 Part values (220 ohm, 10 uF) show as a label on the part and are stored with their units in `parts[].values` so V2 can simulate them. The properties panel offers a resistance or capacitance value through a standard-value picker (E12 for resistors, E6 for capacitors) with free entry for anything else; a resistor's color bands update to match whatever value is chosen.
 

@@ -5,7 +5,7 @@ import { buttonLed, captions } from '../samples/buttonLed.ts'
 import { Sheet } from '../render/Sheet.tsx'
 import { readDiagramFile } from './files.ts'
 
-export function StartScreen({ onOpen }: { onOpen: (d: Diagram, notice?: string) => void }) {
+export function StartScreen({ onOpen }: { onOpen: (d: Diagram, warnings?: string[]) => void }) {
   const fileRef = useRef<HTMLInputElement>(null)
   const [error, setError] = useState<string | null>(null)
   const [dragOver, setDragOver] = useState(false)
@@ -13,7 +13,7 @@ export function StartScreen({ onOpen }: { onOpen: (d: Diagram, notice?: string) 
   async function open(file: File) {
     const r = await readDiagramFile(file)
     if (!r.ok) return setError(r.message)
-    onOpen(r.diagram, r.warnings.length ? `Opened with warnings: ${r.warnings.slice(0, 3).join('; ')}` : undefined)
+    onOpen(r.diagram, r.warnings)
   }
 
   return (

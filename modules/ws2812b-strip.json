@@ -1,0 +1,456 @@
+{
+  "format": "circuitoon-module/1",
+  "id": "ws2812b-strip",
+  "version": 1,
+  "name": "WS2812B LED strip (5-LED segment, pads GND DIN 5V)",
+  "category": "Indicators",
+  "source": "https://www.pololu.com/product/2547 https://a.pololu-files.com/picture/0J5802.1200.jpg https://lastminuteengineers.com/ws2812b-arduino-tutorial/",
+  "pins": [
+    {
+      "name": "GND",
+      "side": "left",
+      "type": "ground"
+    },
+    {
+      "name": "DIN",
+      "side": "left",
+      "type": "input"
+    },
+    {
+      "name": "5V",
+      "side": "left",
+      "type": "power_in",
+      "supply": "5V"
+    },
+    {
+      "name": "GND 2",
+      "side": "right",
+      "label": "GND",
+      "type": "ground"
+    },
+    {
+      "name": "DOUT",
+      "side": "right",
+      "type": "output"
+    },
+    {
+      "name": "5V 2",
+      "side": "right",
+      "label": "5V",
+      "type": "power_in",
+      "supply": "5V"
+    }
+  ],
+  "internal": [
+    [
+      "GND",
+      "GND 2"
+    ],
+    [
+      "5V",
+      "5V 2"
+    ]
+  ],
+  "size": {
+    "w": 32,
+    "h": 6
+  },
+  "electrical": {
+    "model": "addressable_led",
+    "params": {}
+  },
+  "art": {
+    "w": 320,
+    "h": 60,
+    "pinLabels": "inside",
+    "shapes": [
+      {
+        "type": "rect",
+        "x": 0,
+        "y": 0,
+        "w": 320,
+        "h": 60,
+        "fill": "#2B2F36",
+        "radius": 3
+      },
+      {
+        "type": "rect",
+        "x": 12,
+        "y": 3,
+        "w": 296,
+        "h": 2,
+        "fill": "#4A4F57",
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 12,
+        "y": 55,
+        "w": 296,
+        "h": 2,
+        "fill": "#4A4F57",
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 43,
+        "y": 16,
+        "w": 26,
+        "h": 26,
+        "fill": "#F2F2EE",
+        "radius": 2
+      },
+      {
+        "type": "rect",
+        "x": 48,
+        "y": 21,
+        "w": 16,
+        "h": 16,
+        "fill": "#FFFFFF",
+        "radius": 8
+      },
+      {
+        "type": "rect",
+        "x": 51,
+        "y": 25,
+        "w": 3,
+        "h": 4,
+        "fill": "#E0483E",
+        "radius": 1,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 55,
+        "y": 25,
+        "w": 3,
+        "h": 4,
+        "fill": "#3FB56B",
+        "radius": 1,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 59,
+        "y": 25,
+        "w": 3,
+        "h": 4,
+        "fill": "#4F8EF7",
+        "radius": 1,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 72,
+        "y": 44,
+        "w": 20,
+        "h": 9,
+        "fill": "#2B2F36",
+        "outline": false,
+        "label": "→",
+        "labelColor": "#FFFFFF",
+        "labelSize": 9
+      },
+      {
+        "type": "rect",
+        "x": 97,
+        "y": 16,
+        "w": 26,
+        "h": 26,
+        "fill": "#F2F2EE",
+        "radius": 2
+      },
+      {
+        "type": "rect",
+        "x": 102,
+        "y": 21,
+        "w": 16,
+        "h": 16,
+        "fill": "#FFFFFF",
+        "radius": 8
+      },
+      {
+        "type": "rect",
+        "x": 105,
+        "y": 25,
+        "w": 3,
+        "h": 4,
+        "fill": "#E0483E",
+        "radius": 1,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 109,
+        "y": 25,
+        "w": 3,
+        "h": 4,
+        "fill": "#3FB56B",
+        "radius": 1,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 113,
+        "y": 25,
+        "w": 3,
+        "h": 4,
+        "fill": "#4F8EF7",
+        "radius": 1,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 126,
+        "y": 44,
+        "w": 20,
+        "h": 9,
+        "fill": "#2B2F36",
+        "outline": false,
+        "label": "→",
+        "labelColor": "#FFFFFF",
+        "labelSize": 9
+      },
+      {
+        "type": "rect",
+        "x": 151,
+        "y": 16,
+        "w": 26,
+        "h": 26,
+        "fill": "#F2F2EE",
+        "radius": 2
+      },
+      {
+        "type": "rect",
+        "x": 156,
+        "y": 21,
+        "w": 16,
+        "h": 16,
+        "fill": "#FFFFFF",
+        "radius": 8
+      },
+      {
+        "type": "rect",
+        "x": 159,
+        "y": 25,
+        "w": 3,
+        "h": 4,
+        "fill": "#E0483E",
+        "radius": 1,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 163,
+        "y": 25,
+        "w": 3,
+        "h": 4,
+        "fill": "#3FB56B",
+        "radius": 1,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 167,
+        "y": 25,
+        "w": 3,
+        "h": 4,
+        "fill": "#4F8EF7",
+        "radius": 1,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 180,
+        "y": 44,
+        "w": 20,
+        "h": 9,
+        "fill": "#2B2F36",
+        "outline": false,
+        "label": "→",
+        "labelColor": "#FFFFFF",
+        "labelSize": 9
+      },
+      {
+        "type": "rect",
+        "x": 205,
+        "y": 16,
+        "w": 26,
+        "h": 26,
+        "fill": "#F2F2EE",
+        "radius": 2
+      },
+      {
+        "type": "rect",
+        "x": 210,
+        "y": 21,
+        "w": 16,
+        "h": 16,
+        "fill": "#FFFFFF",
+        "radius": 8
+      },
+      {
+        "type": "rect",
+        "x": 213,
+        "y": 25,
+        "w": 3,
+        "h": 4,
+        "fill": "#E0483E",
+        "radius": 1,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 217,
+        "y": 25,
+        "w": 3,
+        "h": 4,
+        "fill": "#3FB56B",
+        "radius": 1,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 221,
+        "y": 25,
+        "w": 3,
+        "h": 4,
+        "fill": "#4F8EF7",
+        "radius": 1,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 234,
+        "y": 44,
+        "w": 20,
+        "h": 9,
+        "fill": "#2B2F36",
+        "outline": false,
+        "label": "→",
+        "labelColor": "#FFFFFF",
+        "labelSize": 9
+      },
+      {
+        "type": "rect",
+        "x": 259,
+        "y": 16,
+        "w": 26,
+        "h": 26,
+        "fill": "#F2F2EE",
+        "radius": 2
+      },
+      {
+        "type": "rect",
+        "x": 264,
+        "y": 21,
+        "w": 16,
+        "h": 16,
+        "fill": "#FFFFFF",
+        "radius": 8
+      },
+      {
+        "type": "rect",
+        "x": 267,
+        "y": 25,
+        "w": 3,
+        "h": 4,
+        "fill": "#E0483E",
+        "radius": 1,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 271,
+        "y": 25,
+        "w": 3,
+        "h": 4,
+        "fill": "#3FB56B",
+        "radius": 1,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 275,
+        "y": 25,
+        "w": 3,
+        "h": 4,
+        "fill": "#4F8EF7",
+        "radius": 1,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 288,
+        "y": 44,
+        "w": 20,
+        "h": 9,
+        "fill": "#2B2F36",
+        "outline": false,
+        "label": "→",
+        "labelColor": "#FFFFFF",
+        "labelSize": 9
+      },
+      {
+        "type": "rect",
+        "x": 1,
+        "y": 17,
+        "w": 10,
+        "h": 6,
+        "fill": "#D98C2B",
+        "radius": 3,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 1,
+        "y": 27,
+        "w": 10,
+        "h": 6,
+        "fill": "#D98C2B",
+        "radius": 3,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 1,
+        "y": 37,
+        "w": 10,
+        "h": 6,
+        "fill": "#D98C2B",
+        "radius": 3,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 309,
+        "y": 17,
+        "w": 10,
+        "h": 6,
+        "fill": "#D98C2B",
+        "radius": 3,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 309,
+        "y": 27,
+        "w": 10,
+        "h": 6,
+        "fill": "#D98C2B",
+        "radius": 3,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 309,
+        "y": 37,
+        "w": 10,
+        "h": 6,
+        "fill": "#D98C2B",
+        "radius": 3,
+        "outline": false
+      }
+    ]
+  }
+}

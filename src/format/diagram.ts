@@ -1,10 +1,13 @@
 // Diagram format (circuitoon-diagram/1): types plus the wire geometry the renderer needs.
 
-import { type ModuleDef, layoutModule, validateModule, isObj, isNum } from './module.ts'
+import { type ModuleDef, PARAM_RULES, layoutModule, validateModule, validParamValue, isObj, isNum } from './module.ts'
 import { type Pt, type Rect, type Rotation, type WorldPin, bodyRect, simplify, worldPins } from './geometry.ts'
 import { addToOccupancy, Occupancy, routeOrthogonal } from './router.ts'
-import { PRIMARY_PARAM_NAMES } from './values.ts'
 import { manualRouteBlocked, tidy } from './wireEdit.ts'
+
+/** How every load warning about a dropped value override ends: the part now shows its module
+ * default instead of the value the file asked for. The editor lists these warnings first. */
+export const VALUE_DROPPED = 'it was dropped and the module default is shown'
 
 export const DIAGRAM_FORMAT = 'circuitoon-diagram/1'
 
@@ -168,7 +171,31 @@ export function computeRoutes(d: Diagram, opts: { only?: Set<string>; prev?: Rou
   return out
 }
 
+/**
+ * A key that changes exactly when some wire's routing inputs change: its uid, both endpoints and
+ * its stored route. Serialized as structured tuples, so no two different sets of endpoints share a
+ * key however their names are spelled (part "p.a" pin "R" and part "p" pin "a.R" differ).
+ */
+export function routingKey(connections: Connection[]): string {
+  return JSON.stringify(connections.map((c) => [c.uid, c.from.part, c.from.pin, c.to.part, c.to.pin, c.route ?? null]))
+}
+
 const HOP = 5
+
+/**
+ * Groups sorted crossing positions into bridges: crossings closer together than a hop's width
+ * (2 * HOP) share one bridge, so arcs never overlap or join with a line running backward.
+ * Returns each bridge's first and last crossing, in the order given.
+ */
+function bridges(hits: number[]): [number, number][] {
+  const out: [number, number][] = []
+  for (const h of hits) {
+    const last = out[out.length - 1]
+    if (last && Math.abs(h - last[1]) < 2 * HOP) last[1] = h
+    else out.push([h, h])
+  }
+  return out
+}
 
 /** Axis-aligned segments of drawn wires, kept sorted by their fixed coordinate. */
 type Seg = { at: number; lo: number; hi: number }
@@ -216,6 +243,53 @@ function overlapsAt(segs: Seg[], at: number, lo: number, hi: number): boolean {
 
 /** Perpendicular nudges tried, in order, until one clears the earlier wire (or the last allowed one is used regardless). */
 const NUDGES = [4, -4, 8, -8]
+const MAX_NUDGE = 8
+
+/** Bucket size, in px, of the part-body index separation checks nudges against. */
+const BUCKET = 160
+/** A query or body covering more buckets than this just scans every body instead. */
+const MAX_BUCKETS = 256
+
+/**
+ * Part bodies bucketed on a coarse grid, so checking a nudge against the bodies near one segment
+ * does not scan every part on the sheet.
+ */
+class ObstacleIndex {
+  private buckets = new Map<number, Rect[]>()
+  private wide: Rect[] = []
+  readonly all: Rect[]
+  constructor(rects: Rect[]) {
+    this.all = rects
+    for (const r of rects) {
+      const [c0, r0, c1, r1] = this.span(r.x, r.y, r.x + r.w, r.y + r.h)
+      if ((c1 - c0 + 1) * (r1 - r0 + 1) > MAX_BUCKETS) {
+        this.wide.push(r)
+        continue
+      }
+      for (let cy = r0; cy <= r1; cy++)
+        for (let cx = c0; cx <= c1; cx++) {
+          const k = cx * 1_000_003 + cy
+          const list = this.buckets.get(k)
+          if (list) list.push(r)
+          else this.buckets.set(k, [r])
+        }
+    }
+  }
+  private span(x0: number, y0: number, x1: number, y1: number): [number, number, number, number] {
+    return [Math.floor(x0 / BUCKET), Math.floor(y0 / BUCKET), Math.floor(x1 / BUCKET), Math.floor(y1 / BUCKET)]
+  }
+  /** Bodies overlapping the box x0..x1, y0..y1 (each once). */
+  near(x0: number, y0: number, x1: number, y1: number): Rect[] {
+    const hit = (r: Rect) => r.x <= x1 && r.x + r.w >= x0 && r.y <= y1 && r.y + r.h >= y0
+    const [c0, r0, c1, r1] = this.span(x0, y0, x1, y1)
+    if (!((c1 - c0 + 1) * (r1 - r0 + 1) <= MAX_BUCKETS)) return this.all.filter(hit)
+    const out = new Set<Rect>()
+    for (let cy = r0; cy <= r1; cy++)
+      for (let cx = c0; cx <= c1; cx++) for (const r of this.buckets.get(cx * 1_000_003 + cy) ?? []) if (hit(r)) out.add(r)
+    for (const r of this.wide) if (hit(r)) out.add(r)
+    return [...out]
+  }
+}
 /** Shortest the run on a pin may be left by a nudge (unless it was already shorter). */
 const MIN_PIN_RUN = 2
 
@@ -225,11 +299,15 @@ const MIN_PIN_RUN = 2
  * so both stay visible even where the router itself left them sharing a lane (a manual route, or
  * an obstacle that forces two auto routes together). Moving a segment moves both its endpoints,
  * so the segments on either side of it stretch to keep up rather than detach from it. A nudge
- * that would turn the run on a pin back over the pin, or leave it shorter than MIN_PIN_RUN px, is
- * skipped; when no nudge is allowed the segment stays where it is.
+ * that would turn the run on a pin back over the pin, leave it shorter than MIN_PIN_RUN px, or put
+ * the moved segment or either stretched neighbour inside a part body (where it was clear before)
+ * is skipped; when no nudge is allowed the segment stays where it is. Every segment a nudge
+ * moves or stretches is checked at that point, so a wire clear before separation is still clear
+ * after it. `forced` reports a nudge applied where the geometry was already blocked.
  */
-function separate(points: Pt[], verticals: Seg[], horizontals: Seg[]): Pt[] {
+function separate(points: Pt[], verticals: Seg[], horizontals: Seg[], index: ObstacleIndex): { pts: Pt[]; forced: boolean } {
   const pts = points.map((p) => ({ ...p }))
+  let forced = false
   for (let k = 2; k <= pts.length - 2; k++) {
     const a = pts[k - 1]
     const b = pts[k]
@@ -244,12 +322,22 @@ function separate(points: Pt[], verticals: Seg[], horizontals: Seg[]): Pt[] {
     const pinRuns: Pt[] = []
     if (k === 2) pinRuns.push(pts[0])
     if (k === pts.length - 2) pinRuns.push(pts[pts.length - 1])
+    // The moved segment and the two it stretches, before and after a nudge.
+    const local = (moved: number): Pt[] => {
+      const shift = (p: Pt): Pt => (horiz ? { x: p.x, y: moved } : { x: moved, y: p.y })
+      return [pts[k - 2], shift(a), shift(b), pts[k + 1]]
+    }
+    const before = local(at)
+    const xs = before.map((p) => p.x)
+    const ys = before.map((p) => p.y)
+    const bodies = index.near(Math.min(...xs) - MAX_NUDGE, Math.min(...ys) - MAX_NUDGE, Math.max(...xs) + MAX_NUDGE, Math.max(...ys) + MAX_NUDGE)
+    const wasBlocked = bodies.length > 0 && manualRouteBlocked(before, bodies)
     const allowed = (moved: number) =>
       pinRuns.every((tip) => {
         const before = at - (horiz ? tip.y : tip.x)
         const after = (moved - (horiz ? tip.y : tip.x)) * Math.sign(before)
         return after >= Math.min(MIN_PIN_RUN, Math.abs(before))
-      })
+      }) && (wasBlocked || bodies.length === 0 || !manualRouteBlocked(local(moved), bodies))
     let pick: number | null = null
     for (const nudge of NUDGES) {
       const moved = at + nudge
@@ -259,9 +347,10 @@ function separate(points: Pt[], verticals: Seg[], horizontals: Seg[]): Pt[] {
     }
     if (pick !== null) {
       if (horiz) { a.y = pick; b.y = pick } else { a.x = pick; b.x = pick }
+      if (wasBlocked) forced = true
     }
   }
-  return pts
+  return { pts, forced }
 }
 
 /**
@@ -272,6 +361,7 @@ function separate(points: Pt[], verticals: Seg[], horizontals: Seg[]): Pt[] {
  * `separate`), so the hop and label-anchor geometry below is already the drawn, separated shape.
  */
 export function wirePaths(d: Diagram, routes: Routes = computeRoutes(d)) {
+  const index = new ObstacleIndex(partObstacles(d))
   const verticals: Seg[] = [] // at = x, lo..hi = y range
   const horizontals: Seg[] = [] // at = y, lo..hi = x range
   const out: { conn: Connection; d: string; points: Pt[]; ends: Pt[]; blocked: boolean }[] = []
@@ -280,7 +370,8 @@ export function wirePaths(d: Diagram, routes: Routes = computeRoutes(d)) {
     if (!route) continue
     // Drawn geometry drops collinear bends: nudging one half of a split run would otherwise
     // pull the other half into a diagonal.
-    const pts = separate(simplify(route.points), verticals, horizontals)
+    const simple = simplify(route.points)
+    const { pts, forced } = separate(simple, verticals, horizontals, index)
     let path = `M${pts[0].x} ${pts[0].y}`
     for (let i = 1; i < pts.length; i++) {
       const s = pts[i - 1]
@@ -290,10 +381,14 @@ export function wirePaths(d: Diagram, routes: Routes = computeRoutes(d)) {
       const dir = Math.sign(horiz ? e.x - s.x : e.y - s.y)
       const hits = horiz === vert ? [] : horiz ? crossings(verticals, s.x, e.x, s.y) : crossings(horizontals, s.y, e.y, s.x)
       hits.sort((p, q) => (p - q) * dir)
-      for (const hit of hits) {
+      for (const [first, last] of bridges(hits)) {
         const sweep = dir > 0 ? 1 : 0
-        if (horiz) path += ` L${hit - HOP * dir} ${s.y} A${HOP} ${HOP} 0 0 ${sweep} ${hit + HOP * dir} ${s.y}`
-        else path += ` L${s.x} ${hit - HOP * dir} A${HOP} ${HOP} 0 0 ${sweep} ${s.x} ${hit + HOP * dir}`
+        // One arc HOP high over the whole group; its half-width stretches to span every crossing.
+        const rx = HOP + Math.abs(last - first) / 2
+        const start = first - HOP * dir
+        const end = last + HOP * dir
+        if (horiz) path += ` L${start} ${s.y} A${rx} ${HOP} 0 0 ${sweep} ${end} ${s.y}`
+        else path += ` L${s.x} ${start} A${HOP} ${rx} 0 0 ${sweep} ${s.x} ${end}`
       }
       path += ` L${e.x} ${e.y}`
     }
@@ -303,7 +398,12 @@ export function wirePaths(d: Diagram, routes: Routes = computeRoutes(d)) {
       if (s.x === e.x) insert(verticals, { at: s.x, lo: Math.min(s.y, e.y), hi: Math.max(s.y, e.y) })
       if (s.y === e.y) insert(horizontals, { at: s.y, lo: Math.min(s.x, e.x), hi: Math.max(s.x, e.x) })
     }
-    out.push({ conn, d: path, points: pts, ends: [pts[0], pts[pts.length - 1]], blocked: route.blocked })
+    // Blocked describes what is drawn. Separation keeps a clear wire clear (see `separate`), so
+    // the drawn geometry only needs checking again when the wire started out blocked or a nudge
+    // was forced through a body.
+    const moved = pts.some((p, i) => p.x !== simple[i].x || p.y !== simple[i].y)
+    const blocked = moved && (route.blocked || forced) ? manualRouteBlocked(pts, index.all) : route.blocked
+    out.push({ conn, d: path, points: pts, ends: [pts[0], pts[pts.length - 1]], blocked })
   }
   return out
 }
@@ -332,6 +432,11 @@ export function isValidColor(c: string): boolean {
 }
 
 export type DiagramResult = { ok: true; diagram: Diagram; warnings: string[] } | { ok: false; errors: string[] }
+
+/** Largest |x| or |y|, in px, a part position or a stored route point may have. */
+export const COORD_LIMIT = 100_000
+/** Most points a stored route may have. */
+export const ROUTE_POINT_LIMIT = 200
 
 /**
  * Checks a parsed diagram file. Structural problems refuse the load (errors); a connection
@@ -364,6 +469,12 @@ export function validateDiagram(raw: unknown): DiagramResult {
     else uids.add(uid)
   }
 
+  // Fixes applied to a loadable file (a clamped position, a dropped route), by list index. The
+  // input is never mutated; the returned diagram carries fixed copies of just those entries.
+  const partFixes = new Map<number, Partial<PartInstance>>()
+  const fix = (i: number, patch: Partial<PartInstance>) => partFixes.set(i, { ...partFixes.get(i), ...patch })
+  const droppedRoutes = new Set<number>()
+
   const partModule = new Map<string, string>()
   if (!Array.isArray(raw.parts)) errors.push('parts: required list')
   else
@@ -378,20 +489,47 @@ export function validateDiagram(raw: unknown): DiagramResult {
         if (!modules.has(p.module)) warnings.push(`${at}: module "${p.module}" is not embedded in this file`)
       }
       if (!isNum(p.x) || !isNum(p.y)) errors.push(`${at}: x and y must be numbers`)
+      else if (Math.abs(p.x) > COORD_LIMIT || Math.abs(p.y) > COORD_LIMIT) {
+        const clamp = (v: number) => Math.min(COORD_LIMIT, Math.max(-COORD_LIMIT, v))
+        fix(i, { x: clamp(p.x), y: clamp(p.y) })
+        warnings.push(`${at}: position (${p.x}, ${p.y}) is beyond +-${COORD_LIMIT}, so it was clamped to (${clamp(p.x)}, ${clamp(p.y)})`)
+      }
       if (p.rotation !== undefined && ![0, 90, 180, 270].includes(p.rotation as number))
         errors.push(`${at}.rotation: must be 0, 90, 180 or 270`)
       if (p.values !== undefined) {
         if (!isObj(p.values)) errors.push(`${at}.values: must be an object`)
-        else
+        else {
+          const who = typeof p.designator === 'string' && p.designator !== '' ? p.designator : `part ${i}`
+          const dropped: string[] = []
           for (const [key, entry] of Object.entries(p.values)) {
-            // Only entries meant to carry a number-with-unit are checked here: the primary
-            // value param names, and any entry that already looks like one (has a "value" key).
-            // Other part state (an LED's color, a switch's default) is opaque and left alone.
-            const looksLikeValue = PRIMARY_PARAM_NAMES.includes(key) || (isObj(entry) && 'value' in entry)
-            if (!looksLikeValue) continue
-            if (!(isObj(entry) && isNum(entry.value) && typeof entry.unit === 'string'))
+            // An override of an editable value param (resistance, capacitance, voltage) that is
+            // malformed, in the wrong unit or out of range is dropped with a warning, so the
+            // module default is shown and the user is told, rather than a different value being
+            // substituted silently.
+            if (Object.hasOwn(PARAM_RULES, key)) {
+              const rule = PARAM_RULES[key]
+              const where = `${at}.values.${key}: ${who} has ${key}`
+              const problem =
+                !(isObj(entry) && isNum(entry.value) && typeof entry.unit === 'string') ? `${where} ${JSON.stringify(entry)}, which is not a number with a unit`
+                : entry.unit !== rule.unit ? `${where} ${entry.value} ${entry.unit}, but ${key} must be in ${rule.unit}`
+                : !validParamValue(key, entry.value) ? `${where} ${entry.value} ${entry.unit}, but ${key} must be ${rule.range}`
+                : null
+              if (problem) {
+                dropped.push(key)
+                warnings.push(`${problem}; ${VALUE_DROPPED}`)
+              }
+              continue
+            }
+            // Any other entry that looks like a number-with-unit (has a "value" key) is checked
+            // for shape. Other part state (an LED's color, a switch's default) is opaque.
+            if (isObj(entry) && 'value' in entry && !(isNum(entry.value) && typeof entry.unit === 'string'))
               warnings.push(`${at}.values.${key}: value must be a finite number with a string unit`)
           }
+          if (dropped.length) {
+            const values = p.values
+            fix(i, { values: Object.fromEntries(Object.entries(values).filter(([k]) => !dropped.includes(k))) })
+          }
+        }
       }
     })
 
@@ -419,7 +557,13 @@ export function validateDiagram(raw: unknown): DiagramResult {
         errors.push(`${at}.gauge: must be a whole number from 16 to 30`)
       if (c.route !== undefined && !(Array.isArray(c.route) && c.route.every((p) => Array.isArray(p) && p.length === 2 && isNum(p[0]) && isNum(p[1]))))
         errors.push(`${at}.route: must be a list of [x, y] points`)
-      else if (Array.isArray(c.route))
+      else if (Array.isArray(c.route) && c.route.length > ROUTE_POINT_LIMIT) {
+        droppedRoutes.add(i)
+        warnings.push(`${at}.route: more than ${ROUTE_POINT_LIMIT} points, so the route was dropped and the wire is routed automatically`)
+      } else if (Array.isArray(c.route) && (c.route as [number, number][]).some(([x, y]) => Math.abs(x) > COORD_LIMIT || Math.abs(y) > COORD_LIMIT)) {
+        droppedRoutes.add(i)
+        warnings.push(`${at}.route: a point is beyond +-${COORD_LIMIT}, so the route was dropped and the wire is routed automatically`)
+      } else if (Array.isArray(c.route))
         for (let k = 1; k < c.route.length; k++) {
           const [px, py] = c.route[k - 1] as [number, number]
           const [qx, qy] = c.route[k] as [number, number]
@@ -439,7 +583,19 @@ export function validateDiagram(raw: unknown): DiagramResult {
       })
   }
 
-  return errors.length ? { ok: false, errors } : { ok: true, diagram: raw as unknown as Diagram, warnings }
+  if (errors.length) return { ok: false, errors }
+  let diagram = raw as unknown as Diagram
+  if (partFixes.size || droppedRoutes.size)
+    diagram = {
+      ...diagram,
+      parts: diagram.parts.map((p, i) => (partFixes.has(i) ? { ...p, ...partFixes.get(i) } : p)),
+      connections: diagram.connections.map((c, i) => {
+        if (!droppedRoutes.has(i)) return c
+        const { route: _dropped, ...rest } = c
+        return rest
+      }),
+    }
+  return { ok: true, diagram, warnings }
 }
 
 export function serializeDiagram(d: Diagram): string {

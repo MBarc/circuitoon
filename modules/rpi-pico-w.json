@@ -103,7 +103,7 @@
       "name": "VSYS",
       "side": "right",
       "type": "power_in",
-      "supply": "VSYS"
+      "supply": "5V/3.7V/3V3"
     },
     {
       "name": "GND 5",

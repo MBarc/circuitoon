@@ -3,7 +3,7 @@
 // the header table below is transcribed from the official Raspberry Pi pinout diagrams and
 // datasheets cited in each board's `source`.
 //
-// Run from the repo root: `node scripts/gen-picos.mjs`
+// Run from the repo root: `node scripts/gen-picos.mjs` (add `--check` to compare with modules/ without writing).
 // It overwrites the 5 files in modules/ in place; re-run after changing the header table, art or
 // the shared rules here, then `git diff` the result before committing. src/format/picos.test.ts
 // pins the order.
@@ -14,7 +14,7 @@
 // (Pico / Pico 2: pads on the bottom edge; Pico H: 3-pin JST SH on the bottom edge, pin 1 = SWCLK;
 // Pico W / Pico 2 W: three pads inside the board above the wireless module, drawn in the art at
 // their real spot with traces to the bottom-edge pins, as the official diagram leads them out).
-import { writeFileSync } from 'node:fs'
+import { emit, finish, log } from './lib/gen-output.mjs'
 import { fileURLToPath } from 'node:url'
 const OUT = fileURLToPath(new URL('../modules/', import.meta.url))
 
@@ -37,12 +37,13 @@ const RIGHT = [
 const BOTTOM = ['SWCLK', 'GND DBG|GND', 'SWDIO']
 
 // Types per the datasheets' pin descriptions (VBUS = micro-USB 5 V, VSYS = 1.8-5.5 V system input,
-// 3V3(OUT) = on-board SMPS output). AGND is the analog ground reference for GP26-28; the
+// so its supply lists the 5 V, single Li-ion cell and 3.3 V rails it accepts, 3V3(OUT) = on-board
+// SMPS output). AGND is the analog ground reference for GP26-28; the
 // datasheet treats it as a separate analog ground plane ("can be connected to digital ground"),
 // so it is a ground pin but not joined to GND here.
 const TYPES = {
   VBUS: { type: 'power_in', supply: '5V' },
-  VSYS: { type: 'power_in', supply: 'VSYS' },
+  VSYS: { type: 'power_in', supply: '5V/3.7V/3V3' },
   '3V3(OUT)': { type: 'power_out', supply: '3V3' },
   '3V3_EN': { type: 'input' },
   RUN: { type: 'input' },
@@ -130,8 +131,8 @@ function build({ id, name, source, shapes }) {
     electrical: { model: 'mcu', params: {} },
     art: { w: W, h: H, pinLabels: 'inside', shapes: [r(0, 0, W, H, PCB, { radius: 4 }), ...shapes] },
   }
-  writeFileSync(OUT + id + '.json', JSON.stringify(m, null, 2) + '\n')
-  console.log(id, 'pins', LEFT.length + RIGHT.length + BOTTOM.length, 'body', W, 'x', H)
+  emit(OUT + id + '.json', JSON.stringify(m, null, 2) + '\n')
+  log(id, 'pins', LEFT.length + RIGHT.length + BOTTOM.length, 'body', W, 'x', H)
 }
 
 // Pico / Pico 2 / Pico H: chip in the middle, debug port on the bottom edge.
@@ -150,3 +151,5 @@ build({ id: 'rpi-pico-h', name: 'Raspberry Pi Pico H (with headers and debug con
 build({ id: 'rpi-pico-w', name: 'Raspberry Pi Pico W', source: SRC.picoW, shapes: wireless('RP2040', 'Pico W') })
 build({ id: 'rpi-pico-2', name: 'Raspberry Pi Pico 2', source: SRC.pico2, shapes: plain('RP2350', 'Pico 2', edgeDebug) })
 build({ id: 'rpi-pico-2-w', name: 'Raspberry Pi Pico 2 W', source: SRC.pico2W, shapes: wireless('RP2350', 'Pico 2 W') })
+
+finish('gen-picos.mjs')

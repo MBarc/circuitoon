@@ -12,7 +12,8 @@
 // itself should look the same. The designator is always "X1" here; the real prefix comes from
 // src/editor/ops.ts and is covered by tests, not by these screenshots.
 // It starts `vite preview` on --port and stops it afterwards, drives the locally installed
-// Chrome through playwright-core (a devDependency), and prints any page errors.
+// Chrome through playwright-core (a devDependency), and prints any page errors; it exits 1 when
+// there were any, so a broken part never passes as a clean run.
 // Never use the shared Playwright MCP browser for this.
 import { spawn, execSync } from 'node:child_process'
 import { mkdirSync, readFileSync, writeFileSync, existsSync } from 'node:fs'
@@ -152,3 +153,4 @@ for (const id of ids) {
 await browser.close()
 stopServer()
 console.log(errors.length ? `page errors:\n  ${errors.join('\n  ')}` : 'no page errors')
+process.exit(errors.length ? 1 : 0)

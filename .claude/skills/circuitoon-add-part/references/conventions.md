@@ -30,8 +30,15 @@ Art coordinates are px at 100% zoom, 10 px per grid unit, origin at the body's t
 - Board width a multiple of 10 px so both header rows sit on grid points (needed for breadboard snapping).
 - Leave one grid unit of margin at body corners (the layout adds it if the art does not).
 
+## Supply names
+A pin's `supply` names the voltages the pin actually sees, never a symbolic rail name ("VBAT", "VSYS", "VOUT"):
+- A single Li-ion / LiPo cell is "3.7V" (battery-18650-*, and the battery-side pins of chargers: TP4056 and IP5306 `B+`, TP4056 `OUT+`). Two cells in series are "7.4V".
+- A power input lists every rail its datasheet range covers, joined with "/": Arduino Nano VIN (7-12 V) "7V/7.4V/9V/12V", LM2596 IN+ (4.5-40 V) "5V/7.4V/9V/12V/24V", Pico VSYS (1.8-5.5 V) "5V/3.7V/3V3".
+- "ADJ" means user-set: an adjustable output (LM2596 OUT+) whose voltage is the part's editable value. A future wrong-voltage checker treats "ADJ" as compatible with any rail but notes the hookup so the user confirms the setting.
+- Pass-through parts (USB panel-mount cables) neither supply nor ground anything: every conductor, VBUS and GND included, is `passive` with no supply.
+
 ## Categories (src/editor/libraryGroups.ts CATEGORY_ORDER)
-Batteries, Power, Microcontrollers, Displays, Chips, Passives, Indicators, Switches, then others alphabetically. Planned: "Prototyping" (breadboards) after Batteries; "Microcontrollers" becomes "Boards" once full-size Raspberry Pis land. Empty groups are hidden.
+Batteries, Power, Microcontrollers, Sensors, Communication, Displays, Motors and actuators, Chips, Semiconductors, Passives, Indicators, Switches, Connectors, then others alphabetically. Planned: "Prototyping" (breadboards) after Batteries; "Microcontrollers" becomes "Boards" once full-size Raspberry Pis land. Empty groups are hidden.
 
 ## Sources that have worked
 - Espressif esp-dev-kits user guides (DevKitC, S3-DevKitC-1) with J1/J2/J3 tables and pin-layout images.

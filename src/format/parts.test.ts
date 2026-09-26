@@ -3,16 +3,9 @@
 // the chips, the module maker's pinout and board photos for the displays). A wrong pin is worse
 // than a missing part, so a change here must be re-checked against the source.
 import { describe, expect, it } from 'vitest'
-import { readFileSync } from 'node:fs'
-import { join } from 'node:path'
-import { isSpacer, layoutModule, validateModule, type ModuleDef, type Side } from './module.ts'
+import { layoutModule, type ModuleDef, type Side } from './module.ts'
+import { load, pin, pinsOf } from './builtinModules.testing.ts'
 
-const dir = join(import.meta.dirname, '..', '..', 'modules')
-const load = (file: string): ModuleDef => {
-  const r = validateModule(JSON.parse(readFileSync(join(dir, file), 'utf8')))
-  if (!r.ok) throw new Error(`${file}: ${r.errors.join('; ')}`)
-  return r.module
-}
 
 /** Datasheet pin 1 to 28 of a DIP-28, as names; returns the Circuitoon sides for a top view with
  * pin 1 at top left: left is pins 1 to 14 top to bottom, right is pins 28 down to 15. */
@@ -51,6 +44,16 @@ const parts: Record<string, Want> = {
   'oled-sh1106-13-i2c-vcc-gnd.json': { category: 'Displays', sides: { top: ['VCC', 'GND', 'SCL', 'SDA'] } },
   // Header on the short left edge: GND is the square pad at the bottom.
   'oled-ssd1306-091-i2c.json': { category: 'Displays', sides: { left: ['SDA', 'SCL', 'VCC', 'GND'] } },
+  // Socket side up, header at the left, top to bottom.
+  'microsd-spi-3v3.json': { category: 'Communication', sides: { left: ['3V3', 'CS', 'MOSI', 'CLK', 'MISO', 'GND'] } },
+  'microsd-spi-5v.json': { category: 'Communication', sides: { left: ['GND', 'VCC', 'MISO', 'MOSI', 'SCK', 'CS'] } },
+}
+
+/** Supply of the power input where it is not the usual '3V3/5V'. */
+const supplies: Record<string, string> = {
+  'tft-st7789-154-spi.json': '3V3',
+  'microsd-spi-3v3.json': '3V3',
+  'microsd-spi-5v.json': '5V',
 }
 
 describe('built-in chips and displays keep the physical pin order', () => {
@@ -71,30 +74,37 @@ describe('built-in chips and displays keep the physical pin order', () => {
       }
     })
     it(`${file}: power pins are typed with a supply, grounds are joined`, () => {
-      const pins = m.pins.filter((p) => !isSpacer(p))
-      const grounds = pins.filter((p) => !isSpacer(p) && p.type === 'ground').map((p) => (isSpacer(p) ? '' : p.name))
+      const pins = pinsOf(m)
+      const grounds = pins.filter((p) => p.type === 'ground').map((p) => p.name)
       expect(grounds.length).toBeGreaterThan(0)
       if (grounds.length > 1) expect(m.internal?.some((g) => grounds.every((n) => g.includes(n)))).toBe(true)
-      const power = pins.filter((p) => !isSpacer(p) && p.type === 'power_in')
+      const power = pins.filter((p) => p.type === 'power_in')
       expect(power.length).toBeGreaterThan(0)
-      // A 3.3 V only module lists 3V3; one that takes either rail lists both.
-      const only3v3 = file === 'tft-st7789-154-spi.json'
-      for (const p of power) if (!isSpacer(p)) expect(p.supply).toBe(only3v3 ? '3V3' : '3V3/5V')
+      // A 3.3 V only module lists 3V3, a 5 V only one 5V; one that takes either rail lists both.
+      for (const p of power) expect(p.supply).toBe(supplies[file] ?? '3V3/5V')
     })
   }
 
   it('MCP23017 and MCP23018 differ where the datasheets say (ADDR instead of A0 to A2, VSS on pin 1)', () => {
     const a = load('mcp23017-dip28.json'), b = load('mcp23018-dip28.json')
-    const names = (m: ModuleDef) => m.pins.flatMap((p) => (isSpacer(p) ? [] : [p.name]))
+    const names = (m: ModuleDef) => pinsOf(m).map((p) => p.name)
     expect(names(a)).toEqual(expect.arrayContaining(['A0', 'A1', 'A2']))
     expect(names(b)).toContain('ADDR')
     expect(names(b)).not.toContain('A0')
     // NC pins are typed nc so nothing suggests wiring them.
-    for (const m of [a, b]) for (const p of m.pins) if (!isSpacer(p) && (p.label ?? p.name) === 'NC') expect(p.type).toBe('nc')
+    for (const m of [a, b]) for (const p of pinsOf(m)) if ((p.label ?? p.name) === 'NC') expect(p.type).toBe('nc')
   })
 
   it('names the 2.4" TFT for both versions (T_ pins wired only on touch)', () => {
     expect(load('tft-ili9341-24-spi.json').name).toBe('2.4" TFT 240x320 ILI9341 (SPI; T_ pins on touch version)')
+  })
+
+  it('names the two microSD modules by supply, and only the 3.3 V one lacks a regulator', () => {
+    expect(load('microsd-spi-3v3.json').name).toContain('3.3 V only')
+    expect(load('microsd-spi-5v.json').name).toContain('5 V with level shifter')
+    // MISO is the card's output on both.
+    for (const f of ['microsd-spi-3v3.json', 'microsd-spi-5v.json'])
+      expect(pin(load(f), 'MISO')).toMatchObject({ type: 'output' })
   })
 
   it('displays use the display electrical model', () => {

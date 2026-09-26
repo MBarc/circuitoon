@@ -1,0 +1,89 @@
+{
+  "format": "circuitoon-module/1",
+  "id": "rocker-switch-kcd1",
+  "version": 1,
+  "name": "Rocker switch KCD1-101 (SPST, 2 pin)",
+  "category": "Switches",
+  "source": "https://www.chinadaier.com/kcd1-2-101-spst-rocker-switch/ https://envistiamall.com/products/rocker-switch-2-pin-on-off-spst-21x15mm-black-kcd1-101",
+  "pins": [
+    {
+      "name": "1",
+      "side": "left",
+      "type": "passive"
+    },
+    {
+      "name": "2",
+      "side": "right",
+      "type": "passive"
+    }
+  ],
+  "electrical": {
+    "model": "switch",
+    "terminals": {
+      "a": "1",
+      "b": "2"
+    },
+    "params": {}
+  },
+  "states": [
+    "off",
+    "on"
+  ],
+  "art": {
+    "w": 70,
+    "h": 40,
+    "shapes": [
+      {
+        "type": "rect",
+        "x": 0,
+        "y": 18.5,
+        "w": 14,
+        "h": 3,
+        "fill": "#B8BEC7",
+        "radius": 1.5
+      },
+      {
+        "type": "rect",
+        "x": 56,
+        "y": 18.5,
+        "w": 14,
+        "h": 3,
+        "fill": "#B8BEC7",
+        "radius": 1.5
+      },
+      {
+        "type": "rect",
+        "x": 10,
+        "y": 2,
+        "w": 50,
+        "h": 36,
+        "fill": "#2B2F36",
+        "radius": 3
+      },
+      {
+        "type": "rect",
+        "x": 16,
+        "y": 7,
+        "w": 19,
+        "h": 26,
+        "fill": "#1B1F24",
+        "radius": 2,
+        "label": "I",
+        "labelColor": "#C9CED6",
+        "labelSize": 10
+      },
+      {
+        "type": "rect",
+        "x": 35,
+        "y": 7,
+        "w": 19,
+        "h": 26,
+        "fill": "#3A3F47",
+        "radius": 2,
+        "label": "O",
+        "labelColor": "#C9CED6",
+        "labelSize": 9
+      }
+    ]
+  }
+}

@@ -1,0 +1,149 @@
+{
+  "format": "circuitoon-module/1",
+  "id": "ws2812d-5mm",
+  "version": 1,
+  "name": "WS2812 5 mm through-hole RGB LED (WS2812D-F5, DIN GND VDD DOUT)",
+  "category": "Indicators",
+  "source": "https://www.tme.eu/Document/6ea29838e05beac06400c47a846319d2/WS2812D-F5.pdf https://www.hobbyelectronica.nl/en/product/rgb-led-ws2812d-f5/",
+  "pins": [
+    {
+      "name": "DIN",
+      "side": "bottom",
+      "type": "input"
+    },
+    {
+      "name": "GND",
+      "side": "bottom",
+      "type": "ground"
+    },
+    {
+      "name": "VDD",
+      "side": "bottom",
+      "type": "power_in",
+      "supply": "5V"
+    },
+    {
+      "name": "DOUT",
+      "side": "bottom",
+      "type": "output"
+    }
+  ],
+  "size": {
+    "w": 7,
+    "h": 10
+  },
+  "electrical": {
+    "model": "addressable_led",
+    "params": {}
+  },
+  "art": {
+    "w": 70,
+    "h": 100,
+    "pinLabels": "inside",
+    "shapes": [
+      {
+        "type": "rect",
+        "x": 18.5,
+        "y": 50,
+        "w": 3,
+        "h": 50,
+        "fill": "#B8BEC7",
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 28.5,
+        "y": 50,
+        "w": 3,
+        "h": 50,
+        "fill": "#B8BEC7",
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 38.5,
+        "y": 50,
+        "w": 3,
+        "h": 50,
+        "fill": "#B8BEC7",
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 48.5,
+        "y": 50,
+        "w": 3,
+        "h": 50,
+        "fill": "#B8BEC7",
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 13,
+        "y": 42,
+        "w": 42,
+        "h": 10,
+        "fill": "#DDE2E7",
+        "radius": 2
+      },
+      {
+        "type": "rect",
+        "x": 17,
+        "y": 6,
+        "w": 36,
+        "h": 42,
+        "fill": "#F4F6F8",
+        "radius": 16
+      },
+      {
+        "type": "rect",
+        "x": 23,
+        "y": 12,
+        "w": 6,
+        "h": 12,
+        "fill": "#FFFFFF",
+        "radius": 3,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 28,
+        "y": 28,
+        "w": 4,
+        "h": 5,
+        "fill": "#E0483E",
+        "radius": 1,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 33,
+        "y": 28,
+        "w": 4,
+        "h": 5,
+        "fill": "#3FB56B",
+        "radius": 1,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 38,
+        "y": 28,
+        "w": 4,
+        "h": 5,
+        "fill": "#4F8EF7",
+        "radius": 1,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 52,
+        "y": 42,
+        "w": 3,
+        "h": 10,
+        "fill": "#8E96A1",
+        "outline": false
+      }
+    ]
+  }
+}

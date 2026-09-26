@@ -4,16 +4,9 @@
 // order. A wrong pin is worse than a missing board, so a change here must be re-checked against
 // the source.
 import { describe, expect, it } from 'vitest'
-import { readFileSync } from 'node:fs'
-import { join } from 'node:path'
-import { isSpacer, layoutModule, validateModule, type ModuleDef } from './module.ts'
+import { isSpacer, layoutModule } from './module.ts'
+import { load, pin, pinsOf } from './builtinModules.testing.ts'
 
-const dir = join(import.meta.dirname, '..', '..', 'modules')
-const load = (file: string): ModuleDef => {
-  const r = validateModule(JSON.parse(readFileSync(join(dir, file), 'utf8')))
-  if (!r.ok) throw new Error(`${file}: ${r.errors.join('; ')}`)
-  return r.module
-}
 
 // Silkscreen text (label ?? name), top to bottom.
 const boards: Record<string, { left: string[]; right: string[] }> = {
@@ -45,6 +38,16 @@ const boards: Record<string, { left: string[]; right: string[] }> = {
     left: ['5V', 'GND', 'IO12', 'IO13', 'IO15', 'IO14', 'IO2', 'IO4'],
     right: ['3V3', 'IO16', 'IO0', 'GND', 'VCC', 'U0R', 'U0T', 'GND/R'],
   },
+  // Arduino A000005 full pinout, component side, mini-USB at the top (AREF is silkscreened REF).
+  'arduino-nano.json': {
+    left: ['D13', '3V3', 'REF', 'A0', 'A1', 'A2', 'A3', 'A4', 'A5', 'A6', 'A7', '5V', 'RST', 'GND', 'VIN'],
+    right: ['D12', 'D11', 'D10', 'D9', 'D8', 'D7', 'D6', 'D5', 'D4', 'D3', 'D2', 'GND', 'RST', 'RX0', 'TX1'],
+  },
+  // LOLIN D1 mini v3.1.0, component side, antenna at the top, USB at the bottom.
+  'wemos-d1-mini.json': {
+    left: ['RST', 'A0', 'D0', 'D5', 'D6', 'D7', 'D8', '3V3'],
+    right: ['TX', 'RX', 'D1', 'D2', 'D3', 'D4', 'GND', '5V'],
+  },
 }
 
 describe('built-in boards keep the physical header order', () => {
@@ -65,10 +68,18 @@ describe('built-in boards keep the physical header order', () => {
       expect(lay.w).toBeGreaterThanOrEqual(60)
     })
     it(`${file}: every ground pin is joined, power pins carry a supply`, () => {
-      const pins = m.pins.filter((p) => !isSpacer(p))
-      const grounds = pins.filter((p) => !isSpacer(p) && p.type === 'ground').map((p) => (isSpacer(p) ? '' : p.name))
+      const pins = pinsOf(m)
+      const grounds = pins.filter((p) => p.type === 'ground').map((p) => p.name)
       if (grounds.length > 1) expect(m.internal?.some((g) => grounds.every((n) => g.includes(n)))).toBe(true)
-      for (const p of pins) if (!isSpacer(p) && (p.type === 'power_in' || p.type === 'power_out')) expect(p.supply).toBeTruthy()
+      for (const p of pins) if (p.type === 'power_in' || p.type === 'power_out') expect(p.supply).toBeTruthy()
     })
   }
+
+  it('the Nano joins its two RST pins and types its analog-only and supply pins', () => {
+    const m = load('arduino-nano.json')
+    expect(m.internal).toContainEqual(['RST', 'RST 2'])
+    for (const n of ['A6', 'A7', 'AREF']) expect(pin(m, n)).toMatchObject({ type: 'input' })
+    expect(pin(m, 'VIN')).toMatchObject({ type: 'power_in', supply: '7V/7.4V/9V/12V' })
+    expect(pin(m, '3V3')).toMatchObject({ type: 'power_out', supply: '3V3' })
+  })
 })

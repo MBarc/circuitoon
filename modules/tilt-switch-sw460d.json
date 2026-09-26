@@ -1,0 +1,97 @@
+{
+  "format": "circuitoon-module/1",
+  "id": "tilt-switch-sw460d",
+  "version": 1,
+  "name": "SW-460D ball vibration switch (axial)",
+  "category": "Sensors",
+  "source": "https://evelta.com/content/datasheets/SW-460D.pdf https://www.lcsc.com/product-detail/Vibration-Sensors_SHOU-HAN-SW-460D_C5379903.html",
+  "pins": [
+    {
+      "name": "1",
+      "side": "left",
+      "type": "passive"
+    },
+    {
+      "name": "2",
+      "side": "right",
+      "type": "passive"
+    }
+  ],
+  "size": {
+    "w": 8,
+    "h": 4
+  },
+  "electrical": {
+    "model": "switch",
+    "terminals": {
+      "a": "1",
+      "b": "2"
+    },
+    "params": {}
+  },
+  "states": [
+    "open",
+    "closed"
+  ],
+  "art": {
+    "w": 80,
+    "h": 40,
+    "shapes": [
+      {
+        "type": "rect",
+        "x": 0,
+        "y": 18.5,
+        "w": 16,
+        "h": 3,
+        "fill": "#B8BEC7",
+        "radius": 1.5
+      },
+      {
+        "type": "rect",
+        "x": 64,
+        "y": 18.5,
+        "w": 16,
+        "h": 3,
+        "fill": "#B8BEC7",
+        "radius": 1.5
+      },
+      {
+        "type": "rect",
+        "x": 12,
+        "y": 11,
+        "w": 56,
+        "h": 18,
+        "fill": "#3A3F47",
+        "radius": 6
+      },
+      {
+        "type": "rect",
+        "x": 12,
+        "y": 11,
+        "w": 10,
+        "h": 18,
+        "fill": "#C9CED6",
+        "radius": 4
+      },
+      {
+        "type": "rect",
+        "x": 58,
+        "y": 11,
+        "w": 10,
+        "h": 18,
+        "fill": "#E0B43C",
+        "radius": 4
+      },
+      {
+        "type": "rect",
+        "x": 24,
+        "y": 14,
+        "w": 32,
+        "h": 3,
+        "fill": "#5A6069",
+        "radius": 1.5,
+        "outline": false
+      }
+    ]
+  }
+}

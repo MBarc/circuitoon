@@ -33,9 +33,14 @@ const PREFIXES: [RegExp, string][] = [
   [/^resistor/, 'R'],
   [/^capacitor/, 'C'],
   [/^led/, 'D'],
+  [/^ws2812/, 'D'],
   [/button|switch/, 'S'],
   [/^battery/, 'BT'],
   [/^(lcd|oled|tft)-/, 'DS'],
+  [/^(piezo|buzzer)/, 'BZ'],
+  [/^relay/, 'K'],
+  [/^servo/, 'M'],
+  [/^(jst-|dupont-|usb-panel-)/, 'J'],
 ]
 
 export function designatorPrefix(m: ModuleDef): string {
@@ -57,10 +62,22 @@ export function addPart(d: Diagram, m: ModuleDef, x: number, y: number): { diagr
   return { uid, diagram: { ...d, modules, parts: [...d.parts, part] } }
 }
 
+/**
+ * Moves parts by (dx, dy). A hand-routed wire whose two ends are both on moved parts moves with
+ * them in the same edit (its bends shift by the same amount), so moving a wired group keeps its
+ * shape; a wire with only one end moved keeps its bends and just stretches its end segments.
+ */
 export function moveParts(d: Diagram, uids: string[], dx: number, dy: number): Diagram {
   if (!dx && !dy) return d
   const s = new Set(uids)
-  return { ...d, parts: d.parts.map((p) => (s.has(p.uid) ? { ...p, x: p.x + dx, y: p.y + dy } : p)) }
+  const moved = new Set(d.parts.filter((p) => s.has(p.uid)).map((p) => p.uid))
+  return {
+    ...d,
+    parts: d.parts.map((p) => (s.has(p.uid) ? { ...p, x: p.x + dx, y: p.y + dy } : p)),
+    connections: d.connections.map((c) =>
+      c.route && moved.has(c.from.part) && moved.has(c.to.part) ? { ...c, route: c.route.map(([x, y]) => [x + dx, y + dy] as [number, number]) } : c,
+    ),
+  }
 }
 
 export function rotateParts(d: Diagram, uids: string[]): Diagram {
