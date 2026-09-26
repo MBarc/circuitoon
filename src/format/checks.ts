@@ -873,9 +873,11 @@ function checkPotentials({ d, nl, netTerms, netWires, terminal, shorted, add }: 
   // 2. After walking again, every diode pin that does not conduct is a load: fine at or above its
   //    USB voltage up to its own limit, and below it (possible only when the rest of the sheet
   //    holds its net over the same ground) USB pushes current into what holds the net down.
+  // A net no supply edge reaches (a USB pin wired only to other USB pins and loads) is a group of
+  // its own at local potential 0, so a diode's level is its real voltage over its ground's offset.
   const level = (e: Edge) => {
-    const [a, b] = [pot.get(e.from), pot.get(e.to)]
-    return a && b && !a.u.size && !b.u.size ? a.c + e.v! - b.c : null
+    const [a, b] = [pot.get(e.from) ?? lin0(), pot.get(e.to) ?? lin0()]
+    return !a.u.size && !b.u.size ? a.c + e.v! - b.c : null
   }
   const cross = [...diodes].sort((x, y) => (x.src!.term.key < y.src!.term.key ? -1 : 1))
     .filter((e) => (groupOf.get(e.from) ?? e.from) !== (groupOf.get(e.to) ?? e.to))
