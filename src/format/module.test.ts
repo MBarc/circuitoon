@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
-import { insideLabelSides, layoutModule, usesInsideLabels, validParamValue, externalPower, validateModule, type ModuleDef } from './module.ts'
+import { insideLabelSides, layoutModule, usesInsideLabels, validParamValue, externalPower, validateModule, voltageOutputs, type ModuleDef } from './module.ts'
+import { load } from './builtinModules.testing.ts'
 
 const base = { format: 'circuitoon-module/1', id: 'thing', name: 'Thing' }
 
@@ -123,6 +124,30 @@ describe('validateModule', () => {
       'electrical.external[1].volts: must be a number above 0',
       'electrical.external[2]: must be { "pin", "volts", "via" }',
     ])
+  })
+  it('binds a voltage value to named outputs: required when there are several, the only one otherwise', () => {
+    const pins = [
+      { name: '5V', side: 'left', type: 'power_out', supply: '5V' },
+      { name: 'ADJ', side: 'left', type: 'power_out', supply: 'ADJ' },
+      { name: 'IN', side: 'left', type: 'power_in', supply: '12V' },
+    ]
+    const v = (electrical: Record<string, unknown>, p: unknown[] = pins) => validateModule({ ...base, pins: p, electrical })
+    const params = { voltage: { unit: 'V', default: 3.3 } }
+    const two = v({ params })
+    expect(!two.ok && two.errors).toEqual(['electrical.voltageOutputs: required, the module has a voltage value and 2 power_out pins; name the ones the value sets'])
+    const named = v({ params, voltageOutputs: ['ADJ'] })
+    expect(named.ok).toBe(true)
+    if (named.ok) expect(voltageOutputs(named.module)).toEqual(['ADJ'])
+    const bad = v({ params, voltageOutputs: ['IN', 'X'] })
+    expect(!bad.ok && bad.errors).toEqual([
+      'electrical.voltageOutputs[0]: no power_out pin named "IN"',
+      'electrical.voltageOutputs[1]: no power_out pin named "X"',
+    ])
+    expect(!v({ voltageOutputs: ['5V'] }).ok).toBe(true)
+    const single = v({ params }, [pins[0], pins[2]])
+    expect(single.ok && voltageOutputs(single.module)).toEqual(['5V'])
+    expect(voltageOutputs(load('battery-9v'))).toEqual(['+'])
+    expect(voltageOutputs(load('lm2596-buck-module'))).toEqual(['OUT+'])
   })
   it('shares one magnitude contract with value entry: 0 where allowed, else 1e-15 to 1e12', () => {
     const at = (name: string, v: number) => validParamValue(name, v)

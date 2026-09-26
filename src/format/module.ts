@@ -286,7 +286,37 @@ export function validateModule(raw: unknown): ValidationResult {
       })
   }
 
+  // A voltage value is the voltage of named outputs: required when there is more than one to choose from.
+  if (isObj(raw.electrical)) {
+    const el = raw.electrical
+    const hasVoltage = isObj(el.params) && el.params.voltage !== undefined
+    const outs = [...(Array.isArray(raw.pins) ? raw.pins : []), ...(Array.isArray(raw.holes) ? raw.holes : [])]
+      .filter((p): p is Record<string, unknown> => isObj(p) && p.type === 'power_out' && typeof p.name === 'string')
+      .map((p) => p.name as string)
+    if (el.voltageOutputs !== undefined) {
+      if (!hasVoltage) errors.push('electrical.voltageOutputs: only for a module with a voltage param')
+      if (!Array.isArray(el.voltageOutputs) || el.voltageOutputs.length === 0) errors.push('electrical.voltageOutputs: must be a list of power_out pin names')
+      else
+        el.voltageOutputs.forEach((n, i) => {
+          if (typeof n !== 'string' || !outs.includes(n)) errors.push(`electrical.voltageOutputs[${i}]: no power_out pin named "${String(n)}"`)
+        })
+    } else if (hasVoltage && outs.length > 1)
+      errors.push(`electrical.voltageOutputs: required, the module has a voltage value and ${outs.length} power_out pins; name the ones the value sets`)
+  }
+
   return errors.length ? { ok: false, errors } : { ok: true, module: raw as unknown as ModuleDef }
+}
+
+/**
+ * The outputs whose voltage is the part's `voltage` value: `electrical.voltageOutputs`, or the
+ * module's only power_out. Empty when the module has no voltage param.
+ */
+export function voltageOutputs(m: ModuleDef): string[] {
+  const e = m.electrical
+  if (!isObj(e) || !isObj(e.params) || e.params.voltage === undefined) return []
+  if (Array.isArray(e.voltageOutputs)) return e.voltageOutputs.filter((n): n is string => typeof n === 'string')
+  const outs = [...m.pins.filter((p): p is PinDef => !isSpacer(p)), ...(m.holes ?? [])].filter((p) => p.type === 'power_out')
+  return outs.length === 1 ? [outs[0].name] : []
 }
 
 /**

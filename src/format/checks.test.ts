@@ -257,6 +257,19 @@ describe('checkDiagram', () => {
       const low = sheet([part('BT1', 'cell', at(3.3)), part('U1', 'chip33')], [wire('w1', 'bt1.+', 'u1.VCC'), wire('w2', 'bt1.-', 'u1.GND')])
       expect(checkDiagram(low)).toEqual([])
     })
+    it('sets only the outputs it names: a fixed output beside them keeps its rail', () => {
+      const reg = mod('reg', [
+        { name: '5V', side: 'left', type: 'power_out', supply: '5V' },
+        { name: 'ADJ', side: 'left', type: 'power_out', supply: 'ADJ' },
+        { name: 'GND', side: 'left', type: 'ground' },
+      ], { electrical: { params: { voltage: { unit: 'V', default: 3.3 } }, voltageOutputs: ['ADJ'] } })
+      const d = sheet([part('U1', 'chip33'), part('U2', 'chip33')], [wire('w1', 'u2.5V', 'u1.VCC'), wire('w2', 'u2.GND', 'u1.GND')])
+      d.modules = { ...d.modules, reg }
+      d.parts[1] = { ...d.parts[1], module: 'reg' }
+      expect(only(d, 'supply-too-high')[0].message).toBe('U1 VCC accepts up to 3.3 V but gets 5 V from U2 5V.')
+      d.connections = [wire('w1', 'u2.ADJ', 'u1.VCC'), wire('w2', 'u2.GND', 'u1.GND')]
+      expect(checkDiagram(d)).toEqual([])
+    })
     it('falls back to the module default when the part sets none', () => {
       const d = sheet([part('BT1', 'cell'), part('U1', 'chip33')], [wire('w1', 'bt1.+', 'u1.VCC'), wire('w2', 'bt1.-', 'u1.GND')])
       expect(only(d, 'supply-too-high')[0].message).toBe('U1 VCC accepts up to 3.3 V but gets 3.7 V from BT1 +.')

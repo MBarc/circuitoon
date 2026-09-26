@@ -6,7 +6,7 @@
 // docs/superpowers/specs/2026-09-26-wiring-checker-design.md.
 import { type Connection, type Diagram, type Endpoint, type PartInstance, moduleOf, resolveEndpoint } from './diagram.ts'
 import { type MountIssue, mountIssues, plugsOf } from './breadboard.ts'
-import { type ExternalPower, type HoleGroup, type ModuleDef, type PinDef, type PinType, externalPower, isSpacer } from './module.ts'
+import { type ExternalPower, type HoleGroup, type ModuleDef, type PinDef, type PinType, externalPower, isSpacer, voltageOutputs } from './module.ts'
 import { netlist, nodeKey } from './netlist.ts'
 import { partValue, primaryParam } from './values.ts'
 
@@ -165,10 +165,11 @@ interface ModuleInfo {
   /** The part's `ground` pins and hole groups: the reference its sources return to. */
   grounds: string[]
   /**
-   * True when the part's `voltage` value (partValue, the same rule the Inspector shows) is the
-   * voltage of every supply it makes: a battery's +, an adjustable buck's OUT+ (it replaces ADJ).
+   * The outputs whose voltage is the part's `voltage` value (partValue, the same rule the
+   * Inspector shows): `electrical.voltageOutputs`, or the only power_out (a battery's +, an
+   * adjustable buck's OUT+, where it replaces ADJ). Other outputs keep their supply rail.
    */
-  valued: boolean
+  valued: Set<string>
 }
 
 const infoCache = new WeakMap<ModuleDef, ModuleInfo>()
@@ -194,7 +195,7 @@ function moduleInfo(m: ModuleDef): ModuleInfo {
   const pass = new Set([...defs.keys()].filter((n) => type(n) === 'power_out' && fedComps.has(comp.get(n))))
   const external = new Map(externalPower(m).filter((e) => defs.has(e.pin)).map((e) => [e.pin, e]))
   const grounds = [...defs.keys()].filter((n) => type(n) === 'ground')
-  info = { module: m, defs, comp, pass, external, grounds, valued: primaryParam(m)?.name === 'voltage' }
+  info = { module: m, defs, comp, pass, external, grounds, valued: new Set(primaryParam(m)?.name === 'voltage' ? voltageOutputs(m) : []) }
   infoCache.set(m, info)
   return info
 }
@@ -239,7 +240,7 @@ function sourceOf(t: Terminal): Source | null {
   if (t.type !== 'power_out' || t.info.pass.has(t.name)) return null
   const onBoard = t.info.external.size > 0
   // The value set on the sheet (a battery's voltage, a buck's output) wins over the module's supply.
-  const value = t.info.valued ? partValue(t.part, t.info.module) : null
+  const value = t.info.valued.has(t.name) ? partValue(t.part, t.info.module) : null
   if (value) return value.value > 0 ? { term: t, id, v: value.value, unknown: null, onBoard } : { term: t, id, v: null, unknown: 'unknown', onBoard }
   const p = t.supply ? parseSupply(t.supply) : { volts: [], unknown: 'unknown' as const }
   return p.unknown || !p.volts.length
