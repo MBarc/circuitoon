@@ -129,13 +129,21 @@ export function resolveEndpoint(d: Diagram, ep: Endpoint): ResolvedEnd | null {
   if (!part || !mod) return null
   const group = mod.holes?.find((g) => g.name === ep.pin)
   if (group) {
-    const local = group.at[ep.hole ?? 0]
+    const local = ep.offset === undefined ? group.at[ep.hole ?? 0] : undefined
     return local ? { end: toWorld(part, layoutModule(mod), { x: local[0], y: local[1] }), dir: null } : null
   }
   const pin = worldPins(part, mod).find((p) => p.name === ep.pin)
-  if (!pin) return null
+  if (!pin || !validOffset(ep.offset, pin.bus)) return null
   const hole = part.mount ? plugOfPin(d, part.uid, pin.name) : null
   return hole ? { end: hole, dir: null } : { end: pin.end, dir: pin.dir }
+}
+
+/**
+ * Whether an endpoint `offset` names a real position: none at all, or on a bus pin a whole number
+ * from 0 to bus.length - 1. An offset on a pin that is not a bus means nothing, so it is invalid too.
+ */
+export function validOffset(offset: number | undefined, bus: { length: number } | undefined): boolean {
+  return offset === undefined || (!!bus && Number.isInteger(offset) && offset >= 0 && offset < bus.length)
 }
 
 /** Where a pin's hit target sits in world px, so pressing, hovering or dropping there picks that pin. */
@@ -276,13 +284,18 @@ export function computeRoutes(d: Diagram, opts: { only?: Set<string>; prev?: Rou
 }
 
 /**
- * A key that changes exactly when some wire's routing inputs change: its uid, both endpoints and
- * its stored route. Serialized as structured tuples, so no two different sets of endpoints share a
+ * A key that changes exactly when some wire's routing inputs change: its uid, both endpoints (hole
+ * and offset included: an invalid offset leaves the end unresolved) and its stored route. Serialized as structured tuples, so no two different sets of endpoints share a
  * key however their names are spelled (part "p.a" pin "R" and part "p" pin "a.R" differ).
  */
 export function routingKey(connections: Connection[]): string {
   return JSON.stringify(
-    connections.map((c) => [c.uid, c.from.part, c.from.pin, c.from.hole ?? null, c.to.part, c.to.pin, c.to.hole ?? null, c.route ?? null]),
+    connections.map((c) => [
+      c.uid,
+      c.from.part, c.from.pin, c.from.hole ?? null, c.from.offset ?? null,
+      c.to.part, c.to.pin, c.to.hole ?? null, c.to.offset ?? null,
+      c.route ?? null,
+    ]),
   )
 }
 
@@ -698,6 +711,14 @@ export function validateDiagram(raw: unknown): DiagramResult {
         warnings.push(`${at}.hole: group "${ep.pin}" has ${group.at.length} holes (0 to ${group.at.length - 1})`)
     } else if (!m.pins.some((p) => 'name' in p && p.name === ep.pin)) warnings.push(`${at}: part "${ep.part}" has no pin "${ep.pin}"`)
     else if (ep.hole !== undefined) warnings.push(`${at}.hole: pin "${ep.pin}" is not a hole group`)
+    // An offset resolves only on a bus pin, at a whole-number position along it (see validOffset).
+    const pin = group ? undefined : m.pins.find((p) => 'name' in p && p.name === ep.pin)
+    if ((group || pin) && isNum(ep.offset)) {
+      const bus = pin && 'bus' in pin ? pin.bus : undefined
+      if (!bus) warnings.push(`${at}.offset: "${ep.pin}" is not a bus, so an offset there is meaningless and the wire is broken`)
+      else if (!validOffset(ep.offset, bus))
+        warnings.push(`${at}.offset: ${ep.offset} is not a position on bus "${ep.pin}" (a whole number from 0 to ${bus.length - 1}), so the wire is broken`)
+    }
   }
 
   if (!Array.isArray(raw.connections)) errors.push('connections: required list')
