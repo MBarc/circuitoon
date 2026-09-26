@@ -805,9 +805,23 @@ function checkPotentials({ d, nl, netTerms, netWires, terminal, shorted, add }: 
 
   /** Edges of a loop that disagrees: a voltage whose path uses one of them cannot be stated. */
   const broken = new Set<Edge>()
+  /** The wires on a loop's nets between the loop's own parts: the ones to cut, when there are few. */
+  const loopWires = (list: Source[], nets: Set<string>) => {
+    const inLoop = new Set(list.map((x) => x.term.part.uid))
+    const ws = d.connections.filter((c) => inLoop.has(c.from.part) && inLoop.has(c.to.part) &&
+      nets.has(netOfKey(nodeKey(c.from.part, c.from.pin))))
+    const names = ws.map((c) => `${termName(terminal(nodeKey(c.from.part, c.from.pin))!)} to ${termName(terminal(nodeKey(c.to.part, c.to.pin))!)}`).sort(natural.compare)
+    return names.length && names.length <= 3 ? `Remove one of these wires: ${orList(names).replace(/ or /, ', or ')}.` : 'Remove one of the wires that close the loop.'
+  }
+  const loopShort = (all: Source[], nets: Set<string>) =>
+    add({ rule: 'short', subject: all[0].term.part.designator, target: termName(all[0].term),
+      message: `${andList(all.map((s) => termName(s.term)))} are wired in a loop, each + to the next -: short circuit. Nothing limits the current, so they can overheat. ${loopWires(all, nets)}`, ...involve(all) })
+  /** Loops of supplies: shorted stacks, fights, parallels. `only` limits it to loops through those edges. */
+  const analyseLoops = (only?: Set<Edge>) => {
   for (const i of loops) {
     const e = edges[i]
     const around = [{ e, forward: true }, ...path(e.to, e.from)]
+    if (only && !around.some((x) => only.has(x.e))) continue
     const cycle = around.filter((x) => x.e.src)
     if (!cycle.length) continue
     // A loop through a supply of unknown voltage says nothing definite (the tie is reported below).
@@ -821,8 +835,7 @@ function checkPotentials({ d, nl, netTerms, netWires, terminal, shorted, add }: 
     // Through a switch the loop exists only while it is closed: say nothing (it may well be open).
     if (around.some((x) => x.e.closedSwitch)) continue
     if (mismatch && (!ahead.length || !back.length)) {
-      add({ rule: 'short', subject: all[0].term.part.designator, target: termName(all[0].term),
-        message: `${andList(all.map((s) => termName(s.term)))} are wired in a loop, each + to the next -: short circuit. Nothing limits the current, so they can overheat. Remove one of the wires that close the loop.`, ...involve(all) })
+      loopShort(all, new Set(around.flatMap((x) => [x.e.from, x.e.to])))
     } else if (mismatch) {
       const [a, b] = [side(ahead), side(back)]
       const [hi, lo] = a.v >= b.v ? [a, b] : [b, a]
@@ -843,6 +856,8 @@ function checkPotentials({ d, nl, netTerms, netWires, terminal, shorted, add }: 
           message: `${andList(all.map(sourceName))} are ${all.length === 2 ? 'two' : all.length} supplies tied together; power this net from one of them.`, ...involve(all) })
     }
   }
+  }
+  analyseLoops()
 
   /** A supply whose voltage is a setting on the part (a buck's output), not a battery's voltage. */
   const settable = (x: Source) => !x.external && x.term.info.valued.has(x.term.name) && !isCell(x.term)
@@ -917,6 +932,9 @@ function checkPotentials({ d, nl, netTerms, netWires, terminal, shorted, add }: 
   if (conducting.size) {
     edges.push(...conducting)
     walk()
+    // Loops closed by the conducting diodes (crossed power leads between boards) are checked
+    // like any other.
+    analyseLoops(conducting)
   }
   for (const e of diodes) {
     if (conducting.has(e)) continue
@@ -934,7 +952,10 @@ function checkPotentials({ d, nl, netTerms, netWires, terminal, shorted, add }: 
     if (diff.u.size) {
       const open = [...diff.u.keys()].map((id) => sources.get(id)!)
       add({ rule: 'supply-unknown', message: `${termName(pin)} voltage depends on ${andList(sorted(open).map((x) => `${termName(x.term)} (${reason(x)})`))} and cannot be checked. ${fixUnknown(open)}`, ...base })
-    } else if (diff.c < ext.volts - EPS)
+    } else if (diff.c < -EPS)
+      // The supplies on the way point the same way round as USB: a shorted loop.
+      loopShort(sorted([s, ...under]), new Set(way.flatMap((x) => [x.e.from, x.e.to])))
+    else if (diff.c < ext.volts - EPS)
       add({ rule: 'supplies-fight', ...base, message: backFeed(pin, ext, under, what, diff.c) })
     else {
       const rails = knownRails(pin.supply)
