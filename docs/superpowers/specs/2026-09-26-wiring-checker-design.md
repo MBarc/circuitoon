@@ -69,6 +69,13 @@ Principle: never state a definite voltage or give setting advice when any part o
 - Board GPIOs typed io (input-only pins input; flash and control pins untyped).
 - Every message ends with an instruction (tested over every fixture).
 
+## Sixth review changes (2026-09-26, Astra re-review 5)
+- Diode levels use real voltages (isolated nets start at local potential 0); uid order only for exact ties.
+- Invariance property: shuffling plus consistent uid renaming leaves rule, severity, message and causal pins unchanged.
+- Loops closed by conducting diodes are analysed (crossed power leads between boards are a short, naming the wires).
+- No-power advice names a supply the input accepts ("a 3.3 V supply, such as a board's 3V3 pin"), else "a compatible supply".
+- ESP32-S3 GPIO35-37 untyped (octal flash/PSRAM variants).
+
 ## Where it lives
 - `src/format/checks.ts`: pure `checkDiagram(d): Finding[]`, sorted errors first, then by designator. `parseSupply(s)`. No React.
 - The editor computes it memoized per diagram content, never per drag frame (reuse the drag-free memo pattern of the broken list).
