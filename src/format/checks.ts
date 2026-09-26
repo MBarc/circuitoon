@@ -702,12 +702,36 @@ function checkPotentials({ d, nl, netTerms, netWires, terminal, shorted, add }: 
     wires: [...new Set(list.flatMap((s) => wiresOf(netOfKey(s.term.key))))],
     causes: list.map((s) => s.term.key),
   })
+  /**
+   * The pin to name for a supply: when the supply is wired to the input of another part that
+   * passes it on (a cell on a charger's B+), that part's output (its OUT+); else its own pin.
+   */
+  let wiresAt: Map<string, Set<string>> | undefined
+  const shownPin = (s: Source) => {
+    const k = netOfKey(s.term.key)
+    if (!k.startsWith('#')) return s.term
+    if (!wiresAt) {
+      wiresAt = new Map()
+      for (const c of d.connections)
+        for (const [a, b] of [[c.from, c.to], [c.to, c.from]]) {
+          const ka = nodeKey(a.part, a.pin)
+          wiresAt.set(ka, (wiresAt.get(ka) ?? new Set()).add(nodeKey(b.part, b.pin)))
+        }
+    }
+    const wiredTo = wiresAt.get(s.term.key) ?? new Set<string>()
+    const through = netTerms[Number(k.slice(1))].find((o) => o.part !== s.term.part && o.type === 'power_out' && o.info.pass.has(o.name) &&
+      [...o.info.defs.entries()].some(([n, def]) => (def.pin ?? def.group)!.type === 'power_in' && o.info.comp.get(n) === o.info.comp.get(o.name) && wiredTo.has(nodeKey(o.part.uid, n))))
+    return through ?? s.term
+  }
   /** One side of a loop: a single supply by its pin and voltage, several as a series stack. */
   const side = (list: Source[]) => {
     const v = list.reduce((sum, s) => sum + s.v!, 0)
     if (list.length === 1) {
       const s = list[0]
-      return { v, text: `${termName(s.term)} (${volts(v)}${s.external ? ` from ${s.external.via}` : ''})` }
+      // Name the pin actually on the net: a charger's OUT+ passing a cell on, with the cell behind it.
+      const shown = shownPin(s)
+      const from = s.external ? ` from ${s.external.via}` : shown !== s.term ? ` from ${s.term.part.designator}` : ''
+      return { v, text: `${termName(shown)} (${volts(v)}${from})` }
     }
     return { v, text: `${andList(sorted(list).map((s) => termName(s.term)))} (${volts(v)} in series)` }
   }

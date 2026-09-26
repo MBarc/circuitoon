@@ -256,6 +256,12 @@ describe('checkDiagram', () => {
       expect(f.message).toBe('BT1 + and BT2 + are two supplies tied together; power this net from one of them.')
       expect(rules(d)).not.toContain('supplies-fight')
     })
+    it('names the pin on the net, with the supply behind a pass-through', () => {
+      const d = sheet([part('BT1', 'bat37'), part('U1', 'charger'), part('U2', 'mcu')], [
+        wire('w1', 'bt1.+', 'u1.B+'), wire('w2', 'bt1.-', 'u1.GND'), wire('w3', 'u1.OUT+', 'u2.3V3'), wire('w4', 'u1.GND', 'u2.GND'),
+      ])
+      expect(only(d, 'supplies-fight')[0].message).toBe('U1 OUT+ (3.7 V from BT1) and U2 3V3 (3.3 V) are wired together: the two supplies fight.')
+    })
     it('names a series stack as one side of a fight', () => {
       const d = sheet([part('BT1', 'bat5'), part('BT2', 'bat5'), part('BT3', 'bat9')], [
         wire('w1', 'bt1.+', 'bt2.-'), wire('w2', 'bt2.+', 'bt3.+'), wire('w3', 'bt1.-', 'bt3.-'),
