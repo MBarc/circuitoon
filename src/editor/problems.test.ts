@@ -32,7 +32,7 @@ describe('problemsOf', () => {
   it('checks the sheet, and reuses the list while parts, wires and modules stay the same', () => {
     const s = new EditorStore(sheet())
     const first = problemsOf(s)
-    expect(first.map((f) => f.rule)).toEqual(['short', 'no-ground'])
+    expect(first.map((f) => f.rule)).toEqual(['short'])
     s.commit({ ...s.getState().diagram, title: 'renamed' })
     s.select({ parts: ['b'], wires: [] })
     expect(problemsOf(s)).toBe(first)
@@ -60,7 +60,7 @@ describe('problemsOf', () => {
   it('keeps one list per store', () => {
     const a = new EditorStore(sheet())
     const b = new EditorStore({ ...sheet(), connections: [] })
-    expect(problemsOf(a)).toHaveLength(2)
+    expect(problemsOf(a)).toHaveLength(1)
     expect(problemsOf(b)).toEqual([])
   })
 })
@@ -115,7 +115,9 @@ describe('EditorStore highlight and reveal', () => {
   })
   it('counts problems by severity', () => {
     const s = new EditorStore(sheet())
-    expect(severityCounts(problemsOf(s))).toBe('1 error, 1 warning')
+    expect(severityCounts(problemsOf(s))).toBe('1 error')
+    s.commit({ ...s.getState().diagram, connections: [{ uid: 'w9', from: { part: 'b', pin: '+' }, to: { part: 'r', pin: 'L' } }] })
+    expect(severityCounts(problemsOf(s))).toBe('1 warning')
     expect(severityCounts([])).toBe('')
   })
   it('counts reveal requests so the canvas can pan to the selection', () => {
