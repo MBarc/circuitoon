@@ -4,7 +4,7 @@
 import { describe, expect, it } from 'vitest'
 import { resolveEndpoint, routingKey, validateDiagram, type Diagram } from './diagram.ts'
 import { netlist } from './netlist.ts'
-import { brokenConnections } from '../editor/problems.ts'
+import { brokenConnections } from './checks.ts'
 import type { ModuleDef } from './module.ts'
 
 const rail: ModuleDef = {

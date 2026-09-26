@@ -326,13 +326,13 @@ export function checkDiagram(d: Diagram): Finding[] {
     for (const ep of [c.from, c.to]) {
       const board = partByUid.get(ep.part)
       const m = board && moduleOf(d, board.module)
-      if (!m?.holes?.some((g) => g.name === ep.pin)) continue
+      if (!board || !m?.holes?.some((g) => g.name === ep.pin)) continue
       const pl = legIn.get(JSON.stringify([ep.part, ep.pin, ep.hole ?? 0]))
       const leg = pl && partByUid.get(pl.part)
       if (!pl || !leg) continue
       const legTerm = terminal(nodeKey(pl.part, pl.pin))
       add('leg-hole-shared', board.designator,
-        `A wire ends in ${endpointName(d, { ...ep, hole: ep.hole ?? 0 })}, the hole ${leg.designator} ${legTerm?.label ?? pl.pin} already fills: physically, one hole takes one leg. Move the wire to another hole of the strip.`,
+        `A wire ends in ${endpointName(d, { ...ep, hole: ep.hole ?? 0 })}, where the ${leg.designator} ${legTerm?.label ?? pl.pin} leg already sits: physically, one hole takes one leg. Move the wire to another hole of the strip.`,
         [board.uid, leg.uid], [{ part: pl.part, pin: pl.pin }], [c.uid])
     }
   }
@@ -341,7 +341,7 @@ export function checkDiagram(d: Diagram): Finding[] {
     const c = d.connections.find((w) => w.uid === b.uid)!
     const parts = [c.from.part, c.to.part].filter((u) => partByUid.has(u))
     add('broken', b.name,
-      `${b.name} is broken: ${andList(b.missing)} ${b.missing.length > 1 ? 'are' : 'is'} not on the sheet, so it connects nothing.`, parts, [], [b.uid])
+      `The wire ${b.name} is broken: ${andList(b.missing)} ${b.missing.length > 1 ? 'are' : 'is'} not on the sheet, so it connects nothing.`, parts, [], [b.uid])
   }
 
   const rank = (s: Severity) => (s === 'error' ? 0 : 1)

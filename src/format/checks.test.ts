@@ -301,7 +301,7 @@ describe('checkDiagram', () => {
       ])
       const [f] = only(d, 'leg-hole-shared')
       expect(f.severity).toBe('warning')
-      expect(f.message).toBe('A wire ends in BB1 s1 hole 1, the hole R1 L already fills: physically, one hole takes one leg. Move the wire to another hole of the strip.')
+      expect(f.message).toBe('A wire ends in BB1 s1 hole 1, where the R1 L leg already sits: physically, one hole takes one leg. Move the wire to another hole of the strip.')
       expect(f.parts).toEqual(['bb1', 'r1'])
       expect(f.wires).toEqual(['w1'])
     })
@@ -325,8 +325,8 @@ describe('checkDiagram', () => {
       const d = sheet([part('R1', 'two')], [wire('w1', 'r1.L', 'r1.nope'), { ...wire('w2', 'zz.1', 'yy.2'), label: 'VCC' }])
       const found = only(d, 'broken')
       expect(found.map((f) => [f.severity, f.wires, f.message])).toEqual([
-        ['error', ['w1'], 'R1 L to R1 nope is broken: R1 nope is not on the sheet, so it connects nothing.'],
-        ['error', ['w2'], 'VCC is broken: zz 1 and yy 2 are not on the sheet, so it connects nothing.'],
+        ['error', ['w1'], 'The wire R1 L to R1 nope is broken: R1 nope is not on the sheet, so it connects nothing.'],
+        ['error', ['w2'], 'The wire VCC is broken: zz 1 and yy 2 are not on the sheet, so it connects nothing.'],
       ])
       expect(found[1].subject).toBe('VCC')
     })
