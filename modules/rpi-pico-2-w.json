@@ -212,6 +212,7 @@
       "GND 3",
       "GND 4",
       "GND 5",
+      "AGND",
       "GND 6",
       "GND 7",
       "GND DBG"
@@ -237,12 +238,7 @@
         "diode": true,
         "max": 5.5
       }
-    ],
-    "returns": {
-      "3V3(OUT)": "GND",
-      "VBUS": "GND",
-      "VSYS": "GND"
-    }
+    ]
   },
   "art": {
     "w": 120,

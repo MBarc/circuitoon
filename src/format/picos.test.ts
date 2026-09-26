@@ -63,10 +63,10 @@ describe('Raspberry Pi Pico family keeps the physical header order', () => {
         if (i >= 23 && i <= 25) expect(gp).toBeUndefined() // GP23-25 are on-board only
         else expect(gp?.type ?? 'io').toBe('io')
       }
-      // Every digital GND (header and debug port) is one net; AGND stays separate.
-      const gnds = pins.filter((p) => p.type === 'ground' && p.name !== 'AGND').map((p) => p.name)
-      expect(gnds).toEqual(['GND', 'GND 2', 'GND 3', 'GND 4', 'GND 5', 'GND 6', 'GND 7', 'GND DBG'])
-      expect(m.internal).toEqual([gnds])
+      // Every GND (header and debug port) and AGND ("also a GND pin") is one net.
+      const gnds = pins.filter((p) => p.type === 'ground').map((p) => p.name)
+      expect(gnds).toEqual(['GND', 'GND 2', 'GND 3', 'GND 4', 'GND 5', 'AGND', 'GND 6', 'GND 7', 'GND DBG'])
+      expect([...(m.internal ?? [[]])[0]].sort()).toEqual([...gnds].sort())
       // On USB, VBUS carries 5 V and VSYS gets it through the diode (up to 5.5 V); not joined inside.
       expect(externalPower(m)).toEqual([{ pin: 'VBUS', volts: 5, via: 'USB' }, { pin: 'VSYS', volts: 5, via: 'USB', diode: true, max: 5.5 }])
       for (const p of pins) if (p.type === 'power_in' || p.type === 'power_out') expect(p.supply).toBeTruthy()

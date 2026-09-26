@@ -38,9 +38,11 @@ const BOTTOM = ['SWCLK', 'GND DBG|GND', 'SWDIO']
 
 // Types per the datasheets' pin descriptions (VBUS = micro-USB 5 V, VSYS = 1.8-5.5 V system input,
 // so its supply lists the 5 V, single Li-ion cell and 3.3 V rails it accepts, 3V3(OUT) = on-board
-// SMPS output). AGND is the analog ground reference for GP26-28; the
-// datasheet treats it as a separate analog ground plane ("can be connected to digital ground"),
-// so it is a ground pin but not joined to GND here.
+// SMPS output). AGND is the analog ground reference for GP26-28, with its own ground plane under
+// those signals, but electrically it is ground: Raspberry Pi's pin documentation lists "AGND at
+// pin 33 (also a GND pin). An analogue ground used to provide noise-free ground for sensors"
+// (https://www.raspberrypi.com/documentation/microcontrollers/pico-series.html#pin-functions),
+// so it is joined to the GND pins in `internal`.
 const TYPES = {
   VBUS: { type: 'power_in', supply: '5V' },
   VSYS: { type: 'power_in', supply: '5V/3.7V/3V3' },
@@ -64,7 +66,7 @@ function pinsFor(side, list) {
     return p
   })
 }
-const GROUNDS = [...LEFT, ...RIGHT, ...BOTTOM].map((s) => s.split('|')[0]).filter((n) => n === 'GND' || n.startsWith('GND '))
+const GROUNDS = [...LEFT, ...RIGHT, ...BOTTOM].map((s) => s.split('|')[0]).filter((n) => n === 'GND' || n.startsWith('GND ') || n === 'AGND')
 
 const r = (x, y, w, h, fill, extra = {}) => ({ type: 'rect', x, y, w, h, fill, ...extra })
 
@@ -141,8 +143,6 @@ function build({ id, name, source, shapes }) {
       // raise VSYS) and takes up to 5.5 V (datasheet: "VSYS ... can vary in the allowed range 1.8 V
       // to 5.5 V"), the limit the checker uses when something else drives VSYS higher than USB.
       external: [{ pin: 'VBUS', volts: 5, via: 'USB' }, { pin: 'VSYS', volts: 5, via: 'USB', diode: true, max: 5.5 }],
-      // AGND is a separate analog ground (see above), so say which ground the supplies return to.
-      returns: { '3V3(OUT)': 'GND', VBUS: 'GND', VSYS: 'GND' },
     },
     art: { w: W, h: H, pinLabels: 'inside', shapes: [r(0, 0, W, H, PCB, { radius: 4 }), ...shapes] },
   }

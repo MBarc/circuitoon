@@ -348,9 +348,11 @@ describe('each output returns to a known ground, or nothing definite is said', (
       'supply-too-high: U3 VCC accepts up to 5 V but gets 8 V from BT1 + and U2 B in series. Use a 5 V supply instead.',
     ])
   })
-  it('every Pico output and USB pin returns to GND, not AGND', () => {
+  it('a Pico sensor grounded on AGND is fine: AGND is a GND pin (one ground component, no returns needed)', () => {
+    const d = sheet([at('u1', 'U1', 'rpi-pico'), at('u2', 'U2', 'bme280-module-6pin', 400)], [['u1|3V3(OUT)', 'u2|VCC'], ['u1|AGND', 'u2|GND']])
+    expect(found(d)).toEqual([])
     for (const id of ['rpi-pico', 'rpi-pico-h', 'rpi-pico-w', 'rpi-pico-2', 'rpi-pico-2-w'])
-      expect((load(id).electrical as { returns?: unknown }).returns).toEqual({ '3V3(OUT)': 'GND', VBUS: 'GND', VSYS: 'GND' })
+      expect((load(id).electrical as { returns?: unknown }).returns).toBeUndefined()
   })
 })
 
