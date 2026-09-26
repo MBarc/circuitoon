@@ -3,7 +3,7 @@
 // resistance, capacitance or voltage the file asked for, now shown as the part default) come
 // first and are tagged, so they are never among the hidden ones.
 import { useId, useState } from 'react'
-import { COLLAPSED_COUNT, orderWarnings, shownWarnings } from './warningList.ts'
+import { orderWarnings, shownWarnings } from './warningList.ts'
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`
 
@@ -28,7 +28,7 @@ export function LoadWarnings({ warnings, onDismiss, initiallyExpanded = false }:
       <div className="lw-actions">
         {canExpand && (
           <button type="button" className="tool" aria-expanded={expanded} aria-controls={listId} onClick={() => setExpanded(!expanded)}>
-            {expanded ? `Show first ${COLLAPSED_COUNT}` : `Show all ${all.length}`}
+            {expanded ? 'Show fewer' : `Show all ${all.length}`}
           </button>
         )}
         <button type="button" className="tool" onClick={onDismiss}>Dismiss</button>

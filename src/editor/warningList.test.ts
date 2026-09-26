@@ -59,5 +59,6 @@ describe('load warnings', () => {
     const w = await openWithFourWarnings()
     const html = renderToStaticMarkup(createElement(LoadWarnings, { warnings: w, onDismiss: () => {}, initiallyExpanded: true }))
     for (const x of w) expect(html).toContain(x.replaceAll('"', '&quot;'))
+    expect(html).toContain('Show fewer')
   })
 })
