@@ -338,6 +338,28 @@ const isCell = (t: Terminal) => (t.info.module.electrical as { model?: string } 
 /** A supply named for advice: a battery by its designator, anything else by its pin. */
 const supplyName = (t: Terminal) => (isCell(t) ? t.part.designator : termName(t))
 
+/**
+ * A supply the given power inputs all accept, from their rails: "a 3.3 V supply, such as a
+ * board's 3V3 pin", "a 7 V to 12 V supply, such as a 9 V battery"; "a compatible supply" when a
+ * rail is unknown or they share none.
+ */
+function supplyFor(ins: Terminal[]): string {
+  let common: number[] | null = null
+  for (const t of ins) {
+    const rails = knownRails(t.supply)
+    if (!rails) return 'a compatible supply'
+    common = common === null ? [...new Set(rails)] : common.filter((v) => rails.some((r) => Math.abs(r - v) <= EPS))
+  }
+  if (!common?.length) return 'a compatible supply'
+  const r = [...common].sort((a, b) => a - b)
+  const [min, max] = [r[0], r[r.length - 1]]
+  const what = r.length <= 2 ? `a ${orList(r.map(volts))} supply` : `a ${volts(min)} to ${volts(max)} supply`
+  const pins = [[3.3, '3V3'], [5, '5V']].filter(([v]) => r.some((x) => Math.abs(x - (v as number)) <= EPS)).map(([, n]) => n as string)
+  const cell = [9, 6, 4.5, 3.7, 7.4, 3].find((v) => v >= min - EPS && v <= max + EPS)
+  const example = pins.length ? `a board's ${orList(pins)} pin` : cell !== undefined ? `a ${volts(cell)} battery` : ''
+  return example ? `${what}, such as ${example}` : what
+}
+
 // ---- The checker ----
 
 /** Natural order, so U2 sorts before U10. */
@@ -449,9 +471,10 @@ export function checkDiagram(d: Diagram): Finding[] {
         ins.some((t) => others(t).some(mayFeed)) ||
         terms.some((t) => t.type === 'power_out' && others(t).some(isSource))
       if (!fed) {
-        const wired = [...new Set(ins.filter((t) => others(t).length).map((t) => t.label))]
+        const wiredPins = ins.filter((t) => others(t).length)
+        const wired = [...new Set(wiredPins.map((t) => t.label))]
         const message = wired.length
-          ? `${p.designator} has no power: ${andList(wired)} ${isAre(wired.length)} connected but nothing supplies ${wired.length === 1 ? 'it' : 'them'}. Connect ${wired.length === 1 ? 'it' : 'them'} to a supply (a 3V3 or 5V pin of a board, or a battery +).`
+          ? `${p.designator} has no power: ${andList(wired)} ${isAre(wired.length)} connected but nothing supplies ${wired.length === 1 ? 'it' : 'them'}. Connect ${wired.length === 1 ? 'it' : 'them'} to ${supplyFor(wiredPins)}.`
           : `${p.designator} has no power: connect ${orList([...new Set(ins.map((t) => t.label))])}.`
         add({ rule: 'no-power', subject: p.designator, target: p.designator, message, parts: [p.uid], pins: ins.map(termPin), wires: [], causes: ins.map((t) => t.key) })
       }
@@ -486,30 +509,44 @@ export function checkDiagram(d: Diagram): Finding[] {
     }
     return list
   }
-  const pairs = new Set<string>()
+  // Per pair of parts, the first signal pair by name across all nets (never by uid or net order).
+  const typed = (t: Terminal) => t.type === 'input' || t.type === 'output' || t.type === 'io'
+  const groundGroups = new Map<string, Set<string>>()
+  const groupsOf = (p: PartInstance) => {
+    let g = groundGroups.get(p.uid)
+    if (!g) groundGroups.set(p.uid, (g = new Set(groundedPins(p).map((x) => returnGroup(x.key)))))
+    return g
+  }
+  const best = new Map<string, { a: Terminal; b: Terminal; an: string; bn: string; net: number }>()
   nl.nets.forEach((_, i) => {
     // Signal pins: typed input, output or io, or an untyped board GPIO; at least one end typed.
-    const typed = (t: Terminal) => t.type === 'input' || t.type === 'output' || t.type === 'io'
-    // Each pair once, named in designator order (never uid order, so renaming changes nothing).
-    const signals = netTerms[i].filter((t) => !t.bare && (typed(t) || t.type === undefined))
-    if (signals.length < 2) return
-    const named = signals.map((t) => ({ t, n: termName(t) })).sort((x, y) => natural.compare(x.n, y.n))
-    for (let ai = 0; ai < named.length; ai++)
-      for (let bi = ai + 1; bi < named.length; bi++) {
-        const [a, b] = [named[ai].t, named[bi].t]
-        if (a.part === b.part || (!typed(a) && !typed(b))) continue
-        const key = JSON.stringify([a.part.uid, b.part.uid].sort())
-        if (pairs.has(key)) continue
-        pairs.add(key)
-        const [ga, gb] = [groundedPins(a.part), groundedPins(b.part)]
-        if (!ga.length || !gb.length) continue
-        const meet = new Set(ga.map((g) => returnGroup(g.key)))
-        if (gb.some((g) => meet.has(returnGroup(g.key)))) continue
-        add({ rule: 'no-common-ground', subject: a.part.designator, target: termName(a),
-          message: `${termName(a)} is wired to ${termName(b)}, but ${a.part.designator} and ${b.part.designator} share no ground, so the signal has no reference. Connect ${termName(ga[0])} to ${termName(gb[0])}.`,
-          parts: [a.part.uid, b.part.uid], pins: [termPin(a), termPin(b), termPin(ga[0]), termPin(gb[0])], wires: netWires[i], causes: [a.key, b.key] })
+    // One pin per part: its first typed signal by name, else its first untyped one.
+    const rep = new Map<PartInstance, { t: Terminal; n: string }>()
+    for (const t of netTerms[i]) {
+      if (t.bare || !(typed(t) || t.type === undefined)) continue
+      const n = termName(t)
+      const cur = rep.get(t.part)
+      if (!cur || (typed(t) && !typed(cur.t)) || (typed(t) === typed(cur.t) && natural.compare(n, cur.n) < 0)) rep.set(t.part, { t, n })
+    }
+    if (rep.size < 2) return
+    const list = [...rep.values()].filter((x) => groupsOf(x.t.part).size).sort((x, y) => natural.compare(x.n, y.n))
+    for (let ai = 0; ai < list.length; ai++)
+      for (let bi = ai + 1; bi < list.length; bi++) {
+        const [a, b] = [list[ai], list[bi]]
+        if (!typed(a.t) && !typed(b.t)) continue
+        const ga = groupsOf(a.t.part)
+        if ([...groupsOf(b.t.part)].some((g) => ga.has(g))) continue
+        const key = [a.t.part.uid, b.t.part.uid].sort().join(' ')
+        const prev = best.get(key)
+        if (!prev || natural.compare(a.n + ' ' + b.n, prev.an + ' ' + prev.bn) < 0) best.set(key, { a: a.t, b: b.t, an: a.n, bn: b.n, net: i })
       }
   })
+  for (const { a, b, net } of best.values()) {
+    const [ga, gb] = [groundedPins(a.part), groundedPins(b.part)]
+    add({ rule: 'no-common-ground', subject: a.part.designator, target: termName(a),
+      message: `${termName(a)} is wired to ${termName(b)}, but ${a.part.designator} and ${b.part.designator} share no ground, so the signal has no reference. Connect ${termName(ga[0])} to ${termName(gb[0])}.`,
+      parts: [a.part.uid, b.part.uid], pins: [termPin(a), termPin(b), termPin(ga[0]), termPin(gb[0])], wires: netWires[net], causes: [a.key, b.key] })
+  }
 
   for (const issue of mountIssues(d)) {
     const p = partByUid.get(issue.part)

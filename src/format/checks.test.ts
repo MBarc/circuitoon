@@ -455,22 +455,22 @@ describe('checkDiagram', () => {
         wire('w1', 'u1.VCC', 'u2.VCC'), wire('w2', 'u1.GND', 'bt1.-'), wire('w3', 'u2.GND', 'bt1.-'),
       ])
       expect(only(d, 'no-power').map((f) => f.message)).toEqual([
-        'U1 has no power: VCC is connected but nothing supplies it. Connect it to a supply (a 3V3 or 5V pin of a board, or a battery +).',
-        'U2 has no power: VCC is connected but nothing supplies it. Connect it to a supply (a 3V3 or 5V pin of a board, or a battery +).',
+        "U1 has no power: VCC is connected but nothing supplies it. Connect it to a 3.3 V or 5 V supply, such as a board's 3V3 or 5V pin.",
+        "U2 has no power: VCC is connected but nothing supplies it. Connect it to a 3.3 V or 5 V supply, such as a board's 3V3 or 5V pin.",
       ])
     })
     it('does not count a pass-through output as a feed', () => {
       const d = sheet([part('U1', 'charger'), part('U2', 'charger')], [wire('w1', 'u1.OUT+', 'u2.OUT+'), wire('w2', 'u1.GND', 'u2.GND')])
       expect(only(d, 'no-power').map((f) => f.message)).toEqual([
-        'U1 has no power: B+ is connected but nothing supplies it. Connect it to a supply (a 3V3 or 5V pin of a board, or a battery +).',
-        'U2 has no power: B+ is connected but nothing supplies it. Connect it to a supply (a 3V3 or 5V pin of a board, or a battery +).',
+        "U1 has no power: B+ is connected but nothing supplies it. Connect it to a 3.7 V supply, such as a 3.7 V battery.",
+        "U2 has no power: B+ is connected but nothing supplies it. Connect it to a 3.7 V supply, such as a 3.7 V battery.",
       ])
     })
     it('does not count a bare breadboard strip as a feed', () => {
       const d = sheet([part('BB1', 'bb', { x: 0, y: 0 }), part('U1', 'chipAny'), part('BT1', 'bat5')], [
         wire('w1', 'u1.VCC', 'bb1.s1'), wire('w2', 'u1.GND', 'bt1.-'),
       ])
-      expect(only(d, 'no-power').map((f) => f.message)).toEqual(['U1 has no power: VCC is connected but nothing supplies it. Connect it to a supply (a 3V3 or 5V pin of a board, or a battery +).'])
+      expect(only(d, 'no-power').map((f) => f.message)).toEqual(["U1 has no power: VCC is connected but nothing supplies it. Connect it to a 3.3 V or 5 V supply, such as a board's 3V3 or 5V pin."])
     })
   })
 
