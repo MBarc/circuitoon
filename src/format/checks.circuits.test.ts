@@ -501,6 +501,21 @@ function shuffled<T>(list: T[], seed: number): T[] {
   return out
 }
 
+describe("a short needs the supply's own return", () => {
+  const two = (returns?: Record<string, string>) => custom({
+    id: 'two-gnd', pins: [
+      { name: 'A', side: 'right', type: 'power_out', supply: '5V' }, { name: 'GA', side: 'right', type: 'ground' }, { name: 'GB', side: 'right', type: 'ground' },
+    ], ...(returns ? { electrical: { returns } } : {}),
+  })
+  it('output A returns to GB: A wired to GA is no short, A wired to GB is', () => {
+    expect(rules(sheetWith([two({ A: 'GB' })], [at('u1', 'U1', 'two-gnd')], [['u1|A', 'u1|GA']]))).not.toContain('short')
+    expect(rules(sheetWith([two({ A: 'GB' })], [at('u1', 'U1', 'two-gnd')], [['u1|A', 'u1|GB']]))).toContain('short')
+  })
+  it('with no return declared among two grounds, no short can be claimed', () => {
+    expect(rules(sheetWith([two()], [at('u1', 'U1', 'two-gnd')], [['u1|A', 'u1|GA']]))).not.toContain('short')
+  })
+})
+
 describe('order independence (every sheet built above)', () => {
   it('shuffling the parts and the wires never changes the findings', () => {
     expect(fixtures.length).toBeGreaterThan(80)

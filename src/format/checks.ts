@@ -175,6 +175,11 @@ interface ModuleInfo {
    * component (grounds in one commonReturn group count as one); null when that is ambiguous.
    */
   returnOf: Map<string, string | null>
+  /**
+   * The ground pins that are a driving pin's own return (its returnOf ground and every ground in
+   * the same component or commonReturn group); empty when the return is unknown or ambiguous.
+   */
+  returnGrounds: (pin: string) => string[]
   /** Pins and hole groups that may be supplies: power outputs and pins on USB power. */
   sourceNames: string[]
   /** Ground pins the module declares one return for checking (`electrical.commonReturn`). */
@@ -231,7 +236,11 @@ function moduleInfo(m: ModuleDef): ModuleInfo {
   const declared = declaredReturns(m)
   const only = comps.size === 1 ? grounds[0] : null
   const returnOf = new Map(sourceNames.map((n) => [n, declared[n] !== undefined && defs.has(declared[n]) ? declared[n] : only]))
-  info = { module: m, defs, comp, pass, external, grounds, returnOf, sourceNames, commonReturn: joined, switchPins: switchPinsOf(m, defs), valued: new Set(primaryParam(m)?.name === 'voltage' ? voltageOutputs(m) : []) }
+  const returnGrounds = (pin: string) => {
+    const ret = returnOf.get(pin) ?? (declared[pin] !== undefined && defs.has(declared[pin]) ? declared[pin] : only)
+    return ret ? grounds.filter((g) => retComp(g) === retComp(ret)) : []
+  }
+  info = { module: m, defs, comp, pass, external, grounds, returnOf, returnGrounds, sourceNames, commonReturn: joined, switchPins: switchPinsOf(m, defs), valued: new Set(primaryParam(m)?.name === 'voltage' ? voltageOutputs(m) : []) }
   infoCache.set(m, info)
   return info
 }
@@ -387,7 +396,9 @@ export function checkDiagram(d: Diagram): Finding[] {
     for (const t of terms) {
       if (!drives(t)) continue
       const id = JSON.stringify([t.part.uid, t.info.comp.get(t.name)])
-      const own = t.info.grounds.find((g) => onNet.has(nodeKey(t.part.uid, g)))
+      // Only the supply's own return counts: its declared ground, or the part's only ground
+      // component. An unknown or ambiguous return cannot establish a short.
+      const own = t.info.returnGrounds(t.name).find((g) => onNet.has(nodeKey(t.part.uid, g)))
       if (own === undefined || shorted.has(id)) continue
       shorted.add(id)
       shortedParts.add(t.part.uid)
