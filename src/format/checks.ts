@@ -6,7 +6,7 @@
 // docs/superpowers/specs/2026-09-26-wiring-checker-design.md.
 import { type Connection, type Diagram, type Endpoint, type PartInstance, moduleOf, resolveEndpoint } from './diagram.ts'
 import { type MountIssue, mountIssues, plugsOf } from './breadboard.ts'
-import { type ExternalPower, type HoleGroup, type ModuleDef, type PinDef, type PinType, externalPower, isSpacer, voltageOutputs } from './module.ts'
+import { type ExternalPower, type HoleGroup, type ModuleDef, type PinDef, type PinType, commonReturn, externalPower, isSpacer, voltageOutputs } from './module.ts'
 import { netlist, nodeKey } from './netlist.ts'
 import { partValue, primaryParam } from './values.ts'
 
@@ -171,6 +171,8 @@ interface ModuleInfo {
   groundComps: string[]
   /** Pins and hole groups that may be supplies: power outputs and pins on USB power. */
   sourceNames: string[]
+  /** Ground pins the module declares one return for checking (`electrical.commonReturn`). */
+  commonReturn: string[][]
   /**
    * The outputs whose voltage is the part's `voltage` value (partValue, the same rule the
    * Inspector shows): `electrical.voltageOutputs`, or the only power_out (a battery's +, an
@@ -208,7 +210,7 @@ function moduleInfo(m: ModuleDef): ModuleInfo {
     .map(([c]) => grounds.find((g) => comp.get(g) === c)!)
     .sort((a, b) => size.get(comp.get(b)!)! - size.get(comp.get(a)!)! || grounds.indexOf(a) - grounds.indexOf(b))
   const sourceNames = [...defs.keys()].filter((n) => (type(n) === 'power_out' && !pass.has(n)) || external.has(n))
-  info = { module: m, defs, comp, pass, external, grounds, groundComps, sourceNames, valued: new Set(primaryParam(m)?.name === 'voltage' ? voltageOutputs(m) : []) }
+  info = { module: m, defs, comp, pass, external, grounds, groundComps, sourceNames, commonReturn: commonReturn(m).filter((g) => g.every((n) => defs.has(n))), valued: new Set(primaryParam(m)?.name === 'voltage' ? voltageOutputs(m) : []) }
   infoCache.set(m, info)
   return info
 }
@@ -452,8 +454,8 @@ export function checkDiagram(d: Diagram): Finding[] {
 
 /**
  * One ideal source between two nets: `to` sits `v` volts above `from` (a supply's output over its
- * own return). A link (no `src`) is 0 V: the grounds of a part that passes a supply through (a
- * charger's B- and OUT- behind its protection switch) are one return for voltage purposes.
+ * own return). A link (no `src`) is 0 V: ground pins a module declares one return
+ * (`electrical.commonReturn`, a charger's B- and OUT- behind its protection switch).
  */
 interface Edge {
   from: string
@@ -496,10 +498,11 @@ function checkPotentials({ d, nl, netTerms, netWires, terminal, shorted, add }: 
     const m = moduleOf(d, p.module)
     if (!m) continue
     const info = moduleInfo(m)
-    if (!info.sourceNames.length && !info.pass.size) continue
+    // Grounds the module declares one return are joined at 0 V (a charger's B- and OUT-).
+    for (const g of info.commonReturn)
+      for (const n of g.slice(1)) edges.push({ from: netOfKey(nodeKey(p.uid, g[0])), to: netOfKey(nodeKey(p.uid, n)), v: 0 })
+    if (!info.sourceNames.length) continue
     const ref = info.groundComps.length ? netOfKey(nodeKey(p.uid, info.groundComps[0])) : null
-    if (info.pass.size)
-      for (const g of info.groundComps.slice(1)) edges.push({ from: netOfKey(nodeKey(p.uid, info.groundComps[0])), to: netOfKey(nodeKey(p.uid, g)), v: 0 })
     const own = new Map<string, Source>()
     for (const n of info.sourceNames) {
       const t = terminal(nodeKey(p.uid, n))

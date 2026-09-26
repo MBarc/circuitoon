@@ -286,6 +286,21 @@ export function validateModule(raw: unknown): ValidationResult {
       })
   }
 
+  // Ground pins that are one return for checking (across a switch the checker does not model).
+  if (isObj(raw.electrical) && raw.electrical.commonReturn !== undefined) {
+    const groups = raw.electrical.commonReturn
+    const grounds = new Set([...(Array.isArray(raw.pins) ? raw.pins : []), ...(Array.isArray(raw.holes) ? raw.holes : [])]
+      .filter((p): p is Record<string, unknown> => isObj(p) && p.type === 'ground' && typeof p.name === 'string').map((p) => p.name as string))
+    if (!Array.isArray(groups)) errors.push('electrical.commonReturn: must be a list of ground pin name groups')
+    else
+      groups.forEach((g, i) => {
+        if (!Array.isArray(g) || g.length < 2) return void errors.push(`electrical.commonReturn[${i}]: needs 2 or more ground pin names`)
+        g.forEach((n, j) => {
+          if (typeof n !== 'string' || !grounds.has(n)) errors.push(`electrical.commonReturn[${i}][${j}]: no ground pin named "${String(n)}"`)
+        })
+      })
+  }
+
   // A voltage value is the voltage of named outputs: required when there is more than one to choose from.
   if (isObj(raw.electrical)) {
     const el = raw.electrical
@@ -305,6 +320,16 @@ export function validateModule(raw: unknown): ValidationResult {
   }
 
   return errors.length ? { ok: false, errors } : { ok: true, module: raw as unknown as ModuleDef }
+}
+
+/**
+ * Groups of ground pins the wiring checker treats as one return (`electrical.commonReturn`): a
+ * charger's B- and OUT- on either side of its protection switch. Not joined on the sheet.
+ */
+export function commonReturn(m: ModuleDef): string[][] {
+  const e = m.electrical
+  if (!isObj(e) || !Array.isArray(e.commonReturn)) return []
+  return e.commonReturn.filter((g): g is string[] => Array.isArray(g) && g.every((n) => typeof n === 'string'))
 }
 
 /**

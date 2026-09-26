@@ -224,3 +224,32 @@ describe('damaging or dead circuits are caught', () => {
     expect(found(d)).toEqual(['no-power: U1 has no power: connect 5V.'])
   })
 })
+
+/** A custom module, validated like an imported one. */
+function custom(raw: Record<string, unknown>): ModuleDef {
+  const r = validateModule({ format: 'circuitoon-module/1', name: String(raw.id), ...raw })
+  if (!r.ok) throw new Error(r.errors.join('; '))
+  return r.module
+}
+/** A sheet of built-in parts plus custom modules. */
+function sheetWith(mods: ModuleDef[], parts: PartInstance[], wires: Wire[]): Diagram {
+  const ids = new Set(mods.map((m) => m.id))
+  const d = sheet(parts.filter((p) => !ids.has(p.module)), wires)
+  return { ...d, parts, modules: { ...d.modules, ...Object.fromEntries(mods.map((m) => [m.id, m])) } }
+}
+
+describe('grounds are joined only where the module says so', () => {
+  it('a pass-through part with two separate grounds: a cell between them is not a short', () => {
+    const thru = custom({
+      id: 'thru', pins: [
+        { name: 'IN', side: 'left', type: 'power_in', supply: '5V' }, { name: 'G1', side: 'left', type: 'ground' },
+        { name: 'OUT', side: 'right', type: 'power_out', supply: '5V' }, { name: 'G2', side: 'right', type: 'ground' },
+      ], internal: [['IN', 'OUT']],
+    })
+    const d = sheetWith([thru], [at('u1', 'U1', 'thru'), at('bt1', 'BT1', 'battery-aa', 300)], [['bt1|+', 'u1|G1'], ['bt1|-', 'u1|G2']])
+    expect(rules(d)).not.toContain('short')
+  })
+  it('the TP4056 declares B- and OUT- one return (across its protection switch)', () => {
+    expect((load('tp4056-module').electrical as { commonReturn?: unknown }).commonReturn).toEqual([['B-', 'OUT-']])
+  })
+})

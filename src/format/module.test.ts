@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
-import { insideLabelSides, layoutModule, usesInsideLabels, validParamValue, externalPower, validateModule, voltageOutputs, type ModuleDef } from './module.ts'
+import { insideLabelSides, layoutModule, usesInsideLabels, validParamValue, commonReturn, externalPower, validateModule, voltageOutputs, type ModuleDef } from './module.ts'
 import { load } from './builtinModules.testing.ts'
 
 const base = { format: 'circuitoon-module/1', id: 'thing', name: 'Thing' }
@@ -124,6 +124,19 @@ describe('validateModule', () => {
       'electrical.external[1].volts: must be a number above 0',
       'electrical.external[2]: must be { "pin", "volts", "via" }',
     ])
+  })
+  it('checks electrical.commonReturn: groups of 2 or more ground pins', () => {
+    const pins = [{ name: 'G1', side: 'left', type: 'ground' }, { name: 'G2', side: 'left', type: 'ground' }, { name: 'X', side: 'left' }]
+    const v = (commonReturn: unknown) => validateModule({ ...base, pins, electrical: { commonReturn } })
+    const ok = v([['G1', 'G2']])
+    expect(ok.ok && commonReturn(ok.module)).toEqual([['G1', 'G2']])
+    const bad = v([['G1'], ['G1', 'X'], 'G2'])
+    expect(!bad.ok && bad.errors).toEqual([
+      'electrical.commonReturn[0]: needs 2 or more ground pin names',
+      'electrical.commonReturn[1][1]: no ground pin named "X"',
+      'electrical.commonReturn[2]: needs 2 or more ground pin names',
+    ])
+    expect(!v({}).ok).toBe(true)
   })
   it('binds a voltage value to named outputs: required when there are several, the only one otherwise', () => {
     const pins = [
