@@ -2,7 +2,7 @@
   "format": "circuitoon-module/1",
   "id": "l298n-module",
   "version": 1,
-  "name": "L298N dual H-bridge motor driver module",
+  "name": "L298N dual H-bridge motor driver module (5V jumper fitted)",
   "category": "Motors and actuators",
   "source": "https://lastminuteengineers.com/l298n-dc-stepper-driver-arduino-tutorial/ https://randomnerdtutorials.com/esp32-dc-motor-l298n-motor-driver-control-speed-direction/",
   "pins": [
@@ -54,7 +54,7 @@
       "name": "+12V",
       "side": "bottom",
       "type": "power_in",
-      "supply": "5V/9V/12V/24V"
+      "supply": "7V/7.4V/9V/12V"
     },
     {
       "spacer": true,

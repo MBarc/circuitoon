@@ -94,7 +94,11 @@ describe('built-in relay, servo, motor driver, radio and level shifter keep the 
     const l298n = load('l298n-module.json')
     for (const n of ['OUT1', 'OUT2', 'OUT3', 'OUT4']) expect(pin(l298n, n)?.type).toBe('output')
     for (const n of ['ENA', 'IN1', 'IN2', 'IN3', 'IN4', 'ENB']) expect(pin(l298n, n)?.type).toBe('input')
-    expect(pin(l298n, '+12V')?.type).toBe('power_in')
+    // One configuration, the factory default: 5V-EN jumper fitted, so the on-board 78M05 feeds
+    // +5V and the motor supply stays at or below 12 V (and above the regulator's ~7 V minimum).
+    expect(l298n.name).toContain('(5V jumper fitted)')
+    expect(pin(l298n, '+12V')).toMatchObject({ type: 'power_in', supply: '7V/7.4V/9V/12V' })
+    expect(pin(l298n, '+5V')).toMatchObject({ type: 'power_out', supply: '5V' })
     const rfm = load('rfm95-lora-breakout.json')
     expect(pin(rfm, 'VIN')?.supply?.split('/')).toEqual(['3V3', '5V'])
     expect(pin(rfm, 'MISO')?.type).toBe('output')

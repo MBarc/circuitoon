@@ -260,7 +260,7 @@ V1 ships a starter library drawn in the same cartoon style, all defined in the s
 | Sensors | BME280 module (4-pin I2C, 6-pin GY-BME280), DHT22 (3-pin module, bare 4-pin), HC-SR04 ultrasonic distance sensor, HC-SR501 PIR motion sensor, SW-520D tilt switch, SW-460D vibration switch | - |
 | Communication | microSD card module (3.3 V, 5 V with level shifter), Adafruit RFM95W LoRa breakout, BSS138 4-channel logic level shifter | - |
 | Displays | 0.91" and 0.96" SSD1306 OLEDs, 1.3" SH1106 OLEDs (both 4-pin orders), 1.54" ST7789, 1.8" ST7735, 2.4" and 2.8" ILI9341 and 4.0" ST7796S SPI TFTs | - |
-| Motors and actuators | 1-channel 5 V relay module, SG90 micro servo, L298N dual H-bridge motor driver | - |
+| Motors and actuators | 1-channel 5 V relay module, SG90 micro servo, L298N dual H-bridge motor driver (5V jumper fitted) | - |
 | Chips | MCP23017 and MCP23018 I/O expanders (DIP-28) | - |
 | Passives | Resistor (1/4 W, 1/2 W), capacitor (ceramic, electrolytic, film, tantalum), potentiometer, WH148 panel potentiometer 10 k | Resistance, capacitance |
 | Indicators | LED, WS2812B LED strip segment, WS2812D 5 mm addressable RGB LED, 12 mm passive buzzer | Color (LED) |

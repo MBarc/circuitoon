@@ -138,11 +138,14 @@ function headerH(y, at) {
 //    posts behind them (remove them to drive the enables with PWM); those posts sit inside the
 //    body and are not pinned. With the 5V-EN jumper fitted the +5V terminal is the on-board
 //    regulator's output (motor supply up to 12 V); without it, it is the logic supply input.
+//    Modelled as shipped, jumper fitted: +12V takes 7 to 12 V (the 78M05 needs about 2 V of
+//    headroom to hold 5 V, and the jumper must come off above 12 V) and +5V is a 5 V output. The
+//    name says so; a jumper-off variant (+12V to 35 V, +5V a logic input) would be its own part.
 {
   const wu = 17, hu = 17, W = wu * 10, H = hu * 10
   const types = {
     OUT1: { type: 'output' }, OUT2: { type: 'output' }, OUT3: { type: 'output' }, OUT4: { type: 'output' },
-    '+12V': { type: 'power_in', supply: '5V/9V/12V/24V' }, GND: { type: 'ground' }, '+5V': { type: 'power_out', supply: '5V' },
+    '+12V': { type: 'power_in', supply: '7V/7.4V/9V/12V' }, GND: { type: 'ground' }, '+5V': { type: 'power_out', supply: '5V' },
     ENA: { type: 'input' }, IN1: { type: 'input' }, IN2: { type: 'input' }, IN3: { type: 'input' }, IN4: { type: 'input' }, ENB: { type: 'input' },
   }
   const left = side('left', [null, null, 'OUT1', null, 'OUT2'], types, hu)
@@ -176,7 +179,7 @@ function headerH(y, at) {
     r(bottom.pos.ENB - 4, H - 56, 8, 14, BLACK, { radius: 1 }),
   ]
   write('l298n-module.json', moduleJson({
-    inside: true, id: 'l298n-module', name: 'L298N dual H-bridge motor driver module', category: 'Motors and actuators',
+    inside: true, id: 'l298n-module', name: 'L298N dual H-bridge motor driver module (5V jumper fitted)', category: 'Motors and actuators',
     source: 'https://lastminuteengineers.com/l298n-dc-stepper-driver-arduino-tutorial/ https://randomnerdtutorials.com/esp32-dc-motor-l298n-motor-driver-control-speed-direction/',
     pins: [...left.pins, ...right.pins, ...bottom.pins], wu, hu, electrical: { model: 'motor_driver', params: {} }, shapes,
   }))
