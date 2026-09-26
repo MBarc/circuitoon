@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { holeAt, holeAtPoint, holeEndAt, holeIndex, mountIssues, plugOfPin, plugsOf, pointKey, seatOf, seatOn, splitBoards } from './breadboard.ts'
-import { computeRoutes, type Diagram } from './diagram.ts'
+import { computeRoutes, validateDiagram, type Diagram } from './diagram.ts'
 import { netlist, nodeKey } from './netlist.ts'
 import type { ModuleDef } from './module.ts'
 
@@ -140,6 +140,39 @@ describe('seatOf', () => {
     expect(splitBoards(d).boards.map((p) => p.uid)).toEqual(['b', 'b2'])
     expect(seatOf(d, 'u', [])!.board).toBe('b2')
   })
+  it('never mounts on a board whose plug point an upper board covers (Astra B5 partial overlap)', () => {
+    // Lower board b at x = 0, upper b2 at x = 40 (body 40..140). Legs at (10, 20) and (50, 20) both
+    // land on b, but b2 covers (50, 20), where the visible strip is b2.s1, not b.s5.
+    const d = loose(10, 0)
+    d.parts.splice(1, 0, { uid: 'b2', designator: 'BB2', module: 'bb', x: 40, y: 0 })
+    // b is obscured; b2 takes only one leg, so the part shows red and does not mount.
+    expect(seatOf(d, 'u', [])).toEqual({ status: 'partial', board: 'b2', holes: [{ x: 50, y: 20 }] })
+    expect(seatOn(d, 'u', 'b', [])!.status).toBe('partial')
+    // A stored mount on b loads but plugs nothing, reported as obscured.
+    d.parts[2] = { ...d.parts[2], mount: { board: 'b' } }
+    expect(mountIssues(d)).toEqual([{ part: 'u', board: 'b', reason: 'obscured' }])
+    expect(plugsOf(d)).toEqual([])
+    const loaded = validateDiagram(JSON.parse(JSON.stringify(d)))
+    expect(loaded.ok && loaded.warnings).toContain('parts[2].mount: a board drawn above board "b" covers a leg of "u", so it plugs into nothing')
+    // The same boards the other way round: b2 is below, nothing covers b, so the part seats on b.
+    const flipped = { ...d, parts: [d.parts[1], d.parts[0], d.parts[2]] }
+    expect(mountIssues(flipped)).toEqual([])
+    expect(seatOf(flipped, 'u', [])).toEqual({ status: 'seated', board: 'b', holes: [{ x: 50, y: 20 }, { x: 10, y: 20 }] })
+  })
+  it('still picks the upper of two boards that both fit every leg', () => {
+    // Both legs on both boards (b2 20 px right of b); b2 is later, so on top, and wins.
+    const d = loose(30, 0)
+    d.parts.splice(1, 0, { uid: 'b2', designator: 'BB2', module: 'bb', x: 20, y: 0 })
+    expect(seatOf(d, 'u', [])).toEqual({ status: 'seated', board: 'b2', holes: [{ x: 70, y: 20 }, { x: 30, y: 20 }] })
+    d.parts[2] = { ...d.parts[2], mount: { board: 'b2' } }
+    expect(mountIssues(d)).toEqual([])
+  })
+  it('does not count a board beside, not above, the candidate as covering it', () => {
+    // b2 sits right of b's body (x from 110), later in the list but covering no plug point.
+    const d = loose(10, 0)
+    d.parts.splice(1, 0, { uid: 'b2', designator: 'BB2', module: 'bb', x: 110, y: 0 })
+    expect(seatOf(d, 'u', [])!.status).toBe('seated')
+  })
 })
 
 describe('seatOn', () => {
@@ -147,7 +180,11 @@ describe('seatOn', () => {
     const d = sheet()
     d.parts = [d.parts[0], { uid: 'c', designator: 'BB2', module: 'bb', x: 40, y: 0 }, { uid: 'u', designator: 'R9', module: 'two', x: 50, y: 0 }]
     expect(seatOf(d, 'u', [])!.board).toBe('c')
-    expect(seatOn(d, 'u', 'b', [])).toEqual({ status: 'seated', board: 'b', holes: [{ x: 90, y: 20 }, { x: 50, y: 20 }] })
+    // c is drawn above b and covers both legs, so b is obscured: partial, never seated.
+    expect(seatOn(d, 'u', 'b', [])).toEqual({ status: 'partial', board: 'b', holes: [{ x: 90, y: 20 }, { x: 50, y: 20 }] })
+    // With c below b, seatOn(b) seats on b.
+    const below = { ...d, parts: [d.parts[1], d.parts[0], d.parts[2]] }
+    expect(seatOn(below, 'u', 'b', [])).toEqual({ status: 'seated', board: 'b', holes: [{ x: 90, y: 20 }, { x: 50, y: 20 }] })
     expect(seatOn(d, 'u', 'u', [])).toBeNull()
     expect(seatOn(d, 'u', 'zz', [])).toBeNull()
   })

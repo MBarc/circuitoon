@@ -764,6 +764,8 @@ export function validateDiagram(raw: unknown): DiagramResult {
     else if (reason === 'not-a-board' && !modules.has(partModule.get(board)!))
       warnings.push(`${at}: part "${board}" is not a board (its module "${partModule.get(board)}" is not embedded in this file)`)
     else if (reason === 'partial') warnings.push(`${at}: not every leg of "${part}" sits on a hole of board "${board}", so it plugs into nothing`)
+    else if (reason === 'obscured')
+      warnings.push(`${at}: a board drawn above board "${board}" covers a leg of "${part}", so it plugs into nothing`)
     else if (reason === 'conflict') warnings.push(`${at}: a leg of "${part}" sits on a hole another mounted part already uses, so it plugs into nothing`)
   }
   return { ok: true, diagram, warnings }

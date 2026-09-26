@@ -340,15 +340,22 @@ describe('settleMounts', () => {
     expect(settleMounts(d, ['u'], 'keep')).toBe(d)
     expect(settleMounts(at(70, 0, true), ['u'], 'keep').parts[1]).not.toHaveProperty('mount')
   })
-  it("in keep mode checks the part's own board, so an overlapping board never unmounts it", () => {
-    // Board c overlaps b 40 px to the right (holes at x = 50..130) and comes later (drawn on top), so seatOf would pick c.
+  it("in keep mode checks the part's own board, so an overlapping board never takes it over", () => {
+    // Board c overlaps b 40 px to the right (holes at x = 50..130) and comes first, so b is on top.
+    const d = at(50, 0)
+    d.parts = [{ uid: 'c', designator: 'BB2', module: 'bb', x: 40, y: 0 }, d.parts[0], { ...d.parts[1], mount: { board: 'b' } }]
+    expect(settleMounts(d, ['u'], 'keep')).toBe(d)
+    // Off its own board (one leg past it, both on c): keep mode drops the mount rather than moving it.
+    d.parts[2] = { ...d.parts[2], x: 90 }
+    expect(settleMounts(d, ['u'], 'keep').parts[2]).not.toHaveProperty('mount')
+  })
+  it('in keep mode drops a mount on a board that a board drawn above it covers', () => {
     const d = at(50, 0)
     d.parts = [d.parts[0], { uid: 'c', designator: 'BB2', module: 'bb', x: 40, y: 0 }, { ...d.parts[1], mount: { board: 'b' } }]
     expect(seatOf(d, 'u', [])!.board).toBe('c')
-    expect(settleMounts(d, ['u'], 'keep')).toBe(d)
-    // Off its own board but still on c: keep mode drops the mount rather than moving it.
-    d.parts[2] = { ...d.parts[2], x: 90 }
     expect(settleMounts(d, ['u'], 'keep').parts[2]).not.toHaveProperty('mount')
+    // A drop there mounts on the upper board, whose holes the legs are seen in.
+    expect(settleMounts(d, ['u']).parts[2].mount).toEqual({ board: 'c' })
   })
   it('lets the first of two dragged parts with legs on the same hole mount, not the second', () => {
     // u legs at x = 10 and 50; v legs at x = 50 and 90, same row.

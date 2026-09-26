@@ -3,7 +3,7 @@
 // by part object identity, and parts are replaced (never mutated) on every edit, so a moved
 // board simply gets a fresh index.
 import { type Diagram, type Endpoint, type PartInstance, moduleOf } from './diagram.ts'
-import { type PlugPoint, type Pt, type Rotation, type WorldHoleGroup, pivot, plugPoints, rotateVec, worldHoles } from './geometry.ts'
+import { type PlugPoint, type Pt, type Rotation, type WorldHoleGroup, bodyRect, pivot, plugPoints, rotateVec, worldHoles } from './geometry.ts'
 import { GRID, type ModuleDef, isBoard, isSpacer, layoutModule } from './module.ts'
 
 const OFF = 2 ** 25
@@ -141,6 +141,24 @@ interface Fit {
   /** Per plug point, the [group, hole] it lands on, or null. */
   hits: ([number, number] | null)[]
   landed: number
+  /** A board drawn above this one covers at least one plug point, so this board may not take the part. */
+  obscured: boolean
+}
+
+/**
+ * Whether a board drawn above `board` (a later board in `d.parts`; boards draw in list order)
+ * covers any of `pts` with its body. A leg there looks as if it sits in the upper board, so the
+ * lower board's hole under it is not the one the user sees.
+ */
+function obscuredOn(d: Diagram, board: PartInstance, pts: PlugPoint[]): boolean {
+  for (let i = d.parts.indexOf(board) + 1; i < d.parts.length; i++) {
+    const q = d.parts[i]
+    const qm = moduleOf(d, q.module)
+    if (!qm || !isBoard(qm)) continue
+    const r = bodyRect(q, layoutModule(qm))
+    if (pts.some(({ at }) => at.x >= r.x && at.x <= r.x + r.w && at.y >= r.y && at.y <= r.y + r.h)) return true
+  }
+  return false
 }
 
 /** How plug points land on one part; null when that part is not a board. */
@@ -149,12 +167,14 @@ function fitOn(d: Diagram, board: PartInstance, pts: PlugPoint[]): Fit | null {
   if (!bm || !isBoard(bm)) return null
   const idx = holeIndex(board, bm)
   const hits = pts.map((pp) => holeAt(idx, pp.at))
-  return { board, groups: idx.groups, hits, landed: hits.filter(Boolean).length }
+  const landed = hits.filter(Boolean).length
+  return { board, groups: idx.groups, hits, landed, obscured: landed > 0 && obscuredOn(d, board, pts) }
 }
 
+/** An obscured board never seats: its fit shows as partial (red), so a drop does not mount. */
 function seatFrom(fit: Fit, pts: PlugPoint[], taken: ReadonlySet<string>): Seat | null {
   if (!fit.landed) return null
-  const seated = fit.hits.every((h) => h && !taken.has(holeKey(fit.board.uid, fit.groups[h[0]].name, h[1])))
+  const seated = !fit.obscured && fit.hits.every((h) => h && !taken.has(holeKey(fit.board.uid, fit.groups[h[0]].name, h[1])))
   return { status: seated ? 'seated' : 'partial', board: fit.board.uid, holes: pts.filter((_, i) => fit.hits[i]).map((pp) => pp.at) }
 }
 
@@ -165,7 +185,10 @@ function seatFrom(fit: Fit, pts: PlugPoint[], taken: ReadonlySet<string>): Seat 
  * lands on any board, or the part cannot mount (a board, a part with a bus pin or no pins).
  * With legs on several boards the board with the most landed legs is the candidate; a tie goes
  * to the board later in `d.parts`, which is drawn on top (boards draw in `d.parts` order), so
- * the board whose holes the user sees, hovers and wires is the one the part plugs into.
+ * the board whose holes the user sees, hovers and wires is the one the part plugs into. A board
+ * that a board drawn above it covers at any plug point is obscured: it ranks below every
+ * unobscured board and, if still the candidate, is only partial, so a leg never plugs into a
+ * hidden hole under a visibly different strip.
  */
 export function seatOf(d: Diagram, uid: string, plugs: Plug[], ignore: ReadonlySet<string> = new Set([uid])): Seat | null {
   const me = mountable(d, uid)
@@ -173,7 +196,8 @@ export function seatOf(d: Diagram, uid: string, plugs: Plug[], ignore: ReadonlyS
   let best: Fit | null = null
   for (const b of d.parts) {
     const fit = b === me.part ? null : fitOn(d, b, me.pts)
-    if (fit && fit.landed > 0 && fit.landed >= (best?.landed ?? 0)) best = fit
+    if (!fit || !fit.landed) continue
+    if (!best || (best.obscured && !fit.obscured) || (best.obscured === fit.obscured && fit.landed >= best.landed)) best = fit
   }
   return best && seatFrom(best, me.pts, takenBy(plugs, ignore))
 }
@@ -190,7 +214,7 @@ export interface MountIssue {
   part: string
   board: string
   /** partial covers any fit short of every leg on a hole, including no leg at all. */
-  reason: 'missing-board' | 'not-a-board' | 'cannot-mount' | 'partial' | 'conflict'
+  reason: 'missing-board' | 'not-a-board' | 'cannot-mount' | 'partial' | 'obscured' | 'conflict'
 }
 
 /**
@@ -222,6 +246,7 @@ function mounts(d: Diagram): { plugs: Plug[]; issues: MountIssue[] } {
     }
     const fit = fitOn(d, board, me.pts)!
     if (fit.landed < me.pts.length) issue('partial')
+    else if (fit.obscured) issue('obscured')
     else if (seatFrom(fit, me.pts, taken)!.status !== 'seated') issue('conflict')
     else
       me.pts.forEach((pp, i) => {
@@ -283,7 +308,8 @@ export function plugOfPin(d: Diagram, part: string, pin: string): Pt | null {
 
 /**
  * Every mount that plugs nothing, and why: its board is missing or not a board, the part cannot
- * mount, not every leg lands on a hole, or a hole is already taken by an earlier valid mount.
+ * mount, not every leg lands on a hole, a board drawn above its board covers a leg (obscured), or
+ * a hole is already taken by an earlier valid mount.
  */
 export function mountIssues(d: Diagram): MountIssue[] {
   return cachedMounts(d).result.issues
