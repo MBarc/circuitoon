@@ -246,7 +246,7 @@ describe('checkDiagram', () => {
       const d = sheet([part('BT1', 'bat5'), part('BT2', 'bat37')], [wire('w1', 'bt1.+', 'bt2.+'), wire('w2', 'bt1.-', 'bt2.-')])
       const [f] = only(d, 'supplies-fight')
       expect(f.severity).toBe('error')
-      expect(f.message).toBe('BT1 + (5 V) and BT2 + (3.7 V) are wired together: the two supplies fight, and the higher one drives current into the lower one, which can damage both. Remove the wire from BT2 + to BT1 +.')
+      expect(f.message).toBe('BT1 + (5 V) and BT2 + (3.7 V) are wired together: the two supplies fight, and the higher one drives current into the lower one, which can damage both. Remove the wire from BT1 + to BT2 +.')
       expect(rules(d)).not.toContain('supplies-parallel')
     })
     it('warns about two supplies of the same voltage tied together', () => {
@@ -260,7 +260,7 @@ describe('checkDiagram', () => {
       const d = sheet([part('BT1', 'bat37'), part('U1', 'charger'), part('U2', 'mcu')], [
         wire('w1', 'bt1.+', 'u1.B+'), wire('w2', 'bt1.-', 'u1.GND'), wire('w3', 'u1.OUT+', 'u2.3V3'), wire('w4', 'u1.GND', 'u2.GND'),
       ])
-      expect(only(d, 'supplies-fight')[0].message).toBe('U1 OUT+ (3.7 V from BT1) and U2 3V3 (3.3 V) are wired together: the two supplies fight, and the higher one drives current into the lower one, which can damage both. Remove the wire from U2 3V3 to U1 OUT+.')
+      expect(only(d, 'supplies-fight')[0].message).toBe('U1 OUT+ (3.7 V from BT1) and U2 3V3 (3.3 V) are wired together: the two supplies fight, and the higher one drives current into the lower one, which can damage both. Remove the wire from U1 OUT+ to U2 3V3.')
     })
     it('names a series stack as one side of a fight', () => {
       const d = sheet([part('BT1', 'bat5'), part('BT2', 'bat5'), part('BT3', 'bat9')], [
@@ -322,12 +322,12 @@ describe('checkDiagram', () => {
     })
     it('fight another board\'s regulator output', () => {
       const d = sheet([part('U1', 'mcu'), part('U2', 'mcu')], [wire('w1', 'u1.5V', 'u2.3V3'), wire('w2', 'u1.GND', 'u2.GND')])
-      expect(only(d, 'supplies-fight')[0].message).toBe('U1 5V (5 V from USB) and U2 3V3 (3.3 V) are wired together: the two supplies fight, and the higher one drives current into the lower one, which can damage both. Remove the wire from U2 3V3 to U1 5V.')
+      expect(only(d, 'supplies-fight')[0].message).toBe('U1 5V (5 V from USB) and U2 3V3 (3.3 V) are wired together: the two supplies fight, and the higher one drives current into the lower one, which can damage both. Remove the wire from U1 5V to U2 3V3.')
       expect(rules(d)).not.toContain('supply-too-low')
     })
     it('stay on beside a supply drawn on the sheet: the same voltage is a warning, another a fight', () => {
       expect(checkDiagram(board('bat5')).map((f) => f.message)).toEqual(['U1 5V also gets 5 V from USB; do not power 5V and USB at the same time.'])
-      expect(only(board('bat37'), 'supplies-fight')[0].message).toBe('U1 5V (5 V from USB) and BT1 + (3.7 V) are wired together: the two supplies fight, and the higher one drives current into the lower one, which can damage both. Remove the wire from U1 5V to BT1 +.')
+      expect(only(board('bat37'), 'supplies-fight')[0].message).toBe('U1 5V (5 V from USB) and BT1 + (3.7 V) are wired together: the two supplies fight, and the higher one drives current into the lower one, which can damage both. Remove the wire from BT1 + to U1 5V.')
       expect(rules(board('bat9'))).toEqual(['supplies-fight'])
     })
   })
@@ -335,7 +335,7 @@ describe('checkDiagram', () => {
   describe('independent supplies on one part', () => {
     it('stay independent: wiring a part\'s 3V3 and 5V outputs together is a fight', () => {
       const d = sheet([part('U1', 'dual')], [wire('w1', 'u1.3V3', 'u1.5V')])
-      expect(only(d, 'supplies-fight')[0].message).toBe('U1 5V (5 V) and U1 3V3 (3.3 V) are wired together: the two supplies fight, and the higher one drives current into the lower one, which can damage both. Remove the wire from U1 5V to U1 3V3.')
+      expect(only(d, 'supplies-fight')[0].message).toBe('U1 5V (5 V) and U1 3V3 (3.3 V) are wired together: the two supplies fight, and the higher one drives current into the lower one, which can damage both. Remove the wire from U1 3V3 to U1 5V.')
     })
     it('lets a known output not hide an unknown one on the same part', () => {
       const adj = mod('adjTwo', [

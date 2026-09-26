@@ -314,9 +314,13 @@ function wireBetween(d: Diagram, a: Terminal, b: Terminal): Connection | undefin
   const is = (ep: Endpoint, t: Terminal) => ep.part === t.part.uid && ep.pin === t.name
   return d.connections.find((c) => (is(c.from, a) && is(c.to, b)) || (is(c.from, b) && is(c.to, a)))
 }
-/** "Remove the wire from A to B." when one joins them directly, else the fallback. */
-const removeWire = (d: Diagram, a: Terminal, b: Terminal, fallback: string) =>
-  wireBetween(d, a, b) ? `Remove the wire from ${termName(a)} to ${termName(b)}.` : fallback
+/** "Remove the wire from A to B." (in the order the wire was drawn) when one joins them directly, else the fallback. */
+const removeWire = (d: Diagram, a: Terminal, b: Terminal, fallback: string) => {
+  const c = wireBetween(d, a, b)
+  if (!c) return fallback
+  const [x, y] = c.from.part === a.part.uid && c.from.pin === a.name ? [a, b] : [b, a]
+  return `Remove the wire from ${termName(x)} to ${termName(y)}.`
+}
 /**
  * The ground pin to name as a supply's return: its declared or only return, preferring the
  * ground joined to it that matches the output's name (OUT- for OUT+ on a buck whose IN- and
@@ -486,11 +490,15 @@ export function checkDiagram(d: Diagram): Finding[] {
   nl.nets.forEach((_, i) => {
     // Signal pins: typed input, output or io, or an untyped board GPIO; at least one end typed.
     const typed = (t: Terminal) => t.type === 'input' || t.type === 'output' || t.type === 'io'
+    // Each pair once, named in designator order (never uid order, so renaming changes nothing).
     const signals = netTerms[i].filter((t) => !t.bare && (typed(t) || t.type === undefined))
-    for (const a of signals)
-      for (const b of signals) {
-        if (a.part.uid >= b.part.uid || (!typed(a) && !typed(b))) continue
-        const key = JSON.stringify([a.part.uid, b.part.uid])
+    if (signals.length < 2) return
+    const named = signals.map((t) => ({ t, n: termName(t) })).sort((x, y) => natural.compare(x.n, y.n))
+    for (let ai = 0; ai < named.length; ai++)
+      for (let bi = ai + 1; bi < named.length; bi++) {
+        const [a, b] = [named[ai].t, named[bi].t]
+        if (a.part === b.part || (!typed(a) && !typed(b))) continue
+        const key = JSON.stringify([a.part.uid, b.part.uid].sort())
         if (pairs.has(key)) continue
         pairs.add(key)
         const [ga, gb] = [groundedPins(a.part), groundedPins(b.part)]
@@ -745,7 +753,8 @@ function checkPotentials({ d, nl, netTerms, netWires, terminal, shorted, add }: 
 
   const sorted = (list: Source[]) => [...list].sort((a, b) => natural.compare(termName(a.term), termName(b.term)))
   /** What to do about supplies of unknown voltage or return: give them one. */
-  const fixUnknown = (open: Source[]) => {
+  const fixUnknown = (list: Source[]) => {
+    const open = sorted(list)
     const ret = open.filter((x) => x.refUnknown)
     const volt = open.filter((x) => !x.refUnknown)
     const parts: string[] = []
