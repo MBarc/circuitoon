@@ -129,8 +129,16 @@ function build({ id, name, source, shapes }) {
     internal: [GROUNDS],
     size: { w: WU, h: HU },
     // Datasheet: "VBUS is the micro-USB input voltage, connected to micro-USB port pin 1. This is
-    // nominally 5 V". The wiring checker treats it as a 5 V source, assuming the board sits on USB.
-    electrical: { model: 'mcu', params: {}, external: [{ pin: 'VBUS', volts: 5, via: 'USB' }] },
+    // nominally 5 V", and (power section) "VBUS is the 5 V input from the micro-USB port, which is
+    // fed through a Schottky diode to generate VSYS". So on USB both carry power: VBUS 5 V, VSYS a
+    // diode drop below it, listed at 5 V as the worst case. The RP2040 hardware design guide,
+    // section 3.1.1 "Power input", names USB, VBUS and VSYS as the three ways to power the board.
+    // The wiring checker treats both as sources while the board sits on USB. VSYS and VBUS are not
+    // joined inside: the diode sits between them.
+    electrical: {
+      model: 'mcu', params: {},
+      external: [{ pin: 'VBUS', volts: 5, via: 'USB' }, { pin: 'VSYS', volts: 5, via: 'USB through the VSYS diode' }],
+    },
     art: { w: W, h: H, pinLabels: 'inside', shapes: [r(0, 0, W, H, PCB, { radius: 4 }), ...shapes] },
   }
   emit(OUT + id + '.json', JSON.stringify(m, null, 2) + '\n')

@@ -229,6 +229,11 @@
         "pin": "VBUS",
         "volts": 5,
         "via": "USB"
+      },
+      {
+        "pin": "VSYS",
+        "volts": 5,
+        "via": "USB through the VSYS diode"
       }
     ]
   },
