@@ -8,7 +8,8 @@
 // staying its own hole (hover, press and drop), a press on a hole under another wire starting a
 // wire (a click between holes still selects the wire, and the selected wire's end handle still
 // wins), holes of a board placed off the world grid, pads on a module that is not a board, and a
-// wire to a missing hole drawn as a dashed red stub that can be selected and deleted. Last, the Parts panel and the dark theme.
+// wire to a missing hole drawn as a dashed red stub that can be selected and deleted, and the
+// broken connections badge and list (select, delete, a connection with neither end on the sheet). Last, the Parts panel and the dark theme.
 //
 // Usage (repo root, after `npm run build`):
 //   node scripts/perf-breadboard.mjs [--out <dir>] [--port 4191]
@@ -501,16 +502,38 @@ await pause()
 await shot('pad-header-wire.png')
 
 // --- A wire to a hole that does not exist (c2-top has 5 holes): a dashed red stub. ---
-await load(
-  sheetFile('broken-wire', 'Broken wire', [{ uid: 'bb3', designator: 'BB1', module: board.id, x: 0, y: 0, rotation: 0 }], [
-    { uid: 'w1', from: { part: 'bb3', pin: 'c1-top', hole: 0 }, to: { part: 'bb3', pin: 'c2-top', hole: 99 } },
-  ]),
-  'bb3',
-)
+// w2 has neither end on the sheet, so it has nothing to draw: the broken connections notice (a
+// toolbar badge and a list in the side panel) is where it is found and deleted (Astra B6).
+const brokenFile = sheetFile('broken-wire', 'Broken wire', [{ uid: 'bb3', designator: 'BB1', module: board.id, x: 0, y: 0, rotation: 0 }], [
+  { uid: 'w1', from: { part: 'bb3', pin: 'c1-top', hole: 0 }, to: { part: 'bb3', pin: 'c2-top', hole: 99 } },
+  { uid: 'w2', from: { part: 'gone1', pin: '1' }, to: { part: 'gone2', pin: 'VCC' }, label: 'Sensor power' },
+])
+await load(brokenFile, 'bb3')
 await page.mouse.move(5, 5)
 await pause()
 check((await count('.wire-broken')) === 1, 'a wire to a missing hole draws one dashed red stub')
 await shot('broken-stub.png')
+const badge = page.locator('.broken-badge')
+check((await badge.textContent()) === '2 broken connections', `the toolbar shows a broken connections badge (${await badge.textContent()})`)
+const brokenNames = await page.locator('.broken .broken-name').allTextContents()
+check(brokenNames.join(' | ') === 'BB1 c1-top hole 0 to BB1 c2-top hole 99 | Sensor power', `the side panel lists both broken connections (${brokenNames.join(' | ')})`)
+await page.locator('.inspector').screenshot({ path: join(out, 'broken-list-light.png') })
+console.log('saved', join(out, 'broken-list-light.png'))
+// The badge brings the list back while something else is selected.
+await page.getByRole('button', { name: 'Select BB1 c1-top hole 0 to BB1 c2-top hole 99' }).click()
+await pause()
+check((await page.locator('.inspector .hint.warn').textContent())?.startsWith('Broken: BB1 c2-top hole 99 is not on the sheet'), 'Select shows the broken wire in the side panel, with no promise of handles')
+check((await page.locator('[data-wire="w1"] path').count()) === 3, 'Select highlights its stub on the sheet')
+await page.locator('.inspector').screenshot({ path: join(out, 'broken-wire-selected.png') })
+console.log('saved', join(out, 'broken-wire-selected.png'))
+await badge.click()
+await pause()
+check((await page.locator('.broken li').count()) === 2 && (await page.evaluate(() => document.activeElement?.id)) === 'broken-title', 'the badge clears the selection and moves focus to the list')
+await page.getByRole('button', { name: 'Delete Sensor power' }).click()
+await pause()
+const afterListDelete = await exported()
+check(afterListDelete.connections.map((c) => c.uid).join() === 'w1', `Delete in the list removes the connection with no end on the sheet (${afterListDelete.connections.map((c) => c.uid).join()})`)
+check((await badge.textContent()) === '1 broken connection', 'the badge counts down')
 const stub = await page.evaluate(() => {
   const r = document.querySelector('.wire-broken').getBoundingClientRect()
   return { x: r.x + r.width / 2, y: r.y + r.height / 2 }
@@ -541,6 +564,16 @@ await dark.waitForSelector('[data-part="bb"]')
 await dark.waitForTimeout(300)
 await dark.screenshot({ path: join(out, 'dark-editor.png') })
 console.log('saved', join(out, 'dark-editor.png'))
+await dark.goto('about:blank')
+await dark.goto(base + '#/editor', { waitUntil: 'networkidle' })
+await dark.getByRole('button', { name: /New diagram/ }).click()
+await dark.waitForSelector('.toolbar')
+await dark.locator('input[type=file]').setInputFiles(brokenFile)
+await dark.waitForSelector('[data-part="bb3"]')
+await dark.waitForTimeout(300)
+await dark.screenshot({ path: join(out, 'broken-dark-editor.png') })
+await dark.locator('.inspector').screenshot({ path: join(out, 'broken-list-dark.png') })
+console.log('saved', join(out, 'broken-list-dark.png'))
 
 check(errors.length === 0, `no page errors${errors.length ? `: ${errors.join(' | ')}` : ''}`)
 await browser.close()

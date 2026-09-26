@@ -94,6 +94,27 @@
   font: 400 15px/1.2 "Atkinson Hyperlegible", system-ui, sans-serif; color: var(--text);
   background: var(--bg); border: 1.5px solid var(--rule); border-radius: 6px; padding: 6px 8px;
 }
+/* Broken connections: the dashed red stub the sheet draws is the mark, in the badge and the list. */
+.tool.small { font-size: 13px; padding: 5px 8px; border-radius: 6px; }
+.tool.danger { color: var(--error); }
+.tool.danger:hover:not(:disabled) { border-color: var(--error); }
+.broken-badge { color: var(--error); border: 1.5px dashed var(--error); }
+.broken-badge:hover:not(:disabled) { border-style: solid; border-color: var(--error); }
+.broken { display: grid; gap: 8px; border-top: 1.5px dashed var(--error); padding-top: 12px; }
+.broken h3 { margin: 0; font: 600 16px/1.2 "Fredoka", system-ui, sans-serif; color: var(--error); }
+.broken ul { list-style: none; margin: 0; padding: 0; display: grid; }
+.broken li {
+  display: grid; grid-template-columns: 22px minmax(0, 1fr); column-gap: 8px; row-gap: 6px; align-items: start;
+  padding: 9px 0; border-bottom: 1px solid var(--rule);
+}
+.broken li:last-child { border-bottom: 0; }
+.broken-mark { width: 22px; height: 10px; margin-top: 4px; overflow: visible; }
+.broken-mark circle { fill: var(--error); }
+.broken-mark path { stroke: var(--error); stroke-width: 2.5; stroke-dasharray: 5 3.5; stroke-linecap: round; fill: none; }
+.broken-text { display: grid; gap: 2px; min-width: 0; }
+.broken-name { font-weight: 700; font-size: 14px; overflow-wrap: anywhere; }
+.broken-missing { color: var(--muted); font-size: 13px; overflow-wrap: anywhere; }
+.broken-actions { grid-column: 2; display: flex; gap: 6px; }
 .swatches { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; }
 .swatch { aspect-ratio: 1; border-radius: 6px; border: 2px solid #23282F; cursor: pointer; padding: 0; }
 .swatch[aria-pressed="true"] { outline: 3px solid var(--focus); outline-offset: 1px; }
