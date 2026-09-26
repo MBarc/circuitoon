@@ -1,8 +1,9 @@
 // Immutable diagram edits. Every function returns a new Diagram and never mutates its input,
 // so the store can keep old versions for undo.
 import { type Connection, type Diagram, type Endpoint, type PartInstance, moduleOf } from '../format/diagram.ts'
-import type { ModuleDef } from '../format/module.ts'
-import type { Rotation } from '../format/geometry.ts'
+import { isBoard, layoutModule, type ModuleDef } from '../format/module.ts'
+import { type Plug, type Seat, mountIssues, plugsOf, seatOf, seatOn } from '../format/breadboard.ts'
+import { pivot, rotateVec, type Rotation } from '../format/geometry.ts'
 import { partValue } from '../format/values.ts'
 
 export interface Selection {
@@ -17,9 +18,9 @@ export interface WireStyle {
 }
 
 export function nextUid(d: Diagram, prefix: 'p' | 'w' | 'a'): string {
-  // Endpoint part uids count too: a wire to a missing part must not latch onto a new part.
+  // Endpoint and mount target uids count too: a wire or mount to a missing part must not latch onto a new part.
   const used = new Set([
-    ...d.parts.map((p) => p.uid),
+    ...d.parts.flatMap((p) => (p.mount ? [p.uid, p.mount.board] : [p.uid])),
     ...d.connections.flatMap((c) => [c.uid, c.from.part, c.to.part]),
     ...(d.annotations ?? []).map((a) => a.uid),
   ])
@@ -36,6 +37,7 @@ const PREFIXES: [RegExp, string][] = [
   [/^ws2812/, 'D'],
   [/button|switch/, 'S'],
   [/^battery/, 'BT'],
+  [/^(breadboard|power-rail)/, 'BB'],
   [/^(lcd|oled|tft)-/, 'DS'],
   [/^(piezo|buzzer)/, 'BZ'],
   [/^relay/, 'K'],
@@ -63,29 +65,165 @@ export function addPart(d: Diagram, m: ModuleDef, x: number, y: number): { diagr
 }
 
 /**
- * Moves parts by (dx, dy). A hand-routed wire whose two ends are both on moved parts moves with
- * them in the same edit (its bends shift by the same amount), so moving a wired group keeps its
- * shape; a wire with only one end moved keeps its bends and just stretches its end segments.
+ * The board part `p` is validly mounted on, looked up in `byUid`: a board, not `p` itself, and a
+ * mount with no `mountIssues` entry (every leg on a free hole). A board mounted on a board (a
+ * hand-edited file) is never carried; neither is a mount that plugs nothing, which stays where it is.
+ */
+function carrierOf(d: Diagram, p: PartInstance, byUid: Map<string, PartInstance>, invalid: Set<string>): PartInstance | undefined {
+  if (!p.mount || p.mount.board === p.uid || invalid.has(p.uid) || isBoard(moduleOf(d, p.module))) return undefined
+  const board = byUid.get(p.mount.board)
+  return board && isBoard(moduleOf(d, board.module)) ? board : undefined
+}
+
+/** Parts that a board among `uids` validly carries, mapped to that board. */
+function carriedBy(d: Diagram, uids: string[]): Map<string, PartInstance> {
+  const s = new Set(uids)
+  const byUid = new Map(d.parts.map((p) => [p.uid, p]))
+  const invalid = new Set(mountIssues(d).map((i) => i.part))
+  const carried = new Map<string, PartInstance>()
+  for (const p of d.parts) {
+    const board = p.mount && s.has(p.mount.board) ? carrierOf(d, p, byUid, invalid) : undefined
+    if (board) carried.set(p.uid, board)
+  }
+  return carried
+}
+
+/** The given parts plus every part validly mounted on a board among them, each once, in diagram order. */
+export function withMounted(d: Diagram, uids: string[]): string[] {
+  const s = new Set(uids)
+  const carried = carriedBy(d, uids)
+  return d.parts.filter((p) => s.has(p.uid) || carried.has(p.uid)).map((p) => p.uid)
+}
+
+/**
+ * The dragged or rotated parts whose mounts get re-checked: `uids` without the parts a board
+ * among them carries (those stay on their board). Used by the drag highlight and the drop.
+ */
+export function settlingOf(d: Diagram, uids: string[]): string[] {
+  const carried = carriedBy(d, uids)
+  return uids.filter((u) => !carried.has(u))
+}
+
+/**
+ * Moves parts; a board carries every part mounted on it, so its legs stay in the same holes. A
+ * hand-shaped wire whose two ends both move (on moved parts, or on holes of a moved board) moves
+ * with them, bends and all; any other wire keeps its bends and only its end segments stretch.
  */
 export function moveParts(d: Diagram, uids: string[], dx: number, dy: number): Diagram {
   if (!dx && !dy) return d
-  const s = new Set(uids)
-  const moved = new Set(d.parts.filter((p) => s.has(p.uid)).map((p) => p.uid))
+  const s = new Set(withMounted(d, uids))
+  const carried = (c: Connection) => c.route !== undefined && s.has(c.from.part) && s.has(c.to.part)
   return {
     ...d,
     parts: d.parts.map((p) => (s.has(p.uid) ? { ...p, x: p.x + dx, y: p.y + dy } : p)),
-    connections: d.connections.map((c) =>
-      c.route && moved.has(c.from.part) && moved.has(c.to.part) ? { ...c, route: c.route.map(([x, y]) => [x + dx, y + dy] as [number, number]) } : c,
-    ),
+    connections: d.connections.some(carried)
+      ? d.connections.map((c) => (carried(c) ? { ...c, route: c.route!.map(([x, y]) => [x + dx, y + dy] as [number, number]) } : c))
+      : d.connections,
   }
 }
 
+const withoutMount = (p: PartInstance): PartInstance => {
+  const { mount: _gone, ...rest } = p
+  return rest
+}
+
+export interface Settling {
+  /** Per settling part, in `d.parts` order: where it would mount on drop (seated) or why not. */
+  seats: Map<string, Seat | null>
+  /** Legs plugged with the settling parts loose: what stays put, for the leg dots while dragging. */
+  plugs: Plug[]
+}
+
+/**
+ * The one seat check behind both the drag highlight and the drop. The listed parts that are not
+ * boards (in 'keep' mode only the mounted ones) start loose, so only the other parts hold holes;
+ * then they settle in `d.parts` order, and each part that seats takes its holes from the parts
+ * after it. 'drop' checks every board (`seatOf`); 'keep' checks only the part's own board
+ * (`seatOn`), so an overlapping board can never take a part away from the one it fits.
+ */
+export function settleSeats(d: Diagram, uids: string[], mode: 'drop' | 'keep' = 'drop'): Settling {
+  const listed = new Set(uids)
+  const settle = d.parts.filter((p) => listed.has(p.uid) && !isBoard(moduleOf(d, p.module)) && (mode === 'drop' || p.mount))
+  const settling = new Set(settle.map((p) => p.uid))
+  const work: Diagram = settle.some((p) => p.mount)
+    ? { ...d, parts: d.parts.map((p) => (settling.has(p.uid) && p.mount ? withoutMount(p) : p)) }
+    : d
+  const plugs = plugsOf(work)
+  const taken = [...plugs]
+  const seats = new Map<string, Seat | null>()
+  for (const p of settle) {
+    const seat = mode === 'keep' ? seatOn(work, p.uid, p.mount!.board, taken) : seatOf(work, p.uid, taken)
+    seats.set(p.uid, seat)
+    if (seat?.status !== 'seated') continue
+    // Its legs, from a sheet of just this part mounted on that board (the hole lookup is cached per board).
+    const board = work.parts.find((q) => q.uid === seat.board)!
+    const me = work.parts.find((q) => q.uid === p.uid)!
+    taken.push(...plugsOf({ ...work, parts: [board, { ...me, mount: { board: seat.board } }] }))
+  }
+  return { seats, plugs }
+}
+
+/**
+ * Re-checks the mount of each listed part (see `settleSeats`). 'drop' (a finished drag): a seated
+ * part gets, or keeps, `mount.board`; anything else loses its mount. 'keep' (after a rotation): a
+ * part is never newly mounted, and keeps its mount only while it is still seated on its own board.
+ * Boards are skipped. Returns `d` itself when nothing changes; unchanged parts keep their identity.
+ */
+export function settleMounts(d: Diagram, uids: string[], mode: 'drop' | 'keep' = 'drop'): Diagram {
+  const { seats } = settleSeats(d, uids, mode)
+  let changed = false
+  const parts = d.parts.map((p) => {
+    if (!seats.has(p.uid)) return p
+    const seat = seats.get(p.uid)
+    const board = seat?.status === 'seated' ? seat.board : undefined
+    if (p.mount?.board === board) return p
+    changed = true
+    return board ? { ...p, mount: { board } } : withoutMount(p)
+  })
+  return changed ? { ...d, parts } : d
+}
+
+/**
+ * The diagram a finished part drag leaves: `now` with the moved parts settled. A press without
+ * movement (`now` is still the drag's `base`) changes nothing, mounts included.
+ */
+export function settleDrop(base: Diagram, now: Diagram, uids: string[]): Diagram {
+  return now === base ? now : settleMounts(now, uids)
+}
+
+const turn = (r: Rotation | undefined) => (((r ?? 0) + 90) % 360) as Rotation
+
+/**
+ * Where part `p` goes when its board turns a quarter clockwise about the board's pivot: its own
+ * pivot swings around the board's, so every leg lands on the hole it was in.
+ */
+function swungAbout(p: PartInstance, m: ModuleDef, board: PartInstance, bm: ModuleDef): { x: number; y: number } {
+  const lay = layoutModule(m)
+  const c = pivot(lay.w, lay.h)
+  const blay = layoutModule(bm)
+  const bc = pivot(blay.w, blay.h)
+  const bx = board.x + bc.x
+  const by = board.y + bc.y
+  const v = rotateVec({ x: p.x + c.x - bx, y: p.y + c.y - by }, 90)
+  return { x: bx + v.x - c.x, y: by + v.y - c.y }
+}
+
+/**
+ * Rotates each part 90 degrees clockwise about its own pivot. A rotated board turns its mounted
+ * parts with it (about the board's pivot), so they stay seated. Any other rotated part keeps its
+ * mount only while it still fits; rotating never mounts a part.
+ */
 export function rotateParts(d: Diagram, uids: string[]): Diagram {
   const s = new Set(uids)
-  return {
-    ...d,
-    parts: d.parts.map((p) => (s.has(p.uid) ? { ...p, rotation: (((p.rotation ?? 0) + 90) % 360) as Rotation } : p)),
-  }
+  const carried = carriedBy(d, uids)
+  const parts = d.parts.map((p) => {
+    const board = carried.get(p.uid)
+    const m = moduleOf(d, p.module)
+    const bm = board && moduleOf(d, board.module)
+    if (board && m && bm) return { ...p, ...swungAbout(p, m, board, bm), rotation: turn(p.rotation) }
+    return s.has(p.uid) ? { ...p, rotation: turn(p.rotation) } : p
+  })
+  return settleMounts({ ...d, parts }, uids.filter((u) => !carried.has(u)), 'keep')
 }
 
 export function deleteSelection(d: Diagram, sel: Selection): Diagram {
@@ -93,16 +231,29 @@ export function deleteSelection(d: Diagram, sel: Selection): Diagram {
   const wires = new Set(sel.wires)
   return {
     ...d,
-    parts: d.parts.filter((p) => !parts.has(p.uid)),
+    // A deleted board's parts stay on the sheet, unmounted.
+    parts: d.parts.filter((p) => !parts.has(p.uid)).map((p) => (p.mount && parts.has(p.mount.board) ? withoutMount(p) : p)),
     connections: d.connections.filter((c) => !wires.has(c.uid) && !parts.has(c.from.part) && !parts.has(c.to.part)),
   }
 }
 
-const sameEnd = (a: Endpoint, b: Endpoint) => a.part === b.part && a.pin === b.pin
+/** Whether `ep` names a hole group (its `hole` counts) rather than a pin (a stray `hole` means nothing). */
+function isHoleEnd(d: Diagram, ep: Endpoint): boolean {
+  const part = d.parts.find((p) => p.uid === ep.part)
+  const m = part && moduleOf(d, part.module)
+  return !!m?.holes?.some((g) => g.name === ep.pin)
+}
+
+/**
+ * Same part, same pin or hole group, and for a hole group the same hole (a missing hole is hole
+ * 0). A pin end ignores `hole`: only a hole group has holes.
+ */
+export const sameEndpoint = (d: Diagram, a: Endpoint, b: Endpoint): boolean =>
+  a.part === b.part && a.pin === b.pin && ((a.hole ?? 0) === (b.hole ?? 0) || !isHoleEnd(d, a))
 
 export function addWire(d: Diagram, from: Endpoint, to: Endpoint, style: WireStyle): { diagram: Diagram; uid: string } | null {
-  if (sameEnd(from, to)) return null
-  if (d.connections.some((c) => (sameEnd(c.from, from) && sameEnd(c.to, to)) || (sameEnd(c.from, to) && sameEnd(c.to, from)))) return null
+  if (sameEndpoint(d, from, to)) return null
+  if (d.connections.some((c) => (sameEndpoint(d, c.from, from) && sameEndpoint(d, c.to, to)) || (sameEndpoint(d, c.from, to) && sameEndpoint(d, c.to, from)))) return null
   const uid = nextUid(d, 'w')
   const wire: Connection = { uid, from, to, color: style.color, gauge: style.gauge }
   return { uid, diagram: { ...d, connections: [...d.connections, wire] } }
@@ -118,12 +269,12 @@ export function reconnectWire(d: Diagram, uid: string, end: 'from' | 'to', targe
   if (!wire) return null
   const current = wire[end]
   const other = wire[end === 'from' ? 'to' : 'from']
-  if (sameEnd(target, other)) return null
-  if (sameEnd(target, current)) return null
+  if (sameEndpoint(d, target, other)) return null
+  if (sameEndpoint(d, target, current)) return null
   const from = end === 'from' ? target : wire.from
   const to = end === 'to' ? target : wire.to
   const dup = d.connections.some(
-    (c) => c.uid !== uid && ((sameEnd(c.from, from) && sameEnd(c.to, to)) || (sameEnd(c.from, to) && sameEnd(c.to, from))),
+    (c) => c.uid !== uid && ((sameEndpoint(d, c.from, from) && sameEndpoint(d, c.to, to)) || (sameEndpoint(d, c.from, to) && sameEndpoint(d, c.to, from))),
   )
   if (dup) return null
   return {

@@ -6,7 +6,7 @@ import { bandFills } from '../format/values.ts'
 
 export const INK = '#23282F'
 const OUTLINE = 1.6
-const METAL = '#C9CED6'
+export const METAL = '#C9CED6'
 
 function showLabel(m: ModuleDef, p: { label?: string; type?: PinType }) {
   return p.label !== undefined || m.pins.length > 2 || p.type === 'power_out' || p.type === 'power_in' || p.type === 'ground'
@@ -36,6 +36,50 @@ function PinStub({ p }: { p: PlacedPin }) {
   const x = Math.min(p.edge.x, p.end.x) - (horiz ? 0 : 1.75)
   const y = Math.min(p.edge.y, p.end.y) - (horiz ? 1.75 : 0)
   return <rect x={x} y={y} width={horiz ? LEAD : 3.5} height={horiz ? 3.5 : LEAD} rx={1.2} fill={METAL} stroke={INK} strokeWidth={1.1} />
+}
+
+const HOLE = '#3A3F47'
+const HOLE_SIZE = 3.4
+const PAD = '#E0B43C'
+const PAD_SIZE = 7
+const PAD_HOLE = '#8A6A1E'
+const PAD_HOLE_SIZE = 3
+
+const holePaths = new WeakMap<ModuleDef, { holes: string; pads: string; padHoles: string }>()
+
+/**
+ * Every hole of a module as one path per style (breadboard holes, header pads, pad holes), in
+ * module-local px, so an 830-hole board is three SVG elements rather than 830. Cached per module.
+ */
+export function holePathData(m: ModuleDef): { holes: string; pads: string; padHoles: string } {
+  const hit = holePaths.get(m)
+  if (hit) return hit
+  const square = (x: number, y: number, s: number) => `M${x - s / 2} ${y - s / 2}h${s}v${s}h${-s}z`
+  let holes = ''
+  let pads = ''
+  let padHoles = ''
+  for (const g of m.holes ?? [])
+    for (const [x, y] of g.at) {
+      if (g.holeStyle === 'pad') {
+        pads += square(x, y, PAD_SIZE)
+        padHoles += square(x, y, PAD_HOLE_SIZE)
+      } else holes += square(x, y, HOLE_SIZE)
+    }
+  const out = { holes, pads, padHoles }
+  holePaths.set(m, out)
+  return out
+}
+
+/** Holes and pads, drawn above the art in body coordinates (they rotate with the part). */
+function Holes({ m }: { m: ModuleDef }) {
+  const p = holePathData(m)
+  return (
+    <g data-holes="">
+      {p.holes && <path d={p.holes} fill={HOLE} />}
+      {p.pads && <path d={p.pads} fill={PAD} stroke={INK} strokeWidth={0.8} />}
+      {p.padHoles && <path d={p.padHoles} fill={PAD_HOLE} />}
+    </g>
+  )
 }
 
 /**
@@ -124,6 +168,7 @@ export const Part = memo(function Part({ module: m, x = 0, y = 0, rotation = 0, 
             </text>
           </>
         )}
+        {m.holes?.length ? <Holes m={m} /> : null}
       </g>
       {pins.map((p, i) => {
         if (!showLabel(m, p)) return null

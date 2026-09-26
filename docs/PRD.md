@@ -70,15 +70,23 @@ Parts and wires are both first-class objects you click, drag, select and delete,
 - Paste and duplicate create new `uid`s and next-free designators; wires are copied only when both ends are inside the copied selection.
 - Parts may overlap while dragging. A part dropped overlapping another shows an overlap warning outline.
 
+**Breadboards**
+
+- A board (a module with hole groups and `"obstacle": false`) accepts parts. A part is **seated** when every pin's plug point (its edge point on the body) lands exactly on a free hole of one board. Where boards overlap, the board with the most landed legs takes the part; on a tie, the board drawn on top (the later one in the file) takes it, so the holes that show the leg dots are the holes the legs join. A board never takes a part when a board drawn above it covers any of the part's plug points with its body: that leg would look as if it sat in the upper board. The part lights red and does not mount, and a file storing such a mount loads with a warning and plugs nothing. Rotating a mounted part checks only its own board, so an overlapping board never takes it over. While dragging, the holes under a seated part's legs light green; when only some legs land, or a hole is already taken, they light red. Dragging several parts at once settles them in diagram order, so two legs never land in the same hole; the drag highlight uses the same check the drop does.
+- Dropping a seated part mounts it (`mount.board`); dropping it anywhere else, or dragging it off, unmounts it. A mounted part's pins join the hole groups their legs sit in, with no wires. Taken holes darken, and each leg shows as a metal dot on its hole. A wire attached to a plugged leg's pin ends in that leg's own hole (not at the stub tip, which sits over the neighbouring hole) and may leave it in any direction, so the picture shows the strip the jumper really goes into; hovering that pin lights the leg's hole with its strip. An unplugged pin keeps its stub tip. A wire may end in the exact hole a leg occupies; nothing stops it in V1 (a wiring checker to warn about it is a later addition).
+- Dragging or rotating a board carries its validly mounted parts in the same undo step, so their legs stay in the same holes. A hand-shaped wire between two parts a moved board carries moves with it, bends and all, only when both its ends move; any other wire keeps its stored bends and only its end segments stretch to the new pin. Rotating a board carries its parts around the board's pivot but never rotates a wire's stored bends, so a wire between two parts the rotation carries keeps its bends while its end segments stretch to the turned pins. Rotating a mounted part keeps the mount only if it still fits; rotating never mounts a part.
+- Press a hole to start a wire there, even where another wire crosses it (only the selected wire's handles, and Alt+click on the selected wire, come before a hole); press a wire between holes to select it; drag a board from between its holes. Holes and pads of any module with hole groups (a board, or an interior header that is a routing obstacle) take wires the same way; only boards accept mounted parts. Picking works in the board's own coordinates, so a board placed off the 10 px world grid still has clickable holes. Wires route over boards (parts on them are still obstacles), and a wire ending in a hole may leave it in any direction. A wire ending at a hole covered by a part's body routes normally: that body is ignored for that one wire's route (a real jumper slides out from under a part the same way), though every other wire still routes around it.
+- Parts with a bus pin never mount. The ESP32 DevKit modules are 120 px between header rows, wider than a full board's rows a to j (110 px), so they do not seat yet; XIAO, C3 SuperMini, ESP32-CAM and DIP-28 chips seat across the channel after a 90 degree turn.
+
 **Wires**
 
-- Draw: drag from a pin to another pin, or onto a bus pin (rail or strip) at the spot where it should land. Pins highlight when a dragged wire end is within snapping range.
+- Draw: drag from a pin or a breadboard hole to another pin or hole, or onto a bus pin (rail or strip) at the spot where it should land. Pins and holes highlight when a dragged wire end is within snapping range.
 - Auto-routing: orthogonal paths that avoid part bodies; hop arcs where wires cross, drawn on the wire that is later in the file. Overlapping collinear segments are nudged apart by 4 px.
 - Editing gestures on a selected wire:
     - Segment handle (small bar at each segment's midpoint): drag perpendicular to shift the segment; neighbors stretch to stay orthogonal.
     - Alt+click on a segment: split it into two with a new bend, keeping it orthogonal.
     - Double-click a bend: remove it and re-straighten the adjacent segments.
-    - End handle: drag off a pin and drop on another pin to reconnect; dropping on empty canvas cancels.
+    - End handle: drag off a pin or hole and drop on another pin or hole to reconnect; dropping on empty canvas cancels.
 - Select a wire to set its color and gauge, give it a label, or delete it. Every wire has both a color and a gauge; new wires use the last color and gauge picked.
 - Once any gesture edits a wire, it is **manual** and stores its bends. Auto wires store nothing.
 
@@ -88,12 +96,12 @@ Parts and wires are both first-class objects you click, drag, select and delete,
 2. When a part moves, auto wires attached to it re-route, and so do auto wires the moved part now obstructs.
 3. Manual wires keep their bends; only the first and last segments stretch to reach a moved pin.
 4. A manual wire that ends up crossing a part body is not re-routed; it is highlighted with a "route blocked" badge and an action to reset it to auto.
-5. If no clear route exists for an auto wire (for example parts overlap), it draws as a dashed straight-line fallback with the same badge.
+5. If no clear route exists for an auto wire (for example parts overlap), it draws as a dashed orthogonal L leaving its first pin along its stub, never a diagonal, with the same badge.
 6. During a drag, only wires in (2) and (3) re-route, so dense diagrams stay fast; everything settles on drop.
 
 **Electrical helpers**
 
-- Hovering a pin highlights every pin on the same net, including through bus pins and `internal` joins.
+- Hovering a pin or a breadboard hole highlights every pin and hole on the same net, through wires, mounted legs, bus pins and `internal` joins.
 - Power conflict warning: when one net contains pins with different declared `supply` voltages (5V and 3V3, or a supply and ground). Pins with no declared supply never trigger it.
 - Wire color: a named color (red, black, blue, green, yellow, orange, white, purple, gray, brown, pink) or any hex value such as #2458C6. Wire gauge: AWG 16 to 30, default 22 (standard breadboard jumper). Drawn thickness scales with gauge, so thick power runs look thick.
 
@@ -128,7 +136,7 @@ A module is one self-contained JSON file: name, pins by side and order, optional
 | `name` | yes | Display name. |
 | `category` | no | Groups the parts library. |
 | `source` | no | Where the pinout came from: a URL, or several URLs joined by a space. Built-in boards cite the vendor's pinout page. |
-| `pins[]` | yes | Each entry is either a **pin** or a **spacer**. |
+| `pins[]` | yes | Each entry is either a **pin** or a **spacer**. May be empty when the module has hole groups (a breadboard). |
 | pin `name` | yes | Unique within the module; what connections reference. Renaming a pin in the art studio rewrites references in `internal`. |
 | pin `side` | yes | `top`, `bottom`, `left` or `right`. |
 | pin `label` | no | Display text when it differs from `name`. |
@@ -136,8 +144,12 @@ A module is one self-contained JSON file: name, pins by side and order, optional
 | pin `supply` | no | Named voltage for power pins, for example `5V`, `3V3`, `VBAT`. Drives the power conflict warning. A power input that accepts several rails lists them separated by '/', for example '3V3/5V'. |
 | pin `bus` | no | `{ "length": 40 }`: the pin is a bar `length` grid units long along its side that accepts many wires, each at its own offset (breadboard rails and strips). |
 | spacer | - | `{ "spacer": true, "side": "..." }`: an empty pin slot; takes no name. |
-| `internal` | no | Groups of pin names joined permanently inside the part, for example `[["GND1", "GND2"]]`. Never used for switchable connections. |
+| `holes[]` | no | Hole groups: pins inside the body. Each is `{ "name", "label"?, "at": [[x, y], ...], "rail"?, "holeStyle"?, "type"?, "supply"? }`, one electrical node whose holes sit at the listed module-local px positions, each on a 10 px grid point inside the body, never two at one point. `type` and `supply` mean what they mean on a pin (an interior header pad such as a 3V3 pin sets them); breadboard strips and rails set neither, since + and - are markings, not voltages. Names share one namespace with pin names; wires reference a group by `name` plus a `hole` index. A single-position group is an ordinary interior pin. Hole groups never grow the body. |
+| hole group `rail` | no | `"+"` or `"-"`: the group is a power rail. |
+| hole group `holeStyle` | no | `"pad"` draws each position as a header pad instead of a breadboard hole (a full-size header in its true position). |
+| `internal` | no | Groups of pin or hole group names joined permanently inside the part, for example `[["GND1", "GND2"]]`. Never used for switchable connections. |
 | `size` | no | `{ "w", "h" }` in grid units. |
+| `obstacle` | no | `false` lets wires route over the part. Breadboards set it; parts mounted on them are still obstacles. A module with hole groups and `"obstacle": false` is a **board**, which parts can be mounted on. |
 | `art` | no | Art studio drawing (see Art studio). Absent means a plain labeled box. |
 | `art.pinLabels` | no | `"inside"` draws pin names inside the body next to each pin, like board silkscreen; default draws them beside the pin stub. |
 | `art.shapes[].band` | no | Resistor color band slot 1 to 4; the renderer colors it from the part's resistance. |
@@ -151,7 +163,7 @@ A module is one self-contained JSON file: name, pins by side and order, optional
 - Order rule: within a side, pins appear in array order, left to right on `top` and `bottom`, top to bottom on `left` and `right`.
 - A part's `x, y` is the top-left of its unrotated body; rotation is about the grid point at or up-left of the body center, so pins stay on the 10 px grid.
 
-**Validation.** Import rejects a file, with the exact reason and path, on: missing `format`, `id` or `name`; duplicate pin names; unknown `side`; a spacer with a name; `internal` naming a missing pin; malformed `bus` or `art`.
+**Validation.** Import rejects a file, with the exact reason and path, on: missing `format`, `id` or `name`; an empty `pins` list without hole groups; duplicate pin or hole group names; unknown `side`; a spacer with a name; `internal` naming a missing pin or group; malformed `bus`, `art` or `holes`; a hole off the 10 px grid, outside the body or on top of another hole; an `obstacle` that is not true or false.
 
 ## Diagram format
 
@@ -201,12 +213,13 @@ A complete, valid example (a battery lighting an LED through a resistor on a bre
 ```
 
 - **Identity.** Every part, connection and annotation has an immutable `uid`, unique in the file. `designator` is the editable name shown on the canvas. Connections reference `uid`s, never designators.
-- **Endpoints.** `{ part, pin }`, plus `offset` (grid units from the bus start) when the pin is a bus. Without `offset`, a bus endpoint lands at the nearest free spot.
-- **`connections` is the netlist.** Positions, labels and routes are presentation. Each connection also carries `color` (a named color or `#RRGGBB`, default black) and `gauge` (AWG integer 16 to 30, default 22); V2 can use gauge for wire current warnings.
+- **Endpoints.** `{ part, pin }`, where `pin` names a pin or a hole group. `hole` (a whole number, default 0) picks one hole of a group: the wire ends at that hole's center and may leave it in any direction. A `hole` that is not a whole number refuses the load; one past the end of its group loads with a warning. `offset` (grid units from a bus start) is still read from older files: it must be a whole number from 0 to the bus length minus 1 on a bus pin; any other offset (past the end, fractional, or on a pin or hole group that is not a bus) loads with a warning and leaves the wire broken.
+- **Mounting.** A part may carry `"mount": { "board": "<board uid>" }`. Its pins connect to whichever hole groups their plug points (pin edge points) sit on, computed from positions; its `x, y` stay absolute. The mount plus positions fully determine the plugged connections. A mount only plugs when every leg of the part lands exactly on a free hole of that board (nothing else has claimed it): a mount naming a missing part, the part itself, a part that is not a board, a part that cannot mount (a bus pin or no pins), a partial fit, or a hole conflict with an earlier valid mount keeps its data, plugs nothing, and loads with a warning.
+- **`connections` and mounts are the netlist.** Wires, mounted legs (from `mount` plus positions) and `internal` groups merge into nets; labels and routes are presentation. Each connection also carries `color` (a named color or `#RRGGBB`, default black) and `gauge` (AWG integer 16 to 30, default 22); V2 can use gauge for wire current warnings.
 - **`route`** exists only on manual wires: the bend points between the two pin ends, in diagram coordinates, each segment horizontal or vertical. Auto wires omit it.
 - **Modules are embedded** at export, built-ins included. If the library has a newer `version` of an embedded module, the diagram shows an "update available" badge; updating is always the user's choice, and pins that disappear flag their wires.
 - **Round-trip guarantee.** Export then import yields identical document data (same uids, positions, values, routes, embedded modules). Auto wire paths are recomputed and may differ after a router upgrade; making a wire manual pins its shape.
-- **Broken references.** A connection naming a missing part, pin or bus offset past the end still loads: its valid end draws a short red stub with a warning marker, and it is listed in a problems panel. It is never silently dropped.
+- **Broken references.** A connection whose endpoint no longer resolves (a missing part, pin or hole group, an out-of-range hole index, or a bus offset past the end) still loads and stays in the file: it never conducts, and its one resolvable end draws a short (20 px) dashed red stub, above wire labels, that the user can select and delete like any other wire. It is never silently dropped. The toolbar shows a badge counting broken connections, and with nothing selected the side panel lists each one (its label, or its two ends, and which end is not found) with Select and Delete, so a connection with neither end on the sheet, which draws nothing, can still be found and removed. A broken wire has no reshape or reconnect handles (repair handles on the stub are a later addition).
 - **Validation.** Duplicate `uid`s, unknown `format`, or malformed JSON refuse the load with the exact reason.
 - The file saves as `<title>.circuitoon.json`.
 
@@ -255,6 +268,7 @@ V1 ships a starter library drawn in the same cartoon style, all defined in the s
 | Group | Parts | Editable values |
 | --- | --- | --- |
 | Batteries | 9V battery, AA, AAA, 18650 cell, 18650 holder (1 cell), 18650 holder (2S), 2 x AA, 3 x AAA and 4 x AA holders, CR1220, CR2016, CR2025 and CR2032 coin cells, CR2032 holder, LR44 button cell | Voltage |
+| Prototyping | Full breadboard (830), half breadboard (400), mini breadboard (170), tiny breadboard (25), power rail strip | - |
 | Power | AMS1117 3.3 V regulator module (3-pin), IP5306 USB-C charge/boost module, LM2596 buck converter (adjustable), TP4056 USB-C Li-ion charger with protection | Voltage (LM2596 output) |
 | Microcontrollers | ESP32 DevKitC V4, ESP32 DevKit V1 (30 pin, DOIT), ESP32-S3-DevKitC-1, ESP32-C3 SuperMini, Seeed XIAO ESP32-C3, Seeed XIAO ESP32-S3, ESP32-CAM (AI Thinker), ESP32 38-pin screw terminal adapter, Raspberry Pi Pico, Pico H, Pico W, Pico 2, Pico 2 W, Arduino Nano, Wemos / LOLIN D1 mini | - |
 | Sensors | BME280 module (4-pin I2C, 6-pin GY-BME280), DHT22 (3-pin module, bare 4-pin), HC-SR04 ultrasonic distance sensor, HC-SR501 PIR motion sensor, SW-520D tilt switch, SW-460D vibration switch | - |
@@ -267,7 +281,7 @@ V1 ships a starter library drawn in the same cartoon style, all defined in the s
 | Switches | Push button, 6 mm and 12 mm 4-pin tactile switches, KCD1 rocker switch | - |
 | Connectors | JST-XH 2/3/4-pin, Dupont housing 1x2/1x3/1x4, USB panel-mount extension (micro-USB, USB-C) | - |
 
-Not built yet: RGB LED (common anode/cathode), slide switch, toggle switch, diode, NPN and PNP transistor, N-channel MOSFET, USB power breakout, DC barrel jack, fixed 5V regulator, Arduino Uno, full-size Raspberry Pi boards, breadboards, pin header.
+Not built yet: RGB LED (common anode/cathode), slide switch, toggle switch, diode, NPN and PNP transistor, N-channel MOSFET, USB power breakout, DC barrel jack, fixed 5V regulator, Arduino Uno, full-size Raspberry Pi boards, pin header.
 
 Part values (220 ohm, 10 uF) show as a label on the part and are stored with their units in `parts[].values` so V2 can simulate them. The properties panel offers a resistance or capacitance value through a standard-value picker (E12 for resistors, E6 for capacitors) with free entry for anything else; a resistor's color bands update to match whatever value is chosen.
 
@@ -346,7 +360,7 @@ V1 is done when someone can build a wiring sheet for a real breadboard project f
 **Decisions made**
 
 - Pictorial wiring diagrams, not symbolic schematics.
-- Wires join only at pins, bus pins (rails, strips) or internally joined pins, as in the reference. No wire-to-wire junctions in V1.
+- Wires join only at pins, breadboard holes, bus pins or internally joined pins, as in the reference. No wire-to-wire junctions in V1.
 - Client-only static app; files are how diagrams and modules are shared.
 
 **Risks**
@@ -365,5 +379,5 @@ V1 is done when someone can build a wiring sheet for a real breadboard project f
 - [ ] Name availability: `circuitoon.com` and related handles not yet checked.
 - [ ] T-junctions: should V1 allow a wire to end on another wire?
 - [x] Built-in boards follow physical pin order, because the sheet is something you build from.
-- [x] Breadboards are modeled at rail and strip level (bus pins with offsets); hole-level is deferred.
+- [x] Breadboards are modeled at hole level (2026-09-25): each strip and rail is a hole group, parts plug in by mounting, and jumpers end in any hole. Bus pins with offsets stay readable for older files.
 - [x] Hosting: GitHub Pages from the public repo `MBarc/circuitoon` (https://mbarc.github.io/circuitoon/).

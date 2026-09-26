@@ -62,6 +62,41 @@ export function worldPins(part: Placement, m: ModuleDef): WorldPin[] {
   }))
 }
 
+export interface WorldHoleGroup {
+  name: string
+  label?: string
+  rail?: '+' | '-'
+  style: 'hole' | 'pad'
+  /** Hole centers in world px, in the group's `at` order. */
+  at: Pt[]
+}
+
+/** Every hole group of a placed module, with its hole centers in world px. Empty for a module without holes. */
+export function worldHoles(part: Placement, m: ModuleDef): WorldHoleGroup[] {
+  if (!m.holes?.length) return []
+  const lay = layoutModule(m)
+  return m.holes.map((g) => ({
+    name: g.name,
+    label: g.label,
+    rail: g.rail,
+    style: g.holeStyle ?? 'hole',
+    at: g.at.map(([x, y]) => toWorld(part, lay, { x, y })),
+  }))
+}
+
+export interface PlugPoint {
+  pin: string
+  at: Pt
+}
+
+/**
+ * Where each pin plugs into a board: its edge point on the body, always a grid point, so a leg
+ * lands exactly on a hole. A bus pin has no plug point.
+ */
+export function plugPoints(part: Placement, m: ModuleDef): PlugPoint[] {
+  return worldPins(part, m).filter((p) => !p.bus).map((p) => ({ pin: p.name, at: p.edge }))
+}
+
 /** Removes repeated points and the middle point of any three collinear axis-aligned points. */
 export function simplify(pts: Pt[]): Pt[] {
   const out: Pt[] = []

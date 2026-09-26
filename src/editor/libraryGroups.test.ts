@@ -27,9 +27,18 @@ describe('searchLibrary', () => {
 })
 
 describe('groupLibrary', () => {
-  it('fixes the category order from Batteries through Connectors', () => {
+  it('puts Prototyping right after Batteries', () => {
+    const groups = groupLibrary([
+      mod('resistor', 'Resistor', 'Passives'),
+      mod('breadboard-full', 'Full breadboard (830)', 'Prototyping'),
+      mod('battery-9v', '9V battery', 'Batteries'),
+    ])
+    expect(groups.map((g) => g.category)).toEqual(['Batteries', 'Prototyping', 'Passives'])
+  })
+
+  it('fixes the category order from Batteries through Connectors, with Prototyping right after Batteries', () => {
     expect(CATEGORY_ORDER).toEqual([
-      'Batteries', 'Power', 'Microcontrollers', 'Sensors', 'Communication', 'Displays', 'Motors and actuators',
+      'Batteries', 'Prototyping', 'Power', 'Microcontrollers', 'Sensors', 'Communication', 'Displays', 'Motors and actuators',
       'Chips', 'Semiconductors', 'Passives', 'Indicators', 'Switches', 'Connectors',
     ])
   })

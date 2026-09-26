@@ -1,9 +1,10 @@
 // Diagram format (circuitoon-diagram/1): types plus the wire geometry the renderer needs.
 
-import { type ModuleDef, PARAM_RULES, layoutModule, validateModule, validParamValue, isObj, isNum } from './module.ts'
-import { type Pt, type Rect, type Rotation, type WorldPin, bodyRect, simplify, worldPins } from './geometry.ts'
-import { addToOccupancy, Occupancy, routeOrthogonal } from './router.ts'
+import { GRID, type ModuleDef, PARAM_RULES, isBoard, layoutModule, validateModule, validParamValue, isObj, isNum } from './module.ts'
+import { type Pt, type Rect, type Rotation, type WorldPin, bodyRect, simplify, toWorld, worldPins } from './geometry.ts'
+import { addToOccupancy, inGrown, Occupancy, onGrid, routeOrthogonal } from './router.ts'
 import { manualRouteBlocked, tidy } from './wireEdit.ts'
+import { mountIssues, plugOfPin } from './breadboard.ts'
 
 /** How every load warning about a dropped value override ends: the part now shows its module
  * default instead of the value the file asked for. The editor lists these warnings first. */
@@ -19,11 +20,15 @@ export interface PartInstance {
   y: number
   rotation?: Rotation
   values?: Record<string, unknown>
+  /** The board this part is plugged into. Its pins join the hole groups their plug points sit on. */
+  mount?: { board: string }
 }
 export interface Endpoint {
   part: string
   pin: string
   offset?: number
+  /** Which hole of a hole group the wire ends in (default 0). */
+  hole?: number
 }
 export interface Connection {
   uid: string
@@ -83,7 +88,7 @@ export function wireWidth(gauge = 22): number {
 
 export interface WireRoute {
   points: Pt[]
-  /** True when no clear route exists and the wire is drawn as a straight fallback. */
+  /** True when no clear route exists and the wire is drawn as an orthogonal L fallback (dashed). */
   blocked: boolean
 }
 /** Route per connection uid; null means an endpoint names a missing part or pin. */
@@ -97,48 +102,155 @@ export function moduleOf(d: Pick<Diagram, 'modules'>, id: string): ModuleDef | u
   return Object.hasOwn(d.modules, id) ? d.modules[id] : undefined
 }
 
+/** Part bodies wires must route around. A module with `obstacle: false` (a breadboard) is not one. */
 export function partObstacles(d: Diagram): Rect[] {
   return d.parts.flatMap((p) => {
     const m = moduleOf(d, p.module)
-    return m ? [bodyRect(p, layoutModule(m))] : []
+    return m && m.obstacle !== false ? [bodyRect(p, layoutModule(m))] : []
   })
 }
 
-function endpoint(d: Diagram, ep: Endpoint) {
+/** A wire end in world px: where the wire attaches, and the way it must leave (null: any way, a hole). */
+export interface ResolvedEnd {
+  end: Pt
+  dir: Pt | null
+}
+
+/**
+ * Resolves a connection end. A pin resolves to its stub tip and outward direction; a hole group
+ * resolves to the center of hole `ep.hole` (default 0), which a wire may leave in any direction.
+ * A pin whose leg is validly plugged into a board (Ruling 25) resolves to that leg's hole, also
+ * with no direction: a jumper to that pin goes into the same strip as the leg, and the stub tip
+ * would sit over the neighbouring hole. Null when the part, pin, group or hole does not exist.
+ */
+export function resolveEndpoint(d: Diagram, ep: Endpoint): ResolvedEnd | null {
   const part = d.parts.find((p) => p.uid === ep.part)
   const mod = part && moduleOf(d, part.module)
-  return (part && mod && worldPins(part, mod).find((p) => p.name === ep.pin)) || null
+  if (!part || !mod) return null
+  const group = mod.holes?.find((g) => g.name === ep.pin)
+  if (group) {
+    const local = ep.offset === undefined ? group.at[ep.hole ?? 0] : undefined
+    return local ? { end: toWorld(part, layoutModule(mod), { x: local[0], y: local[1] }), dir: null } : null
+  }
+  const pin = worldPins(part, mod).find((p) => p.name === ep.pin)
+  if (!pin || !validOffset(ep.offset, pin.bus)) return null
+  const hole = part.mount ? plugOfPin(d, part.uid, pin.name) : null
+  return hole ? { end: hole, dir: null } : { end: pin.end, dir: pin.dir }
+}
+
+/**
+ * Whether an endpoint `offset` names a real position: none at all, or on a bus pin a whole number
+ * from 0 to bus.length - 1. An offset on a pin that is not a bus means nothing, so it is invalid too.
+ */
+export function validOffset(offset: number | undefined, bus: { length: number } | undefined): boolean {
+  return offset === undefined || (!!bus && Number.isInteger(offset) && offset >= 0 && offset < bus.length)
+}
+
+/** Where a pin's hit target sits in world px, so pressing, hovering or dropping there picks that pin. */
+export interface PinTarget {
+  name: string
+  label?: string
+  at: Pt
+}
+
+/**
+ * A part's pin hit targets: at the stub tip, or for a validly plugged leg on the leg's own hole
+ * (where `resolveEndpoint` puts its wire end). The stub tip of a plugged leg sits over the
+ * neighbouring hole, so a target there would catch a wire aimed at that hole's strip.
+ */
+export function pinTargets(d: Diagram, part: PartInstance, m: ModuleDef): PinTarget[] {
+  return worldPins(part, m).map((wp) => ({
+    name: wp.name,
+    label: wp.label,
+    at: (part.mount && plugOfPin(d, part.uid, wp.name)) || wp.end,
+  }))
+}
+
+/**
+ * A broken connection's one resolvable end, so the editor can still draw a short repair stub
+ * there (the other end names a missing part, pin, group or hole and has no coordinate at all).
+ * Null when neither end resolves.
+ */
+export function brokenStub(d: Diagram, c: Connection): ResolvedEnd | null {
+  return resolveEndpoint(d, c.from) ?? resolveEndpoint(d, c.to)
 }
 
 /**
  * A hand-routed wire keeps its stored bends; only its end segments stretch to reach a moved
  * pin. Where a pin tip and its neighbouring bend no longer line up, a corner is added so the
  * wire still leaves the pin along its stub, and every segment stays horizontal or vertical.
- * Collinear bends are kept (the user may have split a run to move its halves separately), so
- * this polyline is also what the editing handles work on; only spikes and repeats are dropped.
+ * Two stored bends that do not line up (a hand-edited file) get a corner between them too,
+ * horizontal first. Collinear bends are kept (the user may have split a run to move its halves
+ * separately), so this polyline is also what the editing handles work on; only spikes and
+ * repeats are dropped.
  */
-function manualPoints(a: WorldPin, b: WorldPin, route: [number, number][]): Pt[] {
+function manualPoints(a: ResolvedEnd, b: ResolvedEnd, route: [number, number][]): Pt[] {
   const bends = route.map(([x, y]) => ({ x, y }))
-  const corner = (pin: WorldPin, next: Pt | undefined): Pt[] => {
+  const corner = (pin: ResolvedEnd, next: Pt | undefined): Pt[] => {
     if (!next || next.x === pin.end.x || next.y === pin.end.y) return []
-    return [pin.dir.x !== 0 ? { x: next.x, y: pin.end.y } : { x: pin.end.x, y: next.y }]
+    // A hole end may leave any way; it turns horizontally first, like a pin on a left or right edge.
+    const horizontal = pin.dir === null || pin.dir.x !== 0
+    return [horizontal ? { x: next.x, y: pin.end.y } : { x: pin.end.x, y: next.y }]
   }
   // No bends left (every one removed by hand): still one corner, never a diagonal.
   const head = corner(a, bends.length ? bends[0] : b.end)
   const tail = bends.length ? corner(b, bends[bends.length - 1]) : []
-  return tidy([a.end, ...head, ...bends, ...tail, b.end])
+  const pts = [a.end, ...head, ...bends, ...tail, b.end]
+  const out: Pt[] = [pts[0]]
+  for (let i = 1; i < pts.length; i++) {
+    const p = pts[i - 1]
+    const q = pts[i]
+    if (p.x !== q.x && p.y !== q.y) out.push({ x: q.x, y: p.y })
+    out.push(q)
+  }
+  return tidy(out)
+}
+
+/**
+ * The obstacles one wire must avoid: all of them, minus any body over one of its hole ends. A
+ * hole under a part (a leg's hole, a hole under a DIP body) has no exit direction and every grid
+ * node around it is inside that body, so the wire may leave through the part covering it, as a
+ * real jumper slides out from under one. Only this wire's obstacle list changes; every other
+ * wire still routes around the part. A pin end always has an exit (its stub), so it drops nothing.
+ */
+export function obstaclesFor(obstacles: Rect[], a: ResolvedEnd, b: ResolvedEnd): Rect[] {
+  const keep = obstacleFilter(a, b)
+  return keep ? obstacles.filter(keep) : obstacles
+}
+
+/**
+ * The test behind `obstaclesFor`, as a predicate (true keeps the body as an obstacle for this
+ * wire), or null when the wire has no hole end and keeps every body.
+ */
+function obstacleFilter(a: ResolvedEnd, b: ResolvedEnd): ((r: Rect) => boolean) | null {
+  // The router starts a hole end at its grid node, so that is the point a body must cover (a
+  // board placed off the grid has its holes between grid lines).
+  const free = [a, b].filter((e) => e.dir === null).map((e) => onGrid(e.end, GRID))
+  if (!free.length) return null
+  return (r) => !free.some((p) => inGrown(p, r))
+}
+
+/**
+ * Stand-in for a wire with no clear route: an L leaving `a` along its stub (vertically from a top
+ * or bottom pin, horizontally from a side pin or a hole), like manualPoints' corner rule.
+ */
+function blockedPoints(a: ResolvedEnd, b: ResolvedEnd): Pt[] {
+  const vertical = a.dir !== null && a.dir.x === 0
+  return tidy([a.end, vertical ? { x: a.end.x, y: b.end.y } : { x: b.end.x, y: a.end.y }, b.end])
 }
 
 export function routeWire(d: Diagram, c: Connection, obstacles: Rect[], occupied?: Occupancy): WireRoute | null {
-  const a = endpoint(d, c.from)
-  const b = endpoint(d, c.to)
+  const a = resolveEndpoint(d, c.from)
+  const b = resolveEndpoint(d, c.to)
   if (!a || !b) return null
+  const own = obstaclesFor(obstacles, a, b)
   if (c.route) {
     const points = manualPoints(a, b, c.route)
-    return { points, blocked: manualRouteBlocked(points, obstacles) }
+    return { points, blocked: manualRouteBlocked(points, own) }
   }
-  const points = routeOrthogonal({ from: a.end, fromDir: a.dir, to: b.end, toDir: b.dir, obstacles, occupied })
-  return points ? { points, blocked: false } : { points: [a.end, b.end], blocked: true }
+  const points = routeOrthogonal({ from: a.end, fromDir: a.dir, to: b.end, toDir: b.dir, obstacles: own, occupied })
+  // Never a diagonal: an unroutable wire is still drawn orthogonal, dashed, and flagged.
+  return points ? { points, blocked: false } : { points: blockedPoints(a, b), blocked: true }
 }
 
 /**
@@ -172,12 +284,19 @@ export function computeRoutes(d: Diagram, opts: { only?: Set<string>; prev?: Rou
 }
 
 /**
- * A key that changes exactly when some wire's routing inputs change: its uid, both endpoints and
- * its stored route. Serialized as structured tuples, so no two different sets of endpoints share a
+ * A key that changes exactly when some wire's routing inputs change: its uid, both endpoints (hole
+ * and offset included: an invalid offset leaves the end unresolved) and its stored route. Serialized as structured tuples, so no two different sets of endpoints share a
  * key however their names are spelled (part "p.a" pin "R" and part "p" pin "a.R" differ).
  */
 export function routingKey(connections: Connection[]): string {
-  return JSON.stringify(connections.map((c) => [c.uid, c.from.part, c.from.pin, c.to.part, c.to.pin, c.route ?? null]))
+  return JSON.stringify(
+    connections.map((c) => [
+      c.uid,
+      c.from.part, c.from.pin, c.from.hole ?? null, c.from.offset ?? null,
+      c.to.part, c.to.pin, c.to.hole ?? null, c.to.offset ?? null,
+      c.route ?? null,
+    ]),
+  )
 }
 
 const HOP = 5
@@ -305,7 +424,13 @@ const MIN_PIN_RUN = 2
  * moves or stretches is checked at that point, so a wire clear before separation is still clear
  * after it. `forced` reports a nudge applied where the geometry was already blocked.
  */
-function separate(points: Pt[], verticals: Seg[], horizontals: Seg[], index: ObstacleIndex): { pts: Pt[]; forced: boolean } {
+function separate(
+  points: Pt[],
+  verticals: Seg[],
+  horizontals: Seg[],
+  index: ObstacleIndex,
+  keepOf: () => ((r: Rect) => boolean) | null,
+): { pts: Pt[]; forced: boolean } {
   const pts = points.map((p) => ({ ...p }))
   let forced = false
   for (let k = 2; k <= pts.length - 2; k++) {
@@ -330,7 +455,10 @@ function separate(points: Pt[], verticals: Seg[], horizontals: Seg[], index: Obs
     const before = local(at)
     const xs = before.map((p) => p.x)
     const ys = before.map((p) => p.y)
-    const bodies = index.near(Math.min(...xs) - MAX_NUDGE, Math.min(...ys) - MAX_NUDGE, Math.max(...xs) + MAX_NUDGE, Math.max(...ys) + MAX_NUDGE)
+    const near = index.near(Math.min(...xs) - MAX_NUDGE, Math.min(...ys) - MAX_NUDGE, Math.max(...xs) + MAX_NUDGE, Math.max(...ys) + MAX_NUDGE)
+    // The same bodies routeWire let this wire through (see obstaclesFor) stay out of the check.
+    const keep = near.length ? keepOf() : null
+    const bodies = keep ? near.filter(keep) : near
     const wasBlocked = bodies.length > 0 && manualRouteBlocked(before, bodies)
     const allowed = (moved: number) =>
       pinRuns.every((tip) => {
@@ -365,13 +493,32 @@ export function wirePaths(d: Diagram, routes: Routes = computeRoutes(d)) {
   const verticals: Seg[] = [] // at = x, lo..hi = y range
   const horizontals: Seg[] = [] // at = y, lo..hi = x range
   const out: { conn: Connection; d: string; points: Pt[]; ends: Pt[]; blocked: boolean }[] = []
+  const partsByUid = new Map(d.parts.map((p) => [p.uid, p]))
   for (const conn of d.connections) {
     const route = routes.get(conn.uid)
     if (!route) continue
     // Drawn geometry drops collinear bends: nudging one half of a split run would otherwise
     // pull the other half into a diagonal.
     const simple = simplify(route.points)
-    const { pts, forced } = separate(simple, verticals, horizontals, index)
+    // This wire's own obstacle list, as routeWire used it: a body over one of its hole ends (a
+    // plugged leg, a DIP over its hole) is not an obstacle for it here either.
+    // Resolved only when a nudge has bodies to check against, which most wires never reach.
+    let keep: ((r: Rect) => boolean) | null | undefined
+    const keepOf = () => {
+      if (keep === undefined) {
+        // Only a hole end (a hole group, or a pin whose leg is plugged) can drop a body, so a
+        // wire between two unmounted parts without holes skips resolving its ends.
+        const holeish = (ep: Endpoint) => {
+          const p = partsByUid.get(ep.part)
+          return !!p && (!!p.mount || !!moduleOf(d, p.module)?.holes?.length)
+        }
+        const a = holeish(conn.from) || holeish(conn.to) ? resolveEndpoint(d, conn.from) : null
+        const b = a ? resolveEndpoint(d, conn.to) : null
+        keep = a && b ? obstacleFilter(a, b) : null
+      }
+      return keep
+    }
+    const { pts, forced } = separate(simple, verticals, horizontals, index, keepOf)
     let path = `M${pts[0].x} ${pts[0].y}`
     for (let i = 1; i < pts.length; i++) {
       const s = pts[i - 1]
@@ -402,7 +549,7 @@ export function wirePaths(d: Diagram, routes: Routes = computeRoutes(d)) {
     // the drawn geometry only needs checking again when the wire started out blocked or a nudge
     // was forced through a body.
     const moved = pts.some((p, i) => p.x !== simple[i].x || p.y !== simple[i].y)
-    const blocked = moved && (route.blocked || forced) ? manualRouteBlocked(pts, index.all) : route.blocked
+    const blocked = moved && (route.blocked || forced) ? manualRouteBlocked(pts, keepOf() ? index.all.filter(keepOf()!) : index.all) : route.blocked
     out.push({ conn, d: path, points: pts, ends: [pts[0], pts[pts.length - 1]], blocked })
   }
   return out
@@ -496,6 +643,8 @@ export function validateDiagram(raw: unknown): DiagramResult {
       }
       if (p.rotation !== undefined && ![0, 90, 180, 270].includes(p.rotation as number))
         errors.push(`${at}.rotation: must be 0, 90, 180 or 270`)
+      if (p.mount !== undefined && !(isObj(p.mount) && typeof p.mount.board === 'string' && p.mount.board !== ''))
+        errors.push(`${at}.mount: must be { "board": <part uid> }`)
       if (p.values !== undefined) {
         if (!isObj(p.values)) errors.push(`${at}.values: must be an object`)
         else {
@@ -533,14 +682,43 @@ export function validateDiagram(raw: unknown): DiagramResult {
       }
     })
 
+  // Mount targets are checked once every part is known, since a board may come later in the list.
+  if (Array.isArray(raw.parts))
+    raw.parts.forEach((p, i) => {
+      if (!isObj(p) || !isObj(p.mount) || typeof p.mount.board !== 'string' || p.mount.board === '') return
+      const board = p.mount.board
+      const at = `parts[${i}].mount.board`
+      if (board === p.uid) return void warnings.push(`${at}: a part cannot be mounted on itself`)
+      const modId = partModule.get(board)
+      if (modId === undefined) return void warnings.push(`${at}: no part with uid "${board}"`)
+      const m = modules.get(modId)
+      if (m && !isBoard(m)) warnings.push(`${at}: part "${board}" is not a board (a module with holes and "obstacle": false)`)
+    })
+
   const checkEnd = (ep: unknown, at: string) => {
     if (!isObj(ep) || typeof ep.part !== 'string' || typeof ep.pin !== 'string')
       return void errors.push(`${at}: must be { "part": <uid>, "pin": <name> }`)
     if (ep.offset !== undefined && !isNum(ep.offset)) errors.push(`${at}.offset: must be a number`)
+    if (ep.hole !== undefined && !(Number.isInteger(ep.hole) && (ep.hole as number) >= 0))
+      errors.push(`${at}.hole: must be a whole number, 0 or more`)
     const modId = partModule.get(ep.part)
     if (modId === undefined) return void warnings.push(`${at}: no part with uid "${ep.part}"`)
     const m = modules.get(modId)
-    if (m && !m.pins.some((p) => 'name' in p && p.name === ep.pin)) warnings.push(`${at}: part "${ep.part}" has no pin "${ep.pin}"`)
+    if (!m) return
+    const group = m.holes?.find((g) => g.name === ep.pin)
+    if (group) {
+      if (typeof ep.hole === 'number' && Number.isInteger(ep.hole) && ep.hole >= group.at.length)
+        warnings.push(`${at}.hole: group "${ep.pin}" has ${group.at.length} holes (0 to ${group.at.length - 1})`)
+    } else if (!m.pins.some((p) => 'name' in p && p.name === ep.pin)) warnings.push(`${at}: part "${ep.part}" has no pin "${ep.pin}"`)
+    else if (ep.hole !== undefined) warnings.push(`${at}.hole: pin "${ep.pin}" is not a hole group`)
+    // An offset resolves only on a bus pin, at a whole-number position along it (see validOffset).
+    const pin = group ? undefined : m.pins.find((p) => 'name' in p && p.name === ep.pin)
+    if ((group || pin) && isNum(ep.offset)) {
+      const bus = pin && 'bus' in pin ? pin.bus : undefined
+      if (!bus) warnings.push(`${at}.offset: "${ep.pin}" is not a bus, so an offset there is meaningless and the wire is broken`)
+      else if (!validOffset(ep.offset, bus))
+        warnings.push(`${at}.offset: ${ep.offset} is not a position on bus "${ep.pin}" (a whole number from 0 to ${bus.length - 1}), so the wire is broken`)
+    }
   }
 
   if (!Array.isArray(raw.connections)) errors.push('connections: required list')
@@ -595,6 +773,22 @@ export function validateDiagram(raw: unknown): DiagramResult {
         return rest
       }),
     }
+  // Mounts that load but plug nothing, checked on the fixed diagram (clamped positions, dropped
+  // routes) so the warnings describe what the editor will show. A missing target, a self mount, and a non-board target
+  // whose module is embedded are already warned about above; a non-board target whose module is
+  // not embedded is caught below instead (its own "not embedded" warning is separate).
+  for (const { part, board, reason } of mountIssues(diagram)) {
+    const i = diagram.parts.findIndex((p) => p.uid === part)
+    const at = `parts[${i}].mount`
+    if (reason === 'cannot-mount' && board !== part && modules.has(diagram.parts[i].module))
+      warnings.push(`${at}: part "${part}" cannot mount (boards, parts with a bus pin and parts with no pins never do)`)
+    else if (reason === 'not-a-board' && !modules.has(partModule.get(board)!))
+      warnings.push(`${at}: part "${board}" is not a board (its module "${partModule.get(board)}" is not embedded in this file)`)
+    else if (reason === 'partial') warnings.push(`${at}: not every leg of "${part}" sits on a hole of board "${board}", so it plugs into nothing`)
+    else if (reason === 'obscured')
+      warnings.push(`${at}: a board drawn above board "${board}" covers a leg of "${part}", so it plugs into nothing`)
+    else if (reason === 'conflict') warnings.push(`${at}: a leg of "${part}" sits on a hole another mounted part already uses, so it plugs into nothing`)
+  }
   return { ok: true, diagram, warnings }
 }
 

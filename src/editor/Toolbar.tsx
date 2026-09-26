@@ -1,7 +1,8 @@
 import { useRef, useState } from 'react'
 import { type EditorStore, useEditorState } from './store.ts'
 import type { Diagram } from '../format/diagram.ts'
-import { deleteSelection, rotateParts } from './ops.ts'
+import { deleteSelection, EMPTY_SELECTION, rotateParts } from './ops.ts'
+import { useBrokenConnections } from './problems.ts'
 import { emptyDiagram, serializeDiagram } from '../format/diagram.ts'
 import { downloadText, exportFileName, readDiagramFile } from './files.ts'
 import { LoadWarnings } from './LoadWarnings.tsx'
@@ -16,6 +17,7 @@ export function Toolbar({ store, warnings, onClose }: { store: EditorStore; warn
   // Warnings the open sheet was loaded with; every one stays reachable until dismissed.
   const [loadWarnings, setLoadWarnings] = useState<{ list: string[]; key: number } | null>(warnings?.length ? { list: warnings, key: 0 } : null)
   const hasSel = selection.parts.length + selection.wires.length > 0
+  const broken = useBrokenConnections(diagram)
 
   /** True when there is nothing to lose, or the user agrees to discard it. */
   const okToDiscard = () => !store.dirty || window.confirm(`Discard unsaved changes to ${diagram.title}?`)
@@ -60,6 +62,20 @@ export function Toolbar({ store, warnings, onClose }: { store: EditorStore; warn
         downloadText(exportFileName(diagram.title), serializeDiagram(diagram))
         store.markSaved()
       }}>Export JSON</button>
+      {broken.length > 0 && (
+        <button
+          type="button"
+          className="tool broken-badge"
+          title="Show the broken connections in the side panel"
+          onClick={() => {
+            // With nothing selected the side panel lists them; move focus to that list.
+            store.select(EMPTY_SELECTION)
+            requestAnimationFrame(() => document.getElementById('broken-title')?.focus())
+          }}
+        >
+          {broken.length === 1 ? '1 broken connection' : `${broken.length} broken connections`}
+        </button>
+      )}
       <input
         ref={fileRef}
         type="file"

@@ -177,3 +177,28 @@ describe('routeOrthogonal', () => {
     })
   })
 })
+
+describe('free-direction ends (holes)', () => {
+  it('leaves a free start in whichever direction reaches the goal straight', () => {
+    expect(routeOrthogonal({ from: { x: 0, y: 0 }, fromDir: null, to: { x: 100, y: 0 }, toDir: left, obstacles: [] })).toEqual([{ x: 0, y: 0 }, { x: 100, y: 0 }])
+    expect(routeOrthogonal({ from: { x: 0, y: 0 }, fromDir: null, to: { x: 0, y: -100 }, toDir: down, obstacles: [] })).toEqual([{ x: 0, y: 0 }, { x: 0, y: -100 }])
+  })
+  it('joins two free ends with a single bend', () => {
+    const pts = routeOrthogonal({ from: { x: 0, y: 0 }, fromDir: null, to: { x: 50, y: 30 }, toDir: null, obstacles: [] })!
+    expect(pts).toHaveLength(3)
+    expect(orthogonal(pts)).toBe(true)
+    expect(pts[2]).toEqual({ x: 50, y: 30 })
+  })
+  it('arrives at a free goal from any side', () => {
+    // The pin leaves right and may not reverse, so it comes back to the hole from the right.
+    expect(routeOrthogonal({ from: { x: 0, y: 0 }, fromDir: right, to: { x: 0, y: 30 }, toDir: null, obstacles: [] })).toEqual([
+      { x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 30 }, { x: 0, y: 30 },
+    ])
+  })
+  it('still goes around obstacles from a free start', () => {
+    const block = { x: 40, y: -20, w: 20, h: 40 }
+    const pts = routeOrthogonal({ from: { x: 0, y: 0 }, fromDir: null, to: { x: 100, y: 0 }, toDir: null, obstacles: [block] })!
+    expect(orthogonal(pts)).toBe(true)
+    expect(crosses(pts, block)).toBe(false)
+  })
+})

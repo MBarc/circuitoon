@@ -1,15 +1,18 @@
 // The editing surface: an SVG sheet you can pan (drag the background) and zoom (wheel).
 import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import { type EditorStore, useEditorState } from './store.ts'
-import { computeRoutes, labelAnchor, moduleOf, routingKey, wireColor, wirePaths, wireWidth, type PartInstance, type Routes } from '../format/diagram.ts'
+import { brokenStub, computeRoutes, labelAnchor, moduleOf, pinTargets, resolveEndpoint, routingKey, wireColor, wirePaths, wireWidth, type PartInstance, type PinTarget, type Routes } from '../format/diagram.ts'
+import { holeEndAt, plugsOf, splitBoards } from '../format/breadboard.ts'
 import type { Pt } from '../format/geometry.ts'
 import { Part, INK } from '../render/Part.tsx'
+import { LegDots, TakenHoles } from '../render/Boards.tsx'
 import { WireLabel } from '../render/WireLabel.tsx'
-import { addPart, addWire, EMPTY_SELECTION, moveParts, reconnectWire, setWireRoute, updateWire } from './ops.ts'
+import { addPart, addWire, EMPTY_SELECTION, moveParts, reconnectWire, sameEndpoint, setWireRoute, settleDrop, settleMounts, settleSeats, settlingOf, updateWire, withMounted } from './ops.ts'
+import { netlist, netPoints } from '../format/netlist.ts'
 import { bendHandleAt, insertBend, isOrthogonal, moveSegment, removeBend, segmentHandleAt, segmentsOf, toRoute, type Axis } from '../format/wireEdit.ts'
 import { modulesById } from '../library.ts'
-import { bodyRect, worldPins } from '../format/geometry.ts'
-import { layoutModule, type ModuleDef } from '../format/module.ts'
+import { bodyRect } from '../format/geometry.ts'
+import { layoutModule } from '../format/module.ts'
 import { MODULE_MIME } from './LibraryPanel.tsx'
 import type { Diagram, Endpoint } from '../format/diagram.ts'
 import { partCaption } from '../format/values.ts'
@@ -22,7 +25,7 @@ const snap = (v: number) => Math.round(v / GRID) * GRID
 
 type Drag = { pointer: number } & (
   | { kind: 'pan'; client: Pt; view: View }
-  | { kind: 'parts'; start: Pt; uids: string[]; base: Diagram }
+  | { kind: 'parts'; start: Pt; uids: string[]; moving: string[]; settling: string[]; base: Diagram }
   | { kind: 'wire'; from: Endpoint; origin: Pt; cursor: Pt; over: Endpoint | null }
   | { kind: 'reconnect'; uid: string; end: 'from' | 'to'; origin: Pt; cursor: Pt; over: Endpoint | null }
   | { kind: 'segment'; uid: string; index: number; axis: Axis; start: Pt; points: Pt[]; base: Diagram }
@@ -33,31 +36,45 @@ const MIN_HANDLE_SEGMENT = 20
 
 const samePoints = (a: Pt[], b: Pt[]) => a.length === b.length && a.every((p, i) => p.x === b[i].x && p.y === b[i].y)
 
+/** Length in px of the red stub drawn at a broken connection's resolvable end. */
+const BROKEN_STUB = 20
+/** Path data for a filled circle at `p` with radius `r`, as two arcs: draws a whole net's worth of
+ * highlight dots as one `<path>` instead of one `<circle>` element per point (Ruling 19). */
+const circlePath = (p: Pt, r: number) => `M${p.x - r} ${p.y}a${r} ${r} 0 1 0 ${2 * r} 0a${r} ${r} 0 1 0 ${-2 * r} 0`
+
 /**
- * One part's pin hit-targets (the invisible circles wires attach to). Memoized so dragging a
- * wire across the sheet, which changes `hoveredPin` every pointer move, only re-renders the one
- * part whose pin is actually being hovered instead of rebuilding this layer for every part on
- * the sheet each frame.
+ * One part's pin hit-targets (the invisible circles wires attach to), at the stub tips or, for a
+ * plugged leg, on the leg's own hole (`pinTargets`). Memoized so dragging a wire across the
+ * sheet, which changes `hoveredPin` every pointer move, only re-renders the one part whose pin is
+ * actually being hovered instead of rebuilding this layer for every part on the sheet each frame.
+ * The targets are a new array each render, so they are compared by position.
  */
-const PinTargets = memo(function PinTargets({ part, m, hoveredPin }: { part: PartInstance; m: ModuleDef; hoveredPin: string | null }) {
-  return (
-    <>
-      {worldPins(part, m).map((wp) => (
-        <circle
-          key={wp.name}
-          className={hoveredPin === wp.name ? 'pin-hit target' : 'pin-hit'}
-          data-pin={wp.name}
-          data-pin-part={part.uid}
-          cx={wp.end.x}
-          cy={wp.end.y}
-          r={6}
-        >
-          <title>{`${part.designator} ${wp.label ?? wp.name}`}</title>
-        </circle>
-      ))}
-    </>
-  )
-})
+const PinTargets = memo(
+  function PinTargets({ part, targets, hoveredPin }: { part: PartInstance; targets: PinTarget[]; hoveredPin: string | null }) {
+    return (
+      <>
+        {targets.map((t) => (
+          <circle
+            key={t.name}
+            className={hoveredPin === t.name ? 'pin-hit target' : 'pin-hit'}
+            data-pin={t.name}
+            data-pin-part={part.uid}
+            cx={t.at.x}
+            cy={t.at.y}
+            r={6}
+          >
+            <title>{`${part.designator} ${t.label ?? t.name}`}</title>
+          </circle>
+        ))}
+      </>
+    )
+  },
+  (a, b) =>
+    a.part === b.part &&
+    a.hoveredPin === b.hoveredPin &&
+    a.targets.length === b.targets.length &&
+    a.targets.every((t, i) => t.name === b.targets[i].name && t.label === b.targets[i].label && t.at.x === b.targets[i].at.x && t.at.y === b.targets[i].at.y),
+)
 
 export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api: { addAtCenter: (moduleId: string) => void }) => void }) {
   const { diagram, selection } = useEditorState(store)
@@ -65,6 +82,8 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
   const [size, setSize] = useState({ w: 800, h: 600 })
   const [view, setView] = useState<View>({ x: -20, y: -40, scale: 1.5 })
   const [drag, setDrag] = useState<Drag | null>(null)
+  // The pin or hole under the pointer while nothing is being dragged, for net highlighting.
+  const [hover, setHover] = useState<Endpoint | null>(null)
   const settled = useRef<Routes>(new Map())
   const [editing, setEditing] = useState<{ uid: string; anchor: Pt; initial: string; token: number } | null>(null)
   const editRef = useRef<HTMLInputElement>(null)
@@ -109,7 +128,8 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
     if (!m) return
     const lay = layoutModule(m)
     const { diagram: next, uid } = addPart(store.getState().diagram, m, snap(at.x - lay.w / 2), snap(at.y - lay.h / 2))
-    store.commit(next)
+    // Dropped with every leg on free holes of a board, the new part plugs in: one undo step.
+    store.commit(settleMounts(next, [uid]))
     store.select({ parts: [uid], wires: [] })
   }
 
@@ -117,7 +137,8 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
     onReady?.({ addAtCenter: (id) => placeModule(id, { x: view.x + size.w / view.scale / 2, y: view.y + size.h / view.scale / 2 }) })
   })
 
-  const draggingParts = drag?.kind === 'parts' ? drag.uids : null
+  // Parts that move this drag: the selection plus whatever is mounted on a dragged board.
+  const draggingParts = drag?.kind === 'parts' ? drag.moving : null
   const reshaping = drag?.kind === 'segment' ? drag.uid : null
   // Routes depend only on parts, modules and each wire's ends and fixed route, so title, color and label edits skip re-routing.
   const endpointsKey = useMemo(() => routingKey(diagram.connections), [diagram.connections])
@@ -137,6 +158,21 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
   }, [diagram.parts, diagram.modules, endpointsKey, draggingParts, reshaping])
   // Path data only changes with the routes or the wires themselves, not with pan, zoom or selection.
   const wires = useMemo(() => wirePaths(diagram, routes), [routes, diagram.connections])
+  // Boards draw below every other part; the leg overlays follow mounts and positions.
+  const layers = useMemo(() => splitBoards(diagram), [diagram.parts, diagram.modules])
+  // While parts are dragged, the same seat check the drop runs: the dragged parts count as loose
+  // (their old legs neither show nor push a part that stays put out of its holes), and each seat
+  // is green when the drop would mount it, red when only some legs land.
+  const settling = useMemo(
+    () => (drag?.kind === 'parts' ? settleSeats(diagram, drag.settling) : null),
+    [diagram.parts, diagram.modules, drag],
+  )
+  const plugs = useMemo(() => settling?.plugs ?? plugsOf(diagram), [settling, diagram.parts, diagram.modules])
+  const seats = useMemo(() => (settling ? [...settling.seats.values()].flatMap((s) => s ?? []) : []), [settling])
+  // Rebuilt only when parts, connections or modules actually change, so moving the pointer between
+  // hover targets (which changes `hover` every frame) never rebuilds the netlist itself.
+  const nl = useMemo(() => netlist(diagram), [diagram.parts, diagram.connections, diagram.modules])
+  const net = useMemo(() => (hover && !drag ? netPoints(diagram, hover, nl) : []), [hover, drag, diagram, nl])
 
   const vw = size.w / view.scale
   const vh = size.h / view.scale
@@ -177,8 +213,8 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
     if (s.diagram.connections.some((c) => c.uid === uid)) store.commit(setWireRoute(s.diagram, uid, toRoute(points)))
   }
   /**
-   * The routed polyline of a wire that can be reshaped by hand, or null. A wire that cannot be
-   * routed is drawn as a straight diagonal; it has no runs to move or bends to edit.
+   * The routed polyline of a wire that can be reshaped by hand, or null. Every route is orthogonal
+   * (a blocked one is a dashed L the user can reshape clear); this guards against a diagonal anyway.
    */
   function editablePoints(uid: string): Pt[] | null {
     const points = routes.get(uid)?.points
@@ -212,24 +248,27 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
     }
   }, [editing])
 
+  /** Ends a part drag as one undo step: moved parts that are seated mount, the rest unmount. */
+  function finishPartsDrag(d: Extract<Drag, { kind: 'parts' }>) {
+    // A press without movement changes nothing, mounts included (settleDrop returns `now` then).
+    if (store.dragging) store.preview(settleDrop(d.base, store.getState().diagram, d.settling))
+    store.end()
+  }
+
   function onPointerDown(e: React.PointerEvent<SVGSVGElement>) {
     // Commit a half-typed inspector field (it saves on blur) before the selection changes and unmounts it.
     const active = document.activeElement
     if (active instanceof HTMLElement && active !== document.body) active.blur()
     // One gesture at a time: a second finger or button does not start another drag.
     if (drag) return
+    // A press starts a gesture (or a selection change); the net lit by hovering goes out, and the
+    // next pointer move after the gesture lights whatever is under the pointer then.
+    setHover(null)
     if (e.button !== 0 && e.button !== 1) return
     const target = e.target as Element
     const pointer = e.pointerId
     e.currentTarget.setPointerCapture(pointer)
-    const pinEl = e.button === 0 ? target.closest('[data-pin]') : null
-    if (pinEl) {
-      const from = { part: pinEl.getAttribute('data-pin-part')!, pin: pinEl.getAttribute('data-pin')! }
-      const origin = { x: Number(pinEl.getAttribute('cx')), y: Number(pinEl.getAttribute('cy')) }
-      setDrag({ pointer, kind: 'wire', from, origin, cursor: toWorld(e), over: null })
-      store.setGesture(true)
-      return
-    }
+    // Explicit wire-edit handles of the selected wire come first: they sit on top of everything.
     const handleEl = e.button === 0 ? target.closest('[data-wire-end]') : null
     if (handleEl) {
       const uid = handleEl.getAttribute('data-wire-uid')!
@@ -255,6 +294,20 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
     // A single press on a bend does nothing (double-click removes it); it must not fall
     // through to the paper and clear the selection.
     if (e.button === 0 && target.closest('[data-vertex-index]')) return
+    // A press on a pin or a hole starts a wire there, by the same terminal-hit policy hover and
+    // drop use, so a hole under an ordinary wire's hit stroke still starts a wire; a press on the
+    // wire anywhere else selects it. A pin ends at its stub tip, or at its leg's hole when plugged
+    // (Ruling 25). Between holes, a press drags the board as usual.
+    // Alt+press on the selected wire adds a bend there (a wire edit), even over a hole.
+    const sel0 = store.getState().selection
+    const bending = e.altKey && sel0.parts.length === 0 && sel0.wires.length === 1 && target.closest('[data-wire]')?.getAttribute('data-wire') === sel0.wires[0]
+    const end = e.button === 0 && !bending ? endUnder(e) : null
+    const at = end && resolveEndpoint(store.getState().diagram, end)
+    if (end && at) {
+      setDrag({ pointer, kind: 'wire', from: end, origin: at.end, cursor: toWorld(e), over: null })
+      store.setGesture(true)
+      return
+    }
     const wireEl = e.button === 0 ? target.closest('[data-wire]') : null
     if (wireEl) {
       const uid = wireEl.getAttribute('data-wire')!
@@ -277,7 +330,8 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
       else if (!parts.includes(uid)) parts = [uid]
       store.select({ parts, wires: e.shiftKey ? sel.wires : [] })
       if (parts.includes(uid)) {
-        setDrag({ pointer, kind: 'parts', start: toWorld(e), uids: parts, base: store.begin() })
+        const base = store.begin()
+        setDrag({ pointer, kind: 'parts', start: toWorld(e), uids: parts, moving: withMounted(base, parts), settling: settlingOf(base, parts), base })
         store.setGesture(true)
       }
       return
@@ -290,8 +344,34 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
     const el = document.elementFromPoint(e.clientX, e.clientY)?.closest('[data-pin]')
     return el ? { part: el.getAttribute('data-pin-part')!, pin: el.getAttribute('data-pin')! } : null
   }
+  /**
+   * The hole or pad under the pointer on the topmost part there, if that part has hole groups (a
+   * board, or any module with interior pads) and a hole is within 3.5 px (`holeEndAt`). Walks the
+   * full elementsFromPoint stack, not just the topmost element, so a wire or label drawn over a
+   * board does not hide the hole beneath it; a part drawn above the board (which has no holes of
+   * its own there) still occludes it, since it is the first part found.
+   */
+  function holeUnder(e: { clientX: number; clientY: number }): Endpoint | null {
+    for (const el of document.elementsFromPoint(e.clientX, e.clientY)) {
+      const partEl = el.closest('[data-part]')
+      if (partEl) return holeEndAt(store.getState().diagram, partEl.getAttribute('data-part')!, toWorld(e))
+    }
+    return null
+  }
+  /**
+   * The one terminal-hit policy, shared by hover, pressing and dropping a wire end: a pin first (its
+   * target sits on top), else a hole or pad on the topmost part under the pointer.
+   */
+  function endUnder(e: { clientX: number; clientY: number }): Endpoint | null {
+    return pinUnder(e) ?? holeUnder(e)
+  }
   function onPointerMove(e: React.PointerEvent<SVGSVGElement>) {
-    if (!drag || e.pointerId !== drag.pointer) return
+    if (!drag) {
+      const over = endUnder(e)
+      setHover((h) => (h === over || (h && over && sameEndpoint(store.getState().diagram, h, over)) ? h : over))
+      return
+    }
+    if (e.pointerId !== drag.pointer) return
     if (drag.kind === 'pan')
       setView({ ...drag.view, x: drag.view.x - (e.clientX - drag.client.x) / view.scale, y: drag.view.y - (e.clientY - drag.client.y) / view.scale })
     else if (drag.kind === 'parts') {
@@ -307,14 +387,15 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
       // automatic wire stays automatic and no undo step is recorded.
       if (samePoints(moved, drag.points)) store.preview(drag.base)
       else store.preview(setWireRoute(drag.base, drag.uid, toRoute(moved)))
-    } else if (drag.kind === 'wire') setDrag({ ...drag, cursor: toWorld(e), over: pinUnder(e) })
-    else if (drag.kind === 'reconnect') setDrag({ ...drag, cursor: toWorld(e), over: pinUnder(e) })
+    } else if (drag.kind === 'wire') setDrag({ ...drag, cursor: toWorld(e), over: endUnder(e) })
+    else if (drag.kind === 'reconnect') setDrag({ ...drag, cursor: toWorld(e), over: endUnder(e) })
   }
   function onPointerUp(e: React.PointerEvent<SVGSVGElement>) {
     if (!drag || e.pointerId !== drag.pointer) return
-    if (drag.kind === 'parts' || drag.kind === 'segment') store.end()
+    if (drag.kind === 'parts') finishPartsDrag(drag)
+    if (drag.kind === 'segment') store.end()
     if (drag.kind === 'wire') {
-      const to = pinUnder(e)
+      const to = endUnder(e)
       const s = store.getState()
       // The start part may have been deleted or undone away while the wire was being drawn.
       const exists = (ep: Endpoint) => s.diagram.parts.some((p) => p.uid === ep.part)
@@ -325,7 +406,7 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
       }
     }
     if (drag.kind === 'reconnect') {
-      const to = pinUnder(e)
+      const to = endUnder(e)
       const next = to && reconnectWire(store.getState().diagram, drag.uid, drag.end, to)
       if (next) {
         store.commit(next)
@@ -334,14 +415,16 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
     }
     if (drag.kind !== 'pan') store.setGesture(false)
     setDrag(null)
+    setHover(null)
   }
   function onPointerCancel(e: React.PointerEvent<SVGSVGElement>) {
     if (!drag || e.pointerId !== drag.pointer) return
-    if (drag.kind === 'parts') store.end()
+    if (drag.kind === 'parts') finishPartsDrag(drag)
     // A reshape the browser took away (lost capture, cancelled touch) is abandoned, not kept.
     if (drag.kind === 'segment') store.cancel()
     if (drag.kind !== 'pan') store.setGesture(false)
     setDrag(null)
+    setHover(null)
   }
 
   // Escape abandons a wire, part or segment drag. For parts and segments, the editor's key
@@ -352,10 +435,24 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
       if (e.key !== 'Escape') return
       store.setGesture(false)
       setDrag(null)
+      setHover(null)
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [drag?.kind])
+
+  const renderPart = (p: PartInstance) => {
+    const m = moduleOf(diagram, p.module)
+    return m ? (
+      <g key={p.uid} data-part={p.uid}>
+        {selection.parts.includes(p.uid) && (() => {
+          const r = bodyRect(p, layoutModule(m))
+          return <rect x={r.x - 6} y={r.y - 6} width={r.w + 12} height={r.h + 12} rx={6} fill="none" stroke="var(--focus)" strokeWidth={1.5} strokeDasharray="5 4" />
+        })()}
+        <Part module={m} x={p.x} y={p.y} rotation={p.rotation} caption={partCaption(p, m)} values={p.values} />
+      </g>
+    ) : null
+  }
 
   return (
     <div
@@ -382,6 +479,7 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerCancel}
+        onPointerLeave={() => setHover(null)}
         onLostPointerCapture={onPointerCancel}
         onDoubleClick={onDoubleClick}
         role="application"
@@ -394,18 +492,15 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
         </defs>
         <rect x={view.x} y={view.y} width={vw} height={vh} fill="var(--paper)" />
         <rect x={view.x} y={view.y} width={vw} height={vh} fill="url(#editor-grid)" />
-        {diagram.parts.map((p) => {
-          const m = moduleOf(diagram, p.module)
-          return m ? (
-            <g key={p.uid} data-part={p.uid}>
-              {selection.parts.includes(p.uid) && (() => {
-                const r = bodyRect(p, layoutModule(m))
-                return <rect x={r.x - 6} y={r.y - 6} width={r.w + 12} height={r.h + 12} rx={6} fill="none" stroke="var(--focus)" strokeWidth={1.5} strokeDasharray="5 4" />
-              })()}
-              <Part module={m} x={p.x} y={p.y} rotation={p.rotation} caption={partCaption(p, m)} values={p.values} />
-            </g>
-          ) : null
-        })}
+        {layers.boards.map(renderPart)}
+        <TakenHoles plugs={plugs} />
+        {layers.others.map(renderPart)}
+        <LegDots plugs={plugs} />
+        <g pointerEvents="none">
+          {seats.flatMap((s, i) =>
+            s.holes.map((h, j) => <circle key={`${i}-${j}`} className={s.status === 'seated' ? 'seat-ok' : 'seat-bad'} cx={h.x} cy={h.y} r={4} />),
+          )}
+        </g>
         <g fill="none" strokeLinecap="round" strokeLinejoin="round">
           {wires.map(({ conn, d, blocked }) => {
             const w = wireWidth(conn.gauge)
@@ -437,10 +532,33 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
             ) : null
           })}
         </g>
+        {/* A connection the netlist could not join (a missing part, pin, group or hole) has no
+            route to draw, but a short dashed red stub at whichever end still resolves lets a
+            user find and repair it instead of a wire silently vanishing from the sheet. Drawn after the
+            name tags so no label (a tag or a board's column number) hides it. It carries
+            data-wire like any wire, so a click selects it and Delete removes the connection. */}
+        {diagram.connections.map((c) => {
+          if (!nl.broken.includes(c.uid)) return null
+          const at = brokenStub(diagram, c)
+          if (!at) return null
+          const dir = at.dir ?? { x: 0, y: -1 }
+          const tip = { x: at.end.x + dir.x * BROKEN_STUB, y: at.end.y + dir.y * BROKEN_STUB }
+          const d = `M${at.end.x} ${at.end.y}L${tip.x} ${tip.y}`
+          return (
+            <g key={c.uid} data-wire={c.uid} fill="none" strokeLinecap="round">
+              <title>{`${c.uid}: cannot resolve both ends`}</title>
+              {selection.wires.includes(c.uid) && <path d={d} stroke="var(--focus)" strokeOpacity={0.35} strokeWidth={12} />}
+              <path className="wire-broken" d={d} strokeWidth={2.5} />
+              <path className="wire-hit" d={d} strokeWidth={12} />
+            </g>
+          )
+        })}
+        {net.length > 0 && <path className="net-hi" d={net.map((p) => circlePath(p, 4)).join('')} pointerEvents="none" />}
         {drag?.kind === 'wire' && (
           <line
             x1={drag.origin.x} y1={drag.origin.y} x2={drag.cursor.x} y2={drag.cursor.y}
             stroke={wireColor(store.getState().wireStyle.color)} strokeWidth={2.5} strokeDasharray="6 4" strokeLinecap="round"
+            pointerEvents="none"
           />
         )}
         {drag?.kind === 'reconnect' && (
@@ -448,14 +566,19 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
             x1={drag.origin.x} y1={drag.origin.y} x2={drag.cursor.x} y2={drag.cursor.y}
             stroke={wireColor(diagram.connections.find((c) => c.uid === drag.uid)?.color)}
             strokeWidth={2.5} strokeDasharray="6 4" strokeLinecap="round"
+            pointerEvents="none"
           />
         )}
+        {(drag?.kind === 'wire' || drag?.kind === 'reconnect') && drag.over?.hole !== undefined && (() => {
+          const at = resolveEndpoint(diagram, drag.over!)
+          return at ? <circle className="hole-target" cx={at.end.x} cy={at.end.y} r={4.5} /> : null
+        })()}
         {diagram.parts.map((p) => {
           const m = moduleOf(diagram, p.module)
           if (!m) return null
           const hoveredPin =
             (drag?.kind === 'wire' || drag?.kind === 'reconnect') && drag.over?.part === p.uid ? drag.over.pin : null
-          return <PinTargets key={p.uid} part={p} m={m} hoveredPin={hoveredPin} />
+          return <PinTargets key={p.uid} part={p} targets={pinTargets(diagram, p, m)} hoveredPin={hoveredPin} />
         })}
         {selection.wires.length === 1 &&
           !drag &&
@@ -465,7 +588,7 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
             // Handles index the routed geometry the edits work on (with its collinear bends); the
             // segment bars are drawn on the drawn path, which may be nudged a few px clear of
             // another wire.
-            // A wire drawn as a straight diagonal (it cannot be routed) gets no segment or bend handles.
+            // A polyline with a diagonal step (never routed, only guarded) gets no segment or bend handles.
             const pts = editablePoints(w.conn.uid) ?? []
             const segHandles = segmentsOf(pts)
               .filter((sg) => Math.abs(sg.b.x - sg.a.x) + Math.abs(sg.b.y - sg.a.y) >= MIN_HANDLE_SEGMENT)

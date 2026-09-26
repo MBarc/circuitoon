@@ -1,0 +1,109 @@
+{
+  "format": "circuitoon-module/1",
+  "id": "breadboard-tiny",
+  "version": 1,
+  "name": "Tiny breadboard (25)",
+  "category": "Prototyping",
+  "pins": [],
+  "holes": [
+    {
+      "name": "c1",
+      "label": "1",
+      "at": [
+        [20, 20],
+        [20, 30],
+        [20, 40],
+        [20, 50],
+        [20, 60]
+      ]
+    },
+    {
+      "name": "c2",
+      "label": "2",
+      "at": [
+        [30, 20],
+        [30, 30],
+        [30, 40],
+        [30, 50],
+        [30, 60]
+      ]
+    },
+    {
+      "name": "c3",
+      "label": "3",
+      "at": [
+        [40, 20],
+        [40, 30],
+        [40, 40],
+        [40, 50],
+        [40, 60]
+      ]
+    },
+    {
+      "name": "c4",
+      "label": "4",
+      "at": [
+        [50, 20],
+        [50, 30],
+        [50, 40],
+        [50, 50],
+        [50, 60]
+      ]
+    },
+    {
+      "name": "c5",
+      "label": "5",
+      "at": [
+        [60, 20],
+        [60, 30],
+        [60, 40],
+        [60, 50],
+        [60, 60]
+      ]
+    }
+  ],
+  "obstacle": false,
+  "size": {
+    "w": 8,
+    "h": 8
+  },
+  "art": {
+    "w": 80,
+    "h": 80,
+    "shapes": [
+      {
+        "type": "rect",
+        "x": 0,
+        "y": 0,
+        "w": 80,
+        "h": 80,
+        "fill": "#FFFFFF",
+        "radius": 4
+      },
+      {
+        "type": "rect",
+        "x": 14,
+        "y": 6,
+        "w": 12,
+        "h": 8,
+        "fill": "#FFFFFF",
+        "outline": false,
+        "label": "1",
+        "labelColor": "#8A929C",
+        "labelSize": 6
+      },
+      {
+        "type": "rect",
+        "x": 54,
+        "y": 6,
+        "w": 12,
+        "h": 8,
+        "fill": "#FFFFFF",
+        "outline": false,
+        "label": "5",
+        "labelColor": "#8A929C",
+        "labelSize": 6
+      }
+    ]
+  }
+}

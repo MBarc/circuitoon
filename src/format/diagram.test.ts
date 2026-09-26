@@ -29,6 +29,12 @@ describe('routingKey', () => {
     expect(routingKey([{ ...base, color: 'red', label: 'x' }])).toBe(routingKey([base]))
     expect(routingKey([{ ...base, route: [[0, 0]] }])).not.toBe(routingKey([base]))
   })
+  it('changes when a wire end moves to another hole of the same strip', () => {
+    const at = (hole: number) => [{ uid: 'w', from: { part: 'bb', pin: 'c1-top', hole }, to: { part: 'bb', pin: 'c9-top', hole: 0 } }]
+    expect(routingKey(at(3))).not.toBe(routingKey(at(0)))
+    const to = (hole: number) => [{ uid: 'w', from: { part: 'bb', pin: 'c1-top', hole: 0 }, to: { part: 'bb', pin: 'c9-top', hole } }]
+    expect(routingKey(to(4))).not.toBe(routingKey(to(0)))
+  })
 })
 
 describe('labelAnchor', () => {

@@ -48,6 +48,24 @@ export interface Art {
   shapes: ArtShape[]
 }
 
+/**
+ * A hole group: one electrical node whose holes sit inside the body (a breadboard strip or rail,
+ * or a single header pad drawn in its true position). Wires reference it by `name`, like a pin.
+ */
+export interface HoleGroup {
+  name: string
+  label?: string
+  /** Hole centers in module-local px, each on a 10 px grid point inside the body. */
+  at: [number, number][]
+  /** Marks a power rail, drawn and named as + or -. */
+  rail?: '+' | '-'
+  /** "pad" draws each position as a header pad instead of a breadboard hole. */
+  holeStyle?: 'pad'
+  /** Electrical type and supply rails, as on a pin (an interior header pad). Breadboard rails set neither: + and - are markings, not voltages. */
+  type?: PinType
+  supply?: string
+}
+
 export interface ModuleDef {
   format: typeof MODULE_FORMAT
   id: string
@@ -62,6 +80,10 @@ export interface ModuleDef {
   art?: Art
   electrical?: unknown
   states?: string[]
+  /** Pins inside the body, as hole groups (breadboards, interior headers). */
+  holes?: HoleGroup[]
+  /** false lets wires route over the part (a breadboard); parts mounted on it are still obstacles. */
+  obstacle?: boolean
 }
 
 export const isSpacer = (p: PinEntry): p is SpacerDef => 'spacer' in p && p.spacer === true
@@ -73,6 +95,9 @@ export const usesInsideLabels = (m: ModuleDef): boolean => m.art?.pinLabels === 
 /** Sides whose pin names draw inside the body: every side for an "inside" module (a board's
  * left/right headers, a small OLED's top header), none otherwise. */
 export const insideLabelSides = (m: ModuleDef): Side[] => (usesInsideLabels(m) ? [...SIDES] : [])
+
+/** A board accepts mounted parts: it has hole groups and is not a routing obstacle (breadboards, rail strips). */
+export const isBoard = (m: ModuleDef | undefined): boolean => !!m && !!m.holes?.length && m.obstacle === false
 
 export type ValidationResult = { ok: true; module: ModuleDef } | { ok: false; errors: string[] }
 
@@ -125,8 +150,20 @@ export function validateModule(raw: unknown): ValidationResult {
   if (raw.category !== undefined && typeof raw.category !== 'string') errors.push('category: must be a string')
   if (raw.source !== undefined && typeof raw.source !== 'string') errors.push('source: must be a string (one or more URLs)')
 
+  // Electrical metadata shared by pins and hole groups.
+  const checkType = (t: Record<string, unknown>, at: string) => {
+    if (t.type !== undefined && !PIN_TYPES.includes(t.type as PinType)) errors.push(`${at}.type: must be one of ${PIN_TYPES.join(', ')}`)
+  }
+  const checkSupply = (t: Record<string, unknown>, at: string) => {
+    if (t.supply !== undefined && typeof t.supply !== 'string') errors.push(`${at}.supply: must be a string`)
+    else if (typeof t.supply === 'string' && !/^[^/\s]+(\/[^/\s]+)*$/.test(t.supply))
+      errors.push(`${at}.supply: must be one or more rail names separated by "/", for example "3V3/5V"`)
+  }
+
   const names = new Set<string>()
-  if (!Array.isArray(raw.pins) || raw.pins.length === 0) errors.push('pins: required, at least one pin')
+  // A board has only hole groups, so its pin list may be empty.
+  const hasHoles = Array.isArray(raw.holes) && raw.holes.length > 0
+  if (!Array.isArray(raw.pins) || (raw.pins.length === 0 && !hasHoles)) errors.push('pins: required, at least one pin')
   else
     raw.pins.forEach((p, i) => {
       const at = `pins[${i}]`
@@ -140,15 +177,39 @@ export function validateModule(raw: unknown): ValidationResult {
       if (typeof p.name !== 'string' || p.name === '') return void errors.push(`${at}.name: required`)
       if (names.has(p.name)) errors.push(`${at}.name: duplicate pin name "${p.name}"`)
       names.add(p.name)
-      if (p.type !== undefined && !PIN_TYPES.includes(p.type as PinType))
-        errors.push(`${at}.type: must be one of ${PIN_TYPES.join(', ')}`)
+      checkType(p, at)
       if (p.bus !== undefined && !(isObj(p.bus) && Number.isInteger(p.bus.length) && (p.bus.length as number) >= 2))
         errors.push(`${at}.bus: must be { "length": <whole number, 2 or more> }`)
       if (p.label !== undefined && typeof p.label !== 'string') errors.push(`${at}.label: must be a string`)
-      if (p.supply !== undefined && typeof p.supply !== 'string') errors.push(`${at}.supply: must be a string`)
-      else if (typeof p.supply === 'string' && !/^[^/\s]+(\/[^/\s]+)*$/.test(p.supply))
-        errors.push(`${at}.supply: must be one or more rail names separated by "/", for example "3V3/5V"`)
+      checkSupply(p, at)
     })
+
+  const positions = new Set<string>()
+  if (raw.holes !== undefined) {
+    if (!Array.isArray(raw.holes)) errors.push('holes: must be a list of hole groups')
+    else
+      raw.holes.forEach((g, i) => {
+        const at = `holes[${i}]`
+        if (!isObj(g)) return void errors.push(`${at}: must be an object`)
+        if (typeof g.name !== 'string' || g.name === '') errors.push(`${at}.name: required`)
+        else if (names.has(g.name)) errors.push(`${at}.name: duplicate name "${g.name}" (pins and hole groups share one namespace)`)
+        else names.add(g.name)
+        if (g.label !== undefined && typeof g.label !== 'string') errors.push(`${at}.label: must be a string`)
+        if (g.rail !== undefined && g.rail !== '+' && g.rail !== '-') errors.push(`${at}.rail: must be "+" or "-"`)
+        if (g.holeStyle !== undefined && g.holeStyle !== 'pad') errors.push(`${at}.holeStyle: must be "pad"`)
+        checkType(g, at)
+        checkSupply(g, at)
+        if (!Array.isArray(g.at) || g.at.length === 0) return void errors.push(`${at}.at: required, at least one [x, y] position`)
+        g.at.forEach((p, j) => {
+          if (!(Array.isArray(p) && p.length === 2 && isNum(p[0]) && isNum(p[1]))) return void errors.push(`${at}.at[${j}]: must be [x, y]`)
+          if (p[0] % GRID !== 0 || p[1] % GRID !== 0) errors.push(`${at}.at[${j}]: must sit on the 10 px grid`)
+          const key = `${p[0]},${p[1]}`
+          if (positions.has(key)) errors.push(`${at}.at[${j}]: another hole already sits at ${p[0]}, ${p[1]}`)
+          positions.add(key)
+        })
+      })
+  }
+  if (raw.obstacle !== undefined && typeof raw.obstacle !== 'boolean') errors.push('obstacle: must be true or false')
 
   if (raw.internal !== undefined) {
     if (!Array.isArray(raw.internal)) errors.push('internal: must be a list of pin-name groups')
@@ -184,6 +245,15 @@ export function validateModule(raw: unknown): ValidationResult {
           errors.push(`${at}.band: must be a whole number from 1 to 4`)
       })
     }
+  }
+
+  if (!errors.length && Array.isArray(raw.holes)) {
+    const lay = computeLayout(raw as unknown as ModuleDef)
+    ;(raw.holes as HoleGroup[]).forEach((g, i) =>
+      g.at.forEach(([x, y], j) => {
+        if (x < 0 || y < 0 || x > lay.w || y > lay.h) errors.push(`holes[${i}].at[${j}]: outside the body (0 to ${lay.w}, 0 to ${lay.h})`)
+      }),
+    )
   }
 
   if (isObj(raw.electrical) && raw.electrical.params !== undefined) {
