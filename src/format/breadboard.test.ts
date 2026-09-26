@@ -123,16 +123,22 @@ describe('seatOf', () => {
     d.parts[1] = { ...d.parts[1], module: 'bare' }
     expect(seatOf(d, 'u', [])).toBeNull()
   })
-  it('picks the board with the most landed legs, then the earlier board', () => {
+  it('picks the board with the most landed legs, then the board drawn on top (later in the list)', () => {
     // Board c overlaps b 40 px to the right: holes at x = 50..130.
     const d = loose(10, 0)
     d.parts.unshift({ uid: 'c', designator: 'BB2', module: 'bb', x: 40, y: 0 })
     expect(seatOf(d, 'u', [])).toEqual({ status: 'seated', board: 'b', holes: [{ x: 50, y: 20 }, { x: 10, y: 20 }] })
-    // Both legs on both boards: the first board in the list wins.
+    // Both legs on both boards: boards draw in list order, so the later one is on top and wins.
     d.parts[2] = { ...d.parts[2], x: 50 }
-    expect(seatOf(d, 'u', [])!.board).toBe('c')
-    d.parts.reverse()
     expect(seatOf(d, 'u', [])!.board).toBe('b')
+    d.parts.reverse()
+    expect(seatOf(d, 'u', [])!.board).toBe('c')
+  })
+  it('on identical stacked boards, mounts on the one whose holes are shown and picked', () => {
+    const d = loose(10, 0)
+    d.parts.splice(1, 0, { uid: 'b2', designator: 'BB2', module: 'bb', x: 0, y: 0 })
+    expect(splitBoards(d).boards.map((p) => p.uid)).toEqual(['b', 'b2'])
+    expect(seatOf(d, 'u', [])!.board).toBe('b2')
   })
 })
 
@@ -140,8 +146,8 @@ describe('seatOn', () => {
   it('checks one given board, whatever other board also fits', () => {
     const d = sheet()
     d.parts = [d.parts[0], { uid: 'c', designator: 'BB2', module: 'bb', x: 40, y: 0 }, { uid: 'u', designator: 'R9', module: 'two', x: 50, y: 0 }]
-    expect(seatOf(d, 'u', [])!.board).toBe('b')
-    expect(seatOn(d, 'u', 'c', [])).toEqual({ status: 'seated', board: 'c', holes: [{ x: 90, y: 20 }, { x: 50, y: 20 }] })
+    expect(seatOf(d, 'u', [])!.board).toBe('c')
+    expect(seatOn(d, 'u', 'b', [])).toEqual({ status: 'seated', board: 'b', holes: [{ x: 90, y: 20 }, { x: 50, y: 20 }] })
     expect(seatOn(d, 'u', 'u', [])).toBeNull()
     expect(seatOn(d, 'u', 'zz', [])).toBeNull()
   })

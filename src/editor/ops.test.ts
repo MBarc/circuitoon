@@ -297,9 +297,10 @@ describe('settleMounts', () => {
     expect(settleMounts(at(70, 0, true), ['u'], 'keep').parts[1]).not.toHaveProperty('mount')
   })
   it("in keep mode checks the part's own board, so an overlapping board never unmounts it", () => {
-    // Board c overlaps b 40 px to the right (holes at x = 50..130) and comes first, so seatOf would pick c.
+    // Board c overlaps b 40 px to the right (holes at x = 50..130) and comes later (drawn on top), so seatOf would pick c.
     const d = at(50, 0)
-    d.parts = [{ uid: 'c', designator: 'BB2', module: 'bb', x: 40, y: 0 }, d.parts[0], { ...d.parts[1], mount: { board: 'b' } }]
+    d.parts = [d.parts[0], { uid: 'c', designator: 'BB2', module: 'bb', x: 40, y: 0 }, { ...d.parts[1], mount: { board: 'b' } }]
+    expect(seatOf(d, 'u', [])!.board).toBe('c')
     expect(settleMounts(d, ['u'], 'keep')).toBe(d)
     // Off its own board but still on c: keep mode drops the mount rather than moving it.
     d.parts[2] = { ...d.parts[2], x: 90 }
@@ -477,18 +478,19 @@ describe('boards carry their parts', () => {
     const d: Diagram = {
       format: 'circuitoon-diagram/1', title: 't', modules: { bb, two },
       parts: [
-        { uid: 'B0', designator: 'BB1', module: 'bb', x: 0, y: 0 },
         { uid: 'B1', designator: 'BB2', module: 'bb', x: 300, y: 0 },
+        { uid: 'B0', designator: 'BB1', module: 'bb', x: 0, y: 0 },
         { uid: 'P', designator: 'R1', module: 'two', x: 310, y: 0, mount: { board: 'B1' } },
         { uid: 'Q', designator: 'R2', module: 'two', x: 330, y: 10, mount: { board: 'B1' } },
       ],
       connections: [],
     }
     const now = moveParts(d, ['B1', 'P'], -300, 0)
-    // The repro: settling the whole selection moves P to B0, the board it now also sits on.
+    // The repro: settling the whole selection moves P to B0, the board it now also sits on (and
+    // drawn above B1, so it wins the tie).
     expect(settleDrop(d, now, ['B1', 'P']).parts[2].mount).toEqual({ board: 'B0' })
     const done = settleDrop(d, now, settlingOf(d, ['B1', 'P']))
-    expect(done.parts.map((p) => [p.uid, p.mount?.board])).toEqual([['B0', undefined], ['B1', undefined], ['P', 'B1'], ['Q', 'B1']])
+    expect(done.parts.map((p) => [p.uid, p.mount?.board])).toEqual([['B1', undefined], ['B0', undefined], ['P', 'B1'], ['Q', 'B1']])
     expect(settleSeats(now, settlingOf(d, ['B1', 'P'])).seats.size).toBe(0)
   })
   it('deletes a board but keeps a wire to the own pin of a part it carried', () => {

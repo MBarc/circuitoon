@@ -164,7 +164,8 @@ function seatFrom(fit: Fit, pts: PlugPoint[], taken: ReadonlySet<string>): Seat 
  * defaults to the part itself. Partial: some legs land, or land on taken holes. Null: no leg
  * lands on any board, or the part cannot mount (a board, a part with a bus pin or no pins).
  * With legs on several boards the board with the most landed legs is the candidate; a tie goes
- * to the board earlier in `d.parts`.
+ * to the board later in `d.parts`, which is drawn on top (boards draw in `d.parts` order), so
+ * the board whose holes the user sees, hovers and wires is the one the part plugs into.
  */
 export function seatOf(d: Diagram, uid: string, plugs: Plug[], ignore: ReadonlySet<string> = new Set([uid])): Seat | null {
   const me = mountable(d, uid)
@@ -172,7 +173,7 @@ export function seatOf(d: Diagram, uid: string, plugs: Plug[], ignore: ReadonlyS
   let best: Fit | null = null
   for (const b of d.parts) {
     const fit = b === me.part ? null : fitOn(d, b, me.pts)
-    if (fit && fit.landed > (best?.landed ?? 0)) best = fit
+    if (fit && fit.landed > 0 && fit.landed >= (best?.landed ?? 0)) best = fit
   }
   return best && seatFrom(best, me.pts, takenBy(plugs, ignore))
 }
