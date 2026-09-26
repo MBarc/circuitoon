@@ -677,6 +677,16 @@ function checkPotentials({ d, nl, netTerms, netWires, terminal, shorted, add }: 
   }
 
   // Loads: the voltage across each power input, from its net to its own part's ground.
+  /** A part No ground already flags: none of its grounds reaches another part (a bare strip does not count). */
+  const groundless = (p: PartInstance) => {
+    const m = moduleOf(d, p.module)!
+    const gs = moduleInfo(m).grounds
+    return gs.length > 0 && !gs.some((g) => {
+      const k = nodeKey(p.uid, g)
+      const i = nl.netOf.get(k)
+      return i !== undefined && netTerms[i].some((o) => o.part !== p && !o.bare)
+    })
+  }
   const reason = (x: Source) => (x.unknown === 'adjustable' ? 'adjustable' : 'voltage not known')
   nl.nets.forEach((_, i) => {
     const net = `#${i}`
@@ -721,21 +731,20 @@ function checkPotentials({ d, nl, netTerms, netWires, terminal, shorted, add }: 
         v = diff.c
         if (v <= EPS || !from.length) continue
       } else {
-        // The load's ground reaches none of it: assume a common ground and take the supply on its net.
-        const hi = [...direct].sort((a, b) => b.v! - a.v!)[0]
-        if (hi) [v, from] = [hi.v!, [hi]]
+        // The load's ground does not reach the return of what feeds it: no voltage can be stated.
+        // No ground already says so when the ground is not wired at all.
+        const feeding = sorted([...direct, ...unknown])
+        if (feeding.length && !groundless(t.part)) {
+          const g = t.info.grounds.length ? termName(terminal(nodeKey(t.part.uid, t.info.grounds[0]))!) : `${t.part.designator} (no ground pin)`
+          add({ rule: 'supply-unknown', message: `${termName(t)} voltage cannot be checked: ${g} does not connect back to the return of ${andList(feeding.map((x) => termName(x.term)))}.`, ...base(feeding) })
+        }
+        continue
       }
       const max = Math.max(...accepts)
       const min = Math.min(...accepts)
       const what = from.length === 1 ? sourceName(from[0]) : `${andList(from.map((s) => termName(s.term)))} in series`
       if (v !== null && v > max + EPS) {
         add({ rule: 'supply-too-high', message: `${termName(t)} accepts up to ${volts(max)} but gets ${volts(v)} from ${what}.`, ...base(from) })
-        continue
-      }
-      const adjustable = unknown.find((s) => s.unknown === 'adjustable')
-      if (adjustable && ground === undefined) {
-        const list = [...new Set(accepts)].sort((a, b) => a - b).map(volts)
-        add({ rule: 'supply-unknown', message: `${termName(adjustable.term)} is adjustable; set it to a voltage ${termName(t)} accepts (${orList(list)}).`, ...base([adjustable]) })
         continue
       }
       if (v !== null && !unknown.length && v < min - EPS)

@@ -285,3 +285,19 @@ describe('an unknown voltage anywhere on the path is unknown', () => {
     expect(found(d)).toEqual(['supply-unknown: U1 VCC voltage depends on U2 OUT+ (adjustable) and cannot be checked.'])
   })
 })
+
+describe("a load whose ground does not reach its supply's return", () => {
+  it('two 3 V packs in series, the sensor ground unwired: only the missing ground, no "only 3 V"', () => {
+    const d = sheet([at('bt1', 'BT1', 'battery-holder-2xaa'), at('bt2', 'BT2', 'battery-holder-2xaa', 200), at('u1', 'U1', 'bme280-module-4pin', 400)],
+      [['bt1|+', 'bt2|-'], ['bt2|+', 'u1|VIN'], ['u1|SDA', 'bt1|-']])
+    expect(rules(d)).toEqual(['no-ground'])
+  })
+  it('a sensor grounded to a board that the battery never returns to: it cannot be checked', () => {
+    const d = sheet([at('u1', 'U1', 'esp32-devkit-v1-30'), at('u2', 'U2', 'bme280-module-6pin', 400), at('bt1', 'BT1', 'battery-9v', 700)],
+      [['u2|GND', 'u1|GND'], ['bt1|+', 'u2|VCC'], ['u2|SDA', 'u1|D21']])
+    expect(found(d)).toEqual([
+      'no-ground: BT1 has no ground: connect -.',
+      'supply-unknown: U2 VCC voltage cannot be checked: U2 GND does not connect back to the return of BT1 +.',
+    ])
+  })
+})

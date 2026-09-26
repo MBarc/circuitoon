@@ -186,9 +186,13 @@ describe('checkDiagram', () => {
     it('reaches the input through a breadboard strip and a switch-free wire chain', () => {
       const d = sheet(
         [part('BB1', 'bb', { x: 0, y: 0 }), part('BT1', 'bat5'), part('U1', 'chip33')],
-        [wire('w1', 'bt1.+', 'bb1.s1'), { uid: 'w2', from: { part: 'bb1', pin: 's1', hole: 4 }, to: { part: 'u1', pin: 'VCC' } }],
+        [wire('w1', 'bt1.+', 'bb1.s1'), { uid: 'w2', from: { part: 'bb1', pin: 's1', hole: 4 }, to: { part: 'u1', pin: 'VCC' } }, wire('w3', 'bt1.-', 'u1.GND')],
       )
       expect(only(d, 'supply-too-high')[0].wires).toEqual(['w1', 'w2'])
+      // With the ground unwired nothing definite is said about the voltage; No ground says what is missing.
+      d.connections = d.connections.slice(0, 2)
+      expect(rules(d)).not.toContain('supply-too-high')
+      expect(rules(d)).toContain('no-ground')
     })
   })
 
