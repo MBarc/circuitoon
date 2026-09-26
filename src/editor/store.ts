@@ -19,6 +19,8 @@ export interface EditorState {
 }
 
 export interface Highlight {
+  /** The finding it lights, so the light can follow it or go out with it. */
+  id?: string
   severity: Severity
   parts: string[]
   pins: Endpoint[]
@@ -143,7 +145,7 @@ export class EditorStore {
     if (!prev) return
     this.future.push(this.state.diagram)
     this.unsaved = true
-    this.set({ diagram: prev, selection: this.prune(prev, this.state.selection) })
+    this.set({ diagram: prev, selection: this.prune(prev, this.state.selection), highlight: null })
   }
 
   redo() {
@@ -152,7 +154,7 @@ export class EditorStore {
     if (!next) return
     this.past.push(this.state.diagram)
     this.unsaved = true
-    this.set({ diagram: next, selection: this.prune(next, this.state.selection) })
+    this.set({ diagram: next, selection: this.prune(next, this.state.selection), highlight: null })
   }
 
   select(selection: Selection) {
@@ -178,7 +180,7 @@ export class EditorStore {
     this.past = []
     this.future = []
     this.unsaved = false
-    this.set({ diagram, selection: EMPTY_SELECTION })
+    this.set({ diagram, selection: EMPTY_SELECTION, highlight: null })
   }
 }
 

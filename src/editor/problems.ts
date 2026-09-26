@@ -1,11 +1,11 @@
-// The editor's view of the wiring checker: the Problems list, the toolbar badge and the wire
-// panel's broken notice. Checking needs every position (mounts depend on them), so it runs once
-// per edit, never per drag frame: while a gesture is open the list from before it stays up, and
-// the drop (or cancel) checks again.
-import { useMemo } from 'react'
-import { type BrokenConnection, type Finding, brokenConnections, checkDiagram } from '../format/checks.ts'
+// The editor's view of the wiring checker: the Problems list, the toolbar badge and the canvas
+// light of a hovered problem. Checking needs every position (mounts depend on them), so it runs
+// once per edit, never per drag frame: while a gesture is open the list from before it stays up,
+// and the drop (or cancel) checks again.
+import { useEffect } from 'react'
+import { type Finding, checkDiagram } from '../format/checks.ts'
 import type { Diagram } from '../format/diagram.ts'
-import { type EditorStore, useEditorState } from './store.ts'
+import { type EditorStore, type Highlight, useEditorState } from './store.ts'
 
 interface Checked {
   d: Pick<Diagram, 'parts' | 'connections' | 'modules'>
@@ -28,19 +28,37 @@ export function problemsOf(store: EditorStore): Finding[] {
   return findings
 }
 
-/** `problemsOf`, re-read whenever the store changes. */
-export function useProblems(store: EditorStore): Finding[] {
-  useEditorState(store)
-  return problemsOf(store)
+const plural = (n: number, one: string) => `${n} ${one}${n === 1 ? '' : 's'}`
+
+/** "3 errors, 4 warnings": the counts by severity, for the list heading and the toolbar badge's name. */
+export function severityCounts(findings: Finding[]): string {
+  const errors = findings.filter((f) => f.severity === 'error').length
+  const warnings = findings.length - errors
+  return [errors && plural(errors, 'error'), warnings && plural(warnings, 'warning')].filter(Boolean).join(', ')
 }
 
+/** What a problem row lights on the canvas. */
+export const highlightOf = (f: Finding): Highlight => ({ id: f.id, severity: f.severity, parts: f.parts, pins: f.pins, wires: f.wires })
+
+const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b)
+
 /**
- * `brokenConnections`, rebuilt only when the connections, the modules, or which parts exist (and
- * their modules) change. Whether an end resolves does not depend on positions or mounts, so a
- * drag, which replaces the parts every frame, reuses the list.
+ * Keeps the canvas light true to the list: a light whose finding is gone (fixed by an edit, an
+ * undo, another sheet) goes out, and one whose finding now involves other parts, pins or wires
+ * follows it.
  */
-export function useBrokenConnections(d: Diagram): BrokenConnection[] {
-  const partsKey = d.parts.map((p) => JSON.stringify([p.uid, p.module, p.designator])).join('\n')
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  return useMemo(() => brokenConnections(d), [d.connections, d.modules, partsKey])
+export function reconcileHighlight(store: EditorStore, findings: Finding[]) {
+  const h = store.getState().highlight
+  if (!h?.id) return
+  const f = findings.find((x) => x.id === h.id)
+  if (!f) store.setHighlight(null)
+  else if (!same(highlightOf(f), h)) store.setHighlight(highlightOf(f))
+}
+
+/** `problemsOf`, re-read whenever the store changes; the canvas light is kept in step with it. */
+export function useProblems(store: EditorStore): Finding[] {
+  const { highlight } = useEditorState(store)
+  const findings = problemsOf(store)
+  useEffect(() => reconcileHighlight(store, findings), [store, findings, highlight])
+  return findings
 }

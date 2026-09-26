@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { problemsOf } from './problems.ts'
+import { highlightOf, problemsOf, reconcileHighlight, severityCounts } from './problems.ts'
 import { EditorStore } from './store.ts'
 import { moveParts } from './ops.ts'
 import type { Diagram } from '../format/diagram.ts'
@@ -76,6 +76,47 @@ describe('EditorStore highlight and reveal', () => {
     expect(s.canUndo).toBe(false)
     s.setHighlight(null)
     expect(s.getState().highlight).toBeNull()
+  })
+  it('puts the light out on load, undo and redo', () => {
+    const s = new EditorStore(sheet())
+    const h = { severity: 'error' as const, parts: ['b'], pins: [], wires: ['w1'] }
+    s.commit({ ...s.getState().diagram, connections: [] })
+    s.setHighlight(h)
+    s.undo()
+    expect(s.getState().highlight).toBeNull()
+    s.setHighlight(h)
+    s.redo()
+    expect(s.getState().highlight).toBeNull()
+    s.setHighlight(h)
+    s.load(sheet())
+    expect(s.getState().highlight).toBeNull()
+  })
+  it('keeps the light in step with its finding: gone when the finding is, following it when it changes', () => {
+    const s = new EditorStore(sheet())
+    const short = problemsOf(s).find((f) => f.rule === 'short')!
+    s.setHighlight(highlightOf(short))
+    // The same short, now through a second wire too: the light follows it.
+    s.commit({ ...s.getState().diagram, connections: [...s.getState().diagram.connections, { uid: 'w2', from: { part: 'b', pin: '+' }, to: { part: 'b', pin: '-' } }] })
+    const again = problemsOf(s).find((f) => f.rule === 'short')!
+    expect(again.id).toBe(short.id)
+    reconcileHighlight(s, problemsOf(s))
+    expect(s.getState().highlight?.wires).toEqual(['w1', 'w2'])
+    // The short fixed: the light goes out.
+    s.commit({ ...s.getState().diagram, connections: [] })
+    reconcileHighlight(s, problemsOf(s))
+    expect(s.getState().highlight).toBeNull()
+  })
+  it('leaves a light that belongs to no finding alone', () => {
+    const s = new EditorStore(sheet())
+    const h = { severity: 'error' as const, parts: ['b'], pins: [], wires: [] }
+    s.setHighlight(h)
+    reconcileHighlight(s, [])
+    expect(s.getState().highlight).toBe(h)
+  })
+  it('counts problems by severity', () => {
+    const s = new EditorStore(sheet())
+    expect(severityCounts(problemsOf(s))).toBe('1 error, 1 warning')
+    expect(severityCounts([])).toBe('')
   })
   it('counts reveal requests so the canvas can pan to the selection', () => {
     const s = new EditorStore(sheet())

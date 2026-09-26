@@ -2,7 +2,7 @@ import { useRef, useState } from 'react'
 import { type EditorStore, useEditorState } from './store.ts'
 import type { Diagram } from '../format/diagram.ts'
 import { deleteSelection, EMPTY_SELECTION, rotateParts } from './ops.ts'
-import { useProblems } from './problems.ts'
+import { severityCounts, useProblems } from './problems.ts'
 import { SeverityMark } from './SeverityMark.tsx'
 import { emptyDiagram, serializeDiagram } from '../format/diagram.ts'
 import { downloadText, exportFileName, readDiagramFile } from './files.ts'
@@ -69,6 +69,7 @@ export function Toolbar({ store, warnings, onClose }: { store: EditorStore; warn
           type="button"
           className={`tool problems-badge ${errors ? 'error' : 'warning'}`}
           title="Show the wiring problems in the side panel"
+          aria-label={`${findings.length === 1 ? '1 problem' : `${findings.length} problems`}: ${severityCounts(findings)}. Show them in the side panel`}
           onClick={() => {
             // With nothing selected the side panel lists them; move focus to that list.
             store.select(EMPTY_SELECTION)

@@ -5,8 +5,8 @@ import { type EditorStore, useEditorState } from './store.ts'
 import { clearWireRoute, deleteSelection, rotateParts, updatePart, updatePartValue, updateWire } from './ops.ts'
 import { NAMED_COLORS, isValidColor, moduleOf, partObstacles, routeWire } from '../format/diagram.ts'
 import { hexEditChanged, shownHex } from './color.ts'
-import { useBrokenConnections, useProblems } from './problems.ts'
-import { type Finding, RULES } from '../format/checks.ts'
+import { highlightOf, severityCounts, useProblems } from './problems.ts'
+import { type Finding, RULES, brokenConnection } from '../format/checks.ts'
 import { SeverityMark } from './SeverityMark.tsx'
 import { CAPACITOR_VALUES, RESISTOR_VALUES, formatValue, parseValue, partValue, primaryParam } from '../format/values.ts'
 
@@ -118,7 +118,23 @@ function focusSoon(find: () => HTMLElement | null) {
   requestAnimationFrame(() => find()?.focus())
 }
 
-const plural = (n: number, one: string) => `${n} ${one}${n === 1 ? '' : 's'}`
+
+/**
+ * Each row's Select button name, "Select U1 VCC, voltage too high": its target and rule, with a
+ * number added where two rows would otherwise read the same.
+ */
+function selectLabels(findings: Finding[]): string[] {
+  const base = findings.map((f) => `Select ${f.target}, ${RULES[f.rule].title.toLowerCase()}`)
+  const total = new Map<string, number>()
+  for (const b of base) total.set(b, (total.get(b) ?? 0) + 1)
+  const seen = new Map<string, number>()
+  return base.map((b) => {
+    if (total.get(b) === 1) return b
+    const n = (seen.get(b) ?? 0) + 1
+    seen.set(b, n)
+    return `${b} (${n} of ${total.get(b)})`
+  })
+}
 
 /**
  * The wiring checker's findings, errors first, with Select (the parts and wires involved, panned
@@ -129,7 +145,6 @@ const plural = (n: number, one: string) => `${n} ${one}${n === 1 ? '' : 's'}`
  */
 function ProblemList({ store, findings }: { store: EditorStore; findings: Finding[] }) {
   const errors = findings.filter((f) => f.severity === 'error').length
-  const warnings = findings.length - errors
   // The canvas light belongs to this list: it goes out when the list does (a selection, an empty list).
   useEffect(() => () => store.setHighlight(null), [store])
   if (!findings.length)
@@ -141,15 +156,14 @@ function ProblemList({ store, findings }: { store: EditorStore; findings: Findin
         </h3>
       </section>
     )
-  const light = (f: Finding) => store.setHighlight({ severity: f.severity, parts: f.parts, pins: f.pins, wires: f.wires })
+  const light = (f: Finding) => store.setHighlight(highlightOf(f))
   const unlight = () => store.setHighlight(null)
+  const labels = selectLabels(findings)
   return (
     <section className={`problems ${errors ? 'has-errors' : 'has-warnings'}`} aria-labelledby="problems-title">
       <h3 id="problems-title" tabIndex={-1}>
         Problems
-        <span className="problems-count">
-          {[errors && plural(errors, 'error'), warnings && plural(warnings, 'warning')].filter(Boolean).join(', ')}
-        </span>
+        <span className="problems-count">{severityCounts(findings)}</span>
       </h3>
       <ul onMouseLeave={unlight}>
         {findings.map((f, i) => {
@@ -171,16 +185,17 @@ function ProblemList({ store, findings }: { store: EditorStore; findings: Findin
                   <span className="sr-only">{f.severity === 'error' ? 'Error: ' : 'Warning: '}</span>
                   {title}
                 </span>
-                <span className="problem-message">{f.message}</span>
+                <span className="problem-message" id={`problem-message-${i}`}>{f.message}</span>
               </div>
               <div className="problem-actions">
                 <button
                   type="button"
                   className="tool small"
                   data-problem-select={f.id}
-                  aria-label={`Select ${f.subject}, ${title.toLowerCase()}`}
+                  aria-label={labels[i]}
+                  aria-describedby={`problem-message-${i}`}
                   onClick={() => {
-                    const sel = { parts: broken ? [] : f.parts, wires: f.wires }
+                    const sel = f.select
                     store.setHighlight(null)
                     store.select(sel)
                     store.reveal()
@@ -194,6 +209,7 @@ function ProblemList({ store, findings }: { store: EditorStore; findings: Findin
                     type="button"
                     className="tool small danger"
                     aria-label={`Delete ${f.subject}`}
+                    aria-describedby={`problem-message-${i}`}
                     onClick={() => {
                       const s = store.getState()
                       store.setHighlight(null)
@@ -220,7 +236,6 @@ function ProblemList({ store, findings }: { store: EditorStore; findings: Findin
 
 export function Inspector({ store }: { store: EditorStore }) {
   const { diagram, selection, wireStyle } = useEditorState(store)
-  const broken = useBrokenConnections(diagram)
   const findings = useProblems(store)
   const count = selection.parts.length + selection.wires.length
   const remove = (
@@ -282,7 +297,8 @@ export function Inspector({ store }: { store: EditorStore }) {
 
   const wire = diagram.connections.find((c) => c.uid === selection.wires[0])
   if (!wire) return <aside className="inspector" aria-label="Properties" />
-  const brokenWire = broken.find((b) => b.uid === wire.uid)
+  // The Problems list has the broken wires; the notice names this one's missing ends.
+  const brokenWire = findings.some((f) => f.rule === 'broken' && f.wires[0] === wire.uid) ? brokenConnection(diagram, wire) : null
   const color = wire.color ?? 'black'
   const gauge = wire.gauge ?? 22
   const setWire = (patch: { color?: string; gauge?: number; label?: string }) => {
