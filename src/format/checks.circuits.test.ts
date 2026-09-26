@@ -2,7 +2,7 @@
 // must not be nagged about, and the damaging ones it must catch. From the Claude review's
 // realistic-circuit sheets, with the findings the review rulings expect.
 import { describe, expect, it } from 'vitest'
-import { checkDiagram } from './checks.ts'
+import { RULES, checkDiagram } from './checks.ts'
 import type { Connection, Diagram, PartInstance } from './diagram.ts'
 import { type ModuleDef, externalPower, validateModule } from './module.ts'
 import { load } from './builtinModules.testing.ts'
@@ -11,6 +11,9 @@ type Wire = [string, string]
 let n = 0
 /** A sheet of built-in parts; a wire end is "uid|pin" or "uid|group|hole". */
 function sheet(parts: PartInstance[], wires: Wire[]): Diagram {
+  return built(rawSheet(parts, wires))
+}
+function rawSheet(parts: PartInstance[], wires: Wire[]): Diagram {
   const modules: Record<string, ModuleDef> = {}
   for (const p of parts) modules[p.module] = load(p.module)
   const ep = (s: string) => {
@@ -18,7 +21,7 @@ function sheet(parts: PartInstance[], wires: Wire[]): Diagram {
     return hole === undefined ? { part, pin } : { part, pin, hole: Number(hole) }
   }
   const connections: Connection[] = wires.map(([a, b]) => ({ uid: `w${++n}`, from: ep(a), to: ep(b) }))
-  return built({ format: 'circuitoon-diagram/1', title: 't', modules, parts, connections })
+  return { format: 'circuitoon-diagram/1', title: 't', modules, parts, connections }
 }
 /** Every sheet the tests build, for the order-independence property at the end. */
 const fixtures: Diagram[] = []
@@ -238,8 +241,8 @@ describe('damaging or dead circuits are caught', () => {
       ['u2|SDA', 'u1|D21'], ['u2|SCL', 'u1|D22'], ['u3|SDA', 'u1|D21'], ['u3|SCL', 'u1|D22'],
     ])
     expect(found(d)).toEqual([
-      'no-power: U2 has no power: VIN is connected but nothing supplies it.',
-      'no-power: U3 has no power: VCC is connected but nothing supplies it.',
+      'no-power: U2 has no power: VIN is connected but nothing supplies it. Connect it to a supply (a 3V3 or 5V pin of a board, or a battery +).',
+      'no-power: U3 has no power: VCC is connected but nothing supplies it. Connect it to a supply (a 3V3 or 5V pin of a board, or a battery +).',
     ])
   })
   it('sensors on a breadboard + rail that is never jumpered to a supply have no power', () => {
@@ -247,8 +250,8 @@ describe('damaging or dead circuits are caught', () => {
       at('bb', 'BB1', 'breadboard-half', 0, { y: 300 }), at('u1', 'U1', 'rpi-pico', 400), at('u2', 'U2', 'bme280-module-6pin', 700), at('u3', 'U3', 'oled-ssd1306-096-i2c', 900),
     ], [['u1|GND', 'bb|top-|0'], ['u2|VCC', 'bb|top+|3'], ['u2|GND', 'bb|top-|3'], ['u3|VCC', 'bb|top+|5'], ['u3|GND', 'bb|top-|5']])
     expect(found(d)).toEqual([
-      'no-power: U2 has no power: VCC is connected but nothing supplies it.',
-      'no-power: U3 has no power: VCC is connected but nothing supplies it.',
+      'no-power: U2 has no power: VCC is connected but nothing supplies it. Connect it to a supply (a 3V3 or 5V pin of a board, or a battery +).',
+      'no-power: U3 has no power: VCC is connected but nothing supplies it. Connect it to a supply (a 3V3 or 5V pin of a board, or a battery +).',
     ])
   })
   it('an ESP32-CAM has no USB: wired up without its 5V it has no power', () => {
@@ -266,7 +269,7 @@ function custom(raw: Record<string, unknown>): ModuleDef {
 /** A sheet of built-in parts plus custom modules. */
 function sheetWith(mods: ModuleDef[], parts: PartInstance[], wires: Wire[]): Diagram {
   const ids = new Set(mods.map((m) => m.id))
-  const d = sheet(parts.filter((p) => !ids.has(p.module)), wires)
+  const d = rawSheet(parts.filter((p) => !ids.has(p.module)), wires)
   return built({ ...d, parts, modules: { ...d.modules, ...Object.fromEntries(mods.map((m) => [m.id, m])) } })
 }
 
@@ -302,7 +305,7 @@ describe('an unknown voltage anywhere on the path is unknown', () => {
   it('two unknowns on the path: it cannot be checked', () => {
     const d = sheetWith([adjBuck()], [at('u2', 'U2', 'adj-buck'), at('u3', 'U3', 'adj-buck', 200), at('u1', 'U1', 'bme280-module-6pin', 400)],
       [['u2|OUT-', 'u1|GND'], ['u2|OUT+', 'u3|OUT-'], ['u3|OUT+', 'u1|VCC']])
-    expect(found(d)).toEqual(['supply-unknown: U1 VCC voltage depends on U2 OUT+ (adjustable) and U3 OUT+ (adjustable) and cannot be checked.'])
+    expect(found(d)).toEqual(['supply-unknown: U1 VCC voltage depends on U2 OUT+ (adjustable) and U3 OUT+ (adjustable) and cannot be checked. Give U2 OUT+ and U3 OUT+ a voltage (set its value, or a supply in its module) to check it.'])
   })
   it('a 3 V pack below an adjustable supply: the setting advice accounts for the pack', () => {
     const d = sheetWith([adjBuck()], [at('bt1', 'BT1', 'battery-holder-2xaa'), at('u2', 'U2', 'adj-buck', 200), at('u1', 'U1', 'bme280-module-4pin', 400)],
@@ -314,7 +317,7 @@ describe('an unknown voltage anywhere on the path is unknown', () => {
   it('a pack too high for any setting of the adjustable above it is not advised', () => {
     const d = sheetWith([adjBuck()], [at('bt1', 'BT1', 'battery-9v'), at('u2', 'U2', 'adj-buck', 200), at('u1', 'U1', 'bme280-module-6pin', 400)],
       [['bt1|-', 'u1|GND'], ['bt1|+', 'u2|OUT-'], ['u2|OUT+', 'u1|VCC']])
-    expect(found(d)).toEqual(['supply-unknown: U1 VCC voltage depends on U2 OUT+ (adjustable) and cannot be checked.'])
+    expect(found(d)).toEqual(['supply-unknown: U1 VCC voltage depends on U2 OUT+ (adjustable) and cannot be checked. Give U2 OUT+ a voltage (set its value, or a supply in its module) to check it.'])
   })
 })
 
@@ -344,7 +347,7 @@ describe('each output returns to a known ground, or nothing definite is said', (
   const wires: Wire[] = [['bt1|-', 'u2|GA'], ['bt1|+', 'u2|GB'], ['u2|B', 'u3|VCC'], ['u3|GND', 'u2|GA']]
   const parts = [at('u2', 'U2', 'twin-iso'), at('bt1', 'BT1', 'battery-holder-2xaa', 200), at('u3', 'U3', 'oled-ssd1306-096-i2c', 400)]
   it('two isolated outputs with no returns declared: the load cannot be checked', () => {
-    expect(found(sheetWith([twin()], parts, wires))).toEqual(['supply-unknown: U3 VCC voltage depends on U2 B (its return is not known) and cannot be checked.'])
+    expect(found(sheetWith([twin()], parts, wires))).toEqual(['supply-unknown: U3 VCC voltage depends on U2 B (its return is not known) and cannot be checked. Say in the module of U2 which ground B returns to (electrical.returns) to check it.'])
   })
   it('with returns declared, output B sits on the pack: 8 V is too high', () => {
     expect(found(sheetWith([twin({ A: 'GA', B: 'GB' })], parts, wires))).toEqual([
@@ -540,6 +543,40 @@ describe('board GPIOs are signal pins', () => {
     for (const id of ['rpi-pico', 'rpi-pico-h', 'rpi-pico-w', 'rpi-pico-2', 'rpi-pico-2-w'])
       expect(['GP0', 'GP28/ADC2', 'SWDIO', 'RUN'].map((n) => type(id, n))).toEqual(['io', 'io', undefined, 'input'])
     expect(['P13', 'P0', 'RX', 'TX', 'SD2', 'CMD', 'P34'].map((n) => type('esp32-terminal-board-38', n))).toEqual(['io', 'io', 'io', 'io', undefined, undefined, 'input'])
+  })
+})
+
+describe('every message ends with what to do', () => {
+  const VERBS = ['connect', 'move', 'swap', 'remove', 'set', 'use', 'add', 'separate', 'delete', 'power', 'keep', 'give', 'drag', 'do', 'say', 'wire', 'unplug']
+  /** True when a clause of the last sentence starts with an instruction. */
+  const acts = (message: string) => {
+    const last = message.split(/(?<=\.) /).pop()!
+    return last.split(/: |; /).some((c) => VERBS.includes(c.split(' ')[0].toLowerCase()))
+  }
+  it('on the rules the sheets above do not all reach: outputs fight, mounts, broken wires, unknown voltages', () => {
+    const drv = custom({ id: 'drv', pins: [{ name: 'Q', side: 'right', type: 'output' }, { name: 'G', side: 'right', type: 'ground' }] })
+    const two = custom({ id: 'two-leads', pins: [{ name: 'L', side: 'left', type: 'passive' }, { name: 'R', side: 'right', type: 'passive' }] })
+    sheetWith([drv], [at('u1', 'U1', 'drv'), at('u2', 'U2', 'drv', 200)], [['u1|Q', 'u2|Q'], ['u1|G', 'u2|G']])
+    sheetWith([two], [at('r1', 'R1', 'two-leads', 0, { mount: { board: 'zz' } }), at('r2', 'R2', 'two-leads', 200, { mount: { board: 'r1' } })], [['r1|L', 'gone|X']])
+    sheetWith([adjBuck()], [at('u2', 'U2', 'adj-buck'), at('u3', 'U3', 'adj-buck', 200), at('u1', 'U1', 'bme280-module-6pin', 400)],
+      [['u2|OUT-', 'u1|GND'], ['u2|OUT+', 'u3|OUT-'], ['u3|OUT+', 'u1|VCC']])
+    const board = custom({ id: 'strips', pins: [], size: { w: 10, h: 6 }, obstacle: false,
+      holes: Array.from({ length: 9 }, (_, i) => ({ name: `s${i + 1}`, at: [10, 20, 30, 40, 50].map((y) => [(i + 1) * 10, y]) })) })
+    const legs = custom({ id: 'legs', pins: [{ name: 'L', side: 'left', type: 'passive' }, { name: 'R', side: 'right', type: 'passive' }] })
+    const hole = sheetWith([board, legs], [at('bb', 'BB1', 'strips'), at('r1', 'R1', 'legs', 10, { mount: { board: 'bb' } }), at('r2', 'R2', 'legs', 300)], [['bb|s1|1', 'r2|L']])
+    expect(rules(hole)).toContain('leg-hole-shared')
+  })
+  it('on every finding of every sheet built in this file', () => {
+    const missing: string[] = []
+    const seen = new Set<string>()
+    for (const d of fixtures)
+      for (const f of checkDiagram(d)) {
+        seen.add(f.rule)
+        if (!acts(f.message)) missing.push(`${f.rule}: ${f.message}`)
+      }
+    if (missing.length) console.log('NOACT\n' + [...new Set(missing)].join('\n'))
+    expect(missing).toEqual([])
+    expect([...seen].sort()).toEqual(Object.keys(RULES).sort())
   })
 })
 

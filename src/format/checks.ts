@@ -417,7 +417,7 @@ export function checkDiagram(d: Diagram): Finding[] {
     const drivers = terms.filter((t) => t.type === 'output')
     if (drivers.length > 1)
       add({ rule: 'outputs-fight', subject: drivers[0].part.designator, target: termName(drivers[0]),
-        message: `${andList(drivers.map(termName))} ${drivers.length === 2 ? 'both' : 'all'} drive this net: ${drivers.length === 2 ? 'two' : drivers.length} outputs fight.`,
+        message: `${andList(drivers.map(termName))} ${drivers.length === 2 ? 'both' : 'all'} drive this net: ${drivers.length === 2 ? 'two' : drivers.length} outputs fight. Keep one output on this net and move the ${drivers.length === 2 ? 'other' : 'others'} to an input.`,
         parts: drivers.map((t) => t.part.uid), pins: drivers.map(termPin), wires, causes: drivers.map((t) => t.key) })
   })
 
@@ -447,7 +447,7 @@ export function checkDiagram(d: Diagram): Finding[] {
       if (!fed) {
         const wired = [...new Set(ins.filter((t) => others(t).length).map((t) => t.label))]
         const message = wired.length
-          ? `${p.designator} has no power: ${andList(wired)} ${isAre(wired.length)} connected but nothing supplies ${wired.length === 1 ? 'it' : 'them'}.`
+          ? `${p.designator} has no power: ${andList(wired)} ${isAre(wired.length)} connected but nothing supplies ${wired.length === 1 ? 'it' : 'them'}. Connect ${wired.length === 1 ? 'it' : 'them'} to a supply (a 3V3 or 5V pin of a board, or a battery +).`
           : `${p.designator} has no power: connect ${orList([...new Set(ins.map((t) => t.label))])}.`
         add({ rule: 'no-power', subject: p.designator, target: p.designator, message, parts: [p.uid], pins: ins.map(termPin), wires: [], causes: ins.map((t) => t.key) })
       }
@@ -463,7 +463,7 @@ export function checkDiagram(d: Diagram): Finding[] {
       const labels = [...new Set(grounds.map((t) => t.label))]
       const what = labels.length > 3 ? `${labels[0]} or another of its ground pins` : orList(labels)
       const message = wired.length
-        ? `${p.designator} has no ground: ${andList(wired)} ${isAre(wired.length)} connected but ${wired.length === 1 ? 'leads' : 'lead'} to no other part.`
+        ? `${p.designator} has no ground: ${andList(wired)} ${isAre(wired.length)} connected but ${wired.length === 1 ? 'leads' : 'lead'} to no other part. Connect ${wired.length === 1 ? 'it' : 'them'} to the ground of the circuit.`
         : ownOnly.length
         ? `${p.designator} has no ground: ${andList(ownOnly)} ${isAre(ownOnly.length)} wired only to ${p.designator}'s own pins. Connect ${ownOnly.length === 1 ? 'it' : 'them'} to the ground of the circuit.`
         : `${p.designator} has no ground: connect ${what}.`
@@ -537,7 +537,7 @@ export function checkDiagram(d: Diagram): Finding[] {
     const c = d.connections.find((w) => w.uid === b.uid)!
     const parts = [c.from.part, c.to.part].filter((u) => partByUid.has(u))
     add({ rule: 'broken', subject: b.name, target: b.name,
-      message: `The wire ${b.name} is broken: ${andList(b.missing)} ${b.missing.length > 1 ? 'are' : 'is'} not on the sheet, so it connects nothing.`,
+      message: `The wire ${b.name} is broken: ${andList(b.missing)} ${b.missing.length > 1 ? 'are' : 'is'} not on the sheet, so it connects nothing. Delete it, and draw it again if you still need it.`,
       parts, pins: [], wires: [b.uid], select: { parts: [], wires: [b.uid] }, causes: [b.uid] })
   }
 
@@ -744,6 +744,15 @@ function checkPotentials({ d, nl, netTerms, netWires, terminal, shorted, add }: 
   }
 
   const sorted = (list: Source[]) => [...list].sort((a, b) => natural.compare(termName(a.term), termName(b.term)))
+  /** What to do about supplies of unknown voltage or return: give them one. */
+  const fixUnknown = (open: Source[]) => {
+    const ret = open.filter((x) => x.refUnknown)
+    const volt = open.filter((x) => !x.refUnknown)
+    const parts: string[] = []
+    if (volt.length) parts.push(`Give ${andList(volt.map((x) => termName(x.term)))} a voltage (set its value, or a supply in its module) to check it.`)
+    if (ret.length) parts.push(`Say in the module of ${andList([...new Set(ret.map((x) => x.term.part.designator))])} which ground ${andList(ret.map((x) => x.term.label))} returns to (electrical.returns) to check it.`)
+    return parts.join(' ')
+  }
   const reason = (x: Source) => (x.refUnknown ? 'its return is not known' : x.unknown === 'adjustable' ? 'adjustable' : 'voltage not known')
   const involve = (list: Source[]) => ({
     parts: list.map((s) => s.term.part.uid),
@@ -913,7 +922,7 @@ function checkPotentials({ d, nl, netTerms, netWires, terminal, shorted, add }: 
     const base = { subject: pin.part.designator, target: termName(pin), ...involve([s, ...under]) }
     if (diff.u.size) {
       const open = [...diff.u.keys()].map((id) => sources.get(id)!)
-      add({ rule: 'supply-unknown', message: `${termName(pin)} voltage depends on ${andList(sorted(open).map((x) => `${termName(x.term)} (${reason(x)})`))} and cannot be checked.`, ...base })
+      add({ rule: 'supply-unknown', message: `${termName(pin)} voltage depends on ${andList(sorted(open).map((x) => `${termName(x.term)} (${reason(x)})`))} and cannot be checked. ${fixUnknown(open)}`, ...base })
     } else if (diff.c < ext.volts - EPS)
       add({ rule: 'supplies-fight', ...base, message: backFeed(pin, ext, under, what, diff.c) })
     else {
@@ -993,7 +1002,7 @@ function checkPotentials({ d, nl, netTerms, netWires, terminal, shorted, add }: 
               : `${termName(adj.term)} is adjustable; set it so ${termName(t)} sees ${orList(rails.map(volts))}: ${orList(settings.map(volts))} on ${termName(adj.term)}, since the other supplies between ${termName(t)} and ${gname} ${diff.c > 0 ? 'add' : 'take away'} ${volts(Math.abs(diff.c))}.`
             add({ rule: 'supply-unknown', message, ...base([adj]) })
           } else
-            add({ rule: 'supply-unknown', message: `${termName(t)} voltage depends on ${andList(sorted(open).map((x) => `${termName(x.term)} (${reason(x)})`))} and cannot be checked.`, ...base(open) })
+            add({ rule: 'supply-unknown', message: `${termName(t)} voltage depends on ${andList(sorted(open).map((x) => `${termName(x.term)} (${reason(x)})`))} and cannot be checked. ${fixUnknown(open)}`, ...base(open) })
           continue
         }
         v = diff.c
@@ -1061,11 +1070,11 @@ function mountMessage(p: PartInstance, board: PartInstance | undefined, issue: M
   const at = board?.designator ?? issue.board
   switch (issue.reason) {
     case 'missing-board':
-      return `${p.designator} is set to plug into a board that is not on the sheet (${at}), so its legs connect nothing.`
+      return `${p.designator} is set to plug into a board that is not on the sheet (${at}), so its legs connect nothing. Drag it onto a breadboard, or wire it instead.`
     case 'not-a-board':
-      return `${p.designator} is set to plug into ${at}, which is not a breadboard, so its legs connect nothing.`
+      return `${p.designator} is set to plug into ${at}, which is not a breadboard, so its legs connect nothing. Drag it onto a breadboard, or wire it instead.`
     case 'cannot-mount':
-      return `${p.designator} cannot plug into a board (it is a board itself, has a bus pin or has no legs), so its legs connect nothing.`
+      return `${p.designator} cannot plug into a board (it is a board itself, has a bus pin or has no legs), so its legs connect nothing. Drag it off the board and wire it instead.`
     case 'partial':
       return `Not every leg of ${p.designator} sits in a hole of ${at}, so none of its legs connect. Move it until every leg sits in a hole.`
     case 'obscured':

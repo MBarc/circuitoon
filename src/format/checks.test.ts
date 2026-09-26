@@ -409,7 +409,7 @@ describe('checkDiagram', () => {
       d.connections.push(wire('w3', 'bt1.+', 'u2.VCC'), wire('w4', 'bt1.-', 'u2.GND'), wire('w5', 'u1.Q', 'u2.Q'))
       const [f] = only(d, 'outputs-fight')
       expect(f.severity).toBe('warning')
-      expect(f.message).toBe('U1 Q and U2 Q both drive this net: two outputs fight.')
+      expect(f.message).toBe('U1 Q and U2 Q both drive this net: two outputs fight. Keep one output on this net and move the other to an input.')
       expect(f.wires).toEqual(['w5'])
     })
     it('passes an output driving an input', () => {
@@ -455,22 +455,22 @@ describe('checkDiagram', () => {
         wire('w1', 'u1.VCC', 'u2.VCC'), wire('w2', 'u1.GND', 'bt1.-'), wire('w3', 'u2.GND', 'bt1.-'),
       ])
       expect(only(d, 'no-power').map((f) => f.message)).toEqual([
-        'U1 has no power: VCC is connected but nothing supplies it.',
-        'U2 has no power: VCC is connected but nothing supplies it.',
+        'U1 has no power: VCC is connected but nothing supplies it. Connect it to a supply (a 3V3 or 5V pin of a board, or a battery +).',
+        'U2 has no power: VCC is connected but nothing supplies it. Connect it to a supply (a 3V3 or 5V pin of a board, or a battery +).',
       ])
     })
     it('does not count a pass-through output as a feed', () => {
       const d = sheet([part('U1', 'charger'), part('U2', 'charger')], [wire('w1', 'u1.OUT+', 'u2.OUT+'), wire('w2', 'u1.GND', 'u2.GND')])
       expect(only(d, 'no-power').map((f) => f.message)).toEqual([
-        'U1 has no power: B+ is connected but nothing supplies it.',
-        'U2 has no power: B+ is connected but nothing supplies it.',
+        'U1 has no power: B+ is connected but nothing supplies it. Connect it to a supply (a 3V3 or 5V pin of a board, or a battery +).',
+        'U2 has no power: B+ is connected but nothing supplies it. Connect it to a supply (a 3V3 or 5V pin of a board, or a battery +).',
       ])
     })
     it('does not count a bare breadboard strip as a feed', () => {
       const d = sheet([part('BB1', 'bb', { x: 0, y: 0 }), part('U1', 'chipAny'), part('BT1', 'bat5')], [
         wire('w1', 'u1.VCC', 'bb1.s1'), wire('w2', 'u1.GND', 'bt1.-'),
       ])
-      expect(only(d, 'no-power').map((f) => f.message)).toEqual(['U1 has no power: VCC is connected but nothing supplies it.'])
+      expect(only(d, 'no-power').map((f) => f.message)).toEqual(['U1 has no power: VCC is connected but nothing supplies it. Connect it to a supply (a 3V3 or 5V pin of a board, or a battery +).'])
     })
   })
 
@@ -512,8 +512,8 @@ describe('checkDiagram', () => {
     it('explains a missing board and a part that is not a board', () => {
       const d = sheet([part('R1', 'two', { mount: { board: 'zz' } }), part('R2', 'two', { mount: { board: 'r1' } })], [])
       expect(only(d, 'mount').map((f) => f.message)).toEqual([
-        'R1 is set to plug into a board that is not on the sheet (zz), so its legs connect nothing.',
-        'R2 is set to plug into R1, which is not a breadboard, so its legs connect nothing.',
+        'R1 is set to plug into a board that is not on the sheet (zz), so its legs connect nothing. Drag it onto a breadboard, or wire it instead.',
+        'R2 is set to plug into R1, which is not a breadboard, so its legs connect nothing. Drag it onto a breadboard, or wire it instead.',
       ])
     })
     it('passes a seated part', () => {
@@ -556,8 +556,8 @@ describe('checkDiagram', () => {
       const d = sheet([part('R1', 'two')], [wire('w1', 'r1.L', 'r1.nope'), { ...wire('w2', 'zz.1', 'yy.2'), label: 'VCC' }])
       const found = only(d, 'broken')
       expect(found.map((f) => [f.severity, f.wires, f.message])).toEqual([
-        ['error', ['w1'], 'The wire R1 L to R1 nope is broken: R1 nope is not on the sheet, so it connects nothing.'],
-        ['error', ['w2'], 'The wire VCC is broken: zz 1 and yy 2 are not on the sheet, so it connects nothing.'],
+        ['error', ['w1'], 'The wire R1 L to R1 nope is broken: R1 nope is not on the sheet, so it connects nothing. Delete it, and draw it again if you still need it.'],
+        ['error', ['w2'], 'The wire VCC is broken: zz 1 and yy 2 are not on the sheet, so it connects nothing. Delete it, and draw it again if you still need it.'],
       ])
       expect(found[1].subject).toBe('VCC')
     })
