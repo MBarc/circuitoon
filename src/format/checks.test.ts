@@ -362,6 +362,25 @@ describe('checkDiagram', () => {
     })
   })
 
+  describe('no-common-ground', () => {
+    const two = () => sheet([part('BT1', 'bat5'), part('U1', 'chipAny'), part('BT2', 'bat5'), part('U2', 'chipAny')], [
+      wire('w1', 'bt1.+', 'u1.VCC'), wire('w2', 'bt1.-', 'u1.GND'), wire('w3', 'bt2.+', 'u2.VCC'), wire('w4', 'bt2.-', 'u2.GND'), wire('w5', 'u1.Q', 'u2.Q'),
+    ])
+    it('warns about a signal between two parts grounded separately', () => {
+      expect(only(two(), 'no-common-ground').map((f) => f.message)).toEqual([
+        'U1 Q is wired to U2 Q, but U1 and U2 share no ground, so the signal has no reference. Connect U1 GND to U2 GND.',
+      ])
+    })
+    it('is quiet once the grounds meet, and when a part has no ground wired at all (No ground covers it)', () => {
+      const d = two()
+      d.connections.push(wire('w6', 'u1.GND', 'u2.GND'))
+      expect(rules(d)).not.toContain('no-common-ground')
+      const e = two()
+      e.connections = e.connections.filter((c) => c.uid !== 'w4')
+      expect(rules(e)).not.toContain('no-common-ground')
+    })
+  })
+
   describe('switches', () => {
     const toggle = mod('toggle', [{ name: '1', side: 'left', type: 'passive' }, { name: '2', side: 'right', type: 'passive' }],
       { electrical: { model: 'switch', terminals: { a: '1', b: '2' } } })

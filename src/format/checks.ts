@@ -20,6 +20,7 @@ export type RuleId =
   | 'supplies-fight'
   | 'supplies-parallel'
   | 'outputs-fight'
+  | 'no-common-ground'
   | 'no-power'
   | 'no-ground'
   | 'mount'
@@ -37,6 +38,7 @@ export const RULES: Record<RuleId, { severity: Severity; title: string }> = {
   'supply-unknown': { severity: 'warning', title: 'Check the supply voltage' },
   'supplies-parallel': { severity: 'warning', title: 'Supplies tied together' },
   'outputs-fight': { severity: 'warning', title: 'Outputs fight' },
+  'no-common-ground': { severity: 'warning', title: 'No common ground' },
   'no-power': { severity: 'warning', title: 'No power' },
   'no-ground': { severity: 'warning', title: 'No ground' },
   mount: { severity: 'warning', title: 'Not plugged in' },
@@ -378,7 +380,7 @@ export function checkDiagram(d: Diagram): Finding[] {
         parts: drivers.map((t) => t.part.uid), pins: drivers.map(termPin), wires, causes: drivers.map((t) => t.key) })
   })
 
-  const { reversed } = checkPotentials({ d, nl, netTerms, netWires, terminal, shorted, add })
+  const { reversed, returnGroup } = checkPotentials({ d, nl, netTerms, netWires, terminal, shorted, add })
 
   // Per part: power and ground reach it from another part.
   const others = (t: Terminal) => {
@@ -424,6 +426,33 @@ export function checkDiagram(d: Diagram): Finding[] {
       add({ rule: 'no-ground', subject: p.designator, target: p.designator, message, parts: [p.uid], pins: grounds.map(termPin), wires: [], causes: grounds.map((t) => t.key) })
     }
   }
+
+  // A signal between two parts that are each grounded, but not to each other: no reference.
+  const groundedPins = (p: PartInstance) => {
+    const m = moduleOf(d, p.module)
+    if (!m) return []
+    return moduleInfo(m).grounds.map((g) => terminal(nodeKey(p.uid, g))!).filter((t) => others(t).some((o) => !o.bare))
+  }
+  const pairs = new Set<string>()
+  nl.nets.forEach((_, i) => {
+    // Signal pins: typed input, output or io, or an untyped board GPIO; at least one end typed.
+    const typed = (t: Terminal) => t.type === 'input' || t.type === 'output' || t.type === 'io'
+    const signals = netTerms[i].filter((t) => !t.bare && (typed(t) || t.type === undefined))
+    for (const a of signals)
+      for (const b of signals) {
+        if (a.part.uid >= b.part.uid || (!typed(a) && !typed(b))) continue
+        const key = JSON.stringify([a.part.uid, b.part.uid])
+        if (pairs.has(key)) continue
+        pairs.add(key)
+        const [ga, gb] = [groundedPins(a.part), groundedPins(b.part)]
+        if (!ga.length || !gb.length) continue
+        const meet = new Set(ga.map((g) => returnGroup(g.key)))
+        if (gb.some((g) => meet.has(returnGroup(g.key)))) continue
+        add({ rule: 'no-common-ground', subject: a.part.designator, target: termName(a),
+          message: `${termName(a)} is wired to ${termName(b)}, but ${a.part.designator} and ${b.part.designator} share no ground, so the signal has no reference. Connect ${termName(ga[0])} to ${termName(gb[0])}.`,
+          parts: [a.part.uid, b.part.uid], pins: [termPin(a), termPin(b), termPin(ga[0]), termPin(gb[0])], wires: netWires[i], causes: [a.key, b.key] })
+      }
+  })
 
   for (const issue of mountIssues(d)) {
     const p = partByUid.get(issue.part)
@@ -547,7 +576,7 @@ interface PotentialInput {
  * supplies fighting; a loop that agrees is supplies in parallel. A load gets the potential of its
  * power input over that of its own ground, so a series stack adds up.
  */
-function checkPotentials({ d, nl, netTerms, netWires, terminal, shorted, add }: PotentialInput): { reversed: Set<string> } {
+function checkPotentials({ d, nl, netTerms, netWires, terminal, shorted, add }: PotentialInput): { reversed: Set<string>; returnGroup: (key: string) => string } {
   const reversed = new Set<string>()
   const netOfKey = (key: string) => {
     const i = nl.netOf.get(key)
@@ -890,7 +919,12 @@ function checkPotentials({ d, nl, netTerms, netWires, terminal, shorted, add }: 
         add({ rule: 'supply-too-low', message: `${termName(t)} needs at least ${floor.toFixed(1)} V; ${what} ${from.length === 1 ? 'gives' : 'give'} only ${volts(v)}.`, ...base(from) })
     }
   })
-  return { reversed }
+  // Two ground nets meet when they are one net or joined through supplies (one potential group).
+  const returnGroup = (key: string) => {
+    const n = netOfKey(key)
+    return groupOf.get(n) ?? n
+  }
+  return { reversed, returnGroup }
 }
 
 function mountMessage(p: PartInstance, board: PartInstance | undefined, issue: MountIssue): string {
