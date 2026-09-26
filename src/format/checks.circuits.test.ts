@@ -253,3 +253,35 @@ describe('grounds are joined only where the module says so', () => {
     expect((load('tp4056-module').electrical as { commonReturn?: unknown }).commonReturn).toEqual([['B-', 'OUT-']])
   })
 })
+
+/** An adjustable output with its own ground, like a buck with no value set. */
+const adjBuck = () => custom({
+  id: 'adj-buck', pins: [{ name: 'OUT+', side: 'right', type: 'power_out', supply: 'ADJ' }, { name: 'OUT-', side: 'right', type: 'ground' }],
+})
+
+describe('an unknown voltage anywhere on the path is unknown', () => {
+  it('an adjustable supply below a 3 V pack: no "only 3 V"; the setting counts the pack', () => {
+    const d = sheetWith([adjBuck()], [at('u2', 'U2', 'adj-buck'), at('bt1', 'BT1', 'battery-holder-2xaa', 200), at('u1', 'U1', 'bme280-module-6pin', 400)],
+      [['u2|OUT-', 'u1|GND'], ['u2|OUT+', 'bt1|-'], ['bt1|+', 'u1|VCC']])
+    expect(found(d)).toEqual([
+      'supply-unknown: U2 OUT+ is adjustable; set it so U1 VCC sees 3.3 V: 0.3 V on U2 OUT+, since the other supplies between U1 VCC and U1 GND add 3 V.',
+    ])
+  })
+  it('two unknowns on the path: it cannot be checked', () => {
+    const d = sheetWith([adjBuck()], [at('u2', 'U2', 'adj-buck'), at('u3', 'U3', 'adj-buck', 200), at('u1', 'U1', 'bme280-module-6pin', 400)],
+      [['u2|OUT-', 'u1|GND'], ['u2|OUT+', 'u3|OUT-'], ['u3|OUT+', 'u1|VCC']])
+    expect(found(d)).toEqual(['supply-unknown: U1 VCC voltage depends on U2 OUT+ (adjustable) and U3 OUT+ (adjustable) and cannot be checked.'])
+  })
+  it('a 3 V pack below an adjustable supply: the setting advice accounts for the pack', () => {
+    const d = sheetWith([adjBuck()], [at('bt1', 'BT1', 'battery-holder-2xaa'), at('u2', 'U2', 'adj-buck', 200), at('u1', 'U1', 'bme280-module-4pin', 400)],
+      [['bt1|-', 'u1|GND'], ['bt1|+', 'u2|OUT-'], ['u2|OUT+', 'u1|VIN']])
+    expect(found(d)).toEqual([
+      'supply-unknown: U2 OUT+ is adjustable; set it so U1 VIN sees 3.3 V or 5 V: 0.3 V or 2 V on U2 OUT+, since the other supplies between U1 VIN and U1 GND add 3 V.',
+    ])
+  })
+  it('a pack too high for any setting of the adjustable above it is not advised', () => {
+    const d = sheetWith([adjBuck()], [at('bt1', 'BT1', 'battery-9v'), at('u2', 'U2', 'adj-buck', 200), at('u1', 'U1', 'bme280-module-6pin', 400)],
+      [['bt1|-', 'u1|GND'], ['bt1|+', 'u2|OUT-'], ['u2|OUT+', 'u1|VCC']])
+    expect(found(d)).toEqual(['supply-unknown: U1 VCC voltage depends on U2 OUT+ (adjustable) and cannot be checked.'])
+  })
+})

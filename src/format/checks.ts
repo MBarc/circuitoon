@@ -32,7 +32,7 @@ export const RULES: Record<RuleId, { severity: Severity; title: string }> = {
   'supplies-fight': { severity: 'error', title: 'Supplies fight' },
   'supply-too-high': { severity: 'error', title: 'Voltage too high' },
   'supply-too-low': { severity: 'warning', title: 'Voltage too low' },
-  'supply-unknown': { severity: 'warning', title: 'Set the supply voltage' },
+  'supply-unknown': { severity: 'warning', title: 'Check the supply voltage' },
   'supplies-parallel': { severity: 'warning', title: 'Supplies tied together' },
   'outputs-fight': { severity: 'warning', title: 'Outputs fight' },
   'no-power': { severity: 'warning', title: 'No power' },
@@ -460,8 +460,40 @@ export function checkDiagram(d: Diagram): Finding[] {
 interface Edge {
   from: string
   to: string
-  v: number
+  /** Null when the supply's voltage is not known: the edge adds an unknown (see Lin). */
+  v: number | null
   src?: Source
+}
+
+/**
+ * A potential: a known part `c` plus unknown supply voltages, each with its sign (`u`, by source
+ * id). A voltage that keeps any unknown term cannot be stated.
+ */
+interface Lin {
+  c: number
+  u: Map<string, number>
+}
+const lin0 = (): Lin => ({ c: 0, u: new Map() })
+/** `a` plus `sign` times edge `e`. */
+function step(a: Lin, e: Edge, sign: 1 | -1): Lin {
+  const u = new Map(a.u)
+  if (e.v === null) {
+    const k = (u.get(e.src!.id) ?? 0) + sign
+    if (k) u.set(e.src!.id, k)
+    else u.delete(e.src!.id)
+    return { c: a.c, u }
+  }
+  return { c: a.c + sign * e.v, u }
+}
+/** `a` minus `b`. */
+function minus(a: Lin, b: Lin): Lin {
+  const u = new Map(a.u)
+  for (const [id, k] of b.u) {
+    const n = (u.get(id) ?? 0) - k
+    if (n) u.set(id, n)
+    else u.delete(id)
+  }
+  return { c: a.c - b.c, u }
 }
 
 interface PotentialInput {
@@ -517,7 +549,7 @@ function checkPotentials({ d, nl, netTerms, netWires, terminal, shorted, add }: 
       const list = s.v === null ? unknownOn : outOn
       list.set(out, [...(list.get(out) ?? []), s])
       // A supply wired to its own ground is reported as a short already; it places nothing.
-      if (s.v === null || shorted.has(s.id)) continue
+      if (shorted.has(s.id)) continue
       edges.push({ from: ref ?? `(${s.id})`, to: out, v: s.v, src: s })
     }
   }
@@ -527,7 +559,7 @@ function checkPotentials({ d, nl, netTerms, netWires, terminal, shorted, add }: 
   edges.forEach((e, i) => {
     for (const n of [e.from, e.to]) adj.set(n, [...(adj.get(n) ?? []), i])
   })
-  const pot = new Map<string, number>()
+  const pot = new Map<string, Lin>()
   const up = new Map<string, number>()
   const depth = new Map<string, number>()
   const groupOf = new Map<string, string>()
@@ -536,7 +568,7 @@ function checkPotentials({ d, nl, netTerms, netWires, terminal, shorted, add }: 
   const seenEdge = new Set<number>()
   for (const root of adj.keys()) {
     if (pot.has(root)) continue
-    pot.set(root, 0)
+    pot.set(root, lin0())
     depth.set(root, 0)
     groupOf.set(root, root)
     const queue = [root]
@@ -552,7 +584,7 @@ function checkPotentials({ d, nl, netTerms, netWires, terminal, shorted, add }: 
           loops.push(i)
           continue
         }
-        pot.set(other, e.from === n ? pot.get(n)! + e.v : pot.get(n)! - e.v)
+        pot.set(other, step(pot.get(n)!, e, e.from === n ? 1 : -1))
         up.set(other, i)
         depth.set(other, depth.get(n)! + 1)
         groupOf.set(other, root)
@@ -605,7 +637,10 @@ function checkPotentials({ d, nl, netTerms, netWires, terminal, shorted, add }: 
     const e = edges[i]
     const cycle = [{ e, forward: true }, ...path(e.to, e.from)].filter((x) => x.e.src)
     if (!cycle.length) continue
-    const mismatch = Math.abs(pot.get(e.to)! - pot.get(e.from)! - e.v) > EPS
+    // A loop through a supply of unknown voltage says nothing definite (the tie is reported below).
+    const residual = minus(minus(pot.get(e.to)!, pot.get(e.from)!), step(lin0(), e, 1))
+    if (residual.u.size) continue
+    const mismatch = Math.abs(residual.c) > EPS
     const ahead = cycle.filter((x) => x.forward).map((x) => x.e.src!)
     const back = cycle.filter((x) => !x.forward).map((x) => x.e.src!)
     const all = sorted([...ahead, ...back])
@@ -642,6 +677,7 @@ function checkPotentials({ d, nl, netTerms, netWires, terminal, shorted, add }: 
   }
 
   // Loads: the voltage across each power input, from its net to its own part's ground.
+  const reason = (x: Source) => (x.unknown === 'adjustable' ? 'adjustable' : 'voltage not known')
   nl.nets.forEach((_, i) => {
     const net = `#${i}`
     for (const t of netTerms[i]) {
@@ -654,12 +690,35 @@ function checkPotentials({ d, nl, netTerms, netWires, terminal, shorted, add }: 
       let from: Source[] = []
       const group = groupOf.get(net)
       if (group !== undefined && broken.has(group)) continue
-      const ground = group === undefined ? undefined
-        : t.info.grounds.map((g) => netOfKey(nodeKey(t.part.uid, g))).find((g) => groupOf.get(g) === group)
+      const groundPin = group === undefined ? undefined : t.info.grounds.find((g) => groupOf.get(netOfKey(nodeKey(t.part.uid, g))) === group)
+      const ground = groundPin === undefined ? undefined : netOfKey(nodeKey(t.part.uid, groundPin))
+      const base = (list: Source[]) => ({
+        subject: t.part.designator, target: termName(t), wires: netWires[i],
+        parts: [t.part.uid, ...list.map((s) => s.term.part.uid)], pins: [termPin(t), ...list.map((s) => termPin(s.term))], causes: [t.key, ...list.map((s) => s.term.key)],
+      })
       if (ground !== undefined) {
         if (ground === net) continue
-        v = pot.get(net)! - pot.get(ground)!
+        const diff = minus(pot.get(net)!, pot.get(ground)!)
         from = sorted(path(ground, net).filter((x) => x.e.src).map((x) => x.e.src!))
+        if (diff.u.size) {
+          // Some supply on the way has no known voltage: advise a setting only when one adjustable
+          // supply is the only unknown, counting what sits below it; otherwise say it cannot be checked.
+          const ids = [...diff.u.keys()]
+          const open = ids.map((id) => sources.get(id)!)
+          const adj = open.length === 1 && open[0].unknown === 'adjustable' && diff.u.get(ids[0]) === 1 ? open[0] : undefined
+          const rails = [...new Set(accepts)].sort((a, b) => a - b)
+          const settings = rails.map((r) => r - diff.c)
+          const gname = termName(terminal(nodeKey(t.part.uid, groundPin!))!)
+          if (adj && settings.every((x) => x > EPS)) {
+            const message = Math.abs(diff.c) <= EPS
+              ? `${termName(adj.term)} is adjustable; set it to a voltage ${termName(t)} accepts (${orList(rails.map(volts))}).`
+              : `${termName(adj.term)} is adjustable; set it so ${termName(t)} sees ${orList(rails.map(volts))}: ${orList(settings.map(volts))} on ${termName(adj.term)}, since the other supplies between ${termName(t)} and ${gname} ${diff.c > 0 ? 'add' : 'take away'} ${volts(Math.abs(diff.c))}.`
+            add({ rule: 'supply-unknown', message, ...base([adj]) })
+          } else
+            add({ rule: 'supply-unknown', message: `${termName(t)} voltage depends on ${andList(sorted(open).map((x) => `${termName(x.term)} (${reason(x)})`))} and cannot be checked.`, ...base(open) })
+          continue
+        }
+        v = diff.c
         if (v <= EPS || !from.length) continue
       } else {
         // The load's ground reaches none of it: assume a common ground and take the supply on its net.
@@ -669,16 +728,12 @@ function checkPotentials({ d, nl, netTerms, netWires, terminal, shorted, add }: 
       const max = Math.max(...accepts)
       const min = Math.min(...accepts)
       const what = from.length === 1 ? sourceName(from[0]) : `${andList(from.map((s) => termName(s.term)))} in series`
-      const base = (list: Source[]) => ({
-        subject: t.part.designator, target: termName(t), wires: netWires[i],
-        parts: [t.part.uid, ...list.map((s) => s.term.part.uid)], pins: [termPin(t), ...list.map((s) => termPin(s.term))], causes: [t.key, ...list.map((s) => s.term.key)],
-      })
       if (v !== null && v > max + EPS) {
         add({ rule: 'supply-too-high', message: `${termName(t)} accepts up to ${volts(max)} but gets ${volts(v)} from ${what}.`, ...base(from) })
         continue
       }
       const adjustable = unknown.find((s) => s.unknown === 'adjustable')
-      if (adjustable) {
+      if (adjustable && ground === undefined) {
         const list = [...new Set(accepts)].sort((a, b) => a - b).map(volts)
         add({ rule: 'supply-unknown', message: `${termName(adjustable.term)} is adjustable; set it to a voltage ${termName(t)} accepts (${orList(list)}).`, ...base([adjustable]) })
         continue
