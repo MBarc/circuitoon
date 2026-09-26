@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
-import { insideLabelSides, layoutModule, usesInsideLabels, validParamValue, validateModule, type ModuleDef } from './module.ts'
+import { insideLabelSides, layoutModule, usesInsideLabels, validParamValue, externalPower, validateModule, type ModuleDef } from './module.ts'
 
 const base = { format: 'circuitoon-module/1', id: 'thing', name: 'Thing' }
 
@@ -108,6 +108,21 @@ describe('validateModule', () => {
       ])
     const bad = params([])
     expect(!bad.ok && bad.errors).toEqual(['electrical.params: must be an object'])
+  })
+  it('checks electrical.external: an existing pin, volts above 0 and what powers it', () => {
+    const ext = (e: unknown) => validateModule({ ...base, pins: [{ name: '5V', side: 'left', type: 'power_in', supply: '5V' }], electrical: { model: 'mcu', external: e } })
+    const good = ext([{ pin: '5V', volts: 5, via: 'USB' }])
+    expect(good.ok).toBe(true)
+    if (good.ok) expect(externalPower(good.module)).toEqual([{ pin: '5V', volts: 5, via: 'USB' }])
+    expect(!ext({}).ok && (ext({}) as { errors: string[] }).errors).toEqual(['electrical.external: must be a list of { "pin", "volts", "via" }'])
+    const bad = ext([{ pin: 'VIN', volts: 0, via: '' }, { pin: '5V', volts: Infinity, via: 'USB' }, 'x'])
+    expect(!bad.ok && bad.errors).toEqual([
+      'electrical.external[0].pin: no pin named "VIN"',
+      'electrical.external[0].volts: must be a number above 0',
+      'electrical.external[0].via: required, what powers the pin (for example "USB")',
+      'electrical.external[1].volts: must be a number above 0',
+      'electrical.external[2]: must be { "pin", "volts", "via" }',
+    ])
   })
   it('shares one magnitude contract with value entry: 0 where allowed, else 1e-15 to 1e12', () => {
     const at = (name: string, v: number) => validParamValue(name, v)

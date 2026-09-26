@@ -174,6 +174,7 @@ A module is one self-contained JSON file: name, pins by side and order, optional
 | `art.pinLabels` | no | `"inside"` draws pin names inside the body next to each pin, like board silkscreen; default draws them beside the pin stub. |
 | `art.shapes[].band` | no | Resistor color band slot 1 to 4; the renderer colors it from the part's resistance. |
 | `electrical` | no | Extensible block for V2, for example `{ "model": "resistor", "terminals": { "a": "1", "b": "2" }, "params": { "resistance": { "unit": "ohm", "default": 1000 } } }`. V1 stores and round-trips it untouched. |
+| `electrical.external` | no | Pins that carry a voltage when the part is powered through a connector the sheet does not draw: `[{ "pin": "5V", "volts": 5, "via": "USB" }]` means "while the board is on USB, its 5V pin carries 5 V". `pin` names a pin or hole group of the module, `volts` is a number above 0, `via` says what powers it. Set on dev boards with USB, from their schematic or maker docs; the wiring checker treats the pin as a supply at that voltage. |
 | `states` | no | Reserved for V3 (for example `lit`, `burnt`, `on`); art shapes may bind to them later. |
 
 **Geometry.**

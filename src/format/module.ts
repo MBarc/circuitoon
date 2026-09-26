@@ -273,7 +273,37 @@ export function validateModule(raw: unknown): ValidationResult {
       }
   }
 
+  if (isObj(raw.electrical) && raw.electrical.external !== undefined) {
+    const ext = raw.electrical.external
+    if (!Array.isArray(ext)) errors.push('electrical.external: must be a list of { "pin", "volts", "via" }')
+    else
+      ext.forEach((e, i) => {
+        const at = `electrical.external[${i}]`
+        if (!isObj(e)) return void errors.push(`${at}: must be { "pin", "volts", "via" }`)
+        if (typeof e.pin !== 'string' || !names.has(e.pin)) errors.push(`${at}.pin: no pin named "${String(e.pin)}"`)
+        if (!isPos(e.volts)) errors.push(`${at}.volts: must be a number above 0`)
+        if (typeof e.via !== 'string' || e.via.trim() === '') errors.push(`${at}.via: required, what powers the pin (for example "USB")`)
+      })
+  }
+
   return errors.length ? { ok: false, errors } : { ok: true, module: raw as unknown as ModuleDef }
+}
+
+/**
+ * A pin that carries a voltage when the part is powered through a connector the sheet does not
+ * draw: a dev board's 5V pin while it sits on USB (`via` "USB"). From `electrical.external`.
+ */
+export interface ExternalPower {
+  pin: string
+  volts: number
+  via: string
+}
+
+/** The module's `electrical.external` entries that are well formed (validateModule reports the rest). */
+export function externalPower(m: ModuleDef): ExternalPower[] {
+  const e = m.electrical
+  if (!isObj(e) || !Array.isArray(e.external)) return []
+  return e.external.filter((x): x is ExternalPower => isObj(x) && typeof x.pin === 'string' && isPos(x.volts) && typeof x.via === 'string')
 }
 
 export interface PlacedPin {
