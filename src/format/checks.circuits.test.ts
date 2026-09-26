@@ -152,7 +152,7 @@ describe('series stacks and references', () => {
   it('two cells wired + to - both ways round are a shorted stack', () => {
     const d = sheet([at('bt1', 'BT1', 'battery-aa'), at('bt2', 'BT2', 'battery-aa', 200)], [['bt1|+', 'bt2|-'], ['bt2|+', 'bt1|-']])
     expect(checkDiagram(d).map((x) => `${x.severity} ${x.rule}: ${x.message}`)).toEqual([
-      'error short: BT1 + and BT2 + are wired in a loop, each + to the next -: short circuit. Nothing limits the current, so they can overheat. Remove one of the wires that close the loop.',
+      'error short: BT1 + and BT2 + are wired in a loop, each + to the next -: short circuit. Nothing limits the current, so they can overheat. Remove one of these wires: BT1 + to BT2 -, or BT2 + to BT1 -.',
     ])
   })
   it('a single cell and the junction of a series pair stay quiet', () => {
@@ -241,8 +241,8 @@ describe('damaging or dead circuits are caught', () => {
       ['u2|SDA', 'u1|D21'], ['u2|SCL', 'u1|D22'], ['u3|SDA', 'u1|D21'], ['u3|SCL', 'u1|D22'],
     ])
     expect(found(d)).toEqual([
-      'no-power: U2 has no power: VIN is connected but nothing supplies it. Connect it to a supply (a 3V3 or 5V pin of a board, or a battery +).',
-      'no-power: U3 has no power: VCC is connected but nothing supplies it. Connect it to a supply (a 3V3 or 5V pin of a board, or a battery +).',
+      "no-power: U2 has no power: VIN is connected but nothing supplies it. Connect it to a 3.3 V or 5 V supply, such as a board's 3V3 or 5V pin.",
+      "no-power: U3 has no power: VCC is connected but nothing supplies it. Connect it to a 3.3 V or 5 V supply, such as a board's 3V3 or 5V pin.",
     ])
   })
   it('sensors on a breadboard + rail that is never jumpered to a supply have no power', () => {
@@ -250,8 +250,8 @@ describe('damaging or dead circuits are caught', () => {
       at('bb', 'BB1', 'breadboard-half', 0, { y: 300 }), at('u1', 'U1', 'rpi-pico', 400), at('u2', 'U2', 'bme280-module-6pin', 700), at('u3', 'U3', 'oled-ssd1306-096-i2c', 900),
     ], [['u1|GND', 'bb|top-|0'], ['u2|VCC', 'bb|top+|3'], ['u2|GND', 'bb|top-|3'], ['u3|VCC', 'bb|top+|5'], ['u3|GND', 'bb|top-|5']])
     expect(found(d)).toEqual([
-      'no-power: U2 has no power: VCC is connected but nothing supplies it. Connect it to a supply (a 3V3 or 5V pin of a board, or a battery +).',
-      'no-power: U3 has no power: VCC is connected but nothing supplies it. Connect it to a supply (a 3V3 or 5V pin of a board, or a battery +).',
+      "no-power: U2 has no power: VCC is connected but nothing supplies it. Connect it to a 3.3 V supply, such as a board's 3V3 pin.",
+      "no-power: U3 has no power: VCC is connected but nothing supplies it. Connect it to a 3.3 V or 5 V supply, such as a board's 3V3 or 5V pin.",
     ])
   })
   it('an ESP32-CAM has no USB: wired up without its 5V it has no power', () => {
@@ -373,7 +373,7 @@ describe('a fight stays with the nets it touches', () => {
       at('u2', 'U2', 'bme280-module-6pin', 700), at('u3', 'U3', 'oled-ssd1306-096-i2c', 900)],
     [['bt1|+', 'bt3|+'], ['bt1|-', 'bt3|-'], ['bt2|-', 'bt1|-'], ['bt2|+', 'u2|VCC'], ['u2|GND', 'bt1|-'], ['u3|VCC', 'bt1|+'], ['u3|GND', 'bt1|-']])
     expect(found(d)).toEqual([
-      'supplies-fight: BT3 + (3.7 V) and BT1 + (3 V) are wired together: the two supplies fight, and the higher one drives current into the lower one, which can damage both. Remove the wire from BT3 + to BT1 +.',
+      'supplies-fight: BT3 + (3.7 V) and BT1 + (3 V) are wired together: the two supplies fight, and the higher one drives current into the lower one, which can damage both. Remove the wire from BT1 + to BT3 +.',
       'supply-too-high: U2 VCC accepts up to 3.3 V but gets 9 V from BT2 +. Use a 3.3 V supply instead.',
     ])
   })
@@ -580,13 +580,86 @@ describe('every message ends with what to do', () => {
   })
 })
 
-describe('order independence (every sheet built above)', () => {
-  it('shuffling the parts and the wires never changes the findings', () => {
+describe('round 6: diode constraints, diode loops, compatible advice, S3 memory pins', () => {
+  it('the Nano/Pico/3 V case gives both 8 V findings whatever the uids', () => {
+    const run = (nano: string, pico: string) => {
+      const parts = [at(nano, 'U1', 'arduino-nano'), at(pico, 'U2', 'rpi-pico', 300), at('bt1', 'BT1', 'battery-holder-2xaa', 600), at('u3', 'U3', 'bme280-module-4pin', 900)]
+      return checkDiagram(sheet(parts, [[`bt1|-`, `${pico}|GND`], ['bt1|+', `${nano}|GND`], [`${nano}|5V`, `${pico}|VSYS`], ['u3|VIN', `${pico}|VSYS`], ['u3|GND', `${pico}|GND 2`]]))
+        .map((f) => f.message).sort()
+    }
+    const want = [
+      'U2 VSYS accepts up to 5.5 V but gets 8 V from BT1 + and U1 5V in series. Use a 5.5 V supply instead.',
+      'U3 VIN accepts up to 5 V but gets 8 V from BT1 + and U1 5V in series. Use a 5 V supply instead.',
+    ]
+    expect(run('u1', 'u2')).toEqual(want)
+    expect(run('u2', 'u1')).toEqual(want)
+  })
+  it('crossed power leads between two Nanos (N1 5V to N2 GND, N2 5V to N1 GND) are a short', () => {
+    const d = sheet([at('n1', 'U1', 'arduino-nano'), at('n2', 'U2', 'arduino-nano', 300)], [['n1|5V', 'n2|GND'], ['n2|5V', 'n1|GND']])
+    expect(checkDiagram(d).map((f) => `${f.severity} ${f.rule}: ${f.message}`)).toEqual([
+      'error short: U1 5V and U2 5V are wired in a loop, each + to the next -: short circuit. Nothing limits the current, so they can overheat. Remove one of these wires: U1 5V to U2 GND, or U2 5V to U1 GND.',
+    ])
+  })
+  it('a battery in series with a board USB pin, both the same way round, is a short', () => {
+    const d = sheet([at('u1', 'U1', 'arduino-nano'), at('bt1', 'BT1', 'battery-9v', 300)], [['u1|5V', 'bt1|-'], ['bt1|+', 'u1|GND']])
+    expect(rules(d)).toEqual(['short'])
+  })
+  it('no-power advice fits the input: 3.3 V only, 3.3 V or 5 V, a range, or unknown', () => {
+    const unfed = (m: string, vcc: string) => sheet([at('u1', 'U1', 'rpi-pico'), at('u2', 'U2', m, 300), at('bb', 'BB1', 'breadboard-half', 0, { y: 400 })],
+      [['u1|GND', 'u2|GND'], [`u2|${vcc}`, 'bb|top+|3']])
+    expect(found(unfed('bme280-module-6pin', 'VCC'))).toEqual(["no-power: U2 has no power: VCC is connected but nothing supplies it. Connect it to a 3.3 V supply, such as a board's 3V3 pin."])
+    expect(found(unfed('bme280-module-4pin', 'VIN'))).toEqual(["no-power: U2 has no power: VIN is connected but nothing supplies it. Connect it to a 3.3 V or 5 V supply, such as a board's 3V3 or 5V pin."])
+    const vin = sheet([at('u1', 'U1', 'arduino-nano'), at('bt1', 'BT1', 'battery-9v', 300), at('u2', 'U2', 'l298n-module', 600), at('bb', 'BB1', 'breadboard-half', 0, { y: 400 })],
+      [['u2|GND', 'bt1|-'], ['u2|+12V', 'bb|top+|3'], ['u2|IN1', 'u1|D5'], ['u1|GND', 'bt1|-']])
+    expect(found(vin)).toEqual(['no-power: U2 has no power: +12V is connected but nothing supplies it. Connect it to a 7 V to 12 V supply, such as a 9 V battery.'])
+    const bare = custom({ id: 'bare-in', pins: [{ name: 'VCC', side: 'left', type: 'power_in' }, { name: 'GND', side: 'left', type: 'ground' }] })
+    const q = sheetWith([bare], [at('u1', 'U1', 'rpi-pico'), at('u2', 'U2', 'bare-in', 300), at('bb', 'BB1', 'breadboard-half', 0, { y: 400 })],
+      [['u1|GND', 'u2|GND'], ['u2|VCC', 'bb|top+|3']])
+    expect(found(q)).toEqual(['no-power: U2 has no power: VCC is connected but nothing supplies it. Connect it to a compatible supply.'])
+  })
+  it('ESP32-S3 GPIO35-37 stay untyped (octal flash/PSRAM on N8R8 and similar)', () => {
+    const type = (pin: string) => (load('esp32-s3-devkitc-1').pins.find((p) => 'name' in p && p.name === pin) as { type?: string } | undefined)?.type
+    expect(['35', '36', '37', '38'].map(type)).toEqual([undefined, undefined, undefined, 'io'])
+  })
+})
+
+/** Every finding reduced to what a user sees, with uids mapped back through `back`. */
+function normalized(d: Diagram, back: (uid: string) => string = (u) => u): string[] {
+  return checkDiagram(d).map((f) => JSON.stringify([f.rule, f.severity, f.message, f.pins.map((p) => `${back(p.part)}.${p.pin}`).sort()])).sort()
+}
+/** The sheet with every part and wire uid renamed (a seeded permutation of fresh names). */
+function renamed(d: Diagram, seed: number): { d: Diagram; back: (uid: string) => string } {
+  const names = shuffled(d.parts.map((_, i) => `p${i}x`), seed)
+  const to = new Map(d.parts.map((p, i) => [p.uid, names[i]]))
+  const from = new Map([...to].map(([a, b]) => [b, a]))
+  const r = (u: string) => to.get(u) ?? u
+  const ep = (e: Connection['from']) => ({ ...e, part: r(e.part) })
+  return {
+    d: {
+      ...d,
+      parts: d.parts.map((p) => ({ ...p, uid: r(p.uid), ...(p.mount ? { mount: { ...p.mount, board: r(p.mount.board) } } : {}) })),
+      connections: d.connections.map((c, i) => ({ ...c, uid: `c${(i * 7 + seed) % 1000}-${i}`, from: ep(c.from), to: ep(c.to) })),
+    },
+    back: (u) => from.get(u) ?? u,
+  }
+}
+
+describe('order and uid independence (every sheet built above)', () => {
+  it('shuffling the parts and the wires never changes the finding ids', () => {
     expect(fixtures.length).toBeGreaterThan(80)
     for (const d of fixtures) {
       const ids = (x: Diagram) => checkDiagram(x).map((f) => f.id).sort()
       const want = ids(d)
       for (const seed of [1, 2, 3]) expect(ids({ ...d, parts: shuffled(d.parts, seed), connections: shuffled(d.connections, seed + 7) })).toEqual(want)
+    }
+  })
+  it('shuffling and renaming every uid never changes what the findings say', () => {
+    for (const d of fixtures) {
+      const want = normalized(d)
+      for (const seed of [1, 2, 3]) {
+        const { d: x, back } = renamed({ ...d, parts: shuffled(d.parts, seed), connections: shuffled(d.connections, seed + 11) }, seed)
+        expect(normalized(x, back)).toEqual(want)
+      }
     }
   })
 })
