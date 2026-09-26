@@ -572,7 +572,7 @@ await shot('broken-stub.png')
 const badge = page.locator('.problems-badge')
 check((await badge.textContent()) === '2 problems', `the toolbar's problems badge counts both broken connections (${await badge.textContent()})`)
 const brokenNames = await page.locator('.problems .problem-message').allTextContents()
-check(brokenNames.join(' | ') === 'The wire BB1 c1-top hole 0 to BB1 c2-top hole 99 is broken: BB1 c2-top hole 99 is not on the sheet, so it connects nothing. | The wire Sensor power is broken: gone1 1 and gone2 VCC are not on the sheet, so it connects nothing.', `the Problems list names both broken connections (${brokenNames.join(' | ')})`)
+check(brokenNames.join(' | ') === 'The wire BB1 c1-top hole 0 to BB1 c2-top hole 99 is broken: BB1 c2-top hole 99 is not on the sheet, so it connects nothing. Delete it, and draw it again if you still need it. | The wire Sensor power is broken: gone1 1 and gone2 VCC are not on the sheet, so it connects nothing. Delete it, and draw it again if you still need it.', `the Problems list names both broken connections (${brokenNames.join(' | ')})`)
 await page.locator('.inspector').screenshot({ path: join(out, 'broken-list-light.png') })
 console.log('saved', join(out, 'broken-list-light.png'))
 // The badge brings the list back while something else is selected.
