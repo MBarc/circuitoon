@@ -175,12 +175,22 @@ interface ModuleInfo {
   sourceNames: string[]
   /** Ground pins the module declares one return for checking (`electrical.commonReturn`). */
   commonReturn: string[][]
+  /** A switch's two switched terminals (`electrical.model` "switch"): closed for voltage checks. */
+  switchPins: [string, string] | null
   /**
    * The outputs whose voltage is the part's `voltage` value (partValue, the same rule the
    * Inspector shows): `electrical.voltageOutputs`, or the only power_out (a battery's +, an
    * adjustable buck's OUT+, where it replaces ADJ). Other outputs keep their supply rail.
    */
   valued: Set<string>
+}
+
+/** The switched terminals of a switch module (`electrical.terminals` a and b), when both exist. */
+function switchPinsOf(m: ModuleDef, defs: Map<string, unknown>): [string, string] | null {
+  const e = m.electrical as { model?: unknown; terminals?: { a?: unknown; b?: unknown } } | undefined
+  if (!e || e.model !== 'switch' || !e.terminals) return null
+  const { a, b } = e.terminals
+  return typeof a === 'string' && typeof b === 'string' && defs.has(a) && defs.has(b) ? [a, b] : null
 }
 
 const infoCache = new WeakMap<ModuleDef, ModuleInfo>()
@@ -217,7 +227,7 @@ function moduleInfo(m: ModuleDef): ModuleInfo {
   const declared = declaredReturns(m)
   const only = comps.size === 1 ? grounds[0] : null
   const returnOf = new Map(sourceNames.map((n) => [n, declared[n] !== undefined && defs.has(declared[n]) ? declared[n] : only]))
-  info = { module: m, defs, comp, pass, external, grounds, returnOf, sourceNames, commonReturn: joined, valued: new Set(primaryParam(m)?.name === 'voltage' ? voltageOutputs(m) : []) }
+  info = { module: m, defs, comp, pass, external, grounds, returnOf, sourceNames, commonReturn: joined, switchPins: switchPinsOf(m, defs), valued: new Set(primaryParam(m)?.name === 'voltage' ? voltageOutputs(m) : []) }
   infoCache.set(m, info)
   return info
 }
@@ -472,6 +482,8 @@ interface Edge {
   /** Null when the supply's voltage is not known: the edge adds an unknown (see Lin). */
   v: number | null
   src?: Source
+  /** A switch taken as closed: it carries voltage to loads, but a loop through it is no short (it may be open). */
+  closedSwitch?: boolean
 }
 
 /**
@@ -540,6 +552,11 @@ function checkPotentials({ d, nl, netTerms, netWires, terminal, shorted, add }: 
     const m = moduleOf(d, p.module)
     if (!m) continue
     const info = moduleInfo(m)
+    // A switch is taken as closed for voltages: damage happens in the ON position.
+    if (info.switchPins) {
+      const [a, b] = info.switchPins
+      edges.push({ from: netOfKey(nodeKey(p.uid, a)), to: netOfKey(nodeKey(p.uid, b)), v: 0, closedSwitch: true })
+    }
     // Grounds the module declares one return are joined at 0 V (a charger's B- and OUT-).
     for (const g of info.commonReturn)
       for (const n of g.slice(1)) edges.push({ from: netOfKey(nodeKey(p.uid, g[0])), to: netOfKey(nodeKey(p.uid, n)), v: 0 })
@@ -668,6 +685,8 @@ function checkPotentials({ d, nl, netTerms, netWires, terminal, shorted, add }: 
     const back = cycle.filter((x) => !x.forward).map((x) => x.e.src!)
     const all = sorted([...ahead, ...back])
     if (mismatch) for (const x of around) broken.add(x.e)
+    // Through a switch the loop exists only while it is closed: say nothing (it may well be open).
+    if (around.some((x) => x.e.closedSwitch)) continue
     if (mismatch && (!ahead.length || !back.length)) {
       add({ rule: 'short', subject: all[0].term.part.designator, target: termName(all[0].term),
         message: `${andList(all.map((s) => termName(s.term)))} are wired in a loop, each + to the next -: short circuit.`, ...involve(all) })

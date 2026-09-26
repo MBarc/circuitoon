@@ -346,6 +346,21 @@ describe('checkDiagram', () => {
     })
   })
 
+  describe('switches', () => {
+    const toggle = mod('toggle', [{ name: '1', side: 'left', type: 'passive' }, { name: '2', side: 'right', type: 'passive' }],
+      { electrical: { model: 'switch', terminals: { a: '1', b: '2' } } })
+    it('are taken as closed for voltages: 9 V through a switch into a 3.3 V part is too high', () => {
+      const d = sheet([part('BT1', 'bat9'), part('S1', 'sw'), part('U1', 'chip33')], [wire('w1', 'bt1.+', 's1.1'), wire('w2', 's1.2', 'u1.VCC'), wire('w3', 'bt1.-', 'u1.GND')])
+      d.modules = { ...d.modules, sw: { ...toggle, id: 'sw' } }
+      expect(rules(d)).toEqual(['supply-too-high'])
+    })
+    it('never make a short: a switch across a battery may be open', () => {
+      const d = sheet([part('BT1', 'bat9'), part('S1', 'sw')], [wire('w1', 'bt1.+', 's1.1'), wire('w2', 's1.2', 'bt1.-')])
+      d.modules = { ...d.modules, sw: { ...toggle, id: 'sw' } }
+      expect(rules(d)).not.toContain('short')
+    })
+  })
+
   describe('outputs-fight', () => {
     it('flags two outputs driving one net', () => {
       const d = powered('bat5', 'chipAny')
