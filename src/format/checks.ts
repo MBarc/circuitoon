@@ -162,8 +162,15 @@ interface ModuleInfo {
   pass: Set<string>
   /** Pins that carry a voltage while the part is on USB or a barrel jack (`electrical.external`). */
   external: Map<string, ExternalPower>
-  /** The part's `ground` pins and hole groups: the reference its sources return to. */
+  /** The part's `ground` pins and hole groups, in module order. */
   grounds: string[]
+  /**
+   * One ground per ground component, the largest component first (ties in module order): the
+   * first is the reference the part's supplies return to (a battery's -, a board's GND).
+   */
+  groundComps: string[]
+  /** Pins and hole groups that may be supplies: power outputs and pins on USB power. */
+  sourceNames: string[]
   /**
    * The outputs whose voltage is the part's `voltage` value (partValue, the same rule the
    * Inspector shows): `electrical.voltageOutputs`, or the only power_out (a battery's +, an
@@ -195,7 +202,13 @@ function moduleInfo(m: ModuleDef): ModuleInfo {
   const pass = new Set([...defs.keys()].filter((n) => type(n) === 'power_out' && fedComps.has(comp.get(n))))
   const external = new Map(externalPower(m).filter((e) => defs.has(e.pin)).map((e) => [e.pin, e]))
   const grounds = [...defs.keys()].filter((n) => type(n) === 'ground')
-  info = { module: m, defs, comp, pass, external, grounds, valued: new Set(primaryParam(m)?.name === 'voltage' ? voltageOutputs(m) : []) }
+  const size = new Map<string, number>()
+  for (const g of grounds) size.set(comp.get(g)!, (size.get(comp.get(g)!) ?? 0) + 1)
+  const groundComps = [...new Map(grounds.map((g) => [comp.get(g)!, g])).entries()]
+    .map(([c]) => grounds.find((g) => comp.get(g) === c)!)
+    .sort((a, b) => size.get(comp.get(b)!)! - size.get(comp.get(a)!)! || grounds.indexOf(a) - grounds.indexOf(b))
+  const sourceNames = [...defs.keys()].filter((n) => (type(n) === 'power_out' && !pass.has(n)) || external.has(n))
+  info = { module: m, defs, comp, pass, external, grounds, groundComps, sourceNames, valued: new Set(primaryParam(m)?.name === 'voltage' ? voltageOutputs(m) : []) }
   infoCache.set(m, info)
   return info
 }
@@ -228,24 +241,21 @@ interface Source {
   unknown: UnknownReason | null
   /** Set when the voltage comes from a connector the sheet does not draw (a board on USB). */
   external?: ExternalPower
-  /** An output of a part that itself runs on external power (a dev board's 3V3 regulator). */
-  onBoard: boolean
 }
 
 /** The supply `t` makes, if any. Pass-through outputs make none. */
 function sourceOf(t: Terminal): Source | null {
   const id = JSON.stringify([t.part.uid, t.info.comp.get(t.name)])
   const external = t.info.external.get(t.name)
-  if (external) return { term: t, id, v: external.volts, unknown: null, external, onBoard: false }
+  if (external) return { term: t, id, v: external.volts, unknown: null, external }
   if (t.type !== 'power_out' || t.info.pass.has(t.name)) return null
-  const onBoard = t.info.external.size > 0
   // The value set on the sheet (a battery's voltage, a buck's output) wins over the module's supply.
   const value = t.info.valued.has(t.name) ? partValue(t.part, t.info.module) : null
-  if (value) return value.value > 0 ? { term: t, id, v: value.value, unknown: null, onBoard } : { term: t, id, v: null, unknown: 'unknown', onBoard }
+  if (value) return value.value > 0 ? { term: t, id, v: value.value, unknown: null } : { term: t, id, v: null, unknown: 'unknown' }
   const p = t.supply ? parseSupply(t.supply) : { volts: [], unknown: 'unknown' as const }
   return p.unknown || !p.volts.length
-    ? { term: t, id, v: null, unknown: p.unknown ?? 'unknown', onBoard }
-    : { term: t, id, v: Math.max(...p.volts), unknown: null, onBoard }
+    ? { term: t, id, v: null, unknown: p.unknown ?? 'unknown' }
+    : { term: t, id, v: Math.max(...p.volts), unknown: null }
 }
 
 /** How a source is named in a message: a pin on external power says so ("U1 VIN (USB)"). */
@@ -311,6 +321,8 @@ export function checkDiagram(d: Diagram): Finding[] {
   }
 
   const netTerms = nl.nets.map((keys) => keys.map(terminal).filter((t): t is Terminal => t !== null))
+  /** Supplies (by source id) already reported as wired to their own ground. */
+  const shorted = new Set<string>()
 
   nl.nets.forEach((keys, i) => {
     const terms = netTerms[i]
@@ -319,7 +331,6 @@ export function checkDiagram(d: Diagram): Finding[] {
 
     // Short: a supply whose own return (its part's ground) is on the same net. Two cells in series
     // (BT1 + to BT2 -) are fine; a cell's + on a board ground that is wired back to its - is not.
-    const shorted = new Set<string>()
     for (const t of terms) {
       if (!drives(t)) continue
       const id = JSON.stringify([t.part.uid, t.info.comp.get(t.name)])
@@ -335,66 +346,14 @@ export function checkDiagram(d: Diagram): Finding[] {
       add({ rule: 'short', subject: t.part.designator, target: termName(t), message, parts: involved.map((x) => x.part.uid), pins: involved.map(termPin), wires, causes: [t.key, ownTerm.key] })
     }
 
-    // Supplies: one per electrical component of a part. A pin on a board's USB power gives way
-    // when a supply drawn on the sheet feeds the same net: the board then runs from that supply.
-    const byId = new Map<string, Source>()
-    for (const t of terms) {
-      const s = sourceOf(t)
-      if (!s) continue
-      const prev = byId.get(s.id)
-      if (!prev || (s.v !== null && (prev.v === null || s.v > prev.v))) byId.set(s.id, s)
-    }
-    let sources = [...byId.values()]
-    if (sources.some((s) => s.external) && sources.some((s) => !s.external && !s.onBoard)) sources = sources.filter((s) => !s.external)
-    const known = (list: Source[]) => list.filter((s): s is Source & { v: number } => s.v !== null).sort((a, b) => b.v - a.v)
-    const all = known(sources)
-    if (sources.length > 1) {
-      const [hi, lo] = [all[0], all[all.length - 1]]
-      const pins = sources.map((s) => termPin(s.term))
-      const parts = sources.map((s) => s.term.part.uid)
-      const causes = sources.map((s) => s.term.key)
-      if (hi && lo && hi.v - lo.v > EPS) {
-        const named = (s: Source & { v: number }) => `${termName(s.term)} (${volts(s.v)}${s.external ? ` from ${s.external.via}` : ''})`
-        add({ rule: 'supplies-fight', subject: hi.term.part.designator, target: termName(hi.term),
-          message: `${named(hi)} and ${named(lo)} are wired together: the two supplies fight.`, parts, pins, wires, causes })
-      } else
-        add({ rule: 'supplies-parallel', subject: sources[0].term.part.designator, target: termName(sources[0].term),
-          message: `${andList(sources.map(sourceName))} are ${sources.length === 2 ? 'two' : sources.length} supplies tied together; power this net from one of them.`, parts, pins, wires, causes })
-    }
-
-    for (const t of terms) {
-      if (t.type !== 'power_in') continue
-      // A pin on its board's USB power that still acts as a supply here gives power, it does not take it.
-      const self = sources.find((s) => s.term === t)
-      if (self?.external) continue
-      const accepts = knownRails(t.supply)
-      if (!accepts) continue
-      const feeding = sources.filter((s) => s !== self)
-      const known = all.filter((s) => s !== self)
-      const max = Math.max(...accepts)
-      const min = Math.min(...accepts)
-      const hi = known[0]
-      const involve = (s: Source) => ({ parts: [t.part.uid, s.term.part.uid], pins: [termPin(t), termPin(s.term)], wires, causes: [t.key, s.term.key], target: termName(t), subject: t.part.designator })
-      if (hi && hi.v > max + EPS) {
-        add({ rule: 'supply-too-high', message: `${termName(t)} accepts up to ${volts(max)} but gets ${volts(hi.v)} from ${sourceName(hi)}.`, ...involve(hi) })
-        continue
-      }
-      const adjustable = feeding.find((s) => s.unknown === 'adjustable')
-      if (adjustable) {
-        const list = [...new Set(accepts)].sort((a, b) => a - b).map(volts)
-        add({ rule: 'supply-unknown', message: `${termName(adjustable.term)} is adjustable; set it to a voltage ${termName(t)} accepts (${orList(list)}).`, ...involve(adjustable) })
-        continue
-      }
-      if (hi && feeding.every((s) => s.v !== null) && hi.v < min - EPS)
-        add({ rule: 'supply-too-low', message: `${termName(t)} needs at least ${volts(min)}; ${sourceName(hi)} gives only ${volts(hi.v)}.`, ...involve(hi) })
-    }
-
     const drivers = terms.filter((t) => t.type === 'output')
     if (drivers.length > 1)
       add({ rule: 'outputs-fight', subject: drivers[0].part.designator, target: termName(drivers[0]),
         message: `${andList(drivers.map(termName))} ${drivers.length === 2 ? 'both' : 'all'} drive this net: ${drivers.length === 2 ? 'two' : drivers.length} outputs fight.`,
         parts: drivers.map((t) => t.part.uid), pins: drivers.map(termPin), wires, causes: drivers.map((t) => t.key) })
   })
+
+  checkPotentials({ d, nl, netTerms, netWires, terminal, shorted, add })
 
   // Per part: power and ground reach it from another part.
   const others = (t: Terminal) => {
@@ -486,6 +445,244 @@ export function checkDiagram(d: Diagram): Finding[] {
     const n = seen.get(base) ?? 0
     seen.set(base, n + 1)
     return { id: n ? `${base}#${n}` : base, ...f }
+  })
+}
+
+// ---- Potentials ----
+
+/**
+ * One ideal source between two nets: `to` sits `v` volts above `from` (a supply's output over its
+ * own return). A link (no `src`) is 0 V: the grounds of a part that passes a supply through (a
+ * charger's B- and OUT- behind its protection switch) are one return for voltage purposes.
+ */
+interface Edge {
+  from: string
+  to: string
+  v: number
+  src?: Source
+}
+
+interface PotentialInput {
+  d: Diagram
+  nl: ReturnType<typeof netlist>
+  netTerms: Terminal[][]
+  netWires: string[][]
+  terminal: (key: string) => Terminal | null
+  shorted: Set<string>
+  add: (f: { rule: RuleId; subject: string; target: string; message: string; parts: string[]; pins: Endpoint[]; wires: string[]; causes: string[] }) => void
+}
+
+/**
+ * Voltages that know their reference. Every resolved supply is an edge from its return net (its
+ * part's ground) to its output net; walking the edges from any net of a connected group gives each
+ * net a potential. A net reached at two different potentials is a contradiction: a loop of
+ * supplies all pointing the same way (+ to the next -) is a shorted stack, any other loop is
+ * supplies fighting; a loop that agrees is supplies in parallel. A load gets the potential of its
+ * power input over that of its own ground, so a series stack adds up.
+ */
+function checkPotentials({ d, nl, netTerms, netWires, terminal, shorted, add }: PotentialInput) {
+  const netOfKey = (key: string) => {
+    const i = nl.netOf.get(key)
+    return i === undefined ? key : `#${i}`
+  }
+  const wiresOf = (net: string) => (net.startsWith('#') ? netWires[Number(net.slice(1))] : [])
+
+  // Every supply, one per electrical component of a part, and the edges.
+  const sources = new Map<string, Source>()
+  const edges: Edge[] = []
+  const unknownOn = new Map<string, Source[]>()
+  const outOn = new Map<string, Source[]>()
+  for (const p of d.parts) {
+    const m = moduleOf(d, p.module)
+    if (!m) continue
+    const info = moduleInfo(m)
+    if (!info.sourceNames.length && !info.pass.size) continue
+    const ref = info.groundComps.length ? netOfKey(nodeKey(p.uid, info.groundComps[0])) : null
+    if (info.pass.size)
+      for (const g of info.groundComps.slice(1)) edges.push({ from: netOfKey(nodeKey(p.uid, info.groundComps[0])), to: netOfKey(nodeKey(p.uid, g)), v: 0 })
+    const own = new Map<string, Source>()
+    for (const n of info.sourceNames) {
+      const t = terminal(nodeKey(p.uid, n))
+      const s = t && sourceOf(t)
+      if (!s) continue
+      const prev = own.get(s.id)
+      if (!prev || (s.v !== null && (prev.v === null || s.v > prev.v))) own.set(s.id, s)
+    }
+    for (const s of own.values()) {
+      sources.set(s.id, s)
+      const out = netOfKey(s.term.key)
+      const list = s.v === null ? unknownOn : outOn
+      list.set(out, [...(list.get(out) ?? []), s])
+      // A supply wired to its own ground is reported as a short already; it places nothing.
+      if (s.v === null || shorted.has(s.id)) continue
+      edges.push({ from: ref ?? `(${s.id})`, to: out, v: s.v, src: s })
+    }
+  }
+
+  // Walk each group once: potentials, the tree edge that reached each net, and the loops.
+  const adj = new Map<string, number[]>()
+  edges.forEach((e, i) => {
+    for (const n of [e.from, e.to]) adj.set(n, [...(adj.get(n) ?? []), i])
+  })
+  const pot = new Map<string, number>()
+  const up = new Map<string, number>()
+  const depth = new Map<string, number>()
+  const groupOf = new Map<string, string>()
+  const loops: number[] = []
+  const treeEdge = new Set<number>()
+  const seenEdge = new Set<number>()
+  for (const root of adj.keys()) {
+    if (pot.has(root)) continue
+    pot.set(root, 0)
+    depth.set(root, 0)
+    groupOf.set(root, root)
+    const queue = [root]
+    for (let q = 0; q < queue.length; q++) {
+      const n = queue[q]
+      for (const i of adj.get(n)!) {
+        if (seenEdge.has(i)) continue
+        seenEdge.add(i)
+        const e = edges[i]
+        const other = e.from === n ? e.to : e.from
+        if (other === n) continue
+        if (pot.has(other)) {
+          loops.push(i)
+          continue
+        }
+        pot.set(other, e.from === n ? pot.get(n)! + e.v : pot.get(n)! - e.v)
+        up.set(other, i)
+        depth.set(other, depth.get(n)! + 1)
+        groupOf.set(other, root)
+        treeEdge.add(i)
+        queue.push(other)
+      }
+    }
+  }
+
+  /** The tree path from net `a` to net `b`: each edge with whether it is walked from its `from` to its `to`. */
+  const path = (a: string, b: string): { e: Edge; forward: boolean }[] => {
+    const fromA: { e: Edge; forward: boolean }[] = []
+    const fromB: { e: Edge; forward: boolean }[] = []
+    let [x, y] = [a, b]
+    while (x !== y) {
+      if (depth.get(x)! >= depth.get(y)!) {
+        const e = edges[up.get(x)!]
+        const next = e.from === x ? e.to : e.from
+        fromA.push({ e, forward: e.from === x })
+        x = next
+      } else {
+        const e = edges[up.get(y)!]
+        const next = e.from === y ? e.to : e.from
+        fromB.push({ e, forward: e.from === next })
+        y = next
+      }
+    }
+    return [...fromA, ...fromB.reverse()]
+  }
+
+  const sorted = (list: Source[]) => [...list].sort((a, b) => natural.compare(termName(a.term), termName(b.term)))
+  const involve = (list: Source[]) => ({
+    parts: list.map((s) => s.term.part.uid),
+    pins: list.map((s) => termPin(s.term)),
+    wires: [...new Set(list.flatMap((s) => wiresOf(netOfKey(s.term.key))))],
+    causes: list.map((s) => s.term.key),
+  })
+  /** One side of a loop: a single supply by its pin and voltage, several as a series stack. */
+  const side = (list: Source[]) => {
+    const v = list.reduce((sum, s) => sum + s.v!, 0)
+    if (list.length === 1) {
+      const s = list[0]
+      return { v, text: `${termName(s.term)} (${volts(v)}${s.external ? ` from ${s.external.via}` : ''})` }
+    }
+    return { v, text: `${andList(sorted(list).map((s) => termName(s.term)))} (${volts(v)} in series)` }
+  }
+
+  const broken = new Set<string>()
+  for (const i of loops) {
+    const e = edges[i]
+    const cycle = [{ e, forward: true }, ...path(e.to, e.from)].filter((x) => x.e.src)
+    if (!cycle.length) continue
+    const mismatch = Math.abs(pot.get(e.to)! - pot.get(e.from)! - e.v) > EPS
+    const ahead = cycle.filter((x) => x.forward).map((x) => x.e.src!)
+    const back = cycle.filter((x) => !x.forward).map((x) => x.e.src!)
+    const all = sorted([...ahead, ...back])
+    if (mismatch) broken.add(groupOf.get(e.from)!)
+    if (mismatch && (!ahead.length || !back.length)) {
+      add({ rule: 'short', subject: all[0].term.part.designator, target: termName(all[0].term),
+        message: `${andList(all.map((s) => termName(s.term)))} are wired in a loop, each + to the next -: short circuit.`, ...involve(all) })
+    } else if (mismatch) {
+      const [a, b] = [side(ahead), side(back)]
+      const [hi, lo] = a.v >= b.v ? [a, b] : [b, a]
+      const lead = (a.v >= b.v ? sorted(ahead) : sorted(back))[0]
+      const two = ahead.length === 1 && back.length === 1
+      add({ rule: 'supplies-fight', subject: lead.term.part.designator, target: termName(lead.term),
+        message: `${hi.text} and ${lo.text} are wired together: the ${two ? 'two ' : ''}supplies fight.`, ...involve(all) })
+    } else if (ahead.length && back.length) {
+      const ext = all.find((s) => s.external)
+      const plain = all.filter((s) => !s.external)
+      if (ext && plain.length) {
+        const connector = ext.external!.via.replace(/ through .*$/, '')
+        add({ rule: 'supplies-parallel', subject: ext.term.part.designator, target: termName(ext.term),
+          message: `${termName(ext.term)} also gets ${volts(ext.v!)} from ${ext.external!.via}; do not power ${ext.term.label} and ${connector} at the same time.`, ...involve(all) })
+      } else
+        add({ rule: 'supplies-parallel', subject: all[0].term.part.designator, target: termName(all[0].term),
+          message: `${andList(all.map(sourceName))} are ${all.length === 2 ? 'two' : all.length} supplies tied together; power this net from one of them.`, ...involve(all) })
+    }
+  }
+
+  // A supply of unknown voltage tied to another supply cannot be placed: say they are tied.
+  for (const [net, unknown] of unknownOn) {
+    const list = sorted([...unknown, ...(outOn.get(net) ?? [])])
+    if (list.length < 2) continue
+    add({ rule: 'supplies-parallel', subject: list[0].term.part.designator, target: termName(list[0].term),
+      message: `${andList(list.map(sourceName))} are ${list.length === 2 ? 'two' : list.length} supplies tied together; power this net from one of them.`, ...involve(list) })
+  }
+
+  // Loads: the voltage across each power input, from its net to its own part's ground.
+  nl.nets.forEach((_, i) => {
+    const net = `#${i}`
+    for (const t of netTerms[i]) {
+      if (t.type !== 'power_in' || t.info.external.has(t.name)) continue
+      const accepts = knownRails(t.supply)
+      if (!accepts) continue
+      const direct = outOn.get(net) ?? []
+      const unknown = unknownOn.get(net) ?? []
+      let v: number | null = null
+      let from: Source[] = []
+      const group = groupOf.get(net)
+      if (group !== undefined && broken.has(group)) continue
+      const ground = group === undefined ? undefined
+        : t.info.grounds.map((g) => netOfKey(nodeKey(t.part.uid, g))).find((g) => groupOf.get(g) === group)
+      if (ground !== undefined) {
+        if (ground === net) continue
+        v = pot.get(net)! - pot.get(ground)!
+        from = sorted(path(ground, net).filter((x) => x.e.src).map((x) => x.e.src!))
+        if (v <= EPS || !from.length) continue
+      } else {
+        // The load's ground reaches none of it: assume a common ground and take the supply on its net.
+        const hi = [...direct].sort((a, b) => b.v! - a.v!)[0]
+        if (hi) [v, from] = [hi.v!, [hi]]
+      }
+      const max = Math.max(...accepts)
+      const min = Math.min(...accepts)
+      const what = from.length === 1 ? sourceName(from[0]) : `${andList(from.map((s) => termName(s.term)))} in series`
+      const base = (list: Source[]) => ({
+        subject: t.part.designator, target: termName(t), wires: netWires[i],
+        parts: [t.part.uid, ...list.map((s) => s.term.part.uid)], pins: [termPin(t), ...list.map((s) => termPin(s.term))], causes: [t.key, ...list.map((s) => s.term.key)],
+      })
+      if (v !== null && v > max + EPS) {
+        add({ rule: 'supply-too-high', message: `${termName(t)} accepts up to ${volts(max)} but gets ${volts(v)} from ${what}.`, ...base(from) })
+        continue
+      }
+      const adjustable = unknown.find((s) => s.unknown === 'adjustable')
+      if (adjustable) {
+        const list = [...new Set(accepts)].sort((a, b) => a - b).map(volts)
+        add({ rule: 'supply-unknown', message: `${termName(adjustable.term)} is adjustable; set it to a voltage ${termName(t)} accepts (${orList(list)}).`, ...base([adjustable]) })
+        continue
+      }
+      if (v !== null && !unknown.length && v < min - EPS)
+        add({ rule: 'supply-too-low', message: `${termName(t)} needs at least ${volts(min)}; ${what} ${from.length === 1 ? 'gives' : 'give'} only ${volts(v)}.`, ...base(from) })
+    }
   })
 }
 

@@ -4,7 +4,7 @@
 import { describe, expect, it } from 'vitest'
 import { checkDiagram } from './checks.ts'
 import type { Connection, Diagram, PartInstance } from './diagram.ts'
-import type { ModuleDef } from './module.ts'
+import { type ModuleDef, validateModule } from './module.ts'
 import { load } from './builtinModules.testing.ts'
 
 type Wire = [string, string]
@@ -38,26 +38,6 @@ describe('correct circuits give no findings', () => {
       [['bt1|+', 'u1|VIN'], ['bt1|-', 'u1|GND'], ['k1|DC+', 'u1|5V'], ['k1|DC-', 'u1|GND 2'], ['k1|IN', 'u1|D7']])
     expect(found(d)).toEqual([])
   })
-  it('USB-C panel into a TP4056 charging an 18650, boosted by an IP5306 into ESP32 VIN', () => {
-    const d = sheet([
-      at('u1', 'U1', 'tp4056-module'), at('bt1', 'BT1', 'battery-18650-holder', -300), at('u2', 'U2', 'ip5306-usbc-module', 300),
-      at('u3', 'U3', 'esp32-devkit-v1-30', 600), at('j1', 'J1', 'usb-panel-mount-usbc', -600),
-    ], [
-      ['j1|VBUS', 'u1|IN+'], ['j1|GND', 'u1|IN-'], ['bt1|+', 'u1|B+'], ['bt1|-', 'u1|B-'],
-      ['u1|OUT+', 'u2|B+'], ['u1|OUT-', 'u2|B-'], ['u2|5V+', 'u3|VIN'], ['u2|5V-', 'u3|GND'],
-    ])
-    expect(found(d)).toEqual([])
-  })
-  it('a 9 V battery into an LM2596 set to 5 V, into ESP32 VIN', () => {
-    const d = sheet([at('bt1', 'BT1', 'battery-9v', -300), at('u1', 'U1', 'lm2596-buck-module', 0, volts(5)), at('u2', 'U2', 'esp32-devkit-v1-30', 400)],
-      [['bt1|+', 'u1|IN+'], ['bt1|-', 'u1|IN-'], ['u1|OUT+', 'u2|VIN'], ['u1|OUT-', 'u2|GND']])
-    expect(found(d)).toEqual([])
-  })
-  it('an LM2596 left at its 5 V default counts as 5 V too', () => {
-    const d = sheet([at('bt1', 'BT1', 'battery-9v', -300), at('u1', 'U1', 'lm2596-buck-module'), at('u2', 'U2', 'esp32-devkit-v1-30', 400)],
-      [['bt1|+', 'u1|IN+'], ['bt1|-', 'u1|IN-'], ['u1|OUT+', 'u2|VIN'], ['u1|OUT-', 'u2|GND']])
-    expect(found(d)).toEqual([])
-  })
   it('two AA cells, a resistor and an LED on a breadboard', () => {
     // R1 legs in c3-top and c9-top; D1 across the channel, anode in c9-top, cathode in c9-bot.
     const d = sheet([
@@ -86,17 +66,109 @@ describe('correct circuits give no findings', () => {
   })
 })
 
-describe('damaging or dead circuits are caught', () => {
-  it('a TP4056 output (one cell, 3.7 V) straight into ESP32 VIN is too low', () => {
+describe('a drawn supply on a pin that also carries USB power (the board is assumed on USB)', () => {
+  const lm2596 = (v: number, board: string, pin: string) => sheet(
+    [at('bt1', 'BT1', 'battery-9v', -300), at('u1', 'U1', 'lm2596-buck-module', 0, volts(v)), at('u2', 'U2', board, 400)],
+    [['bt1|+', 'u1|IN+'], ['bt1|-', 'u1|IN-'], ['u1|OUT+', `u2|${pin}`], ['u1|OUT-', 'u2|GND']])
+  const both = (pin: string) => `supplies-parallel: U2 ${pin} also gets 5 V from USB; do not power ${pin} and USB at the same time.`
+  it('an LM2596 at 5 V into ESP32 VIN or Pico VBUS: a warning not to power both', () => {
+    expect(found(lm2596(5, 'esp32-devkit-v1-30', 'VIN'))).toEqual([both('VIN')])
+    expect(found(lm2596(5, 'rpi-pico', 'VBUS'))).toEqual([both('VBUS')])
+  })
+  it('an LM2596 left at its 5 V default counts as 5 V too', () => {
+    const d = sheet([at('bt1', 'BT1', 'battery-9v', -300), at('u1', 'U1', 'lm2596-buck-module'), at('u2', 'U2', 'esp32-devkit-v1-30', 400)],
+      [['bt1|+', 'u1|IN+'], ['bt1|-', 'u1|IN-'], ['u1|OUT+', 'u2|VIN'], ['u1|OUT-', 'u2|GND']])
+    expect(found(d)).toEqual([both('VIN')])
+  })
+  it('an LM2596 set to 12 V into ESP32 VIN fights the USB 5 V', () => {
+    expect(checkDiagram(lm2596(12, 'esp32-devkit-v1-30', 'VIN')).map((x) => `${x.severity} ${x.rule}: ${x.message}`)).toEqual([
+      'error supplies-fight: U1 OUT+ (12 V) and U2 VIN (5 V from USB) are wired together: the two supplies fight.',
+    ])
+  })
+  it('USB-C panel into a TP4056 charging an 18650, boosted by an IP5306 into ESP32 VIN: only the both-powered warning', () => {
+    const d = sheet([
+      at('u1', 'U1', 'tp4056-module'), at('bt1', 'BT1', 'battery-18650-holder', -300), at('u2', 'U2', 'ip5306-usbc-module', 300),
+      at('u3', 'U3', 'esp32-devkit-v1-30', 600), at('j1', 'J1', 'usb-panel-mount-usbc', -600),
+    ], [
+      ['j1|VBUS', 'u1|IN+'], ['j1|GND', 'u1|IN-'], ['bt1|+', 'u1|B+'], ['bt1|-', 'u1|B-'],
+      ['u1|OUT+', 'u2|B+'], ['u1|OUT-', 'u2|B-'], ['u2|5V+', 'u3|VIN'], ['u2|5V-', 'u3|GND'],
+    ])
+    expect(found(d)).toEqual(['supplies-parallel: U3 VIN also gets 5 V from USB; do not power VIN and USB at the same time.'])
+  })
+  it('a TP4056 output (one cell, 3.7 V) straight into ESP32 VIN fights the USB 5 V', () => {
     const d = sheet([at('u1', 'U1', 'tp4056-module'), at('bt1', 'BT1', 'battery-18650-cell', -300), at('u3', 'U3', 'esp32-devkit-v1-30', 600)],
       [['bt1|+', 'u1|B+'], ['bt1|-', 'u1|B-'], ['u1|OUT+', 'u3|VIN'], ['u1|OUT-', 'u3|GND']])
-    expect(found(d)).toEqual(['supply-too-low: U3 VIN needs at least 5 V; BT1 + gives only 3.7 V.'])
+    expect(found(d)).toEqual(['supplies-fight: U3 VIN (5 V from USB) and BT1 + (3.7 V) are wired together: the two supplies fight.'])
   })
-  it('an LM2596 set to 12 V into ESP32 VIN is too high', () => {
-    const d = sheet([at('bt1', 'BT1', 'battery-9v', -300), at('u1', 'U1', 'lm2596-buck-module', 0, volts(12)), at('u2', 'U2', 'esp32-devkit-v1-30', 400)],
-      [['bt1|+', 'u1|IN+'], ['bt1|-', 'u1|IN-'], ['u1|OUT+', 'u2|VIN'], ['u1|OUT-', 'u2|GND']])
-    const f = checkDiagram(d)
-    expect(f.map((x) => `${x.severity} ${x.rule}: ${x.message}`)).toEqual(['error supply-too-high: U2 VIN accepts up to 5 V but gets 12 V from U1 OUT+.'])
+  it('a 3.7 V cell into a Nano 5V pin fights the USB 5 V', () => {
+    const d = sheet([at('u1', 'U1', 'arduino-nano'), at('bt1', 'BT1', 'battery-18650-holder', 400)], [['bt1|+', 'u1|5V'], ['bt1|-', 'u1|GND']])
+    expect(found(d)).toEqual(['supplies-fight: U1 5V (5 V from USB) and BT1 + (3.7 V) are wired together: the two supplies fight.'])
+  })
+})
+
+describe('series stacks and references', () => {
+  it('two 2 x AA holders in series (6 V) into a 3.3 V BME280 are too high, not too low', () => {
+    const d = sheet([at('bt1', 'BT1', 'battery-holder-2xaa'), at('bt2', 'BT2', 'battery-holder-2xaa', 200), at('u1', 'U1', 'bme280-module-6pin', 400)],
+      [['bt1|-', 'u1|GND'], ['bt1|+', 'bt2|-'], ['bt2|+', 'u1|VCC']])
+    expect(checkDiagram(d).map((x) => `${x.severity} ${x.rule}: ${x.message}`)).toEqual([
+      'error supply-too-high: U1 VCC accepts up to 3.3 V but gets 6 V from BT1 + and BT2 + in series.',
+    ])
+  })
+  it('two cells wired + to - both ways round are a shorted stack', () => {
+    const d = sheet([at('bt1', 'BT1', 'battery-aa'), at('bt2', 'BT2', 'battery-aa', 200)], [['bt1|+', 'bt2|-'], ['bt2|+', 'bt1|-']])
+    expect(checkDiagram(d).map((x) => `${x.severity} ${x.rule}: ${x.message}`)).toEqual([
+      'error short: BT1 + and BT2 + are wired in a loop, each + to the next -: short circuit.',
+    ])
+  })
+  it('a single cell and the junction of a series pair stay quiet', () => {
+    const one = sheet([at('bt1', 'BT1', 'battery-holder-3xaaa'), at('u1', 'U1', 'oled-ssd1306-096-i2c', 400)], [['bt1|-', 'u1|GND'], ['bt1|+', 'u1|VCC']])
+    expect(found(one)).toEqual([])
+    const pair = sheet([at('bt1', 'BT1', 'battery-aa'), at('bt2', 'BT2', 'battery-aa', 200)], [['bt1|+', 'bt2|-']])
+    expect(rules(pair)).not.toContain('short')
+    expect(rules(pair)).not.toContain('supplies-fight')
+  })
+})
+
+describe('Pico VSYS carries USB power through its diode', () => {
+  it('VSYS into a 3.3 V only BME280 is too high', () => {
+    const d = sheet([at('u1', 'U1', 'rpi-pico'), at('u2', 'U2', 'bme280-module-6pin', 400)], [['u2|VCC', 'u1|VSYS'], ['u2|GND', 'u1|GND']])
+    expect(found(d)).toEqual(['supply-too-high: U2 VCC accepts up to 3.3 V but gets 5 V from U1 VSYS (USB through the VSYS diode).'])
+  })
+  it('VSYS into an OLED that takes 5 V is fine', () => {
+    const d = sheet([at('u1', 'U1', 'rpi-pico-w'), at('u2', 'U2', 'oled-ssd1306-096-i2c', 400)], [['u2|VCC', 'u1|VSYS'], ['u2|GND', 'u1|GND']])
+    expect(found(d)).toEqual([])
+  })
+})
+
+describe('the ESP32 DevKitC V4 on the 38-pin terminal board', () => {
+  it('powers a sensor from its 5V terminal like the DevKitC itself', () => {
+    const ok = sheet([at('u1', 'U1', 'esp32-terminal-board-38'), at('u2', 'U2', 'oled-ssd1306-096-i2c', 400)], [['u2|VCC', 'u1|5V'], ['u2|GND', 'u1|GND']])
+    expect(found(ok)).toEqual([])
+    const bad = sheet([at('u1', 'U1', 'esp32-terminal-board-38'), at('u2', 'U2', 'bme280-module-6pin', 400)], [['u2|VCC', 'u1|5V'], ['u2|GND', 'u1|GND']])
+    expect(rules(bad)).toEqual(['supply-too-high'])
+  })
+})
+
+describe('damaging or dead circuits are caught', () => {
+  it('a voltage value applies only to its named output: a fixed 5 V output next to an adjustable one stays 5 V', () => {
+    const mixed = validateModule({
+      format: 'circuitoon-module/1', id: 'mixed-reg', name: 'Fixed 5 V plus adjustable',
+      pins: [
+        { name: '5V', side: 'right', type: 'power_out', supply: '5V' },
+        { name: 'ADJ', side: 'right', type: 'power_out', supply: 'ADJ' },
+        { name: 'GND', side: 'right', type: 'ground' },
+      ],
+      electrical: { model: 'regulator', params: { voltage: { unit: 'V', default: 3.3 } }, voltageOutputs: ['ADJ'] },
+    })
+    if (!mixed.ok) throw new Error(mixed.errors.join('; '))
+    const d = sheet([at('u2', 'U2', 'bme280-module-6pin', 400)], [['u1|5V', 'u2|VCC'], ['u1|GND', 'u2|GND']])
+    d.modules = { ...d.modules, 'mixed-reg': mixed.module }
+    d.parts = [at('u1', 'U1', 'mixed-reg'), ...d.parts]
+    expect(found(d)).toEqual(['supply-too-high: U2 VCC accepts up to 3.3 V but gets 5 V from U1 5V.'])
+  })
+  it('two unpowered TP4056 boards tied B+ to B+: a pass-through output feeds nothing', () => {
+    const d = sheet([at('u1', 'U1', 'tp4056-module'), at('u2', 'U2', 'tp4056-module', 300)], [['u1|OUT+', 'u2|OUT+'], ['u1|OUT-', 'u2|OUT-']])
+    expect(rules(d)).toEqual(['no-power', 'no-power'])
   })
   it('an 18650 holder set to 9 V into an OLED is too high (the value on the sheet counts)', () => {
     const d = sheet([at('bt1', 'BT1', 'battery-18650-holder', 0, volts(9)), at('u1', 'U1', 'oled-ssd1306-096-i2c', 400)],

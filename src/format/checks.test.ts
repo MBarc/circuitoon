@@ -232,11 +232,24 @@ describe('checkDiagram', () => {
       expect(rules(d)).not.toContain('supplies-parallel')
     })
     it('warns about two supplies of the same voltage tied together', () => {
-      const d = sheet([part('BT1', 'bat5'), part('BT2', 'bat5')], [wire('w1', 'bt1.+', 'bt2.+')])
+      const d = sheet([part('BT1', 'bat5'), part('BT2', 'bat5')], [wire('w1', 'bt1.+', 'bt2.+'), wire('w2', 'bt1.-', 'bt2.-')])
       const [f] = only(d, 'supplies-parallel')
       expect(f.severity).toBe('warning')
       expect(f.message).toBe('BT1 + and BT2 + are two supplies tied together; power this net from one of them.')
       expect(rules(d)).not.toContain('supplies-fight')
+    })
+    it('names a series stack as one side of a fight', () => {
+      const d = sheet([part('BT1', 'bat5'), part('BT2', 'bat5'), part('BT3', 'bat9')], [
+        wire('w1', 'bt1.+', 'bt2.-'), wire('w2', 'bt2.+', 'bt3.+'), wire('w3', 'bt1.-', 'bt3.-'),
+      ])
+      expect(checkDiagram(d).map((f) => `${f.rule}: ${f.message}`)).toEqual([
+        'supplies-fight: BT1 + and BT2 + (10 V in series) and BT3 + (9 V) are wired together: the supplies fight.',
+      ])
+    })
+    it('leaves two supplies alone when only their + are tied: no loop, no current', () => {
+      const d = sheet([part('BT1', 'bat5'), part('BT2', 'bat37')], [wire('w1', 'bt1.+', 'bt2.+')])
+      expect(rules(d)).not.toContain('supplies-fight')
+      expect(rules(d)).not.toContain('supplies-parallel')
     })
     it('does not count two joined outputs of one board twice, nor a pass-through', () => {
       const d = sheet([part('U1', 'twin'), part('BT1', 'bat37'), part('U2', 'charger')], [
@@ -288,10 +301,10 @@ describe('checkDiagram', () => {
       expect(only(d, 'supplies-fight')[0].message).toBe('U1 5V (5 V from USB) and U2 3V3 (3.3 V) are wired together: the two supplies fight.')
       expect(rules(d)).not.toContain('supply-too-low')
     })
-    it('give way to a supply drawn on the sheet, which then powers the board through that pin', () => {
-      expect(checkDiagram(board('bat5'))).toEqual([])
-      expect(only(board('bat37'), 'supply-too-low')[0].message).toBe('U1 5V needs at least 5 V; BT1 + gives only 3.7 V.')
-      expect(rules(board('bat9'))).toEqual(['supply-too-high'])
+    it('stay on beside a supply drawn on the sheet: the same voltage is a warning, another a fight', () => {
+      expect(checkDiagram(board('bat5')).map((f) => f.message)).toEqual(['U1 5V also gets 5 V from USB; do not power 5V and USB at the same time.'])
+      expect(only(board('bat37'), 'supplies-fight')[0].message).toBe('U1 5V (5 V from USB) and BT1 + (3.7 V) are wired together: the two supplies fight.')
+      expect(rules(board('bat9'))).toEqual(['supplies-fight'])
     })
   })
 
