@@ -10,8 +10,9 @@
 // wins), holes of a board placed off the world grid, pads on a module that is not a board, and a
 // wire to a missing hole drawn as a dashed red stub that can be selected and deleted, and the
 // broken connections badge and list (select, delete, a connection with neither end on the sheet,
-// where focus goes after each), and Select then Delete from the side panel for a connection with
-// neither end on the sheet. Last, the Parts panel and the dark theme.
+// where focus goes after each), the selected wire's Alt+click, bend and segment handles winning over
+// the holes beneath them, and Select then Delete from the side panel for a connection with neither
+// end on the sheet. Last, the Parts panel and the dark theme.
 //
 // Usage (repo root, after `npm run build`):
 //   node scripts/perf-breadboard.mjs [--out <dir>] [--port 4191]
@@ -462,6 +463,59 @@ await stroke({ x: 220, y: 60 }, { x: 230, y: 60 })
 saved = await exported()
 const w1 = saved.connections.find((c) => c.uid === 'w1')
 check(saved.connections.length === 2 && w1?.to.pin === 'c21-top', `the selected wire's end handle over a hole reconnects that wire (${JSON.stringify(w1?.to)})`)
+
+// --- The selected wire's own edits win over the holes beneath it. w1 runs straight along row a
+// from c10 (120, 60) to c20 (220, 60). Alt+click on the c12 hole (140, 60) adds a bend there;
+// the bend handle then sits on that hole, and the segment bar of (140, 60)-(220, 60) sits on the
+// c16 hole (180, 60). ---
+await load(
+  sheetFile('handles-over-holes', 'Handles over holes', [{ uid: 'bb8', designator: 'BB1', module: board.id, x: 0, y: 0, rotation: 0 }], [
+    { uid: 'w1', from: { part: 'bb8', pin: 'c10-top', hole: 0 }, to: { part: 'bb8', pin: 'c20-top', hole: 0 }, color: 'blue', gauge: 22 },
+  ]),
+  'bb8',
+)
+between = await toScreen(155, 60)
+await page.mouse.click(between.x, between.y)
+await pause()
+check((await page.locator('[data-wire="w1"] path').count()) === 4, 'w1 is selected before the Alt+click')
+const bendAt = await toScreen(140, 60)
+await page.keyboard.down('Alt')
+await page.mouse.click(bendAt.x, bendAt.y)
+await page.keyboard.up('Alt')
+await pause()
+saved = await exported()
+let hw1 = saved.connections.find((c) => c.uid === 'w1')
+check(
+  saved.connections.length === 1 && Array.isArray(hw1?.route) && hw1.route.some(([x, y]) => x === 140 && y === 60),
+  `Alt+click on a hole under the selected wire adds a bend there, not a new wire (${saved.connections.length} wire(s), route ${JSON.stringify(hw1?.route)})`,
+)
+check((await count('.wire-bend-handle')) > 0, 'the new bend shows a bend handle')
+// A press and drag starting on the bend handle (over the c12 hole) does not start a wire.
+await stroke({ x: 140, y: 60 }, { x: 150, y: 20 })
+saved = await exported()
+check(saved.connections.length === 1, `a drag from a bend handle over a hole starts no wire (${saved.connections.length} wire(s))`)
+// The segment bar over the c16 hole (180, 60) moves that segment down to row c (y = 80).
+await page.mouse.click(between.x, between.y)
+await pause()
+const segBar = await page.evaluate(() => [...document.querySelectorAll('.wire-seg-handle')].map((r) => `${Number(r.getAttribute('x')) + Number(r.getAttribute('width')) / 2},${Number(r.getAttribute('y')) + Number(r.getAttribute('height')) / 2}`))
+check(segBar.includes('180,60'), `a segment bar sits on the c16 hole (bars at ${segBar.join(' ')})`)
+await stroke({ x: 180, y: 60 }, { x: 180, y: 80 })
+saved = await exported()
+hw1 = saved.connections.find((c) => c.uid === 'w1')
+check(
+  saved.connections.length === 1 && Array.isArray(hw1?.route) && hw1.route.some(([, y]) => y === 80),
+  `dragging the segment bar over a hole moves the segment, it starts no wire (${saved.connections.length} wire(s), route ${JSON.stringify(hw1?.route)})`,
+)
+await shot('handles-over-holes.png')
+// Double-clicking the bend handle over the c12 hole removes that bend.
+const before = hw1.route.length
+await page.mouse.dblclick(bendAt.x, bendAt.y)
+await pause()
+saved = await exported()
+hw1 = saved.connections.find((c) => c.uid === 'w1')
+check(saved.connections.length === 1 && (hw1.route?.length ?? 0) < before, `double-clicking a bend handle over a hole removes the bend (${before} to ${hw1.route?.length ?? 0} bends)`)
+await page.keyboard.press('Escape')
+await pause()
 
 // --- A board placed off the world grid (x = 5) has clickable holes (Astra B4): c1 row a is at
 // (35, 60) and the top + rail hole over column 14 at (155, 20). ---
