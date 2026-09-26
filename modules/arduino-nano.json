@@ -1,0 +1,676 @@
+{
+  "format": "circuitoon-module/1",
+  "id": "arduino-nano",
+  "version": 1,
+  "name": "Arduino Nano (ATmega328P)",
+  "category": "Microcontrollers",
+  "source": "https://docs.arduino.cc/resources/pinouts/A000005-full-pinout.pdf https://docs.arduino.cc/hardware/nano/ https://lastminuteengineers.com/arduino-nano-pinout/",
+  "pins": [
+    {
+      "spacer": true,
+      "side": "left"
+    },
+    {
+      "name": "D13",
+      "side": "left"
+    },
+    {
+      "name": "3V3",
+      "side": "left",
+      "type": "power_out",
+      "supply": "3V3"
+    },
+    {
+      "name": "AREF",
+      "side": "left",
+      "label": "REF",
+      "type": "input"
+    },
+    {
+      "name": "A0",
+      "side": "left"
+    },
+    {
+      "name": "A1",
+      "side": "left"
+    },
+    {
+      "name": "A2",
+      "side": "left"
+    },
+    {
+      "name": "A3",
+      "side": "left"
+    },
+    {
+      "name": "A4",
+      "side": "left"
+    },
+    {
+      "name": "A5",
+      "side": "left"
+    },
+    {
+      "name": "A6",
+      "side": "left",
+      "type": "input"
+    },
+    {
+      "name": "A7",
+      "side": "left",
+      "type": "input"
+    },
+    {
+      "name": "5V",
+      "side": "left",
+      "type": "power_in",
+      "supply": "5V"
+    },
+    {
+      "name": "RST",
+      "side": "left",
+      "type": "input"
+    },
+    {
+      "name": "GND",
+      "side": "left",
+      "type": "ground"
+    },
+    {
+      "name": "VIN",
+      "side": "left",
+      "type": "power_in",
+      "supply": "7V/7.4V/9V/12V"
+    },
+    {
+      "spacer": true,
+      "side": "right"
+    },
+    {
+      "name": "D12",
+      "side": "right"
+    },
+    {
+      "name": "D11",
+      "side": "right"
+    },
+    {
+      "name": "D10",
+      "side": "right"
+    },
+    {
+      "name": "D9",
+      "side": "right"
+    },
+    {
+      "name": "D8",
+      "side": "right"
+    },
+    {
+      "name": "D7",
+      "side": "right"
+    },
+    {
+      "name": "D6",
+      "side": "right"
+    },
+    {
+      "name": "D5",
+      "side": "right"
+    },
+    {
+      "name": "D4",
+      "side": "right"
+    },
+    {
+      "name": "D3",
+      "side": "right"
+    },
+    {
+      "name": "D2",
+      "side": "right"
+    },
+    {
+      "name": "GND 2",
+      "side": "right",
+      "label": "GND",
+      "type": "ground"
+    },
+    {
+      "name": "RST 2",
+      "side": "right",
+      "label": "RST",
+      "type": "input"
+    },
+    {
+      "name": "RX0",
+      "side": "right"
+    },
+    {
+      "name": "TX1",
+      "side": "right"
+    }
+  ],
+  "internal": [
+    [
+      "GND",
+      "GND 2"
+    ],
+    [
+      "RST",
+      "RST 2"
+    ]
+  ],
+  "size": {
+    "w": 8,
+    "h": 18
+  },
+  "electrical": {
+    "model": "mcu",
+    "params": {}
+  },
+  "art": {
+    "w": 80,
+    "h": 180,
+    "pinLabels": "inside",
+    "shapes": [
+      {
+        "type": "rect",
+        "x": 0,
+        "y": 0,
+        "w": 80,
+        "h": 180,
+        "fill": "#17708A",
+        "radius": 5
+      },
+      {
+        "type": "rect",
+        "x": 2,
+        "y": 25,
+        "w": 8,
+        "h": 150,
+        "fill": "#E0B43C",
+        "radius": 2,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 4.5,
+        "y": 28.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 4.5,
+        "y": 38.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 4.5,
+        "y": 48.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 4.5,
+        "y": 58.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 4.5,
+        "y": 68.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 4.5,
+        "y": 78.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 4.5,
+        "y": 88.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 4.5,
+        "y": 98.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 4.5,
+        "y": 108.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 4.5,
+        "y": 118.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 4.5,
+        "y": 128.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 4.5,
+        "y": 138.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 4.5,
+        "y": 148.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 4.5,
+        "y": 158.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 4.5,
+        "y": 168.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 70,
+        "y": 25,
+        "w": 8,
+        "h": 150,
+        "fill": "#E0B43C",
+        "radius": 2,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 72.5,
+        "y": 28.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 72.5,
+        "y": 38.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 72.5,
+        "y": 48.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 72.5,
+        "y": 58.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 72.5,
+        "y": 68.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 72.5,
+        "y": 78.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 72.5,
+        "y": 88.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 72.5,
+        "y": 98.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 72.5,
+        "y": 108.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 72.5,
+        "y": 118.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 72.5,
+        "y": 128.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 72.5,
+        "y": 138.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 72.5,
+        "y": 148.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 72.5,
+        "y": 158.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 72.5,
+        "y": 168.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 27,
+        "y": -8,
+        "w": 26,
+        "h": 24,
+        "fill": "#C9CED6",
+        "radius": 2
+      },
+      {
+        "type": "rect",
+        "x": 32,
+        "y": -6,
+        "w": 16,
+        "h": 4,
+        "fill": "#8A9099",
+        "radius": 1,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 24,
+        "y": 50,
+        "w": 32,
+        "h": 32,
+        "fill": "#1B1F24",
+        "radius": 2,
+        "label": "ATMEGA",
+        "labelColor": "#D5DAE1",
+        "labelSize": 5
+      },
+      {
+        "type": "rect",
+        "x": 24,
+        "y": 72,
+        "w": 32,
+        "h": 8,
+        "fill": "#1B1F24",
+        "outline": false,
+        "label": "328P",
+        "labelColor": "#D5DAE1",
+        "labelSize": 5
+      },
+      {
+        "type": "rect",
+        "x": 33,
+        "y": 96,
+        "w": 14,
+        "h": 14,
+        "fill": "#3A3F47",
+        "radius": 2
+      },
+      {
+        "type": "rect",
+        "x": 37,
+        "y": 100,
+        "w": 6,
+        "h": 6,
+        "fill": "#1B1F24",
+        "radius": 3,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 24,
+        "y": 122,
+        "w": 5,
+        "h": 4,
+        "fill": "#F4B400",
+        "radius": 1
+      },
+      {
+        "type": "rect",
+        "x": 33,
+        "y": 122,
+        "w": 5,
+        "h": 4,
+        "fill": "#E5484D",
+        "radius": 1
+      },
+      {
+        "type": "rect",
+        "x": 42,
+        "y": 122,
+        "w": 5,
+        "h": 4,
+        "fill": "#3FB56B",
+        "radius": 1
+      },
+      {
+        "type": "rect",
+        "x": 51,
+        "y": 122,
+        "w": 5,
+        "h": 4,
+        "fill": "#F4B400",
+        "radius": 1
+      },
+      {
+        "type": "rect",
+        "x": 31,
+        "y": 154,
+        "w": 18,
+        "h": 14,
+        "fill": "#E0B43C",
+        "radius": 2,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 32.5,
+        "y": 156.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 32.5,
+        "y": 162.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 38.5,
+        "y": 156.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 38.5,
+        "y": 162.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 44.5,
+        "y": 156.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 44.5,
+        "y": 162.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      }
+    ]
+  }
+}

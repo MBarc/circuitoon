@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
-import { insideLabelSides, layoutModule, usesInsideLabels, validateModule, type ModuleDef } from './module.ts'
+import { insideLabelSides, layoutModule, usesInsideLabels, validParamValue, validateModule, type ModuleDef } from './module.ts'
 
 const base = { format: 'circuitoon-module/1', id: 'thing', name: 'Thing' }
 
@@ -92,6 +92,40 @@ describe('validateModule', () => {
       ])
     expect(r2.ok).toBe(false)
   })
+  it('checks resistance, capacitance and voltage params for their unit and a valid default', () => {
+    const params = (p: unknown) => validateModule({ ...base, pins: [{ name: 'A', side: 'left' }], electrical: { params: p } })
+    expect(params({ resistance: { unit: 'ohm', default: 0 }, capacitance: { unit: 'F', default: 1e-7 }, voltage: { unit: 'V', default: -5 } }).ok).toBe(true)
+    expect(params({ forwardVoltage: { unit: 'V', default: 2 }, color: { default: 'red' } }).ok).toBe(true)
+    const r = params({ resistance: { unit: 'F', default: -1 }, capacitance: { unit: 'F', default: 0 }, voltage: { default: 'high' } })
+    expect(r.ok).toBe(false)
+    if (!r.ok)
+      expect(r.errors).toEqual([
+        'electrical.params.resistance.unit: must be "ohm"',
+        'electrical.params.resistance.default: must be 0, or from 1e-15 to 1e12',
+        'electrical.params.capacitance.default: must be from 1e-15 to 1e12',
+        'electrical.params.voltage.unit: must be "V"',
+        'electrical.params.voltage.default: must be 0, or a magnitude from 1e-15 to 1e12',
+      ])
+    const bad = params([])
+    expect(!bad.ok && bad.errors).toEqual(['electrical.params: must be an object'])
+  })
+  it('shares one magnitude contract with value entry: 0 where allowed, else 1e-15 to 1e12', () => {
+    const at = (name: string, v: number) => validParamValue(name, v)
+    for (const name of ['resistance', 'capacitance', 'voltage']) {
+      expect(at(name, 1e-15)).toBe(true)
+      expect(at(name, 1e12)).toBe(true)
+      expect(at(name, 1e-320)).toBe(false)
+      expect(at(name, 9.99e-16)).toBe(false)
+      expect(at(name, 1.01e12)).toBe(false)
+    }
+    expect(at('resistance', 0)).toBe(true)
+    expect(at('voltage', 0)).toBe(true)
+    expect(at('voltage', -1e-320)).toBe(false)
+    expect(at('voltage', -2e12)).toBe(false)
+    expect(at('capacitance', 0)).toBe(false)
+    const tiny = validateModule({ ...base, pins: [{ name: 'A', side: 'left' }], electrical: { params: { resistance: { unit: 'ohm', default: 1e-320 } } } })
+    expect(!tiny.ok && tiny.errors).toEqual([`electrical.params.resistance.default: must be ${'0, or from 1e-15 to 1e12'}`])
+  })
   it('accepts a shape band from 1 to 4', () => {
     const r = validateModule({
       ...base,
@@ -164,15 +198,23 @@ describe('usesInsideLabels', () => {
     expect(insideLabelSides(m())).toEqual([])
     expect(insideLabelSides(m({ art: { w: 10, h: 10, shapes: [], pinLabels: 'inside' } })).sort()).toEqual(['bottom', 'left', 'right', 'top'])
   })
-  it('is set only on the header parts (ESP32 boards, DIP chips, display modules), never on any other built-in module', () => {
+  it('is set only on the header and pad parts (ESP32, Pico, Arduino Nano and D1 mini boards, DIP chips, display, storage, power, sensor, relay, motor driver and radio modules, multi-lead LEDs, terminal adapter, USB panel-mount cables), never on any other built-in module', () => {
     const dir = join(import.meta.dirname, '..', '..', 'modules')
     const boardFiles = new Set([
       'esp32-devkitc-v4.json', 'esp32-devkit-v1-30.json', 'esp32-s3-devkitc-1.json',
       'esp32-c3-supermini.json', 'xiao-esp32c3.json', 'xiao-esp32s3.json', 'esp32-cam.json',
+      'rpi-pico.json', 'rpi-pico-h.json', 'rpi-pico-w.json', 'rpi-pico-2.json', 'rpi-pico-2-w.json',
       'mcp23017-dip28.json', 'mcp23018-dip28.json',
       'lcd-st7796s-4in-spi-touch.json', 'tft-ili9341-28-spi-touch.json', 'tft-ili9341-24-spi.json', 'tft-st7735-18-spi.json',
       'tft-st7789-154-spi.json', 'oled-ssd1306-091-i2c.json', 'oled-ssd1306-096-i2c.json', 'oled-ssd1306-096-i2c-vcc-gnd.json',
       'oled-sh1106-13-i2c.json', 'oled-sh1106-13-i2c-vcc-gnd.json',
+      'microsd-spi-3v3.json', 'microsd-spi-5v.json',
+      'ip5306-usbc-module.json', 'tp4056-module.json', 'ams1117-33-module.json', 'lm2596-buck-module.json',
+      'ws2812b-strip.json', 'ws2812d-5mm.json', 'dht22-module.json', 'dht22-bare.json',
+      'bme280-module-4pin.json', 'bme280-module-6pin.json', 'pir-hc-sr501.json', 'ultrasonic-hc-sr04.json',
+      'arduino-nano.json', 'wemos-d1-mini.json', 'relay-module-1ch-5v.json', 'l298n-module.json',
+      'rfm95-lora-breakout.json', 'level-shifter-bss138-4ch.json', 'servo-sg90.json',
+      'esp32-terminal-board-38.json', 'usb-panel-mount-microusb.json', 'usb-panel-mount-usbc.json',
     ])
     const files = readdirSync(dir).filter((f) => f.endsWith('.json'))
     expect(files.filter((f) => boardFiles.has(f))).toHaveLength(boardFiles.size)

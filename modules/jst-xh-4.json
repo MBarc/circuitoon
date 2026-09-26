@@ -1,0 +1,161 @@
+{
+  "format": "circuitoon-module/1",
+  "id": "jst-xh-4",
+  "version": 1,
+  "name": "JST-XH connector, 4-pin (2.5 mm)",
+  "category": "Connectors",
+  "source": "https://www.jst-mfg.com/product/pdf/eng/eXH.pdf https://www.jst-mfg.com/product/detail_e.php?series=277",
+  "pins": [
+    {
+      "name": "1",
+      "side": "bottom",
+      "label": "1",
+      "type": "passive"
+    },
+    {
+      "name": "2",
+      "side": "bottom",
+      "label": "2",
+      "type": "passive"
+    },
+    {
+      "name": "3",
+      "side": "bottom",
+      "label": "3",
+      "type": "passive"
+    },
+    {
+      "name": "4",
+      "side": "bottom",
+      "label": "4",
+      "type": "passive"
+    }
+  ],
+  "size": {
+    "w": 7,
+    "h": 5
+  },
+  "electrical": {
+    "model": "connector",
+    "params": {}
+  },
+  "art": {
+    "w": 70,
+    "h": 50,
+    "shapes": [
+      {
+        "type": "rect",
+        "x": 18.5,
+        "y": 36,
+        "w": 3,
+        "h": 14,
+        "fill": "#C9CED6",
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 28.5,
+        "y": 36,
+        "w": 3,
+        "h": 14,
+        "fill": "#C9CED6",
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 38.5,
+        "y": 36,
+        "w": 3,
+        "h": 14,
+        "fill": "#C9CED6",
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 48.5,
+        "y": 36,
+        "w": 3,
+        "h": 14,
+        "fill": "#C9CED6",
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 6,
+        "y": 8,
+        "w": 58,
+        "h": 30,
+        "fill": "#EEF0EC",
+        "radius": 2
+      },
+      {
+        "type": "rect",
+        "x": 10,
+        "y": 14,
+        "w": 50,
+        "h": 20,
+        "fill": "#D6DAD2",
+        "radius": 1
+      },
+      {
+        "type": "rect",
+        "x": 17.5,
+        "y": 17,
+        "w": 5,
+        "h": 13,
+        "fill": "#B9BEB5",
+        "radius": 1,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 27.5,
+        "y": 17,
+        "w": 5,
+        "h": 13,
+        "fill": "#B9BEB5",
+        "radius": 1,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 37.5,
+        "y": 17,
+        "w": 5,
+        "h": 13,
+        "fill": "#B9BEB5",
+        "radius": 1,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 47.5,
+        "y": 17,
+        "w": 5,
+        "h": 13,
+        "fill": "#B9BEB5",
+        "radius": 1,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 30,
+        "y": 8,
+        "w": 10,
+        "h": 5,
+        "fill": "#D6DAD2",
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 18,
+        "y": 9.5,
+        "w": 4,
+        "h": 4,
+        "fill": "#1B1F24",
+        "radius": 2,
+        "outline": false
+      }
+    ]
+  }
+}

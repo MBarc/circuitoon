@@ -1,0 +1,110 @@
+{
+  "format": "circuitoon-module/1",
+  "id": "dupont-1x2",
+  "version": 1,
+  "name": "Dupont housing 1x2 (0.1 in)",
+  "category": "Connectors",
+  "source": "https://www.pololu.com/product/1901 https://www.pololu.com/category/71/0.1-inch-2.54mm-crimp-connector-housings",
+  "pins": [
+    {
+      "name": "1",
+      "side": "bottom",
+      "label": "1",
+      "type": "passive"
+    },
+    {
+      "name": "2",
+      "side": "bottom",
+      "label": "2",
+      "type": "passive"
+    }
+  ],
+  "size": {
+    "w": 5,
+    "h": 5
+  },
+  "electrical": {
+    "model": "connector",
+    "params": {}
+  },
+  "art": {
+    "w": 50,
+    "h": 50,
+    "shapes": [
+      {
+        "type": "rect",
+        "x": 18.5,
+        "y": 36,
+        "w": 3,
+        "h": 14,
+        "fill": "#C9CED6",
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 28.5,
+        "y": 36,
+        "w": 3,
+        "h": 14,
+        "fill": "#C9CED6",
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 13,
+        "y": 6,
+        "w": 24,
+        "h": 32,
+        "fill": "#1B1F24",
+        "radius": 1
+      },
+      {
+        "type": "rect",
+        "x": 17,
+        "y": 13,
+        "w": 6,
+        "h": 6,
+        "fill": "#3A3F47",
+        "radius": 0.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 27,
+        "y": 13,
+        "w": 6,
+        "h": 6,
+        "fill": "#3A3F47",
+        "radius": 0.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 19,
+        "y": 15,
+        "w": 2,
+        "h": 2,
+        "fill": "#C9CED6",
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 29,
+        "y": 15,
+        "w": 2,
+        "h": 2,
+        "fill": "#C9CED6",
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 18,
+        "y": 8,
+        "w": 4,
+        "h": 3,
+        "fill": "#9AA0A6",
+        "outline": false
+      }
+    ]
+  }
+}

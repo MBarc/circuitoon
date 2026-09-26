@@ -5,14 +5,17 @@ import { deleteSelection, EMPTY_SELECTION, rotateParts } from './ops.ts'
 import { useBrokenConnections } from './problems.ts'
 import { emptyDiagram, serializeDiagram } from '../format/diagram.ts'
 import { downloadText, exportFileName, readDiagramFile } from './files.ts'
+import { LoadWarnings } from './LoadWarnings.tsx'
 
-export function Toolbar({ store, notice, onClose }: { store: EditorStore; notice?: string; onClose: () => void }) {
+export function Toolbar({ store, warnings, onClose }: { store: EditorStore; warnings?: string[]; onClose: () => void }) {
   const { diagram, selection } = useEditorState(store)
   const fileRef = useRef<HTMLInputElement>(null)
   // The sheet the user agreed to replace when they chose Import, and the latest import request.
   const importBase = useRef<Diagram | null>(null)
   const importSeq = useRef(0)
-  const [message, setMessage] = useState<{ kind: 'error' | 'info'; text: string } | null>(notice ? { kind: 'info', text: notice } : null)
+  const [error, setError] = useState<string | null>(null)
+  // Warnings the open sheet was loaded with; every one stays reachable until dismissed.
+  const [loadWarnings, setLoadWarnings] = useState<{ list: string[]; key: number } | null>(warnings?.length ? { list: warnings, key: 0 } : null)
   const hasSel = selection.parts.length + selection.wires.length > 0
   const broken = useBrokenConnections(diagram)
 
@@ -25,12 +28,13 @@ export function Toolbar({ store, notice, onClose }: { store: EditorStore; notice
     const r = await readDiagramFile(file)
     // A newer import has started since this one; its result wins.
     if (seq !== importSeq.current) return
-    if (!r.ok) return setMessage({ kind: 'error', text: r.message })
+    if (!r.ok) return setError(r.message)
     // The sheet was edited while the file was being read: ask again before replacing that work.
     const now = store.getState().diagram
     if (now !== base && store.dirty && !window.confirm(`Discard unsaved changes to ${now.title}?`)) return
     store.load(r.diagram)
-    setMessage(r.warnings.length ? { kind: 'info', text: `Opened with warnings: ${r.warnings.slice(0, 3).join('; ')}` } : null)
+    setError(null)
+    setLoadWarnings(r.warnings.length ? { list: r.warnings, key: seq } : null)
   }
 
   return (
@@ -46,7 +50,8 @@ export function Toolbar({ store, notice, onClose }: { store: EditorStore; notice
       <button type="button" className="tool" onClick={() => {
         if (!okToDiscard()) return
         store.load(emptyDiagram())
-        setMessage(null)
+        setError(null)
+        setLoadWarnings(null)
       }}>New sheet</button>
       <button type="button" className="tool" onClick={() => {
         if (!okToDiscard()) return
@@ -82,7 +87,8 @@ export function Toolbar({ store, notice, onClose }: { store: EditorStore; notice
           e.target.value = ''
         }}
       />
-      {message && <p className={`message ${message.kind}`} role={message.kind === 'error' ? 'alert' : 'status'}>{message.text}</p>}
+      {error && <p className="message error" role="alert">{error}</p>}
+      {loadWarnings && <LoadWarnings key={loadWarnings.key} warnings={loadWarnings.list} onDismiss={() => setLoadWarnings(null)} />}
     </header>
   )
 }

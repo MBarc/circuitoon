@@ -1,0 +1,85 @@
+{
+  "format": "circuitoon-module/1",
+  "id": "buzzer-12mm-passive",
+  "version": 1,
+  "name": "Passive buzzer 12 mm",
+  "category": "Indicators",
+  "source": "https://cdn.sparkfun.com/datasheets/Components/General/cem-1203-42-.pdf https://www.sameskydevices.com/product/audio/buzzers/audio-transducers/cem-1203(42)",
+  "pins": [
+    {
+      "name": "+",
+      "label": "+",
+      "side": "left",
+      "type": "passive"
+    },
+    {
+      "name": "-",
+      "label": "-",
+      "side": "right",
+      "type": "passive"
+    }
+  ],
+  "electrical": {
+    "model": "buzzer",
+    "polarized": true,
+    "terminals": {
+      "pos": "+",
+      "neg": "-"
+    },
+    "params": {}
+  },
+  "art": {
+    "w": 70,
+    "h": 40,
+    "shapes": [
+      {
+        "type": "rect",
+        "x": 0,
+        "y": 18.5,
+        "w": 18,
+        "h": 3,
+        "fill": "#B8BEC7",
+        "radius": 1.5
+      },
+      {
+        "type": "rect",
+        "x": 52,
+        "y": 18.5,
+        "w": 18,
+        "h": 3,
+        "fill": "#B8BEC7",
+        "radius": 1.5
+      },
+      {
+        "type": "rect",
+        "x": 16,
+        "y": 1,
+        "w": 38,
+        "h": 38,
+        "fill": "#1B1F24",
+        "radius": 19
+      },
+      {
+        "type": "rect",
+        "x": 31,
+        "y": 16,
+        "w": 8,
+        "h": 8,
+        "fill": "#3A3F47",
+        "radius": 4
+      },
+      {
+        "type": "rect",
+        "x": 20,
+        "y": 14,
+        "w": 9,
+        "h": 12,
+        "fill": "#1B1F24",
+        "outline": false,
+        "label": "+",
+        "labelColor": "#C9CED6",
+        "labelSize": 10
+      }
+    ]
+  }
+}

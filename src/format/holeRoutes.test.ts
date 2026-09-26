@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { computeRoutes, pinTargets, routeWire, partObstacles, resolveEndpoint, type Diagram } from './diagram.ts'
+import { computeRoutes, pinTargets, routeWire, partObstacles, resolveEndpoint, validateDiagram, wirePaths, type Diagram } from './diagram.ts'
 import { bodyRect, type Pt } from './geometry.ts'
 import { layoutModule, validateModule, type ModuleDef } from './module.ts'
 import { routeOrthogonal } from './router.ts'
@@ -203,6 +203,21 @@ describe('a wire to a plugged leg (Ruling 25)', () => {
     const targets = pinTargets(d, d.parts[1], resistor)
     expect(Object.fromEntries(targets.map((t) => [t.name, t.at]))).toEqual({ '1': { x: 30, y: 60 }, '2': { x: 90, y: 60 } })
   })
+  it('does not flag a wire from a plugged leg blocked when separation nudges it inside that part', () => {
+    // An earlier wire runs down x = 50 inside R1's body; the leg wire's second segment shares that
+    // lane, so separation nudges it. R1 covers the leg's hole, so (as in routeWire) R1 is no
+    // obstacle for this wire and the nudged wire stays clear.
+    const d = legSheet(true)
+    d.connections = [
+      { uid: 'w0', from: { part: 'bb', pin: 'c20-top', hole: 0 }, to: { part: 'bb', pin: 'c20-top', hole: 4 }, route: [[220, 50], [50, 50], [50, 90], [220, 90]] },
+      { ...d.connections[0], route: [[50, 60], [50, 70], [300, 70]] },
+    ]
+    const routes = computeRoutes(d)
+    expect(routes.get('w')!.blocked).toBe(false)
+    const drawn = wirePaths(d, routes).find((w) => w.conn.uid === 'w')!
+    expect(drawn.points.some((p, i) => p.x !== routes.get('w')!.points[i]?.x)).toBe(true) // it was nudged
+    expect(drawn.blocked).toBe(false)
+  })
   it('keeps the hit target at the stub tip for an unplugged leg', () => {
     const partial = legSheet(true)
     partial.parts = partial.parts.map((p) => (p.uid === 'r1' ? { ...p, x: 35 } : p))
@@ -212,5 +227,27 @@ describe('a wire to a plugged leg (Ruling 25)', () => {
       expect(targets.map((t) => t.at)).toEqual(targets.map((t) => resolveEndpoint(d, { part: part.uid, pin: t.name })!.end))
       expect(targets.find((t) => t.name === '1')!.at.x).toBeLessThan(part.x)
     }
+  })
+})
+
+describe('huge coordinates (B1)', () => {
+  it('loads two hole ends 10^12 px apart clamped, with a warning, and routes them in well under a second', () => {
+    const raw = {
+      format: 'circuitoon-diagram/1', title: 't', modules: { 'breadboard-full': board },
+      parts: [
+        { uid: 'a', designator: 'BB1', module: 'breadboard-full', x: 0, y: 0 },
+        { uid: 'b', designator: 'BB2', module: 'breadboard-full', x: 1e12, y: 1e12 },
+      ],
+      connections: [{ uid: 'w', from: { part: 'a', pin: 'c1-top', hole: 0 }, to: { part: 'b', pin: 'c1-top', hole: 0 } }],
+    }
+    const r = validateDiagram(raw)
+    if (!r.ok) throw new Error(r.errors.join('; '))
+    expect(r.warnings.some((w) => w.includes('clamped'))).toBe(true)
+    expect(Math.abs(r.diagram.parts[1].x)).toBeLessThanOrEqual(100_000)
+    const t = performance.now()
+    const routes = computeRoutes(r.diagram)
+    wirePaths(r.diagram, routes)
+    expect(performance.now() - t).toBeLessThan(500)
+    expect(routes.get('w')).not.toBeNull()
   })
 })

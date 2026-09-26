@@ -1,0 +1,198 @@
+{
+  "format": "circuitoon-module/1",
+  "id": "servo-sg90",
+  "version": 1,
+  "name": "Micro servo SG90",
+  "category": "Motors and actuators",
+  "source": "https://handsontec.com/dataspecs/motor_fan/SG90-Servo.pdf https://www.airsupplylab.com/embedded-info/emb_hardware-information/emb-hwinfo_tower-pro-sg90-micro-servo.html",
+  "pins": [
+    {
+      "name": "GND",
+      "side": "left",
+      "type": "ground"
+    },
+    {
+      "name": "VCC",
+      "side": "left",
+      "type": "power_in",
+      "supply": "5V"
+    },
+    {
+      "name": "PWM",
+      "side": "left",
+      "type": "input"
+    }
+  ],
+  "size": {
+    "w": 15,
+    "h": 7
+  },
+  "electrical": {
+    "model": "servo",
+    "params": {}
+  },
+  "art": {
+    "w": 150,
+    "h": 70,
+    "pinLabels": "inside",
+    "shapes": [
+      {
+        "type": "rect",
+        "x": 34,
+        "y": 28,
+        "w": 36,
+        "h": 4,
+        "fill": "#8B5A2B",
+        "radius": 1,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 34,
+        "y": 38,
+        "w": 36,
+        "h": 4,
+        "fill": "#E0483E",
+        "radius": 1,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 34,
+        "y": 48,
+        "w": 36,
+        "h": 4,
+        "fill": "#F08A24",
+        "radius": 1,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 0,
+        "y": 23,
+        "w": 38,
+        "h": 34,
+        "fill": "#2B2F36",
+        "radius": 2
+      },
+      {
+        "type": "rect",
+        "x": 31,
+        "y": 27.5,
+        "w": 5,
+        "h": 5,
+        "fill": "#8B5A2B",
+        "radius": 1,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 31,
+        "y": 37.5,
+        "w": 5,
+        "h": 5,
+        "fill": "#E0483E",
+        "radius": 1,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 31,
+        "y": 47.5,
+        "w": 5,
+        "h": 5,
+        "fill": "#F08A24",
+        "radius": 1,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 58,
+        "y": 28,
+        "w": 88,
+        "h": 14,
+        "fill": "#2A5FB8",
+        "radius": 3
+      },
+      {
+        "type": "rect",
+        "x": 63,
+        "y": 32,
+        "w": 5,
+        "h": 5,
+        "fill": "#123356",
+        "radius": 2.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 136,
+        "y": 32,
+        "w": 5,
+        "h": 5,
+        "fill": "#123356",
+        "radius": 2.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 68,
+        "y": 8,
+        "w": 68,
+        "h": 54,
+        "fill": "#3D7BE0",
+        "radius": 3
+      },
+      {
+        "type": "rect",
+        "x": 108,
+        "y": 12,
+        "w": 24,
+        "h": 24,
+        "fill": "#2A5FB8",
+        "radius": 12,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 100,
+        "y": 16,
+        "w": 44,
+        "h": 16,
+        "fill": "#F4F6F8",
+        "radius": 8
+      },
+      {
+        "type": "rect",
+        "x": 114,
+        "y": 16,
+        "w": 16,
+        "h": 16,
+        "fill": "#F4F6F8",
+        "radius": 8
+      },
+      {
+        "type": "rect",
+        "x": 119,
+        "y": 21,
+        "w": 6,
+        "h": 6,
+        "fill": "#8E96A1",
+        "radius": 3,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 72,
+        "y": 44,
+        "w": 36,
+        "h": 12,
+        "fill": "#3D7BE0",
+        "outline": false,
+        "label": "SG90",
+        "labelColor": "#FFFFFF",
+        "labelSize": 8
+      }
+    ]
+  }
+}

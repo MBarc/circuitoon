@@ -64,14 +64,14 @@ function useUnloadGuard(store: EditorStore) {
   }, [dirty])
 }
 
-export function Editor({ initial, notice, onClose }: { initial: Diagram; notice?: string; onClose: () => void }) {
+export function Editor({ initial, warnings, onClose }: { initial: Diagram; warnings?: string[]; onClose: () => void }) {
   const store = useMemo(() => new EditorStore(initial), [initial])
   const canvasApi = useRef<{ addAtCenter: (moduleId: string) => void } | null>(null)
   useEditorKeys(store)
   useUnloadGuard(store)
   return (
     <div className="editor">
-      <Toolbar store={store} notice={notice} onClose={onClose} />
+      <Toolbar store={store} warnings={warnings} onClose={onClose} />
       <LibraryPanel onAdd={(id) => canvasApi.current?.addAtCenter(id)} />
       <Canvas store={store} onReady={(api) => (canvasApi.current = api)} />
       <Inspector store={store} />

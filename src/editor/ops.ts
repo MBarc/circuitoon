@@ -34,10 +34,15 @@ const PREFIXES: [RegExp, string][] = [
   [/^resistor/, 'R'],
   [/^capacitor/, 'C'],
   [/^led/, 'D'],
+  [/^ws2812/, 'D'],
   [/button|switch/, 'S'],
   [/^battery/, 'BT'],
   [/^(breadboard|power-rail)/, 'BB'],
   [/^(lcd|oled|tft)-/, 'DS'],
+  [/^(piezo|buzzer)/, 'BZ'],
+  [/^relay/, 'K'],
+  [/^servo/, 'M'],
+  [/^(jst-|dupont-|usb-panel-)/, 'J'],
 ]
 
 export function designatorPrefix(m: ModuleDef): string {

@@ -4,7 +4,7 @@
 import { useMemo, useState } from 'react'
 import { library } from '../library.ts'
 import { Part, partBounds } from '../render/Part.tsx'
-import { groupLibrary } from './libraryGroups.ts'
+import { groupLibrary, searchLibrary } from './libraryGroups.ts'
 import type { ModuleDef } from '../format/module.ts'
 
 export const MODULE_MIME = 'application/x-circuitoon-module'
@@ -61,20 +61,8 @@ export function LibraryPanel({ onAdd }: { onAdd: (moduleId: string) => void }) {
   const modules = useMemo(() => library.flatMap((e) => (e.ok ? [e.module] : [])), [])
   const groups = useMemo(() => groupLibrary(modules), [modules])
 
-  const q = query.trim().toLowerCase()
-  const searching = q !== ''
-  const visibleGroups = useMemo(
-    () =>
-      groups
-        .map((g) => ({
-          ...g,
-          modules: searching
-            ? g.modules.filter((m) => m.name.toLowerCase().includes(q) || g.category.toLowerCase().includes(q))
-            : g.modules,
-        }))
-        .filter((g) => g.modules.length > 0),
-    [groups, searching, q],
-  )
+  const searching = query.trim() !== ''
+  const visibleGroups = useMemo(() => searchLibrary(groups, query), [groups, query])
 
   function toggle(category: string) {
     const next = new Set(collapsed)

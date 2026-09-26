@@ -56,6 +56,24 @@ describe('ops', () => {
       expect(designatorPrefix(battery)).toBe('BT')
     }
   })
+  it('gives piezo and buzzer ids the BZ prefix, rocker switches S and power modules U', () => {
+    const mk = (id: string): ModuleDef => ({ format: 'circuitoon-module/1', id, name: id, pins: [{ name: '+', side: 'left' }] })
+    expect(designatorPrefix(mk('buzzer-12mm-passive'))).toBe('BZ')
+    expect(designatorPrefix(mk('piezo-disc-27mm'))).toBe('BZ')
+    expect(designatorPrefix(mk('buzzer-active-5v'))).toBe('BZ')
+    expect(designatorPrefix(mk('rocker-switch-kcd1'))).toBe('S')
+    for (const id of ['ip5306-usbc-module', 'tp4056-module', 'ams1117-33-module', 'lm2596-buck-module', 'microsd-spi-3v3', 'microsd-spi-5v'])
+      expect(designatorPrefix(mk(id))).toBe('U')
+  })
+  it('gives connector ids (JST, Dupont, USB panel-mount) J, tilt and tactile switches S, the panel pot RV', () => {
+    const mk = (id: string): ModuleDef => ({ format: 'circuitoon-module/1', id, name: id, pins: [{ name: '1', side: 'left' }] })
+    for (const id of ['jst-xh-2', 'jst-xh-3', 'jst-xh-4', 'dupont-1x2', 'dupont-1x3', 'dupont-1x4', 'usb-panel-mount-microusb', 'usb-panel-mount-usbc'])
+      expect(designatorPrefix(mk(id))).toBe('J')
+    for (const id of ['tilt-switch-sw520d', 'tilt-switch-sw460d', 'tactile-switch-6mm-4pin', 'tactile-switch-12mm-4pin'])
+      expect(designatorPrefix(mk(id))).toBe('S')
+    expect(designatorPrefix(mk('potentiometer-panel-10k'))).toBe('RV')
+    expect(designatorPrefix(mk('esp32-terminal-board-38'))).toBe('U')
+  })
   it('gives display ids (lcd, oled, tft) the DS prefix and keeps chips on U', () => {
     const mk = (id: string): ModuleDef => ({ format: 'circuitoon-module/1', id, name: id, pins: [{ name: 'GND', side: 'left' }] })
     for (const id of ['lcd-st7796s-4in-spi-touch', 'oled-ssd1306-096-i2c', 'oled-ssd1306-091-i2c', 'oled-sh1106-13-i2c', 'tft-st7735-18-spi', 'tft-ili9341-24-spi', 'tft-ili9341-28-spi-touch', 'tft-st7789-154-spi'])
@@ -65,11 +83,37 @@ describe('ops', () => {
     expect(designatorPrefix(mk('led'))).toBe('D')
     expect(designatorPrefix(mk('tftp-server'))).toBe('U')
   })
+  it('gives addressable LEDs (WS2812 strip and 5 mm LED) D, and sensor modules U', () => {
+    const mk = (id: string): ModuleDef => ({ format: 'circuitoon-module/1', id, name: id, pins: [{ name: 'GND', side: 'left' }] })
+    for (const id of ['ws2812b-strip', 'ws2812d-5mm']) expect(designatorPrefix(mk(id))).toBe('D')
+    for (const id of ['dht22-module', 'dht22-bare', 'bme280-module-4pin', 'bme280-module-6pin', 'pir-hc-sr501', 'ultrasonic-hc-sr04'])
+      expect(designatorPrefix(mk(id))).toBe('U')
+  })
+  it('gives relay modules K, servos M, and motor drivers, radios, level shifters and boards U', () => {
+    const mk = (id: string): ModuleDef => ({ format: 'circuitoon-module/1', id, name: id, pins: [{ name: 'GND', side: 'left' }] })
+    expect(designatorPrefix(mk('relay-module-1ch-5v'))).toBe('K')
+    expect(designatorPrefix(mk('servo-sg90'))).toBe('M')
+    for (const id of ['l298n-module', 'rfm95-lora-breakout', 'level-shifter-bss138-4ch', 'arduino-nano', 'wemos-d1-mini'])
+      expect(designatorPrefix(mk(id))).toBe('U')
+  })
   it('moves and rotates only the given parts', () => {
     const d = rotateParts(moveParts(twoResistors(), ['p2'], 20, -10), ['p2'])
     expect(d.parts[0]).toMatchObject({ x: 0, y: 0, rotation: 0 })
     expect(d.parts[1]).toMatchObject({ x: 120, y: -10, rotation: 90 })
     expect(rotateParts(rotateParts(rotateParts(d, ['p2']), ['p2']), ['p2']).parts[1].rotation).toBe(0)
+  })
+  it('moves a hand-routed wire with its parts when both its ends move together', () => {
+    const d = setWireRoute(addWire(threeResistors(), { part: 'p1', pin: '2' }, { part: 'p2', pin: '1' }, style)!.diagram, 'w1', [[60, 20], [60, 60], [80, 60], [80, 20]])
+    const withOther = setWireRoute(addWire(d, { part: 'p2', pin: '2' }, { part: 'p3', pin: '1' }, style)!.diagram, 'w2', [[160, 20], [160, 70], [180, 70], [180, 20]])
+    const moved = moveParts(withOther, ['p1', 'p2'], 100, 100)
+    expect(moved.connections[0].route).toEqual([[160, 120], [160, 160], [180, 160], [180, 120]])
+    // Only one end of w2 moved: its bends stay where the user put them.
+    expect(moved.connections[1]).toBe(withOther.connections[1])
+    expect(withOther.connections[0].route).toEqual([[60, 20], [60, 60], [80, 60], [80, 20]]) // input untouched
+  })
+  it('leaves an automatic wire as it is when both its ends move', () => {
+    const d = addWire(twoResistors(), { part: 'p1', pin: '2' }, { part: 'p2', pin: '1' }, style)!.diagram
+    expect(moveParts(d, ['p1', 'p2'], 10, 0).connections[0]).toBe(d.connections[0])
   })
   it('adds a wire, refusing self-loops and duplicates in either direction', () => {
     const d = twoResistors()

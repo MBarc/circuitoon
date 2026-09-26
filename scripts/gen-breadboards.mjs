@@ -4,10 +4,10 @@
 // small and the renderer draws the holes from the groups. Layout per the breadboards design spec
 // (docs/superpowers/specs/2026-09-25-breadboards-design.md); generic boards, so no `source`.
 //
-// Run from the repo root: `node scripts/gen-breadboards.mjs`
+// Run from the repo root: `node scripts/gen-breadboards.mjs` (`--check` compares instead of writing)
 // It overwrites those files in modules/ in place; src/format/breadboards.test.ts pins the layout.
-import { writeFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
+import { emit, finish, log } from './lib/gen-output.mjs'
 const OUT = fileURLToPath(new URL('../modules/', import.meta.url))
 
 const BODY = '#FFFFFF', CHANNEL = '#E4E7EC', RED = '#E0483E', BLUE = '#3D6FD6', TEXT = '#8A929C'
@@ -29,9 +29,9 @@ function railXs(x0, n) {
 function write(file, m) {
   // One line per [x, y] hole position keeps an 830-hole board around 2,300 lines.
   const json = JSON.stringify(m, null, 2).replace(/\[\s+(-?\d+),\s+(-?\d+)\s+\]/g, '[$1, $2]')
-  writeFileSync(OUT + file, json + '\n')
+  emit(OUT + file, json + '\n')
   const holes = m.holes.reduce((n, g) => n + g.at.length, 0)
-  console.log(file, 'holes', holes, 'body', m.art.w, 'x', m.art.h)
+  log(file, 'holes', holes, 'body', m.art.w, 'x', m.art.h)
 }
 
 function moduleJson({ id, name, W, H, holes, shapes }) {
@@ -104,3 +104,5 @@ write('breadboard-mini.json', moduleJson({ id: 'breadboard-mini', name: 'Mini br
   const shapes = [r(0, 0, W, H, BODY, { radius: 4 }), stripe(14, 306, 8, RED), stripe(14, 306, 40, BLUE)]
   write('power-rail-strip.json', moduleJson({ id: 'power-rail-strip', name: 'Power rail strip', W, H, holes, shapes }))
 }
+
+finish('gen-breadboards.mjs')

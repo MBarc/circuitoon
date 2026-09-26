@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { computeRoutes, labelAnchor, partObstacles, routeWire, wireColor, wireWidth, wirePaths, type Diagram } from './diagram.ts'
+import { computeRoutes, labelAnchor, partObstacles, routeWire, routingKey, wireColor, wireWidth, wirePaths, type Diagram } from './diagram.ts'
 import type { ModuleDef } from './module.ts'
+import { manualRouteBlocked } from './wireEdit.ts'
 
 describe('wire color and gauge', () => {
   it('takes named colors and hex, falls back to black', () => {
@@ -12,6 +13,27 @@ describe('wire color and gauge', () => {
     expect(wireWidth(16)).toBeGreaterThan(wireWidth(22))
     expect(wireWidth(22)).toBe(3)
     expect(wireWidth(30)).toBeGreaterThanOrEqual(1.5)
+  })
+})
+
+describe('routingKey', () => {
+  const wire = (from: { part: string; pin: string }, to: { part: string; pin: string }, route?: [number, number][]) => ({ uid: 'w', from, to, route })
+  it('differs for endpoints whose joined names would collide', () => {
+    const a = routingKey([wire({ part: 'p.a', pin: 'R' }, { part: 'q', pin: '1' })])
+    const b = routingKey([wire({ part: 'p', pin: 'a.R' }, { part: 'q', pin: '1' })])
+    expect(a).not.toBe(b)
+    expect(routingKey([wire({ part: 'a', pin: 'b>c' }, { part: 'd', pin: 'e' })])).not.toBe(routingKey([wire({ part: 'a', pin: 'b' }, { part: 'c.d', pin: 'e' })]))
+  })
+  it('changes with the route and not with color or label', () => {
+    const base = wire({ part: 'a', pin: '1' }, { part: 'b', pin: '2' })
+    expect(routingKey([{ ...base, color: 'red', label: 'x' }])).toBe(routingKey([base]))
+    expect(routingKey([{ ...base, route: [[0, 0]] }])).not.toBe(routingKey([base]))
+  })
+  it('changes when a wire end moves to another hole of the same strip', () => {
+    const at = (hole: number) => [{ uid: 'w', from: { part: 'bb', pin: 'c1-top', hole }, to: { part: 'bb', pin: 'c9-top', hole: 0 } }]
+    expect(routingKey(at(3))).not.toBe(routingKey(at(0)))
+    const to = (hole: number) => [{ uid: 'w', from: { part: 'bb', pin: 'c1-top', hole: 0 }, to: { part: 'bb', pin: 'c9-top', hole } }]
+    expect(routingKey(to(4))).not.toBe(routingKey(to(0)))
   })
 })
 
@@ -246,6 +268,78 @@ describe('wirePaths', () => {
       const w2 = wirePaths(sheet(7)).find((w) => w.conn.uid === 'w2')!.points // pin tip at x=55
       expect(w2[0]).toEqual({ x: 55, y: 20 })
       expect(w2[1].x).toBe(68)
+    })
+  })
+
+  describe('separation beside a part body', () => {
+    // w1 and w2 both run down x=100, the left edge of part c (body x 100..140, y 40..70). Running
+    // along the edge is clear; the preferred +4 nudge would put w2 inside c, so it must go to -4.
+    const sheet = (extra: Diagram['parts'] = []): Diagram => ({
+      format: 'circuitoon-diagram/1', title: 't', modules: { two },
+      parts: [
+        { uid: 'a', designator: 'A', module: 'two', x: 0, y: 0 },
+        { uid: 'b', designator: 'B', module: 'two', x: 200, y: 0 },
+        { uid: 'c', designator: 'C', module: 'two', x: 100, y: 40 },
+        ...extra,
+      ],
+      connections: [
+        { uid: 'w1', from: { part: 'a', pin: 'R' }, to: { part: 'b', pin: 'L' }, route: [[100, 20], [100, 100], [180, 100], [180, 20]] },
+        { uid: 'w2', from: { part: 'a', pin: 'L' }, to: { part: 'b', pin: 'R' }, route: [[-20, 20], [-20, 120], [100, 120], [100, -20], [260, -20], [260, 20]] },
+      ],
+    })
+    it('nudges the run to the side away from the body, and the drawn wire is clear', () => {
+      const diagram = sheet()
+      const obstacles = partObstacles(diagram)
+      const wires = wirePaths(diagram)
+      const w2 = wires.find((w) => w.conn.uid === 'w2')!
+      expect(w2.points.slice(2, 5)).toEqual([{ x: -20, y: 120 }, { x: 96, y: 120 }, { x: 96, y: -20 }])
+      for (const w of wires) {
+        expect(manualRouteBlocked(w.points, obstacles)).toBe(false)
+        expect(w.blocked).toBe(false)
+      }
+    })
+    it('leaves the run in place when both sides are inside bodies', () => {
+      // A second body just left of x=100 covers the -4 and -8 nudges too.
+      const diagram = sheet([{ uid: 'e', designator: 'E', module: 'two', x: 60, y: 40 }])
+      const obstacles = partObstacles(diagram)
+      const wires = wirePaths(diagram)
+      const w2 = wires.find((w) => w.conn.uid === 'w2')!
+      expect(w2.points.slice(3, 5)).toEqual([{ x: 100, y: 120 }, { x: 100, y: -20 }])
+      for (const w of wires) expect(w.blocked).toBe(manualRouteBlocked(w.points, obstacles))
+    })
+    it('reports blocked from the drawn geometry', () => {
+      const diagram = sheet()
+      diagram.connections[1].route = [[-20, 20], [-20, 120], [120, 120], [120, -20], [260, -20], [260, 20]] // through c
+      const w2 = wirePaths(diagram).find((w) => w.conn.uid === 'w2')!
+      expect(w2.blocked).toBe(true)
+    })
+  })
+
+  describe('hops over wires closer together than a hop', () => {
+    const vert: ModuleDef = { format: 'circuitoon-module/1', id: 'vert', name: 'Vert', pins: [{ name: 'T', side: 'top' }, { name: 'B', side: 'bottom' }] }
+    const sheet = (x2: number): Diagram => ({
+      format: 'circuitoon-diagram/1', title: 't', modules: { two, vert },
+      parts: [
+        { uid: 'a', designator: 'A', module: 'two', x: 0, y: 0 },
+        { uid: 'b', designator: 'B', module: 'two', x: 100, y: 0 },
+        { uid: 'c1', designator: 'C1', module: 'vert', x: 40, y: 60 },
+        { uid: 'e1', designator: 'E1', module: 'vert', x: 40, y: -60 },
+        { uid: 'c2', designator: 'C2', module: 'vert', x: x2 - 20, y: 60 },
+        { uid: 'e2', designator: 'E2', module: 'vert', x: x2 - 20, y: -60 },
+      ],
+      connections: [
+        { uid: 'v1', from: { part: 'c1', pin: 'T' }, to: { part: 'e1', pin: 'B' }, route: [] },
+        { uid: 'v2', from: { part: 'c2', pin: 'T' }, to: { part: 'e2', pin: 'B' }, route: [] },
+        { uid: 'h', from: { part: 'a', pin: 'R' }, to: { part: 'b', pin: 'L' } },
+      ],
+    })
+    it('merges crossings 4 px apart into one wider bridge, with no line running backward', () => {
+      const h = wirePaths(sheet(64)).find((w) => w.conn.uid === 'h')!
+      expect(h.d).toBe('M48 20 L55 20 A7 5 0 0 1 69 20 L92 20')
+    })
+    it('keeps separate hops for crossings a full hop apart', () => {
+      const h = wirePaths(sheet(80)).find((w) => w.conn.uid === 'h')!
+      expect(h.d).toBe('M48 20 L55 20 A5 5 0 0 1 65 20 L75 20 A5 5 0 0 1 85 20 L92 20')
     })
   })
 

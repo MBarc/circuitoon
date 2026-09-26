@@ -1,0 +1,402 @@
+{
+  "format": "circuitoon-module/1",
+  "id": "relay-module-1ch-5v",
+  "version": 1,
+  "name": "Relay module 1 channel 5 V (SRD-05VDC, high/low trigger jumper)",
+  "category": "Motors and actuators",
+  "source": "https://www.amazon.com/dp/B00LW15A4W https://konnected.io/products/1-channel-5v-relay-module-with-high-low-level-trigger",
+  "pins": [
+    {
+      "name": "NO",
+      "side": "left",
+      "type": "passive"
+    },
+    {
+      "spacer": true,
+      "side": "left"
+    },
+    {
+      "name": "COM",
+      "side": "left",
+      "type": "passive"
+    },
+    {
+      "spacer": true,
+      "side": "left"
+    },
+    {
+      "name": "NC",
+      "side": "left",
+      "type": "passive"
+    },
+    {
+      "name": "IN",
+      "side": "right",
+      "type": "input"
+    },
+    {
+      "spacer": true,
+      "side": "right"
+    },
+    {
+      "name": "DC-",
+      "side": "right",
+      "type": "ground"
+    },
+    {
+      "spacer": true,
+      "side": "right"
+    },
+    {
+      "name": "DC+",
+      "side": "right",
+      "type": "power_in",
+      "supply": "5V"
+    }
+  ],
+  "size": {
+    "w": 20,
+    "h": 10
+  },
+  "electrical": {
+    "model": "relay",
+    "params": {}
+  },
+  "art": {
+    "w": 200,
+    "h": 100,
+    "pinLabels": "inside",
+    "shapes": [
+      {
+        "type": "rect",
+        "x": 0,
+        "y": 0,
+        "w": 200,
+        "h": 100,
+        "fill": "#C8322B",
+        "radius": 4
+      },
+      {
+        "type": "rect",
+        "x": 4,
+        "y": 4,
+        "w": 10,
+        "h": 10,
+        "fill": "#E9EDF0",
+        "radius": 5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 6.5,
+        "y": 6.5,
+        "w": 5,
+        "h": 5,
+        "fill": "#8A2A24",
+        "radius": 2.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 4,
+        "y": 86,
+        "w": 10,
+        "h": 10,
+        "fill": "#E9EDF0",
+        "radius": 5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 6.5,
+        "y": 88.5,
+        "w": 5,
+        "h": 5,
+        "fill": "#8A2A24",
+        "radius": 2.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 186,
+        "y": 4,
+        "w": 10,
+        "h": 10,
+        "fill": "#E9EDF0",
+        "radius": 5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 188.5,
+        "y": 6.5,
+        "w": 5,
+        "h": 5,
+        "fill": "#8A2A24",
+        "radius": 2.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 186,
+        "y": 86,
+        "w": 10,
+        "h": 10,
+        "fill": "#E9EDF0",
+        "radius": 5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 188.5,
+        "y": 88.5,
+        "w": 5,
+        "h": 5,
+        "fill": "#8A2A24",
+        "radius": 2.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 2,
+        "y": 21,
+        "w": 22,
+        "h": 58,
+        "fill": "#2F7FD0",
+        "radius": 2
+      },
+      {
+        "type": "rect",
+        "x": 7,
+        "y": 24,
+        "w": 12,
+        "h": 12,
+        "fill": "#C9CED6",
+        "radius": 6
+      },
+      {
+        "type": "rect",
+        "x": 9,
+        "y": 29.25,
+        "w": 8,
+        "h": 1.5,
+        "fill": "#6B727C",
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 7,
+        "y": 44,
+        "w": 12,
+        "h": 12,
+        "fill": "#C9CED6",
+        "radius": 6
+      },
+      {
+        "type": "rect",
+        "x": 9,
+        "y": 49.25,
+        "w": 8,
+        "h": 1.5,
+        "fill": "#6B727C",
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 7,
+        "y": 64,
+        "w": 12,
+        "h": 12,
+        "fill": "#C9CED6",
+        "radius": 6
+      },
+      {
+        "type": "rect",
+        "x": 9,
+        "y": 69.25,
+        "w": 8,
+        "h": 1.5,
+        "fill": "#6B727C",
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 176,
+        "y": 21,
+        "w": 22,
+        "h": 58,
+        "fill": "#2F7FD0",
+        "radius": 2
+      },
+      {
+        "type": "rect",
+        "x": 181,
+        "y": 24,
+        "w": 12,
+        "h": 12,
+        "fill": "#C9CED6",
+        "radius": 6
+      },
+      {
+        "type": "rect",
+        "x": 183,
+        "y": 29.25,
+        "w": 8,
+        "h": 1.5,
+        "fill": "#6B727C",
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 181,
+        "y": 44,
+        "w": 12,
+        "h": 12,
+        "fill": "#C9CED6",
+        "radius": 6
+      },
+      {
+        "type": "rect",
+        "x": 183,
+        "y": 49.25,
+        "w": 8,
+        "h": 1.5,
+        "fill": "#6B727C",
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 181,
+        "y": 64,
+        "w": 12,
+        "h": 12,
+        "fill": "#C9CED6",
+        "radius": 6
+      },
+      {
+        "type": "rect",
+        "x": 183,
+        "y": 69.25,
+        "w": 8,
+        "h": 1.5,
+        "fill": "#6B727C",
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 34,
+        "y": 10,
+        "w": 84,
+        "h": 72,
+        "fill": "#2B5FB8",
+        "radius": 3
+      },
+      {
+        "type": "rect",
+        "x": 40,
+        "y": 20,
+        "w": 72,
+        "h": 12,
+        "fill": "#2B5FB8",
+        "outline": false,
+        "label": "SONGLE",
+        "labelColor": "#FFFFFF",
+        "labelSize": 7
+      },
+      {
+        "type": "rect",
+        "x": 40,
+        "y": 50,
+        "w": 72,
+        "h": 12,
+        "fill": "#2B5FB8",
+        "outline": false,
+        "label": "SRD-05VDC-SL-C",
+        "labelColor": "#FFFFFF",
+        "labelSize": 6
+      },
+      {
+        "type": "rect",
+        "x": 128,
+        "y": 12,
+        "w": 16,
+        "h": 22,
+        "fill": "#2B2F36",
+        "radius": 2,
+        "label": "L H",
+        "labelColor": "#FFFFFF",
+        "labelSize": 4.5
+      },
+      {
+        "type": "rect",
+        "x": 130,
+        "y": 40,
+        "w": 12,
+        "h": 10,
+        "fill": "#F4F6F8",
+        "radius": 1
+      },
+      {
+        "type": "rect",
+        "x": 150,
+        "y": 20,
+        "w": 8,
+        "h": 5,
+        "fill": "#C8A27A",
+        "radius": 1,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 150,
+        "y": 44,
+        "w": 8,
+        "h": 5,
+        "fill": "#C8A27A",
+        "radius": 1,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 130,
+        "y": 58,
+        "w": 12,
+        "h": 8,
+        "fill": "#1E2126",
+        "radius": 1
+      },
+      {
+        "type": "rect",
+        "x": 150,
+        "y": 70,
+        "w": 6,
+        "h": 5,
+        "fill": "#E0483E",
+        "radius": 1,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 128,
+        "y": 74,
+        "w": 6,
+        "h": 5,
+        "fill": "#3FB56B",
+        "radius": 1,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 34,
+        "y": 86,
+        "w": 120,
+        "h": 10,
+        "fill": "#C8322B",
+        "outline": false,
+        "label": "high/low level trigger",
+        "labelColor": "#FFFFFF",
+        "labelSize": 5
+      }
+    ]
+  }
+}

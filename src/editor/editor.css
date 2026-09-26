@@ -17,6 +17,36 @@
 .toolbar .sep { width: 1px; align-self: stretch; background: var(--rule); margin: 0 4px; }
 .toolbar .message { flex-basis: 100%; margin: 0; font-size: 14px; }
 .toolbar .message.error { color: var(--error); }
+/* Warnings a file opened with: a sticker-edged note under the toolbar, yellow for caution. The
+   first few show; "Show all" opens the rest. Value replacements are listed first and carry a tag. */
+.load-warnings {
+  flex-basis: 100%;
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 12px; align-items: center;
+  background: var(--bg); color: var(--text);
+  border: 1.5px solid var(--card-edge); border-left: 6px solid var(--yellow); border-radius: 8px;
+  padding: 8px 10px 8px 12px; font-size: 14px;
+}
+.lw-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; }
+.lw-head strong { font: 600 16px/1.2 "Fredoka", system-ui, sans-serif; }
+.lw-values { font-weight: 700; }
+.lw-actions { display: flex; gap: 6px; }
+.load-warnings .tool { padding: 5px 9px; font-size: 13px; }
+/* Height-bounded in both states so the canvas always keeps at least half the viewport, however
+   many warnings a file brings (100 replaced values once pushed it off screen); the list scrolls. */
+.lw-list {
+  grid-column: 1 / -1; margin: 0; padding: 0 4px 0 0; list-style: none;
+  display: grid; gap: 4px; align-content: start; line-height: 1.35;
+  max-height: 25vh; overflow-y: auto; overscroll-behavior: contain;
+}
+.lw-list.expanded { max-height: 36vh; }
+.lw-list li { display: flex; align-items: baseline; gap: 8px; overflow-wrap: anywhere; }
+.lw-list li::before { content: ""; flex: none; width: 5px; height: 5px; border-radius: 50%; background: var(--muted); transform: translateY(-2px); }
+.lw-list li.value::before { display: none; }
+.lw-tag {
+  flex: none; font-size: 12px; font-weight: 700; line-height: 1.3; white-space: nowrap;
+  background: var(--yellow); color: #23282F; border: 1.5px solid #23282F; border-radius: 6px; padding: 0 6px;
+}
+.lw-list li.value .lw-text { font-weight: 700; }
 .tool {
   font: 700 14px/1 "Atkinson Hyperlegible", system-ui, sans-serif;
   color: var(--text); background: transparent;
