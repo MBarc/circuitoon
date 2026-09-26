@@ -757,10 +757,15 @@ function checkPotentials({ d, nl, netTerms, netWires, terminal, shorted, add }: 
       return i !== undefined && netTerms[i].some((o) => o.part !== p && !o.bare)
     })
   }
+  const checkedInputs = new Set<string>()
   nl.nets.forEach((_, i) => {
     const net = `#${i}`
     for (const t of netTerms[i]) {
       if (t.type !== 'power_in' || t.info.external.has(t.name)) continue
+      // Power pins joined inside the part (a strip's 5V and 5V 2) are one input: checked once.
+      const inputId = JSON.stringify([t.part.uid, t.info.comp.get(t.name)])
+      if (checkedInputs.has(inputId)) continue
+      checkedInputs.add(inputId)
       const accepts = knownRails(t.supply)
       if (!accepts) continue
       const direct = outOn.get(net) ?? []

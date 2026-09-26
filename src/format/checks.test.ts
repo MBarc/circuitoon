@@ -179,6 +179,15 @@ describe('checkDiagram', () => {
     it('passes a voltage the input lists', () => {
       expect(rules(powered('bat5', 'chipAny'))).not.toContain('supply-too-high')
     })
+    it('checks power pins joined inside the part once', () => {
+      const strip = mod('strip', [
+        { name: '5V', side: 'left', type: 'power_in', supply: '3V3' }, { name: '5V 2', side: 'right', type: 'power_in', supply: '3V3', label: '5V' },
+        { name: 'GND', side: 'left', type: 'ground' },
+      ], { internal: [['5V', '5V 2']] })
+      const d = sheet([part('BT1', 'bat5'), part('U1', 'chip33')], [wire('w1', 'bt1.+', 'u1.5V'), wire('w2', 'bt1.-', 'u1.GND')])
+      d.modules = { ...d.modules, chip33: { ...strip, id: 'chip33' } }
+      expect(rules(d)).toEqual(['supply-too-high'])
+    })
     it('uses the pin label the board prints', () => {
       const d = sheet([part('BT1', 'bat5'), part('U1', 'labelled')], [wire('w1', 'bt1.+', 'u1.P'), wire('w2', 'bt1.-', 'u1.G')])
       expect(only(d, 'supply-too-high')[0].message).toBe('U1 VDD accepts up to 3.3 V but gets 5 V from BT1 +.')
