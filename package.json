@@ -11,6 +11,7 @@
     "validate": "node scripts/validate-modules.ts",
     "check:gen": "node scripts/check-gen.mjs",
     "check:warnings-ui": "node scripts/check-warnings-ui.mjs",
+    "check:problems-ui": "node scripts/check-problems-ui.mjs",
     "deploy": "bash scripts/deploy.sh"
   },
   "dependencies": {

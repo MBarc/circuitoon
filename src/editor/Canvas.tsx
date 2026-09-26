@@ -14,8 +14,9 @@ import { modulesById } from '../library.ts'
 import { bodyRect } from '../format/geometry.ts'
 import { layoutModule } from '../format/module.ts'
 import { MODULE_MIME } from './LibraryPanel.tsx'
-import type { Diagram, Endpoint } from '../format/diagram.ts'
+import type { Connection, Diagram, Endpoint } from '../format/diagram.ts'
 import { partCaption } from '../format/values.ts'
+import { SeverityMark } from './SeverityMark.tsx'
 
 export type View = { x: number; y: number; scale: number }
 const MIN_SCALE = 0.25
@@ -38,6 +39,15 @@ const samePoints = (a: Pt[], b: Pt[]) => a.length === b.length && a.every((p, i)
 
 /** Length in px of the red stub drawn at a broken connection's resolvable end. */
 const BROKEN_STUB = 20
+/** The red stub drawn at a broken connection's one resolvable end, or null when neither end resolves. */
+function stubOf(d: Diagram, c: Connection): { d: string; ends: Pt[] } | null {
+  const at = brokenStub(d, c)
+  if (!at) return null
+  const dir = at.dir ?? { x: 0, y: -1 }
+  const tip = { x: at.end.x + dir.x * BROKEN_STUB, y: at.end.y + dir.y * BROKEN_STUB }
+  return { d: `M${at.end.x} ${at.end.y}L${tip.x} ${tip.y}`, ends: [at.end, tip] }
+}
+
 /** Path data for a filled circle at `p` with radius `r`, as two arcs: draws a whole net's worth of
  * highlight dots as one `<path>` instead of one `<circle>` element per point (Ruling 19). */
 const circlePath = (p: Pt, r: number) => `M${p.x - r} ${p.y}a${r} ${r} 0 1 0 ${2 * r} 0a${r} ${r} 0 1 0 ${-2 * r} 0`
@@ -77,7 +87,7 @@ const PinTargets = memo(
 )
 
 export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api: { addAtCenter: (moduleId: string) => void }) => void }) {
-  const { diagram, selection } = useEditorState(store)
+  const { diagram, selection, highlight, reveal } = useEditorState(store)
   const svgRef = useRef<SVGSVGElement>(null)
   const [size, setSize] = useState({ w: 800, h: 600 })
   const [view, setView] = useState<View>({ x: -20, y: -40, scale: 1.5 })
@@ -176,6 +186,41 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
 
   const vw = size.w / view.scale
   const vh = size.h / view.scale
+
+  // A problem's Select asks for its parts and wires to be shown: pan (and zoom out if they do not
+  // fit) only when they are not already fully in view.
+  useEffect(() => {
+    if (!reveal) return
+    const d = store.getState().diagram
+    const sel = store.getState().selection
+    const pts: Pt[] = []
+    for (const uid of sel.parts) {
+      const p = d.parts.find((q) => q.uid === uid)
+      const m = p && moduleOf(d, p.module)
+      if (!p || !m) continue
+      const r = bodyRect(p, layoutModule(m))
+      pts.push({ x: r.x, y: r.y }, { x: r.x + r.w, y: r.y + r.h })
+    }
+    for (const uid of sel.wires) {
+      const w = wires.find((x) => x.conn.uid === uid)
+      const c = w ? null : d.connections.find((x) => x.uid === uid)
+      pts.push(...(w?.points ?? (c && stubOf(d, c)?.ends) ?? []))
+    }
+    if (!pts.length) return
+    const pad = 40
+    const x0 = Math.min(...pts.map((p) => p.x)) - pad
+    const y0 = Math.min(...pts.map((p) => p.y)) - pad
+    const x1 = Math.max(...pts.map((p) => p.x)) + pad
+    const y1 = Math.max(...pts.map((p) => p.y)) + pad
+    setView((v) => {
+      const w = size.w / v.scale
+      const h = size.h / v.scale
+      if (x0 >= v.x && y0 >= v.y && x1 <= v.x + w && y1 <= v.y + h) return v
+      const scale = Math.max(MIN_SCALE, Math.min(v.scale, size.w / (x1 - x0), size.h / (y1 - y0)))
+      return { scale, x: (x0 + x1) / 2 - size.w / scale / 2, y: (y0 + y1) / 2 - size.h / scale / 2 }
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reveal])
 
   function openLabelEditor(uid: string) {
     const anchor = labelAnchor(wires.find((w) => w.conn.uid === uid)?.points ?? [])
@@ -501,6 +546,16 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
             s.holes.map((h, j) => <circle key={`${i}-${j}`} className={s.status === 'seated' ? 'seat-ok' : 'seat-bad'} cx={h.x} cy={h.y} r={4} />),
           )}
         </g>
+        {highlight && (
+          <g className={`problem-glow ${highlight.severity}`} fill="none" strokeLinecap="round" strokeLinejoin="round" pointerEvents="none">
+            {highlight.wires.map((uid) => {
+              const w = wires.find((x) => x.conn.uid === uid)
+              const c = w ? null : diagram.connections.find((x) => x.uid === uid)
+              const path = w?.d ?? (c && stubOf(diagram, c)?.d)
+              return path ? <path key={uid} d={path} strokeWidth={wireWidth(w?.conn.gauge) + 12} /> : null
+            })}
+          </g>
+        )}
         <g fill="none" strokeLinecap="round" strokeLinejoin="round">
           {wires.map(({ conn, d, blocked }) => {
             const w = wireWidth(conn.gauge)
@@ -539,11 +594,9 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
             data-wire like any wire, so a click selects it and Delete removes the connection. */}
         {diagram.connections.map((c) => {
           if (!nl.broken.includes(c.uid)) return null
-          const at = brokenStub(diagram, c)
-          if (!at) return null
-          const dir = at.dir ?? { x: 0, y: -1 }
-          const tip = { x: at.end.x + dir.x * BROKEN_STUB, y: at.end.y + dir.y * BROKEN_STUB }
-          const d = `M${at.end.x} ${at.end.y}L${tip.x} ${tip.y}`
+          const stub = stubOf(diagram, c)
+          if (!stub) return null
+          const d = stub.d
           return (
             <g key={c.uid} data-wire={c.uid} fill="none" strokeLinecap="round">
               <title>{`${c.uid}: cannot resolve both ends`}</title>
@@ -553,6 +606,26 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
             </g>
           )
         })}
+        {highlight && (
+          <g className={`problem-hi ${highlight.severity}`} pointerEvents="none">
+            {highlight.parts.map((uid) => {
+              const p = diagram.parts.find((q) => q.uid === uid)
+              const m = p && moduleOf(diagram, p.module)
+              if (!p || !m) return null
+              const r = bodyRect(p, layoutModule(m))
+              return (
+                <g key={uid}>
+                  <rect className="problem-halo" x={r.x - 7} y={r.y - 7} width={r.w + 14} height={r.h + 14} rx={8} />
+                  <SeverityMark severity={highlight.severity} at={{ x: r.x - 16, y: r.y - 16, size: 18 }} />
+                </g>
+              )
+            })}
+            {highlight.pins.map((ep) => {
+              const at = resolveEndpoint(diagram, ep)
+              return at ? <circle key={`${ep.part}/${ep.pin}`} className="problem-pin" cx={at.end.x} cy={at.end.y} r={6.5} /> : null
+            })}
+          </g>
+        )}
         {net.length > 0 && <path className="net-hi" d={net.map((p) => circlePath(p, 4)).join('')} pointerEvents="none" />}
         {drag?.kind === 'wire' && (
           <line
