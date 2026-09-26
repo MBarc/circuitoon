@@ -38,6 +38,8 @@ A pin's `supply` names the voltages the pin actually sees, never a symbolic rail
 - A power input lists every rail its datasheet range covers, joined with "/": Arduino Nano VIN (7-12 V) "7V/7.4V/9V/12V", LM2596 IN+ (4.5-40 V) "5V/7.4V/9V/12V/24V", Pico VSYS (1.8-5.5 V) "5V/3.7V/3V3".
 - "ADJ" means user-set: an adjustable output (LM2596 OUT+) whose voltage is the part's editable value. A future wrong-voltage checker treats "ADJ" as compatible with any rail but notes the hookup so the user confirms the setting.
 - Pass-through parts (USB panel-mount cables) neither supply nor ground anything: every conductor, VBUS and GND included, is `passive` with no supply.
+- A board with a USB (or barrel) connector declares the pin that carries the connector's voltage in `electrical.external`: `[{ "pin": "5V", "volts": 5, "via": "USB" }]` (a DevKit's 5V or VIN, a Pico's VBUS, a Nano's 5V; never a VIN that only feeds a regulator). Take it from the board's schematic or maker docs and cite them in `source`; leave it out when no source says which pin it is. The wiring checker treats that pin as a supply while the board sits on USB, so a board without it (the ESP32-CAM) must be powered from the sheet.
+- A part whose output is its editable `voltage` value (a battery, an adjustable buck) supplies that value: the checker reads the value set on the sheet, not the pin's `supply` string.
 
 ## Categories (src/editor/libraryGroups.ts CATEGORY_ORDER)
 Batteries, Prototyping, Power, Microcontrollers, Sensors, Communication, Displays, Motors and actuators, Chips, Semiconductors, Passives, Indicators, Switches, Connectors, then others alphabetically. Planned: "Microcontrollers" becomes "Boards" once full-size Raspberry Pis land. Empty groups are hidden.

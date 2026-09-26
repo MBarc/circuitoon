@@ -96,13 +96,15 @@ function headerH(y, at) {
 
 // ---------------------------------------------------------------------------------------------
 // 2. Tower Pro SG90 micro servo, seen from above with its three-wire lead leaving at the left. The
-//    JR connector carries, in lead order, brown Ground, red +V (4.8 to 6 V), orange PWM signal
+//    JR connector carries, in lead order, brown Ground, red +V (4.8 to 6 V: Tower Pro's product page gives
+//    "Operating voltage: 4.8v" and "Voltages from 4.8V - 6V are fine"; the Handsontec sheet gives
+//    torque and speed at 4.8 V only), orange PWM signal
 //    (Tower Pro / Handsontec datasheet: "PWM=Orange, Vcc=Red, Ground=Brown", connector pinout
 //    Ground, +V Power, Signal). The pins are the connector's contacts; the wires are drawn in their
 //    colors from the connector to the case.
 {
   const wu = 15, hu = 7, W = wu * 10, H = hu * 10
-  const types = { GND: { type: 'ground' }, VCC: { type: 'power_in', supply: '5V' }, PWM: { type: 'input' } }
+  const types = { GND: { type: 'ground' }, VCC: { type: 'power_in', supply: '4.8V/5V/6V' }, PWM: { type: 'input' } }
   const left = side('left', ['GND', 'VCC', 'PWM'], types, hu)
   const colors = { GND: WIRE_BROWN, VCC: WIRE_RED, PWM: WIRE_ORANGE }
   const shapes = [
@@ -123,7 +125,7 @@ function headerH(y, at) {
   ]
   write('servo-sg90.json', moduleJson({
     inside: true, id: 'servo-sg90', name: 'Micro servo SG90', category: 'Motors and actuators',
-    source: 'https://handsontec.com/dataspecs/motor_fan/SG90-Servo.pdf https://www.airsupplylab.com/embedded-info/emb_hardware-information/emb-hwinfo_tower-pro-sg90-micro-servo.html',
+    source: 'https://handsontec.com/dataspecs/motor_fan/SG90-Servo.pdf https://www.airsupplylab.com/embedded-info/emb_hardware-information/emb-hwinfo_tower-pro-sg90-micro-servo.html https://www.towerpro.com.tw/product/sg90-7/',
     pins: left.pins, wu, hu, electrical: { model: 'servo', params: {} }, shapes,
   }))
 }

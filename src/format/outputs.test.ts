@@ -89,7 +89,8 @@ describe('built-in relay, servo, motor driver, radio and level shifter keep the 
     expect(pin(relay, 'IN')?.type).toBe('input')
     for (const n of ['NO', 'COM', 'NC']) expect(pin(relay, n)?.type).toBe('passive')
     const servo = load('servo-sg90.json')
-    expect(pin(servo, 'VCC')).toMatchObject({ type: 'power_in', supply: '5V' })
+    // Tower Pro: 4.8 V rated, "4.8V - 6V are fine".
+    expect(pin(servo, 'VCC')).toMatchObject({ type: 'power_in', supply: '4.8V/5V/6V' })
     expect(pin(servo, 'PWM')?.type).toBe('input')
     const l298n = load('l298n-module.json')
     for (const n of ['OUT1', 'OUT2', 'OUT3', 'OUT4']) expect(pin(l298n, n)?.type).toBe('output')

@@ -128,7 +128,9 @@ function build({ id, name, source, shapes }) {
     pins: [...pinsFor('left', LEFT), ...pinsFor('right', RIGHT), ...pinsFor('bottom', BOTTOM)],
     internal: [GROUNDS],
     size: { w: WU, h: HU },
-    electrical: { model: 'mcu', params: {} },
+    // Datasheet: "VBUS is the micro-USB input voltage, connected to micro-USB port pin 1. This is
+    // nominally 5 V". The wiring checker treats it as a 5 V source, assuming the board sits on USB.
+    electrical: { model: 'mcu', params: {}, external: [{ pin: 'VBUS', volts: 5, via: 'USB' }] },
     art: { w: W, h: H, pinLabels: 'inside', shapes: [r(0, 0, W, H, PCB, { radius: 4 }), ...shapes] },
   }
   emit(OUT + id + '.json', JSON.stringify(m, null, 2) + '\n')

@@ -186,7 +186,14 @@
   },
   "electrical": {
     "model": "breakout",
-    "params": {}
+    "params": {},
+    "external": [
+      {
+        "pin": "5V",
+        "volts": 5,
+        "via": "the DevKit's USB"
+      }
+    ]
   },
   "art": {
     "w": 260,

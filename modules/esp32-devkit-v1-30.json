@@ -4,7 +4,7 @@
   "version": 1,
   "name": "ESP32 DevKit V1 (30 pin, DOIT)",
   "category": "Microcontrollers",
-  "source": "https://mischianti.org/doit-esp32-dev-kit-v1-high-resolution-pinout-and-specs/ https://lastminuteengineers.com/esp32-pinout-reference/",
+  "source": "https://mischianti.org/doit-esp32-dev-kit-v1-high-resolution-pinout-and-specs/ https://lastminuteengineers.com/esp32-pinout-reference/ https://mischianti.org/wp-content/uploads/2024/11/DOIT-ESP32-DevKit-V1-schematics.pdf",
   "pins": [
     {
       "spacer": true,
@@ -167,7 +167,14 @@
   },
   "electrical": {
     "model": "mcu",
-    "params": {}
+    "params": {},
+    "external": [
+      {
+        "pin": "VIN",
+        "volts": 5,
+        "via": "USB"
+      }
+    ]
   },
   "art": {
     "w": 120,

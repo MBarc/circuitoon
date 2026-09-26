@@ -223,7 +223,14 @@
   },
   "electrical": {
     "model": "mcu",
-    "params": {}
+    "params": {},
+    "external": [
+      {
+        "pin": "VBUS",
+        "volts": 5,
+        "via": "USB"
+      }
+    ]
   },
   "art": {
     "w": 120,

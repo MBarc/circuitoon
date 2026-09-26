@@ -4,7 +4,7 @@
   "version": 1,
   "name": "ESP32-S3-DevKitC-1",
   "category": "Microcontrollers",
-  "source": "https://docs.espressif.com/projects/esp-dev-kits/en/latest/esp32s3/esp32-s3-devkitc-1/user_guide_v1.1.html https://docs.espressif.com/projects/esp-dev-kits/en/latest/esp32s3/_images/ESP32-S3_DevKitC-1_pinlayout_v1.1.jpg",
+  "source": "https://docs.espressif.com/projects/esp-dev-kits/en/latest/esp32s3/esp32-s3-devkitc-1/user_guide_v1.1.html https://docs.espressif.com/projects/esp-dev-kits/en/latest/esp32s3/_images/ESP32-S3_DevKitC-1_pinlayout_v1.1.jpg https://dl.espressif.com/dl/schematics/SCH_ESP32-S3-DevKitC-1_V1.1_20221130.pdf",
   "pins": [
     {
       "spacer": true,
@@ -232,7 +232,14 @@
   },
   "electrical": {
     "model": "mcu",
-    "params": {}
+    "params": {},
+    "external": [
+      {
+        "pin": "5V",
+        "volts": 5,
+        "via": "USB"
+      }
+    ]
   },
   "art": {
     "w": 120,

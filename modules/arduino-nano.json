@@ -4,7 +4,7 @@
   "version": 1,
   "name": "Arduino Nano (ATmega328P)",
   "category": "Microcontrollers",
-  "source": "https://docs.arduino.cc/resources/pinouts/A000005-full-pinout.pdf https://docs.arduino.cc/hardware/nano/ https://lastminuteengineers.com/arduino-nano-pinout/",
+  "source": "https://docs.arduino.cc/resources/pinouts/A000005-full-pinout.pdf https://docs.arduino.cc/hardware/nano/ https://lastminuteengineers.com/arduino-nano-pinout/ https://docs.arduino.cc/resources/schematics/A000005-schematics.pdf",
   "pins": [
     {
       "spacer": true,
@@ -167,7 +167,14 @@
   },
   "electrical": {
     "model": "mcu",
-    "params": {}
+    "params": {},
+    "external": [
+      {
+        "pin": "5V",
+        "volts": 5,
+        "via": "USB"
+      }
+    ]
   },
   "art": {
     "w": 80,
