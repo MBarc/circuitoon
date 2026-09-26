@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { holeAt, holeAtPoint, holeIndex, mountIssues, plugOfPin, plugsOf, pointKey, seatOf, seatOn, splitBoards } from './breadboard.ts'
-import type { Diagram } from './diagram.ts'
+import { holeAt, holeAtPoint, holeEndAt, holeIndex, mountIssues, plugOfPin, plugsOf, pointKey, seatOf, seatOn, splitBoards } from './breadboard.ts'
+import { computeRoutes, type Diagram } from './diagram.ts'
+import { netlist, nodeKey } from './netlist.ts'
 import type { ModuleDef } from './module.ts'
 
 /** A 100 x 60 test board (pivot 50, 30): nine vertical strips s1..s9 at x = 10..90, five holes each at y = 10..50. */
@@ -184,6 +185,46 @@ describe('holeAtPoint', () => {
   })
   it('finds nothing on a module without holes', () => {
     expect(holeAtPoint({ uid: 'p', designator: 'R1', module: 'two', x: 0, y: 0 }, two, { x: 0, y: 20 })).toBeNull()
+  })
+})
+
+describe('holeEndAt', () => {
+  /** A header module: one pad group inside a 40 x 20 body, pins on no side, a routing obstacle (the default). */
+  const header: ModuleDef = {
+    format: 'circuitoon-module/1', id: 'hdr', name: 'Header', pins: [], size: { w: 4, h: 2 },
+    holes: [{ name: 'P1', at: [[10, 10], [30, 10]], holeStyle: 'pad' }],
+  }
+  const withHeader = (): Diagram => {
+    const d = sheet()
+    d.modules.hdr = header
+    d.parts.push({ uid: 'h', designator: 'J1', module: 'hdr', x: 200, y: 0 })
+    return d
+  }
+  it('resolves a hole on a board and a pad on any module with hole groups, not only boards', () => {
+    const d = withHeader()
+    expect(holeEndAt(d, 'b', { x: 11, y: 12 })).toEqual({ part: 'b', pin: 's1', hole: 0 })
+    expect(holeEndAt(d, 'h', { x: 231, y: 9 })).toEqual({ part: 'h', pin: 'P1', hole: 1 })
+  })
+  it('resolves nothing between pads, on a part without holes, or on a missing part or module', () => {
+    const d = withHeader()
+    expect(holeEndAt(d, 'h', { x: 220, y: 10 })).toBeNull()
+    expect(holeEndAt(d, 'p1', { x: 10, y: 20 })).toBeNull()
+    expect(holeEndAt(d, 'zz', { x: 10, y: 20 })).toBeNull()
+    d.parts.push({ uid: 'x', designator: 'X1', module: 'gone', x: 0, y: 0 })
+    expect(holeEndAt(d, 'x', { x: 10, y: 10 })).toBeNull()
+  })
+  it('gives a pad end a wire can start and finish on: it conducts and routes', () => {
+    const d = withHeader()
+    const from = holeEndAt(d, 'h', { x: 210, y: 10 })!
+    const to = holeEndAt(d, 'b', { x: 90, y: 50 })!
+    d.connections.push({ uid: 'w1', from, to })
+    const n = netlist(d)
+    expect(n.broken).toEqual([])
+    expect(n.netOf.get(nodeKey('h', 'P1'))).toBe(n.netOf.get(nodeKey('b', 's9')))
+    const r = computeRoutes(d).get('w1')!
+    expect(r.blocked).toBe(false)
+    expect(r.points[0]).toEqual({ x: 210, y: 10 })
+    expect(r.points[r.points.length - 1]).toEqual({ x: 90, y: 50 })
   })
 })
 

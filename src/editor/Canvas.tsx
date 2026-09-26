@@ -2,7 +2,7 @@
 import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import { type EditorStore, useEditorState } from './store.ts'
 import { brokenStub, computeRoutes, labelAnchor, moduleOf, pinTargets, resolveEndpoint, wireColor, wirePaths, wireWidth, type PartInstance, type PinTarget, type Routes } from '../format/diagram.ts'
-import { holeAtPoint, plugsOf, splitBoards } from '../format/breadboard.ts'
+import { holeEndAt, plugsOf, splitBoards } from '../format/breadboard.ts'
 import type { Pt } from '../format/geometry.ts'
 import { Part, INK } from '../render/Part.tsx'
 import { LegDots, TakenHoles } from '../render/Boards.tsx'
@@ -12,7 +12,7 @@ import { netlist, netPoints } from '../format/netlist.ts'
 import { bendHandleAt, insertBend, isOrthogonal, moveSegment, removeBend, segmentHandleAt, segmentsOf, toRoute, type Axis } from '../format/wireEdit.ts'
 import { modulesById } from '../library.ts'
 import { bodyRect } from '../format/geometry.ts'
-import { isBoard, layoutModule } from '../format/module.ts'
+import { layoutModule } from '../format/module.ts'
 import { MODULE_MIME } from './LibraryPanel.tsx'
 import type { Diagram, Endpoint } from '../format/diagram.ts'
 import { partCaption } from '../format/values.ts'
@@ -352,30 +352,23 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
     return el ? { part: el.getAttribute('data-pin-part')!, pin: el.getAttribute('data-pin')! } : null
   }
   /**
-   * The hole under the pointer on the topmost part there, if that part is a board and a hole is
-   * within 3.5 px. Walks the full elementsFromPoint stack, not just the topmost element, so a
-   * wire or label drawn over a board does not hide the hole beneath it; a part drawn above the
-   * board (which has no holes of its own there) still occludes it, since it is the first part found.
+   * The hole or pad under the pointer on the topmost part there, if that part has hole groups (a
+   * board, or any module with interior pads) and a hole is within 3.5 px (`holeEndAt`). Walks the
+   * full elementsFromPoint stack, not just the topmost element, so a wire or label drawn over a
+   * board does not hide the hole beneath it; a part drawn above the board (which has no holes of
+   * its own there) still occludes it, since it is the first part found.
    */
   function holeUnder(e: { clientX: number; clientY: number }): Endpoint | null {
-    const stack = document.elementsFromPoint(e.clientX, e.clientY)
-    let partEl: Element | null = null
-    for (const el of stack) {
-      const found = el.closest('[data-part]')
-      if (found) {
-        partEl = found
-        break
-      }
+    for (const el of document.elementsFromPoint(e.clientX, e.clientY)) {
+      const partEl = el.closest('[data-part]')
+      if (partEl) return holeEndAt(store.getState().diagram, partEl.getAttribute('data-part')!, toWorld(e))
     }
-    if (!partEl) return null
-    const d = store.getState().diagram
-    const part = d.parts.find((p) => p.uid === partEl!.getAttribute('data-part'))
-    const m = part && moduleOf(d, part.module)
-    if (!part || !m || !isBoard(m)) return null
-    const hit = holeAtPoint(part, m, toWorld(e))
-    return hit && { part: hit.board, pin: hit.group, hole: hit.hole }
+    return null
   }
-  /** What a wire end would attach to under the pointer: a pin first (its target sits on top), else a hole. */
+  /**
+   * The one terminal-hit policy, shared by hover, pressing and dropping a wire end: a pin first (its
+   * target sits on top), else a hole or pad on the topmost part under the pointer.
+   */
   function endUnder(e: { clientX: number; clientY: number }): Endpoint | null {
     return pinUnder(e) ?? holeUnder(e)
   }

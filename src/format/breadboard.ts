@@ -2,7 +2,7 @@
 // board, and which mounted legs plug into which holes. Pure; per-board hole lookups are cached
 // by part object identity, and parts are replaced (never mutated) on every edit, so a moved
 // board simply gets a fresh index.
-import { type Diagram, type PartInstance, moduleOf } from './diagram.ts'
+import { type Diagram, type Endpoint, type PartInstance, moduleOf } from './diagram.ts'
 import { type PlugPoint, type Pt, type Rotation, type WorldHoleGroup, pivot, plugPoints, rotateVec, worldHoles } from './geometry.ts'
 import { GRID, type ModuleDef, isBoard, isSpacer, layoutModule } from './module.ts'
 
@@ -86,6 +86,19 @@ export function holeAtPoint(part: PartInstance, m: ModuleDef, p: Pt, radius = 3.
   if (Math.hypot(local.x - gx, local.y - gy) > radius) return null
   const hit = localHoles(m).get(`${gx},${gy}`)
   return hit ? { board: part.uid, group: m.holes[hit[0]].name, hole: hit[1] } : null
+}
+
+/**
+ * The wire end a pointer at `p` picks on part `uid`: a hole or pad of any module with hole groups
+ * (a breadboard, or an interior header whose pads are routing obstacles), within the hole target
+ * radius. Mounting is a board-only matter; wiring is not. Null for a missing part or module, or no
+ * hole near `p`. Hover, pressing and dropping a wire end all pick through this.
+ */
+export function holeEndAt(d: Diagram, uid: string, p: Pt): Endpoint | null {
+  const part = d.parts.find((q) => q.uid === uid)
+  const m = part && moduleOf(d, part.module)
+  const hit = part && m ? holeAtPoint(part, m, p) : null
+  return hit && { part: hit.board, pin: hit.group, hole: hit.hole }
 }
 
 export interface Plug {
