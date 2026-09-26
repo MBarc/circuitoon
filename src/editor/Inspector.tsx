@@ -121,9 +121,17 @@ function StubMark() {
   )
 }
 
+/** Focuses the element with this id once React has drawn the next state (the panel swaps content). */
+function focusSoon(find: () => HTMLElement | null) {
+  requestAnimationFrame(() => find()?.focus())
+}
+
 /**
  * Every broken connection on the sheet, with Select and Delete. A connection whose two ends both
  * fail has nothing to draw on the canvas; this list is where it can still be found and removed.
+ * Focus never falls to the page: Select moves it to the wire panel's heading; Delete moves it to
+ * the next row's Select (the previous row's after the last one), or to the panel heading once the
+ * list is gone.
  */
 function BrokenList({ store, broken }: { store: EditorStore; broken: BrokenConnection[] }) {
   const one = broken.length === 1
@@ -136,7 +144,7 @@ function BrokenList({ store, broken }: { store: EditorStore; broken: BrokenConne
         {one ? 'It names' : 'Each names'} a part, pin or hole that is not on the sheet, so it connects nothing. Delete it, and draw the wire again if you still need it.
       </p>
       <ul>
-        {broken.map((b) => (
+        {broken.map((b, i) => (
           <li key={b.uid}>
             <StubMark />
             <div className="broken-text">
@@ -144,7 +152,16 @@ function BrokenList({ store, broken }: { store: EditorStore; broken: BrokenConne
               <span className="broken-missing">Not found: {b.missing.join(', ')}</span>
             </div>
             <div className="broken-actions">
-              <button type="button" className="tool small" aria-label={`Select ${b.name}`} onClick={() => store.select({ parts: [], wires: [b.uid] })}>
+              <button
+                type="button"
+                className="tool small"
+                data-broken-select={b.uid}
+                aria-label={`Select ${b.name}`}
+                onClick={() => {
+                  store.select({ parts: [], wires: [b.uid] })
+                  focusSoon(() => document.getElementById('wire-title'))
+                }}
+              >
                 Select
               </button>
               <button
@@ -154,6 +171,12 @@ function BrokenList({ store, broken }: { store: EditorStore; broken: BrokenConne
                 onClick={() => {
                   const s = store.getState()
                   store.commit(deleteSelection(s.diagram, { parts: [], wires: [b.uid] }))
+                  const next = (broken[i + 1] ?? broken[i - 1])?.uid
+                  focusSoon(() =>
+                    (next !== undefined
+                      ? document.querySelector<HTMLElement>(`[data-broken-select="${CSS.escape(next)}"]`)
+                      : null) ?? document.getElementById('broken-title') ?? document.getElementById('sheet-heading'),
+                  )
                 }}
               >
                 Delete
@@ -179,7 +202,7 @@ export function Inspector({ store }: { store: EditorStore }) {
   if (count === 0)
     return (
       <aside className="inspector" aria-label="Properties">
-        <h2>Sheet</h2>
+        <h2 id="sheet-heading" tabIndex={-1}>Sheet</h2>
         <CommitInput id="sheet-title" label="Title" value={diagram.title} onCommit={(title) => store.commit({ ...diagram, title: title.trim() || 'Untitled sheet' })} />
         <p className="hint">Drag from a pin tip or a hole to another pin or hole to add a wire. Drag the paper to pan, scroll to zoom. R rotates, Delete removes, Ctrl+Z undoes.</p>
         {broken.length > 0 && <BrokenList store={store} broken={broken} />}
@@ -251,7 +274,7 @@ export function Inspector({ store }: { store: EditorStore }) {
   }
   return (
     <aside className="inspector" aria-label="Properties">
-      <h2>Wire</h2>
+      <h2 id="wire-title" tabIndex={-1}>Wire</h2>
       <div className="field" role="group" aria-label="Color">
         Color
         <div className="swatches">

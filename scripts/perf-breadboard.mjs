@@ -9,7 +9,9 @@
 // wire (a click between holes still selects the wire, and the selected wire's end handle still
 // wins), holes of a board placed off the world grid, pads on a module that is not a board, and a
 // wire to a missing hole drawn as a dashed red stub that can be selected and deleted, and the
-// broken connections badge and list (select, delete, a connection with neither end on the sheet). Last, the Parts panel and the dark theme.
+// broken connections badge and list (select, delete, a connection with neither end on the sheet,
+// where focus goes after each), and Select then Delete from the side panel for a connection with
+// neither end on the sheet. Last, the Parts panel and the dark theme.
 //
 // Usage (repo root, after `npm run build`):
 //   node scripts/perf-breadboard.mjs [--out <dir>] [--port 4191]
@@ -522,6 +524,9 @@ console.log('saved', join(out, 'broken-list-light.png'))
 // The badge brings the list back while something else is selected.
 await page.getByRole('button', { name: 'Select BB1 c1-top hole 0 to BB1 c2-top hole 99' }).click()
 await pause()
+const focusId = () => page.evaluate(() => document.activeElement?.id ?? '')
+const focusSelects = () => page.evaluate(() => document.activeElement?.getAttribute('data-broken-select') ?? '')
+check((await focusId()) === 'wire-title', `Select moves focus to the wire panel's heading (focus on "${await focusId()}")`)
 check((await page.locator('.inspector .hint.warn').textContent())?.startsWith('Broken: BB1 c2-top hole 99 is not on the sheet'), 'Select shows the broken wire in the side panel, with no promise of handles')
 check((await page.locator('[data-wire="w1"] path').count()) === 3, 'Select highlights its stub on the sheet')
 await page.locator('.inspector').screenshot({ path: join(out, 'broken-wire-selected.png') })
@@ -531,6 +536,7 @@ await pause()
 check((await page.locator('.broken li').count()) === 2 && (await page.evaluate(() => document.activeElement?.id)) === 'broken-title', 'the badge clears the selection and moves focus to the list')
 await page.getByRole('button', { name: 'Delete Sensor power' }).click()
 await pause()
+check((await focusSelects()) === 'w1', `deleting the last row moves focus to the row before it, its Select button (focus on "${await focusSelects()}")`)
 const afterListDelete = await exported()
 check(afterListDelete.connections.map((c) => c.uid).join() === 'w1', `Delete in the list removes the connection with no end on the sheet (${afterListDelete.connections.map((c) => c.uid).join()})`)
 check((await badge.textContent()) === '1 broken connection', 'the badge counts down')
@@ -545,6 +551,25 @@ await shot('broken-stub-selected.png')
 await page.keyboard.press('Delete')
 await pause()
 check((await count('.wire-broken')) === 0 && (await exported()).connections.length === 0, 'Delete removes the broken wire')
+
+// Focus after a Delete in the list, and Select then Delete from the side panel for a connection
+// with neither end on the sheet (it draws nothing, so the panel is the only way to it).
+await load(brokenFile, 'bb3')
+await page.getByRole('button', { name: 'Delete BB1 c1-top hole 0 to BB1 c2-top hole 99' }).click()
+await pause()
+check((await focusSelects()) === 'w2', `deleting a row moves focus to the next row's Select button (focus on "${await focusSelects()}")`)
+await page.getByRole('button', { name: 'Select Sensor power' }).click()
+await pause()
+check((await focusId()) === 'wire-title', 'Select on a connection with no end on the sheet opens its wire panel, focused')
+await page.locator('.inspector > button.tool', { hasText: 'Delete' }).click()
+await pause()
+check((await exported()).connections.length === 0 && (await badge.count()) === 0, 'Delete in the wire panel removes the connection with no end on the sheet, and the badge goes away')
+await load(brokenFile, 'bb3')
+await page.getByRole('button', { name: 'Delete Sensor power' }).click()
+await pause()
+await page.getByRole('button', { name: 'Delete BB1 c1-top hole 0 to BB1 c2-top hole 99' }).click()
+await pause()
+check((await focusId()) === 'sheet-heading', `deleting the only row left moves focus to the panel heading (focus on "${await focusId()}")`)
 
 // --- The Parts panel and the dark theme. ---
 const heads = await page.locator('.lib-group-head').evaluateAll((els) => els.map((e) => [e.children[0].textContent, e.children[1].textContent]))
