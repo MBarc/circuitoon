@@ -18,8 +18,11 @@ function sheet(parts: PartInstance[], wires: Wire[]): Diagram {
     return hole === undefined ? { part, pin } : { part, pin, hole: Number(hole) }
   }
   const connections: Connection[] = wires.map(([a, b]) => ({ uid: `w${++n}`, from: ep(a), to: ep(b) }))
-  return { format: 'circuitoon-diagram/1', title: 't', modules, parts, connections }
+  return built({ format: 'circuitoon-diagram/1', title: 't', modules, parts, connections })
 }
+/** Every sheet the tests build, for the order-independence property at the end. */
+const fixtures: Diagram[] = []
+const built = (d: Diagram) => (fixtures.push(d), d)
 const at = (uid: string, designator: string, module: string, x = 0, extra: Partial<PartInstance> = {}): PartInstance =>
   ({ uid, designator, module, x, y: 0, rotation: 0, ...extra })
 const volts = (v: number) => ({ values: { voltage: { value: v, unit: 'V' } } })
@@ -264,7 +267,7 @@ function custom(raw: Record<string, unknown>): ModuleDef {
 function sheetWith(mods: ModuleDef[], parts: PartInstance[], wires: Wire[]): Diagram {
   const ids = new Set(mods.map((m) => m.id))
   const d = sheet(parts.filter((p) => !ids.has(p.module)), wires)
-  return { ...d, parts, modules: { ...d.modules, ...Object.fromEntries(mods.map((m) => [m.id, m])) } }
+  return built({ ...d, parts, modules: { ...d.modules, ...Object.fromEntries(mods.map((m) => [m.id, m])) } })
 }
 
 describe('grounds are joined only where the module says so', () => {
@@ -468,4 +471,43 @@ describe('the hobbyist review sheets', () => {
     it(name, () => {
       expect(rules(sheet(parts, wires))).toEqual(expected)
     })
+})
+
+describe('diode-fed USB pins resolve the same whatever the part order', () => {
+  // A 3 V pack lifts Nano GND 3 V above Pico GND; Nano 5V (8 V over Pico GND) and Pico VSYS share a
+  // net that also feeds a BME280. The Nano's diode wins: the sensor and Pico VSYS both see 8 V.
+  const parts = [at('u1', 'U1', 'arduino-nano'), at('u2', 'U2', 'rpi-pico', 300), at('bt1', 'BT1', 'battery-holder-2xaa', 600), at('u3', 'U3', 'bme280-module-4pin', 900)]
+  const wires: Wire[] = [['bt1|-', 'u2|GND'], ['bt1|+', 'u1|GND'], ['u1|5V', 'u2|VSYS'], ['u3|VIN', 'u2|VSYS'], ['u3|GND', 'u2|GND 2']]
+  it('Nano first or Pico first: the sensor overvoltage and the VSYS limit both appear', () => {
+    const a = checkDiagram(sheet(parts, wires))
+    const b = checkDiagram(sheet([...parts].reverse(), wires))
+    expect(a.map((f) => f.id).sort()).toEqual(b.map((f) => f.id).sort())
+    expect(a.map((f) => f.message).sort()).toEqual([
+      'U2 VSYS accepts up to 5.5 V but gets 8 V from BT1 + and U1 5V in series. Use a 5.5 V supply instead.',
+      'U3 VIN accepts up to 5 V but gets 8 V from BT1 + and U1 5V in series. Use a 5 V supply instead.',
+    ])
+  })
+})
+
+/** A seeded shuffle, so a failure can be replayed. */
+function shuffled<T>(list: T[], seed: number): T[] {
+  const out = [...list]
+  let x = seed
+  for (let i = out.length - 1; i > 0; i--) {
+    x = (x * 1103515245 + 12345) % 2147483648
+    const j = x % (i + 1)
+    ;[out[i], out[j]] = [out[j], out[i]]
+  }
+  return out
+}
+
+describe('order independence (every sheet built above)', () => {
+  it('shuffling the parts and the wires never changes the findings', () => {
+    expect(fixtures.length).toBeGreaterThan(80)
+    for (const d of fixtures) {
+      const ids = (x: Diagram) => checkDiagram(x).map((f) => f.id).sort()
+      const want = ids(d)
+      for (const seed of [1, 2, 3]) expect(ids({ ...d, parts: shuffled(d.parts, seed), connections: shuffled(d.connections, seed + 7) })).toEqual(want)
+    }
+  })
 })

@@ -843,29 +843,57 @@ function checkPotentials({ d, nl, netTerms, netWires, terminal, shorted, add }: 
     return `When ${ext.via} is plugged in, ${termName(pin)} gets ${volts(ext.volts)} from ${ext.via}, which pushes current back into ${name} (${volts(v)}) and can damage ${harm}. ${fix}`
   }
 
-  // USB pins behind a diode only raise their net. Where the rest of the sheet already sets the
-  // net over the board's ground, the pin is a load: fine at or above its USB voltage (up to its
-  // own limit); below it, USB pushes current into what holds the net down. Elsewhere it is a
-  // supply like any other.
-  const placed: Edge[] = []
-  const joinedTo = new Map<string, string>()
-  const top = (n: string): string => {
-    let r = groupOf.get(n) ?? n
-    while (joinedTo.has(r)) r = joinedTo.get(r)!
-    return r
+  // USB pins behind a diode only raise their net. Resolved in two steps, independent of the order
+  // of parts and wires:
+  // 1. Groups of the walk so far move as rigid bodies. A diode pin whose net and board ground are
+  //    in different groups lifts its net's group to at least its own voltage; every such group
+  //    settles at the highest lift (a fixed point over all diode pins, so one diode-fed group can
+  //    lift another). The diode that sets a group's level (ties broken by pin key) conducts and
+  //    joins the two groups; the others are off.
+  // 2. After walking again, every diode pin that does not conduct is a load: fine at or above its
+  //    USB voltage up to its own limit, and below it (possible only when the rest of the sheet
+  //    holds its net over the same ground) USB pushes current into what holds the net down.
+  const level = (e: Edge) => {
+    const [a, b] = [pot.get(e.from), pot.get(e.to)]
+    return a && b && !a.u.size && !b.u.size ? a.c + e.v! - b.c : null
+  }
+  const cross = [...diodes].sort((x, y) => (x.src!.term.key < y.src!.term.key ? -1 : 1))
+    .filter((e) => (groupOf.get(e.from) ?? e.from) !== (groupOf.get(e.to) ?? e.to))
+  const gOf = (n: string) => groupOf.get(n) ?? n
+  const lifted = new Set(cross.map((e) => gOf(e.to)))
+  const off = new Map<string, number>()
+  const offOf = (g: string) => off.get(g) ?? (lifted.has(g) ? -Infinity : 0)
+  for (let round = 0; round <= cross.length; round++) {
+    let moved = false
+    for (const e of cross) {
+      const w = level(e) ?? 0
+      const from = offOf(gOf(e.from))
+      if (from === -Infinity) continue
+      if (from + w > offOf(gOf(e.to)) + EPS) {
+        off.set(gOf(e.to), from + w)
+        moved = true
+      }
+    }
+    if (!moved) break
+  }
+  const conducting = new Set<Edge>()
+  for (const g of lifted) {
+    const want = offOf(g)
+    const setter = cross.find((e) => gOf(e.to) === g && offOf(gOf(e.from)) !== -Infinity && Math.abs(offOf(gOf(e.from)) + (level(e) ?? 0) - want) <= EPS)
+      ?? cross.find((e) => gOf(e.to) === g)
+    if (setter) conducting.add(setter)
+  }
+  if (conducting.size) {
+    edges.push(...conducting)
+    walk()
   }
   for (const e of diodes) {
+    if (conducting.has(e)) continue
     const s = e.src!
     const ext = s.external!
     const pin = s.term
-    const [a, b] = [top(e.from), top(e.to)]
-    if (a !== b) {
-      placed.push(e)
-      joinedTo.set(a, b)
-      continue
-    }
     const g = groupOf.get(e.from)
-    if (g === undefined || g !== groupOf.get(e.to)) continue // tied only through another diode pin: both only raise it
+    if (g === undefined || g !== groupOf.get(e.to)) continue
     const way = path(e.from, e.to)
     if (way.some((x) => broken.has(x.e))) continue
     const diff = minus(pot.get(e.to)!, pot.get(e.from)!)
@@ -876,18 +904,13 @@ function checkPotentials({ d, nl, netTerms, netWires, terminal, shorted, add }: 
       const open = [...diff.u.keys()].map((id) => sources.get(id)!)
       add({ rule: 'supply-unknown', message: `${termName(pin)} voltage depends on ${andList(sorted(open).map((x) => `${termName(x.term)} (${reason(x)})`))} and cannot be checked.`, ...base })
     } else if (diff.c < ext.volts - EPS)
-      add({ rule: 'supplies-fight', ...base,
-        message: backFeed(pin, ext, under, what, diff.c) })
+      add({ rule: 'supplies-fight', ...base, message: backFeed(pin, ext, under, what, diff.c) })
     else {
       const rails = knownRails(pin.supply)
       const max = ext.max ?? (rails ? Math.max(...rails) : undefined)
       if (max !== undefined && diff.c > max + EPS)
         add({ rule: 'supply-too-high', ...base, message: tooHigh(pin, max, diff.c, under, what) })
     }
-  }
-  if (placed.length) {
-    edges.push(...placed)
-    walk()
   }
 
   // A supply of unknown voltage tied to another supply cannot be placed: say they are tied.
