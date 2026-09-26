@@ -80,7 +80,7 @@
       "name": "VIN",
       "side": "left",
       "type": "power_in",
-      "supply": "5V"
+      "supply": "5V/7V/9V/12V"
     },
     {
       "spacer": true,

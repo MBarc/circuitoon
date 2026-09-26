@@ -118,13 +118,17 @@ build({
 })
 
 // 2. DOIT ESP32 DevKit V1, 30 pin. No official DOIT page; photo-based pinouts from two independent sites agree.
+//    VIN feeds the 3.3 V LDO: the DOIT schematic (mischianti's copy; the host answers 403 to plain
+//    fetchers but serves browsers, and the schematic is also linked from the cited pinout page)
+//    shows an NCP1117 (onsemi datasheet: input 20 V max); clones fit an AMS1117 (Advanced Monolithic
+//    datasheet ds1117: input 15 V max). VIN therefore lists 5 V up to 12 V, well inside both.
 build({
   file: 'esp32-devkit-v1-30.json', id: 'esp32-devkit-v1-30', name: 'ESP32 DevKit V1 (30 pin, DOIT)',
   source: 'https://mischianti.org/doit-esp32-dev-kit-v1-high-resolution-pinout-and-specs/ https://lastminuteengineers.com/esp32-pinout-reference/ https://mischianti.org/wp-content/uploads/2024/11/DOIT-ESP32-DevKit-V1-schematics.pdf',
   left: ['EN', 'VP', 'VN', 'D34', 'D35', 'D32', 'D33', 'D25', 'D26', 'D27', 'D14', 'D12', 'D13', 'GND', 'VIN'],
   right: ['D23', 'D22', 'TX0', 'RX0', 'D21', 'D19', 'D18', 'D5', 'TX2', 'RX2', 'D4', 'D2', 'D15', 'GND 2|GND', '3V3'],
   top: 2, wu: 12, usb: 'VIN', usbDiode: true, // DOIT schematic: VCCUSB through D1 (SS14) to VIN, header J1 pin 1
-  types: typer({ gnd: ['GND'], v33: ['3V3'], v5: ['VIN'], inputs: ['EN', 'VP', 'VN', 'D34', 'D35'] }),
+  types: typer({ gnd: ['GND'], v33: ['3V3'], inputs: ['EN', 'VP', 'VN', 'D34', 'D35'], other: { VIN: { type: 'power_in', supply: '5V/7V/9V/12V' } } }),
   internal: [['GND', 'GND 2']],
   art: {
     shapes: (W, H) => [

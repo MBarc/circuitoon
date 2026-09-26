@@ -81,9 +81,9 @@ describe('a drawn supply on a pin that also carries USB power (the board is assu
       [['bt1|+', 'u1|IN+'], ['bt1|-', 'u1|IN-'], ['u1|OUT+', 'u2|VIN'], ['u1|OUT-', 'u2|GND']])
     expect(found(d)).toEqual([])
   })
-  it('an LM2596 at 12 V into ESP32 VIN: the diode blocks USB, and VIN is fed too much', () => {
-    expect(checkDiagram(lm2596(12, 'esp32-devkit-v1-30', 'VIN')).map((x) => `${x.severity} ${x.rule}: ${x.message}`)).toEqual([
-      'error supply-too-high: U2 VIN accepts up to 5 V but gets 12 V from U1 OUT+.',
+  it('an LM2596 at 15 V into ESP32 VIN: the diode blocks USB, and VIN is fed too much', () => {
+    expect(checkDiagram(lm2596(15, 'esp32-devkit-v1-30', 'VIN')).map((x) => `${x.severity} ${x.rule}: ${x.message}`)).toEqual([
+      'error supply-too-high: U2 VIN accepts up to 12 V but gets 15 V from U1 OUT+.',
     ])
   })
   it('an LM2596 at 5.2 V into Pico VSYS is fine (VSYS takes up to 5.5 V); at 6 V it is too high', () => {
@@ -369,4 +369,101 @@ describe('a fight stays with the nets it touches', () => {
       'supply-too-high: U2 VCC accepts up to 3.3 V but gets 9 V from BT2 +.',
     ])
   })
+})
+
+// The hobbyist review's sheets (built-in parts only). Each case: parts, wires, the rules expected.
+type Case = [name: string, parts: PartInstance[], wires: Wire[], expected: string[]]
+const bb = () => at('bb', 'BB1', 'breadboard-half', 0, { y: 400 })
+const set = (v: number) => volts(v)
+const hobby: Case[] = [
+  ['C1 ESP32 V1 + BME280-4 via breadboard rails on 3V3', [at('u1', 'U1', 'esp32-devkit-v1-30', -400), bb(), at('u2', 'U2', 'bme280-module-4pin', 500)],
+    [['u1|3V3', 'bb|top+|0'], ['u1|GND', 'bb|top-|0'], ['u2|VIN', 'bb|top+|5'], ['u2|GND', 'bb|top-|5'], ['u2|SDA', 'u1|D21'], ['u2|SCL', 'u1|D22']], []],
+  ['C2 ESP32-S3 + BME280-6 + SSD1306 on 3V3', [at('u1', 'U1', 'esp32-s3-devkitc-1'), at('u2', 'U2', 'bme280-module-6pin', 400), at('u3', 'U3', 'oled-ssd1306-096-i2c', 600)],
+    [['u2|VCC', 'u1|3V3'], ['u2|GND', 'u1|G'], ['u3|VCC', 'u2|VCC'], ['u3|GND', 'u1|G 2'], ['u2|SDA', 'u1|8'], ['u2|SCL', 'u1|9'], ['u3|SDA', 'u2|SDA'], ['u3|SCL', 'u2|SCL']], []],
+  ['C6 Nano + HC-SR04 + SG90 + relay on 5V', [at('u1', 'U1', 'arduino-nano'), at('u2', 'U2', 'ultrasonic-hc-sr04', 400), at('m1', 'M1', 'servo-sg90', 600), at('k1', 'K1', 'relay-module-1ch-5v', 800)],
+    [['u2|VCC', 'u1|5V'], ['u2|GND', 'u1|GND'], ['m1|VCC', 'u1|5V'], ['m1|GND', 'u1|GND 2'], ['m1|PWM', 'u1|D9'], ['k1|DC+', 'u1|5V'], ['k1|DC-', 'u1|GND'], ['k1|IN', 'u1|D7'], ['u2|Trig', 'u1|D2'], ['u2|Echo', 'u1|D3']], []],
+  ['C9 L298N on 2S 18650, ESP32 drives IN1..4, common ground', [at('u1', 'U1', 'esp32-devkit-v1-30'), at('u2', 'U2', 'l298n-module', 400), at('bt1', 'BT1', 'battery-18650-holder-2s', 700)],
+    [['bt1|+', 'u2|+12V'], ['bt1|-', 'u2|GND'], ['u2|GND', 'u1|GND'], ['u2|IN1', 'u1|D25'], ['u2|IN2', 'u1|D26'], ['u2|IN3', 'u1|D27'], ['u2|IN4', 'u1|D14']], []],
+  ['C14 4xAA > rocker switch > SG90, ESP32 on USB, common ground', [at('bt1', 'BT1', 'battery-holder-4xaa'), at('s1', 'S1', 'rocker-switch-kcd1', 300), at('m1', 'M1', 'servo-sg90', 600), at('u1', 'U1', 'esp32-devkit-v1-30', 900)],
+    [['bt1|+', 's1|1'], ['s1|2', 'm1|VCC'], ['bt1|-', 'm1|GND'], ['m1|GND', 'u1|GND'], ['m1|PWM', 'u1|D13']], []],
+  ['C16 Nano 5V to ESP32 V1 VIN, both behind USB diodes', [at('u1', 'U1', 'arduino-nano'), at('u2', 'U2', 'esp32-devkit-v1-30', 500)], [['u1|5V', 'u2|VIN'], ['u1|GND', 'u2|GND']], []],
+  ['C18 D1 mini 5V also fed by an LM2596 at 5 V', [at('bt1', 'BT1', 'battery-9v'), at('u1', 'U1', 'lm2596-buck-module', 300, set(5)), at('u2', 'U2', 'wemos-d1-mini', 600)],
+    [['bt1|+', 'u1|IN+'], ['bt1|-', 'u1|IN-'], ['u1|OUT+', 'u2|5V'], ['u1|OUT-', 'u2|GND']], []],
+  ['W1 reversed rail: ESP32 3V3 on top-, GND on top+, BME280 by the marks', [at('u1', 'U1', 'esp32-devkit-v1-30', -400), bb(), at('u2', 'U2', 'bme280-module-4pin', 500)],
+    [['u1|3V3', 'bb|top-|0'], ['u1|GND', 'bb|top+|0'], ['u2|VIN', 'bb|top+|5'], ['u2|GND', 'bb|top-|5']], ['reversed']],
+  ['W2 HC-SR04 on ESP32 3V3', [at('u1', 'U1', 'esp32-devkit-v1-30'), at('u2', 'U2', 'ultrasonic-hc-sr04', 400)], [['u2|VCC', 'u1|3V3'], ['u2|GND', 'u1|GND']], ['supply-too-low']],
+  ['W3 BME280-6 on Nano 5V', [at('u1', 'U1', 'arduino-nano'), at('u2', 'U2', 'bme280-module-6pin', 400)], [['u2|VCC', 'u1|5V'], ['u2|GND', 'u1|GND']], ['supply-too-high']],
+  ['W4 WS2812 DIN from a 3.3 V GPIO (not checked)', [at('u1', 'U1', 'esp32-devkit-v1-30'), at('l1', 'L1', 'ws2812b-strip', 400)], [['l1|5V', 'u1|VIN'], ['l1|GND', 'u1|GND'], ['l1|DIN', 'u1|D5']], []],
+  ['W5 9 V battery, both leads in the + rail', [at('bt1', 'BT1', 'battery-9v', -400), bb()], [['bt1|+', 'bb|top+|0'], ['bt1|-', 'bb|top+|3']], ['short']],
+  ['W5b 9 V on the rails, then a jumper + rail to - rail', [at('bt1', 'BT1', 'battery-9v', -400), bb(), at('u2', 'U2', 'servo-sg90', 500)],
+    [['bt1|+', 'bb|top+|0'], ['bt1|-', 'bb|top-|0'], ['bb|top+|10', 'bb|top-|11'], ['u2|VCC', 'bb|top+|5'], ['u2|GND', 'bb|top-|5']], ['short']],
+  ['W6 ESP32 3V3 tied to Pico 3V3(OUT)', [at('u1', 'U1', 'esp32-devkit-v1-30'), at('u2', 'U2', 'rpi-pico', 500)], [['u1|3V3', 'u2|3V3(OUT)'], ['u1|GND', 'u2|GND']], ['supplies-parallel']],
+  ['W7 servo on 4xAA, PWM from an ESP32 with no ground wired', [at('bt1', 'BT1', 'battery-holder-4xaa'), at('m1', 'M1', 'servo-sg90', 300), at('u1', 'U1', 'esp32-devkit-v1-30', 600)],
+    [['bt1|+', 'm1|VCC'], ['bt1|-', 'm1|GND'], ['m1|PWM', 'u1|D13']], ['no-ground']],
+  ['W7b LM2596 powers a sensor whose GND goes only to the ESP32', [at('bt1', 'BT1', 'battery-9v'), at('u1', 'U1', 'lm2596-buck-module', 300), at('u2', 'U2', 'bme280-module-4pin', 600), at('u3', 'U3', 'esp32-devkit-v1-30', 900)],
+    [['bt1|+', 'u1|IN+'], ['bt1|-', 'u1|IN-'], ['u1|OUT+', 'u2|VIN'], ['u2|GND', 'u3|GND'], ['u2|SDA', 'u3|D21']], ['supply-unknown']],
+  ['W8 sensors on the bottom rails, 3V3 into the top rail', [at('u1', 'U1', 'esp32-devkit-v1-30', -400), bb(), at('u2', 'U2', 'bme280-module-4pin', 500), at('u3', 'U3', 'oled-ssd1306-096-i2c', 700)],
+    [['u1|3V3', 'bb|top+|0'], ['u1|GND', 'bb|top-|0'], ['u2|VIN', 'bb|bottom+|5'], ['u2|GND', 'bb|bottom-|5'], ['u3|VCC', 'bb|bottom+|9'], ['u3|GND', 'bb|bottom-|9'], ['u2|SDA', 'u1|D21']],
+    ['no-ground', 'no-power', 'no-power']],
+  ['W9 9 V straight into ESP32 3V3', [at('bt1', 'BT1', 'battery-9v'), at('u1', 'U1', 'esp32-devkit-v1-30', 400)], [['bt1|+', 'u1|3V3'], ['bt1|-', 'u1|GND']], ['supplies-fight']],
+  ['W10 LM2596 at 7.4 V into an SG90', [at('bt1', 'BT1', 'battery-9v'), at('u1', 'U1', 'lm2596-buck-module', 300, set(7.4)), at('m1', 'M1', 'servo-sg90', 600)],
+    [['bt1|+', 'u1|IN+'], ['bt1|-', 'u1|IN-'], ['u1|OUT+', 'm1|VCC'], ['u1|OUT-', 'm1|GND']], ['supply-too-high']],
+  ['W11 Nano 5V into Pico 3V3(OUT)', [at('u1', 'U1', 'arduino-nano'), at('u2', 'U2', 'rpi-pico', 400)], [['u1|5V', 'u2|3V3(OUT)'], ['u1|GND', 'u2|GND']], ['supplies-fight']],
+  ['W12 9 V reversed into an LM2596', [at('bt1', 'BT1', 'battery-9v'), at('u1', 'U1', 'lm2596-buck-module', 300), at('u2', 'U2', 'esp32-devkit-v1-30', 600)],
+    [['bt1|+', 'u1|IN-'], ['bt1|-', 'u1|IN+'], ['u1|OUT+', 'u2|VIN'], ['u1|OUT-', 'u2|GND']], ['reversed']],
+  ['W13 OLED VCC and GND swapped', [at('u1', 'U1', 'esp32-devkit-v1-30'), at('u2', 'U2', 'oled-ssd1306-096-i2c', 400)], [['u2|GND', 'u1|3V3'], ['u2|VCC', 'u1|GND']], ['reversed']],
+  ['W14 level shifter swapped: LV on 5V, HV on 3V3', [at('u1', 'U1', 'esp32-devkitc-v4'), at('u2', 'U2', 'level-shifter-bss138-4ch', 400)],
+    [['u2|LV', 'u1|5V'], ['u2|HV', 'u1|3V3'], ['u2|GND', 'u1|GND']], ['supply-too-high']],
+  ['W15 9 V and 4xAA on one rail', [at('bt1', 'BT1', 'battery-9v'), at('bt2', 'BT2', 'battery-holder-4xaa', 300), at('m1', 'M1', 'servo-sg90', 600)],
+    [['bt1|+', 'bt2|+'], ['bt1|-', 'bt2|-'], ['m1|VCC', 'bt1|+'], ['m1|GND', 'bt1|-']], ['supplies-fight']],
+  ['W16 WS2812 strip on 4xAA (6 V): one row for its joined 5V pins', [at('bt1', 'BT1', 'battery-holder-4xaa'), at('l1', 'L1', 'ws2812b-strip', 400)], [['bt1|+', 'l1|5V'], ['bt1|-', 'l1|GND']], ['supply-too-high']],
+  ['W17 9 V through a rocker switch into a BME280-6', [at('bt1', 'BT1', 'battery-9v'), at('s1', 'S1', 'rocker-switch-kcd1', 300), at('u2', 'U2', 'bme280-module-6pin', 600)],
+    [['bt1|+', 's1|1'], ['s1|2', 'u2|VCC'], ['bt1|-', 'u2|GND']], ['supply-too-high']],
+  ['W18 18650 reversed in a TP4056', [at('bt1', 'BT1', 'battery-18650-holder'), at('u1', 'U1', 'tp4056-module', 300)], [['bt1|+', 'u1|B-'], ['bt1|-', 'u1|B+']], ['reversed']],
+  ['W19 5 V microSD module on ESP32 3V3', [at('u1', 'U1', 'esp32-devkit-v1-30'), at('u2', 'U2', 'microsd-spi-5v', 400)], [['u2|VCC', 'u1|3V3'], ['u2|GND', 'u1|GND']], ['supply-too-low']],
+  ['W20 DevKitC 5V into Pico VSYS, both on USB', [at('u1', 'U1', 'esp32-devkitc-v4'), at('u2', 'U2', 'rpi-pico', 400)], [['u1|5V', 'u2|VSYS'], ['u1|GND', 'u2|GND']], []],
+  ['W21 3V3 jumpered to GND on one board', [at('u1', 'U1', 'esp32-c3-supermini')], [['u1|3.3', 'u1|G']], ['short']],
+  ['W22 AMS1117 fed backwards from ESP32 3V3', [at('u1', 'U1', 'esp32-devkit-v1-30'), at('u2', 'U2', 'ams1117-33-module', 400), at('u3', 'U3', 'bme280-module-6pin', 700)],
+    [['u2|OUT', 'u1|3V3'], ['u2|GND', 'u1|GND'], ['u3|VCC', 'u2|VIN'], ['u3|GND', 'u2|GND']], ['supplies-parallel', 'no-power']],
+  ['W23 relay DC+ on ESP32 3V3', [at('u1', 'U1', 'esp32-devkit-v1-30'), at('k1', 'K1', 'relay-module-1ch-5v', 400)], [['k1|DC+', 'u1|3V3'], ['k1|DC-', 'u1|GND'], ['k1|IN', 'u1|D23']], ['supply-too-low']],
+  ['W24 PIR on XIAO 3V3', [at('u1', 'U1', 'xiao-esp32s3'), at('u2', 'U2', 'pir-hc-sr501', 400)], [['u2|VCC', 'u1|3V3'], ['u2|GND', 'u1|GND']], ['supply-too-low']],
+  ['W25 2S 18650 into Pico 2 VSYS', [at('bt1', 'BT1', 'battery-18650-holder-2s'), at('u1', 'U1', 'rpi-pico-2', 400)], [['bt1|+', 'u1|VSYS'], ['bt1|-', 'u1|GND']], ['supply-too-high']],
+  ['W26 L298N +5V to Nano 5V, 9 V on both', [at('bt1', 'BT1', 'battery-9v'), at('u2', 'U2', 'l298n-module', 300), at('u1', 'U1', 'arduino-nano', 600)],
+    [['bt1|+', 'u2|+12V'], ['bt1|-', 'u2|GND'], ['u2|+5V', 'u1|5V'], ['u2|GND', 'u1|GND'], ['u1|VIN', 'bt1|+']], []],
+  ['W27 sensor between battery + and ESP32 GND, battery - unwired', [at('bt1', 'BT1', 'battery-holder-3xaaa'), at('u2', 'U2', 'oled-ssd1306-096-i2c', 300), at('u1', 'U1', 'esp32-devkit-v1-30', 600)],
+    [['bt1|+', 'u2|VCC'], ['u2|GND', 'u1|GND']], ['no-ground', 'supply-unknown']],
+  ['W28 TP4056 OUT+ into ESP32 3V3', [at('bt1', 'BT1', 'battery-18650-holder'), at('u1', 'U1', 'tp4056-module', 300), at('u2', 'U2', 'esp32-devkit-v1-30', 600)],
+    [['bt1|+', 'u1|B+'], ['bt1|-', 'u1|B-'], ['u1|OUT+', 'u2|3V3'], ['u1|OUT-', 'u2|GND']], ['supplies-fight']],
+  ['X1 L298N (5V jumper fitted) on 24 V: above the 12 V the module guide allows with the jumper on', [at('bt1', 'BT1', 'battery-18650-holder-2s', 0, set(24)), at('u2', 'U2', 'l298n-module', 400)],
+    [['bt1|+', 'u2|+12V'], ['bt1|-', 'u2|GND']], ['supply-too-high']],
+  ['X2 servo on 4xAA, PWM from a grounded ESP32, no common ground', [at('u1', 'U1', 'esp32-devkit-v1-30'), at('u2', 'U2', 'bme280-module-4pin', 300), at('bt1', 'BT1', 'battery-holder-4xaa', 600), at('m1', 'M1', 'servo-sg90', 900)],
+    [['u2|VIN', 'u1|3V3'], ['u2|GND', 'u1|GND'], ['bt1|+', 'm1|VCC'], ['bt1|-', 'm1|GND'], ['m1|PWM', 'u1|D13']], ['no-common-ground']],
+  ['X3 WS2812 strip fed at both ends from ESP32 VIN', [at('u1', 'U1', 'esp32-devkit-v1-30'), at('l1', 'L1', 'ws2812b-strip', 400)],
+    [['l1|5V', 'u1|VIN'], ['l1|GND', 'u1|GND'], ['l1|5V 2', 'u1|VIN'], ['l1|GND 2', 'u1|GND 2'], ['l1|DIN', 'u1|D5']], []],
+  ['X4 reversed rail, one sensor by the marks and one wired right', [at('u1', 'U1', 'esp32-devkit-v1-30', -400), bb(), at('u2', 'U2', 'bme280-module-4pin', 500), at('u3', 'U3', 'oled-ssd1306-096-i2c', 700)],
+    [['u1|3V3', 'bb|top-|0'], ['u1|GND', 'bb|top+|0'], ['u2|VIN', 'bb|top+|5'], ['u2|GND', 'bb|top-|5'], ['u3|VCC', 'bb|top-|9'], ['u3|GND', 'bb|top+|9']], ['reversed']],
+  ['X5 9 V into Nano VIN', [at('bt1', 'BT1', 'battery-9v'), at('u1', 'U1', 'arduino-nano', 400)], [['bt1|+', 'u1|VIN'], ['bt1|-', 'u1|GND']], []],
+  ['X6 9 V into ESP32 V1 VIN (its regulator takes up to 15 V)', [at('bt1', 'BT1', 'battery-9v'), at('u1', 'U1', 'esp32-devkit-v1-30', 400)], [['bt1|+', 'u1|VIN'], ['bt1|-', 'u1|GND']], []],
+  ['X7 USB-C panel into TP4056, cell on B', [at('j1', 'J1', 'usb-panel-mount-usbc'), at('u1', 'U1', 'tp4056-module', 300), at('bt1', 'BT1', 'battery-18650-cell', 600)],
+    [['j1|VBUS', 'u1|IN+'], ['j1|GND', 'u1|IN-'], ['bt1|+', 'u1|B+'], ['bt1|-', 'u1|B-']], []],
+  ['X8 USB-C panel VBUS into ESP32-C3 5V', [at('j1', 'J1', 'usb-panel-mount-usbc'), at('u1', 'U1', 'esp32-c3-supermini', 300)], [['j1|VBUS', 'u1|5V'], ['j1|GND', 'u1|G']], []],
+  ['X9 CR2032 holder powering a BME280-6', [at('bt1', 'BT1', 'battery-holder-cr2032'), at('u1', 'U1', 'bme280-module-6pin', 300)], [['bt1|+', 'u1|VCC'], ['bt1|-', 'u1|GND']], []],
+  ['X10 two LM2596 in parallel at 5 V', [at('bt1', 'BT1', 'battery-9v'), at('u1', 'U1', 'lm2596-buck-module', 300), at('u2', 'U2', 'lm2596-buck-module', 600), at('m1', 'M1', 'servo-sg90', 900)],
+    [['bt1|+', 'u1|IN+'], ['bt1|-', 'u1|IN-'], ['bt1|+', 'u2|IN+'], ['bt1|-', 'u2|IN-'], ['u1|OUT+', 'u2|OUT+'], ['u1|OUT-', 'm1|GND'], ['u1|OUT+', 'm1|VCC']], ['supplies-parallel']],
+  ['X11 LM2596 at its default 5 V into a BME280-6', [at('bt1', 'BT1', 'battery-9v'), at('u1', 'U1', 'lm2596-buck-module', 300), at('u2', 'U2', 'bme280-module-6pin', 600)],
+    [['bt1|+', 'u1|IN+'], ['bt1|-', 'u1|IN-'], ['u1|OUT+', 'u2|VCC'], ['u1|OUT-', 'u2|GND']], ['supply-too-high']],
+  ['X12 Pico 3V3(OUT) into ESP32 VIN', [at('u1', 'U1', 'rpi-pico'), at('u2', 'U2', 'esp32-devkit-v1-30', 400)], [['u1|3V3(OUT)', 'u2|VIN'], ['u1|GND', 'u2|GND']], ['supplies-fight']],
+  ['X13 ESP32-S3 5V into BME280-4 and HC-SR04', [at('u1', 'U1', 'esp32-s3-devkitc-1'), at('u2', 'U2', 'bme280-module-4pin', 400), at('u3', 'U3', 'ultrasonic-hc-sr04', 600)],
+    [['u2|VIN', 'u1|5V'], ['u2|GND', 'u1|G'], ['u3|VCC', 'u1|5V'], ['u3|GND', 'u1|G 3']], []],
+  ...['oled-ssd1306-096-i2c|VCC|GND', 'dht22-module|+|-', 'tft-st7789-154-spi|VCC|GND', 'microsd-spi-3v3|3V3|GND'].map((s): Case => {
+    const [m, vcc, gnd] = s.split('|')
+    return [`X9b 2xAA (3 V) into ${m}: within 90% of 3.3 V`, [at('bt1', 'BT1', 'battery-holder-2xaa'), at('u1', 'U1', m, 300)], [['bt1|+', `u1|${vcc}`], ['bt1|-', `u1|${gnd}`]], []]
+  }),
+]
+
+describe('the hobbyist review sheets', () => {
+  for (const [name, parts, wires, expected] of hobby)
+    it(name, () => {
+      expect(rules(sheet(parts, wires))).toEqual(expected)
+    })
 })

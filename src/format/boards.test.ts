@@ -80,6 +80,8 @@ describe('built-in boards keep the physical header order', () => {
     expect(m.internal).toContainEqual(['RST', 'RST 2'])
     for (const n of ['A6', 'A7', 'AREF']) expect(pin(m, n)).toMatchObject({ type: 'input' })
     expect(pin(m, 'VIN')).toMatchObject({ type: 'power_in', supply: '7V/7.4V/9V/12V' })
+    // DevKit V1: VIN feeds its 1117 LDO (NCP1117 20 V / AMS1117 15 V max), so 5 V to 12 V.
+    expect(pin(load('esp32-devkit-v1-30.json'), 'VIN')).toMatchObject({ type: 'power_in', supply: '5V/7V/9V/12V' })
     expect(pin(m, '3V3')).toMatchObject({ type: 'power_out', supply: '3V3' })
   })
 })

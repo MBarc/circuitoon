@@ -143,6 +143,10 @@ function headerH(y, at) {
 //    Modelled as shipped, jumper fitted: +12V takes 7 to 12 V (the 78M05 needs about 2 V of
 //    headroom to hold 5 V, and the jumper must come off above 12 V) and +5V is a 5 V output. The
 //    name says so; a jumper-off variant (+12V to 35 V, +5V a logic input) would be its own part.
+//    Checked again (2026-09-26): the 78M05's own input rating is higher, but the module guide
+//    cited in `source` says "If your motor power supply is higher than 12V, you must remove the
+//    jumper to prevent damage to the onboard 5V regulator", so with the jumper fitted 12 V stays
+//    the top rail.
 {
   const wu = 17, hu = 17, W = wu * 10, H = hu * 10
   const types = {
