@@ -271,15 +271,7 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
     const target = e.target as Element
     const pointer = e.pointerId
     e.currentTarget.setPointerCapture(pointer)
-    const pinEl = e.button === 0 ? target.closest('[data-pin]') : null
-    if (pinEl) {
-      const from = { part: pinEl.getAttribute('data-pin-part')!, pin: pinEl.getAttribute('data-pin')! }
-      // Where the wire will end: the stub tip, or the leg's hole for a plugged leg (Ruling 25).
-      const origin = resolveEndpoint(store.getState().diagram, from)?.end ?? { x: Number(pinEl.getAttribute('cx')), y: Number(pinEl.getAttribute('cy')) }
-      setDrag({ pointer, kind: 'wire', from, origin, cursor: toWorld(e), over: null })
-      store.setGesture(true)
-      return
-    }
+    // Explicit wire-edit handles of the selected wire come first: they sit on top of everything.
     const handleEl = e.button === 0 ? target.closest('[data-wire-end]') : null
     if (handleEl) {
       const uid = handleEl.getAttribute('data-wire-uid')!
@@ -305,6 +297,20 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
     // A single press on a bend does nothing (double-click removes it); it must not fall
     // through to the paper and clear the selection.
     if (e.button === 0 && target.closest('[data-vertex-index]')) return
+    // A press on a pin or a hole starts a wire there, by the same terminal-hit policy hover and
+    // drop use, so a hole under an ordinary wire's hit stroke still starts a wire; a press on the
+    // wire anywhere else selects it. A pin ends at its stub tip, or at its leg's hole when plugged
+    // (Ruling 25). Between holes, a press drags the board as usual.
+    // Alt+press on the selected wire adds a bend there (a wire edit), even over a hole.
+    const sel0 = store.getState().selection
+    const bending = e.altKey && sel0.parts.length === 0 && sel0.wires.length === 1 && target.closest('[data-wire]')?.getAttribute('data-wire') === sel0.wires[0]
+    const end = e.button === 0 && !bending ? endUnder(e) : null
+    const at = end && resolveEndpoint(store.getState().diagram, end)
+    if (end && at) {
+      setDrag({ pointer, kind: 'wire', from: end, origin: at.end, cursor: toWorld(e), over: null })
+      store.setGesture(true)
+      return
+    }
     const wireEl = e.button === 0 ? target.closest('[data-wire]') : null
     if (wireEl) {
       const uid = wireEl.getAttribute('data-wire')!
@@ -317,16 +323,6 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
       if (e.shiftKey) store.select({ parts: sel.parts, wires: sel.wires.includes(uid) ? sel.wires.filter((u) => u !== uid) : [...sel.wires, uid] })
       else store.select({ parts: [], wires: [uid] })
       return
-    }
-    // A press on a board's hole starts a wire there; between holes, it drags the board as usual.
-    const hole = e.button === 0 ? holeUnder(e) : null
-    if (hole) {
-      const at = resolveEndpoint(store.getState().diagram, hole)
-      if (at) {
-        setDrag({ pointer, kind: 'wire', from: hole, origin: at.end, cursor: toWorld(e), over: null })
-        store.setGesture(true)
-        return
-      }
     }
     const partEl = e.button === 0 ? target.closest('[data-part]') : null
     if (partEl) {

@@ -5,8 +5,10 @@
 // drop mounting in one undo step, a second part on the same holes staying loose, the green and red
 // drag highlight, a wire drawn from a pin into a free hole (confirmed in the exported JSON), a wire
 // from a hole under a mounted part routing with square corners, the hole next to a plugged leg
-// staying its own hole (hover, press and drop), and a wire to a missing hole drawn
-// as a dashed red stub that can be selected and deleted. Last, the Parts panel and the dark theme.
+// staying its own hole (hover, press and drop), a press on a hole under another wire starting a
+// wire (a click between holes still selects the wire, and the selected wire's end handle still
+// wins), holes of a board placed off the world grid, pads on a module that is not a board, and a
+// wire to a missing hole drawn as a dashed red stub that can be selected and deleted. Last, the Parts panel and the dark theme.
 //
 // Usage (repo root, after `npm run build`):
 //   node scripts/perf-breadboard.mjs [--out <dir>] [--port 4191]
@@ -421,6 +423,82 @@ check(
 await page.mouse.move(5, 5)
 await pause()
 await shot('leg-neighbour-wires.png')
+
+// --- A press exactly on a hole starts a wire even where another wire crosses it (Astra B3). w1
+// runs straight along row a from c10 (120, 60) to c20 (220, 60), over the holes of c11 to c19. ---
+await load(
+  sheetFile('hole-under-wire', 'Hole under a wire', [{ uid: 'bb5', designator: 'BB1', module: board.id, x: 0, y: 0, rotation: 0 }], [
+    { uid: 'w1', from: { part: 'bb5', pin: 'c10-top', hole: 0 }, to: { part: 'bb5', pin: 'c20-top', hole: 0 }, color: 'blue', gauge: 22 },
+  ]),
+  'bb5',
+)
+const w1Path = await page.locator('[data-wire="w1"] path.wire-hit').getAttribute('d')
+check(w1Path?.replace(/\s+/g, '') === 'M12060L22060', `w1 runs straight over the row a holes (${w1Path})`)
+// Between two holes (175, 60) the wire's hit stroke wins: a click selects it.
+let between = await toScreen(175, 60)
+await page.mouse.click(between.x, between.y)
+await pause()
+check((await page.locator('[data-wire="w1"] path').count()) === 4, 'a click on the wire between holes selects the wire')
+await page.keyboard.press('Escape')
+await pause()
+// Exactly on c15 row a (170, 60), under the wire: the press starts a new wire from that hole.
+await stroke({ x: 170, y: 60 }, { x: 150, y: 20 })
+saved = await exported()
+const underEnds = saved.connections.filter((c) => c.uid !== 'w1').flatMap((c) => [c.from, c.to])
+check(
+  saved.connections.length === 2 && underEnds.some((e) => e.part === 'bb5' && e.pin === 'c15-top' && (e.hole ?? 0) === 0) && underEnds.some((e) => e.pin === 'top+'),
+  `a press on a hole under a wire starts a wire from that hole (${JSON.stringify(underEnds)})`,
+)
+await shot('hole-under-wire.png')
+// The selected wire's own end handle still wins over the hole beneath it: dragging w1's end at
+// c20 (220, 60) onto c21 (230, 60) reconnects w1 instead of starting a wire.
+between = await toScreen(205, 60)
+await page.mouse.click(between.x, between.y)
+await pause()
+await stroke({ x: 220, y: 60 }, { x: 230, y: 60 })
+saved = await exported()
+const w1 = saved.connections.find((c) => c.uid === 'w1')
+check(saved.connections.length === 2 && w1?.to.pin === 'c21-top', `the selected wire's end handle over a hole reconnects that wire (${JSON.stringify(w1?.to)})`)
+
+// --- A board placed off the world grid (x = 5) has clickable holes (Astra B4): c1 row a is at
+// (35, 60) and the top + rail hole over column 14 at (155, 20). ---
+await load(sheetFile('off-grid-board', 'Off-grid board', [{ uid: 'bb6', designator: 'BB1', module: board.id, x: 5, y: 0, rotation: 0 }], []), 'bb6')
+const offHole = await toScreen(35, 60)
+await page.mouse.move(offHole.x, offHole.y)
+await pause()
+lit = await litPoints()
+check(lit === 5, `hovering a hole of an off-grid board lights its strip (got ${lit})`)
+await stroke({ x: 35, y: 60 }, { x: 155, y: 20 })
+saved = await exported()
+const offEnds = saved.connections.flatMap((c) => [c.from, c.to])
+check(
+  saved.connections.length === 1 && offEnds.some((e) => e.pin === 'c1-top' && (e.hole ?? 0) === 0) && offEnds.some((e) => e.pin === 'top+'),
+  `a wire drawn between holes of an off-grid board is saved hole to hole (${JSON.stringify(offEnds)})`,
+)
+await page.mouse.move(5, 5)
+await pause()
+await shot('off-grid-board-wire.png')
+
+// --- Pads on a module that is not a board (a routing obstacle with interior pads) take wires
+// (Astra B2): press pad P1 at (410, 310), drop on pad P2 at (430, 310). ---
+const padHeader = {
+  format: 'circuitoon-module/1', id: 'pad-header', name: 'Pad header', pins: [], size: { w: 4, h: 2 },
+  holes: [{ name: 'P1', at: [[10, 10]], holeStyle: 'pad' }, { name: 'P2', at: [[30, 10]], holeStyle: 'pad' }],
+}
+await load(sheetFile('pad-header', 'Pad header', [{ uid: 'hd', designator: 'J1', module: 'pad-header', x: 400, y: 300, rotation: 0 }], [], { 'pad-header': padHeader }), 'hd')
+const pad = await toScreen(410, 310)
+await page.mouse.move(pad.x, pad.y)
+await pause()
+lit = await litPoints()
+check(lit === 1, `hovering a pad of a non-board module lights it (got ${lit})`)
+await stroke({ x: 410, y: 310 }, { x: 430, y: 310 })
+saved = await exported()
+const padEnds = saved.connections.flatMap((c) => [c.from, c.to]).map((e) => `${e.part}.${e.pin}`).sort().join(' ')
+check(saved.connections.length === 1 && padEnds === 'hd.P1 hd.P2', `a wire starts and ends on the pads of a non-board module (${padEnds})`)
+check((await exported()).parts[0].x === 400, 'pressing a pad did not drag the part')
+await page.mouse.move(5, 5)
+await pause()
+await shot('pad-header-wire.png')
 
 // --- A wire to a hole that does not exist (c2-top has 5 holes): a dashed red stub. ---
 await load(
