@@ -18,8 +18,7 @@
 .toolbar .message { flex-basis: 100%; margin: 0; font-size: 14px; }
 .toolbar .message.error { color: var(--error); }
 /* Warnings a file opened with: a sticker-edged note under the toolbar, yellow for caution. The
-   first few show; "Show all" opens the rest in a list that scrolls instead of pushing the canvas
-   off screen. Value replacements are listed first and carry a tag. */
+   first few show; "Show all" opens the rest. Value replacements are listed first and carry a tag. */
 .load-warnings {
   flex-basis: 100%;
   display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 12px; align-items: center;
@@ -32,11 +31,14 @@
 .lw-values { font-weight: 700; }
 .lw-actions { display: flex; gap: 6px; }
 .load-warnings .tool { padding: 5px 9px; font-size: 13px; }
+/* Height-bounded in both states so the canvas always keeps at least half the viewport, however
+   many warnings a file brings (100 replaced values once pushed it off screen); the list scrolls. */
 .lw-list {
-  grid-column: 1 / -1; margin: 0; padding: 0; list-style: none;
-  display: grid; gap: 4px; line-height: 1.35;
+  grid-column: 1 / -1; margin: 0; padding: 0 4px 0 0; list-style: none;
+  display: grid; gap: 4px; align-content: start; line-height: 1.35;
+  max-height: 25vh; overflow-y: auto; overscroll-behavior: contain;
 }
-.lw-list.expanded { max-height: 11.5em; overflow-y: auto; padding-right: 4px; overscroll-behavior: contain; }
+.lw-list.expanded { max-height: 36vh; }
 .lw-list li { display: flex; align-items: baseline; gap: 8px; overflow-wrap: anywhere; }
 .lw-list li::before { content: ""; flex: none; width: 5px; height: 5px; border-radius: 50%; background: var(--muted); transform: translateY(-2px); }
 .lw-list li.value::before { display: none; }

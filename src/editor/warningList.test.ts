@@ -55,6 +55,20 @@ describe('load warnings', () => {
     expect(html).toContain('1 value was replaced by the part default')
   })
 
+  it('with 100 replaced values, lists them all collapsed and offers Show all while others are hidden', () => {
+    const values = Array.from({ length: 100 }, (_, i) => `parts[${i}].values.resistance: R${i + 1} has resistance 220 F, but resistance must be in ohm; it was dropped and the module default is shown`)
+    const others = ['parts[100]: module "a" is not embedded in this file', 'parts[101]: module "b" is not embedded in this file']
+    const render = (w: string[]) => renderToStaticMarkup(createElement(LoadWarnings, { warnings: w, onDismiss: () => {} }))
+    const withOthers = render([...others, ...values])
+    expect(withOthers.match(/Value replaced/g)).toHaveLength(100)
+    expect(withOthers).toContain('Show all 102')
+    expect(withOthers).not.toContain('module &quot;a&quot;')
+    // Nothing hidden, so nothing to expand; the list's bounded height and scrolling are checked in
+    // a real browser by scripts/check-warnings-ui.mjs.
+    const onlyValues = render(values)
+    expect(onlyValues.match(/Value replaced/g)).toHaveLength(100)
+    expect(onlyValues).not.toContain('Show all')
+  })
   it('renders every warning when expanded', async () => {
     const w = await openWithFourWarnings()
     const html = renderToStaticMarkup(createElement(LoadWarnings, { warnings: w, onDismiss: () => {}, initiallyExpanded: true }))

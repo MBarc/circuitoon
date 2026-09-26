@@ -21,7 +21,7 @@ GitHub Actions is disabled on the MBarc account, so there is no CI: this workflo
    Co-Authored-By: <attribution line from the session>"
    ```
 2. Verify the merged result, not just the branch:
-   `npm run validate && npm run check:gen && npm test && npm run build`. If anything fails, stop; nothing is pushed yet, so the merge is local and recoverable.
+   `npm run validate && npm run check:gen && npm test && npm run build`. If anything fails, stop; nothing is pushed yet, so the merge is local and recoverable. When the branch touched the editor chrome (toolbar, load warnings, start screen), also run `npm run check:warnings-ui -- --out <scratchpad>` (a browser check on port 4192: a file with 103 load warnings must leave the canvas at least half the viewport, the list must scroll, Show all, Show fewer and Dismiss must work) and read its light and dark screenshots.
 3. `git push`, then `npm run deploy` (validates, tests, builds and force-pushes `dist/` to `gh-pages`).
 4. `node .claude/skills/circuitoon-ship/scripts/verify-live.mjs [--expect-parts N] [--shot <scratchpad>/live.png]`. It waits until the live page serves this build, then checks the start screen, the sample sheet and page errors. Read the screenshot. If the live site never picks up the build, run `gh api repos/MBarc/circuitoon/pages/builds -X POST`.
 5. For a user-facing change worth seeing, reproduce the scenario Michael cares about on the live site (for example the sheet from his screenshot) and look at it.
