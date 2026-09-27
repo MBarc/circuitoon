@@ -1,93 +1,228 @@
 # Wall Outlets and Mains Parts Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking. **Every worker reads Global Constraints, Resolutions and the Shared Contract below before its own task**; a task's code assumes them.
 
 **Goal:** Let hobbyists draw how their project meets the wall (outlets, plug-in devices, AC-DC modules, relays and SSRs switching lamps, terminal blocks) and catch the dangerous mistakes with a mains checker that reasons on typed conduction, identity, energization, isolation, contact states, earth, protection, cables and plug fit, and never overclaims.
 
-**Architecture:** New pure modules in `src/format`: `mainsModel.ts` (module fields, validation, the cached `mainsOf` view), `mainsGraph.ts` (typed conduction graph over the netlist's nets, per-state identity and energization, possible connectivity, candidate contact groups, popcount-ordered enumeration), `mainsRules.ts` (the rule families, a per-state accumulator and static post-pass), `mains.ts` (the `analyseMains` orchestrator, its cache and the honesty notice) and `plugging.ts` (plug and socket families, stylized contact patterns, the compatibility table). `checks.ts` calls `analyseMains` before the DC solver, gates converter outputs by availability and keeps hazardous nets out of every DC rule; `breadboard.ts` seats plug-in devices on outlets through the table. Parts come from four new generators plus updates to two existing parts. The editor gains identity colours, a hazard look, a persistent notice and a browser check.
+**Architecture:** New pure modules in `src/format`: `mainsModel.ts` (module fields, validation, the cached `mainsOf` view), `mainsGraph.ts` (typed conduction graph over the netlist's nets, per-state identity and energization, possible connectivity, candidate contact groups, per-component enumeration and minimal state witnesses), `mainsProtective.ts` (protective-conductor discovery), `mainsRules.ts` (the rule families, a per-state accumulator and static post-pass), `mains.ts` (the `analyseMains` orchestrator, the one cache shared by the checker and the renderer, and the honesty notice), `plugging.ts` (plug and socket families, stylized contact patterns, the compatibility table) and `mainsEvidence.ts` (the researched source evidence every mains part is generated and tested from). `checks.ts` reads the cached analysis before the DC solver, gates converter outputs by availability and keeps hazardous nets out of every DC rule; `breadboard.ts` seats plug-in devices on outlets through the table. Parts come from four new generators plus updates to two existing parts. The editor gains identity colours, a hazard look, a persistent notice and a browser check.
 
 **Tech Stack:** TypeScript 7 (erasableSyntaxOnly), React 19, Vite 8, vitest 5, playwright-core 1.63 with the locally installed Chrome, Node 24.
 
-**Spec:** `docs/superpowers/specs/2026-09-27-mains-outlets-design.md` (revision 5, approved by Michael; Astra verdict READY TO PLAN). The spec is the authority; this plan argues from it. Executors read both.
+**Spec:** `docs/superpowers/specs/2026-09-27-mains-outlets-design.md` (revision 5, approved by Michael; Astra verdict READY TO PLAN). The spec is the authority; this plan argues from it. Executors read both. Plan revision 2 answers Astra's plan review (`.superpowers/sdd/2026-09-27-mains-outlets/astra-plan-review.md`, 12 findings and three ordering changes, all accepted by the controller).
 
 ## Global Constraints
 
 - Work only in the worktree `C:/Users/micha/Desktop/projects/Circuitoon-mains`, branch `mains`. Commit after every task. Never use `git stash` (shared between worktrees); never switch branches.
 - TypeScript `erasableSyntaxOnly`: no `enum`, no `namespace`, no constructor parameter properties. Import local files with their `.ts` / `.tsx` extension, as the codebase does.
 - No em dashes anywhere: code, comments, UI text, messages, docs, commit messages. Use a hyphen, a colon or a new sentence.
-- Match the surrounding style: 2-space indent, no semicolons, single quotes, long lines are fine, JSDoc comments that say why. Messages are plain words in the diagram-edit voice the checker already uses ("Remove the wire from A to B."), naming designators and pin labels.
+- Match the surrounding style: 2-space indent, no semicolons, single quotes, long lines are fine, JSDoc comments that say why. Messages are plain words in the diagram-edit voice the checker already uses ("Remove the wire from A to B."), naming designators and pin labels. A message never states harm as certain that the model cannot know (current, damage): it says "may".
 - Generators are byte-reproducible. Every new `scripts/gen-*.mjs` writes through `write` in `scripts/lib/parts.mjs` (which uses `scripts/lib/gen-output.mjs`) and ends with `finish('<file>')`, so `npm run check:gen` runs it with `--check`.
 - Never use the Playwright MCP browser (it is shared with other agents). Browser checks launch their own Chrome through `playwright-core` (`chromium.launch({ channel: 'chrome', headless: true })`) against `vite preview` on their own port, like `scripts/check-problems-ui.mjs`.
-- Every task ends with `npm test` green. A task that touches `modules/` or a generator also runs `npm run validate` and `npm run check:gen`. A task that touches UI also runs `npm run build`. The final task runs everything: `npm run validate && npm run check:gen && npm test && npm run build && npm run check:problems-ui && npm run check:warnings-ui && npm run check:cables-ui && npm run check:mains-ui && node scripts/perf-breadboard.mjs`.
-- Parts follow the `circuitoon-add-part` skill (`.claude/skills/circuitoon-add-part/SKILL.md` and `references/conventions.md`): category `Mains`, Sticker style (rects only, the renderer outlines), a generator per family, every pin, contact, profile, rating and isolation claim taken from the exact manufacturer datasheet or the cited standard with its URL in `source`, the PRD Built-in parts table updated, and screenshots from `.claude/skills/circuitoon-add-part/scripts/shoot-parts.mjs` looked at in light and dark. **A wrong pin is worse than a missing part:** a value the implementer cannot confirm from the named source is left out of the module and reported, never filled from memory or from this plan.
-- Every parts batch (Tasks 12 to 16) ends with an independent pinout, rating and isolation review done by the controller, not the implementer (skill step 9). The implementer's job is to record every source and value so the review can check them.
+- **Every task's gate** is `npx tsc --noEmit && npm test`, both green, before its commit. A task that touches `modules/` or a generator also runs `npm run validate` and `npm run check:gen`. A task that touches UI also runs `npm run build`. The final task runs everything: `npm run validate && npm run check:gen && npx tsc --noEmit && npm test && npm run build && npm run check:problems-ui && npm run check:warnings-ui && npm run check:cables-ui && npm run check:mains-ui && node scripts/perf-breadboard.mjs`.
+- Parts follow the `circuitoon-add-part` skill (`.claude/skills/circuitoon-add-part/SKILL.md` and `references/conventions.md`): category `Mains`, Sticker style (rects only, the renderer outlines), a generator per family, the PRD Built-in parts table updated, and screenshots from `.claude/skills/circuitoon-add-part/scripts/shoot-parts.mjs` looked at in light and dark. **A wrong pin is worse than a missing part.** Every pin, contact, profile, rating and isolation value comes from `src/format/mainsEvidence.ts`, which Task 0 fills from the exact manufacturer datasheets and cited standards, never from memory or from this plan.
+- **Isolation is never inferred.** A module's `isolation` is `reinforced`, `double` or `basic` only when its source states that insulation class for the barrier between mains and the output (or states protective separation, which Resolution 9 maps to `reinforced` only if the source says reinforced or double). A dielectric test voltage, a class II symbol, an SELV or ES1 label or a safety listing alone is not a class: the module then records `isolation: "unknown"`, and the checker treats that side as live and says so.
+- Every parts batch (Tasks 16 to 20) ends with an independent pinout, rating and isolation review done by the controller, not the implementer (skill step 9). A **MISMATCH or NOT VERIFIED** verdict blocks the next batch until fixed or brought to Michael; nothing marked NOT VERIFIED is generated as if verified.
 - Never overclaim: where data is missing or a check did not finish, a finding says "unknown" or "not checked", never "fine" (spec section 6).
-- Performance budgets (Task 20 measures them): `checkDiagram` on the existing 200-part / 500-wire sheets without mains stays at 20 ms median or less (the two tests in `src/format/checks.perf.test.ts` unchanged); `analyseMains` returns `null` without building anything on a sheet with no mains data; a realistic mains sheet with 16 candidate contact groups (65,536 states, exhaustive) checks in 300 ms median or less; the same sheet with 4 candidate groups in 30 ms median or less; `wirePaths` is not changed at all (identity colour and hazard look are joined to its output by wire uid at render time), so its tests and `scripts/perf-breadboard.mjs` frame budgets (median 17 ms, p95 33 ms) hold. The checker stays off the drag path (`src/editor/problems.ts` already skips checking while a drag is open).
+- Performance budgets: `checkDiagram` on the existing 200-part / 500-wire sheets without mains stays at 20 ms median or less (the two tests in `src/format/checks.perf.test.ts` unchanged), and on such a sheet the mains analysis returns before computing plugs, a netlist or a graph; a first checkpoint (Task 11) measures one outlet with 16 fused switched lamps before any part is generated, 300 ms median or less, and redesigns the enumeration if it misses; the final sheet with 16 candidate groups and a 150-part DC section (Task 24) meets 300 ms median, 30 ms with 4 groups; `wirePaths` is not changed at all (the look is joined to its output by wire uid), so its tests and `scripts/perf-breadboard.mjs` frame budgets (median 17 ms, p95 33 ms) hold. The checker and the renderer share one cached analysis per edit (`analyseMainsCached`); nothing enumerates twice for one edit, and nothing enumerates during a drag.
 - Commit messages end with the line `Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>` after a blank line.
 
 ## Resolutions of spec ambiguities (binding for every task)
 
-These are decisions the spec leaves open; tasks implement them exactly.
+These are decisions the spec leaves open; tasks implement them exactly. Numbers 1 to 21 were ruled on by Astra and accepted with the adjustments folded in below; 22 to 28 answer the review's findings.
 
 1. **Prongs are internal nodes.** A plug contact names an `electrical.internalNodes` entry (a named terminal inside the part, with no pin stub and no wire end), such as `"L prong"`. Cord plug leads are ordinary pins joined to the prongs by `internal` (or, for a UK plug's L, by the integral fuse's protective edge). This keeps plugged prongs out of `resolveEndpoint` and lets UK devices declare "the L prong to the device's internal L" as the spec asks.
 2. **Plug contact roles.** A plug contact's `mains` is its role in the profile (`"L"`, `"N"` or `"PE"`); an unpolarized plug's blade drawn on the L side is `"L"` by convention and its lead pins carry the requirement `"line"`. The table maps contact roles to socket roles per orientation.
-3. **Orientation** is `(plug rotation - outlet rotation + 360) % 360`.
+3. **Orientation** is `(plug rotation - outlet rotation + 360) % 360` (tested with rotated outlets).
 4. **"1-15R" in the unpolarized 1-15P row** covers both the unpolarized and the polarized 1-15R (a narrow blade enters either slot).
 5. **Europlug sockets (CEE 7/16)** are a table family with no built-in outlet; tests use a synthetic one.
 6. **Only plug-in devices seat on outlets, and plug-in devices seat only on outlets.** Any other part landing on an outlet's holes, or a plug landing on breadboard holes, is a mount that never seats (`no-fit`).
-7. **Stylized patterns** (Task 10) are identical for plug contacts and socket holes at orientation 0. Within one geometry group (NEMA, CEE, BS, AS) the table alone decides polarization, since the grid cannot draw blade width; across groups no pattern lands fully on a socket it has no table entry for, at any rotation (tested).
+7. **Stylized patterns** (Task 12) are identical for plug contacts and socket holes at orientation 0. Within one geometry group (NEMA, CEE, BS, AS) the table alone decides polarization, since the grid cannot draw blade width; across groups no pattern lands fully on a socket it has no table entry for, at any rotation. Built-in parts are tested for their contact subsets and against translations too.
 8. **Energize edges** model energy crossing into a part without identity: across an inadequate isolation barrier they are directed (mains domain to secondary), for an undeclared mains terminal they are undirected between it and every other mains terminal of the part. Energization otherwise follows the spec's closure literally.
-9. **Protective separation** is adequate for `reinforced`, `double`, or `basic` plus `safeguard: "protective-screen"`. A domain's declared kind (`selv` / `pelv`) is its intended class; a PE bond is declared with `bond: "pe"`.
-10. **Sources are limited to 10 per sheet** for exhaustive analysis (identity is one 30-bit mask). More than 10 outlets gives `mains-incomplete` ("Mains checks did not finish: 11 outlets. Split the drawing or check the rest by hand."), the same honest path as more than 16 contact groups.
-11. **Converter availability across states:** powered in at least one enumerated state counts as powered (as the DC checker already takes a switch as closed); unpowered only when unpowered in every state; unknown otherwise, with the reason from the first unknown state in popcount order. When enumeration did not finish, every converter whose input shares a possible-connectivity component with a source is unknown ("mains checks did not finish").
-12. **DC rules skip hazardous nets, not every mains-declared pin.** A net that is hazardous in some state (or might be, when enumeration did not finish) is left out of every DC rule; a relay's contacts switching a DC motor stay in the DC checker as before.
-13. **Rule 8 loads** are the `electrical.conducts` entries of kind `load`. A converter's input is not a load for rule 8 (it is checked by rules 4 and 11), which is what the spec's "HLK-PM01 feeding an ESP32 (clean apart from cable-unverified)" requires.
-14. **A load's accepted range** is `conducts[].range` (volts AC), taken from the named reference product; a load without one gets no rule 4 check.
+9. **Protective separation** is adequate for `reinforced`, `double`, or `basic` plus `safeguard: "protective-screen"`. The effective class of a secondary is computed from that separation and a declared PE bond (spec 1.3), never taken from a domain's `selv` / `pelv` label: the label only names the domain.
+10. **Sources are limited to 10 per sheet** for exhaustive analysis (identity is one 30-bit mask). The limit counts AC sources (`acSources` entries), not parts: more than 10 gives `mains-incomplete` ("Mains checks did not finish: 11 AC sources. Split the drawing or check the rest by hand."), the same honest path as more than 16 contact groups.
+11. **Converter availability across states:** powered in at least one enumerated state counts as powered (as the DC checker already takes a switch as closed); unpowered only when unpowered in every state; unknown otherwise, with the reason from its first unknown state in enumeration order (fewest groups on first). When enumeration did not finish, nothing is claimed unpowered unless no source terminal (L, N or PE) shares a possible-connectivity component with either input, which is a proof, not an enumeration result; every other converter is unknown ("the mains checks did not finish").
+12. **DC rules skip hazardous nets, not every mains-declared pin.** A net that is hazardous in some state (or might be, when enumeration did not finish) is left out of every DC rule, and no DC source edge whose output, return, inferred return or diode return is on such a net enters the potential solver. A relay's contacts switching a DC motor stay in the DC checker as before.
+13. **Rule 8 loads** are the `electrical.conducts` entries of kind `load`. A converter's input is not a load for rule 8 (it is checked by rules 4 and 11), which is what the spec's "HLK-PM01 feeding an ESP32 (clean apart from cable-unverified)" requires. Wiring from a converter onward to declared loads stays checked.
+14. **A load's accepted range** is `conducts[].range` (volts AC), from the reference product. A load without one that gets L and N of a source in some state gets a `data-missing` warning saying its voltage compatibility was not checked; it is never silently skipped.
 15. **"300 VDC-only terminal on 230 VAC (rating)"** is `rating-unknown` (it has a rating of another service, so it is declared for mains but has no relevant rating), not `mains-rating` and not rule 1.
 16. **`fuseRating`** is valid above 0 up to 100 A; a module may leave its default out (unknown). An integral fuse's `protective[].rating`, when given, wins over the param.
 17. **Settings default** is the first listed choice (`["fitted", "absent"]` defaults to fitted).
 18. **Outlet region** is `electrical.ac.region` (`us`, `jp`, `eu`, `uk`, `au`); it sets identity colours (us and jp: L black, N white, PE green; eu, uk and au: L brown, N blue, PE green-yellow).
-19. **Wire colour by identity:** a new wire from or to a terminal whose node has exactly one conductor gets that conductor's colour; a stored wire with no `color` renders in its identity colour; a stored colour always wins (the user can change it). Green-yellow is a new named colour drawn as a two-colour stroke.
-20. **Exports:** the app has no image or PDF export yet (JSON only, plus the browser's print). The notice is drawn inside `render/Sheet.tsx` (the SVG any future image or PDF export renders), shown on the printed editor page by a print stylesheet, and written into exported JSON as a top-level `notes` entry. The PRD records that every future export must carry it.
-21. **The relay module's coil-to-contact isolation** is recorded as the class its reference datasheet supports, with `isolationProvenance: "unverified"` (the board is a clone). If that class is `basic` (not protective separation), the spec's relay circuit test would also show a rule 1 error on the coil side; the implementer then stops and the controller asks Michael before changing any expected result (see Task 16). The same holds for the Hi-Link modules and the spec's HLK circuit (see Task 14).
+19. **Wire colour by identity:** a node has an identity colour only when, across every enumerated state in which it has any identity, that identity is the same single conductor (a node that is PE in one state and L in another has none). A new wire from or to such a terminal starts in that colour; a stored wire with no `color` renders in it; a stored colour always wins. Green-yellow is a new named colour drawn as a two-colour stroke.
+20. **Exports:** the app has no image or PDF export yet (JSON only, plus the browser's print). The notice is drawn inside `render/Sheet.tsx` (the SVG any future image or PDF export renders) in a footer band the sheet reserves below the drawing, wrapped to the sheet width with measured lines; shown on the printed editor page by a print stylesheet; and written into exported JSON as a top-level `notes` entry. The PRD records that every future export must carry it.
+21. **Source evidence wins over expected clean results.** Isolation comes only from an explicit source statement (see Global Constraints); no test voltage is mapped to a class. Task 0 records what each source says. If the Songle relay's or the Hi-Link modules' sources do not state an adequate class, the spec's relay circuit and HLK circuit cannot be clean as written: Task 0 reports it as a blocking item, and the controller asks Michael before Task 20 changes any expected result.
+22. **Polarity on unpolarized outlets is reported as uncertain, never skipped.** For a source whose L side no standard fixes (`nema-1-15r`, `cee7-3`, `cee7-16`), a polarity requirement (a lamp shell, a single-pole switch or fuse) that depends on which slot is L gets a `polarity` warning worded with "may" and the reason ("XS1 is an unpolarized outlet, so which slot is L is not known"); a definite violation from a polarized source keeps the definite wording.
+23. **The notice appears for any mains part** (spec 6: "a sheet with any mains part"): any part whose module declares mains data, a mains-rated relay, SSR or terminal block alone included.
+24. **State witnesses are minimal and complete.** A finding records every state it holds in (one bit per state). Its phrase lists exactly the contact conditions (on and off, energized and released) that are needed: a condition is dropped only when the finding holds in every state that agrees with the remaining conditions. A finding that holds in every state has no phrase.
+25. **Enumeration is per possible-connectivity component.** Components cannot affect each other, so each component's candidate groups are enumerated on their own (the sum of their state counts, not the product). The spec's limit still counts every candidate group on the sheet: more than 16 in total gives `mains-incomplete`.
+26. **An unverified isolation class** (a clone board carrying its relay's stated class, `isolationProvenance: "unverified"`) counts as that class for hazard propagation, and always adds a `rating-unverified` warning while that part is on mains.
+27. **A converter's pins outside every domain** (and every non-mains pin of a converter whose `isolation` is missing or not adequate) are treated as live when its input is energized, and `data-missing` names them.
+28. **An empty fuse holder is named as the cause of a dead load only when proven:** the load gets L and N of one source in some state with every absent fuse taken as fitted, and in no state as drawn. Nothing about absent fuses is claimed when the enumeration did not finish.
+
+## Shared Contract (every worker reads this)
+
+- **Entry points.** `analyseMainsCached(d: Diagram): MainsAnalysis | null` (in `src/format/mains.ts`) is the only way the checker, the canvas and the sheet read mains results; it caches one result per `d.parts`, `d.connections`, `d.modules` triple and returns `null` after a single scan of the parts when no part has mains data (no plugs, no netlist, no graph). `analyseMains(d)` is the uncached worker it calls.
+- **Terminals** are named by `nodeKey(part, name)` from `netlist.ts` (pins, hole groups and internal nodes alike). Graph nodes are nets; `MainsGraph.nodeOf` maps a key to its node.
+- **Identity** is a 30-bit mask, `bitOf(sourceIndex, 'L' | 'N' | 'PE')`; energization is a 10-bit source mask. `L_MASK`, `N_MASK`, `PE_MASK`, `LN_MASK` select conductors across all sources. A node is hazardous when `(ident & LN_MASK) || power`.
+- **Findings** from mains rules are `MainsDraft` (the checker's `Finding` without `id` and `severity`, plus `causes`); `causes` are stable keys (terminal keys, wire uids, or `#`-prefixed pseudo keys) so a finding's id survives redrawing. `wires` lists every wire on the finding's path (Task 6 and 9 define the paths); `select` defaults to the parts and wires.
+- **Rule registration.** Per-state rules append to `STATE_RULES` and report with `report(acc, key, mask, first)`; static rules append to `STATIC_RULES` and return drafts. Rule keys start with the rule id.
+- **Test fixtures** live in `src/format/mains.testing.ts` (synthetic modules `t-*`, helpers `at`, `w` (18 AWG ferrule wire), `dupont`, `sheet`); tests of real parts use `load` from `builtinModules.testing.ts` and values from `src/format/mainsEvidence.ts`. Wire uids from `w` are unique per test file run; tests that assert paths keep the returned connections and compare uids.
+- **Evidence** is `src/format/mainsEvidence.ts` (Task 0): per part id, the sources, the transcribed values, a quoted source line per value and a verdict. Generators import from it; parts tests compare generated modules against it and against the values a standard fixes.
 
 ## File Structure
 
 | File | Status | Responsibility |
 | --- | --- | --- |
+| `src/format/mainsEvidence.ts` | create (Task 0) | researched source evidence per mains part: URLs, values, quoted lines, verdicts |
+| `docs/superpowers/evidence/2026-09-27-mains-parts.md` | create (Task 0) | the human-readable research log and the list of NOT VERIFIED items with their blocking disposition |
 | `src/format/module.ts` | modify | `acVoltage` and `fuseRating` params (optional default), `settings`, pin `mains` and `bond`, `internalNodes`, calls `validateMains` |
 | `src/format/values.ts` | modify | `VAC` and `A` units, `editableParams`, `paramValue` |
-| `src/format/diagram.ts` | modify | `PartInstance.settings`, `Diagram.notes`, loader drops bad settings and notes, `no-fit` mount warning, green-yellow colour, notes written on export |
-| `src/format/mainsModel.ts` | create | mains field types, `validateMains`, `claimInternalNodes`, `mainsOf`, `isolationAdequate` |
+| `src/format/diagram.ts` | modify | `PartInstance.settings`, `Diagram.notes`, loader drops bad settings and notes, `no-fit` mount warning, green-yellow colour |
+| `src/format/mainsModel.ts` | create | mains field types, `validateMains`, `claimInternalNodes`, `mainsOf`, `isolationAdequate`, `uncoveredPins` |
 | `src/format/words.ts` | create | `natural`, `andList`, `orList` shared by `checks.ts` and the mains files |
-| `src/format/mainsGraph.ts` | create | `buildMainsGraph`, `prepare`, `analyseState`, `candidateGroups`, `masksByPopcount`, `statePhrase`, bit masks |
-| `src/format/mainsRules.ts` | create | accumulator, `report`, per-state rules, static rules, protective conductors |
-| `src/format/mains.ts` | create | `analyseMains`, `analyseMainsCached`, `hasMains`, `MAINS_NOTICE` |
+| `src/format/mainsGraph.ts` | create | graph, `prepare`, `analyseState`, components, candidates, witnesses, phrases, bit masks |
+| `src/format/mainsProtective.ts` | create | protective-conductor discovery (biconnected blocks, block-cut tree) |
+| `src/format/mainsRules.ts` | create | accumulator, `report`, per-state rules, static rules |
+| `src/format/mains.ts` | create | `analyseMains`, `analyseMainsCached`, `hasMains`, `withSheetNotes`, `MAINS_NOTICE` |
 | `src/format/plugging.ts` | create | plug and socket families, patterns, compatibility table, names, `orientationOf`, `entriesFor` |
 | `src/format/breadboard.ts` | modify | plug-in devices seat through the table, `no-fit`, `plugMismatches` |
-| `src/format/checks.ts` | modify | new rule ids, mains findings, converter gating, hazardous nets skipped, mount findings for outlets folded into `plug-mismatch` |
-| `src/format/mainsLook.ts` | create | identity colours, `identityColor`, `wireLook` |
+| `src/format/checks.ts` | modify | new rule ids, mains findings, converter gating, hazardous nets and source edges skipped, mount findings for outlets folded into `plug-mismatch` |
+| `src/format/mainsLook.ts` | create | identity colours, `identityColor`, `wireLooks`, `newWireColor` |
 | `src/format/mains.testing.ts` | create | synthetic mains fixture modules and sheet helpers for tests |
 | `src/format/*.test.ts` | create / modify | tests per task (named in each task) |
-| `src/render/Mains.tsx` | create | hazard outline, lightning markers, striped PE stroke, SVG notice |
-| `src/render/Sheet.tsx` | modify | identity colours, hazard look, notice in the drawing |
-| `src/editor/Canvas.tsx` | modify | identity colours, hazard look, new-wire identity colour |
+| `src/render/Mains.tsx` | create | hazard outline, lightning markers, striped PE stroke, SVG notice and its line measure |
+| `src/render/Sheet.tsx` | modify | identity colours, hazard look, notice footer |
+| `src/editor/Canvas.tsx` | modify | identity colours, hazard look, new-wire identity colour, red outline for a plug that does not fit |
 | `src/editor/Inspector.tsx` | modify | every editable param (unknown allowed), setting selects, green-yellow swatch, notice, new empty state |
-| `src/editor/Toolbar.tsx` | modify | mains badge |
+| `src/editor/Toolbar.tsx` | modify | mains badge, print notice, export with notes |
 | `src/editor/ops.ts` | modify | `PREFIXES`, `updatePartSetting`, `clearPartValue`, `updatePartValue` by name |
 | `src/editor/libraryGroups.ts` | modify | `Mains` category |
-| `src/editor/editor.css` | modify | badge, notice, print notice, green-yellow swatch |
-| `scripts/lib/mains.mjs` | create | shared generator helpers: patterns, prong nodes, ratings |
+| `src/editor/editor.css` | modify | badge, notice, print notice |
+| `scripts/lib/mains.mjs` | create | shared generator helpers: sockets, plug profiles, prong nodes, ratings |
 | `scripts/gen-mains-outlets.mjs` | create | 8 outlets |
 | `scripts/gen-mains-plugs.mjs` | create | USB chargers, barrel adapters, cord plugs |
-| `scripts/gen-mains-loads.mjs` | create | HLK-PM01, HLK-PM03, lamp holders, fuse holder, KCD1, Wago |
+| `scripts/gen-mains-loads.mjs` | create | HLK-PM01, HLK-PM03, lamp holders, fuse holder, Wago |
 | `scripts/gen-mains-terminals.mjs` | create | Phoenix MSTB and MC terminal blocks, clones |
 | `scripts/gen-outputs.mjs` | modify | relay module contacts, domains, ratings; Fotek SSR-25DA |
-| `modules/*.json` | generated | new and updated parts |
+| `modules/*.json` | generated | new and updated parts (KCD1 edited by hand) |
 | `scripts/check-mains-ui.mjs` | create | browser check `npm run check:mains-ui` |
 | `package.json` | modify | `check:mains-ui` script |
 | `docs/PRD.md` | modify | module fields, Mains parts, the honesty statement, exports carry the notice |
-| `.claude/skills/circuitoon-add-part/SKILL.md`, `references/conventions.md` | modify | mains fields, new prefixes, the Mains category, the new generators |
+| `.claude/skills/circuitoon-add-part/SKILL.md`, `references/conventions.md` | modify | mains fields, new prefixes, the Mains category, the evidence file, the new generators |
+
+## Task order
+
+0 evidence (no code); 1 to 2 format; 3 to 5 graph, enumeration and the analysis; 6 to 10 rules (8 is protective-path discovery on its own); 11 first performance checkpoint; 12 to 14 plugging (data, mount integration, UI); 15 designators and helpers; 16 to 20 parts batches; 21 look; 22 honesty; 23 browser check; 24 final budgets and verification.
+
+---
+
+### Task 0: Source evidence for every mains part (research only, before any code)
+
+**Files:**
+- Create: `docs/superpowers/evidence/2026-09-27-mains-parts.md`
+- Create: `src/format/mainsEvidence.ts`
+- Test: `src/format/mainsEvidence.test.ts`
+
+**Interfaces:**
+- Consumes: the spec's part list (section 4), the standards it names.
+- Produces: `src/format/mainsEvidence.ts` exporting the types and the table below; every later parts task and parts test reads it.
+
+```ts
+// Source evidence for the built-in mains parts (spec section 4): what each exact datasheet or
+// standard says, transcribed with the line it came from, and whether it was verified. Generators
+// build the parts from it; tests compare the parts against it. A value a source does not state is
+// absent here, never guessed.
+export type Verdict = 'VERIFIED' | 'NOT VERIFIED'
+export interface Fact<T> { value: T; quote: string; url: string }
+export interface RatingFact { volts: number; amps?: number; service: 'ac' | 'dc' | 'ac/dc'; conditions?: string; quote: string; url: string }
+export interface PartEvidence {
+  /** The exact part (maker and part number) or standard the part is built from. */
+  subject: string
+  /** Every URL used, standard or datasheet first; becomes the module's `source`. */
+  sources: string[]
+  verdict: Verdict
+  /** For NOT VERIFIED: what is missing and what the part does meanwhile ("not generated", or "generated with isolation unknown"). */
+  blocking?: string
+  /** Pin or terminal names in physical order per side, as the source shows them. */
+  pins?: Fact<Record<string, string[]>>
+  /** Which contact is L, N, PE, seen from the front (outlets, plugs). */
+  lSide?: Fact<string>
+  ratings?: RatingFact[]
+  /** The insulation class the source states for the mains-to-output barrier; absent when it states none. */
+  isolation?: Fact<'reinforced' | 'double' | 'basic'>
+  acInput?: Fact<[number, number]>
+  output?: Fact<{ volts: number }>
+  protection?: Fact<'class-1' | 'class-2'>
+  loadRange?: Fact<[number, number]>
+  /** Anything else a generator needs (fuse rating, control range, leakage, revision, part numbers). */
+  extra?: Record<string, Fact<unknown>>
+}
+export const EVIDENCE: Record<string, PartEvidence> = {
+  // one entry per module id of Tasks 16 to 20, filled in Step 2
+}
+```
+
+- [ ] **Step 1: Research, part by part (implementer, with WebFetch and PDF reading)**
+
+For every module id the spec lists (outlets, plug-in devices per family, HLK-PM01 and PM03, E26 and E27 lamp holders, the 5x20 fuse holder, KCD1, Wago 221-412/413/415, Phoenix MSTB 2,5 and MC 1,5 at 2 to 6 positions with plug and header item numbers, the KF2EDG and KF301 clones, the relay module and its Songle relay, the Fotek SSR-25DA in its current revision with date), open the exact source and record, in the evidence log, each value with a quoted line and its URL:
+- outlets and plugs: the standard's contact layout and which contact is L (NEMA WD 6, JIS C 8303, CEE 7 sheets, DIN 49440 / 49441, NF C 61-314, BS 1363, AS/NZS 3112, IEC TR 60083), real contact spacing, and the rating;
+- chargers and adapters: the exact maker part numbers per region (first choice CUI Devices SWI series; record what was chosen and why), input range, output voltage, plug type, integral UK fuse rating, and the insulation class only if the datasheet states it;
+- Hi-Link, Songle, Fotek: pin order, ranges, contact and load ratings with conditions, leakage, and the stated insulation class between mains and the low-voltage side, quoted; if the source gives only a test voltage, write exactly that and record no class;
+- lamp holders (Leviton 9880 for E26; a maker's E27 holder stating rating and earth terminal), the lamps whose rated voltage sets `loadRange`, the fuse holder (Schurter FPG4), KCD1, Wago (IEC values with overvoltage category and pollution degree as conditions), Phoenix (every nominal voltage with its conditions, current, and both item numbers per size), clones (the vendor listing's voltage and current).
+
+Also check each family's L side against Task 12's pattern table and write any difference.
+
+- [ ] **Step 2: Fill `src/format/mainsEvidence.ts` and the verdicts**
+
+One entry per module id with the fields above, values exactly as the source states them. `verdict: 'VERIFIED'` only when every value the part needs has a quote; otherwise `'NOT VERIFIED'` with `blocking` saying what is missing and the proposed disposition: "not generated until resolved", "generated with isolation unknown (the checker treats its output as live)", or "dropped from this release". The spec's clean-circuit expectations (Resolution 21) are listed there too when the evidence contradicts them.
+
+- [ ] **Step 3: Write the evidence test**
+
+```ts
+// The evidence table is complete and honest: every mains part the spec lists has an entry, every
+// entry cites sources, and every value carries the line it was read from.
+import { describe, expect, it } from 'vitest'
+import { EVIDENCE } from './mainsEvidence.ts'
+
+const IDS = [
+  'outlet-us-5-15r-duplex', 'outlet-us-5-20r-duplex', 'outlet-uk-bs1363', 'outlet-schuko-cee7-3', 'outlet-fr-cee7-5', 'outlet-au-as3112', 'outlet-jp-1-15r-duplex', 'outlet-jp-1-15r-duplex-polarized',
+  'charger-usb-5v-us', 'charger-usb-5v-eu', 'charger-usb-5v-uk', 'charger-usb-5v-au', 'adapter-barrel-us', 'adapter-barrel-eu', 'adapter-barrel-uk', 'adapter-barrel-au',
+  'plug-us-5-15p', 'plug-us-1-15p', 'plug-jp-1-15p', 'plug-eu-cee7-7', 'plug-eu-cee7-16', 'plug-uk-bs1363-3lead', 'plug-uk-bs1363-2lead', 'plug-au-as3112-3lead', 'plug-au-as3112-2lead',
+  'hlk-pm01', 'hlk-pm03', 'lamp-holder-e26', 'lamp-holder-e27', 'fuse-holder-5x20-inline', 'rocker-switch-kcd1', 'wago-221-412', 'wago-221-413', 'wago-221-415',
+  ...[2, 3, 4, 5, 6].flatMap((n) => [`terminal-block-mstb-508-${n}`, `terminal-block-mc-381-${n}`]),
+  'terminal-block-kf2edg-508-2', 'terminal-block-kf2edg-508-3', 'terminal-block-kf301-500-2', 'terminal-block-kf301-500-3',
+  'relay-module-1ch-5v', 'ssr-fotek-25da',
+]
+
+describe('mains evidence', () => {
+  it('has an entry for every mains part in the spec', () => {
+    expect(Object.keys(EVIDENCE).sort()).toEqual([...IDS].sort())
+  })
+  for (const id of IDS)
+    it(`${id}: sources cited, every value quoted, a verdict with a disposition when not verified`, () => {
+      const e = EVIDENCE[id]
+      expect(e.sources.length).toBeGreaterThan(0)
+      for (const u of e.sources) expect(u).toMatch(/^https?:\/\//)
+      const facts = [e.pins, e.lSide, e.isolation, e.acInput, e.output, e.protection, e.loadRange, ...(e.ratings ?? []), ...Object.values(e.extra ?? {})].filter(Boolean)
+      for (const f of facts) expect([f!.quote.length > 0, /^https?:\/\//.test(f!.url)]).toEqual([true, true])
+      if (e.verdict === 'NOT VERIFIED') expect(e.blocking).toBeTruthy()
+    })
+})
+```
+
+- [ ] **Step 4: Run it and commit**
+
+Run: `npx tsc --noEmit && npx vitest run src/format/mainsEvidence.test.ts`
+Expected: PASS.
+
+```bash
+git add src/format/mainsEvidence.ts src/format/mainsEvidence.test.ts docs/superpowers/evidence/2026-09-27-mains-parts.md
+git commit -m "Mains: source evidence for every mains part" -m "Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>"
+```
+
+- [ ] **Step 5: Controller review and blocking items (controller, not the implementer)**
+
+The controller has an independent reviewer re-open every source and check each quoted value, then brings every NOT VERIFIED item and every contradiction with the spec's expected results (Resolution 21) to Michael with the proposed disposition. Parts tasks start only after Michael has decided on each blocking item; his decisions are written into the evidence log and `blocking` fields.
 
 ---
 
@@ -201,9 +336,19 @@ describe('part settings and mains values on load', () => {
     expect(r.ok && r.diagram.parts[0].settings).toBeUndefined()
     expect(r.ok && r.warnings).toEqual(['parts[0].settings: must be an object of setting name to choice, so it was dropped and the defaults are used'])
   })
-  it('drops a fuseRating in the wrong unit and an acVoltage out of range, as for any value', () => {
+  it('drops a fuseRating in the wrong unit, as for any value', () => {
     const r = validateDiagram(file({ values: { fuseRating: { value: 2, unit: 'V' } } }))
     expect(r.ok && r.warnings[0]).toBe(`parts[0].values.fuseRating: F1 has fuseRating 2 V, but fuseRating must be in A; ${VALUE_DROPPED}`)
+  })
+  it('drops an acVoltage out of range and keeps one in range', () => {
+    const outlet = { format: 'circuitoon-module/1', id: 'socket', name: 'Socket', pins: [{ name: 'A', side: 'left' }], electrical: { params: { acVoltage: { unit: 'VAC', default: 120 } } } }
+    const sheet = (value: number) => ({ format: 'circuitoon-diagram/1', title: 't', modules: { socket: outlet }, connections: [],
+      parts: [{ uid: 'p1', designator: 'XS1', module: 'socket', x: 0, y: 0, values: { acVoltage: { value, unit: 'VAC' } } }] })
+    const bad = validateDiagram(sheet(2000))
+    expect(bad.ok && bad.warnings).toEqual([`parts[0].values.acVoltage: XS1 has acVoltage 2000 VAC, but acVoltage must be from 1 to 1000; ${VALUE_DROPPED}`])
+    expect(bad.ok && bad.diagram.parts[0].values).toEqual({})
+    const good = validateDiagram(sheet(230))
+    expect(good.ok && good.warnings).toEqual([])
   })
 })
 ```
@@ -497,7 +642,7 @@ const CHOICE_LABELS: Record<string, string> = { fitted: 'Fitted', absent: 'Absen
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `npx vitest run src/format/module.test.ts src/format/values.test.ts src/format/diagram.test.ts src/editor/ops.test.ts`
-Expected: PASS. Then `npm test` and `npm run build`: PASS.
+Expected: PASS. Then the gate `npx tsc --noEmit && npm test`, and `npm run build`: PASS.
 
 - [ ] **Step 5: Commit**
 
@@ -524,6 +669,7 @@ git commit -m "Mains: acVoltage and fuseRating params, part settings" -m "Co-Aut
   - `validateMains(raw: Record<string, unknown>, names: Set<string>, errors: string[]): void`
   - `mainsOf(m: ModuleDef): MainsInfo` (cached per module object)
   - `isolationAdequate(info: MainsInfo): boolean`
+  - `uncoveredPins(m: ModuleDef, info: MainsInfo): string[]` (a converter's pins and hole groups in no domain and not declared for mains: Resolution 27)
   - `PinDef.mains?: Requirement`, `PinDef.bond?: 'pe'`, the same on `HoleGroup`.
 
 `MainsInfo`:
@@ -569,7 +715,7 @@ Create `src/format/mainsModel.test.ts`:
 // exact path of each problem, and `mainsOf` reading a valid module.
 import { describe, expect, it } from 'vitest'
 import { validateModule } from './module.ts'
-import { isolationAdequate, mainsOf } from './mainsModel.ts'
+import { isolationAdequate, mainsOf, uncoveredPins } from './mainsModel.ts'
 
 const base = { format: 'circuitoon-module/1', id: 'thing', name: 'Thing' }
 const errs = (raw: unknown) => {
@@ -699,6 +845,14 @@ describe('mainsOf', () => {
     expect(info('basic')).toBe(false)
     expect(info('basic', 'protective-screen')).toBe(true)
     expect(info('unknown')).toBe(false)
+  })
+  it('names the pins a converter leaves outside every domain', () => {
+    const r = validateModule({
+      ...base, pins: [{ name: 'AC1', side: 'left', mains: 'line' }, { name: 'AC2', side: 'left', mains: 'line' }, { name: '+V', side: 'right', type: 'power_out', supply: '5V' }, { name: '-V', side: 'right', type: 'ground' }],
+      electrical: { acInput: { a: 'AC1', b: 'AC2', range: [100, 240] }, domains: [{ name: 'mains', pins: ['AC1', 'AC2'], kind: 'mains' }], isolation: 'reinforced' },
+    })
+    if (!r.ok) throw new Error(r.errors.join('; '))
+    expect(uncoveredPins(r.module, mainsOf(r.module))).toEqual(['+V', '-V'])
   })
   it('says a module with no mains data has none', () => {
     const r = validateModule({ ...base, pins: two })
@@ -957,6 +1111,12 @@ export function isolationAdequate(info: MainsInfo): boolean {
   return info.isolation === 'reinforced' || info.isolation === 'double' || (info.isolation === 'basic' && info.safeguard === 'protective-screen')
 }
 
+/** Pins and hole groups that no domain covers and the module does not declare for mains (Resolution 27: treated as live on a converter). */
+export function uncoveredPins(m: ModuleDef, info: MainsInfo): string[] {
+  return [...m.pins.flatMap((p) => ('name' in p && typeof p.name === 'string' ? [p.name] : [])), ...(m.holes ?? []).map((h) => h.name)]
+    .filter((n) => !info.domainOf.has(n) && !info.terminals.has(n))
+}
+
 const cache = new WeakMap<ModuleDef, MainsInfo>()
 
 /** The module's mains data, parsed once (modules are never mutated after load). Assumes a validated module. */
@@ -1072,7 +1232,7 @@ Note the ordering the tests expect: pin-level `mains`/`bond` errors come with th
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `npx vitest run src/format/mainsModel.test.ts src/format/module.test.ts`
-Expected: PASS. Then `npm test` and `npm run validate`: PASS (no built-in module changes yet).
+Expected: PASS. Then the gate `npx tsc --noEmit && npm test`, and `npm run validate`: PASS (no built-in module changes yet).
 
 - [ ] **Step 5: Commit**
 
@@ -1105,10 +1265,10 @@ git commit -m "Mains: module fields for sources, conduction, domains, ratings, c
   - `interface MainsGraph { d: Diagram; n: number; members: string[][]; nodeOf: Map<string, number>; wires: string[][]; broken: Set<string>; sources: GSource[]; edges: GEdge[]; groups: GGroup[]; converters: GConverter[]; loads: GLoad[]; mainsParts: PartInstance[]; connected: Set<string>; termCache: Map<string, GTerm | null> }` (`broken`: uids of connections the netlist left out).
   - `buildMainsGraph(d: Diagram, plugs: Plug[], nl: Netlist): MainsGraph | null` (null when no part on the sheet has mains data).
   - `possibleRoots(g: MainsGraph): Int32Array` (component root per node with every edge and every contact position conducting).
-  - `interface Prepared { g: MainsGraph; possible: Int32Array; relevant: Int32Array; base: Int32Array; bareBase: Int32Array; parent: Int32Array; bareParent: Int32Array; root: Int32Array; bareRoot: Int32Array; ident: Uint32Array; power: Uint16Array; groupState: Int8Array; energy: GEdge[]; srcRoots: number[] }`.
-  - `prepare(g: MainsGraph): Prepared`, `analyseState(p: Prepared): void` (reads `p.groupState`; fills `root`, `bareRoot`, `ident` and `power` at roots, and `srcRoots`).
+  - `interface Prepared { g: MainsGraph; possible: Int32Array; relevant: Int32Array; inRel: Uint8Array; sources: GSource[]; groupIdx: number[]; loadIdx: number[]; converterIdx: number[]; protective: GEdge[]; energy: GEdge[]; base: Int32Array; bareBase: Int32Array; fitBase: Int32Array; anyAbsent: boolean; parent: Int32Array; bareParent: Int32Array; fitParent: Int32Array; root: Int32Array; bareRoot: Int32Array; fitRoot: Int32Array; ident: Uint32Array; power: Uint16Array; groupState: Int8Array; srcRoots: number[] }`. `relevant`, `inRel` and the index lists say what this analysis covers: `prepare` covers every relevant node; Task 4's views narrow them to one enumeration unit (Resolution 25), and every rule loops over these lists, never over `g.*` directly.
+  - `prepare(g: MainsGraph): Prepared`, `analyseState(p: Prepared): void` (reads `p.groupState`; resets and fills only `p.relevant`: `root`, `bareRoot` (fuses removed), `fitRoot` (every fuse taken as fitted, only when a fuse is absent), `ident` and `power` at roots, and `srcRoots`).
   - `identAt(p: Prepared, node: number): number`, `powerAt(p: Prepared, node: number): number`, `hazardAt(p: Prepared, node: number): boolean`.
-- Produces (in `src/format/mains.testing.ts`): fixture modules `t-outlet`, `t-outlet-2`, `t-outlet-eu`, `t-psu`, `t-psu-basic`, `t-psu-basic-bonded`, `t-psu-screen`, `t-psu-pelv`, `t-lamp`, `t-lamp-c1`, `t-switch`, `t-relay`, `t-ssr`, `t-fuse`, `t-term`, `t-term-125`, `t-term-dc`, `t-term-cond`, `t-term-bare`, `t-term-unverified`, `t-mcu`, `t-mcu33`, `t-undeclared`; `MAINS_MODULES`; helpers `at`, `w`, `dupont`, `sheet`.
+- Produces (in `src/format/mains.testing.ts`): fixture modules `t-outlet`, `t-outlet-2`, `t-outlet-eu`, `t-psu`, `t-psu-basic`, `t-psu-basic-bonded`, `t-psu-screen`, `t-psu-pelv`, `t-lamp`, `t-lamp-c1`, `t-switch`, `t-relay`, `t-ssr`, `t-fuse`, `t-term`, `t-term-125`, `t-term-dc`, `t-term-cond`, `t-term-bare`, `t-term-unverified`, `t-mcu`, `t-mcu33`, `t-undeclared`, `t-relay-2p` (two linked poles), `t-bat9` (a 9 V battery), `t-psu-mainsonly` (a converter that declares only its mains domain); `MAINS_MODULES`; helpers `at`, `w`, `dupont`, `sheet`.
 
 - [ ] **Step 1: Move the word helpers out of `checks.ts`**
 
@@ -1235,11 +1395,25 @@ export const mcu = mod({ id: 't-mcu', name: 'Test board', pins: [
 export const mcu33 = mod({ id: 't-mcu33', name: 'Test 3.3 V board', pins: [
   { name: 'IO', side: 'right', type: 'io' }, { name: 'GND', side: 'left', type: 'ground' }, { name: 'VCC', side: 'left', type: 'power_in', supply: '3V3' },
 ] })
+/** A 9 V battery: a DC source that is not a mains part. */
+export const bat9 = mod({ id: 't-bat9', name: 'Test 9 V battery', pins: [{ name: '+', side: 'top', type: 'power_out', supply: '9V' }, { name: '-', side: 'top', type: 'ground' }] })
+/** A double-pole relay: both poles switch together (spec 1.5, linked poles). */
+export const relay2p = mod({ id: 't-relay-2p', name: 'Test double-pole relay', pins: [
+  ...['COM1', 'NO1', 'NC1', 'COM2', 'NO2', 'NC2'].map((name) => ({ name, side: 'left', type: 'passive' })),
+  { name: '+', side: 'right', type: 'power_in', supply: '5V' }, { name: '-', side: 'right', type: 'ground' },
+] as ModuleDef['pins'], electrical: {
+  contacts: [{ id: 'k', kind: 'relay', poles: [{ com: 'COM1', no: 'NO1', nc: 'NC1' }, { com: 'COM2', no: 'NO2', nc: 'NC2' }] }],
+  domains: [{ name: 'contacts', pins: ['COM1', 'NO1', 'NC1', 'COM2', 'NO2', 'NC2'], kind: 'mains' }, { name: 'coil', pins: ['+', '-'], kind: 'selv' }], isolation: 'reinforced',
+  ratings: [{ pins: ['COM1', 'NO1', 'NC1', 'COM2', 'NO2', 'NC2'], kind: 'switching', service: 'ac', volts: 250, amps: 10, provenance: 'datasheet' }],
+} })
+/** A converter that declares only its mains domain: its outputs are in no domain (Resolution 27). */
+export const psuMainsOnly = mod({ id: 't-psu-mainsonly', name: 'Test AC-DC 5 V (outputs in no domain)', pins: psuPins,
+  electrical: { ...psuInput, domains: [{ name: 'mains', pins: ['AC1', 'AC2'], kind: 'mains' }], isolation: 'reinforced', protection: 'class-2' } })
 /** A part with mains terminals and no conduction data. */
 export const undeclared = mod({ id: 't-undeclared', name: 'Test part without mains data', pins: [{ name: 'A', side: 'left', mains: 'L' }, { name: 'B', side: 'right', mains: 'N' }] })
 
 export const MAINS_MODULES: Record<string, ModuleDef> = Object.fromEntries(
-  [outlet, outlet2, outletEU, psu, psuBasic, psuBasicBonded, psuScreen, psuPelv, lamp, lampC1, sw, relay, ssr, fuse, block, block125, blockDc, blockCond, blockBare, blockUnverified, mcu, mcu33, undeclared]
+  [outlet, outlet2, outletEU, psu, psuBasic, psuBasicBonded, psuScreen, psuPelv, lamp, lampC1, sw, relay, ssr, fuse, block, block125, blockDc, blockCond, blockBare, blockUnverified, mcu, mcu33, undeclared, bat9, relay2p, psuMainsOnly]
     .map((m) => [m.id, m]),
 )
 
@@ -1350,6 +1524,26 @@ describe('buildMainsGraph', () => {
     const p = state(graph(sheet([at('xs1', 'XS1', 't-outlet'), at('u1', 'U1', 't-undeclared', 200)], [w('xs1|L', 'u1|A')])))
     expect(power(p, 'u1', 'B')).toBe(1)
   })
+  it('switches linked poles together: both on NC released, both on NO energized, never one of each', () => {
+    const p = graph(sheet([at('xs1', 'XS1', 't-outlet'), at('k1', 'K1', 't-relay-2p', 200)], [w('xs1|L', 'k1|COM1'), w('xs1|N', 'k1|COM2')]))
+    state(p)
+    expect([ident(p, 'k1', 'NC1'), ident(p, 'k1', 'NC2'), ident(p, 'k1', 'NO1'), ident(p, 'k1', 'NO2')]).toEqual([bitOf(0, 'L'), bitOf(0, 'N'), 0, 0])
+    state(p, 0)
+    expect([ident(p, 'k1', 'NC1'), ident(p, 'k1', 'NC2'), ident(p, 'k1', 'NO1'), ident(p, 'k1', 'NO2')]).toEqual([0, 0, bitOf(0, 'L'), bitOf(0, 'N')])
+    expect(p.g.groups).toHaveLength(1)
+  })
+  it("treats a converter's outputs outside every domain as live when its input is energized", () => {
+    const p = state(graph(sheet([at('xs1', 'XS1', 't-outlet'), at('ps1', 'PS1', 't-psu-mainsonly', 200)], [w('xs1|L', 'ps1|AC1'), w('xs1|N', 'ps1|AC2')])))
+    expect(power(p, 'ps1', '+V')).toBe(1)
+  })
+  it('takes every fuse as fitted in fitRoot, and leaves the rest of the sheet alone', () => {
+    const p = state(graph(sheet([at('xs1', 'XS1', 't-outlet'), at('f1', 'F1', 't-fuse', 200, 0, { settings: { fuse: 'absent' } }), at('u9', 'U9', 't-mcu', 900)],
+      [w('xs1|L', 'f1|1'), w('u9|IO', 'u9|GND')])))
+    expect(p.anyAbsent).toBe(true)
+    expect(p.fitRoot[node(p, 'f1', '2')]).toBe(p.fitRoot[node(p, 'xs1', 'L')])
+    expect(p.root[node(p, 'f1', '2')]).not.toBe(p.root[node(p, 'xs1', 'L')])
+    expect(p.inRel[node(p, 'u9', 'IO')]).toBe(0)
+  })
   it('keeps the three conductors of ten sources apart in the masks', () => {
     expect(L_MASK & N_MASK).toBe(0)
     expect(N_MASK & PE_MASK).toBe(0)
@@ -1378,7 +1572,7 @@ import type { Plug } from './breadboard.ts'
 import { type Netlist, nodeKey } from './netlist.ts'
 import { type ModuleDef, type PinType, isSpacer, partSetting } from './module.ts'
 import { paramValue } from './values.ts'
-import { type Conductor, type ContactGroup, type MainsInfo, type Region, type SocketFamily, isolationAdequate, mainsOf } from './mainsModel.ts'
+import { type Conductor, type ContactGroup, type MainsInfo, type Region, type SocketFamily, isolationAdequate, mainsOf, uncoveredPins } from './mainsModel.ts'
 
 /** Identity is one 30-bit mask: three bits (L, N, PE) per source. More sources than this: see mains-incomplete. */
 export const MAX_SOURCES = 10
@@ -1517,13 +1711,14 @@ export function buildMainsGraph(d: Diagram, plugs: Plug[], nl: Netlist): MainsGr
       edge({ kind: 'load', a: na, b: nb, part: p, names: [a, b] })
       converters.push({ part: p, a: na, b: nb, names: [a, b], range, outputs: outputsOf(m, info), plugIn: !!info.plug })
     }
-    // Energy crosses an isolation barrier that is not protective separation (spec 1.3). A converter
-    // with no domains at all is treated the same way for its outputs (the data is missing).
+    // Energy crosses an isolation barrier that is not protective separation (spec 1.3), and reaches
+    // every pin of a converter that no domain covers (Resolution 27: the data is missing, so that pin
+    // is taken as live; rule 12 names it).
     const primary = info.domains.filter((x) => x.kind === 'mains').flatMap((x) => x.pins)
-    const secondary = info.domains.length ? info.domains.filter((x) => x.kind !== 'mains').flatMap((x) => x.pins) : info.acInput ? outputsOf(m, info) : []
+    const declared = info.domains.filter((x) => x.kind !== 'mains').flatMap((x) => x.pins)
+    const exposed = [...(isolationAdequate(info) ? [] : declared), ...(info.acInput ? uncoveredPins(m, info) : [])]
     const from = primary.length ? primary : info.acInput ? [info.acInput.a, info.acInput.b] : []
-    if (from.length && secondary.length && (!info.domains.length || !isolationAdequate(info)))
-      for (const a of from) for (const b of secondary) edge({ kind: 'energize', a: node(p.uid, a), b: node(p.uid, b), part: p, names: [a, b], directed: true, why: 'isolation' })
+    for (const a of from) for (const b of exposed) edge({ kind: 'energize', a: node(p.uid, a), b: node(p.uid, b), part: p, names: [a, b], directed: true, why: 'isolation' })
     // A mains terminal whose conduction the module does not declare: energy passes both ways
     // between it and every other mains terminal of the part (spec 1.2, conservative).
     for (const t of info.terminals) {
@@ -1611,23 +1806,37 @@ export interface Prepared {
   g: MainsGraph
   /** Possible-connectivity root per node. */
   possible: Int32Array
-  /** Nodes in a possible-connectivity component with a source terminal or a converter input: the only ones that can carry identity or energy. */
+  /** The nodes this analysis covers: every node in a possible-connectivity component with a source terminal or a converter input (a view narrows it to one enumeration unit). Only these can carry identity or energy. */
   relevant: Int32Array
-  /** Union-find over nets plus fitted fuses (identity), and over nets alone (the unprotected rule). */
+  /** 1 for a node in `relevant`. */
+  inRel: Uint8Array
+  /** The sources, contact groups, loads, converters, fuses and energy edges with terminals in `relevant`. A view's sources keep their global `index` but list only their nodes inside the view. */
+  sources: GSource[]
+  groupIdx: number[]
+  loadIdx: number[]
+  converterIdx: number[]
+  protective: GEdge[]
+  /** Load, leakage and energize edges inside `relevant`. */
+  energy: GEdge[]
+  /** Union-find bases: nets plus fitted fuses (identity), nets alone (the unprotected rule), nets plus every fuse (an empty holder taken as fitted, Resolution 28). */
   base: Int32Array
   bareBase: Int32Array
-  // Scratch, reused by every state.
+  fitBase: Int32Array
+  /** True when some fuse holder is empty (only then is `fitRoot` computed). */
+  anyAbsent: boolean
+  // Scratch, reused by every state and shared by views; only `relevant` entries are ever read or written.
   parent: Int32Array
   bareParent: Int32Array
+  fitParent: Int32Array
   root: Int32Array
   bareRoot: Int32Array
+  fitRoot: Int32Array
   /** Identity mask at each root. */
   ident: Uint32Array
   /** Energizing sources (one bit per source) at each root. */
   power: Uint16Array
   /** Per contact group: 0 released or off, 1 energized or on. */
   groupState: Int8Array
-  energy: GEdge[]
   /** The distinct roots holding identity in this state. */
   srcRoots: number[]
 }
@@ -1638,14 +1847,30 @@ export function prepare(g: MainsGraph): Prepared {
   for (const s of g.sources) for (const x of [...s.live, ...s.neutral, ...s.earth]) live.add(possible[x])
   for (const c of g.converters) live.add(possible[c.a]).add(possible[c.b])
   const relevant = Int32Array.from([...Array(g.n).keys()].filter((i) => live.has(possible[i])))
+  const inRel = new Uint8Array(g.n)
+  for (const i of relevant) inRel[i] = 1
   const base = identity(g.n)
   const bareBase = identity(g.n)
-  for (const e of g.edges) if (e.kind === 'protective' && e.fitted) union(base, e.a, e.b)
+  const fitBase = identity(g.n)
+  let anyAbsent = false
+  for (const e of g.edges) {
+    if (e.kind !== 'protective') continue
+    union(fitBase, e.a, e.b)
+    if (e.fitted) union(base, e.a, e.b)
+    else anyAbsent = true
+  }
   return {
-    g, possible, relevant, base, bareBase,
-    parent: new Int32Array(g.n), bareParent: new Int32Array(g.n), root: identity(g.n), bareRoot: identity(g.n),
-    ident: new Uint32Array(g.n), power: new Uint16Array(g.n), groupState: new Int8Array(g.groups.length),
-    energy: g.edges.filter((e) => e.kind !== 'protective'), srcRoots: [],
+    g, possible, relevant, inRel,
+    sources: g.sources,
+    groupIdx: g.groups.flatMap((grp, i) => (grp.nodes.some((x) => inRel[x]) ? [i] : [])),
+    loadIdx: g.loads.flatMap((l, i) => (inRel[l.a] ? [i] : [])),
+    converterIdx: g.converters.flatMap((c, i) => (inRel[c.a] ? [i] : [])),
+    protective: g.edges.filter((e) => e.kind === 'protective' && inRel[e.a]),
+    energy: g.edges.filter((e) => e.kind !== 'protective' && inRel[e.a] && inRel[e.b]),
+    base, bareBase, fitBase, anyAbsent,
+    parent: new Int32Array(g.n), bareParent: new Int32Array(g.n), fitParent: new Int32Array(g.n),
+    root: identity(g.n), bareRoot: identity(g.n), fitRoot: identity(g.n),
+    ident: new Uint32Array(g.n), power: new Uint16Array(g.n), groupState: new Int8Array(g.groups.length), srcRoots: [],
   }
 }
 
@@ -1670,24 +1895,33 @@ function flow(p: Prepared, a: number, b: number, directed: boolean): boolean {
   return moved
 }
 
-/** Identity and energization for the state in `p.groupState`. Results live in `p` until the next call. */
+/**
+ * Identity and energization for the state in `p.groupState`, over `p.relevant` only: resetting and
+ * walking just these nodes keeps a state's cost independent of the rest of the sheet. Results live in
+ * `p` until the next call.
+ */
 export function analyseState(p: Prepared): void {
   const { g } = p
-  p.parent.set(p.base)
-  p.bareParent.set(p.bareBase)
-  for (let i = 0; i < g.groups.length; i++)
-    for (const [a, b] of g.groups[i].closed[p.groupState[i]]) {
+  for (const i of p.relevant) {
+    p.parent[i] = p.base[i]
+    p.bareParent[i] = p.bareBase[i]
+    if (p.anyAbsent) p.fitParent[i] = p.fitBase[i]
+  }
+  for (const gi of p.groupIdx)
+    for (const [a, b] of g.groups[gi].closed[p.groupState[gi]]) {
       union(p.parent, a, b)
       union(p.bareParent, a, b)
+      if (p.anyAbsent) union(p.fitParent, a, b)
     }
   for (const i of p.relevant) {
     p.root[i] = find(p.parent, i)
     p.bareRoot[i] = find(p.bareParent, i)
+    if (p.anyAbsent) p.fitRoot[i] = find(p.fitParent, i)
     p.ident[i] = 0
     p.power[i] = 0
   }
   p.srcRoots.length = 0
-  for (const s of g.sources) {
+  for (const s of p.sources) {
     const put = (nodes: number[], c: Conductor) => {
       for (const x of nodes) {
         const r = p.root[x]
@@ -1703,7 +1937,7 @@ export function analyseState(p: Prepared): void {
   for (let changed = true; changed; ) {
     changed = false
     for (const e of p.energy) if (flow(p, e.a, e.b, e.directed)) changed = true
-    for (let i = 0; i < g.groups.length; i++) for (const [a, b] of g.groups[i].leak[p.groupState[i]]) if (flow(p, a, b, false)) changed = true
+    for (const gi of p.groupIdx) for (const [a, b] of g.groups[gi].leak[p.groupState[gi]]) if (flow(p, a, b, false)) changed = true
   }
 }
 
@@ -1713,12 +1947,12 @@ export const powerAt = (p: Prepared, node: number): number => p.power[p.root[nod
 export const hazardAt = (p: Prepared, node: number): boolean => (identAt(p, node) & LN_MASK) !== 0 || powerAt(p, node) !== 0
 ```
 
-Note: `p.ident` and `p.power` are only meaningful at roots of relevant nodes; a node outside `relevant` is its own root with 0 in both (never written), so `identAt`, `powerAt` and `hazardAt` are correct for every node.
+Note: `p.ident` and `p.power` are only meaningful at roots of the nodes a `Prepared` covers. A rule reads them only for nodes in its own `p.relevant` (or checks `p.inRel` first): a node another view covers may hold that view's last state. A node in no relevant component is never written, stays its own root with 0 in both, and is handled by static rules (Task 9's orphan earth check).
 
 - [ ] **Step 6: Run the tests to verify they pass**
 
 Run: `npx vitest run src/format/mainsGraph.test.ts`
-Expected: PASS. Then `npm test`: PASS.
+Expected: PASS. Then the gate `npx tsc --noEmit && npm test`: PASS.
 
 - [ ] **Step 7: Commit**
 
@@ -1729,7 +1963,7 @@ git commit -m "Mains: conduction graph with identity and energization per state"
 
 ---
 
-### Task 4: Contact-state candidates, exhaustive enumeration and state phrases
+### Task 4: Candidates, enumeration units, minimal state witnesses and their wording
 
 **Files:**
 - Modify: `src/format/mainsGraph.ts` (append)
@@ -1740,10 +1974,13 @@ git commit -m "Mains: conduction graph with identity and energization per state"
 - Produces (in `mainsGraph.ts`):
   - `MAX_GROUPS = 16`
   - `candidateGroups(g: MainsGraph, possible?: Int32Array): number[]` (group indices, in sheet order)
-  - `masksByPopcount(k: number): Uint32Array` (every mask of k bits, fewest set bits first, then by value; cached per k)
+  - `masksByPopcount(k: number): Uint32Array` (every k-bit mask, fewest set bits first, then by value; cached per k)
   - `setState(p: Prepared, cands: number[], mask: number): void`
+  - `viewOf(p: Prepared, nodes: number[]): Prepared` (the same scratch arrays, narrowed lists)
+  - `interface Unit { view: Prepared; cands: number[] }`, `units(p: Prepared, cands: number[]): Unit[]` (Resolution 25: one per possible-connectivity component with a source or converter input, components joined by a multi-pole group merged)
+  - `minimalWitness(holds: Uint32Array, k: number, mask: number): number[]` (candidate positions whose condition is needed, Resolution 24)
   - `groupName(g: MainsGraph, gi: number): string`
-  - `statePhrase(g: MainsGraph, cands: number[], mask: number): string` (for example `"when S1 and S2 are both on"`)
+  - `statePhrase(g: MainsGraph, cands: number[], kept: number[], mask: number): string` (for example `"when S1 is on and K1 is released"`; `''` when `kept` is empty)
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -1751,17 +1988,25 @@ Create `src/format/mainsStates.test.ts`:
 
 ```ts
 // Which contact groups can matter (spec 1.5: a group touching a possible-connectivity component with
-// a source or a converter input), the popcount enumeration order and the wording of a state.
+// a source or a converter input), the units the states are enumerated in, and the minimal, complete
+// witness of a finding (Resolution 24) in words.
 import { describe, expect, it } from 'vitest'
 import { plugsOf } from './breadboard.ts'
-import { netlist } from './netlist.ts'
+import { netlist, nodeKey } from './netlist.ts'
 import type { Diagram } from './diagram.ts'
-import { buildMainsGraph, candidateGroups, masksByPopcount, statePhrase, type MainsGraph } from './mainsGraph.ts'
+import { buildMainsGraph, candidateGroups, masksByPopcount, minimalWitness, prepare, statePhrase, units, type MainsGraph } from './mainsGraph.ts'
 import { at, sheet, w } from './mains.testing.ts'
 
 const graph = (d: Diagram): MainsGraph => {
   const plugs = plugsOf(d)
   return buildMainsGraph(d, plugs, netlist(d, plugs))!
+}
+const names = (g: MainsGraph, idx: number[]) => idx.map((i) => g.groups[i].part.designator)
+/** A holds-bitset over k groups from a predicate on the mask. */
+const holds = (k: number, pred: (m: number) => boolean) => {
+  const b = new Uint32Array(Math.max(1, (1 << k) >>> 5))
+  for (let m = 0; m < 1 << k; m++) if (pred(m)) b[m >>> 5] |= 1 << (m & 31)
+  return b
 }
 
 describe('candidateGroups', () => {
@@ -1770,12 +2015,34 @@ describe('candidateGroups', () => {
       [at('xs1', 'XS1', 't-outlet'), at('s1', 'S1', 't-switch', 200), at('s2', 'S2', 't-switch', 400), at('s3', 'S3', 't-switch', 600)],
       [w('xs1|L', 's1|1'), w('s1|2', 's2|1'), w('s2|2', 's3|1'), w('s3|2', 'xs1|N')],
     ))
-    expect(candidateGroups(g).map((i) => g.groups[i].part.designator)).toEqual(['S1', 'S2', 'S3'])
+    expect(names(g, candidateGroups(g))).toEqual(['S1', 'S2', 'S3'])
   })
   it('leaves out a switch that no source or converter input can ever reach', () => {
     const g = graph(sheet([at('xs1', 'XS1', 't-outlet'), at('s1', 'S1', 't-switch', 200), at('s2', 'S2', 't-switch', 400), at('u1', 'U1', 't-mcu', 600)],
       [w('xs1|L', 's1|1'), w('u1|IO', 's2|1')]))
-    expect(candidateGroups(g).map((i) => g.groups[i].part.designator)).toEqual(['S1'])
+    expect(names(g, candidateGroups(g))).toEqual(['S1'])
+  })
+})
+
+describe('units', () => {
+  it('enumerates independent components on their own, and keeps a linked-pole relay in one unit', () => {
+    const g = graph(sheet([
+      at('xs1', 'XS1', 't-outlet'), at('xs2', 'XS2', 't-outlet-2', 0, 300), at('s1', 'S1', 't-switch', 200), at('s2', 'S2', 't-switch', 200, 300),
+      at('k1', 'K1', 't-relay-2p', 400),
+    ], [w('xs1|L', 's1|1'), w('xs2|L', 's2|1'), w('xs1|N', 'k1|COM1'), w('xs2|N', 'k1|COM2')]))
+    const p = prepare(g)
+    const us = units(p, candidateGroups(g, p.possible))
+    expect(us.map((u) => names(g, u.cands).join(' ')).filter(Boolean).sort()).toEqual(['K1', 'S1', 'S2'])
+    // K1's poles sit on XS1 N and on XS2 N: its unit spans both components, so the poles stay linked.
+    const k1 = us.find((u) => names(g, u.cands).includes('K1'))!
+    const has = (part: string, pin: string) => k1.view.inRel[g.nodeOf.get(nodeKey(part, pin))!] === 1
+    expect([has('xs1', 'N'), has('xs2', 'N'), has('xs1', 'L')]).toEqual([true, true, false])
+  })
+  it('without a link, two outlets are two units', () => {
+    const g = graph(sheet([at('xs1', 'XS1', 't-outlet'), at('xs2', 'XS2', 't-outlet-2', 0, 300), at('s1', 'S1', 't-switch', 200), at('s2', 'S2', 't-switch', 200, 300)],
+      [w('xs1|L', 's1|1'), w('xs2|L', 's2|1')]))
+    const p = prepare(g)
+    expect(units(p, candidateGroups(g, p.possible)).map((u) => names(g, u.cands).join(' ')).filter(Boolean).sort()).toEqual(['S1', 'S2'])
   })
 })
 
@@ -1787,20 +2054,34 @@ describe('masksByPopcount', () => {
   })
 })
 
+describe('minimalWitness', () => {
+  it('keeps both switches of a series short and drops a third that does not matter', () => {
+    expect(minimalWitness(holds(3, (m) => (m & 3) === 3), 3, 0b011)).toEqual([0, 1])
+  })
+  it('keeps an OFF condition that is needed (S1 on and K1 released)', () => {
+    expect(minimalWitness(holds(2, (m) => m === 0b01), 2, 0b01)).toEqual([0, 1])
+  })
+  it('keeps nothing for a finding that holds in every state', () => {
+    expect(minimalWitness(holds(3, () => true), 3, 0)).toEqual([])
+  })
+})
+
 describe('statePhrase', () => {
   const g = graph(sheet(
     [at('xs1', 'XS1', 't-outlet'), at('s1', 'S1', 't-switch', 200), at('s2', 'S2', 't-switch', 400), at('s3', 'S3', 't-switch', 600), at('k1', 'K1', 't-relay', 800)],
     [w('xs1|L', 's1|1'), w('s1|2', 's2|1'), w('s2|2', 's3|1'), w('s3|2', 'k1|COM')],
   ))
   const cands = candidateGroups(g)
-  it('names the groups that are on, and says both for two', () => {
-    expect(statePhrase(g, cands, 0b0001)).toBe('when S1 is on')
-    expect(statePhrase(g, cands, 0b0011)).toBe('when S1 and S2 are both on')
-    expect(statePhrase(g, cands, 0b0111)).toBe('when S1, S2 and S3 are on')
-    expect(statePhrase(g, cands, 0b1001)).toBe('when S1 is on and K1 is energized')
+  it('says both for two groups on, lists three, and names OFF and released conditions', () => {
+    expect(statePhrase(g, cands, [0], 0b0001)).toBe('when S1 is on')
+    expect(statePhrase(g, cands, [0, 1], 0b0011)).toBe('when S1 and S2 are both on')
+    expect(statePhrase(g, cands, [0, 1, 2], 0b0111)).toBe('when S1, S2 and S3 are on')
+    expect(statePhrase(g, cands, [0, 3], 0b0001)).toBe('when S1 is on and K1 is released')
+    expect(statePhrase(g, cands, [0, 3], 0b1001)).toBe('when S1 is on and K1 is energized')
+    expect(statePhrase(g, cands, [0, 1], 0)).toBe('when S1 and S2 are off')
   })
-  it('names every group when none is on', () => {
-    expect(statePhrase(g, cands, 0)).toBe('when S1, S2 and S3 are off and K1 is released')
+  it('says nothing when no condition is needed', () => {
+    expect(statePhrase(g, cands, [], 0b0101)).toBe('')
   })
 })
 ```
@@ -1808,12 +2089,12 @@ describe('statePhrase', () => {
 - [ ] **Step 2: Run the tests to verify they fail**
 
 Run: `npx vitest run src/format/mainsStates.test.ts`
-Expected: FAIL (`candidateGroups`, `masksByPopcount`, `statePhrase` not exported).
+Expected: FAIL (`candidateGroups`, `units`, `minimalWitness`, `statePhrase` not exported).
 
 - [ ] **Step 3: Implement (append to `src/format/mainsGraph.ts`; add `import { andList, natural } from './words.ts'` at the top)**
 
 ```ts
-/** Up to this many candidate groups (65,536 states) the checker enumerates every state; beyond, it reports mains-incomplete. */
+/** Up to this many candidate groups on the sheet the checker enumerates every state; beyond, it reports mains-incomplete (spec 1.5). */
 export const MAX_GROUPS = 16
 
 /**
@@ -1829,7 +2110,7 @@ export function candidateGroups(g: MainsGraph, possible: Int32Array = possibleRo
 }
 
 const orderCache = new Map<number, Uint32Array>()
-/** Every k-bit mask, fewest groups on first, then by value: the first state a finding appears in names the fewest groups. */
+/** Every k-bit mask, fewest groups on first, then by value (a converter's first unknown state names the fewest groups). */
 export function masksByPopcount(k: number): Uint32Array {
   const hit = orderCache.get(k)
   if (hit) return hit
@@ -1843,10 +2124,85 @@ export function masksByPopcount(k: number): Uint32Array {
   return out
 }
 
-/** Puts the candidates in the state `mask` (bit k is cands[k]); every other group is released or off. */
+/** Puts the candidates in the state `mask` (bit k is cands[k]); every other group in the view is released or off. */
 export function setState(p: Prepared, cands: number[], mask: number): void {
-  p.groupState.fill(0)
+  for (const gi of p.groupIdx) p.groupState[gi] = 0
   for (let k = 0; k < cands.length; k++) if ((mask >>> k) & 1) p.groupState[cands[k]] = 1
+}
+
+/** `p` narrowed to `nodes`: the same scratch arrays, the lists cut to what has a terminal among them. */
+export function viewOf(p: Prepared, nodes: number[]): Prepared {
+  const g = p.g
+  const inRel = new Uint8Array(g.n)
+  for (const i of nodes) inRel[i] = 1
+  const within = (xs: number[]) => xs.filter((x) => inRel[x])
+  return {
+    ...p, relevant: Int32Array.from(nodes), inRel, srcRoots: [],
+    sources: p.sources.map((s) => ({ ...s, live: within(s.live), neutral: within(s.neutral), earth: within(s.earth) })).filter((s) => s.live.length + s.neutral.length + s.earth.length > 0),
+    groupIdx: p.groupIdx.filter((gi) => g.groups[gi].nodes.some((x) => inRel[x])),
+    loadIdx: p.loadIdx.filter((i) => inRel[g.loads[i].a]),
+    converterIdx: p.converterIdx.filter((i) => inRel[g.converters[i].a]),
+    protective: p.protective.filter((e) => inRel[e.a]),
+    energy: p.energy.filter((e) => inRel[e.a]),
+  }
+}
+
+export interface Unit { view: Prepared; cands: number[] }
+
+/**
+ * The enumeration units (Resolution 25): the relevant nodes grouped by possible-connectivity
+ * component, merging components that one multi-pole group spans (its poles switch together).
+ * Components cannot affect each other, so each unit's states are enumerated on their own.
+ */
+export function units(p: Prepared, cands: number[]): Unit[] {
+  const g = p.g
+  const up = new Map<number, number>()
+  const top = (x: number): number => {
+    while (up.has(x)) x = up.get(x)!
+    return x
+  }
+  for (const gi of cands) {
+    const roots = [...new Set(g.groups[gi].nodes.map((x) => p.possible[x]))]
+    for (const r of roots.slice(1)) {
+      const [a, b] = [top(roots[0]), top(r)]
+      if (a !== b) up.set(a, b)
+    }
+  }
+  const byUnit = new Map<number, number[]>()
+  for (const i of p.relevant) {
+    const u = top(p.possible[i])
+    const list = byUnit.get(u)
+    if (list) list.push(i)
+    else byUnit.set(u, [i])
+  }
+  return [...byUnit.values()].map((nodes) => {
+    const view = viewOf(p, nodes)
+    return { view, cands: cands.filter((gi) => view.groupIdx.includes(gi)) }
+  })
+}
+
+/**
+ * The candidate positions (0 to k-1) whose condition in state `mask` a finding needs (Resolution 24).
+ * `holds` has bit m set for every state m the finding holds in. A condition is dropped only when the
+ * finding holds in every state that agrees with the conditions still kept, so the phrase is both
+ * minimal and complete.
+ */
+export function minimalWitness(holds: Uint32Array, k: number, mask: number): number[] {
+  const has = (m: number) => ((holds[m >>> 5] >>> (m & 31)) & 1) === 1
+  const allHold = (free: number) => {
+    const fixed = mask & ~free
+    for (let sub = free; ; sub = (sub - 1) & free) {
+      if (!has(fixed | sub)) return false
+      if (sub === 0) return true
+    }
+  }
+  const kept: number[] = []
+  let free = 0
+  for (let j = 0; j < k; j++) {
+    if (allHold(free | (1 << j))) free |= 1 << j
+    else kept.push(j)
+  }
+  return kept
 }
 
 const WORDS: Record<ContactGroup['kind'], [string, string]> = { switch: ['off', 'on'], relay: ['released', 'energized'], ssr: ['off', 'on'] }
@@ -1858,34 +2214,36 @@ export function groupName(g: MainsGraph, gi: number): string {
   return several ? `${grp.part.designator} (${grp.def.id})` : grp.part.designator
 }
 
-/** A state in words: the groups that are on ("when S1 and S2 are both on"), or every candidate when none is. */
-export function statePhrase(g: MainsGraph, cands: number[], mask: number): string {
-  const on = cands.filter((_, k) => (mask >>> k) & 1)
-  const pick = on.length ? on : cands
+/** The kept conditions of state `mask` in words: "when S1 is on and K1 is released", "when S1 and S2 are both on"; '' when none is kept. */
+export function statePhrase(g: MainsGraph, cands: number[], kept: number[], mask: number): string {
+  if (!kept.length) return ''
   const byWord = new Map<string, string[]>()
-  for (const gi of pick) {
-    const word = WORDS[g.groups[gi].def.kind][on.length ? 1 : 0]
+  for (const j of kept) {
+    const gi = cands[j]
+    const word = WORDS[g.groups[gi].def.kind][(mask >>> j) & 1]
     byWord.set(word, [...(byWord.get(word) ?? []), groupName(g, gi)])
   }
-  const parts = [...byWord].map(([word, names]) => {
-    names.sort(natural.compare)
-    if (names.length === 1) return `${names[0]} is ${word}`
-    return names.length === 2 && on.length ? `${names[0]} and ${names[1]} are both ${word}` : `${andList(names)} are ${word}`
+  const parts = [...byWord].map(([word, list]) => {
+    list.sort(natural.compare)
+    if (list.length === 1) return `${list[0]} is ${word}`
+    return list.length === 2 && (word === 'on' || word === 'energized') ? `${list[0]} and ${list[1]} are both ${word}` : `${andList(list)} are ${word}`
   })
   return `when ${parts.join(' and ')}`
 }
 ```
 
+Cost note: `minimalWitness` runs once per finding after enumeration; each drop test walks at most the subcube of the conditions already dropped, so it is at most k times 2^k bit reads (about a million at k = 16), and only for findings that exist.
+
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `npx vitest run src/format/mainsStates.test.ts`
-Expected: PASS. Then `npm test`: PASS.
+Expected: PASS. Then the gate `npx tsc --noEmit && npm test`: PASS.
 
 - [ ] **Step 5: Commit**
 
 ```bash
 git add src/format/mainsGraph.ts src/format/mainsStates.test.ts
-git commit -m "Mains: contact-state candidates, popcount enumeration and state phrases" -m "Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>"
+git commit -m "Mains: candidates, enumeration units, minimal state witnesses" -m "Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>"
 ```
 
 ---
@@ -1895,26 +2253,27 @@ git commit -m "Mains: contact-state candidates, popcount enumeration and state p
 **Files:**
 - Create: `src/format/mainsRules.ts`
 - Create: `src/format/mains.ts`
-- Modify: `src/format/checks.ts` (RuleId and RULES, Terminal `dead`, `sourceOf`, `mayFeed`, `drives`, hazardous nets skipped in every DC rule and in the potential solver, mains findings added)
+- Modify: `src/format/checks.ts` (RuleId and RULES, Terminal `dead`, `sourceOf`, `drives`, the not-checked finding for loads fed only by an unknown converter, hazardous nets skipped in every DC rule, both ends of every source edge gated in the potential solver, mains findings added)
 - Test: `src/format/mains.test.ts`
 
 **Interfaces:**
-- Consumes: everything Tasks 3 and 4 produce; `plugsOf` (`breadboard.ts`); `netlist`, `nodeKey` (`netlist.ts`).
+- Consumes: everything Tasks 3 and 4 produce; `plugsOf` (`breadboard.ts`); `netlist`, `nodeKey` (`netlist.ts`); `moduleOf`; `mainsOf`.
 - Produces:
   - In `checks.ts`: `RuleId` gains `'mains-short' | 'mains-cross-source' | 'mains-to-low-voltage' | 'earth' | 'mains-voltage' | 'mains-rating' | 'mains-cable' | 'plug-mismatch' | 'polarity' | 'unprotected' | 'fuse-rating-unknown' | 'mains-shared-neutral' | 'earth-bond' | 'rating-unknown' | 'rating-conditional' | 'rating-unverified' | 'cable-unverified' | 'data-missing' | 'mains-incomplete'`, each in `RULES` with the severity and title below.
   - In `mainsRules.ts`:
     - `interface MainsDraft { rule: RuleId; subject: string; target: string; message: string; parts: string[]; pins: Endpoint[]; wires: string[]; causes: string[]; select?: { parts: string[]; wires: string[] } }`
     - `type Availability = 'powered' | 'unpowered' | 'unknown'`, `interface ConverterStatus { state: Availability; why: string | null }`
-    - `interface Acc { p: Prepared; cands: number[]; total: number; seen: Map<string, Sighting>; hazardAny: Uint8Array; volts: Float64Array; firstIdent: Int32Array; converters: (ConverterStatus | null)[]; loadComplete: Uint8Array; incomplete: 'groups' | 'sources' | null }`
-    - `newAcc(p: Prepared, cands: number[], total: number, incomplete: 'groups' | 'sources' | null): Acc`
-    - `report(acc: Acc, key: string, mask: number, first: () => (when: string) => MainsDraft): void`
-    - `visitState(acc: Acc, mask: number): void`, `conservative(acc: Acc): void`, `finishStates(acc: Acc): MainsDraft[]`, `staticDrafts(acc: Acc): MainsDraft[]`, `inputState(p: Prepared, c: GConverter): ConverterStatus`
-    - `STATE_RULES: ((acc: Acc, mask: number) => void)[]` and `STATIC_RULES: ((acc: Acc) => MainsDraft[])[]` (later tasks append to both)
-    - helpers `volt(v: number): string`, `endpointOf(t: GTerm): Endpoint`, `pinOfKey(key: string): Endpoint`, `sourcesIn(g: MainsGraph, x: number, e: number): number[]`, `sourcesText(g: MainsGraph, list: number[]): string`, `wiresOfRoot(p: Prepared, r: number): string[]`
+    - `interface Acc { p: Prepared; cands: number[]; total: number; seen: Map<string, Sighting>; hazardAny: Uint8Array; volts: Float64Array; identUnion: Uint32Array; converters: (ConverterStatus | null)[]; loadComplete: Uint8Array; loadFit: Uint8Array; incomplete: 'groups' | 'sources' | null; finished: MainsDraft[] }`
+    - `newAcc(p: Prepared, cands: number[], incomplete: 'groups' | 'sources' | null): Acc` (`total` is `2 ** cands.length`, or 0 when incomplete)
+    - `report(acc: Acc, key: string, mask: number, first: () => (when: string) => MainsDraft): void` (sets the finding's bit for `mask`)
+    - `visitState(acc: Acc, mask: number): void`, `finishStates(acc: Acc): MainsDraft[]`, `absorb(into: Acc, unit: Acc): void`, `conservative(acc: Acc): void`, `staticDrafts(acc: Acc): MainsDraft[]`, `inputState(p: Prepared, c: GConverter): ConverterStatus`
+    - `STATE_RULES: ((acc: Acc, mask: number) => void)[]` and `STATIC_RULES: ((acc: Acc) => MainsDraft[])[]` (later tasks append)
+    - helpers `volt(v: number): string`, `endpointOf(t: GTerm): Endpoint`, `pinOfKey(key: string): Endpoint`, `sourcesIn(p: Prepared, x: number, e: number): number[]`, `sourcesText(g: MainsGraph, list: number[]): string`, `wiresOfRoot(p: Prepared, r: number): string[]`
   - In `mains.ts`:
     - `interface MainsAnalysis { graph: MainsGraph; complete: boolean; converters: Map<string, ConverterStatus>; hazardKeys: Set<string>; deadOutputs: Map<string, 'unpowered' | 'unknown'>; conductorOf(key: string): { conductor: Conductor; region: Region | null } | null; findings: MainsDraft[] }`
-    - `analyseMains(d: Diagram, plugs?: Plug[], nl?: Netlist): MainsAnalysis | null`
-    - `analyseMainsCached(d: Diagram): MainsAnalysis | null` (one result per parts, connections and modules triple)
+    - `hasMainsData(d: Pick<Diagram, 'parts' | 'modules'>): boolean` (a part whose module has any mains data)
+    - `analyseMains(d: Diagram): MainsAnalysis | null` (returns `null` right after `hasMainsData`, before plugs, netlist or graph)
+    - `analyseMainsCached(d: Diagram): MainsAnalysis | null` (one result per parts, connections and modules triple; the checker and the renderer both use it)
 
 `RULES` additions (errors go after `short`, warnings after `leg-hole-shared`, in this order; the existing rules keep their relative order):
 
@@ -1946,13 +2305,14 @@ Create `src/format/mains.test.ts`:
 
 ```ts
 // The mains analysis as the wiring checker sees it: converter availability (spec 1.3, rule 11)
-// gating which outputs are DC sources, hazardous nets kept out of the DC rules, and nothing built at
-// all for a sheet without mains data.
+// gating which outputs are DC sources and what the passive-feed allowance counts, loads behind an
+// unknown converter reported as not checked, hazardous nets and source edges kept out of the DC rules,
+// honest results when enumeration did not finish, and nothing built for a sheet without mains data.
 import { describe, expect, it } from 'vitest'
 import { checkDiagram, type Finding } from './checks.ts'
 import type { Connection, Diagram } from './diagram.ts'
 import { nodeKey } from './netlist.ts'
-import { analyseMains } from './mains.ts'
+import { analyseMains, analyseMainsCached } from './mains.ts'
 import { at, sheet, w } from './mains.testing.ts'
 
 const only = (d: Diagram, rule: string): Finding[] => checkDiagram(d).filter((f) => f.rule === rule)
@@ -1964,8 +2324,10 @@ const psuOn = (a: string, b: string, extra: Connection[] = []) => sheet(
 )
 
 describe('analyseMains', () => {
-  it('builds nothing on a sheet without mains data', () => {
+  it('returns null for a sheet without mains data, and the cache hands the same result to every reader', () => {
     expect(analyseMains(sheet([at('u1', 'U1', 't-mcu')], []))).toBeNull()
+    const d = psuOn('xs1|L', 'xs1|N')
+    expect(analyseMainsCached(d)).toBe(analyseMainsCached(d))
   })
 })
 
@@ -1981,8 +2343,10 @@ describe('converter availability gates the DC checker', () => {
     expect(msgs(d, 'no-power')).toEqual([
       "PS1's mains input is not a complete connection (its two inputs are joined to each other), so its outputs are not counted as a supply. Wire AC1 and AC2 to L and N of one outlet.",
     ])
-    // Its output may or may not be live: nothing is concluded about the board it feeds.
-    expect(checkDiagram(d).filter((f) => f.parts.includes('u1'))).toEqual([])
+    // The board behind it is neither fed nor unfed: its power is reported as not checked, and nothing else is claimed.
+    expect(checkDiagram(d).filter((f) => f.parts.includes('u1')).map((f) => `${f.rule}: ${f.message}`)).toEqual([
+      "supply-unknown: U1's power is not checked: it comes only from PS1 +V, and PS1's mains input is not a complete connection.",
+    ])
   })
   it('converter inputs shorted together or fed from two outlets (unknown, outputs dead)', () => {
     const shorted = analyseMains(psuOn('xs1|L', '', [w('ps1|AC1', 'ps1|AC2')]))!
@@ -2005,7 +2369,21 @@ describe('converter availability gates the DC checker', () => {
   })
 })
 
-describe('hazardous nets stay out of the DC rules', () => {
+describe('when the enumeration did not finish, nothing is claimed unpowered without proof', () => {
+  const ks = Array.from({ length: 17 }, (_, i) => i + 1)
+  const d = sheet([
+    at('xs1', 'XS1', 't-outlet'), ...ks.map((k) => at(`s${k}`, `S${k}`, 't-switch', k * 100, 300)),
+    at('ps1', 'PS1', 't-psu', 200, 600), at('ps2', 'PS2', 't-psu', 600, 600), at('u1', 'U1', 't-mcu', 900, 600),
+  ], [...ks.map((k) => w('xs1|L', `s${k}|1`)), w('s1|2', 'ps1|AC1'), w('xs1|N', 'ps1|AC2'), w('ps2|+V', 'u1|VCC'), w('ps2|-V', 'u1|GND')])
+  it('a converter a source could reach is unknown; one no source can reach is unpowered (a proof)', () => {
+    const a = analyseMains(d)!
+    expect(a.complete).toBe(false)
+    expect(a.converters.get('ps1')).toEqual({ state: 'unknown', why: 'the mains checks did not finish' })
+    expect(a.converters.get('ps2')).toEqual({ state: 'unpowered', why: null })
+  })
+})
+
+describe('hazardous nets and source edges stay out of the DC rules', () => {
   it('a relay contact that never meets mains keeps its DC role (it may feed a load)', () => {
     const d = sheet([at('k1', 'K1', 't-relay'), at('u1', 'U1', 't-mcu', 200)], [w('k1|NO', 'u1|VCC')])
     expect(only(d, 'no-power')).toEqual([])
@@ -2014,6 +2392,12 @@ describe('hazardous nets stay out of the DC rules', () => {
     const d = sheet([at('xs1', 'XS1', 't-outlet'), at('u1', 'U1', 't-mcu', 200), at('u2', 'U2', 't-mcu', 400)],
       [w('xs1|L', 'u1|IO'), w('u1|IO', 'u2|IO')])
     expect(checkDiagram(d).filter((f) => ['outputs-fight', 'no-common-ground'].includes(f.rule))).toEqual([])
+  })
+  it('a battery whose return is on mains adds nothing to the potential solver', () => {
+    // Without the gate this would be "U1 VCC accepts up to 5 V but gets 9 V from BT1 +".
+    const d = sheet([at('xs1', 'XS1', 't-outlet'), at('bt1', 'BT1', 't-bat9', 200), at('u1', 'U1', 't-mcu', 400)],
+      [w('bt1|+', 'u1|VCC'), w('bt1|-', 'xs1|N'), w('u1|GND', 'xs1|N')])
+    expect(checkDiagram(d).filter((f) => ['supply-too-high', 'supply-unknown', 'reversed', 'supplies-fight'].includes(f.rule))).toEqual([])
   })
 })
 ```
@@ -2026,14 +2410,14 @@ Expected: FAIL (`./mains.ts` does not exist).
 - [ ] **Step 3: Implement `src/format/mainsRules.ts` (accumulator, availability, rule 11)**
 
 ```ts
-// The mains rules (spec section 3). Per-state rules run for every enumerated contact state and
-// report findings by a stable key; the first state (fewest groups on) is kept for the wording, and a
-// finding present in every state gets no state phrase. Static rules run once afterwards on what the
-// states established (which nodes were ever hazardous, at what voltage). Pure.
+// The mains rules (spec section 3). Per-state rules run for every enumerated contact state of one
+// enumeration unit and report findings by a stable key; each finding keeps one bit per state it holds
+// in, so its wording names exactly the conditions it needs (Resolution 24). Static rules run once
+// afterwards on what the states established (which nodes were ever hazardous, at what voltage). Pure.
 import type { Endpoint } from './diagram.ts'
 import type { RuleId } from './checks.ts'
 import { nodeKey } from './netlist.ts'
-import { type GConverter, type GTerm, type MainsGraph, type Prepared, LN_MASK, bitOf, decodeSingle, statePhrase } from './mainsGraph.ts'
+import { type GConverter, type GTerm, type MainsGraph, type Prepared, LN_MASK, bitOf, decodeSingle, minimalWitness, statePhrase } from './mainsGraph.ts'
 import { andList } from './words.ts'
 
 export interface MainsDraft {
@@ -2049,7 +2433,7 @@ export interface MainsDraft {
 }
 export type Availability = 'powered' | 'unpowered' | 'unknown'
 export interface ConverterStatus { state: Availability; why: string | null }
-interface Sighting { first: number; count: number; build: (when: string) => MainsDraft }
+interface Sighting { first: number; holds: Uint32Array; build: (when: string) => MainsDraft }
 export interface Acc {
   p: Prepared
   cands: number[]
@@ -2059,27 +2443,33 @@ export interface Acc {
   hazardAny: Uint8Array
   /** Per node: the highest voltage of a source that made it hazardous. */
   volts: Float64Array
-  /** Per node: its identity in the first state that gave it one (-1: never). */
-  firstIdent: Int32Array
+  /** Per node: every identity bit it had in any state (Resolution 19 reads it). */
+  identUnion: Uint32Array
+  /** Per converter (global index): availability over the states seen. */
   converters: (ConverterStatus | null)[]
-  /** Per load: L and N of one source across it in some state. */
+  /** Per load (global index): L and N of one source across it in some state as drawn; and with every empty fuse holder taken as fitted. */
   loadComplete: Uint8Array
+  loadFit: Uint8Array
   incomplete: 'groups' | 'sources' | null
+  /** Drafts of the units already enumerated (see absorb). */
+  finished: MainsDraft[]
 }
 
-export function newAcc(p: Prepared, cands: number[], total: number, incomplete: 'groups' | 'sources' | null): Acc {
-  const n = p.g.n
+export function newAcc(p: Prepared, cands: number[], incomplete: 'groups' | 'sources' | null): Acc {
+  const g = p.g
   return {
-    p, cands, total, seen: new Map(), hazardAny: new Uint8Array(n), volts: new Float64Array(n), firstIdent: new Int32Array(n).fill(-1),
-    converters: p.g.converters.map(() => null), loadComplete: new Uint8Array(p.g.loads.length), incomplete,
+    p, cands, total: incomplete ? 0 : 2 ** cands.length, seen: new Map(),
+    hazardAny: new Uint8Array(g.n), volts: new Float64Array(g.n), identUnion: new Uint32Array(g.n),
+    converters: g.converters.map(() => null), loadComplete: new Uint8Array(g.loads.length), loadFit: new Uint8Array(g.loads.length),
+    incomplete, finished: [],
   }
 }
 
-/** Records a finding seen in state `mask`. `first` runs only the first time (while that state is still in `p`) and returns the builder. */
+/** Records that a finding holds in state `mask`. `first` runs only the first time (while that state is still in `p`) and returns the builder. */
 export function report(acc: Acc, key: string, mask: number, first: () => (when: string) => MainsDraft): void {
-  const s = acc.seen.get(key)
-  if (s) s.count++
-  else acc.seen.set(key, { first: mask, count: 1, build: first() })
+  let s = acc.seen.get(key)
+  if (!s) acc.seen.set(key, (s = { first: mask, holds: new Uint32Array(Math.max(1, Math.ceil(acc.total / 32))), build: first() }))
+  s.holds[mask >>> 5] |= 1 << (mask & 31)
 }
 
 export const volt = (v: number) => `${Number(v.toFixed(1))} V`
@@ -2088,9 +2478,9 @@ export const pinOfKey = (key: string): Endpoint => {
   const [part, pin] = JSON.parse(key) as [string, string]
   return { part, pin }
 }
-/** The sources (by index) holding L or N in identity `x`, or energizing with `e`. */
-export function sourcesIn(g: MainsGraph, x: number, e: number): number[] {
-  return g.sources.filter((s) => x & (bitOf(s.index, 'L') | bitOf(s.index, 'N')) || (e >> s.index) & 1).map((s) => s.index)
+/** The sources (by global index) holding L or N in identity `x`, or energizing with `e`. */
+export function sourcesIn(p: Prepared, x: number, e: number): number[] {
+  return [...new Set(p.sources.map((s) => s.index))].filter((i) => x & (bitOf(i, 'L') | bitOf(i, 'N')) || (e >> i) & 1)
 }
 /** "XS1 (120 V)", "XS1 (120 V) and XS2 (230 V)". */
 export const sourcesText = (g: MainsGraph, list: number[]) => andList(list.map((s) => `${g.sources[s].part.designator} (${volt(g.sources[s].volts)})`))
@@ -2108,42 +2498,42 @@ function track(acc: Acc) {
     const r = p.root[i]
     const x = p.ident[r]
     const e = p.power[r]
-    if (x & LN_MASK || e) {
-      acc.hazardAny[i] = 1
-      for (const s of g.sources)
-        if ((x & (bitOf(s.index, 'L') | bitOf(s.index, 'N')) || (e >> s.index) & 1) && s.volts > acc.volts[i]) acc.volts[i] = s.volts
-    }
-    if (acc.firstIdent[i] < 0 && x) acc.firstIdent[i] = x
+    acc.identUnion[i] |= x
+    if (!(x & LN_MASK) && !e) continue
+    acc.hazardAny[i] = 1
+    for (const s of sourcesIn(p, x, e)) if (g.sources[s].volts > acc.volts[i]) acc.volts[i] = g.sources[s].volts
   }
 }
 
 /** A converter's input in the current state (spec 1.3). */
 export function inputState(p: Prepared, c: GConverter): ConverterStatus {
-  const g = p.g
   const [ra, rb] = [p.root[c.a], p.root[c.b]]
   const [ia, ib] = [p.ident[ra], p.ident[rb]]
   if (!ia && !ib) return !p.power[ra] && !p.power[rb] ? { state: 'unpowered', why: null } : { state: 'unknown', why: 'it gets mains only through a load or a leakage path' }
   if (ra === rb) return { state: 'unknown', why: 'its two inputs are joined to each other' }
   if (!ia || !ib) return { state: 'unknown', why: `only ${c.names[ia ? 0 : 1]} is connected to an outlet` }
   const single = (x: number) => (x & (x - 1)) === 0
-  const srcCount = (x: number) => g.sources.filter((s) => x & (bitOf(s.index, 'L') | bitOf(s.index, 'N') | bitOf(s.index, 'PE'))).length
-  if (!single(ia) || !single(ib)) return { state: 'unknown', why: srcCount(ia | ib) > 1 ? 'its inputs come from two different outlets' : 'an input is on more than one conductor' }
+  const sourceCount = (x: number) => p.g.sources.filter((s) => x & (bitOf(s.index, 'L') | bitOf(s.index, 'N') | bitOf(s.index, 'PE'))).length
+  if (!single(ia) || !single(ib)) return { state: 'unknown', why: sourceCount(ia | ib) > 1 ? 'its inputs come from two different outlets' : 'an input is on more than one conductor' }
   const [a, b] = [decodeSingle(ia), decodeSingle(ib)]
   if (a.s !== b.s) return { state: 'unknown', why: 'its inputs come from two different outlets' }
   if (a.c === b.c) return { state: 'unknown', why: `both inputs are on ${a.c}` }
   if (a.c === 'PE' || b.c === 'PE') return { state: 'unknown', why: 'an input is on earth' }
-  const v = g.sources[a.s].volts
+  const v = p.g.sources[a.s].volts
   if (v < c.range[0] || v > c.range[1]) return { state: 'unknown', why: `it takes ${volt(c.range[0])} to ${volt(c.range[1])} AC but gets ${volt(v)}` }
   return { state: 'powered', why: null }
 }
 
-/** Powered in any state wins; unknown wins over unpowered; unpowered only when it is so in every state. */
+/** Powered in any state wins; unknown wins over unpowered (keeping the first unknown reason); unpowered only when so in every state. */
+function combine(cur: ConverterStatus | null, st: ConverterStatus): ConverterStatus {
+  if (!cur) return st
+  if (cur.state === 'powered') return cur
+  if (st.state === 'powered') return st
+  return cur.state === 'unpowered' && st.state === 'unknown' ? st : cur
+}
+
 function availabilityRule(acc: Acc) {
-  acc.p.g.converters.forEach((c, i) => {
-    const st = inputState(acc.p, c)
-    const cur = acc.converters[i]
-    if (!cur || (cur.state !== 'powered' && (st.state === 'powered' || (cur.state === 'unpowered' && st.state === 'unknown')))) acc.converters[i] = st
-  })
+  for (const i of acc.p.converterIdx) acc.converters[i] = combine(acc.converters[i], inputState(acc.p, acc.p.g.converters[i]))
 }
 
 export const STATE_RULES: ((acc: Acc, mask: number) => void)[] = [availabilityRule]
@@ -2153,15 +2543,45 @@ export function visitState(acc: Acc, mask: number): void {
   for (const rule of STATE_RULES) rule(acc, mask)
 }
 
+/** The drafts of one unit's findings, each worded with its minimal witness. */
+export function finishStates(acc: Acc): MainsDraft[] {
+  return [...acc.seen.values()].map((s) => {
+    const kept = minimalWitness(s.holds, acc.cands.length, s.first)
+    const when = statePhrase(acc.p.g, acc.cands, kept, s.first)
+    return s.build(when ? ` ${when}` : '')
+  })
+}
+
+/** Folds one enumerated unit into the sheet's accumulator. */
+export function absorb(into: Acc, unit: Acc): void {
+  for (const i of unit.p.relevant) {
+    into.hazardAny[i] |= unit.hazardAny[i]
+    into.volts[i] = Math.max(into.volts[i], unit.volts[i])
+    into.identUnion[i] |= unit.identUnion[i]
+  }
+  unit.converters.forEach((c, i) => {
+    if (c) into.converters[i] = combine(into.converters[i], c)
+  })
+  unit.loadComplete.forEach((v, i) => (into.loadComplete[i] |= v))
+  unit.loadFit.forEach((v, i) => (into.loadFit[i] |= v))
+  into.finished.push(...finishStates(unit))
+}
+
 /**
- * When the states were not enumerated (too many groups or sources): every node a source could reach
- * is taken as hazardous at the highest such voltage, and every converter a source could reach is unknown.
+ * When the states were not enumerated (too many groups or sources): every node a source's L or N
+ * could reach is taken as hazardous at the highest such voltage. A converter is unknown when any
+ * source terminal (L, N or PE) shares a possible-connectivity component with an input; unpowered only
+ * when none does, which is a proof, not an enumeration result (Resolution 11).
  */
 export function conservative(acc: Acc): void {
   const { p } = acc
   const g = p.g
   const reach = new Map<number, number>()
-  for (const s of g.sources) for (const x of [...s.live, ...s.neutral]) reach.set(p.possible[x], Math.max(reach.get(p.possible[x]) ?? 0, s.volts))
+  const any = new Set<number>()
+  for (const s of g.sources) {
+    for (const x of [...s.live, ...s.neutral]) reach.set(p.possible[x], Math.max(reach.get(p.possible[x]) ?? 0, s.volts))
+    for (const x of [...s.live, ...s.neutral, ...s.earth]) any.add(p.possible[x])
+  }
   for (const i of p.relevant) {
     const v = reach.get(p.possible[i])
     if (v === undefined) continue
@@ -2169,20 +2589,16 @@ export function conservative(acc: Acc): void {
     acc.volts[i] = v
   }
   g.converters.forEach((c, i) => {
-    acc.converters[i] = reach.has(p.possible[c.a]) || reach.has(p.possible[c.b]) ? { state: 'unknown', why: 'the mains checks did not finish' } : { state: 'unpowered', why: null }
+    acc.converters[i] = any.has(p.possible[c.a]) || any.has(p.possible[c.b]) ? { state: 'unknown', why: 'the mains checks did not finish' } : { state: 'unpowered', why: null }
   })
-}
-
-export function finishStates(acc: Acc): MainsDraft[] {
-  return [...acc.seen.values()].map((s) => s.build(s.count === acc.total ? '' : ` ${statePhrase(acc.p.g, acc.cands, s.first)}`))
 }
 
 /** Rule 11 (spec 1.3): a converter that is not powered, when it is wired or plugged at all. */
 function converterPower(acc: Acc): MainsDraft[] {
   const g = acc.p.g
   return g.converters.flatMap((c, i): MainsDraft[] => {
-    const st = acc.converters[i]
-    if (!st || st.state === 'powered' || !g.connected.has(c.part.uid)) return []
+    const st = acc.converters[i] ?? { state: 'unpowered', why: null }
+    if (st.state === 'powered' || !g.connected.has(c.part.uid)) return []
     const d = c.part.designator
     const fix = c.plugIn ? 'Plug it fully into one outlet.' : `Wire ${c.names[0]} and ${c.names[1]} to L and N of one outlet.`
     const message = st.state === 'unpowered'
@@ -2200,22 +2616,23 @@ export function staticDrafts(acc: Acc): MainsDraft[] {
 }
 ```
 
-For a plug-in converter (a charger), `c.names` are its prong internal nodes, so its no-power `pins` highlight nothing on screen; that is expected (the part itself is highlighted).
+For a plug-in converter (a charger), `c.names` are its prong internal nodes, so its no-power `pins` highlight nothing on screen; the part itself is highlighted.
 
 - [ ] **Step 4: Implement `src/format/mains.ts`**
 
 ```ts
 // The mains analysis (spec docs/superpowers/specs/2026-09-27-mains-outlets-design.md): builds the
-// conduction graph, enumerates every state of the candidate contact groups (up to 16 groups and 10
-// sources; beyond that it says so and stays conservative), runs the rules and hands the wiring
-// checker what it needs: findings, converter availability, dead outputs and the hazardous nets the
-// DC rules must skip. Null, at the cost of one scan of the parts, for a sheet without mains data.
-import type { Diagram } from './diagram.ts'
-import { type Plug, plugsOf } from './breadboard.ts'
-import { type Netlist, netlist, nodeKey } from './netlist.ts'
-import type { Conductor, Region } from './mainsModel.ts'
-import { MAX_GROUPS, MAX_SOURCES, type MainsGraph, analyseState, buildMainsGraph, candidateGroups, decodeSingle, masksByPopcount, prepare, setState } from './mainsGraph.ts'
-import { type ConverterStatus, type MainsDraft, conservative, finishStates, newAcc, staticDrafts, visitState } from './mainsRules.ts'
+// conduction graph, enumerates every state of each unit's candidate contact groups (up to 16 groups
+// and 10 sources on the sheet; beyond that it says so and stays conservative), runs the rules and
+// hands the wiring checker and the renderer one shared result: findings, converter availability,
+// dead outputs, the hazardous nets the DC rules must skip, and identity for colours. A sheet without
+// mains data costs one scan of its parts.
+import { type Diagram, moduleOf } from './diagram.ts'
+import { plugsOf } from './breadboard.ts'
+import { netlist, nodeKey } from './netlist.ts'
+import { type Conductor, type Region, mainsOf } from './mainsModel.ts'
+import { MAX_GROUPS, MAX_SOURCES, type MainsGraph, analyseState, buildMainsGraph, candidateGroups, decodeSingle, masksByPopcount, prepare, setState, units } from './mainsGraph.ts'
+import { type ConverterStatus, type MainsDraft, absorb, conservative, newAcc, staticDrafts, visitState } from './mainsRules.ts'
 
 export interface MainsAnalysis {
   graph: MainsGraph
@@ -2227,27 +2644,39 @@ export interface MainsAnalysis {
   hazardKeys: Set<string>
   /** Output pin keys of converters that are not powered. */
   deadOutputs: Map<string, 'unpowered' | 'unknown'>
-  /** The one conductor a node key carries in the first state that gives it one, with its source's region; null for none or several. */
+  /** Resolution 19: the one conductor a node key carries in every state that gives it any identity, with its source's region; null otherwise. */
   conductorOf: (key: string) => { conductor: Conductor; region: Region | null } | null
   findings: MainsDraft[]
 }
 
-export function analyseMains(d: Diagram, plugs: Plug[] = plugsOf(d), nl: Netlist = netlist(d, plugs)): MainsAnalysis | null {
-  const g = buildMainsGraph(d, plugs, nl)
-  if (!g) return null
+/** True when some part's module declares mains data. */
+export function hasMainsData(d: Pick<Diagram, 'parts' | 'modules'>): boolean {
+  return d.parts.some((p) => {
+    const m = moduleOf(d, p.module)
+    return !!m && mainsOf(m).any
+  })
+}
+
+export function analyseMains(d: Diagram): MainsAnalysis | null {
+  if (!hasMainsData(d)) return null
+  const plugs = plugsOf(d)
+  const g = buildMainsGraph(d, plugs, netlist(d, plugs))!
   const p = prepare(g)
   const cands = candidateGroups(g, p.possible)
   const incomplete = g.sources.length > MAX_SOURCES ? 'sources' : cands.length > MAX_GROUPS ? 'groups' : null
-  const order = incomplete ? null : masksByPopcount(cands.length)
-  const acc = newAcc(p, cands, order?.length ?? 0, incomplete)
-  if (order)
-    for (const mask of order) {
-      setState(p, cands, mask)
-      analyseState(p)
-      visitState(acc, mask)
+  const acc = newAcc(p, cands, incomplete)
+  if (incomplete) conservative(acc)
+  else
+    for (const unit of units(p, cands)) {
+      const sub = newAcc(unit.view, unit.cands, null)
+      for (const mask of masksByPopcount(unit.cands.length)) {
+        setState(unit.view, unit.cands, mask)
+        analyseState(unit.view)
+        visitState(sub, mask)
+      }
+      absorb(acc, sub)
     }
-  else conservative(acc)
-  const findings = [...finishStates(acc), ...staticDrafts(acc)]
+  const findings = [...acc.finished, ...staticDrafts(acc)]
   const converters = new Map(g.converters.map((c, i): [string, ConverterStatus] => [c.part.uid, acc.converters[i] ?? { state: 'unpowered', why: null }]))
   const deadOutputs = new Map<string, 'unpowered' | 'unknown'>()
   for (const c of g.converters) {
@@ -2260,8 +2689,8 @@ export function analyseMains(d: Diagram, plugs: Plug[] = plugsOf(d), nl: Netlist
   })
   const conductorOf = (key: string) => {
     const i = g.nodeOf.get(key)
-    const x = i === undefined ? -1 : acc.firstIdent[i]
-    if (x <= 0 || (x & (x - 1)) !== 0) return null
+    const x = i === undefined || incomplete ? 0 : acc.identUnion[i]
+    if (!x || (x & (x - 1)) !== 0) return null
     const { s, c } = decodeSingle(x)
     return { conductor: c, region: g.sources[s].region }
   }
@@ -2270,7 +2699,7 @@ export function analyseMains(d: Diagram, plugs: Plug[] = plugsOf(d), nl: Netlist
 
 const cache = new WeakMap<Diagram['connections'], { parts: Diagram['parts']; modules: Diagram['modules']; result: MainsAnalysis | null }>()
 
-/** `analyseMains` once per parts, connections and modules: the canvas, the sheet and the look share it. */
+/** `analyseMains` once per parts, connections and modules: the checker, the canvas and the sheet share it, so one edit enumerates once. */
 export function analyseMainsCached(d: Diagram): MainsAnalysis | null {
   const hit = cache.get(d.connections)
   if (hit && hit.parts === d.parts && hit.modules === d.modules) return hit.result
@@ -2286,44 +2715,80 @@ export function analyseMainsCached(d: Diagram): MainsAnalysis | null {
 2. Add to `interface Terminal`:
 
 ```ts
-  /** An output of a converter that is not powered (spec 1.3): unpowered feeds nothing; unknown may feed but states no voltage. */
+  /** An output of a converter that is not powered (spec 1.3): it feeds nothing and makes no supply; when unknown, what it would feed is reported as not checked. */
   dead?: 'unpowered' | 'unknown'
 ```
 
-3. `sourceOf`: make its first line `if (t.dead) return null`.
-4. `const mayFeed = (t: Terminal) => !t.bare && (t.type === undefined || t.type === 'passive' || t.dead === 'unknown' || isSource(t))`.
-5. `const drives = (t: Terminal) => (t.type === 'power_out' && !t.dead) || t.info.external.has(t.name)`.
-6. In `checkDiagram`, right after `const nl = netlist(d, plugs)`:
+3. `sourceOf`: make its first line `if (t.dead) return null`. `mayFeed` is unchanged (a dead output is not a source, so it never counts as a feed). `drives`: `const drives = (t: Terminal) => (t.type === 'power_out' && !t.dead) || t.info.external.has(t.name)`.
+4. In `checkDiagram`, right after `const nl = netlist(d, plugs)`:
 
 ```ts
-  // Mains first (spec 3): what is hazardous never enters the DC rules, and a converter that is not
-  // powered supplies nothing.
-  const mains = analyseMains(d, plugs, nl)
+  // Mains first (spec 3), from the analysis the renderer shares: what is hazardous never enters the
+  // DC rules, and a converter that is not powered supplies nothing.
+  const mains = analyseMainsCached(d)
   const hazardous = (key: string) => !!mains?.hazardKeys.has(key)
 ```
 
-7. In `terminal()` add `dead: mains?.deadOutputs.get(key)` to the returned object.
-8. Replace the `netTerms` line with:
+5. In `terminal()` add `dead: mains?.deadOutputs.get(key)` to the returned object.
+6. Replace the `netTerms` line with:
 
 ```ts
   const netTerms = nl.nets.map((keys) => (keys.some(hazardous) ? [] : keys.map(terminal).filter((t): t is Terminal => t !== null)))
 ```
 
-9. In the per-part power and ground loop change the `terms` filter to `.filter((t): t is Terminal => t !== null && !hazardous(t.key))`.
-10. Add `skip: (key: string) => boolean` to `PotentialInput`, pass `skip: hazardous`, and in `checkPotentials` skip a switch edge when either switched pin is hazardous, a commonReturn pair when either pin is, and a source (`if (!s || skip(s.term.key)) continue`) so no mains net enters the potential solver.
-11. Before `const rank = ...` add `for (const f of mains?.findings ?? []) add(f)`.
-12. `import { analyseMains } from './mains.ts'`. (The cycle `checks.ts` to `mains.ts` to `mainsRules.ts` back to `checks.ts` is a type-only import on the way back, so it is erased.)
+7. In the per-part power and ground loop change the `terms` filter to `.filter((t): t is Terminal => t !== null && !hazardous(t.key))`, and replace the no-power branch so a part fed only through an unknown converter is reported as not checked instead of unpowered:
+
+```ts
+      if (!fed) {
+        const via = ins.flatMap((t) => others(t)).find((o) => o.dead === 'unknown')
+        if (via)
+          add({ rule: 'supply-unknown', subject: p.designator, target: p.designator,
+            message: `${p.designator}'s power is not checked: it comes only from ${termName(via)}, and ${via.part.designator}'s mains input is not a complete connection.`,
+            parts: [p.uid, via.part.uid], pins: ins.map(termPin), wires: [], causes: ins.map((t) => t.key) })
+        else {
+          // ...the existing no-power message and add(...) unchanged
+        }
+      }
+```
+
+8. Gate every source edge at both ends. Add `skip: (key: string) => boolean` to `PotentialInput`, pass `skip: hazardous`, and in `checkPotentials`'s per-part loop:
+
+```ts
+    // A switch or a declared common return with a pin on a hazardous net places nothing.
+    if (info.switchPins && !info.switchPins.some((n) => skip(nodeKey(p.uid, n)))) { /* existing closedSwitch edge */ }
+    for (const g of info.commonReturn)
+      for (const n of g.slice(1)) {
+        const [a, b] = [nodeKey(p.uid, g[0]), nodeKey(p.uid, n)]
+        if (skip(a) || skip(b)) continue
+        edges.push({ from: netOfKey(a), to: netOfKey(b), v: 0, fromKey: a, toKey: b })
+      }
+```
+
+and, inside the sources loop, before `sources.set(s.id, s)`:
+
+```ts
+      // Mains never enters the potential solver (spec 3): not through the output, not through the
+      // declared return, the only ground (an inferred return) or a diode's return.
+      const ret = info.returnOf.get(s.term.name)
+      const returnKeys = ret ? [nodeKey(p.uid, ret)] : info.grounds.map((g) => nodeKey(p.uid, g))
+      if (skip(s.term.key) || returnKeys.some(skip)) continue
+```
+
+(the later `const ret = ...` line reuses this `ret`). In the load loop (`nl.nets.forEach` over power inputs), skip an input whose own grounds are all on hazardous nets: `if (t.info.grounds.length && t.info.grounds.every((g) => skip(nodeKey(t.part.uid, g)))) continue`; rule 1 reports that part.
+
+9. Before `const rank = ...` add `for (const f of mains?.findings ?? []) add(f)`.
+10. `import { analyseMainsCached } from './mains.ts'`. (The cycle `checks.ts` to `mains.ts` to `mainsRules.ts` back to `checks.ts` is a type-only import on the way back, so it is erased.)
 
 - [ ] **Step 6: Run the tests to verify they pass**
 
 Run: `npx vitest run src/format/mains.test.ts`
-Expected: PASS. Then `npm test`: PASS, including `src/format/checks.perf.test.ts` (no mains data there: `analyseMains` returns null after one scan of the parts).
+Expected: PASS. Then the gate `npx tsc --noEmit && npm test`: PASS, including `src/format/checks.perf.test.ts` (no mains data there: the analysis returns after one scan of the parts).
 
 - [ ] **Step 7: Commit**
 
 ```bash
 git add src/format/mainsRules.ts src/format/mains.ts src/format/checks.ts src/format/mains.test.ts
-git commit -m "Mains: analysis, converter availability and the DC checker gate" -m "Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>"
+git commit -m "Mains: analysis per enumeration unit, converter availability, the DC checker gate" -m "Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>"
 ```
 
 ---
@@ -2336,7 +2801,7 @@ git commit -m "Mains: analysis, converter availability and the DC checker gate" 
 
 **Interfaces:**
 - Consumes: `Acc`, `report`, `sourcesIn`, `sourcesText`, `wiresOfRoot`, `endpointOf`, `pinOfKey` (Task 5); `termAt`, `termName`, `bitOf`, `LN_MASK`, `GSource`, `GTerm` (Task 3); `isolationAdequate` (Task 2).
-- Produces (in `mainsRules.ts`): `type LvClass = 'ordinary' | 'selv' | 'pelv' | 'secondary'`, `lvClass(t: GTerm): LvClass | null` (null for a terminal declared for mains), `lowVoltageRule`, `identityRules` (both appended to `STATE_RULES`).
+- Produces (in `mainsRules.ts`): `type LvClass = 'ordinary' | 'selv' | 'pelv' | 'secondary'`, `lvClass(t: GTerm): LvClass | null` (null for a terminal declared for mains), `energyPathWires(p: Prepared, r: number): string[]` (the wires on the way energy reaches root `r` in the current state: spec 3, path findings highlight the path), `lowVoltageRule`, `identityRules` (both appended to `STATE_RULES`).
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -2347,7 +2812,7 @@ Create `src/format/mainsRules.test.ts` (later tasks add `describe` blocks to it)
 import { describe, expect, it } from 'vitest'
 import { checkDiagram, type Finding } from './checks.ts'
 import type { Diagram } from './diagram.ts'
-import { at, sheet, w } from './mains.testing.ts'
+import { MAINS_MODULES, at, dupont, sheet, w } from './mains.testing.ts'
 
 const only = (d: Diagram, rule: string): Finding[] => checkDiagram(d).filter((f) => f.rule === rule)
 const msgs = (d: Diagram, rule: string) => only(d, rule).map((f) => f.message)
@@ -2357,12 +2822,15 @@ const on = (parts: [string, string, string][], wires: ReturnType<typeof w>[], ou
   sheet([...outlets, ...parts].map(([uid, des, m], i) => at(uid, des, m, i * 200)), wires)
 
 describe('rule 1: mains on low-voltage wiring', () => {
-  it('OFF SSR into a lamp into a GPIO (hazard reaches the GPIO)', () => {
-    const d = on([['k1', 'K1', 't-ssr'], ['e1', 'E1', 't-lamp'], ['u1', 'U1', 't-mcu']],
-      [w('xs1|L', 'k1|1'), w('k1|2', 'e1|L'), w('e1|N', 'u1|IO')])
-    expect(msgs(d, 'mains-to-low-voltage')).toEqual([
-      'U1 IO gets mains from XS1 (120 V). U1 is a low-voltage part: it will be destroyed, and anything touching it becomes live. Remove the wire that brings mains there, and switch mains only through a relay or SSR rated for it.',
+  it('OFF SSR into a lamp into a GPIO (hazard reaches the GPIO), highlighting the whole energizing path', () => {
+    const path = [w('xs1|L', 'k1|1'), w('k1|2', 'e1|L'), w('e1|N', 'u1|IO')]
+    const d = on([['k1', 'K1', 't-ssr'], ['e1', 'E1', 't-lamp'], ['u1', 'U1', 't-mcu']], path)
+    const found = only(d, 'mains-to-low-voltage')
+    expect(found.map((f) => f.message)).toEqual([
+      'U1 IO gets mains from XS1 (120 V). U1 is a low-voltage part: it may be destroyed, and anything touching it may become live. Remove the wire that brings mains there, and switch mains only through a relay or SSR rated for it.',
     ])
+    // Through the SSR's leakage and the lamp, back to the outlet's L: every wire on the way.
+    expect([...found[0].wires].sort()).toEqual(path.map((c) => c.uid).sort())
   })
   it('basic-isolation secondary to a GPIO (error, bonded or not)', () => {
     for (const psu of ['t-psu-basic', 't-psu-basic-bonded']) {
@@ -2371,7 +2839,7 @@ describe('rule 1: mains on low-voltage wiring', () => {
       const found = only(d, 'mains-to-low-voltage')
       expect(found.map((f) => f.target)).toContain('PS1 +V')
       expect(found.find((f) => f.target === 'PS1 +V')!.message).toBe(
-        "PS1's low-voltage side is separated from mains only by basic insulation, so PS1 +V and U1 IO are live: that side counts as mains. Do not wire it to anything a person can touch; use a converter with reinforced or double isolation.",
+        "PS1's low-voltage side is separated from mains only by basic insulation, so PS1 +V and U1 IO may be live: that side counts as mains. Do not wire it to anything a person can touch; use a converter with reinforced or double isolation.",
       )
     }
   })
@@ -2393,13 +2861,22 @@ describe('rule 1: mains on low-voltage wiring', () => {
 describe('rule 2: mains shorts', () => {
   it('L to N of one outlet', () => {
     expect(msgs(on([], [w('xs1|L', 'xs1|N')]), 'mains-short')).toEqual([
-      'XS1 L and N are joined: a short circuit across the outlet. The breaker trips, or the wiring burns before it does. Remove the wire that joins them.',
+      'XS1 L and N are joined: a short circuit across the outlet. The breaker should trip; until it does, the wiring may overheat. Remove the wire that joins them.',
     ])
   })
   it('L to PE of one outlet', () => {
     expect(msgs(on([], [w('xs1|L', 'xs1|PE')]), 'mains-short')).toEqual([
       'XS1 L is joined to earth: a short circuit to earth, which puts mains on everything earthed until the breaker trips. Remove the wire that joins them.',
     ])
+  })
+  it('names an OFF condition the short needs: L-S1-K1.COM, K1.NC to N, when S1 is on and K1 is released', () => {
+    const wires = [w('xs1|L', 's1|1'), w('s1|2', 'k1|COM'), w('k1|NC', 'xs1|N')]
+    const d = on([['s1', 'S1', 't-switch'], ['k1', 'K1', 't-relay']], wires)
+    const found = only(d, 'mains-short')
+    expect(found.map((f) => f.message)).toEqual([
+      'XS1 L and N are joined when S1 is on and K1 is released: a short circuit across the outlet. The breaker should trip; until it does, the wiring may overheat. Remove the wire that joins them.',
+    ])
+    expect([...found[0].wires].sort()).toEqual(wires.map((c) => c.uid).sort())
   })
   it('relay COM-NO and COM-NC both wired (each state, no impossible short)', () => {
     // L on NO, N on NC: a short would need COM on NO and NC at once, which a relay never does.
@@ -2417,14 +2894,14 @@ describe('rule 2: mains shorts', () => {
       ...others.flatMap((k) => [w('xs1|L', `s${k}|1`), w(`s${k}|2`, `e${k}|L`), w(`e${k}|N`, 'xs1|N')]),
     ])
     expect(msgs(d, 'mains-short')).toEqual([
-      'XS1 L and N are joined when S1 and S2 are both on: a short circuit across the outlet. The breaker trips, or the wiring burns before it does. Remove the wire that joins them.',
+      'XS1 L and N are joined when S1 and S2 are both on: a short circuit across the outlet. The breaker should trip; until it does, the wiring may overheat. Remove the wire that joins them.',
     ])
   })
   it('three switches in series L-S1-S2-S3-N with S2 touching neither end (found via possible connectivity)', () => {
     const d = on([['s1', 'S1', 't-switch'], ['s2', 'S2', 't-switch'], ['s3', 'S3', 't-switch']],
       [w('xs1|L', 's1|1'), w('s1|2', 's2|1'), w('s2|2', 's3|1'), w('s3|2', 'xs1|N')])
     expect(msgs(d, 'mains-short')).toEqual([
-      'XS1 L and N are joined when S1, S2 and S3 are on: a short circuit across the outlet. The breaker trips, or the wiring burns before it does. Remove the wire that joins them.',
+      'XS1 L and N are joined when S1, S2 and S3 are on: a short circuit across the outlet. The breaker should trip; until it does, the wiring may overheat. Remove the wire that joins them.',
     ])
   })
 })
@@ -2515,6 +2992,45 @@ function watchList(p: Prepared): Watch[] {
   return list
 }
 
+/**
+ * The wires on the way energy reaches root `r` in the current state: every component on a shortest
+ * chain of load, leakage and energize edges from a source's L to `r`, and `r`'s own (spec 3: a path
+ * finding highlights the path, not only where it ends).
+ */
+export function energyPathWires(p: Prepared, r: number): string[] {
+  const g = p.g
+  const prev = new Map<number, number>()
+  const queue: number[] = []
+  for (const s of p.sources)
+    for (const x of s.live) {
+      const q = p.root[x]
+      if (!prev.has(q)) {
+        prev.set(q, -1)
+        queue.push(q)
+      }
+    }
+  const links: [number, number, boolean][] = [
+    ...p.energy.map((e): [number, number, boolean] => [e.a, e.b, e.directed]),
+    ...p.groupIdx.flatMap((gi) => g.groups[gi].leak[p.groupState[gi]].map(([a, b]): [number, number, boolean] => [a, b, false])),
+  ]
+  for (let q = 0; q < queue.length && !prev.has(r); q++) {
+    const x = queue[q]
+    for (const [a, b, directed] of links) {
+      const [ra, rb] = [p.root[a], p.root[b]]
+      const next = ra === x ? rb : !directed && rb === x ? ra : -1
+      if (next >= 0 && !prev.has(next)) {
+        prev.set(next, x)
+        queue.push(next)
+      }
+    }
+  }
+  const on = new Set<number>([r])
+  for (let x = prev.has(r) ? r : -1; x !== -1; x = prev.get(x)!) on.add(x)
+  const out: string[] = []
+  for (const i of p.relevant) if (on.has(p.root[i])) out.push(...g.wires[i])
+  return out
+}
+
 function lowVoltageDraft(w: Watch, from: string, wires: string[], when: string): MainsDraft {
   const names = andList(w.terms.map(termName))
   const one = w.terms.length === 1
@@ -2523,13 +3039,13 @@ function lowVoltageDraft(w: Watch, from: string, wires: string[], when: string):
   if (w.cls === 'secondary') {
     const conv = w.terms.find((t) => lvClass(t) === 'secondary')!
     const iso = conv.info.isolation === 'basic' ? 'basic insulation' : conv.info.isolation === 'none' ? 'no insulation at all' : 'insulation of unknown quality'
-    message = `${conv.part.designator}'s low-voltage side is separated from mains only by ${iso}, so ${names} ${one ? 'is' : 'are'} live${when}: that side counts as mains. Do not wire it to anything a person can touch; use a converter with reinforced or double isolation.`
+    message = `${conv.part.designator}'s low-voltage side is separated from mains only by ${iso}, so ${names} may be live${when}: that side counts as mains. Do not wire it to anything a person can touch; use a converter with reinforced or double isolation.`
   } else if (w.cls === 'selv' || w.cls === 'pelv') {
     message = `${names} ${one ? 'is' : 'are'} on a low-voltage side that must never meet mains, but ${one ? 'gets' : 'get'} mains from ${from}${when}. Remove the wire that joins ${one ? 'it' : 'them'} to mains.`
   } else {
     const parts = [...new Set(w.terms.map((t) => t.part.designator))]
     const it = parts.length === 1 ? 'it' : 'they'
-    message = `${names} ${one ? 'gets' : 'get'} mains from ${from}${when}. ${andList(parts)} ${parts.length === 1 ? 'is a low-voltage part' : 'are low-voltage parts'}: ${it} will be destroyed, and anything touching ${parts.length === 1 ? 'it' : 'them'} becomes live. Remove the wire that brings mains there, and switch mains only through a relay or SSR rated for it.`
+    message = `${names} ${one ? 'gets' : 'get'} mains from ${from}${when}. ${andList(parts)} ${parts.length === 1 ? 'is a low-voltage part' : 'are low-voltage parts'}: ${it} may be destroyed, and anything touching ${parts.length === 1 ? 'it' : 'them'} may become live. Remove the wire that brings mains there, and switch mains only through a relay or SSR rated for it.`
   }
   return { rule: 'mains-to-low-voltage', subject: lead.part.designator, target: termName(lead), message, parts: w.terms.map((t) => t.part.uid), pins: w.terms.map(endpointOf), wires, causes: w.terms.map((t) => t.key) }
 }
@@ -2542,8 +3058,8 @@ function lowVoltageRule(acc: Acc, mask: number) {
     const e = p.power[r]
     if (!x && !e) continue
     report(acc, `mains-to-low-voltage|${w.terms.map((t) => t.key).join(',')}`, mask, () => {
-      const from = sourcesText(p.g, sourcesIn(p.g, x, e))
-      const wires = wiresOfRoot(p, r)
+      const from = sourcesText(p.g, sourcesIn(p, x, e))
+      const wires = energyPathWires(p, r)
       return (when) => lowVoltageDraft(w, from, wires, when)
     })
   }
@@ -2560,7 +3076,7 @@ function shortDraft(p: Prepared, r: number, s: GSource, other: 'N' | 'PE') {
   return (when: string): MainsDraft => ({
     rule: 'mains-short', subject: d, target: `${d} L`,
     message: other === 'N'
-      ? `${d} L and N are joined${when}: a short circuit across the outlet. The breaker trips, or the wiring burns before it does. Remove the wire that joins them.`
+      ? `${d} L and N are joined${when}: a short circuit across the outlet. The breaker should trip; until it does, the wiring may overheat. Remove the wire that joins them.`
       : `${d} L is joined to earth${when}: a short circuit to earth, which puts mains on everything earthed until the breaker trips. Remove the wire that joins them.`,
     parts: [s.part.uid], pins: keys.map(pinOfKey), wires, causes: keys,
   })
@@ -2587,14 +3103,13 @@ function crossDraft(p: Prepared, r: number, s: GSource, a: Conductor, t: GSource
 
 function identityRules(acc: Acc, mask: number) {
   const { p } = acc
-  const g = p.g
   for (const r of p.srcRoots) {
     const x = p.ident[r]
-    for (const s of g.sources) {
+    for (const s of p.sources) {
       const has = (c: Conductor) => (x & bitOf(s.index, c)) !== 0
       if (has('L') && has('N')) report(acc, `mains-short|${s.id}|N`, mask, () => shortDraft(p, r, s, 'N'))
       if (has('L') && has('PE')) report(acc, `mains-short|${s.id}|PE`, mask, () => shortDraft(p, r, s, 'PE'))
-      for (const t of g.sources) {
+      for (const t of p.sources) {
         if (t.index <= s.index) continue
         for (const a of CONDS)
           for (const b of CONDS) {
@@ -2613,7 +3128,7 @@ STATE_RULES.push(lowVoltageRule, identityRules)
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `npx vitest run src/format/mainsRules.test.ts`
-Expected: PASS. Then `npm test`: PASS.
+Expected: PASS. Then the gate `npx tsc --noEmit && npm test`: PASS.
 
 - [ ] **Step 5: Commit**
 
@@ -2632,7 +3147,7 @@ git commit -m "Mains: rules 1 to 3 (low-voltage wiring, shorts, crossed sources)
 
 **Interfaces:**
 - Consumes: Task 5 and Task 6 helpers; `identAt` (Task 3); `mainsOf`.
-- Produces: `across(p: Prepared, a: number, b: number): number | null` (the source whose L and N sit across a and b), `voltageRule` (state), `ratingRules` and `dataMissing` (static). `acc.loadComplete` is filled by `voltageRule` (Task 9 reads it).
+- Produces: `across(p: Prepared, a: number, b: number): number | null` (the source whose L and N sit across a and b), `acrossFit(p: Prepared, a: number, b: number): boolean` (the same with every empty fuse holder taken as fitted, Resolution 28), `voltageRule` (state), `ratingRules` and `dataMissing` (static). `voltageRule` fills `acc.loadComplete` and `acc.loadFit` (Task 10 reads them), and reports a load with no range as not checked (Resolution 14).
 
 - [ ] **Step 1: Write the failing tests (append to `src/format/mainsRules.test.ts`)**
 
@@ -2646,6 +3161,13 @@ describe('rule 4: wrong mains voltage', () => {
     const d = sheet([at('xs1', 'XS1', 't-outlet', 0, 0, { values: { acVoltage: { value: 277, unit: 'VAC' } } }), at('ps1', 'PS1', 't-psu', 200)],
       [w('xs1|L', 'ps1|AC1'), w('xs1|N', 'ps1|AC2')])
     expect(msgs(d, 'mains-voltage')).toEqual(['PS1 takes 100 V to 240 V AC, but XS1 gives 277 V. Use a converter made for 277 V.'])
+  })
+  it('a load without a voltage range says its voltage compatibility was not checked', () => {
+    const noRange = { ...MAINS_MODULES['t-lamp'], id: 't-lamp-norange', electrical: { conducts: [{ pins: ['L', 'N'], kind: 'load' }], protection: 'class-2', ratings: [{ pins: ['L', 'N'], kind: 'terminal', service: 'ac', volts: 250, provenance: 'datasheet' }] } }
+    const d = sheet([at('xs1', 'XS1', 't-outlet'), at('e1', 'E1', 't-lamp-norange', 200)], [w('xs1|L', 'e1|L'), w('xs1|N', 'e1|N')], { 't-lamp-norange': noRange })
+    expect(msgs(d, 'data-missing')).toEqual([
+      "E1's module gives no voltage range, so whether XS1's 120 V suits it is not checked. Add its rated voltage (electrical.conducts range) from the datasheet.",
+    ])
   })
   it('stays quiet inside the range', () => {
     expect(rules(on([['e1', 'E1', 't-lamp']], [w('xs1|L', 'e1|L'), w('xs1|N', 'e1|N')])).has('mains-voltage')).toBe(false)
@@ -2693,6 +3215,13 @@ describe('rule 5: ratings, relevance before adequacy', () => {
 })
 
 describe('rule 12: missing mains data', () => {
+  it("a converter's outputs outside every domain are taken as live, and named", () => {
+    const d = on([['ps1', 'PS1', 't-psu-mainsonly'], ['u1', 'U1', 't-mcu']], [w('xs1|L', 'ps1|AC1'), w('xs1|N', 'ps1|AC2'), w('ps1|+V', 'u1|IO')])
+    expect(msgs(d, 'data-missing')).toEqual([
+      "PS1's module leaves +V and -V outside every domain (electrical.domains), so the checks treat them as live. Add its domains and isolation from the datasheet.",
+    ])
+    expect(rules(d).has('mains-to-low-voltage')).toBe(true)
+  })
   it('a mains terminal with no conduction data is checked conservatively and says so', () => {
     const d = on([['u1', 'U1', 't-undeclared']], [w('xs1|L', 'u1|A')])
     expect(msgs(d, 'data-missing')).toEqual([
@@ -2715,12 +3244,20 @@ Expected: FAIL (no `mains-voltage`, `mains-rating`, `rating-*` or `data-missing`
 /** The source whose L and N sit across nodes a and b (either way round) in this state, or null. */
 export function across(p: Prepared, a: number, b: number): number | null {
   const [x, y] = [identAt(p, a), identAt(p, b)]
-  for (const s of p.g.sources) {
+  for (const s of p.sources) {
     const L = bitOf(s.index, 'L')
     const N = bitOf(s.index, 'N')
     if ((x & L && y & N) || (x & N && y & L)) return s.index
   }
   return null
+}
+
+/** Resolution 28: with every empty fuse holder taken as fitted, L and N of one source reach a and b. */
+export function acrossFit(p: Prepared, a: number, b: number): boolean {
+  if (!p.anyAbsent) return false
+  const [ra, rb] = [p.fitRoot[a], p.fitRoot[b]]
+  const on = (xs: number[], r: number) => xs.some((x) => p.fitRoot[x] === r)
+  return p.sources.some((s) => (on(s.live, ra) && on(s.neutral, rb)) || (on(s.live, rb) && on(s.neutral, ra)))
 }
 
 const rangeText = (r: [number, number]) => (r[0] === r[1] ? volt(r[0]) : `${volt(r[0])} to ${volt(r[1])}`)
@@ -2729,12 +3266,22 @@ function voltageRule(acc: Acc, mask: number) {
   const { p } = acc
   const g = p.g
   const check = (part: GLoad['part'], a: number, b: number, range: [number, number] | null, kind: 'load' | 'converter', i: number) => {
+    if (kind === 'load' && acrossFit(p, a, b)) acc.loadFit[i] = 1
     const s = across(p, a, b)
     if (s === null) return
     if (kind === 'load') acc.loadComplete[i] = 1
     const v = g.sources[s].volts
-    if (!range || (v >= range[0] && v <= range[1])) return
     const src = g.sources[s]
+    if (!range) {
+      // Resolution 14: never skipped in silence.
+      report(acc, `data-missing|range|${part.uid}`, mask, () => (when) => ({
+        rule: 'data-missing', subject: part.designator, target: part.designator,
+        message: `${part.designator}'s module gives no voltage range, so whether ${src.part.designator}'s ${volt(v)} suits it is not checked${when}. Add its rated voltage (electrical.conducts range) from the datasheet.`,
+        parts: [part.uid], pins: [], wires: [], causes: [nodeKey(part.uid, '#range')],
+      }))
+      return
+    }
+    if (v >= range[0] && v <= range[1]) return
     report(acc, `mains-voltage|${part.uid}|${src.id}`, mask, () => (when) => ({
       rule: 'mains-voltage', subject: part.designator, target: part.designator,
       message: kind === 'load'
@@ -2743,8 +3290,8 @@ function voltageRule(acc: Acc, mask: number) {
       parts: [part.uid, src.part.uid], pins: [], wires: [], causes: [nodeKey(part.uid, '*'), ...src.keys.L],
     }))
   }
-  g.loads.forEach((ld, i) => check(ld.part, ld.a, ld.b, ld.range, 'load', i))
-  g.converters.forEach((c, i) => check(c.part, c.a, c.b, c.range, 'converter', i))
+  for (const i of p.loadIdx) check(g.loads[i].part, g.loads[i].a, g.loads[i].b, g.loads[i].range, 'load', i)
+  for (const i of p.converterIdx) check(g.converters[i].part, g.converters[i].a, g.converters[i].b, g.converters[i].range, 'converter', i)
 }
 
 // ---- Rule 5: ratings (spec 1.4) ----
@@ -2849,10 +3396,14 @@ function dataMissing(acc: Acc): MainsDraft[] {
       out.push({ rule: 'data-missing', subject: part.designator, target: part.designator,
         message: `${part.designator}'s module does not say how ${andList(undeclared)} ${undeclared.length === 1 ? 'conducts' : 'conduct'}, so the mains checks assume the worst for ${undeclared.length === 1 ? 'it' : 'them'}: mains on any of them reaches the others. Add conduction data to its module (electrical.internal, conducts, contacts or protective).`,
         parts: [part.uid], pins: undeclared.map((n) => ({ part: part.uid, pin: n })), wires: [], causes: undeclared.map((n) => nodeKey(part.uid, n)) })
-    if (info.acInput && (!info.domains.length || info.isolation === null) && (hot(info.acInput.a) || hot(info.acInput.b)))
+    // Resolution 27: a converter's pins outside every domain, or no isolation statement at all.
+    const uncovered = info.acInput ? uncoveredPins(m, info) : []
+    if (info.acInput && (uncovered.length || info.isolation === null) && (hot(info.acInput.a) || hot(info.acInput.b)))
       out.push({ rule: 'data-missing', subject: part.designator, target: part.designator,
-        message: `${part.designator}'s module does not say how its low-voltage side is isolated from mains (electrical.domains and electrical.isolation), so the checks treat that side as live. Add them from the datasheet.`,
-        parts: [part.uid], pins: [], wires: [], causes: [nodeKey(part.uid, '#domains')] })
+        message: uncovered.length
+          ? `${part.designator}'s module leaves ${andList(uncovered)} outside every domain (electrical.domains), so the checks treat ${uncovered.length === 1 ? 'it' : 'them'} as live. Add its domains and isolation from the datasheet.`
+          : `${part.designator}'s module does not state the isolation between mains and its low-voltage side (electrical.isolation), so the checks treat that side as live. Add it from the datasheet, or "unknown" when the datasheet does not state it.`,
+        parts: [part.uid], pins: uncovered.map((n) => ({ part: part.uid, pin: n })), wires: [], causes: [nodeKey(part.uid, '#domains')] })
     return out
   })
 }
@@ -2861,12 +3412,12 @@ STATE_RULES.push(voltageRule)
 STATIC_RULES.push(ratingRules, dataMissing)
 ```
 
-Also add `import { mainsOf } from './mainsModel.ts'`. Note: the `causes` of rule 4 and the isolation findings use a pseudo key (`'*'`, `'#isolation'`, `'#domains'`) so the finding id stays stable; it is never shown.
+Also add `import { mainsOf, uncoveredPins } from './mainsModel.ts'`. Note: the `causes` of rule 4 and the isolation findings use a pseudo key (`'*'`, `'#isolation'`, `'#domains'`) so the finding id stays stable; it is never shown.
 
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `npx vitest run src/format/mainsRules.test.ts`
-Expected: PASS. Then `npm test`: PASS.
+Expected: PASS. Then the gate `npx tsc --noEmit && npm test`: PASS.
 
 - [ ] **Step 5: Commit**
 
@@ -2877,230 +3428,95 @@ git commit -m "Mains: rules 4, 5 and 12 (voltage, ratings, missing data)" -m "Co
 
 ---
 
-### Task 8: Rules 6 and 7: polarity and earth, with protective conductors
+### Task 8: Protective-conductor discovery
 
 **Files:**
-- Modify: `src/format/mainsRules.ts` (append; register; add `pe` to `Acc`)
-- Test: `src/format/mainsRules.test.ts` (append)
+- Create: `src/format/mainsProtective.ts`
+- Test: `src/format/mainsProtective.test.ts`
 
 **Interfaces:**
-- Consumes: Tasks 3 to 7.
-- Produces:
-  - `interface ProtectivePaths { wires: Set<string>; through: { part: PartInstance; kind: 'switch' | 'relay' | 'ssr' | 'fuse' }[] }`
-  - `protectivePaths(acc: Acc): ProtectivePaths` (cached on `acc.pe`; Task 9's cable rule uses `wires`)
-  - `Acc.pe: ProtectivePaths | null` (initialised to `null` in `newAcc`)
-  - State rules `polarityRule`, `earthRules`; static rule `earthPathRule`.
+- Consumes: `MainsGraph`, `termAt` (Task 3); `lvClass` (Task 6); `mainsOf`; `plugsOf`; `moduleOf`; `nodeKey`.
+- Produces (in `mainsProtective.ts`):
+  - `interface Through { part: PartInstance; kind: 'switch' | 'relay' | 'ssr' | 'fuse'; wires: string[] }` (a switch, relay, SSR or fuse on a protective path, with the protective wires of its block: the path it sits on)
+  - `interface ProtectivePaths { wires: Set<string>; through: Through[] }`
+  - `protectivePaths(g: MainsGraph): ProtectivePaths` (cached per graph)
 
-Protective conductors (spec 1.6) are found on a terminal-level graph: vertices are terminal keys that are declared for mains, PE terminals of class 1 parts, and declared bonds; edges are wires between two such terminals, mated plug contacts, `internal` joins of mains parts, every contact position and every protective edge. An ordinary low-voltage pin is never a vertex, so a functional DC ground that reaches PE only through a part's DC pin is never on a path. An edge lies on some simple path between a source's earth terminal S and a protective terminal T exactly when its biconnected block lies on the block-cut tree path between S and T; that is how parallel and redundant paths are all included.
+Protective conductors (spec 1.6) are found on a terminal-level graph that is independent of contact states: vertices are terminal keys declared for mains, PE terminals of class 1 parts, and declared bonds; edges are wires between two such terminals, mated plug contacts, `internal` joins of mains parts, every contact position and every protective edge. An ordinary low-voltage pin is never a vertex, so a functional DC ground that reaches PE only through a part's DC pin is never on a path. An edge lies on some simple path between a source's earth terminal S and a protective terminal T exactly when its biconnected block lies on the block-cut tree path between S and T: that is how every parallel and redundant path is included.
 
-- [ ] **Step 1: Write the failing tests (append)**
+- [ ] **Step 1: Write the failing tests**
+
+Create `src/format/mainsProtective.test.ts`:
 
 ```ts
-describe('rule 6: polarity', () => {
-  it('polarized lamp reversed (polarity, not short)', () => {
-    const d = on([['e1', 'E1', 't-lamp']], [w('xs1|N', 'e1|L'), w('xs1|L', 'e1|N')])
-    expect(msgs(d, 'polarity')).toEqual([
-      'E1 is wired the wrong way round: E1 L is on N and E1 N is on L. If E1 is a lamp, its screw shell is live, so touching the bulb while changing it can shock. Swap the L and N wires to E1.',
-    ])
-    expect(rules(d).has('mains-short')).toBe(false)
-  })
-  it('a single-pole switch in the neutral', () => {
-    const d = on([['s1', 'S1', 't-switch'], ['e1', 'E1', 't-lamp']], [w('xs1|L', 'e1|L'), w('e1|N', 's1|1'), w('s1|2', 'xs1|N')])
-    expect(msgs(d, 'polarity')).toEqual(['S1 switches the neutral when S1 is on: with S1 off, what it feeds stays live. Move S1 into the L wire.'])
-  })
-  it('a fuse in the neutral', () => {
-    const d = on([['f1', 'F1', 't-fuse'], ['e1', 'E1', 't-lamp']], [w('xs1|L', 'e1|L'), w('e1|N', 'f1|1'), w('f1|2', 'xs1|N')])
-    expect(msgs(d, 'polarity')).toEqual(['F1 is in the neutral: when it blows, what it feeds stays live. Move F1 into the L wire.'])
-  })
-})
+// Protective conductors (spec 1.6): every wire and part edge on any path between a source's earth and
+// a protective terminal, parallel and redundant paths included, never through a low-voltage pin.
+import { describe, expect, it } from 'vitest'
+import { plugsOf } from './breadboard.ts'
+import { netlist } from './netlist.ts'
+import type { Connection, Diagram } from './diagram.ts'
+import { buildMainsGraph } from './mainsGraph.ts'
+import { protectivePaths } from './mainsProtective.ts'
+import { at, dupont, sheet, w } from './mains.testing.ts'
 
-describe('rule 7: earth', () => {
-  it("a class 1 lamp's PE terminal without earth", () => {
-    const d = on([['e1', 'E1', 't-lamp-c1']], [w('xs1|L', 'e1|L'), w('xs1|N', 'e1|N')])
-    expect(msgs(d, 'earth')).toEqual(["E1 PE is not connected to earth: a fault inside E1 would leave its metal live. Wire E1 PE to the outlet's earth."])
-    expect(rules(on([['e1', 'E1', 't-lamp-c1']], [w('xs1|L', 'e1|L'), w('xs1|N', 'e1|N'), w('xs1|PE', 'e1|PE')])).has('earth')).toBe(false)
+const paths = (d: Diagram) => {
+  const plugs = plugsOf(d)
+  return protectivePaths(buildMainsGraph(d, plugs, netlist(d, plugs))!)
+}
+const uids = (cs: Connection[]) => cs.map((c) => c.uid).sort()
+
+describe('protectivePaths', () => {
+  it('two parallel PE wires to a class 1 lamp are both protective', () => {
+    const pe = [dupont('xs1|PE', 'e1|PE'), dupont('e1|PE', 'xs1|PE')]
+    const d = sheet([at('xs1', 'XS1', 't-outlet'), at('e1', 'E1', 't-lamp-c1', 200)], [w('xs1|L', 'e1|L'), ...pe])
+    expect([...paths(d).wires].sort()).toEqual(uids(pe))
   })
-  it('a switched PE branch parallel to a permanent PE wire (earth: protective conductor through a switch)', () => {
-    const d = on([['s1', 'S1', 't-switch'], ['e1', 'E1', 't-lamp-c1']],
-      [w('xs1|L', 'e1|L'), w('xs1|N', 'e1|N'), w('xs1|PE', 'e1|PE'), w('xs1|PE', 's1|1'), w('s1|2', 'e1|PE')])
-    expect(msgs(d, 'earth')).toEqual(['The earth runs through S1 (a switch): when it opens, what it earths is no longer earthed. Wire earth straight, never through a switch, relay or fuse.'])
+  it('a switched branch beside a permanent PE wire is on a path, with its whole loop', () => {
+    const loop = [w('xs1|PE', 'e1|PE'), w('xs1|PE', 's1|1'), w('s1|2', 'e1|PE')]
+    const d = sheet([at('xs1', 'XS1', 't-outlet'), at('s1', 'S1', 't-switch', 200), at('e1', 'E1', 't-lamp-c1', 400)], loop)
+    const p = paths(d)
+    expect([...p.wires].sort()).toEqual(uids(loop))
+    expect(p.through.map((t) => [t.part.designator, t.kind, [...t.wires].sort()])).toEqual([['S1', 'switch', uids(loop)]])
   })
-  it('N joined to PE beyond the outlet', () => {
-    expect(msgs(on([], [w('xs1|N', 'xs1|PE')]), 'earth')).toEqual([
-      'XS1 N is joined to earth: neutral and earth are joined only at the main panel, and a join here puts current on the earth wire. Remove the wire that joins them.',
-    ])
+  it('a DC ground wire hanging off a bonded supply minus is not protective', () => {
+    const gnd = dupont('ps1|-V', 'u1|GND')
+    const d = sheet([at('xs1', 'XS1', 't-outlet'), at('ps1', 'PS1', 't-psu-pelv', 200), at('u1', 'U1', 't-mcu', 400)],
+      [w('xs1|PE', 'ps1|PE'), gnd])
+    expect(paths(d).wires.has(gnd.uid)).toBe(false)
   })
-  it('a DC ground joined to earth without a declared bond warns; through a declared bond it does not', () => {
-    expect(msgs(on([['u1', 'U1', 't-mcu']], [w('xs1|PE', 'u1|GND')]), 'earth-bond')).toEqual([
-      'U1 GND is joined to earth, but nothing on this net declares a bond to earth. A low-voltage ground on earth is right only when the supply is meant to be earthed (a class 1 supply with an earthed output); otherwise remove the join.',
-    ])
-    const bonded = on([['ps1', 'PS1', 't-psu-pelv'], ['u1', 'U1', 't-mcu']],
-      [w('xs1|L', 'ps1|AC1'), w('xs1|N', 'ps1|AC2'), w('xs1|PE', 'ps1|PE'), w('ps1|-V', 'u1|GND'), w('ps1|+V', 'u1|VCC')])
-    expect(rules(bonded).has('earth-bond')).toBe(false)
+  it('a path through a low-voltage pin is not a protective path', () => {
+    const via = [w('xs1|PE', 'u1|GND'), w('u1|GND', 'e1|PE')]
+    const d = sheet([at('xs1', 'XS1', 't-outlet'), at('u1', 'U1', 't-mcu', 200), at('e1', 'E1', 't-lamp-c1', 400)], via)
+    expect([...paths(d).wires]).toEqual([])
   })
 })
 ```
 
+(`via` joins at the net level too: `U1 GND` is one node with both wires, but that node is an ordinary pin, so neither wire is a protective edge.)
+
 - [ ] **Step 2: Run the tests to verify they fail**
 
-Run: `npx vitest run src/format/mainsRules.test.ts`
-Expected: FAIL (no `polarity`, `earth` or `earth-bond` findings yet).
+Run: `npx vitest run src/format/mainsProtective.test.ts`
+Expected: FAIL (`./mainsProtective.ts` does not exist).
 
-- [ ] **Step 3: Implement (append; import `PE_MASK`, `L_MASK`, `N_MASK`, `groupName` from `./mainsGraph.ts`, `type PartInstance` from `./diagram.ts`, `type Plug`, `plugsOf` from `./breadboard.ts`)**
-
-Add to `Acc` the field `pe: ProtectivePaths | null` and set `pe: null` in `newAcc`.
+- [ ] **Step 3: Implement `src/format/mainsProtective.ts`**
 
 ```ts
-// ---- Rule 6: polarity (spec 3) ----
+// Protective conductors (spec 1.6): every wire and part edge on any simple path between a source's
+// earth terminal and a protective terminal (a class 1 part's PE terminal or a declared bond), found on
+// a terminal-level graph with every contact position conducting. A low-voltage pin is never a vertex,
+// so a functional DC ground reaching PE through a part's DC pin is never on a path. Parallel and
+// redundant paths are all included: an edge is on some path exactly when its biconnected block is on
+// the block-cut tree path between the two ends. Pure; cached per graph.
+import { type PartInstance, moduleOf } from './diagram.ts'
+import { plugsOf } from './breadboard.ts'
+import { nodeKey } from './netlist.ts'
+import { mainsOf } from './mainsModel.ts'
+import { type MainsGraph, termAt } from './mainsGraph.ts'
+import { lvClass } from './mainsRules.ts'
 
-/** L and N bits of the sources whose L side a standard fixes (see GSource.polarized). */
-const polarizedMask = (g: MainsGraph) => g.sources.reduce((m, s) => (s.polarized ? m | bitOf(s.index, 'L') | bitOf(s.index, 'N') : m), 0)
-
-interface Req { node: number; t: GTerm; req: 'L' | 'N' | 'PE' | 'line' }
-const reqCache = new WeakMap<Prepared, Req[]>()
-function reqList(p: Prepared): Req[] {
-  let list = reqCache.get(p)
-  if (list) return list
-  list = []
-  for (const i of p.relevant)
-    for (const k of p.g.members[i]) {
-      const t = termAt(p.g, k)
-      const req = t?.info.requirement.get(t.name)
-      if (t && req) list.push({ node: i, t, req })
-    }
-  reqCache.set(p, list)
-  return list
-}
-
-function polarityRule(acc: Acc, mask: number) {
-  const { p } = acc
-  const g = p.g
-  const pol = polarizedMask(g)
-  const wrong = new Map<string, { part: PartInstance; lOnN: GTerm[]; nOnL: GTerm[] }>()
-  for (const q of reqList(p)) {
-    const x = identAt(p, q.node) & pol
-    const onL = (x & L_MASK) !== 0 && !(x & N_MASK)
-    const onN = (x & N_MASK) !== 0 && !(x & L_MASK)
-    if (!((q.req === 'N' && onL) || (q.req === 'L' && onN))) continue
-    const e = wrong.get(q.t.part.uid) ?? { part: q.t.part, lOnN: [], nOnL: [] }
-    ;(q.req === 'L' ? e.lOnN : e.nOnL).push(q.t)
-    wrong.set(q.t.part.uid, e)
-  }
-  for (const e of wrong.values()) {
-    const d = e.part.designator
-    const terms = [...e.lOnN, ...e.nOnL]
-    report(acc, `polarity|${terms.map((t) => t.key).sort().join(',')}`, mask, () => (when) => ({
-      rule: 'polarity', subject: d, target: termName(terms[0]),
-      message: e.lOnN.length && e.nOnL.length
-        ? `${d} is wired the wrong way round${when}: ${andList(e.lOnN.map(termName))} ${e.lOnN.length === 1 ? 'is' : 'are'} on N and ${andList(e.nOnL.map(termName))} ${e.nOnL.length === 1 ? 'is' : 'are'} on L. If ${d} is a lamp, its screw shell is live, so touching the bulb while changing it can shock. Swap the L and N wires to ${d}.`
-        : e.nOnL.length
-        ? `${andList(e.nOnL.map(termName))} should be on N but ${e.nOnL.length === 1 ? 'is' : 'are'} on L${when}. Swap the L and N wires to ${d}.`
-        : `${andList(e.lOnN.map(termName))} should be on L but ${e.lOnN.length === 1 ? 'is' : 'are'} on N${when}. Swap the L and N wires to ${d}.`,
-      parts: [e.part.uid], pins: terms.map(endpointOf), wires: [], causes: terms.map((t) => t.key),
-    }))
-  }
-  // A single-pole switch or a fuse that carries the neutral of a polarized source.
-  g.groups.forEach((grp, gi) => {
-    if (grp.def.poles.length !== 1) return
-    for (const [a] of grp.closed[p.groupState[gi]]) {
-      const x = identAt(p, a) & pol
-      if (!(x & N_MASK) || x & L_MASK) continue
-      const name = groupName(g, gi)
-      report(acc, `polarity|${grp.part.uid}|${grp.def.id}|neutral`, mask, () => (when) => ({
-        rule: 'polarity', subject: grp.part.designator, target: grp.part.designator,
-        message: `${name} switches the neutral${when}: with ${name} off, what it feeds stays live. Move ${name} into the L wire.`,
-        parts: [grp.part.uid], pins: [], wires: [], causes: [nodeKey(grp.part.uid, grp.def.id)],
-      }))
-    }
-  })
-  for (const e of g.edges) {
-    if (e.kind !== 'protective' || !e.fitted) continue
-    const x = identAt(p, e.a) & pol
-    if (!(x & N_MASK) || x & L_MASK) continue
-    const d = e.part.designator
-    report(acc, `polarity|${e.part.uid}|${e.names.join('-')}|neutral`, mask, () => (when) => ({
-      rule: 'polarity', subject: d, target: d, message: `${d} is in the neutral${when}: when it blows, what it feeds stays live. Move ${d} into the L wire.`,
-      parts: [e.part.uid], pins: e.names.map((n) => ({ part: e.part.uid, pin: n })), wires: [], causes: e.names.map((n) => nodeKey(e.part.uid, n)),
-    }))
-  }
-}
-
-// ---- Rule 7: earth (spec 1.6, 3) ----
-
-interface Grounds { grounds: { node: number; t: GTerm }[]; bondNodes: number[] }
-const groundCache = new WeakMap<Prepared, Grounds>()
-/** Low-voltage ground terminals (not declared bonds), and the nodes holding a declared bond. */
-function groundsOf(p: Prepared): Grounds {
-  let hit = groundCache.get(p)
-  if (hit) return hit
-  hit = { grounds: [], bondNodes: [] }
-  for (const i of p.relevant)
-    for (const k of p.g.members[i]) {
-      const t = termAt(p.g, k)
-      if (!t) continue
-      if (t.info.bonds.has(t.name)) hit.bondNodes.push(i)
-      else if (t.type === 'ground' && lvClass(t) !== null) hit.grounds.push({ node: i, t })
-    }
-  groundCache.set(p, hit)
-  return hit
-}
-
-function earthRules(acc: Acc, mask: number) {
-  const { p } = acc
-  const g = p.g
-  // N joined to PE of the same source, beyond the outlet.
-  for (const r of p.srcRoots) {
-    const x = p.ident[r]
-    for (const s of g.sources) {
-      if (!(x & bitOf(s.index, 'N')) || !(x & bitOf(s.index, 'PE'))) continue
-      const d = s.part.designator
-      const keys = [...s.keys.N, ...s.keys.PE]
-      report(acc, `earth|${s.id}|N-PE`, mask, () => {
-        const wires = wiresOfRoot(p, r)
-        return (when) => ({ rule: 'earth', subject: d, target: `${d} N`,
-          message: `${d} N is joined to earth${when}: neutral and earth are joined only at the main panel, and a join here puts current on the earth wire. Remove the wire that joins them.`,
-          parts: [s.part.uid], pins: keys.map(pinOfKey), wires, causes: keys })
-      })
-    }
-  }
-  // A class 1 part's earth terminal without PE, while the part is on mains; a line terminal on earth only.
-  for (const q of reqList(p)) {
-    const x = identAt(p, q.node)
-    if (q.req === 'PE' && q.t.info.protection === 'class-1' && !(x & PE_MASK)) {
-      const live = [...q.t.info.terminals].some((n) => {
-        const i = g.nodeOf.get(nodeKey(q.t.part.uid, n))
-        return i !== undefined && ((identAt(p, i) & LN_MASK) !== 0 || powerAt(p, i) !== 0)
-      })
-      if (!live) continue
-      const d = q.t.part.designator
-      report(acc, `earth|${q.t.key}|no-pe`, mask, () => (when) => ({ rule: 'earth', subject: d, target: termName(q.t),
-        message: `${termName(q.t)} is not connected to earth${when}: a fault inside ${d} would leave its metal live. Wire ${termName(q.t)} to the outlet's earth.`,
-        parts: [q.t.part.uid], pins: [endpointOf(q.t)], wires: [], causes: [q.t.key] }))
-    }
-    if (q.req === 'line' && x & PE_MASK && !(x & LN_MASK)) {
-      const d = q.t.part.designator
-      report(acc, `earth|${q.t.key}|line-on-pe`, mask, () => (when) => ({ rule: 'earth', subject: d, target: termName(q.t),
-        message: `${termName(q.t)} carries mains inside ${d} but is joined to earth${when}. Wire it to L or N, never to earth.`,
-        parts: [q.t.part.uid], pins: [endpointOf(q.t)], wires: [], causes: [q.t.key] }))
-    }
-  }
-  // A low-voltage ground on earth where nothing declares a bond: a warning (earth-bond).
-  const { grounds, bondNodes } = groundsOf(p)
-  if (!grounds.length) return
-  const bonded = new Set(bondNodes.map((i) => p.root[i]))
-  for (const q of grounds) {
-    const r = p.root[q.node]
-    if (!(p.ident[r] & PE_MASK) || bonded.has(r)) continue
-    report(acc, `earth-bond|${q.t.key}`, mask, () => (when) => ({ rule: 'earth-bond', subject: q.t.part.designator, target: termName(q.t),
-      message: `${termName(q.t)} is joined to earth${when}, but nothing on this net declares a bond to earth. A low-voltage ground on earth is right only when the supply is meant to be earthed (a class 1 supply with an earthed output); otherwise remove the join.`,
-      parts: [q.t.part.uid], pins: [endpointOf(q.t)], wires: [], causes: [q.t.key] }))
-  }
-}
-
-// ---- Protective conductors (spec 1.6) ----
-
-export interface ProtectivePaths { wires: Set<string>; through: { part: PartInstance; kind: 'switch' | 'relay' | 'ssr' | 'fuse' }[] }
-interface PEdge { a: number; b: number; wire?: string; through?: ProtectivePaths['through'][number] }
+export interface Through { part: PartInstance; kind: 'switch' | 'relay' | 'ssr' | 'fuse'; wires: string[] }
+export interface ProtectivePaths { wires: Set<string>; through: Through[] }
+interface PEdge { a: number; b: number; wire?: string; through?: { part: PartInstance; kind: Through['kind'] } }
 
 /** Biconnected blocks (Tarjan, iterative, parallel edges kept apart): block id per edge and cut vertices. */
 function blocks(n: number, edges: PEdge[]): { blockOf: Int32Array; cut: Uint8Array; count: number } {
@@ -3159,10 +3575,11 @@ function blocks(n: number, edges: PEdge[]): { blockOf: Int32Array; cut: Uint8Arr
   return { blockOf, cut, count }
 }
 
-/** Every wire and part edge on any path between a source's earth and a protective terminal. */
-export function protectivePaths(acc: Acc): ProtectivePaths {
-  if (acc.pe) return acc.pe
-  const g = acc.p.g
+const cache = new WeakMap<MainsGraph, ProtectivePaths>()
+
+export function protectivePaths(g: MainsGraph): ProtectivePaths {
+  const hit = cache.get(g)
+  if (hit) return hit
   const ids = new Map<string, number>()
   const vertex = (key: string): number | null => {
     const t = termAt(g, key)
@@ -3178,100 +3595,416 @@ export function protectivePaths(acc: Acc): ProtectivePaths {
   }
   for (const c of g.d.connections) if (!g.broken.has(c.uid)) join(nodeKey(c.from.part, c.from.pin), nodeKey(c.to.part, c.to.pin), { wire: c.uid })
   for (const pl of plugsOf(g.d)) join(nodeKey(pl.part, pl.pin), nodeKey(pl.board, pl.group))
+  const T = new Set<number>()
   for (const part of g.mainsParts) {
     const m = moduleOf(g.d, part.module)!
     const info = mainsOf(m)
     for (const grp of m.internal ?? []) for (let i = 1; i < grp.length; i++) join(nodeKey(part.uid, grp[0]), nodeKey(part.uid, grp[i]))
     for (const c of info.contacts)
-      for (const pole of c.poles)
-        for (const other of [pole.no, pole.nc]) if (other) join(nodeKey(part.uid, pole.com), nodeKey(part.uid, other), { through: { part, kind: c.kind } })
+      for (const pole of c.poles) for (const other of [pole.no, pole.nc]) if (other) join(nodeKey(part.uid, pole.com), nodeKey(part.uid, other), { through: { part, kind: c.kind } })
     for (const e of info.protective) join(nodeKey(part.uid, e.from), nodeKey(part.uid, e.to), { through: { part, kind: 'fuse' } })
+    const targets = [...info.bonds, ...(info.protection === 'class-1' ? [...info.requirement].filter(([, r]) => r === 'PE').map(([n]) => n) : [])]
+    for (const n of targets) {
+      const i = vertex(nodeKey(part.uid, n))
+      if (i !== null) T.add(i)
+    }
   }
   const S = new Set(g.sources.flatMap((s) => s.keys.PE).map((k) => ids.get(k)).filter((i): i is number => i !== undefined))
-  const T = new Set<number>()
-  for (const part of g.mainsParts) {
-    const info = mainsOf(moduleOf(g.d, part.module)!)
-    const names = [...info.bonds, ...(info.protection === 'class-1' ? [...info.requirement].filter(([, r]) => r === 'PE').map(([n]) => n) : [])]
-    for (const n of names) {
-      const i = ids.get(nodeKey(part.uid, n))
-      if (i !== undefined) T.add(i)
-    }
-  }
   const out: ProtectivePaths = { wires: new Set(), through: [] }
-  if (!S.size || !T.size || !edges.length) return (acc.pe = out)
-  const n = ids.size
-  const { blockOf, cut, count } = blocks(n, edges)
-  // Block-cut tree: blocks are 0..count-1, cut vertex v is count + v.
-  const adj = new Map<number, Set<number>>()
-  const link = (x: number, y: number) => {
-    ;(adj.get(x) ?? adj.set(x, new Set()).get(x)!).add(y)
-    ;(adj.get(y) ?? adj.set(y, new Set()).get(y)!).add(x)
-  }
-  const anyBlock = new Int32Array(n).fill(-1)
-  edges.forEach((e, i) => {
-    for (const v of [e.a, e.b]) {
-      anyBlock[v] = blockOf[i]
-      if (cut[v]) link(blockOf[i], count + v)
+  if (S.size && T.size && edges.length) {
+    const { blockOf, cut, count } = blocks(ids.size, edges)
+    // Block-cut tree: blocks are 0..count-1, cut vertex v is count + v.
+    const adj = new Map<number, Set<number>>()
+    const link = (x: number, y: number) => {
+      ;(adj.get(x) ?? adj.set(x, new Set()).get(x)!).add(y)
+      ;(adj.get(y) ?? adj.set(y, new Set()).get(y)!).add(x)
     }
-  })
-  const treeNode = (v: number) => (cut[v] ? count + v : anyBlock[v])
-  const marked = new Set<number>()
-  for (const s of S) {
-    const from = treeNode(s)
-    if (from < 0) continue
-    const prev = new Map<number, number>([[from, -1]])
-    const queue = [from]
-    for (let q = 0; q < queue.length; q++) for (const y of adj.get(queue[q]) ?? []) if (!prev.has(y)) prev.set(y, queue[q]), queue.push(y)
-    for (const t of T) {
-      let x = treeNode(t)
-      if (x < 0 || !prev.has(x)) continue
-      for (; x !== -1; x = prev.get(x)!) if (x < count) marked.add(x)
+    const anyBlock = new Int32Array(ids.size).fill(-1)
+    edges.forEach((e, i) => {
+      for (const v of [e.a, e.b]) {
+        anyBlock[v] = blockOf[i]
+        if (cut[v]) link(blockOf[i], count + v)
+      }
+    })
+    const treeNode = (v: number) => (cut[v] ? count + v : anyBlock[v])
+    const marked = new Set<number>()
+    for (const s of S) {
+      const from = treeNode(s)
+      if (from < 0) continue
+      const prev = new Map<number, number>([[from, -1]])
+      const queue = [from]
+      for (let q = 0; q < queue.length; q++)
+        for (const y of adj.get(queue[q]) ?? [])
+          if (!prev.has(y)) {
+            prev.set(y, queue[q])
+            queue.push(y)
+          }
+      for (const t of T) {
+        let x = treeNode(t)
+        if (x < 0 || !prev.has(x)) continue
+        for (; x !== -1; x = prev.get(x)!) if (x < count) marked.add(x)
+      }
     }
+    const blockWires = new Map<number, string[]>()
+    edges.forEach((e, i) => {
+      if (!marked.has(blockOf[i]) || !e.wire) return
+      out.wires.add(e.wire)
+      blockWires.set(blockOf[i], [...(blockWires.get(blockOf[i]) ?? []), e.wire])
+    })
+    edges.forEach((e, i) => {
+      if (!marked.has(blockOf[i]) || !e.through || out.through.some((x) => x.part === e.through!.part)) return
+      out.through.push({ ...e.through, wires: blockWires.get(blockOf[i]) ?? [] })
+    })
   }
-  edges.forEach((e, i) => {
-    if (!marked.has(blockOf[i])) return
-    if (e.wire) out.wires.add(e.wire)
-    if (e.through && !out.through.some((x) => x.part === e.through!.part)) out.through.push(e.through)
-  })
-  return (acc.pe = out)
+  cache.set(g, out)
+  return out
 }
-
-function earthPathRule(acc: Acc): MainsDraft[] {
-  return protectivePaths(acc).through.map(({ part, kind }) => ({
-    rule: 'earth', subject: part.designator, target: part.designator,
-    message: `The earth runs through ${part.designator} (a ${kind === 'ssr' ? 'solid state relay' : kind}): when it opens, what it earths is no longer earthed. Wire earth straight, never through a switch, relay or fuse.`,
-    parts: [part.uid], pins: [], wires: [], causes: [nodeKey(part.uid, '#earth-path')],
-  }))
-}
-
-STATE_RULES.push(polarityRule, earthRules)
-STATIC_RULES.push(earthPathRule)
 ```
 
-Also import `powerAt` from `./mainsGraph.ts`. The earth-path wires are highlighted by the cable findings of Task 9; this finding selects the part.
+(`mainsProtective.ts` imports `lvClass` from `mainsRules.ts`; `mainsRules.ts` imports `protectivePaths` in Tasks 9 and 10. Both uses are inside functions, so the module cycle is safe.)
 
 - [ ] **Step 4: Run the tests to verify they pass**
 
-Run: `npx vitest run src/format/mainsRules.test.ts`
-Expected: PASS. Then `npm test`: PASS.
+Run: `npx vitest run src/format/mainsProtective.test.ts`
+Expected: PASS. Then the gate `npx tsc --noEmit && npm test`: PASS.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/format/mainsRules.ts src/format/mainsRules.test.ts
-git commit -m "Mains: rules 6 and 7 (polarity, earth, protective conductors)" -m "Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>"
+git add src/format/mainsProtective.ts src/format/mainsProtective.test.ts
+git commit -m "Mains: protective-conductor discovery with parallel and redundant paths" -m "Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>"
 ```
 
 ---
 
-### Task 9: Rules 8, 9 and 13: protection, cables, incomplete checks
+### Task 9: Rules 6 and 7: polarity (definite and uncertain) and earth
 
 **Files:**
 - Modify: `src/format/mainsRules.ts` (append; register)
 - Test: `src/format/mainsRules.test.ts` (append)
 
 **Interfaces:**
-- Consumes: `protectivePaths` (Task 8), `acc.loadComplete` (Task 7), `END_NAMES`, `endKind`, `type EndKind` (`cables.ts`), `groupName`.
+- Consumes: Tasks 3 to 8 (`protectivePaths` from `mainsProtective.ts`).
+- Produces: state rules `polarityRule`, `earthRules`; static rules `orphanEarth` (a class 1 PE terminal no source can reach, while its part is on mains: the per-state rule cannot see it, since that node is in no enumeration unit) and `earthPathRule`.
+
+- [ ] **Step 1: Write the failing tests (append)**
+
+```ts
+describe('rule 6: polarity', () => {
+  it('polarized lamp reversed (polarity, not short)', () => {
+    const d = on([['e1', 'E1', 't-lamp']], [w('xs1|N', 'e1|L'), w('xs1|L', 'e1|N')])
+    expect(msgs(d, 'polarity')).toEqual([
+      'E1 is wired the wrong way round: E1 L is on N and E1 N is on L. If E1 is a lamp, its screw shell is live, so touching the bulb while changing it may shock. Swap the L and N wires to E1.',
+    ])
+    expect(rules(d).has('mains-short')).toBe(false)
+  })
+  it('a single-pole switch in the neutral', () => {
+    const d = on([['s1', 'S1', 't-switch'], ['e1', 'E1', 't-lamp']], [w('xs1|L', 'e1|L'), w('e1|N', 's1|1'), w('s1|2', 'xs1|N')])
+    expect(msgs(d, 'polarity')).toEqual(['S1 switches the neutral when S1 is on: with S1 off, what it feeds stays live. Move S1 into the L wire.'])
+  })
+  it('a fuse in the neutral', () => {
+    const d = on([['f1', 'F1', 't-fuse'], ['e1', 'E1', 't-lamp']], [w('xs1|L', 'e1|L'), w('e1|N', 'f1|1'), w('f1|2', 'xs1|N')])
+    expect(msgs(d, 'polarity')).toEqual(['F1 is in the neutral: when it blows, what it feeds stays live. Move F1 into the L wire.'])
+  })
+  it('on an unpolarized outlet the uncertainty is reported, never skipped (Resolution 22)', () => {
+    const d = on([['e1', 'E1', 't-lamp-230']], [w('xs1|L', 'e1|L'), w('xs1|N', 'e1|N')], [['xs1', 'XS1', 't-outlet-eu']])
+    expect(msgs(d, 'polarity')).toEqual([
+      "E1's polarity is not known: XS1 is an unpolarized outlet, so which of its slots is L is not known, and E1 L and E1 N may be on the wrong conductor. Use a polarized plug and outlet for a part whose L and N matter.",
+    ])
+  })
+})
+
+describe('rule 7: earth', () => {
+  it("a class 1 lamp's PE terminal without earth (its PE node is connected to nothing)", () => {
+    const d = on([['e1', 'E1', 't-lamp-c1']], [w('xs1|L', 'e1|L'), w('xs1|N', 'e1|N')])
+    expect(msgs(d, 'earth')).toEqual(["E1 PE is not connected to earth: a fault inside E1 may leave its metal live. Wire E1 PE to the outlet's earth."])
+    expect(rules(on([['e1', 'E1', 't-lamp-c1']], [w('xs1|L', 'e1|L'), w('xs1|N', 'e1|N'), w('xs1|PE', 'e1|PE')])).has('earth')).toBe(false)
+  })
+  it('earthed only through a switch: no earth while it is off, and earth through a switch', () => {
+    const d = on([['s1', 'S1', 't-switch'], ['e1', 'E1', 't-lamp-c1']],
+      [w('xs1|L', 'e1|L'), w('xs1|N', 'e1|N'), w('xs1|PE', 's1|1'), w('s1|2', 'e1|PE')])
+    expect(msgs(d, 'earth').sort()).toEqual([
+      'E1 PE is not connected to earth when S1 is off: a fault inside E1 may leave its metal live. Wire E1 PE to the outlet\'s earth.',
+      'The earth path runs through S1 (a switch). Earth must never pass through a switch, relay or fuse, because opening it can leave a part unearthed. Wire earth straight.',
+    ])
+  })
+  it('a switched PE branch parallel to a permanent PE wire (earth: protective conductor through a switch), highlighting its loop', () => {
+    const loop = [w('xs1|PE', 'e1|PE'), w('xs1|PE', 's1|1'), w('s1|2', 'e1|PE')]
+    const d = on([['s1', 'S1', 't-switch'], ['e1', 'E1', 't-lamp-c1']], [w('xs1|L', 'e1|L'), w('xs1|N', 'e1|N'), ...loop])
+    const found = only(d, 'earth')
+    expect(found.map((f) => f.message)).toEqual([
+      'The earth path runs through S1 (a switch). Earth must never pass through a switch, relay or fuse, because opening it can leave a part unearthed. Wire earth straight.',
+    ])
+    expect([...found[0].wires].sort()).toEqual(loop.map((c) => c.uid).sort())
+  })
+  it('N joined to PE beyond the outlet', () => {
+    expect(msgs(on([], [w('xs1|N', 'xs1|PE')]), 'earth')).toEqual([
+      'XS1 N is joined to earth: neutral and earth are joined only at the main panel, and a join here puts current on the earth wire. Remove the wire that joins them.',
+    ])
+  })
+  it('a DC ground joined to earth without a declared bond warns; through a declared bond it does not', () => {
+    expect(msgs(on([['u1', 'U1', 't-mcu']], [w('xs1|PE', 'u1|GND')]), 'earth-bond')).toEqual([
+      'U1 GND is joined to earth, but nothing on this net declares a bond to earth. A low-voltage ground on earth is right only when the supply is meant to be earthed (a class 1 supply with an earthed output); otherwise remove the join.',
+    ])
+    const bonded = on([['ps1', 'PS1', 't-psu-pelv'], ['u1', 'U1', 't-mcu']],
+      [w('xs1|L', 'ps1|AC1'), w('xs1|N', 'ps1|AC2'), w('xs1|PE', 'ps1|PE'), w('ps1|-V', 'u1|GND'), w('ps1|+V', 'u1|VCC')])
+    expect(rules(bonded).has('earth-bond')).toBe(false)
+  })
+})
+```
+
+- [ ] **Step 2: Run the tests to verify they fail**
+
+Run: `npx vitest run src/format/mainsRules.test.ts`
+Expected: FAIL (no `polarity`, `earth` or `earth-bond` findings yet).
+
+- [ ] **Step 3: Implement (append; import `PE_MASK`, `L_MASK`, `N_MASK`, `powerAt`, `groupName` from `./mainsGraph.ts`, `type PartInstance` from `./diagram.ts`, `protectivePaths` from `./mainsProtective.ts`)**
+
+```ts
+// ---- Rule 6: polarity (spec 3; Resolution 22) ----
+
+/** L and N bits of this view's sources whose L side a standard fixes, and of those it does not. */
+const lnBits = (p: Prepared, polarized: boolean) =>
+  p.sources.reduce((m, s) => (s.polarized === polarized ? m | bitOf(s.index, 'L') | bitOf(s.index, 'N') : m), 0)
+/** The designators of the unpolarized sources behind identity `x`. */
+const unpolarizedNames = (p: Prepared, x: number) =>
+  andList([...new Set(p.sources.filter((s) => !s.polarized && x & (bitOf(s.index, 'L') | bitOf(s.index, 'N'))).map((s) => s.part.designator))])
+
+interface Req { node: number; t: GTerm; req: 'L' | 'N' | 'PE' | 'line' }
+const reqCache = new WeakMap<Prepared, Req[]>()
+/** Terminals with a requirement, on the nodes this view covers. */
+function reqList(p: Prepared): Req[] {
+  let list = reqCache.get(p)
+  if (list) return list
+  list = []
+  for (const i of p.relevant)
+    for (const k of p.g.members[i]) {
+      const t = termAt(p.g, k)
+      const req = t?.info.requirement.get(t.name)
+      if (t && req) list.push({ node: i, t, req })
+    }
+  reqCache.set(p, list)
+  return list
+}
+
+function polarityRule(acc: Acc, mask: number) {
+  const { p } = acc
+  const g = p.g
+  const pol = lnBits(p, true)
+  const unpol = lnBits(p, false)
+  const wrong = new Map<string, { part: PartInstance; lOnN: GTerm[]; nOnL: GTerm[] }>()
+  const maybe = new Map<string, { part: PartInstance; terms: GTerm[]; x: number }>()
+  for (const q of reqList(p)) {
+    if (q.req !== 'L' && q.req !== 'N') continue
+    const all = identAt(p, q.node)
+    const x = all & pol
+    const onL = (x & L_MASK) !== 0 && !(x & N_MASK)
+    const onN = (x & N_MASK) !== 0 && !(x & L_MASK)
+    if ((q.req === 'N' && onL) || (q.req === 'L' && onN)) {
+      const e = wrong.get(q.t.part.uid) ?? { part: q.t.part, lOnN: [], nOnL: [] }
+      ;(q.req === 'L' ? e.lOnN : e.nOnL).push(q.t)
+      wrong.set(q.t.part.uid, e)
+    } else if (all & unpol && !(x & LN_MASK)) {
+      const e = maybe.get(q.t.part.uid) ?? { part: q.t.part, terms: [], x: 0 }
+      e.terms.push(q.t)
+      e.x |= all & unpol
+      maybe.set(q.t.part.uid, e)
+    }
+  }
+  for (const e of wrong.values()) {
+    const d = e.part.designator
+    const terms = [...e.lOnN, ...e.nOnL]
+    report(acc, `polarity|${terms.map((t) => t.key).sort().join(',')}`, mask, () => (when) => ({
+      rule: 'polarity', subject: d, target: termName(terms[0]),
+      message: e.lOnN.length && e.nOnL.length
+        ? `${d} is wired the wrong way round${when}: ${andList(e.lOnN.map(termName))} ${e.lOnN.length === 1 ? 'is' : 'are'} on N and ${andList(e.nOnL.map(termName))} ${e.nOnL.length === 1 ? 'is' : 'are'} on L. If ${d} is a lamp, its screw shell is live, so touching the bulb while changing it may shock. Swap the L and N wires to ${d}.`
+        : e.nOnL.length
+        ? `${andList(e.nOnL.map(termName))} should be on N but ${e.nOnL.length === 1 ? 'is' : 'are'} on L${when}. Swap the L and N wires to ${d}.`
+        : `${andList(e.lOnN.map(termName))} should be on L but ${e.lOnN.length === 1 ? 'is' : 'are'} on N${when}. Swap the L and N wires to ${d}.`,
+      parts: [e.part.uid], pins: terms.map(endpointOf), wires: [], causes: terms.map((t) => t.key),
+    }))
+  }
+  for (const e of maybe.values()) {
+    const d = e.part.designator
+    const outlets = unpolarizedNames(p, e.x)
+    report(acc, `polarity|maybe|${e.terms.map((t) => t.key).sort().join(',')}`, mask, () => (when) => ({
+      rule: 'polarity', subject: d, target: termName(e.terms[0]),
+      message: `${d}'s polarity is not known${when}: ${outlets} ${outlets.includes(' and ') ? 'are unpolarized outlets' : 'is an unpolarized outlet'}, so which of its slots is L is not known, and ${andList(e.terms.map(termName))} may be on the wrong conductor. Use a polarized plug and outlet for a part whose L and N matter.`,
+      parts: [e.part.uid], pins: e.terms.map(endpointOf), wires: [], causes: e.terms.map((t) => t.key),
+    }))
+  }
+  // A single-pole switch or a fuse that carries a neutral (definite from a polarized source, uncertain from an unpolarized one).
+  const carrier = (x: number, bits: number) => (x & bits & N_MASK) !== 0 && !(x & bits & L_MASK)
+  for (const gi of p.groupIdx) {
+    const grp = g.groups[gi]
+    if (grp.def.poles.length !== 1) continue
+    for (const [a] of grp.closed[p.groupState[gi]]) {
+      const x = identAt(p, a)
+      const name = groupName(g, gi)
+      if (carrier(x, pol))
+        report(acc, `polarity|${grp.part.uid}|${grp.def.id}|neutral`, mask, () => (when) => ({
+          rule: 'polarity', subject: grp.part.designator, target: grp.part.designator,
+          message: `${name} switches the neutral${when}: with ${name} off, what it feeds stays live. Move ${name} into the L wire.`,
+          parts: [grp.part.uid], pins: [], wires: [], causes: [nodeKey(grp.part.uid, grp.def.id)],
+        }))
+      else if (!(x & pol & LN_MASK) && x & unpol)
+        report(acc, `polarity|maybe|${grp.part.uid}|${grp.def.id}`, mask, () => (when) => ({
+          rule: 'polarity', subject: grp.part.designator, target: grp.part.designator,
+          message: `${name} may switch the neutral${when}: ${unpolarizedNames(p, x)} is an unpolarized outlet, so which of its slots is L is not known. Use a polarized plug and outlet, or a double-pole switch.`,
+          parts: [grp.part.uid], pins: [], wires: [], causes: [nodeKey(grp.part.uid, `${grp.def.id}#maybe`)],
+        }))
+    }
+  }
+  for (const e of p.protective) {
+    if (!e.fitted) continue
+    const x = identAt(p, e.a)
+    const d = e.part.designator
+    if (carrier(x, pol))
+      report(acc, `polarity|${e.part.uid}|${e.names.join('-')}|neutral`, mask, () => (when) => ({
+        rule: 'polarity', subject: d, target: d, message: `${d} is in the neutral${when}: when it blows, what it feeds stays live. Move ${d} into the L wire.`,
+        parts: [e.part.uid], pins: e.names.map((n) => ({ part: e.part.uid, pin: n })), wires: [], causes: e.names.map((n) => nodeKey(e.part.uid, n)),
+      }))
+    else if (!(x & pol & LN_MASK) && x & unpol)
+      report(acc, `polarity|maybe|${e.part.uid}|${e.names.join('-')}`, mask, () => (when) => ({
+        rule: 'polarity', subject: d, target: d,
+        message: `${d} may be in the neutral${when}: ${unpolarizedNames(p, x)} is an unpolarized outlet, so which of its slots is L is not known. Use a polarized plug and outlet, or fuse the part's own supply.`,
+        parts: [e.part.uid], pins: [], wires: [], causes: e.names.map((n) => nodeKey(e.part.uid, `${n}#maybe`)),
+      }))
+  }
+}
+
+// ---- Rule 7: earth (spec 1.6, 3) ----
+
+interface Grounds { grounds: { node: number; t: GTerm }[]; bondNodes: number[] }
+const groundCache = new WeakMap<Prepared, Grounds>()
+/** Low-voltage ground terminals (not declared bonds), and the nodes holding a declared bond, in this view. */
+function groundsOf(p: Prepared): Grounds {
+  let hit = groundCache.get(p)
+  if (hit) return hit
+  hit = { grounds: [], bondNodes: [] }
+  for (const i of p.relevant)
+    for (const k of p.g.members[i]) {
+      const t = termAt(p.g, k)
+      if (!t) continue
+      if (t.info.bonds.has(t.name)) hit.bondNodes.push(i)
+      else if (t.type === 'ground' && lvClass(t) !== null) hit.grounds.push({ node: i, t })
+    }
+  groundCache.set(p, hit)
+  return hit
+}
+
+const earthAdvice = (t: GTerm) => `a fault inside ${t.part.designator} may leave its metal live. Wire ${termName(t)} to the outlet's earth.`
+
+function earthRules(acc: Acc, mask: number) {
+  const { p } = acc
+  const g = p.g
+  // N joined to PE of the same source, beyond the outlet.
+  for (const r of p.srcRoots) {
+    const x = p.ident[r]
+    for (const s of p.sources) {
+      if (!(x & bitOf(s.index, 'N')) || !(x & bitOf(s.index, 'PE'))) continue
+      const d = s.part.designator
+      const keys = [...s.keys.N, ...s.keys.PE]
+      report(acc, `earth|${s.id}|N-PE`, mask, () => {
+        const wires = wiresOfRoot(p, r)
+        return (when) => ({ rule: 'earth', subject: d, target: `${d} N`,
+          message: `${d} N is joined to earth${when}: neutral and earth are joined only at the main panel, and a join here puts current on the earth wire. Remove the wire that joins them.`,
+          parts: [s.part.uid], pins: keys.map(pinOfKey), wires, causes: keys })
+      })
+    }
+  }
+  // A class 1 part's earth terminal without PE while the part is on mains; a line terminal on earth only.
+  for (const q of reqList(p)) {
+    const x = identAt(p, q.node)
+    if (q.req === 'PE' && q.t.info.protection === 'class-1' && !(x & PE_MASK)) {
+      const live = [...q.t.info.terminals].some((n) => {
+        const i = g.nodeOf.get(nodeKey(q.t.part.uid, n))
+        return i !== undefined && p.inRel[i] === 1 && ((identAt(p, i) & LN_MASK) !== 0 || powerAt(p, i) !== 0)
+      })
+      if (!live) continue
+      report(acc, `earth|${q.t.key}|no-pe`, mask, () => (when) => ({ rule: 'earth', subject: q.t.part.designator, target: termName(q.t),
+        message: `${termName(q.t)} is not connected to earth${when}: ${earthAdvice(q.t)}`,
+        parts: [q.t.part.uid], pins: [endpointOf(q.t)], wires: [], causes: [q.t.key] }))
+    }
+    if (q.req === 'line' && x & PE_MASK && !(x & LN_MASK))
+      report(acc, `earth|${q.t.key}|line-on-pe`, mask, () => (when) => ({ rule: 'earth', subject: q.t.part.designator, target: termName(q.t),
+        message: `${termName(q.t)} carries mains inside ${q.t.part.designator} but is joined to earth${when}. Wire it to L or N, never to earth.`,
+        parts: [q.t.part.uid], pins: [endpointOf(q.t)], wires: [], causes: [q.t.key] }))
+  }
+  // A low-voltage ground on earth where nothing declares a bond: a warning (earth-bond).
+  const { grounds, bondNodes } = groundsOf(p)
+  if (!grounds.length) return
+  const bonded = new Set(bondNodes.map((i) => p.root[i]))
+  for (const q of grounds) {
+    const r = p.root[q.node]
+    if (!(p.ident[r] & PE_MASK) || bonded.has(r)) continue
+    report(acc, `earth-bond|${q.t.key}`, mask, () => (when) => ({ rule: 'earth-bond', subject: q.t.part.designator, target: termName(q.t),
+      message: `${termName(q.t)} is joined to earth${when}, but nothing on this net declares a bond to earth. A low-voltage ground on earth is right only when the supply is meant to be earthed (a class 1 supply with an earthed output); otherwise remove the join.`,
+      parts: [q.t.part.uid], pins: [endpointOf(q.t)], wires: [], causes: [q.t.key] }))
+  }
+}
+
+/**
+ * A class 1 PE terminal on a node no source can reach (outside every enumeration unit), while its part
+ * is on mains in some state: never earthed, so the finding holds in every state (Astra review, finding 1).
+ */
+function orphanEarth(acc: Acc): MainsDraft[] {
+  const { p } = acc
+  const g = p.g
+  return g.mainsParts.flatMap((part): MainsDraft[] => {
+    const info = mainsOf(moduleOf(g.d, part.module)!)
+    if (info.protection !== 'class-1') return []
+    const live = [...info.terminals].some((n) => {
+      const i = g.nodeOf.get(nodeKey(part.uid, n))
+      return i !== undefined && acc.hazardAny[i] === 1
+    })
+    if (!live) return []
+    return [...info.requirement].flatMap(([n, r]): MainsDraft[] => {
+      const key = nodeKey(part.uid, n)
+      const i = g.nodeOf.get(key)
+      const t = termAt(g, key)
+      if (r !== 'PE' || i === undefined || p.inRel[i] || !t) return []
+      return [{ rule: 'earth', subject: part.designator, target: termName(t), message: `${termName(t)} is not connected to earth: ${earthAdvice(t)}`,
+        parts: [part.uid], pins: [endpointOf(t)], wires: [], causes: [key] }]
+    })
+  })
+}
+
+/** A protective conductor through a switch, relay, SSR or fuse (spec 3 rule 7), with the protective path it sits on highlighted. */
+function earthPathRule(acc: Acc): MainsDraft[] {
+  return protectivePaths(acc.p.g).through.map(({ part, kind, wires }) => ({
+    rule: 'earth', subject: part.designator, target: part.designator,
+    message: `The earth path runs through ${part.designator} (a ${kind === 'ssr' ? 'solid state relay' : kind}). Earth must never pass through a switch, relay or fuse, because opening it can leave a part unearthed. Wire earth straight.`,
+    parts: [part.uid], pins: [], wires, causes: [nodeKey(part.uid, '#earth-path')],
+  }))
+}
+
+STATE_RULES.push(polarityRule, earthRules)
+STATIC_RULES.push(orphanEarth, earthPathRule)
+```
+
+- [ ] **Step 4: Run the tests to verify they pass**
+
+Run: `npx vitest run src/format/mainsRules.test.ts`
+Expected: PASS. Then the gate `npx tsc --noEmit && npm test`: PASS.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/format/mainsRules.ts src/format/mainsRules.test.ts
+git commit -m "Mains: rules 6 and 7 (polarity with reported uncertainty, earth)" -m "Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>"
+```
+
+---
+
+### Task 10: Rules 8, 9 and 13: protection, cables, incomplete checks
+
+**Files:**
+- Modify: `src/format/mainsRules.ts` (append; register)
+- Test: `src/format/mainsRules.test.ts` (append)
+
+**Interfaces:**
+- Consumes: `protectivePaths` (Task 8), `acc.loadComplete` and `acc.loadFit` (Task 7), `END_NAMES`, `endKind`, `type EndKind` (`cables.ts`), `andList`.
 - Produces: state rule `unprotectedRule`; static rules `fuseRules`, `cableRules`, `incompleteRule`; `const UNSUITABLE_ENDS: ReadonlySet<EndKind>`.
 
 - [ ] **Step 1: Write the failing tests (append)**
@@ -3301,6 +4034,19 @@ describe('rule 8: protection', () => {
     expect(msgs(fused({ fuse: 'fitted' }), 'fuse-rating-unknown')).toEqual([
       'F1 has a fuse fitted but no rating, so the drawing does not say which fuse to fit. Set its rating in amps.',
     ])
+  })
+  it('never blames an empty fuse holder that is not the cause (Resolution 28)', () => {
+    // E1 is powered directly; F1 is empty but sits on another branch that shares E1's neutral.
+    const d = sheet([at('xs1', 'XS1', 't-outlet'), at('e1', 'E1', 't-lamp', 200), at('f1', 'F1', 't-fuse', 400, 0, { settings: { fuse: 'absent' } }), at('e2', 'E2', 't-lamp', 600)],
+      [w('xs1|L', 'e1|L'), w('e1|N', 'xs1|N'), w('xs1|L', 'f1|1'), w('f1|2', 'e2|L'), w('e2|N', 'xs1|N')])
+    expect(msgs(d, 'no-power')).toEqual(['E2 has no mains power: F1 has no fuse fitted.'])
+  })
+  it('claims nothing about empty fuse holders when the checks did not finish', () => {
+    const ks = Array.from({ length: 17 }, (_, i) => i + 1)
+    const d = sheet([at('xs1', 'XS1', 't-outlet'), ...ks.map((k) => at(`s${k}`, `S${k}`, 't-switch', k * 100, 300)),
+      at('f1', 'F1', 't-fuse', 200, 600, { settings: { fuse: 'absent' } }), at('e1', 'E1', 't-lamp', 600, 600)],
+    [...ks.map((k) => w('xs1|L', `s${k}|1`)), w('xs1|L', 'f1|1'), w('f1|2', 'e1|L'), w('e1|N', 'xs1|N')])
+    expect(only(d, 'no-power')).toEqual([])
   })
 })
 
@@ -3342,14 +4088,13 @@ describe('rule 13: checks that did not finish', () => {
     ])
     expect(found.length).toBeGreaterThan(0)
   })
-  it('more than 10 outlets', () => {
+  it('more than 10 AC sources', () => {
     const outlets = Array.from({ length: 11 }, (_, i) => [`xs${i + 1}`, `XS${i + 1}`, 't-outlet'])
-    expect(msgs(on([], [], outlets), 'mains-incomplete')).toEqual(['Mains checks did not finish: 11 outlets. Split the drawing or check the rest by hand.'])
+    expect(msgs(on([], [], outlets), 'mains-incomplete')).toEqual(['Mains checks did not finish: 11 AC sources. Split the drawing or check the rest by hand.'])
   })
 })
 ```
 
-Add `dupont` to the import from `./mains.testing.ts` at the top of the file.
 
 - [ ] **Step 2: Run the tests to verify they fail**
 
@@ -3365,11 +4110,12 @@ Expected: FAIL.
 function unprotectedRule(acc: Acc, mask: number) {
   const { p } = acc
   const g = p.g
-  for (const ld of g.loads)
-    for (const end of [ld.a, ld.b]) {
+  for (const li of p.loadIdx)
+    for (const end of [g.loads[li].a, g.loads[li].b]) {
+      const ld = g.loads[li]
       const x = identAt(p, end) & L_MASK
       if (!x) continue
-      for (const s of g.sources) {
+      for (const s of p.sources) {
         if (!(x & bitOf(s.index, 'L'))) continue
         const br = p.bareRoot[end]
         if (!s.live.some((n) => p.bareRoot[n] === br)) continue
@@ -3395,14 +4141,17 @@ function fuseRules(acc: Acc): MainsDraft[] {
       message: `${e.part.designator} has a fuse fitted but no rating, so the drawing does not say which fuse to fit. Set its rating in amps.`,
       parts: [e.part.uid], pins: [], wires: [], causes: e.names.map((n) => nodeKey(e.part.uid, n)) })
   }
+  // Resolution 28: only when proven (complete with every empty holder fitted, never as drawn), and never when the checks did not finish.
+  if (acc.incomplete) return out
   const absent = g.edges.filter((e) => e.kind === 'protective' && !e.fitted)
   g.loads.forEach((ld, i) => {
-    if (acc.loadComplete[i]) return
-    const f = absent.find((e) => p.possible[e.a] === p.possible[ld.a])
-    if (!f) return
+    if (acc.loadComplete[i] || !acc.loadFit[i]) return
+    const holders = [...new Set(absent.filter((e) => p.possible[e.a] === p.possible[ld.a]).map((e) => e.part))]
+    if (!holders.length) return
+    const names = andList(holders.map((h) => h.designator))
     out.push({ rule: 'no-power', subject: ld.part.designator, target: ld.part.designator,
-      message: `${ld.part.designator} has no mains power: ${f.part.designator} has no fuse fitted.`,
-      parts: [ld.part.uid, f.part.uid], pins: [], wires: [], causes: [nodeKey(ld.part.uid, ld.names[0]), nodeKey(f.part.uid, f.names[0])] })
+      message: `${ld.part.designator} has no mains power: ${names} ${holders.length === 1 ? 'has' : 'have'} no fuse fitted.`,
+      parts: [ld.part.uid, ...holders.map((h) => h.uid)], pins: [], wires: [], causes: [nodeKey(ld.part.uid, ld.names[0]), ...holders.map((h) => nodeKey(h.uid, '#absent'))] })
   })
   return out
 }
@@ -3414,7 +4163,7 @@ const CABLE_ADVICE = 'Use a cable rated for mains, such as an approved cord of 0
 
 function cableRules(acc: Acc): MainsDraft[] {
   const g = acc.p.g
-  const pe = protectivePaths(acc)
+  const pe = protectivePaths(g)
   const end = (part: string, pin: string) => {
     const t = termAt(g, nodeKey(part, pin))
     return t ? termName(t) : `${part} ${pin}`
@@ -3441,7 +4190,7 @@ function cableRules(acc: Acc): MainsDraft[] {
 function incompleteRule(acc: Acc): MainsDraft[] {
   if (!acc.incomplete) return []
   const g = acc.p.g
-  const what = acc.incomplete === 'groups' ? `${acc.cands.length} switches and relays` : `${g.sources.length} outlets`
+  const what = acc.incomplete === 'groups' ? `${acc.cands.length} switches and relays` : `${g.sources.length} AC sources`
   const parts = acc.incomplete === 'groups' ? acc.cands.map((i) => g.groups[i].part) : g.sources.map((s) => s.part)
   return [{ rule: 'mains-incomplete', subject: parts[0].designator, target: parts[0].designator,
     message: `Mains checks did not finish: ${what}. Split the drawing or check the rest by hand.`,
@@ -3457,7 +4206,7 @@ Note on `END_NAMES`: "Dupont female" is its current label (`src/format/cables.ts
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `npx vitest run src/format/mainsRules.test.ts`
-Expected: PASS. Then `npm test`: PASS.
+Expected: PASS. Then the gate `npx tsc --noEmit && npm test`: PASS.
 
 - [ ] **Step 5: Commit**
 
@@ -3467,23 +4216,191 @@ git commit -m "Mains: rules 8, 9 and 13 (protection, cables, incomplete checks)"
 ```
 
 ---
-### Task 10: Plugging: plug profiles, sockets, the compatibility table and plug-mismatch
+### Task 11: First performance checkpoint (before any part is generated)
+
+**Files:**
+- Create: `src/format/mains.perf.test.ts`
+- Modify (only if the budget is missed): `src/format/mainsGraph.ts`, `src/format/mains.ts` (depth-first enumeration with union-find snapshots, Step 3)
+
+**Interfaces:**
+- Consumes: `analyseMains`, `checkDiagram`, the synthetic fixtures.
+- Produces: the measured checkpoint below as a test; if Step 3 is needed, `beginState(p: Prepared, cands: number[]): void`, `addGroup(p: Prepared, gi: number, on: 0 | 1): void`, `endState(p: Prepared): void` in `mainsGraph.ts` (together equal to `setState` plus `analyseState`) and the depth-first loop in `mains.ts`.
+
+The checkpoint sheet is Astra's exploratory case: one outlet and 16 fused, switched lamps (L, fuse, switch, lamp, N), so all 16 switches are candidates in one unit (65,536 states). Budget: `checkDiagram` 300 ms median or less. It must also stay exhaustive (no `mains-incomplete`).
+
+- [ ] **Step 1: Write the checkpoint test**
+
+Create `src/format/mains.perf.test.ts`:
+
+```ts
+// Mains checks at the size a real project reaches (spec 7). Task 11 is the first checkpoint, on
+// synthetic parts: one outlet and 16 fused, switched lamps in one enumeration unit. Task 24 adds the
+// full sheet on built-in parts. Every state is enumerated; the checker stays off the drag path, so
+// the budget is per edit.
+import { describe, expect, it } from 'vitest'
+import { checkDiagram } from './checks.ts'
+import type { Connection, Diagram, PartInstance } from './diagram.ts'
+import { analyseMains } from './mains.ts'
+import { at, sheet, w } from './mains.testing.ts'
+
+/** Median of `runs` timed checks, each on a fresh parts array as after an edit (so no cache carries over). */
+export function median(d: Diagram, runs: number): number {
+  const t: number[] = []
+  for (let i = 0; i < runs; i++) {
+    const next = { ...d, parts: [...d.parts], connections: [...d.connections] }
+    const s = performance.now()
+    checkDiagram(next)
+    t.push(performance.now() - s)
+  }
+  t.sort((a, b) => a - b)
+  return t[Math.floor(runs / 2)]
+}
+
+function switchedLamps(n: number): Diagram {
+  const parts: PartInstance[] = [at('xs1', 'XS1', 't-outlet')]
+  const connections: Connection[] = []
+  for (let k = 1; k <= n; k++) {
+    parts.push(at(`f${k}`, `F${k}`, 't-fuse', k * 120, 200, { values: { fuseRating: { value: 2, unit: 'A' } } }), at(`s${k}`, `S${k}`, 't-switch', k * 120, 400), at(`e${k}`, `E${k}`, 't-lamp', k * 120, 600))
+    connections.push(w('xs1|L', `f${k}|1`), w(`f${k}|2`, `s${k}|1`), w(`s${k}|2`, `e${k}|L`), w(`e${k}|N`, 'xs1|N'))
+  }
+  return sheet(parts, connections)
+}
+
+describe('mains checkpoint: one outlet, 16 fused switched lamps', () => {
+  it('enumerates all 65,536 states in 300 ms or less (median)', { timeout: 30_000 }, () => {
+    const d = switchedLamps(16)
+    expect(analyseMains(d)!.complete).toBe(true)
+    expect(checkDiagram(d).filter((f) => f.rule === 'mains-incomplete')).toEqual([])
+    const ms = median(d, 5)
+    console.log(`mains checkpoint: ${ms.toFixed(1)} ms median`)
+    expect(ms).toBeLessThanOrEqual(300)
+  })
+})
+```
+
+- [ ] **Step 2: Run it and record the number**
+
+Run: `npx vitest run src/format/mains.perf.test.ts`
+Expected: PASS, with the median printed. Write the measured median in the commit message. If it passes, skip Step 3.
+
+- [ ] **Step 3: Only if the budget is missed: depth-first enumeration with union-find snapshots**
+
+Profile first (`node --cpu-prof` on a small script that builds `switchedLamps(16)` and calls `analyseMains` five times) and fix what the profile shows (a rule allocating per state, a list rebuilt per state instead of cached per view). If the per-state union-find is still the cost, replace the popcount loop by a depth-first walk: level k unions group k's closed contacts onto a copy of level k-1's parent arrays, so a state costs one group's unions plus the per-state pass. The findings keep their witness bitsets, so the order no longer matters for wording (a converter's first unknown reason then comes from the first state in depth-first order; say so in Resolution 11's comment).
+
+Split `analyseState` in `mainsGraph.ts` into three steps and rebuild `analyseState` from them, so every existing test still holds:
+
+```ts
+/** Resets the view to its bases and applies every group that is not a candidate (released or off). */
+export function beginState(p: Prepared, cands: number[]): void {
+  for (const i of p.relevant) {
+    p.parent[i] = p.base[i]
+    p.bareParent[i] = p.bareBase[i]
+    if (p.anyAbsent) p.fitParent[i] = p.fitBase[i]
+  }
+  const isCand = new Set(cands)
+  for (const gi of p.groupIdx) if (!isCand.has(gi)) addGroup(p, gi, 0)
+}
+
+/** Applies one group's contacts in position `on`. */
+export function addGroup(p: Prepared, gi: number, on: 0 | 1): void {
+  p.groupState[gi] = on
+  for (const [a, b] of p.g.groups[gi].closed[on]) {
+    union(p.parent, a, b)
+    union(p.bareParent, a, b)
+    if (p.anyAbsent) union(p.fitParent, a, b)
+  }
+}
+
+/** Roots, identity and energization for the groups applied so far (the second half of analyseState). */
+export function endState(p: Prepared): void {
+  const { g } = p
+  for (const i of p.relevant) {
+    p.root[i] = find(p.parent, i)
+    p.bareRoot[i] = find(p.bareParent, i)
+    if (p.anyAbsent) p.fitRoot[i] = find(p.fitParent, i)
+    p.ident[i] = 0
+    p.power[i] = 0
+  }
+  p.srcRoots.length = 0
+  for (const s of p.sources) {
+    const put = (nodes: number[], c: Conductor) => {
+      for (const x of nodes) {
+        const r = p.root[x]
+        if (!p.ident[r]) p.srcRoots.push(r)
+        p.ident[r] |= bitOf(s.index, c)
+      }
+    }
+    put(s.live, 'L')
+    put(s.neutral, 'N')
+    put(s.earth, 'PE')
+    for (const x of s.live) p.power[p.root[x]] |= 1 << s.index
+  }
+  for (let changed = true; changed; ) {
+    changed = false
+    for (const e of p.energy) if (flow(p, e.a, e.b, e.directed)) changed = true
+    for (const gi of p.groupIdx) for (const [a, b] of g.groups[gi].leak[p.groupState[gi]]) if (flow(p, a, b, false)) changed = true
+  }
+}
+
+/** Unchanged behaviour, now in three steps. */
+export function analyseState(p: Prepared): void {
+  // Every group counts as a candidate here, so beginState applies none and each is added once, in its set position.
+  beginState(p, p.groupIdx)
+  for (const gi of p.groupIdx) addGroup(p, gi, p.groupState[gi] as 0 | 1)
+  endState(p)
+}
+```
+
+and in `mains.ts` replace the per-unit popcount loop with:
+
+```ts
+      const saved: Int32Array[][] = []
+      const snapshot = () => [p.parent, p.bareParent, p.fitParent].map((a) => Int32Array.from(unit.view.relevant, (i) => a[i]))
+      const restore = (s: Int32Array[]) => [p.parent, p.bareParent, p.fitParent].forEach((a, k) => unit.view.relevant.forEach((i, j) => (a[i] = s[k][j])))
+      beginState(unit.view, unit.cands)
+      const walk = (k: number, mask: number) => {
+        if (k === unit.cands.length) {
+          endState(unit.view)
+          visitState(sub, mask)
+          return
+        }
+        saved[k] = snapshot()
+        for (const on of [0, 1] as const) {
+          restore(saved[k])
+          addGroup(unit.view, unit.cands[k], on)
+          walk(k + 1, on ? mask | (1 << k) : mask)
+        }
+      }
+      walk(0, 0)
+```
+
+(`p` here is `unit.view`, whose scratch arrays are shared.) Re-measure. If it still misses, stop and report the profile to the controller rather than skipping states: the spec forbids sampling.
+
+- [ ] **Step 4: Gate and commit**
+
+Run the gate `npx tsc --noEmit && npm test`: PASS.
+
+```bash
+git add src/format/mains.perf.test.ts src/format/mainsGraph.ts src/format/mains.ts
+git commit -m "Mains: first performance checkpoint, 16 switched lamps measured at <median> ms" -m "Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>"
+```
+
+(Put the measured number in place of `<median>` in the message.)
+
+---
+
+### Task 12: Plugging data: families, patterns and the compatibility table
 
 **Files:**
 - Create: `src/format/plugging.ts`
-- Modify: `src/format/breadboard.ts` (`Seat.outline`, `MountIssue` `no-fit`, `mountable`, `Fit`, `fitOn`, `seatFrom`, `seatOf`, `seatOn`, `mounts`; add `plugMismatches`)
-- Modify: `src/format/diagram.ts:921-932` (loader warning for `no-fit`)
-- Modify: `src/format/checks.ts` (`plug-mismatch` findings, mount findings folded into it, `mountMessage` `no-fit`)
-- Modify: `src/editor/Canvas.tsx:550-554` (red outline for a plug over an outlet it does not fit)
-- Modify: `src/format/mains.testing.ts` (plug and outlet fixtures)
+- Create: `src/format/plugSpec.testing.ts` (the spec's table transcribed by hand, for tests only)
 - Test: `src/format/plugging.test.ts`
 
 **Interfaces:**
-- Consumes: `PLUG_FAMILIES`, `SOCKET_FAMILIES`, `CONDUCTORS`, `PlugDef`, `mainsOf` (Task 2); `analyseMains` (Task 5); `holeIndex`, `holeAt`, `obscuredOn` (existing, `breadboard.ts`); `toWorld`, `bodyRect`, `Rotation` (`geometry.ts`).
+- Consumes: `PLUG_FAMILIES`, `SOCKET_FAMILIES`, `CONDUCTORS` (Task 2); `Rotation` (`geometry.ts`).
 - Produces:
   - In `plugging.ts`: `type Pattern = Record<Conductor, [number, number][]>`, `SOCKET_PATTERNS: Record<SocketFamily, Pattern>`, `PLUG_PROFILES: Record<PlugFamily, { id: string; contacts: Pattern }[]>`, `interface TableEntry { plug: PlugFamily; socket: SocketFamily; profile: string; map: Partial<Record<Rotation, Record<Conductor, Conductor>>> }`, `COMPAT: TableEntry[]`, `entriesFor(plug: PlugFamily, socket: SocketFamily): TableEntry[]`, `orientationOf(part: { rotation?: Rotation }, board: { rotation?: Rotation }): Rotation`, `PLUG_NAMES`, `SOCKET_NAMES`, `PLUG_FOR`.
-  - In `breadboard.ts`: `Seat.outline?: Rect`, `MountIssue['reason']` gains `'no-fit'`, `interface PlugMismatch { part: string; board: string; kind: 'family' | 'fit'; plug: PlugFamily; socket: SocketFamily }`, `plugMismatches(d: Diagram): PlugMismatch[]`.
-  - Fixtures in `mains.testing.ts`: `t-outlet-uk`, `t-outlet-fr`, `t-outlet-split`, `t-plug-us`, `t-plug-uk`, `t-plug-schuko`, `t-lamp-230`.
+  - In `plugSpec.testing.ts`: `SPEC_COMPAT`, `specTurns(plug, socket): Rotation[]`, `specMapping(turn, role): Conductor` (Task 13's seating tests use them too).
 
 The stylized patterns (offsets in px from the socket's or plug's centre, y down, seen from the front of the outlet; a plug at orientation 0 has the same offsets, so its contacts sit on the holes):
 
@@ -3498,179 +4415,93 @@ The stylized patterns (offsets in px from the socket's or plug's centre, y down,
 
 The L side of each family is a convention to verify in Task 12 against the cited standard (NEMA WD 6 for US: facing the outlet with the earth hole down, the wider neutral slot is on the left; BS 1363: earth up, L bottom right; AS/NZS 3112 and NF C 61-314: confirm). If a standard puts L on the other side, swap L and N in this table, in `SOCKET_PATTERNS` and `PLUG_PROFILES` together (the positions stay), and the tests follow.
 
-- [ ] **Step 1: Add the fixtures (append to `src/format/mains.testing.ts`, and add them to `MAINS_MODULES`)**
+- [ ] **Step 1: Transcribe the spec's table for the tests**
+
+Create `src/format/plugSpec.testing.ts`:
 
 ```ts
-const plugLeads = (reqs: Record<'L' | 'N' | 'PE', string>) =>
-  (['L', 'N', 'PE'] as const).map((c) => ({ name: c, side: 'bottom', mains: reqs[c] })) as ModuleDef['pins']
-const all250 = (extra: string[] = []) => [ac(['L', 'N', 'PE', ...extra], 250)]
-/** A UK (BS 1363) outlet at 230 V. */
-export const outletUK = mod({
-  id: 't-outlet-uk', name: 'Test outlet (UK)', pins: [], size: { w: 6, h: 6 }, obstacle: false,
-  holes: [{ name: 'PE', at: [[30, 10]] }, { name: 'N', at: [[10, 40]] }, { name: 'L', at: [[50, 40]] }],
-  electrical: {
-    params: { acVoltage: { unit: 'VAC', default: 230 } }, ac: { hz: 50, region: 'uk' },
-    acSources: [{ id: 'supply', live: ['L'], neutral: ['N'], earth: ['PE'] }],
-    sockets: [{ id: 'main', family: 'bs1363', contacts: [{ group: 'L', role: 'L' }, { group: 'N', role: 'N' }, { group: 'PE', role: 'PE' }] }],
-    ratings: all250(),
-  },
-})
-/** A French (CEE 7/5) outlet: its earth pin polarizes the plug. */
-export const outletFR = mod({
-  id: 't-outlet-fr', name: 'Test outlet (French)', pins: [], size: { w: 8, h: 8 }, obstacle: false,
-  holes: [{ name: 'L', at: [[20, 40]] }, { name: 'N', at: [[60, 40]] }, { name: 'PE', at: [[40, 10]] }],
-  electrical: {
-    params: { acVoltage: { unit: 'VAC', default: 230 } }, ac: { hz: 50, region: 'eu' },
-    acSources: [{ id: 'supply', live: ['L'], neutral: ['N'], earth: ['PE'] }],
-    sockets: [{ id: 'main', family: 'cee7-5', contacts: [{ group: 'L', role: 'L' }, { group: 'N', role: 'N' }, { group: 'PE', role: 'PE' }] }],
-    ratings: all250(),
-  },
-})
-/** Two NEMA sockets laid out so a plug at (0, 0) meets socket a's N and L and socket b's earth. */
-export const outletSplit = mod({
-  id: 't-outlet-split', name: 'Test outlet (contacts of two sockets in reach)', pins: [], size: { w: 6, h: 10 }, obstacle: false,
-  holes: [{ name: 'Na', at: [[20, 30]] }, { name: 'La', at: [[40, 30]] }, { name: 'PEa', at: [[30, 90]] }, { name: 'PEb', at: [[30, 50]] }, { name: 'Nb', at: [[10, 70]] }, { name: 'Lb', at: [[50, 70]] }],
-  internal: [['La', 'Lb'], ['Na', 'Nb'], ['PEa', 'PEb']],
-  electrical: {
-    params: { acVoltage: { unit: 'VAC', default: 120 } }, ac: { hz: 60, region: 'us' },
-    acSources: [{ id: 'supply', live: ['La'], neutral: ['Na'], earth: ['PEa'] }],
-    sockets: [
-      { id: 'a', family: 'nema-5-15r', contacts: [{ group: 'La', role: 'L' }, { group: 'Na', role: 'N' }, { group: 'PEa', role: 'PE' }] },
-      { id: 'b', family: 'nema-5-15r', contacts: [{ group: 'Lb', role: 'L' }, { group: 'Nb', role: 'N' }, { group: 'PEb', role: 'PE' }] },
-    ],
-  },
-})
-/** A US 3-lead cord plug (NEMA 5-15P); prongs centred on the pivot (30, 30). */
-export const plugUS = mod({
-  id: 't-plug-us', name: 'Test cord plug (US)', size: { w: 6, h: 6 }, pins: plugLeads({ L: 'L', N: 'N', PE: 'PE' }),
-  internal: [['L prong', 'L'], ['N prong', 'N'], ['PE prong', 'PE']],
-  electrical: {
-    internalNodes: ['L prong', 'N prong', 'PE prong'],
-    plug: { family: 'nema-5-15p', profiles: [{ id: 'main', contacts: [
-      { pin: 'N prong', at: { x: 20, y: 30 }, mains: 'N' }, { pin: 'L prong', at: { x: 40, y: 30 }, mains: 'L' }, { pin: 'PE prong', at: { x: 30, y: 50 }, mains: 'PE' },
-    ] }] },
-    ratings: [ac(['L', 'N', 'PE', 'L prong', 'N prong', 'PE prong'], 125, { amps: 15 })],
-  },
-})
-/** A UK 3-lead cord plug with its BS 1362 fuse between the L prong and the L lead. */
-export const plugUK = mod({
-  id: 't-plug-uk', name: 'Test cord plug (UK, fused)', size: { w: 6, h: 6 }, pins: plugLeads({ L: 'L', N: 'N', PE: 'PE' }),
-  internal: [['N prong', 'N'], ['PE prong', 'PE']],
-  electrical: {
-    internalNodes: ['L prong', 'N prong', 'PE prong'],
-    protective: [{ from: 'L prong', to: 'L', kind: 'fuse' }], params: { fuseRating: { unit: 'A', default: 13 } },
-    plug: { family: 'bs1363', profiles: [{ id: 'main', contacts: [
-      { pin: 'PE prong', at: { x: 30, y: 10 }, mains: 'PE' }, { pin: 'N prong', at: { x: 10, y: 40 }, mains: 'N' }, { pin: 'L prong', at: { x: 50, y: 40 }, mains: 'L' },
-    ] }] },
-    ratings: all250(['L prong', 'N prong', 'PE prong']),
-  },
-})
-/** A Schuko (CEE 7/7) cord plug: earth clips for a CEE 7/3 socket, an earth hole for a CEE 7/5 one. Unpolarized leads. */
-export const plugSchuko = mod({
-  id: 't-plug-schuko', name: 'Test cord plug (Schuko)', size: { w: 8, h: 8 }, pins: plugLeads({ L: 'line', N: 'line', PE: 'PE' }),
-  internal: [['L prong', 'L'], ['N prong', 'N'], ['PE prong', 'PE']],
-  electrical: {
-    internalNodes: ['L prong', 'N prong', 'PE prong'],
-    plug: { family: 'cee7-7', profiles: [
-      { id: 'earth-clip', contacts: [
-        { pin: 'L prong', at: { x: 20, y: 40 }, mains: 'L' }, { pin: 'N prong', at: { x: 60, y: 40 }, mains: 'N' },
-        { pin: 'PE prong', at: { x: 40, y: 10 }, mains: 'PE' }, { pin: 'PE prong', at: { x: 40, y: 70 }, mains: 'PE' },
-      ] },
-      { id: 'earth-hole', contacts: [
-        { pin: 'L prong', at: { x: 20, y: 40 }, mains: 'L' }, { pin: 'N prong', at: { x: 60, y: 40 }, mains: 'N' }, { pin: 'PE prong', at: { x: 40, y: 10 }, mains: 'PE' },
-      ] },
-    ] },
-    ratings: all250(['L prong', 'N prong', 'PE prong']),
-  },
-})
-/** A 230 V lamp holder, class 2. */
-export const lamp230 = mod({ id: 't-lamp-230', name: 'Test lamp 230 V', pins: lampPins,
-  electrical: { conducts: [{ pins: ['L', 'N'], kind: 'load', range: [220, 240] }], protection: 'class-2', ratings: [ac(['L', 'N'], 250)] } })
-```
+// Spec section 2's compatibility table, transcribed by hand for the tests: which plug family (and
+// profile) seats in which socket family, at which turns. Kept apart from src/format/plugging.ts on
+// purpose: a row missing from the implementation must fail a test, not change its expectation.
+import type { Rotation } from './geometry.ts'
+import type { Conductor, PlugFamily, SocketFamily } from './mainsModel.ts'
 
-(`plugLeads`, `all250` and these modules go after `ac`, `lampPins` in the file; add `outletUK, outletFR, outletSplit, plugUS, plugUK, plugSchuko, lamp230` to the `MAINS_MODULES` list.)
+export const SPEC_COMPAT: { plug: PlugFamily; socket: SocketFamily; profile: string; turns: Rotation[] }[] = [
+  // NEMA 5-15P in 5-15R and 5-20R (0 only).
+  { plug: 'nema-5-15p', socket: 'nema-5-15r', profile: 'main', turns: [0] },
+  { plug: 'nema-5-15p', socket: 'nema-5-20r', profile: 'main', turns: [0] },
+  // 1-15P polarized in 1-15R polarized, 5-15R, 5-20R (0 only).
+  { plug: 'nema-1-15p-polarized', socket: 'nema-1-15r-polarized', profile: 'main', turns: [0] },
+  { plug: 'nema-1-15p-polarized', socket: 'nema-5-15r', profile: 'main', turns: [0] },
+  { plug: 'nema-1-15p-polarized', socket: 'nema-5-20r', profile: 'main', turns: [0] },
+  // 1-15P unpolarized in 1-15R (both variants, Resolution 4), 5-15R, 5-20R (0 and 180).
+  { plug: 'nema-1-15p', socket: 'nema-1-15r', profile: 'main', turns: [0, 180] },
+  { plug: 'nema-1-15p', socket: 'nema-1-15r-polarized', profile: 'main', turns: [0, 180] },
+  { plug: 'nema-1-15p', socket: 'nema-5-15r', profile: 'main', turns: [0, 180] },
+  { plug: 'nema-1-15p', socket: 'nema-5-20r', profile: 'main', turns: [0, 180] },
+  // CEE 7/7 in CEE 7/3 via its earth clips (0 and 180), in CEE 7/5 via its earth hole (0 only).
+  { plug: 'cee7-7', socket: 'cee7-3', profile: 'earth-clip', turns: [0, 180] },
+  { plug: 'cee7-7', socket: 'cee7-5', profile: 'earth-hole', turns: [0] },
+  // Europlug in CEE 7/3, 7/5 and 7/16 (0 and 180, no earth).
+  { plug: 'cee7-16', socket: 'cee7-3', profile: 'main', turns: [0, 180] },
+  { plug: 'cee7-16', socket: 'cee7-5', profile: 'main', turns: [0, 180] },
+  { plug: 'cee7-16', socket: 'cee7-16', profile: 'main', turns: [0, 180] },
+  // BS 1363 and AS/NZS 3112 in their own only (0 only).
+  { plug: 'bs1363', socket: 'bs1363', profile: 'main', turns: [0] },
+  { plug: 'as3112', socket: 'as3112', profile: 'main', turns: [0] },
+]
+
+/** The allowed turns for a pair, from the spec (none when the spec lists no row). */
+export const specTurns = (plug: PlugFamily, socket: SocketFamily): Rotation[] => SPEC_COMPAT.find((r) => r.plug === plug && r.socket === socket)?.turns ?? []
+
+/** Which socket contact a plug contact of `role` meets at `turn`: turned half way round, L and N swap; earth stays earth. */
+export const specMapping = (turn: Rotation, role: Conductor): Conductor => (turn === 180 && role !== 'PE' ? (role === 'L' ? 'N' : 'L') : role)
+```
 
 - [ ] **Step 2: Write the failing tests**
 
 Create `src/format/plugging.test.ts`:
 
 ```ts
-// Plugging (spec section 2): the compatibility matrix for every plug family against every socket
-// family at all four rotations, translations, occupied sockets, overlapping outlets, a breadboard
-// nearby, contacts spread across two sockets, and the plug counterexamples.
+// The plugging data (spec section 2): the table agrees with the spec row by row (turns, profile and
+// contact mapping), and patterns of different families never fully overlap.
 import { describe, expect, it } from 'vitest'
-import { type Diagram, type PartInstance } from './diagram.ts'
-import { mountIssues, plugsOf, seatOf } from './breadboard.ts'
-import { checkDiagram } from './checks.ts'
-import { analyseMains } from './mains.ts'
-import { nodeKey } from './netlist.ts'
-import { type ModuleDef, validateModule } from './module.ts'
 import type { Rotation } from './geometry.ts'
-import { CONDUCTORS, PLUG_FAMILIES, SOCKET_FAMILIES, type PlugFamily, type SocketFamily } from './mainsModel.ts'
-import { PLUG_PROFILES, SOCKET_PATTERNS, entriesFor } from './plugging.ts'
-import { load } from './builtinModules.testing.ts'
-import { at, sheet, w } from './mains.testing.ts'
+import { CONDUCTORS, PLUG_FAMILIES, SOCKET_FAMILIES } from './mainsModel.ts'
+import { PLUG_PROFILES, SOCKET_PATTERNS, entriesFor, orientationOf } from './plugging.ts'
+import { SPEC_COMPAT, specMapping, specTurns } from './plugSpec.testing.ts'
 
-const C = 50
-/** An outlet of one socket family, its socket centred on the pivot of a 100 x 100 body. */
-function socketModule(family: SocketFamily): ModuleDef {
-  const pat = SOCKET_PATTERNS[family]
-  const roles = CONDUCTORS.filter((c) => pat[c].length)
-  return {
-    format: 'circuitoon-module/1', id: `s-${family}`, name: family, pins: [], size: { w: 10, h: 10 }, obstacle: false,
-    holes: roles.map((c) => ({ name: c, at: pat[c].map(([x, y]) => [C + x, C + y] as [number, number]) })),
-    electrical: {
-      params: { acVoltage: { unit: 'VAC', default: 230 } }, ac: { hz: 50, region: 'eu' },
-      acSources: [{ id: 's', live: ['L'], neutral: ['N'], ...(pat.PE.length ? { earth: ['PE'] } : {}) }],
-      sockets: [{ id: 'main', family, contacts: roles.map((c) => ({ group: c, role: c })) }],
-    },
-  }
-}
-/** A plug-in device of one plug family, every profile centred on the pivot of a 100 x 100 body. */
-function plugModule(family: PlugFamily): ModuleDef {
-  const profiles = PLUG_PROFILES[family]
-  const roles = CONDUCTORS.filter((c) => profiles.some((pr) => pr.contacts[c].length))
-  return {
-    format: 'circuitoon-module/1', id: `p-${family}`, name: family, size: { w: 10, h: 10 },
-    pins: roles.map((c) => ({ name: c, side: 'bottom' as const })),
-    internal: roles.map((c) => [`${c} prong`, c]),
-    electrical: {
-      internalNodes: roles.map((c) => `${c} prong`),
-      plug: { family, profiles: profiles.map((pr) => ({ id: pr.id, contacts: CONDUCTORS.flatMap((c) => pr.contacts[c].map(([x, y]) => ({ pin: `${c} prong`, at: { x: C + x, y: C + y }, mains: c }))) })) },
-    },
-  }
-}
-const pair = (plug: PlugFamily, socket: SocketFamily, place: Partial<PartInstance> = {}): Diagram => {
-  const [sm, pm] = [socketModule(socket), plugModule(plug)]
-  return { format: 'circuitoon-diagram/1', title: 't', modules: { [sm.id]: sm, [pm.id]: pm }, connections: [],
-    parts: [{ uid: 'xs', designator: 'XS1', module: sm.id, x: 0, y: 0 }, { uid: 'xp', designator: 'XP1', module: pm.id, x: 0, y: 0, ...place }] }
-}
-const seated = (d: Diagram, uid = 'xp') => seatOf(d, uid, [])?.status === 'seated'
 const ROTATIONS: Rotation[] = [0, 90, 180, 270]
 
-describe('the compatibility matrix', () => {
-  it('the synthetic modules are valid', () => {
-    for (const f of SOCKET_FAMILIES) expect(validateModule(socketModule(f)).ok).toBe(true)
-    for (const f of PLUG_FAMILIES) expect(validateModule(plugModule(f)).ok).toBe(true)
-  })
-  it('every plug family against every socket family, all four rotations: seats exactly where the table allows', () => {
+describe('the compatibility table', () => {
+  it('agrees with the spec for every plug and socket family: turns, profile and mapping', () => {
     for (const plug of PLUG_FAMILIES)
-      for (const socket of SOCKET_FAMILIES)
-        for (const rotation of ROTATIONS) {
-          const want = entriesFor(plug, socket).some((e) => e.map[rotation])
-          expect([plug, socket, rotation, seated(pair(plug, socket, { rotation }))]).toEqual([plug, socket, rotation, want])
+      for (const socket of SOCKET_FAMILIES) {
+        const entries = entriesFor(plug, socket)
+        const turns = entries.flatMap((e) => Object.keys(e.map).map(Number)).sort((a, b) => a - b)
+        expect([plug, socket, turns]).toEqual([plug, socket, specTurns(plug, socket)])
+        const row = SPEC_COMPAT.find((r) => r.plug === plug && r.socket === socket)
+        for (const e of entries) {
+          expect([plug, socket, e.profile]).toEqual([plug, socket, row!.profile])
+          for (const [turn, map] of Object.entries(e.map))
+            for (const role of CONDUCTORS) expect([plug, socket, turn, role, map![role]]).toEqual([plug, socket, turn, role, specMapping(Number(turn) as Rotation, role)])
         }
+      }
   })
-  it('CEE 7/7 in 7/3 both orientations and in 7/5 one orientation', () => {
-    expect(ROTATIONS.filter((r) => seated(pair('cee7-7', 'cee7-3', { rotation: r })))).toEqual([0, 180])
-    expect(ROTATIONS.filter((r) => seated(pair('cee7-7', 'cee7-5', { rotation: r })))).toEqual([0])
+  it('every profile the table names exists for its plug family', () => {
+    for (const e of SPEC_COMPAT) expect(PLUG_PROFILES[e.plug].map((p) => p.id)).toContain(e.profile)
+  })
+  it('measures a turn relative to the outlet', () => {
+    expect(orientationOf({ rotation: 90 }, { rotation: 90 })).toBe(0)
+    expect(orientationOf({ rotation: 0 }, { rotation: 90 })).toBe(270)
+    expect(orientationOf({}, { rotation: 180 })).toBe(180)
   })
   it('patterns of different families never land fully on a socket they have no table entry for, at any rotation', () => {
     const group = (f: string) => (f.startsWith('nema') ? 'nema' : f.startsWith('cee') ? 'cee' : f)
     const turn = ([x, y]: [number, number], r: Rotation): string => (r === 90 ? `${-y},${x}` : r === 180 ? `${-x},${-y}` : r === 270 ? `${y},${-x}` : `${x},${y}`)
     for (const plug of PLUG_FAMILIES)
       for (const socket of SOCKET_FAMILIES) {
-        // Within one geometry group the table alone decides (the grid cannot draw blade width).
+        // Within one geometry group the table alone decides (the grid cannot draw blade width; Resolution 7).
         if (group(plug) === group(socket)) continue
         const holes = new Set(CONDUCTORS.flatMap((c) => SOCKET_PATTERNS[socket][c].map(([x, y]) => `${x},${y}`)))
         for (const pr of PLUG_PROFILES[plug])
@@ -3679,71 +4510,6 @@ describe('the compatibility matrix', () => {
             expect([plug, pr.id, socket, r, pts.every((p) => holes.has(p))]).toEqual([plug, pr.id, socket, r, false])
           }
       }
-  })
-  it('a plug moved one grid step off the socket does not seat', () => {
-    for (const [dx, dy] of [[10, 0], [0, 10], [-10, 0], [0, -10]]) expect(seated(pair('nema-5-15p', 'nema-5-15r', { x: dx, y: dy }))).toBe(false)
-  })
-  it('a second plug on an occupied socket does not seat', () => {
-    const d = pair('nema-1-15p', 'nema-5-15r', { mount: { board: 'xs' } })
-    const second: PartInstance = { uid: 'xp2', designator: 'XP2', module: 'p-nema-1-15p', x: 0, y: 0 }
-    expect(seatOf({ ...d, parts: [...d.parts, second] }, 'xp2', plugsOf(d))?.status).toBe('partial')
-  })
-})
-
-describe('seating among other boards', () => {
-  it('overlapping outlets: the plug seats in the one drawn on top', () => {
-    const d = pair('nema-5-15p', 'nema-5-15r')
-    const upper: PartInstance = { uid: 'xs2', designator: 'XS2', module: 's-nema-5-15r', x: 0, y: 0 }
-    expect(seatOf({ ...d, parts: [d.parts[0], upper, d.parts[1]] }, 'xp', [])).toMatchObject({ status: 'seated', board: 'xs2' })
-  })
-  it('a plug over a breadboard never seats in it', () => {
-    const bb = load('breadboard-half')
-    const pm = plugModule('nema-5-15p')
-    for (let x = 0; x < 100; x += 10)
-      for (let y = 0; y < 100; y += 10) {
-        const d: Diagram = { format: 'circuitoon-diagram/1', title: 't', modules: { [bb.id]: bb, [pm.id]: pm }, connections: [],
-          parts: [{ uid: 'bb', designator: 'BB1', module: bb.id, x: 0, y: 0 }, { uid: 'xp', designator: 'XP1', module: pm.id, x, y, mount: { board: 'bb' } }] }
-        expect(seated(d)).toBe(false)
-        expect(mountIssues(d)).toHaveLength(1)
-      }
-  })
-  it('contacts spread across two sockets (never seats)', () => {
-    const d = sheet([at('xs1', 'XS1', 't-outlet-split'), at('xp1', 'XP1', 't-plug-us')], [])
-    expect(seated(d, 'xp1')).toBe(false)
-  })
-  it('a part that is not a plug does not seat in an outlet', () => {
-    // Two legs 20 px apart on the bottom edge: at (0, 0) they land on the outlet's N and L holes.
-    const two: ModuleDef = { format: 'circuitoon-module/1', id: 't-two-leg', name: 'Two legs', size: { w: 4, h: 3 }, pins: [{ name: 'a', side: 'bottom' }, { spacer: true, side: 'bottom' }, { name: 'b', side: 'bottom' }] }
-    const d = sheet([at('xs1', 'XS1', 't-outlet'), at('r1', 'R1', 't-two-leg', 0, 0, { mount: { board: 'xs1' } })], [], { 't-two-leg': two })
-    expect(seatOf(d, 'r1', [])?.status).toBe('partial')
-    expect(mountIssues(d).map((i) => i.reason)).toEqual(['no-fit'])
-  })
-})
-
-describe('plug counterexamples and rule 10', () => {
-  it('reversed Schuko plug (no false short)', () => {
-    const d = sheet([at('xs1', 'XS1', 't-outlet-eu'), at('xp1', 'XP1', 't-plug-schuko', 0, 0, { rotation: 180, mount: { board: 'xs1' } }), at('e1', 'E1', 't-lamp-230', 300)],
-      [w('xp1|L', 'e1|L'), w('xp1|N', 'e1|N')])
-    expect(mountIssues(d)).toEqual([])
-    expect(checkDiagram(d).map((f) => f.rule)).not.toContain('mains-short')
-    expect(analyseMains(d)!.conductorOf(nodeKey('xp1', 'L'))?.conductor).toBe('N')
-  })
-  it('UK fused plug protecting a cord-wired lamp (clean)', () => {
-    const d = sheet([at('xs1', 'XS1', 't-outlet-uk'), at('xp1', 'XP1', 't-plug-uk', 0, 0, { mount: { board: 'xs1' } }), at('e1', 'E1', 't-lamp-230', 300)],
-      [w('xp1|L', 'e1|L'), w('xp1|N', 'e1|N')])
-    expect(checkDiagram(d).filter((f) => f.rule !== 'cable-unverified').map((f) => `${f.rule}: ${f.message}`)).toEqual([])
-  })
-  it('a plug over an outlet of another family: plug-mismatch, in the spec\'s words', () => {
-    const d = sheet([at('xs1', 'XS1', 't-outlet'), at('xp1', 'XP1', 't-plug-uk')], [])
-    expect(checkDiagram(d).filter((f) => f.rule === 'plug-mismatch').map((f) => f.message)).toEqual([
-      "XP1's UK plug does not fit XS1's US socket. Use a device with a US plug.",
-    ])
-  })
-  it('a matching plug that is only partly in says it is never safe', () => {
-    const d = sheet([at('xs1', 'XS1', 't-outlet'), at('xp1', 'XP1', 't-plug-us', 10, 0)], [])
-    expect(checkDiagram(d).filter((f) => f.rule === 'plug-mismatch').map((f) => f.message)).toEqual([
-      'XP1 does not sit in XS1: its contacts do not all meet one socket the way the plug fits, so none of them connect. Turn or move it until it seats; a plug that is only partly in is never electrically safe.',
-    ])
   })
 })
 ```
@@ -3847,7 +4613,297 @@ export const PLUG_FOR: Record<SocketFamily, string> = {
 }
 ```
 
-- [ ] **Step 5: Seat plug-in devices through the table in `src/format/breadboard.ts`**
+- [ ] **Step 5: Run the tests to verify they pass**
+
+Run: `npx vitest run src/format/plugging.test.ts`
+Expected: PASS. Then the gate `npx tsc --noEmit && npm test`: PASS.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add src/format/plugging.ts src/format/plugSpec.testing.ts src/format/plugging.test.ts
+git commit -m "Mains: plug and socket families, patterns and the compatibility table" -m "Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>"
+```
+
+---
+
+### Task 13: Seating plug-in devices: mount integration and plug-mismatch
+
+**Files:**
+- Modify: `src/format/breadboard.ts` (`Seat.outline`, `MountIssue` `no-fit`, `mountable`, `Fit`, `fitOn`, `seatFrom`, `seatOf`, `seatOn`, `mounts`; add `plugMismatches`)
+- Modify: `src/format/diagram.ts:921-932` (loader warning for `no-fit`)
+- Modify: `src/format/checks.ts` (`plug-mismatch` findings, mount findings folded into it, `mountMessage` `no-fit`)
+- Modify: `src/format/mains.testing.ts` (plug and outlet fixtures)
+- Test: `src/format/plugSeating.test.ts`
+
+**Interfaces:**
+- Consumes: `entriesFor`, `orientationOf`, `PLUG_NAMES`, `SOCKET_NAMES`, `PLUG_FOR`, `SOCKET_PATTERNS`, `PLUG_PROFILES` (Task 12); `SPEC_COMPAT`, `specTurns`, `specMapping` (Task 12, tests only); `PlugDef`, `mainsOf` (Task 2); `analyseMains` (Task 5); `holeIndex`, `holeAt`, `obscuredOn` (existing, `breadboard.ts`); `toWorld`, `bodyRect`, `Rotation`, `Rect` (`geometry.ts`).
+- Produces:
+  - In `breadboard.ts`: `Seat.outline?: Rect`, `MountIssue['reason']` gains `'no-fit'`, `interface PlugMismatch { part: string; board: string; kind: 'family' | 'fit'; plug: PlugFamily; socket: SocketFamily }`, `plugMismatches(d: Diagram): PlugMismatch[]`.
+  - Fixtures in `mains.testing.ts`: `t-outlet-uk`, `t-outlet-fr`, `t-outlet-split`, `t-plug-us`, `t-plug-uk`, `t-plug-schuko`, `t-lamp-230`.
+
+- [ ] **Step 1: Add the fixtures (append to `src/format/mains.testing.ts`, and add them to `MAINS_MODULES`)**
+
+```ts
+const plugLeads = (reqs: Record<'L' | 'N' | 'PE', string>) =>
+  (['L', 'N', 'PE'] as const).map((c) => ({ name: c, side: 'bottom', mains: reqs[c] })) as ModuleDef['pins']
+const all250 = (extra: string[] = []) => [ac(['L', 'N', 'PE', ...extra], 250)]
+/** A UK (BS 1363) outlet at 230 V. */
+export const outletUK = mod({
+  id: 't-outlet-uk', name: 'Test outlet (UK)', pins: [], size: { w: 6, h: 6 }, obstacle: false,
+  holes: [{ name: 'PE', at: [[30, 10]] }, { name: 'N', at: [[10, 40]] }, { name: 'L', at: [[50, 40]] }],
+  electrical: {
+    params: { acVoltage: { unit: 'VAC', default: 230 } }, ac: { hz: 50, region: 'uk' },
+    acSources: [{ id: 'supply', live: ['L'], neutral: ['N'], earth: ['PE'] }],
+    sockets: [{ id: 'main', family: 'bs1363', contacts: [{ group: 'L', role: 'L' }, { group: 'N', role: 'N' }, { group: 'PE', role: 'PE' }] }],
+    ratings: all250(),
+  },
+})
+/** A French (CEE 7/5) outlet: its earth pin polarizes the plug. */
+export const outletFR = mod({
+  id: 't-outlet-fr', name: 'Test outlet (French)', pins: [], size: { w: 8, h: 8 }, obstacle: false,
+  holes: [{ name: 'L', at: [[20, 40]] }, { name: 'N', at: [[60, 40]] }, { name: 'PE', at: [[40, 10]] }],
+  electrical: {
+    params: { acVoltage: { unit: 'VAC', default: 230 } }, ac: { hz: 50, region: 'eu' },
+    acSources: [{ id: 'supply', live: ['L'], neutral: ['N'], earth: ['PE'] }],
+    sockets: [{ id: 'main', family: 'cee7-5', contacts: [{ group: 'L', role: 'L' }, { group: 'N', role: 'N' }, { group: 'PE', role: 'PE' }] }],
+    ratings: all250(),
+  },
+})
+/** Two NEMA sockets laid out so a plug at (0, 0) meets socket a's N and L and socket b's earth. */
+export const outletSplit = mod({
+  id: 't-outlet-split', name: 'Test outlet (contacts of two sockets in reach)', pins: [], size: { w: 6, h: 10 }, obstacle: false,
+  holes: [{ name: 'Na', at: [[20, 30]] }, { name: 'La', at: [[40, 30]] }, { name: 'PEa', at: [[30, 90]] }, { name: 'PEb', at: [[30, 50]] }, { name: 'Nb', at: [[10, 70]] }, { name: 'Lb', at: [[50, 70]] }],
+  internal: [['La', 'Lb'], ['Na', 'Nb'], ['PEa', 'PEb']],
+  electrical: {
+    params: { acVoltage: { unit: 'VAC', default: 120 } }, ac: { hz: 60, region: 'us' },
+    acSources: [{ id: 'supply', live: ['La'], neutral: ['Na'], earth: ['PEa'] }],
+    sockets: [
+      { id: 'a', family: 'nema-5-15r', contacts: [{ group: 'La', role: 'L' }, { group: 'Na', role: 'N' }, { group: 'PEa', role: 'PE' }] },
+      { id: 'b', family: 'nema-5-15r', contacts: [{ group: 'Lb', role: 'L' }, { group: 'Nb', role: 'N' }, { group: 'PEb', role: 'PE' }] },
+    ],
+  },
+})
+/** A US 3-lead cord plug (NEMA 5-15P); prongs centred on the pivot (30, 30). */
+export const plugUS = mod({
+  id: 't-plug-us', name: 'Test cord plug (US)', size: { w: 6, h: 6 }, pins: plugLeads({ L: 'L', N: 'N', PE: 'PE' }),
+  internal: [['L prong', 'L'], ['N prong', 'N'], ['PE prong', 'PE']],
+  electrical: {
+    internalNodes: ['L prong', 'N prong', 'PE prong'],
+    plug: { family: 'nema-5-15p', profiles: [{ id: 'main', contacts: [
+      { pin: 'N prong', at: { x: 20, y: 30 }, mains: 'N' }, { pin: 'L prong', at: { x: 40, y: 30 }, mains: 'L' }, { pin: 'PE prong', at: { x: 30, y: 50 }, mains: 'PE' },
+    ] }] },
+    ratings: [ac(['L', 'N', 'PE', 'L prong', 'N prong', 'PE prong'], 125, { amps: 15 })],
+  },
+})
+/** A UK 3-lead cord plug with its BS 1362 fuse between the L prong and the L lead. */
+export const plugUK = mod({
+  id: 't-plug-uk', name: 'Test cord plug (UK, fused)', size: { w: 6, h: 6 }, pins: plugLeads({ L: 'L', N: 'N', PE: 'PE' }),
+  internal: [['N prong', 'N'], ['PE prong', 'PE']],
+  electrical: {
+    internalNodes: ['L prong', 'N prong', 'PE prong'],
+    protective: [{ from: 'L prong', to: 'L', kind: 'fuse' }], params: { fuseRating: { unit: 'A', default: 13 } },
+    plug: { family: 'bs1363', profiles: [{ id: 'main', contacts: [
+      { pin: 'PE prong', at: { x: 30, y: 10 }, mains: 'PE' }, { pin: 'N prong', at: { x: 10, y: 40 }, mains: 'N' }, { pin: 'L prong', at: { x: 50, y: 40 }, mains: 'L' },
+    ] }] },
+    ratings: all250(['L prong', 'N prong', 'PE prong']),
+  },
+})
+/** A Schuko (CEE 7/7) cord plug: earth clips for a CEE 7/3 socket, an earth hole for a CEE 7/5 one. Unpolarized leads. */
+export const plugSchuko = mod({
+  id: 't-plug-schuko', name: 'Test cord plug (Schuko)', size: { w: 8, h: 8 }, pins: plugLeads({ L: 'line', N: 'line', PE: 'PE' }),
+  internal: [['L prong', 'L'], ['N prong', 'N'], ['PE prong', 'PE']],
+  electrical: {
+    internalNodes: ['L prong', 'N prong', 'PE prong'],
+    plug: { family: 'cee7-7', profiles: [
+      { id: 'earth-clip', contacts: [
+        { pin: 'L prong', at: { x: 20, y: 40 }, mains: 'L' }, { pin: 'N prong', at: { x: 60, y: 40 }, mains: 'N' },
+        { pin: 'PE prong', at: { x: 40, y: 10 }, mains: 'PE' }, { pin: 'PE prong', at: { x: 40, y: 70 }, mains: 'PE' },
+      ] },
+      { id: 'earth-hole', contacts: [
+        { pin: 'L prong', at: { x: 20, y: 40 }, mains: 'L' }, { pin: 'N prong', at: { x: 60, y: 40 }, mains: 'N' }, { pin: 'PE prong', at: { x: 40, y: 10 }, mains: 'PE' },
+      ] },
+    ] },
+    ratings: all250(['L prong', 'N prong', 'PE prong']),
+  },
+})
+/** A 230 V lamp holder, class 2. */
+export const lamp230 = mod({ id: 't-lamp-230', name: 'Test lamp 230 V', pins: lampPins,
+  electrical: { conducts: [{ pins: ['L', 'N'], kind: 'load', range: [220, 240] }], protection: 'class-2', ratings: [ac(['L', 'N'], 250)] } })
+```
+
+(`plugLeads`, `all250` and these modules go after `ac`, `lampPins` in the file; add `outletUK, outletFR, outletSplit, plugUS, plugUK, plugSchuko, lamp230` to the `MAINS_MODULES` list.)
+
+- [ ] **Step 2: Write the failing tests**
+
+Create `src/format/plugSeating.test.ts`:
+
+```ts
+// Seating plug-in devices (spec section 2) through the real mount code: every plug family against
+// every socket family at all four turns, checked against the spec's own table (not the
+// implementation's), the contact each plug contact meets, turned outlets, translations, occupied
+// sockets, overlapping outlets, a breadboard nearby, contacts spread across two sockets, and the plug
+// counterexamples with rule 10.
+import { describe, expect, it } from 'vitest'
+import { type Diagram, type PartInstance } from './diagram.ts'
+import { mountIssues, plugsOf, seatOf } from './breadboard.ts'
+import { checkDiagram } from './checks.ts'
+import { analyseMains } from './mains.ts'
+import { nodeKey } from './netlist.ts'
+import { type ModuleDef, validateModule } from './module.ts'
+import type { Rotation } from './geometry.ts'
+import { CONDUCTORS, PLUG_FAMILIES, SOCKET_FAMILIES, type Conductor, type PlugFamily, type SocketFamily } from './mainsModel.ts'
+import { PLUG_PROFILES, SOCKET_PATTERNS } from './plugging.ts'
+import { SPEC_COMPAT, specMapping, specTurns } from './plugSpec.testing.ts'
+import { load } from './builtinModules.testing.ts'
+import { at, sheet, w } from './mains.testing.ts'
+
+const C = 50
+/** An outlet of one socket family, its socket centred on the pivot of a 100 x 100 body. */
+function socketModule(family: SocketFamily): ModuleDef {
+  const pat = SOCKET_PATTERNS[family]
+  const roles = CONDUCTORS.filter((c) => pat[c].length)
+  return {
+    format: 'circuitoon-module/1', id: `s-${family}`, name: family, pins: [], size: { w: 10, h: 10 }, obstacle: false,
+    holes: roles.map((c) => ({ name: c, at: pat[c].map(([x, y]) => [C + x, C + y] as [number, number]) })),
+    electrical: {
+      params: { acVoltage: { unit: 'VAC', default: 230 } }, ac: { hz: 50, region: 'eu' },
+      acSources: [{ id: 's', live: ['L'], neutral: ['N'], ...(pat.PE.length ? { earth: ['PE'] } : {}) }],
+      sockets: [{ id: 'main', family, contacts: roles.map((c) => ({ group: c, role: c })) }],
+    },
+  }
+}
+/** A plug-in device of one plug family, every profile centred on the pivot of a 100 x 100 body. */
+function plugModule(family: PlugFamily): ModuleDef {
+  const profiles = PLUG_PROFILES[family]
+  const roles = CONDUCTORS.filter((c) => profiles.some((pr) => pr.contacts[c].length))
+  return {
+    format: 'circuitoon-module/1', id: `p-${family}`, name: family, size: { w: 10, h: 10 },
+    pins: roles.map((c) => ({ name: c, side: 'bottom' as const })),
+    internal: roles.map((c) => [`${c} prong`, c]),
+    electrical: {
+      internalNodes: roles.map((c) => `${c} prong`),
+      plug: { family, profiles: profiles.map((pr) => ({ id: pr.id, contacts: CONDUCTORS.flatMap((c) => pr.contacts[c].map(([x, y]) => ({ pin: `${c} prong`, at: { x: C + x, y: C + y }, mains: c }))) })) },
+    },
+  }
+}
+const pair = (plug: PlugFamily, socket: SocketFamily, place: Partial<PartInstance> = {}): Diagram => {
+  const [sm, pm] = [socketModule(socket), plugModule(plug)]
+  return { format: 'circuitoon-diagram/1', title: 't', modules: { [sm.id]: sm, [pm.id]: pm }, connections: [],
+    parts: [{ uid: 'xs', designator: 'XS1', module: sm.id, x: 0, y: 0 }, { uid: 'xp', designator: 'XP1', module: pm.id, x: 0, y: 0, ...place }] }
+}
+const seated = (d: Diagram, uid = 'xp') => seatOf(d, uid, [])?.status === 'seated'
+const ROTATIONS: Rotation[] = [0, 90, 180, 270]
+
+describe('the compatibility matrix through the mount code', () => {
+  it('the synthetic modules are valid', () => {
+    for (const f of SOCKET_FAMILIES) expect(validateModule(socketModule(f)).ok).toBe(true)
+    for (const f of PLUG_FAMILIES) expect(validateModule(plugModule(f)).ok).toBe(true)
+  })
+  it('every plug family against every socket family, all four turns: seats exactly where the spec allows', () => {
+    for (const plug of PLUG_FAMILIES)
+      for (const socket of SOCKET_FAMILIES)
+        for (const rotation of ROTATIONS)
+          expect([plug, socket, rotation, seated(pair(plug, socket, { rotation }))]).toEqual([plug, socket, rotation, specTurns(plug, socket).includes(rotation)])
+  })
+  it('each seated contact meets the socket contact the spec maps it to (the mapping that feeds identity)', () => {
+    for (const { plug, socket, turns } of SPEC_COMPAT)
+      for (const rotation of turns) {
+        const d = pair(plug, socket, { rotation, mount: { board: 'xs' } })
+        expect(mountIssues(d)).toEqual([])
+        for (const pl of plugsOf(d)) {
+          const role = pl.pin.split(' ')[0] as Conductor
+          expect([plug, socket, rotation, pl.pin, pl.group]).toEqual([plug, socket, rotation, pl.pin, specMapping(rotation, role)])
+        }
+      }
+  })
+  it('turned outlets: a plug seats when turned with the outlet, and not when left square to the page', () => {
+    for (const r of [90, 180, 270] as Rotation[]) {
+      const d = pair('nema-5-15p', 'nema-5-15r', { rotation: r })
+      const turned: Diagram = { ...d, parts: [{ ...d.parts[0], rotation: r }, d.parts[1]] }
+      expect(seated(turned)).toBe(true)
+      const square: Diagram = { ...d, parts: [{ ...d.parts[0], rotation: r }, { ...d.parts[1], rotation: 0 }] }
+      expect(seated(square)).toBe(false)
+    }
+  })
+  it('CEE 7/7 in 7/3 both orientations and in 7/5 one orientation', () => {
+    expect(ROTATIONS.filter((r) => seated(pair('cee7-7', 'cee7-3', { rotation: r })))).toEqual([0, 180])
+    expect(ROTATIONS.filter((r) => seated(pair('cee7-7', 'cee7-5', { rotation: r })))).toEqual([0])
+  })
+  it('a plug moved one grid step off the socket does not seat', () => {
+    for (const [dx, dy] of [[10, 0], [0, 10], [-10, 0], [0, -10]]) expect(seated(pair('nema-5-15p', 'nema-5-15r', { x: dx, y: dy }))).toBe(false)
+  })
+  it('a second plug on an occupied socket does not seat', () => {
+    const d = pair('nema-1-15p', 'nema-5-15r', { mount: { board: 'xs' } })
+    const second: PartInstance = { uid: 'xp2', designator: 'XP2', module: 'p-nema-1-15p', x: 0, y: 0 }
+    expect(seatOf({ ...d, parts: [...d.parts, second] }, 'xp2', plugsOf(d))?.status).toBe('partial')
+  })
+})
+
+describe('seating among other boards', () => {
+  it('overlapping outlets: the plug seats in the one drawn on top', () => {
+    const d = pair('nema-5-15p', 'nema-5-15r')
+    const upper: PartInstance = { uid: 'xs2', designator: 'XS2', module: 's-nema-5-15r', x: 0, y: 0 }
+    expect(seatOf({ ...d, parts: [d.parts[0], upper, d.parts[1]] }, 'xp', [])).toMatchObject({ status: 'seated', board: 'xs2' })
+  })
+  it('a plug over a breadboard never seats in it', () => {
+    const bb = load('breadboard-half')
+    const pm = plugModule('nema-5-15p')
+    for (let x = 0; x < 100; x += 10)
+      for (let y = 0; y < 100; y += 10) {
+        const d: Diagram = { format: 'circuitoon-diagram/1', title: 't', modules: { [bb.id]: bb, [pm.id]: pm }, connections: [],
+          parts: [{ uid: 'bb', designator: 'BB1', module: bb.id, x: 0, y: 0 }, { uid: 'xp', designator: 'XP1', module: pm.id, x, y, mount: { board: 'bb' } }] }
+        expect(seated(d)).toBe(false)
+        expect(mountIssues(d)).toHaveLength(1)
+      }
+  })
+  it('contacts spread across two sockets (never seats)', () => {
+    const d = sheet([at('xs1', 'XS1', 't-outlet-split'), at('xp1', 'XP1', 't-plug-us')], [])
+    expect(seated(d, 'xp1')).toBe(false)
+  })
+  it('a part that is not a plug does not seat in an outlet', () => {
+    // Two legs 20 px apart on the bottom edge: at (0, 0) they land on the outlet's N and L holes.
+    const two: ModuleDef = { format: 'circuitoon-module/1', id: 't-two-leg', name: 'Two legs', size: { w: 4, h: 3 }, pins: [{ name: 'a', side: 'bottom' }, { spacer: true, side: 'bottom' }, { name: 'b', side: 'bottom' }] }
+    const d = sheet([at('xs1', 'XS1', 't-outlet'), at('r1', 'R1', 't-two-leg', 0, 0, { mount: { board: 'xs1' } })], [], { 't-two-leg': two })
+    expect(seatOf(d, 'r1', [])?.status).toBe('partial')
+    expect(mountIssues(d).map((i) => i.reason)).toEqual(['no-fit'])
+  })
+})
+
+describe('plug counterexamples and rule 10', () => {
+  it('reversed Schuko plug (no false short)', () => {
+    const d = sheet([at('xs1', 'XS1', 't-outlet-eu'), at('xp1', 'XP1', 't-plug-schuko', 0, 0, { rotation: 180, mount: { board: 'xs1' } }), at('e1', 'E1', 't-lamp-230', 300)],
+      [w('xp1|L', 'e1|L'), w('xp1|N', 'e1|N')])
+    expect(mountIssues(d)).toEqual([])
+    expect(checkDiagram(d).map((f) => f.rule)).not.toContain('mains-short')
+    expect(analyseMains(d)!.conductorOf(nodeKey('xp1', 'L'))?.conductor).toBe('N')
+  })
+  it('UK fused plug protecting a cord-wired lamp (clean)', () => {
+    const d = sheet([at('xs1', 'XS1', 't-outlet-uk'), at('xp1', 'XP1', 't-plug-uk', 0, 0, { mount: { board: 'xs1' } }), at('e1', 'E1', 't-lamp-230', 300)],
+      [w('xp1|L', 'e1|L'), w('xp1|N', 'e1|N')])
+    expect(checkDiagram(d).filter((f) => f.rule !== 'cable-unverified').map((f) => `${f.rule}: ${f.message}`)).toEqual([])
+  })
+  it('a plug over an outlet of another family: plug-mismatch, in the spec\'s words', () => {
+    const d = sheet([at('xs1', 'XS1', 't-outlet'), at('xp1', 'XP1', 't-plug-uk')], [])
+    expect(checkDiagram(d).filter((f) => f.rule === 'plug-mismatch').map((f) => f.message)).toEqual([
+      "XP1's UK plug does not fit XS1's US socket. Use a device with a US plug.",
+    ])
+  })
+  it('a matching plug that is only partly in says it is never safe', () => {
+    const d = sheet([at('xs1', 'XS1', 't-outlet'), at('xp1', 'XP1', 't-plug-us', 10, 0)], [])
+    expect(checkDiagram(d).filter((f) => f.rule === 'plug-mismatch').map((f) => f.message)).toEqual([
+      'XP1 does not sit in XS1: its contacts do not all meet one socket the way the plug fits, so none of them connect. Turn or move it until it seats; a plug that is only partly in is never electrically safe.',
+    ])
+  })
+})
+```
+
+- [ ] **Step 3: Run the tests to verify they fail**
+
+Run: `npx vitest run src/format/plugSeating.test.ts`
+Expected: FAIL (plug-in devices do not seat through the table yet).
+
+- [ ] **Step 4: Seat plug-in devices through the table in `src/format/breadboard.ts`**
 
 Add imports: `type Rect`, `toWorld` from `./geometry.ts`; `type PlugDef`, `type PlugFamily`, `type SocketFamily`, `mainsOf` from `./mainsModel.ts`; `entriesFor`, `orientationOf` from `./plugging.ts`.
 
@@ -4011,7 +5067,7 @@ export function plugMismatches(d: Diagram): PlugMismatch[] {
 }
 ```
 
-- [ ] **Step 6: Report it in the loader, the checker and the canvas**
+- [ ] **Step 5: Report it in the loader and the checker**
 
 In `src/format/diagram.ts` `validateDiagram`, after the `conflict` branch of the mount warnings:
 
@@ -4044,27 +5100,75 @@ and at the top of the mount loop body: `if (mismatched.has(JSON.stringify([issue
       return `${p.designator} does not fit ${at}: an outlet takes only a matching plug, and a plug fits only a matching outlet, so it connects nothing. Drag it off, or use a part that fits.`
 ```
 
+- [ ] **Step 6: Run the tests to verify they pass**
+
+Run: `npx vitest run src/format/plugSeating.test.ts src/format/breadboard.test.ts src/format/breadboard.perf.test.ts src/editor/ops.test.ts`
+Expected: PASS (the existing breadboard tests prove seating on breadboards is unchanged). Then the gate `npx tsc --noEmit && npm test`: PASS.
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add src/format/breadboard.ts src/format/diagram.ts src/format/checks.ts src/format/mains.testing.ts src/format/plugSeating.test.ts
+git commit -m "Mains: seat plug-in devices through the table, no-fit, plug-mismatch" -m "Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>"
+```
+
+---
+
+### Task 14: Plugging on the canvas: the red outline of a plug that does not fit
+
+**Files:**
+- Modify: `src/editor/Canvas.tsx:550-554`
+- Test: `src/editor/ops.test.ts`
+
+**Interfaces:**
+- Consumes: `Seat.outline` (Task 13), `settleSeats` (existing, `ops.ts`), the fixtures of Task 13.
+- Produces: while a plug-in device is dragged over an outlet it does not seat in, its body is outlined in the `seat-bad` style (spec 7's "a wrong plug (red)"); a seated plug shows its green contact marks as any part does.
+
+- [ ] **Step 1: Write the failing test**
+
+Add to `src/editor/ops.test.ts`:
+
+```ts
+describe('plug-in devices while dragging', () => {
+  it('a wrong plug over an outlet gets an outline; a matching one seats', () => {
+    const d = sheet([at('xs1', 'XS1', 't-outlet'), at('xp1', 'XP1', 't-plug-uk'), at('xp2', 'XP2', 't-plug-us', 0, 300)], [])
+    const wrong = settleSeats(d, ['xp1']).seats.get('xp1')
+    expect(wrong?.status).toBe('partial')
+    expect(wrong?.outline).toEqual({ x: 0, y: 0, w: 60, h: 60 })
+    const right = settleSeats({ ...d, parts: [d.parts[0], d.parts[1], { ...d.parts[2], y: 0 }] }, ['xp2']).seats.get('xp2')
+    expect(right?.status).toBe('seated')
+    expect(right?.outline).toBeUndefined()
+  })
+})
+```
+
+(Import `sheet` and `at` from `../format/mains.testing.ts`; `settleSeats` is already imported.) XP1's UK contacts land on no US hole, so they take none, and XP2 seats beside it.
+
+- [ ] **Step 2: Run it**
+
+Run: `npx vitest run src/editor/ops.test.ts`
+Expected: PASS, because `Seat.outline` comes from Task 13's mount code (this test pins the data the canvas draws; the drawing itself is checked by `check:mains-ui`). If it fails, fix Task 13's `seatFrom`, not the test.
+
+- [ ] **Step 3: Draw the outline**
+
 In `src/editor/Canvas.tsx`, inside the `<g pointerEvents="none">` that draws seat circles, also draw each seat's outline:
 
 ```tsx
           {seats.flatMap((s, i) => (s.outline ? [<rect key={`outline-${i}`} className="seat-bad" x={s.outline.x} y={s.outline.y} width={s.outline.w} height={s.outline.h} rx={6} />] : []))}
 ```
 
-- [ ] **Step 7: Run the tests to verify they pass**
+- [ ] **Step 4: Gate, build and commit**
 
-Run: `npx vitest run src/format/plugging.test.ts src/format/breadboard.test.ts src/format/breadboard.perf.test.ts src/editor/ops.test.ts`
-Expected: PASS. Then `npm test` and `npm run build`: PASS.
-
-- [ ] **Step 8: Commit**
+Run the gate `npx tsc --noEmit && npm test`, then `npm run build`: PASS. Drag a UK plug over a US outlet in `npm run dev` and look: the red outline sits on the plug's body.
 
 ```bash
-git add src/format/plugging.ts src/format/plugging.test.ts src/format/breadboard.ts src/format/diagram.ts src/format/checks.ts src/format/mains.testing.ts src/editor/Canvas.tsx
-git commit -m "Mains: plug profiles, sockets, the compatibility table and plug-mismatch" -m "Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>"
+git add src/editor/Canvas.tsx src/editor/ops.test.ts
+git commit -m "Mains: red outline for a plug over an outlet it does not fit" -m "Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>"
 ```
 
 ---
 
-### Task 11: Designators, the Mains category, generator helpers and the part skill
+### Task 15: Designators, the Mains category, generator helpers and the part skill
 
 **Files:**
 - Modify: `src/editor/ops.ts:35-49` (PREFIXES)
@@ -4075,7 +5179,7 @@ git commit -m "Mains: plug profiles, sockets, the compatibility table and plug-m
 - Test: `src/editor/ops.test.ts`, `src/editor/libraryGroups.test.ts`
 
 **Interfaces:**
-- Consumes: `SOCKET_PATTERNS`, `PLUG_PROFILES` (Task 10).
+- Consumes: `SOCKET_PATTERNS`, `PLUG_PROFILES` (Task 12); `EVIDENCE` (Task 0).
 - Produces:
   - Prefix rules for the ids the parts tasks use: `outlet-*` XS, `plug-*` XP, `charger-*`, `adapter-*`, `hlk-*` PS, `lamp-holder-*` E, `fuse-holder-*` F, `ssr-*` K, `terminal-block-*` and `wago-*` X (switches keep S, relays keep K).
   - `CATEGORY_ORDER` ends with `'Mains'`.
@@ -4202,11 +5306,11 @@ export const rating = (pins, kind, service, volts, extra = {}) => ({ pins, kind,
 Update the skill:
 - `SKILL.md` step 3: add the new prefixes to the list, in order, and "Mains" to the category note.
 - `SKILL.md` step 5: add `gen-mains-outlets.mjs` (outlets), `gen-mains-plugs.mjs` (chargers, barrel adapters, cord plugs), `gen-mains-loads.mjs` (AC-DC modules, lamp holders, fuse holder, Wago), `gen-mains-terminals.mjs` (terminal blocks), and that `gen-outputs.mjs` also holds the Fotek SSR; mains generators use `scripts/lib/mains.mjs`.
-- `references/conventions.md`: add a "Mains parts" section: category `Mains`; every mains claim (pin, contact, profile, rating, isolation) cites the exact manufacturer part or standard in `source` and in a comment beside the value; plug prongs are `electrical.internalNodes` named `"L prong"`, `"N prong"`, `"PE prong"`, placed with `plugProfiles` from the family pattern; outlets are boards (`obstacle: false`) whose every hole group is a socket contact, built with `socket`; ratings carry `provenance` (`datasheet` only for the exact part; clones and generic boards are `unverified`) and `conditions` when the datasheet ties a rating to overvoltage category, pollution degree or mounting; `isolation` is the class the datasheet states (reinforced, double, basic), never inferred from a class 2 symbol alone unless the datasheet says the output is SELV or class II; a value the source does not give is left out, which the checker reports as unknown. Add "Mains" to the Categories line.
+- `references/conventions.md`: add a "Mains parts" section: category `Mains`; every mains claim (pin, contact, profile, rating, isolation) cites the exact manufacturer part or standard in `source` and in a comment beside the value; plug prongs are `electrical.internalNodes` named `"L prong"`, `"N prong"`, `"PE prong"`, placed with `plugProfiles` from the family pattern; outlets are boards (`obstacle: false`) whose every hole group is a socket contact, built with `socket`; ratings carry `provenance` (`datasheet` only for the exact part; clones and generic boards are `unverified`) and `conditions` when the datasheet ties a rating to overvoltage category, pollution degree or mounting; `isolation` is the class the source states (reinforced, double, basic) and nothing else: never inferred from a test voltage, a class 2 symbol, an SELV or ES1 label or a listing; when the source states no class it is `"unknown"`; every value comes from `src/format/mainsEvidence.ts`, which is researched first (as in Task 0) and reviewed before any part is generated; a value the source does not give is left out, which the checker reports as unknown. Add "Mains" to the Categories line.
 
 - [ ] **Step 4: Run the tests to verify they pass**
 
-Run: `npx vitest run src/editor/ops.test.ts src/editor/libraryGroups.test.ts` then `npm test` and `npm run check:gen` (the `moduleJson` change must not alter any existing generated file).
+Run: `npx vitest run src/editor/ops.test.ts src/editor/libraryGroups.test.ts` then the gate `npx tsc --noEmit && npm test`, and `npm run check:gen` (the `moduleJson` change must not alter any existing generated file).
 Expected: PASS, and `check-gen: all 8 generators match modules/`.
 
 - [ ] **Step 5: Commit**
@@ -4217,7 +5321,7 @@ git commit -m "Mains: designators, Mains category, generator helpers, part skill
 ```
 
 ---
-### Task 12: Parts batch 1: wall outlets
+### Task 16: Parts batch 1: wall outlets
 
 **Files:**
 - Create: `scripts/gen-mains-outlets.mjs`
@@ -4226,7 +5330,7 @@ git commit -m "Mains: designators, Mains category, generator helpers, part skill
 - Modify: `docs/PRD.md` (Built-in parts table: a Mains row)
 
 **Interfaces:**
-- Consumes: `socket`, `rating` (`scripts/lib/mains.mjs`, Task 11); `moduleJson`, `r`, `write` (`scripts/lib/parts.mjs`); `SOCKET_PATTERNS` (Task 10).
+- Consumes: `socket`, `rating` (`scripts/lib/mains.mjs`, Task 15); `moduleJson`, `r`, `write` (`scripts/lib/parts.mjs`); `SOCKET_PATTERNS` (Task 12).
 - Produces: the eight outlet modules above (ids exactly as listed; designator XS). Each is a board (`obstacle: false`) with `electrical.model: 'outlet'`, `params.acVoltage`, `ac: { hz, region }`, one `acSources` entry `supply`, one socket per face, a `terminal` rating on every socket group. Duplex hole groups are `L1 N1 PE1` (upper) and `L2 N2 PE2` (lower), joined by `internal` (intact link); single outlets use `L N PE`. Socket centres: duplex at (40, 40) and (40, 100) in an 80 x 140 body; single at (40, 40) in an 80 x 80 body.
 
 Sources (the pattern positions are stylized; these give the real layout, the L side and the rating):
@@ -4241,9 +5345,17 @@ Sources (the pattern positions are stylized; these give the real layout, the L s
 | AU/NZ single | AS/NZS 3112 (10 A 250 V); IEC TR 60083 (AU entry) | Clipsal single socket datasheet |
 | Japan 1-15R duplex, unpolarized and polarized | JIS C 8303 (15 A 125 V; the polarized face has the longer neutral slot); IEC TR 60083 (JP entry) | Panasonic WN series duplex receptacle datasheet |
 
-- [ ] **Step 1: Look up and record every source (implementer)**
+- [ ] **Step 1: Take every value from the evidence (no new lookups)**
 
-For each part, open the standard's publisher page and the reference product's datasheet and confirm: (a) which slot or pin is L, N and PE seen from the front with the family's usual orientation (this fixes the L side of the pattern; if it differs from Task 10's table, stop and swap L and N in `plugging.ts` first, with its tests); (b) the rating (volts and amps); (c) the mains voltage and frequency default (US 120 V 60 Hz; UK, Schuko, French, AU 230 V 50 Hz; Japan 100 V, 50 Hz east or 60 Hz west: use 50 and say so in the module name). Record in `scripts/gen-mains-outlets.mjs` a `SRC` object with one entry per part whose value is the space-separated URLs (standard page first, reference datasheet second), for example `SRC['outlet-us-5-15r-duplex']`. A value you cannot confirm is left out and reported; never fill it from this plan. Put the confirmed real contact spacing of each family (for example "NEMA 5-15: blades 12.7 mm apart") in the comment above that family's generator block.
+At the top of `scripts/gen-mains-outlets.mjs`:
+
+```js
+import { EVIDENCE } from '../src/format/mainsEvidence.ts'
+/** Each module's `source`: every URL Task 0 used, standard first. */
+const SRC = Object.fromEntries(Object.entries(EVIDENCE).map(([id, e]) => [id, e.sources.join(' ')]))
+```
+
+Before generating a part, check its evidence: `verdict: 'VERIFIED'`, or a NOT VERIFIED item Michael has decided on (the evidence log records his decision: generate with a value left unknown, or do not generate). A part he has not cleared is not generated in this task, and its test cases are removed from this batch with a note in the commit message. No value here is looked up again or filled from this plan. The rating and default voltage in the generator are the values the standards fix; the test below also compares them with the evidence, so a disagreement fails. Each family's `lSide` in the evidence must match Task 12's pattern table (Task 0 flagged any difference and Michael decided before this task). Put each family's real contact spacing, from `EVIDENCE[id].extra`, in the comment above its generator block.
 
 - [ ] **Step 2: Write the failing test**
 
@@ -4261,6 +5373,7 @@ import { pivot } from './geometry.ts'
 import { CONDUCTORS, type Conductor, type SocketFamily, mainsOf } from './mainsModel.ts'
 import { SOCKET_PATTERNS } from './plugging.ts'
 import { load } from './builtinModules.testing.ts'
+import { EVIDENCE } from './mainsEvidence.ts'
 
 const twoSources = /^https?:\/\/\S+( https?:\/\/\S+)+$/
 
@@ -4302,6 +5415,9 @@ describe('built-in outlets', () => {
       expect([info.hz, info.region]).toEqual([x.hz, x.region])
       expect(info.acSources).toHaveLength(1)
       expect(info.ratings).toEqual([expect.objectContaining({ kind: 'terminal', service: 'ac', volts: x.rated, amps: x.amps, provenance: 'datasheet' })])
+      // The standard's figures and the evidence must agree; the source is the evidence's.
+      expect([EVIDENCE[id].ratings?.[0].volts, EVIDENCE[id].ratings?.[0].amps]).toEqual([x.rated, x.amps])
+      expect(m.source).toBe(EVIDENCE[id].sources.join(' '))
       expect(info.ratings[0].pins.sort()).toEqual((m.holes ?? []).map((h) => h.name).sort())
       if (x.sockets === 2) expect(m.internal).toEqual([['L1', 'L2'], ['N1', 'N2'], ...(SOCKET_PATTERNS[x.family].PE.length ? [['PE1', 'PE2']] : [])])
       expect(pivot(layoutModule(m).w, layoutModule(m).h)).toEqual(x.sockets === 2 ? { x: 40, y: 70 } : { x: 40, y: 40 })
@@ -4331,7 +5447,9 @@ import { finish } from './lib/gen-output.mjs'
 import { moduleJson, r, write } from './lib/parts.mjs'
 import { rating, socket } from './lib/mains.mjs'
 
-// SRC: one entry per part id, the URLs recorded in Step 1 (standard page, then reference datasheet).
+import { EVIDENCE } from '../src/format/mainsEvidence.ts'
+/** Each module's `source`: every URL Task 0 used, standard first. */
+const SRC = Object.fromEntries(Object.entries(EVIDENCE).map(([id, e]) => [id, e.sources.join(' ')]))
 
 const PLATE = '#F2EEE3', FACE = '#FBF9F3', SLOT = '#2B2F36', METAL = '#C9CED6', SCREW = '#B8BEC7'
 const WHITE = '#F5F5F2', ROUND = '#E6E2DA'
@@ -4426,7 +5544,7 @@ single({ id: 'outlet-au-as3112', name: 'AU/NZ outlet AS/NZS 3112 single (10 A, 2
 finish('gen-mains-outlets.mjs')
 ```
 
-Declare `const SRC = { ... }` (Step 1) above the colour constants. The slot rects sit under the hole squares the renderer draws, so each contact reads as a slot with its connection point.
+The slot rects sit under the hole squares the renderer draws, so each contact reads as a slot with its connection point.
 
 - [ ] **Step 5: Generate, validate, test**
 
@@ -4448,11 +5566,11 @@ git commit -m "Mains parts: wall outlets" -m "Co-Authored-By: Claude Opus 5.5 (1
 
 - [ ] **Step 8: Independent review (controller, not the implementer)**
 
-The controller dispatches a reviewer who did not write the parts, with WebFetch access, to compare every outlet against its `source`: L, N and PE sides, rating (volts, amps), voltage and frequency default, region, the internal links of the duplexes. Verdict per part: MATCHES, MISMATCH (with differences) or NOT VERIFIED. A MISMATCH is fixed before the next batch starts.
+The controller dispatches a reviewer who did not write the parts, with WebFetch access, to compare every outlet against its `source`: L, N and PE sides, rating (volts, amps), voltage and frequency default, region, the internal links of the duplexes. Verdict per part: MATCHES, MISMATCH (with differences) or NOT VERIFIED. A MISMATCH or NOT VERIFIED verdict blocks the next batch until it is fixed, or brought to Michael and decided.
 
 ---
 
-### Task 13: Parts batch 2: plug-in devices (USB chargers, barrel adapters, cord plugs)
+### Task 17: Parts batch 2: plug-in devices (USB chargers, barrel adapters, cord plugs)
 
 **Files:**
 - Create: `scripts/gen-mains-plugs.mjs`
@@ -4460,7 +5578,7 @@ The controller dispatches a reviewer who did not write the parts, with WebFetch 
 - Modify: `src/format/mainsParts.test.ts` (append), `docs/PRD.md` (Mains row)
 
 **Interfaces:**
-- Consumes: `plugProfiles`, `prongs`, `rating` (Task 11); the outlets of Task 12 (for the seating test); `PLUG_PROFILES`, `entriesFor` (Task 10).
+- Consumes: `plugProfiles`, `prongs`, `rating` (Task 15); the outlets of Task 16 (for the seating test); `PLUG_PROFILES` (Task 12); `specTurns` (`plugSpec.testing.ts`, Task 12).
 - Produces (all category `Mains`):
   - Chargers `charger-usb-5v-{region}` and adapters `adapter-barrel-{region}` (designator PS): prongs are internal nodes; `acInput` on the prongs (UK: on `L fused`, after the integral BS 1362 fuse, `protective: [{ from: 'L prong', to: 'L fused', kind: 'fuse', rating }]`); domains `mains` (prongs and `L fused`) and `output` (`selv`); `isolation` per datasheet; `protection: 'class-2'`. Charger outputs `5V` (power_out, supply `5V`) and `GND`; adapter outputs `+` (power_out, value `voltage`) and `-`.
   - Cord plugs `plug-*` (designator XP): lead pins `L`, `N` and `PE` (2-lead plugs: `L`, `N`, plus `PE` only where the plug has an earth pin: the UK 2-lead plug keeps its earth prong, with nothing joined to it) on the bottom edge; requirements `L`/`N` on polarized families, `line` on unpolarized ones, `PE` on earth; prong-to-lead `internal` joins (UK L through its fuse: `fuseRating` param default 13); a `terminal` rating per the standard.
@@ -4481,13 +5599,25 @@ The controller dispatches a reviewer who did not write the parts, with WebFetch 
 | plug-uk-bs1363-3lead / -2lead | bs1363 | L, N, PE | BS 1363-1 (13 A 250 V, BS 1362 fuse) |
 | plug-au-as3112-3lead / -2lead | as3112 | L, N, PE / L, N | AS/NZS 3112 (10 A 250 V) |
 
-- [ ] **Step 1: Look up and record (implementer)**
+- [ ] **Step 1: Take every value from the evidence (no new lookups)**
 
-In `scripts/gen-mains-plugs.mjs` create `SRC` (URLs per part id, standard first) and `DATA` with, per charger and adapter id: `range` (the datasheet's AC input range, `[min, max]` volts), `isolation` (`'reinforced'` or `'double'` only when the datasheet says so, or says class II, or says the output is SELV/ES1 under IEC 62368-1; otherwise `'unknown'`), `fuse` (UK only: the integral fuse rating in amps, from the datasheet; leave it out if not stated) and, for adapters, `volts` (the output voltage of the exact part number chosen). Confirm from each standard that the L side of the family matches Task 10's table and record the real pin spacing in a comment per family. Write down in the commit message which exact part numbers you used.
+At the top of `scripts/gen-mains-plugs.mjs`:
+
+```js
+import { EVIDENCE } from '../src/format/mainsEvidence.ts'
+/** Each module's `source`: every URL Task 0 used, standard first. */
+const SRC = Object.fromEntries(Object.entries(EVIDENCE).map(([id, e]) => [id, e.sources.join(' ')]))
+/** What the converters need, straight from the evidence. Isolation is "unknown" unless the source states the class (Global Constraints). */
+const DATA = Object.fromEntries(Object.entries(EVIDENCE).map(([id, e]) => [id, {
+  range: e.acInput?.value, isolation: e.isolation?.value ?? 'unknown', fuse: e.extra?.fuse?.value, volts: e.output?.value.volts,
+}]))
+```
+
+Before generating a part, check its evidence: `verdict: 'VERIFIED'`, or a NOT VERIFIED item Michael has decided on (the evidence log records his decision: generate with a value left unknown, or do not generate). A part he has not cleared is not generated in this task, and its test cases are removed from this batch with a note in the commit message. No value here is looked up again or filled from this plan. A charger or adapter without an input range in the evidence is not generated (the checker could not judge its input). The cord plugs' ratings are the standards' figures; the test compares them with the evidence.
 
 - [ ] **Step 2: Write the failing test (append to `src/format/mainsParts.test.ts`)**
 
-Add imports: `import { PLUG_PROFILES, entriesFor } from './plugging.ts'`, `import { seatOf } from './breadboard.ts'`, `import type { Diagram } from './diagram.ts'`, `import type { Rotation } from './geometry.ts'`, `import { PLUG_FAMILIES } from './mainsModel.ts'`.
+Add imports: `import { PLUG_PROFILES } from './plugging.ts'`, `import { specTurns } from './plugSpec.testing.ts'`, `import { seatOf } from './breadboard.ts'`, `import type { Diagram } from './diagram.ts'`, `import type { Rotation } from './geometry.ts'`, `import { PLUG_FAMILIES } from './mainsModel.ts'`.
 
 ```ts
 describe('built-in plug-in devices', () => {
@@ -4525,7 +5655,8 @@ describe('built-in plug-in devices', () => {
         expect(pr.contacts).toEqual(want)
       })
       if (x.converter) {
-        expect(info.acInput).not.toBeNull()
+        expect(info.acInput?.range).toEqual(EVIDENCE[id].acInput!.value)
+        expect(info.isolation).toBe(EVIDENCE[id].isolation?.value ?? 'unknown')
         expect(info.protection).toBe('class-2')
         expect(info.domains.map((d) => d.kind).sort()).toEqual(['mains', 'selv'])
       }
@@ -4546,7 +5677,7 @@ describe('built-in plug-in devices', () => {
             { uid: 'xs', designator: 'XS1', module: om.id, x: 0, y: 0 },
             { uid: 'xp', designator: 'XP1', module: dm.id, x: lx - px - dc.x, y: ly - py - dc.y, rotation },
           ] }
-          const want = entriesFor(x.family, sockets[0].family).some((e) => e.map[rotation])
+          const want = specTurns(x.family, sockets[0].family).includes(rotation)
           expect([id, o, rotation, seatOf(d, 'xp', [])?.status === 'seated']).toEqual([id, o, rotation, want])
         }
       }
@@ -4567,15 +5698,15 @@ Expected: FAIL (the plug-in modules do not exist).
 // wall adapters for US/Japan, Europe, UK and AU/NZ, and cord plugs, 3-lead and 2-lead, per family.
 // Prongs are internal nodes (spec 2) placed on the family pattern of src/format/plugging.ts around
 // the body's pivot, so a device dropped on a matching outlet seats; leads are ordinary pins on the
-// bottom edge. Ratings, input ranges and isolation come from the sources in SRC and DATA (Step 1 of
-// Task 13); a value a source does not give is left out.
+// bottom edge. Ratings, input ranges and isolation come from src/format/mainsEvidence.ts (Task 0);
+// a value a source does not state is left out, and isolation not stated is "unknown".
 //
 // Run from the repo root: `node scripts/gen-mains-plugs.mjs` (add `--check` to compare with modules/).
 import { finish } from './lib/gen-output.mjs'
 import { moduleJson, r, side, write } from './lib/parts.mjs'
 import { plugProfiles, prongs, rating } from './lib/mains.mjs'
 
-// SRC and DATA: recorded in Step 1.
+// SRC and DATA: built from the evidence, as in Step 1.
 
 const BODY = '#F5F5F2', DARK = '#2B2F36', USB = '#C9CED6', USB_TONGUE = '#1E4F8A', BARREL = '#2B2F36', LEAD = '#B8BEC7'
 const FAMILY = {
@@ -4685,11 +5816,11 @@ git commit -m "Mains parts: USB chargers, barrel adapters and cord plugs" -m "Co
 
 - [ ] **Step 8: Independent review (controller, not the implementer)**
 
-Reviewer checks every device against its `source`: family and L side, prong roles, lead requirements (polarized or `line`), UK fuse placement and rating, input range, isolation class and the datasheet line it comes from, output voltage, the exact part numbers. Verdict per part; fix every MISMATCH before Task 14.
+Reviewer checks every device against its `source`: family and L side, prong roles, lead requirements (polarized or `line`), UK fuse placement and rating, input range, isolation class and the datasheet line that states it (no class from a test voltage or a symbol), output voltage, the exact part numbers. Verdict per part. A MISMATCH or NOT VERIFIED verdict blocks the next batch until it is fixed, or brought to Michael and decided.
 
 ---
 
-### Task 14: Parts batch 3: AC-DC modules, lamp holders, fuse holder, KCD1, Wago
+### Task 18: Parts batch 3: AC-DC modules, lamp holders, fuse holder, KCD1, Wago
 
 **Files:**
 - Create: `scripts/gen-mains-loads.mjs`
@@ -4698,9 +5829,9 @@ Reviewer checks every device against its `source`: family and L side, prong role
 - Modify: `src/format/mainsParts.test.ts` (append), `docs/PRD.md`
 
 **Interfaces:**
-- Consumes: `rating` (Task 11).
+- Consumes: `rating` (Task 15).
 - Produces:
-  - `hlk-pm01`, `hlk-pm03` (PS): AC pins `AC 1`, `AC 2` (label `AC`, requirement `line`), outputs `+Vo` (power_out, supply `5V` or `3V3`) and `-Vo` (ground), in the datasheet's physical order; `acInput`, domains, `isolation` (and `isolationProvenance` only if the mapping rule below applies).
+  - `hlk-pm01`, `hlk-pm03` (PS): AC pins `AC 1`, `AC 2` (label `AC`, requirement `line`), outputs `+Vo` (power_out, supply `5V` or `3V3`) and `-Vo` (ground), in the datasheet's physical order; `acInput`, domains, `isolation` (the class the evidence quotes, else `"unknown"`).
   - `lamp-holder-e26`, `lamp-holder-e27` (E): `L` (centre contact, requirement `L`) and `N` (screw shell, requirement `N`), plus `PE` (requirement `PE`) only when the reference product has an earth terminal; `conducts: [{ pins: ['L', 'N'], kind: 'load', range }]`; `protection` as the reference product states it; a `terminal` rating.
   - `fuse-holder-5x20-inline` (F): pins `1`, `2`; `protective: [{ from: '1', to: '2', kind: 'fuse' }]`; `params.fuseRating: { unit: 'A' }` with no default; `settings: { fuse: ['fitted', 'absent'] }`; a `terminal` rating.
   - `rocker-switch-kcd1` (S): `contacts: [{ id: 's', kind: 'switch', poles: [{ com: '1', no: '2' }] }]` and a `switching` rating; its existing `model: 'switch'` and `terminals` stay for the DC checker.
@@ -4715,11 +5846,37 @@ Reviewer checks every device against its `source`: family and L side, prong role
 | KCD1 rocker | the KCD1-101 datasheet already cited in the module's `source` | AC switching rating (`ratings[0].volts`, `amps`), and any second rating (for example 10 A 125 V beside 6 A 250 V) as a second entry |
 | Wago 221-412, 221-413, 221-415 | Wago 221 series datasheets (wago.com, per item number) | IEC rated voltage and current, with the overvoltage category and pollution degree as `conditions`; UL values in a comment |
 
-Isolation mapping rule for the Hi-Link modules (and any converter): record `'reinforced'` or `'double'` when the datasheet says so. If it gives only an input-output test voltage, record `'reinforced'` for 3000 V AC or more (the dielectric test IEC 62368-1 requires of reinforced insulation at 250 V working voltage) with `isolationProvenance: 'unverified'`, and `'basic'` below that; quote the datasheet line in a comment. The controller's review (Step 8) confirms or overrules the mapping. If the result is not adequate or is unverified, the spec's circuit "HLK-PM01 feeding an ESP32 (clean apart from cable-unverified)" in Task 16 cannot hold as written: stop there and the controller asks Michael.
+Isolation is only what a source states (Global Constraints; Resolution 21): the Hi-Link modules get `EVIDENCE[id].isolation?.value ?? 'unknown'`, and no test voltage is turned into a class. If that leaves a module `unknown`, the spec's circuit "HLK-PM01 feeding an ESP32 (clean apart from cable-unverified)" cannot hold as written; Task 0 raised it, and Task 20 follows Michael's decision.
 
-- [ ] **Step 1: Look up and record (implementer)**
+- [ ] **Step 1: Take every value from the evidence (no new lookups)**
 
-Create `SRC` and `DATA` in `scripts/gen-mains-loads.mjs` with the fields in the table, one entry per part id, every value with a comment quoting the datasheet line. For the KCD1, edit `modules/rocker-switch-kcd1.json` by hand, adding the two fields at the end of `electrical`, and keep its `source` (add the datasheet URL if it is not already there).
+At the top of `scripts/gen-mains-loads.mjs`:
+
+```js
+import { EVIDENCE } from '../src/format/mainsEvidence.ts'
+/** Each module's `source`: every URL Task 0 used, standard first. */
+const SRC = Object.fromEntries(Object.entries(EVIDENCE).map(([id, e]) => [id, e.sources.join(' ')]))
+const hlk = (id) => {
+  const e = EVIDENCE[id]
+  return { left: e.pins.value.left, right: e.pins.value.right, range: e.acInput.value, isolation: e.isolation?.value ?? 'unknown' }
+}
+const lamp = (id) => {
+  const e = EVIDENCE[id]
+  return { earth: !!e.extra?.earth?.value, protection: e.protection?.value, range: e.loadRange.value, lampVolts: e.extra.lampVolts.value, volts: e.ratings[0].volts, amps: e.ratings[0].amps }
+}
+const rated = (id) => {
+  const r = EVIDENCE[id].ratings[0]
+  return { volts: r.volts, amps: r.amps, conditions: r.conditions }
+}
+const DATA = {
+  'hlk-pm01': hlk('hlk-pm01'), 'hlk-pm03': hlk('hlk-pm03'),
+  'lamp-holder-e26': lamp('lamp-holder-e26'), 'lamp-holder-e27': lamp('lamp-holder-e27'),
+  'fuse-holder-5x20-inline': rated('fuse-holder-5x20-inline'),
+  'wago-221-412': rated('wago-221-412'), 'wago-221-413': rated('wago-221-413'), 'wago-221-415': rated('wago-221-415'),
+}
+```
+
+Before generating a part, check its evidence: `verdict: 'VERIFIED'`, or a NOT VERIFIED item Michael has decided on (the evidence log records his decision: generate with a value left unknown, or do not generate). A part he has not cleared is not generated in this task, and its test cases are removed from this batch with a note in the commit message. No value here is looked up again or filled from this plan. For the KCD1, edit `modules/rocker-switch-kcd1.json` by hand: add `contacts` and the `switching` ratings from `EVIDENCE['rocker-switch-kcd1'].ratings` at the end of `electrical`, and set its `source` to the evidence's sources.
 
 - [ ] **Step 2: Write the failing test (append to `src/format/mainsParts.test.ts`)**
 
@@ -4733,7 +5890,8 @@ describe('built-in AC-DC modules, lamp holders, fuse holder, switch and lever co
       expect(info.acInput?.a).toBe('AC 1')
       expect(info.acInput?.b).toBe('AC 2')
       expect(info.domains.find((d) => d.kind === 'selv')?.pins.sort()).toEqual(['+Vo', '-Vo'])
-      expect(info.isolation).not.toBeNull()
+      expect(info.isolation).toBe(EVIDENCE[id].isolation?.value ?? 'unknown')
+      expect(info.acInput?.range).toEqual(EVIDENCE[id].acInput!.value)
       expect(m.pins.find((p) => 'name' in p && p.name === '+Vo')).toMatchObject({ type: 'power_out', supply: out })
     }
   })
@@ -4782,15 +5940,15 @@ Expected: FAIL.
 // Generates the built-in mains loads and wiring parts (category Mains): the Hi-Link HLK-PM01 (5 V)
 // and HLK-PM03 (3.3 V) AC-DC modules, E26 (120 V) and E27 (230 V) lamp holders, an in-line 5 x 20 mm
 // fuse holder and the Wago 221-412, 221-413 and 221-415 lever connectors. Every pin order, range,
-// rating and isolation class comes from SRC and DATA (Step 1 of Task 14), each value with the
-// datasheet line it comes from.
+// rating and isolation class comes from src/format/mainsEvidence.ts (Task 0), where each value
+// carries the datasheet line it comes from; isolation not stated there is "unknown".
 //
 // Run from the repo root: `node scripts/gen-mains-loads.mjs` (add `--check` to compare with modules/).
 import { finish } from './lib/gen-output.mjs'
 import { moduleJson, r, side, write } from './lib/parts.mjs'
 import { rating } from './lib/mains.mjs'
 
-// SRC and DATA: recorded in Step 1.
+// SRC and DATA: built from the evidence, as in Step 1.
 
 const HLK_BLACK = '#1B1F24', LABEL = '#F5F5F2', PORCELAIN = '#F1ECE2', BRASS = '#D9A93B', CLEAR = '#DDE7EE', WAGO = '#F2F2EF', ORANGE = '#F48C06'
 
@@ -4806,7 +5964,7 @@ for (const [id, volts, supply] of [['hlk-pm01', '5 V', '5V'], ['hlk-pm03', '3.3 
     electrical: {
       model: 'converter', acInput: { a: 'AC 1', b: 'AC 2', range: d.range },
       domains: [{ name: 'mains', pins: ['AC 1', 'AC 2'], kind: 'mains' }, { name: 'output', pins: ['+Vo', '-Vo'], kind: 'selv' }],
-      isolation: d.isolation, ...(d.isolationProvenance ? { isolationProvenance: d.isolationProvenance } : {}),
+      isolation: d.isolation,
     },
     shapes: [r(0, 0, 80, 50, HLK_BLACK, { radius: 3 }), r(14, 14, 52, 22, HLK_BLACK, { outline: false, label: id.toUpperCase(), labelColor: LABEL, labelSize: 7 })],
   }))
@@ -4860,7 +6018,7 @@ for (const [id, n] of [['wago-221-412', 2], ['wago-221-413', 3], ['wago-221-415'
 finish('gen-mains-loads.mjs')
 ```
 
-`DATA` fields per id: Hi-Link `{ left, right, range, isolation, isolationProvenance? }`; lamp holders `{ earth, protection?, range, lampVolts, volts, amps? }`; fuse holder `{ volts, amps }`; Wago `{ volts, amps, conditions }`. Adjust `wu`, `hu` and the art to the real proportions once the datasheet is open; keep lamp holder and fuse holder art heights an even number of grid units (the two-lead geometry test enforces it).
+`DATA` fields per id: Hi-Link `{ left, right, range, isolation }`; lamp holders `{ earth, protection?, range, lampVolts, volts, amps? }`; fuse holder `{ volts, amps }`; Wago `{ volts, amps, conditions }`. Adjust `wu`, `hu` and the art to the real proportions once the datasheet is open; keep lamp holder and fuse holder art heights an even number of grid units (the two-lead geometry test enforces it).
 
 - [ ] **Step 5: Generate, validate, test**
 
@@ -4882,11 +6040,11 @@ git commit -m "Mains parts: HLK AC-DC modules, lamp holders, fuse holder, KCD1 r
 
 - [ ] **Step 8: Independent review (controller, not the implementer)**
 
-Reviewer checks pin order and names of both Hi-Link modules, their input ranges and the isolation class with the mapping rule applied, both lamp holders (shell on N, earth terminal, class, range), the fuse holder rating, the KCD1 switching rating, and each Wago rating with its conditions. Verdict per part.
+Reviewer checks pin order and names of both Hi-Link modules, their input ranges and the isolation class against the datasheet line that states it (none inferred), both lamp holders (shell on N, earth terminal, class, range), the fuse holder rating, the KCD1 switching rating, and each Wago rating with its conditions. Verdict per part. A MISMATCH or NOT VERIFIED verdict blocks the next batch until it is fixed, or brought to Michael and decided.
 
 ---
 
-### Task 15: Parts batch 4: terminal blocks
+### Task 19: Parts batch 4: terminal blocks
 
 **Files:**
 - Create: `scripts/gen-mains-terminals.mjs`
@@ -4894,7 +6052,7 @@ Reviewer checks pin order and names of both Hi-Link modules, their input ranges 
 - Modify: `src/format/mainsParts.test.ts` (append), `docs/PRD.md`
 
 **Interfaces:**
-- Consumes: `rating` (Task 11).
+- Consumes: `rating` (Task 15).
 - Produces (category Mains, designator X): a pluggable terminal block per position count, each position `n` a screw (wire) terminal on the left and its PCB header pin `n pcb` (label `n`) on the right, joined by `internal` (the header side to plug side zero edge, spec 1.2). Phoenix parts carry `datasheet` ratings, each with the `conditions` Phoenix ties it to; the clones carry `unverified` ratings.
 
 Expected Phoenix item numbers (verify every one on phoenixcontact.com; the datasheet wins; record plug and header numbers in the module name and `source`):
@@ -4907,29 +6065,58 @@ Expected Phoenix item numbers (verify every one on phoenixcontact.com; the datas
 | 5 | 1757048 | 1757271 | 1803604 | 1803303 |
 | 6 | 1757051 | 1757284 | 1803617 | 1803316 |
 
-- [ ] **Step 1: Look up and record (implementer)**
+- [ ] **Step 1: Take every value from the evidence (no new lookups)**
 
-In `scripts/gen-mains-terminals.mjs` create `PHOENIX` with, per series (`mstb`, `mc`) and position count: `plug` and `header` item numbers, `url` (the item pages), and `ratings`: every nominal voltage the datasheet lists with its overvoltage category and pollution degree (for example `{ volts, amps, conditions: 'for overvoltage category III and pollution degree 2' }`), in the datasheet's order. Create `CLONE` with, per clone id, the vendor listing URL and its stated voltage and current. A value not in the datasheet is left out.
+At the top of `scripts/gen-mains-terminals.mjs`:
+
+```js
+import { EVIDENCE } from '../src/format/mainsEvidence.ts'
+const PHOENIX = { mstb: {}, mc: {} }
+for (const [series, pitch] of [['mstb', '508'], ['mc', '381']])
+  for (let n = 2; n <= 6; n++) {
+    const e = EVIDENCE[`terminal-block-${series}-${pitch}-${n}`]
+    PHOENIX[series][n] = { plug: e.extra.plug.value, header: e.extra.header.value, url: e.sources.join(' '), ratings: e.ratings.map((r) => ({ volts: r.volts, amps: r.amps, conditions: r.conditions })) }
+  }
+const CLONE = Object.fromEntries(['terminal-block-kf2edg-508-2', 'terminal-block-kf2edg-508-3', 'terminal-block-kf301-500-2', 'terminal-block-kf301-500-3'].map((id) => {
+  const e = EVIDENCE[id]
+  return [id, { url: e.sources.join(' '), volts: e.ratings[0].volts, amps: e.ratings[0].amps }]
+}))
+```
+
+Before generating a part, check its evidence: `verdict: 'VERIFIED'`, or a NOT VERIFIED item Michael has decided on (the evidence log records his decision: generate with a value left unknown, or do not generate). A part he has not cleared is not generated in this task, and its test cases are removed from this batch with a note in the commit message. No value here is looked up again or filled from this plan.
 
 - [ ] **Step 2: Write the failing test (append)**
 
 ```ts
 describe('built-in terminal blocks', () => {
+  // The Phoenix item numbers Task 0 confirmed (plug, header), pinned here so a slip in the evidence or
+  // the generator fails; if Task 0 corrected a number, this table carries the corrected one.
+  const ITEMS: Record<string, Record<number, [string, string]>> = {
+    mstb: { 2: ['1757019', '1757242'], 3: ['1757022', '1757255'], 4: ['1757035', '1757268'], 5: ['1757048', '1757271'], 6: ['1757051', '1757284'] },
+    mc: { 2: ['1803578', '1803277'], 3: ['1803581', '1803280'], 4: ['1803594', '1803293'], 5: ['1803604', '1803303'], 6: ['1803617', '1803316'] },
+  }
   for (const [series, pitch] of [['mstb', '508'], ['mc', '381']])
     for (let n = 2; n <= 6; n++)
-      it(`terminal-block-${series}-${pitch}-${n}: n positions, each screw joined to its header pin, Phoenix ratings with their conditions`, () => {
-        const m = load(`terminal-block-${series}-${pitch}-${n}`)
+      it(`terminal-block-${series}-${pitch}-${n}: its item numbers, n positions joined to their header pins, every Phoenix rating with its conditions`, () => {
+        const id = `terminal-block-${series}-${pitch}-${n}`
+        const m = load(id)
+        const [plug, header] = ITEMS[series][n]
+        expect(m.name).toContain(`plug ${plug}, header ${header}`)
+        expect([EVIDENCE[id].extra?.plug?.value, EVIDENCE[id].extra?.header?.value]).toEqual([plug, header])
         const pos = Array.from({ length: n }, (_, i) => String(i + 1))
-        expect(m.name).toMatch(/Phoenix Contact .*\d{7}/)
         expect(m.internal).toEqual(pos.map((p) => [p, `${p} pcb`]))
         const ratings = mainsOf(m).ratings
+        expect(ratings.map((r) => [r.volts, r.amps, r.conditions])).toEqual(EVIDENCE[id].ratings!.map((r) => [r.volts, r.amps ?? null, r.conditions ?? null]))
         expect(ratings.length).toBeGreaterThan(0)
         for (const r of ratings) expect(r).toMatchObject({ kind: 'terminal', service: 'ac', provenance: 'datasheet' })
         expect(ratings.every((r) => r.conditions)).toBe(true)
       })
   for (const id of ['terminal-block-kf2edg-508-2', 'terminal-block-kf2edg-508-3', 'terminal-block-kf301-500-2', 'terminal-block-kf301-500-3'])
-    it(`${id}: a clone, its rating unverified`, () => {
-      expect(mainsOf(load(id)).ratings.every((r) => r.provenance === 'unverified')).toBe(true)
+    it(`${id}: a clone with a rating, and that rating unverified`, () => {
+      const ratings = mainsOf(load(id)).ratings
+      expect(ratings.length).toBeGreaterThan(0)
+      expect(ratings.every((r) => r.provenance === 'unverified')).toBe(true)
+      expect(ratings[0].volts).toBe(EVIDENCE[id].ratings![0].volts)
     })
 })
 ```
@@ -4942,7 +6129,7 @@ describe('built-in terminal blocks', () => {
 // Generates the built-in terminal blocks (category Mains): Phoenix Contact MSTB 2,5 (5.08 mm) and
 // MC 1,5 (3.81 mm) pluggable blocks, 2 to 6 positions, each drawn as the plug with its header; and
 // the common KF2EDG (5.08 mm) and KF301 (5.0 mm) clones, whose ratings are unverified. Every Phoenix
-// item number and rating comes from PHOENIX (Step 1 of Task 15), each rating with the conditions
+// item number and rating comes from src/format/mainsEvidence.ts (Task 0), each rating with the conditions
 // Phoenix states for it.
 //
 // Run from the repo root: `node scripts/gen-mains-terminals.mjs` (add `--check` to compare with modules/).
@@ -4950,7 +6137,7 @@ import { finish } from './lib/gen-output.mjs'
 import { moduleJson, r, side, write } from './lib/parts.mjs'
 import { rating } from './lib/mains.mjs'
 
-// PHOENIX and CLONE: recorded in Step 1.
+// PHOENIX and CLONE: built from the evidence, as in Step 1.
 
 const GREEN = '#2F9E6E', GREEN_DARK = '#1F7A55', BLUE = '#2F7FD0', METAL = '#C9CED6', SLOT = '#2B2F36'
 
@@ -4989,7 +6176,7 @@ finish('gen-mains-terminals.mjs')
 
 (A KF301 is a fixed PCB terminal, not pluggable; its `n pcb` pins are its PCB legs, which is the same zero join.)
 
-- [ ] **Step 5: Generate, validate, test** (`node scripts/gen-mains-terminals.mjs && npm run validate && npm run check:gen && npm test`: PASS).
+- [ ] **Step 5: Generate, validate, test** (`node scripts/gen-mains-terminals.mjs && npm run validate && npm run check:gen && npx tsc --noEmit && npm test`: PASS).
 
 - [ ] **Step 6: Look at them**
 
@@ -5006,11 +6193,11 @@ git commit -m "Mains parts: Phoenix and clone terminal blocks" -m "Co-Authored-B
 
 - [ ] **Step 8: Independent review (controller, not the implementer)**
 
-Reviewer checks every Phoenix item number (plug and header) against phoenixcontact.com, each rating and its conditions, and the clones' `unverified` provenance. Verdict per part.
+Reviewer checks every Phoenix item number (plug and header) against phoenixcontact.com, each rating and its conditions, and the clones' `unverified` provenance. Verdict per part. A MISMATCH or NOT VERIFIED verdict blocks the next batch until it is fixed, or brought to Michael and decided.
 
 ---
 
-### Task 16: Parts batch 5: relay module contacts, the Fotek SSR, and the spec's circuits
+### Task 20: Parts batch 5: relay module contacts, the Fotek SSR, and the spec's circuits
 
 **Files:**
 - Modify: `scripts/gen-outputs.mjs:56-95` (relay module electrical), append the Fotek SSR
@@ -5020,19 +6207,34 @@ Reviewer checks every Phoenix item number (plug and header) against phoenixconta
 - Modify: `docs/PRD.md`
 
 **Interfaces:**
-- Consumes: every part of Tasks 12 to 15; `checkDiagram`.
+- Consumes: every part of Tasks 16 to 19; `checkDiagram`.
 - Produces:
   - `relay-module-1ch-5v`: pins unchanged; `electrical` gains `contacts: [{ id: 'k', kind: 'relay', poles: [{ com: 'COM', no: 'NO', nc: 'NC' }] }]`, `domains: [{ name: 'contacts', pins: ['NO', 'COM', 'NC'], kind: 'mains' }, { name: 'control', pins: ['IN', 'DC-', 'DC+'], kind: 'selv' }]`, `isolation` from the Songle SRD datasheet with `isolationProvenance: 'unverified'`, and the Songle contact ratings as `switching` ratings with `provenance: 'unverified'` (spec 1.4: the relay's switching rating, not the module's insulation).
   - `ssr-fotek-25da` (K, category Mains): load terminals `1`, `2` (the contact pole, an OFF state that leaks), control terminals `3` (+, `input`) and `4` (-, `ground`) in the physical order on the case; `contacts: [{ id: 'k', kind: 'ssr', poles: [{ com: '1', no: '2' }] }]`; domains; isolation; a `switching` rating whose `conditions` state the heatsink and derating; the control range and off-state leakage in the name and a comment.
 
 | Part | Source | Values to record (field) |
 | --- | --- | --- |
-| Relay module | Songle SRD-05VDC-SL-C datasheet (songlerelay.com), plus the module listings already in `source` | contact ratings AC and DC (`ratings`, `unverified`), coil-to-contact dielectric strength (comment) and the class it supports (`isolation`, with the Task 14 mapping rule) |
-| Fotek SSR-25DA | the current Fotek SSR series datasheet (fotek.com.tw); record its revision and date | control input range (name: "4-32 VDC" per the spec if the current revision says so), load voltage range and current (`ratings`), derating and heatsink note (`conditions`), off-state leakage (comment), dielectric strength (`isolation` by the mapping rule), terminal numbering on the case (`pins`) |
+| Relay module | Songle SRD-05VDC-SL-C datasheet (songlerelay.com), plus the module listings already in `source` | contact ratings AC and DC (`ratings`, `unverified`), coil-to-contact insulation class only if the datasheet states it (`isolation`, else `"unknown"`; a dielectric test voltage goes in a comment, never into the class) |
+| Fotek SSR-25DA | the current Fotek SSR series datasheet (fotek.com.tw); record its revision and date | control input range (name: "4-32 VDC" per the spec if the current revision says so), load voltage range and current (`ratings`), derating and heatsink note (`conditions`), off-state leakage (comment), the stated insulation class between input and output (`isolation`, else `"unknown"`; the dielectric strength goes in a comment), terminal numbering on the case (`pins`) |
 
-- [ ] **Step 1: Look up and record (implementer)**
+- [ ] **Step 1: Take every value from the evidence (no new lookups)**
 
-Add `SONGLE` and `FOTEK` constant objects to `scripts/gen-outputs.mjs` with those fields, each value with its datasheet line in a comment.
+In `scripts/gen-outputs.mjs`, near the top:
+
+```js
+import { EVIDENCE } from '../src/format/mainsEvidence.ts'
+const relayEv = EVIDENCE['relay-module-1ch-5v']
+const ssrEv = EVIDENCE['ssr-fotek-25da']
+/** The Songle relay's contact ratings and its stated coil-to-contact class; "unknown" when the datasheet states none. */
+const SONGLE = { isolation: relayEv.isolation?.value ?? 'unknown', ratings: relayEv.ratings.map((r) => ({ service: r.service, volts: r.volts, amps: r.amps })) }
+const FOTEK = {
+  url: ssrEv.sources.join(' '), top: ssrEv.pins.value.top, bottom: ssrEv.pins.value.bottom,
+  control: ssrEv.extra.control.value, load: ssrEv.extra.load.value, leakage: ssrEv.extra.leakage.value,
+  amps: ssrEv.ratings[0].amps, maxVolts: ssrEv.ratings[0].volts, conditions: ssrEv.ratings[0].conditions, isolation: ssrEv.isolation?.value ?? 'unknown',
+}
+```
+
+Before generating a part, check its evidence: `verdict: 'VERIFIED'`, or a NOT VERIFIED item Michael has decided on (the evidence log records his decision: generate with a value left unknown, or do not generate). A part he has not cleared is not generated in this task, and its test cases are removed from this batch with a note in the commit message. No value here is looked up again or filled from this plan. The relay module keeps `isolationProvenance: 'unverified'` (Resolution 26: a clone board carrying its relay's stated class).
 
 - [ ] **Step 2: Write the failing tests**
 
@@ -5194,8 +6396,8 @@ and append the SSR block (before `finish`):
 
 - [ ] **Step 5: Generate, validate, test**
 
-Run: `node scripts/gen-outputs.mjs && npm run validate && npm run check:gen && npm test`
-Expected: PASS, including `checks.circuits.test.ts` (the relay module on a DC-only sheet: no mains findings) and the new circuits. If the relay circuit shows a `mains-to-low-voltage` error on the coil side (the Songle isolation recorded as `basic`), or the HLK circuit shows `rating-unverified` (isolation mapped with `unverified`), stop: the spec's expected results depend on those classes (Resolution 21). Report the datasheet lines; the controller takes it to Michael before any expected result changes.
+Run: `node scripts/gen-outputs.mjs && npm run validate && npm run check:gen && npx tsc --noEmit && npm test`
+Expected: PASS, including `checks.circuits.test.ts` (the relay module on a DC-only sheet: no mains findings) and the new circuits. The relay and HLK circuit expectations below are the spec's; they hold only if the evidence states adequate classes (Resolution 21). If Michael decided otherwise at Task 0, this task uses the expected results he approved, recorded in the evidence log; never change an expected result on your own.
 
 - [ ] **Step 6: Look at them**
 
@@ -5210,10 +6412,10 @@ git commit -m "Mains parts: relay module contacts, Fotek SSR-25DA, the spec circ
 
 - [ ] **Step 8: Independent review (controller, not the implementer)**
 
-Reviewer checks the Songle contact ratings and isolation line, the relay module's unchanged pins, the Fotek revision, terminal numbering, control range, load rating, derating condition, leakage and isolation. Verdict per part.
+Reviewer checks the Songle contact ratings and isolation line, the relay module's unchanged pins, the Fotek revision, terminal numbering, control range, load rating, derating condition, leakage and isolation. Verdict per part. A MISMATCH or NOT VERIFIED verdict blocks the next batch until it is fixed, or brought to Michael and decided.
 
 ---
-### Task 17: The look: identity colours, hazard outline, lightning markers, new-wire colour
+### Task 21: The look: identity colours, hazard outline, lightning markers, new-wire colour
 
 **Files:**
 - Modify: `src/format/diagram.ts:64-84` and `:694-696` (green-yellow two-colour wire, `wireStripe`, `isValidColor`)
@@ -5223,7 +6425,7 @@ Reviewer checks the Songle contact ratings and isolation line, the relay module'
 - Test: `src/format/mainsLook.test.ts`
 
 **Interfaces:**
-- Consumes: `analyseMainsCached` (`MainsAnalysis.conductorOf`, `hazardKeys`) (Task 5); `Region`, `Conductor` (Task 2).
+- Consumes: `analyseMainsCached` (`MainsAnalysis.conductorOf`, `hazardKeys`) (Task 5): the same cached analysis the checker reads, so drawing an edit never enumerates again; `Region`, `Conductor` (Task 2).
 - Produces:
   - In `diagram.ts`: `STRIPED_COLORS: Record<string, [string, string]>` (`'green-yellow': ['#2F9E6E', '#F4B400']`), `wireStripe(c: string | undefined): string | null`; `wireColor` and `isValidColor` accept `green-yellow`.
   - In `mainsLook.ts`: `IDENTITY_COLORS: Record<'us' | 'iec', Record<Conductor, string>>`, `schemeOf(region: Region | null): 'us' | 'iec'`, `identityColor(d: Diagram, ep: Endpoint): string | null`, `interface WireLook { color: string | null; hazard: boolean }`, `wireLooks(d: Diagram): Map<string, WireLook>`, `newWireColor(d: Diagram, from: Endpoint, to: Endpoint, fallback: string): string`.
@@ -5258,6 +6460,12 @@ describe('identity colours', () => {
   })
   it('Europe, UK and AU: L brown, N blue, PE green-yellow', () => {
     expect(['L', 'N', 'PE'].map((pin) => identityColor(eu, { part: 'xs1', pin }))).toEqual(['brown', 'blue', 'green-yellow'])
+  })
+  it('a node whose identity depends on the state has no colour (Resolution 19): never shown as PE when it can be L', () => {
+    // K1 COM is L while released (through NC) and PE while energized (through NO), never both.
+    const d = sheet([at('xs1', 'XS1', 't-outlet'), at('k1', 'K1', 't-relay', 200)], [w('xs1|L', 'k1|NC'), w('xs1|PE', 'k1|NO')])
+    expect(identityColor(d, { part: 'k1', pin: 'COM' })).toBeNull()
+    expect(identityColor(d, { part: 'k1', pin: 'NC' })).toBe('black')
   })
   it('a pin off mains has no identity colour, and a sheet without mains has none at all', () => {
     expect(identityColor(us, { part: 'u1', pin: 'IO' })).toBeNull()
@@ -5471,12 +6679,12 @@ In `src/editor/editor.css` nothing is needed for the paths (the SVG attributes c
 
 - [ ] **Step 4: Run the tests to verify they pass**
 
-Run: `npx vitest run src/format/mainsLook.test.ts src/format/diagram.test.ts` then `npm test` and `npm run build`.
+Run: `npx vitest run src/format/mainsLook.test.ts src/format/diagram.test.ts` then the gate `npx tsc --noEmit && npm test`, and `npm run build`.
 Expected: PASS.
 
 - [ ] **Step 5: Look at it**
 
-`npm run build`, open a sheet with a US and a Schuko outlet, cord plugs, a lamp and an earth wire through `shoot-parts.mjs` (or the Task 19 fixture) in light and dark; Read the images: identity colours right, the orange rim thin and clear of the ink, bolts small and not covering connectors, the green-yellow stripe readable.
+`npm run build`, open a sheet with a US and a Schuko outlet, cord plugs, a lamp and an earth wire through `shoot-parts.mjs` (or the Task 23 fixture) in light and dark; Read the images: identity colours right, the orange rim thin and clear of the ink, bolts small and not covering connectors, the green-yellow stripe readable.
 
 - [ ] **Step 6: Commit**
 
@@ -5487,7 +6695,7 @@ git commit -m "Mains: identity colours, hazard outline, lightning markers, new-w
 
 ---
 
-### Task 18: Honesty in the product: notice, badge, empty state, exports, PRD
+### Task 22: Honesty in the product: notice, badge, empty state, exports, PRD
 
 **Files:**
 - Modify: `src/format/mains.ts` (append `MAINS_NOTICE`, `hasMains`, `withSheetNotes`)
@@ -5502,10 +6710,10 @@ git commit -m "Mains: identity colours, hazard outline, lightning markers, new-w
 - Consumes: `mainsOf` (Task 2); `ProblemList`, `Sheet`.
 - Produces:
   - `MAINS_NOTICE = 'Mains wiring: Circuitoon checks the drawn connections only. It cannot check current, insulation, enclosures or local codes. Have mains work checked by a qualified person.'` (spec 6, verbatim).
-  - `hasMains(d: Pick<Diagram, 'parts' | 'modules'>): boolean`: a part whose module declares an AC source, sockets, a plug, an AC input, a load, leakage or a fuse. A relay, switch or terminal block alone does not count (they are used on low voltage too).
+  - `hasMains(d: Pick<Diagram, 'parts' | 'modules'>): boolean`: any mains part on the sheet (Resolution 23: a part whose module declares any mains data, a mains-rated relay, SSR or terminal block alone included). It is `hasMainsData` from Task 5.
   - `withSheetNotes(d: Diagram): Diagram`: the notice in `notes` when `hasMains`, out of it otherwise; the same object when nothing changes.
   - `Diagram.notes?: string[]`.
-  - `MainsNotice({ box })` in `render/Mains.tsx`.
+  - `MAINS_NOTICE_FONT = 9`, `noticeLines(text: string, width: number, fontSize?: number): string[]` (greedy word wrap with a conservative bold-glyph width of 0.62 em, so no line overruns `width`), `noticeHeight(lines: number): number`, and `MainsNotice({ box, text })` in `render/Mains.tsx`; `Sheet` reserves a footer band of `noticeHeight` below the drawing and grows its viewBox by it.
   - Empty state heading: `No problems found in the drawn connections.`
 
 - [ ] **Step 1: Write the failing tests**
@@ -5525,9 +6733,11 @@ import { Sheet } from '../render/Sheet.tsx'
 import { EditorStore } from '../editor/store.ts'
 import { ProblemList } from '../editor/Inspector.tsx'
 import { at, sheet, w } from './mains.testing.ts'
+import { MAINS_NOTICE_FONT, noticeHeight, noticeLines } from '../render/Mains.tsx'
 
 const mainsSheet = sheet([at('xs1', 'XS1', 't-outlet')], [])
 const relayOnly = sheet([at('k1', 'K1', 't-relay')], [])
+const noMains = sheet([at('u1', 'U1', 't-mcu')], [])
 const list = (d: ReturnType<typeof sheet>) => {
   const s = new EditorStore(d)
   return renderToStaticMarkup(createElement(ProblemList, { store: s, findings: checkDiagram(d) }))
@@ -5537,15 +6747,17 @@ describe('the mains notice', () => {
   it('says exactly what the spec says', () => {
     expect(MAINS_NOTICE).toBe('Mains wiring: Circuitoon checks the drawn connections only. It cannot check current, insulation, enclosures or local codes. Have mains work checked by a qualified person.')
   })
-  it('counts sources, plugs, converters, loads and fuses as mains; a relay alone is not', () => {
+  it('appears for any mains part, a mains-rated relay alone included (Resolution 23)', () => {
     expect(hasMains(mainsSheet)).toBe(true)
-    expect(hasMains(relayOnly)).toBe(false)
+    expect(hasMains(relayOnly)).toBe(true)
+    expect(hasMains(noMains)).toBe(false)
   })
   it('the Problems panel shows it with the new empty state, and not on a sheet without mains', () => {
     const html = list(mainsSheet)
     expect(html).toContain(MAINS_NOTICE)
     expect(html).toContain('No problems found in the drawn connections.')
-    const plain = list(relayOnly)
+    expect(list(relayOnly)).toContain(MAINS_NOTICE)
+    const plain = list(noMains)
     expect(plain).not.toContain(MAINS_NOTICE)
     expect(plain).toContain('No problems found in the drawn connections.')
   })
@@ -5556,16 +6768,27 @@ describe('the mains notice', () => {
     expect(html).toContain('Mains checks did not finish: 17 switches and relays.')
     expect(html).not.toContain('No problems found')
   })
-  it('is drawn into the sheet (what image, print and PDF exports render)', () => {
-    const html = renderToStaticMarkup(createElement(Sheet, { diagram: mainsSheet, box: { x: 0, y: 0, w: 400, h: 200 }, label: 'm' }))
-    expect(html).toContain('Mains wiring: Circuitoon checks the drawn connections only.')
-    expect(renderToStaticMarkup(createElement(Sheet, { diagram: relayOnly, box: { x: 0, y: 0, w: 400, h: 200 }, label: 'r' }))).not.toContain('Mains wiring')
+  it('is drawn into the sheet, whole, in a footer the sheet reserves below the drawing (what image, print and PDF exports render)', () => {
+    for (const w of [160, 400, 1200]) {
+      const html = renderToStaticMarkup(createElement(Sheet, { diagram: mainsSheet, box: { x: 0, y: 0, w, h: 200 }, label: 'm' }))
+      const lines = noticeLines(MAINS_NOTICE, w - 32)
+      // Every word, in order, across the drawn lines.
+      expect(lines.join(' ')).toBe(MAINS_NOTICE)
+      for (const l of lines) expect(html).toContain(`>${l}</text>`)
+      // No line wider than the band, by the conservative measure.
+      for (const l of lines) expect(l.length * 0.62 * MAINS_NOTICE_FONT).toBeLessThanOrEqual(w - 32)
+      // The viewBox grows by the footer, so the notice never covers the drawing.
+      expect(html).toContain(`viewBox="0 0 ${w} ${200 + noticeHeight(lines.length)}"`)
+    }
+    const plain = renderToStaticMarkup(createElement(Sheet, { diagram: noMains, box: { x: 0, y: 0, w: 400, h: 200 }, label: 'r' }))
+    expect(plain).not.toContain('Mains wiring')
+    expect(plain).toContain('viewBox="0 0 400 200"')
   })
   it('is stored in exported JSON as a sheet note, once, and removed when the sheet has no mains part', () => {
     const out = withSheetNotes(mainsSheet)
     expect(out.notes).toEqual([MAINS_NOTICE])
     expect(withSheetNotes(out)).toBe(out)
-    expect(withSheetNotes({ ...relayOnly, notes: [MAINS_NOTICE, 'mine'] }).notes).toEqual(['mine'])
+    expect(withSheetNotes({ ...noMains, notes: [MAINS_NOTICE, 'mine'] }).notes).toEqual(['mine'])
     const r = validateDiagram(JSON.parse(serializeDiagram(out)))
     expect(r.ok && r.diagram.notes).toEqual([MAINS_NOTICE])
   })
@@ -5584,23 +6807,14 @@ Expected: FAIL.
 
 - [ ] **Step 3: Implement**
 
-Append to `src/format/mains.ts` (import `moduleOf` from `./diagram.ts`, `mainsOf` from `./mainsModel.ts`):
+Append to `src/format/mains.ts`:
 
 ```ts
 /** Spec section 6, verbatim. */
 export const MAINS_NOTICE = 'Mains wiring: Circuitoon checks the drawn connections only. It cannot check current, insulation, enclosures or local codes. Have mains work checked by a qualified person.'
 
-/**
- * A sheet with a mains part: an AC source, an outlet, a plug-in device, a converter, a load or a fuse.
- * A relay, a switch or a terminal block alone does not count: they are just as often on low voltage.
- */
-export function hasMains(d: Pick<Diagram, 'parts' | 'modules'>): boolean {
-  return d.parts.some((p) => {
-    const m = moduleOf(d, p.module)
-    const i = m && mainsOf(m)
-    return !!i && (i.acSources.length > 0 || i.sockets.length > 0 || !!i.plug || !!i.acInput || i.conducts.length > 0 || i.protective.length > 0)
-  })
-}
+/** Spec 6: "a sheet with any mains part" (Resolution 23): any part whose module declares mains data. */
+export const hasMains = hasMainsData
 
 /** The sheet as exported: the notice in `notes` when it has a mains part, out of it otherwise. Same object when nothing changes. */
 export function withSheetNotes(d: Diagram): Diagram {
@@ -5640,23 +6854,55 @@ and apply it where the fixed diagram is built (`if (notesFix !== null) diagram =
 Append to `src/render/Mains.tsx`:
 
 ```tsx
-/** The mains notice, drawn into the sheet at the bottom of the visible area (every export renders it). */
+export const MAINS_NOTICE_FONT = 9
+const LINE = 12
+/** Conservative width of one bold glyph, in em: a line measured with it never overruns its band. */
+const GLYPH = 0.62
+
+/** Greedy word wrap of `text` into lines no wider than `width` px at `fontSize` (one word longer than that stays on its own line). */
+export function noticeLines(text: string, width: number, fontSize = MAINS_NOTICE_FONT): string[] {
+  const max = Math.max(1, Math.floor(width / (GLYPH * fontSize)))
+  const lines: string[] = []
+  let cur = ''
+  for (const word of text.split(' ')) {
+    const next = cur ? `${cur} ${word}` : word
+    if (next.length <= max || !cur) cur = next
+    else {
+      lines.push(cur)
+      cur = word
+    }
+  }
+  if (cur) lines.push(cur)
+  return lines
+}
+
+/** The footer band a notice of `lines` lines needs, in px. */
+export const noticeHeight = (lines: number) => lines * LINE + 20
+
+/** The mains notice in the footer band the sheet reserves below `box` (spec 6: every export shows it, whole). */
 export function MainsNotice({ box, text }: { box: { x: number; y: number; w: number; h: number }; text: string }) {
-  const cut = text.indexOf(' It cannot')
-  const lines = [text.slice(0, cut), text.slice(cut + 1)]
-  const y = box.y + box.h - 30
+  const lines = noticeLines(text, box.w - 32)
+  const top = box.y + box.h
   return (
     <g data-mains-notice="" pointerEvents="none">
-      <rect x={box.x + 8} y={y - 12} width={Math.min(box.w - 16, 560)} height={34} rx={4} fill="#FFF4E5" stroke={HAZARD} strokeWidth={1.2} />
+      <rect x={box.x + 8} y={top + 4} width={box.w - 16} height={noticeHeight(lines.length) - 8} rx={4} fill="#FFF4E5" stroke={HAZARD} strokeWidth={1.2} />
       {lines.map((l, i) => (
-        <text key={i} x={box.x + 16} y={y + 2 + i * 12} fontSize={9} fontWeight={700} fill={INK}>{l}</text>
+        <text key={i} x={box.x + 16} y={top + 18 + i * LINE} fontSize={MAINS_NOTICE_FONT} fontWeight={700} fill={INK}>{l}</text>
       ))}
     </g>
   )
 }
 ```
 
-In `src/render/Sheet.tsx`: `{hasMains(diagram) && <MainsNotice box={box} text={MAINS_NOTICE} />}` as the last child of the `<svg>`.
+In `src/render/Sheet.tsx`: reserve the footer and draw the notice in it:
+
+```tsx
+  const mains = hasMains(diagram)
+  const footer = mains ? noticeHeight(noticeLines(MAINS_NOTICE, box.w - 32).length) : 0
+  // ...the <svg> gets viewBox={`${box.x} ${box.y} ${box.w} ${box.h + footer}`}, the paper and grid rects keep height box.h,
+  // and the last child is:
+  {mains && <MainsNotice box={box} text={MAINS_NOTICE} />}
+```
 
 In `src/editor/Inspector.tsx` `ProblemList`:
 - compute `const notice = hasMains(store.getState().diagram) ? <p className="mains-notice" role="note">{MAINS_NOTICE}</p> : null`;
@@ -5685,7 +6931,7 @@ In `docs/PRD.md`: add a "Mains wiring" section stating the notice verbatim, that
 
 - [ ] **Step 4: Run the tests to verify they pass**
 
-Run: `npx vitest run src/format/mainsNotice.test.ts src/editor/problems.failure.test.ts` then `npm test` and `npm run build`.
+Run: `npx vitest run src/format/mainsNotice.test.ts src/editor/problems.failure.test.ts` then the gate `npx tsc --noEmit && npm test`, and `npm run build`.
 Expected: PASS.
 
 - [ ] **Step 5: Commit**
@@ -5697,14 +6943,14 @@ git commit -m "Mains: persistent notice, badge, honest empty state, notice in ex
 
 ---
 
-### Task 19: Browser check `check:mains-ui`
+### Task 23: Browser check `check:mains-ui`
 
 **Files:**
 - Create: `scripts/check-mains-ui.mjs`
 - Modify: `package.json` (`"check:mains-ui": "node scripts/check-mains-ui.mjs"`)
 
 **Interfaces:**
-- Consumes: the built app (`npm run build`), the parts of Tasks 12 to 16, `.wire-color`, `.wire-hazard`, `[data-bolt]`, `.seat-ok`, `.seat-bad`, `.mains-badge`, `.mains-notice`, `.print-notice`, `[data-legs] circle`.
+- Consumes: the built app (`npm run build`), the parts of Tasks 16 to 20, `.wire-color`, `.wire-hazard`, `[data-bolt]`, `.seat-ok`, `.seat-bad`, `.mains-badge`, `.mains-notice`, `.print-notice`, `[data-legs] circle`.
 - Produces: `npm run check:mains-ui`, exit 1 on any failed check or page error; light and dark screenshots of each state in `--out`.
 
 - [ ] **Step 1: Write the script**
@@ -5832,6 +7078,8 @@ for (const scheme of ['light', 'dark']) {
 
   // The notice: Problems panel and toolbar badge.
   check((await page.locator('.mains-notice').textContent()) === NOTICE, `${scheme}: the Problems panel shows the mains notice`)
+  // The panel's notice is shown in full, never collapsed.
+  check((await page.locator('.mains-notice').isVisible()), `${scheme}: the notice is visible, not collapsed`)
   check((await page.locator('.mains-badge').count()) === 1, `${scheme}: the toolbar shows the mains badge`)
   await shot('mains-panel', page.locator('.inspector'))
 
@@ -5944,39 +7192,28 @@ git commit -m "Mains: browser check check:mains-ui" -m "Co-Authored-By: Claude O
 
 ---
 
-### Task 20: Performance budgets and the final verification
+### Task 24: Final performance budgets and verification
 
 **Files:**
-- Create: `src/format/mains.perf.test.ts`
-- Modify: `src/format/checks.perf.test.ts` (assert the no-mains sheets build no mains analysis)
+- Modify: `src/format/mains.perf.test.ts` (created in Task 11; append the full sheet on built-in parts)
+- Modify: `src/format/checks.perf.test.ts` (the no-mains sheets never start a mains analysis)
 
 **Interfaces:**
-- Consumes: everything.
+- Consumes: everything; `median` (Task 11, same file); `hasMainsData`, `analyseMains` (Task 5); `wireLooks` (Task 21).
 - Produces: the measured budgets below, as tests.
 
 Budgets (median of the timed runs, a fresh parts array each run as in `checks.perf.test.ts`):
-- The two existing 200-part sheets without mains: 20 ms or less (unchanged tests), and `analyseMains` returns `null` on them.
-- A realistic mains sheet with 16 candidate contact groups (65,536 states, exhaustive): 300 ms or less for `checkDiagram`.
+- The two existing 200-part sheets without mains: 20 ms or less (unchanged tests); `hasMainsData` is false on them, so the analysis returns before plugs, netlist or graph.
+- A realistic mains sheet with 16 candidate contact groups in one enumeration unit (65,536 states, exhaustive), two converters and a 150-part DC section: 300 ms or less for `checkDiagram`, and the renderer's `wireLooks` right after it reuses the same analysis (under 5 ms).
 - The same sheet with 4 candidate groups: 30 ms or less.
 
 - [ ] **Step 1: Write the tests**
 
-In `src/format/checks.perf.test.ts`, in the first budget test, after `const d = sheet(parts, connections)`, add `expect(analyseMains(d)).toBeNull()` (import `analyseMains` from `./mains.ts`).
+In `src/format/checks.perf.test.ts`, in the first budget test, after `const d = sheet(parts, connections)`, add `expect(hasMainsData(d)).toBe(false)` and `expect(analyseMains(d)).toBeNull()` (import both from `./mains.ts`).
 
-Create `src/format/mains.perf.test.ts`:
+Append to `src/format/mains.perf.test.ts` (add `import type { ModuleDef } from './module.ts'`, `import { load, pinsOf } from './builtinModules.testing.ts'` and `import { wireLooks } from './mainsLook.ts'` to its imports):
 
 ```ts
-// Mains checks at the size a real project reaches (spec 7): 16 switches, relays and SSRs, each
-// switching a fused lamp from two outlets, two AC-DC modules feeding a DC section of 150 parts and
-// 400 wires. Every state is enumerated; the checker stays off the drag path (problems.ts), so the
-// budget is per edit.
-import { describe, expect, it } from 'vitest'
-import { checkDiagram } from './checks.ts'
-import type { Connection, Diagram, PartInstance } from './diagram.ts'
-import type { ModuleDef } from './module.ts'
-import { analyseMains } from './mains.ts'
-import { load, pinsOf } from './builtinModules.testing.ts'
-
 const ids = ['outlet-us-5-15r-duplex', 'plug-us-5-15p', 'rocker-switch-kcd1', 'relay-module-1ch-5v', 'ssr-fotek-25da', 'fuse-holder-5x20-inline', 'lamp-holder-e26', 'hlk-pm01',
   'esp32-devkitc-v4', 'bme280-module-6pin', 'oled-ssd1306-096-i2c', 'resistor', 'led']
 const mods: Record<string, ModuleDef> = Object.fromEntries(ids.map((id) => [id, load(id)]))
@@ -6001,7 +7238,8 @@ function build(groups: number): Diagram {
   const kinds = [['rocker-switch-kcd1', '1', '2', 'S'], ['relay-module-1ch-5v', 'COM', 'NO', 'K'], ['ssr-fotek-25da', '1', '2', 'K']] as const
   for (let g = 0; g < groups; g++) {
     const [module, a, b, prefix] = g < 8 ? kinds[0] : g < 12 ? kinds[1] : kinds[2]
-    const k = g % 2
+    // Every group on the first plug: one enumeration unit of 16 groups, the worst case.
+    const k = 0
     const s = at(`g${g}`, `${prefix}${g + 1}`, module, 300 + g * 120, 600)
     const f = at(`f${g}`, `F${g + 1}`, 'fuse-holder-5x20-inline', 300 + g * 120, 800, { values: { fuseRating: { value: 2, unit: 'A' } } })
     const e = at(`e${g}`, `E${g + 1}`, 'lamp-holder-e26', 300 + g * 120, 1000)
@@ -6025,25 +7263,22 @@ function build(groups: number): Diagram {
   return { format: 'circuitoon-diagram/1', title: 't', modules: mods, parts, connections }
 }
 
-const median = (d: Diagram, runs: number) => {
-  const t: number[] = []
-  for (let i = 0; i < runs; i++) {
-    const next = { ...d, parts: [...d.parts] }
-    const s = performance.now()
-    checkDiagram(next)
-    t.push(performance.now() - s)
-  }
-  t.sort((a, b) => a - b)
-  return t[Math.floor(runs / 2)]
-}
-
 describe('mains checks on a realistic sheet', () => {
   it('enumerates all 65,536 states of 16 contact groups in 300 ms or less (median)', { timeout: 30_000 }, () => {
     const d = build(16)
     const a = analyseMains(d)!
     expect(a.complete).toBe(true)
     expect(checkDiagram(d).filter((f) => f.rule === 'mains-incomplete')).toEqual([])
-    expect(median(d, 5)).toBeLessThanOrEqual(300)
+    const ms = median(d, 5)
+    console.log(`mains full sheet: ${ms.toFixed(1)} ms median`)
+    expect(ms).toBeLessThanOrEqual(300)
+  })
+  it('the renderer reuses the analysis the checker made for the same edit', { timeout: 30_000 }, () => {
+    const d = build(16)
+    checkDiagram(d)
+    const s = performance.now()
+    wireLooks(d)
+    expect(performance.now() - s).toBeLessThan(5)
   })
   it('checks the same sheet with 4 contact groups in 30 ms or less (median)', () => {
     expect(median(build(4), 13)).toBeLessThanOrEqual(30)
@@ -6056,12 +7291,12 @@ describe('mains checks on a realistic sheet', () => {
 - [ ] **Step 2: Run them**
 
 Run: `npx vitest run src/format/mains.perf.test.ts src/format/checks.perf.test.ts`
-Expected: PASS. If the 16-group budget fails, profile (`node --cpu-prof`) and optimise without ever skipping a state: move per-state work to the `relevant` nodes only (already so), precompute per node the watched terminals, requirements and grounds once (already cached per `Prepared`), avoid allocating in `report` after the first sighting, and skip rules that have nothing to look at (no loads, no requirements, no grounds). Re-measure; the budget stays at 300 ms.
+Expected: PASS. If the 16-group budget fails here but Task 11's passed, the cost is in what the built-in parts add (more terminals per node, the DC section): profile (`node --cpu-prof`), then apply Task 11 Step 3 if it is not in yet, and cache any per-view list a rule rebuilds per state. Never skip a state; if it still misses, stop and report the profile to the controller. The budget stays at 300 ms.
 
 - [ ] **Step 3: Final verification (all must pass)**
 
 ```bash
-npm run validate && npm run check:gen && npm test && npm run build && npm run check:problems-ui && npm run check:warnings-ui && npm run check:cables-ui && npm run check:mains-ui && node scripts/perf-breadboard.mjs
+npm run validate && npm run check:gen && npx tsc --noEmit && npm test && npm run build && npm run check:problems-ui && npm run check:warnings-ui && npm run check:cables-ui && npm run check:mains-ui && node scripts/perf-breadboard.mjs
 ```
 
 Expected: every command exits 0; `perf-breadboard.mjs` reports its frame budgets (median 17 ms or less, p95 33 ms or less) met, which shows the mains look did not touch the drag path. Search the branch for the em dash character (U+2014): `git grep -nP '\x{2014}' -- src scripts docs modules .claude` must print nothing.
@@ -6075,107 +7310,83 @@ git commit -m "Mains: performance budgets" -m "Co-Authored-By: Claude Opus 5.5 (
 
 - [ ] **Step 5: Review before shipping (controller)**
 
-The controller runs the `consult-astra` skill on the whole `mains` branch (spec 7: Astra reviews the build before shipping), weighs each finding, fixes what it agrees with and reports the rest to Michael; confirms every parts batch has a MATCHES verdict from its independent review; records what was learned in Michael's vault (`Projects/` Circuitoon note: the mains model, the new generators, the budgets) per his CLAUDE.md. Shipping itself is the `circuitoon-ship` skill, after Michael says so.
+The controller runs the `consult-astra` skill on the whole `mains` branch (spec 7: Astra reviews the build before shipping), weighs each finding, fixes what it agrees with and reports the rest to Michael; confirms every parts batch has a MATCHES verdict (or a decision from Michael) for every part from its independent review; records what was learned in Michael's vault (`Projects/` Circuitoon note: the mains model, the new generators, the budgets) per his CLAUDE.md. Shipping itself is the `circuitoon-ship` skill, after Michael says so.
 
 ---
 
 ## Spec coverage
 
-| Spec requirement | Task |
-| --- | --- |
-| 1.1 AC sources: `acSources` with live, neutral, earth terminals; each outlet its own source, unknown relative phase | 2 (fields), 3 (sources), 6 (cross-source L-L) |
-| 1.1 `acVoltage` param (VAC, 1 to 1000, region default, separate from `voltage`), `ac.hz` display data | 1, 2, 12 |
-| 1.1 An AC input's range is a requirement, never an amplitude | 3 (converter input is a load edge, not a source), 5 |
-| 1.2 Typed edges: zero (nets, internal, terminal blocks, Wago, mated contacts, closed contacts), protective, load, leakage, isolated | 3, 10 (mated contacts), 14, 15 |
-| 1.2 Undeclared mains terminal: conservative, `data-missing` | 3 (energize edges), 7 (rule 12) |
-| 1.2 Identity closure; energization closure; hazardous node | 3 |
-| 1.2 Terminal requirements `mains` L, N, PE, line | 2, 8 |
-| 1.3 Domains, isolation, protective separation (reinforced, double, basic plus screen), SELV and PELV classification, earthing never substitutes | 2 (`isolationAdequate`), 3, 6 |
-| 1.3 PELV keeps DC checks | 5 (only hazardous nets are skipped), 6 (test) |
-| 1.3 Converter availability powered, unpowered, unknown with the exact rules; gates `sourceOf` and no-power's passive feed; messages | 5 |
-| 1.4 Ratings with relevance then adequacy, the four classes, conditions, provenance, per exact assembly | 2, 7, 14, 15, 16 |
-| 1.5 Contact groups: switch, relay (COM-NC released, COM-NO energized), linked poles, SSR OFF leakage | 2, 3 |
-| 1.5 Candidates from possible connectivity; exhaustive up to 16; `mains-incomplete` beyond, no sampling, no clean claim | 4, 5, 9, 18 |
-| 1.5 Findings name their state | 4 (`statePhrase`), 5 (`finishStates`) |
-| 1.6 Protection class 1 and 2, class 1 PE terminal; 3-lead and 2-lead cord plugs | 2, 8, 13 |
-| 1.6 `bond: "pe"`; undeclared DC ground on PE warns | 2, 8 |
-| 1.6 Protective conductors: every parallel and redundant path, never through a low-voltage pin | 8 |
-| 1.7 Fuse holders: protective edge, `fuseRating` (optional), fitted setting; `settings` field validated, bad settings dropped with a warning | 1, 2, 3, 9, 14 |
-| 1.7 UK integral BS 1362 fuse in plug-in devices and cord plugs | 10 (fixture), 13 |
-| 1.7 Outlets assumed on a branch breaker | 9 (rule 8 only on the project's own wiring) |
-| 1.8 Cable rule on hazardous and protective wires; unsuitable ends and 24 AWG or thinner; `cable-unverified` wording | 9 |
-| 2 Plug profiles, only profile contacts are mount legs | 2, 10 |
-| 2 Sockets, every hole group in one socket, never across sockets | 2, 10 |
-| 2 Compatibility table with profiles, orientations and mapping; the listed pairs | 10 |
-| 2 Existing behaviour: obscured and partial plug nothing, invalid mounts not carried, partial never safe | 10 |
-| 2 Stylized on-grid spacing, real dimensions cited in generators | 10, 12, 13 |
-| 3 Mains nodes never enter the DC solver; DC rules skip mains pins | 5 |
-| 3 Rule 1 mains-to-low-voltage | 6 |
-| 3 Rule 2 mains-short (L-N, L-PE) | 6 |
-| 3 Rule 3 cross-source matrix (L-L, L-N, L-PE, N-PE errors; N-N warning; PE-PE allowed) | 6 |
-| 3 Rule 4 mains-voltage | 7 |
-| 3 Rule 5 mains-rating, rating-unknown, rating-conditional, rating-unverified | 7 |
-| 3 Rule 6 polarity (shell on L, switch or fuse in N, polarized profile against its requirement) | 8 |
-| 3 Rule 7 earth (class 1 PE without PE, protective conductor through a switch, relay or fuse, N joined to PE, DC ground on PE warning) | 8 |
-| 3 Rule 8 unprotected cut-set per state, absent fuse, `fuse-rating-unknown`, UK plug fuse counts | 7 (load completeness), 9, 10 (UK plug test) |
-| 3 Rule 9 mains-cable and cable-unverified | 9 |
-| 3 Rule 10 plug-mismatch, the spec's wording, no adapter advice | 10 |
-| 3 Rule 11 converter availability | 5 |
-| 3 Rule 12 data-missing | 7 |
-| 3 Rule 13 mains-incomplete | 9 |
-| 3 Same finding shape, diagram-edit wording, path highlight | 5 to 10 (`wiresOfRoot`) |
-| 4 Outlets (intact-link duplex only) | 12 |
-| 4 Plug-in devices per family: chargers, barrel adapters (voltage on +, 100-240 VAC, isolation per datasheet), cord plugs | 13 |
-| 4 AC-DC modules HLK-PM01, HLK-PM03 | 14 |
-| 4 Lamp holders E26 and E27, fuse holder, KCD1, Wago 221-412, 413, 415 | 14 |
-| 4 Terminal blocks Phoenix MSTB 2,5 and MC 1,5, 2-6 positions, exact part numbers; clones unverified | 15 |
-| 4 Relay module contact states and unverified rating; Fotek SSR-25DA | 16 |
-| 4 Every claim sourced to an exact part or standard, independently verified | 12 to 16 (Step 1 lookups, Step 8 controller review) |
-| 4 Designators XS, XP, PS, E, F, S, K, X; no prefix steals another's ids (tested) | 11 |
-| 5 Identity colours per region, green-yellow two-colour stroke, new wire takes identity colour, user can change it | 17 |
-| 5 Hazard outline, lightning marker near each end | 17 |
-| 5 Outlets and mains parts in Sticker style with realistic faces | 12 to 16 (art, screenshots) |
-| 6 Persistent notice in the Problems panel and a toolbar badge, verbatim | 18 |
-| 6 Empty state "No problems found in the drawn connections.", never with an incomplete or unknown result | 18 |
-| 6 Notice in every export (image, print, PDF) and in exported JSON as a sheet note; PRD statement | 18 |
-| 7 Per-part geometry against the standards; module validation of every new field; `check:gen` | 2, 12 to 16 |
-| 7 Loader: `acVoltage` and `fuseRating` params, `settings`, bad values warned and dropped | 1 |
-| 7 Compatibility matrix: every family pair, four rotations, translations, occupied sockets, overlapping outlets, breadboards nearby, spread contacts, CEE 7/7 in 7/3 and 7/5 | 10 |
-| 7 Each rule both ways | 5 to 10 |
-| 7 Counterexamples: reversed Schuko plug | 10 |
-| 7 Polarized lamp reversed | 8 |
-| 7 L-L across outlets | 6 |
-| 7 Relay COM-NO and COM-NC both wired | 6 |
-| 7 Two switches in series with seven or more other groups | 6 |
-| 7 17 contact groups | 9, 18 |
-| 7 OFF SSR into a lamp into a GPIO | 6 |
-| 7 Basic-isolation secondary to a GPIO, bonded or not | 6 |
-| 7 Basic plus protective screen and PE bond (PELV, DC checks kept) | 6 |
-| 7 Reinforced with a PE bond (PELV) | 6 |
-| 7 Three switches in series with S2 touching neither end | 4, 6 |
-| 7 ESP32 26 AWG Dupont ground to a PE-bonded supply minus | 9 |
-| 7 Two parallel 26 AWG Dupont PE wires to a class 1 lamp | 9 |
-| 7 Switched PE branch parallel to a permanent PE wire | 8 |
-| 7 Converter inputs shorted together or fed from two outlets | 5 |
-| 7 125 VAC terminal on 230 VAC | 7 |
-| 7 Mains-domain terminal with no rating | 7 |
-| 7 Two class 1 supplies with PE-bonded minus leads joined | 6 |
-| 7 Dupont PE lead on a class 1 lamp | 9 |
-| 7 300 VDC-only terminal on 230 VAC | 7 |
-| 7 Conditional Phoenix rating | 7 (synthetic), 15 (real parts) |
-| 7 Empty fuse holder vs fitted with unknown rating | 9 |
-| 7 Fuse on one branch with a bypass | 9 |
-| 7 UK fused plug protecting a cord-wired lamp | 10 |
-| 7 Converter with inputs L and L | 5 |
-| 7 HLK-PM01 unpowered | 5 (synthetic), 16 (real part) |
-| 7 Circuits: relay switching a fused lamp; HLK-PM01 feeding an ESP32; US charger over a UK outlet | 16 |
-| 7 Performance: exhaustive at 16 groups within a set budget, checker off the drag path | 20 |
-| 7 Browser check `check:mains-ui` (seat, wrong plug red, identity colours, hazard look, notice on screen and in export, light and dark screenshots looked at) | 19 |
-| 7 Independent pinout, rating and isolation review of every part; Astra reviews the build | 12 to 16 Step 8; 20 Step 5 |
+"Implemented in" names the task whose code does it. "Independent test" names the test that establishes the requirement from outside that code: a spec example, a counterexample, a table transcribed from the spec, a standard's figure or source evidence, not a value the implementation itself computes. Where no unit test can, it says what does (the browser check, the controller's review).
+
+| Spec requirement | Implemented in | Independent test |
+| --- | --- | --- |
+| 1.1 `acSources`; each outlet its own source; unknown relative phase | 2, 3 | `mainsModel.test.ts` accepts an outlet; `mainsRules.test.ts` "L-L across outlets" |
+| 1.1 `acVoltage` (VAC, 1 to 1000, separate from `voltage`), region default, `ac.hz` | 1, 2, 16 | `module.test.ts` "accepts an acVoltage from 1 to 1000"; `diagram.test.ts` "drops an acVoltage out of range"; `mainsParts.test.ts` outlet voltages vs the standards |
+| 1.1 An AC input's range is a requirement, not an amplitude | 3, 5 | `mains.test.ts` converter tests (a converter never sources AC) |
+| 1.2 Typed edges: zero, protective, load, leakage, isolated | 3 | `mainsGraph.test.ts` (identity through a terminal block, energy not identity through a load, fitted and absent fuse, SSR leakage, isolation) |
+| 1.2 Undeclared mains terminal: conservative, `data-missing` | 3, 7 | `mainsGraph.test.ts` "treats an undeclared mains terminal conservatively"; `mainsRules.test.ts` "a mains terminal with no conduction data" |
+| 1.2 Identity and energization closures; hazardous node | 3 | `mainsGraph.test.ts` |
+| 1.2 Requirements L, N, PE, line | 2, 9 | `mainsRules.test.ts` rule 6 and 7 tests |
+| 1.3 Domains, isolation, protective separation; earthing never substitutes | 2, 3, 6 | `mainsModel.test.ts` "counts basic isolation as protective separation only with a protective screen"; `mainsRules.test.ts` "basic-isolation secondary to a GPIO (error, bonded or not)" |
+| 1.3 SELV and PELV classification by separation and bond; PELV keeps DC checks | 6, 9 | `mainsRules.test.ts` "basic plus a declared protective screen and PE bond (PELV, allowed, DC checks kept)", "reinforced with a PE bond (PELV)" |
+| 1.3 Converter availability (powered, unpowered, unknown), gating sources and the passive-feed allowance | 5 | `mains.test.ts` all availability tests, including "converter with inputs L and L (unknown availability, no DC conclusions)" |
+| 1.3 A converter's pins outside every domain (Resolution 27) | 3, 7 | `mainsGraph.test.ts` "treats a converter's outputs outside every domain as live"; `mainsRules.test.ts` "a converter's outputs outside every domain are taken as live, and named" |
+| 1.4 Ratings: relevance, then adequacy; four classes; conditions; provenance | 7 | `mainsRules.test.ts` rule 5 tests (125 VAC on 230 VAC, no rating, 300 VDC-only, conditional, unverified, the outlet's own rating) |
+| 1.4 Provenance per exact assembly; clones and generic modules unverified | 0, 19, 20 | `mainsParts.test.ts` clone and relay module tests against the evidence; controller review |
+| 1.5 Contact states: relay COM-NC released, COM-NO energized, never both; linked poles; SSR OFF leakage | 3 | `mainsGraph.test.ts` relay, linked-pole (`t-relay-2p`) and SSR tests |
+| 1.5 Candidates from possible connectivity | 4 | `mainsStates.test.ts` "finds S2 in L-S1-S2-S3-N"; `mainsRules.test.ts` three-switch short |
+| 1.5 Exhaustive up to 16 candidates; `mains-incomplete` beyond, no sampling, no clean claim | 4, 5, 10 | `mainsRules.test.ts` "17 contact groups"; `mainsNotice.test.ts` "is never beside a clean claim when a check did not finish" |
+| 1.5 Findings name their state, with every needed condition | 4, 5 | `mainsStates.test.ts` `minimalWitness` and `statePhrase` tests; `mainsRules.test.ts` "when S1 is on and K1 is released", "when S1 and S2 are both on" |
+| 1.6 Protection classes; class 1 PE terminal; cord plugs 3-lead and 2-lead | 2, 9, 17 | `mainsRules.test.ts` class 1 lamp tests; `mainsParts.test.ts` cord plugs |
+| 1.6 Declared PE bond; undeclared DC ground on PE warns | 2, 9 | `mainsRules.test.ts` "a DC ground joined to earth without a declared bond warns" |
+| 1.6 Protective conductors: parallel and redundant paths, never through a low-voltage pin | 8 | `mainsProtective.test.ts` (all four) |
+| 1.7 Fuse holders: protective edge, optional `fuseRating`, fitted setting; `settings` validated, bad ones dropped | 1, 2, 3, 10, 18 | `module.test.ts`, `diagram.test.ts` settings tests; `mainsRules.test.ts` "empty fuse holder vs fitted with unknown rating", "never blames an empty fuse holder that is not the cause" |
+| 1.7 UK integral BS 1362 fuse | 13, 17 | `plugSeating.test.ts` "UK fused plug protecting a cord-wired lamp (clean)"; `mainsParts.test.ts` UK devices |
+| 1.7 Outlets on a branch breaker; rule 8 for the project's wiring | 10 | `mainsRules.test.ts` rule 8 tests |
+| 1.8 Cable rule on hazardous and protective wires; unsuitable ends, 24 AWG or thinner; unverified wording | 10 | `mainsRules.test.ts` rule 9 tests |
+| 2 Plug profiles; only profile contacts are mount legs | 2, 13 | `plugSeating.test.ts` matrix and mapping tests |
+| 2 Sockets; never across sockets | 2, 13 | `plugSeating.test.ts` "contacts spread across two sockets (never seats)" |
+| 2 Compatibility table: profiles, turns, mapping | 12, 13 | `plugging.test.ts` "agrees with the spec for every plug and socket family" and `plugSeating.test.ts` matrix, both against `plugSpec.testing.ts` (the spec transcribed by hand) |
+| 2 Turned outlets; translations; occupied sockets; overlapping outlets; breadboards nearby | 13 | `plugSeating.test.ts` (one test each) |
+| 2 Obscured and partial plug nothing; a partial mount never safe | 13 | `plugSeating.test.ts` "a matching plug that is only partly in says it is never safe" |
+| 2 Stylized spacing distinct across families; real dimensions cited | 12, 16, 17 | `plugging.test.ts` pattern overlap test; evidence (Task 0) |
+| 3 Mains never enters the DC solver; DC rules skip mains pins; both ends of every source edge gated | 5 | `mains.test.ts` "a battery whose return is on mains adds nothing to the potential solver", "an I/O pin wired to mains gets no DC finding" |
+| 3 Rule 1 | 6 | `mainsRules.test.ts` rule 1 tests, with the energizing path asserted |
+| 3 Rule 2 | 6 | `mainsRules.test.ts` rule 2 tests |
+| 3 Rule 3 matrix (L-L, L-N, L-PE, N-PE errors; N-N warning; PE-PE allowed) | 6 | `mainsRules.test.ts` rule 3 tests |
+| 3 Rule 4, and "not checked" for a load without a range | 7 | `mainsRules.test.ts` rule 4 tests |
+| 3 Rule 5 | 7 | `mainsRules.test.ts` rule 5 tests |
+| 3 Rule 6, uncertainty on unpolarized outlets reported (Resolution 22) | 9 | `mainsRules.test.ts` rule 6 tests including "on an unpolarized outlet the uncertainty is reported" |
+| 3 Rule 7 | 8, 9 | `mainsRules.test.ts` rule 7 tests, with the protective path asserted |
+| 3 Rule 8 | 7, 10 | `mainsRules.test.ts` rule 8 tests |
+| 3 Rule 9 | 10 | `mainsRules.test.ts` rule 9 tests |
+| 3 Rule 10, the spec's wording, no adapter advice | 13 | `plugSeating.test.ts` "a plug over an outlet of another family: plug-mismatch, in the spec's words"; `mainsCircuits.test.ts` "US charger over a UK outlet" |
+| 3 Rule 11 | 5 | `mains.test.ts` |
+| 3 Rule 12 | 7 | `mainsRules.test.ts` rule 12 tests |
+| 3 Rule 13, sources counted accurately | 10 | `mainsRules.test.ts` "17 contact groups", "more than 10 AC sources"; `mains.test.ts` "nothing is claimed unpowered without proof" |
+| 3 Same finding shape; path findings highlight the path | 5 to 10 | `mainsRules.test.ts` path assertions (OFF SSR chain, S1-K1 short, switched PE loop) |
+| 4 Every part's pins, contacts, profiles, ratings and isolation sourced and verified | 0, 16 to 20 | `mainsEvidence.test.ts` (every value quoted); `mainsParts.test.ts` against evidence and standards; controller review (Step 8 of each batch) |
+| 4 Outlets | 16 | `mainsParts.test.ts` built-in outlets |
+| 4 Plug-in devices per family | 17 | `mainsParts.test.ts` built-in plug-in devices (seating against `plugSpec.testing.ts`) |
+| 4 AC-DC modules, lamp holders, fuse holder, KCD1, Wago | 18 | `mainsParts.test.ts` |
+| 4 Terminal blocks, exact Phoenix part numbers, clones unverified | 19 | `mainsParts.test.ts` Phoenix item numbers pinned; clones non-empty and unverified |
+| 4 Relay module contact states and unverified rating; Fotek SSR | 20 | `mainsParts.test.ts` relay module and SSR |
+| 4 Designators, no prefix steals another's ids | 15 | `ops.test.ts` "gives each mains family its prefix", "numbers each prefix on its own" |
+| 5 Identity colours by region; green-yellow stroke; new wire takes its identity colour; the user can change it | 21 | `mainsLook.test.ts`; `check:mains-ui` |
+| 5 Hazard outline and lightning markers | 21 | `mainsLook.test.ts` sheet render; `check:mains-ui` |
+| 5 Sticker-style realistic faces | 16 to 20 | screenshots looked at (Step 6 of each batch); controller review |
+| 6 Notice in the Problems panel and toolbar badge, verbatim, for any mains part | 22 | `mainsNotice.test.ts`; `check:mains-ui` |
+| 6 Empty state, never beside an incomplete or unknown result | 22 | `mainsNotice.test.ts` |
+| 6 Notice whole in every export and in exported JSON; PRD | 22 | `mainsNotice.test.ts` (footer measured, JSON notes); `check:mains-ui` (print, export) |
+| 7 Loader cases | 1 | `diagram.test.ts` |
+| 7 The spec's circuits | 20 | `mainsCircuits.test.ts` (expectations as Michael decides at Task 0 where the evidence disagrees) |
+| 7 Performance at 16 groups within a set budget; checker off the drag path; one analysis per edit | 5, 11, 24 | `mains.perf.test.ts` checkpoint and full sheet; `mains.test.ts` cache identity; `perf-breadboard.mjs` |
+| 7 Browser check `check:mains-ui` | 23 | the script itself, light and dark screenshots looked at |
+| 7 Independent review of every part; Astra reviews the build | 0, 16 to 20, 24 | controller reviews; `consult-astra` in Task 24 Step 5 |
 
 ## Spec gaps and ambiguities resolved in this plan
 
-Binding decisions are listed under "Resolutions of spec ambiguities" at the top. In short: prongs as internal nodes (1); plug contact roles and the unpolarized `line` requirement (2); orientation (3); "1-15R" covering both JP variants for the unpolarized plug (4); a synthetic Europlug socket (5); only plugs seat on outlets and plugs only on outlets (6); stylized patterns decide only across geometry groups (7); directed energy across isolation, undirected for undeclared terminals (8); protective separation and declared SELV/PELV kinds (9); a 10-source limit reported as `mains-incomplete` (10); availability across states (11); DC rules skip hazardous nets only (12); rule 8 loads are `conducts` loads, converters excluded (13); a load's range from `conducts[].range` (14); DC-only rating on AC is `rating-unknown` (15); `fuseRating` range and integral fuse ratings (16); settings default to the first choice (17); `ac.region` drives colours (18); wire colour defaults and new-wire colour (19); the notice drawn in `Sheet.tsx` and printed, since no image or PDF export exists yet (20); the relay and Hi-Link isolation classes may contradict the spec's clean-circuit expectations, which stops the work for Michael rather than bending a result (21). Two more decided in the tasks: unpolarized outlets (JP 1-15R, Schuko, Europlug) have no standard L side, so the polarity rule ignores them (Task 3 `GSource.polarized`); `hasMains` counts sources, plugs, converters, loads and fuses but not relays, switches or terminal blocks alone (Task 18).
+All binding decisions are the numbered Resolutions at the top (1 to 28). Revision 2 added 22 to 28 from Astra's plan review: polarity uncertainty on unpolarized outlets is reported (22); the notice appears for any mains part (23); state witnesses are minimal and complete (24); enumeration runs per possible-connectivity component with the spec's 16-group limit counted across the sheet (25); an unverified isolation class counts with a warning (26); a converter's pins outside every domain are live and named (27); an empty fuse holder is blamed only when proven (28). Resolutions 10, 11, 14, 19, 20 and 21 were adjusted as Astra ruled.
 
 ---
 
