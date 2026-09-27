@@ -10,6 +10,7 @@ import type { Plug } from './breadboard.ts'
 import { type Netlist, nodeKey } from './netlist.ts'
 import { type ModuleDef, type PinType, isSpacer, partSetting } from './module.ts'
 import { paramValue } from './values.ts'
+import { andList, natural } from './words.ts'
 import { type Conductor, type ContactGroup, type MainsInfo, type Region, type SocketFamily, isolationAdequate, mainsOf, uncoveredPins } from './mainsModel.ts'
 
 /** Identity is one 30-bit mask: three bits (L, N, PE) per source. More sources than this: see mains-incomplete. */
@@ -384,3 +385,154 @@ export const identAt = (p: Prepared, node: number): number => p.ident[p.root[nod
 export const powerAt = (p: Prepared, node: number): number => p.power[p.root[node]]
 /** A node is hazardous when it holds L or N identity or is energized (spec 1.2). */
 export const hazardAt = (p: Prepared, node: number): boolean => (identAt(p, node) & LN_MASK) !== 0 || powerAt(p, node) !== 0
+
+/** Up to this many candidate groups on the sheet the checker enumerates every state; beyond, it reports mains-incomplete (spec 1.5). */
+export const MAX_GROUPS = 16
+
+/**
+ * The contact groups whose state can matter: any of their contacts lies in a possible-connectivity
+ * component that holds a source terminal or a converter input. Every contact position conducts in
+ * that graph, so a switch in the middle of a chain is never missed.
+ */
+export function candidateGroups(g: MainsGraph, possible: Int32Array = possibleRoots(g)): number[] {
+  const live = new Set<number>()
+  for (const s of g.sources) for (const x of [...s.live, ...s.neutral, ...s.earth]) live.add(possible[x])
+  for (const c of g.converters) live.add(possible[c.a]).add(possible[c.b])
+  return g.groups.flatMap((grp, i) => (grp.nodes.some((x) => live.has(possible[x])) ? [i] : []))
+}
+
+const orderCache = new Map<number, Uint32Array>()
+/** Every k-bit mask, fewest groups on first, then by value (a converter's first unknown state names the fewest groups). */
+export function masksByPopcount(k: number): Uint32Array {
+  const hit = orderCache.get(k)
+  if (hit) return hit
+  const pop = (x: number) => {
+    let c = 0
+    for (; x; x &= x - 1) c++
+    return c
+  }
+  const out = Uint32Array.from(Array.from({ length: 1 << k }, (_, i) => i).sort((a, b) => pop(a) - pop(b) || a - b))
+  orderCache.set(k, out)
+  return out
+}
+
+/** Puts the candidates in the state `mask` (bit k is cands[k]); every other group in the view is released or off. */
+export function setState(p: Prepared, cands: number[], mask: number): void {
+  for (const gi of p.groupIdx) p.groupState[gi] = 0
+  for (let k = 0; k < cands.length; k++) if ((mask >>> k) & 1) p.groupState[cands[k]] = 1
+}
+
+/** `p` narrowed to `nodes`: the same scratch arrays, the lists cut to what has a terminal among them. */
+export function viewOf(p: Prepared, nodes: number[]): Prepared {
+  const g = p.g
+  const inRel = new Uint8Array(g.n)
+  for (const i of nodes) inRel[i] = 1
+  const within = (xs: number[]) => xs.filter((x) => inRel[x])
+  return {
+    ...p, relevant: Int32Array.from(nodes), inRel, srcRoots: [],
+    sources: p.sources.map((s) => ({ ...s, live: within(s.live), neutral: within(s.neutral), earth: within(s.earth) })).filter((s) => s.live.length + s.neutral.length + s.earth.length > 0),
+    groupIdx: p.groupIdx.filter((gi) => g.groups[gi].nodes.some((x) => inRel[x])),
+    loadIdx: p.loadIdx.filter((i) => inRel[g.loads[i].a]),
+    converterIdx: p.converterIdx.filter((i) => inRel[g.converters[i].a]),
+    protective: p.protective.filter((e) => inRel[e.a]),
+    energy: p.energy.filter((e) => inRel[e.a]),
+  }
+}
+
+export interface Unit { view: Prepared; cands: number[] }
+
+/**
+ * The enumeration units (Resolution 25): the relevant nodes grouped by possible-connectivity
+ * component, merging components that one multi-pole group spans (its poles switch together), those
+ * one class 1 part's terminals span (its earth is judged against its L and N), and those a bonded
+ * part's secondary and bond pins span (its SELV or PELV class is judged in the same state).
+ * Components cannot affect each other, so each unit's states are enumerated on their own.
+ */
+export function units(p: Prepared, cands: number[]): Unit[] {
+  const g = p.g
+  const up = new Map<number, number>()
+  const top = (x: number): number => {
+    while (up.has(x)) x = up.get(x)!
+    return x
+  }
+  /** Puts the components of `nodes` (those in the analysis) in one unit. */
+  const join = (nodes: number[]) => {
+    const roots = [...new Set(nodes.filter((i) => p.inRel[i] === 1).map((i) => p.possible[i]))]
+    for (const r of roots.slice(1)) {
+      const [a, b] = [top(roots[0]), top(r)]
+      if (a !== b) up.set(a, b)
+    }
+  }
+  const termNodes = (part: PartInstance, names: Iterable<string>) =>
+    [...names].map((n) => g.nodeOf.get(nodeKey(part.uid, n))).filter((i): i is number => i !== undefined)
+  for (const gi of cands) join(g.groups[gi].nodes)
+  for (const part of g.mainsParts) {
+    const info = mainsOf(moduleOf(g.d, part.module)!)
+    // A class 1 part's earth is judged in the states of its own L and N (rule 7): its components enumerate together.
+    if (info.protection === 'class-1') join(termNodes(part, info.terminals))
+    // A bonded part's secondary is judged SELV or PELV by the identity of its bond pins in the same state
+    // (Resolution 9): its non-mains domain pins and its bonds enumerate together.
+    if (info.bonds.size) join(termNodes(part, [...info.bonds, ...info.domains.filter((dm) => dm.kind !== 'mains').flatMap((dm) => dm.pins)]))
+  }
+  const byUnit = new Map<number, number[]>()
+  for (const i of p.relevant) {
+    const u = top(p.possible[i])
+    const list = byUnit.get(u)
+    if (list) list.push(i)
+    else byUnit.set(u, [i])
+  }
+  return [...byUnit.values()].map((nodes) => {
+    const view = viewOf(p, nodes)
+    return { view, cands: cands.filter((gi) => view.groupIdx.includes(gi)) }
+  })
+}
+
+/**
+ * The candidate positions (0 to k-1) whose condition in state `mask` a finding needs (Resolution 24).
+ * `holds` has bit m set for every state m the finding holds in. A condition is dropped only when the
+ * finding holds in every state that agrees with the conditions still kept, so the phrase is both
+ * minimal and complete.
+ */
+export function minimalWitness(holds: Uint32Array, k: number, mask: number): number[] {
+  const has = (m: number) => ((holds[m >>> 5] >>> (m & 31)) & 1) === 1
+  const allHold = (free: number) => {
+    const fixed = mask & ~free
+    for (let sub = free; ; sub = (sub - 1) & free) {
+      if (!has(fixed | sub)) return false
+      if (sub === 0) return true
+    }
+  }
+  const kept: number[] = []
+  let free = 0
+  for (let j = 0; j < k; j++) {
+    if (allHold(free | (1 << j))) free |= 1 << j
+    else kept.push(j)
+  }
+  return kept
+}
+
+const WORDS: Record<ContactGroup['kind'], [string, string]> = { switch: ['off', 'on'], relay: ['released', 'energized'], ssr: ['off', 'on'] }
+
+/** A contact group by its part's designator, with the group id when the part has several. */
+export function groupName(g: MainsGraph, gi: number): string {
+  const grp = g.groups[gi]
+  const several = g.groups.filter((x) => x.part === grp.part).length > 1
+  return several ? `${grp.part.designator} (${grp.def.id})` : grp.part.designator
+}
+
+/** The kept conditions of state `mask` in words: "when S1 is on and K1 is released", "when S1 and S2 are both on"; '' when none is kept. */
+export function statePhrase(g: MainsGraph, cands: number[], kept: number[], mask: number): string {
+  if (!kept.length) return ''
+  const byWord = new Map<string, string[]>()
+  for (const j of kept) {
+    const gi = cands[j]
+    const word = WORDS[g.groups[gi].def.kind][(mask >>> j) & 1]
+    byWord.set(word, [...(byWord.get(word) ?? []), groupName(g, gi)])
+  }
+  const parts = [...byWord].map(([word, list]) => {
+    list.sort(natural.compare)
+    if (list.length === 1) return `${list[0]} is ${word}`
+    return list.length === 2 && (word === 'on' || word === 'energized') ? `${list[0]} and ${list[1]} are both ${word}` : `${andList(list)} are ${word}`
+  })
+  return `when ${parts.join(' and ')}`
+}
