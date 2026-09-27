@@ -50,7 +50,8 @@ function stubOf(d: Diagram, c: Connection): { d: string; ends: Pt[] } | null {
 }
 
 /** The whole wire as a plain polyline, out to both endpoints: the drawn path of a cable stops
- * inside its connectors, so the selection and problem glows use this to take them in too. */
+ * inside its connectors, so the selection and problem glows and the hit corridor use this to take
+ * them in too. */
 const polyline = (pts: Pt[]) => pts.map((p, i) => `${i ? 'L' : 'M'}${p.x} ${p.y}`).join('')
 
 /** Path data for a filled circle at `p` with radius `r`, as two arcs: draws a whole net's worth of
@@ -573,7 +574,7 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
                 {selected && <path d={conn.ends ? polyline(points) : d} stroke="var(--focus)" strokeOpacity={0.35} strokeWidth={w + 10} />}
                 <path d={d} stroke={INK} strokeWidth={w + 2.2} strokeDasharray={dash} />
                 <path d={d} stroke={color} strokeWidth={w} strokeDasharray={dash} />
-                <path d={d} className="wire-hit" strokeWidth={Math.max(12, w + 8)} />
+                <path d={conn.ends ? polyline(points) : d} className="wire-hit" strokeWidth={Math.max(12, w + 8)} />
               </g>
             )
           })}

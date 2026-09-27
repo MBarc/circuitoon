@@ -231,6 +231,11 @@ for (const scheme of ['light', 'dark']) {
   await shot(canvas, 'cables-267-resistors')
   await zoomTo(1.5, 660, 430)
 
+  // The wire's generous hit corridor reaches its endpoint, past the connector's own narrow art:
+  // 5 px beside the alligator jaws of preset 5 (column 11, x=130), between holes, selects it.
+  await clickWorld(135, 186)
+  check((await page.locator('#wire-title').isVisible()) && (await page.locator('#wire-cable').inputValue()) === 'alligator', `${scheme}: a click beside a connector, inside the wire's hit corridor, selects the wire`)
+  await clickWorld(0, 0)
   // Select the plain wire (in the channel, clear of every hole) and pick a cable.
   await clickWorld(30, 235)
   check(await page.locator('#wire-title').isVisible(), `${scheme}: clicking the plain wire selects it`)
