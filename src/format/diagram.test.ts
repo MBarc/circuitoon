@@ -545,4 +545,28 @@ describe('wirePaths', () => {
     expect(out).toHaveLength(500)
     expect(ms).toBeLessThan(30)
   })
+
+  it('draws the same sheet with cable ends on every wire within the frame budget', { timeout: 60_000, retry: 2 }, () => {
+    // Every end a connector, several kinds, so placement, cut-back and housing-aware hops all run.
+    const kinds = ['dupont-male', 'dupont-female', 'alligator', 'jst-xh', 'banana', 'stripped'] as const
+    const plain = stressSheet()
+    const diagram: Diagram = {
+      ...plain,
+      connections: plain.connections.map((c, i) => ({ ...c, ends: { from: kinds[i % kinds.length], to: kinds[(i + 1) % kinds.length] } })),
+    }
+    const routes = computeRoutes(diagram)
+    wirePaths(diagram, routes) // warm-up
+    // Best of ten, retried twice, as for the plain sheet.
+    let ms = Infinity
+    let out = wirePaths(diagram, routes)
+    for (let k = 0; k < 10; k++) {
+      const t = performance.now()
+      out = wirePaths(diagram, routes)
+      ms = Math.min(ms, performance.now() - t)
+    }
+    console.log(`wirePaths 200 parts / 500 cabled wires: ${ms.toFixed(2)} ms`)
+    expect(out).toHaveLength(500)
+    expect(out.every((w) => w.cables[0] && w.cables[1])).toBe(true)
+    expect(ms).toBeLessThan(30)
+  })
 })
