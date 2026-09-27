@@ -522,28 +522,96 @@ export function minimalWitness(holds: Uint32Array, k: number, mask: number): num
   return kept
 }
 
-const WORDS: Record<ContactGroup['kind'], [string, string]> = { switch: ['off', 'on'], relay: ['released', 'energized'], ssr: ['off', 'on'] }
+/** One minimal witness: the candidate positions (0 to k-1) it fixes, and their conditions (bit j of `mask`). */
+export interface Witness { kept: number[]; mask: number }
 
-/** A contact group by its part's designator, with the group id when the part has several. */
-export function groupName(g: MainsGraph, gi: number): string {
-  const grp = g.groups[gi]
-  const several = g.groups.filter((x) => x.part === grp.part).length > 1
-  return several ? `${grp.part.designator} (${grp.def.id})` : grp.part.designator
+/** Iterated consensus stops growing past this many witnesses; the phrase then lists a covering set of them (each still minimal). */
+const MAX_WITNESSES = 32
+
+/**
+ * Every minimal witness of a finding (Ruling 31): each prime implicant of the states it holds in, so
+ * the phrase names every way the finding comes about, never one picked by position. A greedy cover
+ * of the holding states comes first (each one minimal, see minimalWitness), then iterated consensus
+ * with absorption turns it into all prime implicants. The cover alone already says exactly where the
+ * finding holds; past MAX_WITNESSES the cover is what is listed.
+ */
+export function minimalWitnesses(holds: Uint32Array, k: number): Witness[] {
+  const has = (m: number) => ((holds[m >>> 5] >>> (m & 31)) & 1) === 1
+  const all = (1 << k) - 1
+  const cubes: { care: number; val: number }[] = []
+  const covered = (m: number) => cubes.some((c) => (m & c.care) === c.val)
+  for (let m = 0; m <= all; m++) {
+    if (!has(m) || covered(m)) continue
+    const care = minimalWitness(holds, k, m).reduce((a, j) => a | (1 << j), 0)
+    cubes.push({ care, val: m & care })
+  }
+  const contains = (a: { care: number; val: number }, b: { care: number; val: number }) => (a.care & b.care) === a.care && (b.val & a.care) === a.val
+  const primes = cubes.slice()
+  for (let i = 0; i < primes.length && primes.length <= MAX_WITNESSES; i++)
+    for (let j = 0; j < i && primes.length <= MAX_WITNESSES; j++) {
+      const [a, b] = [primes[i], primes[j]]
+      const clash = a.care & b.care & (a.val ^ b.val)
+      if (!clash || (clash & (clash - 1)) !== 0) continue
+      const care = (a.care | b.care) & ~clash
+      const c = { care, val: (a.val | b.val) & care }
+      if (primes.some((x) => contains(x, c))) continue
+      // Absorb what the new one contains; restart the scan so every pair meets it.
+      for (let x = primes.length - 1; x >= 0; x--) if (contains(c, primes[x])) primes.splice(x, 1)
+      primes.push(c)
+      i = 0
+      j = -1
+    }
+  const out = primes.length > MAX_WITNESSES ? cubes : primes
+  return out.map((c) => ({ kept: [...Array(k).keys()].filter((j) => (c.care >>> j) & 1), mask: c.val }))
 }
 
-/** The kept conditions of state `mask` in words: "when S1 is on and K1 is released", "when S1 and S2 are both on"; '' when none is kept. */
-export function statePhrase(g: MainsGraph, cands: number[], kept: number[], mask: number): string {
-  if (!kept.length) return ''
-  const byWord = new Map<string, string[]>()
-  for (const j of kept) {
-    const gi = cands[j]
-    const word = WORDS[g.groups[gi].def.kind][(mask >>> j) & 1]
-    byWord.set(word, [...(byWord.get(word) ?? []), groupName(g, gi)])
+const WORDS: Record<ContactGroup['kind'], [string, string]> = { switch: ['off', 'on'], relay: ['released', 'energized'], ssr: ['off', 'on'] }
+/** A switch with a changeover pole is worded by the contact its poles are switched to (Ruling 31). */
+const CHANGEOVER: [string, string] = ['switched to NC', 'switched to NO']
+const wordsOf = (def: ContactGroup): [string, string] => (def.kind === 'switch' && def.poles.some((x) => x.nc !== null) ? CHANGEOVER : WORDS[def.kind])
+
+/**
+ * A contact group by its part's designator; on a part with several groups, followed by a label a
+ * reader finds on the part: its COM pin labels ("K1 (COM1)"), or its place among the groups when two
+ * groups share those labels.
+ */
+export function groupName(g: MainsGraph, gi: number): string {
+  const grp = g.groups[gi]
+  const mates = g.groups.filter((x) => x.part === grp.part)
+  if (mates.length < 2) return grp.part.designator
+  const m = moduleOf(g.d, grp.part.module)
+  const label = (name: string) => {
+    const pin = m?.pins.find((p) => !isSpacer(p) && p.name === name)
+    return pin && !isSpacer(pin) ? (pin.label ?? pin.name) : name
   }
-  const parts = [...byWord].map(([word, list]) => {
-    list.sort(natural.compare)
-    if (list.length === 1) return `${list[0]} is ${word}`
-    return list.length === 2 && (word === 'on' || word === 'energized') ? `${list[0]} and ${list[1]} are both ${word}` : `${andList(list)} are ${word}`
-  })
-  return `when ${parts.join(' and ')}`
+  const coms = (x: GGroup) => andList(x.def.poles.map((pole) => label(pole.com)))
+  const mine = coms(grp)
+  const unique = mates.every((x) => x === grp || coms(x) !== mine)
+  return `${grp.part.designator} (${unique ? mine : `contact group ${mates.indexOf(grp) + 1}`})`
+}
+
+/** One witness in words, conditions in designator order: "when K1 is released, S1 is on and S2 is off"; "when S1 and S2 are both on" when all share one word. */
+function witnessPhrase(g: MainsGraph, cands: number[], w: Witness): string {
+  const conds = w.kept.map((j) => {
+    const gi = cands[j]
+    return { name: groupName(g, gi), word: wordsOf(g.groups[gi].def)[(w.mask >>> j) & 1] }
+  }).sort((a, b) => natural.compare(a.name, b.name))
+  const word = conds[0].word
+  if (conds.length > 1 && conds.every((c) => c.word === word)) {
+    const list = conds.map((c) => c.name)
+    return list.length === 2 && (word === 'on' || word === 'energized') ? `when ${list[0]} and ${list[1]} are both ${word}` : `when ${andList(list)} are ${word}`
+  }
+  return `when ${andList(conds.map((c) => `${c.name} is ${c.word}`))}`
+}
+
+/**
+ * The conditions a finding needs, in words: every minimal witness, joined with "or" ("when S1 is on,
+ * or when S2 is on"), fewest conditions first; '' when a witness needs none (it holds in every state).
+ */
+export function statePhrase(g: MainsGraph, cands: number[], witnesses: Witness[]): string {
+  if (!witnesses.length || witnesses.some((x) => !x.kept.length)) return ''
+  return witnesses
+    .map((x) => ({ n: x.kept.length, text: witnessPhrase(g, cands, x) }))
+    .sort((a, b) => a.n - b.n || natural.compare(a.text, b.text))
+    .map((x) => x.text).join(', or ')
 }

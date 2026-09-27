@@ -576,7 +576,10 @@ describe('every message ends with what to do', () => {
       }
     if (missing.length) console.log('NOACT\n' + [...new Set(missing)].join('\n'))
     expect(missing).toEqual([])
-    expect([...seen].sort()).toEqual(Object.keys(RULES).sort())
+    // The mains rules are reached, and their wording checked, in the mains test files (mains*.test.ts).
+    const MAINS = ['mains-short', 'mains-cross-source', 'mains-to-low-voltage', 'earth', 'mains-voltage', 'mains-rating', 'mains-cable', 'plug-mismatch', 'polarity', 'unprotected',
+      'fuse-rating-unknown', 'mains-shared-neutral', 'earth-bond', 'rating-unknown', 'rating-conditional', 'rating-unverified', 'cable-unverified', 'data-missing', 'mains-incomplete']
+    expect([...seen].sort()).toEqual(Object.keys(RULES).filter((r) => !MAINS.includes(r)).sort())
   })
 })
 

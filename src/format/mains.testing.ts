@@ -118,11 +118,24 @@ export const relay2p = mod({ id: 't-relay-2p', name: 'Test double-pole relay', p
  */
 export const psuMainsOnly = mod({ id: 't-psu-mainsonly', name: 'Test AC-DC 5 V (outputs in no domain)', pins: psuPins,
   electrical: { ...psuInput, domains: [{ name: 'mains', pins: ['AC1', 'AC2'], kind: 'mains' }], protection: 'class-2' } })
+/** A changeover (SPDT) switch: its pole has an NC contact, so its states are worded "switched to NC" and "switched to NO". */
+export const swChangeover = mod({ id: 't-switch-co', name: 'Test changeover switch', pins: [
+  { name: 'C', side: 'left', type: 'passive' }, { name: 'A', side: 'right', type: 'passive' }, { name: 'B', side: 'right', type: 'passive' },
+], electrical: { contacts: [{ id: 's', kind: 'switch', poles: [{ com: 'C', no: 'A', nc: 'B' }] }], ratings: [{ pins: ['C', 'A', 'B'], kind: 'switching', service: 'ac', volts: 250, amps: 6, provenance: 'datasheet' }] } })
+/** A two-channel relay board: two independent contact groups on one part, told apart by their COM labels. */
+export const relayBoard2 = mod({ id: 't-relay-board-2', name: 'Test two-channel relay board', pins: [
+  ...['1', '2'].flatMap((n) => ['COM', 'NO', 'NC'].map((c) => ({ name: `${c}${n}`, side: 'left', type: 'passive' }))),
+  { name: '+', side: 'right', type: 'power_in', supply: '5V' }, { name: '-', side: 'right', type: 'ground' },
+] as ModuleDef['pins'], electrical: {
+  contacts: [{ id: 'k1', kind: 'relay', poles: [{ com: 'COM1', no: 'NO1', nc: 'NC1' }] }, { id: 'k2', kind: 'relay', poles: [{ com: 'COM2', no: 'NO2', nc: 'NC2' }] }],
+  domains: [{ name: 'contacts', pins: ['COM1', 'NO1', 'NC1', 'COM2', 'NO2', 'NC2'], kind: 'mains' }, { name: 'coil', pins: ['+', '-'], kind: 'selv' }], isolation: 'reinforced', isolationProvenance: 'datasheet',
+  ratings: [{ pins: ['COM1', 'NO1', 'NC1', 'COM2', 'NO2', 'NC2'], kind: 'switching', service: 'ac', volts: 250, amps: 10, provenance: 'datasheet' }],
+} })
 /** A part with mains terminals and no conduction data. */
 export const undeclared = mod({ id: 't-undeclared', name: 'Test part without mains data', pins: [{ name: 'A', side: 'left', mains: 'L' }, { name: 'B', side: 'right', mains: 'N' }] })
 
 export const MAINS_MODULES: Record<string, ModuleDef> = Object.fromEntries(
-  [outlet, outlet2, outletEU, psu, psuBasic, psuBasicBonded, psuScreen, psuPelv, lamp, lampC1, sw, relay, ssr, fuse, block, block125, blockDc, blockCond, blockBare, blockUnverified, mcu, mcu33, undeclared, bat9, relay2p, psuMainsOnly, lamp230, psuMislabeled]
+  [outlet, outlet2, outletEU, psu, psuBasic, psuBasicBonded, psuScreen, psuPelv, lamp, lampC1, sw, relay, ssr, fuse, block, block125, blockDc, blockCond, blockBare, blockUnverified, mcu, mcu33, undeclared, bat9, relay2p, psuMainsOnly, lamp230, psuMislabeled, swChangeover, relayBoard2]
     .map((m) => [m.id, m]),
 )
 
