@@ -1,5 +1,6 @@
 // Module definition format (circuitoon-module/1): types, validation and pin layout.
 // Spec: docs/PRD.md, "Module definition format". Erasable TS only, so node can run it directly.
+import { REQUIREMENTS, type Requirement, claimInternalNodes, validateMains } from './mainsModel.ts'
 
 export const MODULE_FORMAT = 'circuitoon-module/1'
 export const GRID = 10 // px per grid unit at 100% zoom; also the pin pitch
@@ -17,6 +18,10 @@ export interface PinDef {
   type?: PinType
   supply?: string
   bus?: { length: number }
+  /** Terminal requirement (spec 1.2): drives polarity and earth rules only. */
+  mains?: Requirement
+  /** An intentional bond to PE (a metal enclosure, a class 1 supply secondary). */
+  bond?: 'pe'
 }
 export interface SpacerDef {
   spacer: true
@@ -64,6 +69,10 @@ export interface HoleGroup {
   /** Electrical type and supply rails, as on a pin (an interior header pad). Breadboard rails set neither: + and - are markings, not voltages. */
   type?: PinType
   supply?: string
+  /** Terminal requirement (spec 1.2): drives polarity and earth rules only. */
+  mains?: Requirement
+  /** An intentional bond to PE (a metal enclosure, a class 1 supply secondary). */
+  bond?: 'pe'
 }
 
 export interface ModuleDef {
@@ -160,6 +169,10 @@ export function validateModule(raw: unknown): ValidationResult {
   const checkType = (t: Record<string, unknown>, at: string) => {
     if (t.type !== undefined && !PIN_TYPES.includes(t.type as PinType)) errors.push(`${at}.type: must be one of ${PIN_TYPES.join(', ')}`)
   }
+  const checkMains = (t: Record<string, unknown>, at: string) => {
+    if (t.mains !== undefined && !(REQUIREMENTS as readonly unknown[]).includes(t.mains)) errors.push(`${at}.mains: must be one of "L", "N", "PE", "line"`)
+    if (t.bond !== undefined && t.bond !== 'pe') errors.push(`${at}.bond: must be "pe"`)
+  }
   const checkSupply = (t: Record<string, unknown>, at: string) => {
     if (t.supply !== undefined && typeof t.supply !== 'string') errors.push(`${at}.supply: must be a string`)
     else if (typeof t.supply === 'string' && !/^[^/\s]+(\/[^/\s]+)*$/.test(t.supply))
@@ -184,6 +197,7 @@ export function validateModule(raw: unknown): ValidationResult {
       if (names.has(p.name)) errors.push(`${at}.name: duplicate pin name "${p.name}"`)
       names.add(p.name)
       checkType(p, at)
+      checkMains(p, at)
       if (p.bus !== undefined && !(isObj(p.bus) && Number.isInteger(p.bus.length) && (p.bus.length as number) >= 2))
         errors.push(`${at}.bus: must be { "length": <whole number, 2 or more> }`)
       if (p.label !== undefined && typeof p.label !== 'string') errors.push(`${at}.label: must be a string`)
@@ -204,6 +218,7 @@ export function validateModule(raw: unknown): ValidationResult {
         if (g.rail !== undefined && g.rail !== '+' && g.rail !== '-') errors.push(`${at}.rail: must be "+" or "-"`)
         if (g.holeStyle !== undefined && g.holeStyle !== 'pad') errors.push(`${at}.holeStyle: must be "pad"`)
         checkType(g, at)
+        checkMains(g, at)
         checkSupply(g, at)
         if (!Array.isArray(g.at) || g.at.length === 0) return void errors.push(`${at}.at: required, at least one [x, y] position`)
         g.at.forEach((p, j) => {
@@ -217,6 +232,7 @@ export function validateModule(raw: unknown): ValidationResult {
   }
   if (raw.obstacle !== undefined && typeof raw.obstacle !== 'boolean') errors.push('obstacle: must be true or false')
 
+  claimInternalNodes(raw, names, errors)
   if (raw.internal !== undefined) {
     if (!Array.isArray(raw.internal)) errors.push('internal: must be a list of pin-name groups')
     else
@@ -352,6 +368,18 @@ export function validateModule(raw: unknown): ValidationResult {
         })
     } else if (hasVoltage && outs.length > 1)
       errors.push(`electrical.voltageOutputs: required, the module has a voltage value and ${outs.length} power_out pins; name the ones the value sets`)
+  }
+
+  validateMains(raw, names, errors)
+  // Only a plug whose fields are already valid is measured.
+  if (!errors.length && isObj(raw.electrical) && isObj(raw.electrical.plug) && Array.isArray(raw.electrical.plug.profiles)) {
+    const lay = computeLayout(raw as unknown as ModuleDef)
+    raw.electrical.plug.profiles.forEach((pr, i) =>
+      (pr as { contacts: { at: { x: number; y: number } }[] }).contacts.forEach((c, j) => {
+        if (c.at.x < 0 || c.at.y < 0 || c.at.x > lay.w || c.at.y > lay.h)
+          errors.push(`electrical.plug.profiles[${i}].contacts[${j}].at: outside the body (0 to ${lay.w}, 0 to ${lay.h})`)
+      }),
+    )
   }
 
   return errors.length ? { ok: false, errors } : { ok: true, module: raw as unknown as ModuleDef }
