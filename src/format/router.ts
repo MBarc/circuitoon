@@ -13,6 +13,13 @@ export interface RouteRequest {
   obstacles: Rect[]
   /** Grid nodes already used by earlier wires, so this route can take its own lane next to them. */
   occupied?: Occupancy
+  /**
+   * Straight run, in px, a pin end must leave along `fromDir` (or arrive along `toDir`) before its
+   * first bend, so a connector drawn there sits on one straight segment (see cables.ts). Ignored
+   * for a hole end. Even from a tip off the grid, the jog onto the grid comes after this run.
+   */
+  fromLead?: number
+  toLead?: number
 }
 export interface RouteOptions {
   grid?: number
@@ -344,8 +351,10 @@ export function routeOrthogonal(req: RouteRequest, opts: RouteOptions = {}): Pt[
   const clearance = opts.clearance ?? CLEARANCE
   const bendCost = opts.bendCost ?? 30
   const parallelCost = opts.parallelCost ?? 40
-  const start = req.fromDir ? leave(req.from, req.fromDir, g) : onGrid(req.from, g)
-  const goal = req.toDir ? leave(req.to, req.toDir, g) : onGrid(req.to, g)
+  // A lead-out moves the first grid node the search may bend at out along the pin's axis.
+  const ahead = (p: Pt, d: Pt, lead = 0): Pt => ({ x: p.x + d.x * lead, y: p.y + d.y * lead })
+  const start = req.fromDir ? leave(ahead(req.from, req.fromDir, req.fromLead), req.fromDir, g) : onGrid(req.from, g)
+  const goal = req.toDir ? leave(ahead(req.to, req.toDir, req.toLead), req.toDir, g) : onGrid(req.to, g)
   for (const margin of opts.margins ?? [60, 240]) {
     const path = search(start, goal, req, g, clearance, bendCost, parallelCost, margin)
     if (path) {
@@ -453,6 +462,8 @@ function search(
       if (blocked[ncell]) continue
       let c = here + g + (nd !== d ? bendCost : 0)
       if (ncell === goalCell) {
+        // Behind a lead-out the wire must arrive along it, or it would double back over it.
+        if (endDir >= 0 && nd !== endDir && req.toLead) continue
         if (endDir >= 0 && nd !== endDir) c += bendCost
       } else if (lanes && parallel![ncell] & (nd & 1 ? V_BIT : H_BIT)) c += parallelCost
       const ns = ncell * 4 + nd

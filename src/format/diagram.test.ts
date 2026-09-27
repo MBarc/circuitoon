@@ -307,6 +307,15 @@ describe('wirePaths', () => {
       expect(w2[0]).toEqual({ x: 58, y: 20 })
       expect(w2[1].x).toBe(68)
     })
+    it("never nudges a run so a connector's straight run gets shorter than its reach", () => {
+      // An alligator (reach 29) on a pin tip at x=28: -4 would leave 28 px, so it goes to +8.
+      const d = sheet(-20)
+      d.connections[2].ends = { from: 'alligator' }
+      const w2 = wirePaths(d).find((w) => w.conn.uid === 'w2')!
+      expect(w2.points[0]).toEqual({ x: 28, y: 20 })
+      expect(w2.points[1].x).toBe(68)
+      expect(w2.cables[0]!.scale).toBe(1)
+    })
     it('never nudges a run so the run on the pin gets shorter than 2 px', () => {
       const w2 = wirePaths(sheet(7)).find((w) => w.conn.uid === 'w2')!.points // pin tip at x=55
       expect(w2[0]).toEqual({ x: 55, y: 20 })

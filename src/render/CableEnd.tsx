@@ -174,7 +174,7 @@ export const CableEnd = memo(function CableEnd({ kind, x, y, angle, scale: s, co
       return null
   }
   return (
-    <g data-cable-end={kind} transform={`translate(${x} ${y}) rotate(${angle})`}>
+    <g data-cable-end={kind} data-squashed={s < 1 || undefined} transform={`translate(${x} ${y}) rotate(${angle})`}>
       {body}
     </g>
   )

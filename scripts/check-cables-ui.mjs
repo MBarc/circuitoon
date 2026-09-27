@@ -1,7 +1,8 @@
 // Browser check for cable ends, in the built app. Loads a breadboard sheet with one wire per cable
 // preset (every end kind, ends facing up and down), a sensor wired to a board with Dupont F-F
 // leads (ends facing down and left) and a battery clipped to a resistor with alligator leads
-// (ends facing left, right and up), then through the real UI checks: every connector is drawn on
+// (ends facing left, right and up), and a vertical resistor wired to a horizontal one with banana
+// and Dupont leads (every part off the grid, so every pin end needs a straight lead-out), then through the real UI checks: every connector is drawn on
 // the right end of the right wire; the Cable select sets both ends in one undo step; the per-end
 // selects make a Custom cable and Swap ends turns it round; several selected wires take one
 // preset together; a new wire gets the last cable picked, and so does one drawn after a reload
@@ -82,6 +83,9 @@ connections.push(
   { uid: 's4', from: { part: 'u2', pin: 'SDA' }, to: { part: 'u1', pin: 'IO21' }, color: 'blue', gauge: 22, ends: ff },
   { uid: 'a1', from: { part: 'bt', pin: '+' }, to: { part: 'r1', pin: '1' }, color: 'red', gauge: 20, ends: { from: 'alligator', to: 'alligator' } },
   { uid: 'a2', from: { part: 'bt', pin: '-' }, to: { part: 'r1', pin: '2' }, color: 'black', gauge: 20, ends: { from: 'alligator', to: 'alligator' } },
+  // A vertical resistor to a horizontal one: banana leads and a Dupont M-M, ends off the grid.
+  { uid: 'b1', from: { part: 'r2', pin: '1' }, to: { part: 'r4', pin: '1' }, color: 'red', gauge: 20, ends: { from: 'banana', to: 'banana' } },
+  { uid: 'b2', from: { part: 'r2', pin: '2' }, to: { part: 'r4', pin: '2' }, color: 'green', gauge: 22, ends: { from: 'dupont-male', to: 'dupont-male' } },
 )
 const file = join(out, 'cables.circuitoon.json')
 writeFileSync(file, JSON.stringify({
@@ -92,6 +96,8 @@ writeFileSync(file, JSON.stringify({
     at('u1', 'U1', 'esp32-devkitc-v4', 600, 20),
     at('bt', 'BT1', 'battery-9v', 400, 420),
     at('r1', 'R1', 'resistor', 440, 330),
+    { ...at('r2', 'R2', 'resistor', 603, 334), rotation: 90 },
+    at('r4', 'R4', 'resistor', 687, 465),
   ],
   connections,
 }))
@@ -192,6 +198,9 @@ for (const scheme of ['light', 'dark']) {
   const facing = await page.evaluate(() =>
     [...document.querySelectorAll('[data-cable-end]')].map((g) => g.getAttribute('transform')),
   )
+  // No connector is squashed: every one sits on a straight end segment at least its own length.
+  const squashed = await page.locator('[data-cable-end][data-squashed]').evaluateAll((els) => els.map((e) => e.closest('[data-wire]').getAttribute('data-wire')))
+  check(squashed.length === 0, `${scheme}: every connector has its full length${squashed.length ? ` (squashed on ${squashed.join(', ')})` : ''}`)
   check(facing.some((t) => t.includes('rotate(90)')) && facing.some((t) => t.includes('rotate(270)')) && facing.some((t) => t.includes('rotate(180)')) && facing.some((t) => t.includes('rotate(0)')),
     `${scheme}: the sheet has connectors facing all four ways`)
 
@@ -211,6 +220,9 @@ for (const scheme of ['light', 'dark']) {
   await zoomTo(4, 470, 380)
   await shot(canvas, 'cables-267-clips')
   await zoomTo(1.5, 470, 380)
+  await zoomTo(4, 660, 430)
+  await shot(canvas, 'cables-267-resistors')
+  await zoomTo(1.5, 660, 430)
 
   // Select the plain wire (in the channel, clear of every hole) and pick a cable.
   await clickWorld(30, 235)
