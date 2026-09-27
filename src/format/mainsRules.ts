@@ -5,7 +5,8 @@
 import type { Endpoint } from './diagram.ts'
 import type { RuleId } from './checks.ts'
 import { nodeKey } from './netlist.ts'
-import { type GConverter, type GEdge, type GTerm, type MainsGraph, type Prepared, LN_MASK, bitOf, decodeSingle, minimalWitnesses, statePhrase } from './mainsGraph.ts'
+import { type GConverter, type GEdge, type GSource, type GTerm, type MainsGraph, type Prepared, LN_MASK, PE_MASK, bitOf, decodeSingle, identAt, minimalWitnesses, statePhrase, termAt, termName } from './mainsGraph.ts'
+import { type Conductor, isolationAdequate } from './mainsModel.ts'
 import { andList, natural } from './words.ts'
 
 export interface MainsDraft {
@@ -81,6 +82,18 @@ export function report(acc: Acc, key: string, mask: number, first: () => (when: 
   let s = acc.seen.get(key)
   if (!s) acc.seen.set(key, (s = { holds: new Uint32Array(Math.max(1, Math.ceil(acc.total / 32))), build: first() }))
   s.holds[mask >>> 5] |= 1 << (mask & 31)
+}
+
+/**
+ * Records state `mask` for a finding already seen and returns true; false when `key` is new (the
+ * caller then calls `report` with its builder). Allocates nothing, so a per-state rule can check its
+ * findings without making a closure each state.
+ */
+export function mark(acc: Acc, key: string, mask: number): boolean {
+  const s = acc.seen.get(key)
+  if (!s) return false
+  s.holds[mask >>> 5] |= 1 << (mask & 31)
+  return true
 }
 
 export const volt = (v: number) => `${Number(v.toFixed(1))} V`
@@ -230,6 +243,260 @@ function availabilityRule(acc: Acc) {
 }
 
 export const STATE_RULES: ((acc: Acc, mask: number) => void)[] = [availabilityRule]
+
+// ---- Rule 1: mains reaching low-voltage wiring (spec 1.3, 1.4) ----
+
+export type LvClass = 'ordinary' | 'separated' | 'secondary'
+
+/**
+ * How a terminal counts when mains reaches it: a pin of a part with no mains data (a GPIO, a
+ * breadboard strip) or an undeclared pin of a mains part is ordinary; a pin in a non-mains domain is
+ * separated (protective separation) or a secondary without it; null for a terminal the module
+ * declares for mains (the rating rules take it). Whether a separated side is SELV or PELV is decided
+ * per state by `effectiveClass`, never by the domain's label (Resolution 9).
+ */
+export function lvClass(t: GTerm): LvClass | null {
+  if (!t.info.any) return 'ordinary'
+  const dom = t.info.domainOf.get(t.name)
+  if (dom && dom.kind !== 'mains') return isolationAdequate(t.info) ? 'separated' : 'secondary'
+  return t.info.terminals.has(t.name) ? null : 'ordinary'
+}
+
+/** The analysed nodes of a part's declared bonds (`bond: "pe"`). */
+const bondNodes = (p: Prepared, t: GTerm): number[] =>
+  [...t.info.bonds].map((b) => p.g.nodeOf.get(nodeKey(t.part.uid, b))).filter((i): i is number => i !== undefined && p.inRel[i] === 1)
+
+/** Spec 1.3, Resolution 9: PELV in this state when one of the part's declared bonds sits on PE identity, SELV otherwise. */
+export function effectiveClass(p: Prepared, t: GTerm): 'SELV' | 'PELV' {
+  return bondNodes(p, t).some((i) => identAt(p, i) & PE_MASK) ? 'PELV' : 'SELV'
+}
+
+interface Watch {
+  node: number
+  /** The low-voltage terminals on the node, in designator order. */
+  terms: GTerm[]
+  /** The worst class among them. */
+  cls: LvClass
+  /** The first separated terminal (whose part's bonds decide SELV or PELV), and those bond nodes. */
+  sep: GTerm | null
+  bonds: Int32Array
+  /** The finding key per (source mask, PELV bit), made once so a state allocates nothing. */
+  keys: Map<number, string>
+}
+const watchCache = new WeakMap<Prepared, Watch[]>()
+/** The relevant nodes holding a low-voltage terminal, with those terminals (sorted) and the worst class among them. Once per view. */
+function watchList(p: Prepared): Watch[] {
+  let list = watchCache.get(p)
+  if (list) return list
+  list = []
+  for (const i of p.relevant) {
+    const classed = p.g.members[i].flatMap((k) => {
+      const t = termAt(p.g, k)
+      const c = t && lvClass(t)
+      return t && c ? [{ t, c }] : []
+    })
+    if (!classed.length) continue
+    const cls = (['secondary', 'separated', 'ordinary'] as const).find((c) => classed.some((x) => x.c === c))!
+    const sep = cls === 'separated' ? classed.find((x) => x.c === 'separated')!.t : null
+    list.push({
+      node: i, terms: classed.map((x) => x.t).sort((a, b) => natural.compare(termName(a), termName(b))), cls,
+      sep, bonds: Int32Array.from(sep ? bondNodes(p, sep) : []), keys: new Map(),
+    })
+  }
+  watchCache.set(p, list)
+  return list
+}
+
+/**
+ * The wires on the way energy reaches root `r` in the current state: every net on a shortest chain
+ * of load, leakage and energize edges from an L or N net of the given sources (every source when
+ * omitted) to `r`, and `r`'s own (spec 3: a path finding highlights the path, not only where it
+ * ends). Runs once per finding, never per state.
+ */
+export function energyPathWires(p: Prepared, r: number, from?: number[]): string[] {
+  const g = p.g
+  const prev = new Map<number, number>()
+  const queue: number[] = []
+  for (const s of p.sources) {
+    if (from && !from.includes(s.index)) continue
+    for (const x of [...s.live, ...s.neutral]) {
+      const q = p.root[x]
+      if (!prev.has(q)) {
+        prev.set(q, -1)
+        queue.push(q)
+      }
+    }
+  }
+  const links: [number, number, boolean][] = [
+    ...p.energy.map((e): [number, number, boolean] => [e.a, e.b, e.directed]),
+    ...p.groupIdx.flatMap((gi) => g.groups[gi].leak[p.groupState[gi]].filter(([a, b]) => p.inRel[a] && p.inRel[b]).map(([a, b]): [number, number, boolean] => [a, b, false])),
+  ]
+  for (let q = 0; q < queue.length && !prev.has(r); q++) {
+    const x = queue[q]
+    for (const [a, b, directed] of links) {
+      const [ra, rb] = [p.root[a], p.root[b]]
+      const next = ra === x ? rb : !directed && rb === x ? ra : -1
+      if (next >= 0 && !prev.has(next)) {
+        prev.set(next, x)
+        queue.push(next)
+      }
+    }
+  }
+  const on = new Set<number>([r])
+  for (let x = prev.has(r) ? r : -1; x !== -1; x = prev.get(x)!) on.add(x)
+  const out: string[] = []
+  for (const i of p.relevant) if (on.has(p.root[i])) out.push(...g.wires[i])
+  return out
+}
+
+function lowVoltageDraft(w: Watch, from: string, effective: 'SELV' | 'PELV', sourceKeys: string[], wires: string[], when: string): MainsDraft {
+  const names = andList(w.terms.map(termName))
+  const one = w.terms.length === 1
+  const lead = w.terms[0]
+  let message: string
+  if (w.cls === 'secondary') {
+    const conv = w.terms.find((t) => lvClass(t) === 'secondary')!
+    const iso = conv.info.isolation === 'basic' ? 'basic insulation' : conv.info.isolation === 'none' ? 'no insulation at all' : 'insulation of unknown quality'
+    message = `${conv.part.designator}'s low-voltage side is separated from mains only by ${iso}, so ${names} may be live${when}: that side counts as mains. Do not wire it to anything a person can touch; use a converter with reinforced or double isolation.`
+  } else if (w.cls === 'separated') {
+    message = `${names} ${one ? 'is' : 'are'} on a ${effective} low-voltage side that must never meet mains, but ${one ? 'gets' : 'get'} mains from ${from}${when}. Remove the wire that joins ${one ? 'it' : 'them'} to mains.`
+  } else {
+    const parts = [...new Set(w.terms.map((t) => t.part.designator))]
+    const single = parts.length === 1
+    message = `${names} ${one ? 'gets' : 'get'} mains from ${from}${when}. ${andList(parts)} ${single ? 'is a low-voltage part' : 'are low-voltage parts'}: ${single ? 'it' : 'they'} may be destroyed, and anything touching ${single ? 'it' : 'them'} may become live. Remove the wire that brings mains there, and switch mains only through a relay or SSR rated for it.`
+  }
+  return { rule: 'mains-to-low-voltage', subject: lead.part.designator, target: termName(lead), message, parts: [...new Set(w.terms.map((t) => t.part.uid))], pins: w.terms.map(endpointOf), wires, causes: [...w.terms.map((t) => t.key), ...sourceKeys] }
+}
+
+/** The sources (global index, ascending) of a source mask. */
+const sourcesOfMask = (m: number): number[] => {
+  const out: number[] = []
+  for (let i = 0; m >>> i; i++) if ((m >>> i) & 1) out.push(i)
+  return out
+}
+
+/** Rule 1, per state and allocation-free once a finding is known: a hazardous node holding a low-voltage terminal. */
+function lowVoltageRule(acc: Acc, mask: number) {
+  const { p, srcIdx, srcLN } = acc
+  for (const w of watchList(p)) {
+    const r = p.root[w.node]
+    const x = p.ident[r] & LN_MASK
+    const e = p.power[r]
+    if (!x && !e) continue
+    // Resolution 24: the key holds the whole claim (terminals, sources, effective class), so each
+    // source keeps its own conditions and path.
+    let sm = 0
+    for (let j = 0; j < srcIdx.length; j++) if (x & srcLN[j] || (e >> srcIdx[j]) & 1) sm |= 1 << srcIdx[j]
+    let pelv = 0
+    for (let b = 0; b < w.bonds.length && !pelv; b++) if (p.ident[p.root[w.bonds[b]]] & PE_MASK) pelv = 1
+    const code = sm * 2 + pelv
+    let key = w.keys.get(code)
+    if (key === undefined) w.keys.set(code, (key = `mains-to-low-voltage|${w.terms.map((t) => t.key).join(',')}|${sm}|${pelv ? 'PELV' : 'SELV'}`))
+    if (mark(acc, key, mask)) continue
+    report(acc, key, mask, () => {
+      const srcs = sourcesOfMask(sm)
+      const from = sourcesText(p.g, srcs)
+      const sourceKeys = srcs.flatMap((i) => p.g.sources[i].keys.L)
+      const wires = energyPathWires(p, r, srcs)
+      const effective = pelv ? 'PELV' : 'SELV'
+      return (when) => lowVoltageDraft(w, from, effective, sourceKeys, wires, when)
+    })
+  }
+}
+
+// ---- Rules 2 and 3: identities that must never meet (spec 3) ----
+
+const CONDS: Conductor[] = ['L', 'N', 'PE']
+
+function shortDraft(p: Prepared, r: number, s: GSource, other: 'N' | 'PE') {
+  const wires = wiresOfRoot(p, r)
+  const d = s.part.designator
+  const keys = [...s.keys.L, ...s.keys[other]]
+  return (when: string): MainsDraft => ({
+    rule: 'mains-short', subject: d, target: `${d} L`,
+    message: other === 'N'
+      ? `${d} L and N are joined${when}: a short circuit across the outlet. The breaker should trip; until it does, the wiring may overheat. Remove the wire that joins them.`
+      : `${d} L is joined to earth${when}: a short circuit to earth, which puts mains on everything earthed until the breaker trips. Remove the wire that joins them.`,
+    parts: [s.part.uid], pins: keys.map(pinOfKey), wires, causes: keys,
+  })
+}
+
+function crossDraft(p: Prepared, r: number, s: GSource, a: Conductor, t: GSource, b: Conductor) {
+  // Name the side carrying L first, then N.
+  const rank = (c: Conductor) => CONDS.indexOf(c)
+  const [x, cx, y, cy] = rank(a) <= rank(b) ? [s, a, t, b] : [t, b, s, a]
+  const wires = wiresOfRoot(p, r)
+  const [X, Y] = [x.part.designator, y.part.designator]
+  const keys = [...x.keys[cx], ...y.keys[cy]]
+  const text = (when: string) =>
+    cx === 'L' && cy === 'L' ? `${X} L and ${Y} L are joined${when}. The two outlets may be on different phases, so up to twice the mains voltage can appear across the wiring, or one phase is shorted to the other. Power this part of the circuit from one outlet.`
+    : cx === 'L' && cy === 'N' ? `${X} L is joined to ${Y} N${when}: current from one outlet returns through the other, which can overload a shared neutral or get past a breaker. Power this part of the circuit from one outlet.`
+    : cx === 'L' ? `${X} L is joined to ${Y}'s earth${when}: a short circuit to earth from another outlet. Remove the wire that joins them.`
+    : cx === 'N' && cy === 'N' ? `${X} N and ${Y} N are joined${when}: the two outlets share a neutral here. When a breaker switches one outlet off, its neutral can still carry current from the other. Keep each outlet's neutral separate.`
+    : `${X} N is joined to ${Y}'s earth${when}: neutral current flows on the earth wire. Keep each outlet's neutral apart from earth.`
+  return (when: string): MainsDraft => ({
+    rule: cx === 'N' && cy === 'N' ? 'mains-shared-neutral' : 'mains-cross-source', subject: X, target: `${X} ${cx}`, message: text(when),
+    parts: [x.part.uid, y.part.uid], pins: keys.map(pinOfKey), wires, causes: keys,
+  })
+}
+
+/** Finding keys for rules 2 and 3 in one view, made once: per source its two shorts, per source pair and conductor pair its cross key. */
+interface IdentityKeys { short: string[][]; cross: string[] }
+const identityCache = new WeakMap<Prepared, IdentityKeys>()
+function identityKeys(p: Prepared): IdentityKeys {
+  let k = identityCache.get(p)
+  if (k) return k
+  const n = p.sources.length
+  const cross: string[] = new Array(n * n * 9).fill('')
+  p.sources.forEach((s, i) => p.sources.forEach((t, j) => {
+    if (t.index <= s.index) return
+    CONDS.forEach((a, ai) => CONDS.forEach((b, bi) => {
+      if (a === 'PE' && b === 'PE') return
+      const pair = [`${s.id}:${a}`, `${t.id}:${b}`].sort().join('+')
+      cross[(i * n + j) * 9 + ai * 3 + bi] = `${a === 'N' && b === 'N' ? 'mains-shared-neutral' : 'mains-cross-source'}|${pair}`
+    }))
+  }))
+  k = { short: p.sources.map((s) => [`mains-short|${s.id}|N`, `mains-short|${s.id}|PE`]), cross }
+  identityCache.set(p, k)
+  return k
+}
+
+/** Rules 2 and 3, per state and allocation-free once a finding is known: one source's L on its N or PE; two sources' conductors on one node. */
+function identityRules(acc: Acc, mask: number) {
+  const { p } = acc
+  const src = p.sources
+  const n = src.length
+  const keys = identityKeys(p)
+  for (let q = 0; q < p.srcRoots.length; q++) {
+    const r = p.srcRoots[q]
+    const x = p.ident[r]
+    for (let i = 0; i < n; i++) {
+      const s = src[i]
+      const sb = s.index * 3
+      if (!((x >>> sb) & 7)) continue
+      if ((x >>> sb) & 1) {
+        if ((x >>> (sb + 1)) & 1 && !mark(acc, keys.short[i][0], mask)) report(acc, keys.short[i][0], mask, () => shortDraft(p, r, s, 'N'))
+        if ((x >>> (sb + 2)) & 1 && !mark(acc, keys.short[i][1], mask)) report(acc, keys.short[i][1], mask, () => shortDraft(p, r, s, 'PE'))
+      }
+      for (let j = 0; j < n; j++) {
+        const t = src[j]
+        if (t.index <= s.index) continue
+        const tb = t.index * 3
+        if (!((x >>> tb) & 7)) continue
+        for (let a = 0; a < 3; a++) {
+          if (!((x >>> (sb + a)) & 1)) continue
+          for (let b = 0; b < 3; b++) {
+            if (!((x >>> (tb + b)) & 1) || (a === 2 && b === 2)) continue
+            const key = keys.cross[(i * n + j) * 9 + a * 3 + b]
+            if (!mark(acc, key, mask)) report(acc, key, mask, () => crossDraft(p, r, s, CONDS[a], t, CONDS[b]))
+          }
+        }
+      }
+    }
+  }
+}
+
+STATE_RULES.push(lowVoltageRule, identityRules)
 
 export function visitState(acc: Acc, mask: number): void {
   track(acc)
