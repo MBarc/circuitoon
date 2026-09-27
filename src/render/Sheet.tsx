@@ -5,6 +5,7 @@ import { partCaption } from '../format/values.ts'
 import { Part, INK } from './Part.tsx'
 import { LegDots, TakenHoles } from './Boards.tsx'
 import { WireLabel } from './WireLabel.tsx'
+import { CableEnd } from './CableEnd.tsx'
 
 export function Sheet({ diagram, captions = {}, box, label, decorative = false }: {
   diagram: Diagram
@@ -39,12 +40,14 @@ export function Sheet({ diagram, captions = {}, box, label, decorative = false }
       {others.map(part)}
       <LegDots plugs={plugs} />
       <g fill="none" strokeLinecap="round" strokeLinejoin="round">
-        {wires.map(({ conn, d, blocked }) => {
+        {wires.map(({ conn, d, blocked, cables }) => {
           const w = wireWidth(conn.gauge)
+          const color = wireColor(conn.color)
           return (
             <g key={conn.uid} data-wire={conn.uid}>
               <path d={d} stroke={INK} strokeWidth={w + 2.2} strokeDasharray={blocked ? '6 5' : undefined} />
-              <path d={d} stroke={wireColor(conn.color)} strokeWidth={w} strokeDasharray={blocked ? '6 5' : undefined} />
+              <path d={d} stroke={color} strokeWidth={w} strokeDasharray={blocked ? '6 5' : undefined} />
+              {cables.map((c, i) => c && <CableEnd key={i} kind={c.kind} x={c.at.x} y={c.at.y} angle={c.angle} scale={c.scale} color={color} width={w} />)}
             </g>
           )
         })}

@@ -93,6 +93,49 @@ describe('wirePaths', () => {
     expect(w1.d).toBe('M48 20 L92 20')
     expect(w2.d).toBe('M70 52 L70 25 A5 5 0 0 0 70 15 L70 -22')
   })
+  it('cuts the drawn wire back into each connector and places it on the drawn end segments', () => {
+    const [w] = wirePaths(d([{ uid: 'w', from: { part: 'a', pin: 'R' }, to: { part: 'b', pin: 'L' }, ends: { from: 'dupont-male', to: 'dupont-female' } }]))
+    expect(w.d).toBe('M63 20 L80 20')
+    expect(w.points).toEqual([{ x: 48, y: 20 }, { x: 92, y: 20 }]) // handles, labels and dots keep the full wire
+    expect(w.ends).toEqual([{ x: 48, y: 20 }, { x: 92, y: 20 }])
+    expect(w.cables).toEqual([
+      { kind: 'dupont-male', at: { x: 48, y: 20 }, back: { x: 1, y: 0 }, angle: 0, scale: 1 },
+      { kind: 'dupont-female', at: { x: 92, y: 20 }, back: { x: -1, y: 0 }, angle: 180, scale: 1 },
+    ])
+  })
+  it('draws no connector for a plain wire', () => {
+    const [w] = wirePaths(d([{ uid: 'w', from: { part: 'a', pin: 'R' }, to: { part: 'b', pin: 'L' } }]))
+    expect(w.cables).toEqual([null, null])
+  })
+  it('stops an exposed end\'s insulation, round cap included, where its metal begins', () => {
+    // 8 px leg plus half the 22 AWG wire's outlined width (3 + 2.2) / 2 = 2.6.
+    const [w] = wirePaths(d([{ uid: 'w', from: { part: 'a', pin: 'R' }, to: { part: 'b', pin: 'L' }, ends: { from: 'solid-jumper' } }]))
+    expect(w.d).toBe('M58.6 20 L92 20')
+  })
+  it('never cuts past the share of a short straight wire', () => {
+    const [w] = wirePaths(d([{ uid: 'w', from: { part: 'a', pin: 'R' }, to: { part: 'b', pin: 'L' }, ends: { from: 'banana', to: 'banana' } }]))
+    // 44 px shared: 22 each; the 28 px plug squashes to 22/28 and its 22 px cut to 17.29.
+    expect(w.cables[0]!.scale).toBeCloseTo(22 / 28)
+    expect(w.d).toBe('M65.29 20 L74.71 20')
+  })
+  it('puts no hop under a connector: the crossing wire runs beneath the housing', () => {
+    const vert: ModuleDef = {
+      format: 'circuitoon-module/1', id: 'vert', name: 'Vert',
+      pins: [{ name: 'T', side: 'top' }, { name: 'B', side: 'bottom' }],
+    }
+    const diagram = d([
+      { uid: 'w1', from: { part: 'a', pin: 'R' }, to: { part: 'b', pin: 'L' } },
+      { uid: 'w2', from: { part: 'c', pin: 'T' }, to: { part: 'e', pin: 'B' } },
+    ])
+    diagram.modules.vert = vert
+    diagram.parts.push({ uid: 'c', designator: 'C', module: 'vert', x: 50, y: 38 }, { uid: 'e', designator: 'E', module: 'vert', x: 50, y: -60 })
+    expect(wirePaths(diagram)[1].d).toBe('M70 30 L70 25 A5 5 0 0 0 70 15 L70 -22')
+    diagram.connections[1].ends = { from: 'dupont-male' }
+    const [w1, w2] = wirePaths(diagram)
+    expect(w1.d).toBe('M48 20 L92 20')
+    expect(w2.d).toBe('M70 15 L70 -22')
+    expect(w2.cables[0]).toMatchObject({ at: { x: 70, y: 30 }, back: { x: 0, y: -1 }, angle: 270 })
+  })
   it('skips a connection whose pin does not exist', () => {
     expect(wirePaths(d([{ uid: 'w', from: { part: 'a', pin: 'nope' }, to: { part: 'b', pin: 'L' } }]))).toEqual([])
   })

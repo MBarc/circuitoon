@@ -112,7 +112,7 @@ export const END_SIZE: Record<EndKind, { reach: number; trim: number; exposed: b
   'dupont-male': { reach: 21, trim: 15, exposed: false },
   'dupont-female': { reach: 17, trim: 12, exposed: false },
   'solid-jumper': { reach: 8, trim: 8, exposed: true },
-  alligator: { reach: 27, trim: 22, exposed: false },
+  alligator: { reach: 29, trim: 24, exposed: false },
   stripped: { reach: 6, trim: 6, exposed: true },
   ferrule: { reach: 14, trim: 11, exposed: false },
   'jst-xh': { reach: 13, trim: 9, exposed: false },
@@ -125,14 +125,24 @@ export const END_SIZE: Record<EndKind, { reach: number; trim: number; exposed: b
 /** Smallest a connector is squashed to on a short end segment; below that it overhangs the corner. */
 export const MIN_END_SCALE = 0.6
 
+/** One end's connector as drawn: its kind and where it sits (see endPlacement). */
+export interface CableEndDraw {
+  kind: EndKind
+  at: Pt
+  back: Pt
+  angle: number
+  scale: number
+}
+
 /**
  * Where one end's connector sits on a drawn wire: at the endpoint, facing `back` along the segment
  * the end sits on (a unit vector pointing away from the endpoint, into the wire), turned `angle`
  * degrees from +x. `scale` squashes a connector of length `reach` along the wire when that segment
- * is shorter (a single straight segment is shared, half each end), down to MIN_END_SCALE. Null
+ * is shorter (a single straight segment is shared, half each end), down to MIN_END_SCALE; `room` is
+that length, the most the drawn wire may be cut back at this end. Null
  * when the polyline has no length at that end or the end segment is not horizontal or vertical.
  */
-export function endPlacement(points: Pt[], which: 'from' | 'to', reach: number): { at: Pt; back: Pt; angle: number; scale: number } | null {
+export function endPlacement(points: Pt[], which: 'from' | 'to', reach: number): { at: Pt; back: Pt; angle: number; scale: number; room: number } | null {
   const pts = which === 'from' ? points : [...points].reverse()
   if (pts.length < 2) return null
   const at = pts[0]
@@ -149,5 +159,5 @@ export function endPlacement(points: Pt[], which: 'from' | 'to', reach: number):
   const room = single ? len / 2 : len
   const scale = reach > 0 ? Math.min(1, Math.max(MIN_END_SCALE, room / reach)) : 1
   const angle = dx === 1 ? 0 : dy === 1 ? 90 : dx === -1 ? 180 : 270
-  return { at: { x: at.x, y: at.y }, back: { x: dx + 0, y: dy + 0 }, angle, scale }
+  return { at: { x: at.x, y: at.y }, back: { x: dx + 0, y: dy + 0 }, angle, scale, room }
 }

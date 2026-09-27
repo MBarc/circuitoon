@@ -5,6 +5,7 @@ import { isBoard, layoutModule, type ModuleDef } from '../format/module.ts'
 import { type Plug, type Seat, mountIssues, plugsOf, seatOf, seatOn } from '../format/breadboard.ts'
 import { pivot, rotateVec, type Rotation } from '../format/geometry.ts'
 import { partValue } from '../format/values.ts'
+import { normalizeEnds, type WireEnds } from '../format/cables.ts'
 
 export interface Selection {
   parts: string[]
@@ -15,6 +16,8 @@ export const EMPTY_SELECTION: Selection = { parts: [], wires: [] }
 export interface WireStyle {
   color: string
   gauge: number
+  /** Cable ends for the next wire drawn; none means a plain wire. */
+  ends?: WireEnds
 }
 
 export function nextUid(d: Diagram, prefix: 'p' | 'w' | 'a'): string {
@@ -255,7 +258,8 @@ export function addWire(d: Diagram, from: Endpoint, to: Endpoint, style: WireSty
   if (sameEndpoint(d, from, to)) return null
   if (d.connections.some((c) => (sameEndpoint(d, c.from, from) && sameEndpoint(d, c.to, to)) || (sameEndpoint(d, c.from, to) && sameEndpoint(d, c.to, from)))) return null
   const uid = nextUid(d, 'w')
-  const wire: Connection = { uid, from, to, color: style.color, gauge: style.gauge }
+  const ends = normalizeEnds(style.ends)
+  const wire: Connection = { uid, from, to, color: style.color, gauge: style.gauge, ...(ends ? { ends } : {}) }
   return { uid, diagram: { ...d, connections: [...d.connections, wire] } }
 }
 
@@ -293,6 +297,25 @@ export function updatePart(d: Diagram, uid: string, patch: { designator?: string
 
 export function updateWire(d: Diagram, uid: string, patch: { color?: string; gauge?: number; label?: string }): Diagram {
   return { ...d, connections: d.connections.map((c) => (c.uid === uid ? { ...c, ...patch } : c)) }
+}
+
+/**
+ * Sets the cable ends of every wire in `uids` (bare ends are not stored; all bare removes the
+ * key). Returns the same diagram when no wire changes, so a no-op makes no undo step.
+ */
+export function setWireEnds(d: Diagram, uids: string[], ends: WireEnds | undefined): Diagram {
+  const want = normalizeEnds(ends)
+  const set = new Set(uids)
+  let changed = false
+  const connections = d.connections.map((c) => {
+    if (!set.has(c.uid)) return c
+    const have = normalizeEnds(c.ends)
+    if (have?.from === want?.from && have?.to === want?.to && ('ends' in c) === !!want) return c
+    changed = true
+    const { ends: _old, ...rest } = c
+    return want ? { ...rest, ends: want } : rest
+  })
+  return changed ? { ...d, connections } : d
 }
 
 const sameRoute = (a: [number, number][] | undefined, b: [number, number][]) =>

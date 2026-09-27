@@ -2,8 +2,11 @@
 // so typing a name is one undo step, not one per keystroke.
 import { useEffect, useState } from 'react'
 import { type EditorStore, useEditorState } from './store.ts'
-import { clearWireRoute, deleteSelection, rotateParts, updatePart, updatePartValue, updateWire } from './ops.ts'
-import { NAMED_COLORS, isValidColor, moduleOf, partObstacles, routeWire } from '../format/diagram.ts'
+import { clearWireRoute, deleteSelection, rotateParts, setWireEnds, updatePart, updatePartValue, updateWire } from './ops.ts'
+import { type Diagram, type Endpoint, NAMED_COLORS, isValidColor, moduleOf, partObstacles, routeWire, wireColor, wireWidth } from '../format/diagram.ts'
+import { CABLE_PRESETS, END_KINDS, END_NAMES, END_SIZE, type EndKind, type WireEnds, endKind, normalizeEnds, presetEnds, presetOf, swapEnds } from '../format/cables.ts'
+import { CableEnd } from '../render/CableEnd.tsx'
+import { INK } from '../render/Part.tsx'
 import { hexEditChanged, shownHex } from './color.ts'
 import { checkFailed, highlightOf, severityCounts, useProblems } from './problems.ts'
 import { type Finding, RULES, brokenConnection } from '../format/checks.ts'
@@ -61,6 +64,54 @@ function WireHexInput({ wireKey, color, onCommit }: { wireKey: string; color: st
         onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
       />
       {invalid && <p className="hint" role="status">Use a color name or #RRGGBB, for example #3D6FD6</p>}
+    </label>
+  )
+}
+
+/** A pin or hole as the sheet names it: "U1 GND", "BB1 c4-top". */
+function endpointName(d: Diagram, ep: Endpoint): string {
+  const part = d.parts.find((p) => p.uid === ep.part)
+  const m = part && moduleOf(d, part.module)
+  const pin = m?.pins.find((p) => 'name' in p && p.name === ep.pin)
+  const label = pin && 'label' in pin && typeof pin.label === 'string' ? pin.label : ep.pin
+  return `${part?.designator ?? ep.part} ${label}`
+}
+
+/** The cable as a small sticker: a short run of the wire with both of its ends drawn on. */
+function CablePreview({ ends, color, gauge }: { ends: WireEnds | undefined; color: string; gauge: number | undefined }) {
+  const w = wireWidth(gauge)
+  const c = wireColor(color)
+  const from = endKind(ends, 'from')
+  const to = endKind(ends, 'to')
+  const inset = (k: EndKind) => (END_SIZE[k].exposed ? END_SIZE[k].trim + (w + 2.2) / 2 : END_SIZE[k].trim)
+  const x0 = 7
+  const x1 = 113
+  const d = `M${x0 + inset(from)} 13H${x1 - inset(to)}`
+  return (
+    <svg className="cable-preview" viewBox="0 0 120 26" aria-hidden="true">
+      <path d={d} stroke={INK} strokeWidth={w + 2.2} strokeLinecap="round" fill="none" />
+      <path d={d} stroke={c} strokeWidth={w} strokeLinecap="round" fill="none" />
+      <CableEnd kind={from} x={x0} y={13} angle={0} scale={1} color={c} width={w} />
+      <CableEnd kind={to} x={x1} y={13} angle={180} scale={1} color={c} width={w} />
+    </svg>
+  )
+}
+
+/**
+ * The Cable select: every preset, plus Custom when the ends match none, or Mixed (for several
+ * wires) when they differ. Picking a preset sets both ends.
+ */
+function CableSelect({ id, value, onPick }: { id: string; value: string; onPick: (presetId: string) => void }) {
+  return (
+    <label className="field" htmlFor={id}>
+      Cable
+      <select id={id} value={value} onChange={(e) => onPick(e.target.value)}>
+        {CABLE_PRESETS.map((p) => (
+          <option key={p.id} value={p.id}>{p.name}</option>
+        ))}
+        {value === 'custom' && <option value="custom" disabled>Custom</option>}
+        {value === 'mixed' && <option value="mixed" disabled>Mixed</option>}
+      </select>
     </label>
   )
 }
@@ -272,6 +323,22 @@ export function Inspector({ store }: { store: EditorStore }) {
     return (
       <aside className="inspector" aria-label="Properties">
         <h2 id="selection-title" tabIndex={-1}>{count} items selected</h2>
+        {selection.wires.length > 0 && (() => {
+          const chosen = diagram.connections.filter((c) => selection.wires.includes(c.uid))
+          const ids = new Set(chosen.map((c) => presetOf(c.ends)?.id ?? 'custom'))
+          const value = ids.size === 1 ? [...ids][0] : 'mixed'
+          return (
+            <CableSelect
+              id="wires-cable"
+              value={value}
+              onPick={(pid) => {
+                const ends = presetEnds(pid)
+                store.commit(setWireEnds(diagram, selection.wires, ends))
+                store.setWireStyle({ ...wireStyle, ends })
+              }}
+            />
+          )
+        })()}
         {selection.parts.length > 0 && (
           <button type="button" className="tool" onClick={() => store.commit(rotateParts(diagram, selection.parts))}>Rotate parts</button>
         )}
@@ -330,8 +397,17 @@ export function Inspector({ store }: { store: EditorStore }) {
     // reset the working style back to this wire's own values, so fall back to the current
     // wireStyle (not this wire's color/gauge) for whichever field the patch didn't touch.
     if ('color' in patch || 'gauge' in patch)
-      store.setWireStyle({ color: patch.color ?? wireStyle.color, gauge: patch.gauge ?? wireStyle.gauge })
+      store.setWireStyle({ ...wireStyle, color: patch.color ?? wireStyle.color, gauge: patch.gauge ?? wireStyle.gauge })
   }
+  // One undo step each. A cable picked (a preset or one end) also becomes the new-wire cable;
+  // Swap ends only turns this wire round, so it leaves that alone.
+  const setEnds = (ends: WireEnds | undefined, remember: boolean) => {
+    store.commit(setWireEnds(diagram, [wire.uid], ends))
+    if (remember) store.setWireStyle({ ...wireStyle, ends: normalizeEnds(ends) })
+  }
+  const cable = presetOf(wire.ends)
+  const picked = presetOf(wireStyle.ends)
+  const newCable = !picked ? 'a custom cable' : picked.id === 'wire' ? 'plain wire' : picked.name
   return (
     <aside className="inspector" aria-label="Properties">
       <h2 id="wire-title" tabIndex={-1}>Wire</h2>
@@ -361,8 +437,41 @@ export function Inspector({ store }: { store: EditorStore }) {
           ))}
         </select>
       </label>
+      <div className="cable">
+        <CableSelect id="wire-cable" value={cable?.id ?? 'custom'} onPick={(pid) => setEnds(presetEnds(pid), true)} />
+        <CablePreview ends={wire.ends} color={color} gauge={wire.gauge} />
+        <details className="cable-ends" key={wire.uid} open={!cable || undefined}>
+          <summary>Ends: from / to</summary>
+          <div className="cable-ends-body">
+            {(['from', 'to'] as const).map((which) => (
+              <label key={which} className="field" htmlFor={`wire-end-${which}`}>
+                <span>
+                  {which === 'from' ? 'From' : 'To'} <span className="end-at">{endpointName(diagram, wire[which])}</span>
+                </span>
+                <select
+                  id={`wire-end-${which}`}
+                  value={endKind(wire.ends, which)}
+                  onChange={(e) => setEnds({ ...wire.ends, [which]: e.target.value as EndKind }, true)}
+                >
+                  {END_KINDS.map((k) => (
+                    <option key={k} value={k}>{END_NAMES[k]}</option>
+                  ))}
+                </select>
+              </label>
+            ))}
+            <button
+              type="button"
+              className="tool small"
+              disabled={endKind(wire.ends, 'from') === endKind(wire.ends, 'to')}
+              onClick={() => setEnds(swapEnds(wire.ends), false)}
+            >
+              Swap ends
+            </button>
+          </div>
+        </details>
+      </div>
       <CommitInput id="wire-label" label="Label" value={wire.label ?? ''} onCommit={(v) => setWire({ label: v.trim() || undefined })} />
-      <p className="hint">New wires use {wireStyle.color}, {wireStyle.gauge} AWG.</p>
+      <p className="hint">New wires use {wireStyle.color}, {wireStyle.gauge} AWG, {newCable}.</p>
       {wire.route && (
         <div className="field" role="group" aria-label="Shape">
           <p className="hint">Shaped by hand</p>

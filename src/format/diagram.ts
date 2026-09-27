@@ -5,7 +5,7 @@ import { type Pt, type Rect, type Rotation, type WorldPin, bodyRect, simplify, t
 import { addToOccupancy, inGrown, Occupancy, onGrid, routeOrthogonal } from './router.ts'
 import { manualRouteBlocked, tidy } from './wireEdit.ts'
 import { mountIssues, plugOfPin } from './breadboard.ts'
-import { isEndKind, normalizeEnds, type WireEnds } from './cables.ts'
+import { type CableEndDraw, END_SIZE, endKind, endPlacement, isEndKind, normalizeEnds, type WireEnds } from './cables.ts'
 
 /** How every load warning about a dropped value override ends: the part now shows its module
  * default instead of the value the file asked for. The editor lists these warnings first. */
@@ -484,18 +484,46 @@ function separate(
   return { pts, forced }
 }
 
+const cut = (v: number) => Math.round(v * 100) / 100
+
+/**
+ * A wire's connectors on its drawn polyline, and that polyline with each end cut back to where the
+ * wire meets its connector: a housing's back, or where an exposed end's metal starts (plus the
+ * round cap's half width, so the insulation ends there). Never cut past the end segment's room.
+ */
+function cableEnds(conn: Connection, pts: Pt[]): { cables: [CableEndDraw | null, CableEndDraw | null]; drawn: Pt[] } {
+  if (!conn.ends) return { cables: [null, null], drawn: pts }
+  const drawn = pts.slice()
+  const cables = (['from', 'to'] as const).map((which): CableEndDraw | null => {
+    const kind = endKind(conn.ends, which)
+    if (kind === 'bare') return null
+    const size = END_SIZE[kind]
+    const place = endPlacement(pts, which, size.reach)
+    if (!place) return null
+    const { at, back, angle, scale, room } = place
+    const trim = Math.min(room, size.trim * scale + (size.exposed ? (wireWidth(conn.gauge) + 2.2) / 2 : 0))
+    drawn[which === 'from' ? 0 : drawn.length - 1] = { x: cut(at.x + back.x * trim), y: cut(at.y + back.y * trim) }
+    return { kind, at, back, angle, scale }
+  })
+  return { cables: [cables[0], cables[1]], drawn }
+}
+
 /**
  * SVG path data for each routed wire. Where a wire crosses a wire earlier in the file, the
  * later one gets a small hop arc, as in hand-drawn wiring sheets. Earlier wires' segments are
  * indexed by position, so each new segment only checks the ones in its span. An interior segment
  * that would otherwise run right on top of an earlier wire is nudged 4 px clear first (see
  * `separate`), so the hop and label-anchor geometry below is already the drawn, separated shape.
+ * A wire with cable ends gets each connector placed on that drawn shape (`cables`, null for a
+ * bare end), and its path is cut back into the connector (see `END_SIZE`), so a crossing under a
+ * housing gets no hop: the housing already shows the two do not join. `points` and `ends` stay
+ * the full wire, for handles, labels and end dots.
  */
 export function wirePaths(d: Diagram, routes: Routes = computeRoutes(d)) {
   const index = new ObstacleIndex(partObstacles(d))
   const verticals: Seg[] = [] // at = x, lo..hi = y range
   const horizontals: Seg[] = [] // at = y, lo..hi = x range
-  const out: { conn: Connection; d: string; points: Pt[]; ends: Pt[]; blocked: boolean }[] = []
+  const out: { conn: Connection; d: string; points: Pt[]; ends: Pt[]; blocked: boolean; cables: [CableEndDraw | null, CableEndDraw | null] }[] = []
   const partsByUid = new Map(d.parts.map((p) => [p.uid, p]))
   for (const conn of d.connections) {
     const route = routes.get(conn.uid)
@@ -522,10 +550,11 @@ export function wirePaths(d: Diagram, routes: Routes = computeRoutes(d)) {
       return keep
     }
     const { pts, forced } = separate(simple, verticals, horizontals, index, keepOf)
-    let path = `M${pts[0].x} ${pts[0].y}`
-    for (let i = 1; i < pts.length; i++) {
-      const s = pts[i - 1]
-      const e = pts[i]
+    const { cables, drawn } = cableEnds(conn, pts)
+    let path = `M${drawn[0].x} ${drawn[0].y}`
+    for (let i = 1; i < drawn.length; i++) {
+      const s = drawn[i - 1]
+      const e = drawn[i]
       const horiz = s.y === e.y
       const vert = s.x === e.x
       const dir = Math.sign(horiz ? e.x - s.x : e.y - s.y)
@@ -553,7 +582,7 @@ export function wirePaths(d: Diagram, routes: Routes = computeRoutes(d)) {
     // was forced through a body.
     const moved = pts.some((p, i) => p.x !== simple[i].x || p.y !== simple[i].y)
     const blocked = moved && (route.blocked || forced) ? manualRouteBlocked(pts, keepOf() ? index.all.filter(keepOf()!) : index.all) : route.blocked
-    out.push({ conn, d: path, points: pts, ends: [pts[0], pts[pts.length - 1]], blocked })
+    out.push({ conn, d: path, points: pts, ends: [pts[0], pts[pts.length - 1]], blocked, cables })
   }
   return out
 }

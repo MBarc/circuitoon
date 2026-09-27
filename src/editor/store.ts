@@ -6,11 +6,13 @@ import { useSyncExternalStore } from 'react'
 import type { Diagram, Endpoint } from '../format/diagram.ts'
 import type { Severity } from '../format/checks.ts'
 import { EMPTY_SELECTION, type Selection, type WireStyle } from './ops.ts'
+import { loadNewWireEnds, saveNewWireEnds } from './cableDefault.ts'
 
 export interface EditorState {
   diagram: Diagram
   selection: Selection
-  /** Color and gauge for the next wire drawn; follows the last values picked. */
+  /** Color, gauge and cable for the next wire drawn; follows the last values picked. The cable is
+   * also remembered per browser. */
   wireStyle: WireStyle
   /** What a hovered or focused problem row lights on the canvas; not undo history. */
   highlight: Highlight | null
@@ -39,7 +41,9 @@ export class EditorStore {
   private listeners = new Set<() => void>()
 
   constructor(diagram: Diagram) {
-    this.state = { diagram, selection: EMPTY_SELECTION, wireStyle: { color: 'black', gauge: 22 }, highlight: null, reveal: 0 }
+    const ends = loadNewWireEnds()
+    const wireStyle: WireStyle = ends ? { color: 'black', gauge: 22, ends } : { color: 'black', gauge: 22 }
+    this.state = { diagram, selection: EMPTY_SELECTION, wireStyle, highlight: null, reveal: 0 }
   }
 
   getState = (): EditorState => this.state
@@ -162,6 +166,8 @@ export class EditorStore {
   }
 
   setWireStyle(wireStyle: WireStyle) {
+    const was = this.state.wireStyle.ends
+    if (was?.from !== wireStyle.ends?.from || was?.to !== wireStyle.ends?.to) saveNewWireEnds(wireStyle.ends)
     this.set({ wireStyle })
   }
 

@@ -59,10 +59,10 @@ describe('end kinds and presets', () => {
 describe('endPlacement', () => {
   const L = [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 50 }]
   it('puts the from end on the first segment, facing back along it', () => {
-    expect(endPlacement(L, 'from', 20)).toEqual({ at: { x: 0, y: 0 }, back: { x: 1, y: 0 }, angle: 0, scale: 1 })
+    expect(endPlacement(L, 'from', 20)).toEqual({ at: { x: 0, y: 0 }, back: { x: 1, y: 0 }, angle: 0, scale: 1, room: 100 })
   })
   it('puts the to end on the last segment, facing back along it', () => {
-    expect(endPlacement(L, 'to', 20)).toEqual({ at: { x: 100, y: 50 }, back: { x: 0, y: -1 }, angle: 270, scale: 1 })
+    expect(endPlacement(L, 'to', 20)).toEqual({ at: { x: 100, y: 50 }, back: { x: 0, y: -1 }, angle: 270, scale: 1, room: 50 })
   })
   it('orients correctly for all four directions', () => {
     const at = { x: 50, y: 50 }
@@ -86,7 +86,7 @@ describe('endPlacement', () => {
   })
   it('shares a single straight segment between both ends', () => {
     const line = [{ x: 0, y: 0 }, { x: 30, y: 0 }]
-    expect(endPlacement(line, 'from', 20)!.scale).toBeCloseTo(0.75)
+    expect(endPlacement(line, 'from', 20)).toMatchObject({ scale: 0.75, room: 15 })
     expect(endPlacement(line, 'to', 20)).toMatchObject({ at: { x: 30, y: 0 }, back: { x: -1, y: 0 }, angle: 180 })
   })
   it('skips repeated points to find the segment the end sits on', () => {
