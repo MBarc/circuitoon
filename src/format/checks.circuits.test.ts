@@ -647,6 +647,14 @@ describe('hotfix: Astra re-review 6', () => {
       'short: U1 5V and U2 5V are wired in a loop, each + to the next -: short circuit. Nothing limits the current, so they can overheat. Remove one of these wires: U1 5V to BB1 + rail (top), or U2 5V to U1 GND.',
     ])
   })
+  it('two Nanos tied 5V to 5V feeding a BME280: the overvoltage names U1 whatever the uids', () => {
+    const run = (a: string, b: string) => found(sheet([at(a, 'U1', 'arduino-nano'), at(b, 'U2', 'arduino-nano', 300), at('s1', 'U3', 'bme280-module-6pin', 600)],
+      [[`${a}|5V`, `${b}|5V`], [`${a}|GND`, `${b}|GND`], ['s1|VCC', `${b}|5V`], ['s1|GND', `${b}|GND 2`]]))
+    const want = ['supply-too-high: U3 VCC accepts up to 3.3 V but gets 5 V from U1 5V (USB). Move the wire to a 3.3 V pin.']
+    expect(run('n1', 'n2')).toEqual(want)
+    expect(run('n2', 'n1')).toEqual(want)
+    expect(run('zz', 'aa')).toEqual(want)
+  })
   it('a 3.3 V only sensor and a 5 V only sensor on one unfed rail: split the rail, never one voltage for both', () => {
     const d = sheet([at('bb', 'BB1', 'breadboard-half', 0, { y: 300 }), at('u1', 'U1', 'rpi-pico', 400), at('u2', 'U2', 'bme280-module-6pin', 700), at('u3', 'U3', 'ultrasonic-hc-sr04', 900)],
       [['u1|GND', 'bb|top-|0'], ['u2|VCC', 'bb|top+|3'], ['u2|GND', 'bb|top-|3'], ['u3|VCC', 'bb|top+|5'], ['u3|GND', 'bb|top-|5']])

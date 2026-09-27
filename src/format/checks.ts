@@ -1001,7 +1001,7 @@ function checkPotentials({ d, nl, netTerms, netWires, terminal, plugs, shorted, 
   // 1. Groups of the walk so far move as rigid bodies. A diode pin whose net and board ground are
   //    in different groups lifts its net's group to at least its own voltage; every such group
   //    settles at the highest lift (a fixed point over all diode pins, so one diode-fed group can
-  //    lift another). The diode that sets a group's level (ties broken by pin key) conducts and
+  //    lift another). The diode that sets a group's level (ties broken by designator) conducts and
   //    joins the two groups; the others are off.
   // 2. After walking again, every diode pin that does not conduct is a load: fine at or above its
   //    USB voltage up to its own limit, and below it (possible only when the rest of the sheet
@@ -1012,7 +1012,9 @@ function checkPotentials({ d, nl, netTerms, netWires, terminal, plugs, shorted, 
     const [a, b] = [pot.get(e.from) ?? lin0(), pot.get(e.to) ?? lin0()]
     return !a.u.size && !b.u.size ? a.c + e.v! - b.c : null
   }
-  const cross = [...diodes].sort((x, y) => (x.src!.term.key < y.src!.term.key ? -1 : 1))
+  // Designator order breaks ties between diodes at one level, so what a message names does not
+  // hang on uids; the pin key only settles duplicate designators.
+  const cross = [...diodes].sort((x, y) => natural.compare(termName(x.src!.term), termName(y.src!.term)) || (x.src!.term.key < y.src!.term.key ? -1 : 1))
     .filter((e) => (groupOf.get(e.from) ?? e.from) !== (groupOf.get(e.to) ?? e.to))
   const gOf = (n: string) => groupOf.get(n) ?? n
   const lifted = new Set(cross.map((e) => gOf(e.to)))
