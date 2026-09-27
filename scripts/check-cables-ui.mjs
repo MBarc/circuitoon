@@ -242,6 +242,9 @@ for (const scheme of ['light', 'dark']) {
   const cable = page.locator('#wire-cable')
   check((await cable.inputValue()) === 'wire', `${scheme}: a plain wire shows the Wire preset`)
   check((await page.locator('.inspector .hint', { hasText: 'New wires use' }).textContent()).includes('plain wire.'), `${scheme}: the new-wire hint says plain wire`)
+  // Nothing in the panel is wider than the panel (a long preset name must not widen the select).
+  const overflow = await page.locator('.inspector').evaluate((el) => el.scrollWidth - el.clientWidth)
+  check(overflow <= 0, `${scheme}: the wire panel does not overflow sideways (${overflow} px)`)
   await shot(page.locator('.inspector'), 'inspector-wire')
   await cable.selectOption('dupont-mf')
   await pause()

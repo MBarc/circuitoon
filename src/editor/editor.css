@@ -181,6 +181,9 @@
 .problem-glow path { stroke-opacity: 0.4; }
 .problem-glow.error path { stroke: #E0483E; }
 .problem-glow.warning path { stroke: #F4B400; stroke-opacity: 0.55; }
+/* A long option (a harness preset's name) must not widen a select past the panel. */
+.inspector { grid-template-columns: minmax(0, 1fr); }
+.field select { min-width: 0; }
 .cable { display: grid; gap: 8px; }
 .cable-preview { display: block; width: 100%; height: auto; background: var(--paper); border: 1.5px solid var(--rule); border-radius: 8px; }
 .cable-ends { font-size: 14px; }
