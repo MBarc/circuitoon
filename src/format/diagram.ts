@@ -5,6 +5,7 @@ import { type Pt, type Rect, type Rotation, type WorldPin, bodyRect, simplify, t
 import { addToOccupancy, inGrown, Occupancy, onGrid, routeOrthogonal } from './router.ts'
 import { manualRouteBlocked, tidy } from './wireEdit.ts'
 import { mountIssues, plugOfPin } from './breadboard.ts'
+import { isEndKind, normalizeEnds, type WireEnds } from './cables.ts'
 
 /** How every load warning about a dropped value override ends: the part now shows its module
  * default instead of the value the file asked for. The editor lists these warnings first. */
@@ -38,6 +39,8 @@ export interface Connection {
   gauge?: number
   label?: string
   route?: [number, number][]
+  /** What each end physically is (a Dupont pin, an alligator clip); omitted ends are bare wire. */
+  ends?: WireEnds
 }
 export interface Annotation {
   uid: string
@@ -621,6 +624,8 @@ export function validateDiagram(raw: unknown): DiagramResult {
   const partFixes = new Map<number, Partial<PartInstance>>()
   const fix = (i: number, patch: Partial<PartInstance>) => partFixes.set(i, { ...partFixes.get(i), ...patch })
   const droppedRoutes = new Set<number>()
+  // Connections whose `ends` lost an unknown kind or key: the ends they keep (undefined: none).
+  const endFixes = new Map<number, WireEnds | undefined>()
 
   const partModule = new Map<string, string>()
   if (!Array.isArray(raw.parts)) errors.push('parts: required list')
@@ -748,6 +753,27 @@ export function validateDiagram(raw: unknown): DiagramResult {
           if (px !== qx && py !== qy) warnings.push(`${at}.route[${k}]: diagonal step from route[${k - 1}] (each step should be horizontal or vertical)`)
         }
       if (c.label !== undefined && typeof c.label !== 'string') errors.push(`${at}.label: must be a string`)
+      // Cable ends are presentation: anything unknown is dropped with a warning, never refused.
+      if (c.ends !== undefined) {
+        if (!isObj(c.ends)) {
+          endFixes.set(i, undefined)
+          warnings.push(`${at}.ends: must be an object like { "from": "dupont-male", "to": "dupont-female" }, so it was dropped and the wire is drawn plain`)
+        } else {
+          const kept: WireEnds = {}
+          let changed = false
+          for (const [key, kind] of Object.entries(c.ends)) {
+            if (key !== 'from' && key !== 'to') {
+              changed = true
+              warnings.push(`${at}.ends.${key}: not a wire end ("from" or "to"), so it was dropped`)
+            } else if (!isEndKind(kind)) {
+              changed = true
+              warnings.push(`${at}.ends.${key}: unknown cable end ${JSON.stringify(kind)}, so that end is drawn as bare wire`)
+            } else kept[key] = kind
+          }
+          const norm = normalizeEnds(kept)
+          if (changed || !norm || norm.from !== kept.from || norm.to !== kept.to) endFixes.set(i, norm)
+        }
+      }
     })
 
   if (raw.annotations !== undefined) {
@@ -763,14 +789,15 @@ export function validateDiagram(raw: unknown): DiagramResult {
 
   if (errors.length) return { ok: false, errors }
   let diagram = raw as unknown as Diagram
-  if (partFixes.size || droppedRoutes.size)
+  if (partFixes.size || droppedRoutes.size || endFixes.size)
     diagram = {
       ...diagram,
       parts: diagram.parts.map((p, i) => (partFixes.has(i) ? { ...p, ...partFixes.get(i) } : p)),
       connections: diagram.connections.map((c, i) => {
-        if (!droppedRoutes.has(i)) return c
-        const { route: _dropped, ...rest } = c
-        return rest
+        if (!droppedRoutes.has(i) && !endFixes.has(i)) return c
+        const { route, ends: _ends, ...rest } = c
+        const ends = endFixes.has(i) ? endFixes.get(i) : c.ends
+        return { ...rest, ...(route && !droppedRoutes.has(i) ? { route } : {}), ...(ends ? { ends } : {}) }
       }),
     }
   // Mounts that load but plug nothing, checked on the fixed diagram (clamped positions, dropped
@@ -792,8 +819,20 @@ export function validateDiagram(raw: unknown): DiagramResult {
   return { ok: true, diagram, warnings }
 }
 
+/** The file text. Cable ends are written only where they are not bare, so plain wires stay unchanged. */
 export function serializeDiagram(d: Diagram): string {
-  return JSON.stringify(d, null, 2) + '\n'
+  const out = d.connections.some((c) => 'ends' in c)
+    ? {
+        ...d,
+        connections: d.connections.map((c) => {
+          if (!('ends' in c)) return c
+          const { ends: _ends, ...rest } = c
+          const ends = normalizeEnds(c.ends)
+          return ends ? { ...c, ends } : rest
+        }),
+      }
+    : d
+  return JSON.stringify(out, null, 2) + '\n'
 }
 
 export function emptyDiagram(title = 'Untitled sheet'): Diagram {

@@ -185,3 +185,55 @@ describe('helpers', () => {
     expect(validateDiagram(emptyDiagram()).ok).toBe(true)
   })
 })
+
+describe('cable ends', () => {
+  it('loads ends and round-trips them exactly', () => {
+    const d = structuredClone(buttonLed)
+    d.connections[0].ends = { from: 'dupont-male', to: 'dupont-female' }
+    d.connections[1].ends = { to: 'alligator' }
+    const r = validateDiagram(JSON.parse(serializeDiagram(d)))
+    expect(r.ok && r.warnings).toEqual([])
+    if (!r.ok) return
+    expect(r.diagram.connections[0].ends).toEqual({ from: 'dupont-male', to: 'dupont-female' })
+    expect(serializeDiagram(r.diagram)).toBe(serializeDiagram(d))
+  })
+  it('leaves a plain wire file unchanged: no ends key is written', () => {
+    expect(serializeDiagram(buttonLed)).not.toContain('"ends"')
+  })
+  it('omits bare ends and empty ends when saving', () => {
+    const d = structuredClone(buttonLed)
+    d.connections[0].ends = { from: 'bare', to: 'jst-ph' }
+    d.connections[1].ends = { from: 'bare', to: 'bare' }
+    d.connections[2].ends = {}
+    const out = JSON.parse(serializeDiagram(d))
+    expect(out.connections[0].ends).toEqual({ to: 'jst-ph' })
+    expect('ends' in out.connections[1]).toBe(false)
+    expect('ends' in out.connections[2]).toBe(false)
+    expect(d.connections[1].ends).toEqual({ from: 'bare', to: 'bare' }) // the input is not mutated
+  })
+  it('drops an unknown end kind with a warning, keeping the other end', () => {
+    const d = structuredClone(buttonLed) as unknown as { connections: Record<string, unknown>[] }
+    d.connections[0].ends = { from: 'usb-c', to: 'banana' }
+    const r = validateDiagram(d)
+    expect(r.ok).toBe(true)
+    if (!r.ok) return
+    expect(r.warnings).toEqual(['connections[0].ends.from: unknown cable end "usb-c", so that end is drawn as bare wire'])
+    expect(r.diagram.connections[0].ends).toEqual({ to: 'banana' })
+    expect((d.connections[0].ends as Record<string, unknown>).from).toBe('usb-c') // not mutated
+  })
+  it('drops ends that are not an object, and unknown keys in ends, with warnings', () => {
+    const d = structuredClone(buttonLed) as unknown as { connections: Record<string, unknown>[] }
+    d.connections[0].ends = 'dupont'
+    d.connections[1].ends = { middle: 'banana', to: 7 }
+    const r = validateDiagram(d)
+    expect(r.ok).toBe(true)
+    if (!r.ok) return
+    expect(r.warnings).toEqual([
+      'connections[0].ends: must be an object like { "from": "dupont-male", "to": "dupont-female" }, so it was dropped and the wire is drawn plain',
+      'connections[1].ends.middle: not a wire end ("from" or "to"), so it was dropped',
+      'connections[1].ends.to: unknown cable end 7, so that end is drawn as bare wire',
+    ])
+    expect('ends' in r.diagram.connections[0]).toBe(false)
+    expect('ends' in r.diagram.connections[1]).toBe(false)
+  })
+})
