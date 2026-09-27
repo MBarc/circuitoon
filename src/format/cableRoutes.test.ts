@@ -1,7 +1,8 @@
 // Wires with connectors leave a pin straight along its axis for at least the connector's reach,
 // so the connector always sits on a full-length straight end segment, even from an off-grid pin.
 import { describe, expect, it } from 'vitest'
-import { resolveEndpoint, routingKey, wirePaths, type Connection, type Diagram } from './diagram.ts'
+import { partObstacles, resolveEndpoint, routeWire, routingKey, wirePaths, type Connection, type Diagram } from './diagram.ts'
+import { manualRouteBlocked } from './wireEdit.ts'
 import { END_SIZE, endPlacement, type EndKind } from './cables.ts'
 import type { ModuleDef } from './module.ts'
 import type { Pt, Rotation } from './geometry.ts'
@@ -115,5 +116,33 @@ describe('cable ends on off-grid pins', () => {
     const a = sheet('R', 'bare')
     const b = sheet('R', 'banana')
     expect(routingKey(a.connections)).not.toBe(routingKey(b.connections))
+  })
+})
+
+describe('lead-outs never tunnel through a part', () => {
+  const block: ModuleDef = { format: 'circuitoon-module/1', id: 'block', name: 'Block', size: { w: 3, h: 4 }, pins: [{ name: 'P', side: 'top' }] }
+  const base = (bx: number, by: number, rotated = false): Diagram => ({
+    format: 'circuitoon-diagram/1', title: 't', modules: { two, block },
+    parts: [
+      { uid: 'a', designator: 'A', module: 'two', x: 2, y: 0 }, // R tip at (50, 20), facing right
+      rotated ? { uid: 'k', designator: 'K', module: 'two', x: bx, y: by, rotation: 90 } : { uid: 'k', designator: 'K', module: 'block', x: bx, y: by },
+      { uid: 'b', designator: 'B', module: 'two', x: 300, y: 100 },
+    ],
+    connections: [{ uid: 'w', from: { part: 'a', pin: 'R' }, to: { part: 'b', pin: 'L' }, ends: { from: 'alligator' } }],
+  })
+  it('does not accept a lead-out running through a body right in front of the pin', () => {
+    // A part turned 90 degrees spans x 55..85, y -10..30, across the pin's line: the search would
+    // start past it at x=90, so the 30 px lead-out would pass straight through it.
+    const d = base(55, 0, true)
+    expect(partObstacles(d)[1]).toEqual({ x: 55, y: -10, w: 30, h: 40 })
+    const r = routeWire(d, d.connections[0], partObstacles(d))!
+    expect(r.blocked || !manualRouteBlocked(r.points, partObstacles(d))).toBe(true)
+  })
+  it('drops the lead-out, not the route, when only the lead-out is blocked', () => {
+    // A body on the lead-out's line past the first grid node: a plain route turns before it.
+    const d = base(66, 0)
+    const r = routeWire(d, d.connections[0], partObstacles(d))!
+    expect(r.blocked).toBe(false)
+    expect(manualRouteBlocked(r.points, partObstacles(d))).toBe(false)
   })
 })
