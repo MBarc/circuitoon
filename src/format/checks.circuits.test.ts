@@ -623,6 +623,18 @@ describe('round 6: diode constraints, diode loops, compatible advice, S3 memory 
   })
 })
 
+describe('hotfix: Astra re-review 6', () => {
+  const nanos = (extra: Wire[]) => sheet([at('n1', 'U1', 'arduino-nano'), at('n2', 'U2', 'arduino-nano', 300)], [['n1|5V', 'n2|GND'], ['n2|5V', 'n1|GND'], ...extra])
+  it('crossed Nano power leads plus a wire to a missing pin: the short and the broken wire, no crash', () => {
+    const d = nanos([['n1|5V', 'n2|BAD']])
+    expect(() => checkDiagram(d)).not.toThrow()
+    expect(checkDiagram(d).map((f) => `${f.severity} ${f.rule}: ${f.message}`)).toEqual([
+      'error short: U1 5V and U2 5V are wired in a loop, each + to the next -: short circuit. Nothing limits the current, so they can overheat. Remove one of these wires: U1 5V to U2 GND, or U2 5V to U1 GND.',
+      'error broken: The wire U1 5V to U2 BAD is broken: U2 BAD is not on the sheet, so it connects nothing. Delete it, and draw it again if you still need it.',
+    ])
+  })
+})
+
 /** Every finding reduced to what a user sees, with uids mapped back through `back`. */
 function normalized(d: Diagram, back: (uid: string) => string = (u) => u): string[] {
   return checkDiagram(d).map((f) => JSON.stringify([f.rule, f.severity, f.message, f.pins.map((p) => `${back(p.part)}.${p.pin}`).sort()])).sort()

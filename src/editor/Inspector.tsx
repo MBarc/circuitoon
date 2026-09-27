@@ -5,7 +5,7 @@ import { type EditorStore, useEditorState } from './store.ts'
 import { clearWireRoute, deleteSelection, rotateParts, updatePart, updatePartValue, updateWire } from './ops.ts'
 import { NAMED_COLORS, isValidColor, moduleOf, partObstacles, routeWire } from '../format/diagram.ts'
 import { hexEditChanged, shownHex } from './color.ts'
-import { highlightOf, severityCounts, useProblems } from './problems.ts'
+import { checkFailed, highlightOf, severityCounts, useProblems } from './problems.ts'
 import { type Finding, RULES, brokenConnection } from '../format/checks.ts'
 import { SeverityMark } from './SeverityMark.tsx'
 import { CAPACITOR_VALUES, RESISTOR_VALUES, formatValue, parseValue, partValue, primaryParam } from '../format/values.ts'
@@ -143,10 +143,24 @@ function selectLabels(findings: Finding[]): string[] {
  * heading of what it selected; Delete moves it to the next row's Select (the previous row's after
  * the last one), or to the list heading once no row is left.
  */
-function ProblemList({ store, findings }: { store: EditorStore; findings: Finding[] }) {
+export function ProblemList({ store, findings }: { store: EditorStore; findings: Finding[] }) {
   const errors = findings.filter((f) => f.severity === 'error').length
   // The canvas light belongs to this list: it goes out when the list does (a selection, an empty list).
   useEffect(() => () => store.setHighlight(null), [store])
+  if (checkFailed(store))
+    return (
+      <section className="problems has-warnings" aria-labelledby="problems-title">
+        <h3 id="problems-title" tabIndex={-1}>Problems</h3>
+        <ul>
+          <li className="warning" data-checker-failed="">
+            <SeverityMark severity="warning" />
+            <div className="problem-text">
+              <span className="problem-message">The wiring checker hit an error on this sheet.</span>
+            </div>
+          </li>
+        </ul>
+      </section>
+    )
   if (!findings.length)
     return (
       <section className="problems clean" aria-labelledby="problems-title">

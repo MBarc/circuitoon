@@ -845,7 +845,9 @@ function checkPotentials({ d, nl, netTerms, netWires, terminal, shorted, add }: 
   /** The wires on a loop's nets between the loop's own parts: the ones to cut, when there are few. */
   const loopWires = (list: Source[], nets: Set<string>) => {
     const inLoop = new Set(list.map((x) => x.term.part.uid))
-    const ws = d.connections.filter((c) => inLoop.has(c.from.part) && inLoop.has(c.to.part) &&
+    // A broken wire (an end that does not resolve) conducts nothing, so it closes no loop.
+    const broken = new Set(nl.broken)
+    const ws = d.connections.filter((c) => !broken.has(c.uid) && inLoop.has(c.from.part) && inLoop.has(c.to.part) &&
       nets.has(netOfKey(nodeKey(c.from.part, c.from.pin))))
     const names = ws.map((c) => `${termName(terminal(nodeKey(c.from.part, c.from.pin))!)} to ${termName(terminal(nodeKey(c.to.part, c.to.pin))!)}`).sort(natural.compare)
     return names.length && names.length <= 3 ? `Remove one of these wires: ${orList(names).replace(/ or /, ', or ')}.` : 'Remove one of the wires that close the loop.'
