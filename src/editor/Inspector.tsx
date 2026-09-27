@@ -2,7 +2,7 @@
 // so typing a name is one undo step, not one per keystroke.
 import { useEffect, useState } from 'react'
 import { type EditorStore, useEditorState } from './store.ts'
-import { clearWireRoute, deleteSelection, rotateParts, setWireEnds, updatePart, updatePartValue, updateWire } from './ops.ts'
+import { clearWireRoute, deleteSelection, rotateParts, setWireEnds, updatePart, updatePartValue, updateWire, type WireStyle } from './ops.ts'
 import { type Diagram, type Endpoint, NAMED_COLORS, isValidColor, moduleOf, partObstacles, routeWire, wireColor, wireWidth } from '../format/diagram.ts'
 import { CABLE_PRESETS, END_KINDS, END_NAMES, END_SIZE, type EndKind, type WireEnds, endKind, normalizeEnds, presetEnds, presetOf, sharedCable, swapEnds } from '../format/cables.ts'
 import { CableEnd } from '../render/CableEnd.tsx'
@@ -114,6 +114,13 @@ function CableSelect({ id, value, onPick }: { id: string; value: string; onPick:
       </select>
     </label>
   )
+}
+
+/** The next wire's style in words: "black, 22 AWG, Dupont M-M". */
+function newWireStyle(style: WireStyle): string {
+  const picked = presetOf(style.ends)
+  const cable = !picked ? 'a custom cable' : picked.id === 'wire' ? 'plain wire' : picked.name
+  return `${style.color}, ${style.gauge} AWG, ${cable}`
 }
 
 /**
@@ -329,6 +336,7 @@ export function Inspector({ store }: { store: EditorStore }) {
       <aside className="inspector" aria-label="Properties">
         <h2 id="sheet-heading" tabIndex={-1}>Sheet</h2>
         <CommitInput id="sheet-title" label="Title" value={diagram.title} onCommit={(title) => store.commit({ ...diagram, title: title.trim() || 'Untitled sheet' })} />
+        <p className="hint new-wires">New wires: {newWireStyle(wireStyle)}</p>
         <p className="hint">Drag from a pin tip or a hole to another pin or hole to add a wire. Drag the paper to pan, scroll to zoom. R rotates, Delete removes, Ctrl+Z undoes.</p>
         <ProblemList store={store} findings={findings} />
       </aside>
@@ -419,8 +427,7 @@ export function Inspector({ store }: { store: EditorStore }) {
     if (remember) store.setWireStyle({ ...wireStyle, ends: normalizeEnds(ends) })
   }
   const cable = presetOf(wire.ends)
-  const picked = presetOf(wireStyle.ends)
-  const newCable = !picked ? 'a custom cable' : picked.id === 'wire' ? 'plain wire' : picked.name
+
   return (
     <aside className="inspector" aria-label="Properties">
       <h2 id="wire-title" tabIndex={-1}>Wire</h2>
@@ -481,7 +488,7 @@ export function Inspector({ store }: { store: EditorStore }) {
         </EndsDisclosure>
       </div>
       <CommitInput id="wire-label" label="Label" value={wire.label ?? ''} onCommit={(v) => setWire({ label: v.trim() || undefined })} />
-      <p className="hint">New wires use {wireStyle.color}, {wireStyle.gauge} AWG, {newCable}.</p>
+      <p className="hint">New wires use {newWireStyle(wireStyle)}.</p>
       {wire.route && (
         <div className="field" role="group" aria-label="Shape">
           <p className="hint">Shaped by hand</p>

@@ -326,6 +326,8 @@ for (const scheme of ['light', 'dark']) {
   await page.getByRole('button', { name: /New diagram/ }).click()
   await page.waitForSelector('.toolbar')
   await load()
+  check((await page.locator('.inspector .new-wires').textContent()) === 'New wires: black, 22 AWG, Qwiic / STEMMA QT', `${scheme}: with nothing selected the side panel shows the remembered new-wire style`)
+  await shot(page.locator('.inspector'), 'inspector-sheet')
   await drawWire([310, 190], [310, 260])
   const again = await page.evaluate((known) => [...document.querySelectorAll('[data-wire]')].map((e) => e.getAttribute('data-wire')).find((u) => !known.includes(u)), Object.keys(expectedEnds))
   check(JSON.stringify(await kinds(again)) === '["jst-sh","jst-sh"]', `${scheme}: after a reload a new wire still gets the cable picked last`)
