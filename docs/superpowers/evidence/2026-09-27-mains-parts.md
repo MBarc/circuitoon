@@ -39,7 +39,7 @@ The machine-readable table is `src/format/mainsEvidence.ts`: per module id, the 
 | lamp-holder-e27 | Vossloh-Schwabe 62061 (535685, earth screw); lamp Philips A60 220-240 V | VERIFIED | no N requirement on the shell (B7) |
 | fuse-holder-5x20-inline | Littelfuse 150274 (01500274Z) | VERIFIED | replaces Schurter FPG4 (ruling) |
 | rocker-switch-kcd1 | Daier KCD1-2-101 | VERIFIED | |
-| wago-221-412/413/415 | WAGO data sheets 2024 | VERIFIED | ac/dc (ruling) |
+| wago-221-412/413/415 | WAGO data sheets (Versions 11.03.2024, 18.03.2024, 02.04.2024; PDFs mirrored by the distributor CEF) | VERIFIED | ac/dc (ruling) |
 | terminal-block-mstb-508-2, -3 | Phoenix 1757019 + 1757242, 1757022 + 1757255 | VERIFIED | ac/dc (ruling) |
 | terminal-block-mc-381-2 | Phoenix 1803578 + 1803277 | VERIFIED | always rating-conditional at 230 V (ruling) |
 | terminal-block-mstb-508-4..6, mc-381-3..6 | Phoenix, plan item numbers | NOT VERIFIED | pages blocked; retried in Task 19 (B8) |
@@ -56,7 +56,7 @@ VERIFIED means every value the part needs has a quote from the exact part, the s
 - **B2.** HLK-PM01/PM03, the relay module and the Fotek SSR keep isolation "unknown": the checker reports rule-1 errors with the reason "isolation unknown". The Mean Well IRM-03 and IRM-05 series are added as documented alternatives.
 - **B3.** A manufacturer's explicit written "Class II" statement counts as double insulation (IEC 61140 definition), with the quote recorded: Mean Well NGE12 ("Class II power (no earth pin)", "NGE12 is a Class II power unit (no FG)") and IRM ("Isolation Class II", "The entire series is a Class II design (no FG pin)").
 - **B4.** as3112 L and N are swapped in Task 12.
-- **B5.** cee7-5 joins the unpolarized list of Resolution 22.
+- **B5.** cee7-5 joins the unpolarized list of Resolution 22. The plug museum says "Essentially, French sockets are polarized due to the position of the earth pin" (the plug enters one way) but also that "there is no strict regulation re. wiring line and neutral", so which hole is L stays unknown; the ruling stands.
 - **B6.** The UK Mean Well plug's fuse is unknown: no integral fuse is counted (conservative).
 - **B7.** No N requirement on the E27 shell.
 - **B8.** Phoenix 3-6 position pages are retried in Task 19; if still blocked, back to Michael.
@@ -75,7 +75,7 @@ Sources: IRM-03-SPEC and IRM-05-SPEC, both "File Name: ... 2025-08-08" (https://
 | Pins (bottom view, as drawn) | top row AC/L, AC/N (5.08 mm apart) at the left, NC at the right; bottom row +V, -V at the right | same | AC/L top left, AC/N bottom left; -V top right, +V bottom right |
 | Size | 37*24*15mm | same | 45.7*25.4*21.5mm |
 
-The drawings are bottom views: a top-view part swaps left and right. IRM-05 also states "Over voltage category III (OVC III)". Each IRM entry has one source, the maker's specification.
+The drawings are bottom views: a top-view part swaps left and right. IRM-05's overvoltage category depends on the standard: "OVER VOLTAGE CATEGORY IEC/EN 61558-1/-2-16(OVC III, altitude up to 2000m); IEC/EN/UL 62368-1(OVC II, altitude up to 5000m)" (the feature list says only "Over voltage category III (OVC III)"). Each IRM entry has one source, the maker's specification.
 
 ## Blocking items as raised by Task 0 (all ruled above)
 
@@ -103,14 +103,17 @@ With `isolation: "unknown"` the checker treats the low-voltage side as live when
 ## Other findings and contradictions with the plan or spec
 
 - **MC 1,5 on 230 V.** Phoenix rates MC 1,5 plug and header at 160 V for overvoltage category III (pollution degree 3 and 2); only under II/2 does the assembly reach 250 V (the header's II/2 value; the plug's is 320 V). On a 230 V sheet an MC 1,5 is adequate only under the II/2 condition, so it should always carry `rating-conditional`.
+- **Phoenix cULus figures.** MC 1,5 cULus (E60425-20110128: 300 V 8 A, use groups B and D) is cited from the header page, where it was read; the plug page gives the same.
 - **Phoenix plug and header differ.** MSTB 2,5 plug III/3 is 250 V but the MSTBA header is 320 V; MC 1,5 plug II/2 is 320 V but the header is 250 V. The evidence keeps the lower of each pair per condition.
 - **Phoenix: no hot plugging.** "COMBICON connectors have no switching power (COC) ... must not be plugged in or disconnected when carrying voltage or under load." Worth a note in the part.
+- **Fuse holder reference (sources split).** The 10 A at 350 V figure is from the Littelfuse 150 datasheet; "Maximum AC Voltage (V) 350; Maximum DC Voltage (V) 350" (hence ac/dc) is only on the 150274 product page, which the evidence cites for it.
 - **Fuse holder reference.** The plan's Schurter FPG4 is a PCB-mount vertical holder ("Mounting PCB, Terminal Solder THT"), not an in-line holder. Littelfuse 150274 (01500274Z) is an in-line 5 x 20 mm holder: "10 amperes at 350V for the 5 × 20mm size fuses", AC and DC 350 V. Littelfuse adds "If use above 32V, power must be turn off when changing the fuse."
 - **Lamp holder currents.** Leviton 9880 gives 250 V and 660 W, no current; the E26 rating therefore has no `amps`.
 - **Vossloh-Schwabe "4/250".** The catalogue writes the rating as "nominal rating: 4/250" without units; 4 A 250 V is the IEC 60238 marking convention. Recorded as 4 A 250 V with that note.
 - **Hi-Link input range.** Product pages: 85-264 VAC; datasheet V2.6: 85-265 Vac; the narrower is kept. Rated input is 100-240 Vac on both.
+- **Hi-Link datasheet contradicts itself.** Datasheet V2.6 lists "Input and output isolation voltage 3000Vac" and "Global universal input voltage (90~265Vac)" in its feature list, while section 5.1 gives an input range of 85-265 Vac and section 9.2 gives "Insulation voltage I/P-O/P:2500Vac". It also says "The input design adopts UL listed 1A fuse". None of this is an insulation class.
 - **Hi-Link datasheet source.** hlktech.com links the PDF only through Google Drive; the V2.6 copy read is a mirror (geeksvalley.com). The product pages (hlktech.net) are Hi-Link's own.
-- **Songle contact ratings.** The current Songle SRD (T73) sheet gives "Contact rating(Res. load) 7A/10A/15A 250VAC/28VDC, 10A 125VAC" without splitting by contact form; the older sheet gives FORM C: 7 A 28 VDC, 10 A 125 VAC, 7 A 240 VAC (resistive). The older, form-specific figures are the ratings; both are recorded.
+- **Songle contact ratings.** The current Songle SRD (T73) sheet gives "Contact rating(Res. load) 7A/10A/15A 250VAC/28VDC, 10A 125VAC" without splitting by contact form; the older sheet gives FORM C: 7 A 28 VDC, 10 A 125 VAC, 7 A 240 VAC (resistive). The older, form-specific figures are the ratings; both are recorded. The older, form-specific sheet (which also gives "Max. Allowable Voltage 250VAC/110VDC" for form C) was read from a third-party mirror (circuitbasics.com); Songle's own site serves only the current sheet.
 - **Fotek current revision.** The series page and the catalogue (PDF created 2022-06-21) give "Input voltage 4 ~ 32 VDC" (the "3-32 VDC" on many listings is not Fotek's current figure), "Turn off voltage <3.5 VDC", "Trigger current 12.0mA max.", "Leakage current 5 mA max.", "Output voltage 24 ~ 380VAC", "Rated current 25A max." for a resistive load. Derating is given as notes, not a curve: thermal grease on a heatsink is required; for incandescent lamps "the rated current of the module must be over 4 times of the incandescent lamp current"; the Fotek HS-50 heatsink is rated "15A max." per SSR. Terminal layout from Fotek's own product photo: top 1 (left) and 2 (right), bottom 4 (-, left) and 3 (+, right). SSR-25DA is widely counterfeited.
 - **JIS C 8303 and unpolarized receptacles.** JIS C 8303:2007 note b) allows unpolarized devices "except receptacles" (コンセントを除き), so a new JIS receptacle is polarized; Figure A.1 note a) still defines the unpolarized dimensions. The unpolarized outlet is the older one still in service.
 - **NEMA letter W.** WD 6 marks W and G on the faces but the pages read do not define W; the L side rests on the drawing (W is the longer slot) plus Wikipedia's explicit statement. This is the only place a US value leans on a secondary source.

@@ -122,6 +122,7 @@ const LF_150_DS = 'https://www.littelfuse.com/assetdocs/fuse-holder-150-datashee
 const KCD1_DS = 'https://www.chinadaier.com/wp-content/uploads/2017/07/KCD1-2-101.pdf'
 const KCD1_PAGE = 'https://www.chinadaier.com/kcd1-2-101-spst-rocker-switch/'
 
+/** WAGO's item page, and WAGO's generated data sheet PDF as mirrored by the distributor CEF (wago.com serves it only through a script). */
 const wago = (n: string): string[] => [`https://www.wago.com/221-${n}`, `https://assets.cef.co.uk/downloads/pdg/wago_221-${n}_datasheet/wago_221-${n}_datasheet.pdf`]
 
 const phoenix = (slug: string): string => `https://www.phoenixcontact.com/en-us/products/${slug}`
@@ -176,10 +177,11 @@ const B4 = 'Ruling B4 (Michael, 2026-09-27): as3112 L and N are swapped in plan 
 const CLASS_II_NOTE = 'Recorded as "double" under ruling B3: the maker states Class II in words, and IEC 61140 defines class II equipment as relying on double or reinforced insulation; the maker names no class for the barrier itself.'
 
 const HLK_ISOLATION_NOTE = fact(
-  'test voltage only, no insulation class',
-  'Input and output isolation voltage 3000VAC (product page); Insulation voltage I/P-O/P:2500Vac (datasheet V2.6, 9.2). No insulation class (basic, double, reinforced) and no class II statement appear in either source.',
+  'test voltages only, and the datasheet contradicts itself; no insulation class',
+  'Datasheet V2.6, 3. Product features: "7. Input and output isolation voltage 3000Vac" (and "2. Global universal input voltage (90~265Vac)", while 5.1 gives 85-265 Vac); 9.2: "Insulation voltage I/P-O/P:2500Vac". So the datasheet states both 3000 Vac and 2500 Vac. The product pages repeat "Input and output isolation voltage 3000VAC". No insulation class (basic, double, reinforced) and no class II statement appear anywhere.',
   HLK_3W_DS,
 )
+const HLK_INPUT_FUSE = fact('UL listed 1 A input fuse (per the design text)', '9.2 Safety and electromagnetic compatibility: "The input design adopts UL listed 1A fuse"', HLK_3W_DS)
 const HLK_BLOCKING = 'Isolation class not stated: Hi-Link gives only test voltages (3000 Vac on the product page, 2500 Vac in datasheet V2.6 section 9.2, which also disagree with each other) and "Safety standard meets UL1012,EN60950,UL60950". Ruling B2 (Michael, 2026-09-27): generated with isolation "unknown"; the checker treats the output as live and reports rule-1 errors with the reason "isolation unknown". The spec circuit "HLK-PM01 feeding an ESP32" now expects those errors; the Mean Well IRM modules below are the documented alternative for a clean circuit.'
 const HLK_PINS = fact(
   { left: ['AC 1', 'AC 2'], right: ['-Vo', '+Vo'] },
@@ -252,7 +254,7 @@ function irm(series: '03' | '05', volts: 3.3 | 5): PartEvidence {
     extra: {
       withstand: fact('4.2 kVac input to output', 'WITHSTAND VOLTAGE I/P-O/P:4.2KVac; ISOLATION RESISTANCE I/P-O/P:100M Ohms / 500Vdc', url),
       size: fact(size, series === '03' ? 'IRM-03 is a 3W miniature (37*24*15mm) AC-DC module-type power supply' : 'IRM-05 is a 5W miniature (45.7*25.4*21.5mm) AC-DC module-type power supply', url),
-      ...(series === '05' ? { ovc: fact('overvoltage category III', 'Over voltage category III (OVC III)', url) } : {}),
+      ...(series === '05' ? { ovc: fact('overvoltage category III under IEC/EN 61558-1/-2-16; overvoltage category II under IEC/EN/UL 62368-1', 'OVER VOLTAGE CATEGORY IEC/EN 61558-1/-2-16(OVC III, altitude up to 2000m); IEC/EN/UL 62368-1(OVC II, altitude up to 5000m) (specification table; the feature list says only "Over voltage category III (OVC III)")', url) } : {}),
       safety: fact('IEC 62368-1, IEC 61558-1/-2-16 and others', series === '03' ? 'SAFETY STANDARDS IEC62368-1,IEC61558-1/-2-16,UL62368-1, TUV BS EN/EN62368, BS EN/EN60335-1, BS EN/EN61558-1/-2-16,EAC TP TC 004, BSMI CNS15598-1 approved' : 'SAFETY STANDARDS IEC62368-1,IEC61558-1/-2-16,UL62368-1,TUV BS EN/EN62368-1,BS EN/EN61558-1/-2-16,EAC TP TC 004, BSMI CNS15598-1 approved', url),
       revision: fact(`IRM-${series}-SPEC 2025-08-08`, `File Name:IRM-${series}-SPEC 2025-08-08`, url),
     },
@@ -305,7 +307,7 @@ function phoenixPart(series: 'mstb' | 'mc', n: 2 | 3 | 4 | 5 | 6): PartEvidence 
       pitch: fact(series === 'mstb' ? 5.08 : 3.81, series === 'mstb' ? 'pitch 5.08 mm' : 'Pitch 3.81 mm', plugUrl),
       ...(verified
         ? {
-            ul: fact(series === 'mstb' ? 'cULus 300 V 15 A (use group B), 300 V 10 A (use group D)' : 'cULus 300 V 8 A (use groups B and D)', series === 'mstb' ? 'cULus Recognized, Approval ID: E60425-19931011: B 300 V 15 A; D 300 V 10 A' : 'cULus Recognized, Approval ID: E60425-20110128: B 300 V 8 A; D 300 V 8 A', plugUrl),
+            ul: fact(series === 'mstb' ? 'cULus 300 V 15 A (use group B), 300 V 10 A (use group D)' : 'cULus 300 V 8 A (use groups B and D)', series === 'mstb' ? 'cULus Recognized, Approval ID: E60425-19931011: B 300 V 15 A; D 300 V 10 A' : 'cULus Recognized, Approval ID: E60425-20110128: B 300 V 8 A; D 300 V 8 A', series === 'mstb' ? plugUrl : headerUrl),
             ...(series === 'mc' ? { conditional: fact('always rating-conditional at 230 V', 'Rated voltage (III/3) 160 V and (III/2) 160 V: only the II/2 rating (250 V) covers 230 V, so the part always carries its conditions (ruling, 2026-09-27: MC 1,5 always gets rating-conditional at 230 V).', headerUrl) } : {}),
             noHotPlug: fact(true, 'In accordance with IEC 61984, COMBICON connectors have no switching power (COC). During designated use, they must not be plugged in or disconnected when carrying voltage or under load.', plugUrl),
           }
@@ -368,7 +370,7 @@ export const EVIDENCE: Record<string, PartEvidence> = {
     sources: [PSM_FR, WIKI_CEE7, FR_PHASE, LEGRAND_067113, WIKI_PLUGS],
     verdict: 'VERIFIED',
     decision: `${SECONDARY} Ruling B5 (Michael, 2026-09-27): cee7-5 joins Resolution 22's unpolarized list; the CEE 7/7 plug still enters one way only, but which hole is L is not fixed.`,
-    lSide: fact('not fixed', 'Secondary sources: "The preferred wiring is indicated below the socket, but - at least in France - there is no strict regulation re. wiring line and neutral." (Plug and socket museum, French) / "CEE 7 does not define the placement of the line and neutral and there is no universally observed standard." (Wikipedia, CEE 7) / "Niveau norme, il n\'y a rien qui indique que la phase doit être branchée à droite ou à gauche ... l\'usage veut que la phase soit à droite" (installation-renovation-electrique.com)', PSM_FR),
+    lSide: fact('not fixed', 'Secondary sources: "Essentially, French sockets are polarized due to the position of the earth pin. The preferred wiring is indicated below the socket, but - at least in France - there is no strict regulation re. wiring line and neutral." (Plug and socket museum, French) / "CEE 7 does not define the placement of the line and neutral and there is no universally observed standard." (Wikipedia, CEE 7) / "Niveau norme, il n\'y a rien qui indique que la phase doit être branchée à droite ou à gauche ... l\'usage veut que la phase soit à droite" (installation-renovation-electrique.com)', PSM_FR),
     ratings: [{ volts: 250, amps: 16, service: 'ac', quote: 'Secondary sources: "French, CEE 7/5 type socket with earth pin, rated at 16A - 250V." (Plug and socket museum, French) / manufacturer: "Prise de courant standard Français Céliane 16A 250V 2P+T bornes à vis" (Legrand 067113)', url: PSM_FR }],
     extra: {
       spacing: fact('holes 19 mm apart; earth pin centred between them, offset 10 mm', 'Secondary sources: "The earth pin is centred between the apertures, offset by 10 mm (0.394 in). The plug has two round pins measuring 4.8 by 19 mm (0.189 by 0.748 in), spaced 19 mm (0.748 in) apart" (Wikipedia, AC power plugs and sockets) / "Line and neutral pins have a diameter of 4.8 mm and are positioned 19 mm apart." (Plug and socket museum, French)', WIKI_PLUGS),
@@ -512,6 +514,7 @@ export const EVIDENCE: Record<string, PartEvidence> = {
     output: fact({ volts: 5 }, 'HLK-PM01 ... Output voltage (V) 5, Output current (mA) 600', HLK_3W_DS),
     extra: {
       isolationNote: HLK_ISOLATION_NOTE,
+      inputFuse: HLK_INPUT_FUSE,
       fuse: fact('1A/250Vac slow blow, external, recommended', 'External fuse recommended 1A / 250Vac ... Fuse and varistor are basic protective circuits (must be connected).', HLK_3W_DS),
       certification: fact('certification is the customer\'s', 'Product design meets UL and CE safety certification requirements. (The UL and CE certifications are made by the customer and need to be designed according to the reference circuit.)', HLK_3W_DS),
     },
@@ -525,7 +528,9 @@ export const EVIDENCE: Record<string, PartEvidence> = {
     acInput: fact<[number, number]>([85, 264], 'Rated input voltage 100-240Vac Input vlotage range 85-264VAC/70-350VDC (product page, spelling as published). Datasheet V2.6 5.1 gives Input voltage range 85-265 Vac; the narrower 85-264 is kept.', HLK_PM03_PAGE),
     output: fact({ volts: 3.3 }, 'HLK-PM03 ... Output voltage (V) 3.3, Output current (mA) 1000', HLK_3W_DS),
     extra: {
-      isolationNote: fact('test voltage only, no insulation class', 'Input and output isolation voltage 3000VAC (product page); Insulation voltage I/P-O/P:2500Vac (datasheet). No insulation class is stated.', HLK_PM03_PAGE),
+      isolationNote: HLK_ISOLATION_NOTE,
+      productPageIsolation: fact('3000 VAC test voltage on the product page', 'Input and output isolation voltage 3000VAC', HLK_PM03_PAGE),
+      inputFuse: HLK_INPUT_FUSE,
       fuse: fact('1A/250Vac slow blow, external, recommended', 'External fuse recommended 1A / 250Vac ... Fuse and varistor are basic protective circuits (must be connected).', HLK_3W_DS),
     },
   },
@@ -565,8 +570,9 @@ export const EVIDENCE: Record<string, PartEvidence> = {
     subject: 'Littelfuse 150274 (ordering number 01500274Z) in-line fuseholder for 5 x 20 mm fuses',
     sources: [LF_150_DS, LF_150274],
     verdict: 'VERIFIED',
-    ratings: [{ volts: 350, amps: 10, service: 'ac/dc', quote: 'Maximum current ratings are 5 amperes at 350V for the 2AG size fuses and 10 amperes at 350V for the 5 × 20mm size fuses. ... Maximum AC Voltage (V) 350; Maximum DC Voltage (V) 350', url: LF_150_DS }],
+    ratings: [{ volts: 350, amps: 10, service: 'ac/dc', quote: 'Maximum current ratings are 5 amperes at 350V for the 2AG size fuses and 10 amperes at 350V for the 5 × 20mm size fuses. (datasheet; the AC and DC service is from the product page, see extra.service)', url: LF_150_DS }],
     extra: {
+      service: fact('ac/dc', 'Maximum AC Voltage (V) 350; Maximum DC Voltage (V) 350 (product page 150274)', LF_150274),
       planReferenceRejected: fact('Schurter FPG4 is a PCB-mount holder, not in-line', 'FPG4: Shock-Safe Fuseholder, 5 x 20 mm, Slotted Cap/Fingergrip, vertical ... Mounting PCB, Terminal Solder THT', 'https://www.schurter.com/en/datasheet/typ_FPG4.pdf'),
       changingFuse: fact('power off above 32 V', '** If use above 32V, power must be turn off when changing the fuse.', LF_150_DS),
       leads: fact('16 AWG red leads', 'Wire 16 Awg size; Nominal o.d. 0.104"; color Red', LF_150_DS),
@@ -614,6 +620,7 @@ export const EVIDENCE: Record<string, PartEvidence> = {
     extra: {
       ul: fact('UL 486C use group C: 600 V 20 A', 'Approvals per UL 486C, Use group C: Rated voltage 600 V, Rated current 20 A', wago('415')[1]),
       positions: fact(5, 'Connection points 5; Total number of potentials 1', wago('415')[1]),
+      revision: fact('Version 02.04.2024', 'Page 1/8 Version 02.04.2024', wago('415')[1]),
     },
   },
 
@@ -660,15 +667,16 @@ export const EVIDENCE: Record<string, PartEvidence> = {
     verdict: 'NOT VERIFIED',
     blocking: 'No insulation class, for the relay or the board: the Songle sheet gives only "Dielectric strength (Leakage current 1mA): Between coil and contacts 1500VAC 1min" and "Insulation level B/F" (the coil\'s thermal insulation class, not a mains-to-coil class); the module listings give no rating or isolation at all ("The Maximum voltage that can pass through the Switched (NO/NC) side of the relays is written on them"). Ruling B2 (Michael, 2026-09-27): generated with isolation "unknown"; the checker treats IN, DC- and DC+ as live whenever the contacts carry mains and reports rule-1 errors with the reason "isolation unknown". The spec circuit "relay switching a fused lamp" now expects those errors.',
     ratings: [
-      { volts: 125, amps: 10, service: 'ac', conditions: 'resistive load (cos φ = 1); the relay\'s rating, not the module\'s', quote: 'CONTACT RATING, FORM C, Contact Capacity Resistive Load (cosΦ=1): 7A 28VDC, 10A 125VAC, 7A 240VAC', url: SONGLE_OLD_DS },
-      { volts: 240, amps: 7, service: 'ac', conditions: 'resistive load (cos φ = 1); the relay\'s rating, not the module\'s', quote: 'CONTACT RATING, FORM C, Contact Capacity Resistive Load (cosΦ=1): 7A 28VDC, 10A 125VAC, 7A 240VAC', url: SONGLE_OLD_DS },
-      { volts: 28, amps: 7, service: 'dc', conditions: 'resistive load; the relay\'s rating, not the module\'s', quote: 'CONTACT RATING, FORM C, Contact Capacity Resistive Load (cosΦ=1): 7A 28VDC, 10A 125VAC, 7A 240VAC', url: SONGLE_OLD_DS },
+      { volts: 125, amps: 10, service: 'ac', conditions: 'resistive load (cos φ = 1); the relay\'s rating, not the module\'s', quote: 'CONTACT RATING, FORM C, Contact Capacity Resistive Load (cosΦ=1): 7A 28VDC, 10A 125VAC, 7A 240VAC; Max. Allowable Voltage 250VAC/110VDC (older Songle SRD sheet, read from a third-party mirror on circuitbasics.com; Songle\'s current sheet does not split ratings by contact form)', url: SONGLE_OLD_DS },
+      { volts: 240, amps: 7, service: 'ac', conditions: 'resistive load (cos φ = 1); the relay\'s rating, not the module\'s', quote: 'CONTACT RATING, FORM C, Contact Capacity Resistive Load (cosΦ=1): 7A 28VDC, 10A 125VAC, 7A 240VAC; Max. Allowable Voltage 250VAC/110VDC (older Songle SRD sheet, read from a third-party mirror on circuitbasics.com; Songle\'s current sheet does not split ratings by contact form)', url: SONGLE_OLD_DS },
+      { volts: 28, amps: 7, service: 'dc', conditions: 'resistive load; the relay\'s rating, not the module\'s', quote: 'CONTACT RATING, FORM C, Contact Capacity Resistive Load (cosΦ=1): 7A 28VDC, 10A 125VAC, 7A 240VAC; Max. Allowable Voltage 250VAC/110VDC (older Songle SRD sheet, read from a third-party mirror on circuitbasics.com; Songle\'s current sheet does not split ratings by contact form)', url: SONGLE_OLD_DS },
     ],
     extra: {
       dielectric: fact('1500 VAC coil to contacts, 1 min', 'Dielectric strength (Leakage current 1mA): Between coil and contacts 1500VAC 1min; Between open contacts 1000VAC 1min', SONGLE_DS),
       insulationLevel: fact('B/F (coil thermal class)', '绝缘等级 Insulation level: B/F', SONGLE_DS),
       currentSheetRating: fact('7A/10A/15A 250VAC/28VDC; 10A 125VAC; max 277VAC/30VDC', 'Contact rating(Res. load) 7A/10A/15A 250VAC/28VDC, 10A 125VAC; Max switching voltage 277VAC/30VDC; Max switching current 15A (the current sheet does not split these by contact form; the older sheet\'s FORM C figures are kept as the ratings)', SONGLE_DS),
-      inductive: fact('3A 120VAC, 3A 28VDC (form C, inductive)', 'Inductive Load (cosΦ=0.4 L/R=7msec): FORM C 3A 120VAC, 3A 28VDC', SONGLE_OLD_DS),
+      inductive: fact('3A 120VAC, 3A 28VDC (form C, inductive)', 'Inductive Load (cosΦ=0.4 L/R=7msec): FORM C 3A 120VAC, 3A 28VDC (third-party mirror of the older Songle sheet)', SONGLE_OLD_DS),
+      maxAllowable: fact('250 VAC / 110 VDC', 'Max. Allowable Voltage: FORM C 250VAC/110VDC (older Songle sheet, third-party mirror on circuitbasics.com)', SONGLE_OLD_DS),
       moduleListing: fact('no rating on the module listing', 'The Maximum voltage that can pass through the Switched (NO/NC) side of the relays is written on them.', RELAY_MODULE_KONNECTED),
     },
   },
