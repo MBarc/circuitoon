@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { type EditorStore, useEditorState } from './store.ts'
 import { clearWireRoute, deleteSelection, rotateParts, setWireEnds, updatePart, updatePartValue, updateWire } from './ops.ts'
 import { type Diagram, type Endpoint, NAMED_COLORS, isValidColor, moduleOf, partObstacles, routeWire, wireColor, wireWidth } from '../format/diagram.ts'
-import { CABLE_PRESETS, END_KINDS, END_NAMES, END_SIZE, type EndKind, type WireEnds, endKind, normalizeEnds, presetEnds, presetOf, swapEnds } from '../format/cables.ts'
+import { CABLE_PRESETS, END_KINDS, END_NAMES, END_SIZE, type EndKind, type WireEnds, endKind, normalizeEnds, presetEnds, presetOf, sharedCable, swapEnds } from '../format/cables.ts'
 import { CableEnd } from '../render/CableEnd.tsx'
 import { INK } from '../render/Part.tsx'
 import { hexEditChanged, shownHex } from './color.ts'
@@ -339,9 +339,7 @@ export function Inspector({ store }: { store: EditorStore }) {
       <aside className="inspector" aria-label="Properties">
         <h2 id="selection-title" tabIndex={-1}>{count} items selected</h2>
         {selection.wires.length > 0 && (() => {
-          const chosen = diagram.connections.filter((c) => selection.wires.includes(c.uid))
-          const ids = new Set(chosen.map((c) => presetOf(c.ends)?.id ?? 'custom'))
-          const value = ids.size === 1 ? [...ids][0] : 'mixed'
+          const value = sharedCable(diagram.connections.filter((c) => selection.wires.includes(c.uid)).map((c) => c.ends))
           return (
             <CableSelect
               id="wires-cable"

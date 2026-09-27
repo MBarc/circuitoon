@@ -96,6 +96,19 @@ export function presetEnds(id: string): WireEnds | undefined {
   return p ? normalizeEnds({ from: p.from, to: p.to }) : undefined
 }
 
+/**
+ * What one Cable select shows for several wires: their preset when they share one, 'custom' when
+ * they share one pair that matches no preset (either way round), else 'mixed'.
+ */
+export function sharedCable(list: (WireEnds | undefined)[]): string {
+  const keys = new Set(
+    list.map((ends) => presetOf(ends)?.id ?? `custom:${[endKind(ends, 'from'), endKind(ends, 'to')].sort().join('+')}`),
+  )
+  if (keys.size !== 1) return 'mixed'
+  const [key] = keys
+  return key.startsWith('custom:') ? 'custom' : key
+}
+
 export function swapEnds(ends: WireEnds | undefined): WireEnds | undefined {
   return normalizeEnds({ from: ends?.to, to: ends?.from })
 }

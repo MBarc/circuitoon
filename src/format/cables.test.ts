@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { CABLE_PRESETS, END_KINDS, END_SIZE, endKind, endPlacement, isEndKind, normalizeEnds, presetEnds, presetOf, swapEnds } from './cables.ts'
+import { CABLE_PRESETS, END_KINDS, END_SIZE, endKind, endPlacement, isEndKind, normalizeEnds, presetEnds, presetOf, sharedCable, swapEnds } from './cables.ts'
 
 describe('end kinds and presets', () => {
   it('knows every end kind, bare first', () => {
@@ -41,6 +41,14 @@ describe('end kinds and presets', () => {
     expect(presetEnds('wire')).toBeUndefined()
     expect(presetEnds('dupont-mf')).toEqual({ from: 'dupont-male', to: 'dupont-female' })
     expect(presetEnds('nope')).toBeUndefined()
+  })
+  it('reads several wires as one preset, one Custom pair, or Mixed', () => {
+    expect(sharedCable([undefined, { from: 'bare' }])).toBe('wire')
+    expect(sharedCable([{ from: 'dupont-male', to: 'dupont-female' }, { from: 'dupont-female', to: 'dupont-male' }])).toBe('dupont-mf')
+    expect(sharedCable([{ from: 'banana', to: 'jst-xh' }, { from: 'jst-xh', to: 'banana' }])).toBe('custom')
+    expect(sharedCable([{ from: 'banana', to: 'jst-xh' }, { from: 'banana', to: 'jst-ph' }])).toBe('mixed')
+    expect(sharedCable([{ from: 'banana', to: 'jst-xh' }, undefined])).toBe('mixed')
+    expect(sharedCable([])).toBe('mixed')
   })
   it('swaps ends', () => {
     expect(swapEnds({ from: 'alligator', to: 'dupont-male' })).toEqual({ from: 'dupont-male', to: 'alligator' })
