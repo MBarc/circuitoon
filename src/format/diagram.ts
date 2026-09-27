@@ -626,9 +626,13 @@ export function wirePaths(d: Diagram, routes: Routes = computeRoutes(d)) {
       }
       path += ` L${e.x} ${e.y}`
     }
-    for (let i = 1; i < pts.length; i++) {
-      const s = pts[i - 1]
-      const e = pts[i]
+    // Indexed as drawn, cut back into its connectors, so a later wire crossing under a housing gets
+    // no hop through it either, whichever wire comes first. (Separation reads the same index, so a
+    // later run lying along a connector's own lane is not nudged off it; the housing covers it.)
+    for (let i = 1; i < drawn.length; i++) {
+      const s = drawn[i - 1]
+      const e = drawn[i]
+      if (s.x === e.x && s.y === e.y) continue
       if (s.x === e.x) insert(verticals, { at: s.x, lo: Math.min(s.y, e.y), hi: Math.max(s.y, e.y) })
       if (s.y === e.y) insert(horizontals, { at: s.y, lo: Math.min(s.x, e.x), hi: Math.max(s.x, e.x) })
     }
