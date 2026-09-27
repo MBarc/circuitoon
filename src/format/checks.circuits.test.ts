@@ -250,8 +250,8 @@ describe('damaging or dead circuits are caught', () => {
       at('bb', 'BB1', 'breadboard-half', 0, { y: 300 }), at('u1', 'U1', 'rpi-pico', 400), at('u2', 'U2', 'bme280-module-6pin', 700), at('u3', 'U3', 'oled-ssd1306-096-i2c', 900),
     ], [['u1|GND', 'bb|top-|0'], ['u2|VCC', 'bb|top+|3'], ['u2|GND', 'bb|top-|3'], ['u3|VCC', 'bb|top+|5'], ['u3|GND', 'bb|top-|5']])
     expect(found(d)).toEqual([
-      "no-power: U2 has no power: VCC is connected but nothing supplies it. Connect it to a 3.3 V supply, such as a board's 3V3 pin.",
-      "no-power: U3 has no power: VCC is connected but nothing supplies it. Connect it to a 3.3 V or 5 V supply, such as a board's 3V3 or 5V pin.",
+      "no-power: U2 has no power: VCC is connected but nothing supplies it. U2 VCC needs 3.3 V and U3 VCC accepts 3.3 V or 5 V: connect it to a 3.3 V supply, such as a board's 3V3 pin.",
+      "no-power: U3 has no power: VCC is connected but nothing supplies it. U2 VCC needs 3.3 V and U3 VCC accepts 3.3 V or 5 V: connect it to a 3.3 V supply, such as a board's 3V3 pin.",
     ])
   })
   it('an ESP32-CAM has no USB: wired up without its 5V it has no power', () => {
@@ -547,7 +547,7 @@ describe('board GPIOs are signal pins', () => {
 })
 
 describe('every message ends with what to do', () => {
-  const VERBS = ['connect', 'move', 'swap', 'remove', 'set', 'use', 'add', 'separate', 'delete', 'power', 'keep', 'give', 'drag', 'do', 'say', 'wire', 'unplug']
+  const VERBS = ['connect', 'move', 'swap', 'remove', 'set', 'use', 'add', 'separate', 'delete', 'power', 'keep', 'give', 'drag', 'do', 'say', 'wire', 'unplug', 'split']
   /** True when a clause of the last sentence starts with an instruction. */
   const acts = (message: string) => {
     const last = message.split(/(?<=\.) /).pop()!
@@ -620,6 +620,57 @@ describe('round 6: diode constraints, diode loops, compatible advice, S3 memory 
   it('ESP32-S3 GPIO35-37 stay untyped (octal flash/PSRAM on N8R8 and similar)', () => {
     const type = (pin: string) => (load('esp32-s3-devkitc-1').pins.find((p) => 'name' in p && p.name === pin) as { type?: string } | undefined)?.type
     expect(['35', '36', '37', '38'].map(type)).toEqual([undefined, undefined, undefined, 'io'])
+  })
+})
+
+describe('hotfix: Astra re-review 6', () => {
+  const nanos = (extra: Wire[]) => sheet([at('n1', 'U1', 'arduino-nano'), at('n2', 'U2', 'arduino-nano', 300)], [['n1|5V', 'n2|GND'], ['n2|5V', 'n1|GND'], ...extra])
+  it('crossed Nano power leads plus a wire to a missing pin: the short and the broken wire, no crash', () => {
+    const d = nanos([['n1|5V', 'n2|BAD']])
+    expect(() => checkDiagram(d)).not.toThrow()
+    expect(checkDiagram(d).map((f) => `${f.severity} ${f.rule}: ${f.message}`)).toEqual([
+      'error short: U1 5V and U2 5V are wired in a loop, each + to the next -: short circuit. Nothing limits the current, so they can overheat. Remove one of these wires: U1 5V to U2 GND, or U2 5V to U1 GND.',
+      'error broken: The wire U1 5V to U2 BAD is broken: U2 BAD is not on the sheet, so it connects nothing. Delete it, and draw it again if you still need it.',
+    ])
+  })
+  it('crossed Nano power leads plus a signal wire into the loop: only the power leads are offered for removal', () => {
+    const d = nanos([['n1|D2', 'n2|GND']])
+    expect(found(d)).toEqual([
+      'short: U1 5V and U2 5V are wired in a loop, each + to the next -: short circuit. Nothing limits the current, so they can overheat. Remove one of these wires: U1 5V to U2 GND, or U2 5V to U1 GND.',
+    ])
+  })
+  it('a loop closed through breadboard rails names the jumpers that carry it, not a parallel spare', () => {
+    // U1 5V and U2 GND share the top+ rail (two jumpers from U2 GND: neither alone breaks the loop).
+    const d = sheet([at('n1', 'U1', 'arduino-nano'), at('n2', 'U2', 'arduino-nano', 300), at('bb', 'BB1', 'breadboard-half', 0, { y: 400 })],
+      [['n1|5V', 'bb|top+|0'], ['n2|GND', 'bb|top+|4'], ['n2|GND 2', 'bb|top+|8'], ['n2|5V', 'n1|GND']])
+    expect(found(d)).toEqual([
+      'short: U1 5V and U2 5V are wired in a loop, each + to the next -: short circuit. Nothing limits the current, so they can overheat. Remove one of these wires: U1 5V to BB1 + rail (top), or U2 5V to U1 GND.',
+    ])
+  })
+  it('two Nanos tied 5V to 5V feeding a BME280: the overvoltage names U1 whatever the uids', () => {
+    const run = (a: string, b: string) => found(sheet([at(a, 'U1', 'arduino-nano'), at(b, 'U2', 'arduino-nano', 300), at('s1', 'U3', 'bme280-module-6pin', 600)],
+      [[`${a}|5V`, `${b}|5V`], [`${a}|GND`, `${b}|GND`], ['s1|VCC', `${b}|5V`], ['s1|GND', `${b}|GND 2`]]))
+    const want = ['supply-too-high: U3 VCC accepts up to 3.3 V but gets 5 V from U1 5V (USB). Move the wire to a 3.3 V pin.']
+    expect(run('n1', 'n2')).toEqual(want)
+    expect(run('n2', 'n1')).toEqual(want)
+    expect(run('zz', 'aa')).toEqual(want)
+  })
+  it('a 3.3 V only sensor and a 5 V only sensor on one unfed rail: split the rail, never one voltage for both', () => {
+    const d = sheet([at('bb', 'BB1', 'breadboard-half', 0, { y: 300 }), at('u1', 'U1', 'rpi-pico', 400), at('u2', 'U2', 'bme280-module-6pin', 700), at('u3', 'U3', 'ultrasonic-hc-sr04', 900)],
+      [['u1|GND', 'bb|top-|0'], ['u2|VCC', 'bb|top+|3'], ['u2|GND', 'bb|top-|3'], ['u3|VCC', 'bb|top+|5'], ['u3|GND', 'bb|top-|5']])
+    const split = 'U2 VCC needs 3.3 V and U3 VCC needs 5 V: these parts need different supply voltages; split the rail and power each part from a supply it accepts.'
+    expect(found(d)).toEqual([
+      `no-power: U2 has no power: VCC is connected but nothing supplies it. ${split}`,
+      `no-power: U3 has no power: VCC is connected but nothing supplies it. ${split}`,
+    ])
+  })
+  it('loads on a shared rail that all accept the same rails keep the plain advice', () => {
+    const d = sheet([at('bb', 'BB1', 'breadboard-half', 0, { y: 300 }), at('u1', 'U1', 'rpi-pico', 400), at('u2', 'U2', 'bme280-module-4pin', 700), at('u3', 'U3', 'oled-ssd1306-096-i2c', 900)],
+      [['u1|GND', 'bb|top-|0'], ['u2|VIN', 'bb|top+|3'], ['u2|GND', 'bb|top-|3'], ['u3|VCC', 'bb|top+|5'], ['u3|GND', 'bb|top-|5']])
+    expect(found(d)).toEqual([
+      "no-power: U2 has no power: VIN is connected but nothing supplies it. Connect it to a 3.3 V or 5 V supply, such as a board's 3V3 or 5V pin.",
+      "no-power: U3 has no power: VCC is connected but nothing supplies it. Connect it to a 3.3 V or 5 V supply, such as a board's 3V3 or 5V pin.",
+    ])
   })
 })
 

@@ -10,6 +10,8 @@ import { type EditorStore, type Highlight, useEditorState } from './store.ts'
 interface Checked {
   d: Pick<Diagram, 'parts' | 'connections' | 'modules'>
   findings: Finding[]
+  /** True when the checker threw on this sheet: the list says so instead of breaking the panel. */
+  failed: boolean
 }
 
 /** One entry per store, so the badge and the list share one check. */
@@ -23,9 +25,23 @@ export function problemsOf(store: EditorStore): Finding[] {
   const d = store.getState().diagram
   const hit = cache.get(store)
   if (hit && (store.dragging || (hit.d.parts === d.parts && hit.d.connections === d.connections && hit.d.modules === d.modules))) return hit.findings
-  const findings = checkDiagram(d)
-  cache.set(store, { d: { parts: d.parts, connections: d.connections, modules: d.modules }, findings })
+  let findings: Finding[] = []
+  let failed = false
+  try {
+    findings = checkDiagram(d)
+  } catch (err) {
+    // A checker bug must never take the editor down: the list shows one row saying so.
+    console.error('The wiring checker hit an error on this sheet', err)
+    failed = true
+  }
+  cache.set(store, { d: { parts: d.parts, connections: d.connections, modules: d.modules }, findings, failed })
   return findings
+}
+
+/** True when the last check of the store's sheet threw (see `problemsOf`). */
+export function checkFailed(store: EditorStore): boolean {
+  problemsOf(store)
+  return cache.get(store)?.failed ?? false
 }
 
 const plural = (n: number, one: string) => `${n} ${one}${n === 1 ? '' : 's'}`
