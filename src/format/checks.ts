@@ -477,7 +477,7 @@ export function checkDiagram(d: Diagram): Finding[] {
         parts: drivers.map((t) => t.part.uid), pins: drivers.map(termPin), wires, causes: drivers.map((t) => t.key) })
   })
 
-  const { reversed, returnGroup } = checkPotentials({ d, nl, netTerms, netWires, terminal, shorted, add })
+  const { reversed, returnGroup } = checkPotentials({ d, nl, netTerms, netWires, terminal, plugs, shorted, add })
 
   // Per part: power and ground reach it from another part.
   const others = (t: Terminal) => {
@@ -664,6 +664,9 @@ interface Edge {
   src?: Source
   /** A switch taken as closed: it carries voltage to loads, but a loop through it is no short (it may be open). */
   closedSwitch?: boolean
+  /** The terminals (node keys) the edge joins at its `from` and `to` nets, when they are pins. */
+  fromKey?: string
+  toKey?: string
 }
 
 /**
@@ -703,6 +706,7 @@ interface PotentialInput {
   netTerms: Terminal[][]
   netWires: string[][]
   terminal: (key: string) => Terminal | null
+  plugs: ReturnType<typeof plugsOf>
   shorted: Set<string>
   add: (f: { rule: RuleId; subject: string; target: string; message: string; parts: string[]; pins: Endpoint[]; wires: string[]; causes: string[] }) => void
 }
@@ -715,7 +719,7 @@ interface PotentialInput {
  * supplies fighting; a loop that agrees is supplies in parallel. A load gets the potential of its
  * power input over that of its own ground, so a series stack adds up.
  */
-function checkPotentials({ d, nl, netTerms, netWires, terminal, shorted, add }: PotentialInput): { reversed: Set<string>; returnGroup: (key: string) => string } {
+function checkPotentials({ d, nl, netTerms, netWires, terminal, plugs, shorted, add }: PotentialInput): { reversed: Set<string>; returnGroup: (key: string) => string } {
   const reversed = new Set<string>()
   const netOfKey = (key: string) => {
     const i = nl.netOf.get(key)
@@ -735,12 +739,15 @@ function checkPotentials({ d, nl, netTerms, netWires, terminal, shorted, add }: 
     const info = moduleInfo(m)
     // A switch is taken as closed for voltages: damage happens in the ON position.
     if (info.switchPins) {
-      const [a, b] = info.switchPins
-      edges.push({ from: netOfKey(nodeKey(p.uid, a)), to: netOfKey(nodeKey(p.uid, b)), v: 0, closedSwitch: true })
+      const [a, b] = info.switchPins.map((n) => nodeKey(p.uid, n))
+      edges.push({ from: netOfKey(a), to: netOfKey(b), v: 0, closedSwitch: true, fromKey: a, toKey: b })
     }
     // Grounds the module declares one return are joined at 0 V (a charger's B- and OUT-).
     for (const g of info.commonReturn)
-      for (const n of g.slice(1)) edges.push({ from: netOfKey(nodeKey(p.uid, g[0])), to: netOfKey(nodeKey(p.uid, n)), v: 0 })
+      for (const n of g.slice(1)) {
+        const [a, b] = [nodeKey(p.uid, g[0]), nodeKey(p.uid, n)]
+        edges.push({ from: netOfKey(a), to: netOfKey(b), v: 0, fromKey: a, toKey: b })
+      }
     if (!info.sourceNames.length) continue
     const own = new Map<string, Source>()
     for (const n of info.sourceNames) {
@@ -758,14 +765,16 @@ function checkPotentials({ d, nl, netTerms, netWires, terminal, shorted, add }: 
       // A supply wired to its own ground is reported as a short already; it places nothing.
       if (shorted.has(s.id)) continue
       const ret = info.returnOf.get(s.term.name)
+      const retKey = ret ? nodeKey(p.uid, ret) : ''
       // A USB pin behind a diode only raises its net: placed after the first walk (see below).
-      if (ret && s.external?.diode) diodes.push({ from: netOfKey(nodeKey(p.uid, ret)), to: out, v: s.v, src: s })
-      else if (ret) edges.push({ from: netOfKey(nodeKey(p.uid, ret)), to: out, v: s.v, src: s })
+      if (ret && s.external?.diode) diodes.push({ from: netOfKey(retKey), to: out, v: s.v, src: s, fromKey: retKey, toKey: s.term.key })
+      else if (ret) edges.push({ from: netOfKey(retKey), to: out, v: s.v, src: s, fromKey: retKey, toKey: s.term.key })
       else if (info.grounds.length) {
         // Several grounds and no declared return: its voltage over any of them is unknown.
         s.refUnknown = true
-        edges.push({ from: netOfKey(nodeKey(p.uid, info.grounds[0])), to: out, v: null, src: s })
-      } else edges.push({ from: `(${s.id})`, to: out, v: s.v, src: s })
+        const g = nodeKey(p.uid, info.grounds[0])
+        edges.push({ from: netOfKey(g), to: out, v: null, src: s, fromKey: g, toKey: s.term.key })
+      } else edges.push({ from: `(${s.id})`, to: out, v: s.v, src: s, toKey: s.term.key })
     }
   }
 
@@ -887,19 +896,35 @@ function checkPotentials({ d, nl, netTerms, netWires, terminal, shorted, add }: 
 
   /** Edges of a loop that disagrees: a voltage whose path uses one of them cannot be stated. */
   const broken = new Set<Edge>()
-  /** The wires on a loop's nets between the loop's own parts: the ones to cut, when there are few. */
-  const loopWires = (list: Source[], nets: Set<string>) => {
-    const inLoop = new Set(list.map((x) => x.term.part.uid))
-    // A broken wire (an end that does not resolve) conducts nothing, so it closes no loop.
-    const broken = new Set(nl.broken)
-    const ws = d.connections.filter((c) => !broken.has(c.uid) && inLoop.has(c.from.part) && inLoop.has(c.to.part) &&
-      nets.has(netOfKey(nodeKey(c.from.part, c.from.pin))))
-    const names = ws.map((c) => `${termName(terminal(nodeKey(c.from.part, c.from.pin))!)} to ${termName(terminal(nodeKey(c.to.part, c.to.pin))!)}`).sort(natural.compare)
+  /**
+   * The wires that carry a loop: on each net the loop passes through, the wires whose removal
+   * parts the terminals where the loop enters and leaves it. A wire that only touches a loop net
+   * (a signal wire, a spare jumper in parallel) breaks nothing and is not offered. Broken wires
+   * conduct nothing and are never in a net's wires.
+   */
+  const loopWires = (loop: Edge[]) => {
+    const keysOn = new Map<string, string[]>()
+    for (const e of loop)
+      for (const k of [e.fromKey, e.toKey]) {
+        if (k === undefined) continue
+        const net = netOfKey(k)
+        if (net.startsWith('#')) keysOn.set(net, [...(keysOn.get(net) ?? []), k])
+      }
+    const cuts: Connection[] = []
+    const candidates = [...new Set([...keysOn.keys()].flatMap(wiresOf))]
+    for (const uid of candidates) {
+      const without = netlist({ ...d, connections: d.connections.filter((c) => c.uid !== uid) }, plugs)
+      const at = (k: string) => without.netOf.get(k) ?? k
+      if ([...keysOn.values()].some((keys) => keys.some((k) => at(k) !== at(keys[0])))) cuts.push(d.connections.find((c) => c.uid === uid)!)
+      if (cuts.length > 3) break
+    }
+    const end = (ep: Endpoint) => { const t = terminal(nodeKey(ep.part, ep.pin)); return t ? termName(t) : endpointName(d, ep) }
+    const names = cuts.map((c) => `${end(c.from)} to ${end(c.to)}`).sort(natural.compare)
     return names.length && names.length <= 3 ? `Remove one of these wires: ${orList(names).replace(/ or /, ', or ')}.` : 'Remove one of the wires that close the loop.'
   }
-  const loopShort = (all: Source[], nets: Set<string>) =>
+  const loopShort = (all: Source[], loop: Edge[]) =>
     add({ rule: 'short', subject: all[0].term.part.designator, target: termName(all[0].term),
-      message: `${andList(all.map((s) => termName(s.term)))} are wired in a loop, each + to the next -: short circuit. Nothing limits the current, so they can overheat. ${loopWires(all, nets)}`, ...involve(all) })
+      message: `${andList(all.map((s) => termName(s.term)))} are wired in a loop, each + to the next -: short circuit. Nothing limits the current, so they can overheat. ${loopWires(loop)}`, ...involve(all) })
   /** Loops of supplies: shorted stacks, fights, parallels. `only` limits it to loops through those edges. */
   const analyseLoops = (only?: Set<Edge>) => {
   for (const i of loops) {
@@ -919,7 +944,7 @@ function checkPotentials({ d, nl, netTerms, netWires, terminal, shorted, add }: 
     // Through a switch the loop exists only while it is closed: say nothing (it may well be open).
     if (around.some((x) => x.e.closedSwitch)) continue
     if (mismatch && (!ahead.length || !back.length)) {
-      loopShort(all, new Set(around.flatMap((x) => [x.e.from, x.e.to])))
+      loopShort(all, around.map((x) => x.e))
     } else if (mismatch) {
       const [a, b] = [side(ahead), side(back)]
       const [hi, lo] = a.v >= b.v ? [a, b] : [b, a]
@@ -1038,7 +1063,7 @@ function checkPotentials({ d, nl, netTerms, netWires, terminal, shorted, add }: 
       add({ rule: 'supply-unknown', message: `${termName(pin)} voltage depends on ${andList(sorted(open).map((x) => `${termName(x.term)} (${reason(x)})`))} and cannot be checked. ${fixUnknown(open)}`, ...base })
     } else if (diff.c < -EPS)
       // The supplies on the way point the same way round as USB: a shorted loop.
-      loopShort(sorted([s, ...under]), new Set(way.flatMap((x) => [x.e.from, x.e.to])))
+      loopShort(sorted([s, ...under]), [e, ...way.map((x) => x.e)])
     else if (diff.c < ext.volts - EPS)
       add({ rule: 'supplies-fight', ...base, message: backFeed(pin, ext, under, what, diff.c) })
     else {

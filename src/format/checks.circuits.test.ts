@@ -633,6 +633,20 @@ describe('hotfix: Astra re-review 6', () => {
       'error broken: The wire U1 5V to U2 BAD is broken: U2 BAD is not on the sheet, so it connects nothing. Delete it, and draw it again if you still need it.',
     ])
   })
+  it('crossed Nano power leads plus a signal wire into the loop: only the power leads are offered for removal', () => {
+    const d = nanos([['n1|D2', 'n2|GND']])
+    expect(found(d)).toEqual([
+      'short: U1 5V and U2 5V are wired in a loop, each + to the next -: short circuit. Nothing limits the current, so they can overheat. Remove one of these wires: U1 5V to U2 GND, or U2 5V to U1 GND.',
+    ])
+  })
+  it('a loop closed through breadboard rails names the jumpers that carry it, not a parallel spare', () => {
+    // U1 5V and U2 GND share the top+ rail (two jumpers from U2 GND: neither alone breaks the loop).
+    const d = sheet([at('n1', 'U1', 'arduino-nano'), at('n2', 'U2', 'arduino-nano', 300), at('bb', 'BB1', 'breadboard-half', 0, { y: 400 })],
+      [['n1|5V', 'bb|top+|0'], ['n2|GND', 'bb|top+|4'], ['n2|GND 2', 'bb|top+|8'], ['n2|5V', 'n1|GND']])
+    expect(found(d)).toEqual([
+      'short: U1 5V and U2 5V are wired in a loop, each + to the next -: short circuit. Nothing limits the current, so they can overheat. Remove one of these wires: U1 5V to BB1 + rail (top), or U2 5V to U1 GND.',
+    ])
+  })
   it('a 3.3 V only sensor and a 5 V only sensor on one unfed rail: split the rail, never one voltage for both', () => {
     const d = sheet([at('bb', 'BB1', 'breadboard-half', 0, { y: 300 }), at('u1', 'U1', 'rpi-pico', 400), at('u2', 'U2', 'bme280-module-6pin', 700), at('u3', 'U3', 'ultrasonic-hc-sr04', 900)],
       [['u1|GND', 'bb|top-|0'], ['u2|VCC', 'bb|top+|3'], ['u2|GND', 'bb|top-|3'], ['u3|VCC', 'bb|top+|5'], ['u3|GND', 'bb|top-|5']])
