@@ -232,6 +232,8 @@ export function validateModule(raw: unknown): ValidationResult {
   }
   if (raw.obstacle !== undefined && typeof raw.obstacle !== 'boolean') errors.push('obstacle: must be true or false')
 
+  // Pins and hole groups only: internal nodes (a plug's prongs) have no pin stub to power.
+  const pinNames = new Set(names)
   claimInternalNodes(raw, names, errors)
   if (raw.internal !== undefined) {
     if (!Array.isArray(raw.internal)) errors.push('internal: must be a list of pin-name groups')
@@ -313,7 +315,7 @@ export function validateModule(raw: unknown): ValidationResult {
       ext.forEach((e, i) => {
         const at = `electrical.external[${i}]`
         if (!isObj(e)) return void errors.push(`${at}: must be { "pin", "volts", "via" }`)
-        if (typeof e.pin !== 'string' || !names.has(e.pin)) errors.push(`${at}.pin: no pin named "${String(e.pin)}"`)
+        if (typeof e.pin !== 'string' || !pinNames.has(e.pin)) errors.push(`${at}.pin: no pin named "${String(e.pin)}"`)
         if (!isPos(e.volts)) errors.push(`${at}.volts: must be a number above 0`)
         if (typeof e.via !== 'string' || e.via.trim() === '') errors.push(`${at}.via: required, what powers the pin (for example "USB")`)
         if (e.diode !== undefined && typeof e.diode !== 'boolean') errors.push(`${at}.diode: must be true or false`)

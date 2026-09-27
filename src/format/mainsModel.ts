@@ -23,6 +23,22 @@ export type DomainKind = (typeof DOMAIN_KINDS)[number]
 const RATING_KINDS = ['insulation', 'terminal', 'switching'] as const
 const SERVICES = ['ac', 'dc', 'ac/dc'] as const
 const PROVENANCES = ['datasheet', 'unverified'] as const
+const STATED_CLASSES = ['reinforced', 'double', 'basic'] as const
+
+/**
+ * The socket families an outlet of each region may carry. The spec's compatibility table says which
+ * plug fits which socket, not where a socket is used, so this list is explicit here; a family missing
+ * from a region is rejected (a mislabelled outlet would get the wrong identity colours and voltage).
+ */
+const REGION_SOCKETS: Record<Region, readonly SocketFamily[]> = {
+  us: ['nema-5-15r', 'nema-5-20r', 'nema-1-15r', 'nema-1-15r-polarized'],
+  jp: ['nema-1-15r', 'nema-1-15r-polarized'],
+  eu: ['cee7-3', 'cee7-5', 'cee7-16'],
+  uk: ['bs1363'],
+  au: ['as3112'],
+}
+const SOURCE_LISTS = [['live', 'L'], ['neutral', 'N'], ['earth', 'PE']] as const
+const article = (c: Conductor) => (c === 'PE' ? 'a' : 'an')
 
 export interface AcSource { id: string; live: string[]; neutral: string[]; earth: string[] }
 export interface Conducts { pins: [string, string]; kind: 'load' | 'leakage'; range: [number, number] | null }
@@ -58,7 +74,8 @@ export interface MainsInfo {
   domains: Domain[]
   domainOf: Map<string, Domain>
   isolation: Isolation | null
-  isolationProvenance: 'datasheet' | 'unverified'
+  /** Required by validation whenever `isolation` states a class (reinforced, double, basic); null otherwise. */
+  isolationProvenance: 'datasheet' | 'unverified' | null
   safeguard: 'protective-screen' | null
   acInput: AcInput | null
   ratings: Rating[]
@@ -121,11 +138,23 @@ export function validateMains(raw: Record<string, unknown>, names: Set<string>, 
   }
 
   const sourceIds = new Set<string>()
+  // Every source terminal carries exactly one conductor, within one source and across sources.
+  const conductorOf = new Map<string, { role: Conductor; src: string; at: string }>()
   each('acSources', (s, at) => {
     named(sourceIds, s.id, `${at}.id`)
     termList(s.live, `${at}.live`)
     termList(s.neutral, `${at}.neutral`)
     if (s.earth !== undefined) termList(s.earth, `${at}.earth`)
+    for (const [key, role] of SOURCE_LISTS) {
+      const v = s[key]
+      if (!Array.isArray(v)) continue
+      v.forEach((n, i) => {
+        if (!isStr(n) || !names.has(n)) return
+        const prev = conductorOf.get(n)
+        if (prev) errors.push(`${at}.${key}[${i}]: "${n}" is already ${prev.role} of source "${prev.src}" (a terminal carries exactly one conductor)`)
+        else conductorOf.set(n, { role, src: String(s.id), at: `${at}.${key}[${i}]` })
+      })
+    }
   })
   if (Array.isArray(el.acSources) && el.acSources.length) {
     if (!(isObj(el.params) && isObj(el.params.acVoltage))) errors.push('electrical.acSources: needs an acVoltage param (electrical.params.acVoltage), the source voltage')
@@ -165,6 +194,17 @@ export function validateMains(raw: Record<string, unknown>, names: Set<string>, 
   if (el.isolation !== undefined && !oneOf(ISOLATIONS, el.isolation)) errors.push(`electrical.isolation: must be one of ${words(ISOLATIONS)}`)
   if (el.isolationProvenance !== undefined && !oneOf(PROVENANCES, el.isolationProvenance)) errors.push('electrical.isolationProvenance: must be "datasheet" or "unverified"')
   if (el.safeguard !== undefined && el.safeguard !== 'protective-screen') errors.push('electrical.safeguard: must be "protective-screen"')
+  // Isolation rates the barrier between a mains domain and a SELV or PELV one: both sides must exist,
+  // and a SELV or PELV domain always says how it is separated.
+  const kinds = Array.isArray(el.domains) ? el.domains.filter(isObj).map((x) => x.kind) : []
+  const barrier = kinds.includes('mains') && kinds.some((k) => k === 'selv' || k === 'pelv')
+  const sides = 'needs a mains domain and a selv or pelv domain, the two sides of the barrier it rates'
+  if (el.isolation !== undefined && !barrier) errors.push(`electrical.isolation: ${sides}`)
+  if (el.safeguard !== undefined && !barrier) errors.push(`electrical.safeguard: ${sides}`)
+  if (kinds.some((k) => k === 'selv' || k === 'pelv') && el.isolation === undefined)
+    errors.push('electrical.domains: a selv or pelv domain needs electrical.isolation ("unknown" when no source states a class)')
+  if (oneOf(STATED_CLASSES, el.isolation) && el.isolationProvenance === undefined)
+    errors.push(`electrical.isolationProvenance: required with isolation "${el.isolation}" ("datasheet" or "unverified")`)
 
   if (el.acInput !== undefined) {
     const a = el.acInput
@@ -188,6 +228,7 @@ export function validateMains(raw: Record<string, unknown>, names: Set<string>, 
   })
 
   const contactIds = new Set<string>()
+  const poleOf = new Map<string, string>()
   each('contacts', (c, at) => {
     named(contactIds, c.id, `${at}.id`)
     if (!oneOf(CONTACT_KINDS, c.kind)) errors.push(`${at}.kind: must be "switch", "relay" or "ssr"`)
@@ -200,13 +241,27 @@ export function validateMains(raw: Record<string, unknown>, names: Set<string>, 
       if (pole.nc !== undefined) term(pole.nc, `${pat}.nc`)
       if (pole.no === undefined && pole.nc === undefined) errors.push(`${pat}: needs "no", "nc" or both`)
       else if (c.kind === 'ssr' && (pole.no === undefined || pole.nc !== undefined)) errors.push(`${pat}: an SSR pole has "no" only (its OFF state is a leakage path)`)
+      // A pole's terminals differ, and a terminal belongs to one pole of one contact group only.
+      const ends = [pole.com, pole.no, pole.nc].filter((v) => v !== undefined)
+      if (new Set(ends).size !== ends.length) errors.push(`${pat}: com, no and nc must be different terminals`)
+      else
+        for (const k of ['com', 'no', 'nc'] as const) {
+          const n = pole[k]
+          if (!isStr(n)) continue
+          const prev = poleOf.get(n)
+          if (prev) errors.push(`${pat}.${k}: "${n}" is already in ${prev}`)
+          else poleOf.set(n, pat)
+        }
     })
   })
 
   if (el.protection !== undefined) {
-    const pe = [...(Array.isArray(raw.pins) ? raw.pins : []), ...(Array.isArray(raw.holes) ? raw.holes : [])].some((p) => isObj(p) && p.mains === 'PE')
+    // The PE terminal is a pin or hole group marked PE, or a plug's PE prong.
+    const prongs = isObj(el.plug) && Array.isArray(el.plug.profiles) ? el.plug.profiles.filter(isObj).flatMap((pr) => (Array.isArray(pr.contacts) ? pr.contacts.filter(isObj) : [])) : []
+    const pe = [...(Array.isArray(raw.pins) ? raw.pins : []), ...(Array.isArray(raw.holes) ? raw.holes : [])].some((p) => isObj(p) && p.mains === 'PE') ||
+      prongs.some((c) => c.mains === 'PE' && isStr(c.pin) && nodes.has(c.pin))
     if (el.protection !== 'class-1' && el.protection !== 'class-2') errors.push('electrical.protection: must be "class-1" or "class-2"')
-    else if (el.protection === 'class-1' && !pe) errors.push('electrical.protection: a class 1 part needs a terminal marked "mains": "PE"')
+    else if (el.protection === 'class-1' && !pe) errors.push('electrical.protection: a class 1 part needs a terminal marked "mains": "PE" or a PE plug contact')
   }
 
   if (el.plug !== undefined) {
@@ -223,13 +278,38 @@ export function validateMains(raw: Record<string, unknown>, names: Set<string>, 
           if (!isObj(pr)) return void errors.push(`${at}: must be an object`)
           named(seen, pr.id, `${at}.id`)
           if (!Array.isArray(pr.contacts) || !pr.contacts.length) return void errors.push(`${at}.contacts: must be a list of 1 or more contacts`)
+          // Only the profile's own consistency is checked here; which roles and positions a family
+          // allows is Task 12's compatibility table (plugging.ts).
+          const prongs = new Set<string>()
+          const spots = new Set<string>()
+          const count = { L: 0, N: 0, PE: 0 }
+          let rolesKnown = true
           pr.contacts.forEach((c, j) => {
             const cat = `${at}.contacts[${j}]`
-            if (!isObj(c)) return void errors.push(`${cat}: must be an object`)
+            if (!isObj(c)) {
+              rolesKnown = false
+              return void errors.push(`${cat}: must be an object`)
+            }
             if (!isStr(c.pin) || !nodes.has(c.pin)) errors.push(`${cat}.pin: must name an internal node (electrical.internalNodes), the prong`)
+            if (isStr(c.pin)) {
+              if (prongs.has(c.pin)) errors.push(`${cat}.pin: "${c.pin}" is already a contact of this profile`)
+              else prongs.add(c.pin)
+            }
             if (!(isObj(c.at) && isNum(c.at.x) && isNum(c.at.y) && c.at.x % GRID === 0 && c.at.y % GRID === 0)) errors.push(`${cat}.at: must be { "x", "y" } on the 10 px grid`)
-            if (!oneOf(CONDUCTORS, c.mains)) errors.push(`${cat}.mains: must be "L", "N" or "PE"`)
+            else {
+              const spot = `${c.at.x}, ${c.at.y}`
+              if (spots.has(spot)) errors.push(`${cat}.at: another contact of this profile sits at ${spot}`)
+              else spots.add(spot)
+            }
+            if (!oneOf(CONDUCTORS, c.mains)) {
+              rolesKnown = false
+              errors.push(`${cat}.mains: must be "L", "N" or "PE"`)
+            } else {
+              count[c.mains]++
+              if (c.mains === 'PE' && el.protection === 'class-2') errors.push(`${cat}.mains: a class 2 part has no PE prong`)
+            }
           })
+          if (rolesKnown && (count.L !== 1 || count.N !== 1 || count.PE > 1)) errors.push(`${at}.contacts: needs exactly one L and one N contact, and at most one PE`)
         })
       }
     }
@@ -239,10 +319,16 @@ export function validateMains(raw: Record<string, unknown>, names: Set<string>, 
     const holes = (Array.isArray(raw.holes) ? raw.holes : []).filter(isObj).map((g) => g.name).filter(isStr)
     if (!(raw.obstacle === false && holes.length)) errors.push('electrical.sockets: only a board (hole groups and "obstacle": false) has sockets')
     const owner = new Map<string, string>()
+    const socketContacts: { group: string; role: Conductor; at: string }[] = []
     const ids = new Set<string>()
+    const region = isObj(el.ac) && oneOf(REGIONS, el.ac.region) ? el.ac.region : null
     each('sockets', (s, at) => {
       named(ids, s.id, `${at}.id`)
       if (!oneOf(SOCKET_FAMILIES, s.family)) errors.push(`${at}.family: must be one of ${words(SOCKET_FAMILIES)}`)
+      else if (region && !REGION_SOCKETS[region].includes(s.family)) {
+        const ok = REGION_SOCKETS[region]
+        errors.push(`${at}.family: "${s.family}" is not a socket of region "${region}" (expected ${ok.length > 1 ? 'one of ' : ''}${words(ok)})`)
+      }
       if (!Array.isArray(s.contacts) || !s.contacts.length) return void errors.push(`${at}.contacts: must be a list of { "group", "role" }`)
       const roles = new Set<string>()
       s.contacts.forEach((c, j) => {
@@ -250,7 +336,10 @@ export function validateMains(raw: Record<string, unknown>, names: Set<string>, 
         if (!isObj(c)) return void errors.push(`${cat}: must be an object`)
         if (!isStr(c.group) || !holes.includes(c.group)) errors.push(`${cat}.group: no hole group named "${String(c.group)}"`)
         else if (owner.has(c.group)) errors.push(`${cat}.group: "${c.group}" already belongs to socket "${owner.get(c.group)}"`)
-        else owner.set(c.group, String(s.id))
+        else {
+          owner.set(c.group, String(s.id))
+          if (oneOf(CONDUCTORS, c.role)) socketContacts.push({ group: c.group, role: c.role, at: `${cat}.group` })
+        }
         if (!oneOf(CONDUCTORS, c.role)) errors.push(`${cat}.role: must be "L", "N" or "PE"`)
         else if (roles.has(c.role)) errors.push(`${cat}.role: this socket already has a ${c.role} contact`)
         else roles.add(c.role)
@@ -259,7 +348,44 @@ export function validateMains(raw: Record<string, unknown>, names: Set<string>, 
     })
     if (Array.isArray(el.sockets) && raw.obstacle === false)
       for (const h of holes) if (!owner.has(h)) errors.push(`holes: group "${h}" belongs to no socket (on an outlet every hole group is a socket contact)`)
+    if (conductorOf.size && raw.obstacle === false) {
+      // An outlet's source feeds its sockets: each source terminal is a socket contact of the same
+      // role, and each socket contact is listed under its role, directly or through a group joined to
+      // it by `internal` (a duplex outlet's second socket).
+      const roleOf = new Map(socketContacts.map((c) => [c.group, c.role]))
+      for (const [n, { role, at }] of conductorOf) {
+        const r = roleOf.get(n)
+        if (r === undefined) errors.push(`${at}: "${n}" is not a socket contact (on an outlet a source feeds its sockets)`)
+        else if (r !== role) errors.push(`${at}: "${n}" is ${article(r)} ${r} socket contact, not ${role}`)
+      }
+      const joined = (Array.isArray(raw.internal) ? raw.internal : []).filter(Array.isArray).map((g) => g.filter(isStr))
+      for (const c of socketContacts) {
+        if (conductorOf.has(c.group)) continue
+        const peers = joined.filter((g) => g.includes(c.group)).flat()
+        if (!peers.some((n) => conductorOf.get(n)?.role === c.role))
+          errors.push(`${c.at}: "${c.group}" is ${article(c.role)} ${c.role} contact, but no source lists it (or a group joined to it by internal) as ${c.role}`)
+      }
+    }
   }
+
+  // A terminal declared for mains never sits in a SELV or PELV domain.
+  const pinsAndHoles = [...(Array.isArray(raw.pins) ? raw.pins : []), ...(Array.isArray(raw.holes) ? raw.holes : [])].filter(isObj)
+  const strsOf = (v: unknown) => (Array.isArray(v) ? v.filter(isStr) : [])
+  const declared = new Set<string>([
+    ...(Array.isArray(el.acSources) ? el.acSources.filter(isObj).flatMap((s) => [...strsOf(s.live), ...strsOf(s.neutral), ...strsOf(s.earth)]) : []),
+    ...(isObj(el.acInput) ? [el.acInput.a, el.acInput.b].filter(isStr) : []),
+    ...(Array.isArray(el.contacts) ? el.contacts.filter(isObj).flatMap((c) => (Array.isArray(c.poles) ? c.poles.filter(isObj).flatMap((p) => [p.com, p.no, p.nc].filter(isStr)) : [])) : []),
+    ...(Array.isArray(el.protective) ? el.protective.filter(isObj).flatMap((e) => [e.from, e.to].filter(isStr)) : []),
+    ...(isObj(el.plug) && Array.isArray(el.plug.profiles) ? el.plug.profiles.filter(isObj).flatMap((pr) => (Array.isArray(pr.contacts) ? pr.contacts.filter(isObj).map((c) => c.pin).filter(isStr) : [])) : []),
+    ...(Array.isArray(el.sockets) ? el.sockets.filter(isObj).flatMap((s) => (Array.isArray(s.contacts) ? s.contacts.filter(isObj).map((c) => c.group).filter(isStr) : [])) : []),
+    ...pinsAndHoles.filter((p) => p.mains === 'L' || p.mains === 'N' || p.mains === 'line').map((p) => p.name).filter(isStr),
+  ])
+  if (Array.isArray(el.domains))
+    el.domains.forEach((x, i) => {
+      if (!isObj(x) || (x.kind !== 'selv' && x.kind !== 'pelv') || !Array.isArray(x.pins)) return
+      for (const n of x.pins)
+        if (isStr(n) && declared.has(n) && inDomain.get(n) === x.name) errors.push(`electrical.domains[${i}].pins: "${n}" is declared for mains but sits in ${x.kind} domain "${x.name}"`)
+    })
 }
 
 /** Protective separation (spec 1.3): reinforced or double isolation, or basic plus a declared protective screen. Earthing never substitutes for it. */
@@ -345,7 +471,7 @@ export function mainsOf(m: ModuleDef): MainsInfo {
     internalNodes, acSources, region: ac && oneOf(REGIONS, ac.region) ? ac.region : null, hz: ac && isNum(ac.hz) ? ac.hz : null,
     conducts, protective, domains, domainOf,
     isolation: oneOf(ISOLATIONS, el.isolation) ? el.isolation : null,
-    isolationProvenance: el.isolationProvenance === 'unverified' ? 'unverified' : 'datasheet',
+    isolationProvenance: oneOf(PROVENANCES, el.isolationProvenance) ? el.isolationProvenance : null,
     safeguard: el.safeguard === 'protective-screen' ? 'protective-screen' : null,
     acInput, ratings, contacts, contactTerminals,
     protection: el.protection === 'class-1' || el.protection === 'class-2' ? el.protection : null,

@@ -63,6 +63,8 @@ describe('mains fields: validation', () => {
       'electrical.domains[1].pins: "A" is already in domain "m"',
       'electrical.isolation: must be one of "reinforced", "double", "basic", "none", "unknown"',
       'electrical.safeguard: must be "protective-screen"',
+      'electrical.isolation: needs a mains domain and a selv or pelv domain, the two sides of the barrier it rates',
+      'electrical.safeguard: needs a mains domain and a selv or pelv domain, the two sides of the barrier it rates',
       'electrical.acInput: a and b must differ',
       'electrical.acInput.range: must be [min, max] in volts AC, from 1 to 1000, min not above max',
       'electrical.ratings[0].kind: must be "insulation", "terminal" or "switching"',
@@ -88,7 +90,7 @@ describe('mains fields: validation', () => {
       'electrical.contacts[1].id: duplicate "k"',
       'electrical.contacts[1].kind: must be "switch", "relay" or "ssr"',
       'electrical.contacts[1].poles: must be a list of 1 or more { "com", "no"?, "nc"? }',
-      'electrical.protection: a class 1 part needs a terminal marked "mains": "PE"',
+      'electrical.protection: a class 1 part needs a terminal marked "mains": "PE" or a PE plug contact',
       'electrical.plug.profiles[0].contacts[0].pin: must name an internal node (electrical.internalNodes), the prong',
       'electrical.plug.profiles[0].contacts[0].at: must be { "x", "y" } on the 10 px grid',
       'electrical.plug.profiles[0].contacts[0].mains: must be "L", "N" or "PE"',
@@ -97,7 +99,7 @@ describe('mains fields: validation', () => {
   it('keeps plug contacts inside the body', () => {
     expect(errs({
       ...base, pins: two, size: { w: 4, h: 4 },
-      electrical: { internalNodes: ['L prong'], plug: { family: 'nema-1-15p', profiles: [{ id: 'main', contacts: [{ pin: 'L prong', at: { x: 90, y: 10 }, mains: 'L' }] }] } },
+      electrical: { internalNodes: ['L prong', 'N prong'], plug: { family: 'nema-1-15p', profiles: [{ id: 'main', contacts: [{ pin: 'L prong', at: { x: 90, y: 10 }, mains: 'L' }, { pin: 'N prong', at: { x: 10, y: 10 }, mains: 'N' }] }] } },
     })).toEqual(['electrical.plug.profiles[0].contacts[0].at: outside the body (0 to 40, 0 to 40)'])
   })
 })
@@ -109,7 +111,7 @@ describe('mainsOf', () => {
       electrical: {
         acInput: { a: 'AC1', b: 'AC2', range: [100, 240] },
         domains: [{ name: 'mains', pins: ['AC1', 'AC2'], kind: 'mains' }, { name: 'out', pins: ['+V', '-V'], kind: 'selv' }],
-        isolation: 'reinforced', protection: 'class-2',
+        isolation: 'reinforced', isolationProvenance: 'datasheet', protection: 'class-2',
       },
     })
     if (!m.ok) throw new Error(m.errors.join('; '))
@@ -124,7 +126,7 @@ describe('mainsOf', () => {
   })
   it('counts basic isolation as protective separation only with a protective screen', () => {
     const info = (isolation: string, safeguard?: string) => {
-      const r = validateModule({ ...base, pins: two, electrical: { domains: [{ name: 'm', pins: ['A'], kind: 'mains' }, { name: 'o', pins: ['B'], kind: 'selv' }], isolation, ...(safeguard ? { safeguard } : {}) } })
+      const r = validateModule({ ...base, pins: two, electrical: { domains: [{ name: 'm', pins: ['A'], kind: 'mains' }, { name: 'o', pins: ['B'], kind: 'selv' }], isolation, ...(isolation === 'unknown' ? {} : { isolationProvenance: 'datasheet' }), ...(safeguard ? { safeguard } : {}) } })
       if (!r.ok) throw new Error(r.errors.join('; '))
       return isolationAdequate(mainsOf(r.module))
     }
@@ -136,14 +138,193 @@ describe('mainsOf', () => {
   it('names the pins a converter leaves outside every domain', () => {
     const r = validateModule({
       ...base, pins: [{ name: 'AC1', side: 'left', mains: 'line' }, { name: 'AC2', side: 'left', mains: 'line' }, { name: '+V', side: 'right', type: 'power_out', supply: '5V' }, { name: '-V', side: 'right', type: 'ground' }],
-      electrical: { acInput: { a: 'AC1', b: 'AC2', range: [100, 240] }, domains: [{ name: 'mains', pins: ['AC1', 'AC2'], kind: 'mains' }], isolation: 'reinforced' },
+      electrical: {
+        acInput: { a: 'AC1', b: 'AC2', range: [100, 240] }, isolation: 'reinforced', isolationProvenance: 'datasheet',
+        domains: [{ name: 'mains', pins: ['AC1', 'AC2'], kind: 'mains' }, { name: 'out', pins: ['+V'], kind: 'selv' }],
+      },
     })
     if (!r.ok) throw new Error(r.errors.join('; '))
-    expect(uncoveredPins(r.module, mainsOf(r.module))).toEqual(['+V', '-V'])
+    expect(uncoveredPins(r.module, mainsOf(r.module))).toEqual(['-V'])
+  })
+  it('gives a class 2 part with no isolation no protective separation', () => {
+    const r = validateModule({ ...base, pins: two, electrical: { protection: 'class-2' } })
+    if (!r.ok) throw new Error(r.errors.join('; '))
+    expect(isolationAdequate(mainsOf(r.module))).toBe(false)
   })
   it('says a module with no mains data has none', () => {
     const r = validateModule({ ...base, pins: two })
     if (!r.ok) throw new Error('invalid')
     expect(mainsOf(r.module).any).toBe(false)
+  })
+})
+
+// Hostile modules: contradictory safety data must never validate.
+const sockets3 = [{ id: 'main', family: 'nema-5-15r', contacts: [{ group: 'L', role: 'L' }, { group: 'N', role: 'N' }, { group: 'PE', role: 'PE' }] }]
+const outlet = (el: Record<string, unknown>, extra: Record<string, unknown> = {}) => ({
+  ...base, pins: [], size: { w: 6, h: 6 }, obstacle: false,
+  holes: [{ name: 'N', at: [[20, 20]] }, { name: 'L', at: [[40, 20]] }, { name: 'PE', at: [[30, 40]] }],
+  ...extra,
+  electrical: {
+    params: { acVoltage: { unit: 'VAC', default: 120 } }, ac: { hz: 60, region: 'us' },
+    acSources: [{ id: 'supply', live: ['L'], neutral: ['N'], earth: ['PE'] }], sockets: sockets3, ...el,
+  },
+})
+const src = (live: string[], neutral: string[], earth?: string[], id = 's') => ({ id, live, neutral, ...(earth ? { earth } : {}) })
+
+describe('mains fields: hostile modules', () => {
+  it('gives every source terminal exactly one conductor', () => {
+    expect(errs(outlet({ acSources: [src(['L'], ['L'], ['PE'])] }))).toEqual([
+      'electrical.acSources[0].neutral[0]: "L" is already L of source "s" (a terminal carries exactly one conductor)',
+      'electrical.sockets[0].contacts[1].group: "N" is an N contact, but no source lists it (or a group joined to it by internal) as N',
+    ])
+    expect(errs(outlet({ acSources: [src(['L'], ['N'], ['L'])] }))).toEqual([
+      'electrical.acSources[0].earth[0]: "L" is already L of source "s" (a terminal carries exactly one conductor)',
+      'electrical.sockets[0].contacts[2].group: "PE" is a PE contact, but no source lists it (or a group joined to it by internal) as PE',
+    ])
+    expect(errs(outlet({ acSources: [src(['L', 'L'], ['N'], ['PE'])] }))).toEqual([
+      'electrical.acSources[0].live[1]: "L" is already L of source "s" (a terminal carries exactly one conductor)',
+    ])
+    expect(errs(outlet({ acSources: [src(['L'], ['N'], ['PE'], 'a'), src(['L'], ['N'], undefined, 'b')] }))).toEqual([
+      'electrical.acSources[1].live[0]: "L" is already L of source "a" (a terminal carries exactly one conductor)',
+      'electrical.acSources[1].neutral[0]: "N" is already N of source "a" (a terminal carries exactly one conductor)',
+    ])
+  })
+  it('matches each source conductor to the socket contact role', () => {
+    expect(errs(outlet({ acSources: [src(['N'], ['L'], ['PE'])] }))).toEqual([
+      'electrical.acSources[0].live[0]: "N" is an N socket contact, not L',
+      'electrical.acSources[0].neutral[0]: "L" is an L socket contact, not N',
+    ])
+    expect(errs(outlet({ acSources: [src(['L'], ['N'], ['PE']), src(['X'], ['Y'], undefined, 't')] }, { pins: [{ name: 'X', side: 'left' }, { name: 'Y', side: 'left' }] }))).toEqual([
+      'electrical.acSources[1].live[0]: "X" is not a socket contact (on an outlet a source feeds its sockets)',
+      'electrical.acSources[1].neutral[0]: "Y" is not a socket contact (on an outlet a source feeds its sockets)',
+    ])
+  })
+  it('accepts a duplex outlet whose second socket is joined by internal, and rejects one that is not', () => {
+    const duplex = (internal: string[][]) => ({
+      ...base, pins: [], size: { w: 8, h: 14 }, obstacle: false, internal,
+      holes: [
+        { name: 'L1', at: [[50, 30]] }, { name: 'N1', at: [[30, 30]] }, { name: 'PE1', at: [[40, 50]] },
+        { name: 'L2', at: [[50, 90]] }, { name: 'N2', at: [[30, 90]] }, { name: 'PE2', at: [[40, 110]] },
+      ],
+      electrical: {
+        params: { acVoltage: { unit: 'VAC', default: 120 } }, ac: { hz: 60, region: 'us' },
+        acSources: [src(['L1'], ['N1'], ['PE1'], 'supply')],
+        sockets: [1, 2].map((k) => ({ id: `s${k}`, family: 'nema-5-15r', contacts: [{ group: `L${k}`, role: 'L' }, { group: `N${k}`, role: 'N' }, { group: `PE${k}`, role: 'PE' }] })),
+      },
+    })
+    expect(errs(duplex([['L1', 'L2'], ['N1', 'N2'], ['PE1', 'PE2']]))).toEqual([])
+    expect(errs(duplex([['L1', 'N2'], ['N1', 'L2'], ['PE1', 'PE2']]))).toEqual([
+      'electrical.sockets[1].contacts[0].group: "L2" is an L contact, but no source lists it (or a group joined to it by internal) as L',
+      'electrical.sockets[1].contacts[1].group: "N2" is an N contact, but no source lists it (or a group joined to it by internal) as N',
+    ])
+  })
+  it('rejects a socket family from another region', () => {
+    expect(errs(outlet({ ac: { hz: 50, region: 'uk' } }))).toEqual([
+      'electrical.sockets[0].family: "nema-5-15r" is not a socket of region "uk" (expected "bs1363")',
+    ])
+  })
+  it('rejects duplicate source, domain, socket and profile ids', () => {
+    const hs = [{ name: 'N', at: [[20, 20]] }, { name: 'L', at: [[40, 20]] }, { name: 'PE', at: [[30, 40]] }, { name: 'N2', at: [[20, 50]] }, { name: 'L2', at: [[40, 50]] }]
+    const sockets = [sockets3[0], { id: 'main', family: 'nema-5-15r', contacts: [{ group: 'L2', role: 'L' }, { group: 'N2', role: 'N' }] }]
+    expect(errs(outlet({ acSources: [src(['L'], ['N'], ['PE'], 'x'), src(['L2'], ['N2'], undefined, 'x')], sockets }, { holes: hs }))).toEqual([
+      'electrical.acSources[1].id: duplicate "x"',
+      'electrical.sockets[1].id: duplicate "main"',
+    ])
+    expect(errs({ ...base, pins: two, electrical: { domains: [{ name: 'm', pins: ['A'], kind: 'mains' }, { name: 'm', pins: ['B'], kind: 'mains' }] } }))
+      .toEqual(['electrical.domains[1].name: duplicate "m"'])
+    const prof = { id: 'p', contacts: [{ pin: 'L prong', at: { x: 10, y: 10 }, mains: 'L' }, { pin: 'N prong', at: { x: 30, y: 10 }, mains: 'N' }] }
+    expect(errs({ ...base, pins: two, electrical: { internalNodes: ['L prong', 'N prong'], plug: { family: 'nema-1-15p', profiles: [prof, prof] } } }))
+      .toEqual(['electrical.plug.profiles[1].id: duplicate "p"'])
+  })
+  it('puts every hole group of an outlet in exactly one socket', () => {
+    const both = [sockets3[0], { id: 'b', family: 'nema-5-15r', contacts: [{ group: 'L', role: 'L' }, { group: 'N', role: 'N' }] }]
+    expect(errs(outlet({ sockets: both }))).toEqual([
+      'electrical.sockets[1].contacts[0].group: "L" already belongs to socket "main"',
+      'electrical.sockets[1].contacts[1].group: "N" already belongs to socket "main"',
+    ])
+    const holes = [{ name: 'N', at: [[20, 20]] }, { name: 'L', at: [[40, 20]] }, { name: 'PE', at: [[30, 40]] }, { name: 'X', at: [[10, 50]] }]
+    expect(errs(outlet({}, { holes }))).toEqual(['holes: group "X" belongs to no socket (on an outlet every hole group is a socket contact)'])
+  })
+  it('keeps a plug off a board', () => {
+    expect(errs(outlet({
+      internalNodes: ['L prong', 'N prong'],
+      plug: { family: 'nema-1-15p', profiles: [{ id: 'p', contacts: [{ pin: 'L prong', at: { x: 10, y: 10 }, mains: 'L' }, { pin: 'N prong', at: { x: 30, y: 10 }, mains: 'N' }] }] },
+    }))).toEqual(['electrical.plug: a plug-in device cannot be a board ("obstacle": false)'])
+  })
+  it('keeps mains terminals out of SELV and PELV domains', () => {
+    const conv = [{ name: 'AC1', side: 'left', mains: 'line' }, { name: 'AC2', side: 'left', mains: 'line' }, { name: '+V', side: 'right' }, { name: '-V', side: 'right' }]
+    expect(errs({
+      ...base, pins: conv,
+      electrical: {
+        acInput: { a: 'AC1', b: 'AC2', range: [100, 240] }, isolation: 'reinforced', isolationProvenance: 'datasheet',
+        domains: [{ name: 'mains', pins: ['AC1'], kind: 'mains' }, { name: 'out', pins: ['AC2', '+V', '-V'], kind: 'selv' }],
+      },
+    })).toEqual(['electrical.domains[1].pins: "AC2" is declared for mains but sits in selv domain "out"'])
+  })
+  it('ties isolation and safeguard to a barrier between a mains and a non-mains domain', () => {
+    expect(errs({ ...base, pins: two, electrical: { isolation: 'unknown', safeguard: 'protective-screen' } })).toEqual([
+      'electrical.isolation: needs a mains domain and a selv or pelv domain, the two sides of the barrier it rates',
+      'electrical.safeguard: needs a mains domain and a selv or pelv domain, the two sides of the barrier it rates',
+    ])
+    expect(errs({ ...base, pins: two, electrical: { domains: [{ name: 'm', pins: ['A'], kind: 'mains' }, { name: 'o', pins: ['B'], kind: 'selv' }] } })).toEqual([
+      'electrical.domains: a selv or pelv domain needs electrical.isolation ("unknown" when no source states a class)',
+    ])
+  })
+  it('requires isolationProvenance with a stated class and checks it, amps and conditions', () => {
+    const d = { domains: [{ name: 'm', pins: ['A'], kind: 'mains' }, { name: 'o', pins: ['B'], kind: 'selv' }] }
+    expect(errs({ ...base, pins: two, electrical: { ...d, isolation: 'double' } })).toEqual([
+      'electrical.isolationProvenance: required with isolation "double" ("datasheet" or "unverified")',
+    ])
+    expect(errs({ ...base, pins: two, electrical: { ...d, isolation: 'basic', isolationProvenance: 'maybe' } })).toEqual([
+      'electrical.isolationProvenance: must be "datasheet" or "unverified"',
+    ])
+    expect(errs({ ...base, pins: two, electrical: { ratings: [{ pins: ['A'], kind: 'terminal', service: 'ac', volts: 250, amps: -1, provenance: 'datasheet', conditions: '' }] } })).toEqual([
+      'electrical.ratings[0].amps: must be a number above 0',
+      'electrical.ratings[0].conditions: must be a non-empty string',
+    ])
+  })
+  it('keeps contact poles apart', () => {
+    const three = [...two, { name: 'C', side: 'right' }]
+    expect(errs({ ...base, pins: three, electrical: { contacts: [{ id: 'k', kind: 'switch', poles: [{ com: 'A', no: 'A' }] }] } })).toEqual([
+      'electrical.contacts[0].poles[0]: com, no and nc must be different terminals',
+    ])
+    expect(errs({ ...base, pins: three, electrical: { contacts: [{ id: 'k1', kind: 'relay', poles: [{ com: 'A', no: 'B' }] }, { id: 'k2', kind: 'relay', poles: [{ com: 'B', nc: 'C' }] }] } })).toEqual([
+      'electrical.contacts[1].poles[0].com: "B" is already in electrical.contacts[0].poles[0]',
+    ])
+  })
+  it('checks the contacts of each plug profile', () => {
+    const plug = (contacts: unknown[], protection?: string) => errs({
+      ...base, pins: two, size: { w: 6, h: 6 },
+      electrical: { internalNodes: ['L prong', 'N prong', 'PE prong'], ...(protection ? { protection } : {}), plug: { family: 'nema-5-15p', profiles: [{ id: 'p', contacts }] } },
+    })
+    const c = (pin: string, x: number, y: number, mains: string) => ({ pin, at: { x, y }, mains })
+    expect(plug([c('L prong', 10, 10, 'L'), c('N prong', 30, 10, 'L')])).toEqual([
+      'electrical.plug.profiles[0].contacts: needs exactly one L and one N contact, and at most one PE',
+    ])
+    expect(plug([c('L prong', 10, 10, 'L'), c('L prong', 30, 10, 'N')])).toEqual([
+      'electrical.plug.profiles[0].contacts[1].pin: "L prong" is already a contact of this profile',
+    ])
+    expect(plug([c('L prong', 10, 10, 'L'), c('N prong', 10, 10, 'N')])).toEqual([
+      'electrical.plug.profiles[0].contacts[1].at: another contact of this profile sits at 10, 10',
+    ])
+    expect(plug([c('L prong', 10, 10, 'L'), c('N prong', 30, 10, 'N'), c('PE prong', 20, 30, 'PE')], 'class-2')).toEqual([
+      'electrical.plug.profiles[0].contacts[2].mains: a class 2 part has no PE prong',
+    ])
+  })
+  it('accepts a class 1 cord plug whose PE terminal is its PE prong, joined to its leads by internal', () => {
+    expect(errs({
+      ...base, size: { w: 6, h: 6 },
+      pins: [{ name: 'Lw', side: 'right', mains: 'L' }, { name: 'Nw', side: 'right', mains: 'N' }, { name: 'Ew', side: 'right' }],
+      internal: [['Lw', 'L prong'], ['Nw', 'N prong'], ['Ew', 'PE prong']],
+      electrical: {
+        internalNodes: ['L prong', 'N prong', 'PE prong'], protection: 'class-1',
+        plug: { family: 'nema-5-15p', profiles: [{ id: 'p', contacts: [{ pin: 'L prong', at: { x: 10, y: 10 }, mains: 'L' }, { pin: 'N prong', at: { x: 30, y: 10 }, mains: 'N' }, { pin: 'PE prong', at: { x: 20, y: 30 }, mains: 'PE' }] }] },
+      },
+    })).toEqual([])
+  })
+  it('keeps electrical.external on real pins, never an internal node', () => {
+    expect(errs({ ...base, pins: two, electrical: { internalNodes: ['X'], external: [{ pin: 'X', volts: 5, via: 'USB' }] } })).toEqual([
+      'electrical.external[0].pin: no pin named "X"',
+    ])
   })
 })
