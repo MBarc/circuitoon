@@ -13,7 +13,7 @@ describe('end kinds and presets', () => {
   it('lists the presets in the order the brief gives, Wire first', () => {
     expect(CABLE_PRESETS.map((p) => p.name)).toEqual([
       'Wire', 'Dupont M-M', 'Dupont M-F', 'Dupont F-F', 'Solid-core jumper', 'Alligator leads', 'Alligator to Dupont M',
-      'Stripped hookup wire', 'Ferrules', 'JST-XH lead', 'JST-PH lead', 'Qwiic / STEMMA QT', 'Grove', 'Banana leads',
+      'Stripped hookup wire', 'Ferrules', 'JST-XH lead', 'JST-PH lead', 'Qwiic / STEMMA QT end (per wire)', 'Grove end (per wire)', 'Banana leads',
     ])
     expect(new Set(CABLE_PRESETS.map((p) => p.id)).size).toBe(CABLE_PRESETS.length)
   })

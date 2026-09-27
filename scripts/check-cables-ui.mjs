@@ -319,7 +319,7 @@ for (const scheme of ['light', 'dark']) {
   const newUid = await page.evaluate((known) => [...document.querySelectorAll('[data-wire]')].map((e) => e.getAttribute('data-wire')).find((u) => !known.includes(u)), Object.keys(expectedEnds))
   check(!!newUid && (await page.locator('[data-wire]').evaluateAll((els) => new Set(els.map((e) => e.getAttribute('data-wire'))).size)) === before + 1, `${scheme}: a wire was drawn (${newUid})`)
   check(JSON.stringify(await kinds(newUid)) === '["grove","grove"]', `${scheme}: the new wire gets the last cable picked`)
-  check((await page.locator('.inspector .hint', { hasText: 'New wires use' }).textContent()).includes('Grove.'), `${scheme}: the hint names the new-wire cable`)
+  check((await page.locator('.inspector .hint', { hasText: 'New wires use' }).textContent()).includes('Grove end (per wire).'), `${scheme}: the hint names the new-wire cable`)
 
   // Export writes the ends, and a plain wire writes none.
   const saved = await exported()
@@ -338,7 +338,7 @@ for (const scheme of ['light', 'dark']) {
   await page.getByRole('button', { name: /New diagram/ }).click()
   await page.waitForSelector('.toolbar')
   await load()
-  check((await page.locator('.inspector .new-wires').textContent()) === 'New wires: black, 22 AWG, Qwiic / STEMMA QT', `${scheme}: with nothing selected the side panel shows the remembered new-wire style`)
+  check((await page.locator('.inspector .new-wires').textContent()) === 'New wires: black, 22 AWG, Qwiic / STEMMA QT end (per wire)', `${scheme}: with nothing selected the side panel shows the remembered new-wire style`)
   await shot(page.locator('.inspector'), 'inspector-sheet')
   await drawWire([310, 190], [310, 260])
   const again = await page.evaluate((known) => [...document.querySelectorAll('[data-wire]')].map((e) => e.getAttribute('data-wire')).find((u) => !known.includes(u)), Object.keys(expectedEnds))

@@ -44,7 +44,12 @@ export const END_NAMES: Record<EndKind, string> = {
   banana: 'Banana plug',
 }
 
-/** A named pair of ends, as sold. Presets exist only in the editor; the file stores the ends. */
+/**
+ * A named pair of ends, as sold. Presets exist only in the editor; the file stores the ends.
+ * Qwiic / STEMMA QT and Grove are multi-conductor harnesses in real life; here each wire of one
+ * just shows that connector on its own ends ("per wire"), and a connection still joins exactly
+ * two endpoints. A harness entity (conductors mapped to connector positions) is future work.
+ */
 export interface CablePreset {
   id: string
   name: string
@@ -66,8 +71,8 @@ export const CABLE_PRESETS: CablePreset[] = [
   preset('ferrules', 'Ferrules', 'ferrule'),
   preset('jst-xh', 'JST-XH lead', 'jst-xh'),
   preset('jst-ph', 'JST-PH lead', 'jst-ph'),
-  preset('qwiic', 'Qwiic / STEMMA QT', 'jst-sh'),
-  preset('grove', 'Grove', 'grove'),
+  preset('qwiic', 'Qwiic / STEMMA QT end (per wire)', 'jst-sh'),
+  preset('grove', 'Grove end (per wire)', 'grove'),
   preset('banana', 'Banana leads', 'banana'),
 ]
 
