@@ -6,7 +6,7 @@ import type { Connection, Diagram, PartInstance } from './diagram.ts'
 import type { ModuleDef } from './module.ts'
 import { load, pinsOf } from './builtinModules.testing.ts'
 
-const ids = ['esp32-devkitc-v4', 'ip5306-usbc-module', 'battery-18650-holder', 'bme280-module-6pin', 'oled-ssd1306-096-i2c', 'resistor', 'led', 'lm2596-buck-module', 'breadboard-full']
+const ids = ['esp32-devkitc-v4', 'ip5306-usbc-module', 'battery-18650-holder', 'bme280-module-6pin', 'oled-ssd1306-096-i2c', 'resistor', 'led', 'lm2596-buck-module', 'breadboard-full', 'arduino-nano']
 const mods: Record<string, ModuleDef> = Object.fromEntries(ids.map((id) => [id, load(id)]))
 const sheet = (parts: PartInstance[], connections: Connection[]): Diagram => ({ format: 'circuitoon-diagram/1', title: 't', modules: mods, parts, connections })
 const at = (uid: string, designator: string, module: string, x: number): PartInstance => ({ uid, designator, module, x, y: 0 })
@@ -68,6 +68,34 @@ describe('checkDiagram on built-in parts', () => {
     expect(found.length).toBeGreaterThan(0)
     expect(found.filter((f) => f.rule === 'mount')).toEqual([])
     // A fresh parts array each run, as after an edit, so the mount cache does not carry over.
+    const t: number[] = []
+    for (let i = 0; i < 13; i++) {
+      const next = { ...d, parts: [...d.parts] }
+      const s = performance.now()
+      checkDiagram(next)
+      t.push(performance.now() - s)
+    }
+    t.sort((a, b) => a - b)
+    expect(t[6]).toBeLessThanOrEqual(20)
+  })
+
+  it('advises on a shorted loop among 198 loads in 20 ms or less (median), with the same findings', () => {
+    // Two Nanos with crossed power leads (a shorted loop) and 198 resistors each across U1 5V and
+    // GND: 200 parts, 398 wires. Loop advice must not rebuild the netlist once per wire on the loop nets.
+    const parts: PartInstance[] = [at('n1', 'U1', 'arduino-nano', 0), at('n2', 'U2', 'arduino-nano', 300)]
+    const connections: Connection[] = [
+      { uid: 'x1', from: { part: 'n1', pin: '5V' }, to: { part: 'n2', pin: 'GND' } },
+      { uid: 'x2', from: { part: 'n2', pin: '5V' }, to: { part: 'n1', pin: 'GND' } },
+    ]
+    for (let i = 0; i < 198; i++) {
+      parts.push(at(`r${i}`, `R${i + 1}`, 'resistor', 600 + i * 40))
+      connections.push({ uid: `a${i}`, from: { part: 'n1', pin: '5V' }, to: { part: `r${i}`, pin: '1' } })
+      connections.push({ uid: `b${i}`, from: { part: `r${i}`, pin: '2' }, to: { part: 'n1', pin: 'GND' } })
+    }
+    const d = sheet(parts, connections)
+    expect(checkDiagram(d).map((f) => `${f.severity} ${f.rule}: ${f.message}`)).toEqual([
+      'error short: U1 5V and U2 5V are wired in a loop, each + to the next -: short circuit. Nothing limits the current, so they can overheat. Remove one of these wires: U1 5V to U2 GND, or U2 5V to U1 GND.',
+    ])
     const t: number[] = []
     for (let i = 0; i < 13; i++) {
       const next = { ...d, parts: [...d.parts] }
