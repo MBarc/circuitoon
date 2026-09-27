@@ -276,6 +276,13 @@ export function effectiveClass(p: Prepared, t: GTerm): 'SELV' | 'PELV' {
   return bondNodes(p, t).some((i) => identAt(p, i) & PE_MASK) ? 'PELV' : 'SELV'
 }
 
+/** The analysed nodes of a part's own mains side: its mains domain pins, else its converter input (as the graph's energize edges start from). */
+function primaryNodes(p: Prepared, t: GTerm): number[] {
+  const mains = t.info.domains.filter((x) => x.kind === 'mains').flatMap((x) => x.pins)
+  const names = mains.length ? mains : t.info.acInput ? [t.info.acInput.a, t.info.acInput.b] : []
+  return names.map((n) => p.g.nodeOf.get(nodeKey(t.part.uid, n))).filter((i): i is number => i !== undefined && p.inRel[i] === 1)
+}
+
 interface Watch {
   node: number
   /** The low-voltage terminals on the node, in designator order. */
@@ -285,6 +292,8 @@ interface Watch {
   /** The first separated terminal (whose part's bonds decide SELV or PELV), and those bond nodes. */
   sep: GTerm | null
   bonds: Int32Array
+  /** For a secondary: the nodes of its part's own mains side (mains domain pins, or its input). Mains reaching the node while none of these carries any was wired there. */
+  primary: Int32Array
   /** The finding key per (source mask, PELV bit, direct bit), made once so a state allocates nothing. */
   keys: Map<number, string>
 }
@@ -305,7 +314,7 @@ function watchList(p: Prepared): Watch[] {
     const sep = cls === 'separated' ? classed.find((x) => x.c === 'separated')!.t : null
     list.push({
       node: i, terms: classed.map((x) => x.t).sort((a, b) => natural.compare(termName(a), termName(b))), cls,
-      sep, bonds: Int32Array.from(sep ? bondNodes(p, sep) : []), keys: new Map(),
+      sep, bonds: Int32Array.from(sep ? bondNodes(p, sep) : []), primary: Int32Array.from(cls === 'secondary' ? primaryNodes(p, classed.find((x) => x.c === 'secondary')!.t) : []), keys: new Map(),
     })
   }
   watchCache.set(p, list)
@@ -313,49 +322,49 @@ function watchList(p: Prepared): Watch[] {
 }
 
 /**
- * The wires on the ways energy reaches root `r` in the current state (spec 3: a path finding
- * highlights the path, not only where it ends; Ruling 33). For each of the given sources (every
- * source when omitted) and each of its conductors L and N: `r`'s own net when `r` holds that identity,
- * otherwise every net on a shortest chain of load, leakage and energize edges from that conductor's
- * nets to `r`. The union is returned. Runs for a few states per finding, never on every state.
+ * The wires on the ways energy reaches net `node` in the current state (spec 3: a path finding
+ * highlights the path, not only where it ends; Ruling 33). For each of the given sources (every source
+ * when omitted) and each of its conductors L and N, a shortest chain of nets from that conductor's
+ * nets to `node`, over what conducts in this state (closed contacts, fitted fuses) and what carries
+ * energy (loads, leakage, energize edges, one way across a barrier). The search from one conductor
+ * never continues from a net that carries the source's other conductor: that search covers it, and
+ * going on would route through unrelated loads. Nets, not roots, so a switch that is on elsewhere
+ * adds nothing. Runs for a bounded number of states per finding, never on every state.
  */
-export function energyPathWires(p: Prepared, r: number, from?: number[]): string[] {
+export function energyPathWires(p: Prepared, node: number, from?: number[]): string[] {
   const g = p.g
+  const both = (a: number, b: number) => p.inRel[a] === 1 && p.inRel[b] === 1
   const links: [number, number, boolean][] = [
     ...p.energy.map((e): [number, number, boolean] => [e.a, e.b, e.directed]),
-    ...p.groupIdx.flatMap((gi) => g.groups[gi].leak[p.groupState[gi]].filter(([a, b]) => p.inRel[a] && p.inRel[b]).map(([a, b]): [number, number, boolean] => [a, b, false])),
+    ...p.protective.filter((e) => e.fitted && both(e.a, e.b)).map((e): [number, number, boolean] => [e.a, e.b, false]),
+    ...p.groupIdx.flatMap((gi) => [...g.groups[gi].closed[p.groupState[gi]], ...g.groups[gi].leak[p.groupState[gi]]]
+      .filter(([a, b]) => both(a, b)).map(([a, b]): [number, number, boolean] => [a, b, false])),
   ]
-  const on = new Set<number>([r])
+  const on = new Set<number>([node])
   for (const s of p.sources) {
     if (from && !from.includes(s.index)) continue
-    for (const nodes of [s.live, s.neutral]) {
+    for (const [nodes, other] of [[s.live, bitOf(s.index, 'N')], [s.neutral, bitOf(s.index, 'L')]] as const) {
       const prev = new Map<number, number>()
       const queue: number[] = []
-      for (const x of nodes) {
-        const q = p.root[x]
-        if (!prev.has(q)) {
-          prev.set(q, -1)
-          queue.push(q)
-        }
+      for (const x of nodes) if (!prev.has(x)) {
+        prev.set(x, -1)
+        queue.push(x)
       }
-      if (prev.has(r)) continue
-      for (let q = 0; q < queue.length && !prev.has(r); q++) {
+      for (let q = 0; q < queue.length && !prev.has(node); q++) {
         const x = queue[q]
+        if (prev.get(x) !== -1 && p.ident[p.root[x]] & other) continue
         for (const [a, b, directed] of links) {
-          const [ra, rb] = [p.root[a], p.root[b]]
-          const next = ra === x ? rb : !directed && rb === x ? ra : -1
+          const next = a === x ? b : !directed && b === x ? a : -1
           if (next >= 0 && !prev.has(next)) {
             prev.set(next, x)
             queue.push(next)
           }
         }
       }
-      for (let x = prev.has(r) ? r : -1; x !== -1; x = prev.get(x)!) on.add(x)
+      for (let x = prev.has(node) ? node : -1; x !== -1; x = prev.get(x)!) on.add(x)
     }
   }
-  const out: string[] = []
-  for (const i of p.relevant) if (on.has(p.root[i])) out.push(...g.wires[i])
-  return out
+  return [...on].flatMap((i) => g.wires[i])
 }
 
 /** Why a secondary terminal counts as mains, and what to use instead, by the kind of part it belongs to. `also` when a wire already brings mains there. */
@@ -408,8 +417,8 @@ const sourcesOfMask = (m: number): number[] => {
   return out
 }
 
-/** A finding's highlight gathers the energizing paths of up to this many of the states it holds in (Ruling 33). */
-const PATH_STATES = 4
+/** A finding's highlight gathers the energizing paths of up to this many of the states it holds in (Ruling 33); past it a state costs one check. */
+const PATH_STATES = 32
 interface PathRec { states: number; wires: Set<string> }
 const pathCache = new WeakMap<Acc, Map<string, PathRec>>()
 
@@ -429,7 +438,13 @@ function lowVoltageRule(acc: Acc, mask: number) {
     for (let j = 0; j < srcIdx.length; j++) if (x & srcLN[j] || (e >> srcIdx[j]) & 1) sm |= 1 << srcIdx[j]
     let pelv = 0
     for (let b = 0; b < w.bonds.length && !pelv; b++) if (p.ident[p.root[w.bonds[b]]] & PE_MASK) pelv = 1
-    const direct = w.cls === 'secondary' && x ? 1 : 0
+    // A secondary is reached directly when a wire brings L or N there, or when its own mains side carries nothing in this state.
+    let direct = w.cls === 'secondary' ? 1 : 0
+    if (direct && !x)
+      for (let k = 0; k < w.primary.length && direct; k++) {
+        const q = p.root[w.primary[k]]
+        if (p.ident[q] & LN_MASK || p.power[q]) direct = 0
+      }
     const code = sm * 4 + pelv * 2 + direct
     let key = w.keys.get(code)
     if (key === undefined) w.keys.set(code, (key = `mains-to-low-voltage|${w.terms.map((t) => t.key).join(',')}|${sm}|${pelv ? 'PELV' : 'SELV'}|${direct}`))
@@ -446,7 +461,7 @@ function lowVoltageRule(acc: Acc, mask: number) {
     }
     if (rec && rec.states < PATH_STATES) {
       rec.states++
-      for (const wire of energyPathWires(p, r, sourcesOfMask(sm))) rec.wires.add(wire)
+      for (const wire of energyPathWires(p, w.node, sourcesOfMask(sm))) rec.wires.add(wire)
     }
   }
 }

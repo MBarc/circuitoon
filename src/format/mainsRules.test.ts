@@ -72,6 +72,24 @@ describe('rule 1: energy from N, the highlighted path, and wording by part (Ruli
     expect(found[0].wires).toContain(toS1.uid)
     expect([...found[0].wires].sort()).toEqual(wires.map((c) => c.uid).sort())
   })
+  it('highlights the switch that feeds the cause, never the branches of unrelated switched lamps', () => {
+    const toS9 = w('xs1|L', 's9|1')
+    const s9e1 = w('s9|2', 'e1|L')
+    const others = [1, 2, 3].map((n) => [w('xs1|L', `s${n}|1`), w(`s${n}|2`, `f${n}|L`), w(`f${n}|N`, 'xs1|N')])
+    const d = on([['e1', 'E1', 't-lamp'], ['e2', 'E2', 't-lamp'], ['u1', 'U1', 't-mcu'], ['s9', 'S9', 't-switch'],
+      ...[1, 2, 3].flatMap((n): [string, string, string][] => [[`s${n}`, `S${n}`, 't-switch'], [`f${n}`, `E${n + 4}`, 't-lamp']])],
+    [...others.flat(), toS9, s9e1, w('e1|N', 'u1|IO'), w('u1|IO', 'e2|L'), w('e2|N', 'xs1|N')].reverse())
+    const found = only(d, 'mains-to-low-voltage')
+    expect(found).toHaveLength(1)
+    expect(found[0].wires).toEqual(expect.arrayContaining([toS9.uid, s9e1.uid]))
+    for (const [, sf] of others) expect(found[0].wires).not.toContain(sf.uid)
+  })
+  it('says mains is wired onto a secondary directly when its own input carries none (through a lamp, input unwired)', () => {
+    const d = on([['e1', 'E1', 't-lamp'], ['ps1', 'PS1', 't-psu-basic']], [w('xs1|L', 'e1|L'), w('e1|N', 'ps1|+V')])
+    expect(msgs(d, 'mains-to-low-voltage')).toEqual([
+      "PS1 +V gets mains from XS1 (120 V). Remove the wire that brings mains there. PS1's low-voltage side is also separated from mains only by basic insulation, so it counts as mains even without that wire: do not wire it to anything a person can touch; use a converter with reinforced or double isolation.",
+    ])
+  })
   it('says a wire brings mains onto a secondary directly, not only its insulation', () => {
     const d = on([['ps1', 'PS1', 't-psu-basic'], ['u1', 'U1', 't-mcu']], [w('xs1|L', 'ps1|+V'), w('ps1|+V', 'u1|IO')])
     expect(msgs(d, 'mains-to-low-voltage')).toEqual([
