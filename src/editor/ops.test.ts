@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { addPart, addWire, nextUid, clearWireRoute, deleteSelection, sameEndpoint, setWireRoute, designatorPrefix, moveParts, nextDesignator, reconnectWire, rotateParts, settleDrop, settleMounts, settleSeats, updatePart, updatePartValue, updateWire, withMounted, settlingOf } from './ops.ts'
+import { addPart, addWire, nextUid, clearWireRoute, deleteSelection, sameEndpoint, setWireRoute, designatorPrefix, moveParts, nextDesignator, reconnectWire, rotateParts, setWireEnds, settleDrop, settleMounts, settleSeats, updatePart, updatePartValue, updateWire, withMounted, settlingOf } from './ops.ts'
 import { emptyDiagram, type Diagram } from '../format/diagram.ts'
 import type { ModuleDef } from '../format/module.ts'
 import { parseValue } from '../format/values.ts'
@@ -554,5 +554,40 @@ describe('boards carry their parts', () => {
     expect(d.parts.map((p) => p.uid)).toEqual(['p1', 'x'])
     expect(d.parts[0]).not.toHaveProperty('mount')
     expect(d.connections).toEqual([])
+  })
+})
+
+describe('cable ends', () => {
+  const wired = () => {
+    const a = addWire(threeResistors(), { part: 'p1', pin: '2' }, { part: 'p2', pin: '1' }, style)!.diagram
+    return addWire(a, { part: 'p2', pin: '2' }, { part: 'p3', pin: '1' }, style)!.diagram
+  }
+  it('gives a new wire the ends of the new-wire style, normalized', () => {
+    const w = addWire(twoResistors(), { part: 'p1', pin: '2' }, { part: 'p2', pin: '1' }, { ...style, ends: { from: 'dupont-male', to: 'bare' } })!
+    expect(w.diagram.connections[0].ends).toEqual({ from: 'dupont-male' })
+    const plain = addWire(twoResistors(), { part: 'p1', pin: '2' }, { part: 'p2', pin: '1' }, { ...style, ends: { from: 'bare' } })!
+    expect('ends' in plain.diagram.connections[0]).toBe(false)
+  })
+  it('sets the ends of several wires in one new diagram', () => {
+    const d = wired()
+    const next = setWireEnds(d, ['w1', 'w2'], { from: 'dupont-male', to: 'dupont-female' })
+    expect(next.connections.map((c) => c.ends)).toEqual([{ from: 'dupont-male', to: 'dupont-female' }, { from: 'dupont-male', to: 'dupont-female' }])
+    expect(d.connections[0].ends).toBeUndefined()
+  })
+  it('removes the key when every end is bare, keeping the rest of the wire', () => {
+    const d = setWireEnds(wired(), ['w1'], { to: 'banana' })
+    const back = setWireEnds(d, ['w1'], { from: 'bare', to: 'bare' })
+    expect('ends' in back.connections[0]).toBe(false)
+    expect(back.connections[0]).toMatchObject({ uid: 'w1', color: 'red', gauge: 22 })
+  })
+  it('returns the same diagram when nothing changes, so no undo step is made', () => {
+    const d = setWireEnds(wired(), ['w1'], { to: 'banana' })
+    expect(setWireEnds(d, ['w1'], { to: 'banana', from: 'bare' })).toBe(d)
+    expect(setWireEnds(d, ['w2'], undefined)).toBe(d)
+    expect(setWireEnds(d, ['nope'], { to: 'banana' })).toBe(d)
+  })
+  it('keeps the ends when a wire is reconnected', () => {
+    const d = setWireEnds(wired(), ['w1'], { to: 'alligator' })
+    expect(reconnectWire(d, 'w1', 'to', { part: 'p3', pin: '2' })!.connections[0].ends).toEqual({ to: 'alligator' })
   })
 })

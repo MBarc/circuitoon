@@ -7,6 +7,7 @@ import type { Pt } from '../format/geometry.ts'
 import { Part, INK } from '../render/Part.tsx'
 import { LegDots, TakenHoles } from '../render/Boards.tsx'
 import { WireLabel } from '../render/WireLabel.tsx'
+import { CableLayer } from '../render/CableEnd.tsx'
 import { addPart, addWire, EMPTY_SELECTION, moveParts, reconnectWire, sameEndpoint, setWireRoute, settleDrop, settleMounts, settleSeats, settlingOf, updateWire, withMounted } from './ops.ts'
 import { netlist, netPoints } from '../format/netlist.ts'
 import { bendHandleAt, insertBend, isOrthogonal, moveSegment, removeBend, segmentHandleAt, segmentsOf, toRoute, type Axis } from '../format/wireEdit.ts'
@@ -47,6 +48,11 @@ function stubOf(d: Diagram, c: Connection): { d: string; ends: Pt[] } | null {
   const tip = { x: at.end.x + dir.x * BROKEN_STUB, y: at.end.y + dir.y * BROKEN_STUB }
   return { d: `M${at.end.x} ${at.end.y}L${tip.x} ${tip.y}`, ends: [at.end, tip] }
 }
+
+/** The whole wire as a plain polyline, out to both endpoints: the drawn path of a cable stops
+ * inside its connectors, so the selection and problem glows and the hit corridor use this to take
+ * them in too. */
+const polyline = (pts: Pt[]) => pts.map((p, i) => `${i ? 'L' : 'M'}${p.x} ${p.y}`).join('')
 
 /** Path data for a filled circle at `p` with radius `r`, as two arcs: draws a whole net's worth of
  * highlight dots as one `<path>` instead of one `<circle>` element per point (Ruling 19). */
@@ -551,27 +557,29 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
             {highlight.wires.map((uid) => {
               const w = wires.find((x) => x.conn.uid === uid)
               const c = w ? null : diagram.connections.find((x) => x.uid === uid)
-              const path = w?.d ?? (c && stubOf(diagram, c)?.d)
+              const path = w ? (w.conn.ends ? polyline(w.points) : w.d) : c && stubOf(diagram, c)?.d
               return path ? <path key={uid} d={path} strokeWidth={wireWidth(w?.conn.gauge) + 12} /> : null
             })}
           </g>
         )}
         <g fill="none" strokeLinecap="round" strokeLinejoin="round">
-          {wires.map(({ conn, d, blocked }) => {
+          {wires.map(({ conn, d, blocked, points }) => {
             const w = wireWidth(conn.gauge)
             const dash = blocked ? '6 5' : undefined
             const selected = selection.wires.includes(conn.uid)
             const dimmed = drag?.kind === 'reconnect' && drag.uid === conn.uid
+            const color = wireColor(conn.color)
             return (
               <g key={conn.uid} data-wire={conn.uid} opacity={dimmed ? 0.3 : undefined}>
-                {selected && <path d={d} stroke="var(--focus)" strokeOpacity={0.35} strokeWidth={w + 10} />}
+                {selected && <path d={conn.ends ? polyline(points) : d} stroke="var(--focus)" strokeOpacity={0.35} strokeWidth={w + 10} />}
                 <path d={d} stroke={INK} strokeWidth={w + 2.2} strokeDasharray={dash} />
-                <path d={d} stroke={wireColor(conn.color)} strokeWidth={w} strokeDasharray={dash} />
-                <path d={d} className="wire-hit" strokeWidth={Math.max(12, w + 8)} />
+                <path d={d} stroke={color} strokeWidth={w} strokeDasharray={dash} />
+                <path d={conn.ends ? polyline(points) : d} className="wire-hit" strokeWidth={Math.max(12, w + 8)} />
               </g>
             )
           })}
         </g>
+        <CableLayer wires={wires} dim={drag?.kind === 'reconnect' ? drag.uid : null} />
         {wires.flatMap(({ conn, ends }) => ends.map((e, i) => <circle key={`${conn.uid}-${i}`} cx={e.x} cy={e.y} r={2.4} fill={INK} />))}
         {/* Name tags in their own layer after every wire, so a labeled wire crossing under a
             later one still shows its tag on top. Each tag keeps data-wire so a click or

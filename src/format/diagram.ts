@@ -5,6 +5,7 @@ import { type Pt, type Rect, type Rotation, type WorldPin, bodyRect, simplify, t
 import { addToOccupancy, inGrown, Occupancy, onGrid, routeOrthogonal } from './router.ts'
 import { manualRouteBlocked, tidy } from './wireEdit.ts'
 import { mountIssues, plugOfPin } from './breadboard.ts'
+import { type CableEndDraw, END_SIZE, endKind, endPlacement, isEndKind, normalizeEnds, type WireEnds } from './cables.ts'
 
 /** How every load warning about a dropped value override ends: the part now shows its module
  * default instead of the value the file asked for. The editor lists these warnings first. */
@@ -38,6 +39,8 @@ export interface Connection {
   gauge?: number
   label?: string
   route?: [number, number][]
+  /** What each end physically is (a Dupont pin, an alligator clip); omitted ends are bare wire. */
+  ends?: WireEnds
 }
 export interface Annotation {
   uid: string
@@ -239,16 +242,76 @@ function blockedPoints(a: ResolvedEnd, b: ResolvedEnd): Pt[] {
   return tidy([a.end, vertical ? { x: a.end.x, y: b.end.y } : { x: b.end.x, y: a.end.y }, b.end])
 }
 
+/**
+ * The straight run each end of `c` needs before its first bend: its connector's reach rounded up
+ * to the grid, on a pin end with a connector (a hole end may leave any way, so it gets none).
+ * `facing` marks two pins that face each other on one line: when nothing is in the way, the wire
+ * between them is one straight run that both connectors share, even when that line is off the
+ * grid. Any other route between them (a detour, a hand-shaped wire) keeps both lead-outs.
+ */
+function leadsOf(c: Connection, a: ResolvedEnd, b: ResolvedEnd): { leads: [number, number]; facing: boolean } {
+  if (!c.ends) return { leads: [0, 0], facing: false }
+  const lead = (e: ResolvedEnd, which: 'from' | 'to') =>
+    e.dir ? Math.ceil(END_SIZE[endKind(c.ends, which)].reach / GRID) * GRID : 0
+  let facing = false
+  if (a.dir && b.dir && a.dir.x === -b.dir.x && a.dir.y === -b.dir.y) {
+    const dx = b.end.x - a.end.x
+    const dy = b.end.y - a.end.y
+    facing = a.dir.x !== 0 ? dy === 0 && Math.sign(dx) === a.dir.x : dx === 0 && Math.sign(dy) === a.dir.y
+  }
+  return { leads: [lead(a, 'from'), lead(b, 'to')], facing }
+}
+
+/**
+ * Makes a polyline leave its first point straight along `dir` for at least `lead` px. A shorter
+ * first run is replaced by a lead-out that then turns toward the next point that is not on it:
+ * across first when that point lies behind the lead-out's end, so the wire never doubles back
+ * over its own lead.
+ */
+function withLeadOut(pts: Pt[], dir: Pt | null, lead: number): Pt[] {
+  if (!dir || !lead || pts.length < 2) return pts
+  const p0 = pts[0]
+  const along = (p: Pt) => (p.x - p0.x) * dir.x + (p.y - p0.y) * dir.y
+  const onAxis = (p: Pt) => (dir.x !== 0 ? p.y === p0.y : p.x === p0.x)
+  if (onAxis(pts[1]) && along(pts[1]) >= lead) return pts
+  const tip = { x: p0.x + dir.x * lead, y: p0.y + dir.y * lead }
+  let k = 1
+  while (k < pts.length - 1 && onAxis(pts[k]) && along(pts[k]) >= 0 && along(pts[k]) <= lead) k++
+  const q = pts[k]
+  if (onAxis(q)) return pts // straight back over the lead-out: nothing sensible to add
+  const ahead = along(q) >= lead
+  const corner = ahead ? (dir.x !== 0 ? { x: q.x, y: tip.y } : { x: tip.x, y: q.y }) : dir.x !== 0 ? { x: tip.x, y: q.y } : { x: q.x, y: tip.y }
+  return tidy([p0, tip, corner, ...pts.slice(k)])
+}
+
 export function routeWire(d: Diagram, c: Connection, obstacles: Rect[], occupied?: Occupancy): WireRoute | null {
   const a = resolveEndpoint(d, c.from)
   const b = resolveEndpoint(d, c.to)
   if (!a || !b) return null
   const own = obstaclesFor(obstacles, a, b)
+  const { leads: [fromLead, toLead], facing } = leadsOf(c, a, b)
+  if (facing && !c.route && !manualRouteBlocked([a.end, b.end], own)) return { points: [a.end, b.end], blocked: false }
   if (c.route) {
-    const points = manualPoints(a, b, c.route)
+    let points = manualPoints(a, b, c.route)
+    if (fromLead || toLead) points = withLeadOut(withLeadOut(points, a.dir, fromLead).reverse(), b.dir, toLead).reverse()
     return { points, blocked: manualRouteBlocked(points, own) }
   }
-  const points = routeOrthogonal({ from: a.end, fromDir: a.dir, to: b.end, toDir: b.dir, obstacles: own, occupied })
+  const req = { from: a.end, fromDir: a.dir, to: b.end, toDir: b.dir, obstacles: own, occupied }
+  // The search starts past each lead-out, so the run from the pin out to it is checked here: a
+  // route whose attachment runs cross a body is refused. A lead-out that cannot be routed (a part
+  // right in front of the pin) is dropped, one end at a time, down to a plain route.
+  const attached = (pts: Pt[]) => !manualRouteBlocked(pts.slice(0, 3), own) && !manualRouteBlocked(pts.slice(-3), own)
+  let points: Pt[] | null = null
+  const tries: [number, number][] = [[fromLead, toLead], [fromLead, 0], [0, toLead]]
+  for (const [i, [f, t]] of tries.entries()) {
+    if ((!f && !t) || tries.slice(0, i).some(([pf, pt]) => pf === f && pt === t)) continue
+    const pts = routeOrthogonal({ ...req, fromLead: f, toLead: t })
+    if (pts && attached(pts)) {
+      points = pts
+      break
+    }
+  }
+  points ??= routeOrthogonal(req)
   // Never a diagonal: an unroutable wire is still drawn orthogonal, dashed, and flagged.
   return points ? { points, blocked: false } : { points: blockedPoints(a, b), blocked: true }
 }
@@ -285,7 +348,8 @@ export function computeRoutes(d: Diagram, opts: { only?: Set<string>; prev?: Rou
 
 /**
  * A key that changes exactly when some wire's routing inputs change: its uid, both endpoints (hole
- * and offset included: an invalid offset leaves the end unresolved) and its stored route. Serialized as structured tuples, so no two different sets of endpoints share a
+ * and offset included: an invalid offset leaves the end unresolved), its stored route and its
+ * cable ends. Serialized as structured tuples, so no two different sets of endpoints share a
  * key however their names are spelled (part "p.a" pin "R" and part "p" pin "a.R" differ).
  */
 export function routingKey(connections: Connection[]): string {
@@ -295,6 +359,8 @@ export function routingKey(connections: Connection[]): string {
       c.from.part, c.from.pin, c.from.hole ?? null, c.from.offset ?? null,
       c.to.part, c.to.pin, c.to.hole ?? null, c.to.offset ?? null,
       c.route ?? null,
+      // A connector sets how far the wire runs straight out of its pin (see leadsOf).
+      c.ends?.from ?? null, c.ends?.to ?? null,
     ]),
   )
 }
@@ -418,7 +484,8 @@ const MIN_PIN_RUN = 2
  * so both stay visible even where the router itself left them sharing a lane (a manual route, or
  * an obstacle that forces two auto routes together). Moving a segment moves both its endpoints,
  * so the segments on either side of it stretch to keep up rather than detach from it. A nudge
- * that would turn the run on a pin back over the pin, leave it shorter than MIN_PIN_RUN px, or put
+ * that would turn the run on a pin back over the pin, leave it shorter than MIN_PIN_RUN px (or a
+ * connector's reach, `minRuns`), or put
  * the moved segment or either stretched neighbour inside a part body (where it was clear before)
  * is skipped; when no nudge is allowed the segment stays where it is. Every segment a nudge
  * moves or stretches is checked at that point, so a wire clear before separation is still clear
@@ -430,6 +497,8 @@ function separate(
   horizontals: Seg[],
   index: ObstacleIndex,
   keepOf: () => ((r: Rect) => boolean) | null,
+  /** Shortest each end's run on its pin may be left (a connector's reach), from end first. */
+  minRuns: [number, number] = [MIN_PIN_RUN, MIN_PIN_RUN],
 ): { pts: Pt[]; forced: boolean } {
   const pts = points.map((p) => ({ ...p }))
   let forced = false
@@ -444,9 +513,9 @@ function separate(
     const hi = horiz ? Math.max(a.x, b.x) : Math.max(a.y, b.y)
     if (!overlapsAt(segs, at, lo, hi)) continue
     // The runs on the pins, when this segment touches one: pts[0]..a, and b..pts[last].
-    const pinRuns: Pt[] = []
-    if (k === 2) pinRuns.push(pts[0])
-    if (k === pts.length - 2) pinRuns.push(pts[pts.length - 1])
+    const pinRuns: [Pt, number][] = []
+    if (k === 2) pinRuns.push([pts[0], minRuns[0]])
+    if (k === pts.length - 2) pinRuns.push([pts[pts.length - 1], minRuns[1]])
     // The moved segment and the two it stretches, before and after a nudge.
     const local = (moved: number): Pt[] => {
       const shift = (p: Pt): Pt => (horiz ? { x: p.x, y: moved } : { x: moved, y: p.y })
@@ -461,10 +530,10 @@ function separate(
     const bodies = keep ? near.filter(keep) : near
     const wasBlocked = bodies.length > 0 && manualRouteBlocked(before, bodies)
     const allowed = (moved: number) =>
-      pinRuns.every((tip) => {
+      pinRuns.every(([tip, min]) => {
         const before = at - (horiz ? tip.y : tip.x)
         const after = (moved - (horiz ? tip.y : tip.x)) * Math.sign(before)
-        return after >= Math.min(MIN_PIN_RUN, Math.abs(before))
+        return after >= Math.min(min, Math.abs(before))
       }) && (wasBlocked || bodies.length === 0 || !manualRouteBlocked(local(moved), bodies))
     let pick: number | null = null
     for (const nudge of NUDGES) {
@@ -481,18 +550,57 @@ function separate(
   return { pts, forced }
 }
 
+const cut = (v: number) => Math.round(v * 100) / 100
+
+/**
+ * A wire's connectors on its drawn polyline, and that polyline with each end cut back to where the
+ * wire meets its connector: a housing's back, or where an exposed end's metal starts (plus the
+ * round cap's half width, so the insulation ends there). Never cut past the end segment's room.
+ * Hops use the whole housing, not the cut: a wire's own crossings are looked for only on `open`
+ * (and, as always, a hop's width clear of its ends), and later wires see it as `indexed`, a hop's
+ * width shorter again, so a crossing hops the same way whichever wire comes first.
+ */
+function cableEnds(conn: Connection, pts: Pt[]): { cables: [CableEndDraw | null, CableEndDraw | null]; drawn: Pt[]; open: Pt[]; indexed: Pt[] } {
+  if (!conn.ends) return { cables: [null, null], drawn: pts, open: pts, indexed: pts }
+  const drawn = pts.slice()
+  // `open`: the wire outside its housings (each end moved back by the connector's drawn length).
+  // `indexed`: that, a hop's width further back, as later wires see it.
+  const open = pts.slice()
+  const indexed = pts.slice()
+  const cables = (['from', 'to'] as const).map((which): CableEndDraw | null => {
+    const kind = endKind(conn.ends, which)
+    if (kind === 'bare') return null
+    const size = END_SIZE[kind]
+    const place = endPlacement(pts, which, size.reach, END_SIZE[endKind(conn.ends, which === 'from' ? 'to' : 'from')].reach)
+    if (!place) return null
+    const { at, back, angle, scale, room } = place
+    const trim = Math.min(room, size.trim * scale + (size.exposed ? (wireWidth(conn.gauge) + 2.2) / 2 : 0))
+    const i = which === 'from' ? 0 : drawn.length - 1
+    const move = (by: number): Pt => ({ x: cut(at.x + back.x * by), y: cut(at.y + back.y * by) })
+    drawn[i] = move(trim)
+    open[i] = move(Math.min(room, size.reach * scale))
+    indexed[i] = move(Math.min(room, size.reach * scale + HOP))
+    return { kind, at, back, angle, scale }
+  })
+  return { cables: [cables[0], cables[1]], drawn, open, indexed }
+}
+
 /**
  * SVG path data for each routed wire. Where a wire crosses a wire earlier in the file, the
  * later one gets a small hop arc, as in hand-drawn wiring sheets. Earlier wires' segments are
  * indexed by position, so each new segment only checks the ones in its span. An interior segment
  * that would otherwise run right on top of an earlier wire is nudged 4 px clear first (see
  * `separate`), so the hop and label-anchor geometry below is already the drawn, separated shape.
+ * A wire with cable ends gets each connector placed on that drawn shape (`cables`, null for a
+ * bare end), and its path is cut back into the connector (see `END_SIZE`), so a crossing under a
+ * housing gets no hop: the housing already shows the two do not join. `points` and `ends` stay
+ * the full wire, for handles, labels and end dots.
  */
 export function wirePaths(d: Diagram, routes: Routes = computeRoutes(d)) {
   const index = new ObstacleIndex(partObstacles(d))
   const verticals: Seg[] = [] // at = x, lo..hi = y range
   const horizontals: Seg[] = [] // at = y, lo..hi = x range
-  const out: { conn: Connection; d: string; points: Pt[]; ends: Pt[]; blocked: boolean }[] = []
+  const out: { conn: Connection; d: string; points: Pt[]; ends: Pt[]; blocked: boolean; cables: [CableEndDraw | null, CableEndDraw | null] }[] = []
   const partsByUid = new Map(d.parts.map((p) => [p.uid, p]))
   for (const conn of d.connections) {
     const route = routes.get(conn.uid)
@@ -518,15 +626,20 @@ export function wirePaths(d: Diagram, routes: Routes = computeRoutes(d)) {
       }
       return keep
     }
-    const { pts, forced } = separate(simple, verticals, horizontals, index, keepOf)
-    let path = `M${pts[0].x} ${pts[0].y}`
-    for (let i = 1; i < pts.length; i++) {
-      const s = pts[i - 1]
-      const e = pts[i]
+    // A connector's run keeps its full reach (routeWire gave it at least that much).
+    const minRun = (which: 'from' | 'to') => Math.max(MIN_PIN_RUN, END_SIZE[endKind(conn.ends, which)].reach)
+    const { pts, forced } = separate(simple, verticals, horizontals, index, keepOf, conn.ends ? [minRun('from'), minRun('to')] : undefined)
+    const { cables, drawn, open, indexed } = cableEnds(conn, pts)
+    let path = `M${drawn[0].x} ${drawn[0].y}`
+    for (let i = 1; i < drawn.length; i++) {
+      const s = drawn[i - 1]
+      const e = drawn[i]
       const horiz = s.y === e.y
       const vert = s.x === e.x
       const dir = Math.sign(horiz ? e.x - s.x : e.y - s.y)
-      const hits = horiz === vert ? [] : horiz ? crossings(verticals, s.x, e.x, s.y) : crossings(horizontals, s.y, e.y, s.x)
+      const os = open[i - 1]
+      const oe = open[i]
+      const hits = horiz === vert ? [] : horiz ? crossings(verticals, os.x, oe.x, s.y) : crossings(horizontals, os.y, oe.y, s.x)
       hits.sort((p, q) => (p - q) * dir)
       for (const [first, last] of bridges(hits)) {
         const sweep = dir > 0 ? 1 : 0
@@ -539,9 +652,13 @@ export function wirePaths(d: Diagram, routes: Routes = computeRoutes(d)) {
       }
       path += ` L${e.x} ${e.y}`
     }
-    for (let i = 1; i < pts.length; i++) {
-      const s = pts[i - 1]
-      const e = pts[i]
+    // Indexed clear of its housings (see cableEnds), so a later wire crossing under a housing gets no
+    // hop through it either, whichever wire comes first. (Separation reads the same index, so a
+    // later run lying along a connector's own lane is not nudged off it; the housing covers it.)
+    for (let i = 1; i < indexed.length; i++) {
+      const s = indexed[i - 1]
+      const e = indexed[i]
+      if (s.x === e.x && s.y === e.y) continue
       if (s.x === e.x) insert(verticals, { at: s.x, lo: Math.min(s.y, e.y), hi: Math.max(s.y, e.y) })
       if (s.y === e.y) insert(horizontals, { at: s.y, lo: Math.min(s.x, e.x), hi: Math.max(s.x, e.x) })
     }
@@ -550,7 +667,7 @@ export function wirePaths(d: Diagram, routes: Routes = computeRoutes(d)) {
     // was forced through a body.
     const moved = pts.some((p, i) => p.x !== simple[i].x || p.y !== simple[i].y)
     const blocked = moved && (route.blocked || forced) ? manualRouteBlocked(pts, keepOf() ? index.all.filter(keepOf()!) : index.all) : route.blocked
-    out.push({ conn, d: path, points: pts, ends: [pts[0], pts[pts.length - 1]], blocked })
+    out.push({ conn, d: path, points: pts, ends: [pts[0], pts[pts.length - 1]], blocked, cables })
   }
   return out
 }
@@ -621,6 +738,8 @@ export function validateDiagram(raw: unknown): DiagramResult {
   const partFixes = new Map<number, Partial<PartInstance>>()
   const fix = (i: number, patch: Partial<PartInstance>) => partFixes.set(i, { ...partFixes.get(i), ...patch })
   const droppedRoutes = new Set<number>()
+  // Connections whose `ends` lost an unknown kind or key: the ends they keep (undefined: none).
+  const endFixes = new Map<number, WireEnds | undefined>()
 
   const partModule = new Map<string, string>()
   if (!Array.isArray(raw.parts)) errors.push('parts: required list')
@@ -748,6 +867,27 @@ export function validateDiagram(raw: unknown): DiagramResult {
           if (px !== qx && py !== qy) warnings.push(`${at}.route[${k}]: diagonal step from route[${k - 1}] (each step should be horizontal or vertical)`)
         }
       if (c.label !== undefined && typeof c.label !== 'string') errors.push(`${at}.label: must be a string`)
+      // Cable ends are presentation: anything unknown is dropped with a warning, never refused.
+      if (c.ends !== undefined) {
+        if (!isObj(c.ends)) {
+          endFixes.set(i, undefined)
+          warnings.push(`${at}.ends: must be an object like { "from": "dupont-male", "to": "dupont-female" }, so it was dropped and the wire is drawn plain`)
+        } else {
+          const kept: WireEnds = {}
+          let changed = false
+          for (const [key, kind] of Object.entries(c.ends)) {
+            if (key !== 'from' && key !== 'to') {
+              changed = true
+              warnings.push(`${at}.ends.${key}: not a wire end ("from" or "to"), so it was dropped`)
+            } else if (!isEndKind(kind)) {
+              changed = true
+              warnings.push(`${at}.ends.${key}: unknown cable end ${JSON.stringify(kind)}, so that end is drawn as bare wire`)
+            } else kept[key] = kind
+          }
+          const norm = normalizeEnds(kept)
+          if (changed || !norm || norm.from !== kept.from || norm.to !== kept.to) endFixes.set(i, norm)
+        }
+      }
     })
 
   if (raw.annotations !== undefined) {
@@ -763,14 +903,15 @@ export function validateDiagram(raw: unknown): DiagramResult {
 
   if (errors.length) return { ok: false, errors }
   let diagram = raw as unknown as Diagram
-  if (partFixes.size || droppedRoutes.size)
+  if (partFixes.size || droppedRoutes.size || endFixes.size)
     diagram = {
       ...diagram,
       parts: diagram.parts.map((p, i) => (partFixes.has(i) ? { ...p, ...partFixes.get(i) } : p)),
       connections: diagram.connections.map((c, i) => {
-        if (!droppedRoutes.has(i)) return c
-        const { route: _dropped, ...rest } = c
-        return rest
+        if (!droppedRoutes.has(i) && !endFixes.has(i)) return c
+        const { route, ends: _ends, ...rest } = c
+        const ends = endFixes.has(i) ? endFixes.get(i) : c.ends
+        return { ...rest, ...(route && !droppedRoutes.has(i) ? { route } : {}), ...(ends ? { ends } : {}) }
       }),
     }
   // Mounts that load but plug nothing, checked on the fixed diagram (clamped positions, dropped
@@ -792,8 +933,20 @@ export function validateDiagram(raw: unknown): DiagramResult {
   return { ok: true, diagram, warnings }
 }
 
+/** The file text. Cable ends are written only where they are not bare, so plain wires stay unchanged. */
 export function serializeDiagram(d: Diagram): string {
-  return JSON.stringify(d, null, 2) + '\n'
+  const out = d.connections.some((c) => 'ends' in c)
+    ? {
+        ...d,
+        connections: d.connections.map((c) => {
+          if (!('ends' in c)) return c
+          const { ends: _ends, ...rest } = c
+          const ends = normalizeEnds(c.ends)
+          return ends ? { ...c, ends } : rest
+        }),
+      }
+    : d
+  return JSON.stringify(out, null, 2) + '\n'
 }
 
 export function emptyDiagram(title = 'Untitled sheet'): Diagram {
