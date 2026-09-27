@@ -49,12 +49,12 @@ function stubOf(d: Diagram, c: Connection): { d: string; ends: Pt[] } | null {
   return { d: `M${at.end.x} ${at.end.y}L${tip.x} ${tip.y}`, ends: [at.end, tip] }
 }
 
-/** Path data for a filled circle at `p` with radius `r`, as two arcs: draws a whole net's worth of
- * highlight dots as one `<path>` instead of one `<circle>` element per point (Ruling 19). */
 /** The whole wire as a plain polyline, out to both endpoints: the drawn path of a cable stops
  * inside its connectors, so the selection and problem glows use this to take them in too. */
 const polyline = (pts: Pt[]) => pts.map((p, i) => `${i ? 'L' : 'M'}${p.x} ${p.y}`).join('')
 
+/** Path data for a filled circle at `p` with radius `r`, as two arcs: draws a whole net's worth of
+ * highlight dots as one `<path>` instead of one `<circle>` element per point (Ruling 19). */
 const circlePath = (p: Pt, r: number) => `M${p.x - r} ${p.y}a${r} ${r} 0 1 0 ${2 * r} 0a${r} ${r} 0 1 0 ${-2 * r} 0`
 
 /**
