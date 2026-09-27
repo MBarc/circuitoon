@@ -344,20 +344,50 @@ const supplyName = (t: Terminal) => (isCell(t) ? t.part.designator : termName(t)
  * rail is unknown or they share none.
  */
 function supplyFor(ins: Terminal[]): string {
-  let common: number[] | null = null
-  for (const t of ins) {
-    const rails = knownRails(t.supply)
-    if (!rails) return 'a compatible supply'
-    common = common === null ? [...new Set(rails)] : common.filter((v) => rails.some((r) => Math.abs(r - v) <= EPS))
-  }
+  const common = commonRails(ins)
   if (!common?.length) return 'a compatible supply'
-  const r = [...common].sort((a, b) => a - b)
+  const r = common
   const [min, max] = [r[0], r[r.length - 1]]
   const what = r.length <= 2 ? `a ${orList(r.map(volts))} supply` : `a ${volts(min)} to ${volts(max)} supply`
   const pins = [[3.3, '3V3'], [5, '5V']].filter(([v]) => r.some((x) => Math.abs(x - (v as number)) <= EPS)).map(([, n]) => n as string)
   const cell = [9, 6, 4.5, 3.7, 7.4, 3].find((v) => v >= min - EPS && v <= max + EPS)
   const example = pins.length ? `a board's ${orList(pins)} pin` : cell !== undefined ? `a ${volts(cell)} battery` : ''
   return example ? `${what}, such as ${example}` : what
+}
+
+/** The rails every one of the inputs accepts, sorted; null when any input's rails are unknown. */
+function commonRails(ins: Terminal[]): number[] | null {
+  let common: number[] | null = null
+  for (const t of ins) {
+    const rails = knownRails(t.supply)
+    if (!rails) return null
+    common = common === null ? [...new Set(rails)] : common.filter((v) => rails.some((r) => Math.abs(r - v) <= EPS))
+  }
+  return (common ?? []).sort((a, b) => a - b)
+}
+
+/** What an input accepts, in words: "needs 3.3 V", "accepts 3.3 V or 5 V", "accepts 7 V to 12 V". */
+function acceptsText(rails: number[]): string {
+  const r = [...new Set(rails)].sort((a, b) => a - b)
+  return r.length === 1 ? `needs ${volts(r[0])}` : r.length === 2 ? `accepts ${orList(r.map(volts))}` : `accepts ${volts(r[0])} to ${volts(r[r.length - 1])}`
+}
+
+/**
+ * The advice for unfed power inputs (`it`: "it" or "them"), given every load on their nets. A rail
+ * shared by loads that accept different rails gets a voltage all of them accept, named with what
+ * each needs, or, when they share none, the advice to split it: advice that suits one load must
+ * never power another one on the same rail at a voltage it cannot take.
+ */
+function railAdvice(loads: Terminal[], it: string): string {
+  const plain = `Connect ${it} to ${supplyFor(loads)}.`
+  const rails = loads.map((t) => knownRails(t.supply))
+  if (new Set(loads.map((t) => t.part)).size < 2 || rails.some((r) => !r)) return plain
+  const texts = rails.map((r) => acceptsText(r!))
+  if (new Set(texts).size < 2) return plain
+  const what = andList(loads.map((t, i) => `${termName(t)} ${texts[i]}`))
+  return commonRails(loads)!.length
+    ? `${what}: connect ${it} to ${supplyFor(loads)}.`
+    : `${what}: these parts need different supply voltages; split the rail and power each part from a supply it accepts.`
 }
 
 // ---- The checker ----
@@ -455,6 +485,20 @@ export function checkDiagram(d: Diagram): Finding[] {
     return i === undefined ? [] : netTerms[i].filter((o) => o.part !== t.part)
   }
   const isAre = (n: number) => (n === 1 ? 'is' : 'are')
+  /** Every load on the nets of the given power inputs (theirs included), one per input component, by name. */
+  const sharedLoads = (pins: Terminal[]) => {
+    const seen = new Map<string, Terminal>()
+    for (const t of pins) {
+      const i = nl.netOf.get(t.key)
+      for (const o of i === undefined ? [t] : netTerms[i]) {
+        if (o.type !== 'power_in' || o.info.external.has(o.name)) continue
+        const id = JSON.stringify([o.part.uid, o.info.comp.get(o.name)])
+        const cur = seen.get(id)
+        if (!cur || natural.compare(termName(o), termName(cur)) < 0) seen.set(id, o)
+      }
+    }
+    return [...seen.values()].sort((a, b) => natural.compare(termName(a), termName(b)))
+  }
   for (const p of d.parts) {
     if (!connected.has(p.uid)) continue
     const m = moduleOf(d, p.module)
@@ -473,8 +517,9 @@ export function checkDiagram(d: Diagram): Finding[] {
       if (!fed) {
         const wiredPins = ins.filter((t) => others(t).length)
         const wired = [...new Set(wiredPins.map((t) => t.label))]
+        const it = wired.length === 1 ? 'it' : 'them'
         const message = wired.length
-          ? `${p.designator} has no power: ${andList(wired)} ${isAre(wired.length)} connected but nothing supplies ${wired.length === 1 ? 'it' : 'them'}. Connect ${wired.length === 1 ? 'it' : 'them'} to ${supplyFor(wiredPins)}.`
+          ? `${p.designator} has no power: ${andList(wired)} ${isAre(wired.length)} connected but nothing supplies ${it}. ${railAdvice(sharedLoads(wiredPins), it)}`
           : `${p.designator} has no power: connect ${orList([...new Set(ins.map((t) => t.label))])}.`
         add({ rule: 'no-power', subject: p.designator, target: p.designator, message, parts: [p.uid], pins: ins.map(termPin), wires: [], causes: ins.map((t) => t.key) })
       }
