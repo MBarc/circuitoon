@@ -92,10 +92,20 @@ describe('endPlacement', () => {
     const tiny = [{ x: 0, y: 0 }, { x: 2, y: 0 }, { x: 2, y: 40 }]
     expect(endPlacement(tiny, 'from', 20)!.scale).toBe(0.6)
   })
-  it('shares a single straight segment between both ends', () => {
+  it('shares a single straight segment between both ends, in proportion to their reach', () => {
     const line = [{ x: 0, y: 0 }, { x: 30, y: 0 }]
-    expect(endPlacement(line, 'from', 20)).toMatchObject({ scale: 0.75, room: 15 })
-    expect(endPlacement(line, 'to', 20)).toMatchObject({ at: { x: 30, y: 0 }, back: { x: -1, y: 0 }, angle: 180 })
+    expect(endPlacement(line, 'from', 20, 20)).toMatchObject({ scale: 0.75, room: 15 })
+    expect(endPlacement(line, 'to', 20, 20)).toMatchObject({ at: { x: 30, y: 0 }, back: { x: -1, y: 0 }, angle: 180 })
+    // A bare far end reserves nothing: a 29 px alligator fits a 44 px straight wire whole.
+    expect(endPlacement([{ x: 0, y: 0 }, { x: 44, y: 0 }], 'from', 29, 0)).toMatchObject({ scale: 1, room: 44 })
+    // Unequal pairs split the run by reach: a banana (28) and a JST-SH (8) on 30 px squash alike.
+    const banana = endPlacement(line, 'from', 28, 8)!
+    const sh = endPlacement(line, 'to', 8, 28)!
+    expect(banana.room + sh.room).toBeCloseTo(30)
+    expect(banana.scale).toBeCloseTo(sh.scale)
+    // With room for both, both are whole.
+    expect(endPlacement([{ x: 0, y: 0 }, { x: 40, y: 0 }], 'from', 28, 8)!.scale).toBe(1)
+    expect(endPlacement([{ x: 0, y: 0 }, { x: 40, y: 0 }], 'to', 8, 28)!.scale).toBe(1)
   })
   it('skips repeated points to find the segment the end sits on', () => {
     const p = endPlacement([{ x: 0, y: 0 }, { x: 0, y: 0 }, { x: 0, y: 40 }], 'from', 20)!

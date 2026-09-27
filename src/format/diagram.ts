@@ -564,7 +564,7 @@ function cableEnds(conn: Connection, pts: Pt[]): { cables: [CableEndDraw | null,
     const kind = endKind(conn.ends, which)
     if (kind === 'bare') return null
     const size = END_SIZE[kind]
-    const place = endPlacement(pts, which, size.reach)
+    const place = endPlacement(pts, which, size.reach, END_SIZE[endKind(conn.ends, which === 'from' ? 'to' : 'from')].reach)
     if (!place) return null
     const { at, back, angle, scale, room } = place
     const trim = Math.min(room, size.trim * scale + (size.exposed ? (wireWidth(conn.gauge) + 2.2) / 2 : 0))

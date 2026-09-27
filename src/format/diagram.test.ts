@@ -112,6 +112,11 @@ describe('wirePaths', () => {
     const [w] = wirePaths(d([{ uid: 'w', from: { part: 'a', pin: 'R' }, to: { part: 'b', pin: 'L' }, ends: { from: 'solid-jumper' } }]))
     expect(w.d).toBe('M58.6 20 L92 20')
   })
+  it('gives a lone connector on a short straight wire the whole run', () => {
+    // 44 px, alligator (29) at one end and a bare end: nothing is reserved for the bare end.
+    const [w] = wirePaths(d([{ uid: 'w', from: { part: 'a', pin: 'R' }, to: { part: 'b', pin: 'L' }, ends: { to: 'alligator' } }]))
+    expect(w.cables[1]!.scale).toBe(1)
+  })
   it('never cuts past the share of a short straight wire', () => {
     const [w] = wirePaths(d([{ uid: 'w', from: { part: 'a', pin: 'R' }, to: { part: 'b', pin: 'L' }, ends: { from: 'banana', to: 'banana' } }]))
     // 44 px shared: 22 each; the 28 px plug squashes to 22/28 and its 22 px cut to 17.29.
