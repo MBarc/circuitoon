@@ -54,10 +54,10 @@ These are decisions the spec leaves open; tasks implement them exactly. Numbers 
 22. **Polarity on unpolarized outlets is reported as uncertain, never skipped.** For a source whose L side no standard fixes (`nema-1-15r`, `cee7-3`, `cee7-16`), a polarity requirement (a lamp shell, a single-pole switch or fuse) that depends on which slot is L gets a `polarity` warning worded with "may" and the reason ("XS1 is an unpolarized outlet, so which slot is L is not known"); a definite violation from a polarized source keeps the definite wording.
 23. **The notice appears for any mains part** (spec 6: "a sheet with any mains part"): any part whose module declares mains data, a mains-rated relay, SSR or terminal block alone included.
 24. **State witnesses are minimal and complete, per complete claim.** A finding's key holds everything its message claims (the affected terminals, the sources and the effective class), so one sighting never carries another state's explanation: a GPIO fed by XS1 when a relay is released and by XS2 when it is energized gives two findings, each with its own source, conditions and path. Each finding records every state it holds in (one bit per state); its phrase lists exactly the contact conditions (on and off, energized and released) that are needed: a condition is dropped only when the finding holds in every state that agrees with the remaining ones. A finding that holds in every state has no phrase.
-25. **Enumeration is per unit of dependent components.** A unit is a possible-connectivity component, merged with every other component a rule must judge in the same states: those one multi-pole group spans (linked poles), and those a class 1 part's terminals span (its earth is judged against its own L and N, so "PE not connected when S1 is off" is found when the earth runs through S1 and L and N do not). Independent units are enumerated on their own (the sum of their state counts). The spec's limit still counts every candidate group on the sheet: more than 16 in total gives `mains-incomplete`.
+25. **Enumeration is per unit of dependent components.** A unit is a possible-connectivity component, merged with every other component a rule must judge in the same states: those one multi-pole group spans (linked poles), and those a class 1 part's terminals span (its earth is judged against its own L and N, so "PE not connected when S1 is off" is found when the earth runs through S1 and L and N do not), and those a bonded part's secondary and bond pins span (its effective SELV or PELV class is judged in the same state as the mains reaching its secondary). Independent units are enumerated on their own (the sum of their state counts). The spec's limit still counts every candidate group on the sheet: more than 16 in total gives `mains-incomplete`.
 26. **An unverified isolation class** (a clone board carrying its relay's stated class, `isolationProvenance: "unverified"`) counts as that class for hazard propagation, and always adds a `rating-unverified` warning while that part is on mains.
 27. **A converter's pins outside every domain** (and every non-mains pin of a converter whose `isolation` is missing or not adequate) are treated as live when its input is energized, and `data-missing` names them.
-28. **An empty fuse holder is named as the cause of a dead load only when proven:** the load gets L and N of one source in some state with every absent fuse taken as fitted, and in no state as drawn; and a holder is named only when fitting it alone restores a supply path to that load (possible connectivity, every other empty holder open). When none alone does, the finding names no holder. Nothing about absent fuses is claimed when the enumeration did not finish.
+28. **An empty fuse holder is named as the cause of a dead load only when proven:** the load gets L and N of one source in some state with every absent fuse taken as fitted, and in no state as drawn; and a holder is named only when fitting it alone restores a supply path to that load in an enumerated contact state (a state that can occur; never every contact position closed at once), every other empty holder open. When none alone does, the finding names no holder. Nothing about absent fuses is claimed when the enumeration did not finish.
 29. **The drawn notice is always whole.** Its band is never narrower than 320 px: a narrower sheet widens its viewBox for the footer (the drawing is unchanged); lines wrap by a conservative bold-glyph width (0.62 em), and a word longer than a line is split with a hyphen.
 30. **No analysis during a gesture.** Every renderer of the mains look (canvas, sheet, Inspector) holds the look it had when a part, segment or wire gesture began; the analysis runs once per committed edit, shared with the checker.
 
@@ -1985,7 +1985,7 @@ git commit -m "Mains: conduction graph with identity and energization per state"
   - `masksByPopcount(k: number): Uint32Array` (every k-bit mask, fewest set bits first, then by value; cached per k)
   - `setState(p: Prepared, cands: number[], mask: number): void`
   - `viewOf(p: Prepared, nodes: number[]): Prepared` (the same scratch arrays, narrowed lists)
-  - `interface Unit { view: Prepared; cands: number[] }`, `units(p: Prepared, cands: number[]): Unit[]` (Resolution 25: one per possible-connectivity component with a source or converter input, merged with components one multi-pole group or one class 1 part spans)
+  - `interface Unit { view: Prepared; cands: number[] }`, `units(p: Prepared, cands: number[]): Unit[]` (Resolution 25: one per possible-connectivity component with a source or converter input, merged with components one multi-pole group, one class 1 part, or one bonded part's secondary and bonds span)
   - `minimalWitness(holds: Uint32Array, k: number, mask: number): number[]` (candidate positions whose condition is needed, Resolution 24)
   - `groupName(g: MainsGraph, gi: number): string`
   - `statePhrase(g: MainsGraph, cands: number[], kept: number[], mask: number): string` (for example `"when S1 is on and K1 is released"`; `''` when `kept` is empty)
@@ -2054,6 +2054,13 @@ describe('units', () => {
     const s1 = us.find((u) => names(g, u.cands).includes('S1'))!
     const has = (part: string, pin: string) => s1.view.inRel[g.nodeOf.get(nodeKey(part, pin))!] === 1
     expect([has('e1', 'PE'), has('e1', 'L'), has('xs1', 'N')]).toEqual([true, true, true])
+  })
+  it("merges a bonded converter's secondary with its bond's earth", () => {
+    const g = graph(sheet([at('xs1', 'XS1', 't-outlet'), at('ps1', 'PS1', 't-psu-pelv', 200)], [w('xs1|L', 'ps1|+V'), w('xs1|PE', 'ps1|PE')]))
+    const p = prepare(g)
+    const us = units(p, candidateGroups(g, p.possible))
+    const withV = us.find((u) => u.view.inRel[g.nodeOf.get(nodeKey('ps1', '+V'))!] === 1)!
+    expect([withV.view.inRel[g.nodeOf.get(nodeKey('ps1', '-V'))!], withV.view.inRel[g.nodeOf.get(nodeKey('xs1', 'PE'))!]]).toEqual([1, 1])
   })
   it('without a link, two outlets are two units', () => {
     const g = graph(sheet([at('xs1', 'XS1', 't-outlet'), at('xs2', 'XS2', 't-outlet-2', 0, 300), at('s1', 'S1', 't-switch', 200), at('s2', 'S2', 't-switch', 200, 300)],
@@ -2168,8 +2175,9 @@ export interface Unit { view: Prepared; cands: number[] }
 
 /**
  * The enumeration units (Resolution 25): the relevant nodes grouped by possible-connectivity
- * component, merging components that one multi-pole group spans (its poles switch together) and
- * those one class 1 part's terminals span (its earth is judged against its L and N).
+ * component, merging components that one multi-pole group spans (its poles switch together), those
+ * one class 1 part's terminals span (its earth is judged against its L and N), and those a bonded
+ * part's secondary and bond pins span (its SELV or PELV class is judged in the same state).
  * Components cannot affect each other, so each unit's states are enumerated on their own.
  */
 export function units(p: Prepared, cands: number[]): Unit[] {
@@ -2191,6 +2199,21 @@ export function units(p: Prepared, cands: number[]): Unit[] {
     const info = mainsOf(moduleOf(g.d, part.module)!)
     if (info.protection !== 'class-1') continue
     const roots = [...new Set([...info.terminals]
+      .map((n) => g.nodeOf.get(nodeKey(part.uid, n)))
+      .filter((i): i is number => i !== undefined && p.inRel[i] === 1)
+      .map((i) => p.possible[i]))]
+    for (const r of roots.slice(1)) {
+      const [a, b] = [top(roots[0]), top(r)]
+      if (a !== b) up.set(a, b)
+    }
+  }
+  // A bonded part's secondary is judged SELV or PELV by the identity of its bond pins in the same state
+  // (Resolution 9): its non-mains domain pins and its bonds enumerate together.
+  for (const part of g.mainsParts) {
+    const info = mainsOf(moduleOf(g.d, part.module)!)
+    if (!info.bonds.size) continue
+    const pins = [...info.bonds, ...info.domains.filter((dm) => dm.kind !== 'mains').flatMap((dm) => dm.pins)]
+    const roots = [...new Set(pins
       .map((n) => g.nodeOf.get(nodeKey(part.uid, n)))
       .filter((i): i is number => i !== undefined && p.inRel[i] === 1)
       .map((i) => p.possible[i]))]
@@ -2294,7 +2317,7 @@ git commit -m "Mains: candidates, enumeration units, minimal state witnesses" -m
   - In `mainsRules.ts`:
     - `interface MainsDraft { rule: RuleId; subject: string; target: string; message: string; parts: string[]; pins: Endpoint[]; wires: string[]; causes: string[]; select?: { parts: string[]; wires: string[] } }`
     - `type Availability = 'powered' | 'unpowered' | 'unknown'`, `interface ConverterStatus { state: Availability; why: string | null }`
-    - `interface Acc { p: Prepared; cands: number[]; total: number; seen: Map<string, Sighting>; hazardAny: Uint8Array; volts: Float64Array; identUnion: Uint32Array; converters: (ConverterStatus | null)[]; loadComplete: Uint8Array; loadFit: Uint8Array; incomplete: 'groups' | 'sources' | null; finished: MainsDraft[] }`
+    - `interface Acc { p: Prepared; cands: number[]; total: number; seen: Map<string, Sighting>; hazardAny: Uint8Array; volts: Float64Array; identUnion: Uint32Array; converters: (ConverterStatus | null)[]; loadComplete: Uint8Array; loadFit: Uint8Array; loadFixers: Map<number, Set<GEdge['part']>>; incomplete: 'groups' | 'sources' | null; finished: MainsDraft[] }`
     - `newAcc(p: Prepared, cands: number[], incomplete: 'groups' | 'sources' | null): Acc` (`total` is `2 ** cands.length`, or 0 when incomplete)
     - `report(acc: Acc, key: string, mask: number, first: () => (when: string) => MainsDraft): void` (sets the finding's bit for `mask`)
     - `visitState(acc: Acc, mask: number): void`, `finishStates(acc: Acc): MainsDraft[]`, `absorb(into: Acc, unit: Acc): void`, `conservative(acc: Acc): void`, `staticDrafts(acc: Acc): MainsDraft[]`, `inputState(p: Prepared, c: GConverter): ConverterStatus`
@@ -2448,7 +2471,7 @@ Expected: FAIL (`./mains.ts` does not exist).
 import type { Endpoint } from './diagram.ts'
 import type { RuleId } from './checks.ts'
 import { nodeKey } from './netlist.ts'
-import { type GConverter, type GTerm, type MainsGraph, type Prepared, LN_MASK, bitOf, decodeSingle, minimalWitness, statePhrase } from './mainsGraph.ts'
+import { type GConverter, type GEdge, type GTerm, type MainsGraph, type Prepared, LN_MASK, bitOf, decodeSingle, minimalWitness, statePhrase } from './mainsGraph.ts'
 import { andList } from './words.ts'
 
 export interface MainsDraft {
@@ -2481,6 +2504,8 @@ export interface Acc {
   /** Per load (global index): L and N of one source across it in some state as drawn; and with every empty fuse holder taken as fitted. */
   loadComplete: Uint8Array
   loadFit: Uint8Array
+  /** Per load (global index): the empty fuse holders whose fitting alone puts L and N of one source across it in some enumerated (so realizable) contact state (Resolution 28). */
+  loadFixers: Map<number, Set<GEdge['part']>>
   incomplete: 'groups' | 'sources' | null
   /** Drafts of the units already enumerated (see absorb). */
   finished: MainsDraft[]
@@ -2491,7 +2516,7 @@ export function newAcc(p: Prepared, cands: number[], incomplete: 'groups' | 'sou
   return {
     p, cands, total: incomplete ? 0 : 2 ** cands.length, seen: new Map(),
     hazardAny: new Uint8Array(g.n), volts: new Float64Array(g.n), identUnion: new Uint32Array(g.n),
-    converters: g.converters.map(() => null), loadComplete: new Uint8Array(g.loads.length), loadFit: new Uint8Array(g.loads.length),
+    converters: g.converters.map(() => null), loadComplete: new Uint8Array(g.loads.length), loadFit: new Uint8Array(g.loads.length), loadFixers: new Map(),
     incomplete, finished: [],
   }
 }
@@ -2595,6 +2620,7 @@ export function absorb(into: Acc, unit: Acc): void {
   })
   unit.loadComplete.forEach((v, i) => (into.loadComplete[i] |= v))
   unit.loadFit.forEach((v, i) => (into.loadFit[i] |= v))
+  for (const [i, hs] of unit.loadFixers) for (const h of hs) (into.loadFixers.get(i) ?? into.loadFixers.set(i, new Set()).get(i)!).add(h)
   into.finished.push(...finishStates(unit))
 }
 
@@ -2914,6 +2940,14 @@ describe('rule 1: each source keeps its own claim (Resolution 24)', () => {
     // The same part with its bond on earth: PELV.
     expect(says(on([['ps1', 'PS1', 't-psu-pelv']], [w('xs1|L', 'ps1|+V'), w('xs1|PE', 'ps1|PE')]), 'PELV')).toBe(true)
   })
+  it('a bond earthed through a switch: PELV only when it is closed, each stated as a condition', () => {
+    const d = on([['ps1', 'PS1', 't-psu-pelv'], ['s1', 'S1', 't-switch']], [w('xs1|L', 'ps1|+V'), w('xs1|PE', 's1|1'), w('s1|2', 'ps1|PE')])
+    const tail = 'Remove the wire that joins it to mains.'
+    expect(msgs(d, 'mains-to-low-voltage').sort()).toEqual([
+      `PS1 +V is on a PELV low-voltage side that must never meet mains, but gets mains from XS1 (120 V) when S1 is on. ${tail}`,
+      `PS1 +V is on a SELV low-voltage side that must never meet mains, but gets mains from XS1 (120 V) when S1 is off. ${tail}`,
+    ])
+  })
 })
 
 describe('rule 2: mains shorts', () => {
@@ -3220,7 +3254,7 @@ git commit -m "Mains: rules 1 to 3 (low-voltage wiring, shorts, crossed sources)
 
 **Interfaces:**
 - Consumes: Task 5 and Task 6 helpers; `identAt` (Task 3); `mainsOf`.
-- Produces: `across(p: Prepared, a: number, b: number): number | null` (the source whose L and N sit across a and b), `acrossFit(p: Prepared, a: number, b: number): boolean` (the same with every empty fuse holder taken as fitted, Resolution 28), `voltageRule` (state), `ratingRules` and `dataMissing` (static). `voltageRule` fills `acc.loadComplete` and `acc.loadFit` (Task 10 reads them), and reports a load with no range as not checked (Resolution 14).
+- Produces: `across(p: Prepared, a: number, b: number): number | null` (the source whose L and N sit across a and b), `acrossFit(p: Prepared, a: number, b: number): boolean` (the same with every empty fuse holder taken as fitted, Resolution 28), `acrossWith(p: Prepared, h: GEdge, a: number, b: number): boolean` (the same with only the empty holder edge `h` added, in the current state), `voltageRule` (state), `ratingRules` and `dataMissing` (static). `voltageRule` fills `acc.loadComplete`, `acc.loadFit` and `acc.loadFixers` (Task 10 reads them), and reports a load with no range as not checked (Resolution 14).
 
 - [ ] **Step 1: Write the failing tests (append to `src/format/mainsRules.test.ts`)**
 
@@ -3333,14 +3367,32 @@ export function acrossFit(p: Prepared, a: number, b: number): boolean {
   return p.sources.some((s) => (on(s.live, ra) && on(s.neutral, rb)) || (on(s.live, rb) && on(s.neutral, ra)))
 }
 
+/**
+ * Resolution 28: in the current contact state, with only the empty holder edge `h` added to the drawn
+ * connectivity, L and N of one source reach a and b. One extra edge joins two roots, so no rebuild.
+ */
+export function acrossWith(p: Prepared, h: GEdge, a: number, b: number): boolean {
+  const [ha, hb] = [p.root[h.a], p.root[h.b]]
+  const r = (x: number) => (p.root[x] === hb ? ha : p.root[x])
+  const [ra, rb] = [r(a), r(b)]
+  const on = (xs: number[], q: number) => xs.some((x) => r(x) === q)
+  return p.sources.some((s) => (on(s.live, ra) && on(s.neutral, rb)) || (on(s.live, rb) && on(s.neutral, ra)))
+}
+
 const rangeText = (r: [number, number]) => (r[0] === r[1] ? volt(r[0]) : `${volt(r[0])} to ${volt(r[1])}`)
 
 function voltageRule(acc: Acc, mask: number) {
   const { p } = acc
   const g = p.g
   const check = (part: GLoad['part'], a: number, b: number, range: [number, number] | null, kind: 'load' | 'converter', i: number) => {
-    if (kind === 'load' && acrossFit(p, a, b)) acc.loadFit[i] = 1
     const s = across(p, a, b)
+    if (kind === 'load' && acrossFit(p, a, b)) {
+      acc.loadFit[i] = 1
+      // Which single empty holder restores it in this state (a state that can occur, never all contact positions at once).
+      if (s === null)
+        for (const h of p.protective)
+          if (!h.fitted && acrossWith(p, h, a, b)) (acc.loadFixers.get(i) ?? acc.loadFixers.set(i, new Set()).get(i)!).add(h.part)
+    }
     if (s === null) return
     if (kind === 'load') acc.loadComplete[i] = 1
     const v = g.sources[s].volts
@@ -4117,7 +4169,7 @@ git commit -m "Mains: rules 6 and 7 (polarity with reported uncertainty, earth)"
 - Test: `src/format/mainsRules.test.ts` (append)
 
 **Interfaces:**
-- Consumes: `protectivePaths` (Task 8), `acc.loadComplete` and `acc.loadFit` (Task 7), `type GEdge`, `type GLoad` (Task 3), `END_NAMES`, `endKind`, `type EndKind` (`cables.ts`), `andList`.
+- Consumes: `protectivePaths` (Task 8), `acc.loadComplete`, `acc.loadFit` and `acc.loadFixers` (Task 7), `natural` (`words.ts`), `END_NAMES`, `endKind`, `type EndKind` (`cables.ts`), `andList`.
 - Produces: state rule `unprotectedRule`; static rules `fuseRules`, `cableRules`, `incompleteRule`; `const UNSUITABLE_ENDS: ReadonlySet<EndKind>`.
 
 - [ ] **Step 1: Write the failing tests (append)**
@@ -4157,6 +4209,14 @@ describe('rule 8: protection', () => {
   it('names only the empty holder whose fitting restores the supply, not an unrelated empty one (Resolution 28)', () => {
     const d = sheet([at('xs1', 'XS1', 't-outlet'), at('f1', 'F1', 't-fuse', 200, 0, { settings: { fuse: 'absent' } }), at('f2', 'F2', 't-fuse', 200, 200, { settings: { fuse: 'absent' } }), at('e1', 'E1', 't-lamp', 400)],
       [w('xs1|L', 'f1|1'), w('f1|2', 'e1|L'), w('e1|N', 'xs1|N'), w('xs1|L', 'f2|1')])
+    expect(msgs(d, 'no-power')).toEqual(['E1 has no mains power: F1 has no fuse fitted.'])
+  })
+  it('never names a holder through contact positions that cannot close together (Astra counterexample)', () => {
+    // K1: NC to XS1 L, NO to E1 L, COM unwired. With every position closed at once, NC-COM-NO would join
+    // XS1 L to E1 L and make the dangling F2 look like a fix; no real state of K1 does that.
+    const d = sheet([at('xs1', 'XS1', 't-outlet'), at('f1', 'F1', 't-fuse', 200, 0, { settings: { fuse: 'absent' } }), at('f2', 'F2', 't-fuse', 200, 200, { settings: { fuse: 'absent' } }),
+      at('k1', 'K1', 't-relay', 200, 400), at('e1', 'E1', 't-lamp', 400)],
+      [w('xs1|L', 'f1|1'), w('f1|2', 'e1|L'), w('xs1|L', 'f2|1'), w('xs1|L', 'k1|NC'), w('k1|NO', 'e1|L'), w('e1|N', 'xs1|N')])
     expect(msgs(d, 'no-power')).toEqual(['E1 has no mains power: F1 has no fuse fitted.'])
   })
   it('names no holder when no single one restores the supply (empty holders on L and on N)', () => {
@@ -4266,31 +4326,10 @@ function fuseRules(acc: Acc): MainsDraft[] {
   }
   // Resolution 28: only when proven (complete with every empty holder fitted, never as drawn), and never when the checks did not finish.
   if (acc.incomplete) return out
-  const absent = g.edges.filter((e) => e.kind === 'protective' && !e.fitted)
-  /** Possible connectivity (every contact position conducting) through nets, fitted fuses and the one empty holder `h` taken as fitted. */
-  const withOnly = (h: GEdge) => {
-    const parent = Int32Array.from({ length: g.n }, (_, k) => k)
-    const top = (x: number) => {
-      while (parent[x] !== x) x = parent[x] = parent[parent[x]]
-      return x
-    }
-    const join = (a: number, b: number) => {
-      const [ra, rb] = [top(a), top(b)]
-      if (ra !== rb) parent[ra] = rb
-    }
-    for (const e of g.edges) if (e.kind === 'protective' && (e.fitted || e === h)) join(e.a, e.b)
-    for (const grp of g.groups) for (const list of grp.closed) for (const [a, b] of list) join(a, b)
-    return top
-  }
-  /** A supply path: L and N of one source reach the load's two ends, either way round. */
-  const supplied = (top: (x: number) => number, ld: GLoad) => g.sources.some((s) => {
-    const [L, N] = [s.live.map(top), s.neutral.map(top)]
-    return (L.includes(top(ld.a)) && N.includes(top(ld.b))) || (L.includes(top(ld.b)) && N.includes(top(ld.a)))
-  })
   g.loads.forEach((ld, i) => {
     if (acc.loadComplete[i] || !acc.loadFit[i]) return
-    // Only a holder whose fitting alone restores a supply path is named (Resolution 28).
-    const holders = [...new Set(absent.filter((h) => p.possible[h.a] === p.possible[ld.a] && supplied(withOnly(h), ld)).map((h) => h.part))]
+    // Only a holder whose fitting alone restores a supply path in a state that can occur is named (Resolution 28).
+    const holders = [...(acc.loadFixers.get(i) ?? [])].sort((x, y) => natural.compare(x.designator, y.designator))
     const d = ld.part.designator
     out.push({ rule: 'no-power', subject: d, target: d,
       message: holders.length
@@ -7571,7 +7610,7 @@ The controller runs the `consult-astra` skill on the whole `mains` branch (spec 
 | 1.2 Identity and energization closures; hazardous node | 3 | `mainsGraph.test.ts` |
 | 1.2 Requirements L, N, PE, line | 2, 9 | `mainsRules.test.ts` rule 6 and 7 tests |
 | 1.3 Domains, isolation, protective separation; earthing never substitutes | 2, 3, 6 | `mainsModel.test.ts` "counts basic isolation as protective separation only with a protective screen"; `mainsRules.test.ts` "basic-isolation secondary to a GPIO (error, bonded or not)" |
-| 1.3 SELV and PELV classification by separation and bond; PELV keeps DC checks | 6, 9 | `mainsRules.test.ts` "names the effective class, never the label", "basic plus a declared protective screen and PE bond (PELV, allowed, DC checks kept)", "reinforced with a PE bond (PELV)" |
+| 1.3 SELV and PELV classification by separation and bond; PELV keeps DC checks | 4, 6, 9 | `mainsStates.test.ts` "merges a bonded converter's secondary with its bond's earth"; `mainsRules.test.ts` "names the effective class, never the label", "a bond earthed through a switch", "basic plus a declared protective screen and PE bond (PELV, allowed, DC checks kept)", "reinforced with a PE bond (PELV)" |
 | 1.3 Converter availability (powered, unpowered, unknown), gating sources and the passive-feed allowance | 5 | `mains.test.ts` all availability tests, including "converter with inputs L and L (unknown availability, no DC conclusions)" |
 | 1.3 A converter's pins outside every domain (Resolution 27) | 3, 7 | `mainsGraph.test.ts` "treats a converter's outputs outside every domain as live"; `mainsRules.test.ts` "a converter's outputs outside every domain are taken as live, and named" |
 | 1.4 Ratings: relevance, then adequacy; four classes; conditions; provenance | 7 | `mainsRules.test.ts` rule 5 tests (125 VAC on 230 VAC, no rating, 300 VDC-only, conditional, unverified, the outlet's own rating) |
@@ -7629,7 +7668,7 @@ The controller runs the `consult-astra` skill on the whole `mains` branch (spec 
 
 ## Spec gaps and ambiguities resolved in this plan
 
-All binding decisions are the numbered Resolutions at the top (1 to 30). Revision 3 added 29 and 30 and tightened 7, 9, 24, 25 and 28 from Astra's second plan review. Revision 2 added 22 to 28 from the first: polarity uncertainty on unpolarized outlets is reported (22); the notice appears for any mains part (23); state witnesses are minimal and complete (24); enumeration runs per possible-connectivity component with the spec's 16-group limit counted across the sheet (25); an unverified isolation class counts with a warning (26); a converter's pins outside every domain are live and named (27); an empty fuse holder is blamed only when proven (28). Resolutions 10, 11, 14, 19, 20 and 21 were adjusted as Astra ruled.
+All binding decisions are the numbered Resolutions at the top (1 to 30). Revision 3 added 29 and 30 and tightened 7, 9, 24, 25 and 28 from Astra's second plan review; revision 4 tightened 25 and 28 from its third. Revision 2 added 22 to 28 from the first: polarity uncertainty on unpolarized outlets is reported (22); the notice appears for any mains part (23); state witnesses are minimal and complete (24); enumeration runs per possible-connectivity component with the spec's 16-group limit counted across the sheet (25); an unverified isolation class counts with a warning (26); a converter's pins outside every domain are live and named (27); an empty fuse holder is blamed only when proven (28). Resolutions 10, 11, 14, 19, 20 and 21 were adjusted as Astra ruled.
 
 ---
 
