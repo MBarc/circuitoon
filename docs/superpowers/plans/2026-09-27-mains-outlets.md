@@ -1618,7 +1618,7 @@ export interface GSource {
   earth: number[]
   keys: Record<Conductor, string[]>
 }
-const UNPOLARIZED_SOCKETS: SocketFamily[] = ['nema-1-15r', 'cee7-3', 'cee7-16']
+const UNPOLARIZED_SOCKETS: SocketFamily[] = ['nema-1-15r', 'cee7-3', 'cee7-5', 'cee7-16']
 export interface GEdge {
   kind: 'protective' | 'load' | 'leakage' | 'energize'
   a: number
