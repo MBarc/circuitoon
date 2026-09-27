@@ -112,6 +112,30 @@ describe('cable ends on off-grid pins', () => {
     expect(pts[last - 1].y).toBe(350)
     expect(pts[0].y - pts[1].y).toBeGreaterThanOrEqual(29)
   })
+  it('keeps full lead-outs for facing in-line pins whose wire has to detour', () => {
+    // Facing pins 160 px apart on one line (off the grid), with a part between them.
+    const d = sheet('R', 'dupont-male')
+    const tip = resolveEndpoint(d, d.connections[0].from)!.end
+    const ftip = resolveEndpoint(d, d.connections[0].to)!.end
+    d.parts[1].x += tip.x + 160 - ftip.x
+    d.parts[1].y += tip.y - ftip.y
+    d.modules.block = { format: 'circuitoon-module/1', id: 'block', name: 'Block', size: { w: 2, h: 2 }, pins: [{ name: 'P', side: 'top' }] }
+    d.parts.push({ uid: 'k', designator: 'K', module: 'block', x: tip.x + 60, y: tip.y - 10 })
+    const [w] = wirePaths(d)
+    expect(w.points.length).toBeGreaterThan(2)
+    expectFullLength(d)
+    expectFullLength(d, 'to')
+  })
+  it('keeps full lead-outs for facing in-line pins with a hand-shaped detour', () => {
+    const d = sheet('R', 'dupont-male')
+    const tip = resolveEndpoint(d, d.connections[0].from)!.end
+    const ftip = resolveEndpoint(d, d.connections[0].to)!.end
+    d.parts[1].x += tip.x + 80 - ftip.x
+    d.parts[1].y += tip.y - ftip.y
+    d.connections[0].route = [[tip.x + 10, tip.y], [tip.x + 10, tip.y + 60], [tip.x + 70, tip.y + 60], [tip.x + 70, tip.y]]
+    expectFullLength(d)
+    expectFullLength(d, 'to')
+  })
   it('re-routes when a cable end changes', () => {
     const a = sheet('R', 'bare')
     const b = sheet('R', 'banana')

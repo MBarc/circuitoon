@@ -245,20 +245,21 @@ function blockedPoints(a: ResolvedEnd, b: ResolvedEnd): Pt[] {
 /**
  * The straight run each end of `c` needs before its first bend: its connector's reach rounded up
  * to the grid, on a pin end with a connector (a hole end may leave any way, so it gets none).
- * 'straight' for two pins that face each other on one line: the wire between them is one
- * straight run, which both connectors share, even when that line is off the grid.
+ * `facing` marks two pins that face each other on one line: when nothing is in the way, the wire
+ * between them is one straight run that both connectors share, even when that line is off the
+ * grid. Any other route between them (a detour, a hand-shaped wire) keeps both lead-outs.
  */
-function leadsOf(c: Connection, a: ResolvedEnd, b: ResolvedEnd): [number, number] | 'straight' {
-  if (!c.ends) return [0, 0]
+function leadsOf(c: Connection, a: ResolvedEnd, b: ResolvedEnd): { leads: [number, number]; facing: boolean } {
+  if (!c.ends) return { leads: [0, 0], facing: false }
   const lead = (e: ResolvedEnd, which: 'from' | 'to') =>
     e.dir ? Math.ceil(END_SIZE[endKind(c.ends, which)].reach / GRID) * GRID : 0
+  let facing = false
   if (a.dir && b.dir && a.dir.x === -b.dir.x && a.dir.y === -b.dir.y) {
     const dx = b.end.x - a.end.x
     const dy = b.end.y - a.end.y
-    const inLine = a.dir.x !== 0 ? dy === 0 && Math.sign(dx) === a.dir.x : dx === 0 && Math.sign(dy) === a.dir.y
-    if (inLine) return 'straight'
+    facing = a.dir.x !== 0 ? dy === 0 && Math.sign(dx) === a.dir.x : dx === 0 && Math.sign(dy) === a.dir.y
   }
-  return [lead(a, 'from'), lead(b, 'to')]
+  return { leads: [lead(a, 'from'), lead(b, 'to')], facing }
 }
 
 /**
@@ -288,9 +289,8 @@ export function routeWire(d: Diagram, c: Connection, obstacles: Rect[], occupied
   const b = resolveEndpoint(d, c.to)
   if (!a || !b) return null
   const own = obstaclesFor(obstacles, a, b)
-  const leads = leadsOf(c, a, b)
-  const [fromLead, toLead] = leads === 'straight' ? [0, 0] : leads
-  if (leads === 'straight' && !c.route && !manualRouteBlocked([a.end, b.end], own)) return { points: [a.end, b.end], blocked: false }
+  const { leads: [fromLead, toLead], facing } = leadsOf(c, a, b)
+  if (facing && !c.route && !manualRouteBlocked([a.end, b.end], own)) return { points: [a.end, b.end], blocked: false }
   if (c.route) {
     let points = manualPoints(a, b, c.route)
     if (fromLead || toLead) points = withLeadOut(withLeadOut(points, a.dir, fromLead).reverse(), b.dir, toLead).reverse()
