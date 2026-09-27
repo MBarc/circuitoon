@@ -20,7 +20,7 @@
 - Never use the Playwright MCP browser (it is shared with other agents). Browser checks launch their own Chrome through `playwright-core` (`chromium.launch({ channel: 'chrome', headless: true })`) against `vite preview` on their own port, like `scripts/check-problems-ui.mjs`.
 - **Every task's gate** is `npx tsc --noEmit && npm test`, both green, before its commit. A task that touches `modules/` or a generator also runs `npm run validate` and `npm run check:gen`. A task that touches UI also runs `npm run build`. The final task runs everything: `npm run validate && npm run check:gen && npx tsc --noEmit && npm test && npm run build && npm run check:problems-ui && npm run check:warnings-ui && npm run check:cables-ui && npm run check:mains-ui && node scripts/perf-breadboard.mjs`.
 - Parts follow the `circuitoon-add-part` skill (`.claude/skills/circuitoon-add-part/SKILL.md` and `references/conventions.md`): category `Mains`, Sticker style (rects only, the renderer outlines), a generator per family, the PRD Built-in parts table updated, and screenshots from `.claude/skills/circuitoon-add-part/scripts/shoot-parts.mjs` looked at in light and dark. **A wrong pin is worse than a missing part.** Every pin, contact, profile, rating and isolation value comes from `src/format/mainsEvidence.ts`, which Task 0 fills from the exact manufacturer datasheets and cited standards, never from memory or from this plan.
-- **Isolation is never inferred.** A module's `isolation` is `reinforced`, `double` or `basic` only when its source states that insulation class for the barrier between mains and the output (or states protective separation, which Resolution 9 maps to `reinforced` only if the source says reinforced or double). A dielectric test voltage, a class II symbol, an SELV or ES1 label or a safety listing alone is not a class: the module then records `isolation: "unknown"`, and the checker treats that side as live and says so.
+- **Isolation is never inferred.** A module's `isolation` is `reinforced`, `double` or `basic` only when its source states that insulation class for the barrier between mains and the output (or states protective separation, which Resolution 9 maps to `reinforced` only if the source says reinforced or double). A dielectric test voltage, a class II symbol, an SELV or ES1 label or a safety listing alone is not a class: the module then records `isolation: "unknown"`, and the checker treats that side as live and says so. **Exception (Michael's ruling B3, 2026-09-27):** a manufacturer's explicit written "Class II" statement (words, not only the symbol) is recorded as `double`, because IEC 61140 defines class II equipment as protected by double or reinforced insulation; the evidence keeps the Class II quote and says so (Mean Well NGE12 and IRM).
 - Every parts batch (Tasks 16 to 20) ends with an independent pinout, rating and isolation review done by the controller, not the implementer (skill step 9). A **MISMATCH or NOT VERIFIED** verdict blocks the next batch until fixed or brought to Michael; nothing marked NOT VERIFIED is generated as if verified.
 - Never overclaim: where data is missing or a check did not finish, a finding says "unknown" or "not checked", never "fine" (spec section 6).
 - Performance budgets: `checkDiagram` on the existing 200-part / 500-wire sheets without mains stays at 20 ms median or less (the two tests in `src/format/checks.perf.test.ts` unchanged), and on such a sheet the mains analysis returns before computing plugs, a netlist or a graph; a first checkpoint (Task 11) measures one outlet with 16 fused switched lamps before any part is generated, 300 ms median or less, and redesigns the enumeration if it misses; the final sheet with 16 candidate groups and a 150-part DC section (Task 24) meets 300 ms median, 30 ms with 4 groups; `wirePaths` is not changed at all (the look is joined to its output by wire uid), so its tests and `scripts/perf-breadboard.mjs` frame budgets (median 17 ms, p95 33 ms) hold. The checker and the renderer share one cached analysis per edit (`analyseMainsCached`); nothing enumerates twice for one edit, and nothing enumerates during a drag.
@@ -42,7 +42,7 @@ These are decisions the spec leaves open; tasks implement them exactly. Numbers 
 10. **Sources are limited to 10 per sheet** for exhaustive analysis (identity is one 30-bit mask). The limit counts AC sources (`acSources` entries), not parts: more than 10 gives `mains-incomplete` ("Mains checks did not finish: 11 AC sources. Split the drawing or check the rest by hand."), the same honest path as more than 16 contact groups.
 11. **Converter availability across states:** powered in at least one enumerated state counts as powered (as the DC checker already takes a switch as closed); unpowered only when unpowered in every state; unknown otherwise, with the reason from its first unknown state in enumeration order (fewest groups on first). When enumeration did not finish, nothing is claimed unpowered unless no source terminal (L, N or PE) shares a possible-connectivity component with either input, which is a proof, not an enumeration result; every other converter is unknown ("the mains checks did not finish").
 12. **DC rules skip hazardous nets, not every mains-declared pin.** A net that is hazardous in some state (or might be, when enumeration did not finish) is left out of every DC rule, and no DC source edge whose output, return, inferred return or diode return is on such a net enters the potential solver. A relay's contacts switching a DC motor stay in the DC checker as before.
-13. **Rule 8 loads** are the `electrical.conducts` entries of kind `load`. A converter's input is not a load for rule 8 (it is checked by rules 4 and 11), which is what the spec's "HLK-PM01 feeding an ESP32 (clean apart from cable-unverified)" requires. Wiring from a converter onward to declared loads stays checked.
+13. **Rule 8 loads** are the `electrical.conducts` entries of kind `load`. A converter's input is not a load for rule 8 (it is checked by rules 4 and 11), which is what the spec's "HLK-PM01 feeding an ESP32 (clean apart from cable-unverified)" requires (after ruling B2 that clean circuit is built with a Mean Well IRM-03-5; the HLK version reports rule-1 errors because its isolation is unknown, and a converter input is still not a rule-8 load). Wiring from a converter onward to declared loads stays checked.
 14. **A load's accepted range** is `conducts[].range` (volts AC), from the reference product. A load without one that gets L and N of a source in some state gets a `data-missing` warning saying its voltage compatibility was not checked; it is never silently skipped.
 15. **"300 VDC-only terminal on 230 VAC (rating)"** is `rating-unknown` (it has a rating of another service, so it is declared for mains but has no relevant rating), not `mains-rating` and not rule 1.
 16. **`fuseRating`** is valid above 0 up to 100 A; a module may leave its default out (unknown). An integral fuse's `protective[].rating`, when given, wins over the param.
@@ -50,8 +50,8 @@ These are decisions the spec leaves open; tasks implement them exactly. Numbers 
 18. **Outlet region** is `electrical.ac.region` (`us`, `jp`, `eu`, `uk`, `au`); it sets identity colours (us and jp: L black, N white, PE green; eu, uk and au: L brown, N blue, PE green-yellow).
 19. **Wire colour by identity:** a node has an identity colour only when, across every enumerated state in which it has any identity, that identity is the same single conductor (a node that is PE in one state and L in another has none). A new wire from or to such a terminal starts in that colour; a stored wire with no `color` renders in it; a stored colour always wins. Green-yellow is a new named colour drawn as a two-colour stroke.
 20. **Exports:** the app has no image or PDF export yet (JSON only, plus the browser's print). The notice is drawn inside `render/Sheet.tsx` (the SVG any future image or PDF export renders) in a footer band the sheet reserves below the drawing, wrapped to the sheet width with measured lines; shown on the printed editor page by a print stylesheet; and written into exported JSON as a top-level `notes` entry. The PRD records that every future export must carry it.
-21. **Source evidence wins over expected clean results.** Isolation comes only from an explicit source statement (see Global Constraints); no test voltage is mapped to a class. Task 0 records what each source says. If the Songle relay's or the Hi-Link modules' sources do not state an adequate class, the spec's relay circuit and HLK circuit cannot be clean as written: Task 0 reports it as a blocking item, and the controller asks Michael before Task 20 changes any expected result.
-22. **Polarity on unpolarized outlets is reported as uncertain, never skipped.** For a source whose L side no standard fixes (`nema-1-15r`, `cee7-3`, `cee7-16`), a polarity requirement (a lamp shell, a single-pole switch or fuse) that depends on which slot is L gets a `polarity` warning worded with "may" and the reason ("XS1 is an unpolarized outlet, so which slot is L is not known"); a definite violation from a polarized source keeps the definite wording.
+21. **Source evidence wins over expected clean results.** Isolation comes only from an explicit source statement (see Global Constraints); no test voltage is mapped to a class. Task 0 records what each source says. If the Songle relay's or the Hi-Link modules' sources do not state an adequate class, the spec's relay circuit and HLK circuit cannot be clean as written: Task 0 reports it as a blocking item, and the controller asks Michael before Task 20 changes any expected result. **Decided (ruling B2, 2026-09-27):** none of Hi-Link, Songle or the relay module listings, or Fotek states a class, so those parts keep `isolation: "unknown"` and Task 20 expects rule-1 (`mains-to-low-voltage`) errors with the unknown-isolation wording ("separated from mains only by insulation of unknown quality"); the Mean Well IRM-03/IRM-05 modules (Class II stated) are added in Task 18 and carry the clean AC-DC circuit instead.
+22. **Polarity on unpolarized outlets is reported as uncertain, never skipped.** For a source whose L side no standard fixes (`nema-1-15r`, `cee7-3`, `cee7-5`, `cee7-16`; `cee7-5` added by ruling B5: the CEE 7/7 plug enters a French socket one way only, but no standard fixes which hole is L), a polarity requirement (a lamp shell, a single-pole switch or fuse) that depends on which slot is L gets a `polarity` warning worded with "may" and the reason ("XS1 is an unpolarized outlet, so which slot is L is not known"); a definite violation from a polarized source keeps the definite wording.
 23. **The notice appears for any mains part** (spec 6: "a sheet with any mains part"): any part whose module declares mains data, a mains-rated relay, SSR or terminal block alone included.
 24. **State witnesses are minimal and complete, per complete claim.** A finding's key holds everything its message claims (the affected terminals, the sources and the effective class), so one sighting never carries another state's explanation: a GPIO fed by XS1 when a relay is released and by XS2 when it is energized gives two findings, each with its own source, conditions and path. Each finding records every state it holds in (one bit per state); its phrase lists exactly the contact conditions (on and off, energized and released) that are needed: a condition is dropped only when the finding holds in every state that agrees with the remaining ones. A finding that holds in every state has no phrase.
 25. **Enumeration is per unit of dependent components.** A unit is a possible-connectivity component, merged with every other component a rule must judge in the same states: those one multi-pole group spans (linked poles), and those a class 1 part's terminals span (its earth is judged against its own L and N, so "PE not connected when S1 is off" is found when the earth runs through S1 and L and N do not), and those a bonded part's secondary and bond pins span (its effective SELV or PELV class is judged in the same state as the mains reaching its secondary). Independent units are enumerated on their own (the sum of their state counts). The spec's limit still counts every candidate group on the sheet: more than 16 in total gives `mains-incomplete`.
@@ -60,6 +60,8 @@ These are decisions the spec leaves open; tasks implement them exactly. Numbers 
 28. **An empty fuse holder is named as the cause of a dead load only when proven:** the load gets L and N of one source in some state with every absent fuse taken as fitted, and in no state as drawn; and a holder is named only when fitting it alone restores a supply path to that load in an enumerated contact state (a state that can occur; never every contact position closed at once), every other empty holder open. When none alone does, the finding names no holder. Nothing about absent fuses is claimed when the enumeration did not finish.
 29. **The drawn notice is always whole.** Its band is never narrower than 320 px: a narrower sheet widens its viewBox for the footer (the drawing is unchanged); lines wrap by a conservative bold-glyph width (0.62 em), and a word longer than a line is split with a hyphen.
 30. **No analysis during a gesture.** Every renderer of the mains look (canvas, sheet, Inspector) holds the look it had when a part, segment or wire gesture began; the analysis runs once per committed edit, shared with the checker.
+
+29. **Task 0 rulings (Michael, 2026-09-27; the evidence log `docs/superpowers/evidence/2026-09-27-mains-parts.md` has the full text).** B1: the paywalled plug and socket standards (BS 1363, CEE 7, AS/NZS 3112, IEC/TR 60083) are replaced by at least two independent agreeing secondary sources, and those parts' `source` includes them (the evidence quotes start "Secondary sources:"). B2 and B3: see Resolution 21 and the Global Constraints. B4: `as3112` L and N are swapped in Task 12 (active top left seen from the front, earth down). B5: `cee7-5` is unpolarized for Resolution 22. B6: the Mean Well UK plug's fuse is not stated, so the UK charger and adapter have no integral fuse edge (conservative); the UK cord plugs keep theirs. B7: no N requirement on the E27 shell (its L and N leads carry `line`). B8: Phoenix pages that could not be read are retried in Task 19; if still blocked, the controller brings them to Michael. Also: Littelfuse 150274 (01500274Z) replaces Schurter FPG4 as the in-line fuse holder; MC 1,5 always carries its rating conditions (a `rating-conditional` warning at 230 V); IEC 60664 ratings (WAGO, Phoenix, the clones) are recorded `ac/dc`, and the parts tests read the service from the evidence.
 
 ## Shared Contract (every worker reads this)
 
@@ -170,7 +172,7 @@ For every module id the spec lists (outlets, plug-in devices per family, HLK-PM0
 - outlets and plugs: the standard's contact layout and which contact is L (NEMA WD 6, JIS C 8303, CEE 7 sheets, DIN 49440 / 49441, NF C 61-314, BS 1363, AS/NZS 3112, IEC TR 60083), real contact spacing, and the rating;
 - chargers and adapters: the exact maker part numbers per region (first choice CUI Devices SWI series; record what was chosen and why), input range, output voltage, plug type, integral UK fuse rating, and the insulation class only if the datasheet states it;
 - Hi-Link, Songle, Fotek: pin order, ranges, contact and load ratings with conditions, leakage, and the stated insulation class between mains and the low-voltage side, quoted; if the source gives only a test voltage, write exactly that and record no class;
-- lamp holders (Leviton 9880 for E26; a maker's E27 holder stating rating and earth terminal), the lamps whose rated voltage sets `loadRange`, the fuse holder (Schurter FPG4), KCD1, Wago (IEC values with overvoltage category and pollution degree as conditions), Phoenix (every nominal voltage with its conditions, current, and both item numbers per size), clones (the vendor listing's voltage and current).
+- lamp holders (Leviton 9880 for E26; a maker's E27 holder stating rating and earth terminal), the lamps whose rated voltage sets `loadRange`, the fuse holder (Schurter FPG4 was named here; Task 0 found it is a PCB-mount holder and Littelfuse 150274 replaces it), KCD1, Wago (IEC values with overvoltage category and pollution degree as conditions), Phoenix (every nominal voltage with its conditions, current, and both item numbers per size), clones (the vendor listing's voltage and current).
 
 Also check each family's L side against Task 12's pattern table and write any difference.
 
@@ -4595,9 +4597,9 @@ The stylized patterns (offsets in px from the socket's or plug's centre, y down,
 | CEE 7/5 socket, CEE 7/7 earth-hole profile | (-20, 0) | (20, 0) | (0, -30) |
 | CEE 7/16 (Europlug) | (-20, 0) | (20, 0) | none |
 | BS 1363 | (30, 10) | (-30, 10) | (0, -20) |
-| AS/NZS 3112 | (20, -10) | (-10, -10) | (0, 20) |
+| AS/NZS 3112 | (-10, -10) | (20, -10) | (0, 20) |
 
-The L side of each family is a convention to verify in Task 12 against the cited standard (NEMA WD 6 for US: facing the outlet with the earth hole down, the wider neutral slot is on the left; BS 1363: earth up, L bottom right; AS/NZS 3112 and NF C 61-314: confirm). If a standard puts L on the other side, swap L and N in this table, in `SOCKET_PATTERNS` and `PLUG_PROFILES` together (the positions stay), and the tests follow.
+The L side of each family is a convention to verify in Task 12 against the cited standard (NEMA WD 6 for US: facing the outlet with the earth hole down, the wider neutral slot is on the left; BS 1363: earth up, L bottom right; AS/NZS 3112 and NF C 61-314: confirm). If a standard puts L on the other side, swap L and N in this table, in `SOCKET_PATTERNS` and `PLUG_PROFILES` together (the positions stay), and the tests follow. Task 0 did this check: NEMA and BS 1363 agree; AS/NZS 3112 had L on the wrong side and is swapped above (ruling B4: the active is top left seen from the front with the earth down); for CEE 7/5 no source fixes L, and the socket is treated as unpolarized (Resolution 22, ruling B5), so its L position here only names the slots.
 
 - [ ] **Step 1: Transcribe the spec's table for the tests**
 
@@ -4727,7 +4729,8 @@ const CEE_CLIPS: Pattern = { L: [[-20, 0]], N: [[20, 0]], PE: [[0, -30], [0, 30]
 const CEE_PIN: Pattern = { L: [[-20, 0]], N: [[20, 0]], PE: [[0, -30]] }
 const CEE2: Pattern = { L: [[-20, 0]], N: [[20, 0]], PE: [] }
 const BS: Pattern = { L: [[30, 10]], N: [[-30, 10]], PE: [[0, -20]] }
-const AS: Pattern = { L: [[20, -10]], N: [[-10, -10]], PE: [[0, 20]] }
+// Ruling B4: seen from the front with the earth down, the active (L) is top left (Task 0 evidence).
+const AS: Pattern = { L: [[-10, -10]], N: [[20, -10]], PE: [[0, 20]] }
 
 export const SOCKET_PATTERNS: Record<SocketFamily, Pattern> = {
   'nema-5-15r': NEMA3, 'nema-5-20r': NEMA3, 'nema-1-15r': NEMA2, 'nema-1-15r-polarized': NEMA2,
@@ -5367,7 +5370,7 @@ git commit -m "Mains: red outline for a plug over an outlet it does not fit" -m 
 **Interfaces:**
 - Consumes: `SOCKET_PATTERNS`, `PLUG_PROFILES` (Task 12); `EVIDENCE` (Task 0).
 - Produces:
-  - Prefix rules for the ids the parts tasks use: `outlet-*` XS, `plug-*` XP, `charger-*`, `adapter-*`, `hlk-*` PS, `lamp-holder-*` E, `fuse-holder-*` F, `ssr-*` K, `terminal-block-*` and `wago-*` X (switches keep S, relays keep K).
+  - Prefix rules for the ids the parts tasks use: `outlet-*` XS, `plug-*` XP, `charger-*`, `adapter-*`, `hlk-*`, `irm-*` PS, `lamp-holder-*` E, `fuse-holder-*` F, `ssr-*` K, `terminal-block-*` and `wago-*` X (switches keep S, relays keep K).
   - `CATEGORY_ORDER` ends with `'Mains'`.
   - `moduleJson({ ..., holes?, obstacle? })` writes `holes` then `obstacle` right after `size` when given (existing generators pass neither, so their output is unchanged).
   - In `scripts/lib/mains.mjs`: `socket(family, id, cx, cy, suffix)` returns `{ holes, socket }`; `plugProfiles(family, px, py, roles?)` returns profile objects; `prongs(roles?)` returns internal node names; `rating(pins, kind, service, volts, extra?)`.
@@ -5380,7 +5383,7 @@ Add to `src/editor/ops.test.ts` (inside the designator `describe`, reusing its `
   it('gives each mains family its prefix without taking any other family\'s ids', () => {
     const want: Record<string, string> = {
       'outlet-us-5-15r-duplex': 'XS', 'outlet-uk-bs1363': 'XS', 'plug-us-5-15p': 'XP', 'plug-uk-bs1363-2lead': 'XP',
-      'charger-usb-5v-us': 'PS', 'adapter-barrel-eu': 'PS', 'hlk-pm01': 'PS', 'hlk-pm03': 'PS',
+      'charger-usb-5v-us': 'PS', 'adapter-barrel-eu': 'PS', 'hlk-pm01': 'PS', 'hlk-pm03': 'PS', 'irm-03-5': 'PS',
       'lamp-holder-e26': 'E', 'lamp-holder-e27': 'E', 'fuse-holder-5x20-inline': 'F',
       'rocker-switch-kcd1': 'S', 'relay-module-1ch-5v': 'K', 'ssr-fotek-25da': 'K',
       'terminal-block-mstb-508-2': 'X', 'terminal-block-kf301-500-3': 'X', 'wago-221-415': 'X',
@@ -5426,7 +5429,7 @@ const PREFIXES: [RegExp, string][] = [
   // keep their S and K.
   [/^outlet-/, 'XS'],
   [/^plug-/, 'XP'],
-  [/^(charger-|adapter-|hlk-)/, 'PS'],
+  [/^(charger-|adapter-|hlk-|irm-)/, 'PS'],
   [/^lamp-holder-/, 'E'],
   [/^fuse-holder-/, 'F'],
   [/^ssr-/, 'K'],
@@ -5766,24 +5769,24 @@ The controller dispatches a reviewer who did not write the parts, with WebFetch 
 **Interfaces:**
 - Consumes: `plugProfiles`, `prongs`, `rating` (Task 15); the outlets of Task 16 (for the seating test); `PLUG_PROFILES` (Task 12); `specTurns` (`plugSpec.testing.ts`, Task 12).
 - Produces (all category `Mains`):
-  - Chargers `charger-usb-5v-{region}` and adapters `adapter-barrel-{region}` (designator PS): prongs are internal nodes; `acInput` on the prongs (UK: on `L fused`, after the integral BS 1362 fuse, `protective: [{ from: 'L prong', to: 'L fused', kind: 'fuse', rating }]`); domains `mains` (prongs and `L fused`) and `output` (`selv`); `isolation` per datasheet; `protection: 'class-2'`. Charger outputs `5V` (power_out, supply `5V`) and `GND`; adapter outputs `+` (power_out, value `voltage`) and `-`.
+  - Chargers `charger-usb-5v-{region}` and adapters `adapter-barrel-{region}` (designator PS): prongs are internal nodes; `acInput` on the L and N prongs (ruling B6: Mean Well does not state a fuse in its UK plug, so the UK charger and adapter have no `L fused` node and no protective edge); domains `mains` (the prongs) and `output` (`selv`); `isolation` from the evidence (`double`, from Mean Well's written Class II, ruling B3); `protection: 'class-2'`. Charger outputs `5V` (power_out, supply `5V`) and `GND`; adapter outputs `+` (power_out, value `voltage`) and `-`.
   - Cord plugs `plug-*` (designator XP): lead pins `L`, `N` and `PE` (2-lead plugs: `L`, `N`, plus `PE` only where the plug has an earth pin: the UK 2-lead plug keeps its earth prong, with nothing joined to it) on the bottom edge; requirements `L`/`N` on polarized families, `line` on unpolarized ones, `PE` on earth; prong-to-lead `internal` joins (UK L through its fuse: `fuseRating` param default 13); a `terminal` rating per the standard.
   - Families and bodies: US, JP and AU 60 x 60 (pivot 30, 30); CEE and UK 80 x 80 (pivot 40, 40).
 
 | Part | Family | Roles | Source |
 | --- | --- | --- | --- |
-| charger-usb-5v-us | nema-1-15p | L, N | reference: a USB wall adapter whose maker's datasheet states input range, plug type, class II and IEC/UL 62368-1 (first choice: CUI Devices SWI series with USB output; else Mean Well) |
-| charger-usb-5v-eu | cee7-16 | L, N | same maker, Europlug version |
-| charger-usb-5v-uk | bs1363 | L, N, PE | same maker, UK version (integral BS 1362 fuse rating from its datasheet) |
-| charger-usb-5v-au | as3112 | L, N | same maker, AU version |
-| adapter-barrel-{us,eu,uk,au} | as above | as above | CUI Devices SWI series wall adapter with a 2.1 x 5.5 mm barrel (the plug letter in the part number sets the region); output voltage, input range, isolation from its datasheet |
+| charger-usb-5v-us | nema-1-15p | L, N | Mean Well NGE12I05-USB with AC PLUG-US4 (Task 0: CUI SWI has no UK or AU version, so one maker for all regions is Mean Well NGE12) |
+| charger-usb-5v-eu | cee7-16 | L, N | Mean Well NGE12I05-USB with AC PLUG-EU4 |
+| charger-usb-5v-uk | bs1363 | L, N, PE | Mean Well NGE12I05-USB with AC PLUG-UK4 (no fuse stated: no fuse edge, ruling B6) |
+| charger-usb-5v-au | as3112 | L, N | Mean Well NGE12I05-USB with AC PLUG-AU4 |
+| adapter-barrel-{us,eu,uk,au} | as above | as above | Mean Well NGE12I12-P1J (12 V, 2.1 x 5.5 mm, centre positive) with the same AC plugs; output voltage, input range, isolation from the evidence |
 | plug-us-5-15p | nema-5-15p | L, N, PE | NEMA WD 6 (15 A 125 V); reference Leviton 515PV plug datasheet |
 | plug-us-1-15p | nema-1-15p-polarized | L, N | NEMA WD 6 (15 A 125 V); reference Leviton polarized 2-wire plug datasheet |
 | plug-jp-1-15p | nema-1-15p | L, N | JIS C 8303 (15 A 125 V) |
-| plug-eu-cee7-7 | cee7-7 | L, N, PE | CEE 7 sheet VII (16 A 250 V), both profiles |
-| plug-eu-cee7-16 | cee7-16 | L, N | CEE 7 sheet XVI, EN 50075 (2.5 A 250 V) |
-| plug-uk-bs1363-3lead / -2lead | bs1363 | L, N, PE | BS 1363-1 (13 A 250 V, BS 1362 fuse) |
-| plug-au-as3112-3lead / -2lead | as3112 | L, N, PE / L, N | AS/NZS 3112 (10 A 250 V) |
+| plug-eu-cee7-7 | cee7-7 | L, N, PE | CEE 7/7, 16 A 250 V from two secondary sources (ruling B1), both profiles |
+| plug-eu-cee7-16 | cee7-16 | L, N | Europlug, 2.5 A 250 V from two secondary sources (ruling B1) |
+| plug-uk-bs1363-3lead / -2lead | bs1363 | L, N, PE | BS 1363-1 (13 A 250 V, BS 1362 fuse) from two secondary sources (ruling B1) |
+| plug-au-as3112-3lead / -2lead | as3112 | L, N, PE / L, N | AS/NZS 3112 (10 A 250 V) from two secondary sources (ruling B1); L top left per ruling B4 |
 
 - [ ] **Step 1: Take every value from the evidence (no new lookups)**
 
@@ -5846,7 +5849,8 @@ describe('built-in plug-in devices', () => {
         expect(info.protection).toBe('class-2')
         expect(info.domains.map((d) => d.kind).sort()).toEqual(['mains', 'selv'])
       }
-      if (x.family === 'bs1363') expect(info.protective).toHaveLength(1)
+      // UK cord plugs carry their BS 1362 fuse; the UK charger and adapter have none (ruling B6: Mean Well states no fuse).
+      if (x.family === 'bs1363') expect(info.protective).toHaveLength(x.converter ? 0 : 1)
     })
     it(`${id}: on an outlet the spec gives no row for, no turn and no translation puts every contact on that socket's holes`, () => {
       const dm = load(id)
@@ -5920,15 +5924,13 @@ const FAMILY = {
   au: { family: 'as3112', roles: ['L', 'N'], wu: 6, hu: 6, region: 'AU/NZ (AS/NZS 3112)' },
 }
 
-/** Electrical data shared by chargers and adapters: AC input on the prongs (after the fuse on a UK device). */
+/** Electrical data shared by chargers and adapters: AC input on the prongs. No UK fuse edge: Mean Well states no fuse in its UK plug (ruling B6). */
 function converter(region, outputs, d) {
   const f = FAMILY[region]
-  const nodes = [...prongs(f.roles), ...(region === 'uk' ? ['L fused'] : [])]
-  const input = region === 'uk' ? 'L fused' : 'L prong'
+  const nodes = prongs(f.roles)
   return {
     model: 'converter', internalNodes: nodes,
-    ...(region === 'uk' ? { protective: [{ from: 'L prong', to: 'L fused', kind: 'fuse', ...(d.fuse ? { rating: d.fuse } : {}) }] } : {}),
-    acInput: { a: input, b: 'N prong', range: d.range },
+    acInput: { a: 'L prong', b: 'N prong', range: d.range },
     domains: [{ name: 'mains', pins: nodes.filter((n) => n !== 'PE prong'), kind: 'mains' }, { name: 'output', pins: outputs, kind: 'selv' }],
     isolation: d.isolation, protection: 'class-2',
     plug: { family: f.family, profiles: plugProfiles(f.family, f.wu * 5, f.hu * 5, f.roles) },
@@ -6024,11 +6026,11 @@ Reviewer checks every device against its `source`: family and L side, prong role
 
 ---
 
-### Task 18: Parts batch 3: AC-DC modules, lamp holders, fuse holder, KCD1, Wago
+### Task 18: Parts batch 3: AC-DC modules (Hi-Link and Mean Well IRM), lamp holders, fuse holder, KCD1, Wago
 
 **Files:**
 - Create: `scripts/gen-mains-loads.mjs`
-- Create (generated): `modules/hlk-pm01.json`, `modules/hlk-pm03.json`, `modules/lamp-holder-e26.json`, `modules/lamp-holder-e27.json`, `modules/fuse-holder-5x20-inline.json`, `modules/wago-221-412.json`, `modules/wago-221-413.json`, `modules/wago-221-415.json`
+- Create (generated): `modules/hlk-pm01.json`, `modules/hlk-pm03.json`, `modules/irm-03-5.json`, `modules/irm-03-3v3.json`, `modules/irm-05-5.json`, `modules/lamp-holder-e26.json`, `modules/lamp-holder-e27.json`, `modules/fuse-holder-5x20-inline.json`, `modules/wago-221-412.json`, `modules/wago-221-413.json`, `modules/wago-221-415.json`
 - Modify: `modules/rocker-switch-kcd1.json` (hand-written today: add `contacts` and `ratings` to `electrical`, keep everything else byte for byte)
 - Modify: `src/format/mainsParts.test.ts` (append), `docs/PRD.md`
 
@@ -6036,21 +6038,23 @@ Reviewer checks every device against its `source`: family and L side, prong role
 - Consumes: `rating` (Task 15).
 - Produces:
   - `hlk-pm01`, `hlk-pm03` (PS): AC pins `AC 1`, `AC 2` (label `AC`, requirement `line`), outputs `+Vo` (power_out, supply `5V` or `3V3`) and `-Vo` (ground), in the datasheet's physical order; `acInput`, domains, `isolation` (the class the evidence quotes, else `"unknown"`).
-  - `lamp-holder-e26`, `lamp-holder-e27` (E): `L` (centre contact, requirement `L`) and `N` (screw shell, requirement `N`), plus `PE` (requirement `PE`) only when the reference product has an earth terminal; `conducts: [{ pins: ['L', 'N'], kind: 'load', range }]`; `protection` as the reference product states it; a `terminal` rating.
+  - `irm-03-5`, `irm-03-3v3`, `irm-05-5` (PS; evidence ids `irm-03-5`, `irm-03-3v3`, `irm-05-5`; ruling B2): Mean Well IRM-03-5, IRM-03-3.3 and IRM-05-5. AC pins `AC/L`, `AC/N` (label as named, requirement `line`: a converter input has no polarity), outputs `+V` (power_out, supply `5V` or `3V3`) and `-V` (ground), placed from `EVIDENCE[id].pins` (the datasheet draws a BOTTOM view: mirror left and right for the top-view part); IRM-03's `NC` pin is no connection and is not a module pin (the art may show it). `acInput` `{ a: 'AC/L', b: 'AC/N', range }` (85-305 VAC), domains `mains` and `output` (`selv`), `isolation: 'double'` and `protection: 'class-2'` from the evidence (Mean Well's written Class II, ruling B3).
+  - `lamp-holder-e26`, `lamp-holder-e27` (E): `L` (centre contact) and `N` (screw shell), plus `PE` (requirement `PE`) only when the reference product has an earth terminal. E26: requirements `L` and `N` (29 CFR 1910.305(j)(1): the grounded conductor on the screw shell). E27: both leads carry `line` and the shell has no N requirement (ruling B7), so an E27 holder gives no polarity finding; `conducts: [{ pins: ['L', 'N'], kind: 'load', range }]`; `protection` as the reference product states it; a `terminal` rating.
   - `fuse-holder-5x20-inline` (F): pins `1`, `2`; `protective: [{ from: '1', to: '2', kind: 'fuse' }]`; `params.fuseRating: { unit: 'A' }` with no default; `settings: { fuse: ['fitted', 'absent'] }`; a `terminal` rating.
   - `rocker-switch-kcd1` (S): `contacts: [{ id: 's', kind: 'switch', poles: [{ com: '1', no: '2' }] }]` and a `switching` rating; its existing `model: 'switch'` and `terminals` stay for the DC checker.
   - `wago-221-41{2,3,5}` (X): openings `1` to `n` on the left edge, all joined by one `internal` group; a `terminal` rating with its `conditions`.
 
 | Part | Source to use | Values to record (field) |
 | --- | --- | --- |
-| HLK-PM01, HLK-PM03 | Hi-Link HLK-PM01 and HLK-PM03 datasheets (hlktech.net product pages) | pin order and names (`pins`), input range (`acInput.range`), output voltage (`supply`), input-output isolation (`isolation`) |
+| HLK-PM01, HLK-PM03 | Hi-Link HLK-PM01 and HLK-PM03 datasheets (hlktech.net product pages) | pin order and names (`pins`), input range (`acInput.range`), output voltage (`supply`), input-output isolation (`isolation`: none stated, so `"unknown"`, ruling B2) |
+| IRM-03-5, IRM-03-3.3, IRM-05-5 | Mean Well IRM-03-SPEC and IRM-05-SPEC (2025-08-08), evidence ids `irm-03-5`, `irm-03-3v3`, `irm-05-5` | pins (bottom view in the evidence), input range, output voltage, `isolation: 'double'` from "Isolation Class II" (ruling B3) |
 | E26 lamp holder | Leviton 9880 keyless porcelain lampholder datasheet, and the datasheet of a 120 V E26 lamp for the range | holder rating (`ratings[0].volts`, `amps` or watts in a comment), earth terminal yes or no, lamp rated voltage (`conducts[0].range`) |
 | E27 lamp holder | a maker's E27 lampholder datasheet stating its rating and earth terminal (first choice Relco or Kaiser; record which), and a 230 V E27 lamp datasheet | same fields |
-| Fuse holder | Schurter FPG4 in-line fuse holder for 5 x 20 mm fuses datasheet | voltage and current rating (`ratings[0]`) |
+| Fuse holder | Littelfuse 150274 (01500274Z) in-line fuseholder for 5 x 20 mm fuses (replaces Schurter FPG4, which is a PCB-mount holder) | voltage and current rating (`ratings[0]`: 10 A at 350 V, AC and DC) |
 | KCD1 rocker | the KCD1-101 datasheet already cited in the module's `source` | AC switching rating (`ratings[0].volts`, `amps`), and any second rating (for example 10 A 125 V beside 6 A 250 V) as a second entry |
 | Wago 221-412, 221-413, 221-415 | Wago 221 series datasheets (wago.com, per item number) | IEC rated voltage and current, with the overvoltage category and pollution degree as `conditions`; UL values in a comment |
 
-Isolation is only what a source states (Global Constraints; Resolution 21): the Hi-Link modules get `EVIDENCE[id].isolation?.value ?? 'unknown'`, and no test voltage is turned into a class. If that leaves a module `unknown`, the spec's circuit "HLK-PM01 feeding an ESP32 (clean apart from cable-unverified)" cannot hold as written; Task 0 raised it, and Task 20 follows Michael's decision.
+Isolation is only what a source states (Global Constraints; Resolution 21): the modules get `EVIDENCE[id].isolation?.value ?? 'unknown'`, and no test voltage is turned into a class. The Hi-Link modules come out `unknown` (ruling B2) and the IRM modules `double` (ruling B3); Task 20's circuits expect exactly that.
 
 - [ ] **Step 1: Take every value from the evidence (no new lookups)**
 
@@ -6070,10 +6074,16 @@ const lamp = (id) => {
 }
 const rated = (id) => {
   const r = EVIDENCE[id].ratings[0]
-  return { volts: r.volts, amps: r.amps, conditions: r.conditions }
+  return { volts: r.volts, amps: r.amps, conditions: r.conditions, service: r.service }
+}
+/** Mean Well IRM: the datasheet's bottom-view pin rows, input range, output volts and the Class II isolation. */
+const irm = (id) => {
+  const e = EVIDENCE[id]
+  return { pins: e.pins.value, range: e.acInput.value, volts: e.output.value.volts, isolation: e.isolation?.value ?? 'unknown', protection: e.protection?.value }
 }
 const DATA = {
   'hlk-pm01': hlk('hlk-pm01'), 'hlk-pm03': hlk('hlk-pm03'),
+  'irm-03-5': irm('irm-03-5'), 'irm-03-3v3': irm('irm-03-3v3'), 'irm-05-5': irm('irm-05-5'),
   'lamp-holder-e26': lamp('lamp-holder-e26'), 'lamp-holder-e27': lamp('lamp-holder-e27'),
   'fuse-holder-5x20-inline': rated('fuse-holder-5x20-inline'),
   'wago-221-412': rated('wago-221-412'), 'wago-221-413': rated('wago-221-413'), 'wago-221-415': rated('wago-221-415'),
@@ -6086,7 +6096,22 @@ Before generating a part, check its evidence: `verdict: 'VERIFIED'`, or a NOT VE
 
 ```ts
 describe('built-in AC-DC modules, lamp holders, fuse holder, switch and lever connectors', () => {
-  it('HLK-PM01 and HLK-PM03 are converters with an AC input, a SELV output and an isolation class', () => {
+  it('the Mean Well IRM modules are converters with a Class II (double) barrier and their stated input range', () => {
+    for (const [id, out] of [['irm-03-5', '5V'], ['irm-03-3v3', '3V3'], ['irm-05-5', '5V']]) {
+      const m = load(id)
+      const info = mainsOf(m)
+      expect(m.source).toBe(EVIDENCE[id].sources.join(' '))
+      expect([info.acInput?.a, info.acInput?.b]).toEqual(['AC/L', 'AC/N'])
+      expect(info.acInput?.range).toEqual(EVIDENCE[id].acInput!.value)
+      expect(info.domains.find((d) => d.kind === 'selv')?.pins.sort()).toEqual(['+V', '-V'])
+      expect(info.isolation).toBe('double')
+      expect(EVIDENCE[id].isolation?.quote).toMatch(/Class II/)
+      expect(info.protection).toBe('class-2')
+      expect(m.pins.find((p) => 'name' in p && p.name === '+V')).toMatchObject({ type: 'power_out', supply: out })
+      expect(m.pins.some((p) => 'name' in p && p.name === 'NC')).toBe(false)
+    }
+  })
+  it('HLK-PM01 and HLK-PM03 are converters with an AC input, a SELV output and the isolation the evidence gives (unknown)', () => {
     for (const [id, out] of [['hlk-pm01', '5V'], ['hlk-pm03', '3V3']]) {
       const m = load(id)
       const info = mainsOf(m)
@@ -6099,15 +6124,15 @@ describe('built-in AC-DC modules, lamp holders, fuse holder, switch and lever co
       expect(m.pins.find((p) => 'name' in p && p.name === '+Vo')).toMatchObject({ type: 'power_out', supply: out })
     }
   })
-  it('the lamp holders are loads with the shell on N and a voltage range', () => {
+  it('the lamp holders are loads with a voltage range; the E26 shell is on N, the E27 shell has no requirement (ruling B7)', () => {
     for (const id of ['lamp-holder-e26', 'lamp-holder-e27']) {
       const info = mainsOf(load(id))
       expect(info.conducts).toEqual([expect.objectContaining({ pins: ['L', 'N'], kind: 'load' })])
       expect(info.conducts[0].range).not.toBeNull()
-      expect(info.requirement.get('L')).toBe('L')
-      expect(info.requirement.get('N')).toBe('N')
       expect(info.ratings.length).toBeGreaterThan(0)
     }
+    expect([mainsOf(load('lamp-holder-e26')).requirement.get('L'), mainsOf(load('lamp-holder-e26')).requirement.get('N')]).toEqual(['L', 'N'])
+    expect([mainsOf(load('lamp-holder-e27')).requirement.get('L'), mainsOf(load('lamp-holder-e27')).requirement.get('N')]).toEqual(['line', 'line'])
     expect(mainsOf(load('lamp-holder-e26')).conducts[0].range![1]).toBeLessThan(200)
     expect(mainsOf(load('lamp-holder-e27')).conducts[0].range![0]).toBeGreaterThan(200)
   })
@@ -6120,13 +6145,14 @@ describe('built-in AC-DC modules, lamp holders, fuse holder, switch and lever co
     const m = load('rocker-switch-kcd1')
     expect(m.electrical).toMatchObject({ model: 'switch', terminals: { a: '1', b: '2' } })
     expect(mainsOf(m).contacts).toEqual([{ id: 's', kind: 'switch', poles: [{ com: '1', no: '2', nc: null }] }])
-    expect(mainsOf(m).ratings[0]).toMatchObject({ kind: 'switching', service: 'ac', provenance: 'datasheet' })
+    expect(mainsOf(m).ratings[0]).toMatchObject({ kind: 'switching', service: EVIDENCE['rocker-switch-kcd1'].ratings![0].service, provenance: 'datasheet' })
   })
   it('each Wago lever connector is one node with a conditional terminal rating', () => {
     for (const [id, n] of [['wago-221-412', 2], ['wago-221-413', 3], ['wago-221-415', 5]] as const) {
       const m = load(id)
       expect(m.internal).toEqual([Array.from({ length: n }, (_, i) => String(i + 1))])
-      expect(mainsOf(m).ratings[0]).toMatchObject({ kind: 'terminal', service: 'ac', provenance: 'datasheet' })
+      // IEC 60664 ratings say neither AC nor DC: the evidence records ac/dc and the part follows it.
+      expect(mainsOf(m).ratings[0]).toMatchObject({ kind: 'terminal', service: EVIDENCE[id].ratings![0].service, provenance: 'datasheet' })
       expect(mainsOf(m).ratings[0].conditions).toBeTruthy()
     }
   })
@@ -6142,7 +6168,9 @@ Expected: FAIL.
 
 ```js
 // Generates the built-in mains loads and wiring parts (category Mains): the Hi-Link HLK-PM01 (5 V)
-// and HLK-PM03 (3.3 V) AC-DC modules, E26 (120 V) and E27 (230 V) lamp holders, an in-line 5 x 20 mm
+// and HLK-PM03 (3.3 V) AC-DC modules (isolation unknown: Hi-Link states no class), the Mean Well
+// IRM-03-5, IRM-03-3.3 and IRM-05-5 modules (Class II stated, recorded as double), E26 (120 V) and
+// E27 (230 V) lamp holders, an in-line 5 x 20 mm
 // fuse holder and the Wago 221-412, 221-413 and 221-415 lever connectors. Every pin order, range,
 // rating and isolation class comes from src/format/mainsEvidence.ts (Task 0), where each value
 // carries the datasheet line it comes from; isolation not stated there is "unknown".
@@ -6174,13 +6202,37 @@ for (const [id, volts, supply] of [['hlk-pm01', '5 V', '5V'], ['hlk-pm03', '3.3 
   }))
 }
 
-// Lamp holders: centre contact is L, the screw shell is N (the shell must never be on L); PE only when the reference has an earth terminal.
+// Mean Well IRM modules: the evidence gives the datasheet's BOTTOM view, so left and right are mirrored for this
+// top-view part: IRM-03 has AC/L and AC/N at one end and +V, -V at the other; IRM-05 has AC/L above AC/N at one
+// end and -V above +V at the other. NC is no connection and is not a pin.
+for (const [id, supply] of [['irm-03-5', '5V'], ['irm-03-3v3', '3V3'], ['irm-05-5', '5V']]) {
+  const d = DATA[id]
+  const types = { 'AC/L': {}, 'AC/N': {}, '+V': { type: 'power_out', supply }, '-V': { type: 'ground' } }
+  // IRM-05 stacks AC/L over AC/N and -V over +V; IRM-03 has each pair side by side (5.08 mm), drawn stacked here.
+  const ac = ['AC/L', 'AC/N'], dc = ['-V', '+V']
+  // Top view: the AC end is on the right (the datasheet's bottom view has it on the left).
+  const left = side('left', dc, types, 5)
+  const right = side('right', ac, types, 5)
+  const pins = [...left.pins, ...right.pins].map((p) => (p.name.startsWith('AC') ? { ...p, mains: 'line' } : p))
+  write(`${id}.json`, moduleJson({
+    id, name: `Mean Well ${id.toUpperCase().replace('3V3', '3.3')} AC-DC module (${d.volts} V, Class II)`, category: 'Mains', source: SRC[id], pins, wu: 8, hu: 5, inside: true,
+    electrical: {
+      model: 'converter', acInput: { a: 'AC/L', b: 'AC/N', range: d.range },
+      domains: [{ name: 'mains', pins: ac, kind: 'mains' }, { name: 'output', pins: ['+V', '-V'], kind: 'selv' }],
+      isolation: d.isolation, protection: d.protection,
+    },
+    shapes: [r(0, 0, 80, 50, HLK_BLACK, { radius: 3 }), r(14, 14, 52, 22, HLK_BLACK, { outline: false, label: id.toUpperCase(), labelColor: LABEL, labelSize: 7 })],
+  }))
+}
+
+// Lamp holders: centre contact L and screw shell N. E26: requirements L and N (the shell must never be on L). E27:
+// both leads `line`, no shell requirement (ruling B7). PE only when the reference has an earth terminal.
 for (const [id, base, d] of [['lamp-holder-e26', 'E26', DATA['lamp-holder-e26']], ['lamp-holder-e27', 'E27', DATA['lamp-holder-e27']]]) {
   const leads = ['L', 'N', ...(d.earth ? ['PE'] : [])]
   const left = side('left', ['L'], {}, 6)
   const right = side('right', ['N'], {}, 6)
   const bottom = d.earth ? side('bottom', ['PE'], {}, 6).pins : []
-  const pins = [...left.pins, ...right.pins, ...bottom].map((p) => ({ ...p, mains: p.name }))
+  const pins = [...left.pins, ...right.pins, ...bottom].map((p) => ({ ...p, mains: base === 'E27' && p.name !== 'PE' ? 'line' : p.name }))
   write(`${id}.json`, moduleJson({
     id, name: `Lamp holder ${base} (${d.lampVolts} V lamp)`, category: 'Mains', source: SRC[id], pins, wu: 6, hu: 6,
     electrical: {
@@ -6201,7 +6253,7 @@ for (const [id, base, d] of [['lamp-holder-e26', 'E26', DATA['lamp-holder-e26']]
     pins: [{ name: '1', side: 'left', type: 'passive' }, { name: '2', side: 'right', type: 'passive' }], wu: 8, hu: 4,
     electrical: {
       model: 'fuse', protective: [{ from: '1', to: '2', kind: 'fuse' }], params: { fuseRating: { unit: 'A' } }, settings: { fuse: ['fitted', 'absent'] },
-      ratings: [rating(['1', '2'], 'terminal', 'ac', d.volts, { amps: d.amps, provenance: 'datasheet' })],
+      ratings: [rating(['1', '2'], 'terminal', d.service, d.volts, { amps: d.amps, provenance: 'datasheet' })],
     },
     shapes: [r(8, 10, 64, 20, HLK_BLACK, { radius: 10 }), r(24, 13, 32, 14, CLEAR, { radius: 3 })],
   }))
@@ -6214,7 +6266,7 @@ for (const [id, n] of [['wago-221-412', 2], ['wago-221-413', 3], ['wago-221-415'
   const left = side('left', names, {}, n + 2)
   write(`${id}.json`, moduleJson({
     id, name: `Wago ${id.slice(5)} lever connector (${n} conductors)`, category: 'Mains', source: SRC[id], pins: left.pins, internal: [names], wu: 4, hu: n + 2,
-    electrical: { model: 'connector', ratings: [rating(names, 'terminal', 'ac', d.volts, { amps: d.amps, provenance: 'datasheet', conditions: d.conditions })] },
+    electrical: { model: 'connector', ratings: [rating(names, 'terminal', d.service, d.volts, { amps: d.amps, provenance: 'datasheet', conditions: d.conditions })] },
     shapes: [r(0, 0, 40, (n + 2) * 10, CLEAR, { radius: 3 }), ...left.at.map((y) => r(22, y - 4, 14, 8, ORANGE, { radius: 2 }))],
   }))
 }
@@ -6222,7 +6274,7 @@ for (const [id, n] of [['wago-221-412', 2], ['wago-221-413', 3], ['wago-221-415'
 finish('gen-mains-loads.mjs')
 ```
 
-`DATA` fields per id: Hi-Link `{ left, right, range, isolation }`; lamp holders `{ earth, protection?, range, lampVolts, volts, amps? }`; fuse holder `{ volts, amps }`; Wago `{ volts, amps, conditions }`. Adjust `wu`, `hu` and the art to the real proportions once the datasheet is open; keep lamp holder and fuse holder art heights an even number of grid units (the two-lead geometry test enforces it).
+`DATA` fields per id: Hi-Link `{ left, right, range, isolation }`; IRM `{ pins, range, volts, isolation, protection }`; lamp holders `{ earth, protection?, range, lampVolts, volts, amps? }`; fuse holder `{ volts, amps, service }`; Wago `{ volts, amps, conditions, service }`. Adjust `wu`, `hu` and the art to the real proportions once the datasheet is open; keep lamp holder and fuse holder art heights an even number of grid units (the two-lead geometry test enforces it).
 
 - [ ] **Step 5: Generate, validate, test**
 
@@ -6231,20 +6283,20 @@ Expected: PASS (including the existing two-lead geometry test and the KCD1's exi
 
 - [ ] **Step 6: Look at them**
 
-Run: `npm run build` then `node .claude/skills/circuitoon-add-part/scripts/shoot-parts.mjs hlk-pm01 hlk-pm03 lamp-holder-e26 lamp-holder-e27 fuse-holder-5x20-inline rocker-switch-kcd1 wago-221-412 wago-221-413 wago-221-415 --panel` and again with `--dark` (images land in the system temp folder under `circuitoon-shots`; pass `--out <dir>` to choose another), and Read every image. Check: pins meet their stubs, labels readable (AC on the Hi-Link modules), the lamp holders read as porcelain holders with a brass shell, the Wago openings line up with their pins, the Mains group in the Parts panel reads well. Redraw and re-shoot anything that does not.
+Run: `npm run build` then `node .claude/skills/circuitoon-add-part/scripts/shoot-parts.mjs hlk-pm01 hlk-pm03 irm-03-5 irm-03-3v3 irm-05-5 lamp-holder-e26 lamp-holder-e27 fuse-holder-5x20-inline rocker-switch-kcd1 wago-221-412 wago-221-413 wago-221-415 --panel` and again with `--dark` (images land in the system temp folder under `circuitoon-shots`; pass `--out <dir>` to choose another), and Read every image. Check: pins meet their stubs, labels readable (AC on the Hi-Link modules), the lamp holders read as porcelain holders with a brass shell, the Wago openings line up with their pins, the Mains group in the Parts panel reads well. Redraw and re-shoot anything that does not.
 
 - [ ] **Step 7: PRD and commit**
 
 Extend the PRD Mains row (values: Fuse rating on the fuse holder), move KCD1's note to "also a mains switch".
 
 ```bash
-git add scripts/gen-mains-loads.mjs modules/hlk-pm0*.json modules/lamp-holder-*.json modules/fuse-holder-5x20-inline.json modules/wago-221-*.json modules/rocker-switch-kcd1.json src/format/mainsParts.test.ts docs/PRD.md
-git commit -m "Mains parts: HLK AC-DC modules, lamp holders, fuse holder, KCD1 ratings, Wago" -m "Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>"
+git add scripts/gen-mains-loads.mjs modules/hlk-pm0*.json modules/irm-0*.json modules/lamp-holder-*.json modules/fuse-holder-5x20-inline.json modules/wago-221-*.json modules/rocker-switch-kcd1.json src/format/mainsParts.test.ts docs/PRD.md
+git commit -m "Mains parts: HLK and Mean Well IRM AC-DC modules, lamp holders, fuse holder, KCD1 ratings, Wago" -m "Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>"
 ```
 
 - [ ] **Step 8: Independent review (controller, not the implementer)**
 
-Reviewer checks pin order and names of both Hi-Link modules, their input ranges and the isolation class against the datasheet line that states it (none inferred), both lamp holders (shell on N, earth terminal, class, range), the fuse holder rating, the KCD1 switching rating, and each Wago rating with its conditions. Verdict per part. A MISMATCH or NOT VERIFIED verdict blocks the next batch until it is fixed, or brought to Michael and decided.
+Reviewer checks pin order and names of both Hi-Link modules and the three IRM modules (the IRM datasheet draws a bottom view: check the mirroring), their input ranges and the isolation (Hi-Link unknown; IRM double only because Mean Well writes "Class II", ruling B3), both lamp holders (E26 shell on N, E27 without a shell requirement, earth terminal, class, range), the fuse holder rating, the KCD1 switching rating, and each Wago rating with its conditions. Verdict per part. A MISMATCH or NOT VERIFIED verdict blocks the next batch until it is fixed, or brought to Michael and decided.
 
 ---
 
@@ -6259,7 +6311,7 @@ Reviewer checks pin order and names of both Hi-Link modules, their input ranges 
 - Consumes: `rating` (Task 15).
 - Produces (category Mains, designator X): a pluggable terminal block per position count, each position `n` a screw (wire) terminal on the left and its PCB header pin `n pcb` (label `n`) on the right, joined by `internal` (the header side to plug side zero edge, spec 1.2). Phoenix parts carry `datasheet` ratings, each with the `conditions` Phoenix ties it to; the clones carry `unverified` ratings.
 
-Expected Phoenix item numbers (verify every one on phoenixcontact.com; the datasheet wins; record plug and header numbers in the module name and `source`):
+Expected Phoenix item numbers (verify every one on phoenixcontact.com; the datasheet wins; record plug and header numbers in the module name and `source`). Task 0 read 1757019, 1757242, 1757022, 1757255, 1803578, 1803277 and 1803581; phoenixcontact.com then answered HTTP 403. Ruling B8: retry the other pages here (slowly, a few minutes apart, in a headless Chrome); add each read page's values to the evidence with its quote; if a page still cannot be read, do not generate that part and bring it to the controller for Michael. MC 1,5 is rated only 160 V under overvoltage category III, so every MC part keeps its conditions and gets `rating-conditional` at 230 V:
 
 | Positions | MSTB 2,5/ n-ST-5,08 (plug) | MSTBA 2,5/ n-G-5,08 (header) | MC 1,5/ n-ST-3,81 (plug) | MC 1,5/ n-G-3,81 (header) |
 | --- | --- | --- | --- | --- |
@@ -6279,7 +6331,7 @@ const PHOENIX = { mstb: {}, mc: {} }
 for (const [series, pitch] of [['mstb', '508'], ['mc', '381']])
   for (let n = 2; n <= 6; n++) {
     const e = EVIDENCE[`terminal-block-${series}-${pitch}-${n}`]
-    PHOENIX[series][n] = { plug: e.extra.plug.value, header: e.extra.header.value, url: e.sources.join(' '), ratings: e.ratings.map((r) => ({ volts: r.volts, amps: r.amps, conditions: r.conditions })) }
+    PHOENIX[series][n] = { plug: e.extra.plug.value, header: e.extra.header.value, url: e.sources.join(' '), ratings: e.ratings.map((r) => ({ volts: r.volts, amps: r.amps, conditions: r.conditions, service: r.service })) }
   }
 const CLONE = Object.fromEntries(['terminal-block-kf2edg-508-2', 'terminal-block-kf2edg-508-3', 'terminal-block-kf301-500-2', 'terminal-block-kf301-500-3'].map((id) => {
   const e = EVIDENCE[id]
@@ -6312,7 +6364,8 @@ describe('built-in terminal blocks', () => {
         const ratings = mainsOf(m).ratings
         expect(ratings.map((r) => [r.volts, r.amps, r.conditions])).toEqual(EVIDENCE[id].ratings!.map((r) => [r.volts, r.amps ?? null, r.conditions ?? null]))
         expect(ratings.length).toBeGreaterThan(0)
-        for (const r of ratings) expect(r).toMatchObject({ kind: 'terminal', service: 'ac', provenance: 'datasheet' })
+        // IEC 60664 ratings say neither AC nor DC: the evidence records ac/dc and the part follows it.
+        for (const r of ratings) expect(r).toMatchObject({ kind: 'terminal', service: EVIDENCE[id].ratings![0].service, provenance: 'datasheet' })
         expect(ratings.every((r) => r.conditions)).toBe(true)
       })
   for (const id of ['terminal-block-kf2edg-508-2', 'terminal-block-kf2edg-508-3', 'terminal-block-kf301-500-2', 'terminal-block-kf301-500-3'])
@@ -6352,7 +6405,7 @@ function block({ id, name, source, n, ratings, color }) {
   const right = side('right', pos.flatMap((p, i) => (i ? [null, `${p} pcb|${p}`] : [`${p} pcb|${p}`])), {}, hu)
   write(`${id}.json`, moduleJson({
     id, name, category: 'Mains', source, pins: [...left.pins, ...right.pins], internal: pos.map((p) => [p, `${p} pcb`]), wu: 6, hu, inside: true,
-    electrical: { model: 'terminal-block', ratings: ratings.map((x) => rating([...pos, ...pos.map((p) => `${p} pcb`)], 'terminal', 'ac', x.volts, { ...(x.amps ? { amps: x.amps } : {}), provenance: x.provenance, ...(x.conditions ? { conditions: x.conditions } : {}) })) },
+    electrical: { model: 'terminal-block', ratings: ratings.map((x) => rating([...pos, ...pos.map((p) => `${p} pcb`)], 'terminal', x.service ?? 'ac/dc', x.volts, { ...(x.amps ? { amps: x.amps } : {}), provenance: x.provenance, ...(x.conditions ? { conditions: x.conditions } : {}) })) },
     shapes: [
       r(0, 0, 36, hu * 10, color, { radius: 3 }), r(36, 0, 24, hu * 10, GREEN_DARK, { radius: 3 }),
       ...left.at.flatMap((y) => [r(10, y - 6, 12, 12, METAL, { radius: 6 }), r(15, y - 4, 2, 8, SLOT, { outline: false })]),
@@ -6413,7 +6466,7 @@ Reviewer checks every Phoenix item number (plug and header) against phoenixconta
 **Interfaces:**
 - Consumes: every part of Tasks 16 to 19; `checkDiagram`.
 - Produces:
-  - `relay-module-1ch-5v`: pins unchanged; `electrical` gains `contacts: [{ id: 'k', kind: 'relay', poles: [{ com: 'COM', no: 'NO', nc: 'NC' }] }]`, `domains: [{ name: 'contacts', pins: ['NO', 'COM', 'NC'], kind: 'mains' }, { name: 'control', pins: ['IN', 'DC-', 'DC+'], kind: 'selv' }]`, `isolation` from the Songle SRD datasheet with `isolationProvenance: 'unverified'`, and the Songle contact ratings as `switching` ratings with `provenance: 'unverified'` (spec 1.4: the relay's switching rating, not the module's insulation).
+  - `relay-module-1ch-5v`: pins unchanged; `electrical` gains `contacts: [{ id: 'k', kind: 'relay', poles: [{ com: 'COM', no: 'NO', nc: 'NC' }] }]`, `domains: [{ name: 'contacts', pins: ['NO', 'COM', 'NC'], kind: 'mains' }, { name: 'control', pins: ['IN', 'DC-', 'DC+'], kind: 'selv' }]`, `isolation: 'unknown'` (the Songle SRD datasheet states no coil-to-contact class, only a 1500 VAC dielectric test; ruling B2), and the Songle contact ratings as `switching` ratings with `provenance: 'unverified'` (spec 1.4: the relay's switching rating, not the module's insulation).
   - `ssr-fotek-25da` (K, category Mains): load terminals `1`, `2` (the contact pole, an OFF state that leaks), control terminals `3` (+, `input`) and `4` (-, `ground`) in the physical order on the case; `contacts: [{ id: 'k', kind: 'ssr', poles: [{ com: '1', no: '2' }] }]`; domains; isolation; a `switching` rating whose `conditions` state the heatsink and derating; the control range and off-state leakage in the name and a comment.
 
 | Part | Source | Values to record (field) |
@@ -6438,7 +6491,7 @@ const FOTEK = {
 }
 ```
 
-Before generating a part, check its evidence: `verdict: 'VERIFIED'`, or a NOT VERIFIED item Michael has decided on (the evidence log records his decision: generate with a value left unknown, or do not generate). A part he has not cleared is not generated in this task, and its test cases are removed from this batch with a note in the commit message. No value here is looked up again or filled from this plan. The relay module keeps `isolationProvenance: 'unverified'` (Resolution 26: a clone board carrying its relay's stated class).
+Before generating a part, check its evidence: `verdict: 'VERIFIED'`, or a NOT VERIFIED item Michael has decided on (the evidence log records his decision: generate with a value left unknown, or do not generate). A part he has not cleared is not generated in this task, and its test cases are removed from this batch with a note in the commit message. No value here is looked up again or filled from this plan. The relay module and the SSR get `isolation: 'unknown'` from the evidence (ruling B2); `isolationProvenance` is not set, since there is no stated class to carry (Resolution 26 applies only to a clone board carrying its relay's stated class).
 
 - [ ] **Step 2: Write the failing tests**
 
@@ -6446,11 +6499,11 @@ Append to `src/format/mainsParts.test.ts`:
 
 ```ts
 describe('relay module and SSR', () => {
-  it('the relay module switches COM between NC and NO, its rating and isolation unverified', () => {
+  it('the relay module switches COM between NC and NO, its rating unverified and its isolation unknown', () => {
     const info = mainsOf(load('relay-module-1ch-5v'))
     expect(info.contacts).toEqual([{ id: 'k', kind: 'relay', poles: [{ com: 'COM', no: 'NO', nc: 'NC' }] }])
     expect(info.domains.map((d) => [d.kind, [...d.pins].sort()])).toEqual([['mains', ['COM', 'NC', 'NO']], ['selv', ['DC+', 'DC-', 'IN']]])
-    expect(info.isolationProvenance).toBe('unverified')
+    expect(info.isolation).toBe('unknown')
     expect(info.ratings.every((r) => r.kind === 'switching' && r.provenance === 'unverified')).toBe(true)
   })
   it('the Fotek SSR-25DA leaks when off and carries its derating as a condition', () => {
@@ -6461,6 +6514,7 @@ describe('relay module and SSR', () => {
     expect(info.contacts).toEqual([{ id: 'k', kind: 'ssr', poles: [{ com: '1', no: '2', nc: null }] }])
     expect(info.ratings[0]).toMatchObject({ kind: 'switching', service: 'ac', provenance: 'datasheet' })
     expect(info.ratings[0].conditions).toMatch(/heatsink|derat/i)
+    expect(info.isolation).toBe('unknown')
   })
 })
 ```
@@ -6506,7 +6560,10 @@ function onOutlet(uid: string, designator: string, module: string, outlet: PartI
 const rules = (d: Diagram) => [...new Set(checkDiagram(d).map((f) => f.rule))].sort()
 
 describe('the spec circuits on built-in parts', () => {
-  it('relay switching a fused lamp from a US outlet with stripped 18 AWG wires (only the relay module\'s unverified-rating and cable-unverified warnings)', () => {
+  // Ruling B2 (Michael, 2026-09-27): the Songle relay and the Hi-Link modules state no insulation class, so their
+  // low-voltage sides count as live when mains is present: these circuits report rule-1 errors with the
+  // unknown-isolation wording. The clean AC-DC circuit uses a Mean Well IRM module (Class II stated).
+  it('relay switching a fused lamp from a US outlet with stripped 18 AWG wires: rule-1 errors because the relay module\'s isolation is unknown', () => {
     const xs = at('xs1', 'XS1', 'outlet-us-5-15r-duplex')
     const e26 = load('lamp-holder-e26')
     const earthed = mainsOf(e26).requirement.get('PE') === 'PE'
@@ -6519,13 +6576,26 @@ describe('the spec circuits on built-in parts', () => {
       ...(earthed ? [stripped('xp1|PE', 'e1|PE')] : []),
       dc('k1|DC+', 'u1|VIN'), dc('k1|DC-', 'u1|GND'), dc('k1|IN', 'u1|D23'),
     ])
-    expect(rules(d)).toEqual(['cable-unverified', 'rating-unverified'])
+    expect(rules(d)).toEqual(['cable-unverified', 'mains-to-low-voltage', 'rating-unverified'])
+    const lv = checkDiagram(d).filter((f) => f.rule === 'mains-to-low-voltage')
+    expect(lv.length).toBeGreaterThan(0)
+    for (const f of lv) expect([f.severity, f.message]).toEqual(['error', expect.stringContaining("K1's low-voltage side is separated from mains only by insulation of unknown quality")])
     expect(checkDiagram(d).filter((f) => f.rule === 'rating-unverified').every((f) => f.subject === 'K1')).toBe(true)
   })
-  it('HLK-PM01 feeding an ESP32 (clean apart from cable-unverified)', () => {
+  it('HLK-PM01 feeding an ESP32: rule-1 errors because the HLK-PM01\'s isolation is unknown', () => {
     const xs = at('xs1', 'XS1', 'outlet-us-5-15r-duplex')
     const d = sheet([xs, onOutlet('xp1', 'XP1', 'plug-us-5-15p', xs), at('ps1', 'PS1', 'hlk-pm01', 300), at('u1', 'U1', 'esp32-cam', 600)], [
       stripped('xp1|L', 'ps1|AC 1'), stripped('xp1|N', 'ps1|AC 2'), dc('ps1|+Vo', 'u1|5V'), dc('ps1|-Vo', 'u1|GND'),
+    ])
+    expect(rules(d)).toEqual(['cable-unverified', 'mains-to-low-voltage'])
+    const lv = checkDiagram(d).filter((f) => f.rule === 'mains-to-low-voltage')
+    expect(lv.length).toBeGreaterThan(0)
+    for (const f of lv) expect([f.severity, f.message]).toEqual(['error', expect.stringContaining("PS1's low-voltage side is separated from mains only by insulation of unknown quality")])
+  })
+  it('Mean Well IRM-03-5 feeding an ESP32 (clean apart from cable-unverified)', () => {
+    const xs = at('xs1', 'XS1', 'outlet-us-5-15r-duplex')
+    const d = sheet([xs, onOutlet('xp1', 'XP1', 'plug-us-5-15p', xs), at('ps1', 'PS1', 'irm-03-5', 300), at('u1', 'U1', 'esp32-cam', 600)], [
+      stripped('xp1|L', 'ps1|AC/L'), stripped('xp1|N', 'ps1|AC/N'), dc('ps1|+V', 'u1|5V'), dc('ps1|-V', 'u1|GND'),
     ])
     expect(rules(d)).toEqual(['cable-unverified'])
   })
@@ -6560,7 +6630,8 @@ In the relay block replace `electrical: { model: 'relay', params: {} }` with:
       // The contacts are the Songle relay's; the board around them is a clone with no rating of its own (spec 1.4).
       contacts: [{ id: 'k', kind: 'relay', poles: [{ com: 'COM', no: 'NO', nc: 'NC' }] }],
       domains: [{ name: 'contacts', pins: ['NO', 'COM', 'NC'], kind: 'mains' }, { name: 'control', pins: ['IN', 'DC-', 'DC+'], kind: 'selv' }],
-      isolation: SONGLE.isolation, isolationProvenance: 'unverified',
+      // Ruling B2: the Songle datasheet states no class, so SONGLE.isolation is 'unknown'.
+      isolation: SONGLE.isolation,
       ratings: SONGLE.ratings.map((x) => ({ pins: ['NO', 'COM', 'NC'], kind: 'switching', service: x.service, volts: x.volts, amps: x.amps, provenance: 'unverified' })),
     },
 ```
@@ -6601,7 +6672,7 @@ and append the SSR block (before `finish`):
 - [ ] **Step 5: Generate, validate, test**
 
 Run: `node scripts/gen-outputs.mjs && npm run validate && npm run check:gen && npx tsc --noEmit && npm test`
-Expected: PASS, including `checks.circuits.test.ts` (the relay module on a DC-only sheet: no mains findings) and the new circuits. The relay and HLK circuit expectations below are the spec's; they hold only if the evidence states adequate classes (Resolution 21). If Michael decided otherwise at Task 0, this task uses the expected results he approved, recorded in the evidence log; never change an expected result on your own.
+Expected: PASS, including `checks.circuits.test.ts` (the relay module on a DC-only sheet: no mains findings) and the new circuits. The relay and HLK circuit expectations are the ones Michael approved at Task 0 (ruling B2, recorded in the evidence log): rule-1 errors with the unknown-isolation wording, and a clean IRM-03-5 circuit instead of the spec's clean HLK circuit. Never change an expected result on your own.
 
 - [ ] **Step 6: Look at them**
 
@@ -7623,7 +7694,7 @@ The controller runs the `consult-astra` skill on the whole `mains` branch (spec 
 | 1.6 Declared PE bond; undeclared DC ground on PE warns | 2, 9 | `mainsRules.test.ts` "a DC ground joined to earth without a declared bond warns" |
 | 1.6 Protective conductors: parallel and redundant paths, never through a low-voltage pin | 8 | `mainsProtective.test.ts` (all five, including the series switch path) |
 | 1.7 Fuse holders: protective edge, optional `fuseRating`, fitted setting; `settings` validated, bad ones dropped | 1, 2, 3, 10, 18 | `module.test.ts`, `diagram.test.ts` settings tests; `mainsRules.test.ts` "empty fuse holder vs fitted with unknown rating", "never blames an empty fuse holder that is not the cause" |
-| 1.7 UK integral BS 1362 fuse | 13, 17 | `plugSeating.test.ts` "UK fused plug protecting a cord-wired lamp (clean)"; `mainsParts.test.ts` UK devices |
+| 1.7 UK integral BS 1362 fuse | 13, 17 | `plugSeating.test.ts` "UK fused plug protecting a cord-wired lamp (clean)"; `mainsParts.test.ts` UK cord plugs (the UK charger and adapter have no fuse edge: Mean Well states none, ruling B6) |
 | 1.7 Outlets on a branch breaker; rule 8 for the project's wiring | 10 | `mainsRules.test.ts` rule 8 tests |
 | 1.8 Cable rule on hazardous and protective wires; unsuitable ends, 24 AWG or thinner; unverified wording | 10 | `mainsRules.test.ts` rule 9 tests |
 | 2 Plug profiles; only profile contacts are mount legs | 2, 13 | `plugSeating.test.ts` matrix and mapping tests |
@@ -7661,7 +7732,7 @@ The controller runs the `consult-astra` skill on the whole `mains` branch (spec 
 | 6 Empty state, never beside an incomplete or unknown result | 22 | `mainsNotice.test.ts` |
 | 6 Notice whole in every export and in exported JSON; PRD | 22 | `mainsNotice.test.ts` (footer at 80, 400 and 1200 px, overlong words, JSON notes); `check:mains-ui` (print, export) |
 | 7 Loader cases | 1 | `diagram.test.ts` |
-| 7 The spec's circuits | 20 | `mainsCircuits.test.ts` (expectations as Michael decides at Task 0 where the evidence disagrees) |
+| 7 The spec's circuits | 20 | `mainsCircuits.test.ts` (ruling B2: the relay and HLK circuits expect rule-1 errors, "isolation unknown"; the clean AC-DC circuit uses a Mean Well IRM-03-5) |
 | 7 Performance at 16 groups within a set budget; checker off the drag path; one analysis per edit, none during a gesture | 5, 11, 21, 24 | `mains.perf.test.ts` checkpoint and full sheet; `mains.test.ts` cache identity; `inspectorLooks.test.ts`; `perf-breadboard.mjs` |
 | 7 Browser check `check:mains-ui` | 23 | the script itself, light and dark screenshots looked at |
 | 7 Independent review of every part; Astra reviews the build | 0, 16 to 20, 24 | controller reviews; `consult-astra` in Task 24 Step 5 |
