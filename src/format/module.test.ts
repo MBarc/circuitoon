@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
-import { insideLabelSides, layoutModule, usesInsideLabels, validParamValue, commonReturn, declaredReturns, externalPower, validateModule, voltageOutputs, type ModuleDef } from './module.ts'
+import { insideLabelSides, layoutModule, usesInsideLabels, validParamValue, commonReturn, declaredReturns, externalPower, validateModule, voltageOutputs, partSetting, type ModuleDef } from './module.ts'
 import { load } from './builtinModules.testing.ts'
 
 const base = { format: 'circuitoon-module/1', id: 'thing', name: 'Thing' }
@@ -295,5 +295,34 @@ describe('usesInsideLabels', () => {
       if (!r.ok) throw new Error(`${file}: ${r.errors.join('; ')}`)
       expect(usesInsideLabels(r.module)).toBe(boardFiles.has(file))
     }
+  })
+})
+
+describe('mains value params', () => {
+  const pins = [{ name: 'A', side: 'left' }]
+  it('accepts an acVoltage from 1 to 1000 VAC and rejects anything else', () => {
+    expect(validateModule({ ...base, pins, electrical: { params: { acVoltage: { unit: 'VAC', default: 230 } } } }).ok).toBe(true)
+    const r = validateModule({ ...base, pins, electrical: { params: { acVoltage: { unit: 'V', default: 2000 } } } })
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.errors).toEqual(['electrical.params.acVoltage.unit: must be "VAC"', 'electrical.params.acVoltage.default: must be from 1 to 1000'])
+  })
+  it('lets a fuseRating leave its default out (unknown), but not give a bad one', () => {
+    expect(validateModule({ ...base, pins, electrical: { params: { fuseRating: { unit: 'A' } } } }).ok).toBe(true)
+    const r = validateModule({ ...base, pins, electrical: { params: { fuseRating: { unit: 'A', default: 0 } } } })
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.errors).toEqual(['electrical.params.fuseRating.default: must be above 0, up to 100, or left out'])
+  })
+  it('checks electrical.settings: a list of 2 or more different choices', () => {
+    expect(validateModule({ ...base, pins, electrical: { settings: { fuse: ['fitted', 'absent'] } } }).ok).toBe(true)
+    const r = validateModule({ ...base, pins, electrical: { settings: { fuse: ['fitted'] } } })
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.errors).toEqual(['electrical.settings.fuse: must be a list of 2 or more different choices, the first the default'])
+  })
+  it('reads a part setting: its stored choice when valid, else the first choice', () => {
+    const m = { ...base, pins, electrical: { settings: { fuse: ['fitted', 'absent'] } } } as ModuleDef
+    expect(partSetting({}, m, 'fuse')).toBe('fitted')
+    expect(partSetting({ settings: { fuse: 'absent' } }, m, 'fuse')).toBe('absent')
+    expect(partSetting({ settings: { fuse: 'blown' } }, m, 'fuse')).toBe('fitted')
+    expect(partSetting({}, m, 'colour')).toBeNull()
   })
 })

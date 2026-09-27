@@ -124,10 +124,16 @@ export const representableValue = (v: unknown): v is number =>
  * representable (see VALUE_MIN); on top of that a 0 ohm resistor is a real part (a jumper), a
  * capacitance must be above 0 and a voltage may be negative.
  */
-export const PARAM_RULES: Record<string, { unit: string; valid: (v: number) => boolean; range: string }> = {
+export const PARAM_RULES: Record<string, { unit: string; valid: (v: number) => boolean; range: string; optional?: boolean }> = {
   resistance: { unit: 'ohm', valid: (v) => v >= 0, range: '0, or from 1e-15 to 1e12' },
   capacitance: { unit: 'F', valid: (v) => v > 0, range: 'from 1e-15 to 1e12' },
   voltage: { unit: 'V', valid: () => true, range: '0, or a magnitude from 1e-15 to 1e12' },
+  // The nominal RMS line-to-neutral voltage of an AC source (an outlet). A separate param from the
+  // DC `voltage`, so every param keeps one unit.
+  acVoltage: { unit: 'VAC', valid: (v) => v >= 1 && v <= 1000, range: 'from 1 to 1000' },
+  // A fuse's rating. Optional: a fuse holder leaves the default out, so the rating is unknown until
+  // the user sets it (a missing rating is never guessed).
+  fuseRating: { unit: 'A', valid: (v) => v > 0 && v <= 100, range: 'above 0, up to 100', optional: true },
 }
 
 /** True when `v` is a valid value for the named param: representable and allowed by PARAM_RULES. */
@@ -269,8 +275,19 @@ export function validateModule(raw: unknown): ValidationResult {
           continue
         }
         if (p.unit !== rule.unit) errors.push(`${at}.unit: must be "${rule.unit}"`)
-        if (!validParamValue(name, p.default)) errors.push(`${at}.default: must be ${rule.range}`)
+        if (!(rule.optional && p.default === undefined) && !validParamValue(name, p.default))
+          errors.push(`${at}.default: must be ${rule.range}${rule.optional ? ', or left out' : ''}`)
       }
+  }
+
+  // Enumerated part choices (a fuse holder's fitted or absent fuse); the first choice is the default.
+  if (isObj(raw.electrical) && raw.electrical.settings !== undefined) {
+    const s = raw.electrical.settings
+    if (!isObj(s)) errors.push('electrical.settings: must be an object of setting name to a list of choices')
+    else
+      for (const [k, v] of Object.entries(s))
+        if (!Array.isArray(v) || v.length < 2 || v.some((c) => typeof c !== 'string' || c === '') || new Set(v).size !== v.length)
+          errors.push(`electrical.settings.${k}: must be a list of 2 or more different choices, the first the default`)
   }
 
   if (isObj(raw.electrical) && raw.electrical.external !== undefined) {
@@ -471,4 +488,22 @@ export function layoutModule(m: ModuleDef): ModuleLayout {
   let lay = layoutCache.get(m)
   if (!lay) layoutCache.set(m, (lay = computeLayout(m)))
   return lay
+}
+
+/** A module's enumerated part settings (`electrical.settings`): each name with its choices, the first the default. */
+export function moduleSettings(m: ModuleDef): Record<string, string[]> {
+  const e = m.electrical
+  if (!isObj(e) || !isObj(e.settings)) return {}
+  return Object.fromEntries(
+    Object.entries(e.settings).filter((x): x is [string, string[]] => Array.isArray(x[1]) && x[1].length > 1 && x[1].every((c) => typeof c === 'string')),
+  )
+}
+
+/** A part's choice for one setting: its stored choice when the module offers it, else the module's first choice; null when the module has no such setting. */
+export function partSetting(part: { settings?: Record<string, string> }, m: ModuleDef, name: string): string | null {
+  const all = moduleSettings(m)
+  if (!Object.hasOwn(all, name)) return null
+  const choices = all[name]
+  const stored = part.settings?.[name]
+  return stored !== undefined && choices.includes(stored) ? stored : choices[0]
 }

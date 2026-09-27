@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { addPart, addWire, nextUid, clearWireRoute, deleteSelection, sameEndpoint, setWireRoute, designatorPrefix, moveParts, nextDesignator, reconnectWire, rotateParts, setWireEnds, settleDrop, settleMounts, settleSeats, updatePart, updatePartValue, updateWire, withMounted, settlingOf } from './ops.ts'
+import { addPart, addWire, nextUid, clearWireRoute, deleteSelection, sameEndpoint, setWireRoute, designatorPrefix, moveParts, nextDesignator, reconnectWire, rotateParts, setWireEnds, settleDrop, settleMounts, settleSeats, updatePart, updatePartValue, updatePartSetting, clearPartValue, updateWire, withMounted, settlingOf } from './ops.ts'
 import { emptyDiagram, type Diagram } from '../format/diagram.ts'
 import type { ModuleDef } from '../format/module.ts'
 import { parseValue } from '../format/values.ts'
@@ -589,5 +589,28 @@ describe('cable ends', () => {
   it('keeps the ends when a wire is reconnected', () => {
     const d = setWireEnds(wired(), ['w1'], { to: 'alligator' })
     expect(reconnectWire(d, 'w1', 'to', { part: 'p3', pin: '2' })!.connections[0].ends).toEqual({ to: 'alligator' })
+  })
+})
+
+describe('part settings and optional values', () => {
+  const fuse: ModuleDef = {
+    format: 'circuitoon-module/1', id: 'fuse-holder-test', name: 'Fuse holder', pins: [{ name: '1', side: 'left' }, { name: '2', side: 'right' }],
+    electrical: { params: { fuseRating: { unit: 'A' } }, settings: { fuse: ['fitted', 'absent'] } },
+  }
+  it('sets a setting to one of its choices, one diagram per real change', () => {
+    const d = addPart(emptyDiagram(), fuse, 0, 0).diagram
+    const next = updatePartSetting(d, 'p1', 'fuse', 'absent')
+    expect(next.parts[0].settings).toEqual({ fuse: 'absent' })
+    expect(updatePartSetting(next, 'p1', 'fuse', 'absent')).toBe(next)
+    expect(updatePartSetting(d, 'p1', 'fuse', 'fitted')).toBe(d)
+    expect(updatePartSetting(d, 'p1', 'fuse', 'blown')).toBe(d)
+  })
+  it('sets and clears an optional value', () => {
+    const d = addPart(emptyDiagram(), fuse, 0, 0).diagram
+    const set = updatePartValue(d, 'p1', 'fuseRating', 2, 'A')
+    expect(set.parts[0].values).toEqual({ fuseRating: { value: 2, unit: 'A' } })
+    const cleared = clearPartValue(set, 'p1', 'fuseRating')
+    expect(cleared.parts[0].values).toBeUndefined()
+    expect(clearPartValue(cleared, 'p1', 'fuseRating')).toBe(cleared)
   })
 })

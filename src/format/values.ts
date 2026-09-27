@@ -7,7 +7,7 @@ const OHM = 'Ω' // ohm sign, U+2126 (not the Greek capital omega, U+03A9)
 const OMEGA = 'Ω'
 const MICRO = 'µ'
 
-const UNIT_SYMBOLS: Record<string, string> = { ohm: OHM, F: 'F', V: 'V', A: 'A' }
+const UNIT_SYMBOLS: Record<string, string> = { ohm: OHM, F: 'F', V: 'V', VAC: 'VAC', A: 'A' }
 
 /** SI prefixes usable on a part value, smallest exponent first. */
 const PREFIXES: { exp: number; symbol: string }[] = [
@@ -59,6 +59,7 @@ function matchesUnit(s: string, unit: string): boolean {
   if (unit === 'ohm') return low === 'ohm' || low === 'ohms' || s === OHM || s === OMEGA
   if (unit === 'F') return low === 'f'
   if (unit === 'V') return low === 'v'
+  if (unit === 'VAC') return low === 'v' || low === 'vac'
   return low === unit.toLowerCase()
 }
 
@@ -256,6 +257,32 @@ export function partValue(part: { values?: Record<string, unknown> }, m: ModuleD
   const stored = part.values?.[p.name]
   if (isObj(stored) && stored.unit === p.unit && validParamValue(p.name, stored.value)) return { name: p.name, unit: p.unit, value: stored.value }
   return { name: p.name, unit: p.unit, value: p.default }
+}
+
+/**
+ * Every editable param the module declares in its own unit, in PARAM_RULES order, with its default:
+ * null for an optional param left without one (a fuse holder's rating, unknown until set).
+ */
+export function editableParams(m: ModuleDef): { name: string; unit: string; default: number | null }[] {
+  const e = m.electrical
+  if (!isObj(e) || !isObj(e.params)) return []
+  const out: { name: string; unit: string; default: number | null }[] = []
+  for (const name of PRIMARY_PARAM_NAMES) {
+    const p = e.params[name]
+    if (!isObj(p) || p.unit !== PARAM_RULES[name].unit) continue
+    if (validParamValue(name, p.default)) out.push({ name, unit: p.unit, default: p.default })
+    else if (PARAM_RULES[name].optional && p.default === undefined) out.push({ name, unit: p.unit, default: null })
+  }
+  return out
+}
+
+/** A part's value for one named param: its valid stored override, else the module default; null when neither exists. */
+export function paramValue(part: { values?: Record<string, unknown> }, m: ModuleDef, name: string): number | null {
+  const p = editableParams(m).find((x) => x.name === name)
+  if (!p) return null
+  const stored = part.values?.[name]
+  if (isObj(stored) && stored.unit === p.unit && validParamValue(name, stored.value)) return stored.value
+  return p.default
 }
 
 /** "R1  4.7 kΩ" when the part has an editable value, else just its designator. Shared by the live editor canvas and the read-only sheet preview. */

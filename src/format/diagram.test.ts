@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { computeRoutes, labelAnchor, partObstacles, routeWire, routingKey, wireColor, wireWidth, wirePaths, type Diagram } from './diagram.ts'
+import { computeRoutes, labelAnchor, partObstacles, routeWire, routingKey, wireColor, wireWidth, wirePaths, validateDiagram, VALUE_DROPPED, type Diagram } from './diagram.ts'
 import type { ModuleDef } from './module.ts'
 import { manualRouteBlocked } from './wireEdit.ts'
 
@@ -568,5 +568,45 @@ describe('wirePaths', () => {
     expect(out).toHaveLength(500)
     expect(out.every((w) => w.cables[0] && w.cables[1])).toBe(true)
     expect(ms).toBeLessThan(30)
+  })
+})
+
+describe('part settings and mains values on load', () => {
+  const fuse = { format: 'circuitoon-module/1', id: 'fuse', name: 'Fuse holder', pins: [{ name: '1', side: 'left' }, { name: '2', side: 'right' }],
+    electrical: { params: { fuseRating: { unit: 'A' } }, settings: { fuse: ['fitted', 'absent'] } } }
+  const file = (part: Record<string, unknown>) => ({ format: 'circuitoon-diagram/1', title: 't', modules: { fuse }, parts: [{ uid: 'p1', designator: 'F1', module: 'fuse', x: 0, y: 0, ...part }], connections: [] })
+  it('keeps a valid setting', () => {
+    const r = validateDiagram(file({ settings: { fuse: 'absent' } }))
+    expect(r.ok && r.diagram.parts[0].settings).toEqual({ fuse: 'absent' })
+    expect(r.ok && r.warnings).toEqual([])
+  })
+  it('drops an unknown choice or setting with a warning, so the default is used', () => {
+    const r = validateDiagram(file({ settings: { fuse: 'blown', colour: 'red' } }))
+    expect(r.ok).toBe(true)
+    if (!r.ok) return
+    expect(r.diagram.parts[0].settings).toBeUndefined()
+    expect(r.warnings).toEqual([
+      'parts[0].settings.fuse: F1 has fuse "blown", but it must be "fitted" or "absent"; it was dropped and the default "fitted" is used',
+      'parts[0].settings.colour: F1 has no setting "colour", so it was dropped',
+    ])
+  })
+  it('drops settings that are not an object', () => {
+    const r = validateDiagram(file({ settings: 'fitted' }))
+    expect(r.ok && r.diagram.parts[0].settings).toBeUndefined()
+    expect(r.ok && r.warnings).toEqual(['parts[0].settings: must be an object of setting name to choice, so it was dropped and the defaults are used'])
+  })
+  it('drops a fuseRating in the wrong unit, as for any value', () => {
+    const r = validateDiagram(file({ values: { fuseRating: { value: 2, unit: 'V' } } }))
+    expect(r.ok && r.warnings[0]).toBe(`parts[0].values.fuseRating: F1 has fuseRating 2 V, but fuseRating must be in A; ${VALUE_DROPPED}`)
+  })
+  it('drops an acVoltage out of range and keeps one in range', () => {
+    const outlet = { format: 'circuitoon-module/1', id: 'socket', name: 'Socket', pins: [{ name: 'A', side: 'left' }], electrical: { params: { acVoltage: { unit: 'VAC', default: 120 } } } }
+    const sheet = (value: number) => ({ format: 'circuitoon-diagram/1', title: 't', modules: { socket: outlet }, connections: [],
+      parts: [{ uid: 'p1', designator: 'XS1', module: 'socket', x: 0, y: 0, values: { acVoltage: { value, unit: 'VAC' } } }] })
+    const bad = validateDiagram(sheet(2000))
+    expect(bad.ok && bad.warnings).toEqual([`parts[0].values.acVoltage: XS1 has acVoltage 2000 VAC, but acVoltage must be from 1 to 1000; ${VALUE_DROPPED}`])
+    expect(bad.ok && bad.diagram.parts[0].values).toEqual({})
+    const good = validateDiagram(sheet(230))
+    expect(good.ok && good.warnings).toEqual([])
   })
 })

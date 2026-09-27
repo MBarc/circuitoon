@@ -1,6 +1,6 @@
 // Diagram format (circuitoon-diagram/1): types plus the wire geometry the renderer needs.
 
-import { GRID, type ModuleDef, PARAM_RULES, isBoard, layoutModule, validateModule, validParamValue, isObj, isNum } from './module.ts'
+import { GRID, type ModuleDef, PARAM_RULES, isBoard, layoutModule, moduleSettings, validateModule, validParamValue, isObj, isNum } from './module.ts'
 import { type Pt, type Rect, type Rotation, type WorldPin, bodyRect, simplify, toWorld, worldPins } from './geometry.ts'
 import { addToOccupancy, inGrown, Occupancy, onGrid, routeOrthogonal } from './router.ts'
 import { manualRouteBlocked, tidy } from './wireEdit.ts'
@@ -21,6 +21,8 @@ export interface PartInstance {
   y: number
   rotation?: Rotation
   values?: Record<string, unknown>
+  /** Enumerated choices from the module's `electrical.settings` (a fuse holder's "fitted" or "absent"). */
+  settings?: Record<string, string>
   /** The board this part is plugged into. Its pins join the hole groups their plug points sit on. */
   mount?: { board: string }
 }
@@ -797,6 +799,32 @@ export function validateDiagram(raw: unknown): DiagramResult {
             const values = p.values
             fix(i, { values: Object.fromEntries(Object.entries(values).filter(([k]) => !dropped.includes(k))) })
           }
+        }
+      }
+      // Settings are checked against the module's choices; a bad one is dropped with a warning,
+      // so the module's first choice is used and the user is told.
+      if (p.settings !== undefined) {
+        const who = typeof p.designator === 'string' && p.designator !== '' ? p.designator : `part ${i}`
+        const m = typeof p.module === 'string' ? modules.get(p.module) : undefined
+        if (!isObj(p.settings)) {
+          fix(i, { settings: undefined })
+          warnings.push(`${at}.settings: must be an object of setting name to choice, so it was dropped and the defaults are used`)
+        } else {
+          const offered = m ? moduleSettings(m) : null
+          const kept: Record<string, string> = {}
+          let changed = false
+          for (const [key, value] of Object.entries(p.settings)) {
+            const choices = offered && Object.hasOwn(offered, key) ? offered[key] : null
+            if (offered && !choices) {
+              changed = true
+              warnings.push(`${at}.settings.${key}: ${who} has no setting "${key}", so it was dropped`)
+            } else if (typeof value !== 'string' || (choices && !choices.includes(value))) {
+              changed = true
+              const allowed = choices ? choices.map((c) => `"${c}"`).join(' or ') : 'a string'
+              warnings.push(`${at}.settings.${key}: ${who} has ${key} ${JSON.stringify(value)}, but it must be ${allowed}; it was dropped${choices ? ` and the default "${choices[0]}" is used` : ''}`)
+            } else kept[key] = value
+          }
+          if (changed) fix(i, { settings: Object.keys(kept).length ? kept : undefined })
         }
       }
     })
