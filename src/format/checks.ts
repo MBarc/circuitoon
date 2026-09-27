@@ -9,6 +9,7 @@ import { type MountIssue, mountIssues, plugsOf } from './breadboard.ts'
 import { type ExternalPower, type HoleGroup, type ModuleDef, type PinDef, type PinType, commonReturn, declaredReturns, externalPower, isSpacer, voltageOutputs } from './module.ts'
 import { conductors, netlist, nodeKey } from './netlist.ts'
 import { partValue, primaryParam } from './values.ts'
+import { andList, natural, orList } from './words.ts'
 
 export type Severity = 'error' | 'warning'
 export type RuleId =
@@ -110,15 +111,6 @@ const EPS = 1e-9
 /** An input is taken to work down to this share of its lowest listed rail (no real ranges yet). */
 const LOW_TOLERANCE = 0.9
 const volts = (v: number) => `${Number(v.toFixed(2))} V`
-
-/** "A", "A or B", "A, B or C". */
-function orList(items: string[]): string {
-  return items.length < 2 ? items.join('') : `${items.slice(0, -1).join(', ')} or ${items[items.length - 1]}`
-}
-/** "A", "A and B", "A, B and C". */
-function andList(items: string[]): string {
-  return items.length < 2 ? items.join('') : `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]}`
-}
 
 // ---- Naming ----
 
@@ -391,9 +383,6 @@ function railAdvice(loads: Terminal[], it: string): string {
 }
 
 // ---- The checker ----
-
-/** Natural order, so U2 sorts before U10. */
-const natural = new Intl.Collator('en', { numeric: true, sensitivity: 'base' })
 
 type Draft = Omit<Finding, 'id' | 'severity'> & { causes: string[] }
 
