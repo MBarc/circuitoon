@@ -9,8 +9,14 @@
 //   then the original is given too). Where a value is read from a drawing, the quote says what the
 //   drawing shows and where.
 // - Isolation is recorded only when a source names the insulation class of the mains-to-output
-//   barrier. A dielectric or isolation test voltage, a class II statement, a MOPP icon or a
-//   safety listing is kept in `extra` and never turned into `isolation` (plan Global Constraints).
+//   barrier, or (Michael's ruling B3, 2026-09-27) when the manufacturer states "Class II" in words:
+//   that is recorded as "double" under the IEC 61140 definition of class II, with the quote. A
+//   dielectric or isolation test voltage, a class II symbol alone, a MOPP icon or a safety listing
+//   is kept in `extra` and never turned into `isolation` (plan Global Constraints).
+// - The plug and socket standards BS 1363, AS/NZS 3112, CEE 7 and IEC/TR 60083 are paywalled.
+//   Under ruling B1 their layouts and ratings are taken from at least two independent secondary
+//   sources that agree; each such quote starts with "Secondary sources:" and names both.
+// - `decision` records Michael's rulings on the Task 0 blocking items and what the generator does.
 // - `lSide` is given in the frame of plan Task 12's patterns: seen from the front of the socket
 //   (a plug in the same frame, as it sits in the socket), with the earth contact where Task 12 puts
 //   it. A standard that leaves the L side open says so and the value is 'not fixed'.
@@ -27,6 +33,8 @@ export interface PartEvidence {
   verdict: Verdict
   /** For NOT VERIFIED: what is missing and what the part does meanwhile ("not generated", or "generated with isolation unknown"). */
   blocking?: string
+  /** Michael's ruling on a blocking item, or a recorded disposition the generator follows (what is generated and how). */
+  decision?: string
   /** Pin or terminal names in physical order per side, as the source shows them. */
   pins?: Fact<Record<string, string[]>>
   /** Which contact is L, N, PE, seen from the front (outlets, plugs). */
@@ -65,6 +73,17 @@ const ACCESS_AS3112 = 'https://www.accesscomms.com.au/australian-mains-plug/'
 const WIKI_SCHUKO = 'https://en.wikipedia.org/wiki/Schuko'
 const WIKI_EUROPLUG = 'https://en.wikipedia.org/wiki/Europlug'
 const FR_PHASE = 'https://www.installation-renovation-electrique.com/installation-electrique/conseils-electricite/conseils-travaux-electriques/branchement-prise-electrique-phase-a-droite-a-gauche/'
+/** Olde's Digital Museum of Plugs and Sockets: an independent secondary source for the paywalled standards (ruling B1). */
+const PSM_UK = 'https://www.plugsocketmuseum.nl/British1.html'
+const PSM_AU = 'https://www.plugsocketmuseum.nl/Australian1.html'
+const PSM_SCHUKO = 'https://www.plugsocketmuseum.nl/Schuko1.html'
+const PSM_FR = 'https://www.plugsocketmuseum.nl/French1.html'
+const PSM_HYBRID = 'https://www.plugsocketmuseum.nl/EFhybrid.html'
+const PSM_EURO = 'https://www.plugsocketmuseum.nl/Europlug1.html'
+const WIKI_CEE7 = 'https://en.wikipedia.org/wiki/CEE_7'
+const GIRA_SCHUKO = 'https://katalog.gira.de/en-INT/datenblatt/4188005'
+const LEGRAND_067113 = 'https://www.legrand.fr/pro/catalogue/prise-de-courant-standard-francais-celiane-16a-250v-2pt-bornes-a-vis'
+const ELECMATE = 'https://www.elec-mate.com/guides/how-to-wire-a-plug'
 
 const HLK_PM01_PAGE = 'https://www.hlktech.net/index.php?id=105'
 const HLK_PM03_PAGE = 'https://www.hlktech.net/index.php?id=106'
@@ -73,6 +92,9 @@ const HLK_3W_DS = 'https://geeksvalley.com/wp-content/uploads/2021/07/098-HLK-PM
 
 /** Mean Well NGE12 series specification, file NGE12-SPEC 2026-01-14. */
 const MW_NGE12 = 'https://www.meanwell.com/Upload/PDF/NGE12/NGE12-SPEC.PDF'
+/** Mean Well IRM-03 and IRM-05 series specifications, both files dated 2025-08-08. */
+const MW_IRM03 = 'https://www.meanwell.com/Upload/PDF/IRM-03/IRM-03-SPEC.PDF'
+const MW_IRM05 = 'https://www.meanwell.com/Upload/PDF/IRM-05/IRM-05-SPEC.PDF'
 
 const SONGLE_DS = 'https://www.songlerelay.com/upload/8670/srd-t73-relay-290486.pdf'
 const SONGLE_PAGE = 'https://www.songlerelay.com/srd-t73-relay.html'
@@ -112,7 +134,8 @@ const LCSC_KF301_3 = 'https://www.lcsc.com/product-detail/C474882.html'
 // ---------------------------------------------------------------------------------------------
 // Shared facts
 
-const B_STANDARD = 'Standard not read: BS 1363, AS/NZS 3112, CEE 7, DIN 49440, NF C 61-314, EN 50075 and IEC/TR 60083 are paywalled and no public copy was found. The contact layout, L side and rating here are quoted from secondary sources (Wikipedia and a supplier guide), which agree with each other. Disposition: not generated until Michael either accepts these secondary sources for this part or the standard text is obtained.'
+/** Michael's ruling B1 (2026-09-27): the standards below are paywalled, so a layout or rating is accepted when at least two independent secondary sources agree. Every such fact starts its quote with "Secondary sources:" and names both. */
+const SECONDARY = 'Secondary sources (ruling B1): BS 1363, AS/NZS 3112, CEE 7, DIN 49440/49441, NF C 61-314, EN 50075 and IEC/TR 60083 are paywalled and were not read; every layout and rating here is quoted from at least two independent sources that agree.'
 
 const NEMA_5_15_RATING: RatingFact = { volts: 125, amps: 15, service: 'ac', quote: 'FIGURE 5-15 PLUG AND RECEPTACLE 125 volts, 15 amperes, 2 pole, 3 wire, Grounding type', url: NEMA_WD6_PDF }
 const NEMA_5_20_RATING: RatingFact = { volts: 125, amps: 20, service: 'ac', quote: 'FIGURE 5-20 PLUG AND RECEPTACLE 125 volts, 20 amperes, 2 pole, 3 wire, Grounding type', url: NEMA_WD6_PDF }
@@ -126,29 +149,38 @@ const NEMA_SPACING = fact('blade slots 0.500 in (12.7 mm) apart; earth hole cent
 
 const JIS_RATING: RatingFact = { volts: 125, amps: 15, service: 'ac', quote: '図A.1−2極差込接続器 15 A 125 V (Figure A.1, 2-pole plug and receptacle 15 A 125 V)', url: JIS_C8303 }
 
-const BS_RATING: RatingFact = { volts: 250, amps: 13, service: 'ac', quote: 'BS 1363 plugs and sockets are rated for use at a maximum of 250 V AC and 13 A.', url: WIKI_BS1363 }
+const BS_RATING: RatingFact = { volts: 250, amps: 13, service: 'ac', quote: 'Secondary sources: "BS 1363 plugs and sockets are rated for use at a maximum of 250 V AC and 13 A." (Wikipedia, BS 1363) / "Connector with rubber cap, for an extension cord. Rating: 13A - 250V. The connector has been used to show the safety shutter mecanism of BS 1363 sockets and connectors." (Plug and socket museum, BS 1363)', url: WIKI_BS1363 }
 const BS_L_SIDE = fact(
   'front view, earth up: N bottom left, L bottom right',
-  'When looking at the front of the socket with the earth aperture uppermost (as normally mounted) the lower left aperture is for the neutral contact, and the lower right is for the line contact.',
+  'Secondary sources: "When looking at the front of the socket with the earth aperture uppermost (as normally mounted) the lower left aperture is for the neutral contact, and the lower right is for the line contact." (Wikipedia, BS 1363) / "Each wire is in the correct terminal: brown (live) to the right (with fuse), blue (neutral) to the left, green/yellow (earth) to the top." (Elec-Mate, how to wire a plug; an opened plug is seen from its back, the same side as the socket front when the plug is in the socket, so both put L on the right with the earth up)',
   WIKI_BS1363,
 )
-const AS_RATING: RatingFact = { volts: 250, amps: 10, service: 'ac', quote: 'By the early 1930s this design had been up-rated to 250 V 10 A capacity ... Standard single phase 230 V domestic socket outlets in Australia and New Zealand are rated at 10 A.', url: WIKI_AS3112 }
+const AS_RATING: RatingFact = { volts: 250, amps: 10, service: 'ac', quote: 'Secondary sources: "By the early 1930s this design had been up-rated to 250 V 10 A capacity ... Standard single phase 230 V domestic socket outlets in Australia and New Zealand are rated at 10 A." (Wikipedia, AS/NZS 3112) / "Standard domestic 10A - 250V socket and plug." (Plug and socket museum, AS/NZS)', url: WIKI_AS3112 }
 const AS_L_SIDE = fact(
   'front view, earth down: L (active) top left, N top right',
-  'The active terminal is the first \'socket\' from the earth \'socket\' in a clockwise direction when viewing the front of a socket-outlet. (Wikipedia) / On the socket (viewing from the front), the positions are mirrored: top-left is Active and top-right is Neutral. (Access Communications)',
+  'Secondary sources: "The active terminal is the first \'socket\' from the earth \'socket\' in a clockwise direction when viewing the front of a socket-outlet." (Wikipedia, AS/NZS 3112) / "On the socket (viewing from the front), the positions are mirrored: top-left is Active and top-right is Neutral." (Access Communications, Australian mains plug)',
   WIKI_AS3112,
 )
-const CEE_UNPOLARIZED = fact('not fixed', 'The Schuko system is unpolarized, allowing live and neutral to be reversed.', WIKI_PLUGS)
+const AS_PLUG_L_SIDE = fact(
+  'in the socket frame (earth down): L top left, N top right',
+  'Secondary sources: "When viewing a plug from its face (Earth facing downwards), the top left prong is Neutral and the top right is Active (Live/Phase)." (Wikipedia, AS/NZS 3112) / "When viewing the plug from the face with the Earth pin at the bottom, the top-right pin is Active (Live) and the top-left pin is Neutral." (Access Communications). Pin-face view; mirrored into the socket frame the active is top left.',
+  WIKI_AS3112,
+)
+const CEE_UNPOLARIZED = fact('not fixed', 'Secondary sources: "The Schuko connection system is symmetrical and unpolarised in its design, allowing line and neutral to be reversed." (Wikipedia, CEE 7) / "CEE 7/3 (Schuko) type socket with two slots (line and neutral; not polarized) and two earth clips." (Plug and socket museum, Schuko)', WIKI_CEE7)
+const B4 = 'Ruling B4 (Michael, 2026-09-27): as3112 L and N are swapped in plan Task 12 to match these sources (active top left seen from the front, earth down).'
 
 // ---------------------------------------------------------------------------------------------
 // Converters
 
+/** Michael's ruling B3 (2026-09-27): a manufacturer's explicit written "Class II" statement is recorded as double insulation, because IEC 61140 defines class II equipment as protected by double or reinforced insulation. A class II symbol alone, a test voltage or a listing still records nothing. */
+const CLASS_II_NOTE = 'Recorded as "double" under ruling B3: the maker states Class II in words, and IEC 61140 defines class II equipment as relying on double or reinforced insulation; the maker names no class for the barrier itself.'
+
 const HLK_ISOLATION_NOTE = fact(
   'test voltage only, no insulation class',
-  'Input and output isolation voltage 3000VAC (product page); Insulation voltage I/P-O/P:2500Vac (datasheet V2.6, 9.2). No insulation class (basic, double, reinforced) is stated anywhere in either source.',
+  'Input and output isolation voltage 3000VAC (product page); Insulation voltage I/P-O/P:2500Vac (datasheet V2.6, 9.2). No insulation class (basic, double, reinforced) and no class II statement appear in either source.',
   HLK_3W_DS,
 )
-const HLK_BLOCKING = 'Isolation class not stated: Hi-Link gives only test voltages (3000 Vac on the product page, 2500 Vac in datasheet V2.6 section 9.2, which also disagree with each other) and "Safety standard meets UL1012,EN60950,UL60950". Disposition: generated with isolation unknown (the checker treats its output as live). This contradicts the spec circuit "HLK-PM01 feeding an ESP32 (clean apart from cable-unverified)" (Resolution 21): Michael decides whether that circuit changes its expected result.'
+const HLK_BLOCKING = 'Isolation class not stated: Hi-Link gives only test voltages (3000 Vac on the product page, 2500 Vac in datasheet V2.6 section 9.2, which also disagree with each other) and "Safety standard meets UL1012,EN60950,UL60950". Ruling B2 (Michael, 2026-09-27): generated with isolation "unknown"; the checker treats the output as live and reports rule-1 errors with the reason "isolation unknown". The spec circuit "HLK-PM01 feeding an ESP32" now expects those errors; the Mean Well IRM modules below are the documented alternative for a clean circuit.'
 const HLK_PINS = fact(
   { left: ['AC 1', 'AC 2'], right: ['-Vo', '+Vo'] },
   '11. Dimensions and weight, top side view: pins 1 AC and 2 AC on the left end (1 above 2), pin 3 -Vo top right, pin 4 +Vo bottom right. Pin Function table: 1 AC, 2 AC, 3 -V0, 4 +V0.',
@@ -156,14 +188,9 @@ const HLK_PINS = fact(
 )
 const HLK_AC_INPUT = fact<[number, number]>([85, 264], 'Rated input voltage 100-240Vac Input vlotage range 85-264VAC/70-350VDC (product page, spelling as published). Datasheet V2.6 5.1 gives Input voltage range 85-265 Vac; the narrower 85-264 is kept.', HLK_PM01_PAGE)
 
-const MW_ISOLATION_NOTE = fact(
-  'class II and a withstand voltage, no insulation class',
-  'Class II power (no earth pin); WITHSTAND VOLTAGE I/P-O/P:4000Vac; a "2xMOPP" icon on page 1. No insulation class (basic, double, reinforced) for the input-output barrier is stated.',
-  MW_NGE12,
-)
+const MW_ISOLATION = fact<'double'>('double', `Class II power (no earth pin) ... NGE12 is a Class II power unit (no FG) (page 1). ${CLASS_II_NOTE} The sheet also gives WITHSTAND VOLTAGE I/P-O/P:4000Vac and a "2xMOPP" icon.`, MW_NGE12)
 const MW_AC_INPUT = fact<[number, number]>([80, 264], '80~264Vac Universal AC input; VOLTAGE RANGE 80 ~ 264Vac 113 ~ 370Vdc', MW_NGE12)
 const MW_PROTECTION = fact<'class-2'>('class-2', 'Class II power (no earth pin) ... NGE12 is a Class II power unit (no FG)', MW_NGE12)
-const MW_BLOCKING_CORE = 'Isolation class not stated: Mean Well states "Class II power (no earth pin)", a withstand voltage (I/P-O/P 4000Vac) and a 2xMOPP icon, but no insulation class for the barrier. Disposition: generated with isolation unknown (the checker treats the output as live), unless Michael rules that a maker\'s explicit "Class II" statement may be recorded as double insulation.'
 
 /** Which CUI parts were checked first (the plan's first choice) and why they were not used. */
 const CUI_NOTE = fact(
@@ -176,29 +203,58 @@ function charger(region: 'us' | 'eu' | 'uk' | 'au', kind: 'usb' | 'barrel'): Par
   const plug = { us: 'AC PLUG-US4', eu: 'AC PLUG-EU4', uk: 'AC PLUG-UK4', au: 'AC PLUG-AU4' }[region]
   const model = kind === 'usb' ? 'NGE12I05-USB' : 'NGE12I12-P1J'
   const family = { us: WIKI_NEMA, eu: WIKI_EUROPLUG, uk: WIKI_BS1363, au: WIKI_AS3112 }[region]
-  const missing = [
-    MW_BLOCKING_CORE,
-    region === 'uk' ? 'UK plug fuse not stated: the NGE12 sheet gives no BS 1362 fuse rating for AC PLUG-UK4 and does not say it is fused; the UK device\'s integral fuse edge cannot be generated with a rating.' : '',
-    region === 'us' ? 'Plug polarity not stated: the sheet does not say whether AC PLUG-US4 has a wider neutral blade; treating it as the unpolarized nema-1-15p (as the plan does) is the conservative reading.' : '',
-    region === 'eu' ? 'The sheet calls AC PLUG-EU4 only "EU"; that it is a CEE 7/16 Europlug is read from the photo, not stated.' : '',
-    region === 'au' ? 'The sheet calls AC PLUG-AU4 only "AU"; its AS/NZS 3112 geometry is read from the photo, not stated.' : '',
+  const notes = [
+    'Ruling B3: isolation "double" from Mean Well\'s written Class II statement.',
+    region === 'uk' ? 'Ruling B6: the sheet gives no BS 1362 fuse rating for AC PLUG-UK4 and does not say it is fused, so no integral fuse is counted (the device has no protective edge; wiring behind it is judged as unprotected by its own fuse).' : '',
+    region === 'us' ? 'The sheet calls AC PLUG-US4 only "US" and does not say whether it has a wider neutral blade; it is treated as the unpolarized nema-1-15p, the conservative reading (it seats in more sockets and polarity findings say "may").' : '',
+    region === 'eu' ? 'The sheet calls AC PLUG-EU4 only "EU"; that it is a CEE 7/16 Europlug is read from the photo.' : '',
+    region === 'au' ? 'The sheet calls AC PLUG-AU4 only "AU"; its AS/NZS 3112 geometry is read from the photo.' : '',
   ].filter(Boolean).join(' ')
   return {
     subject: `Mean Well ${model} with ${plug} (NGE12 series, interchangeable AC plug)`,
     sources: [MW_NGE12, family],
-    verdict: 'NOT VERIFIED',
-    blocking: missing,
+    verdict: 'VERIFIED',
+    decision: notes,
     acInput: MW_AC_INPUT,
+    isolation: MW_ISOLATION,
     output: kind === 'usb'
       ? fact({ volts: 5 }, 'NGE12 05-USB: DC VOLTAGE 5V, RATED CURRENT 2.4A; USB: USB-type A for 5V model only', MW_NGE12)
       : fact({ volts: 12 }, 'NGE12 12-P1J: DC VOLTAGE 12V, RATED CURRENT 1.0A; P1J: Plug for standard model, 2.1φ×5.5φ×11mm, C+ tuning fork type', MW_NGE12),
     protection: MW_PROTECTION,
     extra: {
-      isolationNote: MW_ISOLATION_NOTE,
       acPlug: fact(plug, `Interchangeable AC Plug ... AC plug: EU US UK AU CN KR IN; AC Plugs Accessory: ${plug}`, MW_NGE12),
       revision: fact('NGE12-SPEC 2026-01-14', 'File Name:NGE12-SPEC 2026-01-14', MW_NGE12),
       cuiChecked: CUI_NOTE,
+      ...(region === 'uk' ? { fuse: fact(null, 'No fuse or fuse rating is stated for AC PLUG-UK4 anywhere in NGE12-SPEC (ruling B6: none counted).', MW_NGE12) } : {}),
       ...(kind === 'barrel' ? { barrel: fact('2.1 x 5.5 mm, centre positive', 'P1J :Plug for standard model, 2.1φ×5.5φ×11mm,C+ tuning fork type', MW_NGE12) } : {}),
+    },
+  }
+}
+
+/** Mean Well IRM-03 / IRM-05 PCB-mount AC-DC modules: the documented alternative to Hi-Link (ruling B2). */
+function irm(series: '03' | '05', volts: 3.3 | 5): PartEvidence {
+  const url = series === '03' ? MW_IRM03 : MW_IRM05
+  const model = `IRM-${series}-${volts}`
+  const current = { '03-3.3': '900mA', '03-5': '600mA', '05-5': '1A', '05-3.3': '1.25A' }[`${series}-${volts}`]
+  const size = series === '03' ? '37*24*15mm' : '45.7*25.4*21.5mm'
+  return {
+    subject: `Mean Well ${model} (${series === '03' ? '3 W' : '5 W'} PCB-mount AC-DC module), IRM-${series}-SPEC 2025-08-08`,
+    sources: [url],
+    verdict: 'VERIFIED',
+    decision: 'Ruling B3: isolation "double" from Mean Well\'s written Class II statement. Added under ruling B2 as the documented alternative to the Hi-Link modules.',
+    pins: series === '03'
+      ? fact({ bottomViewTopRow: ['AC/L', 'AC/N', 'NC'], bottomViewBottomRow: ['+V', '-V'] }, 'Mechanical Specification, PCB mounting style, BOTTOM VIEW: AC/L and AC/N 5.08 mm apart at the top left, NC at the top right; +V and -V 5.08 mm apart at the bottom right (left to right as drawn). Seen from the top, left and right swap. (SMD style: 1 AC/L, 3 AC/N, 14 -Vo, 16 +Vo, others NC.)', url)
+      : fact({ bottomViewLeft: ['AC/L', 'AC/N'], bottomViewRight: ['-V', '+V'] }, 'Mechanical Specification, BOTTOM VIEW: AC/L top left, AC/N bottom left (10.75 mm apart); -V top right, +V bottom right (8 mm apart); 38.5 mm between the AC and DC columns. Seen from the top, left and right swap.', url),
+    acInput: fact<[number, number]>([85, 305], series === '03' ? 'Universal AC input / Full range ... This product allows a universal input voltage range of 85~305Vac. VOLTAGE RANGE 85 ~ 305Vac 120~430Vdc' : 'Universal input 85~305Vac ... VOLTAGE RANGE 85 ~ 305Vac 120 ~ 430Vdc', url),
+    output: fact({ volts }, `MODEL ${model}: DC VOLTAGE ${volts}V, RATED CURRENT ${current}`, url),
+    isolation: fact<'double'>('double', `Features: "Isolation Class II"; Description: "The entire series is a Class II design (no FG pin)". ${CLASS_II_NOTE}`, url),
+    protection: fact<'class-2'>('class-2', 'The entire series is a Class II design (no FG pin)', url),
+    extra: {
+      withstand: fact('4.2 kVac input to output', 'WITHSTAND VOLTAGE I/P-O/P:4.2KVac; ISOLATION RESISTANCE I/P-O/P:100M Ohms / 500Vdc', url),
+      size: fact(size, series === '03' ? 'IRM-03 is a 3W miniature (37*24*15mm) AC-DC module-type power supply' : 'IRM-05 is a 5W miniature (45.7*25.4*21.5mm) AC-DC module-type power supply', url),
+      ...(series === '05' ? { ovc: fact('overvoltage category III', 'Over voltage category III (OVC III)', url) } : {}),
+      safety: fact('IEC 62368-1, IEC 61558-1/-2-16 and others', series === '03' ? 'SAFETY STANDARDS IEC62368-1,IEC61558-1/-2-16,UL62368-1, TUV BS EN/EN62368, BS EN/EN60335-1, BS EN/EN61558-1/-2-16,EAC TP TC 004, BSMI CNS15598-1 approved' : 'SAFETY STANDARDS IEC62368-1,IEC61558-1/-2-16,UL62368-1,TUV BS EN/EN62368-1,BS EN/EN61558-1/-2-16,EAC TP TC 004, BSMI CNS15598-1 approved', url),
+      revision: fact(`IRM-${series}-SPEC 2025-08-08`, `File Name:IRM-${series}-SPEC 2025-08-08`, url),
     },
   }
 }
@@ -241,7 +297,7 @@ function phoenixPart(series: 'mstb' | 'mc', n: 2 | 3 | 4 | 5 | 6): PartEvidence 
     subject: `Phoenix Contact ${plugType} (plug ${plug}) with ${headerType} (header ${header})`,
     sources: [plugUrl, headerUrl],
     verdict: verified ? 'VERIFIED' : 'NOT VERIFIED',
-    ...(verified ? {} : { blocking: `Item number(s) ${unread.join(' and ')} not confirmed: phoenixcontact.com answered HTTP 403 (bot protection) after the first pages, so the product page of each unread item was not opened. The item numbers are the plan's; the ratings are the same family's (MSTB 2,5/..-ST and MSTBA 2,5/..-G, or MC 1,5/..-ST and MC 1,5/..-G) as read on the 2- and 3-position pages, but ratings are only recorded here per read item. Disposition: not generated until each page is read.` }),
+    ...(verified ? {} : { blocking: `Item number(s) ${unread.join(' and ')} not confirmed: phoenixcontact.com answered HTTP 403 (bot protection) after the first pages, so the product page of each unread item was not opened. The item numbers are the plan's; the ratings are the same family's (MSTB 2,5/..-ST and MSTBA 2,5/..-G, or MC 1,5/..-ST and MC 1,5/..-G) as read on the 2- and 3-position pages, but ratings are only recorded here per read item. Ruling B8 (Michael, 2026-09-27): Task 19 retries these pages; parts stay ungenerated until each page is read, and if the site still blocks, the item goes back to Michael.` }),
     ...(verified ? { ratings: phoenixRatings(series, plugUrl, headerUrl) } : {}),
     extra: {
       plug: fact(plug, verified || PHOENIX_READ.has(plug) ? `${plugType} - PCB connector ${plug}` : `(plan value, page not read) ${plugType} ${plug}`, plugUrl),
@@ -250,6 +306,7 @@ function phoenixPart(series: 'mstb' | 'mc', n: 2 | 3 | 4 | 5 | 6): PartEvidence 
       ...(verified
         ? {
             ul: fact(series === 'mstb' ? 'cULus 300 V 15 A (use group B), 300 V 10 A (use group D)' : 'cULus 300 V 8 A (use groups B and D)', series === 'mstb' ? 'cULus Recognized, Approval ID: E60425-19931011: B 300 V 15 A; D 300 V 10 A' : 'cULus Recognized, Approval ID: E60425-20110128: B 300 V 8 A; D 300 V 8 A', plugUrl),
+            ...(series === 'mc' ? { conditional: fact('always rating-conditional at 230 V', 'Rated voltage (III/3) 160 V and (III/2) 160 V: only the II/2 rating (250 V) covers 230 V, so the part always carries its conditions (ruling, 2026-09-27: MC 1,5 always gets rating-conditional at 230 V).', headerUrl) } : {}),
             noHotPlug: fact(true, 'In accordance with IEC 61984, COMBICON connectors have no switching power (COC). During designated use, they must not be plugged in or disconnected when carrying voltage or under load.', plugUrl),
           }
         : {}),
@@ -285,47 +342,47 @@ export const EVIDENCE: Record<string, PartEvidence> = {
     },
   },
   'outlet-uk-bs1363': {
-    subject: 'BS 1363 13 A single socket-outlet',
-    sources: [WIKI_BS1363, WIKI_PLUGS],
-    verdict: 'NOT VERIFIED',
-    blocking: B_STANDARD,
+    subject: 'BS 1363 13 A single socket-outlet (secondary sources)',
+    sources: [WIKI_BS1363, PSM_UK, ELECMATE, WIKI_PLUGS],
+    verdict: 'VERIFIED',
+    decision: SECONDARY,
     lSide: BS_L_SIDE,
     ratings: [BS_RATING],
     extra: {
-      spacing: fact('line and neutral centres 22.2 mm apart; earth centre line 22.2 mm from the line/neutral centre line', '... 17.7 mm long and with centres 22.2 mm apart. ... with a centre line 22.2 mm from the line/neutral pin centre line.', WIKI_BS1363),
-      standardPolarity: fact('earth top, live right', 'The polarity of all grounded British sockets is standardized: earth is at the top and live is at the right of the socket.', WIKI_PLUGS),
+      spacing: fact('line and neutral centres 22.2 mm apart; earth centre line 22.2 mm from the line/neutral centre line', 'Secondary source (one only; geometry, not a safety claim): "... 17.7 mm long and with centres 22.2 mm apart. ... with a centre line 22.2 mm from the line/neutral pin centre line." (Wikipedia, BS 1363)', WIKI_BS1363),
     },
   },
   'outlet-schuko-cee7-3': {
-    subject: 'CEE 7/3 (Schuko, DIN 49440) single socket-outlet',
-    sources: [WIKI_SCHUKO, WIKI_PLUGS],
-    verdict: 'NOT VERIFIED',
-    blocking: `${B_STANDARD} No rated voltage was found at all: the sources give 16 A and "circuits with 230 V", so no rating is recorded (the plan's 250 V is unsourced).`,
+    subject: 'CEE 7/3 (Schuko, DIN 49440) single socket-outlet (secondary sources); reference Gira SCHUKO socket outlet 4188005',
+    sources: [PSM_SCHUKO, WIKI_CEE7, GIRA_SCHUKO],
+    verdict: 'VERIFIED',
+    decision: SECONDARY,
     lSide: CEE_UNPOLARIZED,
+    ratings: [{ volts: 250, amps: 16, service: 'ac', quote: 'Secondary sources: "CEE 7/3 = Schuko 16A-250V socket" (Plug and socket museum, Schuko) / "DIN 49440-1:2006-01 \'Two-pole socket-outlets with earthing contact, 16 A 250 V a.c.\'" (Wikipedia, CEE 7) / manufacturer: "Gira SCHUKO socket outlet 16 A 250 V~ System 55" (Gira data sheet 4188005)', url: PSM_SCHUKO }],
     extra: {
-      spacing: fact('pins 4.8 mm diameter, centres 19 mm apart', 'two round pins of 4.8 mm diameter (19 mm long, centres 19 mm apart)', WIKI_SCHUKO),
-      rated16: fact(16, 'The CEE 7/3 socket and CEE 7/4 plug are commonly called Schuko ... It is rated at 16 A.', WIKI_PLUGS),
+      spacing: fact('pins 4.8 mm diameter, centres 19 mm apart', 'Secondary sources: "two round pins of 4.8 mm diameter (19 mm long, centres 19 mm apart)" (Wikipedia, Schuko) / "Line and neutral pins have a diameter of 4.8 mm" (Plug and socket museum, Schuko)', WIKI_SCHUKO),
     },
   },
   'outlet-fr-cee7-5': {
-    subject: 'CEE 7/5 (French, NF C 61-314) single socket-outlet with earth pin',
-    sources: [WIKI_PLUGS, FR_PHASE],
-    verdict: 'NOT VERIFIED',
-    blocking: `${B_STANDARD} In addition, no source fixes which hole is L: the French installation guide says no standard does ("Niveau norme, il n'y a rien qui indique que la phase doit etre branchee a droite ou a gauche") and that the usual practice is phase on the right seen from the front ("l'usage veut que la phase soit a droite"), while plan Task 12 puts L on the left for the CEE patterns. Proposed: treat cee7-5 like cee7-3 for polarity (Resolution 22's unpolarized list), since the plug's orientation is fixed by the earth pin but the socket's wiring is not; Michael decides. No rating was found in any source read (the plan's 16 A 250 V is unsourced), so none is recorded.`,
-    lSide: fact('not fixed', 'Niveau norme, il n\'y a rien qui indique que la phase doit être branchée à droite ou à gauche ... l\'usage veut que la phase soit à droite (no standard says the phase goes right or left; practice puts it on the right)', FR_PHASE),
+    subject: 'CEE 7/5 (French, NF C 61-314) single socket-outlet with earth pin (secondary sources); reference Legrand Celiane 067113',
+    sources: [PSM_FR, WIKI_CEE7, FR_PHASE, LEGRAND_067113, WIKI_PLUGS],
+    verdict: 'VERIFIED',
+    decision: `${SECONDARY} Ruling B5 (Michael, 2026-09-27): cee7-5 joins Resolution 22's unpolarized list; the CEE 7/7 plug still enters one way only, but which hole is L is not fixed.`,
+    lSide: fact('not fixed', 'Secondary sources: "The preferred wiring is indicated below the socket, but - at least in France - there is no strict regulation re. wiring line and neutral." (Plug and socket museum, French) / "CEE 7 does not define the placement of the line and neutral and there is no universally observed standard." (Wikipedia, CEE 7) / "Niveau norme, il n\'y a rien qui indique que la phase doit être branchée à droite ou à gauche ... l\'usage veut que la phase soit à droite" (installation-renovation-electrique.com)', PSM_FR),
+    ratings: [{ volts: 250, amps: 16, service: 'ac', quote: 'Secondary sources: "French, CEE 7/5 type socket with earth pin, rated at 16A - 250V." (Plug and socket museum, French) / manufacturer: "Prise de courant standard Français Céliane 16A 250V 2P+T bornes à vis" (Legrand 067113)', url: PSM_FR }],
     extra: {
-      spacing: fact('holes 19 mm apart; earth pin centred between them, offset 10 mm', 'The earth pin is centred between the apertures, offset by 10 mm (0.394 in). The plug has two round pins measuring 4.8 by 19 mm (0.189 by 0.748 in), spaced 19 mm (0.748 in) apart', WIKI_PLUGS),
+      spacing: fact('holes 19 mm apart; earth pin centred between them, offset 10 mm', 'Secondary sources: "The earth pin is centred between the apertures, offset by 10 mm (0.394 in). The plug has two round pins measuring 4.8 by 19 mm (0.189 by 0.748 in), spaced 19 mm (0.748 in) apart" (Wikipedia, AC power plugs and sockets) / "Line and neutral pins have a diameter of 4.8 mm and are positioned 19 mm apart." (Plug and socket museum, French)', WIKI_PLUGS),
     },
   },
   'outlet-au-as3112': {
-    subject: 'AS/NZS 3112 10 A single socket-outlet',
-    sources: [WIKI_AS3112, ACCESS_AS3112],
-    verdict: 'NOT VERIFIED',
-    blocking: `${B_STANDARD} Also: both sources put the active (L) at the top LEFT seen from the front with the earth down, but plan Task 12's AS pattern puts L at (10, -10), top right. Task 12 must swap L and N for as3112 (pattern and plug profile together).`,
+    subject: 'AS/NZS 3112 10 A single socket-outlet (secondary sources)',
+    sources: [WIKI_AS3112, ACCESS_AS3112, PSM_AU],
+    verdict: 'VERIFIED',
+    decision: `${SECONDARY} ${B4}`,
     lSide: AS_L_SIDE,
     ratings: [AS_RATING],
     extra: {
-      spacing: fact('active and neutral centred 7.92 mm from the midpoint at 30 degrees to the vertical, earth centred 10.31 mm away', 'The pins are arranged at 120° angles around a common midpoint, with the active and neutral centred 7.92 mm (5⁄16 in) from the midpoint, and the earth pin centred 10.31 mm (3⁄8 in) away.', WIKI_AS3112),
+      spacing: fact('active and neutral centred 7.92 mm from the midpoint at 30 degrees to the vertical, earth centred 10.31 mm away', 'Secondary sources: "The pins are arranged at 120° angles around a common midpoint, with the active and neutral centred 7.92 mm (5⁄16 in) from the midpoint, and the earth pin centred 10.31 mm (3⁄8 in) away." (Wikipedia, AS/NZS 3112) / "Power pins (N and A; A means Active = line) and corresponding slots are obliquely positioned and resemble an inverted \'V\'." (Plug and socket museum, AS/NZS)', WIKI_AS3112),
     },
   },
   'outlet-jp-1-15r-duplex': {
@@ -386,60 +443,62 @@ export const EVIDENCE: Record<string, PartEvidence> = {
     },
   },
   'plug-eu-cee7-7': {
-    subject: 'CEE 7/7 hybrid Schuko/French plug (earth clips and earth hole)',
-    sources: [WIKI_PLUGS, WIKI_SCHUKO],
-    verdict: 'NOT VERIFIED',
-    blocking: `${B_STANDARD} No rated voltage was found for CEE 7/7, so no rating is recorded.`,
-    lSide: fact('not fixed', 'Due to its compatibility with the inherently unpolarized Schuko (CEE 7/4) plugs, appliances using it cannot expect the current to flow in any particular direction.', WIKI_PLUGS),
-    extra: {
-      rated16: fact(16, 'The plug is rated at 16 A and looks similar to CEE 7/4 plugs, but with earth contacts to fit both CEE 7/5 and CEE 7/3 sockets.', WIKI_PLUGS),
-    },
+    subject: 'CEE 7/7 hybrid Schuko/French plug, earth clips and earth hole (secondary sources)',
+    sources: [PSM_HYBRID, WIKI_CEE7, WIKI_PLUGS],
+    verdict: 'VERIFIED',
+    decision: SECONDARY,
+    lSide: fact('not fixed', 'Secondary sources: "Due to its compatibility with the inherently unpolarized Schuko (CEE 7/4) plugs, appliances using it cannot expect the current to flow in any particular direction." (Wikipedia, AC power plugs and sockets) / "CEE 7/3 (Schuko) type socket with two slots (line and neutral; not polarized)" (Plug and socket museum, Schuko): the plug enters a Schuko socket either way.', WIKI_PLUGS),
+    ratings: [{ volts: 250, amps: 16, service: 'ac', quote: 'Secondary sources: "the plug fits into both sockets nos 2a and 2b. Pin diameter: 4.8 mm. Rating: 16A - 250V." (Plug and socket museum, CEE 7/7) / "DIN 49441:1972-06 \'Two-pole plugs with earthing-contact 10 A 250 V≅ and 10 A 250 V–, 16 A 250 V~\' (which also includes CEE 7/7 plug)" (Wikipedia, CEE 7)', url: PSM_HYBRID }],
   },
   'plug-eu-cee7-16': {
-    subject: 'CEE 7/16 Europlug (EN 50075)',
-    sources: [WIKI_EUROPLUG, WIKI_PLUGS],
-    verdict: 'NOT VERIFIED',
-    blocking: B_STANDARD,
-    lSide: fact('not fixed', 'It can be inserted in either direction, so live and neutral are connected arbitrarily.', WIKI_PLUGS),
-    ratings: [{ volts: 250, amps: 2.5, service: 'ac', quote: 'The Europlug ... is a flat, non-rewirable two-pole, round-pin domestic AC power plug, rated for voltages up to 250 V and currents up to 2.5 A.', url: WIKI_EUROPLUG }],
+    subject: 'CEE 7/16 Europlug, EN 50075 (secondary sources)',
+    sources: [WIKI_EUROPLUG, PSM_EURO, WIKI_CEE7],
+    verdict: 'VERIFIED',
+    decision: SECONDARY,
+    lSide: fact('not fixed', 'Secondary source (the conservative value needs no confirmation): "It can be inserted in either direction, so line and neutral are connected arbitrarily." (Wikipedia, CEE 7)', WIKI_CEE7),
+    ratings: [{ volts: 250, amps: 2.5, service: 'ac', quote: 'Secondary sources: "The Europlug ... is a flat, non-rewirable two-pole, round-pin domestic AC power plug, rated for voltages up to 250 V and currents up to 2.5 A." (Wikipedia, Europlug) / "They are designed for currents up to 2.5A - 250V." (Plug and socket museum, CEE 7/16)', url: WIKI_EUROPLUG }],
   },
   'plug-uk-bs1363-3lead': {
-    subject: 'BS 1363-1 13 A fused plug, 3 leads',
-    sources: [WIKI_BS1363, WIKI_PLUGS],
-    verdict: 'NOT VERIFIED',
-    blocking: B_STANDARD,
-    lSide: fact('in the socket frame (earth up): N bottom left, L bottom right', 'When looking at the plug pins with the earth uppermost the lower left pin is live, and the lower right is neutral. (pin-face view; mirrored into the socket frame this is L bottom right)', WIKI_BS1363),
+    subject: 'BS 1363-1 13 A fused plug, 3 leads (secondary sources)',
+    sources: [WIKI_BS1363, ELECMATE, PSM_UK],
+    verdict: 'VERIFIED',
+    decision: SECONDARY,
+    lSide: fact('in the socket frame (earth up): N bottom left, L bottom right', 'Secondary sources: "When looking at the plug pins with the earth uppermost the lower left pin is live, and the lower right is neutral." (Wikipedia, BS 1363; pin-face view, mirrored into the socket frame L is bottom right) / "brown (live) to the right (with fuse), blue (neutral) to the left, green/yellow (earth) to the top" (Elec-Mate; the opened plug seen from its back, which is the socket frame)', WIKI_BS1363),
     ratings: [BS_RATING],
     extra: {
-      fuse: fact(13, 'BS 1363 ... rated for up to 250 V and 13 A ... The standard specifies breaking time versus current characteristics only for 3 A or 13 A fuses. (13 A is the plan\'s default fuseRating; a moulded plug may carry less.)', WIKI_BS1363),
+      fuse: fact(13, 'Secondary sources: "BS 1363 plugs are required to carry a BS 1362 cartridge fuse. Existing BS 1362 fuse ratings are: 13, 10, 7, 5, 3, 2 and 1A ampere. 13A is commonly used in BS 1363 plugs" (Plug and socket museum, BS 1363) / "The standard specifies breaking time versus current characteristics only for 3 A or 13 A fuses." (Wikipedia, BS 1363). 13 A is the default fuseRating; the part lets the user change it.', PSM_UK),
     },
   },
   'plug-uk-bs1363-2lead': {
-    subject: 'BS 1363-1 13 A fused plug, 2 leads (earth pin present, nothing joined to it)',
-    sources: [WIKI_BS1363, WIKI_PLUGS],
-    verdict: 'NOT VERIFIED',
-    blocking: B_STANDARD,
-    lSide: fact('in the socket frame (earth up): N bottom left, L bottom right', 'When looking at the plug pins with the earth uppermost the lower left pin is live, and the lower right is neutral.', WIKI_BS1363),
+    subject: 'BS 1363-1 13 A fused plug, 2 leads, earth pin present with nothing joined to it (secondary sources)',
+    sources: [WIKI_BS1363, ELECMATE, PSM_UK],
+    verdict: 'VERIFIED',
+    decision: SECONDARY,
+    lSide: fact('in the socket frame (earth up): N bottom left, L bottom right', 'Secondary sources: "When looking at the plug pins with the earth uppermost the lower left pin is live, and the lower right is neutral." (Wikipedia, BS 1363) / "brown (live) to the right (with fuse), blue (neutral) to the left" (Elec-Mate)', WIKI_BS1363),
     ratings: [BS_RATING],
     extra: {
-      fuse: fact(13, 'The standard specifies breaking time versus current characteristics only for 3 A or 13 A fuses.', WIKI_BS1363),
+      fuse: fact(13, 'Secondary sources: "BS 1363 plugs are required to carry a BS 1362 cartridge fuse ... 13A is commonly used in BS 1363 plugs" (Plug and socket museum) / "The standard specifies breaking time versus current characteristics only for 3 A or 13 A fuses." (Wikipedia)', PSM_UK),
+      earthPin: fact('a plug without an earth connection still has an earth pin (insulated)', 'Fully approved BS 1363 plug without earth connection. The replacement plastic pin - known as ISOD = Insulated Shutter Opening Device - is necessary to open the safety shutters of a BS 1363 socket. (Plug and socket museum, BS 1363)', PSM_UK),
     },
   },
   'plug-au-as3112-3lead': {
-    subject: 'AS/NZS 3112 10 A plug, 3 leads',
-    sources: [WIKI_AS3112, ACCESS_AS3112],
-    verdict: 'NOT VERIFIED',
-    blocking: `${B_STANDARD} Plan Task 12's AS L side is reversed (see outlet-au-as3112).`,
-    lSide: fact('in the socket frame (earth down): L top left, N top right', 'When viewing a plug from its face (Earth facing downwards), the top left prong is Neutral and the top right is Active (Live/Phase). (pin-face view; mirrored into the socket frame the active is top left)', WIKI_AS3112),
+    subject: 'AS/NZS 3112 10 A plug, 3 leads (secondary sources)',
+    sources: [WIKI_AS3112, ACCESS_AS3112, PSM_AU],
+    verdict: 'VERIFIED',
+    decision: `${SECONDARY} ${B4}`,
+    lSide: AS_PLUG_L_SIDE,
     ratings: [AS_RATING],
   },
   'plug-au-as3112-2lead': {
-    subject: 'AS/NZS 3112 10 A plug, 2 leads (class II appliance)',
-    sources: [WIKI_AS3112, ACCESS_AS3112],
-    verdict: 'NOT VERIFIED',
-    blocking: `${B_STANDARD} Plan Task 12's AS L side is reversed (see outlet-au-as3112). Whether a 2-lead AS/NZS 3112 plug keeps an earth pin was not established (the plan gives it roles L and N only).`,
-    lSide: fact('in the socket frame (earth down): L top left, N top right', 'When viewing a plug from its face (Earth facing downwards), the top left prong is Neutral and the top right is Active (Live/Phase).', WIKI_AS3112),
+    subject: 'AS/NZS 3112 10 A plug, 2 leads, no earth pin (class II appliance; secondary sources)',
+    sources: [WIKI_AS3112, ACCESS_AS3112, PSM_AU],
+    verdict: 'VERIFIED',
+    decision: `${SECONDARY} ${B4}`,
+    lSide: AS_PLUG_L_SIDE,
     ratings: [AS_RATING],
+    extra: {
+      noEarthPin: fact('the earth pin may be omitted; the 2-pin plug is still polarized', 'Even a not earthed, 2-pin plug is polarized. Standard domestic rewirable plugs always have 3 pins, but the earth pin may be omitted on plugs moulded on appliance cords ... as used for low current double insulated devices (Plug and socket museum, AS/NZS)', PSM_AU),
+    },
   },
 
   // ----- AC-DC modules -----
@@ -471,6 +530,11 @@ export const EVIDENCE: Record<string, PartEvidence> = {
     },
   },
 
+  // Documented alternatives with a stated Class II (ruling B2).
+  'irm-03-5': irm('03', 5),
+  'irm-03-3v3': irm('03', 3.3),
+  'irm-05-5': irm('05', 5),
+
   // ----- Loads and wiring -----
   'lamp-holder-e26': {
     subject: 'Leviton 9880 keyless porcelain medium-base (E26) lampholder; lamp Philips 9.5A19/PER/827RGBOP/FR/P/E26 (UPC 046677568948)',
@@ -488,8 +552,8 @@ export const EVIDENCE: Record<string, PartEvidence> = {
   'lamp-holder-e27': {
     subject: 'Vossloh-Schwabe E27 porcelain lampholder, three-piece, type 62061, Ref. No. 535685 (with earth screw); lamp Philips LED 60W A60 E27 WW FR ND 1SRT4 UK (12NC 929003817684)',
     sources: [VS_CATALOGUE, PHILIPS_A60, IET_559],
-    verdict: 'NOT VERIFIED',
-    blocking: 'The shell-on-N requirement is not established for E27: BS 7671 reg. 559.5.1.206 (as reported by the IET forum; the regulation text was not read) requires the outer contact on N for Edison screw lampholders but exempts E14 and E27 lampholders to BS EN 60238, and no free source for IEC 60364-5-55 was found. The holder, its rating, its earth screw and the lamp range are verified. Disposition: generate the holder with L and N terminals but without the N requirement on the shell (so no polarity finding), unless Michael wants the requirement kept as good practice.',
+    verdict: 'VERIFIED',
+    decision: 'Ruling B7 (Michael, 2026-09-27): no N requirement on the E27 shell, so the holder gives no polarity finding. BS 7671 reg. 559.5.1.206 (as discussed on the IET forum; the regulation text was not read) exempts E14 and E27 lampholders to BS EN 60238 from the outer-contact-on-N rule, and no free source for IEC 60364 was found.',
     ratings: [{ volts: 250, amps: 4, service: 'ac', quote: 'E27 lampholder, three-piece. Material: porcelain, white, T240, nominal rating: 4/250 (IEC 60238 marking: 4 A, 250 V; the catalogue does not spell out the units)', url: VS_CATALOGUE }],
     loadRange: fact<[number, number]>([220, 240], 'Voltage AC 220-240 V; Socket E27; Product title LED 60W A60 E27 WW FR ND 1SRT4 UK', PHILIPS_A60),
     extra: {
@@ -594,7 +658,7 @@ export const EVIDENCE: Record<string, PartEvidence> = {
     subject: 'Generic 1-channel 5 V relay module with Songle SRD-05VDC-SL-C (form C); Songle SRD (T73) series datasheet, version V1',
     sources: [SONGLE_DS, SONGLE_PAGE, SONGLE_OLD_DS, RELAY_MODULE_AMAZON, RELAY_MODULE_KONNECTED],
     verdict: 'NOT VERIFIED',
-    blocking: 'No insulation class, for the relay or the board: the Songle sheet gives only "Dielectric strength (Leakage current 1mA): Between coil and contacts 1500VAC 1min" and "Insulation level B/F" (the coil\'s thermal insulation class, not a mains-to-coil class); the module listings give no rating or isolation at all ("The Maximum voltage that can pass through the Switched (NO/NC) side of the relays is written on them"). Disposition: generated with isolation unknown (the checker treats IN, DC- and DC+ as live whenever the contacts carry mains). This contradicts the spec circuit "relay switching a fused lamp ... (only the relay module\'s unverified-rating and cable-unverified warnings)" (Resolution 21): Michael decides whether that circuit changes its expected result.',
+    blocking: 'No insulation class, for the relay or the board: the Songle sheet gives only "Dielectric strength (Leakage current 1mA): Between coil and contacts 1500VAC 1min" and "Insulation level B/F" (the coil\'s thermal insulation class, not a mains-to-coil class); the module listings give no rating or isolation at all ("The Maximum voltage that can pass through the Switched (NO/NC) side of the relays is written on them"). Ruling B2 (Michael, 2026-09-27): generated with isolation "unknown"; the checker treats IN, DC- and DC+ as live whenever the contacts carry mains and reports rule-1 errors with the reason "isolation unknown". The spec circuit "relay switching a fused lamp" now expects those errors.',
     ratings: [
       { volts: 125, amps: 10, service: 'ac', conditions: 'resistive load (cos φ = 1); the relay\'s rating, not the module\'s', quote: 'CONTACT RATING, FORM C, Contact Capacity Resistive Load (cosΦ=1): 7A 28VDC, 10A 125VAC, 7A 240VAC', url: SONGLE_OLD_DS },
       { volts: 240, amps: 7, service: 'ac', conditions: 'resistive load (cos φ = 1); the relay\'s rating, not the module\'s', quote: 'CONTACT RATING, FORM C, Contact Capacity Resistive Load (cosΦ=1): 7A 28VDC, 10A 125VAC, 7A 240VAC', url: SONGLE_OLD_DS },
@@ -612,7 +676,7 @@ export const EVIDENCE: Record<string, PartEvidence> = {
     subject: 'Fotek SSR-25DA (standard type, zero cross), SSR series catalogue pages 05 and 28-29, PDF created 2022-06-21',
     sources: [FOTEK_MANUAL, FOTEK_PRODUCT, FOTEK_SERIES, FOTEK_PHOTO],
     verdict: 'NOT VERIFIED',
-    blocking: 'No insulation class between input and output: Fotek gives "Isolation strength 4 KVrms (EN60950/VDE0805)" and "Insulation strength 100MΩ / 500VDC", test values only. Disposition: generated with isolation unknown (the checker treats terminals 3 and 4 as live when 1 and 2 carry mains), so an SSR driven from a GPIO is an error; Michael decides whether that is the intended result. Everything else (pins, control range, load rating, leakage, notes) is verified. Note: SSR-25DA is widely counterfeited; these values are for the genuine Fotek part.',
+    blocking: 'No insulation class between input and output: Fotek gives "Isolation strength 4 KVrms (EN60950/VDE0805)" and "Insulation strength 100MΩ / 500VDC", test values only. Ruling B2 (Michael, 2026-09-27): generated with isolation "unknown"; the checker treats terminals 3 and 4 as live when 1 and 2 carry mains, so an SSR driven from a GPIO is a rule-1 error with the reason "isolation unknown". Everything else (pins, control range, load rating, leakage, notes) is verified. Note: SSR-25DA is widely counterfeited; these values are for the genuine Fotek part.',
     pins: fact({ top: ['1', '2'], bottom: ['4', '3'] }, 'Fotek SSR-DA product photo: top row 1 (left) and 2 (right), each marked ~, "24 - 380VAC" between them; bottom row 4 (left, marked -) and 3 (right, marked +), "4 - 32VDC" between them. Connection diagram: 1 and 2 load side, - 4 and + 3 input.', FOTEK_PHOTO),
     ratings: [{ volts: 380, amps: 25, service: 'ac', conditions: 'rated current for a resistive load on a heatsink with thermal grease; incandescent lamps: module rating over 4 times the lamp current; Fotek heatsink HS-50 is rated 15 A max per SSR, so 25 A needs a larger heatsink', quote: 'Specification [Rated current corresponding to Resistive load]: SSR - 25DA Rated current 25A max., Output voltage 24 ~ 380VAC. Notice of use: The thermal conductive silicone rubber or thermal grease is required When the solid state module is mounted on a heat sink ... Incandescent lamp: The rated current of the module must be over 4 times of the incandescent lamp current. Heat sink standard type HS-50: Current duration 15A max.', url: FOTEK_MANUAL }],
     extra: {
