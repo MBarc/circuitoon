@@ -339,6 +339,13 @@ function flow(p: Prepared, a: number, b: number, directed: boolean): boolean {
  * Identity and energization for the state in `p.groupState`, over `p.relevant` only: resetting and
  * walking just these nodes keeps a state's cost independent of the rest of the sheet. Results live in
  * `p` until the next call.
+ *
+ * Callers check `g.sources.length <= MAX_SOURCES` first (mains-incomplete otherwise): beyond ten
+ * sources the identity bits of one source alias another's and the power bits overflow.
+ *
+ * Energization crosses loads, so any load on a live L puts energy on the neutral net, and from there
+ * across every other load on that neutral: a switched-off lamp's L terminal is still energized. A rule
+ * that must decide a branch is switched off reads identity (no L), never power.
  */
 export function analyseState(p: Prepared): void {
   const { g } = p
@@ -347,8 +354,11 @@ export function analyseState(p: Prepared): void {
     p.bareParent[i] = p.bareBase[i]
     if (p.anyAbsent) p.fitParent[i] = p.fitBase[i]
   }
+  // A pair is joined only when both ends are in the analysis: a view's multi-pole group may have a
+  // pole outside it, and scratch entries outside `relevant` are never written.
   for (const gi of p.groupIdx)
     for (const [a, b] of g.groups[gi].closed[p.groupState[gi]]) {
+      if (!p.inRel[a] || !p.inRel[b]) continue
       union(p.parent, a, b)
       union(p.bareParent, a, b)
       if (p.anyAbsent) union(p.fitParent, a, b)
@@ -377,11 +387,12 @@ export function analyseState(p: Prepared): void {
   for (let changed = true; changed; ) {
     changed = false
     for (const e of p.energy) if (flow(p, e.a, e.b, e.directed)) changed = true
-    for (const gi of p.groupIdx) for (const [a, b] of g.groups[gi].leak[p.groupState[gi]]) if (flow(p, a, b, false)) changed = true
+    for (const gi of p.groupIdx) for (const [a, b] of g.groups[gi].leak[p.groupState[gi]]) if (p.inRel[a] && p.inRel[b] && flow(p, a, b, false)) changed = true
   }
 }
 
 export const identAt = (p: Prepared, node: number): number => p.ident[p.root[node]]
+/** Energizing sources at a node. Energy crosses loads onto the neutral net (see analyseState): use identity, not this, to tell a branch is switched off. */
 export const powerAt = (p: Prepared, node: number): number => p.power[p.root[node]]
 /** A node is hazardous when it holds L or N identity or is energized (spec 1.2). */
 export const hazardAt = (p: Prepared, node: number): boolean => (identAt(p, node) & LN_MASK) !== 0 || powerAt(p, node) !== 0
@@ -435,7 +446,7 @@ export function viewOf(p: Prepared, nodes: number[]): Prepared {
     loadIdx: p.loadIdx.filter((i) => inRel[g.loads[i].a]),
     converterIdx: p.converterIdx.filter((i) => inRel[g.converters[i].a]),
     protective: p.protective.filter((e) => inRel[e.a]),
-    energy: p.energy.filter((e) => inRel[e.a]),
+    energy: p.energy.filter((e) => inRel[e.a] && inRel[e.b]),
   }
 }
 

@@ -5,7 +5,7 @@ import { validateModule } from './module.ts'
 import { plugsOf } from './breadboard.ts'
 import { netlist, nodeKey } from './netlist.ts'
 import type { Diagram } from './diagram.ts'
-import { L_MASK, N_MASK, PE_MASK, analyseState, bitOf, buildMainsGraph, prepare, type Prepared } from './mainsGraph.ts'
+import { L_MASK, N_MASK, PE_MASK, analyseState, bitOf, buildMainsGraph, decodeSingle, hazardAt, possibleRoots, prepare, units, type Prepared } from './mainsGraph.ts'
 import { MAINS_MODULES, at, sheet, w } from './mains.testing.ts'
 
 const graph = (d: Diagram): Prepared => {
@@ -115,5 +115,74 @@ describe('buildMainsGraph', () => {
     expect(L_MASK & N_MASK).toBe(0)
     expect(N_MASK & PE_MASK).toBe(0)
     expect(bitOf(9, 'PE') & PE_MASK).toBe(bitOf(9, 'PE'))
+  })
+})
+
+describe('analyseState edges and reuse', () => {
+  it('energizes across an isolation barrier one way only: secondary energy never reaches the primary', () => {
+    const p = state(graph(sheet([at('xs1', 'XS1', 't-outlet'), at('ps1', 'PS1', 't-psu-basic', 200)], [w('xs1|L', 'ps1|+V')])))
+    expect([power(p, 'ps1', '+V'), power(p, 'ps1', 'AC1'), power(p, 'ps1', 'AC2')]).toEqual([1, 0, 0])
+  })
+  it('starts no energization from N or PE identity alone', () => {
+    const p = state(graph(sheet([at('xs1', 'XS1', 't-outlet'), at('e1', 'E1', 't-lamp', 200), at('e2', 'E2', 't-lamp', 200, 200), at('u1', 'U1', 't-mcu', 400)],
+      [w('xs1|N', 'e1|L'), w('e1|N', 'u1|IO'), w('xs1|PE', 'e2|L')])))
+    expect([ident(p, 'e1', 'L'), power(p, 'e1', 'L'), power(p, 'u1', 'IO'), power(p, 'e2', 'N')]).toEqual([bitOf(0, 'N'), 0, 0, 0])
+  })
+  it('blocks energy as well as identity at an absent fuse', () => {
+    const p = state(graph(sheet([at('xs1', 'XS1', 't-outlet'), at('f1', 'F1', 't-fuse', 200, 0, { settings: { fuse: 'absent' } }), at('e1', 'E1', 't-lamp', 400)],
+      [w('xs1|L', 'f1|1'), w('f1|2', 'e1|L'), w('xs1|N', 'e1|N')])))
+    expect([ident(p, 'e1', 'L'), power(p, 'e1', 'L'), power(p, 'f1', '2')]).toEqual([0, 0, 0])
+  })
+  it('joins closed contacts but no fuse in bareRoot', () => {
+    const p = state(graph(sheet([at('xs1', 'XS1', 't-outlet'), at('f1', 'F1', 't-fuse', 200), at('s1', 'S1', 't-switch', 400)],
+      [w('xs1|L', 'f1|1'), w('f1|2', 's1|1')])), 0)
+    expect(p.root[node(p, 's1', '2')]).toBe(p.root[node(p, 'xs1', 'L')])
+    expect(p.bareRoot[node(p, 's1', '2')]).toBe(p.bareRoot[node(p, 'f1', '2')])
+    expect(p.bareRoot[node(p, 's1', '2')]).not.toBe(p.bareRoot[node(p, 'xs1', 'L')])
+  })
+  it('joins every contact position and every fuse, fitted or not, in possibleRoots', () => {
+    const p = graph(sheet([at('xs1', 'XS1', 't-outlet'), at('k1', 'K1', 't-relay', 200), at('f1', 'F1', 't-fuse', 400, 0, { settings: { fuse: 'absent' } }), at('u1', 'U1', 't-mcu', 600)],
+      [w('xs1|L', 'k1|COM'), w('k1|NO', 'f1|1')]))
+    const r = possibleRoots(p.g)
+    const at_ = (part: string, pin: string) => r[node(p, part, pin)]
+    expect([at_('k1', 'NC'), at_('k1', 'NO'), at_('f1', '2')]).toEqual([at_('xs1', 'L'), at_('xs1', 'L'), at_('xs1', 'L')])
+    expect(at_('u1', 'IO')).not.toBe(at_('xs1', 'L'))
+  })
+  it('calls a node hazardous for L or N identity or energy, never for PE alone or nothing', () => {
+    const p = state(graph(sheet([at('xs1', 'XS1', 't-outlet'), at('e1', 'E1', 't-lamp', 200), at('u1', 'U1', 't-mcu', 400), at('s1', 'S1', 't-switch', 600)],
+      [w('xs1|L', 'e1|L'), w('e1|N', 'u1|IO'), w('xs1|PE', 's1|1')])))
+    const hz = (part: string, pin: string) => hazardAt(p, node(p, part, pin))
+    expect([hz('xs1', 'L'), hz('xs1', 'N'), hz('u1', 'IO'), hz('xs1', 'PE'), hz('s1', '2')]).toEqual([true, true, true, false, false])
+  })
+  it('decodes a single identity bit to its source and conductor', () => {
+    expect([decodeSingle(bitOf(0, 'L')), decodeSingle(bitOf(4, 'N')), decodeSingle(bitOf(9, 'PE'))])
+      .toEqual([{ s: 0, c: 'L' }, { s: 4, c: 'N' }, { s: 9, c: 'PE' }])
+  })
+  it('leaves no stale result when a relay goes energized and back to released', () => {
+    const p = graph(sheet([at('xs1', 'XS1', 't-outlet'), at('k1', 'K1', 't-relay', 200), at('e1', 'E1', 't-lamp', 400), at('e2', 'E2', 't-lamp', 400, 200)],
+      [w('xs1|L', 'k1|COM'), w('k1|NO', 'e1|L'), w('k1|NC', 'e2|L'), w('xs1|N', 'e1|N'), w('xs1|N', 'e2|N')]))
+    const look = () => [ident(p, 'e1', 'L'), ident(p, 'e2', 'L'), power(p, 'e1', 'L'), power(p, 'e2', 'L'), p.srcRoots.length]
+    state(p)
+    const released = look()
+    // Released: E2 gets L. E1's L gets energy only across E2 and E1 from the neutral net (no identity).
+    expect(released).toEqual([0, bitOf(0, 'L'), 1, 1, 3])
+    state(p, 0)
+    expect(look()).toEqual([bitOf(0, 'L'), 0, 1, 1, 3])
+    state(p)
+    expect(look()).toEqual(released)
+  })
+  it("touches no scratch entry outside a view, even for a group whose other pole lies outside it", () => {
+    const p = graph(sheet([at('xs1', 'XS1', 't-outlet'), at('xs2', 'XS2', 't-outlet-2', 0, 300), at('k1', 'K1', 't-relay-2p', 400)],
+      [w('xs1|N', 'k1|COM1'), w('xs2|N', 'k1|COM2')]))
+    // Units built without K1 as a candidate: its two poles fall in different units.
+    const u = units(p, []).find((x) => x.view.inRel[node(p, 'xs1', 'N')] === 1)!
+    expect(u.view.inRel[node(p, 'k1', 'COM2')]).toBe(0)
+    for (let i = 0; i < p.g.n; i++) p.parent[i] = p.bareParent[i] = p.root[i] = p.bareRoot[i] = i
+    const before = [p.parent.slice(), p.bareParent.slice(), p.root.slice(), p.bareRoot.slice()]
+    u.view.groupState.fill(1)
+    analyseState(u.view)
+    const outside = (a: Int32Array) => [...a].filter((_, i) => !u.view.inRel[i])
+    expect([p.parent, p.bareParent, p.root, p.bareRoot].map(outside)).toEqual(before.map(outside))
+    expect(ident(p, 'k1', 'NO1')).toBe(bitOf(0, 'N'))
   })
 })
