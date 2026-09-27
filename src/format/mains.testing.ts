@@ -131,11 +131,15 @@ export const relayBoard2 = mod({ id: 't-relay-board-2', name: 'Test two-channel 
   domains: [{ name: 'contacts', pins: ['COM1', 'NO1', 'NC1', 'COM2', 'NO2', 'NC2'], kind: 'mains' }, { name: 'coil', pins: ['+', '-'], kind: 'selv' }], isolation: 'reinforced', isolationProvenance: 'datasheet',
   ratings: [{ pins: ['COM1', 'NO1', 'NC1', 'COM2', 'NO2', 'NC2'], kind: 'switching', service: 'ac', volts: 250, amps: 10, provenance: 'datasheet' }],
 } })
+/** A relay module whose listing states no insulation class between coil and contacts (like the clone boards, ruling B2). */
+export const relayUnknown = mod({ ...relay, id: 't-relay-unknown', name: 'Test relay (isolation unknown)', electrical: { ...(relay.electrical as Record<string, unknown>), isolation: 'unknown', isolationProvenance: undefined } })
+/** An SSR with only basic insulation between its control side and its load side. */
+export const ssrBasic = mod({ ...ssr, id: 't-ssr-basic', name: 'Test SSR (basic insulation)', electrical: { ...(ssr.electrical as Record<string, unknown>), isolation: 'basic' } })
 /** A part with mains terminals and no conduction data. */
 export const undeclared = mod({ id: 't-undeclared', name: 'Test part without mains data', pins: [{ name: 'A', side: 'left', mains: 'L' }, { name: 'B', side: 'right', mains: 'N' }] })
 
 export const MAINS_MODULES: Record<string, ModuleDef> = Object.fromEntries(
-  [outlet, outlet2, outletEU, psu, psuBasic, psuBasicBonded, psuScreen, psuPelv, lamp, lampC1, sw, relay, ssr, fuse, block, block125, blockDc, blockCond, blockBare, blockUnverified, mcu, mcu33, undeclared, bat9, relay2p, psuMainsOnly, lamp230, psuMislabeled, swChangeover, relayBoard2]
+  [outlet, outlet2, outletEU, psu, psuBasic, psuBasicBonded, psuScreen, psuPelv, lamp, lampC1, sw, relay, ssr, fuse, block, block125, blockDc, blockCond, blockBare, blockUnverified, mcu, mcu33, undeclared, bat9, relay2p, psuMainsOnly, lamp230, psuMislabeled, swChangeover, relayBoard2, relayUnknown, ssrBasic]
     .map((m) => [m.id, m]),
 )
 

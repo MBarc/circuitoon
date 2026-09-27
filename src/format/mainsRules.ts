@@ -248,17 +248,22 @@ export const STATE_RULES: ((acc: Acc, mask: number) => void)[] = [availabilityRu
 
 export type LvClass = 'ordinary' | 'separated' | 'secondary'
 
+/** A converter's pin outside every domain and not declared for mains: its data does not say how it is separated (Resolution 27). */
+const uncovered = (t: GTerm) => !!t.info.acInput && !t.info.domainOf.has(t.name) && !t.info.terminals.has(t.name)
+
 /**
  * How a terminal counts when mains reaches it: a pin of a part with no mains data (a GPIO, a
  * breadboard strip) or an undeclared pin of a mains part is ordinary; a pin in a non-mains domain is
- * separated (protective separation) or a secondary without it; null for a terminal the module
- * declares for mains (the rating rules take it). Whether a separated side is SELV or PELV is decided
- * per state by `effectiveClass`, never by the domain's label (Resolution 9).
+ * separated (protective separation) or a secondary without it, as is a converter's pin outside every
+ * domain (Resolution 27); null for a terminal the module declares for mains (the rating rules take
+ * it). Whether a separated side is SELV or PELV is decided per state by `effectiveClass`, never by the
+ * domain's label (Resolution 9).
  */
 export function lvClass(t: GTerm): LvClass | null {
   if (!t.info.any) return 'ordinary'
   const dom = t.info.domainOf.get(t.name)
   if (dom && dom.kind !== 'mains') return isolationAdequate(t.info) ? 'separated' : 'secondary'
+  if (uncovered(t)) return 'secondary'
   return t.info.terminals.has(t.name) ? null : 'ordinary'
 }
 
@@ -280,7 +285,7 @@ interface Watch {
   /** The first separated terminal (whose part's bonds decide SELV or PELV), and those bond nodes. */
   sep: GTerm | null
   bonds: Int32Array
-  /** The finding key per (source mask, PELV bit), made once so a state allocates nothing. */
+  /** The finding key per (source mask, PELV bit, direct bit), made once so a state allocates nothing. */
   keys: Map<number, string>
 }
 const watchCache = new WeakMap<Prepared, Watch[]>()
@@ -308,62 +313,90 @@ function watchList(p: Prepared): Watch[] {
 }
 
 /**
- * The wires on the way energy reaches root `r` in the current state: every net on a shortest chain
- * of load, leakage and energize edges from an L or N net of the given sources (every source when
- * omitted) to `r`, and `r`'s own (spec 3: a path finding highlights the path, not only where it
- * ends). Runs once per finding, never per state.
+ * The wires on the ways energy reaches root `r` in the current state (spec 3: a path finding
+ * highlights the path, not only where it ends; Ruling 33). For each of the given sources (every
+ * source when omitted) and each of its conductors L and N: `r`'s own net when `r` holds that identity,
+ * otherwise every net on a shortest chain of load, leakage and energize edges from that conductor's
+ * nets to `r`. The union is returned. Runs for a few states per finding, never on every state.
  */
 export function energyPathWires(p: Prepared, r: number, from?: number[]): string[] {
   const g = p.g
-  const prev = new Map<number, number>()
-  const queue: number[] = []
-  for (const s of p.sources) {
-    if (from && !from.includes(s.index)) continue
-    for (const x of [...s.live, ...s.neutral]) {
-      const q = p.root[x]
-      if (!prev.has(q)) {
-        prev.set(q, -1)
-        queue.push(q)
-      }
-    }
-  }
   const links: [number, number, boolean][] = [
     ...p.energy.map((e): [number, number, boolean] => [e.a, e.b, e.directed]),
     ...p.groupIdx.flatMap((gi) => g.groups[gi].leak[p.groupState[gi]].filter(([a, b]) => p.inRel[a] && p.inRel[b]).map(([a, b]): [number, number, boolean] => [a, b, false])),
   ]
-  for (let q = 0; q < queue.length && !prev.has(r); q++) {
-    const x = queue[q]
-    for (const [a, b, directed] of links) {
-      const [ra, rb] = [p.root[a], p.root[b]]
-      const next = ra === x ? rb : !directed && rb === x ? ra : -1
-      if (next >= 0 && !prev.has(next)) {
-        prev.set(next, x)
-        queue.push(next)
+  const on = new Set<number>([r])
+  for (const s of p.sources) {
+    if (from && !from.includes(s.index)) continue
+    for (const nodes of [s.live, s.neutral]) {
+      const prev = new Map<number, number>()
+      const queue: number[] = []
+      for (const x of nodes) {
+        const q = p.root[x]
+        if (!prev.has(q)) {
+          prev.set(q, -1)
+          queue.push(q)
+        }
       }
+      if (prev.has(r)) continue
+      for (let q = 0; q < queue.length && !prev.has(r); q++) {
+        const x = queue[q]
+        for (const [a, b, directed] of links) {
+          const [ra, rb] = [p.root[a], p.root[b]]
+          const next = ra === x ? rb : !directed && rb === x ? ra : -1
+          if (next >= 0 && !prev.has(next)) {
+            prev.set(next, x)
+            queue.push(next)
+          }
+        }
+      }
+      for (let x = prev.has(r) ? r : -1; x !== -1; x = prev.get(x)!) on.add(x)
     }
   }
-  const on = new Set<number>([r])
-  for (let x = prev.has(r) ? r : -1; x !== -1; x = prev.get(x)!) on.add(x)
   const out: string[] = []
   for (const i of p.relevant) if (on.has(p.root[i])) out.push(...g.wires[i])
   return out
 }
 
-function lowVoltageDraft(w: Watch, from: string, effective: 'SELV' | 'PELV', sourceKeys: string[], wires: string[], when: string): MainsDraft {
+/** Why a secondary terminal counts as mains, and what to use instead, by the kind of part it belongs to. `also` when a wire already brings mains there. */
+function secondaryWords(t: GTerm, also: boolean): { cause: string; counts: string; fix: string } {
+  const d = t.part.designator
+  const iso = t.info.isolation
+  const a = also ? 'also ' : ''
+  if (uncovered(t))
+    return { cause: `${d}'s data ${a}does not state how ${termName(t)} is separated from mains`, counts: 'that pin', fix: 'use a part whose datasheet states how every pin is separated from mains.' }
+  const contact = t.info.contacts[0]?.kind
+  if (contact) {
+    const sides = contact === 'ssr' ? 'its control side and its load side' : 'its coil and its contacts'
+    const how = iso === 'basic' ? 'only basic' : iso === 'none' ? 'missing' : 'unknown'
+    return { cause: `${d}'s insulation between ${sides} is ${a}${how}`, counts: 'that side', fix: 'use a relay or SSR whose datasheet states reinforced or double insulation.' }
+  }
+  const how = iso === 'basic' ? 'basic insulation' : iso === 'none' ? 'no insulation at all' : 'insulation of unknown quality'
+  return { cause: `${d}'s low-voltage side is ${a}separated from mains only by ${how}`, counts: 'that side', fix: 'use a converter with reinforced or double isolation.' }
+}
+
+/**
+ * Rule 1's words. A secondary reached only across its own part's barrier says why that side counts as
+ * mains; mains that a wire brings onto the node (L or N identity there) is said directly, with the
+ * secondary's reason added when there is one.
+ */
+function lowVoltageDraft(w: Watch, direct: boolean, from: string, effective: 'SELV' | 'PELV', sourceKeys: string[], wires: string[], when: string): MainsDraft {
   const names = andList(w.terms.map(termName))
   const one = w.terms.length === 1
   const lead = w.terms[0]
+  const sec = w.cls === 'secondary' ? secondaryWords(w.terms.find((t) => lvClass(t) === 'secondary')!, direct) : null
   let message: string
-  if (w.cls === 'secondary') {
-    const conv = w.terms.find((t) => lvClass(t) === 'secondary')!
-    const iso = conv.info.isolation === 'basic' ? 'basic insulation' : conv.info.isolation === 'none' ? 'no insulation at all' : 'insulation of unknown quality'
-    message = `${conv.part.designator}'s low-voltage side is separated from mains only by ${iso}, so ${names} may be live${when}: that side counts as mains. Do not wire it to anything a person can touch; use a converter with reinforced or double isolation.`
+  if (sec && !direct) {
+    message = `${sec.cause}, so ${names} may be live${when}: ${sec.counts} counts as mains. Do not wire it to anything a person can touch; ${sec.fix}`
   } else if (w.cls === 'separated') {
     message = `${names} ${one ? 'is' : 'are'} on a ${effective} low-voltage side that must never meet mains, but ${one ? 'gets' : 'get'} mains from ${from}${when}. Remove the wire that joins ${one ? 'it' : 'them'} to mains.`
   } else {
-    const parts = [...new Set(w.terms.map((t) => t.part.designator))]
+    const parts = [...new Set(w.terms.filter((t) => lvClass(t) === 'ordinary').map((t) => t.part.designator))]
     const single = parts.length === 1
-    message = `${names} ${one ? 'gets' : 'get'} mains from ${from}${when}. ${andList(parts)} ${single ? 'is a low-voltage part' : 'are low-voltage parts'}: ${single ? 'it' : 'they'} may be destroyed, and anything touching ${single ? 'it' : 'them'} may become live. Remove the wire that brings mains there, and switch mains only through a relay or SSR rated for it.`
+    const harm = parts.length ? ` ${andList(parts)} ${single ? 'is a low-voltage part' : 'are low-voltage parts'}: ${single ? 'it' : 'they'} may be destroyed, and anything touching ${single ? 'it' : 'them'} may become live.` : ''
+    message = sec
+      ? `${names} ${one ? 'gets' : 'get'} mains from ${from}${when}.${harm} Remove the wire that brings mains there. ${sec.cause}, so it counts as mains even without that wire: do not wire it to anything a person can touch; ${sec.fix}`
+      : `${names} ${one ? 'gets' : 'get'} mains from ${from}${when}.${harm} Remove the wire that brings mains there, and switch mains only through a relay or SSR rated for it.`
   }
   return { rule: 'mains-to-low-voltage', subject: lead.part.designator, target: termName(lead), message, parts: [...new Set(w.terms.map((t) => t.part.uid))], pins: w.terms.map(endpointOf), wires, causes: [...w.terms.map((t) => t.key), ...sourceKeys] }
 }
@@ -375,32 +408,46 @@ const sourcesOfMask = (m: number): number[] => {
   return out
 }
 
-/** Rule 1, per state and allocation-free once a finding is known: a hazardous node holding a low-voltage terminal. */
+/** A finding's highlight gathers the energizing paths of up to this many of the states it holds in (Ruling 33). */
+const PATH_STATES = 4
+interface PathRec { states: number; wires: Set<string> }
+const pathCache = new WeakMap<Acc, Map<string, PathRec>>()
+
+/** Rule 1, per state: a hazardous node holding a low-voltage terminal. Allocation-free once a finding has its paths. */
 function lowVoltageRule(acc: Acc, mask: number) {
   const { p, srcIdx, srcLN } = acc
+  let paths = pathCache.get(acc)
+  if (!paths) pathCache.set(acc, (paths = new Map()))
   for (const w of watchList(p)) {
     const r = p.root[w.node]
     const x = p.ident[r] & LN_MASK
     const e = p.power[r]
     if (!x && !e) continue
-    // Resolution 24: the key holds the whole claim (terminals, sources, effective class), so each
-    // source keeps its own conditions and path.
+    // Resolution 24: the key holds the whole claim (terminals, sources, effective class, and for a
+    // secondary whether a wire brings mains there), so each claim keeps its own conditions and path.
     let sm = 0
     for (let j = 0; j < srcIdx.length; j++) if (x & srcLN[j] || (e >> srcIdx[j]) & 1) sm |= 1 << srcIdx[j]
     let pelv = 0
     for (let b = 0; b < w.bonds.length && !pelv; b++) if (p.ident[p.root[w.bonds[b]]] & PE_MASK) pelv = 1
-    const code = sm * 2 + pelv
+    const direct = w.cls === 'secondary' && x ? 1 : 0
+    const code = sm * 4 + pelv * 2 + direct
     let key = w.keys.get(code)
-    if (key === undefined) w.keys.set(code, (key = `mains-to-low-voltage|${w.terms.map((t) => t.key).join(',')}|${sm}|${pelv ? 'PELV' : 'SELV'}`))
-    if (mark(acc, key, mask)) continue
-    report(acc, key, mask, () => {
-      const srcs = sourcesOfMask(sm)
-      const from = sourcesText(p.g, srcs)
-      const sourceKeys = srcs.flatMap((i) => p.g.sources[i].keys.L)
-      const wires = energyPathWires(p, r, srcs)
-      const effective = pelv ? 'PELV' : 'SELV'
-      return (when) => lowVoltageDraft(w, from, effective, sourceKeys, wires, when)
-    })
+    if (key === undefined) w.keys.set(code, (key = `mains-to-low-voltage|${w.terms.map((t) => t.key).join(',')}|${sm}|${pelv ? 'PELV' : 'SELV'}|${direct}`))
+    let rec = paths.get(key)
+    if (!mark(acc, key, mask)) {
+      const made: PathRec = (rec = { states: 0, wires: new Set() })
+      paths.set(key, made)
+      report(acc, key, mask, () => {
+        const srcs = sourcesOfMask(sm)
+        const from = sourcesText(p.g, srcs)
+        const sourceKeys = srcs.flatMap((i) => [...p.g.sources[i].keys.L, ...p.g.sources[i].keys.N])
+        return (when) => lowVoltageDraft(w, direct === 1, from, pelv ? 'PELV' : 'SELV', sourceKeys, [...made.wires], when)
+      })
+    }
+    if (rec && rec.states < PATH_STATES) {
+      rec.states++
+      for (const wire of energyPathWires(p, r, sourcesOfMask(sm))) rec.wires.add(wire)
+    }
   }
 }
 
@@ -416,7 +463,7 @@ function shortDraft(p: Prepared, r: number, s: GSource, other: 'N' | 'PE') {
     rule: 'mains-short', subject: d, target: `${d} L`,
     message: other === 'N'
       ? `${d} L and N are joined${when}: a short circuit across the outlet. The breaker should trip; until it does, the wiring may overheat. Remove the wire that joins them.`
-      : `${d} L is joined to earth${when}: a short circuit to earth, which puts mains on everything earthed until the breaker trips. Remove the wire that joins them.`,
+      : `${d} L is joined to earth${when}: a short circuit to earth, which may put mains on everything earthed until the breaker trips. Remove the wire that joins them.`,
     parts: [s.part.uid], pins: keys.map(pinOfKey), wires, causes: keys,
   })
 }
@@ -433,7 +480,7 @@ function crossDraft(p: Prepared, r: number, s: GSource, a: Conductor, t: GSource
     : cx === 'L' && cy === 'N' ? `${X} L is joined to ${Y} N${when}: current from one outlet returns through the other, which can overload a shared neutral or get past a breaker. Power this part of the circuit from one outlet.`
     : cx === 'L' ? `${X} L is joined to ${Y}'s earth${when}: a short circuit to earth from another outlet. Remove the wire that joins them.`
     : cx === 'N' && cy === 'N' ? `${X} N and ${Y} N are joined${when}: the two outlets share a neutral here. When a breaker switches one outlet off, its neutral can still carry current from the other. Keep each outlet's neutral separate.`
-    : `${X} N is joined to ${Y}'s earth${when}: neutral current flows on the earth wire. Keep each outlet's neutral apart from earth.`
+    : `${X} N is joined to ${Y}'s earth${when}: neutral current may flow on the earth wire. Keep each outlet's neutral apart from earth.`
   return (when: string): MainsDraft => ({
     rule: cx === 'N' && cy === 'N' ? 'mains-shared-neutral' : 'mains-cross-source', subject: X, target: `${X} ${cx}`, message: text(when),
     parts: [x.part.uid, y.part.uid], pins: keys.map(pinOfKey), wires, causes: keys,

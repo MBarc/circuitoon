@@ -48,6 +48,54 @@ describe('rule 1: mains on low-voltage wiring', () => {
   })
 })
 
+describe('rule 1: energy from N, the highlighted path, and wording by part (Ruling 33)', () => {
+  const lvTail = 'U1 is a low-voltage part: it may be destroyed, and anything touching it may become live. Remove the wire that brings mains there, and switch mains only through a relay or SSR rated for it.'
+  it('a GPIO through a lamp to N is live, on a Schuko and on a US outlet (N is a live conductor)', () => {
+    for (const [outlet, lampId, v] of [['t-outlet-eu', 't-lamp-230', '230 V'], ['t-outlet', 't-lamp', '120 V']]) {
+      const d = on([['e1', 'E1', lampId], ['u1', 'U1', 't-mcu']], [w('xs1|N', 'e1|L'), w('e1|N', 'u1|IO')], [['xs1', 'XS1', outlet]])
+      expect(msgs(d, 'mains-to-low-voltage')).toEqual([`U1 IO gets mains from XS1 (${v}). ${lvTail}`])
+    }
+  })
+  it('highlights every energizing path: the OFF SSR leakage from L as well as the lamp from N', () => {
+    const wires = [w('xs1|L', 'k1|1'), w('k1|2', 'e1|L'), w('e1|N', 'u1|IO'), w('u1|IO', 'e2|L'), w('e2|N', 'xs1|N')]
+    const d = on([['k1', 'K1', 't-ssr'], ['e1', 'E1', 't-lamp'], ['e2', 'E2', 't-lamp'], ['u1', 'U1', 't-mcu']], wires)
+    const found = only(d, 'mains-to-low-voltage')
+    expect(found.map((f) => f.message)).toEqual([`U1 IO gets mains from XS1 (120 V). ${lvTail}`])
+    expect([...found[0].wires].sort()).toEqual(wires.map((c) => c.uid).sort())
+  })
+  it('highlights the ON path of a switched lamp whose L a GPIO sits on, across the states it holds in', () => {
+    const toS1 = w('xs1|L', 's1|1')
+    const wires = [toS1, w('s1|2', 'e1|L'), w('e1|N', 'xs1|N'), w('xs1|L', 'e2|L'), w('e2|N', 'xs1|N'), w('e1|L', 'u1|IO')]
+    const d = on([['s1', 'S1', 't-switch'], ['e1', 'E1', 't-lamp'], ['e2', 'E2', 't-lamp'], ['u1', 'U1', 't-mcu']], wires)
+    const found = only(d, 'mains-to-low-voltage')
+    expect(found.map((f) => f.message)).toEqual([`U1 IO gets mains from XS1 (120 V). ${lvTail}`])
+    expect(found[0].wires).toContain(toS1.uid)
+    expect([...found[0].wires].sort()).toEqual(wires.map((c) => c.uid).sort())
+  })
+  it('says a wire brings mains onto a secondary directly, not only its insulation', () => {
+    const d = on([['ps1', 'PS1', 't-psu-basic'], ['u1', 'U1', 't-mcu']], [w('xs1|L', 'ps1|+V'), w('ps1|+V', 'u1|IO')])
+    expect(msgs(d, 'mains-to-low-voltage')).toEqual([
+      "PS1 +V and U1 IO get mains from XS1 (120 V). U1 is a low-voltage part: it may be destroyed, and anything touching it may become live. Remove the wire that brings mains there. PS1's low-voltage side is also separated from mains only by basic insulation, so it counts as mains even without that wire: do not wire it to anything a person can touch; use a converter with reinforced or double isolation.",
+    ])
+  })
+  it('words a relay coil or SSR control side by the module, never as a converter', () => {
+    const relayD = on([['k1', 'K1', 't-relay-unknown'], ['u1', 'U1', 't-mcu']], [w('xs1|L', 'k1|COM'), w('k1|+', 'u1|VCC')])
+    expect(msgs(relayD, 'mains-to-low-voltage')).toContain(
+      "K1's insulation between its coil and its contacts is unknown, so K1 + and U1 VCC may be live: that side counts as mains. Do not wire it to anything a person can touch; use a relay or SSR whose datasheet states reinforced or double insulation.",
+    )
+    const ssrD = on([['k1', 'K1', 't-ssr-basic'], ['u1', 'U1', 't-mcu']], [w('xs1|L', 'k1|1'), w('k1|3', 'u1|IO')])
+    expect(msgs(ssrD, 'mains-to-low-voltage')).toContain(
+      "K1's insulation between its control side and its load side is only basic, so K1 3 and U1 IO may be live: that side counts as mains. Do not wire it to anything a person can touch; use a relay or SSR whose datasheet states reinforced or double insulation.",
+    )
+  })
+  it("words a converter pin outside every domain by the missing data (Resolution 27)", () => {
+    const d = on([['ps1', 'PS1', 't-psu-mainsonly'], ['u1', 'U1', 't-mcu']], [w('xs1|L', 'ps1|AC1'), w('xs1|N', 'ps1|AC2'), w('ps1|+V', 'u1|VCC')])
+    expect(msgs(d, 'mains-to-low-voltage')).toContain(
+      "PS1's data does not state how PS1 +V is separated from mains, so PS1 +V and U1 VCC may be live: that pin counts as mains. Do not wire it to anything a person can touch; use a part whose datasheet states how every pin is separated from mains.",
+    )
+  })
+})
+
 describe('rule 1: each source keeps its own claim (Resolution 24)', () => {
   it('a GPIO on a relay between XS1 (120 V) and XS2 (230 V): two findings, each with its conditions and path', () => {
     const nc = w('xs1|L', 'k1|NC')
@@ -91,7 +139,7 @@ describe('rule 2: mains shorts', () => {
   })
   it('L to PE of one outlet', () => {
     expect(msgs(on([], [w('xs1|L', 'xs1|PE')]), 'mains-short')).toEqual([
-      'XS1 L is joined to earth: a short circuit to earth, which puts mains on everything earthed until the breaker trips. Remove the wire that joins them.',
+      'XS1 L is joined to earth: a short circuit to earth, which may put mains on everything earthed until the breaker trips. Remove the wire that joins them.',
     ])
   })
   it('names an OFF condition the short needs: L-S1-K1.COM, K1.NC to N, when K1 is released and S1 is on', () => {
@@ -146,7 +194,7 @@ describe('rule 3: two sources joined', () => {
       "XS1 L is joined to XS2's earth: a short circuit to earth from another outlet. Remove the wire that joins them.",
     ])
     expect(msgs(on([], [w('xs1|N', 'xs2|PE')], two), 'mains-cross-source')).toEqual([
-      "XS1 N is joined to XS2's earth: neutral current flows on the earth wire. Keep each outlet's neutral apart from earth.",
+      "XS1 N is joined to XS2's earth: neutral current may flow on the earth wire. Keep each outlet's neutral apart from earth.",
     ])
   })
   it('N-N is a warning (shared neutral), PE-PE is allowed', () => {

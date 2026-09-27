@@ -123,15 +123,15 @@ describe('analyseState edges and reuse', () => {
     const p = state(graph(sheet([at('xs1', 'XS1', 't-outlet'), at('ps1', 'PS1', 't-psu-basic', 200)], [w('xs1|L', 'ps1|+V')])))
     expect([power(p, 'ps1', '+V'), power(p, 'ps1', 'AC1'), power(p, 'ps1', 'AC2')]).toEqual([1, 0, 0])
   })
-  it('starts no energization from N or PE identity alone', () => {
+  it('starts energization from N as well as L (Ruling 33), never from PE', () => {
     const p = state(graph(sheet([at('xs1', 'XS1', 't-outlet'), at('e1', 'E1', 't-lamp', 200), at('e2', 'E2', 't-lamp', 200, 200), at('u1', 'U1', 't-mcu', 400)],
       [w('xs1|N', 'e1|L'), w('e1|N', 'u1|IO'), w('xs1|PE', 'e2|L')])))
-    expect([ident(p, 'e1', 'L'), power(p, 'e1', 'L'), power(p, 'u1', 'IO'), power(p, 'e2', 'N')]).toEqual([bitOf(0, 'N'), 0, 0, 0])
+    expect([ident(p, 'e1', 'L'), power(p, 'e1', 'L'), power(p, 'u1', 'IO'), power(p, 'e2', 'N')]).toEqual([bitOf(0, 'N'), 1, 1, 0])
   })
   it('blocks energy as well as identity at an absent fuse', () => {
     const p = state(graph(sheet([at('xs1', 'XS1', 't-outlet'), at('f1', 'F1', 't-fuse', 200, 0, { settings: { fuse: 'absent' } }), at('e1', 'E1', 't-lamp', 400)],
-      [w('xs1|L', 'f1|1'), w('f1|2', 'e1|L'), w('xs1|N', 'e1|N')])))
-    expect([ident(p, 'e1', 'L'), power(p, 'e1', 'L'), power(p, 'f1', '2')]).toEqual([0, 0, 0])
+      [w('xs1|L', 'f1|1'), w('f1|2', 'e1|L')])))
+    expect([ident(p, 'e1', 'L'), power(p, 'e1', 'L'), power(p, 'f1', '2'), power(p, 'e1', 'N')]).toEqual([0, 0, 0, 0])
   })
   it('joins closed contacts but no fuse in bareRoot', () => {
     const p = state(graph(sheet([at('xs1', 'XS1', 't-outlet'), at('f1', 'F1', 't-fuse', 200), at('s1', 'S1', 't-switch', 400)],
@@ -164,7 +164,7 @@ describe('analyseState edges and reuse', () => {
     const look = () => [ident(p, 'e1', 'L'), ident(p, 'e2', 'L'), power(p, 'e1', 'L'), power(p, 'e2', 'L'), p.srcRoots.length]
     state(p)
     const released = look()
-    // Released: E2 gets L. E1's L gets energy only across E2 and E1 from the neutral net (no identity).
+    // Released: E2 gets L. E1's L gets energy only across E1 from the neutral (no identity).
     expect(released).toEqual([0, bitOf(0, 'L'), 1, 1, 3])
     state(p, 0)
     expect(look()).toEqual([bitOf(0, 'L'), 0, 1, 1, 3])
