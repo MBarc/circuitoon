@@ -525,44 +525,61 @@ export function minimalWitness(holds: Uint32Array, k: number, mask: number): num
 /** One minimal witness: the candidate positions (0 to k-1) it fixes, and their conditions (bit j of `mask`). */
 export interface Witness { kept: number[]; mask: number }
 
-/** Iterated consensus stops growing past this many witnesses; the phrase then lists a covering set of them (each still minimal). */
+/** At most this many witnesses are returned: the cover stops here, and consensus falls back to the cover past it. */
 const MAX_WITNESSES = 32
+/** Consensus gives up past this many cubes in its working list (some not yet absorbed), keeping its cost bounded. */
+const CONSENSUS_WORK = 256
+
+type Cube = { care: number; val: number }
+const contains = (a: Cube, b: Cube) => (a.care & b.care) === a.care && (b.val & a.care) === a.val
 
 /**
- * Every minimal witness of a finding (Ruling 31): each prime implicant of the states it holds in, so
+ * The minimal witnesses of a finding (Ruling 31): each prime implicant of the states it holds in, so
  * the phrase names every way the finding comes about, never one picked by position. A greedy cover
- * of the holding states comes first (each one minimal, see minimalWitness), then iterated consensus
- * with absorption turns it into all prime implicants. The cover alone already says exactly where the
- * finding holds; past MAX_WITNESSES the cover is what is listed.
+ * of the holding states comes first (each cube minimal, see minimalWitness), then iterated consensus
+ * with absorption turns it into every prime implicant. Bounded: when the cover needs more than
+ * MAX_WITNESSES cubes it stops there (the list then covers only some of the states), and when there
+ * are more than MAX_WITNESSES prime implicants, or consensus outgrows its work limit, the cover is
+ * returned. statePhrase counts whatever the listed witnesses leave out, so the words stay exact.
  */
 export function minimalWitnesses(holds: Uint32Array, k: number): Witness[] {
   const has = (m: number) => ((holds[m >>> 5] >>> (m & 31)) & 1) === 1
   const all = (1 << k) - 1
-  const cubes: { care: number; val: number }[] = []
-  const covered = (m: number) => cubes.some((c) => (m & c.care) === c.val)
+  const cover: Cube[] = []
+  let full = true
   for (let m = 0; m <= all; m++) {
-    if (!has(m) || covered(m)) continue
-    const care = minimalWitness(holds, k, m).reduce((a, j) => a | (1 << j), 0)
-    cubes.push({ care, val: m & care })
+    if (!has(m) || cover.some((c) => (m & c.care) === c.val)) continue
+    if (cover.length === MAX_WITNESSES) {
+      full = false
+      break
+    }
+    const care = minimalWitness(holds, k, m).reduce((x, j) => x | (1 << j), 0)
+    cover.push({ care, val: m & care })
   }
-  const contains = (a: { care: number; val: number }, b: { care: number; val: number }) => (a.care & b.care) === a.care && (b.val & a.care) === a.val
-  const primes = cubes.slice()
-  for (let i = 0; i < primes.length && primes.length <= MAX_WITNESSES; i++)
-    for (let j = 0; j < i && primes.length <= MAX_WITNESSES; j++) {
-      const [a, b] = [primes[i], primes[j]]
+  const out = full ? consensus(cover) ?? cover : cover
+  return out.map((c) => ({ kept: [...Array(k).keys()].filter((j) => (c.care >>> j) & 1), mask: c.val }))
+}
+
+/** Every prime implicant, from a cover made of prime implicants; null past MAX_WITNESSES or the work limit. */
+function consensus(cover: Cube[]): Cube[] | null {
+  const list: (Cube | null)[] = cover.slice()
+  for (let i = 0; i < list.length; i++)
+    for (let j = 0; j < i; j++) {
+      const [a, b] = [list[i], list[j]]
+      if (!a || !b) continue
       const clash = a.care & b.care & (a.val ^ b.val)
       if (!clash || (clash & (clash - 1)) !== 0) continue
       const care = (a.care | b.care) & ~clash
       const c = { care, val: (a.val | b.val) & care }
-      if (primes.some((x) => contains(x, c))) continue
-      // Absorb what the new one contains; restart the scan so every pair meets it.
-      for (let x = primes.length - 1; x >= 0; x--) if (contains(c, primes[x])) primes.splice(x, 1)
-      primes.push(c)
-      i = 0
-      j = -1
+      if (list.some((x) => x && contains(x, c))) continue
+      // Absorb what the new cube contains; it meets every earlier cube when the scan reaches it.
+      for (let x = 0; x < list.length; x++) if (list[x] && contains(c, list[x]!)) list[x] = null
+      list.push(c)
+      if (list.length > CONSENSUS_WORK) return null
+      if (!list[i]) break
     }
-  const out = primes.length > MAX_WITNESSES ? cubes : primes
-  return out.map((c) => ({ kept: [...Array(k).keys()].filter((j) => (c.care >>> j) & 1), mask: c.val }))
+  const primes = list.filter((x): x is Cube => x !== null)
+  return primes.length > MAX_WITNESSES ? null : primes
 }
 
 const WORDS: Record<ContactGroup['kind'], [string, string]> = { switch: ['off', 'on'], relay: ['released', 'energized'], ssr: ['off', 'on'] }
@@ -604,14 +621,29 @@ function witnessPhrase(g: MainsGraph, cands: number[], w: Witness): string {
   return `when ${andList(conds.map((c) => `${c.name} is ${c.word}`))}`
 }
 
+/** A phrase lists at most this many witnesses; the states the rest cover are counted. */
+export const PHRASE_WITNESSES = 4
+
 /**
- * The conditions a finding needs, in words: every minimal witness, joined with "or" ("when S1 is on,
- * or when S2 is on"), fewest conditions first; '' when a witness needs none (it holds in every state).
+ * The conditions a finding needs, in words: its minimal witnesses joined with "or" ("when S1 is on,
+ * or when S2 is on"), fewest conditions first; '' when a witness needs none (it holds in every
+ * state). Past PHRASE_WITNESSES, and when given the finding's `holds`, the states the listed
+ * witnesses leave out are counted ("or in 12 other switch combinations"); without it they are named
+ * only as "other switch combinations".
  */
-export function statePhrase(g: MainsGraph, cands: number[], witnesses: Witness[]): string {
+export function statePhrase(g: MainsGraph, cands: number[], witnesses: Witness[], holds?: Uint32Array): string {
   if (!witnesses.length || witnesses.some((x) => !x.kept.length)) return ''
-  return witnesses
-    .map((x) => ({ n: x.kept.length, text: witnessPhrase(g, cands, x) }))
+  const sorted = witnesses
+    .map((x) => ({ w: x, n: x.kept.length, text: witnessPhrase(g, cands, x) }))
     .sort((a, b) => a.n - b.n || natural.compare(a.text, b.text))
-    .map((x) => x.text).join(', or ')
+  const shown = sorted.slice(0, PHRASE_WITNESSES)
+  let rest = 0
+  if (holds && sorted.length > shown.length) {
+    const cubes = shown.map((x) => ({ care: x.w.kept.reduce((c, j) => c | (1 << j), 0), mask: x.w.mask }))
+    for (let m = 0; m < 1 << cands.length; m++)
+      if ((holds[m >>> 5] >>> (m & 31)) & 1 && !cubes.some((c) => (m & c.care) === (c.mask & c.care))) rest++
+  }
+  // Without `holds` the rest cannot be counted, but is never left out silently.
+  const tail = rest ? `, or in ${rest} other switch combination${rest === 1 ? '' : 's'}` : !holds && sorted.length > shown.length ? ', or in other switch combinations' : ''
+  return shown.map((x) => x.text).join(', or ') + tail
 }

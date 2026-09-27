@@ -149,3 +149,49 @@ describe('statePhrase', () => {
     expect(statePhrase(h, c, [{ kept: [0, 1], mask: 0b01 }])).toBe('when K1 (COM1) is energized and K1 (COM2) is released')
   })
 })
+
+describe('witnesses stay bounded (review of Task 5)', () => {
+  const pop = (x: number) => {
+    let c = 0
+    for (; x; x &= x - 1) c++
+    return c
+  }
+  const g = graph(sheet([at('xs1', 'XS1', 't-outlet'), ...Array.from({ length: 16 }, (_, k) => at(`s${k}`, `S${k + 1}`, 't-switch', k * 100, 300))],
+    Array.from({ length: 16 }, (_, k) => w('xs1|L', `s${k}|1`))))
+  const cands = candidateGroups(g)
+  for (const [name, pred] of [['parity of 16', (m: number) => pop(m) % 2 === 1], ['any 2 of 16 on', (m: number) => pop(m) >= 2]] as const)
+    it(`${name}: at most four witnesses, then the rest counted, fast`, () => {
+      const h = holds(16, pred)
+      const t0 = performance.now()
+      const phrase = statePhrase(g, cands, minimalWitnesses(h, 16), h)
+      expect(performance.now() - t0).toBeLessThan(20)
+      expect(phrase.split(', or when ').length).toBe(4)
+      expect(phrase).toMatch(/, or in \d+ other switch combinations$/)
+    })
+  it('counts only the states the listed witnesses leave out', () => {
+    // Five single-switch witnesses: the fifth covers 2^15 states, less those the first four already cover.
+    const h = holds(16, (m) => (m & 0b11111) !== 0)
+    expect(statePhrase(g, cands, minimalWitnesses(h, 16), h)).toBe(`when S1 is on, or when S2 is on, or when S3 is on, or when S4 is on, or in ${2 ** 11} other switch combinations`)
+  })
+  it('finds exactly the prime implicants of random findings over up to six groups, when there are at most 32', () => {
+    let seed = 7
+    const rnd = () => ((seed = (seed * 1103515245 + 12345) % 2147483648), seed / 2147483648)
+    for (let t = 0; t < 1500; t++) {
+      const k = 1 + Math.floor(rnd() * 6)
+      const n = 1 << k
+      const dens = rnd()
+      const on = Array.from({ length: n }, () => rnd() < dens)
+      if (!on.some(Boolean)) continue
+      const cubes: { care: number; val: number }[] = []
+      for (let care = 0; care < n; care++) for (let val = care; ; val = (val - 1) & care) {
+        cubes.push({ care, val })
+        if (!val) break
+      }
+      const imps = cubes.filter((c) => on.every((v, m) => v || (m & c.care) !== c.val))
+      const primes = imps.filter((c) => !imps.some((o) => o.care !== c.care && (o.care & c.care) === o.care && (c.val & o.care) === o.val))
+      if (primes.length > 32) continue
+      const got = minimalWitnesses(holds(k, (m) => on[m]), k).map((x) => `${x.kept.reduce((a, j) => a | (1 << j), 0)}:${x.mask}`).sort()
+      expect(got).toEqual(primes.map((c) => `${c.care}:${c.val}`).sort())
+    }
+  })
+})

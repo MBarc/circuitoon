@@ -11,6 +11,7 @@ import { conductors, netlist, nodeKey } from './netlist.ts'
 import { partValue, primaryParam } from './values.ts'
 import { andList, natural, orList } from './words.ts'
 import { analyseMainsCached } from './mains.ts'
+import { unknownFeedWords } from './mainsRules.ts'
 
 export type Severity = 'error' | 'warning'
 export type RuleId =
@@ -338,8 +339,12 @@ const isSource = (t: Terminal) => sourceOf(t) !== null
  * bare breadboard strip only conducts.
  */
 const mayFeed = (t: Terminal) => !t.bare && (t.type === undefined || t.type === 'passive' || isSource(t))
-/** A pin that drives its net from its own part: shorted when that part's ground is on the same net. */
-const drives = (t: Terminal) => (t.type === 'power_out' && !t.dead) || t.info.external.has(t.name)
+/**
+ * A pin that drives its net from its own part: shorted when that part's ground is on the same net.
+ * An output of a converter that may be powered (unknown) still drives: its short to its own ground
+ * is a wiring mistake whatever the input. Only an unpowered converter's outputs drive nothing.
+ */
+const drives = (t: Terminal) => (t.type === 'power_out' && t.dead !== 'unpowered') || t.info.external.has(t.name)
 
 // ---- Wording ----
 
@@ -551,11 +556,15 @@ export function checkDiagram(d: Diagram): Finding[] {
         terms.some((t) => t.type === 'power_out' && others(t).some(isSource))
       if (!fed) {
         // Fed only through a converter whose mains input is not a complete connection: neither fed nor unfed.
-        const via = ins.flatMap((t) => others(t)).find((o) => o.dead === 'unknown')
-        if (via)
+        const vias = [...new Map(ins.flatMap((t) => others(t)).filter((o) => o.dead === 'unknown').map((o) => [o.key, o])).values()]
+          .sort((a, b) => natural.compare(termName(a), termName(b)))
+        if (vias.length) {
+          const convs = [...new Set(vias.map((o) => o.part))]
+          const words = unknownFeedWords(convs.map((c) => ({ designator: c.designator, status: mains!.converters.get(c.uid)! })))
           add({ rule: 'supply-unknown', subject: p.designator, target: p.designator,
-            message: `${p.designator}'s power is not checked: it comes only from ${termName(via)}, and ${via.part.designator}'s mains input is not a complete connection.`,
-            parts: [p.uid, via.part.uid], pins: ins.map(termPin), wires: [], causes: ins.map((t) => t.key) })
+            message: `${p.designator}'s power is not checked: it comes only from ${andList(vias.map(termName))}, and ${words.state}. ${words.fix}`,
+            parts: [p.uid, ...convs.map((c) => c.uid)], pins: ins.map(termPin), wires: [], causes: ins.map((t) => t.key) })
+        }
         else {
           const wiredPins = ins.filter((t) => others(t).length)
           const wired = [...new Set(wiredPins.map((t) => t.label))]
