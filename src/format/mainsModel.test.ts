@@ -322,6 +322,21 @@ describe('mains fields: hostile modules', () => {
       },
     })).toEqual([])
   })
+  it('keeps a PE terminal out of SELV and PELV domains', () => {
+    expect(errs({
+      ...base, pins: [{ name: 'A', side: 'left' }, { name: 'E', side: 'left', mains: 'PE' }],
+      electrical: { isolation: 'unknown', domains: [{ name: 'm', pins: ['A'], kind: 'mains' }, { name: 'o', pins: ['E'], kind: 'pelv' }] },
+    })).toEqual(['electrical.domains[1].pins: "E" is declared for mains but sits in pelv domain "o"'])
+  })
+  it('gives every outlet with sockets a source and a region', () => {
+    expect(errs(outlet({ acSources: undefined, ac: undefined }))).toEqual([
+      'electrical.sockets: an outlet needs electrical.acSources and electrical.ac (its source and region)',
+    ])
+    expect(errs(outlet({ ac: undefined }))).toEqual([
+      'electrical.ac: required with acSources ({ "hz", "region" })',
+      'electrical.sockets: an outlet needs electrical.acSources and electrical.ac (its source and region)',
+    ])
+  })
   it('keeps electrical.external on real pins, never an internal node', () => {
     expect(errs({ ...base, pins: two, electrical: { internalNodes: ['X'], external: [{ pin: 'X', volts: 5, via: 'USB' }] } })).toEqual([
       'electrical.external[0].pin: no pin named "X"',

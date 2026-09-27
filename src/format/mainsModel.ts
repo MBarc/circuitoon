@@ -318,6 +318,9 @@ export function validateMains(raw: Record<string, unknown>, names: Set<string>, 
   if (el.sockets !== undefined) {
     const holes = (Array.isArray(raw.holes) ? raw.holes : []).filter(isObj).map((g) => g.name).filter(isStr)
     if (!(raw.obstacle === false && holes.length)) errors.push('electrical.sockets: only a board (hole groups and "obstacle": false) has sockets')
+    // Sockets always come with their source and region, so the role and family checks below always run.
+    if (!(Array.isArray(el.acSources) && el.acSources.length && el.ac !== undefined))
+      errors.push('electrical.sockets: an outlet needs electrical.acSources and electrical.ac (its source and region)')
     const owner = new Map<string, string>()
     const socketContacts: { group: string; role: Conductor; at: string }[] = []
     const ids = new Set<string>()
@@ -368,7 +371,7 @@ export function validateMains(raw: Record<string, unknown>, names: Set<string>, 
     }
   }
 
-  // A terminal declared for mains never sits in a SELV or PELV domain.
+  // A terminal declared for mains (a PE terminal included) never sits in a SELV or PELV domain.
   const pinsAndHoles = [...(Array.isArray(raw.pins) ? raw.pins : []), ...(Array.isArray(raw.holes) ? raw.holes : [])].filter(isObj)
   const strsOf = (v: unknown) => (Array.isArray(v) ? v.filter(isStr) : [])
   const declared = new Set<string>([
@@ -378,7 +381,7 @@ export function validateMains(raw: Record<string, unknown>, names: Set<string>, 
     ...(Array.isArray(el.protective) ? el.protective.filter(isObj).flatMap((e) => [e.from, e.to].filter(isStr)) : []),
     ...(isObj(el.plug) && Array.isArray(el.plug.profiles) ? el.plug.profiles.filter(isObj).flatMap((pr) => (Array.isArray(pr.contacts) ? pr.contacts.filter(isObj).map((c) => c.pin).filter(isStr) : [])) : []),
     ...(Array.isArray(el.sockets) ? el.sockets.filter(isObj).flatMap((s) => (Array.isArray(s.contacts) ? s.contacts.filter(isObj).map((c) => c.group).filter(isStr) : [])) : []),
-    ...pinsAndHoles.filter((p) => p.mains === 'L' || p.mains === 'N' || p.mains === 'line').map((p) => p.name).filter(isStr),
+    ...pinsAndHoles.filter((p) => oneOf(REQUIREMENTS, p.mains)).map((p) => p.name).filter(isStr),
   ])
   if (Array.isArray(el.domains))
     el.domains.forEach((x, i) => {
