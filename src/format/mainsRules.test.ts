@@ -3,6 +3,10 @@ import { describe, expect, it } from 'vitest'
 import { checkDiagram, type Finding } from './checks.ts'
 import type { Diagram } from './diagram.ts'
 import { MAINS_MODULES, at, dupont, sheet, w } from './mains.testing.ts'
+import { plugsOf } from './breadboard.ts'
+import { netlist, nodeKey } from './netlist.ts'
+import { type Prepared, analyseState, buildMainsGraph, candidateGroups, masksByPopcount, prepare, setState } from './mainsGraph.ts'
+import { across, acrossFit, acrossWith, newAcc, visitState } from './mainsRules.ts'
 
 const only = (d: Diagram, rule: string): Finding[] => checkDiagram(d).filter((f) => f.rule === rule)
 const msgs = (d: Diagram, rule: string) => only(d, rule).map((f) => f.message)
@@ -231,5 +235,162 @@ describe('rule 3: two sources joined', () => {
     ], two)
     expect(rules(d).has('mains-cross-source')).toBe(false)
     expect(rules(d).has('mains-shared-neutral')).toBe(false)
+  })
+})
+
+describe('rule 4: wrong mains voltage', () => {
+  it('a 120 V lamp on a 230 V outlet', () => {
+    const d = on([['e1', 'E1', 't-lamp']], [w('xs1|L', 'e1|L'), w('xs1|N', 'e1|N')], [['xs1', 'XS1', 't-outlet-eu']])
+    expect(msgs(d, 'mains-voltage')).toEqual(['E1 is made for 110 V to 130 V AC, but XS1 gives 230 V. Use one made for 230 V, or power it from an outlet it is made for.'])
+  })
+  it('names the condition when a switch decides it', () => {
+    const d = on([['s1', 'S1', 't-switch'], ['e1', 'E1', 't-lamp']], [w('xs1|L', 's1|1'), w('s1|2', 'e1|L'), w('xs1|N', 'e1|N')], [['xs1', 'XS1', 't-outlet-eu']])
+    expect(msgs(d, 'mains-voltage')).toEqual(['E1 is made for 110 V to 130 V AC, but XS1 gives 230 V when S1 is on. Use one made for 230 V, or power it from an outlet it is made for.'])
+  })
+  it('a converter whose range excludes the outlet voltage (set on the outlet)', () => {
+    const d = sheet([at('xs1', 'XS1', 't-outlet', 0, 0, { values: { acVoltage: { value: 277, unit: 'VAC' } } }), at('ps1', 'PS1', 't-psu', 200)],
+      [w('xs1|L', 'ps1|AC1'), w('xs1|N', 'ps1|AC2')])
+    expect(msgs(d, 'mains-voltage')).toEqual(['PS1 takes 100 V to 240 V AC, but XS1 gives 277 V. Use a converter made for 277 V.'])
+  })
+  it('a load without a voltage range says its voltage compatibility was not checked', () => {
+    const noRange = { ...MAINS_MODULES['t-lamp'], id: 't-lamp-norange', electrical: { conducts: [{ pins: ['L', 'N'], kind: 'load' }], protection: 'class-2', ratings: [{ pins: ['L', 'N'], kind: 'terminal', service: 'ac', volts: 250, provenance: 'datasheet' }] } }
+    const d = sheet([at('xs1', 'XS1', 't-outlet'), at('e1', 'E1', 't-lamp-norange', 200)], [w('xs1|L', 'e1|L'), w('xs1|N', 'e1|N')], { 't-lamp-norange': noRange })
+    expect(msgs(d, 'data-missing')).toEqual([
+      "E1's module gives no voltage range, so whether XS1's 120 V suits it is not checked. Add its rated voltage (electrical.conducts range) from the datasheet.",
+    ])
+  })
+  it('stays quiet inside the range', () => {
+    expect(rules(on([['e1', 'E1', 't-lamp']], [w('xs1|L', 'e1|L'), w('xs1|N', 'e1|N')])).has('mains-voltage')).toBe(false)
+  })
+})
+
+describe('rule 4 helpers: L and N across a load, as drawn, with every holder fitted, and with one holder fitted (Resolution 28)', () => {
+  const prepared = (d: Diagram): Prepared => {
+    const plugs = plugsOf(d)
+    return prepare(buildMainsGraph(d, plugs, netlist(d, plugs))!)
+  }
+  const at2 = (p: Prepared, part: string) => [p.g.nodeOf.get(nodeKey(part, 'L'))!, p.g.nodeOf.get(nodeKey(part, 'N'))!] as const
+  it('an empty holder in series with a switch restores the lamp only when the switch is on', () => {
+    const d = sheet([at('xs1', 'XS1', 't-outlet'), at('f1', 'F1', 't-fuse', 200, 0, { settings: { fuse: 'absent' } }), at('s1', 'S1', 't-switch', 400), at('e1', 'E1', 't-lamp', 600)],
+      [w('xs1|L', 'f1|1'), w('f1|2', 's1|1'), w('s1|2', 'e1|L'), w('e1|N', 'xs1|N')])
+    const p = prepared(d)
+    const [a, b] = at2(p, 'e1')
+    const holder = p.protective[0]
+    for (const on of [0, 1]) {
+      p.groupState.fill(on)
+      analyseState(p)
+      expect(across(p, a, b)).toBe(null)
+      expect(acrossFit(p, a, b)).toBe(on === 1)
+      expect(acrossWith(p, holder, a, b)).toBe(on === 1)
+    }
+  })
+  it('records per load: supplied as drawn, with every holder fitted, and the one holder that alone restores it', () => {
+    const run = (holders: string[]) => {
+      const parts = [at('xs1', 'XS1', 't-outlet'), ...holders.map((h, i) => at(h, h.toUpperCase(), 't-fuse', 200 + i * 100, 0, { settings: { fuse: 'absent' } })), at('s1', 'S1', 't-switch', 600), at('e1', 'E1', 't-lamp', 800)]
+      const chain = ['xs1|L', ...holders.flatMap((h) => [`${h}|1`, `${h}|2`]), 's1|1']
+      const wires = [...chain.flatMap((x, i) => (i % 2 === 0 ? [w(x, chain[i + 1])] : [])), w('s1|2', 'e1|L'), w('e1|N', 'xs1|N')]
+      const p = prepared(sheet(parts, wires))
+      const cands = candidateGroups(p.g, p.possible)
+      const acc = newAcc(p, cands, null)
+      for (const mask of masksByPopcount(cands.length)) {
+        setState(p, cands, mask)
+        analyseState(p)
+        visitState(acc, mask)
+      }
+      return { complete: acc.loadComplete[0], fit: acc.loadFit[0], fixers: [...(acc.loadFixers.get(0) ?? [])].map((x) => x.designator) }
+    }
+    expect(run(['f1'])).toEqual({ complete: 0, fit: 1, fixers: ['F1'] })
+    // Two empty holders in series: neither alone restores it, so none is named.
+    expect(run(['f1', 'f2'])).toEqual({ complete: 0, fit: 1, fixers: [] })
+  })
+  it('across names the source either way round', () => {
+    const p = prepared(sheet([at('xs1', 'XS1', 't-outlet'), at('e1', 'E1', 't-lamp', 200)], [w('xs1|N', 'e1|L'), w('xs1|L', 'e1|N')]))
+    analyseState(p)
+    const [a, b] = at2(p, 'e1')
+    expect(across(p, a, b)).toBe(0)
+    expect(across(p, b, a)).toBe(0)
+    // No holder is empty, so nothing is claimed about fitting one.
+    expect(acrossFit(p, a, b)).toBe(false)
+  })
+})
+
+describe('rule 5: ratings, relevance before adequacy', () => {
+  const eu = [['xs1', 'XS1', 't-outlet-eu']]
+  it('125 VAC terminal on 230 VAC (mains-rating, not rule 1)', () => {
+    const d = on([['x1', 'X1', 't-term-125']], [w('xs1|L', 'x1|1')], eu)
+    expect(msgs(d, 'mains-rating')).toEqual(['X1 1 and X1 1b are rated 125 V AC, but get 230 V. Use a part rated for at least 230 V AC.'])
+    expect(rules(d).has('mains-to-low-voltage')).toBe(false)
+  })
+  it('mains-domain terminal with no rating (rating-unknown, not rule 1)', () => {
+    const d = on([['x1', 'X1', 't-term-bare']], [w('xs1|L', 'x1|1')], eu)
+    expect(msgs(d, 'rating-unknown')).toEqual([
+      "X1 1 and X1 1b are on mains (230 V), but X1's module gives no AC rating for them, so Circuitoon cannot tell whether they are safe there. Check the datasheet for an AC rating of at least 230 V.",
+    ])
+    expect(rules(d).has('mains-to-low-voltage')).toBe(false)
+  })
+  it('300 VDC-only terminal on 230 VAC (rating)', () => {
+    const d = on([['x1', 'X1', 't-term-dc']], [w('xs1|L', 'x1|1')], eu)
+    expect(msgs(d, 'rating-unknown')).toEqual([
+      "X1 1 and X1 1b are on mains (230 V), but X1's module gives only a DC rating for them, so Circuitoon cannot tell whether they are safe there. Check the datasheet for an AC rating of at least 230 V.",
+    ])
+    expect(rules(d).has('mains-rating')).toBe(false)
+    expect(rules(d).has('mains-to-low-voltage')).toBe(false)
+  })
+  it('an AC/DC rating (as IEC 60664 ratings are recorded) counts for AC', () => {
+    const acdc = { ...MAINS_MODULES['t-term'], id: 't-term-acdc', electrical: { ratings: [{ pins: ['1', '2', '1b', '2b'], kind: 'terminal', service: 'ac/dc', volts: 300, provenance: 'datasheet' }] } }
+    const d = sheet([at('xs1', 'XS1', 't-outlet-eu'), at('x1', 'X1', 't-term-acdc', 200)], [w('xs1|L', 'x1|1')], { 't-term-acdc': acdc })
+    for (const r of ['mains-rating', 'rating-unknown', 'rating-conditional', 'rating-unverified'] as const) expect(rules(d).has(r)).toBe(false)
+  })
+  it('a contact that switches mains needs a switching rating, not a terminal one', () => {
+    const swTerm = { ...MAINS_MODULES['t-switch'], id: 't-switch-term', electrical: { contacts: [{ id: 's', kind: 'switch', poles: [{ com: '1', no: '2' }] }], ratings: [{ pins: ['1', '2'], kind: 'terminal', service: 'ac', volts: 250, provenance: 'datasheet' }] } }
+    const d = sheet([at('xs1', 'XS1', 't-outlet'), at('s1', 'S1', 't-switch-term', 200)], [w('xs1|L', 's1|1')], { 't-switch-term': swTerm })
+    expect(msgs(d, 'rating-unknown')).toEqual([
+      "S1 1 and S1 2 switch mains (120 V), but S1's module gives no AC switching rating for them, so Circuitoon cannot tell whether they are safe there. Check the datasheet for an AC switching rating of at least 120 V.",
+    ])
+  })
+  it('conditional Phoenix rating (rating-conditional)', () => {
+    const d = on([['x1', 'X1', 't-term-cond']], [w('xs1|L', 'x1|1')], eu)
+    expect(msgs(d, 'rating-conditional')).toEqual([
+      "X1's 300 V AC rating holds only for overvoltage category III and pollution degree 2. Circuitoon cannot see that on the drawing: check it on the real build.",
+    ])
+  })
+  it('an unverified rating warns, an adequate datasheet rating is silent', () => {
+    expect(msgs(on([['x1', 'X1', 't-term-unverified']], [w('xs1|L', 'x1|1')], eu), 'rating-unverified')).toEqual([
+      "X1's 300 V AC rating is not verified for this exact part (Test terminal block clone). Check the maker's data for the part you use.",
+    ])
+    const ok = on([['x1', 'X1', 't-term']], [w('xs1|L', 'x1|1')], eu)
+    for (const r of ['mains-rating', 'rating-unknown', 'rating-conditional', 'rating-unverified'] as const) expect(rules(ok).has(r)).toBe(false)
+  })
+  it("an outlet's own terminals are checked against the voltage set on it", () => {
+    const d = sheet([at('xs1', 'XS1', 't-outlet', 0, 0, { values: { acVoltage: { value: 230, unit: 'VAC' } } })], [])
+    // PE is not hazardous (spec 1.2), so only L and N are judged.
+    expect(msgs(d, 'mains-rating')).toEqual(['XS1 L and XS1 N are rated 125 V AC, but get 230 V. Use a part rated for at least 230 V AC.'])
+  })
+  it('an unverified isolation class warns while the part is on mains (Resolution 26)', () => {
+    const clone = { ...MAINS_MODULES['t-relay'], id: 't-relay-clone', name: 'Test relay clone', electrical: { ...(MAINS_MODULES['t-relay'].electrical as Record<string, unknown>), isolationProvenance: 'unverified' } }
+    const parts = [at('xs1', 'XS1', 't-outlet'), at('k1', 'K1', 't-relay-clone', 200)]
+    expect(rules(sheet(parts, [], { 't-relay-clone': clone })).has('rating-unverified')).toBe(false)
+    expect(msgs(sheet(parts, [w('xs1|L', 'k1|COM')], { 't-relay-clone': clone }), 'rating-unverified')).toEqual([
+      "K1's insulation between its coil and its contacts is not verified for this exact part (Test relay clone). Check the maker's data for the part you use.",
+    ])
+  })
+})
+
+describe('rule 12: missing mains data', () => {
+  it("a converter's outputs outside every domain are taken as live, and named", () => {
+    const d = on([['ps1', 'PS1', 't-psu-mainsonly'], ['u1', 'U1', 't-mcu']], [w('xs1|L', 'ps1|AC1'), w('xs1|N', 'ps1|AC2'), w('ps1|+V', 'u1|IO')])
+    expect(msgs(d, 'data-missing')).toEqual([
+      "PS1's module leaves +V and -V outside every domain (electrical.domains), so the checks treat them as live. Add its domains and isolation from the datasheet.",
+    ])
+    expect(rules(d).has('mains-to-low-voltage')).toBe(true)
+  })
+  it('a mains terminal with no conduction data is checked conservatively and says so', () => {
+    const d = on([['u1', 'U1', 't-undeclared']], [w('xs1|L', 'u1|A')])
+    expect(msgs(d, 'data-missing')).toEqual([
+      "U1's module does not say how A and B conduct, so the mains checks assume the worst for them: mains on any of them reaches the others. Add conduction data to its module (electrical.internal, conducts, contacts or protective).",
+    ])
+  })
+  it('says nothing while the part is off mains', () => {
+    expect(rules(on([['ps1', 'PS1', 't-psu-mainsonly'], ['u1', 'U1', 't-undeclared']], [])).has('data-missing')).toBe(false)
   })
 })

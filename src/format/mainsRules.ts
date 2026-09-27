@@ -2,11 +2,11 @@
 // enumeration unit and report findings by a stable key; each finding keeps one bit per state it holds
 // in, so its wording names exactly the conditions it needs (Resolution 24). Static rules run once
 // afterwards on what the states established (which nodes were ever hazardous, at what voltage). Pure.
-import type { Endpoint } from './diagram.ts'
+import { type Endpoint, moduleOf } from './diagram.ts'
 import type { RuleId } from './checks.ts'
 import { nodeKey } from './netlist.ts'
 import { type GConverter, type GEdge, type GSource, type GTerm, type MainsGraph, type Prepared, LN_MASK, PE_MASK, bitOf, decodeSingle, identAt, minimalWitnesses, statePhrase, termAt, termName } from './mainsGraph.ts'
-import { type Conductor, isolationAdequate } from './mainsModel.ts'
+import { type Conductor, type Rating, isolationAdequate, mainsOf, uncoveredPins } from './mainsModel.ts'
 import { andList, natural } from './words.ts'
 
 export interface MainsDraft {
@@ -638,3 +638,329 @@ export const STATIC_RULES: ((acc: Acc) => MainsDraft[])[] = [converterPower]
 export function staticDrafts(acc: Acc): MainsDraft[] {
   return STATIC_RULES.flatMap((rule) => rule(acc))
 }
+
+// ---- Rule 4: a load's or converter's range excludes its source's voltage ----
+
+/** True when L of source `s` is on one of the identities and N on the other. */
+const acrossIdent = (x: number, y: number, s: number): boolean => {
+  const L = 1 << (s * 3)
+  const N = L << 1
+  return ((x & L) !== 0 && (y & N) !== 0) || ((x & N) !== 0 && (y & L) !== 0)
+}
+
+/** The source (global index) whose L and N sit across nodes a and b, either way round, in the current state; null when none does. */
+export function across(p: Prepared, a: number, b: number): number | null {
+  const x = identAt(p, a)
+  const y = identAt(p, b)
+  if (!x || !y) return null
+  for (let k = 0; k < p.sources.length; k++) if (acrossIdent(x, y, p.sources[k].index)) return p.sources[k].index
+  return null
+}
+
+/** True when one of `nodes` has root `r` in `roots`, where root `hb` counts as `ha` (see acrossRoots). */
+function onRoot(nodes: number[], roots: Int32Array, r: number, ha: number, hb: number): boolean {
+  for (let k = 0; k < nodes.length; k++) {
+    const q = roots[nodes[k]]
+    if ((q === hb ? ha : q) === r) return true
+  }
+  return false
+}
+
+/** L and N of one source reach a and b over `roots`, where root `hb` counts as `ha` (one extra edge joining them; -1 for none). */
+function acrossRoots(p: Prepared, roots: Int32Array, a: number, b: number, ha: number, hb: number): boolean {
+  const ra = roots[a] === hb ? ha : roots[a]
+  const rb = roots[b] === hb ? ha : roots[b]
+  if (ra === rb) return false
+  for (let k = 0; k < p.sources.length; k++) {
+    const s = p.sources[k]
+    if ((onRoot(s.live, roots, ra, ha, hb) && onRoot(s.neutral, roots, rb, ha, hb)) || (onRoot(s.live, roots, rb, ha, hb) && onRoot(s.neutral, roots, ra, ha, hb))) return true
+  }
+  return false
+}
+
+/** Resolution 28: in the current contact state, with every empty fuse holder taken as fitted, L and N of one source reach a and b. False when no holder is empty. */
+export function acrossFit(p: Prepared, a: number, b: number): boolean {
+  return p.anyAbsent && acrossRoots(p, p.fitRoot, a, b, -1, -1)
+}
+
+/**
+ * Resolution 28: in the current contact state, with only the empty holder edge `h` added to what
+ * conducts as drawn, L and N of one source reach a and b. One edge joins two roots, so nothing is
+ * rebuilt: the root of h.b counts as the root of h.a.
+ */
+export function acrossWith(p: Prepared, h: GEdge, a: number, b: number): boolean {
+  return acrossRoots(p, p.root, a, b, p.root[h.a], p.root[h.b])
+}
+
+const rangeText = (r: [number, number]) => (r[0] === r[1] ? volt(r[0]) : `${volt(r[0])} to ${volt(r[1])}`)
+
+/** What rule 4 judges in one view: a load (its global index in `load`) or a converter input (in `converter`), with the range it accepts. */
+interface Judged { part: GTerm['part']; a: number; b: number; range: [number, number] | null; load: number; converter: number }
+/**
+ * Per view: the judged items, their nodes and ranges in typed arrays for the per-state loop (a range
+ * of [0, -1] when there is none), and their finding keys (item by source slot), each key made on
+ * first use, so a state allocates nothing.
+ */
+interface VoltageTable { items: Judged[]; a: Int32Array; b: Int32Array; lo: Float64Array; hi: Float64Array; load: Int32Array; keys: (string | undefined)[] }
+const voltageCache = new WeakMap<Prepared, VoltageTable>()
+function voltageTable(p: Prepared): VoltageTable {
+  let t = voltageCache.get(p)
+  if (t) return t
+  const g = p.g
+  const items: Judged[] = [
+    ...p.loadIdx.map((i): Judged => ({ part: g.loads[i].part, a: g.loads[i].a, b: g.loads[i].b, range: g.loads[i].range, load: i, converter: -1 })),
+    ...p.converterIdx.map((i): Judged => ({ part: g.converters[i].part, a: g.converters[i].a, b: g.converters[i].b, range: g.converters[i].range, load: -1, converter: i })),
+  ]
+  t = {
+    items, a: Int32Array.from(items.map((x) => x.a)), b: Int32Array.from(items.map((x) => x.b)),
+    lo: Float64Array.from(items.map((x) => (x.range ? x.range[0] : 0))), hi: Float64Array.from(items.map((x) => (x.range ? x.range[1] : -1))),
+    load: Int32Array.from(items.map((x) => x.load)), keys: [],
+  }
+  voltageCache.set(p, t)
+  return t
+}
+
+function voltageDraft(g: MainsGraph, it: Judged, s: number): (when: string) => MainsDraft {
+  const src = g.sources[s]
+  const d = it.part.designator
+  const v = volt(src.volts)
+  const range = it.range
+  const base = { subject: d, target: d, parts: [it.part.uid, src.part.uid], pins: [], wires: [], causes: [nodeKey(it.part.uid, '#range'), ...src.keys.L, ...src.keys.N] }
+  // Resolution 14: a load with no range is never skipped in silence.
+  if (!range)
+    return (when) => ({ ...base, rule: 'data-missing', message: `${d}'s module gives no voltage range, so whether ${src.part.designator}'s ${v} suits it is not checked${when}. Add its rated voltage (electrical.conducts range) from the datasheet.` })
+  return (when) => ({
+    ...base, rule: 'mains-voltage',
+    message: it.converter >= 0
+      ? `${d} takes ${rangeText(range)} AC, but ${src.part.designator} gives ${v}${when}. Use a converter made for ${v}.`
+      : `${d} is made for ${rangeText(range)} AC, but ${src.part.designator} gives ${v}${when}. Use one made for ${v}, or power it from an outlet it is made for.`,
+  })
+}
+
+/**
+ * Rule 4, per state: every source whose L and N sit across a load or a converter input, against the
+ * range it accepts (a load with none gets data-missing, Resolution 14). It also records, for the
+ * protection rules, which loads get a supply as drawn, which would with every empty holder fitted, and
+ * which single empty holder alone restores one in this state (Resolution 28: a state that can occur).
+ * Allocation-free once a finding is known.
+ */
+/**
+ * Per unit: the items still worth a look. An item that can have no finding (every source of the unit
+ * inside its range) leaves once its load is known to get a supply, and a converter input that can
+ * have none never enters, so a large unit costs little per state after its first few states.
+ */
+interface VoltageWork { t: VoltageTable; list: Int32Array; n: number; must: Uint8Array }
+const workCache = new WeakMap<Acc, VoltageWork>()
+function voltageWork(acc: Acc): VoltageWork {
+  let w = workCache.get(acc)
+  if (w) return w
+  const t = voltageTable(acc.p)
+  const must = Uint8Array.from(t.items, (it) => (!it.range || [...acc.srcVolts].some((v) => v < it.range![0] || v > it.range![1]) ? 1 : 0))
+  const list = Int32Array.from([...t.items.keys()].filter((k) => must[k] || t.items[k].load >= 0))
+  w = { t, list, n: list.length, must }
+  workCache.set(acc, w)
+  return w
+}
+
+function voltageRule(acc: Acc, mask: number) {
+  const { p, srcIdx, srcVolts } = acc
+  const w = voltageWork(acc)
+  const { t, list, must } = w
+  const { root, ident } = p
+  const S = srcIdx.length
+  for (let q = 0; q < w.n; q++) {
+    const k = list[q]
+    const x = ident[root[t.a[k]]]
+    const y = ident[root[t.b[k]]]
+    let supplied = false
+    if (x && y)
+      for (let j = 0; j < S; j++) {
+        const s = srcIdx[j]
+        if (!acrossIdent(x, y, s)) continue
+        supplied = true
+        const v = srcVolts[j]
+        if (v >= t.lo[k] && v <= t.hi[k]) continue
+        const it = t.items[k]
+        let key = t.keys[k * S + j]
+        if (key === undefined) t.keys[k * S + j] = key = `${it.range ? 'mains-voltage' : 'data-missing|range'}|${it.part.uid}|${it.load}|${it.converter}|${s}`
+        if (!mark(acc, key, mask)) report(acc, key, mask, () => voltageDraft(p.g, it, s))
+      }
+    const load = t.load[k]
+    if (load < 0) continue
+    if (supplied) {
+      acc.loadComplete[load] = 1
+      // Supplied as drawn is supplied with every holder fitted too.
+      if (p.anyAbsent) acc.loadFit[load] = 1
+      // Nothing left to learn about it: no finding is possible, and a supplied load needs no holder named (Resolution 28).
+      if (!must[k]) {
+        list[q--] = list[--w.n]
+        continue
+      }
+    }
+    if (!p.anyAbsent || !acrossFit(p, t.a[k], t.b[k])) continue
+    acc.loadFit[load] = 1
+    if (supplied) continue
+    for (let h = 0; h < p.protective.length; h++) {
+      const e = p.protective[h]
+      if (e.fitted || !acrossWith(p, e, t.a[k], t.b[k])) continue
+      let set = acc.loadFixers.get(load)
+      if (!set) acc.loadFixers.set(load, (set = new Set()))
+      set.add(e.part)
+    }
+  }
+}
+
+STATE_RULES.push(voltageRule)
+
+// ---- Rule 5: ratings (spec 1.4) ----
+
+/** Why a terminal on mains has no relevant rating: none at all, only DC ones, or (a contact) no switching one. */
+type Missing = 'none' | 'dc' | 'switching'
+interface Group { terms: GTerm[]; v: number; rating: Rating | null; why: Missing }
+/** Terminals of one part under one finding, so a six-way terminal block gives one line, not six. */
+function grouped() {
+  const map = new Map<string, Group>()
+  return {
+    add(key: string, t: GTerm, v: number, rating: Rating | null, why: Missing = 'none') {
+      const e = map.get(key)
+      if (!e) map.set(key, { terms: [t], v, rating, why })
+      else {
+        if (!e.terms.includes(t)) e.terms.push(t)
+        e.v = Math.max(e.v, v)
+      }
+    },
+    entries: (): Group[] => [...map.values()].map((e) => ({ ...e, terms: e.terms.sort((a, b) => natural.compare(termName(a), termName(b))) })),
+  }
+}
+
+/**
+ * Rule 5, once, over what the states established: every terminal a module declares for mains that
+ * sat on a hazardous node, relevance first (AC or AC/DC service; a switching rating for a contact, an
+ * insulation or terminal rating otherwise), adequacy second (at least the highest voltage it got).
+ * A converter's input pair is judged by its range (rule 4); ordinary and low-voltage pins by rule 1.
+ */
+function ratingRules(acc: Acc): MainsDraft[] {
+  const { p } = acc
+  const g = p.g
+  const bad = grouped()
+  const unknown = grouped()
+  const cond = grouped()
+  const unverified = grouped()
+  for (const i of p.relevant) {
+    if (!acc.hazardAny[i]) continue
+    const v = acc.volts[i]
+    for (const key of g.members[i]) {
+      const t = termAt(g, key)
+      if (!t || !t.info.any || lvClass(t) !== null) continue
+      if (t.info.acInput && (t.name === t.info.acInput.a || t.name === t.info.acInput.b)) continue
+      const switching = t.info.contactTerminals.has(t.name)
+      const mine = t.info.ratings.filter((r) => r.pins.includes(t.name))
+      const relevant = mine.filter((r) => r.service !== 'dc' && (switching ? r.kind === 'switching' : r.kind !== 'switching'))
+      if (!relevant.length) {
+        const why: Missing = mine.some((r) => r.service !== 'dc') ? (switching ? 'switching' : 'none') : mine.length ? 'dc' : 'none'
+        unknown.add(`${t.part.uid}|${why}`, t, v, null, why)
+        continue
+      }
+      const adequate = relevant.filter((r) => r.volts >= v).sort((a, b) => a.volts - b.volts)
+      if (!adequate.length) {
+        const best = relevant.reduce((a, b) => (b.volts > a.volts ? b : a))
+        bad.add(`${t.part.uid}|${t.info.ratings.indexOf(best)}`, t, v, best)
+        continue
+      }
+      // An adequate datasheet rating with no conditions settles it; otherwise the lowest adequate one is reported.
+      if (adequate.some((r) => !r.conditions && r.provenance === 'datasheet')) continue
+      const r = adequate[0]
+      const rk = `${t.part.uid}|${t.info.ratings.indexOf(r)}`
+      if (r.conditions) cond.add(rk, t, v, r)
+      if (r.provenance === 'unverified') unverified.add(rk, t, v, r)
+    }
+  }
+  const draft = (rule: RuleId, e: Group, message: string): MainsDraft => ({
+    rule, subject: e.terms[0].part.designator, target: termName(e.terms[0]), message,
+    parts: [e.terms[0].part.uid], pins: e.terms.map(endpointOf), wires: [], causes: e.terms.map((t) => t.key),
+  })
+  const names = (e: Group) => andList(e.terms.map(termName))
+  const one = (e: Group) => e.terms.length === 1
+  const whose = (e: Group) => `${e.terms[0].part.designator}'s ${volt(e.rating!.volts)} AC rating`
+  return [
+    ...bad.entries().map((e) => draft('mains-rating', e, `${names(e)} ${one(e) ? 'is' : 'are'} rated ${volt(e.rating!.volts)} AC, but ${one(e) ? 'gets' : 'get'} ${volt(e.v)}. Use a part rated for at least ${volt(e.v)} AC.`)),
+    ...unknown.entries().map((e) => {
+      const them = one(e) ? 'it' : 'them'
+      const kind = e.why === 'switching' ? 'AC switching' : 'AC'
+      const where = e.why === 'switching' ? `${one(e) ? 'switches' : 'switch'} mains` : `${one(e) ? 'is' : 'are'} on mains`
+      const gives = e.why === 'dc' ? `gives only a DC rating for ${them}` : `gives no ${kind} rating for ${them}`
+      return draft('rating-unknown', e, `${names(e)} ${where} (${volt(e.v)}), but ${e.terms[0].part.designator}'s module ${gives}, so Circuitoon cannot tell whether ${one(e) ? 'it is' : 'they are'} safe there. Check the datasheet for an ${kind} rating of at least ${volt(e.v)}.`)
+    }),
+    ...cond.entries().map((e) => draft('rating-conditional', e, `${whose(e)} holds only ${e.rating!.conditions}. Circuitoon cannot see that on the drawing: check it on the real build.`)),
+    ...unverified.entries().map((e) => draft('rating-unverified', e, `${whose(e)} is not verified for this exact part (${e.terms[0].module.name}). Check the maker's data for the part you use.`)),
+    ...isolationUnverified(acc),
+  ]
+}
+
+/** A part's analysed node of terminal `name`, when some state made it hazardous. */
+function hotTerm(acc: Acc, part: GTerm['part'], name: string): boolean {
+  const i = acc.p.g.nodeOf.get(nodeKey(part.uid, name))
+  return i !== undefined && acc.hazardAny[i] === 1
+}
+
+/** Resolution 26: a module whose isolation class comes from a similar part, not this exact one (a relay clone board), once its mains side is on mains. */
+function isolationUnverified(acc: Acc): MainsDraft[] {
+  const g = acc.p.g
+  return g.mainsParts.flatMap((part): MainsDraft[] => {
+    const m = moduleOf(g.d, part.module)!
+    const info = mainsOf(m)
+    if (info.isolationProvenance !== 'unverified') return []
+    const mainsSide = info.domains.filter((x) => x.kind === 'mains').flatMap((x) => x.pins)
+    if (!mainsSide.some((n) => hotTerm(acc, part, n))) return []
+    const d = part.designator
+    const kind = info.contacts[0]?.kind
+    const sides = kind === 'ssr' ? 'its control side and its load side' : kind ? 'its coil and its contacts' : 'mains and its low-voltage side'
+    return [{
+      rule: 'rating-unverified', subject: d, target: d,
+      message: `${d}'s insulation between ${sides} is not verified for this exact part (${m.name}). Check the maker's data for the part you use.`,
+      parts: [part.uid], pins: [], wires: [], causes: [nodeKey(part.uid, '#isolation')],
+    }]
+  })
+}
+
+// ---- Rule 12: missing data (spec 1.2, 3) ----
+
+/**
+ * Rule 12, once: a mains part on mains whose module leaves out how its mains terminals conduct (the
+ * graph then lets energy pass between all of them), or a converter whose pins sit outside every
+ * domain (taken as live, Resolution 27). A load with no voltage range is rule 4's (per state).
+ */
+function dataMissing(acc: Acc): MainsDraft[] {
+  const g = acc.p.g
+  return g.mainsParts.flatMap((part): MainsDraft[] => {
+    const m = moduleOf(g.d, part.module)!
+    const info = mainsOf(m)
+    const d = part.designator
+    const label = (n: string) => termAt(g, nodeKey(part.uid, n))?.label ?? n
+    const out: MainsDraft[] = []
+    const undeclared = [...info.terminals].filter((t) => !info.declaredConduction.has(t)).sort(natural.compare)
+    if (undeclared.some((n) => hotTerm(acc, part, n))) {
+      const one = undeclared.length === 1
+      const names = andList(undeclared.map(label))
+      out.push({
+        rule: 'data-missing', subject: d, target: d,
+        message: one
+          ? `${d}'s module does not say how ${names} conducts, so the mains checks assume the worst for it: mains on it reaches every other mains terminal of ${d}, and theirs reaches it. Add conduction data to its module (electrical.internal, conducts, contacts or protective).`
+          : `${d}'s module does not say how ${names} conduct, so the mains checks assume the worst for them: mains on any of them reaches the others. Add conduction data to its module (electrical.internal, conducts, contacts or protective).`,
+        parts: [part.uid], pins: undeclared.map((n) => ({ part: part.uid, pin: n })), wires: [], causes: undeclared.map((n) => nodeKey(part.uid, n)),
+      })
+    }
+    const uncovered = info.acInput ? uncoveredPins(m, info) : []
+    if (uncovered.length && (hotTerm(acc, part, info.acInput!.a) || hotTerm(acc, part, info.acInput!.b))) {
+      const one = uncovered.length === 1
+      out.push({
+        rule: 'data-missing', subject: d, target: d,
+        message: `${d}'s module leaves ${andList(uncovered.map(label))} outside every domain (electrical.domains), so the checks treat ${one ? 'it' : 'them'} as live. Add its domains and isolation from the datasheet.`,
+        parts: [part.uid], pins: uncovered.map((n) => ({ part: part.uid, pin: n })), wires: [], causes: [nodeKey(part.uid, '#domains')],
+      })
+    }
+    return out
+  })
+}
+
+STATIC_RULES.push(ratingRules, dataMissing)
