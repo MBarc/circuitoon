@@ -41,7 +41,8 @@ The machine-readable table is `src/format/mainsEvidence.ts`: per module id, the 
 | wago-221-412/413/415 | WAGO data sheets 2024 | VERIFIED | |
 | terminal-block-mstb-508-2 | Phoenix 1757019 + 1757242 | VERIFIED | |
 | terminal-block-mc-381-2 | Phoenix 1803578 + 1803277 | VERIFIED | |
-| terminal-block-mstb-508-3..6, mc-381-3..6 | Phoenix, plan item numbers | NOT VERIFIED (see the file for any read since) | B8 (Phoenix pages blocked) |
+| terminal-block-mstb-508-3 | Phoenix 1757022 + 1757255 | VERIFIED | |
+| terminal-block-mstb-508-4..6, mc-381-3..6 | Phoenix, plan item numbers | NOT VERIFIED | B8 (Phoenix pages blocked) |
 | terminal-block-kf2edg-508-2/3 | Kefa KF2EDG-STD-5.08 listing | VERIFIED (as an unverified-provenance clone) | |
 | terminal-block-kf301-500-2/3 | Kefa KF301-5.0-2P/3P, LCSC | VERIFIED (as clones) | |
 | relay-module-1ch-5v | Songle SRD (T73) V1 + module listings | NOT VERIFIED | B2 (isolation class) |
@@ -70,7 +71,7 @@ With `isolation: "unknown"` the checker treats the low-voltage side as live when
 
 **B7. E27 shell on N.** BS 7671 reg. 559.5.1.206 (as discussed on the IET forum; the regulation text itself was not read) requires the outer contact of Edison screw lampholders on N but exempts E14 and E27 lampholders to BS EN 60238. No free source for the IEC 60364 equivalent was found. The E26 requirement is sourced (29 CFR 1910.305(j)(1): "the grounded conductor shall be connected to the screw shell"). Proposed: E27 holder without an N requirement on the shell (no polarity finding), unless Michael wants it kept as good practice with "may" wording.
 
-**B8. Phoenix Contact item numbers for 3 to 6 positions.** phoenixcontact.com answered HTTP 403 (bot protection) after the first few product pages. Read so far: 1757019, 1757242, 1757255, 1803578, 1803277, 1803581 (see `PHOENIX_READ` in the evidence file for any read later). The unread item numbers are the plan's and are recorded as such; those parts are not generated until each page is read (a retry in a day, or Michael pasting the pages).
+**B8. Phoenix Contact item numbers for 3 to 6 positions.** phoenixcontact.com answered HTTP 403 (bot protection) after the first few product pages. Read: 1757019, 1757242, 1757022, 1757255 (MSTB 2 and 3 positions) and 1803578, 1803277, 1803581 (MC 2 positions and the MC 3-position plug). A slow retry (one page every 3 minutes) was still refused for the rest. Every page read gave the same family ratings (MSTB plug III/3 250 V, III/2 320 V, II/2 630 V, 12 A; MSTBA header 320/320/630 V, 12 A; MC plug 160/160/320 V, 8 A; MC header 160/160/250 V, 8 A). The unread item numbers are the plan's and are recorded as such; those parts are not generated until each page is read (a retry in a day, or Michael pasting the pages).
 
 ## Other findings and contradictions with the plan or spec
 

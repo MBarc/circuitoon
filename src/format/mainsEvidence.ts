@@ -227,7 +227,7 @@ const PHOENIX_ITEMS = {
 } as const
 
 /** Item numbers whose own Phoenix product page was read (the page title names the type and item number). */
-const PHOENIX_READ = new Set(['1757019', '1757242', '1757255', '1803578', '1803277', '1803581'])
+const PHOENIX_READ = new Set(['1757019', '1757242', '1757022', '1757255', '1803578', '1803277', '1803581'])
 
 function phoenixPart(series: 'mstb' | 'mc', n: 2 | 3 | 4 | 5 | 6): PartEvidence {
   const [plug, header] = PHOENIX_ITEMS[series][n]
