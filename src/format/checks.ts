@@ -7,7 +7,7 @@
 import { type Connection, type Diagram, type Endpoint, type PartInstance, moduleOf, resolveEndpoint } from './diagram.ts'
 import { type MountIssue, mountIssues, plugsOf } from './breadboard.ts'
 import { type ExternalPower, type HoleGroup, type ModuleDef, type PinDef, type PinType, commonReturn, declaredReturns, externalPower, isSpacer, voltageOutputs } from './module.ts'
-import { netlist, nodeKey } from './netlist.ts'
+import { conductors, netlist, nodeKey } from './netlist.ts'
 import { partValue, primaryParam } from './values.ts'
 
 export type Severity = 'error' | 'warning'
@@ -894,6 +894,61 @@ function checkPotentials({ d, nl, netTerms, netWires, terminal, plugs, shorted, 
     return { v, text: `${andList(sorted(list).map((s) => termName(s.term)))} (${volts(v)} in series)` }
   }
 
+  /**
+   * The bridges among the conducting wires, found once in O(V + E) (Tarjan): the graph's nodes are
+   * the node keys and its edges every join the netlist is built from. Each bridge wire maps to its
+   * net and the DFS entry-order range [lo, hi) of the subtree it alone connects; `order` is each
+   * key's entry index. Parallel joins are separate edges, so a doubled wire is never a bridge.
+   */
+  const findBridges = () => {
+    const { joins } = conductors(d, plugs)
+    const ids = new Map<string, number>()
+    const id = (k: string) => { let i = ids.get(k); if (i === undefined) ids.set(k, (i = ids.size)); return i }
+    const ends = joins.map((j) => [id(j.a), id(j.b)])
+    const adj: number[][] = Array.from({ length: ids.size }, () => [])
+    ends.forEach(([a, b], e) => { adj[a].push(e); adj[b].push(e) })
+    const tin = new Array<number>(ids.size).fill(-1)
+    const low = new Array<number>(ids.size).fill(0)
+    const hi = new Array<number>(ids.size).fill(0)
+    const via = new Array<number>(ids.size).fill(-1)
+    let time = 0
+    for (let root = 0; root < ids.size; root++) {
+      if (tin[root] >= 0) continue
+      tin[root] = low[root] = time++
+      const stack: [number, number][] = [[root, 0]]
+      while (stack.length) {
+        const top = stack[stack.length - 1]
+        const [v, next] = top
+        if (next < adj[v].length) {
+          top[1]++
+          const e = adj[v][next]
+          if (e === via[v]) continue
+          const w = ends[e][0] === v ? ends[e][1] : ends[e][0]
+          if (tin[w] >= 0) low[v] = Math.min(low[v], tin[w])
+          else {
+            via[w] = e
+            tin[w] = low[w] = time++
+            stack.push([w, 0])
+          }
+        } else {
+          stack.pop()
+          hi[v] = time
+          if (stack.length) { const u = stack[stack.length - 1][0]; low[u] = Math.min(low[u], low[v]) }
+        }
+      }
+    }
+    const order = new Map<string, number>()
+    for (const [k, i] of ids) order.set(k, tin[i])
+    const cutAt = new Map<string, { net: string; lo: number; hi: number }>()
+    for (let v = 0; v < ids.size; v++) {
+      const e = via[v]
+      const wire = e >= 0 ? joins[e].wire : undefined
+      if (wire !== undefined && low[v] > tin[ends[e][0] === v ? ends[e][1] : ends[e][0]]) cutAt.set(wire, { net: netOfKey(joins[e].a), lo: tin[v], hi: hi[v] })
+    }
+    return { order, cutAt }
+  }
+  let bridges: ReturnType<typeof findBridges> | undefined
+
   /** Edges of a loop that disagrees: a voltage whose path uses one of them cannot be stated. */
   const broken = new Set<Edge>()
   /**
@@ -910,12 +965,18 @@ function checkPotentials({ d, nl, netTerms, netWires, terminal, plugs, shorted, 
         const net = netOfKey(k)
         if (net.startsWith('#')) keysOn.set(net, [...(keysOn.get(net) ?? []), k])
       }
+    const { order, cutAt } = (bridges ??= findBridges())
     const cuts: Connection[] = []
     const candidates = [...new Set([...keysOn.keys()].flatMap(wiresOf))]
     for (const uid of candidates) {
-      const without = netlist({ ...d, connections: d.connections.filter((c) => c.uid !== uid) }, plugs)
-      const at = (k: string) => without.netOf.get(k) ?? k
-      if ([...keysOn.values()].some((keys) => keys.some((k) => at(k) !== at(keys[0])))) cuts.push(d.connections.find((c) => c.uid === uid)!)
+      // Removing a wire can only part its own net, and only when it is a bridge: then exactly the
+      // keys in the subtree below it are cut off from the rest.
+      const cut = cutAt.get(uid)
+      const keys = cut && keysOn.get(cut.net)
+      if (keys) {
+        const below = keys.filter((k) => { const i = order.get(k)!; return i >= cut.lo && i < cut.hi }).length
+        if (below > 0 && below < keys.length) cuts.push(d.connections.find((c) => c.uid === uid)!)
+      }
       if (cuts.length > 3) break
     }
     const end = (ep: Endpoint) => { const t = terminal(nodeKey(ep.part, ep.pin)); return t ? termName(t) : endpointName(d, ep) }

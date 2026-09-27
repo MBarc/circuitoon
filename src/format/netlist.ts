@@ -16,6 +16,33 @@ export interface Netlist {
   broken: string[]
 }
 
+/** One conducting join between two node keys: a wire (with its uid), an internal group link or a plugged leg. */
+export interface Join {
+  a: string
+  b: string
+  wire?: string
+}
+
+/**
+ * Everything that conducts, as joins between node keys: the edges whose connected components are
+ * the nets. A wire conducts only when both ends resolve; a broken one stays in the file for repair
+ * and is listed in `broken` (file order).
+ */
+export function conductors(d: Diagram, plugs: Plug[] = plugsOf(d)): { joins: Join[]; broken: string[] } {
+  const joins: Join[] = []
+  const broken: string[] = []
+  for (const c of d.connections) {
+    if (resolveEndpoint(d, c.from) && resolveEndpoint(d, c.to)) joins.push({ a: nodeKey(c.from.part, c.from.pin), b: nodeKey(c.to.part, c.to.pin), wire: c.uid })
+    else broken.push(c.uid)
+  }
+  for (const p of d.parts) {
+    const m = moduleOf(d, p.module)
+    for (const group of m?.internal ?? []) for (let i = 1; i < group.length; i++) joins.push({ a: nodeKey(p.uid, group[0]), b: nodeKey(p.uid, group[i]) })
+  }
+  for (const pl of plugs) joins.push({ a: nodeKey(pl.part, pl.pin), b: nodeKey(pl.board, pl.group) })
+  return { joins, broken }
+}
+
 export function netlist(d: Diagram, plugs: Plug[] = plugsOf(d)): Netlist {
   const parent = new Map<string, string>()
   const find = (k: string): string => {
@@ -35,17 +62,8 @@ export function netlist(d: Diagram, plugs: Plug[] = plugsOf(d)): Netlist {
     const rb = find(b)
     if (ra !== rb) parent.set(ra, rb)
   }
-  // A wire conducts only when both ends resolve; a broken one stays in the file for repair.
-  const broken: string[] = []
-  for (const c of d.connections) {
-    if (resolveEndpoint(d, c.from) && resolveEndpoint(d, c.to)) join(nodeKey(c.from.part, c.from.pin), nodeKey(c.to.part, c.to.pin))
-    else broken.push(c.uid)
-  }
-  for (const p of d.parts) {
-    const m = moduleOf(d, p.module)
-    for (const group of m?.internal ?? []) for (let i = 1; i < group.length; i++) join(nodeKey(p.uid, group[0]), nodeKey(p.uid, group[i]))
-  }
-  for (const pl of plugs) join(nodeKey(pl.part, pl.pin), nodeKey(pl.board, pl.group))
+  const { joins, broken } = conductors(d, plugs)
+  for (const j of joins) join(j.a, j.b)
 
   const byRoot = new Map<string, string[]>()
   for (const k of parent.keys()) {
