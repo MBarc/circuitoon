@@ -198,6 +198,13 @@ for (const scheme of ['light', 'dark']) {
   const facing = await page.evaluate(() =>
     [...document.querySelectorAll('[data-cable-end]')].map((g) => g.getAttribute('transform')),
   )
+  // Connectors are one layer above every wire stroke: no later wire paints over a housing.
+  const above = await page.evaluate(() => {
+    const strokes = [...document.querySelectorAll('svg.canvas .wire-hit')]
+    const first = document.querySelector('svg.canvas [data-cable-end]')
+    return !!first && strokes.every((p) => p.compareDocumentPosition(first) & Node.DOCUMENT_POSITION_FOLLOWING)
+  })
+  check(above, `${scheme}: every connector draws above every wire stroke`)
   // No connector is squashed: every one sits on a straight end segment at least its own length.
   const squashed = await page.locator('[data-cable-end][data-squashed]').evaluateAll((els) => els.map((e) => e.closest('[data-wire]').getAttribute('data-wire')))
   check(squashed.length === 0, `${scheme}: every connector has its full length${squashed.length ? ` (squashed on ${squashed.join(', ')})` : ''}`)

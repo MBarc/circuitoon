@@ -7,7 +7,7 @@ import type { Pt } from '../format/geometry.ts'
 import { Part, INK } from '../render/Part.tsx'
 import { LegDots, TakenHoles } from '../render/Boards.tsx'
 import { WireLabel } from '../render/WireLabel.tsx'
-import { CableEnd } from '../render/CableEnd.tsx'
+import { CableLayer } from '../render/CableEnd.tsx'
 import { addPart, addWire, EMPTY_SELECTION, moveParts, reconnectWire, sameEndpoint, setWireRoute, settleDrop, settleMounts, settleSeats, settlingOf, updateWire, withMounted } from './ops.ts'
 import { netlist, netPoints } from '../format/netlist.ts'
 import { bendHandleAt, insertBend, isOrthogonal, moveSegment, removeBend, segmentHandleAt, segmentsOf, toRoute, type Axis } from '../format/wireEdit.ts'
@@ -562,7 +562,7 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
           </g>
         )}
         <g fill="none" strokeLinecap="round" strokeLinejoin="round">
-          {wires.map(({ conn, d, blocked, points, cables }) => {
+          {wires.map(({ conn, d, blocked, points }) => {
             const w = wireWidth(conn.gauge)
             const dash = blocked ? '6 5' : undefined
             const selected = selection.wires.includes(conn.uid)
@@ -573,12 +573,12 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
                 {selected && <path d={conn.ends ? polyline(points) : d} stroke="var(--focus)" strokeOpacity={0.35} strokeWidth={w + 10} />}
                 <path d={d} stroke={INK} strokeWidth={w + 2.2} strokeDasharray={dash} />
                 <path d={d} stroke={color} strokeWidth={w} strokeDasharray={dash} />
-                {cables.map((c, i) => c && <CableEnd key={i} kind={c.kind} x={c.at.x} y={c.at.y} angle={c.angle} scale={c.scale} color={color} width={w} />)}
                 <path d={d} className="wire-hit" strokeWidth={Math.max(12, w + 8)} />
               </g>
             )
           })}
         </g>
+        <CableLayer wires={wires} dim={drag?.kind === 'reconnect' ? drag.uid : null} />
         {wires.flatMap(({ conn, ends }) => ends.map((e, i) => <circle key={`${conn.uid}-${i}`} cx={e.x} cy={e.y} r={2.4} fill={INK} />))}
         {/* Name tags in their own layer after every wire, so a labeled wire crossing under a
             later one still shows its tag on top. Each tag keeps data-wire so a click or

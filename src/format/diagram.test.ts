@@ -161,6 +161,25 @@ describe('wirePaths', () => {
     diagram.parts[3].x = 60
     expect(wirePaths(diagram)[1].d).toContain('A5 5')
   })
+  it('hops over or under a housing the same way whichever wire comes first', () => {
+    const vert: ModuleDef = {
+      format: 'circuitoon-module/1', id: 'vert', name: 'Vert',
+      pins: [{ name: 'T', side: 'top' }, { name: 'B', side: 'bottom' }],
+    }
+    const cabled = { uid: 'w1', from: { part: 'a', pin: 'R' }, to: { part: 'b', pin: 'L' }, ends: { from: 'dupont-male' as const } }
+    const crossing = { uid: 'w2', from: { part: 'c', pin: 'T' }, to: { part: 'e', pin: 'B' } }
+    const hops = (x: number, cabledFirst: boolean) => {
+      const diagram = d(cabledFirst ? [cabled, crossing] : [crossing, cabled])
+      diagram.modules.vert = vert
+      diagram.parts.push({ uid: 'c', designator: 'C', module: 'vert', x: x - 20, y: 60 }, { uid: 'e', designator: 'E', module: 'vert', x: x - 20, y: -60 })
+      diagram.parts[0].x = -8 // pin tip at x=40
+      return wirePaths(diagram).reduce((n, w) => n + (w.d.match(/A/g)?.length ?? 0), 0)
+    }
+    // The Dupont male housing reaches 21 px from its pin tip at x=40: x=60 is under the housing
+    // (past its 15 px cut), x=80 is clear of it.
+    expect([hops(60, true), hops(60, false)]).toEqual([0, 0])
+    expect([hops(80, true), hops(80, false)]).toEqual([1, 1])
+  })
   it('skips a connection whose pin does not exist', () => {
     expect(wirePaths(d([{ uid: 'w', from: { part: 'a', pin: 'nope' }, to: { part: 'b', pin: 'L' } }]))).toEqual([])
   })

@@ -556,10 +556,17 @@ const cut = (v: number) => Math.round(v * 100) / 100
  * A wire's connectors on its drawn polyline, and that polyline with each end cut back to where the
  * wire meets its connector: a housing's back, or where an exposed end's metal starts (plus the
  * round cap's half width, so the insulation ends there). Never cut past the end segment's room.
+ * Hops use the whole housing, not the cut: a wire's own crossings are looked for only on `open`
+ * (and, as always, a hop's width clear of its ends), and later wires see it as `indexed`, a hop's
+ * width shorter again, so a crossing hops the same way whichever wire comes first.
  */
-function cableEnds(conn: Connection, pts: Pt[]): { cables: [CableEndDraw | null, CableEndDraw | null]; drawn: Pt[] } {
-  if (!conn.ends) return { cables: [null, null], drawn: pts }
+function cableEnds(conn: Connection, pts: Pt[]): { cables: [CableEndDraw | null, CableEndDraw | null]; drawn: Pt[]; open: Pt[]; indexed: Pt[] } {
+  if (!conn.ends) return { cables: [null, null], drawn: pts, open: pts, indexed: pts }
   const drawn = pts.slice()
+  // `open`: the wire outside its housings (each end moved back by the connector's drawn length).
+  // `indexed`: that, a hop's width further back, as later wires see it.
+  const open = pts.slice()
+  const indexed = pts.slice()
   const cables = (['from', 'to'] as const).map((which): CableEndDraw | null => {
     const kind = endKind(conn.ends, which)
     if (kind === 'bare') return null
@@ -568,10 +575,14 @@ function cableEnds(conn: Connection, pts: Pt[]): { cables: [CableEndDraw | null,
     if (!place) return null
     const { at, back, angle, scale, room } = place
     const trim = Math.min(room, size.trim * scale + (size.exposed ? (wireWidth(conn.gauge) + 2.2) / 2 : 0))
-    drawn[which === 'from' ? 0 : drawn.length - 1] = { x: cut(at.x + back.x * trim), y: cut(at.y + back.y * trim) }
+    const i = which === 'from' ? 0 : drawn.length - 1
+    const move = (by: number): Pt => ({ x: cut(at.x + back.x * by), y: cut(at.y + back.y * by) })
+    drawn[i] = move(trim)
+    open[i] = move(Math.min(room, size.reach * scale))
+    indexed[i] = move(Math.min(room, size.reach * scale + HOP))
     return { kind, at, back, angle, scale }
   })
-  return { cables: [cables[0], cables[1]], drawn }
+  return { cables: [cables[0], cables[1]], drawn, open, indexed }
 }
 
 /**
@@ -618,7 +629,7 @@ export function wirePaths(d: Diagram, routes: Routes = computeRoutes(d)) {
     // A connector's run keeps its full reach (routeWire gave it at least that much).
     const minRun = (which: 'from' | 'to') => Math.max(MIN_PIN_RUN, END_SIZE[endKind(conn.ends, which)].reach)
     const { pts, forced } = separate(simple, verticals, horizontals, index, keepOf, conn.ends ? [minRun('from'), minRun('to')] : undefined)
-    const { cables, drawn } = cableEnds(conn, pts)
+    const { cables, drawn, open, indexed } = cableEnds(conn, pts)
     let path = `M${drawn[0].x} ${drawn[0].y}`
     for (let i = 1; i < drawn.length; i++) {
       const s = drawn[i - 1]
@@ -626,7 +637,9 @@ export function wirePaths(d: Diagram, routes: Routes = computeRoutes(d)) {
       const horiz = s.y === e.y
       const vert = s.x === e.x
       const dir = Math.sign(horiz ? e.x - s.x : e.y - s.y)
-      const hits = horiz === vert ? [] : horiz ? crossings(verticals, s.x, e.x, s.y) : crossings(horizontals, s.y, e.y, s.x)
+      const os = open[i - 1]
+      const oe = open[i]
+      const hits = horiz === vert ? [] : horiz ? crossings(verticals, os.x, oe.x, s.y) : crossings(horizontals, os.y, oe.y, s.x)
       hits.sort((p, q) => (p - q) * dir)
       for (const [first, last] of bridges(hits)) {
         const sweep = dir > 0 ? 1 : 0
@@ -639,12 +652,12 @@ export function wirePaths(d: Diagram, routes: Routes = computeRoutes(d)) {
       }
       path += ` L${e.x} ${e.y}`
     }
-    // Indexed as drawn, cut back into its connectors, so a later wire crossing under a housing gets
-    // no hop through it either, whichever wire comes first. (Separation reads the same index, so a
+    // Indexed clear of its housings (see cableEnds), so a later wire crossing under a housing gets no
+    // hop through it either, whichever wire comes first. (Separation reads the same index, so a
     // later run lying along a connector's own lane is not nudged off it; the housing covers it.)
-    for (let i = 1; i < drawn.length; i++) {
-      const s = drawn[i - 1]
-      const e = drawn[i]
+    for (let i = 1; i < indexed.length; i++) {
+      const s = indexed[i - 1]
+      const e = indexed[i]
       if (s.x === e.x && s.y === e.y) continue
       if (s.x === e.x) insert(verticals, { at: s.x, lo: Math.min(s.y, e.y), hi: Math.max(s.y, e.y) })
       if (s.y === e.y) insert(horizontals, { at: s.y, lo: Math.min(s.x, e.x), hi: Math.max(s.x, e.x) })

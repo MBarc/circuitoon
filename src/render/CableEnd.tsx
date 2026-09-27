@@ -3,7 +3,8 @@
 // the wire, so every connector is one set of shapes turned to the end segment's direction.
 // Sizes follow the 10 px (0.1 inch) grid, nudged up where a true-scale part would be unreadable.
 import { memo } from 'react'
-import type { EndKind } from '../format/cables.ts'
+import type { CableEndDraw, EndKind } from '../format/cables.ts'
+import { type Connection, wireColor, wireWidth } from '../format/diagram.ts'
 import { INK, METAL } from './Part.tsx'
 
 const DUPONT = '#30353C'
@@ -179,3 +180,23 @@ export const CableEnd = memo(function CableEnd({ kind, x, y, angle, scale: s, co
     </g>
   )
 })
+
+/**
+ * Every wire's connectors, drawn as one layer above all wire strokes, so no later wire paints over
+ * an earlier wire's housing (crossings under a housing get no hop; the housing lies on top). Each
+ * wire's connectors keep its data-wire, so a click on one selects that wire. `dim` fades the one
+ * wire being reconnected, as the editor fades its stroke.
+ */
+export function CableLayer({ wires, dim = null }: { wires: { conn: Connection; cables: (CableEndDraw | null)[] }[]; dim?: string | null }) {
+  return (
+    <g>
+      {wires.map(({ conn, cables }) =>
+        cables[0] || cables[1] ? (
+          <g key={conn.uid} data-wire={conn.uid} opacity={dim === conn.uid ? 0.3 : undefined}>
+            {cables.map((c, i) => c && <CableEnd key={i} kind={c.kind} x={c.at.x} y={c.at.y} angle={c.angle} scale={c.scale} color={wireColor(conn.color)} width={wireWidth(conn.gauge)} />)}
+          </g>
+        ) : null,
+      )}
+    </g>
+  )
+}

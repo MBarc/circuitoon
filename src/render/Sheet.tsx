@@ -5,7 +5,7 @@ import { partCaption } from '../format/values.ts'
 import { Part, INK } from './Part.tsx'
 import { LegDots, TakenHoles } from './Boards.tsx'
 import { WireLabel } from './WireLabel.tsx'
-import { CableEnd } from './CableEnd.tsx'
+import { CableLayer } from './CableEnd.tsx'
 
 export function Sheet({ diagram, captions = {}, box, label, decorative = false }: {
   diagram: Diagram
@@ -40,18 +40,18 @@ export function Sheet({ diagram, captions = {}, box, label, decorative = false }
       {others.map(part)}
       <LegDots plugs={plugs} />
       <g fill="none" strokeLinecap="round" strokeLinejoin="round">
-        {wires.map(({ conn, d, blocked, cables }) => {
+        {wires.map(({ conn, d, blocked }) => {
           const w = wireWidth(conn.gauge)
           const color = wireColor(conn.color)
           return (
             <g key={conn.uid} data-wire={conn.uid}>
               <path d={d} stroke={INK} strokeWidth={w + 2.2} strokeDasharray={blocked ? '6 5' : undefined} />
               <path d={d} stroke={color} strokeWidth={w} strokeDasharray={blocked ? '6 5' : undefined} />
-              {cables.map((c, i) => c && <CableEnd key={i} kind={c.kind} x={c.at.x} y={c.at.y} angle={c.angle} scale={c.scale} color={color} width={w} />)}
             </g>
           )
         })}
       </g>
+      <CableLayer wires={wires} />
       {wires.flatMap(({ conn, ends }) => ends.map((e, i) => <circle key={`${conn.uid}-${i}`} cx={e.x} cy={e.y} r={2.4} fill={INK} />))}
       {/* Name tags in their own layer after every wire, so a labeled wire crossing under a later
           one still shows its tag on top. Each tag keeps data-wire, matching the editor's canvas. */}
