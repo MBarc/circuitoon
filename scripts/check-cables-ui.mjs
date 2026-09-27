@@ -260,6 +260,18 @@ for (const scheme of ['light', 'dark']) {
   await page.keyboard.press('Control+z')
   await pause()
   check(JSON.stringify(await kinds('c0')) === '["dupont-male","jst-ph"]', `${scheme}: one undo unswaps`)
+  // Editing never closes the disclosure: picking a preset from Custom leaves it open.
+  await cable.selectOption('dupont-mm')
+  await pause()
+  check(await details.evaluate((d) => d.open), `${scheme}: picking a preset while the ends are open keeps them open`)
+  // Closed by hand, it stays closed while the cable changes, and a Custom pick does not reopen it.
+  await details.locator('summary').click()
+  await cable.selectOption('dupont-mf')
+  await pause()
+  check(!(await details.evaluate((d) => d.open)), `${scheme}: a disclosure closed by hand stays closed`)
+  await details.locator('summary').click()
+  await page.locator('#wire-end-to').selectOption('jst-ph')
+  await pause()
   // Either way round, a pair that matches a preset shows it.
   await page.locator('#wire-end-to').selectOption('alligator')
   await pause()

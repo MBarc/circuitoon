@@ -116,6 +116,21 @@ function CableSelect({ id, value, onPick }: { id: string; value: string; onPick:
   )
 }
 
+/**
+ * The "Ends: from / to" disclosure. It opens by itself only when a wire is first shown with a
+ * Custom cable (the caller keys it on the wire uid); after that only the person opens or closes
+ * it, so editing the ends never snaps it shut.
+ */
+function EndsDisclosure({ initiallyOpen, children }: { initiallyOpen: boolean; children: React.ReactNode }) {
+  const [open, setOpen] = useState(initiallyOpen)
+  return (
+    <details className="cable-ends" open={open} onToggle={(e) => setOpen(e.currentTarget.open)}>
+      <summary>Ends: from / to</summary>
+      <div className="cable-ends-body">{children}</div>
+    </details>
+  )
+}
+
 const VALUE_LISTS: Record<string, number[]> = { ohm: RESISTOR_VALUES, F: CAPACITOR_VALUES }
 const VALUE_LABELS: Record<string, string> = { resistance: 'Resistance', capacitance: 'Capacitance', voltage: 'Voltage' }
 
@@ -440,35 +455,32 @@ export function Inspector({ store }: { store: EditorStore }) {
       <div className="cable">
         <CableSelect id="wire-cable" value={cable?.id ?? 'custom'} onPick={(pid) => setEnds(presetEnds(pid), true)} />
         <CablePreview ends={wire.ends} color={color} gauge={wire.gauge} />
-        <details className="cable-ends" key={wire.uid} open={!cable || undefined}>
-          <summary>Ends: from / to</summary>
-          <div className="cable-ends-body">
-            {(['from', 'to'] as const).map((which) => (
-              <label key={which} className="field" htmlFor={`wire-end-${which}`}>
-                <span>
-                  {which === 'from' ? 'From' : 'To'} <span className="end-at">{endpointName(diagram, wire[which])}</span>
-                </span>
-                <select
-                  id={`wire-end-${which}`}
-                  value={endKind(wire.ends, which)}
-                  onChange={(e) => setEnds({ ...wire.ends, [which]: e.target.value as EndKind }, true)}
-                >
-                  {END_KINDS.map((k) => (
-                    <option key={k} value={k}>{END_NAMES[k]}</option>
-                  ))}
-                </select>
-              </label>
-            ))}
-            <button
-              type="button"
-              className="tool small"
-              disabled={endKind(wire.ends, 'from') === endKind(wire.ends, 'to')}
-              onClick={() => setEnds(swapEnds(wire.ends), false)}
-            >
-              Swap ends
-            </button>
-          </div>
-        </details>
+        <EndsDisclosure key={wire.uid} initiallyOpen={!cable}>
+          {(['from', 'to'] as const).map((which) => (
+            <label key={which} className="field" htmlFor={`wire-end-${which}`}>
+              <span>
+                {which === 'from' ? 'From' : 'To'} <span className="end-at">{endpointName(diagram, wire[which])}</span>
+              </span>
+              <select
+                id={`wire-end-${which}`}
+                value={endKind(wire.ends, which)}
+                onChange={(e) => setEnds({ ...wire.ends, [which]: e.target.value as EndKind }, true)}
+              >
+                {END_KINDS.map((k) => (
+                  <option key={k} value={k}>{END_NAMES[k]}</option>
+                ))}
+              </select>
+            </label>
+          ))}
+          <button
+            type="button"
+            className="tool small"
+            disabled={endKind(wire.ends, 'from') === endKind(wire.ends, 'to')}
+            onClick={() => setEnds(swapEnds(wire.ends), false)}
+          >
+            Swap ends
+          </button>
+        </EndsDisclosure>
       </div>
       <CommitInput id="wire-label" label="Label" value={wire.label ?? ''} onCommit={(v) => setWire({ label: v.trim() || undefined })} />
       <p className="hint">New wires use {wireStyle.color}, {wireStyle.gauge} AWG, {newCable}.</p>
