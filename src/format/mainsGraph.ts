@@ -355,12 +355,75 @@ interface Plan {
   srcNode: Int32Array
   srcBit: Uint32Array
   srcPow: Uint16Array
+  /** The energy edges the fixed point iterates: every one whose far end can pass energy on. */
   energyA: Int32Array
   energyB: Int32Array
   energyDir: Uint8Array
+  /**
+   * Directed edges into a dead end: a node whose component over nets, every fuse and every contact
+   * and leakage pair in any position holds no end of an undirected edge or leak pair and no tail of a
+   * directed edge. In any state its root lies inside that component, so energy reaching it goes no
+   * further: these are applied once, after the fixed point, with the same result.
+   */
+  sinkA: Int32Array
+  sinkB: Int32Array
+  /**
+   * Dead ends whose power is known before any state: some tail into them always carries every source
+   * the view can energize with (a source's L or N sits on the tail's base component, so on its root in
+   * every state). Such a node always ends with `allPow`, so it takes that in one step, and its edges
+   * are left out of `sinkA`.
+   */
+  sinkFull: Int32Array
+  allPow: number
   anyLeak: boolean
+  /** What no state changes, per node (see steadyOf). */
+  steady: Steady
+  /**
+   * The union-find over base roots only: every relevant node's root in `base` (`reps`, the nodes the
+   * state's unions and finds walk), the rest with their base root (`others`, `othersRep`), and the
+   * closed pairs with each end replaced by its base root (`closedRep`). Unions only ever link roots,
+   * so starting from the base roots gives every node the same root as starting from `base` itself.
+   * The same over `fitBase` for the fitted-fuse pass.
+   */
+  reps: Int32Array
+  /** The first `moving` of `reps` lie where a closed pair can join them; the rest are their own root in every state, so the unions and finds skip them. */
+  moving: number
+  others: Int32Array
+  othersRep: Int32Array
+  closedRep: Int32Array
+  fitReps: Int32Array
+  fitMoving: number
+  fitOthers: Int32Array
+  fitOthersRep: Int32Array
+  closedFitRep: Int32Array
 }
-const plans = new WeakMap<Prepared, Plan>()
+/**
+ * A WeakMap with a one-entry front: the per-state code asks for the same analysis's tables state after
+ * state, and comparing one pointer is cheaper than a lookup. It holds its last key until another
+ * replaces it.
+ */
+export class FrontMap<K extends object, V> {
+  private map = new WeakMap<K, V>()
+  private lastKey: K | null = null
+  private lastValue: V | undefined = undefined
+  get(k: K): V | undefined {
+    if (k === this.lastKey) return this.lastValue
+    const v = this.map.get(k)
+    if (v !== undefined) {
+      this.lastKey = k
+      this.lastValue = v
+    }
+    return v
+  }
+  set(k: K, v: V): this {
+    this.map.set(k, v)
+    this.lastKey = k
+    this.lastValue = v
+    return this
+  }
+}
+
+const plans = new FrontMap<Prepared, Plan>()
 
 function planOf(p: Prepared): Plan {
   let plan = plans.get(p)
@@ -389,11 +452,71 @@ function planOf(p: Prepared): Plan {
     for (const x of s.neutral) node.push(x), bit.push(bitOf(s.index, 'N')), pow.push(1 << s.index)
     for (const x of s.earth) node.push(x), bit.push(bitOf(s.index, 'PE')), pow.push(0)
   }
+  // Components that can never pass energy on (see Plan.sinkA): joined over nets, every fuse, and
+  // every contact and leak pair; a component feeds when it holds a tail or an undirected end.
+  const reach = p.fitBase.slice()
+  for (const ab of [closed.ab, leak.ab]) for (let j = 0; j < ab.length; j += 2) union(reach, ab[j], ab[j + 1])
+  const feeds = new Uint8Array(g.n)
+  for (const e of p.energy) {
+    feeds[find(reach, e.a)] = 1
+    if (!e.directed) feeds[find(reach, e.b)] = 1
+  }
+  for (let j = 0; j < leak.ab.length; j++) feeds[find(reach, leak.ab[j])] = 1
+  const core = p.energy.filter((e) => !e.directed || feeds[find(reach, e.b)])
+  // Power a node's root holds in every state: that of the source terminals on its base component.
+  const baseRoot = p.base.slice()
+  const staticPow = new Uint16Array(g.n)
+  let allPow = 0
+  for (let k = 0; k < node.length; k++) {
+    staticPow[find(baseRoot, node[k])] |= pow[k]
+    allPow |= pow[k]
+  }
+  const full = new Set<number>()
+  for (const e of p.energy) if (e.directed && !feeds[find(reach, e.b)] && staticPow[find(baseRoot, e.a)] === allPow) full.add(e.b)
+  const sink = p.energy.filter((e) => e.directed && !feeds[find(reach, e.b)] && !full.has(e.b))
+  // A base root outside every component that holds a closed pair is never joined to anything: its root is itself in every state.
+  const switched = new Uint8Array(g.n)
+  for (let j = 0; j < closed.ab.length; j++) switched[find(reach, closed.ab[j])] = 1
+  const over = (forest: Int32Array) => {
+    const f = forest.slice()
+    const moving: number[] = []
+    const fixed: number[] = []
+    const others: number[] = []
+    const othersRep: number[] = []
+    for (const i of p.relevant) {
+      const r = find(f, i)
+      if (r !== i) others.push(i), othersRep.push(r)
+      else if (switched[find(reach, i)]) moving.push(i)
+      else fixed.push(i)
+    }
+    return { reps: Int32Array.from([...moving, ...fixed]), moving: moving.length, others: Int32Array.from(others), othersRep: Int32Array.from(othersRep), closed: closed.ab.map((x) => find(f, x)) }
+  }
+  const b = over(p.base)
+  const fb = p.anyAbsent ? over(p.fitBase) : b
+  const steady: Steady = { fixed: new Uint8Array(g.n), ident: new Uint32Array(g.n), powerKnown: new Uint8Array(g.n), power: new Uint16Array(g.n) }
+  const baseIdent = new Uint32Array(g.n)
+  for (let k = 0; k < node.length; k++) baseIdent[find(baseRoot, node[k])] |= bit[k]
+  const fullRoot = new Uint8Array(g.n)
+  for (const x of full) fullRoot[find(baseRoot, x)] = 1
+  for (const i of p.relevant) {
+    const r = find(baseRoot, i)
+    const fixed = !switched[find(reach, i)]
+    steady.fixed[i] = fixed ? 1 : 0
+    if (fixed) steady.ident[i] = baseIdent[r]
+    // Power only grows and never passes allPow: a root that starts with all of it, or a fixed dead end fed all of it, ends with exactly that.
+    if (staticPow[r] === allPow || (fixed && fullRoot[r])) {
+      steady.powerKnown[i] = 1
+      steady.power[i] = allPow
+    }
+  }
   plan = {
+    reps: b.reps, moving: b.moving, others: b.others, othersRep: b.othersRep, closedRep: b.closed,
+    fitReps: fb.reps, fitMoving: fb.moving, fitOthers: fb.others, fitOthersRep: fb.othersRep, closedFitRep: fb.closed,
     closedAt: closed.at, closedAB: closed.ab, leakAt: leak.at, leakAB: leak.ab, leakGroupIdx,
     srcNode: Int32Array.from(node), srcBit: Uint32Array.from(bit), srcPow: Uint16Array.from(pow),
-    energyA: Int32Array.from(p.energy, (e) => e.a), energyB: Int32Array.from(p.energy, (e) => e.b), energyDir: Uint8Array.from(p.energy, (e) => (e.directed ? 1 : 0)),
-    anyLeak: leak.ab.length > 0,
+    energyA: Int32Array.from(core, (e) => e.a), energyB: Int32Array.from(core, (e) => e.b), energyDir: Uint8Array.from(core, (e) => (e.directed ? 1 : 0)),
+    sinkA: Int32Array.from(sink, (e) => e.a), sinkB: Int32Array.from(sink, (e) => e.b), sinkFull: Int32Array.from(full), allPow,
+    anyLeak: leak.ab.length > 0, steady,
   }
   plans.set(p, plan)
   return plan
@@ -418,29 +541,34 @@ export function analyseState(p: Prepared): void {
   if (plainPath.on) return analyseStatePlain(p)
   const plan = planOf(p)
   bareFor = null
-  const { relevant: rel, parent, fitParent, base, fitBase, anyAbsent, root, fitRoot, ident, power, groupState, groupIdx } = p
-  const n = rel.length
-  for (let k = 0; k < n; k++) {
-    const i = rel[k]
-    parent[i] = base[i]
-    if (anyAbsent) fitParent[i] = fitBase[i]
-  }
-  const { closedAt, closedAB } = plan
+  const { parent, fitParent, anyAbsent, root, fitRoot, ident, power, groupState, groupIdx } = p
+  const { reps, moving, others, othersRep, closedAt, closedRep } = plan
+  for (let k = 0; k < moving; k++) parent[reps[k]] = reps[k]
   for (let t = 0; t < groupIdx.length; t++) {
     const at = groupIdx[t] * 2 + groupState[groupIdx[t]]
-    for (let j = closedAt[at], end = closedAt[at + 1]; j < end; j++) {
-      const a = closedAB[2 * j]
-      const b = closedAB[2 * j + 1]
-      union(parent, a, b)
-      if (anyAbsent) union(fitParent, a, b)
-    }
+    for (let j = closedAt[at], end = closedAt[at + 1]; j < end; j++) union(parent, closedRep[2 * j], closedRep[2 * j + 1])
   }
-  for (let k = 0; k < n; k++) {
-    const i = rel[k]
-    root[i] = find(parent, i)
-    if (anyAbsent) fitRoot[i] = find(fitParent, i)
+  for (let k = 0; k < reps.length; k++) {
+    const i = reps[k]
+    root[i] = k < moving ? find(parent, i) : i
     ident[i] = 0
     power[i] = 0
+  }
+  for (let k = 0; k < others.length; k++) {
+    const i = others[k]
+    root[i] = root[othersRep[k]]
+    ident[i] = 0
+    power[i] = 0
+  }
+  if (anyAbsent) {
+    const { fitReps, fitMoving, fitOthers, fitOthersRep, closedFitRep } = plan
+    for (let k = 0; k < fitMoving; k++) fitParent[fitReps[k]] = fitReps[k]
+    for (let t = 0; t < groupIdx.length; t++) {
+      const at = groupIdx[t] * 2 + groupState[groupIdx[t]]
+      for (let j = closedAt[at], end = closedAt[at + 1]; j < end; j++) union(fitParent, closedFitRep[2 * j], closedFitRep[2 * j + 1])
+    }
+    for (let k = 0; k < fitReps.length; k++) fitRoot[fitReps[k]] = k < fitMoving ? find(fitParent, fitReps[k]) : fitReps[k]
+    for (let k = 0; k < fitOthers.length; k++) fitRoot[fitOthers[k]] = fitRoot[fitOthersRep[k]]
   }
   const { srcNode, srcBit, srcPow } = plan
   const srcRoots = p.srcRoots
@@ -462,6 +590,32 @@ export function analyseState(p: Prepared): void {
         for (let j = leakAt[at], end = leakAt[at + 1]; j < end; j++) if (flow(root, power, leakAB[2 * j], leakAB[2 * j + 1], false)) changed = true
       }
   }
+  const { sinkA, sinkB, sinkFull, allPow } = plan
+  for (let k = 0; k < sinkA.length; k++) {
+    const f = power[root[sinkA[k]]]
+    if (f) power[root[sinkB[k]]] |= f
+  }
+  for (let k = 0; k < sinkFull.length; k++) power[root[sinkFull[k]]] |= allPow
+}
+
+/**
+ * The relevant nodes of `p` split by their root in `base`: `reps` are the base roots, and each of
+ * `others` always shares its root (and so its identity and energy) with `othersRep` at the same
+ * position, in every state. A per-node pass over a state can visit `reps` alone and copy the rest.
+ */
+export function baseReps(p: Prepared): { reps: Int32Array; others: Int32Array; othersRep: Int32Array } {
+  return planOf(p)
+}
+
+/**
+ * What no contact state changes, per relevant node of `p`: `fixed` is 1 when no closed pair can join
+ * the node's component, so its root is its base root in every state and holds the identity `ident`
+ * (that of the source terminals on its base component; identity crosses nothing else); `powerKnown`
+ * is 1 when its energy is `power` in every state. Rules use it to skip work whose answer is known.
+ */
+export interface Steady { fixed: Uint8Array; ident: Uint32Array; powerKnown: Uint8Array; power: Uint16Array }
+export function steadyOf(p: Prepared): Steady {
+  return planOf(p).steady
 }
 
 /** The analysis whose `bareRoot` holds the current state (null: none since the last analyseState). */
@@ -579,6 +733,15 @@ export function masksByPopcount(k: number): Uint32Array {
 export function setState(p: Prepared, cands: number[], mask: number): void {
   for (const gi of p.groupIdx) p.groupState[gi] = 0
   for (let k = 0; k < cands.length; k++) if ((mask >>> k) & 1) p.groupState[cands[k]] = 1
+}
+
+/**
+ * setState for a whole enumeration: after `setState(p, cands, 0)`, only the candidates change between
+ * states (every other group in the view stays released or off), so this sets just those.
+ */
+export function setCandidates(p: Prepared, cands: number[], mask: number): void {
+  const { groupState } = p
+  for (let k = 0; k < cands.length; k++) groupState[cands[k]] = (mask >>> k) & 1
 }
 
 /** `p` narrowed to `nodes`: the same scratch arrays, the lists cut to what has a terminal among them. */

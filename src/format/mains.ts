@@ -8,7 +8,7 @@ import { type Diagram, moduleOf } from './diagram.ts'
 import { plugsOf } from './breadboard.ts'
 import { netlist, nodeKey } from './netlist.ts'
 import { type Conductor, type Region, mainsOf } from './mainsModel.ts'
-import { MAX_GROUPS, MAX_SOURCES, type MainsGraph, analyseState, buildMainsGraph, candidateGroups, decodeSingle, masksByPopcount, prepare, setState, units } from './mainsGraph.ts'
+import { MAX_GROUPS, MAX_SOURCES, type MainsGraph, analyseState, buildMainsGraph, candidateGroups, decodeSingle, masksByPopcount, plainPath, prepare, setCandidates, setState, units } from './mainsGraph.ts'
 import { type ConverterStatus, type MainsDraft, UNPOWERED, absorb, conservative, mergeUnpolarized, newAcc, staticDrafts, visitState } from './mainsRules.ts'
 
 export interface MainsAnalysis {
@@ -53,8 +53,12 @@ export function analyseMains(d: Diagram): MainsAnalysis | null {
   else
     for (const unit of units(p, cands)) {
       const sub = newAcc(unit.view, unit.cands, null)
-      for (const mask of masksByPopcount(unit.cands.length)) {
-        setState(unit.view, unit.cands, mask)
+      const masks = masksByPopcount(unit.cands.length)
+      setState(unit.view, unit.cands, 0)
+      for (let k = 0; k < masks.length; k++) {
+        const mask = masks[k]
+        if (plainPath.on) setState(unit.view, unit.cands, mask)
+        else setCandidates(unit.view, unit.cands, mask)
         analyseState(unit.view)
         visitState(sub, mask)
       }

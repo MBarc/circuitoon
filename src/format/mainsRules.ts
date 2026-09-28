@@ -5,7 +5,7 @@
 import { type Endpoint, type PartInstance, moduleOf } from './diagram.ts'
 import type { RuleId } from './checks.ts'
 import { nodeKey } from './netlist.ts'
-import { type GConverter, type GEdge, type GLoad, type GSource, type GTerm, type MainsGraph, type Prepared, LN_MASK as LN, L_MASK as L_, MAX_SOURCES, N_MASK as N_, PE_MASK as PE_, bareRoots, bitOf, decodeSingle, groupName, hazardAt, identAt, minimalWitnesses, plainPath, statePhrase, termAt, termName } from './mainsGraph.ts'
+import { type GConverter, type GEdge, type GLoad, type GSource, type GTerm, type MainsGraph, type Prepared, FrontMap, LN_MASK as LN, L_MASK as L_, MAX_SOURCES, N_MASK as N_, PE_MASK as PE_, bareRoots, baseReps, steadyOf, bitOf, decodeSingle, groupName, hazardAt, identAt, minimalWitnesses, plainPath, statePhrase, termAt, termName } from './mainsGraph.ts'
 import { type Conductor, type ContactGroup, type MainsInfo, type Rating, isolationAdequate, mainsOf, uncoveredPins } from './mainsModel.ts'
 import { type ThroughKind, protectivePaths } from './mainsProtective.ts'
 import { andList, natural, orList } from './words.ts'
@@ -129,26 +129,42 @@ export function wiresOfRoot(p: Prepared, r: number): string[] {
   return out
 }
 
-/** Per state, on the hot path: no allocation, and no source loop for a node already at the highest voltage. */
+/**
+ * Per state, on the hot path: no allocation, and no source loop for a node already at the highest
+ * voltage. Only the base roots are visited: every other node always shares its base root's root, so
+ * absorb copies their values over (see spreadReps). The plain path visits every node.
+ */
 function track(acc: Acc) {
-  const { p, srcIdx, srcLN, srcVolts } = acc
+  const { p, srcIdx, srcLN, srcVolts, identUnion, hazardAny, volts } = acc
+  const { root, ident, power } = p
   const top = srcVolts.length ? srcVolts[0] : 0
-  const rel = p.relevant
+  const rel = plainPath.on ? p.relevant : baseReps(p).reps
   for (let k = 0; k < rel.length; k++) {
     const i = rel[k]
-    const r = p.root[i]
-    const x = p.ident[r]
-    const e = p.power[r]
-    acc.identUnion[i] |= x
+    const r = root[i]
+    const x = ident[r]
+    const e = power[r]
+    identUnion[i] |= x
     if (!(x & LN_MASK) && !e) continue
-    acc.hazardAny[i] = 1
-    if (acc.volts[i] >= top) continue
+    hazardAny[i] = 1
+    if (volts[i] >= top) continue
     // Highest voltage first: the first source that makes the node hazardous sets it.
     for (let j = 0; j < srcIdx.length; j++)
       if (x & srcLN[j] || (e >> srcIdx[j]) & 1) {
-        if (srcVolts[j] > acc.volts[i]) acc.volts[i] = srcVolts[j]
+        if (srcVolts[j] > volts[i]) volts[i] = srcVolts[j]
         break
       }
+  }
+}
+
+/** Gives every node that track skipped its base root's values (a no-op after the plain path, which visits them all). */
+function spreadReps(acc: Acc) {
+  const { others, othersRep } = baseReps(acc.p)
+  for (let k = 0; k < others.length; k++) {
+    const [i, r] = [others[k], othersRep[k]]
+    acc.identUnion[i] = acc.identUnion[r]
+    acc.hazardAny[i] = acc.hazardAny[r]
+    acc.volts[i] = acc.volts[r]
   }
 }
 
@@ -257,7 +273,13 @@ function combine(cur: ConverterStatus | null, st: ConverterStatus): ConverterSta
 }
 
 function availabilityRule(acc: Acc) {
-  for (const i of acc.p.converterIdx) acc.converters[i] = combine(acc.converters[i], inputState(acc.p, acc.p.g.converters[i]))
+  const { converterIdx } = acc.p
+  for (let k = 0; k < converterIdx.length; k++) {
+    const i = converterIdx[k]
+    // Powered in some state is final (combine keeps it), and inputState only reads: skip it.
+    if (acc.converters[i]?.state === 'powered' && !plainPath.on) continue
+    acc.converters[i] = combine(acc.converters[i], inputState(acc.p, acc.p.g.converters[i]))
+  }
 }
 
 export const STATE_RULES: ((acc: Acc, mask: number) => void)[] = [availabilityRule]
@@ -341,20 +363,33 @@ function watchList(p: Prepared): Watch[] {
 
 /**
  * The energy edges and fitted protective edges of a view: the part of `energyPathWires`' link list
- * that never changes across states (only the candidate groups' closed and leak pairs do), so it is
- * built once per view instead of on every call (up to `PATH_STATES` per finding).
+ * that never changes across states (only the candidate groups' closed and leak pairs do), as an
+ * adjacency list built once per view instead of on every call (up to `PATH_STATES` per finding): the
+ * neighbours of node `x` are `to[at[x]]` up to `to[at[x + 1]]`, in link order. With the search's
+ * scratch: `seen[x] === stamp` marks a node reached (from `prev[x]`, -1 for a start), `onStamp` the
+ * nodes on a path.
  */
-const staticLinksCache = new WeakMap<Prepared, [number, number, boolean][]>()
-function staticLinks(p: Prepared): [number, number, boolean][] {
-  let links = staticLinksCache.get(p)
-  if (links) return links
+interface PathGraph { at: Int32Array; to: Int32Array; seen: Int32Array; prev: Int32Array; on: Int32Array; stamp: number }
+const pathGraphs = new WeakMap<Prepared, PathGraph>()
+function pathGraph(p: Prepared): PathGraph {
+  let pg = pathGraphs.get(p)
+  if (pg) return pg
   const both = (a: number, b: number) => p.inRel[a] === 1 && p.inRel[b] === 1
-  links = [
+  const links: [number, number, boolean][] = [
     ...p.energy.map((e): [number, number, boolean] => [e.a, e.b, e.directed]),
     ...p.protective.filter((e) => e.fitted && both(e.a, e.b)).map((e): [number, number, boolean] => [e.a, e.b, false]),
   ]
-  staticLinksCache.set(p, links)
-  return links
+  const n = p.g.n
+  const lists: number[][] = Array.from({ length: n }, () => [])
+  for (const [a, b, directed] of links) {
+    lists[a].push(b)
+    if (!directed) lists[b].push(a)
+  }
+  const at = new Int32Array(n + 1)
+  for (let x = 0; x < n; x++) at[x + 1] = at[x] + lists[x].length
+  pg = { at, to: Int32Array.from(lists.flat()), seen: new Int32Array(n), prev: new Int32Array(n), on: new Int32Array(n), stamp: 0 }
+  pathGraphs.set(p, pg)
+  return pg
 }
 
 /**
@@ -366,52 +401,58 @@ function staticLinks(p: Prepared): [number, number, boolean][] {
  * never continues from a net that carries the source's other conductor: that search covers it, and
  * going on would route through unrelated loads. Nets, not roots, so a switch that is on elsewhere
  * adds nothing. Runs for a bounded number of states per finding, never on every state.
+ *
+ * A node's neighbours are its fixed links (pathGraph), then the state's closed and leak pairs of the
+ * view's groups in group order, both ways: the order a breadth-first search meets them in, which
+ * decides the path it keeps.
  */
 export function energyPathWires(p: Prepared, node: number, from?: number[]): string[] {
   const g = p.g
-  const both = (a: number, b: number) => p.inRel[a] === 1 && p.inRel[b] === 1
-  const links: [number, number, boolean][] = [
-    ...staticLinks(p),
-    ...p.groupIdx.flatMap((gi) => [...g.groups[gi].closed[p.groupState[gi]], ...g.groups[gi].leak[p.groupState[gi]]]
-      .filter(([a, b]) => both(a, b)).map(([a, b]): [number, number, boolean] => [a, b, false])),
-  ]
-  // An adjacency list built once per call, in link order, so the search below visits each node's
-  // neighbours directly instead of rescanning every link at every node (that scaled with the sheet's
-  // total edges times its visited nodes; a real sheet's edges are far more than a synthetic one's).
-  const adj = new Map<number, number[]>()
-  const push = (x: number, y: number) => {
-    let l = adj.get(x)
-    if (!l) adj.set(x, (l = []))
-    l.push(y)
-  }
-  for (const [a, b, directed] of links) {
-    push(a, b)
-    if (!directed) push(b, a)
-  }
-  const on = new Set<number>([node])
+  const { inRel, groupIdx, groupState } = p
+  const dyn: number[] = []
+  for (const gi of groupIdx)
+    for (const list of [g.groups[gi].closed[groupState[gi]], g.groups[gi].leak[groupState[gi]]])
+      for (const [a, b] of list) if (inRel[a] === 1 && inRel[b] === 1) dyn.push(a, b)
+  const pg = pathGraph(p)
+  const { at, to, seen, prev, on } = pg
+  const onStamp = ++pg.stamp
+  const order: number[] = [node]
+  on[node] = onStamp
+  const queue: number[] = []
   for (const s of p.sources) {
     if (from && !from.includes(s.index)) continue
     for (const [nodes, other] of [[s.live, bitOf(s.index, 'N')], [s.neutral, bitOf(s.index, 'L')]] as const) {
-      const prev = new Map<number, number>()
-      const queue: number[] = []
-      for (const x of nodes) if (!prev.has(x)) {
-        prev.set(x, -1)
+      const stamp = ++pg.stamp
+      queue.length = 0
+      for (const x of nodes) if (seen[x] !== stamp) {
+        seen[x] = stamp
+        prev[x] = -1
         queue.push(x)
       }
-      for (let q = 0; q < queue.length && !prev.has(node); q++) {
-        const x = queue[q]
-        if (prev.get(x) !== -1 && p.ident[p.root[x]] & other) continue
-        for (const next of adj.get(x) ?? []) {
-          if (!prev.has(next)) {
-            prev.set(next, x)
-            queue.push(next)
-          }
+      const visit = (next: number, x: number) => {
+        if (seen[next] !== stamp) {
+          seen[next] = stamp
+          prev[next] = x
+          queue.push(next)
         }
       }
-      for (let x = prev.has(node) ? node : -1; x !== -1; x = prev.get(x)!) on.add(x)
+      for (let q = 0; q < queue.length && seen[node] !== stamp; q++) {
+        const x = queue[q]
+        if (prev[x] !== -1 && p.ident[p.root[x]] & other) continue
+        for (let k = at[x]; k < at[x + 1]; k++) visit(to[k], x)
+        for (let k = 0; k < dyn.length; k += 2) {
+          if (dyn[k] === x) visit(dyn[k + 1], x)
+          if (dyn[k + 1] === x) visit(dyn[k], x)
+        }
+      }
+      for (let x = seen[node] === stamp ? node : -1; x !== -1; x = prev[x])
+        if (on[x] !== onStamp) {
+          on[x] = onStamp
+          order.push(x)
+        }
     }
   }
-  return [...on].flatMap((i) => g.wires[i])
+  return order.flatMap((i) => g.wires[i])
 }
 
 /** Why a secondary terminal counts as mains, and what to use instead, by the kind of part it belongs to. `also` when a wire already brings mains there. */
@@ -469,69 +510,226 @@ const sourcesOfMask = (m: number): number[] => {
 /** A finding's highlight gathers the energizing paths of up to this many of the states it holds in (Ruling 33); past it a state costs one check. */
 const PATH_STATES = 32
 interface PathRec { states: number; wires: Set<string> }
-const pathCache = new WeakMap<Acc, Map<string, PathRec>>()
-/** Per accumulator: each finding of rule 1 already seen, by watch position and code, with its state bits and path record (so a repeat costs no key lookup). */
-const lowVoltageSeen = new WeakMap<Acc, Map<number, { holds: Uint32Array; rec: PathRec }>>()
 /** Codes are below this (a 10-bit source mask, the PELV bit and the direct bit), so position * CODES + code is one number per finding. */
 const CODES = 4096
 
-/** Rule 1, per state: a hazardous node holding a low-voltage terminal. Allocation-free once a finding has its paths. */
+/** Rule 1's finding key for a watch and code, made once. */
+function lowVoltageKey(w: Watch, code: number, sm: number, pelv: number, direct: number): string {
+  let key = w.keys.get(code)
+  if (key === undefined) w.keys.set(code, (key = `mains-to-low-voltage|${w.terms.map((t) => t.key).join(',')}|${sm}|${pelv ? 'PELV' : 'SELV'}|${direct}`))
+  return key
+}
+
+/**
+ * Records state `mask` for rule 1's finding `key`, reporting it (with a new path record) when it is
+ * new, and returns its path record. Kept out of lowVoltageRule: the draft builder's closure captures
+ * these values, and a closure in the per-watch loop would make every pass of it allocate a context.
+ */
+function lowVoltageRecord(acc: Acc, paths: Map<string, PathRec>, w: Watch, key: string, sm: number, pelv: number, direct: number, mask: number): PathRec | undefined {
+  const { p } = acc
+  const rec = paths.get(key)
+  if (mark(acc, key, mask)) return rec
+  const made: PathRec = { states: 0, wires: new Set() }
+  paths.set(key, made)
+  report(acc, key, mask, () => {
+    const srcs = sourcesOfMask(sm)
+    const from = sourcesText(p.g, srcs)
+    const sourceKeys = srcs.flatMap((i) => [...p.g.sources[i].keys.L, ...p.g.sources[i].keys.N])
+    return (when) => lowVoltageDraft(w, direct === 1, from, pelv ? 'PELV' : 'SELV', sourceKeys, [...made.wires], when)
+  })
+  return made
+}
+
+/**
+ * Rule 1's working state, one per accumulator. The watch list in typed arrays, so the per-state scan
+ * reads plain numbers: per watch its node, whether it is a secondary, its bond nodes (`bonds[bondAt[wi]]`
+ * up to `bonds[bondAt[wi + 1]]`), and its part's mains side as one of the distinct primary node sets
+ * (`primarySet[wi]`, the nodes `primary[primaryAt[s]]` up to `primary[primaryAt[s + 1]]`), whose
+ * "carries anything" answer is made once per state (`setStamp`, `setLive`) for every watch sharing it.
+ * Then the findings: path records by key, each finding already seen by watch position and code with
+ * its state bits and path record (so a repeat costs no key lookup), and per watch the code it last
+ * reported with that finding's bits and record (a node usually makes the same claim state after state,
+ * so a repeat costs one comparison).
+ */
+interface LowVoltage {
+  list: Watch[]
+  node: Int32Array
+  secondary: Uint8Array
+  bondAt: Int32Array
+  bonds: Int32Array
+  primarySet: Int32Array
+  primaryAt: Int32Array
+  primary: Int32Array
+  setStamp: Int32Array
+  setLive: Uint8Array
+  stamp: number
+  paths: Map<string, PathRec>
+  known: Map<number, { holds: Uint32Array; rec: PathRec }>
+  lastCode: Int32Array
+  lastHolds: Uint32Array[]
+  lastRec: PathRec[]
+  /** 1 for a watch whose claim no state changes (every input steady, see steadyOf), and that claim (-1: its node never carries mains). */
+  steady: Uint8Array
+  steadyCode: Int32Array
+}
+const lowVoltageCache = new FrontMap<Acc, LowVoltage>()
+function lowVoltageOf(acc: Acc): LowVoltage {
+  let lv = lowVoltageCache.get(acc)
+  if (lv) return lv
+  const list = watchList(acc.p)
+  const bondAt = new Int32Array(list.length + 1)
+  list.forEach((w, i) => (bondAt[i + 1] = bondAt[i] + w.bonds.length))
+  const sets = new Map<string, number>()
+  const setNodes: number[][] = []
+  const primarySet = Int32Array.from(list, (w) => {
+    const k = w.primary.join(',')
+    let id = sets.get(k)
+    if (id === undefined) sets.set(k, (id = setNodes.push([...w.primary]) - 1))
+    return id
+  })
+  const primaryAt = new Int32Array(setNodes.length + 1)
+  setNodes.forEach((xs, i) => (primaryAt[i + 1] = primaryAt[i] + xs.length))
+  const steady = new Uint8Array(list.length)
+  const steadyCode = new Int32Array(list.length)
+  list.forEach((w, wi) => {
+    const code = steadyClaim(acc, w)
+    if (code === null) return
+    steady[wi] = 1
+    steadyCode[wi] = code
+  })
+  lv = {
+    steady, steadyCode,
+    list, node: Int32Array.from(list, (w) => w.node), secondary: Uint8Array.from(list, (w) => (w.cls === 'secondary' ? 1 : 0)),
+    bondAt, bonds: Int32Array.from(list.flatMap((w) => [...w.bonds])),
+    primarySet, primaryAt, primary: Int32Array.from(setNodes.flat()),
+    setStamp: new Int32Array(setNodes.length), setLive: new Uint8Array(setNodes.length), stamp: 0,
+    paths: new Map(), known: new Map(), lastCode: new Int32Array(list.length).fill(-1), lastHolds: [], lastRec: [],
+  }
+  lowVoltageCache.set(acc, lv)
+  return lv
+}
+
+/**
+ * The claim watch `wi` makes in the current state: its source mask times 4, plus 2 for PELV, plus 1
+ * when reached directly; -1 when its node carries no mains. Resolution 24: the key holds the whole
+ * claim (terminals, sources, effective class, and for a secondary whether a wire brings mains there),
+ * so each claim keeps its own conditions and path.
+ */
+function watchCode(acc: Acc, lv: LowVoltage, wi: number, stamp: number, plain: boolean): number {
+  const { srcIdx, srcLN } = acc
+  const { root, ident, power } = acc.p
+  const r = root[lv.node[wi]]
+  const x = ident[r] & LN_MASK
+  const e = power[r]
+  if (!x && !e) return -1
+  let sm = 0
+  for (let j = 0; j < srcIdx.length; j++) if (x & srcLN[j] || (e >> srcIdx[j]) & 1) sm |= 1 << srcIdx[j]
+  let pelv = 0
+  const { bondAt, bonds } = lv
+  for (let b = bondAt[wi], end = bondAt[wi + 1]; b < end && !pelv; b++) if (ident[root[bonds[b]]] & PE_MASK) pelv = 1
+  // A secondary is reached directly when a wire brings L or N there, or when its own mains side carries nothing in this state.
+  let direct = lv.secondary[wi]
+  if (direct && !x) {
+    const set = lv.primarySet[wi]
+    if (plain || lv.setStamp[set] !== stamp) {
+      lv.setStamp[set] = stamp
+      const { primaryAt, primary } = lv
+      let live = 0
+      for (let k = primaryAt[set], end = primaryAt[set + 1]; k < end && !live; k++) {
+        const q = root[primary[k]]
+        if (ident[q] & LN_MASK || power[q]) live = 1
+      }
+      lv.setLive[set] = live
+    }
+    if (lv.setLive[set]) direct = 0
+  }
+  return sm * 4 + pelv * 2 + direct
+}
+
+/** The claim watchCode gives `w` in every state, when every input it reads is steady; null when some state may change it. */
+function steadyClaim(acc: Acc, w: Watch): number | null {
+  const st = steadyOf(acc.p)
+  const { srcIdx, srcLN } = acc
+  if (!st.fixed[w.node] || !st.powerKnown[w.node]) return null
+  const x = st.ident[w.node] & LN_MASK
+  const e = st.power[w.node]
+  if (!x && !e) return -1
+  let sm = 0
+  for (let j = 0; j < srcIdx.length; j++) if (x & srcLN[j] || (e >> srcIdx[j]) & 1) sm |= 1 << srcIdx[j]
+  // Any bond on earth decides PELV; otherwise every bond must be known off earth.
+  const bonds = [...w.bonds]
+  const pelv = bonds.some((b) => st.fixed[b] && st.ident[b] & PE_MASK) ? 1 : bonds.every((b) => st.fixed[b]) ? 0 : null
+  if (pelv === null) return null
+  let direct = w.cls === 'secondary' ? 1 : 0
+  if (direct && !x) {
+    // The mains side carries something in every state when one of its nodes always does; nothing when every one never does.
+    const always = (q: number) => (st.fixed[q] && st.ident[q] & LN_MASK) || (st.powerKnown[q] && st.power[q])
+    const never = (q: number) => st.fixed[q] && !(st.ident[q] & LN_MASK) && st.powerKnown[q] && !st.power[q]
+    const primary = [...w.primary]
+    if (primary.some(always)) direct = 0
+    else if (!primary.every(never)) return null
+  }
+  return sm * 4 + pelv * 2 + direct
+}
+
+/** Adds the current state's energizing paths to a finding's highlight while it has fewer than PATH_STATES (Ruling 33). */
+function addPaths(p: Prepared, rec: PathRec, node: number, sm: number): void {
+  if (rec.states >= PATH_STATES) return
+  rec.states++
+  for (const wire of energyPathWires(p, node, sourcesOfMask(sm))) rec.wires.add(wire)
+}
+
+/**
+ * Rule 1, per state: a hazardous node holding a low-voltage terminal. Allocation-free once a finding
+ * has its paths. A watch making the claim it made last time costs a comparison and one bit; any other
+ * claim takes lowVoltageClaim.
+ */
 function lowVoltageRule(acc: Acc, mask: number) {
-  const { p, srcIdx, srcLN } = acc
-  let paths = pathCache.get(acc)
-  if (!paths) pathCache.set(acc, (paths = new Map()))
   const plain = plainPath.on
-  let known = lowVoltageSeen.get(acc)
-  if (!known) lowVoltageSeen.set(acc, (known = new Map()))
-  const list = watchList(p)
-  for (let wi = 0; wi < list.length; wi++) {
-    const w = list[wi]
-    const r = p.root[w.node]
-    const x = p.ident[r] & LN_MASK
-    const e = p.power[r]
-    if (!x && !e) continue
-    // Resolution 24: the key holds the whole claim (terminals, sources, effective class, and for a
-    // secondary whether a wire brings mains there), so each claim keeps its own conditions and path.
-    let sm = 0
-    for (let j = 0; j < srcIdx.length; j++) if (x & srcLN[j] || (e >> srcIdx[j]) & 1) sm |= 1 << srcIdx[j]
-    let pelv = 0
-    for (let b = 0; b < w.bonds.length && !pelv; b++) if (p.ident[p.root[w.bonds[b]]] & PE_MASK) pelv = 1
-    // A secondary is reached directly when a wire brings L or N there, or when its own mains side carries nothing in this state.
-    let direct = w.cls === 'secondary' ? 1 : 0
-    if (direct && !x)
-      for (let k = 0; k < w.primary.length && direct; k++) {
-        const q = p.root[w.primary[k]]
-        if (p.ident[q] & LN_MASK || p.power[q]) direct = 0
-      }
-    const code = sm * 4 + pelv * 2 + direct
-    const hit = plain ? undefined : known.get(wi * CODES + code)
-    if (hit) {
-      hit.holds[mask >>> 5] |= 1 << (mask & 31)
-      if (hit.rec.states < PATH_STATES) {
-        hit.rec.states++
-        for (const wire of energyPathWires(p, w.node, sourcesOfMask(sm))) hit.rec.wires.add(wire)
-      }
+  const lv = lowVoltageOf(acc)
+  const { lastCode, lastHolds, lastRec, node, steady, steadyCode } = lv
+  const stamp = ++lv.stamp
+  const word = mask >>> 5
+  const bit = 1 << (mask & 31)
+  for (let wi = 0; wi < lastCode.length; wi++) {
+    const code = steady[wi] && !plain ? steadyCode[wi] : watchCode(acc, lv, wi, stamp, plain)
+    if (code < 0) continue
+    if (!plain && lastCode[wi] === code) {
+      lastHolds[wi][word] |= bit
+      const rec = lastRec[wi]
+      if (rec.states < PATH_STATES) addPaths(acc.p, rec, node[wi], code >>> 2)
       continue
     }
-    let key = w.keys.get(code)
-    if (key === undefined) w.keys.set(code, (key = `mains-to-low-voltage|${w.terms.map((t) => t.key).join(',')}|${sm}|${pelv ? 'PELV' : 'SELV'}|${direct}`))
-    let rec = paths.get(key)
-    if (!mark(acc, key, mask)) {
-      const made: PathRec = (rec = { states: 0, wires: new Set() })
-      paths.set(key, made)
-      report(acc, key, mask, () => {
-        const srcs = sourcesOfMask(sm)
-        const from = sourcesText(p.g, srcs)
-        const sourceKeys = srcs.flatMap((i) => [...p.g.sources[i].keys.L, ...p.g.sources[i].keys.N])
-        return (when) => lowVoltageDraft(w, direct === 1, from, pelv ? 'PELV' : 'SELV', sourceKeys, [...made.wires], when)
-      })
-    }
-    if (rec && rec.states < PATH_STATES) {
-      rec.states++
-      for (const wire of energyPathWires(p, w.node, sourcesOfMask(sm))) rec.wires.add(wire)
-    }
-    if (rec) known.set(wi * CODES + code, { holds: acc.seen.get(key)!.holds, rec })
+    lowVoltageClaim(acc, lv, wi, code, mask)
   }
+}
+
+/** Records claim `code` of watch `wi` in state `mask` through the finding maps, reporting the finding when it is new. */
+function lowVoltageClaim(acc: Acc, lv: LowVoltage, wi: number, code: number, mask: number): void {
+  const plain = plainPath.on
+  const { p } = acc
+  const sm = code >>> 2
+  const pelv = (code >>> 1) & 1
+  const direct = code & 1
+  const w = lv.list[wi]
+  const hit = plain ? undefined : lv.known.get(wi * CODES + code)
+  if (hit) {
+    hit.holds[mask >>> 5] |= 1 << (mask & 31)
+    addPaths(p, hit.rec, w.node, sm)
+    lv.lastCode[wi] = code
+    lv.lastHolds[wi] = hit.holds
+    lv.lastRec[wi] = hit.rec
+    return
+  }
+  const key = lowVoltageKey(w, code, sm, pelv, direct)
+  const rec = lowVoltageRecord(acc, lv.paths, w, key, sm, pelv, direct, mask)
+  if (!rec) return
+  addPaths(p, rec, w.node, sm)
+  const holds = acc.seen.get(key)!.holds
+  lv.known.set(wi * CODES + code, { holds, rec })
+  lv.lastCode[wi] = code
+  lv.lastHolds[wi] = holds
+  lv.lastRec[wi] = rec
 }
 
 // ---- Rules 2 and 3: identities that must never meet (spec 3) ----
@@ -573,7 +771,7 @@ function crossDraft(p: Prepared, r: number, s: GSource, a: Conductor, t: GSource
 
 /** Finding keys for rules 2 and 3 in one view, made once: per source its two shorts, per source pair and conductor pair its cross key; and each source's place in the view by global index. */
 interface IdentityKeys { short: string[][]; cross: string[]; local: Int32Array }
-const identityCache = new WeakMap<Prepared, IdentityKeys>()
+const identityCache = new FrontMap<Prepared, IdentityKeys>()
 function identityKeys(p: Prepared): IdentityKeys {
   let k = identityCache.get(p)
   if (k) return k
@@ -601,7 +799,7 @@ function identityKeys(p: Prepared): IdentityKeys {
  * key always has the same slot, so this changes no result and no report order.
  */
 type Slots = (Uint32Array | undefined)[]
-function slotsOf(cache: WeakMap<Acc, Slots>, acc: Acc): Slots {
+function slotsOf(cache: FrontMap<Acc, Slots>, acc: Acc): Slots {
   let s = cache.get(acc)
   if (!s) cache.set(acc, (s = []))
   return s
@@ -616,7 +814,7 @@ function slotFill(acc: Acc, slots: Slots, q: number, key: string, mask: number, 
   if (!mark(acc, key, mask)) report(acc, key, mask, first)
   slots[q] = acc.seen.get(key)!.holds
 }
-const identitySlots = new WeakMap<Acc, Slots>()
+const identitySlots = new FrontMap<Acc, Slots>()
 
 /**
  * Rules 2 and 3, per state and allocation-free once a finding is known: one source's L on its N or PE;
@@ -717,6 +915,7 @@ export function finishStates(acc: Acc): MainsDraft[] {
 
 /** Folds one enumerated unit into the sheet's accumulator. */
 export function absorb(into: Acc, unit: Acc): void {
+  spreadReps(unit)
   for (const i of unit.p.relevant) {
     into.hazardAny[i] |= unit.hazardAny[i]
     into.volts[i] = Math.max(into.volts[i], unit.volts[i])
@@ -847,7 +1046,7 @@ interface Judged { part: GTerm['part']; a: number; b: number; range: [number, nu
  * first use, so a state allocates nothing.
  */
 interface VoltageTable { items: Judged[]; a: Int32Array; b: Int32Array; lo: Float64Array; hi: Float64Array; load: Int32Array; keys: (string | undefined)[] }
-const voltageCache = new WeakMap<Prepared, VoltageTable>()
+const voltageCache = new FrontMap<Prepared, VoltageTable>()
 function voltageTable(p: Prepared): VoltageTable {
   let t = voltageCache.get(p)
   if (t) return t
@@ -888,7 +1087,7 @@ function voltageDraft(g: MainsGraph, it: Judged, s: number): (when: string) => M
  * have none never enters, so a large unit costs little per state after its first few states.
  */
 interface VoltageWork { t: VoltageTable; list: Int32Array; n: number; must: Uint8Array }
-const workCache = new WeakMap<Acc, VoltageWork>()
+const workCache = new FrontMap<Acc, VoltageWork>()
 function voltageWork(acc: Acc): VoltageWork {
   let w = workCache.get(acc)
   if (w) return w
@@ -900,7 +1099,7 @@ function voltageWork(acc: Acc): VoltageWork {
   return w
 }
 
-const voltageSlots = new WeakMap<Acc, Slots>()
+const voltageSlots = new FrontMap<Acc, Slots>()
 /**
  * Rule 4, per state: every source whose L and N sit across a load or a converter input, against the
  * range it accepts (a load with none gets data-missing, Resolution 14). It also records, for the
@@ -1190,7 +1389,7 @@ interface PolarityTable {
   fixed: ((mask: number) => void)[]
   fixedDone: boolean
 }
-const polarityCache = new WeakMap<Acc, PolarityTable>()
+const polarityCache = new FrontMap<Acc, PolarityTable>()
 
 /** The earth terminals of a class 1 module: pins requiring PE, and PE plug contacts. */
 function earthNames(info: MainsInfo): string[] {
@@ -1761,7 +1960,7 @@ STATIC_RULES.push(orphanEarth, earthPathRule)
  * contact position at once, no fuse: a fully fused circuit costs nothing per state.
  */
 interface ProtTable { end: Int32Array; load: GLoad[]; src: GSource[]; bit: Uint32Array; live: Int32Array[]; keys: (string | undefined)[] }
-const protCache = new WeakMap<Prepared, ProtTable>()
+const protCache = new FrontMap<Prepared, ProtTable>()
 function protTable(p: Prepared): ProtTable {
   let t = protCache.get(p)
   if (t) return t
@@ -1793,9 +1992,9 @@ function protTable(p: Prepared): ProtTable {
   return t
 }
 
-const unprotectedSlots = new WeakMap<Acc, Slots>()
+const unprotectedSlots = new FrontMap<Acc, Slots>()
 /** Per accumulator, by slot: the unfused wiring gathered over the states a rule 8 finding holds in. */
-const unprotectedPaths = new WeakMap<Acc, (PathRec | undefined)[] & { byKey: Map<string, PathRec> }>()
+const unprotectedPaths = new FrontMap<Acc, (PathRec | undefined)[] & { byKey: Map<string, PathRec> }>()
 /**
  * Rule 8, per state (spec 3: a cut-set check per state): a load terminal on a source's L that still
  * reaches that source's L with every fuse taken out (nets and closed contacts only, bareRoots). An

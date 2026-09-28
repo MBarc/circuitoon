@@ -11,7 +11,7 @@ import { analyseMains } from './mains.ts'
 import { wireLooks } from './mainsLook.ts'
 import type { ModuleDef } from './module.ts'
 import { load, pinsOf } from './builtinModules.testing.ts'
-import { at, dupont, sheet, w } from './mains.testing.ts'
+import { at, dupont, expectSameAsPlain, sheet, w } from './mains.testing.ts'
 
 /** Sorted timings of `runs` checks, each on a fresh parts array as after an edit (so no cache carries over), after one warm-up. */
 export function timings(d: Diagram, runs: number): number[] {
@@ -219,6 +219,9 @@ describe('mains checks on a realistic sheet', () => {
     const ms = median(d, 5)
     console.log(`mains full sheet: ${ms.toFixed(1)} ms median`)
     expect(ms).toBeLessThanOrEqual(300)
+  })
+  it('gives exactly what the plain path gives (the fast enumeration is proven on the sheet it is timed on)', { timeout: 120_000 }, () => {
+    expectSameAsPlain(build(16))
   })
   it('the renderer reuses the analysis the checker made for the same edit', { timeout: 30_000, retry: 2 }, () => {
     const d = build(16)
