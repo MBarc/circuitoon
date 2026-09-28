@@ -623,7 +623,7 @@ await page.getByRole('button', { name: 'Delete Sensor power' }).click()
 await pause()
 await page.getByRole('button', { name: 'Delete BB1 c1-top hole 0 to BB1 c2-top hole 99' }).click()
 await pause()
-check((await focusId()) === 'problems-title' && (await page.locator('#problems-title').textContent()) === 'No wiring problems found', `deleting the only row left moves focus to the list heading, now the clean line (focus on "${await focusId()}")`)
+check((await focusId()) === 'problems-title' && (await page.locator('#problems-title').textContent()) === 'No problems found in the drawn connections.', `deleting the only row left moves focus to the list heading, now the clean line (focus on "${await focusId()}")`)
 
 // --- The Parts panel and the dark theme. ---
 const heads = await page.locator('.lib-group-head').evaluateAll((els) => els.map((e) => [e.children[0].textContent, e.children[1].textContent]))

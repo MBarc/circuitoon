@@ -92,3 +92,19 @@ export function analyseMainsCached(d: Diagram): MainsAnalysis | null {
   cache.set(d.connections, { parts: d.parts, modules: d.modules, result })
   return result
 }
+
+/** Spec section 6, verbatim. */
+export const MAINS_NOTICE = 'Mains wiring: Circuitoon checks the drawn connections only. It cannot check current, insulation, enclosures or local codes. Have mains work checked by a qualified person.'
+
+/** Spec 6: "a sheet with any mains part" (Resolution 23): any part whose module declares mains data. */
+export const hasMains = hasMainsData
+
+/** The sheet as exported: the notice in `notes` when it has a mains part, out of it otherwise. Same object when nothing changes. */
+export function withSheetNotes(d: Diagram): Diagram {
+  const notes = d.notes ?? []
+  const has = notes.includes(MAINS_NOTICE)
+  if (hasMains(d) === has) return d
+  const next = has ? notes.filter((n) => n !== MAINS_NOTICE) : [...notes, MAINS_NOTICE]
+  const { notes: _old, ...rest } = d
+  return next.length ? { ...rest, notes: next } : rest
+}

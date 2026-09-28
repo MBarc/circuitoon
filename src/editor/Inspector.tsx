@@ -14,6 +14,7 @@ import { type Finding, RULES, brokenConnection } from '../format/checks.ts'
 import { SeverityMark } from './SeverityMark.tsx'
 import { CAPACITOR_VALUES, RESISTOR_VALUES, editableParams, formatValue, paramValue, parseValue } from '../format/values.ts'
 import { moduleSettings, partSetting } from '../format/module.ts'
+import { MAINS_NOTICE, hasMains } from '../format/mains.ts'
 
 const GAUGES = Array.from({ length: 15 }, (_, i) => 16 + i)
 
@@ -233,10 +234,13 @@ export function ProblemList({ store, findings }: { store: EditorStore; findings:
   const errors = findings.filter((f) => f.severity === 'error').length
   // The canvas light belongs to this list: it goes out when the list does (a selection, an empty list).
   useEffect(() => () => store.setHighlight(null), [store])
+  // Spec 6: a mains sheet always shows the notice, whatever the findings; it is never dismissible.
+  const notice = hasMains(store.getState().diagram) ? <p className="mains-notice" role="note">{MAINS_NOTICE}</p> : null
   if (checkFailed(store))
     return (
       <section className="problems has-warnings" aria-labelledby="problems-title">
         <h3 id="problems-title" tabIndex={-1}>Problems</h3>
+        {notice}
         <ul>
           <li className="warning" data-checker-failed="">
             <SeverityMark severity="warning" />
@@ -252,8 +256,9 @@ export function ProblemList({ store, findings }: { store: EditorStore; findings:
       <section className="problems clean" aria-labelledby="problems-title">
         <h3 id="problems-title" tabIndex={-1}>
           <SeverityMark severity="ok" />
-          No wiring problems found
+          No problems found in the drawn connections.
         </h3>
+        {notice}
       </section>
     )
   const light = (f: Finding) => store.setHighlight(highlightOf(f))
@@ -265,6 +270,7 @@ export function ProblemList({ store, findings }: { store: EditorStore; findings:
         Problems
         <span className="problems-count">{severityCounts(findings)}</span>
       </h3>
+      {notice}
       <ul onMouseLeave={unlight}>
         {findings.map((f, i) => {
           const title = RULES[f.rule].title

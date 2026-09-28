@@ -61,6 +61,8 @@ export interface Diagram {
   parts: PartInstance[]
   connections: Connection[]
   annotations?: Annotation[]
+  /** Notes stored with the sheet, such as the mains notice on every exported mains sheet (spec 6). */
+  notes?: string[]
 }
 
 export const NAMED_COLORS: Record<string, string> = {
@@ -940,8 +942,24 @@ export function validateDiagram(raw: unknown): DiagramResult {
       })
   }
 
+  // Notes are free text the sheet carries (the mains notice on export); a bad entry is dropped, not fatal.
+  let notesFix: string[] | undefined | null = null
+  if (raw.notes !== undefined) {
+    if (!Array.isArray(raw.notes)) {
+      notesFix = undefined
+      warnings.push('notes: must be a list of strings, so it was dropped')
+    } else if (raw.notes.some((n) => typeof n !== 'string')) {
+      raw.notes.forEach((n, i) => typeof n !== 'string' && warnings.push(`notes[${i}]: must be a string, so it was dropped`))
+      notesFix = raw.notes.filter((n): n is string => typeof n === 'string')
+    }
+  }
+
   if (errors.length) return { ok: false, errors }
   let diagram = raw as unknown as Diagram
+  if (notesFix !== null) {
+    const { notes: _n, ...rest } = diagram
+    diagram = notesFix ? { ...rest, notes: notesFix } : rest
+  }
   if (partFixes.size || droppedRoutes.size || endFixes.size)
     diagram = {
       ...diagram,

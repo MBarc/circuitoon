@@ -8,7 +8,8 @@ import { Part, INK } from './Part.tsx'
 import { LegDots, TakenHoles } from './Boards.tsx'
 import { WireLabel } from './WireLabel.tsx'
 import { CableLayer } from './CableEnd.tsx'
-import { Bolts, HazardOutline, Stripe, boltInsets } from './Mains.tsx'
+import { Bolts, HazardOutline, MainsNotice, NOTICE_MIN_WIDTH, Stripe, boltInsets, noticeHeight, noticeLines } from './Mains.tsx'
+import { MAINS_NOTICE, hasMains } from '../format/mains.ts'
 
 export function Sheet({ diagram, captions = {}, box, label, decorative = false }: {
   diagram: Diagram
@@ -26,6 +27,11 @@ export function Sheet({ diagram, captions = {}, box, label, decorative = false }
   // The mains look (identity colours, hazard marks), from the analysis the checker already cached.
   const looks = wireLooks(diagram)
   const seated = seatedLabels(diagram)
+  // Spec 6: a mains sheet carries the notice in a footer band reserved below the drawing (never over it),
+  // at least NOTICE_MIN_WIDTH wide, so every export that renders the sheet shows it whole.
+  const mains = hasMains(diagram)
+  const band = Math.max(box.w, NOTICE_MIN_WIDTH)
+  const footer = mains ? noticeHeight(noticeLines(MAINS_NOTICE, band - 32).length) : 0
   const part = (p: PartInstance) => {
     const m = moduleOf(diagram, p.module)
     const s = seated.get(p.uid)
@@ -35,7 +41,7 @@ export function Sheet({ diagram, captions = {}, box, label, decorative = false }
     ) : null
   }
   return (
-    <svg className="sheet" viewBox={`${box.x} ${box.y} ${box.w} ${box.h}`} {...(decorative ? { 'aria-hidden': true } : { role: 'img', 'aria-label': label })}>
+    <svg className="sheet" viewBox={`${box.x} ${box.y} ${mains ? band : box.w} ${box.h + footer}`} {...(decorative ? { 'aria-hidden': true } : { role: 'img', 'aria-label': label })}>
       <defs>
         <pattern id="grid" width="10" height="10" patternUnits="userSpaceOnUse">
           <path d="M10 0H0V10" fill="none" stroke="var(--grid)" strokeWidth="0.6" />
@@ -78,6 +84,7 @@ export function Sheet({ diagram, captions = {}, box, label, decorative = false }
           ) : null
         })}
       </g>
+      {mains && <MainsNotice box={box} text={MAINS_NOTICE} />}
     </svg>
   )
 }

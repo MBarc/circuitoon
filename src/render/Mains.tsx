@@ -55,3 +55,52 @@ export function boltInsets(cables: readonly ({ kind: keyof typeof END_SIZE; scal
   const one = (c: { kind: keyof typeof END_SIZE; scale: number } | null) => 16 + (c ? END_SIZE[c.kind].reach * c.scale : 0)
   return [one(cables[0] ?? null), one(cables[1] ?? null)]
 }
+
+export const MAINS_NOTICE_FONT = 9
+const LINE = 12
+/** Conservative width of one bold glyph, in em: a line measured with it never overruns its band. */
+const GLYPH = 0.62
+
+/** Resolution 29: the notice band is never narrower than this; a narrower sheet widens its viewBox for the footer. */
+export const NOTICE_MIN_WIDTH = 320
+
+/** Greedy word wrap of `text` into lines no wider than `width` px at `fontSize`; a word longer than a line is split, each piece but the last ending in a hyphen. */
+export function noticeLines(text: string, width: number, fontSize = MAINS_NOTICE_FONT): string[] {
+  const max = Math.max(2, Math.floor(width / (GLYPH * fontSize)))
+  const words = text.split(' ').flatMap((wd) => {
+    if (wd.length <= max) return [wd]
+    const pieces: string[] = []
+    for (let k = 0; k < wd.length; k += max - 1) pieces.push(k + max - 1 < wd.length ? `${wd.slice(k, k + max - 1)}-` : wd.slice(k))
+    return pieces
+  })
+  const lines: string[] = []
+  let cur = ''
+  for (const word of words) {
+    const next = cur ? `${cur} ${word}` : word
+    if (next.length <= max || !cur) cur = next
+    else {
+      lines.push(cur)
+      cur = word
+    }
+  }
+  if (cur) lines.push(cur)
+  return lines
+}
+
+/** The footer band a notice of `lines` lines needs, in px. */
+export const noticeHeight = (lines: number) => lines * LINE + 20
+
+/** The mains notice in the footer band the sheet reserves below `box` (spec 6: every export shows it, whole). */
+export function MainsNotice({ box, text }: { box: { x: number; y: number; w: number; h: number }; text: string }) {
+  const band = Math.max(box.w, NOTICE_MIN_WIDTH)
+  const lines = noticeLines(text, band - 32)
+  const top = box.y + box.h
+  return (
+    <g data-mains-notice="" pointerEvents="none">
+      <rect x={box.x + 8} y={top + 4} width={band - 16} height={noticeHeight(lines.length) - 8} rx={4} fill="#FFF4E5" stroke={HAZARD} strokeWidth={1.2} />
+      {lines.map((l, i) => (
+        <text key={i} x={box.x + 16} y={top + 18 + i * LINE} fontSize={MAINS_NOTICE_FONT} fontWeight={700} fill={INK}>{l}</text>
+      ))}
+    </g>
+  )
+}

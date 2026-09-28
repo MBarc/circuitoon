@@ -7,6 +7,7 @@ import { SeverityMark } from './SeverityMark.tsx'
 import { emptyDiagram, serializeDiagram } from '../format/diagram.ts'
 import { downloadText, exportFileName, readDiagramFile } from './files.ts'
 import { LoadWarnings } from './LoadWarnings.tsx'
+import { MAINS_NOTICE, hasMains, withSheetNotes } from '../format/mains.ts'
 
 export function Toolbar({ store, warnings, onClose }: { store: EditorStore; warnings?: string[]; onClose: () => void }) {
   const { diagram, selection } = useEditorState(store)
@@ -20,6 +21,7 @@ export function Toolbar({ store, warnings, onClose }: { store: EditorStore; warn
   const hasSel = selection.parts.length + selection.wires.length > 0
   const findings = useProblems(store)
   const errors = findings.filter((f) => f.severity === 'error').length
+  const mains = hasMains(diagram)
 
   /** True when there is nothing to lose, or the user agrees to discard it. */
   const okToDiscard = () => !store.dirty || window.confirm(`Discard unsaved changes to ${diagram.title}?`)
@@ -61,7 +63,7 @@ export function Toolbar({ store, warnings, onClose }: { store: EditorStore; warn
         fileRef.current?.click()
       }}>Import JSON</button>
       <button type="button" className="tool" onClick={() => {
-        downloadText(exportFileName(diagram.title), serializeDiagram(diagram))
+        downloadText(exportFileName(diagram.title), serializeDiagram(withSheetNotes(diagram)))
         store.markSaved()
       }}>Export JSON</button>
       {findings.length > 0 && (
@@ -80,6 +82,7 @@ export function Toolbar({ store, warnings, onClose }: { store: EditorStore; warn
           {findings.length === 1 ? '1 problem' : `${findings.length} problems`}
         </button>
       )}
+      {mains && <span className="mains-badge" role="note" title={MAINS_NOTICE} aria-label={MAINS_NOTICE}>Mains: drawn connections only</span>}
       <input
         ref={fileRef}
         type="file"
@@ -93,6 +96,7 @@ export function Toolbar({ store, warnings, onClose }: { store: EditorStore; warn
       />
       {error && <p className="message error" role="alert">{error}</p>}
       {loadWarnings && <LoadWarnings key={loadWarnings.key} warnings={loadWarnings.list} onDismiss={() => setLoadWarnings(null)} />}
+      {mains && <p className="print-notice">{MAINS_NOTICE}</p>}
     </header>
   )
 }

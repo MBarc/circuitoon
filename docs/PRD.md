@@ -143,6 +143,18 @@ Every message ends with what to do: a fight or short names the wire to remove wh
 The side panel (with nothing selected) lists the findings, errors first, then by designator. Each row has Select, which selects what the finding is about (the parts and wires involved; just the wire for a hole or broken problem; the part, not its board, for a mount problem) and pans it into view, and, for a broken connection, Delete. Each Select is named by its pin or wire and rule and described by the row's message. Hovering or focusing a row lights its parts, pins and wires on the sheet; the light follows its finding and goes out when the finding does, and on undo, redo and load. The toolbar badge counts the problems, is red when any is an error, and its name gives the counts by severity. The check runs once per edit, never per drag frame. Not in V1 (these need simulation or pin roles the modules do not have): an LED without a resistor, floating inputs, current limits, I2C pull-ups, logic level mismatch; shorts through a switch or other passive part (switch state is not modeled, so a battery shorted through a button is not caught); structured voltage ranges (nominal, operating, absolute maximum) instead of rail lists; whether a board is actually on USB (every USB pin is assumed on); dismissing a finding; output drive types (push-pull, open-drain, tri-state); negative and differential rails.
 - Wire color: a named color (red, black, blue, green, yellow, orange, white, purple, gray, brown, pink) or any hex value such as #2458C6. Wire gauge: AWG 16 to 30, default 22 (standard breadboard jumper). Drawn thickness scales with gauge, so thick power runs look thick.
 
+## Mains wiring
+
+A sheet with any mains part (a part whose module declares any mains data: an outlet, a plug-in device, a mains-rated relay, SSR, switch or terminal block alone included) always carries this notice, verbatim:
+
+> Mains wiring: Circuitoon checks the drawn connections only. It cannot check current, insulation, enclosures or local codes. Have mains work checked by a qualified person.
+
+- It shows in the Problems panel, under the heading, whatever the findings (a clean sheet, a list, or a checker that failed), and as a toolbar badge ("Mains: drawn connections only", the notice as its name and tooltip). Neither can be dismissed.
+- It is drawn into every export: the rendered sheet reserves a footer band below the drawing (never over it, at least 320 px wide, the text wrapped to fit) for image and PDF output, and a printed page carries it at the foot. Any export added later must render it too.
+- Exported JSON stores it as a sheet note (`notes`, see Diagram format); the note is added on export when the sheet has a mains part and removed when it has none.
+- The checker only reports on the drawn connections, against the data the modules declare. The empty state reads "No problems found in the drawn connections." and is never shown beside a check that did not finish: a sheet with more switch and relay groups (16) or outlets (10) than the checker enumerates gets "Mains checks did not finish" instead, and missing data or unknown results are findings that say what was not checked.
+- Not checked: current and wire heating, insulation and creepage, enclosures, local codes, AC waveforms and phase; an AC rail from a low-voltage (non-mains) AC source meeting a DC pin (no built-in part has one); whether a GPIO can drive an SSR's control input (no module states its I/O voltage yet).
+
 ## Module definition format
 
 A module is one self-contained JSON file: name, pins by side and order, optional art, and optional electrical data. Module files live in the repo's `modules/` folder (built-ins) or in the user's browser library (custom).
@@ -196,6 +208,27 @@ A module is one self-contained JSON file: name, pins by side and order, optional
 | `electrical.returns` | no | The ground pin each `power_out` or external pin returns to, for example `{ "OUT": "G2" }` on a module with two isolated outputs. Needed when the module has more than one ground component (commonReturn groups count as one); without it such a module's supplies have an unknown return. |
 | `electrical.commonReturn` | no | Groups of ground pins the wiring checker treats as one return, for example `[["B-", "OUT-"]]` on the TP4056 (its protection switch sits between them and conducts in normal use). An approximation for checking only; the pins stay separate nets on the sheet. |
 | `electrical.voltageOutputs` | no | For a module with a `voltage` param: the `power_out` pins whose voltage is the part's value, for example `["ADJ"]`. Required when the module has more than one `power_out`; a module with one (a battery, the LM2596) may leave it out and the value sets that one. |
+| `electrical.acSources` | no | AC sources the part provides: `[{ "id", "live": [...], "neutral": [...], "earth"?: [...] }]`, each list naming terminals (pins or hole groups). Outlets are the only built-in sources; each placed outlet is its own source, of unknown phase to the others. Requires an `acVoltage` param and `ac`. |
+| `electrical.ac` | with `acSources` | `{ "hz", "region" }`: frequency (display only) and region (`us`, `jp`, `eu`, `uk`, `au`), which sets the identity colours and which socket families the outlet may carry. |
+| `electrical.conducts` | no | Two-terminal paths through the part: `[{ "pins": [a, b], "kind": "load" or "leakage", "range"?: [min, max] }]`. A load (a lamp filament) passes energization; `range` is the AC voltage it accepts. Leakage is a path that conducts a little when off (an off SSR). |
+| `electrical.protective` | no | Protective devices: `[{ "from", "to", "kind": "fuse", "rating"? }]`, a fuse element between two terminals (an integral BS 1362 plug fuse carries its `rating`). Conducts when fitted, open when absent. |
+| `electrical.settings` | no | Enumerated part settings: `{ "fuse": ["fitted", "absent"] }`, the first the default. A part stores its choice in `settings`; invalid choices load with a warning and are dropped. |
+| `electrical.domains` | no | Isolation domains: `[{ "name", "pins", "kind": "mains", "selv" or "pelv" }]`, the mains side and each low-voltage output of a converter. |
+| `electrical.isolation` | no | Isolation between the mains domain and the others, from the datasheet: `reinforced`, `double`, `basic`, `none` or `unknown`. Reinforced or double is protective separation; `basic` needs a declared `safeguard`; `none` and `unknown` make the outputs hazardous when the mains side is live. |
+| `electrical.isolationProvenance` | with a stated isolation | `datasheet` (verified against the exact part's datasheet) or `unverified`. Required when `isolation` is `reinforced`, `double` or `basic`. |
+| `electrical.safeguard` | no | `protective-screen`: an additional safeguard from the datasheet that, with `basic` isolation, gives protective separation. Earthing never substitutes for it. |
+| `electrical.acInput` | no | A converter's mains input pair and accepted range: `{ "a", "b", "range": [min, max] }` in VAC. The converter is powered only when a and b carry the L and N of one source, through wires, contacts and fitted fuses, with the source's voltage inside the range; its outputs are supplies only then. |
+| `electrical.ratings` | no | `[{ "pins", "kind": "insulation", "terminal" or "switching", "service": "ac", "dc" or "ac/dc", "volts", "amps"?, "provenance": "datasheet" or "unverified", "conditions"? }]`. A relevant AC rating below the source voltage is an error; conditions the drawing cannot confirm and unverified provenance are warnings. |
+| `electrical.contacts` | no | Switchable contacts: `[{ "id", "kind": "switch", "relay" or "ssr", "poles": [{ "com", "no"?, "nc"? }] }]`. A pole joins COM to NC released and COM to NO operated, never both; poles of one group switch together. The checker tries every state of every group that can reach a source (up to 16 groups). |
+| `electrical.protection` | no | `class-1` (the part's PE terminal must be earthed) or `class-2` (double insulated, no earth). |
+| `electrical.polarityHazard` | no | One sentence saying what wiring the part the wrong way round does (the E26 holder: its screw shell is then live); the polarity rule adds it when N is on L. |
+| `electrical.plug` | no | A plug-in device's or cord plug's mating profiles: `{ "family", "profiles": [{ "id", "contacts": [{ "pin", "at": { "x", "y" }, "mains": "L", "N", "PE" or "mechanical" }] }] }`. Only a profile's contacts are mount legs; a `mechanical` contact (the insulated earth pin of a class II UK plug) seats but carries nothing. Which plug fits which socket, and in which orientations, is a table in the code. |
+| `electrical.sockets` | no | An outlet's sockets: `[{ "id", "family", "contacts": [{ "group", "role": "L", "N" or "PE" }] }]`. Every hole group belongs to one socket; a plug seats in one socket only. |
+| `electrical.internalNodes` | no | Named terminals inside the part that are not drawn as pins (a plug's prongs), sharing one namespace with pins and hole groups. |
+| pin `mains` | no | A terminal requirement: `L`, `N`, `PE` or `line` (either L or N). Drives the polarity and earth rules only; a pin with one is declared for mains. |
+| pin `bond` | no | `"pe"`: an intentional bond to protective earth (a metal enclosure, a class 1 supply's output minus). A DC ground joined to PE without one is a warning. |
+| param `acVoltage` | with `acSources` | The source voltage, unit `VAC`, nominal RMS line to neutral, 1 to 1000; defaults to the region's nominal (US 120, EU, UK and AU 230, JP 100) and is editable per outlet. Separate from the DC `voltage` param. |
+| param `fuseRating` | no | A fuse holder's rating, unit `A`, above 0 up to 100; optional (missing means unknown, which is a warning). |
 | `states` | no | Reserved for V3 (for example `lit`, `burnt`, `on`); art shapes may bind to them later. |
 
 **Geometry.**
@@ -263,6 +296,8 @@ A complete, valid example (a battery lighting an LED through a resistor on a bre
 - **Modules are embedded** at export, built-ins included. If the library has a newer `version` of an embedded module, the diagram shows an "update available" badge; updating is always the user's choice, and pins that disappear flag their wires.
 - **Round-trip guarantee.** Export then import yields identical document data (same uids, positions, values, routes, embedded modules). Auto wire paths are recomputed and may differ after a router upgrade; making a wire manual pins its shape.
 - **Broken references.** A connection whose endpoint no longer resolves (a missing part, pin or hole group, an out-of-range hole index, or a bus offset past the end) still loads and stays in the file: it never conducts, and its one resolvable end draws a short (20 px) dashed red stub, above wire labels, that the user can select and delete like any other wire. It is never silently dropped. The toolbar shows a badge counting broken connections, and with nothing selected the side panel lists each one (its label, or its two ends, and which end is not found) with Select and Delete, so a connection with neither end on the sheet, which draws nothing, can still be found and removed. A broken wire has no reshape or reconnect handles (repair handles on the stub are a later addition).
+- **`notes`** (optional) is a list of strings stored with the sheet. Export writes the mains notice (see Mains wiring) as a note on a sheet with any mains part and removes it from one without. A `notes` that is not a list, or an entry that is not a string, loads with a warning and is dropped.
+- **`settings`** (optional, per part) holds enumerated choices the module declares in `electrical.settings`, such as `{ "fuse": "absent" }`; an invalid choice loads with a warning and is dropped.
 - **Validation.** Duplicate `uid`s, unknown `format`, or malformed JSON refuse the load with the exact reason.
 - The file saves as `<title>.circuitoon.json`.
 
@@ -335,8 +370,8 @@ Files are the unit of sharing; the browser keeps a working copy so a refresh doe
 
 | Action | Format | Notes |
 | --- | --- | --- |
-| Export diagram | `.circuitoon.json` | Full diagram with every module embedded. |
-| Export diagram | PDF | Vector output. Page size (Letter, A4, A3) and orientation chosen at export; 10 mm margins. The diagram scales to fit one page, and the export dialog warns when pin labels would print smaller than 6 pt, suggesting a larger page. |
+| Export diagram | `.circuitoon.json` | Full diagram with every module embedded; a sheet with any mains part carries the mains notice in `notes`. |
+| Export diagram | PDF | Vector output. Page size (Letter, A4, A3) and orientation chosen at export; 10 mm margins. The diagram scales to fit one page, and the export dialog warns when pin labels would print smaller than 6 pt, suggesting a larger page. A mains sheet prints the mains notice in its footer. |
 | Import diagram | `.circuitoon.json` | File picker or drag-and-drop onto the canvas. |
 | Import module | module `.json` | Adds to the parts library; one file or many at once. |
 | Export module | module `.json` | From the library or the art studio. |
