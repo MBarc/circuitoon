@@ -269,6 +269,7 @@ export interface Prepared {
   bareParent: Int32Array
   fitParent: Int32Array
   root: Int32Array
+  /** Read it through bareRoots(p), which fills it for the current state on first use. */
   bareRoot: Int32Array
   fitRoot: Int32Array
   /** Identity mask at each root. */
@@ -315,20 +316,20 @@ export function prepare(g: MainsGraph): Prepared {
 }
 
 /** Moves energy one step along a-b (a to b only when directed). True when anything changed. */
-function flow(p: Prepared, a: number, b: number, directed: boolean): boolean {
-  const ra = p.root[a]
-  const rb = p.root[b]
+function flow(root: Int32Array, power: Uint16Array, a: number, b: number, directed: boolean): boolean {
+  const ra = root[a]
+  const rb = root[b]
   if (ra === rb) return false
   let moved = false
-  const f = p.power[ra] & ~p.power[rb]
+  const f = power[ra] & ~power[rb]
   if (f) {
-    p.power[rb] |= f
+    power[rb] |= f
     moved = true
   }
   if (!directed) {
-    const back = p.power[rb] & ~p.power[ra]
+    const back = power[rb] & ~power[ra]
     if (back) {
-      p.power[ra] |= back
+      power[ra] |= back
       moved = true
     }
   }
@@ -336,9 +337,71 @@ function flow(p: Prepared, a: number, b: number, directed: boolean): boolean {
 }
 
 /**
+ * The fixed shape of one analysis, flattened once into typed arrays so a state walks plain numbers:
+ * each group's contact pairs per position, only those with both ends in the analysis (a view's
+ * multi-pole group may have a pole outside it, and scratch entries outside `relevant` are never
+ * written); the source terminals in the order analyseState applies them; and the energy edges. The
+ * pairs of group `gi` in position `s` are `closedAB[2 * j]` and `closedAB[2 * j + 1]` for `j` from
+ * `closedAt[gi * 2 + s]` up to `closedAt[gi * 2 + s + 1]` (the same for leakage).
+ */
+interface Plan {
+  closedAt: Int32Array
+  closedAB: Int32Array
+  leakAt: Int32Array
+  leakAB: Int32Array
+  /** Source terminals: node, identity bit, and the power bit it starts (0 for earth). */
+  srcNode: Int32Array
+  srcBit: Uint32Array
+  srcPow: Uint16Array
+  energyA: Int32Array
+  energyB: Int32Array
+  energyDir: Uint8Array
+  anyLeak: boolean
+}
+const plans = new WeakMap<Prepared, Plan>()
+
+function planOf(p: Prepared): Plan {
+  let plan = plans.get(p)
+  if (plan) return plan
+  const { g, inRel } = p
+  const pairs = (which: 'closed' | 'leak') => {
+    const at = new Int32Array(g.groups.length * 2 + 1)
+    const ab: number[] = []
+    for (let gi = 0; gi < g.groups.length; gi++)
+      for (let s = 0; s < 2; s++) {
+        at[gi * 2 + s] = ab.length / 2
+        // Only the view's groups are ever applied; the others keep an empty range.
+        if (p.groupIdx.includes(gi)) for (const [a, b] of g.groups[gi][which][s]) if (inRel[a] && inRel[b]) ab.push(a, b)
+      }
+    at[g.groups.length * 2] = ab.length / 2
+    return { at, ab: Int32Array.from(ab) }
+  }
+  const closed = pairs('closed')
+  const leak = pairs('leak')
+  const node: number[] = []
+  const bit: number[] = []
+  const pow: number[] = []
+  for (const s of p.sources) {
+    for (const x of s.live) node.push(x), bit.push(bitOf(s.index, 'L')), pow.push(1 << s.index)
+    for (const x of s.neutral) node.push(x), bit.push(bitOf(s.index, 'N')), pow.push(1 << s.index)
+    for (const x of s.earth) node.push(x), bit.push(bitOf(s.index, 'PE')), pow.push(0)
+  }
+  plan = {
+    closedAt: closed.at, closedAB: closed.ab, leakAt: leak.at, leakAB: leak.ab,
+    srcNode: Int32Array.from(node), srcBit: Uint32Array.from(bit), srcPow: Uint16Array.from(pow),
+    energyA: Int32Array.from(p.energy, (e) => e.a), energyB: Int32Array.from(p.energy, (e) => e.b), energyDir: Uint8Array.from(p.energy, (e) => (e.directed ? 1 : 0)),
+    anyLeak: leak.ab.length > 0,
+  }
+  plans.set(p, plan)
+  return plan
+}
+
+/**
  * Identity and energization for the state in `p.groupState`, over `p.relevant` only: resetting and
  * walking just these nodes keeps a state's cost independent of the rest of the sheet. Results live in
- * `p` until the next call.
+ * `p` until the next call (`bareRoot` only through bareRoots, on first use). The hot path of the
+ * enumeration, so it reads the flattened plan and allocates nothing; analyseStatePlain is the
+ * reference it is checked against (see plainPath).
  *
  * Callers check `g.sources.length <= MAX_SOURCES` first (mains-incomplete otherwise): beyond ten
  * sources the identity bits of one source alias another's and the power bits overflow.
@@ -349,14 +412,92 @@ function flow(p: Prepared, a: number, b: number, directed: boolean): boolean {
  * that must decide a branch is switched off reads identity (no L), never power.
  */
 export function analyseState(p: Prepared): void {
+  if (plainPath.on) return analyseStatePlain(p)
+  const plan = planOf(p)
+  bareFor = null
+  const { relevant: rel, parent, fitParent, base, fitBase, anyAbsent, root, fitRoot, ident, power, groupState, groupIdx } = p
+  const n = rel.length
+  for (let k = 0; k < n; k++) {
+    const i = rel[k]
+    parent[i] = base[i]
+    if (anyAbsent) fitParent[i] = fitBase[i]
+  }
+  const { closedAt, closedAB } = plan
+  for (let t = 0; t < groupIdx.length; t++) {
+    const at = groupIdx[t] * 2 + groupState[groupIdx[t]]
+    for (let j = closedAt[at], end = closedAt[at + 1]; j < end; j++) {
+      const a = closedAB[2 * j]
+      const b = closedAB[2 * j + 1]
+      union(parent, a, b)
+      if (anyAbsent) union(fitParent, a, b)
+    }
+  }
+  for (let k = 0; k < n; k++) {
+    const i = rel[k]
+    root[i] = find(parent, i)
+    if (anyAbsent) fitRoot[i] = find(fitParent, i)
+    ident[i] = 0
+    power[i] = 0
+  }
+  const { srcNode, srcBit, srcPow } = plan
+  const srcRoots = p.srcRoots
+  srcRoots.length = 0
+  for (let k = 0; k < srcNode.length; k++) {
+    const r = root[srcNode[k]]
+    if (!ident[r]) srcRoots.push(r)
+    ident[r] |= srcBit[k]
+    power[r] |= srcPow[k]
+  }
+  const { energyA, energyB, energyDir, leakAt, leakAB, anyLeak } = plan
+  for (let changed = true; changed; ) {
+    changed = false
+    for (let k = 0; k < energyA.length; k++) if (flow(root, power, energyA[k], energyB[k], energyDir[k] === 1)) changed = true
+    if (anyLeak)
+      for (let t = 0; t < groupIdx.length; t++) {
+        const at = groupIdx[t] * 2 + groupState[groupIdx[t]]
+        for (let j = leakAt[at], end = leakAt[at + 1]; j < end; j++) if (flow(root, power, leakAB[2 * j], leakAB[2 * j + 1], false)) changed = true
+      }
+  }
+}
+
+/** The analysis whose `bareRoot` holds the current state (null: none since the last analyseState). */
+let bareFor: Prepared | null = null
+
+/**
+ * The roots over nets and the current state's closed contacts alone, no fuse (rule 8 reads them to
+ * tell a load is unfused), for the state analyseState last put in `p`. Made on first use per state:
+ * most sheets fuse every load, and then no state needs them.
+ */
+export function bareRoots(p: Prepared): Int32Array {
+  if (bareFor === p) return p.bareRoot
+  const { closedAt, closedAB } = planOf(p)
+  const { relevant: rel, bareParent, bareBase, bareRoot, groupState, groupIdx } = p
+  for (let k = 0; k < rel.length; k++) bareParent[rel[k]] = bareBase[rel[k]]
+  for (let t = 0; t < groupIdx.length; t++) {
+    const at = groupIdx[t] * 2 + groupState[groupIdx[t]]
+    for (let j = closedAt[at], end = closedAt[at + 1]; j < end; j++) union(bareParent, closedAB[2 * j], closedAB[2 * j + 1])
+  }
+  for (let k = 0; k < rel.length; k++) bareRoot[rel[k]] = find(bareParent, rel[k])
+  bareFor = p
+  return bareRoot
+}
+
+/**
+ * Test seam: when `on`, the enumeration takes its plain paths (the state analysis and the per-state
+ * rule loops as they were before the Task 11 optimisations, with no shortcut), which the differential
+ * tests compare the fast paths against: findings, converters, hazards and identity must be identical.
+ * Never set outside tests.
+ */
+export const plainPath = { on: false }
+
+/** analyseState without the flattened plan: over the node lists and edge objects directly. The reference for the differential tests. */
+function analyseStatePlain(p: Prepared): void {
   const { g } = p
   for (const i of p.relevant) {
     p.parent[i] = p.base[i]
     p.bareParent[i] = p.bareBase[i]
     if (p.anyAbsent) p.fitParent[i] = p.fitBase[i]
   }
-  // A pair is joined only when both ends are in the analysis: a view's multi-pole group may have a
-  // pole outside it, and scratch entries outside `relevant` are never written.
   for (const gi of p.groupIdx)
     for (const [a, b] of g.groups[gi].closed[p.groupState[gi]]) {
       if (!p.inRel[a] || !p.inRel[b]) continue
@@ -388,9 +529,10 @@ export function analyseState(p: Prepared): void {
   }
   for (let changed = true; changed; ) {
     changed = false
-    for (const e of p.energy) if (flow(p, e.a, e.b, e.directed)) changed = true
-    for (const gi of p.groupIdx) for (const [a, b] of g.groups[gi].leak[p.groupState[gi]]) if (p.inRel[a] && p.inRel[b] && flow(p, a, b, false)) changed = true
+    for (const e of p.energy) if (flow(p.root, p.power, e.a, e.b, e.directed)) changed = true
+    for (const gi of p.groupIdx) for (const [a, b] of g.groups[gi].leak[p.groupState[gi]]) if (p.inRel[a] && p.inRel[b] && flow(p.root, p.power, a, b, false)) changed = true
   }
+  bareFor = p
 }
 
 export const identAt = (p: Prepared, node: number): number => p.ident[p.root[node]]
@@ -549,12 +691,22 @@ export function minimalWitnesses(holds: Uint32Array, k: number): Witness[] {
   const all = (1 << k) - 1
   // Holding in every state needs no condition: skip the cover, whose minimal-witness search would visit every subset.
   let every = true
-  for (let m = 0; m <= all && every; m++) every = has(m)
+  if (k >= 5 && !plainPath.on) for (let x = 0; x <= all >>> 5 && every; x++) every = holds[x] === 0xffffffff
+  else for (let m = 0; m <= all && every; m++) every = has(m)
   if (every) return [{ kept: [], mask: 0 }]
   const cover: Cube[] = []
   let full = true
+  const covered = (m: number) => {
+    for (let c = 0; c < cover.length; c++) if ((m & cover[c].care) === cover[c].val) return true
+    return false
+  }
   for (let m = 0; m <= all; m++) {
-    if (!has(m) || cover.some((c) => (m & c.care) === c.val)) continue
+    // A word of 32 states the finding never holds in is passed at once.
+    if ((m & 31) === 0 && holds[m >>> 5] === 0 && !plainPath.on) {
+      m += 31
+      continue
+    }
+    if (!has(m) || covered(m)) continue
     if (cover.length === MAX_WITNESSES) {
       full = false
       break
@@ -646,8 +798,12 @@ export function statePhrase(g: MainsGraph, cands: number[], witnesses: Witness[]
   let rest = 0
   if (holds && sorted.length > shown.length) {
     const cubes = shown.map((x) => ({ care: x.w.kept.reduce((c, j) => c | (1 << j), 0), mask: x.w.mask }))
-    for (let m = 0; m < 1 << cands.length; m++)
-      if ((holds[m >>> 5] >>> (m & 31)) & 1 && !cubes.some((c) => (m & c.care) === (c.mask & c.care))) rest++
+    for (let m = 0; m < 1 << cands.length; m++) {
+      if (!((holds[m >>> 5] >>> (m & 31)) & 1)) continue
+      let shown = false
+      for (let c = 0; c < cubes.length && !shown; c++) shown = (m & cubes[c].care) === (cubes[c].mask & cubes[c].care)
+      if (!shown) rest++
+    }
   }
   // Without `holds` the rest cannot be counted, but is never left out silently.
   const tail = rest ? `, or in ${rest} other switch combination${rest === 1 ? '' : 's'}` : !holds && sorted.length > shown.length ? ', or in other switch combinations' : ''

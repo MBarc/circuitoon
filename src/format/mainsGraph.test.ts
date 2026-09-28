@@ -5,7 +5,7 @@ import { validateModule } from './module.ts'
 import { plugsOf } from './breadboard.ts'
 import { netlist, nodeKey } from './netlist.ts'
 import type { Diagram } from './diagram.ts'
-import { L_MASK, N_MASK, PE_MASK, analyseState, bitOf, buildMainsGraph, decodeSingle, hazardAt, possibleRoots, prepare, units, type Prepared } from './mainsGraph.ts'
+import { L_MASK, N_MASK, PE_MASK, analyseState, bareRoots, bitOf, buildMainsGraph, decodeSingle, hazardAt, possibleRoots, prepare, units, type Prepared } from './mainsGraph.ts'
 import { MAINS_MODULES, at, sheet, w } from './mains.testing.ts'
 
 const graph = (d: Diagram): Prepared => {
@@ -137,8 +137,9 @@ describe('analyseState edges and reuse', () => {
     const p = state(graph(sheet([at('xs1', 'XS1', 't-outlet'), at('f1', 'F1', 't-fuse', 200), at('s1', 'S1', 't-switch', 400)],
       [w('xs1|L', 'f1|1'), w('f1|2', 's1|1')])), 0)
     expect(p.root[node(p, 's1', '2')]).toBe(p.root[node(p, 'xs1', 'L')])
-    expect(p.bareRoot[node(p, 's1', '2')]).toBe(p.bareRoot[node(p, 'f1', '2')])
-    expect(p.bareRoot[node(p, 's1', '2')]).not.toBe(p.bareRoot[node(p, 'xs1', 'L')])
+    const bareRoot = bareRoots(p)
+    expect(bareRoot[node(p, 's1', '2')]).toBe(bareRoot[node(p, 'f1', '2')])
+    expect(bareRoot[node(p, 's1', '2')]).not.toBe(bareRoot[node(p, 'xs1', 'L')])
   })
   it('joins every contact position and every fuse, fitted or not, in possibleRoots', () => {
     const p = graph(sheet([at('xs1', 'XS1', 't-outlet'), at('k1', 'K1', 't-relay', 200), at('f1', 'F1', 't-fuse', 400, 0, { settings: { fuse: 'absent' } }), at('u1', 'U1', 't-mcu', 600)],
@@ -181,6 +182,7 @@ describe('analyseState edges and reuse', () => {
     const before = [p.parent.slice(), p.bareParent.slice(), p.root.slice(), p.bareRoot.slice()]
     u.view.groupState.fill(1)
     analyseState(u.view)
+    bareRoots(u.view)
     const outside = (a: Int32Array) => [...a].filter((_, i) => !u.view.inRel[i])
     expect([p.parent, p.bareParent, p.root, p.bareRoot].map(outside)).toEqual(before.map(outside))
     expect(ident(p, 'k1', 'NO1')).toBe(bitOf(0, 'N'))

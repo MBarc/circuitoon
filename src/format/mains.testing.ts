@@ -1,8 +1,12 @@
 // Synthetic mains modules for the checker tests: small, on the 10 px grid, each declaring only what
 // its tests need. Not real parts (those come from scripts/gen-mains-*.mjs). Every one passes
 // validateModule (checked in mainsGraph.test.ts). Contact patterns follow src/format/plugging.ts.
+import { afterAll, expect } from 'vitest'
 import type { Connection, Diagram, PartInstance } from './diagram.ts'
 import type { ModuleDef } from './module.ts'
+import { checkDiagram } from './checks.ts'
+import { analyseMains } from './mains.ts'
+import { plainPath } from './mainsGraph.ts'
 
 const mod = (m: Omit<ModuleDef, 'format'>): ModuleDef => ({ format: 'circuitoon-module/1', ...m })
 const ac = (pins: string[], volts: number, extra: Record<string, unknown> = {}) => ({ pins, kind: 'terminal', service: 'ac', volts, provenance: 'datasheet', ...extra })
@@ -158,5 +162,46 @@ export const w = (a: string, b: string, extra: Partial<Connection> = {}): Connec
 }
 /** A 26 AWG Dupont jumper, clearly unsuitable for mains. */
 export const dupont = (a: string, b: string): Connection => w(a, b, { gauge: 26, ends: { from: 'dupont-female', to: 'dupont-female' } })
-export const sheet = (parts: PartInstance[], connections: Connection[], modules: Record<string, ModuleDef> = {}): Diagram =>
-  ({ format: 'circuitoon-diagram/1', title: 't', modules: { ...MAINS_MODULES, ...modules }, parts, connections })
+/** Every sheet `sheet` made in this test file: after the file's tests, each is checked against the plain path (see below). */
+const built: Diagram[] = []
+export const sheet = (parts: PartInstance[], connections: Connection[], modules: Record<string, ModuleDef> = {}): Diagram => {
+  const d: Diagram = { format: 'circuitoon-diagram/1', title: 't', modules: { ...MAINS_MODULES, ...modules }, parts, connections }
+  built.push(d)
+  return d
+}
+
+/** Everything the mains analysis hands the checker and the renderer, and the checker's own findings, in comparable form. */
+function outcome(d: Diagram) {
+  const a = analyseMains(d)
+  const keys = a ? [...a.graph.nodeOf.keys()] : []
+  return {
+    analysis: a && {
+      complete: a.complete, findings: a.findings, converters: [...a.converters], hazardKeys: [...a.hazardKeys].sort(), deadOutputs: [...a.deadOutputs],
+      conductors: keys.map((k) => [k, a.conductorOf(k)]),
+    },
+    // A fresh connections array, so the cached analysis of the other path is not reused.
+    checks: checkDiagram({ ...d, connections: [...d.connections] }),
+  }
+}
+
+/**
+ * The Task 11 differential check: the fast enumeration (flattened state analysis, slot-cached rules,
+ * word-level witness scans) must give exactly what the plain path gives, findings and their wording,
+ * paths and order included.
+ */
+export function expectSameAsPlain(d: Diagram): void {
+  const fast = outcome(d)
+  plainPath.on = true
+  let plain
+  try {
+    plain = outcome(d)
+  } finally {
+    plainPath.on = false
+  }
+  expect(fast).toEqual(plain)
+}
+
+// Every mains test file that builds its sheets here gets the differential check on all of them.
+afterAll(() => {
+  for (const d of built) expectSameAsPlain(d)
+}, 120_000)

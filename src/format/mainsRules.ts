@@ -5,12 +5,21 @@
 import { type Endpoint, type PartInstance, moduleOf } from './diagram.ts'
 import type { RuleId } from './checks.ts'
 import { nodeKey } from './netlist.ts'
-import { type GConverter, type GEdge, type GLoad, type GSource, type GTerm, type MainsGraph, type Prepared, LN_MASK, L_MASK, N_MASK, PE_MASK, bitOf, decodeSingle, groupName, hazardAt, identAt, minimalWitnesses, statePhrase, termAt, termName } from './mainsGraph.ts'
+import { type GConverter, type GEdge, type GLoad, type GSource, type GTerm, type MainsGraph, type Prepared, LN_MASK as LN, L_MASK as L_, MAX_SOURCES, N_MASK as N_, PE_MASK as PE_, bareRoots, bitOf, decodeSingle, groupName, hazardAt, identAt, minimalWitnesses, plainPath, statePhrase, termAt, termName } from './mainsGraph.ts'
 import { type Conductor, type ContactGroup, type MainsInfo, type Rating, isolationAdequate, mainsOf, uncoveredPins } from './mainsModel.ts'
 import { type ThroughKind, protectivePaths } from './mainsProtective.ts'
 import { andList, natural, orList } from './words.ts'
 import { END_NAMES, type EndKind, endKind } from './cables.ts'
 import { isBoard } from './module.ts'
+
+/**
+ * The identity masks as this module's own constants: the per-state loops read them millions of times
+ * per edit, and a test runner that imports through module getters would make every read a call.
+ */
+const LN_MASK = LN
+const L_MASK = L_
+const N_MASK = N_
+const PE_MASK = PE_
 
 export interface MainsDraft {
   rule: RuleId
@@ -430,13 +439,22 @@ const sourcesOfMask = (m: number): number[] => {
 const PATH_STATES = 32
 interface PathRec { states: number; wires: Set<string> }
 const pathCache = new WeakMap<Acc, Map<string, PathRec>>()
+/** Per accumulator: each finding of rule 1 already seen, by watch position and code, with its state bits and path record (so a repeat costs no key lookup). */
+const lowVoltageSeen = new WeakMap<Acc, Map<number, { holds: Uint32Array; rec: PathRec }>>()
+/** Codes are below this (a 10-bit source mask, the PELV bit and the direct bit), so position * CODES + code is one number per finding. */
+const CODES = 4096
 
 /** Rule 1, per state: a hazardous node holding a low-voltage terminal. Allocation-free once a finding has its paths. */
 function lowVoltageRule(acc: Acc, mask: number) {
   const { p, srcIdx, srcLN } = acc
   let paths = pathCache.get(acc)
   if (!paths) pathCache.set(acc, (paths = new Map()))
-  for (const w of watchList(p)) {
+  const plain = plainPath.on
+  let known = lowVoltageSeen.get(acc)
+  if (!known) lowVoltageSeen.set(acc, (known = new Map()))
+  const list = watchList(p)
+  for (let wi = 0; wi < list.length; wi++) {
+    const w = list[wi]
     const r = p.root[w.node]
     const x = p.ident[r] & LN_MASK
     const e = p.power[r]
@@ -455,6 +473,15 @@ function lowVoltageRule(acc: Acc, mask: number) {
         if (p.ident[q] & LN_MASK || p.power[q]) direct = 0
       }
     const code = sm * 4 + pelv * 2 + direct
+    const hit = plain ? undefined : known.get(wi * CODES + code)
+    if (hit) {
+      hit.holds[mask >>> 5] |= 1 << (mask & 31)
+      if (hit.rec.states < PATH_STATES) {
+        hit.rec.states++
+        for (const wire of energyPathWires(p, w.node, sourcesOfMask(sm))) hit.rec.wires.add(wire)
+      }
+      continue
+    }
     let key = w.keys.get(code)
     if (key === undefined) w.keys.set(code, (key = `mains-to-low-voltage|${w.terms.map((t) => t.key).join(',')}|${sm}|${pelv ? 'PELV' : 'SELV'}|${direct}`))
     let rec = paths.get(key)
@@ -472,6 +499,7 @@ function lowVoltageRule(acc: Acc, mask: number) {
       rec.states++
       for (const wire of energyPathWires(p, w.node, sourcesOfMask(sm))) rec.wires.add(wire)
     }
+    if (rec) known.set(wi * CODES + code, { holds: acc.seen.get(key)!.holds, rec })
   }
 }
 
@@ -512,8 +540,8 @@ function crossDraft(p: Prepared, r: number, s: GSource, a: Conductor, t: GSource
   })
 }
 
-/** Finding keys for rules 2 and 3 in one view, made once: per source its two shorts, per source pair and conductor pair its cross key. */
-interface IdentityKeys { short: string[][]; cross: string[] }
+/** Finding keys for rules 2 and 3 in one view, made once: per source its two shorts, per source pair and conductor pair its cross key; and each source's place in the view by global index. */
+interface IdentityKeys { short: string[][]; cross: string[]; local: Int32Array }
 const identityCache = new WeakMap<Prepared, IdentityKeys>()
 function identityKeys(p: Prepared): IdentityKeys {
   let k = identityCache.get(p)
@@ -528,13 +556,86 @@ function identityKeys(p: Prepared): IdentityKeys {
       cross[(i * n + j) * 9 + ai * 3 + bi] = `${a === 'N' && b === 'N' ? 'mains-shared-neutral' : 'mains-cross-source'}|${pair}`
     }))
   }))
-  k = { short: p.sources.map((s) => [`mains-short|${s.id}|N`, `mains-short|${s.id}|PE`]), cross }
+  const local = new Int32Array(MAX_SOURCES).fill(-1)
+  p.sources.forEach((s, i) => (local[s.index] = i))
+  k = { short: p.sources.map((s) => [`mains-short|${s.id}|N`, `mains-short|${s.id}|PE`]), cross, local }
   identityCache.set(p, k)
   return k
 }
 
-/** Rules 2 and 3, per state and allocation-free once a finding is known: one source's L on its N or PE; two sources' conductors on one node. */
+/**
+ * A finding's state bits by a rule's own slot number, per accumulator: a finding seen again costs an
+ * array read instead of a key lookup. `slotHit` records state `mask` and returns true when the slot
+ * is filled; `slotFill` takes the keyed path (reporting the finding when new) and fills it. The same
+ * key always has the same slot, so this changes no result and no report order.
+ */
+type Slots = (Uint32Array | undefined)[]
+function slotsOf(cache: WeakMap<Acc, Slots>, acc: Acc): Slots {
+  let s = cache.get(acc)
+  if (!s) cache.set(acc, (s = []))
+  return s
+}
+function slotHit(slots: Slots, q: number, mask: number): boolean {
+  const h = slots[q]
+  if (h === undefined) return false
+  h[mask >>> 5] |= 1 << (mask & 31)
+  return true
+}
+function slotFill(acc: Acc, slots: Slots, q: number, key: string, mask: number, first: () => (when: string) => MainsDraft): void {
+  if (!mark(acc, key, mask)) report(acc, key, mask, first)
+  slots[q] = acc.seen.get(key)!.holds
+}
+const identitySlots = new WeakMap<Acc, Slots>()
+
+/**
+ * Rules 2 and 3, per state and allocation-free once a finding is known: one source's L on its N or PE;
+ * two sources' conductors on one node. Only the sources present on a root are visited (in view order,
+ * which is global index order), so a root holding one source's conductor alone costs nothing.
+ */
 function identityRules(acc: Acc, mask: number) {
+  if (plainPath.on) return identityRulesPlain(acc, mask)
+  const { p } = acc
+  const src = p.sources
+  const n = src.length
+  const keys = identityKeys(p)
+  const slots = slotsOf(identitySlots, acc)
+  for (let q = 0; q < p.srcRoots.length; q++) {
+    const r = p.srcRoots[q]
+    const x = p.ident[r]
+    // Bit s * 3 set for each source with any conductor here, for each with L or N here, and for each
+    // whose L meets its own N or PE. Two sources' earths may meet, so a pair needs L or N on one side.
+    const present = (x | (x >>> 1) | (x >>> 2)) & L_MASK
+    const ln = (x | (x >>> 1)) & L_MASK
+    const shorts = x & L_MASK & ((x >>> 1) | (x >>> 2))
+    if (!shorts && (!ln || !(present & (present - 1)))) continue
+    for (let rest = present; rest; rest &= rest - 1) {
+      const sb = 31 - Math.clz32(rest & -rest)
+      const i = keys.local[sb / 3]
+      const s = src[i]
+      if ((x >>> sb) & 1) {
+        if ((x >>> (sb + 1)) & 1 && !slotHit(slots, i * 2, mask)) slotFill(acc, slots, i * 2, keys.short[i][0], mask, () => shortDraft(p, r, s, 'N'))
+        if ((x >>> (sb + 2)) & 1 && !slotHit(slots, i * 2 + 1, mask)) slotFill(acc, slots, i * 2 + 1, keys.short[i][1], mask, () => shortDraft(p, r, s, 'PE'))
+      }
+      for (let more = rest & (rest - 1); more; more &= more - 1) {
+        const tb = 31 - Math.clz32(more & -more)
+        if (!(((ln >>> sb) | (ln >>> tb)) & 1)) continue
+        const j = keys.local[tb / 3]
+        const t = src[j]
+        for (let a = 0; a < 3; a++) {
+          if (!((x >>> (sb + a)) & 1)) continue
+          for (let b = 0; b < 3; b++) {
+            if (!((x >>> (tb + b)) & 1) || (a === 2 && b === 2)) continue
+            const c = (i * n + j) * 9 + a * 3 + b
+            if (!slotHit(slots, 2 * n + c, mask)) slotFill(acc, slots, 2 * n + c, keys.cross[c], mask, () => crossDraft(p, r, s, CONDS[a], t, CONDS[b]))
+          }
+        }
+      }
+    }
+  }
+}
+
+/** Rules 2 and 3 over every source pair of every root: the reference for identityRules (see plainPath). */
+function identityRulesPlain(acc: Acc, mask: number) {
   const { p } = acc
   const src = p.sources
   const n = src.length
@@ -663,8 +764,8 @@ const acrossIdent = (x: number, y: number, s: number): boolean => {
 export function across(p: Prepared, a: number, b: number): number | null {
   // L and N on one node is a short (rule 2), not a supply across the load.
   if (p.root[a] === p.root[b]) return null
-  const x = identAt(p, a)
-  const y = identAt(p, b)
+  const x = p.ident[p.root[a]]
+  const y = p.ident[p.root[b]]
   if (!x || !y) return null
   for (let k = 0; k < p.sources.length; k++) if (acrossIdent(x, y, p.sources[k].index)) return p.sources[k].index
   return null
@@ -768,6 +869,7 @@ function voltageWork(acc: Acc): VoltageWork {
   return w
 }
 
+const voltageSlots = new WeakMap<Acc, Slots>()
 /**
  * Rule 4, per state: every source whose L and N sit across a load or a converter input, against the
  * range it accepts (a load with none gets data-missing, Resolution 14). It also records, for the
@@ -779,6 +881,8 @@ function voltageRule(acc: Acc, mask: number) {
   const { p, srcIdx, srcVolts } = acc
   const w = voltageWork(acc)
   const { t, list, must } = w
+  const slots = slotsOf(voltageSlots, acc)
+  const plain = plainPath.on
   const { root, ident } = p
   const S = srcIdx.length
   for (let q = 0; q < w.n; q++) {
@@ -796,10 +900,11 @@ function voltageRule(acc: Acc, mask: number) {
         supplied = true
         const v = srcVolts[j]
         if (v >= t.lo[k] && v <= t.hi[k]) continue
+        if (!plain && slotHit(slots, k * S + j, mask)) continue
         const it = t.items[k]
         let key = t.keys[k * S + j]
         if (key === undefined) t.keys[k * S + j] = key = `${it.range ? 'mains-voltage' : 'data-missing|range'}|${it.part.uid}|${it.load}|${it.converter}|${s}`
-        if (!mark(acc, key, mask)) report(acc, key, mask, () => voltageDraft(p.g, it, s))
+        slotFill(acc, slots, k * S + j, key, mask, () => voltageDraft(p.g, it, s))
       }
     const load = t.load[k]
     if (load < 0) continue
@@ -1499,16 +1604,21 @@ const earthAdvice = (t: GTerm) => `a fault inside ${t.part.designator} may leave
  */
 function earthRules(acc: Acc, mask: number) {
   const { p } = acc
+  const plain = plainPath.on
+  const { root, ident, power } = p
   const t = polarityTable(acc)
   for (const e of t.earths) {
-    const x = identAt(p, e.node)
+    const x = ident[root[e.node]]
     if (x & PE_MASK) continue
     if (x & LN_MASK) {
       if (!mark(acc, e.onLive, mask)) report(acc, e.onLive, mask, () => peLiveDraft(p, e))
       continue
     }
     let live = false
-    for (let k = 0; k < e.others.length && !live; k++) live = hazardAt(p, e.others[k])
+    for (let k = 0; k < e.others.length && !live; k++) {
+      const r = root[e.others[k]]
+      live = (ident[r] & LN_MASK) !== 0 || power[r] !== 0
+    }
     if (live && !mark(acc, e.noPe, mask)) report(acc, e.noPe, mask, () => {
       const wires = p.g.wires[e.node].slice()
       return (when) => ({ rule: 'earth', subject: e.t.part.designator, target: termName(e.t),
@@ -1519,6 +1629,8 @@ function earthRules(acc: Acc, mask: number) {
   for (let q = 0; q < p.srcRoots.length; q++) {
     const r = p.srcRoots[q]
     const x = p.ident[r]
+    // No source has both its N and its PE here: no join to look for.
+    if (!(x & N_MASK & (x >>> 1)) && !plain) continue
     for (let i = 0; i < t.npe.length; i++) {
       if (!t.npe[i] || (x & t.npe[i]) !== t.npe[i]) continue
       const key = t.npeKeys[i]
@@ -1535,7 +1647,7 @@ function earthRules(acc: Acc, mask: number) {
     }
   }
   for (const l of t.lines) {
-    const x = identAt(p, l.node)
+    const x = ident[root[l.node]]
     if (!(x & PE_MASK) || x & LN_MASK) continue
     if (!mark(acc, l.key, mask)) report(acc, l.key, mask, () => {
       const wires = wiresOfRoot(p, p.root[l.node])
@@ -1650,9 +1762,10 @@ function protTable(p: Prepared): ProtTable {
   return t
 }
 
+const unprotectedSlots = new WeakMap<Acc, Slots>()
 /**
  * Rule 8, per state (spec 3: a cut-set check per state): a load terminal on a source's L that still
- * reaches that source's L with every fuse taken out (nets and closed contacts only, `bareRoot`). An
+ * reaches that source's L with every fuse taken out (nets and closed contacts only, bareRoots). An
  * empty holder is open already (the load then gets no L there, and fuseRules says why). A fuse inside
  * a plug-in device or cord plug is a protective edge like any other, so it protects everything behind
  * it. Allocation-free once a finding is known.
@@ -1660,26 +1773,31 @@ function protTable(p: Prepared): ProtTable {
 function unprotectedRule(acc: Acc, mask: number) {
   const { p } = acc
   const t = protTable(p)
-  const { root, ident, bareRoot } = p
+  const slots = slotsOf(unprotectedSlots, acc)
+  const plain = plainPath.on
+  const { root, ident } = p
   for (let q = 0; q < t.end.length; q++) {
     const end = t.end[q]
     if (!(ident[root[end]] & t.bit[q])) continue
+    const bareRoot = bareRoots(p)
     const br = bareRoot[end]
     const live = t.live[q]
     let unfused = false
     for (let m = 0; m < live.length && !unfused; m++) unfused = bareRoot[live[m]] === br
     if (!unfused) continue
+    if (!plain && slotHit(slots, q, mask)) continue
     let key = t.keys[q]
     // One finding per load and source, whichever end carries L.
     if (key === undefined) t.keys[q] = key = `unprotected|${t.load[q].part.uid}|${t.src[q].id}`
-    if (!mark(acc, key, mask)) report(acc, key, mask, () => unprotectedDraft(p, t.load[q], t.src[q], br))
+    slotFill(acc, slots, q, key, mask, () => unprotectedDraft(p, t.load[q], t.src[q], br))
   }
 }
 
 function unprotectedDraft(p: Prepared, ld: GLoad, s: GSource, br: number): (when: string) => MainsDraft {
   // The unfused wiring in the first state it holds in: every wire on the nets joined to the source's L without a fuse.
   const wires: string[] = []
-  for (const i of p.relevant) if (p.bareRoot[i] === br) wires.push(...p.g.wires[i])
+  const bareRoot = bareRoots(p)
+  for (const i of p.relevant) if (bareRoot[i] === br) wires.push(...p.g.wires[i])
   const [d, src] = [ld.part.designator, s.part.designator]
   return (when) => ({
     rule: 'unprotected', subject: d, target: d,
