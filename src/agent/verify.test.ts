@@ -266,20 +266,74 @@ describe('verifyDiagram against the library (stored modules are not trusted)', (
     d.modules = { ...d.modules, led }
     const f = verifyDiagram(d, libraryLookup).filter((x) => x.rule === 'module-drift')
     expect(f.map((x) => [x.severity, x.parts])).toEqual([['error', ['D1']]])
-    expect(f[0].message).toContain('differs from the library')
+    expect(f[0].message).toContain('no longer matches the current library')
+    expect(f[0].message).toContain('pins A/K')
+    expect(f[0].message).toContain('Lay the sheet out again')
+    expect(f[0].message).not.toMatch(/tamper/i)
   })
-  it('only warns when the library has a newer version than the stored copy', () => {
+  it('blocks a stored copy with no version whose pins were swapped (content decides, not the version)', () => {
     const d = sheet()
-    const newer = { ...structuredClone(modules.led), version: 2, name: 'LED (revised)' }
+    const led = structuredClone(modules.led)
+    delete led.version
+    const pins = led.pins as { name: string }[]
+    const [a, k] = [pins.findIndex((p) => p.name === 'A'), pins.findIndex((p) => p.name === 'K')]
+    ;[pins[a].name, pins[k].name] = [pins[k].name, pins[a].name]
+    d.modules = { ...d.modules, led }
+    const f = verifyDiagram(d, libraryLookup).filter((x) => x.rule === 'module-drift')
+    expect(f.map((x) => x.severity)).toEqual(['error'])
+    expect(f[0].message).toContain('pins A/K')
+  })
+  it('blocks a changed pin capacity, mains field, hole group, internal join or electrical data', () => {
+    const cases: ((m: Record<string, unknown>) => void)[] = [
+      (m) => void ((m.pins as Record<string, unknown>[]).find((p) => p.name === 'A')!.capacity = 2),
+      (m) => void ((m.pins as Record<string, unknown>[]).find((p) => p.name === 'A')!.mains = 'L'),
+      (m) => void (m.internal = [['A', 'K']]),
+      (m) => void (m.electrical = {}),
+      (m) => void (m.holes = []),
+    ]
+    for (const change of cases) {
+      const d = sheet()
+      const led = structuredClone(modules.led) as unknown as Record<string, unknown>
+      change(led)
+      d.modules = { ...d.modules, led: led as unknown as Diagram['modules'][string] }
+      expect(verifyDiagram(d, libraryLookup).filter((x) => x.rule === 'module-drift').map((x) => x.severity), String(change)).toEqual(['error'])
+    }
+  })
+  it('only warns when the stored copy differs in art, name, source, category or version alone', () => {
+    const variants = [
+      { name: 'LED (old name)' },
+      { art: { ...structuredClone(modules.led.art!), shapes: [] } },
+      { source: 'https://example.com/old', category: 'Old' },
+      { version: 9 },
+    ]
+    for (const v of variants) {
+      const d = sheet()
+      d.modules = { ...d.modules, led: { ...structuredClone(modules.led), ...v } }
+      const f = verifyDiagram(d, libraryLookup)
+      expect(f.map((x) => [x.rule, x.severity]), JSON.stringify(Object.keys(v))).toEqual([['module-drift', 'warning']])
+      expect(f[0].message).not.toMatch(/tamper/i)
+      expect(f[0].parts).toEqual(['D1'])
+    }
+  })
+  it('only warns when the library changed art or name alone, even without a version bump', () => {
+    const d = sheet()
+    const newer = { ...structuredClone(modules.led), name: 'LED (revised)' }
     const lookup = (id: string) => (id === 'led' ? newer : libraryLookup(id))
-    const f = verifyDiagram(d, lookup)
-    expect(f.map((x) => [x.rule, x.severity])).toEqual([['module-drift', 'warning']])
-    expect(f[0].message).toContain('version 2')
+    expect(verifyDiagram(d, lookup).map((x) => [x.rule, x.severity])).toEqual([['module-drift', 'warning']])
   })
-  it('blocks a stored copy that claims a newer version than the library and differs from it', () => {
+  it('blocks a changed built-in part embedded in intent.modules under its library id', () => {
     const d = sheet()
-    d.modules = { ...d.modules, led: { ...structuredClone(modules.led), version: 9, name: 'LED' } }
-    expect(verifyDiagram(d, libraryLookup).map((x) => [x.rule, x.severity])).toEqual([['module-drift', 'error']])
+    const led = structuredClone(modules.led)
+    const pins = led.pins as { name: string }[]
+    const [a, k] = [pins.findIndex((p) => p.name === 'A'), pins.findIndex((p) => p.name === 'K')]
+    ;[pins[a].name, pins[k].name] = [pins[k].name, pins[a].name]
+    ;(d.intent as { modules?: unknown }).modules = { led }
+    const f = verifyDiagram(d, libraryLookup)
+    const drift = f.filter((x) => x.rule === 'module-drift')
+    expect(drift.map((x) => [x.severity, x.parts])).toEqual([['error', ['D1']]])
+    expect(drift[0].message).toContain('pins A/K')
+    // The netlist's own guard is no longer hidden either.
+    expect(f.some((x) => x.rule === 'intent' && x.message.includes('built-in part'))).toBe(true)
   })
   it('counts only a real library board as infrastructure: a stored module marked as a board is still an extra part', () => {
     const d = sheet()

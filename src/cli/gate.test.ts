@@ -226,6 +226,29 @@ describe('circuitoon gate', () => {
     const blocking = gateJson(dir).blocking as { rule: string; message: string }[]
     expect(blocking.map((f) => f.rule)).toEqual(['module-drift'])
     expect(blocking[0].message).toContain('bme280-module-4pin')
+    expect(blocking[0].message).toContain('no longer matches the current library')
+    expect(blocking[0].message).toContain('pins SCL/SDA')
+    expect(blocking[0].message).toContain('Lay the sheet out again')
+    expect(blocking[0].message).not.toMatch(/tamper/i)
+  })
+  it('only warns about a stored built-in part whose art and name alone are out of date', async () => {
+    const example = JSON.parse(readFileSync(join(import.meta.dirname, '..', '..', 'plugin', 'skills', 'circuitoon-design', 'references', 'examples', 'esp32-bme280.netlist.json'), 'utf8'))
+    const dir = await laidOut(example)
+    edit(dir, (s) => {
+      const m = (s.modules as Record<string, { name: string; art: { shapes: unknown[] } }>)['bme280-module-4pin']
+      m.name = 'BME280 (old)'
+      m.art.shapes = m.art.shapes.slice(1)
+    })
+    const { report } = await runGate(readFileSync(join(dir, 'sheet.json')), { sheetPath: 'sheet.json', outDir: join(dir, 'out'), io: quietIo(dir) })
+    expect(report.blocking.filter((f) => f.rule !== 'environment')).toEqual([])
+    expect(report.warnings.filter((f) => f.rule === 'module-drift').map((f) => f.parts.length > 0)).toEqual([true])
+  })
+  it('finds nothing wrong with a sheet laid out now from the current library', async () => {
+    const example = JSON.parse(readFileSync(join(import.meta.dirname, '..', '..', 'plugin', 'skills', 'circuitoon-design', 'references', 'examples', 'esp32-bme280.netlist.json'), 'utf8'))
+    const dir = await laidOut(example)
+    const { report } = await runGate(readFileSync(join(dir, 'sheet.json')), { sheetPath: 'sheet.json', outDir: join(dir, 'out'), io: quietIo(dir) })
+    expect(report.blocking.filter((f) => f.rule !== 'environment')).toEqual([])
+    expect(report.warnings.filter((f) => f.rule !== 'environment')).toEqual([])
   })
   it('warns, without blocking, about a wire drawn over breadboard holes it does not use, naming the wire', async () => {
     const dir = await laidOut()

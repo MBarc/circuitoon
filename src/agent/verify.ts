@@ -22,7 +22,7 @@ export interface VerifyFinding {
   /** The rule plus what causes it, so it stays the same while the problem does. */
   id: string
   rule: VerifyRule
-  /** Every finding blocks, except a stored module the library has since replaced with a newer version. */
+  /** Every finding blocks, except a stored built-in part that differs from the library only in art, name or other cosmetic fields. */
   severity: 'error' | 'warning'
   message: string
   /** Part uids, pins and wire uids to highlight. */
@@ -43,21 +43,61 @@ function canonical(v: unknown): string {
   return JSON.stringify(v) ?? 'null'
 }
 
+/** Module fields that change only how a part looks or is described, never what it connects. */
+const COSMETIC = new Set(['art', 'name', 'source', 'description', 'category', 'version'])
+const FIELD_NAMES: Record<string, string> = { holes: 'hole groups', internal: 'internal joins', electrical: 'electrical data' }
+
+/** The pins whose entries differ, by name (spacers as "spacer"), in the library's order. */
+function pinDiff(stored: unknown, lib: unknown): string {
+  const [a, b] = [Array.isArray(stored) ? stored : [], Array.isArray(lib) ? lib : []]
+  const label = (p: unknown) => (isObj(p) && typeof p.name === 'string' ? p.name : 'spacer')
+  const names = new Set<string>()
+  for (let i = 0; i < Math.max(a.length, b.length); i++) {
+    if (canonical(a[i]) === canonical(b[i])) continue
+    if (i < b.length) names.add(label(b[i]))
+    if (i < a.length) names.add(label(a[i]))
+  }
+  return names.size ? `pins ${[...names].join('/')}` : 'pins'
+}
+
+/** The electrically meaningful fields that differ (empty when only cosmetic fields do). */
+function electricalDiff(stored: ModuleDef, lib: ModuleDef): string[] {
+  const [s, l] = [stored as unknown as Record<string, unknown>, lib as unknown as Record<string, unknown>]
+  const keys = [...new Set([...Object.keys(l), ...Object.keys(s)])].filter((k) => !COSMETIC.has(k) && canonical(s[k]) !== canonical(l[k]))
+  return keys.map((k) => (k === 'pins' ? pinDiff(s.pins, l.pins) : (FIELD_NAMES[k] ?? k)))
+}
+
+/** The cosmetic fields that differ. */
+function cosmeticDiff(stored: ModuleDef, lib: ModuleDef): string[] {
+  const [s, l] = [stored as unknown as Record<string, unknown>, lib as unknown as Record<string, unknown>]
+  return [...COSMETIC].filter((k) => canonical(s[k]) !== canonical(l[k]))
+}
+
 /**
- * Every module the sheet stores under a library id must be the library's copy (the sheet's copy is
- * what the editor draws and what verify reads, so a stored BME280 with SDA and SCL swapped would
- * otherwise verify against itself). Same version, different content blocks; a library copy with a
- * higher version is a warning (the sheet predates it); a stored copy claiming a higher version than
- * the library, and different, blocks too, since nothing vouches for it.
+ * Every module a sheet stores under a library id, in `modules` or in `intent.modules`, is compared
+ * with the library by content (Ruling T14: the library is edited without version bumps, so the
+ * version says nothing). The stored copy is what the editor draws and what verify reads, so a
+ * stored BME280 with SDA and SCL swapped would otherwise verify against itself. A difference in
+ * pins, hole groups, internal joins, electrical data or any other field that is not cosmetic
+ * blocks; a difference in art, name, source, description, category or version only warns.
  */
 function moduleDrift(d: Diagram, library: ModuleLookup, add: Add) {
-  for (const [id, stored] of Object.entries(d.modules)) {
+  const own = isObj(d.intent) && isObj(d.intent.modules) ? d.intent.modules : {}
+  const copies: [string, string, unknown][] = [
+    ...Object.entries(d.modules).map(([id, m]): [string, string, unknown] => [id, "The sheet's copy", m]),
+    ...Object.entries(own).map(([id, m]): [string, string, unknown] => [id, "The intent's embedded copy", m]),
+  ]
+  for (const [id, whose, raw] of copies) {
     const lib = library(id)
-    if (!lib || canonical(stored) === canonical(lib)) continue
+    if (!lib || !isObj(raw) || canonical(raw) === canonical(lib)) continue
+    const stored = raw as unknown as ModuleDef
     const parts = d.parts.filter((p) => p.module === id).map((p) => p.uid)
-    const [sv, lv] = [stored.version ?? 1, lib.version ?? 1]
-    if (lv > sv) add('module-drift', `The sheet stores ${id} version ${sv}; the library now has version ${lv}. Lay the sheet out again (or replace the part) to use the current part.`, [id], { parts, severity: 'warning' })
-    else add('module-drift', `The sheet's copy of ${id} (version ${sv}) differs from the library's version ${lv}: its pins, art or electrical data were changed. Use the library part (lay out again), or embed a custom part under its own id.`, [id], { parts })
+    const causes = whose.startsWith("The intent") ? [`intent:${id}`] : [id]
+    const electrical = electricalDiff(stored, lib)
+    if (electrical.length)
+      add('module-drift', `${whose} of ${id} no longer matches the current library: ${electrical.join(', ')} differ. Lay the sheet out again with the current library.`, causes, { parts })
+    else
+      add('module-drift', `${whose} of ${id} differs from the current library only in ${cosmeticDiff(stored, lib).join(', ')}; its pins and electrical data match. Lay the sheet out again to pick up the current part.`, causes, { parts, severity: 'warning' })
   }
 }
 
@@ -68,11 +108,13 @@ function libraryBoard(d: Diagram, library: ModuleLookup, id: string): boolean {
 
 /**
  * How a sheet's intent finds its modules: the sheet's embedded copy first (so a later library
- * change never breaks an old sheet), then the library. Ids the intent embeds itself are left to it.
+ * change never breaks an old sheet), then the library. Ids the intent embeds itself are left to it,
+ * unless they are library ids: the netlist then rejects the embedded copy as a built-in part, and
+ * module-drift compares it with the library.
  */
 export function intentLookup(d: Diagram, library: ModuleLookup): ModuleLookup {
   const own = isObj(d.intent) && isObj(d.intent.modules) ? new Set(Object.keys(d.intent.modules)) : new Set<string>()
-  return (id) => (own.has(id) ? undefined : (moduleOf(d, id) ?? library(id)))
+  return (id) => (own.has(id) && !library(id) ? undefined : (moduleOf(d, id) ?? library(id)))
 }
 
 export function verifyDiagram(d: Diagram, library: ModuleLookup): VerifyFinding[] {

@@ -58684,24 +58684,73 @@ function canonical(v) {
 	if (isObj(v)) return `{${Object.keys(v).sort().filter((k) => v[k] !== void 0).map((k) => `${JSON.stringify(k)}:${canonical(v[k])}`).join(",")}}`;
 	return JSON.stringify(v) ?? "null";
 }
+/** Module fields that change only how a part looks or is described, never what it connects. */
+var COSMETIC = /* @__PURE__ */ new Set([
+	"art",
+	"name",
+	"source",
+	"description",
+	"category",
+	"version"
+]);
+var FIELD_NAMES = {
+	holes: "hole groups",
+	internal: "internal joins",
+	electrical: "electrical data"
+};
+/** The pins whose entries differ, by name (spacers as "spacer"), in the library's order. */
+function pinDiff(stored, lib) {
+	const [a, b] = [Array.isArray(stored) ? stored : [], Array.isArray(lib) ? lib : []];
+	const label = (p) => isObj(p) && typeof p.name === "string" ? p.name : "spacer";
+	const names = /* @__PURE__ */ new Set();
+	for (let i = 0; i < Math.max(a.length, b.length); i++) {
+		if (canonical(a[i]) === canonical(b[i])) continue;
+		if (i < b.length) names.add(label(b[i]));
+		if (i < a.length) names.add(label(a[i]));
+	}
+	return names.size ? `pins ${[...names].join("/")}` : "pins";
+}
+/** The electrically meaningful fields that differ (empty when only cosmetic fields do). */
+function electricalDiff(stored, lib) {
+	const [s, l] = [stored, lib];
+	return [.../* @__PURE__ */ new Set([...Object.keys(l), ...Object.keys(s)])].filter((k) => !COSMETIC.has(k) && canonical(s[k]) !== canonical(l[k])).map((k) => k === "pins" ? pinDiff(s.pins, l.pins) : FIELD_NAMES[k] ?? k);
+}
+/** The cosmetic fields that differ. */
+function cosmeticDiff(stored, lib) {
+	const [s, l] = [stored, lib];
+	return [...COSMETIC].filter((k) => canonical(s[k]) !== canonical(l[k]));
+}
 /**
-* Every module the sheet stores under a library id must be the library's copy (the sheet's copy is
-* what the editor draws and what verify reads, so a stored BME280 with SDA and SCL swapped would
-* otherwise verify against itself). Same version, different content blocks; a library copy with a
-* higher version is a warning (the sheet predates it); a stored copy claiming a higher version than
-* the library, and different, blocks too, since nothing vouches for it.
+* Every module a sheet stores under a library id, in `modules` or in `intent.modules`, is compared
+* with the library by content (Ruling T14: the library is edited without version bumps, so the
+* version says nothing). The stored copy is what the editor draws and what verify reads, so a
+* stored BME280 with SDA and SCL swapped would otherwise verify against itself. A difference in
+* pins, hole groups, internal joins, electrical data or any other field that is not cosmetic
+* blocks; a difference in art, name, source, description, category or version only warns.
 */
 function moduleDrift(d, library, add) {
-	for (const [id, stored] of Object.entries(d.modules)) {
+	const own = isObj(d.intent) && isObj(d.intent.modules) ? d.intent.modules : {};
+	const copies = [...Object.entries(d.modules).map(([id, m]) => [
+		id,
+		"The sheet's copy",
+		m
+	]), ...Object.entries(own).map(([id, m]) => [
+		id,
+		"The intent's embedded copy",
+		m
+	])];
+	for (const [id, whose, raw] of copies) {
 		const lib = library(id);
-		if (!lib || canonical(stored) === canonical(lib)) continue;
+		if (!lib || !isObj(raw) || canonical(raw) === canonical(lib)) continue;
+		const stored = raw;
 		const parts = d.parts.filter((p) => p.module === id).map((p) => p.uid);
-		const [sv, lv] = [stored.version ?? 1, lib.version ?? 1];
-		if (lv > sv) add("module-drift", `The sheet stores ${id} version ${sv}; the library now has version ${lv}. Lay the sheet out again (or replace the part) to use the current part.`, [id], {
+		const causes = whose.startsWith("The intent") ? [`intent:${id}`] : [id];
+		const electrical = electricalDiff(stored, lib);
+		if (electrical.length) add("module-drift", `${whose} of ${id} no longer matches the current library: ${electrical.join(", ")} differ. Lay the sheet out again with the current library.`, causes, { parts });
+		else add("module-drift", `${whose} of ${id} differs from the current library only in ${cosmeticDiff(stored, lib).join(", ")}; its pins and electrical data match. Lay the sheet out again to pick up the current part.`, causes, {
 			parts,
 			severity: "warning"
 		});
-		else add("module-drift", `The sheet's copy of ${id} (version ${sv}) differs from the library's version ${lv}: its pins, art or electrical data were changed. Use the library part (lay out again), or embed a custom part under its own id.`, [id], { parts });
 	}
 }
 /** Infrastructure (strips, rails) that the intent need not list: only a real library board counts. */
@@ -58710,11 +58759,13 @@ function libraryBoard(d, library, id) {
 }
 /**
 * How a sheet's intent finds its modules: the sheet's embedded copy first (so a later library
-* change never breaks an old sheet), then the library. Ids the intent embeds itself are left to it.
+* change never breaks an old sheet), then the library. Ids the intent embeds itself are left to it,
+* unless they are library ids: the netlist then rejects the embedded copy as a built-in part, and
+* module-drift compares it with the library.
 */
 function intentLookup(d, library) {
 	const own = isObj(d.intent) && isObj(d.intent.modules) ? new Set(Object.keys(d.intent.modules)) : /* @__PURE__ */ new Set();
-	return (id) => own.has(id) ? void 0 : moduleOf(d, id) ?? library(id);
+	return (id) => own.has(id) && !library(id) ? void 0 : moduleOf(d, id) ?? library(id);
 }
 function verifyDiagram(d, library) {
 	const found = [];
