@@ -1,81 +1,109 @@
-# Agent toolkit, first slice: design
+# Agent toolkit, first slice: design (revision 2)
 
-Status: direction approved by Michael (2026-09-27): a CLI plus skills packaged as a Claude Code plugin in the public repo; this first slice is pulled forward so another Claude Code session (first user: the Spirit Typewriter session) can design, test and present a schematic. Built in parallel with the mains work, in separate files. MCP server and simulation come later.
+Status: direction approved by Michael (2026-09-27): a CLI plus skills packaged as a Claude Code plugin in the public repo, pulled forward so another Claude Code session (first user: the Spirit Typewriter session) can design, test and present a schematic. Built in parallel with the mains work. Revision 2 answers Astra's spec review (10 findings). MCP server, simulation and module authoring commands come later.
 
 ## Goal
-Let an agent go from a request to a checked, rendered schematic that opens in Circuitoon, without guessing coordinates and without presenting anything the checker rejects.
+An agent goes from a request to a schematic that provably implements the requested circuit, passes the checker, renders readably, and opens in Circuitoon, without guessing coordinates. Nothing is presented that the tools have not verified, and what is not verified is stated.
 
 ## 1. Netlist-first input (`circuitoon-netlist/1`)
-An agent writes what connects to what; Circuitoon places it.
 ```json
 {
   "format": "circuitoon-netlist/1",
-  "title": "Spirit Typewriter",
+  "title": "LED on a breadboard",
   "parts": [
-    { "ref": "U1", "module": "esp32-devkitc-v4" },
-    { "ref": "R1", "module": "resistor", "values": { "resistance": { "value": 4700, "unit": "ohm" } } },
     { "ref": "BB1", "module": "breadboard-half" },
-    { "ref": "U2", "module": "mcp23017-dip28", "on": "BB1" }
+    { "ref": "BT1", "module": "battery-holder-2xaa" },
+    { "ref": "R1", "module": "resistor", "values": { "resistance": { "value": 220, "unit": "ohm" } }, "on": "BB1" },
+    { "ref": "D1", "module": "led", "on": "BB1" }
   ],
   "nets": [
-    { "name": "SDA", "pins": ["U1.IO21", "U2.SDA", "R1.1"] },
-    { "name": "3V3", "pins": ["U1.3V3", "R1.2", "U2.VDD"] }
+    { "name": "VCC", "pins": [{ "ref": "BT1", "pin": "+" }, { "ref": "R1", "pin": "1" }] },
+    { "name": "LED_A", "pins": ["R1.2", "D1.A"] },
+    { "name": "GND", "pins": ["D1.K", "BT1.-"] }
   ],
-  "wires": { "color": { "3V3": "red", "GND": "black" }, "ends": "dupont-female" },
-  "groups": [{ "name": "Ball 1", "parts": ["S1", "S2"] }],
-  "notes": [{ "text": "x42: every ball is wired like Ball 1", "near": "Ball 1" }]
+  "wires": { "color": { "VCC": "red", "GND": "black" }, "ends": "dupont-male" }
 }
 ```
-- `ref` becomes the designator; `module` is a library id (or an embedded module under `modules`, as in diagrams).
-- A pin reference is `REF.PIN` using the pin name or its silkscreen label; a hole reference is `REF.GROUP[:INDEX]`.
-- A net becomes wires: a chain in a readable order (nearest-neighbour from the first pin), never a star of long wires.
-- `on` asks for the part to be mounted on a breadboard (placed so its legs seat; if impossible, placed beside it and reported).
-- `groups` keep parts together in the layout and get a labelled frame annotation; `notes` become text annotations.
-- Unknown modules, pins or refs are errors with a precise message; nothing is guessed.
+Input contract (all violations are errors with a precise message; nothing is guessed):
+- Endpoints: object form `{ "ref", "pin" }` or `{ "ref", "group", "hole" }` is canonical; the string form `"REF.PIN"` is shorthand, splitting at the first dot. Refs must match `[A-Za-z][A-Za-z0-9_]*`. A pin is matched by exact pin name first; a silkscreen label is accepted only when exactly one pin has it (ESP32 `GND`/`GND 2`/`GND 3` share the label `GND`: the label is rejected as ambiguous and the error lists the names). Hole indexes are zero-based; an omitted index means "any free hole of that group", chosen by the layout.
+- Duplicate refs, duplicate net names, and an endpoint listed in two nets are errors. A part belongs to at most one group.
+- `module` is a library id or an id defined under `modules` (embedded, validated like a library module); an embedded id equal to a library id is an error.
+- `values` as in diagrams; `on` requests mounting on a breadboard ref (section 2.2).
+- `groups: [{ name, parts }]`, `notes: [{ text, near }]` (`near` is a group name or a ref), `repeat` (section 1.1).
+- The netlist is stored inside the output diagram as `intent` (section 3), so every later check can re-verify the circuit against it.
+
+### 1.1 Repeated sub-circuits
+`repeat: { name, count, template: { parts, nets }, map }` declares `count` copies of a template (e.g. 42 balls). `map` binds each copy's external connections by index (e.g. copy i's switch A to `U{2 + floor(i/16)}.GPA{i%16}` expressed as an explicit list, not a formula language: the agent writes the list; the tool checks it is complete and duplicate-free). Copies get refs `S1..S84` from a template ref pattern. The output diagram always contains every copy (the full logical circuit, verified and checked); layout tiles copies compactly, and the render offers a focused view of one copy (section 4). The CLI prints the channel allocation table and the bill of quantities.
 
 ## 2. Layout
-- Deterministic (same input, same output) placement on the 10 px grid:
-  - parts with many connections (boards, MCUs) placed first near the centre; connected parts placed near what they connect to, by net weight;
-  - groups placed as blocks; repeated identical groups tiled in a row or grid;
-  - breadboard mounts via the existing seating code (seatOf / settleMounts);
-  - no two part bodies overlap; a clearance margin for wires and captions.
-- Wires are routed by the existing router after placement.
-- Output is a normal `circuitoon-diagram/1` file; the agent can still edit it by hand, and `layout --keep` re-places only parts without positions.
-- Quality bar (tested): no overlaps; every net present; wire count as stated; blocked wires listed in the result.
+### 2.1 Placement
+- Deterministic on the 10 px grid with fixed tie-breaking (ref natural order): boards and MCUs first near the centre; other parts near what they connect to by net weight; groups and repeat copies as blocks, tiled.
+- Clearance: part bodies and their captions (the label area drawn around parts) never overlap each other; mounted parts may overlap their board (and only it).
+- Routing by the existing router after placement; bounded retries (up to 3 placements with increased spacing) when routes are blocked; if still blocked, layout fails with the list of blocked nets (it does not emit a diagram with blocked wires silently).
+- `layout --keep sheet.json`: re-places only parts without coordinates in the given diagram (intent is kept).
 
-## 3. CLI (`circuitoon`)
-Run with `npx circuitoon` from the repo, or `node bin/circuitoon.mjs`. Built from the same TypeScript sources as the site (one build step, bundled), so its checker and renderer are the site's.
-- `circuitoon parts [--search text] [--json]`: modules with category, pins (name, label, type, supply), sources.
-- `circuitoon part <id> [--json]`: one module in full.
-- `circuitoon layout netlist.json -o sheet.json`: netlist to placed diagram (section 2); prints a summary (parts, wires, blocked routes, unseated mounts).
-- `circuitoon check sheet.json [--json]`: loader warnings plus every checker finding (rule, severity, message, parts, wires); exit code 1 when any error exists, 0 otherwise. Accepts a netlist too (lays it out first).
-- `circuitoon render sheet.json -o sheet.png [--svg sheet.svg] [--dark] [--scale 2]`: the sheet as the site draws it (headless Chrome through playwright-core, the repo's existing approach; SVG without a browser).
-- `circuitoon link sheet.json`: a URL of the live site that opens this diagram (the diagram compressed into the URL fragment, never sent to a server). If it exceeds a safe length (about 60 KB), say so and fall back to "import this file".
-- Output is plain text for people and `--json` for agents; errors go to stderr with a non-zero exit.
+### 2.2 Mounting and breadboard wiring
+- A part with `on` is placed by searching candidate positions on its board: every grid position and rotations 0 and 90 degrees, in a fixed order (row-major from the board's top-left). A candidate is accepted when `seatOf` reports it seated, it conflicts with no other mounted part, and it does not short its own pins through a strip (two different nets on one strip is a merge, section 3); DIP parts straddle the centre channel. First accepted candidate wins. If none: layout fails naming the part and the reason.
+- A net that reaches a mounted leg is wired to a free hole of that leg's strip (never into the leg's own hole, never two wire ends into one hole). If the strip has no free hole, the net is wired to another strip joined by a jumper, or layout fails with "strip full".
+- Chains of wires never put more than one wire end on a terminal that cannot take it: on breadboards one end per hole; on module pins at most two wire ends (drawn as a chain through the pin); if a net needs more ends at one place, the layout routes through a breadboard strip or rail.
 
-## 4. Site change
-- The editor opens a diagram from the URL fragment (`#/editor?d=<deflate+base64url>`): validated like an import, with the usual warnings panel; the fragment is cleared from the address bar after loading so reloading does not overwrite later edits. Nothing is uploaded.
+### 2.3 Readability acceptance (tested, reported)
+Every layout reports: body overlaps (must be 0), caption overlaps (must be 0), wire crossings, total wire length, sheet size, and blocked nets (must be 0). The 2 s budget for 120 parts includes routing.
 
-## 5. Skill `circuitoon-design` (in the repo's plugin folder, used by other sessions)
-Workflow, in order, with a hard gate:
-1. Clarify the goal and constraints (power source, boards, parts on hand).
-2. Pick parts with `circuitoon parts`; use real pin names from `circuitoon part`. If a part is missing, say so and use the add-part workflow; never invent a module.
-3. Write the netlist; for repeated sub-circuits, draw one representative group plus a note (for example "x42"), not dozens of copies, unless the user asks for the full sheet.
-4. `circuitoon layout`, then `circuitoon check`. Fix every error; explain any warning you keep.
-5. `circuitoon render` and look at the image; fix overlaps, unreadable routing, missing wires.
-6. Present only with zero errors: the link, the PNG, the parts list, and a short "what I checked / what is not checked" note (mains and simulation limits stated plainly).
-- The skill ships with a short reference: the netlist format, pin-reference rules, and three worked examples (LED + resistor on a breadboard, an ESP32 with an I2C sensor, a battery-powered board with a switch).
+## 3. Verification (electrical equivalence)
+- `circuitoon verify sheet.json` compares the realized connectivity (the netlist of the diagram: wires, breadboard strips, internal joins, plugs) with `intent`:
+  - missing connection: two endpoints of one requested net are not connected: error;
+  - unintended merge: endpoints of two different requested nets are connected: error;
+  - extra connection to an endpoint not in any net: error unless the endpoint is a pin the intent lists as `nc` or the module joins it internally (reported as info).
+- `verify` runs automatically inside `check` and `gate` when `intent` is present; editing the diagram by hand keeps `intent`, so a later check catches drift.
 
-## 6. Packaging
-- `.claude-plugin/` manifest in the repo so the plugin installs the skill(s); the CLI is part of the repo (no npm publish in this slice).
-- The existing `circuitoon-add-part` and `circuitoon-ship` skills stay repo-internal for now.
+## 4. CLI (`circuitoon`)
+### 4.1 Distribution
+- Built by `npm run build:cli` into `dist-cli/circuitoon.mjs`: one bundled ES module (Node 22 or newer) containing the format, checker, layout, renderer (Sheet rendered with react-dom/server to SVG) and a generated module catalog (replacing `import.meta.glob`, which only works under Vite). Entry `bin/circuitoon.mjs` runs it; the plugin exposes it so the skill can call it from any project with `node <plugin>/bin/circuitoon.mjs ...` (the skill tells the agent how to find the path).
+- SVG output is standalone: inline styles for the light theme (and dark with `--dark`), fonts embedded or a stated system-font fallback, tight content bounds.
+- PNG output uses an installed Chrome or Edge through playwright-core (auto-detected); if none is found, the command fails with install guidance and suggests `--svg`.
 
-## 7. Tests
-- Netlist parsing: valid, unknown module/pin/ref, hole references, labels vs names.
-- Layout: deterministic output; no overlaps on fixtures of 5, 30 and 120 parts (incl. 84 tilt switches in 42 groups); groups stay together; breadboard mounts seat; performance under 2 s for 120 parts.
-- CLI: each command's output and exit codes (check exits 1 on errors); `link` round-trips through the site's loader; `render` produces a PNG whose size matches the sheet.
-- Site: opening a fragment link loads the diagram and clears the fragment (browser check).
-- End to end: the three worked examples go netlist -> layout -> check (no errors) -> render -> link.
+### 4.2 Commands (plain text by default; `--json` prints one JSON document on stdout; diagnostics on stderr; exit codes: 0 ok, 1 findings that block (section 5), 2 invalid input, 3 environment problem such as no browser)
+- `parts [--search text]`: modules with category, pins (name, label, type, supply), hole groups (name, type, supply), sources.
+- `part <id>`: one module in full.
+- `layout netlist.json -o sheet.json`: section 2; prints the readability report.
+- `verify sheet.json`, `check sheet.json`: findings with stable ids, rule, severity, message, parts, pins, wires; plus the list of what the checker does not cover (section 5).
+- `render sheet.json -o sheet.png [--svg f] [--dark] [--scale n] [--focus group-or-copy]`.
+- `link sheet.json`: section 6.
+- `gate sheet.json -o out/`: runs load, verify, check, render (full and one focused copy if repeats exist) and link, writes the artifacts plus `gate.json` with a SHA-256 of the diagram and each artifact, and exits 0 only when nothing blocks.
+- JSON schemas for every `--json` output are documented in the skill's reference and tested.
+
+## 5. The hard gate
+Blocking (gate exits 1): loader errors; a missing module or dropped value override; any `verify` error; any checker error; any blocked route; any unseated requested mount; an oversized link without the file fallback written. Non-blocking warnings are listed in the gate summary and must be reported to the user. The summary always states what is not checked: current and heat, I2C and SPI addresses and conflicts, firmware behaviour, timing, mechanical fit, mains beyond connection checks, and the parts' own correctness beyond their cited sources.
+
+## 6. Links (URL fragment)
+- `#/editor?d=v1.<base64url(deflate-raw(json))>`. Limits: encoded payload up to 64 KB (the CLI refuses larger and writes the file instead); decompression aborts past 5 MB (the file import limit) and past 2,000 parts or 10,000 connections; malformed input shows the usual load error and never crashes the editor.
+- After loading, the payload is removed with `history.replaceState` to `#/editor`, without remounting the editor (the App's route key must not change) and without losing the open document; reloading then shows the autosaved or empty editor as today.
+- The link text states that anyone with the link can see the diagram (it is in the URL); nothing is uploaded.
+
+## 7. Annotations (site and renderer)
+- Group frames (a labelled rounded rectangle around the group's parts, computed from their bounds) and text notes are rendered in the Sheet (so in PNG/SVG exports) and on the editor canvas (read-only in this slice: selectable, movable, deletable, text editable in the Inspector). Validation: bounded text length, finite coordinates.
+
+## 8. Skill `circuitoon-design` (plugin)
+1. Clarify the goal: power source, boards, parts on hand, and whether a full design or an example is wanted. For the Spirit Typewriter, confirm whether each ball's two switches share one channel or need two.
+2. Pick parts with `parts` / `part`; use canonical pin names. Missing part: write an embedded module in the netlist under `modules` following the published module schema (reference included), with its `source` URLs, marked as a custom unverified part in the summary; never invent pins without a source.
+3. Write the netlist (use `repeat` for repeated sub-circuits).
+4. Run `gate`. On any change to the netlist or diagram, run `gate` again; present only artifacts whose hashes match the last passing `gate.json`.
+5. Look at the rendered images; readability problems are fixed and re-gated.
+6. Present: the link, the full PNG, a focused PNG for repeats, the parts list and quantities, the channel allocation table (for repeats), the warnings, and the "not checked" list.
+- References shipped with the skill: netlist format, JSON output schemas, the module schema for embedded parts, and worked examples: LED on a breadboard, ESP32 with an I2C sensor, battery board with a switch, and a repeated-sensor example (8 copies).
+
+## 9. Packaging
+- `.claude-plugin/plugin.json` and a marketplace entry in the repo; the plugin contains the `circuitoon-design` skill and the CLI bundle (committed `dist-cli` or built on install: decided in the plan by what the plugin system supports). `circuitoon-add-part` and `circuitoon-ship` stay repo-internal.
+
+## 10. Tests
+- Netlist parsing: every contract rule in section 1 (labels, ambiguity, holes, duplicates, embedded collisions, repeat maps complete and duplicate-free).
+- Layout: determinism; zero body and caption overlaps on fixtures of 5, 30, 120 parts and the full typewriter-like topology (ESP32, 3 MCP23017 on breadboards, 84 tilt switches as 42 repeat copies, 2 SPI LCDs, OLED, microSD, power chain); mounts seat without strip merges; no double wire ends in holes; 2 s budget including routing; visual inspection of rendered fixtures.
+- Verify: missing connection, merge through a strip, merge through an internal join, extra connection, drift after a hand edit.
+- CLI: outputs, JSON schemas, exit codes, gate hashes, browser-missing path.
+- Link: round trip, oversized refusal, malformed and oversized payloads, document survives fragment cleanup, reload behaviour (browser check).
+- Annotations: rendered in SVG/PNG and on the canvas.
+- End to end: every worked example passes `gate` and opens from its link.
 
 ## Out of scope for this slice
-MCP server, simulation, module authoring commands (`circuitoon module new/check/render`), publishing to npm, block instancing (repeated sub-sheets as real entities).
+MCP server, simulation, module authoring commands, npm publishing, I2C/SPI address rules (listed as not checked).
