@@ -1,7 +1,8 @@
 // Browser check for group frames and text notes on the editor canvas (agent toolkit spec 7). Lays
 // out a small netlist with two groups and a note through the circuitoon CLI, opens the sheet in the
 // built editor, then through the real UI: a note is selected and dragged on the grid as one undo
-// step, and Escape mid-drag puts it back; its text is edited in the Inspector; a frame is selected
+// step, and Escape mid-drag puts it back; moved onto the breadboard, pressing it right over a hole
+// drags the note and never starts a wire; its text is edited in the Inspector; a frame is selected
 // by its label tab, its label edited, and moved onto a wire, which re-routes around the label on
 // the drop (and back on undo, and around it again on redo); Shift+click selects a frame and a note
 // together and Delete removes both, undo brings them back; the exported file carries every change.
@@ -127,6 +128,34 @@ for (const scheme of ['light', 'dark']) {
   await dragMark(note.uid, 60, 60, { escape: true })
   const n3 = await worldOf(note.uid)
   check(n3.x === n1.x && n3.y === n1.y, `${scheme}: Escape mid-drag leaves the note where it was`)
+
+  // Over a breadboard, pressing the note drags the note: it never starts a wire from the hole under it.
+  const bb = sheet.parts.find((p) => p.uid === 'BB1')
+  const overBoard = { x: bb.x + 20, y: bb.y + 190 }
+  await dragMark(note.uid, overBoard.x - n1.x, overBoard.y - n1.y)
+  const onBoard = await worldOf(note.uid)
+  check(onBoard.x === overBoard.x && onBoard.y === overBoard.y, `${scheme}: the note moved onto the breadboard (${onBoard.x}, ${onBoard.y})`)
+  const wires = await page.locator('[data-wire]').count()
+  const press = await mark(note.uid).locator('text').first().boundingBox()
+  const hit = await page.evaluate(
+    ({ uid, x, y }) => {
+      const el = document.elementFromPoint(x, y)
+      const p = new DOMPoint(x, y).matrixTransform(document.querySelector('svg.canvas').getScreenCTM().inverse())
+      return { note: !!el?.closest(`[data-annotation="${uid}"]`), world: { x: p.x, y: p.y } }
+    },
+    { uid: note.uid, x: press.x + 4, y: press.y + press.height / 2 },
+  )
+  // Board holes (unrotated board) within 6 world px of the press.
+  const holesNear = sheet.modules[bb.module].holes.flatMap((g) => g.at).filter(([hx, hy]) => Math.abs(bb.x + hx - hit.world.x) <= 6 && Math.abs(bb.y + hy - hit.world.y) <= 6).length
+  check(hit.note && holesNear > 0, `${scheme}: the press lands on the note, right over the board's holes (${holesNear} within 6 px)`)
+  await dragMark(note.uid, 30, 20)
+  const dragged = await worldOf(note.uid)
+  check(dragged.x === onBoard.x + 30 && dragged.y === onBoard.y + 20, `${scheme}: pressing the note over the board drags the note (${dragged.x - onBoard.x}, ${dragged.y - onBoard.y})`)
+  check((await page.locator('[data-wire]').count()) === wires, `${scheme}: no wire was drawn from the hole under the note`)
+  await page.keyboard.press('Control+z')
+  await page.keyboard.press('Control+z')
+  const back = await worldOf(note.uid)
+  check(back.x === n1.x && back.y === n1.y, `${scheme}: two undos put the note back`)
 
   // Its text, in the Inspector: screenshot while it is being edited, then commit on blur.
   await clickMark(note.uid)

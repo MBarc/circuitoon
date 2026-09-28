@@ -1,8 +1,10 @@
 // Browser check for diagram links (agent toolkit spec 6): a link opens its diagram; the payload
 // leaves the address bar; an edit made after loading survives a same-route hashchange with the
 // editor still mounted (the App keys on the route); reload shows the start screen; damaged,
-// oversized and too-many-parts payloads show the usual load error and never crash the page. Saves
-// light and dark screenshots of the opened link.
+// oversized and too-many-parts payloads show the usual load error and never crash the page. Over an
+// open sheet with unsaved changes a link asks first (declining keeps the sheet and its edit,
+// accepting opens the link), and a damaged link shows an alert and keeps the sheet. Saves light and
+// dark screenshots of the opened link.
 //
 // Usage (after `npm run build`): npm run check:link-ui -- [--out <dir>] [--port 4193]
 import { mkdirSync, readFileSync } from 'node:fs'
@@ -84,6 +86,58 @@ for (const scheme of ['light', 'dark']) {
   await page.reload({ waitUntil: 'networkidle' })
   check((await page.locator('.start').count()) === 1, `${scheme}: reload shows the start screen (no autosave yet)`)
   check(errors.length === 0, `${scheme}: no page errors ${errors.join('; ')}`)
+  await page.close()
+}
+
+// A link opened over a sheet with unsaved changes asks first; declining keeps the open sheet and
+// its edit. A damaged link opened over a sheet says so in an alert and keeps the sheet too.
+{
+  const other = await encodePayload(JSON.stringify({ ...diagram, title: 'Other sheet' }))
+  const page = await browser.newPage({ viewport: { width: 1400, height: 900 } })
+  const errors = []
+  page.on('pageerror', (e) => errors.push(e.message))
+  const dialogs = []
+  let answer = 'dismiss'
+  page.on('dialog', (d) => {
+    dialogs.push({ type: d.type(), message: d.message() })
+    void (answer === 'accept' ? d.accept() : d.dismiss())
+  })
+  const openLink = async (p) => {
+    const before = dialogs.length
+    await page.evaluate((p) => {
+      location.hash = `#/editor?d=${p}`
+    }, p)
+    await page.waitForFunction(() => location.hash === '#/editor')
+    // The dialog (when there is one) comes after the payload is decoded and left the address bar.
+    for (let i = 0; i < 40 && dialogs.length === before; i++) await page.waitForTimeout(50)
+    return dialogs.slice(before)
+  }
+  await page.goto(`${base}#/editor?d=${payload}`, { waitUntil: 'networkidle' })
+  await page.waitForSelector('.editor')
+  check(await clickPart(page, 'p2'), 'unsaved: R1 can be clicked')
+  await page.keyboard.press('r')
+  check((await textOf(page.locator('.inspector'))).includes('Rotation: 90 degrees'), 'unsaved: an edit is made')
+
+  answer = 'dismiss'
+  const asked = await openLink(other)
+  check(asked.length === 1 && asked[0].type === 'confirm' && asked[0].message.includes('Discard unsaved changes to Linked LED'), `unsaved: opening another link asks to discard (${JSON.stringify(asked)})`)
+  check((await textOf(page.locator('.toolbar .title'))) === 'Linked LED', 'unsaved: declining keeps the open sheet')
+  check((await page.locator('[data-part]').count()) === 3, 'unsaved: declining keeps every part')
+  check(await clickPart(page, 'p2'), 'unsaved: R1 can be clicked again')
+  check((await textOf(page.locator('.inspector'))).includes('Rotation: 90 degrees'), 'unsaved: declining keeps the edit')
+
+  const damaged = await openLink('v1.@@@')
+  check(damaged.length === 1 && damaged[0].type === 'alert' && /damaged/.test(damaged[0].message), `open sheet: a damaged link shows an alert (${JSON.stringify(damaged)})`)
+  check((await textOf(page.locator('.toolbar .title'))) === 'Linked LED', 'open sheet: a damaged link keeps the open sheet')
+  check((await page.locator('.editor').count()) === 1 && (await page.locator('.start').count()) === 0, 'open sheet: a damaged link does not drop to the start screen')
+  check((await textOf(page.locator('.inspector'))).includes('Rotation: 90 degrees'), 'open sheet: a damaged link keeps the edit')
+
+  answer = 'accept'
+  const accepted = await openLink(other)
+  check(accepted.length === 1 && accepted[0].type === 'confirm', 'unsaved: accepting the confirm')
+  await page.waitForFunction(() => document.querySelector('.toolbar .title')?.textContent === 'Other sheet', null, { timeout: 5000 }).catch(() => {})
+  check((await textOf(page.locator('.toolbar .title'))) === 'Other sheet', 'unsaved: accepting opens the linked diagram')
+  check(errors.length === 0, `unsaved: no page errors ${errors.join('; ')}`)
   await page.close()
 }
 
