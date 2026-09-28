@@ -61,9 +61,21 @@ export function verified(id) {
   return e
 }
 
-/** The evidence's terminal rating for `id` (its first rating entry); throws unless the evidence is VERIFIED and records one. */
+/**
+ * The evidence for `id` when it is VERIFIED, or when it is NOT VERIFIED and its `blocking` or
+ * `decision` records Michael's ruling `ruling` on it ("B2": generate the Hi-Link modules with
+ * isolation "unknown"). Anything else throws, so an uncleared part is never generated.
+ */
+export function cleared(id, ruling) {
+  const e = EVIDENCE[id]
+  if (e?.verdict === 'VERIFIED') return e
+  if (e && ruling && `${e.blocking ?? ''} ${e.decision ?? ''}`.includes(`Ruling ${ruling} `)) return e
+  throw new Error(`${id}: evidence is not VERIFIED${ruling ? ` and records no ruling ${ruling}` : ''}, so the part is not generated`)
+}
+
+/** The evidence's terminal rating for `id` (its first rating entry, with its conditions when it has any); throws unless the evidence is VERIFIED and records one. */
 export function rated(id) {
   const [x] = verified(id).ratings ?? []
   if (!x || x.amps === undefined) throw new Error(`${id}: the evidence records no terminal rating`)
-  return { volts: x.volts, amps: x.amps, service: x.service }
+  return { volts: x.volts, amps: x.amps, service: x.service, ...(x.conditions ? { conditions: x.conditions } : {}) }
 }

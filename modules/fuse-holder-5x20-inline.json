@@ -1,0 +1,127 @@
+{
+  "format": "circuitoon-module/1",
+  "id": "fuse-holder-5x20-inline",
+  "version": 1,
+  "name": "Fuse holder, in-line, 5 x 20 mm (Littelfuse 150274)",
+  "category": "Mains",
+  "source": "https://www.littelfuse.com/assetdocs/fuse-holder-150-datasheet?assetguid=fb66d437-9218-4fb5-a6fa-17ac6284bb2e https://www.littelfuse.com/products/fuses-overcurrent-protection/fuse-holders-fuse-blocks-accessories/fuse-holders/in-line-fuse-holders/150/150274",
+  "pins": [
+    {
+      "name": "1",
+      "side": "left",
+      "type": "passive"
+    },
+    {
+      "name": "2",
+      "side": "right",
+      "type": "passive"
+    }
+  ],
+  "size": {
+    "w": 8,
+    "h": 4
+  },
+  "electrical": {
+    "model": "fuse",
+    "protective": [
+      {
+        "from": "1",
+        "to": "2",
+        "kind": "fuse"
+      }
+    ],
+    "params": {
+      "fuseRating": {
+        "unit": "A"
+      }
+    },
+    "settings": {
+      "fuse": [
+        "fitted",
+        "absent"
+      ]
+    },
+    "ratings": [
+      {
+        "pins": [
+          "1",
+          "2"
+        ],
+        "kind": "terminal",
+        "service": "ac/dc",
+        "volts": 350,
+        "amps": 10,
+        "provenance": "datasheet"
+      }
+    ]
+  },
+  "art": {
+    "w": 80,
+    "h": 40,
+    "shapes": [
+      {
+        "type": "rect",
+        "x": 0,
+        "y": 18,
+        "w": 16,
+        "h": 4,
+        "fill": "#D9443A",
+        "radius": 2
+      },
+      {
+        "type": "rect",
+        "x": 64,
+        "y": 18,
+        "w": 16,
+        "h": 4,
+        "fill": "#D9443A",
+        "radius": 2
+      },
+      {
+        "type": "rect",
+        "x": 12,
+        "y": 11,
+        "w": 30,
+        "h": 18,
+        "fill": "#2B2F36",
+        "radius": 6
+      },
+      {
+        "type": "rect",
+        "x": 38,
+        "y": 9,
+        "w": 30,
+        "h": 22,
+        "fill": "#3A3F48",
+        "radius": 7
+      },
+      {
+        "type": "rect",
+        "x": 46,
+        "y": 9,
+        "w": 2,
+        "h": 22,
+        "fill": "#2B2F36",
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 52,
+        "y": 9,
+        "w": 2,
+        "h": 22,
+        "fill": "#2B2F36",
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 58,
+        "y": 9,
+        "w": 2,
+        "h": 22,
+        "fill": "#2B2F36",
+        "outline": false
+      }
+    ]
+  }
+}

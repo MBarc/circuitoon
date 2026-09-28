@@ -47,6 +47,19 @@ describe('mains generator helpers', () => {
     expect(() => lib.plugProfiles('bs1363', 40, 40, ['L', 'N', 'PE'], { PE: 'E pin' })).toThrow(/mechanical/)
   })
 
+  it('clears a VERIFIED part, or a NOT VERIFIED one only under the ruling its evidence records', () => {
+    expect(lib.cleared('irm-05-5').verdict).toBe('VERIFIED')
+    expect(lib.cleared('hlk-pm01', 'B2').verdict).toBe('NOT VERIFIED')
+    expect(() => lib.cleared('hlk-pm01')).toThrow(/not VERIFIED/)
+    expect(() => lib.cleared('hlk-pm01', 'B7')).toThrow(/not VERIFIED/)
+    expect(() => lib.cleared('terminal-block-mstb-508-4', 'B2')).toThrow(/not VERIFIED/)
+  })
+
+  it('reads a rating with its conditions from the evidence', () => {
+    expect(lib.rated('wago-221-412')).toEqual({ volts: 450, amps: 32, service: 'ac/dc', conditions: 'overvoltage category II, pollution degree 2 (EN 60664); rated surge voltage 4 kV' })
+    expect(lib.rated('outlet-uk-bs1363')).toEqual({ volts: 250, amps: 13, service: 'ac' })
+  })
+
   it('writes a rating entry with its extras', () => {
     expect(lib.rating(['1', '2'], 'terminal', 'ac', 250, { amps: 10, provenance: 'datasheet' })).toEqual({ pins: ['1', '2'], kind: 'terminal', service: 'ac', volts: 250, amps: 10, provenance: 'datasheet' })
   })

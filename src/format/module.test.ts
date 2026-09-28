@@ -270,7 +270,7 @@ describe('usesInsideLabels', () => {
     expect(insideLabelSides(m())).toEqual([])
     expect(insideLabelSides(m({ art: { w: 10, h: 10, shapes: [], pinLabels: 'inside' } })).sort()).toEqual(['bottom', 'left', 'right', 'top'])
   })
-  it('is set only on the header and pad parts (ESP32, Pico, Arduino Nano and D1 mini boards, DIP chips, display, storage, power, sensor, relay, motor driver and radio modules, multi-lead LEDs, terminal adapter, USB panel-mount cables), never on any other built-in module', () => {
+  it('is set only on the header and pad parts (ESP32, Pico, Arduino Nano and D1 mini boards, DIP chips, display, storage, power, AC-DC, sensor, relay, motor driver and radio modules, multi-lead LEDs, terminal adapter, USB panel-mount cables), never on any other built-in module', () => {
     const dir = join(import.meta.dirname, '..', '..', 'modules')
     const boardFiles = new Set([
       'esp32-devkitc-v4.json', 'esp32-devkit-v1-30.json', 'esp32-s3-devkitc-1.json',
@@ -287,6 +287,7 @@ describe('usesInsideLabels', () => {
       'arduino-nano.json', 'wemos-d1-mini.json', 'relay-module-1ch-5v.json', 'l298n-module.json',
       'rfm95-lora-breakout.json', 'level-shifter-bss138-4ch.json', 'servo-sg90.json',
       'esp32-terminal-board-38.json', 'usb-panel-mount-microusb.json', 'usb-panel-mount-usbc.json',
+      'hlk-pm01.json', 'hlk-pm03.json', 'irm-03-5.json', 'irm-03-3v3.json', 'irm-05-5.json',
     ])
     const files = readdirSync(dir).filter((f) => f.endsWith('.json'))
     expect(files.filter((f) => boardFiles.has(f))).toHaveLength(boardFiles.size)

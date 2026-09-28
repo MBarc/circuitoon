@@ -1,0 +1,133 @@
+{
+  "format": "circuitoon-module/1",
+  "id": "hlk-pm03",
+  "version": 1,
+  "name": "Hi-Link HLK-PM03 AC-DC module (3.3 V, 3 W)",
+  "category": "Mains",
+  "source": "https://geeksvalley.com/wp-content/uploads/2021/07/098-HLK-PM-3W.pdf https://www.hlktech.net/index.php?id=106",
+  "pins": [
+    {
+      "name": "AC 1",
+      "side": "left",
+      "label": "AC",
+      "mains": "line"
+    },
+    {
+      "spacer": true,
+      "side": "left"
+    },
+    {
+      "name": "AC 2",
+      "side": "left",
+      "label": "AC",
+      "mains": "line"
+    },
+    {
+      "name": "-Vo",
+      "side": "right",
+      "type": "ground"
+    },
+    {
+      "spacer": true,
+      "side": "right"
+    },
+    {
+      "spacer": true,
+      "side": "right"
+    },
+    {
+      "spacer": true,
+      "side": "right"
+    },
+    {
+      "name": "+Vo",
+      "side": "right",
+      "type": "power_out",
+      "supply": "3V3"
+    }
+  ],
+  "size": {
+    "w": 13,
+    "h": 8
+  },
+  "electrical": {
+    "model": "converter",
+    "acInput": {
+      "a": "AC 1",
+      "b": "AC 2",
+      "range": [
+        85,
+        264
+      ]
+    },
+    "domains": [
+      {
+        "name": "mains",
+        "pins": [
+          "AC 1",
+          "AC 2"
+        ],
+        "kind": "mains"
+      },
+      {
+        "name": "output",
+        "pins": [
+          "+Vo",
+          "-Vo"
+        ],
+        "kind": "selv"
+      }
+    ],
+    "isolation": "unknown"
+  },
+  "art": {
+    "w": 130,
+    "h": 80,
+    "pinLabels": "inside",
+    "shapes": [
+      {
+        "type": "rect",
+        "x": 0,
+        "y": 0,
+        "w": 130,
+        "h": 80,
+        "fill": "#1B1F24",
+        "radius": 3
+      },
+      {
+        "type": "rect",
+        "x": 34,
+        "y": 18,
+        "w": 62,
+        "h": 44,
+        "fill": "#2B2F36",
+        "radius": 2,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 34,
+        "y": 20,
+        "w": 62,
+        "h": 20,
+        "fill": "#2B2F36",
+        "outline": false,
+        "label": "HLK-PM03",
+        "labelColor": "#F5F5F2",
+        "labelSize": 9
+      },
+      {
+        "type": "rect",
+        "x": 34,
+        "y": 40,
+        "w": 62,
+        "h": 16,
+        "fill": "#2B2F36",
+        "outline": false,
+        "label": "3.3 V 3 W",
+        "labelColor": "#F5F5F2",
+        "labelSize": 6
+      }
+    ]
+  }
+}

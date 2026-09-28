@@ -188,3 +188,109 @@ describe('built-in plug-in devices', () => {
     })
   }
 })
+
+describe('built-in AC-DC modules, lamp holders, fuse holder, switch and lever connectors', () => {
+  /** Each side's pin names in array order (spacers left out). */
+  const sides = (id: string) => {
+    const out: Record<string, string[]> = {}
+    for (const p of load(id).pins) if ('name' in p) (out[p.side] ??= []).push(p.name)
+    return out
+  }
+  it('the Mean Well IRM modules are converters with a Class II (double) barrier and their stated input range', () => {
+    for (const [id, out] of [['irm-03-5', '5V'], ['irm-03-3v3', '3V3'], ['irm-05-5', '5V']]) {
+      const m = load(id)
+      const info = mainsOf(m)
+      expect(m.source).toBe(EVIDENCE[id].sources.join(' '))
+      expect([info.acInput?.a, info.acInput?.b]).toEqual(['AC/L', 'AC/N'])
+      expect(info.acInput?.range).toEqual(EVIDENCE[id].acInput!.value)
+      expect(info.domains.find((d) => d.kind === 'selv')?.pins.sort()).toEqual(['+V', '-V'])
+      expect(info.isolation).toBe('double')
+      expect(EVIDENCE[id].isolation?.quote).toMatch(/Class II/)
+      expect(info.protection).toBe('class-2')
+      expect(m.pins.find((p) => 'name' in p && p.name === '+V')).toMatchObject({ type: 'power_out', supply: out })
+      expect(m.pins.some((p) => 'name' in p && p.name === 'NC')).toBe(false)
+    }
+  })
+  it('the IRM pins are the datasheet bottom view mirrored left to right (top view), NC left out', () => {
+    // IRM-05: AC column left and DC column right from below, so DC on the left and AC on the right from above.
+    const p05 = EVIDENCE['irm-05-5'].pins!.value
+    expect(sides('irm-05-5')).toEqual({ left: p05.bottomViewRight, right: p05.bottomViewLeft })
+    // IRM-03: AC/L, AC/N at the top left and +V, -V at the bottom right from below; mirrored, each row reads right to left.
+    for (const id of ['irm-03-5', 'irm-03-3v3']) {
+      const p = EVIDENCE[id].pins!.value
+      expect(sides(id)).toEqual({ top: p.bottomViewTopRow.filter((n) => n !== 'NC').reverse(), bottom: [...p.bottomViewBottomRow].reverse() })
+    }
+  })
+  it('HLK-PM01 and HLK-PM03 are converters with an AC input, a SELV output and the isolation the evidence gives (unknown)', () => {
+    for (const [id, out] of [['hlk-pm01', '5V'], ['hlk-pm03', '3V3']]) {
+      const m = load(id)
+      const info = mainsOf(m)
+      expect(m.source).toMatch(twoSources)
+      expect(info.acInput?.a).toBe('AC 1')
+      expect(info.acInput?.b).toBe('AC 2')
+      expect(info.domains.find((d) => d.kind === 'selv')?.pins.sort()).toEqual(['+Vo', '-Vo'])
+      expect(info.isolation).toBe(EVIDENCE[id].isolation?.value ?? 'unknown')
+      expect(info.acInput?.range).toEqual(EVIDENCE[id].acInput!.value)
+      expect(m.pins.find((p) => 'name' in p && p.name === '+Vo')).toMatchObject({ type: 'power_out', supply: out })
+      // Top side view: AC 1 above AC 2 on the left end, -Vo top right, +Vo bottom right.
+      expect(sides(id)).toEqual(EVIDENCE[id].pins!.value)
+      expect(m.pins.filter((p) => 'name' in p && p.name.startsWith('AC')).map((p) => ('label' in p ? p.label : undefined))).toEqual(['AC', 'AC'])
+    }
+    expect(mainsOf(load('hlk-pm01')).isolation).toBe('unknown')
+  })
+  it('the lamp holders are loads with a voltage range; the E26 shell is on N, the E27 shell has no requirement (ruling B7)', () => {
+    for (const id of ['lamp-holder-e26', 'lamp-holder-e27']) {
+      const info = mainsOf(load(id))
+      expect(info.conducts).toEqual([expect.objectContaining({ pins: ['L', 'N'], kind: 'load' })])
+      expect(info.conducts[0].range).not.toBeNull()
+      expect(info.conducts[0].range).toEqual(EVIDENCE[id].loadRange!.value)
+      expect(info.ratings.length).toBeGreaterThan(0)
+      expect(info.ratings[0]).toMatchObject({ kind: 'terminal', service: 'ac', volts: EVIDENCE[id].ratings![0].volts, provenance: 'datasheet' })
+      expect(info.ratings[0].amps ?? null).toBe(EVIDENCE[id].ratings![0].amps ?? null)
+      // PE only when the reference product has an earth terminal.
+      expect(load(id).pins.some((p) => 'name' in p && p.name === 'PE')).toBe(!!EVIDENCE[id].extra!.earth.value)
+    }
+    expect([mainsOf(load('lamp-holder-e26')).requirement.get('L'), mainsOf(load('lamp-holder-e26')).requirement.get('N')]).toEqual(['L', 'N'])
+    expect([mainsOf(load('lamp-holder-e27')).requirement.get('L'), mainsOf(load('lamp-holder-e27')).requirement.get('N')]).toEqual(['line', 'line'])
+    expect(mainsOf(load('lamp-holder-e27')).requirement.get('PE')).toBe('PE')
+    expect(mainsOf(load('lamp-holder-e26')).conducts[0].range![1]).toBeLessThan(200)
+    expect(mainsOf(load('lamp-holder-e27')).conducts[0].range![0]).toBeGreaterThan(200)
+    // Ruling 38: the E26 holder names its polarity hazard; the E27 holder does not.
+    expect(mainsOf(load('lamp-holder-e26')).polarityHazard).toMatch(/shell/)
+    expect(mainsOf(load('lamp-holder-e27')).polarityHazard).toBeNull()
+  })
+  it('the fuse holder is a protective edge with an unknown rating and a fitted setting', () => {
+    const m = load('fuse-holder-5x20-inline')
+    expect(mainsOf(m).protective).toEqual([{ from: '1', to: '2', kind: 'fuse', rating: null }])
+    expect(m.electrical).toMatchObject({ params: { fuseRating: { unit: 'A' } }, settings: { fuse: ['fitted', 'absent'] } })
+    expect((m.electrical as { params: { fuseRating: { default?: number } } }).params.fuseRating.default).toBeUndefined()
+    const [r] = EVIDENCE['fuse-holder-5x20-inline'].ratings!
+    expect(mainsOf(m).ratings).toEqual([expect.objectContaining({ pins: ['1', '2'], kind: 'terminal', service: r.service, volts: r.volts, amps: r.amps, provenance: 'datasheet' })])
+    expect(m.source).toBe(EVIDENCE['fuse-holder-5x20-inline'].sources.join(' '))
+  })
+  it('the KCD1 rocker keeps its DC switch model and gains a contact group and a switching rating', () => {
+    const m = load('rocker-switch-kcd1')
+    expect(m.electrical).toMatchObject({ model: 'switch', terminals: { a: '1', b: '2' } })
+    expect(mainsOf(m).contacts).toEqual([{ id: 's', kind: 'switch', poles: [{ com: '1', no: '2', nc: null }] }])
+    expect(mainsOf(m).ratings[0]).toMatchObject({ kind: 'switching', service: EVIDENCE['rocker-switch-kcd1'].ratings![0].service, provenance: 'datasheet' })
+    expect(mainsOf(m).ratings.map((r) => [r.volts, r.amps])).toEqual(EVIDENCE['rocker-switch-kcd1'].ratings!.map((r) => [r.volts, r.amps]))
+    expect(m.source).toBe(EVIDENCE['rocker-switch-kcd1'].sources.join(' '))
+  })
+  it('each Wago lever connector is one node with a conditional terminal rating', () => {
+    for (const [id, n] of [['wago-221-412', 2], ['wago-221-413', 3], ['wago-221-415', 5]] as const) {
+      const m = load(id)
+      const names = Array.from({ length: n }, (_, i) => String(i + 1))
+      expect(m.internal).toEqual([names])
+      expect(sides(id)).toEqual({ left: names })
+      // IEC 60664 ratings say neither AC nor DC: the evidence records ac/dc and the part follows it.
+      const [r] = EVIDENCE[id].ratings!
+      expect(mainsOf(m).ratings[0]).toMatchObject({ kind: 'terminal', service: r.service, volts: r.volts, amps: r.amps, conditions: r.conditions, provenance: 'datasheet' })
+      expect(mainsOf(m).ratings[0].conditions).toBeTruthy()
+    }
+  })
+  it('all of them sit in the Mains group except the KCD1, which stays a switch', () => {
+    for (const id of ['hlk-pm01', 'hlk-pm03', 'irm-03-5', 'irm-03-3v3', 'irm-05-5', 'lamp-holder-e26', 'lamp-holder-e27', 'fuse-holder-5x20-inline', 'wago-221-412', 'wago-221-413', 'wago-221-415'])
+      expect([id, load(id).category]).toEqual([id, 'Mains'])
+    expect(load('rocker-switch-kcd1').category).toBe('Switches')
+  })
+})

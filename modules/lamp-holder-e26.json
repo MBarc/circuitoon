@@ -1,0 +1,146 @@
+{
+  "format": "circuitoon-module/1",
+  "id": "lamp-holder-e26",
+  "version": 1,
+  "name": "Lamp holder E26 (120 V lamp)",
+  "category": "Mains",
+  "source": "https://leviton.com/products/9880 https://www.osha.gov/laws-regs/regulations/standardnumber/1910/1910.305 https://www.usa.lighting.philips.com/consumer/p/led-bulb-60w-a19-e26/046677568948/specifications",
+  "pins": [
+    {
+      "name": "L",
+      "side": "left",
+      "label": "L",
+      "type": "passive",
+      "mains": "L"
+    },
+    {
+      "name": "N",
+      "side": "right",
+      "label": "N",
+      "type": "passive",
+      "mains": "N"
+    }
+  ],
+  "size": {
+    "w": 6,
+    "h": 6
+  },
+  "electrical": {
+    "model": "lamp",
+    "conducts": [
+      {
+        "pins": [
+          "L",
+          "N"
+        ],
+        "kind": "load",
+        "range": [
+          120,
+          120
+        ]
+      }
+    ],
+    "ratings": [
+      {
+        "pins": [
+          "L",
+          "N"
+        ],
+        "kind": "terminal",
+        "service": "ac",
+        "volts": 250,
+        "provenance": "datasheet"
+      }
+    ],
+    "polarityHazard": "Its screw shell is then live, so touching it while changing the bulb may shock."
+  },
+  "art": {
+    "w": 60,
+    "h": 60,
+    "shapes": [
+      {
+        "type": "rect",
+        "x": 0,
+        "y": 28,
+        "w": 12,
+        "h": 4,
+        "fill": "#B8BEC7",
+        "radius": 1
+      },
+      {
+        "type": "rect",
+        "x": 48,
+        "y": 28,
+        "w": 12,
+        "h": 4,
+        "fill": "#B8BEC7",
+        "radius": 1
+      },
+      {
+        "type": "rect",
+        "x": 4,
+        "y": 4,
+        "w": 52,
+        "h": 52,
+        "fill": "#F1ECE2",
+        "radius": 26
+      },
+      {
+        "type": "rect",
+        "x": 12,
+        "y": 12,
+        "w": 36,
+        "h": 36,
+        "fill": "#E2DACB",
+        "radius": 18,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 16,
+        "y": 16,
+        "w": 28,
+        "h": 28,
+        "fill": "#D9A93B",
+        "radius": 14
+      },
+      {
+        "type": "rect",
+        "x": 21,
+        "y": 21,
+        "w": 18,
+        "h": 18,
+        "fill": "#A87E22",
+        "radius": 9,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 26,
+        "y": 26,
+        "w": 8,
+        "h": 8,
+        "fill": "#D9A93B",
+        "radius": 4
+      },
+      {
+        "type": "rect",
+        "x": 6,
+        "y": 26,
+        "w": 8,
+        "h": 8,
+        "fill": "#B8BEC7",
+        "radius": 4
+      },
+      {
+        "type": "rect",
+        "x": 46,
+        "y": 26,
+        "w": 8,
+        "h": 8,
+        "fill": "#B8BEC7",
+        "radius": 4
+      }
+    ]
+  }
+}
