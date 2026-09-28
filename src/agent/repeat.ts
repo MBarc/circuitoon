@@ -8,6 +8,8 @@ export interface RawPin {
   ep: unknown
   /** Where the endpoint came from, for error messages. */
   at: string
+  /** Set on a copy's binding endpoint: which binding it is ("copy 2 port SIG"), for reuse checks after pin resolution. */
+  binding?: string
 }
 export interface RawPart {
   p: unknown
@@ -154,7 +156,7 @@ export function expandRepeat(raw: unknown, topRefs: Set<string>, topNets: string
         out.shared.set(target, [...(out.shared.get(target) ?? []), ...pins])
         return
       }
-      if (port !== null && isObj(entry) && Object.hasOwn(entry, port)) pins.push({ ep: entry[port], at: `${at}.${port}` })
+      if (port !== null && isObj(entry) && Object.hasOwn(entry, port)) pins.push({ ep: entry[port], at: `${at}.${port}`, binding: `copy ${k} port ${port}` })
       out.nets.push({ name: `${name}_${k}.${net.name}`, pins, at: `${nat} (copy ${k})` })
     })
     out.copies.push({ id: `${name}_${k}`, repeat: name, index: k, refs, bindings: chosen })
