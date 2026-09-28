@@ -11,6 +11,12 @@ export interface RouteRequest {
   /** Outward direction at `to`; null for a hole, which a wire may enter from any side. */
   toDir: Pt | null
   obstacles: Rect[]
+  /**
+   * Points the route must not pass through (holes of board strips the wire does not end in), each
+   * blocking the grid node within `clearance` of it. Unlike an obstacle, one never refuses the
+   * route's own start or goal node (a pin tip right beside a board).
+   */
+  avoid?: Pt[]
   /** Grid nodes already used by earlier wires, so this route can take its own lane next to them. */
   occupied?: Occupancy
   /**
@@ -408,6 +414,16 @@ function search(
   const cellOf = (p: Pt) => ((p.y - y0) / g) * cols + (p.x - x0) / g
   const startCell = cellOf(start)
   const goalCell = cellOf(goal)
+  if (req.avoid?.length) {
+    const soft: number[] = []
+    for (const p of req.avoid) {
+      const n = { x: Math.round(p.x / g) * g, y: Math.round(p.y / g) * g }
+      if (Math.abs(n.x - p.x) > clearance || Math.abs(n.y - p.y) > clearance || n.x < x0 || n.x > x1 || n.y < y0 || n.y > y1) continue
+      const cell = cellOf(n)
+      if (!blocked[cell] && cell !== startCell && cell !== goalCell) soft.push(cell)
+    }
+    for (const cell of soft) blocked[cell] = 1
+  }
   if (blocked[startCell] || blocked[goalCell]) return null
   // Checked after the obstacle map, so a shared cell inside a part body is still refused.
   if (startCell === goalCell) return [start]

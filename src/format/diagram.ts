@@ -1,10 +1,10 @@
 // Diagram format (circuitoon-diagram/1): types plus the wire geometry the renderer needs.
 
 import { GRID, type ModuleDef, PARAM_RULES, isBoard, layoutModule, validateModule, validParamValue, isObj, isNum } from './module.ts'
-import { type Pt, type Rect, type Rotation, type WorldPin, bodyRect, simplify, toWorld, worldPins } from './geometry.ts'
+import { type Pt, type Rect, type Rotation, type WorldPin, bodyRect, simplify, toWorld, worldHoles, worldPins } from './geometry.ts'
 import { addToOccupancy, inGrown, Occupancy, onGrid, routeOrthogonal } from './router.ts'
 import { manualRouteBlocked, tidy } from './wireEdit.ts'
-import { mountIssues, plugOfPin } from './breadboard.ts'
+import { mountIssues, plugOfPin, plugsOf } from './breadboard.ts'
 import { type CableEndDraw, END_SIZE, endKind, endPlacement, isEndKind, normalizeEnds, type WireEnds } from './cables.ts'
 
 /** How every load warning about a dropped value override ends: the part now shows its module
@@ -295,19 +295,64 @@ function withLeadOut(pts: Pt[], dir: Pt | null, lead: number): Pt[] {
   return tidy([p0, tip, corner, ...pts.slice(k)])
 }
 
-export function routeWire(d: Diagram, c: Connection, obstacles: Rect[], occupied?: Occupancy): WireRoute | null {
+/**
+ * The holes of every board on the sheet (breadboards, rail strips), by hole group, plus which group
+ * each plugged leg sits in. An auto-routed wire never runs over a hole of a group it does not end
+ * in: drawn over it, the wire would read as plugged in there.
+ */
+export interface BoardHoles {
+  groups: { key: string; at: Pt[] }[]
+  /** Pin key ("part pin") of a plugged leg to its hole group key. */
+  legGroup: Map<string, string>
+}
+const holeGroupKey = (board: string, group: string) => JSON.stringify([board, group])
+const legKey = (part: string, pin: string) => JSON.stringify([part, pin])
+
+export function boardHoles(d: Diagram): BoardHoles {
+  const groups: BoardHoles['groups'] = []
+  for (const p of d.parts) {
+    const m = moduleOf(d, p.module)
+    if (!m || !isBoard(m)) continue
+    for (const g of worldHoles(p, m)) groups.push({ key: holeGroupKey(p.uid, g.name), at: g.at })
+  }
+  const legGroup = new Map<string, string>()
+  if (groups.length) for (const pl of plugsOf(d)) legGroup.set(legKey(pl.part, pl.pin), holeGroupKey(pl.board, pl.group))
+  return { groups, legGroup }
+}
+
+/** Every board hole wire `c` must not run over: all but those of the groups its ends are in. */
+function foreignHoles(c: Connection, holes: BoardHoles): Pt[] {
+  if (!holes.groups.length) return []
+  const own = new Set<string>()
+  for (const e of [c.from, c.to]) {
+    own.add(holeGroupKey(e.part, e.pin))
+    const leg = holes.legGroup.get(legKey(e.part, e.pin))
+    if (leg) own.add(leg)
+  }
+  return holes.groups.flatMap((g) => (own.has(g.key) ? [] : g.at))
+}
+
+/** True when a straight run from `a` to `b` passes within 3 px of any of `pts`. */
+function runsOver(a: Pt, b: Pt, pts: Pt[]): boolean {
+  const [x0, x1] = [Math.min(a.x, b.x), Math.max(a.x, b.x)]
+  const [y0, y1] = [Math.min(a.y, b.y), Math.max(a.y, b.y)]
+  return pts.some((p) => p.x >= x0 - 3 && p.x <= x1 + 3 && p.y >= y0 - 3 && p.y <= y1 + 3)
+}
+
+export function routeWire(d: Diagram, c: Connection, obstacles: Rect[], occupied?: Occupancy, holes: BoardHoles = boardHoles(d)): WireRoute | null {
   const a = resolveEndpoint(d, c.from)
   const b = resolveEndpoint(d, c.to)
   if (!a || !b) return null
+  const foreign = foreignHoles(c, holes)
   const own = obstaclesFor(obstacles, a, b)
   const { leads: [fromLead, toLead], facing } = leadsOf(c, a, b)
-  if (facing && !c.route && !manualRouteBlocked([a.end, b.end], own)) return { points: [a.end, b.end], blocked: false }
+  if (facing && !c.route && !manualRouteBlocked([a.end, b.end], own) && !runsOver(a.end, b.end, foreign)) return { points: [a.end, b.end], blocked: false }
   if (c.route) {
     let points = manualPoints(a, b, c.route)
     if (fromLead || toLead) points = withLeadOut(withLeadOut(points, a.dir, fromLead).reverse(), b.dir, toLead).reverse()
     return { points, blocked: manualRouteBlocked(points, own) }
   }
-  const req = { from: a.end, fromDir: a.dir, to: b.end, toDir: b.dir, obstacles: own, occupied }
+  const req = { from: a.end, fromDir: a.dir, to: b.end, toDir: b.dir, obstacles: own, avoid: foreign, occupied }
   // The search starts past each lead-out, so the run from the pin out to it is checked here: a
   // route whose attachment runs cross a body is refused. A lead-out that cannot be routed (a part
   // right in front of the pin) is dropped, one end at a time, down to a plain route.
@@ -339,6 +384,7 @@ export function routeWire(d: Diagram, c: Connection, obstacles: Rect[], occupied
  */
 export function computeRoutes(d: Diagram, opts: { only?: Set<string>; prev?: Routes; occupancy?: boolean } = {}): Routes {
   const obstacles = partObstacles(d)
+  const holes = boardHoles(d)
   const out: Routes = new Map()
   const occupied = opts.occupancy === false ? undefined : new Occupancy()
   for (const c of d.connections) {
@@ -350,7 +396,7 @@ export function computeRoutes(d: Diagram, opts: { only?: Set<string>; prev?: Rou
   }
   for (const c of d.connections) {
     if (out.has(c.uid)) continue
-    const route = routeWire(d, c, obstacles, occupied)
+    const route = routeWire(d, c, obstacles, occupied, holes)
     out.set(c.uid, route)
     if (route && occupied) addToOccupancy(occupied, route.points)
   }

@@ -235,7 +235,7 @@ describe('brokenStub', () => {
 })
 
 describe('routing with boards and holes', () => {
-  it('routes wires straight over a board, which is not an obstacle', () => {
+  it('routes wires across a board, which is not an obstacle, but never over a hole the wire does not end in', () => {
     const d: Diagram = {
       format: 'circuitoon-diagram/1', title: 't', modules: { bb, two },
       parts: [
@@ -246,15 +246,17 @@ describe('routing with boards and holes', () => {
       connections: [{ uid: 'w', from: { part: 'a', pin: 'R' }, to: { part: 'c', pin: 'L' } }],
     }
     expect(partObstacles(d)).toHaveLength(2)
-    expect(computeRoutes(d).get('w')).toEqual({ points: [{ x: 48, y: 20 }, { x: 192, y: 20 }], blocked: false })
+    // The board's holes sit at y = 0..40, so the wire crosses the board on the free row below them.
+    expect(computeRoutes(d).get('w')).toEqual({ points: [{ x: 48, y: 20 }, { x: 60, y: 20 }, { x: 60, y: 50 }, { x: 180, y: 50 }, { x: 180, y: 20 }, { x: 192, y: 20 }], blocked: false })
   })
-  it('routes a wire from a hole center', () => {
+  it('routes a wire from a hole center off the end of its own strip, not along a row of other strips', () => {
     const d: Diagram = {
       format: 'circuitoon-diagram/1', title: 't', modules: { bb, two },
       parts: [{ uid: 'b', designator: 'BB1', module: 'bb', x: 0, y: 0 }, { uid: 'a', designator: 'R1', module: 'two', x: 100, y: -10 }],
       connections: [{ uid: 'w', from: { part: 'b', pin: 's1', hole: 0 }, to: { part: 'a', pin: 'L' } }],
     }
-    expect(computeRoutes(d).get('w')).toEqual({ points: [{ x: 10, y: 10 }, { x: 92, y: 10 }], blocked: false })
+    // R1's pin tip sits 2 px past the board's last strip: the goal node itself is never refused.
+    expect(computeRoutes(d).get('w')).toEqual({ points: [{ x: 10, y: 10 }, { x: 10, y: 0 }, { x: 90, y: 0 }, { x: 90, y: 10 }, { x: 92, y: 10 }], blocked: false })
   })
   it('turns a manual route horizontally first at a hole end', () => {
     const d: Diagram = {

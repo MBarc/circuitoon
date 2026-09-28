@@ -131,6 +131,17 @@ export function placeParts(intent: Intent, opts: PlaceOptions): PlaceResult {
       inst.set(m, r.part)
       local = { ...local, parts: [...local.parts, r.part] }
     }
+    // One more pass, in the same order: a part mounted before its neighbours could not see their
+    // nets (D1 before R1), so each unkept part moves when a spot now scores better (net affinity).
+    if (!errors.length)
+      for (const m of mounted) {
+        if (keep.has(m)) continue
+        const r = mountPart(local, m, ref, netOfPin, inst.get(m)!)
+        const was = inst.get(m)!
+        if (!r.ok || (r.part.x === was.x && r.part.y === was.y && r.part.rotation === was.rotation)) continue
+        inst.set(m, r.part)
+        local = { ...local, parts: local.parts.map((p) => (p.uid === m ? r.part : p)) }
+      }
     units.push({ key: ref, refs: [ref, ...mounted], anchor: true, fixed: !!k })
     for (const r of [ref, ...mounted]) grouped.add(r)
   }

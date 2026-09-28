@@ -2,7 +2,9 @@
 // deterministic, with routing flags, one end per hole, distribution points, capacity chains and
 // internally joined pins wired as one.
 import { describe, expect, it } from 'vitest'
-import { type Diagram, serializeDiagram, validateDiagram } from '../format/diagram.ts'
+import { type Diagram, type Endpoint, computeRoutes, serializeDiagram, validateDiagram } from '../format/diagram.ts'
+import { worldHoles } from '../format/geometry.ts'
+import { isBoard } from '../format/module.ts'
 import { mountIssues, plugsOf } from '../format/breadboard.ts'
 import { libraryLookup } from './catalog.ts'
 import { layoutNetlist } from './layout.ts'
@@ -123,6 +125,43 @@ describe('layoutNetlist', () => {
     const hole = [0, 1, 2, 3, 4].find((h) => !inStrip.includes(h))!
     vcc[vcc.from.part === 'BT1' ? 'to' : 'from'] = { part: gndHole.part, pin: gndHole.pin, hole }
     expect(verifyDiagram(d, libraryLookup).map((f) => f.rule)).toContain('merge')
+  })
+  // Fix round 1: a person puts D1's anode in R1's column, so LED_A needs no jumper.
+  it('mounts the LED with its anode in the resistor\'s strip, so no jumper joins them', () => {
+    const r = layoutNetlist(ledNetlist())
+    if (!r.ok) throw new Error(r.errors.join('\n'))
+    const d = r.value.diagram
+    const strip = (part: string, pin: string) => plugsOf(d).find((p) => p.part === part && p.pin === pin)?.group
+    expect(strip('D1', 'A')).toBeDefined()
+    expect(strip('D1', 'A')).toBe(strip('R1', '2'))
+    expect(d.connections.filter((c) => r.value.netOfWire.get(c.uid) === 'LED_A')).toEqual([])
+  })
+  // Fix round 1: a wire drawn over a hole reads as plugged in there.
+  it('never runs a wire over a hole of a strip it does not end in', () => {
+    for (const raw of [ledNetlist(), tiltSensors(), esp([{ ref: 'RAIL1', module: 'power-rail-strip' }])]) {
+      const r = layoutNetlist(raw)
+      if (!r.ok) throw new Error(r.errors.join('\n'))
+      const d = r.value.diagram
+      const routes = computeRoutes(d)
+      const legs = new Map(plugsOf(d).map((p) => [`${p.part} ${p.pin}`, `${p.board} ${p.group}`]))
+      const stripOf = (e: Endpoint) => legs.get(`${e.part} ${e.pin}`) ?? `${e.part} ${e.pin}`
+      const holes = d.parts.flatMap((p) => {
+        const m = d.modules[p.module]
+        return isBoard(m) ? worldHoles(p, m).flatMap((g) => g.at.map((at) => ({ strip: `${p.uid} ${g.name}`, at }))) : []
+      })
+      const over: string[] = []
+      for (const c of d.connections) {
+        const own = new Set([stripOf(c.from), stripOf(c.to)])
+        const pts = routes.get(c.uid)!.points
+        for (let k = 1; k < pts.length; k++) {
+          const [a, b] = [pts[k - 1], pts[k]]
+          for (const h of holes)
+            if (!own.has(h.strip) && h.at.x >= Math.min(a.x, b.x) - 3 && h.at.x <= Math.max(a.x, b.x) + 3 && h.at.y >= Math.min(a.y, b.y) - 3 && h.at.y <= Math.max(a.y, b.y) + 3)
+              over.push(`${d.title}: ${c.uid} over ${h.strip}`)
+        }
+      }
+      expect(over).toEqual([])
+    }
   })
   // Amendment A5: spare holes are released when the strips already joined have enough between them.
   it('fills three joined three-hole strips (5 free after 2 jumpers) with 5 terminals, never "strip full"', () => {
