@@ -160,7 +160,8 @@ describe('witnesses stay bounded (review of Task 5)', () => {
     Array.from({ length: 16 }, (_, k) => w('xs1|L', `s${k}|1`))))
   const cands = candidateGroups(g)
   for (const [name, pred] of [['parity of 16', (m: number) => pop(m) % 2 === 1], ['any 2 of 16 on', (m: number) => pop(m) >= 2]] as const)
-    it(`${name}: at most four witnesses, then the rest counted, fast`, () => {
+    // A bare 20 ms timing: retried (same budget) so a busy machine does not fail it (perf report, concern 1).
+    it(`${name}: at most four witnesses, then the rest counted, fast`, { retry: 2 }, () => {
       const h = holds(16, pred)
       const t0 = performance.now()
       const phrase = statePhrase(g, cands, minimalWitnesses(h, 16), h)
