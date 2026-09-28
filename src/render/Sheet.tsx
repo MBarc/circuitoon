@@ -1,13 +1,14 @@
 // A diagram drawn on graph paper: boards, then parts, then wires on top with hop arcs and pin dots.
 import { computeRoutes, labelAnchor, type Diagram, moduleOf, wireColor, wirePaths, wireStripe, wireWidth, type PartInstance } from '../format/diagram.ts'
 import { wireLooks } from '../format/mainsLook.ts'
+import { seatedLabels } from '../format/seatedLabels.ts'
 import { plugsOf, splitBoards } from '../format/breadboard.ts'
 import { partCaption } from '../format/values.ts'
 import { Part, INK } from './Part.tsx'
 import { LegDots, TakenHoles } from './Boards.tsx'
 import { WireLabel } from './WireLabel.tsx'
 import { CableLayer } from './CableEnd.tsx'
-import { Bolts, HazardOutline, Stripe } from './Mains.tsx'
+import { Bolts, HazardOutline, Stripe, boltInsets } from './Mains.tsx'
 
 export function Sheet({ diagram, captions = {}, box, label, decorative = false }: {
   diagram: Diagram
@@ -24,10 +25,13 @@ export function Sheet({ diagram, captions = {}, box, label, decorative = false }
   const plugs = plugsOf(diagram)
   // The mains look (identity colours, hazard marks), from the analysis the checker already cached.
   const looks = wireLooks(diagram)
+  const seated = seatedLabels(diagram)
   const part = (p: PartInstance) => {
     const m = moduleOf(diagram, p.module)
+    const s = seated.get(p.uid)
     return m ? (
-      <Part key={p.uid} module={m} x={p.x} y={p.y} rotation={p.rotation} caption={captions[p.uid] ?? partCaption(p, m)} values={p.values} />
+      <Part key={p.uid} module={m} x={p.x} y={p.y} rotation={p.rotation} caption={captions[p.uid] ?? partCaption(p, m)} values={p.values}
+        captionX={s?.caption.x} captionY={s?.caption.y} captionAnchor={s?.anchor} labelInset={s?.labelInset} />
     ) : null
   }
   return (
@@ -60,7 +64,7 @@ export function Sheet({ diagram, captions = {}, box, label, decorative = false }
         })}
       </g>
       <CableLayer wires={wires} looks={looks} />
-      {wires.map(({ conn, points }) => (looks.get(conn.uid)?.hazard ? <Bolts key={`bolt-${conn.uid}`} points={points} /> : null))}
+      {wires.map(({ conn, points, cables }) => (looks.get(conn.uid)?.hazard ? <Bolts key={`bolt-${conn.uid}`} points={points} insets={boltInsets(cables)} /> : null))}
       {wires.flatMap(({ conn, ends }) => ends.map((e, i) => <circle key={`${conn.uid}-${i}`} cx={e.x} cy={e.y} r={2.4} fill={INK} />))}
       {/* Name tags in their own layer after every wire, so a labeled wire crossing under a later
           one still shows its tag on top. Each tag keeps data-wire, matching the editor's canvas. */}

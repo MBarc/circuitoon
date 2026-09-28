@@ -74,3 +74,17 @@ describe('drawing reuses the cached analysis', () => {
     expect(mainsStats.runs).toBe(before)
   })
 })
+
+describe('lightning markers', () => {
+  const bolts = (html: string) => [...html.matchAll(/d="M([\d.-]+) ([\d.-]+)/g)].map((m) => [Number(m[1]) - 1, Number(m[2]) + 7])
+  it('sit past each end connector, never on it', async () => {
+    const { Bolts } = await import('../render/Mains.tsx')
+    const html = renderToStaticMarkup(createElement(Bolts, { points: [{ x: 0, y: 0 }, { x: 200, y: 0 }], insets: [16 + 14, 16] }))
+    expect(bolts(html)).toEqual([[30, 0], [184, 0]])
+  })
+  it('a wire too short for two gets one, at its middle', async () => {
+    const { Bolts } = await import('../render/Mains.tsx')
+    const html = renderToStaticMarkup(createElement(Bolts, { points: [{ x: 0, y: 0 }, { x: 60, y: 0 }], insets: [30, 30] }))
+    expect(bolts(html)).toEqual([[30, 0]])
+  })
+})

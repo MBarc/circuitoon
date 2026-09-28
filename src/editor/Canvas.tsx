@@ -8,8 +8,9 @@ import { Part, INK } from '../render/Part.tsx'
 import { LegDots, TakenHoles } from '../render/Boards.tsx'
 import { WireLabel } from '../render/WireLabel.tsx'
 import { CableLayer } from '../render/CableEnd.tsx'
-import { Bolts, HazardOutline, Stripe } from '../render/Mains.tsx'
+import { Bolts, HazardOutline, Stripe, boltInsets } from '../render/Mains.tsx'
 import { type WireLook, identityColor, newWireColor, wireLooks } from '../format/mainsLook.ts'
+import { seatedLabels } from '../format/seatedLabels.ts'
 import { addPart, addWire, EMPTY_SELECTION, moveParts, reconnectWire, sameEndpoint, setWireRoute, settleDrop, settleMounts, settleSeats, settlingOf, updateWire, withMounted } from './ops.ts'
 import { netlist, netPoints } from '../format/netlist.ts'
 import { bendHandleAt, insertBend, isOrthogonal, moveSegment, removeBend, segmentHandleAt, segmentsOf, toRoute, type Axis } from '../format/wireEdit.ts'
@@ -184,6 +185,8 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
   const looks = useMemo(() => (busy ? looksRef.current : (looksRef.current = wireLooks(diagram))), [diagram.parts, diagram.connections, diagram.modules, busy])
   // Boards draw below every other part; the leg overlays follow mounts and positions.
   const layers = useMemo(() => splitBoards(diagram), [diagram.parts, diagram.modules])
+  // Seated plug-in devices put their captions beside the outlet (and covered lead labels inside).
+  const seated = useMemo(() => seatedLabels(diagram), [diagram.parts, diagram.modules])
   // While parts are dragged, the same seat check the drop runs: the dragged parts count as loose
   // (their old legs neither show nor push a part that stays put out of its holes), and each seat
   // is green when the drop would mount it, red when only some legs land.
@@ -508,7 +511,9 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
           const r = bodyRect(p, layoutModule(m))
           return <rect x={r.x - 6} y={r.y - 6} width={r.w + 12} height={r.h + 12} rx={6} fill="none" stroke="var(--focus)" strokeWidth={1.5} strokeDasharray="5 4" />
         })()}
-        <Part module={m} x={p.x} y={p.y} rotation={p.rotation} caption={partCaption(p, m)} values={p.values} />
+        <Part module={m} x={p.x} y={p.y} rotation={p.rotation} caption={partCaption(p, m)} values={p.values}
+          captionX={seated.get(p.uid)?.caption.x} captionY={seated.get(p.uid)?.caption.y}
+          captionAnchor={seated.get(p.uid)?.anchor} labelInset={seated.get(p.uid)?.labelInset} />
       </g>
     ) : null
   }
@@ -593,7 +598,7 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
           })}
         </g>
         <CableLayer wires={wires} dim={drag?.kind === 'reconnect' ? drag.uid : null} looks={looks} />
-        {wires.map(({ conn, points }) => (looks.get(conn.uid)?.hazard && !(drag?.kind === 'reconnect' && drag.uid === conn.uid) ? <Bolts key={`bolt-${conn.uid}`} points={points} /> : null))}
+        {wires.map(({ conn, points, cables }) => (looks.get(conn.uid)?.hazard && !(drag?.kind === 'reconnect' && drag.uid === conn.uid) ? <Bolts key={`bolt-${conn.uid}`} points={points} insets={boltInsets(cables)} /> : null))}
         {wires.flatMap(({ conn, ends }) => ends.map((e, i) => <circle key={`${conn.uid}-${i}`} cx={e.x} cy={e.y} r={2.4} fill={INK} />))}
         {/* Name tags in their own layer after every wire, so a labeled wire crossing under a
             later one still shows its tag on top. Each tag keeps data-wire so a click or
