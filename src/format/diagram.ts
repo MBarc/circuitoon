@@ -352,22 +352,23 @@ export function routeWire(d: Diagram, c: Connection, obstacles: Rect[], occupied
     if (fromLead || toLead) points = withLeadOut(withLeadOut(points, a.dir, fromLead).reverse(), b.dir, toLead).reverse()
     return { points, blocked: manualRouteBlocked(points, own) }
   }
-  const req = { from: a.end, fromDir: a.dir, to: b.end, toDir: b.dir, obstacles: own, avoid: foreign, occupied }
   // The search starts past each lead-out, so the run from the pin out to it is checked here: a
   // route whose attachment runs cross a body is refused. A lead-out that cannot be routed (a part
   // right in front of the pin) is dropped, one end at a time, down to a plain route.
   const attached = (pts: Pt[]) => !manualRouteBlocked(pts.slice(0, 3), own) && !manualRouteBlocked(pts.slice(-3), own)
-  let points: Pt[] | null = null
   const tries: [number, number][] = [[fromLead, toLead], [fromLead, 0], [0, toLead]]
-  for (const [i, [f, t]] of tries.entries()) {
-    if ((!f && !t) || tries.slice(0, i).some(([pf, pt]) => pf === f && pt === t)) continue
-    const pts = routeOrthogonal({ ...req, fromLead: f, toLead: t })
-    if (pts && attached(pts)) {
-      points = pts
-      break
+  const attempt = (avoid: Pt[]): Pt[] | null => {
+    const req = { from: a.end, fromDir: a.dir, to: b.end, toDir: b.dir, obstacles: own, avoid, occupied }
+    for (const [i, [f, t]] of tries.entries()) {
+      if ((!f && !t) || tries.slice(0, i).some(([pf, pt]) => pf === f && pt === t)) continue
+      const pts = routeOrthogonal({ ...req, fromLead: f, toLead: t })
+      if (pts && attached(pts)) return pts
     }
+    return routeOrthogonal(req)
   }
-  points ??= routeOrthogonal(req)
+  // Hole avoidance never blocks a wire: when no route clears the other strips' holes, one over
+  // them is still better than a dashed, blocked wire.
+  const points = attempt(foreign) ?? (foreign.length ? attempt([]) : null)
   // Never a diagonal: an unroutable wire is still drawn orthogonal, dashed, and flagged.
   return points ? { points, blocked: false } : { points: blockedPoints(a, b), blocked: true }
 }

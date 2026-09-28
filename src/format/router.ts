@@ -14,7 +14,8 @@ export interface RouteRequest {
   /**
    * Points the route must not pass through (holes of board strips the wire does not end in), each
    * blocking the grid node within `clearance` of it. Unlike an obstacle, one never refuses the
-   * route's own start or goal node (a pin tip right beside a board).
+   * route's own start or goal node (a pin tip right beside a board), nor the first node along
+   * either end's stub.
    */
   avoid?: Pt[]
   /** Grid nodes already used by earlier wires, so this route can take its own lane next to them. */
@@ -255,6 +256,18 @@ export function occupancyOf(polylines: Pt[][], grid = 10): Occupancy {
 
 /** Largest search window, in grid cells, before a margin is skipped (keeps memory and time bounded). */
 const MAX_CELLS = 250_000
+/** Search windows around the endpoints, in px, tried in order (the default `margins`). */
+const MARGINS = [60, 240]
+/** About how far apart, in px, a wire's ends may be for the router to search between them. */
+export const ROUTE_REACH = Math.floor(Math.sqrt(MAX_CELLS)) * 10
+
+/** Whether the smallest search window between `a` and `b` fits the router's grid, so a route can exist at all. */
+export function withinReach(a: Pt, b: Pt, g = 10): boolean {
+  const m = MARGINS[0]
+  const cols = (Math.ceil((Math.max(a.x, b.x) + m) / g) - Math.floor((Math.min(a.x, b.x) - m) / g)) + 1
+  const rows = (Math.ceil((Math.max(a.y, b.y) + m) / g) - Math.floor((Math.min(a.y, b.y) - m) / g)) + 1
+  return cols * rows <= MAX_CELLS
+}
 
 const DIRS: Pt[] = [{ x: 1, y: 0 }, { x: 0, y: 1 }, { x: -1, y: 0 }, { x: 0, y: -1 }]
 const dirIndex = (d: Pt) => DIRS.findIndex((v) => v.x === d.x && v.y === d.y)
@@ -361,7 +374,7 @@ export function routeOrthogonal(req: RouteRequest, opts: RouteOptions = {}): Pt[
   const ahead = (p: Pt, d: Pt, lead = 0): Pt => ({ x: p.x + d.x * lead, y: p.y + d.y * lead })
   const start = req.fromDir ? leave(ahead(req.from, req.fromDir, req.fromLead), req.fromDir, g) : onGrid(req.from, g)
   const goal = req.toDir ? leave(ahead(req.to, req.toDir, req.toLead), req.toDir, g) : onGrid(req.to, g)
-  for (const margin of opts.margins ?? [60, 240]) {
+  for (const margin of opts.margins ?? MARGINS) {
     const path = search(start, goal, req, g, clearance, bendCost, parallelCost, margin)
     if (path) {
       // A tip off the grid (a part loaded between grid lines) meets the first and last grid node
@@ -415,12 +428,20 @@ function search(
   const startCell = cellOf(start)
   const goalCell = cellOf(goal)
   if (req.avoid?.length) {
+    // The start, the goal and each stub's first node past them are never refused: a pin whose
+    // stub points into a strip must still be able to leave along it.
+    const inWindow = (p: Pt) => p.x >= x0 && p.x <= x1 && p.y >= y0 && p.y <= y1
+    const exempt = new Set([startCell, goalCell])
+    for (const [p, d] of [[start, req.fromDir], [goal, req.toDir]] as [Pt, Pt | null][]) {
+      const n = d && { x: p.x + d.x * g, y: p.y + d.y * g }
+      if (n && inWindow(n)) exempt.add(cellOf(n))
+    }
     const soft: number[] = []
     for (const p of req.avoid) {
       const n = { x: Math.round(p.x / g) * g, y: Math.round(p.y / g) * g }
       if (Math.abs(n.x - p.x) > clearance || Math.abs(n.y - p.y) > clearance || n.x < x0 || n.x > x1 || n.y < y0 || n.y > y1) continue
       const cell = cellOf(n)
-      if (!blocked[cell] && cell !== startCell && cell !== goalCell) soft.push(cell)
+      if (!blocked[cell] && !exempt.has(cell)) soft.push(cell)
     }
     for (const cell of soft) blocked[cell] = 1
   }

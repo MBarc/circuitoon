@@ -11,6 +11,7 @@ import { parseNetlist, terminalKey, type Intent } from './netlist.ts'
 import { placeParts, type KeepMap } from './place.ts'
 import { mountPart } from './mount.ts'
 import { intersects, tightFootprint } from './footprint.ts'
+import { overlaps } from './readability.ts'
 import { ledNetlist, tiltSensors } from './fixtures.testing.ts'
 
 const intentOf = (raw: unknown): Intent => {
@@ -191,6 +192,21 @@ describe('mountPart', () => {
     const r = mountPart(d, 'D1', 'BB1', () => undefined)
     expect(r.ok).toBe(true)
     if (r.ok) expect([r.part.x % 10, r.part.y % 10]).toEqual([0, 0])
+  })
+  it("never seats a part where its body or caption covers the board's own caption", () => {
+    // An LED at (150, 190) is seated in the bottom+ rail, its caption over BB1's. The rail carries
+    // its legs' net and the spot is preferred, so only the caption check can turn it down.
+    const led: PartInstance = { uid: 'D1', designator: 'D1', module: 'led', x: 150, y: 190, rotation: 0, mount: { board: 'BB1' } }
+    const d: Diagram = { ...sheet(), parts: [board, led] }
+    expect(mountIssues(d)).toEqual([])
+    expect(plugsOf(d).map((pl) => pl.group)).toEqual(['bottom+', 'bottom+'])
+    expect(overlaps(d).caption).toEqual(['BB1 caption and D1 caption'])
+    const netOf = (part: string, pin: string) => (part === 'D1' || pin === 'bottom+' ? 1 : undefined)
+    const r = mountPart(d, 'D1', 'BB1', netOf, led)
+    expect(r.ok).toBe(true)
+    if (!r.ok) return
+    expect([r.part.x, r.part.y]).not.toEqual([150, 190])
+    expect(overlaps({ ...d, parts: [board, r.part] }).caption).toEqual([])
   })
   it('treats a strip the netlist puts in a net as carrying that net before any leg lands', () => {
     const groups = intent.modules['breadboard-half'].holes!.map((g) => g.name)

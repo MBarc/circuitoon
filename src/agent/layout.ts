@@ -1,12 +1,15 @@
 // Layout (agent toolkit spec 2): netlist in, sheet out. Parse and check the netlist, place the parts
 // (mounting included), realize the nets as wires, route them with the existing router, and when a
 // route is blocked try again with more spacing, up to 3 placements; after that fail with the
-// blocked nets rather than emit a sheet with blocked wires. A body or caption overlap (only kept
+// blocked nets rather than emit a sheet with blocked wires (or at once, naming the cause, when a
+// wire's ends are beyond the router's reach). A body or caption overlap (only kept
 // parts can cause one) fails the layout with each pair named (amendment A7), and the realized sheet
 // must verify clean against its own intent before it is returned, so a kept part that shorts two
 // nets through a strip is caught here. The sheet embeds its modules and stores the netlist as
 // `intent`, so every later check re-verifies against it. Pure.
-import { DIAGRAM_FORMAT, type Diagram, computeRoutes } from '../format/diagram.ts'
+import { DIAGRAM_FORMAT, type Diagram, computeRoutes, moduleOf, resolveEndpoint } from '../format/diagram.ts'
+import { ROUTE_REACH, withinReach } from '../format/router.ts'
+import { tightFootprint, union } from './footprint.ts'
 import { type Intent, type ModuleLookup, parseNetlist } from './netlist.ts'
 import { libraryLookup } from './catalog.ts'
 import { type KeepMap, placeParts } from './place.ts'
@@ -52,7 +55,23 @@ export function layoutNetlist(raw: unknown, opts: { library?: ModuleLookup; keep
     if (!real.ok) return { ok: false, stage: 'layout', errors: real.errors }
     const diagram: Diagram = { ...base, connections: real.value.connections }
     const routes = computeRoutes(diagram)
-    blocked = [...new Set(diagram.connections.filter((c) => routes.get(c.uid)?.blocked).map((c) => real.value.netOfWire.get(c.uid)!))].sort(naturalCompare)
+    const stuck = diagram.connections.filter((c) => routes.get(c.uid)?.blocked)
+    blocked = [...new Set(stuck.map((c) => real.value.netOfWire.get(c.uid)!))].sort(naturalCompare)
+    // A wire whose ends are farther apart than the router's grid can never route, and more
+    // spacing only makes that worse (kept parts far apart): say so rather than retry.
+    const far = stuck.filter((c) => {
+      const [a, b] = [resolveEndpoint(diagram, c.from), resolveEndpoint(diagram, c.to)]
+      return a && b && !withinReach(a.end, b.end)
+    })
+    if (far.length) {
+      const span = diagram.parts.map((p) => tightFootprint(p, moduleOf(diagram, p.module)!)).reduce(union)
+      const nets = [...new Set(far.map((c) => real.value.netOfWire.get(c.uid)!))].sort(naturalCompare)
+      return {
+        ok: false,
+        stage: 'layout',
+        errors: [`sheet too large to route: parts span ${Math.ceil(span.w)} x ${Math.ceil(span.h)} px; keep parts within about ${ROUTE_REACH} px of each other (nets ${nets.join(', ')}).`],
+      }
+    }
     if (blocked.length) continue
     const findings = verifyDiagram(diagram, library)
     if (findings.length) return { ok: false, stage: 'layout', errors: findings.map((f) => `verify ${f.rule}: ${f.message}`) }

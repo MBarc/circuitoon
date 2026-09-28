@@ -2,14 +2,16 @@
 // rotations 0 and 90 degrees, in a fixed order (rotation, then row-major from the board's top-left).
 // A candidate is accepted when `seatOn` reports it seated, it joins no two different nets (or a net
 // and a leg on no net) in one strip, and its body and caption clear every other part mounted on
-// that board. Among accepted candidates the one with the best net affinity wins, as a person builds
-// on a breadboard: each leg in a strip that already carries its own net scores 2 (D1's anode in
-// R1's column, so no jumper is needed), and each leg in a rail no net has claimed costs 1. Ties go
-// to the first candidate in the fixed order, so the search stays deterministic. Pure.
+// that board and the board's own caption. Among accepted candidates the one with the best net
+// affinity wins, as a person builds on a breadboard: each leg in a strip that already carries its
+// own net scores 2 (D1's anode in R1's column, so no jumper is needed), and each leg in a rail no
+// net has claimed costs 1. Ties go to the first candidate in the fixed order, so the search stays
+// deterministic. Pure.
 import { type Diagram, type PartInstance, moduleOf } from '../format/diagram.ts'
 import { holeAt, holeIndex, plugsOf, seatOn } from '../format/breadboard.ts'
 import { type Rotation, bodyRect, plugPoints } from '../format/geometry.ts'
 import { GRID, LEAD, layoutModule } from '../format/module.ts'
+import { captionBox } from '../render/captionBox.ts'
 import { intersects, tightFootprint } from './footprint.ts'
 
 /** The index of the net a pin (or a board's hole group) is in, or undefined when it is in no net. */
@@ -74,7 +76,9 @@ export function mountPart(
   }
   for (const pl of plugs) if (pl.board === board) stripNet.set(pl.group, netOf(pl.part, pl.pin) ?? null)
   const rails = new Set((bm.holes ?? []).filter((g) => g.rail).map((g) => g.name))
-  const neighbours = others.filter((p) => p.mount?.board === board).map((p) => tightFootprint(p, moduleOf(d, p.module)!))
+  // Every other part mounted on this board, and the board's own caption (layout refuses any
+  // caption overlap, and a part's body or caption over the board's name hides it).
+  const neighbours = [...others.filter((p) => p.mount?.board === board).map((p) => tightFootprint(p, moduleOf(d, p.module)!)), captionBox(b, bm)]
   const idx = holeIndex(b, bm)
   const area = bodyRect(b, layoutModule(bm))
   const lay = layoutModule(m)

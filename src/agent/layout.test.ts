@@ -30,6 +30,13 @@ const esp = (extra: Record<string, unknown>[] = []) => ({
 })
 
 describe('layoutNetlist', () => {
+  it('names the cause when kept parts sit farther apart than the router reaches', () => {
+    const r = layoutNetlist(tiltSensors(), { keep: new Map([['S_1', { x: 9000, y: 9000, rotation: 0 as const }]]) })
+    expect(r.ok).toBe(false)
+    if (r.ok) return
+    expect(r.errors).toHaveLength(1)
+    expect(r.errors[0]).toMatch(/^sheet too large to route: parts span \d+ x \d+ px; keep parts within about 5000 px of each other \(nets [^)]*tilt_1\.SIG[^)]*\)\.$/)
+  })
   it('lays out the spec LED example into a sheet the site loads and that verifies clean', () => {
     const r = layoutNetlist(ledNetlist())
     if (!r.ok) throw new Error(r.errors.join('\n'))
