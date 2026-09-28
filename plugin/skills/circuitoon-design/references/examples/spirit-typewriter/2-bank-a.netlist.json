@@ -43,7 +43,7 @@
   "groups": [{ "name": "Expander A (0x20)", "parts": ["J1", "U2"] }],
   "notes": [
     {
-      "text": "J1 comes from J1 on sheet 1: 1 GND, 2 3V3, 3 SDA, 4 SCL. A0, A1 and A2 to GND give I2C address 0x20; RESET is tied to 3V3.",
+      "text": "J1 comes from J1 on sheet 1: 1 GND, 2 3V3, 3 SDA, 4 SCL. A0, A1 and A2 to GND give I2C address 0x20; RESET is tied to 3V3. The I2C pull-ups are on sheet 1 (see its J1 note), not here.",
       "near": "Expander A (0x20)"
     },
     {

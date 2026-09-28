@@ -42,13 +42,14 @@
       { "name": "SCL", "pins": ["U1.IO22", "DS3.SCL", "J1.4", "J2.4", "J3.4"] },
       { "name": "SCK", "pins": ["U1.IO18", "DS1.SCK", "DS2.SCK", "SD1.CLK"] },
       { "name": "MOSI", "pins": ["U1.IO23", "DS1.SDI(MOSI)", "DS2.SDI(MOSI)", "SD1.MOSI"] },
-      { "name": "MISO", "pins": ["U1.IO19", "DS1.SDO(MISO)", "DS2.SDO(MISO)", "SD1.MISO"] },
+      { "name": "MISO", "pins": ["U1.IO19", "SD1.MISO"] },
       { "name": "LCD_DC", "pins": ["U1.IO4", "DS1.DC/RS", "DS2.DC/RS"] },
-      { "name": "LCD_RST", "pins": ["U1.IO16", "DS1.RESET", "DS2.RESET"] },
+      { "name": "LCD_RST", "pins": ["U1.IO27", "DS1.RESET", "DS2.RESET"] },
       { "name": "LCD1_CS", "pins": ["U1.IO5", "DS1.CS"] },
-      { "name": "LCD2_CS", "pins": ["U1.IO17", "DS2.CS"] },
+      { "name": "LCD2_CS", "pins": ["U1.IO26", "DS2.CS"] },
       { "name": "SD_CS", "pins": ["U1.IO13", "SD1.CS"] }
     ],
+    "nc": ["DS1.SDO(MISO)", "DS2.SDO(MISO)"],
     "groups": [
       { "name": "Power", "parts": ["BT1", "U5", "SW1"] },
       { "name": "Displays", "parts": ["DS1", "DS2"] },
@@ -57,10 +58,10 @@
     ],
     "notes": [
       {
-        "text": "J1, J2 and J3 each carry 1 GND, 2 3V3, 3 SDA, 4 SCL to the J1 of one bank sheet: J1 to bank A (sheet 2), J2 to bank B (sheet 3), J3 to bank C (sheet 4).",
+        "text": "J1, J2 and J3 each carry 1 GND, 2 3V3, 3 SDA, 4 SCL to the J1 of one bank sheet: J1 to bank A (sheet 2), J2 to bank B (sheet 3), J3 to bank C (sheet 4). No I2C pull-ups are drawn. This assumes a module on the bus already has SDA and SCL pull-up resistors: check the OLED (DS3) and the CJMCU-2317 boards. If none has them, add one 4.7 kohm resistor from SDA and one from SCL to 3V3, once for the whole bus.",
         "near": "To the expander banks"
       },
-      { "text": "DS1, DS2 and SD1 share one SPI bus; each has its own CS pin.", "near": "OLED and SD card" }
+      { "text": "DS1, DS2 and SD1 share one SPI bus; each has its own CS pin. The displays are never read, so their SDO (MISO) pins stay unconnected: many of these modules do not release MISO.", "near": "OLED and SD card" }
     ],
     "wires": { "color": { "3V3": "red", "GND": "black", "5V": "orange", "SDA": "blue", "SCL": "yellow" }, "ends": "dupont-female" }
   }

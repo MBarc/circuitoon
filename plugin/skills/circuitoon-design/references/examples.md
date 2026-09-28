@@ -20,7 +20,7 @@ circuitoon layout examples/<file> -o sheet.json && circuitoon gate sheet.json -o
 - `esp32-bme280`: none.
 - `battery-switch`: none.
 - `tilt-sensors-8`: none.
-- `spirit-typewriter/1-main`: one `outputs-fight` warning on MISO, because DS1, DS2 and SD1 all drive it. This is expected for a shared SPI bus, where each device releases MISO while its CS pin is high. Present it to the user as normal for SPI (see "Reading the gate" in `SKILL.md`).
+- `spirit-typewriter/1-main`: none. The displays are never read, so their `SDO(MISO)` pins are in `nc` and only the SD card drives MISO (see "SPI MISO" in `SKILL.md`).
 - The spirit-typewriter bank sheets: none.
 
 Every gate also prints the same "not checked" list: current and heat, bus addresses, floating configuration inputs, firmware, timing, mechanical fit, mains, and the correctness of each part beyond its sources. Pass that list on every time.

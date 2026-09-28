@@ -251,6 +251,7 @@
           "module",
           "name",
           "count",
+          "added",
           "custom"
         ],
         "additionalProperties": false,
@@ -262,6 +263,9 @@
             "type": "string"
           },
           "count": {
+            "type": "integer"
+          },
+          "added": {
             "type": "integer"
           },
           "custom": {

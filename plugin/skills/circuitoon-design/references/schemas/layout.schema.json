@@ -26,9 +26,9 @@
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["module", "name", "count", "custom"],
+        "required": ["module", "name", "count", "added", "custom"],
         "additionalProperties": false,
-        "properties": { "module": { "type": "string" }, "name": { "type": "string" }, "count": { "type": "integer" }, "custom": { "type": "boolean" } }
+        "properties": { "module": { "type": "string" }, "name": { "type": "string" }, "count": { "type": "integer" }, "added": { "type": "integer" }, "custom": { "type": "boolean" } }
       }
     },
     "channels": {

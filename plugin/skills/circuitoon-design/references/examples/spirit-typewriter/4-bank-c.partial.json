@@ -52,7 +52,7 @@
     "groups": [{ "name": "Expander C (0x22)", "parts": ["J1", "U4"] }],
     "notes": [
       {
-        "text": "J1 comes from J3 on sheet 1: 1 GND, 2 3V3, 3 SDA, 4 SCL. A1 to 3V3 and the other address pins to GND give I2C address 0x22; RESET is tied to 3V3.",
+        "text": "J1 comes from J3 on sheet 1: 1 GND, 2 3V3, 3 SDA, 4 SCL. A1 to 3V3 and the other address pins to GND give I2C address 0x22; RESET is tied to 3V3. The I2C pull-ups are on sheet 1 (see its J1 note), not here.",
         "near": "Expander C (0x22)"
       },
       {

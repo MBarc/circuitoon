@@ -52,7 +52,7 @@ export function layoutCommand(args: Args, io: Io): number {
   }
   const { diagram, report, intent, attempts } = r.value
   writeFile(io, out, serializeDiagram(diagram))
-  const q = quantities(intent)
+  const q = quantities(intent, diagram)
   const ch = channelTable(intent)
   if (json) {
     printJson(io, { format: 'circuitoon-cli/layout/1', ok: true, output: out, attempts, report, quantities: q, channels: ch, warnings, errors: [] })

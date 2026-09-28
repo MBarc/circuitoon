@@ -170,7 +170,7 @@ export async function runGate(bytes: Uint8Array, opts: { sheetPath: string; outD
     if (blocked)
       note('blocked-route', c.uid, 'error', `The wire ${c.label ?? `${endpointName(d, c.from)} to ${endpointName(d, c.to)}`} has no clear route: it runs through a part.`, { parts: [c.from.part, c.to.part], wires: [c.uid] })
   const parsed = d.intent !== undefined ? parseNetlist(d.intent, intentLookup(d, libraryLookup)) : null
-  if (parsed?.ok) rows = { quantities: quantities(parsed.intent), channels: channelTable(parsed.intent) }
+  if (parsed?.ok) rows = { quantities: quantities(parsed.intent, d), channels: channelTable(parsed.intent) }
 
   // Renders: the full sheet, and the first repeat copy when there is one. A PNG that could not be
   // made is recorded here and counted as missing in finish().

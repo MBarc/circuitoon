@@ -56,7 +56,7 @@ The readability report lists:
 - `sheet.svg` and `sheet.png`;
 - `focus-<copy>.png` for the first copy of a repeat;
 - `link.txt`, or the sheet file when the link would be too long;
-- `gate.json` (format `circuitoon-cli/gate/1`), with the SHA-256 of the sheet and of every artifact, the blocking findings, the warnings, the "not checked" list, the link, the bill of quantities and the channel table.
+- `gate.json` (format `circuitoon-cli/gate/1`), with the SHA-256 of the sheet and of every artifact, the blocking findings, the warnings, the "not checked" list, the link, the bill of quantities (counted from the sheet; `added` is how many of each part the layout added as routing infrastructure) and the channel table.
 
 Text mode starts with `GATE PASSED`, `GATE BLOCKED` or `GATE INCOMPLETE`.
 

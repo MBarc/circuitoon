@@ -50,6 +50,19 @@ describe('circuitoon gate', () => {
     expect(g.quantities.length).toBeGreaterThan(0)
     expect(g.channels).toHaveLength(8)
   }, 120_000)
+  it('counts the bill of quantities from the sheet, layout-added strips included and marked', async () => {
+    const dir = await laidOut(tiltSensors())
+    const sheet = JSON.parse(readFileSync(join(dir, 'sheet.json'), 'utf8')) as { parts: { designator: string; module: string }[] }
+    const { report } = await runGate(readFileSync(join(dir, 'sheet.json')), { sheetPath: 'sheet.json', outDir: join(dir, 'out'), io: quietIo(dir) })
+    const q = report.quantities
+    expect(q.reduce((n, r) => n + r.count, 0)).toBe(sheet.parts.length)
+    const added = sheet.parts.filter((p) => /^DP\d+$/.test(p.designator))
+    expect(added.length).toBeGreaterThan(0)
+    const strips = q.find((r) => r.module === added[0].module)!
+    expect(strips.count).toBe(sheet.parts.filter((p) => p.module === added[0].module).length)
+    expect(strips.added).toBe(added.length)
+    expect(q.filter((r) => r.module !== added[0].module).every((r) => r.added === 0)).toBe(true)
+  }, 120_000)
   it('blocks a sheet with no intent (exit 1), even without a browser', async () => {
     const dir = await laidOut()
     edit(dir, (s) => void delete s.intent)

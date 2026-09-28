@@ -62,6 +62,29 @@ describe('worked examples', () => {
     }
     expect(balls).toBe(42)
   })
+  it('gives each bank its own I2C address, ties RESET high, and wires every connector in the same pin order', () => {
+    type Net = { name: string; pins: string[] }
+    const netOf = (nets: Net[], pin: string) => nets.find((n) => n.pins.includes(pin))?.name
+    const order = (nets: Net[], ref: string) => [1, 2, 3, 4].map((i) => netOf(nets, `${ref}.${i}`))
+    const main: Net[] = read(join(TW, '1-main.netlist.json')).nets
+    const addresses = new Set<number>()
+    for (const s of sheets.slice(1)) {
+      const n = read(join(TW, `${s}.netlist.json`))
+      const u = n.parts.find((p: { module: string }) => p.module === 'mcp23017-cjmcu-2317').ref
+      expect(netOf(n.nets, `${u}.RESET`), `${s} RESET`).toBe('3V3')
+      // A0 to A2 strapped: each to 3V3 (1) or GND (0), never floating.
+      let address = 0x20
+      for (const [bit, pin] of ['A0', 'A1', 'A2'].entries()) {
+        const net = netOf(n.nets, `${u}.${pin}`)
+        expect(['3V3', 'GND'], `${s} ${pin}`).toContain(net)
+        if (net === '3V3') address |= 1 << bit
+      }
+      addresses.add(address)
+      expect(order(n.nets, 'J1'), s).toEqual(['GND', '3V3', 'SDA', 'SCL'])
+    }
+    expect([...addresses].sort()).toEqual([0x20, 0x21, 0x22])
+    for (const j of ['J1', 'J2', 'J3']) expect(order(main, j), `1-main ${j}`).toEqual(['GND', '3V3', 'SDA', 'SCL'])
+  })
   for (const c of cases) {
     it(`${c.name}: nothing blocks`, async () => {
       const dir = await laidOut(c.from, c.file, c.keep)

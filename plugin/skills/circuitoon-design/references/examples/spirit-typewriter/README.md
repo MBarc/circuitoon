@@ -6,7 +6,7 @@ Drawn as one sheet, this is 109 parts, 253 wires and about 1,700 wire crossings,
 
 | Sheet | Holds | Crossings (plain `layout`) | Crossings (`layout --keep`, shipped) | Wire length (keep) |
 | --- | --- | --- | --- | --- |
-| `1-main` | Power, ESP32, displays, OLED, SD card, and J1 to J3 (one JST-XH 4-pin per bank) | 818 | **302** | 20,180 px |
+| `1-main` | Power, ESP32, displays, OLED, SD card, and J1 to J3 (one JST-XH 4-pin per bank) | 818 | **319** | 20,376 px |
 | `2-bank-a` | J1, MCP23017 U2 at 0x20, balls 1 to 14 | 525 | **565** | 42,550 px |
 | `3-bank-b` | J1, MCP23017 U3 at 0x21, balls 15 to 28 | 518 | **545** | 42,350 px |
 | `4-bank-c` | J1, MCP23017 U4 at 0x22, balls 29 to 42 | 521 | **543** | 42,370 px |
@@ -41,17 +41,18 @@ These choices are made on the sheets, and the user should confirm them:
 
 - **Balls per channel.** Both of a ball's switches share one channel. If each switch needs its own input, that is 84 inputs, which needs six expanders instead of three.
 - **Inputs per chip.** GPA7 and GPB7 are output-only on the MCP23017 (its datasheet and the catalog say so), so each chip takes 14 balls on GPA0 to GPA6 and GPB0 to GPB6. Three chips give exactly 42.
-- **Addresses.** 0x20, 0x21 and 0x22 (A0 or A1 tied to 3V3). RESET is tied to 3V3.
-- **ESP32 pins.** I2C on IO21 (SDA) and IO22 (SCL). SPI on IO18 (SCK), IO23 (MOSI) and IO19 (MISO). Displays: CS on IO5 and IO17, DC on IO4, RESET on IO16. SD card: CS on IO13.
+- **Addresses.** 0x20, 0x21 and 0x22 (A0 or A1 tied to 3V3). RESET is tied to 3V3 on every bank.
+- **ESP32 pins.** I2C on IO21 (SDA) and IO22 (SCL). SPI on IO18 (SCK), IO23 (MOSI) and IO19 (MISO, the SD card only). Displays: CS on IO5 and IO26, DC on IO4, RESET on IO27. SD card: CS on IO13. IO16 and IO17 are left free, because a WROVER module uses them for PSRAM; these pins work on a WROOM and a WROVER alike.
+- **Display MISO is not wired.** The displays are only written to, and many of these modules do not release SDO (MISO), which would break SD card reads. DS1 and DS2 `SDO(MISO)` are in `nc`.
+- **I2C pull-ups.** None are drawn. The sheets assume a module on the bus already carries SDA and SCL pull-ups (check the OLED and the CJMCU-2317 boards); if none does, add one 4.7 kohm resistor from SDA and one from SCL to 3V3, once for the whole bus. Confirm this with the user.
 - **Inputs are active low.** Enable the MCP23017 pull-ups in firmware; a closed switch reads low.
 - **Touch is not wired.** The displays' touch pins and their SD slots are unconnected.
 
 ## Warnings
 
-- `1-main`: `outputs-fight` on MISO (DS1, DS2 and SD1 all drive it). This is normal for a shared SPI bus: each device releases MISO while its CS is high, and every device has its own CS here.
-- Bank sheets: none.
+- None on any sheet. (Before the display SDO pins were left unconnected, `1-main` warned `outputs-fight` on MISO.)
 
 ## Can a person follow these sheets?
 
-- **`1-main`: yes, with care.** The power chain, the connectors and each display header are clear. The wires between the ESP32, BB1 and the display headers form a dense band. Each wire can be traced by its colour, but open the link and click a wire to be sure.
-- **Bank sheets: only in part.** The ball side is clear: each ball's two switches drop to a local ground strip, and its two channel wires run as one colour to BB2. The expander end is a knot: 14 channel pairs arrive at BB2, and 14 wires go from the strips to the CJMCU pads, over the board's art. A builder should read the channel table (`gate.json`, or the `layout` output) for which pad each ball uses, and use the focused PNG (`focus-ballA_1.png`) or the editor link to follow one ball.
+- **`1-main`: yes, with care.** The power chain, the connectors and each display header are clear. The wires between the ESP32, BB1 and the display headers form a dense band. Each wire can be traced by its color, but open the link and click a wire to be sure.
+- **Bank sheets: only in part.** The ball side is clear: each ball's two switches drop to a local ground strip, and its two channel wires run as one color to BB2. The expander end is a knot: 14 channel pairs arrive at BB2, and 14 wires go from the strips to the CJMCU pads, over the board's art. A builder should read the channel table (`gate.json`, or the `layout` output) for which pad each ball uses, and use the focused PNG (`focus-ballA_1.png`) or the editor link to follow one ball.

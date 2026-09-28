@@ -25,9 +25,10 @@ Below, `circuitoon` stands for that whole command. Work in a scratch folder of t
 
 ## Rules that are never bent
 
-- **Nothing reaches the user before `gate` passes.** After any change to the netlist or the sheet, run `gate` again. Present only files whose SHA-256 matches that run's `gate.json`.
+- **Nothing reaches the user before `gate` passes.** After any change to the netlist or the sheet, run `gate` again. Present only files whose SHA-256 matches that run's `gate.json`: hash each file (for example `sha256sum out/sheet.png`, or `Get-FileHash` on Windows) and compare it with its entry in `artifacts[].sha256`; the sheet itself must match `diagram.sha256`.
+- **The one exception is `GATE INCOMPLETE`** (exit 3: nothing blocks, but no browser could draw the PNGs). Then only `out/sheet.svg` and the link go to the user, labelled as not fully gated because the PNG step did not run. Nothing else.
 - **Never invent a pin or a pinout.** Use the pin names that `circuitoon part <id>` prints. A part that is not built in may be embedded only from its maker's documentation, with those URLs in `source`, and it is reported as custom and unverified. If a pin cannot be sourced, say so and stop.
-- **Ask about what you cannot verify.** Wiring choices the parts do not decide are the user's call: how many switches a sensor holds, whether they share one input, which channel or GPIO each one uses, an I2C address, the power source. Ask before you design. If you must assume to show an example, write the assumption in a netlist `note` and list it back to the user as an assumption to confirm.
+- **Ask about what you cannot verify.** Wiring choices the parts do not decide are the user's call: how many switches a sensor holds, whether they share one input, which channel or GPIO each one uses, an I2C address, the power source. For an ESP32, ask which module the board carries (WROOM or WROVER) before you use IO16 or IO17: a WROVER uses them for its PSRAM. Ask before you design. If you must assume to show an example, write the assumption in a netlist `note` and list it back to the user as an assumption to confirm.
 - **Always report the gate's warnings and its "not checked" list** in plain words.
 - **Research never sends personal data.** No names, emails, addresses, order numbers or tokens in URLs, search queries or request bodies.
 
@@ -53,13 +54,13 @@ With `--json`, a failure prints `{ "ok": false, "exit": N, "error": { "code", "m
    - A header pin or pad takes one wire. A net of three or more pins therefore needs a strip to share: add a breadboard or a `power-rail-strip`. Otherwise the layout fails with "needs a distribution point". This includes a repeat whose template net holds two pins and is bound to a third.
    - Use `repeat` for repeated sub-circuits, with one explicit binding per copy.
    - Add `groups` and `notes` where they help someone read the sheet.
-4. **Size it.** Split large designs into several sheets (see below) before you lay anything out.
-5. **Lay out and gate.** `circuitoon layout netlist.json -o sheet.json`, then `circuitoon gate sheet.json -o out`. Fix every blocking finding in the netlist (or, for a hand edit, in the sheet), and gate again.
-6. **Look at the renders** with the Read tool: `out/sheet.png`, and for repeats `out/focus-<copy>.png`. Also run `circuitoon render sheet.json -o block.png --focus <group or copy>` on each block you need to check. If you see overlapping labels, wires into the wrong strip, or a crowded knot, fix it (see "Improving a layout") and gate again.
+4. **Lay out once, then decide whether to split.** Run `circuitoon layout netlist.json -o sheet.json` and read its report. If it shows the signs in "Large designs: split into sheets" below, split the netlist into sheets now, before any more work on the single sheet.
+5. **Gate.** `circuitoon gate sheet.json -o out`. Fix every blocking finding in the netlist (or, for a hand edit, in the sheet), lay out again if the netlist changed, and gate again.
+6. **Look at the renders** with the Read tool: `out/sheet.png`, and for repeats `out/focus-<copy>.png`. Also run `circuitoon render sheet.json -o block.png --focus <group or copy>` on each block you need to check. These extra focus renders are for your review only: they are not in `gate.json`, so they are never presented. If you see overlapping labels, wires into the wrong strip, or a crowded knot, fix it (see "Improving a layout") and gate again.
 7. **Present** (only after the last `gate` exited 0):
    - the PNG (`out/sheet.png`, plus the focused PNGs for repeats);
    - the link, with its notice that anyone with the link can see the diagram and nothing is uploaded. If the link was too long, `gate` wrote the sheet file instead: give that file and say to open it with Import JSON;
-   - the bill of quantities and, for repeats, the channel table (both are in `gate.json`);
+   - the bill of quantities and, for repeats, the channel table (both are in `gate.json`). The bill counts what is on the sheet: rows with `added` above 0 include rail strips or breadboards the layout added to distribute nets, so say those are extra parts to buy;
    - every warning, explained;
    - the "not checked" list;
    - every assumption the user still has to confirm.
@@ -85,7 +86,7 @@ Split along real connectors:
 
 The `layout` report prints: body overlaps and caption overlaps (both must be 0), wire crossings, total wire length, sheet size, and blocked nets (must be none). Use crossings and wire length to compare attempts. Always look at the picture as well.
 
-**To move parts, use `layout --keep`.** Write a `circuitoon-partial/1` file that holds the netlist as `intent`, plus `x`, `y` and optional `rotation` for the parts you want to pin. Every other part is placed around them. Each spirit-typewriter sheet ships this way. Placing the breadboard in the middle and the boards around it took the main sheet from 818 crossings to 302.
+**To move parts, use `layout --keep`.** Write a `circuitoon-partial/1` file that holds the netlist as `intent`, plus `x`, `y` and optional `rotation` for the parts you want to pin. Every other part is placed around them. Each spirit-typewriter sheet ships this way. Placing the breadboard in the middle and the boards around it took the main sheet from 818 crossings to about 300.
 
 **`--keep` gotcha:** a repeat block gets its own local rail strips (`DP1`, `DP2`, ...), so each copy's shared ground or power is a short drop. Those strips exist only when **no member of the block is kept**.
 
@@ -97,9 +98,9 @@ The `layout` report prints: body overlaps and caption overlaps (both must be 0),
 
 - `GATE PASSED` (exit 0): present, following step 7.
 - `GATE BLOCKED` (exit 1): each blocking line names its rule: `missing-connection`, `merge`, `extra-connection`, `nc`, `capacity`, `value-drift`, `mount`, `extra-part`, `module-mismatch`, `intent`, `load`, `blocked-route`, or a wiring checker rule (`short`, `reversed`, `supply-too-high`, ...). Fix the problem and gate again. Never present a blocked sheet.
-- `GATE INCOMPLETE` (exit 3): no Chrome or Edge was found for the PNGs. Tell the user. Offer `circuitoon render sheet.json -o sheet.png --svg sheet.svg` (the SVG needs no browser) and the link, and say the PNG step did not run.
+- `GATE INCOMPLETE` (exit 3): no Chrome or Edge was found for the PNGs. Tell the user. Present `out/sheet.svg` (already written by `gate`, and listed in `gate.json`) and the link, labelled as not fully gated, and say the PNG step did not run. Do not run `render` for a PNG: it needs the same browser and exits 3 too.
 
-**Warnings that are normal.** `outputs-fight` on a shared SPI MISO net (for example two displays and an SD card on one bus) is expected: SPI devices release MISO when their CS is high, which the checker cannot see. Tell the user: "The checker flags MISO because several devices can drive it. That is normal for SPI, as long as each device has its own CS pin and only one CS is low at a time. Some cheap SD card modules do not release MISO; if the displays misbehave with the card inserted, that module is the suspect." Any other `outputs-fight` is a real conflict: fix it.
+**SPI MISO.** `outputs-fight` on a shared SPI MISO net means several devices can drive it. A well-behaved SPI device releases MISO while its CS is high, which the checker cannot see, but many cheap TFT display modules do not release their SDO, so they corrupt reads from anything else on the bus, such as an SD card. When the design never reads a display, leave its SDO (MISO) unconnected and list it in `nc`: the warning then goes away and the bus is safe. Only when a display must be read does it share MISO; then tell the user: "The checker flags MISO because several devices drive it. That works only if each one releases MISO when its CS is high. If reads fail, the display is the usual culprit: give it its own MISO pin or a buffer." Any other `outputs-fight` is a real conflict: fix it.
 
 ## References
 

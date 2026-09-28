@@ -44150,13 +44150,32 @@ var NOT_CHECKED = [
 ];
 //#endregion
 //#region src/agent/tables.ts
-function quantities(intent) {
-	const count = /* @__PURE__ */ new Map();
-	for (const p of intent.parts) count.set(p.module, (count.get(p.module) ?? 0) + 1);
-	return [...count].map(([module, n]) => ({
+/** Parts per module: on `sheet` when given (what gets built), else in the intent. */
+function quantities(intent, sheet) {
+	const refs = new Set(intent.parts.map((p) => p.ref));
+	const rows = /* @__PURE__ */ new Map();
+	const parts = sheet ? sheet.parts.map((p) => ({
+		module: p.module,
+		added: !refs.has(p.designator)
+	})) : intent.parts.map((p) => ({
+		module: p.module,
+		added: false
+	}));
+	for (const p of parts) {
+		const row = rows.get(p.module) ?? {
+			count: 0,
+			added: 0
+		};
+		row.count++;
+		if (p.added) row.added++;
+		rows.set(p.module, row);
+	}
+	const nameOf = (module) => intent.modules[module]?.name ?? sheet?.modules[module]?.name ?? module;
+	return [...rows].map(([module, r]) => ({
 		module,
-		name: intent.modules[module].name,
-		count: n,
+		name: nameOf(module),
+		count: r.count,
+		added: r.added,
 		custom: intent.custom.includes(module)
 	})).sort((a, b) => naturalCompare(a.name, b.name));
 }
@@ -44168,7 +44187,7 @@ function channelTable(intent) {
 	})));
 }
 function quantitiesText(rows) {
-	return rows.map((r) => `  ${r.count} x ${r.name} [${r.module}]${r.custom ? " (custom, unverified)" : ""}`).join("\n");
+	return rows.map((r) => `  ${r.count} x ${r.name} [${r.module}]${r.added ? ` (${r.added === r.count ? "all" : r.added} added by layout)` : ""}${r.custom ? " (custom, unverified)" : ""}`).join("\n");
 }
 function channelsText(rows) {
 	const w1 = Math.max(4, ...rows.map((r) => r.copy.length));
@@ -44575,7 +44594,7 @@ async function runGate(bytes, opts) {
 	});
 	const parsed = d.intent !== void 0 ? parseNetlist(d.intent, intentLookup(d, libraryLookup)) : null;
 	if (parsed?.ok) rows = {
-		quantities: quantities(parsed.intent),
+		quantities: quantities(parsed.intent, d),
 		channels: channelTable(parsed.intent)
 	};
 	const shoot = (drawn, kind, name) => {
@@ -46007,7 +46026,7 @@ function layoutCommand(args, io) {
 	}
 	const { diagram, report, intent, attempts } = r.value;
 	writeFile(io, out, serializeDiagram(diagram));
-	const q = quantities(intent);
+	const q = quantities(intent, diagram);
 	const ch = channelTable(intent);
 	if (json) {
 		printJson(io, {
