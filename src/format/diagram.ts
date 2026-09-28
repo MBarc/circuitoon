@@ -41,6 +41,12 @@ export interface Connection {
   route?: [number, number][]
   /** What each end physically is (a Dupont pin, an alligator clip); omitted ends are bare wire. */
   ends?: WireEnds
+  /**
+   * True on a wire the layout added to realize a connection (a wire into a strip hole, a jumper
+   * between strips, a rail wire): routing infrastructure, which verification never counts as an
+   * intended component connection.
+   */
+  routing?: boolean
 }
 export interface Annotation {
   uid: string
@@ -59,6 +65,11 @@ export interface Diagram {
   parts: PartInstance[]
   connections: Connection[]
   annotations?: Annotation[]
+  /**
+   * The netlist (circuitoon-netlist/1) the sheet was laid out from. Kept through every edit, so a
+   * later check re-verifies the circuit against it. Loaded as opaque data; `verify` parses it.
+   */
+  intent?: unknown
 }
 
 export const NAMED_COLORS: Record<string, string> = {
@@ -701,6 +712,9 @@ export type DiagramResult = { ok: true; diagram: Diagram; warnings: string[] } |
 export const COORD_LIMIT = 100_000
 /** Most points a stored route may have. */
 export const ROUTE_POINT_LIMIT = 200
+/** Longest frame label and note text, in characters. */
+export const ANNOTATION_LABEL_MAX = 80
+export const ANNOTATION_TEXT_MAX = 500
 
 /**
  * Checks a parsed diagram file. Structural problems refuse the load (errors); a connection
@@ -867,6 +881,7 @@ export function validateDiagram(raw: unknown): DiagramResult {
           if (px !== qx && py !== qy) warnings.push(`${at}.route[${k}]: diagonal step from route[${k - 1}] (each step should be horizontal or vertical)`)
         }
       if (c.label !== undefined && typeof c.label !== 'string') errors.push(`${at}.label: must be a string`)
+      if (c.routing !== undefined && typeof c.routing !== 'boolean') errors.push(`${at}.routing: must be true or false`)
       // Cable ends are presentation: anything unknown is dropped with a warning, never refused.
       if (c.ends !== undefined) {
         if (!isObj(c.ends)) {
@@ -897,9 +912,23 @@ export function validateDiagram(raw: unknown): DiagramResult {
         const at = `annotations[${i}]`
         if (!isObj(a)) return void errors.push(`${at}: must be an object`)
         claim(a.uid, at)
-        for (const k of ['label', 'text']) if (a[k] !== undefined && typeof a[k] !== 'string') errors.push(`${at}.${k}: must be a string`)
+        if (a.type !== 'frame' && a.type !== 'text') errors.push(`${at}.type: must be "frame" or "text"`)
+        const coord = (v: unknown) => isNum(v) && Math.abs(v) <= COORD_LIMIT
+        if (!coord(a.x) || !coord(a.y)) errors.push(`${at}: x and y must be numbers within +-${COORD_LIMIT}`)
+        if (a.type === 'frame')
+          for (const k of ['w', 'h'])
+            if (!(isNum(a[k]) && (a[k] as number) > 0 && (a[k] as number) <= 2 * COORD_LIMIT))
+              errors.push(`${at}.${k}: must be a number above 0, at most ${2 * COORD_LIMIT}`)
+        for (const [k, max] of [['label', ANNOTATION_LABEL_MAX], ['text', ANNOTATION_TEXT_MAX]] as const) {
+          if (a[k] === undefined) continue
+          if (typeof a[k] !== 'string') errors.push(`${at}.${k}: must be a string`)
+          else if ((a[k] as string).length > max) errors.push(`${at}.${k}: at most ${max} characters`)
+        }
+        if (a.type === 'text' && a.text === undefined) errors.push(`${at}.text: required on a text note`)
       })
   }
+
+  if (raw.intent !== undefined && !isObj(raw.intent)) errors.push('intent: must be an object (a circuitoon-netlist/1 document)')
 
   if (errors.length) return { ok: false, errors }
   let diagram = raw as unknown as Diagram
