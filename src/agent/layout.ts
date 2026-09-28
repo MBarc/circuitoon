@@ -75,7 +75,7 @@ export function layoutNetlist(raw: unknown, opts: { library?: ModuleLookup; keep
       }
     }
     if (blocked.length) continue
-    const findings = verifyDiagram(diagram, library)
+    const findings = verifyDiagram(diagram, library).filter((f) => f.severity === 'error')
     if (findings.length) return { ok: false, stage: 'layout', errors: findings.map((f) => `verify ${f.rule}: ${f.message}`) }
     return { ok: true, value: { diagram, report: readability(diagram, routes, real.value.netOfWire), intent, attempts: i + 1, netOfWire: real.value.netOfWire } }
   }

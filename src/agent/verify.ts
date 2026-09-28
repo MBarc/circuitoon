@@ -14,15 +14,16 @@ import { type Intent, type IntentPart, type ModuleLookup, type Terminal, parseNe
 import { internalComponent } from './internal.ts'
 
 export type VerifyRule =
-  | 'intent' | 'part-missing' | 'part-duplicate' | 'module-mismatch' | 'module-missing' | 'value-drift' | 'mount' | 'extra-part'
+  | 'intent' | 'module-drift' | 'part-missing' | 'part-duplicate' | 'module-mismatch' | 'module-missing' | 'value-drift' | 'mount' | 'extra-part'
   | 'missing-connection' | 'merge' | 'extra-connection' | 'nc' | 'capacity'
-const ORDER: VerifyRule[] = ['intent', 'part-missing', 'part-duplicate', 'module-mismatch', 'module-missing', 'value-drift', 'mount', 'extra-part', 'missing-connection', 'merge', 'extra-connection', 'nc', 'capacity']
+const ORDER: VerifyRule[] = ['intent', 'module-drift', 'part-missing', 'part-duplicate', 'module-mismatch', 'module-missing', 'value-drift', 'mount', 'extra-part', 'missing-connection', 'merge', 'extra-connection', 'nc', 'capacity']
 
 export interface VerifyFinding {
   /** The rule plus what causes it, so it stays the same while the problem does. */
   id: string
   rule: VerifyRule
-  severity: 'error'
+  /** Every finding blocks, except a stored module the library has since replaced with a newer version. */
+  severity: 'error' | 'warning'
   message: string
   /** Part uids, pins and wire uids to highlight. */
   parts: string[]
@@ -32,8 +33,38 @@ export interface VerifyFinding {
 
 export const NO_INTENT = 'no intent: lay out from a netlist or add intent'
 
-type Draft = Omit<VerifyFinding, 'id' | 'severity'> & { causes: string[] }
-type Add = (rule: VerifyRule, message: string, causes: string[], more?: { parts?: string[]; pins?: Endpoint[]; wires?: string[] }) => void
+type Draft = Omit<VerifyFinding, 'id'> & { causes: string[] }
+type Add = (rule: VerifyRule, message: string, causes: string[], more?: { parts?: string[]; pins?: Endpoint[]; wires?: string[]; severity?: VerifyFinding['severity'] }) => void
+
+/** JSON with object keys sorted, so two modules compare by content whatever their key order. */
+function canonical(v: unknown): string {
+  if (Array.isArray(v)) return `[${v.map(canonical).join(',')}]`
+  if (isObj(v)) return `{${Object.keys(v).sort().filter((k) => v[k] !== undefined).map((k) => `${JSON.stringify(k)}:${canonical(v[k])}`).join(',')}}`
+  return JSON.stringify(v) ?? 'null'
+}
+
+/**
+ * Every module the sheet stores under a library id must be the library's copy (the sheet's copy is
+ * what the editor draws and what verify reads, so a stored BME280 with SDA and SCL swapped would
+ * otherwise verify against itself). Same version, different content blocks; a library copy with a
+ * higher version is a warning (the sheet predates it); a stored copy claiming a higher version than
+ * the library, and different, blocks too, since nothing vouches for it.
+ */
+function moduleDrift(d: Diagram, library: ModuleLookup, add: Add) {
+  for (const [id, stored] of Object.entries(d.modules)) {
+    const lib = library(id)
+    if (!lib || canonical(stored) === canonical(lib)) continue
+    const parts = d.parts.filter((p) => p.module === id).map((p) => p.uid)
+    const [sv, lv] = [stored.version ?? 1, lib.version ?? 1]
+    if (lv > sv) add('module-drift', `The sheet stores ${id} version ${sv}; the library now has version ${lv}. Lay the sheet out again (or replace the part) to use the current part.`, [id], { parts, severity: 'warning' })
+    else add('module-drift', `The sheet's copy of ${id} (version ${sv}) differs from the library's version ${lv}: its pins, art or electrical data were changed. Use the library part (lay out again), or embed a custom part under its own id.`, [id], { parts })
+  }
+}
+
+/** Infrastructure (strips, rails) that the intent need not list: only a real library board counts. */
+function libraryBoard(d: Diagram, library: ModuleLookup, id: string): boolean {
+  return moduleOf(d, id) !== undefined && isBoard(library(id))
+}
 
 /**
  * How a sheet's intent finds its modules: the sheet's embedded copy first (so a later library
@@ -46,12 +77,13 @@ export function intentLookup(d: Diagram, library: ModuleLookup): ModuleLookup {
 
 export function verifyDiagram(d: Diagram, library: ModuleLookup): VerifyFinding[] {
   const found: Draft[] = []
-  const add: Add = (rule, message, causes, more = {}) => found.push({ rule, message, causes, parts: more.parts ?? [], pins: more.pins ?? [], wires: more.wires ?? [] })
+  const add: Add = (rule, message, causes, more = {}) => found.push({ rule, message, causes, severity: more.severity ?? 'error', parts: more.parts ?? [], pins: more.pins ?? [], wires: more.wires ?? [] })
+  moduleDrift(d, library, add)
   if (d.intent === undefined) add('intent', NO_INTENT, ['intent'])
   else {
     const r = parseNetlist(d.intent, intentLookup(d, library))
     if (!r.ok) add('intent', `intent is not a valid netlist: ${r.errors.slice(0, 5).join('; ')}${r.errors.length > 5 ? ` (and ${r.errors.length - 5} more)` : ''}`, ['intent'])
-    else against(d, r.intent, add)
+    else against(d, r.intent, library, add)
   }
   capacity(d, add)
   found.sort((a, b) => ORDER.indexOf(a.rule) - ORDER.indexOf(b.rule) || (a.message < b.message ? -1 : a.message > b.message ? 1 : 0))
@@ -60,7 +92,7 @@ export function verifyDiagram(d: Diagram, library: ModuleLookup): VerifyFinding[
     const base = `${f.rule}|${[...new Set(causes)].sort().join(',')}`
     const n = seen.get(base) ?? 0
     seen.set(base, n + 1)
-    return { id: n ? `${base}#${n}` : base, severity: 'error' as const, ...f }
+    return { id: n ? `${base}#${n}` : base, ...f }
   })
 }
 
@@ -109,7 +141,7 @@ function valueDrifts(ip: IntentPart, want: ModuleDef, part: PartInstance, have: 
   return out
 }
 
-function against(d: Diagram, intent: Intent, add: Add) {
+function against(d: Diagram, intent: Intent, library: ModuleLookup, add: Add) {
   const byDesignator = new Map<string, PartInstance[]>()
   for (const p of d.parts) byDesignator.set(p.designator, [...(byDesignator.get(p.designator) ?? []), p])
   const uidOf = new Map<string, string>()
@@ -149,7 +181,7 @@ function against(d: Diagram, intent: Intent, add: Add) {
   }
   const refs = new Set(intent.parts.map((p) => p.ref))
   for (const p of d.parts)
-    if (!refs.has(p.designator) && !isBoard(moduleOf(d, p.module))) add('extra-part', `${p.designator} (${p.module}) is on the sheet but not in the intent.`, [p.uid], { parts: [p.uid] })
+    if (!refs.has(p.designator) && !libraryBoard(d, library, p.module)) add('extra-part', `${p.designator} (${p.module}) is on the sheet but not in the intent.`, [p.uid], { parts: [p.uid] })
   connectivity(d, intent, uidOf, add)
 }
 

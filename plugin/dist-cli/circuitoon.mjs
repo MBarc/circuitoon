@@ -43845,6 +43845,7 @@ function internalComponent(m, name) {
 //#region src/agent/verify.ts
 var ORDER = [
 	"intent",
+	"module-drift",
 	"part-missing",
 	"part-duplicate",
 	"module-mismatch",
@@ -43859,6 +43860,36 @@ var ORDER = [
 	"capacity"
 ];
 var NO_INTENT = "no intent: lay out from a netlist or add intent";
+/** JSON with object keys sorted, so two modules compare by content whatever their key order. */
+function canonical(v) {
+	if (Array.isArray(v)) return `[${v.map(canonical).join(",")}]`;
+	if (isObj(v)) return `{${Object.keys(v).sort().filter((k) => v[k] !== void 0).map((k) => `${JSON.stringify(k)}:${canonical(v[k])}`).join(",")}}`;
+	return JSON.stringify(v) ?? "null";
+}
+/**
+* Every module the sheet stores under a library id must be the library's copy (the sheet's copy is
+* what the editor draws and what verify reads, so a stored BME280 with SDA and SCL swapped would
+* otherwise verify against itself). Same version, different content blocks; a library copy with a
+* higher version is a warning (the sheet predates it); a stored copy claiming a higher version than
+* the library, and different, blocks too, since nothing vouches for it.
+*/
+function moduleDrift(d, library, add) {
+	for (const [id, stored] of Object.entries(d.modules)) {
+		const lib = library(id);
+		if (!lib || canonical(stored) === canonical(lib)) continue;
+		const parts = d.parts.filter((p) => p.module === id).map((p) => p.uid);
+		const [sv, lv] = [stored.version ?? 1, lib.version ?? 1];
+		if (lv > sv) add("module-drift", `The sheet stores ${id} version ${sv}; the library now has version ${lv}. Lay the sheet out again (or replace the part) to use the current part.`, [id], {
+			parts,
+			severity: "warning"
+		});
+		else add("module-drift", `The sheet's copy of ${id} (version ${sv}) differs from the library's version ${lv}: its pins, art or electrical data were changed. Use the library part (lay out again), or embed a custom part under its own id.`, [id], { parts });
+	}
+}
+/** Infrastructure (strips, rails) that the intent need not list: only a real library board counts. */
+function libraryBoard(d, library, id) {
+	return moduleOf(d, id) !== void 0 && isBoard(library(id));
+}
 /**
 * How a sheet's intent finds its modules: the sheet's embedded copy first (so a later library
 * change never breaks an old sheet), then the library. Ids the intent embeds itself are left to it.
@@ -43873,15 +43904,17 @@ function verifyDiagram(d, library) {
 		rule,
 		message,
 		causes,
+		severity: more.severity ?? "error",
 		parts: more.parts ?? [],
 		pins: more.pins ?? [],
 		wires: more.wires ?? []
 	});
+	moduleDrift(d, library, add);
 	if (d.intent === void 0) add("intent", NO_INTENT, ["intent"]);
 	else {
 		const r = parseNetlist(d.intent, intentLookup(d, library));
 		if (!r.ok) add("intent", `intent is not a valid netlist: ${r.errors.slice(0, 5).join("; ")}${r.errors.length > 5 ? ` (and ${r.errors.length - 5} more)` : ""}`, ["intent"]);
-		else against(d, r.intent, add);
+		else against(d, r.intent, library, add);
 	}
 	capacity(d, add);
 	found.sort((a, b) => ORDER.indexOf(a.rule) - ORDER.indexOf(b.rule) || (a.message < b.message ? -1 : a.message > b.message ? 1 : 0));
@@ -43892,7 +43925,6 @@ function verifyDiagram(d, library) {
 		seen.set(base, n + 1);
 		return {
 			id: n ? `${base}#${n}` : base,
-			severity: "error",
 			...f
 		};
 	});
@@ -43946,7 +43978,7 @@ function valueDrifts(ip, want, part, have) {
 	}
 	return out;
 }
-function against(d, intent, add) {
+function against(d, intent, library, add) {
 	const byDesignator = /* @__PURE__ */ new Map();
 	for (const p of d.parts) byDesignator.set(p.designator, [...byDesignator.get(p.designator) ?? [], p]);
 	const uidOf = /* @__PURE__ */ new Map();
@@ -43983,7 +44015,7 @@ function against(d, intent, add) {
 		else if (issues.has(uid)) add("mount", `${ip.ref} is set to plug into ${ip.on} but is not seated (${issues.get(uid).reason}), so its legs connect nothing.`, [ip.ref], { parts: [uid, board] });
 	}
 	const refs = new Set(intent.parts.map((p) => p.ref));
-	for (const p of d.parts) if (!refs.has(p.designator) && !isBoard(moduleOf(d, p.module))) add("extra-part", `${p.designator} (${p.module}) is on the sheet but not in the intent.`, [p.uid], { parts: [p.uid] });
+	for (const p of d.parts) if (!refs.has(p.designator) && !libraryBoard(d, library, p.module)) add("extra-part", `${p.designator} (${p.module}) is on the sheet but not in the intent.`, [p.uid], { parts: [p.uid] });
 	connectivity(d, intent, uidOf, add);
 }
 function connectivity(d, intent, uidOf, add) {
@@ -45912,7 +45944,7 @@ function layoutNetlist(raw, opts = {}) {
 			};
 		}
 		if (blocked.length) continue;
-		const findings = verifyDiagram(diagram, library);
+		const findings = verifyDiagram(diagram, library).filter((f) => f.severity === "error");
 		if (findings.length) return {
 			ok: false,
 			stage: "layout",

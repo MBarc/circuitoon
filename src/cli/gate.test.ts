@@ -212,6 +212,20 @@ describe('circuitoon gate', () => {
     expect(r.code).toBe(1)
     expect((gateJson(dir).blocking as { rule: string }[]).some((f) => f.rule === 'intent')).toBe(true)
   })
+  it('blocks a stored BME280 whose SDA and SCL were swapped (module-drift), though it matches its own wiring', async () => {
+    const example = JSON.parse(readFileSync(join(import.meta.dirname, '..', '..', 'plugin', 'skills', 'circuitoon-design', 'references', 'examples', 'esp32-bme280.netlist.json'), 'utf8'))
+    const dir = await laidOut(example)
+    edit(dir, (s) => {
+      const pins = (s.modules as Record<string, { pins: { name?: string }[] }>)['bme280-module-4pin'].pins
+      const [a, b] = [pins.find((p) => p.name === 'SDA')!, pins.find((p) => p.name === 'SCL')!]
+      ;[a.name, b.name] = ['SCL', 'SDA']
+    })
+    const r = await cli(['gate', 'sheet.json', '-o', 'out'], { cwd: dir, env: noBrowser(dir) })
+    expect(r.code).toBe(1)
+    const blocking = gateJson(dir).blocking as { rule: string; message: string }[]
+    expect(blocking.map((f) => f.rule)).toEqual(['module-drift'])
+    expect(blocking[0].message).toContain('bme280-module-4pin')
+  })
   it('blocks a mounted part that no longer seats on its board', async () => {
     const dir = await laidOut()
     edit(dir, (s) => {

@@ -225,14 +225,15 @@ describe('verifyDiagram', () => {
   })
   it('lets a pad that declares capacity 2 take two wire ends, and only then', () => {
     const pads = (cap?: number): Diagram => {
-      const m = structuredClone(modules['mcp23017-cjmcu-2317'])
+      // Under an id of its own: a changed copy of a library part stored under the library id is drift.
+      const m = { ...structuredClone(modules['mcp23017-cjmcu-2317']), id: 'my-expander' }
       const gnd = m.holes!.find((g) => g.name === 'GND')!
       if (cap === undefined) delete gnd.capacity
       else gnd.capacity = cap
       return {
-        format: 'circuitoon-diagram/1', title: 't', modules: { ...modules, 'mcp23017-cjmcu-2317': m },
+        format: 'circuitoon-diagram/1', title: 't', modules: { ...modules, 'my-expander': m },
         parts: [
-          { uid: 'U2', designator: 'U2', module: 'mcp23017-cjmcu-2317', x: 0, y: 0 },
+          { uid: 'U2', designator: 'U2', module: 'my-expander', x: 0, y: 0 },
           { uid: 'BT1', designator: 'BT1', module: 'battery-holder-2xaa', x: 300, y: 0 },
           { uid: 'R1', designator: 'R1', module: 'resistor', x: 300, y: 200 },
         ],
@@ -242,7 +243,8 @@ describe('verifyDiagram', () => {
         ],
         intent: {
           format: 'circuitoon-netlist/1', title: 't',
-          parts: [{ ref: 'U2', module: 'mcp23017-cjmcu-2317' }, { ref: 'BT1', module: 'battery-holder-2xaa' }, { ref: 'R1', module: 'resistor' }],
+          modules: { 'my-expander': m },
+          parts: [{ ref: 'U2', module: 'my-expander' }, { ref: 'BT1', module: 'battery-holder-2xaa' }, { ref: 'R1', module: 'resistor' }],
           nets: [{ name: 'GND', pins: ['U2.GND', 'BT1.-', 'R1.1'] }],
         },
       }
@@ -251,5 +253,49 @@ describe('verifyDiagram', () => {
     const one = verifyDiagram(pads(), libraryLookup)
     expect(one.map((x) => [x.rule, x.message])).toEqual([['capacity', 'U2 GND hole 0 holds 2 wire ends but takes one.']])
     expect(one[0].wires).toEqual(['w1', 'w2'])
+  })
+})
+
+describe('verifyDiagram against the library (stored modules are not trusted)', () => {
+  it('blocks a stored library module whose pins were swapped, even when it matches its own wiring', () => {
+    const d = sheet()
+    const led = structuredClone(modules.led)
+    const pins = led.pins as { name: string }[]
+    const [a, k] = [pins.findIndex((p) => p.name === 'A'), pins.findIndex((p) => p.name === 'K')]
+    ;[pins[a].name, pins[k].name] = [pins[k].name, pins[a].name]
+    d.modules = { ...d.modules, led }
+    const f = verifyDiagram(d, libraryLookup).filter((x) => x.rule === 'module-drift')
+    expect(f.map((x) => [x.severity, x.parts])).toEqual([['error', ['D1']]])
+    expect(f[0].message).toContain('differs from the library')
+  })
+  it('only warns when the library has a newer version than the stored copy', () => {
+    const d = sheet()
+    const newer = { ...structuredClone(modules.led), version: 2, name: 'LED (revised)' }
+    const lookup = (id: string) => (id === 'led' ? newer : libraryLookup(id))
+    const f = verifyDiagram(d, lookup)
+    expect(f.map((x) => [x.rule, x.severity])).toEqual([['module-drift', 'warning']])
+    expect(f[0].message).toContain('version 2')
+  })
+  it('blocks a stored copy that claims a newer version than the library and differs from it', () => {
+    const d = sheet()
+    d.modules = { ...d.modules, led: { ...structuredClone(modules.led), version: 9, name: 'LED' } }
+    expect(verifyDiagram(d, libraryLookup).map((x) => [x.rule, x.severity])).toEqual([['module-drift', 'error']])
+  })
+  it('counts only a real library board as infrastructure: a stored module marked as a board is still an extra part', () => {
+    const d = sheet()
+    const fake = { ...structuredClone(modules['power-rail-strip']), id: 'my-strip', name: 'My strip' }
+    d.modules = { ...d.modules, 'my-strip': fake }
+    d.parts.push({ uid: 'PR1', designator: 'PR1', module: 'my-strip', x: 0, y: 500 })
+    expect(verifyDiagram(d, libraryLookup).map((x) => [x.rule, x.message])).toEqual([['extra-part', 'PR1 (my-strip) is on the sheet but not in the intent.']])
+  })
+  it('still verifies an embedded part that is not in the library', () => {
+    const d = sheet()
+    const mine = { ...structuredClone(modules.led), id: 'my-led', name: 'My LED' }
+    d.modules = { ...d.modules, 'my-led': mine }
+    d.parts[3] = { ...d.parts[3], module: 'my-led' }
+    const intent = d.intent as { parts: { ref: string; module: string }[]; modules?: unknown }
+    intent.parts = intent.parts.map((p) => (p.ref === 'D1' ? { ...p, module: 'my-led' } : p))
+    intent.modules = { 'my-led': mine }
+    expect(verifyDiagram(d, libraryLookup)).toEqual([])
   })
 })
