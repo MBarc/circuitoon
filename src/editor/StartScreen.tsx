@@ -5,7 +5,7 @@ import { buttonLed, captions } from '../samples/buttonLed.ts'
 import { Sheet } from '../render/Sheet.tsx'
 import { readDiagramFile } from './files.ts'
 
-export function StartScreen({ onOpen }: { onOpen: (d: Diagram, warnings?: string[]) => void }) {
+export function StartScreen({ onOpen, notice = null, busy = false }: { onOpen: (d: Diagram, warnings?: string[]) => void; notice?: string | null; busy?: boolean }) {
   const fileRef = useRef<HTMLInputElement>(null)
   const [error, setError] = useState<string | null>(null)
   const [dragOver, setDragOver] = useState(false)
@@ -67,7 +67,8 @@ export function StartScreen({ onOpen }: { onOpen: (d: Diagram, warnings?: string
             <span>A battery, button, resistor and LED, ready to rearrange.</span>
           </button>
         </div>
-        {error && <p className="start-error" role="alert">{error}</p>}
+        {busy && <p className="hint" role="status">Opening the linked diagram...</p>}
+        {(error ?? notice) && <p className="start-error" role="alert">{error ?? notice}</p>}
         <p className="hint">Diagrams are not saved in the browser yet. Use Export JSON in the editor to keep your work.</p>
       </main>
     </div>
