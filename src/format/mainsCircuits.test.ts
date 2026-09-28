@@ -77,6 +77,9 @@ describe('the spec circuits on built-in parts', () => {
     // The ESP32's GPIO and ground are named, each once, even though the board has two pins labelled GND.
     for (const f of lv) expect(f.message).not.toMatch(/U1 GND and U1 GND/)
     expect(lv.some((f) => f.message.includes('K1 4 and U1 GND may be live'))).toBe(true)
+    // Only the wording names the two GND pins once: the finding still lights both of them.
+    const gnd = lv.find((f) => f.message.includes('K1 4 and U1 GND'))!
+    expect(gnd.pins).toEqual(expect.arrayContaining([{ part: 'u1', pin: 'GND' }, { part: 'u1', pin: 'GND 2' }]))
   })
   it('HLK-PM01 feeding an ESP32: rule-1 errors because the HLK-PM01\'s isolation is unknown', () => {
     const xs = at('xs1', 'XS1', 'outlet-us-5-15r-duplex')

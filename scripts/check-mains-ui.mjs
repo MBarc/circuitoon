@@ -368,6 +368,11 @@ for (const scheme of ['light', 'dark']) {
   check(await page.locator('.print-notice').isVisible(), `${scheme}: the notice is on the printed page`)
   check((await page.locator('.print-notice').textContent()) === NOTICE, `${scheme}: the printed notice is verbatim`)
   {
+    const n = await page.locator('.print-notice').boundingBox()
+    const ed = await page.locator('.editor').boundingBox()
+    check(n.y >= ed.y + ed.height, `${scheme}: in print the notice sits below the editor, covering none of it (notice top ${Math.round(n.y)}, editor bottom ${Math.round(ed.y + ed.height)})`)
+  }
+  {
     const path = join(out, `mains-print-${scheme}.png`)
     await page.screenshot({ path })
     console.log('saved', path)

@@ -8,7 +8,7 @@ import { Part, INK } from '../render/Part.tsx'
 import { LegDots, TakenHoles } from '../render/Boards.tsx'
 import { WireLabel } from '../render/WireLabel.tsx'
 import { CableLayer } from '../render/CableEnd.tsx'
-import { BLOCKED_DASH, Bolts, HazardOutline, Stripe, boltInsets } from '../render/Mains.tsx'
+import { BLOCKED_STROKE, Bolts, HazardOutline, Stripe, boltInsets } from '../render/Mains.tsx'
 import { type WireLook, identityColor, newWireColor, wireLooks } from '../format/mainsLook.ts'
 import { seatedLabels } from '../format/seatedLabels.ts'
 import { addPart, addWire, EMPTY_SELECTION, moveParts, reconnectWire, sameEndpoint, setWireRoute, settleDrop, settleMounts, settleSeats, settlingOf, updateWire, withMounted } from './ops.ts'
@@ -579,7 +579,7 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
         <g fill="none" strokeLinecap="round" strokeLinejoin="round">
           {wires.map(({ conn, d, blocked, points }) => {
             const w = wireWidth(conn.gauge)
-            const dash = blocked ? BLOCKED_DASH : undefined
+            const dash = blocked ? BLOCKED_STROKE : {}
             const selected = selection.wires.includes(conn.uid)
             const dimmed = drag?.kind === 'reconnect' && drag.uid === conn.uid
             const look = looks.get(conn.uid)
@@ -589,8 +589,8 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
               <g key={conn.uid} data-wire={conn.uid} opacity={dimmed ? 0.3 : undefined}>
                 {selected && <path d={conn.ends ? polyline(points) : d} stroke="var(--focus)" strokeOpacity={0.35} strokeWidth={w + 10} />}
                 {look?.hazard && <HazardOutline d={d} width={w} />}
-                <path d={d} stroke={INK} strokeWidth={w + 2.2} strokeDasharray={dash} />
-                <path className="wire-color" d={d} stroke={wireColor(name)} strokeWidth={w} strokeDasharray={dash} />
+                <path d={d} stroke={INK} strokeWidth={w + 2.2} {...dash} />
+                <path className="wire-color" d={d} stroke={wireColor(name)} strokeWidth={w} {...dash} />
                 {stripe && <Stripe d={d} width={w} color={stripe} blocked={blocked} />}
                 <path d={conn.ends ? polyline(points) : d} className="wire-hit" strokeWidth={Math.max(12, w + 8)} />
               </g>

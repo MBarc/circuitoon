@@ -15,12 +15,19 @@ export function HazardOutline({ d, width }: { d: string; width: number }) {
 export const BLOCKED_DASH = '6 5'
 
 /**
+ * The stroke of a blocked wire's dashed paths. Butt caps: a round cap reaches half the stroke width
+ * past each dash, so on a mains-gauge wire (16 AWG is 6 px, 8.2 px with its ink outline) round caps
+ * would close the 5 px gaps and the wire would no longer read as blocked.
+ */
+export const BLOCKED_STROKE = { strokeDasharray: BLOCKED_DASH, strokeLinecap: 'butt' } as const
+
+/**
  * The stripe of a two-colour wire (green-yellow earth), over its base colour. On a blocked wire it
  * keeps the blocked dash's 11 px period and covers only the first half of each dash, so the gaps
  * still read as blocked and the wire still reads as two-colour.
  */
 export function Stripe({ d, width, color, blocked = false }: { d: string; width: number; color: string; blocked?: boolean }) {
-  return <path d={d} stroke={color} strokeWidth={width} strokeDasharray={blocked ? '3 8' : '7 7'} />
+  return <path d={d} stroke={color} strokeWidth={width} strokeDasharray={blocked ? '3 8' : '7 7'} strokeLinecap={blocked ? 'butt' : undefined} />
 }
 
 /** The point `dist` px along a polyline from its first point, or null when it is shorter. */

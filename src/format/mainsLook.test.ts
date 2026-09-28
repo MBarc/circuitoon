@@ -67,6 +67,24 @@ describe('wire looks', () => {
     expect(stripeOf(blocked)).toContain('stroke-dasharray="3 8"')
     expect(stripeOf(clear)).toContain('stroke-dasharray="7 7"')
   })
+  it('a blocked 16 AWG wire still reads as dashed: no cap closes a gap', () => {
+    const blocked = sheet([at('u1', 'U1', 't-mcu', 0, 0), at('u2', 'U2', 't-mcu', 400, 0), at('u3', 'U3', 't-mcu', 200, 0)],
+      [w('u1|IO', 'u2|GND', { gauge: 16, color: 'green-yellow', route: [[100, 20], [300, 20]] })])
+    expect(wirePaths(blocked, computeRoutes(blocked))[0].blocked).toBe(true)
+    const html = renderToStaticMarkup(createElement(Sheet, { diagram: blocked, box: { x: 0, y: 0, w: 500, h: 100 }, label: 'b' }))
+    const dashed = [...html.matchAll(/<path[^>]*stroke-dasharray="[^"]*"[^>]*>/g)].map((m) => m[0])
+    // The ink outline, the colour and the stripe.
+    expect(dashed.length).toBe(3)
+    for (const p of dashed) {
+      const gap = Number(/stroke-dasharray="[\d.]+ ([\d.]+)"/.exec(p)![1])
+      const width = Number(/stroke-width="([\d.]+)"/.exec(p)![1])
+      const cap = /stroke-linecap="(\w+)"/.exec(p)?.[1] ?? 'round'
+      // A round or square cap reaches half the width past each end of a dash, closing the gap from both sides.
+      const open = cap === 'butt' ? gap : gap - width
+      expect([p, open > 0]).toEqual([p, true])
+      expect(width).toBeGreaterThan(5)
+    }
+  })
   it('the sheet draws identity colours, the hazard outline and the lightning markers', () => {
     const html = renderToStaticMarkup(createElement(Sheet, { diagram: eu, box: { x: -20, y: -20, w: 700, h: 300 }, label: 'eu' }))
     expect(html).toContain('stroke="#8B5A2B"')

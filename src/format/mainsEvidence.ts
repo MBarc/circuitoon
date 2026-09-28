@@ -23,8 +23,9 @@
 // - A rating whose source does not say AC or DC (IEC 60664 rated voltages) is 'ac/dc'.
 
 export type Verdict = 'VERIFIED' | 'NOT VERIFIED'
-export interface Fact<T> { value: T; quote: string; url: string }
-export interface RatingFact { volts: number; amps?: number; service: 'ac' | 'dc' | 'ac/dc'; conditions?: string; quote: string; url: string }
+/** A value with the line it was read from and every source that line cites (one or more URLs). */
+export interface Fact<T> { value: T; quote: string; urls: string[] }
+export interface RatingFact { volts: number; amps?: number; service: 'ac' | 'dc' | 'ac/dc'; conditions?: string; quote: string; urls: string[] }
 export interface PartEvidence {
   /** The exact part (maker and part number) or standard the part is built from. */
   subject: string
@@ -50,7 +51,7 @@ export interface PartEvidence {
   extra?: Record<string, Fact<unknown>>
 }
 
-const fact = <T>(value: T, quote: string, url: string): Fact<T> => ({ value, quote, url })
+const fact = <T>(value: T, quote: string, url: string | string[]): Fact<T> => ({ value, quote, urls: typeof url === 'string' ? [url] : url })
 
 // ---------------------------------------------------------------------------------------------
 // Sources
@@ -138,9 +139,9 @@ const LCSC_KF301_3 = 'https://www.lcsc.com/product-detail/C474882.html'
 /** Michael's ruling B1 (2026-09-27): the standards below are paywalled, so a layout or rating is accepted when at least two independent secondary sources agree. Every such fact starts its quote with "Secondary sources:" and names both. */
 const SECONDARY = 'Secondary sources (ruling B1): BS 1363, AS/NZS 3112, CEE 7, DIN 49440/49441, NF C 61-314, EN 50075 and IEC/TR 60083 are paywalled and were not read; every layout and rating here is quoted from at least two independent sources that agree.'
 
-const NEMA_5_15_RATING: RatingFact = { volts: 125, amps: 15, service: 'ac', quote: 'FIGURE 5-15 PLUG AND RECEPTACLE 125 volts, 15 amperes, 2 pole, 3 wire, Grounding type', url: NEMA_WD6_PDF }
-const NEMA_5_20_RATING: RatingFact = { volts: 125, amps: 20, service: 'ac', quote: 'FIGURE 5-20 PLUG AND RECEPTACLE 125 volts, 20 amperes, 2 pole, 3 wire, Grounding type', url: NEMA_WD6_PDF }
-const NEMA_1_15_RATING: RatingFact = { volts: 125, amps: 15, service: 'ac', quote: 'FIGURE 1-15 PLUG AND RECEPTACLE 125 volts, 15 amperes, 2 pole, 2 wire', url: NEMA_WD6_PDF }
+const NEMA_5_15_RATING: RatingFact = { volts: 125, amps: 15, service: 'ac', quote: 'FIGURE 5-15 PLUG AND RECEPTACLE 125 volts, 15 amperes, 2 pole, 3 wire, Grounding type', urls: [NEMA_WD6_PDF] }
+const NEMA_5_20_RATING: RatingFact = { volts: 125, amps: 20, service: 'ac', quote: 'FIGURE 5-20 PLUG AND RECEPTACLE 125 volts, 20 amperes, 2 pole, 3 wire, Grounding type', urls: [NEMA_WD6_PDF] }
+const NEMA_1_15_RATING: RatingFact = { volts: 125, amps: 15, service: 'ac', quote: 'FIGURE 1-15 PLUG AND RECEPTACLE 125 volts, 15 amperes, 2 pole, 2 wire', urls: [NEMA_WD6_PDF] }
 const NEMA_L_SIDE = fact(
   'front view, earth hole down: N (W, the wider slot) left, L right',
   'WD 6 p.143 configuration chart and Figure 5-15 (receptacle face): the receptacle is drawn with G (grounding hole) at the top and the slot marked W on the right, so with the earth hole down W is on the left; W is the longer slot (.350/.330 in against .285/.265 in). WD 6 does not define the letter W on the pages read; Wikipedia (NEMA connector) states the layout directly: "In practice, most receptacles have their ground blade on the bottom; in this case, the neutral blade is on the upper left and the hot blade is on the upper right."',
@@ -148,15 +149,15 @@ const NEMA_L_SIDE = fact(
 )
 const NEMA_SPACING = fact('blade slots 0.500 in (12.7 mm) apart; earth hole centre 0.468 in (11.9 mm) from the slot line', 'Figure 5-15 receptacle: ".500" between the slot centre lines, ".468" from the slot line to the grounding hole centre', NEMA_WD6_PDF)
 
-const JIS_RATING: RatingFact = { volts: 125, amps: 15, service: 'ac', quote: '図A.1−2極差込接続器 15 A 125 V (Figure A.1, 2-pole plug and receptacle 15 A 125 V)', url: JIS_C8303 }
+const JIS_RATING: RatingFact = { volts: 125, amps: 15, service: 'ac', quote: '図A.1−2極差込接続器 15 A 125 V (Figure A.1, 2-pole plug and receptacle 15 A 125 V)', urls: [JIS_C8303] }
 
-const BS_RATING: RatingFact = { volts: 250, amps: 13, service: 'ac', quote: 'Secondary sources: "BS 1363 plugs and sockets are rated for use at a maximum of 250 V AC and 13 A." (Wikipedia, BS 1363) / "Connector with rubber cap, for an extension cord. Rating: 13A - 250V. The connector has been used to show the safety shutter mecanism of BS 1363 sockets and connectors." (Plug and socket museum, BS 1363)', url: WIKI_BS1363 }
+const BS_RATING: RatingFact = { volts: 250, amps: 13, service: 'ac', quote: 'Secondary sources: "BS 1363 plugs and sockets are rated for use at a maximum of 250 V AC and 13 A." (Wikipedia, BS 1363) / "Connector with rubber cap, for an extension cord. Rating: 13A - 250V. The connector has been used to show the safety shutter mecanism of BS 1363 sockets and connectors." (Plug and socket museum, BS 1363)', urls: [WIKI_BS1363] }
 const BS_L_SIDE = fact(
   'front view, earth up: N bottom left, L bottom right',
   'Secondary sources: "When looking at the front of the socket with the earth aperture uppermost (as normally mounted) the lower left aperture is for the neutral contact, and the lower right is for the line contact." (Wikipedia, BS 1363) / "Each wire is in the correct terminal: brown (live) to the right (with fuse), blue (neutral) to the left, green/yellow (earth) to the top." (Elec-Mate, how to wire a plug; an opened plug is seen from its back, the same side as the socket front when the plug is in the socket, so both put L on the right with the earth up)',
   WIKI_BS1363,
 )
-const AS_RATING: RatingFact = { volts: 250, amps: 10, service: 'ac', quote: 'Secondary sources: "By the early 1930s this design had been up-rated to 250 V 10 A capacity ... Standard single phase 230 V domestic socket outlets in Australia and New Zealand are rated at 10 A." (Wikipedia, AS/NZS 3112) / "Standard domestic 10A - 250V socket and plug." (Plug and socket museum, AS/NZS)', url: WIKI_AS3112 }
+const AS_RATING: RatingFact = { volts: 250, amps: 10, service: 'ac', quote: 'Secondary sources: "By the early 1930s this design had been up-rated to 250 V 10 A capacity ... Standard single phase 230 V domestic socket outlets in Australia and New Zealand are rated at 10 A." (Wikipedia, AS/NZS 3112) / "Standard domestic 10A - 250V socket and plug." (Plug and socket museum, AS/NZS)', urls: [WIKI_AS3112] }
 const AS_L_SIDE = fact(
   'front view, earth down: L (active) top left, N top right',
   'Secondary sources: "The active terminal is the first \'socket\' from the earth \'socket\' in a clockwise direction when viewing the front of a socket-outlet." (Wikipedia, AS/NZS 3112) / "On the socket (viewing from the front), the positions are mirrored: top-left is Active and top-right is Neutral." (Access Communications, Australian mains plug)',
@@ -268,15 +269,15 @@ function irm(series: '03' | '05', volts: 3.3 | 5): PartEvidence {
 function phoenixRatings(series: 'mstb' | 'mc', plugUrl: string, headerUrl: string, header: string): RatingFact[] {
   if (series === 'mstb')
     return [
-      { volts: 250, amps: 12, service: 'ac/dc', conditions: 'overvoltage category III, pollution degree 3 (IEC 60664-1)', quote: 'Plug: Rated voltage (III/3) 250 V, Nominal current IN 12 A. Header: Rated voltage (III/3) 320 V on the current product page, but 250 V on Phoenix\'s online-catalogue PDF dated 07/07/2016 (Rated voltage (III/3) 250 V, mirrored by Digi-Key), Nominal current IN 12 A. The lower value, 250 V, is kept; every source gives at least that.', url: plugUrl },
-      { volts: 320, amps: 12, service: 'ac/dc', conditions: 'overvoltage category III, pollution degree 2 (IEC 60664-1)', quote: 'Plug and header: Rated voltage (III/2) 320 V, Nominal current IN 12 A.', url: headerUrl },
+      { volts: 250, amps: 12, service: 'ac/dc', conditions: 'overvoltage category III, pollution degree 3 (IEC 60664-1)', quote: 'Plug: Rated voltage (III/3) 250 V, Nominal current IN 12 A. Header: Rated voltage (III/3) 320 V on the current product page, but 250 V on Phoenix\'s online-catalogue PDF dated 07/07/2016 (Rated voltage (III/3) 250 V, mirrored by Digi-Key), Nominal current IN 12 A. The lower value, 250 V, is kept; every source gives at least that.', urls: [plugUrl, headerUrl, digikeyPhoenix(header)] },
+      { volts: 320, amps: 12, service: 'ac/dc', conditions: 'overvoltage category III, pollution degree 2 (IEC 60664-1)', quote: 'Plug and header: Rated voltage (III/2) 320 V, Nominal current IN 12 A.', urls: [plugUrl, headerUrl] },
       // Ruling 46: the two sources for the header disagree on II/2 (630 V on the current page, 400 V on the 2016 sheet and at Digi-Key); the lower is used.
-      { volts: 400, amps: 12, service: 'ac/dc', conditions: 'overvoltage category II, pollution degree 2 (IEC 60664-1)', quote: `Plug: Rated voltage (II/2) 630 V (product page). Header ${header}: Rated voltage (II/2) 630 V on the current product page read in Task 0, but 400 V on Phoenix's online-catalogue PDF dated 07/07/2016 (mirrored by Digi-Key)${header === '1757242' ? ', and Digi-Key\'s attribute "Voltage - IEC 400 V"' : ''}. Nominal current IN 12 A. The lower (400 V) is kept under Ruling 46.`, url: digikeyPhoenix(header) },
+      { volts: 400, amps: 12, service: 'ac/dc', conditions: 'overvoltage category II, pollution degree 2 (IEC 60664-1)', quote: `Plug: Rated voltage (II/2) 630 V (product page). Header ${header}: Rated voltage (II/2) 630 V on the current product page read in Task 0, but 400 V on Phoenix's online-catalogue PDF dated 07/07/2016 (mirrored by Digi-Key)${header === '1757242' ? ', and Digi-Key\'s attribute "Voltage - IEC 400 V"' : ''}. Nominal current IN 12 A. The lower (400 V) is kept under Ruling 46.`, urls: [plugUrl, headerUrl, digikeyPhoenix(header), ...(header === '1757242' ? [DIGIKEY_1757242] : [])] },
     ]
   return [
-    { volts: 160, amps: 8, service: 'ac/dc', conditions: 'overvoltage category III, pollution degree 3 (IEC 60664-1)', quote: 'Plug and header: Rated voltage (III/3) 160 V, Nominal current IN 8 A.', url: plugUrl },
-    { volts: 160, amps: 8, service: 'ac/dc', conditions: 'overvoltage category III, pollution degree 2 (IEC 60664-1)', quote: 'Plug and header: Rated voltage (III/2) 160 V, Nominal current IN 8 A.', url: plugUrl },
-    { volts: 250, amps: 8, service: 'ac/dc', conditions: 'overvoltage category II, pollution degree 2 (IEC 60664-1)', quote: 'Plug: Rated voltage (II/2) 320 V. Header: Rated voltage (II/2) 250 V. The lower (header) value is kept. Nominal current IN 8 A.', url: headerUrl },
+    { volts: 160, amps: 8, service: 'ac/dc', conditions: 'overvoltage category III, pollution degree 3 (IEC 60664-1)', quote: 'Plug and header: Rated voltage (III/3) 160 V, Nominal current IN 8 A.', urls: [plugUrl, headerUrl] },
+    { volts: 160, amps: 8, service: 'ac/dc', conditions: 'overvoltage category III, pollution degree 2 (IEC 60664-1)', quote: 'Plug and header: Rated voltage (III/2) 160 V, Nominal current IN 8 A.', urls: [plugUrl, headerUrl] },
+    { volts: 250, amps: 8, service: 'ac/dc', conditions: 'overvoltage category II, pollution degree 2 (IEC 60664-1)', quote: 'Plug: Rated voltage (II/2) 320 V. Header: Rated voltage (II/2) 250 V. The lower (header) value is kept. Nominal current IN 8 A.', urls: [plugUrl, headerUrl] },
   ]
 }
 
@@ -355,7 +356,7 @@ function phoenixFromSheets(series: 'mstb' | 'mc', plugType: string, headerType: 
     return {
       volts: Math.min(pv, hv), amps: Math.min(p.amps, h.amps), service: 'ac/dc', conditions: COND_WORDS[c],
       quote: `Plug ${p.item} (${p.doc}): Rated voltage (${c}) ${pv} V, Nominal current IN ${p.amps} A. Header ${h.item} (${h.doc}): Rated voltage (${c}) ${hv} V, Nominal current IN ${h.amps} A.${lower}`,
-      url: pv <= hv ? p.url : h.url,
+      urls: [p.url, h.url],
     }
   })
   const notes = [
@@ -379,13 +380,13 @@ function phoenixFromSheets(series: 'mstb' | 'mc', plugType: string, headerType: 
       header: fact(h.item, h.names, h.url),
       pitch: fact(series === 'mstb' ? 5.08 : 3.81, series === 'mstb' ? 'Pitch 5.08 mm' : 'Pitch 3.81 mm', p.url),
       // The quote reads both sides, so it cites both documents (space-separated, like a module's source).
-      ul: fact(`plug: ${p.ul}; header: ${h.ul}`, `Plug ${p.item}: ${p.ul}. Header ${h.item}: ${h.ul}.`, `${p.url} ${h.url}`),
+      ul: fact(`plug: ${p.ul}; header: ${h.ul}`, `Plug ${p.item}: ${p.ul}. Header ${h.item}: ${h.ul}.`, [p.url, h.url]),
       ...(series === 'mc'
         ? { conditional: fact('always rating-conditional at 230 V', `Rated voltage (III/2) 160 V on both sides: only the II/2 rating (${Math.min(p.volts['II/2']!, h.volts['II/2']!)} V) covers 230 V, so the part always carries its conditions (ruling, 2026-09-27: MC 1,5 always gets rating-conditional at 230 V).`, h.url) }
         : {}),
       noHotPlug: PHOENIX_READ.has(p.item)
         ? noHotPlug(p.url)
-        : noHotPlug(family, `a family-wide statement, read on the ${series === 'mstb' ? 'MSTB 2,5/ 2-ST-5,08 (1757019)' : 'MC 1,5/ 2-ST-3,81 (1803578)'} product page; the ${p.doc} for ${p.item} predates it`),
+        : noHotPlug(family, `a family-wide statement, read on the ${series === 'mstb' ? 'MSTB 2,5/ 2-ST-5,08 (1757019)' : 'MC 1,5/ 2-ST-3,81 (1803578)'} product page; not read on this item's own page (the ${p.doc} for ${p.item})`),
     },
   }
 }
@@ -459,7 +460,7 @@ export const EVIDENCE: Record<string, PartEvidence> = {
     verdict: 'VERIFIED',
     decision: SECONDARY,
     lSide: CEE_UNPOLARIZED,
-    ratings: [{ volts: 250, amps: 16, service: 'ac', quote: 'Secondary sources: "CEE 7/3 = Schuko 16A-250V socket" (Plug and socket museum, Schuko) / "DIN 49440-1:2006-01 \'Two-pole socket-outlets with earthing contact, 16 A 250 V a.c.\'" (Wikipedia, CEE 7) / manufacturer: "Gira SCHUKO socket outlet 16 A 250 V~ System 55" (Gira data sheet 4188005)', url: PSM_SCHUKO }],
+    ratings: [{ volts: 250, amps: 16, service: 'ac', quote: 'Secondary sources: "CEE 7/3 = Schuko 16A-250V socket" (Plug and socket museum, Schuko) / "DIN 49440-1:2006-01 \'Two-pole socket-outlets with earthing contact, 16 A 250 V a.c.\'" (Wikipedia, CEE 7) / manufacturer: "Gira SCHUKO socket outlet 16 A 250 V~ System 55" (Gira data sheet 4188005)', urls: [PSM_SCHUKO] }],
     extra: {
       spacing: fact('pins 4.8 mm diameter, centres 19 mm apart', 'Secondary sources: "two round pins of 4.8 mm diameter (19 mm long, centres 19 mm apart)" (Wikipedia, Schuko) / "Line and neutral pins have a diameter of 4.8 mm" (Plug and socket museum, Schuko)', WIKI_SCHUKO),
     },
@@ -470,7 +471,7 @@ export const EVIDENCE: Record<string, PartEvidence> = {
     verdict: 'VERIFIED',
     decision: `${SECONDARY} Ruling B5 (Michael, 2026-09-27): cee7-5 joins Resolution 22's unpolarized list; the CEE 7/7 plug still enters one way only, but which hole is L is not fixed.`,
     lSide: fact('not fixed', 'Secondary sources: "Essentially, French sockets are polarized due to the position of the earth pin. The preferred wiring is indicated below the socket, but - at least in France - there is no strict regulation re. wiring line and neutral." (Plug and socket museum, French) / "CEE 7 does not define the placement of the line and neutral and there is no universally observed standard." (Wikipedia, CEE 7) / "Niveau norme, il n\'y a rien qui indique que la phase doit être branchée à droite ou à gauche ... l\'usage veut que la phase soit à droite" (installation-renovation-electrique.com)', PSM_FR),
-    ratings: [{ volts: 250, amps: 16, service: 'ac', quote: 'Secondary sources: "French, CEE 7/5 type socket with earth pin, rated at 16A - 250V." (Plug and socket museum, French) / manufacturer: "Prise de courant standard Français Céliane 16A 250V 2P+T bornes à vis" (Legrand 067113)', url: PSM_FR }],
+    ratings: [{ volts: 250, amps: 16, service: 'ac', quote: 'Secondary sources: "French, CEE 7/5 type socket with earth pin, rated at 16A - 250V." (Plug and socket museum, French) / manufacturer: "Prise de courant standard Français Céliane 16A 250V 2P+T bornes à vis" (Legrand 067113)', urls: [PSM_FR] }],
     extra: {
       spacing: fact('holes 19 mm apart; earth pin centred between them, offset 10 mm', 'Secondary sources: "The earth pin is centred between the apertures, offset by 10 mm (0.394 in). The plug has two round pins measuring 4.8 by 19 mm (0.189 by 0.748 in), spaced 19 mm (0.748 in) apart" (Wikipedia, AC power plugs and sockets) / "Line and neutral pins have a diameter of 4.8 mm and are positioned 19 mm apart." (Plug and socket museum, French)', WIKI_PLUGS),
     },
@@ -524,14 +525,14 @@ export const EVIDENCE: Record<string, PartEvidence> = {
     sources: [NEMA_WD6_PDF, LEVITON_515PV],
     verdict: 'VERIFIED',
     lSide: fact('in the socket frame (earth down): N left, L right', 'WD 6 p.143 chart: the 5-15P blade-end view is the mirror of the 5-15R face (G top, W on the left for the one-wide-blade plug), so in the socket\'s frame the plug\'s W (neutral) blade sits in the W slot, left with the earth down.', NEMA_WD6_PDF),
-    ratings: [NEMA_5_15_RATING, { volts: 125, amps: 15, service: 'ac', quote: '15 Amp, 125 Volt, NEMA 5-15P, 2-Pole, 3-Wire Plug, Straight Blade ... Amperage : 15 A; Voltage : 125 VAC', url: LEVITON_515PV }],
+    ratings: [NEMA_5_15_RATING, { volts: 125, amps: 15, service: 'ac', quote: '15 Amp, 125 Volt, NEMA 5-15P, 2-Pole, 3-Wire Plug, Straight Blade ... Amperage : 15 A; Voltage : 125 VAC', urls: [LEVITON_515PV] }],
   },
   'plug-us-1-15p': {
     subject: 'NEMA 1-15P polarized plug (ANSI/NEMA WD 6-2016 Figure 1-15); reference Leviton 101-P',
     sources: [NEMA_WD6_PDF, LEVITON_101P],
     verdict: 'VERIFIED',
     lSide: fact('in the socket frame: N (wide blade) left, L right', 'WD 6 p.143 chart: 1-15P POLARIZED is drawn with the W blade wider; it enters the W slot of a 1-15R or 5-15R only. Leviton 101-P: "Feature : Polarized".', NEMA_WD6_PDF),
-    ratings: [NEMA_1_15_RATING, { volts: 125, amps: 15, service: 'ac', quote: 'Plug, Straight Blade, Residential Grade, 15 Amp, 125 Volt, NEMA 1-15P, 2-Pole, 2-Wire, Polarized, Non-Grounding', url: LEVITON_101P }],
+    ratings: [NEMA_1_15_RATING, { volts: 125, amps: 15, service: 'ac', quote: 'Plug, Straight Blade, Residential Grade, 15 Amp, 125 Volt, NEMA 1-15P, 2-Pole, 2-Wire, Polarized, Non-Grounding', urls: [LEVITON_101P] }],
   },
   'plug-jp-1-15p': {
     subject: 'JIS C 8303 2-pole 15 A 125 V plug, unpolarized blades (Figure A.1, note a))',
@@ -549,7 +550,7 @@ export const EVIDENCE: Record<string, PartEvidence> = {
     verdict: 'VERIFIED',
     decision: SECONDARY,
     lSide: fact('not fixed', 'Secondary sources: "Due to its compatibility with the inherently unpolarized Schuko (CEE 7/4) plugs, appliances using it cannot expect the current to flow in any particular direction." (Wikipedia, AC power plugs and sockets) / "CEE 7/3 (Schuko) type socket with two slots (line and neutral; not polarized)" (Plug and socket museum, Schuko): the plug enters a Schuko socket either way.', WIKI_PLUGS),
-    ratings: [{ volts: 250, amps: 16, service: 'ac', quote: 'Secondary sources: "the plug fits into both sockets nos 2a and 2b. Pin diameter: 4.8 mm. Rating: 16A - 250V." (Plug and socket museum, CEE 7/7) / "DIN 49441:1972-06 \'Two-pole plugs with earthing-contact 10 A 250 V≅ and 10 A 250 V–, 16 A 250 V~\' (which also includes CEE 7/7 plug)" (Wikipedia, CEE 7)', url: PSM_HYBRID }],
+    ratings: [{ volts: 250, amps: 16, service: 'ac', quote: 'Secondary sources: "the plug fits into both sockets nos 2a and 2b. Pin diameter: 4.8 mm. Rating: 16A - 250V." (Plug and socket museum, CEE 7/7) / "DIN 49441:1972-06 \'Two-pole plugs with earthing-contact 10 A 250 V≅ and 10 A 250 V–, 16 A 250 V~\' (which also includes CEE 7/7 plug)" (Wikipedia, CEE 7)', urls: [PSM_HYBRID] }],
   },
   'plug-eu-cee7-16': {
     subject: 'CEE 7/16 Europlug, EN 50075 (secondary sources)',
@@ -557,7 +558,7 @@ export const EVIDENCE: Record<string, PartEvidence> = {
     verdict: 'VERIFIED',
     decision: SECONDARY,
     lSide: fact('not fixed', 'Secondary source (the conservative value needs no confirmation): "It can be inserted in either direction, so line and neutral are connected arbitrarily." (Wikipedia, CEE 7)', WIKI_CEE7),
-    ratings: [{ volts: 250, amps: 2.5, service: 'ac', quote: 'Secondary sources: "The Europlug ... is a flat, non-rewirable two-pole, round-pin domestic AC power plug, rated for voltages up to 250 V and currents up to 2.5 A." (Wikipedia, Europlug) / "They are designed for currents up to 2.5A - 250V." (Plug and socket museum, CEE 7/16)', url: WIKI_EUROPLUG }],
+    ratings: [{ volts: 250, amps: 2.5, service: 'ac', quote: 'Secondary sources: "The Europlug ... is a flat, non-rewirable two-pole, round-pin domestic AC power plug, rated for voltages up to 250 V and currents up to 2.5 A." (Wikipedia, Europlug) / "They are designed for currents up to 2.5A - 250V." (Plug and socket museum, CEE 7/16)', urls: [WIKI_EUROPLUG] }],
   },
   'plug-uk-bs1363-3lead': {
     subject: 'BS 1363-1 13 A fused plug, 3 leads (secondary sources)',
@@ -644,7 +645,7 @@ export const EVIDENCE: Record<string, PartEvidence> = {
     subject: 'Leviton 9880 keyless porcelain medium-base (E26) lampholder; lamp Philips 9.5A19/PER/827RGBOP/FR/P/E26 (UPC 046677568948)',
     sources: [LEVITON_9880, OSHA_1910_305, PHILIPS_A19],
     verdict: 'VERIFIED',
-    ratings: [{ volts: 250, service: 'ac', quote: 'Voltage : 250 Volt; Wattage Rating : 660W (no current rating is given)', url: LEVITON_9880 }],
+    ratings: [{ volts: 250, service: 'ac', quote: 'Voltage : 250 Volt; Wattage Rating : 660W (no current rating is given)', urls: [LEVITON_9880] }],
     loadRange: fact<[number, number]>([120, 120], 'Voltage AC 120 V; Socket E26; Product title 9.5A19/PER/827RGBOP/FR/P/E26/SS 4/1PF', PHILIPS_A19),
     extra: {
       earth: fact(false, 'Termination : 2 Terminal Screws (no earth terminal listed)', LEVITON_9880),
@@ -658,7 +659,7 @@ export const EVIDENCE: Record<string, PartEvidence> = {
     sources: [VS_CATALOGUE, PHILIPS_A60, IET_559],
     verdict: 'VERIFIED',
     decision: 'Ruling B7 (Michael, 2026-09-27): no N requirement on the E27 shell, so the holder gives no polarity finding. BS 7671 reg. 559.5.1.206 (as discussed on the IET forum; the regulation text was not read) exempts E14 and E27 lampholders to BS EN 60238 from the outer-contact-on-N rule, and no free source for IEC 60364 was found.',
-    ratings: [{ volts: 250, amps: 4, service: 'ac', quote: 'E27 lampholder, three-piece. Material: porcelain, white, T240, nominal rating: 4/250 (IEC 60238 marking: 4 A, 250 V; the catalogue does not spell out the units)', url: VS_CATALOGUE }],
+    ratings: [{ volts: 250, amps: 4, service: 'ac', quote: 'E27 lampholder, three-piece. Material: porcelain, white, T240, nominal rating: 4/250 (IEC 60238 marking: 4 A, 250 V; the catalogue does not spell out the units)', urls: [VS_CATALOGUE] }],
     loadRange: fact<[number, number]>([220, 240], 'Voltage AC 220-240 V; Socket E27; Product title LED 60W A60 E27 WW FR ND 1SRT4 UK', PHILIPS_A60),
     extra: {
       earth: fact(true, 'Type: 62061 female nipple: M10x1 ... Ref. No.: 535685 with earth screw', VS_CATALOGUE),
@@ -669,7 +670,7 @@ export const EVIDENCE: Record<string, PartEvidence> = {
     subject: 'Littelfuse 150274 (ordering number 01500274Z) in-line fuseholder for 5 x 20 mm fuses',
     sources: [LF_150_DS, LF_150274],
     verdict: 'VERIFIED',
-    ratings: [{ volts: 350, amps: 10, service: 'ac/dc', quote: 'Maximum current ratings are 5 amperes at 350V for the 2AG size fuses and 10 amperes at 350V for the 5 × 20mm size fuses. (datasheet; the AC and DC service is from the product page, see extra.service)', url: LF_150_DS }],
+    ratings: [{ volts: 350, amps: 10, service: 'ac/dc', quote: 'Maximum current ratings are 5 amperes at 350V for the 2AG size fuses and 10 amperes at 350V for the 5 × 20mm size fuses. (datasheet; the AC and DC service is from the product page, see extra.service)', urls: [LF_150_DS] }],
     extra: {
       service: fact('ac/dc', 'Maximum AC Voltage (V) 350; Maximum DC Voltage (V) 350 (product page 150274)', LF_150274),
       planReferenceRejected: fact('Schurter FPG4 is a PCB-mount holder, not in-line', 'FPG4: Shock-Safe Fuseholder, 5 x 20 mm, Slotted Cap/Fingergrip, vertical ... Mounting PCB, Terminal Solder THT', 'https://www.schurter.com/en/datasheet/typ_FPG4.pdf'),
@@ -682,8 +683,8 @@ export const EVIDENCE: Record<string, PartEvidence> = {
     sources: [KCD1_DS, KCD1_PAGE],
     verdict: 'VERIFIED',
     ratings: [
-      { volts: 250, amps: 6, service: 'ac', quote: 'The Main Technology Performance: Rated voltage, Rated current 6A 250V AC, 10A 125V AC', url: KCD1_DS },
-      { volts: 125, amps: 10, service: 'ac', quote: 'The Main Technology Performance: Rated voltage, Rated current 6A 250V AC, 10A 125V AC', url: KCD1_DS },
+      { volts: 250, amps: 6, service: 'ac', quote: 'The Main Technology Performance: Rated voltage, Rated current 6A 250V AC, 10A 125V AC', urls: [KCD1_DS] },
+      { volts: 125, amps: 10, service: 'ac', quote: 'The Main Technology Performance: Rated voltage, Rated current 6A 250V AC, 10A 125V AC', urls: [KCD1_DS] },
     ],
     extra: {
       dielectric: fact('1500 V AC', 'Dielectric strength ≥1500V AC/5S', KCD1_DS),
@@ -693,7 +694,7 @@ export const EVIDENCE: Record<string, PartEvidence> = {
     subject: 'WAGO 221-412 splicing connector with levers, 2-conductor',
     sources: wago('412'),
     verdict: 'VERIFIED',
-    ratings: [{ volts: 450, amps: 32, service: 'ac/dc', conditions: 'overvoltage category II, pollution degree 2 (EN 60664); rated surge voltage 4 kV', quote: 'Ratings per EN 60664: Overvoltage category II, Pollution degree 2: Nominal voltage 450 V, Rated surge voltage 4 kV, Rated current 32 A (the III/3 and III/2 columns are "-")', url: wago('412')[1] }],
+    ratings: [{ volts: 450, amps: 32, service: 'ac/dc', conditions: 'overvoltage category II, pollution degree 2 (EN 60664); rated surge voltage 4 kV', quote: 'Ratings per EN 60664: Overvoltage category II, Pollution degree 2: Nominal voltage 450 V, Rated surge voltage 4 kV, Rated current 32 A (the III/3 and III/2 columns are "-")', urls: [wago('412')[1]] }],
     extra: {
       ul: fact('UL 486C use group C: 600 V 20 A', 'Approvals per UL 486C, Use group C: Rated voltage 600 V, Rated current 20 A', wago('412')[1]),
       positions: fact(2, 'Connection points 2; Total number of potentials 1', wago('412')[1]),
@@ -704,7 +705,7 @@ export const EVIDENCE: Record<string, PartEvidence> = {
     subject: 'WAGO 221-413 splicing connector with levers, 3-conductor',
     sources: wago('413'),
     verdict: 'VERIFIED',
-    ratings: [{ volts: 450, amps: 32, service: 'ac/dc', conditions: 'overvoltage category II, pollution degree 2 (EN 60664); rated surge voltage 4 kV', quote: 'Ratings per EN 60664: Overvoltage category II, Pollution degree 2: Nominal voltage 450 V, Rated surge voltage 4 kV, Rated current 32 A (the III/3 and III/2 columns are "-")', url: wago('413')[1] }],
+    ratings: [{ volts: 450, amps: 32, service: 'ac/dc', conditions: 'overvoltage category II, pollution degree 2 (EN 60664); rated surge voltage 4 kV', quote: 'Ratings per EN 60664: Overvoltage category II, Pollution degree 2: Nominal voltage 450 V, Rated surge voltage 4 kV, Rated current 32 A (the III/3 and III/2 columns are "-")', urls: [wago('413')[1]] }],
     extra: {
       ul: fact('UL 486C use group C: 600 V 20 A', 'Approvals per UL 486C, Use group C: Rated voltage 600 V, Rated current 20 A', wago('413')[1]),
       positions: fact(3, 'Connection points 3; Total number of potentials 1', wago('413')[1]),
@@ -715,7 +716,7 @@ export const EVIDENCE: Record<string, PartEvidence> = {
     subject: 'WAGO 221-415 splicing connector with levers, 5-conductor',
     sources: wago('415'),
     verdict: 'VERIFIED',
-    ratings: [{ volts: 450, amps: 32, service: 'ac/dc', conditions: 'overvoltage category II, pollution degree 2 (EN 60664); rated surge voltage 4 kV', quote: 'Ratings per EN 60664: Overvoltage category II, Pollution degree 2: Nominal voltage 450 V, Rated surge voltage 4 kV, Rated current 32 A (the III/3 and III/2 columns are "-")', url: wago('415')[1] }],
+    ratings: [{ volts: 450, amps: 32, service: 'ac/dc', conditions: 'overvoltage category II, pollution degree 2 (EN 60664); rated surge voltage 4 kV', quote: 'Ratings per EN 60664: Overvoltage category II, Pollution degree 2: Nominal voltage 450 V, Rated surge voltage 4 kV, Rated current 32 A (the III/3 and III/2 columns are "-")', urls: [wago('415')[1]] }],
     extra: {
       ul: fact('UL 486C use group C: 600 V 20 A', 'Approvals per UL 486C, Use group C: Rated voltage 600 V, Rated current 20 A', wago('415')[1]),
       positions: fact(5, 'Connection points 5; Total number of potentials 1', wago('415')[1]),
@@ -738,25 +739,25 @@ export const EVIDENCE: Record<string, PartEvidence> = {
     subject: 'Cixi Kefa KF2EDG-STD-5.08 pluggable terminal block, 2 positions (clone of the MSTB style)',
     sources: [KEFA_KF2EDG],
     verdict: 'VERIFIED',
-    ratings: [{ volts: 300, amps: 10, service: 'ac/dc', quote: 'KF2EDG-STD-5.08 Pluggable terminal block ... Rated Voltage/Current:300V/10A (vendor listing; recorded with provenance unverified)', url: KEFA_KF2EDG }],
+    ratings: [{ volts: 300, amps: 10, service: 'ac/dc', quote: 'KF2EDG-STD-5.08 Pluggable terminal block ... Rated Voltage/Current:300V/10A (vendor listing; recorded with provenance unverified)', urls: [KEFA_KF2EDG] }],
   },
   'terminal-block-kf2edg-508-3': {
     subject: 'Cixi Kefa KF2EDG-STD-5.08 pluggable terminal block, 3 positions',
     sources: [KEFA_KF2EDG],
     verdict: 'VERIFIED',
-    ratings: [{ volts: 300, amps: 10, service: 'ac/dc', quote: 'KF2EDG-STD-5.08 Pluggable terminal block ... Rated Voltage/Current:300V/10A (vendor listing; recorded with provenance unverified)', url: KEFA_KF2EDG }],
+    ratings: [{ volts: 300, amps: 10, service: 'ac/dc', quote: 'KF2EDG-STD-5.08 Pluggable terminal block ... Rated Voltage/Current:300V/10A (vendor listing; recorded with provenance unverified)', urls: [KEFA_KF2EDG] }],
   },
   'terminal-block-kf301-500-2': {
     subject: 'Cixi Kefa KF301-5.0-2P PCB screw terminal block (LCSC C474881)',
     sources: [LCSC_KF301_2, KEFA_KF301],
     verdict: 'VERIFIED',
-    ratings: [{ volts: 250, amps: 17, service: 'ac/dc', quote: 'Cixi Kefa Elec KF301-5.0-2P ... Current Rating 17A; Voltage Rating (Max) 250V; Pitch 5mm (vendor listing; recorded with provenance unverified)', url: LCSC_KF301_2 }],
+    ratings: [{ volts: 250, amps: 17, service: 'ac/dc', quote: 'Cixi Kefa Elec KF301-5.0-2P ... Current Rating 17A; Voltage Rating (Max) 250V; Pitch 5mm (vendor listing; recorded with provenance unverified)', urls: [LCSC_KF301_2] }],
   },
   'terminal-block-kf301-500-3': {
     subject: 'Cixi Kefa KF301-5.0-3P PCB screw terminal block (LCSC C474882)',
     sources: [LCSC_KF301_3, KEFA_KF301],
     verdict: 'VERIFIED',
-    ratings: [{ volts: 250, amps: 17, service: 'ac/dc', quote: 'Cixi Kefa Elec KF301-5.0-3P ... Current Rating 17A; Voltage Rating (Max) 250V; Pitch 5mm (vendor listing; recorded with provenance unverified)', url: LCSC_KF301_3 }],
+    ratings: [{ volts: 250, amps: 17, service: 'ac/dc', quote: 'Cixi Kefa Elec KF301-5.0-3P ... Current Rating 17A; Voltage Rating (Max) 250V; Pitch 5mm (vendor listing; recorded with provenance unverified)', urls: [LCSC_KF301_3] }],
   },
 
   // ----- Relay module and SSR -----
@@ -766,9 +767,9 @@ export const EVIDENCE: Record<string, PartEvidence> = {
     verdict: 'NOT VERIFIED',
     blocking: 'No insulation class, for the relay or the board: the Songle sheet gives only "Dielectric strength (Leakage current 1mA): Between coil and contacts 1500VAC 1min" and "Insulation level B/F" (the coil\'s thermal insulation class, not a mains-to-coil class); the module listings give no rating or isolation at all ("The Maximum voltage that can pass through the Switched (NO/NC) side of the relays is written on them"). Ruling B2 (Michael, 2026-09-27): generated with isolation "unknown"; the checker treats IN, DC- and DC+ as live whenever the contacts carry mains and reports rule-1 errors with the reason "isolation unknown". The spec circuit "relay switching a fused lamp" now expects those errors.',
     ratings: [
-      { volts: 125, amps: 10, service: 'ac', conditions: 'resistive load (cos φ = 1); the relay\'s rating, not the module\'s', quote: 'CONTACT RATING, FORM C, Contact Capacity Resistive Load (cosΦ=1): 7A 28VDC, 10A 125VAC, 7A 240VAC; Max. Allowable Voltage 250VAC/110VDC (older Songle SRD sheet, read from a third-party mirror on circuitbasics.com; Songle\'s current sheet does not split ratings by contact form)', url: SONGLE_OLD_DS },
-      { volts: 240, amps: 7, service: 'ac', conditions: 'resistive load (cos φ = 1); the relay\'s rating, not the module\'s', quote: 'CONTACT RATING, FORM C, Contact Capacity Resistive Load (cosΦ=1): 7A 28VDC, 10A 125VAC, 7A 240VAC; Max. Allowable Voltage 250VAC/110VDC (older Songle SRD sheet, read from a third-party mirror on circuitbasics.com; Songle\'s current sheet does not split ratings by contact form)', url: SONGLE_OLD_DS },
-      { volts: 28, amps: 7, service: 'dc', conditions: 'resistive load; the relay\'s rating, not the module\'s', quote: 'CONTACT RATING, FORM C, Contact Capacity Resistive Load (cosΦ=1): 7A 28VDC, 10A 125VAC, 7A 240VAC; Max. Allowable Voltage 250VAC/110VDC (older Songle SRD sheet, read from a third-party mirror on circuitbasics.com; Songle\'s current sheet does not split ratings by contact form)', url: SONGLE_OLD_DS },
+      { volts: 125, amps: 10, service: 'ac', conditions: 'resistive load (cos φ = 1); the relay\'s rating, not the module\'s', quote: 'CONTACT RATING, FORM C, Contact Capacity Resistive Load (cosΦ=1): 7A 28VDC, 10A 125VAC, 7A 240VAC; Max. Allowable Voltage 250VAC/110VDC (older Songle SRD sheet, read from a third-party mirror on circuitbasics.com; Songle\'s current sheet does not split ratings by contact form)', urls: [SONGLE_OLD_DS] },
+      { volts: 240, amps: 7, service: 'ac', conditions: 'resistive load (cos φ = 1); the relay\'s rating, not the module\'s', quote: 'CONTACT RATING, FORM C, Contact Capacity Resistive Load (cosΦ=1): 7A 28VDC, 10A 125VAC, 7A 240VAC; Max. Allowable Voltage 250VAC/110VDC (older Songle SRD sheet, read from a third-party mirror on circuitbasics.com; Songle\'s current sheet does not split ratings by contact form)', urls: [SONGLE_OLD_DS] },
+      { volts: 28, amps: 7, service: 'dc', conditions: 'resistive load; the relay\'s rating, not the module\'s', quote: 'CONTACT RATING, FORM C, Contact Capacity Resistive Load (cosΦ=1): 7A 28VDC, 10A 125VAC, 7A 240VAC; Max. Allowable Voltage 250VAC/110VDC (older Songle SRD sheet, read from a third-party mirror on circuitbasics.com; Songle\'s current sheet does not split ratings by contact form)', urls: [SONGLE_OLD_DS] },
     ],
     extra: {
       dielectric: fact('1500 VAC coil to contacts, 1 min', 'Dielectric strength (Leakage current 1mA): Between coil and contacts 1500VAC 1min; Between open contacts 1000VAC 1min', SONGLE_DS),
@@ -785,7 +786,7 @@ export const EVIDENCE: Record<string, PartEvidence> = {
     verdict: 'NOT VERIFIED',
     blocking: 'No insulation class between input and output: Fotek gives "Isolation strength 4 KVrms (EN60950/VDE0805)" and "Insulation strength 100MΩ / 500VDC", test values only. Ruling B2 (Michael, 2026-09-27): generated with isolation "unknown"; the checker treats terminals 3 and 4 as live when 1 and 2 carry mains, so an SSR driven from a GPIO is a rule-1 error with the reason "isolation unknown". Everything else (pins, control range, load rating, leakage, notes) is verified. Note: SSR-25DA is widely counterfeited; these values are for the genuine Fotek part.',
     pins: fact({ top: ['1', '2'], bottom: ['4', '3'] }, 'Fotek SSR-DA product photo: top row 1 (left) and 2 (right), each marked ~, "24 - 380VAC" between them; bottom row 4 (left, marked -) and 3 (right, marked +), "4 - 32VDC" between them. Connection diagram: 1 and 2 load side, - 4 and + 3 input.', FOTEK_PHOTO),
-    ratings: [{ volts: 380, amps: 25, service: 'ac', conditions: 'rated current for a resistive load on a heatsink with thermal grease; incandescent lamps: module rating over 4 times the lamp current; Fotek heatsink HS-50 is rated 15 A max per SSR, so 25 A needs a larger heatsink', quote: 'Specification [Rated current corresponding to Resistive load]: SSR - 25DA Rated current 25A max., Output voltage 24 ~ 380VAC. Notice of use: The thermal conductive silicone rubber or thermal grease is required When the solid state module is mounted on a heat sink ... Incandescent lamp: The rated current of the module must be over 4 times of the incandescent lamp current. Heat sink standard type HS-50: Current duration 15A max.', url: FOTEK_MANUAL }],
+    ratings: [{ volts: 380, amps: 25, service: 'ac', conditions: 'rated current for a resistive load on a heatsink with thermal grease; incandescent lamps: module rating over 4 times the lamp current; Fotek heatsink HS-50 is rated 15 A max per SSR, so 25 A needs a larger heatsink', quote: 'Specification [Rated current corresponding to Resistive load]: SSR - 25DA Rated current 25A max., Output voltage 24 ~ 380VAC. Notice of use: The thermal conductive silicone rubber or thermal grease is required When the solid state module is mounted on a heat sink ... Incandescent lamp: The rated current of the module must be over 4 times of the incandescent lamp current. Heat sink standard type HS-50: Current duration 15A max.', urls: [FOTEK_MANUAL] }],
     extra: {
       control: fact([4, 32], 'Input voltage 4 ~ 32 VDC; Turn off voltage <3.5 VDC; Trigger current 12.0mA max.', FOTEK_MANUAL),
       load: fact([24, 380], 'Output voltage 24 ~ 380VAC (standard type); Peak voltage 1200VAC min.', FOTEK_MANUAL),
