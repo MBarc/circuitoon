@@ -1,20 +1,27 @@
 // Protective conductors (spec 1.6): every wire and part edge on any simple path between a source's
 // earth terminal and a protective terminal (a class 1 part's PE terminal or a declared bond), found on
-// a terminal-level graph with every contact position conducting. A low-voltage pin is never a vertex,
-// so a functional DC ground reaching PE through a part's DC pin is never on a path. Parallel and
-// redundant paths are all included: an edge is on some path exactly when its biconnected block is on
-// the block-cut tree path between the two ends. Pure; cached per graph.
+// a terminal-level graph with every contact position conducting. A path passes only through terminals
+// declared for mains that carry no L or N role (PE terminals, terminal blocks, lever connectors,
+// contacts, fuses) and breadboard strips (Ruling 35). An ordinary or SELV/PELV pin, an L, N or line
+// terminal, a converter input or a socket's L or N hole is never on a path, and a declared bond is a
+// path's end only (Ruling 36), so a functional DC ground joined to a bonded minus is never protective.
+// Parallel and redundant paths are all included: an edge is on some path exactly when its biconnected
+// block is on the block-cut tree path between the two ends. Pure; cached per graph.
 import { type PartInstance, moduleOf } from './diagram.ts'
 import { plugsOf } from './breadboard.ts'
+import { isBoard } from './module.ts'
 import { nodeKey } from './netlist.ts'
-import { mainsOf } from './mainsModel.ts'
-import { type MainsGraph, termAt } from './mainsGraph.ts'
+import { type MainsInfo, mainsOf } from './mainsModel.ts'
+import { type GTerm, type MainsGraph, termAt } from './mainsGraph.ts'
 import { lvClass } from './mainsRules.ts'
 
-/** A switch, relay, SSR or fuse on a protective path, with every wire of a full source-to-terminal path through it and of its own block. */
-export interface Through { part: PartInstance; kind: 'switch' | 'relay' | 'ssr' | 'fuse'; wires: string[] }
-export interface ProtectivePaths { wires: Set<string>; through: Through[] }
-interface PEdge { a: number; b: number; wire?: string; through?: { part: PartInstance; kind: Through['kind'] } }
+export type ThroughKind = 'switch' | 'relay' | 'ssr' | 'fuse'
+/** A switch, relay, SSR or fuse on a protective path: every kind of its edges on a path (sorted), and every wire of a full source-to-terminal path through each such edge and of its block. */
+export interface Through { part: PartInstance; kinds: ThroughKind[]; wires: string[] }
+/** A breadboard strip (a hole group of a board without mains data) on a protective path (Ruling 35). */
+export interface Strip { part: string; group: string }
+export interface ProtectivePaths { wires: Set<string>; through: Through[]; strips: Strip[] }
+interface PEdge { a: number; b: number; wire?: string; through?: { part: PartInstance; kind: ThroughKind } }
 
 /** Biconnected blocks (Tarjan, iterative, parallel edges kept apart): block id per edge and cut vertices. */
 function blocks(n: number, edges: PEdge[]): { blockOf: Int32Array; cut: Uint8Array; count: number } {
@@ -76,54 +83,96 @@ function blocks(n: number, edges: PEdge[]): { blockOf: Int32Array; cut: Uint8Arr
 
 const cache = new WeakMap<MainsGraph, ProtectivePaths>()
 
+/** Terminals of a module that carry L or N: never on a protective path (Ruling 36). */
+const liveCache = new WeakMap<MainsInfo, Set<string>>()
+function liveTerminals(info: MainsInfo): Set<string> {
+  let s = liveCache.get(info)
+  if (!s) {
+    s = new Set([
+      ...[...info.requirement].filter(([, r]) => r !== 'PE').map(([n]) => n),
+      ...(info.acInput ? [info.acInput.a, info.acInput.b] : []),
+      ...info.acSources.flatMap((x) => [...x.live, ...x.neutral]),
+      ...info.sockets.flatMap((x) => x.contacts.filter((c) => c.role !== 'PE').map((c) => c.group)),
+      ...(info.plug?.profiles.flatMap((pr) => pr.contacts.filter((c) => c.mains !== 'PE').map((c) => c.pin)) ?? []),
+      ...info.conducts.flatMap((c) => c.pins),
+    ])
+    liveCache.set(info, s)
+  }
+  return s
+}
+
+/** How a terminal takes part: a path may pass through it, only end at it (a declared bond), pass through a breadboard strip, or never touch it. */
+type Role = 'pass' | 'end' | 'strip' | null
+function roleOf(t: GTerm | null): Role {
+  if (!t) return null
+  if (!t.info.any) return isBoard(t.module) && (t.module.holes ?? []).some((h) => h.name === t.name) ? 'strip' : null
+  if (t.info.bonds.has(t.name)) return 'end'
+  if (lvClass(t) !== null || liveTerminals(t.info).has(t.name)) return null
+  return 'pass'
+}
+
 export function protectivePaths(g: MainsGraph): ProtectivePaths {
   const hit = cache.get(g)
   if (hit) return hit
+  // Vertices: one per pass-through terminal or strip; an end-only terminal gets a fresh vertex per
+  // edge, so no path can go on through it. Every end-only vertex is a protective terminal.
   const ids = new Map<string, number>()
-  // A vertex is a terminal declared for mains, or a declared bond; never an ordinary, SELV or PELV pin.
-  const vertex = (key: string): number | null => {
-    const t = termAt(g, key)
-    if (!t || !(lvClass(t) === null || t.info.bonds.has(t.name))) return null
-    let i = ids.get(key)
-    if (i === undefined) ids.set(key, (i = ids.size))
+  const keyOf: string[] = []
+  const isStrip: boolean[] = []
+  const T = new Set<number>()
+  const role = (key: string): Role => roleOf(termAt(g, key))
+  const vertex = (key: string, r: Role): number => {
+    let i = r === 'end' ? undefined : ids.get(key)
+    if (i === undefined) {
+      i = keyOf.length
+      keyOf.push(key)
+      isStrip.push(r === 'strip')
+      if (r === 'end') T.add(i)
+      else ids.set(key, i)
+    }
     return i
   }
   const edges: PEdge[] = []
   const join = (ka: string, kb: string, extra: Omit<PEdge, 'a' | 'b'> = {}) => {
-    const a = vertex(ka)
-    const b = vertex(kb)
-    if (a !== null && b !== null && a !== b) edges.push({ a, b, ...extra })
+    const ra = role(ka)
+    const rb = role(kb)
+    if (ra === null || rb === null || ka === kb) return
+    edges.push({ a: vertex(ka, ra), b: vertex(kb, rb), ...extra })
   }
   for (const c of g.d.connections) if (!g.broken.has(c.uid)) join(nodeKey(c.from.part, c.from.pin), nodeKey(c.to.part, c.to.pin), { wire: c.uid })
   for (const pl of plugsOf(g.d)) join(nodeKey(pl.part, pl.pin), nodeKey(pl.board, pl.group))
-  const T = new Set<number>()
   for (const part of g.mainsParts) {
     const m = moduleOf(g.d, part.module)!
     const info = mainsOf(m)
-    for (const grp of m.internal ?? []) for (let i = 1; i < grp.length; i++) join(nodeKey(part.uid, grp[0]), nodeKey(part.uid, grp[i]))
+    // An internal group is one conductor: every two of its members are joined directly (an ordinary
+    // first member does not cut the rest apart, and no member stands between two others).
+    for (const grp of m.internal ?? []) {
+      const keys = grp.map((n) => nodeKey(part.uid, n)).filter((k) => role(k) !== null)
+      for (let i = 0; i < keys.length; i++) for (let j = i + 1; j < keys.length; j++) join(keys[i], keys[j])
+    }
     for (const c of info.contacts)
       for (const pole of c.poles) for (const other of [pole.no, pole.nc]) if (other) join(nodeKey(part.uid, pole.com), nodeKey(part.uid, other), { through: { part, kind: c.kind } })
     for (const e of info.protective) join(nodeKey(part.uid, e.from), nodeKey(part.uid, e.to), { through: { part, kind: 'fuse' } })
-    // Protective terminals: declared bonds, and a class 1 part's earth (a PE terminal or a PE plug contact).
-    const earths = info.protection === 'class-1'
-      ? [...[...info.requirement].filter(([, r]) => r === 'PE').map(([n]) => n), ...(info.plug?.profiles.flatMap((pr) => pr.contacts.filter((c) => c.mains === 'PE').map((c) => c.pin)) ?? [])]
-      : []
-    for (const n of [...info.bonds, ...earths]) {
-      const i = vertex(nodeKey(part.uid, n))
-      if (i !== null) T.add(i)
-    }
+    // A class 1 part's earth (a PE terminal or a PE plug contact) is a protective terminal that a path
+    // may also pass through (spec 1.6 lists PE terminals among what a path passes through).
+    if (info.protection === 'class-1')
+      for (const n of [...[...info.requirement].filter(([, r]) => r === 'PE').map(([x]) => x), ...(info.plug?.profiles.flatMap((pr) => pr.contacts.filter((c) => c.mains === 'PE').map((c) => c.pin)) ?? [])]) {
+        const i = ids.get(nodeKey(part.uid, n))
+        if (i !== undefined) T.add(i)
+      }
   }
   const S = new Set(g.sources.flatMap((s) => s.keys.PE).map((k) => ids.get(k)).filter((i): i is number => i !== undefined))
-  const out: ProtectivePaths = { wires: new Set(), through: [] }
+  const out: ProtectivePaths = { wires: new Set(), through: [], strips: [] }
+  const nv = keyOf.length
   if (S.size && T.size && edges.length) {
-    const { blockOf, cut, count } = blocks(ids.size, edges)
+    const { blockOf, cut, count } = blocks(nv, edges)
     // Block-cut tree: blocks are 0..count-1, cut vertex v is count + v.
     const adj = new Map<number, Set<number>>()
     const link = (x: number, y: number) => {
       ;(adj.get(x) ?? adj.set(x, new Set()).get(x)!).add(y)
       ;(adj.get(y) ?? adj.set(y, new Set()).get(y)!).add(x)
     }
-    const anyBlock = new Int32Array(ids.size).fill(-1)
+    const anyBlock = new Int32Array(nv).fill(-1)
     edges.forEach((e, i) => {
       for (const v of [e.a, e.b]) {
         anyBlock[v] = blockOf[i]
@@ -131,7 +180,7 @@ export function protectivePaths(g: MainsGraph): ProtectivePaths {
       }
     })
     const treeNode = (v: number) => (cut[v] ? count + v : anyBlock[v])
-    const marked = new Set<number>()
+    const marked = new Uint8Array(count)
     for (const s of S) {
       const from = treeNode(s)
       if (from < 0) continue
@@ -148,59 +197,74 @@ export function protectivePaths(g: MainsGraph): ProtectivePaths {
         if (t === s) continue
         let x = treeNode(t)
         if (x < 0 || !prev.has(x)) continue
-        for (; x !== -1; x = prev.get(x)!) if (x < count) marked.add(x)
+        for (; x !== -1; x = prev.get(x)!) if (x < count) marked[x] = 1
       }
     }
-    const blockWires = new Map<number, string[]>()
+    const blockWires: string[][] = Array.from({ length: count }, () => [])
+    const onPath = new Uint8Array(nv)
+    const adjP: number[][] = Array.from({ length: nv }, () => [])
     edges.forEach((e, i) => {
-      if (!marked.has(blockOf[i]) || !e.wire) return
-      out.wires.add(e.wire)
-      blockWires.set(blockOf[i], [...(blockWires.get(blockOf[i]) ?? []), e.wire])
+      if (!marked[blockOf[i]]) return
+      if (e.wire) {
+        out.wires.add(e.wire)
+        blockWires[blockOf[i]].push(e.wire)
+      }
+      adjP[e.a].push(i)
+      adjP[e.b].push(i)
+      onPath[e.a] = onPath[e.b] = 1
     })
+    for (let v = 0; v < nv; v++)
+      if (onPath[v] && isStrip[v]) {
+        const [part, group] = JSON.parse(keyOf[v]) as [string, string]
+        out.strips.push({ part, group })
+      }
     // The whole source-to-terminal path through a prohibited edge (spec 3: the finding highlights its
     // path): a shortest route over protective edges from a source's earth to one end, and from the other
     // end to a protective terminal, plus the wires of its own block (a parallel loop). One entry per
-    // part, holding the wires of every one of its edges on a path.
-    const adjP = new Map<number, number[]>()
-    edges.forEach((e, i) => {
-      if (!marked.has(blockOf[i])) return
-      for (const v of [e.a, e.b]) (adjP.get(v) ?? adjP.set(v, []).get(v)!).push(i)
-    })
+    // part, holding the wires of every one of its edges on a path. The search arrays are shared, stamped per search.
+    const stamp = new Int32Array(nv)
+    const prevE = new Int32Array(nv)
+    const queue = new Int32Array(nv)
+    let run = 0
     const route = (from: Set<number>, to: number, skip: number): number[] | null => {
-      const prev = new Map<number, number>()
-      const queue: number[] = []
+      run++
+      let tail = 0
       for (const v of from) {
-        prev.set(v, -1)
-        queue.push(v)
+        stamp[v] = run
+        prevE[v] = -1
+        queue[tail++] = v
       }
-      for (let q = 0; q < queue.length && !prev.has(to); q++)
-        for (const ei of adjP.get(queue[q]) ?? []) {
+      for (let q = 0; q < tail && stamp[to] !== run; q++) {
+        const v = queue[q]
+        for (const ei of adjP[v]) {
           if (ei === skip) continue
-          const u = edges[ei].a === queue[q] ? edges[ei].b : edges[ei].a
-          if (!prev.has(u)) {
-            prev.set(u, ei)
-            queue.push(u)
-          }
+          const u = edges[ei].a === v ? edges[ei].b : edges[ei].a
+          if (stamp[u] === run) continue
+          stamp[u] = run
+          prevE[u] = ei
+          queue[tail++] = u
         }
-      if (!prev.has(to)) return null
+      }
+      if (stamp[to] !== run) return null
       const steps: number[] = []
-      for (let v = to; prev.get(v) !== -1; ) {
-        const ei = prev.get(v)!
+      for (let v = to; prevE[v] !== -1; ) {
+        const ei = prevE[v]
         steps.push(ei)
         v = edges[ei].a === v ? edges[ei].b : edges[ei].a
       }
       return steps
     }
-    const byPart = new Map<PartInstance, { kind: Through['kind']; wires: Set<string> }>()
+    const byPart = new Map<PartInstance, { kinds: Set<ThroughKind>; wires: Set<string> }>()
     edges.forEach((e, i) => {
-      if (!marked.has(blockOf[i]) || !e.through) return
+      if (!marked[blockOf[i]] || !e.through) return
       const way = [[route(S, e.a, i), route(T, e.b, i)], [route(S, e.b, i), route(T, e.a, i)]].find(([x, y]) => x && y) ?? [[], []]
       let entry = byPart.get(e.through.part)
-      if (!entry) byPart.set(e.through.part, (entry = { kind: e.through.kind, wires: new Set() }))
-      for (const x of blockWires.get(blockOf[i]) ?? []) entry.wires.add(x)
+      if (!entry) byPart.set(e.through.part, (entry = { kinds: new Set(), wires: new Set() }))
+      entry.kinds.add(e.through.kind)
+      for (const x of blockWires[blockOf[i]]) entry.wires.add(x)
       for (const k of way.flatMap((xs) => xs ?? [])) if (edges[k].wire) entry.wires.add(edges[k].wire!)
     })
-    for (const [part, { kind, wires }] of byPart) out.through.push({ part, kind, wires: [...wires] })
+    for (const [part, { kinds, wires }] of byPart) out.through.push({ part, kinds: [...kinds].sort(), wires: [...wires] })
   }
   cache.set(g, out)
   return out
