@@ -3,7 +3,7 @@
 import { describe, expect, it } from 'vitest'
 import { EditorStore } from './store.ts'
 import { deleteSelection, moveAnnotations, updateAnnotation } from './ops.ts'
-import { ANNOTATION_LABEL_MAX, ANNOTATION_TEXT_MAX, emptyDiagram, type Diagram } from '../format/diagram.ts'
+import { ANNOTATION_LABEL_MAX, ANNOTATION_TEXT_MAX, COORD_LIMIT, emptyDiagram, serializeDiagram, validateDiagram, type Diagram } from '../format/diagram.ts'
 
 const sheet = (): Diagram => ({
   ...emptyDiagram(),
@@ -29,6 +29,18 @@ describe('annotation edits', () => {
     expect(next.annotations![0]).toMatchObject({ x: 30, y: 0 })
     expect(next.parts).toBe(d.parts)
     expect(next.annotations![1]).toBe(d.annotations![1])
+  })
+  it('stops a move at the coordinate limit, as one rigid block, so the saved file loads again', () => {
+    const d = sheet()
+    const far = moveAnnotations(d, ['a1', 'a2'], 10 * COORD_LIMIT, -10 * COORD_LIMIT)
+    // a2 starts at x 10, so the block stops when a2 reaches the limit; a1 keeps its 10 px offset.
+    expect(far.annotations!.map((a) => [a.x, a.y])).toEqual([[COORD_LIMIT - 10, -COORD_LIMIT], [COORD_LIMIT, -COORD_LIMIT + 80]])
+    const r = validateDiagram(JSON.parse(serializeDiagram(far)))
+    expect(r.ok).toBe(true)
+    // Already at the limit, a further push the same way is no change at all.
+    expect(moveAnnotations(far, ['a1', 'a2'], 10, -10)).toBe(far)
+    // Away from the limit it still moves freely.
+    expect(moveAnnotations(far, ['a2'], -30, 0).annotations![1]).toMatchObject({ x: COORD_LIMIT - 30 })
   })
   it('returns the same diagram for a zero move or an unchanged edit', () => {
     const d = sheet()
