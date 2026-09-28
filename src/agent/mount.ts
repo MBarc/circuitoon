@@ -16,6 +16,37 @@ import { intersects, tightFootprint } from './footprint.ts'
 export type NetOfPin = (part: string, pin: string) => number | undefined
 
 /**
+ * Whether a leg on `net` (null: on no net) clashes with a strip that already carries `prior`
+ * (undefined: nothing yet). A leg on no net keeps its strip to itself.
+ */
+export const netClash = (prior: number | null | undefined, net: number | null): boolean =>
+  prior !== undefined && (prior === null || net === null || prior !== net)
+
+/**
+ * The first strip of `board` where part `uid` (seated in `d`) puts two different nets, or a net
+ * and a leg on no net, counting strips the netlist names in a net; null when there is none.
+ * The same rule the mount search applies to every candidate.
+ */
+export function stripClash(d: Diagram, uid: string, board: string, netOf: NetOfPin): string | null {
+  const b = d.parts.find((p) => p.uid === board)!
+  const stripNet = new Map<string, number | null>()
+  for (const g of moduleOf(d, b.module)!.holes ?? []) {
+    const n = netOf(board, g.name)
+    if (n !== undefined) stripNet.set(g.name, n)
+  }
+  const plugs = plugsOf(d).filter((pl) => pl.board === board)
+  for (const pl of plugs) if (pl.part !== uid) stripNet.set(pl.group, netOf(pl.part, pl.pin) ?? null)
+  const mine = new Map<string, number | null>()
+  for (const pl of plugs) {
+    if (pl.part !== uid) continue
+    const net = netOf(uid, pl.pin) ?? null
+    if (netClash(stripNet.get(pl.group), net) || netClash(mine.get(pl.group), net)) return pl.group
+    mine.set(pl.group, net)
+  }
+  return null
+}
+
+/**
  * Places part `uid` (already in `d.parts`) on `board`. `d` holds the board and the parts mounted on
  * it so far. `prefer` (a position the part already has) wins every tie, so a second pass only moves
  * a part when that scores better. Returns the part mounted and its score, or an error naming the
@@ -62,7 +93,7 @@ export function mountPart(
       const net = netOf(uid, pp.pin) ?? null
       const prior = stripNet.get(group)
       for (const p of [prior, mine.get(group)])
-        if (p !== undefined && (p === null || net === null || p !== net)) {
+        if (netClash(p, net)) {
           reason = 'every position where its legs fit would join two different nets in one strip'
           return null
         }

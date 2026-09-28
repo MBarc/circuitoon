@@ -188,6 +188,14 @@ describe('verifyDiagram', () => {
     expect(f.map((x) => [x.rule, x.message])).toEqual([['part-duplicate', '2 parts on the sheet are named D1; the intent has one.']])
     expect(f[0].parts).toEqual(['D1', 'D1b'])
   })
+  it('still reports a real extra connection on another part when a part is duplicated', () => {
+    const d = sheet()
+    d.parts.push({ uid: 'D1b', designator: 'D1', module: 'led', x: 400, y: 300 })
+    d.connections.push(wire('w4', hole('c15-top', 2), hole('c7-top', 2)))
+    const f = verifyDiagram(d, libraryLookup)
+    expect(f.map((x) => x.rule)).toEqual(['part-duplicate', 'extra-connection'])
+    expect(f[1].parts).toEqual(['S1'])
+  })
   it('finds a part whose module is not embedded', () => {
     const d = sheet()
     d.modules = { ...d.modules }

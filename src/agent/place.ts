@@ -12,7 +12,7 @@ import type { Pt, Rect, Rotation } from '../format/geometry.ts'
 import { isBoard } from '../format/module.ts'
 import { annotationRect, wrapNote } from '../render/annotationGeometry.ts'
 import { type Intent, terminalKey } from './netlist.ts'
-import { type NetOfPin, mountPart } from './mount.ts'
+import { type NetOfPin, mountPart, stripClash } from './mount.ts'
 import { RectIndex, footprint, grow, shift, tightFootprint, union } from './footprint.ts'
 import { naturalCompare } from './order.ts'
 
@@ -121,6 +121,11 @@ export function placeParts(intent: Intent, opts: PlaceOptions): PlaceResult {
           errors.push(`${m} is kept at (${km.x}, ${km.y}) but is not seated on ${ref} there (${issue.reason}).`)
           continue
         }
+        const clash = stripClash(tried, m, ref, netOfPin)
+        if (clash) {
+          errors.push(`${m} is kept at (${km.x}, ${km.y}) on ${ref} but joins two different nets in strip ${clash} there.`)
+          continue
+        }
         inst.set(m, trial)
         local = tried
         continue
@@ -181,6 +186,8 @@ export function placeParts(intent: Intent, opts: PlaceOptions): PlaceResult {
 
   // Repeat copies: one row each, tiled in a near-square grid of equal cells. Kept members stay
   // where they are; the block tiles the rest.
+  const repeats = [...new Set(intent.copies.map((c) => c.repeat))]
+  if (repeats.length > 1) return { ok: false, errors: [`Placement handles one repeat block, but the intent has ${repeats.length} (${repeats.join(', ')}).`] }
   const copies = intent.copies.map((c) => free(c.refs)).filter((list) => list.length)
   if (copies.length) {
     const cells = copies.map((list) => ({ refs: list, box: row(list, Infinity) }))
@@ -273,10 +280,12 @@ export function placeParts(intent: Intent, opts: PlaceOptions): PlaceResult {
     clear.add(annotationRect(note))
   }
 
-  // Content to the sheet origin, unless something was kept where it was.
+  // Content to the sheet origin, unless something was kept where it was (a kept ref the intent
+  // lacks keeps nothing).
   let out = annotations
   const rects = [...refs.map(fp), ...annotations.map(annotationRect)]
-  if (!keep.size && rects.length) {
+  const anyKept = [...keep.keys()].some((r) => inst.has(r))
+  if (!anyKept && rects.length) {
     const all = rects.reduce(union)
     const dx = ceil10(MARGIN - all.x)
     const dy = ceil10(MARGIN - all.y)

@@ -69,6 +69,18 @@ describe('placeParts', () => {
     })
     expect(d.parts.find((p) => p.uid === 'U1')!.rotation).toBe(90)
     expect(mountIssues(d)).toEqual([])
+    // Every strip holds legs of one net, and a leg in top- or top+ is on the net that names it.
+    const named: Record<string, string> = { 'top-': 'GND', 'top+': '3V3' }
+    const netOf = new Map([['U1.VSS', 'GND'], ['U1.VDD', '3V3']])
+    const strips = new Map<string, Set<string>>()
+    const plugs = plugsOf(d).filter((pl) => pl.part === 'U1')
+    expect(plugs).toHaveLength(28)
+    for (const pl of plugs) {
+      const net = netOf.get(`U1.${pl.pin}`) ?? `none U1.${pl.pin}`
+      strips.set(pl.group, (strips.get(pl.group) ?? new Set<string>()).add(net))
+      if (named[pl.group]) expect(net, `U1.${pl.pin} in ${pl.group}`).toBe(named[pl.group])
+    }
+    for (const [strip, nets] of strips) expect(nets.size, strip).toBe(1)
   })
   it('fails naming the part and the reason when no position on its board fits', () => {
     const r = placeParts(
@@ -126,6 +138,42 @@ describe('placeParts', () => {
       keep: new Map([['BB1', { x: 0, y: 0, rotation: 0 as const }], ['R1', { x: 5, y: 5, rotation: 0 as const }]]),
     })
     expect(r).toEqual({ ok: false, errors: ['R1 is kept at (5, 5) but is not seated on BB1 there (partial).'] })
+  })
+  it('keeps a kept group member where it was and lays the rest of the group around it', () => {
+    const raw = { ...ledNetlist(), parts: [...ledNetlist().parts, { ref: 'R2', module: 'resistor' }], nc: ['R2.1', 'R2.2'], groups: [{ name: 'Power', parts: ['BT1', 'R2'] }] }
+    const { d, annotations } = place(raw, new Map([['R2', { x: 900, y: 700, rotation: 90 as const }]]))
+    expect(d.parts.find((p) => p.uid === 'R2')).toMatchObject({ x: 900, y: 700, rotation: 90 })
+    expect(annotations.find((a) => a.type === 'frame')!.label).toBe('Power')
+    noOverlaps(d)
+  })
+  it('ignores a kept position for a ref the intent lacks: content still moves to the sheet origin', () => {
+    const plain = place(ledNetlist())
+    const stale = place(ledNetlist(), new Map([['ZZ9', { x: 5000, y: 5000, rotation: 0 as const }]]))
+    expect(stale.d.parts).toEqual(plain.d.parts)
+    expect(stale.annotations).toEqual(plain.annotations)
+  })
+  it('refuses more than one repeat block with a clear error', () => {
+    const intent = intentOf(tiltSensors())
+    const two: Intent = { ...intent, copies: intent.copies.map((c, i) => (i < 4 ? c : { ...c, repeat: 'tilt2' })) }
+    expect(placeParts(two, { spacing: 20 })).toEqual({ ok: false, errors: ['Placement handles one repeat block, but the intent has 2 (tilt, tilt2).'] })
+  })
+  it('refuses a kept mounted part that joins two nets in one strip, rather than moving it', () => {
+    const first = place(ledNetlist()).d
+    const at = (uid: string) => first.parts.find((q) => q.uid === uid)!
+    const r1 = at('R1')
+    const bb = at('BB1')
+    // D1 kept one row below R1, so its legs share R1's strips. Kept parts seat in natural order: D1
+    // first, then R1, whose VCC leg lands in a strip D1's LED_A or GND leg already holds.
+    const keep: KeepMap = new Map([
+      ['BB1', { x: bb.x, y: bb.y, rotation: 0 as const }],
+      ['R1', { x: r1.x, y: r1.y, rotation: r1.rotation ?? 0 }],
+      ['D1', { x: r1.x, y: r1.y + 10, rotation: r1.rotation ?? 0 }],
+    ])
+    const r = placeParts(intentOf(ledNetlist()), { spacing: 20, keep })
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.errors).toHaveLength(1)
+    if (!r.ok) expect(r.errors[0]).toMatch(/^R1 is kept at \(\d+, \d+\) on BB1 but joins two different nets in strip \S+ there\.$/)
+    if (!r.ok) expect(r.errors[0].startsWith(`R1 is kept at (${r1.x}, ${r1.y}) on BB1`)).toBe(true)
   })
   it('refuses a kept mounted part whose board is not kept', () => {
     const r = placeParts(intentOf(ledNetlist()), { spacing: 20, keep: new Map([['D1', { x: 100, y: 40, rotation: 0 as const }]]) })
