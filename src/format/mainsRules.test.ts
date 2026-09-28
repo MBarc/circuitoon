@@ -790,7 +790,7 @@ describe('rule 9: cables', () => {
 })
 
 describe('rule 13: checks that did not finish', () => {
-  const notChecked = 'Not checked: mains on low-voltage wiring, shorts, outlets joined to each other, mains voltages, polarity, earthing, fuses in the L wire and which loads get power.'
+  const notChecked = 'Not checked: mains on low-voltage wiring, shorts, outlets joined to each other, mains voltages, polarity, earthing, live prongs of plugs fed from behind, fuses in the L wire and which loads get power.'
   it('17 contact groups (mains-incomplete, no clean claim)', () => {
     const ks = Array.from({ length: 17 }, (_, i) => i + 1)
     const d = on(ks.map((k): [string, string, string] => [`s${k}`, `S${k}`, 't-switch']), ks.map((k) => w('xs1|L', `s${k}|1`)))

@@ -2306,7 +2306,7 @@ function stripRule(acc: Acc, earthStrips: { part: string; group: string }[]): Ma
 // ---- Rule 13: the checks did not finish (spec 1.5, 6) ----
 
 /** What the per-state rules would have judged, which an incomplete sheet does not check (spec 6: list what was not checked). */
-const NOT_CHECKED = 'Not checked: mains on low-voltage wiring, shorts, outlets joined to each other, mains voltages, polarity, earthing, fuses in the L wire and which loads get power.'
+const NOT_CHECKED = 'Not checked: mains on low-voltage wiring, shorts, outlets joined to each other, mains voltages, polarity, earthing, live prongs of plugs fed from behind, fuses in the L wire and which loads get power.'
 
 /** One finding per unit that was not enumerated (final review 2: every other unit was checked). */
 function incompleteRule(acc: Acc): MainsDraft[] {
