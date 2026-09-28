@@ -120,12 +120,16 @@ describe('built-in chips and displays keep the physical pin order', () => {
       expect(col.map((g) => g.label ?? g.name)).toEqual(labels)
       col.forEach((g, i) => expect(g.at[0][1]).toBe(10 + 10 * i))
     }
-    const byName = (n: string) => holes.find((g) => g.name === n)
-    for (const n of ['VCC', 'VCC 2']) expect(byName(n)).toMatchObject({ type: 'power_in', supply: '3V3/5V' })
-    for (const n of ['GND', 'GND 2']) expect(byName(n)?.type).toBe('ground')
-    for (const n of ['INTA', 'INTB', 'GPA7', 'GPB7']) expect(byName(n)?.type).toBe('output')
-    for (const n of ['NC', 'NC 2']) expect(byName(n)?.type).toBe('nc')
-    expect(byName('GPA0')?.type).toBe('io')
+    // Exact type (and supply) of every position, so a wrong but defined type fails.
+    const want: Record<string, string> = {
+      VCC: 'power_in', 'VCC 2': 'power_in', GND: 'ground', 'GND 2': 'ground',
+      A0: 'input', A1: 'input', A2: 'input', RESET: 'input', SCL: 'input', SDA: 'io',
+      INTA: 'output', INTB: 'output', GPA7: 'output', GPB7: 'output', NC: 'nc', 'NC 2': 'nc',
+    }
+    for (const n of [...gp('A'), ...gp('B')]) want[n] ??= 'io'
+    expect(Object.fromEntries(holes.map((g) => [g.name, g.type]))).toEqual(want)
+    expect(Object.fromEntries(holes.filter((g) => g.supply !== undefined).map((g) => [g.name, g.supply])))
+      .toEqual({ VCC: '3V3/5V', 'VCC 2': '3V3/5V' })
     expect(m.internal).toEqual([['GND', 'GND 2'], ['VCC', 'VCC 2']])
   })
 
