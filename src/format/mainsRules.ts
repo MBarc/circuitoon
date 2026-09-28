@@ -6,7 +6,7 @@ import { type Endpoint, type PartInstance, moduleOf } from './diagram.ts'
 import type { RuleId } from './checks.ts'
 import { nodeKey } from './netlist.ts'
 import { type GConverter, type GEdge, type GLoad, type GSource, type GTerm, type MainsGraph, type Prepared, FrontMap, LN_MASK as LN, L_MASK as L_, MAINS_POW, MAX_SOURCES, N_MASK as N_, PE_MASK as PE_, bareRoots, baseReps, steadyOf, bitOf, decodeSingle, groupName, hazardAt, identAt, minimalWitnesses, plainPath, statePhrase, termAt, termName } from './mainsGraph.ts'
-import { type Conductor, type ContactGroup, type MainsInfo, type Rating, isolationAdequate, mainsOf, uncoveredPins } from './mainsModel.ts'
+import { type Conductor, type ContactGroup, type MainsInfo, type Rating, type Region, isolationAdequate, mainsOf, uncoveredPins } from './mainsModel.ts'
 import { type ThroughKind, protectivePaths } from './mainsProtective.ts'
 import { andList, natural, orList } from './words.ts'
 import { END_NAMES, type EndKind, endKind } from './cables.ts'
@@ -32,8 +32,12 @@ export interface MainsDraft {
   causes: string[]
   select?: { parts: string[]; wires: string[] }
   /** An uncertain polarity clause, merged into its outlets' one warning (Ruling 37, mergeUnpolarized); never reaches the checker. */
-  unpolarized?: { outlets: number; clause: string; doublePole: boolean }
+  unpolarized?: { outlets: Outlet[]; clause: string; doublePole: boolean }
 }
+/** An unpolarized source named by id and part: a unit's source numbering never leaves the unit (see viewOf). */
+export interface Outlet { id: string; part: PartInstance }
+/** The sources of a mask in `p`'s numbering, by id. */
+const outletsOf = (p: Prepared, mask: number): Outlet[] => sourcesOfMask(mask).map((i) => ({ id: p.g.sources[i].id, part: p.g.sources[i].part })).sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
 export type Availability = 'powered' | 'unpowered' | 'unknown'
 /**
  * Why a converter is unknown, which decides what the user is told to do: `wiring` (rewire the input),
@@ -65,7 +69,16 @@ export interface Acc {
   loadFit: Uint8Array
   /** Per load (global index): the empty fuse holders whose fitting alone puts L and N of one source across it in some enumerated (so realizable) contact state (Resolution 28). */
   loadFixers: Map<number, Set<GEdge['part']>>
+  /** Why this unit's states were not enumerated (too many groups or sources in it), null when they were. */
   incomplete: 'groups' | 'sources' | null
+  /** The sheet's accumulator: the units absorbed that were not enumerated, each with what it had too many of. */
+  open: { kind: 'groups' | 'sources'; count: number; parts: PartInstance[] }[]
+  /**
+   * The sheet's accumulator, per node: the one conductor it carries in every state that gives it any
+   * identity, with its source's region (Resolution 19); null otherwise, and in a unit that was not
+   * enumerated. Set by absorb, which reads each unit's own source numbering.
+   */
+  conductors: ({ conductor: Conductor; region: Region | null } | null)[]
   /** Drafts of the units already enumerated (see absorb). */
   finished: MainsDraft[]
   /** The distinct sources of `p` (global index), each one's L and N bits and its voltage, highest first: fixed per unit, so a state allocates nothing. */
@@ -80,7 +93,7 @@ export function newAcc(p: Prepared, cands: number[], incomplete: 'groups' | 'sou
     p, cands, total: incomplete ? 0 : 2 ** cands.length, seen: new Map(),
     hazardAny: new Uint8Array(g.n), mainsAny: new Uint8Array(g.n), volts: new Float64Array(g.n), identUnion: new Uint32Array(g.n),
     converters: g.converters.map(() => null), loadComplete: new Uint8Array(g.loads.length), loadFit: new Uint8Array(g.loads.length), loadFixers: new Map(),
-    incomplete, finished: [], ...sourceTable(p),
+    incomplete, open: [], conductors: new Array(g.n).fill(null), finished: [], ...sourceTable(p),
   }
 }
 
@@ -917,14 +930,29 @@ export function finishStates(acc: Acc): MainsDraft[] {
   })
 }
 
-/** Folds one enumerated unit into the sheet's accumulator. */
+/**
+ * Folds one unit into the sheet's accumulator. A unit numbers its own sources (see viewOf), so its
+ * identity bits never leave it: each node's one conductor is decoded here, with the unit's sources.
+ */
 export function absorb(into: Acc, unit: Acc): void {
-  spreadReps(unit)
+  // A unit that was not enumerated holds its values on every node already (conservative).
+  if (!unit.incomplete) spreadReps(unit)
+  const sources = unit.p.g.sources
   for (const i of unit.p.relevant) {
     into.hazardAny[i] |= unit.hazardAny[i]
     into.mainsAny[i] |= unit.mainsAny[i]
     into.volts[i] = Math.max(into.volts[i], unit.volts[i])
-    into.identUnion[i] |= unit.identUnion[i]
+    const x = unit.identUnion[i]
+    if (x && (x & (x - 1)) === 0) {
+      const { s, c } = decodeSingle(x)
+      into.conductors[i] = { conductor: c, region: sources[s].region }
+    }
+  }
+  if (unit.incomplete) {
+    const groups = unit.incomplete === 'groups'
+    const g = unit.p.g
+    const parts = [...new Set(groups ? unit.cands.map((i) => g.groups[i].part) : unit.p.sources.map((s) => s.part))].sort((a, b) => natural.compare(a.designator, b.designator))
+    into.open.push({ kind: unit.incomplete, count: groups ? unit.cands.length : unit.p.sources.length, parts })
   }
   unit.converters.forEach((c, i) => {
     if (c) into.converters[i] = combine(into.converters[i], c)
@@ -936,17 +964,17 @@ export function absorb(into: Acc, unit: Acc): void {
 }
 
 /**
- * When the states were not enumerated (too many groups or sources): every node a source's L or N
- * could reach is taken as hazardous at the highest such voltage. A converter is unknown when any
- * source terminal (L, N or PE) shares a possible-connectivity component with an input; unpowered only
- * when none does, which is a proof, not an enumeration result (Resolution 11).
+ * When a unit's states were not enumerated (too many groups or sources in it): every node of the unit
+ * a source's L or N could reach is taken as hazardous at the highest such voltage. A converter of the
+ * unit is unknown when any source terminal (L, N or PE) shares a possible-connectivity component with
+ * an input; unpowered only when none does, which is a proof, not an enumeration result (Resolution 11).
  */
 export function conservative(acc: Acc): void {
   const { p } = acc
   const g = p.g
   const reach = new Map<number, number>()
   const any = new Set<number>()
-  for (const s of g.sources) {
+  for (const s of p.sources) {
     for (const x of [...s.live, ...s.neutral]) reach.set(p.possible[x], Math.max(reach.get(p.possible[x]) ?? 0, s.volts))
     for (const x of [...s.live, ...s.neutral, ...s.earth]) any.add(p.possible[x])
   }
@@ -963,7 +991,7 @@ export function conservative(acc: Acc): void {
   for (const e of g.edges) if (!e.directed) join(e.a, e.b)
   for (const grp of g.groups) for (const list of [...grp.closed, ...grp.leak]) for (const [a, b] of list) join(a, b)
   const onWiring = new Set<number>()
-  for (const s of g.sources) for (const x of [...s.live, ...s.neutral]) onWiring.add(top(x))
+  for (const s of p.sources) for (const x of [...s.live, ...s.neutral]) onWiring.add(top(x))
   for (const i of p.relevant) {
     const v = reach.get(p.possible[i])
     if (v === undefined) continue
@@ -971,9 +999,10 @@ export function conservative(acc: Acc): void {
     if (onWiring.has(top(i))) acc.mainsAny[i] = 1
     acc.volts[i] = v
   }
-  g.converters.forEach((c, i) => {
+  for (const i of p.converterIdx) {
+    const c = g.converters[i]
     acc.converters[i] = any.has(p.possible[c.a]) || any.has(p.possible[c.b]) ? notChecked(c) : UNPOWERED
-  })
+  }
 }
 
 /** Rule 11 (spec 1.3): a converter that is not powered, when it is wired or plugged at all. */
@@ -1726,7 +1755,7 @@ function maybeWrongDraft(p: Prepared, r: ReqPart, um: number): (when: string) =>
   return (when) => ({
     rule: 'polarity', subject: d, target: termName(r.terms[0]), message: '',
     parts: [r.part.uid], pins: r.terms.map(endpointOf), wires, causes: [],
-    unpolarized: { outlets: um, clause: `${andList(r.terms.map(termName))} may be on the wrong conductor${when}`, doublePole: false },
+    unpolarized: { outlets: outletsOf(p, um), clause: `${andList(r.terms.map(termName))} may be on the wrong conductor${when}`, doublePole: false },
   })
 }
 
@@ -1773,7 +1802,7 @@ function groupDraft(p: Prepared, c: PolGroup, ends: number[], um: number): (when
   const base = { rule: 'polarity' as const, subject: d, target: d, parts: [grp.part.uid], pins: [], wires }
   const open = c.changeover ? 'whatever it disconnects stays live' : `with ${name} ${c.openWord}, what it feeds stays live`
   return um
-    ? (when) => ({ ...base, message: '', causes: [], unpolarized: { outlets: um, clause: `${name} may switch the neutral${when}`, doublePole: true } })
+    ? (when) => ({ ...base, message: '', causes: [], unpolarized: { outlets: outletsOf(p, um), clause: `${name} may switch the neutral${when}`, doublePole: true } })
     : (when) => ({ ...base, message: `${name} switches the neutral${when}: ${open}. Move ${name} into the L wire.`, causes: [nodeKey(grp.part.uid, grp.def.id)] })
 }
 
@@ -1785,7 +1814,7 @@ function fuseDraft(p: Prepared, e: GEdge, um: number): (when: string) => MainsDr
   // An empty holder has no fuse to blow: it is the holder that sits in the neutral.
   const which = e.fitted ? d : `${d}'s holder`
   return um
-    ? (when) => ({ ...base, message: '', causes: [], unpolarized: { outlets: um, clause: `${which} may be in the neutral${when}`, doublePole: false } })
+    ? (when) => ({ ...base, message: '', causes: [], unpolarized: { outlets: outletsOf(p, um), clause: `${which} may be in the neutral${when}`, doublePole: false } })
     : (when) => ({
       ...base,
       message: e.fitted
@@ -1800,23 +1829,28 @@ function fuseDraft(p: Prepared, e: GEdge, um: number): (when: string) => MainsDr
  * for those outlets, listing the parts in designator order, each with its own conditions. Definite
  * findings and every other draft pass through unchanged.
  */
-export function mergeUnpolarized(g: MainsGraph, drafts: MainsDraft[]): MainsDraft[] {
+export function mergeUnpolarized(drafts: MainsDraft[]): MainsDraft[] {
   const out: MainsDraft[] = []
-  const byOutlets = new Map<number, MainsDraft[]>()
+  const byOutlets = new Map<string, MainsDraft[]>()
   for (const d of drafts) {
     if (!d.unpolarized) out.push(d)
-    else (byOutlets.get(d.unpolarized.outlets) ?? byOutlets.set(d.unpolarized.outlets, []).get(d.unpolarized.outlets)!).push(d)
+    else {
+      const key = JSON.stringify(d.unpolarized.outlets.map((o) => o.id))
+      const list = byOutlets.get(key)
+      if (list) list.push(d)
+      else byOutlets.set(key, [d])
+    }
   }
-  for (const [outlets, items] of byOutlets) {
+  for (const items of byOutlets.values()) {
     items.sort((a, b) => natural.compare(a.subject, b.subject) || natural.compare(a.unpolarized!.clause, b.unpolarized!.clause))
-    const srcs = sourcesOfMask(outlets).map((s) => g.sources[s].part)
+    const srcs = items[0].unpolarized!.outlets.map((o) => o.part)
     const names = [...new Set(srcs.map((x) => x.designator))].sort(natural.compare)
     const parts = [...new Set(items.map((x) => x.subject))]
     const doubles = [...new Set(items.filter((x) => x.unpolarized!.doublePole).map((x) => x.subject))]
     const either = doubles.length ? `, or a double-pole switch or relay in place of ${andList(doubles)}` : ''
     out.push({
       rule: 'polarity', subject: names[0], target: names[0],
-      message: `${unpolarizedWords(g, outlets)}: ${items.map((x) => x.unpolarized!.clause).join('; ')}. Use a polarized plug and outlet for ${andList(parts)}${either}.`,
+      message: `${unpolarizedWords(names)}: ${items.map((x) => x.unpolarized!.clause).join('; ')}. Use a polarized plug and outlet for ${andList(parts)}${either}.`,
       parts: [...new Set([...srcs.map((x) => x.uid), ...items.flatMap((x) => x.parts)])],
       pins: items.flatMap((x) => x.pins), wires: [...new Set(items.flatMap((x) => x.wires))],
       causes: srcs.map((x) => nodeKey(x.uid, '#polarity-unknown')),
@@ -1825,9 +1859,8 @@ export function mergeUnpolarized(g: MainsGraph, drafts: MainsDraft[]): MainsDraf
   return out
 }
 
-/** "XS1 is an unpolarized outlet, so which of its slots is L is not known", for the sources in `mask`. */
-function unpolarizedWords(g: MainsGraph, mask: number): string {
-  const names = [...new Set(sourcesOfMask(mask).map((s) => g.sources[s].part.designator))].sort(natural.compare)
+/** "XS1 is an unpolarized outlet, so which of its slots is L is not known", for the outlets' designators (sorted, distinct). */
+function unpolarizedWords(names: string[]): string {
   return names.length === 1
     ? `${names[0]} is an unpolarized outlet, so which of its slots is L is not known`
     : `${andList(names)} are unpolarized outlets, so which of their slots is L is not known`
@@ -2088,7 +2121,7 @@ function fuseRules(acc: Acc): MainsDraft[] {
       message: `${d} has a fuse fitted but no rating, so the drawing does not say which fuse to fit. Set its rating in amps.`,
       parts: [e.part.uid], pins: e.names.map((n) => ({ part: e.part.uid, pin: n })), wires: [], causes: e.names.map((n) => nodeKey(e.part.uid, n)) })
   }
-  if (acc.incomplete) return out
+  // A load in a unit that was not enumerated has no supply recorded either way (loadFit stays 0): nothing is claimed about it.
   g.loads.forEach((ld, i) => {
     if (acc.loadComplete[i] || !acc.loadFit[i]) return
     const holders = [...(acc.loadFixers.get(i) ?? [])].sort((x, y) => natural.compare(x.designator, y.designator))
@@ -2202,15 +2235,11 @@ function stripRule(acc: Acc, earthStrips: { part: string; group: string }[]): Ma
 /** What the per-state rules would have judged, which an incomplete sheet does not check (spec 6: list what was not checked). */
 const NOT_CHECKED = 'Not checked: mains on low-voltage wiring, shorts, outlets joined to each other, mains voltages, polarity, earthing, fuses in the L wire and which loads get power.'
 
+/** One finding per unit that was not enumerated (final review 2: every other unit was checked). */
 function incompleteRule(acc: Acc): MainsDraft[] {
-  if (!acc.incomplete) return []
-  const g = acc.p.g
-  const groups = acc.incomplete === 'groups'
-  const what = groups ? `${acc.cands.length} switches and relays` : `${g.sources.length} AC sources`
-  const parts = [...new Set(groups ? acc.cands.map((i) => g.groups[i].part) : g.sources.map((s) => s.part))].sort((a, b) => natural.compare(a.designator, b.designator))
-  return [{ rule: 'mains-incomplete', subject: parts[0].designator, target: parts[0].designator,
-    message: `Mains checks did not finish: ${what}. ${NOT_CHECKED} Split the drawing or check the rest by hand.`,
-    parts: parts.map((x) => x.uid), pins: [], wires: [], causes: ['#mains-incomplete'] }]
+  return acc.open.map(({ kind, count, parts }) => ({ rule: 'mains-incomplete', subject: parts[0].designator, target: parts[0].designator,
+    message: `Mains checks did not finish: ${count} ${kind === 'groups' ? 'switches and relays' : 'AC sources'}. ${NOT_CHECKED} Split the drawing or check the rest by hand.`,
+    parts: parts.map((x) => x.uid), pins: [], wires: [], causes: ['#mains-incomplete', ...parts.map((x) => x.uid)] }))
 }
 
 STATE_RULES.push(unprotectedRule)

@@ -8,6 +8,7 @@ import { plugsOf } from './breadboard.ts'
 import { netlist, nodeKey } from './netlist.ts'
 import { type Prepared, analyseState, buildMainsGraph, candidateGroups, masksByPopcount, prepare, setState } from './mainsGraph.ts'
 import { across, acrossFit, acrossWith, newAcc, visitState } from './mainsRules.ts'
+import { analyseMains } from './mains.ts'
 
 const only = (d: Diagram, rule: string): Finding[] => checkDiagram(d).filter((f) => f.rule === rule)
 const msgs = (d: Diagram, rule: string) => only(d, rule).map((f) => f.message)
@@ -752,9 +753,28 @@ describe('rule 13: checks that did not finish', () => {
     expect(found.find((f) => f.rule === 'mains-incomplete')!.subject).toBe('S1')
     expect(found.length).toBeGreaterThan(0)
   })
-  it('more than 10 AC sources', () => {
+  it('more than 10 AC sources joined in one unit', () => {
     const outlets = Array.from({ length: 11 }, (_, i) => [`xs${i + 1}`, `XS${i + 1}`, 't-outlet'])
-    expect(msgs(on([], [], outlets), 'mains-incomplete')).toEqual([`Mains checks did not finish: 11 AC sources. ${notChecked} Split the drawing or check the rest by hand.`])
+    const joined = outlets.slice(1).map(([uid]) => w('xs1|L', `${uid}|L`))
+    expect(msgs(on([], joined, outlets), 'mains-incomplete')).toEqual([`Mains checks did not finish: 11 AC sources. ${notChecked} Split the drawing or check the rest by hand.`])
+  })
+  // Final review (2): the limits apply per enumeration unit, never to the sheet.
+  it('a room of 11 outlets, all idle but one, is still checked', () => {
+    const outlets = Array.from({ length: 11 }, (_, i) => [`xs${i + 1}`, `XS${i + 1}`, 't-outlet'])
+    const d = on([['e1', 'E1', 't-lamp']], [w('xs1|L', 'e1|L'), w('xs1|L', 'xs1|N')], outlets)
+    expect(analyseMains(d)!.complete).toBe(true)
+    expect(rules(d).has('mains-incomplete')).toBe(false)
+    expect(msgs(d, 'mains-short')).toEqual(['XS1 L and N are joined: a short circuit across the outlet. The breaker should trip; until it does, the wiring may overheat. Remove the wire that joins them.'])
+  })
+  it('an L-N short on one outlet is found beside 17 switches on another outlet, whose unit alone did not finish', () => {
+    const ks = Array.from({ length: 17 }, (_, i) => i + 1)
+    const d = on(ks.map((k): [string, string, string] => [`s${k}`, `S${k}`, 't-switch']), [w('xs1|L', 'xs1|N'), ...ks.map((k) => w('xs2|L', `s${k}|1`))],
+      [['xs1', 'XS1', 't-outlet'], ['xs2', 'XS2', 't-outlet-2']])
+    expect(analyseMains(d)!.complete).toBe(false)
+    expect(msgs(d, 'mains-short')).toHaveLength(1)
+    expect(msgs(d, 'mains-incomplete')).toEqual([`Mains checks did not finish: 17 switches and relays. ${notChecked} Split the drawing or check the rest by hand.`])
+    // The oversized unit stays conservative: its wires are taken as on mains.
+    expect(only(d, 'cable-unverified').some((f) => f.message.includes('S17'))).toBe(true)
   })
   it('says nothing when the checks finished', () => {
     expect(rules(on([['e1', 'E1', 't-lamp']], [w('xs1|L', 'e1|L'), w('xs1|N', 'e1|N')])).has('mains-incomplete')).toBe(false)

@@ -120,6 +120,19 @@ describe('the spec circuits on built-in parts', () => {
     expect(found.filter((f) => f.rule === 'mains-cable')).toEqual([])
     expect(found.some((f) => f.rule === 'mains-to-low-voltage' && f.message.includes('K1 DC-'))).toBe(true)
   })
+  // Final review (2): 17 switches on one outlet make only their own unit incomplete.
+  it('an L-N short on XP1 is reported beside 17 KCD1 switches on a separate outlet XS2', () => {
+    const xs1 = at('xs1', 'XS1', 'outlet-us-5-15r-duplex')
+    const ks = Array.from({ length: 17 }, (_, i) => i + 1)
+    const d = sheet([xs1, onOutlet('xp1', 'XP1', 'plug-us-5-15p', xs1), at('xs2', 'XS2', 'outlet-us-5-15r-duplex', 0, 2000),
+      ...ks.map((k) => at(`s${k}`, `S${k}`, 'rocker-switch-kcd1', k * 200, 600))],
+    [stripped('xp1|L', 'xp1|N'), ...ks.map((k) => stripped('xs2|L1', `s${k}|1`))])
+    const found = checkDiagram(d)
+    expect(found.filter((f) => f.rule === 'mains-short').map((f) => f.subject)).toEqual(['XS1'])
+    expect(found.filter((f) => f.rule === 'mains-incomplete').map((f) => f.message)).toEqual([
+      expect.stringMatching(/^Mains checks did not finish: 17 switches and relays\./),
+    ])
+  })
   it('HLK-PM01 unpowered', () => {
     const d = sheet([at('ps1', 'PS1', 'hlk-pm01'), at('u1', 'U1', 'esp32-cam', 300)], [dc('ps1|+Vo', 'u1|5V'), dc('ps1|-Vo', 'u1|GND')])
     const found = checkDiagram(d).filter((f) => f.rule === 'no-power').map((f) => f.message)

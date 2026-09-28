@@ -1,6 +1,7 @@
 // The mains analysis (spec docs/superpowers/specs/2026-09-27-mains-outlets-design.md): builds the
 // conduction graph, enumerates every state of each unit's candidate contact groups (up to 16 groups
-// and 10 sources on the sheet; beyond that it says so and stays conservative), runs the rules and
+// and 10 sources per unit; a unit beyond that is not enumerated: the analysis says so and stays
+// conservative there, and every other unit is still checked), runs the rules and
 // hands the wiring checker and the renderer one shared result: findings, converter availability,
 // dead outputs, the hazardous nets the DC rules must skip, and identity for colours. A sheet without
 // mains data costs one scan of its parts.
@@ -8,16 +9,16 @@ import { type Diagram, moduleOf } from './diagram.ts'
 import { plugsOf } from './breadboard.ts'
 import { netlist, nodeKey } from './netlist.ts'
 import { type Conductor, type Region, mainsOf } from './mainsModel.ts'
-import { MAX_GROUPS, MAX_SOURCES, type MainsGraph, analyseState, buildMainsGraph, candidateGroups, decodeSingle, masksByPopcount, plainPath, prepare, setCandidates, setState, units } from './mainsGraph.ts'
+import { MAX_GROUPS, MAX_SOURCES, type MainsGraph, analyseState, buildMainsGraph, candidateGroups, masksByPopcount, plainPath, prepare, setCandidates, setState, units } from './mainsGraph.ts'
 import { type ConverterStatus, type MainsDraft, UNPOWERED, absorb, conservative, mergeUnpolarized, newAcc, staticDrafts, visitState } from './mainsRules.ts'
 
 export interface MainsAnalysis {
   graph: MainsGraph
-  /** False when the states were not all enumerated (mains-incomplete). */
+  /** False when some unit's states were not enumerated (mains-incomplete). */
   complete: boolean
   /** Converter availability by part uid. */
   converters: Map<string, ConverterStatus>
-  /** Every node key on a net that is hazardous in some state (every possibly hazardous one when incomplete). */
+  /** Every node key on a net that is hazardous in some state (every possibly hazardous one in a unit that was not enumerated). */
   hazardKeys: Set<string>
   /**
    * The node keys of hazardKeys that are on mains wiring (L or N identity, or energy that crossed no
@@ -50,15 +51,16 @@ export function analyseMains(d: Diagram): MainsAnalysis | null {
   const g = buildMainsGraph(d, plugs, netlist(d, plugs))!
   const p = prepare(g)
   const cands = candidateGroups(g, p.possible)
-  const incomplete = g.sources.length > MAX_SOURCES ? 'sources' : cands.length > MAX_GROUPS ? 'groups' : null
-  const acc = newAcc(p, cands, incomplete)
-  // On an incomplete sheet no per-state rule runs (rules 1 to 4 among them: no voltage, short or
-  // low-voltage finding is claimed); only the static rules run, on the conservative hazard. The
+  const acc = newAcc(p, cands, null)
+  // Final review (2): the limits hold per unit (units cannot affect each other; a unit numbers its own
+  // sources). In a unit past them no per-state rule runs (rules 1 to 4 among them: no voltage, short or
+  // low-voltage finding is claimed there); the static rules see its conservative hazard, and its
   // mains-incomplete finding (rule 13) says the checks did not finish and lists what was not checked.
-  if (incomplete) conservative(acc)
-  else
-    for (const unit of units(p, cands)) {
-      const sub = newAcc(unit.view, unit.cands, null)
+  for (const unit of units(p, cands)) {
+    const over = unit.view.sources.length > MAX_SOURCES ? 'sources' : unit.cands.length > MAX_GROUPS ? 'groups' : null
+    const sub = newAcc(unit.view, unit.cands, over)
+    if (over) conservative(sub)
+    else {
       const masks = masksByPopcount(unit.cands.length)
       setState(unit.view, unit.cands, 0)
       for (let k = 0; k < masks.length; k++) {
@@ -68,10 +70,12 @@ export function analyseMains(d: Diagram): MainsAnalysis | null {
         analyseState(unit.view)
         visitState(sub, mask)
       }
-      absorb(acc, sub)
     }
+    absorb(acc, sub)
+  }
+  const complete = acc.open.length === 0
   // Ruling 37: the uncertain polarity clauses of one unpolarized outlet become its one warning, across units.
-  const findings = mergeUnpolarized(g, [...acc.finished, ...staticDrafts(acc)])
+  const findings = mergeUnpolarized([...acc.finished, ...staticDrafts(acc)])
   const converters = new Map(g.converters.map((c, i): [string, ConverterStatus] => [c.part.uid, acc.converters[i] ?? UNPOWERED]))
   const deadOutputs = new Map<string, 'unpowered' | 'unknown'>()
   for (const c of g.converters) {
@@ -86,12 +90,9 @@ export function analyseMains(d: Diagram): MainsAnalysis | null {
   })
   const conductorOf = (key: string) => {
     const i = g.nodeOf.get(key)
-    const x = i === undefined || incomplete ? 0 : acc.identUnion[i]
-    if (!x || (x & (x - 1)) !== 0) return null
-    const { s, c } = decodeSingle(x)
-    return { conductor: c, region: g.sources[s].region }
+    return i === undefined ? null : acc.conductors[i]
   }
-  return { graph: g, complete: !incomplete, converters, hazardKeys, mainsKeys, deadOutputs, conductorOf, findings }
+  return { graph: g, complete, converters, hazardKeys, mainsKeys, deadOutputs, conductorOf, findings }
 }
 
 const cache = new WeakMap<Diagram['connections'], { parts: Diagram['parts']; modules: Diagram['modules']; result: MainsAnalysis | null }>()

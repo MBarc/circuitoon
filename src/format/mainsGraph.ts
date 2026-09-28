@@ -541,8 +541,9 @@ function planOf(p: Prepared): Plan {
  * enumeration, so it reads the flattened plan and allocates nothing; analyseStatePlain is the
  * reference it is checked against (see plainPath).
  *
- * Callers check `g.sources.length <= MAX_SOURCES` first (mains-incomplete otherwise): beyond ten
- * sources the identity bits of one source alias another's and the power bits overflow.
+ * Callers check `p.sources.length <= MAX_SOURCES` first (mains-incomplete otherwise; a unit's view
+ * numbers its own sources, see viewOf): beyond ten sources the identity bits of one source alias
+ * another's and the power bits overflow.
  *
  * Energization starts from L and N of every source (Ruling 33: N is a live conductor, and on an
  * unpolarized outlet no standard fixes which slot is L), then crosses loads, leakage and energize
@@ -715,7 +716,7 @@ export const hazardAt = (p: Prepared, node: number): boolean => (identAt(p, node
 /** A node is on mains wiring when it holds L or N identity or energy that crossed no isolation barrier (MAINS_POW): the DC rules skip only these. */
 export const mainsAt = (p: Prepared, node: number): boolean => (identAt(p, node) & LN_MASK) !== 0 || (powerAt(p, node) & MAINS_POW) !== 0
 
-/** Up to this many candidate groups on the sheet the checker enumerates every state; beyond, it reports mains-incomplete (spec 1.5). */
+/** Up to this many candidate groups in a unit the checker enumerates every state; beyond, it reports mains-incomplete for that unit (spec 1.5, final review 2). */
 export const MAX_GROUPS = 16
 
 /**
@@ -760,15 +761,23 @@ export function setCandidates(p: Prepared, cands: number[], mask: number): void 
   for (let k = 0; k < cands.length; k++) groupState[cands[k]] = (mask >>> k) & 1
 }
 
-/** `p` narrowed to `nodes`: the same scratch arrays, the lists cut to what has a terminal among them. */
+/**
+ * `p` narrowed to `nodes`: the same scratch arrays, the lists cut to what has a terminal among them.
+ * The view numbers its own sources from 0 (`index`, and its graph's `sources` in that order), so the
+ * MAX_SOURCES identity and power bits hold per unit, never per sheet (final review 2). Anything that
+ * leaves the view names a source by its id or part, never by index (see absorb, mergeUnpolarized).
+ */
 export function viewOf(p: Prepared, nodes: number[]): Prepared {
   const g = p.g
   const inRel = new Uint8Array(g.n)
   for (const i of nodes) inRel[i] = 1
   const within = (xs: number[]) => xs.filter((x) => inRel[x])
+  const sources = p.sources.map((s) => ({ ...s, live: within(s.live), neutral: within(s.neutral), earth: within(s.earth) }))
+    .filter((s) => s.live.length + s.neutral.length + s.earth.length > 0)
+    .map((s, index) => ({ ...s, index }))
   return {
-    ...p, relevant: Int32Array.from(nodes), inRel, srcRoots: [],
-    sources: p.sources.map((s) => ({ ...s, live: within(s.live), neutral: within(s.neutral), earth: within(s.earth) })).filter((s) => s.live.length + s.neutral.length + s.earth.length > 0),
+    ...p, g: { ...g, sources }, relevant: Int32Array.from(nodes), inRel, srcRoots: [],
+    sources,
     groupIdx: p.groupIdx.filter((gi) => g.groups[gi].nodes.some((x) => inRel[x])),
     loadIdx: p.loadIdx.filter((i) => inRel[g.loads[i].a]),
     converterIdx: p.converterIdx.filter((i) => inRel[g.converters[i].a]),
