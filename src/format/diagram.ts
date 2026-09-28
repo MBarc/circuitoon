@@ -957,6 +957,8 @@ export function validateDiagram(raw: unknown): DiagramResult {
     else if (reason === 'obscured')
       warnings.push(`${at}: a board drawn above board "${board}" covers a leg of "${part}", so it plugs into nothing`)
     else if (reason === 'conflict') warnings.push(`${at}: a leg of "${part}" sits on a hole another mounted part already uses, so it plugs into nothing`)
+    else if (reason === 'no-fit')
+      warnings.push(`${at}: "${part}" does not fit board "${board}" (an outlet takes only a matching plug, and a plug fits only a matching outlet), so it plugs into nothing`)
   }
   return { ok: true, diagram, warnings }
 }

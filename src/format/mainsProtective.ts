@@ -93,7 +93,7 @@ function liveTerminals(info: MainsInfo): Set<string> {
       ...(info.acInput ? [info.acInput.a, info.acInput.b] : []),
       ...info.acSources.flatMap((x) => [...x.live, ...x.neutral]),
       ...info.sockets.flatMap((x) => x.contacts.filter((c) => c.role !== 'PE').map((c) => c.group)),
-      ...(info.plug?.profiles.flatMap((pr) => pr.contacts.filter((c) => c.mains !== 'PE').map((c) => c.pin)) ?? []),
+      ...(info.plug?.profiles.flatMap((pr) => pr.contacts.filter((c) => c.mains === 'L' || c.mains === 'N').map((c) => c.pin)) ?? []),
       ...info.conducts.flatMap((c) => c.pins),
     ])
     liveCache.set(info, s)
@@ -140,7 +140,7 @@ export function protectivePaths(g: MainsGraph): ProtectivePaths {
     edges.push({ a: vertex(ka, ra), b: vertex(kb, rb), ...extra })
   }
   for (const c of g.d.connections) if (!g.broken.has(c.uid)) join(nodeKey(c.from.part, c.from.pin), nodeKey(c.to.part, c.to.pin), { wire: c.uid })
-  for (const pl of plugsOf(g.d)) join(nodeKey(pl.part, pl.pin), nodeKey(pl.board, pl.group))
+  for (const pl of plugsOf(g.d)) if (!pl.mechanical) join(nodeKey(pl.part, pl.pin), nodeKey(pl.board, pl.group))
   for (const part of g.mainsParts) {
     const m = moduleOf(g.d, part.module)!
     const info = mainsOf(m)

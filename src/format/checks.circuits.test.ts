@@ -584,10 +584,14 @@ describe('mains sheets (synthetic parts): every mains rule is reached, and its m
     const ks = Array.from({ length: 17 }, (_, i) => i + 1)
     has(mains([mat('xs1', 'XS1', 't-outlet'), ...ks.map((k) => mat(`s${k}`, `S${k}`, 't-switch', k * 100, 300))], ks.map((k) => mw('xs1|L', `s${k}|1`))), 'mains-incomplete')
   })
+  it('plugs that do not fit the outlet they are over', () => {
+    has(mains([mat('xs1', 'XS1', 't-outlet'), mat('xp1', 'XP1', 't-plug-uk')], []), 'plug-mismatch')
+    has(mains([mat('xs1', 'XS1', 't-outlet'), mat('xp1', 'XP1', 't-plug-us', 10, 0, { mount: { board: 'xs1' } })], []), 'plug-mismatch')
+  })
 })
 
 describe('every message ends with what to do', () => {
-  const VERBS = ['connect', 'move', 'swap', 'remove', 'set', 'use', 'add', 'separate', 'delete', 'power', 'keep', 'give', 'drag', 'do', 'say', 'wire', 'unplug', 'split', 'check', 'fit']
+  const VERBS = ['connect', 'move', 'swap', 'remove', 'set', 'use', 'add', 'separate', 'delete', 'power', 'keep', 'give', 'drag', 'do', 'say', 'wire', 'unplug', 'split', 'check', 'fit', 'turn']
   /** True when a clause of the last sentence starts with an instruction. */
   const acts = (message: string) => {
     const last = message.split(/(?<=\.) /).pop()!
@@ -616,9 +620,8 @@ describe('every message ends with what to do', () => {
       }
     if (missing.length) console.log('NOACT\n' + [...new Set(missing)].join('\n'))
     expect(missing).toEqual([])
-    // Every rule is reached here. plug-mismatch has no sheet yet: plug-in devices seat on outlets from Task 13.
-    const NOT_YET = ['plug-mismatch']
-    expect([...seen].sort()).toEqual(Object.keys(RULES).filter((r) => !NOT_YET.includes(r)).sort())
+    // Every rule is reached here.
+    expect([...seen].sort()).toEqual(Object.keys(RULES).sort())
   })
 })
 

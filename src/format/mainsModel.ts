@@ -6,6 +6,13 @@ import { GRID, type ModuleDef, isNum, isObj } from './module.ts'
 
 export const CONDUCTORS = ['L', 'N', 'PE'] as const
 export type Conductor = (typeof CONDUCTORS)[number]
+/**
+ * A plug contact's role: a conductor, or `mechanical` for a contact that must enter a socket contact
+ * to seat but carries no conductor (Ruling 39: the insulated earth pin of a class II BS 1363 plug,
+ * which only opens the socket's shutters).
+ */
+export const PLUG_ROLES = [...CONDUCTORS, 'mechanical'] as const
+export type PlugRole = (typeof PLUG_ROLES)[number]
 export const REQUIREMENTS = ['L', 'N', 'PE', 'line'] as const
 export type Requirement = (typeof REQUIREMENTS)[number]
 export const REGIONS = ['us', 'jp', 'eu', 'uk', 'au'] as const
@@ -56,7 +63,7 @@ export interface Rating {
 }
 export interface Pole { com: string; no: string | null; nc: string | null }
 export interface ContactGroup { id: string; kind: ContactKind; poles: Pole[] }
-export interface PlugContact { pin: string; at: { x: number; y: number }; mains: Conductor }
+export interface PlugContact { pin: string; at: { x: number; y: number }; mains: PlugRole }
 export interface PlugProfile { id: string; contacts: PlugContact[] }
 export interface PlugDef { family: PlugFamily; profiles: PlugProfile[] }
 export interface SocketContact { group: string; role: Conductor }
@@ -268,6 +275,8 @@ export function validateMains(raw: Record<string, unknown>, names: Set<string>, 
 
   if (el.polarityHazard !== undefined && !isStr(el.polarityHazard)) errors.push('electrical.polarityHazard: must be a sentence saying what wiring the part the wrong way round does')
 
+  // Each plug contact pin's role across profiles: a mechanical pin is mechanical in every profile.
+  const pinRole = new Map<string, PlugRole>()
   if (el.plug !== undefined) {
     const p = el.plug
     if (!isObj(p)) errors.push('electrical.plug: must be { "family", "profiles": [...] }')
@@ -284,7 +293,7 @@ export function validateMains(raw: Record<string, unknown>, names: Set<string>, 
           if (!Array.isArray(pr.contacts) || !pr.contacts.length) return void errors.push(`${at}.contacts: must be a list of 1 or more contacts`)
           // Only the profile's own consistency is checked here; which roles and positions a family
           // allows is Task 12's compatibility table (plugging.ts).
-          const prongs = new Set<string>()
+          const roleOfPin = new Map<string, PlugRole>()
           const spots = new Set<string>()
           const count = { L: 0, N: 0, PE: 0 }
           let rolesKnown = true
@@ -295,23 +304,31 @@ export function validateMains(raw: Record<string, unknown>, names: Set<string>, 
               return void errors.push(`${cat}: must be an object`)
             }
             if (!isStr(c.pin) || !nodes.has(c.pin)) errors.push(`${cat}.pin: must name an internal node (electrical.internalNodes), the prong`)
-            if (isStr(c.pin)) {
-              if (prongs.has(c.pin)) errors.push(`${cat}.pin: "${c.pin}" is already a contact of this profile`)
-              else prongs.add(c.pin)
-            }
             if (!(isObj(c.at) && isNum(c.at.x) && isNum(c.at.y) && c.at.x % GRID === 0 && c.at.y % GRID === 0)) errors.push(`${cat}.at: must be { "x", "y" } on the 10 px grid`)
             else {
               const spot = `${c.at.x}, ${c.at.y}`
               if (spots.has(spot)) errors.push(`${cat}.at: another contact of this profile sits at ${spot}`)
               else spots.add(spot)
             }
-            if (!oneOf(CONDUCTORS, c.mains)) {
+            const role = oneOf(PLUG_ROLES, c.mains) ? c.mains : null
+            if (!role) {
               rolesKnown = false
-              errors.push(`${cat}.mains: must be "L", "N" or "PE"`)
-            } else {
-              count[c.mains]++
-              if (c.mains === 'PE' && el.protection === 'class-2') errors.push(`${cat}.mains: a class 2 part has no PE prong`)
-            }
+              errors.push(`${cat}.mains: must be "L", "N", "PE" or "mechanical"`)
+            } else if (role === 'PE' && el.protection === 'class-2')
+              errors.push(`${cat}.mains: a class 2 part has no PE prong (an insulated earth pin is "mechanical")`)
+            if (!isStr(c.pin)) return
+            // One prong may touch at several points only as an earth (a CEE 7/7 plug's two earth clips).
+            const prev = roleOfPin.get(c.pin)
+            const again = prev !== undefined && prev === role && (role === 'PE' || role === 'mechanical')
+            if (prev !== undefined && !again) errors.push(`${cat}.pin: "${c.pin}" is already a contact of this profile`)
+            if (prev === undefined && role) roleOfPin.set(c.pin, role)
+            // Only conducting contacts count, and an earth touching at two points counts once.
+            if (role && role !== 'mechanical' && !again) count[role]++
+            if (!role) return
+            const other = pinRole.get(c.pin)
+            if (other === undefined) pinRole.set(c.pin, role)
+            else if ((other === 'mechanical') !== (role === 'mechanical'))
+              errors.push(`${cat}.mains: "${c.pin}" is ${other === 'mechanical' ? 'mechanical' : 'a conductor'} in another profile (a mechanical pin carries no conductor in any profile)`)
           })
           if (rolesKnown && (count.L !== 1 || count.N !== 1 || count.PE > 1)) errors.push(`${at}.contacts: needs exactly one L and one N contact, and at most one PE`)
         })
@@ -383,10 +400,20 @@ export function validateMains(raw: Record<string, unknown>, names: Set<string>, 
     ...(isObj(el.acInput) ? [el.acInput.a, el.acInput.b].filter(isStr) : []),
     ...(Array.isArray(el.contacts) ? el.contacts.filter(isObj).flatMap((c) => (Array.isArray(c.poles) ? c.poles.filter(isObj).flatMap((p) => [p.com, p.no, p.nc].filter(isStr)) : [])) : []),
     ...(Array.isArray(el.protective) ? el.protective.filter(isObj).flatMap((e) => [e.from, e.to].filter(isStr)) : []),
-    ...(isObj(el.plug) && Array.isArray(el.plug.profiles) ? el.plug.profiles.filter(isObj).flatMap((pr) => (Array.isArray(pr.contacts) ? pr.contacts.filter(isObj).map((c) => c.pin).filter(isStr) : [])) : []),
+    ...[...pinRole].filter(([, r]) => r !== 'mechanical').map(([n]) => n),
     ...(Array.isArray(el.sockets) ? el.sockets.filter(isObj).flatMap((s) => (Array.isArray(s.contacts) ? s.contacts.filter(isObj).map((c) => c.group).filter(isStr) : [])) : []),
     ...pinsAndHoles.filter((p) => oneOf(REQUIREMENTS, p.mains)).map((p) => p.name).filter(isStr),
   ])
+  // A mechanical plug contact (Ruling 39) carries no conductor, so nothing may join or declare its pin.
+  const conducting = new Set<string>([
+    ...declared, ...(Array.isArray(raw.internal) ? raw.internal.filter(Array.isArray).flat().filter(isStr) : []),
+    ...(Array.isArray(el.conducts) ? el.conducts.filter(isObj).flatMap((c) => strsOf(c.pins)) : []),
+    ...(Array.isArray(el.domains) ? el.domains.filter(isObj).flatMap((x) => strsOf(x.pins)) : []),
+    ...(Array.isArray(el.ratings) ? el.ratings.filter(isObj).flatMap((r) => strsOf(r.pins)) : []),
+  ])
+  for (const [n, r] of pinRole)
+    if (r === 'mechanical' && conducting.has(n))
+      errors.push(`electrical.plug: "${n}" is a mechanical contact (it carries no conductor), so no internal join, source, conduction, domain, rating or contact may name it`)
   if (Array.isArray(el.domains))
     el.domains.forEach((x, i) => {
       if (!isObj(x) || (x.kind !== 'selv' && x.kind !== 'pelv') || !Array.isArray(x.pins)) return
@@ -439,10 +466,12 @@ export function mainsOf(m: ModuleDef): MainsInfo {
         family: plugRaw.family as PlugFamily,
         profiles: (Array.isArray(plugRaw.profiles) ? plugRaw.profiles.filter(isObj) : []).map((pr) => ({
           id: String(pr.id),
-          contacts: (Array.isArray(pr.contacts) ? pr.contacts.filter(isObj) : []).map((c) => ({ pin: String(c.pin), at: c.at as { x: number; y: number }, mains: c.mains as Conductor })),
+          contacts: (Array.isArray(pr.contacts) ? pr.contacts.filter(isObj) : []).map((c) => ({ pin: String(c.pin), at: c.at as { x: number; y: number }, mains: c.mains as PlugRole })),
         })),
       }
     : null
+  // A mechanical contact's pin is not a mains terminal: it carries no conductor (Ruling 39).
+  const conductingPins = plug ? plug.profiles.flatMap((pr) => pr.contacts.filter((c) => c.mains !== 'mechanical').map((c) => c.pin)) : []
   const sockets = list('sockets').map((s) => ({
     id: String(s.id), family: s.family as SocketFamily,
     contacts: (Array.isArray(s.contacts) ? s.contacts.filter(isObj) : []).map((c) => ({ group: String(c.group), role: c.role as Conductor })),
@@ -459,7 +488,7 @@ export function mainsOf(m: ModuleDef): MainsInfo {
     ...conducts.flatMap((c) => c.pins), ...protective.flatMap((e) => [e.from, e.to]),
     ...domains.filter((x) => x.kind === 'mains').flatMap((x) => x.pins),
     ...(acInput ? [acInput.a, acInput.b] : []), ...contactTerminals,
-    ...(plug ? plug.profiles.flatMap((pr) => pr.contacts.map((c) => c.pin)) : []),
+    ...conductingPins,
     ...sockets.flatMap((s) => s.contacts.map((c) => c.group)),
     ...ratings.flatMap((r) => r.pins), ...requirement.keys(),
   ])
@@ -468,7 +497,7 @@ export function mainsOf(m: ModuleDef): MainsInfo {
   const declaredConduction = new Set<string>([
     ...(m.internal ?? []).flat(), ...conducts.flatMap((c) => c.pins), ...protective.flatMap((e) => [e.from, e.to]), ...contactTerminals,
     ...(acInput ? [acInput.a, acInput.b] : []), ...acSources.flatMap((s) => [...s.live, ...s.neutral, ...s.earth]),
-    ...sockets.flatMap((s) => s.contacts.map((c) => c.group)), ...(plug ? plug.profiles.flatMap((pr) => pr.contacts.map((c) => c.pin)) : []),
+    ...sockets.flatMap((s) => s.contacts.map((c) => c.group)), ...conductingPins,
     // An earth terminal or a declared bond joins only the part's own metal.
     ...[...requirement].filter(([, r]) => r === 'PE').map(([p]) => p), ...bonds,
   ])

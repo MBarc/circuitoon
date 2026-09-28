@@ -1,7 +1,7 @@
 // The mains fields of the module format (spec sections 1 and 2): every field validated with the
 // exact path of each problem, and `mainsOf` reading a valid module.
 import { describe, expect, it } from 'vitest'
-import { validateModule } from './module.ts'
+import { type ModuleDef, validateModule } from './module.ts'
 import { isolationAdequate, mainsOf, uncoveredPins } from './mainsModel.ts'
 
 const base = { format: 'circuitoon-module/1', id: 'thing', name: 'Thing' }
@@ -93,7 +93,7 @@ describe('mains fields: validation', () => {
       'electrical.protection: a class 1 part needs a terminal marked "mains": "PE" or a PE plug contact',
       'electrical.plug.profiles[0].contacts[0].pin: must name an internal node (electrical.internalNodes), the prong',
       'electrical.plug.profiles[0].contacts[0].at: must be { "x", "y" } on the 10 px grid',
-      'electrical.plug.profiles[0].contacts[0].mains: must be "L", "N" or "PE"',
+      'electrical.plug.profiles[0].contacts[0].mains: must be "L", "N", "PE" or "mechanical"',
     ])
   })
   it('keeps plug contacts inside the body', () => {
@@ -315,8 +315,47 @@ describe('mains fields: hostile modules', () => {
       'electrical.plug.profiles[0].contacts[1].at: another contact of this profile sits at 10, 10',
     ])
     expect(plug([c('L prong', 10, 10, 'L'), c('N prong', 30, 10, 'N'), c('PE prong', 20, 30, 'PE')], 'class-2')).toEqual([
-      'electrical.plug.profiles[0].contacts[2].mains: a class 2 part has no PE prong',
+      'electrical.plug.profiles[0].contacts[2].mains: a class 2 part has no PE prong (an insulated earth pin is "mechanical")',
     ])
+  })
+  it('allows a mechanical-only contact that carries no conductor (Ruling 39)', () => {
+    const plug = (contacts: unknown[], extra: Record<string, unknown> = {}, profiles: unknown[] = [{ id: 'p', contacts }]) => errs({
+      ...base, pins: two, size: { w: 6, h: 6 },
+      electrical: { internalNodes: ['L prong', 'N prong', 'PE prong', 'E pin'], protection: 'class-2', plug: { family: 'bs1363', profiles }, ...extra },
+    })
+    const c = (pin: string, x: number, y: number, mains: string) => ({ pin, at: { x, y }, mains })
+    const ln = [c('L prong', 10, 10, 'L'), c('N prong', 30, 10, 'N')]
+    // A class 2 part may have an insulated earth pin; it is not counted as the profile's PE.
+    expect(plug([...ln, c('E pin', 20, 30, 'mechanical')])).toEqual([])
+    expect(plug([...ln, c('E pin', 20, 30, 'mechanical'), c('PE prong', 20, 50, 'PE')], { protection: undefined })).toEqual([])
+    // Only conducting contacts count for one L and one N.
+    expect(plug([c('L prong', 10, 10, 'L'), c('E pin', 30, 10, 'mechanical')])).toEqual([
+      'electrical.plug.profiles[0].contacts: needs exactly one L and one N contact, and at most one PE',
+    ])
+    // It carries no conductor, so nothing may join it or declare it for mains.
+    expect(plug([...ln, c('E pin', 20, 30, 'mechanical')], { acInput: { a: 'L prong', b: 'E pin', range: [100, 240] } })).toEqual([
+      'electrical.plug: "E pin" is a mechanical contact (it carries no conductor), so no internal join, source, conduction, domain, rating or contact may name it',
+    ])
+    // A pin is mechanical in every profile or in none.
+    expect(plug([], {}, [{ id: 'a', contacts: [...ln, c('E pin', 20, 30, 'mechanical')] }, { id: 'b', contacts: [c('L prong', 10, 10, 'L'), c('E pin', 30, 10, 'N')] }])).toEqual([
+      'electrical.plug.profiles[1].contacts[1].mains: "E pin" is mechanical in another profile (a mechanical pin carries no conductor in any profile)',
+    ])
+    // One earth prong may touch at two points (CEE 7/7 earth clips); a line prong may not.
+    expect(plug([...ln, c('PE prong', 20, 30, 'PE'), c('PE prong', 20, 50, 'PE')], { protection: undefined })).toEqual([])
+    expect(plug([...ln, c('L prong', 20, 30, 'L')])).toEqual([
+      'electrical.plug.profiles[0].contacts[2].pin: "L prong" is already a contact of this profile',
+      'electrical.plug.profiles[0].contacts: needs exactly one L and one N contact, and at most one PE',
+    ])
+  })
+  it('keeps a mechanical pin out of the mains terminals and out of the class 1 earth', () => {
+    const m = {
+      ...base, pins: two, size: { w: 6, h: 6 },
+      electrical: { internalNodes: ['L prong', 'N prong', 'E pin'], protection: 'class-1',
+        plug: { family: 'bs1363', profiles: [{ id: 'p', contacts: [{ pin: 'L prong', at: { x: 10, y: 10 }, mains: 'L' }, { pin: 'N prong', at: { x: 30, y: 10 }, mains: 'N' }, { pin: 'E pin', at: { x: 20, y: 30 }, mains: 'mechanical' }] }] } },
+    }
+    expect(errs(m)).toEqual(['electrical.protection: a class 1 part needs a terminal marked "mains": "PE" or a PE plug contact'])
+    const info = mainsOf({ ...m, electrical: { ...m.electrical, protection: 'class-2' } } as ModuleDef)
+    expect([info.terminals.has('E pin'), info.declaredConduction.has('E pin'), info.terminals.has('L prong')]).toEqual([false, false, true])
   })
   it('accepts a class 1 cord plug whose PE terminal is its PE prong, joined to its leads by internal', () => {
     expect(errs({

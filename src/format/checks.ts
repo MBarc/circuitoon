@@ -5,7 +5,8 @@
 // that data supports: a pin with no `type` is unknown and never triggers a rule. Pure, no React. Spec:
 // docs/superpowers/specs/2026-09-26-wiring-checker-design.md.
 import { type Connection, type Diagram, type Endpoint, type PartInstance, moduleOf, resolveEndpoint } from './diagram.ts'
-import { type MountIssue, mountIssues, plugsOf } from './breadboard.ts'
+import { type MountIssue, mountIssues, plugMismatches, plugsOf } from './breadboard.ts'
+import { PLUG_FOR, PLUG_NAMES, SOCKET_NAMES } from './plugging.ts'
 import { type ExternalPower, type HoleGroup, type ModuleDef, type PinDef, type PinType, commonReturn, declaredReturns, externalPower, isSpacer, voltageOutputs } from './module.ts'
 import { conductors, netlist, nodeKey } from './netlist.ts'
 import { partValue, primaryParam } from './values.ts'
@@ -645,7 +646,21 @@ export function checkDiagram(d: Diagram): Finding[] {
       parts: [a.part.uid, b.part.uid], pins: [termPin(a), termPin(b), termPin(ga[0]), termPin(gb[0])], wires: netWires[net], causes: [a.key, b.key] })
   }
 
+  // Rule 10 (spec 2): a plug-in device over an outlet it is not plugged into. It replaces the
+  // generic mount finding for that part and outlet.
+  const mismatched = new Set<string>()
+  for (const mm of plugMismatches(d)) {
+    const p = partByUid.get(mm.part)!
+    const b = partByUid.get(mm.board)!
+    mismatched.add(JSON.stringify([mm.part, mm.board]))
+    const message = mm.kind === 'family'
+      ? `${p.designator}'s ${PLUG_NAMES[mm.plug]} does not fit ${b.designator}'s ${SOCKET_NAMES[mm.socket]}. Use a device with ${PLUG_FOR[mm.socket]}.`
+      : `${p.designator} does not sit in ${b.designator}: its contacts do not all meet one socket the way the plug fits, so none of them connect. Turn or move it until it seats; a plug that is only partly in is never electrically safe.`
+    add({ rule: 'plug-mismatch', subject: p.designator, target: p.designator, message, parts: [p.uid, b.uid], pins: [], wires: [], select: { parts: [p.uid], wires: [] }, causes: [p.uid, b.uid] })
+  }
+
   for (const issue of mountIssues(d)) {
+    if (mismatched.has(JSON.stringify([issue.part, issue.board]))) continue
     const p = partByUid.get(issue.part)
     if (!p) continue
     const board = partByUid.get(issue.board)
@@ -1345,6 +1360,8 @@ function mountMessage(p: PartInstance, board: PartInstance | undefined, issue: M
       return `${p.designator} cannot plug into a board (it is a board itself, has a bus pin or has no legs), so its legs connect nothing. Drag it off the board and wire it instead.`
     case 'partial':
       return `Not every leg of ${p.designator} sits in a hole of ${at}, so none of its legs connect. Move it until every leg sits in a hole.`
+    case 'no-fit':
+      return `${p.designator} does not fit ${at}: an outlet takes only a matching plug, and a plug fits only a matching outlet, so it connects nothing. Drag it off, or use a part that fits.`
     case 'obscured':
       return `Some legs of ${p.designator} sit under another board drawn over ${at}, so none of its legs connect. Move it clear of that board.`
     case 'conflict':
