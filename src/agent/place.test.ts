@@ -1,0 +1,157 @@
+// Placement (spec 2.1 and 2.2): grid, determinism, mounts that seat without strip merges, no body or
+// caption overlaps, frames, notes, tiled copies and kept positions.
+import { describe, expect, it } from 'vitest'
+import { DIAGRAM_FORMAT, type Diagram, type PartInstance } from '../format/diagram.ts'
+import { mountIssues, plugsOf } from '../format/breadboard.ts'
+import { bodyRect } from '../format/geometry.ts'
+import { layoutModule } from '../format/module.ts'
+import { annotationRect } from '../render/annotationGeometry.ts'
+import { libraryLookup } from './catalog.ts'
+import { parseNetlist, terminalKey, type Intent } from './netlist.ts'
+import { placeParts, type KeepMap } from './place.ts'
+import { mountPart } from './mount.ts'
+import { intersects, tightFootprint } from './footprint.ts'
+import { ledNetlist, tiltSensors } from './fixtures.testing.ts'
+
+const intentOf = (raw: unknown): Intent => {
+  const r = parseNetlist(raw, libraryLookup)
+  if (!r.ok) throw new Error(r.errors.join('\n'))
+  return r.intent
+}
+const place = (raw: unknown, keep?: KeepMap) => {
+  const intent = intentOf(raw)
+  const r = placeParts(intent, { spacing: 20, keep })
+  if (!r.ok) throw new Error(r.errors.join('\n'))
+  const d: Diagram = { format: DIAGRAM_FORMAT, title: intent.title, modules: intent.modules, parts: r.parts, connections: [] }
+  return { intent, annotations: r.annotations, d }
+}
+const noOverlaps = (d: Diagram) => {
+  const fp = (p: PartInstance) => tightFootprint(p, d.modules[p.module])
+  for (const a of d.parts)
+    for (const b of d.parts) {
+      if (a === b || a.mount?.board === b.uid || b.mount?.board === a.uid) continue
+      expect(intersects(fp(a), fp(b)), `${a.uid} overlaps ${b.uid}`).toBe(false)
+    }
+}
+
+describe('placeParts', () => {
+  it('places the LED example on the 10 px grid, the same way every time', () => {
+    const a = place(ledNetlist())
+    const b = place(ledNetlist())
+    expect(a.d.parts).toEqual(b.d.parts)
+    for (const p of a.d.parts) {
+      expect(p.x % 10).toBe(0)
+      expect(p.y % 10).toBe(0)
+    }
+  })
+  it('seats R1 and D1 on BB1, and no strip holds legs of two nets', () => {
+    const { intent, d } = place(ledNetlist())
+    expect(mountIssues(d)).toEqual([])
+    expect(d.parts.filter((p) => p.mount?.board === 'BB1').map((p) => p.uid).sort()).toEqual(['D1', 'R1'])
+    const netOf = new Map<string, string>()
+    intent.nets.forEach((n) => n.terminals.forEach((t) => netOf.set(terminalKey(t.ref, t.name), n.name)))
+    const strips = new Map<string, Set<string>>()
+    for (const pl of plugsOf(d)) {
+      const k = `${pl.board} ${pl.group}`
+      strips.set(k, (strips.get(k) ?? new Set<string>()).add(netOf.get(terminalKey(pl.part, pl.pin)) ?? `none ${pl.part}.${pl.pin}`))
+    }
+    for (const [strip, nets] of strips) expect(nets.size, strip).toBe(1)
+  })
+  it('keeps bodies and captions apart: mounted parts overlap only their own board', () => {
+    noOverlaps(place(ledNetlist()).d)
+    noOverlaps(place(tiltSensors()).d)
+  })
+  it('seats a DIP-28 across the centre channel (turned 90 degrees)', () => {
+    const { d } = place({
+      format: 'circuitoon-netlist/1', title: 'Expander',
+      parts: [{ ref: 'BB1', module: 'breadboard-half' }, { ref: 'U1', module: 'mcp23017-dip28', on: 'BB1' }],
+      nets: [{ name: 'GND', pins: ['U1.VSS', 'BB1.top-'] }, { name: '3V3', pins: ['U1.VDD', 'BB1.top+'] }],
+    })
+    expect(d.parts.find((p) => p.uid === 'U1')!.rotation).toBe(90)
+    expect(mountIssues(d)).toEqual([])
+  })
+  it('fails naming the part and the reason when no position on its board fits', () => {
+    const r = placeParts(
+      intentOf({
+        format: 'circuitoon-netlist/1', title: 'Too wide',
+        parts: [{ ref: 'BB1', module: 'breadboard-full' }, { ref: 'U1', module: 'esp32-devkit-v1-30', on: 'BB1' }],
+        nets: [{ name: 'G', pins: ['U1.GND', 'BB1.top-'] }],
+      }),
+      { spacing: 20 },
+    )
+    expect(r).toEqual({ ok: false, errors: ['BB1 has no place for U1 (esp32-devkit-v1-30): no position puts every leg on a free hole.'] })
+  })
+  it('frames a group and puts its note below it, clear of every part', () => {
+    const { d, annotations } = place({ ...ledNetlist(), groups: [{ name: 'Power', parts: ['BT1'] }], notes: [{ text: 'Two AA cells give 3 V.', near: 'Power' }] })
+    const frame = annotations.find((a) => a.type === 'frame')!
+    expect(frame.label).toBe('Power')
+    const bt = d.parts.find((p) => p.uid === 'BT1')!
+    const body = bodyRect(bt, layoutModule(d.modules[bt.module]))
+    expect(body.x >= frame.x && body.y >= frame.y && body.x + body.w <= frame.x + frame.w! && body.y + body.h <= frame.y + frame.h!).toBe(true)
+    const note = annotations.find((a) => a.type === 'text')!
+    expect(note.y).toBeGreaterThan(frame.y)
+    for (const p of d.parts) expect(intersects(annotationRect(note), tightFootprint(p, d.modules[p.module])), p.uid).toBe(false)
+  })
+  it('tiles repeat copies as one block with a labelled frame per copy', () => {
+    const { annotations } = place(tiltSensors())
+    expect(annotations.filter((a) => a.type === 'frame').map((a) => a.label)).toEqual(['tilt 1', 'tilt 2', 'tilt 3', 'tilt 4', 'tilt 5', 'tilt 6', 'tilt 7', 'tilt 8'])
+  })
+  it('keeps a kept part exactly where it was and places the rest around it', () => {
+    const { d } = place(ledNetlist(), new Map([['BT1', { x: 600, y: 300, rotation: 0 as const }]]))
+    expect(d.parts.find((p) => p.uid === 'BT1')).toMatchObject({ x: 600, y: 300, rotation: 0 })
+    expect(mountIssues(d)).toEqual([])
+    noOverlaps(d)
+  })
+  it('keeps a kept repeat member where it was (amendment A6) and tiles the others around it', () => {
+    const { d, annotations } = place(tiltSensors(), new Map([['S_1', { x: 9000, y: 9000, rotation: 0 as const }]]))
+    expect(d.parts.find((p) => p.uid === 'S_1')).toMatchObject({ x: 9000, y: 9000, rotation: 0 })
+    expect(annotations.filter((a) => a.type === 'frame')).toHaveLength(8)
+    noOverlaps(d)
+  })
+  it('keeps kept mounted parts exactly where they were on a kept board', () => {
+    const first = place(ledNetlist()).d
+    const keep: KeepMap = new Map()
+    for (const uid of ['BB1', 'R1', 'D1']) {
+      const p = first.parts.find((q) => q.uid === uid)!
+      keep.set(uid, { x: p.x + 200, y: p.y + 100, rotation: p.rotation ?? 0 })
+    }
+    const { d } = place(ledNetlist(), keep)
+    for (const [uid, k] of keep) expect(d.parts.find((p) => p.uid === uid), uid).toMatchObject(k)
+    expect(mountIssues(d)).toEqual([])
+    noOverlaps(d)
+  })
+  it('refuses a kept mounted part that is not seated there, rather than moving it', () => {
+    const r = placeParts(intentOf(ledNetlist()), {
+      spacing: 20,
+      keep: new Map([['BB1', { x: 0, y: 0, rotation: 0 as const }], ['R1', { x: 5, y: 5, rotation: 0 as const }]]),
+    })
+    expect(r).toEqual({ ok: false, errors: ['R1 is kept at (5, 5) but is not seated on BB1 there (partial).'] })
+  })
+  it('refuses a kept mounted part whose board is not kept', () => {
+    const r = placeParts(intentOf(ledNetlist()), { spacing: 20, keep: new Map([['D1', { x: 100, y: 40, rotation: 0 as const }]]) })
+    expect(r).toEqual({ ok: false, errors: ["D1 is kept but its board BB1 is not: keep BB1 too, or drop D1's position."] })
+  })
+})
+
+describe('mountPart', () => {
+  const intent = intentOf(ledNetlist())
+  const board: PartInstance = { uid: 'BB1', designator: 'BB1', module: 'breadboard-half', x: 0, y: 0 }
+  const resistor: PartInstance = { uid: 'R1', designator: 'R1', module: 'resistor', x: 0, y: 0 }
+  const sheet = (): Diagram => ({ format: DIAGRAM_FORMAT, title: '', modules: intent.modules, parts: [board, resistor], connections: [] })
+  it('only tries grid positions, so an LED seats (amendment A1)', () => {
+    const d: Diagram = { ...sheet(), parts: [board, { uid: 'D1', designator: 'D1', module: 'led', x: 0, y: 0 }] }
+    const r = mountPart(d, 'D1', 'BB1', () => undefined)
+    expect(r.ok).toBe(true)
+    if (r.ok) expect([r.part.x % 10, r.part.y % 10]).toEqual([0, 0])
+  })
+  it('treats a strip the netlist puts in a net as carrying that net before any leg lands', () => {
+    const groups = intent.modules['breadboard-half'].holes!.map((g) => g.name)
+    const netOf = (legs: Record<string, number>) => (part: string, pin: string) =>
+      part === 'BB1' && groups.includes(pin) ? 7 : part === 'R1' ? legs[pin] : undefined
+    expect(mountPart(sheet(), 'R1', 'BB1', netOf({ '1': 7, '2': 7 })).ok).toBe(true)
+    expect(mountPart(sheet(), 'R1', 'BB1', netOf({ '1': 7, '2': 8 }))).toEqual({
+      ok: false,
+      error: 'BB1 has no place for R1 (resistor): every position where its legs fit would join two different nets in one strip.',
+    })
+  })
+})
