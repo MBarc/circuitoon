@@ -163,10 +163,12 @@ function cordPlug({ id, name, family, roles, leads, wu, hu, polarized, fused = f
       ratings: [rating([...leads, ...prongs(roles)], 'terminal', service, volts, { amps, provenance: 'datasheet' })],
     },
     shapes: [
-      r(0, 0, W, H - 8, DARK, { radius: 8 }),
-      r(4, 4, W - 8, H - 16, DARK_FACE, { radius: 5, outline: false }),
-      // The cord leaves through a boot at the bottom; each lead end is a bare wire.
-      r(bottom.at[0] - 6, H - 12, bottom.at[bottom.at.length - 1] - bottom.at[0] + 12, 12, DARK, { radius: 3 }),
+      // The cord leaves through a short boot under the body (drawn first, so the body covers its top);
+      // each lead end is a bare wire. The body reaches down to the boot, so an earth pin or clip low on
+      // the pattern (5-15P, CEE 7/7, AS/NZS 3112) sits on the face, never on the boot.
+      r(bottom.at[0] - 6, H - 8, bottom.at[bottom.at.length - 1] - bottom.at[0] + 12, 8, DARK, { radius: 3 }),
+      r(0, 0, W, H - 4, DARK, { radius: 8 }),
+      r(4, 4, W - 8, H - 10, DARK_FACE, { radius: 5, outline: false }),
       ...bottom.at.map((x) => r(x - 1.5, H - 4, 3, 4, LEAD, { outline: false })),
       ...(fused ? [r(W / 2 - 12, H / 2 - 4 + 10, 24, 8, FUSE, { radius: 2 })] : []),
       ...prongArt(family, plug.profiles),

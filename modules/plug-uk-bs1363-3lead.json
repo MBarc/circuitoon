@@ -122,10 +122,19 @@
     "shapes": [
       {
         "type": "rect",
+        "x": 14,
+        "y": 72,
+        "w": 52,
+        "h": 8,
+        "fill": "#2B2F36",
+        "radius": 3
+      },
+      {
+        "type": "rect",
         "x": 0,
         "y": 0,
         "w": 80,
-        "h": 72,
+        "h": 76,
         "fill": "#2B2F36",
         "radius": 8
       },
@@ -134,19 +143,10 @@
         "x": 4,
         "y": 4,
         "w": 72,
-        "h": 64,
+        "h": 70,
         "fill": "#3A3F48",
         "radius": 5,
         "outline": false
-      },
-      {
-        "type": "rect",
-        "x": 14,
-        "y": 68,
-        "w": 52,
-        "h": 12,
-        "fill": "#2B2F36",
-        "radius": 3
       },
       {
         "type": "rect",

@@ -146,6 +146,22 @@ describe('built-in plug-in devices', () => {
         if (!x.converter) expect((m.electrical as { params: { fuseRating: { unit: string; default: number } } }).params.fuseRating).toEqual({ unit: 'A', default: EVIDENCE[id].extra!.fuse.value })
       } else expect(info.protective).toEqual([])
     })
+    if (!x.converter)
+      it(`${id}: every prong and earth clip sits on the plug face, clear of the cord boot`, () => {
+        const m = load(id)
+        const art = m.art as { w: number; h: number; shapes: { type: string; x: number; y: number; w: number; h: number; fill: string }[] }
+        const rects = art.shapes.filter((s) => s.type === 'rect')
+        const face = rects.find((s) => s.fill === '#3A3F48')!
+        // The boot: the dark body part that reaches the bottom edge and is narrower than the plug.
+        const boot = rects.find((s) => s.fill === '#2B2F36' && s.y + s.h === art.h && s.w < art.w)!
+        const body = rects.find((s) => s.fill === '#2B2F36' && s.w === art.w)!
+        for (const pr of mainsOf(m).plug!.profiles)
+          for (const c of pr.contacts) {
+            expect([id, c.pin, c.at.y + 3 <= face.y + face.h]).toEqual([id, c.pin, true])
+            // The boot shows only below the body, and nothing of it reaches a contact.
+            expect([id, c.pin, Math.max(boot.y, body.y + body.h) >= c.at.y + 5]).toEqual([id, c.pin, true])
+          }
+      })
     it(`${id}: on an outlet the spec gives no row for, no turn and no translation puts every contact on that socket's holes`, () => {
       const dm = load(id)
       for (const o of OUTLETS) {
