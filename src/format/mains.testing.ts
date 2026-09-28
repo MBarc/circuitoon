@@ -178,6 +178,7 @@ export const relay = mod({ id: 't-relay', name: 'Test relay', pins: [
   domains: [{ name: 'contacts', pins: ['COM', 'NO', 'NC'], kind: 'mains' }, { name: 'coil', pins: ['+', '-'], kind: 'selv' }], isolation: 'reinforced', isolationProvenance: 'datasheet',
   ratings: [{ pins: ['COM', 'NO', 'NC'], kind: 'switching', service: 'ac', volts: 250, amps: 10, provenance: 'datasheet' }],
 } })
+/** Mirrors the Fotek SSR-25DA's terminals: load 1 and 2, control 3 (+, a signal input) and 4 (-). */
 export const ssr = mod({ id: 't-ssr', name: 'Test SSR', pins: [
   { name: '1', side: 'left', type: 'passive' }, { name: '2', side: 'left', type: 'passive' },
   { name: '3', side: 'right', type: 'input' }, { name: '4', side: 'right', type: 'ground' },

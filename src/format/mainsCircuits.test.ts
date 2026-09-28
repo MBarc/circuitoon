@@ -92,22 +92,15 @@ describe('the spec circuits on built-in parts', () => {
 })
 
 describe('the Fotek SSR control input (4-32 VDC)', () => {
-  // The controller's ruling: the control input declares the datasheet range, so a 3.3 V supply driving
-  // it directly is reported too low (it is below even the 3.5 VDC turn-off voltage).
-  const ssrFrom = (pin: string) => sheet([at('k1', 'K1', 'ssr-fotek-25da'), at('u1', 'U1', 'esp32-devkit-v1-30', 300)], [dc('k1|3', `u1|${pin}`), dc('k1|4', 'u1|GND')])
-  it('driven from a 3.3 V rail: supply-too-low', () => {
-    const low = checkDiagram(ssrFrom('3V3')).filter((f) => f.rule === 'supply-too-low')
-    expect(low.map((f) => [f.subject, f.message])).toEqual([['K1', expect.stringMatching(/^K1 3 needs at least 3\.6 V; U1 3V3 gives only 3\.3 V\./)]])
+  // Ruling 48: the checker must never flag a working circuit, so input 3 is a plain signal input. No
+  // module states its GPIO voltage, so the 4-32 VDC range (in the part's name) is not checked yet:
+  // neither a 5 V Nano GPIO (works) nor a 3.3 V ESP32 GPIO (below the 3.5 VDC turn-off) gets a finding.
+  const ssrFrom = (board: string, gpio: string) =>
+    sheet([at('k1', 'K1', 'ssr-fotek-25da'), at('u1', 'U1', board, 300)], [dc('k1|3', `u1|${gpio}`), dc('k1|4', 'u1|GND')])
+  it('driven from a 5 V Nano GPIO: no finding on K1', () => {
+    expect(checkDiagram(ssrFrom('arduino-nano', 'D2')).filter((f) => f.subject === 'K1')).toEqual([])
   })
-  // The checker has no logic-level model: a GPIO is not a supply, so a GPIO wired straight to 3 is
-  // "no power" rather than "too low". That still flags the 3.3 V case (and, falsely, a 5 V GPIO).
-  it('driven straight from a GPIO: no-power, since a GPIO is no supply', () => {
-    expect(checkDiagram(ssrFrom('D23')).filter((f) => f.subject === 'K1').map((f) => [f.rule, f.message])).toEqual([
-      ['no-power', 'K1 has no power: 3 is connected but nothing supplies it. Connect it to a 4 V or 32 V supply, such as a 9 V battery.'],
-    ])
-  })
-  it('driven from a 9 V battery: no supply finding on K1', () => {
-    const d = sheet([at('k1', 'K1', 'ssr-fotek-25da'), at('b1', 'B1', 'battery-9v', 300)], [dc('k1|3', 'b1|+'), dc('k1|4', 'b1|-')])
-    expect(checkDiagram(d).filter((f) => f.subject === 'K1' && (f.rule.startsWith('supply-') || f.rule === 'no-power'))).toEqual([])
+  it('driven from a 3.3 V ESP32 GPIO: no finding on K1 (not checked yet)', () => {
+    expect(checkDiagram(ssrFrom('esp32-devkit-v1-30', 'D23')).filter((f) => f.subject === 'K1')).toEqual([])
   })
 })

@@ -312,15 +312,16 @@ function headerH(y, at) {
 // so 25 A needs a larger one; lamps need a rating over 4 times the lamp current): the `conditions`.
 // Off, the output still leaks up to 5 mA (FOTEK.leakage), so its OFF state is a leakage path, never
 // an open contact (spec 1.5); the checker adds that edge for an `ssr` pole. The control input takes
-// 4-32 VDC (turn-off below 3.5 VDC, 12 mA max) from whatever drives it, so it is a power input with
-// those rails and a 3.3 V supply is reported too low (controller ruling). Fotek states "Isolation
+// 4-32 VDC (turn-off below 3.5 VDC, 12 mA max): a signal input, so a GPIO may drive it. That range is
+// in the name and not checked yet (Ruling 48): no module states its GPIO voltage, so a 3.3 V GPIO
+// into 3 cannot be told from a 5 V one. Fotek states "Isolation
 // strength 4 KVrms" and "Insulation strength 100 MOhm / 500 VDC", test values, not a class: isolation
 // "unknown" (ruling B2). The part is widely counterfeited; these values are the genuine Fotek's.
 {
   const wu = 9, hu = 12, W = wu * 10, H = hu * 10
   const [cmin, cmax] = FOTEK.control
   const [lmin, lmax] = FOTEK.load
-  const types = { 1: { type: 'passive' }, 2: { type: 'passive' }, 3: { type: 'power_in', supply: `${cmin}V/${cmax}V` }, 4: { type: 'ground' } }
+  const types = { 1: { type: 'passive' }, 2: { type: 'passive' }, 3: { type: 'input' }, 4: { type: 'ground' } }
   // The screws sit near the case corners: the two terminals of a row with four empty slots between.
   const row = ([a, b]) => [a, null, null, null, null, b]
   const top = side('top', row(FOTEK.top), types, wu)

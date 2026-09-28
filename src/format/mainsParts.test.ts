@@ -376,8 +376,9 @@ describe('relay module and SSR', () => {
     expect(m.source).toBe(ev.sources.join(' '))
     expect([mainsOf(m).ratings[0].volts, mainsOf(m).ratings[0].amps]).toEqual([ev.ratings![0].volts, ev.ratings![0].amps])
     expect(m.name).toBe('Fotek SSR-25DA solid state relay (4-32 VDC in, 24-380 VAC 25 A out)')
-    // The control input is powered by what drives it: its range is the datasheet 4-32 VDC (controller ruling), so a 3.3 V rail gets supply-too-low.
-    expect(pin(m, '3')).toMatchObject({ type: 'power_in', supply: '4V/32V' })
+    // A signal input a GPIO may drive (Ruling 48): its 4-32 VDC range is in the name, not checked yet.
+    expect(pin(m, '3')).toMatchObject({ type: 'input' })
+    expect(pin(m, '3')?.supply).toBeUndefined()
     expect(pin(m, '4')).toMatchObject({ type: 'ground' })
   })
 })

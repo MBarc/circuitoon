@@ -56,8 +56,7 @@
     {
       "name": "3",
       "side": "bottom",
-      "type": "power_in",
-      "supply": "4V/32V"
+      "type": "input"
     }
   ],
   "size": {
