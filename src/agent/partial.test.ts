@@ -34,6 +34,9 @@ describe('loadPartial', () => {
       ],
     })
   })
+  it('refuses a null rotation rather than reading it as 0', () => {
+    expect(loadPartial(partial([{ designator: 'BT1', x: 600, y: 300, rotation: null }]))).toEqual({ ok: false, errors: ['parts[0].rotation: must be 0, 90, 180 or 270'] })
+  })
   it('refuses a sheet, a non-object, a missing parts list, a part without a designator and a designator given twice', () => {
     expect(loadPartial([])).toEqual({ ok: false, errors: ['partial must be a JSON object'] })
     expect(loadPartial({ format: 'circuitoon-diagram/1', intent: ledNetlist(), parts: [] })).toEqual({

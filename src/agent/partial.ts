@@ -30,7 +30,8 @@ export function loadPartial(raw: unknown): PartialResult {
       if (p.x === undefined && p.y === undefined) return
       if (!isNum(p.x) || !isNum(p.y)) return void errors.push(`${at}: give both x and y, or neither`)
       if (p.x % 10 !== 0 || p.y % 10 !== 0) return void errors.push(`${at}: x and y must be on the 10 px grid`)
-      const rotation = p.rotation ?? 0
+      // Only an absent rotation means 0; null is refused like any other invalid value.
+      const rotation = p.rotation === undefined ? 0 : p.rotation
       if (!ROTATIONS.includes(rotation)) return void errors.push(`${at}.rotation: must be 0, 90, 180 or 270`)
       keep.set(p.designator, { x: p.x, y: p.y, rotation: rotation as Rotation })
     })
