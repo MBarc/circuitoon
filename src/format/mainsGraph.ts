@@ -11,6 +11,7 @@ import { type Netlist, nodeKey } from './netlist.ts'
 import { type ModuleDef, type PinType, isSpacer, partSetting } from './module.ts'
 import { paramValue } from './values.ts'
 import { andList, natural } from './words.ts'
+import type { Acc } from './mainsRules.ts'
 import { type Conductor, type ContactGroup, type MainsInfo, type Region, type SocketFamily, isolationAdequate, mainsOf, uncoveredPins } from './mainsModel.ts'
 
 /** Identity is one 30-bit mask: three bits (L, N, PE) per source. More sources than this: see mains-incomplete. */
@@ -229,14 +230,14 @@ export function termAt(g: MainsGraph, key: string): GTerm | null {
 
 export const termName = (t: GTerm): string => `${t.part.designator} ${t.label}`
 
-function find(parent: Int32Array, x: number): number {
+export function find(parent: Int32Array, x: number): number {
   while (parent[x] !== x) {
     parent[x] = parent[parent[x]]
     x = parent[x]
   }
   return x
 }
-function union(parent: Int32Array, a: number, b: number) {
+export function union(parent: Int32Array, a: number, b: number) {
   const ra = find(parent, a)
   const rb = find(parent, b)
   if (ra !== rb) parent[ra] = rb
@@ -553,7 +554,7 @@ function planOf(p: Prepared): Plan {
  * that must decide a branch is switched off reads identity (no L), never power.
  */
 export function analyseState(p: Prepared): void {
-  if (plainPath.on) return analyseStatePlain(p)
+  if (plainPath.on) return plainRef(plainPath.analyseState)(p)
   const plan = planOf(p)
   bareFor = null
   const { parent, fitParent, anyAbsent, root, fitRoot, ident, power, groupState, groupIdx } = p
@@ -661,54 +662,27 @@ export function bareRoots(p: Prepared): Int32Array {
  * Test seam: when `on`, the enumeration takes its plain paths (the state analysis and the per-state
  * rule loops as they were before the Task 11 optimisations, with no shortcut), which the differential
  * tests compare the fast paths against: findings, converters, hazards and identity must be identical.
- * Never set outside tests.
+ * The two reference implementations (`analyseState`, `identityRules`) live in the test-only module
+ * mainsPlain.testing.ts, which fills them in here, so the production bundle carries neither. Never set
+ * outside tests.
  */
-export const plainPath = { on: false }
+export const plainPath: {
+  on: boolean
+  analyseState: ((p: Prepared) => void) | null
+  identityRules: ((acc: Acc, mask: number) => void) | null
+} = { on: false, analyseState: null, identityRules: null }
 
-/** analyseState without the flattened plan: over the node lists and edge objects directly. The reference for the differential tests. */
-function analyseStatePlain(p: Prepared): void {
-  const { g } = p
-  for (const i of p.relevant) {
-    p.parent[i] = p.base[i]
-    p.bareParent[i] = p.bareBase[i]
-    if (p.anyAbsent) p.fitParent[i] = p.fitBase[i]
-  }
-  for (const gi of p.groupIdx)
-    for (const [a, b] of g.groups[gi].closed[p.groupState[gi]]) {
-      if (!p.inRel[a] || !p.inRel[b]) continue
-      union(p.parent, a, b)
-      union(p.bareParent, a, b)
-      if (p.anyAbsent) union(p.fitParent, a, b)
-    }
-  for (const i of p.relevant) {
-    p.root[i] = find(p.parent, i)
-    p.bareRoot[i] = find(p.bareParent, i)
-    if (p.anyAbsent) p.fitRoot[i] = find(p.fitParent, i)
-    p.ident[i] = 0
-    p.power[i] = 0
-  }
-  p.srcRoots.length = 0
-  for (const s of p.sources) {
-    const put = (nodes: number[], c: Conductor) => {
-      for (const x of nodes) {
-        const r = p.root[x]
-        if (!p.ident[r]) p.srcRoots.push(r)
-        p.ident[r] |= bitOf(s.index, c)
-      }
-    }
-    put(s.live, 'L')
-    put(s.neutral, 'N')
-    put(s.earth, 'PE')
-    for (const x of s.live) p.power[p.root[x]] |= (1 << s.index) | MAINS_POW
-    for (const x of s.neutral) p.power[p.root[x]] |= (1 << s.index) | MAINS_POW
-  }
-  for (let changed = true; changed; ) {
-    changed = false
-    for (const e of p.energy) if (flow(p.root, p.power, e.a, e.b, e.directed)) changed = true
-    for (const gi of p.groupIdx) for (const [a, b] of g.groups[gi].leak[p.groupState[gi]]) if (p.inRel[a] && p.inRel[b] && flow(p.root, p.power, a, b, false)) changed = true
-  }
+/** The plain path's reference, registered by mainsPlain.testing.ts; setting plainPath.on without it is a test bug. */
+export function plainRef<T>(f: T | null): T {
+  if (!f) throw new Error('plainPath.on needs mainsPlain.testing.ts imported')
+  return f
+}
+
+/** For the plain reference, which fills `bareRoot` itself: records that `p` holds the current state's bare roots. */
+export function markBareRoots(p: Prepared): void {
   bareFor = p
 }
+
 
 export const identAt = (p: Prepared, node: number): number => p.ident[p.root[node]]
 /** Energizing sources at a node. Energy starts from L and N and crosses loads (see analyseState): use identity, not this, to tell a branch is switched off. */

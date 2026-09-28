@@ -9,7 +9,7 @@ import { LegDots, TakenHoles } from '../render/Boards.tsx'
 import { WireLabel } from '../render/WireLabel.tsx'
 import { CableLayer } from '../render/CableEnd.tsx'
 import { BLOCKED_STROKE, Bolts, HazardOutline, Stripe, boltInsets } from '../render/Mains.tsx'
-import { type WireLook, identityColor, newWireColor, wireLooks } from '../format/mainsLook.ts'
+import { type WireLook, holdLooks, identityColor, newWireColor } from '../format/mainsLook.ts'
 import { seatedLabels } from '../format/seatedLabels.ts'
 import { addPart, addWire, EMPTY_SELECTION, moveParts, reconnectWire, sameEndpoint, setWireRoute, settleDrop, settleMounts, settleSeats, settlingOf, updateWire, withMounted } from './ops.ts'
 import { netlist, netPoints } from '../format/netlist.ts'
@@ -182,7 +182,7 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
   // edit the checker has already analysed costs no second enumeration.
   const busy = drag?.kind === 'parts' || drag?.kind === 'segment'
   const looksRef = useRef<Map<string, WireLook>>(new Map())
-  const looks = useMemo(() => (busy ? looksRef.current : (looksRef.current = wireLooks(diagram))), [diagram.parts, diagram.connections, diagram.modules, busy])
+  const looks = useMemo(() => holdLooks(looksRef, diagram, busy), [diagram.parts, diagram.connections, diagram.modules, busy])
   // Boards draw below every other part; the leg overlays follow mounts and positions.
   const layers = useMemo(() => splitBoards(diagram), [diagram.parts, diagram.modules])
   // Seated plug-in devices put their captions beside the outlet (and covered lead labels inside).

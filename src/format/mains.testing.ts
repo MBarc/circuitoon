@@ -7,6 +7,7 @@ import type { ModuleDef } from './module.ts'
 import { checkDiagram } from './checks.ts'
 import { analyseMains } from './mains.ts'
 import { plainPath } from './mainsGraph.ts'
+import './mainsPlain.testing.ts'
 
 const mod = (m: Omit<ModuleDef, 'format'>): ModuleDef => ({ format: 'circuitoon-module/1', ...m })
 const ac = (pins: string[], volts: number, extra: Record<string, unknown> = {}) => ({ pins, kind: 'terminal', service: 'ac', volts, provenance: 'datasheet', ...extra })

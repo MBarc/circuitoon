@@ -5,7 +5,7 @@
 import { type Endpoint, type PartInstance, moduleOf } from './diagram.ts'
 import type { RuleId } from './checks.ts'
 import { nodeKey } from './netlist.ts'
-import { type GConverter, type GEdge, type GLoad, type GSource, type GTerm, type MainsGraph, type Prepared, FrontMap, LN_MASK as LN, L_MASK as L_, MAINS_POW as M_POW, MAX_SOURCES, N_MASK as N_, PE_MASK as PE_, bareRoots, baseReps, steadyOf, bitOf, decodeSingle, groupName, hazardAt, identAt, minimalWitnesses, plainPath, statePhrase, termAt, termName } from './mainsGraph.ts'
+import { type GConverter, type GEdge, type GLoad, type GSource, type GTerm, type MainsGraph, type Prepared, FrontMap, LN_MASK as LN, L_MASK as L_, MAINS_POW as M_POW, MAX_SOURCES, N_MASK as N_, PE_MASK as PE_, bareRoots, baseReps, steadyOf, bitOf, decodeSingle, groupName, hazardAt, identAt, minimalWitnesses, plainPath, plainRef, statePhrase, termAt, termName } from './mainsGraph.ts'
 import { type Conductor, type ContactGroup, type MainsInfo, type Rating, type Region, isolationAdequate, mainsOf, uncoveredPins } from './mainsModel.ts'
 import { type ThroughKind, protectivePaths } from './mainsProtective.ts'
 import { andList, natural, orList } from './words.ts'
@@ -752,9 +752,10 @@ function lowVoltageClaim(acc: Acc, lv: LowVoltage, wi: number, code: number, mas
 
 // ---- Rules 2 and 3: identities that must never meet (spec 3) ----
 
-const CONDS: Conductor[] = ['L', 'N', 'PE']
+export const CONDS: Conductor[] = ['L', 'N', 'PE']
 
-function shortDraft(p: Prepared, r: number, s: GSource, other: 'N' | 'PE') {
+/** Exported for the plain reference (mainsPlain.testing.ts), as are crossDraft and identityKeys. */
+export function shortDraft(p: Prepared, r: number, s: GSource, other: 'N' | 'PE') {
   const wires = wiresOfRoot(p, r)
   const d = s.part.designator
   const keys = [...s.keys.L, ...s.keys[other]]
@@ -767,7 +768,7 @@ function shortDraft(p: Prepared, r: number, s: GSource, other: 'N' | 'PE') {
   })
 }
 
-function crossDraft(p: Prepared, r: number, s: GSource, a: Conductor, t: GSource, b: Conductor) {
+export function crossDraft(p: Prepared, r: number, s: GSource, a: Conductor, t: GSource, b: Conductor) {
   const rank = (c: Conductor) => CONDS.indexOf(c)
   // Name the side carrying L first, then N; two of one conductor by designator, so the words never depend on part order.
   const first = rank(a) < rank(b) || (rank(a) === rank(b) && natural.compare(s.part.designator, t.part.designator) <= 0)
@@ -790,7 +791,7 @@ function crossDraft(p: Prepared, r: number, s: GSource, a: Conductor, t: GSource
 /** Finding keys for rules 2 and 3 in one view, made once: per source its two shorts, per source pair and conductor pair its cross key; and each source's place in the view by global index. */
 interface IdentityKeys { short: string[][]; cross: string[]; local: Int32Array }
 const identityCache = new FrontMap<Prepared, IdentityKeys>()
-function identityKeys(p: Prepared): IdentityKeys {
+export function identityKeys(p: Prepared): IdentityKeys {
   let k = identityCache.get(p)
   if (k) return k
   const n = p.sources.length
@@ -840,7 +841,7 @@ const identitySlots = new FrontMap<Acc, Slots>()
  * which is global index order), so a root holding one source's conductor alone costs nothing.
  */
 function identityRules(acc: Acc, mask: number) {
-  if (plainPath.on) return identityRulesPlain(acc, mask)
+  if (plainPath.on) return plainRef(plainPath.identityRules)(acc, mask)
   const { p } = acc
   const src = p.sources
   const n = src.length
@@ -874,41 +875,6 @@ function identityRules(acc: Acc, mask: number) {
             if (!((x >>> (tb + b)) & 1) || (a === 2 && b === 2)) continue
             const c = (i * n + j) * 9 + a * 3 + b
             if (!slotHit(slots, 2 * n + c, mask)) slotFill(acc, slots, 2 * n + c, keys.cross[c], mask, () => crossDraft(p, r, s, CONDS[a], t, CONDS[b]))
-          }
-        }
-      }
-    }
-  }
-}
-
-/** Rules 2 and 3 over every source pair of every root: the reference for identityRules (see plainPath). */
-function identityRulesPlain(acc: Acc, mask: number) {
-  const { p } = acc
-  const src = p.sources
-  const n = src.length
-  const keys = identityKeys(p)
-  for (let q = 0; q < p.srcRoots.length; q++) {
-    const r = p.srcRoots[q]
-    const x = p.ident[r]
-    for (let i = 0; i < n; i++) {
-      const s = src[i]
-      const sb = s.index * 3
-      if (!((x >>> sb) & 7)) continue
-      if ((x >>> sb) & 1) {
-        if ((x >>> (sb + 1)) & 1 && !mark(acc, keys.short[i][0], mask)) report(acc, keys.short[i][0], mask, () => shortDraft(p, r, s, 'N'))
-        if ((x >>> (sb + 2)) & 1 && !mark(acc, keys.short[i][1], mask)) report(acc, keys.short[i][1], mask, () => shortDraft(p, r, s, 'PE'))
-      }
-      for (let j = 0; j < n; j++) {
-        const t = src[j]
-        if (t.index <= s.index) continue
-        const tb = t.index * 3
-        if (!((x >>> tb) & 7)) continue
-        for (let a = 0; a < 3; a++) {
-          if (!((x >>> (sb + a)) & 1)) continue
-          for (let b = 0; b < 3; b++) {
-            if (!((x >>> (tb + b)) & 1) || (a === 2 && b === 2)) continue
-            const key = keys.cross[(i * n + j) * 9 + a * 3 + b]
-            if (!mark(acc, key, mask)) report(acc, key, mask, () => crossDraft(p, r, s, CONDS[a], t, CONDS[b]))
           }
         }
       }
