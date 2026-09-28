@@ -3,7 +3,7 @@
 import { describe, expect, it } from 'vitest'
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { isValidColor, serializeDiagram, validateDiagram, wireColor, wireStripe } from './diagram.ts'
+import { computeRoutes, isValidColor, serializeDiagram, validateDiagram, wireColor, wirePaths, wireStripe } from './diagram.ts'
 import { identityColor, newWireColor, wireLooks } from './mainsLook.ts'
 import { Sheet } from '../render/Sheet.tsx'
 import { at, sheet, w } from './mains.testing.ts'
@@ -52,6 +52,20 @@ describe('wire looks', () => {
     const d = { ...eu, connections: eu.connections.map((c) => ({ ...c, color: 'green-yellow' })) }
     const r = validateDiagram(JSON.parse(serializeDiagram(d)))
     expect(r.ok && r.diagram.connections.every((c) => c.color === 'green-yellow')).toBe(true)
+  })
+  it('a blocked green-yellow wire keeps its blocked dashes: the stripe falls inside each dash, never over a gap', () => {
+    const blocked = sheet([at('u1', 'U1', 't-mcu', 0, 0), at('u2', 'U2', 't-mcu', 400, 0), at('u3', 'U3', 't-mcu', 200, 0)],
+      [w('u1|IO', 'u2|GND', { color: 'green-yellow', route: [[100, 20], [300, 20]] })])
+    expect(wirePaths(blocked, computeRoutes(blocked))[0].blocked).toBe(true)
+    const clear = { ...blocked, parts: blocked.parts.filter((p) => p.uid !== 'u3') }
+    expect(wirePaths(clear, computeRoutes(clear))[0].blocked).toBe(false)
+    const stripeOf = (d: typeof blocked) => {
+      const html = renderToStaticMarkup(createElement(Sheet, { diagram: d, box: { x: 0, y: 0, w: 500, h: 100 }, label: 'b' }))
+      return html.match(/<path[^>]*stroke="#F4B400"[^>]*>/)![0]
+    }
+    // Blocked: the base is dashed 6 on 5 off; the stripe, 3 on 8 off, is yellow over half of each dash and nothing over the gap.
+    expect(stripeOf(blocked)).toContain('stroke-dasharray="3 8"')
+    expect(stripeOf(clear)).toContain('stroke-dasharray="7 7"')
   })
   it('the sheet draws identity colours, the hazard outline and the lightning markers', () => {
     const html = renderToStaticMarkup(createElement(Sheet, { diagram: eu, box: { x: -20, y: -20, w: 700, h: 300 }, label: 'eu' }))

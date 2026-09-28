@@ -59,6 +59,25 @@ describe('the spec circuits on built-in parts', () => {
     for (const f of lv) expect([f.severity, f.message]).toEqual(['error', expect.stringContaining("K1's insulation between its coil and its contacts is unknown")])
     expect(checkDiagram(d).filter((f) => f.rule === 'rating-unverified').every((f) => f.subject === 'K1')).toBe(true)
   })
+  it('Fotek SSR-25DA switching a fused lamp from a US outlet, driven by an ESP32: rule-1 errors because the SSR\'s isolation is unknown', () => {
+    const xs = at('xs1', 'XS1', 'outlet-us-5-15r-duplex')
+    const d = sheet([
+      xs, onOutlet('xp1', 'XP1', 'plug-us-5-15p', xs),
+      at('f1', 'F1', 'fuse-holder-5x20-inline', 300, 0, { values: { fuseRating: { value: 2, unit: 'A' } } }),
+      at('k1', 'K1', 'ssr-fotek-25da', 500), at('e1', 'E1', 'lamp-holder-e26', 800), at('u1', 'U1', 'esp32-devkit-v1-30', 500, 300),
+    ], [
+      stripped('xp1|L', 'f1|1'), stripped('f1|2', 'k1|1'), stripped('k1|2', 'e1|L'), stripped('e1|N', 'xp1|N'),
+      dc('k1|3', 'u1|D23'), dc('k1|4', 'u1|GND'),
+    ])
+    const found = checkDiagram(d)
+    expect(rules(d)).toContain('mains-to-low-voltage')
+    const lv = found.filter((f) => f.rule === 'mains-to-low-voltage')
+    expect(lv.length).toBeGreaterThan(0)
+    for (const f of lv) expect([f.severity, f.message]).toEqual(['error', expect.stringContaining("K1's insulation between its control side and its load side is unknown")])
+    // The ESP32's GPIO and ground are named, each once, even though the board has two pins labelled GND.
+    for (const f of lv) expect(f.message).not.toMatch(/U1 GND and U1 GND/)
+    expect(lv.some((f) => f.message.includes('K1 4 and U1 GND may be live'))).toBe(true)
+  })
   it('HLK-PM01 feeding an ESP32: rule-1 errors because the HLK-PM01\'s isolation is unknown', () => {
     const xs = at('xs1', 'XS1', 'outlet-us-5-15r-duplex')
     const d = sheet([xs, onOutlet('xp1', 'XP1', 'plug-us-5-15p', xs), at('ps1', 'PS1', 'hlk-pm01', 300), at('u1', 'U1', 'esp32-cam', 600)], [

@@ -31,4 +31,26 @@ describe('mains evidence', () => {
   it('keeps isolation unknown where no class is stated (ruling B2)', () => {
     for (const id of ['hlk-pm01', 'hlk-pm03', 'relay-module-1ch-5v', 'ssr-fotek-25da']) expect([id, EVIDENCE[id].isolation]).toEqual([id, undefined])
   })
+  it('MSTB III/3 250 V: the quote says the 2016 header sheet gives 250 V too', () => {
+    for (const n of [2, 3]) {
+      const r = EVIDENCE[`terminal-block-mstb-508-${n}`].ratings!.find((x) => x.conditions?.startsWith('overvoltage category III, pollution degree 3'))!
+      expect(r.volts).toBe(250)
+      expect(r.quote).toMatch(/07\/07\/2016.*III\/3\) 250 V/)
+    }
+  })
+  it('every COMBICON part carries the no-hot-plug warning', () => {
+    for (const n of [2, 3, 4, 5, 6])
+      for (const id of [`terminal-block-mstb-508-${n}`, `terminal-block-mc-381-${n}`]) {
+        const f = EVIDENCE[id].extra?.noHotPlug
+        expect([id, f?.value]).toEqual([id, true])
+        expect(f!.quote).toMatch(/must not be plugged in or disconnected when carrying voltage or under load/)
+      }
+  })
+  it('a UL fact quoting both sides cites both the plug and the header source', () => {
+    for (const id of ['terminal-block-mc-381-3', 'terminal-block-mstb-508-4', 'terminal-block-mc-381-6']) {
+      const e = EVIDENCE[id]
+      const [plug, header] = e.sources
+      expect(e.extra!.ul.url.split(' ')).toEqual([plug, header])
+    }
+  })
 })

@@ -408,8 +408,10 @@ function secondaryWords(t: GTerm, also: boolean): { cause: string; counts: strin
  * secondary's reason added when there is one.
  */
 function lowVoltageDraft(w: Watch, direct: boolean, from: string, effective: 'SELV' | 'PELV', sourceKeys: string[], wires: string[], when: string): MainsDraft {
-  const names = andList(w.terms.map(termName))
-  const one = w.terms.length === 1
+  // Two pins with one label (a board's two GND pins) are named once: "U1 GND", not "U1 GND and U1 GND".
+  const labels = [...new Set(w.terms.map(termName))]
+  const names = andList(labels)
+  const one = labels.length === 1
   const lead = w.terms[0]
   const sec = w.cls === 'secondary' ? secondaryWords(w.terms.find((t) => lvClass(t) === 'secondary')!, direct) : null
   let message: string
@@ -1770,7 +1772,8 @@ const unprotectedPaths = new WeakMap<Acc, (PathRec | undefined)[] & { byKey: Map
  * reaches that source's L with every fuse taken out (nets and closed contacts only, bareRoots). An
  * empty holder is open already (the load then gets no L there, and fuseRules says why). A fuse inside
  * a plug-in device or cord plug is a protective edge like any other, so it protects everything behind
- * it. Allocation-free once a finding is known.
+ * it. Not allocation-free: for the first PATH_STATES states a finding holds in, each state adds its
+ * unfused wires to the finding's highlight set (Ruling 33); after that a repeat state allocates nothing.
  */
 function unprotectedRule(acc: Acc, mask: number) {
   const { p } = acc

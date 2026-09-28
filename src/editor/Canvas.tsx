@@ -8,7 +8,7 @@ import { Part, INK } from '../render/Part.tsx'
 import { LegDots, TakenHoles } from '../render/Boards.tsx'
 import { WireLabel } from '../render/WireLabel.tsx'
 import { CableLayer } from '../render/CableEnd.tsx'
-import { Bolts, HazardOutline, Stripe, boltInsets } from '../render/Mains.tsx'
+import { BLOCKED_DASH, Bolts, HazardOutline, Stripe, boltInsets } from '../render/Mains.tsx'
 import { type WireLook, identityColor, newWireColor, wireLooks } from '../format/mainsLook.ts'
 import { seatedLabels } from '../format/seatedLabels.ts'
 import { addPart, addWire, EMPTY_SELECTION, moveParts, reconnectWire, sameEndpoint, setWireRoute, settleDrop, settleMounts, settleSeats, settlingOf, updateWire, withMounted } from './ops.ts'
@@ -579,7 +579,7 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
         <g fill="none" strokeLinecap="round" strokeLinejoin="round">
           {wires.map(({ conn, d, blocked, points }) => {
             const w = wireWidth(conn.gauge)
-            const dash = blocked ? '6 5' : undefined
+            const dash = blocked ? BLOCKED_DASH : undefined
             const selected = selection.wires.includes(conn.uid)
             const dimmed = drag?.kind === 'reconnect' && drag.uid === conn.uid
             const look = looks.get(conn.uid)
@@ -591,7 +591,7 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
                 {look?.hazard && <HazardOutline d={d} width={w} />}
                 <path d={d} stroke={INK} strokeWidth={w + 2.2} strokeDasharray={dash} />
                 <path className="wire-color" d={d} stroke={wireColor(name)} strokeWidth={w} strokeDasharray={dash} />
-                {stripe && <Stripe d={d} width={w} color={stripe} />}
+                {stripe && <Stripe d={d} width={w} color={stripe} blocked={blocked} />}
                 <path d={conn.ends ? polyline(points) : d} className="wire-hit" strokeWidth={Math.max(12, w + 8)} />
               </g>
             )

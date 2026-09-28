@@ -13,6 +13,7 @@
     "check:warnings-ui": "node scripts/check-warnings-ui.mjs",
     "check:problems-ui": "node scripts/check-problems-ui.mjs",
     "check:cables-ui": "node scripts/check-cables-ui.mjs",
+    "check:mains-ui": "node scripts/check-mains-ui.mjs",
     "deploy": "bash scripts/deploy.sh"
   },
   "dependencies": {

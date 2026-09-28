@@ -11,9 +11,16 @@ export function HazardOutline({ d, width }: { d: string; width: number }) {
   return <path className="wire-hazard" d={d} stroke={HAZARD} strokeWidth={width + 5.2} />
 }
 
-/** The stripe of a two-colour wire (green-yellow earth), over its base colour. */
-export function Stripe({ d, width, color }: { d: string; width: number; color: string }) {
-  return <path d={d} stroke={color} strokeWidth={width} strokeDasharray="7 7" />
+/** The dash of a blocked wire (a route that runs through a part): 6 px drawn, 5 px gap. */
+export const BLOCKED_DASH = '6 5'
+
+/**
+ * The stripe of a two-colour wire (green-yellow earth), over its base colour. On a blocked wire it
+ * keeps the blocked dash's 11 px period and covers only the first half of each dash, so the gaps
+ * still read as blocked and the wire still reads as two-colour.
+ */
+export function Stripe({ d, width, color, blocked = false }: { d: string; width: number; color: string; blocked?: boolean }) {
+  return <path d={d} stroke={color} strokeWidth={width} strokeDasharray={blocked ? '3 8' : '7 7'} />
 }
 
 /** The point `dist` px along a polyline from its first point, or null when it is shorter. */

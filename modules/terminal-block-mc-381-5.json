@@ -4,7 +4,7 @@
   "version": 1,
   "name": "Terminal block Phoenix Contact MC 1,5 (3.81 mm), 5 positions (plug 1803604, header 1803303)",
   "category": "Mains",
-  "source": "https://media.digikey.com/pdf/Data%20Sheets/Phoenix%20Contact%20PDFs/1803604.pdf https://media.digikey.com/pdf/Data%20Sheets/Phoenix%20Contact%20PDFs/1803303.pdf",
+  "source": "https://media.digikey.com/pdf/Data%20Sheets/Phoenix%20Contact%20PDFs/1803604.pdf https://media.digikey.com/pdf/Data%20Sheets/Phoenix%20Contact%20PDFs/1803303.pdf https://www.phoenixcontact.com/en-us/products/pcb-plug-mc-15-2-st-381-1803578",
   "pins": [
     {
       "name": "1",

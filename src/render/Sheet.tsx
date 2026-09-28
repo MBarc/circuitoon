@@ -8,7 +8,7 @@ import { Part, INK } from './Part.tsx'
 import { LegDots, TakenHoles } from './Boards.tsx'
 import { WireLabel } from './WireLabel.tsx'
 import { CableLayer } from './CableEnd.tsx'
-import { Bolts, HazardOutline, MainsNotice, NOTICE_MIN_WIDTH, Stripe, boltInsets, noticeHeight, noticeLines } from './Mains.tsx'
+import { BLOCKED_DASH, Bolts, HazardOutline, MainsNotice, NOTICE_MIN_WIDTH, Stripe, boltInsets, noticeHeight, noticeLines } from './Mains.tsx'
 import { MAINS_NOTICE, hasMains } from '../format/mains.ts'
 
 export function Sheet({ diagram, captions = {}, box, label, decorative = false }: {
@@ -62,9 +62,9 @@ export function Sheet({ diagram, captions = {}, box, label, decorative = false }
           return (
             <g key={conn.uid} data-wire={conn.uid}>
               {look?.hazard && <HazardOutline d={d} width={w} />}
-              <path d={d} stroke={INK} strokeWidth={w + 2.2} strokeDasharray={blocked ? '6 5' : undefined} />
-              <path className="wire-color" d={d} stroke={wireColor(name)} strokeWidth={w} strokeDasharray={blocked ? '6 5' : undefined} />
-              {stripe && <Stripe d={d} width={w} color={stripe} />}
+              <path d={d} stroke={INK} strokeWidth={w + 2.2} strokeDasharray={blocked ? BLOCKED_DASH : undefined} />
+              <path className="wire-color" d={d} stroke={wireColor(name)} strokeWidth={w} strokeDasharray={blocked ? BLOCKED_DASH : undefined} />
+              {stripe && <Stripe d={d} width={w} color={stripe} blocked={blocked} />}
             </g>
           )
         })}

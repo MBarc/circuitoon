@@ -4,7 +4,7 @@
   "version": 1,
   "name": "Terminal block Phoenix Contact MSTB 2,5 (5.08 mm), 5 positions (plug 1757048, header 1757271)",
   "category": "Mains",
-  "source": "https://media.digikey.com/pdf/Data%20Sheets/Phoenix%20Contact%20PDFs/1757048.pdf https://media.digikey.com/pdf/Data%20Sheets/Phoenix%20Contact%20PDFs/1757271.pdf",
+  "source": "https://media.digikey.com/pdf/Data%20Sheets/Phoenix%20Contact%20PDFs/1757048.pdf https://media.digikey.com/pdf/Data%20Sheets/Phoenix%20Contact%20PDFs/1757271.pdf https://www.phoenixcontact.com/en-us/products/pcb-plug-mstb-25-2-st-508-1757019",
   "pins": [
     {
       "name": "1",

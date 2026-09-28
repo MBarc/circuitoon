@@ -268,7 +268,7 @@ function irm(series: '03' | '05', volts: 3.3 | 5): PartEvidence {
 function phoenixRatings(series: 'mstb' | 'mc', plugUrl: string, headerUrl: string, header: string): RatingFact[] {
   if (series === 'mstb')
     return [
-      { volts: 250, amps: 12, service: 'ac/dc', conditions: 'overvoltage category III, pollution degree 3 (IEC 60664-1)', quote: 'Plug: Rated voltage (III/3) 250 V, Nominal current IN 12 A. Header: Rated voltage (III/3) 320 V, Nominal current IN 12 A. The lower (plug) value is kept.', url: plugUrl },
+      { volts: 250, amps: 12, service: 'ac/dc', conditions: 'overvoltage category III, pollution degree 3 (IEC 60664-1)', quote: 'Plug: Rated voltage (III/3) 250 V, Nominal current IN 12 A. Header: Rated voltage (III/3) 320 V on the current product page, but 250 V on Phoenix\'s online-catalogue PDF dated 07/07/2016 (Rated voltage (III/3) 250 V, mirrored by Digi-Key), Nominal current IN 12 A. The lower value, 250 V, is kept; every source gives at least that.', url: plugUrl },
       { volts: 320, amps: 12, service: 'ac/dc', conditions: 'overvoltage category III, pollution degree 2 (IEC 60664-1)', quote: 'Plug and header: Rated voltage (III/2) 320 V, Nominal current IN 12 A.', url: headerUrl },
       // Ruling 46: the two sources for the header disagree on II/2 (630 V on the current page, 400 V on the 2016 sheet and at Digi-Key); the lower is used.
       { volts: 400, amps: 12, service: 'ac/dc', conditions: 'overvoltage category II, pollution degree 2 (IEC 60664-1)', quote: `Plug: Rated voltage (II/2) 630 V (product page). Header ${header}: Rated voltage (II/2) 630 V on the current product page read in Task 0, but 400 V on Phoenix's online-catalogue PDF dated 07/07/2016 (mirrored by Digi-Key)${header === '1757242' ? ', and Digi-Key\'s attribute "Voltage - IEC 400 V"' : ''}. Nominal current IN 12 A. The lower (400 V) is kept under Ruling 46.`, url: digikeyPhoenix(header) },
@@ -300,6 +300,10 @@ const digikeyPhoenix = (item: string): string => `https://media.digikey.com/pdf/
 const DIGIKEY_1757242 = 'https://www.digikey.com/en/products/detail/phoenix-contact/1757242/260474'
 /** Ruling 46 (2026-09-27): where the sources for an MSTB 2,5 rating disagree, the lower is used, so every MSTB carries II/2 400 V. */
 const MSTB_R46 = 'Conflict: for the MSTBA header, the current Phoenix product page read in Task 0 gives Rated voltage (III/3) 320 V and (II/2) 630 V; Phoenix\'s online-catalogue PDF of the same item dated 07/07/2016 (mirrored by Digi-Key) gives (III/3) 250 V and (II/2) 400 V, and Digi-Key\'s attribute for 1757242 reads "Voltage - IEC 400 V". Ruling 46 (2026-09-27): a safety checker must not overstate a rating, so the lower value is used: II/2 400 V. III/3 is unchanged at 250 V (the plug\'s 250 V was already the lower of the pair, and the 2016 header value is also 250 V); III/2 is 320 V in every source.'
+
+/** Phoenix's COMBICON handling note, stated for the whole family on every product page read (MSTB 2,5 and MC 1,5 plugs alike). */
+const NO_HOT_PLUG = 'In accordance with IEC 61984, COMBICON connectors have no switching power (COC). During designated use, they must not be plugged in or disconnected when carrying voltage or under load.'
+const noHotPlug = (url: string, via?: string): Fact<true> => fact<true>(true, via ? `${NO_HOT_PLUG} (${via})` : NO_HOT_PLUG, url)
 
 type Cond = 'III/3' | 'III/2' | 'II/2'
 const CONDS: readonly Cond[] = ['III/3', 'III/2', 'II/2']
@@ -343,6 +347,8 @@ function phoenixSide(series: 'mstb' | 'mc', part: 'plug' | 'header', n: number, 
 /** A part with a side read only from its older Digi-Key-mirrored sheet: every condition both sides state, at the lower value of the pair. */
 function phoenixFromSheets(series: 'mstb' | 'mc', plugType: string, headerType: string, p: SideSheet, h: SideSheet): PartEvidence {
   const both = CONDS.filter((c) => p.volts[c] !== undefined && h.volts[c] !== undefined)
+  // Where the no-hot-plug note was read when this plug's own page was not: the series' 2-position plug page.
+  const family = series === 'mstb' ? phoenix('pcb-plug-mstb-25-2-st-508-1757019') : phoenix('pcb-plug-mc-15-2-st-381-1803578')
   const ratings: RatingFact[] = both.map((c) => {
     const [pv, hv] = [p.volts[c]!, h.volts[c]!]
     const lower = pv === hv ? '' : ` The lower (${pv < hv ? 'plug' : 'header'}) value is kept.`
@@ -364,7 +370,7 @@ function phoenixFromSheets(series: 'mstb' | 'mc', plugType: string, headerType: 
   ].filter(Boolean).join(' ')
   return {
     subject: `Phoenix Contact ${plugType} (plug ${p.item}) with ${headerType} (header ${h.item})`,
-    sources: [p.url, h.url],
+    sources: [p.url, h.url, ...(PHOENIX_READ.has(p.item) ? [] : [family])],
     verdict: 'VERIFIED',
     decision: notes,
     ratings,
@@ -372,10 +378,14 @@ function phoenixFromSheets(series: 'mstb' | 'mc', plugType: string, headerType: 
       plug: fact(p.item, p.names, p.url),
       header: fact(h.item, h.names, h.url),
       pitch: fact(series === 'mstb' ? 5.08 : 3.81, series === 'mstb' ? 'Pitch 5.08 mm' : 'Pitch 3.81 mm', p.url),
-      ul: fact(`plug: ${p.ul}; header: ${h.ul}`, `Plug ${p.item}: ${p.ul}. Header ${h.item}: ${h.ul}.`, h.url),
+      // The quote reads both sides, so it cites both documents (space-separated, like a module's source).
+      ul: fact(`plug: ${p.ul}; header: ${h.ul}`, `Plug ${p.item}: ${p.ul}. Header ${h.item}: ${h.ul}.`, `${p.url} ${h.url}`),
       ...(series === 'mc'
         ? { conditional: fact('always rating-conditional at 230 V', `Rated voltage (III/2) 160 V on both sides: only the II/2 rating (${Math.min(p.volts['II/2']!, h.volts['II/2']!)} V) covers 230 V, so the part always carries its conditions (ruling, 2026-09-27: MC 1,5 always gets rating-conditional at 230 V).`, h.url) }
         : {}),
+      noHotPlug: PHOENIX_READ.has(p.item)
+        ? noHotPlug(p.url)
+        : noHotPlug(family, `a family-wide statement, read on the ${series === 'mstb' ? 'MSTB 2,5/ 2-ST-5,08 (1757019)' : 'MC 1,5/ 2-ST-3,81 (1803578)'} product page; the ${p.doc} for ${p.item} predates it`),
     },
   }
 }
@@ -400,7 +410,7 @@ function phoenixPart(series: 'mstb' | 'mc', n: 2 | 3 | 4 | 5 | 6): PartEvidence 
       pitch: fact(series === 'mstb' ? 5.08 : 3.81, series === 'mstb' ? 'pitch 5.08 mm' : 'Pitch 3.81 mm', plugUrl),
       ul: fact(series === 'mstb' ? 'cULus 300 V 15 A (use group B), 300 V 10 A (use group D)' : 'cULus 300 V 8 A (use groups B and D)', series === 'mstb' ? 'cULus Recognized, Approval ID: E60425-19931011: B 300 V 15 A; D 300 V 10 A' : 'cULus Recognized, Approval ID: E60425-20110128: B 300 V 8 A; D 300 V 8 A', series === 'mstb' ? plugUrl : headerUrl),
       ...(series === 'mc' ? { conditional: fact('always rating-conditional at 230 V', 'Rated voltage (III/3) 160 V and (III/2) 160 V: only the II/2 rating (250 V) covers 230 V, so the part always carries its conditions (ruling, 2026-09-27: MC 1,5 always gets rating-conditional at 230 V).', headerUrl) } : {}),
-      noHotPlug: fact(true, 'In accordance with IEC 61984, COMBICON connectors have no switching power (COC). During designated use, they must not be plugged in or disconnected when carrying voltage or under load.', plugUrl),
+      noHotPlug: noHotPlug(plugUrl),
     },
   }
 }
