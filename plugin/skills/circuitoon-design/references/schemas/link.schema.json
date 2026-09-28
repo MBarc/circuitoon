@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "circuitoon link --json",
+  "type": "object",
+  "required": ["format", "ok", "url", "chars", "file", "reason", "notice"],
+  "additionalProperties": false,
+  "properties": {
+    "format": { "const": "circuitoon-cli/link/1" },
+    "ok": { "type": "boolean" },
+    "url": { "type": ["string", "null"] },
+    "chars": { "type": "integer" },
+    "file": { "type": ["string", "null"] },
+    "reason": { "type": ["string", "null"] },
+    "notice": { "type": "string" }
+  }
+}

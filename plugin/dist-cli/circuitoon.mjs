@@ -35280,6 +35280,143 @@ function layoutCommand(args, io) {
 	return EXIT.ok;
 }
 //#endregion
+//#region src/format/link.ts
+var SITE_URL = "https://mbarc.github.io/circuitoon/";
+/** Longest payload a link may carry, in characters (64 KB), `v1.` included. */
+var LINK_MAX_CHARS = 65536;
+/** Most JSON a link may hold, in UTF-8 bytes: the file import limit (5 MB). Decompression stops here. */
+var LINK_MAX_JSON_BYTES = 5242880;
+var LINK_MAX_PARTS = 2e3;
+var LINK_MAX_CONNECTIONS = 1e4;
+var LINK_NOTICE = "Anyone with this link can see the diagram: it is stored in the link itself. Nothing is uploaded.";
+/**
+* The one eligibility check (A9): the first limit `size` breaks, or null. The encoder refuses what
+* the decoder would refuse, so a link that is made always opens. `maxChars` lowers the payload limit
+* (tests); nothing may raise it.
+*/
+function linkLimit(size, maxChars = LINK_MAX_CHARS) {
+	const checks = [
+		[
+			"chars",
+			size.chars,
+			Math.min(maxChars, LINK_MAX_CHARS)
+		],
+		[
+			"bytes",
+			size.bytes,
+			LINK_MAX_JSON_BYTES
+		],
+		[
+			"parts",
+			size.parts,
+			LINK_MAX_PARTS
+		],
+		[
+			"connections",
+			size.connections,
+			LINK_MAX_CONNECTIONS
+		]
+	];
+	for (const [limit, count, max] of checks) if (count !== void 0 && count > max) return {
+		limit,
+		count,
+		max
+	};
+	return null;
+}
+var n = (x) => x.toLocaleString("en");
+/** The limit in plain words, for the CLI: "2,001 parts, more than the 2,000 a link may carry". */
+function limitText(l) {
+	if (l.limit === "bytes") return "more than 5 MB of JSON, the most a link may carry";
+	const unit = l.limit === "chars" ? "characters" : l.limit;
+	return `${n(l.count)} ${unit}, more than the ${n(l.max)} a link may carry`;
+}
+function toBase64Url(bytes) {
+	let bin = "";
+	for (let i = 0; i < bytes.length; i += 32768) bin += String.fromCharCode(...bytes.subarray(i, i + 32768));
+	return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+async function encodePayload(json) {
+	const packed = await new Response(new Blob([json]).stream().pipeThrough(new CompressionStream("deflate-raw"))).arrayBuffer();
+	return "v1." + toBase64Url(new Uint8Array(packed));
+}
+/**
+* A link that opens `d` in the editor, or, when `d` breaks a link limit (checked by `linkLimit`, as
+* the decoder checks it), the payload size and the limit it breaks.
+*/
+async function diagramLink(d, base = SITE_URL, max = LINK_MAX_CHARS) {
+	const json = JSON.stringify(JSON.parse(serializeDiagram(d)));
+	const payload = await encodePayload(json);
+	const limit = linkLimit({
+		chars: payload.length,
+		bytes: new TextEncoder().encode(json).length,
+		parts: d.parts.length,
+		connections: d.connections.length
+	}, max);
+	return limit ? {
+		ok: false,
+		chars: payload.length,
+		limit
+	} : {
+		ok: true,
+		url: `${base}#/editor?d=${payload}`,
+		chars: payload.length
+	};
+}
+//#endregion
+//#region src/editor/files.ts
+function exportFileName(title) {
+	return `${title.trim().replace(/[\\/:*?"<>|]+/g, "-") || "Untitled sheet"}.circuitoon.json`;
+}
+//#endregion
+//#region src/cli/linkCmd.ts
+/** Why no link was made, in plain words. */
+function refusalText(l) {
+	if (l.limit === "chars") return `The link would be ${l.count.toLocaleString("en")} characters, more than the ${l.max.toLocaleString("en")} a link may carry, so no link was made.`;
+	return `The sheet has ${limitText(l)}, so no link was made.`;
+}
+/**
+* The link for `d`, or the file written instead when it breaks a limit. `from` is the sheet's own
+* path: when the file would be the sheet itself, it is left as it is (it already imports).
+*/
+async function linkFor(d, dir, io, from) {
+	const r = await diagramLink(d);
+	if (r.ok) return {
+		url: r.url,
+		file: null,
+		chars: r.chars,
+		reason: null
+	};
+	const file = join(dir, exportFileName(d.title));
+	if (from === void 0 || resolve(pathIn(io, file)) !== resolve(pathIn(io, from))) writeFile(io, file, serializeDiagram(d));
+	return {
+		url: null,
+		file,
+		chars: r.chars,
+		reason: refusalText(r.limit)
+	};
+}
+async function linkCommand(args, io) {
+	const [input, ...rest] = args.positionals;
+	if (!input) throw new CliError("link: give a sheet file", EXIT.input);
+	if (rest.length) throw new CliError(`link: give one sheet file, not ${args.positionals.length}`, EXIT.input);
+	const { diagram, warnings } = loadSheet(io, input);
+	for (const w of warnings) io.stderr(`warning: ${w}\n`);
+	const r = await linkFor(diagram, flag(args, "--out") ?? dirname(input), io, input);
+	if (args.flags.has("--json")) printJson(io, {
+		format: "circuitoon-cli/link/1",
+		ok: r.url !== null,
+		url: r.url,
+		chars: r.chars,
+		file: r.file,
+		reason: r.reason,
+		notice: LINK_NOTICE
+	});
+	else if (r.url) io.stdout(`${r.url}\n${LINK_NOTICE}\n`);
+	else io.stdout(`${r.reason} Wrote ${r.file}: open it in Circuitoon with Import JSON.\n`);
+	return EXIT.ok;
+}
+//#endregion
 //#region node_modules/react/cjs/react.production.js
 /**
 * @license React
@@ -45690,6 +45827,7 @@ var COMMANDS = {
 	part: partCommand,
 	layout: layoutCommand,
 	render: renderCommand,
+	link: linkCommand,
 	verify: verifyCommand,
 	check: checkCommand
 };

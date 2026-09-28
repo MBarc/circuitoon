@@ -347,6 +347,8 @@ Files are the unit of sharing; the browser keeps a working copy so a refresh doe
 
 Deferred past V1: SVG and PNG export, multi-page tiling, parts-list and connection-table pages.
 
+**Links.** `#/editor?d=v1.<payload>` opens a diagram carried in the URL fragment: the payload is the diagram JSON, compressed with raw deflate and written in base64url. A payload may be up to 64 KB; opening stops past 5 MB of JSON, 2,000 parts or 10,000 connections, and a damaged or oversized payload shows the usual load error. After loading, the address bar goes back to `#/editor` without reloading the editor. The fragment is never sent to a server, so nothing is uploaded, but anyone with the link can see the diagram. `circuitoon link` makes these links; it applies the same limits, and for a sheet over any of them it makes no link and writes the sheet as a `.circuitoon.json` file to import instead.
+
 **Persistence**
 
 - Each completed edit (a drop, a rename, a delete; not every mouse move) is written to IndexedDB as one transaction, debounced to at most once per 500 ms.
