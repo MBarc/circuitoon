@@ -143,9 +143,10 @@ dip28({
 //    GND, INTA, GPA0-GPA7; the inner column VCC, INTB, GPB0-GPB7; the single 1x10 header at the
 //    right edge is A2, A1, A0, RESET, NC/SO, NC/CS, SDA/SI, SCL/SCK, GND, VCC, top to bottom. The
 //    silkscreen is on the back ("VCC/GND", "ITB/ITA", "B0/A0" ... beside the double row: inner/outer).
-//    Sources agree: digitaltown photos of both sides, the Warlib1975 Fritzing part and the EasyEDA
-//    footprint + symbol (component side, outer column GND/ITA/A0-A7), the ShillehTek manual (inner
-//    column port B, outer column port A); the Microchip datasheet for the pin functions.
+//    Sources agree: digitaltown photos of both sides, the Warlib1975 Fritzing part's BREADBOARD view
+//    (component side; its PCB view is mirrored, so do not cross-check against that one) and the
+//    EasyEDA footprint + symbol (component side, outer column GND/ITA/A0-A7), the ShillehTek manual
+//    (inner column port B, outer column port A); the Microchip datasheet for the pin functions.
 //
 //    Every header position is a single-position pad hole group, none an edge pin: an edge pin's
 //    inside label sits where the inner pad of the double row is, and pads never plug into a
@@ -207,7 +208,7 @@ dip28({
   ]
   const m = {
     format: 'circuitoon-module/1', id, version: 1,
-    name: 'MCP23017 I/O expander module (CJMCU-2317, 2x10 + 1x10 header)', category: 'Chips',
+    name: 'MCP23017 breakout CJMCU-2317 (chip side; labels are on the back)', category: 'Chips',
     source: [
       'https://www.digitaltown.co.uk/MCP23017.php',
       'https://github.com/Warlib1975/Fritzing-parts/blob/master/CJMCU2317-MCP23017.fzpz',

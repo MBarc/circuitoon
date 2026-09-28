@@ -2,7 +2,7 @@
   "format": "circuitoon-module/1",
   "id": "mcp23017-cjmcu-2317",
   "version": 1,
-  "name": "MCP23017 I/O expander module (CJMCU-2317, 2x10 + 1x10 header)",
+  "name": "MCP23017 breakout CJMCU-2317 (chip side; labels are on the back)",
   "category": "Chips",
   "source": "https://www.digitaltown.co.uk/MCP23017.php https://github.com/Warlib1975/Fritzing-parts/blob/master/CJMCU2317-MCP23017.fzpz https://easyeda.com/component/1ae26967fb344abea8ad222656426ee7 https://easyeda.com/component/25f3bfff95674c649e0437107b895aa7 https://shillehtek.com/blogs/shillehtek-product-manuals/mcp23017-i2c-16bit-io-port-expander-presoldered-manual https://ww1.microchip.com/downloads/aemDocuments/documents/APID/ProductDocuments/DataSheets/MCP23017-Data-Sheet-DS20001952.pdf",
   "pins": [],
