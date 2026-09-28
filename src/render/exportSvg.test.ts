@@ -11,7 +11,8 @@ import { buttonLed } from '../samples/buttonLed.ts'
 import { contentBounds, focusBounds, renderSheetSvg } from './exportSvg.tsx'
 import { captionAnchor, captionBox } from './captionBox.ts'
 import { annotationRect, wrapNote } from './annotationGeometry.ts'
-import { Part } from './Part.tsx'
+import { INK, Part } from './Part.tsx'
+import { DARK_THEME, LIGHT_THEME } from './theme.ts'
 
 const withNotes = (): Diagram => ({
   ...structuredClone(buttonLed),
@@ -67,5 +68,26 @@ describe('shared geometry', () => {
     const r = annotationRect({ uid: 'a', type: 'frame', x: 0, y: 20, w: 100, h: 50, label: 'Power' })
     expect(r.y).toBe(12)
     expect(wrapNote('word '.repeat(20).trim()).split('\n').every((l) => l.length <= 48)).toBe(true)
+  })
+})
+
+describe('dark theme', () => {
+  const luminance = (hex: string) => {
+    const [r, g, b] = [1, 3, 5].map((i) => {
+      const c = parseInt(hex.slice(i, i + 2), 16) / 255
+      return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4
+    })
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b
+  }
+  const contrast = (a: string, b: string) => {
+    const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x)
+    return (hi + 0.05) / (lo + 0.05)
+  }
+  it('cases wires and junction dots in a light color that stands clear of the dark paper', () => {
+    expect(contrast(DARK_THEME.casing, DARK_THEME.paper)).toBeGreaterThan(7)
+    expect(LIGHT_THEME.casing).toBe(INK)
+    const { svg } = renderSheetSvg(structuredClone(buttonLed), { dark: true })
+    expect(svg).toContain(`stroke="${DARK_THEME.casing}"`)
+    expect(svg).toContain(`r="2.4" fill="${DARK_THEME.casing}"`)
   })
 })
