@@ -340,6 +340,24 @@ function watchList(p: Prepared): Watch[] {
 }
 
 /**
+ * The energy edges and fitted protective edges of a view: the part of `energyPathWires`' link list
+ * that never changes across states (only the candidate groups' closed and leak pairs do), so it is
+ * built once per view instead of on every call (up to `PATH_STATES` per finding).
+ */
+const staticLinksCache = new WeakMap<Prepared, [number, number, boolean][]>()
+function staticLinks(p: Prepared): [number, number, boolean][] {
+  let links = staticLinksCache.get(p)
+  if (links) return links
+  const both = (a: number, b: number) => p.inRel[a] === 1 && p.inRel[b] === 1
+  links = [
+    ...p.energy.map((e): [number, number, boolean] => [e.a, e.b, e.directed]),
+    ...p.protective.filter((e) => e.fitted && both(e.a, e.b)).map((e): [number, number, boolean] => [e.a, e.b, false]),
+  ]
+  staticLinksCache.set(p, links)
+  return links
+}
+
+/**
  * The wires on the ways energy reaches net `node` in the current state (spec 3: a path finding
  * highlights the path, not only where it ends; Ruling 33). For each of the given sources (every source
  * when omitted) and each of its conductors L and N, a shortest chain of nets from that conductor's
@@ -353,11 +371,23 @@ export function energyPathWires(p: Prepared, node: number, from?: number[]): str
   const g = p.g
   const both = (a: number, b: number) => p.inRel[a] === 1 && p.inRel[b] === 1
   const links: [number, number, boolean][] = [
-    ...p.energy.map((e): [number, number, boolean] => [e.a, e.b, e.directed]),
-    ...p.protective.filter((e) => e.fitted && both(e.a, e.b)).map((e): [number, number, boolean] => [e.a, e.b, false]),
+    ...staticLinks(p),
     ...p.groupIdx.flatMap((gi) => [...g.groups[gi].closed[p.groupState[gi]], ...g.groups[gi].leak[p.groupState[gi]]]
       .filter(([a, b]) => both(a, b)).map(([a, b]): [number, number, boolean] => [a, b, false])),
   ]
+  // An adjacency list built once per call, in link order, so the search below visits each node's
+  // neighbours directly instead of rescanning every link at every node (that scaled with the sheet's
+  // total edges times its visited nodes; a real sheet's edges are far more than a synthetic one's).
+  const adj = new Map<number, number[]>()
+  const push = (x: number, y: number) => {
+    let l = adj.get(x)
+    if (!l) adj.set(x, (l = []))
+    l.push(y)
+  }
+  for (const [a, b, directed] of links) {
+    push(a, b)
+    if (!directed) push(b, a)
+  }
   const on = new Set<number>([node])
   for (const s of p.sources) {
     if (from && !from.includes(s.index)) continue
@@ -371,9 +401,8 @@ export function energyPathWires(p: Prepared, node: number, from?: number[]): str
       for (let q = 0; q < queue.length && !prev.has(node); q++) {
         const x = queue[q]
         if (prev.get(x) !== -1 && p.ident[p.root[x]] & other) continue
-        for (const [a, b, directed] of links) {
-          const next = a === x ? b : !directed && b === x ? a : -1
-          if (next >= 0 && !prev.has(next)) {
+        for (const next of adj.get(x) ?? []) {
+          if (!prev.has(next)) {
             prev.set(next, x)
             queue.push(next)
           }

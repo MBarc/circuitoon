@@ -8,6 +8,9 @@ import { describe, expect, it } from 'vitest'
 import { checkDiagram } from './checks.ts'
 import type { Connection, Diagram, PartInstance } from './diagram.ts'
 import { analyseMains } from './mains.ts'
+import { wireLooks } from './mainsLook.ts'
+import type { ModuleDef } from './module.ts'
+import { load, pinsOf } from './builtinModules.testing.ts'
 import { at, dupont, sheet, w } from './mains.testing.ts'
 
 /** Sorted timings of `runs` checks, each on a fresh parts array as after an edit (so no cache carries over), after one warm-up. */
@@ -151,5 +154,80 @@ describe('mains worst cases at 16 groups', () => {
   })
   it('ten outlets crossed by 16 switches: 300 ms or less', RETRY, () => {
     withinBudget('ten outlets crossed', tenCrossed(), 300, 5)
+  })
+})
+
+// The full sheet on built-in parts (spec 7): a realistic project, not synthetic test parts. Two
+// wall outlets each feeding a Hi-Link AC-DC module and an ESP32, one enumeration unit of contact
+// groups (the worst case, all on the first outlet), and a 150-part DC section of real modules wired
+// pin to pin, so the mains and DC costs both land on the same sheet as they would on a real project.
+const ids = ['outlet-us-5-15r-duplex', 'plug-us-5-15p', 'rocker-switch-kcd1', 'relay-module-1ch-5v', 'ssr-fotek-25da', 'fuse-holder-5x20-inline', 'lamp-holder-e26', 'hlk-pm01',
+  'esp32-devkitc-v4', 'bme280-module-6pin', 'oled-ssd1306-096-i2c', 'resistor', 'led']
+const mods: Record<string, ModuleDef> = Object.fromEntries(ids.map((id) => [id, load(id)]))
+let n = 0
+const wire = (a: string, ap: string, b: string, bp: string, mains = true): Connection =>
+  ({ uid: `w${++n}`, from: { part: a, pin: ap }, to: { part: b, pin: bp }, ...(mains ? { gauge: 18, ends: { from: 'ferrule', to: 'ferrule' } } : {}) })
+
+function build(groups: number): Diagram {
+  const parts: PartInstance[] = []
+  const connections: Connection[] = []
+  const at = (uid: string, designator: string, module: string, x: number, y: number, extra: Partial<PartInstance> = {}) => {
+    parts.push({ uid, designator, module, x, y, rotation: 0, ...extra })
+    return uid
+  }
+  for (const k of [0, 1]) {
+    at(`xs${k}`, `XS${k + 1}`, 'outlet-us-5-15r-duplex', k * 2000, 0)
+    at(`xp${k}`, `XP${k + 1}`, 'plug-us-5-15p', k * 2000 + 10, 10, { mount: { board: `xs${k}` } })
+    at(`ps${k}`, `PS${k + 1}`, 'hlk-pm01', k * 2000 + 200, 300)
+    connections.push(wire(`xp${k}`, 'L', `ps${k}`, 'AC 1'), wire(`xp${k}`, 'N', `ps${k}`, 'AC 2'))
+  }
+  // Each group switches its own fused lamp: plug L, fuse, contact, lamp, back to plug N.
+  const kinds = [['rocker-switch-kcd1', '1', '2', 'S'], ['relay-module-1ch-5v', 'COM', 'NO', 'K'], ['ssr-fotek-25da', '1', '2', 'K']] as const
+  for (let g = 0; g < groups; g++) {
+    const [module, a, b, prefix] = g < 8 ? kinds[0] : g < 12 ? kinds[1] : kinds[2]
+    // Every group on the first plug: one enumeration unit of 16 groups, the worst case.
+    const k = 0
+    const s = at(`g${g}`, `${prefix}${g + 1}`, module, 300 + g * 120, 600)
+    const f = at(`f${g}`, `F${g + 1}`, 'fuse-holder-5x20-inline', 300 + g * 120, 800, { values: { fuseRating: { value: 2, unit: 'A' } } })
+    const e = at(`e${g}`, `E${g + 1}`, 'lamp-holder-e26', 300 + g * 120, 1000)
+    connections.push(wire(`xp${k}`, 'L', f, '1'), wire(f, '2', s, a), wire(s, b, e, 'L'), wire(e, 'N', `xp${k}`, 'N'))
+  }
+  // A DC section: two ESP32 boards on the converters, and loose real parts wired pin to pin.
+  for (const k of [0, 1]) {
+    at(`u${k}`, `U${k + 1}`, 'esp32-devkitc-v4', k * 2000 + 400, 1400)
+    connections.push(wire(`ps${k}`, '+Vo', `u${k}`, '5V', false), wire(`ps${k}`, '-Vo', `u${k}`, 'GND', false))
+  }
+  const loose = ['bme280-module-6pin', 'oled-ssd1306-096-i2c', 'resistor', 'led', 'esp32-devkitc-v4']
+  const dc: PartInstance[] = []
+  for (let i = 0; i < 150; i++) dc.push(parts[parts.push({ uid: `d${i}`, designator: `U${i + 10}`, module: loose[i % loose.length], x: 3000 + (i % 15) * 300, y: Math.floor(i / 15) * 300, rotation: 0 }) - 1])
+  let seed = 11
+  const rnd = (m: number) => ((seed = (seed * 1103515245 + 12345) % 2147483648), seed % m)
+  for (let i = 0; i < 400; i++) {
+    const [a, b] = [dc[rnd(dc.length)], dc[rnd(dc.length)]]
+    const [pa, pb] = [pinsOf(mods[a.module]), pinsOf(mods[b.module])]
+    connections.push(wire(a.uid, pa[rnd(pa.length)].name, b.uid, pb[rnd(pb.length)].name, false))
+  }
+  return { format: 'circuitoon-diagram/1', title: 't', modules: mods, parts, connections }
+}
+
+describe('mains checks on a realistic sheet', () => {
+  it('enumerates all 65,536 states of 16 contact groups in 300 ms or less (median)', { timeout: 30_000, retry: 2 }, () => {
+    const d = build(16)
+    const a = analyseMains(d)!
+    expect(a.complete).toBe(true)
+    expect(checkDiagram(d).filter((f) => f.rule === 'mains-incomplete')).toEqual([])
+    const ms = median(d, 5)
+    console.log(`mains full sheet: ${ms.toFixed(1)} ms median`)
+    expect(ms).toBeLessThanOrEqual(300)
+  })
+  it('the renderer reuses the analysis the checker made for the same edit', { timeout: 30_000, retry: 2 }, () => {
+    const d = build(16)
+    checkDiagram(d)
+    const s = performance.now()
+    wireLooks(d)
+    expect(performance.now() - s).toBeLessThan(5)
+  })
+  it('checks the same sheet with 4 contact groups in 30 ms or less (median)', { retry: 2 }, () => {
+    expect(median(build(4), 13)).toBeLessThanOrEqual(30)
   })
 })

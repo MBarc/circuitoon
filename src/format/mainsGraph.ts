@@ -349,6 +349,8 @@ interface Plan {
   closedAB: Int32Array
   leakAt: Int32Array
   leakAB: Int32Array
+  /** The groups that leak in some position (an SSR's OFF leakage, say): the rest need no per-state visit. */
+  leakGroupIdx: Int32Array
   /** Source terminals: node, identity bit, and the power bit it starts (0 for earth). */
   srcNode: Int32Array
   srcBit: Uint32Array
@@ -378,6 +380,7 @@ function planOf(p: Prepared): Plan {
   }
   const closed = pairs('closed')
   const leak = pairs('leak')
+  const leakGroupIdx = Int32Array.from(p.groupIdx.filter((gi) => leak.at[gi * 2] < leak.at[gi * 2 + 1] || leak.at[gi * 2 + 1] < leak.at[gi * 2 + 2]))
   const node: number[] = []
   const bit: number[] = []
   const pow: number[] = []
@@ -387,7 +390,7 @@ function planOf(p: Prepared): Plan {
     for (const x of s.earth) node.push(x), bit.push(bitOf(s.index, 'PE')), pow.push(0)
   }
   plan = {
-    closedAt: closed.at, closedAB: closed.ab, leakAt: leak.at, leakAB: leak.ab,
+    closedAt: closed.at, closedAB: closed.ab, leakAt: leak.at, leakAB: leak.ab, leakGroupIdx,
     srcNode: Int32Array.from(node), srcBit: Uint32Array.from(bit), srcPow: Uint16Array.from(pow),
     energyA: Int32Array.from(p.energy, (e) => e.a), energyB: Int32Array.from(p.energy, (e) => e.b), energyDir: Uint8Array.from(p.energy, (e) => (e.directed ? 1 : 0)),
     anyLeak: leak.ab.length > 0,
@@ -448,13 +451,14 @@ export function analyseState(p: Prepared): void {
     ident[r] |= srcBit[k]
     power[r] |= srcPow[k]
   }
-  const { energyA, energyB, energyDir, leakAt, leakAB, anyLeak } = plan
+  const { energyA, energyB, energyDir, leakAt, leakAB, leakGroupIdx, anyLeak } = plan
   for (let changed = true; changed; ) {
     changed = false
     for (let k = 0; k < energyA.length; k++) if (flow(root, power, energyA[k], energyB[k], energyDir[k] === 1)) changed = true
     if (anyLeak)
-      for (let t = 0; t < groupIdx.length; t++) {
-        const at = groupIdx[t] * 2 + groupState[groupIdx[t]]
+      for (let t = 0; t < leakGroupIdx.length; t++) {
+        const gi = leakGroupIdx[t]
+        const at = gi * 2 + groupState[gi]
         for (let j = leakAt[at], end = leakAt[at + 1]; j < end; j++) if (flow(root, power, leakAB[2 * j], leakAB[2 * j + 1], false)) changed = true
       }
   }
