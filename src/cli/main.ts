@@ -9,6 +9,7 @@
 import { type Args, parseArgs } from './args.ts'
 import { CliError, EXIT, type Io, printJson } from './io.ts'
 import { partCommand, partsCommand } from './parts.ts'
+import { gateCommand } from './gate.ts'
 import { layoutCommand } from './layoutCmd.ts'
 import { linkCommand } from './linkCmd.ts'
 import { renderCommand } from './render.ts'
@@ -30,7 +31,7 @@ or an internal error of the tool.
 `
 
 export type Command = (args: Args, io: Io) => number | Promise<number>
-export const COMMANDS: Record<string, Command> = { parts: partsCommand, part: partCommand, layout: layoutCommand, render: renderCommand, link: linkCommand, verify: verifyCommand, check: checkCommand }
+export const COMMANDS: Record<string, Command> = { parts: partsCommand, part: partCommand, layout: layoutCommand, render: renderCommand, link: linkCommand, verify: verifyCommand, check: checkCommand, gate: gateCommand }
 
 type ErrorCode = 'usage' | 'input' | 'blocked' | 'environment' | 'internal'
 const CODE_OF: Record<number, ErrorCode> = { [EXIT.blocked]: 'blocked', [EXIT.input]: 'input', [EXIT.environment]: 'environment' }

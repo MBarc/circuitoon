@@ -1,7 +1,12 @@
 // Layout on the fixture sizes of spec 10 (5, 30, 120 parts and the typewriter-like topology): every
 // part placed, zero body and caption overlaps, nothing blocked, mounts seated, and a clean verify.
 import { describe, expect, it } from 'vitest'
+import { mkdtempSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { serializeDiagram } from '../format/diagram.ts'
+import { openLinkPayload, payloadFromHash } from '../format/link.ts'
+import { runGate } from '../cli/gate.ts'
 import { mountIssues } from '../format/breadboard.ts'
 import { libraryLookup } from './catalog.ts'
 import { layoutNetlist } from './layout.ts'
@@ -49,7 +54,26 @@ describe('layout fixtures', () => {
     expect(r.value.report.wireCrossings).toBeLessThanOrEqual(1750)
   }, 60_000)
 
-  // Amendment A4: the full fixture's gate plus link round trip. Gate (Task 16) and link (Task 13)
-  // do not exist yet; the layout and verify half is covered above.
-  it.todo('typewriter-like: gate passes and its link decodes back to the same sheet (Tasks 13 and 16)')
+  // Amendment A4: the full fixture's gate plus link round trip. The PNG writer is a stand-in (the
+  // real browser path is covered in src/cli/gate.test.ts and by hand), so this runs everywhere.
+  it('typewriter-like: gate passes and its link decodes back to the same sheet', async () => {
+    const r = layoutNetlist(typewriter())
+    if (!r.ok) throw new Error(r.errors.join('\n'))
+    const text = serializeDiagram(r.value.diagram)
+    const dir = mkdtempSync(join(tmpdir(), 'circuitoon-tw-gate-'))
+    const png = (_svg: unknown, _scale: number, out: string) => {
+      writeFileSync(out, 'png')
+      return { ok: true as const, width: 1, height: 1 }
+    }
+    const io = { stdout: () => {}, stderr: () => {}, cwd: dir, env: {} }
+    const g = await runGate(new TextEncoder().encode(text), { sheetPath: 'sheet.json', outDir: join(dir, 'out'), io, png })
+    expect(g.report.blocking).toEqual([])
+    expect(g.code).toBe(0)
+    expect(g.report.artifacts.map((a) => a.kind)).toEqual(['svg', 'png', 'focus-png', 'link'])
+    const payload = payloadFromHash(new URL(g.report.link.url!).hash)
+    const back = await openLinkPayload(payload!)
+    if (!back.ok) throw new Error(back.message)
+    expect(back.warnings).toEqual([])
+    expect(serializeDiagram(back.diagram)).toBe(text)
+  }, 60_000)
 })

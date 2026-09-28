@@ -1,0 +1,297 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "circuitoon gate --json and gate.json",
+  "type": "object",
+  "required": [
+    "format",
+    "ok",
+    "diagram",
+    "artifacts",
+    "blocking",
+    "warnings",
+    "notChecked",
+    "link",
+    "quantities",
+    "channels"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "format": {
+      "const": "circuitoon-gate/1"
+    },
+    "ok": {
+      "type": "boolean"
+    },
+    "diagram": {
+      "type": "object",
+      "required": [
+        "path",
+        "sha256"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "sha256": {
+          "type": "string"
+        }
+      }
+    },
+    "artifacts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "kind",
+          "path",
+          "sha256",
+          "bytes"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "enum": [
+              "svg",
+              "png",
+              "focus-png",
+              "link",
+              "file"
+            ]
+          },
+          "path": {
+            "type": "string"
+          },
+          "sha256": {
+            "type": "string"
+          },
+          "bytes": {
+            "type": "integer"
+          }
+        }
+      }
+    },
+    "blocking": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "rule",
+          "severity",
+          "message",
+          "parts",
+          "pins",
+          "wires"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "rule": {
+            "type": "string"
+          },
+          "severity": {
+            "enum": [
+              "error",
+              "warning"
+            ]
+          },
+          "message": {
+            "type": "string"
+          },
+          "parts": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "pins": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "part",
+                "pin"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "part": {
+                  "type": "string"
+                },
+                "pin": {
+                  "type": "string"
+                },
+                "hole": {
+                  "type": "integer"
+                },
+                "offset": {
+                  "type": "integer"
+                }
+              }
+            }
+          },
+          "wires": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "warnings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "rule",
+          "severity",
+          "message",
+          "parts",
+          "pins",
+          "wires"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "rule": {
+            "type": "string"
+          },
+          "severity": {
+            "enum": [
+              "error",
+              "warning"
+            ]
+          },
+          "message": {
+            "type": "string"
+          },
+          "parts": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "pins": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "part",
+                "pin"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "part": {
+                  "type": "string"
+                },
+                "pin": {
+                  "type": "string"
+                },
+                "hole": {
+                  "type": "integer"
+                },
+                "offset": {
+                  "type": "integer"
+                }
+              }
+            }
+          },
+          "wires": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "notChecked": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "link": {
+      "type": "object",
+      "required": [
+        "url",
+        "file",
+        "chars"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "url": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "file": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "chars": {
+          "type": "integer"
+        }
+      }
+    },
+    "quantities": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "module",
+          "name",
+          "count",
+          "custom"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "module": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "count": {
+            "type": "integer"
+          },
+          "custom": {
+            "type": "boolean"
+          }
+        }
+      }
+    },
+    "channels": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "copy",
+          "port",
+          "endpoint"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "copy": {
+            "type": "string"
+          },
+          "port": {
+            "type": "string"
+          },
+          "endpoint": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}
