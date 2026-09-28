@@ -1,5 +1,5 @@
 // Generates the built-in chip, display and storage module JSON files: the MCP23017/MCP23018 DIP-28
-// I/O expanders, the small SPI TFT and I2C OLED display modules and the SPI microSD modules. Pin
+// I/O expanders and the CJMCU-2317 MCP23017 breakout, the small SPI TFT and I2C OLED display modules and the SPI microSD modules. Pin
 // lists are transcribed from the sources cited on each part below (Microchip datasheets; the
 // module maker's pinout table and board photos for the displays and microSD modules).
 //
@@ -137,6 +137,95 @@ dip28({
   ]),
   types: chipTypes({ ADDR: { type: 'input' } }),
 })
+
+// 3. MCP23017 breakout sold as CJMCU-2317 (MCP23017/MCP23S17 dual-marked). Seen from the component
+//    side (chip up), turned so the 2x10 header is at the left: the outer column (board edge) is
+//    GND, INTA, GPA0-GPA7; the inner column VCC, INTB, GPB0-GPB7; the single 1x10 header at the
+//    right edge is A2, A1, A0, RESET, NC/SO, NC/CS, SDA/SI, SCL/SCK, GND, VCC, top to bottom. The
+//    silkscreen is on the back ("VCC/GND", "ITB/ITA", "B0/A0" ... beside the double row: inner/outer).
+//    Sources agree: digitaltown photos of both sides, the Warlib1975 Fritzing part and the EasyEDA
+//    footprint + symbol (component side, outer column GND/ITA/A0-A7), the ShillehTek manual (inner
+//    column port B, outer column port A); the Microchip datasheet for the pin functions.
+//
+//    Every header position is a single-position pad hole group, none an edge pin: an edge pin's
+//    inside label sits where the inner pad of the double row is, and pads never plug into a
+//    breadboard, so with edge pins the board could seat with only part of its header connected.
+//    With no pins the part never mounts (on a real breadboard the 2x10 header shorts each A/B pair).
+//    The header columns keep their true 10 px pitch; the gap to the single row is widened so the
+//    labels fit. Names follow the datasheet where the silkscreen is ambiguous ("A0" is both an
+//    address pin and GPA0), with the silkscreen text as label.
+{
+  const id = 'mcp23017-cjmcu-2317'
+  const W = 180, H = 110
+  const PCB = '#2B2F36', HOUSING = '#1B1F24', SILK = '#E8ECF1'
+  const OUTER = 40, INNER = 50, SINGLE = 170
+  const ys = Array.from({ length: 10 }, (_, i) => 10 + i * 10)
+  const gp = (port) => Array.from({ length: 8 }, (_, i) => `GP${port}${i}`)
+  const columns = [
+    { x: OUTER, align: 'right', list: ['GND', 'INTA|ITA', ...gp('A')] },
+    { x: INNER, align: 'left', list: ['VCC', 'INTB|ITB', ...gp('B')] },
+    { x: SINGLE, align: 'right', list: ['A2', 'A1', 'A0', 'RESET', 'NC|NC/SO', 'NC 2|NC/CS', 'SDA|SDA/SI', 'SCL|SCL/SCK', 'GND 2|GND', 'VCC 2|VCC'] },
+  ]
+  const types = typer({
+    VCC: { type: 'power_in', supply: '3V3/5V' }, GND: { type: 'ground' }, NC: { type: 'nc' },
+    SCL: { type: 'input' }, SDA: { type: 'io' }, RESET: { type: 'input' }, A0: { type: 'input' }, A1: { type: 'input' }, A2: { type: 'input' },
+    INTA: { type: 'output' }, INTB: { type: 'output' }, GPA7: { type: 'output' }, GPB7: { type: 'output' },
+  })
+  const holes = []
+  // Silkscreen-style text beside each pad, right-aligned before it or left-aligned after it.
+  const labels = []
+  for (const c of columns)
+    c.list.forEach((s, i) => {
+      const [name, label] = s.split('|')
+      // Type by pin function (the name, "GND 2" as GND); plain GPIO is io.
+      const t = types(name.replace(/ \d+$/, ''))
+      const g = { name }
+      if (label) g.label = label
+      g.at = [[c.x, ys[i]]]
+      g.holeStyle = 'pad'
+      g.type = t.type ?? 'io'
+      if (t.supply) g.supply = t.supply
+      holes.push(g)
+      const text = label ?? name
+      const w = Math.ceil(text.length * 4.2)
+      const x = c.align === 'right' ? c.x - 7 - w : c.x + 7
+      labels.push(r(x, ys[i] - 4, w, 8, PCB, { outline: false, label: text, labelColor: SILK, labelSize: 6.5 }))
+    })
+  const shapes = [
+    r(0, 0, W, H, PCB, { radius: 3 }),
+    // Black header housings on the component side, under the pads.
+    r(OUTER - 6, 3, INNER - OUTER + 12, H - 6, HOUSING, { radius: 2 }),
+    r(SINGLE - 6, 3, 12, H - 6, HOUSING, { radius: 2 }),
+    // SSOP-28 lying across the board, leads above and below; resistor array above, three resistors below.
+    r(88, 34, 36, 4, METAL, { outline: false }),
+    r(88, 64, 36, 4, METAL, { outline: false }),
+    r(84, 38, 44, 26, CHIP, { radius: 1, label: 'MCP23017', labelColor: METAL, labelSize: 6 }),
+    r(98, 16, 16, 9, CHIP, { radius: 1 }),
+    ...[92, 102, 112].map((x) => r(x, 74, 6, 9, CHIP, { radius: 1 })),
+    r(84, 92, 44, 8, PCB, { outline: false, label: 'CJMCU-2317', labelColor: SILK, labelSize: 5.5 }),
+    ...labels,
+  ]
+  const m = {
+    format: 'circuitoon-module/1', id, version: 1,
+    name: 'MCP23017 I/O expander module (CJMCU-2317, 2x10 + 1x10 header)', category: 'Chips',
+    source: [
+      'https://www.digitaltown.co.uk/MCP23017.php',
+      'https://github.com/Warlib1975/Fritzing-parts/blob/master/CJMCU2317-MCP23017.fzpz',
+      'https://easyeda.com/component/1ae26967fb344abea8ad222656426ee7',
+      'https://easyeda.com/component/25f3bfff95674c649e0437107b895aa7',
+      'https://shillehtek.com/blogs/shillehtek-product-manuals/mcp23017-i2c-16bit-io-port-expander-presoldered-manual',
+      'https://ww1.microchip.com/downloads/aemDocuments/documents/APID/ProductDocuments/DataSheets/MCP23017-Data-Sheet-DS20001952.pdf',
+    ].join(' '),
+    pins: [],
+    holes,
+    internal: [['GND', 'GND 2'], ['VCC', 'VCC 2']],
+    size: { w: W / 10, h: H / 10 },
+    electrical: { model: 'io-expander', params: {} },
+    art: { w: W, h: H, shapes },
+  }
+  emit(OUT + 'mcp23017-cjmcu-2317.json', JSON.stringify(m, null, 2) + '\n')
+  log('mcp23017-cjmcu-2317.json', 'pads', holes.length, 'body', W, 'x', H)
+}
 
 // ---------------------------------------------------------------------------------------------
 // SPI TFT modules (lcdwiki MSP series, sold under Hosyond and other brands). Seen from the screen
