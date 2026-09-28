@@ -27,7 +27,7 @@ import { writePng } from './png.ts'
 import { linkFor } from './linkCmd.ts'
 import { focusParts } from './render.ts'
 
-export const GATE_FORMAT = 'circuitoon-gate/1'
+export const GATE_FORMAT = 'circuitoon-cli/gate/1'
 
 export interface GateArtifact {
   kind: 'svg' | 'png' | 'focus-png' | 'link' | 'file'

@@ -17,7 +17,7 @@
   "additionalProperties": false,
   "properties": {
     "format": {
-      "const": "circuitoon-gate/1"
+      "const": "circuitoon-cli/gate/1"
     },
     "ok": {
       "type": "boolean"

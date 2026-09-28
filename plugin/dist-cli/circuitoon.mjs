@@ -44444,7 +44444,7 @@ function renderCommand(args, io) {
 }
 //#endregion
 //#region src/cli/gate.ts
-var GATE_FORMAT = "circuitoon-gate/1";
+var GATE_FORMAT = "circuitoon-cli/gate/1";
 var sha256 = (bytes) => createHash("sha256").update(bytes).digest("hex");
 /** The loader's warning for a part whose module the file does not embed (a missing module blocks). */
 var MISSING_MODULE = "is not embedded in this file";
