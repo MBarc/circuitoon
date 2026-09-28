@@ -6,6 +6,7 @@ import { type Plug, type Seat, mountIssues, plugsOf, seatOf, seatOn } from '../f
 import { pivot, rotateVec, type Rotation } from '../format/geometry.ts'
 import { editableParams, paramValue } from '../format/values.ts'
 import { normalizeEnds, type WireEnds } from '../format/cables.ts'
+import { mainsOf } from '../format/mainsModel.ts'
 
 export interface Selection {
   parts: string[]
@@ -213,8 +214,10 @@ function swungAbout(p: PartInstance, m: ModuleDef, board: PartInstance, bm: Modu
 
 /**
  * Rotates each part 90 degrees clockwise about its own pivot. A rotated board turns its mounted
- * parts with it (about the board's pivot), so they stay seated. Any other rotated part keeps its
- * mount only while it still fits; rotating never mounts a part.
+ * parts with it (about the board's pivot), so they stay seated. A rotated plug-in device settles as
+ * if dropped (Ruling 41): turned into a socket it fits it plugs in, turned out of it it comes out,
+ * all in the one edit. Any other rotated part keeps its mount only while it still fits; rotating
+ * never mounts it.
  */
 export function rotateParts(d: Diagram, uids: string[]): Diagram {
   const s = new Set(uids)
@@ -226,7 +229,13 @@ export function rotateParts(d: Diagram, uids: string[]): Diagram {
     if (board && m && bm) return { ...p, ...swungAbout(p, m, board, bm), rotation: turn(p.rotation) }
     return s.has(p.uid) ? { ...p, rotation: turn(p.rotation) } : p
   })
-  return settleMounts({ ...d, parts }, uids.filter((u) => !carried.has(u)), 'keep')
+  const own = uids.filter((u) => !carried.has(u))
+  const isPlug = (u: string) => {
+    const m = moduleOf(d, d.parts.find((p) => p.uid === u)?.module ?? '')
+    return !!m && !!mainsOf(m).plug
+  }
+  const kept = settleMounts({ ...d, parts }, own.filter((u) => !isPlug(u)), 'keep')
+  return settleMounts(kept, own.filter(isPlug), 'drop')
 }
 
 export function deleteSelection(d: Diagram, sel: Selection): Diagram {

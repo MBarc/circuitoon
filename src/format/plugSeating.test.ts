@@ -15,6 +15,7 @@ import { CONDUCTORS, PLUG_FAMILIES, SOCKET_FAMILIES, type Conductor, type PlugFa
 import { PLUG_PROFILES, SOCKET_PATTERNS } from './plugging.ts'
 import { SPEC_COMPAT, specMapping, specTurns } from './plugSpec.testing.ts'
 import { load } from './builtinModules.testing.ts'
+import { rotateParts, settleDrop } from '../editor/ops.ts'
 import { at, sheet, w } from './mains.testing.ts'
 
 const C = 50
@@ -124,7 +125,8 @@ describe('seating among other boards', () => {
         const d: Diagram = { format: 'circuitoon-diagram/1', title: 't', modules: { [bb.id]: bb, [pm.id]: pm }, connections: [],
           parts: [{ uid: 'bb', designator: 'BB1', module: bb.id, x: 0, y: 0 }, { uid: 'xp', designator: 'XP1', module: pm.id, x, y, mount: { board: 'bb' } }] }
         expect(seated(d)).toBe(false)
-        expect(mountIssues(d)).toHaveLength(1)
+        // Categorical: a plug never fits a breadboard, however many of its contacts land on holes.
+        expect(mountIssues(d).map((i) => i.reason)).toEqual(['no-fit'])
       }
   })
   it('contacts spread across two sockets (never seats)', () => {
@@ -188,8 +190,59 @@ describe('plug counterexamples and rule 10', () => {
   it('a plug validly in its outlet, or clear of every outlet, is no mismatch', () => {
     expect(plugMismatches(sheet([at('xs1', 'XS1', 't-outlet'), at('xp1', 'XP1', 't-plug-us', 0, 0, { mount: { board: 'xs1' } })], []))).toEqual([])
     expect(plugMismatches(sheet([at('xs1', 'XS1', 't-outlet'), at('xp1', 'XP1', 't-plug-uk', 300, 0)], []))).toEqual([])
-    // Lying exactly where it seats but not mounted (a hand-edited file): like a part over breadboard holes, the editor mounts it on drop.
-    expect(plugMismatches(sheet([at('xs1', 'XS1', 't-outlet'), at('xp1', 'XP1', 't-plug-us')], []))).toEqual([])
+  })
+  it('a plug lying where it would seat but not plugged in (Ruling 40)', () => {
+    const d = sheet([at('xs1', 'XS1', 't-outlet'), at('xp1', 'XP1', 't-plug-us')], [])
+    expect(plugMismatches(d).map((mm) => mm.kind)).toEqual(['unplugged'])
+    expect(checkDiagram(d).filter((f) => f.rule === 'plug-mismatch').map((f) => f.message)).toEqual(['XP1 is over XS1 but not plugged in. Drag it into the socket.'])
+    // Mounted on a socket another plug already fills: it fits, but is not plugged in.
+    const taken = sheet([at('xs1', 'XS1', 't-outlet'), at('xp1', 'XP1', 't-plug-us', 0, 0, { mount: { board: 'xs1' } }), at('xp2', 'XP2', 't-plug-us', 0, 0, { mount: { board: 'xs1' } })], [])
+    expect(checkDiagram(taken).filter((f) => f.rule === 'plug-mismatch' || f.rule === 'mount').map((f) => `${f.rule}: ${f.message}`)).toEqual([
+      'plug-mismatch: XP2 is over XS1 but not plugged in. Drag it into the socket.',
+    ])
+  })
+  it('the family wording names the socket the outlet actually has', () => {
+    const d = sheet([at('xs1', 'XS1', 't-outlet-fr'), at('xp1', 'XP1', 't-plug-us')], [])
+    expect(checkDiagram(d).filter((f) => f.rule === 'plug-mismatch').map((f) => f.message)).toEqual([
+      "XP1's US plug does not fit XS1's French socket. Use a device with a French or Schuko (CEE 7/7) plug.",
+    ])
+    const two: ModuleDef = { ...socketModule('nema-5-15r'), id: 't-two-families', electrical: {
+      params: { acVoltage: { unit: 'VAC', default: 120 } }, ac: { hz: 60, region: 'us' },
+      acSources: [{ id: 's', live: ['L'], neutral: ['N'], earth: ['PE'] }],
+      sockets: [{ id: 'a', family: 'nema-5-15r', contacts: [{ group: 'L', role: 'L' }, { group: 'N', role: 'N' }, { group: 'PE', role: 'PE' }] }, { id: 'b', family: 'nema-1-15r', contacts: [{ group: 'L2', role: 'L' }, { group: 'N2', role: 'N' }] }],
+    }, holes: [...socketModule('nema-5-15r').holes!, { name: 'L2', at: [[90, 90]] }, { name: 'N2', at: [[70, 90]] }], internal: [['L', 'L2'], ['N', 'N2']] }
+    expect(errsOf(two)).toEqual([])
+    const multi = sheet([at('xs1', 'XS1', 't-two-families'), at('xp1', 'XP1', 't-plug-uk')], [], { 't-two-families': two })
+    expect(checkDiagram(multi).filter((f) => f.rule === 'plug-mismatch').map((f) => f.message)).toEqual([
+      "XP1's UK plug does not fit XS1's US socket or Japanese socket. Use a device with a US plug or a Japanese plug.",
+    ])
+  })
+  it('a plug mounted on a breadboard that also overlaps an outlet gets one finding', () => {
+    const bb = load('breadboard-half')
+    const d = sheet([at('bb', 'BB1', bb.id, 0, 0), at('xs1', 'XS1', 't-outlet', 0, 0), at('xp1', 'XP1', 't-plug-uk', 0, 0, { mount: { board: 'bb' } })], [], { [bb.id]: bb })
+    expect(checkDiagram(d).filter((f) => f.rule === 'plug-mismatch' || f.rule === 'mount').map((f) => f.rule)).toEqual(['plug-mismatch'])
+  })
+})
+
+describe('rotating a plug-in device over an outlet (Ruling 41)', () => {
+  it('a Schuko plug dropped at 180 on a French outlet, rotated twice to 0, is mounted and conducts', () => {
+    const base = sheet([at('xs1', 'XS1', 't-outlet-fr'), at('xp1', 'XP1', 't-plug-schuko', 0, 0, { rotation: 180 })], [])
+    const dropped = settleDrop(base, { ...base, parts: [...base.parts] }, ['xp1'])
+    expect(dropped.parts[1].mount).toBeUndefined()
+    expect(checkDiagram(dropped).filter((f) => f.rule === 'plug-mismatch').map((f) => f.message)).toEqual([
+      'XP1 does not sit in XS1: its contacts do not all meet one socket the way the plug fits, so none of them connect. Turn or move it until it seats; a plug that is only partly in is never electrically safe.',
+    ])
+    const once = rotateParts(dropped, ['xp1'])
+    expect(once.parts[1]).toMatchObject({ rotation: 270 })
+    expect(once.parts[1].mount).toBeUndefined()
+    const twice = rotateParts(once, ['xp1'])
+    expect(twice.parts[1]).toMatchObject({ rotation: 0, mount: { board: 'xs1' } })
+    const d = sheet(twice.parts, [])
+    expect(mountIssues(d)).toEqual([])
+    expect(analyseMains(d)!.conductorOf(nodeKey('xp1', 'L'))?.conductor).toBe('L')
+    expect(checkDiagram(d).filter((f) => f.rule === 'plug-mismatch')).toEqual([])
+    // Turned out of the socket, it comes out.
+    expect(rotateParts(twice, ['xp1']).parts[1].mount).toBeUndefined()
   })
 })
 

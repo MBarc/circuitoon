@@ -646,21 +646,23 @@ export function checkDiagram(d: Diagram): Finding[] {
       parts: [a.part.uid, b.part.uid], pins: [termPin(a), termPin(b), termPin(ga[0]), termPin(gb[0])], wires: netWires[net], causes: [a.key, b.key] })
   }
 
-  // Rule 10 (spec 2): a plug-in device over an outlet it is not plugged into. It replaces the
-  // generic mount finding for that part and outlet.
+  // Rule 10 (spec 2, Ruling 40): a plug-in device over an outlet it is not plugged into. It
+  // replaces every generic mount finding of that part (one finding per plug and outlet).
   const mismatched = new Set<string>()
   for (const mm of plugMismatches(d)) {
     const p = partByUid.get(mm.part)!
     const b = partByUid.get(mm.board)!
-    mismatched.add(JSON.stringify([mm.part, mm.board]))
+    mismatched.add(mm.part)
     const message = mm.kind === 'family'
-      ? `${p.designator}'s ${PLUG_NAMES[mm.plug]} does not fit ${b.designator}'s ${SOCKET_NAMES[mm.socket]}. Use a device with ${PLUG_FOR[mm.socket]}.`
-      : `${p.designator} does not sit in ${b.designator}: its contacts do not all meet one socket the way the plug fits, so none of them connect. Turn or move it until it seats; a plug that is only partly in is never electrically safe.`
+      ? `${p.designator}'s ${PLUG_NAMES[mm.plug]} does not fit ${b.designator}'s ${orList([...new Set(mm.sockets.map((f) => SOCKET_NAMES[f]))])}. Use a device with ${orList([...new Set(mm.sockets.map((f) => PLUG_FOR[f]))])}.`
+      : mm.kind === 'unplugged'
+        ? `${p.designator} is over ${b.designator} but not plugged in. Drag it into the socket.`
+        : `${p.designator} does not sit in ${b.designator}: its contacts do not all meet one socket the way the plug fits, so none of them connect. Turn or move it until it seats; a plug that is only partly in is never electrically safe.`
     add({ rule: 'plug-mismatch', subject: p.designator, target: p.designator, message, parts: [p.uid, b.uid], pins: [], wires: [], select: { parts: [p.uid], wires: [] }, causes: [p.uid, b.uid] })
   }
 
   for (const issue of mountIssues(d)) {
-    if (mismatched.has(JSON.stringify([issue.part, issue.board]))) continue
+    if (mismatched.has(issue.part)) continue
     const p = partByUid.get(issue.part)
     if (!p) continue
     const board = partByUid.get(issue.board)

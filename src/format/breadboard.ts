@@ -191,6 +191,8 @@ interface Fit {
   seatable: boolean
   /** A plug-in device's body where it overlaps an outlet, for the red outline. */
   outline: Rect | null
+  /** The board never takes this kind of part (a plug on anything but an outlet, anything but a plug on an outlet), however its legs land. */
+  categorical: boolean
 }
 
 const intersects = (a: Rect, b: Rect) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h
@@ -228,8 +230,9 @@ function fitOn(d: Diagram, board: PartInstance, me: Me): Fit | null {
   const fit = (pts: Point[], seatable: (hits: ([number, number] | null)[]) => boolean): Fit => {
     const hits = pts.map((pp) => holeAt(idx, pp.at))
     const landed = hits.filter(Boolean).length
-    return { board, groups: idx.groups, pts, hits, landed, obscured: landed > 0 && obscuredOn(d, board, pts), seatable: seatable(hits), outline }
+    return { board, groups: idx.groups, pts, hits, landed, obscured: landed > 0 && obscuredOn(d, board, pts), seatable: seatable(hits), outline, categorical }
   }
+  const categorical = !me.plug !== !sockets.length
   // A plain part on a plain board seats as it always has; a plain part on an outlet, or a plug on
   // anything but an outlet, never does (no-fit).
   if (!me.plug || !sockets.length) return fit(me.pts, () => !me.plug && !sockets.length)
@@ -249,6 +252,8 @@ function fitOn(d: Diagram, board: PartInstance, me: Me): Fit | null {
         // Only this socket's own contacts count: seating never collects contacts across sockets.
         const sc = h && socket.contacts.find((c) => c.group === idx.groups[h[0]].name)
         const role = profile.contacts[i].mains
+        // A mechanical pin (Ruling 39) may land on any contact of its socket: the L and N contacts
+        // already fix the orientation, and it joins nothing, so which contact it fills never matters.
         return !!sc && (role === 'mechanical' || sc.role === map[role])
       }))
       if (!best || (f.seatable && !best.seatable) || (f.seatable === best.seatable && f.landed > best.landed)) best = f
@@ -339,7 +344,9 @@ function mounts(d: Diagram): { plugs: Plug[]; issues: MountIssue[] } {
       continue
     }
     const fit = fitOn(d, board, me)!
-    if (fit.landed < fit.pts.length) issue('partial')
+    // A categorical mismatch is no-fit however many legs land; otherwise a leg off its hole comes first.
+    if (fit.categorical) issue('no-fit')
+    else if (fit.landed < fit.pts.length) issue('partial')
     else if (!fit.seatable) issue('no-fit')
     else if (fit.obscured) issue('obscured')
     else if (seatFrom(fit, taken)!.status !== 'seated') issue('conflict')
@@ -418,14 +425,23 @@ export function splitBoards(d: Diagram): { boards: PartInstance[]; others: PartI
   return { boards, others }
 }
 
-export interface PlugMismatch { part: string; board: string; kind: 'family' | 'fit'; plug: PlugFamily; socket: SocketFamily }
+export interface PlugMismatch {
+  part: string
+  board: string
+  /**
+   * family: no socket of that outlet takes this plug. fit: one would, but the plug does not sit in it
+   * as it lies (moved off, turned the wrong way, contacts spread across two sockets). unplugged: it
+   * lies where it fits but is not plugged in (not mounted, or its socket is already taken).
+   */
+  kind: 'family' | 'fit' | 'unplugged'
+  plug: PlugFamily
+  /** The socket families of that outlet: every one for `family`, those that take the plug otherwise. */
+  sockets: SocketFamily[]
+}
 
 /**
- * Plug-in devices over an outlet they are not validly plugged into (spec rule 10): `family` when no
- * socket of that outlet takes this plug at all, `fit` when one would but the plug does not sit in it
- * (moved off, turned the wrong way, or its contacts spread across two sockets). A plug that is not
- * mounted but lies exactly where it would seat is left alone, like a part over breadboard holes
- * without a mount: the editor mounts it on drop.
+ * Plug-in devices over an outlet they are not validly plugged into (spec rule 10, Ruling 40): each
+ * such device and outlet once, with the real cause.
  */
 export function plugMismatches(d: Diagram): PlugMismatch[] {
   const out: PlugMismatch[] = []
@@ -441,9 +457,11 @@ export function plugMismatches(d: Diagram): PlugMismatch[] {
       const bm = b === p ? undefined : moduleOf(d, b.module)
       const sockets = bm ? mainsOf(bm).sockets : []
       if (!bm || !sockets.length || !intersects(body, bodyRect(b, layoutModule(bm)))) continue
-      const fits = sockets.some((s) => entriesFor(plug.family, s.family).length > 0)
-      if (fits && !p.mount && seatOn(d, p.uid, b.uid, plugsOf(d))?.status === 'seated') continue
-      out.push({ part: p.uid, board: b.uid, kind: fits ? 'fit' : 'family', plug: plug.family, socket: (sockets.find((s) => entriesFor(plug.family, s.family).length > 0) ?? sockets[0]).family })
+      const families = [...new Set(sockets.map((s) => s.family))]
+      const taking = families.filter((f) => entriesFor(plug.family, f).length > 0)
+      // Seated on this outlet with no other plug in the way: it fits, it just is not plugged in.
+      const kind = !taking.length ? 'family' : seatOn(d, p.uid, b.uid, [])?.status === 'seated' ? 'unplugged' : 'fit'
+      out.push({ part: p.uid, board: b.uid, kind, plug: plug.family, sockets: taking.length ? taking : families })
     }
   }
   return out
