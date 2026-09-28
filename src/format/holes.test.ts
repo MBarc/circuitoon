@@ -317,6 +317,8 @@ describe('routing with boards and holes', () => {
     expect(computeRoutes(d).get('w')).toEqual({
       points: [{ x: 10, y: 10 }, { x: 50, y: 10 }, { x: 50, y: 40 }, { x: 50, y: 70 }, { x: 92, y: 70 }],
       blocked: false,
+      // Drawn by hand along row y = 10 across strips s2 to s5, which it does not use.
+      fallback: true,
     })
   })
 })

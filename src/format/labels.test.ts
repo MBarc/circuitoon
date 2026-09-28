@@ -88,3 +88,28 @@ describe('router label avoidance (A18.3)', () => {
     expect(crosses(r.points, wall(textWall))).toBe(true)
   })
 })
+
+describe('wires over holes they do not use (fallback flag)', () => {
+  const ys = (from: number, to: number) => Array.from({ length: (to - from) / 10 + 1 }, (_, i) => from + i * 10)
+  const strip = (at: Pt[]) => ({ groups: [{ key: JSON.stringify(['X', 'strip']), at }], legGroup: new Map<string, string>() })
+  const noText = { captions: new Map<string, Pt[]>(), tabs: [] }
+  it('is not set on a route that clears every hole', () => {
+    const d = sheet()
+    const r = routeWire(d, d.connections[0], partObstacles(d), undefined, strip([{ x: 170, y: 20 }]), noText)!
+    expect(r.blocked).toBe(false)
+    expect(r.fallback).toBeUndefined()
+  })
+  it('is set when no route clears the holes and the wire is routed over them', () => {
+    const d = sheet()
+    const r = routeWire(d, d.connections[0], partObstacles(d), undefined, strip(ys(-4000, 4000).map((y) => ({ x: 170, y }))), noText)!
+    expect(r.blocked).toBe(false)
+    expect(r.fallback).toBe(true)
+  })
+  it('is set on a hand-drawn route across a hole of a strip the wire does not use, and not on one that misses it', () => {
+    const d = sheet()
+    const over = { ...d.connections[0], route: [[120, 20], [220, 20]] as [number, number][] }
+    expect(routeWire(d, over, partObstacles(d), undefined, strip([{ x: 170, y: 20 }]), noText)!.fallback).toBe(true)
+    const clear = { ...d.connections[0], route: [[120, 20], [120, 80], [220, 80], [220, 20]] as [number, number][] }
+    expect(routeWire(d, clear, partObstacles(d), undefined, strip([{ x: 170, y: 20 }]), noText)!.fallback).toBeUndefined()
+  })
+})

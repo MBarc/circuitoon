@@ -8,6 +8,7 @@ import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFi
 import { join } from 'node:path'
 import { NO_INTENT } from '../agent/verify.ts'
 import { VALUE_DROPPED, validateDiagram, wirePaths } from '../format/diagram.ts'
+import { worldHoles } from '../format/geometry.ts'
 import { exportFileName } from '../editor/files.ts'
 import { cli, tempDir } from './cliHarness.testing.ts'
 import { loadSchema, schemaErrors } from './jsonSchema.testing.ts'
@@ -225,6 +226,24 @@ describe('circuitoon gate', () => {
     const blocking = gateJson(dir).blocking as { rule: string; message: string }[]
     expect(blocking.map((f) => f.rule)).toEqual(['module-drift'])
     expect(blocking[0].message).toContain('bme280-module-4pin')
+  })
+  it('warns, without blocking, about a wire drawn over breadboard holes it does not use, naming the wire', async () => {
+    const dir = await laidOut()
+    edit(dir, (s) => {
+      const v = validateDiagram(s)
+      if (!v.ok) throw new Error(v.errors.join('; '))
+      const bb = v.diagram.parts.find((p) => p.uid === 'BB1')!
+      const far = worldHoles(bb, v.diagram.modules[bb.module]).find((g) => g.name === 'c3-top')!.at[0]
+      const w = s.connections.find((c) => (c.from as { part: string }).part === 'BT1')!
+      w.route = [[far.x, far.y]]
+    })
+    const { code, report } = await runGate(readFileSync(join(dir, 'sheet.json')), { sheetPath: 'sheet.json', outDir: join(dir, 'out'), io: quietIo(dir) })
+    expect(report.blocking).toEqual([])
+    expect(code).toBe(EXIT.environment)
+    const over = report.warnings.filter((f) => f.rule === 'wire-over-holes')
+    expect(over).toHaveLength(1)
+    expect(over[0].message).toMatch(/^The wire BT1 \+ to BB1 c\d+-top hole \d runs over breadboard holes/)
+    expect(over[0].wires).toHaveLength(1)
   })
   it('blocks a mounted part that no longer seats on its board', async () => {
     const dir = await laidOut()

@@ -106,6 +106,11 @@ export interface WireRoute {
   points: Pt[]
   /** True when no clear route exists and the wire is drawn as an orthogonal L fallback (dashed). */
   blocked: boolean
+  /**
+   * True when the wire runs over holes of a board strip it does not end in (no route cleared them,
+   * or a hand-drawn route crosses them): drawn there, it reads as plugged in. Absent otherwise.
+   */
+  fallback?: true
 }
 /** Route per connection uid; null means an endpoint names a missing part or pin. */
 export type Routes = Map<string, WireRoute | null>
@@ -377,6 +382,11 @@ function runsOver(a: Pt, b: Pt, pts: Pt[]): boolean {
   return pts.some((p) => p.x >= x0 - 3 && p.x <= x1 + 3 && p.y >= y0 - 3 && p.y <= y1 + 3)
 }
 
+/** True when any run of the polyline `pts` passes over one of `holes`. */
+function pathRunsOver(pts: Pt[], holes: Pt[]): boolean {
+  return holes.length > 0 && pts.slice(1).some((p, i) => runsOver(pts[i], p, holes))
+}
+
 export function routeWire(
   d: Diagram,
   c: Connection,
@@ -396,7 +406,7 @@ export function routeWire(
   if (c.route) {
     let points = manualPoints(a, b, c.route)
     if (fromLead || toLead) points = withLeadOut(withLeadOut(points, a.dir, fromLead).reverse(), b.dir, toLead).reverse()
-    return { points, blocked: manualRouteBlocked(points, own) }
+    return { points, blocked: manualRouteBlocked(points, own), ...(pathRunsOver(points, foreign) ? { fallback: true as const } : {}) }
   }
   // The search starts past each lead-out, so the run from the pin out to it is checked here: a
   // route whose attachment runs cross a body is refused. A lead-out that cannot be routed (a part
@@ -416,9 +426,12 @@ export function routeWire(
   // them is tried (still clear of other strips' holes), then one over the holes too; any of them
   // is better than a dashed, blocked wire. Labels give way first: a wire over a hole reads as
   // plugged in there, one over a caption only hides some text.
-  const points = (text.length ? attempt([...foreign, ...text]) : null) ?? attempt(foreign) ?? (foreign.length ? attempt([]) : null)
+  const clear = (text.length ? attempt([...foreign, ...text]) : null) ?? attempt(foreign)
+  if (clear) return { points: clear, blocked: false }
+  const over = foreign.length ? attempt([]) : null
+  if (over) return { points: over, blocked: false, ...(pathRunsOver(over, foreign) ? { fallback: true as const } : {}) }
   // Never a diagonal: an unroutable wire is still drawn orthogonal, dashed, and flagged.
-  return points ? { points, blocked: false } : { points: blockedPoints(a, b), blocked: true }
+  return { points: blockedPoints(a, b), blocked: true }
 }
 
 /**

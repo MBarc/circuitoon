@@ -2027,6 +2027,10 @@ function runsOver(a, b, pts) {
 	const [y0, y1] = [Math.min(a.y, b.y), Math.max(a.y, b.y)];
 	return pts.some((p) => p.x >= x0 - 3 && p.x <= x1 + 3 && p.y >= y0 - 3 && p.y <= y1 + 3);
 }
+/** True when any run of the polyline `pts` passes over one of `holes`. */
+function pathRunsOver(pts, holes) {
+	return holes.length > 0 && pts.slice(1).some((p, i) => runsOver(pts[i], p, holes));
+}
 function routeWire(d, c, obstacles, occupied, holes = boardHoles(d), labels = labelPoints(d)) {
 	const a = resolveEndpoint(d, c.from);
 	const b = resolveEndpoint(d, c.to);
@@ -2044,7 +2048,8 @@ function routeWire(d, c, obstacles, occupied, holes = boardHoles(d), labels = la
 		if (fromLead || toLead) points = withLeadOut(withLeadOut(points, a.dir, fromLead).reverse(), b.dir, toLead).reverse();
 		return {
 			points,
-			blocked: manualRouteBlocked(points, own)
+			blocked: manualRouteBlocked(points, own),
+			...pathRunsOver(points, foreign) ? { fallback: true } : {}
 		};
 	}
 	const attached = (pts) => !manualRouteBlocked(pts.slice(0, 3), own) && !manualRouteBlocked(pts.slice(-3), own);
@@ -2074,11 +2079,18 @@ function routeWire(d, c, obstacles, occupied, holes = boardHoles(d), labels = la
 		}
 		return routeOrthogonal(req);
 	};
-	const points = (text.length ? attempt([...foreign, ...text]) : null) ?? attempt(foreign) ?? (foreign.length ? attempt([]) : null);
-	return points ? {
-		points,
+	const clear = (text.length ? attempt([...foreign, ...text]) : null) ?? attempt(foreign);
+	if (clear) return {
+		points: clear,
 		blocked: false
-	} : {
+	};
+	const over = foreign.length ? attempt([]) : null;
+	if (over) return {
+		points: over,
+		blocked: false,
+		...pathRunsOver(over, foreign) ? { fallback: true } : {}
+	};
+	return {
 		points: blockedPoints(a, b),
 		blocked: true
 	};
@@ -44621,6 +44633,10 @@ async function runGate(bytes, opts) {
 	found.push(...checkDiagram(d).map(cliFinding));
 	const routes = computeRoutes(d);
 	for (const { conn: c, blocked } of wirePaths(d, routes)) if (blocked) note("blocked-route", c.uid, "error", `The wire ${c.label ?? `${endpointName(d, c.from)} to ${endpointName(d, c.to)}`} has no clear route: it runs through a part.`, {
+		parts: [c.from.part, c.to.part],
+		wires: [c.uid]
+	});
+	for (const c of d.connections) if (routes.get(c.uid)?.fallback) note("wire-over-holes", c.uid, "warning", `The wire ${c.label ?? `${endpointName(d, c.from)} to ${endpointName(d, c.to)}`} runs over breadboard holes it is not plugged into, so in the picture it may look plugged in there.`, {
 		parts: [c.from.part, c.to.part],
 		wires: [c.uid]
 	});
