@@ -42,10 +42,11 @@ describe('layout fixtures', () => {
     expect(serializeDiagram(a.value.diagram)).toBe(serializeDiagram(b.value.diagram))
   }, 60_000)
 
-  it('typewriter-like: copies beside their expanders at least halve the crossings (amendment A15, baseline 6698)', () => {
+  it('typewriter-like: crossings stay at the measured level (A15: 6698 to 3061; A18: 1707)', () => {
+    // A ceiling at the value measured after A18 plus a small margin, so a regression shows here.
     const r = layoutNetlist(typewriter())
     if (!r.ok) throw new Error(r.errors.join('\n'))
-    expect(r.value.report.wireCrossings).toBeLessThanOrEqual(3349)
+    expect(r.value.report.wireCrossings).toBeLessThanOrEqual(1750)
   }, 60_000)
 
   // Amendment A4: the full fixture's gate plus link round trip. Gate (Task 16) and link (Task 13)
