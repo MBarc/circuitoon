@@ -32675,14 +32675,30 @@ function ring(r) {
 	});
 	return out;
 }
-/** The first offset near `want` (both multiples of 10) where `box` grown by `gap` clears everything in `taken`. */
-function findSpot(box, want, taken, gap) {
-	for (let r = 0;; r++) for (const o of ring(r)) {
-		const at = {
-			x: want.x + o.x * STEP,
-			y: want.y + o.y * STEP
-		};
-		if (!taken.hits(grow(shift(box, at.x, at.y), gap))) return at;
+/**
+* The first offset near `want` (both multiples of 10) where `box` grown by `gap` clears everything
+* in `taken`. With `nearest`, the clear offset of that ring nearest `want` in a straight line wins
+* (ties in ring order), so a block settles squarely beside its target rather than at the ring's
+* top-left corner (amendment A18.2).
+*/
+function findSpot(box, want, taken, gap, nearest = false) {
+	for (let r = 0;; r++) {
+		let best = null;
+		let bestD = Infinity;
+		for (const o of ring(r)) {
+			const at = {
+				x: want.x + o.x * STEP,
+				y: want.y + o.y * STEP
+			};
+			if (taken.hits(grow(shift(box, at.x, at.y), gap))) continue;
+			if (!nearest) return at;
+			const d = o.x * o.x + o.y * o.y;
+			if (d < bestD) {
+				best = at;
+				bestD = d;
+			}
+		}
+		if (best) return best;
 	}
 }
 function placeParts(intent, opts) {
@@ -33039,26 +33055,34 @@ function placeParts(intent, opts) {
 		};
 		for (const n of netsOfUnit(u)) placedNets.set(n, [...placedNets.get(n) ?? [], c]);
 	};
-	const settle = (u, target) => {
+	const settle = (u, target, nearest = false) => {
 		const b = boxOf(u);
 		const at = findSpot(b, {
 			x: snap(target.x - b.x - b.w / 2),
 			y: snap(target.y - b.y - b.h / 2)
-		}, taken, opts.spacing);
+		}, taken, opts.spacing, nearest);
 		move(u.refs, at.x, at.y);
 		put(u);
 	};
-	for (const u of units) if (u.fixed) put(u);
-	for (const u of units.filter((x) => !x.fixed && x.anchor).sort((a, b) => naturalCompare(a.key, b.key))) settle(u, {
-		x: 0,
-		y: 0
-	});
-	for (const u of units.filter((x) => !x.fixed && !x.anchor && x.near && placedRefs.has(x.near))) {
-		const near = tight(u.near);
+	const blocksOf = (u) => units.filter((x) => !x.fixed && !x.anchor && x.near && u.refs.includes(x.near) && !placedRefs.has(x.refs[0]));
+	const settleBlocks = (u) => {
+		for (const b of blocksOf(u)) {
+			const near = tight(b.near);
+			settle(b, {
+				x: near.x + near.w / 2,
+				y: near.y + near.h / 2
+			}, true);
+		}
+	};
+	const fixedUnits = units.filter((x) => x.fixed);
+	for (const u of fixedUnits) put(u);
+	for (const u of fixedUnits) settleBlocks(u);
+	for (const u of units.filter((x) => !x.fixed && x.anchor).sort((a, b) => naturalCompare(a.key, b.key))) {
 		settle(u, {
-			x: near.x + near.w / 2,
-			y: near.y + near.h / 2
+			x: 0,
+			y: 0
 		});
+		settleBlocks(u);
 	}
 	let rest = units.filter((x) => !x.fixed && !x.anchor && !placedRefs.has(x.refs[0]));
 	while (rest.length) {

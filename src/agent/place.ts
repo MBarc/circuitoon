@@ -84,13 +84,28 @@ function ring(r: number): Pt[] {
   return out
 }
 
-/** The first offset near `want` (both multiples of 10) where `box` grown by `gap` clears everything in `taken`. */
-function findSpot(box: Rect, want: Pt, taken: RectIndex, gap: number): Pt {
-  for (let r = 0; ; r++)
+/**
+ * The first offset near `want` (both multiples of 10) where `box` grown by `gap` clears everything
+ * in `taken`. With `nearest`, the clear offset of that ring nearest `want` in a straight line wins
+ * (ties in ring order), so a block settles squarely beside its target rather than at the ring's
+ * top-left corner (amendment A18.2).
+ */
+function findSpot(box: Rect, want: Pt, taken: RectIndex, gap: number, nearest = false): Pt {
+  for (let r = 0; ; r++) {
+    let best: Pt | null = null
+    let bestD = Infinity
     for (const o of ring(r)) {
       const at = { x: want.x + o.x * STEP, y: want.y + o.y * STEP }
-      if (!taken.hits(grow(shift(box, at.x, at.y), gap))) return at
+      if (taken.hits(grow(shift(box, at.x, at.y), gap))) continue
+      if (!nearest) return at
+      const d = o.x * o.x + o.y * o.y
+      if (d < bestD) {
+        best = at
+        bestD = d
+      }
     }
+    if (best) return best
+  }
 }
 
 export function placeParts(intent: Intent, opts: PlaceOptions): PlaceResult {
@@ -347,19 +362,28 @@ export function placeParts(intent: Intent, opts: PlaceOptions): PlaceResult {
     const c = { x: b.x + b.w / 2, y: b.y + b.h / 2 }
     for (const n of netsOfUnit(u)) placedNets.set(n, [...(placedNets.get(n) ?? []), c])
   }
-  const settle = (u: Unit, target: Pt) => {
+  const settle = (u: Unit, target: Pt, nearest = false) => {
     const b = boxOf(u)
-    const at = findSpot(b, { x: snap(target.x - b.x - b.w / 2), y: snap(target.y - b.y - b.h / 2) }, taken, opts.spacing)
+    const at = findSpot(b, { x: snap(target.x - b.x - b.w / 2), y: snap(target.y - b.y - b.h / 2) }, taken, opts.spacing, nearest)
     move(u.refs, at.x, at.y)
     put(u)
   }
-  for (const u of units) if (u.fixed) put(u)
-  for (const u of units.filter((x) => !x.fixed && x.anchor).sort((a, b) => naturalCompare(a.key, b.key))) settle(u, { x: 0, y: 0 })
-  // Repeat blocks bound to a part next, so each takes the room beside its target before anything
-  // else claims it (amendment A15).
-  for (const u of units.filter((x) => !x.fixed && !x.anchor && x.near && placedRefs.has(x.near))) {
-    const near = tight(u.near!)
-    settle(u, { x: near.x + near.w / 2, y: near.y + near.h / 2 })
+  // Repeat blocks bound to a part settle beside it (amendment A15), each one right after the unit
+  // holding its target, before the next board or microcontroller is placed, so the room beside
+  // every target is still free for its own block (amendment A18.2).
+  const blocksOf = (u: Unit) => units.filter((x) => !x.fixed && !x.anchor && x.near && u.refs.includes(x.near) && !placedRefs.has(x.refs[0]))
+  const settleBlocks = (u: Unit) => {
+    for (const b of blocksOf(u)) {
+      const near = tight(b.near!)
+      settle(b, { x: near.x + near.w / 2, y: near.y + near.h / 2 }, true)
+    }
+  }
+  const fixedUnits = units.filter((x) => x.fixed)
+  for (const u of fixedUnits) put(u)
+  for (const u of fixedUnits) settleBlocks(u)
+  for (const u of units.filter((x) => !x.fixed && x.anchor).sort((a, b) => naturalCompare(a.key, b.key))) {
+    settle(u, { x: 0, y: 0 })
+    settleBlocks(u)
   }
   let rest = units.filter((x) => !x.fixed && !x.anchor && !placedRefs.has(x.refs[0]))
   while (rest.length) {

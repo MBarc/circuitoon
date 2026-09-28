@@ -117,8 +117,7 @@ describe('placeParts', () => {
       return { x: r.x + r.w / 2, y: r.y + r.h / 2 }
     }
     // Each copy sits, on average, nearer its own expander than the others; the first block
-    // settled (U2's) is nearest U2. Later blocks take the nearest free room around the clustered
-    // boards, so U4's can end up nearer U3 (recorded in the Task 11 report, not tuned further).
+    // settled (U2's) is nearest U2. Every block nearest its own target is checked below (A18.2).
     const units = ['U2', 'U3', 'U4']
     let own = 0
     let other = 0
@@ -174,6 +173,24 @@ describe('placeParts', () => {
       }
     }
     noOverlaps(d)
+  })
+  it('reserves room for each block beside its own target before the next board is placed (A18.2)', () => {
+    for (const rail of [false, true]) {
+      const { intent, d } = place(typewriter(), undefined, rail)
+      const centre = (refs: string[]) => {
+        const r = refs.map((ref) => {
+          const p = d.parts.find((q) => q.uid === ref)!
+          return tightFootprint(p, d.modules[p.module])
+        }).reduce(union)
+        return { x: r.x + r.w / 2, y: r.y + r.h / 2 }
+      }
+      const targets = ['U2', 'U3', 'U4']
+      for (const u of targets) {
+        const block = centre(intent.copies.filter((c) => c.bindings.CH.startsWith(`${u}.`)).flatMap((c) => c.refs))
+        const dist = (t: string) => Math.hypot(centre([t]).x - block.x, centre([t]).y - block.y)
+        for (const other of targets) if (other !== u) expect(dist(u), `${u}'s block (rail ${rail}) nearer ${u} than ${other}`).toBeLessThan(dist(other))
+      }
+    }
   })
   it('adds no local strips without the rail module, and leaves a kept copy out of its block (A18.1)', () => {
     expect(place(typewriter()).locals).toEqual([])
