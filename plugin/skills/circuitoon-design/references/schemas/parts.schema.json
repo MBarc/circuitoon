@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "circuitoon parts --json",
+  "type": "object",
+  "required": ["format", "parts"],
+  "additionalProperties": false,
+  "properties": {
+    "format": { "const": "circuitoon-cli/parts/1" },
+    "parts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "name", "category", "source", "board", "pins", "holes"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "string" },
+          "name": { "type": "string" },
+          "category": { "type": ["string", "null"] },
+          "source": { "type": ["string", "null"] },
+          "board": { "type": "boolean" },
+          "pins": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["name", "label", "type", "supply", "capacity"],
+              "additionalProperties": false,
+              "properties": {
+                "name": { "type": "string" },
+                "label": { "type": ["string", "null"] },
+                "type": { "enum": ["power_in", "power_out", "ground", "input", "output", "io", "passive", "nc", null] },
+                "supply": { "type": ["string", "null"] },
+                "capacity": { "type": "integer" }
+              }
+            }
+          },
+          "holes": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["name", "label", "type", "supply", "holes", "rail", "capacity"],
+              "additionalProperties": false,
+              "properties": {
+                "name": { "type": "string" },
+                "label": { "type": ["string", "null"] },
+                "type": { "enum": ["power_in", "power_out", "ground", "input", "output", "io", "passive", "nc", null] },
+                "supply": { "type": ["string", "null"] },
+                "holes": { "type": "integer" },
+                "rail": { "enum": ["+", "-", null] },
+                "capacity": { "type": "integer" }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

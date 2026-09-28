@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "circuitoon layout --json",
+  "type": "object",
+  "required": ["format", "ok", "output", "attempts", "report", "quantities", "channels", "warnings", "errors"],
+  "additionalProperties": false,
+  "properties": {
+    "format": { "const": "circuitoon-cli/layout/1" },
+    "ok": { "type": "boolean" },
+    "output": { "type": ["string", "null"] },
+    "attempts": { "type": "integer" },
+    "report": {
+      "type": ["object", "null"],
+      "required": ["bodyOverlaps", "captionOverlaps", "wireCrossings", "wireLength", "sheet", "blockedNets"],
+      "additionalProperties": false,
+      "properties": {
+        "bodyOverlaps": { "type": "integer" },
+        "captionOverlaps": { "type": "integer" },
+        "wireCrossings": { "type": "integer" },
+        "wireLength": { "type": "integer" },
+        "sheet": { "type": "object", "required": ["w", "h"], "additionalProperties": false, "properties": { "w": { "type": "integer" }, "h": { "type": "integer" } } },
+        "blockedNets": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "quantities": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["module", "name", "count", "custom"],
+        "additionalProperties": false,
+        "properties": { "module": { "type": "string" }, "name": { "type": "string" }, "count": { "type": "integer" }, "custom": { "type": "boolean" } }
+      }
+    },
+    "channels": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["copy", "port", "endpoint"],
+        "additionalProperties": false,
+        "properties": { "copy": { "type": "string" }, "port": { "type": "string" }, "endpoint": { "type": "string" } }
+      }
+    },
+    "warnings": { "type": "array", "items": { "type": "string" } },
+    "errors": { "type": "array", "items": { "type": "string" } }
+  }
+}
