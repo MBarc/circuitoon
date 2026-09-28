@@ -114,7 +114,7 @@ function PinLabel({ p, box, outside, pad = 4 }: { p: WorldPin; box: Rect; outsid
  * Memoized: props are primitives plus a module object that keeps its identity, so pan, zoom
  * and selection changes do not re-render every part.
  */
-export const Part = memo(function Part({ module: m, x = 0, y = 0, rotation = 0, caption, values, ink = INK }: {
+export const Part = memo(function Part({ module: m, x = 0, y = 0, rotation = 0, caption, values, ink = INK, halo }: {
   module: ModuleDef
   x?: number
   y?: number
@@ -124,6 +124,8 @@ export const Part = memo(function Part({ module: m, x = 0, y = 0, rotation = 0, 
   values?: Record<string, unknown>
   /** Caption color (the theme's ink); the Sticker ink by default. */
   ink?: string
+  /** Outline color behind the caption (the theme's halo); none by default. */
+  halo?: string
 }) {
   const lay = layoutModule(m)
   const art = m.art
@@ -178,7 +180,8 @@ export const Part = memo(function Part({ module: m, x = 0, y = 0, rotation = 0, 
         return <PinLabel key={p.name} p={p} box={box} outside={!!art && !header} pad={header ? HEADER_INSET : 4} />
       })}
       {caption && (
-        <text x={cap.x} y={cap.y} textAnchor="middle" fontSize={CAPTION_SIZE} fontWeight={700} fill={ink}>
+        <text x={cap.x} y={cap.y} textAnchor="middle" fontSize={CAPTION_SIZE} fontWeight={700} fill={ink}
+          {...(halo ? { stroke: halo, strokeWidth: 3, strokeLinejoin: 'round' as const, paintOrder: 'stroke' } : {})}>
           {caption}
         </text>
       )}

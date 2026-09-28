@@ -2,10 +2,11 @@
 // plugin folder, with no node_modules anywhere near it, and imports nothing but Node built-ins.
 import { describe, expect, it } from 'vitest'
 import { spawn, spawnSync } from 'node:child_process'
-import { cpSync, mkdtempSync, readFileSync } from 'node:fs'
+import { cpSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { builtinModules } from 'node:module'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
+import { ledNetlist } from '../agent/fixtures.testing.ts'
 
 /**
  * Module specifiers of real import and export statements and dynamic imports (amendment A12): the
@@ -30,6 +31,26 @@ describe('CLI bundle', () => {
     expect(r.stderr).toBe('')
     expect(r.status).toBe(0)
     expect(JSON.parse(r.stdout).parts.map((p: { id: string }) => p.id)).toContain('resistor')
+  }, 60_000)
+  it('renders a sheet to SVG from a copy of the plugin folder, with the production JSX runtime', () => {
+    // Amendment A13: the Sheet (JSX) is in the bundle, so a build under NODE_ENV=test would carry
+    // the dev runtime (jsxDEV) and fail here.
+    const code = readFileSync(resolve('plugin/dist-cli/circuitoon.mjs'), 'utf8')
+    expect(code).not.toContain('jsxDEV')
+    expect(code).toContain('react-jsx-runtime.production')
+    const dir = mkdtempSync(join(tmpdir(), 'circuitoon-plugin-'))
+    cpSync(resolve('plugin/bin'), join(dir, 'bin'), { recursive: true })
+    cpSync(resolve('plugin/dist-cli'), join(dir, 'dist-cli'), { recursive: true })
+    const bin = join(dir, 'bin', 'circuitoon.mjs')
+    writeFileSync(join(dir, 'n.json'), JSON.stringify(ledNetlist()))
+    expect(spawnSync(process.execPath, [bin, 'layout', 'n.json', '-o', 'sheet.json'], { encoding: 'utf8', cwd: dir }).status).toBe(0)
+    const r = spawnSync(process.execPath, [bin, 'render', 'sheet.json', '--svg', 'sheet.svg', '--json'], { encoding: 'utf8', cwd: dir })
+    expect(r.stderr).toBe('')
+    expect(r.status).toBe(0)
+    expect(JSON.parse(r.stdout).outputs[0]).toMatchObject({ kind: 'svg', path: 'sheet.svg' })
+    const svg = readFileSync(join(dir, 'sheet.svg'), 'utf8')
+    expect(svg.startsWith('<svg xmlns="http://www.w3.org/2000/svg"')).toBe(true)
+    expect(svg).toContain('data-wire=')
   }, 60_000)
   it('exits quietly when its reader closes early (parts --json | head)', async () => {
     const child = spawn(process.execPath, [resolve('plugin/bin/circuitoon.mjs'), 'parts', '--json'], { stdio: ['ignore', 'pipe', 'pipe'] })

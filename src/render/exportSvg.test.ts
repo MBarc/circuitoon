@@ -9,10 +9,10 @@ import { layoutModule } from '../format/module.ts'
 import { load } from '../format/builtinModules.testing.ts'
 import { buttonLed } from '../samples/buttonLed.ts'
 import { contentBounds, focusBounds, renderSheetSvg } from './exportSvg.tsx'
-import { captionAnchor, captionBox } from './captionBox.ts'
+import { CAPTION_SIZE, captionAnchor, captionBox } from './captionBox.ts'
 import { annotationRect, wrapNote } from './annotationGeometry.ts'
 import { INK, Part } from './Part.tsx'
-import { DARK_THEME, LIGHT_THEME } from './theme.ts'
+import { DARK_THEME, LIGHT_THEME, SITE_THEME } from './theme.ts'
 
 const withNotes = (): Diagram => ({
   ...structuredClone(buttonLed),
@@ -89,5 +89,23 @@ describe('dark theme', () => {
     const { svg } = renderSheetSvg(structuredClone(buttonLed), { dark: true })
     expect(svg).toContain(`stroke="${DARK_THEME.casing}"`)
     expect(svg).toContain(`r="2.4" fill="${DARK_THEME.casing}"`)
+  })
+  it('outlines captions in the paper color, so a light caption stays legible on a white breadboard', () => {
+    // A caption over a mounted part sits on the board's white body, where the dark theme's light ink
+    // alone would vanish; the paper-colored halo keeps the contrast of ink on paper around every glyph.
+    expect(contrast(DARK_THEME.ink, DARK_THEME.halo!)).toBeGreaterThan(7)
+    expect(contrast(LIGHT_THEME.ink, LIGHT_THEME.halo!)).toBeGreaterThan(7)
+    for (const [dark, theme] of [[true, DARK_THEME], [false, LIGHT_THEME]] as const) {
+      const { svg } = renderSheetSvg(structuredClone(buttonLed), { dark })
+      const captions = [...svg.matchAll(/<text [^>]*>/g)].map((m) => m[0]).filter((t) => t.includes(`font-size="${CAPTION_SIZE}" font-weight="700" fill="${theme.ink}"`))
+      expect(captions.length).toBeGreaterThan(0)
+      for (const t of captions) {
+        expect(t).toContain(`stroke="${theme.halo}"`)
+        expect(t).toContain('paint-order="stroke"')
+      }
+    }
+  })
+  it('draws no halo on the site, whose paper comes from CSS', () => {
+    expect(SITE_THEME.halo).toBeUndefined()
   })
 })

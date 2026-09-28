@@ -8,6 +8,7 @@ import { type Args, parseArgs } from './args.ts'
 import { CliError, EXIT, type Io, printJson } from './io.ts'
 import { partCommand, partsCommand } from './parts.ts'
 import { layoutCommand } from './layoutCmd.ts'
+import { renderCommand } from './render.ts'
 
 export const USAGE = `circuitoon <command> [options]
 
@@ -24,7 +25,7 @@ Exit codes: 0 ok, 1 findings that block, 2 invalid input, 3 environment problem 
 `
 
 export type Command = (args: Args, io: Io) => number | Promise<number>
-export const COMMANDS: Record<string, Command> = { parts: partsCommand, part: partCommand, layout: layoutCommand }
+export const COMMANDS: Record<string, Command> = { parts: partsCommand, part: partCommand, layout: layoutCommand, render: renderCommand }
 
 type ErrorCode = 'usage' | 'input' | 'blocked' | 'environment' | 'internal'
 const CODE_OF: Record<number, ErrorCode> = { [EXIT.blocked]: 'blocked', [EXIT.input]: 'input', [EXIT.environment]: 'environment' }
