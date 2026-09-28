@@ -6,10 +6,10 @@ Drawn as one sheet, this is 109 parts, 253 wires and about 1,700 wire crossings,
 
 | Sheet | Holds | Crossings (plain `layout`) | Crossings (`layout --keep`, shipped) | Wire length (keep) |
 | --- | --- | --- | --- | --- |
-| `1-main` | Power, ESP32, displays, OLED, SD card, and J1 to J3 (one JST-XH 4-pin per bank) | 818 | **319** | 20,376 px |
-| `2-bank-a` | J1, MCP23017 U2 at 0x20, balls 1 to 14 | 525 | **565** | 42,550 px |
-| `3-bank-b` | J1, MCP23017 U3 at 0x21, balls 15 to 28 | 518 | **545** | 42,350 px |
-| `4-bank-c` | J1, MCP23017 U4 at 0x22, balls 29 to 42 | 521 | **543** | 42,370 px |
+| `1-main` | Power, ESP32, displays, OLED, SD card, and J1 to J3 (one JST-XH 4-pin per bank) | 744 | **319** | 20,376 px |
+| `2-bank-a` | J1, MCP23017 U2 at 0x20, balls 1 to 14 | 525 | **586** | 42,670 px |
+| `3-bank-b` | J1, MCP23017 U3 at 0x21, balls 15 to 28 | 518 | **526** | 42,930 px |
+| `4-bank-c` | J1, MCP23017 U4 at 0x22, balls 29 to 42 | 521 | **518** | 42,910 px |
 
 Every sheet has body overlaps 0, caption overlaps 0 and blocked nets none, and passes `gate`.
 
