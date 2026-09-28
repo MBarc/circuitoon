@@ -5,7 +5,7 @@
 import { type Endpoint, type PartInstance, moduleOf } from './diagram.ts'
 import type { RuleId } from './checks.ts'
 import { nodeKey } from './netlist.ts'
-import { type GConverter, type GEdge, type GLoad, type GSource, type GTerm, type MainsGraph, type Prepared, FrontMap, LN_MASK as LN, L_MASK as L_, MAINS_POW, MAX_SOURCES, N_MASK as N_, PE_MASK as PE_, bareRoots, baseReps, steadyOf, bitOf, decodeSingle, groupName, hazardAt, identAt, minimalWitnesses, plainPath, statePhrase, termAt, termName } from './mainsGraph.ts'
+import { type GConverter, type GEdge, type GLoad, type GSource, type GTerm, type MainsGraph, type Prepared, FrontMap, LN_MASK as LN, L_MASK as L_, MAINS_POW as M_POW, MAX_SOURCES, N_MASK as N_, PE_MASK as PE_, bareRoots, baseReps, steadyOf, bitOf, decodeSingle, groupName, hazardAt, identAt, minimalWitnesses, plainPath, statePhrase, termAt, termName } from './mainsGraph.ts'
 import { type Conductor, type ContactGroup, type MainsInfo, type Rating, type Region, isolationAdequate, mainsOf, uncoveredPins } from './mainsModel.ts'
 import { type ThroughKind, protectivePaths } from './mainsProtective.ts'
 import { andList, natural, orList } from './words.ts'
@@ -20,6 +20,7 @@ const LN_MASK = LN
 const L_MASK = L_
 const N_MASK = N_
 const PE_MASK = PE_
+const MAINS_POW = M_POW
 
 export interface MainsDraft {
   rule: RuleId
@@ -2108,7 +2109,11 @@ STATIC_RULES.push(orphanEarth, earthPathRule)
  * seated, nothing of the project's wiring lies between it and the outlet, so it is not a target.
  */
 interface Protected { part: PartInstance; a: number; b: number; names: [string, string] }
-interface ProtTable { end: Int32Array; load: Protected[]; src: GSource[]; bit: Uint32Array; live: Int32Array[]; keys: (string | undefined)[] }
+interface ProtTable {
+  end: Int32Array; load: Protected[]; src: GSource[]; bit: Uint32Array; live: Int32Array[]; keys: (string | undefined)[]
+  /** 1 when the end is on one of the source's L nets itself (a converter wired straight to a cord's L): unfused in every state it has L, with no roots to compare. */
+  direct: Uint8Array
+}
 const protCache = new FrontMap<Prepared, ProtTable>()
 function protTable(p: Prepared): ProtTable {
   let t = protCache.get(p)
@@ -2136,6 +2141,7 @@ function protTable(p: Prepared): ProtTable {
   t = {
     end: Int32Array.from(pairs, (x) => x.end), load: pairs.map((x) => x.load), src: pairs.map((x) => x.src),
     bit: Uint32Array.from(pairs, (x) => bitOf(x.src.index, 'L')), live: pairs.map((x) => Int32Array.from(x.src.live)), keys: [],
+    direct: Uint8Array.from(pairs, (x) => (x.src.live.includes(x.end) ? 1 : 0)),
   }
   protCache.set(p, t)
   return t
@@ -2163,12 +2169,15 @@ function unprotectedRule(acc: Acc, mask: number) {
   for (let q = 0; q < t.end.length; q++) {
     const end = t.end[q]
     if (!(ident[root[end]] & t.bit[q])) continue
-    const bareRoot = bareRoots(p)
-    const br = bareRoot[end]
-    const live = t.live[q]
-    let unfused = false
-    for (let m = 0; m < live.length && !unfused; m++) unfused = bareRoot[live[m]] === br
-    if (!unfused) continue
+    // On the source's L net itself: unfused, and the roots are needed only for the highlight below.
+    if (plain || !t.direct[q]) {
+      const bareRoot = bareRoots(p)
+      const br = bareRoot[end]
+      const live = t.live[q]
+      let unfused = false
+      for (let m = 0; m < live.length && !unfused; m++) unfused = bareRoot[live[m]] === br
+      if (!unfused) continue
+    }
     let rec = recs[q]
     if (plain || !slotHit(slots, q, mask)) {
       let key = t.keys[q]
@@ -2185,6 +2194,8 @@ function unprotectedRule(acc: Acc, mask: number) {
     // The highlight is the union over the states it holds in (Ruling 33, as rule 1), up to PATH_STATES of them.
     if (rec && rec.states < PATH_STATES) {
       rec.states++
+      const bareRoot = bareRoots(p)
+      const br = bareRoot[end]
       for (const i of p.relevant) if (bareRoot[i] === br) for (const wire of p.g.wires[i]) rec.wires.add(wire)
     }
   }
