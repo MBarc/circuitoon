@@ -4,10 +4,11 @@
 // passes; an oversized link falls back to the file without blocking.
 import { describe, expect, it } from 'vitest'
 import { createHash, randomBytes } from 'node:crypto'
-import { existsSync, readFileSync, writeFileSync } from 'node:fs'
+import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { NO_INTENT } from '../agent/verify.ts'
-import { VALUE_DROPPED } from '../format/diagram.ts'
+import { VALUE_DROPPED, validateDiagram, wirePaths } from '../format/diagram.ts'
+import { exportFileName } from '../editor/files.ts'
 import { cli, tempDir } from './cliHarness.testing.ts'
 import { loadSchema, schemaErrors } from './jsonSchema.testing.ts'
 import { findBrowser } from './png.ts'
@@ -152,6 +153,117 @@ describe('circuitoon gate', () => {
     expect(g.artifacts.find((a: { kind: string }) => a.kind === 'file').path).toBe(g.link.file)
     expect(g.warnings.some((f: { rule: string }) => f.rule === 'link')).toBe(true)
   }, 120_000)
+  it('blocks a wire drawn through a part (blocked-route), matching what the renderer draws', async () => {
+    const dir = await laidOut({
+      format: 'circuitoon-netlist/1',
+      title: 'Sensor on top of the board',
+      parts: [{ ref: 'U1', module: 'esp32-devkitc-v4' }, { ref: 'U2', module: 'bme280-module-4pin' }],
+      nets: [{ name: 'SDA', pins: ['U1.IO21', 'U2.SDA'] }, { name: 'SCL', pins: ['U1.IO22', 'U2.SCL'] }],
+    })
+    // Move the sensor onto the middle of the ESP32, so its wires cannot leave without crossing a body.
+    edit(dir, (s) => {
+      const u1 = s.parts.find((p) => p.uid === 'U1')!
+      const u2 = s.parts.find((p) => p.uid === 'U2')!
+      u2.x = (u1.x as number) + 20
+      u2.y = (u1.y as number) + 80
+    })
+    const r = await cli(['gate', 'sheet.json', '-o', 'out'], { cwd: dir, env: noBrowser(dir) })
+    expect(r.code).toBe(1)
+    const g = gateJson(dir)
+    const blockedIds = g.blocking.filter((f: { rule: string }) => f.rule === 'blocked-route').map((f: { wires: string[] }) => f.wires[0]).sort()
+    expect(blockedIds.length).toBeGreaterThan(0)
+    const d = validateDiagram(JSON.parse(readFileSync(join(dir, 'sheet.json'), 'utf8')))
+    if (!d.ok) throw new Error(d.errors.join('; '))
+    expect(blockedIds).toEqual(wirePaths(d.diagram).filter((w) => w.blocked).map((w) => w.conn.uid).sort())
+  })
+  it('blocks a checker error on a sheet that matches its intent (a battery short)', async () => {
+    const dir = await laidOut({
+      format: 'circuitoon-netlist/1',
+      title: 'Shorted battery',
+      parts: [{ ref: 'BT1', module: 'battery-holder-2xaa' }],
+      nets: [{ name: 'SHORT', pins: ['BT1.+', 'BT1.-'] }],
+    })
+    const r = await cli(['gate', 'sheet.json', '-o', 'out'], { cwd: dir, env: noBrowser(dir) })
+    expect(r.code).toBe(1)
+    const blocking = gateJson(dir).blocking as { rule: string }[]
+    expect(blocking.map((f) => f.rule)).toContain('short')
+    // Only the checker objects: the sheet is exactly its intent.
+    expect((await cli(['verify', 'sheet.json'], { cwd: dir })).code).toBe(0)
+  })
+  it('blocks an invalid intent', async () => {
+    const dir = await laidOut()
+    edit(dir, (s) => {
+      s.intent = { format: 'circuitoon-netlist/1', title: 'no parts' }
+    })
+    const r = await cli(['gate', 'sheet.json', '-o', 'out'], { cwd: dir, env: noBrowser(dir) })
+    expect(r.code).toBe(1)
+    expect((gateJson(dir).blocking as { rule: string }[]).some((f) => f.rule === 'intent')).toBe(true)
+  })
+  it('blocks a mounted part that no longer seats on its board', async () => {
+    const dir = await laidOut()
+    edit(dir, (s) => {
+      const r1 = s.parts.find((p) => p.uid === 'R1')!
+      r1.x = (r1.x as number) + 1000
+      r1.y = (r1.y as number) + 1000
+    })
+    const r = await cli(['gate', 'sheet.json', '-o', 'out'], { cwd: dir, env: noBrowser(dir) })
+    expect(r.code).toBe(1)
+    expect((gateJson(dir).blocking as { rule: string }[]).some((f) => f.rule === 'mount')).toBe(true)
+  })
+  it('blocks when there is no link and a directory stands where the file fallback goes (link|none); a stale link.txt is gone', async () => {
+    const dir = await laidOut()
+    edit(dir, (s) => {
+      s.annotations = Array.from({ length: 200 }, (_, i) => ({ uid: `n${i}`, type: 'text', x: 2000, y: i * 40, text: randomBytes(360).toString('base64') }))
+    })
+    mkdirSync(join(dir, 'out', exportFileName('LED on a breadboard')), { recursive: true })
+    writeFileSync(join(dir, 'out', 'link.txt'), 'https://mbarc.github.io/circuitoon/#/editor?d=v1.stale\n')
+    const r = await cli(['gate', 'sheet.json', '-o', 'out'], { cwd: dir, env: noBrowser(dir) })
+    expect(r.code).toBe(1)
+    const g = gateJson(dir)
+    expect(g.blocking.map((f: { id: string }) => f.id)).toContain('link|none')
+    expect(g.link.url).toBe(null)
+    expect(existsSync(join(dir, 'out', 'link.txt'))).toBe(false)
+    expect(existsSync(join(dir, 'out', exportFileName('LED on a breadboard')))).toBe(true) // a directory is never removed
+  })
+  it('never leaves an earlier gate.json, link or focused PNG behind a failed or different run', async () => {
+    const dir = await laidOut(tiltSensors())
+    const outDir = join(dir, 'out')
+    // A first run leaves gate.json, link.txt and sheet.svg.
+    expect((await cli(['gate', 'sheet.json', '-o', 'out'], { cwd: dir, env: noBrowser(dir) })).code).toBe(3)
+    expect(existsSync(join(outDir, 'gate.json'))).toBe(true)
+    expect(existsSync(join(outDir, 'link.txt'))).toBe(true)
+    // A usage error, a missing sheet: exit 2, and nothing from the first run is left looking current.
+    expect((await cli(['gate', 'sheet.json', 'extra.json', '-o', 'out'], { cwd: dir })).code).toBe(2)
+    expect(existsSync(join(outDir, 'gate.json'))).toBe(false)
+    writeFileSync(join(outDir, 'gate.json'), '{}')
+    expect((await cli(['gate', 'missing.json', '-o', 'out'], { cwd: dir })).code).toBe(2)
+    expect(existsSync(join(outDir, 'gate.json'))).toBe(false)
+    // An old focused PNG, and the file fallback an old gate.json names, go before the next run writes.
+    writeFileSync(join(outDir, 'focus-old_1.png'), 'old')
+    writeFileSync(join(outDir, 'Old sheet.circuitoon.json'), '{}')
+    writeFileSync(join(outDir, 'gate.json'), JSON.stringify({ artifacts: [{ kind: 'file', path: 'Old sheet.circuitoon.json' }, { kind: 'file', path: '../sheet.json' }] }))
+    let seen: string[] = []
+    const png = () => {
+      seen = readdirSync(outDir)
+      return { ok: false as const, message: 'no browser in this test' }
+    }
+    // runGate alone (the command removes gate.json first; runGate removes the renders and links).
+    await runGate(readFileSync(join(dir, 'sheet.json')), { sheetPath: 'sheet.json', outDir, io: quietIo(dir), png })
+    expect(seen).not.toContain('focus-old_1.png')
+    expect(seen).not.toContain('link.txt')
+    expect((await cli(['gate', 'sheet.json', '-o', 'out'], { cwd: dir, env: noBrowser(dir) })).code).toBe(3)
+    expect(existsSync(join(outDir, 'Old sheet.circuitoon.json'))).toBe(false)
+    expect(existsSync(join(dir, 'sheet.json'))).toBe(true) // outside the output directory: never touched
+  })
+  it('never removes the sheet being gated, even inside the output directory', async () => {
+    const dir = await laidOut()
+    const name = exportFileName('LED on a breadboard')
+    copyFileSync(join(dir, 'sheet.json'), join(dir, name))
+    // An old gate.json in the same folder names that very file as its fallback.
+    writeFileSync(join(dir, 'gate.json'), JSON.stringify({ artifacts: [{ kind: 'file', path: name }] }))
+    expect((await cli(['gate', name, '-o', '.'], { cwd: dir, env: noBrowser(dir) })).code).toBe(3)
+    expect(readFileSync(join(dir, name), 'utf8')).toContain('circuitoon-diagram/1')
+  })
   it('exits 2 when the sheet file is missing, and needs -o', async () => {
     const dir = tempDir()
     expect((await cli(['gate', 'missing.json', '-o', 'out'], { cwd: dir })).code).toBe(2)

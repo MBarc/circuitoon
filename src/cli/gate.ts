@@ -7,11 +7,14 @@
 // (amendment A8): one that could not be made (no browser, a failed render) is an environment problem.
 // Exit 0 only when nothing blocks and every artifact is there; blocking findings win over a missing
 // browser (1 before 3). A sheet file that cannot be read is invalid input (2); one that reads but
-// does not load as a sheet blocks (1), with gate.json saying why.
+// does not load as a sheet blocks (1), with gate.json saying why. Nothing stale survives a run: the
+// old gate.json and the file fallback it names go first, before the arguments are even checked, and
+// the old renders, link and focused PNGs go before new ones are written, so a failed run never leaves
+// an earlier pass (or the previous diagram's link) beside it.
 import { createHash } from 'node:crypto'
-import { readFileSync } from 'node:fs'
-import { join, relative } from 'node:path'
-import { VALUE_DROPPED, computeRoutes, validateDiagram } from '../format/diagram.ts'
+import { readFileSync, readdirSync, rmSync, statSync } from 'node:fs'
+import { isAbsolute, join, relative, resolve } from 'node:path'
+import { VALUE_DROPPED, computeRoutes, validateDiagram, wirePaths } from '../format/diagram.ts'
 import { checkDiagram, endpointName } from '../format/checks.ts'
 import { LINK_NOTICE } from '../format/link.ts'
 import { focusBounds, renderSheetSvg } from '../render/exportSvg.tsx'
@@ -57,9 +60,56 @@ const sha256 = (bytes: Uint8Array) => createHash('sha256').update(bytes).digest(
 const MISSING_MODULE = 'is not embedded in this file'
 const plural = (n: number, one: string) => `${n} ${one}${n === 1 ? '' : 's'}`
 
+/** Removes `path` when it is a file inside `dir` and not `keep` (the sheet being gated); anything else stays. */
+function removeStale(dir: string, path: string, keep?: string) {
+  const full = resolve(dir, path)
+  const rel = relative(resolve(dir), full)
+  if (rel === '' || rel.startsWith('..') || isAbsolute(rel) || (keep !== undefined && full === resolve(keep))) return
+  try {
+    if (!statSync(full).isFile()) return
+  } catch {
+    return // not there
+  }
+  try {
+    rmSync(full)
+  } catch (err) {
+    throw writeError(full, err)
+  }
+}
+
+/** The artifacts of an earlier run in `outDir` that a new run replaces: renders, focused PNGs, the link. */
+function clearArtifacts(outDir: string, keep: string) {
+  let names: string[] = []
+  try {
+    names = readdirSync(outDir)
+  } catch {
+    return // no directory yet
+  }
+  for (const name of names) if (/^focus-.*\.png$/.test(name)) removeStale(outDir, name, keep)
+  for (const name of ['sheet.svg', 'sheet.png', 'link.txt']) removeStale(outDir, name, keep)
+}
+
+/** Removes an earlier gate.json, and the file fallback it names, before anything else runs. */
+function clearReport(outDir: string, keep?: string) {
+  const path = join(outDir, 'gate.json')
+  let old: unknown
+  try {
+    old = JSON.parse(readFileSync(path, 'utf8'))
+  } catch {
+    // missing or unreadable: removed below if it is a file
+  }
+  removeStale(outDir, 'gate.json', keep)
+  const artifacts = (old as { artifacts?: unknown } | undefined)?.artifacts
+  if (Array.isArray(artifacts))
+    for (const a of artifacts) if (a && typeof a === 'object' && (a as GateArtifact).kind === 'file' && typeof (a as GateArtifact).path === 'string') removeStale(outDir, (a as GateArtifact).path, keep)
+}
+
 export async function runGate(bytes: Uint8Array, opts: { sheetPath: string; outDir: string; io: Io; png?: PngWriter }): Promise<{ code: number; report: GateReport }> {
   const { io, outDir } = opts
   const png = opts.png ?? writePng
+  const keep = pathIn(io, opts.sheetPath)
+  // Old renders and links never survive into this run, whatever becomes of it.
+  clearArtifacts(outDir, keep)
   const found: CliFinding[] = []
   const note = (rule: string, cause: string, severity: 'error' | 'warning', message: string, more: { parts?: string[]; wires?: string[] } = {}) =>
     found.push({ id: `${rule}|${cause}`, rule, severity, message, parts: more.parts ?? [], pins: [], wires: more.wires ?? [] })
@@ -114,8 +164,10 @@ export async function runGate(bytes: Uint8Array, opts: { sheetPath: string; outD
   found.push(...verifyDiagram(d, libraryLookup).map(cliFinding))
   found.push(...checkDiagram(d).map(cliFinding))
   const routes = computeRoutes(d)
-  for (const c of d.connections)
-    if (routes.get(c.uid)?.blocked)
+  // Blocked as drawn: wirePaths re-checks a wire that separation nudged, so a route that was clear
+  // but was pushed through a body (drawn dashed) blocks too.
+  for (const { conn: c, blocked } of wirePaths(d, routes))
+    if (blocked)
       note('blocked-route', c.uid, 'error', `The wire ${c.label ?? `${endpointName(d, c.from)} to ${endpointName(d, c.to)}`} has no clear route: it runs through a part.`, { parts: [c.from.part, c.to.part], wires: [c.uid] })
   const parsed = d.intent !== undefined ? parseNetlist(d.intent, intentLookup(d, libraryLookup)) : null
   if (parsed?.ok) rows = { quantities: quantities(parsed.intent), channels: channelTable(parsed.intent) }
@@ -171,6 +223,10 @@ export async function runGate(bytes: Uint8Array, opts: { sheetPath: string; outD
 export async function gateCommand(args: Args, io: Io): Promise<number> {
   const [input, ...rest] = args.positionals
   const out = flag(args, '--out')
+  // First of all, so that no failure below (a bad argument, an unreadable sheet, a crash) leaves an
+  // earlier run's gate.json in place, looking like the result of this one. The sheet itself is
+  // never removed, even when it sits in the output directory.
+  if (out) clearReport(pathIn(io, out), input ? pathIn(io, input) : undefined)
   if (!input || !out) throw new CliError('gate: usage: circuitoon gate <sheet.json> -o <dir>', EXIT.input)
   if (rest.length) throw new CliError(`gate: give one sheet file, not ${args.positionals.length}`, EXIT.input)
   let bytes: Uint8Array
