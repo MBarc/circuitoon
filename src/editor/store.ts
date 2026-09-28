@@ -89,7 +89,10 @@ export class EditorStore {
   private prune(d: Diagram, sel: Selection): Selection {
     const parts = new Set(d.parts.map((p) => p.uid))
     const wires = new Set(d.connections.map((c) => c.uid))
-    return { parts: sel.parts.filter((u) => parts.has(u)), wires: sel.wires.filter((u) => wires.has(u)) }
+    const notes = new Set((d.annotations ?? []).map((a) => a.uid))
+    const kept = { parts: sel.parts.filter((u) => parts.has(u)), wires: sel.wires.filter((u) => wires.has(u)) }
+    const annotations = sel.annotations?.filter((u) => notes.has(u)) ?? []
+    return annotations.length ? { ...kept, annotations } : kept
   }
 
   private pushPast(d: Diagram) {

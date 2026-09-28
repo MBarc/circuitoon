@@ -1,6 +1,6 @@
 // Immutable diagram edits. Every function returns a new Diagram and never mutates its input,
 // so the store can keep old versions for undo.
-import { type Connection, type Diagram, type Endpoint, type PartInstance, moduleOf } from '../format/diagram.ts'
+import { ANNOTATION_LABEL_MAX, ANNOTATION_TEXT_MAX, type Connection, type Diagram, type Endpoint, type PartInstance, moduleOf } from '../format/diagram.ts'
 import { isBoard, layoutModule, type ModuleDef } from '../format/module.ts'
 import { type Plug, type Seat, mountIssues, plugsOf, seatOf, seatOn } from '../format/breadboard.ts'
 import { pivot, rotateVec, type Rotation } from '../format/geometry.ts'
@@ -10,6 +10,8 @@ import { normalizeEnds, type WireEnds } from '../format/cables.ts'
 export interface Selection {
   parts: string[]
   wires: string[]
+  /** Selected frames and notes, by uid; absent means none. */
+  annotations?: string[]
 }
 export const EMPTY_SELECTION: Selection = { parts: [], wires: [] }
 
@@ -232,11 +234,14 @@ export function rotateParts(d: Diagram, uids: string[]): Diagram {
 export function deleteSelection(d: Diagram, sel: Selection): Diagram {
   const parts = new Set(sel.parts)
   const wires = new Set(sel.wires)
+  const notes = new Set(sel.annotations ?? [])
   return {
     ...d,
     // A deleted board's parts stay on the sheet, unmounted.
     parts: d.parts.filter((p) => !parts.has(p.uid)).map((p) => (p.mount && parts.has(p.mount.board) ? withoutMount(p) : p)),
     connections: d.connections.filter((c) => !wires.has(c.uid) && !parts.has(c.from.part) && !parts.has(c.to.part)),
+    // Frames and notes are only rewritten when some are selected, so the key never appears from nothing.
+    ...(d.annotations && notes.size ? { annotations: d.annotations.filter((a) => !notes.has(a.uid)) } : {}),
   }
 }
 
@@ -297,6 +302,28 @@ export function updatePart(d: Diagram, uid: string, patch: { designator?: string
 
 export function updateWire(d: Diagram, uid: string, patch: { color?: string; gauge?: number; label?: string }): Diagram {
   return { ...d, connections: d.connections.map((c) => (c.uid === uid ? { ...c, ...patch } : c)) }
+}
+
+/** Moves frames and notes; returns `d` itself for a zero move. A frame moves alone, not its parts. */
+export function moveAnnotations(d: Diagram, uids: string[], dx: number, dy: number): Diagram {
+  if ((!dx && !dy) || !d.annotations) return d
+  const s = new Set(uids)
+  return { ...d, annotations: d.annotations.map((a) => (s.has(a.uid) ? { ...a, x: a.x + dx, y: a.y + dy } : a)) }
+}
+
+/** Sets a frame's label or a note's text, clipped to the file limits; returns `d` itself when nothing changes. */
+export function updateAnnotation(d: Diagram, uid: string, patch: { label?: string; text?: string }): Diagram {
+  const a = d.annotations?.find((x) => x.uid === uid)
+  if (!a) return d
+  const next = { ...a }
+  if (patch.label !== undefined) {
+    const label = patch.label.slice(0, ANNOTATION_LABEL_MAX)
+    if (label) next.label = label
+    else delete next.label
+  }
+  if (patch.text !== undefined) next.text = patch.text.slice(0, ANNOTATION_TEXT_MAX)
+  if (next.label === a.label && next.text === a.text && ('label' in next) === ('label' in a)) return d
+  return { ...d, annotations: d.annotations!.map((x) => (x === a ? next : x)) }
 }
 
 /**

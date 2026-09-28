@@ -17,7 +17,7 @@ export function Toolbar({ store, warnings, onClose }: { store: EditorStore; warn
   const [error, setError] = useState<string | null>(null)
   // Warnings the open sheet was loaded with; every one stays reachable until dismissed.
   const [loadWarnings, setLoadWarnings] = useState<{ list: string[]; key: number } | null>(warnings?.length ? { list: warnings, key: 0 } : null)
-  const hasSel = selection.parts.length + selection.wires.length > 0
+  const hasSel = selection.parts.length + selection.wires.length + (selection.annotations?.length ?? 0) > 0
   const findings = useProblems(store)
   const errors = findings.filter((f) => f.severity === 'error').length
 

@@ -34,7 +34,7 @@ function useEditorKeys(store: EditorStore) {
         store.redo()
       } else if (e.key === 'Delete' || e.key === 'Backspace') {
         if (gesture) return
-        if (s.selection.parts.length || s.selection.wires.length) {
+        if (s.selection.parts.length || s.selection.wires.length || s.selection.annotations?.length) {
           e.preventDefault()
           store.commit(deleteSelection(s.diagram, s.selection))
         }

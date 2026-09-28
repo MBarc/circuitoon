@@ -2,8 +2,8 @@
 // so typing a name is one undo step, not one per keystroke.
 import { useEffect, useState } from 'react'
 import { type EditorStore, useEditorState } from './store.ts'
-import { clearWireRoute, deleteSelection, rotateParts, setWireEnds, updatePart, updatePartValue, updateWire, type WireStyle } from './ops.ts'
-import { type Diagram, type Endpoint, NAMED_COLORS, isValidColor, moduleOf, partObstacles, routeWire, wireColor, wireWidth } from '../format/diagram.ts'
+import { clearWireRoute, deleteSelection, rotateParts, setWireEnds, updateAnnotation, updatePart, updatePartValue, updateWire, type WireStyle } from './ops.ts'
+import { ANNOTATION_LABEL_MAX, ANNOTATION_TEXT_MAX, type Diagram, type Endpoint, NAMED_COLORS, isValidColor, moduleOf, partObstacles, routeWire, wireColor, wireWidth } from '../format/diagram.ts'
 import { CABLE_PRESETS, END_KINDS, END_NAMES, END_SIZE, type EndKind, type WireEnds, endKind, normalizeEnds, presetEnds, presetOf, sharedCable, swapEnds } from '../format/cables.ts'
 import { CableEnd } from '../render/CableEnd.tsx'
 import { INK } from '../render/Part.tsx'
@@ -30,6 +30,47 @@ function CommitInput({ id, label, value, onCommit }: { id: string; label: string
           e.target.value = value
         }}
         onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
+      />
+    </label>
+  )
+}
+
+/** A frame's label: commits on Enter or blur (one undo step), trimmed; an empty label removes it. */
+function FrameLabelInput({ value, onCommit }: { value: string; onCommit: (v: string) => void }) {
+  return (
+    <label className="field" htmlFor="frame-label">
+      Label
+      <input
+        id="frame-label"
+        defaultValue={value}
+        maxLength={ANNOTATION_LABEL_MAX}
+        onBlur={(e) => {
+          const v = e.target.value.trim()
+          if (v !== value) onCommit(v)
+          else e.target.value = value
+        }}
+        onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
+      />
+    </label>
+  )
+}
+
+/** A note's text: commits on blur or Ctrl+Enter (one undo step), trimmed; an empty note is not saved. */
+function NoteInput({ value, onCommit }: { value: string; onCommit: (v: string) => void }) {
+  return (
+    <label className="field" htmlFor="note-text">
+      Text
+      <textarea
+        id="note-text"
+        defaultValue={value}
+        maxLength={ANNOTATION_TEXT_MAX}
+        rows={5}
+        onBlur={(e) => {
+          const v = e.target.value.trim()
+          if (v && v !== value) onCommit(v)
+          else e.target.value = value
+        }}
+        onKeyDown={(e) => e.key === 'Enter' && (e.ctrlKey || e.metaKey) && (e.target as HTMLTextAreaElement).blur()}
       />
     </label>
   )
@@ -324,7 +365,8 @@ export function ProblemList({ store, findings }: { store: EditorStore; findings:
 export function Inspector({ store }: { store: EditorStore }) {
   const { diagram, selection, wireStyle } = useEditorState(store)
   const findings = useProblems(store)
-  const count = selection.parts.length + selection.wires.length
+  const notes = selection.annotations ?? []
+  const count = selection.parts.length + selection.wires.length + notes.length
   const remove = (
     <button type="button" className="tool" onClick={() => store.commit(deleteSelection(diagram, selection))}>
       Delete
@@ -363,6 +405,33 @@ export function Inspector({ store }: { store: EditorStore }) {
         {selection.parts.length > 0 && (
           <button type="button" className="tool" onClick={() => store.commit(rotateParts(diagram, selection.parts))}>Rotate parts</button>
         )}
+        {remove}
+      </aside>
+    )
+
+  const note = notes.length === 1 ? diagram.annotations?.find((a) => a.uid === notes[0]) : undefined
+  if (note)
+    return (
+      <aside className="inspector" aria-label="Properties">
+        <h2 id="selection-title" tabIndex={-1}>{note.type === 'frame' ? 'Group frame' : 'Note'}</h2>
+        {note.type === 'frame' ? (
+          <FrameLabelInput
+            key={`${note.uid}:${note.label ?? ''}`}
+            value={note.label ?? ''}
+            onCommit={(v) => store.commit(updateAnnotation(diagram, note.uid, { label: v }))}
+          />
+        ) : (
+          <NoteInput
+            key={`${note.uid}:${note.text ?? ''}`}
+            value={note.text ?? ''}
+            onCommit={(v) => store.commit(updateAnnotation(diagram, note.uid, { text: v }))}
+          />
+        )}
+        <p className="hint">
+          {note.type === 'frame'
+            ? 'Drag its border or label to move it; the parts inside stay put. Delete removes it.'
+            : 'Drag it on the sheet to move it. Ctrl+Enter saves the text. Delete removes it.'}
+        </p>
         {remove}
       </aside>
     )

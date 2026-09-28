@@ -102,6 +102,10 @@
 .seat-ok { fill: rgba(47, 158, 110, 0.3); stroke: #2F9E6E; stroke-width: 1.8; }
 .seat-bad { fill: rgba(224, 72, 62, 0.25); stroke: #E0483E; stroke-width: 1.8; }
 .wire-hit { stroke: transparent; cursor: pointer; }
+/* Frames and notes on the canvas: a frame is grabbed by its border or label tab, a note anywhere. */
+.annotation-hit { fill: none; stroke: transparent; pointer-events: stroke; cursor: move; }
+.annotation-grab { cursor: move; }
+.annotation-selected { fill: none; stroke: var(--focus); stroke-width: 1.5; stroke-dasharray: 5 4; pointer-events: none; }
 .wire-broken { stroke: #E0483E; stroke-dasharray: 7 5; }
 .net-hi { fill: rgba(61, 111, 214, 0.25); stroke: #3D6FD6; stroke-width: 1.5; }
 .wire-end-handle { cursor: grab; }
@@ -120,7 +124,7 @@
 
 .inspector { grid-area: inspector; overflow-y: auto; border-left: 1px solid var(--rule); background: var(--panel); padding: 12px; display: grid; gap: 12px; align-content: start; }
 .field { display: grid; gap: 4px; font-size: 14px; font-weight: 700; }
-.field input, .field select {
+.field input, .field select, .field textarea {
   font: 400 15px/1.2 "Atkinson Hyperlegible", system-ui, sans-serif; color: var(--text);
   background: var(--bg); border: 1.5px solid var(--rule); border-radius: 6px; padding: 6px 8px;
 }
@@ -184,6 +188,7 @@
 /* A long option (a harness preset's name) must not widen a select past the panel. */
 .inspector { grid-template-columns: minmax(0, 1fr); }
 .field select { min-width: 0; }
+.field textarea { resize: vertical; min-height: 96px; line-height: 1.4; }
 .cable { display: grid; gap: 8px; }
 .cable-preview { display: block; width: 100%; height: auto; background: var(--paper); border: 1.5px solid var(--rule); border-radius: 8px; }
 .cable-ends { font-size: 14px; }
