@@ -1,0 +1,55 @@
+{
+  "format": "circuitoon-netlist/1",
+  "title": "Spirit Typewriter 3 of 4: expander bank B, balls 15 to 28",
+  "parts": [
+    { "ref": "J1", "module": "jst-xh-4" },
+    { "ref": "U3", "module": "mcp23017-cjmcu-2317" },
+    { "ref": "BB1", "module": "power-rail-strip" },
+    { "ref": "BB2", "module": "breadboard-half" }
+  ],
+  "nets": [
+    { "name": "3V3", "pins": ["J1.2", "U3.VCC", "U3.RESET", "U3.A0", "BB1.+"] },
+    { "name": "GND", "pins": ["J1.1", "U3.GND", "U3.A1", "U3.A2", "BB1.-"] },
+    { "name": "SDA", "pins": ["J1.3", "U3.SDA"] },
+    { "name": "SCL", "pins": ["J1.4", "U3.SCL"] }
+  ],
+  "repeat": {
+    "name": "ballB",
+    "count": 14,
+    "refs": "B{copy}{ref}",
+    "template": {
+      "parts": [{ "ref": "SA", "module": "tilt-switch-sw520d" }, { "ref": "SB", "module": "tilt-switch-sw520d" }],
+      "nets": [{ "name": "CH", "pins": ["SA.1", "SB.1"] }, { "name": "GND", "pins": ["SA.2", "SB.2"] }],
+      "ports": ["CH", "GND"]
+    },
+    "bindings": [
+      { "CH": "U3.GPA0" },
+      { "CH": "U3.GPA1" },
+      { "CH": "U3.GPA2" },
+      { "CH": "U3.GPA3" },
+      { "CH": "U3.GPA4" },
+      { "CH": "U3.GPA5" },
+      { "CH": "U3.GPA6" },
+      { "CH": "U3.GPB0" },
+      { "CH": "U3.GPB1" },
+      { "CH": "U3.GPB2" },
+      { "CH": "U3.GPB3" },
+      { "CH": "U3.GPB4" },
+      { "CH": "U3.GPB5" },
+      { "CH": "U3.GPB6" }
+    ],
+    "shared": { "GND": "GND" }
+  },
+  "groups": [{ "name": "Expander B (0x21)", "parts": ["J1", "U3"] }],
+  "notes": [
+    {
+      "text": "J1 comes from J2 on sheet 1: 1 GND, 2 3V3, 3 SDA, 4 SCL. A0 to 3V3 and the other address pins to GND give I2C address 0x21; RESET is tied to 3V3.",
+      "near": "Expander B (0x21)"
+    },
+    {
+      "text": "ballB 1 to 14 are balls 15 to 28. Each ball's two tilt switches share one input. GPA7 and GPB7 are output only on the MCP23017, so a bank takes 14 balls. Enable the MCP23017 pull-ups in firmware; a closed switch reads low.",
+      "near": "U3"
+    }
+  ],
+  "wires": { "color": { "3V3": "red", "GND": "black", "SDA": "blue", "SCL": "yellow" }, "ends": "dupont-female" }
+}

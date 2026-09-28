@@ -1,0 +1,16 @@
+{
+  "format": "circuitoon-netlist/1",
+  "title": "LED on a breadboard",
+  "parts": [
+    { "ref": "BB1", "module": "breadboard-half" },
+    { "ref": "BT1", "module": "battery-holder-2xaa" },
+    { "ref": "R1", "module": "resistor", "values": { "resistance": { "value": 220, "unit": "ohm" } }, "on": "BB1" },
+    { "ref": "D1", "module": "led", "on": "BB1" }
+  ],
+  "nets": [
+    { "name": "VCC", "pins": [{ "ref": "BT1", "pin": "+" }, { "ref": "R1", "pin": "1" }] },
+    { "name": "LED_A", "pins": ["R1.2", "D1.A"] },
+    { "name": "GND", "pins": ["D1.K", "BT1.-"] }
+  ],
+  "wires": { "color": { "VCC": "red", "GND": "black" }, "ends": "dupont-male" }
+}

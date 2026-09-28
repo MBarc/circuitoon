@@ -1,0 +1,18 @@
+{
+  "format": "circuitoon-netlist/1",
+  "title": "Battery board with a power switch",
+  "parts": [
+    { "ref": "BT1", "module": "battery-18650-holder" },
+    { "ref": "U1", "module": "ip5306-usbc-module" },
+    { "ref": "S1", "module": "rocker-switch-kcd1" },
+    { "ref": "U2", "module": "esp32-devkitc-v4" }
+  ],
+  "nets": [
+    { "name": "BAT", "pins": ["BT1.+", "U1.B+"] },
+    { "name": "GND", "pins": ["BT1.-", "U1.B-", "U1.5V-", "U2.GND"] },
+    { "name": "VSW", "pins": ["U1.5V+", "S1.1"] },
+    { "name": "5V", "pins": ["S1.2", "U2.5V"] }
+  ],
+  "groups": [{ "name": "Power", "parts": ["BT1", "U1", "S1"] }],
+  "notes": [{ "text": "U1 B- and 5V- are joined inside the IP5306 board, so ground runs battery, charger, ESP32 in a chain.", "near": "Power" }]
+}

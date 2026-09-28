@@ -16,6 +16,7 @@
     "check:cables-ui": "node scripts/check-cables-ui.mjs",
     "check:link-ui": "node scripts/check-link-ui.mjs",
     "check:annotations-ui": "node scripts/check-annotations-ui.mjs",
+    "check:examples": "node scripts/check-examples.mjs",
     "deploy": "bash scripts/deploy.sh"
   },
   "dependencies": {
