@@ -3,6 +3,7 @@ import { memo } from 'react'
 import { insideLabelSides, type ModuleDef, type PinType, type PlacedPin, type Side, layoutModule, LEAD } from '../format/module.ts'
 import { bodyRect, pivot, worldPins, type Rect, type Rotation, type WorldPin } from '../format/geometry.ts'
 import { bandFills } from '../format/values.ts'
+import { CAPTION_SIZE, captionAnchor } from './captionBox.ts'
 
 export const INK = '#23282F'
 const OUTLINE = 1.6
@@ -113,7 +114,7 @@ function PinLabel({ p, box, outside, pad = 4 }: { p: WorldPin; box: Rect; outsid
  * Memoized: props are primitives plus a module object that keeps its identity, so pan, zoom
  * and selection changes do not re-render every part.
  */
-export const Part = memo(function Part({ module: m, x = 0, y = 0, rotation = 0, caption, values }: {
+export const Part = memo(function Part({ module: m, x = 0, y = 0, rotation = 0, caption, values, ink = INK }: {
   module: ModuleDef
   x?: number
   y?: number
@@ -121,6 +122,8 @@ export const Part = memo(function Part({ module: m, x = 0, y = 0, rotation = 0, 
   caption?: string
   /** The part instance's chosen values, for example `{ resistance: { value: 4700, unit: "ohm" } }`. */
   values?: Record<string, unknown>
+  /** Caption color (the theme's ink); the Sticker ink by default. */
+  ink?: string
 }) {
   const lay = layoutModule(m)
   const art = m.art
@@ -129,12 +132,11 @@ export const Part = memo(function Part({ module: m, x = 0, y = 0, rotation = 0, 
   const c = pivot(lay.w, lay.h)
   // Only a module with band shapes (a resistor) ever gets non-null fills here.
   const bands = bandFills(m, values)
-  // Caption goes under the rotated body, below any pin stubs that now point down.
+  // The rotated body and pins place the pin labels; the caption anchor comes from captionBox.ts.
   const box = bodyRect({ x: 0, y: 0, rotation }, lay)
   const pins = worldPins({ x: 0, y: 0, rotation }, m)
-  const stubsDown = pins.some((p) => p.dir.y > 0)
   const headers = headerSides(m)
-  const captionY = box.y + box.h + (stubsDown ? LEAD : 0) + 15
+  const cap = captionAnchor(m, rotation)
   return (
     <g transform={`translate(${x} ${y})`}>
       <g transform={rotation ? `rotate(${rotation} ${c.x} ${c.y})` : undefined}>
@@ -176,7 +178,7 @@ export const Part = memo(function Part({ module: m, x = 0, y = 0, rotation = 0, 
         return <PinLabel key={p.name} p={p} box={box} outside={!!art && !header} pad={header ? HEADER_INSET : 4} />
       })}
       {caption && (
-        <text x={box.x + box.w / 2} y={captionY} textAnchor="middle" fontSize={8.5} fontWeight={700} fill={INK}>
+        <text x={cap.x} y={cap.y} textAnchor="middle" fontSize={CAPTION_SIZE} fontWeight={700} fill={ink}>
           {caption}
         </text>
       )}
