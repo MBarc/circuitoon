@@ -28,6 +28,36 @@ describe('analyseMains', () => {
   })
 })
 
+describe('the DC rules skip mains wiring only (final review 1)', () => {
+  const key = (part: string, pin: string) => nodeKey(part, pin)
+  it('a relay coil behind an unknown barrier is possibly live (hazardKeys) but keeps its DC checks (not in mainsKeys)', () => {
+    const d = sheet([at('xs1', 'XS1', 't-outlet'), at('k1', 'K1', 't-relay-unknown', 200), at('u1', 'U1', 't-mcu', 400)],
+      [w('xs1|L', 'k1|COM'), w('k1|+', 'u1|VCC'), w('k1|-', 'u1|GND')])
+    const a = analyseMains(d)!
+    expect([a.hazardKeys.has(key('k1', '+')), a.mainsKeys.has(key('k1', '+'))]).toEqual([true, false])
+    expect([a.hazardKeys.has(key('k1', 'COM')), a.mainsKeys.has(key('k1', 'COM'))]).toEqual([true, true])
+    expect(only(d, 'mains-to-low-voltage').length).toBeGreaterThan(0)
+    // The DC checker now sees the coil and the board: nothing supplies them.
+    expect(only(d, 'no-power').map((f) => f.subject)).toContain('U1')
+  })
+  it('energy through a load or an OFF SSR is mains wiring: a GPIO behind them stays out of the DC rules', () => {
+    const d = sheet([at('xs1', 'XS1', 't-outlet'), at('k1', 'K1', 't-ssr', 200), at('e1', 'E1', 't-lamp', 400), at('u1', 'U1', 't-mcu', 600)],
+      [w('xs1|L', 'k1|1'), w('k1|2', 'e1|L'), w('e1|N', 'u1|IO')])
+    const a = analyseMains(d)!
+    expect(a.mainsKeys.has(key('u1', 'IO'))).toBe(true)
+    expect(a.mainsKeys.has(key('e1', 'L'))).toBe(true)
+  })
+  it('an incomplete sheet takes every node joined to L or N other than across a barrier as mains wiring', () => {
+    const parts = [at('xs1', 'XS1', 't-outlet'), at('k0', 'K0', 't-relay-unknown', 200), at('u1', 'U1', 't-mcu', 400),
+      ...Array.from({ length: 17 }, (_, i) => at(`s${i}`, `S${i + 1}`, 't-switch', 200 * i, 600))]
+    const d = sheet(parts, [w('xs1|L', 'k0|COM'), w('k0|+', 'u1|VCC'), ...parts.slice(3).map((p) => w('xs1|L', `${p.uid}|1`))])
+    const a = analyseMains(d)!
+    expect(a.complete).toBe(false)
+    expect([a.hazardKeys.has(key('k0', '+')), a.mainsKeys.has(key('k0', '+'))]).toEqual([true, false])
+    expect(a.mainsKeys.has(key('s0', '2'))).toBe(true)
+  })
+})
+
 describe('converter availability gates the DC checker', () => {
   it('a converter fed L and N of one outlet is powered and supplies its load', () => {
     const d = psuOn('xs1|L', 'xs1|N')

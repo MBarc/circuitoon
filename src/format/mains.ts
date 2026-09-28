@@ -19,6 +19,12 @@ export interface MainsAnalysis {
   converters: Map<string, ConverterStatus>
   /** Every node key on a net that is hazardous in some state (every possibly hazardous one when incomplete). */
   hazardKeys: Set<string>
+  /**
+   * The node keys of hazardKeys that are on mains wiring (L or N identity, or energy that crossed no
+   * isolation barrier): the DC rules skip these only. A secondary behind an inadequate barrier is
+   * possibly live (rule 1 says so) but keeps its DC checks (final review 1).
+   */
+  mainsKeys: Set<string>
   /** Output pin keys of converters that are not powered. */
   deadOutputs: Map<string, 'unpowered' | 'unknown'>
   /** Resolution 19: the one conductor a node key carries in every state that gives it any identity, with its source's region; null otherwise. */
@@ -73,8 +79,10 @@ export function analyseMains(d: Diagram): MainsAnalysis | null {
     if (st.state !== 'powered') for (const o of c.outputs) deadOutputs.set(nodeKey(c.part.uid, o), st.state)
   }
   const hazardKeys = new Set<string>()
+  const mainsKeys = new Set<string>()
   acc.hazardAny.forEach((h, i) => {
     if (h) for (const k of g.members[i]) hazardKeys.add(k)
+    if (acc.mainsAny[i]) for (const k of g.members[i]) mainsKeys.add(k)
   })
   const conductorOf = (key: string) => {
     const i = g.nodeOf.get(key)
@@ -83,7 +91,7 @@ export function analyseMains(d: Diagram): MainsAnalysis | null {
     const { s, c } = decodeSingle(x)
     return { conductor: c, region: g.sources[s].region }
   }
-  return { graph: g, complete: !incomplete, converters, hazardKeys, deadOutputs, conductorOf, findings }
+  return { graph: g, complete: !incomplete, converters, hazardKeys, mainsKeys, deadOutputs, conductorOf, findings }
 }
 
 const cache = new WeakMap<Diagram['connections'], { parts: Diagram['parts']; modules: Diagram['modules']; result: MainsAnalysis | null }>()

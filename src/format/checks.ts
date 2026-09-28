@@ -439,10 +439,11 @@ export function checkDiagram(d: Diagram): Finding[] {
   const partByUid = new Map(d.parts.map((p) => [p.uid, p]))
   const plugs = plugsOf(d)
   const nl = netlist(d, plugs)
-  // Mains first (spec 3), from the analysis the renderer shares: what is hazardous never enters the
-  // DC rules, and a converter that is not powered supplies nothing.
+  // Mains first (spec 3), from the analysis the renderer shares: mains wiring never enters the DC
+  // rules, and a converter that is not powered supplies nothing. A secondary that is possibly live
+  // only across an inadequate isolation barrier keeps its DC checks (rule 1 reports it).
   const mains = analyseMainsCached(d)
-  const hazardous = (key: string) => !!mains?.hazardKeys.has(key)
+  const hazardous = (key: string) => !!mains?.mainsKeys.has(key)
   const brokenSet = new Set(nl.broken)
   const findings: Draft[] = []
   /**

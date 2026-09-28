@@ -279,7 +279,7 @@ function outcome(d: Diagram) {
   const keys = a ? [...a.graph.nodeOf.keys()] : []
   return {
     analysis: a && {
-      complete: a.complete, findings: a.findings, converters: [...a.converters], hazardKeys: [...a.hazardKeys].sort(), deadOutputs: [...a.deadOutputs],
+      complete: a.complete, findings: a.findings, converters: [...a.converters], hazardKeys: [...a.hazardKeys].sort(), mainsKeys: [...a.mainsKeys].sort(), deadOutputs: [...a.deadOutputs],
       conductors: keys.map((k) => [k, a.conductorOf(k)]),
     },
     // A fresh connections array, so the cached analysis of the other path is not reused.

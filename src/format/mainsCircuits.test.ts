@@ -98,6 +98,28 @@ describe('the spec circuits on built-in parts', () => {
     ])
     expect(rules(d)).toEqual(['cable-unverified'])
   })
+  // Final review (1): energy across an unknown barrier makes the secondary possibly live (rule 1), but
+  // it is not mains wiring, so the DC checks still run on it.
+  it('HLK-PM01 +Vo wired to an ESP32 3V3 output: the DC checks still see two supplies fight', () => {
+    const xs = at('xs1', 'XS1', 'outlet-us-5-15r-duplex')
+    const d = sheet([xs, onOutlet('xp1', 'XP1', 'plug-us-5-15p', xs), at('ps1', 'PS1', 'hlk-pm01', 300), at('u1', 'U1', 'esp32-devkit-v1-30', 600)], [
+      stripped('xp1|L', 'ps1|AC 1'), stripped('xp1|N', 'ps1|AC 2'), dc('ps1|+Vo', 'u1|3V3'), dc('ps1|-Vo', 'u1|GND'),
+    ])
+    expect(rules(d)).toContain('supplies-fight')
+    expect(rules(d)).toContain('mains-to-low-voltage')
+  })
+  it('Dupont jumpers on the relay module\'s control side: no mains-cable error (rule 1 already says the side may be live)', () => {
+    const d = sheet([
+      at('xs1', 'XS1', 'outlet-us-5-15r-duplex'), at('k1', 'K1', 'relay-module-1ch-5v', 500), at('u1', 'U1', 'esp32-devkit-v1-30', 500, 300),
+    ], [
+      stripped('xs1|L1', 'k1|COM'),
+      { ...dc('k1|DC+', 'u1|VIN'), gauge: 26, ends: { from: 'dupont-female', to: 'dupont-female' } },
+      { ...dc('k1|DC-', 'u1|GND'), gauge: 26, ends: { from: 'dupont-female', to: 'dupont-female' } },
+    ])
+    const found = checkDiagram(d)
+    expect(found.filter((f) => f.rule === 'mains-cable')).toEqual([])
+    expect(found.some((f) => f.rule === 'mains-to-low-voltage' && f.message.includes('K1 DC-'))).toBe(true)
+  })
   it('HLK-PM01 unpowered', () => {
     const d = sheet([at('ps1', 'PS1', 'hlk-pm01'), at('u1', 'U1', 'esp32-cam', 300)], [dc('ps1|+Vo', 'u1|5V'), dc('ps1|-Vo', 'u1|GND')])
     const found = checkDiagram(d).filter((f) => f.rule === 'no-power').map((f) => f.message)

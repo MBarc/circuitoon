@@ -27,6 +27,14 @@ export const L_MASK = every(0)
 export const N_MASK = every(1)
 export const PE_MASK = every(2)
 export const LN_MASK = L_MASK | N_MASK
+/**
+ * A power bit beside the source bits (which use bits 0 to MAX_SOURCES - 1): set on energy that has
+ * reached a node from L or N without crossing an isolation barrier (over nets, fitted fuses, closed
+ * contacts, loads, leakage, and a mains terminal's undeclared conduction). Energy across a barrier
+ * that is not protective separation drops it: that side may be live (rule 1), but it is not mains
+ * wiring, so the DC checks still run there (final review 1).
+ */
+export const MAINS_POW = 1 << 15
 /** The source and conductor of a mask with exactly one bit set. */
 export function decodeSingle(x: number): { s: number; c: Conductor } {
   const b = 31 - Math.clz32(x)
@@ -315,13 +323,13 @@ export function prepare(g: MainsGraph): Prepared {
   }
 }
 
-/** Moves energy one step along a-b (a to b only when directed). True when anything changed. */
-function flow(root: Int32Array, power: Uint16Array, a: number, b: number, directed: boolean): boolean {
+/** Moves energy one step along a-b (a to b only when directed, across an isolation barrier, which drops MAINS_POW). True when anything changed. */
+export function flow(root: Int32Array, power: Uint16Array, a: number, b: number, directed: boolean): boolean {
   const ra = root[a]
   const rb = root[b]
   if (ra === rb) return false
   let moved = false
-  const f = power[ra] & ~power[rb]
+  const f = power[ra] & ~power[rb] & (directed ? ~MAINS_POW : 0xffff)
   if (f) {
     power[rb] |= f
     moved = true
@@ -448,8 +456,8 @@ function planOf(p: Prepared): Plan {
   const bit: number[] = []
   const pow: number[] = []
   for (const s of p.sources) {
-    for (const x of s.live) node.push(x), bit.push(bitOf(s.index, 'L')), pow.push(1 << s.index)
-    for (const x of s.neutral) node.push(x), bit.push(bitOf(s.index, 'N')), pow.push(1 << s.index)
+    for (const x of s.live) node.push(x), bit.push(bitOf(s.index, 'L')), pow.push((1 << s.index) | MAINS_POW)
+    for (const x of s.neutral) node.push(x), bit.push(bitOf(s.index, 'N')), pow.push((1 << s.index) | MAINS_POW)
     for (const x of s.earth) node.push(x), bit.push(bitOf(s.index, 'PE')), pow.push(0)
   }
   // Components that can never pass energy on (see Plan.sinkA): joined over nets, every fuse, and
@@ -503,10 +511,14 @@ function planOf(p: Prepared): Plan {
     const fixed = !switched[find(reach, i)]
     steady.fixed[i] = fixed ? 1 : 0
     if (fixed) steady.ident[i] = baseIdent[r]
-    // Power only grows and never passes allPow: a root that starts with all of it, or a fixed dead end fed all of it, ends with exactly that.
-    if (staticPow[r] === allPow || (fixed && fullRoot[r])) {
+    // Power only grows and never passes allPow: a root that starts with all of it ends with exactly
+    // that; a fixed dead end fed all of it across a barrier (which drops MAINS_POW) ends with that and its own.
+    if (staticPow[r] === allPow) {
       steady.powerKnown[i] = 1
       steady.power[i] = allPow
+    } else if (fixed && fullRoot[r]) {
+      steady.powerKnown[i] = 1
+      steady.power[i] = staticPow[r] | (allPow & ~MAINS_POW)
     }
   }
   plan = {
@@ -591,11 +603,13 @@ export function analyseState(p: Prepared): void {
       }
   }
   const { sinkA, sinkB, sinkFull, allPow } = plan
+  // Both are directed edges, across a barrier: they never carry MAINS_POW.
   for (let k = 0; k < sinkA.length; k++) {
-    const f = power[root[sinkA[k]]]
+    const f = power[root[sinkA[k]]] & ~MAINS_POW
     if (f) power[root[sinkB[k]]] |= f
   }
-  for (let k = 0; k < sinkFull.length; k++) power[root[sinkFull[k]]] |= allPow
+  const fullPow = allPow & ~MAINS_POW
+  for (let k = 0; k < sinkFull.length; k++) power[root[sinkFull[k]]] |= fullPow
 }
 
 /**
@@ -682,8 +696,8 @@ function analyseStatePlain(p: Prepared): void {
     put(s.live, 'L')
     put(s.neutral, 'N')
     put(s.earth, 'PE')
-    for (const x of s.live) p.power[p.root[x]] |= 1 << s.index
-    for (const x of s.neutral) p.power[p.root[x]] |= 1 << s.index
+    for (const x of s.live) p.power[p.root[x]] |= (1 << s.index) | MAINS_POW
+    for (const x of s.neutral) p.power[p.root[x]] |= (1 << s.index) | MAINS_POW
   }
   for (let changed = true; changed; ) {
     changed = false
@@ -698,6 +712,8 @@ export const identAt = (p: Prepared, node: number): number => p.ident[p.root[nod
 export const powerAt = (p: Prepared, node: number): number => p.power[p.root[node]]
 /** A node is hazardous when it holds L or N identity or is energized (spec 1.2). */
 export const hazardAt = (p: Prepared, node: number): boolean => (identAt(p, node) & LN_MASK) !== 0 || powerAt(p, node) !== 0
+/** A node is on mains wiring when it holds L or N identity or energy that crossed no isolation barrier (MAINS_POW): the DC rules skip only these. */
+export const mainsAt = (p: Prepared, node: number): boolean => (identAt(p, node) & LN_MASK) !== 0 || (powerAt(p, node) & MAINS_POW) !== 0
 
 /** Up to this many candidate groups on the sheet the checker enumerates every state; beyond, it reports mains-incomplete (spec 1.5). */
 export const MAX_GROUPS = 16

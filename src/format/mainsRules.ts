@@ -5,7 +5,7 @@
 import { type Endpoint, type PartInstance, moduleOf } from './diagram.ts'
 import type { RuleId } from './checks.ts'
 import { nodeKey } from './netlist.ts'
-import { type GConverter, type GEdge, type GLoad, type GSource, type GTerm, type MainsGraph, type Prepared, FrontMap, LN_MASK as LN, L_MASK as L_, MAX_SOURCES, N_MASK as N_, PE_MASK as PE_, bareRoots, baseReps, steadyOf, bitOf, decodeSingle, groupName, hazardAt, identAt, minimalWitnesses, plainPath, statePhrase, termAt, termName } from './mainsGraph.ts'
+import { type GConverter, type GEdge, type GLoad, type GSource, type GTerm, type MainsGraph, type Prepared, FrontMap, LN_MASK as LN, L_MASK as L_, MAINS_POW, MAX_SOURCES, N_MASK as N_, PE_MASK as PE_, bareRoots, baseReps, steadyOf, bitOf, decodeSingle, groupName, hazardAt, identAt, minimalWitnesses, plainPath, statePhrase, termAt, termName } from './mainsGraph.ts'
 import { type Conductor, type ContactGroup, type MainsInfo, type Rating, isolationAdequate, mainsOf, uncoveredPins } from './mainsModel.ts'
 import { type ThroughKind, protectivePaths } from './mainsProtective.ts'
 import { andList, natural, orList } from './words.ts'
@@ -52,6 +52,8 @@ export interface Acc {
   seen: Map<string, Sighting>
   /** Per node: hazardous in at least one state. */
   hazardAny: Uint8Array
+  /** Per node: on mains wiring in at least one state (L or N identity, or energy that crossed no isolation barrier, MAINS_POW): the DC rules skip only these, and rule 9 judges their wires. */
+  mainsAny: Uint8Array
   /** Per node: the highest voltage of a source that made it hazardous. */
   volts: Float64Array
   /** Per node: every identity bit it had in any state (Resolution 19 reads it). */
@@ -76,7 +78,7 @@ export function newAcc(p: Prepared, cands: number[], incomplete: 'groups' | 'sou
   const g = p.g
   return {
     p, cands, total: incomplete ? 0 : 2 ** cands.length, seen: new Map(),
-    hazardAny: new Uint8Array(g.n), volts: new Float64Array(g.n), identUnion: new Uint32Array(g.n),
+    hazardAny: new Uint8Array(g.n), mainsAny: new Uint8Array(g.n), volts: new Float64Array(g.n), identUnion: new Uint32Array(g.n),
     converters: g.converters.map(() => null), loadComplete: new Uint8Array(g.loads.length), loadFit: new Uint8Array(g.loads.length), loadFixers: new Map(),
     incomplete, finished: [], ...sourceTable(p),
   }
@@ -135,7 +137,7 @@ export function wiresOfRoot(p: Prepared, r: number): string[] {
  * absorb copies their values over (see spreadReps). The plain path visits every node.
  */
 function track(acc: Acc) {
-  const { p, srcIdx, srcLN, srcVolts, identUnion, hazardAny, volts } = acc
+  const { p, srcIdx, srcLN, srcVolts, identUnion, hazardAny, mainsAny, volts } = acc
   const { root, ident, power } = p
   const top = srcVolts.length ? srcVolts[0] : 0
   const rel = plainPath.on ? p.relevant : baseReps(p).reps
@@ -147,6 +149,7 @@ function track(acc: Acc) {
     identUnion[i] |= x
     if (!(x & LN_MASK) && !e) continue
     hazardAny[i] = 1
+    if (x & LN_MASK || e & MAINS_POW) mainsAny[i] = 1
     if (volts[i] >= top) continue
     // Highest voltage first: the first source that makes the node hazardous sets it.
     for (let j = 0; j < srcIdx.length; j++)
@@ -164,6 +167,7 @@ function spreadReps(acc: Acc) {
     const [i, r] = [others[k], othersRep[k]]
     acc.identUnion[i] = acc.identUnion[r]
     acc.hazardAny[i] = acc.hazardAny[r]
+    acc.mainsAny[i] = acc.mainsAny[r]
     acc.volts[i] = acc.volts[r]
   }
 }
@@ -918,6 +922,7 @@ export function absorb(into: Acc, unit: Acc): void {
   spreadReps(unit)
   for (const i of unit.p.relevant) {
     into.hazardAny[i] |= unit.hazardAny[i]
+    into.mainsAny[i] |= unit.mainsAny[i]
     into.volts[i] = Math.max(into.volts[i], unit.volts[i])
     into.identUnion[i] |= unit.identUnion[i]
   }
@@ -945,10 +950,25 @@ export function conservative(acc: Acc): void {
     for (const x of [...s.live, ...s.neutral]) reach.set(p.possible[x], Math.max(reach.get(p.possible[x]) ?? 0, s.volts))
     for (const x of [...s.live, ...s.neutral, ...s.earth]) any.add(p.possible[x])
   }
+  // The same over every edge but the isolation barriers (directed energize edges): what could be on mains wiring.
+  const wiring = Int32Array.from({ length: g.n }, (_, i) => i)
+  const top = (x: number): number => {
+    while (wiring[x] !== x) x = wiring[x] = wiring[wiring[x]]
+    return x
+  }
+  const join = (a: number, b: number) => {
+    const [ra, rb] = [top(a), top(b)]
+    if (ra !== rb) wiring[ra] = rb
+  }
+  for (const e of g.edges) if (!e.directed) join(e.a, e.b)
+  for (const grp of g.groups) for (const list of [...grp.closed, ...grp.leak]) for (const [a, b] of list) join(a, b)
+  const onWiring = new Set<number>()
+  for (const s of g.sources) for (const x of [...s.live, ...s.neutral]) onWiring.add(top(x))
   for (const i of p.relevant) {
     const v = reach.get(p.possible[i])
     if (v === undefined) continue
     acc.hazardAny[i] = 1
+    if (onWiring.has(top(i))) acc.mainsAny[i] = 1
     acc.volts[i] = v
   }
   g.converters.forEach((c, i) => {
@@ -2102,9 +2122,12 @@ function wireEnd(g: MainsGraph, ep: Endpoint): string {
 }
 
 /**
- * Rule 9, once: every wire on a net that is ever hazardous, and every protective conductor (Task 8's
- * paths), is either clearly unsuitable (mains-cable) or cannot be checked (cable-unverified). A
- * functional DC ground joined to a bonded minus is not protective, so it is not judged here.
+ * Rule 9, once: every wire on a net that is ever on mains wiring, and every protective conductor
+ * (Task 8's paths), is either clearly unsuitable (mains-cable) or cannot be checked (cable-unverified).
+ * A functional DC ground joined to a bonded minus is not protective, so it is not judged here. Nor is
+ * a net that gets mains only across an isolation barrier that is not protective separation (final
+ * review 1): rule 1 already reports that side as possibly live, and a mains cable would not make it
+ * safe to touch, so a finding on each of its jumpers would only repeat that.
  */
 function cableRules(acc: Acc): MainsDraft[] {
   const g = acc.p.g
@@ -2113,7 +2136,7 @@ function cableRules(acc: Acc): MainsDraft[] {
   for (const c of g.d.connections) {
     if (g.broken.has(c.uid)) continue
     const i = g.nodeOf.get(nodeKey(c.from.part, c.from.pin))
-    const live = i !== undefined && acc.hazardAny[i] === 1
+    const live = i !== undefined && acc.mainsAny[i] === 1
     if (!live && !pe.wires.has(c.uid)) continue
     const name = c.label || `${wireEnd(g, c.from)} to ${wireEnd(g, c.to)}`
     const what = live ? 'carries mains' : 'is part of the earth path'
@@ -2130,7 +2153,7 @@ function cableRules(acc: Acc): MainsDraft[] {
 
 /**
  * Ruling 35: a breadboard strip (a hole group of a board without mains data) on a net that is ever
- * hazardous, or on a protective path, is rated for neither. One finding per board, its strips in
+ * on mains wiring (as rule 9 judges wires), or on a protective path, is rated for neither. One finding per board, its strips in
  * name order, those on mains first.
  */
 function stripRule(acc: Acc, earthStrips: { part: string; group: string }[]): MainsDraft[] {
@@ -2147,7 +2170,7 @@ function stripRule(acc: Acc, earthStrips: { part: string; group: string }[]): Ma
   }
   const strip = (t: GTerm | null): t is GTerm => !!t && !t.info.any && isBoard(t.module) && !!t.module.holes?.some((h) => h.name === t.name)
   for (const i of p.relevant) {
-    if (!acc.hazardAny[i]) continue
+    if (!acc.mainsAny[i]) continue
     for (const k of g.members[i]) {
       const t = termAt(g, k)
       if (strip(t)) add(t, true)

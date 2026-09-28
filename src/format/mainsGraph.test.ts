@@ -5,7 +5,7 @@ import { validateModule } from './module.ts'
 import { plugsOf } from './breadboard.ts'
 import { netlist, nodeKey } from './netlist.ts'
 import type { Diagram } from './diagram.ts'
-import { L_MASK, N_MASK, PE_MASK, analyseState, bareRoots, bitOf, buildMainsGraph, decodeSingle, hazardAt, possibleRoots, prepare, units, type Prepared } from './mainsGraph.ts'
+import { L_MASK, MAINS_POW, N_MASK, PE_MASK, analyseState, bareRoots, bitOf, buildMainsGraph, decodeSingle, hazardAt, possibleRoots, prepare, units, type Prepared } from './mainsGraph.ts'
 import { MAINS_MODULES, at, sheet, w } from './mains.testing.ts'
 
 const graph = (d: Diagram): Prepared => {
@@ -16,7 +16,10 @@ const graph = (d: Diagram): Prepared => {
 }
 const node = (p: Prepared, part: string, pin: string) => p.g.nodeOf.get(nodeKey(part, pin))!
 const ident = (p: Prepared, part: string, pin: string) => p.ident[p.root[node(p, part, pin)]]
-const power = (p: Prepared, part: string, pin: string) => p.power[p.root[node(p, part, pin)]]
+/** The energizing sources at a terminal (one bit each), without the MAINS_POW bit. */
+const power = (p: Prepared, part: string, pin: string) => p.power[p.root[node(p, part, pin)]] & ~MAINS_POW
+/** True when the energy at a terminal came over mains wiring, crossing no isolation barrier (MAINS_POW). */
+const onMains = (p: Prepared, part: string, pin: string) => (p.power[p.root[node(p, part, pin)]] & MAINS_POW) !== 0
 /** Sets every contact group released or off except the listed group indices, and analyses that state. */
 const state = (p: Prepared, ...on: number[]) => {
   p.groupState.fill(0)
@@ -52,6 +55,7 @@ describe('buildMainsGraph', () => {
       [w('xs1|L', 'e1|L'), w('e1|N', 'u1|IO')])))
     expect(ident(p, 'u1', 'IO')).toBe(0)
     expect(power(p, 'u1', 'IO')).toBe(1)
+    expect(onMains(p, 'u1', 'IO')).toBe(true)
   })
   it('carries identity through a fitted fuse, not an absent one', () => {
     const parts = (fuse: string) => [at('xs1', 'XS1', 't-outlet'), at('f1', 'F1', 't-fuse', 200, 0, { settings: { fuse } })]
@@ -75,6 +79,9 @@ describe('buildMainsGraph', () => {
   it('energizes a secondary across basic isolation, never across reinforced or basic plus a screen', () => {
     const d = (m: string) => sheet([at('xs1', 'XS1', 't-outlet'), at('ps1', 'PS1', m, 200)], [w('xs1|L', 'ps1|AC1'), w('xs1|N', 'ps1|AC2')])
     expect(power(state(graph(d('t-psu-basic'))), 'ps1', '+V')).toBe(1)
+    // Final review 1: that side may be live, but the energy crossed a barrier: it is not mains wiring.
+    expect(onMains(state(graph(d('t-psu-basic'))), 'ps1', '+V')).toBe(false)
+    expect(onMains(state(graph(d('t-psu-basic'))), 'ps1', 'AC1')).toBe(true)
     expect(power(state(graph(d('t-psu'))), 'ps1', '+V')).toBe(0)
     expect(power(state(graph(d('t-psu-screen'))), 'ps1', '+V')).toBe(0)
   })
