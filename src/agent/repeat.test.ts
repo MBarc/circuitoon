@@ -1,6 +1,6 @@
 // Repeat expansion: refs, bindings, shared ports and every binding rule of spec 1.1.
 import { describe, expect, it } from 'vitest'
-import { endpointText, expandRepeat } from './repeat.ts'
+import { REPEAT_MAX, endpointText, expandRepeat } from './repeat.ts'
 
 const ball = (bindings: unknown[], extra: Record<string, unknown> = {}) => ({
   name: 'ball',
@@ -60,6 +60,71 @@ describe('expandRepeat', () => {
     const mounted = ball([{ CH: 'U2.GPA0' }])
     mounted.template.parts[0] = { ...mounted.template.parts[0], on: 'BB1' } as { ref: string; module: string }
     expect(expandRepeat(mounted, new Set(), ['GND']).errors).toEqual(['repeat.template.parts[0].on: a repeated part cannot be mounted'])
+  })
+  it('checks every bound port on every copy and every shared entry, not just the first', () => {
+    const quad = (bindings: unknown[], shared: Record<string, unknown> = { G: 'GND', V: 'VCC' }) => ({
+      name: 'quad',
+      count: bindings.length,
+      template: {
+        parts: [{ ref: 'R', module: 'resistor' }, { ref: 'S', module: 'resistor' }],
+        nets: [
+          { name: 'A', pins: ['R.1'] },
+          { name: 'B', pins: ['S.1'] },
+          { name: 'G', pins: ['R.2'] },
+          { name: 'V', pins: ['S.2'] },
+        ],
+        ports: ['A', 'B', 'G', 'V'],
+      },
+      bindings,
+      shared,
+    })
+    const ok = expandRepeat(quad([{ A: 'U1.IO1', B: 'U1.IO2' }, { A: 'U1.IO3', B: 'U1.IO4' }]), new Set(['U1']), ['GND', 'VCC'])
+    expect(ok.errors).toEqual([])
+    expect(ok.nets.map((n) => n.name)).toEqual(['quad_1.A', 'quad_1.B', 'quad_2.A', 'quad_2.B'])
+    expect(ok.shared.get('GND')!.map((p) => p.ep)).toEqual(['R_1.2', 'R_2.2'])
+    expect(ok.shared.get('VCC')!.map((p) => p.ep)).toEqual(['S_1.2', 'S_2.2'])
+    // The second port of the second copy: unbound, then reusing the second port of the first copy, then malformed.
+    const top = new Set(['U1'])
+    expect(expandRepeat(quad([{ A: 'U1.IO1', B: 'U1.IO2' }, { A: 'U1.IO3' }]), top, ['GND', 'VCC']).errors).toEqual([
+      'repeat.bindings[1]: port B is not bound',
+    ])
+    expect(expandRepeat(quad([{ A: 'U1.IO1', B: 'U1.IO2' }, { A: 'U1.IO3', B: 'U1.IO2' }]), top, ['GND', 'VCC']).errors).toEqual([
+      'repeat.bindings[1].B: U1.IO2 is already bound by copy 1 port B',
+    ])
+    expect(expandRepeat(quad([{ A: 'U1.IO1', B: 'U1.IO2' }, { A: 'U1.IO3', B: 7 }]), top, ['GND', 'VCC']).errors).toEqual([
+      'repeat.bindings[1].B: must be "REF.PIN" or { "ref", "pin" }',
+    ])
+    // A copy binding the second shared port.
+    expect(expandRepeat(quad([{ A: 'U1.IO1', B: 'U1.IO2' }, { A: 'U1.IO3', B: 'U1.IO4', V: 'U1.3V3' }]), top, ['GND', 'VCC']).errors).toEqual([
+      'repeat.bindings[1].V: not a port that takes a binding (A, B)',
+    ])
+    // The second shared entry to an unknown net.
+    expect(expandRepeat(quad([{ A: 'U1.IO1', B: 'U1.IO2' }]), top, ['GND']).errors).toEqual(['repeat.shared.V: no outside net "VCC"'])
+  })
+  it('rejects a count that is not a whole number from 1 to the max', () => {
+    const msg = `repeat.count: must be a whole number from 1 to ${REPEAT_MAX}`
+    for (const count of [1.5, 0, -1, REPEAT_MAX + 1, '2', undefined])
+      expect(expandRepeat({ ...ball([{ CH: 'U2.GPA0' }]), count }, new Set(['U2']), ['GND']).errors).toEqual([msg])
+    const many = Array.from({ length: REPEAT_MAX }, (_, i) => ({ CH: `U2.P${i}` }))
+    expect(expandRepeat(ball(many), new Set(['U2']), ['GND']).errors).toEqual([])
+  })
+  it('rejects an invalid name', () => {
+    for (const name of ['', '1ball', 'ball-1', 'ba ll', 5, undefined])
+      expect(expandRepeat({ ...ball([{ CH: 'U2.GPA0' }]), name }, new Set(['U2']), ['GND']).errors).toEqual([
+        'repeat.name: required, a letter then letters, digits or _',
+      ])
+  })
+  it('rejects ports that do not name a template net, and shared keys that are not template ports', () => {
+    // NOPE is bound so the only error is the port itself.
+    const bad = ball([{ CH: 'U2.GPA0', NOPE: 'U2.GPA1' }])
+    bad.template.ports = ['CH', 'GND', 'NOPE']
+    expect(expandRepeat(bad, new Set(['U2']), ['GND']).errors).toEqual(['repeat.template.ports[2]: must name a template net'])
+    const nonString = ball([{ CH: 'U2.GPA0' }]) as Record<string, unknown> & { template: { ports: unknown[] } }
+    nonString.template.ports = ['CH', 'GND', 3]
+    expect(expandRepeat(nonString, new Set(['U2']), ['GND']).errors).toEqual(['repeat.template.ports[2]: must name a template net'])
+    expect(expandRepeat(ball([{ CH: 'U2.GPA0' }], { shared: { GND: 'GND', PWR: 'GND' } }), new Set(['U2']), ['GND']).errors).toEqual([
+      'repeat.shared.PWR: not a template port',
+    ])
   })
   it('names endpoints the way the channel table shows them', () => {
     expect(endpointText('U2.GPA0')).toBe('U2.GPA0')

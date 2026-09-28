@@ -156,6 +156,7 @@ export function expandRepeat(raw: unknown, topRefs: Set<string>, topNets: string
         out.shared.set(target, [...(out.shared.get(target) ?? []), ...pins])
         return
       }
+      // Binding values here are unvalidated when errors is non-empty; callers may resolve them for error reporting but must not emit a diagram from them.
       if (port !== null && isObj(entry) && Object.hasOwn(entry, port)) pins.push({ ep: entry[port], at: `${at}.${port}`, binding: `copy ${k} port ${port}` })
       out.nets.push({ name: `${name}_${k}.${net.name}`, pins, at: `${nat} (copy ${k})` })
     })
