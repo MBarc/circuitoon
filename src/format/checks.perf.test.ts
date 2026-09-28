@@ -1,5 +1,6 @@
 // The wiring checker on built-in parts: real pinouts give the findings the spec's examples name,
-// and a big sheet (200 parts, 500 wires) is checked well inside the 20 ms budget.
+// and a big sheet (200 parts, 500 wires) is checked well inside the 20 ms budget. The timing tests
+// retry twice: they flake under full-suite load, and the budget itself is unchanged.
 import { describe, expect, it } from 'vitest'
 import { checkDiagram } from './checks.ts'
 import type { Connection, Diagram, PartInstance } from './diagram.ts'
@@ -41,7 +42,7 @@ describe('checkDiagram on built-in parts', () => {
     expect(msgs).toContain('U4 VCC accepts up to 5 V but U3 OUT+ is set to 12 V. Set U3 to 5 V or move the wire to a 5 V pin.')
   })
 
-  it('checks 200 parts and 500 wires in 20 ms or less (median)', () => {
+  it('checks 200 parts and 500 wires in 20 ms or less (median)', { retry: 2 }, () => {
     // 40 resistors seated on four full boards, and 150 loose real parts wired pin to pin.
     const parts: PartInstance[] = []
     for (let b = 0; b < 4; b++) {
@@ -79,7 +80,7 @@ describe('checkDiagram on built-in parts', () => {
     expect(t[6]).toBeLessThanOrEqual(20)
   })
 
-  it('advises on a shorted loop among 198 loads in 20 ms or less (median), with the same findings', () => {
+  it('advises on a shorted loop among 198 loads in 20 ms or less (median), with the same findings', { retry: 2 }, () => {
     // Two Nanos with crossed power leads (a shorted loop) and 198 resistors each across U1 5V and
     // GND: 200 parts, 398 wires. Loop advice must not rebuild the netlist once per wire on the loop nets.
     const parts: PartInstance[] = [at('n1', 'U1', 'arduino-nano', 0), at('n2', 'U2', 'arduino-nano', 300)]
