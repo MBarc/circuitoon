@@ -1,13 +1,16 @@
 // The CLI in-process: outputs, JSON schemas and exit codes for parts, part and layout, and the JSON
-// error envelope every failure prints in --json mode (amendment A10).
+// error envelope every failure prints in --json mode (amendment A10), and the Task 9 review follow-ups
+// (file write errors, crashes as exit 3, help as JSON, CliError exit codes).
 import { afterEach, describe, expect, it } from 'vitest'
-import { readFileSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { spawnSync } from 'node:child_process'
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { join, resolve } from 'node:path'
+import { pathToFileURL } from 'node:url'
 import { validateDiagram } from '../format/diagram.ts'
 import { cli, tempDir } from './cliHarness.testing.ts'
 import { loadSchema, schemaErrors } from './jsonSchema.testing.ts'
-import { COMMANDS } from './main.ts'
-import { CliError } from './io.ts'
+import { COMMANDS, USAGE } from './main.ts'
+import { CliError, writeError } from './io.ts'
 import { ledNetlist } from '../agent/fixtures.testing.ts'
 
 const withFile = (name: string, value: unknown) => {
@@ -167,7 +170,66 @@ describe('--json failures print one error envelope on stdout (amendment A10)', (
     COMMANDS.boom = () => {
       throw new Error('kaboom')
     }
-    expectEnvelope(await cli(['boom', '--json']), 1, 'internal', 'kaboom')
-    await expect(cli(['boom'])).rejects.toThrow('kaboom')
+    // Ruling T8: a crash is an environment-class failure (exit 3), never read as a blocked design.
+    expectEnvelope(await cli(['boom', '--json']), 3, 'internal', 'kaboom')
+    const text = await cli(['boom'])
+    expect(text.code).toBe(3)
+    expect(text.err).toMatch(/^internal error: kaboom\n/)
+  })
+  it('an unhandled rejection after a run exits 3 as an internal error (bundled run())', () => {
+    const bundle = pathToFileURL(resolve('plugin/dist-cli/circuitoon.mjs')).href
+    const script = `const m = await import(${JSON.stringify(bundle)}); await m.run(['--help']); Promise.reject(new Error('late failure'))`
+    const r = spawnSync(process.execPath, ['--input-type=module', '-e', script], { encoding: 'utf8' })
+    expect(r.status).toBe(3)
+    expect(r.stderr).toMatch(/^internal error: late failure\n/)
+    const j = spawnSync(process.execPath, ['--input-type=module', '-e', script.replace("['--help']", "['--help', '--json']")], { encoding: 'utf8' })
+    expect(j.status).toBe(3)
+    const docs = j.stdout.trim().split(/\n(?=\{)/).map((d) => JSON.parse(d))
+    expect(docs.at(-1)).toMatchObject({ format: 'circuitoon-cli/error/1', exit: 3, error: { code: 'internal', message: 'internal error: late failure' } })
+  }, 60_000)
+})
+
+describe('Task 9 follow-ups', () => {
+  it('a sheet written to a directory, or under a file, is invalid input (exit 2)', async () => {
+    const dir = withFile('led.netlist.json', ledNetlist())
+    mkdirSync(join(dir, 'out'))
+    expectEnvelope(await cli(['layout', 'led.netlist.json', '-o', 'out', '--json'], { cwd: dir }), 2, 'input', 'out: cannot write')
+    writeFileSync(join(dir, 'plain.txt'), 'x')
+    expectEnvelope(await cli(['layout', 'led.netlist.json', '-o', 'plain.txt/sheet.json', '--json'], { cwd: dir }), 2, 'input', 'plain.txt/sheet.json: cannot write')
+    const text = await cli(['layout', 'led.netlist.json', '-o', 'out'], { cwd: dir })
+    expect(text.code).toBe(2)
+    expect(text.err).toContain('out: cannot write')
+  })
+  it('a render written to a directory is invalid input (exit 2)', async () => {
+    const dir = withFile('led.netlist.json', ledNetlist())
+    expect((await cli(['layout', 'led.netlist.json', '-o', 'sheet.json'], { cwd: dir })).code).toBe(0)
+    mkdirSync(join(dir, 'out.svg'))
+    expectEnvelope(await cli(['render', 'sheet.json', '--svg', 'out.svg', '--json'], { cwd: dir }), 2, 'input', 'out.svg: cannot write')
+    mkdirSync(join(dir, 'out.png'))
+    expectEnvelope(await cli(['render', 'sheet.json', '-o', 'out.png', '--json'], { cwd: dir, env: { CIRCUITOON_BROWSER: process.execPath } }), 2, 'input', 'out.png: cannot write')
+  })
+  it('maps file system errors: a bad path is exit 2, no permission or no space is exit 3', () => {
+    const err = (code: string) => Object.assign(new Error(`${code}: boom`), { code })
+    for (const code of ['EISDIR', 'ENOTDIR', 'EEXIST', 'ENOENT', 'EINVAL']) expect(writeError('x.json', err(code)).code, code).toBe(2)
+    for (const code of ['EACCES', 'EPERM', 'ENOSPC', 'EROFS']) expect(writeError('x.json', err(code)).code, code).toBe(3)
+    expect(writeError('x.json', err('EACCES')).message).toBe('x.json: cannot write the file (permission denied)')
+    expect(writeError('x.json', err('ENOSPC')).message).toBe('x.json: cannot write the file (no space left on the device)')
+    expect(writeError('x.json', err('EISDIR')).message).toBe('x.json: cannot write the file (it is a directory)')
+  })
+  it('--json and --help --json print one help document', async () => {
+    for (const argv of [['--json'], ['--help', '--json'], ['help', '--json'], ['parts', '--help', '--json']]) {
+      const r = await cli(argv)
+      expect(r.code, argv.join(' ')).toBe(0)
+      const doc = JSON.parse(r.out)
+      expect(schemaErrors(loadSchema('help'), doc)).toEqual([])
+      expect(doc).toEqual({ format: 'circuitoon-cli/help/1', usage: USAGE })
+    }
+  })
+  it('a CliError carries exit code 1, 2 or 3 and nothing else', () => {
+    for (const code of [1, 2, 3] as const) expect(new CliError('x', code).code).toBe(code)
+    // @ts-expect-error 0 is success, never an error's exit code
+    expect(() => new CliError('x', 0)).toThrow('CliError exit code must be 1, 2 or 3, not 0')
+    // @ts-expect-error 4 is not an exit code the CLI uses
+    expect(() => new CliError('x', 4)).toThrow(RangeError)
   })
 })

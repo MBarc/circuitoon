@@ -15,9 +15,13 @@ export interface Io {
   env: Record<string, string | undefined>
 }
 
+/** The exit codes a failure can carry: never 0, which is success. */
+export type ErrorExit = typeof EXIT.blocked | typeof EXIT.input | typeof EXIT.environment
+
 export class CliError extends Error {
-  code: number
-  constructor(message: string, code: number) {
+  code: ErrorExit
+  constructor(message: string, code: ErrorExit) {
+    if (code !== EXIT.blocked && code !== EXIT.input && code !== EXIT.environment) throw new RangeError(`CliError exit code must be 1, 2 or 3, not ${String(code)}`)
     super(message)
     this.code = code
   }
@@ -39,10 +43,38 @@ export function readJson(io: Io, path: string): unknown {
   }
 }
 
+/** Why a write failed, by Node error code: the path is at fault (exit 2) or the machine is (exit 3). */
+const WRITE_ERRORS: Record<string, { why: string; exit: ErrorExit }> = {
+  EISDIR: { why: 'it is a directory', exit: EXIT.input },
+  ERR_FS_EISDIR: { why: 'it is a directory', exit: EXIT.input },
+  ENOTDIR: { why: 'a folder on its path is a file', exit: EXIT.input },
+  EEXIST: { why: 'a folder on its path is a file', exit: EXIT.input },
+  ENOENT: { why: 'its folder cannot be created', exit: EXIT.input },
+  EINVAL: { why: 'not a valid path', exit: EXIT.input },
+  ENAMETOOLONG: { why: 'the path is too long', exit: EXIT.input },
+  EACCES: { why: 'permission denied', exit: EXIT.environment },
+  EPERM: { why: 'permission denied', exit: EXIT.environment },
+  EROFS: { why: 'the file system is read-only', exit: EXIT.environment },
+  ENOSPC: { why: 'no space left on the device', exit: EXIT.environment },
+  EDQUOT: { why: 'the disk quota is used up', exit: EXIT.environment },
+}
+
+/** A failed write as a CliError that names the path; an unknown cause is an environment problem. */
+export function writeError(path: string, err: unknown): CliError {
+  const code = (err as NodeJS.ErrnoException | undefined)?.code
+  const known = code !== undefined && Object.hasOwn(WRITE_ERRORS, code) ? WRITE_ERRORS[code] : undefined
+  const why = known?.why ?? (err instanceof Error ? err.message : String(err))
+  return new CliError(`${path}: cannot write the file (${why})`, known?.exit ?? EXIT.environment)
+}
+
 export function writeFile(io: Io, path: string, content: string | Uint8Array): void {
   const full = pathIn(io, path)
-  mkdirSync(dirname(full), { recursive: true })
-  writeFileSync(full, content)
+  try {
+    mkdirSync(dirname(full), { recursive: true })
+    writeFileSync(full, content)
+  } catch (err) {
+    throw writeError(path, err)
+  }
 }
 
 export const printJson = (io: Io, value: unknown) => io.stdout(`${JSON.stringify(value, null, 2)}\n`)

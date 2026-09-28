@@ -2336,6 +2336,7 @@ var EXIT = {
 var CliError = class extends Error {
 	code;
 	constructor(message, code) {
+		if (code !== EXIT.blocked && code !== EXIT.input && code !== EXIT.environment) throw new RangeError(`CliError exit code must be 1, 2 or 3, not ${String(code)}`);
 		super(message);
 		this.code = code;
 	}
@@ -2354,10 +2355,71 @@ function readJson(io, path) {
 		throw new CliError(`${path}: not valid JSON (${e.message})`, EXIT.input);
 	}
 }
+/** Why a write failed, by Node error code: the path is at fault (exit 2) or the machine is (exit 3). */
+var WRITE_ERRORS = {
+	EISDIR: {
+		why: "it is a directory",
+		exit: EXIT.input
+	},
+	ERR_FS_EISDIR: {
+		why: "it is a directory",
+		exit: EXIT.input
+	},
+	ENOTDIR: {
+		why: "a folder on its path is a file",
+		exit: EXIT.input
+	},
+	EEXIST: {
+		why: "a folder on its path is a file",
+		exit: EXIT.input
+	},
+	ENOENT: {
+		why: "its folder cannot be created",
+		exit: EXIT.input
+	},
+	EINVAL: {
+		why: "not a valid path",
+		exit: EXIT.input
+	},
+	ENAMETOOLONG: {
+		why: "the path is too long",
+		exit: EXIT.input
+	},
+	EACCES: {
+		why: "permission denied",
+		exit: EXIT.environment
+	},
+	EPERM: {
+		why: "permission denied",
+		exit: EXIT.environment
+	},
+	EROFS: {
+		why: "the file system is read-only",
+		exit: EXIT.environment
+	},
+	ENOSPC: {
+		why: "no space left on the device",
+		exit: EXIT.environment
+	},
+	EDQUOT: {
+		why: "the disk quota is used up",
+		exit: EXIT.environment
+	}
+};
+/** A failed write as a CliError that names the path; an unknown cause is an environment problem. */
+function writeError(path, err) {
+	const code = err?.code;
+	const known = code !== void 0 && Object.hasOwn(WRITE_ERRORS, code) ? WRITE_ERRORS[code] : void 0;
+	return new CliError(`${path}: cannot write the file (${known?.why ?? (err instanceof Error ? err.message : String(err))})`, known?.exit ?? EXIT.environment);
+}
 function writeFile(io, path, content) {
 	const full = pathIn(io, path);
-	mkdirSync(dirname(full), { recursive: true });
-	writeFileSync(full, content);
+	try {
+		mkdirSync(dirname(full), { recursive: true });
+		writeFileSync(full, content);
+	} catch (err) {
+		throw writeError(path, err);
+	}
 }
 var printJson = (io, value) => io.stdout(`${JSON.stringify(value, null, 2)}\n`);
 function flag(args, name) {
@@ -43869,7 +43931,12 @@ function renderCommand(args, io) {
 		});
 	}
 	if (png) {
-		const shot = writePng(drawn, scale, pathIn(io, png), io.env);
+		let shot;
+		try {
+			shot = writePng(drawn, scale, pathIn(io, png), io.env);
+		} catch (err) {
+			throw writeError(png, err);
+		}
 		if (!shot.ok) throw new CliError(shot.message, EXIT.environment);
 		outputs.push({
 			kind: "png",
@@ -43898,7 +43965,8 @@ var USAGE = `circuitoon <command> [options]
   link <sheet.json> [-o <dir>] [--json]     a link that opens the sheet in Circuitoon
   gate <sheet.json> -o <dir> [--json]       every check, the renders and the link; exits 0 only when nothing blocks
 
-Exit codes: 0 ok, 1 findings that block, 2 invalid input, 3 environment problem (such as no browser).
+Exit codes: 0 ok, 1 findings that block, 2 invalid input, 3 environment problem (such as no browser)
+or an internal error of the tool.
 `;
 var COMMANDS = {
 	parts: partsCommand,
@@ -43911,53 +43979,73 @@ var CODE_OF = {
 	[EXIT.input]: "input",
 	[EXIT.environment]: "environment"
 };
+function fail(io, json, exit, code, message, usage = false) {
+	if (json) printJson(io, {
+		format: "circuitoon-cli/error/1",
+		ok: false,
+		exit,
+		error: {
+			code,
+			message
+		}
+	});
+	else io.stderr(`${message}\n${usage ? `\n${USAGE}` : ""}`);
+	return exit;
+}
+/**
+* An unexpected exception: exit 3 with the code "internal" (Ruling T8). Text mode adds the stack
+* after the message, for a bug report.
+*/
+function internalFailure(io, json, err) {
+	const message = `internal error: ${err instanceof Error ? err.message : String(err)}`;
+	if (json) return fail(io, json, EXIT.environment, "internal", message);
+	io.stderr(`${message}\n${err instanceof Error && err.stack ? `${err.stack}\n` : ""}`);
+	return EXIT.environment;
+}
 async function main(argv, io) {
 	const json = argv.includes("--json");
-	const fail = (exit, code, message, usage = false) => {
-		if (json) printJson(io, {
-			format: "circuitoon-cli/error/1",
-			ok: false,
-			exit,
-			error: {
-				code,
-				message
-			}
-		});
-		else io.stderr(`${message}\n${usage ? `\n${USAGE}` : ""}`);
-		return exit;
-	};
 	const parsed = parseArgs(argv);
-	if (!parsed.ok) return fail(EXIT.input, "usage", parsed.error, true);
+	if (!parsed.ok) return fail(io, json, EXIT.input, "usage", parsed.error, true);
 	const args = parsed.value;
 	if (args.command === void 0 || args.command === "help" || args.flags.has("--help")) {
-		io.stdout(USAGE);
+		if (json) printJson(io, {
+			format: "circuitoon-cli/help/1",
+			usage: USAGE
+		});
+		else io.stdout(USAGE);
 		return EXIT.ok;
 	}
 	const command = Object.hasOwn(COMMANDS, args.command) ? COMMANDS[args.command] : void 0;
-	if (!command) return fail(EXIT.input, "usage", `unknown command "${args.command}"`, true);
+	if (!command) return fail(io, json, EXIT.input, "usage", `unknown command "${args.command}"`, true);
 	try {
 		return await command(args, io);
 	} catch (err) {
-		if (err instanceof CliError) return fail(err.code, CODE_OF[err.code] ?? "internal", err.message);
-		if (!json) throw err;
-		return fail(EXIT.blocked, "internal", `internal error: ${err instanceof Error ? err.message : String(err)}`);
+		if (err instanceof CliError) return fail(io, json, err.code, CODE_OF[err.code], err.message);
+		return internalFailure(io, json, err);
 	}
 }
 /**
 * Runs the CLI on this process; plugin/bin/circuitoon.mjs calls it. A reader that closes early
-* (`circuitoon parts --json | head`) ends the run quietly instead of with an EPIPE stack trace.
+* (`circuitoon parts --json | head`) ends the run quietly instead of with an EPIPE stack trace. An
+* exception or a rejection that escapes the command exits 3 as an internal error, like one it throws.
 */
 function run(argv) {
-	process.stdout.on("error", (e) => {
-		if (e.code !== "EPIPE") throw e;
-		process.exit();
-	});
-	return main(argv, {
+	const io = {
 		stdout: (s) => void process.stdout.write(s),
 		stderr: (s) => void process.stderr.write(s),
 		cwd: process.cwd(),
 		env: process.env
+	};
+	const crash = (err) => {
+		process.exitCode = internalFailure(io, argv.includes("--json"), err);
+	};
+	process.stdout.on("error", (e) => {
+		if (e.code !== "EPIPE") return crash(e);
+		process.exit();
 	});
+	process.on("unhandledRejection", crash);
+	process.on("uncaughtException", crash);
+	return main(argv, io);
 }
 //#endregion
-export { COMMANDS, USAGE, main, run };
+export { COMMANDS, USAGE, internalFailure, main, run };

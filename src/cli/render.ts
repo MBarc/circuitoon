@@ -8,7 +8,7 @@ import { parseNetlist } from '../agent/netlist.ts'
 import { intentLookup } from '../agent/verify.ts'
 import { libraryLookup } from '../agent/catalog.ts'
 import type { Args } from './args.ts'
-import { CliError, EXIT, type Io, flag, loadSheet, pathIn, printJson, writeFile } from './io.ts'
+import { CliError, EXIT, type Io, flag, loadSheet, pathIn, printJson, writeError, writeFile } from './io.ts'
 import { writePng } from './png.ts'
 
 /** The part uids of a repeat copy or a group named in the sheet's intent; null when there is none. */
@@ -45,7 +45,12 @@ export function renderCommand(args: Args, io: Io): number {
     outputs.push({ kind: 'svg', path: svgPath, width: drawn.width, height: drawn.height })
   }
   if (png) {
-    const shot = writePng(drawn, scale, pathIn(io, png), io.env)
+    let shot: ReturnType<typeof writePng>
+    try {
+      shot = writePng(drawn, scale, pathIn(io, png), io.env)
+    } catch (err) {
+      throw writeError(png, err)
+    }
     if (!shot.ok) throw new CliError(shot.message, EXIT.environment)
     outputs.push({ kind: 'png', path: png, width: shot.width, height: shot.height })
   }

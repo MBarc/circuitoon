@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "circuitoon --help --json (or circuitoon --json with no command)",
+  "type": "object",
+  "required": ["format", "usage"],
+  "additionalProperties": false,
+  "properties": {
+    "format": { "const": "circuitoon-cli/help/1" },
+    "usage": { "type": "string" }
+  }
+}
