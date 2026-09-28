@@ -1,6 +1,6 @@
-# Agent toolkit, first slice: design (revision 3)
+# Agent toolkit, first slice: design (revision 4)
 
-Status: direction approved by Michael (2026-09-27): a CLI plus skills packaged as a Claude Code plugin in the public repo, pulled forward so another Claude Code session (first user: the Spirit Typewriter session) can design, test and present a schematic. Built in parallel with the mains work. Revision 2 answers Astra's spec review (10 findings); revision 3 its re-review (terminal capacity, nc, inventory drift, intent required, routing infrastructure, repeat bindings). MCP server, simulation and module authoring commands come later.
+Status: direction approved by Michael (2026-09-27): a CLI plus skills packaged as a Claude Code plugin in the public repo, pulled forward so another Claude Code session (first user: the Spirit Typewriter session) can design, test and present a schematic. Built in parallel with the mains work. Revision 2 answers Astra's spec review (10 findings); revision 3 its re-review (terminal capacity, nc, inventory drift, intent required, routing infrastructure, repeat bindings); revision 4 defines what counts as a connection for verification and checks capacity on the realized diagram. MCP server, simulation and module authoring commands come later.
 
 ## Goal
 An agent goes from a request to a schematic that provably implements the requested circuit, passes the checker, renders readably, and opens in Circuitoon, without guessing coordinates. Nothing is presented that the tools have not verified, and what is not verified is stated.
@@ -59,6 +59,8 @@ Every layout reports: body overlaps (must be 0), caption overlaps (must be 0), w
   - unintended merge: endpoints of two different requested nets are connected: error;
   - extra connection: a component pin that is in no requested net and not joined internally by its own module is connected to anything: error; breadboard holes, strips and `routing: true` wires are infrastructure and never count as extra endpoints themselves, but the component pins they reach are checked like any other;
   - `nc`: any connection to a pin listed in `nc` is an error.
+  - What counts as a connection: two component pins are connected when a path of wires, strips, internal joins or plugs joins them. A pin whose only neighbours are infrastructure (breadboard holes and strips, rails, `routing: true` wires) with no other component pin on that path is unconnected: a seated leg alone in an empty strip is not an extra connection and does not violate `nc`.
+  - Terminal capacity on the realized diagram: every header pin, pad and breadboard hole holds no more wire ends and legs than its capacity (section 2.2; a hole holds one leg or one wire end). A hand edit that adds a second wire to a capacity-one pin, or a wire into an occupied hole, is a verify error, so `gate` blocks it.
 - `check` runs `verify` when `intent` is present. `gate` requires a valid `intent` (a diagram without one fails the gate with "no intent: lay out from a netlist or add intent"); plain `check` still works on any diagram. Editing the diagram by hand keeps `intent`, so a later check catches drift.
 
 ## 4. CLI (`circuitoon`)
@@ -103,7 +105,7 @@ Blocking (gate exits 1): missing or invalid intent; loader errors; a missing mod
 ## 10. Tests
 - Netlist parsing: every contract rule in section 1 (labels, ambiguity, holes, duplicates, embedded collisions, repeat maps complete and duplicate-free).
 - Layout: determinism; zero body and caption overlaps on fixtures of 5, 30, 120 parts and the full typewriter-like topology (ESP32, 3 MCP23017 on breadboards, 84 tilt switches as 42 repeat copies, 2 SPI LCDs, OLED, microSD, power chain); mounts seat without strip merges; no double wire ends in holes; 2 s budget including routing; visual inspection of rendered fixtures.
-- Verify: missing connection, merge through a strip, merge through an internal join, extra component connection, routing infrastructure allowed, nc violated, value drift (220 to 2200 ohm), module swapped, unseated mount, extra part, missing intent fails the gate, drift after a hand edit.
+- Verify: an unused seated leg alone in its strip (not extra, not an nc violation); a hand edit adding a second wire to a header pin (blocked); a wire into an occupied hole (blocked); missing connection, merge through a strip, merge through an internal join, extra component connection, routing infrastructure allowed, nc violated, value drift (220 to 2200 ohm), module swapped, unseated mount, extra part, missing intent fails the gate, drift after a hand edit.
 - Layout capacity: a net with more ends than a header pin takes fails with "needs a distribution point" unless a breadboard or terminal is in the netlist; never two wires into one header pin.
 - Repeat bindings: reused channel across copies rejected; shared GND accepted; ref expansion and collision.
 - CLI: outputs, JSON schemas, exit codes, gate hashes, browser-missing path.
