@@ -1,0 +1,50 @@
+{
+  "format": "circuitoon-netlist/1",
+  "title": "Spirit Typewriter 1 of 4: power, ESP32 and displays",
+  "parts": [
+    { "ref": "U1", "module": "esp32-devkitc-v4" },
+    { "ref": "BB1", "module": "breadboard-half" },
+    { "ref": "BT1", "module": "battery-18650-holder" },
+    { "ref": "U5", "module": "ip5306-usbc-module" },
+    { "ref": "SW1", "module": "rocker-switch-kcd1" },
+    { "ref": "DS1", "module": "lcd-st7796s-4in-spi-touch" },
+    { "ref": "DS2", "module": "lcd-st7796s-4in-spi-touch" },
+    { "ref": "DS3", "module": "oled-ssd1306-096-i2c" },
+    { "ref": "SD1", "module": "microsd-spi-3v3" },
+    { "ref": "J1", "module": "jst-xh-4" },
+    { "ref": "J2", "module": "jst-xh-4" },
+    { "ref": "J3", "module": "jst-xh-4" }
+  ],
+  "nets": [
+    { "name": "BAT", "pins": ["BT1.+", "U5.B+"] },
+    { "name": "VSW", "pins": ["U5.5V+", "SW1.1"] },
+    { "name": "5V", "pins": ["SW1.2", "U1.5V"] },
+    { "name": "3V3", "pins": ["U1.3V3", "DS1.VCC", "DS1.LED", "DS2.VCC", "DS2.LED", "DS3.VCC", "SD1.3V3", "J1.2", "J2.2", "J3.2"] },
+    { "name": "GND", "pins": ["U1.GND", "BT1.-", "U5.B-", "U5.5V-", "DS1.GND", "DS2.GND", "DS3.GND", "SD1.GND", "J1.1", "J2.1", "J3.1"] },
+    { "name": "SDA", "pins": ["U1.IO21", "DS3.SDA", "J1.3", "J2.3", "J3.3"] },
+    { "name": "SCL", "pins": ["U1.IO22", "DS3.SCL", "J1.4", "J2.4", "J3.4"] },
+    { "name": "SCK", "pins": ["U1.IO18", "DS1.SCK", "DS2.SCK", "SD1.CLK"] },
+    { "name": "MOSI", "pins": ["U1.IO23", "DS1.SDI(MOSI)", "DS2.SDI(MOSI)", "SD1.MOSI"] },
+    { "name": "MISO", "pins": ["U1.IO19", "SD1.MISO"] },
+    { "name": "LCD_DC", "pins": ["U1.IO4", "DS1.DC/RS", "DS2.DC/RS"] },
+    { "name": "LCD_RST", "pins": ["U1.IO27", "DS1.RESET", "DS2.RESET"] },
+    { "name": "LCD1_CS", "pins": ["U1.IO5", "DS1.CS"] },
+    { "name": "LCD2_CS", "pins": ["U1.IO26", "DS2.CS"] },
+    { "name": "SD_CS", "pins": ["U1.IO13", "SD1.CS"] }
+  ],
+  "nc": ["DS1.SDO(MISO)", "DS2.SDO(MISO)"],
+  "groups": [
+    { "name": "Power", "parts": ["BT1", "U5", "SW1"] },
+    { "name": "Displays", "parts": ["DS1", "DS2"] },
+    { "name": "OLED and SD card", "parts": ["DS3", "SD1"] },
+    { "name": "To the expander banks", "parts": ["J1", "J2", "J3"] }
+  ],
+  "notes": [
+    {
+      "text": "J1, J2 and J3 each carry 1 GND, 2 3V3, 3 SDA, 4 SCL to the J1 of one bank sheet: J1 to bank A (sheet 2), J2 to bank B (sheet 3), J3 to bank C (sheet 4). No I2C pull-ups are drawn. This assumes a module on the bus already has SDA and SCL pull-up resistors: check the OLED (DS3) and the CJMCU-2317 boards. If none has them, add one 4.7 kohm resistor from SDA and one from SCL to 3V3, once for the whole bus.",
+      "near": "To the expander banks"
+    },
+    { "text": "DS1, DS2 and SD1 share one SPI bus; each has its own CS pin. The displays are never read, so their SDO (MISO) pins stay unconnected: many of these modules do not release MISO.", "near": "OLED and SD card" }
+  ],
+  "wires": { "color": { "3V3": "red", "GND": "black", "5V": "orange", "SDA": "blue", "SCL": "yellow" }, "ends": "dupont-female" }
+}

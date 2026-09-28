@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { addPart, addWire, nextUid, clearWireRoute, deleteSelection, sameEndpoint, setWireRoute, designatorPrefix, moveParts, nextDesignator, reconnectWire, rotateParts, setWireEnds, settleDrop, settleMounts, settleSeats, updatePart, updatePartValue, updatePartSetting, clearPartValue, updateWire, withMounted, settlingOf } from './ops.ts'
-import { emptyDiagram, type Diagram } from '../format/diagram.ts'
+import { COORD_LIMIT, emptyDiagram, serializeDiagram, validateDiagram, type Diagram } from '../format/diagram.ts'
 import type { ModuleDef } from '../format/module.ts'
 import { parseValue } from '../format/values.ts'
 import { mountIssues, plugsOf, seatOf } from '../format/breadboard.ts'
@@ -499,6 +499,18 @@ describe('boards carry their parts', () => {
     // No hand-shaped wire moves: the wires list is the same object.
     const plain = loaded()
     expect(moveParts(plain, ['b'], 10, 0).connections).toBe(plain.connections)
+  })
+  it('stops a part move at the coordinate limit, as one rigid block with its carried wires, so the file loads unchanged', () => {
+    const d = loaded()
+    d.connections = [{ uid: 'w1', from: { part: 'b', pin: 's9', hole: 0 }, to: { part: 'p1', pin: 'L' }, route: [[90, -20], [0, -20]] }]
+    const far = moveParts(d, ['b', 'x'], 10 * COORD_LIMIT, -10 * COORD_LIMIT)
+    // x (at 300) reaches the limit first; b, its mounted p1 and the carried route keep their offsets.
+    expect(far.parts.map((p) => [p.uid, p.x, p.y])).toEqual([['b', COORD_LIMIT - 300, -COORD_LIMIT + 20], ['p1', COORD_LIMIT - 290, -COORD_LIMIT + 20], ['x', COORD_LIMIT, -COORD_LIMIT + 20]])
+    expect(far.connections[0].route).toEqual([[COORD_LIMIT - 210, -COORD_LIMIT], [COORD_LIMIT - 300, -COORD_LIMIT]])
+    const r = validateDiagram(JSON.parse(serializeDiagram(far)))
+    expect(r.ok && r.warnings.filter((w) => w.includes('beyond'))).toEqual([])
+    expect(moveParts(far, ['b', 'x'], 10, -10)).toBe(far)
+    expect(moveParts(far, ['x'], -10, 0).parts[2].x).toBe(COORD_LIMIT - 10)
   })
   it('turns mounted parts with a rotated board, so they stay seated', () => {
     const d = rotateParts(loaded(), ['b'])

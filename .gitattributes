@@ -1,0 +1,4 @@
+# The plugin runs on Unix too, and the CLI bundle is generated and compared byte for byte by
+# `npm run check:gen`: LF everywhere under plugin/bin and plugin/dist-cli.
+plugin/bin/*.mjs text eol=lf
+plugin/dist-cli/** text eol=lf

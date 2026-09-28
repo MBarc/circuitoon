@@ -16,7 +16,8 @@ describe('check-gen runner', () => {
     expect(r.status).toBe(0)
     expect(r.stdout).toMatch(/gen-boards\.mjs/)
     expect(r.stdout).toMatch(/gen-picos\.mjs/)
-  }, 30_000)
+    expect(r.stdout).toMatch(/gen-cli\.mjs: 1 generated files match/)
+  }, 120_000)
 
   it('reports every drifted generator, and fails one that does not use the output helper', () => {
     const dir = mkdtempSync(join(tmpdir(), 'check-gen-'))

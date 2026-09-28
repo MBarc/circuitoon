@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "circuitoon <command> --json, when the command fails before it has a result",
+  "type": "object",
+  "required": ["format", "ok", "exit", "error"],
+  "additionalProperties": false,
+  "properties": {
+    "format": { "const": "circuitoon-cli/error/1" },
+    "ok": { "const": false },
+    "exit": { "enum": [1, 2, 3] },
+    "error": {
+      "type": "object",
+      "required": ["code", "message"],
+      "additionalProperties": false,
+      "properties": {
+        "code": { "enum": ["usage", "input", "blocked", "environment", "internal"] },
+        "message": { "type": "string" }
+      }
+    }
+  }
+}

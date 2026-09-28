@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "circuitoon part <id> --json",
+  "type": "object",
+  "required": ["format", "module"],
+  "additionalProperties": false,
+  "properties": {
+    "format": { "const": "circuitoon-cli/part/1" },
+    "module": {
+      "type": "object",
+      "required": ["format", "id", "name", "pins"],
+      "properties": {
+        "format": { "const": "circuitoon-module/1" },
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "pins": { "type": "array" },
+        "holes": { "type": "array" },
+        "internal": { "type": "array" }
+      }
+    }
+  }
+}

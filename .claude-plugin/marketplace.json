@@ -1,0 +1,13 @@
+{
+  "name": "circuitoon",
+  "description": "Circuitoon agent toolkit: design, verify and render pictorial wiring diagrams from Claude Code.",
+  "owner": { "name": "MBarc" },
+  "plugins": [
+    {
+      "name": "circuitoon",
+      "source": "./plugin",
+      "version": "0.1.0",
+      "description": "Design, verify and render Circuitoon wiring diagrams from a netlist: the circuitoon CLI and the circuitoon-design skill."
+    }
+  ]
+}

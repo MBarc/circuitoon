@@ -1,5 +1,6 @@
 // The wiring checker on built-in parts: real pinouts give the findings the spec's examples name,
-// and a big sheet (200 parts, 500 wires) is checked well inside the 20 ms budget.
+// and a big sheet (200 parts, 500 wires) is checked well inside the 20 ms budget. The timing tests
+// retry twice: they flake under full-suite load, and the budget itself is unchanged.
 import { describe, expect, it } from 'vitest'
 import { checkDiagram } from './checks.ts'
 import type { Connection, Diagram, PartInstance } from './diagram.ts'

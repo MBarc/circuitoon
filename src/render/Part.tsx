@@ -1,12 +1,47 @@
-// Draws one module in the Sticker style: flat fills, dark ink outline on every shape.
+// Draws one module in the Sticker style: flat fills, dark ink outline on every shape (a dark body gets
+// the theme's outline color instead, when the theme sets one).
 import { memo } from 'react'
 import { insideLabelSides, type ModuleDef, type PinType, type PlacedPin, type Side, layoutModule, LEAD } from '../format/module.ts'
 import { bodyRect, pivot, worldPins, type Rect, type Rotation, type WorldPin } from '../format/geometry.ts'
 import { bandFills } from '../format/values.ts'
+import { CAPTION_SIZE, captionAnchor } from './captionBox.ts'
 
 export const INK = '#23282F'
 const OUTLINE = 1.6
 export const METAL = '#C9CED6'
+
+/** Relative luminance below which a body fill counts as dark (about #3A3A3A). */
+const DARK_LUMINANCE = 0.05
+const bodies = new WeakMap<ModuleDef, number>()
+
+/** WCAG relative luminance of a #RRGGBB color; null for anything else. */
+function luminance(hex: string | undefined): number | null {
+  if (!hex || !/^#[0-9a-f]{6}$/i.test(hex)) return null
+  const [r, g, b] = [1, 3, 5].map((i) => {
+    const c = parseInt(hex.slice(i, i + 2), 16) / 255
+    return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4
+  })
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b
+}
+
+/** Index of a module's body shape (its largest art shape), or -1 when it has no art. Cached. */
+function bodyShape(m: ModuleDef): number {
+  const hit = bodies.get(m)
+  if (hit !== undefined) return hit
+  let best = -1
+  m.art?.shapes.forEach((s, i) => {
+    if (best < 0 || s.w * s.h > m.art!.shapes[best].w * m.art!.shapes[best].h) best = i
+  })
+  bodies.set(m, best)
+  return best
+}
+
+/** Whether a module's body (its largest art shape) is dark, so it needs an outline on dark paper. */
+export function darkBody(m: ModuleDef): boolean {
+  const i = bodyShape(m)
+  const l = i < 0 ? null : luminance(m.art!.shapes[i].fill)
+  return l !== null && l < DARK_LUMINANCE
+}
 
 function showLabel(m: ModuleDef, p: { label?: string; type?: PinType }) {
   return p.label !== undefined || m.pins.length > 2 || p.type === 'power_out' || p.type === 'power_in' || p.type === 'ground'
@@ -129,7 +164,7 @@ function CoveredLabel({ p, inset }: { p: WorldPin; inset: number }) {
  * Memoized: props are primitives plus a module object that keeps its identity, so pan, zoom
  * and selection changes do not re-render every part.
  */
-export const Part = memo(function Part({ module: m, x = 0, y = 0, rotation = 0, caption, values, captionX, captionY: seatY, captionAnchor = 'start', labelInset = null }: {
+export const Part = memo(function Part({ module: m, x = 0, y = 0, rotation = 0, caption, values, captionX, captionY: seatY, captionAnchor: seatAnchor = 'start', labelInset = null, ink = INK, halo, outline }: {
   module: ModuleDef
   x?: number
   y?: number
@@ -143,6 +178,12 @@ export const Part = memo(function Part({ module: m, x = 0, y = 0, rotation = 0, 
   labelInset?: number | null
   /** The part instance's chosen values, for example `{ resistance: { value: 4700, unit: "ohm" } }`. */
   values?: Record<string, unknown>
+  /** Caption color (the theme's ink); the Sticker ink by default. */
+  ink?: string
+  /** Outline color behind the caption (the theme's halo); none by default. */
+  halo?: string
+  /** Body outline for a dark-bodied part (the theme's outline); the Sticker ink by default. */
+  outline?: string
 }) {
   const lay = layoutModule(m)
   const art = m.art
@@ -151,12 +192,13 @@ export const Part = memo(function Part({ module: m, x = 0, y = 0, rotation = 0, 
   const c = pivot(lay.w, lay.h)
   // Only a module with band shapes (a resistor) ever gets non-null fills here.
   const bands = bandFills(m, values)
-  // Caption goes under the rotated body, below any pin stubs that now point down.
+  // The rotated body and pins place the pin labels; the caption anchor comes from captionBox.ts.
   const box = bodyRect({ x: 0, y: 0, rotation }, lay)
   const pins = worldPins({ x: 0, y: 0, rotation }, m)
-  const stubsDown = pins.some((p) => p.dir.y > 0)
   const headers = headerSides(m)
-  const captionY = box.y + box.h + (stubsDown ? LEAD : 0) + 15
+  const cap = captionAnchor(m, rotation)
+  const body = outline && darkBody(m) ? bodyShape(m) : -1
+  const captionHalo = halo ? { stroke: halo, strokeWidth: 3, strokeLinejoin: 'round' as const, paintOrder: 'stroke' } : {}
   return (
     <g transform={`translate(${x} ${y})`}>
       <g transform={rotation ? `rotate(${rotation} ${c.x} ${c.y})` : undefined}>
@@ -168,7 +210,7 @@ export const Part = memo(function Part({ module: m, x = 0, y = 0, rotation = 0, 
                 <rect
                   x={s.x} y={s.y} width={s.w} height={s.h} rx={s.radius ?? 0}
                   fill={s.band && bands ? bands[s.band - 1] : s.fill}
-                  stroke={s.outline === false ? 'none' : INK}
+                  stroke={i === body ? outline : s.outline === false ? 'none' : INK}
                   strokeWidth={OUTLINE}
                 />
                 {s.label && (
@@ -199,11 +241,11 @@ export const Part = memo(function Part({ module: m, x = 0, y = 0, rotation = 0, 
         return <PinLabel key={p.name} p={p} box={box} outside={!!art && !header} pad={header ? HEADER_INSET : 4} />
       })}
       {caption && (captionX !== undefined && seatY !== undefined ? (
-        <text x={captionX} y={seatY} textAnchor={captionAnchor} dominantBaseline={captionAnchor === 'start' ? 'central' : 'auto'} fontSize={8.5} fontWeight={700} fill={INK}>
+        <text x={captionX} y={seatY} textAnchor={seatAnchor} dominantBaseline={seatAnchor === 'start' ? 'central' : 'auto'} fontSize={CAPTION_SIZE} fontWeight={700} fill={ink} {...captionHalo}>
           {caption}
         </text>
       ) : (
-        <text x={box.x + box.w / 2} y={captionY} textAnchor="middle" fontSize={8.5} fontWeight={700} fill={INK}>
+        <text x={cap.x} y={cap.y} textAnchor="middle" fontSize={CAPTION_SIZE} fontWeight={700} fill={ink} {...captionHalo}>
           {caption}
         </text>
       ))}

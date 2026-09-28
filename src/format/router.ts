@@ -11,6 +11,22 @@ export interface RouteRequest {
   /** Outward direction at `to`; null for a hole, which a wire may enter from any side. */
   toDir: Pt | null
   obstacles: Rect[]
+  /**
+   * Points the route must not pass through (holes of board strips the wire does not end in), each
+   * blocking the grid node within `clearance` of it. Unlike an obstacle, one never refuses the
+   * route's own start or goal node (a pin tip right beside a board), nor the first node along
+   * either end's stub.
+   */
+  avoid?: Pt[]
+  /**
+   * More points to keep off, like `avoid`, read from shared indexes (built once per re-route) so
+   * only the points inside the search window are visited; a point whose owner is in `skip` is
+   * one this wire may cross (a hole of its own strip, its own part's caption). A node several
+   * entries cover counts as the earliest one's. `refused.hit` is set when the search turned away
+   * from a node because of that entry, so a caller retrying without it knows whether the retry
+   * could turn out any different.
+   */
+  avoidIn?: { index: PointIndex; skip?: ReadonlySet<string>; refused?: { hit: boolean } }[]
   /** Grid nodes already used by earlier wires, so this route can take its own lane next to them. */
   occupied?: Occupancy
   /**
@@ -30,6 +46,108 @@ export interface RouteOptions {
   /** Extra cost for a step onto a grid node another wire already runs along on the same axis. */
   parallelCost?: number
 }
+
+/**
+ * Points tagged with an owner key (a strip's holes, a part's caption), bucketed by row and sorted
+ * by x within a row, so a query visits only the rows and the x range it asks for. Owners are kept
+ * as small integers, so skipping a wire's own owners compares numbers, not strings. Points may be
+ * added until the first query.
+ */
+export class PointIndex {
+  // Every point added, in insertion order; the rows are rebuilt from them after an add.
+  private px: number[] = []
+  private py: number[] = []
+  private po: number[] = []
+  private ys: number[] = []
+  private rows: { xs: number[]; owners: number[] }[] = []
+  private ids = new Map<string, number>()
+  private dirty = false
+  private lastSkip: ReadonlySet<string> | undefined = undefined
+  private lastIds: number[] = []
+
+  add(x: number, y: number, owner: string): void {
+    let id = this.ids.get(owner)
+    if (id === undefined) {
+      id = this.ids.size
+      this.ids.set(owner, id)
+    }
+    this.px.push(x)
+    this.py.push(y)
+    this.po.push(id)
+    this.dirty = true
+  }
+
+  /** The owner ids in `skip` that have points here (a wire asks with the same set many times). */
+  private skipIds(skip: ReadonlySet<string> | undefined): number[] {
+    if (skip === this.lastSkip) return this.lastIds
+    const out: number[] = []
+    if (skip) for (const k of skip) {
+      const id = this.ids.get(k)
+      if (id !== undefined) out.push(id)
+    }
+    this.lastSkip = skip
+    this.lastIds = out
+    return out
+  }
+
+  private build() {
+    const { px, py, po } = this
+    // Bucket by row, then sort each row by x (points usually arrive in order already).
+    const byRow = new Map<number, number[]>()
+    for (let i = 0; i < px.length; i++) {
+      const list = byRow.get(py[i])
+      if (list) list.push(i)
+      else byRow.set(py[i], [i])
+    }
+    this.ys = [...byRow.keys()].sort((a, b) => a - b)
+    this.rows = this.ys.map((y) => {
+      const list = byRow.get(y)!
+      if (list.some((i, k) => k > 0 && px[list[k - 1]] > px[i])) list.sort((a, b) => px[a] - px[b])
+      return { xs: list.map((i) => px[i]), owners: list.map((i) => po[i]) }
+    })
+    this.dirty = false
+  }
+
+  /**
+   * Calls `fn` with each point inside [x0, x1] x [y0, y1] whose owner is not in `skip`, until `fn`
+   * returns true; returns whether it did.
+   */
+  some(x0: number, y0: number, x1: number, y1: number, skip: ReadonlySet<string> | undefined, fn: (x: number, y: number) => boolean): boolean {
+    if (this.dirty) this.build()
+    const ys = this.ys
+    if (!ys.length) return false
+    const sk = this.skipIds(skip)
+    const [s0, s1, s2, s3] = [sk[0] ?? -1, sk[1] ?? -1, sk[2] ?? -1, sk[3] ?? -1]
+    const more = sk.length > 4 ? new Set(sk.slice(4)) : null
+    let lo = 0
+    let hi = ys.length
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1
+      if (ys[mid] < y0) lo = mid + 1
+      else hi = mid
+    }
+    for (let r = lo; r < ys.length && ys[r] <= y1; r++) {
+      const { xs, owners } = this.rows[r]
+      let a = 0
+      let b = xs.length
+      while (a < b) {
+        const mid = (a + b) >> 1
+        if (xs[mid] < x0) a = mid + 1
+        else b = mid
+      }
+      const y = ys[r]
+      for (let i = a; i < xs.length && xs[i] <= x1; i++) {
+        const o = owners[i]
+        if (o === s0 || o === s1 || o === s2 || o === s3 || (more !== null && more.has(o))) continue
+        if (fn(xs[i], y)) return true
+      }
+    }
+    return false
+  }
+}
+
+/** Marks in the search's node map: 1 is a part body; SOFT and above are avoided points. */
+const SOFT = 2
 
 /** Default gap kept between a routed wire and a part body, in px. */
 export const CLEARANCE = 4
@@ -249,6 +367,20 @@ export function occupancyOf(polylines: Pt[][], grid = 10): Occupancy {
 
 /** Largest search window, in grid cells, before a margin is skipped (keeps memory and time bounded). */
 const MAX_CELLS = 250_000
+/** Search windows around the endpoints, in px, tried in order (the default `margins`). */
+const MARGINS = [60, 240]
+/** The widest default search window reaches this far, in px, past the box around both ends. */
+export const SEARCH_MARGIN = Math.max(...MARGINS)
+/** About how far apart, in px, a wire's ends may be for the router to search between them. */
+export const ROUTE_REACH = Math.floor(Math.sqrt(MAX_CELLS)) * 10
+
+/** Whether the smallest search window between `a` and `b` fits the router's grid, so a route can exist at all. */
+export function withinReach(a: Pt, b: Pt, g = 10): boolean {
+  const m = MARGINS[0]
+  const cols = (Math.ceil((Math.max(a.x, b.x) + m) / g) - Math.floor((Math.min(a.x, b.x) - m) / g)) + 1
+  const rows = (Math.ceil((Math.max(a.y, b.y) + m) / g) - Math.floor((Math.min(a.y, b.y) - m) / g)) + 1
+  return cols * rows <= MAX_CELLS
+}
 
 const DIRS: Pt[] = [{ x: 1, y: 0 }, { x: 0, y: 1 }, { x: -1, y: 0 }, { x: 0, y: -1 }]
 const dirIndex = (d: Pt) => DIRS.findIndex((v) => v.x === d.x && v.y === d.y)
@@ -355,7 +487,7 @@ export function routeOrthogonal(req: RouteRequest, opts: RouteOptions = {}): Pt[
   const ahead = (p: Pt, d: Pt, lead = 0): Pt => ({ x: p.x + d.x * lead, y: p.y + d.y * lead })
   const start = req.fromDir ? leave(ahead(req.from, req.fromDir, req.fromLead), req.fromDir, g) : onGrid(req.from, g)
   const goal = req.toDir ? leave(ahead(req.to, req.toDir, req.toLead), req.toDir, g) : onGrid(req.to, g)
-  for (const margin of opts.margins ?? [60, 240]) {
+  for (const margin of opts.margins ?? MARGINS) {
     const path = search(start, goal, req, g, clearance, bendCost, parallelCost, margin)
     if (path) {
       // A tip off the grid (a part loaded between grid lines) meets the first and last grid node
@@ -408,6 +540,36 @@ function search(
   const cellOf = (p: Pt) => ((p.y - y0) / g) * cols + (p.x - x0) / g
   const startCell = cellOf(start)
   const goalCell = cellOf(goal)
+  if (req.avoid?.length || req.avoidIn?.length) {
+    // The start, the goal and each stub's first node past them are never refused: a pin whose
+    // stub points into a strip must still be able to leave along it.
+    const inWindow = (p: Pt) => p.x >= x0 && p.x <= x1 && p.y >= y0 && p.y <= y1
+    const exempt = new Set([startCell, goalCell])
+    for (const [p, d] of [[start, req.fromDir], [goal, req.toDir]] as [Pt, Pt | null][]) {
+      const n = d && { x: p.x + d.x * g, y: p.y + d.y * g }
+      if (n && inWindow(n)) exempt.add(cellOf(n))
+    }
+    // Soft nodes are marked SOFT (from `avoid`) or SOFT + 1 + i (from avoidIn[i]), never over a
+    // body (1) or an earlier mark.
+    const [e0, e1, e2, e3] = [...exempt, -1, -1, -1]
+    let mark = SOFT
+    const consider = (px: number, py: number) => {
+      const nx = Math.round(px / g) * g
+      const ny = Math.round(py / g) * g
+      if (Math.abs(nx - px) > clearance || Math.abs(ny - py) > clearance || nx < x0 || nx > x1 || ny < y0 || ny > y1) return false
+      const cell = ((ny - y0) / g) * cols + (nx - x0) / g
+      if (!blocked[cell] && cell !== e0 && cell !== e1 && cell !== e2 && cell !== e3) blocked[cell] = mark
+      return false
+    }
+    for (const p of req.avoid ?? []) consider(p.x, p.y)
+    // A point snaps to a node at most half a grid step away, so one a grid step outside the window
+    // can never land in it.
+    for (const [i, { index, skip }] of (req.avoidIn ?? []).entries()) {
+      mark = Math.min(255, SOFT + 1 + i)
+      index.some(x0 - g, y0 - g, x1 + g, y1 + g, skip, consider)
+    }
+  }
+  const sinks = (req.avoidIn ?? []).map((e) => e.refused)
   if (blocked[startCell] || blocked[goalCell]) return null
   // Checked after the obstacle map, so a shared cell inside a part body is still refused.
   if (startCell === goalCell) return [start]
@@ -459,7 +621,14 @@ function search(
       const nr = row + STEP_Y[nd]
       if (nc < 0 || nr < 0 || nc >= cols || nr >= rows) continue
       const ncell = nr * cols + nc
-      if (blocked[ncell]) continue
+      const bl = blocked[ncell]
+      if (bl) {
+        if (bl > SOFT) {
+          const sink = sinks[bl - SOFT - 1]
+          if (sink) sink.hit = true
+        }
+        continue
+      }
       let c = here + g + (nd !== d ? bendCost : 0)
       if (ncell === goalCell) {
         // Behind a lead-out the wire must arrive along it, or it would double back over it.

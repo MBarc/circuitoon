@@ -1,0 +1,17 @@
+{
+  "format": "circuitoon-netlist/1",
+  "title": "ESP32 with a BME280 on I2C",
+  "parts": [
+    { "ref": "U1", "module": "esp32-devkitc-v4" },
+    { "ref": "U2", "module": "bme280-module-4pin" }
+  ],
+  "nets": [
+    { "name": "3V3", "pins": ["U1.3V3", "U2.VIN"] },
+    { "name": "GND", "pins": ["U1.GND", "U2.GND"] },
+    { "name": "SCL", "pins": ["U1.IO22", "U2.SCL"] },
+    { "name": "SDA", "pins": ["U1.IO21", "U2.SDA"] }
+  ],
+  "groups": [{ "name": "Sensor", "parts": ["U2"] }],
+  "notes": [{ "text": "The ESP32 runs from USB; its 3V3 pin powers the sensor. I2C on IO22 (SCL) and IO21 (SDA).", "near": "Sensor" }],
+  "wires": { "color": { "3V3": "red", "GND": "black", "SCL": "yellow", "SDA": "blue" }, "ends": "dupont-female" }
+}

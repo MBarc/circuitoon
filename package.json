@@ -10,9 +10,13 @@
     "test": "vitest run",
     "validate": "node scripts/validate-modules.ts",
     "check:gen": "node scripts/check-gen.mjs",
+    "build:cli": "node scripts/gen-cli.mjs",
     "check:warnings-ui": "node scripts/check-warnings-ui.mjs",
     "check:problems-ui": "node scripts/check-problems-ui.mjs",
     "check:cables-ui": "node scripts/check-cables-ui.mjs",
+    "check:link-ui": "node scripts/check-link-ui.mjs",
+    "check:annotations-ui": "node scripts/check-annotations-ui.mjs",
+    "check:examples": "node scripts/check-examples.mjs",
     "check:mains-ui": "node scripts/check-mains-ui.mjs",
     "deploy": "bash scripts/deploy.sh"
   },

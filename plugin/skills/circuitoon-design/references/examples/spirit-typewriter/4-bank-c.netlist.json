@@ -1,0 +1,55 @@
+{
+  "format": "circuitoon-netlist/1",
+  "title": "Spirit Typewriter 4 of 4: expander bank C, balls 29 to 42",
+  "parts": [
+    { "ref": "J1", "module": "jst-xh-4" },
+    { "ref": "U4", "module": "mcp23017-cjmcu-2317" },
+    { "ref": "BB1", "module": "power-rail-strip" },
+    { "ref": "BB2", "module": "breadboard-half" }
+  ],
+  "nets": [
+    { "name": "3V3", "pins": ["J1.2", "U4.VCC", "U4.RESET", "U4.A1", "BB1.+"] },
+    { "name": "GND", "pins": ["J1.1", "U4.GND", "U4.A0", "U4.A2", "BB1.-"] },
+    { "name": "SDA", "pins": ["J1.3", "U4.SDA"] },
+    { "name": "SCL", "pins": ["J1.4", "U4.SCL"] }
+  ],
+  "repeat": {
+    "name": "ballC",
+    "count": 14,
+    "refs": "C{copy}{ref}",
+    "template": {
+      "parts": [{ "ref": "SA", "module": "tilt-switch-sw520d" }, { "ref": "SB", "module": "tilt-switch-sw520d" }],
+      "nets": [{ "name": "CH", "pins": ["SA.1", "SB.1"] }, { "name": "GND", "pins": ["SA.2", "SB.2"] }],
+      "ports": ["CH", "GND"]
+    },
+    "bindings": [
+      { "CH": "U4.GPA0" },
+      { "CH": "U4.GPA1" },
+      { "CH": "U4.GPA2" },
+      { "CH": "U4.GPA3" },
+      { "CH": "U4.GPA4" },
+      { "CH": "U4.GPA5" },
+      { "CH": "U4.GPA6" },
+      { "CH": "U4.GPB0" },
+      { "CH": "U4.GPB1" },
+      { "CH": "U4.GPB2" },
+      { "CH": "U4.GPB3" },
+      { "CH": "U4.GPB4" },
+      { "CH": "U4.GPB5" },
+      { "CH": "U4.GPB6" }
+    ],
+    "shared": { "GND": "GND" }
+  },
+  "groups": [{ "name": "Expander C (0x22)", "parts": ["J1", "U4"] }],
+  "notes": [
+    {
+      "text": "J1 comes from J3 on sheet 1: 1 GND, 2 3V3, 3 SDA, 4 SCL. A1 to 3V3 and the other address pins to GND give I2C address 0x22; RESET is tied to 3V3. The I2C pull-ups are on sheet 1 (see its J1 note), not here.",
+      "near": "Expander C (0x22)"
+    },
+    {
+      "text": "ballC 1 to 14 are balls 29 to 42. Each ball's two tilt switches share one input. GPA7 and GPB7 are output only on the MCP23017, so a bank takes 14 balls. Enable the MCP23017 pull-ups in firmware; a closed switch reads low.",
+      "near": "U4"
+    }
+  ],
+  "wires": { "color": { "3V3": "red", "GND": "black", "SDA": "blue", "SCL": "yellow" }, "ends": "dupont-female" }
+}

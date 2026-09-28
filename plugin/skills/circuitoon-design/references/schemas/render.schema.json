@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "circuitoon render --json",
+  "type": "object",
+  "required": ["format", "outputs"],
+  "additionalProperties": false,
+  "properties": {
+    "format": { "const": "circuitoon-cli/render/1" },
+    "outputs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["kind", "path", "width", "height"],
+        "additionalProperties": false,
+        "properties": {
+          "kind": { "enum": ["svg", "png"] },
+          "path": { "type": "string" },
+          "width": { "type": "integer" },
+          "height": { "type": "integer" }
+        }
+      }
+    }
+  }
+}

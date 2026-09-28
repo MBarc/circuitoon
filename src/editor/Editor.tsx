@@ -34,7 +34,7 @@ function useEditorKeys(store: EditorStore) {
         store.redo()
       } else if (e.key === 'Delete' || e.key === 'Backspace') {
         if (gesture) return
-        if (s.selection.parts.length || s.selection.wires.length) {
+        if (s.selection.parts.length || s.selection.wires.length || s.selection.annotations?.length) {
           e.preventDefault()
           store.commit(deleteSelection(s.diagram, s.selection))
         }
@@ -64,11 +64,18 @@ function useUnloadGuard(store: EditorStore) {
   }, [dirty])
 }
 
-export function Editor({ initial, warnings, onClose }: { initial: Diagram; warnings?: string[]; onClose: () => void }) {
+export function Editor({ initial, warnings, onClose, onDirty }: { initial: Diagram; warnings?: string[]; onClose: () => void; onDirty?: (dirty: boolean) => void }) {
   const store = useMemo(() => new EditorStore(initial), [initial])
   const canvasApi = useRef<{ addAtCenter: (moduleId: string) => void } | null>(null)
   useEditorKeys(store)
   useUnloadGuard(store)
+  // Tells the owner whether there are unsaved changes (EditorApp asks before a link replaces them).
+  const dirty = useSyncExternalStore(store.subscribe, () => store.dirty)
+  // A block body: an expression body would return onDirty's result, which React would later call as
+  // the effect's cleanup ("is not a function") once an edit made the sheet dirty.
+  useEffect(() => {
+    onDirty?.(dirty)
+  }, [dirty, onDirty])
   return (
     <div className="editor">
       <Toolbar store={store} warnings={warnings} onClose={onClose} />

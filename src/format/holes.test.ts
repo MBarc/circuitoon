@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { isBoard, validateModule, type ModuleDef } from './module.ts'
-import { brokenStub, computeRoutes, partObstacles, resolveEndpoint, routeWire, serializeDiagram, validateDiagram, type Diagram } from './diagram.ts'
+import { brokenStub, computeRoutes, partObstacles, resolveEndpoint, routeWire, serializeDiagram, validateDiagram, type Diagram, type PartInstance } from './diagram.ts'
+import { load } from './builtinModules.testing.ts'
+import { routeOrthogonal } from './router.ts'
 import { plugPoints, worldHoles } from './geometry.ts'
 import { netlist } from './netlist.ts'
 
@@ -16,6 +18,24 @@ const two: ModuleDef = {
   format: 'circuitoon-module/1', id: 'two', name: 'Two',
   pins: [{ name: 'L', side: 'left' }, { name: 'R', side: 'right' }],
 }
+
+/**
+ * A full breadboard with `n` resistors mounted flat, nine to a row, seven columns apart, both legs
+ * of each wired to one battery holder below the board.
+ */
+function resistorRows(n: number): Diagram {
+  const modules = { 'breadboard-full': load('breadboard-full'), resistor: load('resistor'), 'battery-holder-2xaa': load('battery-holder-2xaa') }
+  const rs: PartInstance[] = Array.from({ length: n }, (_, i) => ({
+    uid: `R${i + 1}`, designator: `R${i + 1}`, module: 'resistor', x: 30 + 70 * (i % 9), y: 40 + 70 * Math.floor(i / 9), mount: { board: 'BB1' },
+  }))
+  return {
+    format: 'circuitoon-diagram/1', title: 'rows', modules,
+    parts: [{ uid: 'BB1', designator: 'BB1', module: 'breadboard-full', x: 0, y: 0 }, ...rs, { uid: 'BT1', designator: 'BT1', module: 'battery-holder-2xaa', x: 200, y: 400 }],
+    connections: rs.flatMap((r) => ['1', '2'].map((pin) => ({ uid: `w${r.uid}.${pin}`, from: { part: r.uid, pin }, to: { part: 'BT1', pin: '+' } }))),
+  }
+}
+/** Generous: isolated runs measure about 31 ms (see the console line). */
+const BOARD_BUDGET_MS = 500
 
 const errorsOf = (raw: unknown) => {
   const r = validateModule(raw)
@@ -235,7 +255,7 @@ describe('brokenStub', () => {
 })
 
 describe('routing with boards and holes', () => {
-  it('routes wires straight over a board, which is not an obstacle', () => {
+  it('routes wires across a board, which is not an obstacle, but never over a hole the wire does not end in', () => {
     const d: Diagram = {
       format: 'circuitoon-diagram/1', title: 't', modules: { bb, two },
       parts: [
@@ -246,15 +266,47 @@ describe('routing with boards and holes', () => {
       connections: [{ uid: 'w', from: { part: 'a', pin: 'R' }, to: { part: 'c', pin: 'L' } }],
     }
     expect(partObstacles(d)).toHaveLength(2)
-    expect(computeRoutes(d).get('w')).toEqual({ points: [{ x: 48, y: 20 }, { x: 192, y: 20 }], blocked: false })
+    // The board's holes sit at y = 0..40, so the wire crosses the board on the free row below them.
+    expect(computeRoutes(d).get('w')).toEqual({ points: [{ x: 48, y: 20 }, { x: 60, y: 20 }, { x: 60, y: 50 }, { x: 180, y: 50 }, { x: 180, y: 20 }, { x: 192, y: 20 }], blocked: false })
   })
-  it('routes a wire from a hole center', () => {
+  it('routes a wire from a hole center off the end of its own strip, not along a row of other strips', () => {
     const d: Diagram = {
       format: 'circuitoon-diagram/1', title: 't', modules: { bb, two },
       parts: [{ uid: 'b', designator: 'BB1', module: 'bb', x: 0, y: 0 }, { uid: 'a', designator: 'R1', module: 'two', x: 100, y: -10 }],
       connections: [{ uid: 'w', from: { part: 'b', pin: 's1', hole: 0 }, to: { part: 'a', pin: 'L' } }],
     }
-    expect(computeRoutes(d).get('w')).toEqual({ points: [{ x: 10, y: 10 }, { x: 92, y: 10 }], blocked: false })
+    // R1's pin tip sits 2 px past the board's last strip: the goal node itself is never refused.
+    expect(computeRoutes(d).get('w')).toEqual({ points: [{ x: 10, y: 10 }, { x: 10, y: 0 }, { x: 90, y: 0 }, { x: 90, y: 10 }, { x: 92, y: 10 }], blocked: false })
+  })
+  it('lets a pin stub point into a strip: the first node along the stub is never avoided', () => {
+    // Two strips at x = 10 and 20. A pin tip left of the board points right, into them: its first
+    // node is s1's hole (the start) and the next is s2's, the only way forward.
+    const avoid = [10, 20].flatMap((x) => [10, 20, 30, 40, 50].map((y) => ({ x, y })))
+    const pts = routeOrthogonal({ from: { x: 2, y: 30 }, fromDir: { x: 1, y: 0 }, to: { x: 60, y: 90 }, toDir: null, obstacles: [], avoid })
+    expect(pts).not.toBeNull()
+    expect(pts![1].y).toBe(30)
+  })
+  it('never blocks a wire because of hole avoidance: a row of mounted resistors on a full breadboard', () => {
+    // Before the retry, R4's leg 2 (column 30) had only other strips' holes around it: blocked.
+    const d = resistorRows(4)
+    const blocked = [...computeRoutes(d)].filter(([, r]) => !r || r.blocked).map(([uid]) => uid)
+    expect(d.connections).toHaveLength(8)
+    expect(blocked).toEqual([])
+  })
+  it('routes 40 wires on a full breadboard with 20 mounted parts within budget', { timeout: 60_000, retry: 2 }, () => {
+    const d = resistorRows(20)
+    expect(d.connections).toHaveLength(40)
+    computeRoutes(d) // warm-up
+    // Best of three, retried twice: the full suite runs files in parallel, so one slow sample is
+    // CPU contention, not a regression.
+    let ms = Infinity
+    for (let k = 0; k < 3; k++) {
+      const t = performance.now()
+      computeRoutes(d)
+      ms = Math.min(ms, performance.now() - t)
+    }
+    console.log(`computeRoutes full breadboard, 20 parts / 40 wires: ${ms.toFixed(1)} ms`)
+    expect(ms).toBeLessThan(BOARD_BUDGET_MS)
   })
   it('turns a manual route horizontally first at a hole end', () => {
     const d: Diagram = {
@@ -265,6 +317,8 @@ describe('routing with boards and holes', () => {
     expect(computeRoutes(d).get('w')).toEqual({
       points: [{ x: 10, y: 10 }, { x: 50, y: 10 }, { x: 50, y: 40 }, { x: 50, y: 70 }, { x: 92, y: 70 }],
       blocked: false,
+      // Drawn by hand along row y = 10 across strips s2 to s5, which it does not use.
+      fallback: true,
     })
   })
 })

@@ -5,6 +5,8 @@ import { REQUIREMENTS, type Requirement, claimInternalNodes, validateMains } fro
 export const MODULE_FORMAT = 'circuitoon-module/1'
 export const GRID = 10 // px per grid unit at 100% zoom; also the pin pitch
 export const LEAD = 8 // px a pin stub sticks out from the body
+/** Most wire ends a pin or pad may declare it takes. */
+export const CAPACITY_MAX = 8
 
 export type Side = 'top' | 'bottom' | 'left' | 'right'
 export const SIDES: Side[] = ['top', 'right', 'bottom', 'left']
@@ -18,6 +20,8 @@ export interface PinDef {
   type?: PinType
   supply?: string
   bus?: { length: number }
+  /** How many wire ends the pin or pad takes (a Dupont socket or a solder joint takes one; a screw terminal may take two). Default 1. */
+  capacity?: number
   /** Terminal requirement (spec 1.2): drives polarity and earth rules only. */
   mains?: Requirement
   /** An intentional bond to PE (a metal enclosure, a class 1 supply secondary). */
@@ -69,6 +73,8 @@ export interface HoleGroup {
   /** Electrical type and supply rails, as on a pin (an interior header pad). Breadboard rails set neither: + and - are markings, not voltages. */
   type?: PinType
   supply?: string
+  /** How many wire ends the pin or pad takes (a Dupont socket or a solder joint takes one; a screw terminal may take two). Default 1. */
+  capacity?: number
   /** Terminal requirement (spec 1.2): drives polarity and earth rules only. */
   mains?: Requirement
   /** An intentional bond to PE (a metal enclosure, a class 1 supply secondary). */
@@ -202,6 +208,8 @@ export function validateModule(raw: unknown): ValidationResult {
         errors.push(`${at}.bus: must be { "length": <whole number, 2 or more> }`)
       if (p.label !== undefined && typeof p.label !== 'string') errors.push(`${at}.label: must be a string`)
       checkSupply(p, at)
+      if (p.capacity !== undefined && !(Number.isInteger(p.capacity) && (p.capacity as number) >= 1 && (p.capacity as number) <= CAPACITY_MAX))
+        errors.push(`${at}.capacity: must be a whole number from 1 to ${CAPACITY_MAX}`)
     })
 
   const positions = new Set<string>()
@@ -220,6 +228,11 @@ export function validateModule(raw: unknown): ValidationResult {
         checkType(g, at)
         checkMains(g, at)
         checkSupply(g, at)
+        if (g.capacity !== undefined) {
+          if (g.holeStyle !== 'pad') errors.push(`${at}.capacity: only pins and header pads (holeStyle "pad") take a capacity`)
+          else if (!(Number.isInteger(g.capacity) && (g.capacity as number) >= 1 && (g.capacity as number) <= CAPACITY_MAX))
+            errors.push(`${at}.capacity: must be a whole number from 1 to ${CAPACITY_MAX}`)
+        }
         if (!Array.isArray(g.at) || g.at.length === 0) return void errors.push(`${at}.at: required, at least one [x, y] position`)
         g.at.forEach((p, j) => {
           if (!(Array.isArray(p) && p.length === 2 && isNum(p[0]) && isNum(p[1]))) return void errors.push(`${at}.at[${j}]: must be [x, y]`)
@@ -518,6 +531,17 @@ export function layoutModule(m: ModuleDef): ModuleLayout {
   let lay = layoutCache.get(m)
   if (!lay) layoutCache.set(m, (lay = computeLayout(m)))
   return lay
+}
+
+/**
+ * How many wire ends a pin or header pad takes: its `capacity`, default 1. A breadboard hole always
+ * takes one (a hole holds one leg or one wire end), whatever its group says.
+ */
+export function terminalCapacity(m: ModuleDef, name: string): number {
+  const pin = m.pins.find((p): p is PinDef => !isSpacer(p) && p.name === name)
+  if (pin) return pin.capacity ?? 1
+  const g = m.holes?.find((h) => h.name === name)
+  return g?.holeStyle === 'pad' ? (g.capacity ?? 1) : 1
 }
 
 /** A module's enumerated part settings (`electrical.settings`): each name with its choices, the first the default. */

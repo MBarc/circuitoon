@@ -1,6 +1,6 @@
 // Immutable diagram edits. Every function returns a new Diagram and never mutates its input,
 // so the store can keep old versions for undo.
-import { type Connection, type Diagram, type Endpoint, type PartInstance, moduleOf } from '../format/diagram.ts'
+import { ANNOTATION_LABEL_MAX, ANNOTATION_TEXT_MAX, COORD_LIMIT, type Connection, type Diagram, type Endpoint, type PartInstance, moduleOf } from '../format/diagram.ts'
 import { isBoard, layoutModule, moduleSettings, partSetting, type ModuleDef } from '../format/module.ts'
 import { type Plug, type Seat, mountIssues, plugsOf, seatOf, seatOn } from '../format/breadboard.ts'
 import { pivot, rotateVec, type Rotation } from '../format/geometry.ts'
@@ -11,6 +11,8 @@ import { mainsOf } from '../format/mainsModel.ts'
 export interface Selection {
   parts: string[]
   wires: string[]
+  /** Selected frames and notes, by uid; absent means none. */
+  annotations?: string[]
 }
 export const EMPTY_SELECTION: Selection = { parts: [], wires: [] }
 
@@ -119,14 +121,43 @@ export function settlingOf(d: Diagram, uids: string[]): string[] {
 }
 
 /**
+ * The part of a move (dx, dy) that keeps every point within the file's +-COORD_LIMIT, so what moves
+ * stays one rigid block and a saved file loads back unchanged (past the limit a part would be
+ * clamped and a route dropped on load, and a frame or note would refuse the load). A point already
+ * beyond the limit never forces a move the other way.
+ */
+function withinLimit(points: [number, number][], dx: number, dy: number): [number, number] {
+  if (!points.length) return [dx, dy]
+  const axis = (v: number, at: number) => {
+    // A loop, not Math.min(...), so a very large selection cannot overflow the call stack.
+    let min = Infinity
+    let max = -Infinity
+    for (const p of points) {
+      min = Math.min(min, p[at])
+      max = Math.max(max, p[at])
+    }
+    const lo = Math.min(0, -COORD_LIMIT - min)
+    const hi = Math.max(0, COORD_LIMIT - max)
+    return Math.min(hi, Math.max(lo, v)) || 0
+  }
+  return [axis(dx, 0), axis(dy, 1)]
+}
+
+/**
  * Moves parts; a board carries every part mounted on it, so its legs stay in the same holes. A
  * hand-shaped wire whose two ends both move (on moved parts, or on holes of a moved board) moves
  * with them, bends and all; any other wire keeps its bends and only its end segments stretch.
  */
-export function moveParts(d: Diagram, uids: string[], dx: number, dy: number): Diagram {
-  if (!dx && !dy) return d
+export function moveParts(d: Diagram, uids: string[], wantDx: number, wantDy: number): Diagram {
+  if (!wantDx && !wantDy) return d
   const s = new Set(withMounted(d, uids))
   const carried = (c: Connection) => c.route !== undefined && s.has(c.from.part) && s.has(c.to.part)
+  const points = [
+    ...d.parts.filter((p) => s.has(p.uid)).map((p): [number, number] => [p.x, p.y]),
+    ...d.connections.filter(carried).flatMap((c) => c.route!),
+  ]
+  const [dx, dy] = withinLimit(points, wantDx, wantDy)
+  if (!dx && !dy) return d
   return {
     ...d,
     parts: d.parts.map((p) => (s.has(p.uid) ? { ...p, x: p.x + dx, y: p.y + dy } : p)),
@@ -251,11 +282,14 @@ export function rotateParts(d: Diagram, uids: string[]): Diagram {
 export function deleteSelection(d: Diagram, sel: Selection): Diagram {
   const parts = new Set(sel.parts)
   const wires = new Set(sel.wires)
+  const notes = new Set(sel.annotations ?? [])
   return {
     ...d,
     // A deleted board's parts stay on the sheet, unmounted.
     parts: d.parts.filter((p) => !parts.has(p.uid)).map((p) => (p.mount && parts.has(p.mount.board) ? withoutMount(p) : p)),
     connections: d.connections.filter((c) => !wires.has(c.uid) && !parts.has(c.from.part) && !parts.has(c.to.part)),
+    // Frames and notes are only rewritten when some are selected, so the key never appears from nothing.
+    ...(d.annotations && notes.size ? { annotations: d.annotations.filter((a) => !notes.has(a.uid)) } : {}),
   }
 }
 
@@ -316,6 +350,33 @@ export function updatePart(d: Diagram, uid: string, patch: { designator?: string
 
 export function updateWire(d: Diagram, uid: string, patch: { color?: string; gauge?: number; label?: string }): Diagram {
   return { ...d, connections: d.connections.map((c) => (c.uid === uid ? { ...c, ...patch } : c)) }
+}
+
+/**
+ * Moves frames and notes; returns `d` itself for a zero move. A frame moves alone, not its parts.
+ * The move stops at the file's coordinate limit, where a frame or note would refuse the load.
+ */
+export function moveAnnotations(d: Diagram, uids: string[], wantDx: number, wantDy: number): Diagram {
+  if ((!wantDx && !wantDy) || !d.annotations) return d
+  const s = new Set(uids)
+  const [dx, dy] = withinLimit(d.annotations.filter((a) => s.has(a.uid)).map((a): [number, number] => [a.x, a.y]), wantDx, wantDy)
+  if (!dx && !dy) return d
+  return { ...d, annotations: d.annotations.map((a) => (s.has(a.uid) ? { ...a, x: a.x + dx, y: a.y + dy } : a)) }
+}
+
+/** Sets a frame's label or a note's text, clipped to the file limits; returns `d` itself when nothing changes. */
+export function updateAnnotation(d: Diagram, uid: string, patch: { label?: string; text?: string }): Diagram {
+  const a = d.annotations?.find((x) => x.uid === uid)
+  if (!a) return d
+  const next = { ...a }
+  if (patch.label !== undefined) {
+    const label = patch.label.slice(0, ANNOTATION_LABEL_MAX)
+    if (label) next.label = label
+    else delete next.label
+  }
+  if (patch.text !== undefined) next.text = patch.text.slice(0, ANNOTATION_TEXT_MAX)
+  if (next.label === a.label && next.text === a.text && ('label' in next) === ('label' in a)) return d
+  return { ...d, annotations: d.annotations!.map((x) => (x === a ? next : x)) }
 }
 
 /**

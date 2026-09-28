@@ -8,10 +8,11 @@ import { Part, INK } from '../render/Part.tsx'
 import { LegDots, TakenHoles } from '../render/Boards.tsx'
 import { WireLabel } from '../render/WireLabel.tsx'
 import { CableLayer } from '../render/CableEnd.tsx'
+import { FrameMark, NoteMark } from '../render/Annotations.tsx'
 import { BLOCKED_STROKE, Bolts, HazardOutline, Stripe, boltInsets } from '../render/Mains.tsx'
 import { type WireLook, holdLooks, identityColor, newWireColor } from '../format/mainsLook.ts'
 import { seatedLabels } from '../format/seatedLabels.ts'
-import { addPart, addWire, EMPTY_SELECTION, moveParts, reconnectWire, sameEndpoint, setWireRoute, settleDrop, settleMounts, settleSeats, settlingOf, updateWire, withMounted } from './ops.ts'
+import { addPart, addWire, EMPTY_SELECTION, moveAnnotations, moveParts, reconnectWire, sameEndpoint, setWireRoute, settleDrop, settleMounts, settleSeats, settlingOf, updateWire, withMounted } from './ops.ts'
 import { netlist, netPoints } from '../format/netlist.ts'
 import { bendHandleAt, insertBend, isOrthogonal, moveSegment, removeBend, segmentHandleAt, segmentsOf, toRoute, type Axis } from '../format/wireEdit.ts'
 import { modulesById } from '../library.ts'
@@ -34,6 +35,7 @@ type Drag = { pointer: number } & (
   | { kind: 'wire'; from: Endpoint; origin: Pt; cursor: Pt; over: Endpoint | null }
   | { kind: 'reconnect'; uid: string; end: 'from' | 'to'; origin: Pt; cursor: Pt; over: Endpoint | null }
   | { kind: 'segment'; uid: string; index: number; axis: Axis; start: Pt; points: Pt[]; base: Diagram }
+  | { kind: 'annotations'; start: Pt; uids: string[]; base: Diagram }
 )
 
 /** Segments shorter than this get no handle: there is no room to grab one. A 20 px pin run gets one. */
@@ -159,7 +161,11 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
   // Parts that move this drag: the selection plus whatever is mounted on a dragged board.
   const draggingParts = drag?.kind === 'parts' ? drag.moving : null
   const reshaping = drag?.kind === 'segment' ? drag.uid : null
-  // Routes depend only on parts, modules and each wire's ends and fixed route, so title, color and label edits skip re-routing.
+  // While frames and notes are dragged the wires keep their settled routes (a moving frame label
+  // would otherwise re-route the whole sheet every frame); the drop routes them around it.
+  const movingNotes = drag?.kind === 'annotations'
+  // Routes depend only on parts, modules, annotations (wires keep off frame labels, A18.3) and each
+  // wire's ends and fixed route, so title, color and wire label edits skip re-routing.
   const endpointsKey = useMemo(() => routingKey(diagram.connections), [diagram.connections])
   const routes = useMemo(() => {
     if (draggingParts) {
@@ -171,10 +177,11 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
     // Reshaping one wire changes only that wire's route; everything else keeps its settled route
     // until the drag ends and the full route (with lanes) runs again.
     if (reshaping) return computeRoutes(diagram, { only: new Set([reshaping]), prev: settled.current, occupancy: false })
+    if (movingNotes) return settled.current
     const all = computeRoutes(diagram)
     settled.current = all
     return all
-  }, [diagram.parts, diagram.modules, endpointsKey, draggingParts, reshaping])
+  }, [diagram.parts, diagram.modules, diagram.annotations, endpointsKey, draggingParts, reshaping, movingNotes])
   // Path data only changes with the routes or the wires themselves, not with pan, zoom or selection.
   const wires = useMemo(() => wirePaths(diagram, routes), [routes, diagram.connections])
   // The mains look (identity colours, hazard marks): once per edit, held while a part or segment drag
@@ -383,6 +390,21 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
       else store.select({ parts: [], wires: [uid] })
       return
     }
+    // A frame (by its border or label tab) or a note: select it, and drag it on the grid as one undo step.
+    const noteEl = e.button === 0 ? target.closest('[data-annotation]') : null
+    if (noteEl) {
+      const uid = noteEl.getAttribute('data-annotation')!
+      const sel = store.getState().selection
+      let notes = sel.annotations ?? []
+      if (e.shiftKey) notes = notes.includes(uid) ? notes.filter((u) => u !== uid) : [...notes, uid]
+      else if (!notes.includes(uid)) notes = [uid]
+      store.select({ parts: e.shiftKey ? sel.parts : [], wires: e.shiftKey ? sel.wires : [], annotations: notes })
+      if (notes.includes(uid)) {
+        setDrag({ pointer, kind: 'annotations', start: toWorld(e), uids: notes, base: store.begin() })
+        store.setGesture(true)
+      }
+      return
+    }
     const partEl = e.button === 0 ? target.closest('[data-part]') : null
     if (partEl) {
       const uid = partEl.getAttribute('data-part')!
@@ -411,10 +433,12 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
    * board, or any module with interior pads) and a hole is within 3.5 px (`holeEndAt`). Walks the
    * full elementsFromPoint stack, not just the topmost element, so a wire or label drawn over a
    * board does not hide the hole beneath it; a part drawn above the board (which has no holes of
-   * its own there) still occludes it, since it is the first part found.
+   * its own there) still occludes it, since it is the first part found, and so does a note.
    */
   function holeUnder(e: { clientX: number; clientY: number }): Endpoint | null {
     for (const el of document.elementsFromPoint(e.clientX, e.clientY)) {
+      // A note drawn over a board hides its holes: a press there grabs the note, not a hole.
+      if (el.closest('[data-annotation]')) return null
       const partEl = el.closest('[data-part]')
       if (partEl) return holeEndAt(store.getState().diagram, partEl.getAttribute('data-part')!, toWorld(e))
     }
@@ -440,6 +464,10 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
       if (!store.dragging) return
       const p = toWorld(e)
       store.preview(moveParts(drag.base, drag.uids, snap(p.x - drag.start.x), snap(p.y - drag.start.y)))
+    } else if (drag.kind === 'annotations') {
+      if (!store.dragging) return
+      const p = toWorld(e)
+      store.preview(moveAnnotations(drag.base, drag.uids, snap(p.x - drag.start.x), snap(p.y - drag.start.y)))
     } else if (drag.kind === 'segment') {
       if (!store.dragging) return
       const p = toWorld(e)
@@ -456,6 +484,7 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
     if (!drag || e.pointerId !== drag.pointer) return
     if (drag.kind === 'parts') finishPartsDrag(drag)
     if (drag.kind === 'segment') store.end()
+    if (drag.kind === 'annotations') store.end()
     if (drag.kind === 'wire') {
       const to = endUnder(e)
       const s = store.getState()
@@ -484,15 +513,16 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
     if (drag.kind === 'parts') finishPartsDrag(drag)
     // A reshape the browser took away (lost capture, cancelled touch) is abandoned, not kept.
     if (drag.kind === 'segment') store.cancel()
+    if (drag.kind === 'annotations') store.end()
     if (drag.kind !== 'pan') store.setGesture(false)
     setDrag(null)
     setHover(null)
   }
 
-  // Escape abandons a wire, part or segment drag. For parts and segments, the editor's key
-  // handler calls store.cancel().
+  // Escape abandons a wire, part, segment or annotation drag. For parts, segments and annotations,
+  // the editor's key handler calls store.cancel().
   useEffect(() => {
-    if (drag?.kind !== 'wire' && drag?.kind !== 'parts' && drag?.kind !== 'reconnect' && drag?.kind !== 'segment') return
+    if (drag?.kind !== 'wire' && drag?.kind !== 'parts' && drag?.kind !== 'reconnect' && drag?.kind !== 'segment' && drag?.kind !== 'annotations') return
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return
       store.setGesture(false)
@@ -556,6 +586,10 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
         </defs>
         <rect x={view.x} y={view.y} width={vw} height={vh} fill="var(--paper)" />
         <rect x={view.x} y={view.y} width={vw} height={vh} fill="url(#editor-grid)" />
+        {/* Group frames sit below the boards, as in the Sheet; notes come after the wire name tags. */}
+        {(diagram.annotations ?? []).filter((a) => a.type === 'frame').map((a) => (
+          <FrameMark key={a.uid} a={a} interactive selected={!!selection.annotations?.includes(a.uid)} />
+        ))}
         {layers.boards.map(renderPart)}
         <TakenHoles plugs={plugs} />
         {layers.others.map(renderPart)}
@@ -614,6 +648,9 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
             ) : null
           })}
         </g>
+        {(diagram.annotations ?? []).filter((a) => a.type === 'text').map((a) => (
+          <NoteMark key={a.uid} a={a} interactive selected={!!selection.annotations?.includes(a.uid)} />
+        ))}
         {/* A connection the netlist could not join (a missing part, pin, group or hole) has no
             route to draw, but a short dashed red stub at whichever end still resolves lets a
             user find and repair it instead of a wire silently vanishing from the sheet. Drawn after the

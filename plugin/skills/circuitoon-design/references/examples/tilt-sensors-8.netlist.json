@@ -1,0 +1,25 @@
+{
+  "format": "circuitoon-netlist/1",
+  "title": "Eight tilt sensors",
+  "parts": [
+    { "ref": "U1", "module": "esp32-devkitc-v4" },
+    { "ref": "BB1", "module": "power-rail-strip" }
+  ],
+  "nets": [{ "name": "GND", "pins": ["U1.GND", "BB1.-"] }],
+  "repeat": {
+    "name": "tilt",
+    "count": 8,
+    "template": {
+      "parts": [{ "ref": "S", "module": "tilt-switch-sw520d" }],
+      "nets": [{ "name": "SIG", "pins": ["S.1"] }, { "name": "GND", "pins": ["S.2"] }],
+      "ports": ["SIG", "GND"]
+    },
+    "bindings": [
+      { "SIG": "U1.IO13" }, { "SIG": "U1.IO14" }, { "SIG": "U1.IO25" }, { "SIG": "U1.IO26" },
+      { "SIG": "U1.IO27" }, { "SIG": "U1.IO32" }, { "SIG": "U1.IO33" }, { "SIG": "U1.IO4" }
+    ],
+    "shared": { "GND": "GND" }
+  },
+  "notes": [{ "text": "Enable the ESP32's internal pull-ups on the eight inputs; a closed switch reads low.", "near": "U1" }],
+  "wires": { "color": { "GND": "black" }, "ends": "dupont-female" }
+}
