@@ -95,6 +95,44 @@ describe('built-in chips and displays keep the physical pin order', () => {
     for (const m of [a, b]) for (const p of pinsOf(m)) if ((p.label ?? p.name) === 'NC') expect(p.type).toBe('nc')
   })
 
+  // CJMCU-2317, component side, 2x10 header at the left: outer column (board edge) port A,
+  // inner column port B, the 1x10 header at the right edge. Every position is a pad hole group.
+  it('CJMCU-2317: every header pad sits in its column and row, typed, VCC and GND joined', () => {
+    const m = load('mcp23017-cjmcu-2317.json')
+    expect(m.category).toBe('Chips')
+    expect(m.pins).toEqual([])
+    expect(m.obstacle).toBeUndefined()
+    const gp = (port: string) => Array.from({ length: 8 }, (_, i) => `GP${port}${i}`)
+    const columns: [number, string[]][] = [
+      [40, ['GND', 'ITA', ...gp('A')]],
+      [50, ['VCC', 'ITB', ...gp('B')]],
+      [170, ['A2', 'A1', 'A0', 'RESET', 'NC/SO', 'NC/CS', 'SDA/SI', 'SCL/SCK', 'GND', 'VCC']],
+    ]
+    const holes = m.holes ?? []
+    expect(holes).toHaveLength(30)
+    for (const g of holes) {
+      expect(g.at).toHaveLength(1)
+      expect(g.holeStyle).toBe('pad')
+      expect(g.type).toBeDefined()
+    }
+    for (const [x, labels] of columns) {
+      const col = holes.filter((g) => g.at[0][0] === x).sort((a, b) => a.at[0][1] - b.at[0][1])
+      expect(col.map((g) => g.label ?? g.name)).toEqual(labels)
+      col.forEach((g, i) => expect(g.at[0][1]).toBe(10 + 10 * i))
+    }
+    // Exact type (and supply) of every position, so a wrong but defined type fails.
+    const want: Record<string, string> = {
+      VCC: 'power_in', 'VCC 2': 'power_in', GND: 'ground', 'GND 2': 'ground',
+      A0: 'input', A1: 'input', A2: 'input', RESET: 'input', SCL: 'input', SDA: 'io',
+      INTA: 'output', INTB: 'output', GPA7: 'output', GPB7: 'output', NC: 'nc', 'NC 2': 'nc',
+    }
+    for (const n of [...gp('A'), ...gp('B')]) want[n] ??= 'io'
+    expect(Object.fromEntries(holes.map((g) => [g.name, g.type]))).toEqual(want)
+    expect(Object.fromEntries(holes.filter((g) => g.supply !== undefined).map((g) => [g.name, g.supply])))
+      .toEqual({ VCC: '3V3/5V', 'VCC 2': '3V3/5V' })
+    expect(m.internal).toEqual([['GND', 'GND 2'], ['VCC', 'VCC 2']])
+  })
+
   it('names the 2.4" TFT for both versions (T_ pins wired only on touch)', () => {
     expect(load('tft-ili9341-24-spi.json').name).toBe('2.4" TFT 240x320 ILI9341 (SPI; T_ pins on touch version)')
   })
