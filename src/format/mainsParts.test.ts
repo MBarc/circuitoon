@@ -320,6 +320,18 @@ describe('built-in terminal blocks', () => {
         expect(ratings.every((r) => r.conditions)).toBe(true)
         expect([m.category, m.source]).toEqual(['Mains', EVIDENCE[id].sources.join(' ')])
       })
+  it('every MSTB carries the lower II/2 rating, 400 V (Ruling 46), and MSTB 2 and 3 record both sources', () => {
+    for (let n = 2; n <= 6; n++) {
+      const ii2 = mainsOf(load(`terminal-block-mstb-508-${n}`)).ratings.filter((r) => /overvoltage category II,/.test(r.conditions ?? ''))
+      expect(ii2.map((r) => [r.volts, r.amps])).toEqual([[400, 12]])
+    }
+    for (const n of [2, 3]) {
+      const e = EVIDENCE[`terminal-block-mstb-508-${n}`]
+      expect(e.sources.some((u) => u.includes('media.digikey.com'))).toBe(true)
+      expect(e.decision).toMatch(/Ruling 46/)
+      expect(e.ratings!.find((r) => r.volts === 400)!.quote).toMatch(/630 V[\s\S]*400 V/)
+    }
+  })
   it('no MC 1,5 rating covers 230 V without a condition, so an MC block on 230 V is always conditional', () => {
     for (let n = 2; n <= 6; n++) for (const r of mainsOf(load(`terminal-block-mc-381-${n}`)).ratings) expect(r.volts >= 230 ? r.conditions : 'below').toBeTruthy()
     for (let n = 2; n <= 6; n++) expect(mainsOf(load(`terminal-block-mc-381-${n}`)).ratings.filter((r) => r.volts >= 230).map((r) => r.conditions)).toEqual([expect.stringMatching(/overvoltage category II,/)])

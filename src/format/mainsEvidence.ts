@@ -265,12 +265,13 @@ function irm(series: '03' | '05', volts: 3.3 | 5): PartEvidence {
 // Phoenix Contact COMBICON
 
 /** The ratings Phoenix gives, per overvoltage category / pollution degree, for plug and header; the assembly keeps the lower of each pair. */
-function phoenixRatings(series: 'mstb' | 'mc', plugUrl: string, headerUrl: string): RatingFact[] {
+function phoenixRatings(series: 'mstb' | 'mc', plugUrl: string, headerUrl: string, header: string): RatingFact[] {
   if (series === 'mstb')
     return [
       { volts: 250, amps: 12, service: 'ac/dc', conditions: 'overvoltage category III, pollution degree 3 (IEC 60664-1)', quote: 'Plug: Rated voltage (III/3) 250 V, Nominal current IN 12 A. Header: Rated voltage (III/3) 320 V, Nominal current IN 12 A. The lower (plug) value is kept.', url: plugUrl },
       { volts: 320, amps: 12, service: 'ac/dc', conditions: 'overvoltage category III, pollution degree 2 (IEC 60664-1)', quote: 'Plug and header: Rated voltage (III/2) 320 V, Nominal current IN 12 A.', url: headerUrl },
-      { volts: 630, amps: 12, service: 'ac/dc', conditions: 'overvoltage category II, pollution degree 2 (IEC 60664-1)', quote: 'Plug and header: Rated voltage (II/2) 630 V, Nominal current IN 12 A.', url: plugUrl },
+      // Ruling 46: the two sources for the header disagree on II/2 (630 V on the current page, 400 V on the 2016 sheet and at Digi-Key); the lower is used.
+      { volts: 400, amps: 12, service: 'ac/dc', conditions: 'overvoltage category II, pollution degree 2 (IEC 60664-1)', quote: `Plug: Rated voltage (II/2) 630 V (product page). Header ${header}: Rated voltage (II/2) 630 V on the current product page read in Task 0, but 400 V on Phoenix's online-catalogue PDF dated 07/07/2016 (mirrored by Digi-Key)${header === '1757242' ? ', and Digi-Key\'s attribute "Voltage - IEC 400 V"' : ''}. Nominal current IN 12 A. The lower (400 V) is kept under Ruling 46.`, url: digikeyPhoenix(header) },
     ]
   return [
     { volts: 160, amps: 8, service: 'ac/dc', conditions: 'overvoltage category III, pollution degree 3 (IEC 60664-1)', quote: 'Plug and header: Rated voltage (III/3) 160 V, Nominal current IN 8 A.', url: plugUrl },
@@ -296,6 +297,9 @@ const PHOENIX_READ = new Set(['1757019', '1757242', '1757022', '1757255', '18035
  * pitch.
  */
 const digikeyPhoenix = (item: string): string => `https://media.digikey.com/pdf/Data%20Sheets/Phoenix%20Contact%20PDFs/${item}.pdf`
+const DIGIKEY_1757242 = 'https://www.digikey.com/en/products/detail/phoenix-contact/1757242/260474'
+/** Ruling 46 (2026-09-27): where the sources for an MSTB 2,5 rating disagree, the lower is used, so every MSTB carries II/2 400 V. */
+const MSTB_R46 = 'Conflict: for the MSTBA header, the current Phoenix product page read in Task 0 gives Rated voltage (III/3) 320 V and (II/2) 630 V; Phoenix\'s online-catalogue PDF of the same item dated 07/07/2016 (mirrored by Digi-Key) gives (III/3) 250 V and (II/2) 400 V, and Digi-Key\'s attribute for 1757242 reads "Voltage - IEC 400 V". Ruling 46 (2026-09-27): a safety checker must not overstate a rating, so the lower value is used: II/2 400 V. III/3 is unchanged at 250 V (the plug\'s 250 V was already the lower of the pair, and the 2016 header value is also 250 V); III/2 is 320 V in every source.'
 
 type Cond = 'III/3' | 'III/2' | 'II/2'
 const CONDS: readonly Cond[] = ['III/3', 'III/2', 'II/2']
@@ -355,7 +359,7 @@ function phoenixFromSheets(series: 'mstb' | 'mc', plugType: string, headerType: 
       return `No ${c} rating is recorded: the ${s === p ? 'plug' : 'header'} sheet (${s.doc}) gives no rated voltage for ${c}${s.nominal ? `, only "${s.nominal}" with no overvoltage category or pollution degree` : ''}.`
     }),
     series === 'mstb' && !PHOENIX_READ.has(h.item)
-      ? `The 2016 MSTBA header sheet gives III/3 250 V and II/2 400 V where Task 0 read III/3 320 V and II/2 630 V on the current 1757242 and 1757255 pages; Digi-Key's attribute for ${h.item} (and for 1757242) also reads "Voltage - IEC 400 V". The value on the sheet read is kept.`
+      ? `The 2016 MSTBA header sheet gives III/3 250 V and II/2 400 V where Task 0 read III/3 320 V and II/2 630 V on the current 1757242 and 1757255 pages; Digi-Key's attribute for ${h.item} (and for 1757242) also reads "Voltage - IEC 400 V". The lower value is kept (Ruling 46).`
       : '',
   ].filter(Boolean).join(' ')
   return {
@@ -386,9 +390,10 @@ function phoenixPart(series: 'mstb' | 'mc', n: 2 | 3 | 4 | 5 | 6): PartEvidence 
     return phoenixFromSheets(series, plugType, headerType, phoenixSide(series, 'plug', n, plug, plugUrl, plugType), phoenixSide(series, 'header', n, header, headerUrl, headerType))
   return {
     subject: `Phoenix Contact ${plugType} (plug ${plug}) with ${headerType} (header ${header})`,
-    sources: [plugUrl, headerUrl],
+    sources: series === 'mstb' ? [plugUrl, headerUrl, digikeyPhoenix(header), ...(header === '1757242' ? [DIGIKEY_1757242] : [])] : [plugUrl, headerUrl],
     verdict: 'VERIFIED',
-    ratings: phoenixRatings(series, plugUrl, headerUrl),
+    ...(series === 'mstb' ? { decision: MSTB_R46 } : {}),
+    ratings: phoenixRatings(series, plugUrl, headerUrl, header),
     extra: {
       plug: fact(plug, `${plugType} - PCB connector ${plug}`, plugUrl),
       header: fact(header, `${headerType} - PCB header ${header}`, headerUrl),
