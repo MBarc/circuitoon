@@ -177,6 +177,33 @@ describe('plug counterexamples and rule 10', () => {
       "XP1's UK plug does not fit XS1's US socket. Use a device with a US plug.",
     ])
   })
+  // Astra A2: a plug fed from behind has live bare prongs (the male-to-male cord hazard), seated or not near an outlet.
+  it('a loose plug backfed from a seated plug: its live prong is an error', () => {
+    const d = sheet([at('xs1', 'XS1', 't-outlet'), at('xp1', 'XP1', 't-plug-us', 0, 0, { mount: { board: 'xs1' } }), at('xp2', 'XP2', 't-plug-us', 600, 600)],
+      [w('xp1|L', 'xp2|L')])
+    const found = checkDiagram(d).filter((f) => f.rule === 'live-prong')
+    expect(found.map((f) => [f.severity, f.subject, f.message])).toEqual([['error', 'XP2',
+      "XP2's L prong carries mains from XS1 (120 V), but XP2 is not plugged in: anyone touching its bare prongs may get a shock. A plug must take mains only from an outlet: remove the wiring that feeds XP2 from elsewhere."]])
+    expect(found[0].wires).toEqual([d.connections[0].uid])
+  })
+  it('a partly seated plug backfed on L and N: both prongs are live', () => {
+    const d = sheet([at('xs1', 'XS1', 't-outlet'), at('xp1', 'XP1', 't-plug-us', 0, 0, { mount: { board: 'xs1' } }),
+      at('xs2', 'XS2', 't-outlet-2', 0, 400), at('xp2', 'XP2', 't-plug-us', 10, 400)],
+    [w('xp1|L', 'xp2|L'), w('xp1|N', 'xp2|N')])
+    const found = checkDiagram(d)
+    expect(found.filter((f) => f.rule === 'plug-mismatch').map((f) => f.subject)).toEqual(['XP2'])
+    expect(found.filter((f) => f.rule === 'live-prong').map((f) => f.message)).toEqual([
+      "XP2's L prong and N prong carry mains from XS1 (120 V), but XP2 is not plugged in: anyone touching its bare prongs may get a shock. A plug must take mains only from an outlet: remove the wiring that feeds XP2 from elsewhere.",
+    ])
+  })
+  it('a seated plug, and a loose plug with nothing feeding it, have no live prong', () => {
+    const d = sheet([at('xs1', 'XS1', 't-outlet'), at('xp1', 'XP1', 't-plug-us', 0, 0, { mount: { board: 'xs1' } }), at('xp2', 'XP2', 't-plug-us', 600, 600), at('e1', 'E1', 't-lamp', 900)],
+      [w('xp1|L', 'e1|L'), w('xp1|N', 'e1|N'), w('xp2|L', 'e1|L')])
+    // XP2 L meets E1 L, which XP1 feeds: that one is live; XP1 itself, seated, is not reported.
+    expect(checkDiagram(d).filter((f) => f.rule === 'live-prong').map((f) => f.subject)).toEqual(['XP2'])
+    const idle = sheet([at('xs1', 'XS1', 't-outlet'), at('xp2', 'XP2', 't-plug-us', 600, 600), at('e1', 'E1', 't-lamp', 900)], [w('xp2|L', 'e1|L'), w('xp2|N', 'e1|N')])
+    expect(checkDiagram(idle).filter((f) => f.rule === 'live-prong')).toEqual([])
+  })
   it('a matching plug that is only partly in says it is never safe', () => {
     const d = sheet([at('xs1', 'XS1', 't-outlet'), at('xp1', 'XP1', 't-plug-us', 10, 0)], [])
     expect(checkDiagram(d).filter((f) => f.rule === 'plug-mismatch').map((f) => f.message)).toEqual([

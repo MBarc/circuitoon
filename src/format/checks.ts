@@ -37,6 +37,7 @@ export type RuleId =
   | 'mains-voltage'
   | 'mains-rating'
   | 'mains-cable'
+  | 'live-prong'
   | 'plug-mismatch'
   | 'polarity'
   | 'unprotected'
@@ -61,6 +62,7 @@ export const RULES: Record<RuleId, { severity: Severity; title: string }> = {
   'mains-voltage': { severity: 'error', title: 'Wrong mains voltage' },
   'mains-rating': { severity: 'error', title: 'Not rated for this voltage' },
   'mains-cable': { severity: 'error', title: 'Unsuitable mains cable' },
+  'live-prong': { severity: 'error', title: 'Live plug prongs' },
   reversed: { severity: 'error', title: 'Power reversed' },
   'supplies-fight': { severity: 'error', title: 'Supplies fight' },
   'supply-too-high': { severity: 'error', title: 'Voltage too high' },

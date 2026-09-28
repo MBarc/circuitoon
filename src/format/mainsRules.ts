@@ -2034,6 +2034,66 @@ function earthPathRule(acc: Acc): MainsDraft[] {
 }
 
 STATE_RULES.push(polarityRule, earthRules)
+
+// ---- Live prongs: a plug fed from behind (Astra A2) ----
+
+/** A plug that is not seated, and its conducting prongs (every profile's contacts but mechanical ones) in the view, by distinct name. */
+interface LoosePlug { part: PartInstance; names: string[]; nodes: Int32Array; keys: Map<number, string> }
+const looseCache = new FrontMap<Prepared, LoosePlug[]>()
+function loosePlugs(p: Prepared): LoosePlug[] {
+  let list = looseCache.get(p)
+  if (list) return list
+  const g = p.g
+  list = []
+  for (const part of g.mainsParts) {
+    if (g.seated.has(part.uid)) continue
+    const plug = mainsOf(moduleOf(g.d, part.module)!).plug
+    if (!plug) continue
+    const names = [...new Set(plug.profiles.flatMap((pr) => pr.contacts.filter((c) => c.mains !== 'mechanical').map((c) => c.pin)))].sort(natural.compare)
+      .filter((n) => {
+        const i = g.nodeOf.get(nodeKey(part.uid, n))
+        return i !== undefined && p.inRel[i] === 1
+      })
+    if (names.length) list.push({ part, names, nodes: Int32Array.from(names, (n) => g.nodeOf.get(nodeKey(part.uid, n))!), keys: new Map() })
+  }
+  looseCache.set(p, list)
+  return list
+}
+
+/**
+ * Per state: a plug that is not seated (loose, or only partly in) whose conducting prongs are
+ * hazardous: something behind it feeds them (the male-to-male cord hazard), and they are bare.
+ * Whether it lies over an outlet does not matter (rule 10 reports that separately).
+ */
+function liveProngRule(acc: Acc, mask: number) {
+  const { p } = acc
+  const list = loosePlugs(p)
+  for (let q = 0; q < list.length; q++) {
+    const lp = list[q]
+    let live = 0
+    for (let k = 0; k < lp.nodes.length; k++) if (hazardAt(p, lp.nodes[k])) live |= 1 << k
+    if (!live) continue
+    const key = keyFor(lp.keys, live, () => `live-prong|${lp.part.uid}|${live}`)
+    if (!mark(acc, key, mask)) report(acc, key, mask, () => liveProngDraft(p, lp, live))
+  }
+}
+
+function liveProngDraft(p: Prepared, lp: LoosePlug, live: number): (when: string) => MainsDraft {
+  const k = lp.names.flatMap((_, j) => ((live >>> j) & 1 ? [j] : []))
+  const nodes = k.map((j) => lp.nodes[j])
+  const srcs = sourcesIn(p, nodes.reduce((m, i) => m | identAt(p, i), 0), nodes.reduce((m, i) => m | p.power[p.root[i]], 0))
+  const d = lp.part.designator
+  const label = (n: string) => termAt(p.g, nodeKey(lp.part.uid, n))?.label ?? n
+  const one = k.length === 1
+  return (when) => ({
+    rule: 'live-prong', subject: d, target: d,
+    message: `${d}'s ${andList(k.map((j) => label(lp.names[j])))} ${one ? 'carries' : 'carry'} mains from ${sourcesText(p.g, srcs)}${when}, but ${d} is not plugged in: anyone touching its bare prongs may get a shock. A plug must take mains only from an outlet: remove the wiring that feeds ${d} from elsewhere.`,
+    parts: [lp.part.uid], pins: k.map((j) => ({ part: lp.part.uid, pin: lp.names[j] })), wires: pathsTo(p, nodes, srcs),
+    causes: k.map((j) => nodeKey(lp.part.uid, lp.names[j])),
+  })
+}
+
+STATE_RULES.push(liveProngRule)
 STATIC_RULES.push(orphanEarth, earthPathRule)
 
 // ---- Rule 8: the project's own wiring is fused (spec 1.7, 3) ----

@@ -90,6 +90,8 @@ export interface MainsGraph {
   mainsParts: PartInstance[]
   /** Parts with a wire or a plugged contact. */
   connected: Set<string>
+  /** Parts with a validly plugged leg: a plug-in device or cord plug seated in its outlet (a partial or invalid mount plugs nothing). */
+  seated: Set<string>
   termCache: Map<string, GTerm | null>
 }
 
@@ -205,7 +207,7 @@ export function buildMainsGraph(d: Diagram, plugs: Plug[], nl: Netlist): MainsGr
     const i = nodeOf.get(nodeKey(c.from.part, c.from.pin))
     if (i !== undefined) wires[i].push(c.uid)
   }
-  return { d, n: members.length, members, nodeOf, wires, broken, sources, edges, groups, converters, loads, mainsParts, connected, termCache: new Map() }
+  return { d, n: members.length, members, nodeOf, wires, broken, sources, edges, groups, converters, loads, mainsParts, connected, seated: new Set(plugs.map((pl) => pl.part)), termCache: new Map() }
 }
 
 /** The terminal a node key names, with its module's mains data; null for a missing part or name. Cached per graph. */
@@ -792,7 +794,8 @@ export interface Unit { view: Prepared; cands: number[] }
  * The enumeration units (Resolution 25): the relevant nodes grouped by possible-connectivity
  * component, merging components that one multi-pole group spans (its poles switch together), those
  * one class 1 part's terminals span (its earth is judged against its L and N), and those a bonded
- * part's secondary and bond pins span (its SELV or PELV class is judged in the same state).
+ * part's secondary and bond pins span (its SELV or PELV class is judged in the same state), and those
+ * the prongs of a plug that is not seated span (its live prongs are one finding).
  * Components cannot affect each other, so each unit's states are enumerated on their own.
  */
 export function units(p: Prepared, cands: number[]): Unit[] {
@@ -820,6 +823,8 @@ export function units(p: Prepared, cands: number[]): Unit[] {
     // A bonded part's secondary is judged SELV or PELV by the identity of its bond pins in the same state
     // (Resolution 9): its non-mains domain pins and its bonds enumerate together.
     if (info.bonds.size) join(termNodes(part, [...info.bonds, ...info.domains.filter((dm) => dm.kind !== 'mains').flatMap((dm) => dm.pins)]))
+    // A plug that is not seated is judged by all its live prongs at once (the live-prong rule): its prongs enumerate together.
+    if (info.plug && !g.seated.has(part.uid)) join(termNodes(part, info.plug.profiles.flatMap((pr) => pr.contacts.map((c) => c.pin))))
   }
   const byUnit = new Map<number, number[]>()
   for (const i of p.relevant) {

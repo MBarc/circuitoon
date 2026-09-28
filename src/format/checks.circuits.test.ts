@@ -587,6 +587,7 @@ describe('mains sheets (synthetic parts): every mains rule is reached, and its m
   it('plugs that do not fit the outlet they are over', () => {
     has(mains([mat('xs1', 'XS1', 't-outlet'), mat('xp1', 'XP1', 't-plug-uk')], []), 'plug-mismatch')
     has(mains([mat('xs1', 'XS1', 't-outlet'), mat('xp1', 'XP1', 't-plug-us', 10, 0, { mount: { board: 'xs1' } })], []), 'plug-mismatch')
+    has(mains([mat('xs1', 'XS1', 't-outlet'), mat('xp2', 'XP2', 't-plug-us', 600, 600)], [mw('xs1|L', 'xp2|L')]), 'live-prong')
   })
 })
 
