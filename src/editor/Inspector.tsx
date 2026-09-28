@@ -1,9 +1,10 @@
 // Properties of whatever is selected. Text fields commit on Enter or when they lose focus,
 // so typing a name is one undo step, not one per keystroke.
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { type EditorStore, useEditorState } from './store.ts'
 import { clearPartValue, clearWireRoute, deleteSelection, rotateParts, setWireEnds, updatePart, updatePartSetting, updatePartValue, updateWire, type WireStyle } from './ops.ts'
-import { type Diagram, type Endpoint, NAMED_COLORS, isValidColor, moduleOf, partObstacles, routeWire, wireColor, wireWidth } from '../format/diagram.ts'
+import { type Diagram, type Endpoint, NAMED_COLORS, STRIPED_COLORS, isValidColor, moduleOf, partObstacles, routeWire, wireColor, wireStripe, wireWidth } from '../format/diagram.ts'
+import { type WireLook, holdLooks } from '../format/mainsLook.ts'
 import { CABLE_PRESETS, END_KINDS, END_NAMES, END_SIZE, type EndKind, type WireEnds, endKind, normalizeEnds, presetEnds, presetOf, sharedCable, swapEnds } from '../format/cables.ts'
 import { CableEnd } from '../render/CableEnd.tsx'
 import { INK } from '../render/Part.tsx'
@@ -92,6 +93,7 @@ function CablePreview({ ends, color, gauge }: { ends: WireEnds | undefined; colo
     <svg className="cable-preview" viewBox="0 0 120 26" aria-hidden="true">
       <path d={d} stroke={INK} strokeWidth={w + 2.2} strokeLinecap="round" fill="none" />
       <path d={d} stroke={c} strokeWidth={w} strokeLinecap="round" fill="none" />
+      {wireStripe(color) && <path d={d} stroke={wireStripe(color)!} strokeWidth={w} strokeDasharray="7 7" fill="none" />}
       <CableEnd kind={from} x={x0} y={13} angle={0} scale={1} color={c} width={w} />
       <CableEnd kind={to} x={x1} y={13} angle={180} scale={1} color={c} width={w} />
     </svg>
@@ -335,6 +337,9 @@ export function ProblemList({ store, findings }: { store: EditorStore; findings:
 export function Inspector({ store }: { store: EditorStore }) {
   const { diagram, selection, wireStyle } = useEditorState(store)
   const findings = useProblems(store)
+  // The mains look, held while a gesture is open: a preview frame never starts a mains analysis.
+  const heldRef = useRef<Map<string, WireLook>>(new Map())
+  const looks = holdLooks(heldRef, diagram, store.dragging || store.gestureActive)
   const count = selection.parts.length + selection.wires.length
   const remove = (
     <button type="button" className="tool" onClick={() => store.commit(deleteSelection(diagram, selection))}>
@@ -423,7 +428,8 @@ export function Inspector({ store }: { store: EditorStore }) {
   if (!wire) return <aside className="inspector" aria-label="Properties" />
   // The Problems list has the broken wires; the notice names this one's missing ends.
   const brokenWire = findings.some((f) => f.rule === 'broken' && f.wires[0] === wire.uid) ? brokenConnection(diagram, wire) : null
-  const color = wire.color ?? 'black'
+  // A wire with no stored colour shows its mains identity colour, as the sheet draws it.
+  const color = wire.color ?? looks.get(wire.uid)?.color ?? 'black'
   const gauge = wire.gauge ?? 22
   const setWire = (patch: { color?: string; gauge?: number; label?: string }) => {
     // Skip the commit (and the undo entry it would create) when the patch matches what's
@@ -456,7 +462,7 @@ export function Inspector({ store }: { store: EditorStore }) {
       <div className="field" role="group" aria-label="Color">
         Color
         <div className="swatches">
-          {Object.keys(NAMED_COLORS).map((name) => (
+          {[...Object.keys(NAMED_COLORS), ...Object.keys(STRIPED_COLORS)].map((name) => (
             <button
               key={name}
               type="button"
@@ -464,7 +470,7 @@ export function Inspector({ store }: { store: EditorStore }) {
               title={name}
               aria-label={name}
               aria-pressed={color.toLowerCase() === name}
-              style={{ background: NAMED_COLORS[name] }}
+              style={{ background: Object.hasOwn(STRIPED_COLORS, name) ? `repeating-linear-gradient(135deg, ${STRIPED_COLORS[name][0]} 0 6px, ${STRIPED_COLORS[name][1]} 6px 12px)` : NAMED_COLORS[name] }}
               onClick={() => setWire({ color: name })}
             />
           ))}

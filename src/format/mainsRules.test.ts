@@ -628,6 +628,16 @@ describe('rule 8: protection', () => {
       "Nothing fuses the L wire from XS1 to E1 when S1 is on: a fault in the wiring beyond the plug has only the building's breaker to stop it. Add a fuse (a fuse holder) in the L wire.",
     ])
   })
+  it('highlights the unfused wiring of every state it holds in, not only the first (the union, as Ruling 33)', () => {
+    // Two switched routes to E1: S1 then S3, or S2 then S4. Each state that fuses nothing uses one route.
+    const viaA = [w('s1|2', 's3|1')]
+    const viaB = [w('s2|2', 's4|1')]
+    const d = on([['s1', 'S1', 't-switch'], ['s2', 'S2', 't-switch'], ['s3', 'S3', 't-switch'], ['s4', 'S4', 't-switch'], ['e1', 'E1', 't-lamp']],
+      [w('xs1|L', 's1|1'), w('xs1|L', 's2|1'), ...viaA, ...viaB, w('s3|2', 'e1|L'), w('s4|2', 'e1|L'), w('e1|N', 'xs1|N')])
+    const found = only(d, 'unprotected')
+    expect(found).toHaveLength(1)
+    expect(found[0].wires).toEqual(expect.arrayContaining([...viaA, ...viaB].map((c) => c.uid)))
+  })
   it('a fuse in the N wire does not protect the L wiring', () => {
     const d = sheet([at('xs1', 'XS1', 't-outlet'), at('f1', 'F1', 't-fuse', 200, 0, { values: { fuseRating: { value: 2, unit: 'A' } } }), at('e1', 'E1', 't-lamp', 400)],
       [w('xs1|L', 'e1|L'), w('e1|N', 'f1|1'), w('f1|2', 'xs1|N')])

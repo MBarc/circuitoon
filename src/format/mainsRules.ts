@@ -1763,6 +1763,8 @@ function protTable(p: Prepared): ProtTable {
 }
 
 const unprotectedSlots = new WeakMap<Acc, Slots>()
+/** Per accumulator, by slot: the unfused wiring gathered over the states a rule 8 finding holds in. */
+const unprotectedPaths = new WeakMap<Acc, (PathRec | undefined)[] & { byKey: Map<string, PathRec> }>()
 /**
  * Rule 8, per state (spec 3: a cut-set check per state): a load terminal on a source's L that still
  * reaches that source's L with every fuse taken out (nets and closed contacts only, bareRoots). An
@@ -1774,6 +1776,8 @@ function unprotectedRule(acc: Acc, mask: number) {
   const { p } = acc
   const t = protTable(p)
   const slots = slotsOf(unprotectedSlots, acc)
+  let recs = unprotectedPaths.get(acc)
+  if (!recs) unprotectedPaths.set(acc, (recs = Object.assign([], { byKey: new Map<string, PathRec>() })))
   const plain = plainPath.on
   const { root, ident } = p
   for (let q = 0; q < t.end.length; q++) {
@@ -1785,24 +1789,34 @@ function unprotectedRule(acc: Acc, mask: number) {
     let unfused = false
     for (let m = 0; m < live.length && !unfused; m++) unfused = bareRoot[live[m]] === br
     if (!unfused) continue
-    if (!plain && slotHit(slots, q, mask)) continue
-    let key = t.keys[q]
-    // One finding per load and source, whichever end carries L.
-    if (key === undefined) t.keys[q] = key = `unprotected|${t.load[q].part.uid}|${t.src[q].id}`
-    slotFill(acc, slots, q, key, mask, () => unprotectedDraft(p, t.load[q], t.src[q], br))
+    let rec = recs[q]
+    if (plain || !slotHit(slots, q, mask)) {
+      let key = t.keys[q]
+      // One finding per load and source, whichever end carries L: both ends' slots share its record.
+      if (key === undefined) t.keys[q] = key = `unprotected|${t.load[q].part.uid}|${t.src[q].id}`
+      if (!rec) {
+        rec = recs.byKey.get(key)
+        if (!rec) recs.byKey.set(key, (rec = { states: 0, wires: new Set() }))
+        recs[q] = rec
+      }
+      const made = rec
+      slotFill(acc, slots, q, key, mask, () => unprotectedDraft(t.load[q], t.src[q], made))
+    }
+    // The highlight is the union over the states it holds in (Ruling 33, as rule 1), up to PATH_STATES of them.
+    if (rec && rec.states < PATH_STATES) {
+      rec.states++
+      for (const i of p.relevant) if (bareRoot[i] === br) for (const wire of p.g.wires[i]) rec.wires.add(wire)
+    }
   }
 }
 
-function unprotectedDraft(p: Prepared, ld: GLoad, s: GSource, br: number): (when: string) => MainsDraft {
-  // The unfused wiring in the first state it holds in: every wire on the nets joined to the source's L without a fuse.
-  const wires: string[] = []
-  const bareRoot = bareRoots(p)
-  for (const i of p.relevant) if (bareRoot[i] === br) wires.push(...p.g.wires[i])
+function unprotectedDraft(ld: GLoad, s: GSource, rec: PathRec): (when: string) => MainsDraft {
+  // The unfused wiring: every wire on the nets joined to the source's L without a fuse, in any state the finding holds in.
   const [d, src] = [ld.part.designator, s.part.designator]
   return (when) => ({
     rule: 'unprotected', subject: d, target: d,
     message: `Nothing fuses the L wire from ${src} to ${d}${when}: a fault in the wiring beyond the plug has only the building's breaker to stop it. Add a fuse (a fuse holder) in the L wire.`,
-    parts: [ld.part.uid, s.part.uid], pins: [], wires, causes: [nodeKey(ld.part.uid, ld.names[0]), ...s.keys.L],
+    parts: [ld.part.uid, s.part.uid], pins: [], wires: [...rec.wires], causes: [nodeKey(ld.part.uid, ld.names[0]), ...s.keys.L],
   })
 }
 

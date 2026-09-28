@@ -77,12 +77,22 @@ export const NAMED_COLORS: Record<string, string> = {
   pink: '#F07AB0',
 }
 
-/** Named color or #RRGGBB; anything else falls back to black. */
+/** Two-colour insulation (the IEC earth wire): a base colour with the second one striped over it. */
+export const STRIPED_COLORS: Record<string, [string, string]> = { 'green-yellow': ['#2F9E6E', '#F4B400'] }
+
+/** Named color, two-colour name (its base) or #RRGGBB; anything else falls back to black. */
 export function wireColor(c: string | undefined): string {
   if (!c) return NAMED_COLORS.black
   if (/^#[0-9a-f]{6}$/i.test(c)) return c
   const key = c.toLowerCase()
+  if (Object.hasOwn(STRIPED_COLORS, key)) return STRIPED_COLORS[key][0]
   return Object.hasOwn(NAMED_COLORS, key) ? NAMED_COLORS[key] : NAMED_COLORS.black
+}
+
+/** The stripe colour of a two-colour wire, or null. */
+export function wireStripe(c: string | undefined): string | null {
+  const key = c?.toLowerCase()
+  return key && Object.hasOwn(STRIPED_COLORS, key) ? STRIPED_COLORS[key][1] : null
 }
 
 /** Drawn width in px for an AWG gauge (16 to 30, default 22). Thicker wire, smaller number. */
@@ -694,7 +704,8 @@ export function labelAnchor(route: Pt[]): { x: number; y: number; horizontal: bo
 }
 
 export function isValidColor(c: string): boolean {
-  return /^#[0-9a-f]{6}$/i.test(c) || Object.hasOwn(NAMED_COLORS, c.toLowerCase())
+  const key = c.toLowerCase()
+  return /^#[0-9a-f]{6}$/i.test(c) || Object.hasOwn(NAMED_COLORS, key) || Object.hasOwn(STRIPED_COLORS, key)
 }
 
 export type DiagramResult = { ok: true; diagram: Diagram; warnings: string[] } | { ok: false; errors: string[] }

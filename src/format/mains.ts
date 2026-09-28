@@ -34,8 +34,12 @@ export function hasMainsData(d: Pick<Diagram, 'parts' | 'modules'>): boolean {
   })
 }
 
+/** How many analyses have run (tests read it to prove a gesture or a redraw starts none). */
+export const mainsStats = { runs: 0 }
+
 export function analyseMains(d: Diagram): MainsAnalysis | null {
   if (!hasMainsData(d)) return null
+  mainsStats.runs++
   const plugs = plugsOf(d)
   const g = buildMainsGraph(d, plugs, netlist(d, plugs))!
   const p = prepare(g)
