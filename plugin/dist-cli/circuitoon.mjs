@@ -2012,7 +2012,7 @@ function labelPoints(d) {
 	}
 	return {
 		captions,
-		tabs: (d.annotations ?? []).flatMap((a) => a.type === "frame" && a.label ? gridNodesIn(frameTab(a)) : [])
+		tabs: (d.annotations ?? []).flatMap((a) => a.type === "frame" ? a.label ? gridNodesIn(frameTab(a)) : [] : gridNodesIn(annotationRect(a)))
 	};
 }
 /** The label nodes wire `c` keeps off: every frame tab and every caption but its own parts'. */
@@ -45750,9 +45750,54 @@ function placeParts(intent, opts) {
 			y: 0,
 			text: wrapNote(n.text)
 		};
-		const at = findSpot(annotationRect(probe), {
-			x: snap(target.x),
-			y: snap(target.y + target.h + 10)
+		const box = annotationRect(probe);
+		const dirs = (intent.groups.find((g) => g.name === n.near)?.refs ?? [n.near]).flatMap((r) => worldPins(inst.get(r), modOf(r)).map((p) => p.dir));
+		const sides = [
+			{
+				dir: {
+					x: 0,
+					y: 1
+				},
+				at: {
+					x: target.x,
+					y: target.y + target.h + 10
+				}
+			},
+			{
+				dir: {
+					x: 1,
+					y: 0
+				},
+				at: {
+					x: target.x + target.w + 10,
+					y: target.y
+				}
+			},
+			{
+				dir: {
+					x: 0,
+					y: -1
+				},
+				at: {
+					x: target.x,
+					y: target.y - box.h - 10
+				}
+			},
+			{
+				dir: {
+					x: -1,
+					y: 0
+				},
+				at: {
+					x: target.x - box.w - 10,
+					y: target.y
+				}
+			}
+		];
+		const side = sides.find((s) => !dirs.some((d) => d.x === s.dir.x && d.y === s.dir.y)) ?? sides[0];
+		const at = findSpot(box, {
+			x: snap(side.at.x),
+			y: snap(side.at.y)
 		}, clear, 6);
 		const note = {
 			...probe,

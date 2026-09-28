@@ -5,7 +5,7 @@ import { type Annotation, type Diagram, type PartInstance, computeRoutes, partOb
 import type { ModuleDef } from './module.ts'
 import type { Pt, Rect } from './geometry.ts'
 import { captionBox } from '../render/captionBox.ts'
-import { frameTab } from '../render/annotationGeometry.ts'
+import { annotationRect, frameTab } from '../render/annotationGeometry.ts'
 
 /** Two-lead part, body 40 x 30: L edge at local (0, 20), R edge at local (40, 20), stubs 8 px out. */
 const two: ModuleDef = {
@@ -40,6 +40,20 @@ describe('router label avoidance (A18.3)', () => {
     const r = route(sheet([], [frame]))
     expect(r.blocked).toBe(false)
     expect(crosses(r.points, tab)).toBe(false)
+  })
+  it('routes around a text note in the way', () => {
+    const note: Annotation = { uid: 'a1', type: 'text', x: 140, y: 0, text: 'A note in the way' }
+    const box = annotationRect(note)
+    expect(crosses([{ x: 48, y: 20 }, { x: 292, y: 20 }], box)).toBe(true)
+    const r = route(sheet([], [note]))
+    expect(r.blocked).toBe(false)
+    expect(crosses(r.points, box)).toBe(false)
+  })
+  it('never blocks a wire for a note: over one no route can clear, it is still routed', () => {
+    const note: Annotation = { uid: 'a1', type: 'text', x: -1500, y: -10, text: 'x'.repeat(500) }
+    const r = route({ ...sheet([], [note]), parts: [part('A', 0, -200), part('B', 0, 200)], connections: [{ uid: 'w1', from: { part: 'A', pin: 'R' }, to: { part: 'B', pin: 'L' } }] })
+    expect(r.blocked).toBe(false)
+    expect(crosses(r.points, annotationRect(note))).toBe(true)
   })
   it("routes around another part's caption in the way", () => {
     const c = part('C', 150, 0)

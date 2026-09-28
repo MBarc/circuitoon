@@ -7,7 +7,7 @@ import { manualRouteBlocked, tidy } from './wireEdit.ts'
 import { mountIssues, plugOfPin, plugsOf } from './breadboard.ts'
 import { type CableEndDraw, END_SIZE, endKind, endPlacement, isEndKind, normalizeEnds, type WireEnds } from './cables.ts'
 import { captionBox } from '../render/captionBox.ts'
-import { frameTab } from '../render/annotationGeometry.ts'
+import { annotationRect, frameTab } from '../render/annotationGeometry.ts'
 
 /** How every load warning about a dropped value override ends: the part now shows its module
  * default instead of the value the file asked for. The editor lists these warnings first. */
@@ -336,8 +336,9 @@ function foreignHoles(c: Connection, holes: BoardHoles): Pt[] {
 
 /**
  * Text on the sheet an auto-routed wire keeps off (amendment A18.3): each part's caption (by part
- * uid) and each frame's label tab (no owner), as the routing grid nodes they cover, grown by
- * LABEL_PAD so a wire on the next grid line does not graze the text either.
+ * uid), each frame's label tab and each text note's box (no owner), as the routing grid nodes they
+ * cover, grown by LABEL_PAD so a wire on the next grid line does not graze the text either. A note
+ * is opaque: a wire under it would vanish.
  */
 export interface LabelPoints {
   captions: Map<string, Pt[]>
@@ -358,7 +359,7 @@ export function labelPoints(d: Diagram): LabelPoints {
     const m = moduleOf(d, p.module)
     if (m) captions.set(p.uid, gridNodesIn(captionBox(p, m)))
   }
-  const tabs = (d.annotations ?? []).flatMap((a) => (a.type === 'frame' && a.label ? gridNodesIn(frameTab(a)) : []))
+  const tabs = (d.annotations ?? []).flatMap((a) => (a.type === 'frame' ? (a.label ? gridNodesIn(frameTab(a)) : []) : gridNodesIn(annotationRect(a))))
   return { captions, tabs }
 }
 

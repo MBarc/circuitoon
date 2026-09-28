@@ -3,8 +3,9 @@
 // internally joined pins wired as one.
 import { describe, expect, it } from 'vitest'
 import { type Diagram, type Endpoint, computeRoutes, serializeDiagram, validateDiagram } from '../format/diagram.ts'
-import { worldHoles } from '../format/geometry.ts'
-import { isBoard } from '../format/module.ts'
+import { type Pt, type Rect, bodyRect, worldHoles } from '../format/geometry.ts'
+import { isBoard, layoutModule } from '../format/module.ts'
+import { annotationRect } from '../render/annotationGeometry.ts'
 import { mountIssues, plugsOf } from '../format/breadboard.ts'
 import { libraryLookup } from './catalog.ts'
 import { layoutNetlist } from './layout.ts'
@@ -276,4 +277,48 @@ describe('layoutNetlist', () => {
     expect(r).toMatchObject({ ok: false, stage: 'layout' })
     if (!r.ok) expect(r.errors.some((e) => /^body overlap: R1 and R2/.test(e))).toBe(true)
   })
+})
+
+describe('notes and wires', () => {
+  /** True when any segment of `pts` passes through `r` (edges included). */
+  const crosses = (pts: Pt[], r: Rect) =>
+    pts.slice(1).some((b, i) => {
+      const a = pts[i]
+      return Math.max(a.x, b.x) >= r.x && Math.min(a.x, b.x) <= r.x + r.w && Math.max(a.y, b.y) >= r.y && Math.min(a.y, b.y) <= r.y + r.h
+    })
+  const bme = (near: string, text = 'The ESP32 runs from USB; its 3V3 pin powers the sensor. I2C on IO22 (SCL) and IO21 (SDA).') => ({
+    format: 'circuitoon-netlist/1',
+    title: 'ESP32 with a BME280',
+    parts: [{ ref: 'U1', module: 'esp32-devkitc-v4' }, { ref: 'U2', module: 'bme280-module-4pin' }],
+    nets: [
+      { name: '3V3', pins: ['U1.3V3', 'U2.VIN'] },
+      { name: 'GND', pins: ['U1.GND', 'U2.GND'] },
+      { name: 'SCL', pins: ['U1.IO22', 'U2.SCL'] },
+      { name: 'SDA', pins: ['U1.IO21', 'U2.SDA'] },
+    ],
+    ...(near === 'Sensor' ? { groups: [{ name: 'Sensor', parts: ['U2'] }] } : {}),
+    notes: [{ text, near }],
+  })
+  for (const near of ['U2', 'Sensor', 'U1'])
+    it(`lays out an ESP32, a BME280 and a note near ${near} with no wire across the note`, () => {
+      const d = laid(bme(near))
+      const note = d.annotations!.find((a) => a.type === 'text')!
+      // Grown by 3 px: a wire running along the note's edge hides under its outline too.
+      const r0 = annotationRect(note)
+      const box = { x: r0.x - 3, y: r0.y - 3, w: r0.w + 6, h: r0.h + 6 }
+      for (const [uid, r] of computeRoutes(d)) expect(crosses(r!.points, box), uid).toBe(false)
+    })
+  for (const text of ['I2C sensor.', 'The sensor reads temperature, humidity and pressure.'])
+    it(`keeps a note (${text.length} characters) off the side its target part points its pins to`, () => {
+      const d = laid(bme('U2', text))
+      const note = annotationRect(d.annotations!.find((a) => a.type === 'text')!)
+      const u2 = d.parts.find((p) => p.uid === 'U2')!
+      const body = bodyRect(u2, layoutModule(d.modules[u2.module]))
+      // The BME280's pins point down: nothing of the note lies in the band straight below it.
+      const below = { x: body.x, y: body.y + body.h, w: body.w, h: 10_000 }
+      expect(note.x < below.x + below.w && note.x + note.w > below.x && note.y + note.h > below.y).toBe(false)
+      const r0 = note
+      const box = { x: r0.x - 3, y: r0.y - 3, w: r0.w + 6, h: r0.h + 6 }
+      for (const [uid, r] of computeRoutes(d)) expect(crosses(r!.points, box), uid).toBe(false)
+    })
 })

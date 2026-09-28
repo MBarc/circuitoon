@@ -10,7 +10,7 @@
 // power nets (amendment A18.1). Pure.
 import { DIAGRAM_FORMAT, type Annotation, type Diagram, type PartInstance } from '../format/diagram.ts'
 import { mountIssues } from '../format/breadboard.ts'
-import type { Pt, Rect, Rotation } from '../format/geometry.ts'
+import { type Pt, type Rect, type Rotation, worldPins } from '../format/geometry.ts'
 import { isBoard } from '../format/module.ts'
 import { annotationRect, wrapNote } from '../render/annotationGeometry.ts'
 import { type Intent, terminalKey } from './netlist.ts'
@@ -426,7 +426,19 @@ export function placeParts(intent: Intent, opts: PlaceOptions): PlaceResult {
     const frame = frames.get(n.near)
     const target = frame ? annotationRect(frame) : tight(n.near)
     const probe: Annotation = { uid: `a${annotations.length + 1}`, type: 'text', x: 0, y: 0, text: wrapNote(n.text) }
-    const at = findSpot(annotationRect(probe), { x: snap(target.x), y: snap(target.y + target.h + 10) }, clear, 6)
+    const box = annotationRect(probe)
+    // Below the target, unless its pins point that way (their wires leave there and would run under
+    // the note); then right, above, left. With pins on every side, below.
+    const members = intent.groups.find((g) => g.name === n.near)?.refs ?? [n.near]
+    const dirs = members.flatMap((r) => worldPins(inst.get(r)!, modOf(r)).map((p) => p.dir))
+    const sides = [
+      { dir: { x: 0, y: 1 }, at: { x: target.x, y: target.y + target.h + 10 } },
+      { dir: { x: 1, y: 0 }, at: { x: target.x + target.w + 10, y: target.y } },
+      { dir: { x: 0, y: -1 }, at: { x: target.x, y: target.y - box.h - 10 } },
+      { dir: { x: -1, y: 0 }, at: { x: target.x - box.w - 10, y: target.y } },
+    ]
+    const side = sides.find((s) => !dirs.some((d) => d.x === s.dir.x && d.y === s.dir.y)) ?? sides[0]
+    const at = findSpot(box, { x: snap(side.at.x), y: snap(side.at.y) }, clear, 6)
     const note = { ...probe, x: at.x, y: at.y }
     annotations.push(note)
     clear.add(annotationRect(note))
