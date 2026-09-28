@@ -5,10 +5,12 @@
 import { type Endpoint, type PartInstance, moduleOf } from './diagram.ts'
 import type { RuleId } from './checks.ts'
 import { nodeKey } from './netlist.ts'
-import { type GConverter, type GEdge, type GSource, type GTerm, type MainsGraph, type Prepared, LN_MASK, L_MASK, N_MASK, PE_MASK, bitOf, decodeSingle, groupName, hazardAt, identAt, minimalWitnesses, statePhrase, termAt, termName } from './mainsGraph.ts'
+import { type GConverter, type GEdge, type GLoad, type GSource, type GTerm, type MainsGraph, type Prepared, LN_MASK, L_MASK, N_MASK, PE_MASK, bitOf, decodeSingle, groupName, hazardAt, identAt, minimalWitnesses, statePhrase, termAt, termName } from './mainsGraph.ts'
 import { type Conductor, type ContactGroup, type MainsInfo, type Rating, isolationAdequate, mainsOf, uncoveredPins } from './mainsModel.ts'
 import { type ThroughKind, protectivePaths } from './mainsProtective.ts'
-import { andList, natural } from './words.ts'
+import { andList, natural, orList } from './words.ts'
+import { END_NAMES, type EndKind, endKind } from './cables.ts'
+import { isBoard } from './module.ts'
 
 export interface MainsDraft {
   rule: RuleId
@@ -491,9 +493,10 @@ function shortDraft(p: Prepared, r: number, s: GSource, other: 'N' | 'PE') {
 }
 
 function crossDraft(p: Prepared, r: number, s: GSource, a: Conductor, t: GSource, b: Conductor) {
-  // Name the side carrying L first, then N.
   const rank = (c: Conductor) => CONDS.indexOf(c)
-  const [x, cx, y, cy] = rank(a) <= rank(b) ? [s, a, t, b] : [t, b, s, a]
+  // Name the side carrying L first, then N; two of one conductor by designator, so the words never depend on part order.
+  const first = rank(a) < rank(b) || (rank(a) === rank(b) && natural.compare(s.part.designator, t.part.designator) <= 0)
+  const [x, cx, y, cy] = first ? [s, a, t, b] : [t, b, s, a]
   const wires = wiresOfRoot(p, r)
   const [X, Y] = [x.part.designator, y.part.designator]
   const keys = [...x.keys[cx], ...y.keys[cy]]
@@ -1552,7 +1555,7 @@ function earthRules(acc: Acc, mask: number) {
     report(acc, gr.key, mask, () => {
       const wires = wiresOfRoot(p, r)
       return (when) => ({ rule: 'earth-bond', subject: gr.t.part.designator, target: termName(gr.t),
-        message: `${termName(gr.t)} is joined to earth${when}, but nothing on this net declares a bond to earth. A low-voltage ground on earth is right only when the supply is meant to be earthed (a class 1 supply with an earthed output); otherwise remove the join.`,
+        message: `${termName(gr.t)} is joined to earth${when}, but nothing on this net declares a bond to earth. Remove the join unless the supply is meant to be earthed (a class 1 supply with an earthed output).`,
         parts: [gr.t.part.uid], pins: [endpointOf(gr.t)], wires, causes: [gr.t.key] })
     })
   }
@@ -1605,3 +1608,224 @@ function earthPathRule(acc: Acc): MainsDraft[] {
 
 STATE_RULES.push(polarityRule, earthRules)
 STATIC_RULES.push(orphanEarth, earthPathRule)
+
+// ---- Rule 8: the project's own wiring is fused (spec 1.7, 3) ----
+
+/**
+ * What rule 8 judges in one view, made once so a state allocates nothing: the (load end, source)
+ * pairs that some state could leave unfused, each with the source's L bit and L nodes and its finding
+ * key (made on first use). A pair enters only when the end reaches the source's L over nets and every
+ * contact position at once, no fuse: a fully fused circuit costs nothing per state.
+ */
+interface ProtTable { end: Int32Array; load: GLoad[]; src: GSource[]; bit: Uint32Array; live: Int32Array[]; keys: (string | undefined)[] }
+const protCache = new WeakMap<Prepared, ProtTable>()
+function protTable(p: Prepared): ProtTable {
+  let t = protCache.get(p)
+  if (t) return t
+  const g = p.g
+  const parent = new Map<number, number>()
+  const find = (x: number): number => {
+    let r = x
+    while (parent.has(r)) r = parent.get(r)!
+    return r
+  }
+  for (const gi of p.groupIdx)
+    for (const list of g.groups[gi].closed)
+      for (const [a, b] of list) {
+        if (!p.inRel[a] || !p.inRel[b]) continue
+        const [ra, rb] = [find(a), find(b)]
+        if (ra !== rb) parent.set(ra, rb)
+      }
+  const pairs: { end: number; load: GLoad; src: GSource }[] = []
+  for (const i of p.loadIdx) {
+    const ld = g.loads[i]
+    for (const end of [ld.a, ld.b])
+      for (const s of p.sources) if (s.live.some((n) => find(n) === find(end))) pairs.push({ end, load: ld, src: s })
+  }
+  t = {
+    end: Int32Array.from(pairs, (x) => x.end), load: pairs.map((x) => x.load), src: pairs.map((x) => x.src),
+    bit: Uint32Array.from(pairs, (x) => bitOf(x.src.index, 'L')), live: pairs.map((x) => Int32Array.from(x.src.live)), keys: [],
+  }
+  protCache.set(p, t)
+  return t
+}
+
+/**
+ * Rule 8, per state (spec 3: a cut-set check per state): a load terminal on a source's L that still
+ * reaches that source's L with every fuse taken out (nets and closed contacts only, `bareRoot`). An
+ * empty holder is open already (the load then gets no L there, and fuseRules says why). A fuse inside
+ * a plug-in device or cord plug is a protective edge like any other, so it protects everything behind
+ * it. Allocation-free once a finding is known.
+ */
+function unprotectedRule(acc: Acc, mask: number) {
+  const { p } = acc
+  const t = protTable(p)
+  const { root, ident, bareRoot } = p
+  for (let q = 0; q < t.end.length; q++) {
+    const end = t.end[q]
+    if (!(ident[root[end]] & t.bit[q])) continue
+    const br = bareRoot[end]
+    const live = t.live[q]
+    let unfused = false
+    for (let m = 0; m < live.length && !unfused; m++) unfused = bareRoot[live[m]] === br
+    if (!unfused) continue
+    let key = t.keys[q]
+    // One finding per load and source, whichever end carries L.
+    if (key === undefined) t.keys[q] = key = `unprotected|${t.load[q].part.uid}|${t.src[q].id}`
+    if (!mark(acc, key, mask)) report(acc, key, mask, () => unprotectedDraft(p, t.load[q], t.src[q], br))
+  }
+}
+
+function unprotectedDraft(p: Prepared, ld: GLoad, s: GSource, br: number): (when: string) => MainsDraft {
+  // The unfused wiring in the first state it holds in: every wire on the nets joined to the source's L without a fuse.
+  const wires: string[] = []
+  for (const i of p.relevant) if (p.bareRoot[i] === br) wires.push(...p.g.wires[i])
+  const [d, src] = [ld.part.designator, s.part.designator]
+  return (when) => ({
+    rule: 'unprotected', subject: d, target: d,
+    message: `Nothing fuses the L wire from ${src} to ${d}${when}: a fault in the wiring beyond the plug has only the building's breaker to stop it. Add a fuse (a fuse holder) in the L wire.`,
+    parts: [ld.part.uid, s.part.uid], pins: [], wires, causes: [nodeKey(ld.part.uid, ld.names[0]), ...s.keys.L],
+  })
+}
+
+/**
+ * Rule 8, once: a fitted fuse with no rating on a node that is ever hazardous; and a load that never
+ * gets mains because a fuse holder is empty. Resolution 28: a load is told so only when it is proven
+ * (it gets L and N of one source in some state with every empty holder taken as fitted, and in none as
+ * drawn), and a holder is named only when fitting it alone restores a supply in a state that can
+ * occur. Nothing about empty holders is claimed when the checks did not finish.
+ */
+function fuseRules(acc: Acc): MainsDraft[] {
+  const g = acc.p.g
+  const out: MainsDraft[] = []
+  for (const e of g.edges) {
+    if (e.kind !== 'protective' || !e.fitted || e.rating !== null || !(acc.hazardAny[e.a] || acc.hazardAny[e.b])) continue
+    const d = e.part.designator
+    out.push({ rule: 'fuse-rating-unknown', subject: d, target: d,
+      message: `${d} has a fuse fitted but no rating, so the drawing does not say which fuse to fit. Set its rating in amps.`,
+      parts: [e.part.uid], pins: e.names.map((n) => ({ part: e.part.uid, pin: n })), wires: [], causes: e.names.map((n) => nodeKey(e.part.uid, n)) })
+  }
+  if (acc.incomplete) return out
+  g.loads.forEach((ld, i) => {
+    if (acc.loadComplete[i] || !acc.loadFit[i]) return
+    const holders = [...(acc.loadFixers.get(i) ?? [])].sort((x, y) => natural.compare(x.designator, y.designator))
+    const d = ld.part.designator
+    const names = holders.map((h) => h.designator)
+    out.push({ rule: 'no-power', subject: d, target: d,
+      message: holders.length
+        ? `${d} has no mains power: ${andList(names)} ${holders.length === 1 ? 'has' : 'have'} no fuse fitted. Fit a fuse in ${orList(names)}.`
+        : `${d} has no mains power: every supply path to it runs through more than one empty fuse holder. Fit a fuse in every empty holder on its supply path.`,
+      parts: [ld.part.uid, ...holders.map((h) => h.uid)], pins: [], wires: [],
+      causes: [nodeKey(ld.part.uid, ld.names[0]), ...holders.map((h) => nodeKey(h.uid, '#absent'))] })
+  })
+  return out
+}
+
+// ---- Rule 9: cables on mains and on the earth path (spec 1.8, Ruling 35) ----
+
+/** Wire ends that are clearly unsuitable for mains or earth (spec 1.8). */
+export const UNSUITABLE_ENDS: ReadonlySet<EndKind> = new Set<EndKind>(['dupont-male', 'dupont-female', 'alligator', 'jst-xh', 'jst-ph', 'jst-sh', 'grove', 'banana', 'solid-jumper'])
+/** At this gauge or thinner a wire is clearly unsuitable (spec 1.8). */
+const THIN_AWG = 24
+const CABLE_ADVICE = 'Use a cable rated for mains, such as an approved cord of 0.75 mm2 or 18 AWG or thicker, with stripped or ferrule ends.'
+/** An end kind in a sentence: END_NAMES is written for a select, so a common noun loses its capital ("alligator clip"); names keep theirs ("Dupont female"). */
+const endWords = (k: EndKind): string => (/^(Dupont|JST|Grove)/.test(END_NAMES[k]) ? END_NAMES[k] : END_NAMES[k].charAt(0).toLowerCase() + END_NAMES[k].slice(1))
+
+/** A wire end as the user reads it (as checks.ts names wire ends). */
+function wireEnd(g: MainsGraph, ep: Endpoint): string {
+  const t = termAt(g, nodeKey(ep.part, ep.pin))
+  const name = t ? termName(t) : `${g.d.parts.find((x) => x.uid === ep.part)?.designator ?? ep.part} ${ep.pin}`
+  return ep.hole !== undefined ? `${name} hole ${ep.hole}` : name
+}
+
+/**
+ * Rule 9, once: every wire on a net that is ever hazardous, and every protective conductor (Task 8's
+ * paths), is either clearly unsuitable (mains-cable) or cannot be checked (cable-unverified). A
+ * functional DC ground joined to a bonded minus is not protective, so it is not judged here.
+ */
+function cableRules(acc: Acc): MainsDraft[] {
+  const g = acc.p.g
+  const pe = protectivePaths(g)
+  const out: MainsDraft[] = []
+  for (const c of g.d.connections) {
+    if (g.broken.has(c.uid)) continue
+    const i = g.nodeOf.get(nodeKey(c.from.part, c.from.pin))
+    const live = i !== undefined && acc.hazardAny[i] === 1
+    if (!live && !pe.wires.has(c.uid)) continue
+    const name = c.label || `${wireEnd(g, c.from)} to ${wireEnd(g, c.to)}`
+    const what = live ? 'carries mains' : 'is part of the earth path'
+    const ends = [...new Set([endKind(c.ends, 'from'), endKind(c.ends, 'to')].filter((k) => UNSUITABLE_ENDS.has(k)))]
+    const gauge = c.gauge ?? 22
+    const reasons = [...(ends.length ? [`has ${andList(ends.map(endWords))} ends`] : []), ...(gauge >= THIN_AWG ? [`is ${gauge} AWG`] : [])]
+    const base = { subject: name, target: name, parts: [c.from.part, c.to.part], pins: [], wires: [c.uid], select: { parts: [], wires: [c.uid] }, causes: [c.uid] }
+    out.push(reasons.length
+      ? { ...base, rule: 'mains-cable', message: `The wire ${name} ${what}, but it ${reasons.join(' and ')}. ${CABLE_ADVICE}` }
+      : { ...base, rule: 'cable-unverified', message: `The wire ${name} ${what}. Circuitoon cannot check its insulation or rating: ${CABLE_ADVICE.charAt(0).toLowerCase()}${CABLE_ADVICE.slice(1)}` })
+  }
+  return [...out, ...stripRule(acc, pe.strips)]
+}
+
+/**
+ * Ruling 35: a breadboard strip (a hole group of a board without mains data) on a net that is ever
+ * hazardous, or on a protective path, is rated for neither. One finding per board, its strips in
+ * name order, those on mains first.
+ */
+function stripRule(acc: Acc, earthStrips: { part: string; group: string }[]): MainsDraft[] {
+  const { p } = acc
+  const g = p.g
+  const byBoard = new Map<string, { board: PartInstance; live: Map<string, GTerm>; earth: Map<string, GTerm> }>()
+  const add = (t: GTerm, live: boolean) => {
+    let e = byBoard.get(t.part.uid)
+    if (!e) byBoard.set(t.part.uid, (e = { board: t.part, live: new Map(), earth: new Map() }))
+    if (live) {
+      e.live.set(t.key, t)
+      e.earth.delete(t.key)
+    } else if (!e.live.has(t.key)) e.earth.set(t.key, t)
+  }
+  const strip = (t: GTerm | null): t is GTerm => !!t && !t.info.any && isBoard(t.module) && !!t.module.holes?.some((h) => h.name === t.name)
+  for (const i of p.relevant) {
+    if (!acc.hazardAny[i]) continue
+    for (const k of g.members[i]) {
+      const t = termAt(g, k)
+      if (strip(t)) add(t, true)
+    }
+  }
+  for (const s of earthStrips) {
+    const t = termAt(g, nodeKey(s.part, s.group))
+    if (strip(t)) add(t, false)
+  }
+  return [...byBoard.values()].map(({ board, live, earth }): MainsDraft => {
+    const sorted = (m: Map<string, GTerm>) => [...m.values()].sort((a, b) => natural.compare(termName(a), termName(b)))
+    const [on, pe] = [sorted(live), sorted(earth)]
+    const clauses = [
+      ...(on.length ? [`${andList(on.map(termName))} ${on.length === 1 ? 'carries' : 'carry'} mains`] : []),
+      ...(pe.length ? [`${andList(pe.map(termName))} ${pe.length === 1 ? 'is' : 'are'} on the earth path`] : []),
+    ]
+    const terms = [...on, ...pe]
+    const wires = [...new Set(terms.flatMap((t) => g.wires[g.nodeOf.get(t.key)!] ?? []))]
+    return {
+      rule: 'mains-cable', subject: board.designator, target: termName(terms[0]),
+      message: `${clauses.join(' and ')}, but a breadboard strip is not rated for mains or protective earth. Use rated terminals, such as a terminal block or a lever connector, in place of the breadboard.`,
+      parts: [board.uid], pins: terms.map(endpointOf), wires, causes: terms.map((t) => t.key),
+    }
+  })
+}
+
+// ---- Rule 13: the checks did not finish (spec 1.5, 6) ----
+
+/** What the per-state rules would have judged, which an incomplete sheet does not check (spec 6: list what was not checked). */
+const NOT_CHECKED = 'Not checked: mains on low-voltage wiring, shorts, outlets joined to each other, mains voltages, polarity, earthing, fuses in the L wire and which loads get power.'
+
+function incompleteRule(acc: Acc): MainsDraft[] {
+  if (!acc.incomplete) return []
+  const g = acc.p.g
+  const groups = acc.incomplete === 'groups'
+  const what = groups ? `${acc.cands.length} switches and relays` : `${g.sources.length} AC sources`
+  const parts = [...new Set(groups ? acc.cands.map((i) => g.groups[i].part) : g.sources.map((s) => s.part))].sort((a, b) => natural.compare(a.designator, b.designator))
+  return [{ rule: 'mains-incomplete', subject: parts[0].designator, target: parts[0].designator,
+    message: `Mains checks did not finish: ${what}. ${NOT_CHECKED} Split the drawing or check the rest by hand.`,
+    parts: parts.map((x) => x.uid), pins: [], wires: [], causes: ['#mains-incomplete'] }]
+}
+
+STATE_RULES.push(unprotectedRule)
+STATIC_RULES.push(fuseRules, cableRules, incompleteRule)

@@ -1,7 +1,8 @@
 // The mains rules (spec section 3), each both ways, and the counterexamples of Astra's reviews.
 import { describe, expect, it } from 'vitest'
 import { checkDiagram, type Finding } from './checks.ts'
-import type { Diagram } from './diagram.ts'
+import type { Diagram, PartInstance } from './diagram.ts'
+import { load } from './builtinModules.testing.ts'
 import { MAINS_MODULES, at, dupont, sheet, w } from './mains.testing.ts'
 import { plugsOf } from './breadboard.ts'
 import { netlist, nodeKey } from './netlist.ts'
@@ -593,7 +594,7 @@ describe('rule 7: earth', () => {
   })
   it('a DC ground joined to earth without a declared bond warns; through a declared bond it does not', () => {
     expect(msgs(on([['u1', 'U1', 't-mcu']], [w('xs1|PE', 'u1|GND')]), 'earth-bond')).toEqual([
-      'U1 GND is joined to earth, but nothing on this net declares a bond to earth. A low-voltage ground on earth is right only when the supply is meant to be earthed (a class 1 supply with an earthed output); otherwise remove the join.',
+      'U1 GND is joined to earth, but nothing on this net declares a bond to earth. Remove the join unless the supply is meant to be earthed (a class 1 supply with an earthed output).',
     ])
     const bonded = on([['ps1', 'PS1', 't-psu-pelv'], ['u1', 'U1', 't-mcu']],
       [w('xs1|L', 'ps1|AC1'), w('xs1|N', 'ps1|AC2'), w('xs1|PE', 'ps1|PE'), w('ps1|-V', 'u1|GND'), w('ps1|+V', 'u1|VCC')])
@@ -603,5 +604,149 @@ describe('rule 7: earth', () => {
   it('a class 1 supply with its earth unwired while its input is on mains', () => {
     const d = on([['ps1', 'PS1', 't-psu-pelv']], [w('xs1|L', 'ps1|AC1'), w('xs1|N', 'ps1|AC2')])
     expect(msgs(d, 'earth')).toEqual(["PS1 PE is not connected to earth: a fault inside PS1 may leave its metal live. Wire PS1 PE to the outlet's earth."])
+  })
+})
+
+describe('rule 8: protection', () => {
+  const fused = (settings: Record<string, string>, values?: PartInstance['values']) =>
+    sheet([at('xs1', 'XS1', 't-outlet'), at('f1', 'F1', 't-fuse', 200, 0, { settings, ...(values ? { values } : {}) }), at('e1', 'E1', 't-lamp', 400)],
+      [w('xs1|L', 'f1|1'), w('f1|2', 'e1|L'), w('e1|N', 'xs1|N')])
+  it('an unfused lamp warns, highlighting the unfused L wiring; a fused one with a rating does not', () => {
+    const lWire = w('xs1|L', 'e1|L')
+    const found = only(on([['e1', 'E1', 't-lamp']], [lWire, w('xs1|N', 'e1|N')]), 'unprotected')
+    expect(found.map((f) => f.message)).toEqual([
+      "Nothing fuses the L wire from XS1 to E1: a fault in the wiring beyond the plug has only the building's breaker to stop it. Add a fuse (a fuse holder) in the L wire.",
+    ])
+    expect(found[0].wires).toEqual([lWire.uid])
+    const ok = fused({ fuse: 'fitted' }, { fuseRating: { value: 2, unit: 'A' } })
+    expect(rules(ok).has('unprotected')).toBe(false)
+    expect(rules(ok).has('fuse-rating-unknown')).toBe(false)
+  })
+  it('names the state when only a switch puts L on the lamp (Ruling 31)', () => {
+    const d = on([['s1', 'S1', 't-switch'], ['e1', 'E1', 't-lamp']], [w('xs1|L', 's1|1'), w('s1|2', 'e1|L'), w('e1|N', 'xs1|N')])
+    expect(msgs(d, 'unprotected')).toEqual([
+      "Nothing fuses the L wire from XS1 to E1 when S1 is on: a fault in the wiring beyond the plug has only the building's breaker to stop it. Add a fuse (a fuse holder) in the L wire.",
+    ])
+  })
+  it('a fuse in the N wire does not protect the L wiring', () => {
+    const d = sheet([at('xs1', 'XS1', 't-outlet'), at('f1', 'F1', 't-fuse', 200, 0, { values: { fuseRating: { value: 2, unit: 'A' } } }), at('e1', 'E1', 't-lamp', 400)],
+      [w('xs1|L', 'e1|L'), w('e1|N', 'f1|1'), w('f1|2', 'xs1|N')])
+    expect(rules(d).has('unprotected')).toBe(true)
+  })
+  it('fuse on one branch with a bypass (unprotected)', () => {
+    const d = sheet([at('xs1', 'XS1', 't-outlet'), at('f1', 'F1', 't-fuse', 200, 0, { values: { fuseRating: { value: 2, unit: 'A' } } }), at('e1', 'E1', 't-lamp', 400)],
+      [w('xs1|L', 'f1|1'), w('f1|2', 'e1|L'), w('xs1|L', 'e1|L'), w('e1|N', 'xs1|N')])
+    expect(rules(d).has('unprotected')).toBe(true)
+  })
+  it('empty fuse holder vs fitted with unknown rating', () => {
+    const empty = fused({ fuse: 'absent' })
+    expect(msgs(empty, 'no-power')).toEqual(['E1 has no mains power: F1 has no fuse fitted. Fit a fuse in F1.'])
+    expect(rules(empty).has('unprotected')).toBe(false)
+    expect(msgs(fused({ fuse: 'fitted' }), 'fuse-rating-unknown')).toEqual([
+      'F1 has a fuse fitted but no rating, so the drawing does not say which fuse to fit. Set its rating in amps.',
+    ])
+  })
+  it('never blames an empty fuse holder that is not the cause (Resolution 28)', () => {
+    // E1 is powered directly; F1 is empty but sits on another branch that shares E1's neutral.
+    const d = sheet([at('xs1', 'XS1', 't-outlet'), at('e1', 'E1', 't-lamp', 200), at('f1', 'F1', 't-fuse', 400, 0, { settings: { fuse: 'absent' } }), at('e2', 'E2', 't-lamp', 600)],
+      [w('xs1|L', 'e1|L'), w('e1|N', 'xs1|N'), w('xs1|L', 'f1|1'), w('f1|2', 'e2|L'), w('e2|N', 'xs1|N')])
+    expect(msgs(d, 'no-power')).toEqual(['E2 has no mains power: F1 has no fuse fitted. Fit a fuse in F1.'])
+  })
+  it('names only the empty holder whose fitting restores the supply, not an unrelated empty one (Resolution 28)', () => {
+    const d = sheet([at('xs1', 'XS1', 't-outlet'), at('f1', 'F1', 't-fuse', 200, 0, { settings: { fuse: 'absent' } }), at('f2', 'F2', 't-fuse', 200, 200, { settings: { fuse: 'absent' } }), at('e1', 'E1', 't-lamp', 400)],
+      [w('xs1|L', 'f1|1'), w('f1|2', 'e1|L'), w('e1|N', 'xs1|N'), w('xs1|L', 'f2|1')])
+    expect(msgs(d, 'no-power')).toEqual(['E1 has no mains power: F1 has no fuse fitted. Fit a fuse in F1.'])
+  })
+  it('names every holder that alone restores the supply, in designator order', () => {
+    const d = sheet([at('xs1', 'XS1', 't-outlet'), at('f2', 'F2', 't-fuse', 200, 0, { settings: { fuse: 'absent' } }), at('f1', 'F1', 't-fuse', 200, 200, { settings: { fuse: 'absent' } }), at('e1', 'E1', 't-lamp', 400)],
+      [w('xs1|L', 'f1|1'), w('f1|2', 'e1|L'), w('xs1|L', 'f2|1'), w('f2|2', 'e1|L'), w('e1|N', 'xs1|N')])
+    expect(msgs(d, 'no-power')).toEqual(['E1 has no mains power: F1 and F2 have no fuse fitted. Fit a fuse in F1 or F2.'])
+  })
+  it('never names a holder through contact positions that cannot close together (Astra counterexample)', () => {
+    // K1: NC to XS1 L, NO to E1 L, COM unwired. With every position closed at once, NC-COM-NO would join
+    // XS1 L to E1 L and make the dangling F2 look like a fix; no real state of K1 does that.
+    const d = sheet([at('xs1', 'XS1', 't-outlet'), at('f1', 'F1', 't-fuse', 200, 0, { settings: { fuse: 'absent' } }), at('f2', 'F2', 't-fuse', 200, 200, { settings: { fuse: 'absent' } }),
+      at('k1', 'K1', 't-relay', 200, 400), at('e1', 'E1', 't-lamp', 400)],
+    [w('xs1|L', 'f1|1'), w('f1|2', 'e1|L'), w('xs1|L', 'f2|1'), w('xs1|L', 'k1|NC'), w('k1|NO', 'e1|L'), w('e1|N', 'xs1|N')])
+    // K1's coil is unwired, which the DC checker reports on its own.
+    expect(only(d, 'no-power').filter((f) => f.subject === 'E1').map((f) => f.message)).toEqual(['E1 has no mains power: F1 has no fuse fitted. Fit a fuse in F1.'])
+  })
+  it('names no holder when no single one restores the supply (empty holders on L and on N)', () => {
+    const d = sheet([at('xs1', 'XS1', 't-outlet'), at('f1', 'F1', 't-fuse', 200, 0, { settings: { fuse: 'absent' } }), at('f2', 'F2', 't-fuse', 200, 200, { settings: { fuse: 'absent' } }), at('e1', 'E1', 't-lamp', 400)],
+      [w('xs1|L', 'f1|1'), w('f1|2', 'e1|L'), w('e1|N', 'f2|2'), w('f2|1', 'xs1|N')])
+    expect(msgs(d, 'no-power')).toEqual([
+      'E1 has no mains power: every supply path to it runs through more than one empty fuse holder. Fit a fuse in every empty holder on its supply path.',
+    ])
+  })
+  it('claims nothing about empty fuse holders when the checks did not finish', () => {
+    const ks = Array.from({ length: 17 }, (_, i) => i + 1)
+    const d = sheet([at('xs1', 'XS1', 't-outlet'), ...ks.map((k) => at(`s${k}`, `S${k}`, 't-switch', k * 100, 300)),
+      at('f1', 'F1', 't-fuse', 200, 600, { settings: { fuse: 'absent' } }), at('e1', 'E1', 't-lamp', 600, 600)],
+    [...ks.map((k) => w('xs1|L', `s${k}|1`)), w('xs1|L', 'f1|1'), w('f1|2', 'e1|L'), w('e1|N', 'xs1|N')])
+    expect(only(d, 'no-power')).toEqual([])
+  })
+})
+
+describe('rule 9: cables', () => {
+  const lamp = (extra: ReturnType<typeof w>[]) => on([['e1', 'E1', 't-lamp-c1']], [w('xs1|L', 'e1|L'), w('xs1|N', 'e1|N'), ...extra])
+  const advice = 'Use a cable rated for mains, such as an approved cord of 0.75 mm2 or 18 AWG or thicker, with stripped or ferrule ends.'
+  it('a live Dupont jumper is unsuitable; a thin wire too; an 18 AWG ferrule wire is only unverified', () => {
+    const d = on([['e1', 'E1', 't-lamp']], [dupont('xs1|L', 'e1|L'), w('xs1|N', 'e1|N', { gauge: 24, ends: { from: 'stripped', to: 'stripped' } })])
+    expect(msgs(d, 'mains-cable').sort()).toEqual([
+      `The wire XS1 L to E1 L carries mains, but it has Dupont female ends and is 26 AWG. ${advice}`,
+      `The wire XS1 N to E1 N carries mains, but it is 24 AWG. ${advice}`,
+    ])
+    expect(msgs(on([['e1', 'E1', 't-lamp']], [w('xs1|L', 'e1|L')]), 'cable-unverified')).toEqual([
+      'The wire XS1 L to E1 L carries mains. Circuitoon cannot check its insulation or rating: use a cable rated for mains, such as an approved cord of 0.75 mm2 or 18 AWG or thicker, with stripped or ferrule ends.',
+    ])
+  })
+  it('names each unsuitable end kind once, in plain words, and uses the wire label when it has one', () => {
+    const d = on([['e1', 'E1', 't-lamp']], [w('xs1|L', 'e1|L', { label: 'lamp feed', ends: { from: 'alligator', to: 'dupont-male' } }), w('xs1|N', 'e1|N')])
+    expect(msgs(d, 'mains-cable')).toEqual([`The wire lamp feed carries mains, but it has alligator clip and Dupont male ends. ${advice}`])
+  })
+  it('Dupont PE lead on a class 1 lamp (mains-cable)', () => {
+    expect(msgs(lamp([dupont('xs1|PE', 'e1|PE')]), 'mains-cable')).toEqual([
+      `The wire XS1 PE to E1 PE is part of the earth path, but it has Dupont female ends and is 26 AWG. ${advice}`,
+    ])
+  })
+  it('two parallel 26 AWG Dupont PE wires to a class 1 lamp (mains-cable on both)', () => {
+    const d = lamp([dupont('xs1|PE', 'e1|PE'), dupont('e1|PE', 'xs1|PE')])
+    expect(only(d, 'mains-cable').length).toBe(2)
+  })
+  it('an ESP32 26 AWG Dupont ground to a PE-bonded supply minus (no mains-cable finding)', () => {
+    const d = on([['ps1', 'PS1', 't-psu-pelv'], ['u1', 'U1', 't-mcu']],
+      [w('xs1|L', 'ps1|AC1'), w('xs1|N', 'ps1|AC2'), w('xs1|PE', 'ps1|PE'), dupont('ps1|-V', 'u1|GND'), dupont('ps1|+V', 'u1|VCC')])
+    expect(only(d, 'mains-cable')).toEqual([])
+  })
+  it('a breadboard strip on mains or on the earth path is unsuitable (Ruling 35)', () => {
+    const bb = load('breadboard-half')
+    const d = sheet([at('xs1', 'XS1', 't-outlet'), at('bb', 'BB1', bb.id, 0, 400), at('e1', 'E1', 't-lamp-c1', 400)],
+      [w('xs1|L', 'bb|c3-top'), w('bb|c3-top', 'e1|L'), w('xs1|N', 'e1|N'), w('xs1|PE', 'bb|c5-top'), w('bb|c5-top', 'e1|PE')], { [bb.id]: bb })
+    const found = only(d, 'mains-cable')
+    expect(found.map((f) => f.message)).toEqual([
+      'BB1 3 a-e carries mains and BB1 5 a-e is on the earth path, but a breadboard strip is not rated for mains or protective earth. Use rated terminals, such as a terminal block or a lever connector, in place of the breadboard.',
+    ])
+    expect(found[0].pins).toEqual([{ part: 'bb', pin: 'c3-top' }, { part: 'bb', pin: 'c5-top' }])
+  })
+})
+
+describe('rule 13: checks that did not finish', () => {
+  const notChecked = 'Not checked: mains on low-voltage wiring, shorts, outlets joined to each other, mains voltages, polarity, earthing, fuses in the L wire and which loads get power.'
+  it('17 contact groups (mains-incomplete, no clean claim)', () => {
+    const ks = Array.from({ length: 17 }, (_, i) => i + 1)
+    const d = on(ks.map((k): [string, string, string] => [`s${k}`, `S${k}`, 't-switch']), ks.map((k) => w('xs1|L', `s${k}|1`)))
+    const found = checkDiagram(d)
+    expect(found.filter((f) => f.rule === 'mains-incomplete').map((f) => f.message)).toEqual([
+      `Mains checks did not finish: 17 switches and relays. ${notChecked} Split the drawing or check the rest by hand.`,
+    ])
+    expect(found.find((f) => f.rule === 'mains-incomplete')!.subject).toBe('S1')
+    expect(found.length).toBeGreaterThan(0)
+  })
+  it('more than 10 AC sources', () => {
+    const outlets = Array.from({ length: 11 }, (_, i) => [`xs${i + 1}`, `XS${i + 1}`, 't-outlet'])
+    expect(msgs(on([], [], outlets), 'mains-incomplete')).toEqual([`Mains checks did not finish: 11 AC sources. ${notChecked} Split the drawing or check the rest by hand.`])
+  })
+  it('says nothing when the checks finished', () => {
+    expect(rules(on([['e1', 'E1', 't-lamp']], [w('xs1|L', 'e1|L'), w('xs1|N', 'e1|N')])).has('mains-incomplete')).toBe(false)
   })
 })

@@ -44,7 +44,7 @@ export function analyseMains(d: Diagram): MainsAnalysis | null {
   const acc = newAcc(p, cands, incomplete)
   // On an incomplete sheet no per-state rule runs (rules 1 to 4 among them: no voltage, short or
   // low-voltage finding is claimed); only the static rules run, on the conservative hazard. The
-  // mains-incomplete finding (Task 10) says the checks did not finish.
+  // mains-incomplete finding (rule 13) says the checks did not finish and lists what was not checked.
   if (incomplete) conservative(acc)
   else
     for (const unit of units(p, cands)) {

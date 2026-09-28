@@ -113,7 +113,7 @@ describe('when the enumeration did not finish, nothing is claimed unpowered with
   })
   it('never asks to rewire an input it did not check, and says so for the load behind it', () => {
     const e = sheet([...d.parts, at('u2', 'U2', 't-mcu', 900, 900)], [...d.connections, w('ps1|+V', 'u2|VCC'), w('ps1|-V', 'u2|GND')])
-    expect(checkDiagram(e).filter((f) => f.parts.includes('ps1')).map((f) => `${f.rule}: ${f.message}`)).toEqual([
+    expect(checkDiagram(e).filter((f) => f.parts.includes('ps1') && f.rule !== 'cable-unverified').map((f) => `${f.rule}: ${f.message}`)).toEqual([
       "supply-unknown: The mains checks did not finish, so PS1's mains input was not checked and its outputs are not counted as a supply. Check PS1's input by hand.",
       "supply-unknown: U2's power is not checked: it comes only from PS1 +V, and the mains checks did not finish for PS1. Check PS1's input by hand.",
     ])
