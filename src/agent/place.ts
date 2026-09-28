@@ -5,13 +5,17 @@
 // never overlap (mounted parts overlap only their own board). Ties always break by ref in natural
 // order. Every kept position (`--keep`) stays exactly where it is, per part (amendment A6): the
 // rest is placed around kept parts, and a kept position that cannot hold (a mounted part not seated
-// there, or on a board that is not kept) is an error, never a silent move. Pure.
+// there, or on a board that is not kept) is an error, never a silent move. With the rail module
+// given, each repeat block gets rail strips of its own under its rows for its shared ground and
+// power nets (amendment A18.1). Pure.
 import { DIAGRAM_FORMAT, type Annotation, type Diagram, type PartInstance } from '../format/diagram.ts'
 import { mountIssues } from '../format/breadboard.ts'
 import type { Pt, Rect, Rotation } from '../format/geometry.ts'
 import { isBoard } from '../format/module.ts'
 import { annotationRect, wrapNote } from '../render/annotationGeometry.ts'
 import { type Intent, terminalKey } from './netlist.ts'
+import type { ModuleDef } from '../format/module.ts'
+import { type LocalDistribution, netKind } from './realize.ts'
 import { type NetOfPin, mountPart, stripClash } from './mount.ts'
 import { RectIndex, footprint, grow, shift, tightFootprint, union } from './footprint.ts'
 import { naturalCompare } from './order.ts'
@@ -26,8 +30,22 @@ export interface PlaceOptions {
   /** Least gap, in px, between the footprints of two placed units (grows on each retry). */
   spacing: number
   keep?: KeepMap
+  /**
+   * The rail strip module (power-rail-strip). Given, each repeat block gets rail strips of its own
+   * for its shared ground and power nets (amendment A18.1), added as routing infrastructure.
+   */
+  rail?: ModuleDef
 }
-export type PlaceResult = { ok: true; parts: PartInstance[]; annotations: Annotation[] } | { ok: false; errors: string[] }
+export type PlaceResult =
+  | {
+      ok: true
+      parts: PartInstance[]
+      annotations: Annotation[]
+      /** The intent's modules, plus the rail strip module when local strips were added. */
+      modules: Record<string, ModuleDef>
+      locals: LocalDistribution[]
+    }
+  | { ok: false; errors: string[] }
 
 /** Step of the ring search, in px. */
 const STEP = 20
@@ -37,6 +55,10 @@ const GROUP_ROW = 640
 const FRAME_PAD = 12
 /** Where the content's top-left lands once placed (no kept parts). */
 const MARGIN = 40
+/** Holes of a local rail kept free for the jumpers that chain a block's strips and its trunk wire. */
+const RAIL_SPARE = 4
+/** Room between a row of copies and the local strips under it, and between those and the next row, in px. */
+const RAIL_GAP = 20
 
 const snap = (v: number) => Math.round(v / 10) * 10
 const floor10 = (v: number) => Math.floor(v / 10) * 10
@@ -73,7 +95,7 @@ function findSpot(box: Rect, want: Pt, taken: RectIndex, gap: number): Pt {
 
 export function placeParts(intent: Intent, opts: PlaceOptions): PlaceResult {
   const keep = opts.keep ?? new Map<string, Keep>()
-  const mods = intent.modules
+  const mods: Record<string, ModuleDef> = { ...intent.modules }
   const inst = new Map<string, PartInstance>()
   for (const p of intent.parts) inst.set(p.ref, { uid: p.ref, designator: p.ref, module: p.module, x: 0, y: 0, rotation: 0, ...(p.values ? { values: p.values } : {}) })
   const modOf = (ref: string) => mods[inst.get(ref)!.module]
@@ -196,12 +218,71 @@ export function placeParts(intent: Intent, opts: PlaceOptions): PlaceResult {
     const ends = Object.keys(c.bindings).sort(naturalCompare).map((port) => c.bindings[port])
     return { ref: ends.length ? ends[0].split('.')[0] : '', channel: ends.join(' ') }
   }
-  const blocks = new Map<string, { channel: string; refs: string[] }[]>()
+  const blocks = new Map<string, { channel: string; refs: string[]; whole: boolean }[]>()
   for (const c of intent.copies) {
     const list = free(c.refs)
     if (!list.length) continue
     const t = targetOf(c)
-    blocks.set(t.ref, [...(blocks.get(t.ref) ?? []), { channel: t.channel, refs: list }])
+    blocks.set(t.ref, [...(blocks.get(t.ref) ?? []), { channel: t.channel, refs: list, whole: list.length === c.refs.length }])
+  }
+  // Shared nets (A18.1): a ground or power net that reaches pins of two or more copies. A shared
+  // signal net keeps the usual wiring (a rail strip is for supply nets).
+  const copyOf = new Map<string, number>()
+  intent.copies.forEach((c, i) => c.refs.forEach((r) => copyOf.set(r, i)))
+  const shared = intent.nets.flatMap((n, ni) => {
+    const terms = n.terminals.filter((t) => !t.infra && copyOf.has(t.ref))
+    const kind = netKind(intent, n)
+    if (kind === 'signal' || new Set(terms.map((t) => copyOf.get(t.ref))).size < 2) return []
+    return [{ ni, rail: (kind === 'ground' ? '-' : '+') as '+' | '-', terms }]
+  })
+  const locals: LocalDistribution[] = []
+  const intentRefs = new Set(intent.parts.map((p) => p.ref))
+  let dpCount = 0
+  const nextStrip = (): string => {
+    let ref = ''
+    do ref = `DP${++dpCount}`
+    while (intentRefs.has(ref))
+    return ref
+  }
+  /**
+   * The local rail strips of one block (A18.1): for each row of `cols` copies, enough strips for
+   * the row's pins on each shared net (ground on the - rails, power on the + rails), each rail
+   * keeping RAIL_SPARE holes for jumpers. A strip that carries only ground is turned 180 degrees,
+   * so its - rail faces the copies above it. Null when the block has no shared net.
+   */
+  const localRails = (copies: string[][], cols: number) => {
+    const rail = opts.rail!
+    const room = Math.min(...(rail.holes ?? []).map((g) => g.at.length)) - RAIL_SPARE
+    const inBlock = new Set(copies.flat())
+    const nets = shared.filter((sn) => sn.terms.filter((t) => inBlock.has(t.ref)).length >= 2)
+    if (!nets.length || room < 1) return null
+    mods[rail.id] = rail
+    const byNet = new Map<number, LocalDistribution>()
+    const rows: string[][] = []
+    for (let r = 0; r * cols < copies.length; r++) {
+      const inRow = new Set(copies.slice(r * cols, (r + 1) * cols).flat())
+      const slots: Record<'+' | '-', number[]> = { '+': [], '-': [] }
+      for (const sn of nets) {
+        const need = sn.terms.filter((t) => inRow.has(t.ref)).length
+        for (let k = 0; k < Math.ceil(need / room); k++) slots[sn.rail].push(sn.ni)
+      }
+      const list: string[] = []
+      for (let k = 0; k < Math.max(slots['+'].length, slots['-'].length); k++) {
+        const ref = nextStrip()
+        inst.set(ref, { uid: ref, designator: ref, module: rail.id, x: 0, y: 0, rotation: k >= slots['+'].length ? 180 : 0 })
+        for (const side of ['-', '+'] as const) {
+          const ni = slots[side][k]
+          if (ni === undefined) continue
+          const l = byNet.get(ni) ?? { net: ni, strips: [], rail: side, refs: [...inBlock].sort(naturalCompare) }
+          l.strips.push(ref)
+          byNet.set(ni, l)
+        }
+        list.push(ref)
+      }
+      rows.push(list)
+    }
+    const h = Math.max(0, ...rows.flat().map((ref) => tight(ref).h))
+    return { rows, h, locals: [...byNet.values()].sort((a, b) => a.net - b.net) }
   }
   for (const [target, members] of [...blocks].sort((a, b) => naturalCompare(a[0], b[0]))) {
     members.sort((a, b) => naturalCompare(a.channel, b.channel))
@@ -210,8 +291,26 @@ export function placeParts(intent: Intent, opts: PlaceOptions): PlaceResult {
     const cw = Math.max(...cells.map((c) => c.box.w)) + pad
     const ch = Math.max(...cells.map((c) => c.box.h)) + pad + 10
     const cols = Math.ceil(Math.sqrt(cells.length))
-    cells.forEach((c, i) => move(c.refs, snap((i % cols) * cw - c.box.x), snap(Math.floor(i / cols) * ch - c.box.y)))
+    const rails = opts.rail && members.every((m) => m.whole) ? localRails(members.map((m) => m.refs), cols) : null
+    const rowH = rails ? ch + rails.h + 2 * RAIL_GAP : ch
+    cells.forEach((c, i) => move(c.refs, snap((i % cols) * cw - c.box.x), snap(Math.floor(i / cols) * rowH - c.box.y)))
     const all = cells.flatMap((c) => c.refs)
+    if (rails) {
+      // Each row's strips sit under it, spread evenly across the row's width.
+      const cellH = Math.max(...cells.map((c) => c.box.h))
+      for (const [r, list] of rails.rows.entries()) {
+        const inRow = Math.min(cols, cells.length - r * cols)
+        const width = inRow * cw - pad
+        for (const [k, ref] of list.entries()) {
+          const t = tight(ref)
+          const p = inst.get(ref)!
+          const cx = (width * (k + 0.5)) / list.length
+          inst.set(ref, { ...p, x: snap(cx - t.w / 2 - (t.x - p.x)), y: snap(r * rowH + cellH + RAIL_GAP - (t.y - p.y)) })
+          all.push(ref)
+        }
+      }
+      locals.push(...rails.locals)
+    }
     const repeat = intent.copies[0].repeat
     units.push({ key: target ? `${repeat} ${target}` : repeat, refs: all, anchor: false, fixed: false, ...(inst.has(target) ? { near: target } : {}) })
     for (const r of all) grouped.add(r)
@@ -278,6 +377,8 @@ export function placeParts(intent: Intent, opts: PlaceOptions): PlaceResult {
     rest = rest.filter((u) => u !== best)
   }
 
+  const added = [...new Set(locals.flatMap((l) => l.strips))].sort(naturalCompare)
+
   // Frames around each group and each copy, then notes below their target.
   const annotations: Annotation[] = []
   const frames = new Map<string, Annotation>()
@@ -292,7 +393,7 @@ export function placeParts(intent: Intent, opts: PlaceOptions): PlaceResult {
   for (const g of intent.groups) if (g.refs.length) frames.set(g.name, frameOf(g.refs, g.name))
   for (const c of intent.copies) frameOf(c.refs, `${c.repeat} ${c.index}`)
   const clear = new RectIndex()
-  for (const r of refs) clear.add(tight(r))
+  for (const r of [...refs, ...added]) clear.add(tight(r))
   for (const a of annotations) clear.add(annotationRect(a))
   for (const n of intent.notes) {
     const frame = frames.get(n.near)
@@ -307,14 +408,15 @@ export function placeParts(intent: Intent, opts: PlaceOptions): PlaceResult {
   // Content to the sheet origin, unless something was kept where it was (a kept ref the intent
   // lacks keeps nothing).
   let out = annotations
-  const rects = [...refs.map(fp), ...annotations.map(annotationRect)]
-  const anyKept = [...keep.keys()].some((r) => inst.has(r))
+  const rects = [...refs.map(fp), ...added.map(fp), ...annotations.map(annotationRect)]
+  const anyKept = intent.parts.some((p) => keep.has(p.ref))
   if (!anyKept && rects.length) {
     const all = rects.reduce(union)
     const dx = ceil10(MARGIN - all.x)
     const dy = ceil10(MARGIN - all.y)
-    move(refs, dx, dy)
+    move([...refs, ...added], dx, dy)
     out = annotations.map((a) => ({ ...a, x: a.x + dx, y: a.y + dy }))
   }
-  return { ok: true, parts: intent.parts.map((p) => inst.get(p.ref)!), annotations: out }
+  const modules = Object.fromEntries(Object.entries(mods).sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0)))
+  return { ok: true, parts: [...intent.parts.map((p) => inst.get(p.ref)!), ...added.map((r) => inst.get(r)!)], annotations: out, modules, locals }
 }

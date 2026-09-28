@@ -19,6 +19,8 @@ import { verifyDiagram } from './verify.ts'
 import { naturalCompare } from './order.ts'
 
 export const SPACINGS = [20, 40, 60]
+/** The module a repeat block's local distribution strips use (amendment A18.1). */
+export const RAIL_MODULE = 'power-rail-strip'
 
 export interface LayoutOutput {
   diagram: Diagram
@@ -37,12 +39,12 @@ export function layoutNetlist(raw: unknown, opts: { library?: ModuleLookup; keep
   const intent = parsed.intent
   let blocked: string[] = []
   for (const [i, spacing] of SPACINGS.entries()) {
-    const placed = placeParts(intent, { spacing, keep: opts.keep })
+    const placed = placeParts(intent, { spacing, keep: opts.keep, rail: library(RAIL_MODULE) })
     if (!placed.ok) return { ok: false, stage: 'layout', errors: placed.errors }
     const base: Diagram = {
       format: DIAGRAM_FORMAT,
       title: intent.title,
-      modules: intent.modules,
+      modules: placed.modules,
       parts: placed.parts,
       connections: [],
       ...(placed.annotations.length ? { annotations: placed.annotations } : {}),
@@ -51,7 +53,7 @@ export function layoutNetlist(raw: unknown, opts: { library?: ModuleLookup; keep
     const over = overlaps(base)
     if (over.body.length || over.caption.length)
       return { ok: false, stage: 'layout', errors: [...over.body.map((o) => `body overlap: ${o}; move one of them`), ...over.caption.map((o) => `caption overlap: ${o}; move one of them`)] }
-    const real = realize(intent, base)
+    const real = realize(intent, base, placed.locals)
     if (!real.ok) return { ok: false, stage: 'layout', errors: real.errors }
     const diagram: Diagram = { ...base, connections: real.value.connections }
     const routes = computeRoutes(diagram)

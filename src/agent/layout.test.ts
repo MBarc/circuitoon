@@ -10,7 +10,7 @@ import { libraryLookup } from './catalog.ts'
 import { layoutNetlist } from './layout.ts'
 import { reportText } from './readability.ts'
 import { verifyDiagram } from './verify.ts'
-import { ledNetlist, tiltSensors } from './fixtures.testing.ts'
+import { ledNetlist, tiltSensors, typewriter } from './fixtures.testing.ts'
 
 const laid = (raw: unknown): Diagram => {
   const r = layoutNetlist(raw)
@@ -59,6 +59,38 @@ describe('layoutNetlist', () => {
     expect(verifyDiagram(r.value.diagram, libraryLookup)).toEqual([])
     expect(r.value.report).toMatchObject({ bodyOverlaps: 0, captionOverlaps: 0, blockedNets: [] })
   })
+  it("distributes a repeat block's shared net on rail strips of its own, joined to the net by one trunk wire (A18.1)", () => {
+    for (const make of [tiltSensors, typewriter]) {
+      const r = layoutNetlist(make())
+      if (!r.ok) throw new Error(r.errors.join('\n'))
+      const d = r.value.diagram
+      const refs = new Set(r.value.intent.parts.map((p) => p.ref))
+      const added = d.parts.filter((p) => !refs.has(p.uid))
+      expect(added.length).toBeGreaterThan(0)
+      expect(added.every((p) => p.module === 'power-rail-strip')).toBe(true)
+      const local = new Set(added.map((p) => p.uid))
+      const copyRefs = new Set(r.value.intent.copies.flatMap((c) => c.refs))
+      // Every shared-port pin (the switches' pin 2, on GND) is wired into a local strip's - rail.
+      const shared = [...copyRefs].map((ref) => ({ part: ref, pin: '2' }))
+      for (const pin of shared) {
+        const w = d.connections.filter((c) => [c.from, c.to].some((e) => e.part === pin.part && e.pin === pin.pin))
+        expect(w, `${pin.part}.${pin.pin}`).toHaveLength(1)
+        const other = w[0].from.part === pin.part ? w[0].to : w[0].from
+        expect(local.has(other.part), `${pin.part}.${pin.pin} to ${other.part}`).toBe(true)
+        expect(other.pin).toBe('-')
+        expect(w[0].routing).toBe(true)
+      }
+      // Nothing outside the blocks is wired into a local strip, except each block's one trunk.
+      const outside = d.connections.filter((c) => {
+        const ends = [c.from, c.to]
+        return ends.some((e) => local.has(e.part)) && ends.some((e) => !local.has(e.part) && !copyRefs.has(e.part))
+      })
+      const targets = new Set(r.value.intent.copies.map((c) => Object.values(c.bindings)[0].split('.')[0]))
+      expect(outside).toHaveLength(targets.size)
+      expect(verifyDiagram(d, libraryLookup)).toEqual([])
+      expect(r.value.report).toMatchObject({ bodyOverlaps: 0, captionOverlaps: 0, blockedNets: [] })
+    }
+  }, 60_000)
   it('marks what it adds for strips as routing, and wires two pins straight when nothing else is needed', () => {
     const led = laid(ledNetlist())
     for (const c of led.connections) {

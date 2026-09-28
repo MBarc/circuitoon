@@ -3,14 +3,14 @@
 import { describe, expect, it } from 'vitest'
 import { DIAGRAM_FORMAT, type Diagram, type PartInstance } from '../format/diagram.ts'
 import { mountIssues, plugsOf } from '../format/breadboard.ts'
-import { bodyRect } from '../format/geometry.ts'
+import { bodyRect, worldHoles } from '../format/geometry.ts'
 import { layoutModule } from '../format/module.ts'
 import { annotationRect } from '../render/annotationGeometry.ts'
 import { libraryLookup } from './catalog.ts'
 import { parseNetlist, terminalKey, type Intent } from './netlist.ts'
 import { placeParts, type KeepMap } from './place.ts'
 import { mountPart } from './mount.ts'
-import { intersects, tightFootprint } from './footprint.ts'
+import { intersects, tightFootprint, union } from './footprint.ts'
 import { overlaps } from './readability.ts'
 import { ledNetlist, tiltSensors, typewriter } from './fixtures.testing.ts'
 
@@ -19,12 +19,12 @@ const intentOf = (raw: unknown): Intent => {
   if (!r.ok) throw new Error(r.errors.join('\n'))
   return r.intent
 }
-const place = (raw: unknown, keep?: KeepMap) => {
+const place = (raw: unknown, keep?: KeepMap, rail = false) => {
   const intent = intentOf(raw)
-  const r = placeParts(intent, { spacing: 20, keep })
+  const r = placeParts(intent, { spacing: 20, keep, ...(rail ? { rail: libraryLookup('power-rail-strip') } : {}) })
   if (!r.ok) throw new Error(r.errors.join('\n'))
-  const d: Diagram = { format: DIAGRAM_FORMAT, title: intent.title, modules: intent.modules, parts: r.parts, connections: [] }
-  return { intent, annotations: r.annotations, d }
+  const d: Diagram = { format: DIAGRAM_FORMAT, title: intent.title, modules: r.modules, parts: r.parts, connections: [] }
+  return { intent, annotations: r.annotations, d, locals: r.locals }
 }
 const noOverlaps = (d: Diagram) => {
   const fp = (p: PartInstance) => tightFootprint(p, d.modules[p.module])
@@ -144,6 +144,44 @@ describe('placeParts', () => {
     })
     expect(reading.map((c) => c.bindings.CH)).toEqual(u2.map((c) => c.bindings.CH))
     noOverlaps(d)
+  })
+  it('gives each repeat block rail strips of its own under its rows, for its shared ground (A18.1)', () => {
+    const { intent, d, locals } = place(typewriter(), undefined, true)
+    const gnd = intent.nets.findIndex((n) => n.name === 'GND')
+    // One distribution point per block (U2, U3, U4), all on GND's - rails.
+    expect(locals.map((l) => [l.net, l.rail])).toEqual([[gnd, '-'], [gnd, '-'], [gnd, '-']])
+    const strips = d.parts.filter((p) => p.module === 'power-rail-strip')
+    expect(strips.map((p) => p.uid).sort()).toEqual(locals.flatMap((l) => l.strips).sort())
+    const fp = (ref: string) => {
+      const p = d.parts.find((q) => q.uid === ref)!
+      return tightFootprint(p, d.modules[p.module])
+    }
+    for (const p of strips) {
+      expect([p.x % 10, p.y % 10, p.rotation]).toEqual([0, 0, 180])
+      // Turned so the - rail is on top, facing the copies above it.
+      const holes = worldHoles(p, d.modules[p.module])
+      expect(holes.find((g) => g.name === '-')!.at[0].y).toBeLessThan(holes.find((g) => g.name === '+')!.at[0].y)
+    }
+    for (const l of locals) {
+      // Enough holes: 21 pins per strip, 4 holes spare for the chain and trunk jumpers.
+      expect(l.strips.length * 21).toBeGreaterThanOrEqual(l.refs.length)
+      // Each strip lies within its block's span, below some copy of the block.
+      const span = l.refs.map(fp).reduce(union)
+      for (const ref of l.strips) {
+        const t = fp(ref)
+        expect(t.x >= span.x && t.x + t.w <= span.x + span.w, ref).toBe(true)
+        expect(l.refs.some((r) => fp(r).y + fp(r).h < t.y), ref).toBe(true)
+      }
+    }
+    noOverlaps(d)
+  })
+  it('adds no local strips without the rail module, and leaves a kept copy out of its block (A18.1)', () => {
+    expect(place(typewriter()).locals).toEqual([])
+    expect(place(tiltSensors(), undefined, true).locals.map((l) => l.refs.length)).toEqual([8])
+    // A kept copy stays where it was, outside the block, so its pins use the net's own strips.
+    const kept = place(tiltSensors(), new Map([['S_1', { x: 9000, y: 9000, rotation: 0 as const }]]), true)
+    expect(kept.locals).toHaveLength(1)
+    expect(kept.locals[0].refs).not.toContain('S_1')
   })
   it('keeps a kept part exactly where it was and places the rest around it', () => {
     const { d } = place(ledNetlist(), new Map([['BT1', { x: 600, y: 300, rotation: 0 as const }]]))
