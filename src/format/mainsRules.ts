@@ -1411,8 +1411,12 @@ interface ReqPart { part: PartInstance; terms: GTerm[]; nodes: Int32Array; wantL
  */
 interface PolGroup { gi: number; pos: number; changeover: boolean; openWord: string; at: Int32Array; key: string; maybeKeys: Map<number, string>; last: Last }
 interface PolFuse { e: GEdge; key: string; maybeKeys: Map<number, string>; last: Last }
-/** A class 1 part's earth terminal (a PE pin or PE plug contact) and the part's other mains terminals. */
-interface EarthTerm { t: GTerm; node: number; others: Int32Array; noPe: string; onLive: string }
+/**
+ * A part's earth terminal (a PE pin or PE plug contact), whatever its class (Astra A1: what it carries
+ * is judged on every part); for a class 1 part, its other mains terminals (whose live state makes a
+ * missing earth a finding; empty otherwise, since only a class 1 part must be earthed).
+ */
+interface EarthTerm { t: GTerm; node: number; classOne: boolean; others: Int32Array; noPe: string; onLive: string; energized: string }
 interface PolarityTable {
   /** L and N bits of the view's polarized sources, and of its unpolarized ones. */
   pol: number
@@ -1614,15 +1618,19 @@ function polarityTable(acc: Acc): PolarityTable {
   const earths: EarthTerm[] = []
   for (const part of g.mainsParts) {
     const info = mainsOf(moduleOf(g.d, part.module)!)
-    if (info.protection !== 'class-1') continue
     const pe = earthNames(info)
-    const others = Int32Array.from([...info.terminals].filter((n) => !pe.includes(n)).map((n) => node(part, n)).filter(inView))
+    if (!pe.length) continue
+    const classOne = info.protection === 'class-1'
+    const others = classOne ? Int32Array.from([...info.terminals].filter((n) => !pe.includes(n)).map((n) => node(part, n)).filter(inView)) : new Int32Array(0)
+    // One terminal per node: a cord plug's PE lead and its PE prong are one conductor.
+    const seen = new Set<number>()
     for (const n of pe) {
       const i = node(part, n)
       const term = termAt(g, nodeKey(part.uid, n))
       // An earth that carries PE in every state can never lack it (nor carry L or N without a short, which rule 2 reports).
-      if (!inView(i) || !term || always(i) & PE_MASK) continue
-      earths.push({ t: term, node: i, others, noPe: `earth|${term.key}|no-pe`, onLive: `earth|${term.key}|pe-live` })
+      if (!inView(i) || !term || seen.has(i) || always(i) & PE_MASK) continue
+      seen.add(i)
+      earths.push({ t: term, node: i, classOne, others, noPe: `earth|${term.key}|no-pe`, onLive: `earth|${term.key}|pe-live`, energized: `earth|${term.key}|pe-energized` })
     }
   }
   t = {
@@ -1881,9 +1889,10 @@ function polarityRule(acc: Acc, mask: number) {
 const earthAdvice = (t: GTerm) => `a fault inside ${t.part.designator} may leave its metal live. Wire ${termName(t)} to the outlet's earth.`
 
 /**
- * Rule 7, per state: a class 1 part's earth without PE identity while the part is on mains (or on L
- * or N instead); N and PE of one source joined beyond the outlet; a terminal that must carry L or N on
- * earth only; a low-voltage ground on earth where nothing on its net declares a bond (a warning).
+ * Rule 7, per state: an earth terminal of any part on L or N, or energized (through a load, say)
+ * without PE identity (Astra A1); a class 1 part's earth without PE identity while the part is on
+ * mains; N and PE of one source joined beyond the outlet; a terminal that must carry L or N on earth
+ * only; a low-voltage ground on earth where nothing on its net declares a bond (a warning).
  */
 function earthRules(acc: Acc, mask: number) {
   const { p } = acc
@@ -1891,10 +1900,15 @@ function earthRules(acc: Acc, mask: number) {
   const { root, ident, power } = p
   const t = polarityTable(acc)
   for (const e of t.earths) {
-    const x = ident[root[e.node]]
+    const r0 = root[e.node]
+    const x = ident[r0]
     if (x & PE_MASK) continue
     if (x & LN_MASK) {
       if (!mark(acc, e.onLive, mask)) report(acc, e.onLive, mask, () => peLiveDraft(p, e))
+      continue
+    }
+    if (power[r0]) {
+      if (!mark(acc, e.energized, mask)) report(acc, e.energized, mask, () => peEnergizedDraft(p, e))
       continue
     }
     let live = false
@@ -1956,14 +1970,32 @@ function earthRules(acc: Acc, mask: number) {
   }
 }
 
+/** What a live earth terminal puts at risk, and what to do: a class 1 part's own metal; for any other part (a cord plug's PE lead), whatever it earths. */
+function earthHarm(e: EarthTerm): string {
+  const [d, name] = [e.t.part.designator, termName(e.t)]
+  return e.classOne
+    ? `${d}'s metal may be live. Wire ${name} to the outlet's earth, and nothing else to it.`
+    : `anything earthed through ${d} may be live. Connect ${name} to earth only.`
+}
+
 function peLiveDraft(p: Prepared, e: EarthTerm): (when: string) => MainsDraft {
   const x = identAt(p, e.node)
   const on = x & L_MASK && x & N_MASK ? 'L and N' : x & L_MASK ? 'L' : 'N'
   const d = e.t.part.designator
   const wires = pathsTo(p, [e.node], lnSources(p, x))
   return (when) => ({ rule: 'earth', subject: d, target: termName(e.t),
-    message: `${termName(e.t)} is on ${on} instead of earth${when}: ${d}'s metal may be live. Wire ${termName(e.t)} to the outlet's earth, and nothing else to it.`,
+    message: `${termName(e.t)} is on ${on} instead of earth${when}: ${earthHarm(e)}`,
     parts: [e.t.part.uid], pins: [endpointOf(e.t)], wires, causes: [e.t.key, nodeKey(e.t.part.uid, '#pe-live')] })
+}
+
+/** An earth terminal energized without identity: mains reaches it through a load, a leakage path or an undeclared terminal. */
+function peEnergizedDraft(p: Prepared, e: EarthTerm): (when: string) => MainsDraft {
+  const srcs = sourcesIn(p, 0, p.power[p.root[e.node]])
+  const d = e.t.part.designator
+  const wires = pathsTo(p, [e.node], srcs)
+  return (when) => ({ rule: 'earth', subject: d, target: termName(e.t),
+    message: `${termName(e.t)} gets mains from ${sourcesText(p.g, srcs)} through another part instead of being on earth${when}: ${earthHarm(e)}`,
+    parts: [e.t.part.uid], pins: [endpointOf(e.t)], wires, causes: [e.t.key, nodeKey(e.t.part.uid, '#pe-energized')] })
 }
 
 /**

@@ -602,6 +602,25 @@ describe('rule 7: earth', () => {
     expect(rules(bonded).has('earth-bond')).toBe(false)
     expect(rules(bonded).has('earth')).toBe(false)
   })
+  // Astra A1: every PE terminal is judged for what it carries; only the missing-earth check is for class 1 parts.
+  it("L through a fuse and one lamp's filament into a second lamp's PE, that lamp's L and N unwired", () => {
+    const d = on([['f1', 'F1', 't-fuse'], ['e1', 'E1', 't-lamp'], ['e2', 'E2', 't-lamp-c1']],
+      [w('xs1|L', 'f1|1'), w('f1|2', 'e1|L'), w('e1|N', 'e2|PE')])
+    expect(msgs(d, 'earth')).toEqual([
+      "E2 PE gets mains from XS1 (120 V) through another part instead of being on earth: E2's metal may be live. Wire E2 PE to the outlet's earth, and nothing else to it.",
+    ])
+  })
+  it("a loose cord plug's PE lead fed from L", () => {
+    const d = sheet([at('xs1', 'XS1', 't-outlet'), at('xp2', 'XP2', 't-plug-us', 600, 600)], [w('xs1|L', 'xp2|PE')])
+    expect(msgs(d, 'earth')).toEqual([
+      'XP2 PE is on L instead of earth: anything earthed through XP2 may be live. Connect XP2 PE to earth only.',
+    ])
+  })
+  it("a cord plug's PE lead left unwired is not a missing earth (only a class 1 part must be earthed)", () => {
+    const d = sheet([at('xs1', 'XS1', 't-outlet'), at('xp2', 'XP2', 't-plug-us', 600, 600), at('e1', 'E1', 't-lamp', 900)],
+      [w('xs1|L', 'xp2|L'), w('xs1|N', 'xp2|N')])
+    expect(msgs(d, 'earth')).toEqual([])
+  })
   it('a class 1 supply with its earth unwired while its input is on mains', () => {
     const d = on([['ps1', 'PS1', 't-psu-pelv']], [w('xs1|L', 'ps1|AC1'), w('xs1|N', 'ps1|AC2')])
     expect(msgs(d, 'earth')).toEqual(["PS1 PE is not connected to earth: a fault inside PS1 may leave its metal live. Wire PS1 PE to the outlet's earth."])
