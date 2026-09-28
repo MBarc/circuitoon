@@ -36,11 +36,15 @@ describe('groupLibrary', () => {
     expect(groups.map((g) => g.category)).toEqual(['Batteries', 'Prototyping', 'Passives'])
   })
 
-  it('fixes the category order from Batteries through Connectors, with Prototyping right after Batteries', () => {
+  it('fixes the category order from Batteries through Mains, with Prototyping right after Batteries', () => {
     expect(CATEGORY_ORDER).toEqual([
       'Batteries', 'Prototyping', 'Power', 'Microcontrollers', 'Sensors', 'Communication', 'Displays', 'Motors and actuators',
-      'Chips', 'Semiconductors', 'Passives', 'Indicators', 'Switches', 'Connectors',
+      'Chips', 'Semiconductors', 'Passives', 'Indicators', 'Switches', 'Connectors', 'Mains',
     ])
+  })
+
+  it('puts Mains last among the named categories', () => {
+    expect(CATEGORY_ORDER[CATEGORY_ORDER.length - 1]).toBe('Mains')
   })
 
   it('orders known categories by CATEGORY_ORDER, then leftovers alphabetically', () => {

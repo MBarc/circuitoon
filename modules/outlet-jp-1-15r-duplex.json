@@ -1,0 +1,235 @@
+{
+  "format": "circuitoon-module/1",
+  "id": "outlet-jp-1-15r-duplex",
+  "version": 1,
+  "name": "Japan outlet 1-15R duplex (15 A, 100 V, 50 Hz)",
+  "category": "Mains",
+  "source": "https://kikakurui.com/c8/C8303-2007-01.html https://kikakurui.com/c8/C8303-2007-01/page-25.png https://en.wikipedia.org/wiki/AC_power_plugs_and_sockets",
+  "pins": [],
+  "internal": [
+    [
+      "L1",
+      "L2"
+    ],
+    [
+      "N1",
+      "N2"
+    ]
+  ],
+  "size": {
+    "w": 8,
+    "h": 14
+  },
+  "holes": [
+    {
+      "name": "L1",
+      "label": "L",
+      "at": [
+        [
+          50,
+          40
+        ]
+      ]
+    },
+    {
+      "name": "N1",
+      "label": "N",
+      "at": [
+        [
+          30,
+          40
+        ]
+      ]
+    },
+    {
+      "name": "L2",
+      "label": "L",
+      "at": [
+        [
+          50,
+          100
+        ]
+      ]
+    },
+    {
+      "name": "N2",
+      "label": "N",
+      "at": [
+        [
+          30,
+          100
+        ]
+      ]
+    }
+  ],
+  "obstacle": false,
+  "electrical": {
+    "model": "outlet",
+    "params": {
+      "acVoltage": {
+        "unit": "VAC",
+        "default": 100
+      }
+    },
+    "ac": {
+      "hz": 50,
+      "region": "jp"
+    },
+    "acSources": [
+      {
+        "id": "supply",
+        "live": [
+          "L1"
+        ],
+        "neutral": [
+          "N1"
+        ]
+      }
+    ],
+    "sockets": [
+      {
+        "id": "upper",
+        "family": "nema-1-15r",
+        "contacts": [
+          {
+            "group": "L1",
+            "role": "L"
+          },
+          {
+            "group": "N1",
+            "role": "N"
+          }
+        ]
+      },
+      {
+        "id": "lower",
+        "family": "nema-1-15r",
+        "contacts": [
+          {
+            "group": "L2",
+            "role": "L"
+          },
+          {
+            "group": "N2",
+            "role": "N"
+          }
+        ]
+      }
+    ],
+    "ratings": [
+      {
+        "pins": [
+          "L1",
+          "N1",
+          "L2",
+          "N2"
+        ],
+        "kind": "terminal",
+        "service": "ac",
+        "volts": 125,
+        "amps": 15,
+        "provenance": "datasheet"
+      }
+    ]
+  },
+  "art": {
+    "w": 80,
+    "h": 140,
+    "shapes": [
+      {
+        "type": "rect",
+        "x": 0,
+        "y": 0,
+        "w": 80,
+        "h": 140,
+        "fill": "#F2EEE3",
+        "radius": 8
+      },
+      {
+        "type": "rect",
+        "x": 14,
+        "y": 10,
+        "w": 52,
+        "h": 120,
+        "fill": "#FBF9F3",
+        "radius": 6
+      },
+      {
+        "type": "rect",
+        "x": 18,
+        "y": 24,
+        "w": 44,
+        "h": 32,
+        "fill": "#FBF9F3",
+        "radius": 14
+      },
+      {
+        "type": "rect",
+        "x": 28,
+        "y": 33,
+        "w": 4,
+        "h": 14,
+        "fill": "#2B2F36",
+        "radius": 1,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 48,
+        "y": 33,
+        "w": 4,
+        "h": 14,
+        "fill": "#2B2F36",
+        "radius": 1,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 18,
+        "y": 84,
+        "w": 44,
+        "h": 32,
+        "fill": "#FBF9F3",
+        "radius": 14
+      },
+      {
+        "type": "rect",
+        "x": 28,
+        "y": 93,
+        "w": 4,
+        "h": 14,
+        "fill": "#2B2F36",
+        "radius": 1,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 48,
+        "y": 93,
+        "w": 4,
+        "h": 14,
+        "fill": "#2B2F36",
+        "radius": 1,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 36,
+        "y": 66,
+        "w": 8,
+        "h": 8,
+        "fill": "#B8BEC7",
+        "radius": 4
+      },
+      {
+        "type": "rect",
+        "x": 37,
+        "y": 69.5,
+        "w": 6,
+        "h": 1,
+        "fill": "#2B2F36",
+        "outline": false
+      }
+    ]
+  }
+}

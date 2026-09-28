@@ -1,9 +1,10 @@
 // Properties of whatever is selected. Text fields commit on Enter or when they lose focus,
 // so typing a name is one undo step, not one per keystroke.
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { type EditorStore, useEditorState } from './store.ts'
-import { clearWireRoute, deleteSelection, rotateParts, setWireEnds, updatePart, updatePartValue, updateWire, type WireStyle } from './ops.ts'
-import { type Diagram, type Endpoint, NAMED_COLORS, isValidColor, moduleOf, partObstacles, routeWire, wireColor, wireWidth } from '../format/diagram.ts'
+import { clearPartValue, clearWireRoute, deleteSelection, rotateParts, setWireEnds, updatePart, updatePartSetting, updatePartValue, updateWire, type WireStyle } from './ops.ts'
+import { type Diagram, type Endpoint, NAMED_COLORS, STRIPED_COLORS, isValidColor, moduleOf, partObstacles, routeWire, wireColor, wireStripe, wireWidth } from '../format/diagram.ts'
+import { type WireLook, holdLooks } from '../format/mainsLook.ts'
 import { CABLE_PRESETS, END_KINDS, END_NAMES, END_SIZE, type EndKind, type WireEnds, endKind, normalizeEnds, presetEnds, presetOf, sharedCable, swapEnds } from '../format/cables.ts'
 import { CableEnd } from '../render/CableEnd.tsx'
 import { INK } from '../render/Part.tsx'
@@ -11,7 +12,9 @@ import { hexEditChanged, shownHex } from './color.ts'
 import { checkFailed, highlightOf, severityCounts, useProblems } from './problems.ts'
 import { type Finding, RULES, brokenConnection } from '../format/checks.ts'
 import { SeverityMark } from './SeverityMark.tsx'
-import { CAPACITOR_VALUES, RESISTOR_VALUES, formatValue, parseValue, partValue, primaryParam } from '../format/values.ts'
+import { CAPACITOR_VALUES, RESISTOR_VALUES, editableParams, formatValue, paramValue, parseValue } from '../format/values.ts'
+import { moduleSettings, partSetting } from '../format/module.ts'
+import { MAINS_NOTICE, hasMains } from '../format/mains.ts'
 
 const GAUGES = Array.from({ length: 15 }, (_, i) => 16 + i)
 
@@ -91,6 +94,7 @@ function CablePreview({ ends, color, gauge }: { ends: WireEnds | undefined; colo
     <svg className="cable-preview" viewBox="0 0 120 26" aria-hidden="true">
       <path d={d} stroke={INK} strokeWidth={w + 2.2} strokeLinecap="round" fill="none" />
       <path d={d} stroke={c} strokeWidth={w} strokeLinecap="round" fill="none" />
+      {wireStripe(color) && <path d={d} stroke={wireStripe(color)!} strokeWidth={w} strokeDasharray="7 7" fill="none" />}
       <CableEnd kind={from} x={x0} y={13} angle={0} scale={1} color={c} width={w} />
       <CableEnd kind={to} x={x1} y={13} angle={180} scale={1} color={c} width={w} />
     </svg>
@@ -139,27 +143,37 @@ function EndsDisclosure({ initiallyOpen, children }: { initiallyOpen: boolean; c
 }
 
 const VALUE_LISTS: Record<string, number[]> = { ohm: RESISTOR_VALUES, F: CAPACITOR_VALUES }
-const VALUE_LABELS: Record<string, string> = { resistance: 'Resistance', capacitance: 'Capacitance', voltage: 'Voltage' }
+const VALUE_LABELS: Record<string, string> = { resistance: 'Resistance', capacitance: 'Capacitance', voltage: 'Voltage', acVoltage: 'Mains voltage', fuseRating: 'Fuse rating' }
+const SETTING_LABELS: Record<string, string> = { fuse: 'Fuse' }
+const CHOICE_LABELS: Record<string, string> = { fitted: 'Fitted', absent: 'Absent (empty holder)' }
 
 /**
  * Not given a `key` here; the caller keys the whole component on part uid plus the resolved
  * value, so switching parts (or an undo/redo that changes the value) remounts it from scratch,
  * including `invalid`, rather than leaving a stale hint from a previous part or value showing.
  */
-function ValueInput({ label, unit, value, onCommit }: { label: string; unit: string; value: number; onCommit: (v: number) => void }) {
+function ValueInput({ id, label, unit, value, onCommit, onClear }: { id: string; label: string; unit: string; value: number | null; onCommit: (v: number) => void; onClear?: () => void }) {
   const [invalid, setInvalid] = useState(false)
-  const shown = formatValue(value, unit)
+  // An optional param with no value (a fuse rating not yet set) shows an empty field reading Unknown.
+  const shown = value === null ? '' : formatValue(value, unit)
   const list = VALUE_LISTS[unit] ?? []
   return (
-    <label className="field" htmlFor="part-value">
+    <label className="field" htmlFor={id}>
       {label}
       <input
-        id="part-value"
+        id={id}
         defaultValue={shown}
-        list={list.length ? 'part-value-options' : undefined}
+        placeholder={value === null ? 'Unknown' : undefined}
+        list={list.length ? `${id}-options` : undefined}
         aria-invalid={invalid || undefined}
         onBlur={(e) => {
           if (e.target.value === shown) return // unchanged: nothing to parse or commit
+          // Emptying an optional value clears it, back to unknown.
+          if (e.target.value.trim() === '' && onClear) {
+            setInvalid(false)
+            onClear()
+            return
+          }
           const parsed = parseValue(e.target.value, unit)
           if (parsed === null) {
             setInvalid(true)
@@ -175,13 +189,13 @@ function ValueInput({ label, unit, value, onCommit }: { label: string; unit: str
         onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
       />
       {list.length > 0 && (
-        <datalist id="part-value-options">
+        <datalist id={`${id}-options`}>
           {list.map((v) => (
             <option key={v} value={formatValue(v, unit)} />
           ))}
         </datalist>
       )}
-      {invalid && <p className="hint" role="status">Use a value like 4.7k, 220 or 100n</p>}
+      {invalid && <p className="hint" role="status">{unit === 'A' ? 'Use a rating like 2, 500m or 13 (amps), or leave it empty if unknown' : unit === 'VAC' ? 'Use a voltage like 120 or 230' : 'Use a value like 4.7k, 220 or 100n'}</p>}
     </label>
   )
 }
@@ -220,10 +234,13 @@ export function ProblemList({ store, findings }: { store: EditorStore; findings:
   const errors = findings.filter((f) => f.severity === 'error').length
   // The canvas light belongs to this list: it goes out when the list does (a selection, an empty list).
   useEffect(() => () => store.setHighlight(null), [store])
+  // Spec 6: a mains sheet always shows the notice, whatever the findings; it is never dismissible.
+  const notice = hasMains(store.getState().diagram) ? <p className="mains-notice" role="note">{MAINS_NOTICE}</p> : null
   if (checkFailed(store))
     return (
       <section className="problems has-warnings" aria-labelledby="problems-title">
         <h3 id="problems-title" tabIndex={-1}>Problems</h3>
+        {notice}
         <ul>
           <li className="warning" data-checker-failed="">
             <SeverityMark severity="warning" />
@@ -239,8 +256,9 @@ export function ProblemList({ store, findings }: { store: EditorStore; findings:
       <section className="problems clean" aria-labelledby="problems-title">
         <h3 id="problems-title" tabIndex={-1}>
           <SeverityMark severity="ok" />
-          No wiring problems found
+          No problems found in the drawn connections.
         </h3>
+        {notice}
       </section>
     )
   const light = (f: Finding) => store.setHighlight(highlightOf(f))
@@ -252,6 +270,7 @@ export function ProblemList({ store, findings }: { store: EditorStore; findings:
         Problems
         <span className="problems-count">{severityCounts(findings)}</span>
       </h3>
+      {notice}
       <ul onMouseLeave={unlight}>
         {findings.map((f, i) => {
           const title = RULES[f.rule].title
@@ -324,6 +343,9 @@ export function ProblemList({ store, findings }: { store: EditorStore; findings:
 export function Inspector({ store }: { store: EditorStore }) {
   const { diagram, selection, wireStyle } = useEditorState(store)
   const findings = useProblems(store)
+  // The mains look, held while a gesture is open: a preview frame never starts a mains analysis.
+  const heldRef = useRef<Map<string, WireLook>>(new Map())
+  const looks = holdLooks(heldRef, diagram, store.dragging || store.gestureActive)
   const count = selection.parts.length + selection.wires.length
   const remove = (
     <button type="button" className="tool" onClick={() => store.commit(deleteSelection(diagram, selection))}>
@@ -370,8 +392,6 @@ export function Inspector({ store }: { store: EditorStore }) {
   const part = diagram.parts.find((p) => p.uid === selection.parts[0])
   if (part) {
     const m = moduleOf(diagram, part.module)
-    const pp = m && primaryParam(m)
-    const resolved = pp && m && partValue(part, m)
     return (
       <aside className="inspector" aria-label="Properties">
         <h2 id="selection-title" tabIndex={-1}>{m?.name ?? part.module}</h2>
@@ -381,15 +401,28 @@ export function Inspector({ store }: { store: EditorStore }) {
           value={part.designator}
           onCommit={(v) => v.trim() && store.commit(updatePart(diagram, part.uid, { designator: v.trim() }))}
         />
-        {pp && resolved && (
-          <ValueInput
-            key={`${part.uid}:${resolved.value}:${resolved.unit}`}
-            label={VALUE_LABELS[pp.name] ?? pp.name}
-            unit={pp.unit}
-            value={resolved.value}
-            onCommit={(v) => store.commit(updatePartValue(diagram, part.uid, pp.name, v, pp.unit))}
-          />
-        )}
+        {m && editableParams(m).map((pp, i) => {
+          const v = paramValue(part, m, pp.name)
+          return (
+            <ValueInput
+              key={`${part.uid}:${pp.name}:${v}`}
+              id={i === 0 ? 'part-value' : `part-value-${pp.name}`}
+              label={VALUE_LABELS[pp.name] ?? pp.name}
+              unit={pp.unit}
+              value={v}
+              onCommit={(x) => store.commit(updatePartValue(diagram, part.uid, pp.name, x, pp.unit))}
+              onClear={pp.default === null ? () => store.commit(clearPartValue(diagram, part.uid, pp.name)) : undefined}
+            />
+          )
+        })}
+        {m && Object.entries(moduleSettings(m)).map(([name, choices]) => (
+          <label key={name} className="field" htmlFor={`part-setting-${name}`}>
+            {SETTING_LABELS[name] ?? name}
+            <select id={`part-setting-${name}`} value={partSetting(part, m, name) ?? choices[0]} onChange={(e) => store.commit(updatePartSetting(diagram, part.uid, name, e.target.value))}>
+              {choices.map((c) => <option key={c} value={c}>{CHOICE_LABELS[c] ?? c}</option>)}
+            </select>
+          </label>
+        ))}
         <p className="hint">Rotation: {part.rotation ?? 0} degrees</p>
         <button type="button" className="tool" onClick={() => store.commit(rotateParts(diagram, [part.uid]))}>Rotate 90 degrees</button>
         {remove}
@@ -401,7 +434,8 @@ export function Inspector({ store }: { store: EditorStore }) {
   if (!wire) return <aside className="inspector" aria-label="Properties" />
   // The Problems list has the broken wires; the notice names this one's missing ends.
   const brokenWire = findings.some((f) => f.rule === 'broken' && f.wires[0] === wire.uid) ? brokenConnection(diagram, wire) : null
-  const color = wire.color ?? 'black'
+  // A wire with no stored colour shows its mains identity colour, as the sheet draws it.
+  const color = wire.color ?? looks.get(wire.uid)?.color ?? 'black'
   const gauge = wire.gauge ?? 22
   const setWire = (patch: { color?: string; gauge?: number; label?: string }) => {
     // Skip the commit (and the undo entry it would create) when the patch matches what's
@@ -434,7 +468,7 @@ export function Inspector({ store }: { store: EditorStore }) {
       <div className="field" role="group" aria-label="Color">
         Color
         <div className="swatches">
-          {Object.keys(NAMED_COLORS).map((name) => (
+          {[...Object.keys(NAMED_COLORS), ...Object.keys(STRIPED_COLORS)].map((name) => (
             <button
               key={name}
               type="button"
@@ -442,7 +476,7 @@ export function Inspector({ store }: { store: EditorStore }) {
               title={name}
               aria-label={name}
               aria-pressed={color.toLowerCase() === name}
-              style={{ background: NAMED_COLORS[name] }}
+              style={{ background: Object.hasOwn(STRIPED_COLORS, name) ? `repeating-linear-gradient(135deg, ${STRIPED_COLORS[name][0]} 0 6px, ${STRIPED_COLORS[name][1]} 6px 12px)` : NAMED_COLORS[name] }}
               onClick={() => setWire({ color: name })}
             />
           ))}

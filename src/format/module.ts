@@ -1,5 +1,6 @@
 // Module definition format (circuitoon-module/1): types, validation and pin layout.
 // Spec: docs/PRD.md, "Module definition format". Erasable TS only, so node can run it directly.
+import { REQUIREMENTS, type Requirement, claimInternalNodes, validateMains } from './mainsModel.ts'
 
 export const MODULE_FORMAT = 'circuitoon-module/1'
 export const GRID = 10 // px per grid unit at 100% zoom; also the pin pitch
@@ -17,6 +18,10 @@ export interface PinDef {
   type?: PinType
   supply?: string
   bus?: { length: number }
+  /** Terminal requirement (spec 1.2): drives polarity and earth rules only. */
+  mains?: Requirement
+  /** An intentional bond to PE (a metal enclosure, a class 1 supply secondary). */
+  bond?: 'pe'
 }
 export interface SpacerDef {
   spacer: true
@@ -64,6 +69,10 @@ export interface HoleGroup {
   /** Electrical type and supply rails, as on a pin (an interior header pad). Breadboard rails set neither: + and - are markings, not voltages. */
   type?: PinType
   supply?: string
+  /** Terminal requirement (spec 1.2): drives polarity and earth rules only. */
+  mains?: Requirement
+  /** An intentional bond to PE (a metal enclosure, a class 1 supply secondary). */
+  bond?: 'pe'
 }
 
 export interface ModuleDef {
@@ -124,10 +133,16 @@ export const representableValue = (v: unknown): v is number =>
  * representable (see VALUE_MIN); on top of that a 0 ohm resistor is a real part (a jumper), a
  * capacitance must be above 0 and a voltage may be negative.
  */
-export const PARAM_RULES: Record<string, { unit: string; valid: (v: number) => boolean; range: string }> = {
+export const PARAM_RULES: Record<string, { unit: string; valid: (v: number) => boolean; range: string; optional?: boolean }> = {
   resistance: { unit: 'ohm', valid: (v) => v >= 0, range: '0, or from 1e-15 to 1e12' },
   capacitance: { unit: 'F', valid: (v) => v > 0, range: 'from 1e-15 to 1e12' },
   voltage: { unit: 'V', valid: () => true, range: '0, or a magnitude from 1e-15 to 1e12' },
+  // The nominal RMS line-to-neutral voltage of an AC source (an outlet). A separate param from the
+  // DC `voltage`, so every param keeps one unit.
+  acVoltage: { unit: 'VAC', valid: (v) => v >= 1 && v <= 1000, range: 'from 1 to 1000' },
+  // A fuse's rating. Optional: a fuse holder leaves the default out, so the rating is unknown until
+  // the user sets it (a missing rating is never guessed).
+  fuseRating: { unit: 'A', valid: (v) => v > 0 && v <= 100, range: 'above 0, up to 100', optional: true },
 }
 
 /** True when `v` is a valid value for the named param: representable and allowed by PARAM_RULES. */
@@ -154,6 +169,10 @@ export function validateModule(raw: unknown): ValidationResult {
   const checkType = (t: Record<string, unknown>, at: string) => {
     if (t.type !== undefined && !PIN_TYPES.includes(t.type as PinType)) errors.push(`${at}.type: must be one of ${PIN_TYPES.join(', ')}`)
   }
+  const checkMains = (t: Record<string, unknown>, at: string) => {
+    if (t.mains !== undefined && !(REQUIREMENTS as readonly unknown[]).includes(t.mains)) errors.push(`${at}.mains: must be one of "L", "N", "PE", "line"`)
+    if (t.bond !== undefined && t.bond !== 'pe') errors.push(`${at}.bond: must be "pe"`)
+  }
   const checkSupply = (t: Record<string, unknown>, at: string) => {
     if (t.supply !== undefined && typeof t.supply !== 'string') errors.push(`${at}.supply: must be a string`)
     else if (typeof t.supply === 'string' && !/^[^/\s]+(\/[^/\s]+)*$/.test(t.supply))
@@ -178,6 +197,7 @@ export function validateModule(raw: unknown): ValidationResult {
       if (names.has(p.name)) errors.push(`${at}.name: duplicate pin name "${p.name}"`)
       names.add(p.name)
       checkType(p, at)
+      checkMains(p, at)
       if (p.bus !== undefined && !(isObj(p.bus) && Number.isInteger(p.bus.length) && (p.bus.length as number) >= 2))
         errors.push(`${at}.bus: must be { "length": <whole number, 2 or more> }`)
       if (p.label !== undefined && typeof p.label !== 'string') errors.push(`${at}.label: must be a string`)
@@ -198,6 +218,7 @@ export function validateModule(raw: unknown): ValidationResult {
         if (g.rail !== undefined && g.rail !== '+' && g.rail !== '-') errors.push(`${at}.rail: must be "+" or "-"`)
         if (g.holeStyle !== undefined && g.holeStyle !== 'pad') errors.push(`${at}.holeStyle: must be "pad"`)
         checkType(g, at)
+        checkMains(g, at)
         checkSupply(g, at)
         if (!Array.isArray(g.at) || g.at.length === 0) return void errors.push(`${at}.at: required, at least one [x, y] position`)
         g.at.forEach((p, j) => {
@@ -211,6 +232,9 @@ export function validateModule(raw: unknown): ValidationResult {
   }
   if (raw.obstacle !== undefined && typeof raw.obstacle !== 'boolean') errors.push('obstacle: must be true or false')
 
+  // Pins and hole groups only: internal nodes (a plug's prongs) have no pin stub to power.
+  const pinNames = new Set(names)
+  claimInternalNodes(raw, names, errors)
   if (raw.internal !== undefined) {
     if (!Array.isArray(raw.internal)) errors.push('internal: must be a list of pin-name groups')
     else
@@ -269,8 +293,19 @@ export function validateModule(raw: unknown): ValidationResult {
           continue
         }
         if (p.unit !== rule.unit) errors.push(`${at}.unit: must be "${rule.unit}"`)
-        if (!validParamValue(name, p.default)) errors.push(`${at}.default: must be ${rule.range}`)
+        if (!(rule.optional && p.default === undefined) && !validParamValue(name, p.default))
+          errors.push(`${at}.default: must be ${rule.range}${rule.optional ? ', or left out' : ''}`)
       }
+  }
+
+  // Enumerated part choices (a fuse holder's fitted or absent fuse); the first choice is the default.
+  if (isObj(raw.electrical) && raw.electrical.settings !== undefined) {
+    const s = raw.electrical.settings
+    if (!isObj(s)) errors.push('electrical.settings: must be an object of setting name to a list of choices')
+    else
+      for (const [k, v] of Object.entries(s))
+        if (!Array.isArray(v) || v.length < 2 || v.some((c) => typeof c !== 'string' || c === '') || new Set(v).size !== v.length)
+          errors.push(`electrical.settings.${k}: must be a list of 2 or more different choices, the first the default`)
   }
 
   if (isObj(raw.electrical) && raw.electrical.external !== undefined) {
@@ -280,7 +315,7 @@ export function validateModule(raw: unknown): ValidationResult {
       ext.forEach((e, i) => {
         const at = `electrical.external[${i}]`
         if (!isObj(e)) return void errors.push(`${at}: must be { "pin", "volts", "via" }`)
-        if (typeof e.pin !== 'string' || !names.has(e.pin)) errors.push(`${at}.pin: no pin named "${String(e.pin)}"`)
+        if (typeof e.pin !== 'string' || !pinNames.has(e.pin)) errors.push(`${at}.pin: no pin named "${String(e.pin)}"`)
         if (!isPos(e.volts)) errors.push(`${at}.volts: must be a number above 0`)
         if (typeof e.via !== 'string' || e.via.trim() === '') errors.push(`${at}.via: required, what powers the pin (for example "USB")`)
         if (e.diode !== undefined && typeof e.diode !== 'boolean') errors.push(`${at}.diode: must be true or false`)
@@ -335,6 +370,18 @@ export function validateModule(raw: unknown): ValidationResult {
         })
     } else if (hasVoltage && outs.length > 1)
       errors.push(`electrical.voltageOutputs: required, the module has a voltage value and ${outs.length} power_out pins; name the ones the value sets`)
+  }
+
+  validateMains(raw, names, errors)
+  // Only a plug whose fields are already valid is measured.
+  if (!errors.length && isObj(raw.electrical) && isObj(raw.electrical.plug) && Array.isArray(raw.electrical.plug.profiles)) {
+    const lay = computeLayout(raw as unknown as ModuleDef)
+    raw.electrical.plug.profiles.forEach((pr, i) =>
+      (pr as { contacts: { at: { x: number; y: number } }[] }).contacts.forEach((c, j) => {
+        if (c.at.x < 0 || c.at.y < 0 || c.at.x > lay.w || c.at.y > lay.h)
+          errors.push(`electrical.plug.profiles[${i}].contacts[${j}].at: outside the body (0 to ${lay.w}, 0 to ${lay.h})`)
+      }),
+    )
   }
 
   return errors.length ? { ok: false, errors } : { ok: true, module: raw as unknown as ModuleDef }
@@ -471,4 +518,22 @@ export function layoutModule(m: ModuleDef): ModuleLayout {
   let lay = layoutCache.get(m)
   if (!lay) layoutCache.set(m, (lay = computeLayout(m)))
   return lay
+}
+
+/** A module's enumerated part settings (`electrical.settings`): each name with its choices, the first the default. */
+export function moduleSettings(m: ModuleDef): Record<string, string[]> {
+  const e = m.electrical
+  if (!isObj(e) || !isObj(e.settings)) return {}
+  return Object.fromEntries(
+    Object.entries(e.settings).filter((x): x is [string, string[]] => Array.isArray(x[1]) && x[1].length > 1 && x[1].every((c) => typeof c === 'string')),
+  )
+}
+
+/** A part's choice for one setting: its stored choice when the module offers it, else the module's first choice; null when the module has no such setting. */
+export function partSetting(part: { settings?: Record<string, string> }, m: ModuleDef, name: string): string | null {
+  const all = moduleSettings(m)
+  if (!Object.hasOwn(all, name)) return null
+  const choices = all[name]
+  const stored = part.settings?.[name]
+  return stored !== undefined && choices.includes(stored) ? stored : choices[0]
 }

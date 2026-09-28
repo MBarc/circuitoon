@@ -1,0 +1,217 @@
+{
+  "format": "circuitoon-module/1",
+  "id": "irm-03-5",
+  "version": 1,
+  "name": "Mean Well IRM-03-5 AC-DC module (5 V, Class II)",
+  "category": "Mains",
+  "source": "https://www.meanwell.com/Upload/PDF/IRM-03/IRM-03-SPEC.PDF",
+  "pins": [
+    {
+      "spacer": true,
+      "side": "top"
+    },
+    {
+      "spacer": true,
+      "side": "top"
+    },
+    {
+      "spacer": true,
+      "side": "top"
+    },
+    {
+      "spacer": true,
+      "side": "top"
+    },
+    {
+      "spacer": true,
+      "side": "top"
+    },
+    {
+      "spacer": true,
+      "side": "top"
+    },
+    {
+      "spacer": true,
+      "side": "top"
+    },
+    {
+      "spacer": true,
+      "side": "top"
+    },
+    {
+      "spacer": true,
+      "side": "top"
+    },
+    {
+      "spacer": true,
+      "side": "top"
+    },
+    {
+      "name": "AC/N",
+      "side": "top",
+      "mains": "line"
+    },
+    {
+      "spacer": true,
+      "side": "top"
+    },
+    {
+      "name": "AC/L",
+      "side": "top",
+      "mains": "line"
+    },
+    {
+      "name": "-V",
+      "side": "bottom",
+      "type": "ground"
+    },
+    {
+      "spacer": true,
+      "side": "bottom"
+    },
+    {
+      "name": "+V",
+      "side": "bottom",
+      "type": "power_out",
+      "supply": "5V"
+    },
+    {
+      "spacer": true,
+      "side": "bottom"
+    },
+    {
+      "spacer": true,
+      "side": "bottom"
+    },
+    {
+      "spacer": true,
+      "side": "bottom"
+    },
+    {
+      "spacer": true,
+      "side": "bottom"
+    },
+    {
+      "spacer": true,
+      "side": "bottom"
+    },
+    {
+      "spacer": true,
+      "side": "bottom"
+    },
+    {
+      "spacer": true,
+      "side": "bottom"
+    },
+    {
+      "spacer": true,
+      "side": "bottom"
+    },
+    {
+      "spacer": true,
+      "side": "bottom"
+    },
+    {
+      "spacer": true,
+      "side": "bottom"
+    }
+  ],
+  "size": {
+    "w": 16,
+    "h": 10
+  },
+  "electrical": {
+    "model": "converter",
+    "acInput": {
+      "a": "AC/L",
+      "b": "AC/N",
+      "range": [
+        85,
+        305
+      ]
+    },
+    "domains": [
+      {
+        "name": "mains",
+        "pins": [
+          "AC/L",
+          "AC/N"
+        ],
+        "kind": "mains"
+      },
+      {
+        "name": "output",
+        "pins": [
+          "+V",
+          "-V"
+        ],
+        "kind": "selv"
+      }
+    ],
+    "isolation": "double",
+    "isolationProvenance": "datasheet",
+    "protection": "class-2"
+  },
+  "art": {
+    "w": 160,
+    "h": 100,
+    "pinLabels": "inside",
+    "shapes": [
+      {
+        "type": "rect",
+        "x": 0,
+        "y": 0,
+        "w": 160,
+        "h": 100,
+        "fill": "#1B1F24",
+        "radius": 3
+      },
+      {
+        "type": "rect",
+        "x": 40,
+        "y": 32,
+        "w": 18,
+        "h": 14,
+        "fill": "#D2232A",
+        "radius": 2,
+        "label": "MW",
+        "labelColor": "#F5F5F2",
+        "labelSize": 7
+      },
+      {
+        "type": "rect",
+        "x": 60,
+        "y": 32,
+        "w": 60,
+        "h": 14,
+        "fill": "#1B1F24",
+        "outline": false,
+        "label": "MEAN WELL",
+        "labelColor": "#F5F5F2",
+        "labelSize": 6
+      },
+      {
+        "type": "rect",
+        "x": 40,
+        "y": 50,
+        "w": 80,
+        "h": 16,
+        "fill": "#2B2F36",
+        "radius": 2,
+        "label": "IRM-03-5",
+        "labelColor": "#F5F5F2",
+        "labelSize": 8
+      },
+      {
+        "type": "rect",
+        "x": 17,
+        "y": 2,
+        "w": 6,
+        "h": 6,
+        "fill": "#C9CED6",
+        "radius": 3,
+        "outline": false
+      }
+    ]
+  }
+}

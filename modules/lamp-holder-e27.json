@@ -1,0 +1,172 @@
+{
+  "format": "circuitoon-module/1",
+  "id": "lamp-holder-e27",
+  "version": 1,
+  "name": "Lamp holder E27 (230 V lamp)",
+  "category": "Mains",
+  "source": "https://old.vossloh-schwabe.com/uploads/tx_sbdownloader/VS-Main-Cat_Standard-2017_EN.pdf https://www.lighting.philips.co.uk/consumer/p/led-bulb-60-w-a60-e27/8720169324398/specifications https://engx.theiet.org/f/wiring-and-regulations/20952/reg-559-5-1-206-e-s-lampholders",
+  "pins": [
+    {
+      "name": "L",
+      "side": "left",
+      "label": "L",
+      "type": "passive",
+      "mains": "line"
+    },
+    {
+      "name": "N",
+      "side": "right",
+      "label": "N",
+      "type": "passive",
+      "mains": "line"
+    },
+    {
+      "name": "PE",
+      "side": "bottom",
+      "label": "PE",
+      "type": "passive",
+      "mains": "PE"
+    }
+  ],
+  "size": {
+    "w": 6,
+    "h": 6
+  },
+  "electrical": {
+    "model": "lamp",
+    "conducts": [
+      {
+        "pins": [
+          "L",
+          "N"
+        ],
+        "kind": "load",
+        "range": [
+          220,
+          240
+        ]
+      }
+    ],
+    "ratings": [
+      {
+        "pins": [
+          "L",
+          "N",
+          "PE"
+        ],
+        "kind": "terminal",
+        "service": "ac",
+        "volts": 250,
+        "amps": 4,
+        "provenance": "datasheet"
+      }
+    ]
+  },
+  "art": {
+    "w": 60,
+    "h": 60,
+    "shapes": [
+      {
+        "type": "rect",
+        "x": 0,
+        "y": 28,
+        "w": 12,
+        "h": 4,
+        "fill": "#B8BEC7",
+        "radius": 1
+      },
+      {
+        "type": "rect",
+        "x": 48,
+        "y": 28,
+        "w": 12,
+        "h": 4,
+        "fill": "#B8BEC7",
+        "radius": 1
+      },
+      {
+        "type": "rect",
+        "x": 28,
+        "y": 48,
+        "w": 4,
+        "h": 12,
+        "fill": "#B8BEC7",
+        "radius": 1
+      },
+      {
+        "type": "rect",
+        "x": 4,
+        "y": 4,
+        "w": 52,
+        "h": 52,
+        "fill": "#F1ECE2",
+        "radius": 26
+      },
+      {
+        "type": "rect",
+        "x": 12,
+        "y": 12,
+        "w": 36,
+        "h": 36,
+        "fill": "#E2DACB",
+        "radius": 18,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 16,
+        "y": 16,
+        "w": 28,
+        "h": 28,
+        "fill": "#D9A93B",
+        "radius": 14
+      },
+      {
+        "type": "rect",
+        "x": 21,
+        "y": 21,
+        "w": 18,
+        "h": 18,
+        "fill": "#A87E22",
+        "radius": 9,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 26,
+        "y": 26,
+        "w": 8,
+        "h": 8,
+        "fill": "#D9A93B",
+        "radius": 4
+      },
+      {
+        "type": "rect",
+        "x": 6,
+        "y": 26,
+        "w": 8,
+        "h": 8,
+        "fill": "#B8BEC7",
+        "radius": 4
+      },
+      {
+        "type": "rect",
+        "x": 46,
+        "y": 26,
+        "w": 8,
+        "h": 8,
+        "fill": "#B8BEC7",
+        "radius": 4
+      },
+      {
+        "type": "rect",
+        "x": 26,
+        "y": 46,
+        "w": 8,
+        "h": 8,
+        "fill": "#3FA34D",
+        "radius": 4
+      }
+    ]
+  }
+}

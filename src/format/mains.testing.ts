@@ -1,0 +1,311 @@
+// Synthetic mains modules for the checker tests: small, on the 10 px grid, each declaring only what
+// its tests need. Not real parts (those come from scripts/gen-mains-*.mjs). Every one passes
+// validateModule (checked in mainsGraph.test.ts). Contact patterns follow src/format/plugging.ts.
+import { afterAll, expect } from 'vitest'
+import type { Connection, Diagram, PartInstance } from './diagram.ts'
+import type { ModuleDef } from './module.ts'
+import { checkDiagram } from './checks.ts'
+import { analyseMains } from './mains.ts'
+import { plainPath } from './mainsGraph.ts'
+import './mainsPlain.testing.ts'
+
+const mod = (m: Omit<ModuleDef, 'format'>): ModuleDef => ({ format: 'circuitoon-module/1', ...m })
+const ac = (pins: string[], volts: number, extra: Record<string, unknown> = {}) => ({ pins, kind: 'terminal', service: 'ac', volts, provenance: 'datasheet', ...extra })
+
+/** A US outlet: a board whose NEMA 5-15R socket holes (centred on its pivot) are the source's L, N and PE. */
+const usOutlet = (id: string, name: string) => mod({
+  id, name, pins: [], size: { w: 6, h: 6 }, obstacle: false,
+  holes: [{ name: 'N', at: [[20, 30]] }, { name: 'L', at: [[40, 30]] }, { name: 'PE', at: [[30, 50]] }],
+  electrical: {
+    params: { acVoltage: { unit: 'VAC', default: 120 } }, ac: { hz: 60, region: 'us' },
+    acSources: [{ id: 'supply', live: ['L'], neutral: ['N'], earth: ['PE'] }],
+    sockets: [{ id: 'main', family: 'nema-5-15r', contacts: [{ group: 'L', role: 'L' }, { group: 'N', role: 'N' }, { group: 'PE', role: 'PE' }] }],
+    ratings: [ac(['L', 'N', 'PE'], 125, { amps: 15 })],
+  },
+})
+export const outlet = usOutlet('t-outlet', 'Test outlet (US)')
+export const outlet2 = usOutlet('t-outlet-2', 'Second test outlet (US)')
+/** A Schuko (CEE 7/3) outlet at 230 V: L and N pins, earth clips above and below. */
+export const outletEU = mod({
+  id: 't-outlet-eu', name: 'Test outlet (Schuko)', pins: [], size: { w: 8, h: 8 }, obstacle: false,
+  holes: [{ name: 'L', at: [[20, 40]] }, { name: 'N', at: [[60, 40]] }, { name: 'PE', at: [[40, 10], [40, 70]] }],
+  electrical: {
+    params: { acVoltage: { unit: 'VAC', default: 230 } }, ac: { hz: 50, region: 'eu' },
+    acSources: [{ id: 'supply', live: ['L'], neutral: ['N'], earth: ['PE'] }],
+    sockets: [{ id: 'main', family: 'cee7-3', contacts: [{ group: 'L', role: 'L' }, { group: 'N', role: 'N' }, { group: 'PE', role: 'PE' }] }],
+    ratings: [ac(['L', 'N', 'PE'], 250, { amps: 16 })],
+  },
+})
+
+const psuPins = [
+  { name: 'AC1', side: 'left', mains: 'line' }, { name: 'AC2', side: 'left', mains: 'line' },
+  { name: '+V', side: 'right', type: 'power_out', supply: '5V' }, { name: '-V', side: 'right', type: 'ground' },
+] as ModuleDef['pins']
+const psuInput = { acInput: { a: 'AC1', b: 'AC2', range: [100, 240] } }
+const domains = (out: 'selv' | 'pelv') => [{ name: 'mains', pins: ['AC1', 'AC2'], kind: 'mains' }, { name: 'out', pins: ['+V', '-V'], kind: out }]
+/** A class 1 supply: an earth pin, and its -V bonded to it. */
+const earthedPins = [...psuPins.slice(0, 3), { name: '-V', side: 'right', type: 'ground', bond: 'pe' }, { name: 'PE', side: 'left', mains: 'PE' }] as ModuleDef['pins']
+export const psu = mod({ id: 't-psu', name: 'Test AC-DC 5 V (reinforced)', pins: psuPins, electrical: { ...psuInput, domains: domains('selv'), isolation: 'reinforced', isolationProvenance: 'datasheet', protection: 'class-2' } })
+export const psuBasic = mod({ id: 't-psu-basic', name: 'Test AC-DC 5 V (basic)', pins: psuPins, electrical: { ...psuInput, domains: domains('selv'), isolation: 'basic', isolationProvenance: 'datasheet', protection: 'class-2' } })
+export const psuScreen = mod({ id: 't-psu-screen', name: 'Test AC-DC 5 V (basic plus screen, PELV)', pins: earthedPins, internal: [['-V', 'PE']],
+  electrical: { ...psuInput, domains: domains('pelv'), isolation: 'basic', isolationProvenance: 'datasheet', safeguard: 'protective-screen', protection: 'class-1' } })
+export const psuBasicBonded = mod({ id: 't-psu-basic-bonded', name: 'Test AC-DC 5 V (basic, earthed)', pins: earthedPins, internal: [['-V', 'PE']],
+  electrical: { ...psuInput, domains: domains('pelv'), isolation: 'basic', isolationProvenance: 'datasheet', protection: 'class-1' } })
+export const psuPelv = mod({ id: 't-psu-pelv', name: 'Test AC-DC 5 V (reinforced, PELV)', pins: earthedPins, internal: [['-V', 'PE']],
+  electrical: { ...psuInput, domains: domains('pelv'), isolation: 'reinforced', isolationProvenance: 'datasheet', protection: 'class-1' } })
+
+const lampPins = [{ name: 'L', side: 'left', mains: 'L' }, { name: 'N', side: 'right', mains: 'N' }] as ModuleDef['pins']
+/** A 230 V lamp holder, class 2 (the EU fixtures and Task 9's unpolarized-outlet test use it). */
+export const lamp230 = mod({ id: 't-lamp-230', name: 'Test lamp 230 V', pins: [{ name: 'L', side: 'left', mains: 'L' }, { name: 'N', side: 'right', mains: 'N' }] as ModuleDef['pins'],
+  electrical: { conducts: [{ pins: ['L', 'N'], kind: 'load', range: [220, 240] }], protection: 'class-2', ratings: [ac(['L', 'N'], 250)] } })
+/** A converter whose output domain is labelled PELV but has no bond at all: SELV in effect (Resolution 9). */
+export const psuMislabeled = mod({ id: 't-psu-mislabeled', name: 'Test AC-DC 5 V (PELV label, no bond)', pins: psuPins,
+  electrical: { ...psuInput, domains: domains('pelv'), isolation: 'reinforced', isolationProvenance: 'datasheet', protection: 'class-2' } })
+const plugLeads = (reqs: Record<'L' | 'N' | 'PE', string>) =>
+  (['L', 'N', 'PE'] as const).map((c) => ({ name: c, side: 'bottom', mains: reqs[c] })) as ModuleDef['pins']
+const all250 = (extra: string[] = []) => [ac(['L', 'N', 'PE', ...extra], 250)]
+/** A UK (BS 1363) outlet at 230 V. */
+export const outletUK = mod({
+  id: 't-outlet-uk', name: 'Test outlet (UK)', pins: [], size: { w: 8, h: 8 }, obstacle: false,
+  holes: [{ name: 'PE', at: [[40, 20]] }, { name: 'N', at: [[10, 50]] }, { name: 'L', at: [[70, 50]] }],
+  electrical: {
+    params: { acVoltage: { unit: 'VAC', default: 230 } }, ac: { hz: 50, region: 'uk' },
+    acSources: [{ id: 'supply', live: ['L'], neutral: ['N'], earth: ['PE'] }],
+    sockets: [{ id: 'main', family: 'bs1363', contacts: [{ group: 'L', role: 'L' }, { group: 'N', role: 'N' }, { group: 'PE', role: 'PE' }] }],
+    ratings: all250(),
+  },
+})
+/** A French (CEE 7/5) outlet: its earth pin polarizes the plug. */
+export const outletFR = mod({
+  id: 't-outlet-fr', name: 'Test outlet (French)', pins: [], size: { w: 8, h: 8 }, obstacle: false,
+  holes: [{ name: 'L', at: [[20, 40]] }, { name: 'N', at: [[60, 40]] }, { name: 'PE', at: [[40, 10]] }],
+  electrical: {
+    params: { acVoltage: { unit: 'VAC', default: 230 } }, ac: { hz: 50, region: 'eu' },
+    acSources: [{ id: 'supply', live: ['L'], neutral: ['N'], earth: ['PE'] }],
+    sockets: [{ id: 'main', family: 'cee7-5', contacts: [{ group: 'L', role: 'L' }, { group: 'N', role: 'N' }, { group: 'PE', role: 'PE' }] }],
+    ratings: all250(),
+  },
+})
+/** Two NEMA sockets laid out so a plug at (0, 0) meets socket a's N and L and socket b's earth. */
+export const outletSplit = mod({
+  id: 't-outlet-split', name: 'Test outlet (contacts of two sockets in reach)', pins: [], size: { w: 6, h: 10 }, obstacle: false,
+  holes: [{ name: 'Na', at: [[20, 30]] }, { name: 'La', at: [[40, 30]] }, { name: 'PEa', at: [[30, 90]] }, { name: 'PEb', at: [[30, 50]] }, { name: 'Nb', at: [[10, 70]] }, { name: 'Lb', at: [[50, 70]] }],
+  internal: [['La', 'Lb'], ['Na', 'Nb'], ['PEa', 'PEb']],
+  electrical: {
+    params: { acVoltage: { unit: 'VAC', default: 120 } }, ac: { hz: 60, region: 'us' },
+    acSources: [{ id: 'supply', live: ['La'], neutral: ['Na'], earth: ['PEa'] }],
+    sockets: [
+      { id: 'a', family: 'nema-5-15r', contacts: [{ group: 'La', role: 'L' }, { group: 'Na', role: 'N' }, { group: 'PEa', role: 'PE' }] },
+      { id: 'b', family: 'nema-5-15r', contacts: [{ group: 'Lb', role: 'L' }, { group: 'Nb', role: 'N' }, { group: 'PEb', role: 'PE' }] },
+    ],
+  },
+})
+/** A US 3-lead cord plug (NEMA 5-15P); prongs centred on the pivot (30, 30). */
+export const plugUS = mod({
+  id: 't-plug-us', name: 'Test cord plug (US)', size: { w: 6, h: 6 }, pins: plugLeads({ L: 'L', N: 'N', PE: 'PE' }),
+  internal: [['L prong', 'L'], ['N prong', 'N'], ['PE prong', 'PE']],
+  electrical: {
+    internalNodes: ['L prong', 'N prong', 'PE prong'],
+    plug: { family: 'nema-5-15p', profiles: [{ id: 'main', contacts: [
+      { pin: 'N prong', at: { x: 20, y: 30 }, mains: 'N' }, { pin: 'L prong', at: { x: 40, y: 30 }, mains: 'L' }, { pin: 'PE prong', at: { x: 30, y: 50 }, mains: 'PE' },
+    ] }] },
+    ratings: [ac(['L', 'N', 'PE', 'L prong', 'N prong', 'PE prong'], 125, { amps: 15 })],
+  },
+})
+/** A UK 3-lead cord plug with its BS 1362 fuse between the L prong and the L lead. */
+export const plugUK = mod({
+  id: 't-plug-uk', name: 'Test cord plug (UK, fused)', size: { w: 8, h: 8 }, pins: plugLeads({ L: 'L', N: 'N', PE: 'PE' }),
+  internal: [['N prong', 'N'], ['PE prong', 'PE']],
+  electrical: {
+    internalNodes: ['L prong', 'N prong', 'PE prong'],
+    protective: [{ from: 'L prong', to: 'L', kind: 'fuse' }], params: { fuseRating: { unit: 'A', default: 13 } },
+    plug: { family: 'bs1363', profiles: [{ id: 'main', contacts: [
+      { pin: 'PE prong', at: { x: 40, y: 20 }, mains: 'PE' }, { pin: 'N prong', at: { x: 10, y: 50 }, mains: 'N' }, { pin: 'L prong', at: { x: 70, y: 50 }, mains: 'L' },
+    ] }] },
+    ratings: all250(['L prong', 'N prong', 'PE prong']),
+  },
+})
+/** A Schuko (CEE 7/7) cord plug: earth clips for a CEE 7/3 socket, an earth hole for a CEE 7/5 one. Unpolarized leads. */
+export const plugSchuko = mod({
+  id: 't-plug-schuko', name: 'Test cord plug (Schuko)', size: { w: 8, h: 8 }, pins: plugLeads({ L: 'line', N: 'line', PE: 'PE' }),
+  internal: [['L prong', 'L'], ['N prong', 'N'], ['PE prong', 'PE']],
+  electrical: {
+    internalNodes: ['L prong', 'N prong', 'PE prong'],
+    plug: { family: 'cee7-7', profiles: [
+      { id: 'earth-clip', contacts: [
+        { pin: 'L prong', at: { x: 20, y: 40 }, mains: 'L' }, { pin: 'N prong', at: { x: 60, y: 40 }, mains: 'N' },
+        { pin: 'PE prong', at: { x: 40, y: 10 }, mains: 'PE' }, { pin: 'PE prong', at: { x: 40, y: 70 }, mains: 'PE' },
+      ] },
+      { id: 'earth-hole', contacts: [
+        { pin: 'L prong', at: { x: 20, y: 40 }, mains: 'L' }, { pin: 'N prong', at: { x: 60, y: 40 }, mains: 'N' }, { pin: 'PE prong', at: { x: 40, y: 10 }, mains: 'PE' },
+      ] },
+    ] },
+    ratings: all250(['L prong', 'N prong', 'PE prong']),
+  },
+})
+/**
+ * A UK (BS 1363) class II USB charger. Its earth pin is insulated: it must enter the socket's earth
+ * contact (it opens the shutters) but carries no conductor (Ruling 39, `mains: "mechanical"`).
+ */
+export const chargerUK = mod({
+  id: 't-charger-uk', name: 'Test USB charger (UK, class II)', size: { w: 8, h: 8 },
+  pins: [{ name: '+V', side: 'right', type: 'power_out', supply: '5V' }, { name: '-V', side: 'right', type: 'ground' }],
+  electrical: {
+    internalNodes: ['L prong', 'N prong', 'E pin'],
+    acInput: { a: 'L prong', b: 'N prong', range: [100, 240] },
+    domains: [{ name: 'mains', pins: ['L prong', 'N prong'], kind: 'mains' }, { name: 'out', pins: ['+V', '-V'], kind: 'selv' }],
+    isolation: 'double', isolationProvenance: 'datasheet', protection: 'class-2',
+    plug: { family: 'bs1363', profiles: [{ id: 'main', contacts: [
+      { pin: 'E pin', at: { x: 40, y: 20 }, mains: 'mechanical' }, { pin: 'N prong', at: { x: 10, y: 50 }, mains: 'N' }, { pin: 'L prong', at: { x: 70, y: 50 }, mains: 'L' },
+    ] }] },
+    ratings: [ac(['L prong', 'N prong'], 250)],
+  },
+})
+
+/** A 120 V lamp holder: centre contact L, screw shell N. */
+export const lamp = mod({ id: 't-lamp', name: 'Test lamp 120 V', pins: lampPins,
+  electrical: { conducts: [{ pins: ['L', 'N'], kind: 'load', range: [110, 130] }], protection: 'class-2', ratings: [ac(['L', 'N'], 250)],
+    polarityHazard: 'Its screw shell is then live, so touching it while changing the bulb may shock.' } })
+export const lampC1 = mod({ id: 't-lamp-c1', name: 'Test class 1 lamp 120 V', pins: [...lampPins, { name: 'PE', side: 'bottom', mains: 'PE' }],
+  electrical: { conducts: [{ pins: ['L', 'N'], kind: 'load', range: [110, 130] }], protection: 'class-1', ratings: [ac(['L', 'N', 'PE'], 250)] } })
+
+export const sw = mod({ id: 't-switch', name: 'Test switch', pins: [{ name: '1', side: 'left', type: 'passive' }, { name: '2', side: 'right', type: 'passive' }],
+  electrical: { contacts: [{ id: 's', kind: 'switch', poles: [{ com: '1', no: '2' }] }], ratings: [{ pins: ['1', '2'], kind: 'switching', service: 'ac', volts: 250, amps: 6, provenance: 'datasheet' }] } })
+export const relay = mod({ id: 't-relay', name: 'Test relay', pins: [
+  { name: 'COM', side: 'left', type: 'passive' }, { name: 'NO', side: 'left', type: 'passive' }, { name: 'NC', side: 'left', type: 'passive' },
+  { name: '+', side: 'right', type: 'power_in', supply: '5V' }, { name: '-', side: 'right', type: 'ground' },
+], electrical: {
+  contacts: [{ id: 'k', kind: 'relay', poles: [{ com: 'COM', no: 'NO', nc: 'NC' }] }],
+  domains: [{ name: 'contacts', pins: ['COM', 'NO', 'NC'], kind: 'mains' }, { name: 'coil', pins: ['+', '-'], kind: 'selv' }], isolation: 'reinforced', isolationProvenance: 'datasheet',
+  ratings: [{ pins: ['COM', 'NO', 'NC'], kind: 'switching', service: 'ac', volts: 250, amps: 10, provenance: 'datasheet' }],
+} })
+/** Mirrors the Fotek SSR-25DA's terminals: load 1 and 2, control 3 (+, a signal input) and 4 (-). */
+export const ssr = mod({ id: 't-ssr', name: 'Test SSR', pins: [
+  { name: '1', side: 'left', type: 'passive' }, { name: '2', side: 'left', type: 'passive' },
+  { name: '3', side: 'right', type: 'input' }, { name: '4', side: 'right', type: 'ground' },
+], electrical: {
+  contacts: [{ id: 'k', kind: 'ssr', poles: [{ com: '1', no: '2' }] }],
+  domains: [{ name: 'load', pins: ['1', '2'], kind: 'mains' }, { name: 'control', pins: ['3', '4'], kind: 'selv' }], isolation: 'reinforced', isolationProvenance: 'datasheet',
+  ratings: [{ pins: ['1', '2'], kind: 'switching', service: 'ac', volts: 380, amps: 25, provenance: 'datasheet' }],
+} })
+export const fuse = mod({ id: 't-fuse', name: 'Test fuse holder', pins: [{ name: '1', side: 'left', type: 'passive' }, { name: '2', side: 'right', type: 'passive' }],
+  electrical: { protective: [{ from: '1', to: '2', kind: 'fuse' }], params: { fuseRating: { unit: 'A' } }, settings: { fuse: ['fitted', 'absent'] }, ratings: [ac(['1', '2'], 250)] } })
+
+const termPins = [{ name: '1', side: 'left' }, { name: '2', side: 'left' }, { name: '1b', side: 'right' }, { name: '2b', side: 'right' }] as ModuleDef['pins']
+const term = (id: string, name: string, electrical: Record<string, unknown>) => mod({ id, name, pins: termPins, internal: [['1', '1b'], ['2', '2b']], electrical })
+const all = ['1', '2', '1b', '2b']
+export const block = term('t-term', 'Test terminal block 300 V', { ratings: [ac(all, 300)] })
+export const block125 = term('t-term-125', 'Test terminal block 125 V', { ratings: [ac(all, 125)] })
+export const blockDc = term('t-term-dc', 'Test terminal block 300 V DC', { ratings: [{ ...ac(all, 300), service: 'dc' }] })
+export const blockCond = term('t-term-cond', 'Test terminal block with conditions', { ratings: [ac(all, 300, { conditions: 'for overvoltage category III and pollution degree 2' })] })
+export const blockBare = term('t-term-bare', 'Test terminal block, no rating', { domains: [{ name: 'm', pins: all, kind: 'mains' }] })
+export const blockUnverified = term('t-term-unverified', 'Test terminal block clone', { ratings: [ac(all, 300, { provenance: 'unverified' })] })
+
+/** A low-voltage board: an I/O pin, a ground and a 5 V input. No mains data at all. */
+export const mcu = mod({ id: 't-mcu', name: 'Test board', pins: [
+  { name: 'IO', side: 'right', type: 'io' }, { name: 'GND', side: 'left', type: 'ground' }, { name: 'VCC', side: 'left', type: 'power_in', supply: '5V' },
+] })
+/** The same board with a 3.3 V only input. */
+export const mcu33 = mod({ id: 't-mcu33', name: 'Test 3.3 V board', pins: [
+  { name: 'IO', side: 'right', type: 'io' }, { name: 'GND', side: 'left', type: 'ground' }, { name: 'VCC', side: 'left', type: 'power_in', supply: '3V3' },
+] })
+/** A 9 V battery: a DC source that is not a mains part. */
+export const bat9 = mod({ id: 't-bat9', name: 'Test 9 V battery', pins: [{ name: '+', side: 'top', type: 'power_out', supply: '9V' }, { name: '-', side: 'top', type: 'ground' }] })
+/** A double-pole relay: both poles switch together (spec 1.5, linked poles). */
+export const relay2p = mod({ id: 't-relay-2p', name: 'Test double-pole relay', pins: [
+  ...['COM1', 'NO1', 'NC1', 'COM2', 'NO2', 'NC2'].map((name) => ({ name, side: 'left', type: 'passive' })),
+  { name: '+', side: 'right', type: 'power_in', supply: '5V' }, { name: '-', side: 'right', type: 'ground' },
+] as ModuleDef['pins'], electrical: {
+  contacts: [{ id: 'k', kind: 'relay', poles: [{ com: 'COM1', no: 'NO1', nc: 'NC1' }, { com: 'COM2', no: 'NO2', nc: 'NC2' }] }],
+  domains: [{ name: 'contacts', pins: ['COM1', 'NO1', 'NC1', 'COM2', 'NO2', 'NC2'], kind: 'mains' }, { name: 'coil', pins: ['+', '-'], kind: 'selv' }], isolation: 'reinforced', isolationProvenance: 'datasheet',
+  ratings: [{ pins: ['COM1', 'NO1', 'NC1', 'COM2', 'NO2', 'NC2'], kind: 'switching', service: 'ac', volts: 250, amps: 10, provenance: 'datasheet' }],
+} })
+/**
+ * A converter that declares only its mains domain: its outputs are in no domain (Resolution 27). It
+ * states no isolation, since isolation rates a barrier to a SELV or PELV domain it does not have.
+ */
+export const psuMainsOnly = mod({ id: 't-psu-mainsonly', name: 'Test AC-DC 5 V (outputs in no domain)', pins: psuPins,
+  electrical: { ...psuInput, domains: [{ name: 'mains', pins: ['AC1', 'AC2'], kind: 'mains' }], protection: 'class-2' } })
+/** A changeover (SPDT) switch: its pole has an NC contact, so its states are worded "switched to NC" and "switched to NO". */
+export const swChangeover = mod({ id: 't-switch-co', name: 'Test changeover switch', pins: [
+  { name: 'C', side: 'left', type: 'passive' }, { name: 'A', side: 'right', type: 'passive' }, { name: 'B', side: 'right', type: 'passive' },
+], electrical: { contacts: [{ id: 's', kind: 'switch', poles: [{ com: 'C', no: 'A', nc: 'B' }] }], ratings: [{ pins: ['C', 'A', 'B'], kind: 'switching', service: 'ac', volts: 250, amps: 6, provenance: 'datasheet' }] } })
+/** A two-channel relay board: two independent contact groups on one part, told apart by their COM labels. */
+export const relayBoard2 = mod({ id: 't-relay-board-2', name: 'Test two-channel relay board', pins: [
+  ...['1', '2'].flatMap((n) => ['COM', 'NO', 'NC'].map((c) => ({ name: `${c}${n}`, side: 'left', type: 'passive' }))),
+  { name: '+', side: 'right', type: 'power_in', supply: '5V' }, { name: '-', side: 'right', type: 'ground' },
+] as ModuleDef['pins'], electrical: {
+  contacts: [{ id: 'k1', kind: 'relay', poles: [{ com: 'COM1', no: 'NO1', nc: 'NC1' }] }, { id: 'k2', kind: 'relay', poles: [{ com: 'COM2', no: 'NO2', nc: 'NC2' }] }],
+  domains: [{ name: 'contacts', pins: ['COM1', 'NO1', 'NC1', 'COM2', 'NO2', 'NC2'], kind: 'mains' }, { name: 'coil', pins: ['+', '-'], kind: 'selv' }], isolation: 'reinforced', isolationProvenance: 'datasheet',
+  ratings: [{ pins: ['COM1', 'NO1', 'NC1', 'COM2', 'NO2', 'NC2'], kind: 'switching', service: 'ac', volts: 250, amps: 10, provenance: 'datasheet' }],
+} })
+/** A relay module whose listing states no insulation class between coil and contacts (like the clone boards, ruling B2). */
+export const relayUnknown = mod({ ...relay, id: 't-relay-unknown', name: 'Test relay (isolation unknown)', electrical: { ...(relay.electrical as Record<string, unknown>), isolation: 'unknown', isolationProvenance: undefined } })
+/** An SSR with only basic insulation between its control side and its load side. */
+export const ssrBasic = mod({ ...ssr, id: 't-ssr-basic', name: 'Test SSR (basic insulation)', electrical: { ...(ssr.electrical as Record<string, unknown>), isolation: 'basic' } })
+/** A part with mains terminals and no conduction data. */
+export const undeclared = mod({ id: 't-undeclared', name: 'Test part without mains data', pins: [{ name: 'A', side: 'left', mains: 'L' }, { name: 'B', side: 'right', mains: 'N' }] })
+
+export const MAINS_MODULES: Record<string, ModuleDef> = Object.fromEntries(
+  [outlet, outlet2, outletEU, psu, psuBasic, psuBasicBonded, psuScreen, psuPelv, lamp, lampC1, sw, relay, ssr, fuse, block, block125, blockDc, blockCond, blockBare, blockUnverified, mcu, mcu33, undeclared, bat9, relay2p, psuMainsOnly, lamp230, psuMislabeled, swChangeover, relayBoard2, relayUnknown, ssrBasic,
+    outletUK, outletFR, outletSplit, plugUS, plugUK, plugSchuko, chargerUK]
+    .map((m) => [m.id, m]),
+)
+
+export const at = (uid: string, designator: string, module: string, x = 0, y = 0, extra: Partial<PartInstance> = {}): PartInstance =>
+  ({ uid, designator, module, x, y, rotation: 0, ...extra })
+
+let seq = 0
+/** A wire "uid|pin" to "uid|pin", mains-suitable by default (18 AWG, ferrules), so only cable-unverified ever applies to it. */
+export const w = (a: string, b: string, extra: Partial<Connection> = {}): Connection => {
+  const end = (s: string) => {
+    const [part, pin] = s.split('|')
+    return { part, pin }
+  }
+  return { uid: `w${++seq}`, from: end(a), to: end(b), gauge: 18, ends: { from: 'ferrule', to: 'ferrule' }, ...extra }
+}
+/** A 26 AWG Dupont jumper, clearly unsuitable for mains. */
+export const dupont = (a: string, b: string): Connection => w(a, b, { gauge: 26, ends: { from: 'dupont-female', to: 'dupont-female' } })
+/** Every sheet `sheet` made in this test file: after the file's tests, each is checked against the plain path (see below). */
+const built: Diagram[] = []
+export const sheet = (parts: PartInstance[], connections: Connection[], modules: Record<string, ModuleDef> = {}): Diagram => {
+  const d: Diagram = { format: 'circuitoon-diagram/1', title: 't', modules: { ...MAINS_MODULES, ...modules }, parts, connections }
+  built.push(d)
+  return d
+}
+
+/** Everything the mains analysis hands the checker and the renderer, and the checker's own findings, in comparable form. */
+function outcome(d: Diagram) {
+  const a = analyseMains(d)
+  const keys = a ? [...a.graph.nodeOf.keys()] : []
+  return {
+    analysis: a && {
+      complete: a.complete, findings: a.findings, converters: [...a.converters], hazardKeys: [...a.hazardKeys].sort(), mainsKeys: [...a.mainsKeys].sort(), deadOutputs: [...a.deadOutputs],
+      conductors: keys.map((k) => [k, a.conductorOf(k)]),
+    },
+    // A fresh connections array, so the cached analysis of the other path is not reused.
+    checks: checkDiagram({ ...d, connections: [...d.connections] }),
+  }
+}
+
+/**
+ * The Task 11 differential check: the fast enumeration (flattened state analysis, slot-cached rules,
+ * word-level witness scans) must give exactly what the plain path gives, findings and their wording,
+ * paths and order included.
+ */
+export function expectSameAsPlain(d: Diagram): void {
+  const fast = outcome(d)
+  plainPath.on = true
+  let plain
+  try {
+    plain = outcome(d)
+  } finally {
+    plainPath.on = false
+  }
+  expect(fast).toEqual(plain)
+}
+
+// Every mains test file that builds its sheets here gets the differential check on all of them.
+afterAll(() => {
+  for (const d of built) expectSameAsPlain(d)
+}, 120_000)

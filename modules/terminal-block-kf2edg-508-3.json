@@ -1,0 +1,170 @@
+{
+  "format": "circuitoon-module/1",
+  "id": "terminal-block-kf2edg-508-3",
+  "version": 1,
+  "name": "Terminal block KF2EDG 5.08 mm clone, 3 positions",
+  "category": "Mains",
+  "source": "https://www.kefaelectronic.com/KF2EDG-STD-5-08-Pluggable-terminal-block-pd40291464.html",
+  "pins": [
+    {
+      "name": "1",
+      "side": "left"
+    },
+    {
+      "spacer": true,
+      "side": "left"
+    },
+    {
+      "name": "2",
+      "side": "left"
+    },
+    {
+      "spacer": true,
+      "side": "left"
+    },
+    {
+      "name": "3",
+      "side": "left"
+    },
+    {
+      "name": "1 pcb",
+      "side": "right",
+      "label": "1"
+    },
+    {
+      "spacer": true,
+      "side": "right"
+    },
+    {
+      "name": "2 pcb",
+      "side": "right",
+      "label": "2"
+    },
+    {
+      "spacer": true,
+      "side": "right"
+    },
+    {
+      "name": "3 pcb",
+      "side": "right",
+      "label": "3"
+    }
+  ],
+  "internal": [
+    [
+      "1",
+      "1 pcb"
+    ],
+    [
+      "2",
+      "2 pcb"
+    ],
+    [
+      "3",
+      "3 pcb"
+    ]
+  ],
+  "size": {
+    "w": 7,
+    "h": 7
+  },
+  "electrical": {
+    "model": "terminal-block",
+    "ratings": [
+      {
+        "pins": [
+          "1",
+          "2",
+          "3",
+          "1 pcb",
+          "2 pcb",
+          "3 pcb"
+        ],
+        "kind": "terminal",
+        "service": "ac/dc",
+        "volts": 300,
+        "amps": 10,
+        "provenance": "unverified"
+      }
+    ]
+  },
+  "art": {
+    "w": 70,
+    "h": 70,
+    "pinLabels": "inside",
+    "shapes": [
+      {
+        "type": "rect",
+        "x": 0,
+        "y": 0,
+        "w": 42,
+        "h": 70,
+        "fill": "#2F7FD0",
+        "radius": 3
+      },
+      {
+        "type": "rect",
+        "x": 42,
+        "y": 0,
+        "w": 28,
+        "h": 70,
+        "fill": "#23629F",
+        "radius": 3
+      },
+      {
+        "type": "rect",
+        "x": 23,
+        "y": 14,
+        "w": 12,
+        "h": 12,
+        "fill": "#C9CED6",
+        "radius": 6
+      },
+      {
+        "type": "rect",
+        "x": 28,
+        "y": 16,
+        "w": 2,
+        "h": 8,
+        "fill": "#2B2F36",
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 23,
+        "y": 34,
+        "w": 12,
+        "h": 12,
+        "fill": "#C9CED6",
+        "radius": 6
+      },
+      {
+        "type": "rect",
+        "x": 28,
+        "y": 36,
+        "w": 2,
+        "h": 8,
+        "fill": "#2B2F36",
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 23,
+        "y": 54,
+        "w": 12,
+        "h": 12,
+        "fill": "#C9CED6",
+        "radius": 6
+      },
+      {
+        "type": "rect",
+        "x": 28,
+        "y": 56,
+        "w": 2,
+        "h": 8,
+        "fill": "#2B2F36",
+        "outline": false
+      }
+    ]
+  }
+}

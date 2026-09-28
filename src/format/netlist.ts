@@ -39,7 +39,8 @@ export function conductors(d: Diagram, plugs: Plug[] = plugsOf(d)): { joins: Joi
     const m = moduleOf(d, p.module)
     for (const group of m?.internal ?? []) for (let i = 1; i < group.length; i++) joins.push({ a: nodeKey(p.uid, group[0]), b: nodeKey(p.uid, group[i]) })
   }
-  for (const pl of plugs) joins.push({ a: nodeKey(pl.part, pl.pin), b: nodeKey(pl.board, pl.group) })
+  // A mechanical plug contact fills its hole but joins nothing (Ruling 39).
+  for (const pl of plugs) if (!pl.mechanical) joins.push({ a: nodeKey(pl.part, pl.pin), b: nodeKey(pl.board, pl.group) })
   return { joins, broken }
 }
 

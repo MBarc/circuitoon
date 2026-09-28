@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
-import { insideLabelSides, layoutModule, usesInsideLabels, validParamValue, commonReturn, declaredReturns, externalPower, validateModule, voltageOutputs, type ModuleDef } from './module.ts'
+import { insideLabelSides, layoutModule, usesInsideLabels, validParamValue, commonReturn, declaredReturns, externalPower, validateModule, voltageOutputs, partSetting, type ModuleDef } from './module.ts'
 import { load } from './builtinModules.testing.ts'
 
 const base = { format: 'circuitoon-module/1', id: 'thing', name: 'Thing' }
@@ -270,7 +270,7 @@ describe('usesInsideLabels', () => {
     expect(insideLabelSides(m())).toEqual([])
     expect(insideLabelSides(m({ art: { w: 10, h: 10, shapes: [], pinLabels: 'inside' } })).sort()).toEqual(['bottom', 'left', 'right', 'top'])
   })
-  it('is set only on the header and pad parts (ESP32, Pico, Arduino Nano and D1 mini boards, DIP chips, display, storage, power, sensor, relay, motor driver and radio modules, multi-lead LEDs, terminal adapter, USB panel-mount cables), never on any other built-in module', () => {
+  it('is set only on the header and pad parts (ESP32, Pico, Arduino Nano and D1 mini boards, DIP chips, display, storage, power, AC-DC, sensor, relay, SSR, motor driver and radio modules, multi-lead LEDs, terminal adapter, terminal blocks, USB panel-mount cables), never on any other built-in module', () => {
     const dir = join(import.meta.dirname, '..', '..', 'modules')
     const boardFiles = new Set([
       'esp32-devkitc-v4.json', 'esp32-devkit-v1-30.json', 'esp32-s3-devkitc-1.json',
@@ -287,6 +287,9 @@ describe('usesInsideLabels', () => {
       'arduino-nano.json', 'wemos-d1-mini.json', 'relay-module-1ch-5v.json', 'l298n-module.json',
       'rfm95-lora-breakout.json', 'level-shifter-bss138-4ch.json', 'servo-sg90.json',
       'esp32-terminal-board-38.json', 'usb-panel-mount-microusb.json', 'usb-panel-mount-usbc.json',
+      'hlk-pm01.json', 'hlk-pm03.json', 'irm-03-5.json', 'irm-03-3v3.json', 'irm-05-5.json', 'ssr-fotek-25da.json',
+      ...['mstb-508', 'mc-381'].flatMap((s) => [2, 3, 4, 5, 6].map((n) => `terminal-block-${s}-${n}.json`)),
+      'terminal-block-kf2edg-508-2.json', 'terminal-block-kf2edg-508-3.json', 'terminal-block-kf301-500-2.json', 'terminal-block-kf301-500-3.json',
     ])
     const files = readdirSync(dir).filter((f) => f.endsWith('.json'))
     expect(files.filter((f) => boardFiles.has(f))).toHaveLength(boardFiles.size)
@@ -295,5 +298,34 @@ describe('usesInsideLabels', () => {
       if (!r.ok) throw new Error(`${file}: ${r.errors.join('; ')}`)
       expect(usesInsideLabels(r.module)).toBe(boardFiles.has(file))
     }
+  })
+})
+
+describe('mains value params', () => {
+  const pins = [{ name: 'A', side: 'left' }]
+  it('accepts an acVoltage from 1 to 1000 VAC and rejects anything else', () => {
+    expect(validateModule({ ...base, pins, electrical: { params: { acVoltage: { unit: 'VAC', default: 230 } } } }).ok).toBe(true)
+    const r = validateModule({ ...base, pins, electrical: { params: { acVoltage: { unit: 'V', default: 2000 } } } })
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.errors).toEqual(['electrical.params.acVoltage.unit: must be "VAC"', 'electrical.params.acVoltage.default: must be from 1 to 1000'])
+  })
+  it('lets a fuseRating leave its default out (unknown), but not give a bad one', () => {
+    expect(validateModule({ ...base, pins, electrical: { params: { fuseRating: { unit: 'A' } } } }).ok).toBe(true)
+    const r = validateModule({ ...base, pins, electrical: { params: { fuseRating: { unit: 'A', default: 0 } } } })
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.errors).toEqual(['electrical.params.fuseRating.default: must be above 0, up to 100, or left out'])
+  })
+  it('checks electrical.settings: a list of 2 or more different choices', () => {
+    expect(validateModule({ ...base, pins, electrical: { settings: { fuse: ['fitted', 'absent'] } } }).ok).toBe(true)
+    const r = validateModule({ ...base, pins, electrical: { settings: { fuse: ['fitted'] } } })
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.errors).toEqual(['electrical.settings.fuse: must be a list of 2 or more different choices, the first the default'])
+  })
+  it('reads a part setting: its stored choice when valid, else the first choice', () => {
+    const m = { ...base, pins, electrical: { settings: { fuse: ['fitted', 'absent'] } } } as ModuleDef
+    expect(partSetting({}, m, 'fuse')).toBe('fitted')
+    expect(partSetting({ settings: { fuse: 'absent' } }, m, 'fuse')).toBe('absent')
+    expect(partSetting({ settings: { fuse: 'blown' } }, m, 'fuse')).toBe('fitted')
+    expect(partSetting({}, m, 'colour')).toBeNull()
   })
 })

@@ -1,0 +1,180 @@
+{
+  "format": "circuitoon-module/1",
+  "id": "outlet-uk-bs1363",
+  "version": 1,
+  "name": "UK outlet BS 1363 single (13 A, 230 V)",
+  "category": "Mains",
+  "source": "https://en.wikipedia.org/wiki/BS_1363 https://www.plugsocketmuseum.nl/British1.html https://www.elec-mate.com/guides/how-to-wire-a-plug https://en.wikipedia.org/wiki/AC_power_plugs_and_sockets",
+  "pins": [],
+  "size": {
+    "w": 8,
+    "h": 8
+  },
+  "holes": [
+    {
+      "name": "L",
+      "label": "L",
+      "at": [
+        [
+          70,
+          50
+        ]
+      ]
+    },
+    {
+      "name": "N",
+      "label": "N",
+      "at": [
+        [
+          10,
+          50
+        ]
+      ]
+    },
+    {
+      "name": "PE",
+      "label": "PE",
+      "at": [
+        [
+          40,
+          20
+        ]
+      ]
+    }
+  ],
+  "obstacle": false,
+  "electrical": {
+    "model": "outlet",
+    "params": {
+      "acVoltage": {
+        "unit": "VAC",
+        "default": 230
+      }
+    },
+    "ac": {
+      "hz": 50,
+      "region": "uk"
+    },
+    "acSources": [
+      {
+        "id": "supply",
+        "live": [
+          "L"
+        ],
+        "neutral": [
+          "N"
+        ],
+        "earth": [
+          "PE"
+        ]
+      }
+    ],
+    "sockets": [
+      {
+        "id": "main",
+        "family": "bs1363",
+        "contacts": [
+          {
+            "group": "L",
+            "role": "L"
+          },
+          {
+            "group": "N",
+            "role": "N"
+          },
+          {
+            "group": "PE",
+            "role": "PE"
+          }
+        ]
+      }
+    ],
+    "ratings": [
+      {
+        "pins": [
+          "L",
+          "N",
+          "PE"
+        ],
+        "kind": "terminal",
+        "service": "ac",
+        "volts": 250,
+        "amps": 13,
+        "provenance": "datasheet"
+      }
+    ]
+  },
+  "art": {
+    "w": 80,
+    "h": 80,
+    "shapes": [
+      {
+        "type": "rect",
+        "x": 0,
+        "y": 0,
+        "w": 80,
+        "h": 80,
+        "fill": "#F5F5F2",
+        "radius": 6
+      },
+      {
+        "type": "rect",
+        "x": 3,
+        "y": 3,
+        "w": 74,
+        "h": 74,
+        "fill": "#FBF9F3",
+        "radius": 4,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 37,
+        "y": 12,
+        "w": 6,
+        "h": 16,
+        "fill": "#2B2F36",
+        "radius": 1,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 5,
+        "y": 47,
+        "w": 11,
+        "h": 6,
+        "fill": "#2B2F36",
+        "radius": 1,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 64,
+        "y": 47,
+        "w": 11,
+        "h": 6,
+        "fill": "#2B2F36",
+        "radius": 1,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 36,
+        "y": 64,
+        "w": 8,
+        "h": 8,
+        "fill": "#B8BEC7",
+        "radius": 4
+      },
+      {
+        "type": "rect",
+        "x": 37,
+        "y": 67.5,
+        "w": 6,
+        "h": 1,
+        "fill": "#2B2F36",
+        "outline": false
+      }
+    ]
+  }
+}

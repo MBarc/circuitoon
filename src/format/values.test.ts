@@ -3,9 +3,11 @@ import {
   CAPACITOR_VALUES,
   RESISTOR_VALUES,
   bandFills,
+  editableParams,
   formatValue,
   parseValue,
   partCaption,
+  paramValue,
   partValue,
   primaryParam,
   resistorBands,
@@ -271,5 +273,26 @@ describe('bandFills', () => {
   })
   it('is null for a module with no band shapes', () => {
     expect(bandFills({ format: 'circuitoon-module/1', id: 'x', name: 'X', pins: [{ name: 'A', side: 'left' }] })).toBeNull()
+  })
+})
+
+describe('mains units', () => {
+  it('formats and parses volts AC and amps', () => {
+    expect(formatValue(230, 'VAC')).toBe('230 VAC')
+    expect(parseValue('230', 'VAC')).toBe(230)
+    expect(parseValue('230V', 'VAC')).toBe(230)
+    expect(parseValue('120 VAC', 'VAC')).toBe(120)
+    expect(parseValue('2000', 'VAC')).toBeNull()
+    expect(formatValue(2, 'A')).toBe('2 A')
+    expect(parseValue('500m', 'A')).toBe(0.5)
+    expect(parseValue('0', 'A')).toBeNull()
+  })
+  it('lists every editable param with its default, null for an optional one left out', () => {
+    const fuse = { format: 'circuitoon-module/1', id: 'f', name: 'F', pins: [{ name: '1', side: 'left' }], electrical: { params: { fuseRating: { unit: 'A' } } } } as ModuleDef
+    expect(editableParams(fuse)).toEqual([{ name: 'fuseRating', unit: 'A', default: null }])
+    expect(primaryParam(fuse)).toBeNull()
+    expect(paramValue({}, fuse, 'fuseRating')).toBeNull()
+    expect(paramValue({ values: { fuseRating: { value: 2, unit: 'A' } } }, fuse, 'fuseRating')).toBe(2)
+    expect(paramValue({ values: { fuseRating: { value: 2, unit: 'V' } } }, fuse, 'fuseRating')).toBeNull()
   })
 })
