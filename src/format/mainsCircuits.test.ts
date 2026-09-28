@@ -130,6 +130,24 @@ describe('the spec circuits on built-in parts', () => {
     expect(found.filter((f) => f.rule === 'mains-cable')).toEqual([])
     expect(found.some((f) => f.rule === 'mains-to-low-voltage' && f.message.includes('K1 DC-'))).toBe(true)
   })
+  // Rule 9 keeps the conservative scope in a unit that was not enumerated: no per-state rule (rule 1
+  // among them) runs there, so nothing else would report the jumpers on the possibly live control side.
+  it('Dupont jumpers on the relay module\'s control side in a unit that was not enumerated: mains-cable', () => {
+    const ks = Array.from({ length: 17 }, (_, i) => i + 1)
+    const d = sheet([
+      at('xs1', 'XS1', 'outlet-us-5-15r-duplex'), at('k1', 'K1', 'relay-module-1ch-5v', 500), at('u1', 'U1', 'esp32-devkit-v1-30', 500, 300),
+      ...ks.map((k) => at(`s${k}`, `S${k}`, 'rocker-switch-kcd1', k * 200, 600)),
+    ], [
+      stripped('xs1|L1', 'k1|COM'), ...ks.map((k) => stripped('xs1|L1', `s${k}|1`)),
+      { ...dc('k1|DC+', 'u1|VIN'), uid: 'jp', gauge: 26, ends: { from: 'dupont-female', to: 'dupont-female' } },
+      { ...dc('k1|DC-', 'u1|GND'), uid: 'jm', gauge: 26, ends: { from: 'dupont-female', to: 'dupont-female' } },
+    ])
+    const found = checkDiagram(d)
+    expect(found.some((f) => f.rule === 'mains-incomplete')).toBe(true)
+    expect(found.some((f) => f.rule === 'mains-to-low-voltage')).toBe(false)
+    const cable = found.filter((f) => f.rule === 'mains-cable').flatMap((f) => f.wires ?? [])
+    expect(cable).toEqual(expect.arrayContaining(['jp', 'jm']))
+  })
   // Final review (2): 17 switches on one outlet make only their own unit incomplete.
   it('an L-N short on XP1 is reported beside 17 KCD1 switches on a separate outlet XS2', () => {
     const xs1 = at('xs1', 'XS1', 'outlet-us-5-15r-duplex')

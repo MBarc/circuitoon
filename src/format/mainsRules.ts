@@ -59,6 +59,13 @@ export interface Acc {
   hazardAny: Uint8Array
   /** Per node: on mains wiring in at least one state (L or N identity, or energy that crossed no isolation barrier, MAINS_POW): the DC rules skip only these, and rule 9 judges their wires. */
   mainsAny: Uint8Array
+  /**
+   * The sheet's accumulator, per node: the scope of rule 9 (wires and breadboard strips judged for
+   * mains). In an enumerated unit, mainsAny. In a unit that was not enumerated, hazardAny: no per-state
+   * rule runs there (rule 1 among them), so a net possibly live only across an unknown barrier has no
+   * other finding, and its jumpers are judged as the conservative hazard (final fixes 1).
+   */
+  cableAny: Uint8Array
   /** Per node: the highest voltage of a source that made it hazardous. */
   volts: Float64Array
   /** Per node: every identity bit it had in any state (Resolution 19 reads it). */
@@ -92,7 +99,7 @@ export function newAcc(p: Prepared, cands: number[], incomplete: 'groups' | 'sou
   const g = p.g
   return {
     p, cands, total: incomplete ? 0 : 2 ** cands.length, seen: new Map(),
-    hazardAny: new Uint8Array(g.n), mainsAny: new Uint8Array(g.n), volts: new Float64Array(g.n), identUnion: new Uint32Array(g.n),
+    hazardAny: new Uint8Array(g.n), mainsAny: new Uint8Array(g.n), cableAny: new Uint8Array(g.n), volts: new Float64Array(g.n), identUnion: new Uint32Array(g.n),
     converters: g.converters.map(() => null), loadComplete: new Uint8Array(g.loads.length), loadFit: new Uint8Array(g.loads.length), loadFixers: new Map(),
     incomplete, open: [], conductors: new Array(g.n).fill(null), finished: [], ...sourceTable(p),
   }
@@ -908,6 +915,7 @@ export function absorb(into: Acc, unit: Acc): void {
   for (const i of unit.p.relevant) {
     into.hazardAny[i] |= unit.hazardAny[i]
     into.mainsAny[i] |= unit.mainsAny[i]
+    into.cableAny[i] |= unit.incomplete ? unit.hazardAny[i] : unit.mainsAny[i]
     into.volts[i] = Math.max(into.volts[i], unit.volts[i])
     const x = unit.identUnion[i]
     if (x && (x & (x - 1)) === 0) {
@@ -2233,7 +2241,8 @@ function wireEnd(g: MainsGraph, ep: Endpoint): string {
  * A functional DC ground joined to a bonded minus is not protective, so it is not judged here. Nor is
  * a net that gets mains only across an isolation barrier that is not protective separation (final
  * review 1): rule 1 already reports that side as possibly live, and a mains cable would not make it
- * safe to touch, so a finding on each of its jumpers would only repeat that.
+ * safe to touch, so a finding on each of its jumpers would only repeat that. In a unit that was not
+ * enumerated rule 1 does not run, so there every conservatively hazardous net is judged (cableAny).
  */
 function cableRules(acc: Acc): MainsDraft[] {
   const g = acc.p.g
@@ -2242,7 +2251,7 @@ function cableRules(acc: Acc): MainsDraft[] {
   for (const c of g.d.connections) {
     if (g.broken.has(c.uid)) continue
     const i = g.nodeOf.get(nodeKey(c.from.part, c.from.pin))
-    const live = i !== undefined && acc.mainsAny[i] === 1
+    const live = i !== undefined && acc.cableAny[i] === 1
     if (!live && !pe.wires.has(c.uid)) continue
     const name = c.label || `${wireEnd(g, c.from)} to ${wireEnd(g, c.to)}`
     const what = live ? 'carries mains' : 'is part of the earth path'
@@ -2259,7 +2268,7 @@ function cableRules(acc: Acc): MainsDraft[] {
 
 /**
  * Ruling 35: a breadboard strip (a hole group of a board without mains data) on a net that is ever
- * on mains wiring (as rule 9 judges wires), or on a protective path, is rated for neither. One finding per board, its strips in
+ * on mains wiring (as rule 9 judges wires, cableAny), or on a protective path, is rated for neither. One finding per board, its strips in
  * name order, those on mains first.
  */
 function stripRule(acc: Acc, earthStrips: { part: string; group: string }[]): MainsDraft[] {
@@ -2276,7 +2285,7 @@ function stripRule(acc: Acc, earthStrips: { part: string; group: string }[]): Ma
   }
   const strip = (t: GTerm | null): t is GTerm => !!t && !t.info.any && isBoard(t.module) && !!t.module.holes?.some((h) => h.name === t.name)
   for (const i of p.relevant) {
-    if (!acc.mainsAny[i]) continue
+    if (!acc.cableAny[i]) continue
     for (const k of g.members[i]) {
       const t = termAt(g, k)
       if (strip(t)) add(t, true)
