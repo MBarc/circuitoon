@@ -11,6 +11,7 @@ import { CliError, EXIT, type Io, printJson } from './io.ts'
 import { partCommand, partsCommand } from './parts.ts'
 import { layoutCommand } from './layoutCmd.ts'
 import { renderCommand } from './render.ts'
+import { checkCommand, verifyCommand } from './verifyCmd.ts'
 
 export const USAGE = `circuitoon <command> [options]
 
@@ -28,7 +29,7 @@ or an internal error of the tool.
 `
 
 export type Command = (args: Args, io: Io) => number | Promise<number>
-export const COMMANDS: Record<string, Command> = { parts: partsCommand, part: partCommand, layout: layoutCommand, render: renderCommand }
+export const COMMANDS: Record<string, Command> = { parts: partsCommand, part: partCommand, layout: layoutCommand, render: renderCommand, verify: verifyCommand, check: checkCommand }
 
 type ErrorCode = 'usage' | 'input' | 'blocked' | 'environment' | 'internal'
 const CODE_OF: Record<number, ErrorCode> = { [EXIT.blocked]: 'blocked', [EXIT.input]: 'input', [EXIT.environment]: 'environment' }
