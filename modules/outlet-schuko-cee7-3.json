@@ -1,0 +1,173 @@
+{
+  "format": "circuitoon-module/1",
+  "id": "outlet-schuko-cee7-3",
+  "version": 1,
+  "name": "Schuko outlet CEE 7/3 (16 A, 230 V)",
+  "category": "Mains",
+  "source": "https://www.plugsocketmuseum.nl/Schuko1.html https://en.wikipedia.org/wiki/CEE_7 https://katalog.gira.de/en-INT/datenblatt/4188005",
+  "pins": [],
+  "size": {
+    "w": 8,
+    "h": 8
+  },
+  "holes": [
+    {
+      "name": "L",
+      "label": "L",
+      "at": [
+        [
+          20,
+          40
+        ]
+      ]
+    },
+    {
+      "name": "N",
+      "label": "N",
+      "at": [
+        [
+          60,
+          40
+        ]
+      ]
+    },
+    {
+      "name": "PE",
+      "label": "PE",
+      "at": [
+        [
+          40,
+          10
+        ],
+        [
+          40,
+          70
+        ]
+      ]
+    }
+  ],
+  "obstacle": false,
+  "electrical": {
+    "model": "outlet",
+    "params": {
+      "acVoltage": {
+        "unit": "VAC",
+        "default": 230
+      }
+    },
+    "ac": {
+      "hz": 50,
+      "region": "eu"
+    },
+    "acSources": [
+      {
+        "id": "supply",
+        "live": [
+          "L"
+        ],
+        "neutral": [
+          "N"
+        ],
+        "earth": [
+          "PE"
+        ]
+      }
+    ],
+    "sockets": [
+      {
+        "id": "main",
+        "family": "cee7-3",
+        "contacts": [
+          {
+            "group": "L",
+            "role": "L"
+          },
+          {
+            "group": "N",
+            "role": "N"
+          },
+          {
+            "group": "PE",
+            "role": "PE"
+          }
+        ]
+      }
+    ],
+    "ratings": [
+      {
+        "pins": [
+          "L",
+          "N",
+          "PE"
+        ],
+        "kind": "terminal",
+        "service": "ac",
+        "volts": 250,
+        "amps": 16,
+        "provenance": "datasheet"
+      }
+    ]
+  },
+  "art": {
+    "w": 80,
+    "h": 80,
+    "shapes": [
+      {
+        "type": "rect",
+        "x": 0,
+        "y": 0,
+        "w": 80,
+        "h": 80,
+        "fill": "#F5F5F2",
+        "radius": 8
+      },
+      {
+        "type": "rect",
+        "x": 4,
+        "y": 4,
+        "w": 72,
+        "h": 72,
+        "fill": "#E6E2DA",
+        "radius": 36
+      },
+      {
+        "type": "rect",
+        "x": 15,
+        "y": 35,
+        "w": 10,
+        "h": 10,
+        "fill": "#2B2F36",
+        "radius": 5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 55,
+        "y": 35,
+        "w": 10,
+        "h": 10,
+        "fill": "#2B2F36",
+        "radius": 5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 32,
+        "y": 7,
+        "w": 16,
+        "h": 6,
+        "fill": "#C9CED6",
+        "radius": 2
+      },
+      {
+        "type": "rect",
+        "x": 32,
+        "y": 67,
+        "w": 16,
+        "h": 6,
+        "fill": "#C9CED6",
+        "radius": 2
+      }
+    ]
+  }
+}

@@ -1,0 +1,321 @@
+{
+  "format": "circuitoon-module/1",
+  "id": "outlet-au-as3112",
+  "version": 1,
+  "name": "AU/NZ outlet AS/NZS 3112 single (10 A, 230 V)",
+  "category": "Mains",
+  "source": "https://en.wikipedia.org/wiki/AS/NZS_3112 https://www.accesscomms.com.au/australian-mains-plug/ https://www.plugsocketmuseum.nl/Australian1.html",
+  "pins": [],
+  "size": {
+    "w": 8,
+    "h": 8
+  },
+  "holes": [
+    {
+      "name": "L",
+      "label": "L",
+      "at": [
+        [
+          30,
+          30
+        ]
+      ]
+    },
+    {
+      "name": "N",
+      "label": "N",
+      "at": [
+        [
+          60,
+          30
+        ]
+      ]
+    },
+    {
+      "name": "PE",
+      "label": "PE",
+      "at": [
+        [
+          40,
+          60
+        ]
+      ]
+    }
+  ],
+  "obstacle": false,
+  "electrical": {
+    "model": "outlet",
+    "params": {
+      "acVoltage": {
+        "unit": "VAC",
+        "default": 230
+      }
+    },
+    "ac": {
+      "hz": 50,
+      "region": "au"
+    },
+    "acSources": [
+      {
+        "id": "supply",
+        "live": [
+          "L"
+        ],
+        "neutral": [
+          "N"
+        ],
+        "earth": [
+          "PE"
+        ]
+      }
+    ],
+    "sockets": [
+      {
+        "id": "main",
+        "family": "as3112",
+        "contacts": [
+          {
+            "group": "L",
+            "role": "L"
+          },
+          {
+            "group": "N",
+            "role": "N"
+          },
+          {
+            "group": "PE",
+            "role": "PE"
+          }
+        ]
+      }
+    ],
+    "ratings": [
+      {
+        "pins": [
+          "L",
+          "N",
+          "PE"
+        ],
+        "kind": "terminal",
+        "service": "ac",
+        "volts": 250,
+        "amps": 10,
+        "provenance": "datasheet"
+      }
+    ]
+  },
+  "art": {
+    "w": 80,
+    "h": 80,
+    "shapes": [
+      {
+        "type": "rect",
+        "x": 0,
+        "y": 0,
+        "w": 80,
+        "h": 80,
+        "fill": "#F5F5F2",
+        "radius": 6
+      },
+      {
+        "type": "rect",
+        "x": 6,
+        "y": 6,
+        "w": 68,
+        "h": 68,
+        "fill": "#FBF9F3",
+        "radius": 6
+      },
+      {
+        "type": "rect",
+        "x": 30.8,
+        "y": 22.8,
+        "w": 4,
+        "h": 4,
+        "fill": "#2B2F36",
+        "radius": 2,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 30.1,
+        "y": 24.1,
+        "w": 4,
+        "h": 4,
+        "fill": "#2B2F36",
+        "radius": 2,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 29.4,
+        "y": 25.4,
+        "w": 4,
+        "h": 4,
+        "fill": "#2B2F36",
+        "radius": 2,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 28.7,
+        "y": 26.7,
+        "w": 4,
+        "h": 4,
+        "fill": "#2B2F36",
+        "radius": 2,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 28,
+        "y": 28,
+        "w": 4,
+        "h": 4,
+        "fill": "#2B2F36",
+        "radius": 2,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 27.3,
+        "y": 29.3,
+        "w": 4,
+        "h": 4,
+        "fill": "#2B2F36",
+        "radius": 2,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 26.6,
+        "y": 30.6,
+        "w": 4,
+        "h": 4,
+        "fill": "#2B2F36",
+        "radius": 2,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 25.9,
+        "y": 31.9,
+        "w": 4,
+        "h": 4,
+        "fill": "#2B2F36",
+        "radius": 2,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 25.2,
+        "y": 33.2,
+        "w": 4,
+        "h": 4,
+        "fill": "#2B2F36",
+        "radius": 2,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 55.2,
+        "y": 22.8,
+        "w": 4,
+        "h": 4,
+        "fill": "#2B2F36",
+        "radius": 2,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 55.9,
+        "y": 24.1,
+        "w": 4,
+        "h": 4,
+        "fill": "#2B2F36",
+        "radius": 2,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 56.6,
+        "y": 25.4,
+        "w": 4,
+        "h": 4,
+        "fill": "#2B2F36",
+        "radius": 2,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 57.3,
+        "y": 26.7,
+        "w": 4,
+        "h": 4,
+        "fill": "#2B2F36",
+        "radius": 2,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 58,
+        "y": 28,
+        "w": 4,
+        "h": 4,
+        "fill": "#2B2F36",
+        "radius": 2,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 58.7,
+        "y": 29.3,
+        "w": 4,
+        "h": 4,
+        "fill": "#2B2F36",
+        "radius": 2,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 59.4,
+        "y": 30.6,
+        "w": 4,
+        "h": 4,
+        "fill": "#2B2F36",
+        "radius": 2,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 60.1,
+        "y": 31.9,
+        "w": 4,
+        "h": 4,
+        "fill": "#2B2F36",
+        "radius": 2,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 60.8,
+        "y": 33.2,
+        "w": 4,
+        "h": 4,
+        "fill": "#2B2F36",
+        "radius": 2,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 37,
+        "y": 52,
+        "w": 6,
+        "h": 16,
+        "fill": "#2B2F36",
+        "radius": 1,
+        "outline": false
+      }
+    ]
+  }
+}

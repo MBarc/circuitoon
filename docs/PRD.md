@@ -323,6 +323,7 @@ V1 ships a starter library drawn in the same cartoon style, all defined in the s
 | Indicators | LED, WS2812B LED strip segment, WS2812D 5 mm addressable RGB LED, 12 mm passive buzzer | Color (LED) |
 | Switches | Push button, 6 mm and 12 mm 4-pin tactile switches, KCD1 rocker switch | - |
 | Connectors | JST-XH 2/3/4-pin, Dupont housing 1x2/1x3/1x4, USB panel-mount extension (micro-USB, USB-C) | - |
+| Mains | US NEMA 5-15R and 5-20R duplex, UK BS 1363, Schuko CEE 7/3, French CEE 7/5, AU/NZ AS/NZS 3112, Japan 1-15R duplex (unpolarized, polarized) | Mains voltage |
 
 Not built yet: RGB LED (common anode/cathode), slide switch, toggle switch, diode, NPN and PNP transistor, N-channel MOSFET, USB power breakout, DC barrel jack, fixed 5V regulator, Arduino Uno, full-size Raspberry Pi boards, pin header.
 

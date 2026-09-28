@@ -1,0 +1,292 @@
+{
+  "format": "circuitoon-module/1",
+  "id": "outlet-us-5-15r-duplex",
+  "version": 1,
+  "name": "US outlet NEMA 5-15R duplex (15 A, 120 V)",
+  "category": "Mains",
+  "source": "https://archive.org/details/NEMA-WD-6-2016 https://archive.org/download/NEMA-WD-6-2016/ANSI-NEMA%20WD%206-2016.pdf https://en.wikipedia.org/wiki/NEMA_connector https://leviton.com/products/t5320-w",
+  "pins": [],
+  "internal": [
+    [
+      "L1",
+      "L2"
+    ],
+    [
+      "N1",
+      "N2"
+    ],
+    [
+      "PE1",
+      "PE2"
+    ]
+  ],
+  "size": {
+    "w": 8,
+    "h": 14
+  },
+  "holes": [
+    {
+      "name": "L1",
+      "label": "L",
+      "at": [
+        [
+          50,
+          40
+        ]
+      ]
+    },
+    {
+      "name": "N1",
+      "label": "N",
+      "at": [
+        [
+          30,
+          40
+        ]
+      ]
+    },
+    {
+      "name": "PE1",
+      "label": "PE",
+      "at": [
+        [
+          40,
+          60
+        ]
+      ]
+    },
+    {
+      "name": "L2",
+      "label": "L",
+      "at": [
+        [
+          50,
+          100
+        ]
+      ]
+    },
+    {
+      "name": "N2",
+      "label": "N",
+      "at": [
+        [
+          30,
+          100
+        ]
+      ]
+    },
+    {
+      "name": "PE2",
+      "label": "PE",
+      "at": [
+        [
+          40,
+          120
+        ]
+      ]
+    }
+  ],
+  "obstacle": false,
+  "electrical": {
+    "model": "outlet",
+    "params": {
+      "acVoltage": {
+        "unit": "VAC",
+        "default": 120
+      }
+    },
+    "ac": {
+      "hz": 60,
+      "region": "us"
+    },
+    "acSources": [
+      {
+        "id": "supply",
+        "live": [
+          "L1"
+        ],
+        "neutral": [
+          "N1"
+        ],
+        "earth": [
+          "PE1"
+        ]
+      }
+    ],
+    "sockets": [
+      {
+        "id": "upper",
+        "family": "nema-5-15r",
+        "contacts": [
+          {
+            "group": "L1",
+            "role": "L"
+          },
+          {
+            "group": "N1",
+            "role": "N"
+          },
+          {
+            "group": "PE1",
+            "role": "PE"
+          }
+        ]
+      },
+      {
+        "id": "lower",
+        "family": "nema-5-15r",
+        "contacts": [
+          {
+            "group": "L2",
+            "role": "L"
+          },
+          {
+            "group": "N2",
+            "role": "N"
+          },
+          {
+            "group": "PE2",
+            "role": "PE"
+          }
+        ]
+      }
+    ],
+    "ratings": [
+      {
+        "pins": [
+          "L1",
+          "N1",
+          "PE1",
+          "L2",
+          "N2",
+          "PE2"
+        ],
+        "kind": "terminal",
+        "service": "ac",
+        "volts": 125,
+        "amps": 15,
+        "provenance": "datasheet"
+      }
+    ]
+  },
+  "art": {
+    "w": 80,
+    "h": 140,
+    "shapes": [
+      {
+        "type": "rect",
+        "x": 0,
+        "y": 0,
+        "w": 80,
+        "h": 140,
+        "fill": "#F2EEE3",
+        "radius": 8
+      },
+      {
+        "type": "rect",
+        "x": 14,
+        "y": 10,
+        "w": 52,
+        "h": 120,
+        "fill": "#FBF9F3",
+        "radius": 6
+      },
+      {
+        "type": "rect",
+        "x": 18,
+        "y": 24,
+        "w": 44,
+        "h": 44,
+        "fill": "#FBF9F3",
+        "radius": 14
+      },
+      {
+        "type": "rect",
+        "x": 28,
+        "y": 31,
+        "w": 4,
+        "h": 18,
+        "fill": "#2B2F36",
+        "radius": 1,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 48,
+        "y": 33,
+        "w": 4,
+        "h": 14,
+        "fill": "#2B2F36",
+        "radius": 1,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 36,
+        "y": 56,
+        "w": 8,
+        "h": 8,
+        "fill": "#2B2F36",
+        "radius": 4,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 18,
+        "y": 84,
+        "w": 44,
+        "h": 44,
+        "fill": "#FBF9F3",
+        "radius": 14
+      },
+      {
+        "type": "rect",
+        "x": 28,
+        "y": 91,
+        "w": 4,
+        "h": 18,
+        "fill": "#2B2F36",
+        "radius": 1,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 48,
+        "y": 93,
+        "w": 4,
+        "h": 14,
+        "fill": "#2B2F36",
+        "radius": 1,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 36,
+        "y": 116,
+        "w": 8,
+        "h": 8,
+        "fill": "#2B2F36",
+        "radius": 4,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 36,
+        "y": 72,
+        "w": 8,
+        "h": 8,
+        "fill": "#B8BEC7",
+        "radius": 4
+      },
+      {
+        "type": "rect",
+        "x": 37,
+        "y": 75.5,
+        "w": 6,
+        "h": 1,
+        "fill": "#2B2F36",
+        "outline": false
+      }
+    ]
+  }
+}
