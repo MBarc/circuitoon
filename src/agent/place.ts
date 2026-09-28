@@ -306,7 +306,10 @@ export function placeParts(intent: Intent, opts: PlaceOptions): PlaceResult {
     const cw = Math.max(...cells.map((c) => c.box.w)) + pad
     const ch = Math.max(...cells.map((c) => c.box.h)) + pad + 10
     const cols = Math.ceil(Math.sqrt(cells.length))
-    const rails = opts.rail && members.every((m) => m.whole) ? localRails(members.map((m) => m.refs), cols) : null
+    // A partly kept copy (one of a ball's two switches kept) stays out of the local strips; its
+    // pins use the net's own wiring. Its place in the rows is kept, so the other copies' strips
+    // still sit under their own row.
+    const rails = opts.rail ? localRails(members.map((m) => (m.whole ? m.refs : [])), cols) : null
     const rowH = rails ? ch + rails.h + 2 * RAIL_GAP : ch
     cells.forEach((c, i) => move(c.refs, snap((i % cols) * cw - c.box.x), snap(Math.floor(i / cols) * rowH - c.box.y)))
     const all = cells.flatMap((c) => c.refs)

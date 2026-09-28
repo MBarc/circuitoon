@@ -1,7 +1,7 @@
 // The router keeps wires off part captions and frame labels (amendment A18.3), and like hole
 // avoidance this never blocks a wire: when no route clears the labels, one over them is drawn.
 import { describe, expect, it } from 'vitest'
-import { type Annotation, type Diagram, type PartInstance, computeRoutes } from './diagram.ts'
+import { type Annotation, type Diagram, type PartInstance, computeRoutes, partObstacles, routeWire } from './diagram.ts'
 import type { ModuleDef } from './module.ts'
 import type { Pt, Rect } from './geometry.ts'
 import { captionBox } from '../render/captionBox.ts'
@@ -57,5 +57,20 @@ describe('router label avoidance (A18.3)', () => {
     const r = route({ ...sheet([], [frame]), parts: [part('A', 0, -200), part('B', 0, 200)], connections: [{ uid: 'w1', from: { part: 'A', pin: 'R' }, to: { part: 'B', pin: 'L' } }] })
     expect(r.blocked).toBe(false)
     expect(crosses(r.points, frameTab(frame))).toBe(true)
+  })
+  it('drops label avoidance before hole avoidance when no route clears both', () => {
+    // A wall across the path at x = 170: other strips' holes above y = 20, label text below it.
+    // Every route between the pins crosses the wall, so it crosses either holes or text; the router
+    // gives up the text first (a wire over a hole reads as plugged in there).
+    const ys = (from: number, to: number) => Array.from({ length: (to - from) / 10 + 1 }, (_, i) => from + i * 10)
+    const holeWall = ys(-4000, 20).map((y) => ({ x: 170, y }))
+    const textWall = ys(30, 4000).map((y) => ({ x: 170, y }))
+    const d = sheet()
+    const holes = { groups: [{ key: JSON.stringify(['X', 'strip']), at: holeWall }], legGroup: new Map<string, string>() }
+    const r = routeWire(d, d.connections[0], partObstacles(d), undefined, holes, { captions: new Map(), tabs: textWall })!
+    expect(r.blocked).toBe(false)
+    const wall = (pts: { x: number; y: number }[]) => ({ x: 170, y: Math.min(...pts.map((p) => p.y)), w: 0, h: Math.max(...pts.map((p) => p.y)) - Math.min(...pts.map((p) => p.y)) })
+    expect(crosses(r.points, wall(holeWall))).toBe(false)
+    expect(crosses(r.points, wall(textWall))).toBe(true)
   })
 })

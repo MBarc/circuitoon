@@ -230,6 +230,15 @@ export function realize(intent: Intent, d: Diagram, locals: LocalDistribution[] 
     for (const g of groups) for (const st of g.strips) owner.set(st.key, ni)
     const groupOf = (n: Node) => groups.find((g) => g.refs.has(n.members[0].ref))
     const own = nodes.filter((n) => !groupOf(n))
+    // Local strips carry their block's pins. A net with no strips of its own whose other pins are
+    // two or more claims one for them, so each block keeps a single trunk; a lone other pin's wire
+    // is itself the trunk. Only when nothing can be claimed do the other pins go into the local
+    // strips (below, `reach` falls back to them).
+    if (!dps.length && groups.length && own.length >= 2) {
+      const pts = own.map(first)
+      const s = claim(ni, { x: pts.reduce((a, p) => a + p.x, 0) / pts.length, y: pts.reduce((a, p) => a + p.y, 0) / pts.length }, kind)
+      if (s) dps.push(s)
+    }
 
     if (!dps.length && !groups.length) {
       if (nodes.length < 2) continue
@@ -317,7 +326,7 @@ export function realize(intent: Intent, d: Diagram, locals: LocalDistribution[] 
     // One wire from every other node to the nearest strip with a free hole. Only while the strips
     // hold fewer free holes than the nodes still to wire is one of them extended by a jumper to a
     // claimed strip (A5: a hole is never held back when the net has enough). A net whose only
-    // strips are local ones wires its other pins to those.
+    // strips are local ones (one other pin, or nothing left to claim) wires its other pins to those.
     const reach = dps.length ? dps : pool
     const totalFree = () => reach.reduce((sum, s) => sum + free(s).length, 0)
     for (const [k, node] of own.entries()) {

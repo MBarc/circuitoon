@@ -91,6 +91,35 @@ describe('layoutNetlist', () => {
       expect(r.value.report).toMatchObject({ bodyOverlaps: 0, captionOverlaps: 0, blockedNets: [] })
     }
   }, 60_000)
+  it('wires a net that has only local strips: its one outside pin is the trunk, several claim a strip of their own', () => {
+    /** The tilt sensors without the GND rail strip, plus `extra` parts and nets. */
+    const bare = (extra: { ref: string; module: string }[], nets: { name: string; pins: string[] }[]) => {
+      const n = tiltSensors()
+      return { ...n, parts: [...n.parts.filter((p) => p.ref !== 'BB1'), ...extra], nets }
+    }
+    /** Wires with one end on a local strip and the other on a part outside the blocks. */
+    const outside = (raw: unknown) => {
+      const r = layoutNetlist(raw)
+      if (!r.ok) throw new Error(r.errors.join('\n'))
+      const d = r.value.diagram
+      expect(verifyDiagram(d, libraryLookup)).toEqual([])
+      const refs = new Set(r.value.intent.parts.map((p) => p.ref))
+      const local = new Set(d.parts.filter((p) => !refs.has(p.uid)).map((p) => p.uid))
+      expect(local.size).toBeGreaterThan(0)
+      const copyRefs = new Set(r.value.intent.copies.flatMap((c) => c.refs))
+      return d.connections.flatMap((c) => {
+        const [a, b] = local.has(c.from.part) ? [c.from, c.to] : [c.to, c.from]
+        return local.has(a.part) && !local.has(b.part) && !copyRefs.has(b.part) ? [`${b.part}.${b.pin}`] : []
+      })
+    }
+    // One outside pin (U1's GND): its wire into the block's strip is the block's trunk.
+    expect(outside(bare([], [{ name: 'GND', pins: ['U1.GND'] }]))).toEqual(['U1.GND'])
+    // Two outside pins and a free strip: they share a claimed strip, which one trunk joins to the block.
+    const two = [{ name: 'GND', pins: ['U1.GND', 'R1.2'] }, { name: '3V3', pins: ['U1.3V3', 'R1.1'] }]
+    expect(outside(bare([{ ref: 'R1', module: 'resistor' }, { ref: 'BB9', module: 'power-rail-strip' }], two))).toEqual(['BB9.-'])
+    // Two outside pins and nowhere else to put them: they go into the block's strips (the fallback).
+    expect(outside(bare([{ ref: 'R1', module: 'resistor' }], two)).sort()).toEqual(['R1.2', 'U1.GND'])
+  })
   it('marks what it adds for strips as routing, and wires two pins straight when nothing else is needed', () => {
     const led = laid(ledNetlist())
     for (const c of led.connections) {

@@ -12,6 +12,7 @@ import { placeParts, type KeepMap } from './place.ts'
 import { mountPart } from './mount.ts'
 import { intersects, tightFootprint, union } from './footprint.ts'
 import { overlaps } from './readability.ts'
+import { naturalCompare } from './order.ts'
 import { ledNetlist, tiltSensors, typewriter } from './fixtures.testing.ts'
 
 const intentOf = (raw: unknown): Intent => {
@@ -199,6 +200,14 @@ describe('placeParts', () => {
     const kept = place(tiltSensors(), new Map([['S_1', { x: 9000, y: 9000, rotation: 0 as const }]]), true)
     expect(kept.locals).toHaveLength(1)
     expect(kept.locals[0].refs).not.toContain('S_1')
+  })
+  it("leaves only a partly kept copy out of its block's local strips; the rest of the block keeps them", () => {
+    // Keeping one of ball 1's two switches (bound to U2) must not turn off U2's rails.
+    const { intent, locals } = place(typewriter(), new Map([['SA_1', { x: 9000, y: 9000, rotation: 0 as const }]]), true)
+    expect(locals).toHaveLength(3)
+    for (const l of locals) expect(l.refs.filter((r) => r === 'SA_1' || r === 'SB_1')).toEqual([])
+    const u2 = intent.copies.filter((c) => c.bindings.CH.startsWith('U2.') && c.id !== 'ball_1').flatMap((c) => c.refs)
+    expect(locals.find((l) => l.refs.includes('SA_2'))!.refs).toEqual([...u2].sort(naturalCompare))
   })
   it('keeps a kept part exactly where it was and places the rest around it', () => {
     const { d } = place(ledNetlist(), new Map([['BT1', { x: 600, y: 300, rotation: 0 as const }]]))

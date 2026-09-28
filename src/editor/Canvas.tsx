@@ -156,7 +156,8 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
   // Parts that move this drag: the selection plus whatever is mounted on a dragged board.
   const draggingParts = drag?.kind === 'parts' ? drag.moving : null
   const reshaping = drag?.kind === 'segment' ? drag.uid : null
-  // Routes depend only on parts, modules and each wire's ends and fixed route, so title, color and label edits skip re-routing.
+  // Routes depend only on parts, modules, annotations (wires keep off frame labels, A18.3) and each
+  // wire's ends and fixed route, so title, color and wire label edits skip re-routing.
   const endpointsKey = useMemo(() => routingKey(diagram.connections), [diagram.connections])
   const routes = useMemo(() => {
     if (draggingParts) {
@@ -171,7 +172,7 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
     const all = computeRoutes(diagram)
     settled.current = all
     return all
-  }, [diagram.parts, diagram.modules, endpointsKey, draggingParts, reshaping])
+  }, [diagram.parts, diagram.modules, diagram.annotations, endpointsKey, draggingParts, reshaping])
   // Path data only changes with the routes or the wires themselves, not with pan, zoom or selection.
   const wires = useMemo(() => wirePaths(diagram, routes), [routes, diagram.connections])
   // Boards draw below every other part; the leg overlays follow mounts and positions.

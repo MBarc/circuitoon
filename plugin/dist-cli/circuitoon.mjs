@@ -32448,6 +32448,14 @@ function realize(intent, d, locals = []) {
 		for (const g of groups) for (const st of g.strips) owner.set(st.key, ni);
 		const groupOf = (n) => groups.find((g) => g.refs.has(n.members[0].ref));
 		const own = nodes.filter((n) => !groupOf(n));
+		if (!dps.length && groups.length && own.length >= 2) {
+			const pts = own.map(first);
+			const s = claim(ni, {
+				x: pts.reduce((a, p) => a + p.x, 0) / pts.length,
+				y: pts.reduce((a, p) => a + p.y, 0) / pts.length
+			}, kind);
+			if (s) dps.push(s);
+		}
 		if (!dps.length && !groups.length) {
 			if (nodes.length < 2) continue;
 			const wide = nodes.filter((n) => capOf(n) >= 2);
@@ -33039,7 +33047,7 @@ function placeParts(intent, opts) {
 		const cw = Math.max(...cells.map((c) => c.box.w)) + pad;
 		const ch = Math.max(...cells.map((c) => c.box.h)) + pad + 10;
 		const cols = Math.ceil(Math.sqrt(cells.length));
-		const rails = opts.rail && members.every((m) => m.whole) ? localRails(members.map((m) => m.refs), cols) : null;
+		const rails = opts.rail ? localRails(members.map((m) => m.whole ? m.refs : []), cols) : null;
 		const rowH = rails ? ch + rails.h + 40 : ch;
 		cells.forEach((c, i) => move(c.refs, snap(i % cols * cw - c.box.x), snap(Math.floor(i / cols) * rowH - c.box.y)));
 		const all = cells.flatMap((c) => c.refs);
