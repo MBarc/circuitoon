@@ -1,0 +1,188 @@
+{
+  "format": "circuitoon-module/1",
+  "id": "adapter-barrel-uk",
+  "version": 1,
+  "name": "Wall adapter, barrel jack, UK (BS 1363)",
+  "category": "Mains",
+  "source": "https://www.meanwell.com/Upload/PDF/NGE12/NGE12-SPEC.PDF https://en.wikipedia.org/wiki/BS_1363",
+  "pins": [
+    {
+      "name": "+",
+      "side": "bottom",
+      "type": "power_out"
+    },
+    {
+      "spacer": true,
+      "side": "bottom"
+    },
+    {
+      "name": "-",
+      "side": "bottom",
+      "type": "ground"
+    }
+  ],
+  "size": {
+    "w": 8,
+    "h": 8
+  },
+  "electrical": {
+    "model": "converter",
+    "internalNodes": [
+      "L prong",
+      "N prong",
+      "E pin"
+    ],
+    "acInput": {
+      "a": "L prong",
+      "b": "N prong",
+      "range": [
+        80,
+        264
+      ]
+    },
+    "domains": [
+      {
+        "name": "mains",
+        "pins": [
+          "L prong",
+          "N prong"
+        ],
+        "kind": "mains"
+      },
+      {
+        "name": "output",
+        "pins": [
+          "+",
+          "-"
+        ],
+        "kind": "selv"
+      }
+    ],
+    "isolation": "double",
+    "isolationProvenance": "datasheet",
+    "protection": "class-2",
+    "plug": {
+      "family": "bs1363",
+      "profiles": [
+        {
+          "id": "main",
+          "contacts": [
+            {
+              "pin": "L prong",
+              "at": {
+                "x": 70,
+                "y": 50
+              },
+              "mains": "L"
+            },
+            {
+              "pin": "N prong",
+              "at": {
+                "x": 10,
+                "y": 50
+              },
+              "mains": "N"
+            },
+            {
+              "pin": "E pin",
+              "at": {
+                "x": 40,
+                "y": 20
+              },
+              "mains": "mechanical"
+            }
+          ]
+        }
+      ]
+    },
+    "params": {
+      "voltage": {
+        "unit": "V",
+        "default": 12
+      }
+    }
+  },
+  "art": {
+    "w": 80,
+    "h": 80,
+    "shapes": [
+      {
+        "type": "rect",
+        "x": 0,
+        "y": 0,
+        "w": 80,
+        "h": 80,
+        "fill": "#2B2F36",
+        "radius": 10
+      },
+      {
+        "type": "rect",
+        "x": 5,
+        "y": 5,
+        "w": 70,
+        "h": 56,
+        "fill": "#3A3F48",
+        "radius": 7,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 64.5,
+        "y": 47.5,
+        "w": 11,
+        "h": 5,
+        "fill": "#AEB5BF",
+        "radius": 1,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 4.5,
+        "y": 47.5,
+        "w": 11,
+        "h": 5,
+        "fill": "#AEB5BF",
+        "radius": 1,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 37.5,
+        "y": 14,
+        "w": 5,
+        "h": 12,
+        "fill": "#D8D4CA",
+        "radius": 1,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 68,
+        "y": 7,
+        "w": 5,
+        "h": 5,
+        "fill": "#7BD389",
+        "radius": 2.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 32,
+        "y": 62,
+        "w": 16,
+        "h": 8,
+        "fill": "#2B2F36",
+        "radius": 3
+      },
+      {
+        "type": "rect",
+        "x": 37,
+        "y": 70,
+        "w": 6,
+        "h": 10,
+        "fill": "#5B616B",
+        "outline": false
+      }
+    ]
+  }
+}

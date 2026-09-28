@@ -1,0 +1,195 @@
+{
+  "format": "circuitoon-module/1",
+  "id": "plug-uk-bs1363-2lead",
+  "version": 1,
+  "name": "Cord plug UK BS 1363, fused, 2-lead",
+  "category": "Mains",
+  "source": "https://en.wikipedia.org/wiki/BS_1363 https://www.elec-mate.com/guides/how-to-wire-a-plug https://www.plugsocketmuseum.nl/British1.html",
+  "pins": [
+    {
+      "name": "L",
+      "side": "bottom",
+      "mains": "L"
+    },
+    {
+      "spacer": true,
+      "side": "bottom"
+    },
+    {
+      "name": "N",
+      "side": "bottom",
+      "mains": "N"
+    }
+  ],
+  "internal": [
+    [
+      "N prong",
+      "N"
+    ]
+  ],
+  "size": {
+    "w": 8,
+    "h": 8
+  },
+  "electrical": {
+    "model": "cord-plug",
+    "internalNodes": [
+      "L prong",
+      "N prong",
+      "E pin"
+    ],
+    "protective": [
+      {
+        "from": "L prong",
+        "to": "L",
+        "kind": "fuse"
+      }
+    ],
+    "params": {
+      "fuseRating": {
+        "unit": "A",
+        "default": 13
+      }
+    },
+    "plug": {
+      "family": "bs1363",
+      "profiles": [
+        {
+          "id": "main",
+          "contacts": [
+            {
+              "pin": "L prong",
+              "at": {
+                "x": 70,
+                "y": 50
+              },
+              "mains": "L"
+            },
+            {
+              "pin": "N prong",
+              "at": {
+                "x": 10,
+                "y": 50
+              },
+              "mains": "N"
+            },
+            {
+              "pin": "E pin",
+              "at": {
+                "x": 40,
+                "y": 20
+              },
+              "mains": "mechanical"
+            }
+          ]
+        }
+      ]
+    },
+    "ratings": [
+      {
+        "pins": [
+          "L",
+          "N",
+          "L prong",
+          "N prong"
+        ],
+        "kind": "terminal",
+        "service": "ac",
+        "volts": 250,
+        "amps": 13,
+        "provenance": "datasheet"
+      }
+    ]
+  },
+  "art": {
+    "w": 80,
+    "h": 80,
+    "shapes": [
+      {
+        "type": "rect",
+        "x": 0,
+        "y": 0,
+        "w": 80,
+        "h": 72,
+        "fill": "#2B2F36",
+        "radius": 8
+      },
+      {
+        "type": "rect",
+        "x": 4,
+        "y": 4,
+        "w": 72,
+        "h": 64,
+        "fill": "#3A3F48",
+        "radius": 5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 24,
+        "y": 68,
+        "w": 32,
+        "h": 12,
+        "fill": "#2B2F36",
+        "radius": 3
+      },
+      {
+        "type": "rect",
+        "x": 28.5,
+        "y": 76,
+        "w": 3,
+        "h": 4,
+        "fill": "#B8BEC7",
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 48.5,
+        "y": 76,
+        "w": 3,
+        "h": 4,
+        "fill": "#B8BEC7",
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 28,
+        "y": 46,
+        "w": 24,
+        "h": 8,
+        "fill": "#D9534F",
+        "radius": 2
+      },
+      {
+        "type": "rect",
+        "x": 64.5,
+        "y": 47.5,
+        "w": 11,
+        "h": 5,
+        "fill": "#AEB5BF",
+        "radius": 1,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 4.5,
+        "y": 47.5,
+        "w": 11,
+        "h": 5,
+        "fill": "#AEB5BF",
+        "radius": 1,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 37.5,
+        "y": 14,
+        "w": 5,
+        "h": 12,
+        "fill": "#D8D4CA",
+        "radius": 1,
+        "outline": false
+      }
+    ]
+  }
+}

@@ -1,0 +1,169 @@
+{
+  "format": "circuitoon-module/1",
+  "id": "adapter-barrel-eu",
+  "version": 1,
+  "name": "Wall adapter, barrel jack, Europe (Europlug)",
+  "category": "Mains",
+  "source": "https://www.meanwell.com/Upload/PDF/NGE12/NGE12-SPEC.PDF https://en.wikipedia.org/wiki/Europlug",
+  "pins": [
+    {
+      "name": "+",
+      "side": "bottom",
+      "type": "power_out"
+    },
+    {
+      "spacer": true,
+      "side": "bottom"
+    },
+    {
+      "name": "-",
+      "side": "bottom",
+      "type": "ground"
+    }
+  ],
+  "size": {
+    "w": 8,
+    "h": 8
+  },
+  "electrical": {
+    "model": "converter",
+    "internalNodes": [
+      "L prong",
+      "N prong"
+    ],
+    "acInput": {
+      "a": "L prong",
+      "b": "N prong",
+      "range": [
+        80,
+        264
+      ]
+    },
+    "domains": [
+      {
+        "name": "mains",
+        "pins": [
+          "L prong",
+          "N prong"
+        ],
+        "kind": "mains"
+      },
+      {
+        "name": "output",
+        "pins": [
+          "+",
+          "-"
+        ],
+        "kind": "selv"
+      }
+    ],
+    "isolation": "double",
+    "isolationProvenance": "datasheet",
+    "protection": "class-2",
+    "plug": {
+      "family": "cee7-16",
+      "profiles": [
+        {
+          "id": "main",
+          "contacts": [
+            {
+              "pin": "L prong",
+              "at": {
+                "x": 20,
+                "y": 40
+              },
+              "mains": "L"
+            },
+            {
+              "pin": "N prong",
+              "at": {
+                "x": 60,
+                "y": 40
+              },
+              "mains": "N"
+            }
+          ]
+        }
+      ]
+    },
+    "params": {
+      "voltage": {
+        "unit": "V",
+        "default": 12
+      }
+    }
+  },
+  "art": {
+    "w": 80,
+    "h": 80,
+    "shapes": [
+      {
+        "type": "rect",
+        "x": 0,
+        "y": 0,
+        "w": 80,
+        "h": 80,
+        "fill": "#2B2F36",
+        "radius": 10
+      },
+      {
+        "type": "rect",
+        "x": 5,
+        "y": 5,
+        "w": 70,
+        "h": 56,
+        "fill": "#3A3F48",
+        "radius": 7,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 17,
+        "y": 37,
+        "w": 6,
+        "h": 6,
+        "fill": "#AEB5BF",
+        "radius": 3,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 57,
+        "y": 37,
+        "w": 6,
+        "h": 6,
+        "fill": "#AEB5BF",
+        "radius": 3,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 68,
+        "y": 7,
+        "w": 5,
+        "h": 5,
+        "fill": "#7BD389",
+        "radius": 2.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 32,
+        "y": 62,
+        "w": 16,
+        "h": 8,
+        "fill": "#2B2F36",
+        "radius": 3
+      },
+      {
+        "type": "rect",
+        "x": 37,
+        "y": 70,
+        "w": 6,
+        "h": 10,
+        "fill": "#5B616B",
+        "outline": false
+      }
+    ]
+  }
+}

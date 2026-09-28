@@ -11,20 +11,11 @@
 // without writing). src/format/mainsParts.test.ts pins the contacts and ratings.
 import { finish } from './lib/gen-output.mjs'
 import { moduleJson, r, write } from './lib/parts.mjs'
-import { rating, socket } from './lib/mains.mjs'
+import { rated, rating, socket } from './lib/mains.mjs'
 
 import { EVIDENCE } from '../src/format/mainsEvidence.ts'
 /** Each module's `source`: every URL Task 0 used, standard first. */
 const SRC = Object.fromEntries(Object.entries(EVIDENCE).map(([id, e]) => [id, e.sources.join(' ')]))
-
-/** The evidence's terminal rating for `id`; a part whose evidence is not VERIFIED is never generated. */
-function rated(id) {
-  const e = EVIDENCE[id]
-  if (!e || e.verdict !== 'VERIFIED') throw new Error(`${id}: evidence is not VERIFIED, so the part is not generated`)
-  const [x] = e.ratings ?? []
-  if (!x || x.amps === undefined) throw new Error(`${id}: the evidence records no terminal rating`)
-  return { volts: x.volts, amps: x.amps, service: x.service }
-}
 
 /**
  * The region's nominal supply: the `acVoltage` default (editable on the sheet) and `ac.hz`. Japan is

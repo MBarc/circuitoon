@@ -3,6 +3,7 @@
 // strips the types when importing it), prong internal nodes, and rating entries. Every value a
 // generator passes in (family, rating, isolation) comes from src/format/mainsEvidence.ts.
 import { PLUG_PROFILES, SOCKET_PATTERNS } from '../../src/format/plugging.ts'
+import { EVIDENCE } from '../../src/format/mainsEvidence.ts'
 
 const ROLES = ['L', 'N', 'PE']
 
@@ -52,3 +53,17 @@ export const prongs = (roles = ROLES) => roles.map((c) => `${c} prong`)
  * `source` and a comment beside the value.
  */
 export const rating = (pins, kind, service, volts, extra = {}) => ({ pins, kind, service, volts, ...extra })
+
+/** The evidence for `id`; a part whose evidence is not VERIFIED is never generated. */
+export function verified(id) {
+  const e = EVIDENCE[id]
+  if (!e || e.verdict !== 'VERIFIED') throw new Error(`${id}: evidence is not VERIFIED, so the part is not generated`)
+  return e
+}
+
+/** The evidence's terminal rating for `id` (its first rating entry); throws unless the evidence is VERIFIED and records one. */
+export function rated(id) {
+  const [x] = verified(id).ratings ?? []
+  if (!x || x.amps === undefined) throw new Error(`${id}: the evidence records no terminal rating`)
+  return { volts: x.volts, amps: x.amps, service: x.service }
+}

@@ -5,9 +5,13 @@
 // re-checked there.
 import { describe, expect, it } from 'vitest'
 import { layoutModule } from './module.ts'
-import { pivot } from './geometry.ts'
-import { CONDUCTORS, type Conductor, type SocketFamily, mainsOf } from './mainsModel.ts'
-import { SOCKET_PATTERNS } from './plugging.ts'
+import { pivot, toWorld } from './geometry.ts'
+import type { Rotation } from './geometry.ts'
+import { CONDUCTORS, PLUG_FAMILIES, type Conductor, type SocketFamily, mainsOf } from './mainsModel.ts'
+import { PLUG_PROFILES, SOCKET_PATTERNS } from './plugging.ts'
+import { specTurns } from './plugSpec.testing.ts'
+import { seatOf } from './breadboard.ts'
+import type { Diagram } from './diagram.ts'
 import { load } from './builtinModules.testing.ts'
 import { EVIDENCE } from './mainsEvidence.ts'
 
@@ -58,4 +62,129 @@ describe('built-in outlets', () => {
       if (x.sockets === 2) expect(m.internal).toEqual([['L1', 'L2'], ['N1', 'N2'], ...(SOCKET_PATTERNS[x.family].PE.length ? [['PE1', 'PE2']] : [])])
       expect(pivot(layoutModule(m).w, layoutModule(m).h)).toEqual(x.sockets === 2 ? { x: 40, y: 70 } : { x: 40, y: 40 })
     })
+})
+
+describe('built-in plug-in devices', () => {
+  // `roles`: the conducting prongs. `mechanical`: a pin that fills the earth position without carrying a
+  // conductor (Ruling 39): the insulated earth pin of the class II UK charger and adapter (Mean Well NGE12
+  // "Class II power (no earth pin)") and of the 2-lead UK plug (the evidence's ISOD, an insulated pin).
+  const devices: Record<string, { family: (typeof PLUG_FAMILIES)[number]; roles: Conductor[]; mechanical?: boolean; converter: boolean; leads?: Conductor[] }> = {
+    'charger-usb-5v-us': { family: 'nema-1-15p', roles: ['L', 'N'], converter: true },
+    'charger-usb-5v-eu': { family: 'cee7-16', roles: ['L', 'N'], converter: true },
+    'charger-usb-5v-uk': { family: 'bs1363', roles: ['L', 'N'], mechanical: true, converter: true },
+    'charger-usb-5v-au': { family: 'as3112', roles: ['L', 'N'], converter: true },
+    'adapter-barrel-us': { family: 'nema-1-15p', roles: ['L', 'N'], converter: true },
+    'adapter-barrel-eu': { family: 'cee7-16', roles: ['L', 'N'], converter: true },
+    'adapter-barrel-uk': { family: 'bs1363', roles: ['L', 'N'], mechanical: true, converter: true },
+    'adapter-barrel-au': { family: 'as3112', roles: ['L', 'N'], converter: true },
+    'plug-us-5-15p': { family: 'nema-5-15p', roles: ['L', 'N', 'PE'], converter: false, leads: ['L', 'N', 'PE'] },
+    'plug-us-1-15p': { family: 'nema-1-15p-polarized', roles: ['L', 'N'], converter: false, leads: ['L', 'N'] },
+    'plug-jp-1-15p': { family: 'nema-1-15p', roles: ['L', 'N'], converter: false, leads: ['L', 'N'] },
+    'plug-eu-cee7-7': { family: 'cee7-7', roles: ['L', 'N', 'PE'], converter: false, leads: ['L', 'N', 'PE'] },
+    'plug-eu-cee7-16': { family: 'cee7-16', roles: ['L', 'N'], converter: false, leads: ['L', 'N'] },
+    'plug-uk-bs1363-3lead': { family: 'bs1363', roles: ['L', 'N', 'PE'], converter: false, leads: ['L', 'N', 'PE'] },
+    'plug-uk-bs1363-2lead': { family: 'bs1363', roles: ['L', 'N'], mechanical: true, converter: false, leads: ['L', 'N'] },
+    'plug-au-as3112-3lead': { family: 'as3112', roles: ['L', 'N', 'PE'], converter: false, leads: ['L', 'N', 'PE'] },
+    'plug-au-as3112-2lead': { family: 'as3112', roles: ['L', 'N'], converter: false, leads: ['L', 'N'] },
+  }
+  /** Families whose L and N are fixed: their leads carry L and N; the others carry "line" (spec 1.4). */
+  const polarized = new Set<string>(['nema-5-15p', 'nema-1-15p-polarized', 'bs1363', 'as3112'])
+  const OUTLETS = ['outlet-us-5-15r-duplex', 'outlet-us-5-20r-duplex', 'outlet-uk-bs1363', 'outlet-schuko-cee7-3', 'outlet-fr-cee7-5', 'outlet-au-as3112', 'outlet-jp-1-15r-duplex', 'outlet-jp-1-15r-duplex-polarized']
+  for (const [id, x] of Object.entries(devices)) {
+    it(`${id}: its prongs sit on the family pattern around its pivot`, () => {
+      const m = load(id)
+      const info = mainsOf(m)
+      expect(m.category).toBe('Mains')
+      expect(m.source).toMatch(twoSources)
+      expect(m.source).toBe(EVIDENCE[id].sources.join(' '))
+      expect(EVIDENCE[id].verdict).toBe('VERIFIED')
+      expect(info.plug?.family).toBe(x.family)
+      const c = pivot(layoutModule(m).w, layoutModule(m).h)
+      expect(c).toEqual(['cee7-7', 'cee7-16', 'bs1363'].includes(x.family) ? { x: 40, y: 40 } : { x: 30, y: 30 })
+      expect(info.plug!.profiles.map((pr) => pr.id)).toEqual(PLUG_PROFILES[x.family].map((pr) => pr.id))
+      info.plug!.profiles.forEach((pr, i) => {
+        const want = CONDUCTORS.flatMap((role) => {
+          const at = PLUG_PROFILES[x.family][i].contacts[role].map(([dx, dy]) => ({ x: c.x + dx, y: c.y + dy }))
+          if (x.roles.includes(role)) return at.map((p) => ({ pin: `${role} prong`, at: p, mains: role }))
+          if (x.mechanical && role === 'PE') return at.map((p) => ({ pin: 'E pin', at: p, mains: 'mechanical' }))
+          return []
+        })
+        expect(pr.contacts).toEqual(want)
+      })
+      expect(info.internalNodes).toEqual([...x.roles.map((r) => `${r} prong`), ...(x.mechanical ? ['E pin'] : [])])
+      if (x.converter) {
+        expect(info.acInput).toEqual({ a: 'L prong', b: 'N prong', range: EVIDENCE[id].acInput!.value })
+        expect(info.isolation).toBe(EVIDENCE[id].isolation?.value ?? 'unknown')
+        expect(info.isolationProvenance).toBe('datasheet')
+        expect(info.protection).toBe(EVIDENCE[id].protection!.value)
+        expect(info.protection).toBe('class-2')
+        expect(info.domains.map((d) => d.kind).sort()).toEqual(['mains', 'selv'])
+        expect(info.domains.find((d) => d.kind === 'mains')!.pins).toEqual(['L prong', 'N prong'])
+        const usb = id.startsWith('charger-')
+        const pins = m.pins.flatMap((p) => ('name' in p ? [{ name: p.name, type: p.type, supply: p.supply }] : []))
+        expect(pins).toEqual(usb
+          ? [{ name: '5V', type: 'power_out', supply: '5V' }, { name: 'GND', type: 'ground', supply: undefined }]
+          : [{ name: '+', type: 'power_out', supply: undefined }, { name: '-', type: 'ground', supply: undefined }])
+        expect(info.domains.find((d) => d.kind === 'selv')!.pins).toEqual(pins.map((p) => p.name))
+        const volts = (m.electrical as { params?: { voltage?: { default: number } } }).params?.voltage?.default
+        expect(volts).toBe(usb ? undefined : EVIDENCE[id].output!.value.volts)
+        if (usb) expect(EVIDENCE[id].output!.value.volts).toBe(5)
+      } else {
+        // Leads on the bottom edge, each joined to its prong (the UK L through its fuse).
+        const pins = m.pins.flatMap((p) => ('name' in p ? [{ name: p.name, side: p.side, mains: p.mains }] : []))
+        expect(pins).toEqual(x.leads!.map((c) => ({ name: c, side: 'bottom', mains: c === 'PE' || polarized.has(x.family) ? c : 'line' })))
+        const fused = x.family === 'bs1363'
+        expect(m.internal).toEqual(x.leads!.filter((c) => !(fused && c === 'L')).map((c) => [`${c} prong`, c]))
+        const [r] = EVIDENCE[id].ratings!
+        expect(info.ratings).toEqual([expect.objectContaining({ kind: 'terminal', service: r.service, volts: r.volts, amps: r.amps, provenance: 'datasheet' })])
+        expect(info.ratings[0].pins).toEqual([...x.leads!, ...x.roles.map((c) => `${c} prong`)])
+        expect(info.protection).toBeNull()
+      }
+      // UK cord plugs carry their BS 1362 fuse; the UK charger and adapter have none (ruling B6: Mean Well states no fuse).
+      if (x.family === 'bs1363') {
+        expect(info.protective).toEqual(x.converter ? [] : [{ from: 'L prong', to: 'L', kind: 'fuse', rating: null }])
+        if (!x.converter) expect((m.electrical as { params: { fuseRating: { unit: string; default: number } } }).params.fuseRating).toEqual({ unit: 'A', default: EVIDENCE[id].extra!.fuse.value })
+      } else expect(info.protective).toEqual([])
+    })
+    it(`${id}: on an outlet the spec gives no row for, no turn and no translation puts every contact on that socket's holes`, () => {
+      const dm = load(id)
+      for (const o of OUTLETS) {
+        const om = load(o)
+        // Within one geometry group the table alone decides (Resolution 7); every other pair must never land.
+        const group = (f: string) => (f.startsWith('nema') ? 'nema' : f.startsWith('cee') ? 'cee' : f)
+        const sf = mainsOf(om).sockets[0].family
+        if (specTurns(x.family, sf).length || group(x.family) === group(sf)) continue
+        // Every hole of the outlet (a duplex counts both sockets): if a pair lands across two sockets, move the second socket in the art, never the patterns.
+        const holes = (om.holes ?? []).flatMap((h) => h.at)
+        const on = new Set(holes.map(([hx, hy]) => `${hx},${hy}`))
+        for (const rotation of [0, 90, 180, 270] as Rotation[]) {
+          for (const pr of mainsOf(dm).plug!.profiles) {
+            const pts = pr.contacts.map((c) => toWorld({ x: 0, y: 0, rotation }, layoutModule(dm), c.at))
+            const lands = holes.some(([hx, hy]) => pts.every((q) => on.has(`${q.x + hx - pts[0].x},${q.y + hy - pts[0].y}`)))
+            expect([id, o, pr.id, rotation, lands]).toEqual([id, o, pr.id, rotation, false])
+          }
+        }
+      }
+    })
+    it(`${id}: seats in every built-in outlet the table allows, at exactly the allowed turns`, () => {
+      for (const o of OUTLETS) {
+        const om = load(o)
+        const dm = load(id)
+        const sockets = mainsOf(om).sockets
+        // Centre the device's pivot on the outlet's first socket.
+        const holes = new Map((om.holes ?? []).map((h) => [h.name, h.at]))
+        const [[lx, ly]] = holes.get(sockets[0].contacts.find((c) => c.role === 'L')!.group)!
+        const [[px, py]] = SOCKET_PATTERNS[sockets[0].family].L
+        const dc = pivot(layoutModule(dm).w, layoutModule(dm).h)
+        for (const rotation of [0, 90, 180, 270] as Rotation[]) {
+          const d: Diagram = { format: 'circuitoon-diagram/1', title: 't', modules: { [om.id]: om, [dm.id]: dm }, connections: [], parts: [
+            { uid: 'xs', designator: 'XS1', module: om.id, x: 0, y: 0 },
+            { uid: 'xp', designator: 'XP1', module: dm.id, x: lx - px - dc.x, y: ly - py - dc.y, rotation },
+          ] }
+          const want = specTurns(x.family, sockets[0].family).includes(rotation)
+          expect([id, o, rotation, seatOf(d, 'xp', [])?.status === 'seated']).toEqual([id, o, rotation, want])
+        }
+      }
+    })
+  }
 })

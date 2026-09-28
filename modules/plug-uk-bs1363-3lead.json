@@ -1,0 +1,219 @@
+{
+  "format": "circuitoon-module/1",
+  "id": "plug-uk-bs1363-3lead",
+  "version": 1,
+  "name": "Cord plug UK BS 1363, fused, 3-lead",
+  "category": "Mains",
+  "source": "https://en.wikipedia.org/wiki/BS_1363 https://www.elec-mate.com/guides/how-to-wire-a-plug https://www.plugsocketmuseum.nl/British1.html",
+  "pins": [
+    {
+      "name": "L",
+      "side": "bottom",
+      "mains": "L"
+    },
+    {
+      "spacer": true,
+      "side": "bottom"
+    },
+    {
+      "name": "N",
+      "side": "bottom",
+      "mains": "N"
+    },
+    {
+      "spacer": true,
+      "side": "bottom"
+    },
+    {
+      "name": "PE",
+      "side": "bottom",
+      "mains": "PE"
+    }
+  ],
+  "internal": [
+    [
+      "N prong",
+      "N"
+    ],
+    [
+      "PE prong",
+      "PE"
+    ]
+  ],
+  "size": {
+    "w": 8,
+    "h": 8
+  },
+  "electrical": {
+    "model": "cord-plug",
+    "internalNodes": [
+      "L prong",
+      "N prong",
+      "PE prong"
+    ],
+    "protective": [
+      {
+        "from": "L prong",
+        "to": "L",
+        "kind": "fuse"
+      }
+    ],
+    "params": {
+      "fuseRating": {
+        "unit": "A",
+        "default": 13
+      }
+    },
+    "plug": {
+      "family": "bs1363",
+      "profiles": [
+        {
+          "id": "main",
+          "contacts": [
+            {
+              "pin": "L prong",
+              "at": {
+                "x": 70,
+                "y": 50
+              },
+              "mains": "L"
+            },
+            {
+              "pin": "N prong",
+              "at": {
+                "x": 10,
+                "y": 50
+              },
+              "mains": "N"
+            },
+            {
+              "pin": "PE prong",
+              "at": {
+                "x": 40,
+                "y": 20
+              },
+              "mains": "PE"
+            }
+          ]
+        }
+      ]
+    },
+    "ratings": [
+      {
+        "pins": [
+          "L",
+          "N",
+          "PE",
+          "L prong",
+          "N prong",
+          "PE prong"
+        ],
+        "kind": "terminal",
+        "service": "ac",
+        "volts": 250,
+        "amps": 13,
+        "provenance": "datasheet"
+      }
+    ]
+  },
+  "art": {
+    "w": 80,
+    "h": 80,
+    "shapes": [
+      {
+        "type": "rect",
+        "x": 0,
+        "y": 0,
+        "w": 80,
+        "h": 72,
+        "fill": "#2B2F36",
+        "radius": 8
+      },
+      {
+        "type": "rect",
+        "x": 4,
+        "y": 4,
+        "w": 72,
+        "h": 64,
+        "fill": "#3A3F48",
+        "radius": 5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 14,
+        "y": 68,
+        "w": 52,
+        "h": 12,
+        "fill": "#2B2F36",
+        "radius": 3
+      },
+      {
+        "type": "rect",
+        "x": 18.5,
+        "y": 76,
+        "w": 3,
+        "h": 4,
+        "fill": "#B8BEC7",
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 38.5,
+        "y": 76,
+        "w": 3,
+        "h": 4,
+        "fill": "#B8BEC7",
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 58.5,
+        "y": 76,
+        "w": 3,
+        "h": 4,
+        "fill": "#B8BEC7",
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 28,
+        "y": 46,
+        "w": 24,
+        "h": 8,
+        "fill": "#D9534F",
+        "radius": 2
+      },
+      {
+        "type": "rect",
+        "x": 64.5,
+        "y": 47.5,
+        "w": 11,
+        "h": 5,
+        "fill": "#AEB5BF",
+        "radius": 1,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 4.5,
+        "y": 47.5,
+        "w": 11,
+        "h": 5,
+        "fill": "#AEB5BF",
+        "radius": 1,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 37.5,
+        "y": 14,
+        "w": 5,
+        "h": 12,
+        "fill": "#AEB5BF",
+        "radius": 1,
+        "outline": false
+      }
+    ]
+  }
+}

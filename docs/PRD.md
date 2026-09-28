@@ -323,7 +323,7 @@ V1 ships a starter library drawn in the same cartoon style, all defined in the s
 | Indicators | LED, WS2812B LED strip segment, WS2812D 5 mm addressable RGB LED, 12 mm passive buzzer | Color (LED) |
 | Switches | Push button, 6 mm and 12 mm 4-pin tactile switches, KCD1 rocker switch | - |
 | Connectors | JST-XH 2/3/4-pin, Dupont housing 1x2/1x3/1x4, USB panel-mount extension (micro-USB, USB-C) | - |
-| Mains | US NEMA 5-15R and 5-20R duplex, UK BS 1363, Schuko CEE 7/3, French CEE 7/5, AU/NZ AS/NZS 3112, Japan 1-15R duplex (unpolarized, polarized) | Mains voltage |
+| Mains | Wall outlets: US NEMA 5-15R and 5-20R duplex, UK BS 1363, Schuko CEE 7/3, French CEE 7/5, AU/NZ AS/NZS 3112, Japan 1-15R duplex (unpolarized, polarized). Plug-in devices (Mean Well NGE12 with US, EU, UK and AU plugs): USB wall chargers 5 V, barrel-jack wall adapters 12 V. Cord plugs: US NEMA 5-15P and 1-15P polarized, Japan 1-15P, CEE 7/7, Europlug CEE 7/16, UK BS 1363 fused (3-lead, 2-lead), AU/NZ AS/NZS 3112 (3-lead, 2-lead) | Mains voltage (outlets); Voltage (barrel adapters) |
 
 Not built yet: RGB LED (common anode/cathode), slide switch, toggle switch, diode, NPN and PNP transistor, N-channel MOSFET, USB power breakout, DC barrel jack, fixed 5V regulator, Arduino Uno, full-size Raspberry Pi boards, pin header.
 
