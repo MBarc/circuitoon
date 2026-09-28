@@ -262,6 +262,11 @@ describe('rule 4: wrong mains voltage', () => {
   it('stays quiet inside the range', () => {
     expect(rules(on([['e1', 'E1', 't-lamp']], [w('xs1|L', 'e1|L'), w('xs1|N', 'e1|N')])).has('mains-voltage')).toBe(false)
   })
+  it('a shorted load (L and N joined across it) is not supplied: the short is the one finding', () => {
+    const d = on([['e1', 'E1', 't-lamp']], [w('xs1|L', 'e1|L'), w('xs1|N', 'e1|N'), w('e1|L', 'e1|N')], [['xs1', 'XS1', 't-outlet-eu']])
+    expect(rules(d).has('mains-voltage')).toBe(false)
+    expect(rules(d).has('mains-short')).toBe(true)
+  })
 })
 
 describe('rule 4 helpers: L and N across a load, as drawn, with every holder fitted, and with one holder fitted (Resolution 28)', () => {
@@ -302,6 +307,16 @@ describe('rule 4 helpers: L and N across a load, as drawn, with every holder fit
     expect(run(['f1'])).toEqual({ complete: 0, fit: 1, fixers: ['F1'] })
     // Two empty holders in series: neither alone restores it, so none is named.
     expect(run(['f1', 'f2'])).toEqual({ complete: 0, fit: 1, fixers: [] })
+  })
+  it('a load whose L and N sit on one net is not across a source', () => {
+    const p = prepared(sheet([at('xs1', 'XS1', 't-outlet'), at('e1', 'E1', 't-lamp', 200)], [w('xs1|L', 'e1|L'), w('xs1|N', 'e1|N'), w('e1|L', 'e1|N')]))
+    analyseState(p)
+    const [a, b] = at2(p, 'e1')
+    expect(across(p, a, b)).toBe(null)
+    const cands = candidateGroups(p.g, p.possible)
+    const acc = newAcc(p, cands, null)
+    visitState(acc, 0)
+    expect(acc.loadComplete[0]).toBe(0)
   })
   it('across names the source either way round', () => {
     const p = prepared(sheet([at('xs1', 'XS1', 't-outlet'), at('e1', 'E1', 't-lamp', 200)], [w('xs1|N', 'e1|L'), w('xs1|L', 'e1|N')]))
@@ -346,6 +361,31 @@ describe('rule 5: ratings, relevance before adequacy', () => {
     const d = sheet([at('xs1', 'XS1', 't-outlet'), at('s1', 'S1', 't-switch-term', 200)], [w('xs1|L', 's1|1')], { 't-switch-term': swTerm })
     expect(msgs(d, 'rating-unknown')).toEqual([
       "S1 1 and S1 2 switch mains (120 V), but S1's module gives no AC switching rating for them, so Circuitoon cannot tell whether they are safe there. Check the datasheet for an AC switching rating of at least 120 V.",
+    ])
+  })
+  it('a passive terminal with only an AC switching rating has no AC terminal or insulation rating', () => {
+    const m = { ...MAINS_MODULES['t-term'], id: 't-term-sw', electrical: { ratings: [{ pins: ['1', '2', '1b', '2b'], kind: 'switching', service: 'ac', volts: 250, provenance: 'datasheet' }] } }
+    const d = sheet([at('xs1', 'XS1', 't-outlet'), at('x1', 'X1', 't-term-sw', 200)], [w('xs1|L', 'x1|1')], { 't-term-sw': m })
+    expect(msgs(d, 'rating-unknown')).toEqual([
+      "X1 1 and X1 1b are on mains (120 V), but X1's module gives no AC terminal or insulation rating for them, so Circuitoon cannot tell whether they are safe there. Check the datasheet for an AC terminal or insulation rating of at least 120 V.",
+    ])
+  })
+  it('a contact with only DC ratings switches mains with no AC switching rating', () => {
+    const m = { ...MAINS_MODULES['t-switch'], id: 't-switch-dc', electrical: { contacts: [{ id: 's', kind: 'switch', poles: [{ com: '1', no: '2' }] }], ratings: [{ pins: ['1', '2'], kind: 'switching', service: 'dc', volts: 30, provenance: 'datasheet' }] } }
+    const d = sheet([at('xs1', 'XS1', 't-outlet'), at('s1', 'S1', 't-switch-dc', 200)], [w('xs1|L', 's1|1')], { 't-switch-dc': m })
+    expect(msgs(d, 'rating-unknown')).toEqual([
+      "S1 1 and S1 2 switch mains (120 V), but S1's module gives no AC switching rating for them, so Circuitoon cannot tell whether they are safe there. Check the datasheet for an AC switching rating of at least 120 V.",
+    ])
+  })
+  it('names both routes when a conditional datasheet rating and an unverified plain one would each do', () => {
+    const all = ['1', '2', '1b', '2b']
+    const m = { ...MAINS_MODULES['t-term'], id: 't-term-two', name: 'Test terminal block, two ratings', electrical: { ratings: [
+      { pins: all, kind: 'terminal', service: 'ac', volts: 300, provenance: 'datasheet', conditions: 'for overvoltage category III and pollution degree 2' },
+      { pins: all, kind: 'terminal', service: 'ac', volts: 250, provenance: 'unverified' },
+    ] } }
+    const d = sheet([at('xs1', 'XS1', 't-outlet-eu'), at('x1', 'X1', 't-term-two', 200)], [w('xs1|L', 'x1|1')], { 't-term-two': m })
+    expect(checkDiagram(d).filter((f) => f.subject === 'X1').map((f) => `${f.rule}: ${f.message}`)).toEqual([
+      "rating-conditional: X1's 300 V AC rating holds only for overvoltage category III and pollution degree 2, and its 250 V AC rating, which has no conditions, is not verified for this exact part (Test terminal block, two ratings). Circuitoon cannot confirm either from the drawing: check the conditions on the real build, or check the maker's data for the part you use.",
     ])
   })
   it('conditional Phoenix rating (rating-conditional)', () => {

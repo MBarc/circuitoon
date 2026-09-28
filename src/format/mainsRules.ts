@@ -219,7 +219,11 @@ export function unknownFeedWords(list: { designator: string; status: ConverterSt
   }
   const volts = of(['voltage'])
   if (volts.length) {
-    states.push(volts.length === 1 ? `${poss(volts)} mains input is outside its rating` : `${poss(volts)} mains inputs are outside their ratings`)
+    // Ruling 34: rule 4's wrong mains voltage finding is the converter's one finding; point to it.
+    const names = andList(volts.map((x) => x.designator))
+    states.push(volts.length === 1
+      ? `${poss(volts)} mains voltage is outside its input range (see the wrong mains voltage finding for ${names})`
+      : `${poss(volts)} mains voltages are outside their input ranges (see the wrong mains voltage findings for ${names})`)
     fixes.push(...volts.map((x) => x.status.fix!))
   }
   const open = of(['incomplete'])
@@ -628,7 +632,8 @@ function converterPower(acc: Acc): MainsDraft[] {
     // Nothing was checked when the enumeration did not finish: say so, and never ask to rewire (not "no power").
     if (st.kind === 'incomplete') return draft('supply-unknown', `The mains checks did not finish, so ${d}'s mains input was not checked and its outputs are not counted as a supply. ${st.fix}`)
     if (st.state === 'unpowered') return draft('no-power', `${d} has no mains input, so its outputs supply nothing. ${rewire(c)}`)
-    if (st.kind === 'voltage') return draft('no-power', `${d}'s mains input is outside its rating (${st.why}), ${none}. ${st.fix}`)
+    // Ruling 34: a converter fed outside its input range has one finding, rule 4's mains-voltage.
+    if (st.kind === 'voltage') return []
     return draft('no-power', `${d}'s mains input is not a complete connection (${st.why}), ${none}. ${st.fix}`)
   })
 }
@@ -650,6 +655,8 @@ const acrossIdent = (x: number, y: number, s: number): boolean => {
 
 /** The source (global index) whose L and N sit across nodes a and b, either way round, in the current state; null when none does. */
 export function across(p: Prepared, a: number, b: number): number | null {
+  // L and N on one node is a short (rule 2), not a supply across the load.
+  if (p.root[a] === p.root[b]) return null
   const x = identAt(p, a)
   const y = identAt(p, b)
   if (!x || !y) return null
@@ -770,10 +777,13 @@ function voltageRule(acc: Acc, mask: number) {
   const S = srcIdx.length
   for (let q = 0; q < w.n; q++) {
     const k = list[q]
-    const x = ident[root[t.a[k]]]
-    const y = ident[root[t.b[k]]]
+    const ra = root[t.a[k]]
+    const rb = root[t.b[k]]
+    const x = ident[ra]
+    const y = ident[rb]
     let supplied = false
-    if (x && y)
+    // A shorted load (both ends on one node) is not supplied: rule 2 reports the short.
+    if (x && y && ra !== rb)
       for (let j = 0; j < S; j++) {
         const s = srcIdx[j]
         if (!acrossIdent(x, y, s)) continue
@@ -814,16 +824,16 @@ STATE_RULES.push(voltageRule)
 
 // ---- Rule 5: ratings (spec 1.4) ----
 
-/** Why a terminal on mains has no relevant rating: none at all, only DC ones, or (a contact) no switching one. */
-type Missing = 'none' | 'dc' | 'switching'
-interface Group { terms: GTerm[]; v: number; rating: Rating | null; why: Missing }
+/** Why a terminal on mains has no relevant rating: none at all, only DC ones, (a contact) no AC switching one, or (a passive terminal) only AC switching ones. */
+type Missing = 'none' | 'dc' | 'switching' | 'terminal'
+interface Group { terms: GTerm[]; v: number; rating: Rating | null; why: Missing; alt: Rating | null }
 /** Terminals of one part under one finding, so a six-way terminal block gives one line, not six. */
 function grouped() {
   const map = new Map<string, Group>()
   return {
-    add(key: string, t: GTerm, v: number, rating: Rating | null, why: Missing = 'none') {
+    add(key: string, t: GTerm, v: number, rating: Rating | null, why: Missing = 'none', alt: Rating | null = null) {
       const e = map.get(key)
-      if (!e) map.set(key, { terms: [t], v, rating, why })
+      if (!e) map.set(key, { terms: [t], v, rating, why, alt })
       else {
         if (!e.terms.includes(t)) e.terms.push(t)
         e.v = Math.max(e.v, v)
@@ -857,7 +867,7 @@ function ratingRules(acc: Acc): MainsDraft[] {
       const mine = t.info.ratings.filter((r) => r.pins.includes(t.name))
       const relevant = mine.filter((r) => r.service !== 'dc' && (switching ? r.kind === 'switching' : r.kind !== 'switching'))
       if (!relevant.length) {
-        const why: Missing = mine.some((r) => r.service !== 'dc') ? (switching ? 'switching' : 'none') : mine.length ? 'dc' : 'none'
+        const why: Missing = switching ? 'switching' : mine.some((r) => r.service !== 'dc') ? 'terminal' : mine.length ? 'dc' : 'none'
         unknown.add(`${t.part.uid}|${why}`, t, v, null, why)
         continue
       }
@@ -869,8 +879,17 @@ function ratingRules(acc: Acc): MainsDraft[] {
       }
       // An adequate datasheet rating with no conditions settles it; otherwise the lowest adequate one is reported.
       if (adequate.some((r) => !r.conditions && r.provenance === 'datasheet')) continue
-      const r = adequate[0]
-      const rk = `${t.part.uid}|${t.info.ratings.indexOf(r)}`
+      // Either route settles it on the real build: a datasheet rating whose conditions hold, or an
+      // unconditional rating that proves to hold for this exact part. When both exist, name both.
+      const withTerms = adequate.find((r) => r.conditions && r.provenance === 'datasheet')
+      const unproven = adequate.find((r) => !r.conditions && r.provenance === 'unverified')
+      const idx = (r: Rating) => t.info.ratings.indexOf(r)
+      if (withTerms && unproven) {
+        cond.add(`${t.part.uid}|${idx(withTerms)}|${idx(unproven)}`, t, v, withTerms, 'none', unproven)
+        continue
+      }
+      const r = withTerms ?? unproven ?? adequate[0]
+      const rk = `${t.part.uid}|${idx(r)}`
       if (r.conditions) cond.add(rk, t, v, r)
       if (r.provenance === 'unverified') unverified.add(rk, t, v, r)
     }
@@ -886,12 +905,14 @@ function ratingRules(acc: Acc): MainsDraft[] {
     ...bad.entries().map((e) => draft('mains-rating', e, `${names(e)} ${one(e) ? 'is' : 'are'} rated ${volt(e.rating!.volts)} AC, but ${one(e) ? 'gets' : 'get'} ${volt(e.v)}. Use a part rated for at least ${volt(e.v)} AC.`)),
     ...unknown.entries().map((e) => {
       const them = one(e) ? 'it' : 'them'
-      const kind = e.why === 'switching' ? 'AC switching' : 'AC'
+      const kind = e.why === 'switching' ? 'AC switching' : e.why === 'terminal' ? 'AC terminal or insulation' : 'AC'
       const where = e.why === 'switching' ? `${one(e) ? 'switches' : 'switch'} mains` : `${one(e) ? 'is' : 'are'} on mains`
       const gives = e.why === 'dc' ? `gives only a DC rating for ${them}` : `gives no ${kind} rating for ${them}`
       return draft('rating-unknown', e, `${names(e)} ${where} (${volt(e.v)}), but ${e.terms[0].part.designator}'s module ${gives}, so Circuitoon cannot tell whether ${one(e) ? 'it is' : 'they are'} safe there. Check the datasheet for an ${kind} rating of at least ${volt(e.v)}.`)
     }),
-    ...cond.entries().map((e) => draft('rating-conditional', e, `${whose(e)} holds only ${e.rating!.conditions}. Circuitoon cannot see that on the drawing: check it on the real build.`)),
+    ...cond.entries().map((e) => draft('rating-conditional', e, e.alt
+      ? `${whose(e)} holds only ${e.rating!.conditions}, and its ${volt(e.alt.volts)} AC rating, which has no conditions, is not verified for this exact part (${e.terms[0].module.name}). Circuitoon cannot confirm either from the drawing: check the conditions on the real build, or check the maker's data for the part you use.`
+      : `${whose(e)} holds only ${e.rating!.conditions}. Circuitoon cannot see that on the drawing: check it on the real build.`)),
     ...unverified.entries().map((e) => draft('rating-unverified', e, `${whose(e)} is not verified for this exact part (${e.terms[0].module.name}). Check the maker's data for the part you use.`)),
     ...isolationUnverified(acc),
   ]

@@ -69,9 +69,13 @@ describe('converter availability gates the DC checker', () => {
   it('a converter on a voltage outside its input range is told to be replaced, not rewired', () => {
     const d = sheet([at('xs1', 'XS1', 't-outlet-eu', 0, 0, { values: { acVoltage: { value: 260, unit: 'VAC' } } }), at('ps1', 'PS1', 't-psu', 200), at('u1', 'U1', 't-mcu', 400)],
       [w('xs1|L', 'ps1|AC1'), w('xs1|N', 'ps1|AC2'), w('ps1|+V', 'u1|VCC'), w('ps1|-V', 'u1|GND')])
+    // Ruling 34: one finding for the converter (rule 4's), and the load behind it points to it.
+    expect(analyseMains(d)!.converters.get('ps1')).toMatchObject({ state: 'unknown', kind: 'voltage' })
+    expect(checkDiagram(d).filter((f) => f.subject === 'PS1').map((f) => `${f.rule}: ${f.message}`)).toEqual([
+      'mains-voltage: PS1 takes 100 V to 240 V AC, but XS1 gives 260 V. Use a converter made for 260 V.',
+    ])
     expect(checkDiagram(d).filter((f) => ['no-power', 'supply-unknown'].includes(f.rule)).map((f) => f.message)).toEqual([
-      "PS1's mains input is outside its rating (it takes 100 V to 240 V AC but gets 260 V), so its outputs are not counted as a supply. Use a converter rated for 260 V in place of PS1.",
-      "U1's power is not checked: it comes only from PS1 +V, and PS1's mains input is outside its rating. Use a converter rated for 260 V in place of PS1.",
+      "U1's power is not checked: it comes only from PS1 +V, and PS1's mains voltage is outside its input range (see the wrong mains voltage finding for PS1). Use a converter rated for 260 V in place of PS1.",
     ])
   })
   it('names every unknown converter feeding a load', () => {
