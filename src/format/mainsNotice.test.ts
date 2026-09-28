@@ -4,12 +4,13 @@ import { describe, expect, it } from 'vitest'
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { serializeDiagram, validateDiagram } from './diagram.ts'
-import { MAINS_NOTICE, hasMains, withSheetNotes } from './mains.ts'
+import { MAINS_NOTICE, analyseMains, hasMains, withSheetNotes } from './mains.ts'
 import { checkDiagram } from './checks.ts'
 import { Sheet } from '../render/Sheet.tsx'
 import { EditorStore } from '../editor/store.ts'
 import { ProblemList } from '../editor/Inspector.tsx'
 import { at, sheet, w } from './mains.testing.ts'
+import { load } from './builtinModules.testing.ts'
 import { MAINS_NOTICE_FONT, NOTICE_MIN_WIDTH, noticeHeight, noticeLines } from '../render/Mains.tsx'
 
 const mainsSheet = sheet([at('xs1', 'XS1', 't-outlet')], [])
@@ -24,16 +25,43 @@ describe('the mains notice', () => {
   it('says exactly what the spec says', () => {
     expect(MAINS_NOTICE).toBe('Mains wiring: Circuitoon checks the drawn connections only. It cannot check current, insulation, enclosures or local codes. Have mains work checked by a qualified person.')
   })
-  it('appears for any mains part, a mains-rated relay alone included (Resolution 23)', () => {
+  it('appears for a mains source or connection point: an outlet or a plug', () => {
     expect(hasMains(mainsSheet)).toBe(true)
-    expect(hasMains(relayOnly)).toBe(true)
+    expect(hasMains(sheet([at('p1', 'P1', 't-plug-us')], []))).toBe(true)
+    expect(hasMains(sheet([at('a1', 'A1', 't-charger-uk')], []))).toBe(true)
     expect(hasMains(noMains)).toBe(false)
+  })
+  it('appears for a part whose mains pins are wired to something that could carry mains, not for one left unwired', () => {
+    expect(hasMains(relayOnly)).toBe(false)
+    expect(hasMains(sheet([at('k1', 'K1', 't-relay'), at('e1', 'E1', 't-lamp', 200)], [w('k1|COM', 'e1|L')]))).toBe(true)
+    expect(hasMains(sheet([at('ps1', 'PS1', 't-psu'), at('x1', 'X1', 't-term', 200)], [w('ps1|AC1', 'x1|1')]))).toBe(true)
+    expect(hasMains(sheet([at('ps1', 'PS1', 't-psu')], []))).toBe(false)
+    // A relay switching a low-voltage board: its contacts carry nothing that could be mains.
+    expect(hasMains(sheet([at('k1', 'K1', 't-relay'), at('u1', 'U1', 't-mcu', 200)], [w('k1|COM', 'u1|VCC')]))).toBe(false)
+  })
+  it('does not appear for a battery circuit whose switch merely carries AC ratings (a KCD1), though the analysis still runs', () => {
+    const kcd1 = load('rocker-switch-kcd1')
+    const bat = load('battery-holder-2xaa')
+    const led = load('led')
+    const d = sheet(
+      [at('bt1', 'BT1', bat.id), at('sw1', 'SW1', kcd1.id, 200), at('d1', 'D1', led.id, 400)],
+      [w('bt1|+', 'sw1|1'), w('sw1|2', 'd1|A'), w('d1|K', 'bt1|-')],
+      { [kcd1.id]: kcd1, [bat.id]: bat, [led.id]: led },
+    )
+    expect(hasMains(d)).toBe(false)
+    expect(analyseMains(d)).not.toBeNull()
+    expect(renderToStaticMarkup(createElement(Sheet, { diagram: d, box: { x: 0, y: 0, w: 400, h: 200 }, label: 'b' }))).not.toContain('Mains wiring')
+    expect(list(d)).not.toContain(MAINS_NOTICE)
+    expect(withSheetNotes(d).notes).toBeUndefined()
+    // The same switch between an outlet and a lamp is on a mains sheet.
+    const lit = sheet([at('xs1', 'XS1', 't-outlet'), at('sw1', 'SW1', kcd1.id, 200), at('e1', 'E1', 't-lamp', 400)], [w('xs1|L', 'sw1|1'), w('sw1|2', 'e1|L')], { [kcd1.id]: kcd1 })
+    expect(hasMains(lit)).toBe(true)
   })
   it('the Problems panel shows it with the new empty state, and not on a sheet without mains', () => {
     const html = list(mainsSheet)
     expect(html).toContain(MAINS_NOTICE)
     expect(html).toContain('No problems found in the drawn connections.')
-    expect(list(relayOnly)).toContain(MAINS_NOTICE)
+    expect(list(relayOnly)).not.toContain(MAINS_NOTICE)
     const plain = list(noMains)
     expect(plain).not.toContain(MAINS_NOTICE)
     expect(plain).toContain('No problems found in the drawn connections.')

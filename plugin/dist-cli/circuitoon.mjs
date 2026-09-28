@@ -46148,8 +46148,65 @@ function analyseMainsCached(d) {
 }
 /** Spec section 6, verbatim. */
 var MAINS_NOTICE = "Mains wiring: Circuitoon checks the drawn connections only. It cannot check current, insulation, enclosures or local codes. Have mains work checked by a qualified person.";
-/** Spec 6: "a sheet with any mains part" (Resolution 23): any part whose module declares mains data. */
-var hasMains = hasMainsData;
+/**
+* The pins a module declares as mains by nature: a mains domain, an AC input, a mains requirement
+* (L, N, PE, line) or a mains load. Ratings and contacts alone never count: a KCD1 rocker rated for
+* AC switching is just a switch in a battery circuit.
+*/
+function mainsPins(i) {
+	return /* @__PURE__ */ new Set([
+		...i.domains.filter((x) => x.kind === "mains").flatMap((x) => x.pins),
+		...i.acInput ? [i.acInput.a, i.acInput.b] : [],
+		...i.requirement.keys(),
+		...i.conducts.filter((c) => c.kind === "load").flatMap((c) => c.pins)
+	]);
+}
+/** True when some part's mains pin shares a net with another part's mains terminal. */
+function mainsWired(d) {
+	const info = /* @__PURE__ */ new Map();
+	for (const p of d.parts) {
+		const m = moduleOf(d, p.module);
+		if (m && mainsOf(m).any) info.set(p.uid, mainsOf(m));
+	}
+	const pinsOf = new Map([...info].map(([uid, i]) => [uid, mainsPins(i)]));
+	for (const net of netlist(d).nets) {
+		const ends = net.map((k) => JSON.parse(k));
+		const own = ends.filter(([uid, pin]) => pinsOf.get(uid)?.has(pin));
+		if (!own.length) continue;
+		for (const [uid] of own) if (ends.some(([u, pin]) => u !== uid && info.get(u)?.terminals.has(pin))) return true;
+	}
+	return false;
+}
+var noticeCache = /* @__PURE__ */ new WeakMap();
+/**
+* Spec 6's "mains sheet", which carries the notice (Problems panel, drawing footer, exported notes):
+* one with a mains source or connection point. That is an outlet (an AC source), a plug-in device
+* or cord plug (a plug profile), or a part whose mains pins (mains domain, AC input, requirement,
+* load) are wired to another part's mains terminal. A part that merely carries AC ratings (a KCD1
+* in a battery circuit), or a relay whose contacts switch nothing mains, does not make one. The
+* mains analysis itself still runs on any mains data (`hasMainsData`), so no check is hidden.
+*/
+function hasMains(d) {
+	let wiredOnly = false;
+	for (const p of d.parts) {
+		const m = moduleOf(d, p.module);
+		if (!m) continue;
+		const i = mainsOf(m);
+		if (!i.any) continue;
+		if (i.acSources.length || i.plug && i.plug.profiles.length) return true;
+		if (mainsPins(i).size) wiredOnly = true;
+	}
+	if (!wiredOnly) return false;
+	const hit = noticeCache.get(d.connections);
+	if (hit && hit.parts === d.parts && hit.modules === d.modules) return hit.result;
+	const result = mainsWired(d);
+	noticeCache.set(d.connections, {
+		parts: d.parts,
+		modules: d.modules,
+		result
+	});
+	return result;
+}
 //#endregion
 //#region src/format/checks.ts
 /** Rule order within one severity and one subject, and each rule's short heading. */

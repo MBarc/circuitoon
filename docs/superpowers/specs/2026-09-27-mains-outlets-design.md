@@ -116,7 +116,7 @@ Mains nodes never enter the DC potential solver; DC rules skip AC and mains pins
 - A thin hazard outline on energized wires and a small lightning marker near each end. Outlets and mains parts in the Sticker style with realistic faces.
 
 ## 6. Honesty in the product
-- A sheet with any mains part shows a persistent notice in the Problems panel and a toolbar badge: "Mains wiring: Circuitoon checks the drawn connections only. It cannot check current, insulation, enclosures or local codes. Have mains work checked by a qualified person."
+- A sheet with a mains source or connection point (an outlet, a plug-in device or cord plug, or a part whose mains pins are wired to another part's mains terminal; amended 2026-09-28: a part that merely carries AC ratings, such as a KCD1 rocker in a battery circuit, no longer counts, while the mains analysis still runs on any mains data) shows a persistent notice in the Problems panel and a toolbar badge: "Mains wiring: Circuitoon checks the drawn connections only. It cannot check current, insulation, enclosures or local codes. Have mains work checked by a qualified person."
 - The empty state becomes "No problems found in the drawn connections." It is never shown when a `mains-incomplete`, `data-missing` or `unknown` result exists; those list what was not checked.
 - The notice is drawn into every export (image, print, PDF) and stored in exported JSON as a sheet note. The PRD gains the matching statement.
 
