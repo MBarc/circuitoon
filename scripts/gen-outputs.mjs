@@ -9,12 +9,27 @@
 // then `git diff` the result before committing. src/format/outputs.test.ts pins the order.
 import { finish } from './lib/gen-output.mjs'
 import { moduleJson, r, side, write } from './lib/parts.mjs'
+import { cleared } from './lib/mains.mjs'
+
+// Mains values come only from src/format/mainsEvidence.ts. Both parts are NOT VERIFIED for their
+// insulation class alone; Michael's ruling B2 clears them with isolation "unknown" (the Songle and
+// Fotek sheets give dielectric test voltages only, never a class).
+const relayEv = cleared('relay-module-1ch-5v', 'B2')
+const ssrEv = cleared('ssr-fotek-25da', 'B2')
+/** The Songle relay's contact ratings and its stated coil-to-contact class; "unknown" when the datasheet states none. */
+const SONGLE = { url: relayEv.sources.join(' '), isolation: relayEv.isolation?.value ?? 'unknown', ratings: relayEv.ratings.map((x) => ({ service: x.service, volts: x.volts, amps: x.amps })) }
+const FOTEK = {
+  url: ssrEv.sources.join(' '), top: ssrEv.pins.value.top, bottom: ssrEv.pins.value.bottom,
+  control: ssrEv.extra.control.value, load: ssrEv.extra.load.value, leakage: ssrEv.extra.leakage.value,
+  amps: ssrEv.ratings[0].amps, maxVolts: ssrEv.ratings[0].volts, conditions: ssrEv.ratings[0].conditions, isolation: ssrEv.isolation?.value ?? 'unknown',
+}
 
 const METAL = '#C9CED6', TIN = '#D5DAE1', HOLE = '#6B727C', CHIP = '#1E2126', GOLD = '#E0B43C', GOLD_HOLE = '#8A6A1E'
 const RED_PCB = '#C8322B', BLUE = '#1E4F8A', TERMINAL = '#2F7FD0', RELAY = '#2B5FB8'
 const SMD = '#C8A27A', LED_RED = '#E0483E', LED_GREEN = '#3FB56B', BLACK = '#2B2F36', CAP = '#B8BEC7', CAP_TOP = '#8E96A1'
 const SERVO = '#3D7BE0', SERVO_DARK = '#2A5FB8', WHITE = '#F4F6F8'
 const WIRE_BROWN = '#8B5A2B', WIRE_RED = '#E0483E', WIRE_ORANGE = '#F08A24'
+const SSR_BODY = '#23272D', SSR_EAR = '#3A3F48'
 
 /** A screw terminal block of `n` ways along a vertical edge; `x` its left, `ys` the screw centres. */
 function terminalV(x, ys, w = 22) {
@@ -58,7 +73,12 @@ function headerH(y, at) {
 //    text readable and the "1 Relay Module high/low level trigger" edge at the bottom: the output
 //    terminal at the left reads NO, COM, NC top to bottom (NC by that edge), the input terminal at
 //    the right IN, DC-, DC+ top to bottom (DC+ by that edge). Both are 5 mm screw terminals. The
-//    L/H jumper sets the trigger level (low or high). The contacts are isolated from the coil side.
+//    L/H jumper sets the trigger level (low or high). The contacts are the Songle relay's (datasheet
+//    SRD series V1 and the older sheet's FORM C figures: 10 A 125 VAC, 7 A 240 VAC, 7 A 28 VDC,
+//    resistive); the clone board around them has no rating of its own, so they are `unverified`
+//    (spec 1.4). Songle states only a 1500 VAC 1 min coil-to-contact dielectric test, never an
+//    insulation class, so the isolation is "unknown" (ruling B2) and IN, DC- and DC+ count as live
+//    whenever the contacts carry mains.
 {
   const wu = 20, hu = 10, W = wu * 10, H = hu * 10
   const types = {
@@ -89,8 +109,18 @@ function headerH(y, at) {
   ]
   write('relay-module-1ch-5v.json', moduleJson({
     inside: true, id: 'relay-module-1ch-5v', name: 'Relay module 1 channel 5 V (SRD-05VDC, high/low trigger jumper)', category: 'Motors and actuators',
-    source: 'https://www.amazon.com/dp/B00LW15A4W https://konnected.io/products/1-channel-5v-relay-module-with-high-low-level-trigger',
-    pins: [...left.pins, ...right.pins], wu, hu, electrical: { model: 'relay', params: {} }, shapes,
+    source: SONGLE.url,
+    pins: [...left.pins, ...right.pins], wu, hu,
+    electrical: {
+      model: 'relay', params: {},
+      // The contacts are the Songle relay's; the board around them is a clone with no rating of its own (spec 1.4).
+      contacts: [{ id: 'k', kind: 'relay', poles: [{ com: 'COM', no: 'NO', nc: 'NC' }] }],
+      domains: [{ name: 'contacts', pins: ['NO', 'COM', 'NC'], kind: 'mains' }, { name: 'control', pins: ['IN', 'DC-', 'DC+'], kind: 'selv' }],
+      // Ruling B2: the Songle datasheet states no class (1500 VAC coil to contacts is a test voltage), so this is 'unknown'.
+      isolation: SONGLE.isolation,
+      ratings: SONGLE.ratings.map((x) => ({ pins: ['NO', 'COM', 'NC'], kind: 'switching', service: x.service, volts: x.volts, amps: x.amps, provenance: 'unverified' })),
+    },
+    shapes,
   }))
 }
 
@@ -267,6 +297,62 @@ function headerH(y, at) {
     inside: true, id: 'level-shifter-bss138-4ch', name: 'Logic level shifter 4 channel (BSS138, SparkFun layout)', category: 'Communication',
     source: 'https://learn.sparkfun.com/tutorials/bi-directional-logic-level-converter-hookup-guide/all https://cdn.sparkfun.com/assets/f/d/5/8/4/526842ae757b7f5c108b456b.png https://www.fredscave.com/interface/int-04logic-level-shifter.html',
     pins: [...top.pins, ...bottom.pins], internal: [['GND', 'GND 2']], wu, hu, electrical: { model: 'level_shifter', params: {} }, shapes,
+  }))
+}
+
+// =============================================================================================
+// Mains
+
+// ---------------------------------------------------------------------------------------------
+// Fotek SSR-25DA solid state relay (Fotek SSR series catalogue, PDF created 2022-06-21, pages 05
+// and 28-29; the series page agrees). Seen from the case face in Fotek's product photo: load
+// terminals 1 (left) and 2 (right) on top, each marked ~, with "24 - 380VAC" between them; control
+// terminals 4 (-, left) and 3 (+, right) below, "4 - 32VDC" between them. Rated 25 A max at 24-380
+// VAC for a resistive load, on a heatsink with thermal grease (Fotek's HS-50 heatsink is rated 15 A,
+// so 25 A needs a larger one; lamps need a rating over 4 times the lamp current): the `conditions`.
+// Off, the output still leaks up to 5 mA (FOTEK.leakage), so its OFF state is a leakage path, never
+// an open contact (spec 1.5); the checker adds that edge for an `ssr` pole. The control input takes
+// 4-32 VDC (turn-off below 3.5 VDC, 12 mA max) from whatever drives it, so it is a power input with
+// those rails and a 3.3 V supply is reported too low (controller ruling). Fotek states "Isolation
+// strength 4 KVrms" and "Insulation strength 100 MOhm / 500 VDC", test values, not a class: isolation
+// "unknown" (ruling B2). The part is widely counterfeited; these values are the genuine Fotek's.
+{
+  const wu = 9, hu = 12, W = wu * 10, H = hu * 10
+  const [cmin, cmax] = FOTEK.control
+  const [lmin, lmax] = FOTEK.load
+  const types = { 1: { type: 'passive' }, 2: { type: 'passive' }, 3: { type: 'power_in', supply: `${cmin}V/${cmax}V` }, 4: { type: 'ground' } }
+  // The screws sit near the case corners: the two terminals of a row with four empty slots between.
+  const row = ([a, b]) => [a, null, null, null, null, b]
+  const top = side('top', row(FOTEK.top), types, wu)
+  const bottom = side('bottom', row(FOTEK.bottom), types, wu)
+  const screw = (x, y) => [
+    r(x - 9, y - 9, 18, 18, TIN, { radius: 3 }), r(x - 6, y - 6, 12, 12, METAL, { radius: 6 }),
+    r(x - 4, y - 0.75, 8, 1.5, HOLE, { outline: false }), r(x - 0.75, y - 4, 1.5, 8, HOLE, { outline: false }),
+  ]
+  const mark = (x, y, label) => r(x - 10, y - 5, 20, 10, SSR_BODY, { outline: false, label, labelColor: WHITE, labelSize: 7 })
+  write('ssr-fotek-25da.json', moduleJson({
+    inside: true, id: 'ssr-fotek-25da', category: 'Mains',
+    name: `Fotek SSR-25DA solid state relay (${cmin}-${cmax} VDC in, ${lmin}-${lmax} VAC ${FOTEK.amps} A out)`, source: FOTEK.url,
+    pins: [...top.pins, ...bottom.pins], wu, hu,
+    electrical: {
+      model: 'ssr', contacts: [{ id: 'k', kind: 'ssr', poles: [{ com: '1', no: '2' }] }],
+      domains: [{ name: 'load', pins: ['1', '2'], kind: 'mains' }, { name: 'control', pins: ['3', '4'], kind: 'selv' }],
+      isolation: FOTEK.isolation,
+      ratings: [{ pins: ['1', '2'], kind: 'switching', service: 'ac', volts: FOTEK.maxVolts, amps: FOTEK.amps, provenance: 'datasheet', conditions: FOTEK.conditions }],
+    },
+    shapes: [
+      // Black case with its mounting ears, the terminal screws, the white label and the input LED.
+      r(0, 0, W, H, SSR_BODY, { radius: 4 }),
+      r(W / 2 - 6, 3, 12, 6, SSR_EAR, { radius: 3, outline: false }), r(W / 2 - 6, H - 9, 12, 6, SSR_EAR, { radius: 3, outline: false }),
+      ...top.at.flatMap((x) => screw(x, 20)), ...bottom.at.flatMap((x) => screw(x, H - 20)),
+      // Between each row, what the case prints: the load's ~ marks and the input's polarity (4 -, 3 +).
+      mark(W / 2, 20, '~ ~'), mark(W / 2, H - 20, '- +'),
+      r(8, 36, W - 16, 46, WHITE, { radius: 2 }),
+      r(10, 38, W - 20, 12, WHITE, { outline: false, label: 'FOTEK', labelColor: SSR_BODY, labelSize: 7 }),
+      r(10, 50, W - 20, 12, WHITE, { outline: false, label: 'SSR-25DA', labelColor: SSR_BODY, labelSize: 7 }),
+      r(10, 64, W - 20, 10, WHITE, { outline: false, label: `${lmin}-${lmax}VAC`, labelColor: SSR_BODY, labelSize: 5 }),
+      r(W / 2 - 3, 86, 6, 5, LED_RED, { radius: 2, outline: false }),
+    ],
   }))
 }
 

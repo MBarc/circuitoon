@@ -12,7 +12,7 @@ import { PLUG_PROFILES, SOCKET_PATTERNS } from './plugging.ts'
 import { specTurns } from './plugSpec.testing.ts'
 import { seatOf } from './breadboard.ts'
 import type { Diagram } from './diagram.ts'
-import { load } from './builtinModules.testing.ts'
+import { load, pin } from './builtinModules.testing.ts'
 import { EVIDENCE } from './mainsEvidence.ts'
 
 const twoSources = /^https?:\/\/\S+( https?:\/\/\S+)+$/
@@ -344,4 +344,40 @@ describe('built-in terminal blocks', () => {
       expect(ratings[0].volts).toBe(EVIDENCE[id].ratings![0].volts)
       expect(ratings[0].amps).toBe(EVIDENCE[id].ratings![0].amps)
     })
+})
+
+describe('relay module and SSR', () => {
+  it('the relay module switches COM between NC and NO, its rating unverified and its isolation unknown', () => {
+    const info = mainsOf(load('relay-module-1ch-5v'))
+    expect(info.contacts).toEqual([{ id: 'k', kind: 'relay', poles: [{ com: 'COM', no: 'NO', nc: 'NC' }] }])
+    expect(info.domains.map((d) => [d.kind, [...d.pins].sort()])).toEqual([['mains', ['COM', 'NC', 'NO']], ['selv', ['DC+', 'DC-', 'IN']]])
+    expect(info.isolation).toBe('unknown')
+    expect(info.ratings.every((r) => r.kind === 'switching' && r.provenance === 'unverified')).toBe(true)
+  })
+  it('the relay module carries the Songle contact ratings from the evidence, and cites the Songle sheet', () => {
+    const m = load('relay-module-1ch-5v')
+    const ev = EVIDENCE['relay-module-1ch-5v']
+    expect(mainsOf(m).ratings.map((r) => [r.service, r.volts, r.amps])).toEqual(ev.ratings!.map((r) => [r.service, r.volts, r.amps]))
+    expect(m.source).toBe(ev.sources.join(' '))
+  })
+  it('the Fotek SSR-25DA leaks when off and carries its derating as a condition', () => {
+    const m = load('ssr-fotek-25da')
+    const info = mainsOf(m)
+    expect(m.category).toBe('Mains')
+    expect(m.source).toMatch(twoSources)
+    expect(info.contacts).toEqual([{ id: 'k', kind: 'ssr', poles: [{ com: '1', no: '2', nc: null }] }])
+    expect(info.ratings[0]).toMatchObject({ kind: 'switching', service: 'ac', provenance: 'datasheet' })
+    expect(info.ratings[0].conditions).toMatch(/heatsink|derat/i)
+    expect(info.isolation).toBe('unknown')
+  })
+  it('the Fotek SSR-25DA takes its values from the evidence: load rating, control range and name', () => {
+    const m = load('ssr-fotek-25da')
+    const ev = EVIDENCE['ssr-fotek-25da']
+    expect(m.source).toBe(ev.sources.join(' '))
+    expect([mainsOf(m).ratings[0].volts, mainsOf(m).ratings[0].amps]).toEqual([ev.ratings![0].volts, ev.ratings![0].amps])
+    expect(m.name).toBe('Fotek SSR-25DA solid state relay (4-32 VDC in, 24-380 VAC 25 A out)')
+    // The control input is powered by what drives it: its range is the datasheet 4-32 VDC (controller ruling), so a 3.3 V rail gets supply-too-low.
+    expect(pin(m, '3')).toMatchObject({ type: 'power_in', supply: '4V/32V' })
+    expect(pin(m, '4')).toMatchObject({ type: 'ground' })
+  })
 })

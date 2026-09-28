@@ -1,0 +1,374 @@
+{
+  "format": "circuitoon-module/1",
+  "id": "ssr-fotek-25da",
+  "version": 1,
+  "name": "Fotek SSR-25DA solid state relay (4-32 VDC in, 24-380 VAC 25 A out)",
+  "category": "Mains",
+  "source": "https://www.fotek.com.tw/en-gb/download/61 https://www.fotek.com.tw/en-gb/product/801 https://www.fotek.com.tw/en-gb/product-category/143 https://www.fotek.com.tw/image/catalog/product/Type/SSR-SSR-DA.png",
+  "pins": [
+    {
+      "name": "1",
+      "side": "top",
+      "type": "passive"
+    },
+    {
+      "spacer": true,
+      "side": "top"
+    },
+    {
+      "spacer": true,
+      "side": "top"
+    },
+    {
+      "spacer": true,
+      "side": "top"
+    },
+    {
+      "spacer": true,
+      "side": "top"
+    },
+    {
+      "name": "2",
+      "side": "top",
+      "type": "passive"
+    },
+    {
+      "name": "4",
+      "side": "bottom",
+      "type": "ground"
+    },
+    {
+      "spacer": true,
+      "side": "bottom"
+    },
+    {
+      "spacer": true,
+      "side": "bottom"
+    },
+    {
+      "spacer": true,
+      "side": "bottom"
+    },
+    {
+      "spacer": true,
+      "side": "bottom"
+    },
+    {
+      "name": "3",
+      "side": "bottom",
+      "type": "power_in",
+      "supply": "4V/32V"
+    }
+  ],
+  "size": {
+    "w": 9,
+    "h": 12
+  },
+  "electrical": {
+    "model": "ssr",
+    "contacts": [
+      {
+        "id": "k",
+        "kind": "ssr",
+        "poles": [
+          {
+            "com": "1",
+            "no": "2"
+          }
+        ]
+      }
+    ],
+    "domains": [
+      {
+        "name": "load",
+        "pins": [
+          "1",
+          "2"
+        ],
+        "kind": "mains"
+      },
+      {
+        "name": "control",
+        "pins": [
+          "3",
+          "4"
+        ],
+        "kind": "selv"
+      }
+    ],
+    "isolation": "unknown",
+    "ratings": [
+      {
+        "pins": [
+          "1",
+          "2"
+        ],
+        "kind": "switching",
+        "service": "ac",
+        "volts": 380,
+        "amps": 25,
+        "provenance": "datasheet",
+        "conditions": "rated current for a resistive load on a heatsink with thermal grease; incandescent lamps: module rating over 4 times the lamp current; Fotek heatsink HS-50 is rated 15 A max per SSR, so 25 A needs a larger heatsink"
+      }
+    ]
+  },
+  "art": {
+    "w": 90,
+    "h": 120,
+    "pinLabels": "inside",
+    "shapes": [
+      {
+        "type": "rect",
+        "x": 0,
+        "y": 0,
+        "w": 90,
+        "h": 120,
+        "fill": "#23272D",
+        "radius": 4
+      },
+      {
+        "type": "rect",
+        "x": 39,
+        "y": 3,
+        "w": 12,
+        "h": 6,
+        "fill": "#3A3F48",
+        "radius": 3,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 39,
+        "y": 111,
+        "w": 12,
+        "h": 6,
+        "fill": "#3A3F48",
+        "radius": 3,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 11,
+        "y": 11,
+        "w": 18,
+        "h": 18,
+        "fill": "#D5DAE1",
+        "radius": 3
+      },
+      {
+        "type": "rect",
+        "x": 14,
+        "y": 14,
+        "w": 12,
+        "h": 12,
+        "fill": "#C9CED6",
+        "radius": 6
+      },
+      {
+        "type": "rect",
+        "x": 16,
+        "y": 19.25,
+        "w": 8,
+        "h": 1.5,
+        "fill": "#6B727C",
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 19.25,
+        "y": 16,
+        "w": 1.5,
+        "h": 8,
+        "fill": "#6B727C",
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 61,
+        "y": 11,
+        "w": 18,
+        "h": 18,
+        "fill": "#D5DAE1",
+        "radius": 3
+      },
+      {
+        "type": "rect",
+        "x": 64,
+        "y": 14,
+        "w": 12,
+        "h": 12,
+        "fill": "#C9CED6",
+        "radius": 6
+      },
+      {
+        "type": "rect",
+        "x": 66,
+        "y": 19.25,
+        "w": 8,
+        "h": 1.5,
+        "fill": "#6B727C",
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 69.25,
+        "y": 16,
+        "w": 1.5,
+        "h": 8,
+        "fill": "#6B727C",
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 11,
+        "y": 91,
+        "w": 18,
+        "h": 18,
+        "fill": "#D5DAE1",
+        "radius": 3
+      },
+      {
+        "type": "rect",
+        "x": 14,
+        "y": 94,
+        "w": 12,
+        "h": 12,
+        "fill": "#C9CED6",
+        "radius": 6
+      },
+      {
+        "type": "rect",
+        "x": 16,
+        "y": 99.25,
+        "w": 8,
+        "h": 1.5,
+        "fill": "#6B727C",
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 19.25,
+        "y": 96,
+        "w": 1.5,
+        "h": 8,
+        "fill": "#6B727C",
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 61,
+        "y": 91,
+        "w": 18,
+        "h": 18,
+        "fill": "#D5DAE1",
+        "radius": 3
+      },
+      {
+        "type": "rect",
+        "x": 64,
+        "y": 94,
+        "w": 12,
+        "h": 12,
+        "fill": "#C9CED6",
+        "radius": 6
+      },
+      {
+        "type": "rect",
+        "x": 66,
+        "y": 99.25,
+        "w": 8,
+        "h": 1.5,
+        "fill": "#6B727C",
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 69.25,
+        "y": 96,
+        "w": 1.5,
+        "h": 8,
+        "fill": "#6B727C",
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 35,
+        "y": 15,
+        "w": 20,
+        "h": 10,
+        "fill": "#23272D",
+        "outline": false,
+        "label": "~ ~",
+        "labelColor": "#F4F6F8",
+        "labelSize": 7
+      },
+      {
+        "type": "rect",
+        "x": 35,
+        "y": 95,
+        "w": 20,
+        "h": 10,
+        "fill": "#23272D",
+        "outline": false,
+        "label": "- +",
+        "labelColor": "#F4F6F8",
+        "labelSize": 7
+      },
+      {
+        "type": "rect",
+        "x": 8,
+        "y": 36,
+        "w": 74,
+        "h": 46,
+        "fill": "#F4F6F8",
+        "radius": 2
+      },
+      {
+        "type": "rect",
+        "x": 10,
+        "y": 38,
+        "w": 70,
+        "h": 12,
+        "fill": "#F4F6F8",
+        "outline": false,
+        "label": "FOTEK",
+        "labelColor": "#23272D",
+        "labelSize": 7
+      },
+      {
+        "type": "rect",
+        "x": 10,
+        "y": 50,
+        "w": 70,
+        "h": 12,
+        "fill": "#F4F6F8",
+        "outline": false,
+        "label": "SSR-25DA",
+        "labelColor": "#23272D",
+        "labelSize": 7
+      },
+      {
+        "type": "rect",
+        "x": 10,
+        "y": 64,
+        "w": 70,
+        "h": 10,
+        "fill": "#F4F6F8",
+        "outline": false,
+        "label": "24-380VAC",
+        "labelColor": "#23272D",
+        "labelSize": 5
+      },
+      {
+        "type": "rect",
+        "x": 42,
+        "y": 86,
+        "w": 6,
+        "h": 5,
+        "fill": "#E0483E",
+        "radius": 2,
+        "outline": false
+      }
+    ]
+  }
+}
