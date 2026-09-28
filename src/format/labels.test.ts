@@ -1,7 +1,7 @@
 // The router keeps wires off part captions and frame labels (amendment A18.3), and like hole
 // avoidance this never blocks a wire: when no route clears the labels, one over them is drawn.
 import { describe, expect, it } from 'vitest'
-import { type Annotation, type Diagram, type PartInstance, computeRoutes, partObstacles, routeWire } from './diagram.ts'
+import { type Annotation, type Diagram, type PartInstance, computeRoutes, partObstacles, routeAvoid, routeWire } from './diagram.ts'
 import type { ModuleDef } from './module.ts'
 import type { Pt, Rect } from './geometry.ts'
 import { captionBox } from '../render/captionBox.ts'
@@ -81,7 +81,7 @@ describe('router label avoidance (A18.3)', () => {
     const textWall = ys(30, 4000).map((y) => ({ x: 170, y }))
     const d = sheet()
     const holes = { groups: [{ key: JSON.stringify(['X', 'strip']), at: holeWall }], legGroup: new Map<string, string>() }
-    const r = routeWire(d, d.connections[0], partObstacles(d), undefined, holes, { captions: new Map(), tabs: textWall })!
+    const r = routeWire(d, d.connections[0], partObstacles(d), undefined, routeAvoid(d, holes, { captions: new Map(), tabs: textWall }))!
     expect(r.blocked).toBe(false)
     const wall = (pts: { x: number; y: number }[]) => ({ x: 170, y: Math.min(...pts.map((p) => p.y)), w: 0, h: Math.max(...pts.map((p) => p.y)) - Math.min(...pts.map((p) => p.y)) })
     expect(crosses(r.points, wall(holeWall))).toBe(false)
@@ -95,21 +95,21 @@ describe('wires over holes they do not use (fallback flag)', () => {
   const noText = { captions: new Map<string, Pt[]>(), tabs: [] }
   it('is not set on a route that clears every hole', () => {
     const d = sheet()
-    const r = routeWire(d, d.connections[0], partObstacles(d), undefined, strip([{ x: 170, y: 20 }]), noText)!
+    const r = routeWire(d, d.connections[0], partObstacles(d), undefined, routeAvoid(d, strip([{ x: 170, y: 20 }]), noText))!
     expect(r.blocked).toBe(false)
     expect(r.fallback).toBeUndefined()
   })
   it('is set when no route clears the holes and the wire is routed over them', () => {
     const d = sheet()
-    const r = routeWire(d, d.connections[0], partObstacles(d), undefined, strip(ys(-4000, 4000).map((y) => ({ x: 170, y }))), noText)!
+    const r = routeWire(d, d.connections[0], partObstacles(d), undefined, routeAvoid(d, strip(ys(-4000, 4000).map((y) => ({ x: 170, y }))), noText))!
     expect(r.blocked).toBe(false)
     expect(r.fallback).toBe(true)
   })
   it('is set on a hand-drawn route across a hole of a strip the wire does not use, and not on one that misses it', () => {
     const d = sheet()
     const over = { ...d.connections[0], route: [[120, 20], [220, 20]] as [number, number][] }
-    expect(routeWire(d, over, partObstacles(d), undefined, strip([{ x: 170, y: 20 }]), noText)!.fallback).toBe(true)
+    expect(routeWire(d, over, partObstacles(d), undefined, routeAvoid(d, strip([{ x: 170, y: 20 }]), noText))!.fallback).toBe(true)
     const clear = { ...d.connections[0], route: [[120, 20], [120, 80], [220, 80], [220, 20]] as [number, number][] }
-    expect(routeWire(d, clear, partObstacles(d), undefined, strip([{ x: 170, y: 20 }]), noText)!.fallback).toBeUndefined()
+    expect(routeWire(d, clear, partObstacles(d), undefined, routeAvoid(d, strip([{ x: 170, y: 20 }]), noText))!.fallback).toBeUndefined()
   })
 })

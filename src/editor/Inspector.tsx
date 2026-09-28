@@ -1,9 +1,9 @@
 // Properties of whatever is selected. Text fields commit on Enter or when they lose focus,
 // so typing a name is one undo step, not one per keystroke.
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { type EditorStore, useEditorState } from './store.ts'
 import { clearWireRoute, deleteSelection, rotateParts, setWireEnds, updateAnnotation, updatePart, updatePartValue, updateWire, type WireStyle } from './ops.ts'
-import { ANNOTATION_LABEL_MAX, ANNOTATION_TEXT_MAX, type Diagram, type Endpoint, NAMED_COLORS, isValidColor, moduleOf, partObstacles, routeWire, wireColor, wireWidth } from '../format/diagram.ts'
+import { ANNOTATION_LABEL_MAX, ANNOTATION_TEXT_MAX, type Connection, type Diagram, type Endpoint, NAMED_COLORS, isValidColor, moduleOf, partObstacles, routeWire, wireColor, wireWidth } from '../format/diagram.ts'
 import { CABLE_PRESETS, END_KINDS, END_NAMES, END_SIZE, type EndKind, type WireEnds, endKind, normalizeEnds, presetEnds, presetOf, sharedCable, swapEnds } from '../format/cables.ts'
 import { CableEnd } from '../render/CableEnd.tsx'
 import { INK } from '../render/Part.tsx'
@@ -362,6 +362,15 @@ export function ProblemList({ store, findings }: { store: EditorStore; findings:
   )
 }
 
+/**
+ * A hand-shaped wire is never re-routed, so it can end up running through a part. Routed once per
+ * sheet or wire change, not on every render of the inspector.
+ */
+function HandShapedWarning({ diagram, wire }: { diagram: Diagram; wire: Connection }) {
+  const blocked = useMemo(() => routeWire(diagram, wire, partObstacles(diagram))?.blocked ?? false, [diagram, wire])
+  return blocked ? <p className="hint warn" role="status">This wire passes through a part.</p> : null
+}
+
 export function Inspector({ store }: { store: EditorStore }) {
   const { diagram, selection, wireStyle } = useEditorState(store)
   const findings = useProblems(store)
@@ -561,10 +570,7 @@ export function Inspector({ store }: { store: EditorStore }) {
       {wire.route && (
         <div className="field" role="group" aria-label="Shape">
           <p className="hint">Shaped by hand</p>
-          {/* A hand-shaped wire is never re-routed, so it can end up running through a part. */}
-          {routeWire(diagram, wire, partObstacles(diagram))?.blocked && (
-            <p className="hint warn" role="status">This wire passes through a part.</p>
-          )}
+          <HandShapedWarning diagram={diagram} wire={wire} />
           <button type="button" className="tool" onClick={() => store.commit(clearWireRoute(diagram, wire.uid))}>
             Reset to automatic
           </button>

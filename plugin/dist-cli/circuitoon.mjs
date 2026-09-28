@@ -534,6 +534,110 @@ function simplify(pts) {
 	}
 	return out;
 }
+//#endregion
+//#region src/format/router.ts
+/**
+* Points tagged with an owner key (a strip's holes, a part's caption), bucketed by row and sorted
+* by x within a row, so a query visits only the rows and the x range it asks for. Owners are kept
+* as small integers, so skipping a wire's own owners compares numbers, not strings. Points may be
+* added until the first query.
+*/
+var PointIndex = class {
+	px = [];
+	py = [];
+	po = [];
+	ys = [];
+	rows = [];
+	ids = /* @__PURE__ */ new Map();
+	dirty = false;
+	lastSkip = void 0;
+	lastIds = [];
+	add(x, y, owner) {
+		let id = this.ids.get(owner);
+		if (id === void 0) {
+			id = this.ids.size;
+			this.ids.set(owner, id);
+		}
+		this.px.push(x);
+		this.py.push(y);
+		this.po.push(id);
+		this.dirty = true;
+	}
+	/** The owner ids in `skip` that have points here (a wire asks with the same set many times). */
+	skipIds(skip) {
+		if (skip === this.lastSkip) return this.lastIds;
+		const out = [];
+		if (skip) for (const k of skip) {
+			const id = this.ids.get(k);
+			if (id !== void 0) out.push(id);
+		}
+		this.lastSkip = skip;
+		this.lastIds = out;
+		return out;
+	}
+	build() {
+		const { px, py, po } = this;
+		const byRow = /* @__PURE__ */ new Map();
+		for (let i = 0; i < px.length; i++) {
+			const list = byRow.get(py[i]);
+			if (list) list.push(i);
+			else byRow.set(py[i], [i]);
+		}
+		this.ys = [...byRow.keys()].sort((a, b) => a - b);
+		this.rows = this.ys.map((y) => {
+			const list = byRow.get(y);
+			if (list.some((i, k) => k > 0 && px[list[k - 1]] > px[i])) list.sort((a, b) => px[a] - px[b]);
+			return {
+				xs: list.map((i) => px[i]),
+				owners: list.map((i) => po[i])
+			};
+		});
+		this.dirty = false;
+	}
+	/**
+	* Calls `fn` with each point inside [x0, x1] x [y0, y1] whose owner is not in `skip`, until `fn`
+	* returns true; returns whether it did.
+	*/
+	some(x0, y0, x1, y1, skip, fn) {
+		if (this.dirty) this.build();
+		const ys = this.ys;
+		if (!ys.length) return false;
+		const sk = this.skipIds(skip);
+		const [s0, s1, s2, s3] = [
+			sk[0] ?? -1,
+			sk[1] ?? -1,
+			sk[2] ?? -1,
+			sk[3] ?? -1
+		];
+		const more = sk.length > 4 ? new Set(sk.slice(4)) : null;
+		let lo = 0;
+		let hi = ys.length;
+		while (lo < hi) {
+			const mid = lo + hi >> 1;
+			if (ys[mid] < y0) lo = mid + 1;
+			else hi = mid;
+		}
+		for (let r = lo; r < ys.length && ys[r] <= y1; r++) {
+			const { xs, owners } = this.rows[r];
+			let a = 0;
+			let b = xs.length;
+			while (a < b) {
+				const mid = a + b >> 1;
+				if (xs[mid] < x0) a = mid + 1;
+				else b = mid;
+			}
+			const y = ys[r];
+			for (let i = a; i < xs.length && xs[i] <= x1; i++) {
+				const o = owners[i];
+				if (o === s0 || o === s1 || o === s2 || o === s3 || more !== null && more.has(o)) continue;
+				if (fn(xs[i], y)) return true;
+			}
+		}
+		return false;
+	}
+};
+/** Marks in the search's node map: 1 is a part body; SOFT and above are avoided points. */
+var SOFT = 2;
 var H_BIT = 1;
 var V_BIT = 2;
 /**
@@ -719,6 +823,8 @@ function addToOccupancy(occ, polyline) {
 var MAX_CELLS = 25e4;
 /** Search windows around the endpoints, in px, tried in order (the default `margins`). */
 var MARGINS = [60, 240];
+/** The widest default search window reaches this far, in px, past the box around both ends. */
+var SEARCH_MARGIN = Math.max(...MARGINS);
 /** About how far apart, in px, a wire's ends may be for the router to search between them. */
 var ROUTE_REACH = Math.floor(Math.sqrt(MAX_CELLS)) * 10;
 /** Whether the smallest search window between `a` and `b` fits the router's grid, so a route can exist at all. */
@@ -923,7 +1029,7 @@ function search(start, goal, req, g, clearance, bendCost, parallelCost, margin) 
 	const cellOf = (p) => (p.y - y0) / g * cols + (p.x - x0) / g;
 	const startCell = cellOf(start);
 	const goalCell = cellOf(goal);
-	if (req.avoid?.length) {
+	if (req.avoid?.length || req.avoidIn?.length) {
 		const inWindow = (p) => p.x >= x0 && p.x <= x1 && p.y >= y0 && p.y <= y1;
 		const exempt = /* @__PURE__ */ new Set([startCell, goalCell]);
 		for (const [p, d] of [[start, req.fromDir], [goal, req.toDir]]) {
@@ -933,18 +1039,28 @@ function search(start, goal, req, g, clearance, bendCost, parallelCost, margin) 
 			};
 			if (n && inWindow(n)) exempt.add(cellOf(n));
 		}
-		const soft = [];
-		for (const p of req.avoid) {
-			const n = {
-				x: Math.round(p.x / g) * g,
-				y: Math.round(p.y / g) * g
-			};
-			if (Math.abs(n.x - p.x) > clearance || Math.abs(n.y - p.y) > clearance || n.x < x0 || n.x > x1 || n.y < y0 || n.y > y1) continue;
-			const cell = cellOf(n);
-			if (!blocked[cell] && !exempt.has(cell)) soft.push(cell);
+		const [e0, e1, e2, e3] = [
+			...exempt,
+			-1,
+			-1,
+			-1
+		];
+		let mark = SOFT;
+		const consider = (px, py) => {
+			const nx = Math.round(px / g) * g;
+			const ny = Math.round(py / g) * g;
+			if (Math.abs(nx - px) > clearance || Math.abs(ny - py) > clearance || nx < x0 || nx > x1 || ny < y0 || ny > y1) return false;
+			const cell = (ny - y0) / g * cols + (nx - x0) / g;
+			if (!blocked[cell] && cell !== e0 && cell !== e1 && cell !== e2 && cell !== e3) blocked[cell] = mark;
+			return false;
+		};
+		for (const p of req.avoid ?? []) consider(p.x, p.y);
+		for (const [i, { index, skip }] of (req.avoidIn ?? []).entries()) {
+			mark = Math.min(255, 3 + i);
+			index.some(x0 - g, y0 - g, x1 + g, y1 + g, skip, consider);
 		}
-		for (const cell of soft) blocked[cell] = 1;
 	}
+	const sinks = (req.avoidIn ?? []).map((e) => e.refused);
 	if (blocked[startCell] || blocked[goalCell]) return null;
 	if (startCell === goalCell) return [start];
 	let parallel = null;
@@ -994,7 +1110,14 @@ function search(start, goal, req, g, clearance, bendCost, parallelCost, margin) 
 			const nr = row + STEP_Y[nd];
 			if (nc < 0 || nr < 0 || nc >= cols || nr >= rows) continue;
 			const ncell = nr * cols + nc;
-			if (blocked[ncell]) continue;
+			const bl = blocked[ncell];
+			if (bl) {
+				if (bl > SOFT) {
+					const sink = sinks[bl - SOFT - 1];
+					if (sink) sink.hit = true;
+				}
+				continue;
+			}
 			let c = here + g + (nd !== d ? bendCost : 0);
 			if (ncell === goalCell) {
 				if (endDir >= 0 && nd !== endDir && req.toLead) continue;
@@ -1984,16 +2107,15 @@ function boardHoles(d) {
 		legGroup
 	};
 }
-/** Every board hole wire `c` must not run over: all but those of the groups its ends are in. */
-function foreignHoles(c, holes) {
-	if (!holes.groups.length) return [];
+/** The hole groups wire `c` may run over: those its ends are in (a hole end, or a plugged leg's). */
+function ownGroups(c, legGroup) {
 	const own = /* @__PURE__ */ new Set();
 	for (const e of [c.from, c.to]) {
 		own.add(holeGroupKey(e.part, e.pin));
-		const leg = holes.legGroup.get(legKey(e.part, e.pin));
+		const leg = legGroup.get(legKey(e.part, e.pin));
 		if (leg) own.add(leg);
 	}
-	return holes.groups.flatMap((g) => own.has(g.key) ? [] : g.at);
+	return own;
 }
 var LABEL_PAD = 3;
 function gridNodesIn(r) {
@@ -2015,31 +2137,44 @@ function labelPoints(d) {
 		tabs: (d.annotations ?? []).flatMap((a) => a.type === "frame" ? a.label ? gridNodesIn(frameTab(a)) : [] : gridNodesIn(annotationRect(a)))
 	};
 }
-/** The label nodes wire `c` keeps off: every frame tab and every caption but its own parts'. */
-function labelsFor(c, labels) {
-	const out = [...labels.tabs];
-	for (const [uid, pts] of labels.captions) if (uid !== c.from.part && uid !== c.to.part) out.push(...pts);
-	return out;
+function routeAvoid(d, holes = boardHoles(d), labels = labelPoints(d)) {
+	const hi = new PointIndex();
+	for (const g of holes.groups) for (const p of g.at) hi.add(p.x, p.y, g.key);
+	const ti = new PointIndex();
+	for (const p of labels.tabs) ti.add(p.x, p.y, "");
+	for (const [uid, pts] of labels.captions) for (const p of pts) ti.add(p.x, p.y, uid);
+	return {
+		holes: hi,
+		legGroup: holes.legGroup,
+		text: ti
+	};
 }
-/** True when a straight run from `a` to `b` passes within 3 px of any of `pts`. */
-function runsOver(a, b, pts) {
-	const [x0, x1] = [Math.min(a.x, b.x), Math.max(a.x, b.x)];
-	const [y0, y1] = [Math.min(a.y, b.y), Math.max(a.y, b.y)];
-	return pts.some((p) => p.x >= x0 - 3 && p.x <= x1 + 3 && p.y >= y0 - 3 && p.y <= y1 + 3);
+/** True when a straight run from `a` to `b` passes within 3 px of a point of `index` not skipped. */
+function runsOver(a, b, index, skip) {
+	return index.some(Math.min(a.x, b.x) - 3, Math.min(a.y, b.y) - 3, Math.max(a.x, b.x) + 3, Math.max(a.y, b.y) + 3, skip, () => true);
 }
-/** True when any run of the polyline `pts` passes over one of `holes`. */
-function pathRunsOver(pts, holes) {
-	return holes.length > 0 && pts.slice(1).some((p, i) => runsOver(pts[i], p, holes));
+/** True when any run of the polyline `pts` passes over a point of `index` not skipped. */
+function pathRunsOver(pts, index, skip) {
+	return pts.slice(1).some((p, i) => runsOver(pts[i], p, index, skip));
 }
-function routeWire(d, c, obstacles, occupied, holes = boardHoles(d), labels = labelPoints(d)) {
+function routeWire(d, c, obstacles, occupied, avoid = routeAvoid(d)) {
 	const a = resolveEndpoint(d, c.from);
 	const b = resolveEndpoint(d, c.to);
 	if (!a || !b) return null;
-	const foreign = foreignHoles(c, holes);
-	const text = labelsFor(c, labels);
+	const ownHoles = ownGroups(c, avoid.legGroup);
+	const ownText = /* @__PURE__ */ new Set([c.from.part, c.to.part]);
 	const own = obstaclesFor(obstacles, a, b);
 	const { leads: [fromLead, toLead], facing } = leadsOf(c, a, b);
-	if (facing && !c.route && !manualRouteBlocked([a.end, b.end], own) && !runsOver(a.end, b.end, foreign) && !runsOver(a.end, b.end, text)) return {
+	const reach = SEARCH_MARGIN + Math.max(fromLead, toLead) + 20;
+	const [wx0, wy0, wx1, wy1] = [
+		Math.min(a.end.x, b.end.x) - reach,
+		Math.min(a.end.y, b.end.y) - reach,
+		Math.max(a.end.x, b.end.x) + reach,
+		Math.max(a.end.y, b.end.y) + reach
+	];
+	const anyHoles = avoid.holes.some(wx0, wy0, wx1, wy1, ownHoles, () => true);
+	const anyText = avoid.text.some(wx0, wy0, wx1, wy1, ownText, () => true);
+	if (facing && !c.route && !manualRouteBlocked([a.end, b.end], own) && !runsOver(a.end, b.end, avoid.holes, ownHoles) && !runsOver(a.end, b.end, avoid.text, ownText)) return {
 		points: [a.end, b.end],
 		blocked: false
 	};
@@ -2049,7 +2184,7 @@ function routeWire(d, c, obstacles, occupied, holes = boardHoles(d), labels = la
 		return {
 			points,
 			blocked: manualRouteBlocked(points, own),
-			...pathRunsOver(points, foreign) ? { fallback: true } : {}
+			...anyHoles && pathRunsOver(points, avoid.holes, ownHoles) ? { fallback: true } : {}
 		};
 	}
 	const attached = (pts) => !manualRouteBlocked(pts.slice(0, 3), own) && !manualRouteBlocked(pts.slice(-3), own);
@@ -2058,14 +2193,14 @@ function routeWire(d, c, obstacles, occupied, holes = boardHoles(d), labels = la
 		[fromLead, 0],
 		[0, toLead]
 	];
-	const attempt = (avoid) => {
+	const attempt = (avoidIn) => {
 		const req = {
 			from: a.end,
 			fromDir: a.dir,
 			to: b.end,
 			toDir: b.dir,
 			obstacles: own,
-			avoid,
+			avoidIn,
 			occupied
 		};
 		for (const [i, [f, t]] of tries.entries()) {
@@ -2079,16 +2214,31 @@ function routeWire(d, c, obstacles, occupied, holes = boardHoles(d), labels = la
 		}
 		return routeOrthogonal(req);
 	};
-	const clear = (text.length ? attempt([...foreign, ...text]) : null) ?? attempt(foreign);
+	const holesHit = { hit: false };
+	const textHit = { hit: false };
+	const holesIn = {
+		index: avoid.holes,
+		skip: ownHoles,
+		refused: holesHit
+	};
+	let clear = anyText ? attempt([holesIn, {
+		index: avoid.text,
+		skip: ownText,
+		refused: textHit
+	}]) : null;
+	if (!clear && (!anyText || textHit.hit)) {
+		holesHit.hit = false;
+		clear = attempt([holesIn]);
+	}
 	if (clear) return {
 		points: clear,
 		blocked: false
 	};
-	const over = foreign.length ? attempt([]) : null;
+	const over = anyHoles && holesHit.hit ? attempt([]) : null;
 	if (over) return {
 		points: over,
 		blocked: false,
-		...pathRunsOver(over, foreign) ? { fallback: true } : {}
+		...pathRunsOver(over, avoid.holes, ownHoles) ? { fallback: true } : {}
 	};
 	return {
 		points: blockedPoints(a, b),
@@ -2107,8 +2257,7 @@ function routeWire(d, c, obstacles, occupied, holes = boardHoles(d), labels = la
 */
 function computeRoutes(d, opts = {}) {
 	const obstacles = partObstacles(d);
-	const holes = boardHoles(d);
-	const labels = labelPoints(d);
+	const avoid = routeAvoid(d);
 	const out = /* @__PURE__ */ new Map();
 	const occupied = opts.occupancy === false ? void 0 : new Occupancy();
 	for (const c of d.connections) if (opts.only && !opts.only.has(c.uid) && opts.prev?.has(c.uid)) {
@@ -2118,7 +2267,7 @@ function computeRoutes(d, opts = {}) {
 	}
 	for (const c of d.connections) {
 		if (out.has(c.uid)) continue;
-		const route = routeWire(d, c, obstacles, occupied, holes, labels);
+		const route = routeWire(d, c, obstacles, occupied, avoid);
 		out.set(c.uid, route);
 		if (route && occupied) addToOccupancy(occupied, route.points);
 	}
