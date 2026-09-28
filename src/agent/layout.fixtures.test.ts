@@ -39,6 +39,12 @@ describe('layout fixtures', () => {
     expect(serializeDiagram(a.value.diagram)).toBe(serializeDiagram(b.value.diagram))
   }, 60_000)
 
+  it('typewriter-like: copies beside their expanders at least halve the crossings (amendment A15, baseline 6698)', () => {
+    const r = layoutNetlist(typewriter())
+    if (!r.ok) throw new Error(r.errors.join('\n'))
+    expect(r.value.report.wireCrossings).toBeLessThanOrEqual(3349)
+  }, 60_000)
+
   // Amendment A4: the full fixture's gate plus link round trip. Gate (Task 16) and link (Task 13)
   // do not exist yet; the layout and verify half is covered above.
   it.todo('typewriter-like: gate passes and its link decodes back to the same sheet (Tasks 13 and 16)')

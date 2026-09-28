@@ -47,6 +47,8 @@ interface Unit {
   refs: string[]
   anchor: boolean
   fixed: boolean
+  /** A part this unit is settled beside (a repeat block beside the part its bindings target). */
+  near?: string
 }
 
 /** Ring r around (0, 0), in a fixed order: top edge left to right, right edge down, bottom edge right to left, left edge up. */
@@ -184,20 +186,34 @@ export function placeParts(intent: Intent, opts: PlaceOptions): PlaceResult {
     return box ?? { x: 0, y: 0, w: 0, h: 0 }
   }
 
-  // Repeat copies: one row each, tiled in a near-square grid of equal cells. Kept members stay
-  // where they are; the block tiles the rest.
+  // Repeat copies: one row each, tiled in a near-square grid of equal cells. Copies bound to one
+  // part (an expander's channels) form a block of their own, in channel order, that settles beside
+  // that part (amendment A15), so each copy's wires stay short; copies with no binding form one
+  // block. Kept members stay where they are; each block tiles the rest.
   const repeats = [...new Set(intent.copies.map((c) => c.repeat))]
   if (repeats.length > 1) return { ok: false, errors: [`Placement handles one repeat block, but the intent has ${repeats.length} (${repeats.join(', ')}).`] }
-  const copies = intent.copies.map((c) => free(c.refs)).filter((list) => list.length)
-  if (copies.length) {
-    const cells = copies.map((list) => ({ refs: list, box: row(list, Infinity) }))
+  const targetOf = (c: (typeof intent.copies)[number]) => {
+    const ends = Object.keys(c.bindings).sort(naturalCompare).map((port) => c.bindings[port])
+    return { ref: ends.length ? ends[0].split('.')[0] : '', channel: ends.join(' ') }
+  }
+  const blocks = new Map<string, { channel: string; refs: string[] }[]>()
+  for (const c of intent.copies) {
+    const list = free(c.refs)
+    if (!list.length) continue
+    const t = targetOf(c)
+    blocks.set(t.ref, [...(blocks.get(t.ref) ?? []), { channel: t.channel, refs: list }])
+  }
+  for (const [target, members] of [...blocks].sort((a, b) => naturalCompare(a[0], b[0]))) {
+    members.sort((a, b) => naturalCompare(a.channel, b.channel))
+    const cells = members.map((m) => ({ refs: m.refs, box: row(m.refs, Infinity) }))
     const pad = opts.spacing + 2 * FRAME_PAD
     const cw = Math.max(...cells.map((c) => c.box.w)) + pad
     const ch = Math.max(...cells.map((c) => c.box.h)) + pad + 10
     const cols = Math.ceil(Math.sqrt(cells.length))
     cells.forEach((c, i) => move(c.refs, snap((i % cols) * cw - c.box.x), snap(Math.floor(i / cols) * ch - c.box.y)))
     const all = cells.flatMap((c) => c.refs)
-    units.push({ key: intent.copies[0].repeat, refs: all, anchor: false, fixed: false })
+    const repeat = intent.copies[0].repeat
+    units.push({ key: target ? `${repeat} ${target}` : repeat, refs: all, anchor: false, fixed: false, ...(inst.has(target) ? { near: target } : {}) })
     for (const r of all) grouped.add(r)
   }
   for (const g of intent.groups) {
@@ -224,7 +240,9 @@ export function placeParts(intent: Intent, opts: PlaceOptions): PlaceResult {
   const placedNets = new Map<number, Pt[]>()
   const boxOf = (u: Unit) => u.refs.map(fp).reduce(union)
   const netsOfUnit = (u: Unit) => new Set(u.refs.flatMap((r) => [...(netsOf.get(r) ?? [])]))
+  const placedRefs = new Set<string>()
   const put = (u: Unit) => {
+    for (const r of u.refs) placedRefs.add(r)
     const b = boxOf(u)
     taken.add(b)
     const c = { x: b.x + b.w / 2, y: b.y + b.h / 2 }
@@ -238,7 +256,13 @@ export function placeParts(intent: Intent, opts: PlaceOptions): PlaceResult {
   }
   for (const u of units) if (u.fixed) put(u)
   for (const u of units.filter((x) => !x.fixed && x.anchor).sort((a, b) => naturalCompare(a.key, b.key))) settle(u, { x: 0, y: 0 })
-  let rest = units.filter((x) => !x.fixed && !x.anchor)
+  // Repeat blocks bound to a part next, so each takes the room beside its target before anything
+  // else claims it (amendment A15).
+  for (const u of units.filter((x) => !x.fixed && !x.anchor && x.near && placedRefs.has(x.near))) {
+    const near = tight(u.near!)
+    settle(u, { x: near.x + near.w / 2, y: near.y + near.h / 2 })
+  }
+  let rest = units.filter((x) => !x.fixed && !x.anchor && !placedRefs.has(x.refs[0]))
   while (rest.length) {
     let best = rest[0]
     let bestWeight = -1

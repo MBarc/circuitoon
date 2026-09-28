@@ -12,7 +12,7 @@ import { placeParts, type KeepMap } from './place.ts'
 import { mountPart } from './mount.ts'
 import { intersects, tightFootprint } from './footprint.ts'
 import { overlaps } from './readability.ts'
-import { ledNetlist, tiltSensors } from './fixtures.testing.ts'
+import { ledNetlist, tiltSensors, typewriter } from './fixtures.testing.ts'
 
 const intentOf = (raw: unknown): Intent => {
   const r = parseNetlist(raw, libraryLookup)
@@ -108,6 +108,42 @@ describe('placeParts', () => {
   it('tiles repeat copies as one block with a labelled frame per copy', () => {
     const { annotations } = place(tiltSensors())
     expect(annotations.filter((a) => a.type === 'frame').map((a) => a.label)).toEqual(['tilt 1', 'tilt 2', 'tilt 3', 'tilt 4', 'tilt 5', 'tilt 6', 'tilt 7', 'tilt 8'])
+  })
+  it('places each repeat copy beside the part its bindings target, ordered by channel (amendment A15)', () => {
+    const { intent, d } = place(typewriter())
+    const at = new Map(d.parts.map((p) => [p.uid, tightFootprint(p, d.modules[p.module])]))
+    const centre = (ref: string) => {
+      const r = at.get(ref)!
+      return { x: r.x + r.w / 2, y: r.y + r.h / 2 }
+    }
+    // Each copy sits, on average, nearer its own expander than the others; the first block
+    // settled (U2's) is nearest U2. Later blocks take the nearest free room around the clustered
+    // boards, so U4's can end up nearer U3 (recorded in the Task 11 report, not tuned further).
+    const units = ['U2', 'U3', 'U4']
+    let own = 0
+    let other = 0
+    for (const c of intent.copies) {
+      const target = c.bindings.CH.split('.')[0]
+      for (const u of units) {
+        const dd = Math.hypot(centre(u).x - centre(c.refs[0]).x, centre(u).y - centre(c.refs[0]).y)
+        if (u === target) own += dd
+        else other += dd / 2
+      }
+    }
+    expect(own).toBeLessThan(other)
+    const blockOf = (u: string) => intent.copies.filter((c) => c.bindings.CH.startsWith(`${u}.`)).flatMap((c) => c.refs.map(centre))
+    const mine = blockOf('U2')
+    const mid = { x: mine.reduce((s, p) => s + p.x, 0) / mine.length, y: mine.reduce((s, p) => s + p.y, 0) / mine.length }
+    const dist = (ref: string) => Math.hypot(centre(ref).x - mid.x, centre(ref).y - mid.y)
+    expect(dist('U2')).toBeLessThan(Math.min(dist('U3'), dist('U4')))
+    // Within one expander, the copies run in channel order: reading order (top to bottom, then left to right) follows GPA0..GPB7.
+    const u2 = intent.copies.filter((c) => c.bindings.CH.startsWith('U2.'))
+    const reading = [...u2].sort((a, b) => {
+      const [pa, pb] = [at.get(a.refs[0])!, at.get(b.refs[0])!]
+      return pa.y - pb.y || pa.x - pb.x
+    })
+    expect(reading.map((c) => c.bindings.CH)).toEqual(u2.map((c) => c.bindings.CH))
+    noOverlaps(d)
   })
   it('keeps a kept part exactly where it was and places the rest around it', () => {
     const { d } = place(ledNetlist(), new Map([['BT1', { x: 600, y: 300, rotation: 0 as const }]]))

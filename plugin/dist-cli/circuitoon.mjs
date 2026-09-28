@@ -32495,11 +32495,28 @@ function placeParts(intent, opts) {
 		ok: false,
 		errors: [`Placement handles one repeat block, but the intent has ${repeats.length} (${repeats.join(", ")}).`]
 	};
-	const copies = intent.copies.map((c) => free(c.refs)).filter((list) => list.length);
-	if (copies.length) {
-		const cells = copies.map((list) => ({
-			refs: list,
-			box: row(list, Infinity)
+	const targetOf = (c) => {
+		const ends = Object.keys(c.bindings).sort(naturalCompare).map((port) => c.bindings[port]);
+		return {
+			ref: ends.length ? ends[0].split(".")[0] : "",
+			channel: ends.join(" ")
+		};
+	};
+	const blocks = /* @__PURE__ */ new Map();
+	for (const c of intent.copies) {
+		const list = free(c.refs);
+		if (!list.length) continue;
+		const t = targetOf(c);
+		blocks.set(t.ref, [...blocks.get(t.ref) ?? [], {
+			channel: t.channel,
+			refs: list
+		}]);
+	}
+	for (const [target, members] of [...blocks].sort((a, b) => naturalCompare(a[0], b[0]))) {
+		members.sort((a, b) => naturalCompare(a.channel, b.channel));
+		const cells = members.map((m) => ({
+			refs: m.refs,
+			box: row(m.refs, Infinity)
 		}));
 		const pad = opts.spacing + 24;
 		const cw = Math.max(...cells.map((c) => c.box.w)) + pad;
@@ -32507,11 +32524,13 @@ function placeParts(intent, opts) {
 		const cols = Math.ceil(Math.sqrt(cells.length));
 		cells.forEach((c, i) => move(c.refs, snap(i % cols * cw - c.box.x), snap(Math.floor(i / cols) * ch - c.box.y)));
 		const all = cells.flatMap((c) => c.refs);
+		const repeat = intent.copies[0].repeat;
 		units.push({
-			key: intent.copies[0].repeat,
+			key: target ? `${repeat} ${target}` : repeat,
 			refs: all,
 			anchor: false,
-			fixed: false
+			fixed: false,
+			...inst.has(target) ? { near: target } : {}
 		});
 		for (const r of all) grouped.add(r);
 	}
@@ -32548,7 +32567,9 @@ function placeParts(intent, opts) {
 	const placedNets = /* @__PURE__ */ new Map();
 	const boxOf = (u) => u.refs.map(fp).reduce(union);
 	const netsOfUnit = (u) => new Set(u.refs.flatMap((r) => [...netsOf.get(r) ?? []]));
+	const placedRefs = /* @__PURE__ */ new Set();
 	const put = (u) => {
+		for (const r of u.refs) placedRefs.add(r);
 		const b = boxOf(u);
 		taken.add(b);
 		const c = {
@@ -32571,7 +32592,14 @@ function placeParts(intent, opts) {
 		x: 0,
 		y: 0
 	});
-	let rest = units.filter((x) => !x.fixed && !x.anchor);
+	for (const u of units.filter((x) => !x.fixed && !x.anchor && x.near && placedRefs.has(x.near))) {
+		const near = tight(u.near);
+		settle(u, {
+			x: near.x + near.w / 2,
+			y: near.y + near.h / 2
+		});
+	}
+	let rest = units.filter((x) => !x.fixed && !x.anchor && !placedRefs.has(x.refs[0]));
 	while (rest.length) {
 		let best = rest[0];
 		let bestWeight = -1;
