@@ -331,6 +331,11 @@ describe('notes and wires', () => {
       const box = { x: r0.x - 3, y: r0.y - 3, w: r0.w + 6, h: r0.h + 6 }
       for (const [uid, r] of computeRoutes(d)) expect(crosses(r!.points, box), uid).toBe(false)
     })
+  it('keeps the note text exactly as the netlist gives it (wrapped only when drawn)', () => {
+    const text = 'The ESP32 runs from USB; its 3V3 pin powers the sensor. I2C on IO22 (SCL) and IO21 (SDA).\nSecond line as typed.'
+    const d = laid(bme('Sensor', text))
+    expect(d.annotations!.find((a) => a.type === 'text')!.text).toBe(text)
+  })
   for (const text of ['I2C sensor.', 'The sensor reads temperature, humidity and pressure.'])
     it(`keeps a note (${text.length} characters) off the side its target part points its pins to`, () => {
       const d = laid(bme('U2', text))

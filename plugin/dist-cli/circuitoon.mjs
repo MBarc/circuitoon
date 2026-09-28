@@ -1808,7 +1808,8 @@ function captionBox(part, m, text = partCaption(part, m)) {
 }
 var NOTE_CHAR = 5.9;
 var TAB_CHAR = 5.6;
-var noteLines = (text) => text.split("\n");
+/** A note's drawn lines: each typed line as typed, a line longer than NOTE_WRAP word-wrapped. */
+var noteLines = (text) => text.split("\n").flatMap((line) => line.length > 48 ? wrapNote(line).split("\n") : [line]);
 /** A frame's label tab, straddling its top edge 10 px from the left. */
 function frameTab(a) {
 	return {
@@ -45955,7 +45956,7 @@ function placeParts(intent, opts) {
 			type: "text",
 			x: 0,
 			y: 0,
-			text: wrapNote(n.text)
+			text: n.text
 		};
 		const box = annotationRect(probe);
 		const dirs = (intent.groups.find((g) => g.name === n.near)?.refs ?? [n.near]).flatMap((r) => worldPins(inst.get(r), modOf(r)).map((p) => p.dir));

@@ -10,7 +10,7 @@ import { load } from '../format/builtinModules.testing.ts'
 import { buttonLed } from '../samples/buttonLed.ts'
 import { contentBounds, focusBounds, renderSheetSvg } from './exportSvg.tsx'
 import { CAPTION_SIZE, captionAnchor, captionBox } from './captionBox.ts'
-import { annotationRect, wrapNote } from './annotationGeometry.ts'
+import { annotationRect, noteLines, wrapNote } from './annotationGeometry.ts'
 import { INK, Part, darkBody } from './Part.tsx'
 import { DARK_THEME, LIGHT_THEME, SITE_THEME } from './theme.ts'
 
@@ -68,6 +68,15 @@ describe('shared geometry', () => {
     const r = annotationRect({ uid: 'a', type: 'frame', x: 0, y: 20, w: 100, h: 50, label: 'Power' })
     expect(r.y).toBe(12)
     expect(wrapNote('word '.repeat(20).trim()).split('\n').every((l) => l.length <= 48)).toBe(true)
+  })
+  it('wraps a note only when drawing it: long lines break at 48 characters, typed line breaks and short lines stay as typed', () => {
+    const long = 'word '.repeat(20).trim()
+    expect(noteLines(long).length).toBeGreaterThan(1)
+    expect(noteLines(long).every((l) => l.length <= 48)).toBe(true)
+    expect(noteLines('first  line\n\nthird')).toEqual(['first  line', '', 'third'])
+    const r = annotationRect({ uid: 'n', type: 'text', x: 0, y: 0, text: long })
+    expect(r.w).toBeLessThan(48 * 6 + 20)
+    expect(r.h).toBeGreaterThan(2 * 13)
   })
 })
 

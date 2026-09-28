@@ -12,7 +12,7 @@ import { DIAGRAM_FORMAT, type Annotation, type Diagram, type PartInstance } from
 import { mountIssues } from '../format/breadboard.ts'
 import { type Pt, type Rect, type Rotation, worldPins } from '../format/geometry.ts'
 import { isBoard } from '../format/module.ts'
-import { annotationRect, wrapNote } from '../render/annotationGeometry.ts'
+import { annotationRect } from '../render/annotationGeometry.ts'
 import { type Intent, terminalKey } from './netlist.ts'
 import type { ModuleDef } from '../format/module.ts'
 import { type LocalDistribution, netKind } from './realize.ts'
@@ -425,7 +425,7 @@ export function placeParts(intent: Intent, opts: PlaceOptions): PlaceResult {
   for (const n of intent.notes) {
     const frame = frames.get(n.near)
     const target = frame ? annotationRect(frame) : tight(n.near)
-    const probe: Annotation = { uid: `a${annotations.length + 1}`, type: 'text', x: 0, y: 0, text: wrapNote(n.text) }
+    const probe: Annotation = { uid: `a${annotations.length + 1}`, type: 'text', x: 0, y: 0, text: n.text }
     const box = annotationRect(probe)
     // Below the target, unless its pins point that way (their wires leave there and would run under
     // the note); then right, above, left. With pins on every side, below.
