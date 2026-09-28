@@ -3,7 +3,7 @@
 // terminal starts in its identity's colour (the user can change it). Reads the cached analysis. Pure.
 import type { Diagram, Endpoint } from './diagram.ts'
 import { nodeKey } from './netlist.ts'
-import { analyseMainsCached } from './mains.ts'
+import { type MainsAnalysis, analyseMainsCached } from './mains.ts'
 import type { Conductor, Region } from './mainsModel.ts'
 
 export const IDENTITY_COLORS: Record<'us' | 'iec', Record<Conductor, string>> = {
@@ -14,9 +14,22 @@ export const IDENTITY_COLORS: Record<'us' | 'iec', Record<Conductor, string>> = 
 /** US and Japan wire L black, N white, PE green; Europe, the UK and AU/NZ use the IEC colours. */
 export const schemeOf = (region: Region | null): 'us' | 'iec' => (region === 'us' || region === 'jp' ? 'us' : 'iec')
 
-/** The colour of the one conductor at a terminal, or null (off mains, or several conductors). */
+/**
+ * The cached analysis for the renderer, or null when it fails (final review 3): the canvas draws on
+ * every edit, so a checker bug must cost the mains look, never the editor. The error is logged.
+ */
+function analysisForLook(d: Diagram): MainsAnalysis | null {
+  try {
+    return analyseMainsCached(d)
+  } catch (e) {
+    console.error('Circuitoon: the mains analysis failed, so mains wires are drawn without their look.', e)
+    return null
+  }
+}
+
+/** The colour of the one conductor at a terminal, or null (off mains, several conductors, or the analysis failed). */
 export function identityColor(d: Diagram, ep: Endpoint): string | null {
-  const c = analyseMainsCached(d)?.conductorOf(nodeKey(ep.part, ep.pin))
+  const c = analysisForLook(d)?.conductorOf(nodeKey(ep.part, ep.pin))
   return c ? IDENTITY_COLORS[schemeOf(c.region)][c.conductor] : null
 }
 
@@ -27,10 +40,10 @@ export interface WireLook {
   hazard: boolean
 }
 
-/** Per wire uid, its mains look; wires off mains are left out. */
+/** Per wire uid, its mains look; wires off mains are left out (every wire, when the analysis failed). */
 export function wireLooks(d: Diagram): Map<string, WireLook> {
   const out = new Map<string, WireLook>()
-  const a = analyseMainsCached(d)
+  const a = analysisForLook(d)
   if (!a) return out
   for (const c of d.connections) {
     const k = nodeKey(c.from.part, c.from.pin)
