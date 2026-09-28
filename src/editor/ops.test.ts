@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { addPart, addWire, nextUid, clearWireRoute, deleteSelection, sameEndpoint, setWireRoute, designatorPrefix, moveParts, nextDesignator, reconnectWire, rotateParts, setWireEnds, settleDrop, settleMounts, settleSeats, updatePart, updatePartValue, updateWire, withMounted, settlingOf } from './ops.ts'
+import { addPart, addWire, nextUid, clearWireRoute, deleteSelection, sameEndpoint, setWireRoute, designatorPrefix, moveParts, nextDesignator, reconnectWire, rotateParts, setWireEnds, settleDrop, settleMounts, settleSeats, updatePart, updatePartValue, updatePartSetting, clearPartValue, updateWire, withMounted, settlingOf } from './ops.ts'
 import { COORD_LIMIT, emptyDiagram, serializeDiagram, validateDiagram, type Diagram } from '../format/diagram.ts'
 import type { ModuleDef } from '../format/module.ts'
 import { parseValue } from '../format/values.ts'
 import { mountIssues, plugsOf, seatOf } from '../format/breadboard.ts'
+import { at, sheet } from '../format/mains.testing.ts'
 
 const resistor: ModuleDef = {
   format: 'circuitoon-module/1', id: 'resistor', name: 'Resistor',
@@ -95,6 +96,30 @@ describe('ops', () => {
     expect(designatorPrefix(mk('servo-sg90'))).toBe('M')
     for (const id of ['l298n-module', 'rfm95-lora-breakout', 'level-shifter-bss138-4ch', 'arduino-nano', 'wemos-d1-mini'])
       expect(designatorPrefix(mk(id))).toBe('U')
+  })
+  it('gives each mains family its prefix without taking ids from any other family', () => {
+    const mk = (id: string): ModuleDef => ({ format: 'circuitoon-module/1', id, name: id, pins: [{ name: 'GND', side: 'left' }] })
+    const want: Record<string, string> = {
+      'outlet-us-5-15r-duplex': 'XS', 'outlet-uk-bs1363': 'XS', 'plug-us-5-15p': 'XP', 'plug-uk-bs1363-2lead': 'XP',
+      'charger-usb-5v-us': 'PS', 'adapter-barrel-eu': 'PS', 'hlk-pm01': 'PS', 'hlk-pm03': 'PS', 'irm-03-5': 'PS',
+      'lamp-holder-e26': 'E', 'lamp-holder-e27': 'E', 'fuse-holder-5x20-inline': 'F',
+      'rocker-switch-kcd1': 'S', 'relay-module-1ch-5v': 'K', 'ssr-fotek-25da': 'K',
+      'terminal-block-mstb-508-2': 'X', 'terminal-block-kf301-500-3': 'X', 'wago-221-415': 'X',
+      // Unchanged neighbours that a careless rule could catch.
+      'esp32-terminal-board-38': 'U', 'usb-panel-mount-usbc': 'J', 'push-button': 'S', 'power-rail-strip': 'BB', 'led': 'D', 'lcd-st7796s-4in-spi-touch': 'DS',
+    }
+    for (const [id, prefix] of Object.entries(want)) expect([id, designatorPrefix(mk(id))]).toEqual([id, prefix])
+  })
+  it('numbers each prefix on its own, so XS, XP and X never share or skip numbers', () => {
+    const mk = (id: string): ModuleDef => ({ format: 'circuitoon-module/1', id, name: id, pins: [{ name: 'GND', side: 'left' }] })
+    let d = emptyDiagram()
+    const names: string[] = []
+    for (const id of ['wago-221-412', 'outlet-us-5-15r-duplex', 'plug-us-5-15p', 'wago-221-413', 'outlet-uk-bs1363']) {
+      const next = addPart(d, mk(id), 0, 0)
+      d = next.diagram
+      names.push(d.parts.find((p) => p.uid === next.uid)!.designator)
+    }
+    expect(names).toEqual(['X1', 'XS1', 'XP1', 'X2', 'XS2'])
   })
   it('moves and rotates only the given parts', () => {
     const d = rotateParts(moveParts(twoResistors(), ['p2'], 20, -10), ['p2'])
@@ -601,5 +626,40 @@ describe('cable ends', () => {
   it('keeps the ends when a wire is reconnected', () => {
     const d = setWireEnds(wired(), ['w1'], { to: 'alligator' })
     expect(reconnectWire(d, 'w1', 'to', { part: 'p3', pin: '2' })!.connections[0].ends).toEqual({ to: 'alligator' })
+  })
+})
+
+describe('part settings and optional values', () => {
+  const fuse: ModuleDef = {
+    format: 'circuitoon-module/1', id: 'fuse-holder-test', name: 'Fuse holder', pins: [{ name: '1', side: 'left' }, { name: '2', side: 'right' }],
+    electrical: { params: { fuseRating: { unit: 'A' } }, settings: { fuse: ['fitted', 'absent'] } },
+  }
+  it('sets a setting to one of its choices, one diagram per real change', () => {
+    const d = addPart(emptyDiagram(), fuse, 0, 0).diagram
+    const next = updatePartSetting(d, 'p1', 'fuse', 'absent')
+    expect(next.parts[0].settings).toEqual({ fuse: 'absent' })
+    expect(updatePartSetting(next, 'p1', 'fuse', 'absent')).toBe(next)
+    expect(updatePartSetting(d, 'p1', 'fuse', 'fitted')).toBe(d)
+    expect(updatePartSetting(d, 'p1', 'fuse', 'blown')).toBe(d)
+  })
+  it('sets and clears an optional value', () => {
+    const d = addPart(emptyDiagram(), fuse, 0, 0).diagram
+    const set = updatePartValue(d, 'p1', 'fuseRating', 2, 'A')
+    expect(set.parts[0].values).toEqual({ fuseRating: { value: 2, unit: 'A' } })
+    const cleared = clearPartValue(set, 'p1', 'fuseRating')
+    expect(cleared.parts[0].values).toBeUndefined()
+    expect(clearPartValue(cleared, 'p1', 'fuseRating')).toBe(cleared)
+  })
+})
+
+describe('plug-in devices while dragging', () => {
+  it('a wrong plug over an outlet gets an outline; a matching one seats', () => {
+    const d = sheet([at('xs1', 'XS1', 't-outlet'), at('xp1', 'XP1', 't-plug-uk'), at('xp2', 'XP2', 't-plug-us', 0, 300)], [])
+    const wrong = settleSeats(d, ['xp1']).seats.get('xp1')
+    expect(wrong?.status).toBe('partial')
+    expect(wrong?.outline).toEqual({ x: 0, y: 0, w: 80, h: 80 })
+    const right = settleSeats({ ...d, parts: [d.parts[0], d.parts[1], { ...d.parts[2], y: 0 }] }, ['xp2']).seats.get('xp2')
+    expect(right?.status).toBe('seated')
+    expect(right?.outline).toBeUndefined()
   })
 })

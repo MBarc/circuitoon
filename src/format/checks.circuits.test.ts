@@ -6,6 +6,7 @@ import { RULES, checkDiagram } from './checks.ts'
 import type { Connection, Diagram, PartInstance } from './diagram.ts'
 import { type ModuleDef, externalPower, validateModule } from './module.ts'
 import { load } from './builtinModules.testing.ts'
+import { at as mat, dupont, sheet as mainsSheet, w as mw } from './mains.testing.ts'
 
 type Wire = [string, string]
 let n = 0
@@ -546,8 +547,52 @@ describe('board GPIOs are signal pins', () => {
   })
 })
 
+describe('mains sheets (synthetic parts): every mains rule is reached, and its message is checked below', () => {
+  /** A mains sheet from the synthetic fixtures, registered for the checks at the end of this file. */
+  const mains = (parts: PartInstance[], wires: Connection[]) => built(mainsSheet(parts, wires))
+  const has = (d: Diagram, rule: string) => expect(rules(d)).toContain(rule)
+  const lamp = (x: number, id = 'e1', module = 't-lamp') => mat(id, id.toUpperCase(), module, x)
+  it('shorts, two outlets joined, a shared neutral, mains on a GPIO', () => {
+    has(mains([mat('xs1', 'XS1', 't-outlet')], [mw('xs1|L', 'xs1|N')]), 'mains-short')
+    has(mains([mat('xs1', 'XS1', 't-outlet'), mat('xs2', 'XS2', 't-outlet-2', 200)], [mw('xs1|L', 'xs2|N')]), 'mains-cross-source')
+    has(mains([mat('xs1', 'XS1', 't-outlet'), mat('xs2', 'XS2', 't-outlet-2', 200)], [mw('xs1|N', 'xs2|N')]), 'mains-shared-neutral')
+    has(mains([mat('xs1', 'XS1', 't-outlet'), mat('u1', 'U1', 't-mcu', 200)], [mw('xs1|L', 'u1|IO')]), 'mains-to-low-voltage')
+  })
+  it('voltage, ratings and missing data', () => {
+    has(mains([mat('xs1', 'XS1', 't-outlet-eu'), lamp(200)], [mw('xs1|L', 'e1|L'), mw('xs1|N', 'e1|N')]), 'mains-voltage')
+    const block = (module: string) => mains([mat('xs1', 'XS1', 't-outlet-eu'), mat('x1', 'X1', module, 200)], [mw('xs1|L', 'x1|1')])
+    has(block('t-term-125'), 'mains-rating')
+    has(block('t-term-dc'), 'rating-unknown')
+    has(block('t-term-cond'), 'rating-conditional')
+    has(block('t-term-unverified'), 'rating-unverified')
+    has(mains([mat('xs1', 'XS1', 't-outlet'), mat('x1', 'X1', 't-undeclared', 200)], [mw('xs1|L', 'x1|A')]), 'data-missing')
+  })
+  it('polarity, earth and a ground joined to earth', () => {
+    has(mains([mat('xs1', 'XS1', 't-outlet'), lamp(200)], [mw('xs1|N', 'e1|L'), mw('xs1|L', 'e1|N')]), 'polarity')
+    has(mains([mat('xs1', 'XS1', 't-outlet'), lamp(200, 'e1', 't-lamp-c1')], [mw('xs1|L', 'e1|L'), mw('xs1|N', 'e1|N')]), 'earth')
+    has(mains([mat('xs1', 'XS1', 't-outlet'), mat('u1', 'U1', 't-mcu', 200)], [mw('xs1|PE', 'u1|GND')]), 'earth-bond')
+  })
+  it('fuses, cables and checks that did not finish', () => {
+    const lit = mains([mat('xs1', 'XS1', 't-outlet'), lamp(200)], [mw('xs1|L', 'e1|L'), mw('xs1|N', 'e1|N')])
+    has(lit, 'unprotected')
+    has(lit, 'cable-unverified')
+    const fused = (settings: Record<string, string>) =>
+      mains([mat('xs1', 'XS1', 't-outlet'), mat('f1', 'F1', 't-fuse', 200, 0, { settings }), lamp(400)], [mw('xs1|L', 'f1|1'), mw('f1|2', 'e1|L'), mw('e1|N', 'xs1|N')])
+    has(fused({ fuse: 'fitted' }), 'fuse-rating-unknown')
+    has(fused({ fuse: 'absent' }), 'no-power')
+    has(mains([mat('xs1', 'XS1', 't-outlet'), lamp(200)], [dupont('xs1|L', 'e1|L'), mw('xs1|N', 'e1|N')]), 'mains-cable')
+    const ks = Array.from({ length: 17 }, (_, i) => i + 1)
+    has(mains([mat('xs1', 'XS1', 't-outlet'), ...ks.map((k) => mat(`s${k}`, `S${k}`, 't-switch', k * 100, 300))], ks.map((k) => mw('xs1|L', `s${k}|1`))), 'mains-incomplete')
+  })
+  it('plugs that do not fit the outlet they are over', () => {
+    has(mains([mat('xs1', 'XS1', 't-outlet'), mat('xp1', 'XP1', 't-plug-uk')], []), 'plug-mismatch')
+    has(mains([mat('xs1', 'XS1', 't-outlet'), mat('xp1', 'XP1', 't-plug-us', 10, 0, { mount: { board: 'xs1' } })], []), 'plug-mismatch')
+    has(mains([mat('xs1', 'XS1', 't-outlet'), mat('xp2', 'XP2', 't-plug-us', 600, 600)], [mw('xs1|L', 'xp2|L')]), 'live-prong')
+  })
+})
+
 describe('every message ends with what to do', () => {
-  const VERBS = ['connect', 'move', 'swap', 'remove', 'set', 'use', 'add', 'separate', 'delete', 'power', 'keep', 'give', 'drag', 'do', 'say', 'wire', 'unplug', 'split']
+  const VERBS = ['connect', 'move', 'swap', 'remove', 'set', 'use', 'add', 'separate', 'delete', 'power', 'keep', 'give', 'drag', 'do', 'say', 'wire', 'unplug', 'split', 'check', 'fit', 'turn']
   /** True when a clause of the last sentence starts with an instruction. */
   const acts = (message: string) => {
     const last = message.split(/(?<=\.) /).pop()!
@@ -576,6 +621,7 @@ describe('every message ends with what to do', () => {
       }
     if (missing.length) console.log('NOACT\n' + [...new Set(missing)].join('\n'))
     expect(missing).toEqual([])
+    // Every rule is reached here.
     expect([...seen].sort()).toEqual(Object.keys(RULES).sort())
   })
 })

@@ -1,0 +1,183 @@
+{
+  "format": "circuitoon-module/1",
+  "id": "charger-usb-5v-uk",
+  "version": 1,
+  "name": "USB wall charger 5 V, UK (BS 1363)",
+  "category": "Mains",
+  "source": "https://www.meanwell.com/Upload/PDF/NGE12/NGE12-SPEC.PDF https://en.wikipedia.org/wiki/BS_1363",
+  "pins": [
+    {
+      "name": "5V",
+      "side": "bottom",
+      "type": "power_out",
+      "supply": "5V"
+    },
+    {
+      "spacer": true,
+      "side": "bottom"
+    },
+    {
+      "name": "GND",
+      "side": "bottom",
+      "type": "ground"
+    }
+  ],
+  "size": {
+    "w": 8,
+    "h": 8
+  },
+  "electrical": {
+    "model": "converter",
+    "internalNodes": [
+      "L prong",
+      "N prong",
+      "E pin"
+    ],
+    "acInput": {
+      "a": "L prong",
+      "b": "N prong",
+      "range": [
+        80,
+        264
+      ]
+    },
+    "domains": [
+      {
+        "name": "mains",
+        "pins": [
+          "L prong",
+          "N prong"
+        ],
+        "kind": "mains"
+      },
+      {
+        "name": "output",
+        "pins": [
+          "5V",
+          "GND"
+        ],
+        "kind": "selv"
+      }
+    ],
+    "isolation": "double",
+    "isolationProvenance": "datasheet",
+    "protection": "class-2",
+    "plug": {
+      "family": "bs1363",
+      "profiles": [
+        {
+          "id": "main",
+          "contacts": [
+            {
+              "pin": "L prong",
+              "at": {
+                "x": 70,
+                "y": 50
+              },
+              "mains": "L"
+            },
+            {
+              "pin": "N prong",
+              "at": {
+                "x": 10,
+                "y": 50
+              },
+              "mains": "N"
+            },
+            {
+              "pin": "E pin",
+              "at": {
+                "x": 40,
+                "y": 20
+              },
+              "mains": "mechanical"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "art": {
+    "w": 80,
+    "h": 80,
+    "shapes": [
+      {
+        "type": "rect",
+        "x": 0,
+        "y": 0,
+        "w": 80,
+        "h": 80,
+        "fill": "#F5F5F2",
+        "radius": 10
+      },
+      {
+        "type": "rect",
+        "x": 4,
+        "y": 56,
+        "w": 72,
+        "h": 20,
+        "fill": "#E3E0D8",
+        "radius": 6,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 64.5,
+        "y": 47.5,
+        "w": 11,
+        "h": 5,
+        "fill": "#AEB5BF",
+        "radius": 1,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 4.5,
+        "y": 47.5,
+        "w": 11,
+        "h": 5,
+        "fill": "#AEB5BF",
+        "radius": 1,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 37.5,
+        "y": 14,
+        "w": 5,
+        "h": 12,
+        "fill": "#D8D4CA",
+        "radius": 1,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 68,
+        "y": 7,
+        "w": 5,
+        "h": 5,
+        "fill": "#7BD389",
+        "radius": 2.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 27,
+        "y": 61,
+        "w": 26,
+        "h": 11,
+        "fill": "#C9CED6",
+        "radius": 2
+      },
+      {
+        "type": "rect",
+        "x": 31,
+        "y": 64,
+        "w": 18,
+        "h": 4,
+        "fill": "#1E4F8A",
+        "outline": false
+      }
+    ]
+  }
+}

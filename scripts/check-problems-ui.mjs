@@ -112,7 +112,7 @@ for (const scheme of ['light', 'dark']) {
   await page.waitForSelector('.toolbar')
   // The empty sheet: no badge, the clean line in the side panel.
   check((await page.locator('.problems-badge').count()) === 0, `${scheme}: an empty sheet shows no badge`)
-  check((await page.locator('#problems-title').textContent()) === 'No wiring problems found', `${scheme}: the empty state says no wiring problems found`)
+  check((await page.locator('#problems-title').textContent()) === 'No problems found in the drawn connections.', `${scheme}: the empty state speaks only of the drawn connections`)
   await saved(page.locator('.inspector'), 'problems-empty')
 
   await page.locator('input[type=file]').setInputFiles(file)

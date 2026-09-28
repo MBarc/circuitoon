@@ -1,7 +1,7 @@
 // The editing surface: an SVG sheet you can pan (drag the background) and zoom (wheel).
 import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import { type EditorStore, useEditorState } from './store.ts'
-import { brokenStub, computeRoutes, labelAnchor, moduleOf, pinTargets, resolveEndpoint, routingKey, wireColor, wirePaths, wireWidth, type PartInstance, type PinTarget, type Routes } from '../format/diagram.ts'
+import { brokenStub, computeRoutes, labelAnchor, moduleOf, pinTargets, resolveEndpoint, routingKey, wireColor, wirePaths, wireStripe, wireWidth, type PartInstance, type PinTarget, type Routes } from '../format/diagram.ts'
 import { holeEndAt, plugsOf, splitBoards } from '../format/breadboard.ts'
 import type { Pt } from '../format/geometry.ts'
 import { Part, INK } from '../render/Part.tsx'
@@ -9,6 +9,9 @@ import { LegDots, TakenHoles } from '../render/Boards.tsx'
 import { WireLabel } from '../render/WireLabel.tsx'
 import { CableLayer } from '../render/CableEnd.tsx'
 import { FrameMark, NoteMark } from '../render/Annotations.tsx'
+import { BLOCKED_STROKE, Bolts, HazardOutline, Stripe, boltInsets } from '../render/Mains.tsx'
+import { type WireLook, holdLooks, identityColor, newWireColor } from '../format/mainsLook.ts'
+import { seatedLabels } from '../format/seatedLabels.ts'
 import { addPart, addWire, EMPTY_SELECTION, moveAnnotations, moveParts, reconnectWire, sameEndpoint, setWireRoute, settleDrop, settleMounts, settleSeats, settlingOf, updateWire, withMounted } from './ops.ts'
 import { netlist, netPoints } from '../format/netlist.ts'
 import { bendHandleAt, insertBend, isOrthogonal, moveSegment, removeBend, segmentHandleAt, segmentsOf, toRoute, type Axis } from '../format/wireEdit.ts'
@@ -181,8 +184,16 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
   }, [diagram.parts, diagram.modules, diagram.annotations, endpointsKey, draggingParts, reshaping, movingNotes])
   // Path data only changes with the routes or the wires themselves, not with pan, zoom or selection.
   const wires = useMemo(() => wirePaths(diagram, routes), [routes, diagram.connections])
+  // The mains look (identity colours, hazard marks): once per edit, held while a part or segment drag
+  // is open, like the checker (the analysis needs every position). It reads the cached analysis, so an
+  // edit the checker has already analysed costs no second enumeration.
+  const busy = drag?.kind === 'parts' || drag?.kind === 'segment'
+  const looksRef = useRef<Map<string, WireLook>>(new Map())
+  const looks = useMemo(() => holdLooks(looksRef, diagram, busy), [diagram.parts, diagram.connections, diagram.modules, busy])
   // Boards draw below every other part; the leg overlays follow mounts and positions.
   const layers = useMemo(() => splitBoards(diagram), [diagram.parts, diagram.modules])
+  // Seated plug-in devices put their captions beside the outlet (and covered lead labels inside).
+  const seated = useMemo(() => seatedLabels(diagram), [diagram.parts, diagram.modules])
   // While parts are dragged, the same seat check the drop runs: the dragged parts count as loose
   // (their old legs neither show nor push a part that stays put out of its holes), and each seat
   // is green when the drop would mount it, red when only some legs land.
@@ -479,7 +490,7 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
       const s = store.getState()
       // The start part may have been deleted or undone away while the wire was being drawn.
       const exists = (ep: Endpoint) => s.diagram.parts.some((p) => p.uid === ep.part)
-      const added = to && exists(drag.from) && exists(to) && addWire(s.diagram, drag.from, to, s.wireStyle)
+      const added = to && exists(drag.from) && exists(to) && addWire(s.diagram, drag.from, to, { ...s.wireStyle, color: newWireColor(s.diagram, drag.from, to, s.wireStyle.color) })
       if (added) {
         store.commit(added.diagram)
         store.select({ parts: [], wires: [added.uid] })
@@ -530,7 +541,9 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
           const r = bodyRect(p, layoutModule(m))
           return <rect x={r.x - 6} y={r.y - 6} width={r.w + 12} height={r.h + 12} rx={6} fill="none" stroke="var(--focus)" strokeWidth={1.5} strokeDasharray="5 4" />
         })()}
-        <Part module={m} x={p.x} y={p.y} rotation={p.rotation} caption={partCaption(p, m)} values={p.values} />
+        <Part module={m} x={p.x} y={p.y} rotation={p.rotation} caption={partCaption(p, m)} values={p.values}
+          captionX={seated.get(p.uid)?.caption.x} captionY={seated.get(p.uid)?.caption.y}
+          captionAnchor={seated.get(p.uid)?.anchor} labelInset={seated.get(p.uid)?.labelInset} />
       </g>
     ) : null
   }
@@ -582,6 +595,7 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
         {layers.others.map(renderPart)}
         <LegDots plugs={plugs} />
         <g pointerEvents="none">
+          {seats.flatMap((s, i) => (s.outline ? [<rect key={`outline-${i}`} className="seat-bad" x={s.outline.x} y={s.outline.y} width={s.outline.w} height={s.outline.h} rx={6} />] : []))}
           {seats.flatMap((s, i) =>
             s.holes.map((h, j) => <circle key={`${i}-${j}`} className={s.status === 'seated' ? 'seat-ok' : 'seat-bad'} cx={h.x} cy={h.y} r={4} />),
           )}
@@ -599,21 +613,26 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
         <g fill="none" strokeLinecap="round" strokeLinejoin="round">
           {wires.map(({ conn, d, blocked, points }) => {
             const w = wireWidth(conn.gauge)
-            const dash = blocked ? '6 5' : undefined
+            const dash = blocked ? BLOCKED_STROKE : {}
             const selected = selection.wires.includes(conn.uid)
             const dimmed = drag?.kind === 'reconnect' && drag.uid === conn.uid
-            const color = wireColor(conn.color)
+            const look = looks.get(conn.uid)
+            const name = conn.color ?? look?.color ?? undefined
+            const stripe = wireStripe(name)
             return (
               <g key={conn.uid} data-wire={conn.uid} opacity={dimmed ? 0.3 : undefined}>
                 {selected && <path d={conn.ends ? polyline(points) : d} stroke="var(--focus)" strokeOpacity={0.35} strokeWidth={w + 10} />}
-                <path d={d} stroke={INK} strokeWidth={w + 2.2} strokeDasharray={dash} />
-                <path d={d} stroke={color} strokeWidth={w} strokeDasharray={dash} />
+                {look?.hazard && <HazardOutline d={d} width={w} />}
+                <path d={d} stroke={INK} strokeWidth={w + 2.2} {...dash} />
+                <path className="wire-color" d={d} stroke={wireColor(name)} strokeWidth={w} {...dash} />
+                {stripe && <Stripe d={d} width={w} color={stripe} blocked={blocked} />}
                 <path d={conn.ends ? polyline(points) : d} className="wire-hit" strokeWidth={Math.max(12, w + 8)} />
               </g>
             )
           })}
         </g>
-        <CableLayer wires={wires} dim={drag?.kind === 'reconnect' ? drag.uid : null} />
+        <CableLayer wires={wires} dim={drag?.kind === 'reconnect' ? drag.uid : null} looks={looks} />
+        {wires.map(({ conn, points, cables }) => (looks.get(conn.uid)?.hazard && !(drag?.kind === 'reconnect' && drag.uid === conn.uid) ? <Bolts key={`bolt-${conn.uid}`} points={points} insets={boltInsets(cables)} /> : null))}
         {wires.flatMap(({ conn, ends }) => ends.map((e, i) => <circle key={`${conn.uid}-${i}`} cx={e.x} cy={e.y} r={2.4} fill={INK} />))}
         {/* Name tags in their own layer after every wire, so a labeled wire crossing under a
             later one still shows its tag on top. Each tag keeps data-wire so a click or
@@ -675,14 +694,14 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
         {drag?.kind === 'wire' && (
           <line
             x1={drag.origin.x} y1={drag.origin.y} x2={drag.cursor.x} y2={drag.cursor.y}
-            stroke={wireColor(store.getState().wireStyle.color)} strokeWidth={2.5} strokeDasharray="6 4" strokeLinecap="round"
+            stroke={wireColor(identityColor(diagram, drag.from) ?? store.getState().wireStyle.color)} strokeWidth={2.5} strokeDasharray="6 4" strokeLinecap="round"
             pointerEvents="none"
           />
         )}
         {drag?.kind === 'reconnect' && (
           <line
             x1={drag.origin.x} y1={drag.origin.y} x2={drag.cursor.x} y2={drag.cursor.y}
-            stroke={wireColor(diagram.connections.find((c) => c.uid === drag.uid)?.color)}
+            stroke={wireColor(diagram.connections.find((c) => c.uid === drag.uid)?.color ?? looks.get(drag.uid)?.color ?? undefined)}
             strokeWidth={2.5} strokeDasharray="6 4" strokeLinecap="round"
             pointerEvents="none"
           />

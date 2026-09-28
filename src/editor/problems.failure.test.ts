@@ -32,7 +32,7 @@ describe('when the wiring checker throws', () => {
     const s = new EditorStore(sheet())
     const html = renderToStaticMarkup(createElement(ProblemList, { store: s, findings: problemsOf(s) }))
     expect(html).toContain('The wiring checker hit an error on this sheet')
-    expect(html).not.toContain('No wiring problems found')
+    expect(html).not.toContain('No problems found in the drawn connections.')
     expect(html.match(/data-checker-failed/g)).toHaveLength(1)
   })
 })

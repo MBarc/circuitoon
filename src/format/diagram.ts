@@ -1,12 +1,13 @@
 // Diagram format (circuitoon-diagram/1): types plus the wire geometry the renderer needs.
 
-import { GRID, type ModuleDef, PARAM_RULES, isBoard, layoutModule, validateModule, validParamValue, isObj, isNum } from './module.ts'
+import { GRID, type ModuleDef, PARAM_RULES, isBoard, layoutModule, moduleSettings, validateModule, validParamValue, isObj, isNum } from './module.ts'
 import { type Pt, type Rect, type Rotation, type WorldPin, bodyRect, simplify, toWorld, worldHoles, worldPins } from './geometry.ts'
 import { type RouteRequest, SEARCH_MARGIN, addToOccupancy, inGrown, Occupancy, onGrid, PointIndex, routeOrthogonal } from './router.ts'
 import { manualRouteBlocked, tidy } from './wireEdit.ts'
 import { mountIssues, plugOfPin, plugsOf } from './breadboard.ts'
 import { type CableEndDraw, END_SIZE, endKind, endPlacement, isEndKind, normalizeEnds, type WireEnds } from './cables.ts'
-import { captionBox } from '../render/captionBox.ts'
+import { placedCaptionBox } from '../render/captionBox.ts'
+import { seatedLabels } from './seatedLabels.ts'
 import { annotationRect, frameTab } from '../render/annotationGeometry.ts'
 
 /** How every load warning about a dropped value override ends: the part now shows its module
@@ -23,6 +24,8 @@ export interface PartInstance {
   y: number
   rotation?: Rotation
   values?: Record<string, unknown>
+  /** Enumerated choices from the module's `electrical.settings` (a fuse holder's "fitted" or "absent"). */
+  settings?: Record<string, string>
   /** The board this part is plugged into. Its pins join the hole groups their plug points sit on. */
   mount?: { board: string }
 }
@@ -72,6 +75,8 @@ export interface Diagram {
    * later check re-verifies the circuit against it. Loaded as opaque data; `verify` parses it.
    */
   intent?: unknown
+  /** Notes stored with the sheet, such as the mains notice on every exported mains sheet (spec 6). */
+  notes?: string[]
 }
 
 export const NAMED_COLORS: Record<string, string> = {
@@ -88,12 +93,22 @@ export const NAMED_COLORS: Record<string, string> = {
   pink: '#F07AB0',
 }
 
-/** Named color or #RRGGBB; anything else falls back to black. */
+/** Two-colour insulation (the IEC earth wire): a base colour with the second one striped over it. */
+export const STRIPED_COLORS: Record<string, [string, string]> = { 'green-yellow': ['#2F9E6E', '#F4B400'] }
+
+/** Named color, two-colour name (its base) or #RRGGBB; anything else falls back to black. */
 export function wireColor(c: string | undefined): string {
   if (!c) return NAMED_COLORS.black
   if (/^#[0-9a-f]{6}$/i.test(c)) return c
   const key = c.toLowerCase()
+  if (Object.hasOwn(STRIPED_COLORS, key)) return STRIPED_COLORS[key][0]
   return Object.hasOwn(NAMED_COLORS, key) ? NAMED_COLORS[key] : NAMED_COLORS.black
+}
+
+/** The stripe colour of a two-colour wire, or null. */
+export function wireStripe(c: string | undefined): string | null {
+  const key = c?.toLowerCase()
+  return key && Object.hasOwn(STRIPED_COLORS, key) ? STRIPED_COLORS[key][1] : null
 }
 
 /** Drawn width in px for an AWG gauge (16 to 30, default 22). Thicker wire, smaller number. */
@@ -359,9 +374,11 @@ function gridNodesIn(r: Rect): Pt[] {
 
 export function labelPoints(d: Diagram): LabelPoints {
   const captions = new Map<string, Pt[]>()
+  // A seated plug-in device and its outlet draw their captions beside the outlet (seatedLabels.ts).
+  const seated = seatedLabels(d)
   for (const p of d.parts) {
     const m = moduleOf(d, p.module)
-    if (m) captions.set(p.uid, gridNodesIn(captionBox(p, m)))
+    if (m) captions.set(p.uid, gridNodesIn(placedCaptionBox(p, m, seated.get(p.uid))))
   }
   const tabs = (d.annotations ?? []).flatMap((a) => (a.type === 'frame' ? (a.label ? gridNodesIn(frameTab(a)) : []) : gridNodesIn(annotationRect(a))))
   return { captions, tabs }
@@ -838,7 +855,8 @@ export function labelAnchor(route: Pt[]): { x: number; y: number; horizontal: bo
 }
 
 export function isValidColor(c: string): boolean {
-  return /^#[0-9a-f]{6}$/i.test(c) || Object.hasOwn(NAMED_COLORS, c.toLowerCase())
+  const key = c.toLowerCase()
+  return /^#[0-9a-f]{6}$/i.test(c) || Object.hasOwn(NAMED_COLORS, key) || Object.hasOwn(STRIPED_COLORS, key)
 }
 
 export type DiagramResult = { ok: true; diagram: Diagram; warnings: string[] } | { ok: false; errors: string[] }
@@ -946,6 +964,32 @@ export function validateDiagram(raw: unknown): DiagramResult {
             const values = p.values
             fix(i, { values: Object.fromEntries(Object.entries(values).filter(([k]) => !dropped.includes(k))) })
           }
+        }
+      }
+      // Settings are checked against the module's choices; a bad one is dropped with a warning,
+      // so the module's first choice is used and the user is told.
+      if (p.settings !== undefined) {
+        const who = typeof p.designator === 'string' && p.designator !== '' ? p.designator : `part ${i}`
+        const m = typeof p.module === 'string' ? modules.get(p.module) : undefined
+        if (!isObj(p.settings)) {
+          fix(i, { settings: undefined })
+          warnings.push(`${at}.settings: must be an object of setting name to choice, so it was dropped and the defaults are used`)
+        } else {
+          const offered = m ? moduleSettings(m) : null
+          const kept: Record<string, string> = {}
+          let changed = false
+          for (const [key, value] of Object.entries(p.settings)) {
+            const choices = offered && Object.hasOwn(offered, key) ? offered[key] : null
+            if (offered && !choices) {
+              changed = true
+              warnings.push(`${at}.settings.${key}: ${who} has no setting "${key}", so it was dropped`)
+            } else if (typeof value !== 'string' || (choices && !choices.includes(value))) {
+              changed = true
+              const allowed = choices ? choices.map((c) => `"${c}"`).join(' or ') : 'a string'
+              warnings.push(`${at}.settings.${key}: ${who} has ${key} ${JSON.stringify(value)}, but it must be ${allowed}; it was dropped${choices ? ` and the default "${choices[0]}" is used` : ''}`)
+            } else kept[key] = value
+          }
+          if (changed) fix(i, { settings: Object.keys(kept).length ? kept : undefined })
         }
       }
     })
@@ -1065,8 +1109,24 @@ export function validateDiagram(raw: unknown): DiagramResult {
 
   if (raw.intent !== undefined && !isObj(raw.intent)) errors.push('intent: must be an object (a circuitoon-netlist/1 document)')
 
+  // Notes are free text the sheet carries (the mains notice on export); a bad entry is dropped, not fatal.
+  let notesFix: string[] | undefined | null = null
+  if (raw.notes !== undefined) {
+    if (!Array.isArray(raw.notes)) {
+      notesFix = undefined
+      warnings.push('notes: must be a list of strings, so it was dropped')
+    } else if (raw.notes.some((n) => typeof n !== 'string')) {
+      raw.notes.forEach((n, i) => typeof n !== 'string' && warnings.push(`notes[${i}]: must be a string, so it was dropped`))
+      notesFix = raw.notes.filter((n): n is string => typeof n === 'string')
+    }
+  }
+
   if (errors.length) return { ok: false, errors }
   let diagram = raw as unknown as Diagram
+  if (notesFix !== null) {
+    const { notes: _n, ...rest } = diagram
+    diagram = notesFix ? { ...rest, notes: notesFix } : rest
+  }
   if (partFixes.size || droppedRoutes.size || endFixes.size)
     diagram = {
       ...diagram,
@@ -1093,6 +1153,8 @@ export function validateDiagram(raw: unknown): DiagramResult {
     else if (reason === 'obscured')
       warnings.push(`${at}: a board drawn above board "${board}" covers a leg of "${part}", so it plugs into nothing`)
     else if (reason === 'conflict') warnings.push(`${at}: a leg of "${part}" sits on a hole another mounted part already uses, so it plugs into nothing`)
+    else if (reason === 'no-fit')
+      warnings.push(`${at}: "${part}" does not fit board "${board}" (an outlet takes only a matching plug, and a plug fits only a matching outlet), so it plugs into nothing`)
   }
   return { ok: true, diagram, warnings }
 }

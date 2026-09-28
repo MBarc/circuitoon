@@ -5,10 +5,14 @@
 // that data supports: a pin with no `type` is unknown and never triggers a rule. Pure, no React. Spec:
 // docs/superpowers/specs/2026-09-26-wiring-checker-design.md.
 import { type Connection, type Diagram, type Endpoint, type PartInstance, moduleOf, resolveEndpoint } from './diagram.ts'
-import { type MountIssue, mountIssues, plugsOf } from './breadboard.ts'
+import { type MountIssue, mountIssues, plugMismatches, plugsOf } from './breadboard.ts'
+import { PLUG_FOR, PLUG_NAMES, SOCKET_NAMES } from './plugging.ts'
 import { type ExternalPower, type HoleGroup, type ModuleDef, type PinDef, type PinType, commonReturn, declaredReturns, externalPower, isSpacer, voltageOutputs } from './module.ts'
 import { conductors, netlist, nodeKey } from './netlist.ts'
 import { partValue, primaryParam } from './values.ts'
+import { andList, natural, orList } from './words.ts'
+import { analyseMainsCached } from './mains.ts'
+import { unknownFeedWords } from './mainsRules.ts'
 
 export type Severity = 'error' | 'warning'
 export type RuleId =
@@ -26,11 +30,39 @@ export type RuleId =
   | 'mount'
   | 'leg-hole-shared'
   | 'broken'
+  | 'mains-short'
+  | 'mains-cross-source'
+  | 'mains-to-low-voltage'
+  | 'earth'
+  | 'mains-voltage'
+  | 'mains-rating'
+  | 'mains-cable'
+  | 'live-prong'
+  | 'plug-mismatch'
+  | 'polarity'
+  | 'unprotected'
+  | 'fuse-rating-unknown'
+  | 'mains-shared-neutral'
+  | 'earth-bond'
+  | 'rating-unknown'
+  | 'rating-conditional'
+  | 'rating-unverified'
+  | 'cable-unverified'
+  | 'data-missing'
+  | 'mains-incomplete'
 
 /** Rule order within one severity and one subject, and each rule's short heading. */
 export const RULES: Record<RuleId, { severity: Severity; title: string }> = {
   broken: { severity: 'error', title: 'Broken connection' },
   short: { severity: 'error', title: 'Short circuit' },
+  'mains-short': { severity: 'error', title: 'Mains short circuit' },
+  'mains-cross-source': { severity: 'error', title: 'Two outlets joined' },
+  'mains-to-low-voltage': { severity: 'error', title: 'Mains on low-voltage wiring' },
+  earth: { severity: 'error', title: 'Earth fault' },
+  'mains-voltage': { severity: 'error', title: 'Wrong mains voltage' },
+  'mains-rating': { severity: 'error', title: 'Not rated for this voltage' },
+  'mains-cable': { severity: 'error', title: 'Unsuitable mains cable' },
+  'live-prong': { severity: 'error', title: 'Live plug prongs' },
   reversed: { severity: 'error', title: 'Power reversed' },
   'supplies-fight': { severity: 'error', title: 'Supplies fight' },
   'supply-too-high': { severity: 'error', title: 'Voltage too high' },
@@ -43,6 +75,18 @@ export const RULES: Record<RuleId, { severity: Severity; title: string }> = {
   'no-ground': { severity: 'warning', title: 'No ground' },
   mount: { severity: 'warning', title: 'Not plugged in' },
   'leg-hole-shared': { severity: 'warning', title: 'Two in one hole' },
+  'plug-mismatch': { severity: 'warning', title: 'Plug does not fit' },
+  polarity: { severity: 'warning', title: 'Mains polarity' },
+  unprotected: { severity: 'warning', title: 'No fuse' },
+  'fuse-rating-unknown': { severity: 'warning', title: 'Fuse rating unknown' },
+  'mains-shared-neutral': { severity: 'warning', title: 'Shared neutral' },
+  'earth-bond': { severity: 'warning', title: 'Ground joined to earth' },
+  'rating-unknown': { severity: 'warning', title: 'Mains rating unknown' },
+  'rating-conditional': { severity: 'warning', title: 'Rating has conditions' },
+  'rating-unverified': { severity: 'warning', title: 'Rating not verified' },
+  'cable-unverified': { severity: 'warning', title: 'Check the mains cable' },
+  'data-missing': { severity: 'warning', title: 'Mains data missing' },
+  'mains-incomplete': { severity: 'warning', title: 'Mains checks did not finish' },
 }
 const RULE_ORDER = Object.keys(RULES) as RuleId[]
 
@@ -110,15 +154,6 @@ const EPS = 1e-9
 /** An input is taken to work down to this share of its lowest listed rail (no real ranges yet). */
 const LOW_TOLERANCE = 0.9
 const volts = (v: number) => `${Number(v.toFixed(2))} V`
-
-/** "A", "A or B", "A, B or C". */
-function orList(items: string[]): string {
-  return items.length < 2 ? items.join('') : `${items.slice(0, -1).join(', ')} or ${items[items.length - 1]}`
-}
-/** "A", "A and B", "A, B and C". */
-function andList(items: string[]): string {
-  return items.length < 2 ? items.join('') : `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]}`
-}
 
 // ---- Naming ----
 
@@ -259,6 +294,8 @@ interface Terminal {
   supply?: string
   /** A hole group with no type: a breadboard strip or rail, which only conducts. */
   bare: boolean
+  /** An output of a converter that is not powered (spec 1.3): it feeds nothing and makes no supply; when unknown, what it would feed is reported as not checked. */
+  dead?: 'unpowered' | 'unknown'
 }
 
 const termName = (t: Terminal) => `${t.part.designator} ${t.label}`
@@ -279,6 +316,7 @@ interface Source {
 
 /** The supply `t` makes, if any. Pass-through outputs make none. */
 function sourceOf(t: Terminal): Source | null {
+  if (t.dead) return null
   const id = JSON.stringify([t.part.uid, t.info.comp.get(t.name)])
   const external = t.info.external.get(t.name)
   if (external) return { term: t, id, v: external.volts, unknown: null, external }
@@ -304,8 +342,12 @@ const isSource = (t: Terminal) => sourceOf(t) !== null
  * bare breadboard strip only conducts.
  */
 const mayFeed = (t: Terminal) => !t.bare && (t.type === undefined || t.type === 'passive' || isSource(t))
-/** A pin that drives its net from its own part: shorted when that part's ground is on the same net. */
-const drives = (t: Terminal) => t.type === 'power_out' || t.info.external.has(t.name)
+/**
+ * A pin that drives its net from its own part: shorted when that part's ground is on the same net.
+ * An output of a converter that may be powered (unknown) still drives: its short to its own ground
+ * is a wiring mistake whatever the input. Only an unpowered converter's outputs drive nothing.
+ */
+const drives = (t: Terminal) => (t.type === 'power_out' && t.dead !== 'unpowered') || t.info.external.has(t.name)
 
 // ---- Wording ----
 
@@ -392,9 +434,6 @@ function railAdvice(loads: Terminal[], it: string): string {
 
 // ---- The checker ----
 
-/** Natural order, so U2 sorts before U10. */
-const natural = new Intl.Collator('en', { numeric: true, sensitivity: 'base' })
-
 type Draft = Omit<Finding, 'id' | 'severity'> & { causes: string[] }
 
 /** Every wiring problem on the sheet, errors first, then by subject (a designator, in natural order), then by rule. */
@@ -402,6 +441,11 @@ export function checkDiagram(d: Diagram): Finding[] {
   const partByUid = new Map(d.parts.map((p) => [p.uid, p]))
   const plugs = plugsOf(d)
   const nl = netlist(d, plugs)
+  // Mains first (spec 3), from the analysis the renderer shares: mains wiring never enters the DC
+  // rules, and a converter that is not powered supplies nothing. A secondary that is possibly live
+  // only across an inadequate isolation barrier keeps its DC checks (rule 1 reports it).
+  const mains = analyseMainsCached(d)
+  const hazardous = (key: string) => !!mains?.mainsKeys.has(key)
   const brokenSet = new Set(nl.broken)
   const findings: Draft[] = []
   /**
@@ -423,7 +467,7 @@ export function checkDiagram(d: Diagram): Finding[] {
     const def = info.defs.get(name)
     if (!def) return null
     const src = def.pin ?? def.group!
-    return { key, part, info, name, label: src.label ?? name, type: src.type, supply: src.supply, bare: !def.pin && !src.type }
+    return { key, part, info, name, label: src.label ?? name, type: src.type, supply: src.supply, bare: !def.pin && !src.type, dead: mains?.deadOutputs.get(key) }
   }
 
   // Wires per net, and which parts have a wire that conducts or a plugged leg.
@@ -437,7 +481,7 @@ export function checkDiagram(d: Diagram): Finding[] {
     if (i !== undefined) netWires[i].push(c.uid)
   }
 
-  const netTerms = nl.nets.map((keys) => keys.map(terminal).filter((t): t is Terminal => t !== null))
+  const netTerms = nl.nets.map((keys) => (keys.some(hazardous) ? [] : keys.map(terminal).filter((t): t is Terminal => t !== null)))
   /** Supplies (by source id) already reported as wired to their own ground, and their parts. */
   const shorted = new Set<string>()
   const shortedParts = new Set<string>()
@@ -477,7 +521,7 @@ export function checkDiagram(d: Diagram): Finding[] {
         parts: drivers.map((t) => t.part.uid), pins: drivers.map(termPin), wires, causes: drivers.map((t) => t.key) })
   })
 
-  const { reversed, returnGroup } = checkPotentials({ d, nl, netTerms, netWires, terminal, plugs, shorted, add })
+  const { reversed, returnGroup } = checkPotentials({ d, nl, netTerms, netWires, terminal, plugs, shorted, add, skip: hazardous })
 
   // Per part: power and ground reach it from another part.
   const others = (t: Terminal) => {
@@ -506,7 +550,7 @@ export function checkDiagram(d: Diagram): Finding[] {
     // Only the power and ground pins matter here (a breadboard's many strips are skipped).
     const terms = [...moduleInfo(m).defs.entries()]
       .filter(([, def]) => { const ty = (def.pin ?? def.group)!.type; return ty === 'power_in' || ty === 'power_out' || ty === 'ground' })
-      .map(([n]) => terminal(nodeKey(p.uid, n))).filter((t): t is Terminal => t !== null)
+      .map(([n]) => terminal(nodeKey(p.uid, n))).filter((t): t is Terminal => t !== null && !hazardous(t.key))
     const ins = terms.filter((t) => t.type === 'power_in')
     // A part with a pin on USB power is its own supply.
     // A part with its power reversed is reported as such, not as unpowered.
@@ -515,13 +559,25 @@ export function checkDiagram(d: Diagram): Finding[] {
         ins.some((t) => others(t).some(mayFeed)) ||
         terms.some((t) => t.type === 'power_out' && others(t).some(isSource))
       if (!fed) {
-        const wiredPins = ins.filter((t) => others(t).length)
-        const wired = [...new Set(wiredPins.map((t) => t.label))]
-        const it = wired.length === 1 ? 'it' : 'them'
-        const message = wired.length
-          ? `${p.designator} has no power: ${andList(wired)} ${isAre(wired.length)} connected but nothing supplies ${it}. ${railAdvice(sharedLoads(wiredPins), it)}`
-          : `${p.designator} has no power: connect ${orList([...new Set(ins.map((t) => t.label))])}.`
-        add({ rule: 'no-power', subject: p.designator, target: p.designator, message, parts: [p.uid], pins: ins.map(termPin), wires: [], causes: ins.map((t) => t.key) })
+        // Fed only through a converter whose mains input is not a complete connection: neither fed nor unfed.
+        const vias = [...new Map(ins.flatMap((t) => others(t)).filter((o) => o.dead === 'unknown').map((o) => [o.key, o])).values()]
+          .sort((a, b) => natural.compare(termName(a), termName(b)))
+        if (vias.length) {
+          const convs = [...new Set(vias.map((o) => o.part))]
+          const words = unknownFeedWords(convs.map((c) => ({ designator: c.designator, status: mains!.converters.get(c.uid)! })))
+          add({ rule: 'supply-unknown', subject: p.designator, target: p.designator,
+            message: `${p.designator}'s power is not checked: it comes only from ${andList(vias.map(termName))}, and ${words.state}. ${words.fix}`,
+            parts: [p.uid, ...convs.map((c) => c.uid)], pins: ins.map(termPin), wires: [], causes: ins.map((t) => t.key) })
+        }
+        else {
+          const wiredPins = ins.filter((t) => others(t).length)
+          const wired = [...new Set(wiredPins.map((t) => t.label))]
+          const it = wired.length === 1 ? 'it' : 'them'
+          const message = wired.length
+            ? `${p.designator} has no power: ${andList(wired)} ${isAre(wired.length)} connected but nothing supplies ${it}. ${railAdvice(sharedLoads(wiredPins), it)}`
+            : `${p.designator} has no power: connect ${orList([...new Set(ins.map((t) => t.label))])}.`
+          add({ rule: 'no-power', subject: p.designator, target: p.designator, message, parts: [p.uid], pins: ins.map(termPin), wires: [], causes: ins.map((t) => t.key) })
+        }
       }
     }
     const grounds = terms.filter((t) => t.type === 'ground')
@@ -593,7 +649,23 @@ export function checkDiagram(d: Diagram): Finding[] {
       parts: [a.part.uid, b.part.uid], pins: [termPin(a), termPin(b), termPin(ga[0]), termPin(gb[0])], wires: netWires[net], causes: [a.key, b.key] })
   }
 
+  // Rule 10 (spec 2, Ruling 40): a plug-in device over an outlet it is not plugged into. It
+  // replaces every generic mount finding of that part (one finding per plug and outlet).
+  const mismatched = new Set<string>()
+  for (const mm of plugMismatches(d)) {
+    const p = partByUid.get(mm.part)!
+    const b = partByUid.get(mm.board)!
+    mismatched.add(mm.part)
+    const message = mm.kind === 'family'
+      ? `${p.designator}'s ${PLUG_NAMES[mm.plug]} does not fit ${b.designator}'s ${orList([...new Set(mm.sockets.map((f) => SOCKET_NAMES[f]))])}. Use a device with ${orList([...new Set(mm.sockets.map((f) => PLUG_FOR[f]))])}.`
+      : mm.kind === 'unplugged'
+        ? `${p.designator} is over ${b.designator} but not plugged in. Drag it into the socket.`
+        : `${p.designator} does not sit in ${b.designator}: its contacts do not all meet one socket the way the plug fits, so none of them connect. Turn or move it until it seats; a plug that is only partly in is never electrically safe.`
+    add({ rule: 'plug-mismatch', subject: p.designator, target: p.designator, message, parts: [p.uid, b.uid], pins: [], wires: [], select: { parts: [p.uid], wires: [] }, causes: [p.uid, b.uid] })
+  }
+
   for (const issue of mountIssues(d)) {
+    if (mismatched.has(issue.part)) continue
     const p = partByUid.get(issue.part)
     if (!p) continue
     const board = partByUid.get(issue.board)
@@ -630,6 +702,8 @@ export function checkDiagram(d: Diagram): Finding[] {
       message: `The wire ${b.name} is broken: ${andList(b.missing)} ${b.missing.length > 1 ? 'are' : 'is'} not on the sheet, so it connects nothing. Delete it, and draw it again if you still need it.`,
       parts, pins: [], wires: [b.uid], select: { parts: [], wires: [b.uid] }, causes: [b.uid] })
   }
+
+  for (const f of mains?.findings ?? []) add(f)
 
   const rank = (s: Severity) => (s === 'error' ? 0 : 1)
   const sorted = findings
@@ -708,6 +782,8 @@ interface PotentialInput {
   terminal: (key: string) => Terminal | null
   plugs: ReturnType<typeof plugsOf>
   shorted: Set<string>
+  /** Node keys on hazardous mains nets: no source edge, switch or common return with an end there enters the solver (spec 3). */
+  skip: (key: string) => boolean
   add: (f: { rule: RuleId; subject: string; target: string; message: string; parts: string[]; pins: Endpoint[]; wires: string[]; causes: string[] }) => void
 }
 
@@ -719,7 +795,7 @@ interface PotentialInput {
  * supplies fighting; a loop that agrees is supplies in parallel. A load gets the potential of its
  * power input over that of its own ground, so a series stack adds up.
  */
-function checkPotentials({ d, nl, netTerms, netWires, terminal, plugs, shorted, add }: PotentialInput): { reversed: Set<string>; returnGroup: (key: string) => string } {
+function checkPotentials({ d, nl, netTerms, netWires, terminal, plugs, shorted, skip, add }: PotentialInput): { reversed: Set<string>; returnGroup: (key: string) => string } {
   const reversed = new Set<string>()
   const netOfKey = (key: string) => {
     const i = nl.netOf.get(key)
@@ -737,8 +813,9 @@ function checkPotentials({ d, nl, netTerms, netWires, terminal, plugs, shorted, 
     const m = moduleOf(d, p.module)
     if (!m) continue
     const info = moduleInfo(m)
-    // A switch is taken as closed for voltages: damage happens in the ON position.
-    if (info.switchPins) {
+    // A switch is taken as closed for voltages: damage happens in the ON position. A switch or a
+    // declared common return with a pin on a hazardous net places nothing.
+    if (info.switchPins && !info.switchPins.some((n) => skip(nodeKey(p.uid, n)))) {
       const [a, b] = info.switchPins.map((n) => nodeKey(p.uid, n))
       edges.push({ from: netOfKey(a), to: netOfKey(b), v: 0, closedSwitch: true, fromKey: a, toKey: b })
     }
@@ -746,6 +823,7 @@ function checkPotentials({ d, nl, netTerms, netWires, terminal, plugs, shorted, 
     for (const g of info.commonReturn)
       for (const n of g.slice(1)) {
         const [a, b] = [nodeKey(p.uid, g[0]), nodeKey(p.uid, n)]
+        if (skip(a) || skip(b)) continue
         edges.push({ from: netOfKey(a), to: netOfKey(b), v: 0, fromKey: a, toKey: b })
       }
     if (!info.sourceNames.length) continue
@@ -758,13 +836,17 @@ function checkPotentials({ d, nl, netTerms, netWires, terminal, plugs, shorted, 
       if (!prev || (s.v !== null && (prev.v === null || s.v > prev.v))) own.set(s.id, s)
     }
     for (const s of own.values()) {
+      // Mains never enters the potential solver (spec 3): not through the output, not through the
+      // declared return, the only ground (an inferred return) or a diode's return.
+      const ret = info.returnOf.get(s.term.name)
+      const returnKeys = ret ? [nodeKey(p.uid, ret)] : info.grounds.map((g) => nodeKey(p.uid, g))
+      if (skip(s.term.key) || returnKeys.some(skip)) continue
       sources.set(s.id, s)
       const out = netOfKey(s.term.key)
       const list = s.v === null ? unknownOn : outOn
       list.set(out, [...(list.get(out) ?? []), s])
       // A supply wired to its own ground is reported as a short already; it places nothing.
       if (shorted.has(s.id)) continue
-      const ret = info.returnOf.get(s.term.name)
       const retKey = ret ? nodeKey(p.uid, ret) : ''
       // A USB pin behind a diode only raises its net: placed after the first walk (see below).
       if (ret && s.external?.diode) diodes.push({ from: netOfKey(retKey), to: out, v: s.v, src: s, fromKey: retKey, toKey: s.term.key })
@@ -1161,6 +1243,8 @@ function checkPotentials({ d, nl, netTerms, netWires, terminal, plugs, shorted, 
     const net = `#${i}`
     for (const t of netTerms[i]) {
       if (t.type !== 'power_in' || t.info.external.has(t.name)) continue
+      // A load whose own grounds are all on mains is not placed (rule 1 reports that part).
+      if (t.info.grounds.length && t.info.grounds.every((g) => skip(nodeKey(t.part.uid, g)))) continue
       // Power pins joined inside the part (a strip's 5V and 5V 2) are one input: checked once.
       const inputId = JSON.stringify([t.part.uid, t.info.comp.get(t.name)])
       if (checkedInputs.has(inputId)) continue
@@ -1281,6 +1365,8 @@ function mountMessage(p: PartInstance, board: PartInstance | undefined, issue: M
       return `${p.designator} cannot plug into a board (it is a board itself, has a bus pin or has no legs), so its legs connect nothing. Drag it off the board and wire it instead.`
     case 'partial':
       return `Not every leg of ${p.designator} sits in a hole of ${at}, so none of its legs connect. Move it until every leg sits in a hole.`
+    case 'no-fit':
+      return `${p.designator} does not fit ${at}: an outlet takes only a matching plug, and a plug fits only a matching outlet, so it connects nothing. Drag it off, or use a part that fits.`
     case 'obscured':
       return `Some legs of ${p.designator} sit under another board drawn over ${at}, so none of its legs connect. Move it clear of that board.`
     case 'conflict':

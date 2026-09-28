@@ -4,6 +4,7 @@
 import { describe, expect, it } from 'vitest'
 import { checkDiagram } from './checks.ts'
 import type { Connection, Diagram, PartInstance } from './diagram.ts'
+import { analyseMains, hasMainsData } from './mains.ts'
 import type { ModuleDef } from './module.ts'
 import { load, pinsOf } from './builtinModules.testing.ts'
 
@@ -65,6 +66,8 @@ describe('checkDiagram on built-in parts', () => {
       connections.push({ uid: `w${connections.length}`, from: { part: a.uid, pin: pa[rnd(pa.length)] }, to: { part: b.uid, pin: pb[rnd(pb.length)] } })
     }
     const d = sheet(parts, connections)
+    expect(hasMainsData(d)).toBe(false)
+    expect(analyseMains(d)).toBeNull()
     const found = checkDiagram(d)
     expect(found.length).toBeGreaterThan(0)
     expect(found.filter((f) => f.rule === 'mount')).toEqual([])

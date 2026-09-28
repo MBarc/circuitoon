@@ -1,0 +1,187 @@
+{
+  "format": "circuitoon-module/1",
+  "id": "terminal-block-mc-381-3",
+  "version": 1,
+  "name": "Terminal block Phoenix Contact MC 1,5 (3.81 mm), 3 positions (plug 1803581, header 1803280)",
+  "category": "Mains",
+  "source": "https://www.phoenixcontact.com/en-us/products/pcb-plug-mc-15-3-st-381-1803581 https://media.digikey.com/pdf/Data%20Sheets/Phoenix%20Contact%20PDFs/1803280.pdf",
+  "pins": [
+    {
+      "name": "1",
+      "side": "left"
+    },
+    {
+      "spacer": true,
+      "side": "left"
+    },
+    {
+      "name": "2",
+      "side": "left"
+    },
+    {
+      "spacer": true,
+      "side": "left"
+    },
+    {
+      "name": "3",
+      "side": "left"
+    },
+    {
+      "name": "1 pcb",
+      "side": "right",
+      "label": "1"
+    },
+    {
+      "spacer": true,
+      "side": "right"
+    },
+    {
+      "name": "2 pcb",
+      "side": "right",
+      "label": "2"
+    },
+    {
+      "spacer": true,
+      "side": "right"
+    },
+    {
+      "name": "3 pcb",
+      "side": "right",
+      "label": "3"
+    }
+  ],
+  "internal": [
+    [
+      "1",
+      "1 pcb"
+    ],
+    [
+      "2",
+      "2 pcb"
+    ],
+    [
+      "3",
+      "3 pcb"
+    ]
+  ],
+  "size": {
+    "w": 7,
+    "h": 7
+  },
+  "electrical": {
+    "model": "terminal-block",
+    "ratings": [
+      {
+        "pins": [
+          "1",
+          "2",
+          "3",
+          "1 pcb",
+          "2 pcb",
+          "3 pcb"
+        ],
+        "kind": "terminal",
+        "service": "ac/dc",
+        "volts": 160,
+        "amps": 8,
+        "provenance": "datasheet",
+        "conditions": "overvoltage category III, pollution degree 2 (IEC 60664-1)"
+      },
+      {
+        "pins": [
+          "1",
+          "2",
+          "3",
+          "1 pcb",
+          "2 pcb",
+          "3 pcb"
+        ],
+        "kind": "terminal",
+        "service": "ac/dc",
+        "volts": 250,
+        "amps": 8,
+        "provenance": "datasheet",
+        "conditions": "overvoltage category II, pollution degree 2 (IEC 60664-1)"
+      }
+    ]
+  },
+  "art": {
+    "w": 70,
+    "h": 70,
+    "pinLabels": "inside",
+    "shapes": [
+      {
+        "type": "rect",
+        "x": 0,
+        "y": 0,
+        "w": 42,
+        "h": 70,
+        "fill": "#2F9E6E",
+        "radius": 3
+      },
+      {
+        "type": "rect",
+        "x": 42,
+        "y": 0,
+        "w": 28,
+        "h": 70,
+        "fill": "#1F7A55",
+        "radius": 3
+      },
+      {
+        "type": "rect",
+        "x": 23,
+        "y": 14,
+        "w": 12,
+        "h": 12,
+        "fill": "#C9CED6",
+        "radius": 6
+      },
+      {
+        "type": "rect",
+        "x": 28,
+        "y": 16,
+        "w": 2,
+        "h": 8,
+        "fill": "#2B2F36",
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 23,
+        "y": 34,
+        "w": 12,
+        "h": 12,
+        "fill": "#C9CED6",
+        "radius": 6
+      },
+      {
+        "type": "rect",
+        "x": 28,
+        "y": 36,
+        "w": 2,
+        "h": 8,
+        "fill": "#2B2F36",
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 23,
+        "y": 54,
+        "w": 12,
+        "h": 12,
+        "fill": "#C9CED6",
+        "radius": 6
+      },
+      {
+        "type": "rect",
+        "x": 28,
+        "y": 56,
+        "w": 2,
+        "h": 8,
+        "fill": "#2B2F36",
+        "outline": false
+      }
+    ]
+  }
+}

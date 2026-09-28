@@ -1,0 +1,159 @@
+{
+  "format": "circuitoon-module/1",
+  "id": "plug-eu-cee7-16",
+  "version": 1,
+  "name": "Cord plug Europlug CEE 7/16, 2-lead",
+  "category": "Mains",
+  "source": "https://en.wikipedia.org/wiki/Europlug https://www.plugsocketmuseum.nl/Europlug1.html https://en.wikipedia.org/wiki/CEE_7",
+  "pins": [
+    {
+      "name": "L",
+      "side": "bottom",
+      "mains": "line"
+    },
+    {
+      "spacer": true,
+      "side": "bottom",
+      "mains": "line"
+    },
+    {
+      "name": "N",
+      "side": "bottom",
+      "mains": "line"
+    }
+  ],
+  "internal": [
+    [
+      "L prong",
+      "L"
+    ],
+    [
+      "N prong",
+      "N"
+    ]
+  ],
+  "size": {
+    "w": 8,
+    "h": 8
+  },
+  "electrical": {
+    "model": "cord-plug",
+    "internalNodes": [
+      "L prong",
+      "N prong"
+    ],
+    "plug": {
+      "family": "cee7-16",
+      "profiles": [
+        {
+          "id": "main",
+          "contacts": [
+            {
+              "pin": "L prong",
+              "at": {
+                "x": 20,
+                "y": 40
+              },
+              "mains": "L"
+            },
+            {
+              "pin": "N prong",
+              "at": {
+                "x": 60,
+                "y": 40
+              },
+              "mains": "N"
+            }
+          ]
+        }
+      ]
+    },
+    "ratings": [
+      {
+        "pins": [
+          "L",
+          "N",
+          "L prong",
+          "N prong"
+        ],
+        "kind": "terminal",
+        "service": "ac",
+        "volts": 250,
+        "amps": 2.5,
+        "provenance": "datasheet"
+      }
+    ]
+  },
+  "art": {
+    "w": 80,
+    "h": 80,
+    "shapes": [
+      {
+        "type": "rect",
+        "x": 24,
+        "y": 72,
+        "w": 32,
+        "h": 8,
+        "fill": "#2B2F36",
+        "radius": 3
+      },
+      {
+        "type": "rect",
+        "x": 0,
+        "y": 0,
+        "w": 80,
+        "h": 76,
+        "fill": "#2B2F36",
+        "radius": 8
+      },
+      {
+        "type": "rect",
+        "x": 4,
+        "y": 4,
+        "w": 72,
+        "h": 70,
+        "fill": "#3A3F48",
+        "radius": 5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 28.5,
+        "y": 76,
+        "w": 3,
+        "h": 4,
+        "fill": "#B8BEC7",
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 48.5,
+        "y": 76,
+        "w": 3,
+        "h": 4,
+        "fill": "#B8BEC7",
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 17,
+        "y": 37,
+        "w": 6,
+        "h": 6,
+        "fill": "#AEB5BF",
+        "radius": 3,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 57,
+        "y": 37,
+        "w": 6,
+        "h": 6,
+        "fill": "#AEB5BF",
+        "radius": 3,
+        "outline": false
+      }
+    ]
+  }
+}

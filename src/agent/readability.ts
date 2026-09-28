@@ -5,7 +5,8 @@
 import { type Diagram, type PartInstance, type Routes, moduleOf } from '../format/diagram.ts'
 import { type Pt, type Rect, bodyRect } from '../format/geometry.ts'
 import { layoutModule } from '../format/module.ts'
-import { captionBox } from '../render/captionBox.ts'
+import { placedCaptionBox } from '../render/captionBox.ts'
+import { seatedLabels } from '../format/seatedLabels.ts'
 import { intersects, union } from './footprint.ts'
 import { naturalCompare } from './order.ts'
 
@@ -23,7 +24,8 @@ export interface ReadabilityReport {
 export function overlaps(d: Diagram): { body: string[]; caption: string[] } {
   const parts = d.parts.filter((p) => moduleOf(d, p.module)).sort((a, b) => naturalCompare(a.uid, b.uid))
   const body = (p: PartInstance) => bodyRect(p, layoutModule(moduleOf(d, p.module)!))
-  const caption = (p: PartInstance) => captionBox(p, moduleOf(d, p.module)!)
+  const seated = seatedLabels(d)
+  const caption = (p: PartInstance) => placedCaptionBox(p, moduleOf(d, p.module)!, seated.get(p.uid))
   const own = (a: PartInstance, b: PartInstance) => a.mount?.board === b.uid || b.mount?.board === a.uid
   const bodies: string[] = []
   const captions: string[] = []
@@ -59,10 +61,11 @@ export function readability(d: Diagram, routes: Routes, netOfWire: Map<string, s
   const vs = segs.filter((s) => !s.h)
   for (const h of hs) for (const v of vs) if (h.wire !== v.wire && v.at > h.lo && v.at < h.hi && h.at > v.lo && h.at < v.hi) wireCrossings++
 
+  const seated = seatedLabels(d)
   const rects: Rect[] = [
     ...parts.flatMap((p) => {
       const m = moduleOf(d, p.module)!
-      return [bodyRect(p, layoutModule(m)), captionBox(p, m)]
+      return [bodyRect(p, layoutModule(m)), placedCaptionBox(p, m, seated.get(p.uid))]
     }),
     ...points.map((p) => ({ x: p.x, y: p.y, w: 0, h: 0 })),
   ]

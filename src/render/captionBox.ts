@@ -1,6 +1,7 @@
 // Where a part's caption (designator and value) is drawn: 8.5 px bold text centered under the
-// rotated body, below any pin stubs pointing down. Shared by Part.tsx and the layout's overlap
-// checks, so both always agree.
+// rotated body, below any pin stubs pointing down, or where seatedLabels.ts moves it for a plug-in
+// device seated on an outlet (and that outlet). Shared by Part.tsx, the router's label avoidance,
+// the export bounds and the layout's overlap checks, so all of them agree.
 import { type Pt, type Rect, type Rotation, bodyRect, worldPins } from '../format/geometry.ts'
 import { LEAD, layoutModule, type ModuleDef } from '../format/module.ts'
 import { partCaption } from '../format/values.ts'
@@ -23,4 +24,19 @@ export function captionBox(part: CaptionPart, m: ModuleDef, text = partCaption(p
   const a = captionAnchor(m, part.rotation ?? 0)
   const w = text.length * CAPTION_CHAR
   return { x: part.x + a.x - w / 2, y: part.y + a.y - 8, w, h: 10 }
+}
+
+/** A caption seatedLabels (src/format/seatedLabels.ts) moves: its part-local anchor and text anchor. */
+export type CaptionSeat = { caption: Pt; anchor: 'start' | 'middle' }
+
+/**
+ * The caption's box in world px where it is drawn: `seat` for a seated plug-in device or its outlet
+ * (Part.tsx draws a 'start' caption vertically centred on the anchor, a 'middle' one on its
+ * baseline), else under the body as `captionBox`.
+ */
+export function placedCaptionBox(part: CaptionPart, m: ModuleDef, seat: CaptionSeat | undefined, text = partCaption(part, m)): Rect {
+  if (!seat) return captionBox(part, m, text)
+  const w = text.length * CAPTION_CHAR
+  const { x, y } = seat.caption
+  return seat.anchor === 'start' ? { x: part.x + x, y: part.y + y - 5, w, h: 10 } : { x: part.x + x - w / 2, y: part.y + y - 8, w, h: 10 }
 }

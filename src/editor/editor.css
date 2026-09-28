@@ -228,3 +228,14 @@
 }
 .start-error { margin: 0; color: var(--error); font-weight: 700; }
 button.wordmark { background: none; border: 0; padding: 0; cursor: pointer; }
+
+/* Mains notice (spec 6): orange like the hazard outline, never dismissible. */
+.mains-badge { display: inline-flex; align-items: center; padding: 3px 9px; border: 1.5px solid #F48C06; border-radius: 6px; background: #FFF4E5; color: var(--ink); font: 700 12.5px/1.2 "Atkinson Hyperlegible", system-ui, sans-serif; }
+.mains-notice { margin: 0; padding: 8px 10px; border-left: 4px solid #F48C06; border-radius: 4px; background: #FFF4E5; color: #3A2A10; font-size: 13.5px; line-height: 1.35; }
+@media (prefers-color-scheme: dark) { .mains-badge, .mains-notice { background: #3A2A10; color: #FFE8C7; } }
+.print-notice { display: none; }
+@media print {
+  .print-notice { display: block; position: fixed; z-index: 1000; left: 10mm; right: 10mm; bottom: 10mm; margin: 0; padding: 4mm; border: 1.5px solid #F48C06; background: #FFF4E5; color: #000; font-size: 11pt; }
+  /* The notice's band is kept clear: the editor ends above it, so it never covers the drawing or the findings. */
+  .editor:has(.print-notice) { bottom: 40mm; }
+}

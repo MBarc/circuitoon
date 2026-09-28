@@ -4,7 +4,7 @@
   "version": 1,
   "name": "Rocker switch KCD1-101 (SPST, 2 pin)",
   "category": "Switches",
-  "source": "https://www.chinadaier.com/kcd1-2-101-spst-rocker-switch/ https://envistiamall.com/products/rocker-switch-2-pin-on-off-spst-21x15mm-black-kcd1-101",
+  "source": "https://www.chinadaier.com/wp-content/uploads/2017/07/KCD1-2-101.pdf https://www.chinadaier.com/kcd1-2-101-spst-rocker-switch/",
   "pins": [
     {
       "name": "1",
@@ -23,7 +23,43 @@
       "a": "1",
       "b": "2"
     },
-    "params": {}
+    "params": {},
+    "contacts": [
+      {
+        "id": "s",
+        "kind": "switch",
+        "poles": [
+          {
+            "com": "1",
+            "no": "2"
+          }
+        ]
+      }
+    ],
+    "ratings": [
+      {
+        "pins": [
+          "1",
+          "2"
+        ],
+        "kind": "switching",
+        "service": "ac",
+        "volts": 250,
+        "amps": 6,
+        "provenance": "datasheet"
+      },
+      {
+        "pins": [
+          "1",
+          "2"
+        ],
+        "kind": "switching",
+        "service": "ac",
+        "volts": 125,
+        "amps": 10,
+        "provenance": "datasheet"
+      }
+    ]
   },
   "states": [
     "off",

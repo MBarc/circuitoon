@@ -1,11 +1,12 @@
 // Immutable diagram edits. Every function returns a new Diagram and never mutates its input,
 // so the store can keep old versions for undo.
 import { ANNOTATION_LABEL_MAX, ANNOTATION_TEXT_MAX, COORD_LIMIT, type Connection, type Diagram, type Endpoint, type PartInstance, moduleOf } from '../format/diagram.ts'
-import { isBoard, layoutModule, type ModuleDef } from '../format/module.ts'
+import { isBoard, layoutModule, moduleSettings, partSetting, type ModuleDef } from '../format/module.ts'
 import { type Plug, type Seat, mountIssues, plugsOf, seatOf, seatOn } from '../format/breadboard.ts'
 import { pivot, rotateVec, type Rotation } from '../format/geometry.ts'
-import { partValue } from '../format/values.ts'
+import { editableParams, paramValue } from '../format/values.ts'
 import { normalizeEnds, type WireEnds } from '../format/cables.ts'
+import { mainsOf } from '../format/mainsModel.ts'
 
 export interface Selection {
   parts: string[]
@@ -35,6 +36,16 @@ export function nextUid(d: Diagram, prefix: 'p' | 'w' | 'a'): string {
 }
 
 const PREFIXES: [RegExp, string][] = [
+  // Mains families (spec section 4). Each is anchored to its own id prefix, and they come before the
+  // older rules so a mains part is never caught by the unanchored "switch" rule; switches keep S and
+  // relays keep K.
+  [/^outlet-/, 'XS'],
+  [/^plug-/, 'XP'],
+  [/^(charger-|adapter-|hlk-|irm-)/, 'PS'],
+  [/^lamp-holder-/, 'E'],
+  [/^fuse-holder-/, 'F'],
+  [/^ssr-/, 'K'],
+  [/^(terminal-block-|wago-)/, 'X'],
   [/^potentiometer/, 'RV'],
   [/^resistor/, 'R'],
   [/^capacitor/, 'C'],
@@ -244,8 +255,10 @@ function swungAbout(p: PartInstance, m: ModuleDef, board: PartInstance, bm: Modu
 
 /**
  * Rotates each part 90 degrees clockwise about its own pivot. A rotated board turns its mounted
- * parts with it (about the board's pivot), so they stay seated. Any other rotated part keeps its
- * mount only while it still fits; rotating never mounts a part.
+ * parts with it (about the board's pivot), so they stay seated. A rotated plug-in device settles as
+ * if dropped (Ruling 41): turned into a socket it fits it plugs in, turned out of it it comes out,
+ * all in the one edit. Any other rotated part keeps its mount only while it still fits; rotating
+ * never mounts it.
  */
 export function rotateParts(d: Diagram, uids: string[]): Diagram {
   const s = new Set(uids)
@@ -257,7 +270,13 @@ export function rotateParts(d: Diagram, uids: string[]): Diagram {
     if (board && m && bm) return { ...p, ...swungAbout(p, m, board, bm), rotation: turn(p.rotation) }
     return s.has(p.uid) ? { ...p, rotation: turn(p.rotation) } : p
   })
-  return settleMounts({ ...d, parts }, uids.filter((u) => !carried.has(u)), 'keep')
+  const own = uids.filter((u) => !carried.has(u))
+  const isPlug = (u: string) => {
+    const m = moduleOf(d, d.parts.find((p) => p.uid === u)?.module ?? '')
+    return !!m && !!mainsOf(m).plug
+  }
+  const kept = settleMounts({ ...d, parts }, own.filter((u) => !isPlug(u)), 'keep')
+  return settleMounts(kept, own.filter(isPlug), 'drop')
 }
 
 export function deleteSelection(d: Diagram, sel: Selection): Diagram {
@@ -416,8 +435,32 @@ export function updatePartValue(d: Diagram, uid: string, param: string, value: n
   const part = d.parts.find((p) => p.uid === uid)
   const m = part && moduleOf(d, part.module)
   if (!part || !m) return d
-  const current = partValue(part, m)
-  if (current && current.name === param && current.value === value && current.unit === unit) return d
+  if (paramValue(part, m, param) === value && editableParams(m).some((p) => p.name === param && p.unit === unit)) return d
   const values = { ...part.values, [param]: { value, unit } }
   return { ...d, parts: d.parts.map((p) => (p.uid === uid ? { ...p, values } : p)) }
+}
+
+/** Removes a part's stored value for `param`, back to the module default (unknown for an optional param). Same diagram when none is stored. */
+export function clearPartValue(d: Diagram, uid: string, param: string): Diagram {
+  const part = d.parts.find((p) => p.uid === uid)
+  if (!part?.values || !Object.hasOwn(part.values, param)) return d
+  const { [param]: _gone, ...rest } = part.values
+  return {
+    ...d,
+    parts: d.parts.map((p) => {
+      if (p.uid !== uid) return p
+      const { values: _old, ...q } = p
+      return Object.keys(rest).length ? { ...q, values: rest } : q
+    }),
+  }
+}
+
+/** Sets one of a part's enumerated settings. Same diagram when the choice is not offered or is already in effect. */
+export function updatePartSetting(d: Diagram, uid: string, name: string, choice: string): Diagram {
+  const part = d.parts.find((p) => p.uid === uid)
+  const m = part && moduleOf(d, part.module)
+  if (!part || !m) return d
+  const offered = moduleSettings(m)
+  if (!Object.hasOwn(offered, name) || !offered[name].includes(choice) || partSetting(part, m, name) === choice) return d
+  return { ...d, parts: d.parts.map((p) => (p.uid === uid ? { ...p, settings: { ...p.settings, [name]: choice } } : p)) }
 }

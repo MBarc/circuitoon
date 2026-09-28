@@ -1,0 +1,189 @@
+{
+  "format": "circuitoon-module/1",
+  "id": "wago-221-415",
+  "version": 1,
+  "name": "Wago 221-415 lever connector (5 conductors)",
+  "category": "Mains",
+  "source": "https://www.wago.com/221-415 https://assets.cef.co.uk/downloads/pdg/wago_221-415_datasheet/wago_221-415_datasheet.pdf",
+  "pins": [
+    {
+      "name": "1",
+      "side": "left"
+    },
+    {
+      "spacer": true,
+      "side": "left"
+    },
+    {
+      "name": "2",
+      "side": "left"
+    },
+    {
+      "spacer": true,
+      "side": "left"
+    },
+    {
+      "name": "3",
+      "side": "left"
+    },
+    {
+      "spacer": true,
+      "side": "left"
+    },
+    {
+      "name": "4",
+      "side": "left"
+    },
+    {
+      "spacer": true,
+      "side": "left"
+    },
+    {
+      "name": "5",
+      "side": "left"
+    }
+  ],
+  "internal": [
+    [
+      "1",
+      "2",
+      "3",
+      "4",
+      "5"
+    ]
+  ],
+  "size": {
+    "w": 7,
+    "h": 12
+  },
+  "electrical": {
+    "model": "connector",
+    "ratings": [
+      {
+        "pins": [
+          "1",
+          "2",
+          "3",
+          "4",
+          "5"
+        ],
+        "kind": "terminal",
+        "service": "ac/dc",
+        "volts": 450,
+        "amps": 32,
+        "provenance": "datasheet",
+        "conditions": "overvoltage category II, pollution degree 2 (EN 60664); rated surge voltage 4 kV"
+      }
+    ]
+  },
+  "art": {
+    "w": 70,
+    "h": 120,
+    "shapes": [
+      {
+        "type": "rect",
+        "x": 0,
+        "y": 0,
+        "w": 70,
+        "h": 120,
+        "fill": "#DDE7EE",
+        "radius": 4
+      },
+      {
+        "type": "rect",
+        "x": 3,
+        "y": 15,
+        "w": 10,
+        "h": 10,
+        "fill": "#5B616B",
+        "radius": 2,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 18,
+        "y": 13,
+        "w": 46,
+        "h": 14,
+        "fill": "#F48C06",
+        "radius": 3
+      },
+      {
+        "type": "rect",
+        "x": 3,
+        "y": 35,
+        "w": 10,
+        "h": 10,
+        "fill": "#5B616B",
+        "radius": 2,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 18,
+        "y": 33,
+        "w": 46,
+        "h": 14,
+        "fill": "#F48C06",
+        "radius": 3
+      },
+      {
+        "type": "rect",
+        "x": 3,
+        "y": 55,
+        "w": 10,
+        "h": 10,
+        "fill": "#5B616B",
+        "radius": 2,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 18,
+        "y": 53,
+        "w": 46,
+        "h": 14,
+        "fill": "#F48C06",
+        "radius": 3
+      },
+      {
+        "type": "rect",
+        "x": 3,
+        "y": 75,
+        "w": 10,
+        "h": 10,
+        "fill": "#5B616B",
+        "radius": 2,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 18,
+        "y": 73,
+        "w": 46,
+        "h": 14,
+        "fill": "#F48C06",
+        "radius": 3
+      },
+      {
+        "type": "rect",
+        "x": 3,
+        "y": 95,
+        "w": 10,
+        "h": 10,
+        "fill": "#5B616B",
+        "radius": 2,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 18,
+        "y": 93,
+        "w": 46,
+        "h": 14,
+        "fill": "#F48C06",
+        "radius": 3
+      }
+    ]
+  }
+}

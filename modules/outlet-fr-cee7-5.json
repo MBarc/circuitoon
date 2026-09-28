@@ -1,0 +1,160 @@
+{
+  "format": "circuitoon-module/1",
+  "id": "outlet-fr-cee7-5",
+  "version": 1,
+  "name": "French outlet CEE 7/5 (16 A, 230 V)",
+  "category": "Mains",
+  "source": "https://www.plugsocketmuseum.nl/French1.html https://en.wikipedia.org/wiki/CEE_7 https://www.installation-renovation-electrique.com/installation-electrique/conseils-electricite/conseils-travaux-electriques/branchement-prise-electrique-phase-a-droite-a-gauche/ https://www.legrand.fr/pro/catalogue/prise-de-courant-standard-francais-celiane-16a-250v-2pt-bornes-a-vis https://en.wikipedia.org/wiki/AC_power_plugs_and_sockets",
+  "pins": [],
+  "size": {
+    "w": 8,
+    "h": 8
+  },
+  "holes": [
+    {
+      "name": "L",
+      "label": "L",
+      "at": [
+        [
+          20,
+          40
+        ]
+      ]
+    },
+    {
+      "name": "N",
+      "label": "N",
+      "at": [
+        [
+          60,
+          40
+        ]
+      ]
+    },
+    {
+      "name": "PE",
+      "label": "PE",
+      "at": [
+        [
+          40,
+          10
+        ]
+      ]
+    }
+  ],
+  "obstacle": false,
+  "electrical": {
+    "model": "outlet",
+    "params": {
+      "acVoltage": {
+        "unit": "VAC",
+        "default": 230
+      }
+    },
+    "ac": {
+      "hz": 50,
+      "region": "eu"
+    },
+    "acSources": [
+      {
+        "id": "supply",
+        "live": [
+          "L"
+        ],
+        "neutral": [
+          "N"
+        ],
+        "earth": [
+          "PE"
+        ]
+      }
+    ],
+    "sockets": [
+      {
+        "id": "main",
+        "family": "cee7-5",
+        "contacts": [
+          {
+            "group": "L",
+            "role": "L"
+          },
+          {
+            "group": "N",
+            "role": "N"
+          },
+          {
+            "group": "PE",
+            "role": "PE"
+          }
+        ]
+      }
+    ],
+    "ratings": [
+      {
+        "pins": [
+          "L",
+          "N",
+          "PE"
+        ],
+        "kind": "terminal",
+        "service": "ac",
+        "volts": 250,
+        "amps": 16,
+        "provenance": "datasheet"
+      }
+    ]
+  },
+  "art": {
+    "w": 80,
+    "h": 80,
+    "shapes": [
+      {
+        "type": "rect",
+        "x": 0,
+        "y": 0,
+        "w": 80,
+        "h": 80,
+        "fill": "#F5F5F2",
+        "radius": 8
+      },
+      {
+        "type": "rect",
+        "x": 4,
+        "y": 4,
+        "w": 72,
+        "h": 72,
+        "fill": "#E6E2DA",
+        "radius": 36
+      },
+      {
+        "type": "rect",
+        "x": 15,
+        "y": 35,
+        "w": 10,
+        "h": 10,
+        "fill": "#2B2F36",
+        "radius": 5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 55,
+        "y": 35,
+        "w": 10,
+        "h": 10,
+        "fill": "#2B2F36",
+        "radius": 5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 35,
+        "y": 5,
+        "w": 10,
+        "h": 10,
+        "fill": "#C9CED6",
+        "radius": 5
+      }
+    ]
+  }
+}

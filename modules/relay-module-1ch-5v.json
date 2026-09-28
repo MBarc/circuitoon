@@ -4,7 +4,7 @@
   "version": 1,
   "name": "Relay module 1 channel 5 V (SRD-05VDC, high/low trigger jumper)",
   "category": "Motors and actuators",
-  "source": "https://www.amazon.com/dp/B00LW15A4W https://konnected.io/products/1-channel-5v-relay-module-with-high-low-level-trigger",
+  "source": "https://www.songlerelay.com/upload/8670/srd-t73-relay-290486.pdf https://www.songlerelay.com/srd-t73-relay.html https://www.circuitbasics.com/wp-content/uploads/2015/11/SRD-05VDC-SL-C-Datasheet.pdf https://www.amazon.com/dp/B00LW15A4W https://konnected.io/products/1-channel-5v-relay-module-with-high-low-level-trigger",
   "pins": [
     {
       "name": "NO",
@@ -60,7 +60,79 @@
   },
   "electrical": {
     "model": "relay",
-    "params": {}
+    "params": {},
+    "contacts": [
+      {
+        "id": "k",
+        "kind": "relay",
+        "poles": [
+          {
+            "com": "COM",
+            "no": "NO",
+            "nc": "NC"
+          }
+        ]
+      }
+    ],
+    "domains": [
+      {
+        "name": "contacts",
+        "pins": [
+          "NO",
+          "COM",
+          "NC"
+        ],
+        "kind": "mains"
+      },
+      {
+        "name": "control",
+        "pins": [
+          "IN",
+          "DC-",
+          "DC+"
+        ],
+        "kind": "selv"
+      }
+    ],
+    "isolation": "unknown",
+    "ratings": [
+      {
+        "pins": [
+          "NO",
+          "COM",
+          "NC"
+        ],
+        "kind": "switching",
+        "service": "ac",
+        "volts": 125,
+        "amps": 10,
+        "provenance": "unverified"
+      },
+      {
+        "pins": [
+          "NO",
+          "COM",
+          "NC"
+        ],
+        "kind": "switching",
+        "service": "ac",
+        "volts": 240,
+        "amps": 7,
+        "provenance": "unverified"
+      },
+      {
+        "pins": [
+          "NO",
+          "COM",
+          "NC"
+        ],
+        "kind": "switching",
+        "service": "dc",
+        "volts": 28,
+        "amps": 7,
+        "provenance": "unverified"
+      }
+    ]
   },
   "art": {
     "w": 200,

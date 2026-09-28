@@ -145,15 +145,37 @@ function PinLabel({ p, box, outside, pad = 4 }: { p: WorldPin; box: Rect; outsid
 }
 
 /**
+ * The label of a lead another part covers (the upper device of a duplex outlet): inside the body just
+ * in from the lead, horizontal, with the white halo every pin label has so it reads on dark plastic.
+ */
+function CoveredLabel({ p, inset }: { p: WorldPin; inset: number }) {
+  const text = p.label ?? p.name
+  const x = p.edge.x - p.dir.x * inset
+  const y = p.edge.y - p.dir.y * inset
+  return (
+    <text x={x} y={y} textAnchor={p.dir.x < 0 ? 'start' : p.dir.x > 0 ? 'end' : 'middle'} dominantBaseline="central"
+      fontSize={7} fontWeight={700} fill={INK} stroke="#FFFFFF" strokeWidth={2.4} strokeLinejoin="round" paintOrder="stroke">
+      {text}
+    </text>
+  )
+}
+
+/**
  * Memoized: props are primitives plus a module object that keeps its identity, so pan, zoom
  * and selection changes do not re-render every part.
  */
-export const Part = memo(function Part({ module: m, x = 0, y = 0, rotation = 0, caption, values, ink = INK, halo, outline }: {
+export const Part = memo(function Part({ module: m, x = 0, y = 0, rotation = 0, caption, values, captionX, captionY: seatY, captionAnchor: seatAnchor = 'start', labelInset = null, ink = INK, halo, outline }: {
   module: ModuleDef
   x?: number
   y?: number
   rotation?: Rotation
   caption?: string
+  /** A seated plug-in device's caption start, part-local (src/format/seatedLabels.ts); primitives, so the memo holds. */
+  captionX?: number
+  captionY?: number
+  captionAnchor?: 'start' | 'middle'
+  /** Another part covers the leads: their labels go inside the body, horizontal, this far in from each lead. */
+  labelInset?: number | null
   /** The part instance's chosen values, for example `{ resistance: { value: 4700, unit: "ohm" } }`. */
   values?: Record<string, unknown>
   /** Caption color (the theme's ink); the Sticker ink by default. */
@@ -176,6 +198,7 @@ export const Part = memo(function Part({ module: m, x = 0, y = 0, rotation = 0, 
   const headers = headerSides(m)
   const cap = captionAnchor(m, rotation)
   const body = outline && darkBody(m) ? bodyShape(m) : -1
+  const captionHalo = halo ? { stroke: halo, strokeWidth: 3, strokeLinejoin: 'round' as const, paintOrder: 'stroke' } : {}
   return (
     <g transform={`translate(${x} ${y})`}>
       <g transform={rotation ? `rotate(${rotation} ${c.x} ${c.y})` : undefined}>
@@ -213,15 +236,19 @@ export const Part = memo(function Part({ module: m, x = 0, y = 0, rotation = 0, 
       </g>
       {pins.map((p, i) => {
         if (!showLabel(m, p)) return null
+        if (labelInset !== null) return <CoveredLabel key={p.name} p={p} inset={labelInset} />
         const header = !!art && headers.has(lay.pins[i].side)
         return <PinLabel key={p.name} p={p} box={box} outside={!!art && !header} pad={header ? HEADER_INSET : 4} />
       })}
-      {caption && (
-        <text x={cap.x} y={cap.y} textAnchor="middle" fontSize={CAPTION_SIZE} fontWeight={700} fill={ink}
-          {...(halo ? { stroke: halo, strokeWidth: 3, strokeLinejoin: 'round' as const, paintOrder: 'stroke' } : {})}>
+      {caption && (captionX !== undefined && seatY !== undefined ? (
+        <text x={captionX} y={seatY} textAnchor={seatAnchor} dominantBaseline={seatAnchor === 'start' ? 'central' : 'auto'} fontSize={CAPTION_SIZE} fontWeight={700} fill={ink} {...captionHalo}>
           {caption}
         </text>
-      )}
+      ) : (
+        <text x={cap.x} y={cap.y} textAnchor="middle" fontSize={CAPTION_SIZE} fontWeight={700} fill={ink} {...captionHalo}>
+          {caption}
+        </text>
+      ))}
     </g>
   )
 })

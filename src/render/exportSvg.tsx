@@ -6,9 +6,10 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { computeRoutes, type Diagram, moduleOf, type Routes } from '../format/diagram.ts'
 import { type Rect, bodyRect } from '../format/geometry.ts'
 import { layoutModule } from '../format/module.ts'
-import { captionBox } from './captionBox.ts'
+import { placedCaptionBox } from './captionBox.ts'
+import { seatedLabels } from '../format/seatedLabels.ts'
 import { annotationRect } from './annotationGeometry.ts'
-import { Sheet } from './Sheet.tsx'
+import { Sheet, sheetFrame } from './Sheet.tsx'
 import { DARK_THEME, LIGHT_THEME } from './theme.ts'
 
 export const EXPORT_FONT = `'Atkinson Hyperlegible', 'Segoe UI', system-ui, -apple-system, Helvetica, Arial, sans-serif`
@@ -26,12 +27,13 @@ function boundsOf(rects: Rect[], pad: number): Rect {
 
 function partRects(d: Diagram, only?: Set<string>): Rect[] {
   const out: Rect[] = []
+  const seated = seatedLabels(d)
   for (const p of d.parts) {
     if (only && !only.has(p.uid)) continue
     const m = moduleOf(d, p.module)
     if (!m) continue
     const b = bodyRect(p, layoutModule(m))
-    out.push({ x: b.x - PIN_ROOM, y: b.y - PIN_ROOM, w: b.w + 2 * PIN_ROOM, h: b.h + 2 * PIN_ROOM }, captionBox(p, m))
+    out.push({ x: b.x - PIN_ROOM, y: b.y - PIN_ROOM, w: b.w + 2 * PIN_ROOM, h: b.h + 2 * PIN_ROOM }, placedCaptionBox(p, m, seated.get(p.uid)))
   }
   return out
 }
@@ -54,8 +56,10 @@ export function focusBounds(d: Diagram, uids: string[], routes: Routes = compute
 export function renderSheetSvg(d: Diagram, opts: { dark?: boolean; box?: Rect } = {}): { svg: string; width: number; height: number } {
   const box = opts.box ?? contentBounds(d)
   const markup = renderToStaticMarkup(<Sheet diagram={d} box={box} label={d.title} theme={opts.dark ? DARK_THEME : LIGHT_THEME} />)
-  const width = Math.ceil(box.w)
-  const height = Math.ceil(box.h)
+  // A mains sheet adds the notice's footer band below the drawing (Sheet.tsx sheetFrame).
+  const frame = sheetFrame(d, box)
+  const width = Math.ceil(frame.w)
+  const height = Math.ceil(frame.h)
   const svg = markup.replace(/^<svg /, `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" font-family="${EXPORT_FONT}" `)
   return { svg: `${svg}\n`, width, height }
 }

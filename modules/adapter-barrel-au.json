@@ -1,0 +1,289 @@
+{
+  "format": "circuitoon-module/1",
+  "id": "adapter-barrel-au",
+  "version": 1,
+  "name": "Wall adapter, barrel jack, AU/NZ (AS/NZS 3112)",
+  "category": "Mains",
+  "source": "https://www.meanwell.com/Upload/PDF/NGE12/NGE12-SPEC.PDF https://en.wikipedia.org/wiki/AS/NZS_3112",
+  "pins": [
+    {
+      "name": "+",
+      "side": "bottom",
+      "type": "power_out"
+    },
+    {
+      "spacer": true,
+      "side": "bottom"
+    },
+    {
+      "name": "-",
+      "side": "bottom",
+      "type": "ground"
+    }
+  ],
+  "size": {
+    "w": 6,
+    "h": 6
+  },
+  "electrical": {
+    "model": "converter",
+    "internalNodes": [
+      "L prong",
+      "N prong"
+    ],
+    "acInput": {
+      "a": "L prong",
+      "b": "N prong",
+      "range": [
+        80,
+        264
+      ]
+    },
+    "domains": [
+      {
+        "name": "mains",
+        "pins": [
+          "L prong",
+          "N prong"
+        ],
+        "kind": "mains"
+      },
+      {
+        "name": "output",
+        "pins": [
+          "+",
+          "-"
+        ],
+        "kind": "selv"
+      }
+    ],
+    "isolation": "double",
+    "isolationProvenance": "datasheet",
+    "protection": "class-2",
+    "plug": {
+      "family": "as3112",
+      "profiles": [
+        {
+          "id": "main",
+          "contacts": [
+            {
+              "pin": "L prong",
+              "at": {
+                "x": 20,
+                "y": 20
+              },
+              "mains": "L"
+            },
+            {
+              "pin": "N prong",
+              "at": {
+                "x": 50,
+                "y": 20
+              },
+              "mains": "N"
+            }
+          ]
+        }
+      ]
+    },
+    "params": {
+      "voltage": {
+        "unit": "V",
+        "default": 12
+      }
+    }
+  },
+  "art": {
+    "w": 60,
+    "h": 60,
+    "shapes": [
+      {
+        "type": "rect",
+        "x": 0,
+        "y": 0,
+        "w": 60,
+        "h": 60,
+        "fill": "#2B2F36",
+        "radius": 10
+      },
+      {
+        "type": "rect",
+        "x": 5,
+        "y": 5,
+        "w": 50,
+        "h": 36,
+        "fill": "#3A3F48",
+        "radius": 7,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 20.1,
+        "y": 14.100000000000001,
+        "w": 4,
+        "h": 4,
+        "fill": "#AEB5BF",
+        "radius": 2,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 19.4,
+        "y": 15.399999999999999,
+        "w": 4,
+        "h": 4,
+        "fill": "#AEB5BF",
+        "radius": 2,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 18.7,
+        "y": 16.7,
+        "w": 4,
+        "h": 4,
+        "fill": "#AEB5BF",
+        "radius": 2,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 18,
+        "y": 18,
+        "w": 4,
+        "h": 4,
+        "fill": "#AEB5BF",
+        "radius": 2,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 17.3,
+        "y": 19.3,
+        "w": 4,
+        "h": 4,
+        "fill": "#AEB5BF",
+        "radius": 2,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 16.6,
+        "y": 20.6,
+        "w": 4,
+        "h": 4,
+        "fill": "#AEB5BF",
+        "radius": 2,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 15.899999999999999,
+        "y": 21.9,
+        "w": 4,
+        "h": 4,
+        "fill": "#AEB5BF",
+        "radius": 2,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 45.9,
+        "y": 14.100000000000001,
+        "w": 4,
+        "h": 4,
+        "fill": "#AEB5BF",
+        "radius": 2,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 46.6,
+        "y": 15.399999999999999,
+        "w": 4,
+        "h": 4,
+        "fill": "#AEB5BF",
+        "radius": 2,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 47.3,
+        "y": 16.7,
+        "w": 4,
+        "h": 4,
+        "fill": "#AEB5BF",
+        "radius": 2,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 48,
+        "y": 18,
+        "w": 4,
+        "h": 4,
+        "fill": "#AEB5BF",
+        "radius": 2,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 48.7,
+        "y": 19.3,
+        "w": 4,
+        "h": 4,
+        "fill": "#AEB5BF",
+        "radius": 2,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 49.4,
+        "y": 20.6,
+        "w": 4,
+        "h": 4,
+        "fill": "#AEB5BF",
+        "radius": 2,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 50.1,
+        "y": 21.9,
+        "w": 4,
+        "h": 4,
+        "fill": "#AEB5BF",
+        "radius": 2,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 48,
+        "y": 7,
+        "w": 5,
+        "h": 5,
+        "fill": "#7BD389",
+        "radius": 2.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 22,
+        "y": 42,
+        "w": 16,
+        "h": 8,
+        "fill": "#2B2F36",
+        "radius": 3
+      },
+      {
+        "type": "rect",
+        "x": 27,
+        "y": 50,
+        "w": 6,
+        "h": 10,
+        "fill": "#5B616B",
+        "outline": false
+      }
+    ]
+  }
+}

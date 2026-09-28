@@ -64,6 +64,576 @@ function parseArgs(argv) {
 	};
 }
 //#endregion
+//#region src/format/mainsModel.ts
+var CONDUCTORS = [
+	"L",
+	"N",
+	"PE"
+];
+/**
+* A plug contact's role: a conductor, or `mechanical` for a contact that must enter a socket contact
+* to seat but carries no conductor (Ruling 39: the insulated earth pin of a class II BS 1363 plug,
+* which only opens the socket's shutters).
+*/
+var PLUG_ROLES = [...CONDUCTORS, "mechanical"];
+var REQUIREMENTS = [
+	"L",
+	"N",
+	"PE",
+	"line"
+];
+var REGIONS = [
+	"us",
+	"jp",
+	"eu",
+	"uk",
+	"au"
+];
+var PLUG_FAMILIES = [
+	"nema-5-15p",
+	"nema-1-15p",
+	"nema-1-15p-polarized",
+	"cee7-7",
+	"cee7-16",
+	"bs1363",
+	"as3112"
+];
+var SOCKET_FAMILIES = [
+	"nema-5-15r",
+	"nema-5-20r",
+	"nema-1-15r",
+	"nema-1-15r-polarized",
+	"cee7-3",
+	"cee7-5",
+	"cee7-16",
+	"bs1363",
+	"as3112"
+];
+var ISOLATIONS = [
+	"reinforced",
+	"double",
+	"basic",
+	"none",
+	"unknown"
+];
+var CONTACT_KINDS = [
+	"switch",
+	"relay",
+	"ssr"
+];
+var DOMAIN_KINDS = [
+	"mains",
+	"selv",
+	"pelv"
+];
+var RATING_KINDS = [
+	"insulation",
+	"terminal",
+	"switching"
+];
+var SERVICES = [
+	"ac",
+	"dc",
+	"ac/dc"
+];
+var PROVENANCES = ["datasheet", "unverified"];
+var STATED_CLASSES = [
+	"reinforced",
+	"double",
+	"basic"
+];
+/**
+* The socket families an outlet of each region may carry. The spec's compatibility table says which
+* plug fits which socket, not where a socket is used, so this list is explicit here; a family missing
+* from a region is rejected (a mislabelled outlet would get the wrong identity colours and voltage).
+*/
+var REGION_SOCKETS = {
+	us: [
+		"nema-5-15r",
+		"nema-5-20r",
+		"nema-1-15r",
+		"nema-1-15r-polarized"
+	],
+	jp: ["nema-1-15r", "nema-1-15r-polarized"],
+	eu: [
+		"cee7-3",
+		"cee7-5",
+		"cee7-16"
+	],
+	uk: ["bs1363"],
+	au: ["as3112"]
+};
+var SOURCE_LISTS = [
+	["live", "L"],
+	["neutral", "N"],
+	["earth", "PE"]
+];
+var article = (c) => c === "PE" ? "a" : "an";
+var isStr = (v) => typeof v === "string" && v !== "";
+var oneOf = (list, v) => typeof v === "string" && list.includes(v);
+var words = (list) => list.map((x) => `"${x}"`).join(", ");
+/** `electrical.internalNodes`: named terminals inside the part (a plug's prongs), added to `names`. */
+function claimInternalNodes(raw, names, errors) {
+	const el = raw.electrical;
+	if (!isObj(el) || el.internalNodes === void 0) return;
+	if (!Array.isArray(el.internalNodes)) return void errors.push("electrical.internalNodes: must be a list of names");
+	el.internalNodes.forEach((n, i) => {
+		if (!isStr(n)) errors.push(`electrical.internalNodes[${i}]: must be a name`);
+		else if (names.has(n)) errors.push(`electrical.internalNodes[${i}]: duplicate name "${n}" (pins, hole groups and internal nodes share one namespace)`);
+		else names.add(n);
+	});
+}
+/** Checks every mains field of `electrical` against `names` (pins, hole groups and internal nodes). */
+function validateMains(raw, names, errors) {
+	const el = raw.electrical;
+	if (!isObj(el)) return;
+	const nodes = new Set(Array.isArray(el.internalNodes) ? el.internalNodes.filter(isStr) : []);
+	const term = (v, at) => {
+		if (!isStr(v) || !names.has(v)) errors.push(`${at}: no pin, hole group or internal node named "${String(v)}"`);
+	};
+	const termList = (v, at) => {
+		if (!Array.isArray(v) || v.length === 0) return void errors.push(`${at}: must be a list of 1 or more terminal names`);
+		v.forEach((n, i) => term(n, `${at}[${i}]`));
+	};
+	const acRange = (v, at) => {
+		if (!(Array.isArray(v) && v.length === 2 && isNum(v[0]) && isNum(v[1]) && v[0] >= 1 && v[0] <= v[1] && v[1] <= 1e3)) errors.push(`${at}: must be [min, max] in volts AC, from 1 to 1000, min not above max`);
+	};
+	const each = (key, check) => {
+		const v = el[key];
+		if (v === void 0) return;
+		if (!Array.isArray(v)) return void errors.push(`electrical.${key}: must be a list`);
+		v.forEach((x, i) => isObj(x) ? check(x, `electrical.${key}[${i}]`) : errors.push(`electrical.${key}[${i}]: must be an object`));
+	};
+	const named = (seen, v, at) => {
+		if (!isStr(v)) errors.push(`${at}: required, a name`);
+		else if (seen.has(v)) errors.push(`${at}: duplicate "${v}"`);
+		else seen.add(v);
+	};
+	const sourceIds = /* @__PURE__ */ new Set();
+	const conductorOf = /* @__PURE__ */ new Map();
+	each("acSources", (s, at) => {
+		named(sourceIds, s.id, `${at}.id`);
+		termList(s.live, `${at}.live`);
+		termList(s.neutral, `${at}.neutral`);
+		if (s.earth !== void 0) termList(s.earth, `${at}.earth`);
+		for (const [key, role] of SOURCE_LISTS) {
+			const v = s[key];
+			if (!Array.isArray(v)) continue;
+			v.forEach((n, i) => {
+				if (!isStr(n) || !names.has(n)) return;
+				const prev = conductorOf.get(n);
+				if (prev) errors.push(`${at}.${key}[${i}]: "${n}" is already ${prev.role} of source "${prev.src}" (a terminal carries exactly one conductor)`);
+				else conductorOf.set(n, {
+					role,
+					src: String(s.id),
+					at: `${at}.${key}[${i}]`
+				});
+			});
+		}
+	});
+	if (Array.isArray(el.acSources) && el.acSources.length) {
+		if (!(isObj(el.params) && isObj(el.params.acVoltage))) errors.push("electrical.acSources: needs an acVoltage param (electrical.params.acVoltage), the source voltage");
+		if (el.ac === void 0) errors.push("electrical.ac: required with acSources ({ \"hz\", \"region\" })");
+	}
+	if (el.ac !== void 0 && !(isObj(el.ac) && isNum(el.ac.hz) && el.ac.hz > 0 && oneOf(REGIONS, el.ac.region))) errors.push(`electrical.ac: must be { "hz": <above 0>, "region": one of ${words(REGIONS)} }`);
+	each("conducts", (c, at) => {
+		if (!(Array.isArray(c.pins) && c.pins.length === 2 && c.pins[0] !== c.pins[1])) errors.push(`${at}.pins: must be two different terminal names`);
+		else c.pins.forEach((n, i) => term(n, `${at}.pins[${i}]`));
+		if (c.kind !== "load" && c.kind !== "leakage") errors.push(`${at}.kind: must be "load" or "leakage"`);
+		if (c.range !== void 0) acRange(c.range, `${at}.range`);
+	});
+	each("protective", (e, at) => {
+		term(e.from, `${at}.from`);
+		term(e.to, `${at}.to`);
+		if (isStr(e.from) && e.from === e.to) errors.push(`${at}: from and to must differ`);
+		if (e.kind !== "fuse") errors.push(`${at}.kind: must be "fuse"`);
+		if (e.rating !== void 0 && !(isNum(e.rating) && e.rating > 0 && e.rating <= 100)) errors.push(`${at}.rating: must be a number of amps, above 0, up to 100`);
+	});
+	const domainNames = /* @__PURE__ */ new Set();
+	const inDomain = /* @__PURE__ */ new Map();
+	each("domains", (x, at) => {
+		named(domainNames, x.name, `${at}.name`);
+		if (!oneOf(DOMAIN_KINDS, x.kind)) errors.push(`${at}.kind: must be "mains", "selv" or "pelv"`);
+		termList(x.pins, `${at}.pins`);
+		if (Array.isArray(x.pins)) for (const n of x.pins) {
+			if (!isStr(n)) continue;
+			if (inDomain.has(n)) errors.push(`${at}.pins: "${n}" is already in domain "${inDomain.get(n)}"`);
+			else inDomain.set(n, String(x.name));
+		}
+	});
+	if (el.isolation !== void 0 && !oneOf(ISOLATIONS, el.isolation)) errors.push(`electrical.isolation: must be one of ${words(ISOLATIONS)}`);
+	if (el.isolationProvenance !== void 0 && !oneOf(PROVENANCES, el.isolationProvenance)) errors.push("electrical.isolationProvenance: must be \"datasheet\" or \"unverified\"");
+	if (el.safeguard !== void 0 && el.safeguard !== "protective-screen") errors.push("electrical.safeguard: must be \"protective-screen\"");
+	const kinds = Array.isArray(el.domains) ? el.domains.filter(isObj).map((x) => x.kind) : [];
+	const barrier = kinds.includes("mains") && kinds.some((k) => k === "selv" || k === "pelv");
+	const sides = "needs a mains domain and a selv or pelv domain, the two sides of the barrier it rates";
+	if (el.isolation !== void 0 && !barrier) errors.push(`electrical.isolation: ${sides}`);
+	if (el.safeguard !== void 0 && !barrier) errors.push(`electrical.safeguard: ${sides}`);
+	if (kinds.some((k) => k === "selv" || k === "pelv") && el.isolation === void 0) errors.push("electrical.domains: a selv or pelv domain needs electrical.isolation (\"unknown\" when no source states a class)");
+	if (oneOf(STATED_CLASSES, el.isolation) && el.isolationProvenance === void 0) errors.push(`electrical.isolationProvenance: required with isolation "${el.isolation}" ("datasheet" or "unverified")`);
+	if (el.acInput !== void 0) {
+		const a = el.acInput;
+		if (!isObj(a)) errors.push("electrical.acInput: must be { \"a\", \"b\", \"range\": [min, max] }");
+		else {
+			term(a.a, "electrical.acInput.a");
+			term(a.b, "electrical.acInput.b");
+			if (isStr(a.a) && a.a === a.b) errors.push("electrical.acInput: a and b must differ");
+			acRange(a.range, "electrical.acInput.range");
+		}
+	}
+	each("ratings", (r, at) => {
+		termList(r.pins, `${at}.pins`);
+		if (!oneOf(RATING_KINDS, r.kind)) errors.push(`${at}.kind: must be "insulation", "terminal" or "switching"`);
+		if (!oneOf(SERVICES, r.service)) errors.push(`${at}.service: must be "ac", "dc" or "ac/dc"`);
+		if (!(isNum(r.volts) && r.volts > 0)) errors.push(`${at}.volts: must be a number above 0`);
+		if (r.amps !== void 0 && !(isNum(r.amps) && r.amps > 0)) errors.push(`${at}.amps: must be a number above 0`);
+		if (!oneOf(PROVENANCES, r.provenance)) errors.push(`${at}.provenance: must be "datasheet" or "unverified"`);
+		if (r.conditions !== void 0 && !isStr(r.conditions)) errors.push(`${at}.conditions: must be a non-empty string`);
+	});
+	const contactIds = /* @__PURE__ */ new Set();
+	const poleOf = /* @__PURE__ */ new Map();
+	each("contacts", (c, at) => {
+		named(contactIds, c.id, `${at}.id`);
+		if (!oneOf(CONTACT_KINDS, c.kind)) errors.push(`${at}.kind: must be "switch", "relay" or "ssr"`);
+		if (!Array.isArray(c.poles) || !c.poles.length) return void errors.push(`${at}.poles: must be a list of 1 or more { "com", "no"?, "nc"? }`);
+		c.poles.forEach((pole, j) => {
+			const pat = `${at}.poles[${j}]`;
+			if (!isObj(pole)) return void errors.push(`${pat}: must be an object`);
+			term(pole.com, `${pat}.com`);
+			if (pole.no !== void 0) term(pole.no, `${pat}.no`);
+			if (pole.nc !== void 0) term(pole.nc, `${pat}.nc`);
+			if (pole.no === void 0 && pole.nc === void 0) errors.push(`${pat}: needs "no", "nc" or both`);
+			else if (c.kind === "ssr" && (pole.no === void 0 || pole.nc !== void 0)) errors.push(`${pat}: an SSR pole has "no" only (its OFF state is a leakage path)`);
+			const ends = [
+				pole.com,
+				pole.no,
+				pole.nc
+			].filter((v) => v !== void 0);
+			if (new Set(ends).size !== ends.length) errors.push(`${pat}: com, no and nc must be different terminals`);
+			else for (const k of [
+				"com",
+				"no",
+				"nc"
+			]) {
+				const n = pole[k];
+				if (!isStr(n)) continue;
+				const prev = poleOf.get(n);
+				if (prev) errors.push(`${pat}.${k}: "${n}" is already in ${prev}`);
+				else poleOf.set(n, pat);
+			}
+		});
+	});
+	if (el.protection !== void 0) {
+		const prongs = isObj(el.plug) && Array.isArray(el.plug.profiles) ? el.plug.profiles.filter(isObj).flatMap((pr) => Array.isArray(pr.contacts) ? pr.contacts.filter(isObj) : []) : [];
+		const pe = [...Array.isArray(raw.pins) ? raw.pins : [], ...Array.isArray(raw.holes) ? raw.holes : []].some((p) => isObj(p) && p.mains === "PE") || prongs.some((c) => c.mains === "PE" && isStr(c.pin) && nodes.has(c.pin));
+		if (el.protection !== "class-1" && el.protection !== "class-2") errors.push("electrical.protection: must be \"class-1\" or \"class-2\"");
+		else if (el.protection === "class-1" && !pe) errors.push("electrical.protection: a class 1 part needs a terminal marked \"mains\": \"PE\" or a PE plug contact");
+	}
+	if (el.polarityHazard !== void 0 && !isStr(el.polarityHazard)) errors.push("electrical.polarityHazard: must be a sentence saying what wiring the part the wrong way round does");
+	const pinRole = /* @__PURE__ */ new Map();
+	if (el.plug !== void 0) {
+		const p = el.plug;
+		if (!isObj(p)) errors.push("electrical.plug: must be { \"family\", \"profiles\": [...] }");
+		else {
+			if (!oneOf(PLUG_FAMILIES, p.family)) errors.push(`electrical.plug.family: must be one of ${words(PLUG_FAMILIES)}`);
+			if (raw.obstacle === false) errors.push("electrical.plug: a plug-in device cannot be a board (\"obstacle\": false)");
+			if (!Array.isArray(p.profiles) || !p.profiles.length) errors.push("electrical.plug.profiles: must be a list of 1 or more profiles");
+			else {
+				const seen = /* @__PURE__ */ new Set();
+				p.profiles.forEach((pr, i) => {
+					const at = `electrical.plug.profiles[${i}]`;
+					if (!isObj(pr)) return void errors.push(`${at}: must be an object`);
+					named(seen, pr.id, `${at}.id`);
+					if (!Array.isArray(pr.contacts) || !pr.contacts.length) return void errors.push(`${at}.contacts: must be a list of 1 or more contacts`);
+					const roleOfPin = /* @__PURE__ */ new Map();
+					const spots = /* @__PURE__ */ new Set();
+					const count = {
+						L: 0,
+						N: 0,
+						PE: 0
+					};
+					let rolesKnown = true;
+					pr.contacts.forEach((c, j) => {
+						const cat = `${at}.contacts[${j}]`;
+						if (!isObj(c)) {
+							rolesKnown = false;
+							errors.push(`${cat}: must be an object`);
+							return;
+						}
+						if (!isStr(c.pin) || !nodes.has(c.pin)) errors.push(`${cat}.pin: must name an internal node (electrical.internalNodes), the prong`);
+						if (!(isObj(c.at) && isNum(c.at.x) && isNum(c.at.y) && c.at.x % 10 === 0 && c.at.y % 10 === 0)) errors.push(`${cat}.at: must be { "x", "y" } on the 10 px grid`);
+						else {
+							const spot = `${c.at.x}, ${c.at.y}`;
+							if (spots.has(spot)) errors.push(`${cat}.at: another contact of this profile sits at ${spot}`);
+							else spots.add(spot);
+						}
+						const role = oneOf(PLUG_ROLES, c.mains) ? c.mains : null;
+						if (!role) {
+							rolesKnown = false;
+							errors.push(`${cat}.mains: must be "L", "N", "PE" or "mechanical"`);
+						} else if (role === "PE" && el.protection === "class-2") errors.push(`${cat}.mains: a class 2 part has no PE prong (an insulated earth pin is "mechanical")`);
+						if (!isStr(c.pin)) return;
+						const prev = roleOfPin.get(c.pin);
+						const again = prev !== void 0 && prev === role && (role === "PE" || role === "mechanical");
+						if (prev !== void 0 && !again) errors.push(`${cat}.pin: "${c.pin}" is already a contact of this profile`);
+						if (prev === void 0 && role) roleOfPin.set(c.pin, role);
+						if (role && role !== "mechanical" && !again) count[role]++;
+						if (!role) return;
+						const other = pinRole.get(c.pin);
+						if (other === void 0) pinRole.set(c.pin, role);
+						else if (other === "mechanical" !== (role === "mechanical")) errors.push(`${cat}.mains: "${c.pin}" is ${other === "mechanical" ? "mechanical" : "a conductor"} in another profile (a mechanical pin carries no conductor in any profile)`);
+					});
+					if (rolesKnown && (count.L !== 1 || count.N !== 1 || count.PE > 1)) errors.push(`${at}.contacts: needs exactly one L and one N contact, and at most one PE`);
+				});
+			}
+		}
+	}
+	if (el.sockets !== void 0) {
+		const holes = (Array.isArray(raw.holes) ? raw.holes : []).filter(isObj).map((g) => g.name).filter(isStr);
+		if (!(raw.obstacle === false && holes.length)) errors.push("electrical.sockets: only a board (hole groups and \"obstacle\": false) has sockets");
+		if (!(Array.isArray(el.acSources) && el.acSources.length && el.ac !== void 0)) errors.push("electrical.sockets: an outlet needs electrical.acSources and electrical.ac (its source and region)");
+		const owner = /* @__PURE__ */ new Map();
+		const socketContacts = [];
+		const ids = /* @__PURE__ */ new Set();
+		const region = isObj(el.ac) && oneOf(REGIONS, el.ac.region) ? el.ac.region : null;
+		each("sockets", (s, at) => {
+			named(ids, s.id, `${at}.id`);
+			if (!oneOf(SOCKET_FAMILIES, s.family)) errors.push(`${at}.family: must be one of ${words(SOCKET_FAMILIES)}`);
+			else if (region && !REGION_SOCKETS[region].includes(s.family)) {
+				const ok = REGION_SOCKETS[region];
+				errors.push(`${at}.family: "${s.family}" is not a socket of region "${region}" (expected ${ok.length > 1 ? "one of " : ""}${words(ok)})`);
+			}
+			if (!Array.isArray(s.contacts) || !s.contacts.length) return void errors.push(`${at}.contacts: must be a list of { "group", "role" }`);
+			const roles = /* @__PURE__ */ new Set();
+			s.contacts.forEach((c, j) => {
+				const cat = `${at}.contacts[${j}]`;
+				if (!isObj(c)) return void errors.push(`${cat}: must be an object`);
+				if (!isStr(c.group) || !holes.includes(c.group)) errors.push(`${cat}.group: no hole group named "${String(c.group)}"`);
+				else if (owner.has(c.group)) errors.push(`${cat}.group: "${c.group}" already belongs to socket "${owner.get(c.group)}"`);
+				else {
+					owner.set(c.group, String(s.id));
+					if (oneOf(CONDUCTORS, c.role)) socketContacts.push({
+						group: c.group,
+						role: c.role,
+						at: `${cat}.group`
+					});
+				}
+				if (!oneOf(CONDUCTORS, c.role)) errors.push(`${cat}.role: must be "L", "N" or "PE"`);
+				else if (roles.has(c.role)) errors.push(`${cat}.role: this socket already has a ${c.role} contact`);
+				else roles.add(c.role);
+			});
+			if (!roles.has("L") || !roles.has("N")) errors.push(`${at}.contacts: needs an L and an N contact`);
+		});
+		if (Array.isArray(el.sockets) && raw.obstacle === false) {
+			for (const h of holes) if (!owner.has(h)) errors.push(`holes: group "${h}" belongs to no socket (on an outlet every hole group is a socket contact)`);
+		}
+		if (conductorOf.size && raw.obstacle === false) {
+			const roleOf = new Map(socketContacts.map((c) => [c.group, c.role]));
+			for (const [n, { role, at }] of conductorOf) {
+				const r = roleOf.get(n);
+				if (r === void 0) errors.push(`${at}: "${n}" is not a socket contact (on an outlet a source feeds its sockets)`);
+				else if (r !== role) errors.push(`${at}: "${n}" is ${article(r)} ${r} socket contact, not ${role}`);
+			}
+			const joined = (Array.isArray(raw.internal) ? raw.internal : []).filter(Array.isArray).map((g) => g.filter(isStr));
+			for (const c of socketContacts) {
+				if (conductorOf.has(c.group)) continue;
+				if (!joined.filter((g) => g.includes(c.group)).flat().some((n) => conductorOf.get(n)?.role === c.role)) errors.push(`${c.at}: "${c.group}" is ${article(c.role)} ${c.role} contact, but no source lists it (or a group joined to it by internal) as ${c.role}`);
+			}
+		}
+	}
+	const pinsAndHoles = [...Array.isArray(raw.pins) ? raw.pins : [], ...Array.isArray(raw.holes) ? raw.holes : []].filter(isObj);
+	const strsOf = (v) => Array.isArray(v) ? v.filter(isStr) : [];
+	const declared = /* @__PURE__ */ new Set([
+		...Array.isArray(el.acSources) ? el.acSources.filter(isObj).flatMap((s) => [
+			...strsOf(s.live),
+			...strsOf(s.neutral),
+			...strsOf(s.earth)
+		]) : [],
+		...isObj(el.acInput) ? [el.acInput.a, el.acInput.b].filter(isStr) : [],
+		...Array.isArray(el.contacts) ? el.contacts.filter(isObj).flatMap((c) => Array.isArray(c.poles) ? c.poles.filter(isObj).flatMap((p) => [
+			p.com,
+			p.no,
+			p.nc
+		].filter(isStr)) : []) : [],
+		...Array.isArray(el.protective) ? el.protective.filter(isObj).flatMap((e) => [e.from, e.to].filter(isStr)) : [],
+		...[...pinRole].filter(([, r]) => r !== "mechanical").map(([n]) => n),
+		...Array.isArray(el.sockets) ? el.sockets.filter(isObj).flatMap((s) => Array.isArray(s.contacts) ? s.contacts.filter(isObj).map((c) => c.group).filter(isStr) : []) : [],
+		...pinsAndHoles.filter((p) => oneOf(REQUIREMENTS, p.mains)).map((p) => p.name).filter(isStr)
+	]);
+	const conducting = /* @__PURE__ */ new Set([
+		...declared,
+		...Array.isArray(raw.internal) ? raw.internal.filter(Array.isArray).flat().filter(isStr) : [],
+		...Array.isArray(el.conducts) ? el.conducts.filter(isObj).flatMap((c) => strsOf(c.pins)) : [],
+		...Array.isArray(el.domains) ? el.domains.filter(isObj).flatMap((x) => strsOf(x.pins)) : [],
+		...Array.isArray(el.ratings) ? el.ratings.filter(isObj).flatMap((r) => strsOf(r.pins)) : []
+	]);
+	for (const [n, r] of pinRole) if (r === "mechanical" && conducting.has(n)) errors.push(`electrical.plug: "${n}" is a mechanical contact (it carries no conductor), so no internal join, source, conduction, domain, rating or contact may name it`);
+	if (Array.isArray(el.domains)) el.domains.forEach((x, i) => {
+		if (!isObj(x) || x.kind !== "selv" && x.kind !== "pelv" || !Array.isArray(x.pins)) return;
+		for (const n of x.pins) if (isStr(n) && declared.has(n) && inDomain.get(n) === x.name) errors.push(`electrical.domains[${i}].pins: "${n}" is declared for mains but sits in ${x.kind} domain "${x.name}"`);
+	});
+}
+/** Protective separation (spec 1.3): reinforced or double isolation, or basic plus a declared protective screen. Earthing never substitutes for it. */
+function isolationAdequate(info) {
+	return info.isolation === "reinforced" || info.isolation === "double" || info.isolation === "basic" && info.safeguard === "protective-screen";
+}
+/** Pins and hole groups that no domain covers and the module does not declare for mains (Resolution 27: treated as live on a converter). */
+function uncoveredPins(m, info) {
+	return [...m.pins.flatMap((p) => "name" in p && typeof p.name === "string" ? [p.name] : []), ...(m.holes ?? []).map((h) => h.name)].filter((n) => !info.domainOf.has(n) && !info.terminals.has(n));
+}
+var cache$3 = /* @__PURE__ */ new WeakMap();
+/** The module's mains data, parsed once (modules are never mutated after load). Assumes a validated module. */
+function mainsOf(m) {
+	const hit = cache$3.get(m);
+	if (hit) return hit;
+	const el = isObj(m.electrical) ? m.electrical : {};
+	const list = (k) => Array.isArray(el[k]) ? el[k].filter(isObj) : [];
+	const strs = (v) => Array.isArray(v) ? v.filter(isStr) : [];
+	const internalNodes = strs(el.internalNodes);
+	const acSources = list("acSources").map((s) => ({
+		id: String(s.id),
+		live: strs(s.live),
+		neutral: strs(s.neutral),
+		earth: strs(s.earth)
+	}));
+	const ac = isObj(el.ac) ? el.ac : null;
+	const conducts = list("conducts").map((c) => ({
+		pins: strs(c.pins),
+		kind: c.kind,
+		range: Array.isArray(c.range) ? c.range : null
+	}));
+	const protective = list("protective").map((e) => ({
+		from: String(e.from),
+		to: String(e.to),
+		kind: "fuse",
+		rating: isNum(e.rating) ? e.rating : null
+	}));
+	const domains = list("domains").map((x) => ({
+		name: String(x.name),
+		pins: strs(x.pins),
+		kind: x.kind
+	}));
+	const domainOf = /* @__PURE__ */ new Map();
+	for (const x of domains) for (const p of x.pins) domainOf.set(p, x);
+	const acInput = isObj(el.acInput) ? {
+		a: String(el.acInput.a),
+		b: String(el.acInput.b),
+		range: el.acInput.range
+	} : null;
+	const ratings = list("ratings").map((r) => ({
+		pins: strs(r.pins),
+		kind: r.kind,
+		service: r.service,
+		volts: Number(r.volts),
+		amps: isNum(r.amps) ? r.amps : null,
+		provenance: r.provenance,
+		conditions: isStr(r.conditions) ? r.conditions : null
+	}));
+	const contacts = list("contacts").map((c) => ({
+		id: String(c.id),
+		kind: c.kind,
+		poles: (Array.isArray(c.poles) ? c.poles.filter(isObj) : []).map((p) => ({
+			com: String(p.com),
+			no: isStr(p.no) ? p.no : null,
+			nc: isStr(p.nc) ? p.nc : null
+		}))
+	}));
+	const contactTerminals = new Set(contacts.flatMap((c) => c.poles.flatMap((p) => [
+		p.com,
+		p.no,
+		p.nc
+	].filter(isStr))));
+	const plugRaw = isObj(el.plug) ? el.plug : null;
+	const plug = plugRaw ? {
+		family: plugRaw.family,
+		profiles: (Array.isArray(plugRaw.profiles) ? plugRaw.profiles.filter(isObj) : []).map((pr) => ({
+			id: String(pr.id),
+			contacts: (Array.isArray(pr.contacts) ? pr.contacts.filter(isObj) : []).map((c) => ({
+				pin: String(c.pin),
+				at: c.at,
+				mains: c.mains
+			}))
+		}))
+	} : null;
+	const conductingPins = plug ? plug.profiles.flatMap((pr) => pr.contacts.filter((c) => c.mains !== "mechanical").map((c) => c.pin)) : [];
+	const sockets = list("sockets").map((s) => ({
+		id: String(s.id),
+		family: s.family,
+		contacts: (Array.isArray(s.contacts) ? s.contacts.filter(isObj) : []).map((c) => ({
+			group: String(c.group),
+			role: c.role
+		}))
+	}));
+	const requirement = /* @__PURE__ */ new Map();
+	const bonds = /* @__PURE__ */ new Set();
+	for (const p of [...m.pins, ...m.holes ?? []]) {
+		if (!("name" in p) || typeof p.name !== "string") continue;
+		if (p.mains) requirement.set(p.name, p.mains);
+		if (p.bond === "pe") bonds.add(p.name);
+	}
+	const terminals = /* @__PURE__ */ new Set([
+		...acSources.flatMap((s) => [
+			...s.live,
+			...s.neutral,
+			...s.earth
+		]),
+		...conducts.flatMap((c) => c.pins),
+		...protective.flatMap((e) => [e.from, e.to]),
+		...domains.filter((x) => x.kind === "mains").flatMap((x) => x.pins),
+		...acInput ? [acInput.a, acInput.b] : [],
+		...contactTerminals,
+		...conductingPins,
+		...sockets.flatMap((s) => s.contacts.map((c) => c.group)),
+		...ratings.flatMap((r) => r.pins),
+		...requirement.keys()
+	]);
+	for (const [p, x] of domainOf) if (x.kind !== "mains") terminals.delete(p);
+	const declaredConduction = /* @__PURE__ */ new Set([
+		...(m.internal ?? []).flat(),
+		...conducts.flatMap((c) => c.pins),
+		...protective.flatMap((e) => [e.from, e.to]),
+		...contactTerminals,
+		...acInput ? [acInput.a, acInput.b] : [],
+		...acSources.flatMap((s) => [
+			...s.live,
+			...s.neutral,
+			...s.earth
+		]),
+		...sockets.flatMap((s) => s.contacts.map((c) => c.group)),
+		...conductingPins,
+		...[...requirement].filter(([, r]) => r === "PE").map(([p]) => p),
+		...bonds
+	]);
+	const info = {
+		any: acSources.length > 0 || conducts.length > 0 || protective.length > 0 || domains.length > 0 || !!acInput || ratings.length > 0 || contacts.length > 0 || el.protection !== void 0 || !!plug || sockets.length > 0 || requirement.size > 0 || bonds.size > 0,
+		internalNodes,
+		acSources,
+		region: ac && oneOf(REGIONS, ac.region) ? ac.region : null,
+		hz: ac && isNum(ac.hz) ? ac.hz : null,
+		conducts,
+		protective,
+		domains,
+		domainOf,
+		isolation: oneOf(ISOLATIONS, el.isolation) ? el.isolation : null,
+		isolationProvenance: oneOf(PROVENANCES, el.isolationProvenance) ? el.isolationProvenance : null,
+		safeguard: el.safeguard === "protective-screen" ? "protective-screen" : null,
+		acInput,
+		ratings,
+		contacts,
+		contactTerminals,
+		protection: el.protection === "class-1" || el.protection === "class-2" ? el.protection : null,
+		polarityHazard: isStr(el.polarityHazard) ? el.polarityHazard : null,
+		plug,
+		sockets,
+		requirement,
+		bonds,
+		terminals,
+		declaredConduction
+	};
+	cache$3.set(m, info);
+	return info;
+}
+//#endregion
 //#region src/format/module.ts
 var MODULE_FORMAT = "circuitoon-module/1";
 var SIDES = [
@@ -117,6 +687,17 @@ var PARAM_RULES = {
 		unit: "V",
 		valid: () => true,
 		range: "0, or a magnitude from 1e-15 to 1e12"
+	},
+	acVoltage: {
+		unit: "VAC",
+		valid: (v) => v >= 1 && v <= 1e3,
+		range: "from 1 to 1000"
+	},
+	fuseRating: {
+		unit: "A",
+		valid: (v) => v > 0 && v <= 100,
+		range: "above 0, up to 100",
+		optional: true
 	}
 };
 /** True when `v` is a valid value for the named param: representable and allowed by PARAM_RULES. */
@@ -140,6 +721,10 @@ function validateModule(raw) {
 	const checkType = (t, at) => {
 		if (t.type !== void 0 && !PIN_TYPES.includes(t.type)) errors.push(`${at}.type: must be one of ${PIN_TYPES.join(", ")}`);
 	};
+	const checkMains = (t, at) => {
+		if (t.mains !== void 0 && !REQUIREMENTS.includes(t.mains)) errors.push(`${at}.mains: must be one of "L", "N", "PE", "line"`);
+		if (t.bond !== void 0 && t.bond !== "pe") errors.push(`${at}.bond: must be "pe"`);
+	};
 	const checkSupply = (t, at) => {
 		if (t.supply !== void 0 && typeof t.supply !== "string") errors.push(`${at}.supply: must be a string`);
 		else if (typeof t.supply === "string" && !/^[^/\s]+(\/[^/\s]+)*$/.test(t.supply)) errors.push(`${at}.supply: must be one or more rail names separated by "/", for example "3V3/5V"`);
@@ -160,6 +745,7 @@ function validateModule(raw) {
 		if (names.has(p.name)) errors.push(`${at}.name: duplicate pin name "${p.name}"`);
 		names.add(p.name);
 		checkType(p, at);
+		checkMains(p, at);
 		if (p.bus !== void 0 && !(isObj(p.bus) && Number.isInteger(p.bus.length) && p.bus.length >= 2)) errors.push(`${at}.bus: must be { "length": <whole number, 2 or more> }`);
 		if (p.label !== void 0 && typeof p.label !== "string") errors.push(`${at}.label: must be a string`);
 		checkSupply(p, at);
@@ -178,6 +764,7 @@ function validateModule(raw) {
 			if (g.rail !== void 0 && g.rail !== "+" && g.rail !== "-") errors.push(`${at}.rail: must be "+" or "-"`);
 			if (g.holeStyle !== void 0 && g.holeStyle !== "pad") errors.push(`${at}.holeStyle: must be "pad"`);
 			checkType(g, at);
+			checkMains(g, at);
 			checkSupply(g, at);
 			if (g.capacity !== void 0) {
 				if (g.holeStyle !== "pad") errors.push(`${at}.capacity: only pins and header pads (holeStyle "pad") take a capacity`);
@@ -194,6 +781,8 @@ function validateModule(raw) {
 		});
 	}
 	if (raw.obstacle !== void 0 && typeof raw.obstacle !== "boolean") errors.push("obstacle: must be true or false");
+	const pinNames = new Set(names);
+	claimInternalNodes(raw, names, errors);
 	if (raw.internal !== void 0) {
 		if (!Array.isArray(raw.internal)) errors.push("internal: must be a list of pin-name groups");
 		else raw.internal.forEach((group, i) => {
@@ -246,8 +835,13 @@ function validateModule(raw) {
 				continue;
 			}
 			if (p.unit !== rule.unit) errors.push(`${at}.unit: must be "${rule.unit}"`);
-			if (!validParamValue(name, p.default)) errors.push(`${at}.default: must be ${rule.range}`);
+			if (!(rule.optional && p.default === void 0) && !validParamValue(name, p.default)) errors.push(`${at}.default: must be ${rule.range}${rule.optional ? ", or left out" : ""}`);
 		}
+	}
+	if (isObj(raw.electrical) && raw.electrical.settings !== void 0) {
+		const s = raw.electrical.settings;
+		if (!isObj(s)) errors.push("electrical.settings: must be an object of setting name to a list of choices");
+		else for (const [k, v] of Object.entries(s)) if (!Array.isArray(v) || v.length < 2 || v.some((c) => typeof c !== "string" || c === "") || new Set(v).size !== v.length) errors.push(`electrical.settings.${k}: must be a list of 2 or more different choices, the first the default`);
 	}
 	if (isObj(raw.electrical) && raw.electrical.external !== void 0) {
 		const ext = raw.electrical.external;
@@ -255,7 +849,7 @@ function validateModule(raw) {
 		else ext.forEach((e, i) => {
 			const at = `electrical.external[${i}]`;
 			if (!isObj(e)) return void errors.push(`${at}: must be { "pin", "volts", "via" }`);
-			if (typeof e.pin !== "string" || !names.has(e.pin)) errors.push(`${at}.pin: no pin named "${String(e.pin)}"`);
+			if (typeof e.pin !== "string" || !pinNames.has(e.pin)) errors.push(`${at}.pin: no pin named "${String(e.pin)}"`);
 			if (!isPos(e.volts)) errors.push(`${at}.volts: must be a number above 0`);
 			if (typeof e.via !== "string" || e.via.trim() === "") errors.push(`${at}.via: required, what powers the pin (for example "USB")`);
 			if (e.diode !== void 0 && typeof e.diode !== "boolean") errors.push(`${at}.diode: must be true or false`);
@@ -296,6 +890,13 @@ function validateModule(raw) {
 				if (typeof n !== "string" || !outs.includes(n)) errors.push(`electrical.voltageOutputs[${i}]: no power_out pin named "${String(n)}"`);
 			});
 		} else if (hasVoltage && outs.length > 1) errors.push(`electrical.voltageOutputs: required, the module has a voltage value and ${outs.length} power_out pins; name the ones the value sets`);
+	}
+	validateMains(raw, names, errors);
+	if (!errors.length && isObj(raw.electrical) && isObj(raw.electrical.plug) && Array.isArray(raw.electrical.plug.profiles)) {
+		const lay = computeLayout(raw);
+		raw.electrical.plug.profiles.forEach((pr, i) => pr.contacts.forEach((c, j) => {
+			if (c.at.x < 0 || c.at.y < 0 || c.at.x > lay.w || c.at.y > lay.h) errors.push(`electrical.plug.profiles[${i}].contacts[${j}].at: outside the body (0 to ${lay.w}, 0 to ${lay.h})`);
+		}));
 	}
 	return errors.length ? {
 		ok: false,
@@ -425,6 +1026,20 @@ function terminalCapacity(m, name) {
 	if (pin) return pin.capacity ?? 1;
 	const g = m.holes?.find((h) => h.name === name);
 	return g?.holeStyle === "pad" ? g.capacity ?? 1 : 1;
+}
+/** A module's enumerated part settings (`electrical.settings`): each name with its choices, the first the default. */
+function moduleSettings(m) {
+	const e = m.electrical;
+	if (!isObj(e) || !isObj(e.settings)) return {};
+	return Object.fromEntries(Object.entries(e.settings).filter((x) => Array.isArray(x[1]) && x[1].length > 1 && x[1].every((c) => typeof c === "string")));
+}
+/** A part's choice for one setting: its stored choice when the module offers it, else the module's first choice; null when the module has no such setting. */
+function partSetting(part, m, name) {
+	const all = moduleSettings(m);
+	if (!Object.hasOwn(all, name)) return null;
+	const choices = all[name];
+	const stored = part.settings?.[name];
+	return stored !== void 0 && choices.includes(stored) ? stored : choices[0];
 }
 //#endregion
 //#region src/format/geometry.ts
@@ -1195,6 +1810,92 @@ function manualRouteBlocked(points, obstacles) {
 	return false;
 }
 //#endregion
+//#region src/format/plugging.ts
+var SAME = {
+	L: "L",
+	N: "N",
+	PE: "PE"
+};
+var SWAP = {
+	L: "N",
+	N: "L",
+	PE: "PE"
+};
+var entry = (plug, socket, profile, turns) => ({
+	plug,
+	socket,
+	profile,
+	map: turns ? {
+		0: SAME,
+		180: SWAP
+	} : { 0: SAME }
+});
+/** Spec section 2, tested pairwise at all four rotations (plugging.test.ts). */
+var COMPAT = [
+	entry("nema-5-15p", "nema-5-15r", "main", false),
+	entry("nema-5-15p", "nema-5-20r", "main", false),
+	entry("nema-1-15p-polarized", "nema-1-15r-polarized", "main", false),
+	entry("nema-1-15p-polarized", "nema-5-15r", "main", false),
+	entry("nema-1-15p-polarized", "nema-5-20r", "main", false),
+	entry("nema-1-15p", "nema-1-15r", "main", true),
+	entry("nema-1-15p", "nema-1-15r-polarized", "main", true),
+	entry("nema-1-15p", "nema-5-15r", "main", true),
+	entry("nema-1-15p", "nema-5-20r", "main", true),
+	entry("cee7-7", "cee7-3", "earth-clip", true),
+	entry("cee7-7", "cee7-5", "earth-hole", false),
+	entry("cee7-16", "cee7-3", "main", true),
+	entry("cee7-16", "cee7-5", "main", true),
+	entry("cee7-16", "cee7-16", "main", true),
+	entry("bs1363", "bs1363", "main", false),
+	entry("as3112", "as3112", "main", false)
+];
+/** The table indexed once by plug and socket family, so a lookup during seating allocates nothing. */
+var INDEX = /* @__PURE__ */ new Map();
+for (const e of COMPAT) {
+	let bySocket = INDEX.get(e.plug);
+	if (!bySocket) INDEX.set(e.plug, bySocket = /* @__PURE__ */ new Map());
+	const list = bySocket.get(e.socket);
+	if (list) list.push(e);
+	else bySocket.set(e.socket, [e]);
+}
+var NONE = Object.freeze([]);
+/** The table entries for a pair (empty when the plug does not fit that socket). Shared arrays: never mutate them. */
+var entriesFor = (plug, socket) => INDEX.get(plug)?.get(socket) ?? NONE;
+/** A plug's turn relative to the outlet it sits on. */
+var orientationOf = (part, board) => (((part.rotation ?? 0) - (board.rotation ?? 0)) % 360 + 360) % 360;
+var PLUG_NAMES = {
+	"nema-5-15p": "US plug",
+	"nema-1-15p": "US/Japanese plug",
+	"nema-1-15p-polarized": "US plug",
+	"cee7-7": "Schuko plug",
+	"cee7-16": "Europlug",
+	bs1363: "UK plug",
+	as3112: "Australian plug"
+};
+var SOCKET_NAMES = {
+	"nema-5-15r": "US socket",
+	"nema-5-20r": "US socket",
+	"nema-1-15r": "Japanese socket",
+	"nema-1-15r-polarized": "Japanese socket",
+	"cee7-3": "Schuko socket",
+	"cee7-5": "French socket",
+	"cee7-16": "Europlug socket",
+	bs1363: "UK socket",
+	as3112: "Australian socket"
+};
+/** What to use instead, per socket family ("Use a device with a US plug"). */
+var PLUG_FOR = {
+	"nema-5-15r": "a US plug",
+	"nema-5-20r": "a US plug",
+	"nema-1-15r": "a Japanese plug",
+	"nema-1-15r-polarized": "a Japanese plug",
+	"cee7-3": "a Schuko plug or a Europlug",
+	"cee7-5": "a French or Schuko (CEE 7/7) plug",
+	"cee7-16": "a Europlug",
+	bs1363: "a UK plug",
+	as3112: "an Australian plug"
+};
+//#endregion
 //#region src/format/breadboard.ts
 var OFF = 2 ** 25;
 /**
@@ -1239,17 +1940,55 @@ var holeKey$1 = (board, group, hole) => JSON.stringify([
 ]);
 /** Holes holding a leg of a part outside `ignore`. */
 var takenBy = (plugs, ignore) => new Set(plugs.filter((p) => !ignore.has(p.part)).map((p) => holeKey$1(p.board, p.group, p.hole)));
-/** A part that may mount, with its plug points. Null for a missing part or module, a board, and a part with a bus pin or no pins. */
+/**
+* A part that may mount, with its plug points: its pin edge points, or for a plug-in device every
+* contact of every profile (seating then picks the profile the socket takes). Null for a missing
+* part or module, a board, and a part with a bus pin or no pins.
+*/
 function mountable$1(d, uid) {
 	const part = d.parts.find((p) => p.uid === uid);
 	const m = part && moduleOf(d, part.module);
 	if (!part || !m || isBoard(m) || m.pins.some((p) => !isSpacer(p) && p.bus)) return null;
-	const pts = plugPoints(part, m);
+	const plug = mainsOf(m).plug;
+	if (!plug) {
+		const pts = plugPoints(part, m);
+		return pts.length ? {
+			part,
+			m,
+			pts,
+			plug: null
+		} : null;
+	}
+	const lay = layoutModule(m);
+	const seen = /* @__PURE__ */ new Set();
+	const pts = [];
+	for (const pr of plug.profiles) for (const c of pr.contacts) {
+		const at = toWorld(part, lay, c.at);
+		const k = JSON.stringify([
+			c.pin,
+			at.x,
+			at.y
+		]);
+		if (!seen.has(k)) {
+			seen.add(k);
+			pts.push(c.mains === "mechanical" ? {
+				pin: c.pin,
+				at,
+				mechanical: true
+			} : {
+				pin: c.pin,
+				at
+			});
+		}
+	}
 	return pts.length ? {
 		part,
-		pts
+		m,
+		pts,
+		plug
 	} : null;
 }
+var intersects$1 = (a, b) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
 /**
 * Whether a board drawn above `board` (a later board in `d.parts`; boards draw in list order)
 * covers any of `pts` with its body. A leg there looks as if it sits in the upper board, so the
@@ -1265,36 +2004,80 @@ function obscuredOn(d, board, pts) {
 	}
 	return false;
 }
-/** How plug points land on one part; null when that part is not a board. */
-function fitOn(d, board, pts) {
+/**
+* How a part lands on one board; null when that part is not a board. A plug seats only on an
+* outlet and only through the compatibility table (spec 2): a table entry for the plug and one
+* socket, an allowed orientation, and every contact of that entry's profile on a contact of that
+* socket, each conducting contact on the socket contact the entry maps it to and a mechanical one
+* on any contact of the same socket. Contacts are never collected across sockets.
+*/
+function fitOn(d, board, me) {
 	const bm = moduleOf(d, board.module);
 	if (!bm || !isBoard(bm)) return null;
 	const idx = holeIndex(board, bm);
-	const hits = pts.map((pp) => holeAt(idx, pp.at));
-	const landed = hits.filter(Boolean).length;
-	return {
-		board,
-		groups: idx.groups,
-		hits,
-		landed,
-		obscured: landed > 0 && obscuredOn(d, board, pts)
+	const sockets = mainsOf(bm).sockets;
+	const body = me.plug && sockets.length ? bodyRect(me.part, layoutModule(me.m)) : null;
+	const outline = body && intersects$1(body, bodyRect(board, layoutModule(bm))) ? body : null;
+	const fit = (pts, seatable) => {
+		const hits = pts.map((pp) => holeAt(idx, pp.at));
+		const landed = hits.filter(Boolean).length;
+		return {
+			board,
+			groups: idx.groups,
+			pts,
+			hits,
+			landed,
+			obscured: landed > 0 && obscuredOn(d, board, pts),
+			seatable: seatable(hits),
+			outline,
+			categorical
+		};
 	};
+	const categorical = !me.plug !== !sockets.length;
+	if (!me.plug || !sockets.length) return fit(me.pts, () => !me.plug && !sockets.length);
+	const lay = layoutModule(me.m);
+	const orientation = orientationOf(me.part, board);
+	let best = null;
+	for (const socket of sockets) for (const e of entriesFor(me.plug.family, socket.family)) {
+		const profile = me.plug.profiles.find((p) => p.id === e.profile);
+		if (!profile) continue;
+		const map = e.map[orientation];
+		const f = fit(profile.contacts.map((c) => {
+			const at = toWorld(me.part, lay, c.at);
+			return c.mains === "mechanical" ? {
+				pin: c.pin,
+				at,
+				mechanical: true
+			} : {
+				pin: c.pin,
+				at
+			};
+		}), (hits) => !!map && hits.every((h, i) => {
+			const sc = h && socket.contacts.find((c) => c.group === idx.groups[h[0]].name);
+			const role = profile.contacts[i].mains;
+			return !!sc && (role === "mechanical" || sc.role === map[role]);
+		}));
+		if (!best || f.seatable && !best.seatable || f.seatable === best.seatable && f.landed > best.landed) best = f;
+	}
+	return best ?? fit(me.pts, () => false);
 }
 /** An obscured board never seats: its fit shows as partial (red), so a drop does not mount. */
-function seatFrom(fit, pts, taken) {
-	if (!fit.landed) return null;
+function seatFrom(fit, taken) {
+	if (!fit.landed && !fit.outline) return null;
+	const seated = fit.seatable && !fit.obscured && fit.hits.every((h) => h && !taken.has(holeKey$1(fit.board.uid, fit.groups[h[0]].name, h[1])));
 	return {
-		status: !fit.obscured && fit.hits.every((h) => h && !taken.has(holeKey$1(fit.board.uid, fit.groups[h[0]].name, h[1]))) ? "seated" : "partial",
+		status: seated ? "seated" : "partial",
 		board: fit.board.uid,
-		holes: pts.filter((_, i) => fit.hits[i]).map((pp) => pp.at)
+		holes: fit.pts.filter((_, i) => fit.hits[i]).map((pp) => pp.at),
+		...fit.outline && !seated ? { outline: fit.outline } : {}
 	};
 }
 /** `seatOf` on one given board (a part's own mount), whatever other board also fits. Null when `board` is missing or not a board. */
 function seatOn(d, uid, board, plugs, ignore = /* @__PURE__ */ new Set([uid])) {
 	const me = mountable$1(d, uid);
 	const b = me && d.parts.find((p) => p.uid === board);
-	const fit = me && b && b !== me.part ? fitOn(d, b, me.pts) : null;
-	return me && fit && seatFrom(fit, me.pts, takenBy(plugs, ignore));
+	const fit = me && b && b !== me.part ? fitOn(d, b, me) : null;
+	return fit && seatFrom(fit, takenBy(plugs, ignore));
 }
 /**
 * Walks mounted parts in `d.parts` order. A mount is valid when its part is seated on its own
@@ -1327,11 +2110,13 @@ function mounts(d) {
 			issue("cannot-mount");
 			continue;
 		}
-		const fit = fitOn(d, board, me.pts);
-		if (fit.landed < me.pts.length) issue("partial");
+		const fit = fitOn(d, board, me);
+		if (fit.categorical) issue("no-fit");
+		else if (fit.landed < fit.pts.length) issue("partial");
+		else if (!fit.seatable) issue("no-fit");
 		else if (fit.obscured) issue("obscured");
-		else if (seatFrom(fit, me.pts, taken).status !== "seated") issue("conflict");
-		else me.pts.forEach((pp, i) => {
+		else if (seatFrom(fit, taken).status !== "seated") issue("conflict");
+		else fit.pts.forEach((pp, i) => {
 			const [gi, hi] = fit.hits[i];
 			const group = fit.groups[gi].name;
 			taken.add(holeKey$1(board.uid, group, hi));
@@ -1341,7 +2126,8 @@ function mounts(d) {
 				board: board.uid,
 				group,
 				hole: hi,
-				at: pp.at
+				at: pp.at,
+				...pp.mechanical ? { mechanical: true } : {}
 			});
 		});
 	}
@@ -1404,6 +2190,38 @@ function splitBoards(d) {
 		others
 	};
 }
+/**
+* Plug-in devices over an outlet they are not validly plugged into (spec rule 10, Ruling 40): each
+* such device and outlet once, with the real cause.
+*/
+function plugMismatches(d) {
+	const out = [];
+	let plugged = null;
+	for (const p of d.parts) {
+		const m = moduleOf(d, p.module);
+		const plug = m ? mainsOf(m).plug : null;
+		if (!m || !plug) continue;
+		plugged ??= new Set(plugsOf(d).map((pl) => pl.part));
+		if (plugged.has(p.uid)) continue;
+		const body = bodyRect(p, layoutModule(m));
+		for (const b of d.parts) {
+			const bm = b === p ? void 0 : moduleOf(d, b.module);
+			const sockets = bm ? mainsOf(bm).sockets : [];
+			if (!bm || !sockets.length || !intersects$1(body, bodyRect(b, layoutModule(bm)))) continue;
+			const families = [...new Set(sockets.map((s) => s.family))];
+			const taking = families.filter((f) => entriesFor(plug.family, f).length > 0);
+			const kind = !taking.length ? "family" : seatOn(d, p.uid, b.uid, [])?.status === "seated" ? "unplugged" : "fit";
+			out.push({
+				part: p.uid,
+				board: b.uid,
+				kind,
+				plug: plug.family,
+				sockets: taking.length ? taking : families
+			});
+		}
+	}
+	return out;
+}
 //#endregion
 //#region src/format/cables.ts
 var END_KINDS = [
@@ -1423,6 +2241,21 @@ var END_KINDS = [
 function isEndKind(v) {
 	return typeof v === "string" && END_KINDS.includes(v);
 }
+/** Names for the per-end selects. */
+var END_NAMES = {
+	bare: "Bare wire",
+	"dupont-male": "Dupont male",
+	"dupont-female": "Dupont female",
+	"solid-jumper": "Solid-core leg",
+	alligator: "Alligator clip",
+	stripped: "Stripped, tinned",
+	ferrule: "Ferrule",
+	"jst-xh": "JST-XH plug",
+	"jst-ph": "JST-PH plug",
+	"jst-sh": "JST-SH (Qwiic)",
+	grove: "Grove plug",
+	banana: "Banana plug"
+};
 function endKind(ends, which) {
 	return ends?.[which] ?? "bare";
 }
@@ -1550,6 +2383,7 @@ var UNIT_SYMBOLS = {
 	ohm: OHM,
 	F: "F",
 	V: "V",
+	VAC: "VAC",
 	A: "A"
 };
 /** SI prefixes usable on a part value, smallest exponent first. */
@@ -1771,6 +2605,38 @@ function partValue(part, m) {
 		value: p.default
 	};
 }
+/**
+* Every editable param the module declares in its own unit, in PARAM_RULES order, with its default:
+* null for an optional param left without one (a fuse holder's rating, unknown until set).
+*/
+function editableParams(m) {
+	const e = m.electrical;
+	if (!isObj(e) || !isObj(e.params)) return [];
+	const out = [];
+	for (const name of PRIMARY_PARAM_NAMES) {
+		const p = e.params[name];
+		if (!isObj(p) || p.unit !== PARAM_RULES[name].unit) continue;
+		if (validParamValue(name, p.default)) out.push({
+			name,
+			unit: p.unit,
+			default: p.default
+		});
+		else if (PARAM_RULES[name].optional && p.default === void 0) out.push({
+			name,
+			unit: p.unit,
+			default: null
+		});
+	}
+	return out;
+}
+/** A part's value for one named param: its valid stored override, else the module default; null when neither exists. */
+function paramValue(part, m, name) {
+	const p = editableParams(m).find((x) => x.name === name);
+	if (!p) return null;
+	const stored = part.values?.[name];
+	if (isObj(stored) && stored.unit === p.unit && validParamValue(name, stored.value)) return stored.value;
+	return p.default;
+}
 /** "R1  4.7 kΩ" when the part has an editable value, else just its designator. Shared by the live editor canvas and the read-only sheet preview. */
 function partCaption(part, m) {
 	const v = partValue(part, m);
@@ -1805,6 +2671,93 @@ function captionBox(part, m, text = partCaption(part, m)) {
 		w,
 		h: 10
 	};
+}
+/**
+* The caption's box in world px where it is drawn: `seat` for a seated plug-in device or its outlet
+* (Part.tsx draws a 'start' caption vertically centred on the anchor, a 'middle' one on its
+* baseline), else under the body as `captionBox`.
+*/
+function placedCaptionBox(part, m, seat, text = partCaption(part, m)) {
+	if (!seat) return captionBox(part, m, text);
+	const w = text.length * CAPTION_CHAR;
+	const { x, y } = seat.caption;
+	return seat.anchor === "start" ? {
+		x: part.x + x,
+		y: part.y + y - 5,
+		w,
+		h: 10
+	} : {
+		x: part.x + x - w / 2,
+		y: part.y + y - 8,
+		w,
+		h: 10
+	};
+}
+//#endregion
+//#region src/format/seatedLabels.ts
+/** Gap between the outlet's edge and a caption, px. */
+var GAP = 8;
+/** The least a covered lead's label sits in from the body edge, and its clearance from the cover. */
+var INSET = 6;
+var CLEAR = 4;
+var inside = (r, p) => p.x > r.x && p.x < r.x + r.w && p.y > r.y && p.y < r.y + r.h;
+/** How far from a pin's body edge, along its direction, the rectangle begins (negative: it overlaps the body). */
+function coverFrom(r, edge, dir) {
+	if (dir.y > 0) return r.y - edge.y;
+	if (dir.y < 0) return edge.y - (r.y + r.h);
+	if (dir.x > 0) return r.x - edge.x;
+	return edge.x - (r.x + r.w);
+}
+/**
+* Per seated plug-in device uid, where its caption and lead labels go; and per outlet with a device
+* seated on it, its caption above its body (the devices' leads leave below it). Other parts are left out.
+*/
+function seatedLabels(d) {
+	const out = /* @__PURE__ */ new Map();
+	const byUid = new Map(d.parts.map((p) => [p.uid, p]));
+	const rects = /* @__PURE__ */ new Map();
+	const rectOf = (uid) => {
+		const hit = rects.get(uid);
+		if (hit) return hit;
+		const q = byUid.get(uid);
+		const qm = q && moduleOf(d, q.module);
+		if (!q || !qm) return null;
+		const r = bodyRect(q, layoutModule(qm));
+		rects.set(uid, r);
+		return r;
+	};
+	for (const p of d.parts) {
+		const board = p.mount && byUid.get(p.mount.board);
+		const m = moduleOf(d, p.module);
+		const bm = board && moduleOf(d, board.module);
+		if (!board || !m || !bm || !mainsOf(bm).sockets.length || !mainsOf(m).plug) continue;
+		const outlet = rectOf(board.uid);
+		const box = rectOf(p.uid);
+		let labelInset = null;
+		for (const w of worldPins(p, m)) for (const q of d.parts) {
+			if (q === p || q === board) continue;
+			const r = rectOf(q.uid);
+			if (!r || !inside(r, w.end)) continue;
+			labelInset = Math.max(labelInset ?? INSET, CLEAR - coverFrom(r, w.edge, w.dir));
+		}
+		out.set(p.uid, {
+			caption: {
+				x: outlet.x + outlet.w + GAP - p.x,
+				y: box.y + box.h / 2 - p.y
+			},
+			anchor: "start",
+			labelInset
+		});
+		if (!out.has(board.uid)) out.set(board.uid, {
+			caption: {
+				x: outlet.x + outlet.w / 2 - board.x,
+				y: outlet.y - GAP - board.y
+			},
+			anchor: "middle",
+			labelInset: null
+		});
+	}
+	return out;
 }
 var NOTE_CHAR = 5.9;
 var TAB_CHAR = 5.6;
@@ -1878,12 +2831,20 @@ var NAMED_COLORS = {
 	brown: "#8B5A2B",
 	pink: "#F07AB0"
 };
-/** Named color or #RRGGBB; anything else falls back to black. */
+/** Two-colour insulation (the IEC earth wire): a base colour with the second one striped over it. */
+var STRIPED_COLORS = { "green-yellow": ["#2F9E6E", "#F4B400"] };
+/** Named color, two-colour name (its base) or #RRGGBB; anything else falls back to black. */
 function wireColor(c) {
 	if (!c) return NAMED_COLORS.black;
 	if (/^#[0-9a-f]{6}$/i.test(c)) return c;
 	const key = c.toLowerCase();
+	if (Object.hasOwn(STRIPED_COLORS, key)) return STRIPED_COLORS[key][0];
 	return Object.hasOwn(NAMED_COLORS, key) ? NAMED_COLORS[key] : NAMED_COLORS.black;
+}
+/** The stripe colour of a two-colour wire, or null. */
+function wireStripe(c) {
+	const key = c?.toLowerCase();
+	return key && Object.hasOwn(STRIPED_COLORS, key) ? STRIPED_COLORS[key][1] : null;
 }
 /** Drawn width in px for an AWG gauge (16 to 30, default 22). Thicker wire, smaller number. */
 function wireWidth(gauge = 22) {
@@ -2129,9 +3090,10 @@ function gridNodesIn(r) {
 }
 function labelPoints(d) {
 	const captions = /* @__PURE__ */ new Map();
+	const seated = seatedLabels(d);
 	for (const p of d.parts) {
 		const m = moduleOf(d, p.module);
-		if (m) captions.set(p.uid, gridNodesIn(captionBox(p, m)));
+		if (m) captions.set(p.uid, gridNodesIn(placedCaptionBox(p, m, seated.get(p.uid))));
 	}
 	return {
 		captions,
@@ -2625,7 +3587,8 @@ function labelAnchor(route) {
 	};
 }
 function isValidColor(c) {
-	return /^#[0-9a-f]{6}$/i.test(c) || Object.hasOwn(NAMED_COLORS, c.toLowerCase());
+	const key = c.toLowerCase();
+	return /^#[0-9a-f]{6}$/i.test(c) || Object.hasOwn(NAMED_COLORS, key) || Object.hasOwn(STRIPED_COLORS, key);
 }
 /** Largest |x| or |y|, in px, a part position or a stored route point may have. */
 var COORD_LIMIT = 1e5;
@@ -2714,6 +3677,30 @@ function validateDiagram(raw) {
 					const values = p.values;
 					fix(i, { values: Object.fromEntries(Object.entries(values).filter(([k]) => !dropped.includes(k))) });
 				}
+			}
+		}
+		if (p.settings !== void 0) {
+			const who = typeof p.designator === "string" && p.designator !== "" ? p.designator : `part ${i}`;
+			const m = typeof p.module === "string" ? modules.get(p.module) : void 0;
+			if (!isObj(p.settings)) {
+				fix(i, { settings: void 0 });
+				warnings.push(`${at}.settings: must be an object of setting name to choice, so it was dropped and the defaults are used`);
+			} else {
+				const offered = m ? moduleSettings(m) : null;
+				const kept = {};
+				let changed = false;
+				for (const [key, value] of Object.entries(p.settings)) {
+					const choices = offered && Object.hasOwn(offered, key) ? offered[key] : null;
+					if (offered && !choices) {
+						changed = true;
+						warnings.push(`${at}.settings.${key}: ${who} has no setting "${key}", so it was dropped`);
+					} else if (typeof value !== "string" || choices && !choices.includes(value)) {
+						changed = true;
+						const allowed = choices ? choices.map((c) => `"${c}"`).join(" or ") : "a string";
+						warnings.push(`${at}.settings.${key}: ${who} has ${key} ${JSON.stringify(value)}, but it must be ${allowed}; it was dropped${choices ? ` and the default "${choices[0]}" is used` : ""}`);
+					} else kept[key] = value;
+				}
+				if (changed) fix(i, { settings: Object.keys(kept).length ? kept : void 0 });
 			}
 		}
 	});
@@ -2810,11 +3797,28 @@ function validateDiagram(raw) {
 		});
 	}
 	if (raw.intent !== void 0 && !isObj(raw.intent)) errors.push("intent: must be an object (a circuitoon-netlist/1 document)");
+	let notesFix = null;
+	if (raw.notes !== void 0) {
+		if (!Array.isArray(raw.notes)) {
+			notesFix = void 0;
+			warnings.push("notes: must be a list of strings, so it was dropped");
+		} else if (raw.notes.some((n) => typeof n !== "string")) {
+			raw.notes.forEach((n, i) => typeof n !== "string" && warnings.push(`notes[${i}]: must be a string, so it was dropped`));
+			notesFix = raw.notes.filter((n) => typeof n === "string");
+		}
+	}
 	if (errors.length) return {
 		ok: false,
 		errors
 	};
 	let diagram = raw;
+	if (notesFix !== null) {
+		const { notes: _n, ...rest } = diagram;
+		diagram = notesFix ? {
+			...rest,
+			notes: notesFix
+		} : rest;
+	}
 	if (partFixes.size || droppedRoutes.size || endFixes.size) diagram = {
 		...diagram,
 		parts: diagram.parts.map((p, i) => partFixes.has(i) ? {
@@ -2840,6 +3844,7 @@ function validateDiagram(raw) {
 		else if (reason === "partial") warnings.push(`${at}: not every leg of "${part}" sits on a hole of board "${board}", so it plugs into nothing`);
 		else if (reason === "obscured") warnings.push(`${at}: a board drawn above board "${board}" covers a leg of "${part}", so it plugs into nothing`);
 		else if (reason === "conflict") warnings.push(`${at}: a leg of "${part}" sits on a hole another mounted part already uses, so it plugs into nothing`);
+		else if (reason === "no-fit") warnings.push(`${at}: "${part}" does not fit board "${board}" (an outlet takes only a matching plug, and a plug fits only a matching outlet), so it plugs into nothing`);
 	}
 	return {
 		ok: true,
@@ -2975,6 +3980,739 @@ function loadSheet(io, path) {
 	};
 }
 var library = Object.entries(/* @__PURE__ */ Object.assign({
+	"../modules/adapter-barrel-au.json": {
+		format: "circuitoon-module/1",
+		id: "adapter-barrel-au",
+		version: 1,
+		name: "Wall adapter, barrel jack, AU/NZ (AS/NZS 3112)",
+		category: "Mains",
+		source: "https://www.meanwell.com/Upload/PDF/NGE12/NGE12-SPEC.PDF https://en.wikipedia.org/wiki/AS/NZS_3112",
+		pins: [
+			{
+				"name": "+",
+				"side": "bottom",
+				"type": "power_out"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"name": "-",
+				"side": "bottom",
+				"type": "ground"
+			}
+		],
+		size: {
+			"w": 6,
+			"h": 6
+		},
+		electrical: {
+			"model": "converter",
+			"internalNodes": ["L prong", "N prong"],
+			"acInput": {
+				"a": "L prong",
+				"b": "N prong",
+				"range": [80, 264]
+			},
+			"domains": [{
+				"name": "mains",
+				"pins": ["L prong", "N prong"],
+				"kind": "mains"
+			}, {
+				"name": "output",
+				"pins": ["+", "-"],
+				"kind": "selv"
+			}],
+			"isolation": "double",
+			"isolationProvenance": "datasheet",
+			"protection": "class-2",
+			"plug": {
+				"family": "as3112",
+				"profiles": [{
+					"id": "main",
+					"contacts": [{
+						"pin": "L prong",
+						"at": {
+							"x": 20,
+							"y": 20
+						},
+						"mains": "L"
+					}, {
+						"pin": "N prong",
+						"at": {
+							"x": 50,
+							"y": 20
+						},
+						"mains": "N"
+					}]
+				}]
+			},
+			"params": { "voltage": {
+				"unit": "V",
+				"default": 12
+			} }
+		},
+		art: {
+			"w": 60,
+			"h": 60,
+			"shapes": [
+				{
+					"type": "rect",
+					"x": 0,
+					"y": 0,
+					"w": 60,
+					"h": 60,
+					"fill": "#2B2F36",
+					"radius": 10
+				},
+				{
+					"type": "rect",
+					"x": 5,
+					"y": 5,
+					"w": 50,
+					"h": 36,
+					"fill": "#3A3F48",
+					"radius": 7,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 20.1,
+					"y": 14.100000000000001,
+					"w": 4,
+					"h": 4,
+					"fill": "#AEB5BF",
+					"radius": 2,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 19.4,
+					"y": 15.399999999999999,
+					"w": 4,
+					"h": 4,
+					"fill": "#AEB5BF",
+					"radius": 2,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 18.7,
+					"y": 16.7,
+					"w": 4,
+					"h": 4,
+					"fill": "#AEB5BF",
+					"radius": 2,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 18,
+					"y": 18,
+					"w": 4,
+					"h": 4,
+					"fill": "#AEB5BF",
+					"radius": 2,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 17.3,
+					"y": 19.3,
+					"w": 4,
+					"h": 4,
+					"fill": "#AEB5BF",
+					"radius": 2,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 16.6,
+					"y": 20.6,
+					"w": 4,
+					"h": 4,
+					"fill": "#AEB5BF",
+					"radius": 2,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 15.899999999999999,
+					"y": 21.9,
+					"w": 4,
+					"h": 4,
+					"fill": "#AEB5BF",
+					"radius": 2,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 45.9,
+					"y": 14.100000000000001,
+					"w": 4,
+					"h": 4,
+					"fill": "#AEB5BF",
+					"radius": 2,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 46.6,
+					"y": 15.399999999999999,
+					"w": 4,
+					"h": 4,
+					"fill": "#AEB5BF",
+					"radius": 2,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 47.3,
+					"y": 16.7,
+					"w": 4,
+					"h": 4,
+					"fill": "#AEB5BF",
+					"radius": 2,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 48,
+					"y": 18,
+					"w": 4,
+					"h": 4,
+					"fill": "#AEB5BF",
+					"radius": 2,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 48.7,
+					"y": 19.3,
+					"w": 4,
+					"h": 4,
+					"fill": "#AEB5BF",
+					"radius": 2,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 49.4,
+					"y": 20.6,
+					"w": 4,
+					"h": 4,
+					"fill": "#AEB5BF",
+					"radius": 2,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 50.1,
+					"y": 21.9,
+					"w": 4,
+					"h": 4,
+					"fill": "#AEB5BF",
+					"radius": 2,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 48,
+					"y": 7,
+					"w": 5,
+					"h": 5,
+					"fill": "#7BD389",
+					"radius": 2.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 22,
+					"y": 42,
+					"w": 16,
+					"h": 8,
+					"fill": "#2B2F36",
+					"radius": 3
+				},
+				{
+					"type": "rect",
+					"x": 27,
+					"y": 50,
+					"w": 6,
+					"h": 10,
+					"fill": "#5B616B",
+					"outline": false
+				}
+			]
+		}
+	},
+	"../modules/adapter-barrel-eu.json": {
+		format: "circuitoon-module/1",
+		id: "adapter-barrel-eu",
+		version: 1,
+		name: "Wall adapter, barrel jack, Europe (Europlug)",
+		category: "Mains",
+		source: "https://www.meanwell.com/Upload/PDF/NGE12/NGE12-SPEC.PDF https://en.wikipedia.org/wiki/Europlug",
+		pins: [
+			{
+				"name": "+",
+				"side": "bottom",
+				"type": "power_out"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"name": "-",
+				"side": "bottom",
+				"type": "ground"
+			}
+		],
+		size: {
+			"w": 8,
+			"h": 8
+		},
+		electrical: {
+			"model": "converter",
+			"internalNodes": ["L prong", "N prong"],
+			"acInput": {
+				"a": "L prong",
+				"b": "N prong",
+				"range": [80, 264]
+			},
+			"domains": [{
+				"name": "mains",
+				"pins": ["L prong", "N prong"],
+				"kind": "mains"
+			}, {
+				"name": "output",
+				"pins": ["+", "-"],
+				"kind": "selv"
+			}],
+			"isolation": "double",
+			"isolationProvenance": "datasheet",
+			"protection": "class-2",
+			"plug": {
+				"family": "cee7-16",
+				"profiles": [{
+					"id": "main",
+					"contacts": [{
+						"pin": "L prong",
+						"at": {
+							"x": 20,
+							"y": 40
+						},
+						"mains": "L"
+					}, {
+						"pin": "N prong",
+						"at": {
+							"x": 60,
+							"y": 40
+						},
+						"mains": "N"
+					}]
+				}]
+			},
+			"params": { "voltage": {
+				"unit": "V",
+				"default": 12
+			} }
+		},
+		art: {
+			"w": 80,
+			"h": 80,
+			"shapes": [
+				{
+					"type": "rect",
+					"x": 0,
+					"y": 0,
+					"w": 80,
+					"h": 80,
+					"fill": "#2B2F36",
+					"radius": 10
+				},
+				{
+					"type": "rect",
+					"x": 5,
+					"y": 5,
+					"w": 70,
+					"h": 56,
+					"fill": "#3A3F48",
+					"radius": 7,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 17,
+					"y": 37,
+					"w": 6,
+					"h": 6,
+					"fill": "#AEB5BF",
+					"radius": 3,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 57,
+					"y": 37,
+					"w": 6,
+					"h": 6,
+					"fill": "#AEB5BF",
+					"radius": 3,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 68,
+					"y": 7,
+					"w": 5,
+					"h": 5,
+					"fill": "#7BD389",
+					"radius": 2.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 32,
+					"y": 62,
+					"w": 16,
+					"h": 8,
+					"fill": "#2B2F36",
+					"radius": 3
+				},
+				{
+					"type": "rect",
+					"x": 37,
+					"y": 70,
+					"w": 6,
+					"h": 10,
+					"fill": "#5B616B",
+					"outline": false
+				}
+			]
+		}
+	},
+	"../modules/adapter-barrel-uk.json": {
+		format: "circuitoon-module/1",
+		id: "adapter-barrel-uk",
+		version: 1,
+		name: "Wall adapter, barrel jack, UK (BS 1363)",
+		category: "Mains",
+		source: "https://www.meanwell.com/Upload/PDF/NGE12/NGE12-SPEC.PDF https://en.wikipedia.org/wiki/BS_1363",
+		pins: [
+			{
+				"name": "+",
+				"side": "bottom",
+				"type": "power_out"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"name": "-",
+				"side": "bottom",
+				"type": "ground"
+			}
+		],
+		size: {
+			"w": 8,
+			"h": 8
+		},
+		electrical: {
+			"model": "converter",
+			"internalNodes": [
+				"L prong",
+				"N prong",
+				"E pin"
+			],
+			"acInput": {
+				"a": "L prong",
+				"b": "N prong",
+				"range": [80, 264]
+			},
+			"domains": [{
+				"name": "mains",
+				"pins": ["L prong", "N prong"],
+				"kind": "mains"
+			}, {
+				"name": "output",
+				"pins": ["+", "-"],
+				"kind": "selv"
+			}],
+			"isolation": "double",
+			"isolationProvenance": "datasheet",
+			"protection": "class-2",
+			"plug": {
+				"family": "bs1363",
+				"profiles": [{
+					"id": "main",
+					"contacts": [
+						{
+							"pin": "L prong",
+							"at": {
+								"x": 70,
+								"y": 50
+							},
+							"mains": "L"
+						},
+						{
+							"pin": "N prong",
+							"at": {
+								"x": 10,
+								"y": 50
+							},
+							"mains": "N"
+						},
+						{
+							"pin": "E pin",
+							"at": {
+								"x": 40,
+								"y": 20
+							},
+							"mains": "mechanical"
+						}
+					]
+				}]
+			},
+			"params": { "voltage": {
+				"unit": "V",
+				"default": 12
+			} }
+		},
+		art: {
+			"w": 80,
+			"h": 80,
+			"shapes": [
+				{
+					"type": "rect",
+					"x": 0,
+					"y": 0,
+					"w": 80,
+					"h": 80,
+					"fill": "#2B2F36",
+					"radius": 10
+				},
+				{
+					"type": "rect",
+					"x": 5,
+					"y": 5,
+					"w": 70,
+					"h": 56,
+					"fill": "#3A3F48",
+					"radius": 7,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 64.5,
+					"y": 47.5,
+					"w": 11,
+					"h": 5,
+					"fill": "#AEB5BF",
+					"radius": 1,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 4.5,
+					"y": 47.5,
+					"w": 11,
+					"h": 5,
+					"fill": "#AEB5BF",
+					"radius": 1,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 37.5,
+					"y": 14,
+					"w": 5,
+					"h": 12,
+					"fill": "#D8D4CA",
+					"radius": 1,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 68,
+					"y": 7,
+					"w": 5,
+					"h": 5,
+					"fill": "#7BD389",
+					"radius": 2.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 32,
+					"y": 62,
+					"w": 16,
+					"h": 8,
+					"fill": "#2B2F36",
+					"radius": 3
+				},
+				{
+					"type": "rect",
+					"x": 37,
+					"y": 70,
+					"w": 6,
+					"h": 10,
+					"fill": "#5B616B",
+					"outline": false
+				}
+			]
+		}
+	},
+	"../modules/adapter-barrel-us.json": {
+		format: "circuitoon-module/1",
+		id: "adapter-barrel-us",
+		version: 1,
+		name: "Wall adapter, barrel jack, US/Japan (NEMA 1-15P)",
+		category: "Mains",
+		source: "https://www.meanwell.com/Upload/PDF/NGE12/NGE12-SPEC.PDF https://en.wikipedia.org/wiki/NEMA_connector",
+		pins: [
+			{
+				"name": "+",
+				"side": "bottom",
+				"type": "power_out"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"name": "-",
+				"side": "bottom",
+				"type": "ground"
+			}
+		],
+		size: {
+			"w": 6,
+			"h": 6
+		},
+		electrical: {
+			"model": "converter",
+			"internalNodes": ["L prong", "N prong"],
+			"acInput": {
+				"a": "L prong",
+				"b": "N prong",
+				"range": [80, 264]
+			},
+			"domains": [{
+				"name": "mains",
+				"pins": ["L prong", "N prong"],
+				"kind": "mains"
+			}, {
+				"name": "output",
+				"pins": ["+", "-"],
+				"kind": "selv"
+			}],
+			"isolation": "double",
+			"isolationProvenance": "datasheet",
+			"protection": "class-2",
+			"plug": {
+				"family": "nema-1-15p",
+				"profiles": [{
+					"id": "main",
+					"contacts": [{
+						"pin": "L prong",
+						"at": {
+							"x": 40,
+							"y": 30
+						},
+						"mains": "L"
+					}, {
+						"pin": "N prong",
+						"at": {
+							"x": 20,
+							"y": 30
+						},
+						"mains": "N"
+					}]
+				}]
+			},
+			"params": { "voltage": {
+				"unit": "V",
+				"default": 12
+			} }
+		},
+		art: {
+			"w": 60,
+			"h": 60,
+			"shapes": [
+				{
+					"type": "rect",
+					"x": 0,
+					"y": 0,
+					"w": 60,
+					"h": 60,
+					"fill": "#2B2F36",
+					"radius": 10
+				},
+				{
+					"type": "rect",
+					"x": 5,
+					"y": 5,
+					"w": 50,
+					"h": 36,
+					"fill": "#3A3F48",
+					"radius": 7,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 38.5,
+					"y": 24,
+					"w": 3,
+					"h": 12,
+					"fill": "#AEB5BF",
+					"radius": 1,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 18.5,
+					"y": 24,
+					"w": 3,
+					"h": 12,
+					"fill": "#AEB5BF",
+					"radius": 1,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 48,
+					"y": 7,
+					"w": 5,
+					"h": 5,
+					"fill": "#7BD389",
+					"radius": 2.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 22,
+					"y": 42,
+					"w": 16,
+					"h": 8,
+					"fill": "#2B2F36",
+					"radius": 3
+				},
+				{
+					"type": "rect",
+					"x": 27,
+					"y": 50,
+					"w": 6,
+					"h": 10,
+					"fill": "#5B616B",
+					"outline": false
+				}
+			]
+		}
+	},
 	"../modules/ams1117-33-module.json": {
 		format: "circuitoon-module/1",
 		id: "ams1117-33-module",
@@ -10532,6 +12270,727 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			]
 		}
 	},
+	"../modules/charger-usb-5v-au.json": {
+		format: "circuitoon-module/1",
+		id: "charger-usb-5v-au",
+		version: 1,
+		name: "USB wall charger 5 V, AU/NZ (AS/NZS 3112)",
+		category: "Mains",
+		source: "https://www.meanwell.com/Upload/PDF/NGE12/NGE12-SPEC.PDF https://en.wikipedia.org/wiki/AS/NZS_3112",
+		pins: [
+			{
+				"name": "5V",
+				"side": "bottom",
+				"type": "power_out",
+				"supply": "5V"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"name": "GND",
+				"side": "bottom",
+				"type": "ground"
+			}
+		],
+		size: {
+			"w": 6,
+			"h": 6
+		},
+		electrical: {
+			"model": "converter",
+			"internalNodes": ["L prong", "N prong"],
+			"acInput": {
+				"a": "L prong",
+				"b": "N prong",
+				"range": [80, 264]
+			},
+			"domains": [{
+				"name": "mains",
+				"pins": ["L prong", "N prong"],
+				"kind": "mains"
+			}, {
+				"name": "output",
+				"pins": ["5V", "GND"],
+				"kind": "selv"
+			}],
+			"isolation": "double",
+			"isolationProvenance": "datasheet",
+			"protection": "class-2",
+			"plug": {
+				"family": "as3112",
+				"profiles": [{
+					"id": "main",
+					"contacts": [{
+						"pin": "L prong",
+						"at": {
+							"x": 20,
+							"y": 20
+						},
+						"mains": "L"
+					}, {
+						"pin": "N prong",
+						"at": {
+							"x": 50,
+							"y": 20
+						},
+						"mains": "N"
+					}]
+				}]
+			}
+		},
+		art: {
+			"w": 60,
+			"h": 60,
+			"shapes": [
+				{
+					"type": "rect",
+					"x": 0,
+					"y": 0,
+					"w": 60,
+					"h": 60,
+					"fill": "#F5F5F2",
+					"radius": 10
+				},
+				{
+					"type": "rect",
+					"x": 4,
+					"y": 36,
+					"w": 52,
+					"h": 20,
+					"fill": "#E3E0D8",
+					"radius": 6,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 20.1,
+					"y": 14.100000000000001,
+					"w": 4,
+					"h": 4,
+					"fill": "#AEB5BF",
+					"radius": 2,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 19.4,
+					"y": 15.399999999999999,
+					"w": 4,
+					"h": 4,
+					"fill": "#AEB5BF",
+					"radius": 2,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 18.7,
+					"y": 16.7,
+					"w": 4,
+					"h": 4,
+					"fill": "#AEB5BF",
+					"radius": 2,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 18,
+					"y": 18,
+					"w": 4,
+					"h": 4,
+					"fill": "#AEB5BF",
+					"radius": 2,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 17.3,
+					"y": 19.3,
+					"w": 4,
+					"h": 4,
+					"fill": "#AEB5BF",
+					"radius": 2,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 16.6,
+					"y": 20.6,
+					"w": 4,
+					"h": 4,
+					"fill": "#AEB5BF",
+					"radius": 2,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 15.899999999999999,
+					"y": 21.9,
+					"w": 4,
+					"h": 4,
+					"fill": "#AEB5BF",
+					"radius": 2,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 45.9,
+					"y": 14.100000000000001,
+					"w": 4,
+					"h": 4,
+					"fill": "#AEB5BF",
+					"radius": 2,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 46.6,
+					"y": 15.399999999999999,
+					"w": 4,
+					"h": 4,
+					"fill": "#AEB5BF",
+					"radius": 2,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 47.3,
+					"y": 16.7,
+					"w": 4,
+					"h": 4,
+					"fill": "#AEB5BF",
+					"radius": 2,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 48,
+					"y": 18,
+					"w": 4,
+					"h": 4,
+					"fill": "#AEB5BF",
+					"radius": 2,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 48.7,
+					"y": 19.3,
+					"w": 4,
+					"h": 4,
+					"fill": "#AEB5BF",
+					"radius": 2,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 49.4,
+					"y": 20.6,
+					"w": 4,
+					"h": 4,
+					"fill": "#AEB5BF",
+					"radius": 2,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 50.1,
+					"y": 21.9,
+					"w": 4,
+					"h": 4,
+					"fill": "#AEB5BF",
+					"radius": 2,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 48,
+					"y": 7,
+					"w": 5,
+					"h": 5,
+					"fill": "#7BD389",
+					"radius": 2.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 17,
+					"y": 41,
+					"w": 26,
+					"h": 11,
+					"fill": "#C9CED6",
+					"radius": 2
+				},
+				{
+					"type": "rect",
+					"x": 21,
+					"y": 44,
+					"w": 18,
+					"h": 4,
+					"fill": "#1E4F8A",
+					"outline": false
+				}
+			]
+		}
+	},
+	"../modules/charger-usb-5v-eu.json": {
+		format: "circuitoon-module/1",
+		id: "charger-usb-5v-eu",
+		version: 1,
+		name: "USB wall charger 5 V, Europe (Europlug)",
+		category: "Mains",
+		source: "https://www.meanwell.com/Upload/PDF/NGE12/NGE12-SPEC.PDF https://en.wikipedia.org/wiki/Europlug",
+		pins: [
+			{
+				"name": "5V",
+				"side": "bottom",
+				"type": "power_out",
+				"supply": "5V"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"name": "GND",
+				"side": "bottom",
+				"type": "ground"
+			}
+		],
+		size: {
+			"w": 8,
+			"h": 8
+		},
+		electrical: {
+			"model": "converter",
+			"internalNodes": ["L prong", "N prong"],
+			"acInput": {
+				"a": "L prong",
+				"b": "N prong",
+				"range": [80, 264]
+			},
+			"domains": [{
+				"name": "mains",
+				"pins": ["L prong", "N prong"],
+				"kind": "mains"
+			}, {
+				"name": "output",
+				"pins": ["5V", "GND"],
+				"kind": "selv"
+			}],
+			"isolation": "double",
+			"isolationProvenance": "datasheet",
+			"protection": "class-2",
+			"plug": {
+				"family": "cee7-16",
+				"profiles": [{
+					"id": "main",
+					"contacts": [{
+						"pin": "L prong",
+						"at": {
+							"x": 20,
+							"y": 40
+						},
+						"mains": "L"
+					}, {
+						"pin": "N prong",
+						"at": {
+							"x": 60,
+							"y": 40
+						},
+						"mains": "N"
+					}]
+				}]
+			}
+		},
+		art: {
+			"w": 80,
+			"h": 80,
+			"shapes": [
+				{
+					"type": "rect",
+					"x": 0,
+					"y": 0,
+					"w": 80,
+					"h": 80,
+					"fill": "#F5F5F2",
+					"radius": 10
+				},
+				{
+					"type": "rect",
+					"x": 4,
+					"y": 56,
+					"w": 72,
+					"h": 20,
+					"fill": "#E3E0D8",
+					"radius": 6,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 17,
+					"y": 37,
+					"w": 6,
+					"h": 6,
+					"fill": "#AEB5BF",
+					"radius": 3,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 57,
+					"y": 37,
+					"w": 6,
+					"h": 6,
+					"fill": "#AEB5BF",
+					"radius": 3,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 68,
+					"y": 7,
+					"w": 5,
+					"h": 5,
+					"fill": "#7BD389",
+					"radius": 2.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 27,
+					"y": 61,
+					"w": 26,
+					"h": 11,
+					"fill": "#C9CED6",
+					"radius": 2
+				},
+				{
+					"type": "rect",
+					"x": 31,
+					"y": 64,
+					"w": 18,
+					"h": 4,
+					"fill": "#1E4F8A",
+					"outline": false
+				}
+			]
+		}
+	},
+	"../modules/charger-usb-5v-uk.json": {
+		format: "circuitoon-module/1",
+		id: "charger-usb-5v-uk",
+		version: 1,
+		name: "USB wall charger 5 V, UK (BS 1363)",
+		category: "Mains",
+		source: "https://www.meanwell.com/Upload/PDF/NGE12/NGE12-SPEC.PDF https://en.wikipedia.org/wiki/BS_1363",
+		pins: [
+			{
+				"name": "5V",
+				"side": "bottom",
+				"type": "power_out",
+				"supply": "5V"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"name": "GND",
+				"side": "bottom",
+				"type": "ground"
+			}
+		],
+		size: {
+			"w": 8,
+			"h": 8
+		},
+		electrical: {
+			"model": "converter",
+			"internalNodes": [
+				"L prong",
+				"N prong",
+				"E pin"
+			],
+			"acInput": {
+				"a": "L prong",
+				"b": "N prong",
+				"range": [80, 264]
+			},
+			"domains": [{
+				"name": "mains",
+				"pins": ["L prong", "N prong"],
+				"kind": "mains"
+			}, {
+				"name": "output",
+				"pins": ["5V", "GND"],
+				"kind": "selv"
+			}],
+			"isolation": "double",
+			"isolationProvenance": "datasheet",
+			"protection": "class-2",
+			"plug": {
+				"family": "bs1363",
+				"profiles": [{
+					"id": "main",
+					"contacts": [
+						{
+							"pin": "L prong",
+							"at": {
+								"x": 70,
+								"y": 50
+							},
+							"mains": "L"
+						},
+						{
+							"pin": "N prong",
+							"at": {
+								"x": 10,
+								"y": 50
+							},
+							"mains": "N"
+						},
+						{
+							"pin": "E pin",
+							"at": {
+								"x": 40,
+								"y": 20
+							},
+							"mains": "mechanical"
+						}
+					]
+				}]
+			}
+		},
+		art: {
+			"w": 80,
+			"h": 80,
+			"shapes": [
+				{
+					"type": "rect",
+					"x": 0,
+					"y": 0,
+					"w": 80,
+					"h": 80,
+					"fill": "#F5F5F2",
+					"radius": 10
+				},
+				{
+					"type": "rect",
+					"x": 4,
+					"y": 56,
+					"w": 72,
+					"h": 20,
+					"fill": "#E3E0D8",
+					"radius": 6,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 64.5,
+					"y": 47.5,
+					"w": 11,
+					"h": 5,
+					"fill": "#AEB5BF",
+					"radius": 1,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 4.5,
+					"y": 47.5,
+					"w": 11,
+					"h": 5,
+					"fill": "#AEB5BF",
+					"radius": 1,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 37.5,
+					"y": 14,
+					"w": 5,
+					"h": 12,
+					"fill": "#D8D4CA",
+					"radius": 1,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 68,
+					"y": 7,
+					"w": 5,
+					"h": 5,
+					"fill": "#7BD389",
+					"radius": 2.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 27,
+					"y": 61,
+					"w": 26,
+					"h": 11,
+					"fill": "#C9CED6",
+					"radius": 2
+				},
+				{
+					"type": "rect",
+					"x": 31,
+					"y": 64,
+					"w": 18,
+					"h": 4,
+					"fill": "#1E4F8A",
+					"outline": false
+				}
+			]
+		}
+	},
+	"../modules/charger-usb-5v-us.json": {
+		format: "circuitoon-module/1",
+		id: "charger-usb-5v-us",
+		version: 1,
+		name: "USB wall charger 5 V, US/Japan (NEMA 1-15P)",
+		category: "Mains",
+		source: "https://www.meanwell.com/Upload/PDF/NGE12/NGE12-SPEC.PDF https://en.wikipedia.org/wiki/NEMA_connector",
+		pins: [
+			{
+				"name": "5V",
+				"side": "bottom",
+				"type": "power_out",
+				"supply": "5V"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"name": "GND",
+				"side": "bottom",
+				"type": "ground"
+			}
+		],
+		size: {
+			"w": 6,
+			"h": 6
+		},
+		electrical: {
+			"model": "converter",
+			"internalNodes": ["L prong", "N prong"],
+			"acInput": {
+				"a": "L prong",
+				"b": "N prong",
+				"range": [80, 264]
+			},
+			"domains": [{
+				"name": "mains",
+				"pins": ["L prong", "N prong"],
+				"kind": "mains"
+			}, {
+				"name": "output",
+				"pins": ["5V", "GND"],
+				"kind": "selv"
+			}],
+			"isolation": "double",
+			"isolationProvenance": "datasheet",
+			"protection": "class-2",
+			"plug": {
+				"family": "nema-1-15p",
+				"profiles": [{
+					"id": "main",
+					"contacts": [{
+						"pin": "L prong",
+						"at": {
+							"x": 40,
+							"y": 30
+						},
+						"mains": "L"
+					}, {
+						"pin": "N prong",
+						"at": {
+							"x": 20,
+							"y": 30
+						},
+						"mains": "N"
+					}]
+				}]
+			}
+		},
+		art: {
+			"w": 60,
+			"h": 60,
+			"shapes": [
+				{
+					"type": "rect",
+					"x": 0,
+					"y": 0,
+					"w": 60,
+					"h": 60,
+					"fill": "#F5F5F2",
+					"radius": 10
+				},
+				{
+					"type": "rect",
+					"x": 4,
+					"y": 36,
+					"w": 52,
+					"h": 20,
+					"fill": "#E3E0D8",
+					"radius": 6,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 38.5,
+					"y": 24,
+					"w": 3,
+					"h": 12,
+					"fill": "#AEB5BF",
+					"radius": 1,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 18.5,
+					"y": 24,
+					"w": 3,
+					"h": 12,
+					"fill": "#AEB5BF",
+					"radius": 1,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 48,
+					"y": 7,
+					"w": 5,
+					"h": 5,
+					"fill": "#7BD389",
+					"radius": 2.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 17,
+					"y": 41,
+					"w": 26,
+					"h": 11,
+					"fill": "#C9CED6",
+					"radius": 2
+				},
+				{
+					"type": "rect",
+					"x": 21,
+					"y": 44,
+					"w": 18,
+					"h": 4,
+					"fill": "#1E4F8A",
+					"outline": false
+				}
+			]
+		}
+	},
 	"../modules/dht22-bare.json": {
 		format: "circuitoon-module/1",
 		id: "dht22-bare",
@@ -15044,6 +17503,356 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 		},
 		art: /* @__PURE__ */ JSON.parse("{\"w\":260,\"h\":210,\"pinLabels\":\"inside\",\"shapes\":[{\"type\":\"rect\",\"x\":0,\"y\":0,\"w\":260,\"h\":210,\"fill\":\"#2B2F36\",\"radius\":4},{\"type\":\"rect\",\"x\":4,\"y\":4,\"w\":10,\"h\":10,\"fill\":\"#15181C\",\"radius\":5},{\"type\":\"rect\",\"x\":246,\"y\":4,\"w\":10,\"h\":10,\"fill\":\"#15181C\",\"radius\":5},{\"type\":\"rect\",\"x\":4,\"y\":196,\"w\":10,\"h\":10,\"fill\":\"#15181C\",\"radius\":5},{\"type\":\"rect\",\"x\":246,\"y\":196,\"w\":10,\"h\":10,\"fill\":\"#15181C\",\"radius\":5},{\"type\":\"rect\",\"x\":34,\"y\":1,\"w\":192,\"h\":10,\"fill\":\"#3FA34D\",\"radius\":1},{\"type\":\"rect\",\"x\":37,\"y\":3,\"w\":6,\"h\":6,\"fill\":\"#C9CED6\",\"radius\":3,\"outline\":false},{\"type\":\"rect\",\"x\":47,\"y\":3,\"w\":6,\"h\":6,\"fill\":\"#C9CED6\",\"radius\":3,\"outline\":false},{\"type\":\"rect\",\"x\":57,\"y\":3,\"w\":6,\"h\":6,\"fill\":\"#C9CED6\",\"radius\":3,\"outline\":false},{\"type\":\"rect\",\"x\":67,\"y\":3,\"w\":6,\"h\":6,\"fill\":\"#C9CED6\",\"radius\":3,\"outline\":false},{\"type\":\"rect\",\"x\":77,\"y\":3,\"w\":6,\"h\":6,\"fill\":\"#C9CED6\",\"radius\":3,\"outline\":false},{\"type\":\"rect\",\"x\":87,\"y\":3,\"w\":6,\"h\":6,\"fill\":\"#C9CED6\",\"radius\":3,\"outline\":false},{\"type\":\"rect\",\"x\":97,\"y\":3,\"w\":6,\"h\":6,\"fill\":\"#C9CED6\",\"radius\":3,\"outline\":false},{\"type\":\"rect\",\"x\":107,\"y\":3,\"w\":6,\"h\":6,\"fill\":\"#C9CED6\",\"radius\":3,\"outline\":false},{\"type\":\"rect\",\"x\":117,\"y\":3,\"w\":6,\"h\":6,\"fill\":\"#C9CED6\",\"radius\":3,\"outline\":false},{\"type\":\"rect\",\"x\":127,\"y\":3,\"w\":6,\"h\":6,\"fill\":\"#C9CED6\",\"radius\":3,\"outline\":false},{\"type\":\"rect\",\"x\":137,\"y\":3,\"w\":6,\"h\":6,\"fill\":\"#C9CED6\",\"radius\":3,\"outline\":false},{\"type\":\"rect\",\"x\":147,\"y\":3,\"w\":6,\"h\":6,\"fill\":\"#C9CED6\",\"radius\":3,\"outline\":false},{\"type\":\"rect\",\"x\":157,\"y\":3,\"w\":6,\"h\":6,\"fill\":\"#C9CED6\",\"radius\":3,\"outline\":false},{\"type\":\"rect\",\"x\":167,\"y\":3,\"w\":6,\"h\":6,\"fill\":\"#C9CED6\",\"radius\":3,\"outline\":false},{\"type\":\"rect\",\"x\":177,\"y\":3,\"w\":6,\"h\":6,\"fill\":\"#C9CED6\",\"radius\":3,\"outline\":false},{\"type\":\"rect\",\"x\":187,\"y\":3,\"w\":6,\"h\":6,\"fill\":\"#C9CED6\",\"radius\":3,\"outline\":false},{\"type\":\"rect\",\"x\":197,\"y\":3,\"w\":6,\"h\":6,\"fill\":\"#C9CED6\",\"radius\":3,\"outline\":false},{\"type\":\"rect\",\"x\":207,\"y\":3,\"w\":6,\"h\":6,\"fill\":\"#C9CED6\",\"radius\":3,\"outline\":false},{\"type\":\"rect\",\"x\":217,\"y\":3,\"w\":6,\"h\":6,\"fill\":\"#C9CED6\",\"radius\":3,\"outline\":false},{\"type\":\"rect\",\"x\":37.5,\"y\":5.5,\"w\":5,\"h\":1,\"fill\":\"#6B727C\",\"outline\":false},{\"type\":\"rect\",\"x\":47.5,\"y\":5.5,\"w\":5,\"h\":1,\"fill\":\"#6B727C\",\"outline\":false},{\"type\":\"rect\",\"x\":57.5,\"y\":5.5,\"w\":5,\"h\":1,\"fill\":\"#6B727C\",\"outline\":false},{\"type\":\"rect\",\"x\":67.5,\"y\":5.5,\"w\":5,\"h\":1,\"fill\":\"#6B727C\",\"outline\":false},{\"type\":\"rect\",\"x\":77.5,\"y\":5.5,\"w\":5,\"h\":1,\"fill\":\"#6B727C\",\"outline\":false},{\"type\":\"rect\",\"x\":87.5,\"y\":5.5,\"w\":5,\"h\":1,\"fill\":\"#6B727C\",\"outline\":false},{\"type\":\"rect\",\"x\":97.5,\"y\":5.5,\"w\":5,\"h\":1,\"fill\":\"#6B727C\",\"outline\":false},{\"type\":\"rect\",\"x\":107.5,\"y\":5.5,\"w\":5,\"h\":1,\"fill\":\"#6B727C\",\"outline\":false},{\"type\":\"rect\",\"x\":117.5,\"y\":5.5,\"w\":5,\"h\":1,\"fill\":\"#6B727C\",\"outline\":false},{\"type\":\"rect\",\"x\":127.5,\"y\":5.5,\"w\":5,\"h\":1,\"fill\":\"#6B727C\",\"outline\":false},{\"type\":\"rect\",\"x\":137.5,\"y\":5.5,\"w\":5,\"h\":1,\"fill\":\"#6B727C\",\"outline\":false},{\"type\":\"rect\",\"x\":147.5,\"y\":5.5,\"w\":5,\"h\":1,\"fill\":\"#6B727C\",\"outline\":false},{\"type\":\"rect\",\"x\":157.5,\"y\":5.5,\"w\":5,\"h\":1,\"fill\":\"#6B727C\",\"outline\":false},{\"type\":\"rect\",\"x\":167.5,\"y\":5.5,\"w\":5,\"h\":1,\"fill\":\"#6B727C\",\"outline\":false},{\"type\":\"rect\",\"x\":177.5,\"y\":5.5,\"w\":5,\"h\":1,\"fill\":\"#6B727C\",\"outline\":false},{\"type\":\"rect\",\"x\":187.5,\"y\":5.5,\"w\":5,\"h\":1,\"fill\":\"#6B727C\",\"outline\":false},{\"type\":\"rect\",\"x\":197.5,\"y\":5.5,\"w\":5,\"h\":1,\"fill\":\"#6B727C\",\"outline\":false},{\"type\":\"rect\",\"x\":207.5,\"y\":5.5,\"w\":5,\"h\":1,\"fill\":\"#6B727C\",\"outline\":false},{\"type\":\"rect\",\"x\":217.5,\"y\":5.5,\"w\":5,\"h\":1,\"fill\":\"#6B727C\",\"outline\":false},{\"type\":\"rect\",\"x\":34,\"y\":199,\"w\":192,\"h\":10,\"fill\":\"#3FA34D\",\"radius\":1},{\"type\":\"rect\",\"x\":37,\"y\":201,\"w\":6,\"h\":6,\"fill\":\"#C9CED6\",\"radius\":3,\"outline\":false},{\"type\":\"rect\",\"x\":47,\"y\":201,\"w\":6,\"h\":6,\"fill\":\"#C9CED6\",\"radius\":3,\"outline\":false},{\"type\":\"rect\",\"x\":57,\"y\":201,\"w\":6,\"h\":6,\"fill\":\"#C9CED6\",\"radius\":3,\"outline\":false},{\"type\":\"rect\",\"x\":67,\"y\":201,\"w\":6,\"h\":6,\"fill\":\"#C9CED6\",\"radius\":3,\"outline\":false},{\"type\":\"rect\",\"x\":77,\"y\":201,\"w\":6,\"h\":6,\"fill\":\"#C9CED6\",\"radius\":3,\"outline\":false},{\"type\":\"rect\",\"x\":87,\"y\":201,\"w\":6,\"h\":6,\"fill\":\"#C9CED6\",\"radius\":3,\"outline\":false},{\"type\":\"rect\",\"x\":97,\"y\":201,\"w\":6,\"h\":6,\"fill\":\"#C9CED6\",\"radius\":3,\"outline\":false},{\"type\":\"rect\",\"x\":107,\"y\":201,\"w\":6,\"h\":6,\"fill\":\"#C9CED6\",\"radius\":3,\"outline\":false},{\"type\":\"rect\",\"x\":117,\"y\":201,\"w\":6,\"h\":6,\"fill\":\"#C9CED6\",\"radius\":3,\"outline\":false},{\"type\":\"rect\",\"x\":127,\"y\":201,\"w\":6,\"h\":6,\"fill\":\"#C9CED6\",\"radius\":3,\"outline\":false},{\"type\":\"rect\",\"x\":137,\"y\":201,\"w\":6,\"h\":6,\"fill\":\"#C9CED6\",\"radius\":3,\"outline\":false},{\"type\":\"rect\",\"x\":147,\"y\":201,\"w\":6,\"h\":6,\"fill\":\"#C9CED6\",\"radius\":3,\"outline\":false},{\"type\":\"rect\",\"x\":157,\"y\":201,\"w\":6,\"h\":6,\"fill\":\"#C9CED6\",\"radius\":3,\"outline\":false},{\"type\":\"rect\",\"x\":167,\"y\":201,\"w\":6,\"h\":6,\"fill\":\"#C9CED6\",\"radius\":3,\"outline\":false},{\"type\":\"rect\",\"x\":177,\"y\":201,\"w\":6,\"h\":6,\"fill\":\"#C9CED6\",\"radius\":3,\"outline\":false},{\"type\":\"rect\",\"x\":187,\"y\":201,\"w\":6,\"h\":6,\"fill\":\"#C9CED6\",\"radius\":3,\"outline\":false},{\"type\":\"rect\",\"x\":197,\"y\":201,\"w\":6,\"h\":6,\"fill\":\"#C9CED6\",\"radius\":3,\"outline\":false},{\"type\":\"rect\",\"x\":207,\"y\":201,\"w\":6,\"h\":6,\"fill\":\"#C9CED6\",\"radius\":3,\"outline\":false},{\"type\":\"rect\",\"x\":217,\"y\":201,\"w\":6,\"h\":6,\"fill\":\"#C9CED6\",\"radius\":3,\"outline\":false},{\"type\":\"rect\",\"x\":37.5,\"y\":203.5,\"w\":5,\"h\":1,\"fill\":\"#6B727C\",\"outline\":false},{\"type\":\"rect\",\"x\":47.5,\"y\":203.5,\"w\":5,\"h\":1,\"fill\":\"#6B727C\",\"outline\":false},{\"type\":\"rect\",\"x\":57.5,\"y\":203.5,\"w\":5,\"h\":1,\"fill\":\"#6B727C\",\"outline\":false},{\"type\":\"rect\",\"x\":67.5,\"y\":203.5,\"w\":5,\"h\":1,\"fill\":\"#6B727C\",\"outline\":false},{\"type\":\"rect\",\"x\":77.5,\"y\":203.5,\"w\":5,\"h\":1,\"fill\":\"#6B727C\",\"outline\":false},{\"type\":\"rect\",\"x\":87.5,\"y\":203.5,\"w\":5,\"h\":1,\"fill\":\"#6B727C\",\"outline\":false},{\"type\":\"rect\",\"x\":97.5,\"y\":203.5,\"w\":5,\"h\":1,\"fill\":\"#6B727C\",\"outline\":false},{\"type\":\"rect\",\"x\":107.5,\"y\":203.5,\"w\":5,\"h\":1,\"fill\":\"#6B727C\",\"outline\":false},{\"type\":\"rect\",\"x\":117.5,\"y\":203.5,\"w\":5,\"h\":1,\"fill\":\"#6B727C\",\"outline\":false},{\"type\":\"rect\",\"x\":127.5,\"y\":203.5,\"w\":5,\"h\":1,\"fill\":\"#6B727C\",\"outline\":false},{\"type\":\"rect\",\"x\":137.5,\"y\":203.5,\"w\":5,\"h\":1,\"fill\":\"#6B727C\",\"outline\":false},{\"type\":\"rect\",\"x\":147.5,\"y\":203.5,\"w\":5,\"h\":1,\"fill\":\"#6B727C\",\"outline\":false},{\"type\":\"rect\",\"x\":157.5,\"y\":203.5,\"w\":5,\"h\":1,\"fill\":\"#6B727C\",\"outline\":false},{\"type\":\"rect\",\"x\":167.5,\"y\":203.5,\"w\":5,\"h\":1,\"fill\":\"#6B727C\",\"outline\":false},{\"type\":\"rect\",\"x\":177.5,\"y\":203.5,\"w\":5,\"h\":1,\"fill\":\"#6B727C\",\"outline\":false},{\"type\":\"rect\",\"x\":187.5,\"y\":203.5,\"w\":5,\"h\":1,\"fill\":\"#6B727C\",\"outline\":false},{\"type\":\"rect\",\"x\":197.5,\"y\":203.5,\"w\":5,\"h\":1,\"fill\":\"#6B727C\",\"outline\":false},{\"type\":\"rect\",\"x\":207.5,\"y\":203.5,\"w\":5,\"h\":1,\"fill\":\"#6B727C\",\"outline\":false},{\"type\":\"rect\",\"x\":217.5,\"y\":203.5,\"w\":5,\"h\":1,\"fill\":\"#6B727C\",\"outline\":false},{\"type\":\"rect\",\"x\":54,\"y\":48,\"w\":152,\"h\":8,\"fill\":\"#1B1F24\",\"radius\":1},{\"type\":\"rect\",\"x\":58.5,\"y\":50.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"outline\":false},{\"type\":\"rect\",\"x\":68.5,\"y\":50.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"outline\":false},{\"type\":\"rect\",\"x\":78.5,\"y\":50.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"outline\":false},{\"type\":\"rect\",\"x\":88.5,\"y\":50.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"outline\":false},{\"type\":\"rect\",\"x\":98.5,\"y\":50.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"outline\":false},{\"type\":\"rect\",\"x\":108.5,\"y\":50.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"outline\":false},{\"type\":\"rect\",\"x\":118.5,\"y\":50.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"outline\":false},{\"type\":\"rect\",\"x\":128.5,\"y\":50.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"outline\":false},{\"type\":\"rect\",\"x\":138.5,\"y\":50.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"outline\":false},{\"type\":\"rect\",\"x\":148.5,\"y\":50.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"outline\":false},{\"type\":\"rect\",\"x\":158.5,\"y\":50.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"outline\":false},{\"type\":\"rect\",\"x\":168.5,\"y\":50.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"outline\":false},{\"type\":\"rect\",\"x\":178.5,\"y\":50.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"outline\":false},{\"type\":\"rect\",\"x\":188.5,\"y\":50.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"outline\":false},{\"type\":\"rect\",\"x\":198.5,\"y\":50.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"outline\":false},{\"type\":\"rect\",\"x\":54,\"y\":62,\"w\":152,\"h\":8,\"fill\":\"#1B1F24\",\"radius\":1},{\"type\":\"rect\",\"x\":58.5,\"y\":64.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"outline\":false},{\"type\":\"rect\",\"x\":68.5,\"y\":64.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"outline\":false},{\"type\":\"rect\",\"x\":78.5,\"y\":64.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"outline\":false},{\"type\":\"rect\",\"x\":88.5,\"y\":64.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"outline\":false},{\"type\":\"rect\",\"x\":98.5,\"y\":64.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"outline\":false},{\"type\":\"rect\",\"x\":108.5,\"y\":64.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"outline\":false},{\"type\":\"rect\",\"x\":118.5,\"y\":64.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"outline\":false},{\"type\":\"rect\",\"x\":128.5,\"y\":64.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"outline\":false},{\"type\":\"rect\",\"x\":138.5,\"y\":64.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"outline\":false},{\"type\":\"rect\",\"x\":148.5,\"y\":64.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"outline\":false},{\"type\":\"rect\",\"x\":158.5,\"y\":64.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"outline\":false},{\"type\":\"rect\",\"x\":168.5,\"y\":64.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"outline\":false},{\"type\":\"rect\",\"x\":178.5,\"y\":64.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"outline\":false},{\"type\":\"rect\",\"x\":188.5,\"y\":64.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"outline\":false},{\"type\":\"rect\",\"x\":198.5,\"y\":64.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"outline\":false},{\"type\":\"rect\",\"x\":54,\"y\":140,\"w\":152,\"h\":8,\"fill\":\"#1B1F24\",\"radius\":1},{\"type\":\"rect\",\"x\":58.5,\"y\":142.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"outline\":false},{\"type\":\"rect\",\"x\":68.5,\"y\":142.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"outline\":false},{\"type\":\"rect\",\"x\":78.5,\"y\":142.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"outline\":false},{\"type\":\"rect\",\"x\":88.5,\"y\":142.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"outline\":false},{\"type\":\"rect\",\"x\":98.5,\"y\":142.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"outline\":false},{\"type\":\"rect\",\"x\":108.5,\"y\":142.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"outline\":false},{\"type\":\"rect\",\"x\":118.5,\"y\":142.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"outline\":false},{\"type\":\"rect\",\"x\":128.5,\"y\":142.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"outline\":false},{\"type\":\"rect\",\"x\":138.5,\"y\":142.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"outline\":false},{\"type\":\"rect\",\"x\":148.5,\"y\":142.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"outline\":false},{\"type\":\"rect\",\"x\":158.5,\"y\":142.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"outline\":false},{\"type\":\"rect\",\"x\":168.5,\"y\":142.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"outline\":false},{\"type\":\"rect\",\"x\":178.5,\"y\":142.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"outline\":false},{\"type\":\"rect\",\"x\":188.5,\"y\":142.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"outline\":false},{\"type\":\"rect\",\"x\":198.5,\"y\":142.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"outline\":false},{\"type\":\"rect\",\"x\":54,\"y\":154,\"w\":152,\"h\":8,\"fill\":\"#1B1F24\",\"radius\":1},{\"type\":\"rect\",\"x\":58.5,\"y\":156.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"outline\":false},{\"type\":\"rect\",\"x\":68.5,\"y\":156.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"outline\":false},{\"type\":\"rect\",\"x\":78.5,\"y\":156.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"outline\":false},{\"type\":\"rect\",\"x\":88.5,\"y\":156.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"outline\":false},{\"type\":\"rect\",\"x\":98.5,\"y\":156.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"outline\":false},{\"type\":\"rect\",\"x\":108.5,\"y\":156.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"outline\":false},{\"type\":\"rect\",\"x\":118.5,\"y\":156.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"outline\":false},{\"type\":\"rect\",\"x\":128.5,\"y\":156.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"outline\":false},{\"type\":\"rect\",\"x\":138.5,\"y\":156.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"outline\":false},{\"type\":\"rect\",\"x\":148.5,\"y\":156.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"outline\":false},{\"type\":\"rect\",\"x\":158.5,\"y\":156.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"outline\":false},{\"type\":\"rect\",\"x\":168.5,\"y\":156.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"outline\":false},{\"type\":\"rect\",\"x\":178.5,\"y\":156.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"outline\":false},{\"type\":\"rect\",\"x\":188.5,\"y\":156.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"outline\":false},{\"type\":\"rect\",\"x\":198.5,\"y\":156.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"outline\":false},{\"type\":\"rect\",\"x\":24,\"y\":40,\"w\":216,\"h\":130,\"fill\":\"#2B2F36\",\"radius\":5},{\"type\":\"rect\",\"x\":35,\"y\":48,\"w\":190,\"h\":8,\"fill\":\"#E0B43C\",\"radius\":2,\"outline\":false},{\"type\":\"rect\",\"x\":38.5,\"y\":50.5,\"w\":3,\"h\":3,\"fill\":\"#6B727C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":48.5,\"y\":50.5,\"w\":3,\"h\":3,\"fill\":\"#6B727C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":58.5,\"y\":50.5,\"w\":3,\"h\":3,\"fill\":\"#6B727C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":68.5,\"y\":50.5,\"w\":3,\"h\":3,\"fill\":\"#6B727C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":78.5,\"y\":50.5,\"w\":3,\"h\":3,\"fill\":\"#6B727C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":88.5,\"y\":50.5,\"w\":3,\"h\":3,\"fill\":\"#6B727C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":98.5,\"y\":50.5,\"w\":3,\"h\":3,\"fill\":\"#6B727C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":108.5,\"y\":50.5,\"w\":3,\"h\":3,\"fill\":\"#6B727C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":118.5,\"y\":50.5,\"w\":3,\"h\":3,\"fill\":\"#6B727C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":128.5,\"y\":50.5,\"w\":3,\"h\":3,\"fill\":\"#6B727C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":138.5,\"y\":50.5,\"w\":3,\"h\":3,\"fill\":\"#6B727C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":148.5,\"y\":50.5,\"w\":3,\"h\":3,\"fill\":\"#6B727C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":158.5,\"y\":50.5,\"w\":3,\"h\":3,\"fill\":\"#6B727C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":168.5,\"y\":50.5,\"w\":3,\"h\":3,\"fill\":\"#6B727C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":178.5,\"y\":50.5,\"w\":3,\"h\":3,\"fill\":\"#6B727C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":188.5,\"y\":50.5,\"w\":3,\"h\":3,\"fill\":\"#6B727C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":198.5,\"y\":50.5,\"w\":3,\"h\":3,\"fill\":\"#6B727C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":208.5,\"y\":50.5,\"w\":3,\"h\":3,\"fill\":\"#6B727C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":218.5,\"y\":50.5,\"w\":3,\"h\":3,\"fill\":\"#6B727C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":35,\"y\":154,\"w\":190,\"h\":8,\"fill\":\"#E0B43C\",\"radius\":2,\"outline\":false},{\"type\":\"rect\",\"x\":38.5,\"y\":156.5,\"w\":3,\"h\":3,\"fill\":\"#6B727C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":48.5,\"y\":156.5,\"w\":3,\"h\":3,\"fill\":\"#6B727C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":58.5,\"y\":156.5,\"w\":3,\"h\":3,\"fill\":\"#6B727C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":68.5,\"y\":156.5,\"w\":3,\"h\":3,\"fill\":\"#6B727C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":78.5,\"y\":156.5,\"w\":3,\"h\":3,\"fill\":\"#6B727C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":88.5,\"y\":156.5,\"w\":3,\"h\":3,\"fill\":\"#6B727C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":98.5,\"y\":156.5,\"w\":3,\"h\":3,\"fill\":\"#6B727C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":108.5,\"y\":156.5,\"w\":3,\"h\":3,\"fill\":\"#6B727C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":118.5,\"y\":156.5,\"w\":3,\"h\":3,\"fill\":\"#6B727C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":128.5,\"y\":156.5,\"w\":3,\"h\":3,\"fill\":\"#6B727C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":138.5,\"y\":156.5,\"w\":3,\"h\":3,\"fill\":\"#6B727C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":148.5,\"y\":156.5,\"w\":3,\"h\":3,\"fill\":\"#6B727C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":158.5,\"y\":156.5,\"w\":3,\"h\":3,\"fill\":\"#6B727C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":168.5,\"y\":156.5,\"w\":3,\"h\":3,\"fill\":\"#6B727C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":178.5,\"y\":156.5,\"w\":3,\"h\":3,\"fill\":\"#6B727C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":188.5,\"y\":156.5,\"w\":3,\"h\":3,\"fill\":\"#6B727C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":198.5,\"y\":156.5,\"w\":3,\"h\":3,\"fill\":\"#6B727C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":208.5,\"y\":156.5,\"w\":3,\"h\":3,\"fill\":\"#6B727C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":218.5,\"y\":156.5,\"w\":3,\"h\":3,\"fill\":\"#6B727C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":12,\"y\":91,\"w\":22,\"h\":28,\"fill\":\"#C9CED6\",\"radius\":2},{\"type\":\"rect\",\"x\":42,\"y\":64,\"w\":14,\"h\":14,\"fill\":\"#3A3F47\",\"radius\":2},{\"type\":\"rect\",\"x\":46,\"y\":68,\"w\":6,\"h\":6,\"fill\":\"#1B1F24\",\"radius\":3,\"outline\":false},{\"type\":\"rect\",\"x\":42,\"y\":130,\"w\":14,\"h\":14,\"fill\":\"#3A3F47\",\"radius\":2},{\"type\":\"rect\",\"x\":46,\"y\":134,\"w\":6,\"h\":6,\"fill\":\"#1B1F24\",\"radius\":3,\"outline\":false},{\"type\":\"rect\",\"x\":66,\"y\":102,\"w\":6,\"h\":5,\"fill\":\"#E0483E\",\"radius\":1,\"outline\":false},{\"type\":\"rect\",\"x\":84,\"y\":94,\"w\":22,\"h\":22,\"fill\":\"#1B1F24\",\"radius\":2},{\"type\":\"rect\",\"x\":142,\"y\":62,\"w\":72,\"h\":86,\"fill\":\"#B8BEC7\",\"radius\":3,\"label\":\"ESP32\",\"labelSize\":12},{\"type\":\"rect\",\"x\":214,\"y\":62,\"w\":22,\"h\":86,\"fill\":\"#1B1F24\",\"radius\":2},{\"type\":\"rect\",\"x\":218,\"y\":68,\"w\":2.5,\"h\":74,\"fill\":\"#E0B43C\",\"outline\":false},{\"type\":\"rect\",\"x\":218,\"y\":68,\"w\":14,\"h\":2.5,\"fill\":\"#E0B43C\",\"outline\":false},{\"type\":\"rect\",\"x\":218,\"y\":91.8,\"w\":14,\"h\":2.5,\"fill\":\"#E0B43C\",\"outline\":false},{\"type\":\"rect\",\"x\":218,\"y\":115.6,\"w\":14,\"h\":2.5,\"fill\":\"#E0B43C\",\"outline\":false},{\"type\":\"rect\",\"x\":218,\"y\":139.4,\"w\":14,\"h\":2.5,\"fill\":\"#E0B43C\",\"outline\":false},{\"type\":\"rect\",\"x\":100,\"y\":124,\"w\":36,\"h\":10,\"fill\":\"#2B2F36\",\"outline\":false,\"label\":\"DevKitC V4\",\"labelColor\":\"#FFFFFF\",\"labelSize\":6}]}")
 	},
+	"../modules/fuse-holder-5x20-inline.json": {
+		format: "circuitoon-module/1",
+		id: "fuse-holder-5x20-inline",
+		version: 1,
+		name: "Fuse holder, in-line, 5 x 20 mm (Littelfuse 150274)",
+		category: "Mains",
+		source: "https://www.littelfuse.com/assetdocs/fuse-holder-150-datasheet?assetguid=fb66d437-9218-4fb5-a6fa-17ac6284bb2e https://www.littelfuse.com/products/fuses-overcurrent-protection/fuse-holders-fuse-blocks-accessories/fuse-holders/in-line-fuse-holders/150/150274",
+		pins: [{
+			"name": "1",
+			"side": "left",
+			"type": "passive"
+		}, {
+			"name": "2",
+			"side": "right",
+			"type": "passive"
+		}],
+		size: {
+			"w": 8,
+			"h": 4
+		},
+		electrical: {
+			"model": "fuse",
+			"protective": [{
+				"from": "1",
+				"to": "2",
+				"kind": "fuse"
+			}],
+			"params": { "fuseRating": { "unit": "A" } },
+			"settings": { "fuse": ["fitted", "absent"] },
+			"ratings": [{
+				"pins": ["1", "2"],
+				"kind": "terminal",
+				"service": "ac/dc",
+				"volts": 350,
+				"amps": 10,
+				"provenance": "datasheet"
+			}]
+		},
+		art: {
+			"w": 80,
+			"h": 40,
+			"shapes": [
+				{
+					"type": "rect",
+					"x": 0,
+					"y": 18,
+					"w": 16,
+					"h": 4,
+					"fill": "#D9443A",
+					"radius": 2
+				},
+				{
+					"type": "rect",
+					"x": 64,
+					"y": 18,
+					"w": 16,
+					"h": 4,
+					"fill": "#D9443A",
+					"radius": 2
+				},
+				{
+					"type": "rect",
+					"x": 12,
+					"y": 11,
+					"w": 30,
+					"h": 18,
+					"fill": "#2B2F36",
+					"radius": 6
+				},
+				{
+					"type": "rect",
+					"x": 38,
+					"y": 9,
+					"w": 30,
+					"h": 22,
+					"fill": "#3A3F48",
+					"radius": 7
+				},
+				{
+					"type": "rect",
+					"x": 46,
+					"y": 9,
+					"w": 2,
+					"h": 22,
+					"fill": "#2B2F36",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 52,
+					"y": 9,
+					"w": 2,
+					"h": 22,
+					"fill": "#2B2F36",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 58,
+					"y": 9,
+					"w": 2,
+					"h": 22,
+					"fill": "#2B2F36",
+					"outline": false
+				}
+			]
+		}
+	},
+	"../modules/hlk-pm01.json": {
+		format: "circuitoon-module/1",
+		id: "hlk-pm01",
+		version: 1,
+		name: "Hi-Link HLK-PM01 AC-DC module (5 V, 3 W)",
+		category: "Mains",
+		source: "https://geeksvalley.com/wp-content/uploads/2021/07/098-HLK-PM-3W.pdf https://www.hlktech.net/index.php?id=105 https://components101.com/sites/default/files/component_datasheet/HLK-PM01%20AC%20to%20DC%205V%20Power%20Module.pdf",
+		pins: [
+			{
+				"name": "AC 1",
+				"side": "left",
+				"label": "AC",
+				"mains": "line"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"name": "AC 2",
+				"side": "left",
+				"label": "AC",
+				"mains": "line"
+			},
+			{
+				"name": "-Vo",
+				"side": "right",
+				"type": "ground"
+			},
+			{
+				"spacer": true,
+				"side": "right"
+			},
+			{
+				"spacer": true,
+				"side": "right"
+			},
+			{
+				"spacer": true,
+				"side": "right"
+			},
+			{
+				"name": "+Vo",
+				"side": "right",
+				"type": "power_out",
+				"supply": "5V"
+			}
+		],
+		size: {
+			"w": 13,
+			"h": 8
+		},
+		electrical: {
+			"model": "converter",
+			"acInput": {
+				"a": "AC 1",
+				"b": "AC 2",
+				"range": [85, 264]
+			},
+			"domains": [{
+				"name": "mains",
+				"pins": ["AC 1", "AC 2"],
+				"kind": "mains"
+			}, {
+				"name": "output",
+				"pins": ["+Vo", "-Vo"],
+				"kind": "selv"
+			}],
+			"isolation": "unknown"
+		},
+		art: {
+			"w": 130,
+			"h": 80,
+			"pinLabels": "inside",
+			"shapes": [
+				{
+					"type": "rect",
+					"x": 0,
+					"y": 0,
+					"w": 130,
+					"h": 80,
+					"fill": "#1B1F24",
+					"radius": 3
+				},
+				{
+					"type": "rect",
+					"x": 34,
+					"y": 18,
+					"w": 62,
+					"h": 44,
+					"fill": "#2B2F36",
+					"radius": 2,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 34,
+					"y": 20,
+					"w": 62,
+					"h": 20,
+					"fill": "#2B2F36",
+					"outline": false,
+					"label": "HLK-PM01",
+					"labelColor": "#F5F5F2",
+					"labelSize": 9
+				},
+				{
+					"type": "rect",
+					"x": 34,
+					"y": 40,
+					"w": 62,
+					"h": 16,
+					"fill": "#2B2F36",
+					"outline": false,
+					"label": "5 V 3 W",
+					"labelColor": "#F5F5F2",
+					"labelSize": 6
+				}
+			]
+		}
+	},
+	"../modules/hlk-pm03.json": {
+		format: "circuitoon-module/1",
+		id: "hlk-pm03",
+		version: 1,
+		name: "Hi-Link HLK-PM03 AC-DC module (3.3 V, 3 W)",
+		category: "Mains",
+		source: "https://geeksvalley.com/wp-content/uploads/2021/07/098-HLK-PM-3W.pdf https://www.hlktech.net/index.php?id=106",
+		pins: [
+			{
+				"name": "AC 1",
+				"side": "left",
+				"label": "AC",
+				"mains": "line"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"name": "AC 2",
+				"side": "left",
+				"label": "AC",
+				"mains": "line"
+			},
+			{
+				"name": "-Vo",
+				"side": "right",
+				"type": "ground"
+			},
+			{
+				"spacer": true,
+				"side": "right"
+			},
+			{
+				"spacer": true,
+				"side": "right"
+			},
+			{
+				"spacer": true,
+				"side": "right"
+			},
+			{
+				"name": "+Vo",
+				"side": "right",
+				"type": "power_out",
+				"supply": "3V3"
+			}
+		],
+		size: {
+			"w": 13,
+			"h": 8
+		},
+		electrical: {
+			"model": "converter",
+			"acInput": {
+				"a": "AC 1",
+				"b": "AC 2",
+				"range": [85, 264]
+			},
+			"domains": [{
+				"name": "mains",
+				"pins": ["AC 1", "AC 2"],
+				"kind": "mains"
+			}, {
+				"name": "output",
+				"pins": ["+Vo", "-Vo"],
+				"kind": "selv"
+			}],
+			"isolation": "unknown"
+		},
+		art: {
+			"w": 130,
+			"h": 80,
+			"pinLabels": "inside",
+			"shapes": [
+				{
+					"type": "rect",
+					"x": 0,
+					"y": 0,
+					"w": 130,
+					"h": 80,
+					"fill": "#1B1F24",
+					"radius": 3
+				},
+				{
+					"type": "rect",
+					"x": 34,
+					"y": 18,
+					"w": 62,
+					"h": 44,
+					"fill": "#2B2F36",
+					"radius": 2,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 34,
+					"y": 20,
+					"w": 62,
+					"h": 20,
+					"fill": "#2B2F36",
+					"outline": false,
+					"label": "HLK-PM03",
+					"labelColor": "#F5F5F2",
+					"labelSize": 9
+				},
+				{
+					"type": "rect",
+					"x": 34,
+					"y": 40,
+					"w": 62,
+					"h": 16,
+					"fill": "#2B2F36",
+					"outline": false,
+					"label": "3.3 V 3 W",
+					"labelColor": "#F5F5F2",
+					"labelSize": 6
+				}
+			]
+		}
+	},
 	"../modules/ip5306-usbc-module.json": {
 		format: "circuitoon-module/1",
 		id: "ip5306-usbc-module",
@@ -15400,6 +18209,571 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"fill": "#6B727C",
 					"radius": 1.5,
 					"outline": false
+				}
+			]
+		}
+	},
+	"../modules/irm-03-3v3.json": {
+		format: "circuitoon-module/1",
+		id: "irm-03-3v3",
+		version: 1,
+		name: "Mean Well IRM-03-3.3 AC-DC module (3.3 V, Class II)",
+		category: "Mains",
+		source: "https://www.meanwell.com/Upload/PDF/IRM-03/IRM-03-SPEC.PDF",
+		pins: [
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"name": "AC/N",
+				"side": "top",
+				"mains": "line"
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"name": "AC/L",
+				"side": "top",
+				"mains": "line"
+			},
+			{
+				"name": "-V",
+				"side": "bottom",
+				"type": "ground"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"name": "+V",
+				"side": "bottom",
+				"type": "power_out",
+				"supply": "3V3"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			}
+		],
+		size: {
+			"w": 16,
+			"h": 10
+		},
+		electrical: {
+			"model": "converter",
+			"acInput": {
+				"a": "AC/L",
+				"b": "AC/N",
+				"range": [85, 305]
+			},
+			"domains": [{
+				"name": "mains",
+				"pins": ["AC/L", "AC/N"],
+				"kind": "mains"
+			}, {
+				"name": "output",
+				"pins": ["+V", "-V"],
+				"kind": "selv"
+			}],
+			"isolation": "double",
+			"isolationProvenance": "datasheet",
+			"protection": "class-2"
+		},
+		art: {
+			"w": 160,
+			"h": 100,
+			"pinLabels": "inside",
+			"shapes": [
+				{
+					"type": "rect",
+					"x": 0,
+					"y": 0,
+					"w": 160,
+					"h": 100,
+					"fill": "#1B1F24",
+					"radius": 3
+				},
+				{
+					"type": "rect",
+					"x": 40,
+					"y": 32,
+					"w": 18,
+					"h": 14,
+					"fill": "#D2232A",
+					"radius": 2,
+					"label": "MW",
+					"labelColor": "#F5F5F2",
+					"labelSize": 7
+				},
+				{
+					"type": "rect",
+					"x": 60,
+					"y": 32,
+					"w": 60,
+					"h": 14,
+					"fill": "#1B1F24",
+					"outline": false,
+					"label": "MEAN WELL",
+					"labelColor": "#F5F5F2",
+					"labelSize": 6
+				},
+				{
+					"type": "rect",
+					"x": 40,
+					"y": 50,
+					"w": 80,
+					"h": 16,
+					"fill": "#2B2F36",
+					"radius": 2,
+					"label": "IRM-03-3.3",
+					"labelColor": "#F5F5F2",
+					"labelSize": 8
+				},
+				{
+					"type": "rect",
+					"x": 17,
+					"y": 2,
+					"w": 6,
+					"h": 6,
+					"fill": "#C9CED6",
+					"radius": 3,
+					"outline": false
+				}
+			]
+		}
+	},
+	"../modules/irm-03-5.json": {
+		format: "circuitoon-module/1",
+		id: "irm-03-5",
+		version: 1,
+		name: "Mean Well IRM-03-5 AC-DC module (5 V, Class II)",
+		category: "Mains",
+		source: "https://www.meanwell.com/Upload/PDF/IRM-03/IRM-03-SPEC.PDF",
+		pins: [
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"name": "AC/N",
+				"side": "top",
+				"mains": "line"
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"name": "AC/L",
+				"side": "top",
+				"mains": "line"
+			},
+			{
+				"name": "-V",
+				"side": "bottom",
+				"type": "ground"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"name": "+V",
+				"side": "bottom",
+				"type": "power_out",
+				"supply": "5V"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			}
+		],
+		size: {
+			"w": 16,
+			"h": 10
+		},
+		electrical: {
+			"model": "converter",
+			"acInput": {
+				"a": "AC/L",
+				"b": "AC/N",
+				"range": [85, 305]
+			},
+			"domains": [{
+				"name": "mains",
+				"pins": ["AC/L", "AC/N"],
+				"kind": "mains"
+			}, {
+				"name": "output",
+				"pins": ["+V", "-V"],
+				"kind": "selv"
+			}],
+			"isolation": "double",
+			"isolationProvenance": "datasheet",
+			"protection": "class-2"
+		},
+		art: {
+			"w": 160,
+			"h": 100,
+			"pinLabels": "inside",
+			"shapes": [
+				{
+					"type": "rect",
+					"x": 0,
+					"y": 0,
+					"w": 160,
+					"h": 100,
+					"fill": "#1B1F24",
+					"radius": 3
+				},
+				{
+					"type": "rect",
+					"x": 40,
+					"y": 32,
+					"w": 18,
+					"h": 14,
+					"fill": "#D2232A",
+					"radius": 2,
+					"label": "MW",
+					"labelColor": "#F5F5F2",
+					"labelSize": 7
+				},
+				{
+					"type": "rect",
+					"x": 60,
+					"y": 32,
+					"w": 60,
+					"h": 14,
+					"fill": "#1B1F24",
+					"outline": false,
+					"label": "MEAN WELL",
+					"labelColor": "#F5F5F2",
+					"labelSize": 6
+				},
+				{
+					"type": "rect",
+					"x": 40,
+					"y": 50,
+					"w": 80,
+					"h": 16,
+					"fill": "#2B2F36",
+					"radius": 2,
+					"label": "IRM-03-5",
+					"labelColor": "#F5F5F2",
+					"labelSize": 8
+				},
+				{
+					"type": "rect",
+					"x": 17,
+					"y": 2,
+					"w": 6,
+					"h": 6,
+					"fill": "#C9CED6",
+					"radius": 3,
+					"outline": false
+				}
+			]
+		}
+	},
+	"../modules/irm-05-5.json": {
+		format: "circuitoon-module/1",
+		id: "irm-05-5",
+		version: 1,
+		name: "Mean Well IRM-05-5 AC-DC module (5 V, Class II)",
+		category: "Mains",
+		source: "https://www.meanwell.com/Upload/PDF/IRM-05/IRM-05-SPEC.PDF",
+		pins: [
+			{
+				"name": "-V",
+				"side": "left",
+				"type": "ground"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"name": "+V",
+				"side": "left",
+				"type": "power_out",
+				"supply": "5V"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"name": "AC/L",
+				"side": "right",
+				"mains": "line"
+			},
+			{
+				"spacer": true,
+				"side": "right"
+			},
+			{
+				"spacer": true,
+				"side": "right"
+			},
+			{
+				"spacer": true,
+				"side": "right"
+			},
+			{
+				"name": "AC/N",
+				"side": "right",
+				"mains": "line"
+			},
+			{
+				"spacer": true,
+				"side": "right"
+			},
+			{
+				"spacer": true,
+				"side": "right"
+			},
+			{
+				"spacer": true,
+				"side": "right"
+			}
+		],
+		size: {
+			"w": 18,
+			"h": 10
+		},
+		electrical: {
+			"model": "converter",
+			"acInput": {
+				"a": "AC/L",
+				"b": "AC/N",
+				"range": [85, 305]
+			},
+			"domains": [{
+				"name": "mains",
+				"pins": ["AC/L", "AC/N"],
+				"kind": "mains"
+			}, {
+				"name": "output",
+				"pins": ["-V", "+V"],
+				"kind": "selv"
+			}],
+			"isolation": "double",
+			"isolationProvenance": "datasheet",
+			"protection": "class-2"
+		},
+		art: {
+			"w": 180,
+			"h": 100,
+			"pinLabels": "inside",
+			"shapes": [
+				{
+					"type": "rect",
+					"x": 0,
+					"y": 0,
+					"w": 180,
+					"h": 100,
+					"fill": "#1B1F24",
+					"radius": 3
+				},
+				{
+					"type": "rect",
+					"x": 50,
+					"y": 32,
+					"w": 18,
+					"h": 14,
+					"fill": "#D2232A",
+					"radius": 2,
+					"label": "MW",
+					"labelColor": "#F5F5F2",
+					"labelSize": 7
+				},
+				{
+					"type": "rect",
+					"x": 70,
+					"y": 32,
+					"w": 60,
+					"h": 14,
+					"fill": "#1B1F24",
+					"outline": false,
+					"label": "MEAN WELL",
+					"labelColor": "#F5F5F2",
+					"labelSize": 6
+				},
+				{
+					"type": "rect",
+					"x": 50,
+					"y": 50,
+					"w": 80,
+					"h": 16,
+					"fill": "#2B2F36",
+					"radius": 2,
+					"label": "IRM-05-5",
+					"labelColor": "#F5F5F2",
+					"labelSize": 8
 				}
 			]
 		}
@@ -16556,6 +19930,298 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"h": 14,
 					"fill": "#2B2F36",
 					"radius": 1
+				}
+			]
+		}
+	},
+	"../modules/lamp-holder-e26.json": {
+		format: "circuitoon-module/1",
+		id: "lamp-holder-e26",
+		version: 1,
+		name: "Lamp holder E26 (120 V lamp)",
+		category: "Mains",
+		source: "https://leviton.com/products/9880 https://www.osha.gov/laws-regs/regulations/standardnumber/1910/1910.305 https://www.usa.lighting.philips.com/consumer/p/led-bulb-60w-a19-e26/046677568948/specifications",
+		pins: [{
+			"name": "L",
+			"side": "left",
+			"label": "L",
+			"type": "passive",
+			"mains": "L"
+		}, {
+			"name": "N",
+			"side": "right",
+			"label": "N",
+			"type": "passive",
+			"mains": "N"
+		}],
+		size: {
+			"w": 6,
+			"h": 6
+		},
+		electrical: {
+			"model": "lamp",
+			"conducts": [{
+				"pins": ["L", "N"],
+				"kind": "load",
+				"range": [120, 120]
+			}],
+			"ratings": [{
+				"pins": ["L", "N"],
+				"kind": "terminal",
+				"service": "ac",
+				"volts": 250,
+				"provenance": "datasheet"
+			}],
+			"polarityHazard": "Its screw shell is then live, so touching it while changing the bulb may shock."
+		},
+		art: {
+			"w": 60,
+			"h": 60,
+			"shapes": [
+				{
+					"type": "rect",
+					"x": 0,
+					"y": 28,
+					"w": 12,
+					"h": 4,
+					"fill": "#B8BEC7",
+					"radius": 1
+				},
+				{
+					"type": "rect",
+					"x": 48,
+					"y": 28,
+					"w": 12,
+					"h": 4,
+					"fill": "#B8BEC7",
+					"radius": 1
+				},
+				{
+					"type": "rect",
+					"x": 4,
+					"y": 4,
+					"w": 52,
+					"h": 52,
+					"fill": "#F1ECE2",
+					"radius": 26
+				},
+				{
+					"type": "rect",
+					"x": 12,
+					"y": 12,
+					"w": 36,
+					"h": 36,
+					"fill": "#E2DACB",
+					"radius": 18,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 16,
+					"y": 16,
+					"w": 28,
+					"h": 28,
+					"fill": "#D9A93B",
+					"radius": 14
+				},
+				{
+					"type": "rect",
+					"x": 21,
+					"y": 21,
+					"w": 18,
+					"h": 18,
+					"fill": "#A87E22",
+					"radius": 9,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 26,
+					"y": 26,
+					"w": 8,
+					"h": 8,
+					"fill": "#D9A93B",
+					"radius": 4
+				},
+				{
+					"type": "rect",
+					"x": 6,
+					"y": 26,
+					"w": 8,
+					"h": 8,
+					"fill": "#B8BEC7",
+					"radius": 4
+				},
+				{
+					"type": "rect",
+					"x": 46,
+					"y": 26,
+					"w": 8,
+					"h": 8,
+					"fill": "#B8BEC7",
+					"radius": 4
+				}
+			]
+		}
+	},
+	"../modules/lamp-holder-e27.json": {
+		format: "circuitoon-module/1",
+		id: "lamp-holder-e27",
+		version: 1,
+		name: "Lamp holder E27 (230 V lamp)",
+		category: "Mains",
+		source: "https://old.vossloh-schwabe.com/uploads/tx_sbdownloader/VS-Main-Cat_Standard-2017_EN.pdf https://www.lighting.philips.co.uk/consumer/p/led-bulb-60-w-a60-e27/8720169324398/specifications https://engx.theiet.org/f/wiring-and-regulations/20952/reg-559-5-1-206-e-s-lampholders",
+		pins: [
+			{
+				"name": "L",
+				"side": "left",
+				"label": "L",
+				"type": "passive",
+				"mains": "line"
+			},
+			{
+				"name": "N",
+				"side": "right",
+				"label": "N",
+				"type": "passive",
+				"mains": "line"
+			},
+			{
+				"name": "PE",
+				"side": "bottom",
+				"label": "PE",
+				"type": "passive",
+				"mains": "PE"
+			}
+		],
+		size: {
+			"w": 6,
+			"h": 6
+		},
+		electrical: {
+			"model": "lamp",
+			"conducts": [{
+				"pins": ["L", "N"],
+				"kind": "load",
+				"range": [220, 240]
+			}],
+			"ratings": [{
+				"pins": [
+					"L",
+					"N",
+					"PE"
+				],
+				"kind": "terminal",
+				"service": "ac",
+				"volts": 250,
+				"amps": 4,
+				"provenance": "datasheet"
+			}]
+		},
+		art: {
+			"w": 60,
+			"h": 60,
+			"shapes": [
+				{
+					"type": "rect",
+					"x": 0,
+					"y": 28,
+					"w": 12,
+					"h": 4,
+					"fill": "#B8BEC7",
+					"radius": 1
+				},
+				{
+					"type": "rect",
+					"x": 48,
+					"y": 28,
+					"w": 12,
+					"h": 4,
+					"fill": "#B8BEC7",
+					"radius": 1
+				},
+				{
+					"type": "rect",
+					"x": 28,
+					"y": 48,
+					"w": 4,
+					"h": 12,
+					"fill": "#B8BEC7",
+					"radius": 1
+				},
+				{
+					"type": "rect",
+					"x": 4,
+					"y": 4,
+					"w": 52,
+					"h": 52,
+					"fill": "#F1ECE2",
+					"radius": 26
+				},
+				{
+					"type": "rect",
+					"x": 12,
+					"y": 12,
+					"w": 36,
+					"h": 36,
+					"fill": "#E2DACB",
+					"radius": 18,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 16,
+					"y": 16,
+					"w": 28,
+					"h": 28,
+					"fill": "#D9A93B",
+					"radius": 14
+				},
+				{
+					"type": "rect",
+					"x": 21,
+					"y": 21,
+					"w": 18,
+					"h": 18,
+					"fill": "#A87E22",
+					"radius": 9,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 26,
+					"y": 26,
+					"w": 8,
+					"h": 8,
+					"fill": "#D9A93B",
+					"radius": 4
+				},
+				{
+					"type": "rect",
+					"x": 6,
+					"y": 26,
+					"w": 8,
+					"h": 8,
+					"fill": "#B8BEC7",
+					"radius": 4
+				},
+				{
+					"type": "rect",
+					"x": 46,
+					"y": 26,
+					"w": 8,
+					"h": 8,
+					"fill": "#B8BEC7",
+					"radius": 4
+				},
+				{
+					"type": "rect",
+					"x": 26,
+					"y": 46,
+					"w": 8,
+					"h": 8,
+					"fill": "#3FA34D",
+					"radius": 4
 				}
 			]
 		}
@@ -21131,6 +24797,1590 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			]
 		}
 	},
+	"../modules/outlet-au-as3112.json": {
+		format: "circuitoon-module/1",
+		id: "outlet-au-as3112",
+		version: 1,
+		name: "AU/NZ outlet AS/NZS 3112 single (10 A, 230 V)",
+		category: "Mains",
+		source: "https://en.wikipedia.org/wiki/AS/NZS_3112 https://www.accesscomms.com.au/australian-mains-plug/ https://www.plugsocketmuseum.nl/Australian1.html",
+		pins: [],
+		size: {
+			"w": 8,
+			"h": 8
+		},
+		holes: [
+			{
+				"name": "L",
+				"label": "L",
+				"at": [[30, 30]]
+			},
+			{
+				"name": "N",
+				"label": "N",
+				"at": [[60, 30]]
+			},
+			{
+				"name": "PE",
+				"label": "PE",
+				"at": [[40, 60]]
+			}
+		],
+		obstacle: false,
+		electrical: {
+			"model": "outlet",
+			"params": { "acVoltage": {
+				"unit": "VAC",
+				"default": 230
+			} },
+			"ac": {
+				"hz": 50,
+				"region": "au"
+			},
+			"acSources": [{
+				"id": "supply",
+				"live": ["L"],
+				"neutral": ["N"],
+				"earth": ["PE"]
+			}],
+			"sockets": [{
+				"id": "main",
+				"family": "as3112",
+				"contacts": [
+					{
+						"group": "L",
+						"role": "L"
+					},
+					{
+						"group": "N",
+						"role": "N"
+					},
+					{
+						"group": "PE",
+						"role": "PE"
+					}
+				]
+			}],
+			"ratings": [{
+				"pins": [
+					"L",
+					"N",
+					"PE"
+				],
+				"kind": "terminal",
+				"service": "ac",
+				"volts": 250,
+				"amps": 10,
+				"provenance": "datasheet"
+			}]
+		},
+		art: {
+			"w": 80,
+			"h": 80,
+			"shapes": [
+				{
+					"type": "rect",
+					"x": 0,
+					"y": 0,
+					"w": 80,
+					"h": 80,
+					"fill": "#F5F5F2",
+					"radius": 6
+				},
+				{
+					"type": "rect",
+					"x": 6,
+					"y": 6,
+					"w": 68,
+					"h": 68,
+					"fill": "#FBF9F3",
+					"radius": 6
+				},
+				{
+					"type": "rect",
+					"x": 30.8,
+					"y": 22.8,
+					"w": 4,
+					"h": 4,
+					"fill": "#2B2F36",
+					"radius": 2,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 30.1,
+					"y": 24.1,
+					"w": 4,
+					"h": 4,
+					"fill": "#2B2F36",
+					"radius": 2,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 29.4,
+					"y": 25.4,
+					"w": 4,
+					"h": 4,
+					"fill": "#2B2F36",
+					"radius": 2,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 28.7,
+					"y": 26.7,
+					"w": 4,
+					"h": 4,
+					"fill": "#2B2F36",
+					"radius": 2,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 28,
+					"y": 28,
+					"w": 4,
+					"h": 4,
+					"fill": "#2B2F36",
+					"radius": 2,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 27.3,
+					"y": 29.3,
+					"w": 4,
+					"h": 4,
+					"fill": "#2B2F36",
+					"radius": 2,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 26.6,
+					"y": 30.6,
+					"w": 4,
+					"h": 4,
+					"fill": "#2B2F36",
+					"radius": 2,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 25.9,
+					"y": 31.9,
+					"w": 4,
+					"h": 4,
+					"fill": "#2B2F36",
+					"radius": 2,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 25.2,
+					"y": 33.2,
+					"w": 4,
+					"h": 4,
+					"fill": "#2B2F36",
+					"radius": 2,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 55.2,
+					"y": 22.8,
+					"w": 4,
+					"h": 4,
+					"fill": "#2B2F36",
+					"radius": 2,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 55.9,
+					"y": 24.1,
+					"w": 4,
+					"h": 4,
+					"fill": "#2B2F36",
+					"radius": 2,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 56.6,
+					"y": 25.4,
+					"w": 4,
+					"h": 4,
+					"fill": "#2B2F36",
+					"radius": 2,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 57.3,
+					"y": 26.7,
+					"w": 4,
+					"h": 4,
+					"fill": "#2B2F36",
+					"radius": 2,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 58,
+					"y": 28,
+					"w": 4,
+					"h": 4,
+					"fill": "#2B2F36",
+					"radius": 2,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 58.7,
+					"y": 29.3,
+					"w": 4,
+					"h": 4,
+					"fill": "#2B2F36",
+					"radius": 2,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 59.4,
+					"y": 30.6,
+					"w": 4,
+					"h": 4,
+					"fill": "#2B2F36",
+					"radius": 2,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 60.1,
+					"y": 31.9,
+					"w": 4,
+					"h": 4,
+					"fill": "#2B2F36",
+					"radius": 2,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 60.8,
+					"y": 33.2,
+					"w": 4,
+					"h": 4,
+					"fill": "#2B2F36",
+					"radius": 2,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 37,
+					"y": 52,
+					"w": 6,
+					"h": 16,
+					"fill": "#2B2F36",
+					"radius": 1,
+					"outline": false
+				}
+			]
+		}
+	},
+	"../modules/outlet-fr-cee7-5.json": {
+		format: "circuitoon-module/1",
+		id: "outlet-fr-cee7-5",
+		version: 1,
+		name: "French outlet CEE 7/5 (16 A, 230 V)",
+		category: "Mains",
+		source: "https://www.plugsocketmuseum.nl/French1.html https://en.wikipedia.org/wiki/CEE_7 https://www.installation-renovation-electrique.com/installation-electrique/conseils-electricite/conseils-travaux-electriques/branchement-prise-electrique-phase-a-droite-a-gauche/ https://www.legrand.fr/pro/catalogue/prise-de-courant-standard-francais-celiane-16a-250v-2pt-bornes-a-vis https://en.wikipedia.org/wiki/AC_power_plugs_and_sockets",
+		pins: [],
+		size: {
+			"w": 8,
+			"h": 8
+		},
+		holes: [
+			{
+				"name": "L",
+				"label": "L",
+				"at": [[20, 40]]
+			},
+			{
+				"name": "N",
+				"label": "N",
+				"at": [[60, 40]]
+			},
+			{
+				"name": "PE",
+				"label": "PE",
+				"at": [[40, 10]]
+			}
+		],
+		obstacle: false,
+		electrical: {
+			"model": "outlet",
+			"params": { "acVoltage": {
+				"unit": "VAC",
+				"default": 230
+			} },
+			"ac": {
+				"hz": 50,
+				"region": "eu"
+			},
+			"acSources": [{
+				"id": "supply",
+				"live": ["L"],
+				"neutral": ["N"],
+				"earth": ["PE"]
+			}],
+			"sockets": [{
+				"id": "main",
+				"family": "cee7-5",
+				"contacts": [
+					{
+						"group": "L",
+						"role": "L"
+					},
+					{
+						"group": "N",
+						"role": "N"
+					},
+					{
+						"group": "PE",
+						"role": "PE"
+					}
+				]
+			}],
+			"ratings": [{
+				"pins": [
+					"L",
+					"N",
+					"PE"
+				],
+				"kind": "terminal",
+				"service": "ac",
+				"volts": 250,
+				"amps": 16,
+				"provenance": "datasheet"
+			}]
+		},
+		art: {
+			"w": 80,
+			"h": 80,
+			"shapes": [
+				{
+					"type": "rect",
+					"x": 0,
+					"y": 0,
+					"w": 80,
+					"h": 80,
+					"fill": "#F5F5F2",
+					"radius": 8
+				},
+				{
+					"type": "rect",
+					"x": 4,
+					"y": 4,
+					"w": 72,
+					"h": 72,
+					"fill": "#E6E2DA",
+					"radius": 36
+				},
+				{
+					"type": "rect",
+					"x": 15,
+					"y": 35,
+					"w": 10,
+					"h": 10,
+					"fill": "#2B2F36",
+					"radius": 5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 55,
+					"y": 35,
+					"w": 10,
+					"h": 10,
+					"fill": "#2B2F36",
+					"radius": 5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 35,
+					"y": 5,
+					"w": 10,
+					"h": 10,
+					"fill": "#C9CED6",
+					"radius": 5
+				}
+			]
+		}
+	},
+	"../modules/outlet-jp-1-15r-duplex-polarized.json": {
+		format: "circuitoon-module/1",
+		id: "outlet-jp-1-15r-duplex-polarized",
+		version: 1,
+		name: "Japan outlet 1-15R duplex, polarized (15 A, 100 V, 50 Hz)",
+		category: "Mains",
+		source: "https://kikakurui.com/c8/C8303-2007-01.html https://kikakurui.com/c8/C8303-2007-01/page-25.png https://en.wikipedia.org/wiki/AC_power_plugs_and_sockets",
+		pins: [],
+		internal: [["L1", "L2"], ["N1", "N2"]],
+		size: {
+			"w": 8,
+			"h": 14
+		},
+		holes: [
+			{
+				"name": "L1",
+				"label": "L",
+				"at": [[50, 40]]
+			},
+			{
+				"name": "N1",
+				"label": "N",
+				"at": [[30, 40]]
+			},
+			{
+				"name": "L2",
+				"label": "L",
+				"at": [[50, 100]]
+			},
+			{
+				"name": "N2",
+				"label": "N",
+				"at": [[30, 100]]
+			}
+		],
+		obstacle: false,
+		electrical: {
+			"model": "outlet",
+			"params": { "acVoltage": {
+				"unit": "VAC",
+				"default": 100
+			} },
+			"ac": {
+				"hz": 50,
+				"region": "jp"
+			},
+			"acSources": [{
+				"id": "supply",
+				"live": ["L1"],
+				"neutral": ["N1"]
+			}],
+			"sockets": [{
+				"id": "upper",
+				"family": "nema-1-15r-polarized",
+				"contacts": [{
+					"group": "L1",
+					"role": "L"
+				}, {
+					"group": "N1",
+					"role": "N"
+				}]
+			}, {
+				"id": "lower",
+				"family": "nema-1-15r-polarized",
+				"contacts": [{
+					"group": "L2",
+					"role": "L"
+				}, {
+					"group": "N2",
+					"role": "N"
+				}]
+			}],
+			"ratings": [{
+				"pins": [
+					"L1",
+					"N1",
+					"L2",
+					"N2"
+				],
+				"kind": "terminal",
+				"service": "ac",
+				"volts": 125,
+				"amps": 15,
+				"provenance": "datasheet"
+			}]
+		},
+		art: {
+			"w": 80,
+			"h": 140,
+			"shapes": [
+				{
+					"type": "rect",
+					"x": 0,
+					"y": 0,
+					"w": 80,
+					"h": 140,
+					"fill": "#F2EEE3",
+					"radius": 8
+				},
+				{
+					"type": "rect",
+					"x": 14,
+					"y": 10,
+					"w": 52,
+					"h": 120,
+					"fill": "#FBF9F3",
+					"radius": 6
+				},
+				{
+					"type": "rect",
+					"x": 18,
+					"y": 24,
+					"w": 44,
+					"h": 32,
+					"fill": "#FBF9F3",
+					"radius": 14
+				},
+				{
+					"type": "rect",
+					"x": 28,
+					"y": 31,
+					"w": 4,
+					"h": 18,
+					"fill": "#2B2F36",
+					"radius": 1,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 48,
+					"y": 33,
+					"w": 4,
+					"h": 14,
+					"fill": "#2B2F36",
+					"radius": 1,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 18,
+					"y": 84,
+					"w": 44,
+					"h": 32,
+					"fill": "#FBF9F3",
+					"radius": 14
+				},
+				{
+					"type": "rect",
+					"x": 28,
+					"y": 91,
+					"w": 4,
+					"h": 18,
+					"fill": "#2B2F36",
+					"radius": 1,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 48,
+					"y": 93,
+					"w": 4,
+					"h": 14,
+					"fill": "#2B2F36",
+					"radius": 1,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 36,
+					"y": 66,
+					"w": 8,
+					"h": 8,
+					"fill": "#B8BEC7",
+					"radius": 4
+				},
+				{
+					"type": "rect",
+					"x": 37,
+					"y": 69.5,
+					"w": 6,
+					"h": 1,
+					"fill": "#2B2F36",
+					"outline": false
+				}
+			]
+		}
+	},
+	"../modules/outlet-jp-1-15r-duplex.json": {
+		format: "circuitoon-module/1",
+		id: "outlet-jp-1-15r-duplex",
+		version: 1,
+		name: "Japan outlet 1-15R duplex (15 A, 100 V, 50 Hz)",
+		category: "Mains",
+		source: "https://kikakurui.com/c8/C8303-2007-01.html https://kikakurui.com/c8/C8303-2007-01/page-25.png https://en.wikipedia.org/wiki/AC_power_plugs_and_sockets",
+		pins: [],
+		internal: [["L1", "L2"], ["N1", "N2"]],
+		size: {
+			"w": 8,
+			"h": 14
+		},
+		holes: [
+			{
+				"name": "L1",
+				"label": "L",
+				"at": [[50, 40]]
+			},
+			{
+				"name": "N1",
+				"label": "N",
+				"at": [[30, 40]]
+			},
+			{
+				"name": "L2",
+				"label": "L",
+				"at": [[50, 100]]
+			},
+			{
+				"name": "N2",
+				"label": "N",
+				"at": [[30, 100]]
+			}
+		],
+		obstacle: false,
+		electrical: {
+			"model": "outlet",
+			"params": { "acVoltage": {
+				"unit": "VAC",
+				"default": 100
+			} },
+			"ac": {
+				"hz": 50,
+				"region": "jp"
+			},
+			"acSources": [{
+				"id": "supply",
+				"live": ["L1"],
+				"neutral": ["N1"]
+			}],
+			"sockets": [{
+				"id": "upper",
+				"family": "nema-1-15r",
+				"contacts": [{
+					"group": "L1",
+					"role": "L"
+				}, {
+					"group": "N1",
+					"role": "N"
+				}]
+			}, {
+				"id": "lower",
+				"family": "nema-1-15r",
+				"contacts": [{
+					"group": "L2",
+					"role": "L"
+				}, {
+					"group": "N2",
+					"role": "N"
+				}]
+			}],
+			"ratings": [{
+				"pins": [
+					"L1",
+					"N1",
+					"L2",
+					"N2"
+				],
+				"kind": "terminal",
+				"service": "ac",
+				"volts": 125,
+				"amps": 15,
+				"provenance": "datasheet"
+			}]
+		},
+		art: {
+			"w": 80,
+			"h": 140,
+			"shapes": [
+				{
+					"type": "rect",
+					"x": 0,
+					"y": 0,
+					"w": 80,
+					"h": 140,
+					"fill": "#F2EEE3",
+					"radius": 8
+				},
+				{
+					"type": "rect",
+					"x": 14,
+					"y": 10,
+					"w": 52,
+					"h": 120,
+					"fill": "#FBF9F3",
+					"radius": 6
+				},
+				{
+					"type": "rect",
+					"x": 18,
+					"y": 24,
+					"w": 44,
+					"h": 32,
+					"fill": "#FBF9F3",
+					"radius": 14
+				},
+				{
+					"type": "rect",
+					"x": 28,
+					"y": 33,
+					"w": 4,
+					"h": 14,
+					"fill": "#2B2F36",
+					"radius": 1,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 48,
+					"y": 33,
+					"w": 4,
+					"h": 14,
+					"fill": "#2B2F36",
+					"radius": 1,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 18,
+					"y": 84,
+					"w": 44,
+					"h": 32,
+					"fill": "#FBF9F3",
+					"radius": 14
+				},
+				{
+					"type": "rect",
+					"x": 28,
+					"y": 93,
+					"w": 4,
+					"h": 14,
+					"fill": "#2B2F36",
+					"radius": 1,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 48,
+					"y": 93,
+					"w": 4,
+					"h": 14,
+					"fill": "#2B2F36",
+					"radius": 1,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 36,
+					"y": 66,
+					"w": 8,
+					"h": 8,
+					"fill": "#B8BEC7",
+					"radius": 4
+				},
+				{
+					"type": "rect",
+					"x": 37,
+					"y": 69.5,
+					"w": 6,
+					"h": 1,
+					"fill": "#2B2F36",
+					"outline": false
+				}
+			]
+		}
+	},
+	"../modules/outlet-schuko-cee7-3.json": {
+		format: "circuitoon-module/1",
+		id: "outlet-schuko-cee7-3",
+		version: 1,
+		name: "Schuko outlet CEE 7/3 (16 A, 230 V)",
+		category: "Mains",
+		source: "https://www.plugsocketmuseum.nl/Schuko1.html https://en.wikipedia.org/wiki/CEE_7 https://katalog.gira.de/en-INT/datenblatt/4188005",
+		pins: [],
+		size: {
+			"w": 8,
+			"h": 8
+		},
+		holes: [
+			{
+				"name": "L",
+				"label": "L",
+				"at": [[20, 40]]
+			},
+			{
+				"name": "N",
+				"label": "N",
+				"at": [[60, 40]]
+			},
+			{
+				"name": "PE",
+				"label": "PE",
+				"at": [[40, 10], [40, 70]]
+			}
+		],
+		obstacle: false,
+		electrical: {
+			"model": "outlet",
+			"params": { "acVoltage": {
+				"unit": "VAC",
+				"default": 230
+			} },
+			"ac": {
+				"hz": 50,
+				"region": "eu"
+			},
+			"acSources": [{
+				"id": "supply",
+				"live": ["L"],
+				"neutral": ["N"],
+				"earth": ["PE"]
+			}],
+			"sockets": [{
+				"id": "main",
+				"family": "cee7-3",
+				"contacts": [
+					{
+						"group": "L",
+						"role": "L"
+					},
+					{
+						"group": "N",
+						"role": "N"
+					},
+					{
+						"group": "PE",
+						"role": "PE"
+					}
+				]
+			}],
+			"ratings": [{
+				"pins": [
+					"L",
+					"N",
+					"PE"
+				],
+				"kind": "terminal",
+				"service": "ac",
+				"volts": 250,
+				"amps": 16,
+				"provenance": "datasheet"
+			}]
+		},
+		art: {
+			"w": 80,
+			"h": 80,
+			"shapes": [
+				{
+					"type": "rect",
+					"x": 0,
+					"y": 0,
+					"w": 80,
+					"h": 80,
+					"fill": "#F5F5F2",
+					"radius": 8
+				},
+				{
+					"type": "rect",
+					"x": 4,
+					"y": 4,
+					"w": 72,
+					"h": 72,
+					"fill": "#E6E2DA",
+					"radius": 36
+				},
+				{
+					"type": "rect",
+					"x": 15,
+					"y": 35,
+					"w": 10,
+					"h": 10,
+					"fill": "#2B2F36",
+					"radius": 5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 55,
+					"y": 35,
+					"w": 10,
+					"h": 10,
+					"fill": "#2B2F36",
+					"radius": 5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 32,
+					"y": 7,
+					"w": 16,
+					"h": 6,
+					"fill": "#C9CED6",
+					"radius": 2
+				},
+				{
+					"type": "rect",
+					"x": 32,
+					"y": 67,
+					"w": 16,
+					"h": 6,
+					"fill": "#C9CED6",
+					"radius": 2
+				}
+			]
+		}
+	},
+	"../modules/outlet-uk-bs1363.json": {
+		format: "circuitoon-module/1",
+		id: "outlet-uk-bs1363",
+		version: 1,
+		name: "UK outlet BS 1363 single (13 A, 230 V)",
+		category: "Mains",
+		source: "https://en.wikipedia.org/wiki/BS_1363 https://www.plugsocketmuseum.nl/British1.html https://www.elec-mate.com/guides/how-to-wire-a-plug https://en.wikipedia.org/wiki/AC_power_plugs_and_sockets",
+		pins: [],
+		size: {
+			"w": 8,
+			"h": 8
+		},
+		holes: [
+			{
+				"name": "L",
+				"label": "L",
+				"at": [[70, 50]]
+			},
+			{
+				"name": "N",
+				"label": "N",
+				"at": [[10, 50]]
+			},
+			{
+				"name": "PE",
+				"label": "PE",
+				"at": [[40, 20]]
+			}
+		],
+		obstacle: false,
+		electrical: {
+			"model": "outlet",
+			"params": { "acVoltage": {
+				"unit": "VAC",
+				"default": 230
+			} },
+			"ac": {
+				"hz": 50,
+				"region": "uk"
+			},
+			"acSources": [{
+				"id": "supply",
+				"live": ["L"],
+				"neutral": ["N"],
+				"earth": ["PE"]
+			}],
+			"sockets": [{
+				"id": "main",
+				"family": "bs1363",
+				"contacts": [
+					{
+						"group": "L",
+						"role": "L"
+					},
+					{
+						"group": "N",
+						"role": "N"
+					},
+					{
+						"group": "PE",
+						"role": "PE"
+					}
+				]
+			}],
+			"ratings": [{
+				"pins": [
+					"L",
+					"N",
+					"PE"
+				],
+				"kind": "terminal",
+				"service": "ac",
+				"volts": 250,
+				"amps": 13,
+				"provenance": "datasheet"
+			}]
+		},
+		art: {
+			"w": 80,
+			"h": 80,
+			"shapes": [
+				{
+					"type": "rect",
+					"x": 0,
+					"y": 0,
+					"w": 80,
+					"h": 80,
+					"fill": "#F5F5F2",
+					"radius": 6
+				},
+				{
+					"type": "rect",
+					"x": 3,
+					"y": 3,
+					"w": 74,
+					"h": 74,
+					"fill": "#FBF9F3",
+					"radius": 4,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 37,
+					"y": 12,
+					"w": 6,
+					"h": 16,
+					"fill": "#2B2F36",
+					"radius": 1,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 5,
+					"y": 47,
+					"w": 11,
+					"h": 6,
+					"fill": "#2B2F36",
+					"radius": 1,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 64,
+					"y": 47,
+					"w": 11,
+					"h": 6,
+					"fill": "#2B2F36",
+					"radius": 1,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 36,
+					"y": 64,
+					"w": 8,
+					"h": 8,
+					"fill": "#B8BEC7",
+					"radius": 4
+				},
+				{
+					"type": "rect",
+					"x": 37,
+					"y": 67.5,
+					"w": 6,
+					"h": 1,
+					"fill": "#2B2F36",
+					"outline": false
+				}
+			]
+		}
+	},
+	"../modules/outlet-us-5-15r-duplex.json": {
+		format: "circuitoon-module/1",
+		id: "outlet-us-5-15r-duplex",
+		version: 1,
+		name: "US outlet NEMA 5-15R duplex (15 A, 120 V)",
+		category: "Mains",
+		source: "https://archive.org/details/NEMA-WD-6-2016 https://archive.org/download/NEMA-WD-6-2016/ANSI-NEMA%20WD%206-2016.pdf https://en.wikipedia.org/wiki/NEMA_connector https://leviton.com/products/t5320-w",
+		pins: [],
+		internal: [
+			["L1", "L2"],
+			["N1", "N2"],
+			["PE1", "PE2"]
+		],
+		size: {
+			"w": 8,
+			"h": 14
+		},
+		holes: [
+			{
+				"name": "L1",
+				"label": "L",
+				"at": [[50, 40]]
+			},
+			{
+				"name": "N1",
+				"label": "N",
+				"at": [[30, 40]]
+			},
+			{
+				"name": "PE1",
+				"label": "PE",
+				"at": [[40, 60]]
+			},
+			{
+				"name": "L2",
+				"label": "L",
+				"at": [[50, 100]]
+			},
+			{
+				"name": "N2",
+				"label": "N",
+				"at": [[30, 100]]
+			},
+			{
+				"name": "PE2",
+				"label": "PE",
+				"at": [[40, 120]]
+			}
+		],
+		obstacle: false,
+		electrical: {
+			"model": "outlet",
+			"params": { "acVoltage": {
+				"unit": "VAC",
+				"default": 120
+			} },
+			"ac": {
+				"hz": 60,
+				"region": "us"
+			},
+			"acSources": [{
+				"id": "supply",
+				"live": ["L1"],
+				"neutral": ["N1"],
+				"earth": ["PE1"]
+			}],
+			"sockets": [{
+				"id": "upper",
+				"family": "nema-5-15r",
+				"contacts": [
+					{
+						"group": "L1",
+						"role": "L"
+					},
+					{
+						"group": "N1",
+						"role": "N"
+					},
+					{
+						"group": "PE1",
+						"role": "PE"
+					}
+				]
+			}, {
+				"id": "lower",
+				"family": "nema-5-15r",
+				"contacts": [
+					{
+						"group": "L2",
+						"role": "L"
+					},
+					{
+						"group": "N2",
+						"role": "N"
+					},
+					{
+						"group": "PE2",
+						"role": "PE"
+					}
+				]
+			}],
+			"ratings": [{
+				"pins": [
+					"L1",
+					"N1",
+					"PE1",
+					"L2",
+					"N2",
+					"PE2"
+				],
+				"kind": "terminal",
+				"service": "ac",
+				"volts": 125,
+				"amps": 15,
+				"provenance": "datasheet"
+			}]
+		},
+		art: {
+			"w": 80,
+			"h": 140,
+			"shapes": [
+				{
+					"type": "rect",
+					"x": 0,
+					"y": 0,
+					"w": 80,
+					"h": 140,
+					"fill": "#F2EEE3",
+					"radius": 8
+				},
+				{
+					"type": "rect",
+					"x": 14,
+					"y": 10,
+					"w": 52,
+					"h": 120,
+					"fill": "#FBF9F3",
+					"radius": 6
+				},
+				{
+					"type": "rect",
+					"x": 18,
+					"y": 24,
+					"w": 44,
+					"h": 44,
+					"fill": "#FBF9F3",
+					"radius": 14
+				},
+				{
+					"type": "rect",
+					"x": 28,
+					"y": 31,
+					"w": 4,
+					"h": 18,
+					"fill": "#2B2F36",
+					"radius": 1,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 48,
+					"y": 33,
+					"w": 4,
+					"h": 14,
+					"fill": "#2B2F36",
+					"radius": 1,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 36,
+					"y": 56,
+					"w": 8,
+					"h": 8,
+					"fill": "#2B2F36",
+					"radius": 4,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 18,
+					"y": 84,
+					"w": 44,
+					"h": 44,
+					"fill": "#FBF9F3",
+					"radius": 14
+				},
+				{
+					"type": "rect",
+					"x": 28,
+					"y": 91,
+					"w": 4,
+					"h": 18,
+					"fill": "#2B2F36",
+					"radius": 1,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 48,
+					"y": 93,
+					"w": 4,
+					"h": 14,
+					"fill": "#2B2F36",
+					"radius": 1,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 36,
+					"y": 116,
+					"w": 8,
+					"h": 8,
+					"fill": "#2B2F36",
+					"radius": 4,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 36,
+					"y": 72,
+					"w": 8,
+					"h": 8,
+					"fill": "#B8BEC7",
+					"radius": 4
+				},
+				{
+					"type": "rect",
+					"x": 37,
+					"y": 75.5,
+					"w": 6,
+					"h": 1,
+					"fill": "#2B2F36",
+					"outline": false
+				}
+			]
+		}
+	},
+	"../modules/outlet-us-5-20r-duplex.json": {
+		format: "circuitoon-module/1",
+		id: "outlet-us-5-20r-duplex",
+		version: 1,
+		name: "US outlet NEMA 5-20R duplex (20 A, 120 V)",
+		category: "Mains",
+		source: "https://archive.org/details/NEMA-WD-6-2016 https://archive.org/download/NEMA-WD-6-2016/ANSI-NEMA%20WD%206-2016.pdf https://en.wikipedia.org/wiki/NEMA_connector https://leviton.com/products/5352",
+		pins: [],
+		internal: [
+			["L1", "L2"],
+			["N1", "N2"],
+			["PE1", "PE2"]
+		],
+		size: {
+			"w": 8,
+			"h": 14
+		},
+		holes: [
+			{
+				"name": "L1",
+				"label": "L",
+				"at": [[50, 40]]
+			},
+			{
+				"name": "N1",
+				"label": "N",
+				"at": [[30, 40]]
+			},
+			{
+				"name": "PE1",
+				"label": "PE",
+				"at": [[40, 60]]
+			},
+			{
+				"name": "L2",
+				"label": "L",
+				"at": [[50, 100]]
+			},
+			{
+				"name": "N2",
+				"label": "N",
+				"at": [[30, 100]]
+			},
+			{
+				"name": "PE2",
+				"label": "PE",
+				"at": [[40, 120]]
+			}
+		],
+		obstacle: false,
+		electrical: {
+			"model": "outlet",
+			"params": { "acVoltage": {
+				"unit": "VAC",
+				"default": 120
+			} },
+			"ac": {
+				"hz": 60,
+				"region": "us"
+			},
+			"acSources": [{
+				"id": "supply",
+				"live": ["L1"],
+				"neutral": ["N1"],
+				"earth": ["PE1"]
+			}],
+			"sockets": [{
+				"id": "upper",
+				"family": "nema-5-20r",
+				"contacts": [
+					{
+						"group": "L1",
+						"role": "L"
+					},
+					{
+						"group": "N1",
+						"role": "N"
+					},
+					{
+						"group": "PE1",
+						"role": "PE"
+					}
+				]
+			}, {
+				"id": "lower",
+				"family": "nema-5-20r",
+				"contacts": [
+					{
+						"group": "L2",
+						"role": "L"
+					},
+					{
+						"group": "N2",
+						"role": "N"
+					},
+					{
+						"group": "PE2",
+						"role": "PE"
+					}
+				]
+			}],
+			"ratings": [{
+				"pins": [
+					"L1",
+					"N1",
+					"PE1",
+					"L2",
+					"N2",
+					"PE2"
+				],
+				"kind": "terminal",
+				"service": "ac",
+				"volts": 125,
+				"amps": 20,
+				"provenance": "datasheet"
+			}]
+		},
+		art: {
+			"w": 80,
+			"h": 140,
+			"shapes": [
+				{
+					"type": "rect",
+					"x": 0,
+					"y": 0,
+					"w": 80,
+					"h": 140,
+					"fill": "#F2EEE3",
+					"radius": 8
+				},
+				{
+					"type": "rect",
+					"x": 14,
+					"y": 10,
+					"w": 52,
+					"h": 120,
+					"fill": "#FBF9F3",
+					"radius": 6
+				},
+				{
+					"type": "rect",
+					"x": 18,
+					"y": 24,
+					"w": 44,
+					"h": 44,
+					"fill": "#FBF9F3",
+					"radius": 14
+				},
+				{
+					"type": "rect",
+					"x": 28,
+					"y": 31,
+					"w": 4,
+					"h": 18,
+					"fill": "#2B2F36",
+					"radius": 1,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 23,
+					"y": 38,
+					"w": 7,
+					"h": 4,
+					"fill": "#2B2F36",
+					"radius": 1,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 48,
+					"y": 33,
+					"w": 4,
+					"h": 14,
+					"fill": "#2B2F36",
+					"radius": 1,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 36,
+					"y": 56,
+					"w": 8,
+					"h": 8,
+					"fill": "#2B2F36",
+					"radius": 4,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 18,
+					"y": 84,
+					"w": 44,
+					"h": 44,
+					"fill": "#FBF9F3",
+					"radius": 14
+				},
+				{
+					"type": "rect",
+					"x": 28,
+					"y": 91,
+					"w": 4,
+					"h": 18,
+					"fill": "#2B2F36",
+					"radius": 1,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 23,
+					"y": 98,
+					"w": 7,
+					"h": 4,
+					"fill": "#2B2F36",
+					"radius": 1,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 48,
+					"y": 93,
+					"w": 4,
+					"h": 14,
+					"fill": "#2B2F36",
+					"radius": 1,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 36,
+					"y": 116,
+					"w": 8,
+					"h": 8,
+					"fill": "#2B2F36",
+					"radius": 4,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 36,
+					"y": 72,
+					"w": 8,
+					"h": 8,
+					"fill": "#B8BEC7",
+					"radius": 4
+				},
+				{
+					"type": "rect",
+					"x": 37,
+					"y": 75.5,
+					"w": 6,
+					"h": 1,
+					"fill": "#2B2F36",
+					"outline": false
+				}
+			]
+		}
+	},
 	"../modules/pir-hc-sr501.json": {
 		format: "circuitoon-module/1",
 		id: "pir-hc-sr501",
@@ -21301,6 +26551,1794 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"h": 3,
 					"fill": "#8A6A1E",
 					"radius": 1.5,
+					"outline": false
+				}
+			]
+		}
+	},
+	"../modules/plug-au-as3112-2lead.json": {
+		format: "circuitoon-module/1",
+		id: "plug-au-as3112-2lead",
+		version: 1,
+		name: "Cord plug AU/NZ AS/NZS 3112, 2-lead",
+		category: "Mains",
+		source: "https://en.wikipedia.org/wiki/AS/NZS_3112 https://www.accesscomms.com.au/australian-mains-plug/ https://www.plugsocketmuseum.nl/Australian1.html",
+		pins: [
+			{
+				"name": "L",
+				"side": "bottom",
+				"mains": "L"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"name": "N",
+				"side": "bottom",
+				"mains": "N"
+			}
+		],
+		internal: [["L prong", "L"], ["N prong", "N"]],
+		size: {
+			"w": 6,
+			"h": 6
+		},
+		electrical: {
+			"model": "cord-plug",
+			"internalNodes": ["L prong", "N prong"],
+			"plug": {
+				"family": "as3112",
+				"profiles": [{
+					"id": "main",
+					"contacts": [{
+						"pin": "L prong",
+						"at": {
+							"x": 20,
+							"y": 20
+						},
+						"mains": "L"
+					}, {
+						"pin": "N prong",
+						"at": {
+							"x": 50,
+							"y": 20
+						},
+						"mains": "N"
+					}]
+				}]
+			},
+			"ratings": [{
+				"pins": [
+					"L",
+					"N",
+					"L prong",
+					"N prong"
+				],
+				"kind": "terminal",
+				"service": "ac",
+				"volts": 250,
+				"amps": 10,
+				"provenance": "datasheet"
+			}]
+		},
+		art: {
+			"w": 60,
+			"h": 60,
+			"shapes": [
+				{
+					"type": "rect",
+					"x": 14,
+					"y": 52,
+					"w": 32,
+					"h": 8,
+					"fill": "#2B2F36",
+					"radius": 3
+				},
+				{
+					"type": "rect",
+					"x": 0,
+					"y": 0,
+					"w": 60,
+					"h": 56,
+					"fill": "#2B2F36",
+					"radius": 8
+				},
+				{
+					"type": "rect",
+					"x": 4,
+					"y": 4,
+					"w": 52,
+					"h": 50,
+					"fill": "#3A3F48",
+					"radius": 5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 18.5,
+					"y": 56,
+					"w": 3,
+					"h": 4,
+					"fill": "#B8BEC7",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 38.5,
+					"y": 56,
+					"w": 3,
+					"h": 4,
+					"fill": "#B8BEC7",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 20.1,
+					"y": 14.100000000000001,
+					"w": 4,
+					"h": 4,
+					"fill": "#AEB5BF",
+					"radius": 2,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 19.4,
+					"y": 15.399999999999999,
+					"w": 4,
+					"h": 4,
+					"fill": "#AEB5BF",
+					"radius": 2,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 18.7,
+					"y": 16.7,
+					"w": 4,
+					"h": 4,
+					"fill": "#AEB5BF",
+					"radius": 2,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 18,
+					"y": 18,
+					"w": 4,
+					"h": 4,
+					"fill": "#AEB5BF",
+					"radius": 2,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 17.3,
+					"y": 19.3,
+					"w": 4,
+					"h": 4,
+					"fill": "#AEB5BF",
+					"radius": 2,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 16.6,
+					"y": 20.6,
+					"w": 4,
+					"h": 4,
+					"fill": "#AEB5BF",
+					"radius": 2,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 15.899999999999999,
+					"y": 21.9,
+					"w": 4,
+					"h": 4,
+					"fill": "#AEB5BF",
+					"radius": 2,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 45.9,
+					"y": 14.100000000000001,
+					"w": 4,
+					"h": 4,
+					"fill": "#AEB5BF",
+					"radius": 2,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 46.6,
+					"y": 15.399999999999999,
+					"w": 4,
+					"h": 4,
+					"fill": "#AEB5BF",
+					"radius": 2,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 47.3,
+					"y": 16.7,
+					"w": 4,
+					"h": 4,
+					"fill": "#AEB5BF",
+					"radius": 2,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 48,
+					"y": 18,
+					"w": 4,
+					"h": 4,
+					"fill": "#AEB5BF",
+					"radius": 2,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 48.7,
+					"y": 19.3,
+					"w": 4,
+					"h": 4,
+					"fill": "#AEB5BF",
+					"radius": 2,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 49.4,
+					"y": 20.6,
+					"w": 4,
+					"h": 4,
+					"fill": "#AEB5BF",
+					"radius": 2,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 50.1,
+					"y": 21.9,
+					"w": 4,
+					"h": 4,
+					"fill": "#AEB5BF",
+					"radius": 2,
+					"outline": false
+				}
+			]
+		}
+	},
+	"../modules/plug-au-as3112-3lead.json": {
+		format: "circuitoon-module/1",
+		id: "plug-au-as3112-3lead",
+		version: 1,
+		name: "Cord plug AU/NZ AS/NZS 3112, 3-lead",
+		category: "Mains",
+		source: "https://en.wikipedia.org/wiki/AS/NZS_3112 https://www.accesscomms.com.au/australian-mains-plug/ https://www.plugsocketmuseum.nl/Australian1.html",
+		pins: [
+			{
+				"name": "L",
+				"side": "bottom",
+				"mains": "L"
+			},
+			{
+				"name": "N",
+				"side": "bottom",
+				"mains": "N"
+			},
+			{
+				"name": "PE",
+				"side": "bottom",
+				"mains": "PE"
+			}
+		],
+		internal: [
+			["L prong", "L"],
+			["N prong", "N"],
+			["PE prong", "PE"]
+		],
+		size: {
+			"w": 6,
+			"h": 6
+		},
+		electrical: {
+			"model": "cord-plug",
+			"internalNodes": [
+				"L prong",
+				"N prong",
+				"PE prong"
+			],
+			"plug": {
+				"family": "as3112",
+				"profiles": [{
+					"id": "main",
+					"contacts": [
+						{
+							"pin": "L prong",
+							"at": {
+								"x": 20,
+								"y": 20
+							},
+							"mains": "L"
+						},
+						{
+							"pin": "N prong",
+							"at": {
+								"x": 50,
+								"y": 20
+							},
+							"mains": "N"
+						},
+						{
+							"pin": "PE prong",
+							"at": {
+								"x": 30,
+								"y": 50
+							},
+							"mains": "PE"
+						}
+					]
+				}]
+			},
+			"ratings": [{
+				"pins": [
+					"L",
+					"N",
+					"PE",
+					"L prong",
+					"N prong",
+					"PE prong"
+				],
+				"kind": "terminal",
+				"service": "ac",
+				"volts": 250,
+				"amps": 10,
+				"provenance": "datasheet"
+			}]
+		},
+		art: {
+			"w": 60,
+			"h": 60,
+			"shapes": [
+				{
+					"type": "rect",
+					"x": 14,
+					"y": 52,
+					"w": 32,
+					"h": 8,
+					"fill": "#2B2F36",
+					"radius": 3
+				},
+				{
+					"type": "rect",
+					"x": 0,
+					"y": 0,
+					"w": 60,
+					"h": 56,
+					"fill": "#2B2F36",
+					"radius": 8
+				},
+				{
+					"type": "rect",
+					"x": 4,
+					"y": 4,
+					"w": 52,
+					"h": 50,
+					"fill": "#3A3F48",
+					"radius": 5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 18.5,
+					"y": 56,
+					"w": 3,
+					"h": 4,
+					"fill": "#B8BEC7",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 28.5,
+					"y": 56,
+					"w": 3,
+					"h": 4,
+					"fill": "#B8BEC7",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 38.5,
+					"y": 56,
+					"w": 3,
+					"h": 4,
+					"fill": "#B8BEC7",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 20.1,
+					"y": 14.100000000000001,
+					"w": 4,
+					"h": 4,
+					"fill": "#AEB5BF",
+					"radius": 2,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 19.4,
+					"y": 15.399999999999999,
+					"w": 4,
+					"h": 4,
+					"fill": "#AEB5BF",
+					"radius": 2,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 18.7,
+					"y": 16.7,
+					"w": 4,
+					"h": 4,
+					"fill": "#AEB5BF",
+					"radius": 2,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 18,
+					"y": 18,
+					"w": 4,
+					"h": 4,
+					"fill": "#AEB5BF",
+					"radius": 2,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 17.3,
+					"y": 19.3,
+					"w": 4,
+					"h": 4,
+					"fill": "#AEB5BF",
+					"radius": 2,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 16.6,
+					"y": 20.6,
+					"w": 4,
+					"h": 4,
+					"fill": "#AEB5BF",
+					"radius": 2,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 15.899999999999999,
+					"y": 21.9,
+					"w": 4,
+					"h": 4,
+					"fill": "#AEB5BF",
+					"radius": 2,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 45.9,
+					"y": 14.100000000000001,
+					"w": 4,
+					"h": 4,
+					"fill": "#AEB5BF",
+					"radius": 2,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 46.6,
+					"y": 15.399999999999999,
+					"w": 4,
+					"h": 4,
+					"fill": "#AEB5BF",
+					"radius": 2,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 47.3,
+					"y": 16.7,
+					"w": 4,
+					"h": 4,
+					"fill": "#AEB5BF",
+					"radius": 2,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 48,
+					"y": 18,
+					"w": 4,
+					"h": 4,
+					"fill": "#AEB5BF",
+					"radius": 2,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 48.7,
+					"y": 19.3,
+					"w": 4,
+					"h": 4,
+					"fill": "#AEB5BF",
+					"radius": 2,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 49.4,
+					"y": 20.6,
+					"w": 4,
+					"h": 4,
+					"fill": "#AEB5BF",
+					"radius": 2,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 50.1,
+					"y": 21.9,
+					"w": 4,
+					"h": 4,
+					"fill": "#AEB5BF",
+					"radius": 2,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 28,
+					"y": 44,
+					"w": 4,
+					"h": 12,
+					"fill": "#AEB5BF",
+					"radius": 1,
+					"outline": false
+				}
+			]
+		}
+	},
+	"../modules/plug-eu-cee7-16.json": {
+		format: "circuitoon-module/1",
+		id: "plug-eu-cee7-16",
+		version: 1,
+		name: "Cord plug Europlug CEE 7/16, 2-lead",
+		category: "Mains",
+		source: "https://en.wikipedia.org/wiki/Europlug https://www.plugsocketmuseum.nl/Europlug1.html https://en.wikipedia.org/wiki/CEE_7",
+		pins: [
+			{
+				"name": "L",
+				"side": "bottom",
+				"mains": "line"
+			},
+			{
+				"spacer": true,
+				"side": "bottom",
+				"mains": "line"
+			},
+			{
+				"name": "N",
+				"side": "bottom",
+				"mains": "line"
+			}
+		],
+		internal: [["L prong", "L"], ["N prong", "N"]],
+		size: {
+			"w": 8,
+			"h": 8
+		},
+		electrical: {
+			"model": "cord-plug",
+			"internalNodes": ["L prong", "N prong"],
+			"plug": {
+				"family": "cee7-16",
+				"profiles": [{
+					"id": "main",
+					"contacts": [{
+						"pin": "L prong",
+						"at": {
+							"x": 20,
+							"y": 40
+						},
+						"mains": "L"
+					}, {
+						"pin": "N prong",
+						"at": {
+							"x": 60,
+							"y": 40
+						},
+						"mains": "N"
+					}]
+				}]
+			},
+			"ratings": [{
+				"pins": [
+					"L",
+					"N",
+					"L prong",
+					"N prong"
+				],
+				"kind": "terminal",
+				"service": "ac",
+				"volts": 250,
+				"amps": 2.5,
+				"provenance": "datasheet"
+			}]
+		},
+		art: {
+			"w": 80,
+			"h": 80,
+			"shapes": [
+				{
+					"type": "rect",
+					"x": 24,
+					"y": 72,
+					"w": 32,
+					"h": 8,
+					"fill": "#2B2F36",
+					"radius": 3
+				},
+				{
+					"type": "rect",
+					"x": 0,
+					"y": 0,
+					"w": 80,
+					"h": 76,
+					"fill": "#2B2F36",
+					"radius": 8
+				},
+				{
+					"type": "rect",
+					"x": 4,
+					"y": 4,
+					"w": 72,
+					"h": 70,
+					"fill": "#3A3F48",
+					"radius": 5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 28.5,
+					"y": 76,
+					"w": 3,
+					"h": 4,
+					"fill": "#B8BEC7",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 48.5,
+					"y": 76,
+					"w": 3,
+					"h": 4,
+					"fill": "#B8BEC7",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 17,
+					"y": 37,
+					"w": 6,
+					"h": 6,
+					"fill": "#AEB5BF",
+					"radius": 3,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 57,
+					"y": 37,
+					"w": 6,
+					"h": 6,
+					"fill": "#AEB5BF",
+					"radius": 3,
+					"outline": false
+				}
+			]
+		}
+	},
+	"../modules/plug-eu-cee7-7.json": {
+		format: "circuitoon-module/1",
+		id: "plug-eu-cee7-7",
+		version: 1,
+		name: "Cord plug Schuko/French CEE 7/7, 3-lead",
+		category: "Mains",
+		source: "https://www.plugsocketmuseum.nl/EFhybrid.html https://en.wikipedia.org/wiki/CEE_7 https://en.wikipedia.org/wiki/AC_power_plugs_and_sockets",
+		pins: [
+			{
+				"name": "L",
+				"side": "bottom",
+				"mains": "line"
+			},
+			{
+				"spacer": true,
+				"side": "bottom",
+				"mains": "line"
+			},
+			{
+				"name": "N",
+				"side": "bottom",
+				"mains": "line"
+			},
+			{
+				"spacer": true,
+				"side": "bottom",
+				"mains": "line"
+			},
+			{
+				"name": "PE",
+				"side": "bottom",
+				"mains": "PE"
+			}
+		],
+		internal: [
+			["L prong", "L"],
+			["N prong", "N"],
+			["PE prong", "PE"]
+		],
+		size: {
+			"w": 8,
+			"h": 8
+		},
+		electrical: {
+			"model": "cord-plug",
+			"internalNodes": [
+				"L prong",
+				"N prong",
+				"PE prong"
+			],
+			"plug": {
+				"family": "cee7-7",
+				"profiles": [{
+					"id": "earth-clip",
+					"contacts": [
+						{
+							"pin": "L prong",
+							"at": {
+								"x": 20,
+								"y": 40
+							},
+							"mains": "L"
+						},
+						{
+							"pin": "N prong",
+							"at": {
+								"x": 60,
+								"y": 40
+							},
+							"mains": "N"
+						},
+						{
+							"pin": "PE prong",
+							"at": {
+								"x": 40,
+								"y": 10
+							},
+							"mains": "PE"
+						},
+						{
+							"pin": "PE prong",
+							"at": {
+								"x": 40,
+								"y": 70
+							},
+							"mains": "PE"
+						}
+					]
+				}, {
+					"id": "earth-hole",
+					"contacts": [
+						{
+							"pin": "L prong",
+							"at": {
+								"x": 20,
+								"y": 40
+							},
+							"mains": "L"
+						},
+						{
+							"pin": "N prong",
+							"at": {
+								"x": 60,
+								"y": 40
+							},
+							"mains": "N"
+						},
+						{
+							"pin": "PE prong",
+							"at": {
+								"x": 40,
+								"y": 10
+							},
+							"mains": "PE"
+						}
+					]
+				}]
+			},
+			"ratings": [{
+				"pins": [
+					"L",
+					"N",
+					"PE",
+					"L prong",
+					"N prong",
+					"PE prong"
+				],
+				"kind": "terminal",
+				"service": "ac",
+				"volts": 250,
+				"amps": 16,
+				"provenance": "datasheet"
+			}]
+		},
+		art: {
+			"w": 80,
+			"h": 80,
+			"shapes": [
+				{
+					"type": "rect",
+					"x": 14,
+					"y": 72,
+					"w": 52,
+					"h": 8,
+					"fill": "#2B2F36",
+					"radius": 3
+				},
+				{
+					"type": "rect",
+					"x": 0,
+					"y": 0,
+					"w": 80,
+					"h": 76,
+					"fill": "#2B2F36",
+					"radius": 8
+				},
+				{
+					"type": "rect",
+					"x": 4,
+					"y": 4,
+					"w": 72,
+					"h": 70,
+					"fill": "#3A3F48",
+					"radius": 5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 18.5,
+					"y": 76,
+					"w": 3,
+					"h": 4,
+					"fill": "#B8BEC7",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 38.5,
+					"y": 76,
+					"w": 3,
+					"h": 4,
+					"fill": "#B8BEC7",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 58.5,
+					"y": 76,
+					"w": 3,
+					"h": 4,
+					"fill": "#B8BEC7",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 17,
+					"y": 37,
+					"w": 6,
+					"h": 6,
+					"fill": "#AEB5BF",
+					"radius": 3,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 57,
+					"y": 37,
+					"w": 6,
+					"h": 6,
+					"fill": "#AEB5BF",
+					"radius": 3,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 33,
+					"y": 8,
+					"w": 14,
+					"h": 4,
+					"fill": "#AEB5BF",
+					"radius": 1,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 33,
+					"y": 68,
+					"w": 14,
+					"h": 4,
+					"fill": "#AEB5BF",
+					"radius": 1,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 37.5,
+					"y": 7.5,
+					"w": 5,
+					"h": 5,
+					"fill": "#2B2F36",
+					"radius": 2.5,
+					"outline": false
+				}
+			]
+		}
+	},
+	"../modules/plug-jp-1-15p.json": {
+		format: "circuitoon-module/1",
+		id: "plug-jp-1-15p",
+		version: 1,
+		name: "Cord plug Japan 1-15P, 2-lead",
+		category: "Mains",
+		source: "https://kikakurui.com/c8/C8303-2007-01.html https://kikakurui.com/c8/C8303-2007-01/page-25.png",
+		pins: [
+			{
+				"name": "L",
+				"side": "bottom",
+				"mains": "line"
+			},
+			{
+				"spacer": true,
+				"side": "bottom",
+				"mains": "line"
+			},
+			{
+				"name": "N",
+				"side": "bottom",
+				"mains": "line"
+			}
+		],
+		internal: [["L prong", "L"], ["N prong", "N"]],
+		size: {
+			"w": 6,
+			"h": 6
+		},
+		electrical: {
+			"model": "cord-plug",
+			"internalNodes": ["L prong", "N prong"],
+			"plug": {
+				"family": "nema-1-15p",
+				"profiles": [{
+					"id": "main",
+					"contacts": [{
+						"pin": "L prong",
+						"at": {
+							"x": 40,
+							"y": 30
+						},
+						"mains": "L"
+					}, {
+						"pin": "N prong",
+						"at": {
+							"x": 20,
+							"y": 30
+						},
+						"mains": "N"
+					}]
+				}]
+			},
+			"ratings": [{
+				"pins": [
+					"L",
+					"N",
+					"L prong",
+					"N prong"
+				],
+				"kind": "terminal",
+				"service": "ac",
+				"volts": 125,
+				"amps": 15,
+				"provenance": "datasheet"
+			}]
+		},
+		art: {
+			"w": 60,
+			"h": 60,
+			"shapes": [
+				{
+					"type": "rect",
+					"x": 14,
+					"y": 52,
+					"w": 32,
+					"h": 8,
+					"fill": "#2B2F36",
+					"radius": 3
+				},
+				{
+					"type": "rect",
+					"x": 0,
+					"y": 0,
+					"w": 60,
+					"h": 56,
+					"fill": "#2B2F36",
+					"radius": 8
+				},
+				{
+					"type": "rect",
+					"x": 4,
+					"y": 4,
+					"w": 52,
+					"h": 50,
+					"fill": "#3A3F48",
+					"radius": 5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 18.5,
+					"y": 56,
+					"w": 3,
+					"h": 4,
+					"fill": "#B8BEC7",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 38.5,
+					"y": 56,
+					"w": 3,
+					"h": 4,
+					"fill": "#B8BEC7",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 38.5,
+					"y": 24,
+					"w": 3,
+					"h": 12,
+					"fill": "#AEB5BF",
+					"radius": 1,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 18.5,
+					"y": 24,
+					"w": 3,
+					"h": 12,
+					"fill": "#AEB5BF",
+					"radius": 1,
+					"outline": false
+				}
+			]
+		}
+	},
+	"../modules/plug-uk-bs1363-2lead.json": {
+		format: "circuitoon-module/1",
+		id: "plug-uk-bs1363-2lead",
+		version: 1,
+		name: "Cord plug UK BS 1363, fused, 2-lead",
+		category: "Mains",
+		source: "https://en.wikipedia.org/wiki/BS_1363 https://www.elec-mate.com/guides/how-to-wire-a-plug https://www.plugsocketmuseum.nl/British1.html",
+		pins: [
+			{
+				"name": "L",
+				"side": "bottom",
+				"mains": "L"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"name": "N",
+				"side": "bottom",
+				"mains": "N"
+			}
+		],
+		internal: [["N prong", "N"]],
+		size: {
+			"w": 8,
+			"h": 8
+		},
+		electrical: {
+			"model": "cord-plug",
+			"internalNodes": [
+				"L prong",
+				"N prong",
+				"E pin"
+			],
+			"protective": [{
+				"from": "L prong",
+				"to": "L",
+				"kind": "fuse"
+			}],
+			"params": { "fuseRating": {
+				"unit": "A",
+				"default": 13
+			} },
+			"plug": {
+				"family": "bs1363",
+				"profiles": [{
+					"id": "main",
+					"contacts": [
+						{
+							"pin": "L prong",
+							"at": {
+								"x": 70,
+								"y": 50
+							},
+							"mains": "L"
+						},
+						{
+							"pin": "N prong",
+							"at": {
+								"x": 10,
+								"y": 50
+							},
+							"mains": "N"
+						},
+						{
+							"pin": "E pin",
+							"at": {
+								"x": 40,
+								"y": 20
+							},
+							"mains": "mechanical"
+						}
+					]
+				}]
+			},
+			"ratings": [{
+				"pins": [
+					"L",
+					"N",
+					"L prong",
+					"N prong"
+				],
+				"kind": "terminal",
+				"service": "ac",
+				"volts": 250,
+				"amps": 13,
+				"provenance": "datasheet"
+			}]
+		},
+		art: {
+			"w": 80,
+			"h": 80,
+			"shapes": [
+				{
+					"type": "rect",
+					"x": 24,
+					"y": 72,
+					"w": 32,
+					"h": 8,
+					"fill": "#2B2F36",
+					"radius": 3
+				},
+				{
+					"type": "rect",
+					"x": 0,
+					"y": 0,
+					"w": 80,
+					"h": 76,
+					"fill": "#2B2F36",
+					"radius": 8
+				},
+				{
+					"type": "rect",
+					"x": 4,
+					"y": 4,
+					"w": 72,
+					"h": 70,
+					"fill": "#3A3F48",
+					"radius": 5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 28.5,
+					"y": 76,
+					"w": 3,
+					"h": 4,
+					"fill": "#B8BEC7",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 48.5,
+					"y": 76,
+					"w": 3,
+					"h": 4,
+					"fill": "#B8BEC7",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 28,
+					"y": 46,
+					"w": 24,
+					"h": 8,
+					"fill": "#D9534F",
+					"radius": 2
+				},
+				{
+					"type": "rect",
+					"x": 64.5,
+					"y": 47.5,
+					"w": 11,
+					"h": 5,
+					"fill": "#AEB5BF",
+					"radius": 1,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 4.5,
+					"y": 47.5,
+					"w": 11,
+					"h": 5,
+					"fill": "#AEB5BF",
+					"radius": 1,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 37.5,
+					"y": 14,
+					"w": 5,
+					"h": 12,
+					"fill": "#D8D4CA",
+					"radius": 1,
+					"outline": false
+				}
+			]
+		}
+	},
+	"../modules/plug-uk-bs1363-3lead.json": {
+		format: "circuitoon-module/1",
+		id: "plug-uk-bs1363-3lead",
+		version: 1,
+		name: "Cord plug UK BS 1363, fused, 3-lead",
+		category: "Mains",
+		source: "https://en.wikipedia.org/wiki/BS_1363 https://www.elec-mate.com/guides/how-to-wire-a-plug https://www.plugsocketmuseum.nl/British1.html",
+		pins: [
+			{
+				"name": "L",
+				"side": "bottom",
+				"mains": "L"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"name": "N",
+				"side": "bottom",
+				"mains": "N"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"name": "PE",
+				"side": "bottom",
+				"mains": "PE"
+			}
+		],
+		internal: [["N prong", "N"], ["PE prong", "PE"]],
+		size: {
+			"w": 8,
+			"h": 8
+		},
+		electrical: {
+			"model": "cord-plug",
+			"internalNodes": [
+				"L prong",
+				"N prong",
+				"PE prong"
+			],
+			"protective": [{
+				"from": "L prong",
+				"to": "L",
+				"kind": "fuse"
+			}],
+			"params": { "fuseRating": {
+				"unit": "A",
+				"default": 13
+			} },
+			"plug": {
+				"family": "bs1363",
+				"profiles": [{
+					"id": "main",
+					"contacts": [
+						{
+							"pin": "L prong",
+							"at": {
+								"x": 70,
+								"y": 50
+							},
+							"mains": "L"
+						},
+						{
+							"pin": "N prong",
+							"at": {
+								"x": 10,
+								"y": 50
+							},
+							"mains": "N"
+						},
+						{
+							"pin": "PE prong",
+							"at": {
+								"x": 40,
+								"y": 20
+							},
+							"mains": "PE"
+						}
+					]
+				}]
+			},
+			"ratings": [{
+				"pins": [
+					"L",
+					"N",
+					"PE",
+					"L prong",
+					"N prong",
+					"PE prong"
+				],
+				"kind": "terminal",
+				"service": "ac",
+				"volts": 250,
+				"amps": 13,
+				"provenance": "datasheet"
+			}]
+		},
+		art: {
+			"w": 80,
+			"h": 80,
+			"shapes": [
+				{
+					"type": "rect",
+					"x": 14,
+					"y": 72,
+					"w": 52,
+					"h": 8,
+					"fill": "#2B2F36",
+					"radius": 3
+				},
+				{
+					"type": "rect",
+					"x": 0,
+					"y": 0,
+					"w": 80,
+					"h": 76,
+					"fill": "#2B2F36",
+					"radius": 8
+				},
+				{
+					"type": "rect",
+					"x": 4,
+					"y": 4,
+					"w": 72,
+					"h": 70,
+					"fill": "#3A3F48",
+					"radius": 5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 18.5,
+					"y": 76,
+					"w": 3,
+					"h": 4,
+					"fill": "#B8BEC7",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 38.5,
+					"y": 76,
+					"w": 3,
+					"h": 4,
+					"fill": "#B8BEC7",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 58.5,
+					"y": 76,
+					"w": 3,
+					"h": 4,
+					"fill": "#B8BEC7",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 28,
+					"y": 46,
+					"w": 24,
+					"h": 8,
+					"fill": "#D9534F",
+					"radius": 2
+				},
+				{
+					"type": "rect",
+					"x": 64.5,
+					"y": 47.5,
+					"w": 11,
+					"h": 5,
+					"fill": "#AEB5BF",
+					"radius": 1,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 4.5,
+					"y": 47.5,
+					"w": 11,
+					"h": 5,
+					"fill": "#AEB5BF",
+					"radius": 1,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 37.5,
+					"y": 14,
+					"w": 5,
+					"h": 12,
+					"fill": "#AEB5BF",
+					"radius": 1,
+					"outline": false
+				}
+			]
+		}
+	},
+	"../modules/plug-us-1-15p.json": {
+		format: "circuitoon-module/1",
+		id: "plug-us-1-15p",
+		version: 1,
+		name: "Cord plug US NEMA 1-15P polarized, 2-lead",
+		category: "Mains",
+		source: "https://archive.org/download/NEMA-WD-6-2016/ANSI-NEMA%20WD%206-2016.pdf https://leviton.com/products/101-p",
+		pins: [
+			{
+				"name": "L",
+				"side": "bottom",
+				"mains": "L"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"name": "N",
+				"side": "bottom",
+				"mains": "N"
+			}
+		],
+		internal: [["L prong", "L"], ["N prong", "N"]],
+		size: {
+			"w": 6,
+			"h": 6
+		},
+		electrical: {
+			"model": "cord-plug",
+			"internalNodes": ["L prong", "N prong"],
+			"plug": {
+				"family": "nema-1-15p-polarized",
+				"profiles": [{
+					"id": "main",
+					"contacts": [{
+						"pin": "L prong",
+						"at": {
+							"x": 40,
+							"y": 30
+						},
+						"mains": "L"
+					}, {
+						"pin": "N prong",
+						"at": {
+							"x": 20,
+							"y": 30
+						},
+						"mains": "N"
+					}]
+				}]
+			},
+			"ratings": [{
+				"pins": [
+					"L",
+					"N",
+					"L prong",
+					"N prong"
+				],
+				"kind": "terminal",
+				"service": "ac",
+				"volts": 125,
+				"amps": 15,
+				"provenance": "datasheet"
+			}]
+		},
+		art: {
+			"w": 60,
+			"h": 60,
+			"shapes": [
+				{
+					"type": "rect",
+					"x": 14,
+					"y": 52,
+					"w": 32,
+					"h": 8,
+					"fill": "#2B2F36",
+					"radius": 3
+				},
+				{
+					"type": "rect",
+					"x": 0,
+					"y": 0,
+					"w": 60,
+					"h": 56,
+					"fill": "#2B2F36",
+					"radius": 8
+				},
+				{
+					"type": "rect",
+					"x": 4,
+					"y": 4,
+					"w": 52,
+					"h": 50,
+					"fill": "#3A3F48",
+					"radius": 5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 18.5,
+					"y": 56,
+					"w": 3,
+					"h": 4,
+					"fill": "#B8BEC7",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 38.5,
+					"y": 56,
+					"w": 3,
+					"h": 4,
+					"fill": "#B8BEC7",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 38.5,
+					"y": 24,
+					"w": 3,
+					"h": 12,
+					"fill": "#AEB5BF",
+					"radius": 1,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 17.5,
+					"y": 24,
+					"w": 5,
+					"h": 12,
+					"fill": "#AEB5BF",
+					"radius": 1,
+					"outline": false
+				}
+			]
+		}
+	},
+	"../modules/plug-us-5-15p.json": {
+		format: "circuitoon-module/1",
+		id: "plug-us-5-15p",
+		version: 1,
+		name: "Cord plug US NEMA 5-15P, 3-lead",
+		category: "Mains",
+		source: "https://archive.org/download/NEMA-WD-6-2016/ANSI-NEMA%20WD%206-2016.pdf https://leviton.com/products/515pv",
+		pins: [
+			{
+				"name": "L",
+				"side": "bottom",
+				"mains": "L"
+			},
+			{
+				"name": "N",
+				"side": "bottom",
+				"mains": "N"
+			},
+			{
+				"name": "PE",
+				"side": "bottom",
+				"mains": "PE"
+			}
+		],
+		internal: [
+			["L prong", "L"],
+			["N prong", "N"],
+			["PE prong", "PE"]
+		],
+		size: {
+			"w": 6,
+			"h": 6
+		},
+		electrical: {
+			"model": "cord-plug",
+			"internalNodes": [
+				"L prong",
+				"N prong",
+				"PE prong"
+			],
+			"plug": {
+				"family": "nema-5-15p",
+				"profiles": [{
+					"id": "main",
+					"contacts": [
+						{
+							"pin": "L prong",
+							"at": {
+								"x": 40,
+								"y": 30
+							},
+							"mains": "L"
+						},
+						{
+							"pin": "N prong",
+							"at": {
+								"x": 20,
+								"y": 30
+							},
+							"mains": "N"
+						},
+						{
+							"pin": "PE prong",
+							"at": {
+								"x": 30,
+								"y": 50
+							},
+							"mains": "PE"
+						}
+					]
+				}]
+			},
+			"ratings": [{
+				"pins": [
+					"L",
+					"N",
+					"PE",
+					"L prong",
+					"N prong",
+					"PE prong"
+				],
+				"kind": "terminal",
+				"service": "ac",
+				"volts": 125,
+				"amps": 15,
+				"provenance": "datasheet"
+			}]
+		},
+		art: {
+			"w": 60,
+			"h": 60,
+			"shapes": [
+				{
+					"type": "rect",
+					"x": 14,
+					"y": 52,
+					"w": 32,
+					"h": 8,
+					"fill": "#2B2F36",
+					"radius": 3
+				},
+				{
+					"type": "rect",
+					"x": 0,
+					"y": 0,
+					"w": 60,
+					"h": 56,
+					"fill": "#2B2F36",
+					"radius": 8
+				},
+				{
+					"type": "rect",
+					"x": 4,
+					"y": 4,
+					"w": 52,
+					"h": 50,
+					"fill": "#3A3F48",
+					"radius": 5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 18.5,
+					"y": 56,
+					"w": 3,
+					"h": 4,
+					"fill": "#B8BEC7",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 28.5,
+					"y": 56,
+					"w": 3,
+					"h": 4,
+					"fill": "#B8BEC7",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 38.5,
+					"y": 56,
+					"w": 3,
+					"h": 4,
+					"fill": "#B8BEC7",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 38.5,
+					"y": 24,
+					"w": 3,
+					"h": 12,
+					"fill": "#AEB5BF",
+					"radius": 1,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 17.5,
+					"y": 24,
+					"w": 5,
+					"h": 12,
+					"fill": "#AEB5BF",
+					"radius": 1,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 27,
+					"y": 46.5,
+					"w": 6,
+					"h": 7,
+					"fill": "#AEB5BF",
+					"radius": 3,
 					"outline": false
 				}
 			]
@@ -21752,7 +28790,7 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 		version: 1,
 		name: "Relay module 1 channel 5 V (SRD-05VDC, high/low trigger jumper)",
 		category: "Motors and actuators",
-		source: "https://www.amazon.com/dp/B00LW15A4W https://konnected.io/products/1-channel-5v-relay-module-with-high-low-level-trigger",
+		source: "https://www.songlerelay.com/upload/8670/srd-t73-relay-290486.pdf https://www.songlerelay.com/srd-t73-relay.html https://www.circuitbasics.com/wp-content/uploads/2015/11/SRD-05VDC-SL-C-Datasheet.pdf https://www.amazon.com/dp/B00LW15A4W https://konnected.io/products/1-channel-5v-relay-module-with-high-low-level-trigger",
 		pins: [
 			{
 				"name": "NO",
@@ -21808,7 +28846,72 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 		},
 		electrical: {
 			"model": "relay",
-			"params": {}
+			"params": {},
+			"contacts": [{
+				"id": "k",
+				"kind": "relay",
+				"poles": [{
+					"com": "COM",
+					"no": "NO",
+					"nc": "NC"
+				}]
+			}],
+			"domains": [{
+				"name": "contacts",
+				"pins": [
+					"NO",
+					"COM",
+					"NC"
+				],
+				"kind": "mains"
+			}, {
+				"name": "control",
+				"pins": [
+					"IN",
+					"DC-",
+					"DC+"
+				],
+				"kind": "selv"
+			}],
+			"isolation": "unknown",
+			"ratings": [
+				{
+					"pins": [
+						"NO",
+						"COM",
+						"NC"
+					],
+					"kind": "switching",
+					"service": "ac",
+					"volts": 125,
+					"amps": 10,
+					"provenance": "unverified"
+				},
+				{
+					"pins": [
+						"NO",
+						"COM",
+						"NC"
+					],
+					"kind": "switching",
+					"service": "ac",
+					"volts": 240,
+					"amps": 7,
+					"provenance": "unverified"
+				},
+				{
+					"pins": [
+						"NO",
+						"COM",
+						"NC"
+					],
+					"kind": "switching",
+					"service": "dc",
+					"volts": 28,
+					"amps": 7,
+					"provenance": "unverified"
+				}
+			]
 		},
 		art: {
 			"w": 200,
@@ -22979,7 +30082,7 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 		version: 1,
 		name: "Rocker switch KCD1-101 (SPST, 2 pin)",
 		category: "Switches",
-		source: "https://www.chinadaier.com/kcd1-2-101-spst-rocker-switch/ https://envistiamall.com/products/rocker-switch-2-pin-on-off-spst-21x15mm-black-kcd1-101",
+		source: "https://www.chinadaier.com/wp-content/uploads/2017/07/KCD1-2-101.pdf https://www.chinadaier.com/kcd1-2-101-spst-rocker-switch/",
 		pins: [{
 			"name": "1",
 			"side": "left",
@@ -22995,7 +30098,30 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 				"a": "1",
 				"b": "2"
 			},
-			"params": {}
+			"params": {},
+			"contacts": [{
+				"id": "s",
+				"kind": "switch",
+				"poles": [{
+					"com": "1",
+					"no": "2"
+				}]
+			}],
+			"ratings": [{
+				"pins": ["1", "2"],
+				"kind": "switching",
+				"service": "ac",
+				"volts": 250,
+				"amps": 6,
+				"provenance": "datasheet"
+			}, {
+				"pins": ["1", "2"],
+				"kind": "switching",
+				"service": "ac",
+				"volts": 125,
+				"amps": 10,
+				"provenance": "datasheet"
+			}]
 		},
 		states: ["off", "on"],
 		art: {
@@ -27307,6 +34433,361 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			]
 		}
 	},
+	"../modules/ssr-fotek-25da.json": {
+		format: "circuitoon-module/1",
+		id: "ssr-fotek-25da",
+		version: 1,
+		name: "Fotek SSR-25DA solid state relay (4-32 VDC in, 24-380 VAC 25 A out)",
+		category: "Mains",
+		source: "https://www.fotek.com.tw/en-gb/download/61 https://www.fotek.com.tw/en-gb/product/801 https://www.fotek.com.tw/en-gb/product-category/143 https://www.fotek.com.tw/image/catalog/product/Type/SSR-SSR-DA.png",
+		pins: [
+			{
+				"name": "1",
+				"side": "top",
+				"type": "passive"
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"name": "2",
+				"side": "top",
+				"type": "passive"
+			},
+			{
+				"name": "4",
+				"side": "bottom",
+				"type": "ground"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"name": "3",
+				"side": "bottom",
+				"type": "input"
+			}
+		],
+		size: {
+			"w": 9,
+			"h": 12
+		},
+		electrical: {
+			"model": "ssr",
+			"contacts": [{
+				"id": "k",
+				"kind": "ssr",
+				"poles": [{
+					"com": "1",
+					"no": "2"
+				}]
+			}],
+			"domains": [{
+				"name": "load",
+				"pins": ["1", "2"],
+				"kind": "mains"
+			}, {
+				"name": "control",
+				"pins": ["3", "4"],
+				"kind": "selv"
+			}],
+			"isolation": "unknown",
+			"ratings": [{
+				"pins": ["1", "2"],
+				"kind": "switching",
+				"service": "ac",
+				"volts": 380,
+				"amps": 25,
+				"provenance": "datasheet",
+				"conditions": "rated current for a resistive load on a heatsink with thermal grease; incandescent lamps: module rating over 4 times the lamp current; Fotek heatsink HS-50 is rated 15 A max per SSR, so 25 A needs a larger heatsink"
+			}]
+		},
+		art: {
+			"w": 90,
+			"h": 120,
+			"pinLabels": "inside",
+			"shapes": [
+				{
+					"type": "rect",
+					"x": 0,
+					"y": 0,
+					"w": 90,
+					"h": 120,
+					"fill": "#23272D",
+					"radius": 4
+				},
+				{
+					"type": "rect",
+					"x": 39,
+					"y": 3,
+					"w": 12,
+					"h": 6,
+					"fill": "#3A3F48",
+					"radius": 3,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 39,
+					"y": 111,
+					"w": 12,
+					"h": 6,
+					"fill": "#3A3F48",
+					"radius": 3,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 11,
+					"y": 11,
+					"w": 18,
+					"h": 18,
+					"fill": "#D5DAE1",
+					"radius": 3
+				},
+				{
+					"type": "rect",
+					"x": 14,
+					"y": 14,
+					"w": 12,
+					"h": 12,
+					"fill": "#C9CED6",
+					"radius": 6
+				},
+				{
+					"type": "rect",
+					"x": 16,
+					"y": 19.25,
+					"w": 8,
+					"h": 1.5,
+					"fill": "#6B727C",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 19.25,
+					"y": 16,
+					"w": 1.5,
+					"h": 8,
+					"fill": "#6B727C",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 61,
+					"y": 11,
+					"w": 18,
+					"h": 18,
+					"fill": "#D5DAE1",
+					"radius": 3
+				},
+				{
+					"type": "rect",
+					"x": 64,
+					"y": 14,
+					"w": 12,
+					"h": 12,
+					"fill": "#C9CED6",
+					"radius": 6
+				},
+				{
+					"type": "rect",
+					"x": 66,
+					"y": 19.25,
+					"w": 8,
+					"h": 1.5,
+					"fill": "#6B727C",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 69.25,
+					"y": 16,
+					"w": 1.5,
+					"h": 8,
+					"fill": "#6B727C",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 11,
+					"y": 91,
+					"w": 18,
+					"h": 18,
+					"fill": "#D5DAE1",
+					"radius": 3
+				},
+				{
+					"type": "rect",
+					"x": 14,
+					"y": 94,
+					"w": 12,
+					"h": 12,
+					"fill": "#C9CED6",
+					"radius": 6
+				},
+				{
+					"type": "rect",
+					"x": 16,
+					"y": 99.25,
+					"w": 8,
+					"h": 1.5,
+					"fill": "#6B727C",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 19.25,
+					"y": 96,
+					"w": 1.5,
+					"h": 8,
+					"fill": "#6B727C",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 61,
+					"y": 91,
+					"w": 18,
+					"h": 18,
+					"fill": "#D5DAE1",
+					"radius": 3
+				},
+				{
+					"type": "rect",
+					"x": 64,
+					"y": 94,
+					"w": 12,
+					"h": 12,
+					"fill": "#C9CED6",
+					"radius": 6
+				},
+				{
+					"type": "rect",
+					"x": 66,
+					"y": 99.25,
+					"w": 8,
+					"h": 1.5,
+					"fill": "#6B727C",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 69.25,
+					"y": 96,
+					"w": 1.5,
+					"h": 8,
+					"fill": "#6B727C",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 35,
+					"y": 15,
+					"w": 20,
+					"h": 10,
+					"fill": "#23272D",
+					"outline": false,
+					"label": "~ ~",
+					"labelColor": "#F4F6F8",
+					"labelSize": 7
+				},
+				{
+					"type": "rect",
+					"x": 35,
+					"y": 95,
+					"w": 20,
+					"h": 10,
+					"fill": "#23272D",
+					"outline": false,
+					"label": "- +",
+					"labelColor": "#F4F6F8",
+					"labelSize": 7
+				},
+				{
+					"type": "rect",
+					"x": 8,
+					"y": 36,
+					"w": 74,
+					"h": 46,
+					"fill": "#F4F6F8",
+					"radius": 2
+				},
+				{
+					"type": "rect",
+					"x": 10,
+					"y": 38,
+					"w": 70,
+					"h": 12,
+					"fill": "#F4F6F8",
+					"outline": false,
+					"label": "FOTEK",
+					"labelColor": "#23272D",
+					"labelSize": 7
+				},
+				{
+					"type": "rect",
+					"x": 10,
+					"y": 50,
+					"w": 70,
+					"h": 12,
+					"fill": "#F4F6F8",
+					"outline": false,
+					"label": "SSR-25DA",
+					"labelColor": "#23272D",
+					"labelSize": 7
+				},
+				{
+					"type": "rect",
+					"x": 10,
+					"y": 64,
+					"w": 70,
+					"h": 10,
+					"fill": "#F4F6F8",
+					"outline": false,
+					"label": "24-380VAC",
+					"labelColor": "#23272D",
+					"labelSize": 5
+				},
+				{
+					"type": "rect",
+					"x": 42,
+					"y": 86,
+					"w": 6,
+					"h": 5,
+					"fill": "#E0483E",
+					"radius": 2,
+					"outline": false
+				}
+			]
+		}
+	},
 	"../modules/tactile-switch-12mm-4pin.json": {
 		format: "circuitoon-module/1",
 		id: "tactile-switch-12mm-4pin",
@@ -27585,6 +35066,2757 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"h": 18,
 					"fill": "#1B1F24",
 					"radius": 9
+				}
+			]
+		}
+	},
+	"../modules/terminal-block-kf2edg-508-2.json": {
+		format: "circuitoon-module/1",
+		id: "terminal-block-kf2edg-508-2",
+		version: 1,
+		name: "Terminal block KF2EDG 5.08 mm clone, 2 positions",
+		category: "Mains",
+		source: "https://www.kefaelectronic.com/KF2EDG-STD-5-08-Pluggable-terminal-block-pd40291464.html",
+		pins: [
+			{
+				"name": "1",
+				"side": "left"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"name": "2",
+				"side": "left"
+			},
+			{
+				"name": "1 pcb",
+				"side": "right",
+				"label": "1"
+			},
+			{
+				"spacer": true,
+				"side": "right"
+			},
+			{
+				"name": "2 pcb",
+				"side": "right",
+				"label": "2"
+			}
+		],
+		internal: [["1", "1 pcb"], ["2", "2 pcb"]],
+		size: {
+			"w": 7,
+			"h": 5
+		},
+		electrical: {
+			"model": "terminal-block",
+			"ratings": [{
+				"pins": [
+					"1",
+					"2",
+					"1 pcb",
+					"2 pcb"
+				],
+				"kind": "terminal",
+				"service": "ac/dc",
+				"volts": 300,
+				"amps": 10,
+				"provenance": "unverified"
+			}]
+		},
+		art: {
+			"w": 70,
+			"h": 50,
+			"pinLabels": "inside",
+			"shapes": [
+				{
+					"type": "rect",
+					"x": 0,
+					"y": 0,
+					"w": 42,
+					"h": 50,
+					"fill": "#2F7FD0",
+					"radius": 3
+				},
+				{
+					"type": "rect",
+					"x": 42,
+					"y": 0,
+					"w": 28,
+					"h": 50,
+					"fill": "#23629F",
+					"radius": 3
+				},
+				{
+					"type": "rect",
+					"x": 23,
+					"y": 14,
+					"w": 12,
+					"h": 12,
+					"fill": "#C9CED6",
+					"radius": 6
+				},
+				{
+					"type": "rect",
+					"x": 28,
+					"y": 16,
+					"w": 2,
+					"h": 8,
+					"fill": "#2B2F36",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 23,
+					"y": 34,
+					"w": 12,
+					"h": 12,
+					"fill": "#C9CED6",
+					"radius": 6
+				},
+				{
+					"type": "rect",
+					"x": 28,
+					"y": 36,
+					"w": 2,
+					"h": 8,
+					"fill": "#2B2F36",
+					"outline": false
+				}
+			]
+		}
+	},
+	"../modules/terminal-block-kf2edg-508-3.json": {
+		format: "circuitoon-module/1",
+		id: "terminal-block-kf2edg-508-3",
+		version: 1,
+		name: "Terminal block KF2EDG 5.08 mm clone, 3 positions",
+		category: "Mains",
+		source: "https://www.kefaelectronic.com/KF2EDG-STD-5-08-Pluggable-terminal-block-pd40291464.html",
+		pins: [
+			{
+				"name": "1",
+				"side": "left"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"name": "2",
+				"side": "left"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"name": "3",
+				"side": "left"
+			},
+			{
+				"name": "1 pcb",
+				"side": "right",
+				"label": "1"
+			},
+			{
+				"spacer": true,
+				"side": "right"
+			},
+			{
+				"name": "2 pcb",
+				"side": "right",
+				"label": "2"
+			},
+			{
+				"spacer": true,
+				"side": "right"
+			},
+			{
+				"name": "3 pcb",
+				"side": "right",
+				"label": "3"
+			}
+		],
+		internal: [
+			["1", "1 pcb"],
+			["2", "2 pcb"],
+			["3", "3 pcb"]
+		],
+		size: {
+			"w": 7,
+			"h": 7
+		},
+		electrical: {
+			"model": "terminal-block",
+			"ratings": [{
+				"pins": [
+					"1",
+					"2",
+					"3",
+					"1 pcb",
+					"2 pcb",
+					"3 pcb"
+				],
+				"kind": "terminal",
+				"service": "ac/dc",
+				"volts": 300,
+				"amps": 10,
+				"provenance": "unverified"
+			}]
+		},
+		art: {
+			"w": 70,
+			"h": 70,
+			"pinLabels": "inside",
+			"shapes": [
+				{
+					"type": "rect",
+					"x": 0,
+					"y": 0,
+					"w": 42,
+					"h": 70,
+					"fill": "#2F7FD0",
+					"radius": 3
+				},
+				{
+					"type": "rect",
+					"x": 42,
+					"y": 0,
+					"w": 28,
+					"h": 70,
+					"fill": "#23629F",
+					"radius": 3
+				},
+				{
+					"type": "rect",
+					"x": 23,
+					"y": 14,
+					"w": 12,
+					"h": 12,
+					"fill": "#C9CED6",
+					"radius": 6
+				},
+				{
+					"type": "rect",
+					"x": 28,
+					"y": 16,
+					"w": 2,
+					"h": 8,
+					"fill": "#2B2F36",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 23,
+					"y": 34,
+					"w": 12,
+					"h": 12,
+					"fill": "#C9CED6",
+					"radius": 6
+				},
+				{
+					"type": "rect",
+					"x": 28,
+					"y": 36,
+					"w": 2,
+					"h": 8,
+					"fill": "#2B2F36",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 23,
+					"y": 54,
+					"w": 12,
+					"h": 12,
+					"fill": "#C9CED6",
+					"radius": 6
+				},
+				{
+					"type": "rect",
+					"x": 28,
+					"y": 56,
+					"w": 2,
+					"h": 8,
+					"fill": "#2B2F36",
+					"outline": false
+				}
+			]
+		}
+	},
+	"../modules/terminal-block-kf301-500-2.json": {
+		format: "circuitoon-module/1",
+		id: "terminal-block-kf301-500-2",
+		version: 1,
+		name: "Terminal block KF301 5.0 mm clone, 2 positions",
+		category: "Mains",
+		source: "https://www.lcsc.com/product-detail/C474881.html https://www.kefaelectronic.com/KF301-5-0-PCB-Terminal-Block-pd47313945.html",
+		pins: [
+			{
+				"name": "1",
+				"side": "left"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"name": "2",
+				"side": "left"
+			},
+			{
+				"name": "1 pcb",
+				"side": "right",
+				"label": "1"
+			},
+			{
+				"spacer": true,
+				"side": "right"
+			},
+			{
+				"name": "2 pcb",
+				"side": "right",
+				"label": "2"
+			}
+		],
+		internal: [["1", "1 pcb"], ["2", "2 pcb"]],
+		size: {
+			"w": 7,
+			"h": 5
+		},
+		electrical: {
+			"model": "terminal-block",
+			"ratings": [{
+				"pins": [
+					"1",
+					"2",
+					"1 pcb",
+					"2 pcb"
+				],
+				"kind": "terminal",
+				"service": "ac/dc",
+				"volts": 250,
+				"amps": 17,
+				"provenance": "unverified"
+			}]
+		},
+		art: {
+			"w": 70,
+			"h": 50,
+			"pinLabels": "inside",
+			"shapes": [
+				{
+					"type": "rect",
+					"x": 0,
+					"y": 0,
+					"w": 42,
+					"h": 50,
+					"fill": "#2F7FD0",
+					"radius": 3
+				},
+				{
+					"type": "rect",
+					"x": 42,
+					"y": 0,
+					"w": 28,
+					"h": 50,
+					"fill": "#23629F",
+					"radius": 3
+				},
+				{
+					"type": "rect",
+					"x": 23,
+					"y": 14,
+					"w": 12,
+					"h": 12,
+					"fill": "#C9CED6",
+					"radius": 6
+				},
+				{
+					"type": "rect",
+					"x": 28,
+					"y": 16,
+					"w": 2,
+					"h": 8,
+					"fill": "#2B2F36",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 23,
+					"y": 34,
+					"w": 12,
+					"h": 12,
+					"fill": "#C9CED6",
+					"radius": 6
+				},
+				{
+					"type": "rect",
+					"x": 28,
+					"y": 36,
+					"w": 2,
+					"h": 8,
+					"fill": "#2B2F36",
+					"outline": false
+				}
+			]
+		}
+	},
+	"../modules/terminal-block-kf301-500-3.json": {
+		format: "circuitoon-module/1",
+		id: "terminal-block-kf301-500-3",
+		version: 1,
+		name: "Terminal block KF301 5.0 mm clone, 3 positions",
+		category: "Mains",
+		source: "https://www.lcsc.com/product-detail/C474882.html https://www.kefaelectronic.com/KF301-5-0-PCB-Terminal-Block-pd47313945.html",
+		pins: [
+			{
+				"name": "1",
+				"side": "left"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"name": "2",
+				"side": "left"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"name": "3",
+				"side": "left"
+			},
+			{
+				"name": "1 pcb",
+				"side": "right",
+				"label": "1"
+			},
+			{
+				"spacer": true,
+				"side": "right"
+			},
+			{
+				"name": "2 pcb",
+				"side": "right",
+				"label": "2"
+			},
+			{
+				"spacer": true,
+				"side": "right"
+			},
+			{
+				"name": "3 pcb",
+				"side": "right",
+				"label": "3"
+			}
+		],
+		internal: [
+			["1", "1 pcb"],
+			["2", "2 pcb"],
+			["3", "3 pcb"]
+		],
+		size: {
+			"w": 7,
+			"h": 7
+		},
+		electrical: {
+			"model": "terminal-block",
+			"ratings": [{
+				"pins": [
+					"1",
+					"2",
+					"3",
+					"1 pcb",
+					"2 pcb",
+					"3 pcb"
+				],
+				"kind": "terminal",
+				"service": "ac/dc",
+				"volts": 250,
+				"amps": 17,
+				"provenance": "unverified"
+			}]
+		},
+		art: {
+			"w": 70,
+			"h": 70,
+			"pinLabels": "inside",
+			"shapes": [
+				{
+					"type": "rect",
+					"x": 0,
+					"y": 0,
+					"w": 42,
+					"h": 70,
+					"fill": "#2F7FD0",
+					"radius": 3
+				},
+				{
+					"type": "rect",
+					"x": 42,
+					"y": 0,
+					"w": 28,
+					"h": 70,
+					"fill": "#23629F",
+					"radius": 3
+				},
+				{
+					"type": "rect",
+					"x": 23,
+					"y": 14,
+					"w": 12,
+					"h": 12,
+					"fill": "#C9CED6",
+					"radius": 6
+				},
+				{
+					"type": "rect",
+					"x": 28,
+					"y": 16,
+					"w": 2,
+					"h": 8,
+					"fill": "#2B2F36",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 23,
+					"y": 34,
+					"w": 12,
+					"h": 12,
+					"fill": "#C9CED6",
+					"radius": 6
+				},
+				{
+					"type": "rect",
+					"x": 28,
+					"y": 36,
+					"w": 2,
+					"h": 8,
+					"fill": "#2B2F36",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 23,
+					"y": 54,
+					"w": 12,
+					"h": 12,
+					"fill": "#C9CED6",
+					"radius": 6
+				},
+				{
+					"type": "rect",
+					"x": 28,
+					"y": 56,
+					"w": 2,
+					"h": 8,
+					"fill": "#2B2F36",
+					"outline": false
+				}
+			]
+		}
+	},
+	"../modules/terminal-block-mc-381-2.json": {
+		format: "circuitoon-module/1",
+		id: "terminal-block-mc-381-2",
+		version: 1,
+		name: "Terminal block Phoenix Contact MC 1,5 (3.81 mm), 2 positions (plug 1803578, header 1803277)",
+		category: "Mains",
+		source: "https://www.phoenixcontact.com/en-us/products/pcb-plug-mc-15-2-st-381-1803578 https://www.phoenixcontact.com/en-us/products/pcb-header-mc-15-2-g-381-1803277",
+		pins: [
+			{
+				"name": "1",
+				"side": "left"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"name": "2",
+				"side": "left"
+			},
+			{
+				"name": "1 pcb",
+				"side": "right",
+				"label": "1"
+			},
+			{
+				"spacer": true,
+				"side": "right"
+			},
+			{
+				"name": "2 pcb",
+				"side": "right",
+				"label": "2"
+			}
+		],
+		internal: [["1", "1 pcb"], ["2", "2 pcb"]],
+		size: {
+			"w": 7,
+			"h": 5
+		},
+		electrical: {
+			"model": "terminal-block",
+			"ratings": [
+				{
+					"pins": [
+						"1",
+						"2",
+						"1 pcb",
+						"2 pcb"
+					],
+					"kind": "terminal",
+					"service": "ac/dc",
+					"volts": 160,
+					"amps": 8,
+					"provenance": "datasheet",
+					"conditions": "overvoltage category III, pollution degree 3 (IEC 60664-1)"
+				},
+				{
+					"pins": [
+						"1",
+						"2",
+						"1 pcb",
+						"2 pcb"
+					],
+					"kind": "terminal",
+					"service": "ac/dc",
+					"volts": 160,
+					"amps": 8,
+					"provenance": "datasheet",
+					"conditions": "overvoltage category III, pollution degree 2 (IEC 60664-1)"
+				},
+				{
+					"pins": [
+						"1",
+						"2",
+						"1 pcb",
+						"2 pcb"
+					],
+					"kind": "terminal",
+					"service": "ac/dc",
+					"volts": 250,
+					"amps": 8,
+					"provenance": "datasheet",
+					"conditions": "overvoltage category II, pollution degree 2 (IEC 60664-1)"
+				}
+			]
+		},
+		art: {
+			"w": 70,
+			"h": 50,
+			"pinLabels": "inside",
+			"shapes": [
+				{
+					"type": "rect",
+					"x": 0,
+					"y": 0,
+					"w": 42,
+					"h": 50,
+					"fill": "#2F9E6E",
+					"radius": 3
+				},
+				{
+					"type": "rect",
+					"x": 42,
+					"y": 0,
+					"w": 28,
+					"h": 50,
+					"fill": "#1F7A55",
+					"radius": 3
+				},
+				{
+					"type": "rect",
+					"x": 23,
+					"y": 14,
+					"w": 12,
+					"h": 12,
+					"fill": "#C9CED6",
+					"radius": 6
+				},
+				{
+					"type": "rect",
+					"x": 28,
+					"y": 16,
+					"w": 2,
+					"h": 8,
+					"fill": "#2B2F36",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 23,
+					"y": 34,
+					"w": 12,
+					"h": 12,
+					"fill": "#C9CED6",
+					"radius": 6
+				},
+				{
+					"type": "rect",
+					"x": 28,
+					"y": 36,
+					"w": 2,
+					"h": 8,
+					"fill": "#2B2F36",
+					"outline": false
+				}
+			]
+		}
+	},
+	"../modules/terminal-block-mc-381-3.json": {
+		format: "circuitoon-module/1",
+		id: "terminal-block-mc-381-3",
+		version: 1,
+		name: "Terminal block Phoenix Contact MC 1,5 (3.81 mm), 3 positions (plug 1803581, header 1803280)",
+		category: "Mains",
+		source: "https://www.phoenixcontact.com/en-us/products/pcb-plug-mc-15-3-st-381-1803581 https://media.digikey.com/pdf/Data%20Sheets/Phoenix%20Contact%20PDFs/1803280.pdf",
+		pins: [
+			{
+				"name": "1",
+				"side": "left"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"name": "2",
+				"side": "left"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"name": "3",
+				"side": "left"
+			},
+			{
+				"name": "1 pcb",
+				"side": "right",
+				"label": "1"
+			},
+			{
+				"spacer": true,
+				"side": "right"
+			},
+			{
+				"name": "2 pcb",
+				"side": "right",
+				"label": "2"
+			},
+			{
+				"spacer": true,
+				"side": "right"
+			},
+			{
+				"name": "3 pcb",
+				"side": "right",
+				"label": "3"
+			}
+		],
+		internal: [
+			["1", "1 pcb"],
+			["2", "2 pcb"],
+			["3", "3 pcb"]
+		],
+		size: {
+			"w": 7,
+			"h": 7
+		},
+		electrical: {
+			"model": "terminal-block",
+			"ratings": [{
+				"pins": [
+					"1",
+					"2",
+					"3",
+					"1 pcb",
+					"2 pcb",
+					"3 pcb"
+				],
+				"kind": "terminal",
+				"service": "ac/dc",
+				"volts": 160,
+				"amps": 8,
+				"provenance": "datasheet",
+				"conditions": "overvoltage category III, pollution degree 2 (IEC 60664-1)"
+			}, {
+				"pins": [
+					"1",
+					"2",
+					"3",
+					"1 pcb",
+					"2 pcb",
+					"3 pcb"
+				],
+				"kind": "terminal",
+				"service": "ac/dc",
+				"volts": 250,
+				"amps": 8,
+				"provenance": "datasheet",
+				"conditions": "overvoltage category II, pollution degree 2 (IEC 60664-1)"
+			}]
+		},
+		art: {
+			"w": 70,
+			"h": 70,
+			"pinLabels": "inside",
+			"shapes": [
+				{
+					"type": "rect",
+					"x": 0,
+					"y": 0,
+					"w": 42,
+					"h": 70,
+					"fill": "#2F9E6E",
+					"radius": 3
+				},
+				{
+					"type": "rect",
+					"x": 42,
+					"y": 0,
+					"w": 28,
+					"h": 70,
+					"fill": "#1F7A55",
+					"radius": 3
+				},
+				{
+					"type": "rect",
+					"x": 23,
+					"y": 14,
+					"w": 12,
+					"h": 12,
+					"fill": "#C9CED6",
+					"radius": 6
+				},
+				{
+					"type": "rect",
+					"x": 28,
+					"y": 16,
+					"w": 2,
+					"h": 8,
+					"fill": "#2B2F36",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 23,
+					"y": 34,
+					"w": 12,
+					"h": 12,
+					"fill": "#C9CED6",
+					"radius": 6
+				},
+				{
+					"type": "rect",
+					"x": 28,
+					"y": 36,
+					"w": 2,
+					"h": 8,
+					"fill": "#2B2F36",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 23,
+					"y": 54,
+					"w": 12,
+					"h": 12,
+					"fill": "#C9CED6",
+					"radius": 6
+				},
+				{
+					"type": "rect",
+					"x": 28,
+					"y": 56,
+					"w": 2,
+					"h": 8,
+					"fill": "#2B2F36",
+					"outline": false
+				}
+			]
+		}
+	},
+	"../modules/terminal-block-mc-381-4.json": {
+		format: "circuitoon-module/1",
+		id: "terminal-block-mc-381-4",
+		version: 1,
+		name: "Terminal block Phoenix Contact MC 1,5 (3.81 mm), 4 positions (plug 1803594, header 1803293)",
+		category: "Mains",
+		source: "https://media.digikey.com/pdf/Data%20Sheets/Phoenix%20Contact%20PDFs/1803594.pdf https://media.digikey.com/pdf/Data%20Sheets/Phoenix%20Contact%20PDFs/1803293.pdf https://www.phoenixcontact.com/en-us/products/pcb-plug-mc-15-2-st-381-1803578",
+		pins: [
+			{
+				"name": "1",
+				"side": "left"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"name": "2",
+				"side": "left"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"name": "3",
+				"side": "left"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"name": "4",
+				"side": "left"
+			},
+			{
+				"name": "1 pcb",
+				"side": "right",
+				"label": "1"
+			},
+			{
+				"spacer": true,
+				"side": "right"
+			},
+			{
+				"name": "2 pcb",
+				"side": "right",
+				"label": "2"
+			},
+			{
+				"spacer": true,
+				"side": "right"
+			},
+			{
+				"name": "3 pcb",
+				"side": "right",
+				"label": "3"
+			},
+			{
+				"spacer": true,
+				"side": "right"
+			},
+			{
+				"name": "4 pcb",
+				"side": "right",
+				"label": "4"
+			}
+		],
+		internal: [
+			["1", "1 pcb"],
+			["2", "2 pcb"],
+			["3", "3 pcb"],
+			["4", "4 pcb"]
+		],
+		size: {
+			"w": 7,
+			"h": 9
+		},
+		electrical: {
+			"model": "terminal-block",
+			"ratings": [{
+				"pins": [
+					"1",
+					"2",
+					"3",
+					"4",
+					"1 pcb",
+					"2 pcb",
+					"3 pcb",
+					"4 pcb"
+				],
+				"kind": "terminal",
+				"service": "ac/dc",
+				"volts": 160,
+				"amps": 8,
+				"provenance": "datasheet",
+				"conditions": "overvoltage category III, pollution degree 2 (IEC 60664-1)"
+			}, {
+				"pins": [
+					"1",
+					"2",
+					"3",
+					"4",
+					"1 pcb",
+					"2 pcb",
+					"3 pcb",
+					"4 pcb"
+				],
+				"kind": "terminal",
+				"service": "ac/dc",
+				"volts": 250,
+				"amps": 8,
+				"provenance": "datasheet",
+				"conditions": "overvoltage category II, pollution degree 2 (IEC 60664-1)"
+			}]
+		},
+		art: {
+			"w": 70,
+			"h": 90,
+			"pinLabels": "inside",
+			"shapes": [
+				{
+					"type": "rect",
+					"x": 0,
+					"y": 0,
+					"w": 42,
+					"h": 90,
+					"fill": "#2F9E6E",
+					"radius": 3
+				},
+				{
+					"type": "rect",
+					"x": 42,
+					"y": 0,
+					"w": 28,
+					"h": 90,
+					"fill": "#1F7A55",
+					"radius": 3
+				},
+				{
+					"type": "rect",
+					"x": 23,
+					"y": 14,
+					"w": 12,
+					"h": 12,
+					"fill": "#C9CED6",
+					"radius": 6
+				},
+				{
+					"type": "rect",
+					"x": 28,
+					"y": 16,
+					"w": 2,
+					"h": 8,
+					"fill": "#2B2F36",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 23,
+					"y": 34,
+					"w": 12,
+					"h": 12,
+					"fill": "#C9CED6",
+					"radius": 6
+				},
+				{
+					"type": "rect",
+					"x": 28,
+					"y": 36,
+					"w": 2,
+					"h": 8,
+					"fill": "#2B2F36",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 23,
+					"y": 54,
+					"w": 12,
+					"h": 12,
+					"fill": "#C9CED6",
+					"radius": 6
+				},
+				{
+					"type": "rect",
+					"x": 28,
+					"y": 56,
+					"w": 2,
+					"h": 8,
+					"fill": "#2B2F36",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 23,
+					"y": 74,
+					"w": 12,
+					"h": 12,
+					"fill": "#C9CED6",
+					"radius": 6
+				},
+				{
+					"type": "rect",
+					"x": 28,
+					"y": 76,
+					"w": 2,
+					"h": 8,
+					"fill": "#2B2F36",
+					"outline": false
+				}
+			]
+		}
+	},
+	"../modules/terminal-block-mc-381-5.json": {
+		format: "circuitoon-module/1",
+		id: "terminal-block-mc-381-5",
+		version: 1,
+		name: "Terminal block Phoenix Contact MC 1,5 (3.81 mm), 5 positions (plug 1803604, header 1803303)",
+		category: "Mains",
+		source: "https://media.digikey.com/pdf/Data%20Sheets/Phoenix%20Contact%20PDFs/1803604.pdf https://media.digikey.com/pdf/Data%20Sheets/Phoenix%20Contact%20PDFs/1803303.pdf https://www.phoenixcontact.com/en-us/products/pcb-plug-mc-15-2-st-381-1803578",
+		pins: [
+			{
+				"name": "1",
+				"side": "left"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"name": "2",
+				"side": "left"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"name": "3",
+				"side": "left"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"name": "4",
+				"side": "left"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"name": "5",
+				"side": "left"
+			},
+			{
+				"name": "1 pcb",
+				"side": "right",
+				"label": "1"
+			},
+			{
+				"spacer": true,
+				"side": "right"
+			},
+			{
+				"name": "2 pcb",
+				"side": "right",
+				"label": "2"
+			},
+			{
+				"spacer": true,
+				"side": "right"
+			},
+			{
+				"name": "3 pcb",
+				"side": "right",
+				"label": "3"
+			},
+			{
+				"spacer": true,
+				"side": "right"
+			},
+			{
+				"name": "4 pcb",
+				"side": "right",
+				"label": "4"
+			},
+			{
+				"spacer": true,
+				"side": "right"
+			},
+			{
+				"name": "5 pcb",
+				"side": "right",
+				"label": "5"
+			}
+		],
+		internal: [
+			["1", "1 pcb"],
+			["2", "2 pcb"],
+			["3", "3 pcb"],
+			["4", "4 pcb"],
+			["5", "5 pcb"]
+		],
+		size: {
+			"w": 7,
+			"h": 11
+		},
+		electrical: {
+			"model": "terminal-block",
+			"ratings": [{
+				"pins": [
+					"1",
+					"2",
+					"3",
+					"4",
+					"5",
+					"1 pcb",
+					"2 pcb",
+					"3 pcb",
+					"4 pcb",
+					"5 pcb"
+				],
+				"kind": "terminal",
+				"service": "ac/dc",
+				"volts": 160,
+				"amps": 8,
+				"provenance": "datasheet",
+				"conditions": "overvoltage category III, pollution degree 2 (IEC 60664-1)"
+			}, {
+				"pins": [
+					"1",
+					"2",
+					"3",
+					"4",
+					"5",
+					"1 pcb",
+					"2 pcb",
+					"3 pcb",
+					"4 pcb",
+					"5 pcb"
+				],
+				"kind": "terminal",
+				"service": "ac/dc",
+				"volts": 250,
+				"amps": 8,
+				"provenance": "datasheet",
+				"conditions": "overvoltage category II, pollution degree 2 (IEC 60664-1)"
+			}]
+		},
+		art: {
+			"w": 70,
+			"h": 110,
+			"pinLabels": "inside",
+			"shapes": [
+				{
+					"type": "rect",
+					"x": 0,
+					"y": 0,
+					"w": 42,
+					"h": 110,
+					"fill": "#2F9E6E",
+					"radius": 3
+				},
+				{
+					"type": "rect",
+					"x": 42,
+					"y": 0,
+					"w": 28,
+					"h": 110,
+					"fill": "#1F7A55",
+					"radius": 3
+				},
+				{
+					"type": "rect",
+					"x": 23,
+					"y": 14,
+					"w": 12,
+					"h": 12,
+					"fill": "#C9CED6",
+					"radius": 6
+				},
+				{
+					"type": "rect",
+					"x": 28,
+					"y": 16,
+					"w": 2,
+					"h": 8,
+					"fill": "#2B2F36",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 23,
+					"y": 34,
+					"w": 12,
+					"h": 12,
+					"fill": "#C9CED6",
+					"radius": 6
+				},
+				{
+					"type": "rect",
+					"x": 28,
+					"y": 36,
+					"w": 2,
+					"h": 8,
+					"fill": "#2B2F36",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 23,
+					"y": 54,
+					"w": 12,
+					"h": 12,
+					"fill": "#C9CED6",
+					"radius": 6
+				},
+				{
+					"type": "rect",
+					"x": 28,
+					"y": 56,
+					"w": 2,
+					"h": 8,
+					"fill": "#2B2F36",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 23,
+					"y": 74,
+					"w": 12,
+					"h": 12,
+					"fill": "#C9CED6",
+					"radius": 6
+				},
+				{
+					"type": "rect",
+					"x": 28,
+					"y": 76,
+					"w": 2,
+					"h": 8,
+					"fill": "#2B2F36",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 23,
+					"y": 94,
+					"w": 12,
+					"h": 12,
+					"fill": "#C9CED6",
+					"radius": 6
+				},
+				{
+					"type": "rect",
+					"x": 28,
+					"y": 96,
+					"w": 2,
+					"h": 8,
+					"fill": "#2B2F36",
+					"outline": false
+				}
+			]
+		}
+	},
+	"../modules/terminal-block-mc-381-6.json": {
+		format: "circuitoon-module/1",
+		id: "terminal-block-mc-381-6",
+		version: 1,
+		name: "Terminal block Phoenix Contact MC 1,5 (3.81 mm), 6 positions (plug 1803617, header 1803316)",
+		category: "Mains",
+		source: "https://media.digikey.com/pdf/Data%20Sheets/Phoenix%20Contact%20PDFs/1803617.pdf https://media.digikey.com/pdf/Data%20Sheets/Phoenix%20Contact%20PDFs/1803316.pdf https://www.phoenixcontact.com/en-us/products/pcb-plug-mc-15-2-st-381-1803578",
+		pins: [
+			{
+				"name": "1",
+				"side": "left"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"name": "2",
+				"side": "left"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"name": "3",
+				"side": "left"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"name": "4",
+				"side": "left"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"name": "5",
+				"side": "left"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"name": "6",
+				"side": "left"
+			},
+			{
+				"name": "1 pcb",
+				"side": "right",
+				"label": "1"
+			},
+			{
+				"spacer": true,
+				"side": "right"
+			},
+			{
+				"name": "2 pcb",
+				"side": "right",
+				"label": "2"
+			},
+			{
+				"spacer": true,
+				"side": "right"
+			},
+			{
+				"name": "3 pcb",
+				"side": "right",
+				"label": "3"
+			},
+			{
+				"spacer": true,
+				"side": "right"
+			},
+			{
+				"name": "4 pcb",
+				"side": "right",
+				"label": "4"
+			},
+			{
+				"spacer": true,
+				"side": "right"
+			},
+			{
+				"name": "5 pcb",
+				"side": "right",
+				"label": "5"
+			},
+			{
+				"spacer": true,
+				"side": "right"
+			},
+			{
+				"name": "6 pcb",
+				"side": "right",
+				"label": "6"
+			}
+		],
+		internal: [
+			["1", "1 pcb"],
+			["2", "2 pcb"],
+			["3", "3 pcb"],
+			["4", "4 pcb"],
+			["5", "5 pcb"],
+			["6", "6 pcb"]
+		],
+		size: {
+			"w": 7,
+			"h": 13
+		},
+		electrical: {
+			"model": "terminal-block",
+			"ratings": [{
+				"pins": [
+					"1",
+					"2",
+					"3",
+					"4",
+					"5",
+					"6",
+					"1 pcb",
+					"2 pcb",
+					"3 pcb",
+					"4 pcb",
+					"5 pcb",
+					"6 pcb"
+				],
+				"kind": "terminal",
+				"service": "ac/dc",
+				"volts": 160,
+				"amps": 8,
+				"provenance": "datasheet",
+				"conditions": "overvoltage category III, pollution degree 2 (IEC 60664-1)"
+			}, {
+				"pins": [
+					"1",
+					"2",
+					"3",
+					"4",
+					"5",
+					"6",
+					"1 pcb",
+					"2 pcb",
+					"3 pcb",
+					"4 pcb",
+					"5 pcb",
+					"6 pcb"
+				],
+				"kind": "terminal",
+				"service": "ac/dc",
+				"volts": 250,
+				"amps": 8,
+				"provenance": "datasheet",
+				"conditions": "overvoltage category II, pollution degree 2 (IEC 60664-1)"
+			}]
+		},
+		art: {
+			"w": 70,
+			"h": 130,
+			"pinLabels": "inside",
+			"shapes": [
+				{
+					"type": "rect",
+					"x": 0,
+					"y": 0,
+					"w": 42,
+					"h": 130,
+					"fill": "#2F9E6E",
+					"radius": 3
+				},
+				{
+					"type": "rect",
+					"x": 42,
+					"y": 0,
+					"w": 28,
+					"h": 130,
+					"fill": "#1F7A55",
+					"radius": 3
+				},
+				{
+					"type": "rect",
+					"x": 23,
+					"y": 14,
+					"w": 12,
+					"h": 12,
+					"fill": "#C9CED6",
+					"radius": 6
+				},
+				{
+					"type": "rect",
+					"x": 28,
+					"y": 16,
+					"w": 2,
+					"h": 8,
+					"fill": "#2B2F36",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 23,
+					"y": 34,
+					"w": 12,
+					"h": 12,
+					"fill": "#C9CED6",
+					"radius": 6
+				},
+				{
+					"type": "rect",
+					"x": 28,
+					"y": 36,
+					"w": 2,
+					"h": 8,
+					"fill": "#2B2F36",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 23,
+					"y": 54,
+					"w": 12,
+					"h": 12,
+					"fill": "#C9CED6",
+					"radius": 6
+				},
+				{
+					"type": "rect",
+					"x": 28,
+					"y": 56,
+					"w": 2,
+					"h": 8,
+					"fill": "#2B2F36",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 23,
+					"y": 74,
+					"w": 12,
+					"h": 12,
+					"fill": "#C9CED6",
+					"radius": 6
+				},
+				{
+					"type": "rect",
+					"x": 28,
+					"y": 76,
+					"w": 2,
+					"h": 8,
+					"fill": "#2B2F36",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 23,
+					"y": 94,
+					"w": 12,
+					"h": 12,
+					"fill": "#C9CED6",
+					"radius": 6
+				},
+				{
+					"type": "rect",
+					"x": 28,
+					"y": 96,
+					"w": 2,
+					"h": 8,
+					"fill": "#2B2F36",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 23,
+					"y": 114,
+					"w": 12,
+					"h": 12,
+					"fill": "#C9CED6",
+					"radius": 6
+				},
+				{
+					"type": "rect",
+					"x": 28,
+					"y": 116,
+					"w": 2,
+					"h": 8,
+					"fill": "#2B2F36",
+					"outline": false
+				}
+			]
+		}
+	},
+	"../modules/terminal-block-mstb-508-2.json": {
+		format: "circuitoon-module/1",
+		id: "terminal-block-mstb-508-2",
+		version: 1,
+		name: "Terminal block Phoenix Contact MSTB 2,5 (5.08 mm), 2 positions (plug 1757019, header 1757242)",
+		category: "Mains",
+		source: "https://www.phoenixcontact.com/en-us/products/pcb-plug-mstb-25-2-st-508-1757019 https://www.phoenixcontact.com/en-us/products/pcb-header-mstba-25-2-g-508-1757242 https://media.digikey.com/pdf/Data%20Sheets/Phoenix%20Contact%20PDFs/1757242.pdf https://www.digikey.com/en/products/detail/phoenix-contact/1757242/260474",
+		pins: [
+			{
+				"name": "1",
+				"side": "left"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"name": "2",
+				"side": "left"
+			},
+			{
+				"name": "1 pcb",
+				"side": "right",
+				"label": "1"
+			},
+			{
+				"spacer": true,
+				"side": "right"
+			},
+			{
+				"name": "2 pcb",
+				"side": "right",
+				"label": "2"
+			}
+		],
+		internal: [["1", "1 pcb"], ["2", "2 pcb"]],
+		size: {
+			"w": 7,
+			"h": 5
+		},
+		electrical: {
+			"model": "terminal-block",
+			"ratings": [
+				{
+					"pins": [
+						"1",
+						"2",
+						"1 pcb",
+						"2 pcb"
+					],
+					"kind": "terminal",
+					"service": "ac/dc",
+					"volts": 250,
+					"amps": 12,
+					"provenance": "datasheet",
+					"conditions": "overvoltage category III, pollution degree 3 (IEC 60664-1)"
+				},
+				{
+					"pins": [
+						"1",
+						"2",
+						"1 pcb",
+						"2 pcb"
+					],
+					"kind": "terminal",
+					"service": "ac/dc",
+					"volts": 320,
+					"amps": 12,
+					"provenance": "datasheet",
+					"conditions": "overvoltage category III, pollution degree 2 (IEC 60664-1)"
+				},
+				{
+					"pins": [
+						"1",
+						"2",
+						"1 pcb",
+						"2 pcb"
+					],
+					"kind": "terminal",
+					"service": "ac/dc",
+					"volts": 400,
+					"amps": 12,
+					"provenance": "datasheet",
+					"conditions": "overvoltage category II, pollution degree 2 (IEC 60664-1)"
+				}
+			]
+		},
+		art: {
+			"w": 70,
+			"h": 50,
+			"pinLabels": "inside",
+			"shapes": [
+				{
+					"type": "rect",
+					"x": 0,
+					"y": 0,
+					"w": 42,
+					"h": 50,
+					"fill": "#2F9E6E",
+					"radius": 3
+				},
+				{
+					"type": "rect",
+					"x": 42,
+					"y": 0,
+					"w": 28,
+					"h": 50,
+					"fill": "#1F7A55",
+					"radius": 3
+				},
+				{
+					"type": "rect",
+					"x": 23,
+					"y": 14,
+					"w": 12,
+					"h": 12,
+					"fill": "#C9CED6",
+					"radius": 6
+				},
+				{
+					"type": "rect",
+					"x": 28,
+					"y": 16,
+					"w": 2,
+					"h": 8,
+					"fill": "#2B2F36",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 23,
+					"y": 34,
+					"w": 12,
+					"h": 12,
+					"fill": "#C9CED6",
+					"radius": 6
+				},
+				{
+					"type": "rect",
+					"x": 28,
+					"y": 36,
+					"w": 2,
+					"h": 8,
+					"fill": "#2B2F36",
+					"outline": false
+				}
+			]
+		}
+	},
+	"../modules/terminal-block-mstb-508-3.json": {
+		format: "circuitoon-module/1",
+		id: "terminal-block-mstb-508-3",
+		version: 1,
+		name: "Terminal block Phoenix Contact MSTB 2,5 (5.08 mm), 3 positions (plug 1757022, header 1757255)",
+		category: "Mains",
+		source: "https://www.phoenixcontact.com/en-us/products/pcb-plug-mstb-25-3-st-508-1757022 https://www.phoenixcontact.com/en-us/products/pcb-header-mstba-25-3-g-508-1757255 https://media.digikey.com/pdf/Data%20Sheets/Phoenix%20Contact%20PDFs/1757255.pdf",
+		pins: [
+			{
+				"name": "1",
+				"side": "left"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"name": "2",
+				"side": "left"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"name": "3",
+				"side": "left"
+			},
+			{
+				"name": "1 pcb",
+				"side": "right",
+				"label": "1"
+			},
+			{
+				"spacer": true,
+				"side": "right"
+			},
+			{
+				"name": "2 pcb",
+				"side": "right",
+				"label": "2"
+			},
+			{
+				"spacer": true,
+				"side": "right"
+			},
+			{
+				"name": "3 pcb",
+				"side": "right",
+				"label": "3"
+			}
+		],
+		internal: [
+			["1", "1 pcb"],
+			["2", "2 pcb"],
+			["3", "3 pcb"]
+		],
+		size: {
+			"w": 7,
+			"h": 7
+		},
+		electrical: {
+			"model": "terminal-block",
+			"ratings": [
+				{
+					"pins": [
+						"1",
+						"2",
+						"3",
+						"1 pcb",
+						"2 pcb",
+						"3 pcb"
+					],
+					"kind": "terminal",
+					"service": "ac/dc",
+					"volts": 250,
+					"amps": 12,
+					"provenance": "datasheet",
+					"conditions": "overvoltage category III, pollution degree 3 (IEC 60664-1)"
+				},
+				{
+					"pins": [
+						"1",
+						"2",
+						"3",
+						"1 pcb",
+						"2 pcb",
+						"3 pcb"
+					],
+					"kind": "terminal",
+					"service": "ac/dc",
+					"volts": 320,
+					"amps": 12,
+					"provenance": "datasheet",
+					"conditions": "overvoltage category III, pollution degree 2 (IEC 60664-1)"
+				},
+				{
+					"pins": [
+						"1",
+						"2",
+						"3",
+						"1 pcb",
+						"2 pcb",
+						"3 pcb"
+					],
+					"kind": "terminal",
+					"service": "ac/dc",
+					"volts": 400,
+					"amps": 12,
+					"provenance": "datasheet",
+					"conditions": "overvoltage category II, pollution degree 2 (IEC 60664-1)"
+				}
+			]
+		},
+		art: {
+			"w": 70,
+			"h": 70,
+			"pinLabels": "inside",
+			"shapes": [
+				{
+					"type": "rect",
+					"x": 0,
+					"y": 0,
+					"w": 42,
+					"h": 70,
+					"fill": "#2F9E6E",
+					"radius": 3
+				},
+				{
+					"type": "rect",
+					"x": 42,
+					"y": 0,
+					"w": 28,
+					"h": 70,
+					"fill": "#1F7A55",
+					"radius": 3
+				},
+				{
+					"type": "rect",
+					"x": 23,
+					"y": 14,
+					"w": 12,
+					"h": 12,
+					"fill": "#C9CED6",
+					"radius": 6
+				},
+				{
+					"type": "rect",
+					"x": 28,
+					"y": 16,
+					"w": 2,
+					"h": 8,
+					"fill": "#2B2F36",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 23,
+					"y": 34,
+					"w": 12,
+					"h": 12,
+					"fill": "#C9CED6",
+					"radius": 6
+				},
+				{
+					"type": "rect",
+					"x": 28,
+					"y": 36,
+					"w": 2,
+					"h": 8,
+					"fill": "#2B2F36",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 23,
+					"y": 54,
+					"w": 12,
+					"h": 12,
+					"fill": "#C9CED6",
+					"radius": 6
+				},
+				{
+					"type": "rect",
+					"x": 28,
+					"y": 56,
+					"w": 2,
+					"h": 8,
+					"fill": "#2B2F36",
+					"outline": false
+				}
+			]
+		}
+	},
+	"../modules/terminal-block-mstb-508-4.json": {
+		format: "circuitoon-module/1",
+		id: "terminal-block-mstb-508-4",
+		version: 1,
+		name: "Terminal block Phoenix Contact MSTB 2,5 (5.08 mm), 4 positions (plug 1757035, header 1757268)",
+		category: "Mains",
+		source: "https://media.digikey.com/pdf/Data%20Sheets/Phoenix%20Contact%20PDFs/1757035.pdf https://media.digikey.com/pdf/Data%20Sheets/Phoenix%20Contact%20PDFs/1757268.pdf https://www.phoenixcontact.com/en-us/products/pcb-plug-mstb-25-2-st-508-1757019",
+		pins: [
+			{
+				"name": "1",
+				"side": "left"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"name": "2",
+				"side": "left"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"name": "3",
+				"side": "left"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"name": "4",
+				"side": "left"
+			},
+			{
+				"name": "1 pcb",
+				"side": "right",
+				"label": "1"
+			},
+			{
+				"spacer": true,
+				"side": "right"
+			},
+			{
+				"name": "2 pcb",
+				"side": "right",
+				"label": "2"
+			},
+			{
+				"spacer": true,
+				"side": "right"
+			},
+			{
+				"name": "3 pcb",
+				"side": "right",
+				"label": "3"
+			},
+			{
+				"spacer": true,
+				"side": "right"
+			},
+			{
+				"name": "4 pcb",
+				"side": "right",
+				"label": "4"
+			}
+		],
+		internal: [
+			["1", "1 pcb"],
+			["2", "2 pcb"],
+			["3", "3 pcb"],
+			["4", "4 pcb"]
+		],
+		size: {
+			"w": 7,
+			"h": 9
+		},
+		electrical: {
+			"model": "terminal-block",
+			"ratings": [{
+				"pins": [
+					"1",
+					"2",
+					"3",
+					"4",
+					"1 pcb",
+					"2 pcb",
+					"3 pcb",
+					"4 pcb"
+				],
+				"kind": "terminal",
+				"service": "ac/dc",
+				"volts": 320,
+				"amps": 12,
+				"provenance": "datasheet",
+				"conditions": "overvoltage category III, pollution degree 2 (IEC 60664-1)"
+			}, {
+				"pins": [
+					"1",
+					"2",
+					"3",
+					"4",
+					"1 pcb",
+					"2 pcb",
+					"3 pcb",
+					"4 pcb"
+				],
+				"kind": "terminal",
+				"service": "ac/dc",
+				"volts": 400,
+				"amps": 12,
+				"provenance": "datasheet",
+				"conditions": "overvoltage category II, pollution degree 2 (IEC 60664-1)"
+			}]
+		},
+		art: {
+			"w": 70,
+			"h": 90,
+			"pinLabels": "inside",
+			"shapes": [
+				{
+					"type": "rect",
+					"x": 0,
+					"y": 0,
+					"w": 42,
+					"h": 90,
+					"fill": "#2F9E6E",
+					"radius": 3
+				},
+				{
+					"type": "rect",
+					"x": 42,
+					"y": 0,
+					"w": 28,
+					"h": 90,
+					"fill": "#1F7A55",
+					"radius": 3
+				},
+				{
+					"type": "rect",
+					"x": 23,
+					"y": 14,
+					"w": 12,
+					"h": 12,
+					"fill": "#C9CED6",
+					"radius": 6
+				},
+				{
+					"type": "rect",
+					"x": 28,
+					"y": 16,
+					"w": 2,
+					"h": 8,
+					"fill": "#2B2F36",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 23,
+					"y": 34,
+					"w": 12,
+					"h": 12,
+					"fill": "#C9CED6",
+					"radius": 6
+				},
+				{
+					"type": "rect",
+					"x": 28,
+					"y": 36,
+					"w": 2,
+					"h": 8,
+					"fill": "#2B2F36",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 23,
+					"y": 54,
+					"w": 12,
+					"h": 12,
+					"fill": "#C9CED6",
+					"radius": 6
+				},
+				{
+					"type": "rect",
+					"x": 28,
+					"y": 56,
+					"w": 2,
+					"h": 8,
+					"fill": "#2B2F36",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 23,
+					"y": 74,
+					"w": 12,
+					"h": 12,
+					"fill": "#C9CED6",
+					"radius": 6
+				},
+				{
+					"type": "rect",
+					"x": 28,
+					"y": 76,
+					"w": 2,
+					"h": 8,
+					"fill": "#2B2F36",
+					"outline": false
+				}
+			]
+		}
+	},
+	"../modules/terminal-block-mstb-508-5.json": {
+		format: "circuitoon-module/1",
+		id: "terminal-block-mstb-508-5",
+		version: 1,
+		name: "Terminal block Phoenix Contact MSTB 2,5 (5.08 mm), 5 positions (plug 1757048, header 1757271)",
+		category: "Mains",
+		source: "https://media.digikey.com/pdf/Data%20Sheets/Phoenix%20Contact%20PDFs/1757048.pdf https://media.digikey.com/pdf/Data%20Sheets/Phoenix%20Contact%20PDFs/1757271.pdf https://www.phoenixcontact.com/en-us/products/pcb-plug-mstb-25-2-st-508-1757019",
+		pins: [
+			{
+				"name": "1",
+				"side": "left"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"name": "2",
+				"side": "left"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"name": "3",
+				"side": "left"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"name": "4",
+				"side": "left"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"name": "5",
+				"side": "left"
+			},
+			{
+				"name": "1 pcb",
+				"side": "right",
+				"label": "1"
+			},
+			{
+				"spacer": true,
+				"side": "right"
+			},
+			{
+				"name": "2 pcb",
+				"side": "right",
+				"label": "2"
+			},
+			{
+				"spacer": true,
+				"side": "right"
+			},
+			{
+				"name": "3 pcb",
+				"side": "right",
+				"label": "3"
+			},
+			{
+				"spacer": true,
+				"side": "right"
+			},
+			{
+				"name": "4 pcb",
+				"side": "right",
+				"label": "4"
+			},
+			{
+				"spacer": true,
+				"side": "right"
+			},
+			{
+				"name": "5 pcb",
+				"side": "right",
+				"label": "5"
+			}
+		],
+		internal: [
+			["1", "1 pcb"],
+			["2", "2 pcb"],
+			["3", "3 pcb"],
+			["4", "4 pcb"],
+			["5", "5 pcb"]
+		],
+		size: {
+			"w": 7,
+			"h": 11
+		},
+		electrical: {
+			"model": "terminal-block",
+			"ratings": [{
+				"pins": [
+					"1",
+					"2",
+					"3",
+					"4",
+					"5",
+					"1 pcb",
+					"2 pcb",
+					"3 pcb",
+					"4 pcb",
+					"5 pcb"
+				],
+				"kind": "terminal",
+				"service": "ac/dc",
+				"volts": 320,
+				"amps": 12,
+				"provenance": "datasheet",
+				"conditions": "overvoltage category III, pollution degree 2 (IEC 60664-1)"
+			}, {
+				"pins": [
+					"1",
+					"2",
+					"3",
+					"4",
+					"5",
+					"1 pcb",
+					"2 pcb",
+					"3 pcb",
+					"4 pcb",
+					"5 pcb"
+				],
+				"kind": "terminal",
+				"service": "ac/dc",
+				"volts": 400,
+				"amps": 12,
+				"provenance": "datasheet",
+				"conditions": "overvoltage category II, pollution degree 2 (IEC 60664-1)"
+			}]
+		},
+		art: {
+			"w": 70,
+			"h": 110,
+			"pinLabels": "inside",
+			"shapes": [
+				{
+					"type": "rect",
+					"x": 0,
+					"y": 0,
+					"w": 42,
+					"h": 110,
+					"fill": "#2F9E6E",
+					"radius": 3
+				},
+				{
+					"type": "rect",
+					"x": 42,
+					"y": 0,
+					"w": 28,
+					"h": 110,
+					"fill": "#1F7A55",
+					"radius": 3
+				},
+				{
+					"type": "rect",
+					"x": 23,
+					"y": 14,
+					"w": 12,
+					"h": 12,
+					"fill": "#C9CED6",
+					"radius": 6
+				},
+				{
+					"type": "rect",
+					"x": 28,
+					"y": 16,
+					"w": 2,
+					"h": 8,
+					"fill": "#2B2F36",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 23,
+					"y": 34,
+					"w": 12,
+					"h": 12,
+					"fill": "#C9CED6",
+					"radius": 6
+				},
+				{
+					"type": "rect",
+					"x": 28,
+					"y": 36,
+					"w": 2,
+					"h": 8,
+					"fill": "#2B2F36",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 23,
+					"y": 54,
+					"w": 12,
+					"h": 12,
+					"fill": "#C9CED6",
+					"radius": 6
+				},
+				{
+					"type": "rect",
+					"x": 28,
+					"y": 56,
+					"w": 2,
+					"h": 8,
+					"fill": "#2B2F36",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 23,
+					"y": 74,
+					"w": 12,
+					"h": 12,
+					"fill": "#C9CED6",
+					"radius": 6
+				},
+				{
+					"type": "rect",
+					"x": 28,
+					"y": 76,
+					"w": 2,
+					"h": 8,
+					"fill": "#2B2F36",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 23,
+					"y": 94,
+					"w": 12,
+					"h": 12,
+					"fill": "#C9CED6",
+					"radius": 6
+				},
+				{
+					"type": "rect",
+					"x": 28,
+					"y": 96,
+					"w": 2,
+					"h": 8,
+					"fill": "#2B2F36",
+					"outline": false
+				}
+			]
+		}
+	},
+	"../modules/terminal-block-mstb-508-6.json": {
+		format: "circuitoon-module/1",
+		id: "terminal-block-mstb-508-6",
+		version: 1,
+		name: "Terminal block Phoenix Contact MSTB 2,5 (5.08 mm), 6 positions (plug 1757051, header 1757284)",
+		category: "Mains",
+		source: "https://media.digikey.com/pdf/Data%20Sheets/Phoenix%20Contact%20PDFs/1757051.pdf https://media.digikey.com/pdf/Data%20Sheets/Phoenix%20Contact%20PDFs/1757284.pdf https://www.phoenixcontact.com/en-us/products/pcb-plug-mstb-25-2-st-508-1757019",
+		pins: [
+			{
+				"name": "1",
+				"side": "left"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"name": "2",
+				"side": "left"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"name": "3",
+				"side": "left"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"name": "4",
+				"side": "left"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"name": "5",
+				"side": "left"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"name": "6",
+				"side": "left"
+			},
+			{
+				"name": "1 pcb",
+				"side": "right",
+				"label": "1"
+			},
+			{
+				"spacer": true,
+				"side": "right"
+			},
+			{
+				"name": "2 pcb",
+				"side": "right",
+				"label": "2"
+			},
+			{
+				"spacer": true,
+				"side": "right"
+			},
+			{
+				"name": "3 pcb",
+				"side": "right",
+				"label": "3"
+			},
+			{
+				"spacer": true,
+				"side": "right"
+			},
+			{
+				"name": "4 pcb",
+				"side": "right",
+				"label": "4"
+			},
+			{
+				"spacer": true,
+				"side": "right"
+			},
+			{
+				"name": "5 pcb",
+				"side": "right",
+				"label": "5"
+			},
+			{
+				"spacer": true,
+				"side": "right"
+			},
+			{
+				"name": "6 pcb",
+				"side": "right",
+				"label": "6"
+			}
+		],
+		internal: [
+			["1", "1 pcb"],
+			["2", "2 pcb"],
+			["3", "3 pcb"],
+			["4", "4 pcb"],
+			["5", "5 pcb"],
+			["6", "6 pcb"]
+		],
+		size: {
+			"w": 7,
+			"h": 13
+		},
+		electrical: {
+			"model": "terminal-block",
+			"ratings": [{
+				"pins": [
+					"1",
+					"2",
+					"3",
+					"4",
+					"5",
+					"6",
+					"1 pcb",
+					"2 pcb",
+					"3 pcb",
+					"4 pcb",
+					"5 pcb",
+					"6 pcb"
+				],
+				"kind": "terminal",
+				"service": "ac/dc",
+				"volts": 320,
+				"amps": 12,
+				"provenance": "datasheet",
+				"conditions": "overvoltage category III, pollution degree 2 (IEC 60664-1)"
+			}, {
+				"pins": [
+					"1",
+					"2",
+					"3",
+					"4",
+					"5",
+					"6",
+					"1 pcb",
+					"2 pcb",
+					"3 pcb",
+					"4 pcb",
+					"5 pcb",
+					"6 pcb"
+				],
+				"kind": "terminal",
+				"service": "ac/dc",
+				"volts": 400,
+				"amps": 12,
+				"provenance": "datasheet",
+				"conditions": "overvoltage category II, pollution degree 2 (IEC 60664-1)"
+			}]
+		},
+		art: {
+			"w": 70,
+			"h": 130,
+			"pinLabels": "inside",
+			"shapes": [
+				{
+					"type": "rect",
+					"x": 0,
+					"y": 0,
+					"w": 42,
+					"h": 130,
+					"fill": "#2F9E6E",
+					"radius": 3
+				},
+				{
+					"type": "rect",
+					"x": 42,
+					"y": 0,
+					"w": 28,
+					"h": 130,
+					"fill": "#1F7A55",
+					"radius": 3
+				},
+				{
+					"type": "rect",
+					"x": 23,
+					"y": 14,
+					"w": 12,
+					"h": 12,
+					"fill": "#C9CED6",
+					"radius": 6
+				},
+				{
+					"type": "rect",
+					"x": 28,
+					"y": 16,
+					"w": 2,
+					"h": 8,
+					"fill": "#2B2F36",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 23,
+					"y": 34,
+					"w": 12,
+					"h": 12,
+					"fill": "#C9CED6",
+					"radius": 6
+				},
+				{
+					"type": "rect",
+					"x": 28,
+					"y": 36,
+					"w": 2,
+					"h": 8,
+					"fill": "#2B2F36",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 23,
+					"y": 54,
+					"w": 12,
+					"h": 12,
+					"fill": "#C9CED6",
+					"radius": 6
+				},
+				{
+					"type": "rect",
+					"x": 28,
+					"y": 56,
+					"w": 2,
+					"h": 8,
+					"fill": "#2B2F36",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 23,
+					"y": 74,
+					"w": 12,
+					"h": 12,
+					"fill": "#C9CED6",
+					"radius": 6
+				},
+				{
+					"type": "rect",
+					"x": 28,
+					"y": 76,
+					"w": 2,
+					"h": 8,
+					"fill": "#2B2F36",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 23,
+					"y": 94,
+					"w": 12,
+					"h": 12,
+					"fill": "#C9CED6",
+					"radius": 6
+				},
+				{
+					"type": "rect",
+					"x": 28,
+					"y": 96,
+					"w": 2,
+					"h": 8,
+					"fill": "#2B2F36",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 23,
+					"y": 114,
+					"w": 12,
+					"h": 12,
+					"fill": "#C9CED6",
+					"radius": 6
+				},
+				{
+					"type": "rect",
+					"x": 28,
+					"y": 116,
+					"w": 2,
+					"h": 8,
+					"fill": "#2B2F36",
+					"outline": false
 				}
 			]
 		}
@@ -29992,6 +40224,410 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			]
 		}
 	},
+	"../modules/wago-221-412.json": {
+		format: "circuitoon-module/1",
+		id: "wago-221-412",
+		version: 1,
+		name: "Wago 221-412 lever connector (2 conductors)",
+		category: "Mains",
+		source: "https://www.wago.com/221-412 https://assets.cef.co.uk/downloads/pdg/wago_221-412_datasheet/wago_221-412_datasheet.pdf",
+		pins: [
+			{
+				"name": "1",
+				"side": "left"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"name": "2",
+				"side": "left"
+			}
+		],
+		internal: [["1", "2"]],
+		size: {
+			"w": 7,
+			"h": 6
+		},
+		electrical: {
+			"model": "connector",
+			"ratings": [{
+				"pins": ["1", "2"],
+				"kind": "terminal",
+				"service": "ac/dc",
+				"volts": 450,
+				"amps": 32,
+				"provenance": "datasheet",
+				"conditions": "overvoltage category II, pollution degree 2 (EN 60664); rated surge voltage 4 kV"
+			}]
+		},
+		art: {
+			"w": 70,
+			"h": 60,
+			"shapes": [
+				{
+					"type": "rect",
+					"x": 0,
+					"y": 0,
+					"w": 70,
+					"h": 60,
+					"fill": "#DDE7EE",
+					"radius": 4
+				},
+				{
+					"type": "rect",
+					"x": 3,
+					"y": 15,
+					"w": 10,
+					"h": 10,
+					"fill": "#5B616B",
+					"radius": 2,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 18,
+					"y": 13,
+					"w": 46,
+					"h": 14,
+					"fill": "#F48C06",
+					"radius": 3
+				},
+				{
+					"type": "rect",
+					"x": 3,
+					"y": 35,
+					"w": 10,
+					"h": 10,
+					"fill": "#5B616B",
+					"radius": 2,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 18,
+					"y": 33,
+					"w": 46,
+					"h": 14,
+					"fill": "#F48C06",
+					"radius": 3
+				}
+			]
+		}
+	},
+	"../modules/wago-221-413.json": {
+		format: "circuitoon-module/1",
+		id: "wago-221-413",
+		version: 1,
+		name: "Wago 221-413 lever connector (3 conductors)",
+		category: "Mains",
+		source: "https://www.wago.com/221-413 https://assets.cef.co.uk/downloads/pdg/wago_221-413_datasheet/wago_221-413_datasheet.pdf",
+		pins: [
+			{
+				"name": "1",
+				"side": "left"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"name": "2",
+				"side": "left"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"name": "3",
+				"side": "left"
+			}
+		],
+		internal: [[
+			"1",
+			"2",
+			"3"
+		]],
+		size: {
+			"w": 7,
+			"h": 8
+		},
+		electrical: {
+			"model": "connector",
+			"ratings": [{
+				"pins": [
+					"1",
+					"2",
+					"3"
+				],
+				"kind": "terminal",
+				"service": "ac/dc",
+				"volts": 450,
+				"amps": 32,
+				"provenance": "datasheet",
+				"conditions": "overvoltage category II, pollution degree 2 (EN 60664); rated surge voltage 4 kV"
+			}]
+		},
+		art: {
+			"w": 70,
+			"h": 80,
+			"shapes": [
+				{
+					"type": "rect",
+					"x": 0,
+					"y": 0,
+					"w": 70,
+					"h": 80,
+					"fill": "#DDE7EE",
+					"radius": 4
+				},
+				{
+					"type": "rect",
+					"x": 3,
+					"y": 15,
+					"w": 10,
+					"h": 10,
+					"fill": "#5B616B",
+					"radius": 2,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 18,
+					"y": 13,
+					"w": 46,
+					"h": 14,
+					"fill": "#F48C06",
+					"radius": 3
+				},
+				{
+					"type": "rect",
+					"x": 3,
+					"y": 35,
+					"w": 10,
+					"h": 10,
+					"fill": "#5B616B",
+					"radius": 2,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 18,
+					"y": 33,
+					"w": 46,
+					"h": 14,
+					"fill": "#F48C06",
+					"radius": 3
+				},
+				{
+					"type": "rect",
+					"x": 3,
+					"y": 55,
+					"w": 10,
+					"h": 10,
+					"fill": "#5B616B",
+					"radius": 2,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 18,
+					"y": 53,
+					"w": 46,
+					"h": 14,
+					"fill": "#F48C06",
+					"radius": 3
+				}
+			]
+		}
+	},
+	"../modules/wago-221-415.json": {
+		format: "circuitoon-module/1",
+		id: "wago-221-415",
+		version: 1,
+		name: "Wago 221-415 lever connector (5 conductors)",
+		category: "Mains",
+		source: "https://www.wago.com/221-415 https://assets.cef.co.uk/downloads/pdg/wago_221-415_datasheet/wago_221-415_datasheet.pdf",
+		pins: [
+			{
+				"name": "1",
+				"side": "left"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"name": "2",
+				"side": "left"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"name": "3",
+				"side": "left"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"name": "4",
+				"side": "left"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"name": "5",
+				"side": "left"
+			}
+		],
+		internal: [[
+			"1",
+			"2",
+			"3",
+			"4",
+			"5"
+		]],
+		size: {
+			"w": 7,
+			"h": 12
+		},
+		electrical: {
+			"model": "connector",
+			"ratings": [{
+				"pins": [
+					"1",
+					"2",
+					"3",
+					"4",
+					"5"
+				],
+				"kind": "terminal",
+				"service": "ac/dc",
+				"volts": 450,
+				"amps": 32,
+				"provenance": "datasheet",
+				"conditions": "overvoltage category II, pollution degree 2 (EN 60664); rated surge voltage 4 kV"
+			}]
+		},
+		art: {
+			"w": 70,
+			"h": 120,
+			"shapes": [
+				{
+					"type": "rect",
+					"x": 0,
+					"y": 0,
+					"w": 70,
+					"h": 120,
+					"fill": "#DDE7EE",
+					"radius": 4
+				},
+				{
+					"type": "rect",
+					"x": 3,
+					"y": 15,
+					"w": 10,
+					"h": 10,
+					"fill": "#5B616B",
+					"radius": 2,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 18,
+					"y": 13,
+					"w": 46,
+					"h": 14,
+					"fill": "#F48C06",
+					"radius": 3
+				},
+				{
+					"type": "rect",
+					"x": 3,
+					"y": 35,
+					"w": 10,
+					"h": 10,
+					"fill": "#5B616B",
+					"radius": 2,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 18,
+					"y": 33,
+					"w": 46,
+					"h": 14,
+					"fill": "#F48C06",
+					"radius": 3
+				},
+				{
+					"type": "rect",
+					"x": 3,
+					"y": 55,
+					"w": 10,
+					"h": 10,
+					"fill": "#5B616B",
+					"radius": 2,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 18,
+					"y": 53,
+					"w": 46,
+					"h": 14,
+					"fill": "#F48C06",
+					"radius": 3
+				},
+				{
+					"type": "rect",
+					"x": 3,
+					"y": 75,
+					"w": 10,
+					"h": 10,
+					"fill": "#5B616B",
+					"radius": 2,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 18,
+					"y": 73,
+					"w": 46,
+					"h": 14,
+					"fill": "#F48C06",
+					"radius": 3
+				},
+				{
+					"type": "rect",
+					"x": 3,
+					"y": 95,
+					"w": 10,
+					"h": 10,
+					"fill": "#5B616B",
+					"radius": 2,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 18,
+					"y": 93,
+					"w": 46,
+					"h": 14,
+					"fill": "#F48C06",
+					"radius": 3
+				}
+			]
+		}
+	},
 	"../modules/wemos-d1-mini.json": {
 		format: "circuitoon-module/1",
 		id: "wemos-d1-mini",
@@ -31834,7 +42470,7 @@ function conductors(d, plugs = plugsOf(d)) {
 			b: nodeKey(p.uid, group[i])
 		});
 	}
-	for (const pl of plugs) joins.push({
+	for (const pl of plugs) if (!pl.mechanical) joins.push({
 		a: nodeKey(pl.part, pl.pin),
 		b: nodeKey(pl.board, pl.group)
 	});
@@ -31882,6 +42518,3639 @@ function netlist(d, plugs = plugsOf(d)) {
 	};
 }
 //#endregion
+//#region src/format/words.ts
+/** Natural order, so U2 sorts before U10. */
+var natural = new Intl.Collator("en", {
+	numeric: true,
+	sensitivity: "base"
+});
+/** "A", "A or B", "A, B or C". */
+function orList(items) {
+	return items.length < 2 ? items.join("") : `${items.slice(0, -1).join(", ")} or ${items[items.length - 1]}`;
+}
+/** "A", "A and B", "A, B and C". */
+function andList(items) {
+	return items.length < 2 ? items.join("") : `${items.slice(0, -1).join(", ")} and ${items[items.length - 1]}`;
+}
+var CI = {
+	L: 0,
+	N: 1,
+	PE: 2
+};
+var COND = [
+	"L",
+	"N",
+	"PE"
+];
+var bitOf = (s, c) => 1 << s * 3 + CI[c];
+var every = (c) => {
+	let m = 0;
+	for (let s = 0; s < 10; s++) m |= 1 << s * 3 + c;
+	return m;
+};
+var L_MASK$1 = every(0);
+var N_MASK$1 = every(1);
+var PE_MASK$1 = every(2);
+var LN_MASK$1 = L_MASK$1 | N_MASK$1;
+/**
+* A power bit beside the source bits (which use bits 0 to MAX_SOURCES - 1): set on energy that has
+* reached a node from L or N without crossing an isolation barrier (over nets, fitted fuses, closed
+* contacts, loads, leakage, and a mains terminal's undeclared conduction). Energy across a barrier
+* that is not protective separation drops it: that side may be live (rule 1), but it is not mains
+* wiring, so the DC checks still run there (final review 1).
+*/
+var MAINS_POW$1 = 32768;
+/** The source and conductor of a mask with exactly one bit set. */
+function decodeSingle(x) {
+	const b = 31 - Math.clz32(x);
+	return {
+		s: Math.floor(b / 3),
+		c: COND[b % 3]
+	};
+}
+/** Sockets whose L side no standard fixes (Resolution 22; `cee7-5` by ruling B5: the plug enters one way, but no standard says which hole is L). */
+var UNPOLARIZED_SOCKETS = [
+	"nema-1-15r",
+	"cee7-3",
+	"cee7-5",
+	"cee7-16"
+];
+/** Every named terminal of a module: pins (not spacers), hole groups and internal nodes. */
+function terminalNames(m, info) {
+	return [
+		...m.pins.flatMap((p) => isSpacer(p) ? [] : [p.name]),
+		...(m.holes ?? []).map((g) => g.name),
+		...info.internalNodes
+	];
+}
+/** A converter's DC outputs: its power_out pins outside the mains domain. */
+function outputsOf(m, info) {
+	return [...m.pins.flatMap((p) => isSpacer(p) ? [] : [p]), ...m.holes ?? []].filter((p) => p.type === "power_out" && info.domainOf.get(p.name)?.kind !== "mains").map((p) => p.name);
+}
+function buildMainsGraph(d, plugs, nl) {
+	const mainsParts = d.parts.filter((p) => {
+		const m = moduleOf(d, p.module);
+		return !!m && mainsOf(m).any;
+	});
+	if (!mainsParts.length) return null;
+	const members = nl.nets.slice();
+	const nodeOf = /* @__PURE__ */ new Map();
+	members.forEach((keys, i) => keys.forEach((k) => nodeOf.set(k, i)));
+	const node = (part, name) => {
+		const k = nodeKey(part, name);
+		let i = nodeOf.get(k);
+		if (i === void 0) {
+			i = members.length;
+			members.push([k]);
+			nodeOf.set(k, i);
+		}
+		return i;
+	};
+	const sources = [];
+	const edges = [];
+	const groups = [];
+	const converters = [];
+	const loads = [];
+	const edge = (e) => edges.push({
+		directed: false,
+		fitted: true,
+		rating: null,
+		why: null,
+		...e
+	});
+	for (const p of mainsParts) {
+		const m = moduleOf(d, p.module);
+		const info = mainsOf(m);
+		for (const t of terminalNames(m, info)) node(p.uid, t);
+		for (const src of info.acSources) {
+			const volts = paramValue(p, m, "acVoltage");
+			if (volts === null) continue;
+			sources.push({
+				index: sources.length,
+				id: `${p.uid}:${src.id}`,
+				part: p,
+				volts,
+				region: info.region,
+				polarized: !info.sockets.some((x) => UNPOLARIZED_SOCKETS.includes(x.family)),
+				live: src.live.map((n) => node(p.uid, n)),
+				neutral: src.neutral.map((n) => node(p.uid, n)),
+				earth: src.earth.map((n) => node(p.uid, n)),
+				keys: {
+					L: src.live.map((n) => nodeKey(p.uid, n)),
+					N: src.neutral.map((n) => nodeKey(p.uid, n)),
+					PE: src.earth.map((n) => nodeKey(p.uid, n))
+				}
+			});
+		}
+		for (const e of info.protective) edge({
+			kind: "protective",
+			a: node(p.uid, e.from),
+			b: node(p.uid, e.to),
+			part: p,
+			names: [e.from, e.to],
+			fitted: partSetting(p, m, "fuse") !== "absent",
+			rating: e.rating ?? paramValue(p, m, "fuseRating")
+		});
+		for (const c of info.conducts) {
+			const [a, b] = [node(p.uid, c.pins[0]), node(p.uid, c.pins[1])];
+			edge({
+				kind: c.kind,
+				a,
+				b,
+				part: p,
+				names: c.pins
+			});
+			if (c.kind === "load") loads.push({
+				part: p,
+				a,
+				b,
+				names: c.pins,
+				range: c.range
+			});
+		}
+		if (info.acInput) {
+			const { a, b, range } = info.acInput;
+			const [na, nb] = [node(p.uid, a), node(p.uid, b)];
+			edge({
+				kind: "load",
+				a: na,
+				b: nb,
+				part: p,
+				names: [a, b]
+			});
+			converters.push({
+				part: p,
+				a: na,
+				b: nb,
+				names: [a, b],
+				range,
+				outputs: outputsOf(m, info),
+				plugIn: !!info.plug
+			});
+		}
+		const primary = info.domains.filter((x) => x.kind === "mains").flatMap((x) => x.pins);
+		const declared = info.domains.filter((x) => x.kind !== "mains").flatMap((x) => x.pins);
+		const exposed = [...isolationAdequate(info) ? [] : declared, ...info.acInput ? uncoveredPins(m, info) : []];
+		const from = primary.length ? primary : info.acInput ? [info.acInput.a, info.acInput.b] : [];
+		for (const a of from) for (const b of exposed) edge({
+			kind: "energize",
+			a: node(p.uid, a),
+			b: node(p.uid, b),
+			part: p,
+			names: [a, b],
+			directed: true,
+			why: "isolation"
+		});
+		for (const t of info.terminals) {
+			if (info.declaredConduction.has(t)) continue;
+			for (const o of info.terminals) if (o !== t) edge({
+				kind: "energize",
+				a: node(p.uid, t),
+				b: node(p.uid, o),
+				part: p,
+				names: [t, o],
+				why: "undeclared"
+			});
+		}
+		for (const def of info.contacts) {
+			const closed = [[], []];
+			const leak = [[], []];
+			const nodes = [];
+			for (const pole of def.poles) {
+				const com = node(p.uid, pole.com);
+				const no = pole.no !== null ? node(p.uid, pole.no) : null;
+				const nc = pole.nc !== null ? node(p.uid, pole.nc) : null;
+				nodes.push(com, ...no !== null ? [no] : [], ...nc !== null ? [nc] : []);
+				if (def.kind === "ssr") {
+					if (no !== null) {
+						leak[0].push([com, no]);
+						closed[1].push([com, no]);
+					}
+				} else {
+					if (nc !== null) closed[0].push([com, nc]);
+					if (no !== null) closed[1].push([com, no]);
+				}
+			}
+			groups.push({
+				part: p,
+				def,
+				nodes,
+				closed,
+				leak
+			});
+		}
+	}
+	const broken = new Set(nl.broken);
+	const wires = members.map(() => []);
+	const connected = new Set(plugs.map((pl) => pl.part));
+	for (const c of d.connections) {
+		if (broken.has(c.uid)) continue;
+		connected.add(c.from.part);
+		connected.add(c.to.part);
+		const i = nodeOf.get(nodeKey(c.from.part, c.from.pin));
+		if (i !== void 0) wires[i].push(c.uid);
+	}
+	return {
+		d,
+		n: members.length,
+		members,
+		nodeOf,
+		wires,
+		broken,
+		sources,
+		edges,
+		groups,
+		converters,
+		loads,
+		mainsParts,
+		connected,
+		seated: new Set(plugs.map((pl) => pl.part)),
+		termCache: /* @__PURE__ */ new Map()
+	};
+}
+/** The terminal a node key names, with its module's mains data; null for a missing part or name. Cached per graph. */
+function termAt(g, key) {
+	if (g.termCache.has(key)) return g.termCache.get(key);
+	const [uid, name] = JSON.parse(key);
+	const part = g.d.parts.find((p) => p.uid === uid);
+	const m = part && moduleOf(g.d, part.module);
+	let t = null;
+	if (part && m) {
+		const info = mainsOf(m);
+		const pin = m.pins.find((p) => !isSpacer(p) && p.name === name);
+		const def = pin && !isSpacer(pin) ? pin : m.holes?.find((h) => h.name === name);
+		if (def || info.internalNodes.includes(name)) t = {
+			key,
+			part,
+			module: m,
+			info,
+			name,
+			label: def?.label ?? name,
+			type: def?.type
+		};
+	}
+	g.termCache.set(key, t);
+	return t;
+}
+var termName$1 = (t) => `${t.part.designator} ${t.label}`;
+function find(parent, x) {
+	while (parent[x] !== x) {
+		parent[x] = parent[parent[x]];
+		x = parent[x];
+	}
+	return x;
+}
+function union$1(parent, a, b) {
+	const ra = find(parent, a);
+	const rb = find(parent, b);
+	if (ra !== rb) parent[ra] = rb;
+}
+var identity = (n) => Int32Array.from({ length: n }, (_, i) => i);
+/** Component root per node when every edge and every contact position conducts at once (spec 1.5). */
+function possibleRoots(g) {
+	const parent = identity(g.n);
+	for (const e of g.edges) union$1(parent, e.a, e.b);
+	for (const grp of g.groups) for (const list of [...grp.closed, ...grp.leak]) for (const [a, b] of list) union$1(parent, a, b);
+	for (let i = 0; i < g.n; i++) parent[i] = find(parent, i);
+	return parent;
+}
+function prepare(g) {
+	const possible = possibleRoots(g);
+	const live = /* @__PURE__ */ new Set();
+	for (const s of g.sources) for (const x of [
+		...s.live,
+		...s.neutral,
+		...s.earth
+	]) live.add(possible[x]);
+	for (const c of g.converters) live.add(possible[c.a]).add(possible[c.b]);
+	const relevant = Int32Array.from([...Array(g.n).keys()].filter((i) => live.has(possible[i])));
+	const inRel = new Uint8Array(g.n);
+	for (const i of relevant) inRel[i] = 1;
+	const base = identity(g.n);
+	const bareBase = identity(g.n);
+	const fitBase = identity(g.n);
+	let anyAbsent = false;
+	for (const e of g.edges) {
+		if (e.kind !== "protective") continue;
+		union$1(fitBase, e.a, e.b);
+		if (e.fitted) union$1(base, e.a, e.b);
+		else anyAbsent = true;
+	}
+	return {
+		g,
+		possible,
+		relevant,
+		inRel,
+		sources: g.sources,
+		groupIdx: g.groups.flatMap((grp, i) => grp.nodes.some((x) => inRel[x]) ? [i] : []),
+		loadIdx: g.loads.flatMap((l, i) => inRel[l.a] ? [i] : []),
+		converterIdx: g.converters.flatMap((c, i) => inRel[c.a] ? [i] : []),
+		protective: g.edges.filter((e) => e.kind === "protective" && inRel[e.a]),
+		energy: g.edges.filter((e) => e.kind !== "protective" && inRel[e.a] && inRel[e.b]),
+		base,
+		bareBase,
+		fitBase,
+		anyAbsent,
+		parent: new Int32Array(g.n),
+		bareParent: new Int32Array(g.n),
+		fitParent: new Int32Array(g.n),
+		root: identity(g.n),
+		bareRoot: identity(g.n),
+		fitRoot: identity(g.n),
+		ident: new Uint32Array(g.n),
+		power: new Uint16Array(g.n),
+		groupState: new Int8Array(g.groups.length),
+		srcRoots: []
+	};
+}
+/** Moves energy one step along a-b (a to b only when directed, across an isolation barrier, which drops MAINS_POW). True when anything changed. */
+function flow(root, power, a, b, directed) {
+	const ra = root[a];
+	const rb = root[b];
+	if (ra === rb) return false;
+	let moved = false;
+	const f = power[ra] & ~power[rb] & (directed ? -32769 : 65535);
+	if (f) {
+		power[rb] |= f;
+		moved = true;
+	}
+	if (!directed) {
+		const back = power[rb] & ~power[ra];
+		if (back) {
+			power[ra] |= back;
+			moved = true;
+		}
+	}
+	return moved;
+}
+/**
+* A WeakMap with a one-entry front: the per-state code asks for the same analysis's tables state after
+* state, and comparing one pointer is cheaper than a lookup. It holds its last key until another
+* replaces it.
+*/
+var FrontMap = class {
+	map = /* @__PURE__ */ new WeakMap();
+	lastKey = null;
+	lastValue = void 0;
+	get(k) {
+		if (k === this.lastKey) return this.lastValue;
+		const v = this.map.get(k);
+		if (v !== void 0) {
+			this.lastKey = k;
+			this.lastValue = v;
+		}
+		return v;
+	}
+	set(k, v) {
+		this.map.set(k, v);
+		this.lastKey = k;
+		this.lastValue = v;
+		return this;
+	}
+};
+var plans = new FrontMap();
+function planOf(p) {
+	let plan = plans.get(p);
+	if (plan) return plan;
+	const { g, inRel } = p;
+	const pairs = (which) => {
+		const at = new Int32Array(g.groups.length * 2 + 1);
+		const ab = [];
+		for (let gi = 0; gi < g.groups.length; gi++) for (let s = 0; s < 2; s++) {
+			at[gi * 2 + s] = ab.length / 2;
+			if (p.groupIdx.includes(gi)) {
+				for (const [a, b] of g.groups[gi][which][s]) if (inRel[a] && inRel[b]) ab.push(a, b);
+			}
+		}
+		at[g.groups.length * 2] = ab.length / 2;
+		return {
+			at,
+			ab: Int32Array.from(ab)
+		};
+	};
+	const closed = pairs("closed");
+	const leak = pairs("leak");
+	const leakGroupIdx = Int32Array.from(p.groupIdx.filter((gi) => leak.at[gi * 2] < leak.at[gi * 2 + 1] || leak.at[gi * 2 + 1] < leak.at[gi * 2 + 2]));
+	const node = [];
+	const bit = [];
+	const pow = [];
+	for (const s of p.sources) {
+		for (const x of s.live) node.push(x), bit.push(bitOf(s.index, "L")), pow.push(1 << s.index | MAINS_POW$1);
+		for (const x of s.neutral) node.push(x), bit.push(bitOf(s.index, "N")), pow.push(1 << s.index | MAINS_POW$1);
+		for (const x of s.earth) node.push(x), bit.push(bitOf(s.index, "PE")), pow.push(0);
+	}
+	const reach = p.fitBase.slice();
+	for (const ab of [closed.ab, leak.ab]) for (let j = 0; j < ab.length; j += 2) union$1(reach, ab[j], ab[j + 1]);
+	const feeds = new Uint8Array(g.n);
+	for (const e of p.energy) {
+		feeds[find(reach, e.a)] = 1;
+		if (!e.directed) feeds[find(reach, e.b)] = 1;
+	}
+	for (let j = 0; j < leak.ab.length; j++) feeds[find(reach, leak.ab[j])] = 1;
+	const core = p.energy.filter((e) => !e.directed || feeds[find(reach, e.b)]);
+	const baseRoot = p.base.slice();
+	const staticPow = new Uint16Array(g.n);
+	let allPow = 0;
+	for (let k = 0; k < node.length; k++) {
+		staticPow[find(baseRoot, node[k])] |= pow[k];
+		allPow |= pow[k];
+	}
+	const full = /* @__PURE__ */ new Set();
+	for (const e of p.energy) if (e.directed && !feeds[find(reach, e.b)] && staticPow[find(baseRoot, e.a)] === allPow) full.add(e.b);
+	const sink = p.energy.filter((e) => e.directed && !feeds[find(reach, e.b)] && !full.has(e.b));
+	const switched = new Uint8Array(g.n);
+	for (let j = 0; j < closed.ab.length; j++) switched[find(reach, closed.ab[j])] = 1;
+	const over = (forest) => {
+		const f = forest.slice();
+		const moving = [];
+		const fixed = [];
+		const others = [];
+		const othersRep = [];
+		for (const i of p.relevant) {
+			const r = find(f, i);
+			if (r !== i) others.push(i), othersRep.push(r);
+			else if (switched[find(reach, i)]) moving.push(i);
+			else fixed.push(i);
+		}
+		return {
+			reps: Int32Array.from([...moving, ...fixed]),
+			moving: moving.length,
+			others: Int32Array.from(others),
+			othersRep: Int32Array.from(othersRep),
+			closed: closed.ab.map((x) => find(f, x))
+		};
+	};
+	const b = over(p.base);
+	const fb = p.anyAbsent ? over(p.fitBase) : b;
+	const steady = {
+		fixed: new Uint8Array(g.n),
+		ident: new Uint32Array(g.n),
+		powerKnown: new Uint8Array(g.n),
+		power: new Uint16Array(g.n)
+	};
+	const baseIdent = new Uint32Array(g.n);
+	for (let k = 0; k < node.length; k++) baseIdent[find(baseRoot, node[k])] |= bit[k];
+	const fullRoot = new Uint8Array(g.n);
+	for (const x of full) fullRoot[find(baseRoot, x)] = 1;
+	for (const i of p.relevant) {
+		const r = find(baseRoot, i);
+		const fixed = !switched[find(reach, i)];
+		steady.fixed[i] = fixed ? 1 : 0;
+		if (fixed) steady.ident[i] = baseIdent[r];
+		if (staticPow[r] === allPow) {
+			steady.powerKnown[i] = 1;
+			steady.power[i] = allPow;
+		} else if (fixed && fullRoot[r]) {
+			steady.powerKnown[i] = 1;
+			steady.power[i] = staticPow[r] | allPow & -32769;
+		}
+	}
+	plan = {
+		reps: b.reps,
+		moving: b.moving,
+		others: b.others,
+		othersRep: b.othersRep,
+		closedRep: b.closed,
+		fitReps: fb.reps,
+		fitMoving: fb.moving,
+		fitOthers: fb.others,
+		fitOthersRep: fb.othersRep,
+		closedFitRep: fb.closed,
+		closedAt: closed.at,
+		closedAB: closed.ab,
+		leakAt: leak.at,
+		leakAB: leak.ab,
+		leakGroupIdx,
+		srcNode: Int32Array.from(node),
+		srcBit: Uint32Array.from(bit),
+		srcPow: Uint16Array.from(pow),
+		energyA: Int32Array.from(core, (e) => e.a),
+		energyB: Int32Array.from(core, (e) => e.b),
+		energyDir: Uint8Array.from(core, (e) => e.directed ? 1 : 0),
+		sinkA: Int32Array.from(sink, (e) => e.a),
+		sinkB: Int32Array.from(sink, (e) => e.b),
+		sinkFull: Int32Array.from(full),
+		allPow,
+		anyLeak: leak.ab.length > 0,
+		steady
+	};
+	plans.set(p, plan);
+	return plan;
+}
+/**
+* Identity and energization for the state in `p.groupState`, over `p.relevant` only: resetting and
+* walking just these nodes keeps a state's cost independent of the rest of the sheet. Results live in
+* `p` until the next call (`bareRoot` only through bareRoots, on first use). The hot path of the
+* enumeration, so it reads the flattened plan and allocates nothing; analyseStatePlain is the
+* reference it is checked against (see plainPath).
+*
+* Callers check `p.sources.length <= MAX_SOURCES` first (mains-incomplete otherwise; a unit's view
+* numbers its own sources, see viewOf): beyond ten sources the identity bits of one source alias
+* another's and the power bits overflow.
+*
+* Energization starts from L and N of every source (Ruling 33: N is a live conductor, and on an
+* unpolarized outlet no standard fixes which slot is L), then crosses loads, leakage and energize
+* edges: a switched-off lamp's L terminal is energized from the neutral across its filament. A rule
+* that must decide a branch is switched off reads identity (no L), never power.
+*/
+function analyseState(p) {
+	if (plainPath.on) return plainRef(plainPath.analyseState)(p);
+	const plan = planOf(p);
+	bareFor = null;
+	const { parent, fitParent, anyAbsent, root, fitRoot, ident, power, groupState, groupIdx } = p;
+	const { reps, moving, others, othersRep, closedAt, closedRep } = plan;
+	for (let k = 0; k < moving; k++) parent[reps[k]] = reps[k];
+	for (let t = 0; t < groupIdx.length; t++) {
+		const at = groupIdx[t] * 2 + groupState[groupIdx[t]];
+		for (let j = closedAt[at], end = closedAt[at + 1]; j < end; j++) union$1(parent, closedRep[2 * j], closedRep[2 * j + 1]);
+	}
+	for (let k = 0; k < reps.length; k++) {
+		const i = reps[k];
+		root[i] = k < moving ? find(parent, i) : i;
+		ident[i] = 0;
+		power[i] = 0;
+	}
+	for (let k = 0; k < others.length; k++) {
+		const i = others[k];
+		root[i] = root[othersRep[k]];
+		ident[i] = 0;
+		power[i] = 0;
+	}
+	if (anyAbsent) {
+		const { fitReps, fitMoving, fitOthers, fitOthersRep, closedFitRep } = plan;
+		for (let k = 0; k < fitMoving; k++) fitParent[fitReps[k]] = fitReps[k];
+		for (let t = 0; t < groupIdx.length; t++) {
+			const at = groupIdx[t] * 2 + groupState[groupIdx[t]];
+			for (let j = closedAt[at], end = closedAt[at + 1]; j < end; j++) union$1(fitParent, closedFitRep[2 * j], closedFitRep[2 * j + 1]);
+		}
+		for (let k = 0; k < fitReps.length; k++) fitRoot[fitReps[k]] = k < fitMoving ? find(fitParent, fitReps[k]) : fitReps[k];
+		for (let k = 0; k < fitOthers.length; k++) fitRoot[fitOthers[k]] = fitRoot[fitOthersRep[k]];
+	}
+	const { srcNode, srcBit, srcPow } = plan;
+	const srcRoots = p.srcRoots;
+	srcRoots.length = 0;
+	for (let k = 0; k < srcNode.length; k++) {
+		const r = root[srcNode[k]];
+		if (!ident[r]) srcRoots.push(r);
+		ident[r] |= srcBit[k];
+		power[r] |= srcPow[k];
+	}
+	const { energyA, energyB, energyDir, leakAt, leakAB, leakGroupIdx, anyLeak } = plan;
+	for (let changed = true; changed;) {
+		changed = false;
+		for (let k = 0; k < energyA.length; k++) if (flow(root, power, energyA[k], energyB[k], energyDir[k] === 1)) changed = true;
+		if (anyLeak) for (let t = 0; t < leakGroupIdx.length; t++) {
+			const gi = leakGroupIdx[t];
+			const at = gi * 2 + groupState[gi];
+			for (let j = leakAt[at], end = leakAt[at + 1]; j < end; j++) if (flow(root, power, leakAB[2 * j], leakAB[2 * j + 1], false)) changed = true;
+		}
+	}
+	const { sinkA, sinkB, sinkFull, allPow } = plan;
+	for (let k = 0; k < sinkA.length; k++) {
+		const f = power[root[sinkA[k]]] & -32769;
+		if (f) power[root[sinkB[k]]] |= f;
+	}
+	const fullPow = allPow & -32769;
+	for (let k = 0; k < sinkFull.length; k++) power[root[sinkFull[k]]] |= fullPow;
+}
+/**
+* The relevant nodes of `p` split by their root in `base`: `reps` are the base roots, and each of
+* `others` always shares its root (and so its identity and energy) with `othersRep` at the same
+* position, in every state. A per-node pass over a state can visit `reps` alone and copy the rest.
+*/
+function baseReps(p) {
+	return planOf(p);
+}
+function steadyOf(p) {
+	return planOf(p).steady;
+}
+/** The analysis whose `bareRoot` holds the current state (null: none since the last analyseState). */
+var bareFor = null;
+/**
+* The roots over nets and the current state's closed contacts alone, no fuse (rule 8 reads them to
+* tell a load is unfused), for the state analyseState last put in `p`. Made on first use per state:
+* most sheets fuse every load, and then no state needs them.
+*/
+function bareRoots(p) {
+	if (bareFor === p) return p.bareRoot;
+	const { closedAt, closedAB } = planOf(p);
+	const { relevant: rel, bareParent, bareBase, bareRoot, groupState, groupIdx } = p;
+	for (let k = 0; k < rel.length; k++) bareParent[rel[k]] = bareBase[rel[k]];
+	for (let t = 0; t < groupIdx.length; t++) {
+		const at = groupIdx[t] * 2 + groupState[groupIdx[t]];
+		for (let j = closedAt[at], end = closedAt[at + 1]; j < end; j++) union$1(bareParent, closedAB[2 * j], closedAB[2 * j + 1]);
+	}
+	for (let k = 0; k < rel.length; k++) bareRoot[rel[k]] = find(bareParent, rel[k]);
+	bareFor = p;
+	return bareRoot;
+}
+/**
+* Test seam: when `on`, the enumeration takes its plain paths (the state analysis and the per-state
+* rule loops as they were before the Task 11 optimisations, with no shortcut), which the differential
+* tests compare the fast paths against: findings, converters, hazards and identity must be identical.
+* The two reference implementations (`analyseState`, `identityRules`) live in the test-only module
+* mainsPlain.testing.ts, which fills them in here, so the production bundle carries neither. Never set
+* outside tests.
+*/
+var plainPath = {
+	on: false,
+	analyseState: null,
+	identityRules: null
+};
+/** The plain path's reference, registered by mainsPlain.testing.ts; setting plainPath.on without it is a test bug. */
+function plainRef(f) {
+	if (!f) throw new Error("plainPath.on needs mainsPlain.testing.ts imported");
+	return f;
+}
+var identAt = (p, node) => p.ident[p.root[node]];
+/** Energizing sources at a node. Energy starts from L and N and crosses loads (see analyseState): use identity, not this, to tell a branch is switched off. */
+var powerAt = (p, node) => p.power[p.root[node]];
+/** A node is hazardous when it holds L or N identity or is energized (spec 1.2). */
+var hazardAt = (p, node) => (identAt(p, node) & LN_MASK$1) !== 0 || powerAt(p, node) !== 0;
+/**
+* The contact groups whose state can matter: any of their contacts lies in a possible-connectivity
+* component that holds a source terminal or a converter input. Every contact position conducts in
+* that graph, so a switch in the middle of a chain is never missed.
+*/
+function candidateGroups(g, possible = possibleRoots(g)) {
+	const live = /* @__PURE__ */ new Set();
+	for (const s of g.sources) for (const x of [
+		...s.live,
+		...s.neutral,
+		...s.earth
+	]) live.add(possible[x]);
+	for (const c of g.converters) live.add(possible[c.a]).add(possible[c.b]);
+	return g.groups.flatMap((grp, i) => grp.nodes.some((x) => live.has(possible[x])) ? [i] : []);
+}
+var orderCache = /* @__PURE__ */ new Map();
+/** Every k-bit mask, fewest groups on first, then by value (a converter's first unknown state names the fewest groups). */
+function masksByPopcount(k) {
+	const hit = orderCache.get(k);
+	if (hit) return hit;
+	const pop = (x) => {
+		let c = 0;
+		for (; x; x &= x - 1) c++;
+		return c;
+	};
+	const out = Uint32Array.from(Array.from({ length: 1 << k }, (_, i) => i).sort((a, b) => pop(a) - pop(b) || a - b));
+	orderCache.set(k, out);
+	return out;
+}
+/** Puts the candidates in the state `mask` (bit k is cands[k]); every other group in the view is released or off. */
+function setState(p, cands, mask) {
+	for (const gi of p.groupIdx) p.groupState[gi] = 0;
+	for (let k = 0; k < cands.length; k++) if (mask >>> k & 1) p.groupState[cands[k]] = 1;
+}
+/**
+* setState for a whole enumeration: after `setState(p, cands, 0)`, only the candidates change between
+* states (every other group in the view stays released or off), so this sets just those.
+*/
+function setCandidates(p, cands, mask) {
+	const { groupState } = p;
+	for (let k = 0; k < cands.length; k++) groupState[cands[k]] = mask >>> k & 1;
+}
+/**
+* `p` narrowed to `nodes`: the same scratch arrays, the lists cut to what has a terminal among them.
+* The view numbers its own sources from 0 (`index`, and its graph's `sources` in that order), so the
+* MAX_SOURCES identity and power bits hold per unit, never per sheet (final review 2). Anything that
+* leaves the view names a source by its id or part, never by index (see absorb, mergeUnpolarized).
+*/
+function viewOf(p, nodes) {
+	const g = p.g;
+	const inRel = new Uint8Array(g.n);
+	for (const i of nodes) inRel[i] = 1;
+	const within = (xs) => xs.filter((x) => inRel[x]);
+	const sources = p.sources.map((s) => ({
+		...s,
+		live: within(s.live),
+		neutral: within(s.neutral),
+		earth: within(s.earth)
+	})).filter((s) => s.live.length + s.neutral.length + s.earth.length > 0).map((s, index) => ({
+		...s,
+		index
+	}));
+	return {
+		...p,
+		g: {
+			...g,
+			sources
+		},
+		relevant: Int32Array.from(nodes),
+		inRel,
+		srcRoots: [],
+		sources,
+		groupIdx: p.groupIdx.filter((gi) => g.groups[gi].nodes.some((x) => inRel[x])),
+		loadIdx: p.loadIdx.filter((i) => inRel[g.loads[i].a]),
+		converterIdx: p.converterIdx.filter((i) => inRel[g.converters[i].a]),
+		protective: p.protective.filter((e) => inRel[e.a]),
+		energy: p.energy.filter((e) => inRel[e.a] && inRel[e.b])
+	};
+}
+/**
+* The enumeration units (Resolution 25): the relevant nodes grouped by possible-connectivity
+* component, merging components that one multi-pole group spans (its poles switch together), those
+* one class 1 part's terminals span (its earth is judged against its L and N), and those a bonded
+* part's secondary and bond pins span (its SELV or PELV class is judged in the same state), and those
+* the prongs of a plug that is not seated span (its live prongs are one finding).
+* Components cannot affect each other, so each unit's states are enumerated on their own.
+*/
+function units(p, cands) {
+	const g = p.g;
+	const up = /* @__PURE__ */ new Map();
+	const top = (x) => {
+		while (up.has(x)) x = up.get(x);
+		return x;
+	};
+	/** Puts the components of `nodes` (those in the analysis) in one unit. */
+	const join = (nodes) => {
+		const roots = [...new Set(nodes.filter((i) => p.inRel[i] === 1).map((i) => p.possible[i]))];
+		for (const r of roots.slice(1)) {
+			const [a, b] = [top(roots[0]), top(r)];
+			if (a !== b) up.set(a, b);
+		}
+	};
+	const termNodes = (part, names) => [...names].map((n) => g.nodeOf.get(nodeKey(part.uid, n))).filter((i) => i !== void 0);
+	for (const gi of cands) join(g.groups[gi].nodes);
+	for (const part of g.mainsParts) {
+		const info = mainsOf(moduleOf(g.d, part.module));
+		if (info.protection === "class-1") join(termNodes(part, info.terminals));
+		if (info.bonds.size) join(termNodes(part, [...info.bonds, ...info.domains.filter((dm) => dm.kind !== "mains").flatMap((dm) => dm.pins)]));
+		if (info.plug && !g.seated.has(part.uid)) join(termNodes(part, info.plug.profiles.flatMap((pr) => pr.contacts.map((c) => c.pin))));
+	}
+	const byUnit = /* @__PURE__ */ new Map();
+	for (const i of p.relevant) {
+		const u = top(p.possible[i]);
+		const list = byUnit.get(u);
+		if (list) list.push(i);
+		else byUnit.set(u, [i]);
+	}
+	return [...byUnit.values()].map((nodes) => {
+		const view = viewOf(p, nodes);
+		return {
+			view,
+			cands: cands.filter((gi) => view.groupIdx.includes(gi))
+		};
+	});
+}
+/**
+* The candidate positions (0 to k-1) whose condition in state `mask` a finding needs (Resolution 24).
+* `holds` has bit m set for every state m the finding holds in. A condition is dropped only when the
+* finding holds in every state that agrees with the conditions still kept, so the phrase is both
+* minimal and complete.
+*/
+function minimalWitness(holds, k, mask) {
+	const has = (m) => (holds[m >>> 5] >>> (m & 31) & 1) === 1;
+	const allHold = (free) => {
+		const fixed = mask & ~free;
+		for (let sub = free;; sub = sub - 1 & free) {
+			if (!has(fixed | sub)) return false;
+			if (sub === 0) return true;
+		}
+	};
+	const kept = [];
+	let free = 0;
+	for (let j = 0; j < k; j++) if (allHold(free | 1 << j)) free |= 1 << j;
+	else kept.push(j);
+	return kept;
+}
+/** At most this many witnesses are returned: the cover stops here, and consensus falls back to the cover past it. */
+var MAX_WITNESSES = 32;
+/** Consensus gives up past this many cubes in its working list (some not yet absorbed), keeping its cost bounded. */
+var CONSENSUS_WORK = 256;
+var contains = (a, b) => (a.care & b.care) === a.care && (b.val & a.care) === a.val;
+/**
+* The minimal witnesses of a finding (Ruling 31): each prime implicant of the states it holds in, so
+* the phrase names every way the finding comes about, never one picked by position. A greedy cover
+* of the holding states comes first (each cube minimal, see minimalWitness), then iterated consensus
+* with absorption turns it into every prime implicant. Bounded: when the cover needs more than
+* MAX_WITNESSES cubes it stops there (the list then covers only some of the states), and when there
+* are more than MAX_WITNESSES prime implicants, or consensus outgrows its work limit, the cover is
+* returned. statePhrase counts whatever the listed witnesses leave out, so the words stay exact.
+*/
+function minimalWitnesses(holds, k) {
+	const has = (m) => (holds[m >>> 5] >>> (m & 31) & 1) === 1;
+	const all = (1 << k) - 1;
+	let every = true;
+	if (k >= 5 && !plainPath.on) for (let x = 0; x <= all >>> 5 && every; x++) every = holds[x] === 4294967295;
+	else for (let m = 0; m <= all && every; m++) every = has(m);
+	if (every) return [{
+		kept: [],
+		mask: 0
+	}];
+	const cover = [];
+	let full = true;
+	const covered = (m) => {
+		for (let c = 0; c < cover.length; c++) if ((m & cover[c].care) === cover[c].val) return true;
+		return false;
+	};
+	for (let m = 0; m <= all; m++) {
+		if ((m & 31) === 0 && holds[m >>> 5] === 0 && !plainPath.on) {
+			m += 31;
+			continue;
+		}
+		if (!has(m) || covered(m)) continue;
+		if (cover.length === MAX_WITNESSES) {
+			full = false;
+			break;
+		}
+		const care = minimalWitness(holds, k, m).reduce((x, j) => x | 1 << j, 0);
+		cover.push({
+			care,
+			val: m & care
+		});
+	}
+	return (full ? consensus(cover) ?? cover : cover).map((c) => ({
+		kept: [...Array(k).keys()].filter((j) => c.care >>> j & 1),
+		mask: c.val
+	}));
+}
+/** Every prime implicant, from a cover made of prime implicants; null past MAX_WITNESSES or the work limit. */
+function consensus(cover) {
+	const list = cover.slice();
+	for (let i = 0; i < list.length; i++) for (let j = 0; j < i; j++) {
+		const [a, b] = [list[i], list[j]];
+		if (!a || !b) continue;
+		const clash = a.care & b.care & (a.val ^ b.val);
+		if (!clash || (clash & clash - 1) !== 0) continue;
+		const care = (a.care | b.care) & ~clash;
+		const c = {
+			care,
+			val: (a.val | b.val) & care
+		};
+		if (list.some((x) => x && contains(x, c))) continue;
+		for (let x = 0; x < list.length; x++) if (list[x] && contains(c, list[x])) list[x] = null;
+		list.push(c);
+		if (list.length > CONSENSUS_WORK) return null;
+		if (!list[i]) break;
+	}
+	const primes = list.filter((x) => x !== null);
+	return primes.length > MAX_WITNESSES ? null : primes;
+}
+var WORDS = {
+	switch: ["off", "on"],
+	relay: ["released", "energized"],
+	ssr: ["off", "on"]
+};
+/** A switch with a changeover pole is worded by the contact its poles are switched to (Ruling 31). */
+var CHANGEOVER = ["switched to NC", "switched to NO"];
+var wordsOf = (def) => def.kind === "switch" && def.poles.some((x) => x.nc !== null) ? CHANGEOVER : WORDS[def.kind];
+/**
+* A contact group by its part's designator; on a part with several groups, followed by a label a
+* reader finds on the part: its COM pin labels ("K1 (COM1)"), or its place among the groups when two
+* groups share those labels.
+*/
+function groupName(g, gi) {
+	const grp = g.groups[gi];
+	const mates = g.groups.filter((x) => x.part === grp.part);
+	if (mates.length < 2) return grp.part.designator;
+	const m = moduleOf(g.d, grp.part.module);
+	const label = (name) => {
+		const pin = m?.pins.find((p) => !isSpacer(p) && p.name === name);
+		return pin && !isSpacer(pin) ? pin.label ?? pin.name : name;
+	};
+	const coms = (x) => andList(x.def.poles.map((pole) => label(pole.com)));
+	const mine = coms(grp);
+	const unique = mates.every((x) => x === grp || coms(x) !== mine);
+	return `${grp.part.designator} (${unique ? mine : `contact group ${mates.indexOf(grp) + 1}`})`;
+}
+/** One witness in words, conditions in designator order: "when K1 is released, S1 is on and S2 is off"; "when S1 and S2 are both on" when all share one word. */
+function witnessPhrase(g, cands, w) {
+	const conds = w.kept.map((j) => {
+		const gi = cands[j];
+		return {
+			name: groupName(g, gi),
+			word: wordsOf(g.groups[gi].def)[w.mask >>> j & 1]
+		};
+	}).sort((a, b) => natural.compare(a.name, b.name));
+	const word = conds[0].word;
+	if (conds.length > 1 && conds.every((c) => c.word === word)) {
+		const list = conds.map((c) => c.name);
+		return list.length === 2 && (word === "on" || word === "energized") ? `when ${list[0]} and ${list[1]} are both ${word}` : `when ${andList(list)} are ${word}`;
+	}
+	return `when ${andList(conds.map((c) => `${c.name} is ${c.word}`))}`;
+}
+/**
+* The conditions a finding needs, in words: its minimal witnesses joined with "or" ("when S1 is on,
+* or when S2 is on"), fewest conditions first; '' when a witness needs none (it holds in every
+* state). Past PHRASE_WITNESSES, and when given the finding's `holds`, the states the listed
+* witnesses leave out are counted ("or in 12 other switch combinations"); without it they are named
+* only as "other switch combinations".
+*/
+function statePhrase(g, cands, witnesses, holds) {
+	if (!witnesses.length || witnesses.some((x) => !x.kept.length)) return "";
+	const sorted = witnesses.map((x) => ({
+		w: x,
+		n: x.kept.length,
+		text: witnessPhrase(g, cands, x)
+	})).sort((a, b) => a.n - b.n || natural.compare(a.text, b.text));
+	const shown = sorted.slice(0, 4);
+	let rest = 0;
+	if (holds && sorted.length > shown.length) {
+		const cubes = shown.map((x) => ({
+			care: x.w.kept.reduce((c, j) => c | 1 << j, 0),
+			mask: x.w.mask
+		}));
+		for (let m = 0; m < 1 << cands.length; m++) {
+			if (!(holds[m >>> 5] >>> (m & 31) & 1)) continue;
+			let shown = false;
+			for (let c = 0; c < cubes.length && !shown; c++) shown = (m & cubes[c].care) === (cubes[c].mask & cubes[c].care);
+			if (!shown) rest++;
+		}
+	}
+	const tail = rest ? `, or in ${rest} other switch combination${rest === 1 ? "" : "s"}` : !holds && sorted.length > shown.length ? ", or in other switch combinations" : "";
+	return shown.map((x) => x.text).join(", or ") + tail;
+}
+//#endregion
+//#region src/format/mainsProtective.ts
+/** Biconnected blocks (Tarjan, iterative, parallel edges kept apart): block id per edge and cut vertices. */
+function blocks(n, edges) {
+	const adj = Array.from({ length: n }, () => []);
+	edges.forEach((e, i) => {
+		adj[e.a].push(i);
+		adj[e.b].push(i);
+	});
+	const tin = new Int32Array(n).fill(-1);
+	const low = new Int32Array(n);
+	const blockOf = new Int32Array(edges.length).fill(-1);
+	const cut = new Uint8Array(n);
+	const estack = [];
+	let time = 0;
+	let count = 0;
+	for (let root = 0; root < n; root++) {
+		if (tin[root] >= 0) continue;
+		tin[root] = low[root] = time++;
+		let children = 0;
+		const stack = [[
+			root,
+			-1,
+			0
+		]];
+		while (stack.length) {
+			const top = stack[stack.length - 1];
+			const [v, via] = top;
+			if (top[2] < adj[v].length) {
+				const ei = adj[v][top[2]++];
+				if (ei === via) continue;
+				const e = edges[ei];
+				const u = e.a === v ? e.b : e.a;
+				if (tin[u] < 0) {
+					estack.push(ei);
+					tin[u] = low[u] = time++;
+					stack.push([
+						u,
+						ei,
+						0
+					]);
+					if (v === root) children++;
+				} else if (tin[u] < tin[v]) {
+					estack.push(ei);
+					low[v] = Math.min(low[v], tin[u]);
+				}
+			} else {
+				stack.pop();
+				if (!stack.length) continue;
+				const parent = stack[stack.length - 1][0];
+				low[parent] = Math.min(low[parent], low[v]);
+				if (low[v] >= tin[parent]) {
+					if (parent !== root) cut[parent] = 1;
+					let ei;
+					do {
+						ei = estack.pop();
+						blockOf[ei] = count;
+					} while (ei !== via);
+					count++;
+				}
+			}
+		}
+		if (children > 1) cut[root] = 1;
+	}
+	return {
+		blockOf,
+		cut,
+		count
+	};
+}
+var cache$2 = /* @__PURE__ */ new WeakMap();
+/** Terminals of a module that carry L or N: never on a protective path (Ruling 36). */
+var liveCache = /* @__PURE__ */ new WeakMap();
+function liveTerminals(info) {
+	let s = liveCache.get(info);
+	if (!s) {
+		s = /* @__PURE__ */ new Set([
+			...[...info.requirement].filter(([, r]) => r !== "PE").map(([n]) => n),
+			...info.acInput ? [info.acInput.a, info.acInput.b] : [],
+			...info.acSources.flatMap((x) => [...x.live, ...x.neutral]),
+			...info.sockets.flatMap((x) => x.contacts.filter((c) => c.role !== "PE").map((c) => c.group)),
+			...info.plug?.profiles.flatMap((pr) => pr.contacts.filter((c) => c.mains === "L" || c.mains === "N").map((c) => c.pin)) ?? [],
+			...info.conducts.flatMap((c) => c.pins)
+		]);
+		liveCache.set(info, s);
+	}
+	return s;
+}
+function roleOf(t) {
+	if (!t) return null;
+	if (!t.info.any) return isBoard(t.module) && (t.module.holes ?? []).some((h) => h.name === t.name) ? "strip" : null;
+	if (t.info.bonds.has(t.name)) return "end";
+	if (lvClass(t) !== null || liveTerminals(t.info).has(t.name)) return null;
+	return "pass";
+}
+function protectivePaths(g) {
+	const hit = cache$2.get(g);
+	if (hit) return hit;
+	const ids = /* @__PURE__ */ new Map();
+	const keyOf = [];
+	const isStrip = [];
+	const T = /* @__PURE__ */ new Set();
+	const role = (key) => roleOf(termAt(g, key));
+	const vertex = (key, r) => {
+		let i = r === "end" ? void 0 : ids.get(key);
+		if (i === void 0) {
+			i = keyOf.length;
+			keyOf.push(key);
+			isStrip.push(r === "strip");
+			if (r === "end") T.add(i);
+			else ids.set(key, i);
+		}
+		return i;
+	};
+	const edges = [];
+	const join = (ka, kb, extra = {}) => {
+		const ra = role(ka);
+		const rb = role(kb);
+		if (ra === null || rb === null || ka === kb) return;
+		edges.push({
+			a: vertex(ka, ra),
+			b: vertex(kb, rb),
+			...extra
+		});
+	};
+	for (const c of g.d.connections) if (!g.broken.has(c.uid)) join(nodeKey(c.from.part, c.from.pin), nodeKey(c.to.part, c.to.pin), { wire: c.uid });
+	for (const pl of plugsOf(g.d)) if (!pl.mechanical) join(nodeKey(pl.part, pl.pin), nodeKey(pl.board, pl.group));
+	for (const part of g.mainsParts) {
+		const m = moduleOf(g.d, part.module);
+		const info = mainsOf(m);
+		for (const grp of m.internal ?? []) {
+			const keys = grp.map((n) => nodeKey(part.uid, n)).filter((k) => role(k) !== null);
+			for (let i = 0; i < keys.length; i++) for (let j = i + 1; j < keys.length; j++) join(keys[i], keys[j]);
+		}
+		for (const c of info.contacts) for (const pole of c.poles) for (const other of [pole.no, pole.nc]) if (other) join(nodeKey(part.uid, pole.com), nodeKey(part.uid, other), { through: {
+			part,
+			kind: c.kind
+		} });
+		for (const e of info.protective) join(nodeKey(part.uid, e.from), nodeKey(part.uid, e.to), { through: {
+			part,
+			kind: "fuse"
+		} });
+		if (info.protection === "class-1") for (const n of [...[...info.requirement].filter(([, r]) => r === "PE").map(([x]) => x), ...info.plug?.profiles.flatMap((pr) => pr.contacts.filter((c) => c.mains === "PE").map((c) => c.pin)) ?? []]) {
+			const i = ids.get(nodeKey(part.uid, n));
+			if (i !== void 0) T.add(i);
+		}
+	}
+	const S = new Set(g.sources.flatMap((s) => s.keys.PE).map((k) => ids.get(k)).filter((i) => i !== void 0));
+	const out = {
+		wires: /* @__PURE__ */ new Set(),
+		through: [],
+		strips: []
+	};
+	const nv = keyOf.length;
+	if (S.size && T.size && edges.length) {
+		const { blockOf, cut, count } = blocks(nv, edges);
+		const adj = /* @__PURE__ */ new Map();
+		const link = (x, y) => {
+			(adj.get(x) ?? adj.set(x, /* @__PURE__ */ new Set()).get(x)).add(y);
+			(adj.get(y) ?? adj.set(y, /* @__PURE__ */ new Set()).get(y)).add(x);
+		};
+		const anyBlock = new Int32Array(nv).fill(-1);
+		edges.forEach((e, i) => {
+			for (const v of [e.a, e.b]) {
+				anyBlock[v] = blockOf[i];
+				if (cut[v]) link(blockOf[i], count + v);
+			}
+		});
+		const treeNode = (v) => cut[v] ? count + v : anyBlock[v];
+		const marked = new Uint8Array(count);
+		for (const s of S) {
+			const from = treeNode(s);
+			if (from < 0) continue;
+			const prev = /* @__PURE__ */ new Map([[from, -1]]);
+			const queue = [from];
+			for (let q = 0; q < queue.length; q++) for (const y of adj.get(queue[q]) ?? []) if (!prev.has(y)) {
+				prev.set(y, queue[q]);
+				queue.push(y);
+			}
+			for (const t of T) {
+				if (t === s) continue;
+				let x = treeNode(t);
+				if (x < 0 || !prev.has(x)) continue;
+				for (; x !== -1; x = prev.get(x)) if (x < count) marked[x] = 1;
+			}
+		}
+		const blockWires = Array.from({ length: count }, () => []);
+		const onPath = new Uint8Array(nv);
+		const adjP = Array.from({ length: nv }, () => []);
+		edges.forEach((e, i) => {
+			if (!marked[blockOf[i]]) return;
+			if (e.wire) {
+				out.wires.add(e.wire);
+				blockWires[blockOf[i]].push(e.wire);
+			}
+			adjP[e.a].push(i);
+			adjP[e.b].push(i);
+			onPath[e.a] = onPath[e.b] = 1;
+		});
+		for (let v = 0; v < nv; v++) if (onPath[v] && isStrip[v]) {
+			const [part, group] = JSON.parse(keyOf[v]);
+			out.strips.push({
+				part,
+				group
+			});
+		}
+		const stamp = new Int32Array(nv);
+		const prevE = new Int32Array(nv);
+		const queue = new Int32Array(nv);
+		let run = 0;
+		const route = (from, to, skip) => {
+			run++;
+			let tail = 0;
+			for (const v of from) {
+				stamp[v] = run;
+				prevE[v] = -1;
+				queue[tail++] = v;
+			}
+			for (let q = 0; q < tail && stamp[to] !== run; q++) {
+				const v = queue[q];
+				for (const ei of adjP[v]) {
+					if (ei === skip) continue;
+					const u = edges[ei].a === v ? edges[ei].b : edges[ei].a;
+					if (stamp[u] === run) continue;
+					stamp[u] = run;
+					prevE[u] = ei;
+					queue[tail++] = u;
+				}
+			}
+			if (stamp[to] !== run) return null;
+			const steps = [];
+			for (let v = to; prevE[v] !== -1;) {
+				const ei = prevE[v];
+				steps.push(ei);
+				v = edges[ei].a === v ? edges[ei].b : edges[ei].a;
+			}
+			return steps;
+		};
+		const byPart = /* @__PURE__ */ new Map();
+		edges.forEach((e, i) => {
+			if (!marked[blockOf[i]] || !e.through) return;
+			const way = [[route(S, e.a, i), route(T, e.b, i)], [route(S, e.b, i), route(T, e.a, i)]].find(([x, y]) => x && y) ?? [[], []];
+			let entry = byPart.get(e.through.part);
+			if (!entry) byPart.set(e.through.part, entry = {
+				kinds: /* @__PURE__ */ new Set(),
+				wires: /* @__PURE__ */ new Set()
+			});
+			entry.kinds.add(e.through.kind);
+			for (const x of blockWires[blockOf[i]]) entry.wires.add(x);
+			for (const k of way.flatMap((xs) => xs ?? [])) if (edges[k].wire) entry.wires.add(edges[k].wire);
+		});
+		for (const [part, { kinds, wires }] of byPart) out.through.push({
+			part,
+			kinds: [...kinds].sort(),
+			wires: [...wires]
+		});
+	}
+	cache$2.set(g, out);
+	return out;
+}
+//#endregion
+//#region src/format/mainsRules.ts
+/**
+* The identity masks as this module's own constants: the per-state loops read them millions of times
+* per edit, and a test runner that imports through module getters would make every read a call.
+*/
+var LN_MASK = LN_MASK$1;
+var L_MASK = L_MASK$1;
+var N_MASK = N_MASK$1;
+var PE_MASK = PE_MASK$1;
+var MAINS_POW = MAINS_POW$1;
+/** The sources of a mask in `p`'s numbering, by id. */
+var outletsOf = (p, mask) => sourcesOfMask(mask).map((i) => ({
+	id: p.g.sources[i].id,
+	part: p.g.sources[i].part
+})).sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+function newAcc(p, cands, incomplete) {
+	const g = p.g;
+	return {
+		p,
+		cands,
+		total: incomplete ? 0 : 2 ** cands.length,
+		seen: /* @__PURE__ */ new Map(),
+		hazardAny: new Uint8Array(g.n),
+		mainsAny: new Uint8Array(g.n),
+		cableAny: new Uint8Array(g.n),
+		volts: new Float64Array(g.n),
+		identUnion: new Uint32Array(g.n),
+		converters: g.converters.map(() => null),
+		loadComplete: new Uint8Array(g.loads.length),
+		loadFit: new Uint8Array(g.loads.length),
+		loadFixers: /* @__PURE__ */ new Map(),
+		incomplete,
+		open: [],
+		conductors: new Array(g.n).fill(null),
+		finished: [],
+		...sourceTable(p)
+	};
+}
+function sourceTable(p) {
+	const idx = [...new Set(p.sources.map((s) => s.index))].sort((a, b) => p.g.sources[b].volts - p.g.sources[a].volts);
+	return {
+		srcIdx: Int32Array.from(idx),
+		srcLN: Uint32Array.from(idx.map((i) => bitOf(i, "L") | bitOf(i, "N"))),
+		srcVolts: Float64Array.from(idx.map((i) => p.g.sources[i].volts))
+	};
+}
+/** Records that a finding holds in state `mask`. `first` runs only the first time (while that state is still in `p`) and returns the builder. */
+function report$1(acc, key, mask, first) {
+	let s = acc.seen.get(key);
+	if (!s) acc.seen.set(key, s = {
+		holds: new Uint32Array(Math.max(1, Math.ceil(acc.total / 32))),
+		build: first()
+	});
+	s.holds[mask >>> 5] |= 1 << (mask & 31);
+}
+/**
+* Records state `mask` for a finding already seen and returns true; false when `key` is new (the
+* caller then calls `report` with its builder). Allocates nothing, so a per-state rule can check its
+* findings without making a closure each state.
+*/
+function mark(acc, key, mask) {
+	const s = acc.seen.get(key);
+	if (!s) return false;
+	s.holds[mask >>> 5] |= 1 << (mask & 31);
+	return true;
+}
+var volt = (v) => `${Number(v.toFixed(1))} V`;
+var endpointOf = (t) => ({
+	part: t.part.uid,
+	pin: t.name
+});
+var pinOfKey = (key) => {
+	const [part, pin] = JSON.parse(key);
+	return {
+		part,
+		pin
+	};
+};
+/** The sources (by global index) holding L or N in identity `x`, or energizing with `e`. */
+function sourcesIn(p, x, e) {
+	return [...new Set(p.sources.map((s) => s.index))].filter((i) => x & (bitOf(i, "L") | bitOf(i, "N")) || e >> i & 1);
+}
+/** "XS1 (120 V)", "XS1 (120 V) and XS2 (230 V)". */
+var sourcesText = (g, list) => andList(list.map((s) => `${g.sources[s].part.designator} (${volt(g.sources[s].volts)})`));
+/** The wires on every node whose root is `r` in the current state. */
+function wiresOfRoot(p, r) {
+	const out = [];
+	for (const i of p.relevant) if (p.root[i] === r) out.push(...p.g.wires[i]);
+	return out;
+}
+/**
+* Per state, on the hot path: no allocation, and no source loop for a node already at the highest
+* voltage. Only the base roots are visited: every other node always shares its base root's root, so
+* absorb copies their values over (see spreadReps). The plain path visits every node.
+*/
+function track(acc) {
+	const { p, srcIdx, srcLN, srcVolts, identUnion, hazardAny, mainsAny, volts } = acc;
+	const { root, ident, power } = p;
+	const top = srcVolts.length ? srcVolts[0] : 0;
+	const rel = plainPath.on ? p.relevant : baseReps(p).reps;
+	for (let k = 0; k < rel.length; k++) {
+		const i = rel[k];
+		const r = root[i];
+		const x = ident[r];
+		const e = power[r];
+		identUnion[i] |= x;
+		if (!(x & LN_MASK) && !e) continue;
+		hazardAny[i] = 1;
+		if (x & LN_MASK || e & MAINS_POW) mainsAny[i] = 1;
+		if (volts[i] >= top) continue;
+		for (let j = 0; j < srcIdx.length; j++) if (x & srcLN[j] || e >> srcIdx[j] & 1) {
+			if (srcVolts[j] > volts[i]) volts[i] = srcVolts[j];
+			break;
+		}
+	}
+}
+/** Gives every node that track skipped its base root's values (a no-op after the plain path, which visits them all). */
+function spreadReps(acc) {
+	const { others, othersRep } = baseReps(acc.p);
+	for (let k = 0; k < others.length; k++) {
+		const [i, r] = [others[k], othersRep[k]];
+		acc.identUnion[i] = acc.identUnion[r];
+		acc.hazardAny[i] = acc.hazardAny[r];
+		acc.mainsAny[i] = acc.mainsAny[r];
+		acc.volts[i] = acc.volts[r];
+	}
+}
+var POWERED = {
+	state: "powered",
+	why: null,
+	kind: null,
+	fix: null
+};
+var UNPOWERED = {
+	state: "unpowered",
+	why: null,
+	kind: null,
+	fix: null
+};
+var rewire = (c) => c.plugIn ? "Plug it fully into one outlet." : `Wire ${c.names[0]} and ${c.names[1]} to L and N of one outlet.`;
+var wiring = (c, why) => ({
+	state: "unknown",
+	why,
+	kind: "wiring",
+	fix: rewire(c)
+});
+/** The status of a converter whose input the enumeration never reached (Resolution 11). */
+var notChecked = (c) => ({
+	state: "unknown",
+	why: "the mains checks did not finish",
+	kind: "incomplete",
+	fix: `Check ${c.part.designator}'s input by hand.`
+});
+/** A converter's input in the current state (spec 1.3). */
+function inputState(p, c) {
+	const ra = p.root[c.a];
+	const rb = p.root[c.b];
+	const ia = p.ident[ra];
+	const ib = p.ident[rb];
+	if (!ia && !ib) return !p.power[ra] && !p.power[rb] ? UNPOWERED : wiring(c, "it gets mains only through a load or a leakage path");
+	if (ra === rb) return wiring(c, "its two inputs are joined to each other");
+	if (!ia || !ib) return oneInput(p, c, ia ? 1 : 0);
+	const single = (x) => (x & x - 1) === 0;
+	const sourceCount = (x) => p.g.sources.filter((s) => x & (bitOf(s.index, "L") | bitOf(s.index, "N") | bitOf(s.index, "PE"))).length;
+	if (!single(ia) || !single(ib)) return wiring(c, sourceCount(ia | ib) > 1 ? "its inputs come from two different outlets" : "an input is on more than one conductor");
+	const a = decodeSingle(ia);
+	const b = decodeSingle(ib);
+	if (a.s !== b.s) return wiring(c, "its inputs come from two different outlets");
+	if (a.c === b.c) return wiring(c, `both inputs are on ${a.c}`);
+	if (a.c === "PE" || b.c === "PE") return wiring(c, "an input is on earth");
+	const v = p.g.sources[a.s].volts;
+	if (v < c.range[0] || v > c.range[1]) return {
+		state: "unknown",
+		why: `it takes ${volt(c.range[0])} to ${volt(c.range[1])} AC but gets ${volt(v)}`,
+		kind: "voltage",
+		fix: `Use a converter rated for ${volt(v)} in place of ${c.part.designator}.`
+	};
+	return POWERED;
+}
+/** Input `side` (0 or 1) has no identity: it reaches the outlet only through a load or leakage, only through an empty fuse holder, or not at all. */
+function oneInput(p, c, side) {
+	const x = side ? c.b : c.a;
+	const name = c.names[side];
+	if (throughLoad(p, c, x)) return wiring(c, `${name} reaches the outlet only through a load or a leakage path`);
+	if (p.anyAbsent && p.sources.some((s) => s.live.some((t) => p.fitRoot[t] === p.fitRoot[x]) || s.neutral.some((t) => p.fitRoot[t] === p.fitRoot[x]))) return {
+		state: "unknown",
+		why: `${name} reaches the outlet only through an empty fuse holder`,
+		kind: "fuse",
+		fix: "Fit a fuse in the empty holder."
+	};
+	return wiring(c, `only ${c.names[side ? 0 : 1]} is connected to an outlet`);
+}
+/**
+* True when node `x` reaches a node with identity through loads and leakage paths (an OFF SSR
+* included) in the current state, never through the converter's own input: energy on `x` that only
+* came across the converter itself is not a path to the outlet.
+*/
+function throughLoad(p, c, x) {
+	const g = p.g;
+	const seen = /* @__PURE__ */ new Set([p.root[x]]);
+	const queue = [p.root[x]];
+	const step = (a, b) => {
+		const [ra, rb] = [p.root[a], p.root[b]];
+		for (const [from, to] of [[ra, rb], [rb, ra]]) if (seen.has(from) && !seen.has(to)) {
+			seen.add(to);
+			queue.push(to);
+		}
+	};
+	for (let q = 0; q < queue.length; q++) {
+		if (p.ident[queue[q]]) return true;
+		for (const e of p.energy) if ((e.kind === "load" || e.kind === "leakage") && !(e.part === c.part && e.a === c.a && e.b === c.b)) step(e.a, e.b);
+		for (const gi of p.groupIdx) for (const [a, b] of g.groups[gi].leak[p.groupState[gi]]) if (p.inRel[a] && p.inRel[b]) step(a, b);
+	}
+	return false;
+}
+/**
+* How a load fed only by unknown converters is told about them (checks.ts, supply-unknown): what is
+* wrong with their inputs and what to do, grouped by kind, converters in designator order.
+*/
+function unknownFeedWords(list) {
+	const sorted = [...list].sort((a, b) => natural.compare(a.designator, b.designator));
+	const of = (kinds) => sorted.filter((x) => kinds.includes(x.status.kind ?? "wiring"));
+	const poss = (xs) => andList(xs.map((x) => `${x.designator}'s`));
+	const states = [];
+	const fixes = [];
+	const bad = of(["wiring", "fuse"]);
+	if (bad.length) {
+		states.push(bad.length === 1 ? `${poss(bad)} mains input is not a complete connection` : `${poss(bad)} mains inputs are not complete connections`);
+		fixes.push(`Complete ${poss(bad)} mains input${bad.length === 1 ? "" : "s"} first.`);
+	}
+	const volts = of(["voltage"]);
+	if (volts.length) {
+		const names = andList(volts.map((x) => x.designator));
+		states.push(volts.length === 1 ? `${poss(volts)} mains voltage is outside its input range (see the wrong mains voltage finding for ${names})` : `${poss(volts)} mains voltages are outside their input ranges (see the wrong mains voltage findings for ${names})`);
+		fixes.push(...volts.map((x) => x.status.fix));
+	}
+	const open = of(["incomplete"]);
+	if (open.length) {
+		states.push(`the mains checks did not finish for ${andList(open.map((x) => x.designator))}`);
+		fixes.push(`Check ${poss(open)} input${open.length === 1 ? "" : "s"} by hand.`);
+	}
+	return {
+		state: andList(states),
+		fix: fixes.join(" ")
+	};
+}
+/** Powered in any state wins; unknown wins over unpowered (keeping the first unknown reason); unpowered only when so in every state. */
+function combine(cur, st) {
+	if (!cur) return st;
+	if (cur.state === "powered") return cur;
+	if (st.state === "powered") return st;
+	return cur.state === "unpowered" && st.state === "unknown" ? st : cur;
+}
+function availabilityRule(acc) {
+	const { converterIdx } = acc.p;
+	for (let k = 0; k < converterIdx.length; k++) {
+		const i = converterIdx[k];
+		if (acc.converters[i]?.state === "powered" && !plainPath.on) continue;
+		acc.converters[i] = combine(acc.converters[i], inputState(acc.p, acc.p.g.converters[i]));
+	}
+}
+var STATE_RULES = [availabilityRule];
+/** A converter's pin outside every domain and not declared for mains: its data does not say how it is separated (Resolution 27). */
+var uncovered = (t) => !!t.info.acInput && !t.info.domainOf.has(t.name) && !t.info.terminals.has(t.name);
+/**
+* How a terminal counts when mains reaches it: a pin of a part with no mains data (a GPIO, a
+* breadboard strip) or an undeclared pin of a mains part is ordinary; a pin in a non-mains domain is
+* separated (protective separation) or a secondary without it, as is a converter's pin outside every
+* domain (Resolution 27); null for a terminal the module declares for mains (the rating rules take
+* it). Whether a separated side is SELV or PELV is decided per state by `effectiveClass`, never by the
+* domain's label (Resolution 9).
+*/
+function lvClass(t) {
+	if (!t.info.any) return "ordinary";
+	const dom = t.info.domainOf.get(t.name);
+	if (dom && dom.kind !== "mains") return isolationAdequate(t.info) ? "separated" : "secondary";
+	if (uncovered(t)) return "secondary";
+	return t.info.terminals.has(t.name) ? null : "ordinary";
+}
+/** The analysed nodes of a part's declared bonds (`bond: "pe"`). */
+var bondNodes = (p, t) => [...t.info.bonds].map((b) => p.g.nodeOf.get(nodeKey(t.part.uid, b))).filter((i) => i !== void 0 && p.inRel[i] === 1);
+/** The analysed nodes of a part's own mains side: its mains domain pins, else its converter input (as the graph's energize edges start from). */
+function primaryNodes(p, t) {
+	const mains = t.info.domains.filter((x) => x.kind === "mains").flatMap((x) => x.pins);
+	return (mains.length ? mains : t.info.acInput ? [t.info.acInput.a, t.info.acInput.b] : []).map((n) => p.g.nodeOf.get(nodeKey(t.part.uid, n))).filter((i) => i !== void 0 && p.inRel[i] === 1);
+}
+var watchCache = /* @__PURE__ */ new WeakMap();
+/** The relevant nodes holding a low-voltage terminal, with those terminals (sorted) and the worst class among them. Once per view. */
+function watchList(p) {
+	let list = watchCache.get(p);
+	if (list) return list;
+	list = [];
+	for (const i of p.relevant) {
+		const classed = p.g.members[i].flatMap((k) => {
+			const t = termAt(p.g, k);
+			const c = t && lvClass(t);
+			return t && c ? [{
+				t,
+				c
+			}] : [];
+		});
+		if (!classed.length) continue;
+		const cls = [
+			"secondary",
+			"separated",
+			"ordinary"
+		].find((c) => classed.some((x) => x.c === c));
+		const sep = cls === "separated" ? classed.find((x) => x.c === "separated").t : null;
+		list.push({
+			node: i,
+			terms: classed.map((x) => x.t).sort((a, b) => natural.compare(termName$1(a), termName$1(b))),
+			cls,
+			sep,
+			bonds: Int32Array.from(sep ? bondNodes(p, sep) : []),
+			primary: Int32Array.from(cls === "secondary" ? primaryNodes(p, classed.find((x) => x.c === "secondary").t) : []),
+			keys: /* @__PURE__ */ new Map()
+		});
+	}
+	watchCache.set(p, list);
+	return list;
+}
+var pathGraphs = /* @__PURE__ */ new WeakMap();
+function pathGraph(p) {
+	let pg = pathGraphs.get(p);
+	if (pg) return pg;
+	const both = (a, b) => p.inRel[a] === 1 && p.inRel[b] === 1;
+	const links = [...p.energy.map((e) => [
+		e.a,
+		e.b,
+		e.directed
+	]), ...p.protective.filter((e) => e.fitted && both(e.a, e.b)).map((e) => [
+		e.a,
+		e.b,
+		false
+	])];
+	const n = p.g.n;
+	const lists = Array.from({ length: n }, () => []);
+	for (const [a, b, directed] of links) {
+		lists[a].push(b);
+		if (!directed) lists[b].push(a);
+	}
+	const at = new Int32Array(n + 1);
+	for (let x = 0; x < n; x++) at[x + 1] = at[x] + lists[x].length;
+	pg = {
+		at,
+		to: Int32Array.from(lists.flat()),
+		seen: new Int32Array(n),
+		prev: new Int32Array(n),
+		on: new Int32Array(n),
+		stamp: 0
+	};
+	pathGraphs.set(p, pg);
+	return pg;
+}
+/**
+* The wires on the ways energy reaches net `node` in the current state (spec 3: a path finding
+* highlights the path, not only where it ends; Ruling 33). For each of the given sources (every source
+* when omitted) and each of its conductors L and N, a shortest chain of nets from that conductor's
+* nets to `node`, over what conducts in this state (closed contacts, fitted fuses) and what carries
+* energy (loads, leakage, energize edges, one way across a barrier). The search from one conductor
+* never continues from a net that carries the source's other conductor: that search covers it, and
+* going on would route through unrelated loads. Nets, not roots, so a switch that is on elsewhere
+* adds nothing. Runs for a bounded number of states per finding, never on every state.
+*
+* A node's neighbours are its fixed links (pathGraph), then the state's closed and leak pairs of the
+* view's groups in group order, both ways: the order a breadth-first search meets them in, which
+* decides the path it keeps.
+*/
+function energyPathWires(p, node, from) {
+	const g = p.g;
+	const { inRel, groupIdx, groupState } = p;
+	const dyn = [];
+	for (const gi of groupIdx) for (const list of [g.groups[gi].closed[groupState[gi]], g.groups[gi].leak[groupState[gi]]]) for (const [a, b] of list) if (inRel[a] === 1 && inRel[b] === 1) dyn.push(a, b);
+	const pg = pathGraph(p);
+	const { at, to, seen, prev, on } = pg;
+	const onStamp = ++pg.stamp;
+	const order = [node];
+	on[node] = onStamp;
+	const queue = [];
+	for (const s of p.sources) {
+		if (from && !from.includes(s.index)) continue;
+		for (const [nodes, other] of [[s.live, bitOf(s.index, "N")], [s.neutral, bitOf(s.index, "L")]]) {
+			const stamp = ++pg.stamp;
+			queue.length = 0;
+			for (const x of nodes) if (seen[x] !== stamp) {
+				seen[x] = stamp;
+				prev[x] = -1;
+				queue.push(x);
+			}
+			const visit = (next, x) => {
+				if (seen[next] !== stamp) {
+					seen[next] = stamp;
+					prev[next] = x;
+					queue.push(next);
+				}
+			};
+			for (let q = 0; q < queue.length && seen[node] !== stamp; q++) {
+				const x = queue[q];
+				if (prev[x] !== -1 && p.ident[p.root[x]] & other) continue;
+				for (let k = at[x]; k < at[x + 1]; k++) visit(to[k], x);
+				for (let k = 0; k < dyn.length; k += 2) {
+					if (dyn[k] === x) visit(dyn[k + 1], x);
+					if (dyn[k + 1] === x) visit(dyn[k], x);
+				}
+			}
+			for (let x = seen[node] === stamp ? node : -1; x !== -1; x = prev[x]) if (on[x] !== onStamp) {
+				on[x] = onStamp;
+				order.push(x);
+			}
+		}
+	}
+	return order.flatMap((i) => g.wires[i]);
+}
+/** Why a secondary terminal counts as mains, and what to use instead, by the kind of part it belongs to. `also` when a wire already brings mains there. */
+function secondaryWords(t, also) {
+	const d = t.part.designator;
+	const iso = t.info.isolation;
+	const a = also ? "also " : "";
+	if (uncovered(t)) return {
+		cause: `${d}'s data ${a}does not state how ${termName$1(t)} is separated from mains`,
+		counts: "that pin",
+		fix: "use a part whose datasheet states how every pin is separated from mains."
+	};
+	const contact = t.info.contacts[0]?.kind;
+	if (contact) return {
+		cause: `${d}'s insulation between ${contact === "ssr" ? "its control side and its load side" : "its coil and its contacts"} is ${a}${iso === "basic" ? "only basic" : iso === "none" ? "missing" : "unknown"}`,
+		counts: "that side",
+		fix: "use a relay or SSR whose datasheet states reinforced or double insulation."
+	};
+	return {
+		cause: `${d}'s low-voltage side is ${a}separated from mains only by ${iso === "basic" ? "basic insulation" : iso === "none" ? "no insulation at all" : "insulation of unknown quality"}`,
+		counts: "that side",
+		fix: "use a converter with reinforced or double isolation."
+	};
+}
+/**
+* Rule 1's words. A secondary reached only across its own part's barrier says why that side counts as
+* mains; mains that a wire brings onto the node (L or N identity there) is said directly, with the
+* secondary's reason added when there is one.
+*/
+function lowVoltageDraft(w, direct, from, effective, sourceKeys, wires, when) {
+	const labels = [...new Set(w.terms.map(termName$1))];
+	const names = andList(labels);
+	const one = labels.length === 1;
+	const lead = w.terms[0];
+	const sec = w.cls === "secondary" ? secondaryWords(w.terms.find((t) => lvClass(t) === "secondary"), direct) : null;
+	let message;
+	if (sec && !direct) message = `${sec.cause}, so ${names} may be live${when}: ${sec.counts} counts as mains. Do not wire it to anything a person can touch; ${sec.fix}`;
+	else if (w.cls === "separated") message = `${names} ${one ? "is" : "are"} on a ${effective} low-voltage side that must never meet mains, but ${one ? "gets" : "get"} mains from ${from}${when}. Remove the wire that joins ${one ? "it" : "them"} to mains.`;
+	else {
+		const parts = [...new Set(w.terms.filter((t) => lvClass(t) === "ordinary").map((t) => t.part.designator))];
+		const single = parts.length === 1;
+		const harm = parts.length ? ` ${andList(parts)} ${single ? "is a low-voltage part" : "are low-voltage parts"}: ${single ? "it" : "they"} may be destroyed, and anything touching ${single ? "it" : "them"} may become live.` : "";
+		message = sec ? `${names} ${one ? "gets" : "get"} mains from ${from}${when}.${harm} Remove the wire that brings mains there. ${sec.cause}, so it counts as mains even without that wire: do not wire it to anything a person can touch; ${sec.fix}` : `${names} ${one ? "gets" : "get"} mains from ${from}${when}.${harm} Remove the wire that brings mains there, and switch mains only through a relay or SSR rated for it.`;
+	}
+	return {
+		rule: "mains-to-low-voltage",
+		subject: lead.part.designator,
+		target: termName$1(lead),
+		message,
+		parts: [...new Set(w.terms.map((t) => t.part.uid))],
+		pins: w.terms.map(endpointOf),
+		wires,
+		causes: [...w.terms.map((t) => t.key), ...sourceKeys]
+	};
+}
+/** The sources (global index, ascending) of a source mask. */
+var sourcesOfMask = (m) => {
+	const out = [];
+	for (let i = 0; m >>> i; i++) if (m >>> i & 1) out.push(i);
+	return out;
+};
+/** A finding's highlight gathers the energizing paths of up to this many of the states it holds in (Ruling 33); past it a state costs one check. */
+var PATH_STATES = 32;
+/** Codes are below this (a 10-bit source mask, the PELV bit and the direct bit), so position * CODES + code is one number per finding. */
+var CODES = 4096;
+/** Rule 1's finding key for a watch and code, made once. */
+function lowVoltageKey(w, code, sm, pelv, direct) {
+	let key = w.keys.get(code);
+	if (key === void 0) w.keys.set(code, key = `mains-to-low-voltage|${w.terms.map((t) => t.key).join(",")}|${sm}|${pelv ? "PELV" : "SELV"}|${direct}`);
+	return key;
+}
+/**
+* Records state `mask` for rule 1's finding `key`, reporting it (with a new path record) when it is
+* new, and returns its path record. Kept out of lowVoltageRule: the draft builder's closure captures
+* these values, and a closure in the per-watch loop would make every pass of it allocate a context.
+*/
+function lowVoltageRecord(acc, paths, w, key, sm, pelv, direct, mask) {
+	const { p } = acc;
+	const rec = paths.get(key);
+	if (mark(acc, key, mask)) return rec;
+	const made = {
+		states: 0,
+		wires: /* @__PURE__ */ new Set()
+	};
+	paths.set(key, made);
+	report$1(acc, key, mask, () => {
+		const srcs = sourcesOfMask(sm);
+		const from = sourcesText(p.g, srcs);
+		const sourceKeys = srcs.flatMap((i) => [...p.g.sources[i].keys.L, ...p.g.sources[i].keys.N]);
+		return (when) => lowVoltageDraft(w, direct === 1, from, pelv ? "PELV" : "SELV", sourceKeys, [...made.wires], when);
+	});
+	return made;
+}
+var lowVoltageCache = new FrontMap();
+function lowVoltageOf(acc) {
+	let lv = lowVoltageCache.get(acc);
+	if (lv) return lv;
+	const list = watchList(acc.p);
+	const bondAt = new Int32Array(list.length + 1);
+	list.forEach((w, i) => bondAt[i + 1] = bondAt[i] + w.bonds.length);
+	const sets = /* @__PURE__ */ new Map();
+	const setNodes = [];
+	const primarySet = Int32Array.from(list, (w) => {
+		const k = w.primary.join(",");
+		let id = sets.get(k);
+		if (id === void 0) sets.set(k, id = setNodes.push([...w.primary]) - 1);
+		return id;
+	});
+	const primaryAt = new Int32Array(setNodes.length + 1);
+	setNodes.forEach((xs, i) => primaryAt[i + 1] = primaryAt[i] + xs.length);
+	const steady = new Uint8Array(list.length);
+	const steadyCode = new Int32Array(list.length);
+	list.forEach((w, wi) => {
+		const code = steadyClaim(acc, w);
+		if (code === null) return;
+		steady[wi] = 1;
+		steadyCode[wi] = code;
+	});
+	lv = {
+		steady,
+		steadyCode,
+		list,
+		node: Int32Array.from(list, (w) => w.node),
+		secondary: Uint8Array.from(list, (w) => w.cls === "secondary" ? 1 : 0),
+		bondAt,
+		bonds: Int32Array.from(list.flatMap((w) => [...w.bonds])),
+		primarySet,
+		primaryAt,
+		primary: Int32Array.from(setNodes.flat()),
+		setStamp: new Int32Array(setNodes.length),
+		setLive: new Uint8Array(setNodes.length),
+		stamp: 0,
+		paths: /* @__PURE__ */ new Map(),
+		known: /* @__PURE__ */ new Map(),
+		lastCode: new Int32Array(list.length).fill(-1),
+		lastHolds: [],
+		lastRec: []
+	};
+	lowVoltageCache.set(acc, lv);
+	return lv;
+}
+/**
+* The claim watch `wi` makes in the current state: its source mask times 4, plus 2 for PELV, plus 1
+* when reached directly; -1 when its node carries no mains. Resolution 24: the key holds the whole
+* claim (terminals, sources, effective class, and for a secondary whether a wire brings mains there),
+* so each claim keeps its own conditions and path.
+*/
+function watchCode(acc, lv, wi, stamp, plain) {
+	const { srcIdx, srcLN } = acc;
+	const { root, ident, power } = acc.p;
+	const r = root[lv.node[wi]];
+	const x = ident[r] & LN_MASK;
+	const e = power[r];
+	if (!x && !e) return -1;
+	let sm = 0;
+	for (let j = 0; j < srcIdx.length; j++) if (x & srcLN[j] || e >> srcIdx[j] & 1) sm |= 1 << srcIdx[j];
+	let pelv = 0;
+	const { bondAt, bonds } = lv;
+	for (let b = bondAt[wi], end = bondAt[wi + 1]; b < end && !pelv; b++) if (ident[root[bonds[b]]] & PE_MASK) pelv = 1;
+	let direct = lv.secondary[wi];
+	if (direct && !x) {
+		const set = lv.primarySet[wi];
+		if (plain || lv.setStamp[set] !== stamp) {
+			lv.setStamp[set] = stamp;
+			const { primaryAt, primary } = lv;
+			let live = 0;
+			for (let k = primaryAt[set], end = primaryAt[set + 1]; k < end && !live; k++) {
+				const q = root[primary[k]];
+				if (ident[q] & LN_MASK || power[q]) live = 1;
+			}
+			lv.setLive[set] = live;
+		}
+		if (lv.setLive[set]) direct = 0;
+	}
+	return sm * 4 + pelv * 2 + direct;
+}
+/** The claim watchCode gives `w` in every state, when every input it reads is steady; null when some state may change it. */
+function steadyClaim(acc, w) {
+	const st = steadyOf(acc.p);
+	const { srcIdx, srcLN } = acc;
+	if (!st.fixed[w.node] || !st.powerKnown[w.node]) return null;
+	const x = st.ident[w.node] & LN_MASK;
+	const e = st.power[w.node];
+	if (!x && !e) return -1;
+	let sm = 0;
+	for (let j = 0; j < srcIdx.length; j++) if (x & srcLN[j] || e >> srcIdx[j] & 1) sm |= 1 << srcIdx[j];
+	const bonds = [...w.bonds];
+	const pelv = bonds.some((b) => st.fixed[b] && st.ident[b] & PE_MASK) ? 1 : bonds.every((b) => st.fixed[b]) ? 0 : null;
+	if (pelv === null) return null;
+	let direct = w.cls === "secondary" ? 1 : 0;
+	if (direct && !x) {
+		const always = (q) => st.fixed[q] && st.ident[q] & LN_MASK || st.powerKnown[q] && st.power[q];
+		const never = (q) => st.fixed[q] && !(st.ident[q] & LN_MASK) && st.powerKnown[q] && !st.power[q];
+		const primary = [...w.primary];
+		if (primary.some(always)) direct = 0;
+		else if (!primary.every(never)) return null;
+	}
+	return sm * 4 + pelv * 2 + direct;
+}
+/** Adds the current state's energizing paths to a finding's highlight while it has fewer than PATH_STATES (Ruling 33). */
+function addPaths(p, rec, node, sm) {
+	if (rec.states >= PATH_STATES) return;
+	rec.states++;
+	for (const wire of energyPathWires(p, node, sourcesOfMask(sm))) rec.wires.add(wire);
+}
+/**
+* Rule 1, per state: a hazardous node holding a low-voltage terminal. Allocation-free once a finding
+* has its paths. A watch making the claim it made last time costs a comparison and one bit; any other
+* claim takes lowVoltageClaim.
+*/
+function lowVoltageRule(acc, mask) {
+	const plain = plainPath.on;
+	const lv = lowVoltageOf(acc);
+	const { lastCode, lastHolds, lastRec, node, steady, steadyCode } = lv;
+	const stamp = ++lv.stamp;
+	const word = mask >>> 5;
+	const bit = 1 << (mask & 31);
+	for (let wi = 0; wi < lastCode.length; wi++) {
+		const code = steady[wi] && !plain ? steadyCode[wi] : watchCode(acc, lv, wi, stamp, plain);
+		if (code < 0) continue;
+		if (!plain && lastCode[wi] === code) {
+			lastHolds[wi][word] |= bit;
+			const rec = lastRec[wi];
+			if (rec.states < PATH_STATES) addPaths(acc.p, rec, node[wi], code >>> 2);
+			continue;
+		}
+		lowVoltageClaim(acc, lv, wi, code, mask);
+	}
+}
+/** Records claim `code` of watch `wi` in state `mask` through the finding maps, reporting the finding when it is new. */
+function lowVoltageClaim(acc, lv, wi, code, mask) {
+	const plain = plainPath.on;
+	const { p } = acc;
+	const sm = code >>> 2;
+	const pelv = code >>> 1 & 1;
+	const direct = code & 1;
+	const w = lv.list[wi];
+	const hit = plain ? void 0 : lv.known.get(wi * CODES + code);
+	if (hit) {
+		hit.holds[mask >>> 5] |= 1 << (mask & 31);
+		addPaths(p, hit.rec, w.node, sm);
+		lv.lastCode[wi] = code;
+		lv.lastHolds[wi] = hit.holds;
+		lv.lastRec[wi] = hit.rec;
+		return;
+	}
+	const key = lowVoltageKey(w, code, sm, pelv, direct);
+	const rec = lowVoltageRecord(acc, lv.paths, w, key, sm, pelv, direct, mask);
+	if (!rec) return;
+	addPaths(p, rec, w.node, sm);
+	const holds = acc.seen.get(key).holds;
+	lv.known.set(wi * CODES + code, {
+		holds,
+		rec
+	});
+	lv.lastCode[wi] = code;
+	lv.lastHolds[wi] = holds;
+	lv.lastRec[wi] = rec;
+}
+var CONDS = [
+	"L",
+	"N",
+	"PE"
+];
+/** Exported for the plain reference (mainsPlain.testing.ts), as are crossDraft and identityKeys. */
+function shortDraft(p, r, s, other) {
+	const wires = wiresOfRoot(p, r);
+	const d = s.part.designator;
+	const keys = [...s.keys.L, ...s.keys[other]];
+	return (when) => ({
+		rule: "mains-short",
+		subject: d,
+		target: `${d} L`,
+		message: other === "N" ? `${d} L and N are joined${when}: a short circuit across the outlet. The breaker should trip; until it does, the wiring may overheat. Remove the wire that joins them.` : `${d} L is joined to earth${when}: a short circuit to earth, which may put mains on everything earthed until the breaker trips. Remove the wire that joins them.`,
+		parts: [s.part.uid],
+		pins: keys.map(pinOfKey),
+		wires,
+		causes: keys
+	});
+}
+function crossDraft(p, r, s, a, t, b) {
+	const rank = (c) => CONDS.indexOf(c);
+	const [x, cx, y, cy] = rank(a) < rank(b) || rank(a) === rank(b) && natural.compare(s.part.designator, t.part.designator) <= 0 ? [
+		s,
+		a,
+		t,
+		b
+	] : [
+		t,
+		b,
+		s,
+		a
+	];
+	const wires = wiresOfRoot(p, r);
+	const [X, Y] = [x.part.designator, y.part.designator];
+	const keys = [...x.keys[cx], ...y.keys[cy]];
+	const text = (when) => cx === "L" && cy === "L" ? `${X} L and ${Y} L are joined${when}. The two outlets may be on different phases, so up to twice the mains voltage can appear across the wiring, or one phase is shorted to the other. Power this part of the circuit from one outlet.` : cx === "L" && cy === "N" ? `${X} L is joined to ${Y} N${when}: current from one outlet returns through the other, which can overload a shared neutral or get past a breaker. Power this part of the circuit from one outlet.` : cx === "L" ? `${X} L is joined to ${Y}'s earth${when}: a short circuit to earth from another outlet. Remove the wire that joins them.` : cx === "N" && cy === "N" ? `${X} N and ${Y} N are joined${when}: the two outlets share a neutral here. When a breaker switches one outlet off, its neutral can still carry current from the other. Keep each outlet's neutral separate.` : `${X} N is joined to ${Y}'s earth${when}: neutral current may flow on the earth wire. Keep each outlet's neutral apart from earth.`;
+	return (when) => ({
+		rule: cx === "N" && cy === "N" ? "mains-shared-neutral" : "mains-cross-source",
+		subject: X,
+		target: `${X} ${cx}`,
+		message: text(when),
+		parts: [x.part.uid, y.part.uid],
+		pins: keys.map(pinOfKey),
+		wires,
+		causes: keys
+	});
+}
+var identityCache = new FrontMap();
+function identityKeys(p) {
+	let k = identityCache.get(p);
+	if (k) return k;
+	const n = p.sources.length;
+	const cross = new Array(n * n * 9).fill("");
+	p.sources.forEach((s, i) => p.sources.forEach((t, j) => {
+		if (t.index <= s.index) return;
+		CONDS.forEach((a, ai) => CONDS.forEach((b, bi) => {
+			if (a === "PE" && b === "PE") return;
+			const pair = [`${s.id}:${a}`, `${t.id}:${b}`].sort().join("+");
+			cross[(i * n + j) * 9 + ai * 3 + bi] = `${a === "N" && b === "N" ? "mains-shared-neutral" : "mains-cross-source"}|${pair}`;
+		}));
+	}));
+	const local = (/* @__PURE__ */ new Int32Array(10)).fill(-1);
+	p.sources.forEach((s, i) => local[s.index] = i);
+	k = {
+		short: p.sources.map((s) => [`mains-short|${s.id}|N`, `mains-short|${s.id}|PE`]),
+		cross,
+		local
+	};
+	identityCache.set(p, k);
+	return k;
+}
+function slotsOf(cache, acc) {
+	let s = cache.get(acc);
+	if (!s) cache.set(acc, s = []);
+	return s;
+}
+function slotHit(slots, q, mask) {
+	const h = slots[q];
+	if (h === void 0) return false;
+	h[mask >>> 5] |= 1 << (mask & 31);
+	return true;
+}
+function slotFill(acc, slots, q, key, mask, first) {
+	if (!mark(acc, key, mask)) report$1(acc, key, mask, first);
+	slots[q] = acc.seen.get(key).holds;
+}
+var identitySlots = new FrontMap();
+/**
+* Rules 2 and 3, per state and allocation-free once a finding is known: one source's L on its N or PE;
+* two sources' conductors on one node. Only the sources present on a root are visited (in view order,
+* which is global index order), so a root holding one source's conductor alone costs nothing.
+*/
+function identityRules(acc, mask) {
+	if (plainPath.on) return plainRef(plainPath.identityRules)(acc, mask);
+	const { p } = acc;
+	const src = p.sources;
+	const n = src.length;
+	const keys = identityKeys(p);
+	const slots = slotsOf(identitySlots, acc);
+	for (let q = 0; q < p.srcRoots.length; q++) {
+		const r = p.srcRoots[q];
+		const x = p.ident[r];
+		const present = (x | x >>> 1 | x >>> 2) & L_MASK;
+		const ln = (x | x >>> 1) & L_MASK;
+		if (!(x & L_MASK & (x >>> 1 | x >>> 2)) && (!ln || !(present & present - 1))) continue;
+		for (let rest = present; rest; rest &= rest - 1) {
+			const sb = 31 - Math.clz32(rest & -rest);
+			const i = keys.local[sb / 3];
+			const s = src[i];
+			if (x >>> sb & 1) {
+				if (x >>> sb + 1 & 1 && !slotHit(slots, i * 2, mask)) slotFill(acc, slots, i * 2, keys.short[i][0], mask, () => shortDraft(p, r, s, "N"));
+				if (x >>> sb + 2 & 1 && !slotHit(slots, i * 2 + 1, mask)) slotFill(acc, slots, i * 2 + 1, keys.short[i][1], mask, () => shortDraft(p, r, s, "PE"));
+			}
+			for (let more = rest & rest - 1; more; more &= more - 1) {
+				const tb = 31 - Math.clz32(more & -more);
+				if (!((ln >>> sb | ln >>> tb) & 1)) continue;
+				const j = keys.local[tb / 3];
+				const t = src[j];
+				for (let a = 0; a < 3; a++) {
+					if (!(x >>> sb + a & 1)) continue;
+					for (let b = 0; b < 3; b++) {
+						if (!(x >>> tb + b & 1) || a === 2 && b === 2) continue;
+						const c = (i * n + j) * 9 + a * 3 + b;
+						if (!slotHit(slots, 2 * n + c, mask)) slotFill(acc, slots, 2 * n + c, keys.cross[c], mask, () => crossDraft(p, r, s, CONDS[a], t, CONDS[b]));
+					}
+				}
+			}
+		}
+	}
+}
+STATE_RULES.push(lowVoltageRule, identityRules);
+function visitState(acc, mask) {
+	track(acc);
+	for (const rule of STATE_RULES) rule(acc, mask);
+}
+/** The drafts of one unit's findings, each worded with every one of its minimal witnesses (Resolution 24, Ruling 31). */
+function finishStates(acc) {
+	return [...acc.seen.values()].map((s) => {
+		const when = statePhrase(acc.p.g, acc.cands, minimalWitnesses(s.holds, acc.cands.length), s.holds);
+		return s.build(when ? ` ${when}` : "");
+	});
+}
+/**
+* Folds one unit into the sheet's accumulator. A unit numbers its own sources (see viewOf), so its
+* identity bits never leave it: each node's one conductor is decoded here, with the unit's sources.
+*/
+function absorb(into, unit) {
+	if (!unit.incomplete) spreadReps(unit);
+	const sources = unit.p.g.sources;
+	for (const i of unit.p.relevant) {
+		into.hazardAny[i] |= unit.hazardAny[i];
+		into.mainsAny[i] |= unit.mainsAny[i];
+		into.cableAny[i] |= unit.incomplete ? unit.hazardAny[i] : unit.mainsAny[i];
+		into.volts[i] = Math.max(into.volts[i], unit.volts[i]);
+		const x = unit.identUnion[i];
+		if (x && (x & x - 1) === 0) {
+			const { s, c } = decodeSingle(x);
+			into.conductors[i] = {
+				conductor: c,
+				region: sources[s].region
+			};
+		}
+	}
+	if (unit.incomplete) {
+		const groups = unit.incomplete === "groups";
+		const g = unit.p.g;
+		const parts = [...new Set(groups ? unit.cands.map((i) => g.groups[i].part) : unit.p.sources.map((s) => s.part))].sort((a, b) => natural.compare(a.designator, b.designator));
+		into.open.push({
+			kind: unit.incomplete,
+			count: groups ? unit.cands.length : unit.p.sources.length,
+			parts
+		});
+	}
+	unit.converters.forEach((c, i) => {
+		if (c) into.converters[i] = combine(into.converters[i], c);
+	});
+	unit.loadComplete.forEach((v, i) => into.loadComplete[i] |= v);
+	unit.loadFit.forEach((v, i) => into.loadFit[i] |= v);
+	for (const [i, hs] of unit.loadFixers) for (const h of hs) (into.loadFixers.get(i) ?? into.loadFixers.set(i, /* @__PURE__ */ new Set()).get(i)).add(h);
+	into.finished.push(...finishStates(unit));
+}
+/**
+* When a unit's states were not enumerated (too many groups or sources in it): every node of the unit
+* a source's L or N could reach is taken as hazardous at the highest such voltage. A converter of the
+* unit is unknown when any source terminal (L, N or PE) shares a possible-connectivity component with
+* an input; unpowered only when none does, which is a proof, not an enumeration result (Resolution 11).
+*/
+function conservative(acc) {
+	const { p } = acc;
+	const g = p.g;
+	const reach = /* @__PURE__ */ new Map();
+	const any = /* @__PURE__ */ new Set();
+	for (const s of p.sources) {
+		for (const x of [...s.live, ...s.neutral]) reach.set(p.possible[x], Math.max(reach.get(p.possible[x]) ?? 0, s.volts));
+		for (const x of [
+			...s.live,
+			...s.neutral,
+			...s.earth
+		]) any.add(p.possible[x]);
+	}
+	const wiring = Int32Array.from({ length: g.n }, (_, i) => i);
+	const top = (x) => {
+		while (wiring[x] !== x) x = wiring[x] = wiring[wiring[x]];
+		return x;
+	};
+	const join = (a, b) => {
+		const [ra, rb] = [top(a), top(b)];
+		if (ra !== rb) wiring[ra] = rb;
+	};
+	for (const e of g.edges) if (!e.directed) join(e.a, e.b);
+	for (const grp of g.groups) for (const list of [...grp.closed, ...grp.leak]) for (const [a, b] of list) join(a, b);
+	const onWiring = /* @__PURE__ */ new Set();
+	for (const s of p.sources) for (const x of [...s.live, ...s.neutral]) onWiring.add(top(x));
+	for (const i of p.relevant) {
+		const v = reach.get(p.possible[i]);
+		if (v === void 0) continue;
+		acc.hazardAny[i] = 1;
+		if (onWiring.has(top(i))) acc.mainsAny[i] = 1;
+		acc.volts[i] = v;
+	}
+	for (const i of p.converterIdx) {
+		const c = g.converters[i];
+		acc.converters[i] = any.has(p.possible[c.a]) || any.has(p.possible[c.b]) ? notChecked(c) : UNPOWERED;
+	}
+}
+/** Rule 11 (spec 1.3): a converter that is not powered, when it is wired or plugged at all. */
+function converterPower(acc) {
+	const g = acc.p.g;
+	return g.converters.flatMap((c, i) => {
+		const st = acc.converters[i] ?? UNPOWERED;
+		if (st.state === "powered" || !g.connected.has(c.part.uid)) return [];
+		const d = c.part.designator;
+		const keys = c.names.map((n) => nodeKey(c.part.uid, n));
+		const draft = (rule, message) => [{
+			rule,
+			subject: d,
+			target: d,
+			message,
+			parts: [c.part.uid],
+			pins: keys.map(pinOfKey),
+			wires: [],
+			causes: keys
+		}];
+		const none = "so its outputs are not counted as a supply";
+		if (st.kind === "incomplete") return draft("supply-unknown", `The mains checks did not finish, so ${d}'s mains input was not checked and its outputs are not counted as a supply. ${st.fix}`);
+		if (st.state === "unpowered") return draft("no-power", `${d} has no mains input, so its outputs supply nothing. ${rewire(c)}`);
+		if (st.kind === "voltage") return [];
+		return draft("no-power", `${d}'s mains input is not a complete connection (${st.why}), ${none}. ${st.fix}`);
+	});
+}
+var STATIC_RULES = [converterPower];
+function staticDrafts(acc) {
+	return STATIC_RULES.flatMap((rule) => rule(acc));
+}
+/** True when L of source `s` is on one of the identities and N on the other. */
+var acrossIdent = (x, y, s) => {
+	const L = 1 << s * 3;
+	const N = L << 1;
+	return (x & L) !== 0 && (y & N) !== 0 || (x & N) !== 0 && (y & L) !== 0;
+};
+/** True when one of `nodes` has root `r` in `roots`, where root `hb` counts as `ha` (see acrossRoots). */
+function onRoot(nodes, roots, r, ha, hb) {
+	for (let k = 0; k < nodes.length; k++) {
+		const q = roots[nodes[k]];
+		if ((q === hb ? ha : q) === r) return true;
+	}
+	return false;
+}
+/** L and N of one source reach a and b over `roots`, where root `hb` counts as `ha` (one extra edge joining them; -1 for none). */
+function acrossRoots(p, roots, a, b, ha, hb) {
+	const ra = roots[a] === hb ? ha : roots[a];
+	const rb = roots[b] === hb ? ha : roots[b];
+	if (ra === rb) return false;
+	for (let k = 0; k < p.sources.length; k++) {
+		const s = p.sources[k];
+		if (onRoot(s.live, roots, ra, ha, hb) && onRoot(s.neutral, roots, rb, ha, hb) || onRoot(s.live, roots, rb, ha, hb) && onRoot(s.neutral, roots, ra, ha, hb)) return true;
+	}
+	return false;
+}
+/** Resolution 28: in the current contact state, with every empty fuse holder taken as fitted, L and N of one source reach a and b. False when no holder is empty. */
+function acrossFit(p, a, b) {
+	return p.anyAbsent && acrossRoots(p, p.fitRoot, a, b, -1, -1);
+}
+/**
+* Resolution 28: in the current contact state, with only the empty holder edge `h` added to what
+* conducts as drawn, L and N of one source reach a and b. One edge joins two roots, so nothing is
+* rebuilt: the root of h.b counts as the root of h.a.
+*/
+function acrossWith(p, h, a, b) {
+	return acrossRoots(p, p.root, a, b, p.root[h.a], p.root[h.b]);
+}
+var rangeText = (r) => r[0] === r[1] ? volt(r[0]) : `${volt(r[0])} to ${volt(r[1])}`;
+var voltageCache = new FrontMap();
+function voltageTable(p) {
+	let t = voltageCache.get(p);
+	if (t) return t;
+	const g = p.g;
+	const items = [...p.loadIdx.map((i) => ({
+		part: g.loads[i].part,
+		a: g.loads[i].a,
+		b: g.loads[i].b,
+		range: g.loads[i].range,
+		load: i,
+		converter: -1
+	})), ...p.converterIdx.map((i) => ({
+		part: g.converters[i].part,
+		a: g.converters[i].a,
+		b: g.converters[i].b,
+		range: g.converters[i].range,
+		load: -1,
+		converter: i
+	}))];
+	t = {
+		items,
+		a: Int32Array.from(items.map((x) => x.a)),
+		b: Int32Array.from(items.map((x) => x.b)),
+		lo: Float64Array.from(items.map((x) => x.range ? x.range[0] : 0)),
+		hi: Float64Array.from(items.map((x) => x.range ? x.range[1] : -1)),
+		load: Int32Array.from(items.map((x) => x.load)),
+		keys: []
+	};
+	voltageCache.set(p, t);
+	return t;
+}
+function voltageDraft(g, it, s) {
+	const src = g.sources[s];
+	const d = it.part.designator;
+	const v = volt(src.volts);
+	const range = it.range;
+	const base = {
+		subject: d,
+		target: d,
+		parts: [it.part.uid, src.part.uid],
+		pins: [],
+		wires: [],
+		causes: [
+			nodeKey(it.part.uid, "#range"),
+			...src.keys.L,
+			...src.keys.N
+		]
+	};
+	if (!range) return (when) => ({
+		...base,
+		rule: "data-missing",
+		message: `${d}'s module gives no voltage range, so whether ${src.part.designator}'s ${v} suits it is not checked${when}. Add its rated voltage (electrical.conducts range) from the datasheet.`
+	});
+	return (when) => ({
+		...base,
+		rule: "mains-voltage",
+		message: it.converter >= 0 ? `${d} takes ${rangeText(range)} AC, but ${src.part.designator} gives ${v}${when}. Use a converter made for ${v}.` : `${d} is made for ${rangeText(range)} AC, but ${src.part.designator} gives ${v}${when}. Use one made for ${v}, or power it from an outlet it is made for.`
+	});
+}
+var workCache = new FrontMap();
+function voltageWork(acc) {
+	let w = workCache.get(acc);
+	if (w) return w;
+	const t = voltageTable(acc.p);
+	const must = Uint8Array.from(t.items, (it) => !it.range || [...acc.srcVolts].some((v) => v < it.range[0] || v > it.range[1]) ? 1 : 0);
+	const list = Int32Array.from([...t.items.keys()].filter((k) => must[k] || t.items[k].load >= 0));
+	w = {
+		t,
+		list,
+		n: list.length,
+		must
+	};
+	workCache.set(acc, w);
+	return w;
+}
+var voltageSlots = new FrontMap();
+/**
+* Rule 4, per state: every source whose L and N sit across a load or a converter input, against the
+* range it accepts (a load with none gets data-missing, Resolution 14). It also records, for the
+* protection rules, which loads get a supply as drawn, which would with every empty holder fitted, and
+* which single empty holder alone restores one in this state (Resolution 28: a state that can occur).
+* Allocation-free once a finding is known.
+*/
+function voltageRule(acc, mask) {
+	const { p, srcIdx, srcVolts } = acc;
+	const w = voltageWork(acc);
+	const { t, list, must } = w;
+	const slots = slotsOf(voltageSlots, acc);
+	const plain = plainPath.on;
+	const { root, ident } = p;
+	const S = srcIdx.length;
+	for (let q = 0; q < w.n; q++) {
+		const k = list[q];
+		const ra = root[t.a[k]];
+		const rb = root[t.b[k]];
+		const x = ident[ra];
+		const y = ident[rb];
+		let supplied = false;
+		if (x && y && ra !== rb) for (let j = 0; j < S; j++) {
+			const s = srcIdx[j];
+			if (!acrossIdent(x, y, s)) continue;
+			supplied = true;
+			const v = srcVolts[j];
+			if (v >= t.lo[k] && v <= t.hi[k]) continue;
+			if (!plain && slotHit(slots, k * S + j, mask)) continue;
+			const it = t.items[k];
+			let key = t.keys[k * S + j];
+			if (key === void 0) t.keys[k * S + j] = key = `${it.range ? "mains-voltage" : "data-missing|range"}|${it.part.uid}|${it.load}|${it.converter}|${s}`;
+			slotFill(acc, slots, k * S + j, key, mask, () => voltageDraft(p.g, it, s));
+		}
+		const load = t.load[k];
+		if (load < 0) continue;
+		if (supplied) {
+			acc.loadComplete[load] = 1;
+			if (p.anyAbsent) acc.loadFit[load] = 1;
+			if (!must[k]) {
+				list[q--] = list[--w.n];
+				continue;
+			}
+		}
+		if (!p.anyAbsent || !acrossFit(p, t.a[k], t.b[k])) continue;
+		acc.loadFit[load] = 1;
+		if (supplied) continue;
+		for (let h = 0; h < p.protective.length; h++) {
+			const e = p.protective[h];
+			if (e.fitted || !acrossWith(p, e, t.a[k], t.b[k])) continue;
+			let set = acc.loadFixers.get(load);
+			if (!set) acc.loadFixers.set(load, set = /* @__PURE__ */ new Set());
+			set.add(e.part);
+		}
+	}
+}
+STATE_RULES.push(voltageRule);
+/** Terminals of one part under one finding, so a six-way terminal block gives one line, not six. */
+function grouped() {
+	const map = /* @__PURE__ */ new Map();
+	return {
+		add(key, t, v, rating, why = "none", alt = null) {
+			const e = map.get(key);
+			if (!e) map.set(key, {
+				terms: [t],
+				v,
+				rating,
+				why,
+				alt
+			});
+			else {
+				if (!e.terms.includes(t)) e.terms.push(t);
+				e.v = Math.max(e.v, v);
+			}
+		},
+		entries: () => [...map.values()].map((e) => ({
+			...e,
+			terms: e.terms.sort((a, b) => natural.compare(termName$1(a), termName$1(b)))
+		}))
+	};
+}
+/**
+* Rule 5, once, over what the states established: every terminal a module declares for mains that
+* sat on a hazardous node, relevance first (AC or AC/DC service; a switching rating for a contact, an
+* insulation or terminal rating otherwise), adequacy second (at least the highest voltage it got).
+* A converter's input pair is judged by its range (rule 4); ordinary and low-voltage pins by rule 1.
+*/
+function ratingRules(acc) {
+	const { p } = acc;
+	const g = p.g;
+	const bad = grouped();
+	const unknown = grouped();
+	const cond = grouped();
+	const unverified = grouped();
+	for (const i of p.relevant) {
+		if (!acc.hazardAny[i]) continue;
+		const v = acc.volts[i];
+		for (const key of g.members[i]) {
+			const t = termAt(g, key);
+			if (!t || !t.info.any || lvClass(t) !== null) continue;
+			if (t.info.acInput && (t.name === t.info.acInput.a || t.name === t.info.acInput.b)) continue;
+			const switching = t.info.contactTerminals.has(t.name);
+			const mine = t.info.ratings.filter((r) => r.pins.includes(t.name));
+			const relevant = mine.filter((r) => r.service !== "dc" && (switching ? r.kind === "switching" : r.kind !== "switching"));
+			if (!relevant.length) {
+				const why = switching ? "switching" : mine.some((r) => r.service !== "dc") ? "terminal" : mine.length ? "dc" : "none";
+				unknown.add(`${t.part.uid}|${why}`, t, v, null, why);
+				continue;
+			}
+			const adequate = relevant.filter((r) => r.volts >= v).sort((a, b) => a.volts - b.volts);
+			if (!adequate.length) {
+				const best = relevant.reduce((a, b) => b.volts > a.volts ? b : a);
+				bad.add(`${t.part.uid}|${t.info.ratings.indexOf(best)}`, t, v, best);
+				continue;
+			}
+			if (adequate.some((r) => !r.conditions && r.provenance === "datasheet")) continue;
+			const withTerms = adequate.find((r) => r.conditions && r.provenance === "datasheet");
+			const unproven = adequate.find((r) => !r.conditions && r.provenance === "unverified");
+			const idx = (r) => t.info.ratings.indexOf(r);
+			if (withTerms && unproven) {
+				cond.add(`${t.part.uid}|${idx(withTerms)}|${idx(unproven)}`, t, v, withTerms, "none", unproven);
+				continue;
+			}
+			const r = withTerms ?? unproven ?? adequate[0];
+			const rk = `${t.part.uid}|${idx(r)}`;
+			if (r.conditions) cond.add(rk, t, v, r);
+			if (r.provenance === "unverified") unverified.add(rk, t, v, r);
+		}
+	}
+	const draft = (rule, e, message) => ({
+		rule,
+		subject: e.terms[0].part.designator,
+		target: termName$1(e.terms[0]),
+		message,
+		parts: [e.terms[0].part.uid],
+		pins: e.terms.map(endpointOf),
+		wires: [],
+		causes: e.terms.map((t) => t.key)
+	});
+	const names = (e) => andList(e.terms.map(termName$1));
+	const one = (e) => e.terms.length === 1;
+	const whose = (e) => `${e.terms[0].part.designator}'s ${volt(e.rating.volts)} AC rating`;
+	return [
+		...bad.entries().map((e) => draft("mains-rating", e, `${names(e)} ${one(e) ? "is" : "are"} rated ${volt(e.rating.volts)} AC, but ${one(e) ? "gets" : "get"} ${volt(e.v)}. Use a part rated for at least ${volt(e.v)} AC.`)),
+		...unknown.entries().map((e) => {
+			const them = one(e) ? "it" : "them";
+			const kind = e.why === "switching" ? "AC switching" : e.why === "terminal" ? "AC terminal or insulation" : "AC";
+			const where = e.why === "switching" ? `${one(e) ? "switches" : "switch"} mains` : `${one(e) ? "is" : "are"} on mains`;
+			const gives = e.why === "dc" ? `gives only a DC rating for ${them}` : `gives no ${kind} rating for ${them}`;
+			return draft("rating-unknown", e, `${names(e)} ${where} (${volt(e.v)}), but ${e.terms[0].part.designator}'s module ${gives}, so Circuitoon cannot tell whether ${one(e) ? "it is" : "they are"} safe there. Check the datasheet for an ${kind} rating of at least ${volt(e.v)}.`);
+		}),
+		...cond.entries().map((e) => draft("rating-conditional", e, e.alt ? `${whose(e)} holds only ${e.rating.conditions}, and its ${volt(e.alt.volts)} AC rating, which has no conditions, is not verified for this exact part (${e.terms[0].module.name}). Circuitoon cannot confirm either from the drawing: check the conditions on the real build, or check the maker's data for the part you use.` : `${whose(e)} holds only ${e.rating.conditions}. Circuitoon cannot see that on the drawing: check it on the real build.`)),
+		...unverified.entries().map((e) => draft("rating-unverified", e, `${whose(e)} is not verified for this exact part (${e.terms[0].module.name}). Check the maker's data for the part you use.`)),
+		...isolationUnverified(acc)
+	];
+}
+/** A part's analysed node of terminal `name`, when some state made it hazardous. */
+function hotTerm(acc, part, name) {
+	const i = acc.p.g.nodeOf.get(nodeKey(part.uid, name));
+	return i !== void 0 && acc.hazardAny[i] === 1;
+}
+/** Resolution 26: a module whose isolation class comes from a similar part, not this exact one (a relay clone board), once its mains side is on mains. */
+function isolationUnverified(acc) {
+	const g = acc.p.g;
+	return g.mainsParts.flatMap((part) => {
+		const m = moduleOf(g.d, part.module);
+		const info = mainsOf(m);
+		if (info.isolationProvenance !== "unverified") return [];
+		if (!info.domains.filter((x) => x.kind === "mains").flatMap((x) => x.pins).some((n) => hotTerm(acc, part, n))) return [];
+		const d = part.designator;
+		const kind = info.contacts[0]?.kind;
+		return [{
+			rule: "rating-unverified",
+			subject: d,
+			target: d,
+			message: `${d}'s insulation between ${kind === "ssr" ? "its control side and its load side" : kind ? "its coil and its contacts" : "mains and its low-voltage side"} is not verified for this exact part (${m.name}). Check the maker's data for the part you use.`,
+			parts: [part.uid],
+			pins: [],
+			wires: [],
+			causes: [nodeKey(part.uid, "#isolation")]
+		}];
+	});
+}
+/**
+* Rule 12, once: a mains part on mains whose module leaves out how its mains terminals conduct (the
+* graph then lets energy pass between all of them), or a converter whose pins sit outside every
+* domain (taken as live, Resolution 27). A load with no voltage range is rule 4's (per state).
+*/
+function dataMissing(acc) {
+	const g = acc.p.g;
+	return g.mainsParts.flatMap((part) => {
+		const m = moduleOf(g.d, part.module);
+		const info = mainsOf(m);
+		const d = part.designator;
+		const label = (n) => termAt(g, nodeKey(part.uid, n))?.label ?? n;
+		const out = [];
+		const undeclared = [...info.terminals].filter((t) => !info.declaredConduction.has(t)).sort(natural.compare);
+		if (undeclared.some((n) => hotTerm(acc, part, n))) {
+			const one = undeclared.length === 1;
+			const names = andList(undeclared.map(label));
+			out.push({
+				rule: "data-missing",
+				subject: d,
+				target: d,
+				message: one ? `${d}'s module does not say how ${names} conducts, so the mains checks assume the worst for it: mains on it reaches every other mains terminal of ${d}, and theirs reaches it. Add conduction data to its module (electrical.internal, conducts, contacts or protective).` : `${d}'s module does not say how ${names} conduct, so the mains checks assume the worst for them: mains on any of them reaches the others. Add conduction data to its module (electrical.internal, conducts, contacts or protective).`,
+				parts: [part.uid],
+				pins: undeclared.map((n) => ({
+					part: part.uid,
+					pin: n
+				})),
+				wires: [],
+				causes: undeclared.map((n) => nodeKey(part.uid, n))
+			});
+		}
+		const uncovered = info.acInput ? uncoveredPins(m, info) : [];
+		if (uncovered.length && (hotTerm(acc, part, info.acInput.a) || hotTerm(acc, part, info.acInput.b))) {
+			const one = uncovered.length === 1;
+			out.push({
+				rule: "data-missing",
+				subject: d,
+				target: d,
+				message: `${d}'s module leaves ${andList(uncovered.map(label))} outside every domain (electrical.domains), so the checks treat ${one ? "it" : "them"} as live. Add its domains and isolation from the datasheet.`,
+				parts: [part.uid],
+				pins: uncovered.map((n) => ({
+					part: part.uid,
+					pin: n
+				})),
+				wires: [],
+				causes: [nodeKey(part.uid, "#domains")]
+			});
+		}
+		return out;
+	});
+}
+STATIC_RULES.push(ratingRules, dataMissing);
+/** Up to this many L and N terminals of one part are judged as one claim (one bit each, two masks in one exact number); a part with more is judged in chunks of this size. */
+var REQ_CHUNK = 26;
+var lastOf = () => ({
+	code: 0,
+	holds: null
+});
+/** Records state `mask` when the entry's last finding has `code`; false otherwise (the caller takes the keyed path). */
+function repeat(l, code, mask) {
+	if (l.holds === null || l.code !== code) return false;
+	l.holds[mask >>> 5] |= 1 << (mask & 31);
+	return true;
+}
+/** The keyed path: records state `mask` under `key` (reporting it when new) and makes it the entry's last finding. */
+function remember(acc, l, code, key, mask, first) {
+	if (!mark(acc, key, mask)) report$1(acc, key, mask, first);
+	l.code = code;
+	l.holds = acc.seen.get(key).holds;
+}
+var polarityCache = new FrontMap();
+/** The earth terminals of a class 1 module: pins requiring PE, and PE plug contacts. */
+function earthNames(info) {
+	return [...[...info.requirement].filter(([, r]) => r === "PE").map(([n]) => n), ...info.plug?.profiles.flatMap((pr) => pr.contacts.filter((c) => c.mains === "PE").map((c) => c.pin)) ?? []].filter((n, i, all) => all.indexOf(n) === i);
+}
+/**
+* The identity bits each node of the view can ever carry: the closure from the source terminals over
+* nets, every fuse edge (fitted or not) and, with `contacts`, every contact position at once. Without
+* `contacts` and over fitted fuses only, the bits a node carries in every state. `skip` leaves one
+* contact group or fuse out (what reaches its ends without it). Once per view, so the per-state rules
+* below judge only what can go wrong.
+*/
+function identityReach(p, contacts, skip = {}) {
+	const g = p.g;
+	const parent = /* @__PURE__ */ new Map();
+	const find = (x) => {
+		let r = x;
+		while (parent.has(r)) r = parent.get(r);
+		return r;
+	};
+	const union = (a, b) => {
+		if (!p.inRel[a] || !p.inRel[b]) return;
+		const [ra, rb] = [find(a), find(b)];
+		if (ra !== rb) parent.set(ra, rb);
+	};
+	for (const e of p.protective) if ((contacts || e.fitted) && e !== skip.edge) union(e.a, e.b);
+	if (contacts) {
+		for (const gi of p.groupIdx) if (gi !== skip.group) for (const list of g.groups[gi].closed) for (const [a, b] of list) union(a, b);
+	}
+	const bits = /* @__PURE__ */ new Map();
+	for (const s of p.sources) for (const [nodes, c] of [
+		[s.live, "L"],
+		[s.neutral, "N"],
+		[s.earth, "PE"]
+	]) for (const x of nodes) bits.set(find(x), (bits.get(find(x)) ?? 0) | bitOf(s.index, c));
+	return (i) => bits.get(find(i)) ?? 0;
+}
+/** True when a net has a wire or a terminal besides the given one: a contact throw on it leads somewhere. */
+var wired = (g, i) => g.wires[i].length > 0 || g.members[i].length > 1;
+/**
+* True when net `i` holds a terminal that a neutral feeds: a mains terminal of a part other than
+* `owner` (a load, a converter input, another switch or fuse, a terminal block), never an earth: a
+* PE terminal, a declared bond or a source's or socket's earth.
+*/
+function feedsMains(g, i, owner) {
+	return g.members[i].some((k) => {
+		const t = termAt(g, k);
+		if (!t || t.part === owner || !t.info.terminals.has(t.name) || t.info.bonds.has(t.name) || t.info.requirement.get(t.name) === "PE") return false;
+		return !t.info.acSources.some((s) => s.earth.includes(t.name)) && !t.info.sockets.some((s) => s.contacts.some((c) => c.group === t.name && c.role === "PE"));
+	});
+}
+/**
+* The ends of a contact or fuse that lose the neutral when it opens and feed something through it:
+* no neutral (nor unpolarized conductor) reaches the end without it (`without`), it feeds a mains
+* terminal of another part, and it does not carry earth itself. A switch between N and PE, or with
+* one side open, is in no neutral path.
+*/
+function farSide(p, without, i, owner, nLike) {
+	const x = without(i);
+	return !(x & nLike) && !(x & PE_MASK) && feedsMains(p.g, i, owner);
+}
+/**
+* What rules 6 and 7 judge in one unit, made once, so a state allocates nothing once its findings are
+* known. Only what can go wrong enters: a terminal that can reach the conductor it must not carry (or
+* an unpolarized source), a contact or fuse in a path a neutral feeds, an earth terminal that is not
+* always on PE, and a terminal or ground that can reach PE.
+*/
+function polarityTable(acc) {
+	let t = polarityCache.get(acc);
+	if (t) return t;
+	const { p } = acc;
+	const g = p.g;
+	const can = identityReach(p, true);
+	const always = identityReach(p, false);
+	const bits = (polarized) => p.sources.reduce((m, s) => s.polarized === polarized ? m | bitOf(s.index, "L") | bitOf(s.index, "N") : m, 0);
+	const [pol, unpol] = [bits(true), bits(false)];
+	const nLike = N_MASK & pol | unpol;
+	/** True when a terminal needing conductor `want` can be on the other one, or on an unpolarized source. */
+	const risky = (i, want) => (can(i) & ((want === "L" ? N_MASK : L_MASK) & pol | unpol)) !== 0;
+	const unpolSrc = [...new Set(p.sources.filter((s) => !s.polarized).map((s) => s.index))];
+	const node = (part, n) => g.nodeOf.get(nodeKey(part.uid, n));
+	const inView = (i) => i !== void 0 && p.inRel[i] === 1;
+	const byPart = /* @__PURE__ */ new Map();
+	const lines = [];
+	const grounds = [];
+	const bondNodes = [];
+	for (const i of p.relevant) for (const k of g.members[i]) {
+		const term = termAt(g, k);
+		if (!term) continue;
+		const req = term.info.requirement.get(term.name);
+		if ((req === "L" || req === "N") && risky(i, req)) (byPart.get(term.part) ?? byPart.set(term.part, []).get(term.part)).push(term);
+		const onPE = (can(i) & PE_MASK) !== 0;
+		if ((req === "L" || req === "N" || req === "line") && onPE) lines.push({
+			t: term,
+			node: i,
+			key: `earth|${term.key}|line-on-pe`
+		});
+		if (term.info.bonds.has(term.name)) bondNodes.push(i);
+		else if (onPE && term.type === "ground" && lvClass(term) !== null) grounds.push({
+			t: term,
+			node: i,
+			key: `earth-bond|${term.key}`
+		});
+	}
+	const parts = [];
+	for (const [part, list] of byPart) {
+		list.sort((a, b) => natural.compare(termName$1(a), termName$1(b)));
+		for (let s = 0; s < list.length; s += REQ_CHUNK) {
+			const terms = list.slice(s, s + REQ_CHUNK);
+			parts.push({
+				part,
+				terms,
+				nodes: Int32Array.from(terms, (x) => g.nodeOf.get(x.key)),
+				wantL: Uint8Array.from(terms, (x) => x.info.requirement.get(x.name) === "L" ? 1 : 0),
+				keys: /* @__PURE__ */ new Map(),
+				maybeKeys: /* @__PURE__ */ new Map(),
+				wrong: lastOf(),
+				maybe: lastOf(),
+				vals: new Uint32Array(terms.length),
+				lOnN: 0,
+				nOnL: 0,
+				um: 0
+			});
+		}
+	}
+	const groups = p.groupIdx.flatMap((gi) => {
+		const grp = g.groups[gi];
+		const pole = grp.def.poles[0];
+		const com = node(grp.part, pole.com);
+		if (grp.def.poles.length !== 1 || !(can(com) & nLike)) return [];
+		const without = identityReach(p, true, { group: gi });
+		const at = Int32Array.from([pole.nc, pole.no], (name) => {
+			const other = name === null ? void 0 : node(grp.part, name);
+			if (!inView(other) || !wired(g, other)) return -1;
+			return farSide(p, without, com, grp.part, nLike) || farSide(p, without, other, grp.part, nLike) ? com : -1;
+		});
+		if (at[0] < 0 && at[1] < 0) return [];
+		const throws = [pole.nc, pole.no].map((name) => name !== null && wired(g, node(grp.part, name)));
+		const changeover = throws[0] && throws[1];
+		const kind = grp.def.kind;
+		const openWord = (kind === "relay" ? ["released", "energized"] : pole.nc !== null && kind === "switch" ? ["switched to NC", "switched to NO"] : ["off", "on"])[throws[1] ? 0 : 1];
+		return [{
+			gi,
+			pos: acc.cands.indexOf(gi),
+			changeover,
+			openWord,
+			at,
+			key: `polarity|${grp.part.uid}|${grp.def.id}|neutral`,
+			maybeKeys: /* @__PURE__ */ new Map(),
+			last: lastOf()
+		}];
+	});
+	const fuses = p.protective.flatMap((e) => {
+		if (!(can(e.a) & nLike)) return [];
+		const without = identityReach(p, true, { edge: e });
+		if (!farSide(p, without, e.a, e.part, nLike) && !(p.inRel[e.b] && farSide(p, without, e.b, e.part, nLike))) return [];
+		return [{
+			e,
+			key: `polarity|${e.part.uid}|${e.names.join("-")}|neutral`,
+			maybeKeys: /* @__PURE__ */ new Map(),
+			last: lastOf()
+		}];
+	});
+	const fixed = [];
+	const staticParts = parts.filter((r) => {
+		const nodes = Array.from(r.nodes);
+		if (nodes.every((i) => can(i) === always(i))) {
+			nodes.forEach((i, k) => r.vals[k] = always(i));
+			judgeTerms(r, pol, unpol, unpolSrc);
+		} else {
+			const canPol = nodes.reduce((m, i) => m | can(i), 0) & pol;
+			const least = sourcesBits(unpolSrc, nodes.reduce((m, i) => m | always(i), 0));
+			if (canPol || least !== sourcesBits(unpolSrc, nodes.reduce((m, i) => m | can(i), 0))) return false;
+			r.lOnN = r.nOnL = 0;
+			r.um = least;
+		}
+		const { lOnN, nOnL, um } = r;
+		if (lOnN | nOnL) fixed.push((mask) => everyState(acc, wrongKey(r, lOnN, nOnL), mask, () => wrongWayDraft(acc.p, r, lOnN, nOnL)));
+		if (um) fixed.push((mask) => everyState(acc, maybeKey(r, um), mask, () => maybeWrongDraft(acc.p, r, um)));
+		return true;
+	});
+	const staticGroups = groups.filter((c) => {
+		const com = c.at[0] >= 0 ? c.at[0] : c.at[1];
+		const grp = g.groups[c.gi];
+		const pole = grp.def.poles[0];
+		const throwAt = node(grp.part, c.at[1] >= 0 ? pole.no : pole.nc);
+		if (c.changeover || can(com) !== (always(com) | always(throwAt))) return false;
+		const code = carryCode(pol, unpol, unpolSrc, can(com));
+		if (code) fixed.push((mask) => everyState(acc, groupKey$1(g, c, code), mask, () => groupDraft(acc.p, c, [com, throwAt], code < 0 ? 0 : code)));
+		return true;
+	});
+	const staticFuses = fuses.filter((f) => {
+		const { a, b, fitted } = f.e;
+		const other = fitted || !p.inRel[b] ? 0 : always(b);
+		if (can(a) !== (always(a) | other)) return false;
+		const code = carryCode(pol, unpol, unpolSrc, can(a));
+		if (code) fixed.push((mask) => everyState(acc, fuseKey(f, code), mask, () => fuseDraft(acc.p, f.e, code < 0 ? 0 : code)));
+		return true;
+	});
+	const earths = [];
+	for (const part of g.mainsParts) {
+		const info = mainsOf(moduleOf(g.d, part.module));
+		const pe = earthNames(info);
+		if (!pe.length) continue;
+		const classOne = info.protection === "class-1";
+		const others = classOne ? Int32Array.from([...info.terminals].filter((n) => !pe.includes(n)).map((n) => node(part, n)).filter(inView)) : /* @__PURE__ */ new Int32Array(0);
+		const seen = /* @__PURE__ */ new Set();
+		for (const n of pe) {
+			const i = node(part, n);
+			const term = termAt(g, nodeKey(part.uid, n));
+			if (!inView(i) || !term || seen.has(i) || always(i) & PE_MASK) continue;
+			seen.add(i);
+			earths.push({
+				t: term,
+				node: i,
+				classOne,
+				others,
+				noPe: `earth|${term.key}|no-pe`,
+				onLive: `earth|${term.key}|pe-live`,
+				energized: `earth|${term.key}|pe-energized`
+			});
+		}
+	}
+	t = {
+		pol,
+		unpol,
+		unpolList: unpolSrc,
+		parts: parts.filter((r) => !staticParts.includes(r)),
+		groups: groups.filter((c) => !staticGroups.includes(c)),
+		fuses: fuses.filter((f) => !staticFuses.includes(f)),
+		lines,
+		earths,
+		fixed,
+		fixedDone: false,
+		npe: Uint32Array.from(p.sources, (s) => joinedInside(g, s) ? 0 : bitOf(s.index, "N") | bitOf(s.index, "PE")),
+		npeKeys: p.sources.map((s) => `earth|${s.id}|N-PE`),
+		grounds,
+		bondNodes: Int32Array.from(bondNodes)
+	};
+	polarityCache.set(acc, t);
+	return t;
+}
+/** True when a source's module itself joins its N and its earth (one terminal, or one internal group): that join is the supply's, not one beyond the outlet. */
+function joinedInside(g, s) {
+	const name = (k) => JSON.parse(k)[1];
+	const [ns, pes] = [s.keys.N.map(name), s.keys.PE.map(name)];
+	if (ns.some((n) => pes.includes(n))) return true;
+	return (moduleOf(g.d, s.part.module)?.internal ?? []).some((grp) => grp.some((n) => ns.includes(n)) && grp.some((n) => pes.includes(n)));
+}
+/** The sources in `list` (one bit per global index) whose L or N is in identity `x`: the unpolarized outlets behind it. */
+function sourcesBits(list, x) {
+	let m = 0;
+	for (let j = 0; j < list.length; j++) if (x & (bitOf(list[j], "L") | bitOf(list[j], "N"))) m |= 1 << list[j];
+	return m;
+}
+/** Judges a part's terminals from their identities in `r.vals`: which need L but are on N, which need N but are on L (polarized sources), and the unpolarized sources behind the rest. */
+function judgeTerms(r, pol, unpol, unpolSrc) {
+	let lOnN = 0;
+	let nOnL = 0;
+	let um = 0;
+	for (let k = 0; k < r.vals.length; k++) {
+		const all = r.vals[k];
+		const x = all & pol;
+		const onL = (x & L_MASK) !== 0 && !(x & N_MASK);
+		const onN = (x & N_MASK) !== 0 && !(x & L_MASK);
+		if (r.wantL[k] && onN) lOnN |= 1 << k;
+		else if (!r.wantL[k] && onL) nOnL |= 1 << k;
+		else if (all & unpol && !(x & LN_MASK)) um |= sourcesBits(unpolSrc, all);
+	}
+	r.lOnN = lOnN;
+	r.nOnL = nOnL;
+	r.um = um;
+}
+/** A contact or fuse carrying identity `x`: -1 for a definite neutral (polarized source), the unpolarized sources for an uncertain one, 0 for neither. */
+function carryCode(pol, unpol, unpolSrc, x) {
+	if (x & pol & N_MASK && !(x & pol & L_MASK)) return -1;
+	if (!(x & pol & LN_MASK) && x & unpol && !(x & unpol & L_MASK && x & unpol & N_MASK)) return sourcesBits(unpolSrc, x);
+	return 0;
+}
+/** Records a finding in every state of the unit at once (it holds whatever the contacts do). */
+function everyState(acc, key, mask, first) {
+	if (!mark(acc, key, mask)) report$1(acc, key, mask, first);
+	const holds = acc.seen.get(key).holds;
+	const n = acc.total;
+	for (let m = 0; m < n; m += 32) holds[m >>> 5] = n - m >= 32 ? 4294967295 : (1 << n - m) - 1;
+}
+var wrongKey = (r, lOnN, nOnL) => keyFor(r.keys, lOnN * 2 ** REQ_CHUNK + nOnL, () => `polarity|${r.part.uid}|${r.terms[0].key}|${lOnN}|${nOnL}`);
+var maybeKey = (r, um) => keyFor(r.maybeKeys, um, () => `polarity|maybe|${r.part.uid}|${r.terms[0].key}|${um}`);
+var groupKey$1 = (g, c, code) => code < 0 ? c.key : keyFor(c.maybeKeys, code, () => `polarity|maybe|${g.groups[c.gi].part.uid}|${g.groups[c.gi].def.id}|${code}`);
+var fuseKey = (f, code) => code < 0 ? f.key : keyFor(f.maybeKeys, code, () => `polarity|maybe|${f.e.part.uid}|${f.e.names.join("-")}|${code}`);
+/** The finding key for `code` in `keys`, made on first use. */
+function keyFor(keys, code, make) {
+	let k = keys.get(code);
+	if (k === void 0) keys.set(code, k = make());
+	return k;
+}
+/** The sources (global index) whose L or N is in identity `x`. */
+var lnSources = (p, x) => sourcesIn(p, x, 0);
+/** The wires on the ways L and N of the given sources reach each node (spec 3: a finding highlights its path). */
+var pathsTo = (p, nodes, sources) => [...new Set(Array.from(nodes).flatMap((i) => energyPathWires(p, i, sources)))];
+/** Terminals that require L or N (a lamp's centre contact and shell): each on the conductor it needs. Definite from a polarized source, uncertain from an unpolarized one. */
+function terminalPolarity(acc, t, mask) {
+	const { p } = acc;
+	const { root, ident } = p;
+	for (let q = 0; q < t.parts.length; q++) {
+		const r = t.parts[q];
+		for (let k = 0; k < r.nodes.length; k++) r.vals[k] = ident[root[r.nodes[k]]];
+		judgeTerms(r, t.pol, t.unpol, t.unpolList);
+		const { lOnN, nOnL, um } = r;
+		const code = lOnN * 2 ** REQ_CHUNK + nOnL;
+		if (code && !repeat(r.wrong, code, mask)) remember(acc, r.wrong, code, wrongKey(r, lOnN, nOnL), mask, () => wrongWayDraft(p, r, lOnN, nOnL));
+		if (um && !repeat(r.maybe, um, mask)) remember(acc, r.maybe, um, maybeKey(r, um), mask, () => maybeWrongDraft(p, r, um));
+	}
+}
+function wrongWayDraft(p, r, lOnN, nOnL) {
+	const pick = (m) => r.terms.filter((_, k) => m >>> k & 1);
+	const [onN, onL] = [pick(lOnN), pick(nOnL)];
+	const terms = [...onN, ...onL];
+	const nodes = terms.map((x) => p.g.nodeOf.get(x.key));
+	const d = r.part.designator;
+	const names = (xs) => andList(xs.map(termName$1));
+	const is = (xs) => xs.length === 1 ? "is" : "are";
+	const wires = pathsTo(p, nodes, lnSources(p, nodes.reduce((m, i) => m | identAt(p, i), 0)));
+	const swap = `${onL.length && r.terms[0].info.polarityHazard ? `${r.terms[0].info.polarityHazard} ` : ""}Swap the L and N wires to ${d}.`;
+	return (when) => ({
+		rule: "polarity",
+		subject: d,
+		target: termName$1(terms[0]),
+		message: onN.length && onL.length ? `${d} is wired the wrong way round${when}: ${names(onN)} ${is(onN)} on N and ${names(onL)} ${is(onL)} on L. ${swap}` : onL.length ? `${names(onL)} should be on N but ${is(onL)} on L${when}. ${swap}` : `${names(onN)} should be on L but ${is(onN)} on N${when}. ${swap}`,
+		parts: [r.part.uid],
+		pins: terms.map(endpointOf),
+		wires,
+		causes: terms.map((x) => x.key)
+	});
+}
+/**
+* An uncertain claim is one clause of its outlet's warning (Ruling 37): the draft carries the clause
+* (its conditions included) and the outlets behind it; mergeUnpolarized joins the clauses.
+*/
+function maybeWrongDraft(p, r, um) {
+	const d = r.part.designator;
+	const wires = pathsTo(p, r.nodes, sourcesOfMask(um));
+	return (when) => ({
+		rule: "polarity",
+		subject: d,
+		target: termName$1(r.terms[0]),
+		message: "",
+		parts: [r.part.uid],
+		pins: r.terms.map(endpointOf),
+		wires,
+		causes: [],
+		unpolarized: {
+			outlets: outletsOf(p, um),
+			clause: `${andList(r.terms.map(termName$1))} may be on the wrong conductor${when}`,
+			doublePole: false
+		}
+	});
+}
+/**
+* A single-pole switch, relay or SSR, or a fuse, in a neutral path: it carries a neutral and no L
+* (definite from a polarized source, uncertain from an unpolarized one), and an end that loses the
+* neutral when it opens feeds another part (see farSide). A single-pole group (no second throw wired)
+* is in the neutral whatever its own state (its open state is exactly the harm), so the finding also
+* holds in the state that differs only in that group, and its own position is never a condition. A
+* changeover carries a neutral in the position it is in, so its position stays in the phrase.
+*/
+function carrierPolarity(acc, t, mask) {
+	const { p } = acc;
+	const g = p.g;
+	const { root, ident, inRel, groupState } = p;
+	for (let q = 0; q < t.groups.length; q++) {
+		const c = t.groups[q];
+		const a = c.at[groupState[c.gi]];
+		if (a < 0) continue;
+		const code = carryCode(t.pol, t.unpol, t.unpolList, ident[root[a]]);
+		if (!code) continue;
+		if (!repeat(c.last, code, mask)) remember(acc, c.last, code, groupKey$1(g, c, code), mask, () => groupDraft(p, c, [a], code < 0 ? 0 : code));
+		if (!c.changeover && c.pos >= 0) {
+			const m = mask ^ 1 << c.pos;
+			c.last.holds[m >>> 5] |= 1 << (m & 31);
+		}
+	}
+	for (let q = 0; q < t.fuses.length; q++) {
+		const f = t.fuses[q];
+		const e = f.e;
+		const code = carryCode(t.pol, t.unpol, t.unpolList, ident[root[e.a]] | (e.fitted || !inRel[e.b] ? 0 : ident[root[e.b]]));
+		if (code && !repeat(f.last, code, mask)) remember(acc, f.last, code, fuseKey(f, code), mask, () => fuseDraft(p, e, code < 0 ? 0 : code));
+	}
+}
+/** `ends`: the nodes whose energizing paths explain it (both ends of the contact when it is reported for every state at once, whatever state is current). */
+function groupDraft(p, c, ends, um) {
+	const g = p.g;
+	const grp = g.groups[c.gi];
+	const name = groupName(g, c.gi);
+	const d = grp.part.designator;
+	const wires = pathsTo(p, ends, um ? sourcesOfMask(um) : lnSources(p, ends.reduce((m, i) => m | identAt(p, i), 0)));
+	const base = {
+		rule: "polarity",
+		subject: d,
+		target: d,
+		parts: [grp.part.uid],
+		pins: [],
+		wires
+	};
+	const open = c.changeover ? "whatever it disconnects stays live" : `with ${name} ${c.openWord}, what it feeds stays live`;
+	return um ? (when) => ({
+		...base,
+		message: "",
+		causes: [],
+		unpolarized: {
+			outlets: outletsOf(p, um),
+			clause: `${name} may switch the neutral${when}`,
+			doublePole: true
+		}
+	}) : (when) => ({
+		...base,
+		message: `${name} switches the neutral${when}: ${open}. Move ${name} into the L wire.`,
+		causes: [nodeKey(grp.part.uid, grp.def.id)]
+	});
+}
+function fuseDraft(p, e, um) {
+	const d = e.part.designator;
+	const ends = [e.a, ...p.inRel[e.b] ? [e.b] : []];
+	const wires = pathsTo(p, ends, um ? sourcesOfMask(um) : lnSources(p, ends.reduce((m, i) => m | identAt(p, i), 0)));
+	const base = {
+		rule: "polarity",
+		subject: d,
+		target: d,
+		parts: [e.part.uid],
+		pins: e.names.map((n) => ({
+			part: e.part.uid,
+			pin: n
+		})),
+		wires
+	};
+	const which = e.fitted ? d : `${d}'s holder`;
+	return um ? (when) => ({
+		...base,
+		message: "",
+		causes: [],
+		unpolarized: {
+			outlets: outletsOf(p, um),
+			clause: `${which} may be in the neutral${when}`,
+			doublePole: false
+		}
+	}) : (when) => ({
+		...base,
+		message: e.fitted ? `${d} is in the neutral${when}: when it blows, what it feeds stays live. Move ${d} into the L wire.` : `${which} is in the neutral${when}: a fuse there would not disconnect L from what it feeds. Move ${d} into the L wire.`,
+		causes: e.names.map((n) => nodeKey(e.part.uid, n))
+	});
+}
+/**
+* Ruling 37: every uncertain polarity clause behind the same unpolarized outlets becomes one warning
+* for those outlets, listing the parts in designator order, each with its own conditions. Definite
+* findings and every other draft pass through unchanged.
+*/
+function mergeUnpolarized(drafts) {
+	const out = [];
+	const byOutlets = /* @__PURE__ */ new Map();
+	for (const d of drafts) if (!d.unpolarized) out.push(d);
+	else {
+		const key = JSON.stringify(d.unpolarized.outlets.map((o) => o.id));
+		const list = byOutlets.get(key);
+		if (list) list.push(d);
+		else byOutlets.set(key, [d]);
+	}
+	for (const items of byOutlets.values()) {
+		items.sort((a, b) => natural.compare(a.subject, b.subject) || natural.compare(a.unpolarized.clause, b.unpolarized.clause));
+		const srcs = items[0].unpolarized.outlets.map((o) => o.part);
+		const names = [...new Set(srcs.map((x) => x.designator))].sort(natural.compare);
+		const parts = [...new Set(items.map((x) => x.subject))];
+		const doubles = [...new Set(items.filter((x) => x.unpolarized.doublePole).map((x) => x.subject))];
+		const either = doubles.length ? `, or a double-pole switch or relay in place of ${andList(doubles)}` : "";
+		out.push({
+			rule: "polarity",
+			subject: names[0],
+			target: names[0],
+			message: `${unpolarizedWords(names)}: ${items.map((x) => x.unpolarized.clause).join("; ")}. Use a polarized plug and outlet for ${andList(parts)}${either}.`,
+			parts: [.../* @__PURE__ */ new Set([...srcs.map((x) => x.uid), ...items.flatMap((x) => x.parts)])],
+			pins: items.flatMap((x) => x.pins),
+			wires: [...new Set(items.flatMap((x) => x.wires))],
+			causes: srcs.map((x) => nodeKey(x.uid, "#polarity-unknown"))
+		});
+	}
+	return out;
+}
+/** "XS1 is an unpolarized outlet, so which of its slots is L is not known", for the outlets' designators (sorted, distinct). */
+function unpolarizedWords(names) {
+	return names.length === 1 ? `${names[0]} is an unpolarized outlet, so which of its slots is L is not known` : `${andList(names)} are unpolarized outlets, so which of their slots is L is not known`;
+}
+function polarityRule(acc, mask) {
+	const t = polarityTable(acc);
+	if (!t.fixedDone) {
+		t.fixedDone = true;
+		for (const f of t.fixed) f(mask);
+	}
+	terminalPolarity(acc, t, mask);
+	carrierPolarity(acc, t, mask);
+}
+var earthAdvice = (t) => `a fault inside ${t.part.designator} may leave its metal live. Wire ${termName$1(t)} to the outlet's earth.`;
+/**
+* Rule 7, per state: an earth terminal of any part on L or N, or energized (through a load, say)
+* without PE identity (Astra A1); a class 1 part's earth without PE identity while the part is on
+* mains; N and PE of one source joined beyond the outlet; a terminal that must carry L or N on earth
+* only; a low-voltage ground on earth where nothing on its net declares a bond (a warning).
+*/
+function earthRules(acc, mask) {
+	const { p } = acc;
+	const plain = plainPath.on;
+	const { root, ident, power } = p;
+	const t = polarityTable(acc);
+	for (const e of t.earths) {
+		const r0 = root[e.node];
+		const x = ident[r0];
+		if (x & PE_MASK) continue;
+		if (x & LN_MASK) {
+			if (!mark(acc, e.onLive, mask)) report$1(acc, e.onLive, mask, () => peLiveDraft(p, e));
+			continue;
+		}
+		if (power[r0]) {
+			if (!mark(acc, e.energized, mask)) report$1(acc, e.energized, mask, () => peEnergizedDraft(p, e));
+			continue;
+		}
+		let live = false;
+		for (let k = 0; k < e.others.length && !live; k++) {
+			const r = root[e.others[k]];
+			live = (ident[r] & LN_MASK) !== 0 || power[r] !== 0;
+		}
+		if (live && !mark(acc, e.noPe, mask)) report$1(acc, e.noPe, mask, () => {
+			const wires = p.g.wires[e.node].slice();
+			return (when) => ({
+				rule: "earth",
+				subject: e.t.part.designator,
+				target: termName$1(e.t),
+				message: `${termName$1(e.t)} is not connected to earth${when}: ${earthAdvice(e.t)}`,
+				parts: [e.t.part.uid],
+				pins: [endpointOf(e.t)],
+				wires,
+				causes: [e.t.key]
+			});
+		});
+	}
+	for (let q = 0; q < p.srcRoots.length; q++) {
+		const r = p.srcRoots[q];
+		const x = p.ident[r];
+		if (!(x & N_MASK & x >>> 1) && !plain) continue;
+		for (let i = 0; i < t.npe.length; i++) {
+			if (!t.npe[i] || (x & t.npe[i]) !== t.npe[i]) continue;
+			const key = t.npeKeys[i];
+			if (mark(acc, key, mask)) continue;
+			const s = p.sources[i];
+			report$1(acc, key, mask, () => {
+				const d = s.part.designator;
+				const keys = [...s.keys.N, ...s.keys.PE];
+				const wires = wiresOfRoot(p, r);
+				return (when) => ({
+					rule: "earth",
+					subject: d,
+					target: `${d} N`,
+					message: `${d} N is joined to earth${when}: neutral and earth are joined only at the main panel, and a join here puts current on the earth wire. Remove the wire that joins them.`,
+					parts: [s.part.uid],
+					pins: keys.map(pinOfKey),
+					wires,
+					causes: keys
+				});
+			});
+		}
+	}
+	for (const l of t.lines) {
+		const x = ident[root[l.node]];
+		if (!(x & PE_MASK) || x & LN_MASK) continue;
+		if (!mark(acc, l.key, mask)) report$1(acc, l.key, mask, () => {
+			const wires = wiresOfRoot(p, p.root[l.node]);
+			const req = l.t.info.requirement.get(l.t.name);
+			const to = req === "L" || req === "N" ? req : "L or N";
+			return (when) => ({
+				rule: "earth",
+				subject: l.t.part.designator,
+				target: termName$1(l.t),
+				message: `${termName$1(l.t)} is joined to earth${when}, but it is a mains terminal of ${l.t.part.designator} and must never be on earth. Wire it to ${to}.`,
+				parts: [l.t.part.uid],
+				pins: [endpointOf(l.t)],
+				wires,
+				causes: [l.t.key]
+			});
+		});
+	}
+	for (const gr of t.grounds) {
+		const r = p.root[gr.node];
+		if (!(p.ident[r] & PE_MASK)) continue;
+		let bonded = false;
+		for (let k = 0; k < t.bondNodes.length && !bonded; k++) bonded = p.root[t.bondNodes[k]] === r;
+		if (bonded || mark(acc, gr.key, mask)) continue;
+		report$1(acc, gr.key, mask, () => {
+			const wires = wiresOfRoot(p, r);
+			return (when) => ({
+				rule: "earth-bond",
+				subject: gr.t.part.designator,
+				target: termName$1(gr.t),
+				message: `${termName$1(gr.t)} is joined to earth${when}, but nothing on this net declares a bond to earth. Remove the join unless the supply is meant to be earthed (a class 1 supply with an earthed output).`,
+				parts: [gr.t.part.uid],
+				pins: [endpointOf(gr.t)],
+				wires,
+				causes: [gr.t.key]
+			});
+		});
+	}
+}
+/** What a live earth terminal puts at risk, and what to do: a class 1 part's own metal; for any other part (a cord plug's PE lead), whatever it earths. */
+function earthHarm(e) {
+	const [d, name] = [e.t.part.designator, termName$1(e.t)];
+	return e.classOne ? `${d}'s metal may be live. Wire ${name} to the outlet's earth, and nothing else to it.` : `anything earthed through ${d} may be live. Connect ${name} to earth only.`;
+}
+function peLiveDraft(p, e) {
+	const x = identAt(p, e.node);
+	const on = x & L_MASK && x & N_MASK ? "L and N" : x & L_MASK ? "L" : "N";
+	const d = e.t.part.designator;
+	const wires = pathsTo(p, [e.node], lnSources(p, x));
+	return (when) => ({
+		rule: "earth",
+		subject: d,
+		target: termName$1(e.t),
+		message: `${termName$1(e.t)} is on ${on} instead of earth${when}: ${earthHarm(e)}`,
+		parts: [e.t.part.uid],
+		pins: [endpointOf(e.t)],
+		wires,
+		causes: [e.t.key, nodeKey(e.t.part.uid, "#pe-live")]
+	});
+}
+/** An earth terminal energized without identity: mains reaches it through a load, a leakage path or an undeclared terminal. */
+function peEnergizedDraft(p, e) {
+	const srcs = sourcesIn(p, 0, p.power[p.root[e.node]]);
+	const d = e.t.part.designator;
+	const wires = pathsTo(p, [e.node], srcs);
+	return (when) => ({
+		rule: "earth",
+		subject: d,
+		target: termName$1(e.t),
+		message: `${termName$1(e.t)} gets mains from ${sourcesText(p.g, srcs)} through another part instead of being on earth${when}: ${earthHarm(e)}`,
+		parts: [e.t.part.uid],
+		pins: [endpointOf(e.t)],
+		wires,
+		causes: [e.t.key, nodeKey(e.t.part.uid, "#pe-energized")]
+	});
+}
+/**
+* A class 1 earth terminal on a node no source can reach (outside every enumeration unit), while its
+* part is on mains in some state: never earthed, so the finding holds in every state. The per-state
+* rule cannot see it, since that node is in no unit.
+*/
+function orphanEarth(acc) {
+	const { p } = acc;
+	const g = p.g;
+	return g.mainsParts.flatMap((part) => {
+		const info = mainsOf(moduleOf(g.d, part.module));
+		if (info.protection !== "class-1") return [];
+		const pe = earthNames(info);
+		if (![...info.terminals].some((n) => !pe.includes(n) && hotTerm(acc, part, n))) return [];
+		return pe.flatMap((n) => {
+			const key = nodeKey(part.uid, n);
+			const i = g.nodeOf.get(key);
+			const t = termAt(g, key);
+			if (i === void 0 || p.inRel[i] || !t) return [];
+			return [{
+				rule: "earth",
+				subject: part.designator,
+				target: termName$1(t),
+				message: `${termName$1(t)} is not connected to earth: ${earthAdvice(t)}`,
+				parts: [part.uid],
+				pins: [endpointOf(t)],
+				wires: [...g.wires[i]],
+				causes: [key]
+			}];
+		});
+	});
+}
+var THROUGH_WORDS = {
+	switch: "a switch",
+	relay: "a relay",
+	ssr: "a solid state relay",
+	fuse: "a fuse"
+};
+/** A protective conductor through a switch, relay, SSR or fuse (spec 3 rule 7), with the protective path it sits on highlighted. */
+function earthPathRule(acc) {
+	return protectivePaths(acc.p.g).through.map(({ part, kinds, wires }) => ({
+		rule: "earth",
+		subject: part.designator,
+		target: part.designator,
+		message: `The earth path runs through ${part.designator} (${andList(kinds.map((k) => THROUGH_WORDS[k]))}). Earth must never pass through a switch, relay or fuse, because opening it may leave a part unearthed. Wire earth straight.`,
+		parts: [part.uid],
+		pins: [],
+		wires,
+		causes: [nodeKey(part.uid, "#earth-path")]
+	}));
+}
+STATE_RULES.push(polarityRule, earthRules);
+var looseCache = new FrontMap();
+function loosePlugs(p) {
+	let list = looseCache.get(p);
+	if (list) return list;
+	const g = p.g;
+	list = [];
+	for (const part of g.mainsParts) {
+		if (g.seated.has(part.uid)) continue;
+		const plug = mainsOf(moduleOf(g.d, part.module)).plug;
+		if (!plug) continue;
+		const names = [...new Set(plug.profiles.flatMap((pr) => pr.contacts.filter((c) => c.mains !== "mechanical").map((c) => c.pin)))].sort(natural.compare).filter((n) => {
+			const i = g.nodeOf.get(nodeKey(part.uid, n));
+			return i !== void 0 && p.inRel[i] === 1;
+		});
+		if (names.length) list.push({
+			part,
+			names,
+			nodes: Int32Array.from(names, (n) => g.nodeOf.get(nodeKey(part.uid, n))),
+			keys: /* @__PURE__ */ new Map()
+		});
+	}
+	looseCache.set(p, list);
+	return list;
+}
+/**
+* Per state: a plug that is not seated (loose, or only partly in) whose conducting prongs are
+* hazardous: something behind it feeds them (the male-to-male cord hazard), and they are bare.
+* Whether it lies over an outlet does not matter (rule 10 reports that separately).
+*/
+function liveProngRule(acc, mask) {
+	const { p } = acc;
+	const list = loosePlugs(p);
+	for (let q = 0; q < list.length; q++) {
+		const lp = list[q];
+		let live = 0;
+		for (let k = 0; k < lp.nodes.length; k++) if (hazardAt(p, lp.nodes[k])) live |= 1 << k;
+		if (!live) continue;
+		const key = keyFor(lp.keys, live, () => `live-prong|${lp.part.uid}|${live}`);
+		if (!mark(acc, key, mask)) report$1(acc, key, mask, () => liveProngDraft(p, lp, live));
+	}
+}
+function liveProngDraft(p, lp, live) {
+	const k = lp.names.flatMap((_, j) => live >>> j & 1 ? [j] : []);
+	const nodes = k.map((j) => lp.nodes[j]);
+	const srcs = sourcesIn(p, nodes.reduce((m, i) => m | identAt(p, i), 0), nodes.reduce((m, i) => m | p.power[p.root[i]], 0));
+	const d = lp.part.designator;
+	const label = (n) => termAt(p.g, nodeKey(lp.part.uid, n))?.label ?? n;
+	const one = k.length === 1;
+	return (when) => ({
+		rule: "live-prong",
+		subject: d,
+		target: d,
+		message: `${d}'s ${andList(k.map((j) => label(lp.names[j])))} ${one ? "carries" : "carry"} mains from ${sourcesText(p.g, srcs)}${when}, but ${d} is not plugged in: anyone touching its bare prongs may get a shock. A plug must take mains only from an outlet: remove the wiring that feeds ${d} from elsewhere.`,
+		parts: [lp.part.uid],
+		pins: k.map((j) => ({
+			part: lp.part.uid,
+			pin: lp.names[j]
+		})),
+		wires: pathsTo(p, nodes, srcs),
+		causes: k.map((j) => nodeKey(lp.part.uid, lp.names[j]))
+	});
+}
+STATE_RULES.push(liveProngRule);
+STATIC_RULES.push(orphanEarth, earthPathRule);
+var protCache = new FrontMap();
+function protTable(p) {
+	let t = protCache.get(p);
+	if (t) return t;
+	const g = p.g;
+	const parent = /* @__PURE__ */ new Map();
+	const find = (x) => {
+		let r = x;
+		while (parent.has(r)) r = parent.get(r);
+		return r;
+	};
+	for (const gi of p.groupIdx) for (const list of g.groups[gi].closed) for (const [a, b] of list) {
+		if (!p.inRel[a] || !p.inRel[b]) continue;
+		const [ra, rb] = [find(a), find(b)];
+		if (ra !== rb) parent.set(ra, rb);
+	}
+	const pairs = [];
+	const wiredInput = /* @__PURE__ */ new Set();
+	for (const c of g.d.connections) {
+		if (g.broken.has(c.uid)) continue;
+		for (const ep of [c.from, c.to]) {
+			const i = g.nodeOf.get(nodeKey(ep.part, ep.pin));
+			if (i !== void 0) wiredInput.add(`${ep.part}|${i}`);
+		}
+	}
+	const exempt = (c) => g.seated.has(c.part.uid) && !wiredInput.has(`${c.part.uid}|${c.a}`) && !wiredInput.has(`${c.part.uid}|${c.b}`);
+	const targets = [...p.loadIdx.map((i) => g.loads[i]), ...p.converterIdx.map((i) => g.converters[i]).filter((c) => !exempt(c))];
+	for (const ld of targets) for (const end of [ld.a, ld.b]) for (const s of p.sources) if (s.live.some((n) => find(n) === find(end))) pairs.push({
+		end,
+		load: ld,
+		src: s
+	});
+	t = {
+		end: Int32Array.from(pairs, (x) => x.end),
+		load: pairs.map((x) => x.load),
+		src: pairs.map((x) => x.src),
+		bit: Uint32Array.from(pairs, (x) => bitOf(x.src.index, "L")),
+		live: pairs.map((x) => Int32Array.from(x.src.live)),
+		keys: [],
+		direct: Uint8Array.from(pairs, (x) => x.src.live.includes(x.end) ? 1 : 0)
+	};
+	protCache.set(p, t);
+	return t;
+}
+var unprotectedSlots = new FrontMap();
+/** Per accumulator, by slot: the unfused wiring gathered over the states a rule 8 finding holds in. */
+var unprotectedPaths = new FrontMap();
+/**
+* Rule 8, per state (spec 3: a cut-set check per state): a load terminal on a source's L that still
+* reaches that source's L with every fuse taken out (nets and closed contacts only, bareRoots). An
+* empty holder is open already (the load then gets no L there, and fuseRules says why). A fuse inside
+* a plug-in device or cord plug is a protective edge like any other, so it protects everything behind
+* it. Not allocation-free: for the first PATH_STATES states a finding holds in, each state adds its
+* unfused wires to the finding's highlight set (Ruling 33); after that a repeat state allocates nothing.
+*/
+function unprotectedRule(acc, mask) {
+	const { p } = acc;
+	const t = protTable(p);
+	const slots = slotsOf(unprotectedSlots, acc);
+	let recs = unprotectedPaths.get(acc);
+	if (!recs) unprotectedPaths.set(acc, recs = Object.assign([], { byKey: /* @__PURE__ */ new Map() }));
+	const plain = plainPath.on;
+	const { root, ident } = p;
+	for (let q = 0; q < t.end.length; q++) {
+		const end = t.end[q];
+		if (!(ident[root[end]] & t.bit[q])) continue;
+		if (plain || !t.direct[q]) {
+			const bareRoot = bareRoots(p);
+			const br = bareRoot[end];
+			const live = t.live[q];
+			let unfused = false;
+			for (let m = 0; m < live.length && !unfused; m++) unfused = bareRoot[live[m]] === br;
+			if (!unfused) continue;
+		}
+		let rec = recs[q];
+		if (plain || !slotHit(slots, q, mask)) {
+			let key = t.keys[q];
+			if (key === void 0) t.keys[q] = key = `unprotected|${t.load[q].part.uid}|${t.src[q].id}`;
+			if (!rec) {
+				rec = recs.byKey.get(key);
+				if (!rec) recs.byKey.set(key, rec = {
+					states: 0,
+					wires: /* @__PURE__ */ new Set()
+				});
+				recs[q] = rec;
+			}
+			const made = rec;
+			slotFill(acc, slots, q, key, mask, () => unprotectedDraft(t.load[q], t.src[q], made));
+		}
+		if (rec && rec.states < PATH_STATES) {
+			rec.states++;
+			const bareRoot = bareRoots(p);
+			const br = bareRoot[end];
+			for (const i of p.relevant) if (bareRoot[i] === br) for (const wire of p.g.wires[i]) rec.wires.add(wire);
+		}
+	}
+}
+function unprotectedDraft(ld, s, rec) {
+	const [d, src] = [ld.part.designator, s.part.designator];
+	return (when) => ({
+		rule: "unprotected",
+		subject: d,
+		target: d,
+		message: `Nothing fuses the L wire from ${src} to ${d}${when}: a fault in the wiring beyond the plug has only the building's breaker to stop it. Add a fuse (a fuse holder) in the L wire.`,
+		parts: [ld.part.uid, s.part.uid],
+		pins: [],
+		wires: [...rec.wires],
+		causes: [nodeKey(ld.part.uid, ld.names[0]), ...s.keys.L]
+	});
+}
+/**
+* Rule 8, once: a fitted fuse with no rating on a node that is ever hazardous; and a load that never
+* gets mains because a fuse holder is empty. Resolution 28: a load is told so only when it is proven
+* (it gets L and N of one source in some state with every empty holder taken as fitted, and in none as
+* drawn), and a holder is named only when fitting it alone restores a supply in a state that can
+* occur. Nothing about empty holders is claimed when the checks did not finish.
+*/
+function fuseRules(acc) {
+	const g = acc.p.g;
+	const out = [];
+	for (const e of g.edges) {
+		if (e.kind !== "protective" || !e.fitted || e.rating !== null || !(acc.hazardAny[e.a] || acc.hazardAny[e.b])) continue;
+		const d = e.part.designator;
+		out.push({
+			rule: "fuse-rating-unknown",
+			subject: d,
+			target: d,
+			message: `${d} has a fuse fitted but no rating, so the drawing does not say which fuse to fit. Set its rating in amps.`,
+			parts: [e.part.uid],
+			pins: e.names.map((n) => ({
+				part: e.part.uid,
+				pin: n
+			})),
+			wires: [],
+			causes: e.names.map((n) => nodeKey(e.part.uid, n))
+		});
+	}
+	g.loads.forEach((ld, i) => {
+		if (acc.loadComplete[i] || !acc.loadFit[i]) return;
+		const holders = [...acc.loadFixers.get(i) ?? []].sort((x, y) => natural.compare(x.designator, y.designator));
+		const d = ld.part.designator;
+		const names = holders.map((h) => h.designator);
+		out.push({
+			rule: "no-power",
+			subject: d,
+			target: d,
+			message: holders.length ? `${d} has no mains power: ${andList(names)} ${holders.length === 1 ? "has" : "have"} no fuse fitted. Fit a fuse in ${orList(names)}.` : `${d} has no mains power: every supply path to it runs through more than one empty fuse holder. Fit a fuse in every empty holder on its supply path.`,
+			parts: [ld.part.uid, ...holders.map((h) => h.uid)],
+			pins: [],
+			wires: [],
+			causes: [nodeKey(ld.part.uid, ld.names[0]), ...holders.map((h) => nodeKey(h.uid, "#absent"))]
+		});
+	});
+	return out;
+}
+/** Wire ends that are clearly unsuitable for mains or earth (spec 1.8). */
+var UNSUITABLE_ENDS = /* @__PURE__ */ new Set([
+	"dupont-male",
+	"dupont-female",
+	"alligator",
+	"jst-xh",
+	"jst-ph",
+	"jst-sh",
+	"grove",
+	"banana",
+	"solid-jumper"
+]);
+/** At this gauge or thinner a wire is clearly unsuitable (spec 1.8). */
+var THIN_AWG = 24;
+var CABLE_ADVICE = "Use a cable rated for mains, such as an approved cord of 0.75 mm2 or 18 AWG or thicker, with stripped or ferrule ends.";
+/** An end kind in a sentence: END_NAMES is written for a select, so a common noun loses its capital ("alligator clip"); names keep theirs ("Dupont female"). */
+var endWords = (k) => /^(Dupont|JST|Grove)/.test(END_NAMES[k]) ? END_NAMES[k] : END_NAMES[k].charAt(0).toLowerCase() + END_NAMES[k].slice(1);
+/** A wire end as the user reads it (as checks.ts names wire ends). */
+function wireEnd(g, ep) {
+	const t = termAt(g, nodeKey(ep.part, ep.pin));
+	const name = t ? termName$1(t) : `${g.d.parts.find((x) => x.uid === ep.part)?.designator ?? ep.part} ${ep.pin}`;
+	return ep.hole !== void 0 ? `${name} hole ${ep.hole}` : name;
+}
+/**
+* Rule 9, once: every wire on a net that is ever on mains wiring, and every protective conductor
+* (Task 8's paths), is either clearly unsuitable (mains-cable) or cannot be checked (cable-unverified).
+* A functional DC ground joined to a bonded minus is not protective, so it is not judged here. Nor is
+* a net that gets mains only across an isolation barrier that is not protective separation (final
+* review 1): rule 1 already reports that side as possibly live, and a mains cable would not make it
+* safe to touch, so a finding on each of its jumpers would only repeat that. In a unit that was not
+* enumerated rule 1 does not run, so there every conservatively hazardous net is judged (cableAny).
+*/
+function cableRules(acc) {
+	const g = acc.p.g;
+	const pe = protectivePaths(g);
+	const out = [];
+	for (const c of g.d.connections) {
+		if (g.broken.has(c.uid)) continue;
+		const i = g.nodeOf.get(nodeKey(c.from.part, c.from.pin));
+		const live = i !== void 0 && acc.cableAny[i] === 1;
+		if (!live && !pe.wires.has(c.uid)) continue;
+		const name = c.label || `${wireEnd(g, c.from)} to ${wireEnd(g, c.to)}`;
+		const what = live ? "carries mains" : "is part of the earth path";
+		const ends = [...new Set([endKind(c.ends, "from"), endKind(c.ends, "to")].filter((k) => UNSUITABLE_ENDS.has(k)))];
+		const gauge = c.gauge ?? 22;
+		const reasons = [...ends.length ? [`has ${andList(ends.map(endWords))} ends`] : [], ...gauge >= THIN_AWG ? [`is ${gauge} AWG`] : []];
+		const base = {
+			subject: name,
+			target: name,
+			parts: [c.from.part, c.to.part],
+			pins: [],
+			wires: [c.uid],
+			select: {
+				parts: [],
+				wires: [c.uid]
+			},
+			causes: [c.uid]
+		};
+		out.push(reasons.length ? {
+			...base,
+			rule: "mains-cable",
+			message: `The wire ${name} ${what}, but it ${reasons.join(" and ")}. ${CABLE_ADVICE}`
+		} : {
+			...base,
+			rule: "cable-unverified",
+			message: `The wire ${name} ${what}. Circuitoon cannot check its insulation or rating: ${CABLE_ADVICE.charAt(0).toLowerCase()}${CABLE_ADVICE.slice(1)}`
+		});
+	}
+	return [...out, ...stripRule(acc, pe.strips)];
+}
+/**
+* Ruling 35: a breadboard strip (a hole group of a board without mains data) on a net that is ever
+* on mains wiring (as rule 9 judges wires, cableAny), or on a protective path, is rated for neither. One finding per board, its strips in
+* name order, those on mains first.
+*/
+function stripRule(acc, earthStrips) {
+	const { p } = acc;
+	const g = p.g;
+	const byBoard = /* @__PURE__ */ new Map();
+	const add = (t, live) => {
+		let e = byBoard.get(t.part.uid);
+		if (!e) byBoard.set(t.part.uid, e = {
+			board: t.part,
+			live: /* @__PURE__ */ new Map(),
+			earth: /* @__PURE__ */ new Map()
+		});
+		if (live) {
+			e.live.set(t.key, t);
+			e.earth.delete(t.key);
+		} else if (!e.live.has(t.key)) e.earth.set(t.key, t);
+	};
+	const strip = (t) => !!t && !t.info.any && isBoard(t.module) && !!t.module.holes?.some((h) => h.name === t.name);
+	for (const i of p.relevant) {
+		if (!acc.cableAny[i]) continue;
+		for (const k of g.members[i]) {
+			const t = termAt(g, k);
+			if (strip(t)) add(t, true);
+		}
+	}
+	for (const s of earthStrips) {
+		const t = termAt(g, nodeKey(s.part, s.group));
+		if (strip(t)) add(t, false);
+	}
+	return [...byBoard.values()].map(({ board, live, earth }) => {
+		const sorted = (m) => [...m.values()].sort((a, b) => natural.compare(termName$1(a), termName$1(b)));
+		const [on, pe] = [sorted(live), sorted(earth)];
+		const clauses = [...on.length ? [`${andList(on.map(termName$1))} ${on.length === 1 ? "carries" : "carry"} mains`] : [], ...pe.length ? [`${andList(pe.map(termName$1))} ${pe.length === 1 ? "is" : "are"} on the earth path`] : []];
+		const terms = [...on, ...pe];
+		const wires = [...new Set(terms.flatMap((t) => g.wires[g.nodeOf.get(t.key)] ?? []))];
+		return {
+			rule: "mains-cable",
+			subject: board.designator,
+			target: termName$1(terms[0]),
+			message: `${clauses.join(" and ")}, but a breadboard strip is not rated for mains or protective earth. Use rated terminals, such as a terminal block or a lever connector, in place of the breadboard.`,
+			parts: [board.uid],
+			pins: terms.map(endpointOf),
+			wires,
+			causes: terms.map((t) => t.key)
+		};
+	});
+}
+/** What the per-state rules would have judged, which an incomplete sheet does not check (spec 6: list what was not checked). */
+var NOT_CHECKED$1 = "Not checked: mains on low-voltage wiring, shorts, outlets joined to each other, mains voltages, polarity, earthing, live prongs of plugs fed from behind, fuses in the L wire and which loads get power.";
+/** One finding per unit that was not enumerated (final review 2: every other unit was checked). */
+function incompleteRule(acc) {
+	return acc.open.map(({ kind, count, parts }) => ({
+		rule: "mains-incomplete",
+		subject: parts[0].designator,
+		target: parts[0].designator,
+		message: `Mains checks did not finish: ${count} ${kind === "groups" ? "switches and relays" : "AC sources"}. ${NOT_CHECKED$1} Split the drawing or check the rest by hand.`,
+		parts: parts.map((x) => x.uid),
+		pins: [],
+		wires: [],
+		causes: ["#mains-incomplete", ...parts.map((x) => x.uid)]
+	}));
+}
+STATE_RULES.push(unprotectedRule);
+STATIC_RULES.push(fuseRules, cableRules, incompleteRule);
+//#endregion
+//#region src/format/mains.ts
+/** True when some part's module declares mains data. */
+function hasMainsData(d) {
+	return d.parts.some((p) => {
+		const m = moduleOf(d, p.module);
+		return !!m && mainsOf(m).any;
+	});
+}
+/** How many analyses have run (tests read it to prove a gesture or a redraw starts none). */
+var mainsStats = { runs: 0 };
+function analyseMains(d) {
+	if (!hasMainsData(d)) return null;
+	mainsStats.runs++;
+	const plugs = plugsOf(d);
+	const g = buildMainsGraph(d, plugs, netlist(d, plugs));
+	const p = prepare(g);
+	const cands = candidateGroups(g, p.possible);
+	const acc = newAcc(p, cands, null);
+	for (const unit of units(p, cands)) {
+		const over = unit.view.sources.length > 10 ? "sources" : unit.cands.length > 16 ? "groups" : null;
+		const sub = newAcc(unit.view, unit.cands, over);
+		if (over) conservative(sub);
+		else {
+			const masks = masksByPopcount(unit.cands.length);
+			setState(unit.view, unit.cands, 0);
+			for (let k = 0; k < masks.length; k++) {
+				const mask = masks[k];
+				if (plainPath.on) setState(unit.view, unit.cands, mask);
+				else setCandidates(unit.view, unit.cands, mask);
+				analyseState(unit.view);
+				visitState(sub, mask);
+			}
+		}
+		absorb(acc, sub);
+	}
+	const complete = acc.open.length === 0;
+	const findings = mergeUnpolarized([...acc.finished, ...staticDrafts(acc)]);
+	const converters = new Map(g.converters.map((c, i) => [c.part.uid, acc.converters[i] ?? UNPOWERED]));
+	const deadOutputs = /* @__PURE__ */ new Map();
+	for (const c of g.converters) {
+		const st = converters.get(c.part.uid);
+		if (st.state !== "powered") for (const o of c.outputs) deadOutputs.set(nodeKey(c.part.uid, o), st.state);
+	}
+	const hazardKeys = /* @__PURE__ */ new Set();
+	const mainsKeys = /* @__PURE__ */ new Set();
+	acc.hazardAny.forEach((h, i) => {
+		if (h) for (const k of g.members[i]) hazardKeys.add(k);
+		if (acc.mainsAny[i]) for (const k of g.members[i]) mainsKeys.add(k);
+	});
+	const conductorOf = (key) => {
+		const i = g.nodeOf.get(key);
+		return i === void 0 ? null : acc.conductors[i];
+	};
+	return {
+		graph: g,
+		complete,
+		converters,
+		hazardKeys,
+		mainsKeys,
+		deadOutputs,
+		conductorOf,
+		findings
+	};
+}
+var cache$1 = /* @__PURE__ */ new WeakMap();
+/** `analyseMains` once per parts, connections and modules: the checker, the canvas and the sheet share it, so one edit enumerates once. */
+function analyseMainsCached(d) {
+	const hit = cache$1.get(d.connections);
+	if (hit && hit.parts === d.parts && hit.modules === d.modules) return hit.result;
+	const result = analyseMains(d);
+	cache$1.set(d.connections, {
+		parts: d.parts,
+		modules: d.modules,
+		result
+	});
+	return result;
+}
+/** Spec section 6, verbatim. */
+var MAINS_NOTICE = "Mains wiring: Circuitoon checks the drawn connections only. It cannot check current, insulation, enclosures or local codes. Have mains work checked by a qualified person.";
+/** Spec 6: "a sheet with any mains part" (Resolution 23): any part whose module declares mains data. */
+var hasMains = hasMainsData;
+//#endregion
 //#region src/format/checks.ts
 /** Rule order within one severity and one subject, and each rule's short heading. */
 var RULES = {
@@ -31892,6 +46161,38 @@ var RULES = {
 	short: {
 		severity: "error",
 		title: "Short circuit"
+	},
+	"mains-short": {
+		severity: "error",
+		title: "Mains short circuit"
+	},
+	"mains-cross-source": {
+		severity: "error",
+		title: "Two outlets joined"
+	},
+	"mains-to-low-voltage": {
+		severity: "error",
+		title: "Mains on low-voltage wiring"
+	},
+	earth: {
+		severity: "error",
+		title: "Earth fault"
+	},
+	"mains-voltage": {
+		severity: "error",
+		title: "Wrong mains voltage"
+	},
+	"mains-rating": {
+		severity: "error",
+		title: "Not rated for this voltage"
+	},
+	"mains-cable": {
+		severity: "error",
+		title: "Unsuitable mains cable"
+	},
+	"live-prong": {
+		severity: "error",
+		title: "Live plug prongs"
 	},
 	reversed: {
 		severity: "error",
@@ -31940,6 +46241,54 @@ var RULES = {
 	"leg-hole-shared": {
 		severity: "warning",
 		title: "Two in one hole"
+	},
+	"plug-mismatch": {
+		severity: "warning",
+		title: "Plug does not fit"
+	},
+	polarity: {
+		severity: "warning",
+		title: "Mains polarity"
+	},
+	unprotected: {
+		severity: "warning",
+		title: "No fuse"
+	},
+	"fuse-rating-unknown": {
+		severity: "warning",
+		title: "Fuse rating unknown"
+	},
+	"mains-shared-neutral": {
+		severity: "warning",
+		title: "Shared neutral"
+	},
+	"earth-bond": {
+		severity: "warning",
+		title: "Ground joined to earth"
+	},
+	"rating-unknown": {
+		severity: "warning",
+		title: "Mains rating unknown"
+	},
+	"rating-conditional": {
+		severity: "warning",
+		title: "Rating has conditions"
+	},
+	"rating-unverified": {
+		severity: "warning",
+		title: "Rating not verified"
+	},
+	"cable-unverified": {
+		severity: "warning",
+		title: "Check the mains cable"
+	},
+	"data-missing": {
+		severity: "warning",
+		title: "Mains data missing"
+	},
+	"mains-incomplete": {
+		severity: "warning",
+		title: "Mains checks did not finish"
 	}
 };
 var RULE_ORDER = Object.keys(RULES);
@@ -31974,14 +46323,6 @@ var EPS = 1e-9;
 /** An input is taken to work down to this share of its lowest listed rail (no real ranges yet). */
 var LOW_TOLERANCE = .9;
 var volts = (v) => `${Number(v.toFixed(2))} V`;
-/** "A", "A or B", "A, B or C". */
-function orList(items) {
-	return items.length < 2 ? items.join("") : `${items.slice(0, -1).join(", ")} or ${items[items.length - 1]}`;
-}
-/** "A", "A and B", "A, B and C". */
-function andList(items) {
-	return items.length < 2 ? items.join("") : `${items.slice(0, -1).join(", ")} and ${items[items.length - 1]}`;
-}
 /** A wire end as the user reads it: the part's designator (its uid when missing), the pin label or name, and the hole or bus offset. */
 function endpointName(d, ep) {
 	const part = d.parts.find((p) => p.uid === ep.part);
@@ -32075,6 +46416,7 @@ var termPin = (t) => ({
 });
 /** The supply `t` makes, if any. Pass-through outputs make none. */
 function sourceOf(t) {
+	if (t.dead) return null;
 	const id = JSON.stringify([t.part.uid, t.info.comp.get(t.name)]);
 	const external = t.info.external.get(t.name);
 	if (external) return {
@@ -32124,8 +46466,12 @@ var isSource = (t) => sourceOf(t) !== null;
 * bare breadboard strip only conducts.
 */
 var mayFeed = (t) => !t.bare && (t.type === void 0 || t.type === "passive" || isSource(t));
-/** A pin that drives its net from its own part: shorted when that part's ground is on the same net. */
-var drives = (t) => t.type === "power_out" || t.info.external.has(t.name);
+/**
+* A pin that drives its net from its own part: shorted when that part's ground is on the same net.
+* An output of a converter that may be powered (unknown) still drives: its short to its own ground
+* is a wiring mistake whatever the input. Only an unpowered converter's outputs drive nothing.
+*/
+var drives = (t) => t.type === "power_out" && t.dead !== "unpowered" || t.info.external.has(t.name);
 /** The wire that joins two terminals directly, if one does. */
 function wireBetween(d, a, b) {
 	const is = (ep, t) => ep.part === t.part.uid && ep.pin === t.name;
@@ -32206,16 +46552,13 @@ function railAdvice(loads, it) {
 	const what = andList(loads.map((t, i) => `${termName(t)} ${texts[i]}`));
 	return commonRails(loads).length ? `${what}: connect ${it} to ${supplyFor(loads)}.` : `${what}: these parts need different supply voltages; split the rail and power each part from a supply it accepts.`;
 }
-/** Natural order, so U2 sorts before U10. */
-var natural = new Intl.Collator("en", {
-	numeric: true,
-	sensitivity: "base"
-});
 /** Every wiring problem on the sheet, errors first, then by subject (a designator, in natural order), then by rule. */
 function checkDiagram(d) {
 	const partByUid = new Map(d.parts.map((p) => [p.uid, p]));
 	const plugs = plugsOf(d);
 	const nl = netlist(d, plugs);
+	const mains = analyseMainsCached(d);
+	const hazardous = (key) => !!mains?.mainsKeys.has(key);
 	const brokenSet = new Set(nl.broken);
 	const findings = [];
 	/**
@@ -32251,7 +46594,8 @@ function checkDiagram(d) {
 			label: src.label ?? name,
 			type: src.type,
 			supply: src.supply,
-			bare: !def.pin && !src.type
+			bare: !def.pin && !src.type,
+			dead: mains?.deadOutputs.get(key)
 		};
 	};
 	const netWires = nl.nets.map(() => []);
@@ -32263,7 +46607,7 @@ function checkDiagram(d) {
 		const i = nl.netOf.get(nodeKey(c.from.part, c.from.pin));
 		if (i !== void 0) netWires[i].push(c.uid);
 	}
-	const netTerms = nl.nets.map((keys) => keys.map(terminal).filter((t) => t !== null));
+	const netTerms = nl.nets.map((keys) => keys.some(hazardous) ? [] : keys.map(terminal).filter((t) => t !== null));
 	/** Supplies (by source id) already reported as wired to their own ground, and their parts. */
 	const shorted = /* @__PURE__ */ new Set();
 	const shortedParts = /* @__PURE__ */ new Set();
@@ -32319,7 +46663,8 @@ function checkDiagram(d) {
 		terminal,
 		plugs,
 		shorted,
-		add
+		add,
+		skip: hazardous
 	});
 	const others = (t) => {
 		const i = nl.netOf.get(t.key);
@@ -32347,24 +46692,43 @@ function checkDiagram(d) {
 		const terms = [...moduleInfo(m).defs.entries()].filter(([, def]) => {
 			const ty = (def.pin ?? def.group).type;
 			return ty === "power_in" || ty === "power_out" || ty === "ground";
-		}).map(([n]) => terminal(nodeKey(p.uid, n))).filter((t) => t !== null);
+		}).map(([n]) => terminal(nodeKey(p.uid, n))).filter((t) => t !== null && !hazardous(t.key));
 		const ins = terms.filter((t) => t.type === "power_in");
 		if (ins.length && !moduleInfo(m).external.size && !reversed.has(p.uid)) {
 			if (!(ins.some((t) => others(t).some(mayFeed)) || terms.some((t) => t.type === "power_out" && others(t).some(isSource)))) {
-				const wiredPins = ins.filter((t) => others(t).length);
-				const wired = [...new Set(wiredPins.map((t) => t.label))];
-				const it = wired.length === 1 ? "it" : "them";
-				const message = wired.length ? `${p.designator} has no power: ${andList(wired)} ${isAre(wired.length)} connected but nothing supplies ${it}. ${railAdvice(sharedLoads(wiredPins), it)}` : `${p.designator} has no power: connect ${orList([...new Set(ins.map((t) => t.label))])}.`;
-				add({
-					rule: "no-power",
-					subject: p.designator,
-					target: p.designator,
-					message,
-					parts: [p.uid],
-					pins: ins.map(termPin),
-					wires: [],
-					causes: ins.map((t) => t.key)
-				});
+				const vias = [...new Map(ins.flatMap((t) => others(t)).filter((o) => o.dead === "unknown").map((o) => [o.key, o])).values()].sort((a, b) => natural.compare(termName(a), termName(b)));
+				if (vias.length) {
+					const convs = [...new Set(vias.map((o) => o.part))];
+					const words = unknownFeedWords(convs.map((c) => ({
+						designator: c.designator,
+						status: mains.converters.get(c.uid)
+					})));
+					add({
+						rule: "supply-unknown",
+						subject: p.designator,
+						target: p.designator,
+						message: `${p.designator}'s power is not checked: it comes only from ${andList(vias.map(termName))}, and ${words.state}. ${words.fix}`,
+						parts: [p.uid, ...convs.map((c) => c.uid)],
+						pins: ins.map(termPin),
+						wires: [],
+						causes: ins.map((t) => t.key)
+					});
+				} else {
+					const wiredPins = ins.filter((t) => others(t).length);
+					const wired = [...new Set(wiredPins.map((t) => t.label))];
+					const it = wired.length === 1 ? "it" : "them";
+					const message = wired.length ? `${p.designator} has no power: ${andList(wired)} ${isAre(wired.length)} connected but nothing supplies ${it}. ${railAdvice(sharedLoads(wiredPins), it)}` : `${p.designator} has no power: connect ${orList([...new Set(ins.map((t) => t.label))])}.`;
+					add({
+						rule: "no-power",
+						subject: p.designator,
+						target: p.designator,
+						message,
+						parts: [p.uid],
+						pins: ins.map(termPin),
+						wires: [],
+						causes: ins.map((t) => t.key)
+					});
+				}
 			}
 		}
 		const grounds = terms.filter((t) => t.type === "ground");
@@ -32454,7 +46818,29 @@ function checkDiagram(d) {
 			causes: [a.key, b.key]
 		});
 	}
+	const mismatched = /* @__PURE__ */ new Set();
+	for (const mm of plugMismatches(d)) {
+		const p = partByUid.get(mm.part);
+		const b = partByUid.get(mm.board);
+		mismatched.add(mm.part);
+		const message = mm.kind === "family" ? `${p.designator}'s ${PLUG_NAMES[mm.plug]} does not fit ${b.designator}'s ${orList([...new Set(mm.sockets.map((f) => SOCKET_NAMES[f]))])}. Use a device with ${orList([...new Set(mm.sockets.map((f) => PLUG_FOR[f]))])}.` : mm.kind === "unplugged" ? `${p.designator} is over ${b.designator} but not plugged in. Drag it into the socket.` : `${p.designator} does not sit in ${b.designator}: its contacts do not all meet one socket the way the plug fits, so none of them connect. Turn or move it until it seats; a plug that is only partly in is never electrically safe.`;
+		add({
+			rule: "plug-mismatch",
+			subject: p.designator,
+			target: p.designator,
+			message,
+			parts: [p.uid, b.uid],
+			pins: [],
+			wires: [],
+			select: {
+				parts: [p.uid],
+				wires: []
+			},
+			causes: [p.uid, b.uid]
+		});
+	}
 	for (const issue of mountIssues(d)) {
+		if (mismatched.has(issue.part)) continue;
 		const p = partByUid.get(issue.part);
 		if (!p) continue;
 		const board = partByUid.get(issue.board);
@@ -32534,6 +46920,7 @@ function checkDiagram(d) {
 			causes: [b.uid]
 		});
 	}
+	for (const f of mains?.findings ?? []) add(f);
 	const rank = (s) => s === "error" ? 0 : 1;
 	const sorted = findings.map((f) => ({
 		...f,
@@ -32592,7 +46979,7 @@ function minus(a, b) {
 * supplies fighting; a loop that agrees is supplies in parallel. A load gets the potential of its
 * power input over that of its own ground, so a series stack adds up.
 */
-function checkPotentials({ d, nl, netTerms, netWires, terminal, plugs, shorted, add }) {
+function checkPotentials({ d, nl, netTerms, netWires, terminal, plugs, shorted, skip, add }) {
 	const reversed = /* @__PURE__ */ new Set();
 	const netOfKey = (key) => {
 		const i = nl.netOf.get(key);
@@ -32608,7 +46995,7 @@ function checkPotentials({ d, nl, netTerms, netWires, terminal, plugs, shorted, 
 		const m = moduleOf(d, p.module);
 		if (!m) continue;
 		const info = moduleInfo(m);
-		if (info.switchPins) {
+		if (info.switchPins && !info.switchPins.some((n) => skip(nodeKey(p.uid, n)))) {
 			const [a, b] = info.switchPins.map((n) => nodeKey(p.uid, n));
 			edges.push({
 				from: netOfKey(a),
@@ -32621,6 +47008,7 @@ function checkPotentials({ d, nl, netTerms, netWires, terminal, plugs, shorted, 
 		}
 		for (const g of info.commonReturn) for (const n of g.slice(1)) {
 			const [a, b] = [nodeKey(p.uid, g[0]), nodeKey(p.uid, n)];
+			if (skip(a) || skip(b)) continue;
 			edges.push({
 				from: netOfKey(a),
 				to: netOfKey(b),
@@ -32639,12 +47027,14 @@ function checkPotentials({ d, nl, netTerms, netWires, terminal, plugs, shorted, 
 			if (!prev || s.v !== null && (prev.v === null || s.v > prev.v)) own.set(s.id, s);
 		}
 		for (const s of own.values()) {
+			const ret = info.returnOf.get(s.term.name);
+			const returnKeys = ret ? [nodeKey(p.uid, ret)] : info.grounds.map((g) => nodeKey(p.uid, g));
+			if (skip(s.term.key) || returnKeys.some(skip)) continue;
 			sources.set(s.id, s);
 			const out = netOfKey(s.term.key);
 			const list = s.v === null ? unknownOn : outOn;
 			list.set(out, [...list.get(out) ?? [], s]);
 			if (shorted.has(s.id)) continue;
-			const ret = info.returnOf.get(s.term.name);
 			const retKey = ret ? nodeKey(p.uid, ret) : "";
 			if (ret && s.external?.diode) diodes.push({
 				from: netOfKey(retKey),
@@ -33097,6 +47487,7 @@ function checkPotentials({ d, nl, netTerms, netWires, terminal, plugs, shorted, 
 		const net = `#${i}`;
 		for (const t of netTerms[i]) {
 			if (t.type !== "power_in" || t.info.external.has(t.name)) continue;
+			if (t.info.grounds.length && t.info.grounds.every((g) => skip(nodeKey(t.part.uid, g)))) continue;
 			const inputId = JSON.stringify([t.part.uid, t.info.comp.get(t.name)]);
 			if (checkedInputs.has(inputId)) continue;
 			checkedInputs.add(inputId);
@@ -33224,6 +47615,7 @@ function mountMessage(p, board, issue) {
 		case "not-a-board": return `${p.designator} is set to plug into ${at}, which is not a breadboard, so its legs connect nothing. Drag it onto a breadboard, or wire it instead.`;
 		case "cannot-mount": return `${p.designator} cannot plug into a board (it is a board itself, has a bus pin or has no legs), so its legs connect nothing. Drag it off the board and wire it instead.`;
 		case "partial": return `Not every leg of ${p.designator} sits in a hole of ${at}, so none of its legs connect. Move it until every leg sits in a hole.`;
+		case "no-fit": return `${p.designator} does not fit ${at}: an outlet takes only a matching plug, and a plug fits only a matching outlet, so it connects nothing. Drag it off, or use a part that fits.`;
 		case "obscured": return `Some legs of ${p.designator} sit under another board drawn over ${at}, so none of its legs connect. Move it clear of that board.`;
 		case "conflict": return `A leg of ${p.designator} needs a hole of ${at} that another part's leg already fills, so none of its legs connect. Move one of them.`;
 	}
@@ -42562,8 +56954,8 @@ var require_react_dom_server_node_production = /* @__PURE__ */ __commonJSMin(((e
 	exports.version = "19.3.0";
 }));
 //#endregion
-//#region node_modules/react-dom/server.node.js
-var require_server_node = /* @__PURE__ */ __commonJSMin(((exports) => {
+//#region src/format/mainsLook.ts
+var import_server_node = (/* @__PURE__ */ __commonJSMin(((exports) => {
 	var l = require_react_dom_server_legacy_node_production();
 	var s = require_react_dom_server_node_production();
 	exports.version = l.version;
@@ -42573,7 +56965,49 @@ var require_server_node = /* @__PURE__ */ __commonJSMin(((exports) => {
 	exports.renderToReadableStream = s.renderToReadableStream;
 	exports.resumeToPipeableStream = s.resumeToPipeableStream;
 	exports.resume = s.resume;
-}));
+})))();
+var IDENTITY_COLORS = {
+	us: {
+		L: "black",
+		N: "white",
+		PE: "green"
+	},
+	iec: {
+		L: "brown",
+		N: "blue",
+		PE: "green-yellow"
+	}
+};
+/** US and Japan wire L black, N white, PE green; Europe, the UK and AU/NZ use the IEC colours. */
+var schemeOf = (region) => region === "us" || region === "jp" ? "us" : "iec";
+/**
+* The cached analysis for the renderer, or null when it fails (final review 3): the canvas draws on
+* every edit, so a checker bug must cost the mains look, never the editor. The error is logged.
+*/
+function analysisForLook(d) {
+	try {
+		return analyseMainsCached(d);
+	} catch (e) {
+		console.error("Circuitoon: the mains analysis failed, so mains wires are drawn without their look.", e);
+		return null;
+	}
+}
+/** Per wire uid, its mains look; wires off mains are left out (every wire, when the analysis failed). */
+function wireLooks(d) {
+	const out = /* @__PURE__ */ new Map();
+	const a = analysisForLook(d);
+	if (!a) return out;
+	for (const c of d.connections) {
+		const k = nodeKey(c.from.part, c.from.pin);
+		const id = a.conductorOf(k) ?? a.conductorOf(nodeKey(c.to.part, c.to.pin));
+		const hazard = a.hazardKeys.has(k);
+		if (id || hazard) out.set(c.uid, {
+			color: id ? IDENTITY_COLORS[schemeOf(id.region)][id.conductor] : null,
+			hazard
+		});
+	}
+	return out;
+}
 //#endregion
 //#region node_modules/react/cjs/react-jsx-runtime.production.js
 /**
@@ -42616,7 +57050,6 @@ var require_jsx_runtime = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 }));
 //#endregion
 //#region src/render/Part.tsx
-var import_server_node = require_server_node();
 var import_react = require_react();
 var import_jsx_runtime = require_jsx_runtime();
 var INK$1 = "#23282F";
@@ -42816,10 +57249,33 @@ function PinLabel({ p, box, outside, pad = 4 }) {
 	});
 }
 /**
+* The label of a lead another part covers (the upper device of a duplex outlet): inside the body just
+* in from the lead, horizontal, with the white halo every pin label has so it reads on dark plastic.
+*/
+function CoveredLabel({ p, inset }) {
+	const text = p.label ?? p.name;
+	const x = p.edge.x - p.dir.x * inset;
+	const y = p.edge.y - p.dir.y * inset;
+	return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("text", {
+		x,
+		y,
+		textAnchor: p.dir.x < 0 ? "start" : p.dir.x > 0 ? "end" : "middle",
+		dominantBaseline: "central",
+		fontSize: 7,
+		fontWeight: 700,
+		fill: INK$1,
+		stroke: "#FFFFFF",
+		strokeWidth: 2.4,
+		strokeLinejoin: "round",
+		paintOrder: "stroke",
+		children: text
+	});
+}
+/**
 * Memoized: props are primitives plus a module object that keeps its identity, so pan, zoom
 * and selection changes do not re-render every part.
 */
-var Part = (0, import_react.memo)(function Part({ module: m, x = 0, y = 0, rotation = 0, caption, values, ink = INK$1, halo, outline }) {
+var Part = (0, import_react.memo)(function Part({ module: m, x = 0, y = 0, rotation = 0, caption, values, captionX, captionY: seatY, captionAnchor: seatAnchor = "start", labelInset = null, ink = INK$1, halo, outline }) {
 	const lay = layoutModule(m);
 	const art = m.art;
 	const ax = art ? (lay.w - art.w) / 2 : 0;
@@ -42839,6 +57295,12 @@ var Part = (0, import_react.memo)(function Part({ module: m, x = 0, y = 0, rotat
 	const headers = headerSides(m);
 	const cap = captionAnchor(m, rotation);
 	const body = outline && darkBody(m) ? bodyShape(m) : -1;
+	const captionHalo = halo ? {
+		stroke: halo,
+		strokeWidth: 3,
+		strokeLinejoin: "round",
+		paintOrder: "stroke"
+	} : {};
 	return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("g", {
 		transform: `translate(${x} ${y})`,
 		children: [
@@ -42889,6 +57351,10 @@ var Part = (0, import_react.memo)(function Part({ module: m, x = 0, y = 0, rotat
 			}),
 			pins.map((p, i) => {
 				if (!showLabel(m, p)) return null;
+				if (labelInset !== null) return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CoveredLabel, {
+					p,
+					inset: labelInset
+				}, p.name);
 				const header = !!art && headers.has(lay.pins[i].side);
 				return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(PinLabel, {
 					p,
@@ -42897,21 +57363,26 @@ var Part = (0, import_react.memo)(function Part({ module: m, x = 0, y = 0, rotat
 					pad: header ? HEADER_INSET : 4
 				}, p.name);
 			}),
-			caption && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("text", {
+			caption && (captionX !== void 0 && seatY !== void 0 ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("text", {
+				x: captionX,
+				y: seatY,
+				textAnchor: seatAnchor,
+				dominantBaseline: seatAnchor === "start" ? "central" : "auto",
+				fontSize: 8.5,
+				fontWeight: 700,
+				fill: ink,
+				...captionHalo,
+				children: caption
+			}) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("text", {
 				x: cap.x,
 				y: cap.y,
 				textAnchor: "middle",
 				fontSize: 8.5,
 				fontWeight: 700,
 				fill: ink,
-				...halo ? {
-					stroke: halo,
-					strokeWidth: 3,
-					strokeLinejoin: "round",
-					paintOrder: "stroke"
-				} : {},
+				...captionHalo,
 				children: caption
-			})
+			}))
 		]
 	});
 });
@@ -43144,9 +57615,10 @@ var CableEnd = (0, import_react.memo)(function CableEnd({ kind, x, y, angle, sca
 * Every wire's connectors, drawn as one layer above all wire strokes, so no later wire paints over
 * an earlier wire's housing (crossings under a housing get no hop; the housing lies on top). Each
 * wire's connectors keep its data-wire, so a click on one selects that wire. `dim` fades the one
-* wire being reconnected, as the editor fades its stroke.
+* wire being reconnected, as the editor fades its stroke. `looks` gives a wire with no stored colour
+* its mains identity colour, as its stroke has.
 */
-function CableLayer({ wires, dim = null }) {
+function CableLayer({ wires, dim = null, looks }) {
 	return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("g", { children: wires.map(({ conn, cables }) => cables[0] || cables[1] ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("g", {
 		"data-wire": conn.uid,
 		opacity: dim === conn.uid ? .3 : void 0,
@@ -43156,7 +57628,7 @@ function CableLayer({ wires, dim = null }) {
 			y: c.at.y,
 			angle: c.angle,
 			scale: c.scale,
-			color: wireColor(conn.color),
+			color: wireColor(conn.color ?? looks?.get(conn.uid)?.color ?? void 0),
 			width: wireWidth(conn.gauge)
 		}, i))
 	}, conn.uid) : null) });
@@ -43290,15 +57762,166 @@ function NoteMark({ a, theme = SITE_THEME, selected = false, interactive = false
 	});
 }
 //#endregion
+//#region src/render/Mains.tsx
+var HAZARD = "#F48C06";
+/** Drawn under the wire's ink outline, so it shows as a thin orange rim. */
+function HazardOutline({ d, width }) {
+	return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("path", {
+		className: "wire-hazard",
+		d,
+		stroke: HAZARD,
+		strokeWidth: width + 5.2
+	});
+}
+/**
+* The stroke of a blocked wire's dashed paths. Butt caps: a round cap reaches half the stroke width
+* past each dash, so on a mains-gauge wire (16 AWG is 6 px, 8.2 px with its ink outline) round caps
+* would close the 5 px gaps and the wire would no longer read as blocked.
+*/
+var BLOCKED_STROKE = {
+	strokeDasharray: "6 5",
+	strokeLinecap: "butt"
+};
+/**
+* The stripe of a two-colour wire (green-yellow earth), over its base colour. On a blocked wire it
+* keeps the blocked dash's 11 px period and covers only the first half of each dash, so the gaps
+* still read as blocked and the wire still reads as two-colour.
+*/
+function Stripe({ d, width, color, blocked = false }) {
+	return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("path", {
+		d,
+		stroke: color,
+		strokeWidth: width,
+		strokeDasharray: blocked ? "3 8" : "7 7",
+		strokeLinecap: blocked ? "butt" : void 0
+	});
+}
+/** The point `dist` px along a polyline from its first point, or null when it is shorter. */
+function along(points, dist) {
+	let left = dist;
+	for (let i = 1; i < points.length; i++) {
+		const [a, b] = [points[i - 1], points[i]];
+		const len = Math.abs(b.x - a.x) + Math.abs(b.y - a.y);
+		if (len >= left) {
+			const t = len ? left / len : 0;
+			return {
+				x: a.x + (b.x - a.x) * t,
+				y: a.y + (b.y - a.y) * t
+			};
+		}
+		left -= len;
+	}
+	return null;
+}
+/**
+* A small lightning marker near each end of an energized wire: `insets` px in from each end (16, plus
+* the end connector's reach, so a bolt never sits on a connector). A wire too short for two gets one,
+* at its middle.
+*/
+function Bolts({ points, insets = [16, 16] }) {
+	let total = 0;
+	for (let i = 1; i < points.length; i++) total += Math.abs(points[i].x - points[i - 1].x) + Math.abs(points[i].y - points[i - 1].y);
+	const at = (total < insets[0] + insets[1] + 24 ? [along(points, total / 2)] : [along(points, insets[0]), along([...points].reverse(), insets[1])]).filter((p) => p !== null);
+	return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("g", {
+		"data-bolt": "",
+		pointerEvents: "none",
+		children: at.map((p, i) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("path", {
+			d: `M${p.x + 1} ${p.y - 7}l-4 7h3l-1 6 5-8h-3l2-5z`,
+			fill: HAZARD,
+			stroke: INK$1,
+			strokeWidth: .8,
+			strokeLinejoin: "round"
+		}, i))
+	});
+}
+/** The bolt insets of a wire whose ends may carry connectors (wirePaths' `cables`). */
+function boltInsets(cables) {
+	const one = (c) => 16 + (c ? END_SIZE[c.kind].reach * c.scale : 0);
+	return [one(cables[0] ?? null), one(cables[1] ?? null)];
+}
+var LINE = 12;
+/** Conservative width of one bold glyph, in em: a line measured with it never overruns its band. */
+var GLYPH = .62;
+/** Greedy word wrap of `text` into lines no wider than `width` px at `fontSize`; a word longer than a line is split, each piece but the last ending in a hyphen. */
+function noticeLines(text, width, fontSize = 9) {
+	const max = Math.max(2, Math.floor(width / (GLYPH * fontSize)));
+	const words = text.split(" ").flatMap((wd) => {
+		if (wd.length <= max) return [wd];
+		const pieces = [];
+		for (let k = 0; k < wd.length; k += max - 1) pieces.push(k + max - 1 < wd.length ? `${wd.slice(k, k + max - 1)}-` : wd.slice(k));
+		return pieces;
+	});
+	const lines = [];
+	let cur = "";
+	for (const word of words) {
+		const next = cur ? `${cur} ${word}` : word;
+		if (next.length <= max || !cur) cur = next;
+		else {
+			lines.push(cur);
+			cur = word;
+		}
+	}
+	if (cur) lines.push(cur);
+	return lines;
+}
+/** The footer band a notice of `lines` lines needs, in px. */
+var noticeHeight = (lines) => lines * LINE + 20;
+/** The mains notice in the footer band the sheet reserves below `box` (spec 6: every export shows it, whole). */
+function MainsNotice({ box, text }) {
+	const band = Math.max(box.w, 320);
+	const lines = noticeLines(text, band - 32);
+	const top = box.y + box.h;
+	return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("g", {
+		"data-mains-notice": "",
+		pointerEvents: "none",
+		children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("rect", {
+			x: box.x + 8,
+			y: top + 4,
+			width: band - 16,
+			height: noticeHeight(lines.length) - 8,
+			rx: 4,
+			fill: "#FFF4E5",
+			stroke: HAZARD,
+			strokeWidth: 1.2
+		}), lines.map((l, i) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("text", {
+			x: box.x + 16,
+			y: top + 18 + i * LINE,
+			fontSize: 9,
+			fontWeight: 700,
+			fill: INK$1,
+			children: l
+		}, i))]
+	});
+}
+//#endregion
 //#region src/render/Sheet.tsx
+/**
+* The sheet's viewBox: `box`, plus on a mains sheet the footer band for the notice (spec 6), at least
+* NOTICE_MIN_WIDTH wide. A standalone export sizes its SVG from this, so the band is never squeezed.
+*/
+function sheetFrame(diagram, box) {
+	if (!hasMains(diagram)) return box;
+	const band = Math.max(box.w, 320);
+	return {
+		x: box.x,
+		y: box.y,
+		w: band,
+		h: box.h + noticeHeight(noticeLines(MAINS_NOTICE, band - 32).length)
+	};
+}
 function Sheet({ diagram, captions = {}, box, label, decorative = false, theme = SITE_THEME }) {
 	const routes = computeRoutes(diagram);
 	const wires = wirePaths(diagram, routes);
 	const { boards, others } = splitBoards(diagram);
 	const plugs = plugsOf(diagram);
 	const notes = diagram.annotations ?? [];
+	const looks = wireLooks(diagram);
+	const seated = seatedLabels(diagram);
+	const mains = hasMains(diagram);
+	const frame = sheetFrame(diagram, box);
 	const part = (p) => {
 		const m = moduleOf(diagram, p.module);
+		const s = seated.get(p.uid);
 		return m ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Part, {
 			module: m,
 			x: p.x,
@@ -43306,6 +57929,10 @@ function Sheet({ diagram, captions = {}, box, label, decorative = false, theme =
 			rotation: p.rotation,
 			caption: captions[p.uid] ?? partCaption(p, m),
 			values: p.values,
+			captionX: s?.caption.x,
+			captionY: s?.caption.y,
+			captionAnchor: s?.anchor,
+			labelInset: s?.labelInset,
 			ink: theme.ink,
 			halo: theme.halo,
 			outline: theme.outline
@@ -43313,7 +57940,7 @@ function Sheet({ diagram, captions = {}, box, label, decorative = false, theme =
 	};
 	return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("svg", {
 		className: "sheet",
-		viewBox: `${box.x} ${box.y} ${box.w} ${box.h}`,
+		viewBox: `${frame.x} ${frame.y} ${frame.w} ${frame.h}`,
 		...decorative ? { "aria-hidden": true } : {
 			role: "img",
 			"aria-label": label
@@ -43332,10 +57959,10 @@ function Sheet({ diagram, captions = {}, box, label, decorative = false, theme =
 				})
 			}) }),
 			/* @__PURE__ */ (0, import_jsx_runtime.jsx)("rect", {
-				x: box.x,
-				y: box.y,
-				width: box.w,
-				height: box.h,
+				x: frame.x,
+				y: frame.y,
+				width: frame.w,
+				height: frame.h,
 				fill: theme.paper
 			}),
 			/* @__PURE__ */ (0, import_jsx_runtime.jsx)("rect", {
@@ -43359,24 +57986,47 @@ function Sheet({ diagram, captions = {}, box, label, decorative = false, theme =
 				strokeLinejoin: "round",
 				children: wires.map(({ conn, d, blocked }) => {
 					const w = wireWidth(conn.gauge);
-					const color = wireColor(conn.color);
+					const look = looks.get(conn.uid);
+					const name = conn.color ?? look?.color ?? void 0;
+					const stripe = wireStripe(name);
 					return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("g", {
 						"data-wire": conn.uid,
-						children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("path", {
-							d,
-							stroke: theme.casing,
-							strokeWidth: w + 2.2,
-							strokeDasharray: blocked ? "6 5" : void 0
-						}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("path", {
-							d,
-							stroke: color,
-							strokeWidth: w,
-							strokeDasharray: blocked ? "6 5" : void 0
-						})]
+						children: [
+							look?.hazard && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(HazardOutline, {
+								d,
+								width: w
+							}),
+							/* @__PURE__ */ (0, import_jsx_runtime.jsx)("path", {
+								d,
+								stroke: theme.casing,
+								strokeWidth: w + 2.2,
+								...blocked ? BLOCKED_STROKE : {}
+							}),
+							/* @__PURE__ */ (0, import_jsx_runtime.jsx)("path", {
+								className: "wire-color",
+								d,
+								stroke: wireColor(name),
+								strokeWidth: w,
+								...blocked ? BLOCKED_STROKE : {}
+							}),
+							stripe && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Stripe, {
+								d,
+								width: w,
+								color: stripe,
+								blocked
+							})
+						]
 					}, conn.uid);
 				})
 			}),
-			/* @__PURE__ */ (0, import_jsx_runtime.jsx)(CableLayer, { wires }),
+			/* @__PURE__ */ (0, import_jsx_runtime.jsx)(CableLayer, {
+				wires,
+				looks
+			}),
+			wires.map(({ conn, points, cables }) => looks.get(conn.uid)?.hazard ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Bolts, {
+				points,
+				insets: boltInsets(cables)
+			}, `bolt-${conn.uid}`) : null),
 			wires.flatMap(({ conn, ends }) => ends.map((e, i) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("circle", {
 				cx: e.x,
 				cy: e.y,
@@ -43397,7 +58047,11 @@ function Sheet({ diagram, captions = {}, box, label, decorative = false, theme =
 			notes.filter((a) => a.type === "text").map((a) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)(NoteMark, {
 				a,
 				theme
-			}, a.uid))
+			}, a.uid)),
+			mains && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(MainsNotice, {
+				box,
+				text: "Mains wiring: Circuitoon checks the drawn connections only. It cannot check current, insulation, enclosures or local codes. Have mains work checked by a qualified person."
+			})
 		]
 	});
 }
@@ -43426,6 +58080,7 @@ function boundsOf(rects, pad) {
 }
 function partRects(d, only) {
 	const out = [];
+	const seated = seatedLabels(d);
 	for (const p of d.parts) {
 		if (only && !only.has(p.uid)) continue;
 		const m = moduleOf(d, p.module);
@@ -43436,7 +58091,7 @@ function partRects(d, only) {
 			y: b.y - PIN_ROOM$1,
 			w: b.w + 36,
 			h: b.h + 36
-		}, captionBox(p, m));
+		}, placedCaptionBox(p, m, seated.get(p.uid)));
 	}
 	return out;
 }
@@ -43468,8 +58123,9 @@ function renderSheetSvg(d, opts = {}) {
 		label: d.title,
 		theme: opts.dark ? DARK_THEME : LIGHT_THEME
 	}));
-	const width = Math.ceil(box.w);
-	const height = Math.ceil(box.h);
+	const frame = sheetFrame(d, box);
+	const width = Math.ceil(frame.w);
+	const height = Math.ceil(frame.h);
 	return {
 		svg: `${markup.replace(/^<svg /, `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" font-family="${EXPORT_FONT}" `)}\n`,
 		width,
@@ -46047,7 +60703,8 @@ function placeParts(intent, opts) {
 function overlaps(d) {
 	const parts = d.parts.filter((p) => moduleOf(d, p.module)).sort((a, b) => naturalCompare(a.uid, b.uid));
 	const body = (p) => bodyRect(p, layoutModule(moduleOf(d, p.module)));
-	const caption = (p) => captionBox(p, moduleOf(d, p.module));
+	const seated = seatedLabels(d);
+	const caption = (p) => placedCaptionBox(p, moduleOf(d, p.module), seated.get(p.uid));
 	const own = (a, b) => a.mount?.board === b.uid || b.mount?.board === a.uid;
 	const bodies = [];
 	const captions = [];
@@ -46094,9 +60751,10 @@ function readability(d, routes, netOfWire = /* @__PURE__ */ new Map()) {
 	const hs = segs.filter((s) => s.h);
 	const vs = segs.filter((s) => !s.h);
 	for (const h of hs) for (const v of vs) if (h.wire !== v.wire && v.at > h.lo && v.at < h.hi && h.at > v.lo && h.at < v.hi) wireCrossings++;
+	const seated = seatedLabels(d);
 	const rects = [...parts.flatMap((p) => {
 		const m = moduleOf(d, p.module);
-		return [bodyRect(p, layoutModule(m)), captionBox(p, m)];
+		return [bodyRect(p, layoutModule(m)), placedCaptionBox(p, m, seated.get(p.uid))];
 	}), ...points.map((p) => ({
 		x: p.x,
 		y: p.y,

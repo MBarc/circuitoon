@@ -15,6 +15,8 @@ const parts: Record<string, Want> = {
     category: 'Motors and actuators', inside: true, internal: [],
     sides: { left: ['NO', null, 'COM', null, 'NC'], right: ['IN', null, 'DC-', null, 'DC+'] },
   },
+  // Fotek SSR-DA case face: load terminals 1 (left) and 2 (right) on top, control 4 (-, left) and 3 (+, right) below.
+  'ssr-fotek-25da.json': { category: 'Mains', inside: true, internal: [], sides: { top: ['1', null, null, null, null, '2'], bottom: ['4', null, null, null, null, '3'] } },
   // Lead order in the JR connector: brown, red, orange.
   'servo-sg90.json': { category: 'Motors and actuators', inside: true, internal: [], sides: { left: ['GND', 'VCC', 'PWM'] } },
   // Heatsink at the top; OUT4 sits above OUT3 on the right-hand terminal.
