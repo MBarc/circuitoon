@@ -1387,6 +1387,322 @@ function endPlacement(points, which, reach, otherReach = 0) {
 	};
 }
 //#endregion
+//#region src/format/values.ts
+var OHM = "Ω";
+var MICRO = "µ";
+var UNIT_SYMBOLS = {
+	ohm: OHM,
+	F: "F",
+	V: "V",
+	A: "A"
+};
+/** SI prefixes usable on a part value, smallest exponent first. */
+var PREFIXES = [
+	{
+		exp: -12,
+		symbol: "p"
+	},
+	{
+		exp: -9,
+		symbol: "n"
+	},
+	{
+		exp: -6,
+		symbol: MICRO
+	},
+	{
+		exp: -3,
+		symbol: "m"
+	},
+	{
+		exp: 0,
+		symbol: ""
+	},
+	{
+		exp: 3,
+		symbol: "k"
+	},
+	{
+		exp: 6,
+		symbol: "M"
+	},
+	{
+		exp: 9,
+		symbol: "G"
+	}
+];
+/** Rounds to `digits` significant digits, avoiding float noise like 4.699999999999999. */
+function roundSig(x, digits) {
+	if (x === 0) return 0;
+	const magnitude = Math.pow(10, digits - Math.ceil(Math.log10(Math.abs(x))));
+	return Math.round(x * magnitude) / magnitude;
+}
+/**
+* A number with its proper unit symbol and an SI prefix chosen so the shown mantissa is
+* 1 to 999, at most 3 significant digits, no trailing zeros. Examples: 220 ohm -> "220 Ω",
+* 4700 ohm -> "4.7 kΩ", 1e-7 F -> "100 nF".
+*/
+function formatValue(value, unit) {
+	const symbol = UNIT_SYMBOLS[unit] ?? unit;
+	if (value === 0) return `0 ${symbol}`;
+	const abs = Math.abs(value);
+	let idx = 0;
+	for (let i = 0; i < PREFIXES.length; i++) if (abs / Math.pow(10, PREFIXES[i].exp) >= 1) idx = i;
+	let scaled = roundSig(value / Math.pow(10, PREFIXES[idx].exp), 3);
+	if (Math.abs(scaled) >= 1e3 && idx < PREFIXES.length - 1) {
+		idx += 1;
+		scaled = roundSig(value / Math.pow(10, PREFIXES[idx].exp), 3);
+	}
+	return `${scaled} ${PREFIXES[idx].symbol}${symbol}`;
+}
+/**
+* Builds a standard value series: `decades` steps of x1, x10, x100, ... over `mantissas`, then
+* one final value. Each entry is rounded to 6 significant digits (see `finish`), because the
+* mantissa-times-power-of-ten multiplication otherwise leaves float noise like
+* 2.1999999999999998e-11 instead of the exact 2.2e-11.
+*/
+function series(mantissas, base, decades, final) {
+	const values = [];
+	for (let k = 0; k < decades; k++) for (const m of mantissas) values.push(roundSig(m * base * Math.pow(10, k), 6));
+	values.push(roundSig(final, 6));
+	return values;
+}
+series([
+	10,
+	12,
+	15,
+	18,
+	22,
+	27,
+	33,
+	39,
+	47,
+	56,
+	68,
+	82
+], 1, 5, 1e6);
+series([
+	10,
+	15,
+	22,
+	33,
+	47,
+	68
+], 1e-12, 8, .001);
+var DIGIT_COLORS = [
+	"#1B1B1B",
+	"#8B5A2B",
+	"#D8413A",
+	"#F08A24",
+	"#F4C430",
+	"#2F9E6E",
+	"#3D6FD6",
+	"#8E5BD6",
+	"#9AA2AD",
+	"#F5F5F5"
+];
+var GOLD = "#E0B43C";
+var SILVER = "#C0C6CE";
+function multiplierColor(exp) {
+	if (exp >= 0 && exp <= 9) return DIGIT_COLORS[exp];
+	if (exp === -1) return GOLD;
+	if (exp === -2) return SILVER;
+	return null;
+}
+/** The exponent and two-digit mantissa (10 to 99) that reproduce `value` exactly, if any. */
+function twoDigitMantissa(value) {
+	for (let exp = -1; exp <= 6; exp++) {
+		const scaled = value / Math.pow(10, exp);
+		const rounded = Math.round(scaled);
+		if (rounded >= 10 && rounded <= 99 && Math.abs(scaled - rounded) < 1e-6) return {
+			mantissa: rounded,
+			exp
+		};
+	}
+	return null;
+}
+/**
+* Hex fills for a standard 4-band resistor code (digit, digit, multiplier, gold tolerance), for
+* a value that fits two significant digits between 1 ohm and 99 Mohm. Null otherwise.
+*/
+function resistorBands(ohms) {
+	if (!Number.isFinite(ohms) || ohms <= 0) return null;
+	const found = twoDigitMantissa(ohms);
+	if (!found) return null;
+	const mult = multiplierColor(found.exp);
+	if (!mult) return null;
+	const d1 = Math.floor(found.mantissa / 10);
+	const d2 = found.mantissa % 10;
+	return [
+		DIGIT_COLORS[d1],
+		DIGIT_COLORS[d2],
+		mult,
+		GOLD
+	];
+}
+/** A resistor body color used when the value has no clean 2-digit band code (or the module has
+* no `resistance` value at all): a neutral tan, close to the paper-toned body most resistor art
+* uses. */
+var NEUTRAL_BAND_FILL = "#E6D3A8";
+/**
+* Fill color for each numbered band shape (1-based slot) in a module's art. Uses the standard
+* 4-band resistor code when the part's resistance forms a clean 2-digit mantissa, and a single
+* black band for 0 ohm; otherwise every band shows the resistor body color instead of a stale or
+* misleading code, using the largest non-band shape's own fill (the body the bands sit on) or a
+* neutral tan when there is none. Null when the module has no band shapes at all.
+*/
+function bandFills(m, values) {
+	const bandShapes = m.art?.shapes.filter((s) => s.band) ?? [];
+	if (bandShapes.length === 0) return null;
+	const maxBand = Math.max(...bandShapes.map((s) => s.band));
+	const resolved = partValue({ values }, m);
+	const bands = resolved?.name === "resistance" ? resistorBands(resolved.value) : null;
+	if (bands) return bands.slice(0, maxBand);
+	const fallback = m.art.shapes.filter((s) => !s.band).reduce((best, s) => !best || s.w * s.h > best.w * best.h ? s : best, void 0)?.fill ?? NEUTRAL_BAND_FILL;
+	const fills = Array.from({ length: maxBand }, () => fallback);
+	if (resolved?.name === "resistance" && resolved.value === 0) {
+		const mid = (Math.min(...bandShapes.map((s) => s.x)) + Math.max(...bandShapes.map((s) => s.x + s.w))) / 2;
+		const center = bandShapes.reduce((best, s) => Math.abs(s.x + s.w / 2 - mid) < Math.abs(best.x + best.w / 2 - mid) ? s : best);
+		fills[center.band - 1] = DIGIT_COLORS[0];
+	}
+	return fills;
+}
+/**
+* The only param names the value field, caption and (for resistance) band coloring apply to,
+* in priority order. A module can carry other numeric params (an LED's forward voltage, its max
+* current) that are not meant to be user-editable values here, so those are never picked, no
+* matter how plausible their unit looks.
+*/
+var PRIMARY_PARAM_NAMES = Object.keys(PARAM_RULES);
+/**
+* The first of `resistance`, `capacitance` or `voltage` present in its own unit (ohm, F, V) with
+* a default in range for it (see PARAM_RULES). A param in another unit is skipped, so a
+* resistance given in farads is never shown as ohms.
+*/
+function primaryParam(m) {
+	const electrical = m.electrical;
+	if (!isObj(electrical) || !isObj(electrical.params)) return null;
+	for (const name of PRIMARY_PARAM_NAMES) {
+		const param = electrical.params[name];
+		if (!isObj(param)) continue;
+		const def = param.default;
+		if (param.unit === PARAM_RULES[name].unit && validParamValue(name, def)) return {
+			name,
+			unit: PARAM_RULES[name].unit,
+			default: def
+		};
+	}
+	return null;
+}
+/**
+* The part's chosen value for its primary param, or the module default when unset. A stored
+* override is only used when its unit matches the param's unit and its value is in range for the
+* param (see PARAM_RULES). Loading a file drops any other override with a warning
+* (`validateDiagram`), so the fallback to the default here is never silent for an imported sheet.
+*/
+function partValue(part, m) {
+	const p = primaryParam(m);
+	if (!p) return null;
+	const stored = part.values?.[p.name];
+	if (isObj(stored) && stored.unit === p.unit && validParamValue(p.name, stored.value)) return {
+		name: p.name,
+		unit: p.unit,
+		value: stored.value
+	};
+	return {
+		name: p.name,
+		unit: p.unit,
+		value: p.default
+	};
+}
+/** "R1  4.7 kΩ" when the part has an editable value, else just its designator. Shared by the live editor canvas and the read-only sheet preview. */
+function partCaption(part, m) {
+	const v = partValue(part, m);
+	return v ? `${part.designator}  ${formatValue(v.value, v.unit)}` : part.designator;
+}
+/** Average advance of one bold 8.5 px character, rounded up so a box never undershoots the text. */
+var CAPTION_CHAR = 5.4;
+/** The caption anchor in part-local px (text-anchor middle, on the baseline). */
+function captionAnchor(m, rotation = 0) {
+	const box = bodyRect({
+		x: 0,
+		y: 0,
+		rotation
+	}, layoutModule(m));
+	const stubsDown = worldPins({
+		x: 0,
+		y: 0,
+		rotation
+	}, m).some((p) => p.dir.y > 0);
+	return {
+		x: box.x + box.w / 2,
+		y: box.y + box.h + (stubsDown ? 8 : 0) + 15
+	};
+}
+/** The caption's box in world px (8 px above the baseline, 2 below). */
+function captionBox(part, m, text = partCaption(part, m)) {
+	const a = captionAnchor(m, part.rotation ?? 0);
+	const w = text.length * CAPTION_CHAR;
+	return {
+		x: part.x + a.x - w / 2,
+		y: part.y + a.y - 8,
+		w,
+		h: 10
+	};
+}
+var NOTE_CHAR = 5.9;
+var TAB_CHAR = 5.6;
+var noteLines = (text) => text.split("\n");
+/** A frame's label tab, straddling its top edge 10 px from the left. */
+function frameTab(a) {
+	return {
+		x: a.x + 10,
+		y: a.y - 8,
+		w: (a.label ?? "").length * TAB_CHAR + 12,
+		h: 16
+	};
+}
+/** Everything an annotation draws, in world px: a frame with its tab, or a note's box. */
+function annotationRect(a) {
+	if (a.type === "frame") {
+		const w = a.w ?? 0;
+		const h = a.h ?? 0;
+		if (!a.label) return {
+			x: a.x,
+			y: a.y,
+			w,
+			h
+		};
+		const t = frameTab(a);
+		return {
+			x: a.x,
+			y: t.y,
+			w: Math.max(a.x + w, t.x + t.w) - a.x,
+			h: a.y + h - t.y
+		};
+	}
+	const lines = noteLines(a.text ?? "");
+	return {
+		x: a.x,
+		y: a.y,
+		w: Math.ceil(Math.max(1, ...lines.map((l) => l.length)) * NOTE_CHAR + 12),
+		h: lines.length * 13 + 12
+	};
+}
+/** Word-wraps each paragraph to `width` characters (a longer single word keeps its own line). */
+function wrapNote(text, width = 48) {
+	return text.split("\n").map((para) => {
+		const lines = [];
+		let line = "";
+		for (const word of para.split(/\s+/).filter(Boolean)) if (line && line.length + 1 + word.length > width) {
+			lines.push(line);
+			line = word;
+		} else line = line ? `${line} ${word}` : word;
+		if (line) lines.push(line);
+		return lines.join("\n");
+	}).join("\n");
+}
+//#endregion
 //#region src/format/diagram.ts
 /** How every load warning about a dropped value override ends: the part now shows its module
 * default instead of the value the file asked for. The editor lists these warnings first. */
@@ -1646,20 +1962,47 @@ function foreignHoles(c, holes) {
 	}
 	return holes.groups.flatMap((g) => own.has(g.key) ? [] : g.at);
 }
+var LABEL_PAD = 3;
+function gridNodesIn(r) {
+	const out = [];
+	for (let y = Math.ceil((r.y - LABEL_PAD) / 10) * 10; y <= r.y + r.h + LABEL_PAD; y += 10) for (let x = Math.ceil((r.x - LABEL_PAD) / 10) * 10; x <= r.x + r.w + LABEL_PAD; x += 10) out.push({
+		x,
+		y
+	});
+	return out;
+}
+function labelPoints(d) {
+	const captions = /* @__PURE__ */ new Map();
+	for (const p of d.parts) {
+		const m = moduleOf(d, p.module);
+		if (m) captions.set(p.uid, gridNodesIn(captionBox(p, m)));
+	}
+	return {
+		captions,
+		tabs: (d.annotations ?? []).flatMap((a) => a.type === "frame" && a.label ? gridNodesIn(frameTab(a)) : [])
+	};
+}
+/** The label nodes wire `c` keeps off: every frame tab and every caption but its own parts'. */
+function labelsFor(c, labels) {
+	const out = [...labels.tabs];
+	for (const [uid, pts] of labels.captions) if (uid !== c.from.part && uid !== c.to.part) out.push(...pts);
+	return out;
+}
 /** True when a straight run from `a` to `b` passes within 3 px of any of `pts`. */
 function runsOver(a, b, pts) {
 	const [x0, x1] = [Math.min(a.x, b.x), Math.max(a.x, b.x)];
 	const [y0, y1] = [Math.min(a.y, b.y), Math.max(a.y, b.y)];
 	return pts.some((p) => p.x >= x0 - 3 && p.x <= x1 + 3 && p.y >= y0 - 3 && p.y <= y1 + 3);
 }
-function routeWire(d, c, obstacles, occupied, holes = boardHoles(d)) {
+function routeWire(d, c, obstacles, occupied, holes = boardHoles(d), labels = labelPoints(d)) {
 	const a = resolveEndpoint(d, c.from);
 	const b = resolveEndpoint(d, c.to);
 	if (!a || !b) return null;
 	const foreign = foreignHoles(c, holes);
+	const text = labelsFor(c, labels);
 	const own = obstaclesFor(obstacles, a, b);
 	const { leads: [fromLead, toLead], facing } = leadsOf(c, a, b);
-	if (facing && !c.route && !manualRouteBlocked([a.end, b.end], own) && !runsOver(a.end, b.end, foreign)) return {
+	if (facing && !c.route && !manualRouteBlocked([a.end, b.end], own) && !runsOver(a.end, b.end, foreign) && !runsOver(a.end, b.end, text)) return {
 		points: [a.end, b.end],
 		blocked: false
 	};
@@ -1698,7 +2041,7 @@ function routeWire(d, c, obstacles, occupied, holes = boardHoles(d)) {
 		}
 		return routeOrthogonal(req);
 	};
-	const points = attempt(foreign) ?? (foreign.length ? attempt([]) : null);
+	const points = (text.length ? attempt([...foreign, ...text]) : null) ?? attempt(foreign) ?? (foreign.length ? attempt([]) : null);
 	return points ? {
 		points,
 		blocked: false
@@ -1720,6 +2063,7 @@ function routeWire(d, c, obstacles, occupied, holes = boardHoles(d)) {
 function computeRoutes(d, opts = {}) {
 	const obstacles = partObstacles(d);
 	const holes = boardHoles(d);
+	const labels = labelPoints(d);
 	const out = /* @__PURE__ */ new Map();
 	const occupied = opts.occupancy === false ? void 0 : new Occupancy();
 	for (const c of d.connections) if (opts.only && !opts.only.has(c.uid) && opts.prev?.has(c.uid)) {
@@ -1729,7 +2073,7 @@ function computeRoutes(d, opts = {}) {
 	}
 	for (const c of d.connections) {
 		if (out.has(c.uid)) continue;
-		const route = routeWire(d, c, obstacles, occupied, holes);
+		const route = routeWire(d, c, obstacles, occupied, holes, labels);
 		out.set(c.uid, route);
 		if (route && occupied) addToOccupancy(occupied, route.points);
 	}
@@ -31274,270 +31618,6 @@ function partCommand(args, io) {
 //#region src/agent/catalog.ts
 var libraryLookup = (id) => Object.hasOwn(modulesById, id) ? modulesById[id] : void 0;
 //#endregion
-//#region src/format/values.ts
-var OHM = "Ω";
-var MICRO = "µ";
-var UNIT_SYMBOLS = {
-	ohm: OHM,
-	F: "F",
-	V: "V",
-	A: "A"
-};
-/** SI prefixes usable on a part value, smallest exponent first. */
-var PREFIXES = [
-	{
-		exp: -12,
-		symbol: "p"
-	},
-	{
-		exp: -9,
-		symbol: "n"
-	},
-	{
-		exp: -6,
-		symbol: MICRO
-	},
-	{
-		exp: -3,
-		symbol: "m"
-	},
-	{
-		exp: 0,
-		symbol: ""
-	},
-	{
-		exp: 3,
-		symbol: "k"
-	},
-	{
-		exp: 6,
-		symbol: "M"
-	},
-	{
-		exp: 9,
-		symbol: "G"
-	}
-];
-/** Rounds to `digits` significant digits, avoiding float noise like 4.699999999999999. */
-function roundSig(x, digits) {
-	if (x === 0) return 0;
-	const magnitude = Math.pow(10, digits - Math.ceil(Math.log10(Math.abs(x))));
-	return Math.round(x * magnitude) / magnitude;
-}
-/**
-* A number with its proper unit symbol and an SI prefix chosen so the shown mantissa is
-* 1 to 999, at most 3 significant digits, no trailing zeros. Examples: 220 ohm -> "220 Ω",
-* 4700 ohm -> "4.7 kΩ", 1e-7 F -> "100 nF".
-*/
-function formatValue(value, unit) {
-	const symbol = UNIT_SYMBOLS[unit] ?? unit;
-	if (value === 0) return `0 ${symbol}`;
-	const abs = Math.abs(value);
-	let idx = 0;
-	for (let i = 0; i < PREFIXES.length; i++) if (abs / Math.pow(10, PREFIXES[i].exp) >= 1) idx = i;
-	let scaled = roundSig(value / Math.pow(10, PREFIXES[idx].exp), 3);
-	if (Math.abs(scaled) >= 1e3 && idx < PREFIXES.length - 1) {
-		idx += 1;
-		scaled = roundSig(value / Math.pow(10, PREFIXES[idx].exp), 3);
-	}
-	return `${scaled} ${PREFIXES[idx].symbol}${symbol}`;
-}
-/**
-* Builds a standard value series: `decades` steps of x1, x10, x100, ... over `mantissas`, then
-* one final value. Each entry is rounded to 6 significant digits (see `finish`), because the
-* mantissa-times-power-of-ten multiplication otherwise leaves float noise like
-* 2.1999999999999998e-11 instead of the exact 2.2e-11.
-*/
-function series(mantissas, base, decades, final) {
-	const values = [];
-	for (let k = 0; k < decades; k++) for (const m of mantissas) values.push(roundSig(m * base * Math.pow(10, k), 6));
-	values.push(roundSig(final, 6));
-	return values;
-}
-series([
-	10,
-	12,
-	15,
-	18,
-	22,
-	27,
-	33,
-	39,
-	47,
-	56,
-	68,
-	82
-], 1, 5, 1e6);
-series([
-	10,
-	15,
-	22,
-	33,
-	47,
-	68
-], 1e-12, 8, .001);
-var DIGIT_COLORS = [
-	"#1B1B1B",
-	"#8B5A2B",
-	"#D8413A",
-	"#F08A24",
-	"#F4C430",
-	"#2F9E6E",
-	"#3D6FD6",
-	"#8E5BD6",
-	"#9AA2AD",
-	"#F5F5F5"
-];
-var GOLD = "#E0B43C";
-var SILVER = "#C0C6CE";
-function multiplierColor(exp) {
-	if (exp >= 0 && exp <= 9) return DIGIT_COLORS[exp];
-	if (exp === -1) return GOLD;
-	if (exp === -2) return SILVER;
-	return null;
-}
-/** The exponent and two-digit mantissa (10 to 99) that reproduce `value` exactly, if any. */
-function twoDigitMantissa(value) {
-	for (let exp = -1; exp <= 6; exp++) {
-		const scaled = value / Math.pow(10, exp);
-		const rounded = Math.round(scaled);
-		if (rounded >= 10 && rounded <= 99 && Math.abs(scaled - rounded) < 1e-6) return {
-			mantissa: rounded,
-			exp
-		};
-	}
-	return null;
-}
-/**
-* Hex fills for a standard 4-band resistor code (digit, digit, multiplier, gold tolerance), for
-* a value that fits two significant digits between 1 ohm and 99 Mohm. Null otherwise.
-*/
-function resistorBands(ohms) {
-	if (!Number.isFinite(ohms) || ohms <= 0) return null;
-	const found = twoDigitMantissa(ohms);
-	if (!found) return null;
-	const mult = multiplierColor(found.exp);
-	if (!mult) return null;
-	const d1 = Math.floor(found.mantissa / 10);
-	const d2 = found.mantissa % 10;
-	return [
-		DIGIT_COLORS[d1],
-		DIGIT_COLORS[d2],
-		mult,
-		GOLD
-	];
-}
-/** A resistor body color used when the value has no clean 2-digit band code (or the module has
-* no `resistance` value at all): a neutral tan, close to the paper-toned body most resistor art
-* uses. */
-var NEUTRAL_BAND_FILL = "#E6D3A8";
-/**
-* Fill color for each numbered band shape (1-based slot) in a module's art. Uses the standard
-* 4-band resistor code when the part's resistance forms a clean 2-digit mantissa, and a single
-* black band for 0 ohm; otherwise every band shows the resistor body color instead of a stale or
-* misleading code, using the largest non-band shape's own fill (the body the bands sit on) or a
-* neutral tan when there is none. Null when the module has no band shapes at all.
-*/
-function bandFills(m, values) {
-	const bandShapes = m.art?.shapes.filter((s) => s.band) ?? [];
-	if (bandShapes.length === 0) return null;
-	const maxBand = Math.max(...bandShapes.map((s) => s.band));
-	const resolved = partValue({ values }, m);
-	const bands = resolved?.name === "resistance" ? resistorBands(resolved.value) : null;
-	if (bands) return bands.slice(0, maxBand);
-	const fallback = m.art.shapes.filter((s) => !s.band).reduce((best, s) => !best || s.w * s.h > best.w * best.h ? s : best, void 0)?.fill ?? NEUTRAL_BAND_FILL;
-	const fills = Array.from({ length: maxBand }, () => fallback);
-	if (resolved?.name === "resistance" && resolved.value === 0) {
-		const mid = (Math.min(...bandShapes.map((s) => s.x)) + Math.max(...bandShapes.map((s) => s.x + s.w))) / 2;
-		const center = bandShapes.reduce((best, s) => Math.abs(s.x + s.w / 2 - mid) < Math.abs(best.x + best.w / 2 - mid) ? s : best);
-		fills[center.band - 1] = DIGIT_COLORS[0];
-	}
-	return fills;
-}
-/**
-* The only param names the value field, caption and (for resistance) band coloring apply to,
-* in priority order. A module can carry other numeric params (an LED's forward voltage, its max
-* current) that are not meant to be user-editable values here, so those are never picked, no
-* matter how plausible their unit looks.
-*/
-var PRIMARY_PARAM_NAMES = Object.keys(PARAM_RULES);
-/**
-* The first of `resistance`, `capacitance` or `voltage` present in its own unit (ohm, F, V) with
-* a default in range for it (see PARAM_RULES). A param in another unit is skipped, so a
-* resistance given in farads is never shown as ohms.
-*/
-function primaryParam(m) {
-	const electrical = m.electrical;
-	if (!isObj(electrical) || !isObj(electrical.params)) return null;
-	for (const name of PRIMARY_PARAM_NAMES) {
-		const param = electrical.params[name];
-		if (!isObj(param)) continue;
-		const def = param.default;
-		if (param.unit === PARAM_RULES[name].unit && validParamValue(name, def)) return {
-			name,
-			unit: PARAM_RULES[name].unit,
-			default: def
-		};
-	}
-	return null;
-}
-/**
-* The part's chosen value for its primary param, or the module default when unset. A stored
-* override is only used when its unit matches the param's unit and its value is in range for the
-* param (see PARAM_RULES). Loading a file drops any other override with a warning
-* (`validateDiagram`), so the fallback to the default here is never silent for an imported sheet.
-*/
-function partValue(part, m) {
-	const p = primaryParam(m);
-	if (!p) return null;
-	const stored = part.values?.[p.name];
-	if (isObj(stored) && stored.unit === p.unit && validParamValue(p.name, stored.value)) return {
-		name: p.name,
-		unit: p.unit,
-		value: stored.value
-	};
-	return {
-		name: p.name,
-		unit: p.unit,
-		value: p.default
-	};
-}
-/** "R1  4.7 kΩ" when the part has an editable value, else just its designator. Shared by the live editor canvas and the read-only sheet preview. */
-function partCaption(part, m) {
-	const v = partValue(part, m);
-	return v ? `${part.designator}  ${formatValue(v.value, v.unit)}` : part.designator;
-}
-/** Average advance of one bold 8.5 px character, rounded up so a box never undershoots the text. */
-var CAPTION_CHAR = 5.4;
-/** The caption anchor in part-local px (text-anchor middle, on the baseline). */
-function captionAnchor(m, rotation = 0) {
-	const box = bodyRect({
-		x: 0,
-		y: 0,
-		rotation
-	}, layoutModule(m));
-	const stubsDown = worldPins({
-		x: 0,
-		y: 0,
-		rotation
-	}, m).some((p) => p.dir.y > 0);
-	return {
-		x: box.x + box.w / 2,
-		y: box.y + box.h + (stubsDown ? 8 : 0) + 15
-	};
-}
-/** The caption's box in world px (8 px above the baseline, 2 below). */
-function captionBox(part, m, text = partCaption(part, m)) {
-	const a = captionAnchor(m, part.rotation ?? 0);
-	const w = text.length * CAPTION_CHAR;
-	return {
-		x: part.x + a.x - w / 2,
-		y: part.y + a.y - 8,
-		w,
-		h: 10
-	};
-}
-//#endregion
 //#region src/agent/footprint.ts
 /** Room kept around a free part's body for its pin stubs and the labels beside them. */
 var PIN_ROOM$1 = 18;
@@ -32094,58 +32174,6 @@ function parseNetlist(raw, library) {
 			...ends ? { ends } : {}
 		}
 	};
-}
-var NOTE_CHAR = 5.9;
-var TAB_CHAR = 5.6;
-var noteLines = (text) => text.split("\n");
-/** A frame's label tab, straddling its top edge 10 px from the left. */
-function frameTab(a) {
-	return {
-		x: a.x + 10,
-		y: a.y - 8,
-		w: (a.label ?? "").length * TAB_CHAR + 12,
-		h: 16
-	};
-}
-/** Everything an annotation draws, in world px: a frame with its tab, or a note's box. */
-function annotationRect(a) {
-	if (a.type === "frame") {
-		const w = a.w ?? 0;
-		const h = a.h ?? 0;
-		if (!a.label) return {
-			x: a.x,
-			y: a.y,
-			w,
-			h
-		};
-		const t = frameTab(a);
-		return {
-			x: a.x,
-			y: t.y,
-			w: Math.max(a.x + w, t.x + t.w) - a.x,
-			h: a.y + h - t.y
-		};
-	}
-	const lines = noteLines(a.text ?? "");
-	return {
-		x: a.x,
-		y: a.y,
-		w: Math.ceil(Math.max(1, ...lines.map((l) => l.length)) * NOTE_CHAR + 12),
-		h: lines.length * 13 + 12
-	};
-}
-/** Word-wraps each paragraph to `width` characters (a longer single word keeps its own line). */
-function wrapNote(text, width = 48) {
-	return text.split("\n").map((para) => {
-		const lines = [];
-		let line = "";
-		for (const word of para.split(/\s+/).filter(Boolean)) if (line && line.length + 1 + word.length > width) {
-			lines.push(line);
-			line = word;
-		} else line = line ? `${line} ${word}` : word;
-		if (line) lines.push(line);
-		return lines.join("\n");
-	}).join("\n");
 }
 //#endregion
 //#region src/agent/internal.ts

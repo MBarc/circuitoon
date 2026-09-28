@@ -6,6 +6,8 @@ import { addToOccupancy, inGrown, Occupancy, onGrid, routeOrthogonal } from './r
 import { manualRouteBlocked, tidy } from './wireEdit.ts'
 import { mountIssues, plugOfPin, plugsOf } from './breadboard.ts'
 import { type CableEndDraw, END_SIZE, endKind, endPlacement, isEndKind, normalizeEnds, type WireEnds } from './cables.ts'
+import { captionBox } from '../render/captionBox.ts'
+import { frameTab } from '../render/annotationGeometry.ts'
 
 /** How every load warning about a dropped value override ends: the part now shows its module
  * default instead of the value the file asked for. The editor lists these warnings first. */
@@ -332,6 +334,41 @@ function foreignHoles(c: Connection, holes: BoardHoles): Pt[] {
   return holes.groups.flatMap((g) => (own.has(g.key) ? [] : g.at))
 }
 
+/**
+ * Text on the sheet an auto-routed wire keeps off (amendment A18.3): each part's caption (by part
+ * uid) and each frame's label tab (no owner), as the routing grid nodes they cover, grown by
+ * LABEL_PAD so a wire on the next grid line does not graze the text either.
+ */
+export interface LabelPoints {
+  captions: Map<string, Pt[]>
+  tabs: Pt[]
+}
+const LABEL_PAD = 3
+
+function gridNodesIn(r: Rect): Pt[] {
+  const out: Pt[] = []
+  for (let y = Math.ceil((r.y - LABEL_PAD) / GRID) * GRID; y <= r.y + r.h + LABEL_PAD; y += GRID)
+    for (let x = Math.ceil((r.x - LABEL_PAD) / GRID) * GRID; x <= r.x + r.w + LABEL_PAD; x += GRID) out.push({ x, y })
+  return out
+}
+
+export function labelPoints(d: Diagram): LabelPoints {
+  const captions = new Map<string, Pt[]>()
+  for (const p of d.parts) {
+    const m = moduleOf(d, p.module)
+    if (m) captions.set(p.uid, gridNodesIn(captionBox(p, m)))
+  }
+  const tabs = (d.annotations ?? []).flatMap((a) => (a.type === 'frame' && a.label ? gridNodesIn(frameTab(a)) : []))
+  return { captions, tabs }
+}
+
+/** The label nodes wire `c` keeps off: every frame tab and every caption but its own parts'. */
+function labelsFor(c: Connection, labels: LabelPoints): Pt[] {
+  const out = [...labels.tabs]
+  for (const [uid, pts] of labels.captions) if (uid !== c.from.part && uid !== c.to.part) out.push(...pts)
+  return out
+}
+
 /** True when a straight run from `a` to `b` passes within 3 px of any of `pts`. */
 function runsOver(a: Pt, b: Pt, pts: Pt[]): boolean {
   const [x0, x1] = [Math.min(a.x, b.x), Math.max(a.x, b.x)]
@@ -339,14 +376,22 @@ function runsOver(a: Pt, b: Pt, pts: Pt[]): boolean {
   return pts.some((p) => p.x >= x0 - 3 && p.x <= x1 + 3 && p.y >= y0 - 3 && p.y <= y1 + 3)
 }
 
-export function routeWire(d: Diagram, c: Connection, obstacles: Rect[], occupied?: Occupancy, holes: BoardHoles = boardHoles(d)): WireRoute | null {
+export function routeWire(
+  d: Diagram,
+  c: Connection,
+  obstacles: Rect[],
+  occupied?: Occupancy,
+  holes: BoardHoles = boardHoles(d),
+  labels: LabelPoints = labelPoints(d),
+): WireRoute | null {
   const a = resolveEndpoint(d, c.from)
   const b = resolveEndpoint(d, c.to)
   if (!a || !b) return null
   const foreign = foreignHoles(c, holes)
+  const text = labelsFor(c, labels)
   const own = obstaclesFor(obstacles, a, b)
   const { leads: [fromLead, toLead], facing } = leadsOf(c, a, b)
-  if (facing && !c.route && !manualRouteBlocked([a.end, b.end], own) && !runsOver(a.end, b.end, foreign)) return { points: [a.end, b.end], blocked: false }
+  if (facing && !c.route && !manualRouteBlocked([a.end, b.end], own) && !runsOver(a.end, b.end, foreign) && !runsOver(a.end, b.end, text)) return { points: [a.end, b.end], blocked: false }
   if (c.route) {
     let points = manualPoints(a, b, c.route)
     if (fromLead || toLead) points = withLeadOut(withLeadOut(points, a.dir, fromLead).reverse(), b.dir, toLead).reverse()
@@ -366,9 +411,11 @@ export function routeWire(d: Diagram, c: Connection, obstacles: Rect[], occupied
     }
     return routeOrthogonal(req)
   }
-  // Hole avoidance never blocks a wire: when no route clears the other strips' holes, one over
-  // them is still better than a dashed, blocked wire.
-  const points = attempt(foreign) ?? (foreign.length ? attempt([]) : null)
+  // Neither label nor hole avoidance ever blocks a wire: when no route clears the labels, one over
+  // them is tried (still clear of other strips' holes), then one over the holes too; any of them
+  // is better than a dashed, blocked wire. Labels give way first: a wire over a hole reads as
+  // plugged in there, one over a caption only hides some text.
+  const points = (text.length ? attempt([...foreign, ...text]) : null) ?? attempt(foreign) ?? (foreign.length ? attempt([]) : null)
   // Never a diagonal: an unroutable wire is still drawn orthogonal, dashed, and flagged.
   return points ? { points, blocked: false } : { points: blockedPoints(a, b), blocked: true }
 }
@@ -386,6 +433,7 @@ export function routeWire(d: Diagram, c: Connection, obstacles: Rect[], occupied
 export function computeRoutes(d: Diagram, opts: { only?: Set<string>; prev?: Routes; occupancy?: boolean } = {}): Routes {
   const obstacles = partObstacles(d)
   const holes = boardHoles(d)
+  const labels = labelPoints(d)
   const out: Routes = new Map()
   const occupied = opts.occupancy === false ? undefined : new Occupancy()
   for (const c of d.connections) {
@@ -397,7 +445,7 @@ export function computeRoutes(d: Diagram, opts: { only?: Set<string>; prev?: Rou
   }
   for (const c of d.connections) {
     if (out.has(c.uid)) continue
-    const route = routeWire(d, c, obstacles, occupied, holes)
+    const route = routeWire(d, c, obstacles, occupied, holes, labels)
     out.set(c.uid, route)
     if (route && occupied) addToOccupancy(occupied, route.points)
   }
