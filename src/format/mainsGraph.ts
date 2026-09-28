@@ -547,6 +547,10 @@ const contains = (a: Cube, b: Cube) => (a.care & b.care) === a.care && (b.val & 
 export function minimalWitnesses(holds: Uint32Array, k: number): Witness[] {
   const has = (m: number) => ((holds[m >>> 5] >>> (m & 31)) & 1) === 1
   const all = (1 << k) - 1
+  // Holding in every state needs no condition: skip the cover, whose minimal-witness search would visit every subset.
+  let every = true
+  for (let m = 0; m <= all && every; m++) every = has(m)
+  if (every) return [{ kept: [], mask: 0 }]
   const cover: Cube[] = []
   let full = true
   for (let m = 0; m <= all; m++) {

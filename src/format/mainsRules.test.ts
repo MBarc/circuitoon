@@ -434,3 +434,137 @@ describe('rule 12: missing mains data', () => {
     expect(rules(on([['ps1', 'PS1', 't-psu-mainsonly'], ['u1', 'U1', 't-undeclared']], [])).has('data-missing')).toBe(false)
   })
 })
+
+describe('rule 6: polarity', () => {
+  it('polarized lamp reversed (polarity, not short), highlighting the wires that reverse it', () => {
+    const wires = [w('xs1|N', 'e1|L'), w('xs1|L', 'e1|N')]
+    const d = on([['e1', 'E1', 't-lamp']], wires)
+    const found = only(d, 'polarity')
+    expect(found.map((f) => f.message)).toEqual([
+      'E1 is wired the wrong way round: E1 L is on N and E1 N is on L. If E1 is a lamp, its screw shell is live, so touching the bulb while changing it may shock. Swap the L and N wires to E1.',
+    ])
+    expect([...found[0].wires].sort()).toEqual(wires.map((c) => c.uid).sort())
+    expect(rules(d).has('mains-short')).toBe(false)
+  })
+  it('only one terminal on the wrong conductor', () => {
+    const d = on([['e1', 'E1', 't-lamp']], [w('xs1|L', 'e1|L'), w('xs1|L', 'e1|N')])
+    expect(msgs(d, 'polarity')).toEqual(['E1 N should be on N but is on L. Swap the L and N wires to E1.'])
+  })
+  it('a switched lamp wired the wrong way round: each claim keeps its own condition', () => {
+    const d = on([['s1', 'S1', 't-switch'], ['e1', 'E1', 't-lamp']], [w('xs1|L', 's1|1'), w('s1|2', 'e1|N'), w('e1|L', 'xs1|N')])
+    expect(msgs(d, 'polarity')).toEqual([
+      'E1 L should be on L but is on N when S1 is off. Swap the L and N wires to E1.',
+      'E1 is wired the wrong way round when S1 is on: E1 L is on N and E1 N is on L. If E1 is a lamp, its screw shell is live, so touching the bulb while changing it may shock. Swap the L and N wires to E1.',
+    ])
+  })
+  it('a correctly wired lamp on a polarized outlet says nothing', () => {
+    expect(rules(on([['e1', 'E1', 't-lamp']], [w('xs1|L', 'e1|L'), w('xs1|N', 'e1|N')])).has('polarity')).toBe(false)
+  })
+  it('a single-pole switch in the neutral (its own state is not a condition), highlighting the loop it sits in', () => {
+    const wires = [w('xs1|L', 'e1|L'), w('e1|N', 's1|1'), w('s1|2', 'xs1|N')]
+    const d = on([['s1', 'S1', 't-switch'], ['e1', 'E1', 't-lamp']], wires)
+    const found = only(d, 'polarity')
+    expect(found.map((f) => f.message)).toEqual(['S1 switches the neutral: with S1 off, what it feeds stays live. Move S1 into the L wire.'])
+    expect([...found[0].wires].sort()).toEqual(wires.map((c) => c.uid).sort())
+  })
+  it('a switch that is in the neutral only when a relay selects it names that condition', () => {
+    const d = on([['k1', 'K1', 't-relay'], ['s1', 'S1', 't-switch'], ['e1', 'E1', 't-lamp']],
+      [w('xs1|L', 'e1|L'), w('e1|N', 's1|1'), w('s1|2', 'k1|NC'), w('k1|COM', 'xs1|N')])
+    expect(msgs(d, 'polarity').sort()).toEqual([
+      'K1 switches the neutral: whatever it disconnects stays live. Move K1 into the L wire.',
+      'S1 switches the neutral when K1 is released: with S1 off, what it feeds stays live. Move S1 into the L wire.',
+    ])
+  })
+  it('a switch in the L wire says nothing', () => {
+    const d = on([['s1', 'S1', 't-switch'], ['e1', 'E1', 't-lamp']], [w('xs1|L', 's1|1'), w('s1|2', 'e1|L'), w('e1|N', 'xs1|N')])
+    expect(rules(d).has('polarity')).toBe(false)
+  })
+  it('a fuse in the neutral', () => {
+    const d = on([['f1', 'F1', 't-fuse'], ['e1', 'E1', 't-lamp']], [w('xs1|L', 'e1|L'), w('e1|N', 'f1|1'), w('f1|2', 'xs1|N')])
+    expect(msgs(d, 'polarity')).toEqual(['F1 is in the neutral: when it blows, what it feeds stays live. Move F1 into the L wire.'])
+  })
+  it('an empty fuse holder in the neutral is still in the neutral', () => {
+    const d = sheet([at('xs1', 'XS1', 't-outlet'), at('f1', 'F1', 't-fuse', 200, 0, { settings: { fuse: 'absent' } }), at('e1', 'E1', 't-lamp', 400)],
+      [w('xs1|L', 'e1|L'), w('e1|N', 'f1|1'), w('f1|2', 'xs1|N')])
+    expect(msgs(d, 'polarity')).toEqual(['F1 is in the neutral: when it blows, what it feeds stays live. Move F1 into the L wire.'])
+  })
+  it('on an unpolarized outlet the uncertainty is reported, never skipped (Resolution 22)', () => {
+    const d = on([['e1', 'E1', 't-lamp-230']], [w('xs1|L', 'e1|L'), w('xs1|N', 'e1|N')], [['xs1', 'XS1', 't-outlet-eu']])
+    expect(msgs(d, 'polarity')).toEqual([
+      "E1's polarity is not known: XS1 is an unpolarized outlet, so which of its slots is L is not known, and E1 L and E1 N may be on the wrong conductor. Use a polarized plug and outlet for a part whose L and N matter.",
+    ])
+  })
+  it('a switched lamp on an unpolarized outlet: one uncertainty for the lamp in every state, and one for the switch', () => {
+    const d = on([['s1', 'S1', 't-switch'], ['e1', 'E1', 't-lamp-230']], [w('xs1|L', 's1|1'), w('s1|2', 'e1|L'), w('e1|N', 'xs1|N')], [['xs1', 'XS1', 't-outlet-eu']])
+    expect(msgs(d, 'polarity').sort()).toEqual([
+      "E1's polarity is not known: XS1 is an unpolarized outlet, so which of its slots is L is not known, and E1 L and E1 N may be on the wrong conductor. Use a polarized plug and outlet for a part whose L and N matter.",
+      'S1 may switch the neutral: XS1 is an unpolarized outlet, so which of its slots is L is not known. Use a polarized plug and outlet, or a double-pole switch.',
+    ])
+  })
+  it('a fuse on an unpolarized outlet may be in the neutral', () => {
+    const d = on([['f1', 'F1', 't-fuse'], ['e1', 'E1', 't-lamp-230']], [w('xs1|L', 'f1|1'), w('f1|2', 'e1|L'), w('e1|N', 'xs1|N')], [['xs1', 'XS1', 't-outlet-eu']])
+    expect(msgs(d, 'polarity')).toContain(
+      "F1 may be in the neutral: XS1 is an unpolarized outlet, so which of its slots is L is not known. Use a polarized plug and outlet, or fuse the part's own supply.",
+    )
+  })
+})
+
+describe('rule 7: earth', () => {
+  const through = (part: string, kinds: string) =>
+    `The earth path runs through ${part} (${kinds}). Earth must never pass through a switch, relay or fuse, because opening it may leave a part unearthed. Wire earth straight.`
+  it("a class 1 lamp's PE terminal without earth (its PE node is connected to nothing)", () => {
+    const d = on([['e1', 'E1', 't-lamp-c1']], [w('xs1|L', 'e1|L'), w('xs1|N', 'e1|N')])
+    expect(msgs(d, 'earth')).toEqual(["E1 PE is not connected to earth: a fault inside E1 may leave its metal live. Wire E1 PE to the outlet's earth."])
+    expect(rules(on([['e1', 'E1', 't-lamp-c1']], [w('xs1|L', 'e1|L'), w('xs1|N', 'e1|N'), w('xs1|PE', 'e1|PE')])).has('earth')).toBe(false)
+  })
+  it('says nothing about an unearthed class 1 part that is off mains', () => {
+    expect(rules(on([['e1', 'E1', 't-lamp-c1']], [])).has('earth')).toBe(false)
+  })
+  it('a class 1 PE terminal wired to a live conductor', () => {
+    const d = on([['e1', 'E1', 't-lamp-c1']], [w('xs1|L', 'e1|L'), w('xs1|N', 'e1|N'), w('e1|N', 'e1|PE')])
+    expect(msgs(d, 'earth')).toEqual(["E1 PE is on N instead of earth: E1's metal may be live. Wire E1 PE to the outlet's earth, and nothing else to it."])
+  })
+  it('earthed only through a switch: no earth while it is off, and earth through a switch', () => {
+    const d = on([['s1', 'S1', 't-switch'], ['e1', 'E1', 't-lamp-c1']],
+      [w('xs1|L', 'e1|L'), w('xs1|N', 'e1|N'), w('xs1|PE', 's1|1'), w('s1|2', 'e1|PE')])
+    expect(msgs(d, 'earth').sort()).toEqual([
+      "E1 PE is not connected to earth when S1 is off: a fault inside E1 may leave its metal live. Wire E1 PE to the outlet's earth.",
+      through('S1', 'a switch'),
+    ])
+  })
+  it('a switched PE branch parallel to a permanent PE wire (earth: protective conductor through a switch), highlighting its loop', () => {
+    const loop = [w('xs1|PE', 'e1|PE'), w('xs1|PE', 's1|1'), w('s1|2', 'e1|PE')]
+    const d = on([['s1', 'S1', 't-switch'], ['e1', 'E1', 't-lamp-c1']], [w('xs1|L', 'e1|L'), w('xs1|N', 'e1|N'), ...loop])
+    const found = only(d, 'earth')
+    expect(found.map((f) => f.message)).toEqual([through('S1', 'a switch')])
+    expect([...found[0].wires].sort()).toEqual(loop.map((c) => c.uid).sort())
+  })
+  it('a part on the earth path with two kinds of edge names both', () => {
+    const both = { ...MAINS_MODULES['t-relay'], id: 't-relay-fused', electrical: { ...(MAINS_MODULES['t-relay'].electrical as Record<string, unknown>), protective: [{ from: 'NO', to: 'NC', kind: 'fuse' }] } }
+    const d = sheet([at('xs1', 'XS1', 't-outlet'), at('k1', 'K1', 't-relay-fused', 200), at('e1', 'E1', 't-lamp-c1', 400)],
+      [w('xs1|L', 'e1|L'), w('xs1|N', 'e1|N'), w('xs1|PE', 'k1|NO'), w('k1|NC', 'e1|PE')], { 't-relay-fused': both })
+    expect(msgs(d, 'earth')).toContain(through('K1', 'a fuse and a relay'))
+  })
+  it('N joined to PE beyond the outlet', () => {
+    expect(msgs(on([], [w('xs1|N', 'xs1|PE')]), 'earth')).toEqual([
+      'XS1 N is joined to earth: neutral and earth are joined only at the main panel, and a join here puts current on the earth wire. Remove the wire that joins them.',
+    ])
+  })
+  it('a lamp terminal on earth only', () => {
+    const d = on([['e1', 'E1', 't-lamp']], [w('xs1|L', 'e1|L'), w('xs1|PE', 'e1|N')])
+    expect(msgs(d, 'earth')).toEqual(['E1 N carries mains inside E1 but is joined to earth. Wire it to N, never to earth.'])
+  })
+  it('a DC ground joined to earth without a declared bond warns; through a declared bond it does not', () => {
+    expect(msgs(on([['u1', 'U1', 't-mcu']], [w('xs1|PE', 'u1|GND')]), 'earth-bond')).toEqual([
+      'U1 GND is joined to earth, but nothing on this net declares a bond to earth. A low-voltage ground on earth is right only when the supply is meant to be earthed (a class 1 supply with an earthed output); otherwise remove the join.',
+    ])
+    const bonded = on([['ps1', 'PS1', 't-psu-pelv'], ['u1', 'U1', 't-mcu']],
+      [w('xs1|L', 'ps1|AC1'), w('xs1|N', 'ps1|AC2'), w('xs1|PE', 'ps1|PE'), w('ps1|-V', 'u1|GND'), w('ps1|+V', 'u1|VCC')])
+    expect(rules(bonded).has('earth-bond')).toBe(false)
+    expect(rules(bonded).has('earth')).toBe(false)
+  })
+  it('a class 1 supply with its earth unwired while its input is on mains', () => {
+    const d = on([['ps1', 'PS1', 't-psu-pelv']], [w('xs1|L', 'ps1|AC1'), w('xs1|N', 'ps1|AC2')])
+    expect(msgs(d, 'earth')).toEqual(["PS1 PE is not connected to earth: a fault inside PS1 may leave its metal live. Wire PS1 PE to the outlet's earth."])
+  })
+})
