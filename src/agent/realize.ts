@@ -59,6 +59,8 @@ interface Node {
 
 const groupKey = (board: string, group: string) => JSON.stringify([board, group])
 const holeKey = (board: string, group: string, hole: number) => JSON.stringify([board, group, hole])
+/** "a", "a and b", "a, b and c". */
+const joinList = (items: string[]) => (items.length < 2 ? items.join('') : `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]}`)
 const dist = (a: Pt, b: Pt) => Math.abs(a.x - b.x) + Math.abs(a.y - b.y)
 
 function typeOf(m: ModuleDef, name: string): string | undefined {
@@ -154,6 +156,40 @@ export function realize(intent: Intent, d: Diagram, locals: LocalDistribution[] 
     return pinEnd(best!)
   }
   const capOf = (n: Node) => [...n.left.values()].reduce((a, b) => a + b, 0)
+  const ncKeys = new Set(intent.nc.map((t) => terminalKey(t.ref, t.name)))
+  /** Pins joined inside a part that one net borrowed (below), so no other net takes them too. */
+  const borrowed = new Set<string>()
+  /**
+   * The pins a node's part joins to it inside itself (an ESP32's GND 2 and GND 3 beside GND) that
+   * the netlist leaves free: on no net, not nc, not plugged into a board, not already borrowed.
+   */
+  const joinedSpares = (n: Node): Terminal[] => {
+    const { ref } = n.members[0]
+    const m = modOf(ref)
+    const comp = internalComponent(m, n.members[0].name)
+    const names = new Set(n.members.map((t) => t.name))
+    return [...new Set((m.internal ?? []).flat())]
+      .filter((name) => !names.has(name) && internalComponent(m, name) === comp && !m.holes?.some((g) => g.name === name))
+      .filter((name) => {
+        const k = terminalKey(ref, name)
+        return !netOfTerminal.has(k) && !ncKeys.has(k) && !legBy.has(k) && !borrowed.has(k)
+      })
+      .sort(naturalCompare)
+      .map((name) => ({ ref, name, infra: false }))
+  }
+  /** Whether the nodes can be wired as one chain: both ends take one wire, every inner node two. */
+  const chainable = (nodes: Node[]) => nodes.length === 2 || nodes.filter((n) => capOf(n) >= 2).length >= nodes.length - 2
+  const chainUp = (ni: number, nodes: Node[]) => {
+    const first = (n: Node) => pointOf(pinEnd(n.members[0]))
+    const wide = nodes.filter((n) => capOf(n) >= 2)
+    const inner = nodes.length === 2 ? [] : wide.slice(0, nodes.length - 2)
+    const outer = nodes.filter((n) => !inner.includes(n))
+    const chain = [outer[0], ...inner, outer[1]]
+    for (let k = 1; k < chain.length; k++) {
+      const a = take(chain[k - 1], first(chain[k]))
+      wire(ni, a, take(chain[k], pointOf(a)), false)
+    }
+  }
   const claim = (ni: number, at: Pt, kind: NetKind, board?: string): Strip | null => {
     const rank = (s: Strip) => (kind === 'ground' ? (s.rail === '-' ? 0 : s.rail ? -1 : 1) : kind === 'power' ? (s.rail === '+' ? 0 : s.rail ? -1 : 1) : s.rail ? -1 : 0)
     let best: Strip | null = null
@@ -242,22 +278,28 @@ export function realize(intent: Intent, d: Diagram, locals: LocalDistribution[] 
 
     if (!dps.length && !groups.length) {
       if (nodes.length < 2) continue
-      const wide = nodes.filter((n) => capOf(n) >= 2)
-      if (nodes.length === 2 || wide.length >= nodes.length - 2) {
-        const inner = nodes.length === 2 ? [] : wide.slice(0, nodes.length - 2)
-        const outer = nodes.filter((n) => !inner.includes(n))
-        const chain = [outer[0], ...inner, outer[1]]
-        for (let k = 1; k < chain.length; k++) {
-          const a = take(chain[k - 1], first(chain[k]))
-          wire(ni, a, take(chain[k], pointOf(a)), false)
-        }
+      if (chainable(nodes)) {
+        chainUp(ni, nodes)
         continue
       }
       const pts = nodes.map(first)
       const center = { x: pts.reduce((s, p) => s + p.x, 0) / pts.length, y: pts.reduce((s, p) => s + p.y, 0) / pts.length }
       const s = claim(ni, center, kind)
       if (!s) {
-        errors.push(`needs a distribution point: net ${net.name} joins ${nodes.length} pins (${nodes.map((n) => terminalName(n.members[0])).join(', ')}), but a header pin takes one wire. Add a breadboard, a rail strip or a terminal block to the netlist.`)
+        // No strip to claim: the pins each part joins inside itself that the netlist leaves free
+        // take a wire each too (verify counts them as the same node), so a net a pin or two short
+        // still chains. Used only here, so a net that fits never moves to a pin it did not list.
+        const spares = nodes.map(joinedSpares)
+        const grown = nodes.map((n, i) => ({ members: [...n.members, ...spares[i]], left: new Map([...n.left, ...spares[i].map((t): [string, number] => [t.name, terminalCapacity(modOf(t.ref), t.name)])]) }))
+        if (chainable(grown)) {
+          for (const t of spares.flat()) borrowed.add(terminalKey(t.ref, t.name))
+          chainUp(ni, grown)
+          continue
+        }
+        const counted = spares.flat()
+        const inside = new Set(counted.map((t) => t.ref)).size === 1 ? 'the part' : 'their parts'
+        const also = counted.length ? `, even counting the free ${counted.length === 1 ? 'pin' : 'pins'} joined to them inside ${inside} (${joinList(counted.map(terminalName))})` : ''
+        errors.push(`needs a distribution point: net ${net.name} joins ${nodes.length} pins (${nodes.map((n) => terminalName(n.members[0])).join(', ')}), but a header pin takes one wire${also}. Add a breadboard, a rail strip or a terminal block to the netlist.`)
         continue
       }
       dps.push(s)

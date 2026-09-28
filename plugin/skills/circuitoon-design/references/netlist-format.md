@@ -66,7 +66,10 @@ The `wires` settings:
   - a free strip or rail of a breadboard or rail strip in the netlist, which the layout claims for it (ground takes a `-` rail, power takes a `+` rail, a signal takes a column strip).
 
   With none of these, the layout stops with "needs a distribution point: net X".
-- Pins that a part joins inside itself count as one node. That node takes as many wires as its pins together. Examples: the ESP32's GND pins, and the IP5306's B- and 5V-.
+- Pins that a part joins inside itself count as one node. That node takes as many wires as its pins together. Examples: the ESP32's GND pins (`GND`, `GND 2`, `GND 3`), and the IP5306's B- and 5V-.
+  - Listing more of them in the net (`"U1.GND", "U1.GND 2"`) gives the node more wire ends, so a net of three can chain through the part with no strip: one wire into `U1.GND`, the next out of `U1.GND 2`.
+  - When a net has no strip and none can be claimed, the layout also counts the joined pins you did not list, as long as they are on no other net, not in `nc` and not plugged into a board. So `U1.GND` with two sensor grounds lays out with one wire on `U1.GND 2`. Verify treats those pins as part of the net.
+  - When even that is not enough, the error names the joined pins it counted, for example "even counting the free pins joined to them inside the part (U1 GND 2 and U1 GND 3)". Then add a breadboard, a rail strip or a terminal block.
 - Everything the layout adds for strips (wires into holes, jumpers, local rail strips) is marked `routing: true`.
 
 ## Repeated sub-circuits

@@ -149,6 +149,29 @@ describe('layoutNetlist', () => {
     expect(verifyDiagram(d, libraryLookup)).toEqual([])
     expect(d.connections.filter((c) => [c.from, c.to].some((e) => e.part === 'RAIL1' && e.pin === '+')).length).toBe(4)
   })
+  it('wires a net one end short through the pins a part joins inside itself (U1 GND 2), and verify stays clean', () => {
+    const net = {
+      format: 'circuitoon-netlist/1',
+      title: 'Two sensors on one GND pin',
+      parts: [{ ref: 'U1', module: 'esp32-devkitc-v4' }, { ref: 'U2', module: 'bme280-module-4pin' }, { ref: 'U3', module: 'bme280-module-4pin' }],
+      nets: [{ name: 'GND', pins: ['U1.GND', 'U2.GND', 'U3.GND'] }],
+    }
+    const d = laid(net)
+    expect(verifyDiagram(d, libraryLookup)).toEqual([])
+    const u1 = d.connections.flatMap((c) => [c.from, c.to]).filter((e) => e.part === 'U1').map((e) => e.pin).sort()
+    expect(u1).toHaveLength(2)
+    expect(u1[0]).toBe('GND')
+    expect(['GND 2', 'GND 3']).toContain(u1[1])
+  })
+  it('names the joined pins it counted when a net is still too big for them', () => {
+    const r = layoutNetlist(esp())
+    expect(r.ok).toBe(false)
+    if (!r.ok) {
+      const gnd = r.errors.find((e) => e.startsWith('needs a distribution point: net GND '))!
+      expect(gnd).toContain('U1 GND 2 and U1 GND 3')
+      expect(r.errors.find((e) => e.startsWith('needs a distribution point: net 3V3 '))).not.toContain('joined')
+    }
+  })
   it('chains through a terminal that takes two wire ends', () => {
     const d = laid({
       format: 'circuitoon-netlist/1',
