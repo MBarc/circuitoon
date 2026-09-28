@@ -2107,7 +2107,18 @@ function protTable(p: Prepared): ProtTable {
         if (ra !== rb) parent.set(ra, rb)
       }
   const pairs: { end: number; load: Protected; src: GSource }[] = []
-  const targets: Protected[] = [...p.loadIdx.map((i) => g.loads[i]), ...p.converterIdx.map((i) => g.converters[i]).filter((c) => !c.plugIn)]
+  // A converter is exempt only when seated in its outlet with nothing wired to its input (Ruling 3: its
+  // input is then its own prongs, with no project wiring before them). The plug-in flag alone never exempts.
+  const wiredInput = new Set<string>()
+  for (const c of g.d.connections) {
+    if (g.broken.has(c.uid)) continue
+    for (const ep of [c.from, c.to]) {
+      const i = g.nodeOf.get(nodeKey(ep.part, ep.pin))
+      if (i !== undefined) wiredInput.add(`${ep.part}|${i}`)
+    }
+  }
+  const exempt = (c: GConverter) => g.seated.has(c.part.uid) && !wiredInput.has(`${c.part.uid}|${c.a}`) && !wiredInput.has(`${c.part.uid}|${c.b}`)
+  const targets: Protected[] = [...p.loadIdx.map((i) => g.loads[i]), ...p.converterIdx.map((i) => g.converters[i]).filter((c) => !exempt(c))]
   for (const ld of targets) {
     for (const end of [ld.a, ld.b])
       for (const s of p.sources) if (s.live.some((n) => find(n) === find(end))) pairs.push({ end, load: ld, src: s })

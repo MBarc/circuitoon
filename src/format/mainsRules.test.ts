@@ -3,7 +3,8 @@ import { describe, expect, it } from 'vitest'
 import { checkDiagram, type Finding } from './checks.ts'
 import type { Diagram, PartInstance } from './diagram.ts'
 import { load } from './builtinModules.testing.ts'
-import { MAINS_MODULES, at, dupont, sheet, w } from './mains.testing.ts'
+import { MAINS_MODULES, at, chargerUK, dupont, sheet, w } from './mains.testing.ts'
+import type { ModuleDef } from './module.ts'
 import { plugsOf } from './breadboard.ts'
 import { netlist, nodeKey } from './netlist.ts'
 import { type Prepared, analyseState, buildMainsGraph, candidateGroups, masksByPopcount, prepare, setState } from './mainsGraph.ts'
@@ -690,6 +691,20 @@ describe('rule 8: protection', () => {
       const d = sheet([at('xs1', 'XS1', 't-outlet-uk'), at('ps1', 'PS1', 't-charger-uk', 0, 0, { mount: { board: 'xs1' } })], [])
       expect(analyseMains(d)!.converters.get('ps1')!.state).toBe('powered')
       expect(rules(d).has('unprotected')).toBe(false)
+    })
+    // Final fixes (2): the plug-in flag alone never exempts; only a seated converter with nothing wired to its input.
+    it('a custom plug-in converter whose input leads are wired from unfused leads', () => {
+      const leads: ModuleDef = {
+        ...chargerUK, id: 't-charger-leads', name: 'Test charger with input leads',
+        pins: [...chargerUK.pins, { name: 'L', side: 'bottom', mains: 'L' }, { name: 'N', side: 'bottom', mains: 'N' }],
+        internal: [['L prong', 'L'], ['N prong', 'N']],
+        electrical: { ...(chargerUK.electrical as Record<string, unknown>), acInput: { a: 'L', b: 'N', range: [100, 240] } },
+      }
+      const d = sheet([at('xs1', 'XS1', 't-outlet'), at('ps1', 'PS1', leads.id, 400)], [w('xs1|L', 'ps1|L'), w('xs1|N', 'ps1|N')], { [leads.id]: leads })
+      expect(analyseMains(d)!.converters.get('ps1')!.state).toBe('powered')
+      expect(msgs(d, 'unprotected')).toEqual([
+        "Nothing fuses the L wire from XS1 to PS1: a fault in the wiring beyond the plug has only the building's breaker to stop it. Add a fuse (a fuse holder) in the L wire.",
+      ])
     })
   })
   it('fuse on one branch with a bypass (unprotected)', () => {
