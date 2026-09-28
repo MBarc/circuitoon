@@ -1,6 +1,6 @@
-# Agent toolkit, first slice: design (revision 2)
+# Agent toolkit, first slice: design (revision 3)
 
-Status: direction approved by Michael (2026-09-27): a CLI plus skills packaged as a Claude Code plugin in the public repo, pulled forward so another Claude Code session (first user: the Spirit Typewriter session) can design, test and present a schematic. Built in parallel with the mains work. Revision 2 answers Astra's spec review (10 findings). MCP server, simulation and module authoring commands come later.
+Status: direction approved by Michael (2026-09-27): a CLI plus skills packaged as a Claude Code plugin in the public repo, pulled forward so another Claude Code session (first user: the Spirit Typewriter session) can design, test and present a schematic. Built in parallel with the mains work. Revision 2 answers Astra's spec review (10 findings); revision 3 its re-review (terminal capacity, nc, inventory drift, intent required, routing infrastructure, repeat bindings). MCP server, simulation and module authoring commands come later.
 
 ## Goal
 An agent goes from a request to a schematic that provably implements the requested circuit, passes the checker, renders readably, and opens in Circuitoon, without guessing coordinates. Nothing is presented that the tools have not verified, and what is not verified is stated.
@@ -25,37 +25,41 @@ An agent goes from a request to a schematic that provably implements the request
 }
 ```
 Input contract (all violations are errors with a precise message; nothing is guessed):
-- Endpoints: object form `{ "ref", "pin" }` or `{ "ref", "group", "hole" }` is canonical; the string form `"REF.PIN"` is shorthand, splitting at the first dot. Refs must match `[A-Za-z][A-Za-z0-9_]*`. A pin is matched by exact pin name first; a silkscreen label is accepted only when exactly one pin has it (ESP32 `GND`/`GND 2`/`GND 3` share the label `GND`: the label is rejected as ambiguous and the error lists the names). Hole indexes are zero-based; an omitted index means "any free hole of that group", chosen by the layout.
+- Endpoints: object form `{ "ref", "pin" }` or `{ "ref", "group", "hole" }` is canonical; the string form `"REF.PIN"` is shorthand, splitting at the first dot. Refs must match `[A-Za-z][A-Za-z0-9_]*`. A pin is matched by exact pin name first (`GND` on the ESP32 is the pin named `GND`); only when no pin has that exact name is a silkscreen label tried, and it is accepted only when exactly one pin has it (a label shared by several pins is rejected and the error lists their names). Hole indexes are zero-based; an omitted index means "any free hole of that group", chosen by the layout.
 - Duplicate refs, duplicate net names, and an endpoint listed in two nets are errors. A part belongs to at most one group.
 - `module` is a library id or an id defined under `modules` (embedded, validated like a library module); an embedded id equal to a library id is an error.
 - `values` as in diagrams; `on` requests mounting on a breadboard ref (section 2.2).
+- `nc: [endpoints]` lists pins that must stay unconnected; any connection to one is a verification error.
 - `groups: [{ name, parts }]`, `notes: [{ text, near }]` (`near` is a group name or a ref), `repeat` (section 1.1).
 - The netlist is stored inside the output diagram as `intent` (section 3), so every later check can re-verify the circuit against it.
 
 ### 1.1 Repeated sub-circuits
-`repeat: { name, count, template: { parts, nets }, map }` declares `count` copies of a template (e.g. 42 balls). `map` binds each copy's external connections by index (e.g. copy i's switch A to `U{2 + floor(i/16)}.GPA{i%16}` expressed as an explicit list, not a formula language: the agent writes the list; the tool checks it is complete and duplicate-free). Copies get refs `S1..S84` from a template ref pattern. The output diagram always contains every copy (the full logical circuit, verified and checked); layout tiles copies compactly, and the render offers a focused view of one copy (section 4). The CLI prints the channel allocation table and the bill of quantities.
+`repeat: { name, count, template: { parts, nets, ports }, bindings, shared }` declares `count` copies of a template (e.g. 42 balls). The template names its external `ports` (e.g. `A`, `B`, `GND`). `bindings` is an explicit list, one entry per copy, mapping each non-shared port to an outside endpoint (e.g. copy 1: `{ "A": "U2.GPA0", "B": "U2.GPB0" }`); the tool checks every copy binds every non-shared port exactly once and that no outside endpoint is bound by two copies. `shared` names ports joined to one outside net in every copy (e.g. `{ "GND": "GND" }`), which is where reuse is intended. Template refs expand as `<ref>_<copy>` by default, or by an explicit `refs` pattern; an expanded ref colliding with another ref is an error. The output diagram always contains every copy (the full logical circuit, verified and checked); layout tiles copies compactly, and the render offers a focused view of one copy (section 4). The CLI prints the channel allocation table and the bill of quantities.
 
 ## 2. Layout
 ### 2.1 Placement
 - Deterministic on the 10 px grid with fixed tie-breaking (ref natural order): boards and MCUs first near the centre; other parts near what they connect to by net weight; groups and repeat copies as blocks, tiled.
 - Clearance: part bodies and their captions (the label area drawn around parts) never overlap each other; mounted parts may overlap their board (and only it).
 - Routing by the existing router after placement; bounded retries (up to 3 placements with increased spacing) when routes are blocked; if still blocked, layout fails with the list of blocked nets (it does not emit a diagram with blocked wires silently).
-- `layout --keep sheet.json`: re-places only parts without coordinates in the given diagram (intent is kept).
+- `layout --keep partial.json`: accepts a layout-only partial diagram (the diagram format with `x`/`y` optional on parts and connections without routes) plus its intent; re-places only parts without coordinates. The partial format is validated by its own relaxed loader and is never accepted by the site.
 
 ### 2.2 Mounting and breadboard wiring
 - A part with `on` is placed by searching candidate positions on its board: every grid position and rotations 0 and 90 degrees, in a fixed order (row-major from the board's top-left). A candidate is accepted when `seatOf` reports it seated, it conflicts with no other mounted part, and it does not short its own pins through a strip (two different nets on one strip is a merge, section 3); DIP parts straddle the centre channel. First accepted candidate wins. If none: layout fails naming the part and the reason.
 - A net that reaches a mounted leg is wired to a free hole of that leg's strip (never into the leg's own hole, never two wire ends into one hole). If the strip has no free hole, the net is wired to another strip joined by a jumper, or layout fails with "strip full".
-- Chains of wires never put more than one wire end on a terminal that cannot take it: on breadboards one end per hole; on module pins at most two wire ends (drawn as a chain through the pin); if a net needs more ends at one place, the layout routes through a breadboard strip or rail.
+- Terminal capacity: a breadboard hole takes one wire end; a header pin or pad takes one wire end (a Dupont socket or a solder joint), unless its module declares `capacity` (for example a screw terminal that takes two). A net that would need more ends at a terminal is routed through a breadboard strip or rail already in the netlist; if none is available, layout fails with "needs a distribution point" and names the net, so the agent adds a breadboard, rail strip or terminal block to the netlist. Layout never draws two wires into one header pin.
+- Everything layout adds to realize connections (wires into strip holes, jumpers between strips, rail wires) is marked `routing: true` on the connection, so verification can tell routing infrastructure from intended component connections.
 
 ### 2.3 Readability acceptance (tested, reported)
 Every layout reports: body overlaps (must be 0), caption overlaps (must be 0), wire crossings, total wire length, sheet size, and blocked nets (must be 0). The 2 s budget for 120 parts includes routing.
 
 ## 3. Verification (electrical equivalence)
-- `circuitoon verify sheet.json` compares the realized connectivity (the netlist of the diagram: wires, breadboard strips, internal joins, plugs) with `intent`:
+- `circuitoon verify sheet.json` compares the diagram with `intent`:
+  - inventory: every intended part exists with the intended module and effective values (after loading, so a dropped override is caught), requested mounts are seated, and no component part exists that the intent does not list (breadboards, rail strips and jumpers named in the intent or added as routing infrastructure are allowed);
   - missing connection: two endpoints of one requested net are not connected: error;
   - unintended merge: endpoints of two different requested nets are connected: error;
-  - extra connection to an endpoint not in any net: error unless the endpoint is a pin the intent lists as `nc` or the module joins it internally (reported as info).
-- `verify` runs automatically inside `check` and `gate` when `intent` is present; editing the diagram by hand keeps `intent`, so a later check catches drift.
+  - extra connection: a component pin that is in no requested net and not joined internally by its own module is connected to anything: error; breadboard holes, strips and `routing: true` wires are infrastructure and never count as extra endpoints themselves, but the component pins they reach are checked like any other;
+  - `nc`: any connection to a pin listed in `nc` is an error.
+- `check` runs `verify` when `intent` is present. `gate` requires a valid `intent` (a diagram without one fails the gate with "no intent: lay out from a netlist or add intent"); plain `check` still works on any diagram. Editing the diagram by hand keeps `intent`, so a later check catches drift.
 
 ## 4. CLI (`circuitoon`)
 ### 4.1 Distribution
@@ -74,7 +78,7 @@ Every layout reports: body overlaps (must be 0), caption overlaps (must be 0), w
 - JSON schemas for every `--json` output are documented in the skill's reference and tested.
 
 ## 5. The hard gate
-Blocking (gate exits 1): loader errors; a missing module or dropped value override; any `verify` error; any checker error; any blocked route; any unseated requested mount; an oversized link without the file fallback written. Non-blocking warnings are listed in the gate summary and must be reported to the user. The summary always states what is not checked: current and heat, I2C and SPI addresses and conflicts, firmware behaviour, timing, mechanical fit, mains beyond connection checks, and the parts' own correctness beyond their cited sources.
+Blocking (gate exits 1): missing or invalid intent; loader errors; a missing module or dropped value override; any `verify` error (connectivity, inventory, values, mounts, nc); any checker error; any blocked route; any unseated requested mount; an oversized link without the file fallback written. Non-blocking warnings are listed in the gate summary and must be reported to the user. The summary always states what is not checked: current and heat, I2C and SPI addresses and conflicts, required configuration inputs left floating (for example an MCP23017 RESET or address pins; unless listed in the intent they are only as checked as the checker's no-power rules), firmware behaviour, timing, mechanical fit, mains beyond connection checks, and the parts' own correctness beyond their cited sources.
 
 ## 6. Links (URL fragment)
 - `#/editor?d=v1.<base64url(deflate-raw(json))>`. Limits: encoded payload up to 64 KB (the CLI refuses larger and writes the file instead); decompression aborts past 5 MB (the file import limit) and past 2,000 parts or 10,000 connections; malformed input shows the usual load error and never crashes the editor.
@@ -82,7 +86,7 @@ Blocking (gate exits 1): loader errors; a missing module or dropped value overri
 - The link text states that anyone with the link can see the diagram (it is in the URL); nothing is uploaded.
 
 ## 7. Annotations (site and renderer)
-- Group frames (a labelled rounded rectangle around the group's parts, computed from their bounds) and text notes are rendered in the Sheet (so in PNG/SVG exports) and on the editor canvas (read-only in this slice: selectable, movable, deletable, text editable in the Inspector). Validation: bounded text length, finite coordinates.
+- Group frames (a labelled rounded rectangle around the group's parts, computed from their bounds) and text notes are rendered in the Sheet (so in PNG/SVG exports) and on the editor canvas, where they can be selected, moved, deleted, and their text edited in the Inspector (no drawing tool for new ones in this slice). Validation: bounded text length, finite coordinates.
 
 ## 8. Skill `circuitoon-design` (plugin)
 1. Clarify the goal: power source, boards, parts on hand, and whether a full design or an example is wanted. For the Spirit Typewriter, confirm whether each ball's two switches share one channel or need two.
@@ -99,7 +103,9 @@ Blocking (gate exits 1): loader errors; a missing module or dropped value overri
 ## 10. Tests
 - Netlist parsing: every contract rule in section 1 (labels, ambiguity, holes, duplicates, embedded collisions, repeat maps complete and duplicate-free).
 - Layout: determinism; zero body and caption overlaps on fixtures of 5, 30, 120 parts and the full typewriter-like topology (ESP32, 3 MCP23017 on breadboards, 84 tilt switches as 42 repeat copies, 2 SPI LCDs, OLED, microSD, power chain); mounts seat without strip merges; no double wire ends in holes; 2 s budget including routing; visual inspection of rendered fixtures.
-- Verify: missing connection, merge through a strip, merge through an internal join, extra connection, drift after a hand edit.
+- Verify: missing connection, merge through a strip, merge through an internal join, extra component connection, routing infrastructure allowed, nc violated, value drift (220 to 2200 ohm), module swapped, unseated mount, extra part, missing intent fails the gate, drift after a hand edit.
+- Layout capacity: a net with more ends than a header pin takes fails with "needs a distribution point" unless a breadboard or terminal is in the netlist; never two wires into one header pin.
+- Repeat bindings: reused channel across copies rejected; shared GND accepted; ref expansion and collision.
 - CLI: outputs, JSON schemas, exit codes, gate hashes, browser-missing path.
 - Link: round trip, oversized refusal, malformed and oversized payloads, document survives fragment cleanup, reload behaviour (browser check).
 - Annotations: rendered in SVG/PNG and on the canvas.
