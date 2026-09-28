@@ -49,6 +49,8 @@ Each release is usable on its own; V2 and V3 build on data V1 already stores.
 | V2 | DC electrical simulation: voltages, currents, overcurrent detection | Pin types and part values captured in V1 JSON |
 | V3 | Animations driven by simulation state: LED on, off, burnt out; switches flipping | V2 simulation state, art studio layers |
 
+- **Agent toolkit (first slice).** A `circuitoon` CLI and a `circuitoon-design` skill, shipped as a Claude Code plugin from this repo (`plugin/`): a netlist (`circuitoon-netlist/1`) is laid out on the grid (parts mounted on breadboards, strips and rails distributing nets), verified for electrical equivalence against the netlist it stores as `intent`, checked, rendered to PNG and SVG, and linked (`#/editor?d=`). `gate` runs all of it and passes only when nothing blocks. Spec: `docs/superpowers/specs/2026-09-27-agent-toolkit-slice-design.md`.
+
 ## V1 canvas and interaction
 
 Parts and wires are both first-class objects you click, drag, select and delete, exactly as shapes and connectors behave in Lucidchart.

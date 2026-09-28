@@ -15,6 +15,17 @@ npm run deploy    # validate, test, build, publish to GitHub Pages
 - `docs/PRD.md` - product requirements (V1 editor and art studio, V2 simulation, V3 animation)
 - `modules/` - module definitions: one JSON file per part, listing its pins and which side each sits on
 
+## Agent toolkit (Claude Code plugin)
+
+The `circuitoon` CLI lets an AI agent go from a netlist to a verified, rendered sheet and a link that opens it here: `layout`, `verify`, `check`, `render`, `link` and `gate`. It ships as a Claude Code plugin with the `circuitoon-design` skill:
+
+```text
+/plugin marketplace add MBarc/circuitoon
+/plugin install circuitoon@circuitoon
+```
+
+Needs Node 22 or newer (and Chrome or Edge for PNG output). In this repo: `node plugin/bin/circuitoon.mjs --help`. The bundle `plugin/dist-cli/circuitoon.mjs` is committed; after any change under `src/` or `modules/`, run `npm run build:cli` and commit it (`npm run check:gen` fails otherwise).
+
 ## Module example
 
 ```json
