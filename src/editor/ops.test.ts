@@ -4,6 +4,7 @@ import { emptyDiagram, type Diagram } from '../format/diagram.ts'
 import type { ModuleDef } from '../format/module.ts'
 import { parseValue } from '../format/values.ts'
 import { mountIssues, plugsOf, seatOf } from '../format/breadboard.ts'
+import { at, sheet } from '../format/mains.testing.ts'
 
 const resistor: ModuleDef = {
   format: 'circuitoon-module/1', id: 'resistor', name: 'Resistor',
@@ -612,5 +613,17 @@ describe('part settings and optional values', () => {
     const cleared = clearPartValue(set, 'p1', 'fuseRating')
     expect(cleared.parts[0].values).toBeUndefined()
     expect(clearPartValue(cleared, 'p1', 'fuseRating')).toBe(cleared)
+  })
+})
+
+describe('plug-in devices while dragging', () => {
+  it('a wrong plug over an outlet gets an outline; a matching one seats', () => {
+    const d = sheet([at('xs1', 'XS1', 't-outlet'), at('xp1', 'XP1', 't-plug-uk'), at('xp2', 'XP2', 't-plug-us', 0, 300)], [])
+    const wrong = settleSeats(d, ['xp1']).seats.get('xp1')
+    expect(wrong?.status).toBe('partial')
+    expect(wrong?.outline).toEqual({ x: 0, y: 0, w: 80, h: 80 })
+    const right = settleSeats({ ...d, parts: [d.parts[0], d.parts[1], { ...d.parts[2], y: 0 }] }, ['xp2']).seats.get('xp2')
+    expect(right?.status).toBe('seated')
+    expect(right?.outline).toBeUndefined()
   })
 })

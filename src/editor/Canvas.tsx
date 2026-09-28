@@ -548,6 +548,7 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
         {layers.others.map(renderPart)}
         <LegDots plugs={plugs} />
         <g pointerEvents="none">
+          {seats.flatMap((s, i) => (s.outline ? [<rect key={`outline-${i}`} className="seat-bad" x={s.outline.x} y={s.outline.y} width={s.outline.w} height={s.outline.h} rx={6} />] : []))}
           {seats.flatMap((s, i) =>
             s.holes.map((h, j) => <circle key={`${i}-${j}`} className={s.status === 'seated' ? 'seat-ok' : 'seat-bad'} cx={h.x} cy={h.y} r={4} />),
           )}
