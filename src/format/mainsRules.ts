@@ -2102,9 +2102,13 @@ STATIC_RULES.push(orphanEarth, earthPathRule)
  * What rule 8 judges in one view, made once so a state allocates nothing: the (load end, source)
  * pairs that some state could leave unfused, each with the source's L bit and L nodes and its finding
  * key (made on first use). A pair enters only when the end reaches the source's L over nets and every
- * contact position at once, no fuse: a fully fused circuit costs nothing per state.
+ * contact position at once, no fuse: a fully fused circuit costs nothing per state. The targets are
+ * the loads and every wired converter's input pair (Astra A3); a fuse a module declares (a UK plug's
+ * integral fuse) is a protective edge like any other. A plug-in converter's input is its own prongs:
+ * seated, nothing of the project's wiring lies between it and the outlet, so it is not a target.
  */
-interface ProtTable { end: Int32Array; load: GLoad[]; src: GSource[]; bit: Uint32Array; live: Int32Array[]; keys: (string | undefined)[] }
+interface Protected { part: PartInstance; a: number; b: number; names: [string, string] }
+interface ProtTable { end: Int32Array; load: Protected[]; src: GSource[]; bit: Uint32Array; live: Int32Array[]; keys: (string | undefined)[] }
 const protCache = new FrontMap<Prepared, ProtTable>()
 function protTable(p: Prepared): ProtTable {
   let t = protCache.get(p)
@@ -2123,9 +2127,9 @@ function protTable(p: Prepared): ProtTable {
         const [ra, rb] = [find(a), find(b)]
         if (ra !== rb) parent.set(ra, rb)
       }
-  const pairs: { end: number; load: GLoad; src: GSource }[] = []
-  for (const i of p.loadIdx) {
-    const ld = g.loads[i]
+  const pairs: { end: number; load: Protected; src: GSource }[] = []
+  const targets: Protected[] = [...p.loadIdx.map((i) => g.loads[i]), ...p.converterIdx.map((i) => g.converters[i]).filter((c) => !c.plugIn)]
+  for (const ld of targets) {
     for (const end of [ld.a, ld.b])
       for (const s of p.sources) if (s.live.some((n) => find(n) === find(end))) pairs.push({ end, load: ld, src: s })
   }
@@ -2186,7 +2190,7 @@ function unprotectedRule(acc: Acc, mask: number) {
   }
 }
 
-function unprotectedDraft(ld: GLoad, s: GSource, rec: PathRec): (when: string) => MainsDraft {
+function unprotectedDraft(ld: Protected, s: GSource, rec: PathRec): (when: string) => MainsDraft {
   // The unfused wiring: every wire on the nets joined to the source's L without a fuse, in any state the finding holds in.
   const [d, src] = [ld.part.designator, s.part.designator]
   return (when) => ({

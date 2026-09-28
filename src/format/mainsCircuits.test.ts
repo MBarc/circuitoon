@@ -81,22 +81,32 @@ describe('the spec circuits on built-in parts', () => {
     const gnd = lv.find((f) => f.message.includes('K1 4 and U1 GND'))!
     expect(gnd.pins).toEqual(expect.arrayContaining([{ part: 'u1', pin: 'GND' }, { part: 'u1', pin: 'GND 2' }]))
   })
-  it('HLK-PM01 feeding an ESP32: rule-1 errors because the HLK-PM01\'s isolation is unknown', () => {
+  it('HLK-PM01 feeding an ESP32 through an unfused cord: rule-1 errors because the HLK-PM01\'s isolation is unknown, and unprotected', () => {
     const xs = at('xs1', 'XS1', 'outlet-us-5-15r-duplex')
     const d = sheet([xs, onOutlet('xp1', 'XP1', 'plug-us-5-15p', xs), at('ps1', 'PS1', 'hlk-pm01', 300), at('u1', 'U1', 'esp32-cam', 600)], [
       stripped('xp1|L', 'ps1|AC 1'), stripped('xp1|N', 'ps1|AC 2'), dc('ps1|+Vo', 'u1|5V'), dc('ps1|-Vo', 'u1|GND'),
     ])
-    expect(rules(d)).toEqual(['cable-unverified', 'mains-to-low-voltage'])
+    // Astra A3: a wired converter's input is the project's own wiring, so its unfused L wire is rule 8's.
+    expect(rules(d)).toEqual(['cable-unverified', 'mains-to-low-voltage', 'unprotected'])
     const lv = checkDiagram(d).filter((f) => f.rule === 'mains-to-low-voltage')
     expect(lv.length).toBeGreaterThan(0)
     for (const f of lv) expect([f.severity, f.message]).toEqual(['error', expect.stringContaining("PS1's low-voltage side is separated from mains only by insulation of unknown quality")])
   })
-  it('Mean Well IRM-03-5 feeding an ESP32 (clean apart from cable-unverified)', () => {
+  // Astra A3: the spec circuit is clean only with a fuse in the converter's L wire.
+  it('Mean Well IRM-03-5 feeding an ESP32 through a fused L wire (clean apart from cable-unverified)', () => {
+    const xs = at('xs1', 'XS1', 'outlet-us-5-15r-duplex')
+    const d = sheet([xs, onOutlet('xp1', 'XP1', 'plug-us-5-15p', xs), at('f1', 'F1', 'fuse-holder-5x20-inline', 200, 300, { values: { fuseRating: { value: 1, unit: 'A' } } }),
+      at('ps1', 'PS1', 'irm-03-5', 300), at('u1', 'U1', 'esp32-cam', 600)], [
+      stripped('xp1|L', 'f1|1'), stripped('f1|2', 'ps1|AC/L'), stripped('xp1|N', 'ps1|AC/N'), dc('ps1|+V', 'u1|5V'), dc('ps1|-V', 'u1|GND'),
+    ])
+    expect(rules(d)).toEqual(['cable-unverified'])
+  })
+  it('Mean Well IRM-03-5 through an unfused cord: unprotected', () => {
     const xs = at('xs1', 'XS1', 'outlet-us-5-15r-duplex')
     const d = sheet([xs, onOutlet('xp1', 'XP1', 'plug-us-5-15p', xs), at('ps1', 'PS1', 'irm-03-5', 300), at('u1', 'U1', 'esp32-cam', 600)], [
       stripped('xp1|L', 'ps1|AC/L'), stripped('xp1|N', 'ps1|AC/N'), dc('ps1|+V', 'u1|5V'), dc('ps1|-V', 'u1|GND'),
     ])
-    expect(rules(d)).toEqual(['cable-unverified'])
+    expect(rules(d)).toEqual(['cable-unverified', 'unprotected'])
   })
   // Final review (1): energy across an unknown barrier makes the secondary possibly live (rule 1), but
   // it is not mains wiring, so the DC checks still run on it.

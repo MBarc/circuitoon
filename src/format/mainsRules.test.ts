@@ -663,6 +663,35 @@ describe('rule 8: protection', () => {
       [w('xs1|L', 'e1|L'), w('e1|N', 'f1|1'), w('f1|2', 'xs1|N')])
     expect(rules(d).has('unprotected')).toBe(true)
   })
+  // Astra A3: a converter's input is protected like a load's L side.
+  describe("a converter's mains input", () => {
+    const f1 = () => at('f1', 'F1', 't-fuse', 200, 0, { values: { fuseRating: { value: 1, unit: 'A' } } })
+    const psu = () => at('ps1', 'PS1', 't-psu', 400)
+    it('unfused', () => {
+      const d = sheet([at('xs1', 'XS1', 't-outlet'), psu()], [w('xs1|L', 'ps1|AC1'), w('xs1|N', 'ps1|AC2')])
+      expect(msgs(d, 'unprotected')).toEqual([
+        "Nothing fuses the L wire from XS1 to PS1: a fault in the wiring beyond the plug has only the building's breaker to stop it. Add a fuse (a fuse holder) in the L wire.",
+      ])
+    })
+    it('fused', () => {
+      const d = sheet([at('xs1', 'XS1', 't-outlet'), f1(), psu()], [w('xs1|L', 'f1|1'), w('f1|2', 'ps1|AC1'), w('xs1|N', 'ps1|AC2')])
+      expect(rules(d).has('unprotected')).toBe(false)
+    })
+    it('fused, with a wire bypassing the fuse', () => {
+      const d = sheet([at('xs1', 'XS1', 't-outlet'), f1(), psu()], [w('xs1|L', 'f1|1'), w('f1|2', 'ps1|AC1'), w('xs1|L', 'ps1|AC1'), w('xs1|N', 'ps1|AC2')])
+      expect(msgs(d, 'unprotected')).toHaveLength(1)
+    })
+    it("behind a UK cord plug's integral fuse", () => {
+      const d = sheet([at('xs1', 'XS1', 't-outlet-uk'), at('xp1', 'XP1', 't-plug-uk', 0, 0, { mount: { board: 'xs1' } }), psu()],
+        [w('xp1|L', 'ps1|AC1'), w('xp1|N', 'ps1|AC2')])
+      expect(rules(d).has('unprotected')).toBe(false)
+    })
+    it('a plug-in converter seated in its outlet: no wiring of the project lies before its input', () => {
+      const d = sheet([at('xs1', 'XS1', 't-outlet-uk'), at('ps1', 'PS1', 't-charger-uk', 0, 0, { mount: { board: 'xs1' } })], [])
+      expect(analyseMains(d)!.converters.get('ps1')!.state).toBe('powered')
+      expect(rules(d).has('unprotected')).toBe(false)
+    })
+  })
   it('fuse on one branch with a bypass (unprotected)', () => {
     const d = sheet([at('xs1', 'XS1', 't-outlet'), at('f1', 'F1', 't-fuse', 200, 0, { values: { fuseRating: { value: 2, unit: 'A' } } }), at('e1', 'E1', 't-lamp', 400)],
       [w('xs1|L', 'f1|1'), w('f1|2', 'e1|L'), w('xs1|L', 'e1|L'), w('e1|N', 'xs1|N')])

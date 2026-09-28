@@ -101,7 +101,8 @@ describe('converter availability gates the DC checker', () => {
       [w('xs1|L', 'ps1|AC1'), w('xs1|N', 'ps1|AC2'), w('ps1|+V', 'u1|VCC'), w('ps1|-V', 'u1|GND')])
     // Ruling 34: one finding for the converter (rule 4's), and the load behind it points to it.
     expect(analyseMains(d)!.converters.get('ps1')).toMatchObject({ state: 'unknown', kind: 'voltage' })
-    expect(checkDiagram(d).filter((f) => f.subject === 'PS1').map((f) => `${f.rule}: ${f.message}`)).toEqual([
+    // (Its unfused input is rule 8's, a separate matter: Astra A3.)
+    expect(checkDiagram(d).filter((f) => f.subject === 'PS1' && f.rule !== 'unprotected').map((f) => `${f.rule}: ${f.message}`)).toEqual([
       'mains-voltage: PS1 takes 100 V to 240 V AC, but XS1 gives 260 V. Use a converter made for 260 V.',
     ])
     expect(checkDiagram(d).filter((f) => ['no-power', 'supply-unknown'].includes(f.rule)).map((f) => f.message)).toEqual([
@@ -117,7 +118,8 @@ describe('converter availability gates the DC checker', () => {
   })
   it("keeps the short of an unknown converter's own output to its ground", () => {
     const d = psuOn('xs1|L', 'xs1|L', [w('ps1|+V', 'ps1|-V')])
-    expect(checkDiagram(d).filter((f) => f.subject === 'PS1').map((f) => f.rule)).toEqual(['short', 'no-power'])
+    // Its input is also unfused (rule 8, Astra A3).
+    expect(checkDiagram(d).filter((f) => f.subject === 'PS1').map((f) => f.rule)).toEqual(['short', 'no-power', 'unprotected'])
   })
   it('a converter with no mains input is unpowered, and its load has no power', () => {
     const d = psuOn('', '')
