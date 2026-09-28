@@ -211,11 +211,18 @@ function connectivity(d: Diagram, intent: Intent, uidOf: Map<string, string>, ad
     return `${uid}|${internalComponent(m, pin)}`
   }
   const ncKeys = new Set(intent.nc.map(keyOf).filter((k): k is string => k !== null))
+  // A part named like an intent ref that resolved to no single part (a duplicate) is already an
+  // inventory finding; its pins are not also reported as extra connections.
+  const refs = new Set(intent.parts.map((p) => p.ref))
+  const unresolved = (k: string) => {
+    const p = partBy.get(split(k)[0])!
+    return refs.has(p.designator) && !uidOf.has(p.designator)
+  }
   for (const keys of nl.nets) {
     const members = keys.filter(component)
     const requested = new Set(members.filter((k) => want.has(k)).map(compOf))
     for (const k of members) {
-      if (want.has(k)) continue
+      if (want.has(k) || unresolved(k)) continue
       if (!ncKeys.has(k) && requested.has(compOf(k))) continue
       const others = members.filter((o) => compOf(o) !== compOf(k))
       if (!others.length) continue

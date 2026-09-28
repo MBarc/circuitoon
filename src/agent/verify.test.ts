@@ -6,7 +6,7 @@ import { load } from '../format/builtinModules.testing.ts'
 import { libraryLookup } from './catalog.ts'
 import { NO_INTENT, verifyDiagram } from './verify.ts'
 
-const ids = ['breadboard-half', 'battery-holder-2xaa', 'battery-holder-4xaa', 'resistor', 'led', 'tilt-switch-sw520d', 'esp32-devkitc-v4']
+const ids = ['breadboard-half', 'battery-holder-2xaa', 'battery-holder-4xaa', 'resistor', 'led', 'tilt-switch-sw520d', 'esp32-devkitc-v4', 'power-rail-strip', 'mcp23017-cjmcu-2317']
 const modules = Object.fromEntries(ids.map((id) => [id, load(id)]))
 
 const intent = () => ({
@@ -161,6 +161,87 @@ describe('verifyDiagram', () => {
   it('catches drift after a hand edit that moves a jumper onto the ground strip', () => {
     const d = sheet()
     d.connections[1] = { ...d.connections[1], to: hole('c12-top', 3) }
-    expect(rules(d)).toEqual(expect.arrayContaining(['merge', 'missing-connection']))
+    expect(verifyDiagram(d, libraryLookup).map((x) => [x.rule, x.message])).toEqual([
+      ['missing-connection', 'Net LED_A is not connected: R1 2, D1 + are on 2 separate pieces.'],
+      ['merge', 'Nets GND and LED_A are joined on the sheet (BT1 -, R1 2); they must stay separate.'],
+    ])
+  })
+  it('allows an nc pin that sits alone in its strip', () => {
+    const d = sheet()
+    ;(d.intent as Record<string, unknown>).nc = ['S1.2']
+    expect(verifyDiagram(d, libraryLookup)).toEqual([])
+  })
+  it('allows a rail strip the intent does not list: boards are infrastructure', () => {
+    const d = sheet()
+    d.parts.push({ uid: 'PR1', designator: 'PR1', module: 'power-rail-strip', x: 0, y: 500 })
+    expect(verifyDiagram(d, libraryLookup)).toEqual([])
+  })
+  it('finds a part the sheet lacks', () => {
+    const d = sheet()
+    d.parts = d.parts.filter((p) => p.uid !== 'D1')
+    expect(verifyDiagram(d, libraryLookup).map((x) => [x.rule, x.message])).toEqual([['part-missing', 'D1 (led) is in the intent but not on the sheet.']])
+  })
+  it('finds a duplicated part, without calling its intended connections extra', () => {
+    const d = sheet()
+    d.parts.push({ uid: 'D1b', designator: 'D1', module: 'led', x: 400, y: 300 })
+    const f = verifyDiagram(d, libraryLookup)
+    expect(f.map((x) => [x.rule, x.message])).toEqual([['part-duplicate', '2 parts on the sheet are named D1; the intent has one.']])
+    expect(f[0].parts).toEqual(['D1', 'D1b'])
+  })
+  it('finds a part whose module is not embedded', () => {
+    const d = sheet()
+    d.modules = { ...d.modules }
+    delete d.modules.led
+    expect(verifyDiagram(d, libraryLookup).map((x) => [x.rule, x.message])).toEqual([
+      ['module-missing', `D1's module "led" is not embedded in the sheet.`],
+      ['mount', 'D1 is set to plug into BB1 but is not seated (cannot-mount), so its legs connect nothing.'],
+      ['missing-connection', 'Net GND is not connected: D1 K, BT1 - are on 2 separate pieces.'],
+      ['missing-connection', 'Net LED_A is not connected: R1 2, D1 A are on 2 separate pieces.'],
+    ])
+  })
+  it('reports an intent that is not a valid netlist', () => {
+    const d = sheet()
+    ;(d.intent as Record<string, unknown>).format = 'circuitoon-netlist/9'
+    expect(verifyDiagram(d, libraryLookup).map((x) => [x.rule, x.message])).toEqual([
+      ['intent', 'intent is not a valid netlist: format: unsupported "circuitoon-netlist/9" (expected "circuitoon-netlist/1")'],
+    ])
+  })
+  it('finds a part that is not mounted on its requested board at all', () => {
+    const d = sheet()
+    d.parts[3] = { uid: 'D1', designator: 'D1', module: 'led', x: 400, y: 300 }
+    expect(verifyDiagram(d, libraryLookup).map((x) => [x.rule, x.message])).toEqual([
+      ['mount', 'D1 should plug into BB1 but is not mounted on it.'],
+      ['missing-connection', 'Net GND is not connected: D1 -, BT1 - are on 2 separate pieces.'],
+      ['missing-connection', 'Net LED_A is not connected: R1 2, D1 + are on 2 separate pieces.'],
+    ])
+  })
+  it('lets a pad that declares capacity 2 take two wire ends, and only then', () => {
+    const pads = (cap?: number): Diagram => {
+      const m = structuredClone(modules['mcp23017-cjmcu-2317'])
+      const gnd = m.holes!.find((g) => g.name === 'GND')!
+      if (cap === undefined) delete gnd.capacity
+      else gnd.capacity = cap
+      return {
+        format: 'circuitoon-diagram/1', title: 't', modules: { ...modules, 'mcp23017-cjmcu-2317': m },
+        parts: [
+          { uid: 'U2', designator: 'U2', module: 'mcp23017-cjmcu-2317', x: 0, y: 0 },
+          { uid: 'BT1', designator: 'BT1', module: 'battery-holder-2xaa', x: 300, y: 0 },
+          { uid: 'R1', designator: 'R1', module: 'resistor', x: 300, y: 200 },
+        ],
+        connections: [
+          { uid: 'w1', from: { part: 'BT1', pin: '-' }, to: { part: 'U2', pin: 'GND', hole: 0 } },
+          { uid: 'w2', from: { part: 'R1', pin: '1' }, to: { part: 'U2', pin: 'GND', hole: 0 } },
+        ],
+        intent: {
+          format: 'circuitoon-netlist/1', title: 't',
+          parts: [{ ref: 'U2', module: 'mcp23017-cjmcu-2317' }, { ref: 'BT1', module: 'battery-holder-2xaa' }, { ref: 'R1', module: 'resistor' }],
+          nets: [{ name: 'GND', pins: ['U2.GND', 'BT1.-', 'R1.1'] }],
+        },
+      }
+    }
+    expect(verifyDiagram(pads(2), libraryLookup)).toEqual([])
+    const one = verifyDiagram(pads(), libraryLookup)
+    expect(one.map((x) => [x.rule, x.message])).toEqual([['capacity', 'U2 GND hole 0 holds 2 wire ends but takes one.']])
+    expect(one[0].wires).toEqual(['w1', 'w2'])
   })
 })
