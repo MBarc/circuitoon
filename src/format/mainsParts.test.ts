@@ -294,3 +294,42 @@ describe('built-in AC-DC modules, lamp holders, fuse holder, switch and lever co
     expect(load('rocker-switch-kcd1').category).toBe('Switches')
   })
 })
+
+describe('built-in terminal blocks', () => {
+  // The Phoenix item numbers Task 0 confirmed (plug, header), pinned here so a slip in the evidence or
+  // the generator fails; if Task 0 corrected a number, this table carries the corrected one.
+  const ITEMS: Record<string, Record<number, [string, string]>> = {
+    mstb: { 2: ['1757019', '1757242'], 3: ['1757022', '1757255'], 4: ['1757035', '1757268'], 5: ['1757048', '1757271'], 6: ['1757051', '1757284'] },
+    mc: { 2: ['1803578', '1803277'], 3: ['1803581', '1803280'], 4: ['1803594', '1803293'], 5: ['1803604', '1803303'], 6: ['1803617', '1803316'] },
+  }
+  for (const [series, pitch] of [['mstb', '508'], ['mc', '381']])
+    for (let n = 2; n <= 6; n++)
+      it(`terminal-block-${series}-${pitch}-${n}: its item numbers, n positions joined to their header pins, every Phoenix rating with its conditions`, () => {
+        const id = `terminal-block-${series}-${pitch}-${n}`
+        const m = load(id)
+        const [plug, header] = ITEMS[series][n]
+        expect(m.name).toContain(`plug ${plug}, header ${header}`)
+        expect([EVIDENCE[id].extra?.plug?.value, EVIDENCE[id].extra?.header?.value]).toEqual([plug, header])
+        const pos = Array.from({ length: n }, (_, i) => String(i + 1))
+        expect(m.internal).toEqual(pos.map((p) => [p, `${p} pcb`]))
+        const ratings = mainsOf(m).ratings
+        expect(ratings.map((r) => [r.volts, r.amps, r.conditions])).toEqual(EVIDENCE[id].ratings!.map((r) => [r.volts, r.amps ?? null, r.conditions ?? null]))
+        expect(ratings.length).toBeGreaterThan(0)
+        // IEC 60664 ratings say neither AC nor DC: the evidence records ac/dc and the part follows it.
+        for (const r of ratings) expect(r).toMatchObject({ kind: 'terminal', service: EVIDENCE[id].ratings![0].service, provenance: 'datasheet' })
+        expect(ratings.every((r) => r.conditions)).toBe(true)
+        expect([m.category, m.source]).toEqual(['Mains', EVIDENCE[id].sources.join(' ')])
+      })
+  it('no MC 1,5 rating covers 230 V without a condition, so an MC block on 230 V is always conditional', () => {
+    for (let n = 2; n <= 6; n++) for (const r of mainsOf(load(`terminal-block-mc-381-${n}`)).ratings) expect(r.volts >= 230 ? r.conditions : 'below').toBeTruthy()
+    for (let n = 2; n <= 6; n++) expect(mainsOf(load(`terminal-block-mc-381-${n}`)).ratings.filter((r) => r.volts >= 230).map((r) => r.conditions)).toEqual([expect.stringMatching(/overvoltage category II,/)])
+  })
+  for (const id of ['terminal-block-kf2edg-508-2', 'terminal-block-kf2edg-508-3', 'terminal-block-kf301-500-2', 'terminal-block-kf301-500-3'])
+    it(`${id}: a clone with a rating, and that rating unverified`, () => {
+      const ratings = mainsOf(load(id)).ratings
+      expect(ratings.length).toBeGreaterThan(0)
+      expect(ratings.every((r) => r.provenance === 'unverified')).toBe(true)
+      expect(ratings[0].volts).toBe(EVIDENCE[id].ratings![0].volts)
+      expect(ratings[0].amps).toBe(EVIDENCE[id].ratings![0].amps)
+    })
+})

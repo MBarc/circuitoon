@@ -287,31 +287,115 @@ const PHOENIX_ITEMS = {
 /** Item numbers whose own Phoenix product page was read (the page title names the type and item number). */
 const PHOENIX_READ = new Set(['1757019', '1757242', '1757022', '1757255', '1803578', '1803277', '1803581'])
 
+/**
+ * Phoenix's own catalogue sheets for the items phoenixcontact.com still refused in Task 19 (HTTP 403 on
+ * every product page and PDF, 2026-09-27), as the distributor Digi-Key mirrors them. They are older
+ * revisions than the product pages Task 0 read: the plug and MC header sheets are "Extract from the
+ * online catalog" dated Feb 25, 2010 (MSTB) and Mar 10, 2010 (MC); the MSTBA header sheets are
+ * online-catalogue PDFs dated 07/07/2016. Each sheet names its type, item number, positions and
+ * pitch.
+ */
+const digikeyPhoenix = (item: string): string => `https://media.digikey.com/pdf/Data%20Sheets/Phoenix%20Contact%20PDFs/${item}.pdf`
+
+type Cond = 'III/3' | 'III/2' | 'II/2'
+const CONDS: readonly Cond[] = ['III/3', 'III/2', 'II/2']
+const COND_WORDS: Record<Cond, string> = {
+  'III/3': 'overvoltage category III, pollution degree 3 (IEC 60664-1)',
+  'III/2': 'overvoltage category III, pollution degree 2 (IEC 60664-1)',
+  'II/2': 'overvoltage category II, pollution degree 2 (IEC 60664-1)',
+}
+/** What one side's document states: its rated voltage per condition (a condition it does not state is absent), nominal current, the words naming the item, its approvals, and a nominal voltage given without a condition. */
+interface SideSheet { item: string; url: string; doc: string; volts: Partial<Record<Cond, number>>; amps: number; names: string; ul: string; nominal?: string }
+
+/** One side as read: the current product page Task 0 read (PHOENIX_READ, the values of phoenixRatings), or the Digi-Key-mirrored sheet Task 19 read. */
+function phoenixSide(series: 'mstb' | 'mc', part: 'plug' | 'header', n: number, item: string, pageUrl: string, type: string): SideSheet {
+  const mstb = series === 'mstb'
+  if (PHOENIX_READ.has(item)) {
+    const volts = mstb
+      ? part === 'plug' ? { 'III/3': 250, 'III/2': 320, 'II/2': 630 } : { 'III/3': 320, 'III/2': 320, 'II/2': 630 }
+      : part === 'plug' ? { 'III/3': 160, 'III/2': 160, 'II/2': 320 } : { 'III/3': 160, 'III/2': 160, 'II/2': 250 }
+    return {
+      item, url: pageUrl, doc: 'Phoenix product page', volts, amps: mstb ? 12 : 8, names: `${type} - ${part === 'plug' ? 'PCB connector' : 'PCB header'} ${item}`,
+      ul: mstb ? 'cULus Recognized, Approval ID: E60425-19931011: B 300 V 15 A; D 300 V 10 A' : 'cULus Recognized, Approval ID: E60425-20110128: B 300 V 8 A; D 300 V 8 A',
+    }
+  }
+  const url = digikeyPhoenix(item)
+  if (mstb && part === 'header')
+    return {
+      item, url, doc: 'Phoenix online-catalogue PDF 07/07/2016', volts: { 'III/3': 250, 'III/2': 320, 'II/2': 400 }, amps: 12,
+      names: `Base strip - ${type} - ${item}; Header, Nominal current: 12 A, Rated voltage (III/2): 320 V, Number of positions: ${n}, Pitch: 5.08 mm`,
+      ul: 'Approval details CSA: B 300 V 15 A, D 300 V 10 A; cULus Recognized',
+    }
+  return {
+    item, url, doc: `Phoenix catalogue extract ${mstb ? 'Feb 25, 2010' : 'Mar 10, 2010'}`,
+    volts: mstb ? { 'III/2': 320, 'II/2': 630 } : part === 'plug' ? { 'III/2': 160, 'II/2': 320 } : { 'III/2': 160, 'II/2': 250 },
+    amps: mstb ? 12 : 8,
+    names: `${type} Order No.: ${item}; ${part === 'plug' ? 'Plug component' : 'Header'}, Nominal current: ${mstb ? 12 : 8} A, Nom. voltage: ${mstb ? 250 : 160} V, Pitch: ${mstb ? '5.08' : '3.81'} mm, Number of positions: ${n}`,
+    ul: `CSA, CUL, UL: Nominal voltage UN 300 V, Nominal current IN ${mstb ? 10 : 8} A`,
+    nominal: `Nominal voltage UN ${mstb ? 250 : 160} V`,
+  }
+}
+
+/** A part with a side read only from its older Digi-Key-mirrored sheet: every condition both sides state, at the lower value of the pair. */
+function phoenixFromSheets(series: 'mstb' | 'mc', plugType: string, headerType: string, p: SideSheet, h: SideSheet): PartEvidence {
+  const both = CONDS.filter((c) => p.volts[c] !== undefined && h.volts[c] !== undefined)
+  const ratings: RatingFact[] = both.map((c) => {
+    const [pv, hv] = [p.volts[c]!, h.volts[c]!]
+    const lower = pv === hv ? '' : ` The lower (${pv < hv ? 'plug' : 'header'}) value is kept.`
+    return {
+      volts: Math.min(pv, hv), amps: Math.min(p.amps, h.amps), service: 'ac/dc', conditions: COND_WORDS[c],
+      quote: `Plug ${p.item} (${p.doc}): Rated voltage (${c}) ${pv} V, Nominal current IN ${p.amps} A. Header ${h.item} (${h.doc}): Rated voltage (${c}) ${hv} V, Nominal current IN ${h.amps} A.${lower}`,
+      url: pv <= hv ? p.url : h.url,
+    }
+  })
+  const notes = [
+    'Ruling B8 retry (Task 19, 2026-09-27): phoenixcontact.com still answered HTTP 403 to every product page and PDF, so the sheets read are Phoenix\'s own older catalogue sheets as mirrored by Digi-Key; the ratings keep only the conditions both sides state.',
+    ...CONDS.filter((c) => !both.includes(c)).map((c) => {
+      const s = p.volts[c] === undefined ? p : h
+      return `No ${c} rating is recorded: the ${s === p ? 'plug' : 'header'} sheet (${s.doc}) gives no rated voltage for ${c}${s.nominal ? `, only "${s.nominal}" with no overvoltage category or pollution degree` : ''}.`
+    }),
+    series === 'mstb' && !PHOENIX_READ.has(h.item)
+      ? `The 2016 MSTBA header sheet gives III/3 250 V and II/2 400 V where Task 0 read III/3 320 V and II/2 630 V on the current 1757242 and 1757255 pages; Digi-Key's attribute for ${h.item} (and for 1757242) also reads "Voltage - IEC 400 V". The value on the sheet read is kept.`
+      : '',
+  ].filter(Boolean).join(' ')
+  return {
+    subject: `Phoenix Contact ${plugType} (plug ${p.item}) with ${headerType} (header ${h.item})`,
+    sources: [p.url, h.url],
+    verdict: 'VERIFIED',
+    decision: notes,
+    ratings,
+    extra: {
+      plug: fact(p.item, p.names, p.url),
+      header: fact(h.item, h.names, h.url),
+      pitch: fact(series === 'mstb' ? 5.08 : 3.81, series === 'mstb' ? 'Pitch 5.08 mm' : 'Pitch 3.81 mm', p.url),
+      ul: fact(`plug: ${p.ul}; header: ${h.ul}`, `Plug ${p.item}: ${p.ul}. Header ${h.item}: ${h.ul}.`, h.url),
+      ...(series === 'mc'
+        ? { conditional: fact('always rating-conditional at 230 V', `Rated voltage (III/2) 160 V on both sides: only the II/2 rating (${Math.min(p.volts['II/2']!, h.volts['II/2']!)} V) covers 230 V, so the part always carries its conditions (ruling, 2026-09-27: MC 1,5 always gets rating-conditional at 230 V).`, h.url) }
+        : {}),
+    },
+  }
+}
+
 function phoenixPart(series: 'mstb' | 'mc', n: 2 | 3 | 4 | 5 | 6): PartEvidence {
   const [plug, header] = PHOENIX_ITEMS[series][n]
   const plugType = series === 'mstb' ? `MSTB 2,5/ ${n}-ST-5,08` : `MC 1,5/ ${n}-ST-3,81`
   const headerType = series === 'mstb' ? `MSTBA 2,5/ ${n}-G-5,08` : `MC 1,5/ ${n}-G-3,81`
   const plugUrl = phoenix(series === 'mstb' ? `pcb-plug-mstb-25-${n}-st-508-${plug}` : `pcb-plug-mc-15-${n}-st-381-${plug}`)
   const headerUrl = phoenix(series === 'mstb' ? `pcb-header-mstba-25-${n}-g-508-${header}` : `pcb-header-mc-15-${n}-g-381-${header}`)
-  const unread = [plug, header].filter((i) => !PHOENIX_READ.has(i))
-  const verified = unread.length === 0
+  if (!PHOENIX_READ.has(plug) || !PHOENIX_READ.has(header))
+    return phoenixFromSheets(series, plugType, headerType, phoenixSide(series, 'plug', n, plug, plugUrl, plugType), phoenixSide(series, 'header', n, header, headerUrl, headerType))
   return {
     subject: `Phoenix Contact ${plugType} (plug ${plug}) with ${headerType} (header ${header})`,
     sources: [plugUrl, headerUrl],
-    verdict: verified ? 'VERIFIED' : 'NOT VERIFIED',
-    ...(verified ? {} : { blocking: `Item number(s) ${unread.join(' and ')} not confirmed: phoenixcontact.com answered HTTP 403 (bot protection) after the first pages, so the product page of each unread item was not opened. The item numbers are the plan's; the ratings are the same family's (MSTB 2,5/..-ST and MSTBA 2,5/..-G, or MC 1,5/..-ST and MC 1,5/..-G) as read on the 2- and 3-position pages, but ratings are only recorded here per read item. Ruling B8 (Michael, 2026-09-27): Task 19 retries these pages; parts stay ungenerated until each page is read, and if the site still blocks, the item goes back to Michael.` }),
-    ...(verified ? { ratings: phoenixRatings(series, plugUrl, headerUrl) } : {}),
+    verdict: 'VERIFIED',
+    ratings: phoenixRatings(series, plugUrl, headerUrl),
     extra: {
-      plug: fact(plug, verified || PHOENIX_READ.has(plug) ? `${plugType} - PCB connector ${plug}` : `(plan value, page not read) ${plugType} ${plug}`, plugUrl),
-      header: fact(header, verified || PHOENIX_READ.has(header) ? `${headerType} - PCB header ${header}` : `(plan value, page not read) ${headerType} ${header}`, headerUrl),
+      plug: fact(plug, `${plugType} - PCB connector ${plug}`, plugUrl),
+      header: fact(header, `${headerType} - PCB header ${header}`, headerUrl),
       pitch: fact(series === 'mstb' ? 5.08 : 3.81, series === 'mstb' ? 'pitch 5.08 mm' : 'Pitch 3.81 mm', plugUrl),
-      ...(verified
-        ? {
-            ul: fact(series === 'mstb' ? 'cULus 300 V 15 A (use group B), 300 V 10 A (use group D)' : 'cULus 300 V 8 A (use groups B and D)', series === 'mstb' ? 'cULus Recognized, Approval ID: E60425-19931011: B 300 V 15 A; D 300 V 10 A' : 'cULus Recognized, Approval ID: E60425-20110128: B 300 V 8 A; D 300 V 8 A', series === 'mstb' ? plugUrl : headerUrl),
-            ...(series === 'mc' ? { conditional: fact('always rating-conditional at 230 V', 'Rated voltage (III/3) 160 V and (III/2) 160 V: only the II/2 rating (250 V) covers 230 V, so the part always carries its conditions (ruling, 2026-09-27: MC 1,5 always gets rating-conditional at 230 V).', headerUrl) } : {}),
-            noHotPlug: fact(true, 'In accordance with IEC 61984, COMBICON connectors have no switching power (COC). During designated use, they must not be plugged in or disconnected when carrying voltage or under load.', plugUrl),
-          }
-        : {}),
+      ul: fact(series === 'mstb' ? 'cULus 300 V 15 A (use group B), 300 V 10 A (use group D)' : 'cULus 300 V 8 A (use groups B and D)', series === 'mstb' ? 'cULus Recognized, Approval ID: E60425-19931011: B 300 V 15 A; D 300 V 10 A' : 'cULus Recognized, Approval ID: E60425-20110128: B 300 V 8 A; D 300 V 8 A', series === 'mstb' ? plugUrl : headerUrl),
+      ...(series === 'mc' ? { conditional: fact('always rating-conditional at 230 V', 'Rated voltage (III/3) 160 V and (III/2) 160 V: only the II/2 rating (250 V) covers 230 V, so the part always carries its conditions (ruling, 2026-09-27: MC 1,5 always gets rating-conditional at 230 V).', headerUrl) } : {}),
+      noHotPlug: fact(true, 'In accordance with IEC 61984, COMBICON connectors have no switching power (COC). During designated use, they must not be plugged in or disconnected when carrying voltage or under load.', plugUrl),
     },
   }
 }

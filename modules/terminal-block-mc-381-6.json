@@ -1,0 +1,316 @@
+{
+  "format": "circuitoon-module/1",
+  "id": "terminal-block-mc-381-6",
+  "version": 1,
+  "name": "Terminal block Phoenix Contact MC 1,5 (3.81 mm), 6 positions (plug 1803617, header 1803316)",
+  "category": "Mains",
+  "source": "https://media.digikey.com/pdf/Data%20Sheets/Phoenix%20Contact%20PDFs/1803617.pdf https://media.digikey.com/pdf/Data%20Sheets/Phoenix%20Contact%20PDFs/1803316.pdf",
+  "pins": [
+    {
+      "name": "1",
+      "side": "left"
+    },
+    {
+      "spacer": true,
+      "side": "left"
+    },
+    {
+      "name": "2",
+      "side": "left"
+    },
+    {
+      "spacer": true,
+      "side": "left"
+    },
+    {
+      "name": "3",
+      "side": "left"
+    },
+    {
+      "spacer": true,
+      "side": "left"
+    },
+    {
+      "name": "4",
+      "side": "left"
+    },
+    {
+      "spacer": true,
+      "side": "left"
+    },
+    {
+      "name": "5",
+      "side": "left"
+    },
+    {
+      "spacer": true,
+      "side": "left"
+    },
+    {
+      "name": "6",
+      "side": "left"
+    },
+    {
+      "name": "1 pcb",
+      "side": "right",
+      "label": "1"
+    },
+    {
+      "spacer": true,
+      "side": "right"
+    },
+    {
+      "name": "2 pcb",
+      "side": "right",
+      "label": "2"
+    },
+    {
+      "spacer": true,
+      "side": "right"
+    },
+    {
+      "name": "3 pcb",
+      "side": "right",
+      "label": "3"
+    },
+    {
+      "spacer": true,
+      "side": "right"
+    },
+    {
+      "name": "4 pcb",
+      "side": "right",
+      "label": "4"
+    },
+    {
+      "spacer": true,
+      "side": "right"
+    },
+    {
+      "name": "5 pcb",
+      "side": "right",
+      "label": "5"
+    },
+    {
+      "spacer": true,
+      "side": "right"
+    },
+    {
+      "name": "6 pcb",
+      "side": "right",
+      "label": "6"
+    }
+  ],
+  "internal": [
+    [
+      "1",
+      "1 pcb"
+    ],
+    [
+      "2",
+      "2 pcb"
+    ],
+    [
+      "3",
+      "3 pcb"
+    ],
+    [
+      "4",
+      "4 pcb"
+    ],
+    [
+      "5",
+      "5 pcb"
+    ],
+    [
+      "6",
+      "6 pcb"
+    ]
+  ],
+  "size": {
+    "w": 7,
+    "h": 13
+  },
+  "electrical": {
+    "model": "terminal-block",
+    "ratings": [
+      {
+        "pins": [
+          "1",
+          "2",
+          "3",
+          "4",
+          "5",
+          "6",
+          "1 pcb",
+          "2 pcb",
+          "3 pcb",
+          "4 pcb",
+          "5 pcb",
+          "6 pcb"
+        ],
+        "kind": "terminal",
+        "service": "ac/dc",
+        "volts": 160,
+        "amps": 8,
+        "provenance": "datasheet",
+        "conditions": "overvoltage category III, pollution degree 2 (IEC 60664-1)"
+      },
+      {
+        "pins": [
+          "1",
+          "2",
+          "3",
+          "4",
+          "5",
+          "6",
+          "1 pcb",
+          "2 pcb",
+          "3 pcb",
+          "4 pcb",
+          "5 pcb",
+          "6 pcb"
+        ],
+        "kind": "terminal",
+        "service": "ac/dc",
+        "volts": 250,
+        "amps": 8,
+        "provenance": "datasheet",
+        "conditions": "overvoltage category II, pollution degree 2 (IEC 60664-1)"
+      }
+    ]
+  },
+  "art": {
+    "w": 70,
+    "h": 130,
+    "pinLabels": "inside",
+    "shapes": [
+      {
+        "type": "rect",
+        "x": 0,
+        "y": 0,
+        "w": 42,
+        "h": 130,
+        "fill": "#2F9E6E",
+        "radius": 3
+      },
+      {
+        "type": "rect",
+        "x": 42,
+        "y": 0,
+        "w": 28,
+        "h": 130,
+        "fill": "#1F7A55",
+        "radius": 3
+      },
+      {
+        "type": "rect",
+        "x": 23,
+        "y": 14,
+        "w": 12,
+        "h": 12,
+        "fill": "#C9CED6",
+        "radius": 6
+      },
+      {
+        "type": "rect",
+        "x": 28,
+        "y": 16,
+        "w": 2,
+        "h": 8,
+        "fill": "#2B2F36",
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 23,
+        "y": 34,
+        "w": 12,
+        "h": 12,
+        "fill": "#C9CED6",
+        "radius": 6
+      },
+      {
+        "type": "rect",
+        "x": 28,
+        "y": 36,
+        "w": 2,
+        "h": 8,
+        "fill": "#2B2F36",
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 23,
+        "y": 54,
+        "w": 12,
+        "h": 12,
+        "fill": "#C9CED6",
+        "radius": 6
+      },
+      {
+        "type": "rect",
+        "x": 28,
+        "y": 56,
+        "w": 2,
+        "h": 8,
+        "fill": "#2B2F36",
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 23,
+        "y": 74,
+        "w": 12,
+        "h": 12,
+        "fill": "#C9CED6",
+        "radius": 6
+      },
+      {
+        "type": "rect",
+        "x": 28,
+        "y": 76,
+        "w": 2,
+        "h": 8,
+        "fill": "#2B2F36",
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 23,
+        "y": 94,
+        "w": 12,
+        "h": 12,
+        "fill": "#C9CED6",
+        "radius": 6
+      },
+      {
+        "type": "rect",
+        "x": 28,
+        "y": 96,
+        "w": 2,
+        "h": 8,
+        "fill": "#2B2F36",
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 23,
+        "y": 114,
+        "w": 12,
+        "h": 12,
+        "fill": "#C9CED6",
+        "radius": 6
+      },
+      {
+        "type": "rect",
+        "x": 28,
+        "y": 116,
+        "w": 2,
+        "h": 8,
+        "fill": "#2B2F36",
+        "outline": false
+      }
+    ]
+  }
+}

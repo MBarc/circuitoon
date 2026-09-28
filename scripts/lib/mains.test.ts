@@ -52,7 +52,7 @@ describe('mains generator helpers', () => {
     expect(lib.cleared('hlk-pm01', 'B2').verdict).toBe('NOT VERIFIED')
     expect(() => lib.cleared('hlk-pm01')).toThrow(/not VERIFIED/)
     expect(() => lib.cleared('hlk-pm01', 'B7')).toThrow(/not VERIFIED/)
-    expect(() => lib.cleared('terminal-block-mstb-508-4', 'B2')).toThrow(/not VERIFIED/)
+    expect(() => lib.cleared('ssr-fotek-25da', 'B8')).toThrow(/not VERIFIED/)
   })
 
   it('reads a rating with its conditions from the evidence', () => {
