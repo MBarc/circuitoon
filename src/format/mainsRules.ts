@@ -20,6 +20,8 @@ export interface MainsDraft {
   wires: string[]
   causes: string[]
   select?: { parts: string[]; wires: string[] }
+  /** An uncertain polarity clause, merged into its outlets' one warning (Ruling 37, mergeUnpolarized); never reaches the checker. */
+  unpolarized?: { outlets: number; clause: string; doublePole: boolean }
 }
 export type Availability = 'powered' | 'unpowered' | 'unknown'
 /**
@@ -746,13 +748,6 @@ function voltageDraft(g: MainsGraph, it: Judged, s: number): (when: string) => M
 }
 
 /**
- * Rule 4, per state: every source whose L and N sit across a load or a converter input, against the
- * range it accepts (a load with none gets data-missing, Resolution 14). It also records, for the
- * protection rules, which loads get a supply as drawn, which would with every empty holder fitted, and
- * which single empty holder alone restores one in this state (Resolution 28: a state that can occur).
- * Allocation-free once a finding is known.
- */
-/**
  * Per unit: the items still worth a look. An item that can have no finding (every source of the unit
  * inside its range) leaves once its load is known to get a supply, and a converter input that can
  * have none never enters, so a large unit costs little per state after its first few states.
@@ -770,6 +765,13 @@ function voltageWork(acc: Acc): VoltageWork {
   return w
 }
 
+/**
+ * Rule 4, per state: every source whose L and N sit across a load or a converter input, against the
+ * range it accepts (a load with none gets data-missing, Resolution 14). It also records, for the
+ * protection rules, which loads get a supply as drawn, which would with every empty holder fitted, and
+ * which single empty holder alone restores one in this state (Resolution 28: a state that can occur).
+ * Allocation-free once a finding is known.
+ */
 function voltageRule(acc: Acc, mask: number) {
   const { p, srcIdx, srcVolts } = acc
   const w = voltageWork(acc)
@@ -987,12 +989,11 @@ function dataMissing(acc: Acc): MainsDraft[] {
 
 STATIC_RULES.push(ratingRules, dataMissing)
 
-// ---- Rule 6: polarity (spec 3; Resolution 22) ----
+// ---- Rule 6: polarity (spec 3; Resolution 22, Ruling 37) ----
 
-/** Up to this many L and N terminals of one part are judged as one claim (one bit each); a part with more is judged in chunks of this size. */
-const REQ_CHUNK = 30
+/** Up to this many L and N terminals of one part are judged as one claim (one bit each, two masks in one exact number); a part with more is judged in chunks of this size. */
+const REQ_CHUNK = 26
 
-/** One part's terminals that require L or N (a chunk of at most REQ_CHUNK), and the finding keys made so far by code. */
 /**
  * The last finding one table entry recorded (its code within the entry, and its state bits), so the
  * same finding in the next state costs one comparison, not a key lookup: the enumeration visits up to
@@ -1013,11 +1014,15 @@ function remember(acc: Acc, l: Last, code: number, key: string, mask: number, fi
   l.holds = acc.seen.get(key)!.holds
 }
 
-/** `vals` holds the terminals' identities for one judgement, and `lOnN`, `nOnL` and `um` its result (see judgeTerms). */
+/** One part's terminals that require L or N (a chunk of at most REQ_CHUNK) and its finding keys by code; `vals` holds their identities for one judgement, and `lOnN`, `nOnL` and `um` its result (see judgeTerms). */
 interface ReqPart { part: PartInstance; terms: GTerm[]; nodes: Int32Array; wantL: Uint8Array; keys: Map<number, string>; maybeKeys: Map<number, string>; wrong: Last; maybe: Last; vals: Uint32Array; lOnN: number; nOnL: number; um: number }
-/** A single-pole contact group: its candidate position (-1 when it never switches here), whether it is a changeover, and its keys. */
-/** `at[s]`: the node the group's closed contact touches in position s (0 or 1), -1 when that position is open. */
-interface PolGroup { gi: number; pos: number; changeover: boolean; at: Int32Array; key: string; maybeKeys: Map<number, string>; last: Last }
+/**
+ * A single-pole contact group that can carry a neutral: its candidate position (-1 when it never
+ * switches here); `at[s]`, the node its closed contact touches in position s, or -1 when that position
+ * is open or leads nowhere a neutral would matter (see farSides); whether it is a changeover (both
+ * throws wired); the word for its open position; and its keys.
+ */
+interface PolGroup { gi: number; pos: number; changeover: boolean; openWord: string; at: Int32Array; key: string; maybeKeys: Map<number, string>; last: Last }
 interface PolFuse { e: GEdge; key: string; maybeKeys: Map<number, string>; last: Last }
 /** A class 1 part's earth terminal (a PE pin or PE plug contact) and the part's other mains terminals. */
 interface EarthTerm { t: GTerm; node: number; others: Int32Array; noPe: string; onLive: string }
@@ -1025,7 +1030,7 @@ interface PolarityTable {
   /** L and N bits of the view's polarized sources, and of its unpolarized ones. */
   pol: number
   unpol: number
-  /** The unpolarized sources (global index) and their L and N bits, so a state finds them without allocating. */
+  /** The unpolarized sources (global index). */
   unpolList: number[]
   parts: ReqPart[]
   groups: PolGroup[]
@@ -1033,7 +1038,7 @@ interface PolarityTable {
   /** Terminals requiring L, N or line, with their key for being on earth only. */
   lines: { t: GTerm; node: number; key: string }[]
   earths: EarthTerm[]
-  /** Per source in the view: its N and PE bits, and the key of their join. */
+  /** Per source in the view: its N and PE bits (0 when the module itself joins them), and the key of their join. */
   npe: Uint32Array
   npeKeys: string[]
   grounds: { t: GTerm; node: number; key: string }[]
@@ -1057,10 +1062,11 @@ function earthNames(info: MainsInfo): string[] {
 /**
  * The identity bits each node of the view can ever carry: the closure from the source terminals over
  * nets, every fuse edge (fitted or not) and, with `contacts`, every contact position at once. Without
- * `contacts` and over fitted fuses only, the bits a node carries in every state. Once per view, so the
- * per-state rules below judge only what can go wrong.
+ * `contacts` and over fitted fuses only, the bits a node carries in every state. `skip` leaves one
+ * contact group or fuse out (what reaches its ends without it). Once per view, so the per-state rules
+ * below judge only what can go wrong.
  */
-function identityReach(p: Prepared, contacts: boolean): (i: number) => number {
+function identityReach(p: Prepared, contacts: boolean, skip: { group?: number; edge?: GEdge } = {}): (i: number) => number {
   const g = p.g
   const parent = new Map<number, number>()
   const find = (x: number): number => {
@@ -1073,8 +1079,8 @@ function identityReach(p: Prepared, contacts: boolean): (i: number) => number {
     const [ra, rb] = [find(a), find(b)]
     if (ra !== rb) parent.set(ra, rb)
   }
-  for (const e of p.protective) if (contacts || e.fitted) union(e.a, e.b)
-  if (contacts) for (const gi of p.groupIdx) for (const list of g.groups[gi].closed) for (const [a, b] of list) union(a, b)
+  for (const e of p.protective) if ((contacts || e.fitted) && e !== skip.edge) union(e.a, e.b)
+  if (contacts) for (const gi of p.groupIdx) if (gi !== skip.group) for (const list of g.groups[gi].closed) for (const [a, b] of list) union(a, b)
   const bits = new Map<number, number>()
   for (const s of p.sources)
     for (const [nodes, c] of [[s.live, 'L'], [s.neutral, 'N'], [s.earth, 'PE']] as const)
@@ -1082,10 +1088,37 @@ function identityReach(p: Prepared, contacts: boolean): (i: number) => number {
   return (i) => bits.get(find(i)) ?? 0
 }
 
+/** True when a net has a wire or a terminal besides the given one: a contact throw on it leads somewhere. */
+const wired = (g: MainsGraph, i: number) => g.wires[i].length > 0 || g.members[i].length > 1
+
+/**
+ * True when net `i` holds a terminal that a neutral feeds: a mains terminal of a part other than
+ * `owner` (a load, a converter input, another switch or fuse, a terminal block), never an earth: a
+ * PE terminal, a declared bond or a source's or socket's earth.
+ */
+function feedsMains(g: MainsGraph, i: number, owner: PartInstance): boolean {
+  return g.members[i].some((k) => {
+    const t = termAt(g, k)
+    if (!t || t.part === owner || !t.info.terminals.has(t.name) || t.info.bonds.has(t.name) || t.info.requirement.get(t.name) === 'PE') return false
+    return !t.info.acSources.some((s) => s.earth.includes(t.name)) && !t.info.sockets.some((s) => s.contacts.some((c) => c.group === t.name && c.role === 'PE'))
+  })
+}
+
+/**
+ * The ends of a contact or fuse that lose the neutral when it opens and feed something through it:
+ * no neutral (nor unpolarized conductor) reaches the end without it (`without`), it feeds a mains
+ * terminal of another part, and it does not carry earth itself. A switch between N and PE, or with
+ * one side open, is in no neutral path.
+ */
+function farSide(p: Prepared, without: (i: number) => number, i: number, owner: PartInstance, nLike: number): boolean {
+  const x = without(i)
+  return !(x & nLike) && !(x & PE_MASK) && feedsMains(p.g, i, owner)
+}
+
 /**
  * What rules 6 and 7 judge in one unit, made once, so a state allocates nothing once its findings are
  * known. Only what can go wrong enters: a terminal that can reach the conductor it must not carry (or
- * an unpolarized source), a contact or fuse that can carry a neutral, an earth terminal that is not
+ * an unpolarized source), a contact or fuse in a path a neutral feeds, an earth terminal that is not
  * always on PE, and a terminal or ground that can reach PE.
  */
 function polarityTable(acc: Acc): PolarityTable {
@@ -1097,10 +1130,9 @@ function polarityTable(acc: Acc): PolarityTable {
   const always = identityReach(p, false)
   const bits = (polarized: boolean) => p.sources.reduce((m, s) => (s.polarized === polarized ? m | bitOf(s.index, 'L') | bitOf(s.index, 'N') : m), 0)
   const [pol, unpol] = [bits(true), bits(false)]
+  const nLike = (N_MASK & pol) | unpol
   /** True when a terminal needing conductor `want` can be on the other one, or on an unpolarized source. */
-  const risky = (i: number, want: 'L' | 'N') => (can(i) & ((want === 'L' ? N_MASK : L_MASK) & pol | unpol)) !== 0
-  /** True when a contact or fuse at `i` can carry a neutral (or an unpolarized source). */
-  const mayCarryN = (i: number) => (can(i) & (N_MASK & pol | unpol)) !== 0
+  const risky = (i: number, want: 'L' | 'N') => (can(i) & (((want === 'L' ? N_MASK : L_MASK) & pol) | unpol)) !== 0
   const unpolSrc = [...new Set(p.sources.filter((s) => !s.polarized).map((s) => s.index))]
   const node = (part: PartInstance, n: string) => g.nodeOf.get(nodeKey(part.uid, n))
   const inView = (i: number | undefined): i is number => i !== undefined && p.inRel[i] === 1
@@ -1129,11 +1161,31 @@ function polarityTable(acc: Acc): PolarityTable {
   }
   const groups = p.groupIdx.flatMap((gi): PolGroup[] => {
     const grp = g.groups[gi]
-    if (grp.def.poles.length !== 1 || !mayCarryN(g.nodeOf.get(nodeKey(grp.part.uid, grp.def.poles[0].com))!)) return []
-    const at = Int32Array.from([0, 1], (st) => (grp.closed[st].length && p.inRel[grp.closed[st][0][0]] ? grp.closed[st][0][0] : -1))
-    return [{ gi, pos: acc.cands.indexOf(gi), changeover: grp.def.poles[0].nc !== null, at, key: `polarity|${grp.part.uid}|${grp.def.id}|neutral`, maybeKeys: new Map(), last: lastOf() }]
+    const pole = grp.def.poles[0]
+    const com = node(grp.part, pole.com)!
+    if (grp.def.poles.length !== 1 || !(can(com) & nLike)) return []
+    const without = identityReach(p, true, { group: gi })
+    // A throw counts only when it leads somewhere a neutral would matter (either end of its pair is a far side).
+    const at = Int32Array.from([pole.nc, pole.no], (name) => {
+      const other = name === null ? undefined : node(grp.part, name)
+      if (!inView(other) || !wired(g, other)) return -1
+      return farSide(p, without, com, grp.part, nLike) || farSide(p, without, other, grp.part, nLike) ? com : -1
+    })
+    if (at[0] < 0 && at[1] < 0) return []
+    // A throw whose contact is not wired never closes onto anything: the group is then single-pole, its open position the other one.
+    const throws = [pole.nc, pole.no].map((name) => name !== null && wired(g, node(grp.part, name)!))
+    const changeover = throws[0] && throws[1]
+    const kind = grp.def.kind
+    const words = kind === 'relay' ? ['released', 'energized'] : pole.nc !== null && kind === 'switch' ? ['switched to NC', 'switched to NO'] : ['off', 'on']
+    const openWord = words[throws[1] ? 0 : 1]
+    return [{ gi, pos: acc.cands.indexOf(gi), changeover, openWord, at, key: `polarity|${grp.part.uid}|${grp.def.id}|neutral`, maybeKeys: new Map(), last: lastOf() }]
   })
-  const fuses = p.protective.filter((e) => mayCarryN(e.a) || (p.inRel[e.b] === 1 && mayCarryN(e.b))).map((e): PolFuse => ({ e, key: `polarity|${e.part.uid}|${e.names.join('-')}|neutral`, maybeKeys: new Map(), last: lastOf() }))
+  const fuses = p.protective.flatMap((e): PolFuse[] => {
+    if (!(can(e.a) & nLike)) return []
+    const without = identityReach(p, true, { edge: e })
+    if (!farSide(p, without, e.a, e.part, nLike) && !(p.inRel[e.b] && farSide(p, without, e.b, e.part, nLike))) return []
+    return [{ e, key: `polarity|${e.part.uid}|${e.names.join('-')}|neutral`, maybeKeys: new Map(), last: lastOf() }]
+  })
   // Split off what no contact can change (see PolarityTable.fixed).
   const fixed: ((mask: number) => void)[] = []
   const staticParts = parts.filter((r) => {
@@ -1155,11 +1207,13 @@ function polarityTable(acc: Acc): PolarityTable {
     return true
   })
   const staticGroups = groups.filter((c) => {
-    const com = g.nodeOf.get(nodeKey(g.groups[c.gi].part.uid, g.groups[c.gi].def.poles[0].com))!
-    const on = c.at[1]
-    if (c.changeover || on < 0 || can(com) !== (always(com) | always(on))) return false
+    const com = c.at[0] >= 0 ? c.at[0] : c.at[1]
+    const grp = g.groups[c.gi]
+    const pole = grp.def.poles[0]
+    const throwAt = node(grp.part, (c.at[1] >= 0 ? pole.no : pole.nc)!)!
+    if (c.changeover || can(com) !== (always(com) | always(throwAt))) return false
     const code = carryCode(pol, unpol, unpolSrc, can(com))
-    if (code) fixed.push((mask) => everyState(acc, groupKey(g, c, code), mask, () => groupDraft(acc.p, c, on, code < 0 ? 0 : code)))
+    if (code) fixed.push((mask) => everyState(acc, groupKey(g, c, code), mask, () => groupDraft(acc.p, c, [com, throwAt], code < 0 ? 0 : code)))
     return true
   })
   const staticFuses = fuses.filter((f) => {
@@ -1185,15 +1239,23 @@ function polarityTable(acc: Acc): PolarityTable {
     }
   }
   t = {
-    pol, unpol,
-    unpolList: unpolSrc,
+    pol, unpol, unpolList: unpolSrc,
     parts: parts.filter((r) => !staticParts.includes(r)), groups: groups.filter((c) => !staticGroups.includes(c)), fuses: fuses.filter((f) => !staticFuses.includes(f)),
     lines, earths, fixed, fixedDone: false,
-    npe: Uint32Array.from(p.sources, (s) => bitOf(s.index, 'N') | bitOf(s.index, 'PE')), npeKeys: p.sources.map((s) => `earth|${s.id}|N-PE`),
+    npe: Uint32Array.from(p.sources, (s) => (joinedInside(g, s) ? 0 : bitOf(s.index, 'N') | bitOf(s.index, 'PE'))), npeKeys: p.sources.map((s) => `earth|${s.id}|N-PE`),
     grounds, bondNodes: Int32Array.from(bondNodes),
   }
   polarityCache.set(acc, t)
   return t
+}
+
+/** True when a source's module itself joins its N and its earth (one terminal, or one internal group): that join is the supply's, not one beyond the outlet. */
+function joinedInside(g: MainsGraph, s: GSource): boolean {
+  const name = (k: string) => (JSON.parse(k) as [string, string])[1]
+  const [ns, pes] = [s.keys.N.map(name), s.keys.PE.map(name)]
+  if (ns.some((n) => pes.includes(n))) return true
+  const internal = moduleOf(g.d, s.part.module)?.internal ?? []
+  return internal.some((grp) => grp.some((n) => ns.includes(n)) && grp.some((n) => pes.includes(n)))
 }
 
 /** The sources in `list` (one bit per global index) whose L or N is in identity `x`: the unpolarized outlets behind it. */
@@ -1242,14 +1304,6 @@ const maybeKey = (r: ReqPart, um: number) => keyFor(r.maybeKeys, um, () => `pola
 const groupKey = (g: MainsGraph, c: PolGroup, code: number) => (code < 0 ? c.key : keyFor(c.maybeKeys, code, () => `polarity|maybe|${g.groups[c.gi].part.uid}|${g.groups[c.gi].def.id}|${code}`))
 const fuseKey = (f: PolFuse, code: number) => (code < 0 ? f.key : keyFor(f.maybeKeys, code, () => `polarity|maybe|${f.e.part.uid}|${f.e.names.join('-')}|${code}`))
 
-/** "XS1 is an unpolarized outlet, so which of its slots is L is not known", for the sources in `mask`. */
-function unpolarizedWords(g: MainsGraph, mask: number): string {
-  const names = [...new Set(sourcesOfMask(mask).map((s) => g.sources[s].part.designator))].sort(natural.compare)
-  return names.length === 1
-    ? `${names[0]} is an unpolarized outlet, so which of its slots is L is not known`
-    : `${andList(names)} are unpolarized outlets, so which of their slots is L is not known`
-}
-
 /** The finding key for `code` in `keys`, made on first use. */
 function keyFor(keys: Map<number, string>, code: number, make: () => string): string {
   let k = keys.get(code)
@@ -1290,39 +1344,41 @@ function wrongWayDraft(p: Prepared, r: ReqPart, lOnN: number, nOnL: number): (wh
   const names = (xs: GTerm[]) => andList(xs.map(termName))
   const is = (xs: GTerm[]) => (xs.length === 1 ? 'is' : 'are')
   const wires = pathsTo(p, nodes, lnSources(p, nodes.reduce((m, i) => m | identAt(p, i), 0)))
+  // The module's own words for what reversing it does, when N is on L (a lamp's screw shell); never guessed.
+  const hazard = onL.length && r.terms[0].info.polarityHazard ? `${r.terms[0].info.polarityHazard} ` : ''
+  const swap = `${hazard}Swap the L and N wires to ${d}.`
   return (when) => ({
     rule: 'polarity', subject: d, target: termName(terms[0]),
     message: onN.length && onL.length
-      ? `${d} is wired the wrong way round${when}: ${names(onN)} ${is(onN)} on N and ${names(onL)} ${is(onL)} on L. If ${d} is a lamp, its screw shell is live, so touching the bulb while changing it may shock. Swap the L and N wires to ${d}.`
+      ? `${d} is wired the wrong way round${when}: ${names(onN)} ${is(onN)} on N and ${names(onL)} ${is(onL)} on L. ${swap}`
       : onL.length
-      ? `${names(onL)} should be on N but ${is(onL)} on L${when}. Swap the L and N wires to ${d}.`
-      : `${names(onN)} should be on L but ${is(onN)} on N${when}. Swap the L and N wires to ${d}.`,
+      ? `${names(onL)} should be on N but ${is(onL)} on L${when}. ${swap}`
+      : `${names(onN)} should be on L but ${is(onN)} on N${when}. ${swap}`,
     parts: [r.part.uid], pins: terms.map(endpointOf), wires, causes: terms.map((x) => x.key),
   })
 }
 
+/**
+ * An uncertain claim is one clause of its outlet's warning (Ruling 37): the draft carries the clause
+ * (its conditions included) and the outlets behind it; mergeUnpolarized joins the clauses.
+ */
 function maybeWrongDraft(p: Prepared, r: ReqPart, um: number): (when: string) => MainsDraft {
   const d = r.part.designator
   const wires = pathsTo(p, r.nodes, sourcesOfMask(um))
   return (when) => ({
-    rule: 'polarity', subject: d, target: termName(r.terms[0]),
-    message: `${d}'s polarity is not known${when}: ${unpolarizedWords(p.g, um)}, and ${andList(r.terms.map(termName))} may be on the wrong conductor. Use a polarized plug and outlet for a part whose L and N matter.`,
-    parts: [r.part.uid], pins: r.terms.map(endpointOf), wires, causes: [...r.terms.map((x) => x.key), nodeKey(r.part.uid, '#polarity-unknown')],
+    rule: 'polarity', subject: d, target: termName(r.terms[0]), message: '',
+    parts: [r.part.uid], pins: r.terms.map(endpointOf), wires, causes: [],
+    unpolarized: { outlets: um, clause: `${andList(r.terms.map(termName))} may be on the wrong conductor${when}`, doublePole: false },
   })
 }
 
-/** What stays live when a single-pole group in the neutral opens: "with S1 off", "with K1 released"; a changeover opens one throw or the other. */
-function openWords(name: string, def: ContactGroup): string {
-  if (def.poles.some((x) => x.nc !== null)) return 'whatever it disconnects stays live'
-  return `with ${name} ${def.kind === 'relay' ? 'released' : 'off'}, what it feeds stays live`
-}
-
 /**
- * A single-pole switch, relay or SSR, or a fuse, that carries a neutral and no L (definite from a
- * polarized source, uncertain from an unpolarized one). A contact group with no NC contact is in the
- * neutral whatever its own state (its open state is exactly the harm), so the finding also holds in
- * the state that differs only in that group, and its own position is never a condition. A changeover
- * carries a neutral in the position it is in, so its position stays in the phrase.
+ * A single-pole switch, relay or SSR, or a fuse, in a neutral path: it carries a neutral and no L
+ * (definite from a polarized source, uncertain from an unpolarized one), and an end that loses the
+ * neutral when it opens feeds another part (see farSide). A single-pole group (no second throw wired)
+ * is in the neutral whatever its own state (its open state is exactly the harm), so the finding also
+ * holds in the state that differs only in that group, and its own position is never a condition. A
+ * changeover carries a neutral in the position it is in, so its position stays in the phrase.
  */
 function carrierPolarity(acc: Acc, t: PolarityTable, mask: number) {
   const { p } = acc
@@ -1334,7 +1390,7 @@ function carrierPolarity(acc: Acc, t: PolarityTable, mask: number) {
     if (a < 0) continue
     const code = carryCode(t.pol, t.unpol, t.unpolList, ident[root[a]])
     if (!code) continue
-    if (!repeat(c.last, code, mask)) remember(acc, c.last, code, groupKey(g, c, code), mask, () => groupDraft(p, c, a, code < 0 ? 0 : code))
+    if (!repeat(c.last, code, mask)) remember(acc, c.last, code, groupKey(g, c, code), mask, () => groupDraft(p, c, [a], code < 0 ? 0 : code))
     if (!c.changeover && c.pos >= 0) {
       const m = mask ^ (1 << c.pos)
       c.last.holds![m >>> 5] |= 1 << (m & 31)
@@ -1349,16 +1405,18 @@ function carrierPolarity(acc: Acc, t: PolarityTable, mask: number) {
   }
 }
 
-function groupDraft(p: Prepared, c: PolGroup, a: number, um: number): (when: string) => MainsDraft {
+/** `ends`: the nodes whose energizing paths explain it (both ends of the contact when it is reported for every state at once, whatever state is current). */
+function groupDraft(p: Prepared, c: PolGroup, ends: number[], um: number): (when: string) => MainsDraft {
   const g = p.g
   const grp = g.groups[c.gi]
   const name = groupName(g, c.gi)
   const d = grp.part.designator
-  const wires = pathsTo(p, [a], um ? sourcesOfMask(um) : lnSources(p, identAt(p, a)))
+  const wires = pathsTo(p, ends, um ? sourcesOfMask(um) : lnSources(p, ends.reduce((m, i) => m | identAt(p, i), 0)))
   const base = { rule: 'polarity' as const, subject: d, target: d, parts: [grp.part.uid], pins: [], wires }
+  const open = c.changeover ? 'whatever it disconnects stays live' : `with ${name} ${c.openWord}, what it feeds stays live`
   return um
-    ? (when) => ({ ...base, message: `${name} may switch the neutral${when}: ${unpolarizedWords(g, um)}. Use a polarized plug and outlet, or a double-pole switch.`, causes: [nodeKey(grp.part.uid, `${grp.def.id}#maybe`)] })
-    : (when) => ({ ...base, message: `${name} switches the neutral${when}: ${openWords(name, grp.def)}. Move ${name} into the L wire.`, causes: [nodeKey(grp.part.uid, grp.def.id)] })
+    ? (when) => ({ ...base, message: '', causes: [], unpolarized: { outlets: um, clause: `${name} may switch the neutral${when}`, doublePole: true } })
+    : (when) => ({ ...base, message: `${name} switches the neutral${when}: ${open}. Move ${name} into the L wire.`, causes: [nodeKey(grp.part.uid, grp.def.id)] })
 }
 
 function fuseDraft(p: Prepared, e: GEdge, um: number): (when: string) => MainsDraft {
@@ -1366,9 +1424,55 @@ function fuseDraft(p: Prepared, e: GEdge, um: number): (when: string) => MainsDr
   const ends = [e.a, ...(p.inRel[e.b] ? [e.b] : [])]
   const wires = pathsTo(p, ends, um ? sourcesOfMask(um) : lnSources(p, ends.reduce((m, i) => m | identAt(p, i), 0)))
   const base = { rule: 'polarity' as const, subject: d, target: d, parts: [e.part.uid], pins: e.names.map((n) => ({ part: e.part.uid, pin: n })), wires }
+  // An empty holder has no fuse to blow: it is the holder that sits in the neutral.
+  const which = e.fitted ? d : `${d}'s holder`
   return um
-    ? (when) => ({ ...base, message: `${d} may be in the neutral${when}: ${unpolarizedWords(p.g, um)}. Use a polarized plug and outlet, or fuse the part's own supply.`, causes: e.names.map((n) => nodeKey(e.part.uid, `${n}#maybe`)) })
-    : (when) => ({ ...base, message: `${d} is in the neutral${when}: when it blows, what it feeds stays live. Move ${d} into the L wire.`, causes: e.names.map((n) => nodeKey(e.part.uid, n)) })
+    ? (when) => ({ ...base, message: '', causes: [], unpolarized: { outlets: um, clause: `${which} may be in the neutral${when}`, doublePole: false } })
+    : (when) => ({
+      ...base,
+      message: e.fitted
+        ? `${d} is in the neutral${when}: when it blows, what it feeds stays live. Move ${d} into the L wire.`
+        : `${which} is in the neutral${when}: a fuse there would not disconnect L from what it feeds. Move ${d} into the L wire.`,
+      causes: e.names.map((n) => nodeKey(e.part.uid, n)),
+    })
+}
+
+/**
+ * Ruling 37: every uncertain polarity clause behind the same unpolarized outlets becomes one warning
+ * for those outlets, listing the parts in designator order, each with its own conditions. Definite
+ * findings and every other draft pass through unchanged.
+ */
+export function mergeUnpolarized(g: MainsGraph, drafts: MainsDraft[]): MainsDraft[] {
+  const out: MainsDraft[] = []
+  const byOutlets = new Map<number, MainsDraft[]>()
+  for (const d of drafts) {
+    if (!d.unpolarized) out.push(d)
+    else (byOutlets.get(d.unpolarized.outlets) ?? byOutlets.set(d.unpolarized.outlets, []).get(d.unpolarized.outlets)!).push(d)
+  }
+  for (const [outlets, items] of byOutlets) {
+    items.sort((a, b) => natural.compare(a.subject, b.subject) || natural.compare(a.unpolarized!.clause, b.unpolarized!.clause))
+    const srcs = sourcesOfMask(outlets).map((s) => g.sources[s].part)
+    const names = [...new Set(srcs.map((x) => x.designator))].sort(natural.compare)
+    const parts = [...new Set(items.map((x) => x.subject))]
+    const doubles = [...new Set(items.filter((x) => x.unpolarized!.doublePole).map((x) => x.subject))]
+    const either = doubles.length ? `, or a double-pole switch or relay in place of ${andList(doubles)}` : ''
+    out.push({
+      rule: 'polarity', subject: names[0], target: names[0],
+      message: `${unpolarizedWords(g, outlets)}: ${items.map((x) => x.unpolarized!.clause).join('; ')}. Use a polarized plug and outlet for ${andList(parts)}${either}.`,
+      parts: [...new Set([...srcs.map((x) => x.uid), ...items.flatMap((x) => x.parts)])],
+      pins: items.flatMap((x) => x.pins), wires: [...new Set(items.flatMap((x) => x.wires))],
+      causes: srcs.map((x) => nodeKey(x.uid, '#polarity-unknown')),
+    })
+  }
+  return out
+}
+
+/** "XS1 is an unpolarized outlet, so which of its slots is L is not known", for the sources in `mask`. */
+function unpolarizedWords(g: MainsGraph, mask: number): string {
+  const names = [...new Set(sourcesOfMask(mask).map((s) => g.sources[s].part.designator))].sort(natural.compare)
+  return names.length === 1
+    ? `${names[0]} is an unpolarized outlet, so which of its slots is L is not known`
+    : `${andList(names)} are unpolarized outlets, so which of their slots is L is not known`
 }
 
 function polarityRule(acc: Acc, mask: number) {
@@ -1413,7 +1517,7 @@ function earthRules(acc: Acc, mask: number) {
     const r = p.srcRoots[q]
     const x = p.ident[r]
     for (let i = 0; i < t.npe.length; i++) {
-      if ((x & t.npe[i]) !== t.npe[i]) continue
+      if (!t.npe[i] || (x & t.npe[i]) !== t.npe[i]) continue
       const key = t.npeKeys[i]
       if (mark(acc, key, mask)) continue
       const s = p.sources[i]
@@ -1435,7 +1539,7 @@ function earthRules(acc: Acc, mask: number) {
       const req = l.t.info.requirement.get(l.t.name)
       const to = req === 'L' || req === 'N' ? req : 'L or N'
       return (when) => ({ rule: 'earth', subject: l.t.part.designator, target: termName(l.t),
-        message: `${termName(l.t)} carries mains inside ${l.t.part.designator} but is joined to earth${when}. Wire it to ${to}, never to earth.`,
+        message: `${termName(l.t)} is joined to earth${when}, but it is a mains terminal of ${l.t.part.designator} and must never be on earth. Wire it to ${to}.`,
         parts: [l.t.part.uid], pins: [endpointOf(l.t)], wires, causes: [l.t.key] })
     })
   }

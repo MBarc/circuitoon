@@ -151,6 +151,13 @@ describe('mainsOf', () => {
     if (!r.ok) throw new Error(r.errors.join('; '))
     expect(isolationAdequate(mainsOf(r.module))).toBe(false)
   })
+  it('reads a declared polarity hazard, and rejects one that is not a sentence', () => {
+    const r = validateModule({ ...base, pins: two, electrical: { protection: 'class-2', polarityHazard: 'Its shell is then live.' } })
+    if (!r.ok) throw new Error(r.errors.join('; '))
+    expect(mainsOf(r.module).polarityHazard).toBe('Its shell is then live.')
+    const bad = validateModule({ ...base, pins: two, electrical: { protection: 'class-2', polarityHazard: 3 } })
+    expect(bad.ok ? [] : bad.errors).toContain('electrical.polarityHazard: must be a sentence saying what wiring the part the wrong way round does')
+  })
   it('says a module with no mains data has none', () => {
     const r = validateModule({ ...base, pins: two })
     if (!r.ok) throw new Error('invalid')

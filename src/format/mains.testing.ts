@@ -58,7 +58,8 @@ export const psuMislabeled = mod({ id: 't-psu-mislabeled', name: 'Test AC-DC 5 V
   electrical: { ...psuInput, domains: domains('pelv'), isolation: 'reinforced', isolationProvenance: 'datasheet', protection: 'class-2' } })
 /** A 120 V lamp holder: centre contact L, screw shell N. */
 export const lamp = mod({ id: 't-lamp', name: 'Test lamp 120 V', pins: lampPins,
-  electrical: { conducts: [{ pins: ['L', 'N'], kind: 'load', range: [110, 130] }], protection: 'class-2', ratings: [ac(['L', 'N'], 250)] } })
+  electrical: { conducts: [{ pins: ['L', 'N'], kind: 'load', range: [110, 130] }], protection: 'class-2', ratings: [ac(['L', 'N'], 250)],
+    polarityHazard: 'Its screw shell is then live, so touching it while changing the bulb may shock.' } })
 export const lampC1 = mod({ id: 't-lamp-c1', name: 'Test class 1 lamp 120 V', pins: [...lampPins, { name: 'PE', side: 'bottom', mains: 'PE' }],
   electrical: { conducts: [{ pins: ['L', 'N'], kind: 'load', range: [110, 130] }], protection: 'class-1', ratings: [ac(['L', 'N', 'PE'], 250)] } })
 

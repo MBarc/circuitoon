@@ -9,7 +9,7 @@ import { plugsOf } from './breadboard.ts'
 import { netlist, nodeKey } from './netlist.ts'
 import { type Conductor, type Region, mainsOf } from './mainsModel.ts'
 import { MAX_GROUPS, MAX_SOURCES, type MainsGraph, analyseState, buildMainsGraph, candidateGroups, decodeSingle, masksByPopcount, prepare, setState, units } from './mainsGraph.ts'
-import { type ConverterStatus, type MainsDraft, UNPOWERED, absorb, conservative, newAcc, staticDrafts, visitState } from './mainsRules.ts'
+import { type ConverterStatus, type MainsDraft, UNPOWERED, absorb, conservative, mergeUnpolarized, newAcc, staticDrafts, visitState } from './mainsRules.ts'
 
 export interface MainsAnalysis {
   graph: MainsGraph
@@ -56,7 +56,8 @@ export function analyseMains(d: Diagram): MainsAnalysis | null {
       }
       absorb(acc, sub)
     }
-  const findings = [...acc.finished, ...staticDrafts(acc)]
+  // Ruling 37: the uncertain polarity clauses of one unpolarized outlet become its one warning, across units.
+  const findings = mergeUnpolarized(g, [...acc.finished, ...staticDrafts(acc)])
   const converters = new Map(g.converters.map((c, i): [string, ConverterStatus] => [c.part.uid, acc.converters[i] ?? UNPOWERED]))
   const deadOutputs = new Map<string, 'unpowered' | 'unknown'>()
   for (const c of g.converters) {

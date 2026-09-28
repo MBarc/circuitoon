@@ -83,6 +83,8 @@ export interface MainsInfo {
   /** Terminals named in any contact pole. */
   contactTerminals: Set<string>
   protection: 'class-1' | 'class-2' | null
+  /** What wiring the part the wrong way round does, one sentence ("Its screw shell is then live, ..."); the polarity rule adds it when N is on L. */
+  polarityHazard: string | null
   plug: PlugDef | null
   sockets: SocketDef[]
   requirement: Map<string, Requirement>
@@ -263,6 +265,8 @@ export function validateMains(raw: Record<string, unknown>, names: Set<string>, 
     if (el.protection !== 'class-1' && el.protection !== 'class-2') errors.push('electrical.protection: must be "class-1" or "class-2"')
     else if (el.protection === 'class-1' && !pe) errors.push('electrical.protection: a class 1 part needs a terminal marked "mains": "PE" or a PE plug contact')
   }
+
+  if (el.polarityHazard !== undefined && !isStr(el.polarityHazard)) errors.push('electrical.polarityHazard: must be a sentence saying what wiring the part the wrong way round does')
 
   if (el.plug !== undefined) {
     const p = el.plug
@@ -478,6 +482,7 @@ export function mainsOf(m: ModuleDef): MainsInfo {
     safeguard: el.safeguard === 'protective-screen' ? 'protective-screen' : null,
     acInput, ratings, contacts, contactTerminals,
     protection: el.protection === 'class-1' || el.protection === 'class-2' ? el.protection : null,
+    polarityHazard: isStr(el.polarityHazard) ? el.polarityHazard : null,
     plug, sockets, requirement, bonds, terminals, declaredConduction,
   }
   cache.set(m, info)

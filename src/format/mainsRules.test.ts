@@ -436,25 +436,28 @@ describe('rule 12: missing mains data', () => {
 })
 
 describe('rule 6: polarity', () => {
-  it('polarized lamp reversed (polarity, not short), highlighting the wires that reverse it', () => {
+  const shell = 'Its screw shell is then live, so touching it while changing the bulb may shock.'
+  it('polarized lamp reversed (polarity, not short), with its declared hazard, highlighting the wires that reverse it', () => {
     const wires = [w('xs1|N', 'e1|L'), w('xs1|L', 'e1|N')]
     const d = on([['e1', 'E1', 't-lamp']], wires)
     const found = only(d, 'polarity')
-    expect(found.map((f) => f.message)).toEqual([
-      'E1 is wired the wrong way round: E1 L is on N and E1 N is on L. If E1 is a lamp, its screw shell is live, so touching the bulb while changing it may shock. Swap the L and N wires to E1.',
-    ])
+    expect(found.map((f) => f.message)).toEqual([`E1 is wired the wrong way round: E1 L is on N and E1 N is on L. ${shell} Swap the L and N wires to E1.`])
     expect([...found[0].wires].sort()).toEqual(wires.map((c) => c.uid).sort())
     expect(rules(d).has('mains-short')).toBe(false)
   })
+  it('a part that declares no polarity hazard is only told to swap', () => {
+    const d = on([['e1', 'E1', 't-lamp-c1']], [w('xs1|N', 'e1|L'), w('xs1|L', 'e1|N'), w('xs1|PE', 'e1|PE')])
+    expect(msgs(d, 'polarity')).toEqual(['E1 is wired the wrong way round: E1 L is on N and E1 N is on L. Swap the L and N wires to E1.'])
+  })
   it('only one terminal on the wrong conductor', () => {
-    const d = on([['e1', 'E1', 't-lamp']], [w('xs1|L', 'e1|L'), w('xs1|L', 'e1|N')])
-    expect(msgs(d, 'polarity')).toEqual(['E1 N should be on N but is on L. Swap the L and N wires to E1.'])
+    expect(msgs(on([['e1', 'E1', 't-lamp']], [w('xs1|L', 'e1|L'), w('xs1|L', 'e1|N')]), 'polarity')).toEqual([`E1 N should be on N but is on L. ${shell} Swap the L and N wires to E1.`])
+    expect(msgs(on([['e1', 'E1', 't-lamp']], [w('xs1|N', 'e1|L'), w('xs1|N', 'e1|N')]), 'polarity')).toEqual(['E1 L should be on L but is on N. Swap the L and N wires to E1.'])
   })
   it('a switched lamp wired the wrong way round: each claim keeps its own condition', () => {
     const d = on([['s1', 'S1', 't-switch'], ['e1', 'E1', 't-lamp']], [w('xs1|L', 's1|1'), w('s1|2', 'e1|N'), w('e1|L', 'xs1|N')])
     expect(msgs(d, 'polarity')).toEqual([
       'E1 L should be on L but is on N when S1 is off. Swap the L and N wires to E1.',
-      'E1 is wired the wrong way round when S1 is on: E1 L is on N and E1 N is on L. If E1 is a lamp, its screw shell is live, so touching the bulb while changing it may shock. Swap the L and N wires to E1.',
+      `E1 is wired the wrong way round when S1 is on: E1 L is on N and E1 N is on L. ${shell} Swap the L and N wires to E1.`,
     ])
   })
   it('a correctly wired lamp on a polarized outlet says nothing', () => {
@@ -471,13 +474,32 @@ describe('rule 6: polarity', () => {
     const d = on([['k1', 'K1', 't-relay'], ['s1', 'S1', 't-switch'], ['e1', 'E1', 't-lamp']],
       [w('xs1|L', 'e1|L'), w('e1|N', 's1|1'), w('s1|2', 'k1|NC'), w('k1|COM', 'xs1|N')])
     expect(msgs(d, 'polarity').sort()).toEqual([
-      'K1 switches the neutral: whatever it disconnects stays live. Move K1 into the L wire.',
+      'K1 switches the neutral: with K1 energized, what it feeds stays live. Move K1 into the L wire.',
       'S1 switches the neutral when K1 is released: with S1 off, what it feeds stays live. Move S1 into the L wire.',
     ])
+  })
+  it('a changeover whose two throws are both wired keeps its position as a condition', () => {
+    const d = on([['k1', 'K1', 't-relay'], ['e1', 'E1', 't-lamp'], ['e2', 'E2', 't-lamp']],
+      [w('xs1|L', 'e1|L'), w('xs1|L', 'e2|L'), w('e1|N', 'k1|NC'), w('e2|N', 'k1|NO'), w('k1|COM', 'xs1|N')])
+    expect(msgs(d, 'polarity')).toEqual(['K1 switches the neutral: whatever it disconnects stays live. Move K1 into the L wire.'])
+    const one = on([['k1', 'K1', 't-relay'], ['e1', 'E1', 't-lamp'], ['u1', 'U1', 't-mcu']],
+      [w('xs1|L', 'e1|L'), w('e1|N', 'k1|NC'), w('k1|NO', 'u1|GND'), w('k1|COM', 'xs1|N')])
+    expect(msgs(one, 'polarity')).toEqual(['K1 switches the neutral when K1 is released: whatever it disconnects stays live. Move K1 into the L wire.'])
+  })
+  it('a changeover relay whose NC is unwired counts as single-pole', () => {
+    const d = on([['k1', 'K1', 't-relay'], ['e1', 'E1', 't-lamp']], [w('xs1|L', 'e1|L'), w('e1|N', 'k1|NO'), w('k1|COM', 'xs1|N')])
+    expect(msgs(d, 'polarity')).toEqual(['K1 switches the neutral: with K1 released, what it feeds stays live. Move K1 into the L wire.'])
   })
   it('a switch in the L wire says nothing', () => {
     const d = on([['s1', 'S1', 't-switch'], ['e1', 'E1', 't-lamp']], [w('xs1|L', 's1|1'), w('s1|2', 'e1|L'), w('e1|N', 'xs1|N')])
     expect(rules(d).has('polarity')).toBe(false)
+  })
+  it('a switch or fuse that feeds nothing, or joins N to earth, is not in a neutral path', () => {
+    for (const part of ['t-switch', 't-fuse']) {
+      expect(rules(on([['s1', 'S1', part]], [w('xs1|N', 's1|1')])).has('polarity')).toBe(false)
+      expect(rules(on([['s1', 'S1', part]], [w('xs1|N', 's1|1'), w('s1|2', 'xs1|PE')])).has('polarity')).toBe(false)
+      expect(rules(on([['s1', 'S1', part], ['e1', 'E1', 't-lamp-c1']], [w('xs1|L', 'e1|L'), w('xs1|N', 'e1|N'), w('xs1|N', 's1|1'), w('s1|2', 'e1|PE')])).has('polarity')).toBe(false)
+    }
   })
   it('a fuse in the neutral', () => {
     const d = on([['f1', 'F1', 't-fuse'], ['e1', 'E1', 't-lamp']], [w('xs1|L', 'e1|L'), w('e1|N', 'f1|1'), w('f1|2', 'xs1|N')])
@@ -486,26 +508,36 @@ describe('rule 6: polarity', () => {
   it('an empty fuse holder in the neutral is still in the neutral', () => {
     const d = sheet([at('xs1', 'XS1', 't-outlet'), at('f1', 'F1', 't-fuse', 200, 0, { settings: { fuse: 'absent' } }), at('e1', 'E1', 't-lamp', 400)],
       [w('xs1|L', 'e1|L'), w('e1|N', 'f1|1'), w('f1|2', 'xs1|N')])
-    expect(msgs(d, 'polarity')).toEqual(['F1 is in the neutral: when it blows, what it feeds stays live. Move F1 into the L wire.'])
+    expect(msgs(d, 'polarity')).toEqual(["F1's holder is in the neutral: a fuse there would not disconnect L from what it feeds. Move F1 into the L wire."])
   })
+  const eu = [['xs1', 'XS1', 't-outlet-eu']]
+  const unknown = 'XS1 is an unpolarized outlet, so which of its slots is L is not known'
   it('on an unpolarized outlet the uncertainty is reported, never skipped (Resolution 22)', () => {
-    const d = on([['e1', 'E1', 't-lamp-230']], [w('xs1|L', 'e1|L'), w('xs1|N', 'e1|N')], [['xs1', 'XS1', 't-outlet-eu']])
+    const d = on([['e1', 'E1', 't-lamp-230']], [w('xs1|L', 'e1|L'), w('xs1|N', 'e1|N')], eu)
+    expect(msgs(d, 'polarity')).toEqual([`${unknown}: E1 L and E1 N may be on the wrong conductor. Use a polarized plug and outlet for E1.`])
+  })
+  it('one warning per unpolarized outlet, listing every part it affects with its own conditions (Ruling 37)', () => {
+    const d = on([['k1', 'K1', 't-relay'], ['f1', 'F1', 't-fuse'], ['s1', 'S1', 't-switch'], ['e1', 'E1', 't-lamp-230'], ['e2', 'E2', 't-lamp-230']], [
+      w('xs1|L', 'f1|1'), w('f1|2', 's1|1'), w('s1|2', 'e1|L'), w('e1|N', 'xs1|N'),
+      w('xs1|L', 'k1|COM'), w('k1|NO', 'e2|L'), w('e2|N', 'xs1|N'),
+    ], eu)
+    const found = only(d, 'polarity')
+    expect(found.map((f) => f.message)).toEqual([
+      `${unknown}: E1 L and E1 N may be on the wrong conductor; E2 L and E2 N may be on the wrong conductor; F1 may be in the neutral; K1 may switch the neutral; S1 may switch the neutral. Use a polarized plug and outlet for E1, E2, F1, K1 and S1, or a double-pole switch or relay in place of K1 and S1.`,
+    ])
+    expect(found[0].subject).toBe('XS1')
+    expect(new Set(found[0].parts)).toEqual(new Set(['xs1', 'e1', 'e2', 'f1', 'k1', 's1']))
+  })
+  it('a part that is on the unpolarized outlet only in some states keeps its condition in the list', () => {
+    const d = on([['s1', 'S1', 't-switch'], ['s2', 'S2', 't-switch'], ['e1', 'E1', 't-lamp-230']], [w('xs1|L', 's1|1'), w('s1|2', 'e1|L'), w('xs1|N', 's2|1'), w('s2|2', 'e1|N')], eu)
     expect(msgs(d, 'polarity')).toEqual([
-      "E1's polarity is not known: XS1 is an unpolarized outlet, so which of its slots is L is not known, and E1 L and E1 N may be on the wrong conductor. Use a polarized plug and outlet for a part whose L and N matter.",
+      `${unknown}: E1 L and E1 N may be on the wrong conductor when S1 is on, or when S2 is on; S1 may switch the neutral; S2 may switch the neutral. Use a polarized plug and outlet for E1, S1 and S2, or a double-pole switch or relay in place of S1 and S2.`,
     ])
   })
-  it('a switched lamp on an unpolarized outlet: one uncertainty for the lamp in every state, and one for the switch', () => {
-    const d = on([['s1', 'S1', 't-switch'], ['e1', 'E1', 't-lamp-230']], [w('xs1|L', 's1|1'), w('s1|2', 'e1|L'), w('e1|N', 'xs1|N')], [['xs1', 'XS1', 't-outlet-eu']])
-    expect(msgs(d, 'polarity').sort()).toEqual([
-      "E1's polarity is not known: XS1 is an unpolarized outlet, so which of its slots is L is not known, and E1 L and E1 N may be on the wrong conductor. Use a polarized plug and outlet for a part whose L and N matter.",
-      'S1 may switch the neutral: XS1 is an unpolarized outlet, so which of its slots is L is not known. Use a polarized plug and outlet, or a double-pole switch.',
-    ])
-  })
-  it('a fuse on an unpolarized outlet may be in the neutral', () => {
-    const d = on([['f1', 'F1', 't-fuse'], ['e1', 'E1', 't-lamp-230']], [w('xs1|L', 'f1|1'), w('f1|2', 'e1|L'), w('e1|N', 'xs1|N')], [['xs1', 'XS1', 't-outlet-eu']])
-    expect(msgs(d, 'polarity')).toContain(
-      "F1 may be in the neutral: XS1 is an unpolarized outlet, so which of its slots is L is not known. Use a polarized plug and outlet, or fuse the part's own supply.",
-    )
+  it('an empty holder on an unpolarized outlet', () => {
+    const d = sheet([at('xs1', 'XS1', 't-outlet-eu'), at('f1', 'F1', 't-fuse', 200, 0, { settings: { fuse: 'absent' } }), at('e1', 'E1', 't-lamp-230', 400)],
+      [w('xs1|L', 'f1|1'), w('f1|2', 'e1|L'), w('e1|N', 'xs1|N')])
+    expect(msgs(d, 'polarity')).toEqual([`${unknown}: E1 L and E1 N may be on the wrong conductor; F1's holder may be in the neutral. Use a polarized plug and outlet for E1 and F1.`])
   })
 })
 
@@ -550,9 +582,14 @@ describe('rule 7: earth', () => {
       'XS1 N is joined to earth: neutral and earth are joined only at the main panel, and a join here puts current on the earth wire. Remove the wire that joins them.',
     ])
   })
+  it('N and PE joined inside the outlet itself are not a join beyond it', () => {
+    const joined = { ...MAINS_MODULES['t-outlet'], id: 't-outlet-tn', internal: [['N', 'PE']] }
+    const d = sheet([at('xs1', 'XS1', 't-outlet-tn')], [], { 't-outlet-tn': joined })
+    expect(rules(d).has('earth')).toBe(false)
+  })
   it('a lamp terminal on earth only', () => {
     const d = on([['e1', 'E1', 't-lamp']], [w('xs1|L', 'e1|L'), w('xs1|PE', 'e1|N')])
-    expect(msgs(d, 'earth')).toEqual(['E1 N carries mains inside E1 but is joined to earth. Wire it to N, never to earth.'])
+    expect(msgs(d, 'earth')).toEqual(['E1 N is joined to earth, but it is a mains terminal of E1 and must never be on earth. Wire it to N.'])
   })
   it('a DC ground joined to earth without a declared bond warns; through a declared bond it does not', () => {
     expect(msgs(on([['u1', 'U1', 't-mcu']], [w('xs1|PE', 'u1|GND')]), 'earth-bond')).toEqual([
