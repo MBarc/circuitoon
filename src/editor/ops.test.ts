@@ -97,6 +97,30 @@ describe('ops', () => {
     for (const id of ['l298n-module', 'rfm95-lora-breakout', 'level-shifter-bss138-4ch', 'arduino-nano', 'wemos-d1-mini'])
       expect(designatorPrefix(mk(id))).toBe('U')
   })
+  it('gives each mains family its prefix without taking ids from any other family', () => {
+    const mk = (id: string): ModuleDef => ({ format: 'circuitoon-module/1', id, name: id, pins: [{ name: 'GND', side: 'left' }] })
+    const want: Record<string, string> = {
+      'outlet-us-5-15r-duplex': 'XS', 'outlet-uk-bs1363': 'XS', 'plug-us-5-15p': 'XP', 'plug-uk-bs1363-2lead': 'XP',
+      'charger-usb-5v-us': 'PS', 'adapter-barrel-eu': 'PS', 'hlk-pm01': 'PS', 'hlk-pm03': 'PS', 'irm-03-5': 'PS',
+      'lamp-holder-e26': 'E', 'lamp-holder-e27': 'E', 'fuse-holder-5x20-inline': 'F',
+      'rocker-switch-kcd1': 'S', 'relay-module-1ch-5v': 'K', 'ssr-fotek-25da': 'K',
+      'terminal-block-mstb-508-2': 'X', 'terminal-block-kf301-500-3': 'X', 'wago-221-415': 'X',
+      // Unchanged neighbours that a careless rule could catch.
+      'esp32-terminal-board-38': 'U', 'usb-panel-mount-usbc': 'J', 'push-button': 'S', 'power-rail-strip': 'BB', 'led': 'D', 'lcd-st7796s-4in-spi-touch': 'DS',
+    }
+    for (const [id, prefix] of Object.entries(want)) expect([id, designatorPrefix(mk(id))]).toEqual([id, prefix])
+  })
+  it('numbers each prefix on its own, so XS, XP and X never share or skip numbers', () => {
+    const mk = (id: string): ModuleDef => ({ format: 'circuitoon-module/1', id, name: id, pins: [{ name: 'GND', side: 'left' }] })
+    let d = emptyDiagram()
+    const names: string[] = []
+    for (const id of ['wago-221-412', 'outlet-us-5-15r-duplex', 'plug-us-5-15p', 'wago-221-413', 'outlet-uk-bs1363']) {
+      const next = addPart(d, mk(id), 0, 0)
+      d = next.diagram
+      names.push(d.parts.find((p) => p.uid === next.uid)!.designator)
+    }
+    expect(names).toEqual(['X1', 'XS1', 'XP1', 'X2', 'XS2'])
+  })
   it('moves and rotates only the given parts', () => {
     const d = rotateParts(moveParts(twoResistors(), ['p2'], 20, -10), ['p2'])
     expect(d.parts[0]).toMatchObject({ x: 0, y: 0, rotation: 0 })

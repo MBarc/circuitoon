@@ -34,6 +34,16 @@ export function nextUid(d: Diagram, prefix: 'p' | 'w' | 'a'): string {
 }
 
 const PREFIXES: [RegExp, string][] = [
+  // Mains families (spec section 4). Each is anchored to its own id prefix, and they come before the
+  // older rules so a mains part is never caught by the unanchored "switch" rule; switches keep S and
+  // relays keep K.
+  [/^outlet-/, 'XS'],
+  [/^plug-/, 'XP'],
+  [/^(charger-|adapter-|hlk-|irm-)/, 'PS'],
+  [/^lamp-holder-/, 'E'],
+  [/^fuse-holder-/, 'F'],
+  [/^ssr-/, 'K'],
+  [/^(terminal-block-|wago-)/, 'X'],
   [/^potentiometer/, 'RV'],
   [/^resistor/, 'R'],
   [/^capacitor/, 'C'],

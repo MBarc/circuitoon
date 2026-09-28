@@ -41,12 +41,16 @@ export function side(sideName, list, types, len) {
 
 /**
  * A module definition. `inside` draws pin names inside the body beside each pin, like silkscreen
- * (header and pad modules); `states` lists a switch's positions.
+ * (header and pad modules); `states` lists a switch's positions. `holes` and `obstacle` are for
+ * parts with hole groups (a wall outlet is a board, `obstacle: false`); left out, nothing is written,
+ * so generators that pass neither produce the same bytes as before.
  */
-export function moduleJson({ id, name, category, source, pins, internal, wu, hu, electrical, states, inside = false, shapes }) {
+export function moduleJson({ id, name, category, source, pins, internal, wu, hu, electrical, states, inside = false, shapes, holes, obstacle }) {
   const m = { format: 'circuitoon-module/1', id, version: 1, name, category, source, pins }
   if (internal) m.internal = internal
   m.size = { w: wu, h: hu }
+  if (holes) m.holes = holes
+  if (obstacle !== undefined) m.obstacle = obstacle
   m.electrical = electrical
   if (states) m.states = states
   m.art = inside ? { w: wu * 10, h: hu * 10, pinLabels: 'inside', shapes } : { w: wu * 10, h: hu * 10, shapes }
