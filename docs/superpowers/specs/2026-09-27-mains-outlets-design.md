@@ -1,6 +1,14 @@
-# Wall outlets and mains parts: design (revision 5)
+# Wall outlets and mains parts: design (revision 6)
 
-Status: sections approved by Michael (2026-09-26/27); he chose the full mains checker now. Revision 2 answered Astra's first review, revision 3 its second (10 findings and code contracts), revision 4 its third (5 findings: protective separation, complete state candidates, protective-conductor roles, rating relevance versus adequacy, conflicting converter inputs), revision 5 its fourth (parallel protective paths). First of five V2 sub-projects (then: simulation core on ngspice WASM, instruments, V3 animations, firmware).
+Status: sections approved by Michael (2026-09-26/27); he chose the full mains checker now. Revision 2 answered Astra's first review, revision 3 its second (10 findings and code contracts), revision 4 its third (5 findings: protective separation, complete state candidates, protective-conductor roles, rating relevance versus adequacy, conflicting converter inputs), revision 5 its fourth (parallel protective paths), revision 6 the final review (below). First of five V2 sub-projects (then: simulation core on ngspice WASM, instruments, V3 animations, firmware).
+
+Revision 6 (2026-09-28, final review rulings; details in .superpowers/sdd/2026-09-27-mains-outlets/final-fixes-report.md):
+1. Rule 9 (cables and breadboard strips) judges wiring on mains in the narrow sense (L or N identity, or energy that crossed no isolation barrier) plus protective conductors. A net live only across an inadequate barrier gets no cable finding, since rule 1 already reports it. In a unit that was not enumerated, rule 1 does not run, so rule 9 keeps the conservative hazard there.
+2. The narrow set includes undeclared-conduction edges between a part's own mains terminals. It excludes a converter's uncovered pins (Resolution 27) and energy that crossed a barrier and then goes on through a load.
+3. Rule 8 exempts a converter only when it is seated in its outlet and nothing is wired to its input pins. The plug-in flag alone never exempts, and wiring behind a cord plug is still judged.
+4. Energized PE with PE identity (a load from L to earth, say) is left to the other rules, which already report it.
+5. The new `live-prong` rule uses the broad hazard: a bare prong is dangerous whatever the path.
+6. The enumeration limits apply per unit (section 1.5). Only an oversized unit is reported `mains-incomplete`, each with its own finding, whose id includes the unit's part uids.
 
 ## Goal
 Let hobbyists draw how their project meets the wall: chargers and adapters plugged into real outlets, AC-DC modules on mains, a relay or SSR switching a lamp, mains wires landed on terminal blocks. Draw it truthfully and catch the dangerous mistakes: mains reaching low-voltage wiring, shorts, crossed sources, wrong voltage, earth faults, unprotected paths, unsuitable cables, wrong polarity, plugs that do not fit.
@@ -49,7 +57,9 @@ Every module with mains terminals must declare how its mains terminals conduct; 
 
 ### 1.5 Contact states (exhaustive or honestly incomplete)
 - `electrical.contacts: [{ id, kind: "switch" | "relay" | "ssr", poles: [{ com, no?, nc? }] }]`. A relay pole connects COM-NC released and COM-NO energized, never both; linked poles switch together; poles are separate from each other and from the coil. An SSR's OFF state is a `leakage` edge.
-- Candidate groups come from a state-independent possible-connectivity graph: every contact position of every group conducting at once, plus all other edges. A group is a candidate if any of its contacts lies in a possible-connectivity component that contains a source terminal or a converter input. This set cannot miss a switch in the middle of a chain. The checker enumerates every state combination of the candidates; up to 16 candidates (65,536 states) it is exhaustive. Beyond that it does not sample: it reports a `mains-incomplete` finding ("Mains checks did not finish: 17 switches and relays. Split the drawing or check the rest by hand.") and the empty-state wording never claims the sheet is clean.
+- Candidate groups come from a state-independent possible-connectivity graph: every contact position of every group conducting at once, plus all other edges. A group is a candidate if any of its contacts lies in a possible-connectivity component that contains a source terminal or a converter input. This set cannot miss a switch in the middle of a chain. - The limits apply per enumeration unit, never to the whole sheet. A unit is a possible-connectivity component with a source terminal or converter input, merged with the components that one multi-pole group, one class 1 part, one bonded part's secondary and bonds, or one unseated plug's prongs span (Resolution 25). Units cannot affect each other, so each unit's states are enumerated on their own, and each unit numbers its own sources.
+- Within a unit, the checker enumerates every state combination of its candidates: with up to 16 candidate groups (65,536 states) and up to 10 AC sources (the 30-bit identity mask) it is exhaustive. A room of many outlets is still checked when each unit stays within the limits.
+- Only an oversized unit (past either limit) is not enumerated. It does not sample: it reports its own `mains-incomplete` finding ("Mains checks did not finish: 17 switches and relays. ... Split the drawing or check the rest by hand."), which lists what was not checked, and the empty-state wording never claims the sheet is clean. No per-state rule runs in that unit; its nodes take the conservative hazard (everything a source's L or N could reach). Every other unit is checked in full.
 - Findings name the state that produces them ("when S1 and S2 are both on").
 
 ### 1.6 Earth
@@ -90,7 +100,7 @@ Mains nodes never enter the DC potential solver; DC rules skip AC and mains pins
 10. `plug-mismatch` (warning): a plug-in device overlapping a socket it cannot seat in. "XP1's UK plug does not fit XS1's US socket. Use a device with a US plug." No adapter advice.
 11. Converter availability (section 1.3): outputs of unpowered or unknown converters feed nothing; messages give the reason.
 12. `data-missing` (warning): a mains terminal of a module without conduction, rating or domain data; checks involving it are conservative and say so.
-13. `mains-incomplete` (warning): state enumeration did not finish (section 1.5).
+13. `mains-incomplete` (warning): state enumeration did not finish for an oversized unit, one finding per such unit (section 1.5).
 
 ## 4. Parts (category Mains; generators; every pin, contact, profile, rating and isolation claim sourced to an exact manufacturer part or standard, independently verified; SSR data from the exact current Fotek revision)
 - Outlets (intact-link duplex only): US NEMA 5-15R and 5-20R duplex; UK BS 1363 single; Schuko CEE 7/3 single; French CEE 7/5 single; AU/NZ AS/NZS 3112 single; Japan 1-15R duplex unpolarized and a polarized variant.

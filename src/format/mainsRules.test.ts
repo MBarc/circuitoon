@@ -7,7 +7,9 @@ import { MAINS_MODULES, at, chargerUK, dupont, sheet, w } from './mains.testing.
 import type { ModuleDef } from './module.ts'
 import { plugsOf } from './breadboard.ts'
 import { netlist, nodeKey } from './netlist.ts'
-import { type Prepared, analyseState, buildMainsGraph, candidateGroups, masksByPopcount, prepare, setState } from './mainsGraph.ts'
+import { MAX_GROUPS, MAX_SOURCES, type Prepared, analyseState, buildMainsGraph, candidateGroups, masksByPopcount, prepare, setState } from './mainsGraph.ts'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { across, acrossFit, acrossWith, newAcc, visitState } from './mainsRules.ts'
 import { analyseMains } from './mains.ts'
 
@@ -838,6 +840,13 @@ describe('rule 13: checks that did not finish', () => {
     expect(msgs(d, 'mains-incomplete')).toEqual([`Mains checks did not finish: 17 switches and relays. ${notChecked} Split the drawing or check the rest by hand.`])
     // The oversized unit stays conservative: its wires are taken as on mains.
     expect(only(d, 'cable-unverified').some((f) => f.message.includes('S17'))).toBe(true)
+  })
+  it('the spec (section 1.5) states the limits the code enforces, per enumeration unit', () => {
+    const spec = readFileSync(join(import.meta.dirname, '..', '..', 'docs', 'superpowers', 'specs', '2026-09-27-mains-outlets-design.md'), 'utf8')
+    const section = spec.slice(spec.indexOf('### 1.5'), spec.indexOf('### 1.6'))
+    expect(section).toContain(`up to ${MAX_GROUPS} candidate groups`)
+    expect(section).toContain(`up to ${MAX_SOURCES} AC sources`)
+    expect(section).toContain('per enumeration unit')
   })
   it('says nothing when the checks finished', () => {
     expect(rules(on([['e1', 'E1', 't-lamp']], [w('xs1|L', 'e1|L'), w('xs1|N', 'e1|N')])).has('mains-incomplete')).toBe(false)
