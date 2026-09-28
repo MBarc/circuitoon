@@ -30,7 +30,7 @@ export function Sheet({ diagram, captions = {}, box, label, decorative = false, 
   const part = (p: PartInstance) => {
     const m = moduleOf(diagram, p.module)
     return m ? (
-      <Part key={p.uid} module={m} x={p.x} y={p.y} rotation={p.rotation} caption={captions[p.uid] ?? partCaption(p, m)} values={p.values} ink={theme.ink} halo={theme.halo} />
+      <Part key={p.uid} module={m} x={p.x} y={p.y} rotation={p.rotation} caption={captions[p.uid] ?? partCaption(p, m)} values={p.values} ink={theme.ink} halo={theme.halo} outline={theme.outline} />
     ) : null
   }
   return (

@@ -11,7 +11,7 @@ import { buttonLed } from '../samples/buttonLed.ts'
 import { contentBounds, focusBounds, renderSheetSvg } from './exportSvg.tsx'
 import { CAPTION_SIZE, captionAnchor, captionBox } from './captionBox.ts'
 import { annotationRect, wrapNote } from './annotationGeometry.ts'
-import { INK, Part } from './Part.tsx'
+import { INK, Part, darkBody } from './Part.tsx'
 import { DARK_THEME, LIGHT_THEME, SITE_THEME } from './theme.ts'
 
 const withNotes = (): Diagram => ({
@@ -107,5 +107,30 @@ describe('dark theme', () => {
   })
   it('draws no halo on the site, whose paper comes from CSS', () => {
     expect(SITE_THEME.halo).toBeUndefined()
+  })
+  it('outlines a dark-bodied part in the casing color on dark paper, and only there (A18.4)', () => {
+    const tilt = load('tilt-switch-sw520d')
+    const body = '#2B2F36'
+    expect(darkBody(tilt)).toBe(true)
+    expect(darkBody(load('esp32-devkitc-v4'))).toBe(true)
+    expect(darkBody(load('lcd-st7796s-4in-spi-touch'))).toBe(false)
+    expect(darkBody(load('power-rail-strip'))).toBe(false)
+    expect(contrast(DARK_THEME.outline!, DARK_THEME.paper)).toBeGreaterThan(7)
+    expect(DARK_THEME.outline).toBe(DARK_THEME.casing)
+    const d: Diagram = {
+      format: 'circuitoon-diagram/1', title: 'tilt', modules: { 'tilt-switch-sw520d': tilt },
+      parts: [{ uid: 'S1', designator: 'S1', module: 'tilt-switch-sw520d', x: 0, y: 0 }], connections: [],
+    }
+    const bodyRects = (svg: string) => [...svg.matchAll(/<rect [^>]*>/g)].map((m) => m[0]).filter((t) => t.includes(`fill="${body}"`))
+    const dark = bodyRects(renderSheetSvg(d, { dark: true }).svg)
+    expect(dark.some((t) => t.includes(`stroke="${DARK_THEME.casing}"`))).toBe(true)
+    // Light export and the site keep the Sticker ink outline.
+    expect(bodyRects(renderSheetSvg(d).svg).every((t) => t.includes(`stroke="${INK}"`))).toBe(true)
+    expect(LIGHT_THEME.outline).toBeUndefined()
+    const site = renderToStaticMarkup(createElement(Part, { module: tilt }))
+    expect(bodyRects(site).every((t) => t.includes(`stroke="${INK}"`))).toBe(true)
+  })
+  it('leaves the site theme as it was', () => {
+    expect(SITE_THEME).toEqual({ paper: 'var(--paper)', grid: 'var(--grid)', ink: INK, casing: INK, note: '#FFFFFF' })
   })
 })

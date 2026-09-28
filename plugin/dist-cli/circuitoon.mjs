@@ -43214,6 +43214,39 @@ var import_jsx_runtime = require_jsx_runtime();
 var INK$1 = "#23282F";
 var OUTLINE = 1.6;
 var METAL = "#C9CED6";
+/** Relative luminance below which a body fill counts as dark (about #3A3A3A). */
+var DARK_LUMINANCE = .05;
+var bodies = /* @__PURE__ */ new WeakMap();
+/** WCAG relative luminance of a #RRGGBB color; null for anything else. */
+function luminance(hex) {
+	if (!hex || !/^#[0-9a-f]{6}$/i.test(hex)) return null;
+	const [r, g, b] = [
+		1,
+		3,
+		5
+	].map((i) => {
+		const c = parseInt(hex.slice(i, i + 2), 16) / 255;
+		return c <= .03928 ? c / 12.92 : ((c + .055) / 1.055) ** 2.4;
+	});
+	return .2126 * r + .7152 * g + .0722 * b;
+}
+/** Index of a module's body shape (its largest art shape), or -1 when it has no art. Cached. */
+function bodyShape(m) {
+	const hit = bodies.get(m);
+	if (hit !== void 0) return hit;
+	let best = -1;
+	m.art?.shapes.forEach((s, i) => {
+		if (best < 0 || s.w * s.h > m.art.shapes[best].w * m.art.shapes[best].h) best = i;
+	});
+	bodies.set(m, best);
+	return best;
+}
+/** Whether a module's body (its largest art shape) is dark, so it needs an outline on dark paper. */
+function darkBody(m) {
+	const i = bodyShape(m);
+	const l = i < 0 ? null : luminance(m.art.shapes[i].fill);
+	return l !== null && l < DARK_LUMINANCE;
+}
 function showLabel(m, p) {
 	return p.label !== void 0 || m.pins.length > 2 || p.type === "power_out" || p.type === "power_in" || p.type === "ground";
 }
@@ -43378,7 +43411,7 @@ function PinLabel({ p, box, outside, pad = 4 }) {
 * Memoized: props are primitives plus a module object that keeps its identity, so pan, zoom
 * and selection changes do not re-render every part.
 */
-var Part = (0, import_react.memo)(function Part({ module: m, x = 0, y = 0, rotation = 0, caption, values, ink = INK$1, halo }) {
+var Part = (0, import_react.memo)(function Part({ module: m, x = 0, y = 0, rotation = 0, caption, values, ink = INK$1, halo, outline }) {
 	const lay = layoutModule(m);
 	const art = m.art;
 	const ax = art ? (lay.w - art.w) / 2 : 0;
@@ -43397,6 +43430,7 @@ var Part = (0, import_react.memo)(function Part({ module: m, x = 0, y = 0, rotat
 	}, m);
 	const headers = headerSides(m);
 	const cap = captionAnchor(m, rotation);
+	const body = outline && darkBody(m) ? bodyShape(m) : -1;
 	return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("g", {
 		transform: `translate(${x} ${y})`,
 		children: [
@@ -43413,7 +43447,7 @@ var Part = (0, import_react.memo)(function Part({ module: m, x = 0, y = 0, rotat
 							height: s.h,
 							rx: s.radius ?? 0,
 							fill: s.band && bands ? bands[s.band - 1] : s.fill,
-							stroke: s.outline === false ? "none" : INK$1,
+							stroke: i === body ? outline : s.outline === false ? "none" : INK$1,
 							strokeWidth: OUTLINE
 						}), s.label && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("text", {
 							x: s.x + s.w / 2,
@@ -43744,7 +43778,8 @@ var DARK_THEME = {
 	ink: "#E4EAE5",
 	casing: "#C9D1D9",
 	note: "#26302B",
-	halo: "#1B211E"
+	halo: "#1B211E",
+	outline: "#C9D1D9"
 };
 //#endregion
 //#region src/render/Annotations.tsx
@@ -43864,7 +43899,8 @@ function Sheet({ diagram, captions = {}, box, label, decorative = false, theme =
 			caption: captions[p.uid] ?? partCaption(p, m),
 			values: p.values,
 			ink: theme.ink,
-			halo: theme.halo
+			halo: theme.halo,
+			outline: theme.outline
 		}, p.uid) : null;
 	};
 	return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("svg", {
