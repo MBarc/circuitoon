@@ -64,6 +64,36 @@ export function fiveParts() {
 }
 
 /**
+ * The Spirit Typewriter's power sheet cut down to its mini breadboard: R1 feeds the ON LED D1, and
+ * R2 and R3 halve the battery voltage for J1 (R3 stands on end). Before covered holes counted, the
+ * layout plugged three wire ends into holes under R3's body.
+ */
+export function divider() {
+  const r = (ref: string, value: number) => ({ ref, module: 'resistor', values: { resistance: { value, unit: 'ohm' } }, on: 'BB5' })
+  return {
+    format: 'circuitoon-netlist/1',
+    title: 'Battery voltage divider',
+    parts: [
+      { ref: 'BT1', module: 'battery-18650-holder' },
+      { ref: 'D1', module: 'led' },
+      { ref: 'BB5', module: 'breadboard-mini' },
+      r('R1', 330),
+      r('R2', 100000),
+      r('R3', 100000),
+      { ref: 'J1', module: 'dupont-1x3' },
+    ],
+    nets: [
+      { name: 'BAT', pins: ['BT1.+', 'R2.1'] },
+      { name: '5V', pins: ['R1.1', 'J1.1'] },
+      { name: 'LED_ON', pins: ['R1.2', 'D1.A'] },
+      { name: 'VSENSE', pins: ['R2.2', 'R3.1', 'J1.3'] },
+      { name: 'GND', pins: ['BT1.-', 'R3.2', 'D1.K', 'J1.2'] },
+    ],
+    wires: { ends: 'dupont-male' },
+  }
+}
+
+/**
  * A battery on `rails` rail strips feeding `pairs` resistor and LED pairs (a repeat with only shared
  * ports), plus an ESP32 with a BME280 on I2C: 4 + rails + 2 * pairs parts.
  */
@@ -106,9 +136,11 @@ export function ledRails(pairs: number, rails: number) {
  * breadboards, 42 balls of two tilt switches each sharing one expander channel (a repeat with
  * explicit bindings), two ST7796S SPI LCDs, an SSD1306 OLED, a microSD module, an 18650 and IP5306
  * power chain and a KCD1 rocker switch. 98 parts. The LCD data pins are `SDI(MOSI)` and
- * `SDO(MISO)`, their exact names in the catalog (amendment A4).
+ * `SDO(MISO)`, their exact names in the catalog (amendment A4). With `mounted` false the expanders
+ * sit beside their boards: the DIP-28 is drawn 100 px across, so seated across the channel its body
+ * covers every hole of its pins' strips but one, and nothing is left to wire them through.
  */
-export function typewriter() {
+export function typewriter(mounted = true) {
   const boards = ['BB1', 'BB2', 'BB3']
   const bank = (u: string, b: string) => Array.from({ length: 8 }, (_, i) => `${u}.GP${b}${i}`)
   const channels = [...bank('U2', 'A'), ...bank('U2', 'B'), ...bank('U3', 'A'), ...bank('U3', 'B'), ...bank('U4', 'A'), 'U4.GPB0', 'U4.GPB1']
@@ -118,7 +150,7 @@ export function typewriter() {
     parts: [
       { ref: 'U1', module: 'esp32-devkitc-v4' },
       ...boards.map((ref) => ({ ref, module: 'breadboard-half' })),
-      ...boards.map((b, i) => ({ ref: `U${i + 2}`, module: 'mcp23017-dip28', on: b })),
+      ...boards.map((b, i) => ({ ref: `U${i + 2}`, module: 'mcp23017-dip28', ...(mounted ? { on: b } : {}) })),
       { ref: 'DS1', module: 'lcd-st7796s-4in-spi-touch' },
       { ref: 'DS2', module: 'lcd-st7796s-4in-spi-touch' },
       { ref: 'DS3', module: 'oled-ssd1306-096-i2c' },

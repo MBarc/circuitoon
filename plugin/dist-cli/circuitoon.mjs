@@ -2337,6 +2337,16 @@ function plugOfPin(d, part, pin) {
 	return entry.byPin.get(pinKey(part, pin)) ?? null;
 }
 /**
+* Every hole a validly mounted part's body lies over (see `bodyShapes`), on the board it is mounted
+* on, apart from its own leg holes; a hole two bodies cover is listed once. Nothing may plug into
+* one: a wire end or another part's leg there is a finding (the checker's covered-hole). A mount
+* that plugs nothing covers nothing. Cached per diagram parts, like `plugsOf`: do not mutate it.
+*/
+function coveredHoles(d) {
+	const entry = cachedMounts(d);
+	return entry.covered ??= coversOf(d, entry.result.plugs);
+}
+/**
 * Every mount that plugs nothing, and why: its board is missing or not a board, the part cannot
 * mount, not every leg lands on a hole, a board drawn above its board covers a leg (obscured), or
 * a hole is already taken by an earlier valid mount.
@@ -59907,6 +59917,19 @@ function realize(intent, d, locals = []) {
 	const partBy = new Map(d.parts.map((p) => [p.uid, p]));
 	const modOf = (ref) => moduleOf(d, partBy.get(ref).module);
 	const used = new Set(plugs.map((pl) => holeKey(pl.board, pl.group, pl.hole)));
+	const covered = /* @__PURE__ */ new Map();
+	const coveredBy = /* @__PURE__ */ new Map();
+	for (const c of coveredHoles(d)) {
+		const g = groupKey(c.board, c.group);
+		used.add(holeKey(c.board, c.group, c.hole));
+		covered.set(g, (covered.get(g) ?? 0) + 1);
+		coveredBy.set(g, (coveredBy.get(g) ?? /* @__PURE__ */ new Set()).add(c.by));
+	}
+	/** Why full strips are full when bodies cover some of their holes: " (the other holes there lie under U2's body)". */
+	const under = (list) => {
+		const parts = [...new Set(list.flatMap((s) => [...coveredBy.get(s.key) ?? []]))].sort(naturalCompare);
+		return parts.length ? ` (the other holes there lie under ${joinList(parts.map((u) => `${partBy.get(u)?.designator ?? u}'s body`))})` : "";
+	};
 	const legBy = new Map(plugs.map((pl) => [terminalKey(pl.part, pl.pin), pl]));
 	const netOfTerminal = /* @__PURE__ */ new Map();
 	intent.nets.forEach((n, i) => n.terminals.forEach((t) => netOfTerminal.set(terminalKey(t.ref, t.name), i)));
@@ -60053,7 +60076,7 @@ function realize(intent, d, locals = []) {
 		let bestDist = 0;
 		for (const s of strips.values()) {
 			const r = rank(s);
-			if (r < 0 || localBoards.has(s.board) || owner.has(s.key) || reserved.has(s.key) || board !== void 0 && s.board !== board || free(s).length !== s.holes.length) continue;
+			if (r < 0 || localBoards.has(s.board) || owner.has(s.key) || reserved.has(s.key) || board !== void 0 && s.board !== board || free(s).length !== s.holes.length - (covered.get(s.key) ?? 0)) continue;
 			const dd = dist(s.holes[0], at);
 			if (!best || r < bestRank || r === bestRank && dd < bestDist) {
 				best = s;
@@ -60202,7 +60225,7 @@ function realize(intent, d, locals = []) {
 			pool.push(...g.strips);
 		}
 		if (unjoined.length) {
-			errors.push(`strip full: net ${net.name} cannot join ${unjoined.map(stripName).join(", ")}: no free hole left`);
+			errors.push(`strip full: net ${net.name} cannot join ${unjoined.map(stripName).join(", ")}: no free hole left${under(unjoined)}`);
 			continue;
 		}
 		let stuck = false;
@@ -60212,7 +60235,7 @@ function realize(intent, d, locals = []) {
 			const at = first(node);
 			const target = nearestDp(g.strips, at);
 			if (!target) {
-				errors.push(`strip full: net ${net.name} has no free hole left on ${g.strips.map(stripName).join(", ")}`);
+				errors.push(`strip full: net ${net.name} has no free hole left on ${g.strips.map(stripName).join(", ")}${under(g.strips)}`);
 				stuck = true;
 				break;
 			}
@@ -60232,7 +60255,7 @@ function realize(intent, d, locals = []) {
 			}
 			const target = nearestDp(reach, at);
 			if (!target) {
-				errors.push(`strip full: net ${net.name} has no free hole left on ${reach.map(stripName).join(", ")}`);
+				errors.push(`strip full: net ${net.name} has no free hole left on ${reach.map(stripName).join(", ")}${under(reach)}`);
 				break;
 			}
 			const e = take(node, at);

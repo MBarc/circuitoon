@@ -2,7 +2,7 @@
 // deterministic, with routing flags, one end per hole, distribution points, capacity chains and
 // internally joined pins wired as one.
 import { describe, expect, it } from 'vitest'
-import { type Diagram, type Endpoint, computeRoutes, serializeDiagram, validateDiagram } from '../format/diagram.ts'
+import { type Diagram, type Endpoint, computeRoutes, resolveEndpoint, serializeDiagram, validateDiagram } from '../format/diagram.ts'
 import { type Pt, type Rect, bodyRect, worldHoles } from '../format/geometry.ts'
 import { isBoard, layoutModule } from '../format/module.ts'
 import { annotationRect } from '../render/annotationGeometry.ts'
@@ -11,7 +11,7 @@ import { libraryLookup } from './catalog.ts'
 import { layoutNetlist } from './layout.ts'
 import { reportText } from './readability.ts'
 import { verifyDiagram } from './verify.ts'
-import { ledNetlist, tiltSensors, typewriter } from './fixtures.testing.ts'
+import { divider, ledNetlist, tiltSensors, typewriter } from './fixtures.testing.ts'
 
 const laid = (raw: unknown): Diagram => {
   const r = layoutNetlist(raw)
@@ -61,7 +61,7 @@ describe('layoutNetlist', () => {
     expect(r.value.report).toMatchObject({ bodyOverlaps: 0, captionOverlaps: 0, blockedNets: [] })
   })
   it("distributes a repeat block's shared net on rail strips of its own, joined to the net by one trunk wire (A18.1)", () => {
-    for (const make of [tiltSensors, typewriter]) {
+    for (const make of [tiltSensors, () => typewriter(false)]) {
       const r = layoutNetlist(make())
       if (!r.ok) throw new Error(r.errors.join('\n'))
       const d = r.value.diagram
@@ -137,6 +137,32 @@ describe('layoutNetlist', () => {
       const legs = new Set(plugsOf(d).map((p) => `${p.board} ${p.group} ${p.hole}`))
       expect(ends.filter((e) => legs.has(e))).toEqual([])
     }
+  })
+  it('never puts a wire end in a hole under a mounted resistor, between its legs', () => {
+    // An oracle independent of the covered-hole code: a resistor lies flat between its two legs.
+    for (const d of [laid(divider()), laid(ledNetlist())]) {
+      const legs = new Map<string, Pt[]>()
+      for (const pl of plugsOf(d)) if (d.parts.find((p) => p.uid === pl.part)!.module === 'resistor') legs.set(pl.part, [...(legs.get(pl.part) ?? []), pl.at])
+      expect(legs.size, d.title).toBeGreaterThan(0)
+      const under: string[] = []
+      for (const c of d.connections)
+        for (const ep of [c.from, c.to]) {
+          if (ep.hole === undefined) continue
+          const at = resolveEndpoint(d, ep)!.end
+          for (const [part, [a, b]] of legs)
+            if ((a.y === b.y && at.y === a.y && at.x > Math.min(a.x, b.x) && at.x < Math.max(a.x, b.x)) || (a.x === b.x && at.x === a.x && at.y > Math.min(a.y, b.y) && at.y < Math.max(a.y, b.y)))
+              under.push(`${d.title}: ${c.uid} ${ep.pin} hole ${ep.hole} under ${part}`)
+        }
+      expect(under).toEqual([])
+    }
+  })
+  it('says so when a strip is full because a mounted body covers its holes (a DIP-28 across the channel)', () => {
+    // The DIP-28 is drawn 100 px across: its body covers every hole of its top pins' strips but the leg's.
+    const r = layoutNetlist(typewriter())
+    expect(r.ok).toBe(false)
+    if (r.ok) return
+    const sda = r.errors.find((e) => e.startsWith('strip full: net SDA '))
+    expect(sda).toMatch(/: no free hole left \(the other holes there lie under (U\d's body(, | and )?)+\)$/)
   })
   it('asks for a distribution point when a net has more ends than its pins take, and uses a rail when there is one', () => {
     const r = layoutNetlist(esp())

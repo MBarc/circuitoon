@@ -18,7 +18,8 @@ const cases: [string, () => unknown, number][] = [
   ['5 parts', fiveParts, 5],
   ['30 parts', () => ledRails(13, 1), 30],
   ['120 parts', () => ledRails(57, 3), 120],
-  ['typewriter-like', typewriter, 98],
+  // The expanders sit beside their boards: the drawn DIP-28 covers its own strips on one (fixtures.testing.ts).
+  ['typewriter-like', () => typewriter(false), 98],
 ]
 
 describe('layout fixtures', () => {
@@ -36,28 +37,29 @@ describe('layout fixtures', () => {
       expect(verifyDiagram(d, libraryLookup)).toEqual([])
     }, 60_000)
 
-  it('typewriter-like: 42 copies, 84 switches, one channel per ball, DIPs across the channel, deterministic', () => {
-    const a = layoutNetlist(typewriter())
-    const b = layoutNetlist(typewriter())
+  it('typewriter-like: 42 copies, 84 switches, one channel per ball, deterministic', () => {
+    const a = layoutNetlist(typewriter(false))
+    const b = layoutNetlist(typewriter(false))
     if (!a.ok || !b.ok) throw new Error('layout failed')
     expect(a.value.intent.copies).toHaveLength(42)
     expect(a.value.diagram.parts.filter((p) => p.module === 'tilt-switch-sw520d')).toHaveLength(84)
     expect(new Set(channelTable(a.value.intent).map((c) => c.endpoint)).size).toBe(42)
-    expect(a.value.diagram.parts.filter((p) => p.module === 'mcp23017-dip28').every((p) => p.rotation === 90 && p.mount)).toBe(true)
     expect(serializeDiagram(a.value.diagram)).toBe(serializeDiagram(b.value.diagram))
   }, 60_000)
 
-  it('typewriter-like: crossings stay at the measured level (A15: 6698 to 3061; A18: 1707)', () => {
-    // A ceiling at the value measured after A18 plus a small margin, so a regression shows here.
-    const r = layoutNetlist(typewriter())
+  it('typewriter-like: crossings stay at the measured level (A15: 6698 to 3061; A18: 1707; expanders beside their boards: 3793)', () => {
+    // A ceiling at the value measured plus a small margin, so a regression shows here. Since covered
+    // holes count, the DIP-28 expanders sit beside their boards (see typewriter()) and every
+    // expander pin takes its own wire, which roughly doubles the crossings A18 measured.
+    const r = layoutNetlist(typewriter(false))
     if (!r.ok) throw new Error(r.errors.join('\n'))
-    expect(r.value.report.wireCrossings).toBeLessThanOrEqual(1750)
+    expect(r.value.report.wireCrossings).toBeLessThanOrEqual(3850)
   }, 60_000)
 
   // Amendment A4: the full fixture's gate plus link round trip. The PNG writer is a stand-in (the
   // real browser path is covered in src/cli/gate.test.ts and by hand), so this runs everywhere.
   it('typewriter-like: gate passes and its link decodes back to the same sheet', async () => {
-    const r = layoutNetlist(typewriter())
+    const r = layoutNetlist(typewriter(false))
     if (!r.ok) throw new Error(r.errors.join('\n'))
     const text = serializeDiagram(r.value.diagram)
     const dir = mkdtempSync(join(tmpdir(), 'circuitoon-tw-gate-'))

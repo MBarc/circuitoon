@@ -6,11 +6,12 @@
 // joined to each other by jumpers. A net's strips are extended by a jumper to a claimed strip only
 // while their free holes, together, are fewer than the nodes still to wire, so no hole is held in
 // reserve that the net could use (amendment A5); "strip full" means every hole really is taken.
-// Never two wire ends in one hole, never a wire into a leg's hole, and everything added for a strip
+// Never two wire ends in one hole, never a wire into a leg's hole or a hole under a mounted part's
+// body, and everything added for a strip
 // is `routing: true`. A repeat block's pins on a shared net go to its own local strips (amendment A18.1),
 // which are chained to each other and joined to the rest of the net by one trunk wire. Pure.
 import { type Connection, type Diagram, type Endpoint, moduleOf, resolveEndpoint } from '../format/diagram.ts'
-import { plugsOf } from '../format/breadboard.ts'
+import { coveredHoles, plugsOf } from '../format/breadboard.ts'
 import { type Pt, worldHoles } from '../format/geometry.ts'
 import { isBoard, isSpacer, type ModuleDef, type PinDef, terminalCapacity } from '../format/module.ts'
 import { normalizeEnds } from '../format/cables.ts'
@@ -81,6 +82,20 @@ export function realize(intent: Intent, d: Diagram, locals: LocalDistribution[] 
   const partBy = new Map(d.parts.map((p) => [p.uid, p]))
   const modOf = (ref: string) => moduleOf(d, partBy.get(ref)!.module)!
   const used = new Set(plugs.map((pl) => holeKey(pl.board, pl.group, pl.hole)))
+  // A hole under a mounted part's body takes nothing; a strip counts as unclaimed with it covered.
+  const covered = new Map<string, number>()
+  const coveredBy = new Map<string, Set<string>>()
+  for (const c of coveredHoles(d)) {
+    const g = groupKey(c.board, c.group)
+    used.add(holeKey(c.board, c.group, c.hole))
+    covered.set(g, (covered.get(g) ?? 0) + 1)
+    coveredBy.set(g, (coveredBy.get(g) ?? new Set<string>()).add(c.by))
+  }
+  /** Why full strips are full when bodies cover some of their holes: " (the other holes there lie under U2's body)". */
+  const under = (list: Strip[]) => {
+    const parts = [...new Set(list.flatMap((s) => [...(coveredBy.get(s.key) ?? [])]))].sort(naturalCompare)
+    return parts.length ? ` (the other holes there lie under ${joinList(parts.map((u) => `${partBy.get(u)?.designator ?? u}'s body`))})` : ''
+  }
   const legBy = new Map(plugs.map((pl) => [terminalKey(pl.part, pl.pin), pl]))
   const netOfTerminal = new Map<string, number>()
   intent.nets.forEach((n, i) => n.terminals.forEach((t) => netOfTerminal.set(terminalKey(t.ref, t.name), i)))
@@ -197,7 +212,7 @@ export function realize(intent: Intent, d: Diagram, locals: LocalDistribution[] 
     let bestDist = 0
     for (const s of strips.values()) {
       const r = rank(s)
-      if (r < 0 || localBoards.has(s.board) || owner.has(s.key) || reserved.has(s.key) || (board !== undefined && s.board !== board) || free(s).length !== s.holes.length) continue
+      if (r < 0 || localBoards.has(s.board) || owner.has(s.key) || reserved.has(s.key) || (board !== undefined && s.board !== board) || free(s).length !== s.holes.length - (covered.get(s.key) ?? 0)) continue
       const dd = dist(s.holes[0], at)
       if (!best || r < bestRank || (r === bestRank && dd < bestDist)) {
         best = s
@@ -344,7 +359,7 @@ export function realize(intent: Intent, d: Diagram, locals: LocalDistribution[] 
       pool.push(...g.strips)
     }
     if (unjoined.length) {
-      errors.push(`strip full: net ${net.name} cannot join ${unjoined.map(stripName).join(', ')}: no free hole left`)
+      errors.push(`strip full: net ${net.name} cannot join ${unjoined.map(stripName).join(', ')}: no free hole left${under(unjoined)}`)
       continue
     }
 
@@ -356,7 +371,7 @@ export function realize(intent: Intent, d: Diagram, locals: LocalDistribution[] 
       const at = first(node)
       const target = nearestDp(g.strips, at)
       if (!target) {
-        errors.push(`strip full: net ${net.name} has no free hole left on ${g.strips.map(stripName).join(', ')}`)
+        errors.push(`strip full: net ${net.name} has no free hole left on ${g.strips.map(stripName).join(', ')}${under(g.strips)}`)
         stuck = true
         break
       }
@@ -381,7 +396,7 @@ export function realize(intent: Intent, d: Diagram, locals: LocalDistribution[] 
       }
       const target = nearestDp(reach, at)
       if (!target) {
-        errors.push(`strip full: net ${net.name} has no free hole left on ${reach.map(stripName).join(', ')}`)
+        errors.push(`strip full: net ${net.name} has no free hole left on ${reach.map(stripName).join(', ')}${under(reach)}`)
         break
       }
       const e = take(node, at)
