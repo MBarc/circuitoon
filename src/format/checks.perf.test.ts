@@ -3,6 +3,7 @@
 // retry twice: they flake under full-suite load, and the budget itself is unchanged.
 import { describe, expect, it } from 'vitest'
 import { checkDiagram } from './checks.ts'
+import { takenHoles } from './breadboard.ts'
 import type { Connection, Diagram, PartInstance } from './diagram.ts'
 import { analyseMains, hasMainsData } from './mains.ts'
 import type { ModuleDef } from './module.ts'
@@ -81,6 +82,43 @@ describe('checkDiagram on built-in parts', () => {
     }
     t.sort((a, b) => a - b)
     expect(t[6]).toBeLessThanOrEqual(20)
+  })
+
+  it('checks 500 wires ending in breadboard holes in 20 ms or less (median), and finds the full holes in the same budget', { retry: 2 }, () => {
+    // Four full boards (130 hole groups each, looked up by name per wire end) and 150 loose parts:
+    // every wire runs from a loose part's pin, or another hole, into a hole.
+    const parts: PartInstance[] = []
+    for (let b = 0; b < 4; b++) parts.push({ uid: `bb${b}`, designator: `BB${b + 1}`, module: 'breadboard-full', x: 0, y: b * 400 })
+    const loose = ['esp32-devkitc-v4', 'bme280-module-6pin', 'oled-ssd1306-096-i2c', 'led', 'battery-18650-holder', 'ip5306-usbc-module']
+    for (let i = 0; i < 150; i++) parts.push(at(`p${i}`, `U${i}`, loose[i % loose.length], 1000 + (i % 15) * 300))
+    const groups = mods['breadboard-full'].holes!
+    let seed = 11
+    const rnd = (n: number) => ((seed = (seed * 1103515245 + 12345) % 2147483648), seed % n)
+    const hole = () => {
+      const g = groups[rnd(groups.length)]
+      return { part: `bb${rnd(4)}`, pin: g.name, hole: rnd(g.at.length) }
+    }
+    const connections: Connection[] = []
+    while (connections.length < 500) {
+      const p = parts[4 + rnd(150)]
+      const pins = pinsOf(mods[p.module]).map((q) => q.name)
+      const from = connections.length % 3 ? { part: p.uid, pin: pins[rnd(pins.length)] } : hole()
+      connections.push({ uid: `w${connections.length}`, from, to: hole() })
+    }
+    const d = sheet(parts, connections)
+    expect(checkDiagram(d).length).toBeGreaterThan(0)
+    const median = (run: (x: Diagram) => void) => {
+      const t: number[] = []
+      for (let i = 0; i < 13; i++) {
+        const next = { ...d, parts: [...d.parts] }
+        const s = performance.now()
+        run(next)
+        t.push(performance.now() - s)
+      }
+      return t.sort((a, b) => a - b)[6]
+    }
+    expect(median((x) => checkDiagram(x))).toBeLessThanOrEqual(20)
+    expect(median((x) => takenHoles(x))).toBeLessThanOrEqual(20)
   })
 
   it('advises on a shorted loop among 198 loads in 20 ms or less (median), with the same findings', { retry: 2 }, () => {

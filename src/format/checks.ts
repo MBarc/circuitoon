@@ -7,7 +7,7 @@
 import { type Connection, type Diagram, type Endpoint, type PartInstance, moduleOf, resolveEndpoint } from './diagram.ts'
 import { type CoveredHole, type MountIssue, type Plug, coveredHoles, holeKey, holeUses, mountIssues, plugMismatches, plugsOf } from './breadboard.ts'
 import { PLUG_FOR, PLUG_NAMES, SOCKET_NAMES } from './plugging.ts'
-import { type ExternalPower, type HoleGroup, type ModuleDef, type PinDef, type PinType, commonReturn, declaredReturns, externalPower, isSpacer, voltageOutputs } from './module.ts'
+import { type ExternalPower, type HoleGroup, type ModuleDef, type PinDef, type PinType, commonReturn, declaredReturns, externalPower, holeGroupOf, isSpacer, voltageOutputs } from './module.ts'
 import { conductors, netlist, nodeKey } from './netlist.ts'
 import { partValue, primaryParam } from './values.ts'
 import { andList, natural, orList } from './words.ts'
@@ -745,7 +745,7 @@ export function checkDiagram(d: Diagram): Finding[] {
     for (const ep of [c.from, c.to]) {
       const board = partByUid.get(ep.part)
       const m = board && moduleOf(d, board.module)
-      if (!board || !m?.holes?.some((g) => g.name === ep.pin)) continue
+      if (!board || !m || !holeGroupOf(m, ep.pin)) continue
       const hole = JSON.stringify([ep.part, ep.pin, ep.hole ?? 0])
       const pl = legIn.get(hole)
       const leg = pl && partByUid.get(pl.part)

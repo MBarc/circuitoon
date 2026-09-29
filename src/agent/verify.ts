@@ -6,7 +6,7 @@
 // endpoints themselves, and a pin whose only neighbours are infrastructure is unconnected. Pure.
 import { type Diagram, type Endpoint, type PartInstance, moduleOf } from '../format/diagram.ts'
 import { holeUses, mountIssues, plugsOf } from '../format/breadboard.ts'
-import { PARAM_RULES, isBoard, isObj, layoutModule, type ModuleDef, terminalCapacity, validParamValue } from '../format/module.ts'
+import { PARAM_RULES, holeGroupOf, isBoard, isObj, layoutModule, type ModuleDef, terminalCapacity, validParamValue } from '../format/module.ts'
 import { andList } from '../format/words.ts'
 import { netlist, nodeKey } from '../format/netlist.ts'
 import { coveredMessage, coveredUses, endpointName } from '../format/checks.ts'
@@ -351,7 +351,7 @@ function capacity(d: Diagram, add: Add) {
     for (const ep of [c.from, c.to]) {
       const part = partBy.get(ep.part)!
       const m = moduleOf(d, part.module)!
-      const group = m.holes?.find((g) => g.name === ep.pin)
+      const group = holeGroupOf(m, ep.pin)
       // Board holes and wires to plugged legs are counted by holeUses.
       if ((group && isBoard(m)) || (!group && plugged.has(nodeKey(ep.part, ep.pin)))) continue
       if (group) slot(JSON.stringify(['pad', ep.part, ep.pin, ep.hole ?? 0]), endpointName(d, ep), terminalCapacity(m, ep.pin), ep.part).wires.push(c.uid)

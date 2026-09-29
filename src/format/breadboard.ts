@@ -5,7 +5,7 @@
 import { type Diagram, type Endpoint, type PartInstance, moduleOf } from './diagram.ts'
 import { type PlugPoint, type Pt, type Rect, type Rotation, type WorldHoleGroup, bodyRect, pivot, plugPoints, rotateVec, toWorld, worldHoles } from './geometry.ts'
 import { type PlugDef, type PlugFamily, type SocketFamily, mainsOf } from './mainsModel.ts'
-import { GRID, type ModuleDef, isBoard, isSpacer, layoutModule, terminalCapacity } from './module.ts'
+import { GRID, type ModuleDef, holeGroupOf, isBoard, isSpacer, layoutModule, terminalCapacity } from './module.ts'
 import { entriesFor, orientationOf } from './plugging.ts'
 
 const OFF = 2 ** 25
@@ -318,7 +318,7 @@ function wireEndHoles(d: Diagram): Set<string> {
   for (const c of d.connections)
     for (const ep of [c.from, c.to]) {
       const m = boards.get(ep.part)
-      if (m?.holes?.some((g) => g.name === ep.pin)) out.add(holeKey(ep.part, ep.pin, ep.hole ?? 0))
+      if (m && holeGroupOf(m, ep.pin)) out.add(holeKey(ep.part, ep.pin, ep.hole ?? 0))
     }
   return out
 }
@@ -379,7 +379,7 @@ export function holeUses(d: Diagram, skip: ReadonlySet<string> = NONE_SET, plugs
     for (const end of ['from', 'to'] as const) {
       const ep = c[end]
       const m = boards.get(ep.part)
-      if (m?.holes?.some((g) => g.name === ep.pin)) use(ep.part, ep.pin, ep.hole ?? 0).ends.push({ wire: c.uid, end, viaPin: false })
+      if (m && holeGroupOf(m, ep.pin)) use(ep.part, ep.pin, ep.hole ?? 0).ends.push({ wire: c.uid, end, viaPin: false })
       else {
         const leg = legOf.get(pinKey(ep.part, ep.pin))
         if (leg) use(leg.board, leg.group, leg.hole).ends.push({ wire: c.uid, end, viaPin: true })
