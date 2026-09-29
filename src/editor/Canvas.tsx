@@ -1,5 +1,5 @@
 // The editing surface: an SVG sheet. Dragging the paper draws a selection rectangle (Shift adds to
-// the selection); a middle-button drag or Space+drag pans, and the wheel zooms.
+// the selection); a middle-button drag, Space+drag or a finger on the paper pans, and the wheel zooms.
 import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import { type EditorStore, useEditorState } from './store.ts'
 import { brokenStub, computeRoutes, labelAnchor, moduleOf, pinTargets, resolveEndpoint, routingKey, wireColor, wirePaths, wireStripe, wireWidth, type PartInstance, type PinTarget, type Routes } from '../format/diagram.ts'
@@ -388,6 +388,8 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
       setDrag({ pointer, kind: 'pan', client: { x: e.clientX, y: e.clientY }, view })
       return
     }
+    // Everything else (wires, part and mark drags, the selection rectangle) is the primary button only.
+    if (e.button !== 0) return
     // Explicit wire-edit handles of the selected wire come first: they sit on top of everything.
     const handleEl = target.closest('[data-wire-end]')
     if (handleEl) {
@@ -472,7 +474,13 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
       return
     }
     // The paper: a selection rectangle, which replaces the selection (Shift adds to it). A click
-    // without a drag clears the selection, or with Shift keeps it.
+    // without a drag clears the selection, or with Shift keeps it. A finger has no middle button or
+    // Space, so on touch a drag on the paper pans (and a tap still clears the selection).
+    if (e.pointerType === 'touch') {
+      store.select(EMPTY_SELECTION)
+      setDrag({ pointer, kind: 'pan', client: { x: e.clientX, y: e.clientY }, view })
+      return
+    }
     const w = toWorld(e)
     setDrag({ pointer, kind: 'marquee', client: { x: e.clientX, y: e.clientY }, start: w, cursor: w, add: e.shiftKey, before: store.getState().selection, moved: false })
     store.setGesture(true)

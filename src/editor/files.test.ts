@@ -147,3 +147,23 @@ describe('saveWithPicker', () => {
     expect(await saveWithPicker(broken, 'a', 't')).toEqual({ status: 'failed', message: 'a.circuitoon.json could not be saved: disk full' })
   })
 })
+
+describe('cleanBaseName limits', () => {
+  it('caps the name at 120 characters, dropping a trailing space or dot the cut leaves', () => {
+    expect(cleanBaseName('a'.repeat(300))).toBe('a'.repeat(120))
+    expect(cleanBaseName(`${'b'.repeat(119)} tail`)).toBe('b'.repeat(119))
+  })
+  it('prefixes Windows reserved device names, in any case, with an underscore', () => {
+    for (const name of ['CON', 'prn', 'Aux', 'nul', 'COM1', 'com9', 'LPT1', 'lpt9', 'con.backup'])
+      expect(cleanBaseName(name)).toBe(`_${name}`)
+    for (const name of ['CONSOLE', 'COM10', 'LPT0', 'my con', 'aux2'])
+      expect(cleanBaseName(name)).toBe(name)
+  })
+})
+
+describe('defaultBaseName limits', () => {
+  it('offers a title-based name already made safe: capped, device names prefixed', () => {
+    expect(defaultBaseName('x'.repeat(200))).toBe('x'.repeat(120))
+    expect(defaultBaseName('nul')).toBe('_nul')
+  })
+})

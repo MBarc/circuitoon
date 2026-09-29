@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import { COORD_LIMIT, emptyDiagram, type Diagram } from '../format/diagram.ts'
 import type { ModuleDef } from '../format/module.ts'
-import { CLIP_FORMAT, clipText, clipToPaste, copySelection, cutSelection, parseClip, pasteClip, pasteDelta, type Clip } from './clipboard.ts'
+import { CLIP_FORMAT, clipText, clipToPaste, copySelection, cutMemo, cutSelection, parseClip, pasteClip, pasteDelta, planPaste, type Clip } from './clipboard.ts'
+import { MAX_FILE_BYTES } from './files.ts'
+import { LINK_MAX_CONNECTIONS, LINK_MAX_PARTS } from '../format/link.ts'
 import { marqueeSelection } from './ops.ts'
 
 const resistor: ModuleDef = {
@@ -246,5 +248,59 @@ describe('clipToPaste', () => {
     expect(clipToPaste(null, text)?.text).toBe(text)
     expect(clipToPaste(null, text)?.clip.parts[0].uid).toBe('p1')
     expect(clipToPaste(null, null)).toBeNull()
+  })
+})
+
+describe('planPaste', () => {
+  const clip = copySelection(sheet(), { parts: ['p1', 'p2'], wires: [] })!
+  const text = clipText(clip)
+  const pointer = { x: 1000, y: 1000 }
+  it('puts the first paste after a cut back where it was, even with the pointer over the sheet', () => {
+    const first = planPaste(clip, text, cutMemo(text), pointer)
+    expect(first.delta).toEqual([0, 0])
+    // The next one, off the sheet, steps one grid step on from there.
+    expect(planPaste(clip, text, first.memo, null).delta).toEqual([10, 10])
+  })
+  it('ignores a cut memo for a different clip', () => {
+    expect(planPaste(clip, text, cutMemo('other'), null).delta).toEqual([10, 10])
+  })
+  it('steps a repeat at the same pointer spot one grid step on, and starts again elsewhere', () => {
+    const a = planPaste(clip, text, null, pointer)
+    const b = planPaste(clip, text, a.memo, pointer)
+    expect([b.delta[0] - a.delta[0], b.delta[1] - a.delta[1]]).toEqual([10, 10])
+    const c = planPaste(clip, text, b.memo, { x: 2000, y: 1000 })
+    expect(c.delta).toEqual(pasteDelta(clip, 1, { x: 2000, y: 1000 }))
+  })
+})
+
+describe('parseClip limits', () => {
+  const clip = copySelection(sheet(), { parts: ['p1'], wires: [] })!
+  it('refuses clip text over the 5 MB file limit, even when it is valid JSON', () => {
+    const huge = clipText(clip) + ' '.repeat(MAX_FILE_BYTES)
+    expect(parseClip(huge)).toBeNull()
+  })
+  it('refuses a clip with more parts or wires than a link may carry', () => {
+    const p = clip.parts[0]
+    const parts = Array.from({ length: LINK_MAX_PARTS + 1 }, (_, i) => ({ ...p, uid: `p${i}`, designator: `R${i}` }))
+    expect(parseClip(JSON.stringify({ ...clip, parts }))).toBeNull()
+    const two = copySelection(sheet(), { parts: ['p1', 'p2'], wires: [] })!
+    const w = two.connections[0]
+    const connections = Array.from({ length: LINK_MAX_CONNECTIONS + 1 }, (_, i) => ({ ...w, uid: `w${i}` }))
+    expect(parseClip(JSON.stringify({ ...two, connections }))).toBeNull()
+  })
+  it('returns null for malformed clips without throwing', () => {
+    for (const body of [{ modules: null }, { parts: [null] }, { connections: [{ from: 5 }] }, { annotations: [{ type: 'frame' }] }, { modules: { x: { id: 7 } } }])
+      expect(() => expect(parseClip(JSON.stringify({ ...clip, ...body }))).toBeNull()).not.toThrow()
+  })
+  it('returns null when the diagram check itself throws', () => {
+    const realSome = Array.prototype.some
+    Array.prototype.some = function () {
+      throw new Error('kaboom')
+    }
+    try {
+      expect(parseClip(clipText(clip))).toBeNull()
+    } finally {
+      Array.prototype.some = realSome
+    }
   })
 })

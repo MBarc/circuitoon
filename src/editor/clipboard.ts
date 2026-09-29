@@ -6,10 +6,10 @@ import { bodyRect, type Pt } from '../format/geometry.ts'
 import { layoutModule, type ModuleDef } from '../format/module.ts'
 import { annotationRect } from '../render/annotationGeometry.ts'
 import { deleteSelection, designatorPrefix, withMounted, withinLimit, type Selection } from './ops.ts'
+import { MAX_FILE_BYTES } from './files.ts'
+import { linkLimit } from '../format/link.ts'
 
 export const CLIP_FORMAT = 'circuitoon-clip/1'
-/** Clip text longer than this is never parsed (a pasted novel, not a clip). */
-const CLIP_TEXT_MAX = 20_000_000
 const GRID = 10
 
 export interface Clip {
@@ -66,11 +66,14 @@ export function clipToPaste(system: string | null, memory: string | null): { cli
 }
 
 /**
- * A clip from clipboard text, or null for anything else: only the clip format tag is accepted, and
- * the body must pass the same checks as a diagram file (modules, parts, wires, frames and notes).
+ * A clip from clipboard text, or null for anything else, never a throw. As strict as a file or a
+ * link: at most MAX_FILE_BYTES of text and a link's part and wire counts (`linkLimit`), only the
+ * clip format tag, and a body that passes the same checks as a diagram file (modules, parts,
+ * wires, frames and notes).
  */
 export function parseClip(text: string): Clip | null {
-  if (!text || text.length > CLIP_TEXT_MAX) return null
+  // Each UTF-16 unit is at least one UTF-8 byte, so the length alone refuses most oversize text unencoded.
+  if (!text || text.length > MAX_FILE_BYTES || new TextEncoder().encode(text).length > MAX_FILE_BYTES) return null
   let raw: unknown
   try {
     raw = JSON.parse(text)
@@ -80,7 +83,14 @@ export function parseClip(text: string): Clip | null {
   if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return null
   const r = raw as Record<string, unknown>
   if (r.format !== CLIP_FORMAT || !Array.isArray(r.annotations)) return null
-  const checked = validateDiagram({ format: DIAGRAM_FORMAT, title: 'clip', modules: r.modules, parts: r.parts, connections: r.connections, annotations: r.annotations })
+  const count = (v: unknown) => (Array.isArray(v) ? v.length : 0)
+  if (linkLimit({ parts: count(r.parts), connections: count(r.connections) })) return null
+  let checked: ReturnType<typeof validateDiagram>
+  try {
+    checked = validateDiagram({ format: DIAGRAM_FORMAT, title: 'clip', modules: r.modules, parts: r.parts, connections: r.connections, annotations: r.annotations })
+  } catch {
+    return null
+  }
   if (!checked.ok) return null
   const { modules, parts, connections, annotations } = checked.diagram
   return { format: CLIP_FORMAT, modules, parts, connections, annotations: annotations ?? [] }
@@ -118,6 +128,25 @@ export function pasteDelta(clip: Clip, step: number, pointer: Pt | null): [numbe
   if (!pointer || !b) return [GRID * step, GRID * step]
   const on = GRID * (step - 1)
   return [snap(pointer.x - (b.x0 + b.x1) / 2) + on, snap(pointer.y - (b.y0 + b.y1) / 2) + on]
+}
+
+/** What the editor remembers between pastes, so repeats step on instead of stacking. */
+export type PasteMemo = { text: string; anchor: string; step: number } | null
+
+/** The memo a cut leaves: the first paste of that clip goes back where it was cut from. */
+export const cutMemo = (text: string): PasteMemo => ({ text, anchor: 'cut', step: 0 })
+
+/**
+ * Where a paste of `clip` (as `text`) lands, and the memo for the next one. Right after a cut of
+ * the same clip it goes back to the source, wherever the pointer is. Otherwise it goes under the
+ * pointer, or one grid step from the source with the pointer off the sheet (`pasteDelta`), and a
+ * repeat at the same spot steps one grid step further.
+ */
+export function planPaste(clip: Clip, text: string, last: PasteMemo, pointer: Pt | null): { delta: [number, number]; memo: PasteMemo } {
+  if (last && last.text === text && last.anchor === 'cut') return { delta: [0, 0], memo: { text, anchor: 'source', step: 0 } }
+  const anchor = pointer ? `${Math.round(pointer.x / GRID)},${Math.round(pointer.y / GRID)}` : 'source'
+  const step = last && last.text === text && last.anchor === anchor ? last.step + 1 : 1
+  return { delta: pasteDelta(clip, step, pointer), memo: { text, anchor, step } }
 }
 
 /** Hands out uids with `prefix` not in `used`, lowest first, claiming each. */

@@ -37,6 +37,8 @@ export function exportFileName(title: string): string {
 }
 
 export const EXPORT_SUFFIX = '.circuitoon.json'
+/** The longest file name base Export writes (the whole name stays well under every OS limit). */
+export const BASE_NAME_MAX = 120
 // Refused in file names on Windows or macOS, plus every control character.
 // eslint-disable-next-line no-control-regex
 const NOT_IN_NAMES = /[\\/:*?"<>|\u0000-\u001f\u007f]/g
@@ -44,20 +46,23 @@ const NOT_IN_NAMES = /[\\/:*?"<>|\u0000-\u001f\u007f]/g
 /**
  * A file name base the user typed, made safe to save: characters Windows or macOS refuse and
  * control characters removed, a typed `.circuitoon.json` or `.json` dropped (the suffix is added
- * once, on export), trimmed, trailing dots dropped, and "circuitoon" when nothing is left.
+ * once, on export), a Windows device name (CON, COM1, ...) prefixed with `_`, cut to BASE_NAME_MAX
+ * characters, trimmed, trailing dots dropped, and "circuitoon" when nothing is left.
  */
 export function cleanBaseName(name: string): string {
   let base = name.replace(NOT_IN_NAMES, '').trim()
   const lower = base.toLowerCase()
   if (lower.endsWith(EXPORT_SUFFIX)) base = base.slice(0, -EXPORT_SUFFIX.length)
   else if (lower.endsWith('.json')) base = base.slice(0, -'.json'.length)
-  base = base.replace(/[.\s]+$/, '').trim()
+  // A Windows device name, alone or before an extension, cannot be a file name there.
+  if (/^(con|prn|aux|nul|com[1-9]|lpt[1-9])(\..*)?$/i.test(base)) base = `_${base}`
+  base = base.slice(0, BASE_NAME_MAX).replace(/[.\s]+$/, '').trim()
   return base || 'circuitoon'
 }
 
 /** The file name base Export offers: the one last chosen for this sheet, else one from its title. */
 export function defaultBaseName(title: string, remembered?: string | null): string {
-  return remembered || exportFileName(title).slice(0, -EXPORT_SUFFIX.length)
+  return remembered || cleanBaseName(exportFileName(title).slice(0, -EXPORT_SUFFIX.length))
 }
 
 type Writable = { write(data: string): Promise<void>; close(): Promise<void> }

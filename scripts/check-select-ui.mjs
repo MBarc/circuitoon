@@ -215,6 +215,46 @@ for (const scheme of ['light', 'dark']) {
   check(Math.round(bt2.x - bt0.x) === 0 && Math.round(bt2.y - bt0.y) === 0, `${scheme}: Space+drag pans the sheet back (${Math.round(bt2.x - bt0.x)}, ${Math.round(bt2.y - bt0.y)})`)
   check(JSON.stringify((await selected()).parts) === JSON.stringify([bt.uid]), `${scheme}: Space+drag keeps the selection`)
 
+  // The right button starts nothing: no rectangle on the paper, no part drag.
+  await drag(from, to, {
+    button: 'right',
+    mid: async () => check((await page.locator('rect.marquee').count()) === 0, `${scheme}: a right-button drag on the paper draws no rectangle`),
+  })
+  await page.keyboard.press('Escape') // closes any context menu; the selection is checked below
+  await around(bt.uid)
+  const r0 = await box(bt.uid)
+  await drag({ x: r0.x + r0.width / 2, y: r0.y + r0.height / 3 }, { x: r0.x + r0.width / 2 + 80, y: r0.y + r0.height / 3 + 60 }, { button: 'right' })
+  const r1 = await box(bt.uid)
+  check(Math.round(r1.x - r0.x) === 0 && Math.round(r1.y - r0.y) === 0 && JSON.stringify((await selected()).parts) === JSON.stringify([bt.uid]), `${scheme}: a right-button drag on BT1 neither moves it nor changes the selection`)
+
+  // A finger on the paper pans (a touch has no middle button or Space); it draws no rectangle.
+  const cdp = await context.newCDPSession(page)
+  await cdp.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 1 })
+  const t0 = await box(bt.uid)
+  const vbT = await viewBox()
+  const touch = { x: to.x - 40, y: to.y - 40 }
+  check(await bare(touch.x, touch.y), `${scheme}: the touch starts on bare paper`)
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [touch] })
+  let sawRect = false
+  for (let i = 1; i <= 8; i++) {
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: touch.x - 10 * i, y: touch.y - 5 * i }] })
+    await page.waitForTimeout(16)
+    if (await page.locator('rect.marquee').count()) sawRect = true
+  }
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] })
+  await pause()
+  const t1 = await box(bt.uid)
+  check((await viewBox()) !== vbT && Math.abs(t1.x - t0.x + 80) <= 12 && Math.abs(t1.y - t0.y + 40) <= 12 && !sawRect, `${scheme}: a one-finger drag on the paper pans the sheet (${Math.round(t1.x - t0.x)}, ${Math.round(t1.y - t0.y)} of -80, -40) and draws no rectangle`)
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [touch] })
+  // Back by what the first drag moved (touch input can drop a move under the slop, so not exactly 80, 40).
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: touch.x + (t0.x - t1.x) / 2, y: touch.y + (t0.y - t1.y) / 2 }] })
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: touch.x + t0.x - t1.x, y: touch.y + t0.y - t1.y }] })
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] })
+  await pause()
+  await cdp.send('Emulation.setTouchEmulationEnabled', { enabled: false })
+  const t2 = await box(bt.uid)
+  check(Math.abs(t2.x - t0.x) <= 1 && Math.abs(t2.y - t0.y) <= 1, `${scheme}: a second finger drag pans the sheet back (${Math.round(t2.x - t0.x)}, ${Math.round(t2.y - t0.y)})`)
+
   // Copy everything and paste under the pointer, zoomed out so the copy has room beside the sheet.
   const centre = { x: wrap.x + wrap.width / 2, y: wrap.y + wrap.height / 2 }
   await page.mouse.move(centre.x, centre.y)
@@ -339,13 +379,15 @@ for (const scheme of ['light', 'dark']) {
   check((await page.locator(`[data-part="${bt.uid}"]`).count()) === 1, `${scheme}: one undo brings the cut part back`)
   await around(bt.uid)
   await page.keyboard.press('Control+x')
-  await page.mouse.move(wrap.x + wrap.width / 2, 20)
+  // With the pointer over the sheet: right after a cut the paste still goes back to the source.
+  await page.mouse.move(to.x - 40, to.y - 40)
+  check(await bare(to.x - 40, to.y - 40), `${scheme}: the pointer is over the sheet for the paste after the cut`)
   await page.keyboard.press('Control+v')
   await pause()
   const back = (await selected()).parts[0]
   const b1 = back && (await box(back))
   check(!!b1 && Math.abs(b1.x - b0.x) < 1 && Math.abs(b1.y - b0.y) < 1 && (await page.locator(`[data-part="${back}"] text`).allTextContents()).some((t) => t.includes('BT1')),
-    `${scheme}: pasting right after a cut puts BT1 back where it was`)
+    `${scheme}: pasting right after a cut puts BT1 back where it was, with the pointer over the sheet`)
 
   // Text copy and paste in the title field stay text.
   await page.mouse.click(from.x, from.y)

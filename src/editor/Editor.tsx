@@ -6,7 +6,7 @@ import { Inspector } from './Inspector.tsx'
 import { LibraryPanel } from './LibraryPanel.tsx'
 import { Toolbar } from './Toolbar.tsx'
 import { deleteSelection, EMPTY_SELECTION, rotateParts } from './ops.ts'
-import { clipText, clipToPaste, copySelection, cutSelection, pasteClip, pasteDelta } from './clipboard.ts'
+import { clipText, clipToPaste, copySelection, cutMemo, cutSelection, pasteClip, planPaste, type PasteMemo } from './clipboard.ts'
 import './editor.css'
 
 /** Keys that belong to a text field, where the editor's shortcuts never apply. */
@@ -16,7 +16,7 @@ const TEXT_FIELD = 'input, textarea, select, [contenteditable]:not([contentedita
 // all. Module state, so it survives opening another sheet.
 let memoryClip: string | null = null
 // The last paste, so a repeat of the same clip at the same spot steps one grid step further.
-let lastPaste: { text: string; anchor: string; step: number } | null = null
+let lastPaste: PasteMemo = null
 
 /**
  * Copy, cut and paste of parts, wires, frames and notes through the browser's own clipboard events
@@ -52,7 +52,7 @@ function useEditorClipboard(store: EditorStore, canvas: { current: CanvasApi | n
       if (cut) {
         store.commit(cut.diagram)
         // The first paste after a cut puts the items back where they were.
-        lastPaste = { text, anchor: 'source', step: -1 }
+        lastPaste = cutMemo(text)
       } else lastPaste = null
     }
     const onPaste = (e: ClipboardEvent) => {
@@ -62,11 +62,9 @@ function useEditorClipboard(store: EditorStore, canvas: { current: CanvasApi | n
       if (!found) return
       const { clip, text } = found
       e.preventDefault()
-      const pointer = canvas.current?.pointer() ?? null
-      const anchor = pointer ? `${Math.round(pointer.x / 10)},${Math.round(pointer.y / 10)}` : 'source'
-      const step = lastPaste && lastPaste.text === text && lastPaste.anchor === anchor ? lastPaste.step + 1 : 1
-      lastPaste = { text, anchor, step }
-      const [dx, dy] = pasteDelta(clip, step, pointer)
+      const plan = planPaste(clip, text, lastPaste, canvas.current?.pointer() ?? null)
+      lastPaste = plan.memo
+      const [dx, dy] = plan.delta
       const { diagram, selection } = pasteClip(store.getState().diagram, clip, dx, dy)
       store.commit(diagram)
       store.select(selection)
