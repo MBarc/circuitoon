@@ -1,5 +1,7 @@
 // Browser check for the bill of materials and the wire colour convention in the editor. A sheet
-// with a blue ground wire and a red signal wire shows both colour warnings in the Problems list.
+// with a blue ground wire and a red signal wire (colours chosen on purpose) shows both colour
+// warnings in the Problems list; an old black signal wire with no colorSet raises none. Fixing the
+// ground wire to black clears its warning and leaves the new-wire default blue.
 // The new-wire style starts blue, so a plain signal wire never reads as power or ground.
 // With the new-wire style set to yellow, a wire drawn from a GND pin is drawn black, one from a 5 V
 // output red, and a signal wire yellow. The Bill of materials button opens a dialog listing the
@@ -19,17 +21,17 @@ const port = Number(flagOf('--port', '4197'))
 mkdirSync(out, { recursive: true })
 mkdirSync(shots, { recursive: true })
 
-const NAMED = { black: '#2B2F36', red: '#E0483E', yellow: '#F4B400' }
+const NAMED = { black: '#2B2F36', red: '#E0483E', yellow: '#F4B400', blue: '#3D6FD6' }
 const mod = (id) => JSON.parse(readFileSync(join('modules', `${id}.json`), 'utf8'))
 const ids = ['battery-18650-holder', 'esp32-devkit-v1-30', 'resistor', 'led', 'ip5306-usbc-module']
 const TITLE = 'Bench: lamp'
 const at = (uid, designator, module, x, y, extra = {}) => ({ uid, designator, module, x, y, rotation: 0, ...extra })
-const w = (uid, a, b, color) => {
+const w = (uid, a, b, color, chosen = true) => {
   const end = (s) => {
     const [part, pin] = s.split('|')
     return { part, pin }
   }
-  return { uid, from: end(a), to: end(b), color, gauge: 22 }
+  return { uid, from: end(a), to: end(b), color, gauge: 22, ...(chosen ? { colorSet: true } : {}) }
 }
 const sheetFile = join(out, 'bom-bench.circuitoon.json')
 writeFileSync(sheetFile, JSON.stringify({
@@ -40,7 +42,8 @@ writeFileSync(sheetFile, JSON.stringify({
     at('u1', 'U1', 'esp32-devkit-v1-30', 240, 40), at('r1', 'R1', 'resistor', 440, 60, { values: { resistance: { value: 330, unit: 'ohm' } } }),
     at('d1', 'D1', 'led', 460, 260), at('u2', 'U2', 'ip5306-usbc-module', 20, 330),
   ],
-  connections: [w('w1', 'bt1|-', 'u1|GND', 'blue'), w('w2', 'u1|D2', 'r1|1', 'red')],
+  // w3 is how every wire drawn before colorSet was stored: black, not chosen on purpose. It is never judged.
+  connections: [w('w1', 'bt1|-', 'u1|GND', 'blue'), w('w2', 'u1|D2', 'r1|1', 'red'), w('w3', 'u1|D5', 'r1|2', 'black', false)],
 }))
 
 const { base } = await startPreview(port)
@@ -62,6 +65,20 @@ async function open(context) {
 const center = async (page, sel) => {
   const b = await page.locator(sel).first().boundingBox()
   return { x: b.x + b.width / 2, y: b.y + b.height / 2 }
+}
+/** Clicks halfway along a drawn wire (its bounding box's centre may be off an L-shaped route) to select it. */
+async function clickWire(page, uid) {
+  const mid = await page.evaluate((uid) => {
+    const path = document.querySelector(`svg.canvas g[data-wire="${uid}"] .wire-color`)
+    const p = path.getPointAtLength(path.getTotalLength() / 2)
+    const svg = path.ownerSVGElement
+    const [vx, vy, vw] = svg.getAttribute('viewBox').split(' ').map(Number)
+    const box = svg.getBoundingClientRect()
+    const k = box.width / vw
+    return { x: box.left + (p.x - vx) * k, y: box.top + (p.y - vy) * k }
+  }, uid)
+  await page.mouse.click(mid.x, mid.y)
+  await page.waitForTimeout(200)
 }
 const stroke = (page, uid) => page.evaluate((uid) => document.querySelector(`svg.canvas g[data-wire="${uid}"] .wire-color`)?.getAttribute('stroke') ?? null, uid)
 const wireUids = (page) => page.evaluate(() => [...new Set([...document.querySelectorAll('svg.canvas [data-wire]')].map((e) => e.getAttribute('data-wire')))])
@@ -93,19 +110,17 @@ for (const scheme of ['light', 'dark']) {
 
   // --- New wires take their net's role colour; a signal takes the style colour. ---
   check((await page.locator('.inspector .hint', { hasText: 'New wires' }).textContent()).startsWith('New wires: blue for signals (black for ground, red for supply)'), `${scheme}: the new-wire style starts blue for signals`)
-  // Select the red signal wire by clicking halfway along it (not its warning's Select, which pans
-  // the view), and recolour it yellow.
-  const mid = await page.evaluate(() => {
-    const path = document.querySelector('svg.canvas g[data-wire="w2"] .wire-color')
-    const p = path.getPointAtLength(path.getTotalLength() / 2)
-    const svg = path.ownerSVGElement
-    const [vx, vy, vw] = svg.getAttribute('viewBox').split(' ').map(Number)
-    const box = svg.getBoundingClientRect()
-    const k = box.width / vw
-    return { x: box.left + (p.x - vx) * k, y: box.top + (p.y - vy) * k }
-  })
-  await page.mouse.click(mid.x, mid.y)
+  check(!(await problems.textContent()).includes('U1 D5'), `${scheme}: the old black signal wire with no colorSet raises no warning`)
+  // Fix the ground wire to black (select it by clicking along it: a warning's Select pans the view).
+  await clickWire(page, 'w1')
+  await page.locator('.inspector .swatch[title="black"]').click()
   await page.waitForTimeout(200)
+  check(!(await problems.getByText('Ground wire not black').count()), `${scheme}: the ground warning is gone once the wire is black`)
+  check((await page.locator('.inspector .hint', { hasText: 'New wires' }).textContent()).includes('blue for signals'), `${scheme}: fixing a ground wire to black leaves the new-wire default blue`)
+  const blue = await draw(page, ['u1', 'D19'], ['r1', '2'])
+  check(!!blue && (await stroke(page, blue)) === NAMED.blue, `${scheme}: the next signal wire comes out blue (${await stroke(page, blue)})`)
+  // Recolour the red signal wire yellow: a signal colour, so it becomes the new-wire default.
+  await clickWire(page, 'w2')
   await page.locator('.inspector .swatch[title="yellow"]').click()
   await page.waitForTimeout(200)
   check(await stroke(page, 'w2') === NAMED.yellow, `${scheme}: the signal wire is recoloured yellow, which becomes the new-wire style`)

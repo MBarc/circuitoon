@@ -41,6 +41,12 @@ export interface Connection {
   from: Endpoint
   to: Endpoint
   color?: string
+  /**
+   * True when the colour was chosen on purpose (picked in the Inspector, or given by the netlist or
+   * the layout); only such a colour is judged by the wire colour rules. A wire drawn in the editor
+   * stores the new-wire colour without it.
+   */
+  colorSet?: true
   gauge?: number
   label?: string
   route?: [number, number][]
@@ -1093,6 +1099,7 @@ export function validateDiagram(raw: unknown): DiagramResult {
       checkEnd(c.to, `${at}.to`)
       if (c.color !== undefined && !(typeof c.color === 'string' && isValidColor(c.color)))
         errors.push(`${at}.color: must be a named color or #RRGGBB`)
+      if (c.colorSet !== undefined && c.colorSet !== true) errors.push(`${at}.colorSet: must be true when present`)
       if (c.gauge !== undefined && !(Number.isInteger(c.gauge) && (c.gauge as number) >= 16 && (c.gauge as number) <= 30))
         errors.push(`${at}.gauge: must be a whole number from 16 to 30`)
       if (c.route !== undefined && !(Array.isArray(c.route) && c.route.every((p) => Array.isArray(p) && p.length === 2 && isNum(p[0]) && isNum(p[1]))))

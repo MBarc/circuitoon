@@ -172,7 +172,8 @@ export function realize(intent: Intent, d: Diagram, locals: LocalDistribution[] 
   })
   const wire = (ni: number, from: Endpoint, to: Endpoint, routing: boolean) => {
     const uid = `w${connections.length + 1}`
-    connections.push({ uid, from, to, color: colors[ni], gauge: 22, ...(ends ? { ends } : {}), ...(routing ? { routing: true } : {}) })
+    // The layout chooses every colour on purpose (the netlist's, else by role): colorSet, so it is judged.
+    connections.push({ uid, from, to, color: colors[ni], colorSet: true, gauge: 22, ...(ends ? { ends } : {}), ...(routing ? { routing: true } : {}) })
     netOfWire.set(uid, intent.nets[ni].name)
   }
   const holeEnd = (s: Strip, i: number): Endpoint => {

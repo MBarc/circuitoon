@@ -553,11 +553,14 @@ function positiveRail(t: Terminal): boolean {
 
 /**
  * The role of the net made of `keys` (with their terminals), or null when no colour is judged: a net
- * on mains wiring or with a mains identity (it keeps its regional colours), or a net that holds both
- * a ground and a positive supply (a short, or the link between two cells in series).
+ * on mains wiring or with a mains identity (it keeps its regional colours), a net with a power pin
+ * whose voltage is not known to be positive (a rail that does not parse, such as -5V, or no supply
+ * listed: it is never guessed into supply or signal), or a net that holds both a ground and a
+ * positive supply (a short, or the link between two cells in series).
  */
 function roleOf(keys: string[], terms: Terminal[], mains: MainsAnalysis | null): NetRole | null {
   if (mains && keys.some((k) => mains.hazardKeys.has(k) || mains.conductorOf(k))) return null
+  if (terms.some((t) => !t.bare && (t.type === 'power_out' || t.type === 'power_in') && !positiveRail(t))) return null
   const ground = terms.some((t) => t.type === 'ground')
   const supply = terms.some(positiveRail)
   return ground && supply ? null : ground ? 'ground' : supply ? 'supply' : 'signal'
@@ -897,15 +900,16 @@ export function checkDiagram(d: Diagram): Finding[] {
   for (const f of mains?.findings ?? []) add(f)
 
   // Wire colours (low voltage): ground black, positive supplies red, signals neither. Only a colour
-  // the wire stores is judged: a wire with none is drawn in its role's colour (wireLooks), so it
-  // never breaks the convention and an old sheet's plain wires raise nothing. One finding per net.
+  // chosen on purpose (colorSet: picked in the Inspector, or given by the netlist or layout) is
+  // judged. Before the flag every wire drawn in the editor stored black, so an old sheet's wires
+  // raise nothing; a wire with no colour is drawn in its role's colour (wireLooks). One finding per net.
   const byUid = new Map(d.connections.map((c) => [c.uid, c]))
   const roles = rememberRoles(d, nl, nl.nets.map((keys, i) => roleOf(keys, netTerms[i], mains)), terminal, mains).roles
   nl.nets.forEach((keys, i) => {
     const role = roles[i]
     if (!role) return
     const bad = netWires[i].map((uid) => byUid.get(uid)!).filter((c) => {
-      if (c.color === undefined) return false
+      if (c.color === undefined || !c.colorSet) return false
       const fam = colorFamily(c.color)
       return role === 'ground' ? fam !== 'black' : role === 'supply' ? fam !== 'red' : fam !== 'other'
     })

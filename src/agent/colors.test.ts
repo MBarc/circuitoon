@@ -58,6 +58,8 @@ describe('layout colours wires by role', () => {
       colorsOf.set(net, (colorsOf.get(net) ?? new Set()).add(c.color!))
     }
     for (const s of colorsOf.values()) expect(s.size).toBe(1)
+    // The layout chose every colour on purpose, so the colour rules judge each one.
+    expect(diagram.connections.every((c) => c.colorSet === true)).toBe(true)
     const one = (net: string) => [...colorsOf.get(net)!][0]
     expect(one('GND')).toBe('black')
     expect(one('3V3')).toBe('red')
