@@ -86,7 +86,7 @@ Split along real connectors:
 
 The `layout` report prints: body overlaps and caption overlaps (both must be 0), wire crossings, total wire length, sheet size, and blocked nets (must be none). Use crossings and wire length to compare attempts. Always look at the picture as well.
 
-**To move parts, use `layout --keep`.** Write a `circuitoon-partial/1` file that holds the netlist as `intent`, plus `x`, `y` and optional `rotation` for the parts you want to pin. Every other part is placed around them. Each spirit-typewriter sheet ships this way. Placing the breadboard in the middle and the boards around it took the main sheet from 744 crossings to 319.
+**To move parts, use `layout --keep`.** Write a `circuitoon-partial/1` file that holds the netlist as `intent`, plus `x`, `y` and optional `rotation` for the parts you want to pin. Every other part is placed around them. Each spirit-typewriter sheet ships this way. Placing the breadboard in the middle and the boards around it took the main sheet from 678 crossings to 297.
 
 **`--keep` gotcha:** a repeat block gets its own local rail strips (`DP1`, `DP2`, ...), so each copy's shared ground or power is a short drop. Those strips exist only when **no member of the block is kept**.
 

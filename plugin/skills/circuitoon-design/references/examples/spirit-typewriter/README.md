@@ -6,10 +6,10 @@ Drawn as one sheet, this is 109 parts, 253 wires and about 1,700 wire crossings,
 
 | Sheet | Holds | Crossings (plain `layout`) | Crossings (`layout --keep`, shipped) | Wire length (keep) |
 | --- | --- | --- | --- | --- |
-| `1-main` | Power, ESP32, displays, OLED, SD card, and J1 to J3 (one JST-XH 4-pin per bank) | 744 | **319** | 20,376 px |
-| `2-bank-a` | J1, MCP23017 U2 at 0x20, balls 1 to 14 | 525 | **586** | 42,670 px |
-| `3-bank-b` | J1, MCP23017 U3 at 0x21, balls 15 to 28 | 518 | **526** | 42,930 px |
-| `4-bank-c` | J1, MCP23017 U4 at 0x22, balls 29 to 42 | 521 | **518** | 42,910 px |
+| `1-main` | Power, ESP32, displays, OLED, SD card, and J1 to J3 (one JST-XH 4-pin per bank) | 678 | **297** | 19,596 px |
+| `2-bank-a` | J1, MCP23017 U2 at 0x20, balls 1 to 14 | 457 | **490** | 42,630 px |
+| `3-bank-b` | J1, MCP23017 U3 at 0x21, balls 15 to 28 | 484 | **519** | 43,030 px |
+| `4-bank-c` | J1, MCP23017 U4 at 0x22, balls 29 to 42 | 475 | **524** | 43,190 px |
 
 Every sheet has body overlaps 0, caption overlaps 0 and blocked nets none, and passes `gate`.
 
@@ -33,7 +33,7 @@ The user's expanders are CJMCU-2317 boards (`mcp23017-cjmcu-2317`), and they lay
 
 The board has pads only, so it cannot sit on a breadboard. Each ball's channel net has three pins: two switch legs and one pad. The layout needs a strip to join them, so each bank has a half breadboard (BB2), where the layout claims one column strip per channel, with a wire from each pad to its strip. A `power-rail-strip` (BB1) carries 3V3 and GND from J1 to the chip and its address pins.
 
-For comparison, the DIP-28 `mcp23017-dip28`, mounted on BB2, saves the 14 pad-to-strip wires. On bank A it gave 481 to 507 crossings, against 535 to 565 for the CJMCU in the same trial positions. That is not enough of a difference to draw a chip the user does not have.
+For comparison, the DIP-28 `mcp23017-dip28`, mounted on BB2, saved the 14 pad-to-strip wires. On bank A it gave 481 to 507 crossings, against 535 to 565 for the CJMCU in the same trial positions. That is not enough of a difference to draw a chip the user does not have. It no longer lays out at all: a hole under a mounted part's drawn body takes nothing, and the DIP-28 is drawn 100 px across, so seated across the channel it covers every hole of its pins' strips but one.
 
 ## Pin choices on these sheets
 
