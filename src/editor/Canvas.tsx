@@ -2,7 +2,7 @@
 import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import { type EditorStore, useEditorState } from './store.ts'
 import { brokenStub, computeRoutes, labelAnchor, moduleOf, pinTargets, resolveEndpoint, routingKey, wireColor, wirePaths, wireStripe, wireWidth, type PartInstance, type PinTarget, type Routes } from '../format/diagram.ts'
-import { holeEndAt, plugsOf, splitBoards } from '../format/breadboard.ts'
+import { coveredHoles, holeEndAt, plugsOf, splitBoards } from '../format/breadboard.ts'
 import type { Pt } from '../format/geometry.ts'
 import { Part, INK } from '../render/Part.tsx'
 import { LegDots, TakenHoles } from '../render/Boards.tsx'
@@ -203,6 +203,10 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
   )
   const plugs = useMemo(() => settling?.plugs ?? plugsOf(diagram), [settling, diagram.parts, diagram.modules])
   const seats = useMemo(() => (settling ? [...settling.seats.values()].flatMap((s) => s ?? []) : []), [settling])
+  // While a wire is drawn or an end moved, holes under a mounted part's body show as unavailable
+  // (the red seat mark): nothing plugs in there, and hovering or dropping on one picks nothing.
+  const drawing = drag?.kind === 'wire' || drag?.kind === 'reconnect'
+  const covered = useMemo(() => (drawing ? coveredHoles(diagram) : []), [drawing, diagram.parts, diagram.modules])
   // Rebuilt only when parts, connections or modules actually change, so moving the pointer between
   // hover targets (which changes `hover` every frame) never rebuilds the netlist itself.
   const nl = useMemo(() => netlist(diagram), [diagram.parts, diagram.connections, diagram.modules])
@@ -599,6 +603,8 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
           {seats.flatMap((s, i) =>
             s.holes.map((h, j) => <circle key={`${i}-${j}`} className={s.status === 'seated' ? 'seat-ok' : 'seat-bad'} cx={h.x} cy={h.y} r={4} />),
           )}
+          {seats.flatMap((s, i) => (s.blocked ?? []).map((h, j) => <circle key={`blocked-${i}-${j}`} className="seat-bad" cx={h.x} cy={h.y} r={4} />))}
+          {covered.map((c) => <circle key={`covered-${c.board}-${c.group}-${c.hole}`} className="seat-bad" data-covered-hole="" cx={c.at.x} cy={c.at.y} r={4} />)}
         </g>
         {highlight && (
           <g className={`problem-glow ${highlight.severity}`} fill="none" strokeLinecap="round" strokeLinejoin="round" pointerEvents="none">

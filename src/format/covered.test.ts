@@ -2,7 +2,7 @@
 // sits over (not its own leg holes), whatever kind of part it is. Layout, seating, the checker and
 // verify all read them from coveredHoles.
 import { describe, expect, it } from 'vitest'
-import { bodyShapes, coveredHoles, mountIssues, plugsOf, seatOf, seatOn } from './breadboard.ts'
+import { bodyShapes, coveredHoles, holeEndAt, mountIssues, plugsOf, seatOf, seatOn } from './breadboard.ts'
 import type { Diagram, PartInstance } from './diagram.ts'
 import type { Rotation } from './geometry.ts'
 import type { ModuleDef } from './module.ts'
@@ -111,5 +111,15 @@ describe('seating around covered holes', () => {
   it('lets a part that moves with it (ignored) cover and be covered', () => {
     const d = sheet(on('R1', 'resistor', 30, 40), { uid: 'D1', designator: 'D1', module: 'led', x: 40, y: 40 })
     expect(seatOf(d, 'D1', plugsOf(d), new Set(['D1', 'R1']))!.status).toBe('seated')
+  })
+})
+
+describe('picking a hole for a wire end', () => {
+  it('never picks a hole under a part body: hovering, pressing or dropping there finds nothing', () => {
+    const d = sheet(on('R1', 'resistor', 30, 40))
+    expect(holeEndAt(d, 'BB1', { x: 60, y: 60 })).toBeNull()
+    expect(holeEndAt(d, 'BB1', { x: 60, y: 70 })).toEqual({ part: 'BB1', pin: 'c4-top', hole: 1 })
+    // A leg's own hole still picks (a jumper to the leg's strip is flagged by the checker instead).
+    expect(holeEndAt(d, 'BB1', { x: 30, y: 60 })).toEqual({ part: 'BB1', pin: 'c1-top', hole: 0 })
   })
 })

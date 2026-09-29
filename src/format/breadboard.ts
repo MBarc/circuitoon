@@ -94,14 +94,16 @@ export function holeAtPoint(part: PartInstance, m: ModuleDef, p: Pt, radius = 3.
 /**
  * The wire end a pointer at `p` picks on part `uid`: a hole or pad of any module with hole groups
  * (a breadboard, or an interior header whose pads are routing obstacles), within the hole target
- * radius. Mounting is a board-only matter; wiring is not. Null for a missing part or module, or no
- * hole near `p`. Hover, pressing and dropping a wire end all pick through this.
+ * radius. Mounting is a board-only matter; wiring is not. Null for a missing part or module, no
+ * hole near `p`, or a hole under a mounted part's body (`coveredHoles`), which takes no wire end.
+ * Hover, pressing and dropping a wire end all pick through this.
  */
 export function holeEndAt(d: Diagram, uid: string, p: Pt): Endpoint | null {
   const part = d.parts.find((q) => q.uid === uid)
   const m = part && moduleOf(d, part.module)
   const hit = part && m ? holeAtPoint(part, m, p) : null
-  return hit && { part: hit.board, pin: hit.group, hole: hit.hole }
+  if (!hit || coveredHoles(d).some((c) => c.board === hit.board && c.group === hit.group && c.hole === hit.hole)) return null
+  return { part: hit.board, pin: hit.group, hole: hit.hole }
 }
 
 export interface Plug {
