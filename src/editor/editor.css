@@ -13,7 +13,8 @@
   padding: 8px 12px; border-bottom: 1px solid var(--rule); background: var(--panel);
 }
 .toolbar .wordmark { font-size: 24px; margin-right: 8px; }
-.toolbar .title { font: 600 18px/1.2 "Fredoka", system-ui, sans-serif; margin-right: auto; }
+/* A long title gives way (ellipsis, full title on hover) before the tools wrap to a second row. */
+.toolbar .title { font: 600 18px/1.2 "Fredoka", system-ui, sans-serif; flex: 1 1 0; min-width: 5em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .toolbar .sep { width: 1px; align-self: stretch; background: var(--rule); margin: 0 4px; }
 .toolbar .message { flex-basis: 100%; margin: 0; font-size: 14px; }
 .toolbar .message.error { color: var(--error); }
@@ -377,3 +378,4 @@ button.wordmark { background: none; border: 0; padding: 0; cursor: pointer; }
   .bom-cat { display: none; }
   .bom-actions .hint { display: none; }
 }
+.bom-table td:last-child a { white-space: nowrap; }

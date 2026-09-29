@@ -105,7 +105,7 @@ export function Toolbar({ store, warnings, onClose }: { store: EditorStore; warn
   return (
     <header className="toolbar">
       <button type="button" className="wordmark" onClick={() => okToDiscard() && onClose()} title="Back to the start screen">Circuitoon</button>
-      <span className="title">{diagram.title}</span>
+      <span className="title" title={diagram.title}>{diagram.title}</span>
       <button type="button" className="tool" disabled={!store.canUndo} onClick={() => store.undo()}>Undo</button>
       <button type="button" className="tool" disabled={!store.canRedo} onClick={() => store.redo()}>Redo</button>
       <span className="sep" aria-hidden="true" />
