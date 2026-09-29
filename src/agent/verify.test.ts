@@ -65,6 +65,16 @@ describe('verifyDiagram', () => {
     expect(f.map((x) => x.rule)).toEqual(['capacity'])
     expect(f[0].message).toBe('BB1 c1-top hole 0 holds a leg and 1 wire end but takes one.')
   })
+  it("blocks a wire end in a hole under a mounted part's body, naming the part", () => {
+    // R1 lies from c1 to c7 on row a; its body covers c2 to c6 there.
+    const d = sheet()
+    d.connections.push(wire('w4', hole('c3-top', 0), hole('c3-top', 3)))
+    const f = verifyDiagram(d, libraryLookup)
+    expect(f.map((x) => [x.rule, x.severity])).toEqual([['covered-hole', 'error']])
+    expect(f[0].message).toBe("A wire ends in BB1 c3-top hole 0, under R1's body: a part lying over a hole leaves no room for a wire end. Move the wire to a free hole of the strip.")
+    expect(f[0].wires).toEqual(['w4'])
+    expect(f[0].parts).toEqual(['BB1', 'R1'])
+  })
   it('finds a missing connection', () => {
     const d = sheet()
     d.connections = d.connections.filter((c) => c.uid !== 'w2')

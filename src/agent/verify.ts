@@ -8,15 +8,15 @@ import { type Diagram, type Endpoint, type PartInstance, moduleOf } from '../for
 import { mountIssues, plugsOf } from '../format/breadboard.ts'
 import { PARAM_RULES, isBoard, isObj, type ModuleDef, terminalCapacity, validParamValue } from '../format/module.ts'
 import { netlist, nodeKey } from '../format/netlist.ts'
-import { endpointName } from '../format/checks.ts'
+import { coveredMessage, coveredUses, endpointName } from '../format/checks.ts'
 import { formatValue } from '../format/values.ts'
 import { type Intent, type IntentPart, type ModuleLookup, type Terminal, parseNetlist } from './netlist.ts'
 import { internalComponent } from './internal.ts'
 
 export type VerifyRule =
   | 'intent' | 'module-drift' | 'part-missing' | 'part-duplicate' | 'module-mismatch' | 'module-missing' | 'value-drift' | 'mount' | 'extra-part'
-  | 'missing-connection' | 'merge' | 'extra-connection' | 'nc' | 'capacity'
-const ORDER: VerifyRule[] = ['intent', 'module-drift', 'part-missing', 'part-duplicate', 'module-mismatch', 'module-missing', 'value-drift', 'mount', 'extra-part', 'missing-connection', 'merge', 'extra-connection', 'nc', 'capacity']
+  | 'missing-connection' | 'merge' | 'extra-connection' | 'nc' | 'capacity' | 'covered-hole'
+const ORDER: VerifyRule[] = ['intent', 'module-drift', 'part-missing', 'part-duplicate', 'module-mismatch', 'module-missing', 'value-drift', 'mount', 'extra-part', 'missing-connection', 'merge', 'extra-connection', 'nc', 'capacity', 'covered-hole']
 
 export interface VerifyFinding {
   /** The rule plus what causes it, so it stays the same while the problem does. */
@@ -128,6 +128,7 @@ export function verifyDiagram(d: Diagram, library: ModuleLookup): VerifyFinding[
     else against(d, r.intent, library, add)
   }
   capacity(d, add)
+  covered(d, add)
   found.sort((a, b) => ORDER.indexOf(a.rule) - ORDER.indexOf(b.rule) || (a.message < b.message ? -1 : a.message > b.message ? 1 : 0))
   const seen = new Map<string, number>()
   return found.map(({ causes, ...f }) => {
@@ -342,5 +343,17 @@ function capacity(d: Diagram, add: Add) {
     const ends = `${s.wires.length} wire end${s.wires.length === 1 ? '' : 's'}`
     const holds = s.legs ? `a leg and ${ends}` : ends
     add('capacity', `${s.what} holds ${holds} but takes ${s.cap === 1 ? 'one' : s.cap}.`, [key], { parts: [s.part], wires: s.wires })
+  }
+}
+
+/**
+ * No wire end or leg in a hole a mounted part's body covers (see coveredHoles): the checker's
+ * covered-hole, here too so verify alone (and the layout's own check) blocks it.
+ */
+function covered(d: Diagram, add: Add) {
+  for (const u of coveredUses(d, new Set(netlist(d).broken))) {
+    const key = JSON.stringify(['hole', u.cover.board, u.cover.group, u.cover.hole])
+    if (u.wire) add('covered-hole', coveredMessage(d, u), [key, u.wire], { parts: [u.cover.board, u.cover.by], wires: [u.wire] })
+    else add('covered-hole', coveredMessage(d, u), [key, u.leg!.part], { parts: [u.leg!.part, u.cover.by, u.cover.board], pins: [{ part: u.leg!.part, pin: u.leg!.pin }] })
   }
 }

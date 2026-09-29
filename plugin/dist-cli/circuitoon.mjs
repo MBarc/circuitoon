@@ -46389,6 +46389,10 @@ var RULES = {
 		severity: "error",
 		title: "Broken connection"
 	},
+	"covered-hole": {
+		severity: "error",
+		title: "Hole under a part"
+	},
 	short: {
 		severity: "error",
 		title: "Short circuit"
@@ -46574,6 +46578,50 @@ function brokenConnection(d, c) {
 /** Every connection in `netlist(d).broken`, in file order, named for the user. */
 function brokenConnections(d) {
 	return d.connections.map((c) => brokenConnection(d, c)).filter((b) => b !== null);
+}
+/**
+* Every wire end and leg in a hole under a mounted part's body (`coveredHoles`), wires in file
+* order then legs; wires in `skip` (broken ones) are left out. A wire to a plugged pin ends in that
+* leg's hole by design, so only an end that names a board hole counts, like leg-hole-shared.
+*/
+function coveredUses(d, skip = /* @__PURE__ */ new Set()) {
+	const covered = coveredHoles(d);
+	if (!covered.length) return [];
+	const at = new Map(covered.map((c) => [holeKey$1(c.board, c.group, c.hole), c]));
+	const out = [];
+	const where = (c) => endpointName(d, {
+		part: c.board,
+		pin: c.group,
+		hole: c.hole
+	});
+	for (const w of d.connections) {
+		if (skip.has(w.uid)) continue;
+		for (const ep of [w.from, w.to]) {
+			const c = at.get(holeKey$1(ep.part, ep.pin, ep.hole ?? 0));
+			if (c) out.push({
+				cover: c,
+				where: where(c),
+				wire: w.uid
+			});
+		}
+	}
+	for (const pl of plugsOf(d)) {
+		const c = at.get(holeKey$1(pl.board, pl.group, pl.hole));
+		if (c && c.by !== pl.part) out.push({
+			cover: c,
+			where: where(c),
+			leg: pl
+		});
+	}
+	return out;
+}
+/** The sentence for a covered use, shared by the checker and verify. */
+function coveredMessage(d, u) {
+	const name = (uid) => d.parts.find((p) => p.uid === uid)?.designator ?? uid;
+	const by = name(u.cover.by);
+	if (!u.leg) return `A wire ends in ${u.where}, under ${by}'s body: a part lying over a hole leaves no room for a wire end. Move the wire to a free hole of the strip.`;
+	const part = d.parts.find((p) => p.uid === u.leg.part);
+	return `Leg ${((part && moduleOf(d, part.module))?.pins.find((p) => !isSpacer(p) && p.name === u.leg.pin))?.label ?? u.leg.pin} of ${name(u.leg.part)} sits in ${u.where}, under ${by}'s body: a part lying over a hole leaves no room for a leg. Move ${name(u.leg.part)} or ${by}.`;
 }
 var wireName = (d, c) => c.label || `${endpointName(d, c.from)} to ${endpointName(d, c.to)}`;
 /** The switched terminals of a switch module (`electrical.terminals` a and b), when both exist. */
@@ -47132,6 +47180,46 @@ function checkDiagram(d) {
 				causes: [c.uid, hole]
 			});
 		}
+	}
+	for (const u of coveredUses(d, brokenSet)) {
+		const board = partByUid.get(u.cover.board);
+		const key = holeKey$1(u.cover.board, u.cover.group, u.cover.hole);
+		const message = coveredMessage(d, u);
+		if (u.wire) add({
+			rule: "covered-hole",
+			subject: board.designator,
+			target: u.where,
+			message,
+			parts: [board.uid, u.cover.by],
+			pins: [],
+			wires: [u.wire],
+			select: {
+				parts: [],
+				wires: [u.wire]
+			},
+			causes: [u.wire, key]
+		});
+		else add({
+			rule: "covered-hole",
+			subject: board.designator,
+			target: u.where,
+			message,
+			parts: [
+				u.leg.part,
+				u.cover.by,
+				board.uid
+			],
+			pins: [{
+				part: u.leg.part,
+				pin: u.leg.pin
+			}],
+			wires: [],
+			select: {
+				parts: [u.leg.part],
+				wires: []
+			},
+			causes: [nodeKey(u.leg.part, u.leg.pin), key]
+		});
 	}
 	for (const b of brokenConnections(d)) {
 		const c = d.connections.find((w) => w.uid === b.uid);
@@ -58906,7 +58994,8 @@ var ORDER = [
 	"merge",
 	"extra-connection",
 	"nc",
-	"capacity"
+	"capacity",
+	"covered-hole"
 ];
 var NO_INTENT = "no intent: lay out from a netlist or add intent";
 /** JSON with object keys sorted, so two modules compare by content whatever their key order. */
@@ -59017,6 +59106,7 @@ function verifyDiagram(d, library) {
 		else against(d, r.intent, library, add);
 	}
 	capacity(d, add);
+	covered(d, add);
 	found.sort((a, b) => ORDER.indexOf(a.rule) - ORDER.indexOf(b.rule) || (a.message < b.message ? -1 : a.message > b.message ? 1 : 0));
 	const seen = /* @__PURE__ */ new Map();
 	return found.map(({ causes, ...f }) => {
@@ -59265,6 +59355,35 @@ function capacity(d, add) {
 		});
 	}
 }
+/**
+* No wire end or leg in a hole a mounted part's body covers (see coveredHoles): the checker's
+* covered-hole, here too so verify alone (and the layout's own check) blocks it.
+*/
+function covered(d, add) {
+	for (const u of coveredUses(d, new Set(netlist(d).broken))) {
+		const key = JSON.stringify([
+			"hole",
+			u.cover.board,
+			u.cover.group,
+			u.cover.hole
+		]);
+		if (u.wire) add("covered-hole", coveredMessage(d, u), [key, u.wire], {
+			parts: [u.cover.board, u.cover.by],
+			wires: [u.wire]
+		});
+		else add("covered-hole", coveredMessage(d, u), [key, u.leg.part], {
+			parts: [
+				u.leg.part,
+				u.cover.by,
+				u.cover.board
+			],
+			pins: [{
+				part: u.leg.part,
+				pin: u.leg.pin
+			}]
+		});
+	}
+}
 //#endregion
 //#region src/agent/catalog.ts
 var libraryLookup = (id) => Object.hasOwn(modulesById, id) ? modulesById[id] : void 0;
@@ -59354,6 +59473,11 @@ function uniqueIds(findings) {
 		};
 	});
 }
+/**
+* Verify's findings a combined report leaves out because the wiring checker reports the same
+* problem itself: covered-hole (a wire end or leg under a part's body) comes from one shared test.
+*/
+var alsoChecked = (f) => f.rule === "covered-hole";
 var findingsText = (findings) => findings.map((f) => `${f.severity.toUpperCase()} ${f.rule}: ${f.message}`).join("\n");
 var notCheckedText = () => ["Not checked:", ...NOT_CHECKED.map((n) => `  - ${n}`)].join("\n");
 function report(io, args, format, findings) {
@@ -59379,7 +59503,7 @@ function verifyCommand(args, io) {
 }
 function checkCommand(args, io) {
 	const diagram = sheetOf("check", args, io);
-	return report(io, args, "circuitoon-cli/check/1", uniqueIds([...diagram.intent !== void 0 ? verifyDiagram(diagram, libraryLookup) : [], ...checkDiagram(diagram)].map(cliFinding)));
+	return report(io, args, "circuitoon-cli/check/1", uniqueIds([...diagram.intent !== void 0 ? verifyDiagram(diagram, libraryLookup).filter((f) => !alsoChecked(f)) : [], ...checkDiagram(diagram)].map(cliFinding)));
 }
 //#endregion
 //#region src/cli/png.ts
@@ -59717,7 +59841,7 @@ async function runGate(bytes, opts) {
 	}
 	const d = v.diagram;
 	v.warnings.forEach((w, i) => note("load", String(i), w.includes("it was dropped and the module default is shown") || w.includes(MISSING_MODULE) ? "error" : "warning", w));
-	found.push(...verifyDiagram(d, libraryLookup).map(cliFinding));
+	found.push(...verifyDiagram(d, libraryLookup).filter((f) => !alsoChecked(f)).map(cliFinding));
 	found.push(...checkDiagram(d).map(cliFinding));
 	const routes = computeRoutes(d);
 	for (const { conn: c, blocked } of wirePaths(d, routes)) if (blocked) note("blocked-route", c.uid, "error", `The wire ${c.label ?? `${endpointName(d, c.from)} to ${endpointName(d, c.to)}`} has no clear route: it runs through a part.`, {

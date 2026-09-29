@@ -610,6 +610,9 @@ describe('every message ends with what to do', () => {
     const legs = custom({ id: 'legs', pins: [{ name: 'L', side: 'left', type: 'passive' }, { name: 'R', side: 'right', type: 'passive' }] })
     const hole = sheetWith([board, legs], [at('bb', 'BB1', 'strips'), at('r1', 'R1', 'legs', 10, { mount: { board: 'bb' } }), at('r2', 'R2', 'legs', 300)], [['bb|s1|1', 'r2|L']])
     expect(rules(hole)).toContain('leg-hole-shared')
+    // R1's body covers s2 to s4, holes 0 and 1: a wire end in s3 hole 1, and R3's leg in s3 hole 0.
+    const under = sheetWith([board, legs], [at('bb', 'BB1', 'strips'), at('r1', 'R1', 'legs', 10, { mount: { board: 'bb' } }), at('r2', 'R2', 'legs', 300), at('r3', 'R3', 'legs', 30, { y: -10, mount: { board: 'bb' } })], [['bb|s3|1', 'r2|L']])
+    expect(checkDiagram(under).filter((f) => f.rule === 'covered-hole')).toHaveLength(2)
   })
   it('on every finding of every sheet built in this file', () => {
     const missing: string[] = []
