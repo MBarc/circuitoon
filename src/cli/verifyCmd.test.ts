@@ -186,6 +186,29 @@ describe('circuitoon verify and check', () => {
     }
   })
 
+  it('prints a note (info) and never blocks on it: a parallel battery bank', async () => {
+    const dir = tempDir()
+    writeFileSync(join(dir, 'sheet.json'), readFileSync(new URL('../format/fixtures/battery-bank-1s4p.circuitoon.json', import.meta.url)))
+    // Michael's sheet also has w9 and w11 in c2-top hole 2 (hole-shared, an error): move w9's end to a free hole of that strip.
+    edit(dir, (s) => {
+      const r = validateDiagram(s)
+      if (!r.ok) throw new Error(r.errors.join('; '))
+      const w = s.connections.find((x) => x.uid === 'w9')!
+      const at = w.from as { part: string; pin: string; hole: number }
+      const taken = takenHoles(r.diagram)
+      w.from = { ...at, hole: [0, 1, 2, 3, 4].find((i) => !taken.has(holeKey(at.part, at.pin, i)))! }
+    })
+    const c = await cli(['check', 'sheet.json', '--json'], { cwd: dir })
+    expect(c.code).toBe(0)
+    const out = JSON.parse(c.out)
+    expect(schemaErrors(loadSchema('findings'), out)).toEqual([])
+    expect(out.ok).toBe(true)
+    expect(out.findings.map((f: CliFinding) => `${f.severity} ${f.rule}`)).toEqual(['info battery-bank'])
+    const text = await cli(['check', 'sheet.json'], { cwd: dir })
+    expect(text.code).toBe(0)
+    expect(text.out).toContain('INFO battery-bank: BT1-BT4 form a parallel battery bank (4P, 3.7 V).')
+  })
+
   it('keeps only the finding fields, prints plain text, and makes every id unique', () => {
     const f: CliFinding = { id: 'mount|a', rule: 'mount', severity: 'warning', message: 'm', parts: ['p'], pins: [], wires: [] }
     expect(cliFinding({ ...f, subject: 'x', target: 'y' } as CliFinding)).toEqual(f)

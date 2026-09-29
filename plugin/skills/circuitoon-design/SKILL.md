@@ -29,7 +29,7 @@ Below, `circuitoon` stands for that whole command. Work in a scratch folder of t
 - **The one exception is `GATE INCOMPLETE`** (exit 3: nothing blocks, but no browser could draw the PNGs). Then only `out/sheet.svg` and the link go to the user, labelled as not fully gated because the PNG step did not run. Nothing else.
 - **Never invent a pin or a pinout.** Use the pin names that `circuitoon part <id>` prints. A part that is not built in may be embedded only from its maker's documentation, with those URLs in `source`, and it is reported as custom and unverified. If a pin cannot be sourced, say so and stop.
 - **Ask about what you cannot verify.** Wiring choices the parts do not decide are the user's call: how many switches a sensor holds, whether they share one input, which channel or GPIO each one uses, an I2C address, the power source. For an ESP32, ask which module the board carries (WROOM or WROVER) before you use IO16 or IO17: a WROVER uses them for its PSRAM. Ask before you design. If you must assume to show an example, write the assumption in a netlist `note` and list it back to the user as an assumption to confirm.
-- **Always report the gate's warnings and its "not checked" list** in plain words.
+- **Always report the gate's warnings, its notes and its "not checked" list** in plain words. Notes are not problems; say so.
 - **Research never sends personal data.** No names, emails, addresses, order numbers or tokens in URLs, search queries or request bodies.
 
 ## Exit codes

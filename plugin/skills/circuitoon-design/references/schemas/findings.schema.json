@@ -16,7 +16,7 @@
         "properties": {
           "id": { "type": "string" },
           "rule": { "type": "string" },
-          "severity": { "enum": ["error", "warning"] },
+          "severity": { "enum": ["error", "warning", "info"] },
           "message": { "type": "string" },
           "parts": { "type": "array", "items": { "type": "string" } },
           "pins": {

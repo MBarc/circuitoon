@@ -2,7 +2,7 @@ import { useRef, useState } from 'react'
 import { type EditorStore, useEditorState } from './store.ts'
 import type { Diagram } from '../format/diagram.ts'
 import { deleteSelection, EMPTY_SELECTION, rotateParts } from './ops.ts'
-import { severityCounts, useProblems } from './problems.ts'
+import { isProblem, severityCounts, useProblems } from './problems.ts'
 import { SeverityMark } from './SeverityMark.tsx'
 import { emptyDiagram, serializeDiagram } from '../format/diagram.ts'
 import { EXPORT_SUFFIX, defaultBaseName, downloadText, readDiagramFile, saveWithPicker, type SavePicker } from './files.ts'
@@ -24,7 +24,8 @@ export function Toolbar({ store, warnings, onClose }: { store: EditorStore; warn
   // Warnings the open sheet was loaded with; every one stays reachable until dismissed.
   const [loadWarnings, setLoadWarnings] = useState<{ list: string[]; key: number } | null>(warnings?.length ? { list: warnings, key: 0 } : null)
   const hasSel = selection.parts.length + selection.wires.length + (selection.annotations?.length ?? 0) > 0
-  const findings = useProblems(store)
+  // The badge counts problems only: a note (a parallel battery bank) is not one.
+  const findings = useProblems(store).filter(isProblem)
   const errors = findings.filter((f) => f.severity === 'error').length
   const mains = hasMains(diagram)
 

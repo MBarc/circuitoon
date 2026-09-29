@@ -9,7 +9,7 @@ import { CABLE_PRESETS, END_KINDS, END_NAMES, END_SIZE, type EndKind, type WireE
 import { CableEnd } from '../render/CableEnd.tsx'
 import { INK } from '../render/Part.tsx'
 import { hexEditChanged, shownHex } from './color.ts'
-import { checkFailed, highlightOf, severityCounts, useProblems } from './problems.ts'
+import { checkFailed, highlightOf, isProblem, severityCounts, useProblems } from './problems.ts'
 import { type Finding, RULES, brokenConnection } from '../format/checks.ts'
 import { SeverityMark } from './SeverityMark.tsx'
 import { CAPACITOR_VALUES, RESISTOR_VALUES, editableParams, formatValue, paramValue, parseValueIn, pickUnitExp, scaledNumber, unitChoices } from '../format/values.ts'
@@ -337,7 +337,9 @@ function selectLabels(findings: Finding[]): string[] {
  * into view) and, for a broken connection, Delete. Hovering or focusing a row lights its parts,
  * pins and wires on the canvas. Focus never falls to the page: Select moves it to the panel
  * heading of what it selected; Delete moves it to the next row's Select (the previous row's after
- * the last one), or to the list heading once no row is left.
+ * the last one), or to the list heading once no row is left. Notes (severity info, such as a
+ * parallel battery bank) are not problems: they are listed apart, under Notes, and a sheet with
+ * only notes still reads "No problems found".
  */
 export function ProblemList({ store, findings }: { store: EditorStore; findings: Finding[] }) {
   const errors = findings.filter((f) => f.severity === 'error').length
@@ -360,7 +362,86 @@ export function ProblemList({ store, findings }: { store: EditorStore; findings:
         </ul>
       </section>
     )
-  if (!findings.length)
+  const problems = findings.filter(isProblem)
+  const light = (f: Finding) => store.setHighlight(highlightOf(f))
+  const unlight = () => store.setHighlight(null)
+  const labels = selectLabels(findings)
+  const row = (f: Finding) => {
+    // The index in the whole list: message ids stay unique across problems and notes.
+    const i = findings.indexOf(f)
+    const title = RULES[f.rule].title
+    const broken = f.rule === 'broken'
+    return (
+      <li
+        key={f.id}
+        className={f.severity}
+        onMouseEnter={() => light(f)}
+        onFocus={() => light(f)}
+        onBlur={(e) => {
+          if (!e.currentTarget.contains(e.relatedTarget as Node | null)) unlight()
+        }}
+      >
+        <SeverityMark severity={f.severity} />
+        <div className="problem-text">
+          <span className="problem-title">
+            <span className="sr-only">{f.severity === 'error' ? 'Error: ' : f.severity === 'warning' ? 'Warning: ' : 'Note: '}</span>
+            {title}
+          </span>
+          <span className="problem-message" id={`problem-message-${i}`}>{f.message}</span>
+        </div>
+        <div className="problem-actions">
+          <button
+            type="button"
+            className="tool small"
+            data-problem-select={f.id}
+            aria-label={labels[i]}
+            aria-describedby={`problem-message-${i}`}
+            onClick={() => {
+              const sel = f.select
+              store.setHighlight(null)
+              store.select(sel)
+              store.reveal()
+              focusSoon(() => document.getElementById(sel.parts.length === 0 && sel.wires.length === 1 ? 'wire-title' : 'selection-title'))
+            }}
+          >
+            Select
+          </button>
+          {broken && (
+            <button
+              type="button"
+              className="tool small danger"
+              aria-label={`Delete ${f.subject}`}
+              aria-describedby={`problem-message-${i}`}
+              onClick={() => {
+                const s = store.getState()
+                store.setHighlight(null)
+                store.commit(deleteSelection(s.diagram, { parts: [], wires: f.wires }))
+                const next = (findings[i + 1] ?? findings[i - 1])?.id
+                focusSoon(() =>
+                  (next !== undefined
+                    ? document.querySelector<HTMLElement>(`[data-problem-select="${CSS.escape(next)}"]`)
+                    : null) ?? document.getElementById('problems-title') ?? document.getElementById('sheet-heading'),
+                )
+              }}
+            >
+              Delete
+            </button>
+          )}
+        </div>
+      </li>
+    )
+  }
+  const notes = findings.filter((f) => !isProblem(f))
+  const noteList = notes.length > 0 && (
+    <div className="problem-notes" role="group" aria-labelledby="notes-title">
+      <h4 id="notes-title">
+        Notes
+        <span className="problems-count">{notes.length === 1 ? '1 note' : `${notes.length} notes`}</span>
+      </h4>
+      <ul onMouseLeave={unlight}>{notes.map(row)}</ul>
+    </div>
+  )
+  if (!problems.length)
     return (
       <section className="problems clean" aria-labelledby="problems-title">
         <h3 id="problems-title" tabIndex={-1}>
@@ -368,83 +449,18 @@ export function ProblemList({ store, findings }: { store: EditorStore; findings:
           No problems found in the drawn connections.
         </h3>
         {notice}
+        {noteList}
       </section>
     )
-  const light = (f: Finding) => store.setHighlight(highlightOf(f))
-  const unlight = () => store.setHighlight(null)
-  const labels = selectLabels(findings)
   return (
     <section className={`problems ${errors ? 'has-errors' : 'has-warnings'}`} aria-labelledby="problems-title">
       <h3 id="problems-title" tabIndex={-1}>
         Problems
-        <span className="problems-count">{severityCounts(findings)}</span>
+        <span className="problems-count">{severityCounts(problems)}</span>
       </h3>
       {notice}
-      <ul onMouseLeave={unlight}>
-        {findings.map((f, i) => {
-          const title = RULES[f.rule].title
-          const broken = f.rule === 'broken'
-          return (
-            <li
-              key={f.id}
-              className={f.severity}
-              onMouseEnter={() => light(f)}
-              onFocus={() => light(f)}
-              onBlur={(e) => {
-                if (!e.currentTarget.contains(e.relatedTarget as Node | null)) unlight()
-              }}
-            >
-              <SeverityMark severity={f.severity} />
-              <div className="problem-text">
-                <span className="problem-title">
-                  <span className="sr-only">{f.severity === 'error' ? 'Error: ' : 'Warning: '}</span>
-                  {title}
-                </span>
-                <span className="problem-message" id={`problem-message-${i}`}>{f.message}</span>
-              </div>
-              <div className="problem-actions">
-                <button
-                  type="button"
-                  className="tool small"
-                  data-problem-select={f.id}
-                  aria-label={labels[i]}
-                  aria-describedby={`problem-message-${i}`}
-                  onClick={() => {
-                    const sel = f.select
-                    store.setHighlight(null)
-                    store.select(sel)
-                    store.reveal()
-                    focusSoon(() => document.getElementById(sel.parts.length === 0 && sel.wires.length === 1 ? 'wire-title' : 'selection-title'))
-                  }}
-                >
-                  Select
-                </button>
-                {broken && (
-                  <button
-                    type="button"
-                    className="tool small danger"
-                    aria-label={`Delete ${f.subject}`}
-                    aria-describedby={`problem-message-${i}`}
-                    onClick={() => {
-                      const s = store.getState()
-                      store.setHighlight(null)
-                      store.commit(deleteSelection(s.diagram, { parts: [], wires: f.wires }))
-                      const next = (findings[i + 1] ?? findings[i - 1])?.id
-                      focusSoon(() =>
-                        (next !== undefined
-                          ? document.querySelector<HTMLElement>(`[data-problem-select="${CSS.escape(next)}"]`)
-                          : null) ?? document.getElementById('problems-title') ?? document.getElementById('sheet-heading'),
-                      )
-                    }}
-                  >
-                    Delete
-                  </button>
-                )}
-              </div>
-            </li>
-          )
-        })}
-      </ul>
+      <ul onMouseLeave={unlight}>{problems.map(row)}</ul>
+      {noteList}
     </section>
   )
 }

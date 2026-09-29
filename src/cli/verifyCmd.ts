@@ -16,7 +16,8 @@ import { CliError, EXIT, type Io, loadSheet, printJson } from './io.ts'
 export interface CliFinding {
   id: string
   rule: string
-  severity: 'error' | 'warning'
+  /** `info` is a note (a parallel battery bank): printed, never blocking. */
+  severity: 'error' | 'warning' | 'info'
   message: string
   parts: string[]
   pins: Endpoint[]

@@ -47,6 +47,8 @@ export interface GateReport {
   artifacts: GateArtifact[]
   blocking: CliFinding[]
   warnings: CliFinding[]
+  /** Notes (severity info): never blocking, for the user to read. */
+  notes: CliFinding[]
   notChecked: string[]
   link: { url: string | null; file: string | null; chars: number }
   quantities: QuantityRow[]
@@ -138,6 +140,7 @@ export async function runGate(bytes: Uint8Array, opts: { sheetPath: string; outD
       artifacts,
       blocking,
       warnings: all.filter((f) => f.severity === 'warning'),
+      notes: all.filter((f) => f.severity === 'info'),
       notChecked: NOT_CHECKED,
       link,
       ...rows,
@@ -258,6 +261,7 @@ export async function gateCommand(args: Args, io: Io): Promise<number> {
     const lines = [head]
     if (report.blocking.length) lines.push('', 'Blocking:', findingsText(report.blocking))
     if (report.warnings.length) lines.push('', 'Warnings (report these to the user):', findingsText(report.warnings))
+    if (report.notes.length) lines.push('', 'Notes (not problems; pass them on to the user):', findingsText(report.notes))
     lines.push('', `Artifacts in ${out}:`, ...report.artifacts.map((a) => `  ${a.path}  sha256 ${a.sha256}`), `  gate.json`)
     if (report.link.url) lines.push('', `Link: ${report.link.url}`, LINK_NOTICE)
     lines.push('', notCheckedText())

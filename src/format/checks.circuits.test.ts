@@ -1,6 +1,7 @@
 // The wiring checker on real hobby circuits built from the built-in parts: what a correct hookup
 // must not be nagged about, and the damaging ones it must catch. From the Claude review's
 // realistic-circuit sheets, with the findings the review rulings expect.
+import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { RULES, checkDiagram } from './checks.ts'
 import type { Connection, Diagram, PartInstance } from './diagram.ts'
@@ -591,8 +592,94 @@ describe('mains sheets (synthetic parts): every mains rule is reached, and its m
   })
 })
 
+describe('parallel battery banks (Ruling V1)', () => {
+  const holder = (uid: string, designator: string, x: number, extra: Partial<PartInstance> = {}) => at(uid, designator, 'battery-18650-holder', x, extra)
+  const all = (d: Diagram) => checkDiagram(d).map((x) => `${x.severity} ${x.rule}: ${x.message}`)
+  const advice = 'Charge every cell to the same voltage, within about 0.1 V, before connecting them, and use matching cells.'
+  it('Michael\'s 1S4P pack on an IP5306: one note, no supplies-parallel', () => {
+    const d = built(JSON.parse(readFileSync(new URL('./fixtures/battery-bank-1s4p.circuitoon.json', import.meta.url), 'utf8')) as Diagram)
+    const findings = checkDiagram(d)
+    expect(findings.filter((x) => x.rule === 'supplies-parallel')).toEqual([])
+    // His sheet also has two wire ends in one breadboard hole (w9 and w11): hole-shared, listed first.
+    expect(findings.map((x) => `${x.severity} ${x.rule}: ${x.message}`)).toEqual([
+      'error hole-shared: 2 wire ends share Power Breadboard c2-top hole 2: Power Breadboard c1-top hole 2 to Power Breadboard c2-top hole 2 and Power Breadboard c2-top hole 2 to U1 B+. Physically, one hole takes one wire end. Move one of them to a free hole of the same strip.',
+      `info battery-bank: BT1-BT4 form a parallel battery bank (4P, 3.7 V). ${advice}`,
+    ])
+    const bank = findings.find((x) => x.rule === 'battery-bank')!
+    expect(bank.parts).toHaveLength(4)
+    expect(bank.pins).toHaveLength(8)
+    expect(bank.target).toBe('BT1-BT4')
+  })
+  it('two cells feeding loads: named by designator, one supply at the bank voltage', () => {
+    const d = sheet([holder('bt1', 'BT1', 0), holder('bt2', 'BT2', 200), at('u1', 'U1', 'ip5306-usbc-module', 400), at('u2', 'U2', 'bme280-module-4pin', 700)],
+      [['bt1|+', 'bt2|+'], ['bt1|-', 'bt2|-'], ['bt2|+', 'u1|B+'], ['bt2|-', 'u1|B-'], ['bt1|+', 'u2|VIN'], ['bt1|-', 'u2|GND']])
+    expect(all(d)).toEqual([`info battery-bank: BT1 and BT2 form a parallel battery bank (2P, 3.7 V). ${advice}`])
+  })
+  it('a bank still gets the voltage checks of one supply: too high for a 3.3 V input', () => {
+    const d = sheet([holder('bt1', 'BT1', 0), holder('bt2', 'BT2', 200), at('u1', 'U1', 'bme280-module-6pin', 400)],
+      [['bt1|+', 'bt2|+'], ['bt1|-', 'bt2|-'], ['bt2|+', 'u1|VCC'], ['bt2|-', 'u1|GND']])
+    expect(all(d)).toEqual([
+      'error supply-too-high: U1 VCC accepts up to 3.3 V but gets 3.7 V from BT1 + and BT2 + in parallel. Use a 3.3 V supply instead.',
+      `info battery-bank: BT1 and BT2 form a parallel battery bank (2P, 3.7 V). ${advice}`,
+    ])
+  })
+  it('two banks stacked in series (2S2P) are two banks, and the stack adds up', () => {
+    const d = sheet([holder('bt1', 'BT1', 0), holder('bt2', 'BT2', 200), holder('bt3', 'BT3', 400), holder('bt4', 'BT4', 600), at('u1', 'U1', 'esp32-devkit-v1-30', 800)],
+      [['bt1|+', 'bt2|+'], ['bt1|-', 'bt2|-'], ['bt3|+', 'bt4|+'], ['bt3|-', 'bt4|-'], ['bt1|+', 'bt3|-'], ['bt4|+', 'u1|VIN'], ['bt2|-', 'u1|GND']])
+    expect(all(d)).toEqual([
+      `info battery-bank: BT1 and BT2 form a parallel battery bank (2P, 3.7 V). ${advice}`,
+      `info battery-bank: BT3 and BT4 form a parallel battery bank (2P, 3.7 V). ${advice}`,
+    ])
+  })
+  it('a series stack is not a bank and stays unaffected', () => {
+    const d = sheet([holder('bt1', 'BT1', 0), holder('bt2', 'BT2', 200), at('u1', 'U1', 'esp32-devkit-v1-30', 400)],
+      [['bt1|+', 'bt2|-'], ['bt2|+', 'u1|VIN'], ['bt1|-', 'u1|GND']])
+    expect(found(d)).toEqual([])
+  })
+  it('different chemistries or voltages still warn: 18650 with a 9 V battery, 1 AA with a 2 x AA holder, a CR2032 with a 2 x AA holder', () => {
+    const pair = (a: string, b: string) => sheet([at('bt1', 'BT1', a), at('bt2', 'BT2', b, 200)], [['bt1|+', 'bt2|+'], ['bt1|-', 'bt2|-']])
+    expect(rules(pair('battery-18650-holder', 'battery-9v'))).toEqual(['supplies-fight'])
+    expect(rules(pair('battery-aa', 'battery-holder-2xaa'))).toEqual(['supplies-fight'])
+    // The same 3 V, but a lithium coin cell beside two alkaline AAs: not a bank.
+    expect(found(pair('battery-cr2032', 'battery-holder-2xaa'))).toEqual(['supplies-parallel: BT1 + and BT2 + are two supplies tied together; power this net from one of them.'])
+    // A bank beside a 9 V battery: one fight, naming every cell.
+    const nine = sheet([holder('bt1', 'BT1', 0), holder('bt2', 'BT2', 200), at('bt3', 'BT3', 'battery-9v', 400)], [['bt1|+', 'bt2|+'], ['bt1|-', 'bt2|-'], ['bt3|+', 'bt2|+'], ['bt3|-', 'bt2|-']])
+    expect(all(nine)).toEqual(['error supplies-fight: BT3 + (9 V) and BT1 + and BT2 + (3.7 V in parallel) are wired together: the supplies fight, and the higher one drives current into the lower one, which can damage both. Separate them.'])
+    // The same holder set to different voltages (a full cell beside a flat one) fights.
+    const d = sheet([holder('bt1', 'BT1', 0, volts(4.2)), holder('bt2', 'BT2', 200, volts(3.7))], [['bt1|+', 'bt2|+'], ['bt1|-', 'bt2|-']])
+    expect(rules(d)).toEqual(['supplies-fight'])
+  })
+  it('a battery bank tied to a non-battery supply still warns, naming every cell: USB 5 V, a buck output', () => {
+    const usb = sheet([at('bt1', 'BT1', 'battery-holder-4xaa', 0, volts(5)), at('bt2', 'BT2', 'battery-holder-4xaa', 200, volts(5)), at('u1', 'U1', 'rpi-pico', 400)],
+      [['bt1|+', 'bt2|+'], ['bt1|-', 'bt2|-'], ['bt2|+', 'u1|VBUS'], ['bt2|-', 'u1|GND']])
+    const buck = sheet([holder('bt1', 'BT1', 0), holder('bt2', 'BT2', 200), at('u1', 'U1', 'lm2596-buck-module', 400, volts(3.7)), at('bt3', 'BT3', 'battery-9v', 700)],
+      [['bt1|+', 'bt2|+'], ['bt1|-', 'bt2|-'], ['u1|OUT+', 'bt2|+'], ['u1|OUT-', 'bt2|-'], ['bt3|+', 'u1|IN+'], ['bt3|-', 'u1|IN-']])
+    for (const [d, other] of [[usb, 'U1 VBUS'], [buck, 'U1 OUT+']] as const) {
+      expect(rules(d)).not.toContain('battery-bank')
+      expect(rules(d)).toContain('supplies-parallel')
+      const tied = found(d).filter((x) => x.startsWith('supplies-parallel')).join(' ')
+      for (const n of ['BT1', 'BT2', other]) expect(tied).toContain(n)
+    }
+  })
+  it('a bank on a pin behind the USB diode is named as every cell when USB pushes current back', () => {
+    const d = sheet([holder('bt1', 'BT1', 0), holder('bt2', 'BT2', 200), at('u1', 'U1', 'rpi-pico', 400)],
+      [['bt1|+', 'bt2|+'], ['bt1|-', 'bt2|-'], ['bt2|+', 'u1|VSYS'], ['bt2|-', 'u1|GND']])
+    expect(all(d)).toEqual(['error supplies-fight: When USB is plugged in, U1 VSYS gets 5 V from USB, which pushes current back into BT1 and BT2 (3.7 V) and can damage the cells. Add a diode from BT1 + to VSYS, or unplug BT1 and BT2 before plugging in USB.'])
+  })
+  it('cells joined only on +: no bank; with the - sides apart nothing flows, joined only through a charger\'s common return they still warn', () => {
+    const apart = sheet([holder('bt1', 'BT1', 0), holder('bt2', 'BT2', 200), at('u1', 'U1', 'ip5306-usbc-module', 400)],
+      [['bt1|+', 'u1|B+'], ['bt2|+', 'u1|B+'], ['bt1|-', 'u1|B-']])
+    expect(rules(apart)).not.toContain('battery-bank')
+    expect(rules(apart)).not.toContain('supplies-parallel')
+    const through = sheet([holder('bt1', 'BT1', 0), holder('bt2', 'BT2', 200), at('u1', 'U1', 'tp4056-module', 400)],
+      [['bt1|+', 'u1|B+'], ['bt2|+', 'u1|B+'], ['bt1|-', 'u1|B-'], ['bt2|-', 'u1|OUT-']])
+    expect(rules(through)).not.toContain('battery-bank')
+    expect(rules(through)).toContain('supplies-parallel')
+  })
+})
+
 describe('every message ends with what to do', () => {
-  const VERBS = ['connect', 'move', 'swap', 'remove', 'set', 'use', 'add', 'separate', 'delete', 'power', 'keep', 'give', 'drag', 'do', 'say', 'wire', 'unplug', 'split', 'check', 'fit', 'turn']
+  const VERBS = ['connect', 'move', 'swap', 'remove', 'set', 'use', 'add', 'separate', 'delete', 'power', 'keep', 'give', 'drag', 'do', 'say', 'wire', 'unplug', 'split', 'check', 'fit', 'turn', 'charge']
   /** True when a clause of the last sentence starts with an instruction. */
   const acts = (message: string) => {
     const last = message.split(/(?<=\.) /).pop()!

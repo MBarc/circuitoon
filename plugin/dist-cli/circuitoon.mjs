@@ -46642,6 +46642,10 @@ var RULES = {
 	"mains-incomplete": {
 		severity: "warning",
 		title: "Mains checks did not finish"
+	},
+	"battery-bank": {
+		severity: "info",
+		title: "Parallel battery bank"
 	}
 };
 var RULE_ORDER = Object.keys(RULES);
@@ -46895,6 +46899,14 @@ function returnPinName(t) {
 }
 /** True for a battery or cell (a voltage source module). */
 var isCell = (t) => t.info.module.electrical?.model === "voltage_source";
+/**
+* Designators in natural order as words: "BT1-BT4" when three or more share a prefix and run
+* without a gap, else a list ("BT1 and BT2", "BT1, BT3 and BT4").
+*/
+function cellRange(names) {
+	const parsed = names.map((n) => /^(.*?)(\d+)$/.exec(n));
+	return names.length > 2 && parsed.every((m, i) => m && m[1] === parsed[0][1] && Number(m[2]) === Number(parsed[0][2]) + i) ? `${names[0]}-${names[names.length - 1]}` : andList(names);
+}
 /** A supply named for advice: a battery by its designator, anything else by its pin. */
 var supplyName = (t) => isCell(t) ? t.part.designator : termName(t);
 /**
@@ -47392,7 +47404,7 @@ function checkDiagram(d) {
 		});
 	}
 	for (const f of mains?.findings ?? []) add(f);
-	const rank = (s) => s === "error" ? 0 : 1;
+	const rank = (s) => s === "error" ? 0 : s === "warning" ? 1 : 2;
 	const sorted = findings.map((f) => ({
 		...f,
 		severity: RULES[f.rule].severity
@@ -47462,6 +47474,8 @@ function checkPotentials({ d, nl, netTerms, netWires, terminal, plugs, shorted, 
 	const diodes = [];
 	const unknownOn = /* @__PURE__ */ new Map();
 	const outOn = /* @__PURE__ */ new Map();
+	/** Cells by bank (Ruling V1): same module and voltage, every + on one net and every - on another. */
+	const bankCells = /* @__PURE__ */ new Map();
 	for (const p of d.parts) {
 		const m = moduleOf(d, p.module);
 		if (!m) continue;
@@ -47507,6 +47521,15 @@ function checkPotentials({ d, nl, netTerms, netWires, terminal, plugs, shorted, 
 			list.set(out, [...list.get(out) ?? [], s]);
 			if (shorted.has(s.id)) continue;
 			const retKey = ret ? nodeKey(p.uid, ret) : "";
+			if (ret && s.v !== null && !s.external && isCell(s.term)) {
+				const k = JSON.stringify([
+					out,
+					netOfKey(retKey),
+					p.module,
+					s.v
+				]);
+				bankCells.set(k, [...bankCells.get(k) ?? [], s]);
+			}
 			if (ret && s.external?.diode) diodes.push({
 				from: netOfKey(retKey),
 				to: out,
@@ -47543,6 +47566,32 @@ function checkPotentials({ d, nl, netTerms, netWires, terminal, plugs, shorted, 
 			});
 		}
 	}
+	const bankOf = /* @__PURE__ */ new Map();
+	const spare = /* @__PURE__ */ new Set();
+	for (const [k, list] of bankCells) {
+		if (list.length < 2) continue;
+		list.sort((a, b) => natural.compare(termName(a.term), termName(b.term)));
+		for (const s of list) bankOf.set(s.id, k);
+		for (const s of list.slice(1)) spare.add(s.id);
+	}
+	for (let i = edges.length - 1; i >= 0; i--) if (edges[i].src && spare.has(edges[i].src.id)) edges.splice(i, 1);
+	/** A source with the other cells of its bank: the bank, when it is one; else just the source. */
+	const mates = (s) => {
+		const k = bankOf.get(s.id);
+		return k === void 0 ? [s] : bankCells.get(k);
+	};
+	/** A supply's name in a message, a bank as its cells in parallel. */
+	const fromName = (s) => mates(s).length > 1 ? `${andList(mates(s).map((x) => termName(x.term)))} in parallel` : sourceName(s);
+	/** Banks that meet another supply: no note. */
+	const tiedBanks = /* @__PURE__ */ new Set();
+	const tie = (list) => {
+		for (const s of list) {
+			const k = bankOf.get(s.id);
+			if (k !== void 0) tiedBanks.add(k);
+		}
+	};
+	/** Parallel loops that join a bank to supplies outside it: reported together per bank at the end. */
+	const bankTies = [];
 	const pot = /* @__PURE__ */ new Map();
 	const up = /* @__PURE__ */ new Map();
 	const depth = /* @__PURE__ */ new Map();
@@ -47625,12 +47674,15 @@ function checkPotentials({ d, nl, netTerms, netWires, terminal, plugs, shorted, 
 		return parts.join(" ");
 	};
 	const reason = (x) => x.refUnknown ? "its return is not known" : x.unknown === "adjustable" ? "adjustable" : "voltage not known";
-	const involve = (list) => ({
-		parts: list.map((s) => s.term.part.uid),
-		pins: list.map((s) => termPin(s.term)),
-		wires: [...new Set(list.flatMap((s) => wiresOf(netOfKey(s.term.key))))],
-		causes: list.map((s) => s.term.key)
-	});
+	const involve = (given) => {
+		const list = [...new Map(given.flatMap(mates).map((s) => [s.id, s])).values()];
+		return {
+			parts: list.map((s) => s.term.part.uid),
+			pins: list.map((s) => termPin(s.term)),
+			wires: [...new Set(list.flatMap((s) => wiresOf(netOfKey(s.term.key))))],
+			causes: list.map((s) => s.term.key)
+		};
+	};
 	/**
 	* The pin to name for a supply: when the supply is wired to the input of another part that
 	* passes it on (a cell on a charger's B+), that part's output (its OUT+); else its own pin.
@@ -47655,7 +47707,12 @@ function checkPotentials({ d, nl, netTerms, netWires, terminal, plugs, shorted, 
 		if (list.length === 1) {
 			const s = list[0];
 			const shown = shownPin(s);
-			const from = s.external ? ` from ${s.external.via}` : shown !== s.term ? ` from ${s.term.part.designator}` : "";
+			const bank = mates(s);
+			const from = s.external ? ` from ${s.external.via}` : shown !== s.term ? ` from ${andList(bank.map((x) => x.term.part.designator))}` : "";
+			if (bank.length > 1 && shown === s.term) return {
+				v,
+				text: `${andList(bank.map((x) => termName(x.term)))} (${volts(v)} in parallel)`
+			};
 			return {
 				v,
 				text: `${termName(shown)} (${volts(v)}${from})`
@@ -47800,12 +47857,13 @@ function checkPotentials({ d, nl, netTerms, netWires, terminal, plugs, shorted, 
 			const all = sorted([...ahead, ...back]);
 			if (mismatch) for (const x of around) broken.add(x.e);
 			if (around.some((x) => x.e.closedSwitch)) continue;
+			if (mismatch) tie(all);
 			if (mismatch && (!ahead.length || !back.length)) loopShort(all, around.map((x) => x.e));
 			else if (mismatch) {
 				const [a, b] = [side(ahead), side(back)];
 				const [hi, lo] = a.v >= b.v ? [a, b] : [b, a];
 				const lead = (a.v >= b.v ? sorted(ahead) : sorted(back))[0];
-				const two = ahead.length === 1 && back.length === 1;
+				const two = ahead.length === 1 && back.length === 1 && !all.some((s) => bankOf.has(s.id));
 				const fix = two ? removeWire(d, shownPin(ahead[0]), shownPin(back[0]), "Separate them.") : "Separate them.";
 				add({
 					rule: "supplies-fight",
@@ -47815,6 +47873,11 @@ function checkPotentials({ d, nl, netTerms, netWires, terminal, plugs, shorted, 
 					...involve(all)
 				});
 			} else if (ahead.length && back.length) {
+				if (all.some((s) => bankOf.has(s.id))) {
+					tie(all);
+					bankTies.push(all);
+					continue;
+				}
 				const ext = all.find((s) => s.external);
 				const plain = all.filter((s) => !s.external);
 				if (ext && plain.length) {
@@ -47855,9 +47918,10 @@ function checkPotentials({ d, nl, netTerms, netWires, terminal, plugs, shorted, 
 	/** A diode-fed USB pin above what holds its net down: what happens and what to do. */
 	const backFeed = (pin, ext, under, what, v) => {
 		const low = under.length === 1 ? under[0].term : void 0;
-		const name = low ? supplyName(low) : what;
+		const cells = low && isCell(low) ? andList(mates(under[0]).map((s) => s.term.part.designator)) : void 0;
+		const name = low ? cells ?? supplyName(low) : what;
 		const harm = low && isCell(low) ? "the cells" : under.length > 1 ? "them" : "it";
-		const fix = low && isCell(low) ? `Add a diode from ${termName(low)} to ${pin.label}, or unplug ${low.part.designator} before plugging in ${ext.via}.` : low ? removeWire(d, pin, low, `Do not wire ${termName(low)} to ${termName(pin)}.`) : `Do not wire ${what} to ${termName(pin)}.`;
+		const fix = low && isCell(low) ? `Add a diode from ${termName(low)} to ${pin.label}, or unplug ${cells} before plugging in ${ext.via}.` : low ? removeWire(d, pin, low, `Do not wire ${termName(low)} to ${termName(pin)}.`) : `Do not wire ${what} to ${termName(pin)}.`;
 		return `When ${ext.via} is plugged in, ${termName(pin)} gets ${volts(ext.volts)} from ${ext.via}, which pushes current back into ${name} (${volts(v)}) and can damage ${harm}. ${fix}`;
 	};
 	const level = (e) => {
@@ -47910,6 +47974,7 @@ function checkPotentials({ d, nl, netTerms, netWires, terminal, plugs, shorted, 
 			target: termName(pin),
 			...involve([s, ...under])
 		};
+		if (diff.u.size || diff.c < ext.volts - EPS) tie(under);
 		if (diff.u.size) {
 			const open = [...diff.u.keys()].map((id) => sources.get(id));
 			add({
@@ -47936,12 +48001,54 @@ function checkPotentials({ d, nl, netTerms, netWires, terminal, plugs, shorted, 
 	for (const [net, unknown] of unknownOn) {
 		const list = sorted([...unknown, ...outOn.get(net) ?? []]);
 		if (list.length < 2) continue;
+		tie(list);
 		add({
 			rule: "supplies-parallel",
 			subject: list[0].term.part.designator,
 			target: termName(list[0].term),
 			message: `${andList(list.map(sourceName))} are ${list.length === 2 ? "two" : list.length} supplies tied together; power this net from one of them.`,
 			...involve(list)
+		});
+	}
+	const groups = [];
+	for (const all of bankTies) {
+		const banks = new Set(all.map((s) => bankOf.get(s.id)).filter((k) => k !== void 0));
+		const list = new Map(all.map((s) => [s.id, s]));
+		for (const g of groups.filter((x) => [...x.banks].some((k) => banks.has(k)))) {
+			for (const k of g.banks) banks.add(k);
+			for (const [id, s] of g.list) list.set(id, s);
+			groups.splice(groups.indexOf(g), 1);
+		}
+		for (const k of banks) for (const s of bankCells.get(k)) list.set(s.id, s);
+		groups.push({
+			banks,
+			list
+		});
+	}
+	for (const g of groups) {
+		const list = sorted([...g.list.values()]);
+		add({
+			rule: "supplies-parallel",
+			subject: list[0].term.part.designator,
+			target: termName(list[0].term),
+			message: `${andList(list.map(sourceName))} are ${list.length === 2 ? "two" : list.length} supplies tied together; power this net from one of them.`,
+			...involve(list)
+		});
+	}
+	for (const [k, cells] of bankCells) {
+		if (cells.length < 2 || tiedBanks.has(k)) continue;
+		const list = sorted(cells);
+		const name = cellRange(list.map((s) => s.term.part.designator));
+		const grounds = list.map((s) => terminal(nodeKey(s.term.part.uid, s.term.info.returnOf.get(s.term.name))));
+		add({
+			rule: "battery-bank",
+			subject: list[0].term.part.designator,
+			target: name,
+			message: `${name} form a parallel battery bank (${list.length}P, ${volts(list[0].v)}). Charge every cell to the same voltage, within about 0.1 V, before connecting them, and use matching cells.`,
+			parts: list.map((s) => s.term.part.uid),
+			pins: [...list.map((s) => termPin(s.term)), ...grounds.map(termPin)],
+			wires: [.../* @__PURE__ */ new Set([...wiresOf(netOfKey(list[0].term.key)), ...wiresOf(netOfKey(grounds[0].key))])],
+			causes: list.map((s) => s.term.key)
 		});
 	}
 	/** A part No ground already flags: none of its grounds reaches another part (a bare strip does not count). */
@@ -47976,14 +48083,17 @@ function checkPotentials({ d, nl, netTerms, netWires, terminal, plugs, shorted, 
 			};
 			const groundPin = inGroup.find(wiredOut) ?? inGroup[0];
 			const ground = groundPin === void 0 ? void 0 : netOfKey(nodeKey(t.part.uid, groundPin));
-			const base = (list) => ({
-				subject: t.part.designator,
-				target: termName(t),
-				wires: netWires[i],
-				parts: [t.part.uid, ...list.map((s) => s.term.part.uid)],
-				pins: [termPin(t), ...list.map((s) => termPin(s.term))],
-				causes: [t.key, ...list.map((s) => s.term.key)]
-			});
+			const base = (given) => {
+				const list = [...new Map(given.flatMap(mates).map((s) => [s.id, s])).values()];
+				return {
+					subject: t.part.designator,
+					target: termName(t),
+					wires: netWires[i],
+					parts: [t.part.uid, ...list.map((s) => s.term.part.uid)],
+					pins: [termPin(t), ...list.map((s) => termPin(s.term))],
+					causes: [t.key, ...list.map((s) => s.term.key)]
+				};
+			};
 			if (ground !== void 0) {
 				if (ground === net) continue;
 				const way = path(ground, net);
@@ -48020,8 +48130,8 @@ function checkPotentials({ d, nl, netTerms, netWires, terminal, plugs, shorted, 
 					const g = terminal(nodeKey(t.part.uid, groundPin));
 					const x = on(net, (o) => o.type === "ground");
 					const y = on(ground, (o) => o.type === "power_out" || o.info.external.has(o.name));
-					const cell = from.length === 1 && from[0].term.info.module.electrical?.model === "voltage_source" ? from[0].term.part.designator : void 0;
-					const message = x && y && cell ? `${cell} is wired in backwards: ${termName(t)} is wired to ${termName(x)} and ${termName(g)} to ${termName(y)}. This will damage ${t.part.designator}. Swap the two wires.` : x && y ? `${termName(t)} is wired to ${termName(x)} and ${termName(g)} to ${termName(y)}: the power is reversed and will damage ${t.part.designator}. Swap the two wires.` : `${termName(t)} sits ${volts(-v)} below ${termName(g)}: the power is reversed and will damage ${t.part.designator}. Swap its power wires.`;
+					const cells = from.length === 1 && isCell(from[0].term) ? mates(from[0]).map((s) => s.term.part.designator) : [];
+					const message = x && y && cells.length ? `${andList(cells)} ${cells.length > 1 ? "are" : "is"} wired in backwards: ${termName(t)} is wired to ${termName(x)} and ${termName(g)} to ${termName(y)}. This will damage ${t.part.designator}. Swap the two wires.` : x && y ? `${termName(t)} is wired to ${termName(x)} and ${termName(g)} to ${termName(y)}: the power is reversed and will damage ${t.part.designator}. Swap the two wires.` : `${termName(t)} sits ${volts(-v)} below ${termName(g)}: the power is reversed and will damage ${t.part.designator}. Swap its power wires.`;
 					reversed.add(t.part.uid);
 					add({
 						rule: "reversed",
@@ -48030,7 +48140,7 @@ function checkPotentials({ d, nl, netTerms, netWires, terminal, plugs, shorted, 
 						pins: [
 							termPin(t),
 							termPin(g),
-							...from.map((s) => termPin(s.term))
+							...from.flatMap(mates).map((s) => termPin(s.term))
 						],
 						wires: [...netWires[i], ...wiresOf(ground)]
 					});
@@ -48053,7 +48163,7 @@ function checkPotentials({ d, nl, netTerms, netWires, terminal, plugs, shorted, 
 			}
 			const max = Math.max(...accepts);
 			const min = Math.min(...accepts);
-			const what = from.length === 1 ? sourceName(from[0]) : `${andList(from.map((s) => termName(s.term)))} in series`;
+			const what = from.length === 1 ? fromName(from[0]) : `${andList(from.map((s) => termName(s.term)))} in series`;
 			if (v !== null && v > max + EPS) {
 				add({
 					rule: "supply-too-high",
@@ -48065,7 +48175,7 @@ function checkPotentials({ d, nl, netTerms, netWires, terminal, plugs, shorted, 
 			const floor = LOW_TOLERANCE * min;
 			if (v !== null && !unknown.length && v < floor - EPS) add({
 				rule: "supply-too-low",
-				message: `${termName(t)} needs at least ${floor.toFixed(1)} V; ${what} ${from.length === 1 ? "gives" : "give"} only ${volts(v)}. ${fixTo(from, min)}`,
+				message: `${termName(t)} needs at least ${floor.toFixed(1)} V; ${what} ${from.length === 1 && mates(from[0]).length === 1 ? "gives" : "give"} only ${volts(v)}. ${fixTo(from, min)}`,
 				...base(from)
 			});
 		}
@@ -60056,6 +60166,7 @@ async function runGate(bytes, opts) {
 				artifacts,
 				blocking,
 				warnings: all.filter((f) => f.severity === "warning"),
+				notes: all.filter((f) => f.severity === "info"),
 				notChecked: NOT_CHECKED,
 				link,
 				...rows
@@ -60177,6 +60288,7 @@ async function gateCommand(args, io) {
 		const lines = [code === EXIT.ok ? `GATE PASSED: ${input} (sha256 ${report.diagram.sha256})` : code === EXIT.environment ? `GATE INCOMPLETE: nothing blocks, but not every render could be made (${input})` : `GATE BLOCKED: ${plural(report.blocking.length, "blocking finding")} (${input})`];
 		if (report.blocking.length) lines.push("", "Blocking:", findingsText(report.blocking));
 		if (report.warnings.length) lines.push("", "Warnings (report these to the user):", findingsText(report.warnings));
+		if (report.notes.length) lines.push("", "Notes (not problems; pass them on to the user):", findingsText(report.notes));
 		lines.push("", `Artifacts in ${out}:`, ...report.artifacts.map((a) => `  ${a.path}  sha256 ${a.sha256}`), `  gate.json`);
 		if (report.link.url) lines.push("", `Link: ${report.link.url}`, LINK_NOTICE);
 		lines.push("", notCheckedText());
