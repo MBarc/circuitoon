@@ -59075,6 +59075,16 @@ function electricalDiff(stored, lib) {
 	const [s, l] = [stored, lib];
 	return [.../* @__PURE__ */ new Set([...Object.keys(l), ...Object.keys(s)])].filter((k) => !COSMETIC.has(k) && canonical(s[k]) !== canonical(l[k])).map((k) => k === "pins" ? pinDiff(s.pins, l.pins) : FIELD_NAMES[k] ?? k);
 }
+/**
+* Whether the part's geometry moved: a different body size, or pin positions (side and place on the
+* body, whatever their names) that differ. Its legs then land elsewhere, so a kept position no
+* longer means the same seat. Renamed or retyped pins alone move nothing.
+*/
+function movedGeometry(stored, lib) {
+	const [a, b] = [layoutModule(stored), layoutModule(lib)];
+	if (a.w !== b.w || a.h !== b.h || a.pins.length !== b.pins.length) return true;
+	return a.pins.some((p, i) => p.side !== b.pins[i].side || p.edge.x !== b.pins[i].edge.x || p.edge.y !== b.pins[i].edge.y);
+}
 /** The cosmetic fields that differ. */
 function cosmeticDiff(stored, lib) {
 	const [s, l] = [stored, lib];
@@ -59106,7 +59116,11 @@ function moduleDrift(d, library, add) {
 		const parts = d.parts.filter((p) => p.module === id).map((p) => p.uid);
 		const causes = whose.startsWith("The intent") ? [`intent:${id}`] : [id];
 		const electrical = electricalDiff(stored, lib);
-		if (electrical.length) add("module-drift", `${whose} of ${id} no longer matches the current library: ${electrical.join(", ")} differ. Lay the sheet out again with the current library.`, causes, { parts });
+		if (electrical.length && movedGeometry(stored, lib) && parts.length) {
+			const names = andList(d.parts.filter((p) => p.module === id).map((p) => p.designator));
+			const one = parts.length === 1;
+			add("module-drift", `${whose} of ${id} no longer matches the current library: ${electrical.join(", ")} differ. Its body and pins are drawn differently now, so ${names} must be placed again: remove ${one ? `${names}'s` : "their"} x, y and rotation from the partial before layout --keep (kept as ${one ? "it is, it stays" : "they are, they stay"} where the old drawing sat), or lay the sheet out again from the netlist.`, causes, { parts });
+		} else if (electrical.length) add("module-drift", `${whose} of ${id} no longer matches the current library: ${electrical.join(", ")} differ. Lay the sheet out again with the current library.`, causes, { parts });
 		else add("module-drift", `${whose} of ${id} differs from the current library only in ${cosmeticDiff(stored, lib).join(", ")}; its pins and electrical data match. Lay the sheet out again to pick up the current part.`, causes, {
 			parts,
 			severity: "warning"
@@ -59146,7 +59160,7 @@ function verifyDiagram(d, library) {
 		else against(d, r.intent, library, add);
 	}
 	capacity(d, add);
-	covered(d, add);
+	covered(d, add, driftedParts(found));
 	found.sort((a, b) => ORDER.indexOf(a.rule) - ORDER.indexOf(b.rule) || (a.message < b.message ? -1 : a.message > b.message ? 1 : 0));
 	const seen = /* @__PURE__ */ new Map();
 	return found.map(({ causes, ...f }) => {
@@ -59399,8 +59413,9 @@ function capacity(d, add) {
 * No wire end or leg in a hole a mounted part's body covers (see coveredHoles): the checker's
 * covered-hole, here too so verify alone (and the layout's own check) blocks it.
 */
-function covered(d, add) {
+function covered(d, add, stale) {
 	for (const u of coveredUses(d, new Set(netlist(d).broken))) {
+		if (isStale(u, stale)) continue;
 		const key = JSON.stringify([
 			"hole",
 			u.cover.board,
@@ -59424,6 +59439,15 @@ function covered(d, add) {
 		});
 	}
 }
+/**
+* The parts whose embedded module blocks as module-drift: their stored copy is out of date, so
+* whatever it covers (and whatever its legs land in) is the old drawing's, not the part's.
+*/
+function driftedParts(findings) {
+	return new Set(findings.filter((f) => f.rule === "module-drift" && f.severity === "error").flatMap((f) => f.parts));
+}
+/** A covered-hole use that comes from a stale embedded copy: its covering part, or its leg's part, drifted. */
+var isStale = (u, stale) => stale.has(u.cover.by) || !!u.leg && stale.has(u.leg.part);
 //#endregion
 //#region src/agent/catalog.ts
 var libraryLookup = (id) => Object.hasOwn(modulesById, id) ? modulesById[id] : void 0;
@@ -59518,6 +59542,15 @@ function uniqueIds(findings) {
 * problem itself: covered-hole (a wire end or leg under a part's body) comes from one shared test.
 */
 var alsoChecked = (f) => f.rule === "covered-hole";
+/**
+* The checker's findings, less any covered-hole that involves a part whose embedded module blocks as
+* module-drift (`verified` holds verify's findings): that hole is covered by, or holds a leg of, the
+* old drawing, and module-drift already says to place the part again.
+*/
+function withoutStale(checked, verified) {
+	const stale = driftedParts(verified);
+	return stale.size ? checked.filter((f) => f.rule !== "covered-hole" || !f.parts.some((p) => stale.has(p))) : checked;
+}
 var findingsText = (findings) => findings.map((f) => `${f.severity.toUpperCase()} ${f.rule}: ${f.message}`).join("\n");
 var notCheckedText = () => ["Not checked:", ...NOT_CHECKED.map((n) => `  - ${n}`)].join("\n");
 function report(io, args, format, findings) {
@@ -59543,7 +59576,8 @@ function verifyCommand(args, io) {
 }
 function checkCommand(args, io) {
 	const diagram = sheetOf("check", args, io);
-	return report(io, args, "circuitoon-cli/check/1", uniqueIds([...diagram.intent !== void 0 ? verifyDiagram(diagram, libraryLookup).filter((f) => !alsoChecked(f)) : [], ...checkDiagram(diagram)].map(cliFinding)));
+	const all = verifyDiagram(diagram, libraryLookup);
+	return report(io, args, "circuitoon-cli/check/1", uniqueIds([...diagram.intent !== void 0 ? all.filter((f) => !alsoChecked(f)) : [], ...withoutStale(checkDiagram(diagram), all)].map(cliFinding)));
 }
 //#endregion
 //#region src/cli/png.ts
@@ -59881,8 +59915,9 @@ async function runGate(bytes, opts) {
 	}
 	const d = v.diagram;
 	v.warnings.forEach((w, i) => note("load", String(i), w.includes("it was dropped and the module default is shown") || w.includes(MISSING_MODULE) ? "error" : "warning", w));
-	found.push(...verifyDiagram(d, libraryLookup).filter((f) => !alsoChecked(f)).map(cliFinding));
-	found.push(...checkDiagram(d).map(cliFinding));
+	const verified = verifyDiagram(d, libraryLookup);
+	found.push(...verified.filter((f) => !alsoChecked(f)).map(cliFinding));
+	found.push(...withoutStale(checkDiagram(d), verified).map(cliFinding));
 	const routes = computeRoutes(d);
 	for (const { conn: c, blocked } of wirePaths(d, routes)) if (blocked) note("blocked-route", c.uid, "error", `The wire ${c.label ?? `${endpointName(d, c.from)} to ${endpointName(d, c.to)}`} has no clear route: it runs through a part.`, {
 		parts: [c.from.part, c.to.part],

@@ -278,6 +278,30 @@ describe('circuitoon gate', () => {
     expect(report.blocking).toEqual([])
     expect(report.warnings.filter((f) => f.rule === 'wire-over-holes')).toEqual([])
   })
+  it("blocks an old DIP-28 copy with module-drift only: no covered-hole from the old drawing's body", async () => {
+    const dir = tempDir()
+    const dip = JSON.parse(readFileSync(join('modules', 'mcp23017-dip28.json'), 'utf8'))
+    dip.pins = dip.pins.map((p: { side: string }) => ({ ...p, side: p.side === 'bottom' ? 'left' : 'right' }))
+    dip.size = { w: 10, h: 19 }
+    dip.art = { w: 100, h: 190, pinLabels: 'inside', shapes: [{ type: 'rect', x: 0, y: 0, w: 100, h: 190, fill: '#1E2126' }] }
+    const sheet = {
+      format: 'circuitoon-diagram/1', title: 'old dip',
+      modules: { 'breadboard-half': JSON.parse(readFileSync(join('modules', 'breadboard-half.json'), 'utf8')), 'mcp23017-dip28': dip },
+      parts: [
+        { uid: 'BB1', designator: 'BB1', module: 'breadboard-half', x: 0, y: 0 },
+        { uid: 'U1', designator: 'U1', module: 'mcp23017-dip28', x: 60, y: 20, rotation: 90, mount: { board: 'BB1' } },
+      ],
+      connections: [{ uid: 'w1', from: { part: 'BB1', pin: 'c5-top', hole: 2 }, to: { part: 'BB1', pin: 'c25-top', hole: 0 } }],
+    }
+    writeFileSync(join(dir, 'sheet.json'), JSON.stringify(sheet))
+    const { report } = await runGate(readFileSync(join(dir, 'sheet.json')), { sheetPath: 'sheet.json', outDir: join(dir, 'out'), io: quietIo(dir) })
+    const rules = report.blocking.map((f) => f.rule)
+    expect(rules).toContain('module-drift')
+    expect(rules).not.toContain('covered-hole')
+    expect(report.blocking.find((f) => f.rule === 'module-drift')!.message).toContain('U1 must be placed again')
+    const c = await cli(['check', 'sheet.json', '--json'], { cwd: dir })
+    expect(JSON.parse(c.out).findings.map((f: { rule: string }) => f.rule)).not.toContain('covered-hole')
+  })
   it('blocks a mounted part that no longer seats on its board', async () => {
     const dir = await laidOut()
     edit(dir, (s) => {

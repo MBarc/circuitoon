@@ -26,7 +26,7 @@ import { NOT_CHECKED } from '../agent/notChecked.ts'
 import { type ChannelRow, type QuantityRow, channelTable, quantities } from '../agent/tables.ts'
 import type { Args } from './args.ts'
 import { CliError, EXIT, type Io, flag, pathIn, printJson, writeError, writeFile } from './io.ts'
-import { type CliFinding, alsoChecked, cliFinding, findingsText, notCheckedText, uniqueIds } from './verifyCmd.ts'
+import { type CliFinding, alsoChecked, cliFinding, findingsText, notCheckedText, uniqueIds, withoutStale } from './verifyCmd.ts'
 import { writePng } from './png.ts'
 import { linkFor } from './linkCmd.ts'
 import { focusParts } from './render.ts'
@@ -162,8 +162,9 @@ export async function runGate(bytes: Uint8Array, opts: { sheetPath: string; outD
   v.warnings.forEach((w, i) => note('load', String(i), w.includes(VALUE_DROPPED) || w.includes(MISSING_MODULE) ? 'error' : 'warning', w))
 
   // Verify against the intent, the wiring checker, and routes.
-  found.push(...verifyDiagram(d, libraryLookup).filter((f) => !alsoChecked(f)).map(cliFinding))
-  found.push(...checkDiagram(d).map(cliFinding))
+  const verified = verifyDiagram(d, libraryLookup)
+  found.push(...verified.filter((f) => !alsoChecked(f)).map(cliFinding))
+  found.push(...withoutStale(checkDiagram(d), verified).map(cliFinding))
   const routes = computeRoutes(d)
   // Blocked as drawn: wirePaths re-checks a wire that separation nudged, so a route that was clear
   // but was pushed through a body (drawn dashed) blocks too.

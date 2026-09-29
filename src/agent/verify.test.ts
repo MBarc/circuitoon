@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest'
 import type { Connection, Diagram, PartInstance } from '../format/diagram.ts'
 import type { ModuleDef } from '../format/module.ts'
 import { load } from '../format/builtinModules.testing.ts'
+import { coveredHoles } from '../format/breadboard.ts'
 import { libraryLookup } from './catalog.ts'
 import { NO_INTENT, verifyDiagram } from './verify.ts'
 
@@ -282,18 +283,39 @@ describe('verifyDiagram against the library (stored modules are not trusted)', (
     expect(f[0].message).toContain('Lay the sheet out again')
     expect(f[0].message).not.toMatch(/tamper/i)
   })
-  it('blocks a sheet that embeds the old 100 px DIP-28 (Ruling C2), telling it to lay out again with the current library', () => {
-    const d = sheet()
+  /** The MCP23017 as drawn before Ruling C2: pin rows 1.0 inch apart, notch at the top. */
+  const oldDip = (): ModuleDef => {
     const dip = structuredClone(load('mcp23017-dip28')) as unknown as Record<string, unknown>
-    // The drawing before C2: pin rows 1.0 inch apart, notch at the top.
     dip.pins = (dip.pins as { side: string }[]).map((p) => ({ ...p, side: p.side === 'bottom' ? 'left' : 'right' }))
     dip.size = { w: 10, h: 19 }
     dip.art = { w: 100, h: 190, pinLabels: 'inside', shapes: [{ type: 'rect', x: 0, y: 0, w: 100, h: 190, fill: '#1E2126' }] }
-    d.modules = { ...d.modules, 'mcp23017-dip28': dip as unknown as ModuleDef }
+    return dip as unknown as ModuleDef
+  }
+  it('blocks a sheet that embeds the old 100 px DIP-28 (Ruling C2), telling it to place that part again, not to keep it', () => {
+    const d = sheet()
+    d.modules = { ...d.modules, 'mcp23017-dip28': oldDip() }
     d.parts.push({ uid: 'U9', designator: 'U9', module: 'mcp23017-dip28', x: 600, y: 400 })
     const f = verifyDiagram(d, libraryLookup).filter((x) => x.rule === 'module-drift')
     expect(f.map((x) => [x.severity, x.parts])).toEqual([['error', ['U9']]])
-    expect(f[0].message).toBe("The sheet's copy of mcp23017-dip28 no longer matches the current library: 28 pins, size differ. Lay the sheet out again with the current library.")
+    expect(f[0].message).toBe(
+      "The sheet's copy of mcp23017-dip28 no longer matches the current library: 28 pins, size differ. Its body and pins are drawn differently now, so U9 must be placed again: remove U9's x, y and rotation from the partial before layout --keep (kept as it is, it stays where the old drawing sat), or lay the sheet out again from the netlist.",
+    )
+    expect(f[0].message).not.toMatch(/Lay the sheet out again with the current library/)
+  })
+  it('reports no covered-hole from a stale embedded copy that module-drift already reports', () => {
+    // The old DIP seated across a half board at rows a and i; a wire ends in a hole under its old body.
+    const d: Diagram = {
+      format: 'circuitoon-diagram/1', title: 'old dip', modules: { 'breadboard-half': modules['breadboard-half'], 'mcp23017-dip28': oldDip() },
+      parts: [
+        { uid: 'BB1', designator: 'BB1', module: 'breadboard-half', x: 0, y: 0 },
+        { uid: 'U1', designator: 'U1', module: 'mcp23017-dip28', x: 60, y: 20, rotation: 90, mount: { board: 'BB1' } },
+      ],
+      connections: [{ uid: 'w1', from: { part: 'BB1', pin: 'c5-top', hole: 2 }, to: { part: 'BB1', pin: 'c25-top', hole: 0 } }],
+    }
+    expect(coveredHoles(d).length).toBeGreaterThan(0)
+    const f = verifyDiagram(d, libraryLookup)
+    expect(f.filter((x) => x.rule === 'module-drift').map((x) => x.parts)).toEqual([['U1']])
+    expect(f.filter((x) => x.rule === 'covered-hole')).toEqual([])
   })
   it('blocks a stored copy with no version whose pins were swapped (content decides, not the version)', () => {
     const d = sheet()
