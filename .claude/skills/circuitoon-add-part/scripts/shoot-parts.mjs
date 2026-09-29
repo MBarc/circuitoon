@@ -135,15 +135,15 @@ for (const id of ids) {
     else break
     await page.waitForTimeout(30)
   }
-  // Center the part by panning the paper.
+  // Center the part by panning (a middle-button drag; a left drag on the paper selects).
   const b = await page.locator('[data-part]').first().boundingBox()
   if (b && wrap) {
     const dx = wrap.x + wrap.width / 2 - (b.x + b.width / 2)
     const dy = wrap.y + wrap.height / 2 - (b.y + b.height / 2)
     await page.mouse.move(wrap.x + 20, wrap.y + wrap.height - 20)
-    await page.mouse.down()
+    await page.mouse.down({ button: 'middle' })
     await page.mouse.move(wrap.x + 20 + dx, wrap.y + wrap.height - 20 + dy, { steps: 5 })
-    await page.mouse.up()
+    await page.mouse.up({ button: 'middle' })
   }
   const name = rotate ? `${id}-rot${rotate}.png` : `${id}.png`
   await page.locator('.canvas-wrap').screenshot({ path: join(out, name) })

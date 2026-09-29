@@ -1,4 +1,5 @@
-// The editing surface: an SVG sheet you can pan (drag the background) and zoom (wheel).
+// The editing surface: an SVG sheet. Dragging the paper draws a selection rectangle (Shift adds to
+// the selection); a middle-button drag, Space+drag or a finger on the paper pans, and the wheel zooms.
 import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import { type EditorStore, useEditorState } from './store.ts'
 import { brokenStub, computeRoutes, labelAnchor, moduleOf, pinTargets, resolveEndpoint, routingKey, wireColor, wirePaths, wireStripe, wireWidth, type PartInstance, type PinTarget, type Routes } from '../format/diagram.ts'
@@ -12,7 +13,7 @@ import { FrameMark, NoteMark } from '../render/Annotations.tsx'
 import { BLOCKED_STROKE, Bolts, HazardOutline, Stripe, boltInsets } from '../render/Mains.tsx'
 import { type WireLook, holdLooks, identityColor, newWireColor } from '../format/mainsLook.ts'
 import { seatedLabels } from '../format/seatedLabels.ts'
-import { addPart, addWire, EMPTY_SELECTION, moveAnnotations, moveParts, reconnectWire, sameEndpoint, setWireRoute, settleDrop, settleMounts, settleSeats, settlingOf, updateWire, withMounted } from './ops.ts'
+import { addPart, addWire, EMPTY_SELECTION, marqueeSelection, moveAnnotations, moveParts, reconnectWire, sameEndpoint, setWireRoute, settleDrop, settleMounts, settleSeats, settlingOf, updateWire, withMounted } from './ops.ts'
 import { netlist, netPoints } from '../format/netlist.ts'
 import { bendHandleAt, insertBend, isOrthogonal, moveSegment, removeBend, segmentHandleAt, segmentsOf, toRoute, type Axis } from '../format/wireEdit.ts'
 import { modulesById } from '../library.ts'
@@ -20,6 +21,7 @@ import { bodyRect } from '../format/geometry.ts'
 import { layoutModule } from '../format/module.ts'
 import { MODULE_MIME } from './LibraryPanel.tsx'
 import type { Connection, Diagram, Endpoint } from '../format/diagram.ts'
+import type { Selection } from './ops.ts'
 import { partCaption } from '../format/values.ts'
 import { SeverityMark } from './SeverityMark.tsx'
 
@@ -36,7 +38,15 @@ type Drag = { pointer: number } & (
   | { kind: 'reconnect'; uid: string; end: 'from' | 'to'; origin: Pt; cursor: Pt; over: Endpoint | null }
   | { kind: 'segment'; uid: string; index: number; axis: Axis; start: Pt; points: Pt[]; base: Diagram }
   | { kind: 'annotations'; start: Pt; uids: string[]; base: Diagram }
+  // `before` is the selection to restore on Escape; `moved` turns true past MARQUEE_MIN screen px.
+  | { kind: 'marquee'; client: Pt; start: Pt; cursor: Pt; add: boolean; before: Selection; moved: boolean }
 )
+
+/** A press on the paper that moves less than this (screen px) is a click, not a selection rectangle. */
+const MARQUEE_MIN = 3
+const rectOf = (a: Pt, b: Pt) => ({ x: Math.min(a.x, b.x), y: Math.min(a.y, b.y), w: Math.abs(b.x - a.x), h: Math.abs(b.y - a.y) })
+/** Whether a key event belongs to a text field, where Space types a space. */
+const typing = (t: EventTarget | null) => t instanceof Element && !!t.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"])')
 
 /** Segments shorter than this get no handle: there is no room to grab one. A 20 px pin run gets one. */
 const MIN_HANDLE_SEGMENT = 20
@@ -97,12 +107,22 @@ const PinTargets = memo(
     a.targets.every((t, i) => t.name === b.targets[i].name && t.label === b.targets[i].label && t.at.x === b.targets[i].at.x && t.at.y === b.targets[i].at.y),
 )
 
-export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api: { addAtCenter: (moduleId: string) => void }) => void }) {
+export interface CanvasApi {
+  addAtCenter: (moduleId: string) => void
+  /** Where the pointer is on the sheet (world px), or null when it is not over the sheet. */
+  pointer: () => Pt | null
+}
+
+export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api: CanvasApi) => void }) {
   const { diagram, selection, highlight, reveal } = useEditorState(store)
   const svgRef = useRef<SVGSVGElement>(null)
   const [size, setSize] = useState({ w: 800, h: 600 })
   const [view, setView] = useState<View>({ x: -20, y: -40, scale: 1.5 })
   const [drag, setDrag] = useState<Drag | null>(null)
+  // Space held (outside a text field): a left drag pans, for trackpads with no middle button.
+  const [spaceDown, setSpaceDown] = useState(false)
+  // The last pointer position over the sheet (client px), for pasting under the pointer.
+  const lastClient = useRef<Pt | null>(null)
   // The pin or hole under the pointer while nothing is being dragged, for net highlighting.
   const [hover, setHover] = useState<Endpoint | null>(null)
   const settled = useRef<Routes>(new Map())
@@ -155,8 +175,34 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
   }
 
   useEffect(() => {
-    onReady?.({ addAtCenter: (id) => placeModule(id, { x: view.x + size.w / view.scale / 2, y: view.y + size.h / view.scale / 2 }) })
+    onReady?.({
+      addAtCenter: (id) => placeModule(id, { x: view.x + size.w / view.scale / 2, y: view.y + size.h / view.scale / 2 }),
+      pointer: () => (lastClient.current ? toWorld({ clientX: lastClient.current.x, clientY: lastClient.current.y }) : null),
+    })
   })
+
+  useEffect(() => {
+    // Only on the page or the sheet: Space on a focused button presses it, in a field it types.
+    const onDown = (e: KeyboardEvent) => {
+      if (e.code !== 'Space' || typing(e.target)) return
+      const t = e.target
+      if (t !== document.body && !(t instanceof Element && t.closest('.canvas-wrap'))) return
+      e.preventDefault()
+      setSpaceDown(true)
+    }
+    const onUp = (e: KeyboardEvent) => {
+      if (e.code === 'Space') setSpaceDown(false)
+    }
+    const onBlur = () => setSpaceDown(false)
+    window.addEventListener('keydown', onDown)
+    window.addEventListener('keyup', onUp)
+    window.addEventListener('blur', onBlur)
+    return () => {
+      window.removeEventListener('keydown', onDown)
+      window.removeEventListener('keyup', onUp)
+      window.removeEventListener('blur', onBlur)
+    }
+  }, [])
 
   // Parts that move this drag: the selection plus whatever is mounted on a dragged board.
   const draggingParts = drag?.kind === 'parts' ? drag.moving : null
@@ -341,8 +387,15 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
     const target = e.target as Element
     const pointer = e.pointerId
     e.currentTarget.setPointerCapture(pointer)
+    // A middle-button drag, or Space+drag, pans from anywhere on the sheet and keeps the selection.
+    if (e.button === 1 || spaceDown) {
+      setDrag({ pointer, kind: 'pan', client: { x: e.clientX, y: e.clientY }, view })
+      return
+    }
+    // Everything else (wires, part and mark drags, the selection rectangle) is the primary button only.
+    if (e.button !== 0) return
     // Explicit wire-edit handles of the selected wire come first: they sit on top of everything.
-    const handleEl = e.button === 0 ? target.closest('[data-wire-end]') : null
+    const handleEl = target.closest('[data-wire-end]')
     if (handleEl) {
       const uid = handleEl.getAttribute('data-wire-uid')!
       const end = handleEl.getAttribute('data-wire-end') as 'from' | 'to'
@@ -352,7 +405,7 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
       store.setGesture(true)
       return
     }
-    const segEl = e.button === 0 ? target.closest('[data-seg-index]') : null
+    const segEl = target.closest('[data-seg-index]')
     if (segEl) {
       const uid = segEl.getAttribute('data-wire-uid')!
       const index = Number(segEl.getAttribute('data-seg-index'))
@@ -366,7 +419,7 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
     }
     // A single press on a bend does nothing (double-click removes it); it must not fall
     // through to the paper and clear the selection.
-    if (e.button === 0 && target.closest('[data-vertex-index]')) return
+    if (target.closest('[data-vertex-index]')) return
     // A press on a pin or a hole starts a wire there, by the same terminal-hit policy hover and
     // drop use, so a hole under an ordinary wire's hit stroke still starts a wire; a press on the
     // wire anywhere else selects it. A pin ends at its stub tip, or at its leg's hole when plugged
@@ -374,14 +427,14 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
     // Alt+press on the selected wire adds a bend there (a wire edit), even over a hole.
     const sel0 = store.getState().selection
     const bending = e.altKey && sel0.parts.length === 0 && sel0.wires.length === 1 && target.closest('[data-wire]')?.getAttribute('data-wire') === sel0.wires[0]
-    const end = e.button === 0 && !bending ? endUnder(e) : null
+    const end = bending ? null : endUnder(e)
     const at = end && resolveEndpoint(store.getState().diagram, end)
     if (end && at) {
       setDrag({ pointer, kind: 'wire', from: end, origin: at.end, cursor: toWorld(e), over: null })
       store.setGesture(true)
       return
     }
-    const wireEl = e.button === 0 ? target.closest('[data-wire]') : null
+    const wireEl = target.closest('[data-wire]')
     if (wireEl) {
       const uid = wireEl.getAttribute('data-wire')!
       const sel = store.getState().selection
@@ -395,7 +448,7 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
       return
     }
     // A frame (by its border or label tab) or a note: select it, and drag it on the grid as one undo step.
-    const noteEl = e.button === 0 ? target.closest('[data-annotation]') : null
+    const noteEl = target.closest('[data-annotation]')
     if (noteEl) {
       const uid = noteEl.getAttribute('data-annotation')!
       const sel = store.getState().selection
@@ -409,7 +462,7 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
       }
       return
     }
-    const partEl = e.button === 0 ? target.closest('[data-part]') : null
+    const partEl = target.closest('[data-part]')
     if (partEl) {
       const uid = partEl.getAttribute('data-part')!
       const sel = store.getState().selection
@@ -424,8 +477,17 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
       }
       return
     }
-    if (!e.shiftKey) store.select(EMPTY_SELECTION)
-    setDrag({ pointer, kind: 'pan', client: { x: e.clientX, y: e.clientY }, view })
+    // The paper: a selection rectangle, which replaces the selection (Shift adds to it). A click
+    // without a drag clears the selection, or with Shift keeps it. A finger has no middle button or
+    // Space, so on touch a drag on the paper pans (and a tap still clears the selection).
+    if (e.pointerType === 'touch') {
+      store.select(EMPTY_SELECTION)
+      setDrag({ pointer, kind: 'pan', client: { x: e.clientX, y: e.clientY }, view })
+      return
+    }
+    const w = toWorld(e)
+    setDrag({ pointer, kind: 'marquee', client: { x: e.clientX, y: e.clientY }, start: w, cursor: w, add: e.shiftKey, before: store.getState().selection, moved: false })
+    store.setGesture(true)
   }
   // With pointer capture the event target is always the svg, so look up what is under the cursor.
   function pinUnder(e: { clientX: number; clientY: number }): Endpoint | null {
@@ -456,6 +518,7 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
     return pinUnder(e) ?? holeUnder(e)
   }
   function onPointerMove(e: React.PointerEvent<SVGSVGElement>) {
+    lastClient.current = { x: e.clientX, y: e.clientY }
     if (!drag) {
       const over = endUnder(e)
       setHover((h) => (h === over || (h && over && sameEndpoint(store.getState().diagram, h, over)) ? h : over))
@@ -464,7 +527,13 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
     if (e.pointerId !== drag.pointer) return
     if (drag.kind === 'pan')
       setView({ ...drag.view, x: drag.view.x - (e.clientX - drag.client.x) / view.scale, y: drag.view.y - (e.clientY - drag.client.y) / view.scale })
-    else if (drag.kind === 'parts') {
+    else if (drag.kind === 'marquee') {
+      const moved = drag.moved || Math.hypot(e.clientX - drag.client.x, e.clientY - drag.client.y) >= MARQUEE_MIN
+      const cursor = toWorld(e)
+      setDrag({ ...drag, cursor, moved })
+      // The selection follows the rectangle live, so the outlines show what the release will pick.
+      if (moved) store.select(marqueeSelection(store.getState().diagram, rectOf(drag.start, cursor), drag.add ? drag.before : EMPTY_SELECTION))
+    } else if (drag.kind === 'parts') {
       if (!store.dragging) return
       const p = toWorld(e)
       store.preview(moveParts(drag.base, drag.uids, snap(p.x - drag.start.x), snap(p.y - drag.start.y)))
@@ -489,6 +558,7 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
     if (drag.kind === 'parts') finishPartsDrag(drag)
     if (drag.kind === 'segment') store.end()
     if (drag.kind === 'annotations') store.end()
+    if (drag.kind === 'marquee' && !drag.moved && !drag.add) store.select(EMPTY_SELECTION)
     if (drag.kind === 'wire') {
       const to = endUnder(e)
       const s = store.getState()
@@ -523,12 +593,15 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
     setHover(null)
   }
 
-  // Escape abandons a wire, part, segment or annotation drag. For parts, segments and annotations,
-  // the editor's key handler calls store.cancel().
+  // Escape abandons a wire, part, segment, annotation or selection-rectangle drag. For parts,
+  // segments and annotations, the editor's key handler calls store.cancel(); a rectangle puts the
+  // selection back as it was before the press.
+  const marqueeBefore = drag?.kind === 'marquee' ? drag.before : null
   useEffect(() => {
-    if (drag?.kind !== 'wire' && drag?.kind !== 'parts' && drag?.kind !== 'reconnect' && drag?.kind !== 'segment' && drag?.kind !== 'annotations') return
+    if (!drag || drag.kind === 'pan') return
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return
+      if (marqueeBefore) store.select(marqueeBefore)
       store.setGesture(false)
       setDrag(null)
       setHover(null)
@@ -571,13 +644,20 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
     >
       <svg
         ref={svgRef}
-        className={drag?.kind === 'pan' ? 'canvas panning' : 'canvas'}
+        className={drag?.kind === 'pan' ? 'canvas panning' : spaceDown ? 'canvas space-pan' : 'canvas'}
         viewBox={`${view.x} ${view.y} ${vw} ${vh}`}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerCancel}
-        onPointerLeave={() => setHover(null)}
+        onPointerLeave={() => {
+          setHover(null)
+          lastClient.current = null
+        }}
+        // A middle press would start the browser's autoscroll; the middle drag pans instead.
+        onMouseDown={(e) => {
+          if (e.button === 1) e.preventDefault()
+        }}
         onLostPointerCapture={onPointerCancel}
         onDoubleClick={onDoubleClick}
         role="application"
@@ -723,6 +803,10 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
             (drag?.kind === 'wire' || drag?.kind === 'reconnect') && drag.over?.part === p.uid ? drag.over.pin : null
           return <PinTargets key={p.uid} part={p} targets={pinTargets(diagram, p, m)} hoveredPin={hoveredPin} />
         })}
+        {drag?.kind === 'marquee' && drag.moved && (() => {
+          const r = rectOf(drag.start, drag.cursor)
+          return <rect className="marquee" x={r.x} y={r.y} width={r.w} height={r.h} pointerEvents="none" />
+        })()}
         {selection.wires.length === 1 &&
           !drag &&
           (() => {
