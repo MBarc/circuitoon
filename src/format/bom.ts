@@ -7,7 +7,7 @@
 import { type Diagram, moduleOf } from './diagram.ts'
 import { END_KINDS, END_NAMES, END_SIZE, type EndKind, endKind, presetOf } from './cables.ts'
 import { editableParams, formatValue, paramValue } from './values.ts'
-import { wireLooks } from './mainsLook.ts'
+import { drawnColor, wireLooks } from './mainsLook.ts'
 import { natural } from './words.ts'
 
 export interface BomPart {
@@ -61,7 +61,8 @@ export interface BomOptions {
 
 /**
  * Designators in natural order, a run of three or more with one prefix and consecutive numbers
- * joined as "BT1-BT4": "R1-R3, R9, R10".
+ * joined as "BT1-BT4": "R1-R3, R9, R10". A run whose designators hold a hyphen or a space is joined
+ * with " to " ("J1-1 to J1-3", "MCP Breadboard 1 to MCP Breadboard 3"), so it never reads as one name.
  */
 export function designatorRanges(names: string[]): string {
   const sorted = [...names].sort(natural.compare)
@@ -71,7 +72,7 @@ export function designatorRanges(names: string[]): string {
     let j = i
     const m = parsed[i]
     while (m && j + 1 < sorted.length && parsed[j + 1]?.[1] === m[1] && Number(parsed[j + 1]![2]) === Number(parsed[j]![2]) + 1) j++
-    if (j - i >= 2) out.push(`${sorted[i]}-${sorted[j]}`)
+    if (j - i >= 2) out.push(`${sorted[i]}${/[- ]/.test(sorted[i] + sorted[j]) ? ' to ' : '-'}${sorted[j]}`)
     else for (let k = i; k <= j; k++) out.push(sorted[k])
     i = j + 1
   }
@@ -121,7 +122,7 @@ export function billOfMaterials(d: Diagram, opts: BomOptions = {}): Bom {
   for (const c of d.connections) {
     const ends = [endKind(c.ends, 'from'), endKind(c.ends, 'to')].sort(byOrder) as [EndKind, EndKind]
     const gauge = c.gauge ?? 22
-    const color = c.color ?? looks.get(c.uid)?.color ?? 'black'
+    const color = drawnColor(c, looks)
     const cable = cableOf(ends[0], ends[1])
     const key = JSON.stringify([cable, ends, gauge, color])
     let row = wires.get(key)

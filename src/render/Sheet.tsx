@@ -4,7 +4,7 @@
 // colors in a standalone export (exportSvg.tsx). The mains look (identity colours, hazard rim, bolts,
 // the green-yellow stripe) is drawn in every theme.
 import { computeRoutes, labelAnchor, type Diagram, moduleOf, wireColor, wirePaths, wireStripe, wireWidth, type PartInstance } from '../format/diagram.ts'
-import { wireLooks } from '../format/mainsLook.ts'
+import { drawnColor, wireLooks } from '../format/mainsLook.ts'
 import { seatedLabels } from '../format/seatedLabels.ts'
 import { plugsOf, splitBoards } from '../format/breadboard.ts'
 import { partCaption } from '../format/values.ts'
@@ -77,7 +77,7 @@ export function Sheet({ diagram, captions = {}, box, label, decorative = false, 
         {wires.map(({ conn, d, blocked }) => {
           const w = wireWidth(conn.gauge)
           const look = looks.get(conn.uid)
-          const name = conn.color ?? look?.color ?? undefined
+          const name = drawnColor(conn, looks)
           const stripe = wireStripe(name)
           return (
             <g key={conn.uid} data-wire={conn.uid}>

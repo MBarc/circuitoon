@@ -11,7 +11,7 @@ import { WireLabel } from '../render/WireLabel.tsx'
 import { CableLayer } from '../render/CableEnd.tsx'
 import { FrameMark, NoteMark } from '../render/Annotations.tsx'
 import { BLOCKED_STROKE, Bolts, HazardOutline, Stripe, boltInsets } from '../render/Mains.tsx'
-import { type WireLook, holdLooks, newWireColor, startColor } from '../format/mainsLook.ts'
+import { type WireLook, drawnColor, holdLooks, newWireColor, startColor } from '../format/mainsLook.ts'
 import { seatedLabels } from '../format/seatedLabels.ts'
 import { addPart, addWire, EMPTY_SELECTION, marqueeSelection, moveAnnotations, moveParts, reconnectWire, sameEndpoint, setWireRoute, settleDrop, settleMounts, settleSeats, settlingOf, updateWire, withMounted } from './ops.ts'
 import { netlist, netPoints } from '../format/netlist.ts'
@@ -814,7 +814,7 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
             const selected = selection.wires.includes(conn.uid)
             const dimmed = drag?.kind === 'reconnect' && drag.uid === conn.uid
             const look = looks.get(conn.uid)
-            const name = conn.color ?? look?.color ?? undefined
+            const name = drawnColor(conn, looks)
             const stripe = wireStripe(name)
             return (
               <g key={conn.uid} data-wire={conn.uid} opacity={dimmed ? 0.3 : undefined}>

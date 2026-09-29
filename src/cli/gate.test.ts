@@ -131,7 +131,7 @@ describe('circuitoon gate', () => {
     expect(r.out).toContain('GATE INCOMPLETE')
     expect(r.err).toContain('No Chrome or Edge found')
     const g = gateJson(dir)
-    expect(g.format).toBe('circuitoon-cli/gate/1')
+    expect(g.format).toBe('circuitoon-cli/gate/2')
     expect(schemaErrors(loadSchema('gate'), g)).toEqual([])
     expect(g.ok).toBe(false)
     expect(g.blocking).toEqual([])

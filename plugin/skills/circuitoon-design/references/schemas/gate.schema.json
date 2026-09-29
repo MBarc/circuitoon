@@ -19,7 +19,7 @@
   "additionalProperties": false,
   "properties": {
     "format": {
-      "const": "circuitoon-cli/gate/1"
+      "const": "circuitoon-cli/gate/2"
     },
     "ok": {
       "type": "boolean"

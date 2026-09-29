@@ -5,6 +5,11 @@ import { describe, expect, it } from 'vitest'
 import { billOfMaterials, bomCsv, bomLines, csvField, designatorRanges } from './bom.ts'
 import type { Connection, Diagram, PartInstance } from './diagram.ts'
 import type { ModuleDef, PinDef } from './module.ts'
+import { createElement } from 'react'
+import { renderToStaticMarkup } from 'react-dom/server'
+import { Sheet } from '../render/Sheet.tsx'
+import { wireColor } from './diagram.ts'
+import { modulesById } from '../library.ts'
 
 const pins2: PinDef[] = [{ name: '1', side: 'left', type: 'passive' }, { name: '2', side: 'right', type: 'passive' }]
 const resistor: ModuleDef = { format: 'circuitoon-module/1', id: 'resistor', name: 'Resistor (1/4 W)', category: 'Passives', pins: pins2,
@@ -34,7 +39,9 @@ describe('designatorRanges', () => {
     expect(designatorRanges(['R10', 'R2', 'R1', 'R3', 'R9'])).toBe('R1-R3, R9, R10')
     expect(designatorRanges(['R1', 'R2'])).toBe('R1, R2')
     expect(designatorRanges(['U1'])).toBe('U1')
-    expect(designatorRanges(['MCP Breadboard 3', 'MCP Breadboard 1', 'MCP Breadboard 2'])).toBe('MCP Breadboard 1-MCP Breadboard 3')
+    expect(designatorRanges(['MCP Breadboard 3', 'MCP Breadboard 1', 'MCP Breadboard 2'])).toBe('MCP Breadboard 1 to MCP Breadboard 3')
+    expect(designatorRanges(['J1-3', 'J1-1', 'J1-2'])).toBe('J1-1 to J1-3')
+    expect(designatorRanges(['sw_1.S', 'sw_2.S'])).toBe('sw_1.S, sw_2.S')
     expect(designatorRanges(['J1', 'X', 'D1'])).toBe('D1, J1, X')
   })
 })
@@ -95,6 +102,19 @@ describe('wires', () => {
     const plain = billOfMaterials(sheet([part('U1', 'mcu'), part('BT1', 'holder')], [wire('w1', 'bt1.+', 'u1.IO'), wire('w2', 'bt1.-', 'u1.GND')]))
     // BT1 + is a supply net (drawn red), BT1 - a ground (black).
     expect(plain.wires.map((w) => w.color).sort()).toEqual(['black', 'red'])
+  })
+  it('lists every wire under the colour the sheet draws it in, uncoloured ones by their role', () => {
+    const use = ['battery-18650-holder', 'esp32-devkit-v1-30', 'oled-ssd1306-096-i2c']
+    const d: Diagram = {
+      format: 'circuitoon-diagram/1', title: 'Drawn', modules: Object.fromEntries(use.map((id) => [id, modulesById[id]])),
+      parts: [part('BT1', 'battery-18650-holder'), part('U1', 'esp32-devkit-v1-30', { x: 300 }), part('DS1', 'oled-ssd1306-096-i2c', { x: 700 }), part('BT2', 'battery-18650-holder', { y: 300 })],
+      connections: [wire('p', 'u1.3V3', 'ds1.VCC'), wire('g', 'bt1.-', 'u1.GND'), wire('s', 'u1.D21', 'ds1.SDA'), wire('c', 'bt2.-', 'ds1.GND', { color: 'green' })],
+    }
+    const svg = renderToStaticMarkup(createElement(Sheet, { diagram: d, box: { x: 0, y: 0, w: 1200, h: 800 }, label: 'b' }))
+    const drawn = d.connections.map((c) => new RegExp(`data-wire="${c.uid}"[^]*?class="wire-color"[^>]*stroke="([^"]+)"`).exec(svg)![1]).sort()
+    const listed = billOfMaterials(d).wires.flatMap((w) => Array(w.count).fill(wireColor(w.color))).sort()
+    expect(listed).toEqual(drawn)
+    expect(billOfMaterials(d).wires.map((w) => `${w.color} x${w.count}`).sort()).toEqual(['black x2', 'green x1', 'red x1'])
   })
   it('counts connectors per kind (not bare, stripped or solid-core ends)', () => {
     expect(bom.connectors.map((c) => [c.name, c.count])).toEqual([

@@ -4126,6 +4126,7 @@ function validateDiagram(raw) {
 		checkEnd(c.from, `${at}.from`);
 		checkEnd(c.to, `${at}.to`);
 		if (c.color !== void 0 && !(typeof c.color === "string" && isValidColor(c.color))) errors.push(`${at}.color: must be a named color or #RRGGBB`);
+		if (c.colorSet !== void 0 && c.colorSet !== true) errors.push(`${at}.colorSet: must be true when present`);
 		if (c.gauge !== void 0 && !(Number.isInteger(c.gauge) && c.gauge >= 16 && c.gauge <= 30)) errors.push(`${at}.gauge: must be a whole number from 16 to 30`);
 		if (c.route !== void 0 && !(Array.isArray(c.route) && c.route.every((p) => Array.isArray(p) && p.length === 2 && isNum(p[0]) && isNum(p[1])))) errors.push(`${at}.route: must be a list of [x, y] points`);
 		else if (Array.isArray(c.route) && c.route.length > 200) {
@@ -47093,11 +47094,14 @@ function positiveRail(t) {
 }
 /**
 * The role of the net made of `keys` (with their terminals), or null when no colour is judged: a net
-* on mains wiring or with a mains identity (it keeps its regional colours), or a net that holds both
-* a ground and a positive supply (a short, or the link between two cells in series).
+* on mains wiring or with a mains identity (it keeps its regional colours), a net with a power pin
+* whose voltage is not known to be positive (a rail that does not parse, such as -5V, or no supply
+* listed: it is never guessed into supply or signal), or a net that holds both a ground and a
+* positive supply (a short, or the link between two cells in series).
 */
 function roleOf(keys, terms, mains) {
 	if (mains && keys.some((k) => mains.hazardKeys.has(k) || mains.conductorOf(k))) return null;
+	if (terms.some((t) => !t.bare && (t.type === "power_out" || t.type === "power_in") && !positiveRail(t))) return null;
 	const ground = terms.some((t) => t.type === "ground");
 	const supply = terms.some(positiveRail);
 	return ground && supply ? null : ground ? "ground" : supply ? "supply" : "signal";
@@ -47565,7 +47569,7 @@ function checkDiagram(d) {
 		const role = roles[i];
 		if (!role) return;
 		const bad = netWires[i].map((uid) => byUid.get(uid)).filter((c) => {
-			if (c.color === void 0) return false;
+			if (c.color === void 0 || !c.colorSet) return false;
 			const fam = colorFamily(c.color);
 			return role === "ground" ? fam !== "black" : role === "supply" ? fam !== "red" : fam !== "other";
 		});
@@ -57811,6 +57815,13 @@ function wireLooks(d) {
 	}
 	return out;
 }
+/**
+* The colour name a wire is drawn in: its stored colour, else its look (mains identity or role
+* colour), else the default, black. The sheet, the canvas and the bill of materials all use it.
+*/
+function drawnColor(c, looks) {
+	return c.color ?? looks.get(c.uid)?.color ?? "black";
+}
 //#endregion
 //#region node_modules/react/cjs/react-jsx-runtime.production.js
 /**
@@ -58814,7 +58825,7 @@ function Sheet({ diagram, captions = {}, box, label, decorative = false, theme =
 				children: wires.map(({ conn, d, blocked }) => {
 					const w = wireWidth(conn.gauge);
 					const look = looks.get(conn.uid);
-					const name = conn.color ?? look?.color ?? void 0;
+					const name = drawnColor(conn, looks);
 					const stripe = wireStripe(name);
 					return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("g", {
 						"data-wire": conn.uid,
@@ -59943,7 +59954,8 @@ var NOT_CHECKED = [
 //#region src/format/bom.ts
 /**
 * Designators in natural order, a run of three or more with one prefix and consecutive numbers
-* joined as "BT1-BT4": "R1-R3, R9, R10".
+* joined as "BT1-BT4": "R1-R3, R9, R10". A run whose designators hold a hyphen or a space is joined
+* with " to " ("J1-1 to J1-3", "MCP Breadboard 1 to MCP Breadboard 3"), so it never reads as one name.
 */
 function designatorRanges(names) {
 	const sorted = [...names].sort(natural.compare);
@@ -59953,7 +59965,7 @@ function designatorRanges(names) {
 		let j = i;
 		const m = parsed[i];
 		while (m && j + 1 < sorted.length && parsed[j + 1]?.[1] === m[1] && Number(parsed[j + 1][2]) === Number(parsed[j][2]) + 1) j++;
-		if (j - i >= 2) out.push(`${sorted[i]}-${sorted[j]}`);
+		if (j - i >= 2) out.push(`${sorted[i]}${/[- ]/.test(sorted[i] + sorted[j]) ? " to " : "-"}${sorted[j]}`);
 		else for (let k = i; k <= j; k++) out.push(sorted[k]);
 		i = j + 1;
 	}
@@ -60019,7 +60031,7 @@ function billOfMaterials(d, opts = {}) {
 	for (const c of d.connections) {
 		const ends = [endKind(c.ends, "from"), endKind(c.ends, "to")].sort(byOrder);
 		const gauge = c.gauge ?? 22;
-		const color = c.color ?? looks.get(c.uid)?.color ?? "black";
+		const color = drawnColor(c, looks);
 		const cable = cableOf(ends[0], ends[1]);
 		const key = JSON.stringify([
 			cable,
@@ -60475,7 +60487,7 @@ function renderCommand(args, io) {
 }
 //#endregion
 //#region src/cli/gate.ts
-var GATE_FORMAT = "circuitoon-cli/gate/1";
+var GATE_FORMAT = "circuitoon-cli/gate/2";
 var sha256 = (bytes) => createHash("sha256").update(bytes).digest("hex");
 /** The loader's warning for a part whose module the file does not embed (a missing module blocks). */
 var MISSING_MODULE = "is not embedded in this file";
@@ -60914,6 +60926,7 @@ function realize(intent, d, locals = []) {
 			from,
 			to,
 			color: colors[ni],
+			colorSet: true,
 			gauge: 22,
 			...ends ? { ends } : {},
 			...routing ? { routing: true } : {}

@@ -58,7 +58,7 @@ The readability report lists:
 - `focus-<copy>.png` for the first copy of a repeat;
 - `link.txt`, or the sheet file when the link would be too long;
 - `bom.csv`, the bill of materials (the same file `bom -o` writes);
-- `gate.json` (format `circuitoon-cli/gate/1`), with the SHA-256 of the sheet and of every artifact, the blocking findings, the warnings, the notes, the "not checked" list, the link, the bill of materials (`bom`, the rows `bom.csv` is written from), the bill of quantities (the bill's parts summed per module; `added` is how many of each part the layout added as routing infrastructure) and the channel table.
+- `gate.json` (format `circuitoon-cli/gate/2`; version 2 added the required `bom` field and the `bom` artifact), with the SHA-256 of the sheet and of every artifact, the blocking findings, the warnings, the notes, the "not checked" list, the link, the bill of materials (`bom`, the rows `bom.csv` is written from), the bill of quantities (the bill's parts summed per module; `added` is how many of each part the layout added as routing infrastructure) and the channel table.
 
 ## Bill of materials
 

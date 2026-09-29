@@ -95,6 +95,14 @@ export function wireLooks(d: Diagram): Map<string, WireLook> {
   return out
 }
 
+/**
+ * The colour name a wire is drawn in: its stored colour, else its look (mains identity or role
+ * colour), else the default, black. The sheet, the canvas and the bill of materials all use it.
+ */
+export function drawnColor(c: { uid: string; color?: string }, looks: ReadonlyMap<string, { color: string | null }>): string {
+  return c.color ?? looks.get(c.uid)?.color ?? 'black'
+}
+
 /** The colour a wire drawn from `ep` shows while it is dragged: its identity or role colour, else `fallback`. */
 export function startColor(d: Diagram, ep: Endpoint, fallback: string): string {
   return identityColor(d, ep) ?? roleColor(d, ep) ?? fallback
