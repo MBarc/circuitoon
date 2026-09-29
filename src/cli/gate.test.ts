@@ -15,6 +15,8 @@ import { loadSchema, schemaErrors } from './jsonSchema.testing.ts'
 import { findBrowser } from './png.ts'
 import { EXIT, type Io } from './io.ts'
 import { runGate } from './gate.ts'
+import { bomCsv } from '../format/bom.ts'
+import { bomQuantities } from '../agent/tables.ts'
 import { ledNetlist, tiltSensors } from '../agent/fixtures.testing.ts'
 
 const browser = findBrowser(process.env)
@@ -45,7 +47,7 @@ describe('circuitoon gate', () => {
     expect(JSON.parse(r.out)).toEqual(g)
     expect(g.ok).toBe(true)
     expect(g.diagram.sha256).toBe(sha(join(dir, 'sheet.json')))
-    expect(g.artifacts.map((a: { kind: string }) => a.kind).sort()).toEqual(['focus-png', 'link', 'png', 'svg'])
+    expect(g.artifacts.map((a: { kind: string }) => a.kind).sort()).toEqual(['bom', 'focus-png', 'link', 'png', 'svg'])
     for (const a of g.artifacts) expect(sha(join(dir, 'out', a.path)), a.path).toBe(a.sha256)
     expect(g.notChecked.length).toBeGreaterThan(0)
     expect(g.quantities.length).toBeGreaterThan(0)
@@ -64,6 +66,27 @@ describe('circuitoon gate', () => {
     expect(strips.added).toBe(added.length)
     expect(q.filter((r) => r.module !== added[0].module).every((r) => r.added === 0)).toBe(true)
   }, 120_000)
+  it('writes bom.csv from the same bill as gate.json, hashed, and the bill of quantities agrees with it', async () => {
+    const dir = await laidOut(tiltSensors())
+    const r = await cli(['gate', 'sheet.json', '-o', 'out', '--json'], { cwd: dir, env: noBrowser(dir) })
+    expect(r.code).toBe(3)
+    const g = gateJson(dir)
+    expect(schemaErrors(loadSchema('gate'), g)).toEqual([])
+    const csv = readFileSync(join(dir, 'out', 'bom.csv'), 'utf8')
+    expect(csv).toBe(bomCsv(g.bom))
+    const entry = g.artifacts.find((a: { kind: string }) => a.kind === 'bom')
+    expect(entry.path).toBe('bom.csv')
+    expect(entry.sha256).toBe(sha(join(dir, 'out', 'bom.csv')))
+    expect(g.quantities).toEqual(bomQuantities(g.bom))
+    // Every part is in the CSV once: its Qty column adds up to the sheet's parts.
+    const sheet = JSON.parse(readFileSync(join(dir, 'sheet.json'), 'utf8'))
+    const qty = csv.trim().split(/\r\n/).slice(1).filter((l) => l.startsWith('"Part"')).reduce((n, l) => n + Number(l.split('","')[1]), 0)
+    expect(qty).toBe(sheet.parts.length)
+    // A stale bom.csv never survives a run that stops before writing one.
+    writeFileSync(join(dir, 'sheet.json'), '{ not json')
+    expect((await cli(['gate', 'sheet.json', '-o', 'out'], { cwd: dir, env: noBrowser(dir) })).code).toBe(1)
+    expect(existsSync(join(dir, 'out', 'bom.csv'))).toBe(false)
+  })
   it('blocks a sheet with no intent (exit 1), even without a browser', async () => {
     const dir = await laidOut()
     edit(dir, (s) => void delete s.intent)
@@ -113,8 +136,8 @@ describe('circuitoon gate', () => {
     expect(g.ok).toBe(false)
     expect(g.blocking).toEqual([])
     expect(g.warnings.some((f: { rule: string }) => f.rule === 'environment')).toBe(true)
-    // The SVG and the link need no browser, so they are still written and hashed.
-    expect(g.artifacts.map((a: { kind: string }) => a.kind).sort()).toEqual(['link', 'svg'])
+    // The SVG, the bill of materials and the link need no browser, so they are still written and hashed.
+    expect(g.artifacts.map((a: { kind: string }) => a.kind).sort()).toEqual(['bom', 'link', 'svg'])
   })
   it('in --json mode prints the report on exit 3, and an error envelope on a usage error (A10)', async () => {
     const dir = await laidOut()
@@ -146,7 +169,7 @@ describe('circuitoon gate', () => {
     expect(shots.map((s) => s.slice(outDir.length + 1))).toEqual(['sheet.png', 'focus-tilt_1.png'])
     expect(code).toBe(EXIT.environment)
     expect(report.ok).toBe(false)
-    expect(report.artifacts.map((a) => a.kind).sort()).toEqual(['link', 'png', 'svg'])
+    expect(report.artifacts.map((a) => a.kind).sort()).toEqual(['bom', 'link', 'png', 'svg'])
     expect(report.warnings.find((w) => w.rule === 'environment')?.message).toContain('the browser crashed')
     // Blocking findings still win over it.
     const blocked = JSON.parse(bytes.toString())

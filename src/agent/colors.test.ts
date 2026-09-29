@@ -15,7 +15,7 @@ const DIR = join(import.meta.dirname, '..', '..', 'plugin', 'skills', 'circuitoo
 const TW = join(DIR, 'spirit-typewriter')
 const read = (path: string) => JSON.parse(readFileSync(path, 'utf8'))
 
-const laid = (raw: unknown, keep?: Parameters<typeof layoutNetlist>[1]['keep']) => {
+const laid = (raw: unknown, keep?: NonNullable<Parameters<typeof layoutNetlist>[1]>['keep']) => {
   const r = layoutNetlist(raw, { keep })
   if (!r.ok) throw new Error(r.errors.join('\n'))
   return r.value

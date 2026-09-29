@@ -1,6 +1,6 @@
 // `circuitoon gate <sheet.json> -o <dir>` (agent toolkit spec 4.2 and 5): the one command an agent
 // runs before showing anything to a person. Load, verify, check, render (full, plus one focused copy
-// when the intent has repeats) and link; write the artifacts and gate.json with a SHA-256 of the
+// when the intent has repeats), the bill of materials (bom.csv) and link; write the artifacts and gate.json with a SHA-256 of the
 // diagram and of each artifact. Blocking: loader errors, a missing module or dropped value override,
 // any verify error (missing or invalid intent included), any checker error, any blocked route, and
 // no link with no file fallback written. A wire drawn over used breadboard holes (a wire end, a leg,
@@ -23,7 +23,8 @@ import { intentLookup, verifyDiagram } from '../agent/verify.ts'
 import { parseNetlist } from '../agent/netlist.ts'
 import { libraryLookup } from '../agent/catalog.ts'
 import { NOT_CHECKED } from '../agent/notChecked.ts'
-import { type ChannelRow, type QuantityRow, channelTable, quantities } from '../agent/tables.ts'
+import { type ChannelRow, type QuantityRow, bomQuantities, channelTable, sheetBom } from '../agent/tables.ts'
+import { type Bom, bomCsv } from '../format/bom.ts'
 import type { Args } from './args.ts'
 import { CliError, EXIT, type Io, flag, pathIn, printJson, writeError, writeFile } from './io.ts'
 import { type CliFinding, alsoChecked, cliFinding, findingsText, notCheckedText, uniqueIds, withoutStale } from './verifyCmd.ts'
@@ -34,7 +35,7 @@ import { focusParts } from './render.ts'
 export const GATE_FORMAT = 'circuitoon-cli/gate/1'
 
 export interface GateArtifact {
-  kind: 'svg' | 'png' | 'focus-png' | 'link' | 'file'
+  kind: 'svg' | 'png' | 'focus-png' | 'link' | 'file' | 'bom'
   /** Relative to the output directory. */
   path: string
   sha256: string
@@ -51,6 +52,8 @@ export interface GateReport {
   notes: CliFinding[]
   notChecked: string[]
   link: { url: string | null; file: string | null; chars: number }
+  /** The bill of materials bom.csv is written from (null when the sheet did not load); `quantities` sums its parts per module. */
+  bom: Bom | null
   quantities: QuantityRow[]
   channels: ChannelRow[]
 }
@@ -89,7 +92,7 @@ function clearArtifacts(outDir: string, keep: string) {
     return // no directory yet
   }
   for (const name of names) if (/^focus-.*\.png$/.test(name)) removeStale(outDir, name, keep)
-  for (const name of ['sheet.svg', 'sheet.png', 'link.txt']) removeStale(outDir, name, keep)
+  for (const name of ['sheet.svg', 'sheet.png', 'link.txt', 'bom.csv']) removeStale(outDir, name, keep)
 }
 
 /** Removes an earlier gate.json, and the file fallback it names, before anything else runs. */
@@ -124,7 +127,7 @@ export async function runGate(bytes: Uint8Array, opts: { sheetPath: string; outD
   // Each artifact the gate must produce, and what made it fail when it could not.
   const required: { kind: GateArtifact['kind'] | 'link-or-file'; path: string }[] = []
   let link: GateReport['link'] = { url: null, file: null, chars: 0 }
-  let rows: Pick<GateReport, 'quantities' | 'channels'> = { quantities: [], channels: [] }
+  let rows: Pick<GateReport, 'bom' | 'quantities' | 'channels'> = { bom: null, quantities: [], channels: [] }
 
   const finish = (): { code: number; report: GateReport } => {
     const have = new Set(artifacts.map((a) => a.kind))
@@ -181,7 +184,12 @@ export async function runGate(bytes: Uint8Array, opts: { sheetPath: string; outD
     if (routes.get(c.uid)?.fallback)
       note('wire-over-holes', c.uid, 'warning', `The wire ${c.label ?? `${endpointName(d, c.from)} to ${endpointName(d, c.to)}`} runs over breadboard holes in use that it is not plugged into, so in the picture it may look plugged in there.`, { parts: [c.from.part, c.to.part], wires: [c.uid] })
   const parsed = d.intent !== undefined ? parseNetlist(d.intent, intentLookup(d, libraryLookup)) : null
-  if (parsed?.ok) rows = { quantities: quantities(parsed.intent, d), channels: channelTable(parsed.intent) }
+  // The bill of materials: bom.csv and gate.json's bill of quantities both come from this one bill.
+  const bom = sheetBom(d, libraryLookup)
+  rows = { bom, quantities: bomQuantities(bom), channels: parsed?.ok ? channelTable(parsed.intent) : [] }
+  required.push({ kind: 'bom', path: 'bom.csv' })
+  writeFile(io, join(outDir, 'bom.csv'), bomCsv(bom))
+  artifact('bom', 'bom.csv')
 
   // Renders: the full sheet, and the first repeat copy when there is one. A PNG that could not be
   // made is recorded here and counted as missing in finish().

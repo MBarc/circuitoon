@@ -61,7 +61,7 @@ With `--json`, a failure prints `{ "ok": false, "exit": N, "error": { "code", "m
 7. **Present** (only after the last `gate` exited 0):
    - the PNG (`out/sheet.png`, plus the focused PNGs for repeats);
    - the link, with its notice that anyone with the link can see the diagram and nothing is uploaded. If the link was too long, `gate` wrote the sheet file instead: give that file and say to open it with Import JSON;
-   - the bill of quantities and, for repeats, the channel table (both are in `gate.json`). The bill counts what is on the sheet: rows with `added` above 0 include rail strips or breadboards the layout added to distribute nets, so say those are extra parts to buy;
+   - the bill of materials (`out/bom.csv`, hashed in `gate.json`; its rows are also `bom` in `gate.json`) and, for repeats, the channel table. The bill counts what is on the sheet: parts, wires by cable, gauge and color, and connectors. Rows marked `added by layout` are rail strips, breadboards or jumpers the layout added to distribute nets, so say those are extra parts to buy;
    - every warning, explained;
    - the "not checked" list;
    - every assumption the user still has to confirm.
