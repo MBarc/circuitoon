@@ -81,6 +81,12 @@ export class EditorStore {
     return this.gesture
   }
 
+  /**
+   * True while the canvas pans (a middle-button, Space or touch drag) or Space is held ready to
+   * pan. Not state anyone renders, so setting it notifies nobody; the arrow-key nudge reads it.
+   */
+  panning = false
+
   /** Marks whether such a gesture is active, so keyboard shortcuts can stay quiet during it. */
   setGesture(active: boolean) {
     if (this.gesture === active) return

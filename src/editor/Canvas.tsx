@@ -125,6 +125,14 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
   const [drag, setDrag] = useState<Drag | null>(null)
   // Space held (outside a text field): a left drag pans, for trackpads with no middle button.
   const [spaceDown, setSpaceDown] = useState(false)
+  // The store hears about any pan (and Space held ready to pan), so arrow keys never nudge then.
+  const panActive = spaceDown || drag?.kind === 'pan'
+  useEffect(() => {
+    store.panning = panActive
+    return () => {
+      store.panning = false
+    }
+  }, [store, panActive])
   // The last pointer position over the sheet (client px), for pasting under the pointer.
   const lastClient = useRef<Pt | null>(null)
   // The pin or hole under the pointer while nothing is being dragged, for net highlighting.
@@ -613,7 +621,15 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
       return
     }
     const r = snapMove(snapping.index, snapping.moving, raw, view.scale)
-    store.preview(r.dx === grid.dx && r.dy === grid.dy ? onGrid : move(r.dx, r.dy))
+    const snapped = r.dx === grid.dx && r.dy === grid.dy ? onGrid : move(r.dx, r.dy)
+    // A snap must never be what puts a part into a board or an outlet: where the snapped move
+    // would seat (or partly seat) a part the plain grid move does not, the grid move stands.
+    if (snapped !== onGrid && d.kind === 'parts' && seating(d, snapping, snapped, r)) {
+      store.preview(onGrid)
+      setGuides(null)
+      return
+    }
+    store.preview(snapped)
     setGuides(r.guides.length || r.gaps.length ? r : null)
   }
   /** Whether a moving part would be seated (or partly seated) in a board or outlet at `at`. */

@@ -32,6 +32,12 @@ const strip = board.holes.flatMap((g) => g.at).find(([x, y]) => y > 50 && holeSe
 const BB = { x: 600, y: 500 }
 // Resistor pins plug in at their body edge points, (0, 20) and (60, 20).
 const seat = { x: BB.x + strip[0], y: BB.y + strip[1] - 20 }
+// The leftmost hole of the board's top row: a resistor whose right leg sits one step left of it
+// lands no leg (off holes), but one step right it lands that leg (a partial seat).
+const topRow = Math.min(...board.holes.flatMap((g) => g.at.map(([, y]) => y)))
+const firstX = Math.min(...board.holes.flatMap((g) => g.at.filter(([, y]) => y === topRow).map(([x]) => x)))
+if (holeSet.has(`${firstX - 10},${topRow}`)) throw new Error('the top row has a hole left of its first')
+const offBoard = { x: BB.x + firstX - 70, y: BB.y + topRow - 20 }
 
 const part = (uid, designator, module, x, y) => ({ uid, designator, module, x, y, rotation: 0 })
 const sheet = {
@@ -44,11 +50,14 @@ const sheet = {
     part('r2', 'R2', 'resistor', 200, 0),
     part('r3', 'R3', 'resistor', 0, 200),
     part('d1', 'D1', 'led', 300, 300),
-    part('r4', 'R4', 'resistor', 500, 200),
+    part('r4', 'R4', 'resistor', 510, 200),
     part('m1', 'M1', 'servo-sg90', 300, 370),
     part('r5', 'R5', 'resistor', 1000, 300),
     // An edge one grid step right of the seat, far below the board: close enough to pull R5.
     part('r6', 'R6', 'resistor', seat.x + 10, 800),
+    part('r7', 'R7', 'resistor', 100, 900),
+    // An edge that would pull R7 one step right, onto the board's first hole.
+    part('r8', 'R8', 'resistor', offBoard.x + 10, 1100),
   ],
   connections: [
     { uid: 'w1', from: { part: 'r3', pin: '2' }, to: { part: 'd1', pin: 'A' }, color: 'red', gauge: 22 },
@@ -82,7 +91,7 @@ for (const scheme of ['light', 'dark']) {
       await page.waitForFunction(() => document.querySelectorAll('[data-part]').length === 0)
     }
     await page.locator('input[type=file]').setInputFiles(sheetFile)
-    await page.waitForFunction(() => document.querySelectorAll('[data-part]').length === 9)
+    await page.waitForFunction(() => document.querySelectorAll('[data-part]').length === 11)
     const w = await wrap()
     await page.mouse.move(w.x + 1, w.y + 1)
     const now = await view()
@@ -194,6 +203,15 @@ for (const scheme of ['light', 'dark']) {
   check(seatGuides === 0, `${scheme}: no guide while a part is being seated (${seatGuides})`)
   check(at(d, 'r5').x === seat.x && at(d, 'r5').y === seat.y && at(d, 'r5').mount === 'bb', `${scheme}: R5 is seated in the breadboard (${JSON.stringify(at(d, 'r5'))})`)
 
+  // 4b. A snap never seats a part: R7 dropped 4 px right of a spot just off the board, where an
+  // edge 6 px on would put its right leg in the first hole, stays off the board on the grid.
+  await load(0.5)
+  const r7 = sheet.parts.find((p) => p.uid === 'r7')
+  let offGuides7 = -1
+  await dragPart('r7', { x: offBoard.x - r7.x + 4, y: offBoard.y - r7.y }, { mid: async () => (offGuides7 = await guideCount()) })
+  d = await saved()
+  check(at(d, 'r7').x === offBoard.x && at(d, 'r7').y === offBoard.y && !at(d, 'r7').mount && offGuides7 === 0, `${scheme}: a snap never pulls R7 onto the board (${JSON.stringify(at(d, 'r7'))}, want x ${offBoard.x}, ${offGuides7} guides)`)
+
   // 5. Align left: R1, R3 and D1 selected, one click, one undo step.
   await load(1.5)
   const click = async (uid, shift = false) => {
@@ -256,6 +274,35 @@ for (const scheme of ['light', 'dark']) {
   await field.press('Escape')
   d = await saved()
   check(at(d, 'r1').x === 0, `${scheme}: arrows in a text field move no part (${at(d, 'r1').x})`)
+  // Nor from a button in the Inspector or the Parts list, where arrows scroll and navigate.
+  await click('r1')
+  await page.getByRole('button', { name: 'Rotate 90 degrees' }).focus()
+  await page.keyboard.press('ArrowRight')
+  await page.locator('.lib-group-head').first().focus()
+  await page.keyboard.press('ArrowDown')
+  await pause()
+  d = await saved()
+  check(at(d, 'r1').x === 0 && at(d, 'r1').y === 0, `${scheme}: arrows in the Inspector or the Parts list move no part (${JSON.stringify(at(d, 'r1'))})`)
+  // Nor during a pan: Space held, then a middle-button drag.
+  await click('r1')
+  await page.keyboard.down('Space')
+  await page.keyboard.press('ArrowRight')
+  await page.keyboard.up('Space')
+  const paper = await screen({ x: 450, y: 150 })
+  await page.mouse.move(paper.x, paper.y)
+  await page.mouse.down({ button: 'middle' })
+  await page.mouse.move(paper.x + 5, paper.y + 5)
+  await page.keyboard.press('ArrowDown')
+  await page.mouse.up({ button: 'middle' })
+  await pause()
+  d = await saved()
+  check(at(d, 'r1').x === 0 && at(d, 'r1').y === 0, `${scheme}: arrows move no part during a Space or middle-button pan (${JSON.stringify(at(d, 'r1'))})`)
+  // And from the sheet they still nudge.
+  await click('r1')
+  await page.keyboard.press('ArrowRight')
+  await pause()
+  d = await saved()
+  check(at(d, 'r1').x === 10, `${scheme}: back on the sheet, an arrow nudges again (${at(d, 'r1').x})`)
 
   // 8. The toggle: off, the edge drag stays on the grid; remembered after a reload; back on.
   await load(0.5)
@@ -274,7 +321,7 @@ for (const scheme of ['light', 'dark']) {
   // 9. The screenshot: R4 dragged to (0, 400) lines up under R1 and R3 (edge guides), its pin 2 level
   // with M1's PWM pin (a pin guide), and the gap above it equal to the gap between R1 and R3.
   await load(1.5)
-  await dragPart('r4', { x: -500, y: 200 }, {
+  await dragPart('r4', { x: -510, y: 200 }, {
     mid: async () => {
       const edge = await guideCount('[data-guide="edge"]')
       const pin = await guideCount('[data-guide="pin"]')

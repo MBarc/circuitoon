@@ -117,7 +117,11 @@ function useEditorKeys(store: EditorStore) {
         }
       } else if (Object.hasOwn(ARROWS, e.key) && !mod && !e.altKey) {
         // A nudge: one grid step, five with Shift. A run of nudges to the same selection is one undo step.
-        if (gesture) return
+        // Only from the sheet (focus on the canvas or nowhere): in the Inspector or the Parts list
+        // arrows scroll and move between controls. Never while the canvas pans.
+        if (gesture || store.panning) return
+        const focus = document.activeElement
+        if (focus && focus !== document.body && !focus.closest('.canvas-wrap')) return
         const sel = s.selection
         if (!sel.parts.length && !sel.annotations?.length) return
         e.preventDefault()
