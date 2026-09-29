@@ -5,7 +5,8 @@
 // and wires on the canvas, Select (selection, pan into view, focus; a hole problem selects only
 // its wire), the badge bringing the list back and naming the counts by severity, each Select
 // button's unique name and description, Delete on the broken row (focus to the next row), undo
-// putting a stale light out, and the empty state. Saves light and
+// putting a stale light out, the empty state, and a sheet whose only finding is a note (a battery
+// bank: no badge, still "No problems found", the note under Notes). Saves light and
 // dark screenshots of each state.
 //
 // Usage (from the repo root, after `npm run build`):
@@ -66,6 +67,9 @@ writeFileSync(warnFile, JSON.stringify({
   parts: [at('u1', 'U1', 'esp32-devkitc-v4', 0, 0), at('u3', 'U3', 'bme280-module-6pin', 300, 60)],
   connections: [{ uid: 'w1', from: { part: 'u3', pin: 'SCL' }, to: { part: 'u1', pin: 'IO22' }, color: 'yellow' }],
 }))
+
+// Only a note: four matching 18650 cells in parallel on an IP5306 (Ruling V1).
+const bankFile = resolve('src/format/fixtures/battery-bank-1s4p.circuitoon.json')
 
 const server = spawn('npx', ['vite', 'preview', '--port', String(port), '--strictPort'], { shell: true, stdio: 'ignore' })
 const stopServer = () => {
@@ -218,6 +222,25 @@ for (const scheme of ['light', 'dark']) {
   check(await badge.evaluate((el) => el.classList.contains('warning')) && (await badge.textContent())?.trim() === '3 problems', `${scheme}: a sheet with only warnings has a yellow badge (${(await badge.textContent())?.trim()})`)
   await saved(page.locator('.toolbar'), 'problems-badge-warnings')
   await saved(page.locator('.inspector'), 'problems-list-warnings')
+
+  // A sheet whose only finding is a note (a 1S4P battery bank): no badge, the clean line, and the
+  // note under Notes, lit in blue on hover.
+  await page.locator('input[type=file]').setInputFiles(bankFile)
+  await page.waitForSelector('[data-part="p7"]')
+  await pause(300)
+  check((await badge.count()) === 0, `${scheme}: a sheet with only a note shows no problems badge`)
+  check((await page.locator('#problems-title').textContent()) === 'No problems found in the drawn connections.', `${scheme}: a sheet with only a note still reads "No problems found"`)
+  const noteRows = page.locator('.problem-notes li')
+  check((await noteRows.count()) === 1 && (await noteRows.first().getAttribute('class')) === 'info', `${scheme}: the note is one info row under Notes`)
+  check((await noteRows.first().locator('.problem-title').textContent()) === 'Note: Parallel battery bank', `${scheme}: the note row says it is a note`)
+  check((await page.locator('.problem-notes .problems-count').textContent()) === '1 note', `${scheme}: Notes counts one note`)
+  await noteRows.first().hover()
+  await pause()
+  const noteLit = { halos: await page.locator('.problem-hi.info .problem-halo').count(), pins: await page.locator('.problem-hi.info .problem-pin').count() }
+  check(noteLit.halos === 4 && noteLit.pins === 8, `${scheme}: hovering the note lights the four cells in blue (${JSON.stringify(noteLit)})`)
+  await page.mouse.move(700, 450)
+  await pause()
+  await saved(page.locator('.inspector'), 'problems-notes')
 
   check(errors.length === 0, `${scheme}: no page errors${errors.length ? `: ${errors.join('; ')}` : ''}`)
   await page.close()

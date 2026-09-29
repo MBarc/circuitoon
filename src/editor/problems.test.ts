@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { highlightOf, problemsOf, reconcileHighlight, severityCounts } from './problems.ts'
+import { highlightOf, isProblem, problemsOf, reconcileHighlight, severityCounts } from './problems.ts'
 import { EditorStore } from './store.ts'
 import { moveParts } from './ops.ts'
 import type { Diagram } from '../format/diagram.ts'
@@ -119,6 +119,11 @@ describe('EditorStore highlight and reveal', () => {
     s.commit({ ...s.getState().diagram, connections: [{ uid: 'w9', from: { part: 'b', pin: '+' }, to: { part: 'r', pin: 'L' } }] })
     expect(severityCounts(problemsOf(s))).toBe('1 warning')
     expect(severityCounts([])).toBe('')
+    // A note (severity info) is not a problem: never counted.
+    const note = { ...problemsOf(s)[0], severity: 'info' as const }
+    expect(isProblem(note)).toBe(false)
+    expect(severityCounts([...problemsOf(s), note])).toBe('1 warning')
+    expect(severityCounts([note])).toBe('')
   })
   it('counts reveal requests so the canvas can pan to the selection', () => {
     const s = new EditorStore(sheet())

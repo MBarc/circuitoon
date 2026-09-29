@@ -2,8 +2,8 @@ import type { Severity } from '../format/checks.ts'
 
 /**
  * A problem's severity as a small sticker, the same mark the canvas pins on the parts involved: a
- * red square with "!" for an error, a yellow hazard triangle for a warning, a green disc with a
- * check for a clean sheet.
+ * red square with "!" for an error, a yellow hazard triangle for a warning, a blue disc with "i"
+ * for a note (not a problem), a green disc with a check for a clean sheet.
  */
 export function SeverityMark({ severity, at }: { severity: Severity | 'ok'; at?: { x: number; y: number; size: number } }) {
   return (
@@ -20,6 +20,13 @@ export function SeverityMark({ severity, at }: { severity: Severity | 'ok'; at?:
           <path className="shape" d="M10 2.2 18.4 17H1.6Z" />
           <path d="M10 7.4v4.6" />
           <circle cx={10} cy={14.4} r={1.15} />
+        </>
+      )}
+      {severity === 'info' && (
+        <>
+          <circle className="shape" cx={10} cy={10} r={8} />
+          <circle cx={10} cy={6.2} r={1.25} />
+          <path d="M10 9.4v5" />
         </>
       )}
       {severity === 'ok' && (
