@@ -20,7 +20,7 @@ Each finding has a stable rule id, a severity (error: likely to damage parts or 
 7. `no-power` (warning): a part with at least one wire or plug, having power_in pins, none of which is on a net with a power_out. "U1 has no power: connect VCC or 5V."
 8. `no-ground` (warning): same condition for ground pins: the part has ground pins and none is on a net with any other part's pin.
 9. `mount` (warning): every entry of mountIssues (partial, conflict, obscured, cannot-mount...), in plain words.
-10. `leg-hole-shared` (warning): a wire end in the exact hole a plugged leg occupies ("physically, one hole takes one leg").
+10. `leg-hole-shared` (error since 2026-09-29, was a warning): a wire end in the exact hole a plugged leg occupies ("physically, one hole takes one leg or one wire end"). `hole-shared` (error): two wire ends in one breadboard hole.
 11. `broken` (error): each connection in netlist(d).broken (already listed today; the checker absorbs that list).
 
 Not in v1 (needs simulation or pin roles we do not have): LED without a resistor, floating inputs, current limits, I2C pull-ups, level mismatch on signal pins, shorts through switches or other passives (switch state is not modeled). Reversed polarity is checked since round 4. Also deferred after review (2026-09-26): structured voltage ranges (nominal / operating / absolute max) instead of "/" rail lists; per-board external-power on/off state (every `electrical.external` pin is assumed powered); a dismissal UI (ids are canonical already, so it can key on them); output drive types (push-pull / open-drain / tri-state) for `outputs-fight`; negative and differential rails (a negative rail parses as unknown).

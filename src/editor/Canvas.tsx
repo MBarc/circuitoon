@@ -3,7 +3,7 @@
 import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import { type EditorStore, useEditorState } from './store.ts'
 import { brokenStub, computeRoutes, labelAnchor, moduleOf, pinTargets, resolveEndpoint, routingKey, wireColor, wirePaths, wireStripe, wireWidth, type PartInstance, type PinTarget, type Routes } from '../format/diagram.ts'
-import { coveredHoles, holeEndAt, plugsOf, splitBoards } from '../format/breadboard.ts'
+import { coveredHoles, holeEndAt, holeKey, plugsOf, splitBoards, takenHoles } from '../format/breadboard.ts'
 import type { Pt } from '../format/geometry.ts'
 import { Part, INK } from '../render/Part.tsx'
 import { LegDots, TakenHoles } from '../render/Boards.tsx'
@@ -30,12 +30,13 @@ const MIN_SCALE = 0.25
 const MAX_SCALE = 4
 const GRID = 10
 const snap = (v: number) => Math.round(v / GRID) * GRID
+const NO_HOLES: ReadonlySet<string> = new Set()
 
 type Drag = { pointer: number } & (
   | { kind: 'pan'; client: Pt; view: View }
   | { kind: 'parts'; start: Pt; uids: string[]; moving: string[]; settling: string[]; base: Diagram }
-  | { kind: 'wire'; from: Endpoint; origin: Pt; cursor: Pt; over: Endpoint | null }
-  | { kind: 'reconnect'; uid: string; end: 'from' | 'to'; origin: Pt; cursor: Pt; over: Endpoint | null }
+  | { kind: 'wire'; from: Endpoint; origin: Pt; cursor: Pt; over: Endpoint | null; refused?: Pt | null }
+  | { kind: 'reconnect'; uid: string; end: 'from' | 'to'; origin: Pt; cursor: Pt; over: Endpoint | null; refused?: Pt | null }
   | { kind: 'segment'; uid: string; index: number; axis: Axis; start: Pt; points: Pt[]; base: Diagram }
   | { kind: 'annotations'; start: Pt; uids: string[]; base: Diagram }
   // `before` is the selection to restore on Escape; `moved` turns true past MARQUEE_MIN screen px.
@@ -253,6 +254,14 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
   // (the red seat mark): nothing plugs in there, and hovering or dropping on one picks nothing.
   const drawing = drag?.kind === 'wire' || drag?.kind === 'reconnect'
   const covered = useMemo(() => (drawing ? coveredHoles(diagram) : []), [drawing, diagram.parts, diagram.modules])
+  // Holes that already hold as many legs and wire ends as they take (one, on a breadboard): a
+  // wire end is never dropped there, and the used hole under the pointer shows the same red mark.
+  // The end being moved never blocks its own hole.
+  const moved = drag?.kind === 'reconnect' ? { wire: drag.uid, end: drag.end } : undefined
+  const taken = useMemo(
+    () => (drawing ? takenHoles(diagram, moved) : NO_HOLES),
+    [drawing, moved?.wire, moved?.end, diagram.parts, diagram.connections, diagram.modules],
+  )
   // Rebuilt only when parts, connections or modules actually change, so moving the pointer between
   // hover targets (which changes `hover` every frame) never rebuilds the netlist itself.
   const nl = useMemo(() => netlist(diagram), [diagram.parts, diagram.connections, diagram.modules])
@@ -427,7 +436,8 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
     // Alt+press on the selected wire adds a bend there (a wire edit), even over a hole.
     const sel0 = store.getState().selection
     const bending = e.altKey && sel0.parts.length === 0 && sel0.wires.length === 1 && target.closest('[data-wire]')?.getAttribute('data-wire') === sel0.wires[0]
-    const end = bending ? null : endUnder(e)
+    // A full hole starts no wire: its one wire end or leg is already there.
+    const end = bending ? null : endUnder(e, takenHoles(store.getState().diagram))
     const at = end && resolveEndpoint(store.getState().diagram, end)
     if (end && at) {
       setDrag({ pointer, kind: 'wire', from: end, origin: at.end, cursor: toWorld(e), over: null })
@@ -501,21 +511,29 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
    * board does not hide the hole beneath it; a part drawn above the board (which has no holes of
    * its own there) still occludes it, since it is the first part found, and so does a note.
    */
-  function holeUnder(e: { clientX: number; clientY: number }): Endpoint | null {
+  function holeUnder(e: { clientX: number; clientY: number }, used: ReadonlySet<string> = NO_HOLES): Endpoint | null {
     for (const el of document.elementsFromPoint(e.clientX, e.clientY)) {
       // A note drawn over a board hides its holes: a press there grabs the note, not a hole.
       if (el.closest('[data-annotation]')) return null
       const partEl = el.closest('[data-part]')
-      if (partEl) return holeEndAt(store.getState().diagram, partEl.getAttribute('data-part')!, toWorld(e))
+      if (partEl) return holeEndAt(store.getState().diagram, partEl.getAttribute('data-part')!, toWorld(e), used)
     }
     return null
   }
   /**
    * The one terminal-hit policy, shared by hover, pressing and dropping a wire end: a pin first (its
-   * target sits on top), else a hole or pad on the topmost part under the pointer.
+   * target sits on top), else a hole or pad on the topmost part under the pointer, skipping the
+   * holes in `used` (full ones, when a wire end is placed).
    */
-  function endUnder(e: { clientX: number; clientY: number }): Endpoint | null {
-    return pinUnder(e) ?? holeUnder(e)
+  function endUnder(e: { clientX: number; clientY: number }, used: ReadonlySet<string> = NO_HOLES): Endpoint | null {
+    return pinUnder(e) ?? holeUnder(e, used)
+  }
+  /** While a wire end is placed: the terminal it would take (never a full hole), and the center of a full hole under the pointer, for the red mark. */
+  function dropUnder(e: { clientX: number; clientY: number }): { over: Endpoint | null; refused: Pt | null } {
+    const over = endUnder(e, taken)
+    const hole = over ? null : holeUnder(e)
+    const full = hole && taken.has(holeKey(hole.part, hole.pin, hole.hole ?? 0)) ? resolveEndpoint(store.getState().diagram, hole) : null
+    return { over, refused: full ? full.end : null }
   }
   function onPointerMove(e: React.PointerEvent<SVGSVGElement>) {
     lastClient.current = { x: e.clientX, y: e.clientY }
@@ -550,8 +568,8 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
       // automatic wire stays automatic and no undo step is recorded.
       if (samePoints(moved, drag.points)) store.preview(drag.base)
       else store.preview(setWireRoute(drag.base, drag.uid, toRoute(moved)))
-    } else if (drag.kind === 'wire') setDrag({ ...drag, cursor: toWorld(e), over: endUnder(e) })
-    else if (drag.kind === 'reconnect') setDrag({ ...drag, cursor: toWorld(e), over: endUnder(e) })
+    } else if (drag.kind === 'wire') setDrag({ ...drag, cursor: toWorld(e), ...dropUnder(e) })
+    else if (drag.kind === 'reconnect') setDrag({ ...drag, cursor: toWorld(e), ...dropUnder(e) })
   }
   function onPointerUp(e: React.PointerEvent<SVGSVGElement>) {
     if (!drag || e.pointerId !== drag.pointer) return
@@ -560,7 +578,7 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
     if (drag.kind === 'annotations') store.end()
     if (drag.kind === 'marquee' && !drag.moved && !drag.add) store.select(EMPTY_SELECTION)
     if (drag.kind === 'wire') {
-      const to = endUnder(e)
+      const to = endUnder(e, taken)
       const s = store.getState()
       // The start part may have been deleted or undone away while the wire was being drawn.
       const exists = (ep: Endpoint) => s.diagram.parts.some((p) => p.uid === ep.part)
@@ -571,7 +589,7 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
       }
     }
     if (drag.kind === 'reconnect') {
-      const to = endUnder(e)
+      const to = endUnder(e, taken)
       const next = to && reconnectWire(store.getState().diagram, drag.uid, drag.end, to)
       if (next) {
         store.commit(next)
@@ -685,6 +703,7 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
           )}
           {seats.flatMap((s, i) => (s.blocked ?? []).map((h, j) => <circle key={`blocked-${i}-${j}`} className="seat-bad" cx={h.x} cy={h.y} r={4} />))}
           {covered.map((c) => <circle key={`covered-${c.board}-${c.group}-${c.hole}`} className="seat-bad" data-covered-hole="" cx={c.at.x} cy={c.at.y} r={4} />)}
+          {drawing && drag.refused && <circle className="seat-bad" data-used-hole="" cx={drag.refused.x} cy={drag.refused.y} r={4} />}
         </g>
         {highlight && (
           <g className={`problem-glow ${highlight.severity}`} fill="none" strokeLinecap="round" strokeLinejoin="round" pointerEvents="none">

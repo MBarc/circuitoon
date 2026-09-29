@@ -5,7 +5,7 @@
 import { type Diagram, type Endpoint, type PartInstance, moduleOf } from './diagram.ts'
 import { type PlugPoint, type Pt, type Rect, type Rotation, type WorldHoleGroup, bodyRect, pivot, plugPoints, rotateVec, toWorld, worldHoles } from './geometry.ts'
 import { type PlugDef, type PlugFamily, type SocketFamily, mainsOf } from './mainsModel.ts'
-import { GRID, type ModuleDef, isBoard, isSpacer, layoutModule } from './module.ts'
+import { GRID, type ModuleDef, holeGroupOf, isBoard, isSpacer, layoutModule, terminalCapacity } from './module.ts'
 import { entriesFor, orientationOf } from './plugging.ts'
 
 const OFF = 2 ** 25
@@ -95,14 +95,16 @@ export function holeAtPoint(part: PartInstance, m: ModuleDef, p: Pt, radius = 3.
  * The wire end a pointer at `p` picks on part `uid`: a hole or pad of any module with hole groups
  * (a breadboard, or an interior header whose pads are routing obstacles), within the hole target
  * radius. Mounting is a board-only matter; wiring is not. Null for a missing part or module, no
- * hole near `p`, or a hole under a mounted part's body (`coveredHoles`), which takes no wire end.
- * Hover, pressing and dropping a wire end all pick through this.
+ * hole near `p`, a hole under a mounted part's body (`coveredHoles`), which takes no wire end, or
+ * a hole in `taken` (while a wire is drawn, the full holes of `takenHoles`). Hover, pressing and
+ * dropping a wire end all pick through this.
  */
-export function holeEndAt(d: Diagram, uid: string, p: Pt): Endpoint | null {
+export function holeEndAt(d: Diagram, uid: string, p: Pt, taken: ReadonlySet<string> = NONE_SET): Endpoint | null {
   const part = d.parts.find((q) => q.uid === uid)
   const m = part && moduleOf(d, part.module)
   const hit = part && m ? holeAtPoint(part, m, p) : null
-  if (!hit || coveredHoles(d).some((c) => c.board === hit.board && c.group === hit.group && c.hole === hit.hole)) return null
+  if (!hit || taken.has(holeKey(hit.board, hit.group, hit.hole))) return null
+  if (coveredHoles(d).some((c) => c.board === hit.board && c.group === hit.group && c.hole === hit.hole)) return null
   return { part: hit.board, pin: hit.group, hole: hit.hole }
 }
 
@@ -130,8 +132,9 @@ export interface Seat {
   /** A plug-in device over an outlet it does not seat in: its body, drawn red while dragging. */
   outline?: Rect
   /**
-   * Holes that keep the part from seating because of a body: a leg's hole under another part's
-   * body, then a hole this part's body would cover that holds another part's leg or a wire end.
+   * Holes that keep the part from seating because of a body or a wire: a leg's hole under another
+   * part's body or already filled by wire ends, then a hole this part's body would cover that holds
+   * another part's leg or a wire end.
    * Drawn red while dragging. Absent when there are none.
    */
   blocked?: Pt[]
@@ -315,8 +318,89 @@ function wireEndHoles(d: Diagram): Set<string> {
   for (const c of d.connections)
     for (const ep of [c.from, c.to]) {
       const m = boards.get(ep.part)
-      if (m?.holes?.some((g) => g.name === ep.pin)) out.add(holeKey(ep.part, ep.pin, ep.hole ?? 0))
+      if (m && holeGroupOf(m, ep.pin)) out.add(holeKey(ep.part, ep.pin, ep.hole ?? 0))
     }
+  return out
+}
+
+/** One wire end in a board hole: an end that names the hole, or (`viaPin`) an end on a pin whose leg is plugged there. */
+export interface HoleEnd {
+  wire: string
+  end: 'from' | 'to'
+  viaPin: boolean
+}
+
+/** What one board hole holds, and how many it takes (`terminalCapacity`: one, unless its group declares more). */
+export interface HoleUse {
+  board: string
+  group: string
+  hole: number
+  cap: number
+  /**
+   * False on a mains outlet, whose socket contacts are holes too: only verify counts those (wires
+   * meet on an outlet's terminal as on a header pin), so the checker and the editor skip them.
+   */
+  breadboard: boolean
+  legs: Plug[]
+  /** In file order. */
+  ends: HoleEnd[]
+}
+
+/**
+ * Every board hole that holds a leg (from `plugs`) or a wire end, keyed by `holeKey`; wires in
+ * `skip` (broken ones) are left out. A wire to a plugged pin ends in that leg's hole (`viaPin`).
+ * Pins and interior pads of other modules are not holes here: several wires may meet on a header
+ * pin. Shared by verify's capacity, the checker's hole-shared and the editor's `takenHoles`.
+ */
+export function holeUses(d: Diagram, skip: ReadonlySet<string> = NONE_SET, plugs: Plug[] = plugsOf(d)): Map<string, HoleUse> {
+  const out = new Map<string, HoleUse>()
+  const boards = new Map<string, ModuleDef>()
+  for (const p of d.parts) {
+    const m = moduleOf(d, p.module)
+    if (m && isBoard(m)) boards.set(p.uid, m)
+  }
+  const use = (board: string, group: string, hole: number) => {
+    const k = holeKey(board, group, hole)
+    let u = out.get(k)
+    if (!u) {
+      const m = boards.get(board)!
+      out.set(k, (u = { board, group, hole, cap: terminalCapacity(m, group), breadboard: !mainsOf(m).sockets.length, legs: [], ends: [] }))
+    }
+    return u
+  }
+  const legOf = new Map<string, Plug>()
+  for (const pl of plugs) {
+    if (!boards.has(pl.board)) continue
+    use(pl.board, pl.group, pl.hole).legs.push(pl)
+    legOf.set(pinKey(pl.part, pl.pin), pl)
+  }
+  for (const c of d.connections) {
+    if (skip.has(c.uid)) continue
+    for (const end of ['from', 'to'] as const) {
+      const ep = c[end]
+      const m = boards.get(ep.part)
+      if (m && holeGroupOf(m, ep.pin)) use(ep.part, ep.pin, ep.hole ?? 0).ends.push({ wire: c.uid, end, viaPin: false })
+      else {
+        const leg = legOf.get(pinKey(ep.part, ep.pin))
+        if (leg) use(leg.board, leg.group, leg.hole).ends.push({ wire: c.uid, end, viaPin: true })
+      }
+    }
+  }
+  return out
+}
+
+/**
+ * The breadboard holes (not a mains outlet's) that take no more wire ends: each holds as many legs and wire ends as it takes
+ * (`HoleUse.cap`). `except` is the wire end being moved, which never blocks its own hole. A new
+ * wire end dropped on one of these is refused (see `holeEndAt`).
+ */
+export function takenHoles(d: Diagram, except?: { wire: string; end: 'from' | 'to' }): Set<string> {
+  const out = new Set<string>()
+  for (const [k, u] of holeUses(d)) {
+    if (!u.breadboard) continue
+    const ends = except ? u.ends.filter((e) => e.wire !== except.wire || e.end !== except.end) : u.ends
+    if (u.legs.length + ends.length >= u.cap) out.add(k)
+  }
   return out
 }
 
@@ -328,14 +412,18 @@ interface Busy {
   covered: ReadonlySet<string>
   /** Holes holding a wire end. */
   ends: () => ReadonlySet<string>
+  /** Holes whose wire ends already fill them, so no leg fits there. */
+  full: () => ReadonlySet<string>
 }
 
 function busyOf(d: Diagram, plugs: Plug[], ignore: ReadonlySet<string>): Busy {
   let ends: Set<string> | null = null
+  let full: Set<string> | null = null
   return {
     taken: takenBy(plugs, ignore),
     covered: new Set(coversOf(d, plugs, ignore).map((c) => holeKey(c.board, c.group, c.hole))),
     ends: () => (ends ??= wireEndHoles(d)),
+    full: () => (full ??= new Set([...holeUses(d, NONE_SET, []).entries()].filter(([, u]) => u.breadboard && u.ends.length >= u.cap).map(([k]) => k))),
   }
 }
 
@@ -426,9 +514,10 @@ function fitOn(d: Diagram, board: PartInstance, me: Me): Fit | null {
 
 /**
  * An obscured board never seats: its fit shows as partial (red), so a drop does not mount. With
- * `me` and `busy` (seating a part, not re-checking a stored mount) bodies count too: a leg in a
- * hole under another part's body, or a body over a hole that holds another part's leg or a wire
- * end, keeps the part from seating, and those holes come back as `blocked`.
+ * `me` and `busy` (seating a part, not re-checking a stored mount) bodies and wire ends count too:
+ * a leg in a hole under another part's body or in a hole its wire ends already fill, or a body over
+ * a hole that holds another part's leg or a wire end, keeps the part from seating, and those holes
+ * come back as `blocked`.
  */
 function seatFrom(fit: Fit, busy: Busy, me?: Me): Seat | null {
   if (!fit.landed && !fit.outline) return null
@@ -436,7 +525,7 @@ function seatFrom(fit: Fit, busy: Busy, me?: Me): Seat | null {
   const blocked: Pt[] = []
   if (me) {
     fit.hits.forEach((h, i) => {
-      if (h && busy.covered.has(key(h))) blocked.push(fit.pts[i].at)
+      if (h && (busy.covered.has(key(h)) || busy.full().has(key(h)))) blocked.push(fit.pts[i].at)
     })
     for (const c of coverOf(me.part, me.m, fit.board, fit.bm)) {
       const k = holeKey(c.board, c.group, c.hole)
@@ -529,7 +618,7 @@ function mounts(d: Diagram): { plugs: Plug[]; issues: MountIssue[] } {
     else if (fit.landed < fit.pts.length) issue('partial')
     else if (!fit.seatable) issue('no-fit')
     else if (fit.obscured) issue('obscured')
-    else if (seatFrom(fit, { taken, covered: NONE_SET, ends: () => NONE_SET })!.status !== 'seated') issue('conflict')
+    else if (seatFrom(fit, { taken, covered: NONE_SET, ends: () => NONE_SET, full: () => NONE_SET })!.status !== 'seated') issue('conflict')
     else
       fit.pts.forEach((pp, i) => {
         const [gi, hi] = fit.hits[i]!

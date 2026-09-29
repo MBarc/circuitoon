@@ -5,8 +5,8 @@
 // joins them; strips, rails and `routing` wires are infrastructure and never count as extra
 // endpoints themselves, and a pin whose only neighbours are infrastructure is unconnected. Pure.
 import { type Diagram, type Endpoint, type PartInstance, moduleOf } from '../format/diagram.ts'
-import { mountIssues, plugsOf } from '../format/breadboard.ts'
-import { PARAM_RULES, isBoard, isObj, layoutModule, type ModuleDef, terminalCapacity, validParamValue } from '../format/module.ts'
+import { holeUses, mountIssues, plugsOf } from '../format/breadboard.ts'
+import { PARAM_RULES, holeGroupOf, isBoard, isObj, layoutModule, type ModuleDef, terminalCapacity, validParamValue } from '../format/module.ts'
 import { andList } from '../format/words.ts'
 import { netlist, nodeKey } from '../format/netlist.ts'
 import { coveredMessage, coveredUses, endpointName } from '../format/checks.ts'
@@ -329,34 +329,33 @@ function connectivity(d: Diagram, intent: Intent, uidOf: Map<string, string>, ad
   }
 }
 
-/** Every pin, pad and hole holds no more wire ends and legs than it takes (spec 2.2 and 3). */
+/**
+ * Every pin, pad and hole holds no more wire ends and legs than it takes (spec 2.2 and 3). Board
+ * holes come from `holeUses`, which the checker's hole-shared and the editor share.
+ */
 function capacity(d: Diagram, add: Add) {
   const plugs = plugsOf(d)
-  const legOf = new Map(plugs.map((pl) => [nodeKey(pl.part, pl.pin), pl]))
+  const plugged = new Set(plugs.map((pl) => nodeKey(pl.part, pl.pin)))
   const broken = new Set(netlist(d, plugs).broken)
   const slots = new Map<string, { what: string; cap: number; legs: number; wires: string[]; part: string }>()
+  for (const u of holeUses(d, broken, plugs).values())
+    slots.set(JSON.stringify(['hole', u.board, u.group, u.hole]), { what: endpointName(d, { part: u.board, pin: u.group, hole: u.hole }), cap: u.cap, legs: u.legs.length, wires: u.ends.map((e) => e.wire), part: u.board })
   const slot = (key: string, what: string, cap: number, part: string) => {
     let s = slots.get(key)
     if (!s) slots.set(key, (s = { what, cap, legs: 0, wires: [], part }))
     return s
   }
-  const holeSlot = (board: string, group: string, hole: number) =>
-    slot(JSON.stringify(['hole', board, group, hole]), endpointName(d, { part: board, pin: group, hole }), 1, board)
-  for (const pl of plugs) holeSlot(pl.board, pl.group, pl.hole).legs++
   const partBy = new Map(d.parts.map((p) => [p.uid, p]))
   for (const c of d.connections) {
     if (broken.has(c.uid)) continue
     for (const ep of [c.from, c.to]) {
       const part = partBy.get(ep.part)!
       const m = moduleOf(d, part.module)!
-      const group = m.holes?.find((g) => g.name === ep.pin)
-      if (group && isBoard(m)) holeSlot(ep.part, ep.pin, ep.hole ?? 0).wires.push(c.uid)
-      else if (group) slot(JSON.stringify(['pad', ep.part, ep.pin, ep.hole ?? 0]), endpointName(d, ep), terminalCapacity(m, ep.pin), ep.part).wires.push(c.uid)
-      else {
-        const leg = legOf.get(nodeKey(ep.part, ep.pin))
-        if (leg) holeSlot(leg.board, leg.group, leg.hole).wires.push(c.uid)
-        else slot(JSON.stringify(['pin', ep.part, ep.pin]), endpointName(d, ep), terminalCapacity(m, ep.pin), ep.part).wires.push(c.uid)
-      }
+      const group = holeGroupOf(m, ep.pin)
+      // Board holes and wires to plugged legs are counted by holeUses.
+      if ((group && isBoard(m)) || (!group && plugged.has(nodeKey(ep.part, ep.pin)))) continue
+      if (group) slot(JSON.stringify(['pad', ep.part, ep.pin, ep.hole ?? 0]), endpointName(d, ep), terminalCapacity(m, ep.pin), ep.part).wires.push(c.uid)
+      else slot(JSON.stringify(['pin', ep.part, ep.pin]), endpointName(d, ep), terminalCapacity(m, ep.pin), ep.part).wires.push(c.uid)
     }
   }
   for (const [key, s] of slots) {

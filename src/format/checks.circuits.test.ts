@@ -600,8 +600,12 @@ describe('parallel battery banks (Ruling V1)', () => {
     const d = built(JSON.parse(readFileSync(new URL('./fixtures/battery-bank-1s4p.circuitoon.json', import.meta.url), 'utf8')) as Diagram)
     const findings = checkDiagram(d)
     expect(findings.filter((x) => x.rule === 'supplies-parallel')).toEqual([])
-    expect(findings.map((x) => `${x.severity} ${x.rule}: ${x.message}`)).toEqual([`info battery-bank: BT1-BT4 form a parallel battery bank (4P, 3.7 V). ${advice}`])
-    const [bank] = findings
+    // His sheet also has two wire ends in one breadboard hole (w9 and w11): hole-shared, listed first.
+    expect(findings.map((x) => `${x.severity} ${x.rule}: ${x.message}`)).toEqual([
+      'error hole-shared: 2 wire ends share Power Breadboard c2-top hole 2: Power Breadboard c1-top hole 2 to Power Breadboard c2-top hole 2 and Power Breadboard c2-top hole 2 to U1 B+. Physically, one hole takes one wire end. Move one of them to a free hole of the same strip.',
+      `info battery-bank: BT1-BT4 form a parallel battery bank (4P, 3.7 V). ${advice}`,
+    ])
+    const bank = findings.find((x) => x.rule === 'battery-bank')!
     expect(bank.parts).toHaveLength(4)
     expect(bank.pins).toHaveLength(8)
     expect(bank.target).toBe('BT1-BT4')
@@ -696,6 +700,8 @@ describe('every message ends with what to do', () => {
     // R1's body covers s2 to s4, holes 0 and 1: a wire end in s3 hole 1, and R3's leg in s3 hole 0.
     const under = sheetWith([board, legs], [at('bb', 'BB1', 'strips'), at('r1', 'R1', 'legs', 10, { mount: { board: 'bb' } }), at('r2', 'R2', 'legs', 300), at('r3', 'R3', 'legs', 30, { y: -10, mount: { board: 'bb' } })], [['bb|s3|1', 'r2|L']])
     expect(checkDiagram(under).filter((f) => f.rule === 'covered-hole')).toHaveLength(2)
+    const shared = sheetWith([board, legs], [at('bb', 'BB1', 'strips'), at('r2', 'R2', 'legs', 300)], [['bb|s7|2', 'r2|L'], ['bb|s7|2', 'r2|R']])
+    expect(rules(shared)).toContain('hole-shared')
   })
   it('on every finding of every sheet built in this file', () => {
     const missing: string[] = []

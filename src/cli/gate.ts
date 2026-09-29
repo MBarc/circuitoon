@@ -166,8 +166,9 @@ export async function runGate(bytes: Uint8Array, opts: { sheetPath: string; outD
 
   // Verify against the intent, the wiring checker, and routes.
   const verified = verifyDiagram(d, libraryLookup)
-  found.push(...verified.filter((f) => !alsoChecked(f)).map(cliFinding))
-  found.push(...withoutStale(checkDiagram(d), verified).map(cliFinding))
+  const checked = withoutStale(checkDiagram(d), verified)
+  found.push(...verified.filter((f) => !alsoChecked(f, checked)).map(cliFinding))
+  found.push(...checked.map(cliFinding))
   const routes = computeRoutes(d)
   // Blocked as drawn: wirePaths re-checks a wire that separation nudged, so a route that was clear
   // but was pushed through a body (drawn dashed) blocks too.

@@ -1,13 +1,13 @@
 {
   "name": "circuitoon",
   "private": true,
-  "version": "0.2.1",
+  "version": "0.2.2",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
-    "test": "vitest run",
+    "test": "node scripts/test.mjs",
     "validate": "node scripts/validate-modules.ts",
     "check:gen": "node scripts/check-gen.mjs",
     "build:cli": "node scripts/gen-cli.mjs",
@@ -21,6 +21,7 @@
     "check:export-ui": "node scripts/check-export-ui.mjs",
     "check:examples": "node scripts/check-examples.mjs",
     "check:mains-ui": "node scripts/check-mains-ui.mjs",
+    "check:holes-ui": "node scripts/check-holes-ui.mjs",
     "deploy": "bash scripts/deploy.sh"
   },
   "dependencies": {

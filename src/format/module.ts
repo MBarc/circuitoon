@@ -560,6 +560,22 @@ export function layoutModule(m: ModuleDef): ModuleLayout {
   return lay
 }
 
+const groupCache = new WeakMap<ModuleDef, Map<string, HoleGroup>>()
+
+/**
+ * A module's hole group named `name`, or undefined: a map lookup, built once per module (cached by
+ * module identity, like the hole and shape caches). The first group of a name wins, as a scan would.
+ */
+export function holeGroupOf(m: ModuleDef, name: string): HoleGroup | undefined {
+  let map = groupCache.get(m)
+  if (!map) {
+    map = new Map()
+    for (const g of m.holes ?? []) if (!map.has(g.name)) map.set(g.name, g)
+    groupCache.set(m, map)
+  }
+  return map.get(name)
+}
+
 /**
  * How many wire ends a pin or header pad takes: its `capacity`, default 1. A breadboard hole always
  * takes one (a hole holds one leg or one wire end), whatever its group says.
@@ -567,7 +583,7 @@ export function layoutModule(m: ModuleDef): ModuleLayout {
 export function terminalCapacity(m: ModuleDef, name: string): number {
   const pin = m.pins.find((p): p is PinDef => !isSpacer(p) && p.name === name)
   if (pin) return pin.capacity ?? 1
-  const g = m.holes?.find((h) => h.name === name)
+  const g = holeGroupOf(m, name)
   return g?.holeStyle === 'pad' ? (g.capacity ?? 1) : 1
 }
 

@@ -1033,6 +1033,20 @@ function layoutModule(m) {
 	if (!lay) layoutCache.set(m, lay = computeLayout(m));
 	return lay;
 }
+var groupCache = /* @__PURE__ */ new WeakMap();
+/**
+* A module's hole group named `name`, or undefined: a map lookup, built once per module (cached by
+* module identity, like the hole and shape caches). The first group of a name wins, as a scan would.
+*/
+function holeGroupOf(m, name) {
+	let map = groupCache.get(m);
+	if (!map) {
+		map = /* @__PURE__ */ new Map();
+		for (const g of m.holes ?? []) if (!map.has(g.name)) map.set(g.name, g);
+		groupCache.set(m, map);
+	}
+	return map.get(name);
+}
 /**
 * How many wire ends a pin or header pad takes: its `capacity`, default 1. A breadboard hole always
 * takes one (a hole holds one leg or one wire end), whatever its group says.
@@ -1040,7 +1054,7 @@ function layoutModule(m) {
 function terminalCapacity(m, name) {
 	const pin = m.pins.find((p) => !isSpacer(p) && p.name === name);
 	if (pin) return pin.capacity ?? 1;
-	const g = m.holes?.find((h) => h.name === name);
+	const g = holeGroupOf(m, name);
 	return g?.holeStyle === "pad" ? g.capacity ?? 1 : 1;
 }
 /** A module's enumerated part settings (`electrical.settings`): each name with its choices, the first the default. */
@@ -2144,15 +2158,78 @@ function wireEndHoles(d) {
 		const m = moduleOf(d, p.module);
 		if (m && isBoard(m)) boards.set(p.uid, m);
 	}
-	for (const c of d.connections) for (const ep of [c.from, c.to]) if (boards.get(ep.part)?.holes?.some((g) => g.name === ep.pin)) out.add(holeKey$1(ep.part, ep.pin, ep.hole ?? 0));
+	for (const c of d.connections) for (const ep of [c.from, c.to]) {
+		const m = boards.get(ep.part);
+		if (m && holeGroupOf(m, ep.pin)) out.add(holeKey$1(ep.part, ep.pin, ep.hole ?? 0));
+	}
+	return out;
+}
+/**
+* Every board hole that holds a leg (from `plugs`) or a wire end, keyed by `holeKey`; wires in
+* `skip` (broken ones) are left out. A wire to a plugged pin ends in that leg's hole (`viaPin`).
+* Pins and interior pads of other modules are not holes here: several wires may meet on a header
+* pin. Shared by verify's capacity, the checker's hole-shared and the editor's `takenHoles`.
+*/
+function holeUses(d, skip = NONE_SET, plugs = plugsOf(d)) {
+	const out = /* @__PURE__ */ new Map();
+	const boards = /* @__PURE__ */ new Map();
+	for (const p of d.parts) {
+		const m = moduleOf(d, p.module);
+		if (m && isBoard(m)) boards.set(p.uid, m);
+	}
+	const use = (board, group, hole) => {
+		const k = holeKey$1(board, group, hole);
+		let u = out.get(k);
+		if (!u) {
+			const m = boards.get(board);
+			out.set(k, u = {
+				board,
+				group,
+				hole,
+				cap: terminalCapacity(m, group),
+				breadboard: !mainsOf(m).sockets.length,
+				legs: [],
+				ends: []
+			});
+		}
+		return u;
+	};
+	const legOf = /* @__PURE__ */ new Map();
+	for (const pl of plugs) {
+		if (!boards.has(pl.board)) continue;
+		use(pl.board, pl.group, pl.hole).legs.push(pl);
+		legOf.set(pinKey(pl.part, pl.pin), pl);
+	}
+	for (const c of d.connections) {
+		if (skip.has(c.uid)) continue;
+		for (const end of ["from", "to"]) {
+			const ep = c[end];
+			const m = boards.get(ep.part);
+			if (m && holeGroupOf(m, ep.pin)) use(ep.part, ep.pin, ep.hole ?? 0).ends.push({
+				wire: c.uid,
+				end,
+				viaPin: false
+			});
+			else {
+				const leg = legOf.get(pinKey(ep.part, ep.pin));
+				if (leg) use(leg.board, leg.group, leg.hole).ends.push({
+					wire: c.uid,
+					end,
+					viaPin: true
+				});
+			}
+		}
+	}
 	return out;
 }
 function busyOf(d, plugs, ignore) {
 	let ends = null;
+	let full = null;
 	return {
 		taken: takenBy(plugs, ignore),
 		covered: new Set(coversOf(d, plugs, ignore).map((c) => holeKey$1(c.board, c.group, c.hole))),
-		ends: () => ends ??= wireEndHoles(d)
+		ends: () => ends ??= wireEndHoles(d),
+		full: () => full ??= new Set([...holeUses(d, NONE_SET, []).entries()].filter(([, u]) => u.breadboard && u.ends.length >= u.cap).map(([k]) => k))
 	};
 }
 var intersects$1 = (a, b) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
@@ -2231,9 +2308,10 @@ function fitOn(d, board, me) {
 }
 /**
 * An obscured board never seats: its fit shows as partial (red), so a drop does not mount. With
-* `me` and `busy` (seating a part, not re-checking a stored mount) bodies count too: a leg in a
-* hole under another part's body, or a body over a hole that holds another part's leg or a wire
-* end, keeps the part from seating, and those holes come back as `blocked`.
+* `me` and `busy` (seating a part, not re-checking a stored mount) bodies and wire ends count too:
+* a leg in a hole under another part's body or in a hole its wire ends already fill, or a body over
+* a hole that holds another part's leg or a wire end, keeps the part from seating, and those holes
+* come back as `blocked`.
 */
 function seatFrom(fit, busy, me) {
 	if (!fit.landed && !fit.outline) return null;
@@ -2241,7 +2319,7 @@ function seatFrom(fit, busy, me) {
 	const blocked = [];
 	if (me) {
 		fit.hits.forEach((h, i) => {
-			if (h && busy.covered.has(key(h))) blocked.push(fit.pts[i].at);
+			if (h && (busy.covered.has(key(h)) || busy.full().has(key(h)))) blocked.push(fit.pts[i].at);
 		});
 		for (const c of coverOf(me.part, me.m, fit.board, fit.bm)) {
 			const k = holeKey$1(c.board, c.group, c.hole);
@@ -2303,7 +2381,8 @@ function mounts(d) {
 		else if (seatFrom(fit, {
 			taken,
 			covered: NONE_SET,
-			ends: () => NONE_SET
+			ends: () => NONE_SET,
+			full: () => NONE_SET
 		}).status !== "seated") issue("conflict");
 		else fit.pts.forEach((pp, i) => {
 			const [gi, hi] = fit.hits[i];
@@ -46446,6 +46525,14 @@ var RULES = {
 		severity: "error",
 		title: "Hole under a part"
 	},
+	"hole-shared": {
+		severity: "error",
+		title: "Two wires in one hole"
+	},
+	"leg-hole-shared": {
+		severity: "error",
+		title: "Two in one hole"
+	},
 	short: {
 		severity: "error",
 		title: "Short circuit"
@@ -46525,10 +46612,6 @@ var RULES = {
 	mount: {
 		severity: "warning",
 		title: "Not plugged in"
-	},
-	"leg-hole-shared": {
-		severity: "warning",
-		title: "Two in one hole"
 	},
 	"plug-mismatch": {
 		severity: "warning",
@@ -47214,7 +47297,7 @@ function checkDiagram(d) {
 		for (const ep of [c.from, c.to]) {
 			const board = partByUid.get(ep.part);
 			const m = board && moduleOf(d, board.module);
-			if (!board || !m?.holes?.some((g) => g.name === ep.pin)) continue;
+			if (!board || !m || !holeGroupOf(m, ep.pin) || mainsOf(m).sockets.length) continue;
 			const hole = JSON.stringify([
 				ep.part,
 				ep.pin,
@@ -47232,7 +47315,7 @@ function checkDiagram(d) {
 				rule: "leg-hole-shared",
 				subject: board.designator,
 				target: where,
-				message: `A wire ends in ${where}, where leg ${legTerm?.label ?? pl.pin} of ${leg.designator} sits: physically, one hole takes one leg. Move the wire to another hole of the strip.`,
+				message: `A wire ends in ${where}, where leg ${legTerm?.label ?? pl.pin} of ${leg.designator} sits: physically, one hole takes one leg or one wire end, not both. Move the wire to a free hole of the same strip.`,
 				parts: [board.uid, leg.uid],
 				pins: [{
 					part: pl.part,
@@ -47285,6 +47368,39 @@ function checkDiagram(d) {
 				wires: []
 			},
 			causes: [nodeKey(u.leg.part, u.leg.pin), key]
+		});
+	}
+	for (const u of holeUses(d, brokenSet, plugs).values()) {
+		const ends = u.ends.filter((e) => !e.viaPin);
+		if (!u.breadboard || ends.length <= u.cap) continue;
+		const board = partByUid.get(u.board);
+		const where = endpointName(d, {
+			part: u.board,
+			pin: u.group,
+			hole: u.hole
+		});
+		const wires = [...new Set(ends.map((e) => e.wire))];
+		const names = wires.map((w) => wireName(d, d.connections.find((c) => c.uid === w))).sort(natural.compare);
+		const far = ends.map((e) => d.connections.find((c) => c.uid === e.wire)[e.end === "from" ? "to" : "from"].part);
+		const takes = u.cap === 1 ? "one wire end" : `${u.cap} wire ends`;
+		add({
+			rule: "hole-shared",
+			subject: board.designator,
+			target: where,
+			message: `${ends.length} wire ends share ${where}: ${andList(names)}. Physically, one hole takes ${takes}. Move ${ends.length - u.cap === 1 ? "one of them" : `all but ${u.cap === 1 ? "one" : u.cap}`} to a free hole of the same strip.`,
+			parts: [board.uid, ...far.filter((x) => partByUid.has(x))],
+			pins: [],
+			wires,
+			select: {
+				parts: [],
+				wires
+			},
+			causes: [JSON.stringify([
+				"hole",
+				u.board,
+				u.group,
+				u.hole
+			])]
 		});
 	}
 	for (const b of brokenConnections(d)) {
@@ -59498,12 +59614,31 @@ function connectivity(d, intent, uidOf, add) {
 		}
 	}
 }
-/** Every pin, pad and hole holds no more wire ends and legs than it takes (spec 2.2 and 3). */
+/**
+* Every pin, pad and hole holds no more wire ends and legs than it takes (spec 2.2 and 3). Board
+* holes come from `holeUses`, which the checker's hole-shared and the editor share.
+*/
 function capacity(d, add) {
 	const plugs = plugsOf(d);
-	const legOf = new Map(plugs.map((pl) => [nodeKey(pl.part, pl.pin), pl]));
+	const plugged = new Set(plugs.map((pl) => nodeKey(pl.part, pl.pin)));
 	const broken = new Set(netlist(d, plugs).broken);
 	const slots = /* @__PURE__ */ new Map();
+	for (const u of holeUses(d, broken, plugs).values()) slots.set(JSON.stringify([
+		"hole",
+		u.board,
+		u.group,
+		u.hole
+	]), {
+		what: endpointName(d, {
+			part: u.board,
+			pin: u.group,
+			hole: u.hole
+		}),
+		cap: u.cap,
+		legs: u.legs.length,
+		wires: u.ends.map((e) => e.wire),
+		part: u.board
+	});
 	const slot = (key, what, cap, part) => {
 		let s = slots.get(key);
 		if (!s) slots.set(key, s = {
@@ -59515,39 +59650,24 @@ function capacity(d, add) {
 		});
 		return s;
 	};
-	const holeSlot = (board, group, hole) => slot(JSON.stringify([
-		"hole",
-		board,
-		group,
-		hole
-	]), endpointName(d, {
-		part: board,
-		pin: group,
-		hole
-	}), 1, board);
-	for (const pl of plugs) holeSlot(pl.board, pl.group, pl.hole).legs++;
 	const partBy = new Map(d.parts.map((p) => [p.uid, p]));
 	for (const c of d.connections) {
 		if (broken.has(c.uid)) continue;
 		for (const ep of [c.from, c.to]) {
 			const m = moduleOf(d, partBy.get(ep.part).module);
-			const group = m.holes?.find((g) => g.name === ep.pin);
-			if (group && isBoard(m)) holeSlot(ep.part, ep.pin, ep.hole ?? 0).wires.push(c.uid);
-			else if (group) slot(JSON.stringify([
+			const group = holeGroupOf(m, ep.pin);
+			if (group && isBoard(m) || !group && plugged.has(nodeKey(ep.part, ep.pin))) continue;
+			if (group) slot(JSON.stringify([
 				"pad",
 				ep.part,
 				ep.pin,
 				ep.hole ?? 0
 			]), endpointName(d, ep), terminalCapacity(m, ep.pin), ep.part).wires.push(c.uid);
-			else {
-				const leg = legOf.get(nodeKey(ep.part, ep.pin));
-				if (leg) holeSlot(leg.board, leg.group, leg.hole).wires.push(c.uid);
-				else slot(JSON.stringify([
-					"pin",
-					ep.part,
-					ep.pin
-				]), endpointName(d, ep), terminalCapacity(m, ep.pin), ep.part).wires.push(c.uid);
-			}
+			else slot(JSON.stringify([
+				"pin",
+				ep.part,
+				ep.pin
+			]), endpointName(d, ep), terminalCapacity(m, ep.pin), ep.part).wires.push(c.uid);
 		}
 	}
 	for (const [key, s] of slots) {
@@ -59690,10 +59810,26 @@ function uniqueIds(findings) {
 	});
 }
 /**
-* Verify's findings a combined report leaves out because the wiring checker reports the same
-* problem itself: covered-hole (a wire end or leg under a part's body) comes from one shared test.
+* Verify's findings a combined report leaves out because the wiring checker (`checked`) reports the
+* same problem itself: covered-hole (a wire end or leg under a part's body) comes from one shared
+* test, and so does a board hole's capacity when the checker has hole-shared (two wire ends) or
+* leg-hole-shared (a leg and a wire end) for that hole. Verify's hole key is ["hole", board, group,
+* hole]: hole-shared uses the same key, leg-hole-shared the hole's holeKey among its causes.
 */
-var alsoChecked = (f) => f.rule === "covered-hole";
+function alsoChecked(f, checked) {
+	if (f.rule === "covered-hole") return true;
+	if (f.rule !== "capacity") return false;
+	const key = f.id.slice(9);
+	let at;
+	try {
+		at = JSON.parse(key);
+	} catch {
+		return false;
+	}
+	if (!Array.isArray(at) || at[0] !== "hole") return false;
+	const hole = holeKey$1(String(at[1]), String(at[2]), Number(at[3]));
+	return checked.some((c) => c.rule === "hole-shared" && c.id === `hole-shared|${key}` || c.rule === "leg-hole-shared" && c.id.includes(hole));
+}
 /**
 * The checker's findings, less any covered-hole that involves a part whose embedded module blocks as
 * module-drift (`verified` holds verify's findings): that hole is covered by, or holds a leg of, the
@@ -59729,7 +59865,8 @@ function verifyCommand(args, io) {
 function checkCommand(args, io) {
 	const diagram = sheetOf("check", args, io);
 	const all = verifyDiagram(diagram, libraryLookup);
-	return report(io, args, "circuitoon-cli/check/1", uniqueIds([...diagram.intent !== void 0 ? all.filter((f) => !alsoChecked(f)) : [], ...withoutStale(checkDiagram(diagram), all)].map(cliFinding)));
+	const checked = withoutStale(checkDiagram(diagram), all);
+	return report(io, args, "circuitoon-cli/check/1", uniqueIds([...diagram.intent !== void 0 ? all.filter((f) => !alsoChecked(f, checked)) : [], ...checked].map(cliFinding)));
 }
 //#endregion
 //#region src/cli/png.ts
@@ -60069,8 +60206,9 @@ async function runGate(bytes, opts) {
 	const d = v.diagram;
 	v.warnings.forEach((w, i) => note("load", String(i), w.includes("it was dropped and the module default is shown") || w.includes(MISSING_MODULE) ? "error" : "warning", w));
 	const verified = verifyDiagram(d, libraryLookup);
-	found.push(...verified.filter((f) => !alsoChecked(f)).map(cliFinding));
-	found.push(...withoutStale(checkDiagram(d), verified).map(cliFinding));
+	const checked = withoutStale(checkDiagram(d), verified);
+	found.push(...verified.filter((f) => !alsoChecked(f, checked)).map(cliFinding));
+	found.push(...checked.map(cliFinding));
 	const routes = computeRoutes(d);
 	for (const { conn: c, blocked } of wirePaths(d, routes)) if (blocked) note("blocked-route", c.uid, "error", `The wire ${c.label ?? `${endpointName(d, c.from)} to ${endpointName(d, c.to)}`} has no clear route: it runs through a part.`, {
 		parts: [c.from.part, c.to.part],

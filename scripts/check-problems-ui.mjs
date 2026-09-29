@@ -69,7 +69,14 @@ writeFileSync(warnFile, JSON.stringify({
 }))
 
 // Only a note: four matching 18650 cells in parallel on an IP5306 (Ruling V1).
-const bankFile = resolve('src/format/fixtures/battery-bank-1s4p.circuitoon.json')
+// Michael's 1S4P sheet, less its one doubled hole: w9 and w11 both end in c2-top hole 2 (a
+// hole-shared error), so w9's end moves to hole 3 of that strip, which is free.
+const bankFile = join(out, 'battery-bank-1s4p.circuitoon.json')
+{
+  const bank = JSON.parse(readFileSync('src/format/fixtures/battery-bank-1s4p.circuitoon.json', 'utf8'))
+  bank.connections.find((c) => c.uid === 'w9').from.hole = 3
+  writeFileSync(bankFile, JSON.stringify(bank))
+}
 
 const server = spawn('npx', ['vite', 'preview', '--port', String(port), '--strictPort'], { shell: true, stdio: 'ignore' })
 const stopServer = () => {
@@ -140,7 +147,7 @@ for (const scheme of ['light', 'dark']) {
   const titles = await page.locator('.problem-title').allTextContents()
   const severities = await rows.evaluateAll((els) => els.map((e) => e.className))
   check(severities.indexOf('warning') > 0 && !severities.slice(severities.indexOf('warning')).includes('error'), `${scheme}: errors are listed first (${severities.join(' ')})`)
-  for (const t of ['Error: Short circuit', 'Error: Supplies fight', 'Error: Broken connection', 'Warning: No power', 'Warning: No ground', 'Warning: Two in one hole'])
+  for (const t of ['Error: Short circuit', 'Error: Supplies fight', 'Error: Broken connection', 'Warning: No power', 'Warning: No ground', 'Error: Two in one hole'])
     check(titles.includes(t), `${scheme}: the list has "${t}"`)
   const messages = await page.locator('.problem-message').allTextContents()
   check(messages.includes('U2 5V+ (5 V) and U1 3V3 (3.3 V) are wired together: the two supplies fight, and the higher one drives current into the lower one, which can damage both. Remove the wire from U2 5V+ to U1 3V3.'), `${scheme}: the supplies-fight message names both pins`)
