@@ -6,7 +6,7 @@ import { type RouteRequest, SEARCH_MARGIN, addToOccupancy, inGrown, Occupancy, o
 import { manualRouteBlocked, tidy } from './wireEdit.ts'
 import { coveredHoles, holeIndex, mountIssues, plugOfPin, plugsOf } from './breadboard.ts'
 import { type CableEndDraw, END_SIZE, endKind, endPlacement, isEndKind, normalizeEnds, type WireEnds } from './cables.ts'
-import { placedCaptionBox } from '../render/captionBox.ts'
+import { placedCaptionBox, tipLabelBoxes } from '../render/captionBox.ts'
 import { seatedLabels } from './seatedLabels.ts'
 import { annotationRect, frameTab } from '../render/annotationGeometry.ts'
 
@@ -382,7 +382,7 @@ function ownGroups(c: Connection, legGroup: Map<string, string>): Set<string> {
 }
 
 /**
- * Text on the sheet an auto-routed wire keeps off (amendment A18.3): each part's caption (by part
+ * Text on the sheet an auto-routed wire keeps off (amendment A18.3): each part's caption and any pin names it draws past its pin tips (by part
  * uid), each frame's label tab and each text note's box (no owner), as the routing grid nodes they
  * cover, grown by LABEL_PAD so a wire on the next grid line does not graze the text either. A note
  * is opaque: a wire under it would vanish.
@@ -406,7 +406,8 @@ export function labelPoints(d: Diagram): LabelPoints {
   const seated = seatedLabels(d)
   for (const p of d.parts) {
     const m = moduleOf(d, p.module)
-    if (m) captions.set(p.uid, gridNodesIn(placedCaptionBox(p, m, seated.get(p.uid))))
+    // Pin names past the tips (a DIP chip) are kept off like the caption, by the same owner (Ruling C3).
+    if (m) captions.set(p.uid, [placedCaptionBox(p, m, seated.get(p.uid)), ...tipLabelBoxes(p, m)].flatMap(gridNodesIn))
   }
   const tabs = (d.annotations ?? []).flatMap((a) => (a.type === 'frame' ? (a.label ? gridNodesIn(frameTab(a)) : []) : gridNodesIn(annotationRect(a))))
   return { captions, tabs }

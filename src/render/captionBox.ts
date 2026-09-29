@@ -41,3 +41,21 @@ export function placedCaptionBox(part: CaptionPart, m: ModuleDef, seat: CaptionS
   const { x, y } = seat.caption
   return seat.anchor === 'start' ? { x: part.x + x, y: part.y + y - 5, w, h: 10 } : { x: part.x + x - w / 2, y: part.y + y - 8, w, h: 10 }
 }
+
+/**
+ * The boxes, in world px, that a part's pin names drawn past the pin tips (`art.pinLabels: "tips"`)
+ * take: one per pin, 8 px across, from 2 px past the stub tip out to the longest name's length
+ * (pinRoom), so every name of the part gets the same box. Empty for any other part. The router
+ * keeps wires off them like captions, and layout keeps wire ends out of the holes under them.
+ */
+export function tipLabelBoxes(part: { x: number; y: number; rotation?: Rotation }, m: ModuleDef): Rect[] {
+  if (!usesTipLabels(m)) return []
+  const len = pinRoom(m) - LEAD - 2
+  return worldPins(part, m).filter((p) => !p.bus).map((p) => {
+    const x = p.end.x + p.dir.x * 2
+    const y = p.end.y + p.dir.y * 2
+    return p.dir.x !== 0
+      ? { x: p.dir.x > 0 ? x : x - len, y: y - 4, w: len, h: 8 }
+      : { x: x - 4, y: p.dir.y > 0 ? y : y - len, w: 8, h: len }
+  })
+}

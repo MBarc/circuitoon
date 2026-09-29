@@ -15,6 +15,7 @@ import { coveredHoles, plugsOf } from '../format/breadboard.ts'
 import { type Pt, worldHoles } from '../format/geometry.ts'
 import { isBoard, isSpacer, type ModuleDef, type PinDef, terminalCapacity } from '../format/module.ts'
 import { normalizeEnds } from '../format/cables.ts'
+import { tipLabelBoxes } from '../render/captionBox.ts'
 import { type Intent, type IntentNet, type Terminal, terminalKey, terminalName } from './netlist.ts'
 import { internalComponent } from './internal.ts'
 import { naturalCompare } from './order.ts'
@@ -129,11 +130,29 @@ export function realize(intent: Intent, d: Diagram, locals: LocalDistribution[] 
   if (errors.length) return { ok: false, errors }
 
   const free = (s: Strip) => s.holes.flatMap((_, i) => (used.has(holeKey(s.board, s.name, i)) ? [] : [i]))
+  // Holes under a mounted part's pin names drawn past its tips (a DIP chip's rows b to d and g to i,
+  // Ruling C3): free, but a wire end there would hide a name, so they are taken last.
+  const labelled = new Set<string>()
+  for (const p of new Set(plugs.map((pl) => pl.part))) {
+    const part = partBy.get(p)!
+    const boxes = tipLabelBoxes(part, modOf(p))
+    if (!boxes.length) continue
+    for (const s of strips.values())
+      s.holes.forEach((h, i) => {
+        if (boxes.some((r) => h.x >= r.x && h.x <= r.x + r.w && h.y >= r.y && h.y <= r.y + r.h)) labelled.add(holeKey(s.board, s.name, i))
+      })
+  }
+  /** The free holes of `s`, those clear of pin names only when it has any. */
+  const clear = (s: Strip) => {
+    const f = free(s)
+    const c = f.filter((i) => !labelled.has(holeKey(s.board, s.name, i)))
+    return c.length ? c : f
+  }
   const nearestHole = (s: Strip, at: Pt): number | null => {
     const pref = preferred.get(s.key)
     if (pref !== undefined && !used.has(holeKey(s.board, s.name, pref))) return pref
     let best: number | null = null
-    for (const i of free(s)) if (best === null || dist(s.holes[i], at) < dist(s.holes[best], at)) best = i
+    for (const i of clear(s)) if (best === null || dist(s.holes[i], at) < dist(s.holes[best], at)) best = i
     return best
   }
   const stripName = (s: Strip) => `${s.board} ${s.name}`
@@ -225,8 +244,8 @@ export function realize(intent: Intent, d: Diagram, locals: LocalDistribution[] 
   }
   const jumper = (ni: number, a: Strip, b: Strip): boolean => {
     let pick: [number, number, number] | null = null
-    for (const i of free(a))
-      for (const j of free(b)) {
+    for (const i of clear(a))
+      for (const j of clear(b)) {
         const dd = dist(a.holes[i], b.holes[j])
         if (!pick || dd < pick[2]) pick = [i, j, dd]
       }

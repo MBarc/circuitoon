@@ -193,3 +193,19 @@ export function typewriter() {
     wires: { ends: 'dupont-male' },
   }
 }
+
+/** An MCP23017 DIP-28 seated across a half breadboard with every pin wired to a Dupont header through its strip (Ruling C3). */
+export function dipWired() {
+  const names = ['GPB0', 'GPB1', 'GPB2', 'GPB3', 'GPB4', 'GPB5', 'GPB6', 'GPB7', 'VDD', 'VSS', 'NC', 'SCL', 'SDA', 'NC 2', 'GPA7', 'GPA6', 'GPA5', 'GPA4', 'GPA3', 'GPA2', 'GPA1', 'GPA0', 'INTA', 'INTB', 'RESET', 'A2', 'A1', 'A0']
+  return {
+    format: 'circuitoon-netlist/1',
+    title: 'DIP-28 on a half breadboard',
+    parts: [
+      { ref: 'BB1', module: 'breadboard-half' },
+      { ref: 'U1', module: 'mcp23017-dip28', on: 'BB1' },
+      ...Array.from({ length: 7 }, (_, i) => ({ ref: `J${i + 1}`, module: 'dupont-1x4' })),
+    ],
+    nets: names.map((n, i) => ({ name: `N${i + 1}`, pins: [`U1.${n}`, `J${Math.floor(i / 4) + 1}.${(i % 4) + 1}`] })),
+    wires: { ends: 'dupont-male' },
+  }
+}

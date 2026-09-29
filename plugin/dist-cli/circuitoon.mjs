@@ -2882,6 +2882,31 @@ function placedCaptionBox(part, m, seat, text = partCaption(part, m)) {
 		h: 10
 	};
 }
+/**
+* The boxes, in world px, that a part's pin names drawn past the pin tips (`art.pinLabels: "tips"`)
+* take: one per pin, 8 px across, from 2 px past the stub tip out to the longest name's length
+* (pinRoom), so every name of the part gets the same box. Empty for any other part. The router
+* keeps wires off them like captions, and layout keeps wire ends out of the holes under them.
+*/
+function tipLabelBoxes(part, m) {
+	if (!usesTipLabels(m)) return [];
+	const len = pinRoom(m) - 8 - 2;
+	return worldPins(part, m).filter((p) => !p.bus).map((p) => {
+		const x = p.end.x + p.dir.x * 2;
+		const y = p.end.y + p.dir.y * 2;
+		return p.dir.x !== 0 ? {
+			x: p.dir.x > 0 ? x : x - len,
+			y: y - 4,
+			w: len,
+			h: 8
+		} : {
+			x: x - 4,
+			y: p.dir.y > 0 ? y : y - len,
+			w: 8,
+			h: len
+		};
+	});
+}
 //#endregion
 //#region src/format/seatedLabels.ts
 /** Gap between the outlet's edge and a caption, px. */
@@ -3311,7 +3336,7 @@ function labelPoints(d) {
 	const seated = seatedLabels(d);
 	for (const p of d.parts) {
 		const m = moduleOf(d, p.module);
-		if (m) captions.set(p.uid, gridNodesIn(placedCaptionBox(p, m, seated.get(p.uid))));
+		if (m) captions.set(p.uid, [placedCaptionBox(p, m, seated.get(p.uid)), ...tipLabelBoxes(p, m)].flatMap(gridNodesIn));
 	}
 	return {
 		captions,
@@ -60108,11 +60133,25 @@ function realize(intent, d, locals = []) {
 		errors
 	};
 	const free = (s) => s.holes.flatMap((_, i) => used.has(holeKey(s.board, s.name, i)) ? [] : [i]);
+	const labelled = /* @__PURE__ */ new Set();
+	for (const p of new Set(plugs.map((pl) => pl.part))) {
+		const boxes = tipLabelBoxes(partBy.get(p), modOf(p));
+		if (!boxes.length) continue;
+		for (const s of strips.values()) s.holes.forEach((h, i) => {
+			if (boxes.some((r) => h.x >= r.x && h.x <= r.x + r.w && h.y >= r.y && h.y <= r.y + r.h)) labelled.add(holeKey(s.board, s.name, i));
+		});
+	}
+	/** The free holes of `s`, those clear of pin names only when it has any. */
+	const clear = (s) => {
+		const f = free(s);
+		const c = f.filter((i) => !labelled.has(holeKey(s.board, s.name, i)));
+		return c.length ? c : f;
+	};
 	const nearestHole = (s, at) => {
 		const pref = preferred.get(s.key);
 		if (pref !== void 0 && !used.has(holeKey(s.board, s.name, pref))) return pref;
 		let best = null;
-		for (const i of free(s)) if (best === null || dist(s.holes[i], at) < dist(s.holes[best], at)) best = i;
+		for (const i of clear(s)) if (best === null || dist(s.holes[i], at) < dist(s.holes[best], at)) best = i;
 		return best;
 	};
 	const stripName = (s) => `${s.board} ${s.name}`;
@@ -60228,7 +60267,7 @@ function realize(intent, d, locals = []) {
 	};
 	const jumper = (ni, a, b) => {
 		let pick = null;
-		for (const i of free(a)) for (const j of free(b)) {
+		for (const i of clear(a)) for (const j of clear(b)) {
 			const dd = dist(a.holes[i], b.holes[j]);
 			if (!pick || dd < pick[2]) pick = [
 				i,

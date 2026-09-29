@@ -11,7 +11,8 @@ import { libraryLookup } from './catalog.ts'
 import { layoutNetlist } from './layout.ts'
 import { reportText } from './readability.ts'
 import { verifyDiagram } from './verify.ts'
-import { divider, ledNetlist, tiltSensors, typewriter } from './fixtures.testing.ts'
+import { dipWired, divider, ledNetlist, tiltSensors, typewriter } from './fixtures.testing.ts'
+import { tipLabelBoxes } from '../render/captionBox.ts'
 
 const laid = (raw: unknown): Diagram => {
   const r = layoutNetlist(raw)
@@ -168,6 +169,32 @@ describe('layoutNetlist', () => {
     expect(r.ok).toBe(false)
     if (r.ok) return
     expect(r.errors.find((e) => e.startsWith('strip full: net SIG '))).toMatch(/ has no free hole left on BB1 c\d+-top \(the other holes there lie under U1's body\)$/)
+  })
+  // Ruling C3: a DIP's pin names lie past its pin tips, over rows b to d and g to i of its strips.
+  it("wires a DIP's strips at their outer holes, row a above and row j below, clear of its pin names", () => {
+    const d = laid(dipWired())
+    const legStrips = new Set(plugsOf(d).filter((p) => p.part === 'U1').map((p) => p.group))
+    const ends = d.connections.flatMap((c) => [c.from, c.to]).filter((e) => e.part === 'BB1' && legStrips.has(e.pin))
+    expect(ends).toHaveLength(28)
+    for (const e of ends) expect(`${e.pin} ${e.hole}`).toBe(`${e.pin} ${e.pin.endsWith('-top') ? 0 : 4}`)
+  })
+  it("routes no wire over a DIP's pin names", () => {
+    const d = laid(dipWired())
+    const u1 = d.parts.find((p) => p.uid === 'U1')!
+    const boxes = tipLabelBoxes(u1, d.modules[u1.module])
+    expect(boxes).toHaveLength(28)
+    const routes = computeRoutes(d)
+    const over: string[] = []
+    for (const c of d.connections) {
+      if ([c.from.part, c.to.part].includes('U1')) continue
+      const pts = routes.get(c.uid)!.points
+      for (let k = 1; k < pts.length; k++) {
+        const [a, b] = [pts[k - 1], pts[k]]
+        for (const r of boxes)
+          if (Math.max(a.x, b.x) >= r.x && Math.min(a.x, b.x) <= r.x + r.w && Math.max(a.y, b.y) >= r.y && Math.min(a.y, b.y) <= r.y + r.h) over.push(c.uid)
+      }
+    }
+    expect([...new Set(over)]).toEqual([])
   })
   it('asks for a distribution point when a net has more ends than its pins take, and uses a rail when there is one', () => {
     const r = layoutNetlist(esp())
