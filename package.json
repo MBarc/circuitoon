@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
-    "test": "vitest run",
+    "test": "node scripts/test.mjs",
     "validate": "node scripts/validate-modules.ts",
     "check:gen": "node scripts/check-gen.mjs",
     "build:cli": "node scripts/gen-cli.mjs",
