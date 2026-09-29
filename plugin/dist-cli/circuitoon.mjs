@@ -1033,6 +1033,20 @@ function layoutModule(m) {
 	if (!lay) layoutCache.set(m, lay = computeLayout(m));
 	return lay;
 }
+var groupCache = /* @__PURE__ */ new WeakMap();
+/**
+* A module's hole group named `name`, or undefined: a map lookup, built once per module (cached by
+* module identity, like the hole and shape caches). The first group of a name wins, as a scan would.
+*/
+function holeGroupOf(m, name) {
+	let map = groupCache.get(m);
+	if (!map) {
+		map = /* @__PURE__ */ new Map();
+		for (const g of m.holes ?? []) if (!map.has(g.name)) map.set(g.name, g);
+		groupCache.set(m, map);
+	}
+	return map.get(name);
+}
 /**
 * How many wire ends a pin or header pad takes: its `capacity`, default 1. A breadboard hole always
 * takes one (a hole holds one leg or one wire end), whatever its group says.
@@ -1040,7 +1054,7 @@ function layoutModule(m) {
 function terminalCapacity(m, name) {
 	const pin = m.pins.find((p) => !isSpacer(p) && p.name === name);
 	if (pin) return pin.capacity ?? 1;
-	const g = m.holes?.find((h) => h.name === name);
+	const g = holeGroupOf(m, name);
 	return g?.holeStyle === "pad" ? g.capacity ?? 1 : 1;
 }
 /** A module's enumerated part settings (`electrical.settings`): each name with its choices, the first the default. */
@@ -2144,7 +2158,10 @@ function wireEndHoles(d) {
 		const m = moduleOf(d, p.module);
 		if (m && isBoard(m)) boards.set(p.uid, m);
 	}
-	for (const c of d.connections) for (const ep of [c.from, c.to]) if (boards.get(ep.part)?.holes?.some((g) => g.name === ep.pin)) out.add(holeKey$1(ep.part, ep.pin, ep.hole ?? 0));
+	for (const c of d.connections) for (const ep of [c.from, c.to]) {
+		const m = boards.get(ep.part);
+		if (m && holeGroupOf(m, ep.pin)) out.add(holeKey$1(ep.part, ep.pin, ep.hole ?? 0));
+	}
 	return out;
 }
 /**
@@ -2187,7 +2204,8 @@ function holeUses(d, skip = NONE_SET, plugs = plugsOf(d)) {
 		if (skip.has(c.uid)) continue;
 		for (const end of ["from", "to"]) {
 			const ep = c[end];
-			if (boards.get(ep.part)?.holes?.some((g) => g.name === ep.pin)) use(ep.part, ep.pin, ep.hole ?? 0).ends.push({
+			const m = boards.get(ep.part);
+			if (m && holeGroupOf(m, ep.pin)) use(ep.part, ep.pin, ep.hole ?? 0).ends.push({
 				wire: c.uid,
 				end,
 				viaPin: false
@@ -47279,7 +47297,7 @@ function checkDiagram(d) {
 		for (const ep of [c.from, c.to]) {
 			const board = partByUid.get(ep.part);
 			const m = board && moduleOf(d, board.module);
-			if (!board || !m?.holes?.some((g) => g.name === ep.pin)) continue;
+			if (!board || !m || !holeGroupOf(m, ep.pin) || mainsOf(m).sockets.length) continue;
 			const hole = JSON.stringify([
 				ep.part,
 				ep.pin,
@@ -59637,7 +59655,7 @@ function capacity(d, add) {
 		if (broken.has(c.uid)) continue;
 		for (const ep of [c.from, c.to]) {
 			const m = moduleOf(d, partBy.get(ep.part).module);
-			const group = m.holes?.find((g) => g.name === ep.pin);
+			const group = holeGroupOf(m, ep.pin);
 			if (group && isBoard(m) || !group && plugged.has(nodeKey(ep.part, ep.pin))) continue;
 			if (group) slot(JSON.stringify([
 				"pad",
