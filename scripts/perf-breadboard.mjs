@@ -24,6 +24,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { tmpdir } from 'node:os'
 import { chromium } from 'playwright-core'
+import { exportDownload, noSavePicker } from './lib/browser-check.mjs'
 
 const args = process.argv.slice(2)
 const opt = (name, dflt) => {
@@ -84,6 +85,7 @@ for (let i = 0; i < 60; i++) {
 
 const browser = await chromium.launch({ channel: 'chrome', headless: true })
 const page = await browser.newPage({ viewport: { width: 1400, height: 900 } })
+await noSavePicker(page)
 const errors = []
 const watch = (p) => {
   p.on('pageerror', (e) => errors.push(e.message))
@@ -168,7 +170,7 @@ async function load(path, uid) {
 }
 /** Exports the sheet through the toolbar and returns the saved JSON. */
 async function exported() {
-  const [download] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: 'Export JSON' }).click()])
+  const download = await exportDownload(page)
   return JSON.parse(readFileSync(await download.path(), 'utf8'))
 }
 /** Drags a part from the Parts panel onto world point (wx, wy) with a real HTML drag and drop. */

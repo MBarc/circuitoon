@@ -5,7 +5,8 @@ import { deleteSelection, EMPTY_SELECTION, rotateParts } from './ops.ts'
 import { severityCounts, useProblems } from './problems.ts'
 import { SeverityMark } from './SeverityMark.tsx'
 import { emptyDiagram, serializeDiagram } from '../format/diagram.ts'
-import { downloadText, exportFileName, readDiagramFile } from './files.ts'
+import { EXPORT_SUFFIX, defaultBaseName, downloadText, readDiagramFile, saveWithPicker, type SavePicker } from './files.ts'
+import { ExportDialog } from './ExportDialog.tsx'
 import { LoadWarnings } from './LoadWarnings.tsx'
 import { MAINS_NOTICE, hasMains, withSheetNotes } from '../format/mains.ts'
 
@@ -16,6 +17,10 @@ export function Toolbar({ store, warnings, onClose }: { store: EditorStore; warn
   const importBase = useRef<Diagram | null>(null)
   const importSeq = useRef(0)
   const [error, setError] = useState<string | null>(null)
+  // The file name base last chosen on Export for the open sheet, offered next time; the in-app
+  // naming dialog, when the browser has no Save As dialog, is open while this holds its first name.
+  const lastName = useRef<string | null>(null)
+  const [naming, setNaming] = useState<string | null>(null)
   // Warnings the open sheet was loaded with; every one stays reachable until dismissed.
   const [loadWarnings, setLoadWarnings] = useState<{ list: string[]; key: number } | null>(warnings?.length ? { list: warnings, key: 0 } : null)
   const hasSel = selection.parts.length + selection.wires.length + (selection.annotations?.length ?? 0) > 0
@@ -25,6 +30,34 @@ export function Toolbar({ store, warnings, onClose }: { store: EditorStore; warn
 
   /** True when there is nothing to lose, or the user agrees to discard it. */
   const okToDiscard = () => !store.dirty || window.confirm(`Discard unsaved changes to ${diagram.title}?`)
+
+  /** A new or imported sheet starts with its own file name again. */
+  function loaded() {
+    lastName.current = null
+    setError(null)
+  }
+
+  const exportText = () => serializeDiagram(withSheetNotes(store.getState().diagram))
+
+  /**
+   * Export JSON: the browser's own Save As dialog where there is one (showSaveFilePicker), else the
+   * in-app naming dialog, then a download. Cancelling either saves nothing.
+   */
+  async function exportJson() {
+    const base = defaultBaseName(store.getState().diagram.title, lastName.current)
+    const picker = (window as { showSaveFilePicker?: SavePicker }).showSaveFilePicker
+    if (picker) {
+      const r = await saveWithPicker(picker.bind(window), base, exportText())
+      if (r.status === 'saved') {
+        lastName.current = r.base
+        setError(null)
+        store.markSaved()
+      }
+      if (r.status === 'failed') setError(r.message)
+      if (r.status !== 'unavailable') return
+    }
+    setNaming(base)
+  }
 
   async function importFile(file: File) {
     const seq = ++importSeq.current
@@ -37,7 +70,7 @@ export function Toolbar({ store, warnings, onClose }: { store: EditorStore; warn
     const now = store.getState().diagram
     if (now !== base && store.dirty && !window.confirm(`Discard unsaved changes to ${now.title}?`)) return
     store.load(r.diagram)
-    setError(null)
+    loaded()
     setLoadWarnings(r.warnings.length ? { list: r.warnings, key: seq } : null)
   }
 
@@ -54,7 +87,7 @@ export function Toolbar({ store, warnings, onClose }: { store: EditorStore; warn
       <button type="button" className="tool" onClick={() => {
         if (!okToDiscard()) return
         store.load(emptyDiagram())
-        setError(null)
+        loaded()
         setLoadWarnings(null)
       }}>New sheet</button>
       <button type="button" className="tool" onClick={() => {
@@ -62,10 +95,7 @@ export function Toolbar({ store, warnings, onClose }: { store: EditorStore; warn
         importBase.current = store.getState().diagram
         fileRef.current?.click()
       }}>Import JSON</button>
-      <button type="button" className="tool" onClick={() => {
-        downloadText(exportFileName(diagram.title), serializeDiagram(withSheetNotes(diagram)))
-        store.markSaved()
-      }}>Export JSON</button>
+      <button type="button" className="tool" aria-haspopup="dialog" onClick={() => void exportJson()}>Export JSON</button>
       {findings.length > 0 && (
         <button
           type="button"
@@ -97,6 +127,18 @@ export function Toolbar({ store, warnings, onClose }: { store: EditorStore; warn
       {error && <p className="message error" role="alert">{error}</p>}
       {loadWarnings && <LoadWarnings key={loadWarnings.key} warnings={loadWarnings.list} onDismiss={() => setLoadWarnings(null)} />}
       {mains && <p className="print-notice">{MAINS_NOTICE}</p>}
+      {naming !== null && (
+        <ExportDialog
+          initial={naming}
+          onCancel={() => setNaming(null)}
+          onExport={(base) => {
+            setNaming(null)
+            lastName.current = base
+            downloadText(base + EXPORT_SUFFIX, exportText())
+            store.markSaved()
+          }}
+        />
+      )}
     </header>
   )
 }

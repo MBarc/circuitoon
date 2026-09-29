@@ -20,6 +20,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { tmpdir } from 'node:os'
 import { chromium } from 'playwright-core'
+import { exportDownload, noSavePicker } from './lib/browser-check.mjs'
 
 const args = process.argv.slice(2)
 const flag = (name, dflt) => {
@@ -132,6 +133,7 @@ const check = (ok, what) => {
 const browser = await chromium.launch({ channel: 'chrome', headless: true })
 for (const scheme of ['light', 'dark']) {
   const context = await browser.newContext({ viewport: { width: 1800, height: 1100 }, colorScheme: scheme, acceptDownloads: true })
+  await noSavePicker(context)
   const page = await context.newPage()
   const errors = []
   page.on('pageerror', (e) => errors.push(e.message))
@@ -174,7 +176,7 @@ for (const scheme of ['light', 'dark']) {
     await pause(300)
   }
   const exported = async () => {
-    const [download] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: 'Export JSON' }).click()])
+    const download = await exportDownload(page)
     return JSON.parse(readFileSync(await download.path(), 'utf8'))
   }
 

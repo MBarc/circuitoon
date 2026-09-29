@@ -242,3 +242,34 @@ button.wordmark { background: none; border: 0; padding: 0; cursor: pointer; }
   /* The notice's band is kept clear: the editor ends above it, so it never covers the drawing or the findings. */
   .editor:has(.print-notice) { bottom: 40mm; }
 }
+
+/* Export JSON's naming dialog (browsers with no Save As dialog of their own): a sticker card like
+   the start screen's, the fixed suffix set in the field's own frame after the name. */
+.export-dialog {
+  width: min(440px, calc(100vw - 32px)); padding: 0;
+  color: var(--text); background: var(--panel);
+  border: 2.5px solid var(--card-edge); border-radius: 12px; box-shadow: 4px 5px 0 var(--shadow);
+}
+.export-dialog::backdrop { background: rgba(22, 27, 24, 0.38); }
+.export-dialog form { display: grid; gap: 8px; padding: 18px; }
+.export-dialog h2 { margin: 0 0 4px; font: 600 21px/1.2 "Fredoka", system-ui, sans-serif; }
+.export-label { font-size: 14px; font-weight: 700; }
+.export-name {
+  display: flex; align-items: stretch; min-width: 0;
+  background: var(--bg); border: 1.5px solid var(--rule); border-radius: 8px;
+}
+.export-name:focus-within { border-color: var(--text); outline: 3px solid var(--focus); outline-offset: 2px; }
+.export-name input {
+  flex: 1; min-width: 0; border: 0; background: transparent; color: var(--text); outline: none;
+  font: 400 16px/1.2 "Atkinson Hyperlegible", system-ui, sans-serif; padding: 9px 4px 9px 10px;
+}
+.export-suffix {
+  flex: none; display: flex; align-items: center; padding: 0 10px 0 2px;
+  color: var(--muted); font: 700 14px/1 "Atkinson Hyperlegible", system-ui, sans-serif; white-space: nowrap;
+}
+.export-note { min-height: 1.4em; overflow-wrap: anywhere; }
+.export-note strong { color: var(--text); }
+.export-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 6px; }
+.tool.primary { background: var(--yellow); color: #23282F; border-color: #23282F; box-shadow: 2px 2px 0 var(--shadow); }
+.tool.primary:hover:not(:disabled) { border-color: #23282F; box-shadow: 3px 3px 0 var(--shadow); }
+.tool.primary:active { transform: translate(1px, 1px); box-shadow: 1px 1px 0 var(--shadow); }

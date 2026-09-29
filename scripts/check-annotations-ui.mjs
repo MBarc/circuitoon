@@ -13,7 +13,7 @@ import { execFileSync } from 'node:child_process'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
-import { checker, flagOf, launchChrome, startPreview } from './lib/browser-check.mjs'
+import { checker, exportDownload, flagOf, launchChrome, noSavePicker, startPreview } from './lib/browser-check.mjs'
 
 const out = resolve(flagOf('--out', join(tmpdir(), 'circuitoon-annotations-ui')))
 const port = Number(flagOf('--port', '4194'))
@@ -66,6 +66,7 @@ const snap = (v) => Math.round(v / GRID) * GRID
 
 for (const scheme of ['light', 'dark']) {
   const page = await browser.newPage({ viewport: { width: 1400, height: 900 }, colorScheme: scheme, acceptDownloads: true })
+  await noSavePicker(page)
   const errors = []
   page.on('pageerror', (e) => errors.push(e.message))
   page.on('dialog', (d) => d.accept())
@@ -211,7 +212,7 @@ for (const scheme of ['light', 'dark']) {
   await page.keyboard.press('Control+z')
   check((await mark(light.uid).count()) === 1 && (await mark(note.uid).count()) === 1, `${scheme}: undo brings them back`)
 
-  const [download] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: 'Export JSON' }).click()])
+  const download = await exportDownload(page)
   const saved = JSON.parse(readFileSync(await download.path(), 'utf8'))
   const byUid = (uid) => saved.annotations.find((a) => a.uid === uid)
   check(

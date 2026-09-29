@@ -16,7 +16,7 @@ import { execFileSync } from 'node:child_process'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
-import { checker, flagOf, launchChrome, startPreview } from './lib/browser-check.mjs'
+import { checker, exportDownload, flagOf, launchChrome, noSavePicker, startPreview } from './lib/browser-check.mjs'
 
 const out = resolve(flagOf('--out', join(tmpdir(), 'circuitoon-select-ui')))
 const port = Number(flagOf('--port', '4195'))
@@ -68,6 +68,7 @@ const browser = await launchChrome()
 
 for (const scheme of ['light', 'dark']) {
   const context = await browser.newContext({ viewport: { width: 1400, height: 900 }, colorScheme: scheme, acceptDownloads: true, permissions: ['clipboard-read', 'clipboard-write'] })
+  await noSavePicker(context)
   const page = await context.newPage()
   const errors = []
   page.on('pageerror', (e) => errors.push(e.message))
@@ -247,7 +248,7 @@ for (const scheme of ['light', 'dark']) {
   const pasted = await centreOf(s.parts)
   check(Math.abs(pasted.cx - target.x) < 60 && Math.abs(pasted.cy - target.y) < 60, `${scheme}: the paste lands centred under the pointer (${Math.round(pasted.cx - target.x)}, ${Math.round(pasted.cy - target.y)} px off)`)
   await page.screenshot({ path: join(shots, `marquee-paste-${scheme}.png`) })
-  const [download] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: 'Export JSON' }).click()])
+  const download = await exportDownload(page)
   const saved = JSON.parse(readFileSync(await download.path(), 'utf8'))
   const news = saved.parts.filter((p) => !original.has(p.uid))
   const newBoard = news.find((p) => p.module === 'breadboard-half')

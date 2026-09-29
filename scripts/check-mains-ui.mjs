@@ -27,6 +27,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { tmpdir } from 'node:os'
 import { chromium } from 'playwright-core'
+import { exportDownload, noSavePicker } from './lib/browser-check.mjs'
 import { NAMED_COLORS } from '../src/format/diagram.ts'
 
 const args = process.argv.slice(2)
@@ -125,6 +126,7 @@ const WHITE = NAMED_COLORS.white
 const browser = await chromium.launch({ channel: 'chrome', headless: true })
 for (const scheme of ['light', 'dark']) {
   const page = await browser.newPage({ viewport: { width: 1400, height: 900 }, colorScheme: scheme })
+  await noSavePicker(page)
   const errors = []
   page.on('pageerror', (e) => errors.push(e.message))
   page.on('console', (m) => m.type() === 'error' && errors.push(m.text()))
@@ -358,7 +360,7 @@ for (const scheme of ['light', 'dark']) {
   await shot('new-wire-brown')
 
   // Export JSON carries the notice as a sheet note.
-  const [download] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: 'Export JSON' }).click()])
+  const download = await exportDownload(page)
   const saved = JSON.parse(readFileSync(await download.path(), 'utf8'))
   check(Array.isArray(saved.notes) && saved.notes.includes(NOTICE), `${scheme}: exported JSON stores the notice as a sheet note (${JSON.stringify(saved.notes)})`)
 

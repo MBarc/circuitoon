@@ -71,3 +71,25 @@ export function checker() {
     },
   }
 }
+
+/**
+ * Removes `window.showSaveFilePicker` from every document `target` (a page or a context) loads, so
+ * Export JSON names the file in the editor's own dialog and downloads it. Headless Chrome has the
+ * picker but closes its Save As dialog at once (an AbortError), which would save nothing.
+ */
+export const noSavePicker = (target) =>
+  target.addInitScript(() => {
+    delete window.showSaveFilePicker
+  })
+
+/**
+ * Exports through the toolbar's Export JSON and the naming dialog (see `noSavePicker`), typing
+ * `name` as the file name when given, and returns the download.
+ */
+export async function exportDownload(page, name) {
+  await page.getByRole('button', { name: 'Export JSON' }).click()
+  const dialog = page.getByRole('dialog', { name: 'Export JSON' })
+  if (name !== undefined) await dialog.getByLabel('File name').fill(name)
+  const [download] = await Promise.all([page.waitForEvent('download'), dialog.getByRole('button', { name: 'Export', exact: true }).click()])
+  return download
+}
