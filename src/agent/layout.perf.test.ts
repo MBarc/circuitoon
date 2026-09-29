@@ -7,7 +7,7 @@ import { ledRails, typewriter } from './fixtures.testing.ts'
 
 const cases: [string, () => unknown][] = [
   ['120 parts', () => ledRails(57, 3)],
-  ['typewriter-like (98 parts)', () => typewriter(false)],
+  ['typewriter-like (98 parts)', typewriter],
 ]
 const RUNS = 5
 

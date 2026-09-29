@@ -40,8 +40,9 @@ describe('hole ends under a part', () => {
     expect(r.points[0]).toEqual({ x: 30, y: 60 })
     expect(r.points.at(-1)).toEqual({ x: 50, y: 20 })
   })
-  it('routes a wire from a hole under a DIP-28 body', () => {
-    const dip = load('mcp23017-dip28')
+  it('routes a wire from a hole under a large chip body', () => {
+    // An 80 x 80 px chip with no art: its whole body lies over the board.
+    const dip: ModuleDef = { format: 'circuitoon-module/1', id: 'block', name: 'Block', size: { w: 8, h: 8 }, pins: [{ name: 'A', side: 'left' }, { name: 'B', side: 'right' }] }
     const d = sheet({ module: dip, x: 60, y: 60 }, { pin: 'c10-top', hole: 4 })
     const body = bodyRect(d.parts[1], layoutModule(dip))
     const hole = resolveEndpoint(d, d.connections[0].from)!.end

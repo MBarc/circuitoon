@@ -122,9 +122,18 @@ function Holes({ m }: { m: ModuleDef }) {
  * horizontal beside pins on a left or right edge, reading bottom to top beside pins on a top
  * or bottom edge (the pitch is too tight for horizontal text there). `box` is the rotated body.
  */
-function PinLabel({ p, box, outside, pad = 4 }: { p: WorldPin; box: Rect; outside: boolean; pad?: number }) {
+function PinLabel({ p, box, outside, tips = false, pad = 4 }: { p: WorldPin; box: Rect; outside: boolean; tips?: boolean; pad?: number }) {
   const text = p.label ?? p.name
   const common = { fontSize: 7, fontWeight: 700, fill: INK, stroke: '#FFFFFF', strokeWidth: 2.4, strokeLinejoin: 'round' as const, paintOrder: 'stroke' }
+  // Past the stub tip, along the pin: horizontal off a left or right pin, reading bottom to top off
+  // a top or bottom one, so a row at 0.1 inch pitch stays readable (`art.pinLabels: "tips"`).
+  if (tips) {
+    const tip = { ...common, dominantBaseline: 'central' as const }
+    const x = p.end.x + p.dir.x * 2
+    const y = p.end.y + p.dir.y * 2
+    if (p.dir.x !== 0) return <text x={x} y={y} textAnchor={p.dir.x < 0 ? 'end' : 'start'} {...tip}>{text}</text>
+    return <text x={x} y={y} transform={`rotate(-90 ${x} ${y})`} textAnchor={p.dir.y < 0 ? 'start' : 'end'} {...tip}>{text}</text>
+  }
   // Drawn parts keep their art clean: labels sit beside the pin stub, outside the body.
   if (outside) {
     const midX = (p.edge.x + p.end.x) / 2
@@ -238,7 +247,7 @@ export const Part = memo(function Part({ module: m, x = 0, y = 0, rotation = 0, 
         if (!showLabel(m, p)) return null
         if (labelInset !== null) return <CoveredLabel key={p.name} p={p} inset={labelInset} />
         const header = !!art && headers.has(lay.pins[i].side)
-        return <PinLabel key={p.name} p={p} box={box} outside={!!art && !header} pad={header ? HEADER_INSET : 4} />
+        return <PinLabel key={p.name} p={p} box={box} outside={!!art && !header} tips={art?.pinLabels === 'tips'} pad={header ? HEADER_INSET : 4} />
       })}
       {caption && (captionX !== undefined && seatY !== undefined ? (
         <text x={captionX} y={seatY} textAnchor={seatAnchor} dominantBaseline={seatAnchor === 'start' ? 'central' : 'auto'} fontSize={CAPTION_SIZE} fontWeight={700} fill={ink} {...captionHalo}>

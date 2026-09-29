@@ -136,11 +136,9 @@ export function ledRails(pairs: number, rails: number) {
  * breadboards, 42 balls of two tilt switches each sharing one expander channel (a repeat with
  * explicit bindings), two ST7796S SPI LCDs, an SSD1306 OLED, a microSD module, an 18650 and IP5306
  * power chain and a KCD1 rocker switch. 98 parts. The LCD data pins are `SDI(MOSI)` and
- * `SDO(MISO)`, their exact names in the catalog (amendment A4). With `mounted` false the expanders
- * sit beside their boards: the DIP-28 is drawn 100 px across, so seated across the channel its body
- * covers every hole of its pins' strips but one, and nothing is left to wire them through.
+ * `SDO(MISO)`, their exact names in the catalog (amendment A4).
  */
-export function typewriter(mounted = true) {
+export function typewriter() {
   const boards = ['BB1', 'BB2', 'BB3']
   const bank = (u: string, b: string) => Array.from({ length: 8 }, (_, i) => `${u}.GP${b}${i}`)
   const channels = [...bank('U2', 'A'), ...bank('U2', 'B'), ...bank('U3', 'A'), ...bank('U3', 'B'), ...bank('U4', 'A'), 'U4.GPB0', 'U4.GPB1']
@@ -150,7 +148,7 @@ export function typewriter(mounted = true) {
     parts: [
       { ref: 'U1', module: 'esp32-devkitc-v4' },
       ...boards.map((ref) => ({ ref, module: 'breadboard-half' })),
-      ...boards.map((b, i) => ({ ref: `U${i + 2}`, module: 'mcp23017-dip28', ...(mounted ? { on: b } : {}) })),
+      ...boards.map((b, i) => ({ ref: `U${i + 2}`, module: 'mcp23017-dip28', on: b })),
       { ref: 'DS1', module: 'lcd-st7796s-4in-spi-touch' },
       { ref: 'DS2', module: 'lcd-st7796s-4in-spi-touch' },
       { ref: 'DS3', module: 'oled-ssd1306-096-i2c' },

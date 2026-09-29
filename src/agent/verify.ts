@@ -57,6 +57,8 @@ function pinDiff(stored: unknown, lib: unknown): string {
     if (i < b.length) names.add(label(b[i]))
     if (i < a.length) names.add(label(a[i]))
   }
+  // A redrawn part (every pin moved, Ruling C2) names the count, not a list nobody reads.
+  if (names.size > 8) return `${names.size} pins`
   return names.size ? `pins ${[...names].join('/')}` : 'pins'
 }
 

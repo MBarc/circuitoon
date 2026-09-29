@@ -656,6 +656,21 @@ var isSpacer = (p) => "spacer" in p && p.spacer === true;
 /** Opt-in flag (`art.pinLabels: "inside"`) for drawing pin names inside the body, like board
 * silkscreen, instead of beside the pin stub. Off for every module that does not set it. */
 var usesInsideLabels = (m) => m.art?.pinLabels === "inside";
+/**
+* Opt-in flag (`art.pinLabels: "tips"`) for drawing each pin name past its stub tip, along the pin:
+* for a body too thin to hold its labels inside (a DIP chip drawn at its true 0.3 inch width).
+*/
+var usesTipLabels = (m) => m.art?.pinLabels === "tips";
+/**
+* How far, in px, a part's pin stubs and labels reach past its body: a stub and a label beside it
+* (LEAD + 10), or with labels past the tips, the stub, a 2 px gap and the longest label at the
+* 7 px label font (about 4.5 px a character plus its halo). Placement and exports keep this room.
+*/
+function pinRoom(m) {
+	if (!usesTipLabels(m)) return 18;
+	const longest = Math.max(0, ...m.pins.filter((p) => !isSpacer(p)).map((p) => (p.label ?? p.name).length));
+	return 10 + Math.ceil(longest * 4.5 + 3);
+}
 /** Sides whose pin names draw inside the body: every side for an "inside" module (a board's
 * left/right headers, a small OLED's top header), none otherwise. */
 var insideLabelSides = (m) => usesInsideLabels(m) ? [...SIDES] : [];
@@ -797,7 +812,7 @@ function validateModule(raw) {
 		const art = raw.art;
 		if (!isObj(art) || !isPos(art.w) || !isPos(art.h) || !Array.isArray(art.shapes)) errors.push("art: must be { \"w\", \"h\", \"shapes\": [...] } with positive w and h");
 		else {
-			if (art.pinLabels !== void 0 && art.pinLabels !== "inside") errors.push("art.pinLabels: must be \"inside\"");
+			if (art.pinLabels !== void 0 && art.pinLabels !== "inside" && art.pinLabels !== "tips") errors.push("art.pinLabels: must be \"inside\" or \"tips\"");
 			art.shapes.forEach((s, i) => {
 				const at = `art.shapes[${i}]`;
 				if (!isObj(s) || s.type !== "rect") return void errors.push(`${at}: only "rect" shapes are supported`);
@@ -2832,7 +2847,7 @@ function captionAnchor(m, rotation = 0) {
 	}, m).some((p) => p.dir.y > 0);
 	return {
 		x: box.x + box.w / 2,
-		y: box.y + box.h + (stubsDown ? 8 : 0) + 15
+		y: box.y + box.h + (stubsDown ? usesTipLabels(m) ? pinRoom(m) : 8 : 0) + 15
 	};
 }
 /** The caption's box in world px (8 px above the baseline, 2 below). */
@@ -22440,465 +22455,437 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 		pins: [
 			{
 				"name": "GPB0",
-				"side": "left"
+				"side": "bottom"
 			},
 			{
 				"name": "GPB1",
-				"side": "left"
+				"side": "bottom"
 			},
 			{
 				"name": "GPB2",
-				"side": "left"
+				"side": "bottom"
 			},
 			{
 				"name": "GPB3",
-				"side": "left"
+				"side": "bottom"
 			},
 			{
 				"name": "GPB4",
-				"side": "left"
+				"side": "bottom"
 			},
 			{
 				"name": "GPB5",
-				"side": "left"
+				"side": "bottom"
 			},
 			{
 				"name": "GPB6",
-				"side": "left"
+				"side": "bottom"
 			},
 			{
 				"name": "GPB7",
-				"side": "left",
+				"side": "bottom",
 				"type": "output"
 			},
 			{
 				"name": "VDD",
-				"side": "left",
+				"side": "bottom",
 				"type": "power_in",
 				"supply": "3V3/5V"
 			},
 			{
 				"name": "VSS",
-				"side": "left",
+				"side": "bottom",
 				"type": "ground"
 			},
 			{
 				"name": "NC",
-				"side": "left",
+				"side": "bottom",
 				"type": "nc"
 			},
 			{
 				"name": "SCL",
-				"side": "left",
+				"side": "bottom",
 				"type": "input"
 			},
 			{
 				"name": "SDA",
-				"side": "left",
+				"side": "bottom",
 				"type": "io"
 			},
 			{
 				"name": "NC 2",
-				"side": "left",
+				"side": "bottom",
 				"label": "NC",
 				"type": "nc"
 			},
 			{
 				"name": "GPA7",
-				"side": "right",
+				"side": "top",
 				"type": "output"
 			},
 			{
 				"name": "GPA6",
-				"side": "right"
+				"side": "top"
 			},
 			{
 				"name": "GPA5",
-				"side": "right"
+				"side": "top"
 			},
 			{
 				"name": "GPA4",
-				"side": "right"
+				"side": "top"
 			},
 			{
 				"name": "GPA3",
-				"side": "right"
+				"side": "top"
 			},
 			{
 				"name": "GPA2",
-				"side": "right"
+				"side": "top"
 			},
 			{
 				"name": "GPA1",
-				"side": "right"
+				"side": "top"
 			},
 			{
 				"name": "GPA0",
-				"side": "right"
+				"side": "top"
 			},
 			{
 				"name": "INTA",
-				"side": "right",
+				"side": "top",
 				"type": "output"
 			},
 			{
 				"name": "INTB",
-				"side": "right",
+				"side": "top",
 				"type": "output"
 			},
 			{
 				"name": "RESET",
-				"side": "right",
+				"side": "top",
 				"type": "input"
 			},
 			{
 				"name": "A2",
-				"side": "right",
+				"side": "top",
 				"type": "input"
 			},
 			{
 				"name": "A1",
-				"side": "right",
+				"side": "top",
 				"type": "input"
 			},
 			{
 				"name": "A0",
-				"side": "right",
+				"side": "top",
 				"type": "input"
 			}
 		],
 		size: {
-			"w": 10,
-			"h": 19
+			"w": 16,
+			"h": 3
 		},
 		electrical: {
 			"model": "io-expander",
 			"params": {}
 		},
 		art: {
-			"w": 100,
-			"h": 190,
-			"pinLabels": "inside",
+			"w": 160,
+			"h": 30,
+			"pinLabels": "tips",
 			"shapes": [
 				{
 					"type": "rect",
-					"x": 0,
+					"x": 18.5,
 					"y": 0,
-					"w": 100,
-					"h": 190,
+					"w": 3,
+					"h": 5,
+					"fill": "#C9CED6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 18.5,
+					"y": 25,
+					"w": 3,
+					"h": 5,
+					"fill": "#C9CED6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 28.5,
+					"y": 0,
+					"w": 3,
+					"h": 5,
+					"fill": "#C9CED6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 28.5,
+					"y": 25,
+					"w": 3,
+					"h": 5,
+					"fill": "#C9CED6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 38.5,
+					"y": 0,
+					"w": 3,
+					"h": 5,
+					"fill": "#C9CED6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 38.5,
+					"y": 25,
+					"w": 3,
+					"h": 5,
+					"fill": "#C9CED6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 48.5,
+					"y": 0,
+					"w": 3,
+					"h": 5,
+					"fill": "#C9CED6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 48.5,
+					"y": 25,
+					"w": 3,
+					"h": 5,
+					"fill": "#C9CED6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 58.5,
+					"y": 0,
+					"w": 3,
+					"h": 5,
+					"fill": "#C9CED6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 58.5,
+					"y": 25,
+					"w": 3,
+					"h": 5,
+					"fill": "#C9CED6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 68.5,
+					"y": 0,
+					"w": 3,
+					"h": 5,
+					"fill": "#C9CED6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 68.5,
+					"y": 25,
+					"w": 3,
+					"h": 5,
+					"fill": "#C9CED6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 78.5,
+					"y": 0,
+					"w": 3,
+					"h": 5,
+					"fill": "#C9CED6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 78.5,
+					"y": 25,
+					"w": 3,
+					"h": 5,
+					"fill": "#C9CED6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 88.5,
+					"y": 0,
+					"w": 3,
+					"h": 5,
+					"fill": "#C9CED6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 88.5,
+					"y": 25,
+					"w": 3,
+					"h": 5,
+					"fill": "#C9CED6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 98.5,
+					"y": 0,
+					"w": 3,
+					"h": 5,
+					"fill": "#C9CED6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 98.5,
+					"y": 25,
+					"w": 3,
+					"h": 5,
+					"fill": "#C9CED6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 108.5,
+					"y": 0,
+					"w": 3,
+					"h": 5,
+					"fill": "#C9CED6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 108.5,
+					"y": 25,
+					"w": 3,
+					"h": 5,
+					"fill": "#C9CED6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 118.5,
+					"y": 0,
+					"w": 3,
+					"h": 5,
+					"fill": "#C9CED6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 118.5,
+					"y": 25,
+					"w": 3,
+					"h": 5,
+					"fill": "#C9CED6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 128.5,
+					"y": 0,
+					"w": 3,
+					"h": 5,
+					"fill": "#C9CED6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 128.5,
+					"y": 25,
+					"w": 3,
+					"h": 5,
+					"fill": "#C9CED6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 138.5,
+					"y": 0,
+					"w": 3,
+					"h": 5,
+					"fill": "#C9CED6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 138.5,
+					"y": 25,
+					"w": 3,
+					"h": 5,
+					"fill": "#C9CED6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 148.5,
+					"y": 0,
+					"w": 3,
+					"h": 5,
+					"fill": "#C9CED6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 148.5,
+					"y": 25,
+					"w": 3,
+					"h": 5,
+					"fill": "#C9CED6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 11,
+					"y": 4,
+					"w": 148,
+					"h": 22,
 					"fill": "#1E2126",
+					"radius": 2
+				},
+				{
+					"type": "rect",
+					"x": 12,
+					"y": 11,
+					"w": 6,
+					"h": 8,
+					"fill": "#3A3F47",
 					"radius": 3
 				},
 				{
 					"type": "rect",
-					"x": 1,
-					"y": 28,
-					"w": 8,
+					"x": 18,
+					"y": 19,
+					"w": 4,
 					"h": 4,
-					"fill": "#C9CED6",
-					"radius": 1,
-					"outline": false
-				},
-				{
-					"type": "rect",
-					"x": 91,
-					"y": 28,
-					"w": 8,
-					"h": 4,
-					"fill": "#C9CED6",
-					"radius": 1,
-					"outline": false
-				},
-				{
-					"type": "rect",
-					"x": 1,
-					"y": 38,
-					"w": 8,
-					"h": 4,
-					"fill": "#C9CED6",
-					"radius": 1,
-					"outline": false
-				},
-				{
-					"type": "rect",
-					"x": 91,
-					"y": 38,
-					"w": 8,
-					"h": 4,
-					"fill": "#C9CED6",
-					"radius": 1,
-					"outline": false
-				},
-				{
-					"type": "rect",
-					"x": 1,
-					"y": 48,
-					"w": 8,
-					"h": 4,
-					"fill": "#C9CED6",
-					"radius": 1,
-					"outline": false
-				},
-				{
-					"type": "rect",
-					"x": 91,
-					"y": 48,
-					"w": 8,
-					"h": 4,
-					"fill": "#C9CED6",
-					"radius": 1,
-					"outline": false
-				},
-				{
-					"type": "rect",
-					"x": 1,
-					"y": 58,
-					"w": 8,
-					"h": 4,
-					"fill": "#C9CED6",
-					"radius": 1,
-					"outline": false
-				},
-				{
-					"type": "rect",
-					"x": 91,
-					"y": 58,
-					"w": 8,
-					"h": 4,
-					"fill": "#C9CED6",
-					"radius": 1,
-					"outline": false
-				},
-				{
-					"type": "rect",
-					"x": 1,
-					"y": 68,
-					"w": 8,
-					"h": 4,
-					"fill": "#C9CED6",
-					"radius": 1,
-					"outline": false
-				},
-				{
-					"type": "rect",
-					"x": 91,
-					"y": 68,
-					"w": 8,
-					"h": 4,
-					"fill": "#C9CED6",
-					"radius": 1,
-					"outline": false
-				},
-				{
-					"type": "rect",
-					"x": 1,
-					"y": 78,
-					"w": 8,
-					"h": 4,
-					"fill": "#C9CED6",
-					"radius": 1,
-					"outline": false
-				},
-				{
-					"type": "rect",
-					"x": 91,
-					"y": 78,
-					"w": 8,
-					"h": 4,
-					"fill": "#C9CED6",
-					"radius": 1,
-					"outline": false
-				},
-				{
-					"type": "rect",
-					"x": 1,
-					"y": 88,
-					"w": 8,
-					"h": 4,
-					"fill": "#C9CED6",
-					"radius": 1,
-					"outline": false
-				},
-				{
-					"type": "rect",
-					"x": 91,
-					"y": 88,
-					"w": 8,
-					"h": 4,
-					"fill": "#C9CED6",
-					"radius": 1,
-					"outline": false
-				},
-				{
-					"type": "rect",
-					"x": 1,
-					"y": 98,
-					"w": 8,
-					"h": 4,
-					"fill": "#C9CED6",
-					"radius": 1,
-					"outline": false
-				},
-				{
-					"type": "rect",
-					"x": 91,
-					"y": 98,
-					"w": 8,
-					"h": 4,
-					"fill": "#C9CED6",
-					"radius": 1,
-					"outline": false
-				},
-				{
-					"type": "rect",
-					"x": 1,
-					"y": 108,
-					"w": 8,
-					"h": 4,
-					"fill": "#C9CED6",
-					"radius": 1,
-					"outline": false
-				},
-				{
-					"type": "rect",
-					"x": 91,
-					"y": 108,
-					"w": 8,
-					"h": 4,
-					"fill": "#C9CED6",
-					"radius": 1,
-					"outline": false
-				},
-				{
-					"type": "rect",
-					"x": 1,
-					"y": 118,
-					"w": 8,
-					"h": 4,
-					"fill": "#C9CED6",
-					"radius": 1,
-					"outline": false
-				},
-				{
-					"type": "rect",
-					"x": 91,
-					"y": 118,
-					"w": 8,
-					"h": 4,
-					"fill": "#C9CED6",
-					"radius": 1,
-					"outline": false
-				},
-				{
-					"type": "rect",
-					"x": 1,
-					"y": 128,
-					"w": 8,
-					"h": 4,
-					"fill": "#C9CED6",
-					"radius": 1,
-					"outline": false
-				},
-				{
-					"type": "rect",
-					"x": 91,
-					"y": 128,
-					"w": 8,
-					"h": 4,
-					"fill": "#C9CED6",
-					"radius": 1,
-					"outline": false
-				},
-				{
-					"type": "rect",
-					"x": 1,
-					"y": 138,
-					"w": 8,
-					"h": 4,
-					"fill": "#C9CED6",
-					"radius": 1,
-					"outline": false
-				},
-				{
-					"type": "rect",
-					"x": 91,
-					"y": 138,
-					"w": 8,
-					"h": 4,
-					"fill": "#C9CED6",
-					"radius": 1,
-					"outline": false
-				},
-				{
-					"type": "rect",
-					"x": 1,
-					"y": 148,
-					"w": 8,
-					"h": 4,
-					"fill": "#C9CED6",
-					"radius": 1,
-					"outline": false
-				},
-				{
-					"type": "rect",
-					"x": 91,
-					"y": 148,
-					"w": 8,
-					"h": 4,
-					"fill": "#C9CED6",
-					"radius": 1,
-					"outline": false
-				},
-				{
-					"type": "rect",
-					"x": 1,
-					"y": 158,
-					"w": 8,
-					"h": 4,
-					"fill": "#C9CED6",
-					"radius": 1,
-					"outline": false
-				},
-				{
-					"type": "rect",
-					"x": 91,
-					"y": 158,
-					"w": 8,
-					"h": 4,
-					"fill": "#C9CED6",
-					"radius": 1,
-					"outline": false
-				},
-				{
-					"type": "rect",
-					"x": 42,
-					"y": 2,
-					"w": 16,
-					"h": 8,
 					"fill": "#3A3F47",
-					"radius": 4
-				},
-				{
-					"type": "rect",
-					"x": 13,
-					"y": 11,
-					"w": 5,
-					"h": 5,
-					"fill": "#3A3F47",
-					"radius": 2.5,
+					"radius": 2,
 					"outline": false
 				},
 				{
 					"type": "rect",
-					"x": 15,
-					"y": 170,
-					"w": 70,
+					"x": 40,
+					"y": 9,
+					"w": 90,
 					"h": 12,
 					"fill": "#1E2126",
 					"outline": false,
 					"label": "MCP23017",
 					"labelColor": "#C9CED6",
-					"labelSize": 7
+					"labelSize": 8
 				}
 			]
 		}
@@ -22913,465 +22900,437 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 		pins: [
 			{
 				"name": "VSS",
-				"side": "left",
+				"side": "bottom",
 				"type": "ground"
 			},
 			{
 				"name": "NC",
-				"side": "left",
+				"side": "bottom",
 				"type": "nc"
 			},
 			{
 				"name": "GPB0",
-				"side": "left"
+				"side": "bottom"
 			},
 			{
 				"name": "GPB1",
-				"side": "left"
+				"side": "bottom"
 			},
 			{
 				"name": "GPB2",
-				"side": "left"
+				"side": "bottom"
 			},
 			{
 				"name": "GPB3",
-				"side": "left"
+				"side": "bottom"
 			},
 			{
 				"name": "GPB4",
-				"side": "left"
+				"side": "bottom"
 			},
 			{
 				"name": "GPB5",
-				"side": "left"
+				"side": "bottom"
 			},
 			{
 				"name": "GPB6",
-				"side": "left"
+				"side": "bottom"
 			},
 			{
 				"name": "GPB7",
-				"side": "left"
+				"side": "bottom"
 			},
 			{
 				"name": "VDD",
-				"side": "left",
+				"side": "bottom",
 				"type": "power_in",
 				"supply": "3V3/5V"
 			},
 			{
 				"name": "SCL",
-				"side": "left",
+				"side": "bottom",
 				"type": "input"
 			},
 			{
 				"name": "SDA",
-				"side": "left",
+				"side": "bottom",
 				"type": "io"
 			},
 			{
 				"name": "NC 2",
-				"side": "left",
+				"side": "bottom",
 				"label": "NC",
 				"type": "nc"
 			},
 			{
 				"name": "NC 4",
-				"side": "right",
+				"side": "top",
 				"label": "NC",
 				"type": "nc"
 			},
 			{
 				"name": "GPA7",
-				"side": "right"
+				"side": "top"
 			},
 			{
 				"name": "GPA6",
-				"side": "right"
+				"side": "top"
 			},
 			{
 				"name": "GPA5",
-				"side": "right"
+				"side": "top"
 			},
 			{
 				"name": "GPA4",
-				"side": "right"
+				"side": "top"
 			},
 			{
 				"name": "GPA3",
-				"side": "right"
+				"side": "top"
 			},
 			{
 				"name": "GPA2",
-				"side": "right"
+				"side": "top"
 			},
 			{
 				"name": "GPA1",
-				"side": "right"
+				"side": "top"
 			},
 			{
 				"name": "GPA0",
-				"side": "right"
+				"side": "top"
 			},
 			{
 				"name": "INTA",
-				"side": "right",
+				"side": "top",
 				"type": "output"
 			},
 			{
 				"name": "INTB",
-				"side": "right",
+				"side": "top",
 				"type": "output"
 			},
 			{
 				"name": "NC 3",
-				"side": "right",
+				"side": "top",
 				"label": "NC",
 				"type": "nc"
 			},
 			{
 				"name": "RESET",
-				"side": "right",
+				"side": "top",
 				"type": "input"
 			},
 			{
 				"name": "ADDR",
-				"side": "right",
+				"side": "top",
 				"type": "input"
 			}
 		],
 		size: {
-			"w": 10,
-			"h": 19
+			"w": 16,
+			"h": 3
 		},
 		electrical: {
 			"model": "io-expander",
 			"params": {}
 		},
 		art: {
-			"w": 100,
-			"h": 190,
-			"pinLabels": "inside",
+			"w": 160,
+			"h": 30,
+			"pinLabels": "tips",
 			"shapes": [
 				{
 					"type": "rect",
-					"x": 0,
+					"x": 18.5,
 					"y": 0,
-					"w": 100,
-					"h": 190,
+					"w": 3,
+					"h": 5,
+					"fill": "#C9CED6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 18.5,
+					"y": 25,
+					"w": 3,
+					"h": 5,
+					"fill": "#C9CED6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 28.5,
+					"y": 0,
+					"w": 3,
+					"h": 5,
+					"fill": "#C9CED6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 28.5,
+					"y": 25,
+					"w": 3,
+					"h": 5,
+					"fill": "#C9CED6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 38.5,
+					"y": 0,
+					"w": 3,
+					"h": 5,
+					"fill": "#C9CED6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 38.5,
+					"y": 25,
+					"w": 3,
+					"h": 5,
+					"fill": "#C9CED6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 48.5,
+					"y": 0,
+					"w": 3,
+					"h": 5,
+					"fill": "#C9CED6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 48.5,
+					"y": 25,
+					"w": 3,
+					"h": 5,
+					"fill": "#C9CED6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 58.5,
+					"y": 0,
+					"w": 3,
+					"h": 5,
+					"fill": "#C9CED6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 58.5,
+					"y": 25,
+					"w": 3,
+					"h": 5,
+					"fill": "#C9CED6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 68.5,
+					"y": 0,
+					"w": 3,
+					"h": 5,
+					"fill": "#C9CED6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 68.5,
+					"y": 25,
+					"w": 3,
+					"h": 5,
+					"fill": "#C9CED6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 78.5,
+					"y": 0,
+					"w": 3,
+					"h": 5,
+					"fill": "#C9CED6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 78.5,
+					"y": 25,
+					"w": 3,
+					"h": 5,
+					"fill": "#C9CED6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 88.5,
+					"y": 0,
+					"w": 3,
+					"h": 5,
+					"fill": "#C9CED6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 88.5,
+					"y": 25,
+					"w": 3,
+					"h": 5,
+					"fill": "#C9CED6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 98.5,
+					"y": 0,
+					"w": 3,
+					"h": 5,
+					"fill": "#C9CED6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 98.5,
+					"y": 25,
+					"w": 3,
+					"h": 5,
+					"fill": "#C9CED6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 108.5,
+					"y": 0,
+					"w": 3,
+					"h": 5,
+					"fill": "#C9CED6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 108.5,
+					"y": 25,
+					"w": 3,
+					"h": 5,
+					"fill": "#C9CED6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 118.5,
+					"y": 0,
+					"w": 3,
+					"h": 5,
+					"fill": "#C9CED6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 118.5,
+					"y": 25,
+					"w": 3,
+					"h": 5,
+					"fill": "#C9CED6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 128.5,
+					"y": 0,
+					"w": 3,
+					"h": 5,
+					"fill": "#C9CED6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 128.5,
+					"y": 25,
+					"w": 3,
+					"h": 5,
+					"fill": "#C9CED6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 138.5,
+					"y": 0,
+					"w": 3,
+					"h": 5,
+					"fill": "#C9CED6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 138.5,
+					"y": 25,
+					"w": 3,
+					"h": 5,
+					"fill": "#C9CED6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 148.5,
+					"y": 0,
+					"w": 3,
+					"h": 5,
+					"fill": "#C9CED6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 148.5,
+					"y": 25,
+					"w": 3,
+					"h": 5,
+					"fill": "#C9CED6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 11,
+					"y": 4,
+					"w": 148,
+					"h": 22,
 					"fill": "#1E2126",
+					"radius": 2
+				},
+				{
+					"type": "rect",
+					"x": 12,
+					"y": 11,
+					"w": 6,
+					"h": 8,
+					"fill": "#3A3F47",
 					"radius": 3
 				},
 				{
 					"type": "rect",
-					"x": 1,
-					"y": 28,
-					"w": 8,
+					"x": 18,
+					"y": 19,
+					"w": 4,
 					"h": 4,
-					"fill": "#C9CED6",
-					"radius": 1,
-					"outline": false
-				},
-				{
-					"type": "rect",
-					"x": 91,
-					"y": 28,
-					"w": 8,
-					"h": 4,
-					"fill": "#C9CED6",
-					"radius": 1,
-					"outline": false
-				},
-				{
-					"type": "rect",
-					"x": 1,
-					"y": 38,
-					"w": 8,
-					"h": 4,
-					"fill": "#C9CED6",
-					"radius": 1,
-					"outline": false
-				},
-				{
-					"type": "rect",
-					"x": 91,
-					"y": 38,
-					"w": 8,
-					"h": 4,
-					"fill": "#C9CED6",
-					"radius": 1,
-					"outline": false
-				},
-				{
-					"type": "rect",
-					"x": 1,
-					"y": 48,
-					"w": 8,
-					"h": 4,
-					"fill": "#C9CED6",
-					"radius": 1,
-					"outline": false
-				},
-				{
-					"type": "rect",
-					"x": 91,
-					"y": 48,
-					"w": 8,
-					"h": 4,
-					"fill": "#C9CED6",
-					"radius": 1,
-					"outline": false
-				},
-				{
-					"type": "rect",
-					"x": 1,
-					"y": 58,
-					"w": 8,
-					"h": 4,
-					"fill": "#C9CED6",
-					"radius": 1,
-					"outline": false
-				},
-				{
-					"type": "rect",
-					"x": 91,
-					"y": 58,
-					"w": 8,
-					"h": 4,
-					"fill": "#C9CED6",
-					"radius": 1,
-					"outline": false
-				},
-				{
-					"type": "rect",
-					"x": 1,
-					"y": 68,
-					"w": 8,
-					"h": 4,
-					"fill": "#C9CED6",
-					"radius": 1,
-					"outline": false
-				},
-				{
-					"type": "rect",
-					"x": 91,
-					"y": 68,
-					"w": 8,
-					"h": 4,
-					"fill": "#C9CED6",
-					"radius": 1,
-					"outline": false
-				},
-				{
-					"type": "rect",
-					"x": 1,
-					"y": 78,
-					"w": 8,
-					"h": 4,
-					"fill": "#C9CED6",
-					"radius": 1,
-					"outline": false
-				},
-				{
-					"type": "rect",
-					"x": 91,
-					"y": 78,
-					"w": 8,
-					"h": 4,
-					"fill": "#C9CED6",
-					"radius": 1,
-					"outline": false
-				},
-				{
-					"type": "rect",
-					"x": 1,
-					"y": 88,
-					"w": 8,
-					"h": 4,
-					"fill": "#C9CED6",
-					"radius": 1,
-					"outline": false
-				},
-				{
-					"type": "rect",
-					"x": 91,
-					"y": 88,
-					"w": 8,
-					"h": 4,
-					"fill": "#C9CED6",
-					"radius": 1,
-					"outline": false
-				},
-				{
-					"type": "rect",
-					"x": 1,
-					"y": 98,
-					"w": 8,
-					"h": 4,
-					"fill": "#C9CED6",
-					"radius": 1,
-					"outline": false
-				},
-				{
-					"type": "rect",
-					"x": 91,
-					"y": 98,
-					"w": 8,
-					"h": 4,
-					"fill": "#C9CED6",
-					"radius": 1,
-					"outline": false
-				},
-				{
-					"type": "rect",
-					"x": 1,
-					"y": 108,
-					"w": 8,
-					"h": 4,
-					"fill": "#C9CED6",
-					"radius": 1,
-					"outline": false
-				},
-				{
-					"type": "rect",
-					"x": 91,
-					"y": 108,
-					"w": 8,
-					"h": 4,
-					"fill": "#C9CED6",
-					"radius": 1,
-					"outline": false
-				},
-				{
-					"type": "rect",
-					"x": 1,
-					"y": 118,
-					"w": 8,
-					"h": 4,
-					"fill": "#C9CED6",
-					"radius": 1,
-					"outline": false
-				},
-				{
-					"type": "rect",
-					"x": 91,
-					"y": 118,
-					"w": 8,
-					"h": 4,
-					"fill": "#C9CED6",
-					"radius": 1,
-					"outline": false
-				},
-				{
-					"type": "rect",
-					"x": 1,
-					"y": 128,
-					"w": 8,
-					"h": 4,
-					"fill": "#C9CED6",
-					"radius": 1,
-					"outline": false
-				},
-				{
-					"type": "rect",
-					"x": 91,
-					"y": 128,
-					"w": 8,
-					"h": 4,
-					"fill": "#C9CED6",
-					"radius": 1,
-					"outline": false
-				},
-				{
-					"type": "rect",
-					"x": 1,
-					"y": 138,
-					"w": 8,
-					"h": 4,
-					"fill": "#C9CED6",
-					"radius": 1,
-					"outline": false
-				},
-				{
-					"type": "rect",
-					"x": 91,
-					"y": 138,
-					"w": 8,
-					"h": 4,
-					"fill": "#C9CED6",
-					"radius": 1,
-					"outline": false
-				},
-				{
-					"type": "rect",
-					"x": 1,
-					"y": 148,
-					"w": 8,
-					"h": 4,
-					"fill": "#C9CED6",
-					"radius": 1,
-					"outline": false
-				},
-				{
-					"type": "rect",
-					"x": 91,
-					"y": 148,
-					"w": 8,
-					"h": 4,
-					"fill": "#C9CED6",
-					"radius": 1,
-					"outline": false
-				},
-				{
-					"type": "rect",
-					"x": 1,
-					"y": 158,
-					"w": 8,
-					"h": 4,
-					"fill": "#C9CED6",
-					"radius": 1,
-					"outline": false
-				},
-				{
-					"type": "rect",
-					"x": 91,
-					"y": 158,
-					"w": 8,
-					"h": 4,
-					"fill": "#C9CED6",
-					"radius": 1,
-					"outline": false
-				},
-				{
-					"type": "rect",
-					"x": 42,
-					"y": 2,
-					"w": 16,
-					"h": 8,
 					"fill": "#3A3F47",
-					"radius": 4
-				},
-				{
-					"type": "rect",
-					"x": 13,
-					"y": 11,
-					"w": 5,
-					"h": 5,
-					"fill": "#3A3F47",
-					"radius": 2.5,
+					"radius": 2,
 					"outline": false
 				},
 				{
 					"type": "rect",
-					"x": 15,
-					"y": 170,
-					"w": 70,
+					"x": 40,
+					"y": 9,
+					"w": 90,
 					"h": 12,
 					"fill": "#1E2126",
 					"outline": false,
 					"label": "MCP23018",
 					"labelColor": "#C9CED6",
-					"labelSize": 7
+					"labelSize": 8
 				}
 			]
 		}
@@ -57540,7 +57499,7 @@ function Holes({ m }) {
 * horizontal beside pins on a left or right edge, reading bottom to top beside pins on a top
 * or bottom edge (the pitch is too tight for horizontal text there). `box` is the rotated body.
 */
-function PinLabel({ p, box, outside, pad = 4 }) {
+function PinLabel({ p, box, outside, tips = false, pad = 4 }) {
 	const text = p.label ?? p.name;
 	const common = {
 		fontSize: 7,
@@ -57551,6 +57510,29 @@ function PinLabel({ p, box, outside, pad = 4 }) {
 		strokeLinejoin: "round",
 		paintOrder: "stroke"
 	};
+	if (tips) {
+		const tip = {
+			...common,
+			dominantBaseline: "central"
+		};
+		const x = p.end.x + p.dir.x * 2;
+		const y = p.end.y + p.dir.y * 2;
+		if (p.dir.x !== 0) return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("text", {
+			x,
+			y,
+			textAnchor: p.dir.x < 0 ? "end" : "start",
+			...tip,
+			children: text
+		});
+		return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("text", {
+			x,
+			y,
+			transform: `rotate(-90 ${x} ${y})`,
+			textAnchor: p.dir.y < 0 ? "start" : "end",
+			...tip,
+			children: text
+		});
+	}
 	if (outside) {
 		const midX = (p.edge.x + p.end.x) / 2;
 		const midY = (p.edge.y + p.end.y) / 2;
@@ -57709,6 +57691,7 @@ var Part = (0, import_react.memo)(function Part({ module: m, x = 0, y = 0, rotat
 					p,
 					box,
 					outside: !!art && !header,
+					tips: art?.pinLabels === "tips",
 					pad: header ? HEADER_INSET : 4
 				}, p.name);
 			}),
@@ -58435,11 +58418,12 @@ function partRects(d, only) {
 		const m = moduleOf(d, p.module);
 		if (!m) continue;
 		const b = bodyRect(p, layoutModule(m));
+		const room = Math.max(PIN_ROOM$1, pinRoom(m));
 		out.push({
-			x: b.x - PIN_ROOM$1,
-			y: b.y - PIN_ROOM$1,
-			w: b.w + 36,
-			h: b.h + 36
+			x: b.x - room,
+			y: b.y - room,
+			w: b.w + 2 * room,
+			h: b.h + 2 * room
 		}, placedCaptionBox(p, m, seated.get(p.uid)));
 	}
 	return out;
@@ -59058,6 +59042,7 @@ function pinDiff(stored, lib) {
 		if (i < b.length) names.add(label(b[i]));
 		if (i < a.length) names.add(label(a[i]));
 	}
+	if (names.size > 8) return `${names.size} pins`;
 	return names.size ? `pins ${[...names].join("/")}` : "pins";
 }
 /** The electrically meaningful fields that differ (empty when only cosmetic fields do). */
@@ -60008,9 +59993,9 @@ var intersects = (a, b) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h
 function tightFootprint(p, m) {
 	return union(bodyRect(p, layoutModule(m)), captionBox(p, m));
 }
-/** Body grown by PIN_ROOM, plus caption. */
+/** Body grown by PIN_ROOM (more for labels past the pin tips, see pinRoom), plus caption. */
 function footprint(p, m) {
-	return union(grow(bodyRect(p, layoutModule(m)), PIN_ROOM), captionBox(p, m));
+	return union(grow(bodyRect(p, layoutModule(m)), Math.max(PIN_ROOM, pinRoom(m))), captionBox(p, m));
 }
 var CELL = 200;
 /** Placed rectangles bucketed on a 200 px grid, so a spot test looks only at its neighbours. */

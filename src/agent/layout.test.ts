@@ -61,7 +61,7 @@ describe('layoutNetlist', () => {
     expect(r.value.report).toMatchObject({ bodyOverlaps: 0, captionOverlaps: 0, blockedNets: [] })
   })
   it("distributes a repeat block's shared net on rail strips of its own, joined to the net by one trunk wire (A18.1)", () => {
-    for (const make of [tiltSensors, () => typewriter(false)]) {
+    for (const make of [tiltSensors, typewriter]) {
       const r = layoutNetlist(make())
       if (!r.ok) throw new Error(r.errors.join('\n'))
       const d = r.value.diagram
@@ -156,13 +156,18 @@ describe('layoutNetlist', () => {
       expect(under).toEqual([])
     }
   })
-  it('says so when a strip is full because a mounted body covers its holes (a DIP-28 across the channel)', () => {
-    // The DIP-28 is drawn 100 px across: its body covers every hole of its top pins' strips but the leg's.
-    const r = layoutNetlist(typewriter())
+  it('says so when a strip is full because a mounted body covers its holes', () => {
+    // A made-up chip 70 px across, seated with its pins in rows a and f: its body covers rows b to e
+    // of its top pin's strip, so the net there has nowhere to take J1's two wires.
+    const wide = { format: 'circuitoon-module/1', id: 'wide-chip', name: 'Wide chip', size: { w: 4, h: 7 }, pins: [{ name: 'T', side: 'top' }, { name: 'B', side: 'bottom' }] }
+    const r = layoutNetlist({
+      format: 'circuitoon-netlist/1', title: 'Wide chip', modules: { 'wide-chip': wide },
+      parts: [{ ref: 'BB1', module: 'breadboard-half' }, { ref: 'U1', module: 'wide-chip', on: 'BB1' }, { ref: 'J1', module: 'dupont-1x3' }],
+      nets: [{ name: 'SIG', pins: ['U1.T', 'J1.1', 'J1.3'] }],
+    })
     expect(r.ok).toBe(false)
     if (r.ok) return
-    const sda = r.errors.find((e) => e.startsWith('strip full: net SDA '))
-    expect(sda).toMatch(/: no free hole left \(the other holes there lie under (U\d's body(, | and )?)+\)$/)
+    expect(r.errors.find((e) => e.startsWith('strip full: net SIG '))).toMatch(/ has no free hole left on BB1 c\d+-top \(the other holes there lie under U1's body\)$/)
   })
   it('asks for a distribution point when a net has more ends than its pins take, and uses a rail when there is one', () => {
     const r = layoutNetlist(esp())

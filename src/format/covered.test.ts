@@ -57,19 +57,20 @@ describe('coveredHoles', () => {
     // Body x 142..168, y 44..76 in world px: columns c13 and c14 (x = 150, 160), rows y = 60, 70.
     expect(under(d, 'C2')).toEqual(['c13-top 0', 'c13-top 1', 'c14-top 0', 'c14-top 1'])
   })
-  it('covers every hole between the pin rows of a DIP chip across the channel', () => {
-    // Turned 90 degrees, the DIP-28 lies 190 wide and 100 tall; its pin rows land on rows a and i.
-    const d = sheet(on('U1', 'mcp23017-dip28', 60, 20, 90))
+  it('covers only the channel under a DIP chip seated in rows e and f: every strip keeps 4 free holes', () => {
+    // The DIP-28 is 30 px tall (a 300 mil package); at (10, 100) its pins land on rows e and f.
+    const d = sheet(on('U1', 'mcp23017-dip28', 10, 100))
     expect(mountIssues(d)).toEqual([])
-    const legs = new Set(plugsOf(d).map((p) => `${p.group} ${p.hole}`))
-    const covered = under(d, 'U1')
-    expect(covered.length).toBeGreaterThan(0)
-    expect(covered.filter((h) => legs.has(h))).toEqual([])
-    // Only the rows strictly between the two pin rows.
-    const ys = new Set(coveredHoles(d).filter((c) => c.by === 'U1').map((c) => c.at.y))
-    const legYs = [...new Set(plugsOf(d).map((p) => p.at.y))].sort((a, b) => a - b)
-    expect(legYs).toHaveLength(2)
-    for (const y of ys) expect(y > legYs[0] && y < legYs[1]).toBe(true)
+    expect(new Set(plugsOf(d).map((p) => p.at.y))).toEqual(new Set([100, 130]))
+    expect(under(d, 'U1')).toEqual([])
+  })
+  it('covers the holes between the pin rows of a wide chip, whatever it is', () => {
+    // A made-up chip with no art, 40 x 70 px: pins in c3 rows a and f; its body (x 30..70) covers
+    // rows b to e of c2 to c4 between them.
+    const wide: ModuleDef = { format: 'circuitoon-module/1', id: 'wide', name: 'Wide', size: { w: 4, h: 7 }, pins: [{ name: 'T', side: 'top' }, { name: 'B', side: 'bottom' }] }
+    const d = { ...sheet(on('U1', 'wide', 30, 60)), modules: { ...modules, wide } }
+    expect(mountIssues(d)).toEqual([])
+    expect(under(d, 'U1')).toEqual(['c2-top', 'c3-top', 'c4-top'].flatMap((g) => [1, 2, 3, 4].map((h) => `${g} ${h}`)))
   })
   it('covers nothing for a part that is not validly mounted', () => {
     const d = sheet({ ...on('R1', 'resistor', 35, 40) })

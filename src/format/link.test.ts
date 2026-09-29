@@ -128,7 +128,7 @@ describe('one eligibility check for the encoder and the decoder (A9)', () => {
     if (!wires.ok) expect(wires.limit).toEqual({ limit: 'connections', count: 10_001, max: 10_000 })
   })
   it('opens every link it makes: samples, laid-out fixtures, and sheets at the count limits', async () => {
-    const sheets = [buttonLed, laid(ledNetlist()), laid(tiltSensors()), laid(typewriter(false)), loaded(LINK_MAX_PARTS, 0), loaded(2, LINK_MAX_CONNECTIONS)]
+    const sheets = [buttonLed, laid(ledNetlist()), laid(tiltSensors()), laid(typewriter()), loaded(LINK_MAX_PARTS, 0), loaded(2, LINK_MAX_CONNECTIONS)]
     for (const d of sheets) {
       const r = await diagramLink(d)
       expect(r.ok, d.title).toBe(true)

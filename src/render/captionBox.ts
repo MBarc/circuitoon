@@ -3,7 +3,7 @@
 // device seated on an outlet (and that outlet). Shared by Part.tsx, the router's label avoidance,
 // the export bounds and the layout's overlap checks, so all of them agree.
 import { type Pt, type Rect, type Rotation, bodyRect, worldPins } from '../format/geometry.ts'
-import { LEAD, layoutModule, type ModuleDef } from '../format/module.ts'
+import { LEAD, layoutModule, pinRoom, type ModuleDef, usesTipLabels } from '../format/module.ts'
 import { partCaption } from '../format/values.ts'
 
 export const CAPTION_SIZE = 8.5
@@ -16,7 +16,8 @@ export type CaptionPart = { x: number; y: number; rotation?: Rotation; designato
 export function captionAnchor(m: ModuleDef, rotation: Rotation = 0): Pt {
   const box = bodyRect({ x: 0, y: 0, rotation }, layoutModule(m))
   const stubsDown = worldPins({ x: 0, y: 0, rotation }, m).some((p) => p.dir.y > 0)
-  return { x: box.x + box.w / 2, y: box.y + box.h + (stubsDown ? LEAD : 0) + 15 }
+  // Below the stubs, and below the names past their tips on a part that draws them there.
+  return { x: box.x + box.w / 2, y: box.y + box.h + (stubsDown ? (usesTipLabels(m) ? pinRoom(m) : LEAD) : 0) + 15 }
 }
 
 /** The caption's box in world px (8 px above the baseline, 2 below). */

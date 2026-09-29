@@ -2,6 +2,7 @@
 // columns 1 and 7, D1 in 8 and 12, an unused tilt switch S1 in 15 and 16, BT1 off the board.
 import { describe, expect, it } from 'vitest'
 import type { Connection, Diagram, PartInstance } from '../format/diagram.ts'
+import type { ModuleDef } from '../format/module.ts'
 import { load } from '../format/builtinModules.testing.ts'
 import { libraryLookup } from './catalog.ts'
 import { NO_INTENT, verifyDiagram } from './verify.ts'
@@ -280,6 +281,19 @@ describe('verifyDiagram against the library (stored modules are not trusted)', (
     expect(f[0].message).toContain('pins A/K')
     expect(f[0].message).toContain('Lay the sheet out again')
     expect(f[0].message).not.toMatch(/tamper/i)
+  })
+  it('blocks a sheet that embeds the old 100 px DIP-28 (Ruling C2), telling it to lay out again with the current library', () => {
+    const d = sheet()
+    const dip = structuredClone(load('mcp23017-dip28')) as unknown as Record<string, unknown>
+    // The drawing before C2: pin rows 1.0 inch apart, notch at the top.
+    dip.pins = (dip.pins as { side: string }[]).map((p) => ({ ...p, side: p.side === 'bottom' ? 'left' : 'right' }))
+    dip.size = { w: 10, h: 19 }
+    dip.art = { w: 100, h: 190, pinLabels: 'inside', shapes: [{ type: 'rect', x: 0, y: 0, w: 100, h: 190, fill: '#1E2126' }] }
+    d.modules = { ...d.modules, 'mcp23017-dip28': dip as unknown as ModuleDef }
+    d.parts.push({ uid: 'U9', designator: 'U9', module: 'mcp23017-dip28', x: 600, y: 400 })
+    const f = verifyDiagram(d, libraryLookup).filter((x) => x.rule === 'module-drift')
+    expect(f.map((x) => [x.severity, x.parts])).toEqual([['error', ['U9']]])
+    expect(f[0].message).toBe("The sheet's copy of mcp23017-dip28 no longer matches the current library: 28 pins, size differ. Lay the sheet out again with the current library.")
   })
   it('blocks a stored copy with no version whose pins were swapped (content decides, not the version)', () => {
     const d = sheet()

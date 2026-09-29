@@ -3,7 +3,7 @@
 // out), and a bucketed index to test a candidate spot against everything placed so far. Pure.
 import type { PartInstance } from '../format/diagram.ts'
 import { type Rect, bodyRect } from '../format/geometry.ts'
-import { LEAD, layoutModule, type ModuleDef } from '../format/module.ts'
+import { LEAD, layoutModule, pinRoom, type ModuleDef } from '../format/module.ts'
 import { captionBox } from '../render/captionBox.ts'
 
 /** Room kept around a free part's body for its pin stubs and the labels beside them. */
@@ -24,9 +24,9 @@ export function tightFootprint(p: PartInstance, m: ModuleDef): Rect {
   return union(bodyRect(p, layoutModule(m)), captionBox(p, m))
 }
 
-/** Body grown by PIN_ROOM, plus caption. */
+/** Body grown by PIN_ROOM (more for labels past the pin tips, see pinRoom), plus caption. */
 export function footprint(p: PartInstance, m: ModuleDef): Rect {
-  return union(grow(bodyRect(p, layoutModule(m)), PIN_ROOM), captionBox(p, m))
+  return union(grow(bodyRect(p, layoutModule(m)), Math.max(PIN_ROOM, pinRoom(m))), captionBox(p, m))
 }
 
 const CELL = 200

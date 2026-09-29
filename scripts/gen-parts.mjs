@@ -64,37 +64,43 @@ function write(file, m) {
   log(file, 'pins', n, 'body', m.art.w, 'x', m.art.h)
 }
 
-function moduleJson({ id, name, category, source, pins, wu, hu, electrical, shapes }) {
+function moduleJson({ id, name, category, source, pins, wu, hu, electrical, shapes, pinLabels = 'inside' }) {
   const m = { format: 'circuitoon-module/1', id, version: 1, name, category, source, pins }
   m.size = { w: wu, h: hu }
   m.electrical = electrical
-  // Header parts draw pin names inside the body beside each pin, like the silkscreen.
-  m.art = { w: wu * 10, h: hu * 10, pinLabels: 'inside', shapes }
+  // Header parts draw pin names inside the body beside each pin, like the silkscreen; a DIP chip,
+  // too thin at its true width, draws them past each pin's tip.
+  m.art = { w: wu * 10, h: hu * 10, pinLabels, shapes }
   return m
 }
 
 // ---------------------------------------------------------------------------------------------
-// Chips: top-view DIP-28, notch at the top, pin 1 at top left. Left = pins 1 to 14 top to bottom,
-// right = pins 28 down to 15 top to bottom (the array order).
+// Chips: top-view DIP-28 at true breadboard scale (Ruling C2): the 300 mil package's two pin rows
+// are 0.3 inch (30 px) apart, so on a breadboard the pins land in rows e and f and the body lies
+// over the centre channel only. Drawn with the notch at the left, the datasheet's package drawing
+// (notch at the top, pin 1 top left) turned a quarter anticlockwise: bottom = pins 1 to 14 left to
+// right, top = pins 28 down to 15 left to right (the array order, unchanged). The pin names draw
+// past each pin's tip, since a 30 px body has no room for them inside.
 
 function dip28({ file, id, name, source, byNumber, mark, types }) {
   if (byNumber.length !== 28) throw new Error(`${file}: need 28 pins`)
-  const wu = 10, hu = 19
+  const wu = 16, hu = 3
   const W = wu * 10, H = hu * 10
-  const ys = slots(hu, 14)
-  const left = byNumber.slice(0, 14), right = byNumber.slice(14).reverse()
-  const pins = [...pinsFor('left', left, types), ...pinsFor('right', right, types)]
+  const xs = slots(wu, 14)
+  const bottom = byNumber.slice(0, 14), top = byNumber.slice(14).reverse()
+  const pins = [...pinsFor('bottom', bottom, types), ...pinsFor('top', top, types)]
+  // The package spans the pins plus half a pitch at each end; the legs are 3 px leads out to the
+  // pin rows, so the holes under them stay free (only the package covers holes).
+  const x0 = xs[0] - 9, x1 = xs[xs.length - 1] + 9
   const shapes = [
-    r(0, 0, W, H, CHIP, { radius: 3 }),
-    ...ys.flatMap((y) => [
-      r(1, y - 2, 8, 4, METAL, { radius: 1, outline: false }),
-      r(W - 9, y - 2, 8, 4, METAL, { radius: 1, outline: false }),
-    ]),
-    r(W / 2 - 8, 2, 16, 8, CHIP_MARK, { radius: 4 }),
-    r(13, 11, 5, 5, CHIP_MARK, { radius: 2.5, outline: false }),
-    r(15, H - 20, W - 30, 12, CHIP, { outline: false, label: mark, labelColor: METAL, labelSize: 7 }),
+    ...xs.flatMap((x) => [r(x - 1.5, 0, 3, 5, METAL, { outline: false }), r(x - 1.5, H - 5, 3, 5, METAL, { outline: false })]),
+    r(x0, 4, x1 - x0, H - 8, CHIP, { radius: 2 }),
+    // The notch at the pin 1 end, and the pin 1 dot beside pin 1.
+    r(x0 + 1, H / 2 - 4, 6, 8, CHIP_MARK, { radius: 3 }),
+    r(xs[0] - 2, H - 11, 4, 4, CHIP_MARK, { radius: 2, outline: false }),
+    r(xs[2], 9, xs[11] - xs[2], 12, CHIP, { outline: false, label: mark, labelColor: METAL, labelSize: 8 }),
   ]
-  write(file, moduleJson({ id, name, category: 'Chips', source, pins, wu, hu, electrical: { model: 'io-expander', params: {} }, shapes }))
+  write(file, moduleJson({ id, name, category: 'Chips', source, pins, wu, hu, electrical: { model: 'io-expander', params: {} }, shapes, pinLabels: 'tips' }))
 }
 
 // Duplicate datasheet names get a numbered pin name and the datasheet text as label.

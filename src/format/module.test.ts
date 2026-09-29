@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
-import { insideLabelSides, layoutModule, usesInsideLabels, validParamValue, commonReturn, declaredReturns, externalPower, validateModule, voltageOutputs, partSetting, type ModuleDef } from './module.ts'
+import { insideLabelSides, layoutModule, pinRoom, usesInsideLabels, validParamValue, commonReturn, declaredReturns, externalPower, validateModule, voltageOutputs, partSetting, type ModuleDef } from './module.ts'
 import { load } from './builtinModules.testing.ts'
 
 const base = { format: 'circuitoon-module/1', id: 'thing', name: 'Thing' }
@@ -206,12 +206,12 @@ describe('validateModule', () => {
     })
     expect(r.ok).toBe(true)
   })
-  it('accepts art.pinLabels "inside" and rejects any other value', () => {
+  it('accepts art.pinLabels "inside" or "tips" and rejects any other value', () => {
     const pins = [{ name: 'A', side: 'left' }]
     expect(validateModule({ ...base, pins, art: { w: 10, h: 10, shapes: [], pinLabels: 'inside' } }).ok).toBe(true)
     const r = validateModule({ ...base, pins, art: { w: 10, h: 10, shapes: [], pinLabels: 'outside' } })
     expect(r.ok).toBe(false)
-    if (!r.ok) expect(r.errors).toEqual(['art.pinLabels: must be "inside"'])
+    if (!r.ok) expect(r.errors).toEqual(['art.pinLabels: must be "inside" or "tips"'])
   })
   it('rejects a shape band outside 1 to 4 or non-integer', () => {
     const r = validateModule({
@@ -263,6 +263,17 @@ describe('usesInsideLabels', () => {
     expect(usesInsideLabels(m())).toBe(false)
     expect(usesInsideLabels(m({ art: { w: 10, h: 10, shapes: [] } }))).toBe(false)
   })
+  it('accepts "tips" (labels past each stub tip, along the pin) and nothing else besides "inside"', () => {
+    const art = (pinLabels: unknown) => ({ ...base, pins, art: { w: 10, h: 10, shapes: [], pinLabels } })
+    expect(validateModule(art('tips')).ok).toBe(true)
+    expect(validateModule(art('beside'))).toEqual({ ok: false, errors: ['art.pinLabels: must be "inside" or "tips"'] })
+    expect(usesInsideLabels(art('tips') as ModuleDef)).toBe(false)
+  })
+  it('gives pin labels past the tips room for the longest label (pinRoom)', () => {
+    expect(pinRoom(m())).toBe(18)
+    const tips = m({ pins: [{ name: 'A', side: 'left' }, { name: 'RESET', side: 'right' }], art: { w: 10, h: 10, shapes: [], pinLabels: 'tips' } })
+    expect(pinRoom(tips)).toBe(8 + 2 + Math.ceil(5 * 4.5 + 3))
+  })
   it('is true only when art.pinLabels is "inside"', () => {
     expect(usesInsideLabels(m({ art: { w: 10, h: 10, shapes: [], pinLabels: 'inside' } }))).toBe(true)
   })
@@ -270,13 +281,12 @@ describe('usesInsideLabels', () => {
     expect(insideLabelSides(m())).toEqual([])
     expect(insideLabelSides(m({ art: { w: 10, h: 10, shapes: [], pinLabels: 'inside' } })).sort()).toEqual(['bottom', 'left', 'right', 'top'])
   })
-  it('is set only on the header and pad parts (ESP32, Pico, Arduino Nano and D1 mini boards, DIP chips, display, storage, power, AC-DC, sensor, relay, SSR, motor driver and radio modules, multi-lead LEDs, terminal adapter, terminal blocks, USB panel-mount cables), never on any other built-in module', () => {
+  it('is set only on the header and pad parts (ESP32, Pico, Arduino Nano and D1 mini boards, display, storage, power, AC-DC, sensor, relay, SSR, motor driver and radio modules, multi-lead LEDs, terminal adapter, terminal blocks, USB panel-mount cables), never on any other built-in module', () => {
     const dir = join(import.meta.dirname, '..', '..', 'modules')
     const boardFiles = new Set([
       'esp32-devkitc-v4.json', 'esp32-devkit-v1-30.json', 'esp32-s3-devkitc-1.json',
       'esp32-c3-supermini.json', 'xiao-esp32c3.json', 'xiao-esp32s3.json', 'esp32-cam.json',
       'rpi-pico.json', 'rpi-pico-h.json', 'rpi-pico-w.json', 'rpi-pico-2.json', 'rpi-pico-2-w.json',
-      'mcp23017-dip28.json', 'mcp23018-dip28.json',
       'lcd-st7796s-4in-spi-touch.json', 'tft-ili9341-28-spi-touch.json', 'tft-ili9341-24-spi.json', 'tft-st7735-18-spi.json',
       'tft-st7789-154-spi.json', 'oled-ssd1306-091-i2c.json', 'oled-ssd1306-096-i2c.json', 'oled-ssd1306-096-i2c-vcc-gnd.json',
       'oled-sh1106-13-i2c.json', 'oled-sh1106-13-i2c-vcc-gnd.json',

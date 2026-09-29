@@ -52,8 +52,9 @@ export interface Art {
   w: number
   h: number
   /** "inside" draws pin names inside the body next to each pin, like board silkscreen, instead
-   * of beside the pin stub. Opt-in: set on the built-in dev boards, off by default. */
-  pinLabels?: 'inside'
+   * of beside the pin stub; "tips" draws them past each stub tip, along the pin (the DIP chips).
+   * Opt-in: set on the built-in dev boards, off by default. */
+  pinLabels?: 'inside' | 'tips'
   shapes: ArtShape[]
 }
 
@@ -106,6 +107,23 @@ export const isSpacer = (p: PinEntry): p is SpacerDef => 'spacer' in p && p.spac
 /** Opt-in flag (`art.pinLabels: "inside"`) for drawing pin names inside the body, like board
  * silkscreen, instead of beside the pin stub. Off for every module that does not set it. */
 export const usesInsideLabels = (m: ModuleDef): boolean => m.art?.pinLabels === 'inside'
+
+/**
+ * Opt-in flag (`art.pinLabels: "tips"`) for drawing each pin name past its stub tip, along the pin:
+ * for a body too thin to hold its labels inside (a DIP chip drawn at its true 0.3 inch width).
+ */
+export const usesTipLabels = (m: ModuleDef): boolean => m.art?.pinLabels === 'tips'
+
+/**
+ * How far, in px, a part's pin stubs and labels reach past its body: a stub and a label beside it
+ * (LEAD + 10), or with labels past the tips, the stub, a 2 px gap and the longest label at the
+ * 7 px label font (about 4.5 px a character plus its halo). Placement and exports keep this room.
+ */
+export function pinRoom(m: ModuleDef): number {
+  if (!usesTipLabels(m)) return LEAD + 10
+  const longest = Math.max(0, ...m.pins.filter((p): p is PinDef => !isSpacer(p)).map((p) => (p.label ?? p.name).length))
+  return LEAD + 2 + Math.ceil(longest * 4.5 + 3)
+}
 
 /** Sides whose pin names draw inside the body: every side for an "inside" module (a board's
  * left/right headers, a small OLED's top header), none otherwise. */
@@ -267,7 +285,7 @@ export function validateModule(raw: unknown): ValidationResult {
     if (!isObj(art) || !isPos(art.w) || !isPos(art.h) || !Array.isArray(art.shapes))
       errors.push('art: must be { "w", "h", "shapes": [...] } with positive w and h')
     else {
-      if (art.pinLabels !== undefined && art.pinLabels !== 'inside') errors.push('art.pinLabels: must be "inside"')
+      if (art.pinLabels !== undefined && art.pinLabels !== 'inside' && art.pinLabels !== 'tips') errors.push('art.pinLabels: must be "inside" or "tips"')
       art.shapes.forEach((s, i) => {
         const at = `art.shapes[${i}]`
         if (!isObj(s) || s.type !== 'rect') return void errors.push(`${at}: only "rect" shapes are supported`)

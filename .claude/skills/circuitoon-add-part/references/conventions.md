@@ -29,6 +29,7 @@ Art coordinates are px at 100% zoom, 10 px per grid unit, origin at the body's t
 - Lead stubs drawn from the body to the art edge on the pin row; the renderer adds an 8 px metal stub beyond the edge.
 - Board width a multiple of 10 px so both header rows sit on grid points (needed for breadboard snapping).
 - To seat across a breadboard's center channel after a 90 degree turn, a board's header rows must be 30 px (rows e and f) to 110 px (rows a and j) apart. The ESP32 DevKit modules (120 px) do not fit yet.
+- A chip that plugs into a breadboard is drawn at its real size: the body covers every hole it is drawn over (only its leads do not), so a DIP drawn wider than its package leaves no free holes in its pins' strips. DIPs are drawn lying down (pins on top and bottom, notch at the left, pin 1 bottom left), 30 px tall for a 300 mil package, so they seat in rows e and f without turning (the layout needs at least 40 px across between left and right pins, too wide for 0.3 inch).
 - Leave one grid unit of margin at body corners (the layout adds it if the art does not).
 - Hole group order and hole array order are persistent identities: wires store a group's `name` and a hole's index into `at`. Never reorder or rename `holes` (or the positions inside one group's `at`) on a module already in use, or existing wires silently point at a different hole or group.
 

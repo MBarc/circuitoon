@@ -33,7 +33,7 @@ The user's expanders are CJMCU-2317 boards (`mcp23017-cjmcu-2317`), and they lay
 
 The board has pads only, so it cannot sit on a breadboard. Each ball's channel net has three pins: two switch legs and one pad. The layout needs a strip to join them, so each bank has a half breadboard (BB2), where the layout claims one column strip per channel, with a wire from each pad to its strip. A `power-rail-strip` (BB1) carries 3V3 and GND from J1 to the chip and its address pins.
 
-For comparison, the DIP-28 `mcp23017-dip28`, mounted on BB2, saved the 14 pad-to-strip wires. On bank A it gave 481 to 507 crossings, against 535 to 565 for the CJMCU in the same trial positions. That is not enough of a difference to draw a chip the user does not have. It no longer lays out at all: a hole under a mounted part's drawn body takes nothing, and the DIP-28 is drawn 100 px across, so seated across the channel it covers every hole of its pins' strips but one.
+For comparison, the DIP-28 `mcp23017-dip28`, mounted on BB2, saved the 14 pad-to-strip wires. On bank A it gave 481 to 507 crossings, against 535 to 565 for the CJMCU in the same trial positions. That is not enough of a difference to draw a chip the user does not have. Those figures are from before the DIP-28 was redrawn at its true 0.3 inch width (it now seats in rows e and f and leaves every strip 4 free holes).
 
 ## Pin choices on these sheets
 
