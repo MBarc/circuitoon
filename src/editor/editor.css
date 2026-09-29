@@ -117,6 +117,14 @@
 .wire-seg-handle:hover { stroke-width: 2.5; fill: var(--focus); }
 .wire-bend-handle { cursor: pointer; }
 .wire-bend-handle:hover { stroke-width: 2.5; fill: var(--focus); }
+/* Smart guides (GuideLayer): thin accent lines on a paper halo, the same width at every zoom. */
+.guide { stroke: var(--guide); stroke-width: 1.25; stroke-linecap: round; vector-effect: non-scaling-stroke; }
+.guide.pin { stroke-width: 2; stroke-dasharray: 5 4; }
+.guide.gap, .guide.gap-cap { stroke-width: 1.5; }
+.guide-halo { stroke: var(--paper); stroke-width: 3.5; stroke-linecap: round; stroke-opacity: 0.55; vector-effect: non-scaling-stroke; }
+.guide-ring { fill: var(--paper); stroke: var(--guide); stroke-width: 1.75; vector-effect: non-scaling-stroke; }
+.guide-tag rect { fill: var(--guide); stroke: var(--paper); stroke-width: 1.5; vector-effect: non-scaling-stroke; }
+.guide-tag text { fill: #FFFFFF; font-weight: 700; font-variant-numeric: tabular-nums; }
 .zoom-readout { position: absolute; right: 10px; bottom: 8px; font-size: 13px; color: #56615B; background: var(--paper); border: 1px solid #D6DCD2; border-radius: 6px; padding: 2px 6px; }
 .wire-label-editor {
   position: absolute; transform: translate(-50%, -50%);
@@ -312,3 +320,23 @@ button.wordmark { background: none; border: 0; padding: 0; cursor: pointer; }
 .tool.primary { background: var(--yellow); color: #23282F; border-color: #23282F; box-shadow: 2px 2px 0 var(--shadow); }
 .tool.primary:hover:not(:disabled) { border-color: #23282F; box-shadow: 3px 3px 0 var(--shadow); }
 .tool.primary:active { transform: translate(1px, 1px); box-shadow: 1px 1px 0 var(--shadow); }
+
+/* A toolbar switch (Snap to objects): on, it takes a yellow tint and an ink edge; off, its guide line greys out. */
+.tool.toggle { display: inline-flex; align-items: center; gap: 6px; padding-left: 8px; }
+.tool.toggle svg { width: 18px; height: 18px; flex: none; }
+.tool.toggle[aria-pressed="true"] { background: color-mix(in srgb, var(--yellow) 24%, transparent); border-color: var(--text); }
+.tool.toggle[aria-pressed="false"] svg .snap-line { stroke: var(--muted); }
+
+/* Arrange (a multi-selection): Align and Distribute as compact sticker icon buttons. */
+.arrange { display: grid; gap: 8px; border-top: 1.5px solid var(--rule); padding-top: 12px; }
+.arrange h3 { margin: 0; font: 600 16px/1.2 "Fredoka", system-ui, sans-serif; }
+.arrange-label { font-size: 13px; font-weight: 700; color: var(--muted); }
+.arrange-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.arrange-row .gap { width: 6px; }
+.tool.icon { width: 34px; height: 34px; padding: 0; display: inline-grid; place-items: center; border-radius: 8px; }
+.tool.icon svg { width: 22px; height: 22px; }
+.tool.icon:hover:not(:disabled) { box-shadow: 2px 2px 0 var(--shadow); }
+.tool.icon:active:not(:disabled) { transform: translate(1px, 1px); box-shadow: none; }
+.arrange-icon .box { fill: var(--yellow); stroke: #23282F; stroke-width: 1.4; }
+.arrange-icon .axis { stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; fill: none; }
+.arrange-icon .tick { stroke: var(--guide); stroke-width: 2.2; stroke-linecap: round; fill: none; }

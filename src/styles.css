@@ -13,6 +13,9 @@
   --shadow: #23282F;
   --error: #B8342B; /* 5:1 on --bg, 5.7:1 on --panel */
   --card-edge: #23282F;
+  /* Smart guides while dragging, on the sheet's paper (light in both themes): a hot pink no other
+     sheet mark uses (blue selects, red and yellow flag problems, green seats). */
+  --guide: #D6307F;
   color-scheme: light;
 }
 @media (prefers-color-scheme: dark) {

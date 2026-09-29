@@ -24,6 +24,9 @@ import type { Connection, Diagram, Endpoint } from '../format/diagram.ts'
 import type { Selection } from './ops.ts'
 import { partCaption } from '../format/values.ts'
 import { SeverityMark } from './SeverityMark.tsx'
+import { gridOnly, snapMove, type SnapResult } from './snap.ts'
+import { dragSnap, overlaps, type DragSnap } from './dragSnap.ts'
+import { GuideLayer } from './GuideLayer.tsx'
 
 export type View = { x: number; y: number; scale: number }
 const MIN_SCALE = 0.25
@@ -115,7 +118,7 @@ export interface CanvasApi {
 }
 
 export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api: CanvasApi) => void }) {
-  const { diagram, selection, highlight, reveal } = useEditorState(store)
+  const { diagram, selection, highlight, reveal, snapObjects } = useEditorState(store)
   const svgRef = useRef<SVGSVGElement>(null)
   const [size, setSize] = useState({ w: 800, h: 600 })
   const [view, setView] = useState<View>({ x: -20, y: -40, scale: 1.5 })
@@ -137,6 +140,22 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
   // commit/cancel only act when the token they were called with still matches this, so a stale
   // call from an already-closed session is a no-op instead of a wrong-wire re-commit.
   const activeTokenRef = useRef<number | null>(null)
+  // Smart guides: the open drag's snap targets, the guides to draw for its last move, and that
+  // move (pointer and whether Ctrl or Cmd was held), so pressing or releasing the key mid-drag
+  // re-snaps without waiting for the pointer to move.
+  const dragSnapRef = useRef<DragSnap | null>(null)
+  const [guides, setGuides] = useState<SnapResult | null>(null)
+  const lastMove = useRef<{ client: Pt; off: boolean } | null>(null)
+  // The last seat check (settleSeats), by the parts array it ran on: a part drag checks the
+  // grid position before snapping, and the drag highlight then reuses the same answer.
+  const seatCache = useRef<{ parts: PartInstance[]; uids: string[]; result: ReturnType<typeof settleSeats> } | null>(null)
+  const seatsOf = (d: Diagram, uids: string[]) => {
+    const c = seatCache.current
+    if (c && c.parts === d.parts && c.uids === uids) return c.result
+    const result = settleSeats(d, uids)
+    seatCache.current = { parts: d.parts, uids, result }
+    return result
+  }
 
   useEffect(() => {
     const el = svgRef.current!
@@ -245,7 +264,7 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
   // (their old legs neither show nor push a part that stays put out of its holes), and each seat
   // is green when the drop would mount it, red when only some legs land.
   const settling = useMemo(
-    () => (drag?.kind === 'parts' ? settleSeats(diagram, drag.settling) : null),
+    () => (drag?.kind === 'parts' ? seatsOf(diagram, drag.settling) : null),
     [diagram.parts, diagram.modules, drag],
   )
   const plugs = useMemo(() => settling?.plugs ?? plugsOf(diagram), [settling, diagram.parts, diagram.modules])
@@ -467,7 +486,11 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
       else if (!notes.includes(uid)) notes = [uid]
       store.select({ parts: e.shiftKey ? sel.parts : [], wires: e.shiftKey ? sel.wires : [], annotations: notes })
       if (notes.includes(uid)) {
-        setDrag({ pointer, kind: 'annotations', start: toWorld(e), uids: notes, base: store.begin() })
+        const base = store.begin()
+        dragSnapRef.current = dragSnap(base, [], [], notes)
+        setGuides(null)
+        lastMove.current = null
+        setDrag({ pointer, kind: 'annotations', start: toWorld(e), uids: notes, base })
         store.setGesture(true)
       }
       return
@@ -482,7 +505,12 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
       store.select({ parts, wires: e.shiftKey ? sel.wires : [] })
       if (parts.includes(uid)) {
         const base = store.begin()
-        setDrag({ pointer, kind: 'parts', start: toWorld(e), uids: parts, moving: withMounted(base, parts), settling: settlingOf(base, parts), base })
+        const moving = withMounted(base, parts)
+        const settlingParts = settlingOf(base, parts)
+        dragSnapRef.current = dragSnap(base, moving, settlingParts, [])
+        setGuides(null)
+        lastMove.current = null
+        setDrag({ pointer, kind: 'parts', start: toWorld(e), uids: parts, moving, settling: settlingParts, base })
         store.setGesture(true)
       }
       return
@@ -551,14 +579,10 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
       setDrag({ ...drag, cursor, moved })
       // The selection follows the rectangle live, so the outlines show what the release will pick.
       if (moved) store.select(marqueeSelection(store.getState().diagram, rectOf(drag.start, cursor), drag.add ? drag.before : EMPTY_SELECTION))
-    } else if (drag.kind === 'parts') {
+    } else if (drag.kind === 'parts' || drag.kind === 'annotations') {
       if (!store.dragging) return
-      const p = toWorld(e)
-      store.preview(moveParts(drag.base, drag.uids, snap(p.x - drag.start.x), snap(p.y - drag.start.y)))
-    } else if (drag.kind === 'annotations') {
-      if (!store.dragging) return
-      const p = toWorld(e)
-      store.preview(moveAnnotations(drag.base, drag.uids, snap(p.x - drag.start.x), snap(p.y - drag.start.y)))
+      lastMove.current = { client: { x: e.clientX, y: e.clientY }, off: e.ctrlKey || e.metaKey }
+      dragTo(drag, lastMove.current.client, lastMove.current.off)
     } else if (drag.kind === 'segment') {
       if (!store.dragging) return
       const p = toWorld(e)
@@ -571,6 +595,57 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
     } else if (drag.kind === 'wire') setDrag({ ...drag, cursor: toWorld(e), ...dropUnder(e) })
     else if (drag.kind === 'reconnect') setDrag({ ...drag, cursor: toWorld(e), ...dropUnder(e) })
   }
+  /**
+   * Moves the dragged parts or marks for the pointer at `client`: on the grid, then snapped to other
+   * objects unless snapping is off or `off` (Ctrl or Cmd held). A part that would sit on a board or
+   * an outlet at its grid position is being seated: the holes decide, and nothing else snaps.
+   */
+  function dragTo(d: Extract<Drag, { kind: 'parts' | 'annotations' }>, client: Pt, off: boolean) {
+    const p = toWorld({ clientX: client.x, clientY: client.y })
+    const raw = { x: p.x - d.start.x, y: p.y - d.start.y }
+    const move = (dx: number, dy: number) => (d.kind === 'parts' ? moveParts(d.base, d.uids, dx, dy) : moveAnnotations(d.base, d.uids, dx, dy))
+    const grid = gridOnly(raw)
+    const onGrid = move(grid.dx, grid.dy)
+    const snapping = dragSnapRef.current
+    if (!snapping || off || !store.getState().snapObjects || (d.kind === 'parts' && seating(d, snapping, onGrid, grid))) {
+      store.preview(onGrid)
+      setGuides(null)
+      return
+    }
+    const r = snapMove(snapping.index, snapping.moving, raw, view.scale)
+    store.preview(r.dx === grid.dx && r.dy === grid.dy ? onGrid : move(r.dx, r.dy))
+    setGuides(r.guides.length || r.gaps.length ? r : null)
+  }
+  /** Whether a moving part would be seated (or partly seated) in a board or outlet at `at`. */
+  function seating(d: Extract<Drag, { kind: 'parts' }>, snapping: DragSnap, at: Diagram, delta: { dx: number; dy: number }): boolean {
+    if (!d.settling.length || !snapping.boards.length) return false
+    const near = snapping.settling.some((r) => snapping.boards.some((b) => overlaps({ ...r, x: r.x + delta.dx, y: r.y + delta.dy }, b)))
+    if (!near) return false
+    for (const seat of seatsOf(at, d.settling).seats.values()) if (seat) return true
+    return false
+  }
+
+  // Pressing or releasing Ctrl (Cmd on a Mac) mid-drag turns object snapping off or back on at once.
+  const snapDrag = drag?.kind === 'parts' || drag?.kind === 'annotations' ? drag : null
+  useEffect(() => {
+    if (!snapDrag) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Control' && e.key !== 'Meta') return
+      const last = lastMove.current
+      const off = e.ctrlKey || e.metaKey
+      if (!last || last.off === off || !store.dragging) return
+      lastMove.current = { ...last, off }
+      dragTo(snapDrag, last.client, off)
+    }
+    window.addEventListener('keydown', onKey)
+    window.addEventListener('keyup', onKey)
+    return () => {
+      window.removeEventListener('keydown', onKey)
+      window.removeEventListener('keyup', onKey)
+    }
+    // Re-bound every render, so the key sees the current view (the wheel can zoom mid-drag).
+  })
+
   function onPointerUp(e: React.PointerEvent<SVGSVGElement>) {
     if (!drag || e.pointerId !== drag.pointer) return
     if (drag.kind === 'parts') finishPartsDrag(drag)
@@ -815,6 +890,7 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
           const at = resolveEndpoint(diagram, drag.over!)
           return at ? <circle className="hole-target" cx={at.end.x} cy={at.end.y} r={4.5} /> : null
         })()}
+        {snapDrag && guides && <GuideLayer snap={guides} scale={view.scale} />}
         {diagram.parts.map((p) => {
           const m = moduleOf(diagram, p.module)
           if (!m) return null
