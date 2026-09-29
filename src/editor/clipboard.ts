@@ -5,7 +5,7 @@ import { DIAGRAM_FORMAT, moduleOf, validateDiagram, type Annotation, type Connec
 import { bodyRect, type Pt } from '../format/geometry.ts'
 import { layoutModule, type ModuleDef } from '../format/module.ts'
 import { annotationRect } from '../render/annotationGeometry.ts'
-import { designatorPrefix, withinLimit, type Selection } from './ops.ts'
+import { deleteSelection, designatorPrefix, withMounted, withinLimit, type Selection } from './ops.ts'
 
 export const CLIP_FORMAT = 'circuitoon-clip/1'
 /** Clip text longer than this is never parsed (a pasted novel, not a clip). */
@@ -21,12 +21,13 @@ export interface Clip {
 }
 
 /**
- * The selected parts, frames and notes, the wires whose two ends are both on copied parts (a
- * selected wire to a part left behind is not copied), and the modules those parts use. Null when
- * nothing copyable is selected.
+ * The selected parts with every part validly mounted on a selected board (as a drag carries them),
+ * the selected frames and notes, the wires whose two ends are both on copied parts (a selected wire
+ * to a part left behind is not copied), and the modules those parts use. Null when nothing
+ * copyable is selected.
  */
 export function copySelection(d: Diagram, sel: Selection): Clip | null {
-  const uids = new Set(sel.parts)
+  const uids = new Set(withMounted(d, sel.parts))
   const notes = new Set(sel.annotations ?? [])
   const parts = d.parts.filter((p) => uids.has(p.uid))
   const annotations = (d.annotations ?? []).filter((a) => notes.has(a.uid))
@@ -40,7 +41,29 @@ export function copySelection(d: Diagram, sel: Selection): Clip | null {
   return { format: CLIP_FORMAT, modules, parts, connections, annotations }
 }
 
+/**
+ * Cut: the clip `copySelection` makes, and the diagram without everything it copied (a selected
+ * board goes with its mounted parts) and without the selected wires, as one edit. Null when
+ * nothing copyable is selected.
+ */
+export function cutSelection(d: Diagram, sel: Selection): { clip: Clip; diagram: Diagram } | null {
+  const clip = copySelection(d, sel)
+  if (!clip) return null
+  return { clip, diagram: deleteSelection(d, { ...sel, parts: clip.parts.map((p) => p.uid) }) }
+}
+
 export const clipText = (clip: Clip): string => JSON.stringify(clip)
+
+/**
+ * What a paste uses. `system` is the clipboard's text, or null when the clipboard cannot be read at
+ * all; only then does the remembered clip (`memory`) stand in. Readable text that is not a clip
+ * (text copied last, say) pastes nothing, so old parts never come back in its place.
+ */
+export function clipToPaste(system: string | null, memory: string | null): { clip: Clip; text: string } | null {
+  const text = system ?? memory
+  const clip = text ? parseClip(text) : null
+  return clip && text ? { clip, text } : null
+}
 
 /**
  * A clip from clipboard text, or null for anything else: only the clip format tag is accepted, and

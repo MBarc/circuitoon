@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { COORD_LIMIT, emptyDiagram, type Diagram } from '../format/diagram.ts'
 import type { ModuleDef } from '../format/module.ts'
-import { CLIP_FORMAT, clipText, copySelection, parseClip, pasteClip, pasteDelta, type Clip } from './clipboard.ts'
+import { CLIP_FORMAT, clipText, clipToPaste, copySelection, cutSelection, parseClip, pasteClip, pasteDelta, type Clip } from './clipboard.ts'
 import { marqueeSelection } from './ops.ts'
 
 const resistor: ModuleDef = {
@@ -184,5 +184,67 @@ describe('pasteDelta', () => {
     expect(dy % 10).toBe(0)
     const [dx2, dy2] = pasteDelta(clip(), 2, { x: 1000, y: 1000 })
     expect([dx2 - dx, dy2 - dy]).toEqual([10, 10])
+  })
+})
+
+describe('boards carry their mounted parts', () => {
+  const two: ModuleDef = { format: 'circuitoon-module/1', id: 'two', name: 'Two', pins: [{ name: 'L', side: 'left' }, { name: 'R', side: 'right' }] }
+  // U1 is seated on the board (the placement ops.test mounts); R1 off the board is not mounted.
+  const board = (): Diagram => ({
+    ...emptyDiagram(), modules: { bb, two, resistor },
+    parts: [
+      { uid: 'b', designator: 'BB1', module: 'bb', x: 0, y: 0 },
+      { uid: 'u', designator: 'U1', module: 'two', x: 10, y: 0, mount: { board: 'b' } },
+      { uid: 'r', designator: 'R1', module: 'resistor', x: 400, y: 0 },
+    ],
+    connections: [
+      { uid: 'w1', from: { part: 'b', pin: 's1', hole: 2 }, to: { part: 'u', pin: 'L' } },
+      { uid: 'w2', from: { part: 'u', pin: 'R' }, to: { part: 'r', pin: '1' } },
+    ],
+  })
+  it('copies a selected board with the parts mounted on it, and the wires between them', () => {
+    const clip = copySelection(board(), { parts: ['b'], wires: [] })!
+    expect(clip.parts.map((p) => p.uid)).toEqual(['b', 'u'])
+    expect(clip.connections.map((c) => c.uid)).toEqual(['w1'])
+    expect(Object.keys(clip.modules)).toEqual(['bb', 'two'])
+  })
+  it('pastes the carried parts still mounted on the pasted board', () => {
+    const d = board()
+    const { diagram, selection } = pasteClip(d, copySelection(d, { parts: ['b'], wires: [] })!, 0, 200)
+    const [nb, nu] = diagram.parts.slice(3)
+    expect(nu.mount).toEqual({ board: nb.uid })
+    expect(selection.parts).toEqual([nb.uid, nu.uid])
+  })
+  it('cuts a board together with its mounted parts, in one edit', () => {
+    const d = board()
+    const cut = cutSelection(d, { parts: ['b'], wires: [] })!
+    expect(cut.clip.parts.map((p) => p.uid)).toEqual(['b', 'u'])
+    expect(cut.diagram.parts.map((p) => p.uid)).toEqual(['r'])
+    expect(cut.diagram.connections).toEqual([])
+  })
+  it('cuts a mounted part alone when only it is selected, leaving the board', () => {
+    const cut = cutSelection(board(), { parts: ['u'], wires: [] })!
+    expect(cut.diagram.parts.map((p) => p.uid)).toEqual(['b', 'r'])
+  })
+  it('returns null for a cut with nothing copyable', () => {
+    expect(cutSelection(board(), { parts: [], wires: ['w1'] })).toBeNull()
+  })
+})
+
+describe('clipToPaste', () => {
+  const text = clipText(copySelection(sheet(), { parts: ['p1'], wires: [] })!)
+  const other = clipText(copySelection(sheet(), { parts: ['p3'], wires: [] })!)
+  it('uses a clip on the system clipboard', () => {
+    expect(clipToPaste(text, other)?.text).toBe(text)
+  })
+  it('pastes nothing when the system clipboard holds anything else, even with a remembered clip', () => {
+    expect(clipToPaste('hello', text)).toBeNull()
+    expect(clipToPaste('', text)).toBeNull()
+    expect(clipToPaste('{"format":"circuitoon-diagram/1"}', text)).toBeNull()
+  })
+  it('falls back to the remembered clip only when the system clipboard cannot be read', () => {
+    expect(clipToPaste(null, text)?.text).toBe(text)
+    expect(clipToPaste(null, text)?.clip.parts[0].uid).toBe('p1')
+    expect(clipToPaste(null, null)).toBeNull()
   })
 })

@@ -55,7 +55,9 @@ const nWires = sheet.connections.length
 const nNotes = sheet.annotations.length
 const bt = sheet.parts.find((p) => p.designator === 'BT1')
 const note = sheet.annotations.find((a) => a.type === 'text')
-if (!bt || !note) {
+const board = sheet.parts.find((p) => p.module === 'breadboard-half')
+const onBoard = sheet.parts.filter((p) => p.mount?.board === board?.uid).map((p) => p.uid)
+if (!bt || !note || !board || !onBoard.length) {
   console.error('The laid-out sheet lacks BT1 or its note.')
   process.exit(1)
 }
@@ -291,6 +293,41 @@ for (const scheme of ['light', 'dark']) {
   check(copyUid !== bt.uid && Math.abs(dc.x - d0.x - grid) < 1.5 && Math.abs(dc.y - d0.y - grid) < 1.5, `${scheme}: with the pointer off the sheet, the paste lands one grid step from BT1 (${Math.round(dc.x - d0.x)}, ${Math.round(dc.y - d0.y)} px, grid ${Math.round(grid)})`)
   await page.keyboard.press('Control+z')
 
+  // A board carries its mounted parts into a copy and a cut, as a drag does; Delete leaves them.
+  const bbBox = await box(board.uid)
+  // The board's centre channel, clear of holes, parts and wires: a press there selects the board alone.
+  const channel = await page.evaluate(({ uid, b }) => {
+    for (let fx = 0.9; fx > 0.5; fx -= 0.02)
+      for (let dy = -4; dy <= 4; dy += 2) {
+        const x = b.x + b.width * fx
+        const y = b.y + b.height / 2 + dy
+        const el = document.elementFromPoint(x, y)
+        if (el?.closest('[data-part]')?.getAttribute('data-part') === uid && !el.closest('[data-wire], [data-pin]')) return { x, y }
+      }
+    return null
+  }, { uid: board.uid, b: bbBox })
+  check(!!channel, `${scheme}: found a press point on the board clear of parts and wires`)
+  const selectBoard = async () => {
+    await page.mouse.click(channel.x, channel.y)
+    await pause()
+    return (await selected()).parts
+  }
+  check(JSON.stringify(await selectBoard()) === JSON.stringify([board.uid]), `${scheme}: a click on the board's channel selects the board alone`)
+  await page.keyboard.press('Control+c')
+  const boardClip = JSON.parse(await page.evaluate(() => navigator.clipboard.readText()))
+  check(JSON.stringify(boardClip.parts.map((p) => p.uid).sort()) === JSON.stringify([board.uid, ...onBoard].sort()), `${scheme}: copying the board takes its mounted parts too (${boardClip.parts.map((p) => p.designator)})`)
+  await page.keyboard.press('Control+x')
+  const left = await page.evaluate(() => [...document.querySelectorAll('[data-part]')].map((e) => e.getAttribute('data-part')))
+  check(JSON.stringify(left) === JSON.stringify([bt.uid]), `${scheme}: cutting the board removes it and its mounted parts together (${left})`)
+  await page.keyboard.press('Control+z')
+  check((await partCount()) === nParts, `${scheme}: one undo brings the board and its parts back`)
+  await selectBoard()
+  await page.keyboard.press('Delete')
+  const kept = await page.evaluate(() => [...document.querySelectorAll('[data-part]')].map((e) => e.getAttribute('data-part')).sort())
+  check(JSON.stringify(kept) === JSON.stringify([bt.uid, ...onBoard].sort()), `${scheme}: Delete on the board alone still leaves its parts on the sheet (${kept})`)
+  await page.keyboard.press('Control+z')
+  check((await partCount()) === nParts, `${scheme}: undo brings the deleted board back`)
+
   // Cut: gone in one step, back with undo; Ctrl+V after a cut puts it back where it was.
   await around(bt.uid)
   const b0 = await box(bt.uid)
@@ -322,6 +359,19 @@ for (const scheme of ['light', 'dark']) {
   const parts0 = await partCount()
   check((await title.inputValue()) === 'Night lightNight light' && parts0 === nParts, `${scheme}: Ctrl+V in the title field pastes text and no parts (${await title.inputValue()})`)
   await title.press('Escape')
+
+  // With text copied last, Ctrl+V on the sheet pastes nothing, never the parts copied before it.
+  await page.mouse.click(from.x, from.y)
+  await page.mouse.move(from.x + 40, from.y + 40)
+  const before = await partCount()
+  await page.keyboard.press('Control+v')
+  await pause()
+  check((await partCount()) === before, `${scheme}: Ctrl+V with plain text on the clipboard pastes no parts (${await partCount()} vs ${before})`)
+  // A paste the browser cannot give clipboard data for falls back to the remembered clip.
+  await page.evaluate(() => document.body.dispatchEvent(new ClipboardEvent('paste', { bubbles: true })))
+  await pause()
+  check((await partCount()) === before + 1, `${scheme}: with no readable clipboard the remembered clip (BT1) pastes (${await partCount()} vs ${before})`)
+  await page.keyboard.press('Control+z')
 
   // A clip pastes into another sheet, modules and all.
   await page.mouse.click(from.x, from.y)

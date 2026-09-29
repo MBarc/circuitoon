@@ -6,14 +6,14 @@ import { Inspector } from './Inspector.tsx'
 import { LibraryPanel } from './LibraryPanel.tsx'
 import { Toolbar } from './Toolbar.tsx'
 import { deleteSelection, EMPTY_SELECTION, rotateParts } from './ops.ts'
-import { clipText, copySelection, parseClip, pasteClip, pasteDelta } from './clipboard.ts'
+import { clipText, clipToPaste, copySelection, cutSelection, pasteClip, pasteDelta } from './clipboard.ts'
 import './editor.css'
 
 /** Keys that belong to a text field, where the editor's shortcuts never apply. */
 const TEXT_FIELD = 'input, textarea, select, [contenteditable]:not([contenteditable="false"])'
 
-// The last copied clip, per tab: the fallback when the system clipboard holds no clip (no access,
-// or the browser refused the write). Module state, so it survives opening another sheet.
+// The last copied clip, per tab: the fallback when the paste cannot read the system clipboard at
+// all. Module state, so it survives opening another sheet.
 let memoryClip: string | null = null
 // The last paste, so a repeat of the same clip at the same spot steps one grid step further.
 let lastPaste: { text: string; anchor: string; step: number } | null = null
@@ -26,8 +26,10 @@ let lastPaste: { text: string; anchor: string; step: number } | null = null
  */
 function useEditorClipboard(store: EditorStore, canvas: { current: CanvasApi | null }) {
   useEffect(() => {
-    const mine = (e: ClipboardEvent) => {
-      const t = e.target
+    // By focus, not the event target: a clipboard event targets the selection's node, and a stray
+    // caret left in the Inspector's text must not turn the sheet's shortcuts off.
+    const mine = () => {
+      const t = document.activeElement
       if (t instanceof Element && (t.closest(TEXT_FIELD) || t.closest('.inspector'))) return false
       if (store.dragging || store.gestureActive) return false
       return true
@@ -37,27 +39,28 @@ function useEditorClipboard(store: EditorStore, canvas: { current: CanvasApi | n
       return !!sel && !sel.isCollapsed && sel.toString() !== ''
     }
     const onCopy = (e: ClipboardEvent) => {
-      if (!mine(e) || textSelected()) return
+      if (!mine() || textSelected()) return
       const s = store.getState()
-      const clip = copySelection(s.diagram, s.selection)
+      // A cut takes out what it copied: a selected board goes with its mounted parts.
+      const cut = e.type === 'cut' ? cutSelection(s.diagram, s.selection) : null
+      const clip = cut?.clip ?? copySelection(s.diagram, s.selection)
       if (!clip) return
       e.preventDefault()
       const text = clipText(clip)
       memoryClip = text
       e.clipboardData?.setData('text/plain', text)
-      if (e.type === 'cut') {
-        store.commit(deleteSelection(s.diagram, s.selection))
+      if (cut) {
+        store.commit(cut.diagram)
         // The first paste after a cut puts the items back where they were.
         lastPaste = { text, anchor: 'source', step: -1 }
       } else lastPaste = null
     }
     const onPaste = (e: ClipboardEvent) => {
-      if (!mine(e)) return
-      const system = e.clipboardData?.getData('text/plain') ?? ''
-      const fromSystem = parseClip(system)
-      const text = fromSystem ? system : memoryClip
-      const clip = fromSystem ?? (memoryClip ? parseClip(memoryClip) : null)
-      if (!clip || !text) return
+      if (!mine()) return
+      // No clipboardData means the clipboard cannot be read here; then the remembered clip stands in.
+      const found = clipToPaste(e.clipboardData ? e.clipboardData.getData('text/plain') : null, memoryClip)
+      if (!found) return
+      const { clip, text } = found
       e.preventDefault()
       const pointer = canvas.current?.pointer() ?? null
       const anchor = pointer ? `${Math.round(pointer.x / 10)},${Math.round(pointer.y / 10)}` : 'source'
