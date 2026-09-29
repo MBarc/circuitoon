@@ -41,6 +41,7 @@ Under `--json`, every failure that has no command result prints one error docume
 | `check <sheet.json>` | The wiring checker (shorts, reversed power, wrong voltage, no ground, outputs that fight, ...), plus verify when the sheet has an intent. | `schemas/findings.schema.json` |
 | `render <sheet.json> -o <png> [--svg <svg>] [--dark] [--scale n] [--focus <copy or group>]` | A PNG (through Chrome or Edge) and a standalone SVG. `--focus` frames one repeat copy (`ball_3`) or group (`Power`), with the wires that touch it. | `schemas/render.schema.json` |
 | `link <sheet.json> [-o <dir>]` | A link that opens the sheet in the editor. Past 64 KB of payload, the sheet file is written instead. | `schemas/link.schema.json` |
+| `bom <sheet.json> [-o <bom.csv>]` | The bill of materials (see below). Prints one line per row; `-o` writes it as CSV. Never blocks: exit 0, or 2 when the sheet does not load. | `schemas/bom.schema.json` |
 | `gate <sheet.json> -o <dir>` | Everything above (see below). Exits 0 only when nothing blocks. | `schemas/gate.schema.json` |
 
 The readability report lists:
@@ -56,7 +57,18 @@ The readability report lists:
 - `sheet.svg` and `sheet.png`;
 - `focus-<copy>.png` for the first copy of a repeat;
 - `link.txt`, or the sheet file when the link would be too long;
-- `gate.json` (format `circuitoon-cli/gate/1`), with the SHA-256 of the sheet and of every artifact, the blocking findings, the warnings, the notes, the "not checked" list, the link, the bill of quantities (counted from the sheet; `added` is how many of each part the layout added as routing infrastructure) and the channel table.
+- `bom.csv`, the bill of materials (the same file `bom -o` writes);
+- `gate.json` (format `circuitoon-cli/gate/2`; version 2 added the required `bom` field and the `bom` artifact), with the SHA-256 of the sheet and of every artifact, the blocking findings, the warnings, the notes, the "not checked" list, the link, the bill of materials (`bom`, the rows `bom.csv` is written from), the bill of quantities (the bill's parts summed per module; `added` is how many of each part the layout added as routing infrastructure) and the channel table.
+
+## Bill of materials
+
+`bom` and `gate` build the same bill, and the editor's Bill of materials panel shows it too:
+
+- **Parts**, grouped by module and value, with designator ranges: `4 x 18650 holder (1 cell), BT1-BT4`, `2 x Resistor (1/4 W), 100 kΩ, R2, R3`. Each row has the module's category and its source links. Breadboards and rail strips are parts too; a part the sheet's intent does not name was added by the layout and is marked `added by layout`. An embedded part is marked `custom, unverified`.
+- **Wires**, counted by cable (its two ends, either way round), gauge and the color they are drawn in: `12 x Dupont M-M jumper, 22 AWG, red`. Wires the layout added (`routing: true`) are marked.
+- **Connectors**, counted per end kind (Dupont male, JST-XH plug, ferrule, ...). Bare, stripped and solid-core ends are not connectors.
+
+The CSV has the columns `Type` (Part, Wire or Connector), `Qty`, `Description`, `Value`, `Designators`, `Category`, `Source` and `Notes`. Every field is quoted (RFC 4180, CRLF line ends), units are plain ASCII (`4.7 kohm`), and a value that starts with `=`, `+`, `-` or `@` gets a leading `'` so no spreadsheet runs it as a formula.
 
 Text mode starts with `GATE PASSED`, `GATE BLOCKED` or `GATE INCOMPLETE`.
 

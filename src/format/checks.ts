@@ -4,15 +4,15 @@
 // pins a board powers from its USB connector (`electrical.external`). It never claims more than
 // that data supports: a pin with no `type` is unknown and never triggers a rule. Pure, no React. Spec:
 // docs/superpowers/specs/2026-09-26-wiring-checker-design.md.
-import { type Connection, type Diagram, type Endpoint, type PartInstance, moduleOf, resolveEndpoint } from './diagram.ts'
+import { type Connection, type Diagram, type Endpoint, type PartInstance, colorFamily, moduleOf, resolveEndpoint } from './diagram.ts'
 import { type CoveredHole, type MountIssue, type Plug, coveredHoles, holeKey, holeUses, mountIssues, plugMismatches, plugsOf } from './breadboard.ts'
 import { PLUG_FOR, PLUG_NAMES, SOCKET_NAMES } from './plugging.ts'
 import { mainsOf } from './mainsModel.ts'
 import { type ExternalPower, type HoleGroup, type ModuleDef, type PinDef, type PinType, commonReturn, declaredReturns, externalPower, holeGroupOf, isSpacer, voltageOutputs } from './module.ts'
-import { conductors, netlist, nodeKey } from './netlist.ts'
+import { type Netlist, conductors, netlist, nodeKey } from './netlist.ts'
 import { partValue, primaryParam } from './values.ts'
 import { andList, natural, orList } from './words.ts'
-import { analyseMainsCached } from './mains.ts'
+import { type MainsAnalysis, analyseMainsCached } from './mains.ts'
 import { unknownFeedWords } from './mainsRules.ts'
 
 /** `info` is a note, not a problem: it never blocks and never counts as one. */
@@ -55,6 +55,9 @@ export type RuleId =
   | 'data-missing'
   | 'mains-incomplete'
   | 'battery-bank'
+  | 'wire-color-ground'
+  | 'wire-color-supply'
+  | 'wire-color-signal'
 
 /** Rule order within one severity and one subject, and each rule's short heading. */
 export const RULES: Record<RuleId, { severity: Severity; title: string }> = {
@@ -94,6 +97,9 @@ export const RULES: Record<RuleId, { severity: Severity; title: string }> = {
   'cable-unverified': { severity: 'warning', title: 'Check the mains cable' },
   'data-missing': { severity: 'warning', title: 'Mains data missing' },
   'mains-incomplete': { severity: 'warning', title: 'Mains checks did not finish' },
+  'wire-color-ground': { severity: 'warning', title: 'Ground wire not black' },
+  'wire-color-supply': { severity: 'warning', title: 'Supply wire not red' },
+  'wire-color-signal': { severity: 'warning', title: 'Signal wire in a power color' },
   'battery-bank': { severity: 'info', title: 'Parallel battery bank' },
 }
 const RULE_ORDER = Object.keys(RULES) as RuleId[]
@@ -496,6 +502,111 @@ function railAdvice(loads: Terminal[], it: string): string {
     : `${what}: these parts need different supply voltages; split the rail and power each part from a supply it accepts.`
 }
 
+// ---- Terminals by node key ----
+
+/** Builds a node key's terminal (null for a missing part, module or pin), with its converter's dead state from `mains`. */
+function terminalsOf(d: Diagram, partByUid: Map<string, PartInstance>, mains: MainsAnalysis | null): (key: string) => Terminal | null {
+  return (key) => {
+    const [uid, name] = JSON.parse(key) as [string, string]
+    const part = partByUid.get(uid)
+    const m = part && moduleOf(d, part.module)
+    if (!part || !m) return null
+    const info = moduleInfo(m)
+    const def = info.defs.get(name)
+    if (!def) return null
+    const src = def.pin ?? def.group!
+    return { key, part, info, name, label: src.label ?? name, type: src.type, supply: src.supply, bare: !def.pin && !src.type, dead: mains?.deadOutputs.get(key) }
+  }
+}
+
+// ---- Net roles (wire colours) ----
+
+/**
+ * What a low-voltage net carries, for its wire colour: `ground` (black), a positive `supply` rail
+ * (red) or a `signal` (any other colour).
+ */
+export type NetRole = 'ground' | 'supply' | 'signal'
+
+/**
+ * A pin on a positive supply rail: a pin on USB power, a power output at a positive voltage (the
+ * part's value, else its supply; an adjustable output counts, a pass-through such as a charger's
+ * OUT+ too), or a power input whose every rail is known and positive. A rail that does not parse
+ * ("-5V") is never guessed into a supply.
+ */
+function positiveRail(t: Terminal): boolean {
+  if (t.bare) return false
+  const external = t.info.external.get(t.name)
+  if (external) return external.volts > 0
+  if (t.type === 'power_out') {
+    const value = t.info.valued.has(t.name) ? partValue(t.part, t.info.module) : null
+    if (value) return value.value > 0
+    if (!t.supply) return false
+    const p = parseSupply(t.supply)
+    return p.unknown === null ? p.volts.length > 0 && p.volts.every((v) => v > 0) : p.unknown === 'adjustable'
+  }
+  if (t.type === 'power_in') {
+    const rails = knownRails(t.supply)
+    return !!rails?.length && rails.every((v) => v > 0)
+  }
+  return false
+}
+
+/**
+ * The role of the net made of `keys` (with their terminals), or null when no colour is judged: a net
+ * on mains wiring or with a mains identity (it keeps its regional colours), a net with a power pin
+ * whose voltage is not known to be positive (a rail that does not parse, such as -5V, or no supply
+ * listed: it is never guessed into supply or signal), or a net that holds both a ground and a
+ * positive supply (a short, or the link between two cells in series).
+ */
+function roleOf(keys: string[], terms: Terminal[], mains: MainsAnalysis | null): NetRole | null {
+  if (mains && keys.some((k) => mains.hazardKeys.has(k) || mains.conductorOf(k))) return null
+  if (terms.some((t) => !t.bare && (t.type === 'power_out' || t.type === 'power_in') && !positiveRail(t))) return null
+  const ground = terms.some((t) => t.type === 'ground')
+  const supply = terms.some(positiveRail)
+  return ground && supply ? null : ground ? 'ground' : supply ? 'supply' : 'signal'
+}
+
+export interface NetRoles {
+  netlist: Netlist
+  /** Per net of `netlist`, its role; null where no colour is judged (see roleOf). */
+  roles: (NetRole | null)[]
+  /** The role of a node key: its net's, or its own terminal's when it is on no net. */
+  roleOfKey: (key: string) => NetRole | null
+}
+
+const rolesCache = new WeakMap<Diagram['connections'], { parts: Diagram['parts']; modules: Diagram['modules']; result: NetRoles }>()
+
+/** Every net's colour role, from the checker's own supply and ground knowledge. Cached per sheet state, like the mains analysis. */
+export function netRoles(d: Diagram): NetRoles {
+  const hit = rolesCache.get(d.connections)
+  if (hit && hit.parts === d.parts && hit.modules === d.modules) return hit.result
+  const mains = analyseMainsCached(d)
+  const nl = netlist(d, plugsOf(d))
+  const terminal = terminalsOf(d, new Map(d.parts.map((p) => [p.uid, p])), mains)
+  return rememberRoles(d, nl, nl.nets.map((keys) => roleOf(keys, termsOf(terminal, keys), mains)), terminal, mains)
+}
+
+const termsOf = (terminal: (key: string) => Terminal | null, keys: string[]) => keys.map(terminal).filter((t): t is Terminal => t !== null)
+
+/** Caches the roles for `d` (the checker stores the ones it worked out, so the renderer reuses them). */
+function rememberRoles(d: Diagram, nl: Netlist, roles: (NetRole | null)[], terminal: (key: string) => Terminal | null, mains: MainsAnalysis | null): NetRoles {
+  const roleOfKey = (key: string) => {
+    const i = nl.netOf.get(key)
+    return i === undefined ? roleOf([key], termsOf(terminal, [key]), mains) : roles[i]
+  }
+  const result = { netlist: nl, roles, roleOfKey }
+  rolesCache.set(d.connections, { parts: d.parts, modules: d.modules, result })
+  return result
+}
+
+/** The colour role of the net a wire end is on (a pin on no net: its own), or null where no colour is judged. */
+export function endpointRole(d: Diagram, ep: Endpoint): NetRole | null {
+  return netRoles(d).roleOfKey(nodeKey(ep.part, ep.pin))
+}
+
+/** The colour each role's wires are: ground black, supply red; a signal has no one colour. */
+export const ROLE_COLORS: Record<NetRole, string | null> = { ground: 'black', supply: 'red', signal: null }
+
 // ---- The checker ----
 
 type Draft = Omit<Finding, 'id' | 'severity'> & { causes: string[] }
@@ -522,17 +633,7 @@ export function checkDiagram(d: Diagram): Finding[] {
     findings.push({ ...f, parts, select: f.select ?? { parts, wires: f.wires } })
   }
 
-  const terminal = (key: string): Terminal | null => {
-    const [uid, name] = JSON.parse(key) as [string, string]
-    const part = partByUid.get(uid)
-    const m = part && moduleOf(d, part.module)
-    if (!part || !m) return null
-    const info = moduleInfo(m)
-    const def = info.defs.get(name)
-    if (!def) return null
-    const src = def.pin ?? def.group!
-    return { key, part, info, name, label: src.label ?? name, type: src.type, supply: src.supply, bare: !def.pin && !src.type, dead: mains?.deadOutputs.get(key) }
-  }
+  const terminal = terminalsOf(d, partByUid, mains)
 
   // Wires per net, and which parts have a wire that conducts or a plugged leg.
   const netWires: string[][] = nl.nets.map(() => [])
@@ -701,7 +802,7 @@ export function checkDiagram(d: Diagram): Finding[] {
         if (!typed(a.t) && !typed(b.t)) continue
         const ga = groupsOf(a.t.part)
         if ([...groupsOf(b.t.part)].some((g) => ga.has(g))) continue
-        const key = [a.t.part.uid, b.t.part.uid].sort().join(' ')
+        const key = [a.t.part.uid, b.t.part.uid].sort().join('\u0000')
         const prev = best.get(key)
         if (!prev || natural.compare(a.n + ' ' + b.n, prev.an + ' ' + prev.bn) < 0) best.set(key, { a: a.t, b: b.t, an: a.n, bn: b.n, net: i })
       }
@@ -797,6 +898,42 @@ export function checkDiagram(d: Diagram): Finding[] {
   }
 
   for (const f of mains?.findings ?? []) add(f)
+
+  // Wire colours (low voltage): ground black, positive supplies red, signals neither. Only a colour
+  // chosen on purpose (colorSet: picked in the Inspector, or given by the netlist or layout) is
+  // judged. Before the flag every wire drawn in the editor stored black, so an old sheet's wires
+  // raise nothing; a wire with no colour is drawn in its role's colour (wireLooks). One finding per net.
+  const byUid = new Map(d.connections.map((c) => [c.uid, c]))
+  const roles = rememberRoles(d, nl, nl.nets.map((keys, i) => roleOf(keys, netTerms[i], mains)), terminal, mains).roles
+  nl.nets.forEach((keys, i) => {
+    const role = roles[i]
+    if (!role) return
+    const bad = netWires[i].map((uid) => byUid.get(uid)!).filter((c) => {
+      if (c.color === undefined || !c.colorSet) return false
+      const fam = colorFamily(c.color)
+      return role === 'ground' ? fam !== 'black' : role === 'supply' ? fam !== 'red' : fam !== 'other'
+    })
+    if (!bad.length) return
+    // The net is named by a pin that gives it its role (a ground pin, a supply pin), else its first pin.
+    const named = [...netTerms[i]].filter((t) => !t.bare).sort((a, b) => natural.compare(termName(a), termName(b)))
+    const at = (role === 'ground' ? named.find((t) => t.type === 'ground') : role === 'supply' ? named.find(positiveRail) : undefined) ?? named[0]
+    const names = bad.map((c) => wireName(d, c)).sort(natural.compare)
+    const list = names.length > 4 ? `${names.slice(0, 3).join(', ')} and ${names.length - 3} more` : andList(names)
+    const n = bad.length
+    const wires = bad.map((c) => c.uid)
+    const where = at ? ` at ${termName(at)}` : ''
+    const them = n === 1 ? 'it' : 'them'
+    let message: string
+    if (role === 'ground') message = `${n === 1 ? 'A wire' : `${n} wires`} on the ground net${where} ${isAre(n)} not black: ${list}. Ground wires are black by convention: set ${them} to black.`
+    else if (role === 'supply') message = `${n === 1 ? 'A wire' : `${n} wires`} on the supply net${where} ${isAre(n)} not red: ${list}. Positive supply wires are red by convention: set ${them} to red.`
+    else {
+      const fams = new Set(bad.map((c) => colorFamily(c.color!)))
+      const what = fams.size > 1 ? 'red or black' : [...fams][0]
+      message = `${n === 1 ? 'A signal wire' : `${n} signal wires`}${where} ${isAre(n)} ${what}: ${list}. Red and black mean power and ground by convention: give ${them} another color, such as blue, yellow or green.`
+    }
+    const parts = bad.flatMap((c) => [c.from.part, c.to.part]).filter((u) => partByUid.has(u))
+    add({ rule: `wire-color-${role}`, subject: at?.part.designator ?? names[0], target: at ? termName(at) : names[0], message, parts, pins: [], wires, select: { parts: [], wires }, causes: [keys[0]] })
+  })
 
   const rank = (s: Severity) => (s === 'error' ? 0 : s === 'warning' ? 1 : 2)
   const sorted = findings

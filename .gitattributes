@@ -2,3 +2,5 @@
 # `npm run check:gen`: LF everywhere under plugin/bin and plugin/dist-cli.
 plugin/bin/*.mjs text eol=lf
 plugin/dist-cli/** text eol=lf
+# checks.ts once held a raw NUL, so git took it for binary and never normalised its line ends.
+src/format/checks.ts text eol=lf

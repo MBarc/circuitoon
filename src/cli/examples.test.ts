@@ -91,6 +91,8 @@ describe('worked examples', () => {
       const r = await cli(['gate', 'sheet.json', '-o', 'out', '--json'], { cwd: dir, env: noBrowser(dir) })
       const g = JSON.parse(r.out)
       expect(g.blocking, JSON.stringify(g.blocking, null, 2)).toEqual([])
+      // The layout colours wires by role, so no example breaks the colour convention.
+      expect(g.warnings.filter((w: { rule: string }) => w.rule.startsWith('wire-color'))).toEqual([])
       expect(r.code).toBe(3)
     }, 60_000)
     it.skipIf(!browser)(`${c.name}: passes the gate with renders and a link`, async () => {

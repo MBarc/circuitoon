@@ -702,6 +702,13 @@ describe('every message ends with what to do', () => {
     expect(checkDiagram(under).filter((f) => f.rule === 'covered-hole')).toHaveLength(2)
     const shared = sheetWith([board, legs], [at('bb', 'BB1', 'strips'), at('r2', 'R2', 'legs', 300)], [['bb|s7|2', 'r2|L'], ['bb|s7|2', 'r2|R']])
     expect(rules(shared)).toContain('hole-shared')
+    // Wire colours: a blue ground and an orange supply, then a red signal.
+    const colored = sheetWith([drv], [at('u1', 'U1', 'drv'), at('u2', 'U2', 'drv', 200), at('bt1', 'BT1', 'battery-9v', 400)], [['u1|G', 'u2|G'], ['bt1|+', 'u2|Q']])
+    const recolor: Record<string, string> = { 'u1|G': 'blue', 'bt1|+': 'orange' }
+    const d = built({ ...colored, connections: colored.connections.map((c) => ({ ...c, color: recolor[`${c.from.part}|${c.from.pin}`], colorSet: true as const })) })
+    expect(rules(d)).toEqual(expect.arrayContaining(['wire-color-ground', 'wire-color-supply']))
+    const sig = built({ ...colored, connections: [{ uid: 'wsig', from: { part: 'u1', pin: 'Q' }, to: { part: 'u2', pin: 'Q' }, color: 'red', colorSet: true }] })
+    expect(rules(sig)).toContain('wire-color-signal')
   })
   it('on every finding of every sheet built in this file', () => {
     const missing: string[] = []

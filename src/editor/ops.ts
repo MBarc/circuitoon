@@ -1,6 +1,6 @@
 // Immutable diagram edits. Every function returns a new Diagram and never mutates its input,
 // so the store can keep old versions for undo.
-import { ANNOTATION_LABEL_MAX, ANNOTATION_TEXT_MAX, COORD_LIMIT, type Connection, type Diagram, type Endpoint, type PartInstance, moduleOf } from '../format/diagram.ts'
+import { ANNOTATION_LABEL_MAX, ANNOTATION_TEXT_MAX, COORD_LIMIT, type Connection, type Diagram, type Endpoint, type PartInstance, colorFamily, moduleOf } from '../format/diagram.ts'
 import { isBoard, layoutModule, moduleSettings, partSetting, type ModuleDef } from '../format/module.ts'
 import { type Plug, type Seat, mountIssues, plugsOf, seatOf, seatOn } from '../format/breadboard.ts'
 import { bodyRect, pivot, rotateVec, type Rect, type Rotation } from '../format/geometry.ts'
@@ -370,8 +370,20 @@ export function updatePart(d: Diagram, uid: string, patch: { designator?: string
   return { ...d, parts: d.parts.map((p) => (p.uid === uid ? { ...p, ...patch } : p)) }
 }
 
+/** Edits a wire. A colour set here was chosen on purpose, so it is marked `colorSet` (the colour rules judge it). */
 export function updateWire(d: Diagram, uid: string, patch: { color?: string; gauge?: number; label?: string }): Diagram {
-  return { ...d, connections: d.connections.map((c) => (c.uid === uid ? { ...c, ...patch } : c)) }
+  const set = patch.color !== undefined ? { colorSet: true as const } : {}
+  return { ...d, connections: d.connections.map((c) => (c.uid === uid ? { ...c, ...patch, ...set } : c)) }
+}
+
+/**
+ * The new-wire style after a wire's colour or gauge was edited: the gauge carries over, and the
+ * colour too unless it reads as black or red. Fixing a ground wire to black or a supply wire to red
+ * must not make every next signal wire black or red (those take their colour by role anyway).
+ */
+export function carryWireStyle(style: WireStyle, patch: { color?: string; gauge?: number }): WireStyle {
+  const color = patch.color !== undefined && colorFamily(patch.color) === 'other' ? patch.color : style.color
+  return { ...style, color, gauge: patch.gauge ?? style.gauge }
 }
 
 /**

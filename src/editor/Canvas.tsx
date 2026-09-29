@@ -11,7 +11,7 @@ import { WireLabel } from '../render/WireLabel.tsx'
 import { CableLayer } from '../render/CableEnd.tsx'
 import { FrameMark, NoteMark } from '../render/Annotations.tsx'
 import { BLOCKED_STROKE, Bolts, HazardOutline, Stripe, boltInsets } from '../render/Mains.tsx'
-import { type WireLook, holdLooks, identityColor, newWireColor } from '../format/mainsLook.ts'
+import { type WireLook, drawnColor, holdLooks, newWireColor, startColor } from '../format/mainsLook.ts'
 import { seatedLabels } from '../format/seatedLabels.ts'
 import { addPart, addWire, EMPTY_SELECTION, marqueeSelection, moveAnnotations, moveParts, reconnectWire, sameEndpoint, setWireRoute, settleDrop, settleMounts, settleSeats, settlingOf, updateWire, withMounted } from './ops.ts'
 import { netlist, netPoints } from '../format/netlist.ts'
@@ -258,9 +258,10 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
   }, [diagram.parts, diagram.modules, diagram.annotations, endpointsKey, draggingParts, reshaping, movingNotes])
   // Path data only changes with the routes or the wires themselves, not with pan, zoom or selection.
   const wires = useMemo(() => wirePaths(diagram, routes), [routes, diagram.connections])
-  // The mains look (identity colours, hazard marks): once per edit, held while a part or segment drag
-  // is open, like the checker (the analysis needs every position). It reads the cached analysis, so an
-  // edit the checker has already analysed costs no second enumeration.
+  // The wire looks (mains identity colours, hazard marks, and the role colour of a low-voltage wire
+  // with no stored colour): once per edit, held while a part or segment drag is open, like the
+  // checker (the analysis needs every position). It reads the cached analyses, so an edit the checker
+  // has already analysed costs no second enumeration.
   const busy = drag?.kind === 'parts' || drag?.kind === 'segment'
   const looksRef = useRef<Map<string, WireLook>>(new Map())
   const looks = useMemo(() => holdLooks(looksRef, diagram, busy), [diagram.parts, diagram.connections, diagram.modules, busy])
@@ -813,7 +814,7 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
             const selected = selection.wires.includes(conn.uid)
             const dimmed = drag?.kind === 'reconnect' && drag.uid === conn.uid
             const look = looks.get(conn.uid)
-            const name = conn.color ?? look?.color ?? undefined
+            const name = drawnColor(conn, looks)
             const stripe = wireStripe(name)
             return (
               <g key={conn.uid} data-wire={conn.uid} opacity={dimmed ? 0.3 : undefined}>
@@ -890,7 +891,7 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
         {drag?.kind === 'wire' && (
           <line
             x1={drag.origin.x} y1={drag.origin.y} x2={drag.cursor.x} y2={drag.cursor.y}
-            stroke={wireColor(identityColor(diagram, drag.from) ?? store.getState().wireStyle.color)} strokeWidth={2.5} strokeDasharray="6 4" strokeLinecap="round"
+            stroke={wireColor(startColor(diagram, drag.from, store.getState().wireStyle.color))} strokeWidth={2.5} strokeDasharray="6 4" strokeLinecap="round"
             pointerEvents="none"
           />
         )}

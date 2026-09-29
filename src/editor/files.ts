@@ -23,8 +23,8 @@ export async function readDiagramFile(file: File): Promise<OpenResult> {
   }
 }
 
-export function downloadText(filename: string, text: string) {
-  const url = URL.createObjectURL(new Blob([text], { type: 'application/json' }))
+export function downloadText(filename: string, text: string, type = 'application/json') {
+  const url = URL.createObjectURL(new Blob([text], { type }))
   const a = Object.assign(document.createElement('a'), { href: url, download: filename })
   a.click()
   // Some browsers start the download after click() returns, so revoke on the next task.
@@ -37,6 +37,22 @@ export function exportFileName(title: string): string {
 }
 
 export const EXPORT_SUFFIX = '.circuitoon.json'
+
+/**
+ * A kind of file the editor saves: the suffix after the base name, the extension the Save As
+ * dialog is given (and a plainer one to retry with, when a browser refuses a two-part extension),
+ * and a looser suffix a typed name may end in.
+ */
+export interface FileKind {
+  suffix: string
+  ext: string
+  retryExt?: string
+  loose: string
+  description: string
+  mime: string
+}
+export const SHEET_FILE: FileKind = { suffix: EXPORT_SUFFIX, ext: EXPORT_SUFFIX, retryExt: '.json', loose: '.json', description: 'Circuitoon diagram', mime: 'application/json' }
+export const BOM_FILE: FileKind = { suffix: '-bom.csv', ext: '.csv', loose: '.csv', description: 'Bill of materials (CSV)', mime: 'text/csv' }
 /** The longest file name base Export writes (the whole name stays well under every OS limit). */
 export const BASE_NAME_MAX = 120
 // Refused in file names on Windows or macOS, plus every control character.
@@ -45,15 +61,16 @@ const NOT_IN_NAMES = /[\\/:*?"<>|\u0000-\u001f\u007f]/g
 
 /**
  * A file name base the user typed, made safe to save: characters Windows or macOS refuse and
- * control characters removed, a typed `.circuitoon.json` or `.json` dropped (the suffix is added
- * once, on export), a Windows device name (CON, COM1, ...) prefixed with `_`, cut to BASE_NAME_MAX
- * characters, trimmed, trailing dots dropped, and "circuitoon" when nothing is left.
+ * control characters removed, a typed suffix of the kind dropped (`.circuitoon.json` or `.json` for
+ * a sheet, `-bom.csv` or `.csv` for a bill of materials: the suffix is added once, on export), a
+ * Windows device name (CON, COM1, ...) prefixed with `_`, cut to BASE_NAME_MAX characters, trimmed,
+ * trailing dots dropped, and "circuitoon" when nothing is left.
  */
-export function cleanBaseName(name: string): string {
+export function cleanBaseName(name: string, kind: FileKind = SHEET_FILE): string {
   let base = name.replace(NOT_IN_NAMES, '').trim()
   const lower = base.toLowerCase()
-  if (lower.endsWith(EXPORT_SUFFIX)) base = base.slice(0, -EXPORT_SUFFIX.length)
-  else if (lower.endsWith('.json')) base = base.slice(0, -'.json'.length)
+  if (lower.endsWith(kind.suffix)) base = base.slice(0, -kind.suffix.length)
+  else if (lower.endsWith(kind.loose)) base = base.slice(0, -kind.loose.length)
   // A Windows device name, alone or before an extension, cannot be a file name there.
   if (/^(con|prn|aux|nul|com[1-9]|lpt[1-9])(\..*)?$/i.test(base)) base = `_${base}`
   base = base.slice(0, BASE_NAME_MAX).replace(/[.\s]+$/, '').trim()
@@ -75,17 +92,18 @@ export type PickerResult = { status: 'saved'; base: string } | { status: 'cancel
 const errorName = (e: unknown) => (e instanceof Error || e instanceof DOMException ? e.name : '')
 
 /**
- * Saves `text` through the browser's Save As dialog, suggesting `base` + `.circuitoon.json`.
- * Cancelled when the user closes the dialog; unavailable when the picker cannot be used here (the
- * caller then asks for a name itself); failed, with a message, when the chosen file cannot be
- * written. A browser that refuses the two-part extension is asked again with plain `.json`.
+ * Saves `text` through the browser's Save As dialog, suggesting `base` + the kind's suffix
+ * (`.circuitoon.json` for a sheet, `-bom.csv` for a bill of materials). Cancelled when the user
+ * closes the dialog; unavailable when the picker cannot be used here (the caller then asks for a
+ * name itself); failed, with a message, when the chosen file cannot be written. A browser that
+ * refuses a sheet's two-part extension is asked again with plain `.json`.
  */
-export async function saveWithPicker(picker: SavePicker, base: string, text: string): Promise<PickerResult> {
-  const ask = (ext: string) => picker({ suggestedName: base + EXPORT_SUFFIX, types: [{ description: 'Circuitoon diagram', accept: { 'application/json': [ext] } }] })
+export async function saveWithPicker(picker: SavePicker, base: string, text: string, kind: FileKind = SHEET_FILE): Promise<PickerResult> {
+  const ask = (ext: string) => picker({ suggestedName: base + kind.suffix, types: [{ description: kind.description, accept: { [kind.mime]: [ext] } }] })
   let handle: Awaited<ReturnType<SavePicker>>
   try {
-    handle = await ask(EXPORT_SUFFIX).catch((e: unknown) => {
-      if (errorName(e) === 'TypeError') return ask('.json')
+    handle = await ask(kind.ext).catch((e: unknown) => {
+      if (errorName(e) === 'TypeError' && kind.retryExt) return ask(kind.retryExt)
       throw e
     })
   } catch (e) {
@@ -98,5 +116,5 @@ export async function saveWithPicker(picker: SavePicker, base: string, text: str
   } catch (e) {
     return { status: 'failed', message: `${handle.name} could not be saved: ${e instanceof Error ? e.message : String(e)}` }
   }
-  return { status: 'saved', base: cleanBaseName(handle.name) }
+  return { status: 'saved', base: cleanBaseName(handle.name, kind) }
 }

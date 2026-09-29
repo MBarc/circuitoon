@@ -14,6 +14,7 @@ import { layoutCommand } from './layoutCmd.ts'
 import { linkCommand } from './linkCmd.ts'
 import { renderCommand } from './render.ts'
 import { checkCommand, verifyCommand } from './verifyCmd.ts'
+import { bomCommand } from './bomCmd.ts'
 
 export const USAGE = `circuitoon <command> [options]
 
@@ -24,14 +25,15 @@ export const USAGE = `circuitoon <command> [options]
   check <sheet.json> [--json]               the wiring checker, plus verify when the sheet has an intent
   render <sheet.json> -o <sheet.png> [--svg <sheet.svg>] [--dark] [--scale n] [--focus <copy or group>]
   link <sheet.json> [-o <dir>] [--json]     a link that opens the sheet in Circuitoon
-  gate <sheet.json> -o <dir> [--json]       every check, the renders and the link; exits 0 only when nothing blocks
+  bom <sheet.json> [-o <bom.csv>] [--json]  the bill of materials: parts, wires and connectors; -o writes CSV
+  gate <sheet.json> -o <dir> [--json]       every check, the renders, the bill and the link; exits 0 only when nothing blocks
 
 Exit codes: 0 ok, 1 findings that block, 2 invalid input, 3 environment problem (such as no browser)
 or an internal error of the tool.
 `
 
 export type Command = (args: Args, io: Io) => number | Promise<number>
-export const COMMANDS: Record<string, Command> = { parts: partsCommand, part: partCommand, layout: layoutCommand, render: renderCommand, link: linkCommand, verify: verifyCommand, check: checkCommand, gate: gateCommand }
+export const COMMANDS: Record<string, Command> = { parts: partsCommand, part: partCommand, layout: layoutCommand, render: renderCommand, link: linkCommand, bom: bomCommand, verify: verifyCommand, check: checkCommand, gate: gateCommand }
 
 type ErrorCode = 'usage' | 'input' | 'blocked' | 'environment' | 'internal'
 const CODE_OF: Record<number, ErrorCode> = { [EXIT.blocked]: 'blocked', [EXIT.input]: 'input', [EXIT.environment]: 'environment' }

@@ -5,7 +5,9 @@ import { deleteSelection, EMPTY_SELECTION, rotateParts } from './ops.ts'
 import { isProblem, severityCounts, useProblems } from './problems.ts'
 import { SeverityMark } from './SeverityMark.tsx'
 import { emptyDiagram, serializeDiagram } from '../format/diagram.ts'
-import { EXPORT_SUFFIX, defaultBaseName, downloadText, readDiagramFile, saveWithPicker, type SavePicker } from './files.ts'
+import { BOM_FILE, EXPORT_SUFFIX, defaultBaseName, downloadText, readDiagramFile, saveWithPicker, type SavePicker } from './files.ts'
+import { BomPanel } from './BomPanel.tsx'
+import { type Bom, bomCsv } from '../format/bom.ts'
 import { ExportDialog } from './ExportDialog.tsx'
 import { LoadWarnings } from './LoadWarnings.tsx'
 import { MAINS_NOTICE, hasMains, withSheetNotes } from '../format/mains.ts'
@@ -21,6 +23,10 @@ export function Toolbar({ store, warnings, onClose }: { store: EditorStore; warn
   // naming dialog, when the browser has no Save As dialog, is open while this holds its first name.
   const lastName = useRef<string | null>(null)
   const [naming, setNaming] = useState<string | null>(null)
+  // The Bill of materials panel, the base name last chosen for its CSV, and its naming dialog.
+  const [bomOpen, setBomOpen] = useState(false)
+  const lastBomName = useRef<string | null>(null)
+  const [namingBom, setNamingBom] = useState<{ base: string; text: string } | null>(null)
   // Warnings the open sheet was loaded with; every one stays reachable until dismissed.
   const [loadWarnings, setLoadWarnings] = useState<{ list: string[]; key: number } | null>(warnings?.length ? { list: warnings, key: 0 } : null)
   const hasSel = selection.parts.length + selection.wires.length + (selection.annotations?.length ?? 0) > 0
@@ -60,6 +66,27 @@ export function Toolbar({ store, warnings, onClose }: { store: EditorStore; warn
     setNaming(base)
   }
 
+  /**
+   * Export CSV (the Bill of materials panel): the same Save As dialog or in-app naming dialog as
+   * Export JSON, named `<base>-bom.csv`, where the base is the one last chosen for the bill, else
+   * the sheet's export name.
+   */
+  async function exportBom(bom: Bom) {
+    const text = bomCsv(bom)
+    const base = defaultBaseName(store.getState().diagram.title, lastBomName.current ?? lastName.current)
+    const picker = (window as { showSaveFilePicker?: SavePicker }).showSaveFilePicker
+    if (picker) {
+      const r = await saveWithPicker(picker.bind(window), base, text, BOM_FILE)
+      if (r.status === 'saved') {
+        lastBomName.current = r.base
+        setError(null)
+      }
+      if (r.status === 'failed') setError(r.message)
+      if (r.status !== 'unavailable') return
+    }
+    setNamingBom({ base, text })
+  }
+
   async function importFile(file: File) {
     const seq = ++importSeq.current
     const base = importBase.current
@@ -78,7 +105,7 @@ export function Toolbar({ store, warnings, onClose }: { store: EditorStore; warn
   return (
     <header className="toolbar">
       <button type="button" className="wordmark" onClick={() => okToDiscard() && onClose()} title="Back to the start screen">Circuitoon</button>
-      <span className="title">{diagram.title}</span>
+      <span className="title" title={diagram.title}>{diagram.title}</span>
       <button type="button" className="tool" disabled={!store.canUndo} onClick={() => store.undo()}>Undo</button>
       <button type="button" className="tool" disabled={!store.canRedo} onClick={() => store.redo()}>Redo</button>
       <span className="sep" aria-hidden="true" />
@@ -112,6 +139,7 @@ export function Toolbar({ store, warnings, onClose }: { store: EditorStore; warn
         fileRef.current?.click()
       }}>Import JSON</button>
       <button type="button" className="tool" aria-haspopup="dialog" onClick={() => void exportJson()}>Export JSON</button>
+      <button type="button" className="tool" aria-haspopup="dialog" onClick={() => setBomOpen(true)}>Bill of materials</button>
       {findings.length > 0 && (
         <button
           type="button"
@@ -152,6 +180,20 @@ export function Toolbar({ store, warnings, onClose }: { store: EditorStore; warn
             lastName.current = base
             downloadText(base + EXPORT_SUFFIX, exportText())
             store.markSaved()
+          }}
+        />
+      )}
+      {bomOpen && <BomPanel diagram={diagram} onClose={() => setBomOpen(false)} onExport={(bom) => void exportBom(bom)} />}
+      {namingBom !== null && (
+        <ExportDialog
+          title="Export CSV"
+          kind={BOM_FILE}
+          initial={namingBom.base}
+          onCancel={() => setNamingBom(null)}
+          onExport={(base) => {
+            lastBomName.current = base
+            downloadText(base + BOM_FILE.suffix, namingBom.text, 'text/csv')
+            setNamingBom(null)
           }}
         />
       )}

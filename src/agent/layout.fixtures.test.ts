@@ -70,7 +70,7 @@ describe('layout fixtures', () => {
     const g = await runGate(new TextEncoder().encode(text), { sheetPath: 'sheet.json', outDir: join(dir, 'out'), io, png })
     expect(g.report.blocking).toEqual([])
     expect(g.code).toBe(0)
-    expect(g.report.artifacts.map((a) => a.kind)).toEqual(['svg', 'png', 'focus-png', 'link'])
+    expect(g.report.artifacts.map((a) => a.kind)).toEqual(['bom', 'svg', 'png', 'focus-png', 'link'])
     const payload = payloadFromHash(new URL(g.report.link.url!).hash)
     const back = await openLinkPayload(payload!)
     if (!back.ok) throw new Error(back.message)

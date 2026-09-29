@@ -3,7 +3,7 @@
 import { ArrangePanel } from './ArrangePanel.tsx'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { type EditorStore, useEditorState } from './store.ts'
-import { clearPartValue, clearWireRoute, deleteSelection, rotateParts, setWireEnds, updateAnnotation, updatePart, updatePartSetting, updatePartValue, updateWire, type WireStyle } from './ops.ts'
+import { carryWireStyle, clearPartValue, clearWireRoute, deleteSelection, rotateParts, setWireEnds, updateAnnotation, updatePart, updatePartSetting, updatePartValue, updateWire, type WireStyle } from './ops.ts'
 import { ANNOTATION_LABEL_MAX, ANNOTATION_TEXT_MAX, type Connection, type Diagram, type Endpoint, NAMED_COLORS, STRIPED_COLORS, isValidColor, moduleOf, partObstacles, routeWire, wireColor, wireStripe, wireWidth } from '../format/diagram.ts'
 import { type WireLook, holdLooks } from '../format/mainsLook.ts'
 import { CABLE_PRESETS, END_KINDS, END_NAMES, END_SIZE, type EndKind, type WireEnds, endKind, normalizeEnds, presetEnds, presetOf, sharedCable, swapEnds } from '../format/cables.ts'
@@ -162,11 +162,11 @@ function CableSelect({ id, value, onPick }: { id: string; value: string; onPick:
   )
 }
 
-/** The next wire's style in words: "black, 22 AWG, Dupont M-M". */
+/** The next wire's style in words: "blue for signals (black for ground, red for supply), 22 AWG, Dupont M-M". */
 function newWireStyle(style: WireStyle): string {
   const picked = presetOf(style.ends)
   const cable = !picked ? 'a custom cable' : picked.id === 'wire' ? 'plain wire' : picked.name
-  return `${style.color}, ${style.gauge} AWG, ${cable}`
+  return `${style.color} for signals (black for ground, red for supply), ${style.gauge} AWG, ${cable}`
 }
 
 /**
@@ -614,9 +614,9 @@ export function Inspector({ store }: { store: EditorStore }) {
     store.commit(updateWire(diagram, wire.uid, patch))
     // Only a color or gauge edit should steer the next wire drawn; a label edit shouldn't
     // reset the working style back to this wire's own values, so fall back to the current
-    // wireStyle (not this wire's color/gauge) for whichever field the patch didn't touch.
-    if ('color' in patch || 'gauge' in patch)
-      store.setWireStyle({ ...wireStyle, color: patch.color ?? wireStyle.color, gauge: patch.gauge ?? wireStyle.gauge })
+    // wireStyle (not this wire's color/gauge) for whichever field the patch didn't touch. Black
+    // and red never become the default (carryWireStyle): they are ground and supply colours.
+    if ('color' in patch || 'gauge' in patch) store.setWireStyle(carryWireStyle(wireStyle, patch))
   }
   // One undo step each. A cable picked (a preset or one end) also becomes the new-wire cable;
   // Swap ends only turns this wire round, so it leaves that alone.

@@ -9,6 +9,9 @@ import { EMPTY_SELECTION, type Selection, type WireStyle } from './ops.ts'
 import { loadNewWireEnds, saveNewWireEnds } from './cableDefault.ts'
 import { loadSnapObjects, saveSnapObjects } from './snapPref.ts'
 
+/** The colour new wires start with until the user picks one. */
+export const NEW_WIRE_COLOR = 'blue'
+
 export interface EditorState {
   diagram: Diagram
   selection: Selection
@@ -49,7 +52,9 @@ export class EditorStore {
 
   constructor(diagram: Diagram) {
     const ends = loadNewWireEnds()
-    const wireStyle: WireStyle = ends ? { color: 'black', gauge: 22, ends } : { color: 'black', gauge: 22 }
+    // New wires start blue: a signal colour (red and black mean power and ground), so a plain signal
+    // wire never raises wire-color-signal. Ground and supply wires still take black and red by role.
+    const wireStyle: WireStyle = ends ? { color: NEW_WIRE_COLOR, gauge: 22, ends } : { color: NEW_WIRE_COLOR, gauge: 22 }
     this.state = { diagram, selection: EMPTY_SELECTION, wireStyle, highlight: null, reveal: 0, snapObjects: loadSnapObjects() }
   }
 

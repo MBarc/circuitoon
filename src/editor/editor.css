@@ -13,7 +13,8 @@
   padding: 8px 12px; border-bottom: 1px solid var(--rule); background: var(--panel);
 }
 .toolbar .wordmark { font-size: 24px; margin-right: 8px; }
-.toolbar .title { font: 600 18px/1.2 "Fredoka", system-ui, sans-serif; margin-right: auto; }
+/* A long title gives way (ellipsis, full title on hover) before the tools wrap to a second row. */
+.toolbar .title { font: 600 18px/1.2 "Fredoka", system-ui, sans-serif; flex: 1 1 0; min-width: 5em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .toolbar .sep { width: 1px; align-self: stretch; background: var(--rule); margin: 0 4px; }
 .toolbar .message { flex-basis: 100%; margin: 0; font-size: 14px; }
 .toolbar .message.error { color: var(--error); }
@@ -340,3 +341,41 @@ button.wordmark { background: none; border: 0; padding: 0; cursor: pointer; }
 .arrange-icon .box { fill: var(--yellow); stroke: #23282F; stroke-width: 1.4; }
 .arrange-icon .axis { stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; fill: none; }
 .arrange-icon .tick { stroke: var(--guide); stroke-width: 2.2; stroke-linecap: round; fill: none; }
+
+/* Bill of materials: the export dialog's sticker card, wide enough for a parts table. The body
+   scrolls between a fixed head and the actions; each wire row shows a short length of that wire. */
+.bom-dialog {
+  width: min(860px, calc(100vw - 32px)); max-height: min(86vh, 900px); padding: 0;
+  color: var(--text); background: var(--panel);
+  border: 2.5px solid var(--card-edge); border-radius: 12px; box-shadow: 4px 5px 0 var(--shadow);
+}
+.bom-dialog[open] { display: flex; flex-direction: column; }
+.bom-dialog::backdrop { background: rgba(22, 27, 24, 0.38); }
+.bom-head { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 12px; padding: 16px 18px 10px; border-bottom: 1.5px solid var(--rule); }
+.bom-head h2 { margin: 0; font: 600 22px/1.2 "Fredoka", system-ui, sans-serif; }
+.bom-sheet { margin: 0; color: var(--muted); font-size: 15px; overflow-wrap: anywhere; }
+.bom-body { overflow-y: auto; padding: 6px 18px 12px; display: grid; gap: 14px; }
+.bom-body h3 { display: flex; align-items: baseline; gap: 10px; margin: 8px 0 6px; font: 600 17px/1.2 "Fredoka", system-ui, sans-serif; }
+.bom-count { color: var(--muted); font: 700 13px/1 "Atkinson Hyperlegible", system-ui, sans-serif; }
+.bom-table { width: 100%; border-collapse: collapse; font-size: 14.5px; line-height: 1.35; }
+.bom-table th { text-align: left; font-size: 12.5px; font-weight: 700; color: var(--muted); padding: 0 10px 5px 0; border-bottom: 1.5px solid var(--rule); }
+.bom-table td { padding: 7px 10px 7px 0; border-bottom: 1px solid color-mix(in srgb, var(--rule) 60%, transparent); vertical-align: baseline; }
+.bom-table tbody tr:last-child td { border-bottom: 0; }
+.bom-table td.bom-qty, .bom-table th.bom-qty { width: 3.2em; text-align: right; padding-right: 14px; font-variant-numeric: tabular-nums; }
+.bom-table td.bom-qty { font: 700 16px/1.2 "Fredoka", system-ui, sans-serif; }
+.bom-name { font-weight: 700; }
+.bom-value { margin-left: 8px; padding: 1px 7px; border-radius: 5px; background: color-mix(in srgb, var(--yellow) 26%, transparent); font-weight: 700; white-space: nowrap; }
+.bom-refs { overflow-wrap: anywhere; }
+.bom-muted { color: var(--muted); white-space: nowrap; }
+.bom-tag { display: inline-block; margin-left: 8px; padding: 0 6px; border: 1.2px solid var(--rule); border-radius: 5px; color: var(--muted); font-size: 12.5px; font-weight: 700; white-space: nowrap; }
+.bom-tag.warn { border-color: #F48C06; color: var(--text); }
+.bom-color { display: inline-flex; align-items: center; gap: 8px; vertical-align: middle; }
+/* On a chip of sheet paper (light in both themes), as every wire is drawn. */
+.bom-wire { width: 52px; height: 20px; flex: none; padding: 4px; background: var(--paper); border: 1px solid var(--rule); border-radius: 6px; }
+.bom-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; padding: 12px 18px; border-top: 1.5px solid var(--rule); }
+.bom-actions .hint { margin-right: auto; }
+@media (max-width: 560px) {
+  .bom-cat { display: none; }
+  .bom-actions .hint { display: none; }
+}
+.bom-table td:last-child a { white-space: nowrap; }

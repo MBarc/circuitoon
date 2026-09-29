@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { cleanBaseName, defaultBaseName, exportFileName, readDiagramFile, saveWithPicker } from './files.ts'
+import { BOM_FILE, cleanBaseName, defaultBaseName, exportFileName, readDiagramFile, saveWithPicker } from './files.ts'
 import { serializeDiagram } from '../format/diagram.ts'
 import { buttonLed } from '../samples/buttonLed.ts'
 
@@ -79,6 +79,13 @@ describe('cleanBaseName', () => {
     expect(cleanBaseName('lamp.json')).toBe('lamp')
     expect(cleanBaseName('v1.2 lamp')).toBe('v1.2 lamp')
   })
+  it('for a bill of materials, drops a typed -bom.csv or .csv suffix instead', () => {
+    expect(cleanBaseName('lamp-bom.csv', BOM_FILE)).toBe('lamp')
+    expect(cleanBaseName('lamp-BOM.CSV', BOM_FILE)).toBe('lamp')
+    expect(cleanBaseName('lamp.csv', BOM_FILE)).toBe('lamp')
+    expect(cleanBaseName('lamp.json', BOM_FILE)).toBe('lamp.json')
+    expect(cleanBaseName('-bom.csv', BOM_FILE)).toBe('circuitoon')
+  })
   it('falls back to "circuitoon" when nothing is left', () => {
     expect(cleanBaseName('')).toBe('circuitoon')
     expect(cleanBaseName('  ')).toBe('circuitoon')
@@ -141,6 +148,14 @@ describe('saveWithPicker', () => {
       throw new DOMException('Not allowed', 'SecurityError')
     }
     expect(await saveWithPicker(denied, 'a', 't')).toEqual({ status: 'unavailable' })
+  })
+  it('saves a bill of materials as <name>-bom.csv with the CSV type, and remembers the base without the suffix', async () => {
+    const f = fakePicker('bench-bom.csv')
+    const r = await saveWithPicker(f.picker, 'Night light', '"Type"\r\n', BOM_FILE)
+    expect(r).toEqual({ status: 'saved', base: 'bench' })
+    expect(f.calls[0].suggestedName).toBe('Night light-bom.csv')
+    expect(f.calls[0].types[0]).toEqual({ description: 'Bill of materials (CSV)', accept: { 'text/csv': ['.csv'] } })
+    expect(f.written).toEqual(['"Type"\r\n'])
   })
   it('reports a failed write with a message', async () => {
     const broken = async () => ({ name: 'a.circuitoon.json', createWritable: async () => ({ write: async () => { throw new Error('disk full') }, close: async () => {} }) })

@@ -2,7 +2,8 @@
 import { describe, expect, it } from 'vitest'
 import { parseNetlist } from './netlist.ts'
 import { libraryLookup } from './catalog.ts'
-import { channelTable, channelsText, quantities, quantitiesText } from './tables.ts'
+import { bomQuantities, channelTable, channelsText, quantitiesText, sheetBom } from './tables.ts'
+import type { Diagram } from '../format/diagram.ts'
 
 const raw = {
   format: 'circuitoon-netlist/1', title: 'Two switches',
@@ -18,35 +19,40 @@ const raw = {
 describe('tables', () => {
   const r = parseNetlist(raw, libraryLookup)
   if (!r.ok) throw new Error(r.errors.join('\n'))
-  it('counts parts per module', () => {
-    expect(quantities(r.intent).map((q) => [q.module, q.count, q.custom])).toEqual([
-      ['esp32-devkitc-v4', 1, false],
-      ['tilt-switch-sw520d', 2, false],
-    ])
-    expect(quantitiesText(quantities(r.intent))).toContain('2 x ')
-  })
-  it('counts the parts on a sheet, marking the ones layout added', () => {
+  it('counts the parts on a sheet per module, from its bill of materials, marking the ones layout added', () => {
     const at = { x: 0, y: 0 }
-    const sheet = {
-      modules: {},
+    const refs = r.intent.parts.map((p) => p.ref)
+    const sheet: Diagram = {
+      format: 'circuitoon-diagram/1', title: 't', modules: {}, connections: [], intent: raw,
       parts: [
         { uid: 'a', designator: 'U1', module: 'esp32-devkitc-v4', ...at },
-        { uid: 'b', designator: 'sw_1.S', module: 'tilt-switch-sw520d', ...at },
-        { uid: 'c', designator: 'sw_2.S', module: 'tilt-switch-sw520d', ...at },
+        { uid: 'b', designator: refs[1], module: 'tilt-switch-sw520d', ...at },
+        { uid: 'c', designator: refs[2], module: 'tilt-switch-sw520d', ...at },
         { uid: 'd', designator: 'DP1', module: 'power-rail-strip', ...at },
         { uid: 'e', designator: 'DP2', module: 'power-rail-strip', ...at },
       ],
     }
-    const refs = r.intent.parts.map((p) => p.ref)
-    sheet.parts[1].designator = refs[1]
-    sheet.parts[2].designator = refs[2]
-    const q = quantities(r.intent, sheet)
-    expect(q.map((x) => [x.module, x.count, x.added])).toEqual([
-      ['esp32-devkitc-v4', 1, 0],
-      ['power-rail-strip', 2, 2],
-      ['tilt-switch-sw520d', 2, 0],
+    const bom = sheetBom(sheet)
+    const q = bomQuantities(bom)
+    expect(q.map((x) => [x.module, x.count, x.added, x.custom])).toEqual([
+      ['esp32-devkitc-v4', 1, 0, false],
+      ['power-rail-strip', 2, 2, false],
+      ['tilt-switch-sw520d', 2, 0, false],
     ])
     expect(quantitiesText(q)).toContain('(all added by layout)')
+    expect(bom.parts.find((p) => p.module === 'power-rail-strip')!.added).toBe(2)
+  })
+  it('a sheet with no intent (drawn in the editor) counts every part, none added', () => {
+    const at = { x: 0, y: 0 }
+    const sheet: Diagram = { format: 'circuitoon-diagram/1', title: 't', modules: {}, connections: [], parts: [{ uid: 'd', designator: 'DP1', module: 'power-rail-strip', ...at }] }
+    expect(bomQuantities(sheetBom(sheet)).map((x) => [x.count, x.added])).toEqual([[1, 0]])
+  })
+  it('marks a custom part the netlist embeds', () => {
+    const custom = { format: 'circuitoon-module/1', id: 'my-sensor', name: 'My sensor', source: 'https://example.com/ds.pdf', pins: [{ name: 'A', side: 'left', type: 'io' }] }
+    const withCustom = { ...raw, modules: { 'my-sensor': custom }, parts: [...raw.parts, { ref: 'X1', module: 'my-sensor' }] }
+    const sheet: Diagram = { format: 'circuitoon-diagram/1', title: 't', modules: {}, connections: [], intent: withCustom,
+      parts: [{ uid: 'x', designator: 'X1', module: 'my-sensor', x: 0, y: 0 }] }
+    expect(bomQuantities(sheetBom(sheet))).toEqual([{ module: 'my-sensor', name: 'my-sensor', count: 1, added: 0, custom: true }])
   })
   it('lists each copy port and the endpoint it is bound to', () => {
     expect(channelTable(r.intent)).toEqual([

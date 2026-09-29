@@ -3,7 +3,7 @@
 // Part 1, the wire look while a plug is dragged: loads a Schuko outlet with a CEE 7/7 cord plug seated
 // in it and an E27 lamp wired from the plug's L lead, then checks: the L wire takes its identity colour
 // (brown) and the hazard outline; a wire drawn from the plug's N lead takes its identity colour (blue)
-// although the new-wire style is black; while the plug is dragged off the outlet, the canvas holds the
+// although the new-wire style is purple (set through a wire's swatch, then undone); while the plug is dragged off the outlet, the canvas holds the
 // wire looks it had when the drag began (no re-analysis per frame); after the drop the looks follow the
 // sheet again (the unplugged L wire is plain, the new wire keeps the blue it was given).
 //
@@ -158,8 +158,26 @@ for (const scheme of ['light', 'dark']) {
   check(JSON.stringify(await look('m1')) === JSON.stringify({ color: BROWN, hazard: true }), `${scheme}: the L wire from the seated plug is brown with the hazard outline (${JSON.stringify(await look('m1'))})`)
   check(await page.locator('.mains-badge').isVisible(), `${scheme}: the toolbar shows the mains badge`)
 
-  // A new wire from the plug's N lead takes N's identity colour, not the black new-wire style.
-  check((await page.locator('.inspector .hint', { hasText: 'New wires' }).textContent()).includes('black'), `${scheme}: the new-wire style is black`)
+  // The new-wire style starts blue, N's own identity colour, so set it to purple first: pick purple on
+  // the L wire (which makes it the style), then undo the wire's recolour (the style stays).
+  check((await page.locator('.inspector .hint', { hasText: 'New wires' }).textContent()).startsWith('New wires: blue'), `${scheme}: the new-wire style starts blue`)
+  const onM1 = await page.evaluate(() => {
+    const path = document.querySelector('svg.canvas g[data-wire="m1"] .wire-color')
+    const p = path.getPointAtLength(path.getTotalLength() / 2)
+    const svg = path.ownerSVGElement
+    const [vx, vy, vw] = svg.getAttribute('viewBox').split(' ').map(Number)
+    const box = svg.getBoundingClientRect()
+    const k = box.width / vw
+    return { x: box.left + (p.x - vx) * k, y: box.top + (p.y - vy) * k }
+  })
+  await page.mouse.click(onM1.x, onM1.y)
+  await page.locator('.inspector .swatch[title="purple"]').click()
+  await page.getByRole('button', { name: 'Undo' }).click()
+  await page.mouse.click(5, 5)
+  await pause(200)
+  check(JSON.stringify(await look('m1')) === JSON.stringify({ color: BROWN, hazard: true }), `${scheme}: undo gives the L wire back its identity colour`)
+  // A new wire from the plug's N lead takes N's identity colour, not the purple new-wire style.
+  check((await page.locator('.inspector .hint', { hasText: 'New wires' }).textContent()).includes('purple for signals'), `${scheme}: the new-wire style is purple`)
   const from = await center('[data-pin-part="xp1"][data-pin="N"]')
   const to = await center('[data-pin-part="e1"][data-pin="N"]')
   await page.mouse.move(from.x, from.y)

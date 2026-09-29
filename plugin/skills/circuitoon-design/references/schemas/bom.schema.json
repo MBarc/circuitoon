@@ -1,0 +1,202 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "circuitoon bom --json",
+  "type": "object",
+  "required": [
+    "format",
+    "ok",
+    "sheet",
+    "output",
+    "bom",
+    "lines"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "format": {
+      "const": "circuitoon-cli/bom/1"
+    },
+    "ok": {
+      "const": true
+    },
+    "sheet": {
+      "type": "string"
+    },
+    "output": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "bom": {
+      "type": "object",
+      "required": [
+        "title",
+        "parts",
+        "wires",
+        "connectors"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "title": {
+          "type": "string"
+        },
+        "parts": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "module",
+              "name",
+              "value",
+              "category",
+              "source",
+              "count",
+              "added",
+              "designators",
+              "refs",
+              "custom"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "module": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "value": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "category": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "source": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "count": {
+                "type": "integer"
+              },
+              "added": {
+                "type": "integer"
+              },
+              "designators": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "refs": {
+                "type": "string"
+              },
+              "custom": {
+                "type": "boolean"
+              }
+            }
+          }
+        },
+        "wires": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "cable",
+              "ends",
+              "gauge",
+              "color",
+              "count",
+              "added"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "cable": {
+                "type": "string"
+              },
+              "ends": {
+                "type": "array",
+                "items": {
+                  "enum": [
+                    "bare",
+                    "dupont-male",
+                    "dupont-female",
+                    "solid-jumper",
+                    "alligator",
+                    "stripped",
+                    "ferrule",
+                    "jst-xh",
+                    "jst-ph",
+                    "jst-sh",
+                    "grove",
+                    "banana"
+                  ]
+                }
+              },
+              "gauge": {
+                "type": "integer"
+              },
+              "color": {
+                "type": "string"
+              },
+              "count": {
+                "type": "integer"
+              },
+              "added": {
+                "type": "integer"
+              }
+            }
+          }
+        },
+        "connectors": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "kind",
+              "name",
+              "count"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "enum": [
+                  "bare",
+                  "dupont-male",
+                  "dupont-female",
+                  "solid-jumper",
+                  "alligator",
+                  "stripped",
+                  "ferrule",
+                  "jst-xh",
+                  "jst-ph",
+                  "jst-sh",
+                  "grove",
+                  "banana"
+                ]
+              },
+              "name": {
+                "type": "string"
+              },
+              "count": {
+                "type": "integer"
+              }
+            }
+          }
+        }
+      }
+    },
+    "lines": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}

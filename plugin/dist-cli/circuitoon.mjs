@@ -2534,6 +2534,28 @@ var END_NAMES = {
 	grove: "Grove plug",
 	banana: "Banana plug"
 };
+var preset = (id, name, from, to = from) => ({
+	id,
+	name,
+	from,
+	to
+});
+var CABLE_PRESETS = [
+	preset("wire", "Wire", "bare"),
+	preset("dupont-mm", "Dupont M-M", "dupont-male"),
+	preset("dupont-mf", "Dupont M-F", "dupont-male", "dupont-female"),
+	preset("dupont-ff", "Dupont F-F", "dupont-female"),
+	preset("solid-jumper", "Solid-core jumper", "solid-jumper"),
+	preset("alligator", "Alligator leads", "alligator"),
+	preset("alligator-dupont", "Alligator to Dupont M", "alligator", "dupont-male"),
+	preset("stripped", "Stripped hookup wire", "stripped"),
+	preset("ferrules", "Ferrules", "ferrule"),
+	preset("jst-xh", "JST-XH lead", "jst-xh"),
+	preset("jst-ph", "JST-PH lead", "jst-ph"),
+	preset("qwiic", "Qwiic / STEMMA QT end (per wire)", "jst-sh"),
+	preset("grove", "Grove end (per wire)", "grove"),
+	preset("banana", "Banana leads", "banana")
+];
 function endKind(ends, which) {
 	return ends?.[which] ?? "bare";
 }
@@ -2543,6 +2565,12 @@ function normalizeEnds(ends) {
 	if (ends?.from && ends.from !== "bare") out.from = ends.from;
 	if (ends?.to && ends.to !== "bare") out.to = ends.to;
 	return out.from || out.to ? out : void 0;
+}
+/** The preset these ends match, either way round, or null when they match none (Custom). */
+function presetOf(ends) {
+	const a = endKind(ends, "from");
+	const b = endKind(ends, "to");
+	return CABLE_PRESETS.find((p) => p.from === a && p.to === b || p.from === b && p.to === a) ?? null;
 }
 /**
 * How much of the wire each end's connector takes, in px back from the endpoint at full size:
@@ -3143,6 +3171,30 @@ function wireColor(c) {
 	const key = c.toLowerCase();
 	if (Object.hasOwn(STRIPED_COLORS, key)) return STRIPED_COLORS[key][0];
 	return Object.hasOwn(NAMED_COLORS, key) ? NAMED_COLORS[key] : NAMED_COLORS.black;
+}
+/**
+* Which of the low-voltage convention's reserved colours a stored wire colour reads as: `black`
+* (ground), `red` (a positive supply) or `other`. Named black and red count, and so does a custom
+* hex a person would call black (very dark, little colour) or red (a saturated hue within 15
+* degrees of pure red, neither pale nor near black). Orange, pink and brown are `other`.
+*/
+function colorFamily(c) {
+	const key = c.toLowerCase();
+	if (key === "black" || key === "red") return key;
+	if (!/^#[0-9a-f]{6}$/.test(key)) return "other";
+	const [r, g, b] = [
+		1,
+		3,
+		5
+	].map((i) => parseInt(key.slice(i, i + 2), 16) / 255);
+	const max = Math.max(r, g, b);
+	const min = Math.min(r, g, b);
+	const l = (max + min) / 2;
+	const s = max === min ? 0 : (max - min) / (1 - Math.abs(2 * l - 1));
+	if (l < .25 && (s < .35 || max < .15)) return "black";
+	if (max !== r || s < .5 || l < .25 || l > .7) return "other";
+	const hue = 60 * ((g - b) / (max - min));
+	return Math.abs(hue) <= 15 ? "red" : "other";
 }
 /** The stripe colour of a two-colour wire, or null. */
 function wireStripe(c) {
@@ -4074,6 +4126,7 @@ function validateDiagram(raw) {
 		checkEnd(c.from, `${at}.from`);
 		checkEnd(c.to, `${at}.to`);
 		if (c.color !== void 0 && !(typeof c.color === "string" && isValidColor(c.color))) errors.push(`${at}.color: must be a named color or #RRGGBB`);
+		if (c.colorSet !== void 0 && c.colorSet !== true) errors.push(`${at}.colorSet: must be true when present`);
 		if (c.gauge !== void 0 && !(Number.isInteger(c.gauge) && c.gauge >= 16 && c.gauge <= 30)) errors.push(`${at}.gauge: must be a whole number from 16 to 30`);
 		if (c.route !== void 0 && !(Array.isArray(c.route) && c.route.every((p) => Array.isArray(p) && p.length === 2 && isNum(p[0]) && isNum(p[1])))) errors.push(`${at}.route: must be a list of [x, y] points`);
 		else if (Array.isArray(c.route) && c.route.length > 200) {
@@ -43854,7 +43907,7 @@ function liveTerminals(info) {
 	}
 	return s;
 }
-function roleOf(t) {
+function roleOf$1(t) {
 	if (!t) return null;
 	if (!t.info.any) return isBoard(t.module) && (t.module.holes ?? []).some((h) => h.name === t.name) ? "strip" : null;
 	if (t.info.bonds.has(t.name)) return "end";
@@ -43868,7 +43921,7 @@ function protectivePaths(g) {
 	const keyOf = [];
 	const isStrip = [];
 	const T = /* @__PURE__ */ new Set();
-	const role = (key) => roleOf(termAt(g, key));
+	const role = (key) => roleOf$1(termAt(g, key));
 	const vertex = (key, r) => {
 		let i = r === "end" ? void 0 : ids.get(key);
 		if (i === void 0) {
@@ -46661,6 +46714,18 @@ var RULES = {
 		severity: "warning",
 		title: "Mains checks did not finish"
 	},
+	"wire-color-ground": {
+		severity: "warning",
+		title: "Ground wire not black"
+	},
+	"wire-color-supply": {
+		severity: "warning",
+		title: "Supply wire not red"
+	},
+	"wire-color-signal": {
+		severity: "warning",
+		title: "Signal wire in a power color"
+	},
 	"battery-bank": {
 		severity: "info",
 		title: "Parallel battery bank"
@@ -46980,6 +47045,102 @@ function railAdvice(loads, it) {
 	const what = andList(loads.map((t, i) => `${termName(t)} ${texts[i]}`));
 	return commonRails(loads).length ? `${what}: connect ${it} to ${supplyFor(loads)}.` : `${what}: these parts need different supply voltages; split the rail and power each part from a supply it accepts.`;
 }
+/** Builds a node key's terminal (null for a missing part, module or pin), with its converter's dead state from `mains`. */
+function terminalsOf(d, partByUid, mains) {
+	return (key) => {
+		const [uid, name] = JSON.parse(key);
+		const part = partByUid.get(uid);
+		const m = part && moduleOf(d, part.module);
+		if (!part || !m) return null;
+		const info = moduleInfo(m);
+		const def = info.defs.get(name);
+		if (!def) return null;
+		const src = def.pin ?? def.group;
+		return {
+			key,
+			part,
+			info,
+			name,
+			label: src.label ?? name,
+			type: src.type,
+			supply: src.supply,
+			bare: !def.pin && !src.type,
+			dead: mains?.deadOutputs.get(key)
+		};
+	};
+}
+/**
+* A pin on a positive supply rail: a pin on USB power, a power output at a positive voltage (the
+* part's value, else its supply; an adjustable output counts, a pass-through such as a charger's
+* OUT+ too), or a power input whose every rail is known and positive. A rail that does not parse
+* ("-5V") is never guessed into a supply.
+*/
+function positiveRail(t) {
+	if (t.bare) return false;
+	const external = t.info.external.get(t.name);
+	if (external) return external.volts > 0;
+	if (t.type === "power_out") {
+		const value = t.info.valued.has(t.name) ? partValue(t.part, t.info.module) : null;
+		if (value) return value.value > 0;
+		if (!t.supply) return false;
+		const p = parseSupply(t.supply);
+		return p.unknown === null ? p.volts.length > 0 && p.volts.every((v) => v > 0) : p.unknown === "adjustable";
+	}
+	if (t.type === "power_in") {
+		const rails = knownRails(t.supply);
+		return !!rails?.length && rails.every((v) => v > 0);
+	}
+	return false;
+}
+/**
+* The role of the net made of `keys` (with their terminals), or null when no colour is judged: a net
+* on mains wiring or with a mains identity (it keeps its regional colours), a net with a power pin
+* whose voltage is not known to be positive (a rail that does not parse, such as -5V, or no supply
+* listed: it is never guessed into supply or signal), or a net that holds both a ground and a
+* positive supply (a short, or the link between two cells in series).
+*/
+function roleOf(keys, terms, mains) {
+	if (mains && keys.some((k) => mains.hazardKeys.has(k) || mains.conductorOf(k))) return null;
+	if (terms.some((t) => !t.bare && (t.type === "power_out" || t.type === "power_in") && !positiveRail(t))) return null;
+	const ground = terms.some((t) => t.type === "ground");
+	const supply = terms.some(positiveRail);
+	return ground && supply ? null : ground ? "ground" : supply ? "supply" : "signal";
+}
+var rolesCache = /* @__PURE__ */ new WeakMap();
+/** Every net's colour role, from the checker's own supply and ground knowledge. Cached per sheet state, like the mains analysis. */
+function netRoles(d) {
+	const hit = rolesCache.get(d.connections);
+	if (hit && hit.parts === d.parts && hit.modules === d.modules) return hit.result;
+	const mains = analyseMainsCached(d);
+	const nl = netlist(d, plugsOf(d));
+	const terminal = terminalsOf(d, new Map(d.parts.map((p) => [p.uid, p])), mains);
+	return rememberRoles(d, nl, nl.nets.map((keys) => roleOf(keys, termsOf(terminal, keys), mains)), terminal, mains);
+}
+var termsOf = (terminal, keys) => keys.map(terminal).filter((t) => t !== null);
+/** Caches the roles for `d` (the checker stores the ones it worked out, so the renderer reuses them). */
+function rememberRoles(d, nl, roles, terminal, mains) {
+	const roleOfKey = (key) => {
+		const i = nl.netOf.get(key);
+		return i === void 0 ? roleOf([key], termsOf(terminal, [key]), mains) : roles[i];
+	};
+	const result = {
+		netlist: nl,
+		roles,
+		roleOfKey
+	};
+	rolesCache.set(d.connections, {
+		parts: d.parts,
+		modules: d.modules,
+		result
+	});
+	return result;
+}
+/** The colour each role's wires are: ground black, supply red; a signal has no one colour. */
+var ROLE_COLORS = {
+	ground: "black",
+	supply: "red",
+	signal: null
+};
 /** Every wiring problem on the sheet, errors first, then by subject (a designator, in natural order), then by rule. */
 function checkDiagram(d) {
 	const partByUid = new Map(d.parts.map((p) => [p.uid, p]));
@@ -47005,27 +47166,7 @@ function checkDiagram(d) {
 			}
 		});
 	};
-	const terminal = (key) => {
-		const [uid, name] = JSON.parse(key);
-		const part = partByUid.get(uid);
-		const m = part && moduleOf(d, part.module);
-		if (!part || !m) return null;
-		const info = moduleInfo(m);
-		const def = info.defs.get(name);
-		if (!def) return null;
-		const src = def.pin ?? def.group;
-		return {
-			key,
-			part,
-			info,
-			name,
-			label: src.label ?? name,
-			type: src.type,
-			supply: src.supply,
-			bare: !def.pin && !src.type,
-			dead: mains?.deadOutputs.get(key)
-		};
-	};
+	const terminal = terminalsOf(d, partByUid, mains);
 	const netWires = nl.nets.map(() => []);
 	const connected = new Set(plugs.map((pl) => pl.part));
 	for (const c of d.connections) {
@@ -47422,6 +47563,49 @@ function checkDiagram(d) {
 		});
 	}
 	for (const f of mains?.findings ?? []) add(f);
+	const byUid = new Map(d.connections.map((c) => [c.uid, c]));
+	const roles = rememberRoles(d, nl, nl.nets.map((keys, i) => roleOf(keys, netTerms[i], mains)), terminal, mains).roles;
+	nl.nets.forEach((keys, i) => {
+		const role = roles[i];
+		if (!role) return;
+		const bad = netWires[i].map((uid) => byUid.get(uid)).filter((c) => {
+			if (c.color === void 0 || !c.colorSet) return false;
+			const fam = colorFamily(c.color);
+			return role === "ground" ? fam !== "black" : role === "supply" ? fam !== "red" : fam !== "other";
+		});
+		if (!bad.length) return;
+		const named = [...netTerms[i]].filter((t) => !t.bare).sort((a, b) => natural.compare(termName(a), termName(b)));
+		const at = (role === "ground" ? named.find((t) => t.type === "ground") : role === "supply" ? named.find(positiveRail) : void 0) ?? named[0];
+		const names = bad.map((c) => wireName(d, c)).sort(natural.compare);
+		const list = names.length > 4 ? `${names.slice(0, 3).join(", ")} and ${names.length - 3} more` : andList(names);
+		const n = bad.length;
+		const wires = bad.map((c) => c.uid);
+		const where = at ? ` at ${termName(at)}` : "";
+		const them = n === 1 ? "it" : "them";
+		let message;
+		if (role === "ground") message = `${n === 1 ? "A wire" : `${n} wires`} on the ground net${where} ${isAre(n)} not black: ${list}. Ground wires are black by convention: set ${them} to black.`;
+		else if (role === "supply") message = `${n === 1 ? "A wire" : `${n} wires`} on the supply net${where} ${isAre(n)} not red: ${list}. Positive supply wires are red by convention: set ${them} to red.`;
+		else {
+			const fams = new Set(bad.map((c) => colorFamily(c.color)));
+			const what = fams.size > 1 ? "red or black" : [...fams][0];
+			message = `${n === 1 ? "A signal wire" : `${n} signal wires`}${where} ${isAre(n)} ${what}: ${list}. Red and black mean power and ground by convention: give ${them} another color, such as blue, yellow or green.`;
+		}
+		const parts = bad.flatMap((c) => [c.from.part, c.to.part]).filter((u) => partByUid.has(u));
+		add({
+			rule: `wire-color-${role}`,
+			subject: at?.part.designator ?? names[0],
+			target: at ? termName(at) : names[0],
+			message,
+			parts,
+			pins: [],
+			wires,
+			select: {
+				parts: [],
+				wires
+			},
+			causes: [keys[0]]
+		});
+	});
 	const rank = (s) => s === "error" ? 0 : s === "warning" ? 1 : 2;
 	const sorted = findings.map((f) => ({
 		...f,
@@ -57579,24 +57763,31 @@ var IDENTITY_COLORS = {
 };
 /** US and Japan wire L black, N white, PE green; Europe, the UK and AU/NZ use the IEC colours. */
 var schemeOf = (region) => region === "us" || region === "jp" ? "us" : "iec";
-/**
-* The cached analysis for the renderer, or null when it fails (final review 3): the canvas draws on
-* every edit, so a checker bug must cost the mains look, never the editor. The error is logged.
-*/
-function analysisForLook(d) {
+/** The analysis, and whether it failed (then no wire gets a role colour either: mains nets cannot be told apart). */
+function lookAnalysis(d) {
 	try {
-		return analyseMainsCached(d);
+		return {
+			analysis: analyseMainsCached(d),
+			failed: false
+		};
 	} catch (e) {
 		console.error("Circuitoon: the mains analysis failed, so mains wires are drawn without their look.", e);
-		return null;
+		return {
+			analysis: null,
+			failed: true
+		};
 	}
 }
-/** Per wire uid, its mains look; wires off mains are left out (every wire, when the analysis failed). */
+/**
+* Per wire uid, its look; wires with nothing to show are left out. A mains wire has its identity
+* and hazard (none when the analysis failed). A low-voltage wire with no stored colour on a ground
+* or supply net gets that role's colour; a wire that stores a colour is drawn in it, so it needs none.
+*/
 function wireLooks(d) {
 	const out = /* @__PURE__ */ new Map();
-	const a = analysisForLook(d);
-	if (!a) return out;
-	for (const c of d.connections) {
+	const { analysis: a, failed } = lookAnalysis(d);
+	if (failed) return out;
+	if (a) for (const c of d.connections) {
 		const k = nodeKey(c.from.part, c.from.pin);
 		const id = a.conductorOf(k) ?? a.conductorOf(nodeKey(c.to.part, c.to.pin));
 		const hazard = a.hazardKeys.has(k);
@@ -57605,7 +57796,31 @@ function wireLooks(d) {
 			hazard
 		});
 	}
+	const plain = d.connections.filter((c) => c.color === void 0 && !out.get(c.uid)?.color);
+	if (!plain.length) return out;
+	let roles;
+	try {
+		roles = netRoles(d);
+	} catch (e) {
+		console.error("Circuitoon: the net roles failed, so wires are drawn without their role colours.", e);
+		return out;
+	}
+	for (const c of plain) {
+		const role = roles.roleOfKey(nodeKey(c.from.part, c.from.pin));
+		const color = role ? ROLE_COLORS[role] : null;
+		if (color) out.set(c.uid, {
+			color,
+			hazard: out.get(c.uid)?.hazard ?? false
+		});
+	}
 	return out;
+}
+/**
+* The colour name a wire is drawn in: its stored colour, else its look (mains identity or role
+* colour), else the default, black. The sheet, the canvas and the bill of materials all use it.
+*/
+function drawnColor(c, looks) {
+	return c.color ?? looks.get(c.uid)?.color ?? "black";
 }
 //#endregion
 //#region node_modules/react/cjs/react-jsx-runtime.production.js
@@ -58610,7 +58825,7 @@ function Sheet({ diagram, captions = {}, box, label, decorative = false, theme =
 				children: wires.map(({ conn, d, blocked }) => {
 					const w = wireWidth(conn.gauge);
 					const look = looks.get(conn.uid);
-					const name = conn.color ?? look?.color ?? void 0;
+					const name = drawnColor(conn, looks);
 					const stripe = wireStripe(name);
 					return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("g", {
 						"data-wire": conn.uid,
@@ -59736,35 +59951,225 @@ var NOT_CHECKED = [
 	"Each part's own correctness beyond its cited sources; custom parts embedded in the netlist are unverified."
 ];
 //#endregion
-//#region src/agent/tables.ts
-/** Parts per module: on `sheet` when given (what gets built), else in the intent. */
-function quantities(intent, sheet) {
-	const refs = new Set(intent.parts.map((p) => p.ref));
-	const rows = /* @__PURE__ */ new Map();
-	const parts = sheet ? sheet.parts.map((p) => ({
-		module: p.module,
-		added: !refs.has(p.designator)
-	})) : intent.parts.map((p) => ({
-		module: p.module,
-		added: false
-	}));
-	for (const p of parts) {
-		const row = rows.get(p.module) ?? {
+//#region src/format/bom.ts
+/**
+* Designators in natural order, a run of three or more with one prefix and consecutive numbers
+* joined as "BT1-BT4": "R1-R3, R9, R10". A run whose designators hold a hyphen or a space is joined
+* with " to " ("J1-1 to J1-3", "MCP Breadboard 1 to MCP Breadboard 3"), so it never reads as one name.
+*/
+function designatorRanges(names) {
+	const sorted = [...names].sort(natural.compare);
+	const parsed = sorted.map((n) => /^(.*?)(\d+)$/.exec(n));
+	const out = [];
+	for (let i = 0; i < sorted.length;) {
+		let j = i;
+		const m = parsed[i];
+		while (m && j + 1 < sorted.length && parsed[j + 1]?.[1] === m[1] && Number(parsed[j + 1][2]) === Number(parsed[j][2]) + 1) j++;
+		if (j - i >= 2) out.push(`${sorted[i]}${/[- ]/.test(sorted[i] + sorted[j]) ? " to " : "-"}${sorted[j]}`);
+		else for (let k = i; k <= j; k++) out.push(sorted[k]);
+		i = j + 1;
+	}
+	return out.join(", ");
+}
+/** What a cable is called in a bill, from its ends. */
+var CABLE_NAMES = {
+	wire: "Hookup wire",
+	"dupont-mm": "Dupont M-M jumper",
+	"dupont-mf": "Dupont M-F jumper",
+	"dupont-ff": "Dupont F-F jumper"
+};
+function cableOf(a, b) {
+	const preset = presetOf({
+		from: a,
+		to: b
+	});
+	if (preset) return CABLE_NAMES[preset.id] ?? preset.name;
+	return `${END_NAMES[a]} to ${END_NAMES[b]} lead`;
+}
+/** Ends a connector is fitted to: not a bare, stripped or solid-core end. */
+var isConnector = (k) => k !== "bare" && !END_SIZE[k].exposed;
+var byOrder = (a, b) => END_KINDS.indexOf(a) - END_KINDS.indexOf(b);
+/** The bill of materials for `d`. */
+function billOfMaterials(d, opts = {}) {
+	const parts = /* @__PURE__ */ new Map();
+	for (const p of d.parts) {
+		const m = moduleOf(d, p.module);
+		const text = m ? editableParams(m).flatMap((q) => {
+			const v = paramValue(p, m, q.name);
+			return v === null ? [] : [formatValue(v, q.unit)];
+		}).join(", ") || null : null;
+		const key = JSON.stringify([p.module, text]);
+		let row = parts.get(key);
+		if (!row) {
+			row = {
+				module: p.module,
+				name: m?.name ?? p.module,
+				value: text,
+				category: m?.category ?? null,
+				source: (m?.source ?? "").split(/\s+/).filter(Boolean),
+				count: 0,
+				added: 0,
+				designators: [],
+				refs: "",
+				custom: !!opts.custom?.has(p.module)
+			};
+			parts.set(key, row);
+		}
+		row.count++;
+		if (opts.added?.has(p.designator)) row.added++;
+		row.designators.push(p.designator);
+	}
+	for (const r of parts.values()) {
+		r.designators.sort(natural.compare);
+		r.refs = designatorRanges(r.designators);
+	}
+	const cat = (c) => c ?? "￿";
+	const partRows = [...parts.values()].sort((a, b) => natural.compare(cat(a.category), cat(b.category)) || natural.compare(a.name, b.name) || natural.compare(a.designators[0] ?? "", b.designators[0] ?? ""));
+	const looks = d.connections.some((c) => c.color === void 0) ? wireLooks(d) : /* @__PURE__ */ new Map();
+	const wires = /* @__PURE__ */ new Map();
+	const connectors = /* @__PURE__ */ new Map();
+	for (const c of d.connections) {
+		const ends = [endKind(c.ends, "from"), endKind(c.ends, "to")].sort(byOrder);
+		const gauge = c.gauge ?? 22;
+		const color = drawnColor(c, looks);
+		const cable = cableOf(ends[0], ends[1]);
+		const key = JSON.stringify([
+			cable,
+			ends,
+			gauge,
+			color
+		]);
+		let row = wires.get(key);
+		if (!row) wires.set(key, row = {
+			cable,
+			ends,
+			gauge,
+			color,
 			count: 0,
 			added: 0
-		};
+		});
 		row.count++;
-		if (p.added) row.added++;
-		rows.set(p.module, row);
+		if (c.routing) row.added++;
+		for (const k of ends) if (isConnector(k)) connectors.set(k, (connectors.get(k) ?? 0) + 1);
 	}
-	const nameOf = (module) => intent.modules[module]?.name ?? sheet?.modules[module]?.name ?? module;
-	return [...rows].map(([module, r]) => ({
-		module,
-		name: nameOf(module),
-		count: r.count,
-		added: r.added,
-		custom: intent.custom.includes(module)
-	})).sort((a, b) => naturalCompare(a.name, b.name));
+	const wireRows = [...wires.values()].sort((a, b) => natural.compare(a.cable, b.cable) || a.gauge - b.gauge || natural.compare(a.color, b.color));
+	const connectorRows = [...connectors].map(([kind, count]) => ({
+		kind,
+		name: END_NAMES[kind],
+		count
+	})).sort((a, b) => natural.compare(a.name, b.name));
+	return {
+		title: d.title,
+		parts: partRows,
+		wires: wireRows,
+		connectors: connectorRows
+	};
+}
+/** "(added by layout)", "(1 added by layout)", "(custom, unverified)", or nothing. */
+function notes(count, added, custom = false) {
+	const out = [];
+	if (added) out.push(added === count ? "added by layout" : `${added} added by layout`);
+	if (custom) out.push("custom, unverified");
+	return out;
+}
+var suffix = (n) => n.length ? ` (${n.join("; ")})` : "";
+/** The bill as lines: "4 x 18650 holder (1 cell), BT1-BT4", "12 x Dupont M-M jumper, 22 AWG, red". */
+function bomLines(bom) {
+	return [
+		...bom.parts.map((p) => `${p.count} x ${p.name}${p.value ? `, ${p.value}` : ""}, ${p.refs}${suffix(notes(p.count, p.added, p.custom))}`),
+		...bom.wires.map((w) => `${w.count} x ${w.cable}, ${w.gauge} AWG, ${w.color}${suffix(notes(w.count, w.added))}`),
+		...bom.connectors.map((c) => `${c.count} x ${c.name}`)
+	];
+}
+/**
+* One CSV field: always quoted, quotes doubled (RFC 4180). A value a spreadsheet would run as a
+* formula (starting with =, +, -, @, a tab or a carriage return) gets a leading apostrophe.
+*/
+function csvField(v) {
+	let s = String(v);
+	if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`;
+	return `"${s.replace(/"/g, "\"\"")}"`;
+}
+/** Units in plain ASCII for a CSV any spreadsheet reads: "4.7 kΩ" is "4.7 kohm", "100 µF" "100 uF". */
+var ascii = (s) => s.replace(/[\u2126\u03a9]/g, "ohm").replace(/[\u00b5\u03bc]/g, "u");
+var BOM_CSV_HEADER = [
+	"Type",
+	"Qty",
+	"Description",
+	"Value",
+	"Designators",
+	"Category",
+	"Source",
+	"Notes"
+];
+/** The bill as CSV: a header, then a row per part group, wire group and connector kind; CRLF line ends. */
+function bomCsv(bom) {
+	return [
+		BOM_CSV_HEADER,
+		...bom.parts.map((p) => [
+			"Part",
+			p.count,
+			p.name,
+			ascii(p.value ?? ""),
+			p.refs,
+			p.category ?? "",
+			p.source.join(" "),
+			notes(p.count, p.added, p.custom).join("; ")
+		]),
+		...bom.wires.map((w) => [
+			"Wire",
+			w.count,
+			w.cable,
+			`${w.gauge} AWG, ${w.color}`,
+			"",
+			"",
+			"",
+			notes(w.count, w.added).join("; ")
+		]),
+		...bom.connectors.map((c) => [
+			"Connector",
+			c.count,
+			c.name,
+			"",
+			"",
+			"",
+			"",
+			""
+		])
+	].map((r) => r.map(csvField).join(",")).join("\r\n") + "\r\n";
+}
+//#endregion
+//#region src/agent/tables.ts
+/**
+* The bill of materials for a sheet. With an intent that parses, a part it does not name was added
+* by layout, and its embedded modules are custom; a sheet drawn by hand has neither.
+*/
+function sheetBom(d, library = libraryLookup) {
+	const parsed = d.intent !== void 0 ? parseNetlist(d.intent, intentLookup(d, library)) : null;
+	if (!parsed?.ok) return billOfMaterials(d);
+	const refs = new Set(parsed.intent.parts.map((p) => p.ref));
+	return billOfMaterials(d, {
+		added: new Set(d.parts.filter((p) => !refs.has(p.designator)).map((p) => p.designator)),
+		custom: new Set(parsed.intent.custom)
+	});
+}
+/** Parts per module, summed from the bill of materials, by name in natural order. */
+function bomQuantities(bom) {
+	const rows = /* @__PURE__ */ new Map();
+	for (const p of bom.parts) {
+		const row = rows.get(p.module);
+		if (row) {
+			row.count += p.count;
+			row.added += p.added;
+		} else rows.set(p.module, {
+			module: p.module,
+			name: p.name,
+			count: p.count,
+			added: p.added,
+			custom: p.custom
+		});
+	}
+	return [...rows.values()].sort((a, b) => naturalCompare(a.name, b.name));
 }
 function channelTable(intent) {
 	return intent.copies.flatMap((c) => Object.entries(c.bindings).map(([port, endpoint]) => ({
@@ -60082,7 +60487,7 @@ function renderCommand(args, io) {
 }
 //#endregion
 //#region src/cli/gate.ts
-var GATE_FORMAT = "circuitoon-cli/gate/1";
+var GATE_FORMAT = "circuitoon-cli/gate/2";
 var sha256 = (bytes) => createHash("sha256").update(bytes).digest("hex");
 /** The loader's warning for a part whose module the file does not embed (a missing module blocks). */
 var MISSING_MODULE = "is not embedded in this file";
@@ -60115,7 +60520,8 @@ function clearArtifacts(outDir, keep) {
 	for (const name of [
 		"sheet.svg",
 		"sheet.png",
-		"link.txt"
+		"link.txt",
+		"bom.csv"
 	]) removeStale(outDir, name, keep);
 }
 /** Removes an earlier gate.json, and the file fallback it names, before anything else runs. */
@@ -60162,6 +60568,7 @@ async function runGate(bytes, opts) {
 		chars: 0
 	};
 	let rows = {
+		bom: null,
 		quantities: [],
 		channels: []
 	};
@@ -60219,10 +60626,18 @@ async function runGate(bytes, opts) {
 		wires: [c.uid]
 	});
 	const parsed = d.intent !== void 0 ? parseNetlist(d.intent, intentLookup(d, libraryLookup)) : null;
-	if (parsed?.ok) rows = {
-		quantities: quantities(parsed.intent, d),
-		channels: channelTable(parsed.intent)
+	const bom = sheetBom(d, libraryLookup);
+	rows = {
+		bom,
+		quantities: bomQuantities(bom),
+		channels: parsed?.ok ? channelTable(parsed.intent) : []
 	};
+	required.push({
+		kind: "bom",
+		path: "bom.csv"
+	});
+	writeFile(io, join(outDir, "bom.csv"), bomCsv(bom));
+	artifact("bom", "bom.csv");
 	const shoot = (drawn, kind, name) => {
 		required.push({
 			kind,
@@ -60511,6 +60926,7 @@ function realize(intent, d, locals = []) {
 			from,
 			to,
 			color: colors[ni],
+			colorSet: true,
 			gauge: 22,
 			...ends ? { ends } : {},
 			...routing ? { routing: true } : {}
@@ -61498,6 +61914,57 @@ function placeParts(intent, opts) {
 	};
 }
 //#endregion
+//#region src/agent/colors.ts
+/** Readable on the light and dark sheet, and never red or black (those mean power and ground). */
+var SIGNAL_PALETTE = [
+	"blue",
+	"green",
+	"yellow",
+	"orange",
+	"purple",
+	"brown",
+	"pink",
+	"gray",
+	"#00A6A6",
+	"#6B8E23"
+];
+function colorByRole(intent, d, netOfWire) {
+	const roles = netRoles(d);
+	const firstWire = /* @__PURE__ */ new Map();
+	for (const c of d.connections) {
+		const net = netOfWire.get(c.uid);
+		if (net !== void 0 && !firstWire.has(net)) firstWire.set(net, c);
+	}
+	const partsOf = new Map(intent.nets.map((n) => [n.name, new Set(n.terminals.filter((t) => !t.infra).map((t) => t.ref))]));
+	const neighbours = (a, b) => [...partsOf.get(a)].some((r) => partsOf.get(b).has(r));
+	const chosen = /* @__PURE__ */ new Map();
+	const signals = [];
+	for (const n of intent.nets) {
+		const c = firstWire.get(n.name);
+		if (!c) continue;
+		if (n.color) {
+			chosen.set(n.name, n.color);
+			continue;
+		}
+		const role = roles.roleOfKey(nodeKey(c.from.part, c.from.pin));
+		if (role === "signal") signals.push(n.name);
+		else if (role) chosen.set(n.name, ROLE_COLORS[role]);
+	}
+	for (const net of signals) {
+		const used = /* @__PURE__ */ new Map();
+		for (const [other, color] of chosen) if (neighbours(net, other)) used.set(color, (used.get(color) ?? 0) + 1);
+		const free = SIGNAL_PALETTE.find((c) => !used.has(c));
+		chosen.set(net, free ?? SIGNAL_PALETTE.reduce((best, c) => used.get(c) < used.get(best) ? c : best));
+	}
+	return d.connections.map((c) => {
+		const color = chosen.get(netOfWire.get(c.uid) ?? "");
+		return color && color !== c.color ? {
+			...c,
+			color
+		} : c;
+	});
+}
+//#endregion
 //#region src/agent/readability.ts
 /** Every overlapping pair on the sheet, as "R1 and R2" (bodies) or "R1 caption and R2 body". */
 function overlaps(d) {
@@ -61634,9 +62101,13 @@ function layoutNetlist(raw, opts = {}) {
 			stage: "layout",
 			errors: real.errors
 		};
-		const diagram = {
+		const wired = {
 			...base,
 			connections: real.value.connections
+		};
+		const diagram = {
+			...wired,
+			connections: colorByRole(intent, wired, real.value.netOfWire)
 		};
 		const routes = computeRoutes(diagram);
 		const stuck = diagram.connections.filter((c) => routes.get(c.uid)?.blocked);
@@ -61769,7 +62240,7 @@ function layoutCommand(args, io) {
 	}
 	const { diagram, report, intent, attempts } = r.value;
 	writeFile(io, out, serializeDiagram(diagram));
-	const q = quantities(intent, diagram);
+	const q = bomQuantities(sheetBom(diagram));
 	const ch = channelTable(intent);
 	if (json) {
 		printJson(io, {
@@ -61796,6 +62267,34 @@ function layoutCommand(args, io) {
 	return EXIT.ok;
 }
 //#endregion
+//#region src/cli/bomCmd.ts
+var BOM_FORMAT = "circuitoon-cli/bom/1";
+function bomCommand(args, io) {
+	const [input, ...rest] = args.positionals;
+	if (!input) throw new CliError("bom: give a sheet file", EXIT.input);
+	if (rest.length) throw new CliError(`bom: give one sheet file, not ${args.positionals.length}`, EXIT.input);
+	const { diagram, warnings } = loadSheet(io, input);
+	for (const w of warnings) io.stderr(`warning: ${w}\n`);
+	const bom = sheetBom(diagram);
+	const out = flag(args, "--out") ?? null;
+	if (out) writeFile(io, out, bomCsv(bom));
+	const lines = bomLines(bom);
+	if (args.flags.has("--json")) printJson(io, {
+		format: BOM_FORMAT,
+		ok: true,
+		sheet: input,
+		output: out,
+		bom,
+		lines
+	});
+	else io.stdout([
+		`Bill of materials: ${diagram.title}`,
+		...lines.map((l) => `  ${l}`),
+		...out ? [`Wrote ${out}`] : []
+	].join("\n") + "\n");
+	return EXIT.ok;
+}
+//#endregion
 //#region src/cli/main.ts
 var USAGE = `circuitoon <command> [options]
 
@@ -61806,7 +62305,8 @@ var USAGE = `circuitoon <command> [options]
   check <sheet.json> [--json]               the wiring checker, plus verify when the sheet has an intent
   render <sheet.json> -o <sheet.png> [--svg <sheet.svg>] [--dark] [--scale n] [--focus <copy or group>]
   link <sheet.json> [-o <dir>] [--json]     a link that opens the sheet in Circuitoon
-  gate <sheet.json> -o <dir> [--json]       every check, the renders and the link; exits 0 only when nothing blocks
+  bom <sheet.json> [-o <bom.csv>] [--json]  the bill of materials: parts, wires and connectors; -o writes CSV
+  gate <sheet.json> -o <dir> [--json]       every check, the renders, the bill and the link; exits 0 only when nothing blocks
 
 Exit codes: 0 ok, 1 findings that block, 2 invalid input, 3 environment problem (such as no browser)
 or an internal error of the tool.
@@ -61817,6 +62317,7 @@ var COMMANDS = {
 	layout: layoutCommand,
 	render: renderCommand,
 	link: linkCommand,
+	bom: bomCommand,
 	verify: verifyCommand,
 	check: checkCommand,
 	gate: gateCommand

@@ -11,7 +11,7 @@ import { naturalCompare } from '../agent/order.ts'
 import { loadPartial } from '../agent/partial.ts'
 import type { KeepMap } from '../agent/place.ts'
 import { reportText } from '../agent/readability.ts'
-import { channelTable, channelsText, quantities, quantitiesText } from '../agent/tables.ts'
+import { bomQuantities, channelTable, channelsText, quantitiesText, sheetBom } from '../agent/tables.ts'
 import type { Args } from './args.ts'
 import { CliError, EXIT, type Io, flag, printJson, readJson, writeFile } from './io.ts'
 
@@ -52,7 +52,7 @@ export function layoutCommand(args: Args, io: Io): number {
   }
   const { diagram, report, intent, attempts } = r.value
   writeFile(io, out, serializeDiagram(diagram))
-  const q = quantities(intent, diagram)
+  const q = bomQuantities(sheetBom(diagram))
   const ch = channelTable(intent)
   if (json) {
     printJson(io, { format: 'circuitoon-cli/layout/1', ok: true, output: out, attempts, report, quantities: q, channels: ch, warnings, errors: [] })
