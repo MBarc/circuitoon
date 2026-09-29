@@ -1,5 +1,6 @@
 // Properties of whatever is selected. Text fields commit on Enter or when they lose focus,
 // so typing a name is one undo step, not one per keystroke.
+import { ArrangePanel } from './ArrangePanel.tsx'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { type EditorStore, useEditorState } from './store.ts'
 import { clearPartValue, clearWireRoute, deleteSelection, rotateParts, setWireEnds, updateAnnotation, updatePart, updatePartSetting, updatePartValue, updateWire, type WireStyle } from './ops.ts'
@@ -494,7 +495,7 @@ export function Inspector({ store }: { store: EditorStore }) {
         <h2 id="sheet-heading" tabIndex={-1}>Sheet</h2>
         <CommitInput id="sheet-title" label="Title" value={diagram.title} onCommit={(title) => store.commit({ ...diagram, title: title.trim() || 'Untitled sheet' })} />
         <p className="hint new-wires">New wires: {newWireStyle(wireStyle)}</p>
-        <p className="hint">Drag from a pin tip or a hole to another pin or hole to add a wire. Drag on the paper to select, middle-drag or Space+drag to pan, scroll to zoom. Shift+drag adds to the selection. Ctrl+C, Ctrl+X and Ctrl+V copy, cut and paste. R rotates, Delete removes, Ctrl+Z undoes.</p>
+        <p className="hint">Drag from a pin tip or a hole to another pin or hole to add a wire. Drag on the paper to select, middle-drag or Space+drag to pan, scroll to zoom. Shift+drag adds to the selection. Ctrl+C, Ctrl+X and Ctrl+V copy, cut and paste. R rotates, Delete removes, Ctrl+Z undoes. Arrow keys nudge a grid step (Shift for five). A drag snaps to other parts; hold Ctrl or Cmd to drag on the grid alone.</p>
         <ProblemList store={store} findings={findings} />
       </aside>
     )
@@ -521,6 +522,7 @@ export function Inspector({ store }: { store: EditorStore }) {
           <button type="button" className="tool" onClick={() => store.commit(rotateParts(diagram, selection.parts))}>Rotate parts</button>
         )}
         {remove}
+        <ArrangePanel store={store} diagram={diagram} selection={selection} />
       </aside>
     )
 

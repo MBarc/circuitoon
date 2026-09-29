@@ -11,7 +11,7 @@ import { LoadWarnings } from './LoadWarnings.tsx'
 import { MAINS_NOTICE, hasMains, withSheetNotes } from '../format/mains.ts'
 
 export function Toolbar({ store, warnings, onClose }: { store: EditorStore; warnings?: string[]; onClose: () => void }) {
-  const { diagram, selection } = useEditorState(store)
+  const { diagram, selection, snapObjects } = useEditorState(store)
   const fileRef = useRef<HTMLInputElement>(null)
   // The sheet the user agreed to replace when they chose Import, and the latest import request.
   const importBase = useRef<Diagram | null>(null)
@@ -84,6 +84,21 @@ export function Toolbar({ store, warnings, onClose }: { store: EditorStore; warn
       <span className="sep" aria-hidden="true" />
       <button type="button" className="tool" disabled={!selection.parts.length} onClick={() => store.commit(rotateParts(diagram, selection.parts))}>Rotate</button>
       <button type="button" className="tool" disabled={!hasSel} onClick={() => store.commit(deleteSelection(diagram, selection))}>Delete</button>
+      <span className="sep" aria-hidden="true" />
+      <button
+        type="button"
+        className="tool toggle"
+        aria-pressed={snapObjects}
+        title="While dragging, line up with other parts' edges and centers, wired pins and equal gaps. Hold Ctrl (Cmd on a Mac) to drag without it."
+        onClick={() => store.setSnapObjects(!snapObjects)}
+      >
+        <svg viewBox="0 0 18 18" aria-hidden="true">
+          <rect x="4" y="2.5" width="9" height="5" rx="1.2" fill="var(--paper)" stroke="currentColor" strokeWidth="1.4" />
+          <rect x="4" y="10.5" width="12" height="5" rx="1.2" fill="var(--paper)" stroke="currentColor" strokeWidth="1.4" />
+          <path className="snap-line" d="M4 0.5V17.5" stroke="var(--guide)" strokeWidth="1.8" strokeLinecap="round" />
+        </svg>
+        Snap to objects
+      </button>
       <span className="sep" aria-hidden="true" />
       <button type="button" className="tool" onClick={() => {
         if (!okToDiscard()) return

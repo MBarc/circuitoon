@@ -6,8 +6,13 @@ import { Inspector } from './Inspector.tsx'
 import { LibraryPanel } from './LibraryPanel.tsx'
 import { Toolbar } from './Toolbar.tsx'
 import { deleteSelection, EMPTY_SELECTION, rotateParts } from './ops.ts'
+import { nudgeSelection } from './align.ts'
+import { GRID } from './snap.ts'
 import { clipText, clipToPaste, copySelection, cutMemo, cutSelection, pasteClip, planPaste, type PasteMemo } from './clipboard.ts'
 import './editor.css'
+
+/** Arrow keys as a one-grid-step move. */
+const ARROWS: Record<string, [number, number]> = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }
 
 /** Keys that belong to a text field, where the editor's shortcuts never apply. */
 const TEXT_FIELD = 'input, textarea, select, [contenteditable]:not([contenteditable="false"])'
@@ -110,6 +115,19 @@ function useEditorKeys(store: EditorStore) {
           e.preventDefault()
           store.commit(deleteSelection(s.diagram, s.selection))
         }
+      } else if (Object.hasOwn(ARROWS, e.key) && !mod && !e.altKey) {
+        // A nudge: one grid step, five with Shift. A run of nudges to the same selection is one undo step.
+        // Only from the sheet (focus on the canvas or nowhere): in the Inspector or the Parts list
+        // arrows scroll and move between controls. Never while the canvas pans.
+        if (gesture || store.panning) return
+        const focus = document.activeElement
+        if (focus && focus !== document.body && !focus.closest('.canvas-wrap')) return
+        const sel = s.selection
+        if (!sel.parts.length && !sel.annotations?.length) return
+        e.preventDefault()
+        const step = GRID * (e.shiftKey ? 5 : 1)
+        const [ux, uy] = ARROWS[e.key]
+        store.commit(nudgeSelection(s.diagram, sel, ux * step, uy * step), `nudge:${JSON.stringify([sel.parts, sel.annotations ?? []])}`)
       } else if (key === 'r' && !mod) {
         if (gesture) return
         if (s.selection.parts.length) store.commit(rotateParts(s.diagram, s.selection.parts))
