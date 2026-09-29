@@ -9,7 +9,7 @@ import { cli, tempDir } from './cliHarness.testing.ts'
 import { loadSchema, schemaErrors } from './jsonSchema.testing.ts'
 import { ledNetlist } from '../agent/fixtures.testing.ts'
 import { validateDiagram } from '../format/diagram.ts'
-import { coveredHoles } from '../format/breadboard.ts'
+import { coveredHoles, holeKey, takenHoles } from '../format/breadboard.ts'
 import { type CliFinding, cliFinding, findingsText, notCheckedText, uniqueIds } from './verifyCmd.ts'
 
 const laidOut = async () => {
@@ -90,6 +90,32 @@ describe('circuitoon verify and check', () => {
     const c = await cli(['check', 'sheet.json', '--json'], { cwd: dir })
     expect(c.code).toBe(1)
     expect(JSON.parse(c.out).findings.filter((f: CliFinding) => f.rule === 'covered-hole')).toHaveLength(1)
+  })
+
+  it('reports two wire ends in one breadboard hole once in check: hole-shared, not also capacity', async () => {
+    const dir = await laidOut()
+    edit(dir, (s) => {
+      // A second wire from a used hole to a free hole of the same strip.
+      const r = validateDiagram(s)
+      if (!r.ok) throw new Error(r.errors.join('; '))
+      const w = s.connections.find((x) => (x.to as { hole?: number }).hole !== undefined)!
+      const to = w.to as { part: string; pin: string; hole: number }
+      const taken = takenHoles(r.diagram)
+      const free = [0, 1, 2, 3, 4].find((i) => !taken.has(holeKey(to.part, to.pin, i)))!
+      s.connections.push({ uid: 'hand', from: { ...to }, to: { ...to, hole: free } })
+    })
+    const v = await cli(['verify', 'sheet.json', '--json'], { cwd: dir })
+    expect(JSON.parse(v.out).findings.filter((f: CliFinding) => f.rule === 'capacity')).toHaveLength(1)
+    const c = await cli(['check', 'sheet.json', '--json'], { cwd: dir })
+    expect(c.code).toBe(1)
+    const found: CliFinding[] = JSON.parse(c.out).findings
+    expect(found.filter((f) => f.rule === 'hole-shared').map((f) => f.severity)).toEqual(['error'])
+    expect(found.filter((f) => f.rule === 'capacity')).toEqual([])
+    const g = await cli(['gate', 'sheet.json', '-o', 'out'], { cwd: dir, env: { CIRCUITOON_BROWSER: join(dir, 'no-such-browser.exe') } })
+    expect(g.code).toBe(1)
+    const blocking: CliFinding[] = JSON.parse(readFileSync(join(dir, 'out', 'gate.json'), 'utf8')).blocking
+    expect(blocking.filter((f) => f.rule === 'hole-shared')).toHaveLength(1)
+    expect(blocking.filter((f) => f.rule === 'capacity')).toEqual([])
   })
 
   it('verify needs an intent; check still works without one', async () => {

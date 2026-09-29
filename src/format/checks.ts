@@ -5,7 +5,7 @@
 // that data supports: a pin with no `type` is unknown and never triggers a rule. Pure, no React. Spec:
 // docs/superpowers/specs/2026-09-26-wiring-checker-design.md.
 import { type Connection, type Diagram, type Endpoint, type PartInstance, moduleOf, resolveEndpoint } from './diagram.ts'
-import { type CoveredHole, type MountIssue, type Plug, coveredHoles, holeKey, mountIssues, plugMismatches, plugsOf } from './breadboard.ts'
+import { type CoveredHole, type MountIssue, type Plug, coveredHoles, holeKey, holeUses, mountIssues, plugMismatches, plugsOf } from './breadboard.ts'
 import { PLUG_FOR, PLUG_NAMES, SOCKET_NAMES } from './plugging.ts'
 import { type ExternalPower, type HoleGroup, type ModuleDef, type PinDef, type PinType, commonReturn, declaredReturns, externalPower, isSpacer, voltageOutputs } from './module.ts'
 import { conductors, netlist, nodeKey } from './netlist.ts'
@@ -31,6 +31,7 @@ export type RuleId =
   | 'leg-hole-shared'
   | 'broken'
   | 'covered-hole'
+  | 'hole-shared'
   | 'mains-short'
   | 'mains-cross-source'
   | 'mains-to-low-voltage'
@@ -56,6 +57,7 @@ export type RuleId =
 export const RULES: Record<RuleId, { severity: Severity; title: string }> = {
   broken: { severity: 'error', title: 'Broken connection' },
   'covered-hole': { severity: 'error', title: 'Hole under a part' },
+  'hole-shared': { severity: 'error', title: 'Two wires in one hole' },
   short: { severity: 'error', title: 'Short circuit' },
   'mains-short': { severity: 'error', title: 'Mains short circuit' },
   'mains-cross-source': { severity: 'error', title: 'Two outlets joined' },
@@ -751,6 +753,24 @@ export function checkDiagram(d: Diagram): Finding[] {
     const message = coveredMessage(d, u)
     if (u.wire) add({ rule: 'covered-hole', subject: board.designator, target: u.where, message, parts: [board.uid, u.cover.by], pins: [], wires: [u.wire], select: { parts: [], wires: [u.wire] }, causes: [u.wire, key] })
     else add({ rule: 'covered-hole', subject: board.designator, target: u.where, message, parts: [u.leg!.part, u.cover.by, board.uid], pins: [{ part: u.leg!.part, pin: u.leg!.pin }], wires: [], select: { parts: [u.leg!.part], wires: [] }, causes: [nodeKey(u.leg!.part, u.leg!.pin), key] })
+  }
+
+  // More wire ends in one breadboard hole than it takes (verify's capacity, from the same
+  // holeUses): one hole takes one wire end. A leg and a wire end is leg-hole-shared, and a wire to
+  // a plugged pin ends in that leg's hole by design, so only ends that name the hole count here.
+  // The cause is verify's capacity key, so a combined report can drop verify's copy (alsoChecked).
+  for (const u of holeUses(d, brokenSet, plugs).values()) {
+    const ends = u.ends.filter((e) => !e.viaPin)
+    if (!u.breadboard || ends.length <= u.cap) continue
+    const board = partByUid.get(u.board)!
+    const where = endpointName(d, { part: u.board, pin: u.group, hole: u.hole })
+    const wires = [...new Set(ends.map((e) => e.wire))]
+    const names = wires.map((w) => wireName(d, d.connections.find((c) => c.uid === w)!)).sort(natural.compare)
+    const far = ends.map((e) => d.connections.find((c) => c.uid === e.wire)![e.end === 'from' ? 'to' : 'from'].part)
+    const takes = u.cap === 1 ? 'one wire end' : `${u.cap} wire ends`
+    add({ rule: 'hole-shared', subject: board.designator, target: where,
+      message: `${ends.length} wire ends share ${where}: ${andList(names)}. Physically, one hole takes ${takes}. Move ${ends.length - u.cap === 1 ? 'one of them' : `all but ${u.cap === 1 ? 'one' : u.cap}`} to a free hole of the same strip.`,
+      parts: [board.uid, ...far.filter((x) => partByUid.has(x))], pins: [], wires, select: { parts: [], wires }, causes: [JSON.stringify(['hole', u.board, u.group, u.hole])] })
   }
 
   for (const b of brokenConnections(d)) {
