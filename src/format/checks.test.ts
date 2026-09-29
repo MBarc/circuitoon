@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { type Finding, checkDiagram, parseSupply } from './checks.ts'
+import { type Finding, cellRange, checkDiagram, parseSupply } from './checks.ts'
 import type { Connection, Diagram, PartInstance } from './diagram.ts'
 import type { ModuleDef, PinDef } from './module.ts'
 import { buttonLed } from '../samples/buttonLed.ts'
@@ -119,6 +119,16 @@ describe('parseSupply', () => {
   it('reads a rail too long to be a finite number, and a negative rail, as unknown', () => {
     expect(parseSupply(`1${'0'.repeat(400)}V`)).toEqual({ volts: [], unknown: 'unknown' })
     expect(parseSupply('-5V')).toEqual({ volts: [], unknown: 'unknown' })
+  })
+})
+
+describe('cellRange', () => {
+  it('names three or more cells that run in order as a range, anything else as a list', () => {
+    expect(cellRange(['BT1', 'BT2', 'BT3', 'BT4'])).toBe('BT1-BT4')
+    expect(cellRange(['BT1', 'BT2'])).toBe('BT1 and BT2')
+    expect(cellRange(['BT1', 'BT3', 'BT4'])).toBe('BT1, BT3 and BT4')
+    expect(cellRange(['A1', 'B2', 'C3'])).toBe('A1, B2 and C3')
+    expect(cellRange(['Cell', 'BT1', 'BT2'])).toBe('Cell, BT1 and BT2')
   })
 })
 

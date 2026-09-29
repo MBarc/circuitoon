@@ -9,6 +9,7 @@
     "artifacts",
     "blocking",
     "warnings",
+    "notes",
     "notChecked",
     "link",
     "quantities",
@@ -166,6 +167,75 @@
             "enum": [
               "error",
               "warning"
+            ]
+          },
+          "message": {
+            "type": "string"
+          },
+          "parts": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "pins": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "part",
+                "pin"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "part": {
+                  "type": "string"
+                },
+                "pin": {
+                  "type": "string"
+                },
+                "hole": {
+                  "type": "integer"
+                },
+                "offset": {
+                  "type": "integer"
+                }
+              }
+            }
+          },
+          "wires": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "notes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "rule",
+          "severity",
+          "message",
+          "parts",
+          "pins",
+          "wires"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "rule": {
+            "type": "string"
+          },
+          "severity": {
+            "enum": [
+              "info"
             ]
           },
           "message": {

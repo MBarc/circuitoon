@@ -302,6 +302,19 @@ describe('circuitoon gate', () => {
     const c = await cli(['check', 'sheet.json', '--json'], { cwd: dir })
     expect(JSON.parse(c.out).findings.map((f: { rule: string }) => f.rule)).not.toContain('covered-hole')
   })
+  it('lists a note (info) under notes, never blocking, and prints it', async () => {
+    const dir = tempDir()
+    writeFileSync(join(dir, 'sheet.json'), readFileSync(new URL('../format/fixtures/battery-bank-1s4p.circuitoon.json', import.meta.url)))
+    const { report } = await runGate(readFileSync(join(dir, 'sheet.json')), { sheetPath: 'sheet.json', outDir: join(dir, 'out'), io: quietIo(dir) })
+    expect(schemaErrors(loadSchema('gate'), report)).toEqual([])
+    expect(report.notes.map((f) => `${f.severity} ${f.rule}`)).toEqual(['info battery-bank'])
+    expect([...report.blocking, ...report.warnings].map((f) => f.rule)).not.toContain('battery-bank')
+    expect(report.warnings.map((f) => f.rule)).not.toContain('supplies-parallel')
+    const r = await cli(['gate', 'sheet.json', '-o', 'out'], { cwd: dir, env: noBrowser(dir) })
+    expect(r.out).toContain('Notes (not problems; pass them on to the user):\nINFO battery-bank: BT1-BT4 form a parallel battery bank')
+    expect(gateJson(dir).notes).toHaveLength(1)
+  })
+
   it('blocks a mounted part that no longer seats on its board', async () => {
     const dir = await laidOut()
     edit(dir, (s) => {
