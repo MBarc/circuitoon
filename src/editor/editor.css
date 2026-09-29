@@ -95,6 +95,9 @@
 .canvas-wrap { grid-area: canvas; position: relative; overflow: hidden; }
 .canvas { display: block; width: 100%; height: 100%; touch-action: none; user-select: none; font-family: "Atkinson Hyperlegible", system-ui, sans-serif; }
 .canvas.panning { cursor: grabbing; }
+.canvas.space-pan, .canvas.space-pan [data-part], .canvas.space-pan .annotation-grab { cursor: grab; }
+/* The selection rectangle: the selection outline's accent and dash, over a faint wash of the same colour. */
+.marquee { fill: var(--focus); fill-opacity: 0.08; stroke: var(--focus); stroke-width: 1.5; stroke-dasharray: 5 4; vector-effect: non-scaling-stroke; }
 .canvas [data-part] { cursor: move; }
 .pin-hit { fill: transparent; cursor: crosshair; }
 .pin-hit:hover, .pin-hit.target { fill: rgba(61, 111, 214, 0.35); stroke: #3D6FD6; stroke-width: 1.5; }

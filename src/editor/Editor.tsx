@@ -1,17 +1,88 @@
 import { useEffect, useMemo, useRef, useSyncExternalStore } from 'react'
 import type { Diagram } from '../format/diagram.ts'
 import { EditorStore } from './store.ts'
-import { Canvas } from './Canvas.tsx'
+import { Canvas, type CanvasApi } from './Canvas.tsx'
 import { Inspector } from './Inspector.tsx'
 import { LibraryPanel } from './LibraryPanel.tsx'
 import { Toolbar } from './Toolbar.tsx'
 import { deleteSelection, EMPTY_SELECTION, rotateParts } from './ops.ts'
+import { clipText, copySelection, parseClip, pasteClip, pasteDelta } from './clipboard.ts'
 import './editor.css'
+
+/** Keys that belong to a text field, where the editor's shortcuts never apply. */
+const TEXT_FIELD = 'input, textarea, select, [contenteditable]:not([contenteditable="false"])'
+
+// The last copied clip, per tab: the fallback when the system clipboard holds no clip (no access,
+// or the browser refused the write). Module state, so it survives opening another sheet.
+let memoryClip: string | null = null
+// The last paste, so a repeat of the same clip at the same spot steps one grid step further.
+let lastPaste: { text: string; anchor: string; step: number } | null = null
+
+/**
+ * Copy, cut and paste of parts, wires, frames and notes through the browser's own clipboard events
+ * (Ctrl or Cmd with C, X, V): they reach the system clipboard without a permission prompt. Never in
+ * a text field or the Inspector, and never over a text selection, so ordinary text copy and paste
+ * keep working there.
+ */
+function useEditorClipboard(store: EditorStore, canvas: { current: CanvasApi | null }) {
+  useEffect(() => {
+    const mine = (e: ClipboardEvent) => {
+      const t = e.target
+      if (t instanceof Element && (t.closest(TEXT_FIELD) || t.closest('.inspector'))) return false
+      if (store.dragging || store.gestureActive) return false
+      return true
+    }
+    const textSelected = () => {
+      const sel = window.getSelection()
+      return !!sel && !sel.isCollapsed && sel.toString() !== ''
+    }
+    const onCopy = (e: ClipboardEvent) => {
+      if (!mine(e) || textSelected()) return
+      const s = store.getState()
+      const clip = copySelection(s.diagram, s.selection)
+      if (!clip) return
+      e.preventDefault()
+      const text = clipText(clip)
+      memoryClip = text
+      e.clipboardData?.setData('text/plain', text)
+      if (e.type === 'cut') {
+        store.commit(deleteSelection(s.diagram, s.selection))
+        // The first paste after a cut puts the items back where they were.
+        lastPaste = { text, anchor: 'source', step: -1 }
+      } else lastPaste = null
+    }
+    const onPaste = (e: ClipboardEvent) => {
+      if (!mine(e)) return
+      const system = e.clipboardData?.getData('text/plain') ?? ''
+      const fromSystem = parseClip(system)
+      const text = fromSystem ? system : memoryClip
+      const clip = fromSystem ?? (memoryClip ? parseClip(memoryClip) : null)
+      if (!clip || !text) return
+      e.preventDefault()
+      const pointer = canvas.current?.pointer() ?? null
+      const anchor = pointer ? `${Math.round(pointer.x / 10)},${Math.round(pointer.y / 10)}` : 'source'
+      const step = lastPaste && lastPaste.text === text && lastPaste.anchor === anchor ? lastPaste.step + 1 : 1
+      lastPaste = { text, anchor, step }
+      const [dx, dy] = pasteDelta(clip, step, pointer)
+      const { diagram, selection } = pasteClip(store.getState().diagram, clip, dx, dy)
+      store.commit(diagram)
+      store.select(selection)
+    }
+    document.addEventListener('copy', onCopy)
+    document.addEventListener('cut', onCopy)
+    document.addEventListener('paste', onPaste)
+    return () => {
+      document.removeEventListener('copy', onCopy)
+      document.removeEventListener('cut', onCopy)
+      document.removeEventListener('paste', onPaste)
+    }
+  }, [store, canvas])
+}
 
 function useEditorKeys(store: EditorStore) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if ((e.target as HTMLElement).closest('input, textarea, select, [contenteditable]:not([contenteditable="false"])')) return
+      if ((e.target as HTMLElement).closest(TEXT_FIELD)) return
       const mod = e.ctrlKey || e.metaKey
       const key = e.key.toLowerCase()
       const s = store.getState()
@@ -66,8 +137,9 @@ function useUnloadGuard(store: EditorStore) {
 
 export function Editor({ initial, warnings, onClose, onDirty }: { initial: Diagram; warnings?: string[]; onClose: () => void; onDirty?: (dirty: boolean) => void }) {
   const store = useMemo(() => new EditorStore(initial), [initial])
-  const canvasApi = useRef<{ addAtCenter: (moduleId: string) => void } | null>(null)
+  const canvasApi = useRef<CanvasApi | null>(null)
   useEditorKeys(store)
+  useEditorClipboard(store, canvasApi)
   useUnloadGuard(store)
   // Tells the owner whether there are unsaved changes (EditorApp asks before a link replaces them).
   const dirty = useSyncExternalStore(store.subscribe, () => store.dirty)

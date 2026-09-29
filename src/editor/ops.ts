@@ -3,7 +3,8 @@
 import { ANNOTATION_LABEL_MAX, ANNOTATION_TEXT_MAX, COORD_LIMIT, type Connection, type Diagram, type Endpoint, type PartInstance, moduleOf } from '../format/diagram.ts'
 import { isBoard, layoutModule, moduleSettings, partSetting, type ModuleDef } from '../format/module.ts'
 import { type Plug, type Seat, mountIssues, plugsOf, seatOf, seatOn } from '../format/breadboard.ts'
-import { pivot, rotateVec, type Rotation } from '../format/geometry.ts'
+import { bodyRect, pivot, rotateVec, type Rect, type Rotation } from '../format/geometry.ts'
+import { annotationRect } from '../render/annotationGeometry.ts'
 import { editableParams, paramValue } from '../format/values.ts'
 import { normalizeEnds, type WireEnds } from '../format/cables.ts'
 import { mainsOf } from '../format/mainsModel.ts'
@@ -126,7 +127,7 @@ export function settlingOf(d: Diagram, uids: string[]): string[] {
  * clamped and a route dropped on load, and a frame or note would refuse the load). A point already
  * beyond the limit never forces a move the other way.
  */
-function withinLimit(points: [number, number][], dx: number, dy: number): [number, number] {
+export function withinLimit(points: [number, number][], dx: number, dy: number): [number, number] {
   if (!points.length) return [dx, dy]
   const axis = (v: number, at: number) => {
     // A loop, not Math.min(...), so a very large selection cannot overflow the call stack.
@@ -277,6 +278,27 @@ export function rotateParts(d: Diagram, uids: string[]): Diagram {
   }
   const kept = settleMounts({ ...d, parts }, own.filter((u) => !isPlug(u)), 'keep')
   return settleMounts(kept, own.filter(isPlug), 'drop')
+}
+
+const within = (r: Rect, box: Rect) => r.x >= box.x && r.y >= box.y && r.x + r.w <= box.x + box.w && r.y + r.h <= box.y + box.h
+
+/**
+ * What a selection rectangle (world px) picks, added to `base`: every part whose body and every
+ * frame or note whose whole drawn box lies inside, then every wire whose two ends are both on a
+ * selected part. Each uid appears once, the base's first; the `annotations` key only when non-empty.
+ */
+export function marqueeSelection(d: Diagram, box: Rect, base: Selection = EMPTY_SELECTION): Selection {
+  const parts = new Set(base.parts)
+  for (const p of d.parts) {
+    const m = moduleOf(d, p.module)
+    if (m && within(bodyRect(p, layoutModule(m)), box)) parts.add(p.uid)
+  }
+  const notes = new Set(base.annotations ?? [])
+  for (const a of d.annotations ?? []) if (within(annotationRect(a), box)) notes.add(a.uid)
+  const wires = new Set(base.wires)
+  for (const c of d.connections) if (parts.has(c.from.part) && parts.has(c.to.part)) wires.add(c.uid)
+  const sel: Selection = { parts: [...parts], wires: [...wires] }
+  return notes.size ? { ...sel, annotations: [...notes] } : sel
 }
 
 export function deleteSelection(d: Diagram, sel: Selection): Diagram {

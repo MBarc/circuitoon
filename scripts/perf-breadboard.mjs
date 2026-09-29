@@ -183,7 +183,7 @@ async function dropFromPanel(name, wx, wy) {
   await page.getByRole('searchbox', { name: 'Search parts' }).fill('')
   await pause()
 }
-/** Zooms out around the canvas center until part `uid` fits, then drags the paper to center it. */
+/** Zooms out around the canvas center until part `uid` fits, then pans (a middle-button drag) to center it. */
 async function frame(uid) {
   const wrap = await page.locator('.canvas-wrap').boundingBox()
   const mid = { x: wrap.x + wrap.width / 2, y: wrap.y + wrap.height / 2 }
@@ -197,9 +197,9 @@ async function frame(uid) {
   const b = await page.locator(`[data-part="${uid}"]`).boundingBox()
   const from = { x: wrap.x + 10, y: wrap.y + wrap.height - 10 }
   await page.mouse.move(from.x, from.y)
-  await page.mouse.down()
+  await page.mouse.down({ button: 'middle' })
   await page.mouse.move(from.x + mid.x - (b.x + b.width / 2), from.y + mid.y - (b.y + b.height / 2), { steps: 5 })
-  await page.mouse.up()
+  await page.mouse.up({ button: 'middle' })
   await pause()
 }
 /** Presses at world `from` and releases at world `to`, moving in steps (a wire draw). */
@@ -288,8 +288,8 @@ check((await count('[data-legs] circle')) === 40, 'rotating the board keeps all 
 check((await diagonalWires()).length === 0, 'no jumper has a diagonal step after rotating the board')
 const afterRotate = await exported()
 check(afterRotate.parts.filter((p) => p.mount?.board === 'bb').length === 20, 'after rotating, the saved file still has all 20 resistors mounted on the board')
-// Zoom out and pan so the whole turned board is in the picture (panning clears the selection),
-// then select it again with a click on the middle of its center channel, which has no holes.
+// Zoom out and pan so the whole turned board is in the picture, then click the middle of its
+// center channel, which has no holes.
 await frame('bb')
 const middle = await toScreen(540, 115)
 await page.mouse.click(middle.x, middle.y)

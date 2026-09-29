@@ -410,7 +410,7 @@ export function Inspector({ store }: { store: EditorStore }) {
         <h2 id="sheet-heading" tabIndex={-1}>Sheet</h2>
         <CommitInput id="sheet-title" label="Title" value={diagram.title} onCommit={(title) => store.commit({ ...diagram, title: title.trim() || 'Untitled sheet' })} />
         <p className="hint new-wires">New wires: {newWireStyle(wireStyle)}</p>
-        <p className="hint">Drag from a pin tip or a hole to another pin or hole to add a wire. Drag the paper to pan, scroll to zoom. R rotates, Delete removes, Ctrl+Z undoes.</p>
+        <p className="hint">Drag from a pin tip or a hole to another pin or hole to add a wire. Drag on the paper to select, middle-drag or Space+drag to pan, scroll to zoom. Shift+drag adds to the selection. Ctrl+C, Ctrl+X and Ctrl+V copy, cut and paste. R rotates, Delete removes, Ctrl+Z undoes.</p>
         <ProblemList store={store} findings={findings} />
       </aside>
     )
