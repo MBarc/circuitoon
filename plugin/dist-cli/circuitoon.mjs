@@ -46617,6 +46617,7 @@ function coveredUses(d, skip = /* @__PURE__ */ new Set()) {
 	const covered = coveredHoles(d);
 	if (!covered.length) return [];
 	const at = new Map(covered.map((c) => [holeKey$1(c.board, c.group, c.hole), c]));
+	const boards = new Set(covered.map((c) => c.board));
 	const out = [];
 	const where = (c) => endpointName(d, {
 		part: c.board,
@@ -46626,7 +46627,7 @@ function coveredUses(d, skip = /* @__PURE__ */ new Set()) {
 	for (const w of d.connections) {
 		if (skip.has(w.uid)) continue;
 		for (const ep of [w.from, w.to]) {
-			const c = at.get(holeKey$1(ep.part, ep.pin, ep.hole ?? 0));
+			const c = boards.has(ep.part) ? at.get(holeKey$1(ep.part, ep.pin, ep.hole ?? 0)) : void 0;
 			if (c) out.push({
 				cover: c,
 				where: where(c),

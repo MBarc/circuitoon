@@ -207,12 +207,13 @@ export function coveredUses(d: Diagram, skip: ReadonlySet<string> = new Set()): 
   const covered = coveredHoles(d)
   if (!covered.length) return []
   const at = new Map(covered.map((c) => [holeKey(c.board, c.group, c.hole), c]))
+  const boards = new Set(covered.map((c) => c.board))
   const out: CoveredUse[] = []
   const where = (c: CoveredHole) => endpointName(d, { part: c.board, pin: c.group, hole: c.hole })
   for (const w of d.connections) {
     if (skip.has(w.uid)) continue
     for (const ep of [w.from, w.to]) {
-      const c = at.get(holeKey(ep.part, ep.pin, ep.hole ?? 0))
+      const c = boards.has(ep.part) ? at.get(holeKey(ep.part, ep.pin, ep.hole ?? 0)) : undefined
       if (c) out.push({ cover: c, where: where(c), wire: w.uid })
     }
   }
