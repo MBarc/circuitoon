@@ -23,6 +23,7 @@
     "check:mains-ui": "node scripts/check-mains-ui.mjs",
     "check:holes-ui": "node scripts/check-holes-ui.mjs",
     "check:guides-ui": "node scripts/check-guides-ui.mjs",
+    "check:bom-ui": "node scripts/check-bom-ui.mjs",
     "deploy": "bash scripts/deploy.sh"
   },
   "dependencies": {
