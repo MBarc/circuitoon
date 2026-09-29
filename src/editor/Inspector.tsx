@@ -12,7 +12,7 @@ import { hexEditChanged, shownHex } from './color.ts'
 import { checkFailed, highlightOf, severityCounts, useProblems } from './problems.ts'
 import { type Finding, RULES, brokenConnection } from '../format/checks.ts'
 import { SeverityMark } from './SeverityMark.tsx'
-import { CAPACITOR_VALUES, RESISTOR_VALUES, editableParams, formatValue, paramValue, parseValue } from '../format/values.ts'
+import { CAPACITOR_VALUES, RESISTOR_VALUES, editableParams, formatValue, paramValue, parseValueIn, pickUnitExp, scaledNumber, unitChoices } from '../format/values.ts'
 import { moduleSettings, partSetting } from '../format/module.ts'
 import { MAINS_NOTICE, hasMains } from '../format/mains.ts'
 
@@ -188,47 +188,115 @@ const VALUE_LABELS: Record<string, string> = { resistance: 'Resistance', capacit
 const SETTING_LABELS: Record<string, string> = { fuse: 'Fuse' }
 const CHOICE_LABELS: Record<string, string> = { fitted: 'Fitted', absent: 'Absent (empty holder)' }
 
+const VALUE_HINTS: Record<string, string> = {
+  ohm: 'Use a value like 330, 330R, 4k7 or 4.7k',
+  F: 'Use a value like 100, 100n, 4.7u or 22p',
+  V: 'Use a voltage like 3.3, 12 or 500m',
+  VAC: 'Use a voltage like 120 or 230',
+  A: 'Use a rating like 2, 500m or 13 (amps), or leave it empty if unknown',
+}
+
 /**
- * Not given a `key` here; the caller keys the whole component on part uid plus the resolved
- * value, so switching parts (or an undo/redo that changes the value) remounts it from scratch,
- * including `invalid`, rather than leaving a stale hint from a previous part or value showing.
+ * A part value: a number box plus a unit dropdown (Ω, kΩ, MΩ for a resistance). The box shows the
+ * value in the picked unit, and a bare number typed there is read in that unit, so with Ω picked
+ * "330" is 330 Ω. Text with its own prefix or unit ("4k7", "330R", "100n") overrides the dropdown,
+ * which moves to match. Changing the dropdown keeps the number and changes the unit (330 kΩ becomes
+ * 330 Ω), as one undo step. Enter or leaving the box commits; Escape puts the value back. Rejected
+ * text stays in the box with the hint, so it is clear what was not accepted.
+ *
+ * The caller keys it on the part uid and param, not on the value: a commit then keeps focus where
+ * it is (a keyboard user stepping through the dropdown stays on it), and a value change from
+ * outside (undo, redo) resets the box, the unit and the hint here instead.
  */
 function ValueInput({ id, label, unit, value, onCommit, onClear }: { id: string; label: string; unit: string; value: number | null; onCommit: (v: number) => void; onClear?: () => void }) {
+  const choices = unitChoices(unit)
+  // The unit the person picked for the value they committed here; kept only while the part shows
+  // that value, so undo or redo to another value picks the natural unit again.
+  const picked = useRef<{ value: number; exp: number } | null>(null)
+  const unitFor = (v: number | null) => (v === null ? pickUnitExp(0, unit) : picked.current?.value === v ? picked.current.exp : pickUnitExp(v, unit))
+  const [exp, setExp] = useState(() => unitFor(value))
+  const [text, setText] = useState(() => (value === null ? '' : scaledNumber(value, exp)))
   const [invalid, setInvalid] = useState(false)
-  // An optional param with no value (a fuse rating not yet set) shows an empty field reading Unknown.
-  const shown = value === null ? '' : formatValue(value, unit)
+  const [seen, setSeen] = useState(value)
+  if (value !== seen) {
+    // The value changed from outside this field (undo, redo) or by its own commit: show it afresh.
+    const e = unitFor(value)
+    setSeen(value)
+    setExp(e)
+    setText(value === null ? '' : scaledNumber(value, e))
+    setInvalid(false)
+  }
+  const shown = value === null ? '' : scaledNumber(value, exp)
   const list = VALUE_LISTS[unit] ?? []
+
+  /** Reads `t` with unit 10^at picked and commits it, or shows the hint (keeping `t`) when it is rejected. */
+  function commit(t: string, at: number) {
+    if (t.trim() === '') {
+      setExp(at)
+      if (value === null) return setInvalid(false)
+      // Emptying an optional value clears it, back to unknown.
+      if (onClear) {
+        setInvalid(false)
+        return onClear()
+      }
+      return setInvalid(true)
+    }
+    const parsed = parseValueIn(t, unit, at)
+    if (parsed === null) {
+      setExp(at)
+      return setInvalid(true)
+    }
+    picked.current = parsed
+    setInvalid(false)
+    setExp(parsed.exp)
+    // A no-op edit (same value, other notation) changes nothing in the diagram; show it canonically.
+    setText(scaledNumber(parsed.value, parsed.exp))
+    if (parsed.value !== value) onCommit(parsed.value)
+  }
+
+  const hintId = `${id}-hint`
   return (
-    <label className="field" htmlFor={id}>
-      {label}
-      <input
-        id={id}
-        defaultValue={shown}
-        placeholder={value === null ? 'Unknown' : undefined}
-        list={list.length ? `${id}-options` : undefined}
-        aria-invalid={invalid || undefined}
-        onBlur={(e) => {
-          if (e.target.value === shown) return // unchanged: nothing to parse or commit
-          // Emptying an optional value clears it, back to unknown.
-          if (e.target.value.trim() === '' && onClear) {
-            setInvalid(false)
-            onClear()
-            return
-          }
-          const parsed = parseValue(e.target.value, unit)
-          if (parsed === null) {
-            setInvalid(true)
-            e.target.value = shown
-            return
-          }
-          setInvalid(false)
-          onCommit(parsed)
-          // A no-op edit (same value, different notation) leaves the diagram unchanged, so no
-          // remount happens; put the canonical text back so the field never shows raw input.
-          e.target.value = shown
-        }}
-        onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
-      />
+    <div className="field value-field">
+      <label htmlFor={id}>{label}</label>
+      <div className={`value-entry${invalid ? ' invalid' : ''}`}>
+        <input
+          id={id}
+          className="value-number"
+          inputMode="decimal"
+          autoComplete="off"
+          spellCheck={false}
+          value={text}
+          placeholder={value === null ? 'Unknown' : undefined}
+          list={list.length ? `${id}-options` : undefined}
+          aria-invalid={invalid || undefined}
+          aria-describedby={[choices.length === 1 ? `${id}-unit` : '', invalid ? hintId : ''].filter(Boolean).join(' ') || undefined}
+          onChange={(e) => setText(e.target.value)}
+          onBlur={() => {
+            if (text === shown && !invalid) return // unchanged: nothing to parse or commit
+            commit(text, exp)
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') e.currentTarget.blur()
+            else if (e.key === 'Escape') {
+              setText(shown)
+              setInvalid(false)
+            }
+          }}
+        />
+        {choices.length > 1 ? (
+          <select
+            id={`${id}-unit`}
+            className="value-unit"
+            aria-label={`${label} unit`}
+            value={exp}
+            onChange={(e) => commit(text, Number(e.target.value))}
+          >
+            {choices.map((c) => <option key={c.exp} value={c.exp}>{c.label}</option>)}
+          </select>
+        ) : (
+          <span id={`${id}-unit`} className="value-unit fixed">{choices[0].label}</span>
+        )}
+      </div>
       {list.length > 0 && (
         <datalist id={`${id}-options`}>
           {list.map((v) => (
@@ -236,8 +304,8 @@ function ValueInput({ id, label, unit, value, onCommit, onClear }: { id: string;
           ))}
         </datalist>
       )}
-      {invalid && <p className="hint" role="status">{unit === 'A' ? 'Use a rating like 2, 500m or 13 (amps), or leave it empty if unknown' : unit === 'VAC' ? 'Use a voltage like 120 or 230' : 'Use a value like 4.7k, 220 or 100n'}</p>}
-    </label>
+      {invalid && <p className="hint warn" id={hintId} role="status">{VALUE_HINTS[unit] ?? 'Use a number, like 4.7k or 220'}</p>}
+    </div>
   )
 }
 
@@ -483,7 +551,7 @@ export function Inspector({ store }: { store: EditorStore }) {
           const v = paramValue(part, m, pp.name)
           return (
             <ValueInput
-              key={`${part.uid}:${pp.name}:${v}`}
+              key={`${part.uid}:${pp.name}`}
               id={i === 0 ? 'part-value' : `part-value-${pp.name}`}
               label={VALUE_LABELS[pp.name] ?? pp.name}
               unit={pp.unit}
