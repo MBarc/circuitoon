@@ -46511,6 +46511,10 @@ var RULES = {
 		severity: "error",
 		title: "Two wires in one hole"
 	},
+	"leg-hole-shared": {
+		severity: "error",
+		title: "Two in one hole"
+	},
 	short: {
 		severity: "error",
 		title: "Short circuit"
@@ -46590,10 +46594,6 @@ var RULES = {
 	mount: {
 		severity: "warning",
 		title: "Not plugged in"
-	},
-	"leg-hole-shared": {
-		severity: "warning",
-		title: "Two in one hole"
 	},
 	"plug-mismatch": {
 		severity: "warning",
@@ -47285,7 +47285,7 @@ function checkDiagram(d) {
 				rule: "leg-hole-shared",
 				subject: board.designator,
 				target: where,
-				message: `A wire ends in ${where}, where leg ${legTerm?.label ?? pl.pin} of ${leg.designator} sits: physically, one hole takes one leg. Move the wire to another hole of the strip.`,
+				message: `A wire ends in ${where}, where leg ${legTerm?.label ?? pl.pin} of ${leg.designator} sits: physically, one hole takes one leg or one wire end, not both. Move the wire to a free hole of the same strip.`,
 				parts: [board.uid, leg.uid],
 				pins: [{
 					part: pl.part,
@@ -59684,12 +59684,23 @@ function uniqueIds(findings) {
 /**
 * Verify's findings a combined report leaves out because the wiring checker (`checked`) reports the
 * same problem itself: covered-hole (a wire end or leg under a part's body) comes from one shared
-* test, and so does a board hole's capacity when the checker has hole-shared for that hole (both
-* build their id from the same hole key, from the same holeUses).
+* test, and so does a board hole's capacity when the checker has hole-shared (two wire ends) or
+* leg-hole-shared (a leg and a wire end) for that hole. Verify's hole key is ["hole", board, group,
+* hole]: hole-shared uses the same key, leg-hole-shared the hole's holeKey among its causes.
 */
 function alsoChecked(f, checked) {
 	if (f.rule === "covered-hole") return true;
-	return f.rule === "capacity" && checked.some((c) => c.rule === "hole-shared" && c.id.slice(11) === f.id.slice(8));
+	if (f.rule !== "capacity") return false;
+	const key = f.id.slice(9);
+	let at;
+	try {
+		at = JSON.parse(key);
+	} catch {
+		return false;
+	}
+	if (!Array.isArray(at) || at[0] !== "hole") return false;
+	const hole = holeKey$1(String(at[1]), String(at[2]), Number(at[3]));
+	return checked.some((c) => c.rule === "hole-shared" && c.id === `hole-shared|${key}` || c.rule === "leg-hole-shared" && c.id.includes(hole));
 }
 /**
 * The checker's findings, less any covered-hole that involves a part whose embedded module blocks as

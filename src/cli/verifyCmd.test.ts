@@ -9,7 +9,7 @@ import { cli, tempDir } from './cliHarness.testing.ts'
 import { loadSchema, schemaErrors } from './jsonSchema.testing.ts'
 import { ledNetlist } from '../agent/fixtures.testing.ts'
 import { validateDiagram } from '../format/diagram.ts'
-import { coveredHoles, holeKey, takenHoles } from '../format/breadboard.ts'
+import { coveredHoles, holeKey, plugsOf, takenHoles } from '../format/breadboard.ts'
 import { type CliFinding, cliFinding, findingsText, notCheckedText, uniqueIds } from './verifyCmd.ts'
 
 const laidOut = async () => {
@@ -115,6 +115,32 @@ describe('circuitoon verify and check', () => {
     expect(g.code).toBe(1)
     const blocking: CliFinding[] = JSON.parse(readFileSync(join(dir, 'out', 'gate.json'), 'utf8')).blocking
     expect(blocking.filter((f) => f.rule === 'hole-shared')).toHaveLength(1)
+    expect(blocking.filter((f) => f.rule === 'capacity')).toEqual([])
+  })
+
+  it('reports a wire end beside a leg once in check and gate: leg-hole-shared, not also capacity', async () => {
+    const dir = await laidOut()
+    edit(dir, (s) => {
+      // A wire from a free hole of R1's strip into the hole R1's leg fills.
+      const r = validateDiagram(s)
+      if (!r.ok) throw new Error(r.errors.join('; '))
+      const r1 = r.diagram.parts.find((p) => p.designator === 'R1')!
+      const leg = plugsOf(r.diagram).find((pl) => pl.part === r1.uid)!
+      const taken = takenHoles(r.diagram)
+      const free = [0, 1, 2, 3, 4].find((i) => !taken.has(holeKey(leg.board, leg.group, i)))!
+      s.connections.push({ uid: 'hand', from: { part: leg.board, pin: leg.group, hole: free }, to: { part: leg.board, pin: leg.group, hole: leg.hole } })
+    })
+    const v = await cli(['verify', 'sheet.json', '--json'], { cwd: dir })
+    expect(JSON.parse(v.out).findings.filter((f: CliFinding) => f.rule === 'capacity')).toHaveLength(1)
+    const c = await cli(['check', 'sheet.json', '--json'], { cwd: dir })
+    expect(c.code).toBe(1)
+    const found: CliFinding[] = JSON.parse(c.out).findings
+    expect(found.filter((f) => f.rule === 'leg-hole-shared').map((f) => f.severity)).toEqual(['error'])
+    expect(found.filter((f) => f.rule === 'capacity')).toEqual([])
+    const g = await cli(['gate', 'sheet.json', '-o', 'out'], { cwd: dir, env: { CIRCUITOON_BROWSER: join(dir, 'no-such-browser.exe') } })
+    expect(g.code).toBe(1)
+    const blocking: CliFinding[] = JSON.parse(readFileSync(join(dir, 'out', 'gate.json'), 'utf8')).blocking
+    expect(blocking.filter((f) => f.rule === 'leg-hole-shared')).toHaveLength(1)
     expect(blocking.filter((f) => f.rule === 'capacity')).toEqual([])
   })
 

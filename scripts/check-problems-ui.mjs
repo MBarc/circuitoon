@@ -136,7 +136,7 @@ for (const scheme of ['light', 'dark']) {
   const titles = await page.locator('.problem-title').allTextContents()
   const severities = await rows.evaluateAll((els) => els.map((e) => e.className))
   check(severities.indexOf('warning') > 0 && !severities.slice(severities.indexOf('warning')).includes('error'), `${scheme}: errors are listed first (${severities.join(' ')})`)
-  for (const t of ['Error: Short circuit', 'Error: Supplies fight', 'Error: Broken connection', 'Warning: No power', 'Warning: No ground', 'Warning: Two in one hole'])
+  for (const t of ['Error: Short circuit', 'Error: Supplies fight', 'Error: Broken connection', 'Warning: No power', 'Warning: No ground', 'Error: Two in one hole'])
     check(titles.includes(t), `${scheme}: the list has "${t}"`)
   const messages = await page.locator('.problem-message').allTextContents()
   check(messages.includes('U2 5V+ (5 V) and U1 3V3 (3.3 V) are wired together: the two supplies fight, and the higher one drives current into the lower one, which can damage both. Remove the wire from U2 5V+ to U1 3V3.'), `${scheme}: the supplies-fight message names both pins`)

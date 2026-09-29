@@ -529,8 +529,8 @@ describe('checkDiagram', () => {
         { uid: 'w1', from: { part: 'bb1', pin: 's1', hole: 1 }, to: { part: 'r2', pin: 'L' } },
       ])
       const [f] = only(d, 'leg-hole-shared')
-      expect(f.severity).toBe('warning')
-      expect(f.message).toBe('A wire ends in BB1 s1 hole 1, where leg L of R1 sits: physically, one hole takes one leg. Move the wire to another hole of the strip.')
+      expect(f.severity).toBe('error')
+      expect(f.message).toBe('A wire ends in BB1 s1 hole 1, where leg L of R1 sits: physically, one hole takes one leg or one wire end, not both. Move the wire to a free hole of the same strip.')
       expect(f.parts).toEqual(['bb1', 'r1'])
       expect(f.wires).toEqual(['w1'])
       expect(f.select).toEqual({ parts: [], wires: ['w1'] })

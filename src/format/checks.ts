@@ -58,6 +58,7 @@ export const RULES: Record<RuleId, { severity: Severity; title: string }> = {
   broken: { severity: 'error', title: 'Broken connection' },
   'covered-hole': { severity: 'error', title: 'Hole under a part' },
   'hole-shared': { severity: 'error', title: 'Two wires in one hole' },
+  'leg-hole-shared': { severity: 'error', title: 'Two in one hole' },
   short: { severity: 'error', title: 'Short circuit' },
   'mains-short': { severity: 'error', title: 'Mains short circuit' },
   'mains-cross-source': { severity: 'error', title: 'Two outlets joined' },
@@ -78,7 +79,6 @@ export const RULES: Record<RuleId, { severity: Severity; title: string }> = {
   'no-power': { severity: 'warning', title: 'No power' },
   'no-ground': { severity: 'warning', title: 'No ground' },
   mount: { severity: 'warning', title: 'Not plugged in' },
-  'leg-hole-shared': { severity: 'warning', title: 'Two in one hole' },
   'plug-mismatch': { severity: 'warning', title: 'Plug does not fit' },
   polarity: { severity: 'warning', title: 'Mains polarity' },
   unprotected: { severity: 'warning', title: 'No fuse' },
@@ -724,7 +724,7 @@ export function checkDiagram(d: Diagram): Finding[] {
       parts: board ? [p.uid, board.uid] : [p.uid], pins: [], wires: [], select: { parts: [p.uid], wires: [] }, causes: [p.uid] })
   }
 
-  // A wire end in the very hole a plugged leg fills. A wire to the plugged pin itself also ends
+  // A wire end in the very hole a plugged leg fills: an error, nothing fits beside a leg. A wire to the plugged pin itself also ends
   // in that hole on the sheet, by design (it shows the strip the jumper goes into), so only an end
   // that names the hole is flagged.
   const legIn = new Map(plugs.map((pl) => [JSON.stringify([pl.board, pl.group, pl.hole]), pl]))
@@ -741,7 +741,7 @@ export function checkDiagram(d: Diagram): Finding[] {
       const legTerm = terminal(nodeKey(pl.part, pl.pin))
       const where = endpointName(d, { ...ep, hole: ep.hole ?? 0 })
       add({ rule: 'leg-hole-shared', subject: board.designator, target: where,
-        message: `A wire ends in ${where}, where leg ${legTerm?.label ?? pl.pin} of ${leg.designator} sits: physically, one hole takes one leg. Move the wire to another hole of the strip.`,
+        message: `A wire ends in ${where}, where leg ${legTerm?.label ?? pl.pin} of ${leg.designator} sits: physically, one hole takes one leg or one wire end, not both. Move the wire to a free hole of the same strip.`,
         parts: [board.uid, leg.uid], pins: [{ part: pl.part, pin: pl.pin }], wires: [c.uid], select: { parts: [], wires: [c.uid] }, causes: [c.uid, hole] })
     }
   }
