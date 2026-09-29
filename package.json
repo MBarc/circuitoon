@@ -17,6 +17,7 @@
     "check:link-ui": "node scripts/check-link-ui.mjs",
     "check:annotations-ui": "node scripts/check-annotations-ui.mjs",
     "check:select-ui": "node scripts/check-select-ui.mjs",
+    "check:values-ui": "node scripts/check-values-ui.mjs",
     "check:export-ui": "node scripts/check-export-ui.mjs",
     "check:examples": "node scripts/check-examples.mjs",
     "check:mains-ui": "node scripts/check-mains-ui.mjs",

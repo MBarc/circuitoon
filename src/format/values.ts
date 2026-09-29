@@ -52,11 +52,14 @@ export function formatValue(value: number, unit: string): string {
 /** Single-character SI prefixes accepted on input; case matters (M is mega, m is milli). */
 const PREFIX_MULT: Record<string, number> = { G: 1e9, M: 1e6, k: 1e3, K: 1e3, m: 1e-3, u: 1e-6, [MICRO]: 1e-6, n: 1e-9, p: 1e-12 }
 
-/** True when `s` spells out the given unit (its full name or sign), case-insensitively. Empty means the unit was left implied, which is always accepted. */
+/**
+ * True when `s` spells out the given unit (its full name or sign), case-insensitively. Empty means
+ * the unit was left implied, which is always accepted. For ohms, "R" counts too (330R).
+ */
 function matchesUnit(s: string, unit: string): boolean {
   if (s === '') return true
   const low = s.toLowerCase()
-  if (unit === 'ohm') return low === 'ohm' || low === 'ohms' || s === OHM || s === OMEGA
+  if (unit === 'ohm') return low === 'ohm' || low === 'ohms' || low === 'r' || s === OHM || s === OMEGA
   if (unit === 'F') return low === 'f'
   if (unit === 'V') return low === 'v'
   if (unit === 'VAC') return low === 'v' || low === 'vac'
@@ -90,22 +93,31 @@ function finish(v: number, unit: string): number | null {
   return ok(rounded) ? rounded : null
 }
 
+/** The power of ten of a prefix multiplier (1e3 -> 3), exact for every PREFIX_MULT entry. */
+const expOf = (mult: number): number => Math.round(Math.log10(mult))
+
 /**
- * Parses free-typed value text for a param of the given unit: "4.7k", "4k7", "4.7 kΩ",
- * "4.7kohm", "220", "1M", "100n", "100nF", "0.1u", "10µ", "10uF", "3.7", "3.7V", "-12", "0".
- * Returns null for empty, non-numeric or wrong-unit-suffix input, and for a value out of range for
- * the unit (see `finish`).
+ * Splits value text into its number and, when the text names one, its SI prefix as a power of ten
+ * (`exp`: 0 for a unit with no prefix, like "330 ohm" or "330R"; null for a bare number, whose
+ * scale the caller decides). Null for text that is not a value in this unit. No range check.
  */
-export function parseValue(text: string, unit: string): number | null {
+function parseTerms(text: string, unit: string): { n: number; exp: number | null } | null {
   const t = text.trim()
   if (!t) return null
+  const ohm = unit === 'ohm'
 
-  // Embedded decimal point, e.g. "4k7" meaning 4.7k, or "1u5" meaning 1.5u.
+  // "R47" for ohms: 0.47.
+  const leadingR = ohm ? /^(-?)[Rr](\d+)$/.exec(t) : null
+  if (leadingR) return { n: Number(`${leadingR[1]}0.${leadingR[2]}`), exp: 0 }
+
+  // Embedded decimal point, e.g. "4k7" meaning 4.7k, "1u5" meaning 1.5u, or for ohms "4R7" meaning 4.7.
   const embedded = /^(-?\d+)([A-Za-zµ])(\d+)([A-Za-zΩΩ]*)$/.exec(t)
   if (embedded) {
     const [, whole, letter, frac, rest] = embedded
+    const n = Number(`${whole}.${frac}`)
+    if (ohm && (letter === 'R' || letter === 'r')) return rest === '' ? { n, exp: 0 } : null
     if (!Object.hasOwn(PREFIX_MULT, letter) || !matchesUnit(rest, unit)) return null
-    return finish(Number(`${whole}.${frac}`) * PREFIX_MULT[letter], unit)
+    return { n, exp: expOf(PREFIX_MULT[letter]) }
   }
 
   const m = /^(-?\d*\.?\d+)\s*([A-Za-zµΩΩ]*)$/.exec(t)
@@ -113,10 +125,67 @@ export function parseValue(text: string, unit: string): number | null {
   const [, numStr, suffixRaw] = m
   const n = Number(numStr)
   if (!Number.isFinite(n)) return null
-  if (suffixRaw === '') return finish(n, unit)
+  if (suffixRaw === '') return { n, exp: null }
   const { mult, rest } = splitPrefix(suffixRaw)
   if (!matchesUnit(rest, unit)) return null
-  return finish(n * mult, unit)
+  return { n, exp: expOf(mult) }
+}
+
+/**
+ * Parses free-typed value text for a param of the given unit: "4.7k", "4k7", "4.7 kΩ",
+ * "4.7kohm", "220", "1M", "100n", "100nF", "0.1u", "10µ", "10uF", "3.7", "3.7V", "-12", "0",
+ * and for ohms the R notation: "330R", "4R7", "R47".
+ * Returns null for empty, non-numeric or wrong-unit-suffix input, and for a value out of range for
+ * the unit (see `finish`).
+ */
+export function parseValue(text: string, unit: string): number | null {
+  const terms = parseTerms(text, unit)
+  return terms ? finish(terms.n * Math.pow(10, terms.exp ?? 0), unit) : null
+}
+
+/** The prefixes the value field's unit dropdown offers, per param unit (powers of ten). */
+const UNIT_EXPS: Record<string, number[]> = { ohm: [0, 3, 6], F: [-12, -9, -6], V: [-3, 0], VAC: [0], A: [-3, 0] }
+
+/** The units the value field offers for a param unit, smallest first: for ohms Ω, kΩ, MΩ. */
+export function unitChoices(unit: string): { exp: number; label: string }[] {
+  const symbol = UNIT_SYMBOLS[unit] ?? unit
+  return (UNIT_EXPS[unit] ?? [0]).map((exp) => ({ exp, label: `${PREFIXES.find((p) => p.exp === exp)?.symbol ?? ''}${symbol}` }))
+}
+
+/**
+ * The offered unit to show `value` in: the largest that keeps the number at 1 or more (4700 ohm in
+ * kΩ, 330 ohm in Ω), the base unit (or the one nearest it) for 0, and the smallest for a value
+ * below every offered unit.
+ */
+export function pickUnitExp(value: number, unit: string): number {
+  const exps = unitChoices(unit).map((c) => c.exp)
+  if (value === 0) return exps.reduce((best, e) => (Math.abs(e) < Math.abs(best) ? e : best))
+  let pick = exps[0]
+  for (const e of exps) if (roundSig(Math.abs(value) / Math.pow(10, e), 6) >= 1) pick = e
+  return pick
+}
+
+/** `value` in the unit 10^exp as plain decimal text: 4700 at exp 3 is "4.7". Never an exponent. */
+export function scaledNumber(value: number, exp: number): string {
+  const n = roundSig(value / Math.pow(10, exp), 6) + 0
+  return n.toLocaleString('en-US', { useGrouping: false, maximumSignificantDigits: 6 })
+}
+
+/**
+ * Parses the value field's number box with the dropdown at unit 10^exp. A bare number is in that
+ * unit ("330" with Ω picked is 330 ohm) and the dropdown stays; text with its own prefix or unit
+ * ("4k7", "100n", "330 ohm", "330R") overrides the dropdown, which moves to that prefix, or to the
+ * best offered unit (pickUnitExp) when the dropdown does not offer it. Null for what parseValue
+ * rejects, and for a bare number out of range once scaled.
+ */
+export function parseValueIn(text: string, unit: string, exp: number): { value: number; exp: number } | null {
+  const terms = parseTerms(text, unit)
+  if (!terms) return null
+  const value = finish(terms.n * Math.pow(10, terms.exp ?? exp), unit)
+  if (value === null) return null
+  if (terms.exp === null) return { value, exp }
+  const offered = unitChoices(unit).some((c) => c.exp === terms.exp)
+  return { value, exp: offered ? terms.exp : pickUnitExp(value, unit) }
 }
 
 /**

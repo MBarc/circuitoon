@@ -6,7 +6,11 @@ import {
   editableParams,
   formatValue,
   parseValue,
+  parseValueIn,
   partCaption,
+  pickUnitExp,
+  scaledNumber,
+  unitChoices,
   paramValue,
   partValue,
   primaryParam,
@@ -113,6 +117,120 @@ describe('parseValue', () => {
       expect(parseValue(text, unit) !== null, text).toBe(validParamValue(name, v))
     expect(parseValue('1000G', 'ohm')).toBe(1e12)
     expect(parseValue('0.001p', 'F')).toBe(1e-15)
+  })
+})
+
+describe('R notation for ohms', () => {
+  it('reads a trailing R as the ohm unit', () => {
+    expect(parseValue('330R', 'ohm')).toBe(330)
+    expect(parseValue('330r', 'ohm')).toBe(330)
+    expect(parseValue('4.7kR', 'ohm')).toBe(4700)
+  })
+  it('reads an embedded R as the decimal point, and a leading R as 0.', () => {
+    expect(parseValue('4R7', 'ohm')).toBe(4.7)
+    expect(parseValue('1R5', 'ohm')).toBe(1.5)
+    expect(parseValue('R47', 'ohm')).toBe(0.47)
+  })
+  it('means ohms only: R is not a unit or decimal point for farads or volts', () => {
+    expect(parseValue('330R', 'F')).toBeNull()
+    expect(parseValue('4R7', 'V')).toBeNull()
+    expect(parseValue('R47', 'F')).toBeNull()
+  })
+})
+
+describe('unitChoices', () => {
+  it('lists the units the value field offers for each param unit, smallest first', () => {
+    expect(unitChoices('ohm').map((c) => c.label)).toEqual([OHM, `k${OHM}`, `M${OHM}`])
+    expect(unitChoices('F').map((c) => c.label)).toEqual(['pF', 'nF', `${MICRO}F`])
+    expect(unitChoices('V').map((c) => c.label)).toEqual(['mV', 'V'])
+    expect(unitChoices('VAC').map((c) => c.label)).toEqual(['VAC'])
+    expect(unitChoices('A').map((c) => c.label)).toEqual(['mA', 'A'])
+    expect(unitChoices('ohm').map((c) => c.exp)).toEqual([0, 3, 6])
+    expect(unitChoices('F').map((c) => c.exp)).toEqual([-12, -9, -6])
+  })
+})
+
+describe('pickUnitExp', () => {
+  it('picks the largest offered unit that keeps the number at 1 or more', () => {
+    expect(pickUnitExp(330, 'ohm')).toBe(0)
+    expect(pickUnitExp(1000, 'ohm')).toBe(3)
+    expect(pickUnitExp(4700, 'ohm')).toBe(3)
+    expect(pickUnitExp(2.2e6, 'ohm')).toBe(6)
+    expect(pickUnitExp(1e-7, 'F')).toBe(-9)
+    expect(pickUnitExp(1e-4, 'F')).toBe(-6)
+    expect(pickUnitExp(22e-12, 'F')).toBe(-12)
+    expect(pickUnitExp(0.5, 'A')).toBe(-3)
+    expect(pickUnitExp(-0.2, 'V')).toBe(-3)
+    expect(pickUnitExp(-12, 'V')).toBe(0)
+  })
+  it('falls back to the base unit for 0, and to the smallest unit below the list', () => {
+    expect(pickUnitExp(0, 'ohm')).toBe(0)
+    expect(pickUnitExp(0, 'V')).toBe(0)
+    expect(pickUnitExp(0.47, 'ohm')).toBe(0)
+    expect(pickUnitExp(1e-15, 'F')).toBe(-12)
+  })
+  it('does not flip a value that is 1 of a unit after float noise', () => {
+    expect(pickUnitExp(0.001, 'A')).toBe(-3)
+    expect(pickUnitExp(1e-9, 'F')).toBe(-9)
+  })
+})
+
+describe('scaledNumber', () => {
+  it('shows the value in the chosen unit, with no float noise and no exponent', () => {
+    expect(scaledNumber(330, 0)).toBe('330')
+    expect(scaledNumber(4700, 3)).toBe('4.7')
+    expect(scaledNumber(1e-7, -9)).toBe('100')
+    expect(scaledNumber(4.7e-6, -6)).toBe('4.7')
+    expect(scaledNumber(1e-15, 0)).toBe('0.000000000000001')
+    expect(scaledNumber(-12, 0)).toBe('-12')
+    expect(scaledNumber(0, 3)).toBe('0')
+  })
+})
+
+describe('parseValueIn', () => {
+  it('reads a bare number in the unit picked in the dropdown, which stays picked', () => {
+    expect(parseValueIn('330', 'ohm', 0)).toEqual({ value: 330, exp: 0 })
+    expect(parseValueIn('330', 'ohm', 3)).toEqual({ value: 330000, exp: 3 })
+    expect(parseValueIn('2.2', 'ohm', 6)).toEqual({ value: 2.2e6, exp: 6 })
+    expect(parseValueIn('22', 'F', -12)).toEqual({ value: 22e-12, exp: -12 })
+    expect(parseValueIn('100', 'F', -9)).toEqual({ value: 1e-7, exp: -9 })
+    expect(parseValueIn('4.7', 'F', -6)).toEqual({ value: 4.7e-6, exp: -6 })
+    expect(parseValueIn('500', 'V', -3)).toEqual({ value: 0.5, exp: -3 })
+    expect(parseValueIn('5', 'V', 0)).toEqual({ value: 5, exp: 0 })
+    expect(parseValueIn('230', 'VAC', 0)).toEqual({ value: 230, exp: 0 })
+    expect(parseValueIn('500', 'A', -3)).toEqual({ value: 0.5, exp: -3 })
+    expect(parseValueIn('2', 'A', 0)).toEqual({ value: 2, exp: 0 })
+  })
+  it('lets a typed prefix or unit override the dropdown, which then moves to match', () => {
+    expect(parseValueIn('4k7', 'ohm', 0)).toEqual({ value: 4700, exp: 3 })
+    expect(parseValueIn('4.7k', 'ohm', 6)).toEqual({ value: 4700, exp: 3 })
+    expect(parseValueIn('1M', 'ohm', 0)).toEqual({ value: 1e6, exp: 6 })
+    expect(parseValueIn('330 ohm', 'ohm', 3)).toEqual({ value: 330, exp: 0 })
+    expect(parseValueIn(`330 ${OHM}`, 'ohm', 3)).toEqual({ value: 330, exp: 0 })
+    expect(parseValueIn('330R', 'ohm', 3)).toEqual({ value: 330, exp: 0 })
+    expect(parseValueIn('4R7', 'ohm', 3)).toEqual({ value: 4.7, exp: 0 })
+    expect(parseValueIn('100n', 'F', -6)).toEqual({ value: 1e-7, exp: -9 })
+    expect(parseValueIn('10uF', 'F', -12)).toEqual({ value: 1e-5, exp: -6 })
+    expect(parseValueIn('3.3V', 'V', -3)).toEqual({ value: 3.3, exp: 0 })
+    expect(parseValueIn('500m', 'A', 0)).toEqual({ value: 0.5, exp: -3 })
+  })
+  it('picks the best offered unit when the typed prefix is not in the dropdown', () => {
+    expect(parseValueIn('0.1u', 'F', -12)).toEqual({ value: 1e-7, exp: -6 })
+    expect(parseValueIn('1G', 'ohm', 0)).toEqual({ value: 1e9, exp: 6 })
+    expect(parseValueIn('1m', 'F', -9)).toEqual({ value: 1e-3, exp: -6 })
+  })
+  it('accepts a datalist suggestion as shown ("4.7 kOhm")', () => {
+    expect(parseValueIn(formatValue(4700, 'ohm'), 'ohm', 0)).toEqual({ value: 4700, exp: 3 })
+    expect(parseValueIn(formatValue(1e-7, 'F'), 'F', -12)).toEqual({ value: 1e-7, exp: -9 })
+  })
+  it('rejects what parseValue rejects, including a bare number out of range once scaled', () => {
+    expect(parseValueIn('', 'ohm', 0)).toBeNull()
+    expect(parseValueIn('abc', 'ohm', 3)).toBeNull()
+    expect(parseValueIn('-5', 'ohm', 0)).toBeNull()
+    expect(parseValueIn('4.7F', 'ohm', 0)).toBeNull()
+    expect(parseValueIn('2000', 'VAC', 0)).toBeNull()
+    expect(parseValueIn('200', 'A', 0)).toBeNull()
+    expect(parseValueIn('5000', 'ohm', 9)).toBeNull()
   })
 })
 
