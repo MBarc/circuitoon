@@ -47,7 +47,7 @@ describe('the new-wire cable, remembered per browser', () => {
     const m = fakeStorage()
     saveNewWireEnds({ from: 'alligator', to: 'alligator' })
     const store = new EditorStore(emptyDiagram())
-    expect(store.getState().wireStyle).toEqual({ color: 'black', gauge: 22, ends: { from: 'alligator', to: 'alligator' } })
+    expect(store.getState().wireStyle).toEqual({ color: 'blue', gauge: 22, ends: { from: 'alligator', to: 'alligator' } })
     store.setWireStyle({ color: 'red', gauge: 22, ends: { from: 'jst-sh', to: 'jst-sh' } })
     expect(JSON.parse(m.get('circuitoon.newWire.ends')!)).toEqual({ from: 'jst-sh', to: 'jst-sh' })
   })

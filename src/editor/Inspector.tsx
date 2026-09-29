@@ -162,11 +162,11 @@ function CableSelect({ id, value, onPick }: { id: string; value: string; onPick:
   )
 }
 
-/** The next wire's style in words: "black, 22 AWG, Dupont M-M". */
+/** The next wire's style in words: "blue for signals (black for ground, red for supply), 22 AWG, Dupont M-M". */
 function newWireStyle(style: WireStyle): string {
   const picked = presetOf(style.ends)
   const cable = !picked ? 'a custom cable' : picked.id === 'wire' ? 'plain wire' : picked.name
-  return `${style.color}, ${style.gauge} AWG, ${cable}`
+  return `${style.color} for signals (black for ground, red for supply), ${style.gauge} AWG, ${cable}`
 }
 
 /**

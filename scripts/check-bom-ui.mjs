@@ -1,5 +1,6 @@
 // Browser check for the bill of materials and the wire colour convention in the editor. A sheet
 // with a blue ground wire and a red signal wire shows both colour warnings in the Problems list.
+// The new-wire style starts blue, so a plain signal wire never reads as power or ground.
 // With the new-wire style set to yellow, a wire drawn from a GND pin is drawn black, one from a 5 V
 // output red, and a signal wire yellow. The Bill of materials button opens a dialog listing the
 // parts grouped with designator ranges, the wires by cable and colour, and Export CSV saves
@@ -91,6 +92,7 @@ for (const scheme of ['light', 'dark']) {
   await page.screenshot({ path: join(shots, `bom-warnings-${scheme}.png`) })
 
   // --- New wires take their net's role colour; a signal takes the style colour. ---
+  check((await page.locator('.inspector .hint', { hasText: 'New wires' }).textContent()).startsWith('New wires: blue for signals (black for ground, red for supply)'), `${scheme}: the new-wire style starts blue for signals`)
   // Select the red signal wire by clicking halfway along it (not its warning's Select, which pans
   // the view), and recolour it yellow.
   const mid = await page.evaluate(() => {

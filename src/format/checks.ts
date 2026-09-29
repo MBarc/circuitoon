@@ -799,7 +799,7 @@ export function checkDiagram(d: Diagram): Finding[] {
         if (!typed(a.t) && !typed(b.t)) continue
         const ga = groupsOf(a.t.part)
         if ([...groupsOf(b.t.part)].some((g) => ga.has(g))) continue
-        const key = [a.t.part.uid, b.t.part.uid].sort().join(' ')
+        const key = [a.t.part.uid, b.t.part.uid].sort().join('\u0000')
         const prev = best.get(key)
         if (!prev || natural.compare(a.n + ' ' + b.n, prev.an + ' ' + prev.bn) < 0) best.set(key, { a: a.t, b: b.t, an: a.n, bn: b.n, net: i })
       }

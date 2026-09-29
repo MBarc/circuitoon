@@ -51,6 +51,18 @@ describe('EditorStore', () => {
   })
 })
 
+describe('EditorStore new-wire style', () => {
+  it('starts blue, so a freshly drawn signal wire never reads as power or ground', () => {
+    expect(new EditorStore(emptyDiagram()).getState().wireStyle).toEqual({ color: 'blue', gauge: 22 })
+  })
+  it('keeps a colour the user picks, across loading another sheet', () => {
+    const store = new EditorStore(emptyDiagram())
+    store.setWireStyle({ color: 'purple', gauge: 24 })
+    store.load(emptyDiagram('Other'))
+    expect(store.getState().wireStyle).toEqual({ color: 'purple', gauge: 24 })
+  })
+})
+
 describe('EditorStore drag safety', () => {
   it('a commit during a drag keeps both the drag and the commit as separate undo steps', () => {
     const s = new EditorStore(addPart(emptyDiagram(), m, 0, 0).diagram)
