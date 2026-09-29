@@ -105,6 +105,30 @@ describe('built-in chips and displays keep the physical pin order', () => {
     }
   })
 
+  it('DIP-28s: the notch sits at the left end and the pin 1 dot at the bottom left, beside pin 1', () => {
+    for (const file of ['mcp23017-dip28.json', 'mcp23018-dip28.json']) {
+      const m = load(file)
+      const lay = layoutModule(m)
+      const shapes = m.art!.shapes
+      // The package: the largest shape; the marks are the chip-mark coloured shapes on it.
+      const body = shapes.reduce((a, b) => (b.w * b.h > a.w * a.h ? b : a))
+      const marks = shapes.filter((s) => s !== body && s.fill === '#3A3F47')
+      expect(marks, file).toHaveLength(2)
+      const [notch, dot] = [...marks].sort((a, b) => b.w * b.h - a.w * a.h)
+      const mid = (s: { x: number; y: number; w: number; h: number }) => ({ x: s.x + s.w / 2, y: s.y + s.h / 2 })
+      // Notch: on the left end of the package, vertically centred.
+      expect(notch.x - body.x, file).toBeLessThanOrEqual(2)
+      expect(mid(notch).y, file).toBe(body.y + body.h / 2)
+      // Pin 1 dot: in the bottom half, over pin 1 (the first bottom pin, leftmost).
+      const pin1 = lay.pins.find((p) => p.name === pinsOf(m)[0].name)!
+      expect(pin1.side, file).toBe('bottom')
+      expect(pin1.edge.x, file).toBe(Math.min(...lay.pins.map((p) => p.edge.x)))
+      expect(mid(dot).y, file).toBeGreaterThan(body.y + body.h / 2)
+      expect(mid(dot).x, file).toBe(pin1.edge.x)
+      expect(mid(dot).x, file).toBeLessThan(mid(body).x)
+    }
+  })
+
   it('MCP23017 and MCP23018 differ where the datasheets say (ADDR instead of A0 to A2, VSS on pin 1)', () => {
     const a = load('mcp23017-dip28.json'), b = load('mcp23018-dip28.json')
     const names = (m: ModuleDef) => pinsOf(m).map((p) => p.name)
