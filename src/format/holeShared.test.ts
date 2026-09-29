@@ -8,6 +8,7 @@ import { checkDiagram } from './checks.ts'
 import type { Connection, Diagram, Endpoint, PartInstance } from './diagram.ts'
 import type { ModuleDef } from './module.ts'
 import { load } from './builtinModules.testing.ts'
+import { at as mainsAt, sheet as mainsSheet } from './mains.testing.ts'
 
 /** Nine strips s1..s9 of five holes: strip i at x = 10 i, holes at y = 10..50. */
 const bb: ModuleDef = {
@@ -128,6 +129,14 @@ describe('checker: hole-shared', () => {
     const rules = checkDiagram(d).map((f) => f.rule)
     expect(rules).not.toContain('hole-shared')
     expect(rules).toContain('leg-hole-shared')
+  })
+  it('leaves a wire to an outlet contact beside a seated plug alone: no leg-hole-shared on a mains outlet', () => {
+    const base = mainsSheet([mainsAt('xs1', 'XS1', 't-outlet-uk'), mainsAt('xp1', 'XP1', 't-plug-uk', 0, 0, { mount: { board: 'xs1' } }), mainsAt('e1', 'E1', 't-lamp-230', 400)], [])
+    const leg = plugsOf(base).find((pl) => pl.part === 'xp1' && pl.pin === 'L prong')!
+    expect(leg.board).toBe('xs1')
+    const d = { ...base, connections: [w('w1', h('xs1', leg.group, leg.hole), { part: 'e1', pin: 'L' })] }
+    expect(checkDiagram(d).map((f) => f.rule)).not.toContain('leg-hole-shared')
+    expect(takenHoles(d).has(holeKey('xs1', leg.group, leg.hole))).toBe(false)
   })
   it("leaves a mains outlet's socket contacts alone: they are not breadboard holes", () => {
     const g = outlet.holes![0].name
