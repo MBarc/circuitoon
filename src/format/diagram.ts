@@ -105,6 +105,27 @@ export function wireColor(c: string | undefined): string {
   return Object.hasOwn(NAMED_COLORS, key) ? NAMED_COLORS[key] : NAMED_COLORS.black
 }
 
+/**
+ * Which of the low-voltage convention's reserved colours a stored wire colour reads as: `black`
+ * (ground), `red` (a positive supply) or `other`. Named black and red count, and so does a custom
+ * hex a person would call black (very dark, little colour) or red (a saturated hue within 15
+ * degrees of pure red, neither pale nor near black). Orange, pink and brown are `other`.
+ */
+export function colorFamily(c: string): 'black' | 'red' | 'other' {
+  const key = c.toLowerCase()
+  if (key === 'black' || key === 'red') return key
+  if (!/^#[0-9a-f]{6}$/.test(key)) return 'other'
+  const [r, g, b] = [1, 3, 5].map((i) => parseInt(key.slice(i, i + 2), 16) / 255)
+  const max = Math.max(r, g, b)
+  const min = Math.min(r, g, b)
+  const l = (max + min) / 2
+  const s = max === min ? 0 : (max - min) / (1 - Math.abs(2 * l - 1))
+  if (l < 0.25 && (s < 0.35 || max < 0.15)) return 'black'
+  if (max !== r || s < 0.5 || l < 0.25 || l > 0.7) return 'other'
+  const hue = 60 * ((g - b) / (max - min))
+  return Math.abs(hue) <= 15 ? 'red' : 'other'
+}
+
 /** The stripe colour of a two-colour wire, or null. */
 export function wireStripe(c: string | undefined): string | null {
   const key = c?.toLowerCase()

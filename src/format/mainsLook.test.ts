@@ -40,9 +40,10 @@ describe('wire looks', () => {
     expect(n).toEqual({ color: 'blue', hazard: true })
     expect(pe).toEqual({ color: 'green-yellow', hazard: false })
   })
-  it('a new wire from a mains terminal takes its identity colour; from a low-voltage pin it keeps the style colour', () => {
+  it('a new wire from a mains terminal takes its identity colour; from low-voltage pins it takes their role colour, else the style colour', () => {
     expect(newWireColor(eu, { part: 'xs1', pin: 'L' }, { part: 'e1', pin: 'L' }, 'red')).toBe('brown')
-    expect(newWireColor(us, { part: 'u1', pin: 'IO' }, { part: 'u1', pin: 'GND' }, 'red')).toBe('red')
+    expect(newWireColor(us, { part: 'u1', pin: 'IO' }, { part: 'u1', pin: 'GND' }, 'red')).toBe('black')
+    expect(newWireColor(us, { part: 'u1', pin: 'IO' }, { part: 'u1', pin: 'IO' }, 'blue')).toBe('blue')
   })
   it('green-yellow is a valid colour that round-trips, drawn green with a yellow stripe', () => {
     expect(isValidColor('green-yellow')).toBe(true)
