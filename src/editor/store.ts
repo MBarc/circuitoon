@@ -7,6 +7,7 @@ import type { Diagram, Endpoint } from '../format/diagram.ts'
 import type { Severity } from '../format/checks.ts'
 import { EMPTY_SELECTION, type Selection, type WireStyle } from './ops.ts'
 import { loadNewWireEnds, saveNewWireEnds } from './cableDefault.ts'
+import { loadSnapObjects, saveSnapObjects } from './snapPref.ts'
 
 export interface EditorState {
   diagram: Diagram
@@ -18,6 +19,8 @@ export interface EditorState {
   highlight: Highlight | null
   /** Counts requests to pan the canvas to the selection (a problem's Select). */
   reveal: number
+  /** Whether a drag snaps to other objects' edges, wired pins and equal gaps (the grid always applies). Remembered per browser. */
+  snapObjects: boolean
 }
 
 export interface Highlight {
@@ -30,6 +33,8 @@ export interface Highlight {
 }
 
 const HISTORY_LIMIT = 200
+/** Commits with the same coalesce key (arrow-key nudges) this close together fold into one undo step. */
+const COALESCE_MS = 1000
 
 export class EditorStore {
   private state: EditorState
@@ -38,12 +43,14 @@ export class EditorStore {
   private txBase: Diagram | null = null
   private unsaved = false
   private gesture = false
+  /** The last commit's coalesce key and time; any other history change clears it. */
+  private coalesce: { key: string; at: number } | null = null
   private listeners = new Set<() => void>()
 
   constructor(diagram: Diagram) {
     const ends = loadNewWireEnds()
     const wireStyle: WireStyle = ends ? { color: 'black', gauge: 22, ends } : { color: 'black', gauge: 22 }
-    this.state = { diagram, selection: EMPTY_SELECTION, wireStyle, highlight: null, reveal: 0 }
+    this.state = { diagram, selection: EMPTY_SELECTION, wireStyle, highlight: null, reveal: 0, snapObjects: loadSnapObjects() }
   }
 
   getState = (): EditorState => this.state
@@ -96,15 +103,23 @@ export class EditorStore {
   }
 
   private pushPast(d: Diagram) {
+    this.coalesce = null
     this.past.push(d)
     if (this.past.length > HISTORY_LIMIT) this.past.shift()
     this.future = []
   }
 
-  commit(next: Diagram) {
+  /**
+   * Makes an edit one undo step. With `coalesceKey`, an edit that follows a commit with the same key
+   * within COALESCE_MS joins that commit's step instead (a run of arrow-key nudges undoes at once).
+   */
+  commit(next: Diagram, coalesceKey?: string) {
     this.end()
     if (next === this.state.diagram) return
-    this.pushPast(this.state.diagram)
+    const now = Date.now()
+    const joins = coalesceKey !== undefined && this.coalesce?.key === coalesceKey && now - this.coalesce.at <= COALESCE_MS && this.past.length > 0
+    if (!joins) this.pushPast(this.state.diagram)
+    this.coalesce = coalesceKey === undefined ? null : { key: coalesceKey, at: now }
     this.unsaved = true
     this.set({ diagram: next, selection: this.prune(next, this.state.selection) })
   }
@@ -148,6 +163,7 @@ export class EditorStore {
 
   undo() {
     this.end()
+    this.coalesce = null
     const prev = this.past.pop()
     if (!prev) return
     this.future.push(this.state.diagram)
@@ -157,6 +173,7 @@ export class EditorStore {
 
   redo() {
     this.end()
+    this.coalesce = null
     const next = this.future.pop()
     if (!next) return
     this.past.push(this.state.diagram)
@@ -183,9 +200,17 @@ export class EditorStore {
     this.set({ reveal: this.state.reveal + 1 })
   }
 
+  /** Turns snapping to objects on or off for drags, and remembers the choice in this browser. */
+  setSnapObjects(on: boolean) {
+    if (on === this.state.snapObjects) return
+    saveSnapObjects(on)
+    this.set({ snapObjects: on })
+  }
+
   /** Replaces the whole document (import, new sheet) and clears history. */
   load(diagram: Diagram) {
     this.end()
+    this.coalesce = null
     this.past = []
     this.future = []
     this.unsaved = false
