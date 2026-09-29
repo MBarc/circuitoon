@@ -42,6 +42,7 @@
     "w": 18,
     "h": 10
   },
+  "footprint": "legs",
   "electrical": {
     "model": "storage",
     "params": {}

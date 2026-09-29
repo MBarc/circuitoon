@@ -317,6 +317,15 @@ describe('verifyDiagram against the library (stored modules are not trusted)', (
     expect(f.filter((x) => x.rule === 'module-drift').map((x) => x.parts)).toEqual([['U1']])
     expect(f.filter((x) => x.rule === 'covered-hole')).toEqual([])
   })
+  it('only warns when a stored copy lacks the top-view footprint (it changes covered holes, not connections)', () => {
+    const d = sheet()
+    const sw = structuredClone(modules['tilt-switch-sw520d']) as unknown as Record<string, unknown>
+    delete sw.footprint
+    d.modules = { ...d.modules, 'tilt-switch-sw520d': sw as unknown as ModuleDef }
+    const f = verifyDiagram(d, libraryLookup).filter((x) => x.rule === 'module-drift')
+    expect(f.map((x) => [x.severity, x.parts])).toEqual([['warning', ['S1']]])
+    expect(f[0].message).toContain('only in footprint')
+  })
   it('blocks a stored copy with no version whose pins were swapped (content decides, not the version)', () => {
     const d = sheet()
     const led = structuredClone(modules.led)

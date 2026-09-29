@@ -796,6 +796,7 @@ function validateModule(raw) {
 		});
 	}
 	if (raw.obstacle !== void 0 && typeof raw.obstacle !== "boolean") errors.push("obstacle: must be true or false");
+	if (raw.footprint !== void 0 && raw.footprint !== "legs" && !(isObj(raw.footprint) && isNum(raw.footprint.x) && isNum(raw.footprint.y) && isPos(raw.footprint.w) && isPos(raw.footprint.h))) errors.push("footprint: must be \"legs\" or { \"x\", \"y\", \"w\", \"h\" } in module px, with w and h above 0");
 	const pinNames = new Set(names);
 	claimInternalNodes(raw, names, errors);
 	if (raw.internal !== void 0) {
@@ -2011,13 +2012,22 @@ var shapeCache = /* @__PURE__ */ new WeakMap();
 * body out to the leg, which lies over holes without hiding them. Everything else the art draws
 * (a resistor's barrel, an LED's dome and rim, a chip's package) hides the holes under it. The
 * shapes are what the user sees, so a hole is covered exactly when it is drawn under the part.
+* A part drawn from the side (standing upright, or a breakout whose face is drawn) declares its
+* top-view `footprint` instead: that rect, or nothing for "legs".
 */
 function bodyShapes(m) {
 	const hit = shapeCache.get(m);
 	if (hit) return hit;
 	const lay = layoutModule(m);
 	let rects;
-	if (!m.art?.shapes.length) rects = [{
+	if (m.footprint === "legs") rects = [];
+	else if (m.footprint) rects = [{
+		x: m.footprint.x,
+		y: m.footprint.y,
+		w: m.footprint.w,
+		h: m.footprint.h
+	}];
+	else if (!m.art?.shapes.length) rects = [{
 		x: 0,
 		y: 0,
 		w: lay.w,
@@ -4986,6 +4996,7 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			"w": 8,
 			"h": 10
 		},
+		footprint: "legs",
 		electrical: {
 			"model": "regulator",
 			"params": {}
@@ -7328,6 +7339,7 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			"w": 7,
 			"h": 8
 		},
+		footprint: "legs",
 		electrical: {
 			"model": "sensor",
 			"params": {}
@@ -7491,6 +7503,7 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			"w": 9,
 			"h": 8
 		},
+		footprint: "legs",
 		electrical: {
 			"model": "sensor",
 			"params": {}
@@ -13268,6 +13281,12 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			"w": 7,
 			"h": 13
 		},
+		footprint: {
+			"x": 5,
+			"y": 119,
+			"w": 60,
+			"h": 31
+		},
 		electrical: {
 			"model": "sensor",
 			"params": {}
@@ -13614,6 +13633,7 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			"w": 8,
 			"h": 14
 		},
+		footprint: "legs",
 		electrical: {
 			"model": "sensor",
 			"params": {}
@@ -13984,6 +14004,7 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			"w": 5,
 			"h": 5
 		},
+		footprint: "legs",
 		electrical: {
 			"model": "connector",
 			"params": {}
@@ -14100,6 +14121,7 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			"w": 6,
 			"h": 5
 		},
+		footprint: "legs",
 		electrical: {
 			"model": "connector",
 			"params": {}
@@ -14250,6 +14272,7 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			"w": 7,
 			"h": 5
 		},
+		footprint: "legs",
 		electrical: {
 			"model": "connector",
 			"params": {}
@@ -19043,6 +19066,7 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			"w": 5,
 			"h": 5
 		},
+		footprint: "legs",
 		electrical: {
 			"model": "connector",
 			"params": {}
@@ -19160,6 +19184,7 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			"w": 6,
 			"h": 5
 		},
+		footprint: "legs",
 		electrical: {
 			"model": "connector",
 			"params": {}
@@ -19302,6 +19327,7 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			"w": 7,
 			"h": 5
 		},
+		footprint: "legs",
 		electrical: {
 			"model": "connector",
 			"params": {}
@@ -23404,6 +23430,7 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			"w": 13,
 			"h": 10
 		},
+		footprint: "legs",
 		electrical: {
 			"model": "storage",
 			"params": {}
@@ -23679,6 +23706,7 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			"w": 18,
 			"h": 10
 		},
+		footprint: "legs",
 		electrical: {
 			"model": "storage",
 			"params": {}
@@ -24093,6 +24121,7 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			"w": 15,
 			"h": 15
 		},
+		footprint: "legs",
 		electrical: {
 			"model": "display",
 			"params": {}
@@ -24286,6 +24315,7 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			"w": 15,
 			"h": 15
 		},
+		footprint: "legs",
 		electrical: {
 			"model": "display",
 			"params": {}
@@ -24479,6 +24509,7 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			"w": 22,
 			"h": 7
 		},
+		footprint: "legs",
 		electrical: {
 			"model": "display",
 			"params": {}
@@ -24632,6 +24663,7 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			"w": 13,
 			"h": 13
 		},
+		footprint: "legs",
 		electrical: {
 			"model": "display",
 			"params": {}
@@ -24825,6 +24857,7 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			"w": 13,
 			"h": 13
 		},
+		footprint: "legs",
 		electrical: {
 			"model": "display",
 			"params": {}
@@ -26597,6 +26630,7 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			"w": 12,
 			"h": 12
 		},
+		footprint: "legs",
 		electrical: {
 			"model": "sensor",
 			"params": {}
@@ -28567,6 +28601,7 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			"w": 8,
 			"h": 9
 		},
+		footprint: "legs",
 		electrical: {
 			"model": "potentiometer",
 			"terminals": {
@@ -28722,6 +28757,7 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 				"type": "passive"
 			}
 		],
+		footprint: "legs",
 		electrical: {
 			"model": "potentiometer",
 			"terminals": {
@@ -39139,6 +39175,7 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			"w": 15,
 			"h": 18
 		},
+		footprint: "legs",
 		electrical: {
 			"model": "display",
 			"params": {}
@@ -39422,6 +39459,7 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			"w": 5,
 			"h": 6
 		},
+		footprint: "legs",
 		electrical: {
 			"model": "switch",
 			"terminals": {
@@ -39966,6 +40004,7 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			"w": 19,
 			"h": 9
 		},
+		footprint: "legs",
 		electrical: {
 			"model": "sensor",
 			"params": {}
@@ -41726,6 +41765,7 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			"w": 7,
 			"h": 10
 		},
+		footprint: "legs",
 		electrical: {
 			"model": "addressable_led",
 			"params": {}
@@ -59050,7 +59090,8 @@ var COSMETIC = /* @__PURE__ */ new Set([
 	"source",
 	"description",
 	"category",
-	"version"
+	"version",
+	"footprint"
 ]);
 var FIELD_NAMES = {
 	holes: "hole groups",
@@ -59440,11 +59481,12 @@ function covered(d, add, stale) {
 	}
 }
 /**
-* The parts whose embedded module blocks as module-drift: their stored copy is out of date, so
-* whatever it covers (and whatever its legs land in) is the old drawing's, not the part's.
+* The parts whose embedded module drifted from the library (module-drift, blocking or not): their
+* stored copy is out of date, so whatever it covers (and whatever its legs land in) is the old
+* drawing's or the old footprint's, not the part's.
 */
 function driftedParts(findings) {
-	return new Set(findings.filter((f) => f.rule === "module-drift" && f.severity === "error").flatMap((f) => f.parts));
+	return new Set(findings.filter((f) => f.rule === "module-drift").flatMap((f) => f.parts));
 }
 /** A covered-hole use that comes from a stale embedded copy: its covering part, or its leg's part, drifted. */
 var isStale = (u, stale) => stale.has(u.cover.by) || !!u.leg && stale.has(u.leg.part);

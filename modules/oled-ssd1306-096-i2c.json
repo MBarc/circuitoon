@@ -32,6 +32,7 @@
     "w": 13,
     "h": 13
   },
+  "footprint": "legs",
   "electrical": {
     "model": "display",
     "params": {}

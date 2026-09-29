@@ -204,6 +204,7 @@ A module is one self-contained JSON file: name, pins by side and order, optional
 | `size` | no | `{ "w", "h" }` in grid units. |
 | `obstacle` | no | `false` lets wires route over the part. Breadboards set it; parts mounted on them are still obstacles. A module with hole groups and `"obstacle": false` is a **board**, which parts can be mounted on. |
 | `art` | no | Art studio drawing (see Art studio). Absent means a plain labeled box. |
+| `footprint` | no | What a part drawn from the side covers seen from above when it stands on a breadboard: `"legs"` (nothing beyond its own leg holes: headers, a tilt switch, pots, a 5 mm LED, a breakout plugged in by one header row) or `{ "x", "y", "w", "h" }` in module px (the DHT22's case from its datasheet). Left out, the drawn art (less its leads) is what covers holes. |
 | `art.pinLabels` | no | `"inside"` draws pin names inside the body next to each pin, like board silkscreen; `"tips"` draws each name past its pin stub's tip, along the pin (a DIP chip at its true 0.3 inch width has no room inside); default draws them beside the pin stub. |
 | `art.shapes[].band` | no | Resistor color band slot 1 to 4; the renderer colors it from the part's resistance. |
 | `electrical` | no | Extensible block for V2, for example `{ "model": "resistor", "terminals": { "a": "1", "b": "2" }, "params": { "resistance": { "unit": "ohm", "default": 1000 } } }`. V1 stores and round-trips it untouched. |

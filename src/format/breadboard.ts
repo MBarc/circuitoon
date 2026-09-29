@@ -203,13 +203,17 @@ const shapeCache = new WeakMap<ModuleDef, Rect[]>()
  * body out to the leg, which lies over holes without hiding them. Everything else the art draws
  * (a resistor's barrel, an LED's dome and rim, a chip's package) hides the holes under it. The
  * shapes are what the user sees, so a hole is covered exactly when it is drawn under the part.
+ * A part drawn from the side (standing upright, or a breakout whose face is drawn) declares its
+ * top-view `footprint` instead: that rect, or nothing for "legs".
  */
 export function bodyShapes(m: ModuleDef): Rect[] {
   const hit = shapeCache.get(m)
   if (hit) return hit
   const lay = layoutModule(m)
   let rects: Rect[]
-  if (!m.art?.shapes.length) rects = [{ x: 0, y: 0, w: lay.w, h: lay.h }]
+  if (m.footprint === 'legs') rects = []
+  else if (m.footprint) rects = [{ x: m.footprint.x, y: m.footprint.y, w: m.footprint.w, h: m.footprint.h }]
+  else if (!m.art?.shapes.length) rects = [{ x: 0, y: 0, w: lay.w, h: lay.h }]
   else {
     const edges = lay.pins.filter((p) => !p.bus).map((p) => p.edge)
     const lead = (s: Rect) => Math.min(s.w, s.h) <= LEAD_WIDTH && edges.some((e) => e.x >= s.x && e.x <= s.x + s.w && e.y >= s.y && e.y <= s.y + s.h)

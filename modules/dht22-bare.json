@@ -32,6 +32,12 @@
     "w": 7,
     "h": 13
   },
+  "footprint": {
+    "x": 5,
+    "y": 119,
+    "w": 60,
+    "h": 31
+  },
   "electrical": {
     "model": "sensor",
     "params": {}

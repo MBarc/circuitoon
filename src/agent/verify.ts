@@ -45,7 +45,8 @@ function canonical(v: unknown): string {
 }
 
 /** Module fields that change only how a part looks or is described, never what it connects. */
-const COSMETIC = new Set(['art', 'name', 'source', 'description', 'category', 'version'])
+// The top-view footprint changes which holes a part covers, never what it connects.
+const COSMETIC = new Set(['art', 'name', 'source', 'description', 'category', 'version', 'footprint'])
 const FIELD_NAMES: Record<string, string> = { holes: 'hole groups', internal: 'internal joins', electrical: 'electrical data' }
 
 /** The pins whose entries differ, by name (spacers as "spacer"), in the library's order. */
@@ -380,11 +381,12 @@ function covered(d: Diagram, add: Add, stale: ReadonlySet<string>) {
 }
 
 /**
- * The parts whose embedded module blocks as module-drift: their stored copy is out of date, so
- * whatever it covers (and whatever its legs land in) is the old drawing's, not the part's.
+ * The parts whose embedded module drifted from the library (module-drift, blocking or not): their
+ * stored copy is out of date, so whatever it covers (and whatever its legs land in) is the old
+ * drawing's or the old footprint's, not the part's.
  */
 export function driftedParts(findings: { rule: string; severity: string; parts: string[] }[]): Set<string> {
-  return new Set(findings.filter((f) => f.rule === 'module-drift' && f.severity === 'error').flatMap((f) => f.parts))
+  return new Set(findings.filter((f) => f.rule === 'module-drift').flatMap((f) => f.parts))
 }
 
 /** A covered-hole use that comes from a stale embedded copy: its covering part, or its leg's part, drifted. */

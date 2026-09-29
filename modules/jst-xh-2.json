@@ -23,6 +23,7 @@
     "w": 5,
     "h": 5
   },
+  "footprint": "legs",
   "electrical": {
     "model": "connector",
     "params": {}

@@ -10,7 +10,7 @@ import { load } from './builtinModules.testing.ts'
 
 const board = load('breadboard-full')
 const modules: Record<string, ModuleDef> = { 'breadboard-full': board }
-for (const id of ['resistor', 'led', 'capacitor-ceramic', 'capacitor-electrolytic', 'mcp23017-dip28']) modules[id] = load(id)
+for (const id of ['resistor', 'led', 'capacitor-ceramic', 'capacitor-electrolytic', 'mcp23017-dip28', 'dht22-bare', 'ws2812d-5mm', 'tilt-switch-sw520d', 'potentiometer', 'potentiometer-panel-10k', 'jst-xh-4', 'dupont-1x4']) modules[id] = load(id)
 
 const bb: PartInstance = { uid: 'BB1', designator: 'BB1', module: 'breadboard-full', x: 0, y: 0 }
 const on = (uid: string, module: string, x: number, y: number, rotation: Rotation = 0): PartInstance => ({ uid, designator: uid, module, x, y, rotation, mount: { board: 'BB1' } })
@@ -122,5 +122,31 @@ describe('picking a hole for a wire end', () => {
     expect(holeEndAt(d, 'BB1', { x: 60, y: 70 })).toEqual({ part: 'BB1', pin: 'c4-top', hole: 1 })
     // A leg's own hole still picks (a jumper to the leg's strip is flagged by the checker instead).
     expect(holeEndAt(d, 'BB1', { x: 30, y: 60 })).toEqual({ part: 'BB1', pin: 'c1-top', hole: 0 })
+  })
+})
+
+describe('upright parts: the top-view footprint, not the side view drawn', () => {
+  // A DHT22 standing in row a, pins in c3 to c6: its drawn face (x 35..95, up to y -70) would cover
+  // both top rails; standing up, it covers its top view, 15.1 mm wide and reaching 5 mm in front of
+  // its pins: row a beside the pins (c2 and c7) and row b across the case.
+  const dht = () => on('U1', 'dht22-bare', 30, -70)
+  it('leaves the top rails free under a DHT22 in row a', () => {
+    const d = sheet(dht())
+    expect(plugsOf(d).map((p) => `${p.group} ${p.hole}`)).toEqual(['c3-top 0', 'c4-top 0', 'c5-top 0', 'c6-top 0'])
+    expect(under(d, 'U1')).toEqual(['c2-top 0', 'c2-top 1', 'c3-top 1', 'c4-top 1', 'c5-top 1', 'c6-top 1', 'c7-top 0', 'c7-top 1'])
+  })
+  it('lets a pull-up resistor stand beside it, from the + rail down into row c', () => {
+    // R1 turned 90 degrees: legs in top+ at (90, 20) and c7 row c at (90, 80), body over x 82..98.
+    const d = sheet(dht(), { uid: 'R1', designator: 'R1', module: 'resistor', x: 60, y: 30, rotation: 90 })
+    expect(seatOf(d, 'R1', plugsOf(d))!.status).toBe('seated')
+  })
+  it('covers nothing beyond the leg holes for footprint "legs" (headers, tilt switch, pots, 5 mm LED)', () => {
+    for (const id of ['ws2812d-5mm', 'tilt-switch-sw520d', 'potentiometer', 'potentiometer-panel-10k', 'jst-xh-4', 'dupont-1x4']) {
+      expect(modules[id].footprint, id).toBe('legs')
+      expect(bodyShapes(modules[id]), id).toEqual([])
+    }
+  })
+  it('uses a footprint rect instead of the art', () => {
+    expect(bodyShapes(modules['dht22-bare'])).toEqual([{ x: 5, y: 119, w: 60, h: 31 }])
   })
 })

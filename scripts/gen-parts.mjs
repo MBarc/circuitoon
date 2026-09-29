@@ -64,9 +64,11 @@ function write(file, m) {
   log(file, 'pins', n, 'body', m.art.w, 'x', m.art.h)
 }
 
-function moduleJson({ id, name, category, source, pins, wu, hu, electrical, shapes, pinLabels = 'inside' }) {
+function moduleJson({ id, name, category, source, pins, wu, hu, electrical, shapes, pinLabels = 'inside', footprint }) {
   const m = { format: 'circuitoon-module/1', id, version: 1, name, category, source, pins }
   m.size = { w: wu, h: hu }
+  // A breakout plugged in by one header row stands upright: it covers only its leg holes.
+  if (footprint) m.footprint = footprint
   m.electrical = electrical
   // Header parts draw pin names inside the body beside each pin, like the silkscreen; a DIP chip,
   // too thin at its true width, draws them past each pin's tip.
@@ -320,7 +322,7 @@ function oled({ file, id, name, source, top, wu, hu }) {
     r(12, gy + 27, (W - 24) * 0.7, 5, OLED_BLUE, { radius: 1, outline: false }),
     r(W / 2 - 18, gy + gh, 36, 10, FPC, { radius: 1 }),
   ]
-  write(file, moduleJson({ id, name, category: 'Displays', source, pins, wu, hu, electrical: { model: 'display', params: {} }, shapes }))
+  write(file, moduleJson({ id, name, category: 'Displays', source, pins, wu, hu, electrical: { model: 'display', params: {} }, shapes, footprint: 'legs' }))
 }
 
 // 7/8. 0.96" 128x64 SSD1306 I2C. Both power orders are widespread: lcdwiki sells both (MC096GX
@@ -362,7 +364,7 @@ oled({
     r(44, 40, (W - 76) * 0.45, 6, OLED_BLUE, { radius: 1, outline: false }),
     r(W - 24, 12, 14, H - 24, FPC, { radius: 1 }),
   ]
-  write('oled-ssd1306-091-i2c.json', moduleJson({
+  write('oled-ssd1306-091-i2c.json', moduleJson({footprint: 'legs', 
     id: 'oled-ssd1306-091-i2c', name: '0.91" OLED 128x32 SSD1306 (I2C)', category: 'Displays',
     source: 'https://www.lcdwiki.com/0.91inch_IIC_OLED_Module_SSD1306_SKU:MC091GX https://www.lcdwiki.com/res/MC091GX/0.91inch_IIC_OLED_Module_MC091GX_User_Manual_EN.pdf',
     pins: pinsFor('left', left, oledTypes), wu, hu, electrical: { model: 'display', params: {} }, shapes,
@@ -385,7 +387,7 @@ oled({
     r(8, 32, W - 16, W - 16, SCREEN, { radius: 2 }),
     r(16, 40, W - 32, W - 32, SCREEN_IN, { outline: false, label: '240x240 ST7789', labelColor: '#8FA3B8', labelSize: 8 }),
   ]
-  write('tft-st7789-154-spi.json', moduleJson({
+  write('tft-st7789-154-spi.json', moduleJson({footprint: 'legs', 
     id: 'tft-st7789-154-spi', name: '1.54" TFT 240x240 ST7789 (SPI, 8-pin with CS)', category: 'Displays',
     source: 'https://www.lcdwiki.com/1.54inch_IPS_Module https://www.makerfocus.com/products/1-54inch-tft-lcd-display-module',
     pins: pinsFor('top', top, types), wu, hu, electrical: { model: 'display', params: {} }, shapes,
@@ -422,7 +424,7 @@ const sdSocket = (x, y, w, h) => [
     ...ys.slice(1, 5).map((y) => r(42, y - 2, 8, 4, '#2B2F36', { radius: 1, outline: false })),
     ...sdSocket(62, 12, 60, H - 24),
   ]
-  write('microsd-spi-3v3.json', moduleJson({
+  write('microsd-spi-3v3.json', moduleJson({footprint: 'legs', 
     id: 'microsd-spi-3v3', name: 'microSD card module (SPI, 3.3 V only: 3V3 CS MOSI CLK MISO GND)', category: 'Communication',
     source: 'https://protosupplies.com/product/microsd-card-module/ https://www.amazon.com/dp/B0H67347LH',
     pins: pinsFor('left', left, sdTypes({ name: '3V3', supply: '3V3' })), wu, hu, electrical: { model: 'storage', params: {} }, shapes,
@@ -448,7 +450,7 @@ const sdSocket = (x, y, w, h) => [
     r(48, 58, 38, 20, CHIP, { radius: 1, label: 'LVC125A', labelColor: METAL, labelSize: 5 }),
     ...sdSocket(106, 12, 62, H - 24),
   ]
-  write('microsd-spi-5v.json', moduleJson({
+  write('microsd-spi-5v.json', moduleJson({footprint: 'legs', 
     id: 'microsd-spi-5v', name: 'microSD card module (SPI, 5 V with level shifter: GND VCC MISO MOSI SCK CS)', category: 'Communication',
     source: 'https://www.amazon.com/dp/B0B779R5TZ https://envistiamall.com/blogs/learn/micro-sd-card-spi-module-user-guide',
     pins: pinsFor('left', left, sdTypes({ name: 'VCC', supply: '5V' })), wu, hu, electrical: { model: 'storage', params: {} }, shapes,

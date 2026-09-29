@@ -30,6 +30,7 @@
       "type": "passive"
     }
   ],
+  "footprint": "legs",
   "electrical": {
     "model": "potentiometer",
     "terminals": {

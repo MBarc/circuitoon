@@ -213,6 +213,14 @@ describe('validateModule', () => {
     expect(r.ok).toBe(false)
     if (!r.ok) expect(r.errors).toEqual(['art.pinLabels: must be "inside" or "tips"'])
   })
+  it('accepts footprint "legs" or a rect with positive size, and names any other value', () => {
+    const pins = [{ name: 'A', side: 'bottom' }]
+    expect(validateModule({ ...base, pins, footprint: 'legs' }).ok).toBe(true)
+    expect(validateModule({ ...base, pins, footprint: { x: 0, y: 25, w: 40, h: 10 } }).ok).toBe(true)
+    const msg = 'footprint: must be "legs" or { "x", "y", "w", "h" } in module px, with w and h above 0'
+    for (const bad of ['none', { x: 0, y: 0, w: 0, h: 10 }, { x: 0, y: 0, w: 10 }, [0, 0, 10, 10]])
+      expect(validateModule({ ...base, pins, footprint: bad }), JSON.stringify(bad)).toEqual({ ok: false, errors: [msg] })
+  })
   it('rejects a shape band outside 1 to 4 or non-integer', () => {
     const r = validateModule({
       ...base,

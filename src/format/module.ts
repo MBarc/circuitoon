@@ -100,6 +100,13 @@ export interface ModuleDef {
   holes?: HoleGroup[]
   /** false lets wires route over the part (a breadboard); parts mounted on it are still obstacles. */
   obstacle?: boolean
+  /**
+   * What the part covers seen from above when it stands on a breadboard, for a part drawn from the
+   * side (standing upright, or a breakout whose face is drawn): a rect in module px (art
+   * coordinates), or "legs" when it covers nothing beyond its own leg holes. Left out, the drawn
+   * body is the footprint (see bodyShapes in breadboard.ts).
+   */
+  footprint?: 'legs' | { x: number; y: number; w: number; h: number }
 }
 
 export const isSpacer = (p: PinEntry): p is SpacerDef => 'spacer' in p && p.spacer === true
@@ -262,6 +269,8 @@ export function validateModule(raw: unknown): ValidationResult {
       })
   }
   if (raw.obstacle !== undefined && typeof raw.obstacle !== 'boolean') errors.push('obstacle: must be true or false')
+  if (raw.footprint !== undefined && raw.footprint !== 'legs' && !(isObj(raw.footprint) && isNum(raw.footprint.x) && isNum(raw.footprint.y) && isPos(raw.footprint.w) && isPos(raw.footprint.h)))
+    errors.push('footprint: must be "legs" or { "x", "y", "w", "h" } in module px, with w and h above 0')
 
   // Pins and hole groups only: internal nodes (a plug's prongs) have no pin stub to power.
   const pinNames = new Set(names)

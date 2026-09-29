@@ -99,7 +99,7 @@ const legs = (H, at, y0) => at.map((x) => r(x - 1.5, y0, 3, H - y0, LEAD, { outl
     r(38, 28, 4, 5, LED_B, { radius: 1, outline: false }),
     r(52, 42, 3, 10, '#8E96A1', { outline: false }),
   ]
-  write('ws2812d-5mm.json', moduleJson({
+  write('ws2812d-5mm.json', moduleJson({footprint: 'legs', 
     inside: true, id: 'ws2812d-5mm', name: 'WS2812 5 mm through-hole RGB LED (WS2812D-F5, DIN GND VDD DOUT)', category: 'Indicators',
     source: 'https://www.tme.eu/Document/6ea29838e05beac06400c47a846319d2/WS2812D-F5.pdf https://www.hobbyelectronica.nl/en/product/rgb-led-ws2812d-f5/',
     pins: bottom.pins, wu, hu, electrical: { model: 'addressable_led', params: {} }, shapes,
@@ -139,7 +139,7 @@ function dht22Case(x, y) {
     r(8, 102, 8, 8, MOUNT_DARK, { radius: 4, outline: false }),
     ...bottomHeader(H, bottom.at),
   ]
-  write('dht22-module.json', moduleJson({
+  write('dht22-module.json', moduleJson({footprint: 'legs', 
     inside: true, id: 'dht22-module', name: 'DHT22 temperature/humidity module (3-pin: + out -)', category: 'Sensors',
     source: 'https://components101.com/sensors/dht22-pinout-specs-datasheet https://components101.com/sites/default/files/components/DHT22-Sensor.jpg https://shillehtek.com/blogs/shillehtek-product-manuals/dht22-digital-temperature-and-humidity-sensor-module-with-cable',
     pins: bottom.pins, wu, hu, electrical: { model: 'sensor', params: {} }, shapes,
@@ -150,12 +150,16 @@ function dht22Case(x, y) {
 // 4. DHT22 / AM2302 bare sensor. Aosong's datasheet: "Pin sequence number: 1 2 3 4 (from left to
 //    right direction)", 1 VDD, 2 DATA, 3 NULL, 4 GND, seen from the grille side. The DATA line
 //    needs an external pull-up.
+//    Standing on a breadboard it covers its top view (the datasheet's dimension drawing): the case is
+//    15.1 mm wide, centred on the pins, and 7.7 mm deep, the pins leaving it about 2.7 mm from the
+//    back (measured off the side view), so it reaches 5.0 mm in front of its pin row (the grille faces
+//    down the sheet): the pin row and the next row across the case, never the row after.
 {
   const wu = 7, hu = 13, W = wu * 10, H = hu * 10
   const types = { VCC: { type: 'power_in', supply: '3V3/5V' }, DATA: { type: 'io' }, NC: { type: 'nc' }, GND: { type: 'ground' } }
   const bottom = side('bottom', ['VCC', 'DATA', 'NC', 'GND'], types, wu)
   const shapes = [...legs(H, bottom.at, 90), ...dht22Case(5, 2)]
-  write('dht22-bare.json', moduleJson({
+  write('dht22-bare.json', moduleJson({footprint: { x: 5, y: H - 11, w: 60, h: 31 }, 
     inside: true, id: 'dht22-bare', name: 'DHT22 / AM2302 temperature/humidity sensor (bare, 4-pin: VCC DATA NC GND)', category: 'Sensors',
     source: 'https://www.sparkfun.com/datasheets/Sensors/Temperature/DHT22.pdf https://lastminuteengineers.com/dht11-dht22-arduino-tutorial/',
     pins: bottom.pins, wu, hu, electrical: { model: 'sensor', params: {} }, shapes,
@@ -180,7 +184,7 @@ function dht22Case(x, y) {
     r(30, 12, 8, 5, SMD, { radius: 1, outline: false }),
     ...bottomHeader(H, bottom.at),
   ]
-  write('bme280-module-4pin.json', moduleJson({
+  write('bme280-module-4pin.json', moduleJson({footprint: 'legs', 
     inside: true, id: 'bme280-module-4pin', name: 'BME280 sensor module (4-pin, I2C: VIN GND SCL SDA)', category: 'Sensors',
     source: 'https://lastminuteengineers.com/bme280-arduino-tutorial/ https://www.makerguides.com/how-to-interface-bme280-pressure-sensor-with-arduino/',
     pins: bottom.pins, wu, hu, electrical: { model: 'sensor', params: {} }, shapes,
@@ -211,7 +215,7 @@ function dht22Case(x, y) {
     ...[26, 34, 56, 64].map((x) => r(x, 26, 5, 8, SMD, { radius: 1, outline: false })),
     ...bottomHeader(H, bottom.at),
   ]
-  write('bme280-module-6pin.json', moduleJson({
+  write('bme280-module-6pin.json', moduleJson({footprint: 'legs', 
     inside: true, id: 'bme280-module-6pin', name: 'BME280 sensor module (GY-BME280, 6-pin, 3.3 V: VCC GND SCL SDA CSB SDO)', category: 'Sensors',
     source: 'https://shillehtek.com/blogs/shillehtek-product-manuals/bme280-environmental-sensor-raspberry-pi-arduino-esp32-i2c-humidity-pressure-and-temperature-measurement https://protosupplies.com/product/gy-bme280-pressure-humidity-temperature-sensor-module/',
     pins: bottom.pins, wu, hu, electrical: { model: 'sensor', params: {} }, shapes,
@@ -245,7 +249,7 @@ function dht22Case(x, y) {
     r(38, 28, 14, 10, '#FFFFFF', { radius: 5, outline: false }),
     ...bottomHeader(H, bottom.at),
   ]
-  write('pir-hc-sr501.json', moduleJson({
+  write('pir-hc-sr501.json', moduleJson({footprint: 'legs', 
     inside: true, id: 'pir-hc-sr501', name: 'HC-SR501 PIR motion sensor (dome side: GND OUT VCC)', category: 'Sensors',
     source: 'https://protosupplies.com/product/hc-sr501-pir-motion-sensing-module/ https://lastminuteengineers.com/pir-sensor-arduino-tutorial/ http://www.handsontec.com/dataspecs/SR501%20Motion%20Sensor.pdf',
     pins: bottom.pins, wu, hu, electrical: { model: 'sensor', params: {} }, shapes,
@@ -274,7 +278,7 @@ function dht22Case(x, y) {
     r(76, 24, 38, 12, BLUE, { outline: false, label: 'HC-SR04', labelColor: '#FFFFFF', labelSize: 7 }),
     ...bottomHeader(H, bottom.at),
   ]
-  write('ultrasonic-hc-sr04.json', moduleJson({
+  write('ultrasonic-hc-sr04.json', moduleJson({footprint: 'legs', 
     inside: true, id: 'ultrasonic-hc-sr04', name: 'HC-SR04 ultrasonic distance sensor (VCC Trig Echo GND)', category: 'Sensors',
     source: 'https://cdn.sparkfun.com/datasheets/Sensors/Proximity/HCSR04.pdf https://lastminuteengineers.com/arduino-sr04-ultrasonic-sensor-tutorial/',
     pins: bottom.pins, wu, hu, electrical: { model: 'sensor', params: {} }, shapes,
