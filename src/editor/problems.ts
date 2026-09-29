@@ -46,10 +46,13 @@ export function checkFailed(store: EditorStore): boolean {
 
 const plural = (n: number, one: string) => `${n} ${one}${n === 1 ? '' : 's'}`
 
-/** "3 errors, 4 warnings": the counts by severity, for the list heading and the toolbar badge's name. */
+/** True for an error or a warning; a note (severity info) is not a problem and is never counted as one. */
+export const isProblem = (f: Finding): boolean => f.severity !== 'info'
+
+/** "3 errors, 4 warnings": the counts by severity of problems (never notes), for the list heading and the toolbar badge's name. */
 export function severityCounts(findings: Finding[]): string {
   const errors = findings.filter((f) => f.severity === 'error').length
-  const warnings = findings.length - errors
+  const warnings = findings.filter((f) => f.severity === 'warning').length
   return [errors && plural(errors, 'error'), warnings && plural(warnings, 'warning')].filter(Boolean).join(', ')
 }
 
