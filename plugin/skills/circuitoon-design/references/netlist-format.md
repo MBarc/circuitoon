@@ -60,6 +60,7 @@ The `wires` settings:
 
 - The legs of parts `on` a breadboard sit in its strips. The other holes of a strip are where wires join.
 - A header pin or pad takes one wire end, unless its module declares `capacity`. A breadboard hole takes one wire end or one leg.
+- A hole under a mounted part's drawn body (between a resistor's legs, under an LED's dome, under a chip) takes nothing. The layout never wires into one, and never seats a part so that its body covers another part's leg. A strip left with no free hole says so: "strip full: ... (the other holes there lie under U2's body)". The DIP-28 chips are drawn at true scale: seated across the channel in rows e and f, they cover only the channel.
 - So a net of three or more pins needs somewhere to share. That can be:
   - a strip that its mounted legs already sit in;
   - a strip or rail that you name in the net (`"BB1.top-"`);

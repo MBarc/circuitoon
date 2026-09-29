@@ -12,7 +12,7 @@ circuitoon layout examples/<file> -o sheet.json && circuitoon gate sheet.json -o
 | `esp32-bme280.netlist.json` | Two-pin nets wired pin to pin, so no breadboard is needed. Also a group and a note. | 5 |
 | `battery-switch.netlist.json` | A power chain through a switch. The IP5306's B- and 5V- are joined inside the part and wired as one node, so ground chains with no distribution point. | 3 |
 | `tilt-sensors-8.netlist.json` | A `repeat` with explicit bindings (8 copies) and a shared ground. Each block of copies gets local rail strips (`DP1` to `DP3`), joined to the netlist's rail strip BB1. `render --focus tilt_1` frames one copy. | 44 |
-| `spirit-typewriter/` | A large design split into four sheets along real connectors. Each sheet is laid out from a partial with `layout --keep`. See its `README.md`. | 319, 586, 526, 518 |
+| `spirit-typewriter/` | A large design split into four sheets along real connectors. Each sheet is laid out from a partial with `layout --keep`. See its `README.md`. | 297, 490, 519, 524 |
 
 ## Warnings
 

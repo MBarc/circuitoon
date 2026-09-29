@@ -127,7 +127,7 @@ function sop(x, y, w, h, n, label, labelSize = 5) {
     r(26, 34, 28, 8, CHIP, { outline: false, label: '3.3', labelColor: METAL, labelSize: 5 }),
     ...xs.flatMap((x) => pad(x, H - 7)),
   ]
-  write('ams1117-33-module.json', moduleJson({
+  write('ams1117-33-module.json', moduleJson({footprint: 'legs', 
     category: 'Power', inside: true, id: 'ams1117-33-module', name: 'AMS1117 3.3 V regulator module (3-pin)',
     source: 'https://www.amazon.com/dp/B07CP4P5XJ https://protosupplies.com/product/ams1117-5v-to-3-3v-step-down-regulator-module/',
     pins: bottom.pins, wu, hu, electrical: { model: 'regulator', params: {} }, shapes,

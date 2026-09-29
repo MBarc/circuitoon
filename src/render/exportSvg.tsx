@@ -5,7 +5,7 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 import { computeRoutes, type Diagram, moduleOf, type Routes } from '../format/diagram.ts'
 import { type Rect, bodyRect } from '../format/geometry.ts'
-import { layoutModule } from '../format/module.ts'
+import { layoutModule, pinRoom } from '../format/module.ts'
 import { placedCaptionBox } from './captionBox.ts'
 import { seatedLabels } from '../format/seatedLabels.ts'
 import { annotationRect } from './annotationGeometry.ts'
@@ -33,7 +33,8 @@ function partRects(d: Diagram, only?: Set<string>): Rect[] {
     const m = moduleOf(d, p.module)
     if (!m) continue
     const b = bodyRect(p, layoutModule(m))
-    out.push({ x: b.x - PIN_ROOM, y: b.y - PIN_ROOM, w: b.w + 2 * PIN_ROOM, h: b.h + 2 * PIN_ROOM }, placedCaptionBox(p, m, seated.get(p.uid)))
+    const room = Math.max(PIN_ROOM, pinRoom(m))
+    out.push({ x: b.x - room, y: b.y - room, w: b.w + 2 * room, h: b.h + 2 * room }, placedCaptionBox(p, m, seated.get(p.uid)))
   }
   return out
 }

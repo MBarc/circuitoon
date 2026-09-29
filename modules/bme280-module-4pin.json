@@ -32,6 +32,7 @@
     "w": 7,
     "h": 8
   },
+  "footprint": "legs",
   "electrical": {
     "model": "sensor",
     "params": {}

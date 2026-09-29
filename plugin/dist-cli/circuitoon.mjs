@@ -656,6 +656,21 @@ var isSpacer = (p) => "spacer" in p && p.spacer === true;
 /** Opt-in flag (`art.pinLabels: "inside"`) for drawing pin names inside the body, like board
 * silkscreen, instead of beside the pin stub. Off for every module that does not set it. */
 var usesInsideLabels = (m) => m.art?.pinLabels === "inside";
+/**
+* Opt-in flag (`art.pinLabels: "tips"`) for drawing each pin name past its stub tip, along the pin:
+* for a body too thin to hold its labels inside (a DIP chip drawn at its true 0.3 inch width).
+*/
+var usesTipLabels = (m) => m.art?.pinLabels === "tips";
+/**
+* How far, in px, a part's pin stubs and labels reach past its body: a stub and a label beside it
+* (LEAD + 10), or with labels past the tips, the stub, a 2 px gap and the longest label at the
+* 7 px label font (about 4.5 px a character plus its halo). Placement and exports keep this room.
+*/
+function pinRoom(m) {
+	if (!usesTipLabels(m)) return 18;
+	const longest = Math.max(0, ...m.pins.filter((p) => !isSpacer(p)).map((p) => (p.label ?? p.name).length));
+	return 10 + Math.ceil(longest * 4.5 + 3);
+}
 /** Sides whose pin names draw inside the body: every side for an "inside" module (a board's
 * left/right headers, a small OLED's top header), none otherwise. */
 var insideLabelSides = (m) => usesInsideLabels(m) ? [...SIDES] : [];
@@ -781,6 +796,7 @@ function validateModule(raw) {
 		});
 	}
 	if (raw.obstacle !== void 0 && typeof raw.obstacle !== "boolean") errors.push("obstacle: must be true or false");
+	if (raw.footprint !== void 0 && raw.footprint !== "legs" && !(isObj(raw.footprint) && isNum(raw.footprint.x) && isNum(raw.footprint.y) && isPos(raw.footprint.w) && isPos(raw.footprint.h))) errors.push("footprint: must be \"legs\" or { \"x\", \"y\", \"w\", \"h\" } in module px, with w and h above 0");
 	const pinNames = new Set(names);
 	claimInternalNodes(raw, names, errors);
 	if (raw.internal !== void 0) {
@@ -797,7 +813,7 @@ function validateModule(raw) {
 		const art = raw.art;
 		if (!isObj(art) || !isPos(art.w) || !isPos(art.h) || !Array.isArray(art.shapes)) errors.push("art: must be { \"w\", \"h\", \"shapes\": [...] } with positive w and h");
 		else {
-			if (art.pinLabels !== void 0 && art.pinLabels !== "inside") errors.push("art.pinLabels: must be \"inside\"");
+			if (art.pinLabels !== void 0 && art.pinLabels !== "inside" && art.pinLabels !== "tips") errors.push("art.pinLabels: must be \"inside\" or \"tips\"");
 			art.shapes.forEach((s, i) => {
 				const at = `art.shapes[${i}]`;
 				if (!isObj(s) || s.type !== "rect") return void errors.push(`${at}: only "rect" shapes are supported`);
@@ -1898,6 +1914,7 @@ var PLUG_FOR = {
 //#endregion
 //#region src/format/breadboard.ts
 var OFF = 2 ** 25;
+var NONE_SET = /* @__PURE__ */ new Set();
 /**
 * One number per world grid point. Unique only for whole-number x and y within +-2^25 px, so
 * lookups go through `holeAt`, which checks both and compares the found hole exactly.
@@ -1949,16 +1966,18 @@ function mountable$1(d, uid) {
 	const part = d.parts.find((p) => p.uid === uid);
 	const m = part && moduleOf(d, part.module);
 	if (!part || !m || isBoard(m) || m.pins.some((p) => !isSpacer(p) && p.bus)) return null;
+	const pts = allPlugPoints(part, m);
+	return pts.length ? {
+		part,
+		m,
+		pts,
+		plug: mainsOf(m).plug
+	} : null;
+}
+/** A part's pin edge points, or for a plug-in device every contact of every profile (each pin and spot once). */
+function allPlugPoints(part, m) {
 	const plug = mainsOf(m).plug;
-	if (!plug) {
-		const pts = plugPoints(part, m);
-		return pts.length ? {
-			part,
-			m,
-			pts,
-			plug: null
-		} : null;
-	}
+	if (!plug) return plugPoints(part, m);
 	const lay = layoutModule(m);
 	const seen = /* @__PURE__ */ new Set();
 	const pts = [];
@@ -1981,12 +2000,160 @@ function mountable$1(d, uid) {
 			});
 		}
 	}
-	return pts.length ? {
-		part,
+	return pts;
+}
+/** Widest a drawn lead is, in px, to count as a lead rather than body (the built-in leads are 3 px). */
+var LEAD_WIDTH = 4;
+var shapeCache = /* @__PURE__ */ new WeakMap();
+/**
+* A module's drawn body, as part-local rectangles: every art shape except its leads, or the whole
+* layout body when the module has no art. A lead is a shape at most LEAD_WIDTH px across that
+* reaches one of the module's own pin edge points, where the leg plugs in: the bare wire from the
+* body out to the leg, which lies over holes without hiding them. Everything else the art draws
+* (a resistor's barrel, an LED's dome and rim, a chip's package) hides the holes under it. The
+* shapes are what the user sees, so a hole is covered exactly when it is drawn under the part.
+* A part drawn from the side (standing upright, or a breakout whose face is drawn) declares its
+* top-view `footprint` instead: that rect, or nothing for "legs".
+*/
+function bodyShapes(m) {
+	const hit = shapeCache.get(m);
+	if (hit) return hit;
+	const lay = layoutModule(m);
+	let rects;
+	if (m.footprint === "legs") rects = [];
+	else if (m.footprint) rects = [{
+		x: m.footprint.x,
+		y: m.footprint.y,
+		w: m.footprint.w,
+		h: m.footprint.h
+	}];
+	else if (!m.art?.shapes.length) rects = [{
+		x: 0,
+		y: 0,
+		w: lay.w,
+		h: lay.h
+	}];
+	else {
+		const edges = lay.pins.filter((p) => !p.bus).map((p) => p.edge);
+		const lead = (s) => Math.min(s.w, s.h) <= LEAD_WIDTH && edges.some((e) => e.x >= s.x && e.x <= s.x + s.w && e.y >= s.y && e.y <= s.y + s.h);
+		rects = m.art.shapes.filter((s) => !lead(s)).map(({ x, y, w, h }) => ({
+			x,
+			y,
+			w,
+			h
+		}));
+	}
+	shapeCache.set(m, rects);
+	return rects;
+}
+/** A part-local rectangle in world px, turned with the part. */
+function worldRect(part, lay, r) {
+	const a = toWorld(part, lay, {
+		x: r.x,
+		y: r.y
+	});
+	const b = toWorld(part, lay, {
+		x: r.x + r.w,
+		y: r.y + r.h
+	});
+	return {
+		x: Math.min(a.x, b.x),
+		y: Math.min(a.y, b.y),
+		w: Math.abs(b.x - a.x),
+		h: Math.abs(b.y - a.y)
+	};
+}
+var coverCache = /* @__PURE__ */ new WeakMap();
+/**
+* The holes of `board` whose centers lie strictly inside one of part's body shapes (bodyShapes,
+* turned with the part), in group and hole order, except the holes its own legs (every plug point)
+* land on. A hole on the edge of a shape is only half hidden and stays free. Cached per part, board
+* and module objects.
+*/
+function coverOf(part, m, board, bm) {
+	const hit = coverCache.get(part);
+	if (hit && hit.board === board && hit.m === m && hit.bm === bm) return hit.cover;
+	const idx = holeIndex(board, bm);
+	const lay = layoutModule(m);
+	const own = new Set(allPlugPoints(part, m).map((pp) => pointKey(pp.at.x, pp.at.y)));
+	const found = /* @__PURE__ */ new Map();
+	const first = idx.groups.find((g) => g.at.length)?.at[0];
+	if (first) {
+		const ox = (first.x % 10 + 10) % 10;
+		const oy = (first.y % 10 + 10) % 10;
+		for (const s of bodyShapes(m)) {
+			const r = worldRect(part, lay, s);
+			for (let y = oy + 10 * (Math.floor((r.y - oy) / 10) + 1); y < r.y + r.h; y += 10) for (let x = ox + 10 * (Math.floor((r.x - ox) / 10) + 1); x < r.x + r.w; x += 10) {
+				const h = holeAt(idx, {
+					x,
+					y
+				});
+				if (h && !own.has(pointKey(x, y))) found.set(h[0] * 1e6 + h[1], h);
+			}
+		}
+	}
+	const cover = [...found.keys()].sort((a, b) => a - b).map((k) => {
+		const [gi, hi] = found.get(k);
+		return {
+			board: board.uid,
+			group: idx.groups[gi].name,
+			hole: hi,
+			at: idx.groups[gi].at[hi],
+			by: part.uid
+		};
+	});
+	coverCache.set(part, {
+		board,
 		m,
-		pts,
-		plug
-	} : null;
+		bm,
+		cover
+	});
+	return cover;
+}
+/**
+* The holes covered by the bodies of the parts that `plugs` plug in (each part on the board its
+* legs are in), parts in `ignore` left out. A hole two bodies cover is listed once, for the part
+* whose legs come first in `plugs`.
+*/
+function coversOf(d, plugs, ignore = /* @__PURE__ */ new Set()) {
+	const out = /* @__PURE__ */ new Map();
+	const done = /* @__PURE__ */ new Set();
+	let byUid = null;
+	for (const pl of plugs) {
+		if (ignore.has(pl.part) || done.has(pl.part)) continue;
+		done.add(pl.part);
+		byUid ??= new Map(d.parts.map((p) => [p.uid, p]));
+		const part = byUid.get(pl.part);
+		const board = byUid.get(pl.board);
+		const m = part && moduleOf(d, part.module);
+		const bm = board && moduleOf(d, board.module);
+		if (!part || !board || !m || !bm) continue;
+		for (const c of coverOf(part, m, board, bm)) {
+			const k = holeKey$1(c.board, c.group, c.hole);
+			if (!out.has(k)) out.set(k, c);
+		}
+	}
+	return [...out.values()];
+}
+/** Hole keys of every wire end in a board hole (a hole end on a board's hole group). */
+function wireEndHoles(d) {
+	const out = /* @__PURE__ */ new Set();
+	if (!d.connections.length) return out;
+	const boards = /* @__PURE__ */ new Map();
+	for (const p of d.parts) {
+		const m = moduleOf(d, p.module);
+		if (m && isBoard(m)) boards.set(p.uid, m);
+	}
+	for (const c of d.connections) for (const ep of [c.from, c.to]) if (boards.get(ep.part)?.holes?.some((g) => g.name === ep.pin)) out.add(holeKey$1(ep.part, ep.pin, ep.hole ?? 0));
+	return out;
+}
+function busyOf(d, plugs, ignore) {
+	let ends = null;
+	return {
+		taken: takenBy(plugs, ignore),
+		covered: new Set(coversOf(d, plugs, ignore).map((c) => holeKey$1(c.board, c.group, c.hole))),
+		ends: () => ends ??= wireEndHoles(d)
+	};
 }
 var intersects$1 = (a, b) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
 /**
@@ -2023,6 +2190,7 @@ function fitOn(d, board, me) {
 		const landed = hits.filter(Boolean).length;
 		return {
 			board,
+			bm,
 			groups: idx.groups,
 			pts,
 			hits,
@@ -2061,15 +2229,32 @@ function fitOn(d, board, me) {
 	}
 	return best ?? fit(me.pts, () => false);
 }
-/** An obscured board never seats: its fit shows as partial (red), so a drop does not mount. */
-function seatFrom(fit, taken) {
+/**
+* An obscured board never seats: its fit shows as partial (red), so a drop does not mount. With
+* `me` and `busy` (seating a part, not re-checking a stored mount) bodies count too: a leg in a
+* hole under another part's body, or a body over a hole that holds another part's leg or a wire
+* end, keeps the part from seating, and those holes come back as `blocked`.
+*/
+function seatFrom(fit, busy, me) {
 	if (!fit.landed && !fit.outline) return null;
-	const seated = fit.seatable && !fit.obscured && fit.hits.every((h) => h && !taken.has(holeKey$1(fit.board.uid, fit.groups[h[0]].name, h[1])));
+	const key = (h) => holeKey$1(fit.board.uid, fit.groups[h[0]].name, h[1]);
+	const blocked = [];
+	if (me) {
+		fit.hits.forEach((h, i) => {
+			if (h && busy.covered.has(key(h))) blocked.push(fit.pts[i].at);
+		});
+		for (const c of coverOf(me.part, me.m, fit.board, fit.bm)) {
+			const k = holeKey$1(c.board, c.group, c.hole);
+			if (busy.taken.has(k) || busy.ends().has(k)) blocked.push(c.at);
+		}
+	}
+	const seated = fit.seatable && !fit.obscured && !blocked.length && fit.hits.every((h) => h && !busy.taken.has(key(h)));
 	return {
 		status: seated ? "seated" : "partial",
 		board: fit.board.uid,
 		holes: fit.pts.filter((_, i) => fit.hits[i]).map((pp) => pp.at),
-		...fit.outline && !seated ? { outline: fit.outline } : {}
+		...fit.outline && !seated ? { outline: fit.outline } : {},
+		...blocked.length ? { blocked } : {}
 	};
 }
 /** `seatOf` on one given board (a part's own mount), whatever other board also fits. Null when `board` is missing or not a board. */
@@ -2077,7 +2262,7 @@ function seatOn(d, uid, board, plugs, ignore = /* @__PURE__ */ new Set([uid])) {
 	const me = mountable$1(d, uid);
 	const b = me && d.parts.find((p) => p.uid === board);
 	const fit = me && b && b !== me.part ? fitOn(d, b, me) : null;
-	return fit && seatFrom(fit, takenBy(plugs, ignore));
+	return fit && seatFrom(fit, busyOf(d, plugs, ignore), me);
 }
 /**
 * Walks mounted parts in `d.parts` order. A mount is valid when its part is seated on its own
@@ -2115,7 +2300,11 @@ function mounts(d) {
 		else if (fit.landed < fit.pts.length) issue("partial");
 		else if (!fit.seatable) issue("no-fit");
 		else if (fit.obscured) issue("obscured");
-		else if (seatFrom(fit, taken).status !== "seated") issue("conflict");
+		else if (seatFrom(fit, {
+			taken,
+			covered: NONE_SET,
+			ends: () => NONE_SET
+		}).status !== "seated") issue("conflict");
 		else fit.pts.forEach((pp, i) => {
 			const [gi, hi] = fit.hits[i];
 			const group = fit.groups[gi].name;
@@ -2171,6 +2360,16 @@ function plugOfPin(d, part, pin) {
 	const entry = cachedMounts(d);
 	if (!entry.byPin) entry.byPin = new Map(entry.result.plugs.map((pl) => [pinKey(pl.part, pl.pin), pl.at]));
 	return entry.byPin.get(pinKey(part, pin)) ?? null;
+}
+/**
+* Every hole a validly mounted part's body lies over (see `bodyShapes`), on the board it is mounted
+* on, apart from its own leg holes; a hole two bodies cover is listed once. Nothing may plug into
+* one: a wire end or another part's leg there is a finding (the checker's covered-hole). A mount
+* that plugs nothing covers nothing. Cached per diagram parts, like `plugsOf`: do not mutate it.
+*/
+function coveredHoles(d) {
+	const entry = cachedMounts(d);
+	return entry.covered ??= coversOf(d, entry.result.plugs);
 }
 /**
 * Every mount that plugs nothing, and why: its board is missing or not a board, the part cannot
@@ -2658,7 +2857,7 @@ function captionAnchor(m, rotation = 0) {
 	}, m).some((p) => p.dir.y > 0);
 	return {
 		x: box.x + box.w / 2,
-		y: box.y + box.h + (stubsDown ? 8 : 0) + 15
+		y: box.y + box.h + (stubsDown ? usesTipLabels(m) ? pinRoom(m) : 8 : 0) + 15
 	};
 }
 /** The caption's box in world px (8 px above the baseline, 2 below). */
@@ -2692,6 +2891,31 @@ function placedCaptionBox(part, m, seat, text = partCaption(part, m)) {
 		w,
 		h: 10
 	};
+}
+/**
+* The boxes, in world px, that a part's pin names drawn past the pin tips (`art.pinLabels: "tips"`)
+* take: one per pin, 8 px across, from 2 px past the stub tip out to the longest name's length
+* (pinRoom), so every name of the part gets the same box. Empty for any other part. The router
+* keeps wires off them like captions, and layout keeps wire ends out of the holes under them.
+*/
+function tipLabelBoxes(part, m) {
+	if (!usesTipLabels(m)) return [];
+	const len = pinRoom(m) - 8 - 2;
+	return worldPins(part, m).filter((p) => !p.bus).map((p) => {
+		const x = p.end.x + p.dir.x * 2;
+		const y = p.end.y + p.dir.y * 2;
+		return p.dir.x !== 0 ? {
+			x: p.dir.x > 0 ? x : x - len,
+			y: y - 4,
+			w: len,
+			h: 8
+		} : {
+			x: x - 4,
+			y: p.dir.y > 0 ? y : y - len,
+			w: 8,
+			h: len
+		};
+	});
 }
 //#endregion
 //#region src/format/seatedLabels.ts
@@ -3053,17 +3277,46 @@ function withLeadOut(pts, dir, lead) {
 var holeGroupKey = (board, group) => JSON.stringify([board, group]);
 var legKey = (part, pin) => JSON.stringify([part, pin]);
 function boardHoles(d) {
-	const groups = [];
+	const boards = /* @__PURE__ */ new Map();
 	for (const p of d.parts) {
 		const m = moduleOf(d, p.module);
-		if (!m || !isBoard(m)) continue;
-		for (const g of worldHoles(p, m)) groups.push({
-			key: holeGroupKey(p.uid, g.name),
-			at: g.at
+		if (m && isBoard(m)) boards.set(p.uid, {
+			part: p,
+			m
 		});
 	}
 	const legGroup = /* @__PURE__ */ new Map();
-	if (groups.length) for (const pl of plugsOf(d)) legGroup.set(legKey(pl.part, pl.pin), holeGroupKey(pl.board, pl.group));
+	if (!boards.size) return {
+		groups: [],
+		legGroup
+	};
+	const used = /* @__PURE__ */ new Map();
+	const use = (board, group, hole) => {
+		let byGroup = used.get(board);
+		if (!byGroup) used.set(board, byGroup = /* @__PURE__ */ new Map());
+		let holes = byGroup.get(group);
+		if (!holes) byGroup.set(group, holes = /* @__PURE__ */ new Set());
+		holes.add(hole);
+	};
+	for (const pl of plugsOf(d)) {
+		legGroup.set(legKey(pl.part, pl.pin), holeGroupKey(pl.board, pl.group));
+		use(pl.board, pl.group, pl.hole);
+	}
+	for (const c of coveredHoles(d)) use(c.board, c.group, c.hole);
+	for (const c of d.connections) for (const e of [c.from, c.to]) if (boards.get(e.part)?.m.holes?.some((g) => g.name === e.pin)) use(e.part, e.pin, e.hole ?? 0);
+	const groups = [];
+	for (const [uid, byGroup] of used) {
+		const b = boards.get(uid);
+		if (!b) continue;
+		const idx = holeIndex(b.part, b.m);
+		for (const g of idx.groups) {
+			const holes = byGroup.get(g.name);
+			if (holes) groups.push({
+				key: holeGroupKey(uid, g.name),
+				at: [...holes].sort((x, y) => x - y).flatMap((i) => i < g.at.length ? [g.at[i]] : [])
+			});
+		}
+	}
 	return {
 		groups,
 		legGroup
@@ -3093,7 +3346,7 @@ function labelPoints(d) {
 	const seated = seatedLabels(d);
 	for (const p of d.parts) {
 		const m = moduleOf(d, p.module);
-		if (m) captions.set(p.uid, gridNodesIn(placedCaptionBox(p, m, seated.get(p.uid))));
+		if (m) captions.set(p.uid, [placedCaptionBox(p, m, seated.get(p.uid)), ...tipLabelBoxes(p, m)].flatMap(gridNodesIn));
 	}
 	return {
 		captions,
@@ -4743,6 +4996,7 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			"w": 8,
 			"h": 10
 		},
+		footprint: "legs",
 		electrical: {
 			"model": "regulator",
 			"params": {}
@@ -7085,6 +7339,7 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			"w": 7,
 			"h": 8
 		},
+		footprint: "legs",
 		electrical: {
 			"model": "sensor",
 			"params": {}
@@ -7248,6 +7503,7 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			"w": 9,
 			"h": 8
 		},
+		footprint: "legs",
 		electrical: {
 			"model": "sensor",
 			"params": {}
@@ -13025,6 +13281,12 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			"w": 7,
 			"h": 13
 		},
+		footprint: {
+			"x": 5,
+			"y": 119,
+			"w": 60,
+			"h": 31
+		},
 		electrical: {
 			"model": "sensor",
 			"params": {}
@@ -13371,6 +13633,7 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			"w": 8,
 			"h": 14
 		},
+		footprint: "legs",
 		electrical: {
 			"model": "sensor",
 			"params": {}
@@ -13741,6 +14004,7 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			"w": 5,
 			"h": 5
 		},
+		footprint: "legs",
 		electrical: {
 			"model": "connector",
 			"params": {}
@@ -13857,6 +14121,7 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			"w": 6,
 			"h": 5
 		},
+		footprint: "legs",
 		electrical: {
 			"model": "connector",
 			"params": {}
@@ -14007,6 +14272,7 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			"w": 7,
 			"h": 5
 		},
+		footprint: "legs",
 		electrical: {
 			"model": "connector",
 			"params": {}
@@ -18800,6 +19066,7 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			"w": 5,
 			"h": 5
 		},
+		footprint: "legs",
 		electrical: {
 			"model": "connector",
 			"params": {}
@@ -18917,6 +19184,7 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			"w": 6,
 			"h": 5
 		},
+		footprint: "legs",
 		electrical: {
 			"model": "connector",
 			"params": {}
@@ -19059,6 +19327,7 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			"w": 7,
 			"h": 5
 		},
+		footprint: "legs",
 		electrical: {
 			"model": "connector",
 			"params": {}
@@ -22237,465 +22506,437 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 		pins: [
 			{
 				"name": "GPB0",
-				"side": "left"
+				"side": "bottom"
 			},
 			{
 				"name": "GPB1",
-				"side": "left"
+				"side": "bottom"
 			},
 			{
 				"name": "GPB2",
-				"side": "left"
+				"side": "bottom"
 			},
 			{
 				"name": "GPB3",
-				"side": "left"
+				"side": "bottom"
 			},
 			{
 				"name": "GPB4",
-				"side": "left"
+				"side": "bottom"
 			},
 			{
 				"name": "GPB5",
-				"side": "left"
+				"side": "bottom"
 			},
 			{
 				"name": "GPB6",
-				"side": "left"
+				"side": "bottom"
 			},
 			{
 				"name": "GPB7",
-				"side": "left",
+				"side": "bottom",
 				"type": "output"
 			},
 			{
 				"name": "VDD",
-				"side": "left",
+				"side": "bottom",
 				"type": "power_in",
 				"supply": "3V3/5V"
 			},
 			{
 				"name": "VSS",
-				"side": "left",
+				"side": "bottom",
 				"type": "ground"
 			},
 			{
 				"name": "NC",
-				"side": "left",
+				"side": "bottom",
 				"type": "nc"
 			},
 			{
 				"name": "SCL",
-				"side": "left",
+				"side": "bottom",
 				"type": "input"
 			},
 			{
 				"name": "SDA",
-				"side": "left",
+				"side": "bottom",
 				"type": "io"
 			},
 			{
 				"name": "NC 2",
-				"side": "left",
+				"side": "bottom",
 				"label": "NC",
 				"type": "nc"
 			},
 			{
 				"name": "GPA7",
-				"side": "right",
+				"side": "top",
 				"type": "output"
 			},
 			{
 				"name": "GPA6",
-				"side": "right"
+				"side": "top"
 			},
 			{
 				"name": "GPA5",
-				"side": "right"
+				"side": "top"
 			},
 			{
 				"name": "GPA4",
-				"side": "right"
+				"side": "top"
 			},
 			{
 				"name": "GPA3",
-				"side": "right"
+				"side": "top"
 			},
 			{
 				"name": "GPA2",
-				"side": "right"
+				"side": "top"
 			},
 			{
 				"name": "GPA1",
-				"side": "right"
+				"side": "top"
 			},
 			{
 				"name": "GPA0",
-				"side": "right"
+				"side": "top"
 			},
 			{
 				"name": "INTA",
-				"side": "right",
+				"side": "top",
 				"type": "output"
 			},
 			{
 				"name": "INTB",
-				"side": "right",
+				"side": "top",
 				"type": "output"
 			},
 			{
 				"name": "RESET",
-				"side": "right",
+				"side": "top",
 				"type": "input"
 			},
 			{
 				"name": "A2",
-				"side": "right",
+				"side": "top",
 				"type": "input"
 			},
 			{
 				"name": "A1",
-				"side": "right",
+				"side": "top",
 				"type": "input"
 			},
 			{
 				"name": "A0",
-				"side": "right",
+				"side": "top",
 				"type": "input"
 			}
 		],
 		size: {
-			"w": 10,
-			"h": 19
+			"w": 16,
+			"h": 3
 		},
 		electrical: {
 			"model": "io-expander",
 			"params": {}
 		},
 		art: {
-			"w": 100,
-			"h": 190,
-			"pinLabels": "inside",
+			"w": 160,
+			"h": 30,
+			"pinLabels": "tips",
 			"shapes": [
 				{
 					"type": "rect",
-					"x": 0,
+					"x": 18.5,
 					"y": 0,
-					"w": 100,
-					"h": 190,
+					"w": 3,
+					"h": 5,
+					"fill": "#C9CED6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 18.5,
+					"y": 25,
+					"w": 3,
+					"h": 5,
+					"fill": "#C9CED6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 28.5,
+					"y": 0,
+					"w": 3,
+					"h": 5,
+					"fill": "#C9CED6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 28.5,
+					"y": 25,
+					"w": 3,
+					"h": 5,
+					"fill": "#C9CED6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 38.5,
+					"y": 0,
+					"w": 3,
+					"h": 5,
+					"fill": "#C9CED6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 38.5,
+					"y": 25,
+					"w": 3,
+					"h": 5,
+					"fill": "#C9CED6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 48.5,
+					"y": 0,
+					"w": 3,
+					"h": 5,
+					"fill": "#C9CED6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 48.5,
+					"y": 25,
+					"w": 3,
+					"h": 5,
+					"fill": "#C9CED6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 58.5,
+					"y": 0,
+					"w": 3,
+					"h": 5,
+					"fill": "#C9CED6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 58.5,
+					"y": 25,
+					"w": 3,
+					"h": 5,
+					"fill": "#C9CED6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 68.5,
+					"y": 0,
+					"w": 3,
+					"h": 5,
+					"fill": "#C9CED6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 68.5,
+					"y": 25,
+					"w": 3,
+					"h": 5,
+					"fill": "#C9CED6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 78.5,
+					"y": 0,
+					"w": 3,
+					"h": 5,
+					"fill": "#C9CED6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 78.5,
+					"y": 25,
+					"w": 3,
+					"h": 5,
+					"fill": "#C9CED6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 88.5,
+					"y": 0,
+					"w": 3,
+					"h": 5,
+					"fill": "#C9CED6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 88.5,
+					"y": 25,
+					"w": 3,
+					"h": 5,
+					"fill": "#C9CED6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 98.5,
+					"y": 0,
+					"w": 3,
+					"h": 5,
+					"fill": "#C9CED6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 98.5,
+					"y": 25,
+					"w": 3,
+					"h": 5,
+					"fill": "#C9CED6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 108.5,
+					"y": 0,
+					"w": 3,
+					"h": 5,
+					"fill": "#C9CED6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 108.5,
+					"y": 25,
+					"w": 3,
+					"h": 5,
+					"fill": "#C9CED6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 118.5,
+					"y": 0,
+					"w": 3,
+					"h": 5,
+					"fill": "#C9CED6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 118.5,
+					"y": 25,
+					"w": 3,
+					"h": 5,
+					"fill": "#C9CED6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 128.5,
+					"y": 0,
+					"w": 3,
+					"h": 5,
+					"fill": "#C9CED6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 128.5,
+					"y": 25,
+					"w": 3,
+					"h": 5,
+					"fill": "#C9CED6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 138.5,
+					"y": 0,
+					"w": 3,
+					"h": 5,
+					"fill": "#C9CED6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 138.5,
+					"y": 25,
+					"w": 3,
+					"h": 5,
+					"fill": "#C9CED6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 148.5,
+					"y": 0,
+					"w": 3,
+					"h": 5,
+					"fill": "#C9CED6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 148.5,
+					"y": 25,
+					"w": 3,
+					"h": 5,
+					"fill": "#C9CED6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 11,
+					"y": 4,
+					"w": 148,
+					"h": 22,
 					"fill": "#1E2126",
+					"radius": 2
+				},
+				{
+					"type": "rect",
+					"x": 12,
+					"y": 11,
+					"w": 6,
+					"h": 8,
+					"fill": "#3A3F47",
 					"radius": 3
 				},
 				{
 					"type": "rect",
-					"x": 1,
-					"y": 28,
-					"w": 8,
+					"x": 18,
+					"y": 19,
+					"w": 4,
 					"h": 4,
-					"fill": "#C9CED6",
-					"radius": 1,
-					"outline": false
-				},
-				{
-					"type": "rect",
-					"x": 91,
-					"y": 28,
-					"w": 8,
-					"h": 4,
-					"fill": "#C9CED6",
-					"radius": 1,
-					"outline": false
-				},
-				{
-					"type": "rect",
-					"x": 1,
-					"y": 38,
-					"w": 8,
-					"h": 4,
-					"fill": "#C9CED6",
-					"radius": 1,
-					"outline": false
-				},
-				{
-					"type": "rect",
-					"x": 91,
-					"y": 38,
-					"w": 8,
-					"h": 4,
-					"fill": "#C9CED6",
-					"radius": 1,
-					"outline": false
-				},
-				{
-					"type": "rect",
-					"x": 1,
-					"y": 48,
-					"w": 8,
-					"h": 4,
-					"fill": "#C9CED6",
-					"radius": 1,
-					"outline": false
-				},
-				{
-					"type": "rect",
-					"x": 91,
-					"y": 48,
-					"w": 8,
-					"h": 4,
-					"fill": "#C9CED6",
-					"radius": 1,
-					"outline": false
-				},
-				{
-					"type": "rect",
-					"x": 1,
-					"y": 58,
-					"w": 8,
-					"h": 4,
-					"fill": "#C9CED6",
-					"radius": 1,
-					"outline": false
-				},
-				{
-					"type": "rect",
-					"x": 91,
-					"y": 58,
-					"w": 8,
-					"h": 4,
-					"fill": "#C9CED6",
-					"radius": 1,
-					"outline": false
-				},
-				{
-					"type": "rect",
-					"x": 1,
-					"y": 68,
-					"w": 8,
-					"h": 4,
-					"fill": "#C9CED6",
-					"radius": 1,
-					"outline": false
-				},
-				{
-					"type": "rect",
-					"x": 91,
-					"y": 68,
-					"w": 8,
-					"h": 4,
-					"fill": "#C9CED6",
-					"radius": 1,
-					"outline": false
-				},
-				{
-					"type": "rect",
-					"x": 1,
-					"y": 78,
-					"w": 8,
-					"h": 4,
-					"fill": "#C9CED6",
-					"radius": 1,
-					"outline": false
-				},
-				{
-					"type": "rect",
-					"x": 91,
-					"y": 78,
-					"w": 8,
-					"h": 4,
-					"fill": "#C9CED6",
-					"radius": 1,
-					"outline": false
-				},
-				{
-					"type": "rect",
-					"x": 1,
-					"y": 88,
-					"w": 8,
-					"h": 4,
-					"fill": "#C9CED6",
-					"radius": 1,
-					"outline": false
-				},
-				{
-					"type": "rect",
-					"x": 91,
-					"y": 88,
-					"w": 8,
-					"h": 4,
-					"fill": "#C9CED6",
-					"radius": 1,
-					"outline": false
-				},
-				{
-					"type": "rect",
-					"x": 1,
-					"y": 98,
-					"w": 8,
-					"h": 4,
-					"fill": "#C9CED6",
-					"radius": 1,
-					"outline": false
-				},
-				{
-					"type": "rect",
-					"x": 91,
-					"y": 98,
-					"w": 8,
-					"h": 4,
-					"fill": "#C9CED6",
-					"radius": 1,
-					"outline": false
-				},
-				{
-					"type": "rect",
-					"x": 1,
-					"y": 108,
-					"w": 8,
-					"h": 4,
-					"fill": "#C9CED6",
-					"radius": 1,
-					"outline": false
-				},
-				{
-					"type": "rect",
-					"x": 91,
-					"y": 108,
-					"w": 8,
-					"h": 4,
-					"fill": "#C9CED6",
-					"radius": 1,
-					"outline": false
-				},
-				{
-					"type": "rect",
-					"x": 1,
-					"y": 118,
-					"w": 8,
-					"h": 4,
-					"fill": "#C9CED6",
-					"radius": 1,
-					"outline": false
-				},
-				{
-					"type": "rect",
-					"x": 91,
-					"y": 118,
-					"w": 8,
-					"h": 4,
-					"fill": "#C9CED6",
-					"radius": 1,
-					"outline": false
-				},
-				{
-					"type": "rect",
-					"x": 1,
-					"y": 128,
-					"w": 8,
-					"h": 4,
-					"fill": "#C9CED6",
-					"radius": 1,
-					"outline": false
-				},
-				{
-					"type": "rect",
-					"x": 91,
-					"y": 128,
-					"w": 8,
-					"h": 4,
-					"fill": "#C9CED6",
-					"radius": 1,
-					"outline": false
-				},
-				{
-					"type": "rect",
-					"x": 1,
-					"y": 138,
-					"w": 8,
-					"h": 4,
-					"fill": "#C9CED6",
-					"radius": 1,
-					"outline": false
-				},
-				{
-					"type": "rect",
-					"x": 91,
-					"y": 138,
-					"w": 8,
-					"h": 4,
-					"fill": "#C9CED6",
-					"radius": 1,
-					"outline": false
-				},
-				{
-					"type": "rect",
-					"x": 1,
-					"y": 148,
-					"w": 8,
-					"h": 4,
-					"fill": "#C9CED6",
-					"radius": 1,
-					"outline": false
-				},
-				{
-					"type": "rect",
-					"x": 91,
-					"y": 148,
-					"w": 8,
-					"h": 4,
-					"fill": "#C9CED6",
-					"radius": 1,
-					"outline": false
-				},
-				{
-					"type": "rect",
-					"x": 1,
-					"y": 158,
-					"w": 8,
-					"h": 4,
-					"fill": "#C9CED6",
-					"radius": 1,
-					"outline": false
-				},
-				{
-					"type": "rect",
-					"x": 91,
-					"y": 158,
-					"w": 8,
-					"h": 4,
-					"fill": "#C9CED6",
-					"radius": 1,
-					"outline": false
-				},
-				{
-					"type": "rect",
-					"x": 42,
-					"y": 2,
-					"w": 16,
-					"h": 8,
 					"fill": "#3A3F47",
-					"radius": 4
-				},
-				{
-					"type": "rect",
-					"x": 13,
-					"y": 11,
-					"w": 5,
-					"h": 5,
-					"fill": "#3A3F47",
-					"radius": 2.5,
+					"radius": 2,
 					"outline": false
 				},
 				{
 					"type": "rect",
-					"x": 15,
-					"y": 170,
-					"w": 70,
+					"x": 40,
+					"y": 9,
+					"w": 90,
 					"h": 12,
 					"fill": "#1E2126",
 					"outline": false,
 					"label": "MCP23017",
 					"labelColor": "#C9CED6",
-					"labelSize": 7
+					"labelSize": 8
 				}
 			]
 		}
@@ -22710,465 +22951,437 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 		pins: [
 			{
 				"name": "VSS",
-				"side": "left",
+				"side": "bottom",
 				"type": "ground"
 			},
 			{
 				"name": "NC",
-				"side": "left",
+				"side": "bottom",
 				"type": "nc"
 			},
 			{
 				"name": "GPB0",
-				"side": "left"
+				"side": "bottom"
 			},
 			{
 				"name": "GPB1",
-				"side": "left"
+				"side": "bottom"
 			},
 			{
 				"name": "GPB2",
-				"side": "left"
+				"side": "bottom"
 			},
 			{
 				"name": "GPB3",
-				"side": "left"
+				"side": "bottom"
 			},
 			{
 				"name": "GPB4",
-				"side": "left"
+				"side": "bottom"
 			},
 			{
 				"name": "GPB5",
-				"side": "left"
+				"side": "bottom"
 			},
 			{
 				"name": "GPB6",
-				"side": "left"
+				"side": "bottom"
 			},
 			{
 				"name": "GPB7",
-				"side": "left"
+				"side": "bottom"
 			},
 			{
 				"name": "VDD",
-				"side": "left",
+				"side": "bottom",
 				"type": "power_in",
 				"supply": "3V3/5V"
 			},
 			{
 				"name": "SCL",
-				"side": "left",
+				"side": "bottom",
 				"type": "input"
 			},
 			{
 				"name": "SDA",
-				"side": "left",
+				"side": "bottom",
 				"type": "io"
 			},
 			{
 				"name": "NC 2",
-				"side": "left",
+				"side": "bottom",
 				"label": "NC",
 				"type": "nc"
 			},
 			{
 				"name": "NC 4",
-				"side": "right",
+				"side": "top",
 				"label": "NC",
 				"type": "nc"
 			},
 			{
 				"name": "GPA7",
-				"side": "right"
+				"side": "top"
 			},
 			{
 				"name": "GPA6",
-				"side": "right"
+				"side": "top"
 			},
 			{
 				"name": "GPA5",
-				"side": "right"
+				"side": "top"
 			},
 			{
 				"name": "GPA4",
-				"side": "right"
+				"side": "top"
 			},
 			{
 				"name": "GPA3",
-				"side": "right"
+				"side": "top"
 			},
 			{
 				"name": "GPA2",
-				"side": "right"
+				"side": "top"
 			},
 			{
 				"name": "GPA1",
-				"side": "right"
+				"side": "top"
 			},
 			{
 				"name": "GPA0",
-				"side": "right"
+				"side": "top"
 			},
 			{
 				"name": "INTA",
-				"side": "right",
+				"side": "top",
 				"type": "output"
 			},
 			{
 				"name": "INTB",
-				"side": "right",
+				"side": "top",
 				"type": "output"
 			},
 			{
 				"name": "NC 3",
-				"side": "right",
+				"side": "top",
 				"label": "NC",
 				"type": "nc"
 			},
 			{
 				"name": "RESET",
-				"side": "right",
+				"side": "top",
 				"type": "input"
 			},
 			{
 				"name": "ADDR",
-				"side": "right",
+				"side": "top",
 				"type": "input"
 			}
 		],
 		size: {
-			"w": 10,
-			"h": 19
+			"w": 16,
+			"h": 3
 		},
 		electrical: {
 			"model": "io-expander",
 			"params": {}
 		},
 		art: {
-			"w": 100,
-			"h": 190,
-			"pinLabels": "inside",
+			"w": 160,
+			"h": 30,
+			"pinLabels": "tips",
 			"shapes": [
 				{
 					"type": "rect",
-					"x": 0,
+					"x": 18.5,
 					"y": 0,
-					"w": 100,
-					"h": 190,
+					"w": 3,
+					"h": 5,
+					"fill": "#C9CED6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 18.5,
+					"y": 25,
+					"w": 3,
+					"h": 5,
+					"fill": "#C9CED6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 28.5,
+					"y": 0,
+					"w": 3,
+					"h": 5,
+					"fill": "#C9CED6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 28.5,
+					"y": 25,
+					"w": 3,
+					"h": 5,
+					"fill": "#C9CED6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 38.5,
+					"y": 0,
+					"w": 3,
+					"h": 5,
+					"fill": "#C9CED6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 38.5,
+					"y": 25,
+					"w": 3,
+					"h": 5,
+					"fill": "#C9CED6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 48.5,
+					"y": 0,
+					"w": 3,
+					"h": 5,
+					"fill": "#C9CED6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 48.5,
+					"y": 25,
+					"w": 3,
+					"h": 5,
+					"fill": "#C9CED6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 58.5,
+					"y": 0,
+					"w": 3,
+					"h": 5,
+					"fill": "#C9CED6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 58.5,
+					"y": 25,
+					"w": 3,
+					"h": 5,
+					"fill": "#C9CED6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 68.5,
+					"y": 0,
+					"w": 3,
+					"h": 5,
+					"fill": "#C9CED6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 68.5,
+					"y": 25,
+					"w": 3,
+					"h": 5,
+					"fill": "#C9CED6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 78.5,
+					"y": 0,
+					"w": 3,
+					"h": 5,
+					"fill": "#C9CED6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 78.5,
+					"y": 25,
+					"w": 3,
+					"h": 5,
+					"fill": "#C9CED6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 88.5,
+					"y": 0,
+					"w": 3,
+					"h": 5,
+					"fill": "#C9CED6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 88.5,
+					"y": 25,
+					"w": 3,
+					"h": 5,
+					"fill": "#C9CED6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 98.5,
+					"y": 0,
+					"w": 3,
+					"h": 5,
+					"fill": "#C9CED6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 98.5,
+					"y": 25,
+					"w": 3,
+					"h": 5,
+					"fill": "#C9CED6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 108.5,
+					"y": 0,
+					"w": 3,
+					"h": 5,
+					"fill": "#C9CED6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 108.5,
+					"y": 25,
+					"w": 3,
+					"h": 5,
+					"fill": "#C9CED6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 118.5,
+					"y": 0,
+					"w": 3,
+					"h": 5,
+					"fill": "#C9CED6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 118.5,
+					"y": 25,
+					"w": 3,
+					"h": 5,
+					"fill": "#C9CED6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 128.5,
+					"y": 0,
+					"w": 3,
+					"h": 5,
+					"fill": "#C9CED6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 128.5,
+					"y": 25,
+					"w": 3,
+					"h": 5,
+					"fill": "#C9CED6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 138.5,
+					"y": 0,
+					"w": 3,
+					"h": 5,
+					"fill": "#C9CED6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 138.5,
+					"y": 25,
+					"w": 3,
+					"h": 5,
+					"fill": "#C9CED6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 148.5,
+					"y": 0,
+					"w": 3,
+					"h": 5,
+					"fill": "#C9CED6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 148.5,
+					"y": 25,
+					"w": 3,
+					"h": 5,
+					"fill": "#C9CED6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 11,
+					"y": 4,
+					"w": 148,
+					"h": 22,
 					"fill": "#1E2126",
+					"radius": 2
+				},
+				{
+					"type": "rect",
+					"x": 12,
+					"y": 11,
+					"w": 6,
+					"h": 8,
+					"fill": "#3A3F47",
 					"radius": 3
 				},
 				{
 					"type": "rect",
-					"x": 1,
-					"y": 28,
-					"w": 8,
+					"x": 18,
+					"y": 19,
+					"w": 4,
 					"h": 4,
-					"fill": "#C9CED6",
-					"radius": 1,
-					"outline": false
-				},
-				{
-					"type": "rect",
-					"x": 91,
-					"y": 28,
-					"w": 8,
-					"h": 4,
-					"fill": "#C9CED6",
-					"radius": 1,
-					"outline": false
-				},
-				{
-					"type": "rect",
-					"x": 1,
-					"y": 38,
-					"w": 8,
-					"h": 4,
-					"fill": "#C9CED6",
-					"radius": 1,
-					"outline": false
-				},
-				{
-					"type": "rect",
-					"x": 91,
-					"y": 38,
-					"w": 8,
-					"h": 4,
-					"fill": "#C9CED6",
-					"radius": 1,
-					"outline": false
-				},
-				{
-					"type": "rect",
-					"x": 1,
-					"y": 48,
-					"w": 8,
-					"h": 4,
-					"fill": "#C9CED6",
-					"radius": 1,
-					"outline": false
-				},
-				{
-					"type": "rect",
-					"x": 91,
-					"y": 48,
-					"w": 8,
-					"h": 4,
-					"fill": "#C9CED6",
-					"radius": 1,
-					"outline": false
-				},
-				{
-					"type": "rect",
-					"x": 1,
-					"y": 58,
-					"w": 8,
-					"h": 4,
-					"fill": "#C9CED6",
-					"radius": 1,
-					"outline": false
-				},
-				{
-					"type": "rect",
-					"x": 91,
-					"y": 58,
-					"w": 8,
-					"h": 4,
-					"fill": "#C9CED6",
-					"radius": 1,
-					"outline": false
-				},
-				{
-					"type": "rect",
-					"x": 1,
-					"y": 68,
-					"w": 8,
-					"h": 4,
-					"fill": "#C9CED6",
-					"radius": 1,
-					"outline": false
-				},
-				{
-					"type": "rect",
-					"x": 91,
-					"y": 68,
-					"w": 8,
-					"h": 4,
-					"fill": "#C9CED6",
-					"radius": 1,
-					"outline": false
-				},
-				{
-					"type": "rect",
-					"x": 1,
-					"y": 78,
-					"w": 8,
-					"h": 4,
-					"fill": "#C9CED6",
-					"radius": 1,
-					"outline": false
-				},
-				{
-					"type": "rect",
-					"x": 91,
-					"y": 78,
-					"w": 8,
-					"h": 4,
-					"fill": "#C9CED6",
-					"radius": 1,
-					"outline": false
-				},
-				{
-					"type": "rect",
-					"x": 1,
-					"y": 88,
-					"w": 8,
-					"h": 4,
-					"fill": "#C9CED6",
-					"radius": 1,
-					"outline": false
-				},
-				{
-					"type": "rect",
-					"x": 91,
-					"y": 88,
-					"w": 8,
-					"h": 4,
-					"fill": "#C9CED6",
-					"radius": 1,
-					"outline": false
-				},
-				{
-					"type": "rect",
-					"x": 1,
-					"y": 98,
-					"w": 8,
-					"h": 4,
-					"fill": "#C9CED6",
-					"radius": 1,
-					"outline": false
-				},
-				{
-					"type": "rect",
-					"x": 91,
-					"y": 98,
-					"w": 8,
-					"h": 4,
-					"fill": "#C9CED6",
-					"radius": 1,
-					"outline": false
-				},
-				{
-					"type": "rect",
-					"x": 1,
-					"y": 108,
-					"w": 8,
-					"h": 4,
-					"fill": "#C9CED6",
-					"radius": 1,
-					"outline": false
-				},
-				{
-					"type": "rect",
-					"x": 91,
-					"y": 108,
-					"w": 8,
-					"h": 4,
-					"fill": "#C9CED6",
-					"radius": 1,
-					"outline": false
-				},
-				{
-					"type": "rect",
-					"x": 1,
-					"y": 118,
-					"w": 8,
-					"h": 4,
-					"fill": "#C9CED6",
-					"radius": 1,
-					"outline": false
-				},
-				{
-					"type": "rect",
-					"x": 91,
-					"y": 118,
-					"w": 8,
-					"h": 4,
-					"fill": "#C9CED6",
-					"radius": 1,
-					"outline": false
-				},
-				{
-					"type": "rect",
-					"x": 1,
-					"y": 128,
-					"w": 8,
-					"h": 4,
-					"fill": "#C9CED6",
-					"radius": 1,
-					"outline": false
-				},
-				{
-					"type": "rect",
-					"x": 91,
-					"y": 128,
-					"w": 8,
-					"h": 4,
-					"fill": "#C9CED6",
-					"radius": 1,
-					"outline": false
-				},
-				{
-					"type": "rect",
-					"x": 1,
-					"y": 138,
-					"w": 8,
-					"h": 4,
-					"fill": "#C9CED6",
-					"radius": 1,
-					"outline": false
-				},
-				{
-					"type": "rect",
-					"x": 91,
-					"y": 138,
-					"w": 8,
-					"h": 4,
-					"fill": "#C9CED6",
-					"radius": 1,
-					"outline": false
-				},
-				{
-					"type": "rect",
-					"x": 1,
-					"y": 148,
-					"w": 8,
-					"h": 4,
-					"fill": "#C9CED6",
-					"radius": 1,
-					"outline": false
-				},
-				{
-					"type": "rect",
-					"x": 91,
-					"y": 148,
-					"w": 8,
-					"h": 4,
-					"fill": "#C9CED6",
-					"radius": 1,
-					"outline": false
-				},
-				{
-					"type": "rect",
-					"x": 1,
-					"y": 158,
-					"w": 8,
-					"h": 4,
-					"fill": "#C9CED6",
-					"radius": 1,
-					"outline": false
-				},
-				{
-					"type": "rect",
-					"x": 91,
-					"y": 158,
-					"w": 8,
-					"h": 4,
-					"fill": "#C9CED6",
-					"radius": 1,
-					"outline": false
-				},
-				{
-					"type": "rect",
-					"x": 42,
-					"y": 2,
-					"w": 16,
-					"h": 8,
 					"fill": "#3A3F47",
-					"radius": 4
-				},
-				{
-					"type": "rect",
-					"x": 13,
-					"y": 11,
-					"w": 5,
-					"h": 5,
-					"fill": "#3A3F47",
-					"radius": 2.5,
+					"radius": 2,
 					"outline": false
 				},
 				{
 					"type": "rect",
-					"x": 15,
-					"y": 170,
-					"w": 70,
+					"x": 40,
+					"y": 9,
+					"w": 90,
 					"h": 12,
 					"fill": "#1E2126",
 					"outline": false,
 					"label": "MCP23018",
 					"labelColor": "#C9CED6",
-					"labelSize": 7
+					"labelSize": 8
 				}
 			]
 		}
@@ -23217,6 +23430,7 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			"w": 13,
 			"h": 10
 		},
+		footprint: "legs",
 		electrical: {
 			"model": "storage",
 			"params": {}
@@ -23492,6 +23706,7 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			"w": 18,
 			"h": 10
 		},
+		footprint: "legs",
 		electrical: {
 			"model": "storage",
 			"params": {}
@@ -23906,6 +24121,7 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			"w": 15,
 			"h": 15
 		},
+		footprint: "legs",
 		electrical: {
 			"model": "display",
 			"params": {}
@@ -24099,6 +24315,7 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			"w": 15,
 			"h": 15
 		},
+		footprint: "legs",
 		electrical: {
 			"model": "display",
 			"params": {}
@@ -24292,6 +24509,7 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			"w": 22,
 			"h": 7
 		},
+		footprint: "legs",
 		electrical: {
 			"model": "display",
 			"params": {}
@@ -24445,6 +24663,7 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			"w": 13,
 			"h": 13
 		},
+		footprint: "legs",
 		electrical: {
 			"model": "display",
 			"params": {}
@@ -24638,6 +24857,7 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			"w": 13,
 			"h": 13
 		},
+		footprint: "legs",
 		electrical: {
 			"model": "display",
 			"params": {}
@@ -26410,6 +26630,7 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			"w": 12,
 			"h": 12
 		},
+		footprint: "legs",
 		electrical: {
 			"model": "sensor",
 			"params": {}
@@ -28380,6 +28601,7 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			"w": 8,
 			"h": 9
 		},
+		footprint: "legs",
 		electrical: {
 			"model": "potentiometer",
 			"terminals": {
@@ -28535,6 +28757,7 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 				"type": "passive"
 			}
 		],
+		footprint: "legs",
 		electrical: {
 			"model": "potentiometer",
 			"terminals": {
@@ -38952,6 +39175,7 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			"w": 15,
 			"h": 18
 		},
+		footprint: "legs",
 		electrical: {
 			"model": "display",
 			"params": {}
@@ -39235,6 +39459,7 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			"w": 5,
 			"h": 6
 		},
+		footprint: "legs",
 		electrical: {
 			"model": "switch",
 			"terminals": {
@@ -39779,6 +40004,7 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			"w": 19,
 			"h": 9
 		},
+		footprint: "legs",
 		electrical: {
 			"model": "sensor",
 			"params": {}
@@ -41539,6 +41765,7 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			"w": 7,
 			"h": 10
 		},
+		footprint: "legs",
 		electrical: {
 			"model": "addressable_led",
 			"params": {}
@@ -46215,6 +46442,10 @@ var RULES = {
 		severity: "error",
 		title: "Broken connection"
 	},
+	"covered-hole": {
+		severity: "error",
+		title: "Hole under a part"
+	},
 	short: {
 		severity: "error",
 		title: "Short circuit"
@@ -46400,6 +46631,51 @@ function brokenConnection(d, c) {
 /** Every connection in `netlist(d).broken`, in file order, named for the user. */
 function brokenConnections(d) {
 	return d.connections.map((c) => brokenConnection(d, c)).filter((b) => b !== null);
+}
+/**
+* Every wire end and leg in a hole under a mounted part's body (`coveredHoles`), wires in file
+* order then legs; wires in `skip` (broken ones) are left out. A wire to a plugged pin ends in that
+* leg's hole by design, so only an end that names a board hole counts, like leg-hole-shared.
+*/
+function coveredUses(d, skip = /* @__PURE__ */ new Set()) {
+	const covered = coveredHoles(d);
+	if (!covered.length) return [];
+	const at = new Map(covered.map((c) => [holeKey$1(c.board, c.group, c.hole), c]));
+	const boards = new Set(covered.map((c) => c.board));
+	const out = [];
+	const where = (c) => endpointName(d, {
+		part: c.board,
+		pin: c.group,
+		hole: c.hole
+	});
+	for (const w of d.connections) {
+		if (skip.has(w.uid)) continue;
+		for (const ep of [w.from, w.to]) {
+			const c = boards.has(ep.part) ? at.get(holeKey$1(ep.part, ep.pin, ep.hole ?? 0)) : void 0;
+			if (c) out.push({
+				cover: c,
+				where: where(c),
+				wire: w.uid
+			});
+		}
+	}
+	for (const pl of plugsOf(d)) {
+		const c = at.get(holeKey$1(pl.board, pl.group, pl.hole));
+		if (c && c.by !== pl.part) out.push({
+			cover: c,
+			where: where(c),
+			leg: pl
+		});
+	}
+	return out;
+}
+/** The sentence for a covered use, shared by the checker and verify. */
+function coveredMessage(d, u) {
+	const name = (uid) => d.parts.find((p) => p.uid === uid)?.designator ?? uid;
+	const by = name(u.cover.by);
+	if (!u.leg) return `A wire ends in ${u.where}, under ${by}'s body: a part lying over a hole leaves no room for a wire end. Move the wire to a free hole of the strip.`;
+	const part = d.parts.find((p) => p.uid === u.leg.part);
+	return `Leg ${((part && moduleOf(d, part.module))?.pins.find((p) => !isSpacer(p) && p.name === u.leg.pin))?.label ?? u.leg.pin} of ${name(u.leg.part)} sits in ${u.where}, under ${by}'s body: a part lying over a hole leaves no room for a leg. Move ${name(u.leg.part)} or ${by}.`;
 }
 var wireName = (d, c) => c.label || `${endpointName(d, c.from)} to ${endpointName(d, c.to)}`;
 /** The switched terminals of a switch module (`electrical.terminals` a and b), when both exist. */
@@ -46958,6 +47234,46 @@ function checkDiagram(d) {
 				causes: [c.uid, hole]
 			});
 		}
+	}
+	for (const u of coveredUses(d, brokenSet)) {
+		const board = partByUid.get(u.cover.board);
+		const key = holeKey$1(u.cover.board, u.cover.group, u.cover.hole);
+		const message = coveredMessage(d, u);
+		if (u.wire) add({
+			rule: "covered-hole",
+			subject: board.designator,
+			target: u.where,
+			message,
+			parts: [board.uid, u.cover.by],
+			pins: [],
+			wires: [u.wire],
+			select: {
+				parts: [],
+				wires: [u.wire]
+			},
+			causes: [u.wire, key]
+		});
+		else add({
+			rule: "covered-hole",
+			subject: board.designator,
+			target: u.where,
+			message,
+			parts: [
+				u.leg.part,
+				u.cover.by,
+				board.uid
+			],
+			pins: [{
+				part: u.leg.part,
+				pin: u.leg.pin
+			}],
+			wires: [],
+			select: {
+				parts: [u.leg.part],
+				wires: []
+			},
+			causes: [nodeKey(u.leg.part, u.leg.pin), key]
+		});
 	}
 	for (const b of brokenConnections(d)) {
 		const c = d.connections.find((w) => w.uid === b.uid);
@@ -57248,7 +57564,7 @@ function Holes({ m }) {
 * horizontal beside pins on a left or right edge, reading bottom to top beside pins on a top
 * or bottom edge (the pitch is too tight for horizontal text there). `box` is the rotated body.
 */
-function PinLabel({ p, box, outside, pad = 4 }) {
+function PinLabel({ p, box, outside, tips = false, pad = 4 }) {
 	const text = p.label ?? p.name;
 	const common = {
 		fontSize: 7,
@@ -57259,6 +57575,29 @@ function PinLabel({ p, box, outside, pad = 4 }) {
 		strokeLinejoin: "round",
 		paintOrder: "stroke"
 	};
+	if (tips) {
+		const tip = {
+			...common,
+			dominantBaseline: "central"
+		};
+		const x = p.end.x + p.dir.x * 2;
+		const y = p.end.y + p.dir.y * 2;
+		if (p.dir.x !== 0) return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("text", {
+			x,
+			y,
+			textAnchor: p.dir.x < 0 ? "end" : "start",
+			...tip,
+			children: text
+		});
+		return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("text", {
+			x,
+			y,
+			transform: `rotate(-90 ${x} ${y})`,
+			textAnchor: p.dir.y < 0 ? "start" : "end",
+			...tip,
+			children: text
+		});
+	}
 	if (outside) {
 		const midX = (p.edge.x + p.end.x) / 2;
 		const midY = (p.edge.y + p.end.y) / 2;
@@ -57417,6 +57756,7 @@ var Part = (0, import_react.memo)(function Part({ module: m, x = 0, y = 0, rotat
 					p,
 					box,
 					outside: !!art && !header,
+					tips: art?.pinLabels === "tips",
 					pad: header ? HEADER_INSET : 4
 				}, p.name);
 			}),
@@ -58143,11 +58483,12 @@ function partRects(d, only) {
 		const m = moduleOf(d, p.module);
 		if (!m) continue;
 		const b = bodyRect(p, layoutModule(m));
+		const room = Math.max(PIN_ROOM$1, pinRoom(m));
 		out.push({
-			x: b.x - PIN_ROOM$1,
-			y: b.y - PIN_ROOM$1,
-			w: b.w + 36,
-			h: b.h + 36
+			x: b.x - room,
+			y: b.y - room,
+			w: b.w + 2 * room,
+			h: b.h + 2 * room
 		}, placedCaptionBox(p, m, seated.get(p.uid)));
 	}
 	return out;
@@ -58732,7 +59073,8 @@ var ORDER = [
 	"merge",
 	"extra-connection",
 	"nc",
-	"capacity"
+	"capacity",
+	"covered-hole"
 ];
 var NO_INTENT = "no intent: lay out from a netlist or add intent";
 /** JSON with object keys sorted, so two modules compare by content whatever their key order. */
@@ -58748,7 +59090,8 @@ var COSMETIC = /* @__PURE__ */ new Set([
 	"source",
 	"description",
 	"category",
-	"version"
+	"version",
+	"footprint"
 ]);
 var FIELD_NAMES = {
 	holes: "hole groups",
@@ -58765,12 +59108,23 @@ function pinDiff(stored, lib) {
 		if (i < b.length) names.add(label(b[i]));
 		if (i < a.length) names.add(label(a[i]));
 	}
+	if (names.size > 8) return `${names.size} pins`;
 	return names.size ? `pins ${[...names].join("/")}` : "pins";
 }
 /** The electrically meaningful fields that differ (empty when only cosmetic fields do). */
 function electricalDiff(stored, lib) {
 	const [s, l] = [stored, lib];
 	return [.../* @__PURE__ */ new Set([...Object.keys(l), ...Object.keys(s)])].filter((k) => !COSMETIC.has(k) && canonical(s[k]) !== canonical(l[k])).map((k) => k === "pins" ? pinDiff(s.pins, l.pins) : FIELD_NAMES[k] ?? k);
+}
+/**
+* Whether the part's geometry moved: a different body size, or pin positions (side and place on the
+* body, whatever their names) that differ. Its legs then land elsewhere, so a kept position no
+* longer means the same seat. Renamed or retyped pins alone move nothing.
+*/
+function movedGeometry(stored, lib) {
+	const [a, b] = [layoutModule(stored), layoutModule(lib)];
+	if (a.w !== b.w || a.h !== b.h || a.pins.length !== b.pins.length) return true;
+	return a.pins.some((p, i) => p.side !== b.pins[i].side || p.edge.x !== b.pins[i].edge.x || p.edge.y !== b.pins[i].edge.y);
 }
 /** The cosmetic fields that differ. */
 function cosmeticDiff(stored, lib) {
@@ -58803,7 +59157,11 @@ function moduleDrift(d, library, add) {
 		const parts = d.parts.filter((p) => p.module === id).map((p) => p.uid);
 		const causes = whose.startsWith("The intent") ? [`intent:${id}`] : [id];
 		const electrical = electricalDiff(stored, lib);
-		if (electrical.length) add("module-drift", `${whose} of ${id} no longer matches the current library: ${electrical.join(", ")} differ. Lay the sheet out again with the current library.`, causes, { parts });
+		if (electrical.length && movedGeometry(stored, lib) && parts.length) {
+			const names = andList(d.parts.filter((p) => p.module === id).map((p) => p.designator));
+			const one = parts.length === 1;
+			add("module-drift", `${whose} of ${id} no longer matches the current library: ${electrical.join(", ")} differ. Its body and pins are drawn differently now, so ${names} must be placed again: remove ${one ? `${names}'s` : "their"} x, y and rotation from the partial before layout --keep (kept as ${one ? "it is, it stays" : "they are, they stay"} where the old drawing sat), or lay the sheet out again from the netlist.`, causes, { parts });
+		} else if (electrical.length) add("module-drift", `${whose} of ${id} no longer matches the current library: ${electrical.join(", ")} differ. Lay the sheet out again with the current library.`, causes, { parts });
 		else add("module-drift", `${whose} of ${id} differs from the current library only in ${cosmeticDiff(stored, lib).join(", ")}; its pins and electrical data match. Lay the sheet out again to pick up the current part.`, causes, {
 			parts,
 			severity: "warning"
@@ -58843,6 +59201,7 @@ function verifyDiagram(d, library) {
 		else against(d, r.intent, library, add);
 	}
 	capacity(d, add);
+	covered(d, add, driftedParts(found));
 	found.sort((a, b) => ORDER.indexOf(a.rule) - ORDER.indexOf(b.rule) || (a.message < b.message ? -1 : a.message > b.message ? 1 : 0));
 	const seen = /* @__PURE__ */ new Map();
 	return found.map(({ causes, ...f }) => {
@@ -59091,6 +59450,46 @@ function capacity(d, add) {
 		});
 	}
 }
+/**
+* No wire end or leg in a hole a mounted part's body covers (see coveredHoles): the checker's
+* covered-hole, here too so verify alone (and the layout's own check) blocks it.
+*/
+function covered(d, add, stale) {
+	for (const u of coveredUses(d, new Set(netlist(d).broken))) {
+		if (isStale(u, stale)) continue;
+		const key = JSON.stringify([
+			"hole",
+			u.cover.board,
+			u.cover.group,
+			u.cover.hole
+		]);
+		if (u.wire) add("covered-hole", coveredMessage(d, u), [key, u.wire], {
+			parts: [u.cover.board, u.cover.by],
+			wires: [u.wire]
+		});
+		else add("covered-hole", coveredMessage(d, u), [key, u.leg.part], {
+			parts: [
+				u.leg.part,
+				u.cover.by,
+				u.cover.board
+			],
+			pins: [{
+				part: u.leg.part,
+				pin: u.leg.pin
+			}]
+		});
+	}
+}
+/**
+* The parts whose embedded module drifted from the library (module-drift, blocking or not): their
+* stored copy is out of date, so whatever it covers (and whatever its legs land in) is the old
+* drawing's or the old footprint's, not the part's.
+*/
+function driftedParts(findings) {
+	return new Set(findings.filter((f) => f.rule === "module-drift").flatMap((f) => f.parts));
+}
+/** A covered-hole use that comes from a stale embedded copy: its covering part, or its leg's part, drifted. */
+var isStale = (u, stale) => stale.has(u.cover.by) || !!u.leg && stale.has(u.leg.part);
 //#endregion
 //#region src/agent/catalog.ts
 var libraryLookup = (id) => Object.hasOwn(modulesById, id) ? modulesById[id] : void 0;
@@ -59180,6 +59579,20 @@ function uniqueIds(findings) {
 		};
 	});
 }
+/**
+* Verify's findings a combined report leaves out because the wiring checker reports the same
+* problem itself: covered-hole (a wire end or leg under a part's body) comes from one shared test.
+*/
+var alsoChecked = (f) => f.rule === "covered-hole";
+/**
+* The checker's findings, less any covered-hole that involves a part whose embedded module blocks as
+* module-drift (`verified` holds verify's findings): that hole is covered by, or holds a leg of, the
+* old drawing, and module-drift already says to place the part again.
+*/
+function withoutStale(checked, verified) {
+	const stale = driftedParts(verified);
+	return stale.size ? checked.filter((f) => f.rule !== "covered-hole" || !f.parts.some((p) => stale.has(p))) : checked;
+}
 var findingsText = (findings) => findings.map((f) => `${f.severity.toUpperCase()} ${f.rule}: ${f.message}`).join("\n");
 var notCheckedText = () => ["Not checked:", ...NOT_CHECKED.map((n) => `  - ${n}`)].join("\n");
 function report(io, args, format, findings) {
@@ -59205,7 +59618,8 @@ function verifyCommand(args, io) {
 }
 function checkCommand(args, io) {
 	const diagram = sheetOf("check", args, io);
-	return report(io, args, "circuitoon-cli/check/1", uniqueIds([...diagram.intent !== void 0 ? verifyDiagram(diagram, libraryLookup) : [], ...checkDiagram(diagram)].map(cliFinding)));
+	const all = verifyDiagram(diagram, libraryLookup);
+	return report(io, args, "circuitoon-cli/check/1", uniqueIds([...diagram.intent !== void 0 ? all.filter((f) => !alsoChecked(f)) : [], ...withoutStale(checkDiagram(diagram), all)].map(cliFinding)));
 }
 //#endregion
 //#region src/cli/png.ts
@@ -59543,14 +59957,15 @@ async function runGate(bytes, opts) {
 	}
 	const d = v.diagram;
 	v.warnings.forEach((w, i) => note("load", String(i), w.includes("it was dropped and the module default is shown") || w.includes(MISSING_MODULE) ? "error" : "warning", w));
-	found.push(...verifyDiagram(d, libraryLookup).map(cliFinding));
-	found.push(...checkDiagram(d).map(cliFinding));
+	const verified = verifyDiagram(d, libraryLookup);
+	found.push(...verified.filter((f) => !alsoChecked(f)).map(cliFinding));
+	found.push(...withoutStale(checkDiagram(d), verified).map(cliFinding));
 	const routes = computeRoutes(d);
 	for (const { conn: c, blocked } of wirePaths(d, routes)) if (blocked) note("blocked-route", c.uid, "error", `The wire ${c.label ?? `${endpointName(d, c.from)} to ${endpointName(d, c.to)}`} has no clear route: it runs through a part.`, {
 		parts: [c.from.part, c.to.part],
 		wires: [c.uid]
 	});
-	for (const c of d.connections) if (routes.get(c.uid)?.fallback) note("wire-over-holes", c.uid, "warning", `The wire ${c.label ?? `${endpointName(d, c.from)} to ${endpointName(d, c.to)}`} runs over breadboard holes it is not plugged into, so in the picture it may look plugged in there.`, {
+	for (const c of d.connections) if (routes.get(c.uid)?.fallback) note("wire-over-holes", c.uid, "warning", `The wire ${c.label ?? `${endpointName(d, c.from)} to ${endpointName(d, c.to)}`} runs over breadboard holes in use that it is not plugged into, so in the picture it may look plugged in there.`, {
 		parts: [c.from.part, c.to.part],
 		wires: [c.uid]
 	});
@@ -59680,9 +60095,9 @@ var intersects = (a, b) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h
 function tightFootprint(p, m) {
 	return union(bodyRect(p, layoutModule(m)), captionBox(p, m));
 }
-/** Body grown by PIN_ROOM, plus caption. */
+/** Body grown by PIN_ROOM (more for labels past the pin tips, see pinRoom), plus caption. */
 function footprint(p, m) {
-	return union(grow(bodyRect(p, layoutModule(m)), PIN_ROOM), captionBox(p, m));
+	return union(grow(bodyRect(p, layoutModule(m)), Math.max(PIN_ROOM, pinRoom(m))), captionBox(p, m));
 }
 var CELL = 200;
 /** Placed rectangles bucketed on a 200 px grid, so a spot test looks only at its neighbours. */
@@ -59743,6 +60158,19 @@ function realize(intent, d, locals = []) {
 	const partBy = new Map(d.parts.map((p) => [p.uid, p]));
 	const modOf = (ref) => moduleOf(d, partBy.get(ref).module);
 	const used = new Set(plugs.map((pl) => holeKey(pl.board, pl.group, pl.hole)));
+	const covered = /* @__PURE__ */ new Map();
+	const coveredBy = /* @__PURE__ */ new Map();
+	for (const c of coveredHoles(d)) {
+		const g = groupKey(c.board, c.group);
+		used.add(holeKey(c.board, c.group, c.hole));
+		covered.set(g, (covered.get(g) ?? 0) + 1);
+		coveredBy.set(g, (coveredBy.get(g) ?? /* @__PURE__ */ new Set()).add(c.by));
+	}
+	/** Why full strips are full when bodies cover some of their holes: " (the other holes there lie under U2's body)". */
+	const under = (list) => {
+		const parts = [...new Set(list.flatMap((s) => [...coveredBy.get(s.key) ?? []]))].sort(naturalCompare);
+		return parts.length ? ` (the other holes there lie under ${joinList(parts.map((u) => `${partBy.get(u)?.designator ?? u}'s body`))})` : "";
+	};
 	const legBy = new Map(plugs.map((pl) => [terminalKey(pl.part, pl.pin), pl]));
 	const netOfTerminal = /* @__PURE__ */ new Map();
 	intent.nets.forEach((n, i) => n.terminals.forEach((t) => netOfTerminal.set(terminalKey(t.ref, t.name), i)));
@@ -59782,11 +60210,25 @@ function realize(intent, d, locals = []) {
 		errors
 	};
 	const free = (s) => s.holes.flatMap((_, i) => used.has(holeKey(s.board, s.name, i)) ? [] : [i]);
+	const labelled = /* @__PURE__ */ new Set();
+	for (const p of new Set(plugs.map((pl) => pl.part))) {
+		const boxes = tipLabelBoxes(partBy.get(p), modOf(p));
+		if (!boxes.length) continue;
+		for (const s of strips.values()) s.holes.forEach((h, i) => {
+			if (boxes.some((r) => h.x >= r.x && h.x <= r.x + r.w && h.y >= r.y && h.y <= r.y + r.h)) labelled.add(holeKey(s.board, s.name, i));
+		});
+	}
+	/** The free holes of `s`, those clear of pin names only when it has any. */
+	const clear = (s) => {
+		const f = free(s);
+		const c = f.filter((i) => !labelled.has(holeKey(s.board, s.name, i)));
+		return c.length ? c : f;
+	};
 	const nearestHole = (s, at) => {
 		const pref = preferred.get(s.key);
 		if (pref !== void 0 && !used.has(holeKey(s.board, s.name, pref))) return pref;
 		let best = null;
-		for (const i of free(s)) if (best === null || dist(s.holes[i], at) < dist(s.holes[best], at)) best = i;
+		for (const i of clear(s)) if (best === null || dist(s.holes[i], at) < dist(s.holes[best], at)) best = i;
 		return best;
 	};
 	const stripName = (s) => `${s.board} ${s.name}`;
@@ -59889,7 +60331,7 @@ function realize(intent, d, locals = []) {
 		let bestDist = 0;
 		for (const s of strips.values()) {
 			const r = rank(s);
-			if (r < 0 || localBoards.has(s.board) || owner.has(s.key) || reserved.has(s.key) || board !== void 0 && s.board !== board || free(s).length !== s.holes.length) continue;
+			if (r < 0 || localBoards.has(s.board) || owner.has(s.key) || reserved.has(s.key) || board !== void 0 && s.board !== board || free(s).length !== s.holes.length - (covered.get(s.key) ?? 0)) continue;
 			const dd = dist(s.holes[0], at);
 			if (!best || r < bestRank || r === bestRank && dd < bestDist) {
 				best = s;
@@ -59902,7 +60344,7 @@ function realize(intent, d, locals = []) {
 	};
 	const jumper = (ni, a, b) => {
 		let pick = null;
-		for (const i of free(a)) for (const j of free(b)) {
+		for (const i of clear(a)) for (const j of clear(b)) {
 			const dd = dist(a.holes[i], b.holes[j]);
 			if (!pick || dd < pick[2]) pick = [
 				i,
@@ -60038,7 +60480,7 @@ function realize(intent, d, locals = []) {
 			pool.push(...g.strips);
 		}
 		if (unjoined.length) {
-			errors.push(`strip full: net ${net.name} cannot join ${unjoined.map(stripName).join(", ")}: no free hole left`);
+			errors.push(`strip full: net ${net.name} cannot join ${unjoined.map(stripName).join(", ")}: no free hole left${under(unjoined)}`);
 			continue;
 		}
 		let stuck = false;
@@ -60048,7 +60490,7 @@ function realize(intent, d, locals = []) {
 			const at = first(node);
 			const target = nearestDp(g.strips, at);
 			if (!target) {
-				errors.push(`strip full: net ${net.name} has no free hole left on ${g.strips.map(stripName).join(", ")}`);
+				errors.push(`strip full: net ${net.name} has no free hole left on ${g.strips.map(stripName).join(", ")}${under(g.strips)}`);
 				stuck = true;
 				break;
 			}
@@ -60068,7 +60510,7 @@ function realize(intent, d, locals = []) {
 			}
 			const target = nearestDp(reach, at);
 			if (!target) {
-				errors.push(`strip full: net ${net.name} has no free hole left on ${reach.map(stripName).join(", ")}`);
+				errors.push(`strip full: net ${net.name} has no free hole left on ${reach.map(stripName).join(", ")}${under(reach)}`);
 				break;
 			}
 			const e = take(node, at);

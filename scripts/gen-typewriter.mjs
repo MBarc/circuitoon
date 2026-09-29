@@ -36,7 +36,7 @@ const passive = { type: 'passive' }
     r(16, 8, 4, 22, GREY, { radius: 2, outline: false }),
     r(14, 34, 22, 6, GREY, { radius: 1, outline: false }),
   ]
-  write('tilt-switch-sw520d.json', moduleJson({
+  write('tilt-switch-sw520d.json', moduleJson({footprint: 'legs', 
     id: 'tilt-switch-sw520d', name: 'SW-520D ball tilt switch', category: 'Sensors',
     source: 'https://www.tme.com/Document/f1e6cedd8cb7feeb250b353b6213ec6c/SW-520D.pdf https://www.sunrom.com/p/sw520d-sw-520d-tilt-sensor',
     pins: bottom.pins, wu, hu,
@@ -200,7 +200,7 @@ tactile({ file: 'tactile-switch-6mm-4pin.json', id: 'tactile-switch-6mm-4pin', n
     r(12, 58, 56, 12, PHENOLIC, { radius: 2 }),
     ...xs.map((x) => r(x - 3, 61, 6, 6, TIN, { radius: 3, outline: false })),
   ]
-  write('potentiometer-panel-10k.json', moduleJson({
+  write('potentiometer-panel-10k.json', moduleJson({footprint: 'legs', 
     id: 'potentiometer-panel-10k', name: 'Panel potentiometer 10 k (WH148, with knob)', category: 'Passives',
     source: 'https://rhtecp.com/upload/202205/23/WH148.pdf https://www.handsontec.com/dataspecs/passive/WH148%20Pot-meter.pdf',
     pins: bottom.pins, wu, hu,
@@ -270,7 +270,7 @@ function jstXh(n) {
     r(W / 2 - 5, 8, 10, 5, NATURAL_IN, { outline: false }),
     r(xs[0] - 2, 9.5, 4, 4, DARK, { radius: 2, outline: false }),
   ]
-  write(`jst-xh-${n}.json`, moduleJson({
+  write(`jst-xh-${n}.json`, moduleJson({footprint: 'legs', 
     id: `jst-xh-${n}`, name: `JST-XH connector, ${n}-pin (2.5 mm)`, category: 'Connectors',
     source: 'https://www.jst-mfg.com/product/pdf/eng/eXH.pdf https://www.jst-mfg.com/product/detail_e.php?series=277',
     pins: bottom.pins, wu, hu, electrical: { model: 'connector', params: {} }, shapes,
@@ -294,7 +294,7 @@ function dupont(n) {
     ...xs.map((x) => r(x - 1, 15, 2, 2, METAL, { outline: false })),
     r(xs[0] - 2, 8, 4, 3, '#9AA0A6', { outline: false }),
   ]
-  write(`dupont-1x${n}.json`, moduleJson({
+  write(`dupont-1x${n}.json`, moduleJson({footprint: 'legs', 
     id: `dupont-1x${n}`, name: `Dupont housing 1x${n} (0.1 in)`, category: 'Connectors',
     source: `https://www.pololu.com/product/${1900 + n - 1} https://www.pololu.com/category/71/0.1-inch-2.54mm-crimp-connector-housings`,
     pins: bottom.pins, wu, hu, electrical: { model: 'connector', params: {} }, shapes,

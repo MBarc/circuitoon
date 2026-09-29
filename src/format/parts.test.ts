@@ -3,15 +3,17 @@
 // the chips, the module maker's pinout and board photos for the displays). A wrong pin is worse
 // than a missing part, so a change here must be re-checked against the source.
 import { describe, expect, it } from 'vitest'
-import { layoutModule, type ModuleDef, type Side } from './module.ts'
+import { layoutModule, pinRoom, type ModuleDef, type Side } from './module.ts'
+import { captionBox } from '../render/captionBox.ts'
 import { load, pin, pinsOf } from './builtinModules.testing.ts'
 
 
 /** Datasheet pin 1 to 28 of a DIP-28, as names; returns the Circuitoon sides for a top view with
- * pin 1 at top left: left is pins 1 to 14 top to bottom, right is pins 28 down to 15. */
-function dip28(byNumber: string[]): { left: string[]; right: string[] } {
+ * the notch at the left (the datasheet drawing turned a quarter anticlockwise, Ruling C2): bottom is
+ * pins 1 to 14 left to right, top is pins 28 down to 15 left to right. */
+function dip28(byNumber: string[]): { bottom: string[]; top: string[] } {
   expect(byNumber).toHaveLength(28)
-  return { left: byNumber.slice(0, 14), right: byNumber.slice(14).reverse() }
+  return { bottom: byNumber.slice(0, 14), top: byNumber.slice(14).reverse() }
 }
 
 // MCP23017 DS20001952D Table 2-1, SPDIP column.
@@ -62,7 +64,7 @@ describe('built-in chips and displays keep the physical pin order', () => {
     it(`${file}: every side matches the source pinout, on pitch`, () => {
       expect(m.category).toBe(want.category)
       expect(m.source).toMatch(/^https:\/\//)
-      expect(m.art?.pinLabels).toBe('inside')
+      expect(m.art?.pinLabels).toBe(file.includes('-dip28') ? 'tips' : 'inside')
       const lay = layoutModule(m)
       const used = new Set(lay.pins.map((p) => p.side))
       expect([...used].sort()).toEqual(Object.keys(want.sides).sort())
@@ -84,6 +86,48 @@ describe('built-in chips and displays keep the physical pin order', () => {
       for (const p of power) expect(p.supply).toBe(supplies[file] ?? '3V3/5V')
     })
   }
+
+  it('DIP-28s: the two pin rows are 0.3 inch (30 px) apart, as on the 300 mil package, pin order unchanged', () => {
+    for (const file of ['mcp23017-dip28.json', 'mcp23018-dip28.json']) {
+      const m = load(file)
+      const lay = layoutModule(m)
+      expect(lay.h, file).toBe(30)
+      expect(new Set(lay.pins.filter((p) => p.side === 'top').map((p) => p.edge.y))).toEqual(new Set([0]))
+      expect(new Set(lay.pins.filter((p) => p.side === 'bottom').map((p) => p.edge.y))).toEqual(new Set([30]))
+      // Pin 1 sits at the bottom left, beside the notch; pin 28 straight above it.
+      const byName = new Map(lay.pins.map((p) => [p.name, p.edge]))
+      const first = pinsOf(m)[0].name
+      const last = pinsOf(m)[14].name
+      expect(byName.get(first)!.x).toBe(byName.get(last)!.x)
+      expect(Math.min(...lay.pins.map((p) => p.edge.x))).toBe(byName.get(first)!.x)
+      // The caption sits below the names past the bottom pins' tips, not over them.
+      expect(captionBox({ x: 0, y: 0, designator: 'U1' }, m).y).toBeGreaterThanOrEqual(30 + pinRoom(m))
+    }
+  })
+
+  it('DIP-28s: the notch sits at the left end and the pin 1 dot at the bottom left, beside pin 1', () => {
+    for (const file of ['mcp23017-dip28.json', 'mcp23018-dip28.json']) {
+      const m = load(file)
+      const lay = layoutModule(m)
+      const shapes = m.art!.shapes
+      // The package: the largest shape; the marks are the chip-mark coloured shapes on it.
+      const body = shapes.reduce((a, b) => (b.w * b.h > a.w * a.h ? b : a))
+      const marks = shapes.filter((s) => s !== body && s.fill === '#3A3F47')
+      expect(marks, file).toHaveLength(2)
+      const [notch, dot] = [...marks].sort((a, b) => b.w * b.h - a.w * a.h)
+      const mid = (s: { x: number; y: number; w: number; h: number }) => ({ x: s.x + s.w / 2, y: s.y + s.h / 2 })
+      // Notch: on the left end of the package, vertically centred.
+      expect(notch.x - body.x, file).toBeLessThanOrEqual(2)
+      expect(mid(notch).y, file).toBe(body.y + body.h / 2)
+      // Pin 1 dot: in the bottom half, over pin 1 (the first bottom pin, leftmost).
+      const pin1 = lay.pins.find((p) => p.name === pinsOf(m)[0].name)!
+      expect(pin1.side, file).toBe('bottom')
+      expect(pin1.edge.x, file).toBe(Math.min(...lay.pins.map((p) => p.edge.x)))
+      expect(mid(dot).y, file).toBeGreaterThan(body.y + body.h / 2)
+      expect(mid(dot).x, file).toBe(pin1.edge.x)
+      expect(mid(dot).x, file).toBeLessThan(mid(body).x)
+    }
+  })
 
   it('MCP23017 and MCP23018 differ where the datasheets say (ADDR instead of A0 to A2, VSS on pin 1)', () => {
     const a = load('mcp23017-dip28.json'), b = load('mcp23018-dip28.json')

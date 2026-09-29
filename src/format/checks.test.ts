@@ -551,6 +551,40 @@ describe('checkDiagram', () => {
     })
   })
 
+  describe('covered-hole', () => {
+    // R1 (body 40 x 30, no art) mounted at (10, 0): legs in s1 and s5 hole 1; its body covers s2 to s4, holes 0 and 1.
+    const r1 = () => part('R1', 'two', { x: 10, y: 0, mount: { board: 'bb1' } })
+    it('flags a wire ending in a hole under a part body, naming the part', () => {
+      const d = sheet([part('BB1', 'bb', { x: 0, y: 0 }), r1(), part('R2', 'two', { x: 200 })], [
+        { uid: 'w1', from: { part: 'bb1', pin: 's3', hole: 1 }, to: { part: 'r2', pin: 'L' } },
+      ])
+      const [f] = only(d, 'covered-hole')
+      expect(f.severity).toBe('error')
+      expect(f.message).toBe("A wire ends in BB1 s3 hole 1, under R1's body: a part lying over a hole leaves no room for a wire end. Move the wire to a free hole of the strip.")
+      expect(f.parts).toEqual(['bb1', 'r1'])
+      expect(f.wires).toEqual(['w1'])
+      expect(f.select).toEqual({ parts: [], wires: ['w1'] })
+      expect(f.target).toBe('BB1 s3 hole 1')
+    })
+    it("flags a leg plugged into a hole under another part's body", () => {
+      // R2 mounted at (30, -10): leg L in s3 hole 0, under R1's body.
+      const d = sheet([part('BB1', 'bb', { x: 0, y: 0 }), r1(), part('R2', 'two', { x: 30, y: -10, mount: { board: 'bb1' } })], [])
+      const [f] = only(d, 'covered-hole')
+      expect(f.severity).toBe('error')
+      expect(f.message).toBe("Leg L of R2 sits in BB1 s3 hole 0, under R1's body: a part lying over a hole leaves no room for a leg. Move R2 or R1.")
+      expect(f.parts).toEqual(['r2', 'r1', 'bb1'])
+      expect(f.pins).toEqual([{ part: 'r2', pin: 'L' }])
+      expect(f.select).toEqual({ parts: ['r2'], wires: [] })
+    })
+    it('passes wires in free holes, beside the body and in the leg strips', () => {
+      const d = sheet([part('BB1', 'bb', { x: 0, y: 0 }), r1(), part('R2', 'two', { x: 200 })], [
+        { uid: 'w1', from: { part: 'bb1', pin: 's3', hole: 3 }, to: { part: 'r2', pin: 'L' } },
+        { uid: 'w2', from: { part: 'bb1', pin: 's1', hole: 0 }, to: { part: 'r2', pin: 'R' } },
+      ])
+      expect(rules(d)).not.toContain('covered-hole')
+    })
+  })
+
   describe('broken', () => {
     it('lists each broken connection as an error, with the ends that do not resolve', () => {
       const d = sheet([part('R1', 'two')], [wire('w1', 'r1.L', 'r1.nope'), { ...wire('w2', 'zz.1', 'yy.2'), label: 'VCC' }])

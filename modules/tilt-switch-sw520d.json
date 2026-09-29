@@ -21,6 +21,7 @@
     "w": 5,
     "h": 6
   },
+  "footprint": "legs",
   "electrical": {
     "model": "switch",
     "terminals": {

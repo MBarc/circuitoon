@@ -34,6 +34,7 @@
     "w": 8,
     "h": 9
   },
+  "footprint": "legs",
   "electrical": {
     "model": "potentiometer",
     "terminals": {

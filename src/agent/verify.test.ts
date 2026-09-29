@@ -2,7 +2,9 @@
 // columns 1 and 7, D1 in 8 and 12, an unused tilt switch S1 in 15 and 16, BT1 off the board.
 import { describe, expect, it } from 'vitest'
 import type { Connection, Diagram, PartInstance } from '../format/diagram.ts'
+import type { ModuleDef } from '../format/module.ts'
 import { load } from '../format/builtinModules.testing.ts'
+import { coveredHoles } from '../format/breadboard.ts'
 import { libraryLookup } from './catalog.ts'
 import { NO_INTENT, verifyDiagram } from './verify.ts'
 
@@ -64,6 +66,16 @@ describe('verifyDiagram', () => {
     const f = verifyDiagram(d, libraryLookup)
     expect(f.map((x) => x.rule)).toEqual(['capacity'])
     expect(f[0].message).toBe('BB1 c1-top hole 0 holds a leg and 1 wire end but takes one.')
+  })
+  it("blocks a wire end in a hole under a mounted part's body, naming the part", () => {
+    // R1 lies from c1 to c7 on row a; its body covers c2 to c6 there.
+    const d = sheet()
+    d.connections.push(wire('w4', hole('c3-top', 0), hole('c3-top', 3)))
+    const f = verifyDiagram(d, libraryLookup)
+    expect(f.map((x) => [x.rule, x.severity])).toEqual([['covered-hole', 'error']])
+    expect(f[0].message).toBe("A wire ends in BB1 c3-top hole 0, under R1's body: a part lying over a hole leaves no room for a wire end. Move the wire to a free hole of the strip.")
+    expect(f[0].wires).toEqual(['w4'])
+    expect(f[0].parts).toEqual(['BB1', 'R1'])
   })
   it('finds a missing connection', () => {
     const d = sheet()
@@ -270,6 +282,49 @@ describe('verifyDiagram against the library (stored modules are not trusted)', (
     expect(f[0].message).toContain('pins A/K')
     expect(f[0].message).toContain('Lay the sheet out again')
     expect(f[0].message).not.toMatch(/tamper/i)
+  })
+  /** The MCP23017 as drawn before Ruling C2: pin rows 1.0 inch apart, notch at the top. */
+  const oldDip = (): ModuleDef => {
+    const dip = structuredClone(load('mcp23017-dip28')) as unknown as Record<string, unknown>
+    dip.pins = (dip.pins as { side: string }[]).map((p) => ({ ...p, side: p.side === 'bottom' ? 'left' : 'right' }))
+    dip.size = { w: 10, h: 19 }
+    dip.art = { w: 100, h: 190, pinLabels: 'inside', shapes: [{ type: 'rect', x: 0, y: 0, w: 100, h: 190, fill: '#1E2126' }] }
+    return dip as unknown as ModuleDef
+  }
+  it('blocks a sheet that embeds the old 100 px DIP-28 (Ruling C2), telling it to place that part again, not to keep it', () => {
+    const d = sheet()
+    d.modules = { ...d.modules, 'mcp23017-dip28': oldDip() }
+    d.parts.push({ uid: 'U9', designator: 'U9', module: 'mcp23017-dip28', x: 600, y: 400 })
+    const f = verifyDiagram(d, libraryLookup).filter((x) => x.rule === 'module-drift')
+    expect(f.map((x) => [x.severity, x.parts])).toEqual([['error', ['U9']]])
+    expect(f[0].message).toBe(
+      "The sheet's copy of mcp23017-dip28 no longer matches the current library: 28 pins, size differ. Its body and pins are drawn differently now, so U9 must be placed again: remove U9's x, y and rotation from the partial before layout --keep (kept as it is, it stays where the old drawing sat), or lay the sheet out again from the netlist.",
+    )
+    expect(f[0].message).not.toMatch(/Lay the sheet out again with the current library/)
+  })
+  it('reports no covered-hole from a stale embedded copy that module-drift already reports', () => {
+    // The old DIP seated across a half board at rows a and i; a wire ends in a hole under its old body.
+    const d: Diagram = {
+      format: 'circuitoon-diagram/1', title: 'old dip', modules: { 'breadboard-half': modules['breadboard-half'], 'mcp23017-dip28': oldDip() },
+      parts: [
+        { uid: 'BB1', designator: 'BB1', module: 'breadboard-half', x: 0, y: 0 },
+        { uid: 'U1', designator: 'U1', module: 'mcp23017-dip28', x: 60, y: 20, rotation: 90, mount: { board: 'BB1' } },
+      ],
+      connections: [{ uid: 'w1', from: { part: 'BB1', pin: 'c5-top', hole: 2 }, to: { part: 'BB1', pin: 'c25-top', hole: 0 } }],
+    }
+    expect(coveredHoles(d).length).toBeGreaterThan(0)
+    const f = verifyDiagram(d, libraryLookup)
+    expect(f.filter((x) => x.rule === 'module-drift').map((x) => x.parts)).toEqual([['U1']])
+    expect(f.filter((x) => x.rule === 'covered-hole')).toEqual([])
+  })
+  it('only warns when a stored copy lacks the top-view footprint (it changes covered holes, not connections)', () => {
+    const d = sheet()
+    const sw = structuredClone(modules['tilt-switch-sw520d']) as unknown as Record<string, unknown>
+    delete sw.footprint
+    d.modules = { ...d.modules, 'tilt-switch-sw520d': sw as unknown as ModuleDef }
+    const f = verifyDiagram(d, libraryLookup).filter((x) => x.rule === 'module-drift')
+    expect(f.map((x) => [x.severity, x.parts])).toEqual([['warning', ['S1']]])
+    expect(f[0].message).toContain('only in footprint')
   })
   it('blocks a stored copy with no version whose pins were swapped (content decides, not the version)', () => {
     const d = sheet()

@@ -37,7 +37,7 @@ Under `--json`, every failure that has no command result prints one error docume
 | `part <id>` | One module in full. | `schemas/part.schema.json` |
 | `layout <netlist.json> -o <sheet.json>` | Places, mounts, wires and routes. Prints the readability report, the bill of quantities and the channel table. | `schemas/layout.schema.json` |
 | `layout --keep <partial.json> -o <sheet.json>` | The same, keeping the positions the partial gives (see `netlist-format.md`). | `schemas/layout.schema.json` |
-| `verify <sheet.json>` | Checks the sheet against its intent: parts, modules, values, mounts, missing connections, merges, extra connections, nc, terminal capacity. | `schemas/findings.schema.json` |
+| `verify <sheet.json>` | Checks the sheet against its intent: parts, modules, values, mounts, missing connections, merges, extra connections, nc, terminal capacity, and a wire end or leg in a hole under a part's body (covered-hole). | `schemas/findings.schema.json` |
 | `check <sheet.json>` | The wiring checker (shorts, reversed power, wrong voltage, no ground, outputs that fight, ...), plus verify when the sheet has an intent. | `schemas/findings.schema.json` |
 | `render <sheet.json> -o <png> [--svg <svg>] [--dark] [--scale n] [--focus <copy or group>]` | A PNG (through Chrome or Edge) and a standalone SVG. `--focus` frames one repeat copy (`ball_3`) or group (`Power`), with the wires that touch it. | `schemas/render.schema.json` |
 | `link <sheet.json> [-o <dir>]` | A link that opens the sheet in the editor. Past 64 KB of payload, the sheet file is written instead. | `schemas/link.schema.json` |

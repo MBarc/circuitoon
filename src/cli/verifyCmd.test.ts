@@ -8,6 +8,8 @@ import { NOT_CHECKED } from '../agent/notChecked.ts'
 import { cli, tempDir } from './cliHarness.testing.ts'
 import { loadSchema, schemaErrors } from './jsonSchema.testing.ts'
 import { ledNetlist } from '../agent/fixtures.testing.ts'
+import { validateDiagram } from '../format/diagram.ts'
+import { coveredHoles } from '../format/breadboard.ts'
 import { type CliFinding, cliFinding, findingsText, notCheckedText, uniqueIds } from './verifyCmd.ts'
 
 const laidOut = async () => {
@@ -71,6 +73,23 @@ describe('circuitoon verify and check', () => {
     expect(text.code).toBe(1)
     expect(text.out).toMatch(/^ERROR capacity: /m)
     expect(text.out).toContain('Not checked:')
+  })
+
+  it("blocks a wire end under R1's body in verify and check, reported once by check", async () => {
+    const dir = await laidOut()
+    edit(dir, (s) => {
+      const r = validateDiagram(s)
+      if (!r.ok) throw new Error(r.errors.join('; '))
+      const c = coveredHoles(r.diagram).find((h) => r.diagram.parts.find((p) => p.uid === h.by)!.designator === 'R1')!
+      const w = s.connections.find((x) => (x.to as { hole?: number }).hole !== undefined)!
+      w.to = { part: c.board, pin: c.group, hole: c.hole }
+    })
+    const v = await cli(['verify', 'sheet.json', '--json'], { cwd: dir })
+    expect(v.code).toBe(1)
+    expect(JSON.parse(v.out).findings.filter((f: CliFinding) => f.rule === 'covered-hole').map((f: CliFinding) => f.message)).toEqual([expect.stringMatching(/, under R1's body: /)])
+    const c = await cli(['check', 'sheet.json', '--json'], { cwd: dir })
+    expect(c.code).toBe(1)
+    expect(JSON.parse(c.out).findings.filter((f: CliFinding) => f.rule === 'covered-hole')).toHaveLength(1)
   })
 
   it('verify needs an intent; check still works without one', async () => {

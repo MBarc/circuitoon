@@ -64,6 +64,36 @@ export function fiveParts() {
 }
 
 /**
+ * The Spirit Typewriter's power sheet cut down to its mini breadboard: R1 feeds the ON LED D1, and
+ * R2 and R3 halve the battery voltage for J1 (R3 stands on end). Before covered holes counted, the
+ * layout plugged three wire ends into holes under R3's body.
+ */
+export function divider() {
+  const r = (ref: string, value: number) => ({ ref, module: 'resistor', values: { resistance: { value, unit: 'ohm' } }, on: 'BB5' })
+  return {
+    format: 'circuitoon-netlist/1',
+    title: 'Battery voltage divider',
+    parts: [
+      { ref: 'BT1', module: 'battery-18650-holder' },
+      { ref: 'D1', module: 'led' },
+      { ref: 'BB5', module: 'breadboard-mini' },
+      r('R1', 330),
+      r('R2', 100000),
+      r('R3', 100000),
+      { ref: 'J1', module: 'dupont-1x3' },
+    ],
+    nets: [
+      { name: 'BAT', pins: ['BT1.+', 'R2.1'] },
+      { name: '5V', pins: ['R1.1', 'J1.1'] },
+      { name: 'LED_ON', pins: ['R1.2', 'D1.A'] },
+      { name: 'VSENSE', pins: ['R2.2', 'R3.1', 'J1.3'] },
+      { name: 'GND', pins: ['BT1.-', 'R3.2', 'D1.K', 'J1.2'] },
+    ],
+    wires: { ends: 'dupont-male' },
+  }
+}
+
+/**
  * A battery on `rails` rail strips feeding `pairs` resistor and LED pairs (a repeat with only shared
  * ports), plus an ESP32 with a BME280 on I2C: 4 + rails + 2 * pairs parts.
  */
@@ -160,6 +190,22 @@ export function typewriter() {
       { name: 'Displays', parts: ['DS1', 'DS2', 'DS3', 'SD1'] },
     ],
     notes: [{ text: 'Each ball holds two tilt switches wired in parallel on one expander channel.', near: 'U2' }],
+    wires: { ends: 'dupont-male' },
+  }
+}
+
+/** An MCP23017 DIP-28 seated across a half breadboard with every pin wired to a Dupont header through its strip (Ruling C3). */
+export function dipWired() {
+  const names = ['GPB0', 'GPB1', 'GPB2', 'GPB3', 'GPB4', 'GPB5', 'GPB6', 'GPB7', 'VDD', 'VSS', 'NC', 'SCL', 'SDA', 'NC 2', 'GPA7', 'GPA6', 'GPA5', 'GPA4', 'GPA3', 'GPA2', 'GPA1', 'GPA0', 'INTA', 'INTB', 'RESET', 'A2', 'A1', 'A0']
+  return {
+    format: 'circuitoon-netlist/1',
+    title: 'DIP-28 on a half breadboard',
+    parts: [
+      { ref: 'BB1', module: 'breadboard-half' },
+      { ref: 'U1', module: 'mcp23017-dip28', on: 'BB1' },
+      ...Array.from({ length: 7 }, (_, i) => ({ ref: `J${i + 1}`, module: 'dupont-1x4' })),
+    ],
+    nets: names.map((n, i) => ({ name: `N${i + 1}`, pins: [`U1.${n}`, `J${Math.floor(i / 4) + 1}.${(i % 4) + 1}`] })),
     wires: { ends: 'dupont-male' },
   }
 }

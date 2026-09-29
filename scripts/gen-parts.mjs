@@ -64,37 +64,45 @@ function write(file, m) {
   log(file, 'pins', n, 'body', m.art.w, 'x', m.art.h)
 }
 
-function moduleJson({ id, name, category, source, pins, wu, hu, electrical, shapes }) {
+function moduleJson({ id, name, category, source, pins, wu, hu, electrical, shapes, pinLabels = 'inside', footprint }) {
   const m = { format: 'circuitoon-module/1', id, version: 1, name, category, source, pins }
   m.size = { w: wu, h: hu }
+  // A breakout plugged in by one header row stands upright: it covers only its leg holes.
+  if (footprint) m.footprint = footprint
   m.electrical = electrical
-  // Header parts draw pin names inside the body beside each pin, like the silkscreen.
-  m.art = { w: wu * 10, h: hu * 10, pinLabels: 'inside', shapes }
+  // Header parts draw pin names inside the body beside each pin, like the silkscreen; a DIP chip,
+  // too thin at its true width, draws them past each pin's tip.
+  m.art = { w: wu * 10, h: hu * 10, pinLabels, shapes }
   return m
 }
 
 // ---------------------------------------------------------------------------------------------
-// Chips: top-view DIP-28, notch at the top, pin 1 at top left. Left = pins 1 to 14 top to bottom,
-// right = pins 28 down to 15 top to bottom (the array order).
+// Chips: top-view DIP-28 at true breadboard scale (Ruling C2): the 300 mil package's two pin rows
+// are 0.3 inch (30 px) apart, so on a breadboard the pins land in rows e and f and the body lies
+// over the centre channel only. Drawn with the notch at the left, the datasheet's package drawing
+// (notch at the top, pin 1 top left) turned a quarter anticlockwise: bottom = pins 1 to 14 left to
+// right, top = pins 28 down to 15 left to right (the array order, unchanged). The pin names draw
+// past each pin's tip, since a 30 px body has no room for them inside.
 
 function dip28({ file, id, name, source, byNumber, mark, types }) {
   if (byNumber.length !== 28) throw new Error(`${file}: need 28 pins`)
-  const wu = 10, hu = 19
+  const wu = 16, hu = 3
   const W = wu * 10, H = hu * 10
-  const ys = slots(hu, 14)
-  const left = byNumber.slice(0, 14), right = byNumber.slice(14).reverse()
-  const pins = [...pinsFor('left', left, types), ...pinsFor('right', right, types)]
+  const xs = slots(wu, 14)
+  const bottom = byNumber.slice(0, 14), top = byNumber.slice(14).reverse()
+  const pins = [...pinsFor('bottom', bottom, types), ...pinsFor('top', top, types)]
+  // The package spans the pins plus half a pitch at each end; the legs are 3 px leads out to the
+  // pin rows, so the holes under them stay free (only the package covers holes).
+  const x0 = xs[0] - 9, x1 = xs[xs.length - 1] + 9
   const shapes = [
-    r(0, 0, W, H, CHIP, { radius: 3 }),
-    ...ys.flatMap((y) => [
-      r(1, y - 2, 8, 4, METAL, { radius: 1, outline: false }),
-      r(W - 9, y - 2, 8, 4, METAL, { radius: 1, outline: false }),
-    ]),
-    r(W / 2 - 8, 2, 16, 8, CHIP_MARK, { radius: 4 }),
-    r(13, 11, 5, 5, CHIP_MARK, { radius: 2.5, outline: false }),
-    r(15, H - 20, W - 30, 12, CHIP, { outline: false, label: mark, labelColor: METAL, labelSize: 7 }),
+    ...xs.flatMap((x) => [r(x - 1.5, 0, 3, 5, METAL, { outline: false }), r(x - 1.5, H - 5, 3, 5, METAL, { outline: false })]),
+    r(x0, 4, x1 - x0, H - 8, CHIP, { radius: 2 }),
+    // The notch at the pin 1 end, and the pin 1 dot beside pin 1.
+    r(x0 + 1, H / 2 - 4, 6, 8, CHIP_MARK, { radius: 3 }),
+    r(xs[0] - 2, H - 11, 4, 4, CHIP_MARK, { radius: 2, outline: false }),
+    r(xs[2], 9, xs[11] - xs[2], 12, CHIP, { outline: false, label: mark, labelColor: METAL, labelSize: 8 }),
   ]
-  write(file, moduleJson({ id, name, category: 'Chips', source, pins, wu, hu, electrical: { model: 'io-expander', params: {} }, shapes }))
+  write(file, moduleJson({ id, name, category: 'Chips', source, pins, wu, hu, electrical: { model: 'io-expander', params: {} }, shapes, pinLabels: 'tips' }))
 }
 
 // Duplicate datasheet names get a numbered pin name and the datasheet text as label.
@@ -314,7 +322,7 @@ function oled({ file, id, name, source, top, wu, hu }) {
     r(12, gy + 27, (W - 24) * 0.7, 5, OLED_BLUE, { radius: 1, outline: false }),
     r(W / 2 - 18, gy + gh, 36, 10, FPC, { radius: 1 }),
   ]
-  write(file, moduleJson({ id, name, category: 'Displays', source, pins, wu, hu, electrical: { model: 'display', params: {} }, shapes }))
+  write(file, moduleJson({ id, name, category: 'Displays', source, pins, wu, hu, electrical: { model: 'display', params: {} }, shapes, footprint: 'legs' }))
 }
 
 // 7/8. 0.96" 128x64 SSD1306 I2C. Both power orders are widespread: lcdwiki sells both (MC096GX
@@ -356,7 +364,7 @@ oled({
     r(44, 40, (W - 76) * 0.45, 6, OLED_BLUE, { radius: 1, outline: false }),
     r(W - 24, 12, 14, H - 24, FPC, { radius: 1 }),
   ]
-  write('oled-ssd1306-091-i2c.json', moduleJson({
+  write('oled-ssd1306-091-i2c.json', moduleJson({footprint: 'legs', 
     id: 'oled-ssd1306-091-i2c', name: '0.91" OLED 128x32 SSD1306 (I2C)', category: 'Displays',
     source: 'https://www.lcdwiki.com/0.91inch_IIC_OLED_Module_SSD1306_SKU:MC091GX https://www.lcdwiki.com/res/MC091GX/0.91inch_IIC_OLED_Module_MC091GX_User_Manual_EN.pdf',
     pins: pinsFor('left', left, oledTypes), wu, hu, electrical: { model: 'display', params: {} }, shapes,
@@ -379,7 +387,7 @@ oled({
     r(8, 32, W - 16, W - 16, SCREEN, { radius: 2 }),
     r(16, 40, W - 32, W - 32, SCREEN_IN, { outline: false, label: '240x240 ST7789', labelColor: '#8FA3B8', labelSize: 8 }),
   ]
-  write('tft-st7789-154-spi.json', moduleJson({
+  write('tft-st7789-154-spi.json', moduleJson({footprint: 'legs', 
     id: 'tft-st7789-154-spi', name: '1.54" TFT 240x240 ST7789 (SPI, 8-pin with CS)', category: 'Displays',
     source: 'https://www.lcdwiki.com/1.54inch_IPS_Module https://www.makerfocus.com/products/1-54inch-tft-lcd-display-module',
     pins: pinsFor('top', top, types), wu, hu, electrical: { model: 'display', params: {} }, shapes,
@@ -416,7 +424,7 @@ const sdSocket = (x, y, w, h) => [
     ...ys.slice(1, 5).map((y) => r(42, y - 2, 8, 4, '#2B2F36', { radius: 1, outline: false })),
     ...sdSocket(62, 12, 60, H - 24),
   ]
-  write('microsd-spi-3v3.json', moduleJson({
+  write('microsd-spi-3v3.json', moduleJson({footprint: 'legs', 
     id: 'microsd-spi-3v3', name: 'microSD card module (SPI, 3.3 V only: 3V3 CS MOSI CLK MISO GND)', category: 'Communication',
     source: 'https://protosupplies.com/product/microsd-card-module/ https://www.amazon.com/dp/B0H67347LH',
     pins: pinsFor('left', left, sdTypes({ name: '3V3', supply: '3V3' })), wu, hu, electrical: { model: 'storage', params: {} }, shapes,
@@ -442,7 +450,7 @@ const sdSocket = (x, y, w, h) => [
     r(48, 58, 38, 20, CHIP, { radius: 1, label: 'LVC125A', labelColor: METAL, labelSize: 5 }),
     ...sdSocket(106, 12, 62, H - 24),
   ]
-  write('microsd-spi-5v.json', moduleJson({
+  write('microsd-spi-5v.json', moduleJson({footprint: 'legs', 
     id: 'microsd-spi-5v', name: 'microSD card module (SPI, 5 V with level shifter: GND VCC MISO MOSI SCK CS)', category: 'Communication',
     source: 'https://www.amazon.com/dp/B0B779R5TZ https://envistiamall.com/blogs/learn/micro-sd-card-spi-module-user-guide',
     pins: pinsFor('left', left, sdTypes({ name: 'VCC', supply: '5V' })), wu, hu, electrical: { model: 'storage', params: {} }, shapes,

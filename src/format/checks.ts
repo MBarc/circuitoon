@@ -5,7 +5,7 @@
 // that data supports: a pin with no `type` is unknown and never triggers a rule. Pure, no React. Spec:
 // docs/superpowers/specs/2026-09-26-wiring-checker-design.md.
 import { type Connection, type Diagram, type Endpoint, type PartInstance, moduleOf, resolveEndpoint } from './diagram.ts'
-import { type MountIssue, mountIssues, plugMismatches, plugsOf } from './breadboard.ts'
+import { type CoveredHole, type MountIssue, type Plug, coveredHoles, holeKey, mountIssues, plugMismatches, plugsOf } from './breadboard.ts'
 import { PLUG_FOR, PLUG_NAMES, SOCKET_NAMES } from './plugging.ts'
 import { type ExternalPower, type HoleGroup, type ModuleDef, type PinDef, type PinType, commonReturn, declaredReturns, externalPower, isSpacer, voltageOutputs } from './module.ts'
 import { conductors, netlist, nodeKey } from './netlist.ts'
@@ -30,6 +30,7 @@ export type RuleId =
   | 'mount'
   | 'leg-hole-shared'
   | 'broken'
+  | 'covered-hole'
   | 'mains-short'
   | 'mains-cross-source'
   | 'mains-to-low-voltage'
@@ -54,6 +55,7 @@ export type RuleId =
 /** Rule order within one severity and one subject, and each rule's short heading. */
 export const RULES: Record<RuleId, { severity: Severity; title: string }> = {
   broken: { severity: 'error', title: 'Broken connection' },
+  'covered-hole': { severity: 'error', title: 'Hole under a part' },
   short: { severity: 'error', title: 'Short circuit' },
   'mains-short': { severity: 'error', title: 'Mains short circuit' },
   'mains-cross-source': { severity: 'error', title: 'Two outlets joined' },
@@ -184,6 +186,53 @@ export function brokenConnection(d: Diagram, c: Connection): BrokenConnection | 
 /** Every connection in `netlist(d).broken`, in file order, named for the user. */
 export function brokenConnections(d: Diagram): BrokenConnection[] {
   return d.connections.map((c) => brokenConnection(d, c)).filter((b): b is BrokenConnection => b !== null)
+}
+
+/** A wire end or another part's leg in a hole a mounted part's body covers. */
+export interface CoveredUse {
+  cover: CoveredHole
+  /** The hole as the user reads it ("BB1 c3-top hole 0"). */
+  where: string
+  /** The wire whose end is there, or the leg that sits there. */
+  wire?: string
+  leg?: Plug
+}
+
+/**
+ * Every wire end and leg in a hole under a mounted part's body (`coveredHoles`), wires in file
+ * order then legs; wires in `skip` (broken ones) are left out. A wire to a plugged pin ends in that
+ * leg's hole by design, so only an end that names a board hole counts, like leg-hole-shared.
+ */
+export function coveredUses(d: Diagram, skip: ReadonlySet<string> = new Set()): CoveredUse[] {
+  const covered = coveredHoles(d)
+  if (!covered.length) return []
+  const at = new Map(covered.map((c) => [holeKey(c.board, c.group, c.hole), c]))
+  const boards = new Set(covered.map((c) => c.board))
+  const out: CoveredUse[] = []
+  const where = (c: CoveredHole) => endpointName(d, { part: c.board, pin: c.group, hole: c.hole })
+  for (const w of d.connections) {
+    if (skip.has(w.uid)) continue
+    for (const ep of [w.from, w.to]) {
+      const c = boards.has(ep.part) ? at.get(holeKey(ep.part, ep.pin, ep.hole ?? 0)) : undefined
+      if (c) out.push({ cover: c, where: where(c), wire: w.uid })
+    }
+  }
+  for (const pl of plugsOf(d)) {
+    const c = at.get(holeKey(pl.board, pl.group, pl.hole))
+    if (c && c.by !== pl.part) out.push({ cover: c, where: where(c), leg: pl })
+  }
+  return out
+}
+
+/** The sentence for a covered use, shared by the checker and verify. */
+export function coveredMessage(d: Diagram, u: CoveredUse): string {
+  const name = (uid: string) => d.parts.find((p) => p.uid === uid)?.designator ?? uid
+  const by = name(u.cover.by)
+  if (!u.leg) return `A wire ends in ${u.where}, under ${by}'s body: a part lying over a hole leaves no room for a wire end. Move the wire to a free hole of the strip.`
+  const part = d.parts.find((p) => p.uid === u.leg!.part)
+  const m = part && moduleOf(d, part.module)
+  const pin = m?.pins.find((p): p is PinDef => !isSpacer(p) && p.name === u.leg!.pin)
+  return `Leg ${pin?.label ?? u.leg.pin} of ${name(u.leg.part)} sits in ${u.where}, under ${by}'s body: a part lying over a hole leaves no room for a leg. Move ${name(u.leg.part)} or ${by}.`
 }
 
 const wireName = (d: Diagram, c: Connection) => c.label || `${endpointName(d, c.from)} to ${endpointName(d, c.to)}`
@@ -693,6 +742,15 @@ export function checkDiagram(d: Diagram): Finding[] {
         message: `A wire ends in ${where}, where leg ${legTerm?.label ?? pl.pin} of ${leg.designator} sits: physically, one hole takes one leg. Move the wire to another hole of the strip.`,
         parts: [board.uid, leg.uid], pins: [{ part: pl.part, pin: pl.pin }], wires: [c.uid], select: { parts: [], wires: [c.uid] }, causes: [c.uid, hole] })
     }
+  }
+
+  // A wire end or a leg in a hole a mounted part's body lies over: nothing fits there.
+  for (const u of coveredUses(d, brokenSet)) {
+    const board = partByUid.get(u.cover.board)!
+    const key = holeKey(u.cover.board, u.cover.group, u.cover.hole)
+    const message = coveredMessage(d, u)
+    if (u.wire) add({ rule: 'covered-hole', subject: board.designator, target: u.where, message, parts: [board.uid, u.cover.by], pins: [], wires: [u.wire], select: { parts: [], wires: [u.wire] }, causes: [u.wire, key] })
+    else add({ rule: 'covered-hole', subject: board.designator, target: u.where, message, parts: [u.leg!.part, u.cover.by, board.uid], pins: [{ part: u.leg!.part, pin: u.leg!.pin }], wires: [], select: { parts: [u.leg!.part], wires: [] }, causes: [nodeKey(u.leg!.part, u.leg!.pin), key] })
   }
 
   for (const b of brokenConnections(d)) {

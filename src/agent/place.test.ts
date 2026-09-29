@@ -2,7 +2,7 @@
 // caption overlaps, frames, notes, tiled copies and kept positions.
 import { describe, expect, it } from 'vitest'
 import { DIAGRAM_FORMAT, type Diagram, type PartInstance } from '../format/diagram.ts'
-import { mountIssues, plugsOf } from '../format/breadboard.ts'
+import { coveredHoles, mountIssues, plugsOf } from '../format/breadboard.ts'
 import { bodyRect, worldHoles } from '../format/geometry.ts'
 import { layoutModule } from '../format/module.ts'
 import { annotationRect } from '../render/annotationGeometry.ts'
@@ -63,14 +63,19 @@ describe('placeParts', () => {
     noOverlaps(place(ledNetlist()).d)
     noOverlaps(place(tiltSensors()).d)
   })
-  it('seats a DIP-28 across the centre channel (turned 90 degrees)', () => {
+  it('seats a DIP-28 across the centre channel, its pins in rows e and f, every strip keeping 4 free holes (Ruling C2)', () => {
     const { d } = place({
       format: 'circuitoon-netlist/1', title: 'Expander',
       parts: [{ ref: 'BB1', module: 'breadboard-half' }, { ref: 'U1', module: 'mcp23017-dip28', on: 'BB1' }],
       nets: [{ name: 'GND', pins: ['U1.VSS', 'BB1.top-'] }, { name: '3V3', pins: ['U1.VDD', 'BB1.top+'] }],
     })
-    expect(d.parts.find((p) => p.uid === 'U1')!.rotation).toBe(90)
+    expect(d.parts.find((p) => p.uid === 'U1')!.rotation).toBe(0)
     expect(mountIssues(d)).toEqual([])
+    // Rows e and f: the last hole of each top column strip and the first of each bottom one.
+    const legs = plugsOf(d).filter((pl) => pl.part === 'U1')
+    expect(new Set(legs.map((pl) => `${pl.group.endsWith('-top') ? 'top' : 'bot'} ${pl.hole}`))).toEqual(new Set(['top 4', 'bot 0']))
+    // Only the channel lies under the body: no hole is covered.
+    expect(coveredHoles(d)).toEqual([])
     // Every strip holds legs of one net, and a leg in top- or top+ is on the net that names it.
     const named: Record<string, string> = { 'top-': 'GND', 'top+': '3V3' }
     const netOf = new Map([['U1.VSS', 'GND'], ['U1.VDD', '3V3']])

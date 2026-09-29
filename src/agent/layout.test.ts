@@ -2,16 +2,17 @@
 // deterministic, with routing flags, one end per hole, distribution points, capacity chains and
 // internally joined pins wired as one.
 import { describe, expect, it } from 'vitest'
-import { type Diagram, type Endpoint, computeRoutes, serializeDiagram, validateDiagram } from '../format/diagram.ts'
+import { type Diagram, type Endpoint, computeRoutes, resolveEndpoint, serializeDiagram, validateDiagram } from '../format/diagram.ts'
 import { type Pt, type Rect, bodyRect, worldHoles } from '../format/geometry.ts'
 import { isBoard, layoutModule } from '../format/module.ts'
 import { annotationRect } from '../render/annotationGeometry.ts'
-import { mountIssues, plugsOf } from '../format/breadboard.ts'
+import { coveredHoles, mountIssues, plugsOf } from '../format/breadboard.ts'
 import { libraryLookup } from './catalog.ts'
 import { layoutNetlist } from './layout.ts'
 import { reportText } from './readability.ts'
 import { verifyDiagram } from './verify.ts'
-import { ledNetlist, tiltSensors, typewriter } from './fixtures.testing.ts'
+import { dipWired, divider, ledNetlist, tiltSensors, typewriter } from './fixtures.testing.ts'
+import { tipLabelBoxes } from '../render/captionBox.ts'
 
 const laid = (raw: unknown): Diagram => {
   const r = layoutNetlist(raw)
@@ -138,6 +139,63 @@ describe('layoutNetlist', () => {
       expect(ends.filter((e) => legs.has(e))).toEqual([])
     }
   })
+  it('never puts a wire end in a hole under a mounted resistor, between its legs', () => {
+    // An oracle independent of the covered-hole code: a resistor lies flat between its two legs.
+    for (const d of [laid(divider()), laid(ledNetlist())]) {
+      const legs = new Map<string, Pt[]>()
+      for (const pl of plugsOf(d)) if (d.parts.find((p) => p.uid === pl.part)!.module === 'resistor') legs.set(pl.part, [...(legs.get(pl.part) ?? []), pl.at])
+      expect(legs.size, d.title).toBeGreaterThan(0)
+      const under: string[] = []
+      for (const c of d.connections)
+        for (const ep of [c.from, c.to]) {
+          if (ep.hole === undefined) continue
+          const at = resolveEndpoint(d, ep)!.end
+          for (const [part, [a, b]] of legs)
+            if ((a.y === b.y && at.y === a.y && at.x > Math.min(a.x, b.x) && at.x < Math.max(a.x, b.x)) || (a.x === b.x && at.x === a.x && at.y > Math.min(a.y, b.y) && at.y < Math.max(a.y, b.y)))
+              under.push(`${d.title}: ${c.uid} ${ep.pin} hole ${ep.hole} under ${part}`)
+        }
+      expect(under).toEqual([])
+    }
+  })
+  it('says so when a strip is full because a mounted body covers its holes', () => {
+    // A made-up chip 70 px across, seated with its pins in rows a and f: its body covers rows b to e
+    // of its top pin's strip, so the net there has nowhere to take J1's two wires.
+    const wide = { format: 'circuitoon-module/1', id: 'wide-chip', name: 'Wide chip', size: { w: 4, h: 7 }, pins: [{ name: 'T', side: 'top' }, { name: 'B', side: 'bottom' }] }
+    const r = layoutNetlist({
+      format: 'circuitoon-netlist/1', title: 'Wide chip', modules: { 'wide-chip': wide },
+      parts: [{ ref: 'BB1', module: 'breadboard-half' }, { ref: 'U1', module: 'wide-chip', on: 'BB1' }, { ref: 'J1', module: 'dupont-1x3' }],
+      nets: [{ name: 'SIG', pins: ['U1.T', 'J1.1', 'J1.3'] }],
+    })
+    expect(r.ok).toBe(false)
+    if (r.ok) return
+    expect(r.errors.find((e) => e.startsWith('strip full: net SIG '))).toMatch(/ has no free hole left on BB1 c\d+-top \(the other holes there lie under U1's body\)$/)
+  })
+  // Ruling C3: a DIP's pin names lie past its pin tips, over rows b to d and g to i of its strips.
+  it("wires a DIP's strips at their outer holes, row a above and row j below, clear of its pin names", () => {
+    const d = laid(dipWired())
+    const legStrips = new Set(plugsOf(d).filter((p) => p.part === 'U1').map((p) => p.group))
+    const ends = d.connections.flatMap((c) => [c.from, c.to]).filter((e) => e.part === 'BB1' && legStrips.has(e.pin))
+    expect(ends).toHaveLength(28)
+    for (const e of ends) expect(`${e.pin} ${e.hole}`).toBe(`${e.pin} ${e.pin.endsWith('-top') ? 0 : 4}`)
+  })
+  it("routes no wire over a DIP's pin names", () => {
+    const d = laid(dipWired())
+    const u1 = d.parts.find((p) => p.uid === 'U1')!
+    const boxes = tipLabelBoxes(u1, d.modules[u1.module])
+    expect(boxes).toHaveLength(28)
+    const routes = computeRoutes(d)
+    const over: string[] = []
+    for (const c of d.connections) {
+      if ([c.from.part, c.to.part].includes('U1')) continue
+      const pts = routes.get(c.uid)!.points
+      for (let k = 1; k < pts.length; k++) {
+        const [a, b] = [pts[k - 1], pts[k]]
+        for (const r of boxes)
+          if (Math.max(a.x, b.x) >= r.x && Math.min(a.x, b.x) <= r.x + r.w && Math.max(a.y, b.y) >= r.y && Math.min(a.y, b.y) <= r.y + r.h) over.push(c.uid)
+      }
+    }
+    expect([...new Set(over)]).toEqual([])
+  })
   it('asks for a distribution point when a net has more ends than its pins take, and uses a rail when there is one', () => {
     const r = layoutNetlist(esp())
     expect(r.ok).toBe(false)
@@ -229,18 +287,26 @@ describe('layoutNetlist', () => {
     expect(d.connections.filter((c) => r.value.netOfWire.get(c.uid) === 'LED_A')).toEqual([])
   })
   // Fix round 1: a wire drawn over a hole reads as plugged in there.
-  it('never runs a wire over a hole of a strip it does not end in', () => {
-    for (const raw of [ledNetlist(), tiltSensors(), esp([{ ref: 'RAIL1', module: 'power-rail-strip' }])]) {
+  // Ruling C1: a wire may lie flat over empty holes, but never over one in use (a wire end, a leg, or
+  // a hole under a part's body) of a strip it does not end in: drawn there it reads as plugged in.
+  it('never runs a wire over a used hole of a strip it does not end in', () => {
+    for (const raw of [ledNetlist(), tiltSensors(), esp([{ ref: 'RAIL1', module: 'power-rail-strip' }]), divider()]) {
       const r = layoutNetlist(raw)
       if (!r.ok) throw new Error(r.errors.join('\n'))
       const d = r.value.diagram
       const routes = computeRoutes(d)
       const legs = new Map(plugsOf(d).map((p) => [`${p.part} ${p.pin}`, `${p.board} ${p.group}`]))
       const stripOf = (e: Endpoint) => legs.get(`${e.part} ${e.pin}`) ?? `${e.part} ${e.pin}`
+      const used = new Set([
+        ...plugsOf(d).map((p) => `${p.board} ${p.group} ${p.hole}`),
+        ...coveredHoles(d).map((c) => `${c.board} ${c.group} ${c.hole}`),
+        ...d.connections.flatMap((c) => [c.from, c.to]).filter((e) => e.hole !== undefined).map((e) => `${e.part} ${e.pin} ${e.hole}`),
+      ])
       const holes = d.parts.flatMap((p) => {
         const m = d.modules[p.module]
-        return isBoard(m) ? worldHoles(p, m).flatMap((g) => g.at.map((at) => ({ strip: `${p.uid} ${g.name}`, at }))) : []
+        return isBoard(m) ? worldHoles(p, m).flatMap((g) => g.at.flatMap((at, i) => (used.has(`${p.uid} ${g.name} ${i}`) ? [{ strip: `${p.uid} ${g.name}`, at }] : []))) : []
       })
+      expect(holes.length).toBeGreaterThan(0)
       const over: string[] = []
       for (const c of d.connections) {
         const own = new Set([stripOf(c.from), stripOf(c.to)])

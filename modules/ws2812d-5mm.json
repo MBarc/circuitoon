@@ -32,6 +32,7 @@
     "w": 7,
     "h": 10
   },
+  "footprint": "legs",
   "electrical": {
     "model": "addressable_led",
     "params": {}

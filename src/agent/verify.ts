@@ -6,17 +6,18 @@
 // endpoints themselves, and a pin whose only neighbours are infrastructure is unconnected. Pure.
 import { type Diagram, type Endpoint, type PartInstance, moduleOf } from '../format/diagram.ts'
 import { mountIssues, plugsOf } from '../format/breadboard.ts'
-import { PARAM_RULES, isBoard, isObj, type ModuleDef, terminalCapacity, validParamValue } from '../format/module.ts'
+import { PARAM_RULES, isBoard, isObj, layoutModule, type ModuleDef, terminalCapacity, validParamValue } from '../format/module.ts'
+import { andList } from '../format/words.ts'
 import { netlist, nodeKey } from '../format/netlist.ts'
-import { endpointName } from '../format/checks.ts'
+import { coveredMessage, coveredUses, endpointName } from '../format/checks.ts'
 import { formatValue } from '../format/values.ts'
 import { type Intent, type IntentPart, type ModuleLookup, type Terminal, parseNetlist } from './netlist.ts'
 import { internalComponent } from './internal.ts'
 
 export type VerifyRule =
   | 'intent' | 'module-drift' | 'part-missing' | 'part-duplicate' | 'module-mismatch' | 'module-missing' | 'value-drift' | 'mount' | 'extra-part'
-  | 'missing-connection' | 'merge' | 'extra-connection' | 'nc' | 'capacity'
-const ORDER: VerifyRule[] = ['intent', 'module-drift', 'part-missing', 'part-duplicate', 'module-mismatch', 'module-missing', 'value-drift', 'mount', 'extra-part', 'missing-connection', 'merge', 'extra-connection', 'nc', 'capacity']
+  | 'missing-connection' | 'merge' | 'extra-connection' | 'nc' | 'capacity' | 'covered-hole'
+const ORDER: VerifyRule[] = ['intent', 'module-drift', 'part-missing', 'part-duplicate', 'module-mismatch', 'module-missing', 'value-drift', 'mount', 'extra-part', 'missing-connection', 'merge', 'extra-connection', 'nc', 'capacity', 'covered-hole']
 
 export interface VerifyFinding {
   /** The rule plus what causes it, so it stays the same while the problem does. */
@@ -44,7 +45,8 @@ function canonical(v: unknown): string {
 }
 
 /** Module fields that change only how a part looks or is described, never what it connects. */
-const COSMETIC = new Set(['art', 'name', 'source', 'description', 'category', 'version'])
+// The top-view footprint changes which holes a part covers, never what it connects.
+const COSMETIC = new Set(['art', 'name', 'source', 'description', 'category', 'version', 'footprint'])
 const FIELD_NAMES: Record<string, string> = { holes: 'hole groups', internal: 'internal joins', electrical: 'electrical data' }
 
 /** The pins whose entries differ, by name (spacers as "spacer"), in the library's order. */
@@ -57,6 +59,8 @@ function pinDiff(stored: unknown, lib: unknown): string {
     if (i < b.length) names.add(label(b[i]))
     if (i < a.length) names.add(label(a[i]))
   }
+  // A redrawn part (every pin moved, Ruling C2) names the count, not a list nobody reads.
+  if (names.size > 8) return `${names.size} pins`
   return names.size ? `pins ${[...names].join('/')}` : 'pins'
 }
 
@@ -65,6 +69,17 @@ function electricalDiff(stored: ModuleDef, lib: ModuleDef): string[] {
   const [s, l] = [stored as unknown as Record<string, unknown>, lib as unknown as Record<string, unknown>]
   const keys = [...new Set([...Object.keys(l), ...Object.keys(s)])].filter((k) => !COSMETIC.has(k) && canonical(s[k]) !== canonical(l[k]))
   return keys.map((k) => (k === 'pins' ? pinDiff(s.pins, l.pins) : (FIELD_NAMES[k] ?? k)))
+}
+
+/**
+ * Whether the part's geometry moved: a different body size, or pin positions (side and place on the
+ * body, whatever their names) that differ. Its legs then land elsewhere, so a kept position no
+ * longer means the same seat. Renamed or retyped pins alone move nothing.
+ */
+function movedGeometry(stored: ModuleDef, lib: ModuleDef): boolean {
+  const [a, b] = [layoutModule(stored), layoutModule(lib)]
+  if (a.w !== b.w || a.h !== b.h || a.pins.length !== b.pins.length) return true
+  return a.pins.some((p, i) => p.side !== b.pins[i].side || p.edge.x !== b.pins[i].edge.x || p.edge.y !== b.pins[i].edge.y)
 }
 
 /** The cosmetic fields that differ. */
@@ -94,7 +109,13 @@ function moduleDrift(d: Diagram, library: ModuleLookup, add: Add) {
     const parts = d.parts.filter((p) => p.module === id).map((p) => p.uid)
     const causes = whose.startsWith("The intent") ? [`intent:${id}`] : [id]
     const electrical = electricalDiff(stored, lib)
-    if (electrical.length)
+    if (electrical.length && movedGeometry(stored, lib) && parts.length) {
+      // Ruling C2: its legs land elsewhere now, so a kept position (layout --keep) would pin it where
+      // the old drawing sat; the part itself must be placed again.
+      const names = andList(d.parts.filter((p) => p.module === id).map((p) => p.designator))
+      const one = parts.length === 1
+      add('module-drift', `${whose} of ${id} no longer matches the current library: ${electrical.join(', ')} differ. Its body and pins are drawn differently now, so ${names} must be placed again: remove ${one ? `${names}'s` : 'their'} x, y and rotation from the partial before layout --keep (kept as ${one ? 'it is, it stays' : 'they are, they stay'} where the old drawing sat), or lay the sheet out again from the netlist.`, causes, { parts })
+    } else if (electrical.length)
       add('module-drift', `${whose} of ${id} no longer matches the current library: ${electrical.join(', ')} differ. Lay the sheet out again with the current library.`, causes, { parts })
     else
       add('module-drift', `${whose} of ${id} differs from the current library only in ${cosmeticDiff(stored, lib).join(', ')}; its pins and electrical data match. Lay the sheet out again to pick up the current part.`, causes, { parts, severity: 'warning' })
@@ -128,6 +149,7 @@ export function verifyDiagram(d: Diagram, library: ModuleLookup): VerifyFinding[
     else against(d, r.intent, library, add)
   }
   capacity(d, add)
+  covered(d, add, driftedParts(found))
   found.sort((a, b) => ORDER.indexOf(a.rule) - ORDER.indexOf(b.rule) || (a.message < b.message ? -1 : a.message > b.message ? 1 : 0))
   const seen = new Map<string, number>()
   return found.map(({ causes, ...f }) => {
@@ -344,3 +366,29 @@ function capacity(d: Diagram, add: Add) {
     add('capacity', `${s.what} holds ${holds} but takes ${s.cap === 1 ? 'one' : s.cap}.`, [key], { parts: [s.part], wires: s.wires })
   }
 }
+
+/**
+ * No wire end or leg in a hole a mounted part's body covers (see coveredHoles): the checker's
+ * covered-hole, here too so verify alone (and the layout's own check) blocks it.
+ */
+function covered(d: Diagram, add: Add, stale: ReadonlySet<string>) {
+  for (const u of coveredUses(d, new Set(netlist(d).broken))) {
+    if (isStale(u, stale)) continue
+    const key = JSON.stringify(['hole', u.cover.board, u.cover.group, u.cover.hole])
+    if (u.wire) add('covered-hole', coveredMessage(d, u), [key, u.wire], { parts: [u.cover.board, u.cover.by], wires: [u.wire] })
+    else add('covered-hole', coveredMessage(d, u), [key, u.leg!.part], { parts: [u.leg!.part, u.cover.by, u.cover.board], pins: [{ part: u.leg!.part, pin: u.leg!.pin }] })
+  }
+}
+
+/**
+ * The parts whose embedded module drifted from the library (module-drift, blocking or not): their
+ * stored copy is out of date, so whatever it covers (and whatever its legs land in) is the old
+ * drawing's or the old footprint's, not the part's.
+ */
+export function driftedParts(findings: { rule: string; severity: string; parts: string[] }[]): Set<string> {
+  return new Set(findings.filter((f) => f.rule === 'module-drift').flatMap((f) => f.parts))
+}
+
+/** A covered-hole use that comes from a stale embedded copy: its covering part, or its leg's part, drifted. */
+const isStale = (u: { cover: { by: string }; leg?: { part: string } }, stale: ReadonlySet<string>) =>
+  stale.has(u.cover.by) || (!!u.leg && stale.has(u.leg.part))

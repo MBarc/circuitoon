@@ -9,6 +9,7 @@ import { GRID, type ModuleDef, isBoard, isSpacer, layoutModule } from './module.
 import { entriesFor, orientationOf } from './plugging.ts'
 
 const OFF = 2 ** 25
+const NONE_SET: ReadonlySet<string> = new Set()
 /**
  * One number per world grid point. Unique only for whole-number x and y within +-2^25 px, so
  * lookups go through `holeAt`, which checks both and compares the found hole exactly.
@@ -93,14 +94,16 @@ export function holeAtPoint(part: PartInstance, m: ModuleDef, p: Pt, radius = 3.
 /**
  * The wire end a pointer at `p` picks on part `uid`: a hole or pad of any module with hole groups
  * (a breadboard, or an interior header whose pads are routing obstacles), within the hole target
- * radius. Mounting is a board-only matter; wiring is not. Null for a missing part or module, or no
- * hole near `p`. Hover, pressing and dropping a wire end all pick through this.
+ * radius. Mounting is a board-only matter; wiring is not. Null for a missing part or module, no
+ * hole near `p`, or a hole under a mounted part's body (`coveredHoles`), which takes no wire end.
+ * Hover, pressing and dropping a wire end all pick through this.
  */
 export function holeEndAt(d: Diagram, uid: string, p: Pt): Endpoint | null {
   const part = d.parts.find((q) => q.uid === uid)
   const m = part && moduleOf(d, part.module)
   const hit = part && m ? holeAtPoint(part, m, p) : null
-  return hit && { part: hit.board, pin: hit.group, hole: hit.hole }
+  if (!hit || coveredHoles(d).some((c) => c.board === hit.board && c.group === hit.group && c.hole === hit.hole)) return null
+  return { part: hit.board, pin: hit.group, hole: hit.hole }
 }
 
 export interface Plug {
@@ -126,10 +129,16 @@ export interface Seat {
   holes: Pt[]
   /** A plug-in device over an outlet it does not seat in: its body, drawn red while dragging. */
   outline?: Rect
+  /**
+   * Holes that keep the part from seating because of a body: a leg's hole under another part's
+   * body, then a hole this part's body would cover that holds another part's leg or a wire end.
+   * Drawn red while dragging. Absent when there are none.
+   */
+  blocked?: Pt[]
 }
 
 /** One key per hole on the sheet; JSON keeps any character in a uid or group name unambiguous. */
-const holeKey = (board: string, group: string, hole: number): string => JSON.stringify([board, group, hole])
+export const holeKey = (board: string, group: string, hole: number): string => JSON.stringify([board, group, hole])
 
 /** Holes holding a leg of a part outside `ignore`. */
 const takenBy = (plugs: Plug[], ignore: ReadonlySet<string>): Set<string> =>
@@ -157,11 +166,14 @@ function mountable(d: Diagram, uid: string): Me | null {
   const part = d.parts.find((p) => p.uid === uid)
   const m = part && moduleOf(d, part.module)
   if (!part || !m || isBoard(m) || m.pins.some((p) => !isSpacer(p) && p.bus)) return null
+  const pts = allPlugPoints(part, m)
+  return pts.length ? { part, m, pts, plug: mainsOf(m).plug } : null
+}
+
+/** A part's pin edge points, or for a plug-in device every contact of every profile (each pin and spot once). */
+function allPlugPoints(part: PartInstance, m: ModuleDef): Point[] {
   const plug = mainsOf(m).plug
-  if (!plug) {
-    const pts = plugPoints(part, m)
-    return pts.length ? { part, m, pts, plug: null } : null
-  }
+  if (!plug) return plugPoints(part, m)
   const lay = layoutModule(m)
   const seen = new Set<string>()
   const pts: Point[] = []
@@ -174,11 +186,162 @@ function mountable(d: Diagram, uid: string): Me | null {
         pts.push(c.mains === 'mechanical' ? { pin: c.pin, at, mechanical: true } : { pin: c.pin, at })
       }
     }
-  return pts.length ? { part, m, pts, plug } : null
+  return pts
+}
+
+// ---- Holes under a part's body ----
+
+/** Widest a drawn lead is, in px, to count as a lead rather than body (the built-in leads are 3 px). */
+const LEAD_WIDTH = 4
+
+const shapeCache = new WeakMap<ModuleDef, Rect[]>()
+
+/**
+ * A module's drawn body, as part-local rectangles: every art shape except its leads, or the whole
+ * layout body when the module has no art. A lead is a shape at most LEAD_WIDTH px across that
+ * reaches one of the module's own pin edge points, where the leg plugs in: the bare wire from the
+ * body out to the leg, which lies over holes without hiding them. Everything else the art draws
+ * (a resistor's barrel, an LED's dome and rim, a chip's package) hides the holes under it. The
+ * shapes are what the user sees, so a hole is covered exactly when it is drawn under the part.
+ * A part drawn from the side (standing upright, or a breakout whose face is drawn) declares its
+ * top-view `footprint` instead: that rect, or nothing for "legs".
+ */
+export function bodyShapes(m: ModuleDef): Rect[] {
+  const hit = shapeCache.get(m)
+  if (hit) return hit
+  const lay = layoutModule(m)
+  let rects: Rect[]
+  if (m.footprint === 'legs') rects = []
+  else if (m.footprint) rects = [{ x: m.footprint.x, y: m.footprint.y, w: m.footprint.w, h: m.footprint.h }]
+  else if (!m.art?.shapes.length) rects = [{ x: 0, y: 0, w: lay.w, h: lay.h }]
+  else {
+    const edges = lay.pins.filter((p) => !p.bus).map((p) => p.edge)
+    const lead = (s: Rect) => Math.min(s.w, s.h) <= LEAD_WIDTH && edges.some((e) => e.x >= s.x && e.x <= s.x + s.w && e.y >= s.y && e.y <= s.y + s.h)
+    rects = m.art.shapes.filter((s) => !lead(s)).map(({ x, y, w, h }) => ({ x, y, w, h }))
+  }
+  shapeCache.set(m, rects)
+  return rects
+}
+
+/** A board hole a mounted part's body lies over. */
+export interface CoveredHole {
+  board: string
+  group: string
+  hole: number
+  at: Pt
+  /** The uid of the part whose body covers it. */
+  by: string
+}
+
+/** A part-local rectangle in world px, turned with the part. */
+function worldRect(part: PartInstance, lay: { w: number; h: number }, r: Rect): Rect {
+  const a = toWorld(part, lay, { x: r.x, y: r.y })
+  const b = toWorld(part, lay, { x: r.x + r.w, y: r.y + r.h })
+  return { x: Math.min(a.x, b.x), y: Math.min(a.y, b.y), w: Math.abs(b.x - a.x), h: Math.abs(b.y - a.y) }
+}
+
+const coverCache = new WeakMap<PartInstance, { board: PartInstance; m: ModuleDef; bm: ModuleDef; cover: CoveredHole[] }>()
+
+/**
+ * The holes of `board` whose centers lie strictly inside one of part's body shapes (bodyShapes,
+ * turned with the part), in group and hole order, except the holes its own legs (every plug point)
+ * land on. A hole on the edge of a shape is only half hidden and stays free. Cached per part, board
+ * and module objects.
+ */
+function coverOf(part: PartInstance, m: ModuleDef, board: PartInstance, bm: ModuleDef): CoveredHole[] {
+  const hit = coverCache.get(part)
+  if (hit && hit.board === board && hit.m === m && hit.bm === bm) return hit.cover
+  const idx = holeIndex(board, bm)
+  const lay = layoutModule(m)
+  const own = new Set(allPlugPoints(part, m).map((pp) => pointKey(pp.at.x, pp.at.y)))
+  const found = new Map<number, [number, number]>()
+  const first = idx.groups.find((g) => g.at.length)?.at[0]
+  if (first) {
+    // Every hole sits on the board's own 10 px lattice, so only lattice points inside a shape are looked up.
+    const ox = ((first.x % GRID) + GRID) % GRID
+    const oy = ((first.y % GRID) + GRID) % GRID
+    for (const s of bodyShapes(m)) {
+      const r = worldRect(part, lay, s)
+      for (let y = oy + GRID * (Math.floor((r.y - oy) / GRID) + 1); y < r.y + r.h; y += GRID)
+        for (let x = ox + GRID * (Math.floor((r.x - ox) / GRID) + 1); x < r.x + r.w; x += GRID) {
+          const h = holeAt(idx, { x, y })
+          if (h && !own.has(pointKey(x, y))) found.set(h[0] * 1e6 + h[1], h)
+        }
+    }
+  }
+  const cover = [...found.keys()].sort((a, b) => a - b).map((k) => {
+    const [gi, hi] = found.get(k)!
+    return { board: board.uid, group: idx.groups[gi].name, hole: hi, at: idx.groups[gi].at[hi], by: part.uid }
+  })
+  coverCache.set(part, { board, m, bm, cover })
+  return cover
+}
+
+/**
+ * The holes covered by the bodies of the parts that `plugs` plug in (each part on the board its
+ * legs are in), parts in `ignore` left out. A hole two bodies cover is listed once, for the part
+ * whose legs come first in `plugs`.
+ */
+function coversOf(d: Diagram, plugs: Plug[], ignore: ReadonlySet<string> = new Set()): CoveredHole[] {
+  const out = new Map<string, CoveredHole>()
+  const done = new Set<string>()
+  let byUid: Map<string, PartInstance> | null = null
+  for (const pl of plugs) {
+    if (ignore.has(pl.part) || done.has(pl.part)) continue
+    done.add(pl.part)
+    byUid ??= new Map(d.parts.map((p) => [p.uid, p]))
+    const part = byUid.get(pl.part)
+    const board = byUid.get(pl.board)
+    const m = part && moduleOf(d, part.module)
+    const bm = board && moduleOf(d, board.module)
+    if (!part || !board || !m || !bm) continue
+    for (const c of coverOf(part, m, board, bm)) {
+      const k = holeKey(c.board, c.group, c.hole)
+      if (!out.has(k)) out.set(k, c)
+    }
+  }
+  return [...out.values()]
+}
+
+/** Hole keys of every wire end in a board hole (a hole end on a board's hole group). */
+function wireEndHoles(d: Diagram): Set<string> {
+  const out = new Set<string>()
+  if (!d.connections.length) return out
+  const boards = new Map<string, ModuleDef>()
+  for (const p of d.parts) {
+    const m = moduleOf(d, p.module)
+    if (m && isBoard(m)) boards.set(p.uid, m)
+  }
+  for (const c of d.connections)
+    for (const ep of [c.from, c.to]) {
+      const m = boards.get(ep.part)
+      if (m?.holes?.some((g) => g.name === ep.pin)) out.add(holeKey(ep.part, ep.pin, ep.hole ?? 0))
+    }
+  return out
+}
+
+/** What already holds holes where a part is seated: other parts' legs and bodies, and wire ends. */
+interface Busy {
+  /** Holes holding a leg of another part. */
+  taken: ReadonlySet<string>
+  /** Holes under another part's body. */
+  covered: ReadonlySet<string>
+  /** Holes holding a wire end. */
+  ends: () => ReadonlySet<string>
+}
+
+function busyOf(d: Diagram, plugs: Plug[], ignore: ReadonlySet<string>): Busy {
+  let ends: Set<string> | null = null
+  return {
+    taken: takenBy(plugs, ignore),
+    covered: new Set(coversOf(d, plugs, ignore).map((c) => holeKey(c.board, c.group, c.hole))),
+    ends: () => (ends ??= wireEndHoles(d)),
+  }
 }
 
 interface Fit {
   board: PartInstance
+  bm: ModuleDef
   groups: WorldHoleGroup[]
   /** The plug points this fit uses: every leg, or the contacts of the profile an outlet's socket took. */
   pts: Point[]
@@ -230,7 +393,7 @@ function fitOn(d: Diagram, board: PartInstance, me: Me): Fit | null {
   const fit = (pts: Point[], seatable: (hits: ([number, number] | null)[]) => boolean): Fit => {
     const hits = pts.map((pp) => holeAt(idx, pp.at))
     const landed = hits.filter(Boolean).length
-    return { board, groups: idx.groups, pts, hits, landed, obscured: landed > 0 && obscuredOn(d, board, pts), seatable: seatable(hits), outline, categorical }
+    return { board, bm, groups: idx.groups, pts, hits, landed, obscured: landed > 0 && obscuredOn(d, board, pts), seatable: seatable(hits), outline, categorical }
   }
   const categorical = !me.plug !== !sockets.length
   // A plain part on a plain board seats as it always has; a plain part on an outlet, or a plug on
@@ -261,13 +424,30 @@ function fitOn(d: Diagram, board: PartInstance, me: Me): Fit | null {
   return best ?? fit(me.pts, () => false)
 }
 
-/** An obscured board never seats: its fit shows as partial (red), so a drop does not mount. */
-function seatFrom(fit: Fit, taken: ReadonlySet<string>): Seat | null {
+/**
+ * An obscured board never seats: its fit shows as partial (red), so a drop does not mount. With
+ * `me` and `busy` (seating a part, not re-checking a stored mount) bodies count too: a leg in a
+ * hole under another part's body, or a body over a hole that holds another part's leg or a wire
+ * end, keeps the part from seating, and those holes come back as `blocked`.
+ */
+function seatFrom(fit: Fit, busy: Busy, me?: Me): Seat | null {
   if (!fit.landed && !fit.outline) return null
-  const seated = fit.seatable && !fit.obscured && fit.hits.every((h) => h && !taken.has(holeKey(fit.board.uid, fit.groups[h[0]].name, h[1])))
+  const key = (h: [number, number]) => holeKey(fit.board.uid, fit.groups[h[0]].name, h[1])
+  const blocked: Pt[] = []
+  if (me) {
+    fit.hits.forEach((h, i) => {
+      if (h && busy.covered.has(key(h))) blocked.push(fit.pts[i].at)
+    })
+    for (const c of coverOf(me.part, me.m, fit.board, fit.bm)) {
+      const k = holeKey(c.board, c.group, c.hole)
+      if (busy.taken.has(k) || busy.ends().has(k)) blocked.push(c.at)
+    }
+  }
+  const seated = fit.seatable && !fit.obscured && !blocked.length && fit.hits.every((h) => h && !busy.taken.has(key(h)))
   return {
     status: seated ? 'seated' : 'partial', board: fit.board.uid, holes: fit.pts.filter((_, i) => fit.hits[i]).map((pp) => pp.at),
     ...(fit.outline && !seated ? { outline: fit.outline } : {}),
+    ...(blocked.length ? { blocked } : {}),
   }
 }
 
@@ -295,7 +475,7 @@ export function seatOf(d: Diagram, uid: string, plugs: Plug[], ignore: ReadonlyS
     if (!best || (best.obscured && !fit.obscured) || (best.obscured === fit.obscured && ((fit.seatable && !best.seatable) || (fit.seatable === best.seatable && fit.landed >= best.landed))))
       best = fit
   }
-  return best && seatFrom(best, takenBy(plugs, ignore))
+  return best && seatFrom(best, busyOf(d, plugs, ignore), me)
 }
 
 /** `seatOf` on one given board (a part's own mount), whatever other board also fits. Null when `board` is missing or not a board. */
@@ -303,7 +483,7 @@ export function seatOn(d: Diagram, uid: string, board: string, plugs: Plug[], ig
   const me = mountable(d, uid)
   const b = me && d.parts.find((p) => p.uid === board)
   const fit = me && b && b !== me.part ? fitOn(d, b, me) : null
-  return fit && seatFrom(fit, takenBy(plugs, ignore))
+  return fit && seatFrom(fit, busyOf(d, plugs, ignore), me!)
 }
 
 export interface MountIssue {
@@ -349,7 +529,7 @@ function mounts(d: Diagram): { plugs: Plug[]; issues: MountIssue[] } {
     else if (fit.landed < fit.pts.length) issue('partial')
     else if (!fit.seatable) issue('no-fit')
     else if (fit.obscured) issue('obscured')
-    else if (seatFrom(fit, taken)!.status !== 'seated') issue('conflict')
+    else if (seatFrom(fit, { taken, covered: NONE_SET, ends: () => NONE_SET })!.status !== 'seated') issue('conflict')
     else
       fit.pts.forEach((pp, i) => {
         const [gi, hi] = fit.hits[i]!
@@ -367,6 +547,8 @@ interface MountCache {
   result: { plugs: Plug[]; issues: MountIssue[] }
   /** Plug point per plugged pin (key from pinKey), built on first use. */
   byPin?: Map<string, Pt>
+  /** Holes under the bodies of validly mounted parts, built on first use. */
+  covered?: CoveredHole[]
 }
 
 /**
@@ -406,6 +588,17 @@ export function plugOfPin(d: Diagram, part: string, pin: string): Pt | null {
   const entry = cachedMounts(d)
   if (!entry.byPin) entry.byPin = new Map(entry.result.plugs.map((pl) => [pinKey(pl.part, pl.pin), pl.at]))
   return entry.byPin.get(pinKey(part, pin)) ?? null
+}
+
+/**
+ * Every hole a validly mounted part's body lies over (see `bodyShapes`), on the board it is mounted
+ * on, apart from its own leg holes; a hole two bodies cover is listed once. Nothing may plug into
+ * one: a wire end or another part's leg there is a finding (the checker's covered-hole). A mount
+ * that plugs nothing covers nothing. Cached per diagram parts, like `plugsOf`: do not mutate it.
+ */
+export function coveredHoles(d: Diagram): CoveredHole[] {
+  const entry = cachedMounts(d)
+  return (entry.covered ??= coversOf(d, entry.result.plugs))
 }
 
 /**

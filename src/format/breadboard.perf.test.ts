@@ -127,10 +127,14 @@ describe('real parts on the full breadboard', () => {
       }
     return n
   }
-  it('seats a XIAO and a DIP-28 across the channel once turned, not before', () => {
-    for (const id of ['xiao-esp32c3', 'mcp23017-dip28']) {
-      expect(seatedSpots(load(id), 0), id).toBe(0)
-      expect(seatedSpots(load(id), 90), id).toBeGreaterThan(0)
+  it('seats a XIAO across the channel once turned, not before', () => {
+    expect(seatedSpots(load('xiao-esp32c3'), 0)).toBe(0)
+    expect(seatedSpots(load('xiao-esp32c3'), 90)).toBeGreaterThan(0)
+  })
+  it('seats a DIP-28 across the channel as drawn, with its pin rows 0.3 inch apart, and not turned (Ruling C2)', () => {
+    for (const id of ['mcp23017-dip28', 'mcp23018-dip28']) {
+      expect(seatedSpots(load(id), 0), id).toBeGreaterThan(0)
+      expect(seatedSpots(load(id), 90), id).toBe(0)
     }
   })
   it('cannot seat the 120 px wide ESP32 DevKit V1: its rows are wider than rows a to j (110 px)', () => {

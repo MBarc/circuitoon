@@ -6,7 +6,7 @@
 // stderr.
 import type { Endpoint } from '../format/diagram.ts'
 import { checkDiagram } from '../format/checks.ts'
-import { verifyDiagram } from '../agent/verify.ts'
+import { driftedParts, verifyDiagram } from '../agent/verify.ts'
 import { libraryLookup } from '../agent/catalog.ts'
 import { NOT_CHECKED } from '../agent/notChecked.ts'
 import type { Args } from './args.ts'
@@ -39,6 +39,22 @@ export function uniqueIds(findings: CliFinding[]): CliFinding[] {
   })
 }
 
+/**
+ * Verify's findings a combined report leaves out because the wiring checker reports the same
+ * problem itself: covered-hole (a wire end or leg under a part's body) comes from one shared test.
+ */
+export const alsoChecked = (f: { rule: string }): boolean => f.rule === 'covered-hole'
+
+/**
+ * The checker's findings, less any covered-hole that involves a part whose embedded module blocks as
+ * module-drift (`verified` holds verify's findings): that hole is covered by, or holds a leg of, the
+ * old drawing, and module-drift already says to place the part again.
+ */
+export function withoutStale<F extends { rule: string; parts: string[] }>(checked: F[], verified: { rule: string; severity: string; parts: string[] }[]): F[] {
+  const stale = driftedParts(verified)
+  return stale.size ? checked.filter((f) => f.rule !== 'covered-hole' || !f.parts.some((p) => stale.has(p))) : checked
+}
+
 export const findingsText = (findings: CliFinding[]): string => findings.map((f) => `${f.severity.toUpperCase()} ${f.rule}: ${f.message}`).join('\n')
 export const notCheckedText = (): string => ['Not checked:', ...NOT_CHECKED.map((n) => `  - ${n}`)].join('\n')
 
@@ -64,6 +80,8 @@ export function verifyCommand(args: Args, io: Io): number {
 
 export function checkCommand(args: Args, io: Io): number {
   const diagram = sheetOf('check', args, io)
-  const verified = diagram.intent !== undefined ? verifyDiagram(diagram, libraryLookup) : []
-  return report(io, args, 'circuitoon-cli/check/1', uniqueIds([...verified, ...checkDiagram(diagram)].map(cliFinding)))
+  // Module drift is known with or without an intent; only a sheet with one reports verify's findings.
+  const all = verifyDiagram(diagram, libraryLookup)
+  const verified = diagram.intent !== undefined ? all.filter((f) => !alsoChecked(f)) : []
+  return report(io, args, 'circuitoon-cli/check/1', uniqueIds([...verified, ...withoutStale(checkDiagram(diagram), all)].map(cliFinding)))
 }

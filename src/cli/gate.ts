@@ -3,8 +3,8 @@
 // when the intent has repeats) and link; write the artifacts and gate.json with a SHA-256 of the
 // diagram and of each artifact. Blocking: loader errors, a missing module or dropped value override,
 // any verify error (missing or invalid intent included), any checker error, any blocked route, and
-// no link with no file fallback written. A wire drawn over breadboard holes it does not use warns
-// (wire-over-holes). Every required artifact must exist before the gate passes
+// no link with no file fallback written. A wire drawn over used breadboard holes (a wire end, a leg,
+// a hole under a part's body) that it does not use warns (wire-over-holes); empty holes never do. Every required artifact must exist before the gate passes
 // (amendment A8): one that could not be made (no browser, a failed render) is an environment problem.
 // Exit 0 only when nothing blocks and every artifact is there; blocking findings win over a missing
 // browser (1 before 3). A sheet file that cannot be read is invalid input (2); one that reads but
@@ -26,7 +26,7 @@ import { NOT_CHECKED } from '../agent/notChecked.ts'
 import { type ChannelRow, type QuantityRow, channelTable, quantities } from '../agent/tables.ts'
 import type { Args } from './args.ts'
 import { CliError, EXIT, type Io, flag, pathIn, printJson, writeError, writeFile } from './io.ts'
-import { type CliFinding, cliFinding, findingsText, notCheckedText, uniqueIds } from './verifyCmd.ts'
+import { type CliFinding, alsoChecked, cliFinding, findingsText, notCheckedText, uniqueIds, withoutStale } from './verifyCmd.ts'
 import { writePng } from './png.ts'
 import { linkFor } from './linkCmd.ts'
 import { focusParts } from './render.ts'
@@ -162,19 +162,20 @@ export async function runGate(bytes: Uint8Array, opts: { sheetPath: string; outD
   v.warnings.forEach((w, i) => note('load', String(i), w.includes(VALUE_DROPPED) || w.includes(MISSING_MODULE) ? 'error' : 'warning', w))
 
   // Verify against the intent, the wiring checker, and routes.
-  found.push(...verifyDiagram(d, libraryLookup).map(cliFinding))
-  found.push(...checkDiagram(d).map(cliFinding))
+  const verified = verifyDiagram(d, libraryLookup)
+  found.push(...verified.filter((f) => !alsoChecked(f)).map(cliFinding))
+  found.push(...withoutStale(checkDiagram(d), verified).map(cliFinding))
   const routes = computeRoutes(d)
   // Blocked as drawn: wirePaths re-checks a wire that separation nudged, so a route that was clear
   // but was pushed through a body (drawn dashed) blocks too.
   for (const { conn: c, blocked } of wirePaths(d, routes))
     if (blocked)
       note('blocked-route', c.uid, 'error', `The wire ${c.label ?? `${endpointName(d, c.from)} to ${endpointName(d, c.to)}`} has no clear route: it runs through a part.`, { parts: [c.from.part, c.to.part], wires: [c.uid] })
-  // Over holes it does not use: the router found no route around them (or the route was drawn by
-  // hand across them). Electrically nothing changes, but in the picture the wire reads as plugged in.
+  // Over used holes it does not use: the router found no route around them (or the route was drawn
+  // by hand across them). Electrically nothing changes, but in the picture the wire reads as plugged in.
   for (const c of d.connections)
     if (routes.get(c.uid)?.fallback)
-      note('wire-over-holes', c.uid, 'warning', `The wire ${c.label ?? `${endpointName(d, c.from)} to ${endpointName(d, c.to)}`} runs over breadboard holes it is not plugged into, so in the picture it may look plugged in there.`, { parts: [c.from.part, c.to.part], wires: [c.uid] })
+      note('wire-over-holes', c.uid, 'warning', `The wire ${c.label ?? `${endpointName(d, c.from)} to ${endpointName(d, c.to)}`} runs over breadboard holes in use that it is not plugged into, so in the picture it may look plugged in there.`, { parts: [c.from.part, c.to.part], wires: [c.uid] })
   const parsed = d.intent !== undefined ? parseNetlist(d.intent, intentLookup(d, libraryLookup)) : null
   if (parsed?.ok) rows = { quantities: quantities(parsed.intent, d), channels: channelTable(parsed.intent) }
 

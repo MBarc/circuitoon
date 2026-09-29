@@ -1,12 +1,12 @@
 // Diagram format (circuitoon-diagram/1): types plus the wire geometry the renderer needs.
 
 import { GRID, type ModuleDef, PARAM_RULES, isBoard, layoutModule, moduleSettings, validateModule, validParamValue, isObj, isNum } from './module.ts'
-import { type Pt, type Rect, type Rotation, type WorldPin, bodyRect, simplify, toWorld, worldHoles, worldPins } from './geometry.ts'
+import { type Pt, type Rect, type Rotation, type WorldPin, bodyRect, simplify, toWorld, worldPins } from './geometry.ts'
 import { type RouteRequest, SEARCH_MARGIN, addToOccupancy, inGrown, Occupancy, onGrid, PointIndex, routeOrthogonal } from './router.ts'
 import { manualRouteBlocked, tidy } from './wireEdit.ts'
-import { mountIssues, plugOfPin, plugsOf } from './breadboard.ts'
+import { coveredHoles, holeIndex, mountIssues, plugOfPin, plugsOf } from './breadboard.ts'
 import { type CableEndDraw, END_SIZE, endKind, endPlacement, isEndKind, normalizeEnds, type WireEnds } from './cables.ts'
-import { placedCaptionBox } from '../render/captionBox.ts'
+import { placedCaptionBox, tipLabelBoxes } from '../render/captionBox.ts'
 import { seatedLabels } from './seatedLabels.ts'
 import { annotationRect, frameTab } from '../render/annotationGeometry.ts'
 
@@ -122,8 +122,9 @@ export interface WireRoute {
   /** True when no clear route exists and the wire is drawn as an orthogonal L fallback (dashed). */
   blocked: boolean
   /**
-   * True when the wire runs over holes of a board strip it does not end in (no route cleared them,
-   * or a hand-drawn route crosses them): drawn there, it reads as plugged in. Absent otherwise.
+   * True when the wire runs over used holes (a wire end, a leg, a hole under a part's body) of a
+   * board strip it does not end in (no route cleared them, or a hand-drawn route crosses them):
+   * drawn there, it reads as plugged in. Empty holes never set it (Ruling C1). Absent otherwise.
    */
   fallback?: true
 }
@@ -318,8 +319,10 @@ function withLeadOut(pts: Pt[], dir: Pt | null, lead: number): Pt[] {
 }
 
 /**
- * The holes of every board on the sheet (breadboards, rail strips), by hole group, plus which group
- * each plugged leg sits in. An auto-routed wire never runs over a hole of a group it does not end
+ * The holes in use on every board on the sheet (breadboards, rail strips), by hole group, plus which
+ * group each plugged leg sits in. A hole is in use when it holds a wire end or a leg, or lies under
+ * a mounted part's body (`coveredHoles`). Ruling C1: an auto-routed wire may cross empty holes
+ * straight, like a jumper lying flat, but never runs over a used hole of a group it does not end
  * in: drawn over it, the wire would read as plugged in there.
  */
 export interface BoardHoles {
@@ -331,14 +334,39 @@ const holeGroupKey = (board: string, group: string) => JSON.stringify([board, gr
 const legKey = (part: string, pin: string) => JSON.stringify([part, pin])
 
 export function boardHoles(d: Diagram): BoardHoles {
-  const groups: BoardHoles['groups'] = []
+  const boards = new Map<string, { part: PartInstance; m: ModuleDef }>()
   for (const p of d.parts) {
     const m = moduleOf(d, p.module)
-    if (!m || !isBoard(m)) continue
-    for (const g of worldHoles(p, m)) groups.push({ key: holeGroupKey(p.uid, g.name), at: g.at })
+    if (m && isBoard(m)) boards.set(p.uid, { part: p, m })
   }
   const legGroup = new Map<string, string>()
-  if (groups.length) for (const pl of plugsOf(d)) legGroup.set(legKey(pl.part, pl.pin), holeGroupKey(pl.board, pl.group))
+  if (!boards.size) return { groups: [], legGroup }
+  // Board uid, then group name, to the hole indexes in use.
+  const used = new Map<string, Map<string, Set<number>>>()
+  const use = (board: string, group: string, hole: number) => {
+    let byGroup = used.get(board)
+    if (!byGroup) used.set(board, (byGroup = new Map()))
+    let holes = byGroup.get(group)
+    if (!holes) byGroup.set(group, (holes = new Set()))
+    holes.add(hole)
+  }
+  for (const pl of plugsOf(d)) {
+    legGroup.set(legKey(pl.part, pl.pin), holeGroupKey(pl.board, pl.group))
+    use(pl.board, pl.group, pl.hole)
+  }
+  for (const c of coveredHoles(d)) use(c.board, c.group, c.hole)
+  for (const c of d.connections)
+    for (const e of [c.from, c.to]) if (boards.get(e.part)?.m.holes?.some((g) => g.name === e.pin)) use(e.part, e.pin, e.hole ?? 0)
+  const groups: BoardHoles['groups'] = []
+  for (const [uid, byGroup] of used) {
+    const b = boards.get(uid)
+    if (!b) continue
+    const idx = holeIndex(b.part, b.m)
+    for (const g of idx.groups) {
+      const holes = byGroup.get(g.name)
+      if (holes) groups.push({ key: holeGroupKey(uid, g.name), at: [...holes].sort((x, y) => x - y).flatMap((i) => (i < g.at.length ? [g.at[i]] : [])) })
+    }
+  }
   return { groups, legGroup }
 }
 
@@ -354,7 +382,7 @@ function ownGroups(c: Connection, legGroup: Map<string, string>): Set<string> {
 }
 
 /**
- * Text on the sheet an auto-routed wire keeps off (amendment A18.3): each part's caption (by part
+ * Text on the sheet an auto-routed wire keeps off (amendment A18.3): each part's caption and any pin names it draws past its pin tips (by part
  * uid), each frame's label tab and each text note's box (no owner), as the routing grid nodes they
  * cover, grown by LABEL_PAD so a wire on the next grid line does not graze the text either. A note
  * is opaque: a wire under it would vanish.
@@ -378,7 +406,8 @@ export function labelPoints(d: Diagram): LabelPoints {
   const seated = seatedLabels(d)
   for (const p of d.parts) {
     const m = moduleOf(d, p.module)
-    if (m) captions.set(p.uid, gridNodesIn(placedCaptionBox(p, m, seated.get(p.uid))))
+    // Pin names past the tips (a DIP chip) are kept off like the caption, by the same owner (Ruling C3).
+    if (m) captions.set(p.uid, [placedCaptionBox(p, m, seated.get(p.uid)), ...tipLabelBoxes(p, m)].flatMap(gridNodesIn))
   }
   const tabs = (d.annotations ?? []).flatMap((a) => (a.type === 'frame' ? (a.label ? gridNodesIn(frameTab(a)) : []) : gridNodesIn(annotationRect(a))))
   return { captions, tabs }
