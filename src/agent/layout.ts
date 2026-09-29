@@ -5,7 +5,7 @@
 // wire's ends are beyond the router's reach). A body or caption overlap (only kept
 // parts can cause one) fails the layout with each pair named (amendment A7), and the realized sheet
 // must verify clean against its own intent before it is returned, so a kept part that shorts two
-// nets through a strip is caught here. The sheet embeds its modules and stores the netlist as
+// nets through a strip is caught here. Wires are coloured by role (colors.ts). The sheet embeds its modules and stores the netlist as
 // `intent`, so every later check re-verifies against it. Pure.
 import { DIAGRAM_FORMAT, type Diagram, computeRoutes, moduleOf, resolveEndpoint } from '../format/diagram.ts'
 import { ROUTE_REACH, withinReach } from '../format/router.ts'
@@ -14,6 +14,7 @@ import { type Intent, type ModuleLookup, parseNetlist } from './netlist.ts'
 import { libraryLookup } from './catalog.ts'
 import { type KeepMap, placeParts } from './place.ts'
 import { realize } from './realize.ts'
+import { colorByRole } from './colors.ts'
 import { type ReadabilityReport, overlaps, readability } from './readability.ts'
 import { verifyDiagram } from './verify.ts'
 import { naturalCompare } from './order.ts'
@@ -55,7 +56,9 @@ export function layoutNetlist(raw: unknown, opts: { library?: ModuleLookup; keep
       return { ok: false, stage: 'layout', errors: [...over.body.map((o) => `body overlap: ${o}; move one of them`), ...over.caption.map((o) => `caption overlap: ${o}; move one of them`)] }
     const real = realize(intent, base, placed.locals)
     if (!real.ok) return { ok: false, stage: 'layout', errors: real.errors }
-    const diagram: Diagram = { ...base, connections: real.value.connections }
+    const wired: Diagram = { ...base, connections: real.value.connections }
+    // Colours by the checker's net roles, so the sheet never breaks the colour convention it checks.
+    const diagram: Diagram = { ...wired, connections: colorByRole(intent, wired, real.value.netOfWire) }
     const routes = computeRoutes(diagram)
     const stuck = diagram.connections.filter((c) => routes.get(c.uid)?.blocked)
     blocked = [...new Set(stuck.map((c) => real.value.netOfWire.get(c.uid)!))].sort(naturalCompare)

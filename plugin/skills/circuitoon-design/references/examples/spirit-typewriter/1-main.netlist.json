@@ -46,5 +46,5 @@
     },
     { "text": "DS1, DS2 and SD1 share one SPI bus; each has its own CS pin. The displays are never read, so their SDO (MISO) pins stay unconnected: many of these modules do not release MISO.", "near": "OLED and SD card" }
   ],
-  "wires": { "color": { "3V3": "red", "GND": "black", "5V": "orange", "SDA": "blue", "SCL": "yellow" }, "ends": "dupont-female" }
+  "wires": { "color": { "3V3": "red", "GND": "black", "5V": "red", "SDA": "blue", "SCL": "yellow" }, "ends": "dupont-female" }
 }
