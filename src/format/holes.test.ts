@@ -3,7 +3,7 @@ import { isBoard, validateModule, type ModuleDef } from './module.ts'
 import { brokenStub, computeRoutes, partObstacles, resolveEndpoint, routeWire, serializeDiagram, validateDiagram, type Diagram, type PartInstance } from './diagram.ts'
 import { load } from './builtinModules.testing.ts'
 import { routeOrthogonal } from './router.ts'
-import { plugPoints, worldHoles } from './geometry.ts'
+import { plugPoints, worldHoles, type Pt } from './geometry.ts'
 import { netlist } from './netlist.ts'
 
 /** A 100 x 60 test board (pivot 50, 30): nine vertical strips s1..s9 at x = 10..90, five holes each at y = 10..50. */
@@ -255,7 +255,7 @@ describe('brokenStub', () => {
 })
 
 describe('routing with boards and holes', () => {
-  it('routes wires across a board, which is not an obstacle, but never over a hole the wire does not end in', () => {
+  it('routes a wire straight across a board over its empty holes, like a jumper lying flat (Ruling C1)', () => {
     const d: Diagram = {
       format: 'circuitoon-diagram/1', title: 't', modules: { bb, two },
       parts: [
@@ -266,17 +266,58 @@ describe('routing with boards and holes', () => {
       connections: [{ uid: 'w', from: { part: 'a', pin: 'R' }, to: { part: 'c', pin: 'L' } }],
     }
     expect(partObstacles(d)).toHaveLength(2)
-    // The board's holes sit at y = 0..40, so the wire crosses the board on the free row below them.
-    expect(computeRoutes(d).get('w')).toEqual({ points: [{ x: 48, y: 20 }, { x: 60, y: 20 }, { x: 60, y: 50 }, { x: 180, y: 50 }, { x: 180, y: 20 }, { x: 192, y: 20 }], blocked: false })
+    // The board's holes sit on y = 0..40 and none is in use, so the wire runs straight over row y = 20.
+    expect(computeRoutes(d).get('w')).toEqual({ points: [{ x: 48, y: 20 }, { x: 192, y: 20 }], blocked: false })
   })
-  it('routes a wire from a hole center off the end of its own strip, not along a row of other strips', () => {
+  it('routes a wire from a hole center straight along a row of empty holes of other strips', () => {
     const d: Diagram = {
       format: 'circuitoon-diagram/1', title: 't', modules: { bb, two },
       parts: [{ uid: 'b', designator: 'BB1', module: 'bb', x: 0, y: 0 }, { uid: 'a', designator: 'R1', module: 'two', x: 100, y: -10 }],
       connections: [{ uid: 'w', from: { part: 'b', pin: 's1', hole: 0 }, to: { part: 'a', pin: 'L' } }],
     }
-    // R1's pin tip sits 2 px past the board's last strip: the goal node itself is never refused.
-    expect(computeRoutes(d).get('w')).toEqual({ points: [{ x: 10, y: 10 }, { x: 10, y: 0 }, { x: 90, y: 0 }, { x: 90, y: 10 }, { x: 92, y: 10 }], blocked: false })
+    expect(computeRoutes(d).get('w')).toEqual({ points: [{ x: 10, y: 10 }, { x: 92, y: 10 }], blocked: false })
+  })
+  it('routes a wire between holes on opposite sides of an empty breadboard as one straight run', () => {
+    const half = load('breadboard-half')
+    const d: Diagram = {
+      format: 'circuitoon-diagram/1', title: 't', modules: { 'breadboard-half': half },
+      parts: [{ uid: 'b', designator: 'BB1', module: 'breadboard-half', x: 0, y: 0 }],
+      connections: [
+        { uid: 'across', from: { part: 'b', pin: 'c1-top', hole: 2 }, to: { part: 'b', pin: 'c30-top', hole: 2 } },
+        { uid: 'down', from: { part: 'b', pin: 'top+', hole: 3 }, to: { part: 'b', pin: 'bottom+', hole: 3 } },
+      ],
+    }
+    const routes = computeRoutes(d)
+    expect(routes.get('across')).toEqual({ points: [{ x: 30, y: 80 }, { x: 320, y: 80 }], blocked: false })
+    expect(routes.get('down')).toEqual({ points: [{ x: 60, y: 20 }, { x: 60, y: 210 }], blocked: false })
+  })
+  it('still detours around holes that hold wire ends, and never runs along a row of them', () => {
+    // w2 and w3 end in s5 hole 1 and s6 hole 1, on the straight line of w.
+    const d: Diagram = {
+      format: 'circuitoon-diagram/1', title: 't', modules: { bb, two },
+      parts: [
+        { uid: 'a', designator: 'R1', module: 'two', x: -60, y: 0 },
+        { uid: 'b', designator: 'BB1', module: 'bb', x: 0, y: 0 },
+        { uid: 'c', designator: 'R2', module: 'two', x: 160, y: 0 },
+        { uid: 'e', designator: 'R3', module: 'two', x: 300, y: 200 },
+      ],
+      connections: [
+        { uid: 'w', from: { part: 'a', pin: 'R' }, to: { part: 'c', pin: 'L' } },
+        { uid: 'w2', from: { part: 'b', pin: 's5', hole: 1 }, to: { part: 'e', pin: 'L' } },
+        { uid: 'w3', from: { part: 'b', pin: 's6', hole: 1 }, to: { part: 'e', pin: 'R' } },
+      ],
+    }
+    const r = computeRoutes(d).get('w')!
+    expect(r.blocked).toBe(false)
+    expect(r.fallback).toBeUndefined()
+    const passes = (h: Pt) => r.points.slice(1).some((b, i) => {
+      const a = r.points[i]
+      return h.x >= Math.min(a.x, b.x) && h.x <= Math.max(a.x, b.x) && h.y >= Math.min(a.y, b.y) && h.y <= Math.max(a.y, b.y)
+    })
+    expect(passes({ x: 50, y: 20 })).toBe(false)
+    expect(passes({ x: 60, y: 20 })).toBe(false)
+    // Only as many bends as the detour needs: off the row and back.
+    expect(r.points.length).toBeLessThanOrEqual(6)
   })
   it('lets a pin stub point into a strip: the first node along the stub is never avoided', () => {
     // Two strips at x = 10 and 20. A pin tip left of the board points right, into them: its first
@@ -314,12 +355,14 @@ describe('routing with boards and holes', () => {
       parts: [{ uid: 'b', designator: 'BB1', module: 'bb', x: 0, y: 0 }, { uid: 'a', designator: 'R1', module: 'two', x: 100, y: 50 }],
       connections: [{ uid: 'w', from: { part: 'b', pin: 's1', hole: 0 }, to: { part: 'a', pin: 'L' }, route: [[50, 40]] }],
     }
+    // Drawn by hand along row y = 10 across strips s2 to s5, whose holes are all empty: no flag.
     expect(computeRoutes(d).get('w')).toEqual({
       points: [{ x: 10, y: 10 }, { x: 50, y: 10 }, { x: 50, y: 40 }, { x: 50, y: 70 }, { x: 92, y: 70 }],
       blocked: false,
-      // Drawn by hand along row y = 10 across strips s2 to s5, which it does not use.
-      fallback: true,
     })
+    // With another wire's end in s3 hole 0, on that row, the hand-drawn wire runs over a used hole.
+    d.connections.push({ uid: 'x', from: { part: 'b', pin: 's3', hole: 0 }, to: { part: 'b', pin: 's3', hole: 4 } })
+    expect(computeRoutes(d).get('w')!.fallback).toBe(true)
   })
 })
 

@@ -3227,17 +3227,46 @@ function withLeadOut(pts, dir, lead) {
 var holeGroupKey = (board, group) => JSON.stringify([board, group]);
 var legKey = (part, pin) => JSON.stringify([part, pin]);
 function boardHoles(d) {
-	const groups = [];
+	const boards = /* @__PURE__ */ new Map();
 	for (const p of d.parts) {
 		const m = moduleOf(d, p.module);
-		if (!m || !isBoard(m)) continue;
-		for (const g of worldHoles(p, m)) groups.push({
-			key: holeGroupKey(p.uid, g.name),
-			at: g.at
+		if (m && isBoard(m)) boards.set(p.uid, {
+			part: p,
+			m
 		});
 	}
 	const legGroup = /* @__PURE__ */ new Map();
-	if (groups.length) for (const pl of plugsOf(d)) legGroup.set(legKey(pl.part, pl.pin), holeGroupKey(pl.board, pl.group));
+	if (!boards.size) return {
+		groups: [],
+		legGroup
+	};
+	const used = /* @__PURE__ */ new Map();
+	const use = (board, group, hole) => {
+		let byGroup = used.get(board);
+		if (!byGroup) used.set(board, byGroup = /* @__PURE__ */ new Map());
+		let holes = byGroup.get(group);
+		if (!holes) byGroup.set(group, holes = /* @__PURE__ */ new Set());
+		holes.add(hole);
+	};
+	for (const pl of plugsOf(d)) {
+		legGroup.set(legKey(pl.part, pl.pin), holeGroupKey(pl.board, pl.group));
+		use(pl.board, pl.group, pl.hole);
+	}
+	for (const c of coveredHoles(d)) use(c.board, c.group, c.hole);
+	for (const c of d.connections) for (const e of [c.from, c.to]) if (boards.get(e.part)?.m.holes?.some((g) => g.name === e.pin)) use(e.part, e.pin, e.hole ?? 0);
+	const groups = [];
+	for (const [uid, byGroup] of used) {
+		const b = boards.get(uid);
+		if (!b) continue;
+		const idx = holeIndex(b.part, b.m);
+		for (const g of idx.groups) {
+			const holes = byGroup.get(g.name);
+			if (holes) groups.push({
+				key: holeGroupKey(uid, g.name),
+				at: [...holes].sort((x, y) => x - y).flatMap((i) => i < g.at.length ? [g.at[i]] : [])
+			});
+		}
+	}
 	return {
 		groups,
 		legGroup
@@ -59848,7 +59877,7 @@ async function runGate(bytes, opts) {
 		parts: [c.from.part, c.to.part],
 		wires: [c.uid]
 	});
-	for (const c of d.connections) if (routes.get(c.uid)?.fallback) note("wire-over-holes", c.uid, "warning", `The wire ${c.label ?? `${endpointName(d, c.from)} to ${endpointName(d, c.to)}`} runs over breadboard holes it is not plugged into, so in the picture it may look plugged in there.`, {
+	for (const c of d.connections) if (routes.get(c.uid)?.fallback) note("wire-over-holes", c.uid, "warning", `The wire ${c.label ?? `${endpointName(d, c.from)} to ${endpointName(d, c.to)}`} runs over breadboard holes in use that it is not plugged into, so in the picture it may look plugged in there.`, {
 		parts: [c.from.part, c.to.part],
 		wires: [c.uid]
 	});

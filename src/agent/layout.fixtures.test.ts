@@ -47,13 +47,13 @@ describe('layout fixtures', () => {
     expect(serializeDiagram(a.value.diagram)).toBe(serializeDiagram(b.value.diagram))
   }, 60_000)
 
-  it('typewriter-like: crossings stay at the measured level (A15: 6698 to 3061; A18: 1707; expanders beside their boards: 3793)', () => {
+  it('typewriter-like: crossings stay at the measured level (A15: 6698 to 3061; A18: 1707; expanders beside their boards: 3793; wires over empty holes, C1: 3722)', () => {
     // A ceiling at the value measured plus a small margin, so a regression shows here. Since covered
     // holes count, the DIP-28 expanders sit beside their boards (see typewriter()) and every
     // expander pin takes its own wire, which roughly doubles the crossings A18 measured.
     const r = layoutNetlist(typewriter(false))
     if (!r.ok) throw new Error(r.errors.join('\n'))
-    expect(r.value.report.wireCrossings).toBeLessThanOrEqual(3850)
+    expect(r.value.report.wireCrossings).toBeLessThanOrEqual(3800)
   }, 60_000)
 
   // Amendment A4: the full fixture's gate plus link round trip. The PNG writer is a stand-in (the

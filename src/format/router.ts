@@ -12,7 +12,7 @@ export interface RouteRequest {
   toDir: Pt | null
   obstacles: Rect[]
   /**
-   * Points the route must not pass through (holes of board strips the wire does not end in), each
+   * Points the route must not pass through (used holes of board strips the wire does not end in), each
    * blocking the grid node within `clearance` of it. Unlike an obstacle, one never refuses the
    * route's own start or goal node (a pin tip right beside a board), nor the first node along
    * either end's stub.

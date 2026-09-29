@@ -250,7 +250,8 @@ describe('circuitoon gate', () => {
     expect(report.blocking.filter((f) => f.rule !== 'environment')).toEqual([])
     expect(report.warnings.filter((f) => f.rule !== 'environment')).toEqual([])
   })
-  it('warns, without blocking, about a wire drawn over breadboard holes it does not use, naming the wire', async () => {
+  /** The laid-out LED sheet with BT1 +'s wire drawn by hand through c3-top hole 0, and with `busy` another wire ending there. */
+  const overC3 = async (busy: boolean) => {
     const dir = await laidOut()
     edit(dir, (s) => {
       const v = validateDiagram(s)
@@ -259,14 +260,23 @@ describe('circuitoon gate', () => {
       const far = worldHoles(bb, v.diagram.modules[bb.module]).find((g) => g.name === 'c3-top')!.at[0]
       const w = s.connections.find((c) => (c.from as { part: string }).part === 'BT1')!
       w.route = [[far.x, far.y]]
+      if (busy) s.connections.push({ uid: 'x', from: { part: 'BB1', pin: 'c3-top', hole: 0 }, to: { part: 'BB1', pin: 'c3-top', hole: 4 }, routing: true })
     })
-    const { code, report } = await runGate(readFileSync(join(dir, 'sheet.json')), { sheetPath: 'sheet.json', outDir: join(dir, 'out'), io: quietIo(dir) })
+    return runGate(readFileSync(join(dir, 'sheet.json')), { sheetPath: 'sheet.json', outDir: join(dir, 'out'), io: quietIo(dir) })
+  }
+  it('warns, without blocking, about a wire drawn over a used breadboard hole it does not use, naming the wire', async () => {
+    const { code, report } = await overC3(true)
     expect(report.blocking).toEqual([])
     expect(code).toBe(EXIT.environment)
     const over = report.warnings.filter((f) => f.rule === 'wire-over-holes')
     expect(over).toHaveLength(1)
     expect(over[0].message).toMatch(/^The wire BT1 \+ to BB1 c\d+-top hole \d runs over breadboard holes/)
     expect(over[0].wires).toHaveLength(1)
+  })
+  it('does not warn about a wire drawn over empty breadboard holes (Ruling C1)', async () => {
+    const { report } = await overC3(false)
+    expect(report.blocking).toEqual([])
+    expect(report.warnings.filter((f) => f.rule === 'wire-over-holes')).toEqual([])
   })
   it('blocks a mounted part that no longer seats on its board', async () => {
     const dir = await laidOut()

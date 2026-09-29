@@ -6,7 +6,7 @@ import { type Diagram, type Endpoint, computeRoutes, resolveEndpoint, serializeD
 import { type Pt, type Rect, bodyRect, worldHoles } from '../format/geometry.ts'
 import { isBoard, layoutModule } from '../format/module.ts'
 import { annotationRect } from '../render/annotationGeometry.ts'
-import { mountIssues, plugsOf } from '../format/breadboard.ts'
+import { coveredHoles, mountIssues, plugsOf } from '../format/breadboard.ts'
 import { libraryLookup } from './catalog.ts'
 import { layoutNetlist } from './layout.ts'
 import { reportText } from './readability.ts'
@@ -255,18 +255,26 @@ describe('layoutNetlist', () => {
     expect(d.connections.filter((c) => r.value.netOfWire.get(c.uid) === 'LED_A')).toEqual([])
   })
   // Fix round 1: a wire drawn over a hole reads as plugged in there.
-  it('never runs a wire over a hole of a strip it does not end in', () => {
-    for (const raw of [ledNetlist(), tiltSensors(), esp([{ ref: 'RAIL1', module: 'power-rail-strip' }])]) {
+  // Ruling C1: a wire may lie flat over empty holes, but never over one in use (a wire end, a leg, or
+  // a hole under a part's body) of a strip it does not end in: drawn there it reads as plugged in.
+  it('never runs a wire over a used hole of a strip it does not end in', () => {
+    for (const raw of [ledNetlist(), tiltSensors(), esp([{ ref: 'RAIL1', module: 'power-rail-strip' }]), divider()]) {
       const r = layoutNetlist(raw)
       if (!r.ok) throw new Error(r.errors.join('\n'))
       const d = r.value.diagram
       const routes = computeRoutes(d)
       const legs = new Map(plugsOf(d).map((p) => [`${p.part} ${p.pin}`, `${p.board} ${p.group}`]))
       const stripOf = (e: Endpoint) => legs.get(`${e.part} ${e.pin}`) ?? `${e.part} ${e.pin}`
+      const used = new Set([
+        ...plugsOf(d).map((p) => `${p.board} ${p.group} ${p.hole}`),
+        ...coveredHoles(d).map((c) => `${c.board} ${c.group} ${c.hole}`),
+        ...d.connections.flatMap((c) => [c.from, c.to]).filter((e) => e.hole !== undefined).map((e) => `${e.part} ${e.pin} ${e.hole}`),
+      ])
       const holes = d.parts.flatMap((p) => {
         const m = d.modules[p.module]
-        return isBoard(m) ? worldHoles(p, m).flatMap((g) => g.at.map((at) => ({ strip: `${p.uid} ${g.name}`, at }))) : []
+        return isBoard(m) ? worldHoles(p, m).flatMap((g) => g.at.flatMap((at, i) => (used.has(`${p.uid} ${g.name} ${i}`) ? [{ strip: `${p.uid} ${g.name}`, at }] : []))) : []
       })
+      expect(holes.length).toBeGreaterThan(0)
       const over: string[] = []
       for (const c of d.connections) {
         const own = new Set([stripOf(c.from), stripOf(c.to)])
