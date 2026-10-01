@@ -29,12 +29,14 @@ export interface ReadabilityReport {
 export function overlaps(d: Diagram): { body: string[]; caption: string[] } {
   const parts = d.parts.filter((p) => moduleOf(d, p.module)).sort((a, b) => naturalCompare(a.uid, b.uid))
   // A net label's body is its drawn flag, so labels on neighbouring header pins never count as overlapping.
-  const body = (p: PartInstance) => {
-    const m = moduleOf(d, p.module)!
-    return isNetLabel(m) ? flagRect(p, m, true) : bodyRect(p, layoutModule(m))
-  }
   const seated = seatedLabels(d)
-  const caption = (p: PartInstance) => placedCaptionBox(p, moduleOf(d, p.module)!, seated.get(p.uid))
+  // Each part's rectangles once (the pair loops below would otherwise rebuild them n times).
+  const rects = new Map(parts.map((p) => {
+    const m = moduleOf(d, p.module)!
+    return [p, { body: isNetLabel(m) ? flagRect(p, m, true) : bodyRect(p, layoutModule(m)), caption: placedCaptionBox(p, m, seated.get(p.uid)) }]
+  }))
+  const body = (p: PartInstance) => rects.get(p)!.body
+  const caption = (p: PartInstance) => rects.get(p)!.caption
   const own = (a: PartInstance, b: PartInstance) => a.mount?.board === b.uid || b.mount?.board === a.uid
   const bodies: string[] = []
   const captions: string[] = []

@@ -22,6 +22,8 @@ import { readabilityFindings } from './readabilityWarnings.ts'
 import { naturalCompare } from './order.ts'
 
 export const SPACINGS = [30, 60, 90]
+/** How many placements with more spacing labels that found no room get (each costs a full placement; the layout stays inside its 2 s budget). */
+export const LABEL_RETRIES = 1
 /** The module a repeat block's local distribution strips use (amendment A18.1). */
 export const RAIL_MODULE = 'power-rail-strip'
 /** The module the layout's net labels use. */
@@ -69,6 +71,9 @@ export function layoutNetlist(raw: unknown, opts: { library?: ModuleLookup; keep
       if (!rails) continue
       return { ok: false, stage: 'layout', errors: real.errors }
     }
+    // Labels that found no room get another try with more spacing (before any routing, which is the
+    // costly part); the last placement wires them to their nets' other labels.
+    if (real.value.unlabelled.length && i < LABEL_RETRIES) continue attempt
     const labelled = real.value.labels.length && labelModule
       ? { parts: [...base.parts, ...real.value.labels], modules: { ...base.modules, [LABEL_MODULE]: labelModule } }
       : {}
@@ -94,8 +99,6 @@ export function layoutNetlist(raw: unknown, opts: { library?: ModuleLookup; keep
       }
     }
     if (blocked.length) continue attempt
-    // Labels that found no room get another try with more spacing; the last placement wires them.
-    if (real.value.unlabelled.length && i < SPACINGS.length - 1) continue attempt
     const findings = verifyDiagram(diagram, library).filter((f) => f.severity === 'error')
     if (findings.length) return { ok: false, stage: 'layout', errors: findings.map((f) => `verify ${f.rule}: ${f.message}`) }
     const report = { ...readability(diagram, routes, real.value.netOfWire), readabilityWarnings: readabilityFindings(diagram, routes).length, labels: { mode, nets: real.value.labelled, unplaced: [...new Set(real.value.unlabelled)] } }

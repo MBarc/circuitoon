@@ -9,9 +9,9 @@ Each sheet is laid out with `layout --keep` from its partial, with net labels (`
 | Sheet | Holds | Crossings before | **Crossings now** | Readability warnings before | **now** | Sheet before | Sheet now |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | `1-main` | Power, ESP32, displays, OLED, SD card, and J1 to J3 (one JST-XH 4-pin per bank) | 297 | **45** | 79 | **10** | 800 x 1020 | 836 x 1046 |
-| `2-bank-a` | J1, MCP23017 U2 at 0x20, balls 1 to 14 | 490 | **14** | 156 | **1** | 1490 x 967 | 1050 x 1241 |
-| `3-bank-b` | J1, MCP23017 U3 at 0x21, balls 15 to 28 | 519 | **13** | 156 | **1** | 1490 x 967 | 1050 x 1241 |
-| `4-bank-c` | J1, MCP23017 U4 at 0x22, balls 29 to 42 | 524 | **12** | 154 | **1** | 1490 x 967 | 1050 x 1241 |
+| `2-bank-a` | J1, MCP23017 U2 at 0x20, balls 1 to 14 | 490 | **20** | 156 | **1** | 1490 x 967 | 990 x 1111 |
+| `3-bank-b` | J1, MCP23017 U3 at 0x21, balls 15 to 28 | 519 | **19** | 156 | **1** | 1490 x 967 | 990 x 1111 |
+| `4-bank-c` | J1, MCP23017 U4 at 0x22, balls 29 to 42 | 524 | **18** | 154 | **1** | 1490 x 967 | 990 x 1111 |
 
 Every sheet has body overlaps 0, caption overlaps 0 and blocked nets none, and passes `gate`.
 

@@ -70,11 +70,59 @@ const CANDIDATES = LABEL_STUBS.flatMap((s) => SIDE_OFFSETS.map((o) => ({ s, o })
 /** A part with this many labelled pins or pads on one side gets its labels as one ordered row (`LabelPlacer.row`). */
 export const FANOUT_MIN = 4
 
+/**
+ * Rectangles (each with the part it belongs to, if any) bucketed on a 100 px grid, so a test looks
+ * only at its neighbours, and truncatable back to an earlier length for a rollback.
+ */
+class Bucketed {
+  private items: { r: Rect; part?: string }[] = []
+  private cells = new Map<string, number[]>()
+  private keys(r: Rect): string[] {
+    const out: string[] = []
+    for (let cy = Math.floor(r.y / 100); cy <= Math.floor((r.y + r.h) / 100); cy++)
+      for (let cx = Math.floor(r.x / 100); cx <= Math.floor((r.x + r.w) / 100); cx++) out.push(`${cx},${cy}`)
+    return out
+  }
+  get length() {
+    return this.items.length
+  }
+  push(...add: { r: Rect; part?: string }[]) {
+    for (const it of add) {
+      const i = this.items.length
+      this.items.push(it)
+      for (const k of this.keys(it.r)) {
+        const list = this.cells.get(k)
+        if (list) list.push(i)
+        else this.cells.set(k, [i])
+      }
+    }
+  }
+  truncate(n: number) {
+    if (n >= this.items.length) return
+    for (const it of this.items.slice(n))
+      for (const k of this.keys(it.r)) {
+        const list = this.cells.get(k)!
+        while (list.length && list[list.length - 1] >= n) list.pop()
+      }
+    this.items.length = n
+  }
+  /** Whether `r` overlaps an entry not owned by `skip`. */
+  hits(r: Rect, skip?: string): boolean {
+    for (const k of this.keys(r))
+      for (const i of this.cells.get(k) ?? []) {
+        const it = this.items[i]
+        if (it.part !== undefined && it.part === skip) continue
+        if (intersects(r, it.r)) return true
+      }
+    return false
+  }
+}
+
 export class LabelPlacer {
   /** Everything a flag must stay off: bodies grown for their stubs, captions, pin names, notes, labels placed. */
-  private flagsOff: Rect[] = []
+  private flagsOff = new Bucketed()
   /** What a stub must not cross: bodies (boards aside), captions, notes, labels placed and their stubs. */
-  private stubsOff: { r: Rect; part?: string }[] = []
+  private stubsOff = new Bucketed()
   private used = new Set<string>()
   private seq = 0
 
@@ -89,7 +137,7 @@ export class LabelPlacer {
       this.used.add(p.uid)
       const body = bodyRect(p, layoutModule(pm))
       const caption = placedCaptionBox(p, pm, seated.get(p.uid))
-      this.flagsOff.push(grow(body, STUB_ROOM), caption, ...tipLabelBoxes(p, pm))
+      this.flagsOff.push({ r: grow(body, STUB_ROOM) }, { r: caption }, ...tipLabelBoxes(p, pm).map((r) => ({ r })))
       if (!isBoard(pm)) this.stubsOff.push({ r: body, part: p.uid })
       this.stubsOff.push({ r: caption })
     }
@@ -97,7 +145,7 @@ export class LabelPlacer {
       // A note's box, and a group frame's name tab (its border may be crossed).
       const r = a.type === 'text' ? annotationRect(a) : a.label ? frameTab(a) : null
       if (!r) continue
-      this.flagsOff.push(r)
+      this.flagsOff.push({ r })
       this.stubsOff.push({ r })
     }
   }
@@ -130,11 +178,11 @@ export class LabelPlacer {
       const tip = inside ? elbow : { x: elbow.x + side.x * o, y: elbow.y + side.y * o }
       const part: PartInstance = { uid: '', designator: '', module: this.m.id, x: tip.x - pin.end.x, y: tip.y - pin.end.y, rotation, values: { net: name } }
       const flag = flagRect(part, this.m, true)
-      if (this.flagsOff.some((r) => intersects(flag, r))) continue
+      if (this.flagsOff.hits(flag)) continue
       // From a pad or a hole, only the part of the stub outside the body counts: inside it the wire
       // crosses the part's own art (or its own board) whichever way it goes.
       const stub = [line(exit, elbow), line(elbow, tip)]
-      if (this.stubsOff.some((x) => x.part !== opts.own && stub.some((r) => intersects(r, x.r)))) continue
+      if (stub.some((r) => this.stubsOff.hits(r, opts.own))) continue
       return { part, tip, elbow, base: exit }
     }
     return null
@@ -161,11 +209,11 @@ export class LabelPlacer {
         return { part, tip, elbow: tip, base: slot }
       })
       const flags = spots.map((x) => flagRect(x.part, this.m, true))
-      if (flags.some((f) => this.flagsOff.some((r) => intersects(f, r)))) continue
-      if (spots.some((x) => this.stubsOff.some((o) => o.part !== own && intersects(line(x.base, x.tip), o.r)))) continue
+      if (flags.some((f) => this.flagsOff.hits(f))) continue
+      if (spots.some((x) => this.stubsOff.hits(line(x.base, x.tip), own))) continue
       for (const x of spots) {
         const f = flagRect(x.part, this.m, true)
-        this.flagsOff.push(f, line(x.base, x.tip))
+        this.flagsOff.push({ r: f }, { r: line(x.base, x.tip) })
         this.stubsOff.push({ r: f }, { r: line(x.base, x.tip) })
       }
       return spots
@@ -178,8 +226,8 @@ export class LabelPlacer {
     return { flags: this.flagsOff.length, stubs: this.stubsOff.length, seq: this.seq, used: [...this.used] }
   }
   rollback(m: ReturnType<LabelPlacer['mark']>) {
-    this.flagsOff.length = m.flags
-    this.stubsOff.length = m.stubs
+    this.flagsOff.truncate(m.flags)
+    this.stubsOff.truncate(m.stubs)
     this.seq = m.seq
     this.used = new Set(m.used)
   }
@@ -192,7 +240,7 @@ export class LabelPlacer {
     this.used.add(uid)
     const part = { ...s.part, uid, designator: uid }
     const flag = flagRect(part, this.m, true)
-    this.flagsOff.push(flag, line(s.base, s.elbow), line(s.elbow, s.tip))
+    this.flagsOff.push({ r: flag }, { r: line(s.base, s.elbow) }, { r: line(s.elbow, s.tip) })
     this.stubsOff.push({ r: flag }, { r: line(s.base, s.elbow) }, { r: line(s.elbow, s.tip) })
     return part
   }

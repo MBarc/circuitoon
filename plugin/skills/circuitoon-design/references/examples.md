@@ -14,7 +14,7 @@ Every example is laid out with the default `--labels auto`. "Before" is the same
 | `esp32-bme280.netlist.json` | Two-pin nets wired pin to pin, so no breadboard is needed. SDA and SCL run between groups, so they are drawn as net labels. Also a group and a note. | 5 | 1 | 1 / 0 | 310 x 341 |
 | `battery-switch.netlist.json` | A power chain through a switch. The IP5306's B- and 5V- are joined inside the part and wired as one node. GND has three endpoints, so it is drawn with labels. | 3 | 2 | 0 / 0 | 490 x 447 |
 | `tilt-sensors-8.netlist.json` | A `repeat` with explicit bindings (8 copies) and a shared ground. With net labels each switch's ground is a GND label at its pin, and its signal a label at the switch and one at its ESP32 pin; with `--labels none` each block of copies gets local rail strips (`DP1` to `DP3`) instead. `render --focus tilt_1` frames one copy. | 44 | 11 | 11 / 0 | 950 x 555 |
-| `spirit-typewriter/` | A large design split into four sheets along real connectors. Each sheet is laid out from a partial with `layout --keep`. See its `README.md`. | 297, 490, 519, 524 | 45, 14, 13, 12 | 79, 156, 156, 154 / 10, 1, 1, 1 | see README |
+| `spirit-typewriter/` | A large design split into four sheets along real connectors. Each sheet is laid out from a partial with `layout --keep`. See its `README.md`. | 297, 490, 519, 524 | 45, 20, 19, 18 | 79, 156, 156, 154 / 10, 1, 1, 1 | see README |
 
 ## Warnings
 

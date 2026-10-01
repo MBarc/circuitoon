@@ -61477,11 +61477,55 @@ var CANDIDATES = LABEL_STUBS.flatMap((s) => SIDE_OFFSETS.map((o) => ({
 	s,
 	o
 }))).sort((a, b) => a.s + 1.5 * Math.abs(a.o) - (b.s + 1.5 * Math.abs(b.o)));
+/**
+* Rectangles (each with the part it belongs to, if any) bucketed on a 100 px grid, so a test looks
+* only at its neighbours, and truncatable back to an earlier length for a rollback.
+*/
+var Bucketed = class {
+	items = [];
+	cells = /* @__PURE__ */ new Map();
+	keys(r) {
+		const out = [];
+		for (let cy = Math.floor(r.y / 100); cy <= Math.floor((r.y + r.h) / 100); cy++) for (let cx = Math.floor(r.x / 100); cx <= Math.floor((r.x + r.w) / 100); cx++) out.push(`${cx},${cy}`);
+		return out;
+	}
+	get length() {
+		return this.items.length;
+	}
+	push(...add) {
+		for (const it of add) {
+			const i = this.items.length;
+			this.items.push(it);
+			for (const k of this.keys(it.r)) {
+				const list = this.cells.get(k);
+				if (list) list.push(i);
+				else this.cells.set(k, [i]);
+			}
+		}
+	}
+	truncate(n) {
+		if (n >= this.items.length) return;
+		for (const it of this.items.slice(n)) for (const k of this.keys(it.r)) {
+			const list = this.cells.get(k);
+			while (list.length && list[list.length - 1] >= n) list.pop();
+		}
+		this.items.length = n;
+	}
+	/** Whether `r` overlaps an entry not owned by `skip`. */
+	hits(r, skip) {
+		for (const k of this.keys(r)) for (const i of this.cells.get(k) ?? []) {
+			const it = this.items[i];
+			if (it.part !== void 0 && it.part === skip) continue;
+			if (intersects(r, it.r)) return true;
+		}
+		return false;
+	}
+};
 var LabelPlacer = class {
 	/** Everything a flag must stay off: bodies grown for their stubs, captions, pin names, notes, labels placed. */
-	flagsOff = [];
+	flagsOff = new Bucketed();
 	/** What a stub must not cross: bodies (boards aside), captions, notes, labels placed and their stubs. */
-	stubsOff = [];
+	stubsOff = new Bucketed();
 	used = /* @__PURE__ */ new Set();
 	seq = 0;
 	m;
@@ -61494,7 +61538,7 @@ var LabelPlacer = class {
 			this.used.add(p.uid);
 			const body = bodyRect(p, layoutModule(pm));
 			const caption = placedCaptionBox(p, pm, seated.get(p.uid));
-			this.flagsOff.push(grow(body, STUB_ROOM), caption, ...tipLabelBoxes(p, pm));
+			this.flagsOff.push({ r: grow(body, STUB_ROOM) }, { r: caption }, ...tipLabelBoxes(p, pm).map((r) => ({ r })));
 			if (!isBoard(pm)) this.stubsOff.push({
 				r: body,
 				part: p.uid
@@ -61504,7 +61548,7 @@ var LabelPlacer = class {
 		for (const a of [...d.annotations ?? [], ...extra.annotations ?? []]) {
 			const r = a.type === "text" ? annotationRect(a) : a.label ? frameTab(a) : null;
 			if (!r) continue;
-			this.flagsOff.push(r);
+			this.flagsOff.push({ r });
 			this.stubsOff.push({ r });
 		}
 	}
@@ -61562,9 +61606,8 @@ var LabelPlacer = class {
 				values: { net: name }
 			};
 			const flag = flagRect(part, this.m, true);
-			if (this.flagsOff.some((r) => intersects(flag, r))) continue;
-			const stub = [line(exit, elbow), line(elbow, tip)];
-			if (this.stubsOff.some((x) => x.part !== opts.own && stub.some((r) => intersects(r, x.r)))) continue;
+			if (this.flagsOff.hits(flag)) continue;
+			if ([line(exit, elbow), line(elbow, tip)].some((r) => this.stubsOff.hits(r, opts.own))) continue;
 			return {
 				part,
 				tip,
@@ -61614,11 +61657,11 @@ var LabelPlacer = class {
 					base: slot
 				};
 			});
-			if (spots.map((x) => flagRect(x.part, this.m, true)).some((f) => this.flagsOff.some((r) => intersects(f, r)))) continue;
-			if (spots.some((x) => this.stubsOff.some((o) => o.part !== own && intersects(line(x.base, x.tip), o.r)))) continue;
+			if (spots.map((x) => flagRect(x.part, this.m, true)).some((f) => this.flagsOff.hits(f))) continue;
+			if (spots.some((x) => this.stubsOff.hits(line(x.base, x.tip), own))) continue;
 			for (const x of spots) {
 				const f = flagRect(x.part, this.m, true);
-				this.flagsOff.push(f, line(x.base, x.tip));
+				this.flagsOff.push({ r: f }, { r: line(x.base, x.tip) });
 				this.stubsOff.push({ r: f }, { r: line(x.base, x.tip) });
 			}
 			return spots;
@@ -61635,8 +61678,8 @@ var LabelPlacer = class {
 		};
 	}
 	rollback(m) {
-		this.flagsOff.length = m.flags;
-		this.stubsOff.length = m.stubs;
+		this.flagsOff.truncate(m.flags);
+		this.stubsOff.truncate(m.stubs);
 		this.seq = m.seq;
 		this.used = new Set(m.used);
 	}
@@ -61653,7 +61696,7 @@ var LabelPlacer = class {
 			designator: uid
 		};
 		const flag = flagRect(part, this.m, true);
-		this.flagsOff.push(flag, line(s.base, s.elbow), line(s.elbow, s.tip));
+		this.flagsOff.push({ r: flag }, { r: line(s.base, s.elbow) }, { r: line(s.elbow, s.tip) });
 		this.stubsOff.push({ r: flag }, { r: line(s.base, s.elbow) }, { r: line(s.elbow, s.tip) });
 		return part;
 	}
@@ -63183,12 +63226,16 @@ function colorByRole(intent, d, netOfWire) {
 /** Every overlapping pair on the sheet, as "R1 and R2" (bodies) or "R1 caption and R2 body". */
 function overlaps(d) {
 	const parts = d.parts.filter((p) => moduleOf(d, p.module)).sort((a, b) => naturalCompare(a.uid, b.uid));
-	const body = (p) => {
-		const m = moduleOf(d, p.module);
-		return isNetLabel(m) ? flagRect(p, m, true) : bodyRect(p, layoutModule(m));
-	};
 	const seated = seatedLabels(d);
-	const caption = (p) => placedCaptionBox(p, moduleOf(d, p.module), seated.get(p.uid));
+	const rects = new Map(parts.map((p) => {
+		const m = moduleOf(d, p.module);
+		return [p, {
+			body: isNetLabel(m) ? flagRect(p, m, true) : bodyRect(p, layoutModule(m)),
+			caption: placedCaptionBox(p, m, seated.get(p.uid))
+		}];
+	}));
+	const body = (p) => rects.get(p).body;
+	const caption = (p) => rects.get(p).caption;
 	const own = (a, b) => a.mount?.board === b.uid || b.mount?.board === a.uid;
 	const bodies = [];
 	const captions = [];
@@ -63329,6 +63376,7 @@ function layoutNetlist(raw, opts = {}) {
 				errors: real.errors
 			};
 		}
+		if (real.value.unlabelled.length && i < 1) continue attempt;
 		const labelled = real.value.labels.length && labelModule ? {
 			parts: [...base.parts, ...real.value.labels],
 			modules: {
@@ -63362,7 +63410,6 @@ function layoutNetlist(raw, opts = {}) {
 			};
 		}
 		if (blocked.length) continue attempt;
-		if (real.value.unlabelled.length && i < SPACINGS.length - 1) continue attempt;
 		const findings = verifyDiagram(diagram, library).filter((f) => f.severity === "error");
 		if (findings.length) return {
 			ok: false,
