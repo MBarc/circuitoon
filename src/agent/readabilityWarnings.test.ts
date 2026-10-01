@@ -69,12 +69,54 @@ describe('stubs out to net labels', () => {
     const lab = (uid: string, net: string, y: number): PartInstance => ({ uid, designator: uid, module: 'net-label', x: 208, y, values: { net } })
     const row: Diagram = {
       format: 'circuitoon-diagram/1', title: 't', modules: { two, box, 'net-label': label },
-      parts: [part('r1', 'two', 0, 0), part('r3', 'two', 0, 10), lab('a', 'A', 10), lab('b', 'B', 20)],
-      connections: [wire('w1', 'r1.R', 'a.NET', [[60, 20], [180, 20]]), wire('w2', 'r3.R', 'b.NET', [[60, 30], [180, 30]])],
+      // Short stubs: each label's pin tip 20 px out from its pin.
+      parts: [part('r1', 'two', 0, 0), part('r3', 'two', 0, 10), { ...lab('a', 'A', 10), x: 76 }, { ...lab('b', 'B', 20), x: 76 }],
+      connections: [wire('w1', 'r1.R', 'a.NET'), wire('w2', 'r3.R', 'b.NET')],
     }
     expect(readabilityFindings(row).filter((f) => f.rule === 'wires-crowded')).toEqual([])
     // The same two wires to parts, not labels, are crowded.
     const parts: Diagram = { ...row, parts: [part('r1', 'two', 0, 0), part('r3', 'two', 0, 10), part('r2', 'two', 200, 0), part('r4', 'two', 200, 10)], connections: [wire('w1', 'r1.R', 'r2.L', [[60, 20], [180, 20]]), wire('w2', 'r3.R', 'r4.L', [[60, 30], [180, 30]])] }
     expect(readabilityFindings(parts).filter((f) => f.rule === 'wires-crowded')).toHaveLength(1)
+  })
+})
+
+describe('readability gaps (review)', () => {
+  const label: ModuleDef = { format: 'circuitoon-module/1', id: 'net-label', name: 'Net label', netLabel: true, pins: [{ name: 'NET', side: 'left' }], size: { w: 5, h: 2 } }
+  const lab = (uid: string, net: string, x: number, y: number): PartInstance => ({ uid, designator: uid, module: 'net-label', x, y, values: { net } })
+  const withLabels = (parts: PartInstance[], connections: Connection[]): Diagram => ({ format: 'circuitoon-diagram/1', title: 't', modules: { two, box, 'net-label': label }, parts, connections })
+  it('long wires to labels side by side are crowded; only short stubs are exempt', () => {
+    // Two 140 px wires to labels a grid step apart: not stubs.
+    const d = withLabels([part('r1', 'two', 0, 0), part('r3', 'two', 0, 10), lab('a', 'A', 228, 10), lab('b', 'B', 228, 20)],
+      [wire('w1', 'r1.R', 'a.NET', [[60, 20], [200, 20]]), wire('w2', 'r3.R', 'b.NET', [[60, 30], [200, 30]])])
+    expect(readabilityFindings(d).filter((f) => f.rule === 'wires-crowded')).toHaveLength(1)
+  })
+  it('a wire running over a part body it does not connect to is reported', () => {
+    // U1's body spans x 80..180, y 0..40; the hand route runs through it at y 20.
+    const d = sheet([part('r1', 'two', 0, 0), part('r2', 'two', 260, 0), part('u1', 'box', 80, 0)], [wire('w1', 'r1.R', 'r2.L', [[60, 20], [230, 20]])])
+    const f = readabilityFindings(d).filter((x) => x.rule === 'wire-hugs-part')
+    expect(f.map((x) => x.parts)).toEqual([['u1']])
+    expect(f[0].message).toMatch(/runs over U1's body/)
+  })
+  it('a wire over a DIP\'s pin names is label-covered; one to that DIP\'s own pin is not', async () => {
+    const { load } = await import('../format/builtinModules.testing.ts')
+    const dip = load('mcp23017-dip28')
+    const { tipLabelBoxes } = await import('../render/captionBox.ts')
+    const u = { uid: 'u9', designator: 'U9', module: 'mcp23017-dip28', x: 0, y: 0 }
+    const box0 = tipLabelBoxes(u, dip)[0]
+    const y = box0.y + box0.h / 2
+    const d: Diagram = { format: 'circuitoon-diagram/1', title: 't', modules: { two, 'mcp23017-dip28': dip }, parts: [part('r1', 'two', -200, y - 20), part('r2', 'two', 400, y - 20), u],
+      connections: [wire('w1', 'r1.R', 'r2.L', [[-140, y], [380, y]])] }
+    const f = readabilityFindings(d).filter((x) => x.rule === 'label-covered' && x.parts[0] === 'u9')
+    expect(f.some((x) => /U9's pin names/.test(x.message))).toBe(true)
+  })
+  it('crossings with the wire\'s own net are not counted', () => {
+    const parts = [part('a', 'two', -60, 100), part('b', 'two', 400, 100)]
+    const wires = [wire('long', 'a.R', 'b.L')]
+    for (let i = 0; i <= CROSSINGS_MAX; i++) {
+      parts.push(part(`t${i}`, 'two', 40 + i * 30, 0))
+      // Each crossing wire is on the long wire's net: it ends on b.L too.
+      wires.push(wire(`x${i}`, `t${i}.R`, 'b.L', [[96 + i * 30, 10], [96 + i * 30, 210], [370, 210], [370, 120]]))
+    }
+    expect(readabilityFindings(sheet(parts, wires)).filter((f) => f.rule === 'crossings-high' && f.wires[0] === 'long')).toEqual([])
   })
 })

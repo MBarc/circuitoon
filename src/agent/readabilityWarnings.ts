@@ -3,10 +3,10 @@
 // - wires-crowded: two wires of different nets side by side within one grid step over more than
 //   CROWDED_RUN px (a row of stubs out to net labels at pin pitch is meant that way, so only two drawn
 //   on top of each other count);
-// - wire-hugs-part: a wire within HUG px of a body it does not connect to (boards excluded: wires
-//   lie on breadboards by design);
-// - label-covered: a wire or another part over a caption or a net label's flag;
-// - crossings-high: a wire that crosses more than CROSSINGS_MAX other wires.
+// - wire-hugs-part: a wire within HUG px of, or over, a body it does not connect to (boards excluded:
+//   wires lie on breadboards by design);
+// - label-covered: a wire or another part over a caption, a net label's flag or a DIP's pin names;
+// - crossings-high: a wire that crosses more than CROSSINGS_MAX wires of other nets.
 // The editor does not show them: a hand-drawn sheet's header fans are crowded by nature, and these
 // need every route on every edit. Pure.
 import { type Diagram, type Endpoint, type PartInstance, type Routes, computeRoutes, moduleOf, wirePaths } from '../format/diagram.ts'
@@ -15,7 +15,7 @@ import { isNetLabel, layoutModule } from '../format/module.ts'
 import { endpointName } from '../format/checks.ts'
 import { flagRect, labelName } from '../format/netLabels.ts'
 import { netlist, nodeKey } from '../format/netlist.ts'
-import { placedCaptionBox } from '../render/captionBox.ts'
+import { placedCaptionBox, tipLabelBoxes } from '../render/captionBox.ts'
 import { seatedLabels } from '../format/seatedLabels.ts'
 import { naturalCompare } from './order.ts'
 
@@ -26,6 +26,8 @@ export const CROWDED_RUN = 40
 export const HUG = 5
 /** A wire crossing more than this many other wires is reported. */
 export const CROSSINGS_MAX = 8
+/** A wire to a net label shorter than this (px) is a layout stub; a row of them is not crowded. */
+export const LABEL_STUB = 30
 
 export interface ReadabilityFinding {
   id: string
@@ -81,9 +83,11 @@ export function readabilityFindings(d: Diagram, routes: Routes = computeRoutes(d
   }
   const segs = drawn.flatMap((w) => segmentsOf(w.conn.uid, w.points))
   const labelParts = new Set(parts0(d).filter((p) => isNetLabel(moduleOf(d, p.module))).map((p) => p.uid))
-  const toLabel = (uid: string) => {
+  const lengthOf = new Map(drawn.map((w) => [w.conn.uid, w.points.slice(1).reduce((n, p, i) => n + Math.abs(p.x - w.points[i].x) + Math.abs(p.y - w.points[i].y), 0)]))
+  /** A short stub out to a net label (under LABEL_STUB px): a fan-out row of them is meant that way. */
+  const stub = (uid: string) => {
     const c = byUid.get(uid)!
-    return labelParts.has(c.from.part) || labelParts.has(c.to.part)
+    return (labelParts.has(c.from.part) || labelParts.has(c.to.part)) && (lengthOf.get(uid) ?? 0) < LABEL_STUB
   }
   const hs = segs.filter((s) => s.h)
   const vs = segs.filter((s) => !s.h)
@@ -111,7 +115,7 @@ export function readabilityFindings(d: Diagram, routes: Routes = computeRoutes(d
         if (s.wire === t.wire || Math.abs(s.at - t.at) > GRID_STEP || netOf(s.wire) === netOf(t.wire)) continue
         // A row of stubs out to net labels at the pins' own pitch is laid out that way on purpose; only
         // two of them drawn on top of each other are crowded.
-        if (s.at !== t.at && toLabel(s.wire) && toLabel(t.wire)) continue
+        if (s.at !== t.at && stub(s.wire) && stub(t.wire)) continue
         const run = Math.min(s.hi, t.hi) - Math.max(s.lo, t.lo)
         if (run <= CROWDED_RUN) continue
         const [a, b] = [s.wire, t.wire].sort(naturalCompare)
@@ -135,12 +139,17 @@ export function readabilityFindings(d: Diagram, routes: Routes = computeRoutes(d
   for (const s of segs) {
     const c = byUid.get(s.wire)!
     for (const { p, r } of bodies) {
-      if (c.from.part === p.uid || c.to.part === p.uid || inside(s, r) > 0 || inside(s, grow(r, HUG)) < GRID_STEP) continue
+      if (c.from.part === p.uid || c.to.part === p.uid) continue
+      // Over the body (a hand-shaped wire, or one nudged there) reads as connected even more than beside it.
+      const over = inside(s, r) > 0
+      if (!over && inside(s, grow(r, HUG)) < GRID_STEP) continue
       const key = `${s.wire}|${p.uid}`
       if (hugged.has(key)) continue
       hugged.add(key)
       out.push({ id: `wire-hugs-part|${key}`, rule: 'wire-hugs-part', severity: 'warning', parts: [p.uid], pins: [], wires: [s.wire],
-        message: `The wire ${name(s.wire)} runs within ${HUG} px of ${p.designator}'s body, which it does not connect to, so it reads as touching it. Move the wire or the part so at least ${GRID_STEP} px of paper shows between them.` })
+        message: over
+          ? `The wire ${name(s.wire)} runs over ${p.designator}'s body, which it does not connect to, so it reads as connected there. Move the wire or the part so it runs clear of the body.`
+          : `The wire ${name(s.wire)} runs within ${HUG} px of ${p.designator}'s body, which it does not connect to, so it reads as touching it. Move the wire or the part so at least ${GRID_STEP} px of paper shows between them.` })
     }
   }
 
@@ -148,13 +157,20 @@ export function readabilityFindings(d: Diagram, routes: Routes = computeRoutes(d
   const seated = seatedLabels(d)
   const boxes = parts.map((p) => {
     const m = moduleOf(d, p.module)!
-    return { p, label: isNetLabel(m), r: isNetLabel(m) ? flagRect(p, m, true) : placedCaptionBox(p, m, seated.get(p.uid)) }
+    return { p, kind: isNetLabel(m) ? 'label' : 'caption', r: isNetLabel(m) ? flagRect(p, m, true) : placedCaptionBox(p, m, seated.get(p.uid)) }
   })
-  const what = (b: { p: PartInstance; label: boolean }) => (b.label ? partName(b.p) : `${b.p.designator}'s caption`)
+  // Pin names printed past a DIP chip's pins: a wire over one could hide which pin is which.
+  const names = parts.flatMap((p) => tipLabelBoxes(p, moduleOf(d, p.module)!).map((r) => ({ p, kind: 'names', r })))
+  const what = (b: { p: PartInstance; kind: string }) => (b.kind === 'label' ? partName(b.p) : b.kind === 'names' ? `${b.p.designator}'s pin names` : `${b.p.designator}'s caption`)
   const covered = new Set<string>()
   for (const s of segs)
-    for (const b of boxes) {
+    for (const b of [...boxes, ...names]) {
       if (inside(s, b.r) <= 0) continue
+      // A wire to the chip itself leaves along its own pin, past that pin's name.
+      if (b.kind === 'names') {
+        const c = byUid.get(s.wire)!
+        if (c.from.part === b.p.uid || c.to.part === b.p.uid) continue
+      }
       const key = `${s.wire}|${b.p.uid}`
       if (covered.has(key)) continue
       covered.add(key)
@@ -173,7 +189,8 @@ export function readabilityFindings(d: Diagram, routes: Routes = computeRoutes(d
   const crossings = new Map<string, Set<string>>()
   for (const h of hs)
     for (const v of vs) {
-      if (h.wire === v.wire || !(v.at > h.lo && v.at < h.hi && h.at > v.lo && h.at < v.hi)) continue
+      // A crossing with the wire's own net joins nothing new; only other nets' wires count.
+      if (h.wire === v.wire || !(v.at > h.lo && v.at < h.hi && h.at > v.lo && h.at < v.hi) || netOf(h.wire) === netOf(v.wire)) continue
       for (const [a, b] of [[h.wire, v.wire], [v.wire, h.wire]]) {
         let set = crossings.get(a)
         if (!set) crossings.set(a, (set = new Set()))
