@@ -203,7 +203,10 @@ describe('circuitoon verify and check', () => {
     const out = JSON.parse(c.out)
     expect(schemaErrors(loadSchema('findings'), out)).toEqual([])
     expect(out.ok).toBe(true)
-    expect(out.findings.map((f: CliFinding) => `${f.severity} ${f.rule}`)).toEqual(['info battery-bank'])
+    // The hand-drawn sheet also has readability warnings (many crossings): never blocking.
+    const readable = new Set(['wires-crowded', 'wire-hugs-part', 'label-covered', 'crossings-high'])
+    expect(out.findings.filter((f: CliFinding) => !readable.has(f.rule)).map((f: CliFinding) => `${f.severity} ${f.rule}`)).toEqual(['info battery-bank'])
+    expect(out.findings.filter((f: CliFinding) => readable.has(f.rule)).every((f: CliFinding) => f.severity === 'warning')).toBe(true)
     const text = await cli(['check', 'sheet.json'], { cwd: dir })
     expect(text.code).toBe(0)
     expect(text.out).toContain('INFO battery-bank: BT1-BT4 form a parallel battery bank (4P, 3.7 V).')
@@ -215,5 +218,20 @@ describe('circuitoon verify and check', () => {
     expect(findingsText([f])).toBe('WARNING mount: m')
     expect(notCheckedText().split('\n')).toEqual(['Not checked:', ...NOT_CHECKED.map((n) => `  - ${n}`)])
     expect(uniqueIds([f, f, { ...f, id: 'mount|a#1' }]).map((x) => x.id)).toEqual(['mount|a', 'mount|a#1', 'mount|a#1#1'])
+  })
+})
+
+describe('readability warnings in check', () => {
+  it('lists a crowded pair of wires as a warning and still exits 0', async () => {
+    const dir = tempDir()
+    const two = { format: 'circuitoon-module/1', id: 'two', name: 'Two', pins: [{ name: 'L', side: 'left' }, { name: 'R', side: 'right' }] }
+    const p = (uid: string, x: number, y: number) => ({ uid, designator: uid.toUpperCase(), module: 'two', x, y })
+    const w = (uid: string, a: string, b: string, y: number) => ({ uid, from: { part: a, pin: 'R' }, to: { part: b, pin: 'L' }, route: [[60, y], [180, y]] })
+    writeFileSync(join(dir, 's.json'), JSON.stringify({ format: 'circuitoon-diagram/1', title: 't', modules: { two }, parts: [p('r1', 0, 0), p('r2', 200, 0), p('r3', 0, 10), p('r4', 200, 10)], connections: [w('w1', 'r1', 'r2', 20), w('w2', 'r3', 'r4', 30)] }))
+    const r = await cli(['check', 's.json', '--json'], { cwd: dir })
+    expect(r.code).toBe(0)
+    const out = JSON.parse(r.out)
+    expect(schemaErrors(loadSchema('findings'), out)).toEqual([])
+    expect(out.findings.filter((f: CliFinding) => f.rule === 'wires-crowded').map((f: CliFinding) => f.severity)).toEqual(['warning'])
   })
 })
