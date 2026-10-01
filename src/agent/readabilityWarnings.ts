@@ -1,5 +1,7 @@
 // Readability warnings for `check` and `gate` (never blocking): what makes a correct sheet hard to
 // follow. Read from the wires as drawn (wirePaths, after lane separation):
+// - wires-overlap: two wires (of any nets) lying on top of each other along one line for more than
+//   OVERLAP px, so neither can be traced (Ruling W1; never where both end at one point);
 // - wires-crowded: two wires of different nets side by side within one grid step over more than
 //   CROWDED_RUN px (a row of stubs out to net labels at pin pitch is meant that way, so only two drawn
 //   on top of each other count);
@@ -31,7 +33,9 @@ export const CROSSINGS_MAX = 8
 export const LABEL_STUB = 30
 
 /** Every rule a readability finding can have; while any is reported, a gate is not ready (Ruling W1). */
-export const READABILITY_RULES = ['wires-crowded', 'wire-hugs-part', 'label-covered', 'crossings-high', 'wire-over-board'] as const
+export const READABILITY_RULES = ['wires-overlap', 'wires-crowded', 'wire-hugs-part', 'label-covered', 'crossings-high', 'wire-over-board'] as const
+/** Two wires sharing a run longer than this (px) on one line are drawn on top of each other. */
+export const OVERLAP = 2
 
 export interface ReadabilityFinding {
   id: string
@@ -146,11 +150,38 @@ export function readabilityFindings(d: Diagram, routes: Routes = computeRoutes(d
         const [a, b] = [s.wire, t.wire].sort(naturalCompare)
         const key = `${a}|${b}`
         const gap = Math.abs(s.at - t.at)
+        if (gap === 0) continue // on top of each other: wires-overlap reports it
         const was = crowded.get(key)
         if (!was || gap < was.gap || (gap === was.gap && run > was.run)) crowded.set(key, { a, b, gap, run })
       }
     }
   }
+  // On top of each other (Ruling W1): two wires, of any nets, sharing a run on one line. Not where
+  // both end at the same point (two wires on one screw terminal) and the shared run starts there.
+  const endsOf = new Map(drawn.map((w) => [w.conn.uid, [w.points[0], w.points[w.points.length - 1]]]))
+  const overlap = new Map<string, { a: string; b: string; run: number }>()
+  for (const list of [hs, vs]) {
+    const buckets = new Map<number, number[]>()
+    list.forEach((x, i) => buckets.set(x.at, [...(buckets.get(x.at) ?? []), i]))
+    for (const idx of buckets.values())
+      for (let i = 0; i < idx.length; i++)
+        for (let j = i + 1; j < idx.length; j++) {
+          const [s, t] = [list[idx[i]], list[idx[j]]]
+          if (s.wire === t.wire) continue
+          const lo = Math.max(s.lo, t.lo)
+          const hi = Math.min(s.hi, t.hi)
+          if (hi - lo <= OVERLAP) continue
+          const shared = endsOf.get(s.wire)!.some((p) => endsOf.get(t.wire)!.some((q) => Math.abs(p.x - q.x) < 0.5 && Math.abs(p.y - q.y) < 0.5))
+          if (shared) continue
+          const [a, b] = [s.wire, t.wire].sort(naturalCompare)
+          const key = `${a}|${b}`
+          overlap.set(key, { a, b, run: Math.max(overlap.get(key)?.run ?? 0, hi - lo) })
+        }
+  }
+  for (const { a, b, run } of overlap.values())
+    out.push({ id: `wires-overlap|${a},${b}`, rule: 'wires-overlap', severity: 'warning', parts: [], pins: [], wires: [a, b],
+      message: `The wires ${name(a)} and ${name(b)} lie on top of each other for ${Math.round(run)} px, so neither can be traced. Lay the sheet out again, or drag one of them onto its own line.` })
+
   for (const { a, b, gap, run } of crowded.values())
     out.push({ id: `wires-crowded|${a},${b}`, rule: 'wires-crowded', severity: 'warning', parts: [], pins: [], wires: [a, b],
       message: `The wires ${name(a)} and ${name(b)} run side by side, ${gap} px apart, for ${run} px. Move one of them at least ${2 * GRID_STEP} px away (drag its segment), or draw one of the nets with net labels.` })
