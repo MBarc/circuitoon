@@ -8,19 +8,19 @@ Each sheet is laid out with `layout --keep` from its partial, with net labels (`
 
 | Sheet | Holds | Crossings before | **Crossings now** | Readability warnings before | **now** | Sheet before | Sheet now |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| `1-main` | Power, ESP32, displays, OLED, SD card, and J1 to J3 (one JST-XH 4-pin per bank) | 297 | **45** | 79 | **10** | 800 x 1020 | 836 x 1046 |
-| `2-bank-a` | J1, MCP23017 U2 at 0x20, balls 1 to 14 | 490 | **20** | 156 | **1** | 1490 x 967 | 990 x 1111 |
-| `3-bank-b` | J1, MCP23017 U3 at 0x21, balls 15 to 28 | 519 | **19** | 156 | **1** | 1490 x 967 | 990 x 1111 |
-| `4-bank-c` | J1, MCP23017 U4 at 0x22, balls 29 to 42 | 524 | **18** | 154 | **1** | 1490 x 967 | 990 x 1111 |
+| `1-main` | Power, ESP32, displays, OLED, SD card, and J1 to J3 (one JST-XH 4-pin per bank) | 297 | **45** | 79 | **12** | 800 x 1020 | 836 x 1046 |
+| `2-bank-a` | J1, MCP23017 U2 at 0x20, balls 1 to 14 | 490 | **20** | 156 | **14** | 1490 x 967 | 990 x 1111 |
+| `3-bank-b` | J1, MCP23017 U3 at 0x21, balls 15 to 28 | 519 | **19** | 156 | **15** | 1490 x 967 | 990 x 1111 |
+| `4-bank-c` | J1, MCP23017 U4 at 0x22, balls 29 to 42 | 524 | **18** | 154 | **16** | 1490 x 967 | 990 x 1111 |
 
 Every sheet has body overlaps 0, caption overlaps 0 and blocked nets none, and passes `gate`.
 
 These readability warnings remain:
 - `1-main`:
   - 7 `label-covered`: some display header pins had no room for a label of their own (the displays are kept close to BB1), so their stubs run to a nearby label and cross the display's caption; two wires to the ESP32 cross its caption.
-  - 2 `wires-crowded`: SW1's 5V wire and SD1's CS wire run side by side below the ESP32.
+  - 4 `wires-crowded`: SW1's 5V wire and SD1's CS wire below the ESP32, SD1's CLK and MISO wires, and wires at DS1's header that join a nearby label.
   - 1 `crossings-high`: DS2's DC/RS wire runs to the LCD_DC label at DS1.
-- Bank sheets: 1 `wires-crowded` each, where two pad stubs inside the expander's 2 x 10 header overlap for a few px on their way to the label column.
+- Bank sheets: 14 to 16 `wires-crowded`, all at the expander: its channel pads sit in a 2 x 10 header inside the board, so each wire runs 40 to 60 px across the board's art to the label column, beside the next pad's wire. Labels can only be placed at the board's edge, so these stay.
 
 To lay out and gate a sheet:
 

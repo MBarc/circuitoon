@@ -60403,15 +60403,22 @@ function readabilityFindings(d, routes = computeRoutes(d)) {
 		return c.label || `${endpointName(d, c.from)} to ${endpointName(d, c.to)}`;
 	};
 	const nl = netlist(d);
+	const netCache = /* @__PURE__ */ new Map();
 	const netOf = (uid) => {
-		const c = byUid.get(uid);
-		return nl.netOf.get(nodeKey(c.from.part, c.from.pin)) ?? `wire ${uid}`;
+		let n = netCache.get(uid);
+		if (n === void 0) {
+			const c = byUid.get(uid);
+			netCache.set(uid, n = nl.netOf.get(nodeKey(c.from.part, c.from.pin)) ?? `wire ${uid}`);
+		}
+		return n;
 	};
 	const segs = drawn.flatMap((w) => segmentsOf(w.conn.uid, w.points));
 	const labelParts = new Set(parts0(d).filter((p) => isNetLabel(moduleOf(d, p.module))).map((p) => p.uid));
-	const toLabel = (uid) => {
+	const lengthOf = new Map(drawn.map((w) => [w.conn.uid, w.points.slice(1).reduce((n, p, i) => n + Math.abs(p.x - w.points[i].x) + Math.abs(p.y - w.points[i].y), 0)]));
+	/** A short stub out to a net label (under LABEL_STUB px): a fan-out row of them is meant that way. */
+	const stub = (uid) => {
 		const c = byUid.get(uid);
-		return labelParts.has(c.from.part) || labelParts.has(c.to.part);
+		return (labelParts.has(c.from.part) || labelParts.has(c.to.part)) && (lengthOf.get(uid) ?? 0) < 30;
 	};
 	const hs = segs.filter((s) => s.h);
 	const vs = segs.filter((s) => !s.h);
@@ -60420,22 +60427,37 @@ function readabilityFindings(d, routes = computeRoutes(d)) {
 		return isNetLabel(moduleOf(d, p.module)) ? `label ${labelName(p) || p.designator}` : p.designator;
 	};
 	const crowded = /* @__PURE__ */ new Map();
-	for (const list of [hs, vs]) for (let i = 0; i < list.length; i++) for (let j = i + 1; j < list.length; j++) {
-		const [s, t] = [list[i], list[j]];
-		if (s.wire === t.wire || Math.abs(s.at - t.at) > 10 || netOf(s.wire) === netOf(t.wire)) continue;
-		if (s.at !== t.at && toLabel(s.wire) && toLabel(t.wire)) continue;
-		const run = Math.min(s.hi, t.hi) - Math.max(s.lo, t.lo);
-		if (run <= 40) continue;
-		const [a, b] = [s.wire, t.wire].sort(naturalCompare);
-		const key = `${a}|${b}`;
-		const gap = Math.abs(s.at - t.at);
-		const was = crowded.get(key);
-		if (!was || gap < was.gap || gap === was.gap && run > was.run) crowded.set(key, {
-			a,
-			b,
-			gap,
-			run
+	for (const list of [hs, vs]) {
+		const buckets = /* @__PURE__ */ new Map();
+		list.forEach((x, i) => {
+			const k = Math.floor(x.at / 10);
+			buckets.set(k, [...buckets.get(k) ?? [], i]);
 		});
+		for (let i = 0; i < list.length; i++) {
+			const k = Math.floor(list[i].at / 10);
+			for (const j of [
+				k - 1,
+				k,
+				k + 1
+			].flatMap((b) => buckets.get(b) ?? [])) {
+				if (j <= i) continue;
+				const [s, t] = [list[i], list[j]];
+				if (s.wire === t.wire || Math.abs(s.at - t.at) > 10 || netOf(s.wire) === netOf(t.wire)) continue;
+				if (s.at !== t.at && stub(s.wire) && stub(t.wire)) continue;
+				const run = Math.min(s.hi, t.hi) - Math.max(s.lo, t.lo);
+				if (run <= 40) continue;
+				const [a, b] = [s.wire, t.wire].sort(naturalCompare);
+				const key = `${a}|${b}`;
+				const gap = Math.abs(s.at - t.at);
+				const was = crowded.get(key);
+				if (!was || gap < was.gap || gap === was.gap && run > was.run) crowded.set(key, {
+					a,
+					b,
+					gap,
+					run
+				});
+			}
+		}
 	}
 	for (const { a, b, gap, run } of crowded.values()) out.push({
 		id: `wires-crowded|${a},${b}`,
@@ -60457,7 +60479,9 @@ function readabilityFindings(d, routes = computeRoutes(d)) {
 	for (const s of segs) {
 		const c = byUid.get(s.wire);
 		for (const { p, r } of bodies) {
-			if (c.from.part === p.uid || c.to.part === p.uid || inside(s, r) > 0 || inside(s, grow$1(r, 5)) < 10) continue;
+			if (c.from.part === p.uid || c.to.part === p.uid) continue;
+			const over = inside(s, r) > 0;
+			if (!over && inside(s, grow$1(r, 5)) < 10) continue;
 			const key = `${s.wire}|${p.uid}`;
 			if (hugged.has(key)) continue;
 			hugged.add(key);
@@ -60468,7 +60492,7 @@ function readabilityFindings(d, routes = computeRoutes(d)) {
 				parts: [p.uid],
 				pins: [],
 				wires: [s.wire],
-				message: `The wire ${name(s.wire)} runs within 5 px of ${p.designator}'s body, which it does not connect to, so it reads as touching it. Move the wire or the part so at least 10 px of paper shows between them.`
+				message: over ? `The wire ${name(s.wire)} runs over ${p.designator}'s body, which it does not connect to, so it reads as connected there. Move the wire or the part so it runs clear of the body.` : `The wire ${name(s.wire)} runs within 5 px of ${p.designator}'s body, which it does not connect to, so it reads as touching it. Move the wire or the part so at least 10 px of paper shows between them.`
 			});
 		}
 	}
@@ -60477,14 +60501,23 @@ function readabilityFindings(d, routes = computeRoutes(d)) {
 		const m = moduleOf(d, p.module);
 		return {
 			p,
-			label: isNetLabel(m),
+			kind: isNetLabel(m) ? "label" : "caption",
 			r: isNetLabel(m) ? flagRect(p, m, true) : placedCaptionBox(p, m, seated.get(p.uid))
 		};
 	});
-	const what = (b) => b.label ? partName(b.p) : `${b.p.designator}'s caption`;
+	const names = parts.flatMap((p) => tipLabelBoxes(p, moduleOf(d, p.module)).map((r) => ({
+		p,
+		kind: "names",
+		r
+	})));
+	const what = (b) => b.kind === "label" ? partName(b.p) : b.kind === "names" ? `${b.p.designator}'s pin names` : `${b.p.designator}'s caption`;
 	const covered = /* @__PURE__ */ new Set();
-	for (const s of segs) for (const b of boxes) {
+	for (const s of segs) for (const b of [...boxes, ...names]) {
 		if (inside(s, b.r) <= 0) continue;
+		if (b.kind === "names") {
+			const c = byUid.get(s.wire);
+			if (c.from.part === b.p.uid || c.to.part === b.p.uid) continue;
+		}
 		const key = `${s.wire}|${b.p.uid}`;
 		if (covered.has(key)) continue;
 		covered.add(key);
@@ -60513,7 +60546,7 @@ function readabilityFindings(d, routes = computeRoutes(d)) {
 	}
 	const crossings = /* @__PURE__ */ new Map();
 	for (const h of hs) for (const v of vs) {
-		if (h.wire === v.wire || !(v.at > h.lo && v.at < h.hi && h.at > v.lo && h.at < v.hi)) continue;
+		if (h.wire === v.wire || !(v.at > h.lo && v.at < h.hi && h.at > v.lo && h.at < v.hi) || netOf(h.wire) === netOf(v.wire)) continue;
 		for (const [a, b] of [[h.wire, v.wire], [v.wire, h.wire]]) {
 			let set = crossings.get(a);
 			if (!set) crossings.set(a, set = /* @__PURE__ */ new Set());
@@ -62756,6 +62789,18 @@ function placeParts(intent, opts) {
 			connections: []
 		};
 		const mounted = intent.parts.filter((q) => q.on === ref).map((q) => q.ref).sort(naturalCompare);
+		const seated = opts.mounts?.get(ref);
+		if (seated) {
+			for (const p of seated) inst.set(p.uid, p);
+			units.push({
+				key: ref,
+				refs: [ref, ...mounted],
+				anchor: true,
+				fixed: !!k
+			});
+			for (const r of [ref, ...mounted]) grouped.add(r);
+			continue;
+		}
 		const keptFirst = [...mounted.filter((m) => keep.has(m)), ...mounted.filter((m) => !keep.has(m))];
 		for (const m of keptFirst) {
 			const km = keep.get(m);
@@ -62813,6 +62858,7 @@ function placeParts(intent, opts) {
 				parts: local.parts.map((p) => p.uid === m ? r.part : p)
 			};
 		}
+		if (!errors.length) opts.mounts?.set(ref, mounted.map((m) => inst.get(m)));
 		units.push({
 			key: ref,
 			refs: [ref, ...mounted],
@@ -63392,11 +63438,13 @@ function layoutNetlist(raw, opts = {}) {
 	const intent = parsed.intent;
 	let blocked = [];
 	const tries = mode === "none" ? [true] : [false, true];
+	const mounts = /* @__PURE__ */ new Map();
 	attempt: for (const [i, spacing] of SPACINGS.entries()) for (const rails of tries) {
 		const placed = placeParts(intent, {
 			spacing,
 			keep: opts.keep,
-			rail: rails ? library(RAIL_MODULE) : void 0
+			rail: rails ? library(RAIL_MODULE) : void 0,
+			mounts
 		});
 		if (!placed.ok) return {
 			ok: false,
@@ -63413,10 +63461,12 @@ function layoutNetlist(raw, opts = {}) {
 			intent: structuredClone(raw)
 		};
 		const over = overlaps(base);
-		if (over.body.length || over.caption.length) return {
+		const kept = (o) => /^(\S+) caption and (\S+) /.exec(o)?.slice(1, 3).some((uid) => opts.keep?.has(uid)) ?? false;
+		const captions = over.caption.filter((o) => !kept(o));
+		if (over.body.length || captions.length) return {
 			ok: false,
 			stage: "layout",
-			errors: [...over.body.map((o) => `body overlap: ${o}; move one of them`), ...over.caption.map((o) => `caption overlap: ${o}; move one of them`)]
+			errors: [...over.body.map((o) => `body overlap: ${o}; move one of them`), ...captions.map((o) => `caption overlap: ${o}; move one of them`)]
 		};
 		const labelModule = library(LABEL_MODULE);
 		const real = realize(intent, base, placed.locals, {
