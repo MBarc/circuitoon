@@ -106,3 +106,35 @@ describe('a repeat block\'s shared ground', () => {
     expect(labelsOf(v.diagram)).toEqual([])
   })
 })
+
+describe('a dense group of labelled pins fans out as one ordered row', () => {
+  const tipOf = (d: Diagram, uid: string) => {
+    const c = d.connections.find((x) => x.to.part === uid)!
+    return c
+  }
+  it('labels on a header sit in a row beside it, all the same distance out, in pin order', () => {
+    const v = ok(i2c(), 'all')
+    const d = v.diagram
+    // U2 (BME280) has its four pins along the bottom: VIN, GND, SCL, SDA.
+    const mine = labelsOf(d).filter((l) => tipOf(d, l.part.uid).from.part === 'U2')
+    expect(mine).toHaveLength(4)
+    expect(new Set(mine.map((l) => l.part.y)).size).toBe(1)
+    const order = [...mine].sort((a, b) => a.part.x - b.part.x).map((l) => tipOf(d, l.part.uid).from.pin)
+    expect(order).toEqual(['VIN', 'GND', 'SCL', 'SDA'])
+  })
+  it('labels for pads inside a body (a 2 x 10 header) leave by the edge they sit near, in pad order', () => {
+    const raw = {
+      format: 'circuitoon-netlist/1', title: 'Pads',
+      parts: [{ ref: 'U1', module: 'mcp23017-cjmcu-2317' }, ...Array.from({ length: 6 }, (_, i) => ({ ref: `R${i + 1}`, module: 'resistor' }))],
+      nets: ['GPA0', 'GPB0', 'GPA1', 'GPB1', 'GPA2', 'GPB2'].map((pad, i) => ({ name: `CH${i + 1}`, pins: [`U1.${pad}`, `R${i + 1}.1`], label: true })),
+    }
+    const d = ok(raw).diagram
+    const at = labelsOf(d).filter((l) => tipOf(d, l.part.uid).from.part === 'U1')
+    expect(at).toHaveLength(6)
+    const u1 = d.parts.find((p) => p.uid === 'U1')!
+    expect(at.every((l) => l.part.x < u1.x)).toBe(true)
+    expect(new Set(at.map((l) => l.part.x)).size).toBe(1)
+    expect([...at].sort((a, b) => a.part.y - b.part.y).map((l) => l.name)).toEqual(['CH1', 'CH2', 'CH3', 'CH4', 'CH5', 'CH6'])
+    clean(d)
+  })
+})

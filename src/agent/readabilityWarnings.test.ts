@@ -62,3 +62,19 @@ describe('readability warnings', () => {
     expect(rules(d)).toContain('wires-crowded')
   })
 })
+
+describe('stubs out to net labels', () => {
+  const label: ModuleDef = { format: 'circuitoon-module/1', id: 'net-label', name: 'Net label', netLabel: true, pins: [{ name: 'NET', side: 'left' }], size: { w: 5, h: 2 } }
+  it('a row of them at pin pitch is not crowded', () => {
+    const lab = (uid: string, net: string, y: number): PartInstance => ({ uid, designator: uid, module: 'net-label', x: 208, y, values: { net } })
+    const row: Diagram = {
+      format: 'circuitoon-diagram/1', title: 't', modules: { two, box, 'net-label': label },
+      parts: [part('r1', 'two', 0, 0), part('r3', 'two', 0, 10), lab('a', 'A', 10), lab('b', 'B', 20)],
+      connections: [wire('w1', 'r1.R', 'a.NET', [[60, 20], [180, 20]]), wire('w2', 'r3.R', 'b.NET', [[60, 30], [180, 30]])],
+    }
+    expect(readabilityFindings(row).filter((f) => f.rule === 'wires-crowded')).toEqual([])
+    // The same two wires to parts, not labels, are crowded.
+    const parts: Diagram = { ...row, parts: [part('r1', 'two', 0, 0), part('r3', 'two', 0, 10), part('r2', 'two', 200, 0), part('r4', 'two', 200, 10)], connections: [wire('w1', 'r1.R', 'r2.L', [[60, 20], [180, 20]]), wire('w2', 'r3.R', 'r4.L', [[60, 30], [180, 30]])] }
+    expect(readabilityFindings(parts).filter((f) => f.rule === 'wires-crowded')).toHaveLength(1)
+  })
+})

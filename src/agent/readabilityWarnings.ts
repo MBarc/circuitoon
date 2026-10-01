@@ -1,7 +1,8 @@
 // Readability warnings for `check` and `gate` (never blocking): what makes a correct sheet hard to
 // follow. Read from the wires as drawn (wirePaths, after lane separation):
 // - wires-crowded: two wires of different nets side by side within one grid step over more than
-//   CROWDED_RUN px;
+//   CROWDED_RUN px (a row of stubs out to net labels at pin pitch is meant that way, so only two drawn
+//   on top of each other count);
 // - wire-hugs-part: a wire within HUG px of a body it does not connect to (boards excluded: wires
 //   lie on breadboards by design);
 // - label-covered: a wire or another part over a caption or a net label's flag;
@@ -56,6 +57,7 @@ function inside(s: Seg, r: Rect): number {
   return Math.max(0, Math.min(s.hi, to) - Math.max(s.lo, from))
 }
 
+const parts0 = (d: Diagram) => d.parts
 const grow = (r: Rect, by: number): Rect => ({ x: r.x - by, y: r.y - by, w: r.w + 2 * by, h: r.h + 2 * by })
 const meets = (a: Rect, b: Rect) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h
 
@@ -73,6 +75,11 @@ export function readabilityFindings(d: Diagram, routes: Routes = computeRoutes(d
     return nl.netOf.get(nodeKey(c.from.part, c.from.pin)) ?? `wire ${uid}`
   }
   const segs = drawn.flatMap((w) => segmentsOf(w.conn.uid, w.points))
+  const labelParts = new Set(parts0(d).filter((p) => isNetLabel(moduleOf(d, p.module))).map((p) => p.uid))
+  const toLabel = (uid: string) => {
+    const c = byUid.get(uid)!
+    return labelParts.has(c.from.part) || labelParts.has(c.to.part)
+  }
   const hs = segs.filter((s) => s.h)
   const vs = segs.filter((s) => !s.h)
   const parts = d.parts.filter((p) => moduleOf(d, p.module))
@@ -88,6 +95,9 @@ export function readabilityFindings(d: Diagram, routes: Routes = computeRoutes(d
       for (let j = i + 1; j < list.length; j++) {
         const [s, t] = [list[i], list[j]]
         if (s.wire === t.wire || Math.abs(s.at - t.at) > GRID_STEP || netOf(s.wire) === netOf(t.wire)) continue
+        // A row of stubs out to net labels at the pins' own pitch is laid out that way on purpose; only
+        // two of them drawn on top of each other are crowded.
+        if (s.at !== t.at && toLabel(s.wire) && toLabel(t.wire)) continue
         const run = Math.min(s.hi, t.hi) - Math.max(s.lo, t.lo)
         if (run <= CROWDED_RUN) continue
         const [a, b] = [s.wire, t.wire].sort(naturalCompare)

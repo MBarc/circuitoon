@@ -67,6 +67,9 @@ export interface LabelSpot {
 const SIDE_OFFSETS = [0, 10, -10, 20, -20, 30, -30, 40, -40, 60, -60, 80, -80]
 const CANDIDATES = LABEL_STUBS.flatMap((s) => SIDE_OFFSETS.map((o) => ({ s, o }))).sort((a, b) => a.s + 1.5 * Math.abs(a.o) - (b.s + 1.5 * Math.abs(b.o)))
 
+/** A part with this many labelled pins or pads on one side gets its labels as one ordered row (`LabelPlacer.row`). */
+export const FANOUT_MIN = 4
+
 export class LabelPlacer {
   /** Everything a flag must stay off: bodies grown for their stubs, captions, pin names, notes, labels placed. */
   private flagsOff: Rect[] = []
@@ -133,6 +136,39 @@ export class LabelPlacer {
       const stub = [line(exit, elbow), line(elbow, tip)]
       if (this.stubsOff.some((x) => x.part !== opts.own && stub.some((r) => intersects(r, x.r)))) continue
       return { part, tip, elbow, base: exit }
+    }
+    return null
+  }
+
+  /**
+   * A row of labels for a dense group of pins or pads on one side of a part (FANOUT_MIN or more):
+   * one label per item, all the same distance out along `dir`, each at its item's `slot` (the item's
+   * own position along the side, or its place in pad order), so the row reads in pin order and no
+   * two stubs cross. The nearest distance where every flag is clear wins; null when none is. The
+   * row is taken at once (later labels keep off it).
+   */
+  row(items: { name: string; slot: Pt }[], dir: Pt, own?: string): LabelSpot[] | null {
+    const rotation = ([0, 90, 180, 270] as Rotation[]).find((r) => {
+      const p = this.pinAt(r)
+      return p.dir.x === -dir.x && p.dir.y === -dir.y
+    })
+    if (rotation === undefined) return null
+    const pin = this.pinAt(rotation)
+    for (const s of LABEL_STUBS) {
+      const spots = items.map(({ name, slot }) => {
+        const tip = { x: slot.x + dir.x * s, y: slot.y + dir.y * s }
+        const part: PartInstance = { uid: '', designator: '', module: this.m.id, x: tip.x - pin.end.x, y: tip.y - pin.end.y, rotation, values: { net: name } }
+        return { part, tip, elbow: tip, base: slot }
+      })
+      const flags = spots.map((x) => flagRect(x.part, this.m, true))
+      if (flags.some((f) => this.flagsOff.some((r) => intersects(f, r)))) continue
+      if (spots.some((x) => this.stubsOff.some((o) => o.part !== own && intersects(line(x.base, x.tip), o.r)))) continue
+      for (const x of spots) {
+        const f = flagRect(x.part, this.m, true)
+        this.flagsOff.push(f, line(x.base, x.tip))
+        this.stubsOff.push({ r: f }, { r: line(x.base, x.tip) })
+      }
+      return spots
     }
     return null
   }

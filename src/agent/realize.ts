@@ -14,7 +14,7 @@ import { type Connection, type Diagram, type Endpoint, type PartInstance, module
 import { bodyRect } from '../format/geometry.ts'
 import { layoutModule } from '../format/module.ts'
 import { mainsOf } from '../format/mainsModel.ts'
-import { type LabelMode, LabelPlacer, type LabelSpot, autoLabels, edgeExits } from './labelling.ts'
+import { FANOUT_MIN, type LabelMode, LabelPlacer, type LabelSpot, autoLabels, edgeExits } from './labelling.ts'
 import { coveredHoles, plugsOf } from '../format/breadboard.ts'
 import { type Pt, worldHoles } from '../format/geometry.ts'
 import { isBoard, isSpacer, type ModuleDef, type PinDef, terminalCapacity } from '../format/module.ts'
@@ -186,10 +186,11 @@ export function realize(intent: Intent, d: Diagram, locals: LocalDistribution[] 
     const kind = kindOf(n)
     return n.color ?? (kind === 'ground' ? 'black' : kind === 'power' ? 'red' : SIGNAL_COLORS[signal++ % SIGNAL_COLORS.length])
   })
-  const wire = (ni: number, from: Endpoint, to: Endpoint, routing: boolean) => {
+  const wire = (ni: number, from: Endpoint, to: Endpoint, routing: boolean, toLabel = false) => {
     const uid = `w${connections.length + 1}`
     // The layout chooses every colour on purpose (the netlist's, else by role): colorSet, so it is judged.
-    connections.push({ uid, from, to, color: colors[ni], colorSet: true, gauge: 22, ...(ends ? { ends } : {}), ...(routing ? { routing: true } : {}) })
+    // A stub to a net label is drawn plain: no connector belongs at a label.
+    connections.push({ uid, from, to, color: colors[ni], colorSet: true, gauge: 22, ...(ends && !toLabel ? { ends } : {}), ...(routing ? { routing: true } : {}) })
     netOfWire.set(uid, intent.nets[ni].name)
   }
   const holeEnd = (s: Strip, i: number): Endpoint => {
@@ -298,6 +299,89 @@ export function realize(intent: Intent, d: Diagram, locals: LocalDistribution[] 
   for (const g of intent.groups) for (const r of g.refs) groupOfRef.set(r, `group ${g.name}`)
   for (const c of intent.copies) for (const r of c.refs) groupOfRef.set(r, `copy ${c.id}`)
   const mainsNet = (n: IntentNet) => n.terminals.some((t) => mainsOf(modOf(t.ref)).terminals.has(t.name))
+  /** Whether a net is drawn with labels, from its endpoints (each node's first pin, and the net's strips as one). */
+  const wants = (net: IntentNet, kind: NetKind, ends: { at: Pt; group: string | undefined }[]) =>
+    ends.length >= 2 && (!!net.label || mode === 'all' || autoLabels({ kind, ends }))
+  /** The loose pins of a net as nodes (one per part-internal component, in natural order), and its first strip. */
+  const shapeOf = (net: IntentNet) => {
+    const byComp = new Map<string, Terminal[]>()
+    let strip: Strip | undefined
+    for (const t of net.terminals) {
+      const pl = legBy.get(terminalKey(t.ref, t.name))
+      if (t.infra || pl) {
+        strip ??= strips.get(t.infra ? groupKey(t.ref, t.name) : groupKey(pl!.board, pl!.group))
+        continue
+      }
+      const c = `${t.ref} ${internalComponent(modOf(t.ref), t.name)}`
+      byComp.set(c, [...(byComp.get(c) ?? []), t])
+    }
+    return { heads: [...byComp.keys()].sort(naturalCompare).map((c) => byComp.get(c)![0]), strip }
+  }
+
+  // Dense groups first (FANOUT_MIN or more labelled pins or pads on one side of a part: a header, a
+  // display connector, an expander's pads): their labels are reserved as one ordered row beside the
+  // part, on the side the pins face, in pin order, so the stubs run short and never cross. Pads
+  // inside a body all leave by the edge nearest to them as a group, their labels at 10 px pitch.
+  const rowSpots = new Map<string, LabelSpot>()
+  if (placer) {
+    const byPart = new Map<string, { key: string; name: string; at: Pt; dir: Pt | null }[]>()
+    intent.nets.forEach((net, ni) => {
+      if (locals.some((l) => l.net === ni) || mainsNet(net)) return
+      const { heads, strip } = shapeOf(net)
+      const ends = [...heads.map((t) => ({ at: pointOf(pinEnd(t)), group: groupOfRef.get(t.ref) })), ...(strip ? [{ at: strip.holes[0], group: groupOfRef.get(strip.board) }] : [])]
+      if (!wants(net, kindOf(net), ends)) return
+      const seen = new Set<string>()
+      for (const t of heads) {
+        if (seen.has(t.ref)) continue
+        seen.add(t.ref)
+        const at = resolveEndpoint(d, pinEnd(t))
+        if (at) byPart.set(t.ref, [...(byPart.get(t.ref) ?? []), { key: `${ni}|${t.ref}`, name: net.name, at: at.end, dir: at.dir }])
+      }
+    })
+    for (const [ref, items] of [...byPart].sort((a, b) => naturalCompare(a[0], b[0]))) {
+      if (items.length < FANOUT_MIN) continue
+      const body = bodyRect(partBy.get(ref)!, layoutModule(modOf(ref)))
+      // A pad leaves with its column of pads (same x) by the nearer side edge, or with its row
+      // (same y) by the nearer top or bottom edge; a pad alone by its nearest edge.
+      const pads = items.filter((x) => !x.dir)
+      const padDir = (p: Pt): Pt => {
+        const inColumn = pads.filter((o) => o.at.x === p.x).length >= 2
+        const inRow = pads.filter((o) => o.at.y === p.y).length >= 2
+        if (inColumn && (!inRow || pads.filter((o) => o.at.x === p.x).length >= pads.filter((o) => o.at.y === p.y).length))
+          return p.x - body.x <= body.x + body.w - p.x ? { x: -1, y: 0 } : { x: 1, y: 0 }
+        if (inRow) return p.y - body.y <= body.y + body.h - p.y ? { x: 0, y: -1 } : { x: 0, y: 1 }
+        return edgeExits(body, p)[0].dir
+      }
+      const sides = new Map<string, { dir: Pt; list: typeof items }>()
+      for (const x of items) {
+        const dir = x.dir ?? padDir(x.at)
+        const k = `${dir.x},${dir.y}`
+        sides.set(k, { dir, list: [...(sides.get(k)?.list ?? []), x] })
+      }
+      for (const { dir, list } of sides.values()) {
+        if (list.length < FANOUT_MIN) continue
+        const across = dir.x !== 0
+        const along = (p: Pt) => (across ? p.y : p.x)
+        // Pin order along the side; of two pads level with each other, the one nearer the edge first.
+        const toEdge = (p: Pt) => (dir.x < 0 ? p.x - body.x : dir.x > 0 ? body.x + body.w - p.x : dir.y < 0 ? p.y - body.y : body.y + body.h - p.y)
+        const sorted = [...list].sort((a, b) => along(a.at) - along(b.at) || toEdge(a.at) - toEdge(b.at))
+        const own = sorted.every((x, i) => i === 0 || along(x.at) - along(sorted[i - 1].at) >= 10)
+        const mid = sorted.reduce((a, x) => a + along(x.at), 0) / sorted.length
+        // The row's line: the pin tips for pins, the body edge for pads.
+        const pinsOnly = sorted.every((x) => x.dir)
+        const edge = (p: Pt): Pt =>
+          pinsOnly ? p : across ? { x: dir.x < 0 ? body.x : body.x + body.w, y: p.y } : { x: p.x, y: dir.y < 0 ? body.y : body.y + body.h }
+        const slots = sorted.map((x, i) => {
+          const at = own ? along(x.at) : Math.round(mid - ((sorted.length - 1) / 2) * 10 + i * 10)
+          const base = edge(x.at)
+          return across ? { x: base.x, y: at } : { x: at, y: base.y }
+        })
+        const row = placer.row(sorted.map((x, i) => ({ name: x.name, slot: slots[i] })), dir, ref)
+        if (row) sorted.forEach((x, i) => rowSpots.set(x.key, row[i]))
+      }
+    }
+  }
+
   const labelNet = (ni: number, net: IntentNet, kind: NetKind, nodes: Node[], dps: Strip[], local: boolean): boolean => {
     if (!placer || local || mainsNet(net)) return false
     const head = (n: Node) => pointOf(pinEnd(n.members[0]))
@@ -305,8 +389,7 @@ export function realize(intent: Intent, d: Diagram, locals: LocalDistribution[] 
       ...nodes.map((n) => ({ at: head(n), group: groupOfRef.get(n.members[0].ref) })),
       ...(dps.length ? [{ at: dps[0].holes[0], group: groupOfRef.get(dps[0].board) }] : []),
     ]
-    if (ends.length < 2) return false
-    if (!net.label && mode !== 'all' && !autoLabels({ kind, ends })) return false
+    if (!wants(net, kind, ends)) return false
     // One label per endpoint: the pins one part puts on the net share a label (an expander's GND and
     // address pads), every other pin gets its own, right at the pin, so no wire loops back from a
     // neighbouring part (a ball's two switches each get theirs); the net's strips share one.
@@ -329,7 +412,10 @@ export function realize(intent: Intent, d: Diagram, locals: LocalDistribution[] 
     const orphans: { node: Node; t: Terminal; at: Pt }[] = []
     for (const group of clusters.values()) {
       let found: (typeof plan)[number] | null = null
-      for (const node of group) {
+      const held = rowSpots.get(`${ni}|${group[0].members[0].ref}`)
+      const first = held && pinOf(group[0])
+      if (held && first) found = { spot: held, from: pointOf(pinEnd(first)), pins: [] }
+      for (const node of found ? [] : group) {
         const t = pinOf(node)
         const at = t && resolveEndpoint(d, pinEnd(t))
         if (!t || !at) continue
@@ -355,7 +441,8 @@ export function realize(intent: Intent, d: Diagram, locals: LocalDistribution[] 
         if (!t) return fail()
         found.pins.push({ node, t })
       }
-      placer.commit(found.spot, found.from)
+      // A reserved row spot is kept off already; any other spot is held while the net is planned.
+      if (!held) placer.commit(found.spot, found.from)
       plan.push(found)
     }
     if (dps.length) {
@@ -405,7 +492,7 @@ export function realize(intent: Intent, d: Diagram, locals: LocalDistribution[] 
       const to: Endpoint = { part: part.uid, pin: 'NET' }
       for (const { node, t } of p.pins) {
         node.left.set(t.name, node.left.get(t.name)! - 1)
-        wire(ni, pinEnd(t), to, true)
+        wire(ni, pinEnd(t), to, true, true)
       }
       if (p.hole) {
         // A hole the joining jumpers took is replaced by the strip's free hole nearest the label.
@@ -414,7 +501,7 @@ export function realize(intent: Intent, d: Diagram, locals: LocalDistribution[] 
           errors.push(`strip full: net ${net.name} has no free hole left on ${stripName(p.hole.s)}${under([p.hole.s])}`)
           return true
         }
-        wire(ni, holeEnd(p.hole.s, i), to, true)
+        wire(ni, holeEnd(p.hole.s, i), to, true, true)
       }
     }
     labelledNets.push(net.name)
