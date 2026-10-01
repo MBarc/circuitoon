@@ -419,6 +419,8 @@ function ownGroups(c: Connection, legGroup: Map<string, string>): Set<string> {
  */
 export interface LabelPoints {
   captions: Map<string, Pt[]>
+  /** Pin names drawn past the tips (a DIP chip), by part: kept off harder than captions, since a hidden pin name can cause a miswire. */
+  names?: Map<string, Pt[]>
   tabs: Pt[]
 }
 const LABEL_PAD = 3
@@ -432,15 +434,19 @@ function gridNodesIn(r: Rect): Pt[] {
 
 export function labelPoints(d: Diagram): LabelPoints {
   const captions = new Map<string, Pt[]>()
+  const names = new Map<string, Pt[]>()
   // A seated plug-in device and its outlet draw their captions beside the outlet (seatedLabels.ts).
   const seated = seatedLabels(d)
   for (const p of d.parts) {
     const m = moduleOf(d, p.module)
-    // Pin names past the tips (a DIP chip) are kept off like the caption, by the same owner (Ruling C3).
-    if (m) captions.set(p.uid, [placedCaptionBox(p, m, seated.get(p.uid)), ...tipLabelBoxes(p, m)].flatMap(gridNodesIn))
+    if (!m) continue
+    captions.set(p.uid, gridNodesIn(placedCaptionBox(p, m, seated.get(p.uid))))
+    // Pin names past the tips (a DIP chip) are kept off too, by the same owner (Ruling C3), and give way last.
+    const tips = tipLabelBoxes(p, m).flatMap(gridNodesIn)
+    if (tips.length) names.set(p.uid, tips)
   }
   const tabs = (d.annotations ?? []).flatMap((a) => (a.type === 'frame' ? (a.label ? gridNodesIn(frameTab(a)) : []) : gridNodesIn(annotationRect(a))))
-  return { captions, tabs }
+  return { captions, names, tabs }
 }
 
 /**
@@ -452,6 +458,8 @@ export interface RouteAvoid {
   holes: PointIndex
   legGroup: Map<string, string>
   text: PointIndex
+  /** Pin names past the tips, by part uid. */
+  names: PointIndex
 }
 
 export function routeAvoid(d: Diagram, holes: BoardHoles = boardHoles(d), labels: LabelPoints = labelPoints(d)): RouteAvoid {
@@ -461,7 +469,9 @@ export function routeAvoid(d: Diagram, holes: BoardHoles = boardHoles(d), labels
   // Part uids are never empty (validateDiagram), so "" is free for text no wire owns.
   for (const p of labels.tabs) ti.add(p.x, p.y, '')
   for (const [uid, pts] of labels.captions) for (const p of pts) ti.add(p.x, p.y, uid)
-  return { holes: hi, legGroup: holes.legGroup, text: ti }
+  const ni = new PointIndex()
+  for (const [uid, pts] of labels.names ?? []) for (const p of pts) ni.add(p.x, p.y, uid)
+  return { holes: hi, legGroup: holes.legGroup, text: ti, names: ni }
 }
 
 /** True when a straight run from `a` to `b` passes within 3 px of a point of `index` not skipped. */
@@ -495,7 +505,8 @@ export function routeWire(
   const [wx0, wy0, wx1, wy1] = [Math.min(a.end.x, b.end.x) - reach, Math.min(a.end.y, b.end.y) - reach, Math.max(a.end.x, b.end.x) + reach, Math.max(a.end.y, b.end.y) + reach]
   const anyHoles = avoid.holes.some(wx0, wy0, wx1, wy1, ownHoles, () => true)
   const anyText = avoid.text.some(wx0, wy0, wx1, wy1, ownText, () => true)
-  if (facing && !c.route && !manualRouteBlocked([a.end, b.end], own) && !runsOver(a.end, b.end, avoid.holes, ownHoles) && !runsOver(a.end, b.end, avoid.text, ownText))
+  const anyNames = avoid.names.some(wx0, wy0, wx1, wy1, ownText, () => true)
+  if (facing && !c.route && !manualRouteBlocked([a.end, b.end], own) && !runsOver(a.end, b.end, avoid.holes, ownHoles) && !runsOver(a.end, b.end, avoid.text, ownText) && !runsOver(a.end, b.end, avoid.names, ownText))
     return { points: [a.end, b.end], blocked: false }
   if (c.route) {
     let points = manualPoints(a, b, c.route)
@@ -524,9 +535,17 @@ export function routeWire(
   // none did, it would fail again the same way, so it is skipped.
   const holesHit = { hit: false }
   const textHit = { hit: false }
+  const namesHit = { hit: false }
   const holesIn = { index: avoid.holes, skip: ownHoles, refused: holesHit }
-  let clear = anyText ? attempt([holesIn, { index: avoid.text, skip: ownText, refused: textHit }]) : null
-  if (!clear && (!anyText || textHit.hit)) {
+  const namesIn = anyNames ? [{ index: avoid.names, skip: ownText, refused: namesHit }] : []
+  // Captions give way before pin names: a wire over a caption hides a designator, one over a pin
+  // name could hide which pin is which.
+  let clear = anyText ? attempt([holesIn, { index: avoid.text, skip: ownText, refused: textHit }, ...namesIn]) : null
+  if (!clear && anyNames && (!anyText || textHit.hit)) {
+    holesHit.hit = false
+    clear = attempt([holesIn, ...namesIn])
+  }
+  if (!clear && (!(anyText || anyNames) || textHit.hit || namesHit.hit)) {
     holesHit.hit = false
     clear = attempt([holesIn])
   }

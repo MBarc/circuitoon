@@ -16,7 +16,11 @@ export type CaptionPart = { x: number; y: number; rotation?: Rotation; designato
 /** The caption anchor in part-local px (text-anchor middle, on the baseline). */
 export function captionAnchor(m: ModuleDef, rotation: Rotation = 0): Pt {
   const box = bodyRect({ x: 0, y: 0, rotation }, layoutModule(m))
-  const stubsDown = worldPins({ x: 0, y: 0, rotation }, m).some((p) => p.dir.y > 0)
+  const pins = worldPins({ x: 0, y: 0, rotation }, m)
+  const stubsDown = pins.some((p) => p.dir.y > 0)
+  // Pins only along the bottom (a sensor breakout's header): above the body, so the wires and labels
+  // leaving those pins never run through it.
+  if (stubsDown && !pins.some((p) => p.dir.y < 0)) return { x: box.x + box.w / 2, y: box.y - 6 }
   // Below the stubs, and below the names past their tips on a part that draws them there.
   return { x: box.x + box.w / 2, y: box.y + box.h + (stubsDown ? (usesTipLabels(m) ? pinRoom(m) : LEAD) : 0) + 15 }
 }
