@@ -517,7 +517,9 @@ describe('wirePaths', () => {
     const diagram = stressSheet()
     computeRoutes(diagram) // warm-up
     // Best of three, so one GC pause or a busy CI machine does not fail the run. About 430 to 480 ms on
-    // the development machine (the pre-lanes router took about 335 ms); the limit is 3x the upper figure.
+    // the development machine before Ruling W1 (the pre-lanes router took about 335 ms); 850 to 900 ms
+    // since, as a wire that cannot keep off every earlier wire's line searches again (this random sheet
+    // has hundreds). The limit is about 3x the upper figure.
     let ms = Infinity
     for (let k = 0; k < 3; k++) {
       const t = performance.now()
@@ -525,7 +527,7 @@ describe('wirePaths', () => {
       ms = Math.min(ms, performance.now() - t)
     }
     console.log(`computeRoutes 200 parts / 500 wires: ${ms.toFixed(1)} ms`)
-    expect(ms).toBeLessThan(1400)
+    expect(ms).toBeLessThan(2700)
   }, 60_000)
 
   it('draws 200 parts and 500 wires within the frame budget', { timeout: 60_000, retry: 2 }, () => {
@@ -533,7 +535,8 @@ describe('wirePaths', () => {
     const routes = computeRoutes(diagram)
     wirePaths(diagram, routes) // warm-up
     // Best of ten, retried twice: the full suite runs files in parallel, so a single slow sample
-    // is CPU contention, not a regression (isolated runs measure 16-20 ms).
+    // is CPU contention, not a regression (isolated runs measured 16-20 ms; 24-26 ms since Ruling W1,
+    // as wires that keep off each other's lines cross more often, so more hops are drawn).
     let ms = Infinity
     let out = wirePaths(diagram, routes)
     for (let k = 0; k < 10; k++) {
@@ -543,7 +546,7 @@ describe('wirePaths', () => {
     }
     console.log(`wirePaths 200 parts / 500 wires: ${ms.toFixed(2)} ms, ${out.reduce((n, w) => n + (w.d.match(/A/g)?.length ?? 0), 0)} hops`)
     expect(out).toHaveLength(500)
-    expect(ms).toBeLessThan(30)
+    expect(ms).toBeLessThan(40)
   })
 
   it('draws the same sheet with cable ends on every wire within the frame budget', { timeout: 60_000, retry: 2 }, () => {
@@ -567,7 +570,7 @@ describe('wirePaths', () => {
     console.log(`wirePaths 200 parts / 500 cabled wires: ${ms.toFixed(2)} ms`)
     expect(out).toHaveLength(500)
     expect(out.every((w) => w.cables[0] && w.cables[1])).toBe(true)
-    expect(ms).toBeLessThan(30)
+    expect(ms).toBeLessThan(40)
   })
 })
 

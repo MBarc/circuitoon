@@ -288,7 +288,10 @@ describe('circuitoon gate', () => {
       const taken = new Set([...v.diagram.connections.flatMap((c) => [c.from.pin, c.to.pin]), ...plugsOf(v.diagram).map((pl) => pl.group)])
       const strip = ['c3-top', 'c9-top', 'c25-top'].find((g) => !taken.has(g))!
       const far = worldHoles(bb, v.diagram.modules[bb.module]).find((g) => g.name === strip)!.at[0]
-      w.route = [[far.x, far.y]]
+      // Down through that strip's hole 0, along its row past the board's first column, up beside the
+      // rails and in along its own + rail to its hole.
+      const end = worldHoles(bb, v.diagram.modules[bb.module]).find((g) => g.name === (w.to as { pin: string }).pin)!.at[(w.to as { hole?: number }).hole ?? 0]
+      w.route = [[far.x, far.y], [end.x - 20, far.y], [end.x - 20, end.y]]
       if (busy) s.connections.push({ uid: 'x', from: { part: 'BB1', pin: strip, hole: 0 }, to: { part: 'BB1', pin: strip, hole: 4 }, routing: true })
     })
     return runGate(readFileSync(join(dir, 'sheet.json')), { sheetPath: 'sheet.json', outDir: join(dir, 'out'), io: quietIo(dir) })
@@ -299,7 +302,7 @@ describe('circuitoon gate', () => {
     expect(code).toBe(EXIT.environment)
     const over = report.warnings.filter((f) => f.rule === 'wire-over-holes')
     expect(over).toHaveLength(1)
-    expect(over[0].message).toMatch(/^The wire BT1 \+ to BB1 c\d+-top hole \d runs over breadboard holes/)
+    expect(over[0].message).toMatch(/^The wire BT1 \+ to BB1 \S+ hole \d+ runs over breadboard holes/)
     expect(over[0].wires).toHaveLength(1)
   })
   it('does not warn about a wire drawn over empty breadboard holes (Ruling C1)', async () => {

@@ -47,8 +47,9 @@ describe('layout fixtures', () => {
     expect(serializeDiagram(a.value.diagram)).toBe(serializeDiagram(b.value.diagram))
   }, 60_000)
 
-  it('typewriter-like: crossings stay at the measured level (A15: 6698 to 3061; A18: 1707; C1 and C2: 1601; wires by default, W1: 2417)', () => {
-    // Ruling W1 made wires the default: 2177 crossings before its board-aware routing, 2417 after: wires
+  it('typewriter-like: crossings stay at the measured level (A15: 6698 to 3061; A18: 1707; C1 and C2: 1601; wires by default, W1: 3034)', () => {
+    // Ruling W1 made wires the default: 2177 crossings before its board-aware routing, 2417 after, and
+    // 3034 since no wire may lie along another (each takes a line of its own, crossing more): wires
     // now go around every breadboard in use instead of over its holes, and this 98-part sheet is far
     // past the size the design skill splits into sheets
     // (the 1601 was measured with the older, tighter spacing).
@@ -56,7 +57,7 @@ describe('layout fixtures', () => {
     // lie over empty holes; C2 seats the DIP-28s in rows e and f, leaving every strip 4 free holes.
     const r = layoutNetlist(typewriter())
     if (!r.ok) throw new Error(r.errors.join('\n'))
-    expect(r.value.report.wireCrossings).toBeLessThanOrEqual(2480)
+    expect(r.value.report.wireCrossings).toBeLessThanOrEqual(3150)
   }, 60_000)
 
   // Amendment A4: the full fixture's gate plus link round trip. The PNG writer is a stand-in (the

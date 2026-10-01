@@ -8,18 +8,18 @@ Each sheet is laid out with `layout --keep` from its partial, with wires (the de
 
 | Sheet | Holds | Crossings before | **Crossings now** | Readability warnings before | **now** | Sheet before | Sheet now |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| `1-main` | Power, ESP32, displays, OLED, SD card, and J1 to J3 (one JST-XH 4-pin per bank) | 45 | **80** | 12 | **12** | 836 x 1046 | 1580 x 901 |
-| `2-bank-a` | J1, MCP23017 U2 at 0x20, balls 1 to 14 | 20 | **109** | 14 | **20** | 990 x 1111 | 1420 x 1211 |
-| `3-bank-b` | J1, MCP23017 U3 at 0x21, balls 15 to 28 | 19 | **107** | 15 | **20** | 990 x 1111 | 1420 x 1211 |
-| `4-bank-c` | J1, MCP23017 U4 at 0x22, balls 29 to 42 | 18 | **107** | 16 | **20** | 990 x 1111 | 1420 x 1211 |
+| `1-main` | Power, ESP32, displays, OLED, SD card, and J1 to J3 (one JST-XH 4-pin per bank) | 45 | **96** | 12 | **16** | 836 x 1046 | 1580 x 901 |
+| `2-bank-a` | J1, MCP23017 U2 at 0x20, balls 1 to 14 | 20 | **184** | 14 | **20** | 990 x 1111 | 1490 x 1211 |
+| `3-bank-b` | J1, MCP23017 U3 at 0x21, balls 15 to 28 | 19 | **184** | 15 | **20** | 990 x 1111 | 1470 x 1211 |
+| `4-bank-c` | J1, MCP23017 U4 at 0x22, balls 29 to 42 | 18 | **184** | 16 | **20** | 990 x 1111 | 1470 x 1211 |
 
 Every sheet has body overlaps 0, caption overlaps 0 and blocked nets none, and passes `gate` (with `ready: false`: the readability warnings below remain).
 
 `1-main` is pinned for wires: power on the left, the ESP32 in the middle, BB1 turned beside it as the hub for the SPI bus and the display control lines (its rows follow the displays' header order, so both displays take a flat ribbon), and the displays, OLED, SD card and bank connectors on the right.
 
 These readability warnings remain:
-- `1-main`: 4 `crossings-high` and 8 `wires-crowded`, all on the SD card's and DS2's control wires where they cross the display ribbons and run beside each other into the hub, and on the OLED's SDA and SCL stubs to their labels.
-- Bank sheets: 2 `crossings-high` (the expander's VCC and GND wires to BB1 cross its channel stubs) and 18 `wires-crowded`: the expander's channel pads sit in a 2 x 10 header inside the board, so each stub runs across the board's art to the label column beside the next pad's stub; and three balls whose second switch had no room for its own channel label wire to their first switch's label beside the ground drops.
+- `1-main`: 3 `crossings-high`, 11 `wires-crowded` and 2 `wires-overlap`: the SD card's and DS2's control wires cross the display ribbons and run beside each other into the hub, and two of them could find no line of their own beside a display header (each is named in the gate).
+- Bank sheets: 2 or 3 `crossings-high`, 14 `wires-crowded` and 3 `wires-overlap`: the expander's channel pads sit in a 2 x 10 header inside the board, so each stub runs across the board's art to the label column beside the next pad's stub, and a few of those stubs share a line for a step. Labels can only be placed at the board's edge, so these stay.
 
 To lay out and gate a sheet:
 

@@ -1293,6 +1293,10 @@ var PointIndex = class {
 var SOFT = 2;
 var H_BIT = 1;
 var V_BIT = 2;
+/** Extra cost of a step along an earlier wire (strict routing): a detour up to about this long is preferred. */
+var OVERLAP_COST = 800;
+/** Grid cells around an end shared with earlier wires where this wire may lie along them (see RouteRequest.shared). */
+var SHARED_REACH = 3;
 /**
 * Nodes farther than this many grid cells from the origin on either axis (about 335 million px at
 * the 10 px grid) are not recorded. Keeps `packCell` inside the safe-integer range.
@@ -1472,6 +1476,12 @@ function addToOccupancy(occ, polyline) {
 		else if (a.x === b.x) add(V_BIT, a.x, a.y, b.y);
 	}
 }
+/** Occupancy built from several wires' polylines, so a later wire can avoid running alongside them. */
+function occupancyOf(polylines, grid = 10) {
+	const occ = new Occupancy(grid);
+	for (const p of polylines) addToOccupancy(occ, p);
+	return occ;
+}
 /** Largest search window, in grid cells, before a margin is skipped (keeps memory and time bounded). */
 var MAX_CELLS = 25e4;
 /** Search windows around the endpoints, in px, tried in order (the default `margins`). */
@@ -1485,7 +1495,7 @@ function withinReach(a, b, g = 10) {
 	const m = MARGINS[0];
 	return (Math.ceil((Math.max(a.x, b.x) + m) / g) - Math.floor((Math.min(a.x, b.x) - m) / g) + 1) * (Math.ceil((Math.max(a.y, b.y) + m) / g) - Math.floor((Math.min(a.y, b.y) - m) / g) + 1) <= MAX_CELLS;
 }
-var DIRS = [
+var DIRS$1 = [
 	{
 		x: 1,
 		y: 0
@@ -1503,7 +1513,7 @@ var DIRS = [
 		y: -1
 	}
 ];
-var dirIndex = (d) => DIRS.findIndex((v) => v.x === d.x && v.y === d.y);
+var dirIndex = (d) => DIRS$1.findIndex((v) => v.x === d.x && v.y === d.y);
 /** First grid point reached by stepping out of `p` along `d`. */
 function leave(p, d, g) {
 	const snap = (v, s) => s > 0 ? Math.ceil((v + 1) / g) * g : s < 0 ? Math.floor((v - 1) / g) * g : Math.round(v / g) * g;
@@ -1604,6 +1614,12 @@ function buffers(n) {
 		heap: scratch.heap
 	};
 }
+/** Per-search window layers (lanes, lead-out runs, near shared ends, ribbon), reused and cleared, never reallocated per search. */
+var layers = [];
+function layer(i, n) {
+	if (!layers[i] || layers[i].length < n) layers[i] = new Uint8Array(Math.max(n, (layers[i]?.length ?? 0) * 2));
+	return layers[i].subarray(0, n).fill(0);
+}
 /** Column and row step for each heading in DIRS order (right, down, left, up). */
 var STEP_X = [
 	1,
@@ -1630,9 +1646,12 @@ function routeOrthogonal(req, opts = {}) {
 	});
 	const start = req.fromDir ? leave(ahead(req.from, req.fromDir, req.fromLead), req.fromDir, g) : onGrid(req.from, g);
 	const goal = req.toDir ? leave(ahead(req.to, req.toDir, req.toLead), req.toDir, g) : onGrid(req.to, g);
+	const strict = !!req.occupied?.size || !!req.stubs?.size;
 	for (const margin of opts.margins ?? MARGINS) {
-		const path = search(start, goal, req, g, clearance, bendCost, parallelCost, adjacentCost, bundleBonus, margin);
+		const hit = { hit: false };
+		const path = search(start, goal, req, g, clearance, bendCost, parallelCost, adjacentCost, bundleBonus, margin, strict, hit);
 		if (path) {
+			if (req.overlapped) req.overlapped.hit = hit.hit;
 			const first = path[0];
 			const last = path[path.length - 1];
 			const head = skew(req.from, first) ? [req.fromDir?.x === 0 ? {
@@ -1664,7 +1683,9 @@ function routeOrthogonal(req, opts = {}) {
 var skew = (a, b) => a.x !== b.x && a.y !== b.y;
 /** True when `p` lies inside `r` grown by `clearance` on every side (the cells the router blocks). */
 var inGrown = (p, r, clearance = 4) => p.x >= r.x - clearance && p.x <= r.x + r.w + clearance && p.y >= r.y - clearance && p.y <= r.y + r.h + clearance;
-function search(start, goal, req, g, clearance, bendCost, parallelCost, adjacentCost, bundleBonus, margin) {
+function search(start, goal, req, g, clearance, bendCost, parallelCost, adjacentCost, bundleBonus, margin, strict = false, overlapped = { hit: false }) {
+	/** A step along an earlier wire costs as much as a long detour: taken only when none is near. */
+	const overlapCost = OVERLAP_COST;
 	const x0 = Math.floor((Math.min(start.x, goal.x) - margin) / g) * g;
 	const y0 = Math.floor((Math.min(start.y, goal.y) - margin) / g) * g;
 	const x1 = Math.ceil((Math.max(start.x, goal.x) + margin) / g) * g;
@@ -1720,12 +1741,27 @@ function search(start, goal, req, g, clearance, bendCost, parallelCost, adjacent
 	if (startCell === goalCell) return [start];
 	let parallel = null;
 	if (req.occupied?.size) {
-		parallel = new Uint8Array(cols * rows);
+		parallel = layer(0, cols * rows);
 		req.occupied.copyWindow(x0, y0, cols, rows, g, parallel);
+	}
+	const solid = parallel;
+	let stubs = null;
+	if (strict && req.stubs?.size) {
+		stubs = layer(1, cols * rows);
+		req.stubs.copyWindow(x0, y0, cols, rows, g, stubs);
+	}
+	let near = null;
+	if (strict && req.shared?.length) {
+		near = layer(2, cols * rows);
+		for (const p of req.shared) {
+			const pc = Math.round((p.x - x0) / g);
+			const pr = Math.round((p.y - y0) / g);
+			for (let r = Math.max(0, pr - SHARED_REACH); r <= Math.min(rows - 1, pr + SHARED_REACH); r++) for (let c = Math.max(0, pc - SHARED_REACH); c <= Math.min(cols - 1, pc + SHARED_REACH); c++) near[r * cols + c] = 1;
+		}
 	}
 	let ribbon = null;
 	if (req.bundle?.size && bundleBonus) {
-		ribbon = new Uint8Array(cols * rows);
+		ribbon = layer(3, cols * rows);
 		req.bundle.copyWindow(x0, y0, cols, rows, g, ribbon);
 	}
 	const gc = goalCell % cols;
@@ -1779,12 +1815,17 @@ function search(start, goal, req, g, clearance, bendCost, parallelCost, adjacent
 				continue;
 			}
 			let c = here + g + (nd !== d ? bendCost : 0);
+			if (strict) {
+				const sb = nd & 1 ? V_BIT : H_BIT;
+				if ((solid && solid[ncell] & solid[cell] & sb || stubs && stubs[ncell] & stubs[cell] & sb) && !(near && near[ncell])) c += overlapCost;
+			}
 			if (ncell === goalCell) {
 				if (endDir >= 0 && nd !== endDir && req.toLead) continue;
 				if (endDir >= 0 && nd !== endDir) c += bendCost;
 			} else if (lanes) {
 				const lane = parallel;
-				if (lane[ncell] & (nd & 1 ? V_BIT : H_BIT)) c += parallelCost;
+				const bit = nd & 1 ? V_BIT : H_BIT;
+				if (lane[ncell] & bit) c += parallelCost;
 				else if (adjacentCost && (nd & 1 ? nc > 0 && lane[ncell - 1] & V_BIT || nc + 1 < cols && lane[ncell + 1] & V_BIT : nr > 0 && lane[ncell - cols] & H_BIT || nr + 1 < rows && lane[ncell + cols] & H_BIT)) c += adjacentCost;
 				else if (ribbon !== null && (nd & 1 ? nc > 1 && ribbon[ncell - 2] & V_BIT || nc + 2 < cols && ribbon[ncell + 2] & V_BIT : nr > 1 && ribbon[ncell - 2 * cols] & H_BIT || nr + 2 < rows && ribbon[ncell + 2 * cols] & H_BIT)) c -= bundleBonus;
 			}
@@ -1805,7 +1846,16 @@ function search(start, goal, req, g, clearance, bendCost, parallelCost, adjacent
 			y: y0 + Math.floor(cell / cols) * g
 		});
 	}
-	return cells.reverse();
+	const path = cells.reverse();
+	if (strict) {
+		const at = (p) => (p.y - y0) / g * cols + (p.x - x0) / g;
+		for (let k = 1; k < path.length && !overlapped.hit; k++) {
+			const [u, v] = [at(path[k - 1]), at(path[k])];
+			const sb = path[k - 1].y === path[k].y ? H_BIT : V_BIT;
+			if ((solid && solid[u] & solid[v] & sb || stubs && stubs[u] & stubs[v] & sb) && !(near && near[v])) overlapped.hit = true;
+		}
+	}
+	return path;
 }
 //#endregion
 //#region src/format/wireEdit.ts
@@ -3268,6 +3318,85 @@ function wrapNote(text, width = 48) {
 	}).join("\n");
 }
 //#endregion
+//#region src/format/boardEntry.ts
+/**
+* How unclean a way out is, lowest best. Every hole the run passes over counts: one in use most
+* (another wire's end or a leg, of any strip: the wire reads as plugged in there, or covers that
+* end), then an empty hole of another terminal strip (the run would lie along a row of holes), a
+* rail crossed on the way to the edge, and least its own empty holes. A run across its strip
+* rather than along it costs a little more, so a strip is entered from its own end where that is
+* as clean.
+*/
+var exitDirt = (x) => 12 * (x.crossUsed + x.ownUsed) + 6 * x.crossEmpty + 2 * x.crossRail + x.ownEmpty + (x.along ? 0 : 3);
+var DIRS = [
+	{
+		x: -1,
+		y: 0
+	},
+	{
+		x: 1,
+		y: 0
+	},
+	{
+		x: 0,
+		y: -1
+	},
+	{
+		x: 0,
+		y: 1
+	}
+];
+var NEAR = 3;
+/**
+* The ways out from hole `p` of strip `own` on a board with body `rect` and hole groups `strips`.
+* `used` says whether a hole is in use. A run along the strip toward a line of holes that another
+* strip continues (across the centre channel) is never offered.
+*/
+function holeExits(rect, strips, own, p, used) {
+	const holes = strips.find((s) => s.id === own)?.holes ?? [p];
+	const flat = holes.length > 1 && holes.every((q) => Math.abs(q.y - holes[0].y) < .5);
+	const upright = holes.length > 1 && holes.every((q) => Math.abs(q.x - holes[0].x) < .5);
+	const out = [];
+	for (const dir of DIRS) {
+		const along = dir.x !== 0 && flat || dir.y !== 0 && upright;
+		const edge = {
+			x: dir.x < 0 ? rect.x : dir.x > 0 ? rect.x + rect.w : p.x,
+			y: dir.y < 0 ? rect.y : dir.y > 0 ? rect.y + rect.h : p.y
+		};
+		const ahead = (q) => (q.x - p.x) * dir.x + (q.y - p.y) * dir.y;
+		const onLine = (q) => dir.x !== 0 ? Math.abs(q.y - p.y) < NEAR : Math.abs(q.x - p.x) < NEAR;
+		if (along) {
+			const end = Math.max(...holes.map(ahead));
+			if (strips.some((s) => s.id !== own && s.holes.filter((q) => onLine(q) && ahead(q) > end).length >= 2)) continue;
+		}
+		let crossUsed = 0;
+		let crossEmpty = 0;
+		let crossRail = 0;
+		let ownUsed = 0;
+		let ownEmpty = 0;
+		for (const s of strips) for (const q of s.holes) {
+			if (!onLine(q) || ahead(q) <= NEAR) continue;
+			if (s.id === own) {
+				if (used(q)) ownUsed++;
+				else ownEmpty++;
+			} else if (used(q)) crossUsed++;
+			else if (s.rail) crossRail++;
+			else crossEmpty++;
+		}
+		out.push({
+			dir,
+			edge,
+			along,
+			crossUsed,
+			crossEmpty,
+			crossRail,
+			ownUsed,
+			ownEmpty
+		});
+	}
+	return out;
+}
+//#endregion
 //#region src/format/diagram.ts
 /** How every load warning about a dropped value override ends: the part now shows its module
 * default instead of the value the file asked for. The editor lists these warnings first. */
@@ -3651,14 +3780,53 @@ function routeAvoid(d, holes = boardHoles(d), labels = labelPoints(d)) {
 	for (const [uid, pts] of labels.captions) for (const p of pts) ti.add(p.x, p.y, uid);
 	const ni = new PointIndex();
 	for (const [uid, pts] of labels.names ?? []) for (const p of pts) ni.add(p.x, p.y, uid);
+	const pop = populatedBoards(d);
+	const stripsOf = /* @__PURE__ */ new Map();
+	for (const b of pop.boards) {
+		const part = d.parts.find((p) => p.uid === b.uid);
+		stripsOf.set(b.uid, worldHoles(part, moduleOf(d, part.module)).map((g) => ({
+			id: g.name,
+			holes: g.at,
+			rail: !!g.rail
+		})));
+	}
+	const usedHole = new Set(holes.groups.flatMap((g) => g.at.map((p) => holeSpot(p))));
+	const empties = new PointIndex();
+	for (const [uid, list] of stripsOf) for (const g of list) for (const p of g.holes) if (!usedHole.has(holeSpot(p))) empties.add(p.x, p.y, holeGroupKey(uid, g.id));
+	for (const b of pop.boards) {
+		const r = growRect(b.rect, 10);
+		for (const k of [1, 2]) {
+			const x0 = Math.floor(r.x / 10) * 10 - (k - 1) * 10;
+			const y0 = Math.floor(r.y / 10) * 10 - (k - 1) * 10;
+			const x1 = Math.ceil((r.x + r.w) / 10) * 10 + (k - 1) * 10;
+			const y1 = Math.ceil((r.y + r.h) / 10) * 10 + (k - 1) * 10;
+			for (let x = x0; x <= x1; x += 10) {
+				empties.add(x, y0, ringKey(b.uid));
+				empties.add(x, y1, ringKey(b.uid));
+			}
+			for (let y = y0 + 10; y < y1; y += 10) {
+				empties.add(x0, y, ringKey(b.uid));
+				empties.add(x1, y, ringKey(b.uid));
+			}
+		}
+	}
 	return {
 		holes: hi,
 		legGroup: holes.legGroup,
 		text: ti,
 		names: ni,
-		...populatedBoards(d)
+		...pop,
+		stripsOf,
+		usedHole,
+		empties
 	};
 }
+var holeSpot = (p) => `${Math.round(p.x)},${Math.round(p.y)}`;
+var ringKey = (board) => `ring ${board}`;
+/** Two pins facing each other on one line closer than this (px) keep their lead-out runs to themselves. */
+var FACING_REACH = 160;
+/** Most wires laid along another that one routing pass tries to repair (repairOverlaps). */
+var REPAIR_MAX = 24;
 /** True when a straight run from `a` to `b` passes within 3 px of a point of `index` not skipped. */
 function runsOver(a, b, index, skip) {
 	return index.some(Math.min(a.x, b.x) - 3, Math.min(a.y, b.y) - 3, Math.max(a.x, b.x) + 3, Math.max(a.y, b.y) + 3, skip, () => true);
@@ -3667,7 +3835,7 @@ function runsOver(a, b, index, skip) {
 function pathRunsOver(pts, index, skip) {
 	return pts.slice(1).some((p, i) => runsOver(pts[i], p, index, skip));
 }
-function routeWire(d, c, obstacles, occupied, avoid = routeAvoid(d), bundle) {
+function routeWire(d, c, obstacles, occupied, avoid = routeAvoid(d), bundle, shared, stubs) {
 	const a = resolveEndpoint(d, c.from);
 	const b = resolveEndpoint(d, c.to);
 	if (!a || !b) return null;
@@ -3699,7 +3867,9 @@ function routeWire(d, c, obstacles, occupied, avoid = routeAvoid(d), bundle) {
 	let solved;
 	const plainRoute = () => solved === void 0 ? solved = solveRoute(a, b, own, leads, facing, ownHoles, ownText, ownNames, {
 		occupied,
-		bundle
+		bundle,
+		shared,
+		stubs
 	}, avoid) : solved;
 	if (!walls.length) return plainRoute() ?? {
 		points: blockedPoints(a, b),
@@ -3708,75 +3878,88 @@ function routeWire(d, c, obstacles, occupied, avoid = routeAvoid(d), bundle) {
 	const boardEnds = [ba, bb].filter((x) => x !== null && x !== inside);
 	const beside = (x, other) => !!x && x !== inside && inGrown(other, x.rect, 40);
 	const plainFirst = !boardEnds.length || beside(ba, b.end) || beside(bb, a.end);
+	const stripOf = (ep) => {
+		if (avoid.stripsOf.get(ep.part)) return ep.pin;
+		const leg = avoid.legGroup.get(legKey(ep.part, ep.pin));
+		return leg ? JSON.parse(leg)[1] : null;
+	};
+	const onLane = (p, q) => {
+		if (!occupied?.size) return false;
+		const bit = p.y === q.y ? 1 : 2;
+		const n = Math.round((Math.abs(q.x - p.x) + Math.abs(q.y - p.y)) / 10);
+		const sx = Math.sign(q.x - p.x) * 10;
+		const sy = Math.sign(q.y - p.y) * 10;
+		const g = onGrid(p, 10);
+		for (let k = 0; k < n; k++) if (occupied.at(g.x + sx * k, g.y + sy * k) & bit && occupied.at(g.x + sx * (k + 1), g.y + sy * (k + 1)) & bit) return true;
+		return false;
+	};
+	/**
+	* Each straight way out from hole `p` (endpoint `ep`) of a board in use to its edge (boardEntry.ts):
+	* along its strip only from the strip's outer end, else across it. How unclean each is: the holes
+	* it passes over, then a run along another wire's line, then one through a part's body. Where the
+	* search would start (one grid step out past the edge) is in `end`.
+	*/
+	/** The bodies a straight run out of hole `p` must not cross: all but one the hole lies strictly inside (a leg's hole under its part). */
+	const bodiesOff = (p) => obstacles.filter((r) => !(p.x > r.x && p.x < r.x + r.w && p.y > r.y && p.y < r.y + r.h));
+	const exitsFor = (board, ep, p) => {
+		const r = growRect(board.rect, 6);
+		const out = (v, lo) => lo ? Math.floor((v - 4 - 1) / 10) * 10 : Math.ceil((v + 4 + 1) / 10) * 10;
+		return holeExits(board.rect, avoid.stripsOf.get(board.uid) ?? [], stripOf(ep) ?? "", p, (q) => avoid.usedHole.has(holeSpot(q))).map((x) => {
+			const end = x.dir.x < 0 ? {
+				x: out(r.x, true),
+				y: p.y
+			} : x.dir.x > 0 ? {
+				x: out(r.x + r.w, false),
+				y: p.y
+			} : x.dir.y < 0 ? {
+				x: p.x,
+				y: out(r.y, true)
+			} : {
+				x: p.x,
+				y: out(r.y + r.h, false)
+			};
+			const dirt = exitDirt(x) + (onLane(p, {
+				x: end.x + x.dir.x * 10,
+				y: end.y + x.dir.y * 10
+			}) ? 100 : 0) + (manualRouteBlocked([p, end], bodiesOff(p)) ? 200 : 0);
+			return {
+				end,
+				dir: x.dir,
+				dirt
+			};
+		});
+	};
+	/** Whether the run from hole `from` toward `to` leaves its board by one of its cleanest ways out. */
+	const leavesOk = (board, ep, from, to) => {
+		if (!to || from.x !== to.x && from.y !== to.y || from.x === to.x && from.y === to.y) return false;
+		const dir = {
+			x: Math.sign(to.x - from.x),
+			y: Math.sign(to.y - from.y)
+		};
+		const exits = exitsFor(board, ep, from);
+		const best = Math.min(...exits.map((x) => x.dirt));
+		return exits.some((x) => x.dir.x === dir.x && x.dir.y === dir.y && x.dirt === best);
+	};
 	const keeps = (pts) => {
 		let body = pts;
 		if (ba && ba !== inside) body = body.slice(1);
 		if (bb && bb !== inside) body = body.slice(0, -1);
-		const firstOk = (from, to) => !!to && (from.x === to.x || from.y === to.y);
-		if (ba && ba !== inside && !firstOk(pts[0], pts[1])) return false;
-		if (bb && bb !== inside && !firstOk(pts[pts.length - 1], pts[pts.length - 2])) return false;
+		if (ba && ba !== inside && !leavesOk(ba, c.from, pts[0], pts[1])) return false;
+		if (bb && bb !== inside && !leavesOk(bb, c.to, pts[pts.length - 1], pts[pts.length - 2])) return false;
 		return avoid.boards.every((x) => x === inside || !runsInside(body, x.rect)) && boardEnds.length <= 2;
 	};
 	if (plainFirst) {
 		const plain = plainRoute();
 		if (plain && !plain.blocked && keeps(plain.points)) return plain;
 	}
-	const ports = (e, board, other) => {
+	const ports = (e, ep, board, other) => {
 		if (!board || board === inside) return [{
 			end: e,
 			run: []
 		}];
-		const r = growRect(board.rect, 6);
-		const out = (v, lo) => lo ? Math.floor((v - 4 - 1) / 10) * 10 : Math.ceil((v + 4 + 1) / 10) * 10;
 		const p = e.end;
-		const exits = [
-			{
-				end: {
-					x: out(r.x, true),
-					y: p.y
-				},
-				dir: {
-					x: -1,
-					y: 0
-				}
-			},
-			{
-				end: {
-					x: out(r.x + r.w, false),
-					y: p.y
-				},
-				dir: {
-					x: 1,
-					y: 0
-				}
-			},
-			{
-				end: {
-					x: p.x,
-					y: out(r.y, true)
-				},
-				dir: {
-					x: 0,
-					y: -1
-				}
-			},
-			{
-				end: {
-					x: p.x,
-					y: out(r.y + r.h, false)
-				},
-				dir: {
-					x: 0,
-					y: 1
-				}
-			}
-		].map((x) => ({
-			...x,
-			len: Math.abs(x.end.x - p.x) + Math.abs(x.end.y - p.y) + Math.abs(x.end.x - other.x) + Math.abs(x.end.y - other.y)
-		}));
-		const clean = (x) => !manualRouteBlocked([p, x.end], own) && !runsOver(p, x.end, avoid.holes, ownHoles);
-		exits.sort((u, v) => Number(clean(v)) - Number(clean(u)) || u.len - v.len);
-		return exits.map((x) => ({
+		const len = (end) => Math.abs(end.x - p.x) + Math.abs(end.y - p.y) + Math.abs(end.x - other.x) + Math.abs(end.y - other.y);
+		return exitsFor(board, ep, p).sort((u, v) => u.dirt - v.dirt || len(u.end) - len(v.end)).map((x) => ({
 			end: {
 				end: x.end,
 				dir: x.dir
@@ -3784,8 +3967,8 @@ function routeWire(d, c, obstacles, occupied, avoid = routeAvoid(d), bundle) {
 			run: [p]
 		}));
 	};
-	const pa = ports(a, ba, b.end);
-	const pb = ports(b, bb, a.end);
+	const pa = ports(a, c.from, ba, b.end);
+	const pb = ports(b, c.to, bb, a.end);
 	const walled = [...own, ...walls];
 	for (const [i, j] of [
 		[0, 0],
@@ -3799,7 +3982,9 @@ function routeWire(d, c, obstacles, occupied, avoid = routeAvoid(d), bundle) {
 		const portal = x.run.length > 0 || y.run.length > 0;
 		const r = solveRoute(x.end, y.end, walled, [x.run.length ? 0 : leads[0], y.run.length ? 0 : leads[1]], facing && !portal, ownHoles, ownText, ownNames, {
 			occupied,
-			bundle
+			bundle,
+			shared,
+			stubs
 		}, avoid);
 		if (r) return {
 			...r,
@@ -3844,7 +4029,60 @@ function windowOf(a, b, leads) {
 * captions and pin names where it can (they give way in that order, never blocking it). Null when
 * no route exists at all.
 */
-function solveRoute(a, b, own, [fromLead, toLead], facing, ownHoles, ownText, ownNames, { occupied, bundle }, avoid) {
+function solveRoute(...args) {
+	const [a, b, own, leads, facing, ownHoles, ownText, ownNames, lanes, avoid] = args;
+	if (lanes.occupied?.size || lanes.stubs?.size) {
+		const overlapped = { hit: false };
+		const free = routeOrthogonal({
+			from: a.end,
+			fromDir: a.dir,
+			to: b.end,
+			toDir: b.dir,
+			obstacles: own,
+			occupied: lanes.occupied,
+			bundle: lanes.bundle,
+			shared: lanes.shared,
+			stubs: lanes.stubs,
+			overlapped
+		});
+		if (!free) return null;
+		if (overlapped.hit) {
+			const pts = routeOrthogonal({
+				from: a.end,
+				fromDir: a.dir,
+				to: b.end,
+				toDir: b.dir,
+				obstacles: own,
+				occupied: lanes.occupied,
+				bundle: lanes.bundle,
+				shared: lanes.shared,
+				stubs: lanes.stubs,
+				avoidIn: [
+					{
+						index: avoid.holes,
+						skip: ownHoles
+					},
+					{
+						index: avoid.text,
+						skip: ownText
+					},
+					{
+						index: avoid.names,
+						skip: ownNames
+					}
+				]
+			}) ?? free;
+			return {
+				points: pts,
+				blocked: false,
+				overlap: true,
+				...pathRunsOver(pts, avoid.holes, ownHoles) ? { fallback: true } : {}
+			};
+		}
+	}
+	return solveOnce(a, b, own, leads, facing, ownHoles, ownText, ownNames, lanes, avoid, true) ?? solveOnce(...args);
+}
+function solveOnce(a, b, own, [fromLead, toLead], facing, ownHoles, ownText, ownNames, { occupied, bundle, shared, stubs }, avoid, offEmpties = false) {
 	const win = windowOf(a, b, [fromLead, toLead]);
 	const anyHoles = avoid.holes.some(...win, ownHoles, () => true);
 	const anyText = avoid.text.some(...win, ownText, () => true);
@@ -3859,6 +4097,7 @@ function solveRoute(a, b, own, [fromLead, toLead], facing, ownHoles, ownText, ow
 		[fromLead, 0],
 		[0, toLead]
 	];
+	let spare = null;
 	const attempt = (avoidIn, fullLeads = false) => {
 		const req = {
 			from: a.end,
@@ -3868,36 +4107,64 @@ function solveRoute(a, b, own, [fromLead, toLead], facing, ownHoles, ownText, ow
 			obstacles: own,
 			avoidIn,
 			occupied,
-			bundle
+			bundle,
+			shared,
+			stubs
+		};
+		const one = (r) => {
+			const overlapped = { hit: false };
+			const pts = routeOrthogonal({
+				...r,
+				overlapped
+			});
+			if (pts && overlapped.hit) {
+				spare ??= pts;
+				return null;
+			}
+			return pts;
 		};
 		for (const [i, [f, t]] of (fullLeads ? tries.slice(0, 1) : tries).entries()) {
 			if (!f && !t || tries.slice(0, i).some(([pf, pt]) => pf === f && pt === t)) continue;
-			const pts = routeOrthogonal({
+			const pts = one({
 				...req,
 				fromLead: f,
 				toLead: t
 			});
 			if (pts && attached(pts)) return pts;
 		}
-		return fullLeads ? null : routeOrthogonal(req);
+		return fullLeads ? null : one(req);
 	};
 	const holesHit = { hit: false };
 	const textHit = { hit: false };
 	const namesHit = { hit: false };
+	const emptyHit = { hit: false };
 	const holesIn = {
 		index: avoid.holes,
 		skip: ownHoles,
 		refused: holesHit
 	};
+	const emptiesIn = offEmpties ? [{
+		index: avoid.empties,
+		skip: ownHoles,
+		refused: emptyHit
+	}] : [];
+	if (offEmpties && !avoid.empties.some(...win, ownHoles, () => true)) return null;
 	const namesIn = anyNames ? [{
 		index: avoid.names,
 		skip: ownNames,
 		refused: namesHit
 	}] : [];
 	let clear = null;
+	const lastResort = (pts) => ({
+		points: pts,
+		blocked: false,
+		overlap: true,
+		...pathRunsOver(pts, avoid.holes, ownHoles) ? { fallback: true } : {}
+	});
 	if (anyText) {
 		const strict = [
 			holesIn,
+			...emptiesIn,
 			{
 				index: avoid.text,
 				skip: ownText,
@@ -3908,6 +4175,7 @@ function solveRoute(a, b, own, [fromLead, toLead], facing, ownHoles, ownText, ow
 		clear = attempt(strict, true);
 		if (!clear && (fromLead || toLead)) clear = attempt([
 			holesIn,
+			...emptiesIn,
 			{
 				index: avoid.text,
 				skip: ownNames,
@@ -3917,25 +4185,35 @@ function solveRoute(a, b, own, [fromLead, toLead], facing, ownHoles, ownText, ow
 		], true);
 		if (!clear) clear = attempt(strict);
 	}
+	if (offEmpties && anyText) return clear ? {
+		points: clear,
+		blocked: false
+	} : null;
 	if (!clear && anyNames && (!anyText || textHit.hit)) {
 		holesHit.hit = false;
-		clear = attempt([holesIn, ...namesIn]);
+		clear = attempt([
+			holesIn,
+			...emptiesIn,
+			...namesIn
+		]);
 	}
 	if (!clear && (!(anyText || anyNames) || textHit.hit || namesHit.hit)) {
 		holesHit.hit = false;
-		clear = attempt([holesIn]);
+		clear = attempt([holesIn, ...emptiesIn]);
 	}
 	if (clear) return {
 		points: clear,
 		blocked: false
 	};
+	if (offEmpties) return null;
 	const over = anyHoles && holesHit.hit ? attempt([]) : null;
 	if (over) return {
 		points: over,
 		blocked: false,
 		...pathRunsOver(over, avoid.holes, ownHoles) ? { fallback: true } : {}
 	};
-	return null;
+	const last = spare;
+	return last && lastResort(last);
 }
 /**
 * Routes every connection in file order, feeding each auto route the grid lanes every earlier
@@ -3971,13 +4249,144 @@ function computeRoutes(d, opts = {}) {
 		out.set(c.uid, kept);
 		record(c, kept);
 	}
+	const endKey = (e) => JSON.stringify([
+		e.part,
+		e.pin,
+		e.hole ?? null,
+		e.offset ?? null
+	]);
+	const stubs = occupied ? new Occupancy() : void 0;
+	/** The reserved runs, by the wire whose they are. */
+	const stubRuns = [];
+	if (stubs) {
+		const ends = [];
+		for (const c of d.connections) {
+			const a = resolveEndpoint(d, c.from);
+			const b = resolveEndpoint(d, c.to);
+			if (!a || !b) continue;
+			const { leads } = leadsOf(c, a, b);
+			if (a.dir) ends.push({
+				uid: c.uid,
+				end: a.end,
+				dir: a.dir,
+				lead: leads[0]
+			});
+			if (b.dir) ends.push({
+				uid: c.uid,
+				end: b.end,
+				dir: b.dir,
+				lead: leads[1]
+			});
+		}
+		const byLine = /* @__PURE__ */ new Map();
+		for (const e of ends) {
+			const key = e.dir.x !== 0 ? `h${Math.round(e.end.y)}` : `v${Math.round(e.end.x)}`;
+			byLine.set(key, [...byLine.get(key) ?? [], e]);
+		}
+		for (const list of byLine.values()) for (const e of list) {
+			const ahead = (q) => (q.x - e.end.x) * e.dir.x + (q.y - e.end.y) * e.dir.y;
+			if (!list.some((o) => o.dir.x === -e.dir.x && o.dir.y === -e.dir.y && ahead(o.end) > 0 && ahead(o.end) < FACING_REACH)) continue;
+			const n = Math.max(10, e.lead);
+			const g0 = onGrid(e.end, 10);
+			const run = [g0, {
+				x: g0.x + e.dir.x * n,
+				y: g0.y + e.dir.y * n
+			}];
+			addToOccupancy(stubs, run);
+			stubRuns.push({
+				uid: e.uid,
+				run
+			});
+		}
+	}
+	/** A wire's own reserved runs start at its pins: near them it is free (RouteRequest.shared). */
+	const ownRuns = /* @__PURE__ */ new Map();
+	for (const r of stubRuns) ownRuns.set(r.uid, [...ownRuns.get(r.uid) ?? [], r.run[0]]);
+	const byEnd = /* @__PURE__ */ new Map();
+	for (const c of d.connections) for (const e of [c.from, c.to]) byEnd.set(endKey(e), [...byEnd.get(endKey(e)) ?? [], c.uid]);
 	for (const c of d.connections) {
 		if (out.has(c.uid)) continue;
-		const route = routeWire(d, c, obstacles, occupied, avoid, bundleOf(c));
+		const free = [...[c.from, c.to].flatMap((e) => (byEnd.get(endKey(e)) ?? []).some((u) => u !== c.uid && out.get(u)) ? [resolveEndpoint(d, e)?.end].filter((p) => !!p) : []), ...ownRuns.get(c.uid) ?? []];
+		const route = routeWire(d, c, obstacles, occupied, avoid, bundleOf(c), free.length ? free : void 0, stubs);
 		out.set(c.uid, route);
 		record(c, route);
 	}
+	if (occupied) repairOverlaps(d, out, (c, occ, sh) => {
+		const free = [...sh ?? [], ...ownRuns.get(c.uid) ?? []];
+		return routeWire(d, c, obstacles, occ, avoid, bundleOf(c), free.length ? free : void 0, stubs);
+	}, byEnd, endKey, opts.only);
 	return out;
+}
+/**
+* Ruling W1: a wire that could only be laid along an earlier one (`overlap`) gets another chance once
+* every wire is down. It is routed again against all the others; failing that, the wires it lies
+* along are lifted, it is routed first, and they are routed again after it. A change is kept only
+* when nothing that was clear before lies along another wire after it. A few rounds at most.
+*/
+function repairOverlaps(d, out, route, byEnd, endKey, only) {
+	const byUid = new Map(d.connections.map((c) => [c.uid, c]));
+	const occupancyBut = (skip) => occupancyOf([...out].filter(([u, r]) => r && !skip.has(u)).map(([, r]) => r.points));
+	const sharedOf = (c) => {
+		const pts = [c.from, c.to].flatMap((e) => (byEnd.get(endKey(e)) ?? []).some((u) => u !== c.uid) ? [resolveEndpoint(d, e)?.end].filter((p) => !!p) : []);
+		return pts.length ? pts : void 0;
+	};
+	/** The wires whose drawn lines `pts` lies along. */
+	const alongOf = (uid, pts) => {
+		const mine = occupancyOf([pts]);
+		const hits = [];
+		for (const [u, r] of out) {
+			if (u === uid || !r) continue;
+			const p = r.points;
+			for (let k = 1; k < p.length && !hits.includes(u); k++) {
+				const [a, b] = [p[k - 1], p[k]];
+				const bit = a.y === b.y ? 1 : 2;
+				const n = Math.round((Math.abs(b.x - a.x) + Math.abs(b.y - a.y)) / 10);
+				const sx = Math.sign(b.x - a.x) * 10;
+				const sy = Math.sign(b.y - a.y) * 10;
+				const g0 = onGrid(a, 10);
+				for (let i = 0; i < n; i++) if (mine.at(g0.x + sx * i, g0.y + sy * i) & bit && mine.at(g0.x + sx * (i + 1), g0.y + sy * (i + 1)) & bit) {
+					hits.push(u);
+					break;
+				}
+			}
+		}
+		return hits;
+	};
+	for (let round = 0; round < 3; round++) {
+		const flagged = [...out].filter(([u, r]) => r?.overlap && (!only || only.has(u))).map(([u]) => u);
+		if (!flagged.length || flagged.length > REPAIR_MAX) return;
+		let changed = false;
+		for (const uid of flagged) {
+			const c = byUid.get(uid);
+			const again = route(c, occupancyBut(/* @__PURE__ */ new Set([uid])), sharedOf(c));
+			if (again && !again.overlap) {
+				out.set(uid, again);
+				changed = true;
+				continue;
+			}
+			const lifted = alongOf(uid, out.get(uid).points).filter((u) => !only || only.has(u));
+			if (!lifted.length || lifted.length > 4) continue;
+			const before = new Map([uid, ...lifted].map((u) => [u, out.get(u)]));
+			const skip = /* @__PURE__ */ new Set([uid, ...lifted]);
+			const first = route(c, occupancyBut(skip), sharedOf(c));
+			if (!first || first.overlap) continue;
+			out.set(uid, first);
+			skip.delete(uid);
+			let ok = true;
+			for (const u of lifted) {
+				skip.delete(u);
+				const r = route(byUid.get(u), occupancyBut(/* @__PURE__ */ new Set([u, ...skip])), sharedOf(byUid.get(u)));
+				if (!r || r.overlap) {
+					ok = false;
+					break;
+				}
+				out.set(u, r);
+			}
+			if (ok) changed = true;
+			else for (const [u, r] of before) out.set(u, r);
+		}
+		if (!changed) return;
+	}
 }
 var HOP = 5;
 /**
@@ -4146,9 +4555,9 @@ function separate(points, verticals, horizontals, index, keepOf, minRuns = [MIN_
 		let pick = null;
 		for (const nudge of NUDGES) {
 			const moved = at + nudge;
-			if (!allowed(moved)) continue;
+			if (!allowed(moved) || overlapsAt(segs, moved, lo, hi)) continue;
 			pick = moved;
-			if (!overlapsAt(segs, moved, lo, hi)) break;
+			break;
 		}
 		if (pick !== null) {
 			if (horiz) {
@@ -60570,6 +60979,7 @@ var NOT_CHECKED = [
 ];
 /** Every rule a readability finding can have; while any is reported, a gate is not ready (Ruling W1). */
 var READABILITY_RULES = [
+	"wires-overlap",
 	"wires-crowded",
 	"wire-hugs-part",
 	"label-covered",
@@ -60686,6 +61096,7 @@ function readabilityFindings(d, routes = computeRoutes(d)) {
 				const [a, b] = [s.wire, t.wire].sort(naturalCompare);
 				const key = `${a}|${b}`;
 				const gap = Math.abs(s.at - t.at);
+				if (gap === 0) continue;
 				const was = crowded.get(key);
 				if (!was || gap < was.gap || gap === was.gap && run > was.run) crowded.set(key, {
 					a,
@@ -60696,6 +61107,36 @@ function readabilityFindings(d, routes = computeRoutes(d)) {
 			}
 		}
 	}
+	const endsOf = new Map(drawn.map((w) => [w.conn.uid, [w.points[0], w.points[w.points.length - 1]]]));
+	const overlap = /* @__PURE__ */ new Map();
+	for (const list of [hs, vs]) {
+		const buckets = /* @__PURE__ */ new Map();
+		list.forEach((x, i) => buckets.set(x.at, [...buckets.get(x.at) ?? [], i]));
+		for (const idx of buckets.values()) for (let i = 0; i < idx.length; i++) for (let j = i + 1; j < idx.length; j++) {
+			const [s, t] = [list[idx[i]], list[idx[j]]];
+			if (s.wire === t.wire) continue;
+			const lo = Math.max(s.lo, t.lo);
+			const hi = Math.min(s.hi, t.hi);
+			if (hi - lo <= 2) continue;
+			if (endsOf.get(s.wire).some((p) => endsOf.get(t.wire).some((q) => Math.abs(p.x - q.x) < .5 && Math.abs(p.y - q.y) < .5))) continue;
+			const [a, b] = [s.wire, t.wire].sort(naturalCompare);
+			const key = `${a}|${b}`;
+			overlap.set(key, {
+				a,
+				b,
+				run: Math.max(overlap.get(key)?.run ?? 0, hi - lo)
+			});
+		}
+	}
+	for (const { a, b, run } of overlap.values()) out.push({
+		id: `wires-overlap|${a},${b}`,
+		rule: "wires-overlap",
+		severity: "warning",
+		parts: [],
+		pins: [],
+		wires: [a, b],
+		message: `The wires ${name(a)} and ${name(b)} lie on top of each other for ${Math.round(run)} px, so neither can be traced. Lay the sheet out again, or drag one of them onto its own line.`
+	});
 	for (const { a, b, gap, run } of crowded.values()) out.push({
 		id: `wires-crowded|${a},${b}`,
 		rule: "wires-crowded",
@@ -62102,6 +62543,8 @@ function edgeExits(board, at) {
 //#region src/agent/realize.ts
 /** A pin farther than this (px, along the grid) from its net's strips may get a local strip on a hub (Ruling W1). */
 var FAR = 300;
+/** A hole whose cheapest straight way out passes over another hole costs at least this (holeChoice). */
+var DIRTY = 600;
 var SIGNAL_COLORS = [
 	"blue",
 	"green",
@@ -62215,65 +62658,96 @@ function realize(intent, d, locals = [], opts = {}) {
 	const wiredAt = /* @__PURE__ */ new Map();
 	const onSeg = (p, [a, b]) => Math.abs(a.x - b.x) < 1 ? Math.abs(p.x - a.x) <= 3 && p.y >= Math.min(a.y, b.y) - 3 && p.y <= Math.max(a.y, b.y) + 3 : Math.abs(p.y - a.y) <= 3 && p.x >= Math.min(a.x, b.x) - 3 && p.x <= Math.max(a.x, b.x) + 3;
 	/** The straight run from hole `i` of `s` out to the board edge that heads best toward `at`. */
+	const boardStrips = /* @__PURE__ */ new Map();
+	const stripsOfBoard = (board) => {
+		let list = boardStrips.get(board);
+		if (!list) boardStrips.set(board, list = [...strips.values()].filter((o) => o.board === board).map((o) => ({
+			id: o.name,
+			holes: o.holes,
+			rail: !!o.rail
+		})));
+		return list;
+	};
+	/** Each hole's key by its position, per board (built once), so whether a hole is in use is one lookup. */
+	const keyAt = /* @__PURE__ */ new Map();
+	const usedAt = (board) => {
+		let m = keyAt.get(board);
+		if (!m) {
+			keyAt.set(board, m = /* @__PURE__ */ new Map());
+			for (const o of strips.values()) if (o.board === board) o.holes.forEach((p, j) => m.set(`${Math.round(p.x)},${Math.round(p.y)}`, holeKey(o.board, o.name, j)));
+		}
+		const at = m;
+		return (q) => {
+			const k = at.get(`${Math.round(q.x)},${Math.round(q.y)}`);
+			return k !== void 0 && used.has(k);
+		};
+	};
+	/** The cleanest straight way out of hole `i` of `s` (boardEntry.ts), and how unclean it is, plus its run. */
 	const exitOf = (s, i, at) => {
 		const r = rectOf(s.board);
 		const h = s.holes[i];
-		const exits = [
-			{
-				x: r.x,
-				y: h.y
-			},
-			{
-				x: r.x + r.w,
-				y: h.y
-			},
-			{
-				x: h.x,
-				y: r.y
-			},
-			{
-				x: h.x,
-				y: r.y + r.h
-			}
-		];
-		const cost = (e) => dist(h, e) + dist(e, at);
-		return [h, exits.reduce((a, b) => cost(b) < cost(a) ? b : a)];
+		const exits = holeExits(r, stripsOfBoard(s.board), s.name, h, usedAt(s.board));
+		const cost = (e) => dist(h, e.edge) + dist(e.edge, at);
+		const best = exits.reduce((a, x) => !a || exitDirt(x) < exitDirt(a) || exitDirt(x) === exitDirt(a) && cost(x) < cost(a) ? x : a, null);
+		return best ? {
+			run: [h, best.edge],
+			dirt: exitDirt(best),
+			ownUsed: best.ownUsed
+		} : {
+			run: [h, h],
+			dirt: 99,
+			ownUsed: 0
+		};
 	};
 	const runClash = (s, i, at) => {
-		const run = exitOf(s, i, at);
-		let n = 0;
-		for (const o of strips.values()) {
-			if (o.board !== s.board || o === s) continue;
-			o.holes.forEach((p, j) => {
-				if (used.has(holeKey(o.board, o.name, j)) && onSeg(p, run)) n++;
-			});
-		}
-		for (const r of runs.get(s.board) ?? []) if (onSeg(s.holes[i], r)) n++;
+		const { run, dirt } = exitOf(s, i, at);
+		let n = dirt;
+		for (const r of runs.get(s.board) ?? []) if (onSeg(s.holes[i], r)) n += 10;
 		if (s.rail) {
 			const h = s.holes[i];
 			const along = Math.abs(s.holes[0].y - s.holes[s.holes.length - 1].y) < 1 ? "x" : "y";
 			for (const o of strips.values()) {
 				if (o.board !== s.board || o === s || o.rail) continue;
-				if (o.holes.some((p, j) => used.has(holeKey(o.board, o.name, j)) && Math.abs(p[along] - h[along]) < 3)) n++;
+				if ((owner.has(o.key) || o.holes.some((p, j) => used.has(holeKey(o.board, o.name, j)))) && o.holes.some((p) => Math.abs(p[along] - h[along]) < 3)) n += 12;
 			}
 		}
 		return n;
 	};
-	const nearestHole = (s, at) => {
+	/** The best free hole of `s` for a wire toward `at`, and its cost: near, with a clean straight way out. */
+	const holeChoice = (s, at) => {
 		const pref = preferred.get(s.key);
-		if (pref !== void 0 && !used.has(holeKey(s.board, s.name, pref))) return pref;
+		if (pref !== void 0 && !used.has(holeKey(s.board, s.name, pref))) return {
+			i: pref,
+			cost: 0
+		};
 		let best = null;
-		let bestCost = Infinity;
 		for (const i of clear(s)) {
 			const h = s.holes[i];
 			const beside = (wiredAt.get(s.board) ?? []).filter((q) => Math.abs(q.x - h.x) + Math.abs(q.y - h.y) <= 12).length;
-			const c = dist(h, at) + 1e3 * runClash(s, i, at) + 25 * beside;
-			if (c < bestCost) {
-				best = i;
-				bestCost = c;
+			const c = dist(h, at) + 100 * runClash(s, i, at) + 25 * beside;
+			if (!best || c < best.cost) best = {
+				i,
+				cost: c
+			};
+		}
+		return best;
+	};
+	const nearestHole = (s, at) => {
+		const best = holeChoice(s, at);
+		if (best) runs.set(s.board, [...runs.get(s.board) ?? [], exitOf(s, best.i, at).run]);
+		return best?.i ?? null;
+	};
+	/** Of `list`, the strip whose best hole for a wire toward `at` costs least (Ruling W1: a clean way in counts, not distance alone). */
+	const bestDp = (list, at) => {
+		let best = null;
+		let bestCost = Infinity;
+		for (const st of list) {
+			const c = holeChoice(st, at);
+			if (c && c.cost < bestCost) {
+				best = st;
+				bestCost = c.cost;
 			}
 		}
-		if (best !== null) runs.set(s.board, [...runs.get(s.board) ?? [], exitOf(s, best, at)]);
 		return best;
 	};
 	const stripName = (s) => `${s.board} ${s.name}`;
@@ -62379,7 +62853,7 @@ function realize(intent, d, locals = [], opts = {}) {
 		let bestDist = 0;
 		for (const s of strips.values()) {
 			const r = rank(s);
-			if (r < 0 || localBoards.has(s.board) || owner.has(s.key) || reserved.has(s.key) || board !== void 0 && s.board !== board || free(s).length !== s.holes.length - (covered.get(s.key) ?? 0)) continue;
+			if (r < 0 || localBoards.has(s.board) || hubPlan.size > 0 && hubs.has(s.board) || owner.has(s.key) || reserved.has(s.key) || board !== void 0 && s.board !== board || free(s).length !== s.holes.length - (covered.get(s.key) ?? 0)) continue;
 			const dd = dist(s.holes[0], at);
 			if (!best || r < bestRank || r === bestRank && dd < bestDist) {
 				best = s;
@@ -62703,12 +63177,77 @@ function realize(intent, d, locals = [], opts = {}) {
 		labelledNets.push(net.name);
 		return true;
 	};
-	const preset = /* @__PURE__ */ new Map();
-	const hubOrder = [];
-	if (hubs.size) {
+	const hubRows = [];
+	/** Which way a half-strip's holes run from its outer end (away from the other half) to its inner end. */
+	const outward = (half, other) => {
+		const o = other.holes.reduce((a, h) => ({
+			x: a.x + h.x / other.holes.length,
+			y: a.y + h.y / other.holes.length
+		}), {
+			x: 0,
+			y: 0
+		});
+		return half.holes.map((h, i) => ({
+			i,
+			d: dist(h, o)
+		})).sort((a, b) => b.d - a.d).map((x) => x.i);
+	};
+	const hub = [...hubs][0];
+	let rowsHorizontal = true;
+	let hubMid = {
+		x: 0,
+		y: 0
+	};
+	if (hub) {
+		const list = [...strips.values()].filter((st) => st.board === hub && !st.rail && st.holes.length > 1);
+		rowsHorizontal = list.length > 0 && list[0].holes.every((h) => Math.abs(h.y - list[0].holes[0].y) < .5);
+		const line = (st) => Math.round(rowsHorizontal ? st.holes[0].y : st.holes[0].x);
+		const along = (st) => rowsHorizontal ? st.holes[0].x : st.holes[0].y;
+		const byLine = /* @__PURE__ */ new Map();
+		for (const st of list) byLine.set(line(st), [...byLine.get(line(st)) ?? [], st]);
+		for (const k of [...byLine.keys()].sort((a, b) => a - b)) {
+			const pair = byLine.get(k).sort((a, b) => along(a) - along(b));
+			if (pair.length === 2 && !pair.some((st) => owner.has(st.key) || reserved.has(st.key))) hubRows.push({ halves: [pair[0], pair[1]] });
+		}
+		const all = list.flatMap((st) => st.holes);
+		hubMid = {
+			x: all.reduce((a, h) => a + h.x, 0) / Math.max(1, all.length),
+			y: all.reduce((a, h) => a + h.y, 0) / Math.max(1, all.length)
+		};
+	}
+	/** 0 for the half on the low side (west, or north for upright rows), 1 for the other. */
+	const sideOf = (p) => (rowsHorizontal ? p.x : p.y) < (rowsHorizontal ? hubMid.x : hubMid.y) ? 0 : 1;
+	/** Order along the rows' stacking axis. */
+	const stackOf = (p) => rowsHorizontal ? p.y : p.x;
+	/** The nodes of a net served from the hub: every node of a hub net, or of a supply net those clearly nearer the hub than its own strips. */
+	const nodesOfNet = (net) => {
+		const byComp = /* @__PURE__ */ new Map();
+		for (const t of net.terminals) {
+			if (t.infra || legBy.has(terminalKey(t.ref, t.name))) continue;
+			const c = `${t.ref} ${internalComponent(modOf(t.ref), t.name)}`;
+			byComp.set(c, [...byComp.get(c) ?? [], t]);
+		}
+		return [...byComp.keys()].sort(naturalCompare).map((c) => byComp.get(c));
+	};
+	const netStrips = (net) => {
+		const keys = /* @__PURE__ */ new Set();
+		for (const t of net.terminals) {
+			if (t.infra) keys.add(groupKey(t.ref, t.name));
+			const pl = legBy.get(terminalKey(t.ref, t.name));
+			if (pl) keys.add(groupKey(pl.board, pl.group));
+		}
+		return [...keys].flatMap((k) => strips.get(k) ? [strips.get(k)] : []);
+	};
+	const hubbedNode = (at, own) => {
+		const there = own.length ? Math.min(...own.flatMap((st) => st.holes.map((h) => dist(h, at)))) : Infinity;
+		return dist(at, hubMid) < there && there > FAR;
+	};
+	/** The rows each planned net takes on the hub, and for a supply net whether it is fed by a trunk from its own strips. */
+	const hubPlan = /* @__PURE__ */ new Map();
+	if (hub && hubRows.length) {
 		const needs = [];
 		intent.nets.forEach((net, ni) => {
-			if (net.label || kindOf(net) !== "signal" || net.terminals.some((t) => t.infra || legBy.has(terminalKey(t.ref, t.name)))) return;
+			if (net.label || kindOf(net) !== "signal" || netStrips(net).length) return;
 			const caps = /* @__PURE__ */ new Map();
 			for (const t of net.terminals) {
 				const c = `${t.ref} ${internalComponent(modOf(t.ref), t.name)}`;
@@ -62728,69 +63267,94 @@ function realize(intent, d, locals = [], opts = {}) {
 		const reach = /* @__PURE__ */ new Map();
 		for (const n of needs) for (const t of new Set(n.ends.map((x) => x.ref))) reach.set(t, (reach.get(t) ?? 0) + 1);
 		const lead = [...reach].sort((a, b) => b[1] - a[1] || Number(modOf(a[0]).category === "Microcontrollers") - Number(modOf(b[0]).category === "Microcontrollers") || naturalCompare(a[0], b[0]))[0]?.[0];
-		const along = (n) => {
-			const t = n.ends.find((x) => x.ref === lead);
-			return t ? pointOf(pinEnd(t)) : n.at;
-		};
-		const from = needs.length ? {
-			x: needs.reduce((a, n) => a + n.at.x, 0) / needs.length,
-			y: needs.reduce((a, n) => a + n.at.y, 0) / needs.length
-		} : null;
-		const mid = (st) => ({
-			x: st.holes.reduce((a, h) => a + h.x, 0) / st.holes.length,
-			y: st.holes.reduce((a, h) => a + h.y, 0) / st.holes.length
-		});
-		const side = (st) => from ? Math.round(Math.abs(mid(st).x - from.x) / 50) : 0;
-		const sorted = [...strips.values()].filter((st) => hubs.has(st.board) && !st.rail && !owner.has(st.key) && !reserved.has(st.key)).sort((a, b) => side(a) - side(b) || mid(a).y - mid(b).y || mid(a).x - mid(b).x);
-		const rank = /* @__PURE__ */ new Map();
-		for (const [i, st] of sorted.entries()) {
-			const k = sorted.slice(0, i).filter((o) => side(o) === side(st)).length;
-			rank.set(st, side(st) * 2 + k % 2);
-		}
-		hubOrder.push(...sorted.map((st, i) => ({
-			st,
-			i
-		})).sort((a, b) => rank.get(a.st) - rank.get(b.st) || a.i - b.i).map((x) => x.st));
-		needs.sort((a, b) => along(a).y - along(b).y || along(a).x - along(b).x || a.ni - b.ni);
-		const slots = [];
+		const hubbedNets = new Set(needs.map((n) => n.ni));
+		const plan = [];
 		if (lead) {
 			const pins = intent.nets.flatMap((net, ni) => net.terminals.filter((t) => t.ref === lead && !t.infra).map((t) => ({
 				ni,
-				at: pointOf(pinEnd(t)),
-				supply: kindOf(net) !== "signal"
+				at: pointOf(pinEnd(t))
 			})));
-			const hubbed = new Set(needs.map((n) => n.ni));
-			for (const p of pins.sort((a, b) => a.at.y - b.at.y || a.at.x - b.at.x)) if (hubbed.has(p.ni) || p.supply) slots.push(hubbed.has(p.ni) ? p.ni : null);
-		}
-		const ordered = [...needs.map((n) => n.ni).filter((ni) => !slots.includes(ni))];
-		const plan = [...slots, ...ordered];
-		const free0 = hubOrder.filter((x) => !owner.has(x.key));
-		const spare = [];
-		plan.forEach((ni, i) => {
-			const st = free0[i];
-			if (!st) return;
-			if (ni === null) spare.push(st);
-			else {
-				owner.set(st.key, ni);
-				preset.set(ni, st);
+			for (const pin of pins.sort((a, b) => stackOf(a.at) - stackOf(b.at))) {
+				const net = intent.nets[pin.ni];
+				if (plan.includes(pin.ni)) continue;
+				if (hubbedNets.has(pin.ni) || kindOf(net) !== "signal" && !net.label && netStrips(net).length) plan.push(pin.ni);
 			}
+		}
+		for (const n of needs) if (!plan.includes(n.ni)) plan.push(n.ni);
+		const want = plan.map((ni) => {
+			const net = intent.nets[ni];
+			const supply = !hubbedNets.has(ni);
+			const own = netStrips(net);
+			const ends = nodesOfNet(net).map((m) => pointOf(pinEnd(m[0]))).filter((at) => !supply || hubbedNode(at, own));
+			if (supply && ends.length < 2) return 0;
+			const count = [0, 0];
+			for (const at of ends) count[sideOf(at)]++;
+			if (supply && own.length) count[sideOf(own[0].holes[0])]++;
+			return Math.max(1, ...count);
 		});
-		const rest = hubOrder.filter((x) => !spare.includes(x));
-		hubOrder.length = 0;
-		hubOrder.push(...spare, ...rest);
+		const gap = want.reduce((a, b) => a + b, 0) + plan.filter((_, i) => want[i]).length - 1 <= hubRows.length ? 1 : 0;
+		let at = 0;
+		plan.forEach((ni, i) => {
+			if (!want[i] || at + want[i] > hubRows.length) return;
+			const rows = hubRows.slice(at, at + want[i]);
+			for (const r of rows) for (const h of r.halves) owner.set(h.key, ni);
+			hubPlan.set(ni, {
+				rows,
+				trunk: !hubbedNets.has(ni)
+			});
+			at += want[i] + gap;
+		});
 	}
 	/**
-	* The free strip nearest `at` that net `ni` may claim (its kind's rail first, by a little), and on
-	* a hub only the next one in hub order; claimed, or null when there is none.
+	* Wires a planned hub net: each item (a node, or the trunk from the net's own strips) takes the
+	* outer hole of a half-strip on its side, rows in stacking order; then the half-strips are joined.
+	*/
+	const wireHub = (ni, items) => {
+		const { rows } = hubPlan.get(ni);
+		const bySide = [[], []];
+		for (const it of items) bySide[sideOf(it.at)].push(it);
+		for (const side of [0, 1]) {
+			bySide[side].sort((a, b) => stackOf(a.at) - stackOf(b.at));
+			bySide[side].forEach((it, k) => {
+				const row = rows[Math.min(k, rows.length - 1)];
+				const half = row.halves[side];
+				const i = outward(half, row.halves[1 - side]).find((j) => !used.has(holeKey(half.board, half.name, j)));
+				if (i === void 0) return void errors.push(`strip full: net ${intent.nets[ni].name} has no free hole left on ${stripName(half)}`);
+				if ("node" in it) {
+					const e = take(it.node, half.holes[i]);
+					wire(ni, e, holeEnd(half, i), true);
+				} else {
+					const from = nearestHole(it.trunk, half.holes[i]);
+					if (from === null) return void errors.push(`strip full: net ${intent.nets[ni].name} has no free hole left on ${stripName(it.trunk)}`);
+					wire(ni, holeEnd(it.trunk, from), holeEnd(half, i), true);
+				}
+			});
+		}
+		const spine = bySide[1].length > bySide[0].length ? 1 : 0;
+		const inner = (half, other, back = 0) => outward(half, other)[half.holes.length - 1 - back];
+		const pin = (half, i) => holeEnd(half, i);
+		rows.forEach((row, k) => {
+			const far = row.halves[1 - spine];
+			const nearHalf = row.halves[spine];
+			const wired = (h) => connections.some((c) => [c.from, c.to].some((e) => e.part === h.board && e.pin === h.name));
+			if (wired(far)) wire(ni, pin(nearHalf, inner(nearHalf, far)), pin(far, inner(far, nearHalf)), true);
+			if (k + 1 < rows.length) {
+				const next = rows[k + 1];
+				const back = 1 + k % 2;
+				wire(ni, pin(nearHalf, inner(nearHalf, far, back)), pin(next.halves[spine], inner(next.halves[spine], next.halves[1 - spine], back)), true);
+			}
+		});
+	};
+	/**
+	* The free strip nearest `at` that net `ni` may claim (its kind's rail first, by a little), never
+	* on a hub (its rows are planned); claimed, or null when there is none.
 	*/
 	const localClaim = (ni, at, kind) => {
 		const rank = (st) => kind === "ground" ? st.rail === "-" ? 0 : st.rail ? -1 : 1 : kind === "power" ? st.rail === "+" ? 0 : st.rail ? -1 : 1 : st.rail ? -1 : 0;
-		const nextHub = hubOrder.find((x) => !owner.has(x.key));
 		let best = null;
 		let bestCost = Infinity;
 		for (const st of strips.values()) {
-			if (rank(st) < 0 || localBoards.has(st.board) || owner.has(st.key) || reserved.has(st.key) || free(st).length !== st.holes.length - (covered.get(st.key) ?? 0)) continue;
-			if (hubs.has(st.board) && st !== nextHub) continue;
+			if (rank(st) < 0 || localBoards.has(st.board) || hubs.has(st.board) || owner.has(st.key) || reserved.has(st.key) || free(st).length !== st.holes.length - (covered.get(st.key) ?? 0)) continue;
 			const cost = Math.min(...free(st).map((i) => dist(st.holes[i], at))) + 50 * rank(st);
 			if (cost < bestCost) {
 				best = st;
@@ -62833,6 +63397,14 @@ function realize(intent, d, locals = [], opts = {}) {
 		for (const g of groups) for (const st of g.strips) owner.set(st.key, ni);
 		const groupOf = (n) => groups.find((g) => g.refs.has(n.members[0].ref));
 		if (labelNet(ni, net, kind, nodes, dps, groups.length > 0)) continue;
+		const plannedHub = hubPlan.get(ni);
+		if (plannedHub && !plannedHub.trunk && !groups.length) {
+			wireHub(ni, nodes.map((n) => ({
+				node: n,
+				at: first(n)
+			})));
+			continue;
+		}
 		const own = nodes.filter((n) => !groupOf(n));
 		if (!dps.length && groups.length && own.length >= 2) {
 			const pts = own.map(first);
@@ -62849,11 +63421,10 @@ function realize(intent, d, locals = [], opts = {}) {
 				continue;
 			}
 			const pts = nodes.map(first);
-			const center = {
+			const s = claim(ni, {
 				x: pts.reduce((s, p) => s + p.x, 0) / pts.length,
 				y: pts.reduce((s, p) => s + p.y, 0) / pts.length
-			};
-			const s = preset.get(ni) ?? claim(ni, center, kind);
+			}, kind);
 			if (!s) {
 				const spares = nodes.map(joinedSpares);
 				const grown = nodes.map((n, i) => ({
@@ -62933,7 +63504,10 @@ function realize(intent, d, locals = [], opts = {}) {
 		const reach = dps.length ? dps : pool;
 		const totalFree = () => reach.reduce((sum, s) => sum + free(s).length, 0);
 		const toStrips = (n) => Math.min(...reach.flatMap((st) => st.holes.map((h) => dist(h, first(n)))));
-		const queue = own.map((n) => ({
+		let rest = own;
+		const hubbed = plannedHub?.trunk && dps.length ? own.filter((n) => hubbedNode(first(n), dps)) : [];
+		if (hubbed.length) rest = own.filter((n) => !hubbed.includes(n));
+		const queue = rest.map((n) => ({
 			n,
 			d: toStrips(n)
 		})).sort((a, b) => a.d - b.d).map((x) => x.n);
@@ -62941,26 +63515,48 @@ function realize(intent, d, locals = [], opts = {}) {
 			const at = first(node);
 			const near = nearestDp(reach, at);
 			const far = near ? Math.min(...free(near).map((i) => dist(near.holes[i], at))) : Infinity;
-			if (near && far > FAR && own.length - k >= 1) {
+			if (near && far > FAR && rest.length - k >= 1) {
 				const local = localClaim(ni, at, kind);
-				if (local) {
+				if (local && rest.length - k < 2 && local.board === near.board && !local.rail) owner.delete(local.key);
+				else if (local) {
 					if (Math.min(...local.holes.map((h) => dist(h, at))) * 2 < far && jumper(ni, near, local)) reach.push(local);
 					else owner.delete(local.key);
 				}
 			}
-			while (totalFree() < own.length - k) {
+			while (totalFree() < rest.length - k) {
 				const from = nearestDp(reach, at);
 				const ext = from && (claim(ni, from.holes[0], kind, from.board) ?? claim(ni, at, kind));
 				if (!from || !ext || !jumper(ni, from, ext)) break;
 				reach.push(ext);
 			}
-			const target = nearestDp(reach, at);
+			let target = bestDp(reach, at);
+			const was = target && holeChoice(target, at);
+			const wiredAlready = (st) => connections.some((c) => [c.from, c.to].some((e) => e.part === st.board && e.pin === st.name));
+			if (target && was && was.cost >= DIRTY && wiredAlready(target) && exitOf(target, was.i, at).ownUsed > 0) {
+				const ext = claim(ni, target.holes[0], kind, target.board);
+				const now = ext && holeChoice(ext, at);
+				if (ext && now && now.cost < was.cost && jumper(ni, target, ext)) {
+					reach.push(ext);
+					target = ext;
+				} else if (ext) owner.delete(ext.key);
+			}
 			if (!target) {
 				errors.push(`strip full: net ${net.name} has no free hole left on ${reach.map(stripName).join(", ")}${under(reach)}`);
 				break;
 			}
 			const e = take(node, at);
 			wire(ni, e, holeEnd(target, nearestHole(target, pointOf(e))), true);
+		}
+		if (hubbed.length) {
+			const trunk = bestDp(reach, hubMid);
+			if (trunk) wireHub(ni, [{
+				trunk,
+				at: trunk.holes[0]
+			}, ...hubbed.map((n) => ({
+				node: n,
+				at: first(n)
+			}))]);
+			else errors.push(`strip full: net ${net.name} has no free hole left on ${reach.map(stripName).join(", ")}${under(reach)}`);
 		}
 	}
 	return errors.length ? {

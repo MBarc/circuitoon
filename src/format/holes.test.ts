@@ -269,15 +269,17 @@ describe('routing with boards and holes', () => {
     // The board's holes sit on y = 0..40 and none is in use, so the wire runs straight over row y = 20.
     expect(computeRoutes(d).get('w')).toEqual({ points: [{ x: 48, y: 20 }, { x: 192, y: 20 }], blocked: false })
   })
-  it('routes a wire from a hole center straight along a row of empty holes of other strips', () => {
+  it('leaves a hole off the line of other strips holes where it can, never along a row of them (Ruling W1)', () => {
     const d: Diagram = {
       format: 'circuitoon-diagram/1', title: 't', modules: { bb, two },
       parts: [{ uid: 'b', designator: 'BB1', module: 'bb', x: 0, y: 0 }, { uid: 'a', designator: 'R1', module: 'two', x: 100, y: -10 }],
       connections: [{ uid: 'w', from: { part: 'b', pin: 's1', hole: 0 }, to: { part: 'a', pin: 'L' } }],
     }
-    expect(computeRoutes(d).get('w')).toEqual({ points: [{ x: 10, y: 10 }, { x: 92, y: 10 }], blocked: false })
+    // Ruling C1 ran it straight along row y = 10 over s2 to s9; it now steps off the row first.
+    // R1 sits on the board's top edge, so no route keeps off the board: it crosses, flagged.
+    expect(computeRoutes(d).get('w')).toEqual({ points: [{ x: 10, y: 10 }, { x: 10, y: 0 }, { x: 90, y: 0 }, { x: 90, y: 10 }, { x: 92, y: 10 }], blocked: false, overBoard: true })
   })
-  it('routes a wire between holes on opposite sides of an empty breadboard as one straight run', () => {
+  it('routes a jumper between holes on one breadboard off the rows and columns of other strips (Ruling W1)', () => {
     const half = load('breadboard-half')
     const d: Diagram = {
       format: 'circuitoon-diagram/1', title: 't', modules: { 'breadboard-half': half },
@@ -288,8 +290,9 @@ describe('routing with boards and holes', () => {
       ],
     }
     const routes = computeRoutes(d)
-    expect(routes.get('across')).toEqual({ points: [{ x: 30, y: 80 }, { x: 320, y: 80 }], blocked: false })
-    expect(routes.get('down')).toEqual({ points: [{ x: 60, y: 20 }, { x: 60, y: 210 }], blocked: false })
+    expect(routes.get('across')).toEqual({ points: [{ x: 30, y: 80 }, { x: 30, y: 50 }, { x: 320, y: 50 }, { x: 320, y: 80 }], blocked: false })
+    // Straight down column 5 would lie along c5-top and c5-bot: it goes round by the board's margin.
+    expect(routes.get('down')).toEqual({ points: [{ x: 60, y: 20 }, { x: 10, y: 20 }, { x: 10, y: 210 }, { x: 60, y: 210 }], blocked: false })
   })
   it('still detours around holes that hold wire ends, and never runs along a row of them', () => {
     // w2 and w3 end in s5 hole 1 and s6 hole 1, on the straight line of w.
