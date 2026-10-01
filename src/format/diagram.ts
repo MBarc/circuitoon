@@ -8,7 +8,7 @@ import { coveredHoles, holeIndex, mountIssues, plugOfPin, plugsOf } from './brea
 import { type CableEndDraw, END_SIZE, endKind, endPlacement, isEndKind, normalizeEnds, type WireEnds } from './cables.ts'
 import { placedCaptionBox, tipLabelBoxes } from '../render/captionBox.ts'
 import { seatedLabels } from './seatedLabels.ts'
-import { LABEL_VALUE } from './netLabels.ts'
+import { LABEL_VALUE, flagRect } from './netLabels.ts'
 import { annotationRect, frameTab } from '../render/annotationGeometry.ts'
 
 /** How every load warning about a dropped value override ends: the part now shows its module
@@ -171,6 +171,8 @@ export function moduleOf(d: Pick<Diagram, 'modules'>, id: string): ModuleDef | u
 export function partObstacles(d: Diagram): Rect[] {
   return d.parts.flatMap((p) => {
     const m = moduleOf(d, p.module)
+    // A net label is as big as its drawn flag (its two-unit body would cover the next header pin's label).
+    if (m && isNetLabel(m)) return [flagRect(p, m, true)]
     return m && m.obstacle !== false ? [bodyRect(p, layoutModule(m))] : []
   })
 }

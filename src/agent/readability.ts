@@ -4,7 +4,8 @@
 // so layout can fail with them (amendment A7). Pure.
 import { type Diagram, type PartInstance, type Routes, moduleOf } from '../format/diagram.ts'
 import { type Pt, type Rect, bodyRect } from '../format/geometry.ts'
-import { layoutModule } from '../format/module.ts'
+import { isNetLabel, layoutModule } from '../format/module.ts'
+import { flagRect } from '../format/netLabels.ts'
 import { placedCaptionBox } from '../render/captionBox.ts'
 import { seatedLabels } from '../format/seatedLabels.ts'
 import { intersects, union } from './footprint.ts'
@@ -23,7 +24,11 @@ export interface ReadabilityReport {
 /** Every overlapping pair on the sheet, as "R1 and R2" (bodies) or "R1 caption and R2 body". */
 export function overlaps(d: Diagram): { body: string[]; caption: string[] } {
   const parts = d.parts.filter((p) => moduleOf(d, p.module)).sort((a, b) => naturalCompare(a.uid, b.uid))
-  const body = (p: PartInstance) => bodyRect(p, layoutModule(moduleOf(d, p.module)!))
+  // A net label's body is its drawn flag, so labels on neighbouring header pins never count as overlapping.
+  const body = (p: PartInstance) => {
+    const m = moduleOf(d, p.module)!
+    return isNetLabel(m) ? flagRect(p, m, true) : bodyRect(p, layoutModule(m))
+  }
   const seated = seatedLabels(d)
   const caption = (p: PartInstance) => placedCaptionBox(p, moduleOf(d, p.module)!, seated.get(p.uid))
   const own = (a: PartInstance, b: PartInstance) => a.mount?.board === b.uid || b.mount?.board === a.uid

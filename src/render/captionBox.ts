@@ -3,7 +3,8 @@
 // device seated on an outlet (and that outlet). Shared by Part.tsx, the router's label avoidance,
 // the export bounds and the layout's overlap checks, so all of them agree.
 import { type Pt, type Rect, type Rotation, bodyRect, worldPins } from '../format/geometry.ts'
-import { LEAD, layoutModule, pinRoom, type ModuleDef, usesTipLabels } from '../format/module.ts'
+import { LEAD, isNetLabel, layoutModule, pinRoom, type ModuleDef, usesTipLabels } from '../format/module.ts'
+import { flagRect } from '../format/netLabels.ts'
 import { partCaption } from '../format/values.ts'
 
 export const CAPTION_SIZE = 8.5
@@ -22,6 +23,8 @@ export function captionAnchor(m: ModuleDef, rotation: Rotation = 0): Pt {
 
 /** The caption's box in world px (8 px above the baseline, 2 below). */
 export function captionBox(part: CaptionPart, m: ModuleDef, text = partCaption(part, m)): Rect {
+  // A net label draws no caption: its name is in its flag, so the flag is what wires and parts keep off.
+  if (isNetLabel(m)) return flagRect(part, m, true)
   const a = captionAnchor(m, part.rotation ?? 0)
   const w = text.length * CAPTION_CHAR
   return { x: part.x + a.x - w / 2, y: part.y + a.y - 8, w, h: 10 }

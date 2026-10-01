@@ -220,3 +220,14 @@ describe('loading', () => {
     expect(r.diagram.parts[1].values).toEqual({})
   })
 })
+
+describe('labels on neighbouring header pins', () => {
+  it('count as their drawn flags: no overlap, and a flag-sized obstacle', async () => {
+    const { overlaps } = await import('../agent/readability.ts')
+    const { partObstacles } = await import('./diagram.ts')
+    const d = sheet([named('a', 'SDA', { x: 0, y: 0 }), named('b', 'SCL', { x: 0, y: 10 })], [])
+    expect(overlaps(d)).toEqual({ body: [], caption: [] })
+    const [r] = partObstacles(d)
+    expect(r.h).toBeLessThan(10)
+  })
+})

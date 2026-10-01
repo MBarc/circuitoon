@@ -4,7 +4,7 @@
 // in KiCad and in a netlist's net names). An empty name joins nothing. Pure.
 import { type Diagram, type PartInstance, moduleOf } from './diagram.ts'
 import { isNetLabel, isSpacer, layoutModule, type ModuleDef } from './module.ts'
-import { type Rect, toWorld } from './geometry.ts'
+import { type Rect, type Rotation, toWorld } from './geometry.ts'
 import { natural } from './words.ts'
 
 /** The key a label's name is stored under in `values`. */
@@ -93,7 +93,7 @@ export function flagWidth(name: string, ground = false): number {
  * what the editor outlines when the label is selected or shares a name with the hovered one. The
  * ground mark widens a ground label's flag; `ground` says whether it is drawn.
  */
-export function flagRect(part: PartInstance, m: ModuleDef, ground = false): Rect {
+export function flagRect(part: { x: number; y: number; rotation?: Rotation; values?: Record<string, unknown> }, m: ModuleDef, ground = false): Rect {
   const lay = layoutModule(m)
   const mid = lay.pins[0]?.edge.y ?? lay.h / 2
   const a = toWorld(part, lay, { x: 0, y: mid - FLAG_H / 2 })
