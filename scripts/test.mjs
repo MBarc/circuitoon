@@ -9,4 +9,10 @@ const run = (a) => spawnSync('npx', ['vitest', 'run', ...a], { stdio: 'inherit',
 if (args.length) process.exit(run(args))
 const unit = run(['--exclude', '"**/*.perf.test.ts"'])
 if (unit !== 0) process.exit(unit)
-process.exit(run(['--no-file-parallelism', '.perf.test.ts']))
+// Right after the main suite the machine is often still busy (and other desktop apps compete for
+// the CPU), so a timing budget can miss once. Run the timing files again once before failing:
+// a real slowdown fails both times; a busy moment does not.
+const perf = ['--no-file-parallelism', '.perf.test.ts']
+if (run(perf) === 0) process.exit(0)
+console.log('\nTiming tests missed a budget; running them once more on their own.\n')
+process.exit(run(perf))
