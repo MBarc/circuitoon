@@ -65,8 +65,12 @@ export function layoutNetlist(raw: unknown, opts: { library?: ModuleLookup; keep
       intent: structuredClone(raw),
     }
     const over = overlaps(base)
-    if (over.body.length || over.caption.length)
-      return { ok: false, stage: 'layout', errors: [...over.body.map((o) => `body overlap: ${o}; move one of them`), ...over.caption.map((o) => `caption overlap: ${o}; move one of them`)] }
+    // A caption overlap a kept position causes (an old partial, after captions moved) is the user's
+    // layout to fix: it stays in the report and as a readability warning, never a failed layout.
+    const kept = (o: string) => /^(\S+) caption and (\S+) /.exec(o)?.slice(1, 3).some((uid) => opts.keep?.has(uid)) ?? false
+    const captions = over.caption.filter((o) => !kept(o))
+    if (over.body.length || captions.length)
+      return { ok: false, stage: 'layout', errors: [...over.body.map((o) => `body overlap: ${o}; move one of them`), ...captions.map((o) => `caption overlap: ${o}; move one of them`)] }
     const labelModule = library(LABEL_MODULE)
     const real = realize(intent, base, placed.locals, { labels: mode, labelModule })
     if (!real.ok) {

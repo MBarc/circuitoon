@@ -471,3 +471,14 @@ V1 is done when someone can build a wiring sheet for a real breadboard project f
 - [x] Built-in boards follow physical pin order, because the sheet is something you build from.
 - [x] Breadboards are modeled at hole level (2026-09-25): each strip and rail is a hole group, parts plug in by mounting, and jumpers end in any hole. Bus pins with offsets stay readable for older files.
 - [x] Hosting: GitHub Pages from the public repo `MBarc/circuitoon` (https://mbarc.github.io/circuitoon/).
+
+## Changelog
+
+### Net labels and readable layouts (plugin 0.4.0)
+
+What changes for existing sheets when they are opened, checked or laid out again:
+
+- **Captions of bottom-pin parts move above the body.** A part whose pins all leave its bottom edge (a BME280 breakout, a Dupont housing) now has its caption above the body, clear of the wires and labels leaving those pins. Sheets are not edited: the caption is drawn there on load. A `layout --keep` whose kept positions now make a caption overlap another part still lays out; the overlap is listed as a `label-covered` readability warning and in the report's caption overlaps.
+- **Automatic wires re-route.** The router now charges extra for a wire running beside another one a grid step away, so parallel wires keep two grid steps apart where there is room. Every wire without a stored route is routed again when the sheet loads, so it may take a different path than before. Hand-shaped wires (those with a stored `route`) keep their bends.
+- **Wires cross captions before DIP pin names.** When a wire has no route clear of all text, it may now cross a caption before it crosses the pin names printed past a DIP chip's pins: a hidden caption hides a designator, but a hidden pin name can cause a miswire.
+- **Net labels** (`net-label`), the readability warnings in `check` and `gate`, `layout --labels`, `render --tiles`, and the bill's `for labelled nets (length not drawn)` wires are new; see "Net labels" above and the agent toolkit's skill.

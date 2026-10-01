@@ -138,3 +138,20 @@ describe('a dense group of labelled pins fans out as one ordered row', () => {
     clean(d)
   })
 })
+
+describe('kept positions and captions', () => {
+  it('a caption overlap that kept positions cause is a readability warning, never a failed layout', async () => {
+    const { readabilityFindings } = await import('./readabilityWarnings.ts')
+    const raw = {
+      format: 'circuitoon-netlist/1', title: 'Kept',
+      parts: [{ ref: 'R1', module: 'resistor', values: { resistance: { value: 4700, unit: 'ohm' } } }, { ref: 'R2', module: 'resistor', values: { resistance: { value: 4700, unit: 'ohm' } } }],
+      nets: [],
+    }
+    const keep = new Map([['R1', { x: 0, y: 0, rotation: 0 as const }], ['R2', { x: 0, y: 50, rotation: 0 as const }]])
+    const r = layoutNetlist(raw, { keep })
+    if (!r.ok) throw new Error(r.errors.join('; '))
+    expect(r.value.report.captionOverlaps).toBeGreaterThan(0)
+    const f = readabilityFindings(r.value.diagram).filter((x) => x.rule === 'label-covered')
+    expect(f.some((x) => /R2's body covers R1's caption/.test(x.message))).toBe(true)
+  })
+})
