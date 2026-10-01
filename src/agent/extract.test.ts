@@ -10,6 +10,7 @@ import { layoutNetlist } from './layout.ts'
 import { type Intent, parseNetlist, terminalKey } from './netlist.ts'
 import { libraryLookup } from './catalog.ts'
 import { verifyDiagram } from './verify.ts'
+import { readabilityFindings } from './readabilityWarnings.ts'
 import { internalComponent } from './internal.ts'
 import { type Diagram, validateDiagram } from '../format/diagram.ts'
 import { ledNetlist, tiltSensors } from './fixtures.testing.ts'
@@ -134,5 +135,14 @@ describe.skipIf(!existsSync(hand))("Michael's hand-drawn Spirit Typewriter sheet
     const again = sheetOf(extracted)
     expect(verifyDiagram(again, libraryLookup)).toEqual([])
     expect(electrical(parse(extractNetlist(again)))).toEqual(electrical(want))
+    // Ruling W1 on his sheet: no wire over a breadboard in use or a caption, and the parts with no
+    // connection parked in the "Not yet wired" frame.
+    const rules = readabilityFindings(again).map((f) => f.rule)
+    expect(rules).not.toContain('wire-over-board')
+    expect(rules).not.toContain('label-covered')
+    const frame = (again.annotations ?? []).find((a) => a.label === 'Not yet wired')
+    expect(frame).toBeDefined()
+    const unwired = again.parts.filter((p) => !again.connections.some((c) => c.from.part === p.uid || c.to.part === p.uid) && !p.mount && !again.parts.some((q) => q.mount?.board === p.uid))
+    expect(unwired.map((p) => p.uid).sort()).toEqual(['MCP_Breadboard_1', 'MCP_Breadboard_2', 'MCP_Breadboard_3', 'U3', 'U4', 'U5'])
   })
 })

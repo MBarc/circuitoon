@@ -1621,8 +1621,9 @@ function routeOrthogonal(req, opts = {}) {
 	const g = opts.grid ?? 10;
 	const clearance = opts.clearance ?? 4;
 	const bendCost = opts.bendCost ?? 30;
-	const parallelCost = opts.parallelCost ?? 40;
+	const parallelCost = opts.parallelCost ?? 80;
 	const adjacentCost = opts.adjacentCost ?? 20;
+	const bundleBonus = opts.bundleBonus ?? 4;
 	const ahead = (p, d, lead = 0) => ({
 		x: p.x + d.x * lead,
 		y: p.y + d.y * lead
@@ -1630,7 +1631,7 @@ function routeOrthogonal(req, opts = {}) {
 	const start = req.fromDir ? leave(ahead(req.from, req.fromDir, req.fromLead), req.fromDir, g) : onGrid(req.from, g);
 	const goal = req.toDir ? leave(ahead(req.to, req.toDir, req.toLead), req.toDir, g) : onGrid(req.to, g);
 	for (const margin of opts.margins ?? MARGINS) {
-		const path = search(start, goal, req, g, clearance, bendCost, parallelCost, adjacentCost, margin);
+		const path = search(start, goal, req, g, clearance, bendCost, parallelCost, adjacentCost, bundleBonus, margin);
 		if (path) {
 			const first = path[0];
 			const last = path[path.length - 1];
@@ -1663,7 +1664,7 @@ function routeOrthogonal(req, opts = {}) {
 var skew = (a, b) => a.x !== b.x && a.y !== b.y;
 /** True when `p` lies inside `r` grown by `clearance` on every side (the cells the router blocks). */
 var inGrown = (p, r, clearance = 4) => p.x >= r.x - clearance && p.x <= r.x + r.w + clearance && p.y >= r.y - clearance && p.y <= r.y + r.h + clearance;
-function search(start, goal, req, g, clearance, bendCost, parallelCost, adjacentCost, margin) {
+function search(start, goal, req, g, clearance, bendCost, parallelCost, adjacentCost, bundleBonus, margin) {
 	const x0 = Math.floor((Math.min(start.x, goal.x) - margin) / g) * g;
 	const y0 = Math.floor((Math.min(start.y, goal.y) - margin) / g) * g;
 	const x1 = Math.ceil((Math.max(start.x, goal.x) + margin) / g) * g;
@@ -1721,6 +1722,11 @@ function search(start, goal, req, g, clearance, bendCost, parallelCost, adjacent
 	if (req.occupied?.size) {
 		parallel = new Uint8Array(cols * rows);
 		req.occupied.copyWindow(x0, y0, cols, rows, g, parallel);
+	}
+	let ribbon = null;
+	if (req.bundle?.size && bundleBonus) {
+		ribbon = new Uint8Array(cols * rows);
+		req.bundle.copyWindow(x0, y0, cols, rows, g, ribbon);
 	}
 	const gc = goalCell % cols;
 	const gr = Math.floor(goalCell / cols);
@@ -1780,6 +1786,7 @@ function search(start, goal, req, g, clearance, bendCost, parallelCost, adjacent
 				const lane = parallel;
 				if (lane[ncell] & (nd & 1 ? V_BIT : H_BIT)) c += parallelCost;
 				else if (adjacentCost && (nd & 1 ? nc > 0 && lane[ncell - 1] & V_BIT || nc + 1 < cols && lane[ncell + 1] & V_BIT : nr > 0 && lane[ncell - cols] & H_BIT || nr + 1 < rows && lane[ncell + cols] & H_BIT)) c += adjacentCost;
+				else if (ribbon !== null && (nd & 1 ? nc > 1 && ribbon[ncell - 2] & V_BIT || nc + 2 < cols && ribbon[ncell + 2] & V_BIT : nr > 1 && ribbon[ncell - 2 * cols] & H_BIT || nr + 2 < rows && ribbon[ncell + 2 * cols] & H_BIT)) c -= bundleBonus;
 			}
 			const ns = ncell * 4 + nd;
 			if (c < cost[ns]) {
@@ -3607,6 +3614,35 @@ function labelPoints(d) {
 		tabs: (d.annotations ?? []).flatMap((a) => a.type === "frame" ? a.label ? gridNodesIn(frameTab(a)) : [] : gridNodesIn(annotationRect(a)))
 	};
 }
+/**
+* The boards in use (Ruling W1): with a part mounted on them, or a wire ending in one of their holes;
+* and each mounted part's board. Only a board in use by neither is a bare surface a wire may cross.
+*/
+function populatedBoards(d) {
+	const mountOf = /* @__PURE__ */ new Map();
+	for (const p of d.parts) if (p.mount) mountOf.set(p.uid, p.mount.board);
+	const hosts = new Set(mountOf.values());
+	for (const c of d.connections) for (const e of [c.from, c.to]) if (e.hole !== void 0) hosts.add(e.part);
+	const boards = [];
+	for (const p of d.parts) {
+		if (!hosts.has(p.uid)) continue;
+		const m = moduleOf(d, p.module);
+		if (m && isBoard(m)) boards.push({
+			uid: p.uid,
+			rect: bodyRect(p, layoutModule(m))
+		});
+	}
+	return {
+		boards,
+		mountOf
+	};
+}
+var growRect = (r, by) => ({
+	x: r.x - by,
+	y: r.y - by,
+	w: r.w + 2 * by,
+	h: r.h + 2 * by
+});
 function routeAvoid(d, holes = boardHoles(d), labels = labelPoints(d)) {
 	const hi = new PointIndex();
 	for (const g of holes.groups) for (const p of g.at) hi.add(p.x, p.y, g.key);
@@ -3619,7 +3655,8 @@ function routeAvoid(d, holes = boardHoles(d), labels = labelPoints(d)) {
 		holes: hi,
 		legGroup: holes.legGroup,
 		text: ti,
-		names: ni
+		names: ni,
+		...populatedBoards(d)
 	};
 }
 /** True when a straight run from `a` to `b` passes within 3 px of a point of `index` not skipped. */
@@ -3630,37 +3667,192 @@ function runsOver(a, b, index, skip) {
 function pathRunsOver(pts, index, skip) {
 	return pts.slice(1).some((p, i) => runsOver(pts[i], p, index, skip));
 }
-function routeWire(d, c, obstacles, occupied, avoid = routeAvoid(d)) {
+function routeWire(d, c, obstacles, occupied, avoid = routeAvoid(d), bundle) {
 	const a = resolveEndpoint(d, c.from);
 	const b = resolveEndpoint(d, c.to);
 	if (!a || !b) return null;
 	const ownHoles = ownGroups(c, avoid.legGroup);
-	const ownText = /* @__PURE__ */ new Set([c.from.part, c.to.part]);
+	const ownNames = /* @__PURE__ */ new Set([c.from.part, c.to.part]);
+	const ownText = new Set([c.from.part, c.to.part].filter((u) => isNetLabel(moduleOf(d, d.parts.find((p) => p.uid === u)?.module ?? ""))));
 	const own = obstaclesFor(obstacles, a, b);
-	const { leads: [fromLead, toLead], facing } = leadsOf(c, a, b);
-	const reach = SEARCH_MARGIN + Math.max(fromLead, toLead) + 20;
-	const [wx0, wy0, wx1, wy1] = [
-		Math.min(a.end.x, b.end.x) - reach,
-		Math.min(a.end.y, b.end.y) - reach,
-		Math.max(a.end.x, b.end.x) + reach,
-		Math.max(a.end.y, b.end.y) + reach
-	];
-	const anyHoles = avoid.holes.some(wx0, wy0, wx1, wy1, ownHoles, () => true);
-	const anyText = avoid.text.some(wx0, wy0, wx1, wy1, ownText, () => true);
-	const anyNames = avoid.names.some(wx0, wy0, wx1, wy1, ownText, () => true);
-	if (facing && !c.route && !manualRouteBlocked([a.end, b.end], own) && !runsOver(a.end, b.end, avoid.holes, ownHoles) && !runsOver(a.end, b.end, avoid.text, ownText) && !runsOver(a.end, b.end, avoid.names, ownText)) return {
-		points: [a.end, b.end],
-		blocked: false
-	};
+	const { leads, facing } = leadsOf(c, a, b);
 	if (c.route) {
 		let points = manualPoints(a, b, c.route);
+		const [fromLead, toLead] = leads;
 		if (fromLead || toLead) points = withLeadOut(withLeadOut(points, a.dir, fromLead).reverse(), b.dir, toLead).reverse();
+		const anyHoles = avoid.holes.some(...windowOf(a, b, leads), ownHoles, () => true);
 		return {
 			points,
 			blocked: manualRouteBlocked(points, own),
 			...anyHoles && pathRunsOver(points, avoid.holes, ownHoles) ? { fallback: true } : {}
 		};
 	}
+	const boardOf = (ep, e) => {
+		if (e.dir !== null || !avoid.boards.length) return null;
+		const uid = avoid.mountOf.get(ep.part) ?? ep.part;
+		return avoid.boards.find((x) => x.uid === uid) ?? null;
+	};
+	const ba = boardOf(c.from, a);
+	const bb = boardOf(c.to, b);
+	const inside = ba !== null && ba === bb ? ba : null;
+	const walls = avoid.boards.filter((x) => x !== inside).map((x) => growRect(x.rect, 6));
+	let solved;
+	const plainRoute = () => solved === void 0 ? solved = solveRoute(a, b, own, leads, facing, ownHoles, ownText, ownNames, {
+		occupied,
+		bundle
+	}, avoid) : solved;
+	if (!walls.length) return plainRoute() ?? {
+		points: blockedPoints(a, b),
+		blocked: true
+	};
+	const boardEnds = [ba, bb].filter((x) => x !== null && x !== inside);
+	const beside = (x, other) => !!x && x !== inside && inGrown(other, x.rect, 40);
+	const plainFirst = !boardEnds.length || beside(ba, b.end) || beside(bb, a.end);
+	const keeps = (pts) => {
+		let body = pts;
+		if (ba && ba !== inside) body = body.slice(1);
+		if (bb && bb !== inside) body = body.slice(0, -1);
+		const firstOk = (from, to) => !!to && (from.x === to.x || from.y === to.y);
+		if (ba && ba !== inside && !firstOk(pts[0], pts[1])) return false;
+		if (bb && bb !== inside && !firstOk(pts[pts.length - 1], pts[pts.length - 2])) return false;
+		return avoid.boards.every((x) => x === inside || !runsInside(body, x.rect)) && boardEnds.length <= 2;
+	};
+	if (plainFirst) {
+		const plain = plainRoute();
+		if (plain && !plain.blocked && keeps(plain.points)) return plain;
+	}
+	const ports = (e, board, other) => {
+		if (!board || board === inside) return [{
+			end: e,
+			run: []
+		}];
+		const r = growRect(board.rect, 6);
+		const out = (v, lo) => lo ? Math.floor((v - 4 - 1) / 10) * 10 : Math.ceil((v + 4 + 1) / 10) * 10;
+		const p = e.end;
+		const exits = [
+			{
+				end: {
+					x: out(r.x, true),
+					y: p.y
+				},
+				dir: {
+					x: -1,
+					y: 0
+				}
+			},
+			{
+				end: {
+					x: out(r.x + r.w, false),
+					y: p.y
+				},
+				dir: {
+					x: 1,
+					y: 0
+				}
+			},
+			{
+				end: {
+					x: p.x,
+					y: out(r.y, true)
+				},
+				dir: {
+					x: 0,
+					y: -1
+				}
+			},
+			{
+				end: {
+					x: p.x,
+					y: out(r.y + r.h, false)
+				},
+				dir: {
+					x: 0,
+					y: 1
+				}
+			}
+		].map((x) => ({
+			...x,
+			len: Math.abs(x.end.x - p.x) + Math.abs(x.end.y - p.y) + Math.abs(x.end.x - other.x) + Math.abs(x.end.y - other.y)
+		}));
+		const clean = (x) => !manualRouteBlocked([p, x.end], own) && !runsOver(p, x.end, avoid.holes, ownHoles);
+		exits.sort((u, v) => Number(clean(v)) - Number(clean(u)) || u.len - v.len);
+		return exits.map((x) => ({
+			end: {
+				end: x.end,
+				dir: x.dir
+			},
+			run: [p]
+		}));
+	};
+	const pa = ports(a, ba, b.end);
+	const pb = ports(b, bb, a.end);
+	const walled = [...own, ...walls];
+	for (const [i, j] of [
+		[0, 0],
+		[0, 1],
+		[1, 0],
+		[1, 1]
+	]) {
+		const x = pa[i];
+		const y = pb[j];
+		if (!x || !y) continue;
+		const portal = x.run.length > 0 || y.run.length > 0;
+		const r = solveRoute(x.end, y.end, walled, [x.run.length ? 0 : leads[0], y.run.length ? 0 : leads[1]], facing && !portal, ownHoles, ownText, ownNames, {
+			occupied,
+			bundle
+		}, avoid);
+		if (r) return {
+			...r,
+			points: simplify([
+				...x.run,
+				...r.points,
+				...y.run
+			])
+		};
+	}
+	const plain = plainRoute();
+	if (plain && !plain.blocked && keeps(plain.points)) return plain;
+	return plain ? {
+		...plain,
+		overBoard: true
+	} : {
+		points: blockedPoints(a, b),
+		blocked: true
+	};
+}
+/** Whether any run of `pts` (after its first point) passes strictly inside `r`. */
+function runsInside(pts, r) {
+	for (let i = 1; i < pts.length; i++) {
+		const [p, q] = [pts[i - 1], pts[i]];
+		if (p.y === q.y && p.y > r.y && p.y < r.y + r.h && Math.min(Math.max(p.x, q.x), r.x + r.w) - Math.max(Math.min(p.x, q.x), r.x) > 0) return true;
+		if (p.x === q.x && p.x > r.x && p.x < r.x + r.w && Math.min(Math.max(p.y, q.y), r.y + r.h) - Math.max(Math.min(p.y, q.y), r.y) > 0) return true;
+	}
+	return false;
+}
+/** The widest search window around both ends of a wire (lead-outs and a grid step of snapping included). */
+function windowOf(a, b, leads) {
+	const reach = SEARCH_MARGIN + Math.max(leads[0], leads[1]) + 20;
+	return [
+		Math.min(a.end.x, b.end.x) - reach,
+		Math.min(a.end.y, b.end.y) - reach,
+		Math.max(a.end.x, b.end.x) + reach,
+		Math.max(a.end.y, b.end.y) + reach
+	];
+}
+/**
+* An auto route between two resolved ends around `own`, keeping off other strips' used holes,
+* captions and pin names where it can (they give way in that order, never blocking it). Null when
+* no route exists at all.
+*/
+function solveRoute(a, b, own, [fromLead, toLead], facing, ownHoles, ownText, ownNames, { occupied, bundle }, avoid) {
+	const win = windowOf(a, b, [fromLead, toLead]);
+	const anyHoles = avoid.holes.some(...win, ownHoles, () => true);
+	const anyText = avoid.text.some(...win, ownText, () => true);
+	const anyNames = avoid.names.some(...win, ownNames, () => true);
+	if (facing && !manualRouteBlocked([a.end, b.end], own) && !runsOver(a.end, b.end, avoid.holes, ownHoles) && !runsOver(a.end, b.end, avoid.text, ownText) && !runsOver(a.end, b.end, avoid.names, ownNames)) return {
+		points: [a.end, b.end],
+		blocked: false
+	};
 	const attached = (pts) => !manualRouteBlocked(pts.slice(0, 3), own) && !manualRouteBlocked(pts.slice(-3), own);
 	const tries = [
 		[fromLead, toLead],
@@ -3675,7 +3867,8 @@ function routeWire(d, c, obstacles, occupied, avoid = routeAvoid(d)) {
 			toDir: b.dir,
 			obstacles: own,
 			avoidIn,
-			occupied
+			occupied,
+			bundle
 		};
 		for (const [i, [f, t]] of tries.entries()) {
 			if (!f && !t || tries.slice(0, i).some(([pf, pt]) => pf === f && pt === t)) continue;
@@ -3698,7 +3891,7 @@ function routeWire(d, c, obstacles, occupied, avoid = routeAvoid(d)) {
 	};
 	const namesIn = anyNames ? [{
 		index: avoid.names,
-		skip: ownText,
+		skip: ownNames,
 		refused: namesHit
 	}] : [];
 	let clear = anyText ? attempt([
@@ -3728,10 +3921,7 @@ function routeWire(d, c, obstacles, occupied, avoid = routeAvoid(d)) {
 		blocked: false,
 		...pathRunsOver(over, avoid.holes, ownHoles) ? { fallback: true } : {}
 	};
-	return {
-		points: blockedPoints(a, b),
-		blocked: true
-	};
+	return null;
 }
 /**
 * Routes every connection in file order, feeding each auto route the grid lanes every earlier
@@ -3748,16 +3938,30 @@ function computeRoutes(d, opts = {}) {
 	const avoid = routeAvoid(d);
 	const out = /* @__PURE__ */ new Map();
 	const occupied = opts.occupancy === false ? void 0 : new Occupancy();
+	const bundles = occupied ? /* @__PURE__ */ new Map() : void 0;
+	const unitOf = (part) => avoid.mountOf.get(part) ?? part;
+	const bundleOf = (c) => {
+		if (!bundles) return void 0;
+		const key = JSON.stringify([unitOf(c.from.part), unitOf(c.to.part)].sort());
+		let occ = bundles.get(key);
+		if (!occ) bundles.set(key, occ = new Occupancy());
+		return occ;
+	};
+	const record = (c, route) => {
+		if (!route || !occupied) return;
+		addToOccupancy(occupied, route.points);
+		addToOccupancy(bundleOf(c), route.points);
+	};
 	for (const c of d.connections) if (opts.only && !opts.only.has(c.uid) && opts.prev?.has(c.uid)) {
 		const kept = opts.prev.get(c.uid);
 		out.set(c.uid, kept);
-		if (kept && occupied) addToOccupancy(occupied, kept.points);
+		record(c, kept);
 	}
 	for (const c of d.connections) {
 		if (out.has(c.uid)) continue;
-		const route = routeWire(d, c, obstacles, occupied, avoid);
+		const route = routeWire(d, c, obstacles, occupied, avoid, bundleOf(c));
 		out.set(c.uid, route);
-		if (route && occupied) addToOccupancy(occupied, route.points);
+		record(c, route);
 	}
 	return out;
 }
@@ -60350,23 +60554,35 @@ var NOT_CHECKED = [
 	"Mains wiring beyond its connections.",
 	"Each part's own correctness beyond its cited sources; custom parts embedded in the netlist are unverified."
 ];
-function segmentsOf(wire, pts) {
+/** Every rule a readability finding can have; while any is reported, a gate is not ready (Ruling W1). */
+var READABILITY_RULES = [
+	"wires-crowded",
+	"wire-hugs-part",
+	"label-covered",
+	"crossings-high",
+	"wire-over-board"
+];
+function segmentsOf(wire, pts, ends = [void 0, void 0]) {
 	const out = [];
 	for (let k = 1; k < pts.length; k++) {
 		const [a, b] = [pts[k - 1], pts[k]];
+		const into = k === 1 ? ends[0] : k === pts.length - 1 ? ends[1] : void 0;
+		const tag = into !== void 0 ? { into } : {};
 		if (a.y === b.y && a.x !== b.x) out.push({
 			wire,
 			h: true,
 			at: a.y,
 			lo: Math.min(a.x, b.x),
-			hi: Math.max(a.x, b.x)
+			hi: Math.max(a.x, b.x),
+			...tag
 		});
 		else if (a.x === b.x && a.y !== b.y) out.push({
 			wire,
 			h: false,
 			at: a.x,
 			lo: Math.min(a.y, b.y),
-			hi: Math.max(a.y, b.y)
+			hi: Math.max(a.y, b.y),
+			...tag
 		});
 	}
 	return out;
@@ -60412,7 +60628,13 @@ function readabilityFindings(d, routes = computeRoutes(d)) {
 		}
 		return n;
 	};
-	const segs = drawn.flatMap((w) => segmentsOf(w.conn.uid, w.points));
+	const pinEnd = (e) => {
+		const p = d.parts.find((x) => x.uid === e.part);
+		const m = p && moduleOf(d, p.module);
+		if (!m || isNetLabel(m)) return void 0;
+		return p.mount && plugOfPin(d, p.uid, e.pin) ? p.mount.board : e.part;
+	};
+	const segs = drawn.flatMap((w) => segmentsOf(w.conn.uid, w.points, [pinEnd(w.conn.from), pinEnd(w.conn.to)]));
 	const labelParts = new Set(parts0(d).filter((p) => isNetLabel(moduleOf(d, p.module))).map((p) => p.uid));
 	const lengthOf = new Map(drawn.map((w) => [w.conn.uid, w.points.slice(1).reduce((n, p, i) => n + Math.abs(p.x - w.points[i].x) + Math.abs(p.y - w.points[i].y), 0)]));
 	/** A short stub out to a net label (under LABEL_STUB px): a fan-out row of them is meant that way. */
@@ -60444,6 +60666,7 @@ function readabilityFindings(d, routes = computeRoutes(d)) {
 				const [s, t] = [list[i], list[j]];
 				if (s.wire === t.wire || Math.abs(s.at - t.at) > 10 || netOf(s.wire) === netOf(t.wire)) continue;
 				if (s.at !== t.at && stub(s.wire) && stub(t.wire)) continue;
+				if (s.at !== t.at && s.into !== void 0 && s.into === t.into) continue;
 				const run = Math.min(s.hi, t.hi) - Math.max(s.lo, t.lo);
 				if (run <= 40) continue;
 				const [a, b] = [s.wire, t.wire].sort(naturalCompare);
@@ -60544,6 +60767,15 @@ function readabilityFindings(d, routes = computeRoutes(d)) {
 			message: `${p.designator}'s body covers ${what(b)}. Move one of the parts so it reads clearly.`
 		});
 	}
+	for (const c of d.connections) if (routes.get(c.uid)?.overBoard) out.push({
+		id: `wire-over-board|${c.uid}`,
+		rule: "wire-over-board",
+		severity: "warning",
+		parts: [c.from.part, c.to.part],
+		pins: [],
+		wires: [c.uid],
+		message: `The wire ${name(c.uid)} runs across a breadboard with parts on it, because no route around it was found, so it may read as plugged in there. Give the parts more room (layout --keep with fewer parts pinned), or move the parts it joins away from the board.`
+	});
 	const crossings = /* @__PURE__ */ new Map();
 	for (const h of hs) for (const v of vs) {
 		if (h.wire === v.wire || !(v.at > h.lo && v.at < h.hi && h.at > v.lo && h.at < v.hi) || netOf(h.wire) === netOf(v.wire)) continue;
@@ -61209,7 +61441,7 @@ function renderCommand(args, io) {
 }
 //#endregion
 //#region src/cli/gate.ts
-var GATE_FORMAT = "circuitoon-cli/gate/2";
+var GATE_FORMAT = "circuitoon-cli/gate/3";
 var sha256 = (bytes) => createHash("sha256").update(bytes).digest("hex");
 /** The loader's warning for a part whose module the file does not embed (a missing module blocks). */
 var MISSING_MODULE = "is not embedded in this file";
@@ -61294,6 +61526,8 @@ async function runGate(bytes, opts) {
 		quantities: [],
 		channels: []
 	};
+	/** Readability warnings found (never blocking, but the sheet is not ready while any remain). */
+	let readable = 0;
 	const finish = () => {
 		const have = new Set(artifacts.map((a) => a.kind));
 		const missing = required.filter((r) => r.kind === "link-or-file" ? !have.has("link") && !have.has("file") : !have.has(r.kind));
@@ -61306,6 +61540,7 @@ async function runGate(bytes, opts) {
 			report: {
 				format: GATE_FORMAT,
 				ok: code === EXIT.ok,
+				ready: code === EXIT.ok && readable === 0,
 				diagram: {
 					path: opts.sheetPath,
 					sha256: sha256(bytes)
@@ -61347,7 +61582,9 @@ async function runGate(bytes, opts) {
 		parts: [c.from.part, c.to.part],
 		wires: [c.uid]
 	});
-	found.push(...readabilityFindings(d, routes).map(cliFinding));
+	const readability = readabilityFindings(d, routes);
+	readable = readability.length;
+	found.push(...readability.map(cliFinding));
 	const parsed = d.intent !== void 0 ? parseNetlist(d.intent, intentLookup(d, libraryLookup)) : null;
 	const bom = sheetBom(d, libraryLookup);
 	rows = {
@@ -61418,6 +61655,10 @@ async function runGate(bytes, opts) {
 	}
 	return finish();
 }
+/** The readability warnings in a gate report (the rules readabilityFindings raises). */
+function readabilityCount(report) {
+	return report.warnings.filter((w) => READABILITY_RULES.includes(w.rule)).length;
+}
 async function gateCommand(args, io) {
 	const [input, ...rest] = args.positionals;
 	const out = flag(args, "--out");
@@ -61441,7 +61682,9 @@ async function gateCommand(args, io) {
 	}
 	if (args.flags.has("--json")) printJson(io, report);
 	else {
-		const lines = [code === EXIT.ok ? `GATE PASSED: ${input} (sha256 ${report.diagram.sha256})` : code === EXIT.environment ? `GATE INCOMPLETE: nothing blocks, but not every render could be made (${input})` : `GATE BLOCKED: ${plural(report.blocking.length, "blocking finding")} (${input})`];
+		const head = code === EXIT.ok ? `GATE PASSED: ${input} (sha256 ${report.diagram.sha256})` : code === EXIT.environment ? `GATE INCOMPLETE: nothing blocks, but not every render could be made (${input})` : `GATE BLOCKED: ${plural(report.blocking.length, "blocking finding")} (${input})`;
+		const notReady = readabilityCount(report);
+		const lines = [...notReady ? [`NOT READY: ${plural(notReady, "readability warning")}`] : [], head];
 		if (report.blocking.length) lines.push("", "Blocking:", findingsText(report.blocking));
 		if (report.warnings.length) lines.push("", "Warnings (report these to the user):", findingsText(report.warnings));
 		if (report.notes.length) lines.push("", "Notes (not problems; pass them on to the user):", findingsText(report.notes));
@@ -61843,6 +62086,8 @@ function edgeExits(board, at) {
 }
 //#endregion
 //#region src/agent/realize.ts
+/** A pin farther than this (px, along the grid) from its net's strips may get a local strip on a hub (Ruling W1). */
+var FAR = 300;
 var SIGNAL_COLORS = [
 	"blue",
 	"green",
@@ -61945,11 +62190,76 @@ function realize(intent, d, locals = [], opts = {}) {
 		const c = f.filter((i) => !labelled.has(holeKey(s.board, s.name, i)));
 		return c.length ? c : f;
 	};
+	const boardRect = /* @__PURE__ */ new Map();
+	const rectOf = (board) => {
+		let r = boardRect.get(board);
+		if (!r) boardRect.set(board, r = bodyRect(partBy.get(board), layoutModule(modOf(board))));
+		return r;
+	};
+	const runs = /* @__PURE__ */ new Map();
+	/** Where wire ends already sit, by board. */
+	const wiredAt = /* @__PURE__ */ new Map();
+	const onSeg = (p, [a, b]) => Math.abs(a.x - b.x) < 1 ? Math.abs(p.x - a.x) <= 3 && p.y >= Math.min(a.y, b.y) - 3 && p.y <= Math.max(a.y, b.y) + 3 : Math.abs(p.y - a.y) <= 3 && p.x >= Math.min(a.x, b.x) - 3 && p.x <= Math.max(a.x, b.x) + 3;
+	/** The straight run from hole `i` of `s` out to the board edge that heads best toward `at`. */
+	const exitOf = (s, i, at) => {
+		const r = rectOf(s.board);
+		const h = s.holes[i];
+		const exits = [
+			{
+				x: r.x,
+				y: h.y
+			},
+			{
+				x: r.x + r.w,
+				y: h.y
+			},
+			{
+				x: h.x,
+				y: r.y
+			},
+			{
+				x: h.x,
+				y: r.y + r.h
+			}
+		];
+		const cost = (e) => dist(h, e) + dist(e, at);
+		return [h, exits.reduce((a, b) => cost(b) < cost(a) ? b : a)];
+	};
+	const runClash = (s, i, at) => {
+		const run = exitOf(s, i, at);
+		let n = 0;
+		for (const o of strips.values()) {
+			if (o.board !== s.board || o === s) continue;
+			o.holes.forEach((p, j) => {
+				if (used.has(holeKey(o.board, o.name, j)) && onSeg(p, run)) n++;
+			});
+		}
+		for (const r of runs.get(s.board) ?? []) if (onSeg(s.holes[i], r)) n++;
+		if (s.rail) {
+			const h = s.holes[i];
+			const along = Math.abs(s.holes[0].y - s.holes[s.holes.length - 1].y) < 1 ? "x" : "y";
+			for (const o of strips.values()) {
+				if (o.board !== s.board || o === s || o.rail) continue;
+				if (o.holes.some((p, j) => used.has(holeKey(o.board, o.name, j)) && Math.abs(p[along] - h[along]) < 3)) n++;
+			}
+		}
+		return n;
+	};
 	const nearestHole = (s, at) => {
 		const pref = preferred.get(s.key);
 		if (pref !== void 0 && !used.has(holeKey(s.board, s.name, pref))) return pref;
 		let best = null;
-		for (const i of clear(s)) if (best === null || dist(s.holes[i], at) < dist(s.holes[best], at)) best = i;
+		let bestCost = Infinity;
+		for (const i of clear(s)) {
+			const h = s.holes[i];
+			const beside = (wiredAt.get(s.board) ?? []).filter((q) => Math.abs(q.x - h.x) + Math.abs(q.y - h.y) <= 12).length;
+			const c = dist(h, at) + 1e3 * runClash(s, i, at) + 25 * beside;
+			if (c < bestCost) {
+				best = i;
+				bestCost = c;
+			}
+		}
+		if (best !== null) runs.set(s.board, [...runs.get(s.board) ?? [], exitOf(s, best, at)]);
 		return best;
 	};
 	const stripName = (s) => `${s.board} ${s.name}`;
@@ -61963,7 +62273,8 @@ function realize(intent, d, locals = [], opts = {}) {
 	};
 	const pointOf = (ep) => resolveEndpoint(d, ep).end;
 	const kindOf = (n) => netKind(intent, n);
-	const localBoards = new Set(locals.flatMap((l) => l.strips));
+	const localBoards = /* @__PURE__ */ new Set([...locals.flatMap((l) => l.strips), ...opts.parked ?? []]);
+	const hubs = new Set(opts.hubs ?? []);
 	const connections = [];
 	const netOfWire = /* @__PURE__ */ new Map();
 	const ends = intent.ends ? normalizeEnds({
@@ -61991,6 +62302,7 @@ function realize(intent, d, locals = [], opts = {}) {
 	};
 	const holeEnd = (s, i) => {
 		used.add(holeKey(s.board, s.name, i));
+		wiredAt.set(s.board, [...wiredAt.get(s.board) ?? [], s.holes[i]]);
 		return {
 			part: s.board,
 			pin: s.name,
@@ -62047,7 +62359,7 @@ function realize(intent, d, locals = [], opts = {}) {
 		}
 	};
 	const claim = (ni, at, kind, board) => {
-		const rank = (s) => kind === "ground" ? s.rail === "-" ? 0 : s.rail ? -1 : 1 : kind === "power" ? s.rail === "+" ? 0 : s.rail ? -1 : 1 : s.rail ? -1 : 0;
+		const rank = (s) => kind === "ground" ? s.rail === "-" ? 0 : s.rail ? -1 : 1 : kind === "power" ? s.rail === "+" ? 0 : s.rail ? -1 : 1 : s.rail ? -1 : hubs.size && !hubs.has(s.board) ? 1 : 0;
 		let best = null;
 		let bestRank = 0;
 		let bestDist = 0;
@@ -62092,8 +62404,8 @@ function realize(intent, d, locals = [], opts = {}) {
 		}
 		return best;
 	};
-	const mode = opts.labels ?? "auto";
-	const placer = opts.labelModule && mode !== "none" ? new LabelPlacer(d, opts.labelModule) : null;
+	const mode = opts.labels ?? "none";
+	const placer = opts.labelModule && (mode !== "none" || intent.nets.some((n) => n.label)) ? new LabelPlacer(d, opts.labelModule) : null;
 	const labels = [];
 	const labelledNets = [];
 	const unlabelled = [];
@@ -62102,7 +62414,7 @@ function realize(intent, d, locals = [], opts = {}) {
 	for (const c of intent.copies) for (const r of c.refs) groupOfRef.set(r, `copy ${c.id}`);
 	const mainsNet = (n) => n.terminals.some((t) => mainsOf(modOf(t.ref)).terminals.has(t.name));
 	/** Whether a net is drawn with labels, from its endpoints (each node's first pin, and the net's strips as one). */
-	const wants = (net, kind, ends) => ends.length >= 2 && (!!net.label || mode === "all" || autoLabels({
+	const wants = (net, kind, ends) => ends.length >= 2 && (!!net.label || mode === "all" || mode === "auto" && autoLabels({
 		kind,
 		ends
 	}));
@@ -62377,6 +62689,103 @@ function realize(intent, d, locals = [], opts = {}) {
 		labelledNets.push(net.name);
 		return true;
 	};
+	const preset = /* @__PURE__ */ new Map();
+	const hubOrder = [];
+	if (hubs.size) {
+		const needs = [];
+		intent.nets.forEach((net, ni) => {
+			if (net.label || kindOf(net) !== "signal" || net.terminals.some((t) => t.infra || legBy.has(terminalKey(t.ref, t.name)))) return;
+			const caps = /* @__PURE__ */ new Map();
+			for (const t of net.terminals) {
+				const c = `${t.ref} ${internalComponent(modOf(t.ref), t.name)}`;
+				caps.set(c, {
+					cap: (caps.get(c)?.cap ?? 0) + terminalCapacity(modOf(t.ref), t.name),
+					t: caps.get(c)?.t ?? t
+				});
+			}
+			const list = [...caps.values()];
+			if (list.length < 3 || list.filter((x) => x.cap >= 2).length >= list.length - 2) return;
+			needs.push({
+				ni,
+				at: pointOf(pinEnd((list.find((x) => modOf(x.t.ref).category === "Microcontrollers") ?? list[0]).t)),
+				ends: list.map((x) => x.t)
+			});
+		});
+		const reach = /* @__PURE__ */ new Map();
+		for (const n of needs) for (const t of new Set(n.ends.map((x) => x.ref))) reach.set(t, (reach.get(t) ?? 0) + 1);
+		const lead = [...reach].sort((a, b) => b[1] - a[1] || Number(modOf(a[0]).category === "Microcontrollers") - Number(modOf(b[0]).category === "Microcontrollers") || naturalCompare(a[0], b[0]))[0]?.[0];
+		const along = (n) => {
+			const t = n.ends.find((x) => x.ref === lead);
+			return t ? pointOf(pinEnd(t)) : n.at;
+		};
+		const from = needs.length ? {
+			x: needs.reduce((a, n) => a + n.at.x, 0) / needs.length,
+			y: needs.reduce((a, n) => a + n.at.y, 0) / needs.length
+		} : null;
+		const mid = (st) => ({
+			x: st.holes.reduce((a, h) => a + h.x, 0) / st.holes.length,
+			y: st.holes.reduce((a, h) => a + h.y, 0) / st.holes.length
+		});
+		const side = (st) => from ? Math.round(Math.abs(mid(st).x - from.x) / 50) : 0;
+		const sorted = [...strips.values()].filter((st) => hubs.has(st.board) && !st.rail && !owner.has(st.key) && !reserved.has(st.key)).sort((a, b) => side(a) - side(b) || mid(a).y - mid(b).y || mid(a).x - mid(b).x);
+		const rank = /* @__PURE__ */ new Map();
+		for (const [i, st] of sorted.entries()) {
+			const k = sorted.slice(0, i).filter((o) => side(o) === side(st)).length;
+			rank.set(st, side(st) * 2 + k % 2);
+		}
+		hubOrder.push(...sorted.map((st, i) => ({
+			st,
+			i
+		})).sort((a, b) => rank.get(a.st) - rank.get(b.st) || a.i - b.i).map((x) => x.st));
+		needs.sort((a, b) => along(a).y - along(b).y || along(a).x - along(b).x || a.ni - b.ni);
+		const slots = [];
+		if (lead) {
+			const pins = intent.nets.flatMap((net, ni) => net.terminals.filter((t) => t.ref === lead && !t.infra).map((t) => ({
+				ni,
+				at: pointOf(pinEnd(t)),
+				supply: kindOf(net) !== "signal"
+			})));
+			const hubbed = new Set(needs.map((n) => n.ni));
+			for (const p of pins.sort((a, b) => a.at.y - b.at.y || a.at.x - b.at.x)) if (hubbed.has(p.ni) || p.supply) slots.push(hubbed.has(p.ni) ? p.ni : null);
+		}
+		const ordered = [...needs.map((n) => n.ni).filter((ni) => !slots.includes(ni))];
+		const plan = [...slots, ...ordered];
+		const free0 = hubOrder.filter((x) => !owner.has(x.key));
+		const spare = [];
+		plan.forEach((ni, i) => {
+			const st = free0[i];
+			if (!st) return;
+			if (ni === null) spare.push(st);
+			else {
+				owner.set(st.key, ni);
+				preset.set(ni, st);
+			}
+		});
+		const rest = hubOrder.filter((x) => !spare.includes(x));
+		hubOrder.length = 0;
+		hubOrder.push(...spare, ...rest);
+	}
+	/**
+	* The free strip nearest `at` that net `ni` may claim (its kind's rail first, by a little), and on
+	* a hub only the next one in hub order; claimed, or null when there is none.
+	*/
+	const localClaim = (ni, at, kind) => {
+		const rank = (st) => kind === "ground" ? st.rail === "-" ? 0 : st.rail ? -1 : 1 : kind === "power" ? st.rail === "+" ? 0 : st.rail ? -1 : 1 : st.rail ? -1 : 0;
+		const nextHub = hubOrder.find((x) => !owner.has(x.key));
+		let best = null;
+		let bestCost = Infinity;
+		for (const st of strips.values()) {
+			if (rank(st) < 0 || localBoards.has(st.board) || owner.has(st.key) || reserved.has(st.key) || free(st).length !== st.holes.length - (covered.get(st.key) ?? 0)) continue;
+			if (hubs.has(st.board) && st !== nextHub) continue;
+			const cost = Math.min(...free(st).map((i) => dist(st.holes[i], at))) + 50 * rank(st);
+			if (cost < bestCost) {
+				best = st;
+				bestCost = cost;
+			}
+		}
+		if (best) owner.set(best.key, ni);
+		return best;
+	};
 	for (const [ni, net] of intent.nets.entries()) {
 		const kind = kindOf(net);
 		const dps = [];
@@ -62426,10 +62835,11 @@ function realize(intent, d, locals = [], opts = {}) {
 				continue;
 			}
 			const pts = nodes.map(first);
-			const s = claim(ni, {
+			const center = {
 				x: pts.reduce((s, p) => s + p.x, 0) / pts.length,
 				y: pts.reduce((s, p) => s + p.y, 0) / pts.length
-			}, kind);
+			};
+			const s = preset.get(ni) ?? claim(ni, center, kind);
 			if (!s) {
 				const spares = nodes.map(joinedSpares);
 				const grown = nodes.map((n, i) => ({
@@ -62508,8 +62918,22 @@ function realize(intent, d, locals = [], opts = {}) {
 		if (stuck) continue;
 		const reach = dps.length ? dps : pool;
 		const totalFree = () => reach.reduce((sum, s) => sum + free(s).length, 0);
-		for (const [k, node] of own.entries()) {
+		const toStrips = (n) => Math.min(...reach.flatMap((st) => st.holes.map((h) => dist(h, first(n)))));
+		const queue = own.map((n) => ({
+			n,
+			d: toStrips(n)
+		})).sort((a, b) => a.d - b.d).map((x) => x.n);
+		for (const [k, node] of queue.entries()) {
 			const at = first(node);
+			const near = nearestDp(reach, at);
+			const far = near ? Math.min(...free(near).map((i) => dist(near.holes[i], at))) : Infinity;
+			if (near && far > FAR && own.length - k >= 1) {
+				const local = localClaim(ni, at, kind);
+				if (local) {
+					if (Math.min(...local.holes.map((h) => dist(h, at))) * 2 < far && jumper(ni, near, local)) reach.push(local);
+					else owner.delete(local.key);
+				}
+			}
 			while (totalFree() < own.length - k) {
 				const from = nearestDp(reach, at);
 				const ext = from && (claim(ni, from.holes[0], kind, from.board) ?? claim(ni, at, kind));
@@ -62683,6 +63107,15 @@ var MARGIN = 40;
 var RAIL_SPARE = 4;
 /** Room between a row of copies and the local strips under it, and between those and the next row, in px. */
 var RAIL_GAP = 20;
+/** The frame label of the parked parts (Ruling W1). */
+var UNWIRED_LABEL = "Not yet wired";
+/** Gap between the wired parts and the "Not yet wired" frame, in px. */
+var PARK_GAP = 40;
+/**
+* Room kept free between the microcontroller and the power parts on its left, or the peripherals
+* on its right (beyond the usual spacing), in px: a channel for the wires that run between them.
+*/
+var CHANNEL = 60;
 var snap = (v) => Math.round(v / 10) * 10;
 var floor10 = (v) => Math.floor(v / 10) * 10;
 var ceil10 = (v) => Math.ceil(v / 10) * 10;
@@ -62717,7 +63150,7 @@ function ring(r) {
 * (ties in ring order), so a block settles squarely beside its target rather than at the ring's
 * top-left corner (amendment A18.2).
 */
-function findSpot(box, want, taken, gap, nearest = false) {
+function findSpot(box, want, taken, gap, nearest = false, allow) {
 	for (let r = 0;; r++) {
 		let best = null;
 		let bestD = Infinity;
@@ -62726,7 +63159,7 @@ function findSpot(box, want, taken, gap, nearest = false) {
 				x: want.x + o.x * STEP,
 				y: want.y + o.y * STEP
 			};
-			if (taken.hits(grow(shift(box, at.x, at.y), gap))) continue;
+			if (allow && !allow(at) || taken.hits(grow(shift(box, at.x, at.y), gap))) continue;
 			if (!nearest) return at;
 			const d = o.x * o.x + o.y * o.y;
 			if (d < bestD) {
@@ -62736,6 +63169,30 @@ function findSpot(box, want, taken, gap, nearest = false) {
 		}
 		if (best) return best;
 	}
+}
+/**
+* The nets the wiring must share through a claimed strip (realize.ts): no strip named and no leg on a
+* board, not drawn with labels, and more nodes than a chain of header pins can join (only nodes
+* taking two wire ends can sit inside a chain). Each with its kind, in netlist order.
+*/
+function hubNetsOf(intent, modOf) {
+	const mounted = new Set(intent.parts.flatMap((p) => p.on ? [p.ref] : []));
+	const out = [];
+	intent.nets.forEach((n, i) => {
+		if (n.label || n.terminals.some((t) => t.infra || mounted.has(t.ref))) return;
+		const caps = /* @__PURE__ */ new Map();
+		for (const t of n.terminals) {
+			const key = `${t.ref} ${internalComponent(modOf(t.ref), t.name)}`;
+			caps.set(key, (caps.get(key) ?? 0) + terminalCapacity(modOf(t.ref), t.name));
+		}
+		const nodes = [...caps.values()];
+		if (nodes.length < 3 || nodes.filter((c) => c >= 2).length >= nodes.length - 2) return;
+		out.push({
+			net: i,
+			kind: netKind(intent, n)
+		});
+	});
+	return out;
 }
 function placeParts(intent, opts) {
 	const keep = opts.keep ?? /* @__PURE__ */ new Map();
@@ -62773,9 +63230,32 @@ function placeParts(intent, opts) {
 	const refs = intent.parts.map((p) => p.ref).sort(naturalCompare);
 	const units = [];
 	const grouped = /* @__PURE__ */ new Set();
+	const hosts = new Set(intent.parts.flatMap((p) => p.on ? [p.on] : []));
+	const inCopy = new Set(intent.copies.flatMap((c) => c.refs));
+	const spare = intent.parts.filter((p) => !netsOf.has(p.ref) && !hosts.has(p.ref) && !p.on && !inCopy.has(p.ref) && !keep.has(p.ref)).map((p) => p.ref).sort(naturalCompare);
+	const spareBoards = spare.filter((r) => isBoard(modOf(r)));
+	const hubNets = hubNetsOf(intent, modOf);
+	const otherBoards = refs.some((r) => isBoard(modOf(r)) && !spare.includes(r));
+	const wantHub = hubNets.filter((h) => h.kind === "signal" || !otherBoards);
+	const hubs = [];
+	let strips = 0;
+	for (const b of spareBoards) {
+		if (strips >= wantHub.length) break;
+		hubs.push(b);
+		strips += (modOf(b).holes ?? []).filter((g) => !g.rail).length;
+	}
+	for (const h of hubs) {
+		netsOf.set(h, new Set(wantHub.map((x) => x.net)));
+		if (!keep.has(h)) inst.set(h, {
+			...inst.get(h),
+			rotation: 90
+		});
+	}
+	const parked = spare.filter((r) => !hubs.includes(r));
+	for (const r of parked) grouped.add(r);
 	const errors = [];
 	for (const ref of refs) {
-		if (!isBoard(modOf(ref))) continue;
+		if (!isBoard(modOf(ref)) || grouped.has(ref)) continue;
 		const k = keep.get(ref);
 		if (k) inst.set(ref, {
 			...inst.get(ref),
@@ -62795,8 +63275,9 @@ function placeParts(intent, opts) {
 			units.push({
 				key: ref,
 				refs: [ref, ...mounted],
-				anchor: true,
-				fixed: !!k
+				anchor: !hubs.includes(ref),
+				fixed: !!k,
+				...hubs.includes(ref) ? { hub: true } : {}
 			});
 			for (const r of [ref, ...mounted]) grouped.add(r);
 			continue;
@@ -62862,8 +63343,9 @@ function placeParts(intent, opts) {
 		units.push({
 			key: ref,
 			refs: [ref, ...mounted],
-			anchor: true,
-			fixed: !!k
+			anchor: !hubs.includes(ref),
+			fixed: !!k,
+			...hubs.includes(ref) ? { hub: true } : {}
 		});
 		for (const r of [ref, ...mounted]) grouped.add(r);
 	}
@@ -63089,6 +63571,22 @@ function placeParts(intent, opts) {
 			...k
 		});
 	}
+	const isMcu = (r) => modOf(r).category === "Microcontrollers";
+	const hasMcu = units.some((u) => u.refs.some(isMcu));
+	if (hasMcu) for (const u of units) u.anchor = u.refs.some(isMcu);
+	const kinds = intent.nets.map((n) => netKind(intent, n));
+	const roleOf = (u) => {
+		if (u.refs.some(isMcu)) return "mcu";
+		if (u.hub) return "other";
+		if (u.refs.some((r) => /power|batter/i.test(modOf(r).category ?? ""))) return "power";
+		let supply = 0;
+		let all = 0;
+		for (const n of intent.nets.keys()) for (const t of intent.nets[n].terminals) if (!t.infra && u.refs.includes(t.ref)) {
+			all++;
+			if (kinds[n] !== "signal") supply++;
+		}
+		return all > 0 && supply * 2 > all ? "power" : "other";
+	};
 	const taken = new RectIndex();
 	const placedNets = /* @__PURE__ */ new Map();
 	const boxOf = (u) => u.refs.map(fp).reduce(union);
@@ -63104,14 +63602,106 @@ function placeParts(intent, opts) {
 		};
 		for (const n of netsOfUnit(u)) placedNets.set(n, [...placedNets.get(n) ?? [], c]);
 	};
+	/**
+	* Ruling W1: a lone free part (a sensor, a switch, a connector) is turned so the pins that connect
+	* to parts already placed face them, so its wires leave straight toward them instead of wrapping
+	* around its body. Turned only when that is clearly better than as drawn.
+	*/
+	const turn = (u, target) => {
+		if (u.fixed || u.near || u.hub || u.refs.length !== 1) return;
+		const ref = u.refs[0];
+		const m = modOf(ref);
+		if (isBoard(m) || keep.has(ref) || /display|power|batter|microcontroller/i.test(m.category ?? "")) return;
+		const pts = [...netsOf.get(ref) ?? []].flatMap((n) => placedNets.get(n) ?? []);
+		if (!pts.length) return;
+		const c = {
+			x: pts.reduce((a, p) => a + p.x, 0) / pts.length,
+			y: pts.reduce((a, p) => a + p.y, 0) / pts.length
+		};
+		const from = mcuBox && roleOf(u) === "power" ? {
+			x: mcuBox.x - 200,
+			y: target.y
+		} : mcuBox ? {
+			x: Math.max(target.x, mcuBox.x + mcuBox.w + 200),
+			y: target.y
+		} : target;
+		const len = Math.hypot(c.x - from.x, c.y - from.y);
+		if (len < 1) return;
+		const want = {
+			x: (c.x - from.x) / len,
+			y: (c.y - from.y) / len
+		};
+		const placed = new Set(placedNets.keys());
+		const score = (r) => {
+			return worldPins({
+				...inst.get(ref),
+				rotation: r
+			}, m).filter((w) => placed.has(pinNet.get(terminalKey(ref, w.name)) ?? -1)).reduce((a, w) => a + w.dir.x * want.x + w.dir.y * want.y, 0);
+		};
+		const now = inst.get(ref).rotation ?? 0;
+		let best = now;
+		let bestScore = score(now);
+		for (const r of [
+			0,
+			90,
+			270
+		]) {
+			const sc = score(r);
+			if (sc > bestScore + .5) {
+				best = r;
+				bestScore = sc;
+			}
+		}
+		if (best === now) return;
+		inst.set(ref, {
+			...inst.get(ref),
+			rotation: best
+		});
+		row([ref], Infinity);
+	};
+	/** The placed microcontrollers' box: what the signal flow is laid out around. */
+	let mcuBox = null;
+	/** The placed hubs' box, and the nets they carry. */
+	let hubBox = null;
+	const hubNetSet = new Set(wantHub.map((x) => x.net));
 	const settle = (u, target, nearest = false) => {
+		const role = roleOf(u);
+		if (mcuBox && role !== "mcu") turn(u, target);
 		const b = boxOf(u);
+		let allow;
+		let want = target;
+		if (mcuBox && !u.fixed && role !== "mcu" && !u.near) {
+			const m = mcuBox;
+			if (role === "power") {
+				want = {
+					x: Math.min(target.x, m.x - opts.spacing - b.w / 2),
+					y: target.y
+				};
+				allow = (at) => at.x + b.x + b.w + opts.spacing + CHANNEL <= m.x;
+			} else if (!u.hub && hubBox && [...netsOfUnit(u)].some((n) => hubNetSet.has(n))) {
+				const h = hubBox;
+				want = {
+					x: Math.max(target.x, h.x + h.w + opts.spacing + CHANNEL + b.w / 2),
+					y: target.y
+				};
+				allow = (at) => at.x + b.x >= h.x + h.w + opts.spacing + CHANNEL;
+			} else {
+				want = {
+					x: Math.max(target.x, m.x + m.w / 2),
+					y: target.y
+				};
+				allow = (at) => at.x + b.x >= m.x + m.w + opts.spacing + CHANNEL || at.y + b.y >= m.y + m.h + opts.spacing + CHANNEL && at.x + b.x >= m.x;
+			}
+			nearest = true;
+		}
 		const at = findSpot(b, {
-			x: snap(target.x - b.x - b.w / 2),
-			y: snap(target.y - b.y - b.h / 2)
-		}, taken, opts.spacing, nearest);
+			x: snap(want.x - b.x - b.w / 2),
+			y: snap(want.y - b.y - b.h / 2)
+		}, taken, opts.spacing, nearest, allow);
 		move(u.refs, at.x, at.y);
 		put(u);
+		if (role === "mcu") mcuBox = mcuBox ? union(mcuBox, boxOf(u)) : boxOf(u);
+		if (u.hub) hubBox = hubBox ? union(hubBox, boxOf(u)) : boxOf(u);
 	};
 	const blocksOf = (u) => units.filter((x) => !x.fixed && !x.anchor && x.near && u.refs.includes(x.near) && !placedRefs.has(x.refs[0]));
 	const settleBlocks = (u) => {
@@ -63124,7 +63714,10 @@ function placeParts(intent, opts) {
 		}
 	};
 	const fixedUnits = units.filter((x) => x.fixed);
-	for (const u of fixedUnits) put(u);
+	for (const u of fixedUnits) {
+		put(u);
+		if (hasMcu && roleOf(u) === "mcu") mcuBox = mcuBox ? union(mcuBox, boxOf(u)) : boxOf(u);
+	}
 	for (const u of fixedUnits) settleBlocks(u);
 	for (const u of units.filter((x) => !x.fixed && x.anchor).sort((a, b) => naturalCompare(a.key, b.key))) {
 		settle(u, {
@@ -63133,7 +63726,15 @@ function placeParts(intent, opts) {
 		});
 		settleBlocks(u);
 	}
-	let rest = units.filter((x) => !x.fixed && !x.anchor && !placedRefs.has(x.refs[0]));
+	if (mcuBox) for (const u of units.filter((x) => !x.fixed && x.hub)) {
+		const m = mcuBox;
+		const b = boxOf(u);
+		settle(u, {
+			x: m.x + m.w + opts.spacing + CHANNEL + b.w / 2,
+			y: m.y + m.h / 2
+		});
+	}
+	let rest = units.filter((x) => !x.fixed && !x.anchor && !placedRefs.has(x.refs[0]) && !(x.near && units.some((t) => t !== x && t.refs.includes(x.near))));
 	while (rest.length) {
 		let best = rest[0];
 		let bestWeight = -1;
@@ -63152,9 +63753,22 @@ function placeParts(intent, opts) {
 			x: 0,
 			y: 0
 		});
+		settleBlocks(best);
 		rest = rest.filter((u) => u !== best);
 	}
 	const added = [...new Set(locals.flatMap((l) => l.strips))].sort(naturalCompare);
+	if (parked.length) {
+		const placedRects = [...refs.filter((r) => !parked.includes(r)), ...added].map(fp);
+		const content = placedRects.length ? placedRects.reduce(union) : {
+			x: 0,
+			y: 0,
+			w: 0,
+			h: 0
+		};
+		const list = [...parked].sort((a, b) => naturalCompare(inst.get(a).module, inst.get(b).module) || naturalCompare(a, b));
+		const box = row(list, Math.max(GROUP_ROW, content.w));
+		move(list, snap(content.x - box.x + FRAME_PAD), snap(content.y + content.h + PARK_GAP + 24 - box.y));
+	}
 	const annotations = [];
 	const frames = /* @__PURE__ */ new Map();
 	const frameOf = (list, label) => {
@@ -63173,8 +63787,12 @@ function placeParts(intent, opts) {
 		annotations.push(a);
 		return a;
 	};
-	for (const g of intent.groups) if (g.refs.length) frames.set(g.name, frameOf(g.refs, g.name));
+	for (const g of intent.groups) {
+		const shown = g.refs.filter((r) => !parked.includes(r));
+		if (shown.length) frames.set(g.name, frameOf(shown, g.name));
+	}
 	for (const c of intent.copies) frameOf(c.refs, `${c.repeat} ${c.index}`);
+	if (parked.length) frameOf(parked, UNWIRED_LABEL);
 	const clear = new RectIndex();
 	for (const r of [...refs, ...added]) clear.add(tight(r));
 	for (const a of annotations) clear.add(annotationRect(a));
@@ -63268,7 +63886,9 @@ function placeParts(intent, opts) {
 		parts: [...intent.parts.map((p) => inst.get(p.ref)), ...added.map((r) => inst.get(r))],
 		annotations: out,
 		modules,
-		locals
+		locals,
+		hubs,
+		parked
 	};
 }
 //#endregion
@@ -63427,7 +64047,7 @@ var RAIL_MODULE = "power-rail-strip";
 /** The module the layout's net labels use. */
 var LABEL_MODULE = "net-label";
 function layoutNetlist(raw, opts = {}) {
-	const mode = opts.labels ?? "auto";
+	const mode = opts.labels ?? "none";
 	const library = opts.library ?? libraryLookup;
 	const parsed = parseNetlist(raw, library);
 	if (!parsed.ok) return {
@@ -63471,7 +64091,9 @@ function layoutNetlist(raw, opts = {}) {
 		const labelModule = library(LABEL_MODULE);
 		const real = realize(intent, base, placed.locals, {
 			labels: mode,
-			labelModule
+			labelModule,
+			hubs: placed.hubs,
+			parked: placed.parked
 		});
 		if (!real.ok) {
 			if (!rails) continue;
@@ -63496,7 +64118,7 @@ function layoutNetlist(raw, opts = {}) {
 		};
 		const diagram = {
 			...wired,
-			connections: colorByRole(intent, wired, real.value.netOfWire)
+			connections: bundled(wired, colorByRole(intent, wired, real.value.netOfWire))
 		};
 		const routes = computeRoutes(diagram);
 		const stuck = diagram.connections.filter((c) => routes.get(c.uid)?.blocked);
@@ -63545,6 +64167,37 @@ function layoutNetlist(raw, opts = {}) {
 		stage: "layout",
 		errors: [`routes blocked after ${SPACINGS.length} placements with more spacing each time: ${blocked.join(", ")}`]
 	};
+}
+/**
+* The wires in routing order (Ruling W1): bundle by bundle (wires between the same two parts, a
+* mounted part counting as its board), the largest bundle first, so each bus is routed while its
+* room is free and its lanes form one ribbon; inside a bundle in the order their ends sit along the
+* first part (top to bottom, then left to right), so neighbouring lanes never cross. Ties keep the
+* realized order. Wire uids are unchanged.
+*/
+function bundled(d, connections) {
+	const unit = new Map(d.parts.map((p) => [p.uid, p.mount?.board ?? p.uid]));
+	const keyOf = (c) => [unit.get(c.from.part) ?? c.from.part, unit.get(c.to.part) ?? c.to.part].sort(naturalCompare);
+	const size = /* @__PURE__ */ new Map();
+	const first = /* @__PURE__ */ new Map();
+	connections.forEach((c, i) => {
+		const k = JSON.stringify(keyOf(c));
+		size.set(k, (size.get(k) ?? 0) + 1);
+		if (!first.has(k)) first.set(k, i);
+	});
+	const at = (c) => {
+		const [lead] = keyOf(c);
+		return resolveEndpoint(d, (unit.get(c.from.part) ?? c.from.part) === lead ? c.from : c.to)?.end ?? {
+			x: 0,
+			y: 0
+		};
+	};
+	return connections.map((c, i) => ({
+		c,
+		i,
+		k: JSON.stringify(keyOf(c)),
+		p: at(c)
+	})).sort((a, b) => size.get(b.k) - size.get(a.k) || first.get(a.k) - first.get(b.k) || a.p.y - b.p.y || a.p.x - b.p.x || a.i - b.i).map((x) => x.c);
 }
 //#endregion
 //#region src/agent/partial.ts
@@ -63605,7 +64258,7 @@ function layoutCommand(args, io) {
 	const json = args.flags.has("--json");
 	const out = flag(args, "--out");
 	const keepPath = flag(args, "--keep");
-	const labels = flag(args, "--labels") ?? "auto";
+	const labels = flag(args, "--labels") ?? "none";
 	if (!LABEL_MODES.includes(labels)) throw new CliError(`layout: --labels must be ${LABEL_MODES.join(", ")}`, EXIT.input);
 	const [input] = args.positionals;
 	if (!out) throw new CliError("layout: -o <sheet.json> is required", EXIT.input);
@@ -63697,19 +64350,194 @@ function bomCommand(args, io) {
 	return EXIT.ok;
 }
 //#endregion
+//#region src/agent/extract.ts
+/** A valid, unique netlist ref for a designator: other characters become `_`, and a leading non-letter gets a `P`. */
+function refMaker() {
+	const taken = /* @__PURE__ */ new Set();
+	return (designator) => {
+		let base = designator.trim().replace(/[^A-Za-z0-9_]/g, "_") || "P";
+		if (!/^[A-Za-z]/.test(base)) base = `P${base}`;
+		let ref = base;
+		for (let k = 2; taken.has(ref) || !REF_PATTERN.test(ref); k++) ref = `${base}_${k}`;
+		taken.add(ref);
+		return ref;
+	};
+}
+var pinDef = (m, name) => m.pins.find((p) => !isSpacer(p) && p.name === name);
+/** A supply rail name worth naming a net after: 5V, 3V3, 12V (not 3.7V or 5V/7V). */
+var RAIL = /^\d+V\d*$/;
+function extractNetlist(d) {
+	const modOf = (uid) => {
+		const p = d.parts.find((x) => x.uid === uid);
+		return p ? moduleOf(d, p.module) : void 0;
+	};
+	const intent = d.intent !== void 0 ? parseNetlist(d.intent, (id) => moduleOf(d, id) ?? libraryLookup(id)) : null;
+	const intentRefs = intent?.ok ? new Set(intent.intent.parts.map((p) => p.ref)) : null;
+	const kept = d.parts.filter((p) => {
+		const m = moduleOf(d, p.module);
+		return m && !isNetLabel(m) && !(intentRefs && isBoard(m) && !intentRefs.has(p.uid));
+	});
+	const make = refMaker();
+	const refOf = new Map(kept.map((p) => [p.uid, make(p.designator || p.uid)]));
+	const direct = /* @__PURE__ */ new Set();
+	for (const c of d.connections) for (const e of [c.from, c.to]) direct.add(nodeKey(e.part, e.pin));
+	for (const pl of plugsOf(d)) if (!pl.mechanical) direct.add(nodeKey(pl.part, pl.pin));
+	const n = netlist(d);
+	const nets = [];
+	for (const keys of n.nets) {
+		const pins = [];
+		let label;
+		for (const k of keys) {
+			const [uid, name] = JSON.parse(k);
+			const m = modOf(uid);
+			if (!m) continue;
+			if (isNetLabel(m)) {
+				const ln = labelName(d.parts.find((p) => p.uid === uid));
+				if (ln && (label === void 0 || naturalCompare(ln, label) < 0)) label = ln;
+				continue;
+			}
+			const ref = refOf.get(uid);
+			if (!ref || isBoard(m) || !direct.has(k)) continue;
+			pins.push({
+				ref,
+				name,
+				m
+			});
+		}
+		if (pins.length < 2) continue;
+		pins.sort((a, b) => naturalCompare(a.ref, b.ref) || naturalCompare(a.name, b.name));
+		nets.push({
+			pins,
+			...label !== void 0 ? { label } : {}
+		});
+	}
+	const names = /* @__PURE__ */ new Set();
+	const named = nets.map(() => void 0);
+	const claim = (i, name) => {
+		if (named[i] !== void 0 || !name || names.has(name)) return;
+		named[i] = name;
+		names.add(name);
+	};
+	const types = (net) => net.pins.map((p) => pinDef(p.m, p.name));
+	nets.forEach((net, i) => claim(i, net.label));
+	nets.forEach((net, i) => {
+		if (!types(net).some((t) => t?.type === "ground")) return;
+		let name = "GND";
+		for (let k = 2; names.has(name) && named[i] === void 0; k++) name = `GND_${k}`;
+		claim(i, name);
+	});
+	nets.forEach((net, i) => {
+		const ins = types(net).filter((t) => t?.type === "power_in" && t.supply).map((t) => t.supply.split("/"));
+		if (!ins.length) return;
+		const common = ins.reduce((a, b) => a.filter((r) => b.includes(r)));
+		if (common.length === 1 && RAIL.test(common[0])) claim(i, common[0]);
+	});
+	nets.forEach((net, i) => {
+		const outs = [...new Set(types(net).filter((t) => t?.type === "power_out" && t.supply && RAIL.test(t.supply)).map((t) => t.supply))];
+		if (outs.length === 1) claim(i, outs[0]);
+	});
+	nets.forEach((net, i) => {
+		const pick = net.pins.find((p) => p.m.category === "Microcontrollers") ?? net.pins.find((p) => pinDef(p.m, p.name)?.type === "power_out") ?? net.pins[0];
+		let name = `${pick.ref}_${pick.name}`;
+		for (let k = 2; names.has(name); k++) name = `${pick.ref}_${pick.name}_${k}`;
+		claim(i, name);
+	});
+	const nodeNet = /* @__PURE__ */ new Map();
+	nets.forEach((net, i) => net.pins.forEach((p) => nodeNet.set(JSON.stringify([p.ref, p.name]), i)));
+	const netOfKey = (k) => {
+		const at = n.netOf.get(k);
+		if (at === void 0) return void 0;
+		for (const kk of n.nets[at]) {
+			const [uid, name] = JSON.parse(kk);
+			const ref = refOf.get(uid);
+			const i = ref ? nodeNet.get(JSON.stringify([ref, name])) : void 0;
+			if (i !== void 0) return i;
+		}
+	};
+	const colors = /* @__PURE__ */ new Map();
+	const endKinds = /* @__PURE__ */ new Set();
+	let wires = 0;
+	for (const c of d.connections) {
+		const labelEnd = [c.from.part, c.to.part].some((u) => isNetLabel(modOf(u)));
+		const i = netOfKey(nodeKey(c.from.part, c.from.pin));
+		if (i !== void 0 && c.color) colors.set(i, (colors.get(i) ?? /* @__PURE__ */ new Set()).add(c.color));
+		if (labelEnd) continue;
+		wires++;
+		endKinds.add(c.ends?.from && c.ends.from === c.ends.to ? c.ends.from : "");
+	}
+	const color = {};
+	nets.forEach((_, i) => {
+		const set = colors.get(i);
+		if (set?.size === 1) color[named[i]] = [...set][0];
+	});
+	const ends = wires && endKinds.size === 1 && !endKinds.has("") ? [...endKinds][0] : void 0;
+	const custom = {};
+	for (const p of kept) if (!libraryLookup(p.module)) custom[p.module] = moduleOf(d, p.module);
+	const order = nets.map((_, i) => i).sort((a, b) => naturalCompare(named[a], named[b]));
+	return {
+		format: NETLIST_FORMAT,
+		title: d.title.trim() || "Untitled sheet",
+		...Object.keys(custom).length ? { modules: custom } : {},
+		parts: kept.map((p) => {
+			const board = p.mount?.board;
+			const on = board !== void 0 ? refOf.get(board) : void 0;
+			return {
+				ref: refOf.get(p.uid),
+				module: p.module,
+				...p.values && Object.keys(p.values).length ? { values: p.values } : {},
+				...on ? { on } : {}
+			};
+		}),
+		nets: order.map((i) => ({
+			name: named[i],
+			pins: nets[i].pins.map((p) => `${p.ref}.${p.name}`)
+		})),
+		...Object.keys(color).length || ends ? { wires: {
+			...Object.keys(color).length ? { color } : {},
+			...ends ? { ends } : {}
+		} } : {}
+	};
+}
+//#endregion
+//#region src/cli/netlistCmd.ts
+var NETLIST_CMD_FORMAT = "circuitoon-cli/netlist/1";
+function netlistCommand(args, io) {
+	const [input, ...rest] = args.positionals;
+	if (!input) throw new CliError("netlist: give a sheet file", EXIT.input);
+	if (rest.length) throw new CliError(`netlist: give one sheet file, not ${args.positionals.length}`, EXIT.input);
+	const { diagram, warnings } = loadSheet(io, input);
+	for (const w of warnings) io.stderr(`warning: ${w}\n`);
+	const netlist = extractNetlist(diagram);
+	const out = flag(args, "--out") ?? null;
+	const text = `${JSON.stringify(netlist, null, 2)}\n`;
+	if (out) writeFile(io, out, text);
+	if (args.flags.has("--json")) printJson(io, {
+		format: NETLIST_CMD_FORMAT,
+		ok: true,
+		sheet: input,
+		output: out,
+		netlist
+	});
+	else if (out) io.stdout(`Wrote ${out}: ${netlist.parts.length} parts, ${netlist.nets.length} nets. Lay it out with: circuitoon layout ${out} -o <sheet.json>\n`);
+	else io.stdout(text);
+	return EXIT.ok;
+}
+//#endregion
 //#region src/cli/main.ts
 var USAGE = `circuitoon <command> [options]
 
   parts [--search text] [--json]            built-in parts: pins, labels, types, supplies, hole groups
   part <id> [--json]                        one part in full
   layout <netlist.json> -o <sheet.json>     lay out a netlist; or layout --keep <partial.json> -o <sheet.json>
-                                            [--labels auto|none|all]: which nets are drawn with net labels (default auto)
+                                            [--labels none|auto|all]: which nets get net labels (default none: wires, labels only on nets marked "label": true)
   verify <sheet.json> [--json]              the sheet against its intent
   check <sheet.json> [--json]               the wiring checker, plus verify when the sheet has an intent
   render <sheet.json> -o <sheet.png> [--svg <sheet.svg>] [--dark] [--scale n] [--focus <copy or group>]
                                             [--tiles <px>]: also zoomed tiles of the sheet, <px> square each, as <sheet>-tile-<row>-<col>.png
   link <sheet.json> [-o <dir>] [--json]     a link that opens the sheet in Circuitoon
   bom <sheet.json> [-o <bom.csv>] [--json]  the bill of materials: parts, wires and connectors; -o writes CSV
+  netlist <sheet.json> [-o <netlist.json>] [--json]
+                                            the netlist of any drawn sheet, from what conducts on it; lay it out again with layout
   gate <sheet.json> -o <dir> [--json]       every check, the renders, the bill and the link; exits 0 only when nothing blocks
 
 Exit codes: 0 ok, 1 findings that block, 2 invalid input, 3 environment problem (such as no browser)
@@ -63722,6 +64550,7 @@ var COMMANDS = {
 	render: renderCommand,
 	link: linkCommand,
 	bom: bomCommand,
+	netlist: netlistCommand,
 	verify: verifyCommand,
 	check: checkCommand,
 	gate: gateCommand

@@ -118,3 +118,16 @@ describe('signal flow', () => {
     expect(cx(body(d, 'DS1'))).toBeGreaterThan(cx(u2))
   })
 })
+
+describe('what the wires never do on these sheets', () => {
+  it('cover a caption, or cross a breadboard in use', async () => {
+    const { readabilityFindings } = await import('./readabilityWarnings.ts')
+    const { ledNetlist } = await import('./fixtures.testing.ts')
+    for (const raw of [spi(), ledNetlist()]) {
+      const d = ok(raw)
+      const rules = readabilityFindings(d).map((f) => f.rule)
+      expect(rules).not.toContain('label-covered')
+      expect(rules).not.toContain('wire-over-board')
+    }
+  })
+})
