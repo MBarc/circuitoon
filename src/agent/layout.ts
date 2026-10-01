@@ -44,8 +44,12 @@ export function layoutNetlist(raw: unknown, opts: { library?: ModuleLookup; keep
   if (!parsed.ok) return { ok: false, stage: 'input', errors: parsed.errors }
   const intent = parsed.intent
   let blocked: string[] = []
-  for (const [i, spacing] of SPACINGS.entries()) {
-    const placed = placeParts(intent, { spacing, keep: opts.keep, rail: library(RAIL_MODULE) })
+  // With labels, a repeat block's shared nets are labels at each copy, so the block needs no local
+  // rail strips (A18.1); they come back only as the fallback when a labelled try cannot be realized,
+  // and always with --labels none.
+  const tries = mode === 'none' ? [true] : [false, true]
+  attempt: for (const [i, spacing] of SPACINGS.entries()) for (const rails of tries) {
+    const placed = placeParts(intent, { spacing, keep: opts.keep, rail: rails ? library(RAIL_MODULE) : undefined })
     if (!placed.ok) return { ok: false, stage: 'layout', errors: placed.errors }
     const base: Diagram = {
       format: DIAGRAM_FORMAT,
@@ -61,7 +65,10 @@ export function layoutNetlist(raw: unknown, opts: { library?: ModuleLookup; keep
       return { ok: false, stage: 'layout', errors: [...over.body.map((o) => `body overlap: ${o}; move one of them`), ...over.caption.map((o) => `caption overlap: ${o}; move one of them`)] }
     const labelModule = library(LABEL_MODULE)
     const real = realize(intent, base, placed.locals, { labels: mode, labelModule })
-    if (!real.ok) return { ok: false, stage: 'layout', errors: real.errors }
+    if (!real.ok) {
+      if (!rails) continue
+      return { ok: false, stage: 'layout', errors: real.errors }
+    }
     const labelled = real.value.labels.length && labelModule
       ? { parts: [...base.parts, ...real.value.labels], modules: { ...base.modules, [LABEL_MODULE]: labelModule } }
       : {}
@@ -86,9 +93,9 @@ export function layoutNetlist(raw: unknown, opts: { library?: ModuleLookup; keep
         errors: [`sheet too large to route: parts span ${Math.ceil(span.w)} x ${Math.ceil(span.h)} px; keep parts within about ${ROUTE_REACH} px of each other (nets ${nets.join(', ')}).`],
       }
     }
-    if (blocked.length) continue
+    if (blocked.length) continue attempt
     // Labels that found no room get another try with more spacing; the last placement wires them.
-    if (real.value.unlabelled.length && i < SPACINGS.length - 1) continue
+    if (real.value.unlabelled.length && i < SPACINGS.length - 1) continue attempt
     const findings = verifyDiagram(diagram, library).filter((f) => f.severity === 'error')
     if (findings.length) return { ok: false, stage: 'layout', errors: findings.map((f) => `verify ${f.rule}: ${f.message}`) }
     const report = { ...readability(diagram, routes, real.value.netOfWire), readabilityWarnings: readabilityFindings(diagram, routes).length, labels: { mode, nets: real.value.labelled, unplaced: [...new Set(real.value.unlabelled)] } }

@@ -9,10 +9,11 @@ import { loadSchema, schemaErrors } from './jsonSchema.testing.ts'
 import { tiltSensors } from '../agent/fixtures.testing.ts'
 import { USAGE } from './main.ts'
 
+// Wires only (--labels none), so the repeat block keeps its local rail strips (DP1...), which the bill marks as added.
 const laidOut = async () => {
   const dir = tempDir()
   writeFileSync(join(dir, 'n.json'), JSON.stringify(tiltSensors()))
-  expect((await cli(['layout', 'n.json', '-o', 'sheet.json'], { cwd: dir })).code).toBe(0)
+  expect((await cli(['layout', 'n.json', '-o', 'sheet.json', '--labels', 'none'], { cwd: dir })).code).toBe(0)
   return dir
 }
 

@@ -22,10 +22,10 @@ import { ledNetlist, tiltSensors } from '../agent/fixtures.testing.ts'
 const browser = findBrowser(process.env)
 const noBrowser = (dir: string) => ({ CIRCUITOON_BROWSER: join(dir, 'no-such-browser.exe') })
 const sha = (path: string) => createHash('sha256').update(readFileSync(path)).digest('hex')
-const laidOut = async (netlist: unknown = ledNetlist()) => {
+const laidOut = async (netlist: unknown = ledNetlist(), labels = 'auto') => {
   const dir = tempDir()
   writeFileSync(join(dir, 'n.json'), JSON.stringify(netlist))
-  expect((await cli(['layout', 'n.json', '-o', 'sheet.json'], { cwd: dir })).code).toBe(0)
+  expect((await cli(['layout', 'n.json', '-o', 'sheet.json', '--labels', labels], { cwd: dir })).code).toBe(0)
   return dir
 }
 type Sheet = Record<string, unknown> & { parts: Record<string, unknown>[]; connections: Record<string, unknown>[] }
@@ -54,7 +54,7 @@ describe('circuitoon gate', () => {
     expect(g.channels).toHaveLength(8)
   }, 120_000)
   it('counts the bill of quantities from the sheet, layout-added strips included and marked', async () => {
-    const dir = await laidOut(tiltSensors())
+    const dir = await laidOut(tiltSensors(), 'none') // wires only: the block keeps its local rail strips
     const sheet = JSON.parse(readFileSync(join(dir, 'sheet.json'), 'utf8')) as { parts: { designator: string; module: string }[] }
     const { report } = await runGate(readFileSync(join(dir, 'sheet.json')), { sheetPath: 'sheet.json', outDir: join(dir, 'out'), io: quietIo(dir) })
     const q = report.quantities

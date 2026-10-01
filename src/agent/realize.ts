@@ -297,7 +297,6 @@ export function realize(intent: Intent, d: Diagram, locals: LocalDistribution[] 
   const groupOfRef = new Map<string, string>()
   for (const g of intent.groups) for (const r of g.refs) groupOfRef.set(r, `group ${g.name}`)
   for (const c of intent.copies) for (const r of c.refs) groupOfRef.set(r, `copy ${c.id}`)
-  const copyOfRef = new Map(intent.copies.flatMap((c) => c.refs.map((r): [string, string] => [r, c.id])))
   const mainsNet = (n: IntentNet) => n.terminals.some((t) => mainsOf(modOf(t.ref)).terminals.has(t.name))
   const labelNet = (ni: number, net: IntentNet, kind: NetKind, nodes: Node[], dps: Strip[], local: boolean): boolean => {
     if (!placer || local || mainsNet(net)) return false
@@ -308,13 +307,12 @@ export function realize(intent: Intent, d: Diagram, locals: LocalDistribution[] 
     ]
     if (ends.length < 2) return false
     if (!net.label && mode !== 'all' && !autoLabels({ kind, ends })) return false
-    // One label per endpoint: the pins of one repeat copy share a label (each wired to it, a ball's
-    // two switches), as do the pins of one part; the net's strips share one.
+    // One label per endpoint: the pins one part puts on the net share a label (an expander's GND and
+    // address pads), every other pin gets its own, right at the pin, so no wire loops back from a
+    // neighbouring part (a ball's two switches each get theirs); the net's strips share one.
     const clusters = new Map<string, Node[]>()
     for (const n of nodes) {
-      const ref = n.members[0].ref
-      const copy = copyOfRef.get(ref)
-      const key = copy !== undefined ? `copy ${copy}` : `part ${ref}`
+      const key = `part ${n.members[0].ref}`
       clusters.set(key, [...(clusters.get(key) ?? []), n])
     }
     if (clusters.size + (dps.length ? 1 : 0) < 2) return false

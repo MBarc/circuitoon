@@ -89,3 +89,20 @@ describe('layout with net labels', () => {
     expect(names(v.diagram)).toEqual([])
   })
 })
+
+describe('a repeat block\'s shared ground', () => {
+  it('is a label at each copy with labels on, and needs no local rail strips', async () => {
+    const { tiltSensors } = await import('./fixtures.testing.ts')
+    const v = ok(tiltSensors())
+    expect(v.diagram.parts.filter((p) => /^DP\d+$/.test(p.uid))).toEqual([])
+    const gnd = labelsOf(v.diagram).filter((l) => l.name === 'GND')
+    expect(gnd.length).toBeGreaterThanOrEqual(8)
+    clean(v.diagram)
+  })
+  it('falls back to the local rail strips with --labels none', async () => {
+    const { tiltSensors } = await import('./fixtures.testing.ts')
+    const v = ok(tiltSensors(), 'none')
+    expect(v.diagram.parts.some((p) => /^DP\d+$/.test(p.uid))).toBe(true)
+    expect(labelsOf(v.diagram)).toEqual([])
+  })
+})
