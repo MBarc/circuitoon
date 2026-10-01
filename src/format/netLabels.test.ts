@@ -198,7 +198,8 @@ describe('bill of materials', () => {
   it('leaves labels out of the parts list', () => {
     const bom = billOfMaterials(twoBoards())
     expect(bom.parts.map((p) => p.module)).toEqual(['mcu'])
-    expect(bom.wires.reduce((n, w) => n + w.count, 0)).toBe(2)
+    // The two wires drawn to the labels are not bought; the one real wire the labels stand for is (rule V3).
+    expect(bom.wires.map((w) => [w.count, w.labelled])).toEqual([[1, true]])
   })
 })
 
