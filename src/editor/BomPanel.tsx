@@ -79,9 +79,9 @@ export function BomTables({ bom }: { bom: Bom }) {
             </thead>
             <tbody>
               {bom.wires.map((w) => (
-                <tr key={`${w.cable}|${w.gauge}|${w.color}`}>
+                <tr key={`${w.cable}|${w.gauge}|${w.color}|${w.labelled}`}>
                   <td className="bom-qty">{w.count}</td>
-                  <td><span className="bom-name">{w.cable}</span><Added count={w.count} added={w.added} /></td>
+                  <td><span className="bom-name">{w.cable}</span>{w.labelled && <span className="bom-muted"> for labelled nets (length not drawn)</span>}<Added count={w.count} added={w.added} /></td>
                   <td className="bom-muted">{w.gauge} AWG</td>
                   <td><span className="bom-color"><WireSample color={w.color} gauge={w.gauge} />{w.color}</span></td>
                 </tr>

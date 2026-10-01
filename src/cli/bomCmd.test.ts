@@ -62,3 +62,32 @@ describe('circuitoon bom', () => {
     expect(USAGE).toContain('bom <sheet.json> [-o <bom.csv>] [--json]')
   })
 })
+
+describe('the bill with net labels (rule V3)', () => {
+  it('1-main: jumpers and Dupont ends with labels on are close to wires only, the difference being the breadboard strips labels do without', async () => {
+    const { readFileSync: read } = await import('node:fs')
+    const { loadPartial } = await import('../agent/partial.ts')
+    const { layoutNetlist } = await import('../agent/layout.ts')
+    const { billOfMaterials } = await import('../format/bom.ts')
+    const p = loadPartial(JSON.parse(read(new URL('../../plugin/skills/circuitoon-design/references/examples/spirit-typewriter/1-main.partial.json', import.meta.url), 'utf8')))
+    if (!p.ok) throw new Error(p.errors.join('; '))
+    const count = (labels: 'auto' | 'none') => {
+      const r = layoutNetlist(p.intent, { keep: p.keep, labels })
+      if (!r.ok) throw new Error(r.errors.join('; '))
+      const bom = billOfMaterials(r.value.diagram)
+      const jumpers = bom.wires.filter((w) => w.cable === 'Dupont F-F jumper').reduce((n, w) => n + w.count, 0)
+      const ends = bom.connectors.find((c) => c.kind === 'dupont-female')?.count ?? 0
+      // Nets that go through BB1 when drawn as wires: each takes one wire per pin into a strip, where
+      // the same net drawn with labels takes one fewer (pin to pin), more when it spans several strips.
+      const viaStrips = new Set(r.value.diagram.connections.filter((c) => c.from.part === 'BB1' || c.to.part === 'BB1').map((c) => r.value.netOfWire.get(c.uid)))
+      return { jumpers, ends, viaStrips: viaStrips.size, labelled: bom.wires.filter((w) => w.labelled).length }
+    }
+    const on = count('auto')
+    const off = count('none')
+    expect(on.labelled).toBeGreaterThan(0)
+    expect(on.ends).toBe(2 * on.jumpers)
+    expect(off.ends).toBe(2 * off.jumpers)
+    expect(off.jumpers - on.jumpers).toBeGreaterThan(0)
+    expect(off.jumpers - on.jumpers).toBeLessThanOrEqual(2 * off.viaStrips)
+  }, 120_000)
+})
