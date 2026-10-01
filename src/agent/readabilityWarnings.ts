@@ -29,9 +29,12 @@ export const CROSSINGS_MAX = 8
 /** A wire to a net label shorter than this (px) is a layout stub; a row of them is not crowded. */
 export const LABEL_STUB = 30
 
+/** Every rule a readability finding can have; while any is reported, a gate is not ready (Ruling W1). */
+export const READABILITY_RULES = ['wires-crowded', 'wire-hugs-part', 'label-covered', 'crossings-high', 'wire-over-board'] as const
+
 export interface ReadabilityFinding {
   id: string
-  rule: 'wires-crowded' | 'wire-hugs-part' | 'label-covered' | 'crossings-high'
+  rule: (typeof READABILITY_RULES)[number]
   severity: 'warning'
   message: string
   parts: string[]

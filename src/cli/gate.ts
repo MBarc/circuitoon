@@ -23,7 +23,7 @@ import { intentLookup, verifyDiagram } from '../agent/verify.ts'
 import { parseNetlist } from '../agent/netlist.ts'
 import { libraryLookup } from '../agent/catalog.ts'
 import { NOT_CHECKED } from '../agent/notChecked.ts'
-import { readabilityFindings } from '../agent/readabilityWarnings.ts'
+import { READABILITY_RULES, readabilityFindings } from '../agent/readabilityWarnings.ts'
 import { type ChannelRow, type QuantityRow, bomQuantities, channelTable, sheetBom } from '../agent/tables.ts'
 import { type Bom, bomCsv } from '../format/bom.ts'
 import type { Args } from './args.ts'
@@ -33,7 +33,7 @@ import { writePng } from './png.ts'
 import { linkFor } from './linkCmd.ts'
 import { focusParts } from './render.ts'
 
-export const GATE_FORMAT = 'circuitoon-cli/gate/2'
+export const GATE_FORMAT = 'circuitoon-cli/gate/3'
 
 export interface GateArtifact {
   kind: 'svg' | 'png' | 'focus-png' | 'link' | 'file' | 'bom'
@@ -45,6 +45,12 @@ export interface GateArtifact {
 export interface GateReport {
   format: typeof GATE_FORMAT
   ok: boolean
+  /**
+   * Ready to present as it is (Ruling W1): the gate passed and no readability warning remains. A
+   * sheet that is ok but not ready may be shown only with each remaining readability warning listed
+   * to the user, with why it could not be cleared.
+   */
+  ready: boolean
   diagram: { path: string; sha256: string }
   artifacts: GateArtifact[]
   blocking: CliFinding[]
@@ -129,6 +135,8 @@ export async function runGate(bytes: Uint8Array, opts: { sheetPath: string; outD
   const required: { kind: GateArtifact['kind'] | 'link-or-file'; path: string }[] = []
   let link: GateReport['link'] = { url: null, file: null, chars: 0 }
   let rows: Pick<GateReport, 'bom' | 'quantities' | 'channels'> = { bom: null, quantities: [], channels: [] }
+  /** Readability warnings found (never blocking, but the sheet is not ready while any remain). */
+  let readable = 0
 
   const finish = (): { code: number; report: GateReport } => {
     const have = new Set(artifacts.map((a) => a.kind))
@@ -140,6 +148,7 @@ export async function runGate(bytes: Uint8Array, opts: { sheetPath: string; outD
     const report: GateReport = {
       format: GATE_FORMAT,
       ok: code === EXIT.ok,
+      ready: code === EXIT.ok && readable === 0,
       diagram: { path: opts.sheetPath, sha256: sha256(bytes) },
       artifacts,
       blocking,
@@ -185,7 +194,9 @@ export async function runGate(bytes: Uint8Array, opts: { sheetPath: string; outD
     if (routes.get(c.uid)?.fallback)
       note('wire-over-holes', c.uid, 'warning', `The wire ${c.label ?? `${endpointName(d, c.from)} to ${endpointName(d, c.to)}`} runs over breadboard holes in use that it is not plugged into, so in the picture it may look plugged in there.`, { parts: [c.from.part, c.to.part], wires: [c.uid] })
   // Readability (never blocking): the agent clears these or explains each one that remains.
-  found.push(...readabilityFindings(d, routes).map(cliFinding))
+  const readability = readabilityFindings(d, routes)
+  readable = readability.length
+  found.push(...readability.map(cliFinding))
   const parsed = d.intent !== undefined ? parseNetlist(d.intent, intentLookup(d, libraryLookup)) : null
   // The bill of materials: bom.csv and gate.json's bill of quantities both come from this one bill.
   const bom = sheetBom(d, libraryLookup)
@@ -242,6 +253,11 @@ export async function runGate(bytes: Uint8Array, opts: { sheetPath: string; outD
   return finish()
 }
 
+/** The readability warnings in a gate report (the rules readabilityFindings raises). */
+export function readabilityCount(report: GateReport): number {
+  return report.warnings.filter((w) => (READABILITY_RULES as readonly string[]).includes(w.rule)).length
+}
+
 export async function gateCommand(args: Args, io: Io): Promise<number> {
   const [input, ...rest] = args.positionals
   const out = flag(args, '--out')
@@ -269,7 +285,9 @@ export async function gateCommand(args: Args, io: Io): Promise<number> {
         : code === EXIT.environment
           ? `GATE INCOMPLETE: nothing blocks, but not every render could be made (${input})`
           : `GATE BLOCKED: ${plural(report.blocking.length, 'blocking finding')} (${input})`
-    const lines = [head]
+    // Ruling W1: a sheet with readability warnings left is not ready, whatever the exit code says.
+    const notReady = readabilityCount(report)
+    const lines = [...(notReady ? [`NOT READY: ${plural(notReady, 'readability warning')}`] : []), head]
     if (report.blocking.length) lines.push('', 'Blocking:', findingsText(report.blocking))
     if (report.warnings.length) lines.push('', 'Warnings (report these to the user):', findingsText(report.warnings))
     if (report.notes.length) lines.push('', 'Notes (not problems; pass them on to the user):', findingsText(report.notes))
