@@ -40,7 +40,8 @@ export interface LayoutOutput {
 export type LayoutResult = { ok: true; value: LayoutOutput } | { ok: false; stage: 'input' | 'layout'; errors: string[] }
 
 export function layoutNetlist(raw: unknown, opts: { library?: ModuleLookup; keep?: KeepMap; labels?: LabelMode } = {}): LayoutResult {
-  const mode = opts.labels ?? 'auto'
+  // Wires are the default (Ruling W1): only nets that ask (`"label": true`) get labels.
+  const mode = opts.labels ?? 'none'
   const library = opts.library ?? libraryLookup
   const parsed = parseNetlist(raw, library)
   if (!parsed.ok) return { ok: false, stage: 'input', errors: parsed.errors }

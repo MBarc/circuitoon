@@ -1,5 +1,5 @@
-// The layout draws nets with net labels: every net that asks (`"label": true`), and in auto mode
-// long or crowded ones; never mains. Each labelled endpoint gets a short `routing` stub out to its
+// The layout draws nets with net labels: every net that asks (`"label": true`, in every mode, the
+// default `none` included), and in auto mode long or crowded ones; never mains. Each labelled endpoint gets a short `routing` stub out to its
 // label, which lands clear of every part, caption and other label; the sheet still verifies clean.
 import { describe, expect, it } from 'vitest'
 import { layoutNetlist } from './layout.ts'
@@ -42,14 +42,25 @@ describe('layout with net labels', () => {
     const stubs = v.diagram.connections.filter((c) => ids.has(c.to.part))
     expect(stubs).toHaveLength(2)
     expect(stubs.every((c) => c.routing)).toBe(true)
-    expect(v.report.labels).toEqual({ mode: 'auto', nets: ['SDA'], unplaced: [] })
+    // Wires are the default (Ruling W1): --labels none, which still labels a net that asks.
+    expect(v.report.labels).toEqual({ mode: 'none', nets: ['SDA'], unplaced: [] })
     clean(v.diagram)
   })
-  it('draws no labels with --labels none, even on a net that asks', () => {
-    const v = ok(i2c(true), 'none')
-    expect(names(v.diagram)).toEqual([])
-    expect(v.report.labels).toEqual({ mode: 'none', nets: [], unplaced: [] })
-    clean(v.diagram)
+  it('draws only wires by default (--labels none) when no net asks for labels', () => {
+    for (const v of [ok(i2c()), ok(i2c(), 'none')]) {
+      expect(names(v.diagram)).toEqual([])
+      expect(v.report.labels).toEqual({ mode: 'none', nets: [], unplaced: [] })
+      clean(v.diagram)
+    }
+  })
+  it('with --labels none never labels a long or many-ended net on its own', () => {
+    const raw = {
+      format: 'circuitoon-netlist/1', title: 'Grounds',
+      parts: [{ ref: 'U1', module: 'esp32-devkitc-v4' }, { ref: 'U2', module: 'bme280-module-4pin' }, { ref: 'U3', module: 'bme280-module-4pin' }, { ref: 'BB1', module: 'power-rail-strip' }],
+      nets: [{ name: 'GND', pins: ['U1.GND', 'U2.GND', 'U3.GND', 'BB1.-'] }],
+    }
+    expect(names(ok(raw).diagram)).toEqual([])
+    expect(names(ok(raw, 'auto').diagram)).toContain('GND')
   })
   it('labels every net with --labels all', () => {
     const v = ok(i2c(), 'all')
@@ -57,7 +68,7 @@ describe('layout with net labels', () => {
     clean(v.diagram)
   })
   it('in auto mode leaves a short two-pin signal net wired', () => {
-    const v = ok(i2c())
+    const v = ok(i2c(), 'auto')
     expect(names(v.diagram)).not.toContain('SCL')
     clean(v.diagram)
   })
@@ -67,7 +78,7 @@ describe('layout with net labels', () => {
       parts: [{ ref: 'U1', module: 'esp32-devkitc-v4' }, { ref: 'U2', module: 'bme280-module-4pin' }, { ref: 'U3', module: 'bme280-module-4pin' }],
       nets: [{ name: 'GND', pins: ['U1.GND', 'U2.GND', 'U3.GND'] }],
     }
-    const v = ok(raw)
+    const v = ok(raw, 'auto')
     expect(names(v.diagram)).toEqual(['GND', 'GND', 'GND'])
     clean(v.diagram)
   })
@@ -93,15 +104,15 @@ describe('layout with net labels', () => {
 describe('a repeat block\'s shared ground', () => {
   it('is a label at each copy with labels on, and needs no local rail strips', async () => {
     const { tiltSensors } = await import('./fixtures.testing.ts')
-    const v = ok(tiltSensors())
+    const v = ok(tiltSensors(), 'auto')
     expect(v.diagram.parts.filter((p) => /^DP\d+$/.test(p.uid))).toEqual([])
     const gnd = labelsOf(v.diagram).filter((l) => l.name === 'GND')
     expect(gnd.length).toBeGreaterThanOrEqual(8)
     clean(v.diagram)
   })
-  it('falls back to the local rail strips with --labels none', async () => {
+  it('falls back to the local rail strips with --labels none, the default', async () => {
     const { tiltSensors } = await import('./fixtures.testing.ts')
-    const v = ok(tiltSensors(), 'none')
+    const v = ok(tiltSensors())
     expect(v.diagram.parts.some((p) => /^DP\d+$/.test(p.uid))).toBe(true)
     expect(labelsOf(v.diagram)).toEqual([])
   })

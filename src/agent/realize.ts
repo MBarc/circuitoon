@@ -53,7 +53,10 @@ export interface Realization {
 }
 
 export interface RealizeOptions {
-  /** Which nets get net labels (default auto); a mains net or one with local strips never does. */
+  /**
+   * Which nets get net labels (default none: only the nets that ask, `"label": true`; Ruling W1).
+   * A mains net or one with local strips never does.
+   */
   labels?: LabelMode
   /** The net-label module; without it no net is labelled. */
   labelModule?: ModuleDef
@@ -290,8 +293,8 @@ export function realize(intent: Intent, d: Diagram, locals: LocalDistribution[] 
   // group's pins, the net's strips), each joined to it by short routing stubs, instead of wires
   // running between them. All or nothing per net: when one endpoint finds no clear spot, the net is
   // wired as before.
-  const mode = opts.labels ?? 'auto'
-  const placer = opts.labelModule && mode !== 'none' ? new LabelPlacer(d, opts.labelModule) : null
+  const mode = opts.labels ?? 'none'
+  const placer = opts.labelModule && (mode !== 'none' || intent.nets.some((n) => n.label)) ? new LabelPlacer(d, opts.labelModule) : null
   const labels: PartInstance[] = []
   const labelledNets: string[] = []
   const unlabelled: string[] = []
@@ -301,7 +304,7 @@ export function realize(intent: Intent, d: Diagram, locals: LocalDistribution[] 
   const mainsNet = (n: IntentNet) => n.terminals.some((t) => mainsOf(modOf(t.ref)).terminals.has(t.name))
   /** Whether a net is drawn with labels, from its endpoints (each node's first pin, and the net's strips as one). */
   const wants = (net: IntentNet, kind: NetKind, ends: { at: Pt; group: string | undefined }[]) =>
-    ends.length >= 2 && (!!net.label || mode === 'all' || autoLabels({ kind, ends }))
+    ends.length >= 2 && (!!net.label || mode === 'all' || (mode === 'auto' && autoLabels({ kind, ends })))
   /** The loose pins of a net as nodes (one per part-internal component, in natural order), and its first strip. */
   const shapeOf = (net: IntentNet) => {
     const byComp = new Map<string, Terminal[]>()
