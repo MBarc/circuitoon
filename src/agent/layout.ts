@@ -7,7 +7,7 @@
 // must verify clean against its own intent before it is returned, so a kept part that shorts two
 // nets through a strip is caught here. Wires are coloured by role (colors.ts). The sheet embeds its modules and stores the netlist as
 // `intent`, so every later check re-verifies against it. Pure.
-import { DIAGRAM_FORMAT, type Diagram, computeRoutes, moduleOf, resolveEndpoint } from '../format/diagram.ts'
+import { DIAGRAM_FORMAT, type Diagram, type PartInstance, computeRoutes, moduleOf, resolveEndpoint } from '../format/diagram.ts'
 import { ROUTE_REACH, withinReach } from '../format/router.ts'
 import { tightFootprint, union } from './footprint.ts'
 import { type Intent, type ModuleLookup, parseNetlist } from './netlist.ts'
@@ -50,8 +50,10 @@ export function layoutNetlist(raw: unknown, opts: { library?: ModuleLookup; keep
   // rail strips (A18.1); they come back only as the fallback when a labelled try cannot be realized,
   // and always with --labels none.
   const tries = mode === 'none' ? [true] : [false, true]
+  // Boards seat their parts the same way whatever the spacing: once per layout.
+  const mounts = new Map<string, PartInstance[]>()
   attempt: for (const [i, spacing] of SPACINGS.entries()) for (const rails of tries) {
-    const placed = placeParts(intent, { spacing, keep: opts.keep, rail: rails ? library(RAIL_MODULE) : undefined })
+    const placed = placeParts(intent, { spacing, keep: opts.keep, rail: rails ? library(RAIL_MODULE) : undefined, mounts })
     if (!placed.ok) return { ok: false, stage: 'layout', errors: placed.errors }
     const base: Diagram = {
       format: DIAGRAM_FORMAT,

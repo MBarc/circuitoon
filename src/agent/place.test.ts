@@ -324,3 +324,17 @@ describe('mountPart', () => {
     })
   })
 })
+
+describe('mounting once per layout', () => {
+  it('a retry with more spacing reuses each board\'s seated parts and places the same way as mounting afresh', async () => {
+    const { typewriter } = await import('./fixtures.testing.ts')
+    const intent = intentOf(typewriter())
+    const mounts = new Map<string, PartInstance[]>()
+    const first = placeParts(intent, { spacing: 30, mounts })
+    expect(mounts.size).toBe(3)
+    const reused = placeParts(intent, { spacing: 60, mounts })
+    const fresh = placeParts(intent, { spacing: 60 })
+    if (!first.ok || !reused.ok || !fresh.ok) throw new Error('placement failed')
+    expect(reused.parts).toEqual(fresh.parts)
+  }, 60_000)
+})

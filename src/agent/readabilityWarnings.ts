@@ -70,9 +70,14 @@ export function readabilityFindings(d: Diagram, routes: Routes = computeRoutes(d
     return c.label || `${endpointName(d, c.from)} to ${endpointName(d, c.to)}`
   }
   const nl = netlist(d)
+  const netCache = new Map<string, number | string>()
   const netOf = (uid: string) => {
-    const c = byUid.get(uid)!
-    return nl.netOf.get(nodeKey(c.from.part, c.from.pin)) ?? `wire ${uid}`
+    let n = netCache.get(uid)
+    if (n === undefined) {
+      const c = byUid.get(uid)!
+      netCache.set(uid, (n = nl.netOf.get(nodeKey(c.from.part, c.from.pin)) ?? `wire ${uid}`))
+    }
+    return n
   }
   const segs = drawn.flatMap((w) => segmentsOf(w.conn.uid, w.points))
   const labelParts = new Set(parts0(d).filter((p) => isNetLabel(moduleOf(d, p.module))).map((p) => p.uid))
@@ -90,9 +95,18 @@ export function readabilityFindings(d: Diagram, routes: Routes = computeRoutes(d
 
   // Crowded: one finding per pair of wires, its closest gap and longest side-by-side run.
   const crowded = new Map<string, { a: string; b: string; gap: number; run: number }>()
-  for (const list of [hs, vs])
-    for (let i = 0; i < list.length; i++)
-      for (let j = i + 1; j < list.length; j++) {
+  // Segments bucketed by their line (one grid step a bucket), so each is compared only with those
+  // within a grid step of it, never with every other segment on the sheet.
+  for (const list of [hs, vs]) {
+    const buckets = new Map<number, number[]>()
+    list.forEach((x, i) => {
+      const k = Math.floor(x.at / GRID_STEP)
+      buckets.set(k, [...(buckets.get(k) ?? []), i])
+    })
+    for (let i = 0; i < list.length; i++) {
+      const k = Math.floor(list[i].at / GRID_STEP)
+      for (const j of [k - 1, k, k + 1].flatMap((b) => buckets.get(b) ?? [])) {
+        if (j <= i) continue
         const [s, t] = [list[i], list[j]]
         if (s.wire === t.wire || Math.abs(s.at - t.at) > GRID_STEP || netOf(s.wire) === netOf(t.wire)) continue
         // A row of stubs out to net labels at the pins' own pitch is laid out that way on purpose; only
@@ -106,6 +120,8 @@ export function readabilityFindings(d: Diagram, routes: Routes = computeRoutes(d
         const was = crowded.get(key)
         if (!was || gap < was.gap || (gap === was.gap && run > was.run)) crowded.set(key, { a, b, gap, run })
       }
+    }
+  }
   for (const { a, b, gap, run } of crowded.values())
     out.push({ id: `wires-crowded|${a},${b}`, rule: 'wires-crowded', severity: 'warning', parts: [], pins: [], wires: [a, b],
       message: `The wires ${name(a)} and ${name(b)} run side by side, ${gap} px apart, for ${run} px. Move one of them at least ${2 * GRID_STEP} px away (drag its segment), or draw one of the nets with net labels.` })
