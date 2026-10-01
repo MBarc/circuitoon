@@ -184,6 +184,10 @@ describe('mains: a label never hides that a net is mains', () => {
   it('draws such a label with the mains hazard look', () => {
     expect(labelLook(mainsSheet(), 'm1')).toBe('mains')
   })
+  it('names a label end by its name in the mains cable findings', () => {
+    const cable = checkDiagram(mainsSheet()).filter((x) => x.rule === 'cable-unverified').map((x) => x.message)
+    expect(cable.some((m) => m.startsWith('The wire XS1 L to label LIVE carries mains'))).toBe(true)
+  })
   it('never reports the label itself as a low-voltage part on mains', () => {
     const f = checkDiagram(mainsSheet()).filter((x) => x.rule === 'mains-to-low-voltage')
     expect(f).toEqual([])

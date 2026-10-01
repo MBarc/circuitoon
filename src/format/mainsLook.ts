@@ -132,6 +132,17 @@ export function holdLooks(held: { current: Map<string, WireLook> }, d: Diagram, 
  * leaves the role out, like the wire looks.
  */
 export type LabelLook = 'ground' | 'supply' | 'signal' | 'mains' | 'unnamed'
+
+/** Every net label's look, by part uid (empty when the sheet has none, with no analysis run). */
+export function labelLooks(d: Diagram): Map<string, LabelLook> {
+  return new Map(labelsOf(d).map((l) => [l.part.uid, labelLook(d, l.part.uid)]))
+}
+
+/** Resolution 30 for labels: the looks for `d`, or the ones `held` has while `busy`; refreshes `held` otherwise. */
+export function holdLabelLooks(held: { current: Map<string, LabelLook> }, d: Diagram, busy: boolean): Map<string, LabelLook> {
+  if (!busy) held.current = labelLooks(d)
+  return held.current
+}
 export function labelLook(d: Diagram, uid: string): LabelLook {
   const l = labelsOf(d).find((x) => x.part.uid === uid)
   if (!l) return 'signal'

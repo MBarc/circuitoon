@@ -11,14 +11,15 @@ import { WireLabel } from '../render/WireLabel.tsx'
 import { CableLayer } from '../render/CableEnd.tsx'
 import { FrameMark, NoteMark } from '../render/Annotations.tsx'
 import { BLOCKED_STROKE, Bolts, HazardOutline, Stripe, boltInsets } from '../render/Mains.tsx'
-import { type WireLook, drawnColor, holdLooks, newWireColor, startColor } from '../format/mainsLook.ts'
+import { type LabelLook, type WireLook, drawnColor, holdLabelLooks, holdLooks, newWireColor, startColor } from '../format/mainsLook.ts'
+import { flagRect, labelName, labelsOf } from '../format/netLabels.ts'
 import { seatedLabels } from '../format/seatedLabels.ts'
 import { addPart, addWire, EMPTY_SELECTION, marqueeSelection, moveAnnotations, moveParts, reconnectWire, sameEndpoint, setWireRoute, settleDrop, settleMounts, settleSeats, settlingOf, updateWire, withMounted } from './ops.ts'
 import { netlist, netPoints } from '../format/netlist.ts'
 import { bendHandleAt, insertBend, isOrthogonal, moveSegment, removeBend, segmentHandleAt, segmentsOf, toRoute, type Axis } from '../format/wireEdit.ts'
 import { modulesById } from '../library.ts'
 import { bodyRect } from '../format/geometry.ts'
-import { layoutModule } from '../format/module.ts'
+import { isNetLabel, layoutModule } from '../format/module.ts'
 import { MODULE_MIME } from './LibraryPanel.tsx'
 import type { Connection, Diagram, Endpoint } from '../format/diagram.ts'
 import type { Selection } from './ops.ts'
@@ -137,6 +138,8 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
   const lastClient = useRef<Pt | null>(null)
   // The pin or hole under the pointer while nothing is being dragged, for net highlighting.
   const [hover, setHover] = useState<Endpoint | null>(null)
+  // The net label under the pointer (its body or its pin), for lighting every label of its name.
+  const [hoverLabel, setHoverLabel] = useState<string | null>(null)
   const settled = useRef<Routes>(new Map())
   const [editing, setEditing] = useState<{ uid: string; anchor: Pt; initial: string; token: number } | null>(null)
   const editRef = useRef<HTMLInputElement>(null)
@@ -265,6 +268,15 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
   const busy = drag?.kind === 'parts' || drag?.kind === 'segment'
   const looksRef = useRef<Map<string, WireLook>>(new Map())
   const looks = useMemo(() => holdLooks(looksRef, diagram, busy), [diagram.parts, diagram.connections, diagram.modules, busy])
+  // Net label colours (their nets' roles), held the same way.
+  const flagsRef = useRef<Map<string, LabelLook>>(new Map())
+  const flags = useMemo(() => holdLabelLooks(flagsRef, diagram, busy), [diagram.parts, diagram.connections, diagram.modules, busy])
+  // Every label sharing a name with a selected or hovered label: each gets a glow, so a reader sees where the net goes.
+  const litLabels = useMemo(() => {
+    const all = labelsOf(diagram)
+    const names = new Set(all.filter((l) => l.name && (selection.parts.includes(l.part.uid) || l.part.uid === hoverLabel)).map((l) => l.name))
+    return names.size ? all.filter((l) => names.has(l.name)).map((l) => l.part.uid) : []
+  }, [diagram.parts, diagram.modules, selection.parts, hoverLabel])
   // Boards draw below every other part; the leg overlays follow mounts and positions.
   const layers = useMemo(() => splitBoards(diagram), [diagram.parts, diagram.modules])
   // Seated plug-in devices put their captions beside the outlet (and covered lead labels inside).
@@ -577,6 +589,10 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
     if (!drag) {
       const over = endUnder(e)
       setHover((h) => (h === over || (h && over && sameEndpoint(store.getState().diagram, h, over)) ? h : over))
+      const d = store.getState().diagram
+      const uid = over?.part ?? document.elementFromPoint(e.clientX, e.clientY)?.closest('[data-part]')?.getAttribute('data-part') ?? null
+      const p = uid ? d.parts.find((q) => q.uid === uid) : undefined
+      setHoverLabel(p && isNetLabel(moduleOf(d, p.module)) ? p.uid : null)
       return
     }
     if (e.pointerId !== drag.pointer) return
@@ -722,13 +738,19 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
 
   const renderPart = (p: PartInstance) => {
     const m = moduleOf(diagram, p.module)
+    const label = !!m && isNetLabel(m)
     return m ? (
-      <g key={p.uid} data-part={p.uid}>
+      <g key={p.uid} data-part={p.uid} data-label-lit={litLabels.includes(p.uid) ? '' : undefined}>
+        {label && litLabels.includes(p.uid) && (() => {
+          const r = flagRect(p, m, flags.get(p.uid) === 'ground' || flags.get(p.uid) === 'mains')
+          return <rect className="label-lit" x={r.x - 4} y={r.y - 4} width={r.w + 8} height={r.h + 8} rx={6} pointerEvents="none" />
+        })()}
         {selection.parts.includes(p.uid) && (() => {
-          const r = bodyRect(p, layoutModule(m))
+          const r = label ? flagRect(p, m, flags.get(p.uid) === 'ground' || flags.get(p.uid) === 'mains') : bodyRect(p, layoutModule(m))
           return <rect x={r.x - 6} y={r.y - 6} width={r.w + 12} height={r.h + 12} rx={6} fill="none" stroke="var(--focus)" strokeWidth={1.5} strokeDasharray="5 4" />
         })()}
-        <Part module={m} x={p.x} y={p.y} rotation={p.rotation} caption={partCaption(p, m)} values={p.values}
+        <Part module={m} x={p.x} y={p.y} rotation={p.rotation} caption={label ? undefined : partCaption(p, m)} values={p.values}
+          netName={label ? labelName(p) : undefined} netLook={label ? (flags.get(p.uid) ?? (labelName(p) ? 'signal' : 'unnamed')) : undefined}
           captionX={seated.get(p.uid)?.caption.x} captionY={seated.get(p.uid)?.caption.y}
           captionAnchor={seated.get(p.uid)?.anchor} labelInset={seated.get(p.uid)?.labelInset} />
       </g>
@@ -762,6 +784,7 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
         onPointerCancel={onPointerCancel}
         onPointerLeave={() => {
           setHover(null)
+          setHoverLabel(null)
           lastClient.current = null
         }}
         // A middle press would start the browser's autoscroll; the middle drag pans instead.

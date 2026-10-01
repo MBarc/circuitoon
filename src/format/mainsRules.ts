@@ -10,7 +10,8 @@ import { type Conductor, type ContactGroup, type MainsInfo, type Rating, type Re
 import { type ThroughKind, protectivePaths } from './mainsProtective.ts'
 import { andList, natural, orList } from './words.ts'
 import { END_NAMES, type EndKind, endKind } from './cables.ts'
-import { isBoard } from './module.ts'
+import { isBoard, isNetLabel } from './module.ts'
+import { labelName } from './netLabels.ts'
 
 /**
  * The identity masks as this module's own constants: the per-state loops read them millions of times
@@ -2242,7 +2243,10 @@ const endWords = (k: EndKind): string => (/^(Dupont|JST|Grove)/.test(END_NAMES[k
 /** A wire end as the user reads it (as checks.ts names wire ends). */
 function wireEnd(g: MainsGraph, ep: Endpoint): string {
   const t = termAt(g, nodeKey(ep.part, ep.pin))
-  const name = t ? termName(t) : `${g.d.parts.find((x) => x.uid === ep.part)?.designator ?? ep.part} ${ep.pin}`
+  const part = g.d.parts.find((x) => x.uid === ep.part)
+  // A net label is no terminal; it reads by its name ("label LIVE").
+  const label = !t && part && isNetLabel(moduleOf(g.d, part.module)) ? (labelName(part) ? `label ${labelName(part)}` : `${part.designator} (unnamed label)`) : null
+  const name = t ? termName(t) : (label ?? `${part?.designator ?? ep.part} ${ep.pin}`)
   return ep.hole !== undefined ? `${name} hole ${ep.hole}` : name
 }
 

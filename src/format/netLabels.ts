@@ -3,7 +3,8 @@
 // part's `values.net`, trimmed; matching is exact and case-sensitive (SDA and sda are two nets, as
 // in KiCad and in a netlist's net names). An empty name joins nothing. Pure.
 import { type Diagram, type PartInstance, moduleOf } from './diagram.ts'
-import { isNetLabel, isSpacer, type ModuleDef } from './module.ts'
+import { isNetLabel, isSpacer, layoutModule, type ModuleDef } from './module.ts'
+import { type Rect, toWorld } from './geometry.ts'
 import { natural } from './words.ts'
 
 /** The key a label's name is stored under in `values`. */
@@ -58,6 +59,46 @@ export function labelGroups(d: Pick<Diagram, 'parts' | 'modules'>): Map<string, 
 /** Whether the part `uid` is a net label. */
 export function isLabelPart(d: Pick<Diagram, 'parts' | 'modules'>, uid: string): boolean {
   return labelsOf(d).some((l) => l.part.uid === uid)
+}
+
+/**
+ * The flag's height and the depth of its point, in px (module-local; the body is two units tall).
+ * Under one grid unit, so labels on neighbouring header pins (0.1 inch apart) stack without touching.
+ */
+export const FLAG_H = 8.6
+export const FLAG_POINT = 5
+/** Room the ground mark or the mains bolt takes at the flag's square end, in px. */
+export const FLAG_MARK = 7
+/** Width of one character of the flag's 7 px bold name, a little generous so text never overruns. */
+const CHAR_W = 4.6
+/** Longest name the flag shows whole; a longer one is cut with an ellipsis (the Inspector shows it all). */
+export const FLAG_MAX_CHARS = 24
+
+/** The name as the flag shows it: "?" for an unnamed label, cut at FLAG_MAX_CHARS. */
+export function flagText(name: string): string {
+  if (!name) return '?'
+  return name.length > FLAG_MAX_CHARS ? `${name.slice(0, FLAG_MAX_CHARS - 1)}…` : name
+}
+
+/**
+ * The flag's width in px from its point (the pin, at local x 0) to its square end: the point, the
+ * name with padding, and room for the ground mark when `ground`. Never narrower than 28 px.
+ */
+export function flagWidth(name: string, ground = false): number {
+  return Math.max(20, Math.ceil(FLAG_POINT + 3 + flagText(name).length * CHAR_W + 4 + (ground ? FLAG_MARK : 0)))
+}
+
+/**
+ * The drawn flag of label `part` in world px (rotation applied), from its point to its square end:
+ * what the editor outlines when the label is selected or shares a name with the hovered one. The
+ * ground mark widens a ground label's flag; `ground` says whether it is drawn.
+ */
+export function flagRect(part: PartInstance, m: ModuleDef, ground = false): Rect {
+  const lay = layoutModule(m)
+  const mid = lay.pins[0]?.edge.y ?? lay.h / 2
+  const a = toWorld(part, lay, { x: 0, y: mid - FLAG_H / 2 })
+  const b = toWorld(part, lay, { x: flagWidth(labelName(part), ground), y: mid + FLAG_H / 2 })
+  return { x: Math.min(a.x, b.x), y: Math.min(a.y, b.y), w: Math.abs(a.x - b.x), h: Math.abs(a.y - b.y) }
 }
 
 /** The other labels with the same name as label `uid`, in designator order; empty for an unnamed label or a part that is not one. */

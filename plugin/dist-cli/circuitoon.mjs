@@ -481,10 +481,10 @@ function isolationAdequate(info) {
 function uncoveredPins(m, info) {
 	return [...m.pins.flatMap((p) => "name" in p && typeof p.name === "string" ? [p.name] : []), ...(m.holes ?? []).map((h) => h.name)].filter((n) => !info.domainOf.has(n) && !info.terminals.has(n));
 }
-var cache$3 = /* @__PURE__ */ new WeakMap();
+var cache$4 = /* @__PURE__ */ new WeakMap();
 /** The module's mains data, parsed once (modules are never mutated after load). Assumes a validated module. */
 function mainsOf(m) {
-	const hit = cache$3.get(m);
+	const hit = cache$4.get(m);
 	if (hit) return hit;
 	const el = isObj(m.electrical) ? m.electrical : {};
 	const list = (k) => Array.isArray(el[k]) ? el[k].filter(isObj) : [];
@@ -630,7 +630,7 @@ function mainsOf(m) {
 		terminals,
 		declaredConduction
 	};
-	cache$3.set(m, info);
+	cache$4.set(m, info);
 	return info;
 }
 //#endregion
@@ -653,6 +653,8 @@ var PIN_TYPES = [
 	"nc"
 ];
 var isSpacer = (p) => "spacer" in p && p.spacer === true;
+/** A net label module (`netLabel: true`): see ModuleDef.netLabel. */
+var isNetLabel = (m) => m?.netLabel === true;
 /** Opt-in flag (`art.pinLabels: "inside"`) for drawing pin names inside the body, like board
 * silkscreen, instead of beside the pin stub. Off for every module that does not set it. */
 var usesInsideLabels = (m) => m.art?.pinLabels === "inside";
@@ -796,6 +798,10 @@ function validateModule(raw) {
 		});
 	}
 	if (raw.obstacle !== void 0 && typeof raw.obstacle !== "boolean") errors.push("obstacle: must be true or false");
+	if (raw.netLabel !== void 0) {
+		if (raw.netLabel !== true) errors.push("netLabel: must be true when present");
+		else if (!Array.isArray(raw.pins) || raw.pins.length !== 1 || Array.isArray(raw.holes) && raw.holes.length || raw.internal !== void 0) errors.push("netLabel: a net label has exactly one pin and no hole groups or internal joins");
+	}
 	if (raw.footprint !== void 0 && raw.footprint !== "legs" && !(isObj(raw.footprint) && isNum(raw.footprint.x) && isNum(raw.footprint.y) && isPos(raw.footprint.w) && isPos(raw.footprint.h))) errors.push("footprint: must be \"legs\" or { \"x\", \"y\", \"w\", \"h\" } in module px, with w and h above 0");
 	const pinNames = new Set(names);
 	claimInternalNodes(raw, names, errors);
@@ -962,7 +968,7 @@ var slotsOn = (m, side) => m.pins.filter((p) => p.side === side).reduce((n, p) =
 */
 function computeLayout(m) {
 	const wu = Math.max(m.size?.w ?? 0, Math.ceil((m.art?.w ?? 0) / 10), Math.max(slotsOn(m, "top"), slotsOn(m, "bottom")) + 2, 4);
-	const hu = Math.max(m.size?.h ?? 0, Math.ceil((m.art?.h ?? 0) / 10), Math.max(slotsOn(m, "left"), slotsOn(m, "right")) + 2, 3);
+	const hu = Math.max(m.size?.h ?? 0, Math.ceil((m.art?.h ?? 0) / 10), Math.max(slotsOn(m, "left"), slotsOn(m, "right")) + (m.netLabel ? 1 : 2), m.netLabel ? 2 : 3);
 	const pins = [];
 	for (const side of SIDES) {
 		const entries = m.pins.filter((p) => p.side === side);
@@ -1979,7 +1985,7 @@ var takenBy = (plugs, ignore) => new Set(plugs.filter((p) => !ignore.has(p.part)
 function mountable$1(d, uid) {
 	const part = d.parts.find((p) => p.uid === uid);
 	const m = part && moduleOf(d, part.module);
-	if (!part || !m || isBoard(m) || m.pins.some((p) => !isSpacer(p) && p.bus)) return null;
+	if (!part || !m || isBoard(m) || isNetLabel(m) || m.pins.some((p) => !isSpacer(p) && p.bus)) return null;
 	const pts = allPlugPoints(part, m);
 	return pts.length ? {
 		part,
@@ -3090,6 +3096,81 @@ function seatedLabels(d) {
 	}
 	return out;
 }
+//#endregion
+//#region src/format/words.ts
+/** Natural order, so U2 sorts before U10. */
+var natural = new Intl.Collator("en", {
+	numeric: true,
+	sensitivity: "base"
+});
+/** "A", "A or B", "A, B or C". */
+function orList(items) {
+	return items.length < 2 ? items.join("") : `${items.slice(0, -1).join(", ")} or ${items[items.length - 1]}`;
+}
+/** "A", "A and B", "A, B and C". */
+function andList(items) {
+	return items.length < 2 ? items.join("") : `${items.slice(0, -1).join(", ")} and ${items[items.length - 1]}`;
+}
+/** A label's name: its stored `values.net`, trimmed; empty when missing or not text. */
+function labelName(part) {
+	const v = part.values?.["net"];
+	return typeof v === "string" ? v.trim() : "";
+}
+/** The one pin of a net label module (its tag point). */
+function labelPin(m) {
+	const pin = m.pins.find((p) => !isSpacer(p));
+	return pin && !isSpacer(pin) ? pin.name : "";
+}
+var cache$3 = /* @__PURE__ */ new WeakMap();
+/** Every net label on the sheet (named or not), in sheet order. Cached per parts and modules. */
+function labelsOf(d) {
+	const hit = cache$3.get(d.parts);
+	if (hit && hit.modules === d.modules) return hit.result;
+	const result = [];
+	for (const part of d.parts) {
+		const m = moduleOf(d, part.module);
+		if (m && isNetLabel(m)) result.push({
+			part,
+			name: labelName(part),
+			pin: labelPin(m)
+		});
+	}
+	cache$3.set(d.parts, {
+		modules: d.modules,
+		result
+	});
+	return result;
+}
+/** Named labels grouped by name, each group in sheet order. */
+function labelGroups(d) {
+	const out = /* @__PURE__ */ new Map();
+	for (const l of labelsOf(d)) {
+		if (!l.name) continue;
+		const list = out.get(l.name);
+		if (list) list.push(l);
+		else out.set(l.name, [l]);
+	}
+	return out;
+}
+/**
+* The flag's height and the depth of its point, in px (module-local; the body is two units tall).
+* Under one grid unit, so labels on neighbouring header pins (0.1 inch apart) stack without touching.
+*/
+var FLAG_H = 8.6;
+/** Width of one character of the flag's 7 px bold name, a little generous so text never overruns. */
+var CHAR_W = 4.6;
+/** The name as the flag shows it: "?" for an unnamed label, cut at FLAG_MAX_CHARS. */
+function flagText(name) {
+	if (!name) return "?";
+	return name.length > 24 ? `${name.slice(0, 23)}…` : name;
+}
+/**
+* The flag's width in px from its point (the pin, at local x 0) to its square end: the point, the
+* name with padding, and room for the ground mark when `ground`. Never narrower than 28 px.
+*/
+function flagWidth(name, ground = false) {
+	return Math.max(20, Math.ceil(8 + flagText(name).length * CHAR_W + 4 + (ground ? 7 : 0)));
+}
 var NOTE_CHAR = 5.9;
 var TAB_CHAR = 5.6;
 /** A note's drawn lines: each typed line as typed, a line longer than NOTE_WRAP word-wrapped. */
@@ -4056,6 +4137,10 @@ function validateDiagram(raw) {
 						continue;
 					}
 					if (isObj(entry) && "value" in entry && !(isNum(entry.value) && typeof entry.unit === "string")) warnings.push(`${at}.values.${key}: value must be a finite number with a string unit`);
+					if (key === "net" && typeof p.module === "string" && isNetLabel(modules.get(p.module)) && typeof entry !== "string") {
+						dropped.push(key);
+						warnings.push(`${at}.values.net: ${who}'s label name must be text, not ${JSON.stringify(entry)}; it was dropped, so the label has no name`);
+					}
 				}
 				if (dropped.length) {
 					const values = p.values;
@@ -4224,7 +4309,7 @@ function validateDiagram(raw) {
 	for (const { part, board, reason } of mountIssues(diagram)) {
 		const i = diagram.parts.findIndex((p) => p.uid === part);
 		const at = `parts[${i}].mount`;
-		if (reason === "cannot-mount" && board !== part && modules.has(diagram.parts[i].module)) warnings.push(`${at}: part "${part}" cannot mount (boards, parts with a bus pin and parts with no pins never do)`);
+		if (reason === "cannot-mount" && board !== part && modules.has(diagram.parts[i].module)) warnings.push(`${at}: part "${part}" cannot mount (boards, net labels, parts with a bus pin and parts with no pins never do)`);
 		else if (reason === "not-a-board" && !modules.has(partModule.get(board))) warnings.push(`${at}: part "${board}" is not a board (its module "${partModule.get(board)}" is not embedded in this file)`);
 		else if (reason === "partial") warnings.push(`${at}: not every leg of "${part}" sits on a hole of board "${board}", so it plugs into nothing`);
 		else if (reason === "obscured") warnings.push(`${at}: a board drawn above board "${board}" covers a leg of "${part}", so it plugs into nothing`);
@@ -24219,6 +24304,36 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			]
 		}
 	},
+	"../modules/net-label.json": {
+		format: "circuitoon-module/1",
+		id: "net-label",
+		name: "Net label",
+		category: "Wiring",
+		netLabel: true,
+		pins: [{
+			"name": "NET",
+			"side": "left"
+		}],
+		size: {
+			"w": 5,
+			"h": 2
+		},
+		art: {
+			"w": 50,
+			"h": 20,
+			"shapes": [{
+				"type": "rect",
+				"x": 4,
+				"y": 2,
+				"w": 44,
+				"h": 16,
+				"fill": "#FFFFFF",
+				"radius": 3,
+				"label": "NET",
+				"labelSize": 8
+			}]
+		}
+	},
 	"../modules/oled-sh1106-13-i2c-vcc-gnd.json": {
 		format: "circuitoon-module/1",
 		id: "oled-sh1106-13-i2c-vcc-gnd",
@@ -42731,6 +42846,8 @@ function partSummary(m) {
 		category: m.category ?? null,
 		source: m.source ?? null,
 		board: isBoard(m),
+		/** A net label (a named flag, not a physical part): a netlist asks for one with "label": true on a net. */
+		netLabel: isNetLabel(m),
 		pins: m.pins.filter((p) => !isSpacer(p)).map((p) => ({
 			name: p.name,
 			label: p.label ?? null,
@@ -42776,6 +42893,7 @@ function partsCommand(args, io) {
 		return [
 			`${s.id}: ${s.name}${s.category ? ` [${s.category}]` : ""}`,
 			s.pins.length ? `  pins: ${s.pins.map(pinText).join(", ")}` : "",
+			s.netLabel ? `  not a part to list: set "label": true on a net and the layout draws its labels` : "",
 			s.holes.length ? `  hole groups: ${s.holes.map((g) => `${g.name}${g.rail ? ` (rail ${g.rail})` : ""} x${g.holes}`).join(", ")}` : ""
 		].filter(Boolean).join("\n");
 	});
@@ -42833,6 +42951,11 @@ function conductors(d, plugs = plugsOf(d)) {
 		a: nodeKey(pl.part, pl.pin),
 		b: nodeKey(pl.board, pl.group)
 	});
+	for (const [name, list] of labelGroups(d)) for (let i = 1; i < list.length; i++) joins.push({
+		a: nodeKey(list[0].part.uid, list[0].pin),
+		b: nodeKey(list[i].part.uid, list[i].pin),
+		label: name
+	});
 	return {
 		joins,
 		broken
@@ -42875,21 +42998,6 @@ function netlist(d, plugs = plugsOf(d)) {
 		netOf,
 		broken: broken.sort()
 	};
-}
-//#endregion
-//#region src/format/words.ts
-/** Natural order, so U2 sorts before U10. */
-var natural = new Intl.Collator("en", {
-	numeric: true,
-	sensitivity: "base"
-});
-/** "A", "A or B", "A, B or C". */
-function orList(items) {
-	return items.length < 2 ? items.join("") : `${items.slice(0, -1).join(", ")} or ${items[items.length - 1]}`;
-}
-/** "A", "A and B", "A, B and C". */
-function andList(items) {
-	return items.length < 2 ? items.join("") : `${items.slice(0, -1).join(", ")} and ${items[items.length - 1]}`;
 }
 var CI = {
 	L: 0,
@@ -43134,7 +43242,7 @@ function termAt(g, key) {
 	const part = g.d.parts.find((p) => p.uid === uid);
 	const m = part && moduleOf(g.d, part.module);
 	let t = null;
-	if (part && m) {
+	if (part && m && !isNetLabel(m)) {
 		const info = mainsOf(m);
 		const pin = m.pins.find((p) => !isSpacer(p) && p.name === name);
 		const def = pin && !isSpacer(pin) ? pin : m.holes?.find((h) => h.name === name);
@@ -46309,7 +46417,9 @@ var endWords = (k) => /^(Dupont|JST|Grove)/.test(END_NAMES[k]) ? END_NAMES[k] : 
 /** A wire end as the user reads it (as checks.ts names wire ends). */
 function wireEnd(g, ep) {
 	const t = termAt(g, nodeKey(ep.part, ep.pin));
-	const name = t ? termName$1(t) : `${g.d.parts.find((x) => x.uid === ep.part)?.designator ?? ep.part} ${ep.pin}`;
+	const part = g.d.parts.find((x) => x.uid === ep.part);
+	const label = !t && part && isNetLabel(moduleOf(g.d, part.module)) ? labelName(part) ? `label ${labelName(part)}` : `${part.designator} (unnamed label)` : null;
+	const name = t ? termName$1(t) : label ?? `${part?.designator ?? ep.part} ${ep.pin}`;
 	return ep.hole !== void 0 ? `${name} hole ${ep.hole}` : name;
 }
 /**
@@ -46574,6 +46684,14 @@ var RULES = {
 		severity: "error",
 		title: "Broken connection"
 	},
+	"label-unnamed": {
+		severity: "error",
+		title: "Label has no name"
+	},
+	"label-mains": {
+		severity: "error",
+		title: "Label on mains wiring"
+	},
 	"covered-hole": {
 		severity: "error",
 		title: "Hole under a part"
@@ -46726,6 +46844,10 @@ var RULES = {
 		severity: "warning",
 		title: "Signal wire in a power color"
 	},
+	"label-alone": {
+		severity: "warning",
+		title: "Label connects nothing"
+	},
 	"battery-bank": {
 		severity: "info",
 		title: "Parallel battery bank"
@@ -46766,7 +46888,12 @@ var volts = (v) => `${Number(v.toFixed(2))} V`;
 /** A wire end as the user reads it: the part's designator (its uid when missing), the pin label or name, and the hole or bus offset. */
 function endpointName(d, ep) {
 	const part = d.parts.find((p) => p.uid === ep.part);
-	const pin = (part && moduleOf(d, part.module))?.pins.find((p) => !isSpacer(p) && p.name === ep.pin);
+	const m = part && moduleOf(d, part.module);
+	if (part && isNetLabel(m)) {
+		const name = labelName(part);
+		return name ? `label ${name}` : `${part.designator} (unnamed label)`;
+	}
+	const pin = m?.pins.find((p) => !isSpacer(p) && p.name === ep.pin);
 	const label = pin && !isSpacer(pin) ? pin.label ?? pin.name : ep.pin;
 	const at = ep.hole !== void 0 ? ` hole ${ep.hole}` : ep.offset !== void 0 ? `[${ep.offset}]` : "";
 	return `${part?.designator ?? ep.part} ${label}${at}`;
@@ -47051,7 +47178,7 @@ function terminalsOf(d, partByUid, mains) {
 		const [uid, name] = JSON.parse(key);
 		const part = partByUid.get(uid);
 		const m = part && moduleOf(d, part.module);
-		if (!part || !m) return null;
+		if (!part || !m || isNetLabel(m)) return null;
 		const info = moduleInfo(m);
 		const def = info.defs.get(name);
 		if (!def) return null;
@@ -47563,6 +47690,64 @@ function checkDiagram(d) {
 		});
 	}
 	for (const f of mains?.findings ?? []) add(f);
+	const groups = labelGroups(d);
+	for (const l of labelsOf(d)) {
+		if (l.name) continue;
+		add({
+			rule: "label-unnamed",
+			subject: l.part.designator,
+			target: `${l.part.designator} (unnamed label)`,
+			message: `${l.part.designator} is a net label with no name, so it connects to nothing. Give it a name in the Inspector, or delete it.`,
+			parts: [l.part.uid],
+			pins: [],
+			wires: [],
+			select: {
+				parts: [l.part.uid],
+				wires: []
+			},
+			causes: [l.part.uid]
+		});
+	}
+	for (const [name, list] of groups) {
+		const keys = list.map((l) => nodeKey(l.part.uid, l.pin));
+		const uids = list.map((l) => l.part.uid);
+		if (mains && keys.some((k) => mains.hazardKeys.has(k) || mains.mainsKeys.has(k) || mains.conductorOf(k))) {
+			const i = nl.netOf.get(keys[0]);
+			const n = list.length;
+			add({
+				rule: "label-mains",
+				subject: `label ${name}`,
+				target: `label ${name}`,
+				message: `${n === 1 ? "Label" : `${n} labels`} ${name} ${n === 1 ? "is" : "are"} on mains wiring. A label hides the conductor it stands for, and mains must be drawn as real cable so it can be checked: use wires instead.`,
+				parts: uids,
+				pins: [],
+				wires: i === void 0 ? [] : netWires[i],
+				select: {
+					parts: uids,
+					wires: []
+				},
+				causes: keys
+			});
+			continue;
+		}
+		if (list.length > 1) continue;
+		const twin = [...groups.keys()].find((other) => other !== name && other.toLowerCase() === name.toLowerCase());
+		const hint = twin ? ` Label names are case-sensitive; set its name to ${twin} if it should join that net.` : ` Add another label named ${name} where this net continues, or delete this one.`;
+		add({
+			rule: "label-alone",
+			subject: `label ${name}`,
+			target: `label ${name}`,
+			message: `Label ${name} connects to nothing else: it is the only label named ${name}.${hint}`,
+			parts: uids,
+			pins: [],
+			wires: [],
+			select: {
+				parts: uids,
+				wires: []
+			},
+			causes: keys
+		});
+	}
 	const byUid = new Map(d.connections.map((c) => [c.uid, c]));
 	const roles = rememberRoles(d, nl, nl.nets.map((keys, i) => roleOf(keys, netTerms[i], mains)), terminal, mains).roles;
 	nl.nets.forEach((keys, i) => {
@@ -57822,6 +58007,25 @@ function wireLooks(d) {
 function drawnColor(c, looks) {
 	return c.color ?? looks.get(c.uid)?.color ?? "black";
 }
+/** Every net label's look, by part uid (empty when the sheet has none, with no analysis run). */
+function labelLooks(d) {
+	return new Map(labelsOf(d).map((l) => [l.part.uid, labelLook(d, l.part.uid)]));
+}
+function labelLook(d, uid) {
+	const l = labelsOf(d).find((x) => x.part.uid === uid);
+	if (!l) return "signal";
+	if (!l.name) return "unnamed";
+	const key = nodeKey(uid, l.pin);
+	const { analysis: a, failed } = lookAnalysis(d);
+	if (a && (a.hazardKeys.has(key) || a.mainsKeys.has(key) || a.conductorOf(key))) return "mains";
+	if (failed) return "signal";
+	try {
+		return netRoles(d).roleOfKey(key) ?? "signal";
+	} catch (e) {
+		console.error("Circuitoon: the net roles failed, so labels are drawn without their role colours.", e);
+		return "signal";
+	}
+}
 //#endregion
 //#region node_modules/react/cjs/react-jsx-runtime.production.js
 /**
@@ -57863,9 +58067,100 @@ var require_jsx_runtime = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	module.exports = require_react_jsx_runtime_production();
 }));
 //#endregion
-//#region src/render/Part.tsx
+//#region src/render/NetLabel.tsx
 var import_react = require_react();
 var import_jsx_runtime = require_jsx_runtime();
+/** The Sticker ink and the mains hazard orange (Part.tsx INK, Mains.tsx HAZARD), repeated so this file imports neither: Part.tsx imports it. */
+var INK$2 = "#23282F";
+/** Fill, text colour and outline style per look. */
+var LABEL_LOOKS = {
+	ground: {
+		fill: "#2B2F36",
+		text: "#FFFFFF"
+	},
+	supply: {
+		fill: "#E0483E",
+		text: "#FFFFFF"
+	},
+	signal: {
+		fill: "#3D6FD6",
+		text: "#FFFFFF"
+	},
+	mains: {
+		fill: "#F48C06",
+		text: INK$2
+	},
+	unnamed: {
+		fill: "#FFFFFF",
+		text: "#7A828C",
+		dashed: true
+	}
+};
+/** The tag's outline: point at (0, mid), slanted to the body, square end with rounded corners. */
+function flagPath(w, mid) {
+	const top = mid - FLAG_H / 2;
+	const bot = mid + FLAG_H / 2;
+	const r = 2;
+	return `M0 ${mid}L5 ${top}H${w - r}Q${w} ${top} ${w} ${top + r}V${bot - r}Q${w} ${bot} ${w - r} ${bot}H5Z`;
+}
+function NetLabelFlag({ name, look, mid, rotation = 0, outline }) {
+	const style = LABEL_LOOKS[look];
+	const ground = look === "ground";
+	const mains = look === "mains";
+	const w = flagWidth(name, ground || mains);
+	const text = flagText(name);
+	const tx = (6.5 + (w - (ground || mains ? 6 : 0))) / 2;
+	const gx = w - 4.5;
+	const flip = rotation === 90 || rotation === 180;
+	const turn = (x) => flip ? `rotate(180 ${x} ${mid})` : void 0;
+	const stroke = ground && outline ? outline : INK$2;
+	return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("g", {
+		"data-net-label": name,
+		children: [
+			/* @__PURE__ */ (0, import_jsx_runtime.jsx)("path", {
+				d: `M-8 ${mid}H0`,
+				stroke: INK$2,
+				strokeWidth: 1.6,
+				strokeLinecap: "round"
+			}),
+			/* @__PURE__ */ (0, import_jsx_runtime.jsx)("path", {
+				d: flagPath(w, mid),
+				fill: style.fill,
+				stroke,
+				strokeWidth: 1.2,
+				strokeLinejoin: "round",
+				strokeDasharray: style.dashed ? "2.4 1.8" : void 0
+			}),
+			/* @__PURE__ */ (0, import_jsx_runtime.jsx)("text", {
+				x: tx,
+				y: mid,
+				transform: turn(tx),
+				textAnchor: "middle",
+				dominantBaseline: "central",
+				fontSize: 7,
+				fontWeight: 800,
+				fill: style.text,
+				letterSpacing: .15,
+				children: text
+			}),
+			ground && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("path", {
+				transform: turn(gx),
+				d: `M${gx} ${mid - 3.2}V${mid - .6}M${gx - 2.8} ${mid - .6}H${gx + 2.8}M${gx - 1.8} ${mid + 1.2}H${gx + 1.8}M${gx - .8} ${mid + 3}H${gx + .8}`,
+				stroke: style.text,
+				strokeWidth: .9,
+				strokeLinecap: "round",
+				fill: "none"
+			}),
+			mains && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("path", {
+				transform: turn(gx),
+				d: `M${gx + .8} ${mid - 3.8}l-2.5 4.1h1.8l-0.6 3.5 3-4.7h-1.8l1.2-2.9z`,
+				fill: INK$2
+			})
+		]
+	});
+}
+//#endregion
+//#region src/render/Part.tsx
 var INK$1 = "#23282F";
 var OUTLINE = 1.6;
 var METAL = "#C9CED6";
@@ -58112,8 +58407,24 @@ function CoveredLabel({ p, inset }) {
 * Memoized: props are primitives plus a module object that keeps its identity, so pan, zoom
 * and selection changes do not re-render every part.
 */
-var Part = (0, import_react.memo)(function Part({ module: m, x = 0, y = 0, rotation = 0, caption, values, captionX, captionY: seatY, captionAnchor: seatAnchor = "start", labelInset = null, ink = INK$1, halo, outline }) {
+var Part = (0, import_react.memo)(function Part({ module: m, x = 0, y = 0, rotation = 0, caption, values, captionX, captionY: seatY, captionAnchor: seatAnchor = "start", labelInset = null, ink = INK$1, halo, outline, netName = "", netLook }) {
 	const lay = layoutModule(m);
+	if (isNetLabel(m)) {
+		const c0 = pivot(lay.w, lay.h);
+		return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("g", {
+			transform: `translate(${x} ${y})`,
+			children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("g", {
+				transform: rotation ? `rotate(${rotation} ${c0.x} ${c0.y})` : void 0,
+				children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(NetLabelFlag, {
+					name: netName || (netLook ? "" : "NET"),
+					look: netLook ?? "signal",
+					mid: lay.pins[0]?.edge.y ?? lay.h / 2,
+					rotation,
+					outline
+				})
+			})
+		});
+	}
 	const art = m.art;
 	const ax = art ? (lay.w - art.w) / 2 : 0;
 	const ay = art ? (lay.h - art.h) / 2 : 0;
@@ -58755,18 +59066,22 @@ function Sheet({ diagram, captions = {}, box, label, decorative = false, theme =
 	const notes = diagram.annotations ?? [];
 	const looks = wireLooks(diagram);
 	const seated = seatedLabels(diagram);
+	const flags = labelLooks(diagram);
 	const mains = hasMains(diagram);
 	const frame = sheetFrame(diagram, box);
 	const part = (p) => {
 		const m = moduleOf(diagram, p.module);
 		const s = seated.get(p.uid);
+		const label = isNetLabel(m);
 		return m ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Part, {
 			module: m,
 			x: p.x,
 			y: p.y,
 			rotation: p.rotation,
-			caption: captions[p.uid] ?? partCaption(p, m),
+			caption: label ? void 0 : captions[p.uid] ?? partCaption(p, m),
 			values: p.values,
+			netName: label ? labelName(p) : void 0,
+			netLook: flags.get(p.uid),
 			captionX: s?.caption.x,
 			captionY: s?.caption.y,
 			captionAnchor: s?.anchor,
@@ -59102,7 +59417,8 @@ function expandRepeat(raw, topRefs, topNets) {
 			out.nets.push({
 				name: `${name}_${k}.${net.name}`,
 				pins,
-				at: `${nat} (copy ${k})`
+				at: `${nat} (copy ${k})`,
+				...net.label !== void 0 ? { label: net.label } : {}
 			});
 		});
 		out.copies.push({
@@ -59235,6 +59551,10 @@ function parseNetlist(raw, library) {
 			errors.push(`${at}.module: no built-in or embedded module "${p.module}"`);
 			continue;
 		}
+		if (isNetLabel(m)) {
+			errors.push(`${at}.module: ${p.module} is not a part; to draw a net with labels, set "label": true on the net`);
+			continue;
+		}
 		const part = {
 			ref,
 			module: p.module
@@ -59329,14 +59649,15 @@ function parseNetlist(raw, library) {
 			pins: [...n.pins.map((ep, j) => ({
 				ep,
 				at: `${at}.pins[${j}]`
-			})), ...extra]
+			})), ...extra],
+			...n.label !== void 0 ? { label: n.label } : {}
 		});
 	});
 	rawNets.push(...rep?.nets ?? []);
 	const nets = [];
 	const inNet = /* @__PURE__ */ new Map();
 	const boundAs = /* @__PURE__ */ new Map();
-	for (const { name, pins, at } of rawNets) {
+	for (const { name, pins, at, label } of rawNets) {
 		if (typeof name !== "string" || name === "") {
 			errors.push(`${at}.name: required`);
 			continue;
@@ -59375,9 +59696,25 @@ function parseNetlist(raw, library) {
 			terminals.push(t);
 		}
 		if (terminals.length < 2) errors.push(`${at}.pins: a net joins at least 2 pins`);
+		let labelled = false;
+		if (label !== void 0) {
+			if (typeof label !== "boolean") errors.push(`${at}.label: must be true or false`);
+			else if (label) {
+				const hot = terminals.find((t) => {
+					const m = byRef.get(t.ref)?.module;
+					return !!m && mainsOf(m).terminals.has(t.name);
+				});
+				if (hot) errors.push(`${at}.label: net ${name} joins mains terminal ${terminalName({
+					...hot,
+					hole: void 0
+				})}; mains is always drawn as wires, never as labels`);
+				else labelled = true;
+			}
+		}
 		nets.push({
 			name,
-			terminals
+			terminals,
+			...labelled ? { label: true } : {}
 		});
 	}
 	if (rep) errors.push(...rep.errors);
@@ -59609,9 +59946,12 @@ function moduleDrift(d, library, add) {
 		});
 	}
 }
-/** Infrastructure (strips, rails) that the intent need not list: only a real library board counts. */
+/**
+* Infrastructure that the intent need not list: a real library board (strips, rails) or a net label
+* (a named flag that only joins, like a `routing` wire).
+*/
 function libraryBoard(d, library, id) {
-	return moduleOf(d, id) !== void 0 && isBoard(library(id));
+	return moduleOf(d, id) !== void 0 && (isBoard(library(id)) || isNetLabel(moduleOf(d, id)));
 }
 /**
 * How a sheet's intent finds its modules: the sheet's embedded copy first (so a later library
@@ -59797,7 +60137,7 @@ function connectivity(d, intent, uidOf, add) {
 	const component = (k) => {
 		const p = partBy.get(split(k)[0]);
 		const m = p && moduleOf(d, p.module);
-		return !!m && !isBoard(m);
+		return !!m && !isBoard(m) && !isNetLabel(m);
 	};
 	const compOf = (k) => {
 		const [uid, pin] = split(k);
@@ -59871,7 +60211,7 @@ function capacity(d, add) {
 		for (const ep of [c.from, c.to]) {
 			const m = moduleOf(d, partBy.get(ep.part).module);
 			const group = holeGroupOf(m, ep.pin);
-			if (group && isBoard(m) || !group && plugged.has(nodeKey(ep.part, ep.pin))) continue;
+			if (group && isBoard(m) || !group && plugged.has(nodeKey(ep.part, ep.pin)) || isNetLabel(m)) continue;
 			if (group) slot(JSON.stringify([
 				"pad",
 				ep.part,
@@ -59994,6 +60334,7 @@ function billOfMaterials(d, opts = {}) {
 	const parts = /* @__PURE__ */ new Map();
 	for (const p of d.parts) {
 		const m = moduleOf(d, p.module);
+		if (isNetLabel(m)) continue;
 		const text = m ? editableParams(m).flatMap((q) => {
 			const v = paramValue(p, m, q.name);
 			return v === null ? [] : [formatValue(v, q.unit)];
