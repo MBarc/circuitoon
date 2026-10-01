@@ -7,14 +7,24 @@
 // rest is placed around kept parts, and a kept position that cannot hold (a mounted part not seated
 // there, or on a board that is not kept) is an error, never a silent move. With the rail module
 // given, each repeat block gets rail strips of its own under its rows for its shared ground and
-// power nets (amendment A18.1). Pure.
+// power nets (amendment A18.1).
+//
+// For wires (Ruling W1): a part with no connection at all (no net, nothing mounted on it, not mounted
+// itself) is parked in a grid inside a "Not yet wired" frame below the wired parts, so it never
+// spreads across the sheet. When a net needs a distribution point (three or more header pins with
+// nothing to share) and a spare breadboard is in the netlist, that board is placed among the parts it
+// serves as their hub instead of being parked; the wiring may claim strips on hubs, never on a parked
+// board. With a microcontroller on the sheet, parts follow the signal flow: the microcontroller in
+// the middle, power (batteries, regulators, boards that mostly carry supply nets) on its left, and
+// peripherals to its right and below. Pure.
 import { DIAGRAM_FORMAT, type Annotation, type Diagram, type PartInstance } from '../format/diagram.ts'
 import { mountIssues } from '../format/breadboard.ts'
 import { type Pt, type Rect, type Rotation, worldPins } from '../format/geometry.ts'
 import { isBoard } from '../format/module.ts'
 import { annotationRect } from '../render/annotationGeometry.ts'
 import { type Intent, terminalKey } from './netlist.ts'
-import type { ModuleDef } from '../format/module.ts'
+import { type ModuleDef, terminalCapacity } from '../format/module.ts'
+import { internalComponent } from './internal.ts'
 import { type LocalDistribution, netKind } from './realize.ts'
 import { type NetOfPin, mountPart, stripClash } from './mount.ts'
 import { RectIndex, footprint, grow, shift, tightFootprint, union } from './footprint.ts'
@@ -49,6 +59,10 @@ export type PlaceResult =
       /** The intent's modules, plus the rail strip module when local strips were added. */
       modules: Record<string, ModuleDef>
       locals: LocalDistribution[]
+      /** Spare boards placed as hubs for nets that need a distribution point: the wiring claims strips there first. */
+      hubs: string[]
+      /** Parts with no connection, parked in the "Not yet wired" frame: the wiring never claims a strip on one. */
+      parked: string[]
     }
   | { ok: false; errors: string[] }
 
@@ -64,6 +78,18 @@ const MARGIN = 40
 const RAIL_SPARE = 4
 /** Room between a row of copies and the local strips under it, and between those and the next row, in px. */
 const RAIL_GAP = 20
+/** The frame label of the parked parts (Ruling W1). */
+export const UNWIRED_LABEL = 'Not yet wired'
+/** Gap between the wired parts and the "Not yet wired" frame, in px. */
+const PARK_GAP = 40
+/**
+ * Room kept free between the microcontroller and the power parts on its left, or the peripherals
+ * on its right (beyond the usual spacing), in px: a channel for the wires that run between them.
+ */
+const CHANNEL = 60
+
+/** Where a unit sits in the signal flow (Ruling W1). */
+type Role = 'mcu' | 'power' | 'other'
 
 const snap = (v: number) => Math.round(v / 10) * 10
 const floor10 = (v: number) => Math.floor(v / 10) * 10
@@ -76,6 +102,8 @@ interface Unit {
   fixed: boolean
   /** A part this unit is settled beside (a repeat block beside the part its bindings target). */
   near?: string
+  /** A spare board placed as a hub (Ruling W1): never an anchor. */
+  hub?: boolean
 }
 
 /** Ring r around (0, 0), in a fixed order: top edge left to right, right edge down, bottom edge right to left, left edge up. */
@@ -95,13 +123,13 @@ function ring(r: number): Pt[] {
  * (ties in ring order), so a block settles squarely beside its target rather than at the ring's
  * top-left corner (amendment A18.2).
  */
-function findSpot(box: Rect, want: Pt, taken: RectIndex, gap: number, nearest = false): Pt {
+function findSpot(box: Rect, want: Pt, taken: RectIndex, gap: number, nearest = false, allow?: (at: Pt) => boolean): Pt {
   for (let r = 0; ; r++) {
     let best: Pt | null = null
     let bestD = Infinity
     for (const o of ring(r)) {
       const at = { x: want.x + o.x * STEP, y: want.y + o.y * STEP }
-      if (taken.hits(grow(shift(box, at.x, at.y), gap))) continue
+      if ((allow && !allow(at)) || taken.hits(grow(shift(box, at.x, at.y), gap))) continue
       if (!nearest) return at
       const d = o.x * o.x + o.y * o.y
       if (d < bestD) {
@@ -111,6 +139,28 @@ function findSpot(box: Rect, want: Pt, taken: RectIndex, gap: number, nearest = 
     }
     if (best) return best
   }
+}
+
+/**
+ * The nets the wiring must share through a claimed strip (realize.ts): no strip named and no leg on a
+ * board, not drawn with labels, and more nodes than a chain of header pins can join (only nodes
+ * taking two wire ends can sit inside a chain). Each with its kind, in netlist order.
+ */
+function hubNetsOf(intent: Intent, modOf: (ref: string) => ModuleDef): { net: number; kind: ReturnType<typeof netKind> }[] {
+  const mounted = new Set(intent.parts.flatMap((p) => (p.on ? [p.ref] : [])))
+  const out: { net: number; kind: ReturnType<typeof netKind> }[] = []
+  intent.nets.forEach((n, i) => {
+    if (n.label || n.terminals.some((t) => t.infra || mounted.has(t.ref))) return
+    const caps = new Map<string, number>()
+    for (const t of n.terminals) {
+      const key = `${t.ref} ${internalComponent(modOf(t.ref), t.name)}`
+      caps.set(key, (caps.get(key) ?? 0) + terminalCapacity(modOf(t.ref), t.name))
+    }
+    const nodes = [...caps.values()]
+    if (nodes.length < 3 || nodes.filter((c) => c >= 2).length >= nodes.length - 2) return
+    out.push({ net: i, kind: netKind(intent, n) })
+  })
+  return out
 }
 
 export function placeParts(intent: Intent, opts: PlaceOptions): PlaceResult {
@@ -140,12 +190,41 @@ export function placeParts(intent: Intent, opts: PlaceOptions): PlaceResult {
   const units: Unit[] = []
   const grouped = new Set<string>()
 
+  // Ruling W1: parts with no connection at all are parked, except spare boards the wiring needs as hubs.
+  const hosts = new Set(intent.parts.flatMap((p) => (p.on ? [p.on] : [])))
+  const inCopy = new Set(intent.copies.flatMap((c) => c.refs))
+  const spare = intent.parts
+    .filter((p) => !netsOf.has(p.ref) && !hosts.has(p.ref) && !p.on && !inCopy.has(p.ref) && !keep.has(p.ref))
+    .map((p) => p.ref)
+    .sort(naturalCompare)
+  const spareBoards = spare.filter((r) => isBoard(modOf(r)))
+  const hubNets = hubNetsOf(intent, modOf)
+  // A signal net needs a column strip, which a spare board gives best; a supply net only when no
+  // other board could carry it.
+  const otherBoards = refs.some((r) => isBoard(modOf(r)) && !spare.includes(r))
+  const wantHub = hubNets.filter((h) => h.kind === 'signal' || !otherBoards)
+  const hubs: string[] = []
+  let strips = 0
+  for (const b of spareBoards) {
+    if (strips >= wantHub.length) break
+    hubs.push(b)
+    strips += (modOf(b).holes ?? []).filter((g) => !g.rail).length
+  }
+  // A hub weighs in placement like the parts whose nets it carries. Turned a quarter, its column
+  // strips run across, so each net's wires come in from the side and leave in a straight row.
+  for (const h of hubs) {
+    netsOf.set(h, new Set(wantHub.map((x) => x.net)))
+    if (!keep.has(h)) inst.set(h, { ...inst.get(h)!, rotation: 90 })
+  }
+  const parked = spare.filter((r) => !hubs.includes(r))
+  for (const r of parked) grouped.add(r)
+
   // Each board with the parts mounted on it. A kept board stays put. Kept mounted parts are seated
   // first, exactly where they were (an error if they are not seated there or their board moves),
   // then the search finds a spot for each of the others.
   const errors: string[] = []
   for (const ref of refs) {
-    if (!isBoard(modOf(ref))) continue
+    if (!isBoard(modOf(ref)) || grouped.has(ref)) continue
     const k = keep.get(ref)
     if (k) inst.set(ref, { ...inst.get(ref)!, ...k })
     let local: Diagram = { format: DIAGRAM_FORMAT, title: '', modules: mods, parts: [inst.get(ref)!], connections: [] }
@@ -153,7 +232,7 @@ export function placeParts(intent: Intent, opts: PlaceOptions): PlaceResult {
     const seated = opts.mounts?.get(ref)
     if (seated) {
       for (const p of seated) inst.set(p.uid, p)
-      units.push({ key: ref, refs: [ref, ...mounted], anchor: true, fixed: !!k })
+      units.push({ key: ref, refs: [ref, ...mounted], anchor: !hubs.includes(ref), fixed: !!k, ...(hubs.includes(ref) ? { hub: true } : {}) })
       for (const r of [ref, ...mounted]) grouped.add(r)
       continue
     }
@@ -199,7 +278,7 @@ export function placeParts(intent: Intent, opts: PlaceOptions): PlaceResult {
         local = { ...local, parts: local.parts.map((p) => (p.uid === m ? r.part : p)) }
       }
     if (!errors.length) opts.mounts?.set(ref, mounted.map((m) => inst.get(m)!))
-    units.push({ key: ref, refs: [ref, ...mounted], anchor: true, fixed: !!k })
+    units.push({ key: ref, refs: [ref, ...mounted], anchor: !hubs.includes(ref), fixed: !!k, ...(hubs.includes(ref) ? { hub: true } : {}) })
     for (const r of [ref, ...mounted]) grouped.add(r)
   }
   if (errors.length) return { ok: false, errors }
@@ -365,6 +444,28 @@ export function placeParts(intent: Intent, opts: PlaceOptions): PlaceResult {
         if (k && !inst.get(r)!.mount) inst.set(r, { ...inst.get(r)!, ...k })
       }
 
+  // Ruling W1: with a microcontroller on the sheet, it alone anchors the centre, and every other unit
+  // follows the signal flow around it; without one, boards anchor as before.
+  const isMcu = (r: string) => modOf(r).category === 'Microcontrollers'
+  const hasMcu = units.some((u) => u.refs.some(isMcu))
+  if (hasMcu) for (const u of units) u.anchor = u.refs.some(isMcu)
+  const kinds = intent.nets.map((n) => netKind(intent, n))
+  const roleOf = (u: Unit): Role => {
+    if (u.refs.some(isMcu)) return 'mcu'
+    if (u.hub) return 'other'
+    if (u.refs.some((r) => /power|batter/i.test(modOf(r).category ?? ''))) return 'power'
+    // A unit most of whose pins carry ground or supply nets (a power breadboard) is power too.
+    let supply = 0
+    let all = 0
+    for (const n of intent.nets.keys())
+      for (const t of intent.nets[n].terminals)
+        if (!t.infra && u.refs.includes(t.ref)) {
+          all++
+          if (kinds[n] !== 'signal') supply++
+        }
+    return all > 0 && supply * 2 > all ? 'power' : 'other'
+  }
+
   // Fixed units first, then anchors near the centre, then the rest by net weight.
   const taken = new RectIndex()
   const placedNets = new Map<number, Pt[]>()
@@ -378,11 +479,79 @@ export function placeParts(intent: Intent, opts: PlaceOptions): PlaceResult {
     const c = { x: b.x + b.w / 2, y: b.y + b.h / 2 }
     for (const n of netsOfUnit(u)) placedNets.set(n, [...(placedNets.get(n) ?? []), c])
   }
+  /**
+   * Ruling W1: a lone free part (a sensor, a switch, a connector) is turned so the pins that connect
+   * to parts already placed face them, so its wires leave straight toward them instead of wrapping
+   * around its body. Turned only when that is clearly better than as drawn.
+   */
+  const turn = (u: Unit, target: Pt) => {
+    if (u.fixed || u.near || u.hub || u.refs.length !== 1) return
+    const ref = u.refs[0]
+    const m = modOf(ref)
+    // Screens, supply modules and boards keep their drawn way up (their art would read sideways).
+    if (isBoard(m) || keep.has(ref) || /display|power|batter|microcontroller/i.test(m.category ?? '')) return
+    const pts = [...(netsOf.get(ref) ?? [])].flatMap((n) => placedNets.get(n) ?? [])
+    if (!pts.length) return
+    const c = { x: pts.reduce((a, p) => a + p.x, 0) / pts.length, y: pts.reduce((a, p) => a + p.y, 0) / pts.length }
+    // From where the part will roughly go (its side of the flow) toward what it connects to.
+    const from = mcuBox && roleOf(u) === 'power' ? { x: mcuBox.x - 200, y: target.y } : mcuBox ? { x: Math.max(target.x, mcuBox.x + mcuBox.w + 200), y: target.y } : target
+    const len = Math.hypot(c.x - from.x, c.y - from.y)
+    if (len < 1) return
+    const want = { x: (c.x - from.x) / len, y: (c.y - from.y) / len }
+    const placed = new Set(placedNets.keys())
+    const score = (r: Rotation) => {
+      const p = { ...inst.get(ref)!, rotation: r }
+      return worldPins(p, m).filter((w) => placed.has(pinNet.get(terminalKey(ref, w.name)) ?? -1)).reduce((a, w) => a + w.dir.x * want.x + w.dir.y * want.y, 0)
+    }
+    const now = inst.get(ref)!.rotation ?? 0
+    let best: Rotation = now
+    let bestScore = score(now)
+    // Never upside down: a quarter turn either way at most.
+    for (const r of [0, 90, 270] as Rotation[]) {
+      const sc = score(r)
+      if (sc > bestScore + 0.5) {
+        best = r
+        bestScore = sc
+      }
+    }
+    if (best === now) return
+    inst.set(ref, { ...inst.get(ref)!, rotation: best })
+    row([ref], Infinity)
+  }
+  /** The placed microcontrollers' box: what the signal flow is laid out around. */
+  let mcuBox: Rect | null = null
+  /** The placed hubs' box, and the nets they carry. */
+  let hubBox: Rect | null = null
+  const hubNetSet = new Set(wantHub.map((x) => x.net))
   const settle = (u: Unit, target: Pt, nearest = false) => {
+    const role = roleOf(u)
+    if (mcuBox && role !== 'mcu') turn(u, target)
     const b = boxOf(u)
-    const at = findSpot(b, { x: snap(target.x - b.x - b.w / 2), y: snap(target.y - b.y - b.h / 2) }, taken, opts.spacing, nearest)
+    let allow: ((at: Pt) => boolean) | undefined
+    let want = target
+    if (mcuBox && !u.fixed && role !== 'mcu' && !u.near) {
+      const m: Rect = mcuBox
+      if (role === 'power') {
+        // Left of the microcontroller, level with what it connects to.
+        want = { x: Math.min(target.x, m.x - opts.spacing - b.w / 2), y: target.y }
+        allow = (at) => at.x + b.x + b.w + opts.spacing + CHANNEL <= m.x
+      } else if (!u.hub && hubBox && [...netsOfUnit(u)].some((n) => hubNetSet.has(n))) {
+        // A part the hub serves goes beyond the hub, so its wires run straight across from it.
+        const h: Rect = hubBox
+        want = { x: Math.max(target.x, h.x + h.w + opts.spacing + CHANNEL + b.w / 2), y: target.y }
+        allow = (at) => at.x + b.x >= h.x + h.w + opts.spacing + CHANNEL
+      } else {
+        // Right of it, or below it (never left of its left edge).
+        want = { x: Math.max(target.x, m.x + m.w / 2), y: target.y }
+        allow = (at) => at.x + b.x >= m.x + m.w + opts.spacing + CHANNEL || (at.y + b.y >= m.y + m.h + opts.spacing + CHANNEL && at.x + b.x >= m.x)
+      }
+      nearest = true
+    }
+    const at = findSpot(b, { x: snap(want.x - b.x - b.w / 2), y: snap(want.y - b.y - b.h / 2) }, taken, opts.spacing, nearest, allow)
     move(u.refs, at.x, at.y)
     put(u)
+    if (role === 'mcu') mcuBox = mcuBox ? union(mcuBox, boxOf(u)) : boxOf(u)
+    if (u.hub) hubBox = hubBox ? union(hubBox, boxOf(u)) : boxOf(u)
   }
   // Repeat blocks bound to a part settle beside it (amendment A15), each one right after the unit
   // holding its target, before the next board or microcontroller is placed, so the room beside
@@ -395,13 +564,25 @@ export function placeParts(intent: Intent, opts: PlaceOptions): PlaceResult {
     }
   }
   const fixedUnits = units.filter((x) => x.fixed)
-  for (const u of fixedUnits) put(u)
+  for (const u of fixedUnits) {
+    put(u)
+    if (hasMcu && roleOf(u) === 'mcu') mcuBox = mcuBox ? union(mcuBox, boxOf(u)) : boxOf(u)
+  }
   for (const u of fixedUnits) settleBlocks(u)
   for (const u of units.filter((x) => !x.fixed && x.anchor).sort((a, b) => naturalCompare(a.key, b.key))) {
     settle(u, { x: 0, y: 0 })
     settleBlocks(u)
   }
-  let rest = units.filter((x) => !x.fixed && !x.anchor && !placedRefs.has(x.refs[0]))
+  // A hub sits right beside the microcontroller, where the nets it shares leave, before any
+  // peripheral takes that room.
+  if (mcuBox)
+    for (const u of units.filter((x) => !x.fixed && x.hub)) {
+      const m: Rect = mcuBox
+      const b = boxOf(u)
+      settle(u, { x: m.x + m.w + opts.spacing + CHANNEL + b.w / 2, y: m.y + m.h / 2 })
+    }
+  // A block bound to a part settles right after that part (settleBlocks); the rest go by net weight.
+  let rest = units.filter((x) => !x.fixed && !x.anchor && !placedRefs.has(x.refs[0]) && !(x.near && units.some((t) => t !== x && t.refs.includes(x.near!))))
   while (rest.length) {
     let best = rest[0]
     let bestWeight = -1
@@ -414,10 +595,21 @@ export function placeParts(intent: Intent, opts: PlaceOptions): PlaceResult {
     }
     const pts = [...netsOfUnit(best)].flatMap((n) => placedNets.get(n) ?? [])
     settle(best, pts.length ? { x: pts.reduce((s, p) => s + p.x, 0) / pts.length, y: pts.reduce((s, p) => s + p.y, 0) / pts.length } : { x: 0, y: 0 })
+    settleBlocks(best)
     rest = rest.filter((u) => u !== best)
   }
 
   const added = [...new Set(locals.flatMap((l) => l.strips))].sort(naturalCompare)
+
+  // Ruling W1: parked parts in a grid below everything placed, like with like (by module), each
+  // kind in natural ref order, wrapping at the wired parts' width.
+  if (parked.length) {
+    const placedRects = [...refs.filter((r) => !parked.includes(r)), ...added].map(fp)
+    const content = placedRects.length ? placedRects.reduce(union) : { x: 0, y: 0, w: 0, h: 0 }
+    const list = [...parked].sort((a, b) => naturalCompare(inst.get(a)!.module, inst.get(b)!.module) || naturalCompare(a, b))
+    const box = row(list, Math.max(GROUP_ROW, content.w))
+    move(list, snap(content.x - box.x + FRAME_PAD), snap(content.y + content.h + PARK_GAP + 2 * FRAME_PAD - box.y))
+  }
 
   // Frames around each group and each copy, then notes below their target.
   const annotations: Annotation[] = []
@@ -430,8 +622,12 @@ export function placeParts(intent: Intent, opts: PlaceOptions): PlaceResult {
     annotations.push(a)
     return a
   }
-  for (const g of intent.groups) if (g.refs.length) frames.set(g.name, frameOf(g.refs, g.name))
+  for (const g of intent.groups) {
+    const shown = g.refs.filter((r) => !parked.includes(r))
+    if (shown.length) frames.set(g.name, frameOf(shown, g.name))
+  }
   for (const c of intent.copies) frameOf(c.refs, `${c.repeat} ${c.index}`)
+  if (parked.length) frameOf(parked, UNWIRED_LABEL)
   const clear = new RectIndex()
   for (const r of [...refs, ...added]) clear.add(tight(r))
   for (const a of annotations) clear.add(annotationRect(a))
@@ -470,5 +666,5 @@ export function placeParts(intent: Intent, opts: PlaceOptions): PlaceResult {
     out = annotations.map((a) => ({ ...a, x: a.x + dx, y: a.y + dy }))
   }
   const modules = Object.fromEntries(Object.entries(mods).sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0)))
-  return { ok: true, parts: [...intent.parts.map((p) => inst.get(p.ref)!), ...added.map((r) => inst.get(r)!)], annotations: out, modules, locals }
+  return { ok: true, parts: [...intent.parts.map((p) => inst.get(p.ref)!), ...added.map((r) => inst.get(r)!)], annotations: out, modules, locals, hubs, parked }
 }

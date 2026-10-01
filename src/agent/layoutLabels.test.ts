@@ -126,12 +126,14 @@ describe('a dense group of labelled pins fans out as one ordered row', () => {
   it('labels on a header sit in a row beside it, all the same distance out, in pin order', () => {
     const v = ok(i2c(), 'all')
     const d = v.diagram
-    // U2 (BME280) has its four pins along the bottom: VIN, GND, SCL, SDA.
+    // U2 (BME280) has its four pins in a row on one side: VIN, GND, SCL, SDA (along the bottom as
+    // drawn; the layout may turn it to face the ESP32).
     const mine = labelsOf(d).filter((l) => tipOf(d, l.part.uid).from.part === 'U2')
     expect(mine).toHaveLength(4)
-    expect(new Set(mine.map((l) => l.part.y)).size).toBe(1)
-    const order = [...mine].sort((a, b) => a.part.x - b.part.x).map((l) => tipOf(d, l.part.uid).from.pin)
-    expect(order).toEqual(['VIN', 'GND', 'SCL', 'SDA'])
+    const across = new Set(mine.map((l) => l.part.y)).size === 1
+    expect(across || new Set(mine.map((l) => l.part.x)).size === 1).toBe(true)
+    const order = [...mine].sort((a, b) => (across ? a.part.x - b.part.x : a.part.y - b.part.y)).map((l) => tipOf(d, l.part.uid).from.pin)
+    expect([order, [...order].reverse()]).toContainEqual(['VIN', 'GND', 'SCL', 'SDA'])
   })
   it('labels for pads inside a body (a 2 x 10 header) leave by the edge they sit near, in pad order', () => {
     const raw = {
