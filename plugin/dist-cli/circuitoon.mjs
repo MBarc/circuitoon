@@ -60386,6 +60386,7 @@ function inside(s, r) {
 	if (!(across > lo && across < hi)) return 0;
 	return Math.max(0, Math.min(s.hi, to) - Math.max(s.lo, from));
 }
+var parts0 = (d) => d.parts;
 var grow$1 = (r, by) => ({
 	x: r.x - by,
 	y: r.y - by,
@@ -60407,6 +60408,11 @@ function readabilityFindings(d, routes = computeRoutes(d)) {
 		return nl.netOf.get(nodeKey(c.from.part, c.from.pin)) ?? `wire ${uid}`;
 	};
 	const segs = drawn.flatMap((w) => segmentsOf(w.conn.uid, w.points));
+	const labelParts = new Set(parts0(d).filter((p) => isNetLabel(moduleOf(d, p.module))).map((p) => p.uid));
+	const toLabel = (uid) => {
+		const c = byUid.get(uid);
+		return labelParts.has(c.from.part) || labelParts.has(c.to.part);
+	};
 	const hs = segs.filter((s) => s.h);
 	const vs = segs.filter((s) => !s.h);
 	const parts = d.parts.filter((p) => moduleOf(d, p.module));
@@ -60417,6 +60423,7 @@ function readabilityFindings(d, routes = computeRoutes(d)) {
 	for (const list of [hs, vs]) for (let i = 0; i < list.length; i++) for (let j = i + 1; j < list.length; j++) {
 		const [s, t] = [list[i], list[j]];
 		if (s.wire === t.wire || Math.abs(s.at - t.at) > 10 || netOf(s.wire) === netOf(t.wire)) continue;
+		if (s.at !== t.at && toLabel(s.wire) && toLabel(t.wire)) continue;
 		const run = Math.min(s.hi, t.hi) - Math.max(s.lo, t.lo);
 		if (run <= 40) continue;
 		const [a, b] = [s.wire, t.wire].sort(naturalCompare);
@@ -61567,6 +61574,57 @@ var LabelPlacer = class {
 		}
 		return null;
 	}
+	/**
+	* A row of labels for a dense group of pins or pads on one side of a part (FANOUT_MIN or more):
+	* one label per item, all the same distance out along `dir`, each at its item's `slot` (the item's
+	* own position along the side, or its place in pad order), so the row reads in pin order and no
+	* two stubs cross. The nearest distance where every flag is clear wins; null when none is. The
+	* row is taken at once (later labels keep off it).
+	*/
+	row(items, dir, own) {
+		const rotation = [
+			0,
+			90,
+			180,
+			270
+		].find((r) => {
+			const p = this.pinAt(r);
+			return p.dir.x === -dir.x && p.dir.y === -dir.y;
+		});
+		if (rotation === void 0) return null;
+		const pin = this.pinAt(rotation);
+		for (const s of LABEL_STUBS) {
+			const spots = items.map(({ name, slot }) => {
+				const tip = {
+					x: slot.x + dir.x * s,
+					y: slot.y + dir.y * s
+				};
+				return {
+					part: {
+						uid: "",
+						designator: "",
+						module: this.m.id,
+						x: tip.x - pin.end.x,
+						y: tip.y - pin.end.y,
+						rotation,
+						values: { net: name }
+					},
+					tip,
+					elbow: tip,
+					base: slot
+				};
+			});
+			if (spots.map((x) => flagRect(x.part, this.m, true)).some((f) => this.flagsOff.some((r) => intersects(f, r)))) continue;
+			if (spots.some((x) => this.stubsOff.some((o) => o.part !== own && intersects(line(x.base, x.tip), o.r)))) continue;
+			for (const x of spots) {
+				const f = flagRect(x.part, this.m, true);
+				this.flagsOff.push(f, line(x.base, x.tip));
+				this.stubsOff.push({ r: f }, { r: line(x.base, x.tip) });
+			}
+			return spots;
+		}
+		return null;
+	}
 	/** A point to roll back to (see `rollback`), so a net that cannot label every endpoint leaves no trace. */
 	mark() {
 		return {
@@ -61786,7 +61844,7 @@ function realize(intent, d, locals = [], opts = {}) {
 		const kind = kindOf(n);
 		return n.color ?? (kind === "ground" ? "black" : kind === "power" ? "red" : SIGNAL_COLORS[signal++ % SIGNAL_COLORS.length]);
 	});
-	const wire = (ni, from, to, routing) => {
+	const wire = (ni, from, to, routing, toLabel = false) => {
 		const uid = `w${connections.length + 1}`;
 		connections.push({
 			uid,
@@ -61795,7 +61853,7 @@ function realize(intent, d, locals = [], opts = {}) {
 			color: colors[ni],
 			colorSet: true,
 			gauge: 22,
-			...ends ? { ends } : {},
+			...ends && !toLabel ? { ends } : {},
 			...routing ? { routing: true } : {}
 		});
 		netOfWire.set(uid, intent.nets[ni].name);
@@ -61911,8 +61969,124 @@ function realize(intent, d, locals = [], opts = {}) {
 	const groupOfRef = /* @__PURE__ */ new Map();
 	for (const g of intent.groups) for (const r of g.refs) groupOfRef.set(r, `group ${g.name}`);
 	for (const c of intent.copies) for (const r of c.refs) groupOfRef.set(r, `copy ${c.id}`);
-	const copyOfRef = new Map(intent.copies.flatMap((c) => c.refs.map((r) => [r, c.id])));
 	const mainsNet = (n) => n.terminals.some((t) => mainsOf(modOf(t.ref)).terminals.has(t.name));
+	/** Whether a net is drawn with labels, from its endpoints (each node's first pin, and the net's strips as one). */
+	const wants = (net, kind, ends) => ends.length >= 2 && (!!net.label || mode === "all" || autoLabels({
+		kind,
+		ends
+	}));
+	/** The loose pins of a net as nodes (one per part-internal component, in natural order), and its first strip. */
+	const shapeOf = (net) => {
+		const byComp = /* @__PURE__ */ new Map();
+		let strip;
+		for (const t of net.terminals) {
+			const pl = legBy.get(terminalKey(t.ref, t.name));
+			if (t.infra || pl) {
+				strip ??= strips.get(t.infra ? groupKey(t.ref, t.name) : groupKey(pl.board, pl.group));
+				continue;
+			}
+			const c = `${t.ref} ${internalComponent(modOf(t.ref), t.name)}`;
+			byComp.set(c, [...byComp.get(c) ?? [], t]);
+		}
+		return {
+			heads: [...byComp.keys()].sort(naturalCompare).map((c) => byComp.get(c)[0]),
+			strip
+		};
+	};
+	const rowSpots = /* @__PURE__ */ new Map();
+	if (placer) {
+		const byPart = /* @__PURE__ */ new Map();
+		intent.nets.forEach((net, ni) => {
+			if (locals.some((l) => l.net === ni) || mainsNet(net)) return;
+			const { heads, strip } = shapeOf(net);
+			const ends = [...heads.map((t) => ({
+				at: pointOf(pinEnd(t)),
+				group: groupOfRef.get(t.ref)
+			})), ...strip ? [{
+				at: strip.holes[0],
+				group: groupOfRef.get(strip.board)
+			}] : []];
+			if (!wants(net, kindOf(net), ends)) return;
+			const seen = /* @__PURE__ */ new Set();
+			for (const t of heads) {
+				if (seen.has(t.ref)) continue;
+				seen.add(t.ref);
+				const at = resolveEndpoint(d, pinEnd(t));
+				if (at) byPart.set(t.ref, [...byPart.get(t.ref) ?? [], {
+					key: `${ni}|${t.ref}`,
+					name: net.name,
+					at: at.end,
+					dir: at.dir
+				}]);
+			}
+		});
+		for (const [ref, items] of [...byPart].sort((a, b) => naturalCompare(a[0], b[0]))) {
+			if (items.length < 4) continue;
+			const body = bodyRect(partBy.get(ref), layoutModule(modOf(ref)));
+			const pads = items.filter((x) => !x.dir);
+			const padDir = (p) => {
+				const inColumn = pads.filter((o) => o.at.x === p.x).length >= 2;
+				const inRow = pads.filter((o) => o.at.y === p.y).length >= 2;
+				if (inColumn && (!inRow || pads.filter((o) => o.at.x === p.x).length >= pads.filter((o) => o.at.y === p.y).length)) return p.x - body.x <= body.x + body.w - p.x ? {
+					x: -1,
+					y: 0
+				} : {
+					x: 1,
+					y: 0
+				};
+				if (inRow) return p.y - body.y <= body.y + body.h - p.y ? {
+					x: 0,
+					y: -1
+				} : {
+					x: 0,
+					y: 1
+				};
+				return edgeExits(body, p)[0].dir;
+			};
+			const sides = /* @__PURE__ */ new Map();
+			for (const x of items) {
+				const dir = x.dir ?? padDir(x.at);
+				const k = `${dir.x},${dir.y}`;
+				sides.set(k, {
+					dir,
+					list: [...sides.get(k)?.list ?? [], x]
+				});
+			}
+			for (const { dir, list } of sides.values()) {
+				if (list.length < 4) continue;
+				const across = dir.x !== 0;
+				const along = (p) => across ? p.y : p.x;
+				const toEdge = (p) => dir.x < 0 ? p.x - body.x : dir.x > 0 ? body.x + body.w - p.x : dir.y < 0 ? p.y - body.y : body.y + body.h - p.y;
+				const sorted = [...list].sort((a, b) => along(a.at) - along(b.at) || toEdge(a.at) - toEdge(b.at));
+				const own = sorted.every((x, i) => i === 0 || along(x.at) - along(sorted[i - 1].at) >= 10);
+				const mid = sorted.reduce((a, x) => a + along(x.at), 0) / sorted.length;
+				const pinsOnly = sorted.every((x) => x.dir);
+				const edge = (p) => pinsOnly ? p : across ? {
+					x: dir.x < 0 ? body.x : body.x + body.w,
+					y: p.y
+				} : {
+					x: p.x,
+					y: dir.y < 0 ? body.y : body.y + body.h
+				};
+				const slots = sorted.map((x, i) => {
+					const at = own ? along(x.at) : Math.round(mid - (sorted.length - 1) / 2 * 10 + i * 10);
+					const base = edge(x.at);
+					return across ? {
+						x: base.x,
+						y: at
+					} : {
+						x: at,
+						y: base.y
+					};
+				});
+				const row = placer.row(sorted.map((x, i) => ({
+					name: x.name,
+					slot: slots[i]
+				})), dir, ref);
+				if (row) sorted.forEach((x, i) => rowSpots.set(x.key, row[i]));
+			}
+		}
+	}
 	const labelNet = (ni, net, kind, nodes, dps, local) => {
 		if (!placer || local || mainsNet(net)) return false;
 		const head = (n) => pointOf(pinEnd(n.members[0]));
@@ -61923,16 +62097,10 @@ function realize(intent, d, locals = [], opts = {}) {
 			at: dps[0].holes[0],
 			group: groupOfRef.get(dps[0].board)
 		}] : []];
-		if (ends.length < 2) return false;
-		if (!net.label && mode !== "all" && !autoLabels({
-			kind,
-			ends
-		})) return false;
+		if (!wants(net, kind, ends)) return false;
 		const clusters = /* @__PURE__ */ new Map();
 		for (const n of nodes) {
-			const ref = n.members[0].ref;
-			const copy = copyOfRef.get(ref);
-			const key = copy !== void 0 ? `copy ${copy}` : `part ${ref}`;
+			const key = `part ${n.members[0].ref}`;
 			clusters.set(key, [...clusters.get(key) ?? [], n]);
 		}
 		if (clusters.size + (dps.length ? 1 : 0) < 2) return false;
@@ -61947,7 +62115,14 @@ function realize(intent, d, locals = [], opts = {}) {
 		const orphans = [];
 		for (const group of clusters.values()) {
 			let found = null;
-			for (const node of group) {
+			const held = rowSpots.get(`${ni}|${group[0].members[0].ref}`);
+			const first = held && pinOf(group[0]);
+			if (held && first) found = {
+				spot: held,
+				from: pointOf(pinEnd(first)),
+				pins: []
+			};
+			for (const node of found ? [] : group) {
 				const t = pinOf(node);
 				const at = t && resolveEndpoint(d, pinEnd(t));
 				if (!t || !at) continue;
@@ -61987,7 +62162,7 @@ function realize(intent, d, locals = [], opts = {}) {
 					t
 				});
 			}
-			placer.commit(found.spot, found.from);
+			if (!held) placer.commit(found.spot, found.from);
 			plan.push(found);
 		}
 		if (dps.length) {
@@ -62057,7 +62232,7 @@ function realize(intent, d, locals = [], opts = {}) {
 			};
 			for (const { node, t } of p.pins) {
 				node.left.set(t.name, node.left.get(t.name) - 1);
-				wire(ni, pinEnd(t), to, true);
+				wire(ni, pinEnd(t), to, true, true);
 			}
 			if (p.hole) {
 				const i = used.has(holeKey(p.hole.s.board, p.hole.s.name, p.hole.i)) ? nearestHole(p.hole.s, p.spot.tip) : p.hole.i;
@@ -62065,7 +62240,7 @@ function realize(intent, d, locals = [], opts = {}) {
 					errors.push(`strip full: net ${net.name} has no free hole left on ${stripName(p.hole.s)}${under([p.hole.s])}`);
 					return true;
 				}
-				wire(ni, holeEnd(p.hole.s, i), to, true);
+				wire(ni, holeEnd(p.hole.s, i), to, true, true);
 			}
 		}
 		labelledNets.push(net.name);
@@ -63114,11 +63289,12 @@ function layoutNetlist(raw, opts = {}) {
 	};
 	const intent = parsed.intent;
 	let blocked = [];
-	for (const [i, spacing] of SPACINGS.entries()) {
+	const tries = mode === "none" ? [true] : [false, true];
+	attempt: for (const [i, spacing] of SPACINGS.entries()) for (const rails of tries) {
 		const placed = placeParts(intent, {
 			spacing,
 			keep: opts.keep,
-			rail: library(RAIL_MODULE)
+			rail: rails ? library(RAIL_MODULE) : void 0
 		});
 		if (!placed.ok) return {
 			ok: false,
@@ -63145,11 +63321,14 @@ function layoutNetlist(raw, opts = {}) {
 			labels: mode,
 			labelModule
 		});
-		if (!real.ok) return {
-			ok: false,
-			stage: "layout",
-			errors: real.errors
-		};
+		if (!real.ok) {
+			if (!rails) continue;
+			return {
+				ok: false,
+				stage: "layout",
+				errors: real.errors
+			};
+		}
 		const labelled = real.value.labels.length && labelModule ? {
 			parts: [...base.parts, ...real.value.labels],
 			modules: {
@@ -63182,8 +63361,8 @@ function layoutNetlist(raw, opts = {}) {
 				errors: [`sheet too large to route: parts span ${Math.ceil(span.w)} x ${Math.ceil(span.h)} px; keep parts within about ${ROUTE_REACH} px of each other (nets ${nets.join(", ")}).`]
 			};
 		}
-		if (blocked.length) continue;
-		if (real.value.unlabelled.length && i < SPACINGS.length - 1) continue;
+		if (blocked.length) continue attempt;
+		if (real.value.unlabelled.length && i < SPACINGS.length - 1) continue attempt;
 		const findings = verifyDiagram(diagram, library).filter((f) => f.severity === "error");
 		if (findings.length) return {
 			ok: false,

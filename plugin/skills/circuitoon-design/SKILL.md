@@ -89,6 +89,7 @@ Split along real connectors:
 
 A net label is a named flag at a pin: every label with the same name is one connection, exactly as if wired (names are case-sensitive). Labels make long and many-ended nets readable: no wire crosses the sheet.
 
+- **Dense groups fan out:** a part with 4 or more labelled pins or pads on one side (a header, a display connector, an expander's pads) gets its labels as one ordered row beside it, in pin order, so the stubs never cross.
 - **`layout --labels auto` (the default)** labels ground and supply nets with three or more endpoints or with endpoints far apart, and signal nets between different groups or repeat copies, or spread far apart. Each endpoint gets a short `routing` stub out to its label, placed clear of parts, captions and other labels. The pins of one repeat copy share one label. An endpoint with no room for a label is wired to the nearest label of its net; the report lists those nets.
 - **`--labels all`** labels every net that can be; **`--labels none`** draws wires only.
 - **`"label": true`** on a net asks for labels in auto mode too.
@@ -101,7 +102,7 @@ The `layout` report prints: body overlaps and caption overlaps (both must be 0),
 
 **To move parts, use `layout --keep`.** Write a `circuitoon-partial/1` file that holds the netlist as `intent`, plus `x`, `y` and optional `rotation` for the parts you want to pin. Every other part is placed around them. Each spirit-typewriter sheet ships this way. Placing the breadboard in the middle and the boards around it took the main sheet from 678 crossings to 297.
 
-**`--keep` gotcha:** a repeat block gets its own local rail strips (`DP1`, `DP2`, ...), so each copy's shared ground or power is a short drop. Those strips exist only when **no member of the block is kept**.
+**`--keep` gotcha (wires only, `--labels none`):** with labels, a repeat block's shared ground or power is a label at each copy's pins. Without them, the block gets its own local rail strips (`DP1`, `DP2`, ...), so each copy's shared net is a short drop. Those strips exist only when **no member of the block is kept**.
 
 - If you copy a laid-out sheet into a partial with every part kept, the copies are kept. Their blocks then lose the local strips, and shared ports fall back to star wiring: one long wire from every switch to a distant rail.
 - The `DP` parts themselves are not in the intent, so their positions are ignored, with a warning.

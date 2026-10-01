@@ -8,20 +8,19 @@ Each sheet is laid out with `layout --keep` from its partial, with net labels (`
 
 | Sheet | Holds | Crossings before | **Crossings now** | Readability warnings before | **now** | Sheet before | Sheet now |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| `1-main` | Power, ESP32, displays, OLED, SD card, and J1 to J3 (one JST-XH 4-pin per bank) | 297 | **43** | 79 | **10** | 800 x 1020 | 836 x 1046 |
-| `2-bank-a` | J1, MCP23017 U2 at 0x20, balls 1 to 14 | 490 | **96** | 156 | **9** | 1490 x 967 | 1250 x 1101 |
-| `3-bank-b` | J1, MCP23017 U3 at 0x21, balls 15 to 28 | 519 | **98** | 156 | **13** | 1490 x 967 | 1250 x 1101 |
-| `4-bank-c` | J1, MCP23017 U4 at 0x22, balls 29 to 42 | 524 | **97** | 154 | **14** | 1490 x 967 | 1250 x 1101 |
+| `1-main` | Power, ESP32, displays, OLED, SD card, and J1 to J3 (one JST-XH 4-pin per bank) | 297 | **45** | 79 | **10** | 800 x 1020 | 836 x 1046 |
+| `2-bank-a` | J1, MCP23017 U2 at 0x20, balls 1 to 14 | 490 | **14** | 156 | **1** | 1490 x 967 | 1050 x 1241 |
+| `3-bank-b` | J1, MCP23017 U3 at 0x21, balls 15 to 28 | 519 | **13** | 156 | **1** | 1490 x 967 | 1050 x 1241 |
+| `4-bank-c` | J1, MCP23017 U4 at 0x22, balls 29 to 42 | 524 | **12** | 154 | **1** | 1490 x 967 | 1050 x 1241 |
 
 Every sheet has body overlaps 0, caption overlaps 0 and blocked nets none, and passes `gate`.
 
 These readability warnings remain:
 - `1-main`:
-  - 5 `wires-crowded`: the wires that still fan out from the ESP32 header past BB1.
-  - 5 `label-covered`: wires running beside the display headers cross the labels there.
-- Bank sheets:
-  - 8 to 13 `wires-crowded`: the ground drops of neighbouring balls into their local strips, and wires inside the expander's footprint.
-  - 1 `crossings-high`: the trunk wire that joins the local ground strips.
+  - 7 `label-covered`: some display header pins had no room for a label of their own (the displays are kept close to BB1), so their stubs run to a nearby label and cross the display's caption; two wires to the ESP32 cross its caption.
+  - 2 `wires-crowded`: SW1's 5V wire and SD1's CS wire run side by side below the ESP32.
+  - 1 `crossings-high`: DS2's DC/RS wire runs to the LCD_DC label at DS1.
+- Bank sheets: 1 `wires-crowded` each, where two pad stubs inside the expander's 2 x 10 header overlap for a few px on their way to the label column.
 
 To lay out and gate a sheet:
 
@@ -29,9 +28,9 @@ To lay out and gate a sheet:
 circuitoon layout --keep 2-bank-a.partial.json -o bank-a.json && circuitoon gate bank-a.json -o out-bank-a
 ```
 
-Each `*.partial.json` is its `*.netlist.json` (as `intent`) plus pinned positions for the parts outside the repeat. The balls are not pinned, so each bank keeps its local ground strips `DP1` to `DP4`.
+Each `*.partial.json` is its `*.netlist.json` (as `intent`) plus pinned positions for the parts outside the repeat. The balls are not pinned. With net labels the balls' shared ground is a GND label at each switch's ground pin, so the banks no longer need local ground strips (`DP1` to `DP4` came back only with `--labels none`). The expander is pinned with J1 below it, so the 14 channel labels have room to its left, where its 2 x 10 header faces.
 
-The bank sheets rely on net labels. Each ball's channel is two labels: one at the ball, with both switches wired to it, and one at the expander pad. No breadboard sits between them. With `--labels none` these sheets fail to lay out ("needs a distribution point"), because a header pin takes only one wire.
+The bank sheets rely on net labels. Every switch carries two labels below its legs, its channel (`ballA_3.CH`) and `GND`; the expander's channel pads carry the matching labels in one column beside its header, in pad order (GPA0, GPB0, GPA1, ...). No breadboard sits between them. With `--labels none` these sheets fail to lay out ("needs a distribution point"), because a header pin takes only one wire.
 
 ## The connectors
 
@@ -67,4 +66,4 @@ These choices are made on the sheets, and the user should confirm them:
 ## Can a person follow these sheets?
 
 - **`1-main`: yes.** GND, 3V3, I2C and most of SPI are drawn as labels at each pin, so the flag beside a pin names its net. A few nets still run as wires past BB1, where a display header had no room for every label. Trace those few by color.
-- **Bank sheets: yes, ball by ball.** Each ball carries one label that names its channel (`ballA_3.CH`), and the expander carries the matching label at its pad, so a builder can read off the sheet which pad each ball uses. The expander end is still busy: the 14 pad labels sit above and beside the CJMCU, and their stubs cross the board's art to reach the pads. Check a pad against the channel table (`gate.json`, or the `layout` output).
+- **Bank sheets: yes, easily.** Each switch carries its channel label and a GND label right under its legs, and the expander has one ordered column of channel labels beside its header, so a builder reads which pad each ball uses straight off the sheet. Only the expander's power and address pads (3V3, GND, A0 to A2, RESET) still draw a small knot of short wires to their two labels. The channel table (`gate.json`, or the `layout` output) lists the same allocation.

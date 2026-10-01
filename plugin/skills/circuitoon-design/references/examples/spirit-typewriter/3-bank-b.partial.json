@@ -2,9 +2,9 @@
   "format": "circuitoon-partial/1",
   "title": "Spirit Typewriter 3 of 4: expander bank B, balls 15 to 28",
   "parts": [
-    { "designator": "J1", "x": 850, "y": 80 },
     { "designator": "U3", "x": 970, "y": 80 },
-    { "designator": "BB1", "x": 1000, "y": 270 }
+    { "designator": "J1", "x": 1010, "y": 260 },
+    { "designator": "BB1", "x": 1000, "y": 380 }
   ],
   "intent": {
     "format": "circuitoon-netlist/1",
