@@ -10,7 +10,7 @@
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["id", "name", "category", "source", "board", "pins", "holes"],
+        "required": ["id", "name", "category", "source", "board", "netLabel", "pins", "holes"],
         "additionalProperties": false,
         "properties": {
           "id": { "type": "string" },
@@ -18,6 +18,7 @@
           "category": { "type": ["string", "null"] },
           "source": { "type": ["string", "null"] },
           "board": { "type": "boolean" },
+          "netLabel": { "type": "boolean" },
           "pins": {
             "type": "array",
             "items": {

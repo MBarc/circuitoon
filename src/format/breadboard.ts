@@ -5,7 +5,7 @@
 import { type Diagram, type Endpoint, type PartInstance, moduleOf } from './diagram.ts'
 import { type PlugPoint, type Pt, type Rect, type Rotation, type WorldHoleGroup, bodyRect, pivot, plugPoints, rotateVec, toWorld, worldHoles } from './geometry.ts'
 import { type PlugDef, type PlugFamily, type SocketFamily, mainsOf } from './mainsModel.ts'
-import { GRID, type ModuleDef, holeGroupOf, isBoard, isSpacer, layoutModule, terminalCapacity } from './module.ts'
+import { GRID, type ModuleDef, holeGroupOf, isBoard, isNetLabel, isSpacer, layoutModule, terminalCapacity } from './module.ts'
 import { entriesFor, orientationOf } from './plugging.ts'
 
 const OFF = 2 ** 25
@@ -168,7 +168,8 @@ interface Me {
 function mountable(d: Diagram, uid: string): Me | null {
   const part = d.parts.find((p) => p.uid === uid)
   const m = part && moduleOf(d, part.module)
-  if (!part || !m || isBoard(m) || m.pins.some((p) => !isSpacer(p) && p.bus)) return null
+  // A net label is not physical: it never plugs in.
+  if (!part || !m || isBoard(m) || isNetLabel(m) || m.pins.some((p) => !isSpacer(p) && p.bus)) return null
   const pts = allPlugPoints(part, m)
   return pts.length ? { part, m, pts, plug: mainsOf(m).plug } : null
 }

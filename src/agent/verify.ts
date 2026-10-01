@@ -2,11 +2,11 @@
 // (parts, modules, effective values, seated mounts, extra parts), connectivity (missing
 // connections, unintended merges, extra connections, nc) and terminal capacity on the realized
 // diagram. Two component pins are connected when a path of wires, strips, internal joins or plugs
-// joins them; strips, rails and `routing` wires are infrastructure and never count as extra
+// joins them (net labels of one name too); strips, rails, net labels and `routing` wires are infrastructure and never count as extra
 // endpoints themselves, and a pin whose only neighbours are infrastructure is unconnected. Pure.
 import { type Diagram, type Endpoint, type PartInstance, moduleOf } from '../format/diagram.ts'
 import { holeUses, mountIssues, plugsOf } from '../format/breadboard.ts'
-import { PARAM_RULES, holeGroupOf, isBoard, isObj, layoutModule, type ModuleDef, terminalCapacity, validParamValue } from '../format/module.ts'
+import { PARAM_RULES, holeGroupOf, isBoard, isNetLabel, isObj, layoutModule, type ModuleDef, terminalCapacity, validParamValue } from '../format/module.ts'
 import { andList } from '../format/words.ts'
 import { netlist, nodeKey } from '../format/netlist.ts'
 import { coveredMessage, coveredUses, endpointName } from '../format/checks.ts'
@@ -122,9 +122,12 @@ function moduleDrift(d: Diagram, library: ModuleLookup, add: Add) {
   }
 }
 
-/** Infrastructure (strips, rails) that the intent need not list: only a real library board counts. */
+/**
+ * Infrastructure that the intent need not list: a real library board (strips, rails) or a net label
+ * (a named flag that only joins, like a `routing` wire).
+ */
 function libraryBoard(d: Diagram, library: ModuleLookup, id: string): boolean {
-  return moduleOf(d, id) !== undefined && isBoard(library(id))
+  return moduleOf(d, id) !== undefined && (isBoard(library(id)) || isNetLabel(moduleOf(d, id)))
 }
 
 /**
@@ -299,7 +302,7 @@ function connectivity(d: Diagram, intent: Intent, uidOf: Map<string, string>, ad
   const component = (k: string) => {
     const p = partBy.get(split(k)[0])
     const m = p && moduleOf(d, p.module)
-    return !!m && !isBoard(m)
+    return !!m && !isBoard(m) && !isNetLabel(m)
   }
   const compOf = (k: string) => {
     const [uid, pin] = split(k)
@@ -352,8 +355,8 @@ function capacity(d: Diagram, add: Add) {
       const part = partBy.get(ep.part)!
       const m = moduleOf(d, part.module)!
       const group = holeGroupOf(m, ep.pin)
-      // Board holes and wires to plugged legs are counted by holeUses.
-      if ((group && isBoard(m)) || (!group && plugged.has(nodeKey(ep.part, ep.pin)))) continue
+      // Board holes and wires to plugged legs are counted by holeUses; a net label is no terminal, it takes any number.
+      if ((group && isBoard(m)) || (!group && plugged.has(nodeKey(ep.part, ep.pin))) || isNetLabel(m)) continue
       if (group) slot(JSON.stringify(['pad', ep.part, ep.pin, ep.hole ?? 0]), endpointName(d, ep), terminalCapacity(m, ep.pin), ep.part).wires.push(c.uid)
       else slot(JSON.stringify(['pin', ep.part, ep.pin]), endpointName(d, ep), terminalCapacity(m, ep.pin), ep.part).wires.push(c.uid)
     }

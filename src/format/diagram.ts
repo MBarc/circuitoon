@@ -1209,7 +1209,7 @@ export function validateDiagram(raw: unknown): DiagramResult {
     const i = diagram.parts.findIndex((p) => p.uid === part)
     const at = `parts[${i}].mount`
     if (reason === 'cannot-mount' && board !== part && modules.has(diagram.parts[i].module))
-      warnings.push(`${at}: part "${part}" cannot mount (boards, parts with a bus pin and parts with no pins never do)`)
+      warnings.push(`${at}: part "${part}" cannot mount (boards, net labels, parts with a bus pin and parts with no pins never do)`)
     else if (reason === 'not-a-board' && !modules.has(partModule.get(board)!))
       warnings.push(`${at}: part "${board}" is not a board (its module "${partModule.get(board)}" is not embedded in this file)`)
     else if (reason === 'partial') warnings.push(`${at}: not every leg of "${part}" sits on a hole of board "${board}", so it plugs into nothing`)

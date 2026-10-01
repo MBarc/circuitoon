@@ -11,6 +11,7 @@ import { labelLook } from './mainsLook.ts'
 import { labelName, labelMates } from './netLabels.ts'
 import { load } from './builtinModules.testing.ts'
 import { analyseMains } from './mains.ts'
+import { mountIssues } from './breadboard.ts'
 import { MAINS_MODULES, at as mainsAt, w as mainsWire } from './mains.testing.ts'
 
 const label = load('net-label')
@@ -194,6 +195,14 @@ describe('bill of materials', () => {
     const bom = billOfMaterials(twoBoards())
     expect(bom.parts.map((p) => p.module)).toEqual(['mcu'])
     expect(bom.wires.reduce((n, w) => n + w.count, 0)).toBe(2)
+  })
+})
+
+describe('mounting', () => {
+  it('never plugs a label into a breadboard: it is not physical', () => {
+    const bb = load('breadboard-mini')
+    const d: Diagram = { ...sheet([part('bb', 'breadboard-mini', { x: 0, y: 0 }), named('n1', 'SDA', { x: 30, y: 20, mount: { board: 'bb' } })], []), modules: { ...MODULES, 'breadboard-mini': bb } }
+    expect(mountIssues(d).map((i) => i.reason)).toEqual(['cannot-mount'])
   })
 })
 

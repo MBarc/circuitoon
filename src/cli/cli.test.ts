@@ -47,6 +47,15 @@ describe('circuitoon parts and part', () => {
     expect(schemaErrors(loadSchema('parts'), out)).toEqual([])
     expect(out.parts.map((p: { id: string }) => p.id)).toContain('esp32-devkitc-v4')
   })
+  it('lists the net label, flagged, and says how a netlist asks for one', async () => {
+    const out = JSON.parse((await cli(['parts', '--search', 'label', '--json'])).out)
+    const label = out.parts.find((p: { id: string }) => p.id === 'net-label')
+    expect(label).toMatchObject({ category: 'Wiring', netLabel: true, board: false })
+    expect(out.parts.find((p: { id: string }) => p.id !== 'net-label')?.netLabel ?? false).toBe(false)
+    const text = (await cli(['parts', '--search', 'net-label'])).out
+    expect(text).toContain('net-label: Net label [Wiring]')
+    expect(text).toContain('not a part to list: set "label": true on a net')
+  })
   it('reports an untyped pin as type null, never a guess (amendment A14)', async () => {
     const out = JSON.parse((await cli(['parts', '--search', 'mcp23017', '--json'])).out)
     const pins = out.parts.find((p: { id: string }) => p.id === 'mcp23017-dip28').pins
