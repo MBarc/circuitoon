@@ -2,13 +2,14 @@
 // (`circuitoon bom`, and bom.csv beside gate.json). Parts are grouped by module plus value, with
 // natural-order designator ranges, the module's category and source links; wires are counted by
 // cable (its ends, either way round), gauge and the colour they are drawn in; connectors by kind.
-// What the layout added (breadboards and rail strips it claimed, `routing` wires) is marked. The
+// Net labels are left out (not physical). What the layout added (breadboards and rail strips it claimed, `routing` wires) is marked. The
 // CSV is RFC 4180 (every field quoted, CRLF) and no cell starts a spreadsheet formula. Pure.
 import { type Diagram, moduleOf } from './diagram.ts'
 import { END_KINDS, END_NAMES, END_SIZE, type EndKind, endKind, presetOf } from './cables.ts'
 import { editableParams, formatValue, paramValue } from './values.ts'
 import { drawnColor, wireLooks } from './mainsLook.ts'
 import { natural } from './words.ts'
+import { isNetLabel } from './module.ts'
 
 export interface BomPart {
   module: string
@@ -97,6 +98,8 @@ export function billOfMaterials(d: Diagram, opts: BomOptions = {}): Bom {
   const parts = new Map<string, BomPart>()
   for (const p of d.parts) {
     const m = moduleOf(d, p.module)
+    // A net label is a drawing convention, not something to buy.
+    if (isNetLabel(m)) continue
     const text = m ? editableParams(m).flatMap((q) => { const v = paramValue(p, m, q.name); return v === null ? [] : [formatValue(v, q.unit)] }).join(', ') || null : null
     const key = JSON.stringify([p.module, text])
     let row = parts.get(key)

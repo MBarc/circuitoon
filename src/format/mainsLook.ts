@@ -9,6 +9,7 @@ import { nodeKey } from './netlist.ts'
 import { ROLE_COLORS, endpointRole, netRoles } from './checks.ts'
 import { type MainsAnalysis, analyseMainsCached } from './mains.ts'
 import type { Conductor, Region } from './mainsModel.ts'
+import { labelsOf } from './netLabels.ts'
 
 export const IDENTITY_COLORS: Record<'us' | 'iec', Record<Conductor, string>> = {
   us: { L: 'black', N: 'white', PE: 'green' },
@@ -121,4 +122,28 @@ export function newWireColor(d: Diagram, from: Endpoint, to: Endpoint, fallback:
 export function holdLooks(held: { current: Map<string, WireLook> }, d: Diagram, busy: boolean): Map<string, WireLook> {
   if (!busy) held.current = wireLooks(d)
   return held.current
+}
+
+/**
+ * How a net label is drawn: in its net's low-voltage role colour (`ground` black, `supply` red,
+ * `signal` neutral), `mains` with the hazard look when its net carries mains or is energized (the
+ * checker refuses it too, rule label-mains), or `unnamed`. A net no colour is judged on (a short, an
+ * unknown rail) and a part that is not a label draw as `signal`; a failed analysis is logged and
+ * leaves the role out, like the wire looks.
+ */
+export type LabelLook = 'ground' | 'supply' | 'signal' | 'mains' | 'unnamed'
+export function labelLook(d: Diagram, uid: string): LabelLook {
+  const l = labelsOf(d).find((x) => x.part.uid === uid)
+  if (!l) return 'signal'
+  if (!l.name) return 'unnamed'
+  const key = nodeKey(uid, l.pin)
+  const { analysis: a, failed } = lookAnalysis(d)
+  if (a && (a.hazardKeys.has(key) || a.mainsKeys.has(key) || a.conductorOf(key))) return 'mains'
+  if (failed) return 'signal'
+  try {
+    return netRoles(d).roleOfKey(key) ?? 'signal'
+  } catch (e) {
+    console.error('Circuitoon: the net roles failed, so labels are drawn without their role colours.', e)
+    return 'signal'
+  }
 }

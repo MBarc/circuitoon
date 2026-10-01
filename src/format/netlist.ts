@@ -1,8 +1,10 @@
-// Nets: sets of pins and hole groups joined by wires, mounted legs and `internal` groups. Feeds
+// Nets: sets of pins and hole groups joined by wires, mounted legs, `internal` groups and net labels
+// of one name. Feeds
 // hover highlighting now and the V2 simulation later. Pure.
 import { type Diagram, type Endpoint, moduleOf, resolveEndpoint } from './diagram.ts'
 import { type Plug, plugOfPin, plugsOf } from './breadboard.ts'
 import { type Pt, worldHoles, worldPins } from './geometry.ts'
+import { labelGroups } from './netLabels.ts'
 
 /** One key per part pin or hole group; JSON keeps any character in a uid or name unambiguous. */
 export const nodeKey = (part: string, pin: string): string => JSON.stringify([part, pin])
@@ -16,11 +18,13 @@ export interface Netlist {
   broken: string[]
 }
 
-/** One conducting join between two node keys: a wire (with its uid), an internal group link or a plugged leg. */
+/** One conducting join between two node keys: a wire (with its uid), an internal group link, a plugged leg or two same-named net labels. */
 export interface Join {
   a: string
   b: string
   wire?: string
+  /** The name of the net labels this join links (a label join is no wire and no part). */
+  label?: string
 }
 
 /**
@@ -41,6 +45,9 @@ export function conductors(d: Diagram, plugs: Plug[] = plugsOf(d)): { joins: Joi
   }
   // A mechanical plug contact fills its hole but joins nothing (Ruling 39).
   for (const pl of plugs) if (!pl.mechanical) joins.push({ a: nodeKey(pl.part, pl.pin), b: nodeKey(pl.board, pl.group) })
+  // Net labels: every label of one name is one node (a chain of joins, first label to each other).
+  for (const [name, list] of labelGroups(d))
+    for (let i = 1; i < list.length; i++) joins.push({ a: nodeKey(list[0].part.uid, list[0].pin), b: nodeKey(list[i].part.uid, list[i].pin), label: name })
   return { joins, broken }
 }
 

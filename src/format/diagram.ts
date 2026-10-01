@@ -1,6 +1,6 @@
 // Diagram format (circuitoon-diagram/1): types plus the wire geometry the renderer needs.
 
-import { GRID, type ModuleDef, PARAM_RULES, isBoard, layoutModule, moduleSettings, validateModule, validParamValue, isObj, isNum } from './module.ts'
+import { GRID, type ModuleDef, PARAM_RULES, isBoard, isNetLabel, layoutModule, moduleSettings, validateModule, validParamValue, isObj, isNum } from './module.ts'
 import { type Pt, type Rect, type Rotation, type WorldPin, bodyRect, simplify, toWorld, worldPins } from './geometry.ts'
 import { type RouteRequest, SEARCH_MARGIN, addToOccupancy, inGrown, Occupancy, onGrid, PointIndex, routeOrthogonal } from './router.ts'
 import { manualRouteBlocked, tidy } from './wireEdit.ts'
@@ -8,6 +8,7 @@ import { coveredHoles, holeIndex, mountIssues, plugOfPin, plugsOf } from './brea
 import { type CableEndDraw, END_SIZE, endKind, endPlacement, isEndKind, normalizeEnds, type WireEnds } from './cables.ts'
 import { placedCaptionBox, tipLabelBoxes } from '../render/captionBox.ts'
 import { seatedLabels } from './seatedLabels.ts'
+import { LABEL_VALUE } from './netLabels.ts'
 import { annotationRect, frameTab } from '../render/annotationGeometry.ts'
 
 /** How every load warning about a dropped value override ends: the part now shows its module
@@ -1015,6 +1016,11 @@ export function validateDiagram(raw: unknown): DiagramResult {
             // for shape. Other part state (an LED's color, a switch's default) is opaque.
             if (isObj(entry) && 'value' in entry && !(isNum(entry.value) && typeof entry.unit === 'string'))
               warnings.push(`${at}.values.${key}: value must be a finite number with a string unit`)
+            // A net label's name is text; anything else would silently join nothing, so it is dropped and said.
+            if (key === LABEL_VALUE && typeof p.module === 'string' && isNetLabel(modules.get(p.module)) && typeof entry !== 'string') {
+              dropped.push(key)
+              warnings.push(`${at}.values.net: ${who}'s label name must be text, not ${JSON.stringify(entry)}; it was dropped, so the label has no name`)
+            }
           }
           if (dropped.length) {
             const values = p.values

@@ -107,9 +107,18 @@ export interface ModuleDef {
    * body is the footprint (see bodyShapes in breadboard.ts).
    */
   footprint?: 'legs' | { x: number; y: number; w: number; h: number }
+  /**
+   * A net label (the built-in `net-label`): a named flag with one pin. Every label pin with the same
+   * name (the part's `values.net`, trimmed, case-sensitive) is one electrical node. Not a physical
+   * part: never in the bill of materials, never mounted, never an extra part in verification.
+   */
+  netLabel?: true
 }
 
 export const isSpacer = (p: PinEntry): p is SpacerDef => 'spacer' in p && p.spacer === true
+
+/** A net label module (`netLabel: true`): see ModuleDef.netLabel. */
+export const isNetLabel = (m: ModuleDef | undefined): boolean => m?.netLabel === true
 
 /** Opt-in flag (`art.pinLabels: "inside"`) for drawing pin names inside the body, like board
  * silkscreen, instead of beside the pin stub. Off for every module that does not set it. */
@@ -269,6 +278,11 @@ export function validateModule(raw: unknown): ValidationResult {
       })
   }
   if (raw.obstacle !== undefined && typeof raw.obstacle !== 'boolean') errors.push('obstacle: must be true or false')
+  if (raw.netLabel !== undefined) {
+    if (raw.netLabel !== true) errors.push('netLabel: must be true when present')
+    else if (!Array.isArray(raw.pins) || raw.pins.length !== 1 || (Array.isArray(raw.holes) && raw.holes.length) || raw.internal !== undefined)
+      errors.push('netLabel: a net label has exactly one pin and no hole groups or internal joins')
+  }
   if (raw.footprint !== undefined && raw.footprint !== 'legs' && !(isObj(raw.footprint) && isNum(raw.footprint.x) && isNum(raw.footprint.y) && isPos(raw.footprint.w) && isPos(raw.footprint.h)))
     errors.push('footprint: must be "legs" or { "x", "y", "w", "h" } in module px, with w and h above 0')
 
@@ -514,8 +528,9 @@ function computeLayout(m: ModuleDef): ModuleLayout {
   const hu = Math.max(
     m.size?.h ?? 0,
     Math.ceil((m.art?.h ?? 0) / GRID),
-    Math.max(slotsOn(m, 'left'), slotsOn(m, 'right')) + 2,
-    3,
+    Math.max(slotsOn(m, 'left'), slotsOn(m, 'right')) + (m.netLabel ? 1 : 2),
+    // A net label is a slim flag: two units tall, its one pin at the middle of its edge.
+    m.netLabel ? 2 : 3,
   )
   const pins: PlacedPin[] = []
   for (const side of SIDES) {

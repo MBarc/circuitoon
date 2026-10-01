@@ -1,0 +1,18 @@
+{
+  "format": "circuitoon-module/1",
+  "id": "net-label",
+  "name": "Net label",
+  "category": "Wiring",
+  "netLabel": true,
+  "pins": [
+    { "name": "NET", "side": "left" }
+  ],
+  "size": { "w": 5, "h": 2 },
+  "art": {
+    "w": 50,
+    "h": 20,
+    "shapes": [
+      { "type": "rect", "x": 4, "y": 2, "w": 44, "h": 16, "fill": "#FFFFFF", "radius": 3, "label": "NET", "labelSize": 8 }
+    ]
+  }
+}

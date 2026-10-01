@@ -709,6 +709,13 @@ describe('every message ends with what to do', () => {
     expect(rules(d)).toEqual(expect.arrayContaining(['wire-color-ground', 'wire-color-supply']))
     const sig = built({ ...colored, connections: [{ uid: 'wsig', from: { part: 'u1', pin: 'Q' }, to: { part: 'u2', pin: 'Q' }, color: 'red', colorSet: true }] })
     expect(rules(sig)).toContain('wire-color-signal')
+    // Net labels: one with no name, one alone, and two carrying mains from an outlet to a lamp.
+    const labels = sheetWith([], [at('u1', 'U1', 'bme280-module-4pin'), at('n1', 'NL1', 'net-label', 300), at('n2', 'NL2', 'net-label', 400, { values: { net: 'SDA' } })],
+      [['u1|SCL', 'n1|NET'], ['u1|SDA', 'n2|NET']])
+    expect(rules(labels)).toEqual(expect.arrayContaining(['label-unnamed', 'label-alone']))
+    const live = built(mainsSheet([mat('o', 'XS1', 't-outlet'), mat('l', 'E1', 't-lamp', 300), mat('m1', 'NL1', 'net-label', 100, 0, { values: { net: 'LIVE' } }), mat('m2', 'NL2', 'net-label', 200, 0, { values: { net: 'LIVE' } })],
+      [mw('o|L', 'm1|NET'), mw('m2|NET', 'l|L'), mw('o|N', 'l|N')], { 'net-label': load('net-label') }))
+    expect(rules(live)).toContain('label-mains')
   })
   it('on every finding of every sheet built in this file', () => {
     const missing: string[] = []
