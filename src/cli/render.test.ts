@@ -160,3 +160,31 @@ describe('browser detection', () => {
     expect(findBrowser({ PROGRAMFILES: join(dir, 'none') }, 'win32')).toBeNull()
   })
 })
+
+describe('render --tiles', () => {
+  it('cuts a box into overlapping square tiles that cover it, row by row', async () => {
+    const { tilesOf } = await import('./render.ts')
+    const tiles = tilesOf({ x: 0, y: 0, w: 1000, h: 500 }, 400)
+    expect(tiles.map((t) => [t.row, t.col])).toEqual([[1, 1], [1, 2], [1, 3], [2, 1], [2, 2], [2, 3]])
+    expect(tiles[0].box).toEqual({ x: 0, y: 0, w: 400, h: 400 })
+    expect(tiles[5].box).toEqual({ x: 600, y: 100, w: 400, h: 400 })
+    expect(tilesOf({ x: 5, y: 5, w: 100, h: 80 }, 400)).toEqual([{ row: 1, col: 1, box: { x: 5, y: 5, w: 100, h: 80 } }])
+  })
+  it('refuses a bad tile size or tiles without a PNG, with exit 2', async () => {
+    const dir = await sheetFrom(ledNetlist())
+    expect((await cli(['render', 'sheet.json', '-o', 'x.png', '--tiles', '50'], { cwd: dir })).code).toBe(2)
+    const svgOnly = await cli(['render', 'sheet.json', '--svg', 'x.svg', '--tiles', '400'], { cwd: dir })
+    expect(svgOnly.code).toBe(2)
+    expect(svgOnly.err).toContain('--tiles needs -o')
+  })
+  it.skipIf(!browser)('writes each tile beside the PNG', async () => {
+    const dir = await sheetFrom(tiltSensors())
+    const r = await cli(['render', 'sheet.json', '-o', 'sheet.png', '--tiles', '400', '--scale', '1', '--json'], { cwd: dir })
+    expect(r.code).toBe(0)
+    const out = JSON.parse(r.out)
+    expect(schemaErrors(loadSchema('render'), out)).toEqual([])
+    const tiles = out.outputs.filter((o: { path: string }) => o.path.includes('-tile-'))
+    expect(tiles.length).toBeGreaterThan(1)
+    expect(tiles.every((t: { path: string }) => existsSync(join(dir, t.path)))).toBe(true)
+  }, 120_000)
+})
