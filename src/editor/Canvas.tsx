@@ -13,6 +13,7 @@ import { FrameMark, NoteMark } from '../render/Annotations.tsx'
 import { BLOCKED_STROKE, Bolts, HazardOutline, Stripe, boltInsets } from '../render/Mains.tsx'
 import { type LabelLook, type WireLook, drawnColor, holdLabelLooks, holdLooks, newWireColor, startColor } from '../format/mainsLook.ts'
 import { flagRect, labelName, labelsOf } from '../format/netLabels.ts'
+import { cellGate } from './hoverCell.ts'
 import { seatedLabels } from '../format/seatedLabels.ts'
 import { addPart, addWire, EMPTY_SELECTION, marqueeSelection, moveAnnotations, moveParts, reconnectWire, sameEndpoint, setWireRoute, settleDrop, settleMounts, settleSeats, settlingOf, updateWire, withMounted } from './ops.ts'
 import { netlist, netPoints } from '../format/netlist.ts'
@@ -140,6 +141,7 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
   const [hover, setHover] = useState<Endpoint | null>(null)
   // The net label under the pointer (its body or its pin), for lighting every label of its name.
   const [hoverLabel, setHoverLabel] = useState<string | null>(null)
+  const hoverCells = useRef(cellGate())
   const settled = useRef<Routes>(new Map())
   const [editing, setEditing] = useState<{ uid: string; anchor: Pt; initial: string; token: number } | null>(null)
   const editRef = useRef<HTMLInputElement>(null)
@@ -589,10 +591,14 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
     if (!drag) {
       const over = endUnder(e)
       setHover((h) => (h === over || (h && over && sameEndpoint(store.getState().diagram, h, over)) ? h : over))
-      const d = store.getState().diagram
-      const uid = over?.part ?? document.elementFromPoint(e.clientX, e.clientY)?.closest('[data-part]')?.getAttribute('data-part') ?? null
-      const p = uid ? d.parts.find((q) => q.uid === uid) : undefined
-      setHoverLabel(p && isNetLabel(moduleOf(d, p.module)) ? p.uid : null)
+      // The label under the pointer: from the pin it is over, else by hit-testing, once per grid cell crossed.
+      if (over || hoverCells.current.moved(toWorld(e))) {
+        const d = store.getState().diagram
+        const uid = over?.part ?? document.elementFromPoint(e.clientX, e.clientY)?.closest('[data-part]')?.getAttribute('data-part') ?? null
+        const p = uid ? d.parts.find((q) => q.uid === uid) : undefined
+        setHoverLabel(p && isNetLabel(moduleOf(d, p.module)) ? p.uid : null)
+        if (over) hoverCells.current.reset()
+      }
       return
     }
     if (e.pointerId !== drag.pointer) return
@@ -785,6 +791,7 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
         onPointerLeave={() => {
           setHover(null)
           setHoverLabel(null)
+          hoverCells.current.reset()
           lastClient.current = null
         }}
         // A middle press would start the browser's autoscroll; the middle drag pans instead.
