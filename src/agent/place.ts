@@ -35,6 +35,11 @@ export interface PlaceOptions {
    * for its shared ground and power nets (amendment A18.1), added as routing infrastructure.
    */
   rail?: ModuleDef
+  /**
+   * Where each board's mounted parts were seated, by board ref, shared by the placements of one
+   * layout: mounting does not depend on the spacing, so a retry with more spacing reuses it.
+   */
+  mounts?: Map<string, PartInstance[]>
 }
 export type PlaceResult =
   | {
@@ -145,6 +150,13 @@ export function placeParts(intent: Intent, opts: PlaceOptions): PlaceResult {
     if (k) inst.set(ref, { ...inst.get(ref)!, ...k })
     let local: Diagram = { format: DIAGRAM_FORMAT, title: '', modules: mods, parts: [inst.get(ref)!], connections: [] }
     const mounted = intent.parts.filter((q) => q.on === ref).map((q) => q.ref).sort(naturalCompare)
+    const seated = opts.mounts?.get(ref)
+    if (seated) {
+      for (const p of seated) inst.set(p.uid, p)
+      units.push({ key: ref, refs: [ref, ...mounted], anchor: true, fixed: !!k })
+      for (const r of [ref, ...mounted]) grouped.add(r)
+      continue
+    }
     const keptFirst = [...mounted.filter((m) => keep.has(m)), ...mounted.filter((m) => !keep.has(m))]
     for (const m of keptFirst) {
       const km = keep.get(m)
@@ -186,6 +198,7 @@ export function placeParts(intent: Intent, opts: PlaceOptions): PlaceResult {
         inst.set(m, r.part)
         local = { ...local, parts: local.parts.map((p) => (p.uid === m ? r.part : p)) }
       }
+    if (!errors.length) opts.mounts?.set(ref, mounted.map((m) => inst.get(m)!))
     units.push({ key: ref, refs: [ref, ...mounted], anchor: true, fixed: !!k })
     for (const r of [ref, ...mounted]) grouped.add(r)
   }

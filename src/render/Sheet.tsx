@@ -4,7 +4,9 @@
 // colors in a standalone export (exportSvg.tsx). The mains look (identity colours, hazard rim, bolts,
 // the green-yellow stripe) is drawn in every theme.
 import { computeRoutes, labelAnchor, type Diagram, moduleOf, wireColor, wirePaths, wireStripe, wireWidth, type PartInstance } from '../format/diagram.ts'
-import { drawnColor, wireLooks } from '../format/mainsLook.ts'
+import { drawnColor, labelLooks, wireLooks } from '../format/mainsLook.ts'
+import { labelName } from '../format/netLabels.ts'
+import { isNetLabel } from '../format/module.ts'
 import { seatedLabels } from '../format/seatedLabels.ts'
 import { plugsOf, splitBoards } from '../format/breadboard.ts'
 import { partCaption } from '../format/values.ts'
@@ -46,6 +48,7 @@ export function Sheet({ diagram, captions = {}, box, label, decorative = false, 
   // The mains look (identity colours, hazard marks), from the analysis the checker already cached.
   const looks = wireLooks(diagram)
   const seated = seatedLabels(diagram)
+  const flags = labelLooks(diagram)
   // Spec 6: a mains sheet carries the notice in a footer band reserved below the drawing (never over it),
   // at least NOTICE_MIN_WIDTH wide, so every export that renders the sheet shows it whole.
   const mains = hasMains(diagram)
@@ -53,8 +56,11 @@ export function Sheet({ diagram, captions = {}, box, label, decorative = false, 
   const part = (p: PartInstance) => {
     const m = moduleOf(diagram, p.module)
     const s = seated.get(p.uid)
+    // A net label carries its name in its flag, never a caption.
+    const label = isNetLabel(m)
     return m ? (
-      <Part key={p.uid} module={m} x={p.x} y={p.y} rotation={p.rotation} caption={captions[p.uid] ?? partCaption(p, m)} values={p.values}
+      <Part key={p.uid} module={m} x={p.x} y={p.y} rotation={p.rotation} caption={label ? undefined : (captions[p.uid] ?? partCaption(p, m))} values={p.values}
+        netName={label ? labelName(p) : undefined} netLook={flags.get(p.uid)}
         captionX={s?.caption.x} captionY={s?.caption.y} captionAnchor={s?.anchor} labelInset={s?.labelInset}
         ink={theme.ink} halo={theme.halo} outline={theme.outline} />
     ) : null

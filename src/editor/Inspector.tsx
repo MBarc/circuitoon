@@ -3,7 +3,7 @@
 import { ArrangePanel } from './ArrangePanel.tsx'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { type EditorStore, useEditorState } from './store.ts'
-import { carryWireStyle, clearPartValue, clearWireRoute, deleteSelection, rotateParts, setWireEnds, updateAnnotation, updatePart, updatePartSetting, updatePartValue, updateWire, type WireStyle } from './ops.ts'
+import { LABEL_NAME_MAX, carryWireStyle, clearPartValue, clearWireRoute, deleteSelection, renameLabel, rotateParts, setWireEnds, updateAnnotation, updatePart, updatePartSetting, updatePartValue, updateWire, type WireStyle } from './ops.ts'
 import { ANNOTATION_LABEL_MAX, ANNOTATION_TEXT_MAX, type Connection, type Diagram, type Endpoint, NAMED_COLORS, STRIPED_COLORS, isValidColor, moduleOf, partObstacles, routeWire, wireColor, wireStripe, wireWidth } from '../format/diagram.ts'
 import { type WireLook, holdLooks } from '../format/mainsLook.ts'
 import { CABLE_PRESETS, END_KINDS, END_NAMES, END_SIZE, type EndKind, type WireEnds, endKind, normalizeEnds, presetEnds, presetOf, sharedCable, swapEnds } from '../format/cables.ts'
@@ -14,7 +14,8 @@ import { checkFailed, highlightOf, isProblem, severityCounts, useProblems } from
 import { type Finding, RULES, brokenConnection } from '../format/checks.ts'
 import { SeverityMark } from './SeverityMark.tsx'
 import { CAPACITOR_VALUES, RESISTOR_VALUES, editableParams, formatValue, paramValue, parseValueIn, pickUnitExp, scaledNumber, unitChoices } from '../format/values.ts'
-import { moduleSettings, partSetting } from '../format/module.ts'
+import { isNetLabel, moduleSettings, partSetting } from '../format/module.ts'
+import { labelMates, labelName } from '../format/netLabels.ts'
 import { MAINS_NOTICE, hasMains } from '../format/mains.ts'
 
 const GAUGES = Array.from({ length: 15 }, (_, i) => 16 + i)
@@ -117,6 +118,8 @@ function WireHexInput({ wireKey, color, onCommit }: { wireKey: string; color: st
 function endpointName(d: Diagram, ep: Endpoint): string {
   const part = d.parts.find((p) => p.uid === ep.part)
   const m = part && moduleOf(d, part.module)
+  // A net label reads by its name, as the checker names it.
+  if (part && isNetLabel(m)) return labelName(part) ? `label ${labelName(part)}` : `${part.designator} (unnamed label)`
   const pin = m?.pins.find((p) => 'name' in p && p.name === ep.pin)
   const label = pin && 'label' in pin && typeof pin.label === 'string' ? pin.label : ep.pin
   return `${part?.designator ?? ep.part} ${label}`
@@ -554,6 +557,55 @@ export function Inspector({ store }: { store: EditorStore }) {
     )
 
   const part = diagram.parts.find((p) => p.uid === selection.parts[0])
+  if (part && isNetLabel(moduleOf(diagram, part.module))) {
+    const name = labelName(part)
+    const mates = labelMates(diagram, part.uid)
+    return (
+      <aside className="inspector" aria-label="Properties">
+        <h2 id="selection-title" tabIndex={-1}>Net label</h2>
+        <label className="field" htmlFor="label-name">
+          Net name
+          <input
+            id="label-name"
+            key={`${part.uid}:${name}`}
+            defaultValue={name}
+            maxLength={LABEL_NAME_MAX}
+            placeholder="SDA"
+            spellCheck={false}
+            autoComplete="off"
+            onBlur={(e) => {
+              const v = e.target.value.trim()
+              if (v !== name) store.commit(renameLabel(diagram, part.uid, v))
+              else e.target.value = name
+            }}
+            onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
+          />
+        </label>
+        <p className="hint">Every label with the same name is one connection, as if wired. Names are case-sensitive: SDA and sda are two nets.</p>
+        {name && (
+          <div className="label-mates">
+            <h3>{mates.length ? `Also named ${name}` : `No other label is named ${name}`}</h3>
+            {mates.length > 0 && (
+              <ul>
+                {mates.map((mate) => (
+                  <li key={mate.uid}>
+                    <button type="button" className="tool" onClick={() => {
+                      store.select({ parts: [mate.uid], wires: [] })
+                      store.reveal()
+                    }}>{mate.designator}</button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
+        <p className="hint">Rotation: {part.rotation ?? 0} degrees</p>
+        <button type="button" className="tool" onClick={() => store.commit(rotateParts(diagram, [part.uid]))}>Rotate 90 degrees</button>
+        {remove}
+      </aside>
+    )
+  }
+
   if (part) {
     const m = moduleOf(diagram, part.module)
     return (

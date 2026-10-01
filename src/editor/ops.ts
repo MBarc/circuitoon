@@ -1,7 +1,8 @@
 // Immutable diagram edits. Every function returns a new Diagram and never mutates its input,
 // so the store can keep old versions for undo.
 import { ANNOTATION_LABEL_MAX, ANNOTATION_TEXT_MAX, COORD_LIMIT, type Connection, type Diagram, type Endpoint, type PartInstance, colorFamily, moduleOf } from '../format/diagram.ts'
-import { isBoard, layoutModule, moduleSettings, partSetting, type ModuleDef } from '../format/module.ts'
+import { isBoard, isNetLabel, layoutModule, moduleSettings, partSetting, type ModuleDef } from '../format/module.ts'
+import { FLAG_MAX_CHARS, LABEL_VALUE, labelName } from '../format/netLabels.ts'
 import { type Plug, type Seat, mountIssues, plugsOf, seatOf, seatOn } from '../format/breadboard.ts'
 import { bodyRect, pivot, rotateVec, type Rect, type Rotation } from '../format/geometry.ts'
 import { annotationRect } from '../render/annotationGeometry.ts'
@@ -60,6 +61,7 @@ const PREFIXES: [RegExp, string][] = [
   [/^relay/, 'K'],
   [/^servo/, 'M'],
   [/^(jst-|dupont-|usb-panel-)/, 'J'],
+  [/^net-label$/, 'NL'],
 ]
 
 export function designatorPrefix(m: ModuleDef): string {
@@ -368,6 +370,31 @@ export function reconnectWire(d: Diagram, uid: string, end: 'from' | 'to', targe
 
 export function updatePart(d: Diagram, uid: string, patch: { designator?: string }): Diagram {
   return { ...d, parts: d.parts.map((p) => (p.uid === uid ? { ...p, ...patch } : p)) }
+}
+
+/** Longest net label name the editor stores. */
+export const LABEL_NAME_MAX = FLAG_MAX_CHARS * 2
+
+/**
+ * Names net label `uid` (trimmed, at most LABEL_NAME_MAX characters); a blank name removes the stored
+ * one. Every label of the new name joins its net at once (the netlist reads names). Same diagram for
+ * the same name, a missing part or a part that is not a label.
+ */
+export function renameLabel(d: Diagram, uid: string, name: string): Diagram {
+  const part = d.parts.find((p) => p.uid === uid)
+  if (!part || !isNetLabel(moduleOf(d, part.module))) return d
+  const next = name.trim().slice(0, LABEL_NAME_MAX)
+  if (next === labelName(part) && (next !== '' || part.values?.[LABEL_VALUE] === undefined)) return d
+  const { [LABEL_VALUE]: _old, ...rest } = part.values ?? {}
+  const values = next ? { ...rest, [LABEL_VALUE]: next } : rest
+  return {
+    ...d,
+    parts: d.parts.map((p) => {
+      if (p.uid !== uid) return p
+      const { values: _v, ...q } = p
+      return Object.keys(values).length ? { ...q, values } : q
+    }),
+  }
 }
 
 /** Edits a wire. A colour set here was chosen on purpose, so it is marked `colorSet` (the colour rules judge it). */

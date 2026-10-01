@@ -8,7 +8,7 @@
 import { type Diagram, type PartInstance, moduleOf } from './diagram.ts'
 import type { Plug } from './breadboard.ts'
 import { type Netlist, nodeKey } from './netlist.ts'
-import { type ModuleDef, type PinType, isSpacer, partSetting } from './module.ts'
+import { type ModuleDef, type PinType, isNetLabel, isSpacer, partSetting } from './module.ts'
 import { paramValue } from './values.ts'
 import { andList, natural } from './words.ts'
 import type { Acc } from './mainsRules.ts'
@@ -218,7 +218,8 @@ export function termAt(g: MainsGraph, key: string): GTerm | null {
   const part = g.d.parts.find((p) => p.uid === uid)
   const m = part && moduleOf(g.d, part.module)
   let t: GTerm | null = null
-  if (part && m) {
+  // A net label is no terminal: it only joins nets (which the netlist already did).
+  if (part && m && !isNetLabel(m)) {
     const info = mainsOf(m)
     const pin = m.pins.find((p) => !isSpacer(p) && p.name === name)
     const def = pin && !isSpacer(pin) ? pin : m.holes?.find((h) => h.name === name)

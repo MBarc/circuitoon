@@ -202,3 +202,20 @@ describe('free-direction ends (holes)', () => {
     expect(crosses(pts, block)).toBe(false)
   })
 })
+
+describe('room between parallel wires', () => {
+  const occupied = occupancyOf([[{ x: -20, y: 10 }, { x: 420, y: 10 }]])
+  const req = { from: { x: 0, y: 0 }, fromDir: right, to: { x: 400, y: 0 }, toDir: left, obstacles: [], occupied }
+  it('steps a long wire away from one running a grid step beside it', () => {
+    const pts = routeOrthogonal(req)!
+    expect(Math.min(...pts.map((p) => p.y))).toBeLessThanOrEqual(-10)
+  })
+  it('still runs beside it when that is the only way (a cost, never a block)', () => {
+    const pts = routeOrthogonal({ ...req, obstacles: [{ x: 20, y: -100, w: 360, h: 95 }] })!
+    expect(pts).not.toBeNull()
+    expect(orthogonal(pts)).toBe(true)
+  })
+  it('runs straight with the cost off', () => {
+    expect(routeOrthogonal(req, { adjacentCost: 0 })).toEqual([{ x: 0, y: 0 }, { x: 400, y: 0 }])
+  })
+})

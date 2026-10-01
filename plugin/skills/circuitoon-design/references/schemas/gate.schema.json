@@ -404,7 +404,8 @@
               "gauge",
               "color",
               "count",
-              "added"
+              "added",
+              "labelled"
             ],
             "additionalProperties": false,
             "properties": {
@@ -441,6 +442,9 @@
               },
               "added": {
                 "type": "integer"
+              },
+              "labelled": {
+                "type": "boolean"
               }
             }
           }

@@ -112,6 +112,7 @@
 .annotation-selected { fill: none; stroke: var(--focus); stroke-width: 1.5; stroke-dasharray: 5 4; pointer-events: none; }
 .wire-broken { stroke: #E0483E; stroke-dasharray: 7 5; }
 .net-hi { fill: rgba(61, 111, 214, 0.25); stroke: #3D6FD6; stroke-width: 1.5; }
+.label-lit { fill: rgba(244, 180, 0, 0.22); stroke: #F4B400; stroke-width: 2; }
 .wire-end-handle { cursor: grab; }
 .wire-end-handle:hover { stroke-width: 3; }
 .wire-seg-handle, .wire-bend-handle { transition: stroke-width 80ms ease-out; }
@@ -331,6 +332,9 @@ button.wordmark { background: none; border: 0; padding: 0; cursor: pointer; }
 /* Arrange (a multi-selection): Align and Distribute as compact sticker icon buttons. */
 .arrange { display: grid; gap: 8px; border-top: 1.5px solid var(--rule); padding-top: 12px; }
 .arrange h3 { margin: 0; font: 600 16px/1.2 "Fredoka", system-ui, sans-serif; }
+.label-mates { display: grid; gap: 6px; }
+.label-mates h3 { margin: 0; font: 600 15px/1.2 "Fredoka", system-ui, sans-serif; }
+.label-mates ul { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; padding: 0; list-style: none; }
 .arrange-label { font-size: 13px; font-weight: 700; color: var(--muted); }
 .arrange-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .arrange-row .gap { width: 6px; }

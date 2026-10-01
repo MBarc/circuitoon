@@ -1,4 +1,5 @@
-// `circuitoon layout <netlist.json> -o <sheet.json>` and `layout --keep <partial.json> -o <sheet.json>`
+// `circuitoon layout <netlist.json> -o <sheet.json>` and `layout --keep <partial.json> -o <sheet.json>`,
+// with `--labels auto|none|all` (which nets get net labels; the report records the mode and the nets)
 // (agent toolkit spec 2 and 4.2). Prints the readability report, the bill of quantities and, for
 // repeats, the channel allocation table. An invalid netlist exits 2; one that cannot be laid out
 // (no seat, needs a distribution point, strip full, blocked routes) exits 1. A partial that names a
@@ -11,6 +12,7 @@ import { naturalCompare } from '../agent/order.ts'
 import { loadPartial } from '../agent/partial.ts'
 import type { KeepMap } from '../agent/place.ts'
 import { reportText } from '../agent/readability.ts'
+import { LABEL_MODES, type LabelMode } from '../agent/labelling.ts'
 import { bomQuantities, channelTable, channelsText, quantitiesText, sheetBom } from '../agent/tables.ts'
 import type { Args } from './args.ts'
 import { CliError, EXIT, type Io, flag, printJson, readJson, writeFile } from './io.ts'
@@ -30,6 +32,8 @@ export function layoutCommand(args: Args, io: Io): number {
   const json = args.flags.has('--json')
   const out = flag(args, '--out')
   const keepPath = flag(args, '--keep')
+  const labels = (flag(args, '--labels') ?? 'auto') as LabelMode
+  if (!LABEL_MODES.includes(labels)) throw new CliError(`layout: --labels must be ${LABEL_MODES.join(', ')}`, EXIT.input)
   const [input] = args.positionals
   if (!out) throw new CliError('layout: -o <sheet.json> is required', EXIT.input)
   if (!input === !keepPath) throw new CliError('layout: give a netlist file, or --keep <partial.json>, but not both', EXIT.input)
@@ -44,7 +48,7 @@ export function layoutCommand(args: Args, io: Io): number {
     warnings = unknownKept(keepPath, raw, keep)
   } else raw = readJson(io, input!)
   if (!json) for (const w of warnings) io.stderr(`warning: ${w}\n`)
-  const r = layoutNetlist(raw, { keep })
+  const r = layoutNetlist(raw, { keep, labels })
   if (!r.ok) {
     if (json) printJson(io, { format: 'circuitoon-cli/layout/1', ok: false, output: null, attempts: 0, report: null, quantities: [], channels: [], warnings, errors: r.errors })
     else io.stderr(`${r.stage === 'input' ? 'The netlist is not valid' : 'The netlist cannot be laid out'}:\n${r.errors.map((e) => `  - ${e}`).join('\n')}\n`)

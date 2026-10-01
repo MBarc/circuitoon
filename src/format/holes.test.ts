@@ -169,7 +169,7 @@ describe('mounts that load but do not plug', () => {
     expect(r.ok && r.warnings).toEqual([
       'parts[3].mount: a leg of "c" sits on a hole another mounted part already uses, so it plugs into nothing',
       'parts[4].mount: not every leg of "e" sits on a hole of board "b", so it plugs into nothing',
-      'parts[5].mount: part "f" cannot mount (boards, parts with a bus pin and parts with no pins never do)',
+      'parts[5].mount: part "f" cannot mount (boards, net labels, parts with a bus pin and parts with no pins never do)',
     ])
     expect(r.ok && r.diagram.parts[3].mount).toEqual({ board: 'b' })
   })

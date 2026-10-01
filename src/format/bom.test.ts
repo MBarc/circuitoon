@@ -150,3 +150,37 @@ describe('CSV', () => {
     expect(csv.includes('\n') && !/[^\r]\n/.test(csv)).toBe(true)
   })
 })
+
+describe('labelled nets (rule V3)', () => {
+  const label: ModuleDef = { format: 'circuitoon-module/1', id: 'net-label', name: 'Net label', category: 'Wiring', netLabel: true, pins: [{ name: 'NET', side: 'left' }], size: { w: 5, h: 2 } }
+  const two: ModuleDef = { format: 'circuitoon-module/1', id: 'two', name: 'Two', pins: [{ name: 'A', side: 'left' }, { name: 'B', side: 'right' }] }
+  const lab = (uid: string, net: string): PartInstance => ({ uid, designator: uid.toUpperCase(), module: 'net-label', x: 0, y: 0, values: { net } })
+  const stub = (uid: string, a: string, b: string): Connection => ({ ...wire(uid, a, b), gauge: 22, routing: true })
+  /** Three parts joined only through labels X (U1.A, U2.A) and a second label X shared by two pins of U3. */
+  const labelled = (intent?: unknown): Diagram => ({
+    format: 'circuitoon-diagram/1', title: 'L', modules: { two, 'net-label': label },
+    parts: [part('U1', 'two'), part('U2', 'two'), part('U3', 'two'), lab('n1', 'X'), lab('n2', 'X'), lab('n3', 'X')],
+    connections: [stub('s1', 'u1.A', 'n1.NET'), stub('s2', 'u2.A', 'n2.NET'), stub('s3', 'u3.A', 'n3.NET'), stub('s4', 'u3.B', 'n3.NET')],
+    ...(intent === undefined ? {} : { intent }),
+  })
+  it('never counts a wire to a label, and counts pieces - 1 real wires per labelled net (two pins on one label are two pieces)', () => {
+    const bom = billOfMaterials(labelled())
+    expect(bom.wires).toHaveLength(1)
+    expect(bom.wires[0]).toMatchObject({ cable: 'Hookup wire', count: 3, labelled: true, gauge: 22 })
+    expect(bomLines(bom)).toContain('3 x Hookup wire, 22 AWG, black, for labelled nets (length not drawn)')
+  })
+  it('carries the netlist cable ends onto those wires, so Dupont jumpers and ends are counted', () => {
+    const bom = billOfMaterials(labelled({ format: 'circuitoon-netlist/1', title: 'L', parts: [], nets: [], wires: { ends: 'dupont-female' } }))
+    expect(bom.wires[0]).toMatchObject({ cable: 'Dupont F-F jumper', ends: ['dupont-female', 'dupont-female'], count: 3, labelled: true })
+    expect(bom.connectors).toEqual([{ kind: 'dupont-female', name: expect.any(String), count: 6 }])
+    expect(bomCsv(bom)).toContain('"Wire","3","Dupont F-F jumper","22 AWG, black","","","","for labelled nets (length not drawn)"')
+  })
+  it('counts pins already wired to each other as one piece', () => {
+    const d = labelled()
+    d.connections.push(wire('w9', 'u1.A', 'u2.A'))
+    const bom = billOfMaterials(d)
+    // U1.A and U2.A are one piece through the drawn wire: pieces U1.A + U2.A, U3.A and U3.B, so 2 labelled wires, plus the drawn one.
+    expect(bom.wires.find((w) => w.labelled)?.count).toBe(2)
+    expect(bom.wires.filter((w) => !w.labelled).reduce((n, w) => n + w.count, 0)).toBe(1)
+  })
+})

@@ -2,7 +2,8 @@
 // describe a circuit, checked against every contract rule. Nothing is guessed: each violation is an
 // error naming its path. Repeated sub-circuits are expanded first (repeat.ts), so every rule here
 // also holds for every copy. Pure.
-import { type ModuleDef, type PinDef, PARAM_RULES, isBoard, isObj, isNum, isSpacer, validParamValue, validateModule } from '../format/module.ts'
+import { type ModuleDef, type PinDef, PARAM_RULES, isBoard, isNetLabel, isObj, isNum, isSpacer, validParamValue, validateModule } from '../format/module.ts'
+import { mainsOf } from '../format/mainsModel.ts'
 import { ANNOTATION_LABEL_MAX, ANNOTATION_TEXT_MAX, isValidColor } from '../format/diagram.ts'
 import { type EndKind, isEndKind } from '../format/cables.ts'
 import { type RawNet, type RawPart, type RepeatCopy, endpointText, expandRepeat } from './repeat.ts'
@@ -34,6 +35,11 @@ export interface IntentNet {
   name: string
   terminals: Terminal[]
   color?: string
+  /**
+   * The agent asks for this net to be drawn with net labels instead of wires (`"label": true`): a
+   * named flag at each end, joined by name. Never on a net with a mains terminal. Left out when false.
+   */
+  label?: true
 }
 export interface Intent {
   title: string
@@ -144,6 +150,10 @@ export function parseNetlist(raw: unknown, library: ModuleLookup): IntentResult 
       errors.push(`${at}.module: no built-in or embedded module "${p.module}"`)
       continue
     }
+    if (isNetLabel(m)) {
+      errors.push(`${at}.module: ${p.module} is not a part; to draw a net with labels, set "label": true on the net`)
+      continue
+    }
     const part: IntentPart = { ref, module: p.module }
     if (p.values !== undefined) {
       if (!isObj(p.values)) errors.push(`${at}.values: must be an object`)
@@ -223,14 +233,14 @@ export function parseNetlist(raw: unknown, library: ModuleLookup): IntentResult 
     const at = `nets[${i}]`
     if (!isObj(n) || !Array.isArray(n.pins)) return void errors.push(`${at}: must be { "name", "pins": [...] }`)
     const extra = typeof n.name === 'string' ? (rep?.shared.get(n.name) ?? []) : []
-    rawNets.push({ name: n.name, at, pins: [...n.pins.map((ep, j) => ({ ep, at: `${at}.pins[${j}]` })), ...extra] })
+    rawNets.push({ name: n.name, at, pins: [...n.pins.map((ep, j) => ({ ep, at: `${at}.pins[${j}]` })), ...extra], ...(n.label !== undefined ? { label: n.label } : {}) })
   })
   rawNets.push(...(rep?.nets ?? []))
   const nets: IntentNet[] = []
   const inNet = new Map<string, string>()
   // The binding (and its text) that first took each endpoint, so reuse is caught after labels resolve.
   const boundAs = new Map<string, { binding: string; text: string | null }>()
-  for (const { name, pins, at } of rawNets) {
+  for (const { name, pins, at, label } of rawNets) {
     if (typeof name !== 'string' || name === '') {
       errors.push(`${at}.name: required`)
       continue
@@ -262,7 +272,20 @@ export function parseNetlist(raw: unknown, library: ModuleLookup): IntentResult 
       terminals.push(t)
     }
     if (terminals.length < 2) errors.push(`${at}.pins: a net joins at least 2 pins`)
-    nets.push({ name, terminals })
+    // A label never stands in for mains wiring: mains is drawn as real cable, so it can be checked.
+    let labelled = false
+    if (label !== undefined) {
+      if (typeof label !== 'boolean') errors.push(`${at}.label: must be true or false`)
+      else if (label) {
+        const hot = terminals.find((t) => {
+          const m = byRef.get(t.ref)?.module
+          return !!m && mainsOf(m).terminals.has(t.name)
+        })
+        if (hot) errors.push(`${at}.label: net ${name} joins mains terminal ${terminalName({ ...hot, hole: undefined })}; mains is always drawn as wires, never as labels`)
+        else labelled = true
+      }
+    }
+    nets.push({ name, terminals, ...(labelled ? { label: true as const } : {}) })
   }
   if (rep) errors.push(...rep.errors)
 

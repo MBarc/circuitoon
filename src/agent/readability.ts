@@ -4,7 +4,8 @@
 // so layout can fail with them (amendment A7). Pure.
 import { type Diagram, type PartInstance, type Routes, moduleOf } from '../format/diagram.ts'
 import { type Pt, type Rect, bodyRect } from '../format/geometry.ts'
-import { layoutModule } from '../format/module.ts'
+import { isNetLabel, layoutModule } from '../format/module.ts'
+import { flagRect } from '../format/netLabels.ts'
 import { placedCaptionBox } from '../render/captionBox.ts'
 import { seatedLabels } from '../format/seatedLabels.ts'
 import { intersects, union } from './footprint.ts'
@@ -18,14 +19,24 @@ export interface ReadabilityReport {
   wireLength: number
   sheet: { w: number; h: number }
   blockedNets: string[]
+  /** The layout's label mode and the nets it drew with net labels (layout only). */
+  labels?: { mode: 'auto' | 'none' | 'all'; nets: string[]; unplaced: string[] }
+  /** How many readability warnings (crowded wires, hugged parts, covered labels, many crossings) the sheet has (layout only). */
+  readabilityWarnings?: number
 }
 
 /** Every overlapping pair on the sheet, as "R1 and R2" (bodies) or "R1 caption and R2 body". */
 export function overlaps(d: Diagram): { body: string[]; caption: string[] } {
   const parts = d.parts.filter((p) => moduleOf(d, p.module)).sort((a, b) => naturalCompare(a.uid, b.uid))
-  const body = (p: PartInstance) => bodyRect(p, layoutModule(moduleOf(d, p.module)!))
+  // A net label's body is its drawn flag, so labels on neighbouring header pins never count as overlapping.
   const seated = seatedLabels(d)
-  const caption = (p: PartInstance) => placedCaptionBox(p, moduleOf(d, p.module)!, seated.get(p.uid))
+  // Each part's rectangles once (the pair loops below would otherwise rebuild them n times).
+  const rects = new Map(parts.map((p) => {
+    const m = moduleOf(d, p.module)!
+    return [p, { body: isNetLabel(m) ? flagRect(p, m, true) : bodyRect(p, layoutModule(m)), caption: placedCaptionBox(p, m, seated.get(p.uid)) }]
+  }))
+  const body = (p: PartInstance) => rects.get(p)!.body
+  const caption = (p: PartInstance) => rects.get(p)!.caption
   const own = (a: PartInstance, b: PartInstance) => a.mount?.board === b.uid || b.mount?.board === a.uid
   const bodies: string[] = []
   const captions: string[] = []
@@ -75,5 +86,5 @@ export function readability(d: Diagram, routes: Routes, netOfWire: Map<string, s
 }
 
 export function reportText(r: ReadabilityReport): string {
-  return `Readability: body overlaps ${r.bodyOverlaps}, caption overlaps ${r.captionOverlaps}, wire crossings ${r.wireCrossings}, wire length ${r.wireLength} px, sheet ${r.sheet.w} x ${r.sheet.h} px, blocked nets ${r.blockedNets.length ? r.blockedNets.join(', ') : 'none'}.`
+  return `Readability: body overlaps ${r.bodyOverlaps}, caption overlaps ${r.captionOverlaps}, wire crossings ${r.wireCrossings}, wire length ${r.wireLength} px, sheet ${r.sheet.w} x ${r.sheet.h} px, blocked nets ${r.blockedNets.length ? r.blockedNets.join(', ') : 'none'}${r.readabilityWarnings !== undefined ? `, readability warnings ${r.readabilityWarnings}` : ''}${r.labels ? `, labels ${r.labels.mode} (${r.labels.nets.length ? `nets ${r.labels.nets.join(', ')}` : 'no nets labelled'}${r.labels.unplaced.length ? `; no room for a label at some endpoints of ${r.labels.unplaced.join(', ')}, wired instead` : ''})` : ''}.`
 }

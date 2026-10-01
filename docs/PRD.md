@@ -104,7 +104,8 @@ Parts and wires are both first-class objects you click, drag, select and delete,
 
 **Electrical helpers**
 
-- Hovering a pin or a breadboard hole highlights every pin and hole on the same net, through wires, mounted legs, bus pins and `internal` joins.
+- Hovering a pin or a breadboard hole highlights every pin and hole on the same net, through wires, mounted legs, bus pins, `internal` joins and net labels.
+- Net labels: the built-in `net-label` part (module flag `netLabel: true`, one pin) is a pointed Sticker flag with a net name inside, stored in `parts[].values.net`. Every label with the same name (trimmed, case-sensitive: SDA and sda are two nets, as in KiCad and in a netlist's net names) is one electrical node in `netlist()`, so the checker, the mains analysis, verify, the bill of materials and the wire colour roles all see it as wired. The flag takes its net's low-voltage role colour (ground black with a small ground mark, a positive supply red, a signal blue); an unnamed label is white and dashed. The name is set in the Inspector (one undo step); hovering or selecting a label lights every label of its name, and the Inspector lists them. A label never plugs into a board. The checker gives an error for a label with no name (`label-unnamed`), a warning for a name used by one label only (`label-alone`, which suggests a label that differs only in case), and an error for any label on mains wiring or an energized net (`label-mains`): a label would hide a live conductor behind a flag and skip every cable check, so mains is always drawn as wires; such a label still conducts in the analysis (it never hides the hazard) and is drawn in the hazard orange with a bolt. In a netlist, `"label": true` on a net asks for labels (refused on a net with a mains terminal); verify treats labels as infrastructure, like `routing` wires.
 - Wiring checker: finds mistakes a hobbyist would make on the bench from the nets and each pin's `type` and `supply` (see below).
 
 **Wiring checker**
@@ -365,6 +366,7 @@ V1 ships a starter library drawn in the same cartoon style, all defined in the s
 | Indicators | LED, WS2812B LED strip segment, WS2812D 5 mm addressable RGB LED, 12 mm passive buzzer | Color (LED) |
 | Switches | Push button, 6 mm and 12 mm 4-pin tactile switches, KCD1 rocker switch (also a mains switch: 6 A 250 V AC, 10 A 125 V AC) | - |
 | Connectors | JST-XH 2/3/4-pin, Dupont housing 1x2/1x3/1x4, USB panel-mount extension (micro-USB, USB-C) | - |
+| Wiring | Net label (not physical: never in the bill of materials; see Net labels) | Net name |
 | Mains | Wall outlets: US NEMA 5-15R and 5-20R duplex, UK BS 1363, Schuko CEE 7/3, French CEE 7/5, AU/NZ AS/NZS 3112, Japan 1-15R duplex (unpolarized, polarized). Plug-in devices (Mean Well NGE12 with US, EU, UK and AU plugs): USB wall chargers 5 V, barrel-jack wall adapters 12 V. Cord plugs: US NEMA 5-15P and 1-15P polarized, Japan 1-15P, CEE 7/7, Europlug CEE 7/16, UK BS 1363 fused (3-lead, 2-lead), AU/NZ AS/NZS 3112 (3-lead, 2-lead). AC-DC modules: Hi-Link HLK-PM01 (5 V) and HLK-PM03 (3.3 V), isolation unknown; Mean Well IRM-03-5, IRM-03-3.3 and IRM-05-5, Class II. Lamp holders E26 (120 V lamp) and E27 (230 V lamp, earthed). In-line 5 x 20 mm fuse holder (Littelfuse 150274). Wago 221-412, 221-413 and 221-415 lever connectors. Terminal blocks: Phoenix Contact MSTB 2,5 (5.08 mm) and MC 1,5 (3.81 mm) pluggable, plug with header, 2 to 6 positions (MC 1,5 is rated 160 V under overvoltage category III, so on 230 V it is always conditional); KF2EDG 5.08 mm and KF301 5.0 mm clones, 2 and 3 positions, ratings unverified. Fotek SSR-25DA solid state relay: load 1 and 2 (24-380 VAC, 25 A on a heatsink with thermal grease; the rating's conditions), control 3 (+) and 4 (-) at 4-32 V DC (in its name; not checked yet, since no module states its GPIO voltage); off, it still leaks up to 5 mA; input-to-output isolation unknown | Mains voltage (outlets); Voltage (barrel adapters); Fuse rating (fuse holder) |
 
 Not built yet: RGB LED (common anode/cathode), slide switch, toggle switch, diode, NPN and PNP transistor, N-channel MOSFET, USB power breakout, DC barrel jack, fixed 5V regulator, Arduino Uno, full-size Raspberry Pi boards, pin header.
@@ -469,3 +471,14 @@ V1 is done when someone can build a wiring sheet for a real breadboard project f
 - [x] Built-in boards follow physical pin order, because the sheet is something you build from.
 - [x] Breadboards are modeled at hole level (2026-09-25): each strip and rail is a hole group, parts plug in by mounting, and jumpers end in any hole. Bus pins with offsets stay readable for older files.
 - [x] Hosting: GitHub Pages from the public repo `MBarc/circuitoon` (https://mbarc.github.io/circuitoon/).
+
+## Changelog
+
+### Net labels and readable layouts (plugin 0.4.0)
+
+What changes for existing sheets when they are opened, checked or laid out again:
+
+- **Captions of bottom-pin parts move above the body.** A part whose pins all leave its bottom edge (a BME280 breakout, a Dupont housing) now has its caption above the body, clear of the wires and labels leaving those pins. Sheets are not edited: the caption is drawn there on load. A `layout --keep` whose kept positions now make a caption overlap another part still lays out; the overlap is listed as a `label-covered` readability warning and in the report's caption overlaps.
+- **Automatic wires re-route.** The router now charges extra for a wire running beside another one a grid step away, so parallel wires keep two grid steps apart where there is room. Every wire without a stored route is routed again when the sheet loads, so it may take a different path than before. Hand-shaped wires (those with a stored `route`) keep their bends.
+- **Wires cross captions before DIP pin names.** When a wire has no route clear of all text, it may now cross a caption before it crosses the pin names printed past a DIP chip's pins: a hidden caption hides a designator, but a hidden pin name can cause a miswire.
+- **Net labels** (`net-label`), the readability warnings in `check` and `gate`, `layout --labels`, `render --tiles`, and the bill's `for labelled nets (length not drawn)` wires are new; see "Net labels" above and the agent toolkit's skill.

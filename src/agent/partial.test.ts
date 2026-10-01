@@ -4,7 +4,10 @@ import { describe, expect, it } from 'vitest'
 import { validateDiagram } from '../format/diagram.ts'
 import { mountIssues } from '../format/breadboard.ts'
 import { libraryLookup } from './catalog.ts'
-import { layoutNetlist } from './layout.ts'
+import { layoutNetlist as layoutWith } from './layout.ts'
+
+/** These tests pin how nets are wired, so they lay out without net labels (layoutLabels.test.ts covers those). */
+const layoutNetlist = (raw: unknown, opts: Parameters<typeof layoutWith>[1] = {}) => layoutWith(raw, { labels: 'none', ...opts })
 import { loadPartial } from './partial.ts'
 import { verifyDiagram } from './verify.ts'
 import { ledNetlist, tiltSensors } from './fixtures.testing.ts'

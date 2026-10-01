@@ -3,7 +3,8 @@
 // device seated on an outlet (and that outlet). Shared by Part.tsx, the router's label avoidance,
 // the export bounds and the layout's overlap checks, so all of them agree.
 import { type Pt, type Rect, type Rotation, bodyRect, worldPins } from '../format/geometry.ts'
-import { LEAD, layoutModule, pinRoom, type ModuleDef, usesTipLabels } from '../format/module.ts'
+import { LEAD, isNetLabel, layoutModule, pinRoom, type ModuleDef, usesTipLabels } from '../format/module.ts'
+import { flagRect } from '../format/netLabels.ts'
 import { partCaption } from '../format/values.ts'
 
 export const CAPTION_SIZE = 8.5
@@ -15,13 +16,19 @@ export type CaptionPart = { x: number; y: number; rotation?: Rotation; designato
 /** The caption anchor in part-local px (text-anchor middle, on the baseline). */
 export function captionAnchor(m: ModuleDef, rotation: Rotation = 0): Pt {
   const box = bodyRect({ x: 0, y: 0, rotation }, layoutModule(m))
-  const stubsDown = worldPins({ x: 0, y: 0, rotation }, m).some((p) => p.dir.y > 0)
+  const pins = worldPins({ x: 0, y: 0, rotation }, m)
+  const stubsDown = pins.some((p) => p.dir.y > 0)
+  // Pins only along the bottom (a sensor breakout's header): above the body, so the wires and labels
+  // leaving those pins never run through it.
+  if (stubsDown && !pins.some((p) => p.dir.y < 0)) return { x: box.x + box.w / 2, y: box.y - 6 }
   // Below the stubs, and below the names past their tips on a part that draws them there.
   return { x: box.x + box.w / 2, y: box.y + box.h + (stubsDown ? (usesTipLabels(m) ? pinRoom(m) : LEAD) : 0) + 15 }
 }
 
 /** The caption's box in world px (8 px above the baseline, 2 below). */
 export function captionBox(part: CaptionPart, m: ModuleDef, text = partCaption(part, m)): Rect {
+  // A net label draws no caption: its name is in its flag, so the flag is what wires and parts keep off.
+  if (isNetLabel(m)) return flagRect(part, m, true)
   const a = captionAnchor(m, part.rotation ?? 0)
   const w = text.length * CAPTION_CHAR
   return { x: part.x + a.x - w / 2, y: part.y + a.y - 8, w, h: 10 }

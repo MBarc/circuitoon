@@ -7,7 +7,7 @@
 // must verify clean against its own intent before it is returned, so a kept part that shorts two
 // nets through a strip is caught here. Wires are coloured by role (colors.ts). The sheet embeds its modules and stores the netlist as
 // `intent`, so every later check re-verifies against it. Pure.
-import { DIAGRAM_FORMAT, type Diagram, computeRoutes, moduleOf, resolveEndpoint } from '../format/diagram.ts'
+import { DIAGRAM_FORMAT, type Diagram, type PartInstance, computeRoutes, moduleOf, resolveEndpoint } from '../format/diagram.ts'
 import { ROUTE_REACH, withinReach } from '../format/router.ts'
 import { tightFootprint, union } from './footprint.ts'
 import { type Intent, type ModuleLookup, parseNetlist } from './netlist.ts'
@@ -17,11 +17,17 @@ import { realize } from './realize.ts'
 import { colorByRole } from './colors.ts'
 import { type ReadabilityReport, overlaps, readability } from './readability.ts'
 import { verifyDiagram } from './verify.ts'
+import type { LabelMode } from './labelling.ts'
+import { readabilityFindings } from './readabilityWarnings.ts'
 import { naturalCompare } from './order.ts'
 
-export const SPACINGS = [20, 40, 60]
+export const SPACINGS = [30, 60, 90]
+/** How many placements with more spacing labels that found no room get (each costs a full placement; the layout stays inside its 2 s budget). */
+export const LABEL_RETRIES = 1
 /** The module a repeat block's local distribution strips use (amendment A18.1). */
 export const RAIL_MODULE = 'power-rail-strip'
+/** The module the layout's net labels use. */
+export const LABEL_MODULE = 'net-label'
 
 export interface LayoutOutput {
   diagram: Diagram
@@ -33,14 +39,21 @@ export interface LayoutOutput {
 }
 export type LayoutResult = { ok: true; value: LayoutOutput } | { ok: false; stage: 'input' | 'layout'; errors: string[] }
 
-export function layoutNetlist(raw: unknown, opts: { library?: ModuleLookup; keep?: KeepMap } = {}): LayoutResult {
+export function layoutNetlist(raw: unknown, opts: { library?: ModuleLookup; keep?: KeepMap; labels?: LabelMode } = {}): LayoutResult {
+  const mode = opts.labels ?? 'auto'
   const library = opts.library ?? libraryLookup
   const parsed = parseNetlist(raw, library)
   if (!parsed.ok) return { ok: false, stage: 'input', errors: parsed.errors }
   const intent = parsed.intent
   let blocked: string[] = []
-  for (const [i, spacing] of SPACINGS.entries()) {
-    const placed = placeParts(intent, { spacing, keep: opts.keep, rail: library(RAIL_MODULE) })
+  // With labels, a repeat block's shared nets are labels at each copy, so the block needs no local
+  // rail strips (A18.1); they come back only as the fallback when a labelled try cannot be realized,
+  // and always with --labels none.
+  const tries = mode === 'none' ? [true] : [false, true]
+  // Boards seat their parts the same way whatever the spacing: once per layout.
+  const mounts = new Map<string, PartInstance[]>()
+  attempt: for (const [i, spacing] of SPACINGS.entries()) for (const rails of tries) {
+    const placed = placeParts(intent, { spacing, keep: opts.keep, rail: rails ? library(RAIL_MODULE) : undefined, mounts })
     if (!placed.ok) return { ok: false, stage: 'layout', errors: placed.errors }
     const base: Diagram = {
       format: DIAGRAM_FORMAT,
@@ -52,11 +65,25 @@ export function layoutNetlist(raw: unknown, opts: { library?: ModuleLookup; keep
       intent: structuredClone(raw),
     }
     const over = overlaps(base)
-    if (over.body.length || over.caption.length)
-      return { ok: false, stage: 'layout', errors: [...over.body.map((o) => `body overlap: ${o}; move one of them`), ...over.caption.map((o) => `caption overlap: ${o}; move one of them`)] }
-    const real = realize(intent, base, placed.locals)
-    if (!real.ok) return { ok: false, stage: 'layout', errors: real.errors }
-    const wired: Diagram = { ...base, connections: real.value.connections }
+    // A caption overlap a kept position causes (an old partial, after captions moved) is the user's
+    // layout to fix: it stays in the report and as a readability warning, never a failed layout.
+    const kept = (o: string) => /^(\S+) caption and (\S+) /.exec(o)?.slice(1, 3).some((uid) => opts.keep?.has(uid)) ?? false
+    const captions = over.caption.filter((o) => !kept(o))
+    if (over.body.length || captions.length)
+      return { ok: false, stage: 'layout', errors: [...over.body.map((o) => `body overlap: ${o}; move one of them`), ...captions.map((o) => `caption overlap: ${o}; move one of them`)] }
+    const labelModule = library(LABEL_MODULE)
+    const real = realize(intent, base, placed.locals, { labels: mode, labelModule })
+    if (!real.ok) {
+      if (!rails) continue
+      return { ok: false, stage: 'layout', errors: real.errors }
+    }
+    // Labels that found no room get another try with more spacing (before any routing, which is the
+    // costly part); the last placement wires them to their nets' other labels.
+    if (real.value.unlabelled.length && i < LABEL_RETRIES) continue attempt
+    const labelled = real.value.labels.length && labelModule
+      ? { parts: [...base.parts, ...real.value.labels], modules: { ...base.modules, [LABEL_MODULE]: labelModule } }
+      : {}
+    const wired: Diagram = { ...base, ...labelled, connections: real.value.connections }
     // Colours by the checker's net roles, so the sheet never breaks the colour convention it checks.
     const diagram: Diagram = { ...wired, connections: colorByRole(intent, wired, real.value.netOfWire) }
     const routes = computeRoutes(diagram)
@@ -77,10 +104,11 @@ export function layoutNetlist(raw: unknown, opts: { library?: ModuleLookup; keep
         errors: [`sheet too large to route: parts span ${Math.ceil(span.w)} x ${Math.ceil(span.h)} px; keep parts within about ${ROUTE_REACH} px of each other (nets ${nets.join(', ')}).`],
       }
     }
-    if (blocked.length) continue
+    if (blocked.length) continue attempt
     const findings = verifyDiagram(diagram, library).filter((f) => f.severity === 'error')
     if (findings.length) return { ok: false, stage: 'layout', errors: findings.map((f) => `verify ${f.rule}: ${f.message}`) }
-    return { ok: true, value: { diagram, report: readability(diagram, routes, real.value.netOfWire), intent, attempts: i + 1, netOfWire: real.value.netOfWire } }
+    const report = { ...readability(diagram, routes, real.value.netOfWire), readabilityWarnings: readabilityFindings(diagram, routes).length, labels: { mode, nets: real.value.labelled, unplaced: [...new Set(real.value.unlabelled)] } }
+    return { ok: true, value: { diagram, report, intent, attempts: i + 1, netOfWire: real.value.netOfWire } }
   }
   return { ok: false, stage: 'layout', errors: [`routes blocked after ${SPACINGS.length} placements with more spacing each time: ${blocked.join(', ')}`] }
 }

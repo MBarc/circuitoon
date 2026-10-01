@@ -19,6 +19,8 @@ export interface RawNet {
   name: unknown
   pins: RawPin[]
   at: string
+  /** The net's `label` request, unvalidated (parseNetlist checks it). */
+  label?: unknown
 }
 export interface RepeatCopy {
   /** `<repeat name>_<copy>`: what `render --focus` and the channel table call the copy. */
@@ -158,7 +160,7 @@ export function expandRepeat(raw: unknown, topRefs: Set<string>, topNets: string
       }
       // Binding values here are unvalidated when errors is non-empty; callers may resolve them for error reporting but must not emit a diagram from them.
       if (port !== null && isObj(entry) && Object.hasOwn(entry, port)) pins.push({ ep: entry[port], at: `${at}.${port}`, binding: `copy ${k} port ${port}` })
-      out.nets.push({ name: `${name}_${k}.${net.name}`, pins, at: `${nat} (copy ${k})` })
+      out.nets.push({ name: `${name}_${k}.${net.name}`, pins, at: `${nat} (copy ${k})`, ...(net.label !== undefined ? { label: net.label } : {}) })
     })
     out.copies.push({ id: `${name}_${k}`, repeat: name, index: k, refs, bindings: chosen })
   }

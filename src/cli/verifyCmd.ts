@@ -10,6 +10,7 @@ import { holeKey } from '../format/breadboard.ts'
 import { driftedParts, verifyDiagram } from '../agent/verify.ts'
 import { libraryLookup } from '../agent/catalog.ts'
 import { NOT_CHECKED } from '../agent/notChecked.ts'
+import { readabilityFindings } from '../agent/readabilityWarnings.ts'
 import type { Args } from './args.ts'
 import { CliError, EXIT, type Io, loadSheet, printJson } from './io.ts'
 
@@ -102,5 +103,6 @@ export function checkCommand(args: Args, io: Io): number {
   const all = verifyDiagram(diagram, libraryLookup)
   const checked = withoutStale(checkDiagram(diagram), all)
   const verified = diagram.intent !== undefined ? all.filter((f) => !alsoChecked(f, checked)) : []
-  return report(io, args, 'circuitoon-cli/check/1', uniqueIds([...verified, ...checked].map(cliFinding)))
+  // Readability warnings (never blocking): crowded wires, wires hugging parts, covered labels, many crossings.
+  return report(io, args, 'circuitoon-cli/check/1', uniqueIds([...verified, ...checked, ...readabilityFindings(diagram)].map(cliFinding)))
 }

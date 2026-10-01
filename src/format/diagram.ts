@@ -1,6 +1,6 @@
 // Diagram format (circuitoon-diagram/1): types plus the wire geometry the renderer needs.
 
-import { GRID, type ModuleDef, PARAM_RULES, isBoard, layoutModule, moduleSettings, validateModule, validParamValue, isObj, isNum } from './module.ts'
+import { GRID, type ModuleDef, PARAM_RULES, isBoard, isNetLabel, layoutModule, moduleSettings, validateModule, validParamValue, isObj, isNum } from './module.ts'
 import { type Pt, type Rect, type Rotation, type WorldPin, bodyRect, simplify, toWorld, worldPins } from './geometry.ts'
 import { type RouteRequest, SEARCH_MARGIN, addToOccupancy, inGrown, Occupancy, onGrid, PointIndex, routeOrthogonal } from './router.ts'
 import { manualRouteBlocked, tidy } from './wireEdit.ts'
@@ -8,6 +8,7 @@ import { coveredHoles, holeIndex, mountIssues, plugOfPin, plugsOf } from './brea
 import { type CableEndDraw, END_SIZE, endKind, endPlacement, isEndKind, normalizeEnds, type WireEnds } from './cables.ts'
 import { placedCaptionBox, tipLabelBoxes } from '../render/captionBox.ts'
 import { seatedLabels } from './seatedLabels.ts'
+import { LABEL_VALUE, flagRect } from './netLabels.ts'
 import { annotationRect, frameTab } from '../render/annotationGeometry.ts'
 
 /** How every load warning about a dropped value override ends: the part now shows its module
@@ -170,6 +171,8 @@ export function moduleOf(d: Pick<Diagram, 'modules'>, id: string): ModuleDef | u
 export function partObstacles(d: Diagram): Rect[] {
   return d.parts.flatMap((p) => {
     const m = moduleOf(d, p.module)
+    // A net label is as big as its drawn flag (its two-unit body would cover the next header pin's label).
+    if (m && isNetLabel(m)) return [flagRect(p, m, true)]
     return m && m.obstacle !== false ? [bodyRect(p, layoutModule(m))] : []
   })
 }
@@ -416,6 +419,8 @@ function ownGroups(c: Connection, legGroup: Map<string, string>): Set<string> {
  */
 export interface LabelPoints {
   captions: Map<string, Pt[]>
+  /** Pin names drawn past the tips (a DIP chip), by part: kept off harder than captions, since a hidden pin name can cause a miswire. */
+  names?: Map<string, Pt[]>
   tabs: Pt[]
 }
 const LABEL_PAD = 3
@@ -429,15 +434,19 @@ function gridNodesIn(r: Rect): Pt[] {
 
 export function labelPoints(d: Diagram): LabelPoints {
   const captions = new Map<string, Pt[]>()
+  const names = new Map<string, Pt[]>()
   // A seated plug-in device and its outlet draw their captions beside the outlet (seatedLabels.ts).
   const seated = seatedLabels(d)
   for (const p of d.parts) {
     const m = moduleOf(d, p.module)
-    // Pin names past the tips (a DIP chip) are kept off like the caption, by the same owner (Ruling C3).
-    if (m) captions.set(p.uid, [placedCaptionBox(p, m, seated.get(p.uid)), ...tipLabelBoxes(p, m)].flatMap(gridNodesIn))
+    if (!m) continue
+    captions.set(p.uid, gridNodesIn(placedCaptionBox(p, m, seated.get(p.uid))))
+    // Pin names past the tips (a DIP chip) are kept off too, by the same owner (Ruling C3), and give way last.
+    const tips = tipLabelBoxes(p, m).flatMap(gridNodesIn)
+    if (tips.length) names.set(p.uid, tips)
   }
   const tabs = (d.annotations ?? []).flatMap((a) => (a.type === 'frame' ? (a.label ? gridNodesIn(frameTab(a)) : []) : gridNodesIn(annotationRect(a))))
-  return { captions, tabs }
+  return { captions, names, tabs }
 }
 
 /**
@@ -449,6 +458,8 @@ export interface RouteAvoid {
   holes: PointIndex
   legGroup: Map<string, string>
   text: PointIndex
+  /** Pin names past the tips, by part uid. */
+  names: PointIndex
 }
 
 export function routeAvoid(d: Diagram, holes: BoardHoles = boardHoles(d), labels: LabelPoints = labelPoints(d)): RouteAvoid {
@@ -458,7 +469,9 @@ export function routeAvoid(d: Diagram, holes: BoardHoles = boardHoles(d), labels
   // Part uids are never empty (validateDiagram), so "" is free for text no wire owns.
   for (const p of labels.tabs) ti.add(p.x, p.y, '')
   for (const [uid, pts] of labels.captions) for (const p of pts) ti.add(p.x, p.y, uid)
-  return { holes: hi, legGroup: holes.legGroup, text: ti }
+  const ni = new PointIndex()
+  for (const [uid, pts] of labels.names ?? []) for (const p of pts) ni.add(p.x, p.y, uid)
+  return { holes: hi, legGroup: holes.legGroup, text: ti, names: ni }
 }
 
 /** True when a straight run from `a` to `b` passes within 3 px of a point of `index` not skipped. */
@@ -492,7 +505,8 @@ export function routeWire(
   const [wx0, wy0, wx1, wy1] = [Math.min(a.end.x, b.end.x) - reach, Math.min(a.end.y, b.end.y) - reach, Math.max(a.end.x, b.end.x) + reach, Math.max(a.end.y, b.end.y) + reach]
   const anyHoles = avoid.holes.some(wx0, wy0, wx1, wy1, ownHoles, () => true)
   const anyText = avoid.text.some(wx0, wy0, wx1, wy1, ownText, () => true)
-  if (facing && !c.route && !manualRouteBlocked([a.end, b.end], own) && !runsOver(a.end, b.end, avoid.holes, ownHoles) && !runsOver(a.end, b.end, avoid.text, ownText))
+  const anyNames = avoid.names.some(wx0, wy0, wx1, wy1, ownText, () => true)
+  if (facing && !c.route && !manualRouteBlocked([a.end, b.end], own) && !runsOver(a.end, b.end, avoid.holes, ownHoles) && !runsOver(a.end, b.end, avoid.text, ownText) && !runsOver(a.end, b.end, avoid.names, ownText))
     return { points: [a.end, b.end], blocked: false }
   if (c.route) {
     let points = manualPoints(a, b, c.route)
@@ -521,9 +535,17 @@ export function routeWire(
   // none did, it would fail again the same way, so it is skipped.
   const holesHit = { hit: false }
   const textHit = { hit: false }
+  const namesHit = { hit: false }
   const holesIn = { index: avoid.holes, skip: ownHoles, refused: holesHit }
-  let clear = anyText ? attempt([holesIn, { index: avoid.text, skip: ownText, refused: textHit }]) : null
-  if (!clear && (!anyText || textHit.hit)) {
+  const namesIn = anyNames ? [{ index: avoid.names, skip: ownText, refused: namesHit }] : []
+  // Captions give way before pin names: a wire over a caption hides a designator, one over a pin
+  // name could hide which pin is which.
+  let clear = anyText ? attempt([holesIn, { index: avoid.text, skip: ownText, refused: textHit }, ...namesIn]) : null
+  if (!clear && anyNames && (!anyText || textHit.hit)) {
+    holesHit.hit = false
+    clear = attempt([holesIn, ...namesIn])
+  }
+  if (!clear && (!(anyText || anyNames) || textHit.hit || namesHit.hit)) {
     holesHit.hit = false
     clear = attempt([holesIn])
   }
@@ -1015,6 +1037,11 @@ export function validateDiagram(raw: unknown): DiagramResult {
             // for shape. Other part state (an LED's color, a switch's default) is opaque.
             if (isObj(entry) && 'value' in entry && !(isNum(entry.value) && typeof entry.unit === 'string'))
               warnings.push(`${at}.values.${key}: value must be a finite number with a string unit`)
+            // A net label's name is text; anything else would silently join nothing, so it is dropped and said.
+            if (key === LABEL_VALUE && typeof p.module === 'string' && isNetLabel(modules.get(p.module)) && typeof entry !== 'string') {
+              dropped.push(key)
+              warnings.push(`${at}.values.net: ${who}'s label name must be text, not ${JSON.stringify(entry)}; it was dropped, so the label has no name`)
+            }
           }
           if (dropped.length) {
             const values = p.values
@@ -1203,7 +1230,7 @@ export function validateDiagram(raw: unknown): DiagramResult {
     const i = diagram.parts.findIndex((p) => p.uid === part)
     const at = `parts[${i}].mount`
     if (reason === 'cannot-mount' && board !== part && modules.has(diagram.parts[i].module))
-      warnings.push(`${at}: part "${part}" cannot mount (boards, parts with a bus pin and parts with no pins never do)`)
+      warnings.push(`${at}: part "${part}" cannot mount (boards, net labels, parts with a bus pin and parts with no pins never do)`)
     else if (reason === 'not-a-board' && !modules.has(partModule.get(board)!))
       warnings.push(`${at}: part "${board}" is not a board (its module "${partModule.get(board)}" is not embedded in this file)`)
     else if (reason === 'partial') warnings.push(`${at}: not every leg of "${part}" sits on a hole of board "${board}", so it plugs into nothing`)

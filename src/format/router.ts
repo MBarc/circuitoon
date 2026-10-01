@@ -45,6 +45,11 @@ export interface RouteOptions {
   margins?: number[]
   /** Extra cost for a step onto a grid node another wire already runs along on the same axis. */
   parallelCost?: number
+  /**
+   * Extra cost for a step that runs alongside another wire one grid step away on the same axis, so
+   * parallel wires keep two grid steps apart where there is room (a cost, never a block).
+   */
+  adjacentCost?: number
 }
 
 /**
@@ -154,6 +159,8 @@ export const CLEARANCE = 4
 
 const H_BIT = 1
 const V_BIT = 2
+/** Default extra cost for running beside another wire one grid step away (see RouteOptions.adjacentCost). */
+export const ADJACENT_COST = 20
 
 /**
  * Nodes farther than this many grid cells from the origin on either axis (about 335 million px at
@@ -483,12 +490,13 @@ export function routeOrthogonal(req: RouteRequest, opts: RouteOptions = {}): Pt[
   const clearance = opts.clearance ?? CLEARANCE
   const bendCost = opts.bendCost ?? 30
   const parallelCost = opts.parallelCost ?? 40
+  const adjacentCost = opts.adjacentCost ?? ADJACENT_COST
   // A lead-out moves the first grid node the search may bend at out along the pin's axis.
   const ahead = (p: Pt, d: Pt, lead = 0): Pt => ({ x: p.x + d.x * lead, y: p.y + d.y * lead })
   const start = req.fromDir ? leave(ahead(req.from, req.fromDir, req.fromLead), req.fromDir, g) : onGrid(req.from, g)
   const goal = req.toDir ? leave(ahead(req.to, req.toDir, req.toLead), req.toDir, g) : onGrid(req.to, g)
   for (const margin of opts.margins ?? MARGINS) {
-    const path = search(start, goal, req, g, clearance, bendCost, parallelCost, margin)
+    const path = search(start, goal, req, g, clearance, bendCost, parallelCost, adjacentCost, margin)
     if (path) {
       // A tip off the grid (a part loaded between grid lines) meets the first and last grid node
       // with a corner, turned so the wire still leaves and enters along the stub.
@@ -517,6 +525,7 @@ function search(
   clearance: number,
   bendCost: number,
   parallelCost: number,
+  adjacentCost: number,
   margin: number,
 ): Pt[] | null {
   const x0 = Math.floor((Math.min(start.x, goal.x) - margin) / g) * g
@@ -634,7 +643,14 @@ function search(
         // Behind a lead-out the wire must arrive along it, or it would double back over it.
         if (endDir >= 0 && nd !== endDir && req.toLead) continue
         if (endDir >= 0 && nd !== endDir) c += bendCost
-      } else if (lanes && parallel![ncell] & (nd & 1 ? V_BIT : H_BIT)) c += parallelCost
+      } else if (lanes) {
+        const lane = parallel!
+        if (lane[ncell] & (nd & 1 ? V_BIT : H_BIT)) c += parallelCost
+        // Beside a lane: a vertical run in the column left or right, a horizontal one on the row above or below.
+        else if (adjacentCost && (nd & 1
+          ? (nc > 0 && lane[ncell - 1] & V_BIT) || (nc + 1 < cols && lane[ncell + 1] & V_BIT)
+          : (nr > 0 && lane[ncell - cols] & H_BIT) || (nr + 1 < rows && lane[ncell + cols] & H_BIT))) c += adjacentCost
+      }
       const ns = ncell * 4 + nd
       if (c < cost[ns]) {
         cost[ns] = c

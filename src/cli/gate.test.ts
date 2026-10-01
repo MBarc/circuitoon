@@ -22,10 +22,10 @@ import { ledNetlist, tiltSensors } from '../agent/fixtures.testing.ts'
 const browser = findBrowser(process.env)
 const noBrowser = (dir: string) => ({ CIRCUITOON_BROWSER: join(dir, 'no-such-browser.exe') })
 const sha = (path: string) => createHash('sha256').update(readFileSync(path)).digest('hex')
-const laidOut = async (netlist: unknown = ledNetlist()) => {
+const laidOut = async (netlist: unknown = ledNetlist(), labels = 'auto') => {
   const dir = tempDir()
   writeFileSync(join(dir, 'n.json'), JSON.stringify(netlist))
-  expect((await cli(['layout', 'n.json', '-o', 'sheet.json'], { cwd: dir })).code).toBe(0)
+  expect((await cli(['layout', 'n.json', '-o', 'sheet.json', '--labels', labels], { cwd: dir })).code).toBe(0)
   return dir
 }
 type Sheet = Record<string, unknown> & { parts: Record<string, unknown>[]; connections: Record<string, unknown>[] }
@@ -54,11 +54,11 @@ describe('circuitoon gate', () => {
     expect(g.channels).toHaveLength(8)
   }, 120_000)
   it('counts the bill of quantities from the sheet, layout-added strips included and marked', async () => {
-    const dir = await laidOut(tiltSensors())
+    const dir = await laidOut(tiltSensors(), 'none') // wires only: the block keeps its local rail strips
     const sheet = JSON.parse(readFileSync(join(dir, 'sheet.json'), 'utf8')) as { parts: { designator: string; module: string }[] }
     const { report } = await runGate(readFileSync(join(dir, 'sheet.json')), { sheetPath: 'sheet.json', outDir: join(dir, 'out'), io: quietIo(dir) })
     const q = report.quantities
-    expect(q.reduce((n, r) => n + r.count, 0)).toBe(sheet.parts.length)
+    expect(q.reduce((n, r) => n + r.count, 0)).toBe(sheet.parts.filter((p) => p.module !== 'net-label').length)
     const added = sheet.parts.filter((p) => /^DP\d+$/.test(p.designator))
     expect(added.length).toBeGreaterThan(0)
     const strips = q.find((r) => r.module === added[0].module)!
@@ -81,7 +81,7 @@ describe('circuitoon gate', () => {
     // Every part is in the CSV once: its Qty column adds up to the sheet's parts.
     const sheet = JSON.parse(readFileSync(join(dir, 'sheet.json'), 'utf8'))
     const qty = csv.trim().split(/\r\n/).slice(1).filter((l) => l.startsWith('"Part"')).reduce((n, l) => n + Number(l.split('","')[1]), 0)
-    expect(qty).toBe(sheet.parts.length)
+    expect(qty).toBe(sheet.parts.filter((p: { module: string }) => p.module !== 'net-label').length)
     // A stale bom.csv never survives a run that stops before writing one.
     writeFileSync(join(dir, 'sheet.json'), '{ not json')
     expect((await cli(['gate', 'sheet.json', '-o', 'out'], { cwd: dir, env: noBrowser(dir) })).code).toBe(1)

@@ -1,7 +1,9 @@
 // Draws one module in the Sticker style: flat fills, dark ink outline on every shape (a dark body gets
 // the theme's outline color instead, when the theme sets one).
 import { memo } from 'react'
-import { insideLabelSides, type ModuleDef, type PinType, type PlacedPin, type Side, layoutModule, LEAD } from '../format/module.ts'
+import { insideLabelSides, isNetLabel, type ModuleDef, type PinType, type PlacedPin, type Side, layoutModule, LEAD } from '../format/module.ts'
+import type { LabelLook } from '../format/mainsLook.ts'
+import { NetLabelFlag } from './NetLabel.tsx'
 import { bodyRect, pivot, worldPins, type Rect, type Rotation, type WorldPin } from '../format/geometry.ts'
 import { bandFills } from '../format/values.ts'
 import { CAPTION_SIZE, captionAnchor } from './captionBox.ts'
@@ -173,7 +175,7 @@ function CoveredLabel({ p, inset }: { p: WorldPin; inset: number }) {
  * Memoized: props are primitives plus a module object that keeps its identity, so pan, zoom
  * and selection changes do not re-render every part.
  */
-export const Part = memo(function Part({ module: m, x = 0, y = 0, rotation = 0, caption, values, captionX, captionY: seatY, captionAnchor: seatAnchor = 'start', labelInset = null, ink = INK, halo, outline }: {
+export const Part = memo(function Part({ module: m, x = 0, y = 0, rotation = 0, caption, values, captionX, captionY: seatY, captionAnchor: seatAnchor = 'start', labelInset = null, ink = INK, halo, outline, netName = '', netLook }: {
   module: ModuleDef
   x?: number
   y?: number
@@ -193,8 +195,21 @@ export const Part = memo(function Part({ module: m, x = 0, y = 0, rotation = 0, 
   halo?: string
   /** Body outline for a dark-bodied part (the theme's outline); the Sticker ink by default. */
   outline?: string
+  /** A net label's name (src/format/netLabels.ts labelName) and look (mainsLook.ts labelLook); a library preview shows NET. */
+  netName?: string
+  netLook?: LabelLook
 }) {
   const lay = layoutModule(m)
+  if (isNetLabel(m)) {
+    const c0 = pivot(lay.w, lay.h)
+    return (
+      <g transform={`translate(${x} ${y})`}>
+        <g transform={rotation ? `rotate(${rotation} ${c0.x} ${c0.y})` : undefined}>
+          <NetLabelFlag name={netName || (netLook ? '' : 'NET')} look={netLook ?? 'signal'} mid={lay.pins[0]?.edge.y ?? lay.h / 2} rotation={rotation} outline={outline} />
+        </g>
+      </g>
+    )
+  }
   const art = m.art
   const ax = art ? (lay.w - art.w) / 2 : 0
   const ay = art ? (lay.h - art.h) / 2 : 0

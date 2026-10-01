@@ -4,8 +4,7 @@
   "parts": [
     { "ref": "J1", "module": "jst-xh-4" },
     { "ref": "U2", "module": "mcp23017-cjmcu-2317" },
-    { "ref": "BB1", "module": "power-rail-strip" },
-    { "ref": "BB2", "module": "breadboard-half" }
+    { "ref": "BB1", "module": "power-rail-strip" }
   ],
   "nets": [
     { "name": "3V3", "pins": ["J1.2", "U2.VCC", "U2.RESET", "BB1.+"] },

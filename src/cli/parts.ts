@@ -3,7 +3,7 @@
 // sources, for picking parts and writing a netlist. An untyped pin reports type null: it is never
 // guessed (amendment A14).
 import { library } from '../library.ts'
-import { isBoard, isSpacer, type ModuleDef, type PinDef, terminalCapacity } from '../format/module.ts'
+import { isBoard, isNetLabel, isSpacer, type ModuleDef, type PinDef, terminalCapacity } from '../format/module.ts'
 import { naturalCompare } from '../agent/order.ts'
 import type { Args } from './args.ts'
 import { CliError, EXIT, type Io, flag, printJson } from './io.ts'
@@ -15,6 +15,8 @@ export function partSummary(m: ModuleDef) {
     category: m.category ?? null,
     source: m.source ?? null,
     board: isBoard(m),
+    /** A net label (a named flag, not a physical part): a netlist asks for one with "label": true on a net. */
+    netLabel: isNetLabel(m),
     pins: m.pins
       .filter((p): p is PinDef => !isSpacer(p))
       .map((p) => ({ name: p.name, label: p.label ?? null, type: p.type ?? null, supply: p.supply ?? null, capacity: terminalCapacity(m, p.name) })),
@@ -40,6 +42,7 @@ export function partsCommand(args: Args, io: Io): number {
     return [
       `${s.id}: ${s.name}${s.category ? ` [${s.category}]` : ''}`,
       s.pins.length ? `  pins: ${s.pins.map(pinText).join(', ')}` : '',
+      s.netLabel ? `  not a part to list: set "label": true on a net and the layout draws its labels` : '',
       s.holes.length ? `  hole groups: ${s.holes.map((g) => `${g.name}${g.rail ? ` (rail ${g.rail})` : ''} x${g.holes}`).join(', ')}` : '',
     ].filter(Boolean).join('\n')
   })

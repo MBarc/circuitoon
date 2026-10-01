@@ -8,7 +8,8 @@ import { type Connection, type Diagram, type Endpoint, type PartInstance, colorF
 import { type CoveredHole, type MountIssue, type Plug, coveredHoles, holeKey, holeUses, mountIssues, plugMismatches, plugsOf } from './breadboard.ts'
 import { PLUG_FOR, PLUG_NAMES, SOCKET_NAMES } from './plugging.ts'
 import { mainsOf } from './mainsModel.ts'
-import { type ExternalPower, type HoleGroup, type ModuleDef, type PinDef, type PinType, commonReturn, declaredReturns, externalPower, holeGroupOf, isSpacer, voltageOutputs } from './module.ts'
+import { type ExternalPower, type HoleGroup, type ModuleDef, type PinDef, type PinType, commonReturn, declaredReturns, externalPower, holeGroupOf, isNetLabel, isSpacer, voltageOutputs } from './module.ts'
+import { labelGroups, labelName, labelsOf } from './netLabels.ts'
 import { type Netlist, conductors, netlist, nodeKey } from './netlist.ts'
 import { partValue, primaryParam } from './values.ts'
 import { andList, natural, orList } from './words.ts'
@@ -58,10 +59,15 @@ export type RuleId =
   | 'wire-color-ground'
   | 'wire-color-supply'
   | 'wire-color-signal'
+  | 'label-unnamed'
+  | 'label-mains'
+  | 'label-alone'
 
 /** Rule order within one severity and one subject, and each rule's short heading. */
 export const RULES: Record<RuleId, { severity: Severity; title: string }> = {
   broken: { severity: 'error', title: 'Broken connection' },
+  'label-unnamed': { severity: 'error', title: 'Label has no name' },
+  'label-mains': { severity: 'error', title: 'Label on mains wiring' },
   'covered-hole': { severity: 'error', title: 'Hole under a part' },
   'hole-shared': { severity: 'error', title: 'Two wires in one hole' },
   'leg-hole-shared': { severity: 'error', title: 'Two in one hole' },
@@ -100,6 +106,7 @@ export const RULES: Record<RuleId, { severity: Severity; title: string }> = {
   'wire-color-ground': { severity: 'warning', title: 'Ground wire not black' },
   'wire-color-supply': { severity: 'warning', title: 'Supply wire not red' },
   'wire-color-signal': { severity: 'warning', title: 'Signal wire in a power color' },
+  'label-alone': { severity: 'warning', title: 'Label connects nothing' },
   'battery-bank': { severity: 'info', title: 'Parallel battery bank' },
 }
 const RULE_ORDER = Object.keys(RULES) as RuleId[]
@@ -175,6 +182,11 @@ const volts = (v: number) => `${Number(v.toFixed(2))} V`
 export function endpointName(d: Diagram, ep: Endpoint): string {
   const part = d.parts.find((p) => p.uid === ep.part)
   const m = part && moduleOf(d, part.module)
+  // A net label is named by its name: "label SDA".
+  if (part && isNetLabel(m)) {
+    const name = labelName(part)
+    return name ? `label ${name}` : `${part.designator} (unnamed label)`
+  }
   const pin = m?.pins.find((p) => !isSpacer(p) && p.name === ep.pin)
   const label = pin && !isSpacer(pin) ? (pin.label ?? pin.name) : ep.pin
   const at = ep.hole !== undefined ? ` hole ${ep.hole}` : ep.offset !== undefined ? `[${ep.offset}]` : ''
@@ -510,7 +522,8 @@ function terminalsOf(d: Diagram, partByUid: Map<string, PartInstance>, mains: Ma
     const [uid, name] = JSON.parse(key) as [string, string]
     const part = partByUid.get(uid)
     const m = part && moduleOf(d, part.module)
-    if (!part || !m) return null
+    // A net label is no terminal: it only joins, so it never feeds, loads or grounds anything.
+    if (!part || !m || isNetLabel(m)) return null
     const info = moduleInfo(m)
     const def = info.defs.get(name)
     if (!def) return null
@@ -898,6 +911,34 @@ export function checkDiagram(d: Diagram): Finding[] {
   }
 
   for (const f of mains?.findings ?? []) add(f)
+
+  // Net labels: a label needs a name, a name needs a second label to join, and a label never stands
+  // in for mains wiring (it would hide a live conductor behind a flag and skip every cable check).
+  const groups = labelGroups(d)
+  for (const l of labelsOf(d)) {
+    if (l.name) continue
+    add({ rule: 'label-unnamed', subject: l.part.designator, target: `${l.part.designator} (unnamed label)`,
+      message: `${l.part.designator} is a net label with no name, so it connects to nothing. Give it a name in the Inspector, or delete it.`,
+      parts: [l.part.uid], pins: [], wires: [], select: { parts: [l.part.uid], wires: [] }, causes: [l.part.uid] })
+  }
+  for (const [name, list] of groups) {
+    const keys = list.map((l) => nodeKey(l.part.uid, l.pin))
+    const uids = list.map((l) => l.part.uid)
+    if (mains && keys.some((k) => mains.hazardKeys.has(k) || mains.mainsKeys.has(k) || mains.conductorOf(k))) {
+      const i = nl.netOf.get(keys[0])
+      const n = list.length
+      add({ rule: 'label-mains', subject: `label ${name}`, target: `label ${name}`,
+        message: `${n === 1 ? 'Label' : `${n} labels`} ${name} ${n === 1 ? 'is' : 'are'} on mains wiring. A label hides the conductor it stands for, and mains must be drawn as real cable so it can be checked: use wires instead.`,
+        parts: uids, pins: [], wires: i === undefined ? [] : netWires[i], select: { parts: uids, wires: [] }, causes: keys })
+      continue
+    }
+    if (list.length > 1) continue
+    const twin = [...groups.keys()].find((other) => other !== name && other.toLowerCase() === name.toLowerCase())
+    const hint = twin ? ` Label names are case-sensitive; set its name to ${twin} if it should join that net.` : ` Add another label named ${name} where this net continues, or delete this one.`
+    add({ rule: 'label-alone', subject: `label ${name}`, target: `label ${name}`,
+      message: `Label ${name} connects to nothing else: it is the only label named ${name}.${hint}`,
+      parts: uids, pins: [], wires: [], select: { parts: uids, wires: [] }, causes: keys })
+  }
 
   // Wire colours (low voltage): ground black, positive supplies red, signals neither. Only a colour
   // chosen on purpose (colorSet: picked in the Inspector, or given by the netlist or layout) is
