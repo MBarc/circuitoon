@@ -17,11 +17,15 @@ import { realize } from './realize.ts'
 import { colorByRole } from './colors.ts'
 import { type ReadabilityReport, overlaps, readability } from './readability.ts'
 import { verifyDiagram } from './verify.ts'
+import type { LabelMode } from './labelling.ts'
+import { readabilityFindings } from './readabilityWarnings.ts'
 import { naturalCompare } from './order.ts'
 
-export const SPACINGS = [20, 40, 60]
+export const SPACINGS = [30, 60, 90]
 /** The module a repeat block's local distribution strips use (amendment A18.1). */
 export const RAIL_MODULE = 'power-rail-strip'
+/** The module the layout's net labels use. */
+export const LABEL_MODULE = 'net-label'
 
 export interface LayoutOutput {
   diagram: Diagram
@@ -33,7 +37,8 @@ export interface LayoutOutput {
 }
 export type LayoutResult = { ok: true; value: LayoutOutput } | { ok: false; stage: 'input' | 'layout'; errors: string[] }
 
-export function layoutNetlist(raw: unknown, opts: { library?: ModuleLookup; keep?: KeepMap } = {}): LayoutResult {
+export function layoutNetlist(raw: unknown, opts: { library?: ModuleLookup; keep?: KeepMap; labels?: LabelMode } = {}): LayoutResult {
+  const mode = opts.labels ?? 'auto'
   const library = opts.library ?? libraryLookup
   const parsed = parseNetlist(raw, library)
   if (!parsed.ok) return { ok: false, stage: 'input', errors: parsed.errors }
@@ -54,9 +59,13 @@ export function layoutNetlist(raw: unknown, opts: { library?: ModuleLookup; keep
     const over = overlaps(base)
     if (over.body.length || over.caption.length)
       return { ok: false, stage: 'layout', errors: [...over.body.map((o) => `body overlap: ${o}; move one of them`), ...over.caption.map((o) => `caption overlap: ${o}; move one of them`)] }
-    const real = realize(intent, base, placed.locals)
+    const labelModule = library(LABEL_MODULE)
+    const real = realize(intent, base, placed.locals, { labels: mode, labelModule })
     if (!real.ok) return { ok: false, stage: 'layout', errors: real.errors }
-    const wired: Diagram = { ...base, connections: real.value.connections }
+    const labelled = real.value.labels.length && labelModule
+      ? { parts: [...base.parts, ...real.value.labels], modules: { ...base.modules, [LABEL_MODULE]: labelModule } }
+      : {}
+    const wired: Diagram = { ...base, ...labelled, connections: real.value.connections }
     // Colours by the checker's net roles, so the sheet never breaks the colour convention it checks.
     const diagram: Diagram = { ...wired, connections: colorByRole(intent, wired, real.value.netOfWire) }
     const routes = computeRoutes(diagram)
@@ -78,9 +87,12 @@ export function layoutNetlist(raw: unknown, opts: { library?: ModuleLookup; keep
       }
     }
     if (blocked.length) continue
+    // Labels that found no room get another try with more spacing; the last placement wires them.
+    if (real.value.unlabelled.length && i < SPACINGS.length - 1) continue
     const findings = verifyDiagram(diagram, library).filter((f) => f.severity === 'error')
     if (findings.length) return { ok: false, stage: 'layout', errors: findings.map((f) => `verify ${f.rule}: ${f.message}`) }
-    return { ok: true, value: { diagram, report: readability(diagram, routes, real.value.netOfWire), intent, attempts: i + 1, netOfWire: real.value.netOfWire } }
+    const report = { ...readability(diagram, routes, real.value.netOfWire), readabilityWarnings: readabilityFindings(diagram, routes).length, labels: { mode, nets: real.value.labelled, unplaced: [...new Set(real.value.unlabelled)] } }
+    return { ok: true, value: { diagram, report, intent, attempts: i + 1, netOfWire: real.value.netOfWire } }
   }
   return { ok: false, stage: 'layout', errors: [`routes blocked after ${SPACINGS.length} placements with more spacing each time: ${blocked.join(', ')}`] }
 }

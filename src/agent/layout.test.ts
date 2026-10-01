@@ -8,7 +8,10 @@ import { isBoard, layoutModule } from '../format/module.ts'
 import { annotationRect } from '../render/annotationGeometry.ts'
 import { coveredHoles, mountIssues, plugsOf } from '../format/breadboard.ts'
 import { libraryLookup } from './catalog.ts'
-import { layoutNetlist } from './layout.ts'
+import { layoutNetlist as layoutWith } from './layout.ts'
+
+/** These tests pin how nets are wired, so they lay out without net labels (layoutLabels.test.ts covers those). */
+const layoutNetlist = (raw: unknown, opts: Parameters<typeof layoutWith>[1] = {}) => layoutWith(raw, { labels: 'none', ...opts })
 import { reportText } from './readability.ts'
 import { verifyDiagram } from './verify.ts'
 import { dipWired, divider, ledNetlist, tiltSensors, typewriter } from './fixtures.testing.ts'
@@ -49,7 +52,7 @@ describe('layoutNetlist', () => {
     expect(d.intent).toEqual(ledNetlist())
     expect(r.value.report).toMatchObject({ bodyOverlaps: 0, captionOverlaps: 0, blockedNets: [] })
     expect(d.connections.every((c) => c.color && c.ends?.from === 'dupont-male')).toBe(true)
-    expect(reportText(r.value.report)).toMatch(/^Readability: body overlaps 0, caption overlaps 0, wire crossings \d+, wire length \d+ px, sheet \d+ x \d+ px, blocked nets none\.$/)
+    expect(reportText(r.value.report)).toMatch(/^Readability: body overlaps 0, caption overlaps 0, wire crossings \d+, wire length \d+ px, sheet \d+ x \d+ px, blocked nets none, readability warnings \d+, labels none \(no nets labelled\)\.$/)
   })
   it('is deterministic', () => {
     expect(serializeDiagram(laid(ledNetlist()))).toBe(serializeDiagram(laid(ledNetlist())))
@@ -179,7 +182,10 @@ describe('layoutNetlist', () => {
     for (const e of ends) expect(`${e.pin} ${e.hole}`).toBe(`${e.pin} ${e.pin.endsWith('-top') ? 0 : 4}`)
   })
   it("routes no wire over a DIP's pin names", () => {
-    const d = laid(dipWired())
+    // As the default layout draws it (net labels on), the way an agent lays it out.
+    const r = layoutWith(dipWired())
+    if (!r.ok) throw new Error(r.errors.join('; '))
+    const d = r.value.diagram
     const u1 = d.parts.find((p) => p.uid === 'U1')!
     const boxes = tipLabelBoxes(u1, d.modules[u1.module])
     expect(boxes).toHaveLength(28)
@@ -217,9 +223,10 @@ describe('layoutNetlist', () => {
     const d = laid(net)
     expect(verifyDiagram(d, libraryLookup)).toEqual([])
     const u1 = d.connections.flatMap((c) => [c.from, c.to]).filter((e) => e.part === 'U1').map((e) => e.pin).sort()
+    // Two of U1's joined ground pins (which two depends on where the sensors land), one wire each.
     expect(u1).toHaveLength(2)
-    expect(u1[0]).toBe('GND')
-    expect(['GND 2', 'GND 3']).toContain(u1[1])
+    expect(new Set(u1).size).toBe(2)
+    expect(u1.every((p) => ['GND', 'GND 2', 'GND 3'].includes(p))).toBe(true)
   })
   it('names the joined pins it counted when a net is still too big for them', () => {
     const r = layoutNetlist(esp())

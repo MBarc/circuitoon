@@ -6,7 +6,7 @@ export interface Args {
   flags: Map<string, string | true>
 }
 
-const VALUE_FLAGS = new Set(['--out', '--svg', '--scale', '--focus', '--search', '--keep'])
+const VALUE_FLAGS = new Set(['--out', '--svg', '--scale', '--focus', '--search', '--keep', '--labels', '--tiles'])
 const BOOL_FLAGS = new Set(['--json', '--dark', '--help'])
 const ALIASES: Record<string, string> = { '-o': '--out', '-h': '--help' }
 

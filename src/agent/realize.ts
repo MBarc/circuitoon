@@ -10,7 +10,11 @@
 // body, and everything added for a strip
 // is `routing: true`. A repeat block's pins on a shared net go to its own local strips (amendment A18.1),
 // which are chained to each other and joined to the rest of the net by one trunk wire. Pure.
-import { type Connection, type Diagram, type Endpoint, moduleOf, resolveEndpoint } from '../format/diagram.ts'
+import { type Connection, type Diagram, type Endpoint, type PartInstance, moduleOf, resolveEndpoint } from '../format/diagram.ts'
+import { bodyRect } from '../format/geometry.ts'
+import { layoutModule } from '../format/module.ts'
+import { mainsOf } from '../format/mainsModel.ts'
+import { type LabelMode, LabelPlacer, type LabelSpot, autoLabels, edgeExits } from './labelling.ts'
 import { coveredHoles, plugsOf } from '../format/breadboard.ts'
 import { type Pt, worldHoles } from '../format/geometry.ts'
 import { isBoard, isSpacer, type ModuleDef, type PinDef, terminalCapacity } from '../format/module.ts'
@@ -41,6 +45,18 @@ export interface Realization {
   connections: Connection[]
   /** Wire uid to the name of the net it realizes. */
   netOfWire: Map<string, string>
+  /** Net labels the layout placed (net-label parts), and the nets drawn with them, in netlist order. */
+  labels: PartInstance[]
+  labelled: string[]
+  /** Nets that wanted labels but had an endpoint with no clear spot, so they are wired (more spacing may make room). */
+  unlabelled: string[]
+}
+
+export interface RealizeOptions {
+  /** Which nets get net labels (default auto); a mains net or one with local strips never does. */
+  labels?: LabelMode
+  /** The net-label module; without it no net is labelled. */
+  labelModule?: ModuleDef
 }
 
 export type NetKind = 'ground' | 'power' | 'signal'
@@ -77,7 +93,7 @@ export function netKind(intent: Intent, n: IntentNet): NetKind {
   return types.includes('ground') ? 'ground' : types.some((t) => t === 'power_in' || t === 'power_out') ? 'power' : 'signal'
 }
 
-export function realize(intent: Intent, d: Diagram, locals: LocalDistribution[] = []): { ok: true; value: Realization } | { ok: false; errors: string[] } {
+export function realize(intent: Intent, d: Diagram, locals: LocalDistribution[] = [], opts: RealizeOptions = {}): { ok: true; value: Realization } | { ok: false; errors: string[] } {
   const errors: string[] = []
   const plugs = plugsOf(d)
   const partBy = new Map(d.parts.map((p) => [p.uid, p]))
@@ -269,6 +285,144 @@ export function realize(intent: Intent, d: Diagram, locals: LocalDistribution[] 
     return best
   }
 
+  // Net labels (piece B): a labelled net gets one label per endpoint (a loose pin, a repeat copy or
+  // group's pins, the net's strips), each joined to it by short routing stubs, instead of wires
+  // running between them. All or nothing per net: when one endpoint finds no clear spot, the net is
+  // wired as before.
+  const mode = opts.labels ?? 'auto'
+  const placer = opts.labelModule && mode !== 'none' ? new LabelPlacer(d, opts.labelModule) : null
+  const labels: PartInstance[] = []
+  const labelledNets: string[] = []
+  const unlabelled: string[] = []
+  const groupOfRef = new Map<string, string>()
+  for (const g of intent.groups) for (const r of g.refs) groupOfRef.set(r, `group ${g.name}`)
+  for (const c of intent.copies) for (const r of c.refs) groupOfRef.set(r, `copy ${c.id}`)
+  const copyOfRef = new Map(intent.copies.flatMap((c) => c.refs.map((r): [string, string] => [r, c.id])))
+  const mainsNet = (n: IntentNet) => n.terminals.some((t) => mainsOf(modOf(t.ref)).terminals.has(t.name))
+  const labelNet = (ni: number, net: IntentNet, kind: NetKind, nodes: Node[], dps: Strip[], local: boolean): boolean => {
+    if (!placer || local || mainsNet(net)) return false
+    const head = (n: Node) => pointOf(pinEnd(n.members[0]))
+    const ends = [
+      ...nodes.map((n) => ({ at: head(n), group: groupOfRef.get(n.members[0].ref) })),
+      ...(dps.length ? [{ at: dps[0].holes[0], group: groupOfRef.get(dps[0].board) }] : []),
+    ]
+    if (ends.length < 2) return false
+    if (!net.label && mode !== 'all' && !autoLabels({ kind, ends })) return false
+    // One label per endpoint: the pins of one repeat copy share a label (each wired to it, a ball's
+    // two switches), as do the pins of one part; the net's strips share one.
+    const clusters = new Map<string, Node[]>()
+    for (const n of nodes) {
+      const ref = n.members[0].ref
+      const copy = copyOfRef.get(ref)
+      const key = copy !== undefined ? `copy ${copy}` : `part ${ref}`
+      clusters.set(key, [...(clusters.get(key) ?? []), n])
+    }
+    if (clusters.size + (dps.length ? 1 : 0) < 2) return false
+    const before = placer.mark()
+    const fail = () => {
+      placer.rollback(before)
+      unlabelled.push(net.name)
+      return false
+    }
+    const pinOf = (node: Node) => node.members.find((x) => (node.left.get(x.name) ?? 0) > 0)
+    const plan: { spot: LabelSpot; from: Pt; pins: { node: Node; t: Terminal }[]; hole?: { s: Strip; i: number } }[] = []
+    // Endpoints with no room for a label of their own are wired to the nearest label of the net
+    // (a label takes any number of wires), so one crowded pin never costs the whole net its labels.
+    const orphans: { node: Node; t: Terminal; at: Pt }[] = []
+    for (const group of clusters.values()) {
+      let found: (typeof plan)[number] | null = null
+      for (const node of group) {
+        const t = pinOf(node)
+        const at = t && resolveEndpoint(d, pinEnd(t))
+        if (!t || !at) continue
+        // A pin leads out along its stub; a pad inside a body (a breakout's header) out past each
+        // edge of that body in turn, nearest first, so pads in an inner row take the far side.
+        const exits = at.dir ? [{ dir: at.dir, base: at.end }] : edgeExits(bodyRect(partBy.get(t.ref)!, layoutModule(modOf(t.ref))), at.end)
+        const spot = exits.reduce<LabelSpot | null>((got, e) => got ?? placer.spot(net.name, at.end, e.dir, { base: e.base, own: t.ref }), null)
+        if (spot) {
+          found = { spot, from: at.end, pins: [] }
+          break
+        }
+      }
+      if (!found) {
+        for (const node of group) {
+          const t = pinOf(node)
+          if (!t) return fail()
+          orphans.push({ node, t, at: pointOf(pinEnd(t)) })
+        }
+        continue
+      }
+      for (const node of group) {
+        const t = pinOf(node)
+        if (!t) return fail()
+        found.pins.push({ node, t })
+      }
+      placer.commit(found.spot, found.from)
+      plan.push(found)
+    }
+    if (dps.length) {
+      let found: (typeof plan)[number] | null = null
+      search: for (const s of dps) {
+        const rect = bodyRect(partBy.get(s.board)!, layoutModule(modOf(s.board)))
+        for (const i of clear(s))
+          for (const exit of edgeExits(rect, s.holes[i])) {
+            const spot = placer.spot(net.name, s.holes[i], exit.dir, { base: exit.base, own: s.board })
+            if (spot) {
+              found = { spot, from: s.holes[i], pins: [], hole: { s, i } }
+              break search
+            }
+          }
+      }
+      if (found) plan.push(found)
+    }
+    if (plan.length < 2) return fail()
+    const nearest = (at: Pt) => plan.reduce((a, b) => (dist(b.spot.tip, at) < dist(a.spot.tip, at) ? b : a))
+    for (const o of orphans) nearest(o.at).pins.push({ node: o.node, t: o.t })
+    if (dps.length && !plan.some((p) => p.hole)) {
+      const target = nearest(dps[0].holes[0])
+      const i = nearestHole(dps[0], target.spot.tip)
+      if (i === null) return fail()
+      target.hole = { s: dps[0], i }
+    }
+    if (orphans.length || (dps.length && !plan.some((p) => p.hole && p.from === p.hole.s.holes[p.hole.i]))) unlabelled.push(net.name)
+    // Every endpoint has its spot: join the net's strips (if more than one), then the stubs.
+    placer.rollback(before)
+    const joined = dps.slice(0, 1)
+    const rest = dps.slice(1)
+    while (rest.length) {
+      let pick: [Strip, Strip, number] | null = null
+      for (const a of joined)
+        for (const b of rest)
+          for (const i of free(a)) for (const j of free(b)) if (!pick || dist(a.holes[i], b.holes[j]) < pick[2]) pick = [a, b, dist(a.holes[i], b.holes[j])]
+      if (!pick || !jumper(ni, pick[0], pick[1])) {
+        errors.push(`strip full: net ${net.name} cannot join ${rest.map(stripName).join(', ')}: no free hole left${under(rest)}`)
+        return true
+      }
+      joined.push(pick[1])
+      rest.splice(rest.indexOf(pick[1]), 1)
+    }
+    for (const p of plan) {
+      const part = placer.commit(p.spot, p.from)
+      labels.push(part)
+      const to: Endpoint = { part: part.uid, pin: 'NET' }
+      for (const { node, t } of p.pins) {
+        node.left.set(t.name, node.left.get(t.name)! - 1)
+        wire(ni, pinEnd(t), to, true)
+      }
+      if (p.hole) {
+        // A hole the joining jumpers took is replaced by the strip's free hole nearest the label.
+        const i = used.has(holeKey(p.hole.s.board, p.hole.s.name, p.hole.i)) ? nearestHole(p.hole.s, p.spot.tip) : p.hole.i
+        if (i === null) {
+          errors.push(`strip full: net ${net.name} has no free hole left on ${stripName(p.hole.s)}${under([p.hole.s])}`)
+          return true
+        }
+        wire(ni, holeEnd(p.hole.s, i), to, true)
+      }
+    }
+    labelledNets.push(net.name)
+    return true
+  }
+
   for (const [ni, net] of intent.nets.entries()) {
     const kind = kindOf(net)
     const dps: Strip[] = []
@@ -300,6 +454,7 @@ export function realize(intent: Intent, d: Diagram, locals: LocalDistribution[] 
       .filter((g) => g.strips.length)
     for (const g of groups) for (const st of g.strips) owner.set(st.key, ni)
     const groupOf = (n: Node) => groups.find((g) => g.refs.has(n.members[0].ref))
+    if (labelNet(ni, net, kind, nodes, dps, groups.length > 0)) continue
     const own = nodes.filter((n) => !groupOf(n))
     // Local strips carry their block's pins. A net with no strips of its own whose other pins are
     // two or more claims one for them, so each block keeps a single trunk; a lone other pin's wire
@@ -423,5 +578,5 @@ export function realize(intent: Intent, d: Diagram, locals: LocalDistribution[] 
       wire(ni, e, holeEnd(target, nearestHole(target, pointOf(e))!), true)
     }
   }
-  return errors.length ? { ok: false, errors } : { ok: true, value: { connections, netOfWire } }
+  return errors.length ? { ok: false, errors } : { ok: true, value: { connections, netOfWire, labels, labelled: labelledNets, unlabelled } }
 }

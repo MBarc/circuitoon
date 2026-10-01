@@ -108,7 +108,12 @@ describe('circuitoon layout', () => {
       nets: [{ name: '3V3', pins: ['U1.3V3', 'U2.VIN', 'U3.VIN'] }],
     }
     writeFileSync(join(dir, 'crowded.json'), JSON.stringify(crowded))
-    const r = await cli(['layout', 'crowded.json', '-o', 'out.json', '--json'], { cwd: dir })
+    // Drawn with labels (the default), three header pins need no distribution point; without them they do.
+    const labelled = JSON.parse((await cli(['layout', 'crowded.json', '-o', 'out.json', '--json'], { cwd: dir })).out)
+    expect(labelled.ok).toBe(true)
+    expect(labelled.report.labels).toEqual({ mode: 'auto', nets: ['3V3'], unplaced: [] })
+    expect(schemaErrors(loadSchema('layout'), labelled)).toEqual([])
+    const r = await cli(['layout', 'crowded.json', '-o', 'out.json', '--json', '--labels', 'none'], { cwd: dir })
     expect(r.code).toBe(1)
     const out = JSON.parse(r.out)
     expect(schemaErrors(loadSchema('layout'), out)).toEqual([])
@@ -240,5 +245,21 @@ describe('Task 9 follow-ups', () => {
     expect(() => new CliError('x', 0)).toThrow('CliError exit code must be 1, 2 or 3, not 0')
     // @ts-expect-error 4 is not an exit code the CLI uses
     expect(() => new CliError('x', 4)).toThrow(RangeError)
+  })
+})
+
+describe('layout --labels', () => {
+  it('refuses a mode that is not auto, none or all, with exit 2', async () => {
+    const dir = withFile('n.json', ledNetlist())
+    const r = await cli(['layout', 'n.json', '-o', 'out.json', '--labels', 'some'], { cwd: dir })
+    expect(r.code).toBe(2)
+    expect(r.err).toContain('--labels must be auto, none, all')
+  })
+  it('records the mode in the report', async () => {
+    const dir = withFile('n.json', ledNetlist())
+    const out = JSON.parse((await cli(['layout', 'n.json', '-o', 'out.json', '--labels', 'all', '--json'], { cwd: dir })).out)
+    expect(out.report.labels.mode).toBe('all')
+    expect(out.report.labels.nets.length).toBeGreaterThan(0)
+    expect((await cli(['layout', 'n.json', '-o', 'out2.json', '--labels', 'all'], { cwd: dir })).out).toMatch(/labels all \(nets /)
   })
 })

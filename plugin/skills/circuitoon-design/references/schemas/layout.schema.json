@@ -11,7 +11,7 @@
     "attempts": { "type": "integer" },
     "report": {
       "type": ["object", "null"],
-      "required": ["bodyOverlaps", "captionOverlaps", "wireCrossings", "wireLength", "sheet", "blockedNets"],
+      "required": ["bodyOverlaps", "captionOverlaps", "wireCrossings", "wireLength", "sheet", "blockedNets", "readabilityWarnings", "labels"],
       "additionalProperties": false,
       "properties": {
         "bodyOverlaps": { "type": "integer" },
@@ -19,7 +19,12 @@
         "wireCrossings": { "type": "integer" },
         "wireLength": { "type": "integer" },
         "sheet": { "type": "object", "required": ["w", "h"], "additionalProperties": false, "properties": { "w": { "type": "integer" }, "h": { "type": "integer" } } },
-        "blockedNets": { "type": "array", "items": { "type": "string" } }
+        "blockedNets": { "type": "array", "items": { "type": "string" } },
+        "readabilityWarnings": { "type": "integer" },
+        "labels": {
+          "type": "object", "required": ["mode", "nets", "unplaced"], "additionalProperties": false,
+          "properties": { "mode": { "enum": ["auto", "none", "all"] }, "nets": { "type": "array", "items": { "type": "string" } }, "unplaced": { "type": "array", "items": { "type": "string" } } }
+        }
       }
     },
     "quantities": {

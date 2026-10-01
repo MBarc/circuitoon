@@ -19,6 +19,10 @@ export interface ReadabilityReport {
   wireLength: number
   sheet: { w: number; h: number }
   blockedNets: string[]
+  /** The layout's label mode and the nets it drew with net labels (layout only). */
+  labels?: { mode: 'auto' | 'none' | 'all'; nets: string[]; unplaced: string[] }
+  /** How many readability warnings (crowded wires, hugged parts, covered labels, many crossings) the sheet has (layout only). */
+  readabilityWarnings?: number
 }
 
 /** Every overlapping pair on the sheet, as "R1 and R2" (bodies) or "R1 caption and R2 body". */
@@ -80,5 +84,5 @@ export function readability(d: Diagram, routes: Routes, netOfWire: Map<string, s
 }
 
 export function reportText(r: ReadabilityReport): string {
-  return `Readability: body overlaps ${r.bodyOverlaps}, caption overlaps ${r.captionOverlaps}, wire crossings ${r.wireCrossings}, wire length ${r.wireLength} px, sheet ${r.sheet.w} x ${r.sheet.h} px, blocked nets ${r.blockedNets.length ? r.blockedNets.join(', ') : 'none'}.`
+  return `Readability: body overlaps ${r.bodyOverlaps}, caption overlaps ${r.captionOverlaps}, wire crossings ${r.wireCrossings}, wire length ${r.wireLength} px, sheet ${r.sheet.w} x ${r.sheet.h} px, blocked nets ${r.blockedNets.length ? r.blockedNets.join(', ') : 'none'}${r.readabilityWarnings !== undefined ? `, readability warnings ${r.readabilityWarnings}` : ''}${r.labels ? `, labels ${r.labels.mode} (${r.labels.nets.length ? `nets ${r.labels.nets.join(', ')}` : 'no nets labelled'}${r.labels.unplaced.length ? `; no room for a label at some endpoints of ${r.labels.unplaced.join(', ')}, wired instead` : ''})` : ''}.`
 }

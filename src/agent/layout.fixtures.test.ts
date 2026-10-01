@@ -27,10 +27,10 @@ describe('layout fixtures', () => {
       const r = layoutNetlist(make())
       if (!r.ok) throw new Error(r.errors.join('\n'))
       const d = r.value.diagram
-      // Every intended part, plus only the rail strips layout adds as routing infrastructure (A18.1).
+      // Every intended part, plus only the rail strips (A18.1) and net labels the layout adds as routing infrastructure.
       const refs = new Set(r.value.intent.parts.map((p) => p.ref))
       expect(d.parts.filter((p) => refs.has(p.uid))).toHaveLength(count)
-      expect(d.parts.filter((p) => !refs.has(p.uid)).every((p) => p.module === 'power-rail-strip')).toBe(true)
+      expect(d.parts.filter((p) => !refs.has(p.uid)).every((p) => p.module === 'power-rail-strip' || p.module === 'net-label')).toBe(true)
       expect(r.value.report).toMatchObject({ bodyOverlaps: 0, captionOverlaps: 0, blockedNets: [] })
       expect(mountIssues(d)).toEqual([])
       expect(verifyDiagram(d, libraryLookup)).toEqual([])

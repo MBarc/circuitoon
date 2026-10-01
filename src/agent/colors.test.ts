@@ -7,7 +7,10 @@ import { readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { checkDiagram, endpointRole } from '../format/checks.ts'
 import { colorFamily } from '../format/diagram.ts'
-import { layoutNetlist } from './layout.ts'
+import { layoutNetlist as layoutWith } from './layout.ts'
+
+/** These tests pin how nets are wired, so they lay out without net labels (layoutLabels.test.ts covers those). */
+const layoutNetlist = (raw: unknown, opts: Parameters<typeof layoutWith>[1] = {}) => layoutWith(raw, { labels: 'none', ...opts })
 import { loadPartial } from './partial.ts'
 import { SIGNAL_PALETTE } from './colors.ts'
 
@@ -22,12 +25,23 @@ const laid = (raw: unknown, keep?: NonNullable<Parameters<typeof layoutNetlist>[
 }
 const examples = [
   ...readdirSync(DIR).filter((f) => f.endsWith('.netlist.json')).map((f) => ({ name: f, value: () => laid(read(join(DIR, f))) })),
+  ...readdirSync(DIR).filter((f) => f.endsWith('.netlist.json')).map((f) => ({
+    name: `${f} (with labels)`,
+    value: () => {
+      const r = layoutWith(read(join(DIR, f)))
+      if (!r.ok) throw new Error(r.errors.join('; '))
+      return r.value
+    },
+  })),
   ...readdirSync(TW).filter((f) => f.endsWith('.partial.json')).map((f) => ({
     name: `spirit-typewriter/${f}`,
     value: () => {
       const p = loadPartial(read(join(TW, f)))
       if (!p.ok) throw new Error(p.errors.join('\n'))
-      return laid(p.intent, p.keep)
+      // As shipped: the bank sheets join each channel through net labels (they have no breadboard).
+      const r = layoutWith(p.intent, { keep: p.keep })
+      if (!r.ok) throw new Error(r.errors.join('; '))
+      return r.value
     },
   })),
 ]

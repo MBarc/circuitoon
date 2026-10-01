@@ -21,9 +21,11 @@ export const USAGE = `circuitoon <command> [options]
   parts [--search text] [--json]            built-in parts: pins, labels, types, supplies, hole groups
   part <id> [--json]                        one part in full
   layout <netlist.json> -o <sheet.json>     lay out a netlist; or layout --keep <partial.json> -o <sheet.json>
+                                            [--labels auto|none|all]: which nets are drawn with net labels (default auto)
   verify <sheet.json> [--json]              the sheet against its intent
   check <sheet.json> [--json]               the wiring checker, plus verify when the sheet has an intent
   render <sheet.json> -o <sheet.png> [--svg <sheet.svg>] [--dark] [--scale n] [--focus <copy or group>]
+                                            [--tiles <px>]: also zoomed tiles of the sheet, <px> square each, as <sheet>-tile-<row>-<col>.png
   link <sheet.json> [-o <dir>] [--json]     a link that opens the sheet in Circuitoon
   bom <sheet.json> [-o <bom.csv>] [--json]  the bill of materials: parts, wires and connectors; -o writes CSV
   gate <sheet.json> -o <dir> [--json]       every check, the renders, the bill and the link; exits 0 only when nothing blocks
