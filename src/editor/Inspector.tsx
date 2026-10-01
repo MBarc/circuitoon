@@ -118,6 +118,8 @@ function WireHexInput({ wireKey, color, onCommit }: { wireKey: string; color: st
 function endpointName(d: Diagram, ep: Endpoint): string {
   const part = d.parts.find((p) => p.uid === ep.part)
   const m = part && moduleOf(d, part.module)
+  // A net label reads by its name, as the checker names it.
+  if (part && isNetLabel(m)) return labelName(part) ? `label ${labelName(part)}` : `${part.designator} (unnamed label)`
   const pin = m?.pins.find((p) => 'name' in p && p.name === ep.pin)
   const label = pin && 'label' in pin && typeof pin.label === 'string' ? pin.label : ep.pin
   return `${part?.designator ?? ep.part} ${label}`
