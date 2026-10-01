@@ -4,14 +4,24 @@ The Spirit Typewriter reads 42 balls. Each ball holds two SW-520D tilt switches,
 
 Drawn as one sheet, this is 109 parts, 253 wires and about 1,700 wire crossings, and nobody can follow it. So it is split along real connectors into four sheets. Each sheet is its own netlist, its own gate and its own link.
 
-| Sheet | Holds | Crossings (plain `layout`) | Crossings (`layout --keep`, shipped) | Wire length (keep) |
-| --- | --- | --- | --- | --- |
-| `1-main` | Power, ESP32, displays, OLED, SD card, and J1 to J3 (one JST-XH 4-pin per bank) | 678 | **297** | 19,596 px |
-| `2-bank-a` | J1, MCP23017 U2 at 0x20, balls 1 to 14 | 457 | **490** | 42,630 px |
-| `3-bank-b` | J1, MCP23017 U3 at 0x21, balls 15 to 28 | 484 | **519** | 43,030 px |
-| `4-bank-c` | J1, MCP23017 U4 at 0x22, balls 29 to 42 | 475 | **524** | 43,190 px |
+Each sheet is laid out with `layout --keep` from its partial, with net labels (`--labels auto`, the default). The "before" columns are the same sheets as shipped before net labels (wires only, the old part spacing). Today's `check` counted the readability warnings in both columns.
+
+| Sheet | Holds | Crossings before | **Crossings now** | Readability warnings before | **now** | Sheet before | Sheet now |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `1-main` | Power, ESP32, displays, OLED, SD card, and J1 to J3 (one JST-XH 4-pin per bank) | 297 | **43** | 79 | **10** | 800 x 1020 | 836 x 1046 |
+| `2-bank-a` | J1, MCP23017 U2 at 0x20, balls 1 to 14 | 490 | **96** | 156 | **9** | 1490 x 967 | 1250 x 1101 |
+| `3-bank-b` | J1, MCP23017 U3 at 0x21, balls 15 to 28 | 519 | **98** | 156 | **13** | 1490 x 967 | 1250 x 1101 |
+| `4-bank-c` | J1, MCP23017 U4 at 0x22, balls 29 to 42 | 524 | **97** | 154 | **14** | 1490 x 967 | 1250 x 1101 |
 
 Every sheet has body overlaps 0, caption overlaps 0 and blocked nets none, and passes `gate`.
+
+These readability warnings remain:
+- `1-main`:
+  - 5 `wires-crowded`: the wires that still fan out from the ESP32 header past BB1.
+  - 5 `label-covered`: wires running beside the display headers cross the labels there.
+- Bank sheets:
+  - 8 to 13 `wires-crowded`: the ground drops of neighbouring balls into their local strips, and wires inside the expander's footprint.
+  - 1 `crossings-high`: the trunk wire that joins the local ground strips.
 
 To lay out and gate a sheet:
 
@@ -20,6 +30,8 @@ circuitoon layout --keep 2-bank-a.partial.json -o bank-a.json && circuitoon gate
 ```
 
 Each `*.partial.json` is its `*.netlist.json` (as `intent`) plus pinned positions for the parts outside the repeat. The balls are not pinned, so each bank keeps its local ground strips `DP1` to `DP4`.
+
+The bank sheets rely on net labels. Each ball's channel is two labels: one at the ball, with both switches wired to it, and one at the expander pad. No breadboard sits between them. With `--labels none` these sheets fail to lay out ("needs a distribution point"), because a header pin takes only one wire.
 
 ## The connectors
 
@@ -31,7 +43,7 @@ Each `*.partial.json` is its `*.netlist.json` (as `intent`) plus pinned position
 
 The user's expanders are CJMCU-2317 boards (`mcp23017-cjmcu-2317`), and they lay out and pass the gate, so the bank sheets use them.
 
-The board has pads only, so it cannot sit on a breadboard. Each ball's channel net has three pins: two switch legs and one pad. The layout needs a strip to join them, so each bank has a half breadboard (BB2), where the layout claims one column strip per channel, with a wire from each pad to its strip. A `power-rail-strip` (BB1) carries 3V3 and GND from J1 to the chip and its address pins.
+The board has pads only, so it cannot sit on a breadboard. Each ball's channel net has three pins: two switch legs and one pad. Net labels carry the channel, so nothing has to join those pins on the sheet. Before net labels, each bank had a half breadboard (BB2) with one column strip per channel; BB2 is now gone. A `power-rail-strip` (BB1) carries 3V3 and GND from J1 to the chip and its address pins.
 
 For comparison, the DIP-28 `mcp23017-dip28`, mounted on BB2, saved the 14 pad-to-strip wires. On bank A it gave 481 to 507 crossings, against 535 to 565 for the CJMCU in the same trial positions. That is not enough of a difference to draw a chip the user does not have. Those figures are from before the DIP-28 was redrawn at its true 0.3 inch width (it now seats in rows e and f and leaves every strip 4 free holes).
 
@@ -54,5 +66,5 @@ These choices are made on the sheets, and the user should confirm them:
 
 ## Can a person follow these sheets?
 
-- **`1-main`: yes, with care.** The power chain, the connectors and each display header are clear. The wires between the ESP32, BB1 and the display headers form a dense band. Each wire can be traced by its color, but open the link and click a wire to be sure.
-- **Bank sheets: only in part.** The ball side is clear: each ball's two switches drop to a local ground strip, and its two channel wires run as one color to BB2. The expander end is a knot: 14 channel pairs arrive at BB2, and 14 wires go from the strips to the CJMCU pads, over the board's art. A builder should read the channel table (`gate.json`, or the `layout` output) for which pad each ball uses, and use the focused PNG (`focus-ballA_1.png`) or the editor link to follow one ball.
+- **`1-main`: yes.** GND, 3V3, I2C and most of SPI are drawn as labels at each pin, so the flag beside a pin names its net. A few nets still run as wires past BB1, where a display header had no room for every label. Trace those few by color.
+- **Bank sheets: yes, ball by ball.** Each ball carries one label that names its channel (`ballA_3.CH`), and the expander carries the matching label at its pad, so a builder can read off the sheet which pad each ball uses. The expander end is still busy: the 14 pad labels sit above and beside the CJMCU, and their stubs cross the board's art to reach the pads. Check a pad against the channel table (`gate.json`, or the `layout` output).

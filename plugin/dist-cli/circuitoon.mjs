@@ -16,7 +16,9 @@ var VALUE_FLAGS = /* @__PURE__ */ new Set([
 	"--scale",
 	"--focus",
 	"--search",
-	"--keep"
+	"--keep",
+	"--labels",
+	"--tiles"
 ]);
 var BOOL_FLAGS = /* @__PURE__ */ new Set([
 	"--json",
@@ -1620,6 +1622,7 @@ function routeOrthogonal(req, opts = {}) {
 	const clearance = opts.clearance ?? 4;
 	const bendCost = opts.bendCost ?? 30;
 	const parallelCost = opts.parallelCost ?? 40;
+	const adjacentCost = opts.adjacentCost ?? 20;
 	const ahead = (p, d, lead = 0) => ({
 		x: p.x + d.x * lead,
 		y: p.y + d.y * lead
@@ -1627,7 +1630,7 @@ function routeOrthogonal(req, opts = {}) {
 	const start = req.fromDir ? leave(ahead(req.from, req.fromDir, req.fromLead), req.fromDir, g) : onGrid(req.from, g);
 	const goal = req.toDir ? leave(ahead(req.to, req.toDir, req.toLead), req.toDir, g) : onGrid(req.to, g);
 	for (const margin of opts.margins ?? MARGINS) {
-		const path = search(start, goal, req, g, clearance, bendCost, parallelCost, margin);
+		const path = search(start, goal, req, g, clearance, bendCost, parallelCost, adjacentCost, margin);
 		if (path) {
 			const first = path[0];
 			const last = path[path.length - 1];
@@ -1660,7 +1663,7 @@ function routeOrthogonal(req, opts = {}) {
 var skew = (a, b) => a.x !== b.x && a.y !== b.y;
 /** True when `p` lies inside `r` grown by `clearance` on every side (the cells the router blocks). */
 var inGrown = (p, r, clearance = 4) => p.x >= r.x - clearance && p.x <= r.x + r.w + clearance && p.y >= r.y - clearance && p.y <= r.y + r.h + clearance;
-function search(start, goal, req, g, clearance, bendCost, parallelCost, margin) {
+function search(start, goal, req, g, clearance, bendCost, parallelCost, adjacentCost, margin) {
 	const x0 = Math.floor((Math.min(start.x, goal.x) - margin) / g) * g;
 	const y0 = Math.floor((Math.min(start.y, goal.y) - margin) / g) * g;
 	const x1 = Math.ceil((Math.max(start.x, goal.x) + margin) / g) * g;
@@ -1773,7 +1776,11 @@ function search(start, goal, req, g, clearance, bendCost, parallelCost, margin) 
 			if (ncell === goalCell) {
 				if (endDir >= 0 && nd !== endDir && req.toLead) continue;
 				if (endDir >= 0 && nd !== endDir) c += bendCost;
-			} else if (lanes && parallel[ncell] & (nd & 1 ? V_BIT : H_BIT)) c += parallelCost;
+			} else if (lanes) {
+				const lane = parallel;
+				if (lane[ncell] & (nd & 1 ? V_BIT : H_BIT)) c += parallelCost;
+				else if (adjacentCost && (nd & 1 ? nc > 0 && lane[ncell - 1] & V_BIT || nc + 1 < cols && lane[ncell + 1] & V_BIT : nr > 0 && lane[ncell - cols] & H_BIT || nr + 1 < rows && lane[ncell + cols] & H_BIT)) c += adjacentCost;
+			}
 			const ns = ncell * 4 + nd;
 			if (c < cost[ns]) {
 				cost[ns] = c;
@@ -2688,6 +2695,104 @@ function endPlacement(points, which, reach, otherReach = 0) {
 	};
 }
 //#endregion
+//#region src/format/words.ts
+/** Natural order, so U2 sorts before U10. */
+var natural = new Intl.Collator("en", {
+	numeric: true,
+	sensitivity: "base"
+});
+/** "A", "A or B", "A, B or C". */
+function orList(items) {
+	return items.length < 2 ? items.join("") : `${items.slice(0, -1).join(", ")} or ${items[items.length - 1]}`;
+}
+/** "A", "A and B", "A, B and C". */
+function andList(items) {
+	return items.length < 2 ? items.join("") : `${items.slice(0, -1).join(", ")} and ${items[items.length - 1]}`;
+}
+/** A label's name: its stored `values.net`, trimmed; empty when missing or not text. */
+function labelName(part) {
+	const v = part.values?.["net"];
+	return typeof v === "string" ? v.trim() : "";
+}
+/** The one pin of a net label module (its tag point). */
+function labelPin(m) {
+	const pin = m.pins.find((p) => !isSpacer(p));
+	return pin && !isSpacer(pin) ? pin.name : "";
+}
+var cache$3 = /* @__PURE__ */ new WeakMap();
+/** Every net label on the sheet (named or not), in sheet order. Cached per parts and modules. */
+function labelsOf(d) {
+	const hit = cache$3.get(d.parts);
+	if (hit && hit.modules === d.modules) return hit.result;
+	const result = [];
+	for (const part of d.parts) {
+		const m = moduleOf(d, part.module);
+		if (m && isNetLabel(m)) result.push({
+			part,
+			name: labelName(part),
+			pin: labelPin(m)
+		});
+	}
+	cache$3.set(d.parts, {
+		modules: d.modules,
+		result
+	});
+	return result;
+}
+/** Named labels grouped by name, each group in sheet order. */
+function labelGroups(d) {
+	const out = /* @__PURE__ */ new Map();
+	for (const l of labelsOf(d)) {
+		if (!l.name) continue;
+		const list = out.get(l.name);
+		if (list) list.push(l);
+		else out.set(l.name, [l]);
+	}
+	return out;
+}
+/**
+* The flag's height and the depth of its point, in px (module-local; the body is two units tall).
+* Under one grid unit, so labels on neighbouring header pins (0.1 inch apart) stack without touching.
+*/
+var FLAG_H = 8.6;
+/** Width of one character of the flag's 7 px bold name, a little generous so text never overruns. */
+var CHAR_W = 4.6;
+/** The name as the flag shows it: "?" for an unnamed label, cut at FLAG_MAX_CHARS. */
+function flagText(name) {
+	if (!name) return "?";
+	return name.length > 24 ? `${name.slice(0, 23)}…` : name;
+}
+/**
+* The flag's width in px from its point (the pin, at local x 0) to its square end: the point, the
+* name with padding, and room for the ground mark when `ground`. Never narrower than 28 px.
+*/
+function flagWidth(name, ground = false) {
+	return Math.max(20, Math.ceil(8 + flagText(name).length * CHAR_W + 4 + (ground ? 7 : 0)));
+}
+/**
+* The drawn flag of label `part` in world px (rotation applied), from its point to its square end:
+* what the editor outlines when the label is selected or shares a name with the hovered one. The
+* ground mark widens a ground label's flag; `ground` says whether it is drawn.
+*/
+function flagRect(part, m, ground = false) {
+	const lay = layoutModule(m);
+	const mid = lay.pins[0]?.edge.y ?? lay.h / 2;
+	const a = toWorld(part, lay, {
+		x: 0,
+		y: mid - FLAG_H / 2
+	});
+	const b = toWorld(part, lay, {
+		x: flagWidth(labelName(part), ground),
+		y: mid + FLAG_H / 2
+	});
+	return {
+		x: Math.min(a.x, b.x),
+		y: Math.min(a.y, b.y),
+		w: Math.abs(a.x - b.x),
+		h: Math.abs(a.y - b.y)
+	};
+}
+//#endregion
 //#region src/format/values.ts
 var OHM = "Ω";
 var MICRO = "µ";
@@ -2963,11 +3068,16 @@ function captionAnchor(m, rotation = 0) {
 		y: 0,
 		rotation
 	}, layoutModule(m));
-	const stubsDown = worldPins({
+	const pins = worldPins({
 		x: 0,
 		y: 0,
 		rotation
-	}, m).some((p) => p.dir.y > 0);
+	}, m);
+	const stubsDown = pins.some((p) => p.dir.y > 0);
+	if (stubsDown && !pins.some((p) => p.dir.y < 0)) return {
+		x: box.x + box.w / 2,
+		y: box.y - 6
+	};
 	return {
 		x: box.x + box.w / 2,
 		y: box.y + box.h + (stubsDown ? usesTipLabels(m) ? pinRoom(m) : 8 : 0) + 15
@@ -2975,6 +3085,7 @@ function captionAnchor(m, rotation = 0) {
 }
 /** The caption's box in world px (8 px above the baseline, 2 below). */
 function captionBox(part, m, text = partCaption(part, m)) {
+	if (isNetLabel(m)) return flagRect(part, m, true);
 	const a = captionAnchor(m, part.rotation ?? 0);
 	const w = text.length * CAPTION_CHAR;
 	return {
@@ -3037,7 +3148,7 @@ var GAP = 8;
 /** The least a covered lead's label sits in from the body edge, and its clearance from the cover. */
 var INSET = 6;
 var CLEAR = 4;
-var inside = (r, p) => p.x > r.x && p.x < r.x + r.w && p.y > r.y && p.y < r.y + r.h;
+var inside$1 = (r, p) => p.x > r.x && p.x < r.x + r.w && p.y > r.y && p.y < r.y + r.h;
 /** How far from a pin's body edge, along its direction, the rectangle begins (negative: it overlaps the body). */
 function coverFrom(r, edge, dir) {
 	if (dir.y > 0) return r.y - edge.y;
@@ -3074,7 +3185,7 @@ function seatedLabels(d) {
 		for (const w of worldPins(p, m)) for (const q of d.parts) {
 			if (q === p || q === board) continue;
 			const r = rectOf(q.uid);
-			if (!r || !inside(r, w.end)) continue;
+			if (!r || !inside$1(r, w.end)) continue;
 			labelInset = Math.max(labelInset ?? INSET, CLEAR - coverFrom(r, w.edge, w.dir));
 		}
 		out.set(p.uid, {
@@ -3095,81 +3206,6 @@ function seatedLabels(d) {
 		});
 	}
 	return out;
-}
-//#endregion
-//#region src/format/words.ts
-/** Natural order, so U2 sorts before U10. */
-var natural = new Intl.Collator("en", {
-	numeric: true,
-	sensitivity: "base"
-});
-/** "A", "A or B", "A, B or C". */
-function orList(items) {
-	return items.length < 2 ? items.join("") : `${items.slice(0, -1).join(", ")} or ${items[items.length - 1]}`;
-}
-/** "A", "A and B", "A, B and C". */
-function andList(items) {
-	return items.length < 2 ? items.join("") : `${items.slice(0, -1).join(", ")} and ${items[items.length - 1]}`;
-}
-/** A label's name: its stored `values.net`, trimmed; empty when missing or not text. */
-function labelName(part) {
-	const v = part.values?.["net"];
-	return typeof v === "string" ? v.trim() : "";
-}
-/** The one pin of a net label module (its tag point). */
-function labelPin(m) {
-	const pin = m.pins.find((p) => !isSpacer(p));
-	return pin && !isSpacer(pin) ? pin.name : "";
-}
-var cache$3 = /* @__PURE__ */ new WeakMap();
-/** Every net label on the sheet (named or not), in sheet order. Cached per parts and modules. */
-function labelsOf(d) {
-	const hit = cache$3.get(d.parts);
-	if (hit && hit.modules === d.modules) return hit.result;
-	const result = [];
-	for (const part of d.parts) {
-		const m = moduleOf(d, part.module);
-		if (m && isNetLabel(m)) result.push({
-			part,
-			name: labelName(part),
-			pin: labelPin(m)
-		});
-	}
-	cache$3.set(d.parts, {
-		modules: d.modules,
-		result
-	});
-	return result;
-}
-/** Named labels grouped by name, each group in sheet order. */
-function labelGroups(d) {
-	const out = /* @__PURE__ */ new Map();
-	for (const l of labelsOf(d)) {
-		if (!l.name) continue;
-		const list = out.get(l.name);
-		if (list) list.push(l);
-		else out.set(l.name, [l]);
-	}
-	return out;
-}
-/**
-* The flag's height and the depth of its point, in px (module-local; the body is two units tall).
-* Under one grid unit, so labels on neighbouring header pins (0.1 inch apart) stack without touching.
-*/
-var FLAG_H = 8.6;
-/** Width of one character of the flag's 7 px bold name, a little generous so text never overruns. */
-var CHAR_W = 4.6;
-/** The name as the flag shows it: "?" for an unnamed label, cut at FLAG_MAX_CHARS. */
-function flagText(name) {
-	if (!name) return "?";
-	return name.length > 24 ? `${name.slice(0, 23)}…` : name;
-}
-/**
-* The flag's width in px from its point (the pin, at local x 0) to its square end: the point, the
-* name with padding, and room for the ground mark when `ground`. Never narrower than 28 px.
-*/
-function flagWidth(name, ground = false) {
-	return Math.max(20, Math.ceil(8 + flagText(name).length * CHAR_W + 4 + (ground ? 7 : 0)));
 }
 var NOTE_CHAR = 5.9;
 var TAB_CHAR = 5.6;
@@ -3297,6 +3333,7 @@ function moduleOf(d, id) {
 function partObstacles(d) {
 	return d.parts.flatMap((p) => {
 		const m = moduleOf(d, p.module);
+		if (m && isNetLabel(m)) return [flagRect(p, m, true)];
 		return m && m.obstacle !== false ? [bodyRect(p, layoutModule(m))] : [];
 	});
 }
@@ -3555,13 +3592,18 @@ function gridNodesIn(r) {
 }
 function labelPoints(d) {
 	const captions = /* @__PURE__ */ new Map();
+	const names = /* @__PURE__ */ new Map();
 	const seated = seatedLabels(d);
 	for (const p of d.parts) {
 		const m = moduleOf(d, p.module);
-		if (m) captions.set(p.uid, [placedCaptionBox(p, m, seated.get(p.uid)), ...tipLabelBoxes(p, m)].flatMap(gridNodesIn));
+		if (!m) continue;
+		captions.set(p.uid, gridNodesIn(placedCaptionBox(p, m, seated.get(p.uid))));
+		const tips = tipLabelBoxes(p, m).flatMap(gridNodesIn);
+		if (tips.length) names.set(p.uid, tips);
 	}
 	return {
 		captions,
+		names,
 		tabs: (d.annotations ?? []).flatMap((a) => a.type === "frame" ? a.label ? gridNodesIn(frameTab(a)) : [] : gridNodesIn(annotationRect(a)))
 	};
 }
@@ -3571,10 +3613,13 @@ function routeAvoid(d, holes = boardHoles(d), labels = labelPoints(d)) {
 	const ti = new PointIndex();
 	for (const p of labels.tabs) ti.add(p.x, p.y, "");
 	for (const [uid, pts] of labels.captions) for (const p of pts) ti.add(p.x, p.y, uid);
+	const ni = new PointIndex();
+	for (const [uid, pts] of labels.names ?? []) for (const p of pts) ni.add(p.x, p.y, uid);
 	return {
 		holes: hi,
 		legGroup: holes.legGroup,
-		text: ti
+		text: ti,
+		names: ni
 	};
 }
 /** True when a straight run from `a` to `b` passes within 3 px of a point of `index` not skipped. */
@@ -3602,7 +3647,8 @@ function routeWire(d, c, obstacles, occupied, avoid = routeAvoid(d)) {
 	];
 	const anyHoles = avoid.holes.some(wx0, wy0, wx1, wy1, ownHoles, () => true);
 	const anyText = avoid.text.some(wx0, wy0, wx1, wy1, ownText, () => true);
-	if (facing && !c.route && !manualRouteBlocked([a.end, b.end], own) && !runsOver(a.end, b.end, avoid.holes, ownHoles) && !runsOver(a.end, b.end, avoid.text, ownText)) return {
+	const anyNames = avoid.names.some(wx0, wy0, wx1, wy1, ownText, () => true);
+	if (facing && !c.route && !manualRouteBlocked([a.end, b.end], own) && !runsOver(a.end, b.end, avoid.holes, ownHoles) && !runsOver(a.end, b.end, avoid.text, ownText) && !runsOver(a.end, b.end, avoid.names, ownText)) return {
 		points: [a.end, b.end],
 		blocked: false
 	};
@@ -3644,17 +3690,31 @@ function routeWire(d, c, obstacles, occupied, avoid = routeAvoid(d)) {
 	};
 	const holesHit = { hit: false };
 	const textHit = { hit: false };
+	const namesHit = { hit: false };
 	const holesIn = {
 		index: avoid.holes,
 		skip: ownHoles,
 		refused: holesHit
 	};
-	let clear = anyText ? attempt([holesIn, {
-		index: avoid.text,
+	const namesIn = anyNames ? [{
+		index: avoid.names,
 		skip: ownText,
-		refused: textHit
-	}]) : null;
-	if (!clear && (!anyText || textHit.hit)) {
+		refused: namesHit
+	}] : [];
+	let clear = anyText ? attempt([
+		holesIn,
+		{
+			index: avoid.text,
+			skip: ownText,
+			refused: textHit
+		},
+		...namesIn
+	]) : null;
+	if (!clear && anyNames && (!anyText || textHit.hit)) {
+		holesHit.hit = false;
+		clear = attempt([holesIn, ...namesIn]);
+	}
+	if (!clear && (!(anyText || anyNames) || textHit.hit || namesHit.hit)) {
 		holesHit.hit = false;
 		clear = attempt([holesIn]);
 	}
@@ -60290,6 +60350,180 @@ var NOT_CHECKED = [
 	"Mains wiring beyond its connections.",
 	"Each part's own correctness beyond its cited sources; custom parts embedded in the netlist are unverified."
 ];
+function segmentsOf(wire, pts) {
+	const out = [];
+	for (let k = 1; k < pts.length; k++) {
+		const [a, b] = [pts[k - 1], pts[k]];
+		if (a.y === b.y && a.x !== b.x) out.push({
+			wire,
+			h: true,
+			at: a.y,
+			lo: Math.min(a.x, b.x),
+			hi: Math.max(a.x, b.x)
+		});
+		else if (a.x === b.x && a.y !== b.y) out.push({
+			wire,
+			h: false,
+			at: a.x,
+			lo: Math.min(a.y, b.y),
+			hi: Math.max(a.y, b.y)
+		});
+	}
+	return out;
+}
+/** Length of segment `s` that lies strictly inside `r` (0 when it does not enter it). */
+function inside(s, r) {
+	const [across, from, to] = s.h ? [
+		s.at,
+		r.x,
+		r.x + r.w
+	] : [
+		s.at,
+		r.y,
+		r.y + r.h
+	];
+	const [lo, hi] = s.h ? [r.y, r.y + r.h] : [r.x, r.x + r.w];
+	if (!(across > lo && across < hi)) return 0;
+	return Math.max(0, Math.min(s.hi, to) - Math.max(s.lo, from));
+}
+var grow$1 = (r, by) => ({
+	x: r.x - by,
+	y: r.y - by,
+	w: r.w + 2 * by,
+	h: r.h + 2 * by
+});
+var meets = (a, b) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+function readabilityFindings(d, routes = computeRoutes(d)) {
+	const out = [];
+	const drawn = wirePaths(d, routes);
+	const byUid = new Map(d.connections.map((c) => [c.uid, c]));
+	const name = (uid) => {
+		const c = byUid.get(uid);
+		return c.label || `${endpointName(d, c.from)} to ${endpointName(d, c.to)}`;
+	};
+	const nl = netlist(d);
+	const netOf = (uid) => {
+		const c = byUid.get(uid);
+		return nl.netOf.get(nodeKey(c.from.part, c.from.pin)) ?? `wire ${uid}`;
+	};
+	const segs = drawn.flatMap((w) => segmentsOf(w.conn.uid, w.points));
+	const hs = segs.filter((s) => s.h);
+	const vs = segs.filter((s) => !s.h);
+	const parts = d.parts.filter((p) => moduleOf(d, p.module));
+	const partName = (p) => {
+		return isNetLabel(moduleOf(d, p.module)) ? `label ${labelName(p) || p.designator}` : p.designator;
+	};
+	const crowded = /* @__PURE__ */ new Map();
+	for (const list of [hs, vs]) for (let i = 0; i < list.length; i++) for (let j = i + 1; j < list.length; j++) {
+		const [s, t] = [list[i], list[j]];
+		if (s.wire === t.wire || Math.abs(s.at - t.at) > 10 || netOf(s.wire) === netOf(t.wire)) continue;
+		const run = Math.min(s.hi, t.hi) - Math.max(s.lo, t.lo);
+		if (run <= 40) continue;
+		const [a, b] = [s.wire, t.wire].sort(naturalCompare);
+		const key = `${a}|${b}`;
+		const gap = Math.abs(s.at - t.at);
+		const was = crowded.get(key);
+		if (!was || gap < was.gap || gap === was.gap && run > was.run) crowded.set(key, {
+			a,
+			b,
+			gap,
+			run
+		});
+	}
+	for (const { a, b, gap, run } of crowded.values()) out.push({
+		id: `wires-crowded|${a},${b}`,
+		rule: "wires-crowded",
+		severity: "warning",
+		parts: [],
+		pins: [],
+		wires: [a, b],
+		message: `The wires ${name(a)} and ${name(b)} run side by side, ${gap} px apart, for ${run} px. Move one of them at least 20 px away (drag its segment), or draw one of the nets with net labels.`
+	});
+	const bodies = parts.flatMap((p) => {
+		const m = moduleOf(d, p.module);
+		return m.obstacle === false || isNetLabel(m) ? [] : [{
+			p,
+			r: bodyRect(p, layoutModule(m))
+		}];
+	});
+	const hugged = /* @__PURE__ */ new Set();
+	for (const s of segs) {
+		const c = byUid.get(s.wire);
+		for (const { p, r } of bodies) {
+			if (c.from.part === p.uid || c.to.part === p.uid || inside(s, r) > 0 || inside(s, grow$1(r, 5)) < 10) continue;
+			const key = `${s.wire}|${p.uid}`;
+			if (hugged.has(key)) continue;
+			hugged.add(key);
+			out.push({
+				id: `wire-hugs-part|${key}`,
+				rule: "wire-hugs-part",
+				severity: "warning",
+				parts: [p.uid],
+				pins: [],
+				wires: [s.wire],
+				message: `The wire ${name(s.wire)} runs within 5 px of ${p.designator}'s body, which it does not connect to, so it reads as touching it. Move the wire or the part so at least 10 px of paper shows between them.`
+			});
+		}
+	}
+	const seated = seatedLabels(d);
+	const boxes = parts.map((p) => {
+		const m = moduleOf(d, p.module);
+		return {
+			p,
+			label: isNetLabel(m),
+			r: isNetLabel(m) ? flagRect(p, m, true) : placedCaptionBox(p, m, seated.get(p.uid))
+		};
+	});
+	const what = (b) => b.label ? partName(b.p) : `${b.p.designator}'s caption`;
+	const covered = /* @__PURE__ */ new Set();
+	for (const s of segs) for (const b of boxes) {
+		if (inside(s, b.r) <= 0) continue;
+		const key = `${s.wire}|${b.p.uid}`;
+		if (covered.has(key)) continue;
+		covered.add(key);
+		out.push({
+			id: `label-covered|${key}`,
+			rule: "label-covered",
+			severity: "warning",
+			parts: [b.p.uid],
+			pins: [],
+			wires: [s.wire],
+			message: `The wire ${name(s.wire)} covers ${what(b)}, so it is hard to read. Move the wire or the part so it reads clearly.`
+		});
+	}
+	const own = (a, b) => a === b || a.mount?.board === b.uid || b.mount?.board === a.uid;
+	for (const b of boxes) for (const { p, r } of bodies) {
+		if (own(p, b.p) || !meets(r, b.r)) continue;
+		out.push({
+			id: `label-covered|${p.uid}|${b.p.uid}`,
+			rule: "label-covered",
+			severity: "warning",
+			parts: [p.uid, b.p.uid],
+			pins: [],
+			wires: [],
+			message: `${p.designator}'s body covers ${what(b)}. Move one of the parts so it reads clearly.`
+		});
+	}
+	const crossings = /* @__PURE__ */ new Map();
+	for (const h of hs) for (const v of vs) {
+		if (h.wire === v.wire || !(v.at > h.lo && v.at < h.hi && h.at > v.lo && h.at < v.hi)) continue;
+		for (const [a, b] of [[h.wire, v.wire], [v.wire, h.wire]]) {
+			let set = crossings.get(a);
+			if (!set) crossings.set(a, set = /* @__PURE__ */ new Set());
+			set.add(b);
+		}
+	}
+	for (const [uid, others] of [...crossings].sort((x, y) => naturalCompare(x[0], y[0]))) if (others.size > 8) out.push({
+		id: `crossings-high|${uid}`,
+		rule: "crossings-high",
+		severity: "warning",
+		parts: [],
+		pins: [],
+		wires: [uid],
+		message: `The wire ${name(uid)} crosses ${others.size} other wires, so it is hard to follow. Move a part it connects so the wire runs clear, or draw its net with net labels.`
+	});
+	return out.sort((a, b) => naturalCompare(a.rule, b.rule) || naturalCompare(a.id, b.id));
+}
 //#endregion
 //#region src/format/bom.ts
 /**
@@ -60612,7 +60846,11 @@ function checkCommand(args, io) {
 	const diagram = sheetOf("check", args, io);
 	const all = verifyDiagram(diagram, libraryLookup);
 	const checked = withoutStale(checkDiagram(diagram), all);
-	return report(io, args, "circuitoon-cli/check/1", uniqueIds([...diagram.intent !== void 0 ? all.filter((f) => !alsoChecked(f, checked)) : [], ...checked].map(cliFinding)));
+	return report(io, args, "circuitoon-cli/check/1", uniqueIds([
+		...diagram.intent !== void 0 ? all.filter((f) => !alsoChecked(f, checked)) : [],
+		...checked,
+		...readabilityFindings(diagram)
+	].map(cliFinding)));
 }
 //#endregion
 //#region src/cli/png.ts
@@ -60773,6 +61011,30 @@ function focusParts(d, name) {
 	const uids = refs ? d.parts.filter((p) => refs.includes(p.designator)).map((p) => p.uid) : [];
 	return uids.length ? uids : null;
 }
+/** Square tiles of about `size` px covering `box`, overlapping by 40 px, row by row from the top left (rows and columns count from 1). */
+function tilesOf(box, size) {
+	const overlap = 40;
+	const across = Math.max(1, Math.ceil((box.w - overlap) / (size - overlap)));
+	const down = Math.max(1, Math.ceil((box.h - overlap) / (size - overlap)));
+	const w = Math.min(size, box.w);
+	const h = Math.min(size, box.h);
+	const out = [];
+	for (let r = 0; r < down; r++) for (let c = 0; c < across; c++) {
+		const x = across === 1 ? box.x : box.x + (box.w - w) * c / (across - 1);
+		const y = down === 1 ? box.y : box.y + (box.h - h) * r / (down - 1);
+		out.push({
+			row: r + 1,
+			col: c + 1,
+			box: {
+				x: Math.round(x),
+				y: Math.round(y),
+				w,
+				h
+			}
+		});
+	}
+	return out;
+}
 function renderCommand(args, io) {
 	const [input] = args.positionals;
 	const png = flag(args, "--out");
@@ -60790,6 +61052,10 @@ function renderCommand(args, io) {
 		if (!uids) throw new CliError(`render: the sheet's intent has no repeat copy or group named "${focus}"`, EXIT.input);
 		box = focusBounds(diagram, uids);
 	}
+	const tileFlag = flag(args, "--tiles");
+	const tile = tileFlag === void 0 ? null : Number(tileFlag);
+	if (tile !== null && !(Number.isInteger(tile) && tile >= 200 && tile <= 4e3)) throw new CliError("render: --tiles must be a whole number of sheet px from 200 to 4000", EXIT.input);
+	if (tile !== null && !png) throw new CliError("render: --tiles needs -o <sheet.png>; the tiles are written beside it", EXIT.input);
 	const drawn = renderSheetSvg(diagram, {
 		dark: args.flags.has("--dark"),
 		box
@@ -60818,6 +61084,26 @@ function renderCommand(args, io) {
 			width: shot.width,
 			height: shot.height
 		});
+		if (tile !== null) for (const t of tilesOf(box ?? contentBounds(diagram), tile)) {
+			const path = png.replace(/(\.png)?$/i, `-tile-${t.row}-${t.col}.png`);
+			const part = renderSheetSvg(diagram, {
+				dark: args.flags.has("--dark"),
+				box: t.box
+			});
+			let s;
+			try {
+				s = writePng(part, scale, pathIn(io, path), io.env);
+			} catch (err) {
+				throw writeError(path, err);
+			}
+			if (!s.ok) throw new CliError(s.message, EXIT.environment);
+			outputs.push({
+				kind: "png",
+				path,
+				width: s.width,
+				height: s.height
+			});
+		}
 	}
 	if (args.flags.has("--json")) printJson(io, {
 		format: "circuitoon-cli/render/1",
@@ -60966,6 +61252,7 @@ async function runGate(bytes, opts) {
 		parts: [c.from.part, c.to.part],
 		wires: [c.uid]
 	});
+	found.push(...readabilityFindings(d, routes).map(cliFinding));
 	const parsed = d.intent !== void 0 ? parseNetlist(d.intent, intentLookup(d, libraryLookup)) : null;
 	const bom = sheetBom(d, libraryLookup);
 	rows = {
@@ -61127,6 +61414,245 @@ var RectIndex = class {
 	}
 };
 //#endregion
+//#region src/agent/labelling.ts
+var LABEL_MODES = [
+	"auto",
+	"none",
+	"all"
+];
+/** Distances, in px, from a pin tip (or a board edge) to its label's pin, nearest first. */
+var LABEL_STUBS = [
+	20,
+	30,
+	40,
+	60,
+	80
+];
+/** Room kept clear around another part's body for its pin stubs, in px. */
+var STUB_ROOM = 10;
+/** Whether auto mode labels a net: power and ground with 3 or more endpoints or spread far, a signal between groups or spread far. */
+function autoLabels(s) {
+	if (s.ends.length < 2) return false;
+	const xs = s.ends.map((e) => e.at.x);
+	const ys = s.ends.map((e) => e.at.y);
+	const far = Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys)) > 300;
+	if (s.kind !== "signal") return s.ends.length >= 3 || far;
+	const groups = new Set(s.ends.map((e) => e.group ?? ""));
+	return far || groups.size > 1 && s.ends.some((e) => e.group !== void 0);
+}
+/** A stub's line as a thin rectangle, so a strict overlap test sees what it crosses. */
+var line = (a, b) => ({
+	x: Math.min(a.x, b.x) - .5,
+	y: Math.min(a.y, b.y) - .5,
+	w: Math.abs(a.x - b.x) + 1,
+	h: Math.abs(a.y - b.y) + 1
+});
+/**
+* Spots tried for a label, nearest first: `s` px straight out from the pin (or board edge), then set
+* off `o` px to either side, so a row of header pins with a part in front of some still gets labels.
+*/
+var SIDE_OFFSETS = [
+	0,
+	10,
+	-10,
+	20,
+	-20,
+	30,
+	-30,
+	40,
+	-40,
+	60,
+	-60,
+	80,
+	-80
+];
+var CANDIDATES = LABEL_STUBS.flatMap((s) => SIDE_OFFSETS.map((o) => ({
+	s,
+	o
+}))).sort((a, b) => a.s + 1.5 * Math.abs(a.o) - (b.s + 1.5 * Math.abs(b.o)));
+var LabelPlacer = class {
+	/** Everything a flag must stay off: bodies grown for their stubs, captions, pin names, notes, labels placed. */
+	flagsOff = [];
+	/** What a stub must not cross: bodies (boards aside), captions, notes, labels placed and their stubs. */
+	stubsOff = [];
+	used = /* @__PURE__ */ new Set();
+	seq = 0;
+	m;
+	constructor(d, m, extra = {}) {
+		this.m = m;
+		const seated = seatedLabels(d);
+		for (const p of d.parts) {
+			const pm = moduleOf(d, p.module);
+			if (!pm) continue;
+			this.used.add(p.uid);
+			const body = bodyRect(p, layoutModule(pm));
+			const caption = placedCaptionBox(p, pm, seated.get(p.uid));
+			this.flagsOff.push(grow(body, STUB_ROOM), caption, ...tipLabelBoxes(p, pm));
+			if (!isBoard(pm)) this.stubsOff.push({
+				r: body,
+				part: p.uid
+			});
+			this.stubsOff.push({ r: caption });
+		}
+		for (const a of [...d.annotations ?? [], ...extra.annotations ?? []]) {
+			const r = a.type === "text" ? annotationRect(a) : a.label ? frameTab(a) : null;
+			if (!r) continue;
+			this.flagsOff.push(r);
+			this.stubsOff.push({ r });
+		}
+	}
+	/** The label pin's direction at each rotation, so a label can face back at its endpoint. */
+	pinAt(rotation) {
+		return worldPins({
+			x: 0,
+			y: 0,
+			rotation
+		}, this.m)[0];
+	}
+	/**
+	* A spot for a label named `name` whose pin tip sits `s` px out from `from` along `dir` (for each
+	* s in LABEL_STUBS, from `base`, the point the distance is measured from, `from` by default), or
+	* null. The stub from `from` to the tip may cross `own` (the endpoint's part: a pad inside it).
+	*/
+	spot(name, from, dir, opts = {}) {
+		const rotation = [
+			0,
+			90,
+			180,
+			270
+		].find((r) => {
+			const p = this.pinAt(r);
+			return p.dir.x === -dir.x && p.dir.y === -dir.y;
+		});
+		if (rotation === void 0) return null;
+		const pin = this.pinAt(rotation);
+		const base = opts.base ?? from;
+		const side = {
+			x: -dir.y,
+			y: dir.x
+		};
+		const inside = opts.base !== void 0;
+		for (const { s, o } of CANDIDATES) {
+			const exit = inside ? {
+				x: base.x + side.x * o,
+				y: base.y + side.y * o
+			} : base;
+			const elbow = {
+				x: exit.x + dir.x * s,
+				y: exit.y + dir.y * s
+			};
+			const tip = inside ? elbow : {
+				x: elbow.x + side.x * o,
+				y: elbow.y + side.y * o
+			};
+			const part = {
+				uid: "",
+				designator: "",
+				module: this.m.id,
+				x: tip.x - pin.end.x,
+				y: tip.y - pin.end.y,
+				rotation,
+				values: { net: name }
+			};
+			const flag = flagRect(part, this.m, true);
+			if (this.flagsOff.some((r) => intersects(flag, r))) continue;
+			const stub = [line(exit, elbow), line(elbow, tip)];
+			if (this.stubsOff.some((x) => x.part !== opts.own && stub.some((r) => intersects(r, x.r)))) continue;
+			return {
+				part,
+				tip,
+				elbow,
+				base: exit
+			};
+		}
+		return null;
+	}
+	/** A point to roll back to (see `rollback`), so a net that cannot label every endpoint leaves no trace. */
+	mark() {
+		return {
+			flags: this.flagsOff.length,
+			stubs: this.stubsOff.length,
+			seq: this.seq,
+			used: [...this.used]
+		};
+	}
+	rollback(m) {
+		this.flagsOff.length = m.flags;
+		this.stubsOff.length = m.stubs;
+		this.seq = m.seq;
+		this.used = new Set(m.used);
+	}
+	/** Takes a spot: names its label (NL1, NL2, ... clear of every uid on the sheet) and keeps later labels and stubs off it. */
+	commit(s, from) {
+		let uid;
+		do
+			uid = `NL${++this.seq}`;
+		while (this.used.has(uid));
+		this.used.add(uid);
+		const part = {
+			...s.part,
+			uid,
+			designator: uid
+		};
+		const flag = flagRect(part, this.m, true);
+		this.flagsOff.push(flag, line(s.base, s.elbow), line(s.elbow, s.tip));
+		this.stubsOff.push({ r: flag }, { r: line(s.base, s.elbow) }, { r: line(s.elbow, s.tip) });
+		return part;
+	}
+};
+/** For a hole of a board or a pad inside a body, each way out to the body's edge, nearest first: the direction and the edge point. */
+function edgeExits(board, at) {
+	return [
+		{
+			dir: {
+				x: -1,
+				y: 0
+			},
+			base: {
+				x: board.x,
+				y: at.y
+			},
+			g: at.x - board.x
+		},
+		{
+			dir: {
+				x: 1,
+				y: 0
+			},
+			base: {
+				x: board.x + board.w,
+				y: at.y
+			},
+			g: board.x + board.w - at.x
+		},
+		{
+			dir: {
+				x: 0,
+				y: -1
+			},
+			base: {
+				x: at.x,
+				y: board.y
+			},
+			g: at.y - board.y
+		},
+		{
+			dir: {
+				x: 0,
+				y: 1
+			},
+			base: {
+				x: at.x,
+				y: board.y + board.h
+			},
+			g: board.y + board.h - at.y
+		}
+	].sort((a, b) => a.g - b.g).map(({ dir, base }) => ({
+		dir,
+		base
+	}));
+}
+//#endregion
 //#region src/agent/realize.ts
 var SIGNAL_COLORS = [
 	"blue",
@@ -61158,7 +61684,7 @@ function netKind(intent, n) {
 	const types = n.terminals.filter((t) => !t.infra).map((t) => typeOf(mods.get(t.ref), t.name));
 	return types.includes("ground") ? "ground" : types.some((t) => t === "power_in" || t === "power_out") ? "power" : "signal";
 }
-function realize(intent, d, locals = []) {
+function realize(intent, d, locals = [], opts = {}) {
 	const errors = [];
 	const plugs = plugsOf(d);
 	const partBy = new Map(d.parts.map((p) => [p.uid, p]));
@@ -61377,6 +61903,174 @@ function realize(intent, d, locals = []) {
 		}
 		return best;
 	};
+	const mode = opts.labels ?? "auto";
+	const placer = opts.labelModule && mode !== "none" ? new LabelPlacer(d, opts.labelModule) : null;
+	const labels = [];
+	const labelledNets = [];
+	const unlabelled = [];
+	const groupOfRef = /* @__PURE__ */ new Map();
+	for (const g of intent.groups) for (const r of g.refs) groupOfRef.set(r, `group ${g.name}`);
+	for (const c of intent.copies) for (const r of c.refs) groupOfRef.set(r, `copy ${c.id}`);
+	const copyOfRef = new Map(intent.copies.flatMap((c) => c.refs.map((r) => [r, c.id])));
+	const mainsNet = (n) => n.terminals.some((t) => mainsOf(modOf(t.ref)).terminals.has(t.name));
+	const labelNet = (ni, net, kind, nodes, dps, local) => {
+		if (!placer || local || mainsNet(net)) return false;
+		const head = (n) => pointOf(pinEnd(n.members[0]));
+		const ends = [...nodes.map((n) => ({
+			at: head(n),
+			group: groupOfRef.get(n.members[0].ref)
+		})), ...dps.length ? [{
+			at: dps[0].holes[0],
+			group: groupOfRef.get(dps[0].board)
+		}] : []];
+		if (ends.length < 2) return false;
+		if (!net.label && mode !== "all" && !autoLabels({
+			kind,
+			ends
+		})) return false;
+		const clusters = /* @__PURE__ */ new Map();
+		for (const n of nodes) {
+			const ref = n.members[0].ref;
+			const copy = copyOfRef.get(ref);
+			const key = copy !== void 0 ? `copy ${copy}` : `part ${ref}`;
+			clusters.set(key, [...clusters.get(key) ?? [], n]);
+		}
+		if (clusters.size + (dps.length ? 1 : 0) < 2) return false;
+		const before = placer.mark();
+		const fail = () => {
+			placer.rollback(before);
+			unlabelled.push(net.name);
+			return false;
+		};
+		const pinOf = (node) => node.members.find((x) => (node.left.get(x.name) ?? 0) > 0);
+		const plan = [];
+		const orphans = [];
+		for (const group of clusters.values()) {
+			let found = null;
+			for (const node of group) {
+				const t = pinOf(node);
+				const at = t && resolveEndpoint(d, pinEnd(t));
+				if (!t || !at) continue;
+				const spot = (at.dir ? [{
+					dir: at.dir,
+					base: at.end
+				}] : edgeExits(bodyRect(partBy.get(t.ref), layoutModule(modOf(t.ref))), at.end)).reduce((got, e) => got ?? placer.spot(net.name, at.end, e.dir, {
+					base: e.base,
+					own: t.ref
+				}), null);
+				if (spot) {
+					found = {
+						spot,
+						from: at.end,
+						pins: []
+					};
+					break;
+				}
+			}
+			if (!found) {
+				for (const node of group) {
+					const t = pinOf(node);
+					if (!t) return fail();
+					orphans.push({
+						node,
+						t,
+						at: pointOf(pinEnd(t))
+					});
+				}
+				continue;
+			}
+			for (const node of group) {
+				const t = pinOf(node);
+				if (!t) return fail();
+				found.pins.push({
+					node,
+					t
+				});
+			}
+			placer.commit(found.spot, found.from);
+			plan.push(found);
+		}
+		if (dps.length) {
+			let found = null;
+			search: for (const s of dps) {
+				const rect = bodyRect(partBy.get(s.board), layoutModule(modOf(s.board)));
+				for (const i of clear(s)) for (const exit of edgeExits(rect, s.holes[i])) {
+					const spot = placer.spot(net.name, s.holes[i], exit.dir, {
+						base: exit.base,
+						own: s.board
+					});
+					if (spot) {
+						found = {
+							spot,
+							from: s.holes[i],
+							pins: [],
+							hole: {
+								s,
+								i
+							}
+						};
+						break search;
+					}
+				}
+			}
+			if (found) plan.push(found);
+		}
+		if (plan.length < 2) return fail();
+		const nearest = (at) => plan.reduce((a, b) => dist(b.spot.tip, at) < dist(a.spot.tip, at) ? b : a);
+		for (const o of orphans) nearest(o.at).pins.push({
+			node: o.node,
+			t: o.t
+		});
+		if (dps.length && !plan.some((p) => p.hole)) {
+			const target = nearest(dps[0].holes[0]);
+			const i = nearestHole(dps[0], target.spot.tip);
+			if (i === null) return fail();
+			target.hole = {
+				s: dps[0],
+				i
+			};
+		}
+		if (orphans.length || dps.length && !plan.some((p) => p.hole && p.from === p.hole.s.holes[p.hole.i])) unlabelled.push(net.name);
+		placer.rollback(before);
+		const joined = dps.slice(0, 1);
+		const rest = dps.slice(1);
+		while (rest.length) {
+			let pick = null;
+			for (const a of joined) for (const b of rest) for (const i of free(a)) for (const j of free(b)) if (!pick || dist(a.holes[i], b.holes[j]) < pick[2]) pick = [
+				a,
+				b,
+				dist(a.holes[i], b.holes[j])
+			];
+			if (!pick || !jumper(ni, pick[0], pick[1])) {
+				errors.push(`strip full: net ${net.name} cannot join ${rest.map(stripName).join(", ")}: no free hole left${under(rest)}`);
+				return true;
+			}
+			joined.push(pick[1]);
+			rest.splice(rest.indexOf(pick[1]), 1);
+		}
+		for (const p of plan) {
+			const part = placer.commit(p.spot, p.from);
+			labels.push(part);
+			const to = {
+				part: part.uid,
+				pin: "NET"
+			};
+			for (const { node, t } of p.pins) {
+				node.left.set(t.name, node.left.get(t.name) - 1);
+				wire(ni, pinEnd(t), to, true);
+			}
+			if (p.hole) {
+				const i = used.has(holeKey(p.hole.s.board, p.hole.s.name, p.hole.i)) ? nearestHole(p.hole.s, p.spot.tip) : p.hole.i;
+				if (i === null) {
+					errors.push(`strip full: net ${net.name} has no free hole left on ${stripName(p.hole.s)}${under([p.hole.s])}`);
+					return true;
+				}
+				wire(ni, holeEnd(p.hole.s, i), to, true);
+			}
+		}
+		labelledNets.push(net.name);
+		return true;
+	};
 	for (const [ni, net] of intent.nets.entries()) {
 		const kind = kindOf(net);
 		const dps = [];
@@ -61409,6 +62103,7 @@ function realize(intent, d, locals = []) {
 		})).filter((g) => g.strips.length);
 		for (const g of groups) for (const st of g.strips) owner.set(st.key, ni);
 		const groupOf = (n) => groups.find((g) => g.refs.has(n.members[0].ref));
+		if (labelNet(ni, net, kind, nodes, dps, groups.length > 0)) continue;
 		const own = nodes.filter((n) => !groupOf(n));
 		if (!dps.length && groups.length && own.length >= 2) {
 			const pts = own.map(first);
@@ -61531,7 +62226,10 @@ function realize(intent, d, locals = []) {
 		ok: true,
 		value: {
 			connections,
-			netOfWire
+			netOfWire,
+			labels,
+			labelled: labelledNets,
+			unlabelled
 		}
 	};
 }
@@ -62310,7 +63008,10 @@ function colorByRole(intent, d, netOfWire) {
 /** Every overlapping pair on the sheet, as "R1 and R2" (bodies) or "R1 caption and R2 body". */
 function overlaps(d) {
 	const parts = d.parts.filter((p) => moduleOf(d, p.module)).sort((a, b) => naturalCompare(a.uid, b.uid));
-	const body = (p) => bodyRect(p, layoutModule(moduleOf(d, p.module)));
+	const body = (p) => {
+		const m = moduleOf(d, p.module);
+		return isNetLabel(m) ? flagRect(p, m, true) : bodyRect(p, layoutModule(m));
+	};
 	const seated = seatedLabels(d);
 	const caption = (p) => placedCaptionBox(p, moduleOf(d, p.module), seated.get(p.uid));
 	const own = (a, b) => a.mount?.board === b.uid || b.mount?.board === a.uid;
@@ -62389,18 +63090,21 @@ function readability(d, routes, netOfWire = /* @__PURE__ */ new Map()) {
 	};
 }
 function reportText(r) {
-	return `Readability: body overlaps ${r.bodyOverlaps}, caption overlaps ${r.captionOverlaps}, wire crossings ${r.wireCrossings}, wire length ${r.wireLength} px, sheet ${r.sheet.w} x ${r.sheet.h} px, blocked nets ${r.blockedNets.length ? r.blockedNets.join(", ") : "none"}.`;
+	return `Readability: body overlaps ${r.bodyOverlaps}, caption overlaps ${r.captionOverlaps}, wire crossings ${r.wireCrossings}, wire length ${r.wireLength} px, sheet ${r.sheet.w} x ${r.sheet.h} px, blocked nets ${r.blockedNets.length ? r.blockedNets.join(", ") : "none"}${r.readabilityWarnings !== void 0 ? `, readability warnings ${r.readabilityWarnings}` : ""}${r.labels ? `, labels ${r.labels.mode} (${r.labels.nets.length ? `nets ${r.labels.nets.join(", ")}` : "no nets labelled"}${r.labels.unplaced.length ? `; no room for a label at some endpoints of ${r.labels.unplaced.join(", ")}, wired instead` : ""})` : ""}.`;
 }
 //#endregion
 //#region src/agent/layout.ts
 var SPACINGS = [
-	20,
-	40,
-	60
+	30,
+	60,
+	90
 ];
 /** The module a repeat block's local distribution strips use (amendment A18.1). */
 var RAIL_MODULE = "power-rail-strip";
+/** The module the layout's net labels use. */
+var LABEL_MODULE = "net-label";
 function layoutNetlist(raw, opts = {}) {
+	const mode = opts.labels ?? "auto";
 	const library = opts.library ?? libraryLookup;
 	const parsed = parseNetlist(raw, library);
 	if (!parsed.ok) return {
@@ -62436,14 +63140,26 @@ function layoutNetlist(raw, opts = {}) {
 			stage: "layout",
 			errors: [...over.body.map((o) => `body overlap: ${o}; move one of them`), ...over.caption.map((o) => `caption overlap: ${o}; move one of them`)]
 		};
-		const real = realize(intent, base, placed.locals);
+		const labelModule = library(LABEL_MODULE);
+		const real = realize(intent, base, placed.locals, {
+			labels: mode,
+			labelModule
+		});
 		if (!real.ok) return {
 			ok: false,
 			stage: "layout",
 			errors: real.errors
 		};
+		const labelled = real.value.labels.length && labelModule ? {
+			parts: [...base.parts, ...real.value.labels],
+			modules: {
+				...base.modules,
+				[LABEL_MODULE]: labelModule
+			}
+		} : {};
 		const wired = {
 			...base,
+			...labelled,
 			connections: real.value.connections
 		};
 		const diagram = {
@@ -62467,6 +63183,7 @@ function layoutNetlist(raw, opts = {}) {
 			};
 		}
 		if (blocked.length) continue;
+		if (real.value.unlabelled.length && i < SPACINGS.length - 1) continue;
 		const findings = verifyDiagram(diagram, library).filter((f) => f.severity === "error");
 		if (findings.length) return {
 			ok: false,
@@ -62477,7 +63194,15 @@ function layoutNetlist(raw, opts = {}) {
 			ok: true,
 			value: {
 				diagram,
-				report: readability(diagram, routes, real.value.netOfWire),
+				report: {
+					...readability(diagram, routes, real.value.netOfWire),
+					readabilityWarnings: readabilityFindings(diagram, routes).length,
+					labels: {
+						mode,
+						nets: real.value.labelled,
+						unplaced: [...new Set(real.value.unlabelled)]
+					}
+				},
 				intent,
 				attempts: i + 1,
 				netOfWire: real.value.netOfWire
@@ -62549,6 +63274,8 @@ function layoutCommand(args, io) {
 	const json = args.flags.has("--json");
 	const out = flag(args, "--out");
 	const keepPath = flag(args, "--keep");
+	const labels = flag(args, "--labels") ?? "auto";
+	if (!LABEL_MODES.includes(labels)) throw new CliError(`layout: --labels must be ${LABEL_MODES.join(", ")}`, EXIT.input);
 	const [input] = args.positionals;
 	if (!out) throw new CliError("layout: -o <sheet.json> is required", EXIT.input);
 	if (!input === !keepPath) throw new CliError("layout: give a netlist file, or --keep <partial.json>, but not both", EXIT.input);
@@ -62563,7 +63290,10 @@ function layoutCommand(args, io) {
 		warnings = unknownKept(keepPath, raw, keep);
 	} else raw = readJson(io, input);
 	if (!json) for (const w of warnings) io.stderr(`warning: ${w}\n`);
-	const r = layoutNetlist(raw, { keep });
+	const r = layoutNetlist(raw, {
+		keep,
+		labels
+	});
 	if (!r.ok) {
 		if (json) printJson(io, {
 			format: "circuitoon-cli/layout/1",
@@ -62642,9 +63372,11 @@ var USAGE = `circuitoon <command> [options]
   parts [--search text] [--json]            built-in parts: pins, labels, types, supplies, hole groups
   part <id> [--json]                        one part in full
   layout <netlist.json> -o <sheet.json>     lay out a netlist; or layout --keep <partial.json> -o <sheet.json>
+                                            [--labels auto|none|all]: which nets are drawn with net labels (default auto)
   verify <sheet.json> [--json]              the sheet against its intent
   check <sheet.json> [--json]               the wiring checker, plus verify when the sheet has an intent
   render <sheet.json> -o <sheet.png> [--svg <sheet.svg>] [--dark] [--scale n] [--focus <copy or group>]
+                                            [--tiles <px>]: also zoomed tiles of the sheet, <px> square each, as <sheet>-tile-<row>-<col>.png
   link <sheet.json> [-o <dir>] [--json]     a link that opens the sheet in Circuitoon
   bom <sheet.json> [-o <bom.csv>] [--json]  the bill of materials: parts, wires and connectors; -o writes CSV
   gate <sheet.json> -o <dir> [--json]       every check, the renders, the bill and the link; exits 0 only when nothing blocks

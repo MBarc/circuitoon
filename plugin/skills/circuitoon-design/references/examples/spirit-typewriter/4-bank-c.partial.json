@@ -2,10 +2,9 @@
   "format": "circuitoon-partial/1",
   "title": "Spirit Typewriter 4 of 4: expander bank C, balls 29 to 42",
   "parts": [
-    { "designator": "BB2", "x": 0, "y": 0 },
-    { "designator": "BB1", "x": 0, "y": 260 },
-    { "designator": "J1", "x": 400, "y": 280 },
-    { "designator": "U4", "x": 400, "y": 60 }
+    { "designator": "J1", "x": 850, "y": 80 },
+    { "designator": "U4", "x": 970, "y": 80 },
+    { "designator": "BB1", "x": 1000, "y": 270 }
   ],
   "intent": {
     "format": "circuitoon-netlist/1",
@@ -13,8 +12,7 @@
     "parts": [
       { "ref": "J1", "module": "jst-xh-4" },
       { "ref": "U4", "module": "mcp23017-cjmcu-2317" },
-      { "ref": "BB1", "module": "power-rail-strip" },
-      { "ref": "BB2", "module": "breadboard-half" }
+      { "ref": "BB1", "module": "power-rail-strip" }
     ],
     "nets": [
       { "name": "3V3", "pins": ["J1.2", "U4.VCC", "U4.RESET", "U4.A1", "BB1.+"] },
