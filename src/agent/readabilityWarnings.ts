@@ -15,6 +15,7 @@ import { isNetLabel, layoutModule } from '../format/module.ts'
 import { endpointName } from '../format/checks.ts'
 import { flagRect, labelName } from '../format/netLabels.ts'
 import { netlist, nodeKey } from '../format/netlist.ts'
+import { plugOfPin } from '../format/breadboard.ts'
 import { placedCaptionBox, tipLabelBoxes } from '../render/captionBox.ts'
 import { seatedLabels } from '../format/seatedLabels.ts'
 import { naturalCompare } from './order.ts'
@@ -42,14 +43,24 @@ export interface ReadabilityFinding {
   wires: string[]
 }
 
-interface Seg { wire: string; h: boolean; at: number; lo: number; hi: number }
+interface Seg {
+  wire: string
+  h: boolean
+  at: number
+  lo: number
+  hi: number
+  /** On the run into a pin (a wire's first or last segment ending at a pin): that pin's part. */
+  into?: string
+}
 
-function segmentsOf(wire: string, pts: Pt[]): Seg[] {
+function segmentsOf(wire: string, pts: Pt[], ends: [string | undefined, string | undefined] = [undefined, undefined]): Seg[] {
   const out: Seg[] = []
   for (let k = 1; k < pts.length; k++) {
     const [a, b] = [pts[k - 1], pts[k]]
-    if (a.y === b.y && a.x !== b.x) out.push({ wire, h: true, at: a.y, lo: Math.min(a.x, b.x), hi: Math.max(a.x, b.x) })
-    else if (a.x === b.x && a.y !== b.y) out.push({ wire, h: false, at: a.x, lo: Math.min(a.y, b.y), hi: Math.max(a.y, b.y) })
+    const into = k === 1 ? ends[0] : k === pts.length - 1 ? ends[1] : undefined
+    const tag = into !== undefined ? { into } : {}
+    if (a.y === b.y && a.x !== b.x) out.push({ wire, h: true, at: a.y, lo: Math.min(a.x, b.x), hi: Math.max(a.x, b.x), ...tag })
+    else if (a.x === b.x && a.y !== b.y) out.push({ wire, h: false, at: a.x, lo: Math.min(a.y, b.y), hi: Math.max(a.y, b.y), ...tag })
   }
   return out
 }
@@ -84,7 +95,15 @@ export function readabilityFindings(d: Diagram, routes: Routes = computeRoutes(d
     }
     return n
   }
-  const segs = drawn.flatMap((w) => segmentsOf(w.conn.uid, w.points))
+  // An end on a part (not a net label) tags the run into it with that part, or with its board for a
+  // hole or a plugged leg: rows of holes and rails sit at a pitch of their own, like a header's pins.
+  const pinEnd = (e: Endpoint) => {
+    const p = d.parts.find((x) => x.uid === e.part)
+    const m = p && moduleOf(d, p.module)
+    if (!m || isNetLabel(m)) return undefined
+    return p.mount && plugOfPin(d, p.uid, e.pin) ? p.mount.board : e.part
+  }
+  const segs = drawn.flatMap((w) => segmentsOf(w.conn.uid, w.points, [pinEnd(w.conn.from), pinEnd(w.conn.to)]))
   const labelParts = new Set(parts0(d).filter((p) => isNetLabel(moduleOf(d, p.module))).map((p) => p.uid))
   const lengthOf = new Map(drawn.map((w) => [w.conn.uid, w.points.slice(1).reduce((n, p, i) => n + Math.abs(p.x - w.points[i].x) + Math.abs(p.y - w.points[i].y), 0)]))
   /** A short stub out to a net label (under LABEL_STUB px): a fan-out row of them is meant that way. */
@@ -119,6 +138,9 @@ export function readabilityFindings(d: Diagram, routes: Routes = computeRoutes(d
         // A row of stubs out to net labels at the pins' own pitch is laid out that way on purpose; only
         // two of them drawn on top of each other are crowded.
         if (s.at !== t.at && stub(s.wire) && stub(t.wire)) continue
+        // Neither are two wires running into neighbouring pins of one header, or holes of one board,
+        // at its own pitch, as jumpers there always sit (Ruling W1).
+        if (s.at !== t.at && s.into !== undefined && s.into === t.into) continue
         const run = Math.min(s.hi, t.hi) - Math.max(s.lo, t.lo)
         if (run <= CROWDED_RUN) continue
         const [a, b] = [s.wire, t.wire].sort(naturalCompare)
@@ -187,6 +209,12 @@ export function readabilityFindings(d: Diagram, routes: Routes = computeRoutes(d
       out.push({ id: `label-covered|${p.uid}|${b.p.uid}`, rule: 'label-covered', severity: 'warning', parts: [p.uid, b.p.uid], pins: [], wires: [],
         message: `${p.designator}'s body covers ${what(b)}. Move one of the parts so it reads clearly.` })
     }
+
+  // Over a populated board (Ruling W1): no route kept off it, so the wire was let across it.
+  for (const c of d.connections)
+    if (routes.get(c.uid)?.overBoard)
+      out.push({ id: `wire-over-board|${c.uid}`, rule: 'wire-over-board', severity: 'warning', parts: [c.from.part, c.to.part], pins: [], wires: [c.uid],
+        message: `The wire ${name(c.uid)} runs across a breadboard with parts on it, because no route around it was found, so it may read as plugged in there. Give the parts more room (layout --keep with fewer parts pinned), or move the parts it joins away from the board.` })
 
   // Crossings per wire.
   const crossings = new Map<string, Set<string>>()

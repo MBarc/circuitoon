@@ -2,7 +2,7 @@
 
 import { GRID, type ModuleDef, PARAM_RULES, isBoard, isNetLabel, layoutModule, moduleSettings, validateModule, validParamValue, isObj, isNum } from './module.ts'
 import { type Pt, type Rect, type Rotation, type WorldPin, bodyRect, simplify, toWorld, worldPins } from './geometry.ts'
-import { type RouteRequest, SEARCH_MARGIN, addToOccupancy, inGrown, Occupancy, onGrid, PointIndex, routeOrthogonal } from './router.ts'
+import { type RouteRequest, CLEARANCE, SEARCH_MARGIN, addToOccupancy, inGrown, Occupancy, onGrid, PointIndex, routeOrthogonal } from './router.ts'
 import { manualRouteBlocked, tidy } from './wireEdit.ts'
 import { coveredHoles, holeIndex, mountIssues, plugOfPin, plugsOf } from './breadboard.ts'
 import { type CableEndDraw, END_SIZE, endKind, endPlacement, isEndKind, normalizeEnds, type WireEnds } from './cables.ts'
@@ -155,6 +155,12 @@ export interface WireRoute {
    * drawn there, it reads as plugged in. Empty holes never set it (Ruling C1). Absent otherwise.
    */
   fallback?: true
+  /**
+   * True when an auto-routed wire runs across a breadboard with parts mounted on it that it does not
+   * end on (or past the straight run in from an edge, where it does): no route kept off the board,
+   * so it crosses it rather than block (Ruling W1). Absent otherwise.
+   */
+  overBoard?: true
 }
 /** Route per connection uid; null means an endpoint names a missing part or pin. */
 export type Routes = Map<string, WireRoute | null>
@@ -460,7 +466,37 @@ export interface RouteAvoid {
   text: PointIndex
   /** Pin names past the tips, by part uid. */
   names: PointIndex
+  /** Breadboards with parts mounted on them (Ruling W1): their bodies, which only wires ending there enter. */
+  boards: { uid: string; rect: Rect }[]
+  /** Board each mounted part sits on, by part uid. */
+  mountOf: Map<string, string>
 }
+
+/**
+ * Extra room, in px, kept between a wire and a populated board's edge, beyond the router's
+ * clearance: the next grid line out, so a wire never reads as lying on the board's frame.
+ */
+export const BOARD_PAD = 6
+
+/**
+ * The boards in use (Ruling W1): with a part mounted on them, or a wire ending in one of their holes;
+ * and each mounted part's board. Only a board in use by neither is a bare surface a wire may cross.
+ */
+export function populatedBoards(d: Diagram): { boards: { uid: string; rect: Rect }[]; mountOf: Map<string, string> } {
+  const mountOf = new Map<string, string>()
+  for (const p of d.parts) if (p.mount) mountOf.set(p.uid, p.mount.board)
+  const hosts = new Set(mountOf.values())
+  for (const c of d.connections) for (const e of [c.from, c.to]) if (e.hole !== undefined) hosts.add(e.part)
+  const boards: { uid: string; rect: Rect }[] = []
+  for (const p of d.parts) {
+    if (!hosts.has(p.uid)) continue
+    const m = moduleOf(d, p.module)
+    if (m && isBoard(m)) boards.push({ uid: p.uid, rect: bodyRect(p, layoutModule(m)) })
+  }
+  return { boards, mountOf }
+}
+
+const growRect = (r: Rect, by: number): Rect => ({ x: r.x - by, y: r.y - by, w: r.w + 2 * by, h: r.h + 2 * by })
 
 export function routeAvoid(d: Diagram, holes: BoardHoles = boardHoles(d), labels: LabelPoints = labelPoints(d)): RouteAvoid {
   const hi = new PointIndex()
@@ -471,7 +507,7 @@ export function routeAvoid(d: Diagram, holes: BoardHoles = boardHoles(d), labels
   for (const [uid, pts] of labels.captions) for (const p of pts) ti.add(p.x, p.y, uid)
   const ni = new PointIndex()
   for (const [uid, pts] of labels.names ?? []) for (const p of pts) ni.add(p.x, p.y, uid)
-  return { holes: hi, legGroup: holes.legGroup, text: ti, names: ni }
+  return { holes: hi, legGroup: holes.legGroup, text: ti, names: ni, ...populatedBoards(d) }
 }
 
 /** True when a straight run from `a` to `b` passes within 3 px of a point of `index` not skipped. */
@@ -490,36 +526,145 @@ export function routeWire(
   obstacles: Rect[],
   occupied?: Occupancy,
   avoid: RouteAvoid = routeAvoid(d),
+  bundle?: Occupancy,
 ): WireRoute | null {
   const a = resolveEndpoint(d, c.from)
   const b = resolveEndpoint(d, c.to)
   if (!a || !b) return null
   const ownHoles = ownGroups(c, avoid.legGroup)
-  const ownText = new Set([c.from.part, c.to.part])
+  // A wire keeps off every caption, its own parts' too (Ruling W1: wires never cover captions); only
+  // a net label it ends on, whose flag it runs into, and its own parts' pin names are its own.
+  const ownNames = new Set([c.from.part, c.to.part])
+  const ownText = new Set([c.from.part, c.to.part].filter((u) => isNetLabel(moduleOf(d, d.parts.find((p) => p.uid === u)?.module ?? ''))))
   const own = obstaclesFor(obstacles, a, b)
-  const { leads: [fromLead, toLead], facing } = leadsOf(c, a, b)
-  // Whether any point to avoid lies where a search could reach (the widest window around both
-  // ends, lead-outs and a grid step of snapping included). When none does, an attempt that avoids
-  // them finds exactly what one without them finds, so it is not made twice.
-  const reach = SEARCH_MARGIN + Math.max(fromLead, toLead) + 2 * GRID
-  const [wx0, wy0, wx1, wy1] = [Math.min(a.end.x, b.end.x) - reach, Math.min(a.end.y, b.end.y) - reach, Math.max(a.end.x, b.end.x) + reach, Math.max(a.end.y, b.end.y) + reach]
-  const anyHoles = avoid.holes.some(wx0, wy0, wx1, wy1, ownHoles, () => true)
-  const anyText = avoid.text.some(wx0, wy0, wx1, wy1, ownText, () => true)
-  const anyNames = avoid.names.some(wx0, wy0, wx1, wy1, ownText, () => true)
-  if (facing && !c.route && !manualRouteBlocked([a.end, b.end], own) && !runsOver(a.end, b.end, avoid.holes, ownHoles) && !runsOver(a.end, b.end, avoid.text, ownText) && !runsOver(a.end, b.end, avoid.names, ownText))
-    return { points: [a.end, b.end], blocked: false }
+  const { leads, facing } = leadsOf(c, a, b)
   if (c.route) {
     let points = manualPoints(a, b, c.route)
+    const [fromLead, toLead] = leads
     if (fromLead || toLead) points = withLeadOut(withLeadOut(points, a.dir, fromLead).reverse(), b.dir, toLead).reverse()
+    const anyHoles = avoid.holes.some(...windowOf(a, b, leads), ownHoles, () => true)
     return { points, blocked: manualRouteBlocked(points, own), ...(anyHoles && pathRunsOver(points, avoid.holes, ownHoles) ? { fallback: true as const } : {}) }
   }
+  // Ruling W1: populated boards are in the way of every wire but those ending on them; a wire
+  // between two holes of one board stays free to run across it.
+  const boardOf = (ep: Endpoint, e: ResolvedEnd) => {
+    if (e.dir !== null || !avoid.boards.length) return null
+    const uid = avoid.mountOf.get(ep.part) ?? ep.part
+    return avoid.boards.find((x) => x.uid === uid) ?? null
+  }
+  const ba = boardOf(c.from, a)
+  const bb = boardOf(c.to, b)
+  const inside = ba !== null && ba === bb ? ba : null
+  const walls = avoid.boards.filter((x) => x !== inside).map((x) => growRect(x.rect, BOARD_PAD))
+  let solved: WireRoute | null | undefined
+  const plainRoute = () => (solved === undefined ? (solved = solveRoute(a, b, own, leads, facing, ownHoles, ownText, ownNames, { occupied, bundle }, avoid)) : solved)
+  if (!walls.length) return plainRoute() ?? { points: blockedPoints(a, b), blocked: true }
+  // The route found without walls stands when it keeps to the rule anyway: off every board in use,
+  // but for one straight run from each of its holes on such a board (a part right beside the board).
+  // It is tried first for a wire with no end on such a board, or one whose other end is right beside
+  // that board; any other wire on a board tries its edge runs first (the search without walls rarely
+  // keeps to the rule there).
+  const boardEnds = [ba, bb].filter((x): x is { uid: string; rect: Rect } => x !== null && x !== inside)
+  const beside = (x: { rect: Rect } | null, other: Pt) => !!x && x !== inside && inGrown(other, x.rect, 40)
+  const plainFirst = !boardEnds.length || beside(ba, b.end) || beside(bb, a.end)
+  const keeps = (pts: Pt[]) => {
+    let body = pts
+    if (ba && ba !== inside) body = body.slice(1)
+    if (bb && bb !== inside) body = body.slice(0, -1)
+    const firstOk = (from: Pt, to: Pt | undefined) => !!to && (from.x === to.x || from.y === to.y)
+    if (ba && ba !== inside && !firstOk(pts[0], pts[1])) return false
+    if (bb && bb !== inside && !firstOk(pts[pts.length - 1], pts[pts.length - 2])) return false
+    return avoid.boards.every((x) => x === inside || !runsInside(body, x.rect)) && boardEnds.length <= 2
+  }
+  if (plainFirst) {
+    const plain = plainRoute()
+    if (plain && !plain.blocked && keeps(plain.points)) return plain
+  }
+  // Each end on a board in use leaves it by one straight run to an edge: an edge whose run crosses no
+  // other part and no hole in use first, and of those the one that makes the shortest way to the
+  // wire's other end (the run plus the distance on from the edge).
+  const ports = (e: ResolvedEnd, board: { uid: string; rect: Rect } | null, other: Pt): { end: ResolvedEnd; run: Pt[] }[] => {
+    if (!board || board === inside) return [{ end: e, run: [] }]
+    const r = growRect(board.rect, BOARD_PAD)
+    const out = (v: number, lo: boolean) => (lo ? Math.floor((v - CLEARANCE - 1) / GRID) * GRID : Math.ceil((v + CLEARANCE + 1) / GRID) * GRID)
+    const p = e.end
+    const exits = [
+      { end: { x: out(r.x, true), y: p.y }, dir: { x: -1, y: 0 } },
+      { end: { x: out(r.x + r.w, false), y: p.y }, dir: { x: 1, y: 0 } },
+      { end: { x: p.x, y: out(r.y, true) }, dir: { x: 0, y: -1 } },
+      { end: { x: p.x, y: out(r.y + r.h, false) }, dir: { x: 0, y: 1 } },
+    ].map((x) => ({ ...x, len: Math.abs(x.end.x - p.x) + Math.abs(x.end.y - p.y) + Math.abs(x.end.x - other.x) + Math.abs(x.end.y - other.y) }))
+    const clean = (x: (typeof exits)[number]) => !manualRouteBlocked([p, x.end], own) && !runsOver(p, x.end, avoid.holes, ownHoles)
+    exits.sort((u, v) => Number(clean(v)) - Number(clean(u)) || u.len - v.len)
+    return exits.map((x) => ({ end: { end: x.end, dir: x.dir }, run: [p] }))
+  }
+  const pa = ports(a, ba, b.end)
+  const pb = ports(b, bb, a.end)
+  const walled = [...own, ...walls]
+  // The two best exits of each end, best pair first.
+  for (const [i, j] of [[0, 0], [0, 1], [1, 0], [1, 1]] as const) {
+    const x = pa[i]
+    const y = pb[j]
+    if (!x || !y) continue
+    const portal = x.run.length > 0 || y.run.length > 0
+    const r = solveRoute(x.end, y.end, walled, [x.run.length ? 0 : leads[0], y.run.length ? 0 : leads[1]], facing && !portal, ownHoles, ownText, ownNames, { occupied, bundle }, avoid)
+    if (r) return { ...r, points: simplify([...x.run, ...r.points, ...y.run]) }
+  }
+  // No route keeps off the boards in use: one across them, flagged, rather than a blocked wire (or,
+  // tried only now, the route without walls when it keeps to the rule after all).
+  const plain = plainRoute()
+  if (plain && !plain.blocked && keeps(plain.points)) return plain
+  return plain ? { ...plain, overBoard: true } : { points: blockedPoints(a, b), blocked: true }
+}
+
+/** Whether any run of `pts` (after its first point) passes strictly inside `r`. */
+function runsInside(pts: Pt[], r: Rect): boolean {
+  for (let i = 1; i < pts.length; i++) {
+    const [p, q] = [pts[i - 1], pts[i]]
+    if (p.y === q.y && p.y > r.y && p.y < r.y + r.h && Math.min(Math.max(p.x, q.x), r.x + r.w) - Math.max(Math.min(p.x, q.x), r.x) > 0) return true
+    if (p.x === q.x && p.x > r.x && p.x < r.x + r.w && Math.min(Math.max(p.y, q.y), r.y + r.h) - Math.max(Math.min(p.y, q.y), r.y) > 0) return true
+  }
+  return false
+}
+
+/** The widest search window around both ends of a wire (lead-outs and a grid step of snapping included). */
+function windowOf(a: ResolvedEnd, b: ResolvedEnd, leads: [number, number]): [number, number, number, number] {
+  const reach = SEARCH_MARGIN + Math.max(leads[0], leads[1]) + 2 * GRID
+  return [Math.min(a.end.x, b.end.x) - reach, Math.min(a.end.y, b.end.y) - reach, Math.max(a.end.x, b.end.x) + reach, Math.max(a.end.y, b.end.y) + reach]
+}
+
+/**
+ * An auto route between two resolved ends around `own`, keeping off other strips' used holes,
+ * captions and pin names where it can (they give way in that order, never blocking it). Null when
+ * no route exists at all.
+ */
+function solveRoute(
+  a: ResolvedEnd,
+  b: ResolvedEnd,
+  own: Rect[],
+  [fromLead, toLead]: [number, number],
+  facing: boolean,
+  ownHoles: Set<string>,
+  ownText: Set<string>,
+  ownNames: Set<string>,
+  { occupied, bundle }: { occupied?: Occupancy; bundle?: Occupancy },
+  avoid: RouteAvoid,
+): WireRoute | null {
+  // Whether any point to avoid lies where a search could reach. When none does, an attempt that
+  // avoids them finds exactly what one without them finds, so it is not made twice.
+  const win = windowOf(a, b, [fromLead, toLead])
+  const anyHoles = avoid.holes.some(...win, ownHoles, () => true)
+  const anyText = avoid.text.some(...win, ownText, () => true)
+  const anyNames = avoid.names.some(...win, ownNames, () => true)
+  if (facing && !manualRouteBlocked([a.end, b.end], own) && !runsOver(a.end, b.end, avoid.holes, ownHoles) && !runsOver(a.end, b.end, avoid.text, ownText) && !runsOver(a.end, b.end, avoid.names, ownNames))
+    return { points: [a.end, b.end], blocked: false }
   // The search starts past each lead-out, so the run from the pin out to it is checked here: a
   // route whose attachment runs cross a body is refused. A lead-out that cannot be routed (a part
   // right in front of the pin) is dropped, one end at a time, down to a plain route.
   const attached = (pts: Pt[]) => !manualRouteBlocked(pts.slice(0, 3), own) && !manualRouteBlocked(pts.slice(-3), own)
   const tries: [number, number][] = [[fromLead, toLead], [fromLead, 0], [0, toLead]]
   const attempt = (avoidIn: RouteRequest['avoidIn']): Pt[] | null => {
-    const req = { from: a.end, fromDir: a.dir, to: b.end, toDir: b.dir, obstacles: own, avoidIn, occupied }
+    const req = { from: a.end, fromDir: a.dir, to: b.end, toDir: b.dir, obstacles: own, avoidIn, occupied, bundle }
     for (const [i, [f, t]] of tries.entries()) {
       if ((!f && !t) || tries.slice(0, i).some(([pf, pt]) => pf === f && pt === t)) continue
       const pts = routeOrthogonal({ ...req, fromLead: f, toLead: t })
@@ -537,7 +682,7 @@ export function routeWire(
   const textHit = { hit: false }
   const namesHit = { hit: false }
   const holesIn = { index: avoid.holes, skip: ownHoles, refused: holesHit }
-  const namesIn = anyNames ? [{ index: avoid.names, skip: ownText, refused: namesHit }] : []
+  const namesIn = anyNames ? [{ index: avoid.names, skip: ownNames, refused: namesHit }] : []
   // Captions give way before pin names: a wire over a caption hides a designator, one over a pin
   // name could hide which pin is which.
   let clear = anyText ? attempt([holesIn, { index: avoid.text, skip: ownText, refused: textHit }, ...namesIn]) : null
@@ -552,8 +697,7 @@ export function routeWire(
   if (clear) return { points: clear, blocked: false }
   const over = anyHoles && holesHit.hit ? attempt([]) : null
   if (over) return { points: over, blocked: false, ...(pathRunsOver(over, avoid.holes, ownHoles) ? { fallback: true as const } : {}) }
-  // Never a diagonal: an unroutable wire is still drawn orthogonal, dashed, and flagged.
-  return { points: blockedPoints(a, b), blocked: true }
+  return null
 }
 
 /**
@@ -571,18 +715,34 @@ export function computeRoutes(d: Diagram, opts: { only?: Set<string>; prev?: Rou
   const avoid = routeAvoid(d)
   const out: Routes = new Map()
   const occupied = opts.occupancy === false ? undefined : new Occupancy()
+  // Ruling W1: wires between the same two parts (a mounted part counts as its board) form a bundle,
+  // drawn as a ribbon of parallel lanes two grid steps apart.
+  const bundles = occupied ? new Map<string, Occupancy>() : undefined
+  const unitOf = (part: string) => avoid.mountOf.get(part) ?? part
+  const bundleOf = (c: Connection) => {
+    if (!bundles) return undefined
+    const key = JSON.stringify([unitOf(c.from.part), unitOf(c.to.part)].sort())
+    let occ = bundles.get(key)
+    if (!occ) bundles.set(key, (occ = new Occupancy()))
+    return occ
+  }
+  const record = (c: Connection, route: WireRoute | null) => {
+    if (!route || !occupied) return
+    addToOccupancy(occupied, route.points)
+    addToOccupancy(bundleOf(c)!, route.points)
+  }
   for (const c of d.connections) {
     if (opts.only && !opts.only.has(c.uid) && opts.prev?.has(c.uid)) {
       const kept = opts.prev.get(c.uid)!
       out.set(c.uid, kept)
-      if (kept && occupied) addToOccupancy(occupied, kept.points)
+      record(c, kept)
     }
   }
   for (const c of d.connections) {
     if (out.has(c.uid)) continue
-    const route = routeWire(d, c, obstacles, occupied, avoid)
+    const route = routeWire(d, c, obstacles, occupied, avoid, bundleOf(c))
     out.set(c.uid, route)
-    if (route && occupied) addToOccupancy(occupied, route.points)
+    record(c, route)
   }
   return out
 }

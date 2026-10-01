@@ -9,6 +9,7 @@ import { join } from 'node:path'
 import { NO_INTENT } from '../agent/verify.ts'
 import { VALUE_DROPPED, validateDiagram, wirePaths } from '../format/diagram.ts'
 import { bodyRect, worldHoles } from '../format/geometry.ts'
+import { plugsOf } from '../format/breadboard.ts'
 import { exportFileName } from '../editor/files.ts'
 import { cli, tempDir } from './cliHarness.testing.ts'
 import { loadSchema, schemaErrors } from './jsonSchema.testing.ts'
@@ -17,7 +18,7 @@ import { EXIT, type Io } from './io.ts'
 import { runGate } from './gate.ts'
 import { bomCsv } from '../format/bom.ts'
 import { bomQuantities } from '../agent/tables.ts'
-import { placedCaptionBox } from '../render/captionBox.ts'
+import { captionBox } from '../render/captionBox.ts'
 import { layoutModule } from '../format/module.ts'
 import { ledNetlist, tiltSensors } from '../agent/fixtures.testing.ts'
 
@@ -282,10 +283,13 @@ describe('circuitoon gate', () => {
       const v = validateDiagram(s)
       if (!v.ok) throw new Error(v.errors.join('; '))
       const bb = v.diagram.parts.find((p) => p.uid === 'BB1')!
-      const far = worldHoles(bb, v.diagram.modules[bb.module]).find((g) => g.name === 'c3-top')!.at[0]
-      const w = s.connections.find((c) => (c.from as { part: string }).part === 'BT1')!
+      const w = s.connections.find((c) => (c.from as { part: string; pin: string }).part === 'BT1' && (c.from as { pin: string }).pin === '+')!
+      // A strip no wire and no leg uses (never the one the wire itself ends in).
+      const taken = new Set([...v.diagram.connections.flatMap((c) => [c.from.pin, c.to.pin]), ...plugsOf(v.diagram).map((pl) => pl.group)])
+      const strip = ['c3-top', 'c9-top', 'c25-top'].find((g) => !taken.has(g))!
+      const far = worldHoles(bb, v.diagram.modules[bb.module]).find((g) => g.name === strip)!.at[0]
       w.route = [[far.x, far.y]]
-      if (busy) s.connections.push({ uid: 'x', from: { part: 'BB1', pin: 'c3-top', hole: 0 }, to: { part: 'BB1', pin: 'c3-top', hole: 4 }, routing: true })
+      if (busy) s.connections.push({ uid: 'x', from: { part: 'BB1', pin: strip, hole: 0 }, to: { part: 'BB1', pin: strip, hole: 4 }, routing: true })
     })
     return runGate(readFileSync(join(dir, 'sheet.json')), { sheetPath: 'sheet.json', outDir: join(dir, 'out'), io: quietIo(dir) })
   }
@@ -426,7 +430,7 @@ describe('gate readiness (Ruling W1)', () => {
       if (!v.ok) throw new Error(v.errors.join('; '))
       const r1 = v.diagram.parts.find((p) => p.uid === 'R1')!
       const bt = v.diagram.parts.find((p) => p.uid === 'BT1')!
-      const cap = placedCaptionBox(r1, v.diagram.modules[r1.module])
+      const cap = captionBox(r1, v.diagram.modules[r1.module])
       const body = bodyRect(bt, layoutModule(v.diagram.modules[bt.module]))
       const raw = s.parts.find((p) => p.uid === 'BT1')!
       raw.x = Math.round((bt.x + cap.x + cap.w / 2 - (body.x + body.w / 2)) / 10) * 10

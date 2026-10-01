@@ -30,6 +30,12 @@ export interface RouteRequest {
   /** Grid nodes already used by earlier wires, so this route can take its own lane next to them. */
   occupied?: Occupancy
   /**
+   * Grid nodes used by earlier wires of this wire's bundle (wires between the same two parts, Ruling
+   * W1): a step that runs alongside one of them exactly two grid steps away costs less, so a bus is
+   * drawn as a ribbon of parallel lanes.
+   */
+  bundle?: Occupancy
+  /**
    * Straight run, in px, a pin end must leave along `fromDir` (or arrive along `toDir`) before its
    * first bend, so a connector drawn there sits on one straight segment (see cables.ts). Ignored
    * for a hole end. Even from a tip off the grid, the jog onto the grid comes after this run.
@@ -50,6 +56,8 @@ export interface RouteOptions {
    * parallel wires keep two grid steps apart where there is room (a cost, never a block).
    */
   adjacentCost?: number
+  /** Cost taken off a step that runs two grid steps beside a wire of its own bundle (see `bundle`). */
+  bundleBonus?: number
 }
 
 /**
@@ -159,8 +167,15 @@ export const CLEARANCE = 4
 
 const H_BIT = 1
 const V_BIT = 2
+/**
+ * Default extra cost for a step along a grid line another wire already runs on (see
+ * RouteOptions.parallelCost): high, so two wires drawn on top of each other are a last resort.
+ */
+export const PARALLEL_COST = 80
 /** Default extra cost for running beside another wire one grid step away (see RouteOptions.adjacentCost). */
 export const ADJACENT_COST = 20
+/** Default cost taken off a step two grid steps beside a wire of the same bundle (see RouteOptions.bundleBonus). */
+export const BUNDLE_BONUS = 4
 
 /**
  * Nodes farther than this many grid cells from the origin on either axis (about 335 million px at
@@ -489,14 +504,15 @@ export function routeOrthogonal(req: RouteRequest, opts: RouteOptions = {}): Pt[
   const g = opts.grid ?? 10
   const clearance = opts.clearance ?? CLEARANCE
   const bendCost = opts.bendCost ?? 30
-  const parallelCost = opts.parallelCost ?? 40
+  const parallelCost = opts.parallelCost ?? PARALLEL_COST
   const adjacentCost = opts.adjacentCost ?? ADJACENT_COST
+  const bundleBonus = opts.bundleBonus ?? BUNDLE_BONUS
   // A lead-out moves the first grid node the search may bend at out along the pin's axis.
   const ahead = (p: Pt, d: Pt, lead = 0): Pt => ({ x: p.x + d.x * lead, y: p.y + d.y * lead })
   const start = req.fromDir ? leave(ahead(req.from, req.fromDir, req.fromLead), req.fromDir, g) : onGrid(req.from, g)
   const goal = req.toDir ? leave(ahead(req.to, req.toDir, req.toLead), req.toDir, g) : onGrid(req.to, g)
   for (const margin of opts.margins ?? MARGINS) {
-    const path = search(start, goal, req, g, clearance, bendCost, parallelCost, adjacentCost, margin)
+    const path = search(start, goal, req, g, clearance, bendCost, parallelCost, adjacentCost, bundleBonus, margin)
     if (path) {
       // A tip off the grid (a part loaded between grid lines) meets the first and last grid node
       // with a corner, turned so the wire still leaves and enters along the stub.
@@ -526,6 +542,7 @@ function search(
   bendCost: number,
   parallelCost: number,
   adjacentCost: number,
+  bundleBonus: number,
   margin: number,
 ): Pt[] | null {
   const x0 = Math.floor((Math.min(start.x, goal.x) - margin) / g) * g
@@ -589,6 +606,11 @@ function search(
     parallel = new Uint8Array(cols * rows)
     req.occupied.copyWindow(x0, y0, cols, rows, g, parallel)
   }
+  let ribbon: Uint8Array | null = null
+  if (req.bundle?.size && bundleBonus) {
+    ribbon = new Uint8Array(cols * rows)
+    req.bundle.copyWindow(x0, y0, cols, rows, g, ribbon)
+  }
 
   const gc = goalCell % cols
   const gr = Math.floor(goalCell / cols)
@@ -650,6 +672,10 @@ function search(
         else if (adjacentCost && (nd & 1
           ? (nc > 0 && lane[ncell - 1] & V_BIT) || (nc + 1 < cols && lane[ncell + 1] & V_BIT)
           : (nr > 0 && lane[ncell - cols] & H_BIT) || (nr + 1 < rows && lane[ncell + cols] & H_BIT))) c += adjacentCost
+        // Two steps beside a wire of its own bundle, on the same axis: the next lane of a ribbon.
+        else if (ribbon !== null && (nd & 1
+          ? (nc > 1 && ribbon[ncell - 2] & V_BIT) || (nc + 2 < cols && ribbon[ncell + 2] & V_BIT)
+          : (nr > 1 && ribbon[ncell - 2 * cols] & H_BIT) || (nr + 2 < rows && ribbon[ncell + 2 * cols] & H_BIT))) c -= bundleBonus
       }
       const ns = ncell * 4 + nd
       if (c < cost[ns]) {
