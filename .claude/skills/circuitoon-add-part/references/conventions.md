@@ -45,7 +45,7 @@ A pin's `supply` names the voltages the pin actually sees, never a symbolic rail
 - A part whose output is its editable `voltage` value (a battery, an adjustable buck) supplies that value: the checker reads the value set on the sheet, not the pin's `supply` string. With one `power_out` the value sets it; with more, list the ones it sets in `electrical.voltageOutputs` (validation requires it).
 
 ## Categories (src/editor/libraryGroups.ts CATEGORY_ORDER)
-Batteries, Prototyping, Power, Microcontrollers, Sensors, Communication, Displays, Motors and actuators, Chips, Semiconductors, Passives, Indicators, Switches, Connectors, Mains, then others alphabetically. Planned: "Microcontrollers" becomes "Boards" once full-size Raspberry Pis land. Empty groups are hidden.
+Batteries, Prototyping, Power, Microcontrollers, Sensors, Communication, Displays, Motors and actuators, Chips, Semiconductors, Passives, Indicators, Switches, Connectors, Wiring (the net label), Mains, then others alphabetically. Planned: "Microcontrollers" becomes "Boards" once full-size Raspberry Pis land. Empty groups are hidden.
 
 ## Mains parts
 Anything that touches the wall. The spec is `docs/superpowers/specs/2026-09-27-mains-outlets-design.md`; the field types and their validation are `src/format/mainsModel.ts`; the fields are documented in `docs/PRD.md`. The checker reasons only from what a part declares, so a wrong mains field is a false "safe", which is worse than a missing part.

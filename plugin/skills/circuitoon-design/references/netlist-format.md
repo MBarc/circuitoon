@@ -27,7 +27,7 @@ A netlist says what connects to what. The layout decides where everything goes. 
 | --- | --- |
 | `format`, `title` | Required. |
 | `parts[]` | Each part has a `ref` and a `module`, plus two optional fields: `values` and `on`. |
-| `nets[]` | Each net has a `name` (unique) and `pins`, a list of at least two endpoints. An endpoint belongs to one net only. |
+| `nets[]` | Each net has a `name` (unique) and `pins`, a list of at least two endpoints. An endpoint belongs to one net only. Optional `"label": true` asks for the net to be drawn with net labels instead of wires (see below). |
 | `nc[]` | Pins that must stay unconnected. Any connection to one of them fails verification. |
 | `groups[]` | `{ "name", "parts": [refs] }`, drawn as a labelled frame. A part is in one group at most. `render --focus <name>` frames it. |
 | `notes[]` | `{ "text", "near" }`: up to 500 characters, drawn near a group name or a ref. Use notes for assumptions the user must confirm. |
@@ -37,10 +37,19 @@ A netlist says what connects to what. The layout decides where everything goes. 
 
 The part fields:
 
+- Never list `net-label` as a part: it is not one. Ask for labels on a net with `"label": true`.
+
 - `ref`: a letter, then letters, digits or `_`. It must be unique.
 - `module`: a built-in id from `circuitoon parts`, or an id under `modules`.
 - `values` (optional): `resistance` in ohm, `capacitance` in F, or `voltage` in V, written as `{ "value": 220, "unit": "ohm" }`.
 - `on` (optional): the ref of a breadboard or rail strip the part plugs into.
+
+Net labels (`"label": true` on a net):
+
+- A net label is a named flag at a pin. Every label with the same name is one connection, exactly as if wired, so a long or many-ended net (GND, 5V, SDA, SCL) stays readable. Names match after trimming spaces and are case-sensitive: `SDA` and `sda` are two nets.
+- `label` is `true` or `false`; anything else is an error. A net that joins a mains terminal (an outlet contact, a lamp holder, a relay's contacts) never takes a label: mains is always drawn as wires, so the cable checks can see it.
+- Verify counts a connection made through labels like one made by wires; labels are infrastructure, like `routing` wires, never extra parts. The bill of materials leaves them out.
+- Layout support (placing the labels) comes in a later version; for now the flag is parsed and validated, and the net is wired as before.
 
 The `wires` settings:
 
