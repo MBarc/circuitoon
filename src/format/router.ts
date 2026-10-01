@@ -167,11 +167,8 @@ export const CLEARANCE = 4
 
 const H_BIT = 1
 const V_BIT = 2
-/**
- * Default extra cost for a step along a grid line another wire already runs on (see
- * RouteOptions.parallelCost): high, so two wires drawn on top of each other are a last resort.
- */
-export const PARALLEL_COST = 80
+/** Default extra cost for a step along a grid line another wire already runs on (see RouteOptions.parallelCost). */
+export const PARALLEL_COST = 40
 /** Default extra cost for running beside another wire one grid step away (see RouteOptions.adjacentCost). */
 export const ADJACENT_COST = 20
 /** Default cost taken off a step two grid steps beside a wire of the same bundle (see RouteOptions.bundleBonus). */

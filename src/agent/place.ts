@@ -77,7 +77,7 @@ const MARGIN = 40
 /** Holes of a local rail kept free for the jumpers that chain a block's strips and its trunk wire. */
 const RAIL_SPARE = 4
 /** Room between a row of copies and the local strips under it, and between those and the next row, in px. */
-const RAIL_GAP = 20
+const RAIL_GAP = 40
 /** The frame label of the parked parts (Ruling W1). */
 export const UNWIRED_LABEL = 'Not yet wired'
 /** Gap between the wired parts and the "Not yet wired" frame, in px. */

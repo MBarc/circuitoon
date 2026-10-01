@@ -1621,7 +1621,7 @@ function routeOrthogonal(req, opts = {}) {
 	const g = opts.grid ?? 10;
 	const clearance = opts.clearance ?? 4;
 	const bendCost = opts.bendCost ?? 30;
-	const parallelCost = opts.parallelCost ?? 80;
+	const parallelCost = opts.parallelCost ?? 40;
 	const adjacentCost = opts.adjacentCost ?? 20;
 	const bundleBonus = opts.bundleBonus ?? 4;
 	const ahead = (p, d, lead = 0) => ({
@@ -3859,7 +3859,7 @@ function solveRoute(a, b, own, [fromLead, toLead], facing, ownHoles, ownText, ow
 		[fromLead, 0],
 		[0, toLead]
 	];
-	const attempt = (avoidIn) => {
+	const attempt = (avoidIn, fullLeads = false) => {
 		const req = {
 			from: a.end,
 			fromDir: a.dir,
@@ -3870,7 +3870,7 @@ function solveRoute(a, b, own, [fromLead, toLead], facing, ownHoles, ownText, ow
 			occupied,
 			bundle
 		};
-		for (const [i, [f, t]] of tries.entries()) {
+		for (const [i, [f, t]] of (fullLeads ? tries.slice(0, 1) : tries).entries()) {
 			if (!f && !t || tries.slice(0, i).some(([pf, pt]) => pf === f && pt === t)) continue;
 			const pts = routeOrthogonal({
 				...req,
@@ -3879,7 +3879,7 @@ function solveRoute(a, b, own, [fromLead, toLead], facing, ownHoles, ownText, ow
 			});
 			if (pts && attached(pts)) return pts;
 		}
-		return routeOrthogonal(req);
+		return fullLeads ? null : routeOrthogonal(req);
 	};
 	const holesHit = { hit: false };
 	const textHit = { hit: false };
@@ -3894,15 +3894,29 @@ function solveRoute(a, b, own, [fromLead, toLead], facing, ownHoles, ownText, ow
 		skip: ownNames,
 		refused: namesHit
 	}] : [];
-	let clear = anyText ? attempt([
-		holesIn,
-		{
-			index: avoid.text,
-			skip: ownText,
-			refused: textHit
-		},
-		...namesIn
-	]) : null;
+	let clear = null;
+	if (anyText) {
+		const strict = [
+			holesIn,
+			{
+				index: avoid.text,
+				skip: ownText,
+				refused: textHit
+			},
+			...namesIn
+		];
+		clear = attempt(strict, true);
+		if (!clear && (fromLead || toLead)) clear = attempt([
+			holesIn,
+			{
+				index: avoid.text,
+				skip: ownNames,
+				refused: textHit
+			},
+			...namesIn
+		], true);
+		if (!clear) clear = attempt(strict);
+	}
 	if (!clear && anyNames && (!anyText || textHit.hit)) {
 		holesHit.hit = false;
 		clear = attempt([holesIn, ...namesIn]);
@@ -61855,7 +61869,7 @@ var Bucketed = class {
 var LabelPlacer = class {
 	/** Everything a flag must stay off: bodies grown for their stubs, captions, pin names, notes, labels placed. */
 	flagsOff = new Bucketed();
-	/** What a stub must not cross: bodies (boards aside), captions, notes, labels placed and their stubs. */
+	/** What a stub must not cross: bodies (boards too), captions, notes, labels placed and their stubs. */
 	stubsOff = new Bucketed();
 	used = /* @__PURE__ */ new Set();
 	seq = 0;
@@ -61870,7 +61884,7 @@ var LabelPlacer = class {
 			const body = bodyRect(p, layoutModule(pm));
 			const caption = placedCaptionBox(p, pm, seated.get(p.uid));
 			this.flagsOff.push({ r: grow(body, STUB_ROOM) }, { r: caption }, ...tipLabelBoxes(p, pm).map((r) => ({ r })));
-			if (!isBoard(pm)) this.stubsOff.push({
+			this.stubsOff.push({
 				r: body,
 				part: p.uid
 			});
@@ -63106,7 +63120,7 @@ var MARGIN = 40;
 /** Holes of a local rail kept free for the jumpers that chain a block's strips and its trunk wire. */
 var RAIL_SPARE = 4;
 /** Room between a row of copies and the local strips under it, and between those and the next row, in px. */
-var RAIL_GAP = 20;
+var RAIL_GAP = 40;
 /** The frame label of the parked parts (Ruling W1). */
 var UNWIRED_LABEL = "Not yet wired";
 /** Gap between the wired parts and the "Not yet wired" frame, in px. */
@@ -63511,7 +63525,7 @@ function placeParts(intent, opts) {
 		const ch = Math.max(...cells.map((c) => c.box.h)) + pad + 10;
 		const cols = Math.ceil(Math.sqrt(cells.length));
 		const rails = opts.rail ? localRails(members.map((m) => m.whole ? m.refs : []), cols) : null;
-		const rowH = rails ? ch + rails.h + 40 : ch;
+		const rowH = rails ? ch + rails.h + 80 : ch;
 		cells.forEach((c, i) => move(c.refs, snap(i % cols * cw - c.box.x), snap(Math.floor(i / cols) * rowH - c.box.y)));
 		const all = cells.flatMap((c) => c.refs);
 		if (rails) {

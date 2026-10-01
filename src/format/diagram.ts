@@ -663,14 +663,14 @@ function solveRoute(
   // right in front of the pin) is dropped, one end at a time, down to a plain route.
   const attached = (pts: Pt[]) => !manualRouteBlocked(pts.slice(0, 3), own) && !manualRouteBlocked(pts.slice(-3), own)
   const tries: [number, number][] = [[fromLead, toLead], [fromLead, 0], [0, toLead]]
-  const attempt = (avoidIn: RouteRequest['avoidIn']): Pt[] | null => {
+  const attempt = (avoidIn: RouteRequest['avoidIn'], fullLeads = false): Pt[] | null => {
     const req = { from: a.end, fromDir: a.dir, to: b.end, toDir: b.dir, obstacles: own, avoidIn, occupied, bundle }
-    for (const [i, [f, t]] of tries.entries()) {
+    for (const [i, [f, t]] of (fullLeads ? tries.slice(0, 1) : tries).entries()) {
       if ((!f && !t) || tries.slice(0, i).some(([pf, pt]) => pf === f && pt === t)) continue
       const pts = routeOrthogonal({ ...req, fromLead: f, toLead: t })
       if (pts && attached(pts)) return pts
     }
-    return routeOrthogonal(req)
+    return fullLeads ? null : routeOrthogonal(req)
   }
   // Neither label nor hole avoidance ever blocks a wire: when no route clears the labels, one over
   // them is tried (still clear of other strips' holes), then one over the holes too; any of them
@@ -685,7 +685,16 @@ function solveRoute(
   const namesIn = anyNames ? [{ index: avoid.names, skip: ownNames, refused: namesHit }] : []
   // Captions give way before pin names: a wire over a caption hides a designator, one over a pin
   // name could hide which pin is which.
-  let clear = anyText ? attempt([holesIn, { index: avoid.text, skip: ownText, refused: textHit }, ...namesIn]) : null
+  // A connector keeps its full straight run before a wire keeps off its own parts' captions: when
+  // only a route without the lead-outs clears them, one with the lead-outs over its own captions
+  // (never another part's) is tried first.
+  let clear: Pt[] | null = null
+  if (anyText) {
+    const strict = [holesIn, { index: avoid.text, skip: ownText, refused: textHit }, ...namesIn]
+    clear = attempt(strict, true)
+    if (!clear && (fromLead || toLead)) clear = attempt([holesIn, { index: avoid.text, skip: ownNames, refused: textHit }, ...namesIn], true)
+    if (!clear) clear = attempt(strict)
+  }
   if (!clear && anyNames && (!anyText || textHit.hit)) {
     holesHit.hit = false
     clear = attempt([holesIn, ...namesIn])
