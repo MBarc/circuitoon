@@ -64271,6 +64271,8 @@ function placeParts(intent, opts) {
 	};
 	/** The placed microcontrollers' box: what the signal flow is laid out around. */
 	let mcuBox = null;
+	/** Placed power breadboards (role power), and the nets on them: their feeders sit above them. */
+	const powerBoards = [];
 	/** The placed hubs' box, and the nets they carry. */
 	let hubBox = null;
 	const hubNetSet = new Set(wantHub.map((x) => x.net));
@@ -64282,7 +64284,15 @@ function placeParts(intent, opts) {
 		let want = target;
 		if (mcuBox && !u.fixed && role !== "mcu" && !u.near) {
 			const m = mcuBox;
-			if (role === "power") {
+			const feeds = role === "power" && !u.refs.some((r) => isBoard(modOf(r))) ? powerBoards.find((pb) => [...netsOfUnit(u)].some((n) => pb.nets.has(n))) : void 0;
+			if (feeds) {
+				const pb = feeds.box;
+				want = {
+					x: Math.min(Math.max(target.x, pb.x + b.w / 2), pb.x + pb.w - b.w / 2),
+					y: pb.y - opts.spacing - CHANNEL - b.h / 2
+				};
+				allow = (at) => at.y + b.y + b.h + opts.spacing + CHANNEL <= pb.y && at.x + b.x >= pb.x - opts.spacing && at.x + b.x + b.w <= pb.x + pb.w + opts.spacing && at.x + b.x + b.w + opts.spacing + CHANNEL <= m.x;
+			} else if (role === "power") {
 				want = {
 					x: Math.min(target.x, m.x - opts.spacing - b.w / 2),
 					y: target.y
@@ -64311,6 +64321,10 @@ function placeParts(intent, opts) {
 		move(u.refs, at.x, at.y);
 		put(u);
 		if (role === "mcu") mcuBox = mcuBox ? union(mcuBox, boxOf(u)) : boxOf(u);
+		if (role === "power" && u.refs.some((r) => isBoard(modOf(r)))) powerBoards.push({
+			box: boxOf(u),
+			nets: netsOfUnit(u)
+		});
 		if (u.hub) hubBox = hubBox ? union(hubBox, boxOf(u)) : boxOf(u);
 	};
 	const blocksOf = (u) => units.filter((x) => !x.fixed && !x.anchor && x.near && u.refs.includes(x.near) && !placedRefs.has(x.refs[0]));
@@ -64345,10 +64359,14 @@ function placeParts(intent, opts) {
 		});
 	}
 	let rest = units.filter((x) => !x.fixed && !x.anchor && !placedRefs.has(x.refs[0]) && !(x.near && units.some((t) => t !== x && t.refs.includes(x.near))));
+	/** A power breadboard goes down before the parts that feed it, so they can settle above it. */
+	const powerBoard = (u) => mcuBox !== null && roleOf(u) === "power" && u.refs.some((r) => isBoard(modOf(r)));
 	while (rest.length) {
-		let best = rest[0];
+		const boards = rest.filter(powerBoard);
+		const pool = boards.length ? boards : rest;
+		let best = pool[0];
 		let bestWeight = -1;
-		for (const u of rest) {
+		for (const u of pool) {
 			const w = [...netsOfUnit(u)].filter((n) => placedNets.has(n)).length;
 			if (w > bestWeight || w === bestWeight && naturalCompare(u.key, best.key) < 0) {
 				best = u;

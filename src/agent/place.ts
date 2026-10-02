@@ -520,6 +520,8 @@ export function placeParts(intent: Intent, opts: PlaceOptions): PlaceResult {
   }
   /** The placed microcontrollers' box: what the signal flow is laid out around. */
   let mcuBox: Rect | null = null
+  /** Placed power breadboards (role power), and the nets on them: their feeders sit above them. */
+  const powerBoards: { box: Rect; nets: Set<number> }[] = []
   /** The placed hubs' box, and the nets they carry. */
   let hubBox: Rect | null = null
   const hubNetSet = new Set(wantHub.map((x) => x.net))
@@ -531,7 +533,14 @@ export function placeParts(intent: Intent, opts: PlaceOptions): PlaceResult {
     let want = target
     if (mcuBox && !u.fixed && role !== 'mcu' && !u.near) {
       const m: Rect = mcuBox
-      if (role === 'power') {
+      const feeds = role === 'power' && !u.refs.some((r) => isBoard(modOf(r))) ? powerBoards.find((pb) => [...netsOfUnit(u)].some((n) => pb.nets.has(n))) : undefined
+      if (feeds) {
+        // Ruling W1: a cell or a supply module that feeds a power breadboard sits right above it,
+        // inside its width, so its wires drop straight onto the rails as one bundle.
+        const pb: Rect = feeds.box
+        want = { x: Math.min(Math.max(target.x, pb.x + b.w / 2), pb.x + pb.w - b.w / 2), y: pb.y - opts.spacing - CHANNEL - b.h / 2 }
+        allow = (at) => at.y + b.y + b.h + opts.spacing + CHANNEL <= pb.y && at.x + b.x >= pb.x - opts.spacing && at.x + b.x + b.w <= pb.x + pb.w + opts.spacing && at.x + b.x + b.w + opts.spacing + CHANNEL <= m.x
+      } else if (role === 'power') {
         // Left of the microcontroller, level with what it connects to.
         want = { x: Math.min(target.x, m.x - opts.spacing - b.w / 2), y: target.y }
         allow = (at) => at.x + b.x + b.w + opts.spacing + CHANNEL <= m.x
@@ -551,6 +560,7 @@ export function placeParts(intent: Intent, opts: PlaceOptions): PlaceResult {
     move(u.refs, at.x, at.y)
     put(u)
     if (role === 'mcu') mcuBox = mcuBox ? union(mcuBox, boxOf(u)) : boxOf(u)
+    if (role === 'power' && u.refs.some((r) => isBoard(modOf(r)))) powerBoards.push({ box: boxOf(u), nets: netsOfUnit(u) })
     if (u.hub) hubBox = hubBox ? union(hubBox, boxOf(u)) : boxOf(u)
   }
   // Repeat blocks bound to a part settle beside it (amendment A15), each one right after the unit
@@ -583,10 +593,14 @@ export function placeParts(intent: Intent, opts: PlaceOptions): PlaceResult {
     }
   // A block bound to a part settles right after that part (settleBlocks); the rest go by net weight.
   let rest = units.filter((x) => !x.fixed && !x.anchor && !placedRefs.has(x.refs[0]) && !(x.near && units.some((t) => t !== x && t.refs.includes(x.near!))))
+  /** A power breadboard goes down before the parts that feed it, so they can settle above it. */
+  const powerBoard = (u: Unit) => mcuBox !== null && roleOf(u) === 'power' && u.refs.some((r) => isBoard(modOf(r)))
   while (rest.length) {
-    let best = rest[0]
+    const boards = rest.filter(powerBoard)
+    const pool = boards.length ? boards : rest
+    let best = pool[0]
     let bestWeight = -1
-    for (const u of rest) {
+    for (const u of pool) {
       const w = [...netsOfUnit(u)].filter((n) => placedNets.has(n)).length
       if (w > bestWeight || (w === bestWeight && naturalCompare(u.key, best.key) < 0)) {
         best = u
