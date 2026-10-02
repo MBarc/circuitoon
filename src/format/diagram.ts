@@ -488,14 +488,14 @@ export interface RouteAvoid {
 export const BOARD_PAD = 6
 
 /**
- * The boards in use (Ruling W1): with a part mounted on them, or a wire ending in one of their holes;
- * and each mounted part's board. Only a board in use by neither is a bare surface a wire may cross.
+ * The populated boards (Rulings W1 and W2): those with a part mounted on them, which wires route
+ * around; and each mounted part's board. A board with only wire ends in its holes is no wall: wires
+ * may cross its empty holes and keep off its used ones (Ruling C1).
  */
 export function populatedBoards(d: Diagram): { boards: { uid: string; rect: Rect }[]; mountOf: Map<string, string> } {
   const mountOf = new Map<string, string>()
   for (const p of d.parts) if (p.mount) mountOf.set(p.uid, p.mount.board)
   const hosts = new Set(mountOf.values())
-  for (const c of d.connections) for (const e of [c.from, c.to]) if (e.hole !== undefined) hosts.add(e.part)
   const boards: { uid: string; rect: Rect }[] = []
   for (const p of d.parts) {
     if (!hosts.has(p.uid)) continue
@@ -554,6 +554,8 @@ const ringKey = (board: string) => `ring ${board}`
 const FACING_REACH = 160
 /** Most wires laid along another that one routing pass tries to repair (repairOverlaps). */
 const REPAIR_MAX = 24
+/** The router's first search window margin, in px (router.ts MARGINS[0]). */
+const FIRST_MARGIN = 60
 
 /** True when a straight run from `a` to `b` passes within 3 px of a point of `index` not skipped. */
 function runsOver(a: Pt, b: Pt, index: PointIndex, skip: ReadonlySet<string>): boolean {
@@ -719,18 +721,6 @@ function solveRoute(...args: Parameters<typeof solveOnce>): WireRoute | null {
   // Ruling W1: every way of keeping a wire off other wires' lines is tried before any route that
   // lies along one; such a route is flagged `overlap`.
   const [a, b, own, leads, facing, ownHoles, ownText, ownNames, lanes, avoid] = args
-  // When even the freest search (no lead-outs, nothing kept off) can only lie along another wire,
-  // no stricter one can do better: the route is taken in one search, keeping off what it can.
-  if (lanes.occupied?.size || lanes.stubs?.size) {
-    const overlapped = { hit: false }
-    const free = routeOrthogonal({ from: a.end, fromDir: a.dir, to: b.end, toDir: b.dir, obstacles: own, occupied: lanes.occupied, bundle: lanes.bundle, shared: lanes.shared, stubs: lanes.stubs, overlapped })
-    if (!free) return null
-    if (overlapped.hit) {
-      const kept = routeOrthogonal({ from: a.end, fromDir: a.dir, to: b.end, toDir: b.dir, obstacles: own, occupied: lanes.occupied, bundle: lanes.bundle, shared: lanes.shared, stubs: lanes.stubs, avoidIn: [{ index: avoid.holes, skip: ownHoles }, { index: avoid.text, skip: ownText }, { index: avoid.names, skip: ownNames }] })
-      const pts = kept ?? free
-      return { points: pts, blocked: false, overlap: true, ...(pathRunsOver(pts, avoid.holes, ownHoles) ? { fallback: true as const } : {}) }
-    }
-  }
   // Off the lines of empty holes of boards in use too, where it can be; then over them.
   return solveOnce(a, b, own, leads, facing, ownHoles, ownText, ownNames, lanes, avoid, true) ?? solveOnce(...args)
 }
@@ -764,13 +754,28 @@ function solveOnce(
   // A route that could only be found along another wire (Ruling W1) does not end the search: the
   // first is kept as the last resort, flagged `overlap`.
   let spare: Pt[] | null = null
+  /**
+   * Set once the first try finds only a route along another wire and even the freest search (no
+   * lead-outs, nothing kept off) can do no better: no looser try can either, so that one stands.
+   * The extra search runs only for such a wire.
+   */
+  let doomed = false
+  const settle = (pts: Pt[]) => {
+    if (spare) return
+    spare = pts
+    const overlapped = { hit: false }
+    // In the first search window only: what the first try saw.
+    const free = routeOrthogonal({ from: a.end, fromDir: a.dir, to: b.end, toDir: b.dir, obstacles: own, occupied, bundle, shared, stubs, overlapped }, { margins: [FIRST_MARGIN] })
+    doomed = !free || overlapped.hit
+  }
   const attempt = (avoidIn: RouteRequest['avoidIn'], fullLeads = false): Pt[] | null => {
+    if (doomed) return null
     const req = { from: a.end, fromDir: a.dir, to: b.end, toDir: b.dir, obstacles: own, avoidIn, occupied, bundle, shared, stubs }
     const one = (r: RouteRequest) => {
       const overlapped = { hit: false }
       const pts = routeOrthogonal({ ...r, overlapped })
       if (pts && overlapped.hit) {
-        spare ??= pts
+        settle(pts)
         return null
       }
       return pts
@@ -815,6 +820,7 @@ function solveOnce(
   }
   // Keeping off empty holes gives way before keeping off text (Ruling W1: a wire never covers a
   // caption): with them, nothing that drops the text is tried; the caller tries again without them.
+  if (doomed) return lastResort(spare!)
   if (offEmpties && anyText) return clear ? { points: clear, blocked: false } : null
   if (!clear && anyNames && (!anyText || textHit.hit)) {
     holesHit.hit = false
@@ -825,6 +831,7 @@ function solveOnce(
     clear = attempt([holesIn, ...emptiesIn])
   }
   if (clear) return { points: clear, blocked: false }
+  if (doomed) return lastResort(spare!)
   if (offEmpties) return null
   const over = anyHoles && holesHit.hit ? attempt([]) : null
   if (over) return { points: over, blocked: false, ...(pathRunsOver(over, avoid.holes, ownHoles) ? { fallback: true as const } : {}) }
