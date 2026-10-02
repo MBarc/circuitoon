@@ -72,6 +72,8 @@ export type NetKind = 'ground' | 'power' | 'signal'
 const FAR = 300
 /** A hole whose cheapest straight way out passes over another hole costs at least this (holeChoice). */
 const DIRTY = 600
+/** Holes at the inner end of a hub half-row kept for the jumpers that join the net's half-rows. */
+const JUMPER_HOLES = 3
 const SIGNAL_COLORS = ['blue', 'green', 'yellow', 'orange', 'purple', 'white', 'brown', 'pink', 'gray']
 
 interface Strip {
@@ -732,11 +734,28 @@ export function realize(intent: Intent, d: Diagram, locals: LocalDistribution[] 
     for (const side of [0, 1] as const) {
       bySide[side].sort((a, b) => stackOf(a.at) - stackOf(b.at))
       bySide[side].forEach((it, k) => {
-        const row = rows[Math.min(k, rows.length - 1)]
-        const half = row.halves[side]
-        const order = outward(half, row.halves[1 - side])
-        const i = order.find((j) => !used.has(holeKey(half.board, half.name, j)))
-        if (i === undefined) return void errors.push(`strip full: net ${intent.nets[ni].name} has no free hole left on ${stripName(half)}`)
+        // The inner JUMPER_HOLES holes of each half-row are the joining jumpers' own: a wire from
+        // off the board never takes one. Past its rows, an item takes the outermost free hole left
+        // in any of them; with none, a free strip of the hub joined by a jumper.
+        const outerFree = (row: HubRow) => {
+          const half = row.halves[side]
+          const order = outward(half, row.halves[1 - side]).slice(0, half.holes.length - JUMPER_HOLES)
+          const i = order.find((j) => !used.has(holeKey(half.board, half.name, j)))
+          return i === undefined ? null : { half, i }
+        }
+        let spot = k < rows.length ? outerFree(rows[k]) : null
+        for (const row of rows) spot ??= outerFree(row)
+        if (!spot) {
+          const ext = [...strips.values()].find((st) => hubs.has(st.board) && !st.rail && !owner.has(st.key) && !reserved.has(st.key) && free(st).length === st.holes.length)
+          if (ext) {
+            owner.set(ext.key, ni)
+            jumper(ni, rows[rows.length - 1].halves[side], ext)
+            const i = free(ext)[0]
+            spot = { half: ext, i }
+          }
+        }
+        if (!spot) return void errors.push(`strip full: net ${intent.nets[ni].name} has no free hole left on its hub rows`)
+        const { half, i } = spot
         if ('node' in it) {
           const e = take(it.node, half.holes[i])
           wire(ni, e, holeEnd(half, i), true)
@@ -751,7 +770,13 @@ export function realize(intent: Intent, d: Diagram, locals: LocalDistribution[] 
     // from row to row on the spine side (holes alternating one and two in from the inner end, so
     // no two jumpers share a line).
     const spine: 0 | 1 = bySide[1].length > bySide[0].length ? 1 : 0
-    const inner = (half: Strip, other: Strip, back = 0) => outward(half, other)[half.holes.length - 1 - back]
+    // The jumpers' holes, innermost first; one already taken (by a jumper above) gives way to the next free one.
+    const inner = (half: Strip, other: Strip, back = 0) => {
+      const order = outward(half, other)
+      const want = order[half.holes.length - 1 - back]
+      if (!used.has(holeKey(half.board, half.name, want))) return want
+      return [...order].reverse().find((j) => !used.has(holeKey(half.board, half.name, j))) ?? want
+    }
     const pin = (half: Strip, i: number): Endpoint => holeEnd(half, i)
     rows.forEach((row, k) => {
       const far = row.halves[1 - spine]

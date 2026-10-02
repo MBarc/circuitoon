@@ -14,6 +14,7 @@ import { readabilityFindings } from './readabilityWarnings.ts'
 import { internalComponent } from './internal.ts'
 import { type Diagram, validateDiagram } from '../format/diagram.ts'
 import { ledNetlist, tiltSensors } from './fixtures.testing.ts'
+import { labelPin as labelPinOf } from '../format/netLabels.ts'
 
 const EXAMPLES = join(import.meta.dirname, '..', '..', 'plugin', 'skills', 'circuitoon-design', 'references', 'examples')
 const FIXTURES = join(import.meta.dirname, '..', '..', '.superpowers', 'fixtures')
@@ -114,6 +115,28 @@ describe('extractNetlist', () => {
     expect(refs).toContain('P2nd_board')
     expect(refs).toContain('Main_board_2')
     expect(got.parts.find((p) => p.ref === 'R1')!.on).toBe('Main_board')
+  })
+  it('keeps a labelled net that has a single component pin, wired into a breadboard strip, with its name', () => {
+    const base = sheetOf(ledNetlist())
+    const label = libraryLookup('net-label')!
+    const d: Diagram = {
+      ...base,
+      intent: undefined,
+      modules: { ...base.modules, 'net-label': label, 'esp32-devkitc-v4': libraryLookup('esp32-devkitc-v4')! },
+      parts: [
+        ...base.parts,
+        { uid: 'U2', designator: 'U2', module: 'esp32-devkitc-v4', x: 900, y: 0 },
+        { uid: 'L1', designator: 'L1', module: 'net-label', x: 1100, y: 0, values: { net: 'VIN' } },
+      ],
+      connections: [
+        ...base.connections,
+        { uid: 'v1', from: { part: 'U2', pin: '5V' }, to: { part: 'BB1', pin: 'c25-top', hole: 0 } },
+        { uid: 'v2', from: { part: 'L1', pin: labelPinOf(label) }, to: { part: 'BB1', pin: 'c25-top', hole: 2 } },
+      ],
+    }
+    const got = extractNetlist(d) as { nets: { name: string; pins: string[] }[] }
+    expect(got.nets.find((n) => n.name === 'VIN')?.pins).toEqual(['BB1.c25-top', 'U2.5V'])
+    expect(parse(got).nets.some((n) => n.name === 'VIN')).toBe(true)
   })
   it('keeps one wire color per net and the wire ends every wire shares', () => {
     const got = extractNetlist(sheetOf(ledNetlist())) as { wires?: { color?: Record<string, string>; ends?: string } }

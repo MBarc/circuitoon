@@ -58,6 +58,7 @@ export function extractNetlist(d: Diagram): Record<string, unknown> {
   const nets: { pins: Pin[]; label?: string }[] = []
   for (const keys of n.nets) {
     const pins: Pin[] = []
+    const strips: Pin[] = []
     let label: string | undefined
     for (const k of keys) {
       const [uid, name] = JSON.parse(k) as [string, string]
@@ -70,9 +71,13 @@ export function extractNetlist(d: Diagram): Record<string, unknown> {
         continue
       }
       const ref = refOf.get(uid)
+      if (ref && isBoard(m) && direct.has(k)) strips.push({ ref, name, m })
       if (!ref || isBoard(m) || !direct.has(k)) continue
       pins.push({ ref, name, m })
     }
+    // A net with one component pin wired to a strip (a board's hole group) keeps it, and its name,
+    // by naming the strip as its second endpoint (Michael's VIN).
+    if (pins.length === 1 && strips.length) pins.push(strips.sort((a, b) => naturalCompare(a.ref, b.ref) || naturalCompare(a.name, b.name))[0])
     if (pins.length < 2) continue
     pins.sort((a, b) => naturalCompare(a.ref, b.ref) || naturalCompare(a.name, b.name))
     nets.push({ pins, ...(label !== undefined ? { label } : {}) })

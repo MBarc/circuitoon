@@ -3744,14 +3744,14 @@ function labelPoints(d) {
 	};
 }
 /**
-* The boards in use (Ruling W1): with a part mounted on them, or a wire ending in one of their holes;
-* and each mounted part's board. Only a board in use by neither is a bare surface a wire may cross.
+* The populated boards (Rulings W1 and W2): those with a part mounted on them, which wires route
+* around; and each mounted part's board. A board with only wire ends in its holes is no wall: wires
+* may cross its empty holes and keep off its used ones (Ruling C1).
 */
 function populatedBoards(d) {
 	const mountOf = /* @__PURE__ */ new Map();
 	for (const p of d.parts) if (p.mount) mountOf.set(p.uid, p.mount.board);
 	const hosts = new Set(mountOf.values());
-	for (const c of d.connections) for (const e of [c.from, c.to]) if (e.hole !== void 0) hosts.add(e.part);
 	const boards = [];
 	for (const p of d.parts) {
 		if (!hosts.has(p.uid)) continue;
@@ -3827,6 +3827,8 @@ var ringKey = (board) => `ring ${board}`;
 var FACING_REACH = 160;
 /** Most wires laid along another that one routing pass tries to repair (repairOverlaps). */
 var REPAIR_MAX = 24;
+/** The router's first search window margin, in px (router.ts MARGINS[0]). */
+var FIRST_MARGIN = 60;
 /** True when a straight run from `a` to `b` passes within 3 px of a point of `index` not skipped. */
 function runsOver(a, b, index, skip) {
 	return index.some(Math.min(a.x, b.x) - 3, Math.min(a.y, b.y) - 3, Math.max(a.x, b.x) + 3, Math.max(a.y, b.y) + 3, skip, () => true);
@@ -4031,55 +4033,6 @@ function windowOf(a, b, leads) {
 */
 function solveRoute(...args) {
 	const [a, b, own, leads, facing, ownHoles, ownText, ownNames, lanes, avoid] = args;
-	if (lanes.occupied?.size || lanes.stubs?.size) {
-		const overlapped = { hit: false };
-		const free = routeOrthogonal({
-			from: a.end,
-			fromDir: a.dir,
-			to: b.end,
-			toDir: b.dir,
-			obstacles: own,
-			occupied: lanes.occupied,
-			bundle: lanes.bundle,
-			shared: lanes.shared,
-			stubs: lanes.stubs,
-			overlapped
-		});
-		if (!free) return null;
-		if (overlapped.hit) {
-			const pts = routeOrthogonal({
-				from: a.end,
-				fromDir: a.dir,
-				to: b.end,
-				toDir: b.dir,
-				obstacles: own,
-				occupied: lanes.occupied,
-				bundle: lanes.bundle,
-				shared: lanes.shared,
-				stubs: lanes.stubs,
-				avoidIn: [
-					{
-						index: avoid.holes,
-						skip: ownHoles
-					},
-					{
-						index: avoid.text,
-						skip: ownText
-					},
-					{
-						index: avoid.names,
-						skip: ownNames
-					}
-				]
-			}) ?? free;
-			return {
-				points: pts,
-				blocked: false,
-				overlap: true,
-				...pathRunsOver(pts, avoid.holes, ownHoles) ? { fallback: true } : {}
-			};
-		}
-	}
 	return solveOnce(a, b, own, leads, facing, ownHoles, ownText, ownNames, lanes, avoid, true) ?? solveOnce(...args);
 }
 function solveOnce(a, b, own, [fromLead, toLead], facing, ownHoles, ownText, ownNames, { occupied, bundle, shared, stubs }, avoid, offEmpties = false) {
@@ -4098,7 +4051,31 @@ function solveOnce(a, b, own, [fromLead, toLead], facing, ownHoles, ownText, own
 		[0, toLead]
 	];
 	let spare = null;
+	/**
+	* Set once the first try finds only a route along another wire and even the freest search (no
+	* lead-outs, nothing kept off) can do no better: no looser try can either, so that one stands.
+	* The extra search runs only for such a wire.
+	*/
+	let doomed = false;
+	const settle = (pts) => {
+		if (spare) return;
+		spare = pts;
+		const overlapped = { hit: false };
+		doomed = !routeOrthogonal({
+			from: a.end,
+			fromDir: a.dir,
+			to: b.end,
+			toDir: b.dir,
+			obstacles: own,
+			occupied,
+			bundle,
+			shared,
+			stubs,
+			overlapped
+		}, { margins: [FIRST_MARGIN] }) || overlapped.hit;
+	};
 	const attempt = (avoidIn, fullLeads = false) => {
+		if (doomed) return null;
 		const req = {
 			from: a.end,
 			fromDir: a.dir,
@@ -4118,7 +4095,7 @@ function solveOnce(a, b, own, [fromLead, toLead], facing, ownHoles, ownText, own
 				overlapped
 			});
 			if (pts && overlapped.hit) {
-				spare ??= pts;
+				settle(pts);
 				return null;
 			}
 			return pts;
@@ -4185,6 +4162,7 @@ function solveOnce(a, b, own, [fromLead, toLead], facing, ownHoles, ownText, own
 		], true);
 		if (!clear) clear = attempt(strict);
 	}
+	if (doomed) return lastResort(spare);
 	if (offEmpties && anyText) return clear ? {
 		points: clear,
 		blocked: false
@@ -4205,6 +4183,7 @@ function solveOnce(a, b, own, [fromLead, toLead], facing, ownHoles, ownText, own
 		points: clear,
 		blocked: false
 	};
+	if (doomed) return lastResort(spare);
 	if (offEmpties) return null;
 	const over = anyHoles && holesHit.hit ? attempt([]) : null;
 	if (over) return {
@@ -60984,7 +60963,8 @@ var READABILITY_RULES = [
 	"wire-hugs-part",
 	"label-covered",
 	"crossings-high",
-	"wire-over-board"
+	"wire-over-board",
+	"wire-over-holes"
 ];
 function segmentsOf(wire, pts, ends = [void 0, void 0]) {
 	const out = [];
@@ -61118,13 +61098,21 @@ function readabilityFindings(d, routes = computeRoutes(d)) {
 			const lo = Math.max(s.lo, t.lo);
 			const hi = Math.min(s.hi, t.hi);
 			if (hi - lo <= 2) continue;
-			if (endsOf.get(s.wire).some((p) => endsOf.get(t.wire).some((q) => Math.abs(p.x - q.x) < .5 && Math.abs(p.y - q.y) < .5))) continue;
+			const meet = endsOf.get(s.wire).filter((p) => endsOf.get(t.wire).some((q) => Math.abs(p.x - q.x) < .5 && Math.abs(p.y - q.y) < .5));
+			let pieces = [[lo, hi]];
+			for (const p of meet) {
+				const [across, along] = s.h ? [p.y, p.x] : [p.x, p.y];
+				if (Math.abs(across - s.at) > .5) continue;
+				pieces = pieces.flatMap(([u, v]) => [[u, Math.min(v, along - 30)], [Math.max(u, along + 30), v]]).filter(([u, v]) => v > u);
+			}
+			const run = Math.max(0, ...pieces.map(([u, v]) => v - u));
+			if (run <= 2) continue;
 			const [a, b] = [s.wire, t.wire].sort(naturalCompare);
 			const key = `${a}|${b}`;
 			overlap.set(key, {
 				a,
 				b,
-				run: Math.max(overlap.get(key)?.run ?? 0, hi - lo)
+				run: Math.max(overlap.get(key)?.run ?? 0, run)
 			});
 		}
 	}
@@ -61981,8 +61969,6 @@ async function runGate(bytes, opts) {
 		quantities: [],
 		channels: []
 	};
-	/** Readability warnings found (never blocking, but the sheet is not ready while any remain). */
-	let readable = 0;
 	const finish = () => {
 		const have = new Set(artifacts.map((a) => a.kind));
 		const missing = required.filter((r) => r.kind === "link-or-file" ? !have.has("link") && !have.has("file") : !have.has(r.kind));
@@ -61995,7 +61981,7 @@ async function runGate(bytes, opts) {
 			report: {
 				format: GATE_FORMAT,
 				ok: code === EXIT.ok,
-				ready: code === EXIT.ok && readable === 0,
+				ready: code === EXIT.ok && all.every((f) => f.severity !== "warning" || !READABILITY_RULES.includes(f.rule)),
 				diagram: {
 					path: opts.sheetPath,
 					sha256: sha256(bytes)
@@ -62037,9 +62023,7 @@ async function runGate(bytes, opts) {
 		parts: [c.from.part, c.to.part],
 		wires: [c.uid]
 	});
-	const readability = readabilityFindings(d, routes);
-	readable = readability.length;
-	found.push(...readability.map(cliFinding));
+	found.push(...readabilityFindings(d, routes).map(cliFinding));
 	const parsed = d.intent !== void 0 ? parseNetlist(d.intent, intentLookup(d, libraryLookup)) : null;
 	const bom = sheetBom(d, libraryLookup);
 	rows = {
@@ -62545,6 +62529,8 @@ function edgeExits(board, at) {
 var FAR = 300;
 /** A hole whose cheapest straight way out passes over another hole costs at least this (holeChoice). */
 var DIRTY = 600;
+/** Holes at the inner end of a hub half-row kept for the jumpers that join the net's half-rows. */
+var JUMPER_HOLES = 3;
 var SIGNAL_COLORS = [
 	"blue",
 	"green",
@@ -63316,10 +63302,29 @@ function realize(intent, d, locals = [], opts = {}) {
 		for (const side of [0, 1]) {
 			bySide[side].sort((a, b) => stackOf(a.at) - stackOf(b.at));
 			bySide[side].forEach((it, k) => {
-				const row = rows[Math.min(k, rows.length - 1)];
-				const half = row.halves[side];
-				const i = outward(half, row.halves[1 - side]).find((j) => !used.has(holeKey(half.board, half.name, j)));
-				if (i === void 0) return void errors.push(`strip full: net ${intent.nets[ni].name} has no free hole left on ${stripName(half)}`);
+				const outerFree = (row) => {
+					const half = row.halves[side];
+					const i = outward(half, row.halves[1 - side]).slice(0, half.holes.length - JUMPER_HOLES).find((j) => !used.has(holeKey(half.board, half.name, j)));
+					return i === void 0 ? null : {
+						half,
+						i
+					};
+				};
+				let spot = k < rows.length ? outerFree(rows[k]) : null;
+				for (const row of rows) spot ??= outerFree(row);
+				if (!spot) {
+					const ext = [...strips.values()].find((st) => hubs.has(st.board) && !st.rail && !owner.has(st.key) && !reserved.has(st.key) && free(st).length === st.holes.length);
+					if (ext) {
+						owner.set(ext.key, ni);
+						jumper(ni, rows[rows.length - 1].halves[side], ext);
+						spot = {
+							half: ext,
+							i: free(ext)[0]
+						};
+					}
+				}
+				if (!spot) return void errors.push(`strip full: net ${intent.nets[ni].name} has no free hole left on its hub rows`);
+				const { half, i } = spot;
 				if ("node" in it) {
 					const e = take(it.node, half.holes[i]);
 					wire(ni, e, holeEnd(half, i), true);
@@ -63331,7 +63336,12 @@ function realize(intent, d, locals = [], opts = {}) {
 			});
 		}
 		const spine = bySide[1].length > bySide[0].length ? 1 : 0;
-		const inner = (half, other, back = 0) => outward(half, other)[half.holes.length - 1 - back];
+		const inner = (half, other, back = 0) => {
+			const order = outward(half, other);
+			const want = order[half.holes.length - 1 - back];
+			if (!used.has(holeKey(half.board, half.name, want))) return want;
+			return [...order].reverse().find((j) => !used.has(holeKey(half.board, half.name, j))) ?? want;
+		};
 		const pin = (half, i) => holeEnd(half, i);
 		rows.forEach((row, k) => {
 			const far = row.halves[1 - spine];
@@ -65014,6 +65024,7 @@ function extractNetlist(d) {
 	const nets = [];
 	for (const keys of n.nets) {
 		const pins = [];
+		const strips = [];
 		let label;
 		for (const k of keys) {
 			const [uid, name] = JSON.parse(k);
@@ -65025,6 +65036,11 @@ function extractNetlist(d) {
 				continue;
 			}
 			const ref = refOf.get(uid);
+			if (ref && isBoard(m) && direct.has(k)) strips.push({
+				ref,
+				name,
+				m
+			});
 			if (!ref || isBoard(m) || !direct.has(k)) continue;
 			pins.push({
 				ref,
@@ -65032,6 +65048,7 @@ function extractNetlist(d) {
 				m
 			});
 		}
+		if (pins.length === 1 && strips.length) pins.push(strips.sort((a, b) => naturalCompare(a.ref, b.ref) || naturalCompare(a.name, b.name))[0]);
 		if (pins.length < 2) continue;
 		pins.sort((a, b) => naturalCompare(a.ref, b.ref) || naturalCompare(a.name, b.name));
 		nets.push({
