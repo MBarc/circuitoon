@@ -8,6 +8,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { type Diagram, computeRoutes, validateDiagram, wirePaths } from '../format/diagram.ts'
 import { type Pt } from '../format/geometry.ts'
+import type { ModuleDef } from '../format/module.ts'
 import { readabilityFindings } from './readabilityWarnings.ts'
 import { layoutNetlist } from './layout.ts'
 import { libraryLookup } from './catalog.ts'
@@ -66,6 +67,28 @@ describe('wires-overlap', () => {
     expect(found[0].wires).toHaveLength(2)
     expect(found[0].message).toMatch(/on top of each other/)
   })
+  it('exempts only the stretch near a terminal two wires share, not the whole pair', () => {
+    const term: ModuleDef = { format: 'circuitoon-module/1', id: 'term', name: 'Term', pins: [{ name: 'T', side: 'right', capacity: 2 }] }
+    const one: ModuleDef = { format: 'circuitoon-module/1', id: 'one', name: 'One', pins: [{ name: 'L', side: 'left' }] }
+    const sheet = (shared: number): Diagram => ({
+      format: 'circuitoon-diagram/1', title: 't', modules: { term, one },
+      parts: [
+        { uid: 'T1', designator: 'T1', module: 'term', x: 0, y: 0 },
+        { uid: 'A', designator: 'A', module: 'one', x: 400, y: -100 },
+        { uid: 'B', designator: 'B', module: 'one', x: 400, y: 100 },
+      ],
+      // Both leave T1's pin along y = 10 for `shared` px, then part.
+      connections: [
+        { uid: 'w1', from: { part: 'T1', pin: 'T' }, to: { part: 'A', pin: 'L' }, route: [[20 + shared, 10], [20 + shared, -90]] },
+        { uid: 'w2', from: { part: 'T1', pin: 'T' }, to: { part: 'B', pin: 'L' }, route: [[20 + shared, 10], [20 + shared, 110]] },
+      ],
+    })
+    const rules = (dd: Diagram) => readabilityFindings(dd).filter((f) => f.rule === 'wires-overlap')
+    expect(rules(sheet(20))).toEqual([])
+    const far = rules(sheet(150))
+    expect(far).toHaveLength(1)
+    expect(far[0].wires).toEqual(['w1', 'w2'])
+  })
   it('never fires for wires that only cross', () => {
     const r = layoutNetlist({
       format: 'circuitoon-netlist/1', title: 'Cross',
@@ -104,5 +127,27 @@ describe('a hub breadboard', () => {
       expect([0, g.at.length - 1], `${e.pin} hole ${e.hole}`).toContain(e.hole)
       expect(e.hole, e.pin).toBe(outer)
     }
+  })
+  it('never puts two wire ends in one hole, and keeps the inner holes of each half-row for the jumpers, with supply nets fed by a trunk too', () => {
+    const raw = spi()
+    raw.parts.push({ ref: 'PWR', module: 'breadboard-half' }, { ref: 'BT1', module: 'battery-18650-holder' })
+    raw.nets.push(
+      { name: 'GND', pins: ['U2.GND', 'DA.GND', 'DB.GND', 'BT1.-', 'PWR.top-'] },
+      { name: 'VBAT', pins: ['BT1.+', 'U2.VIN', 'DA.VCC', 'DB.VCC', 'PWR.top+'] },
+    )
+    const r = layoutNetlist(raw)
+    if (!r.ok) throw new Error(r.errors.join('; '))
+    const d = r.value.diagram
+    const ends = d.connections.flatMap((c) => [c.from, c.to]).filter((e) => e.part === 'HUB').map((e) => `${e.pin} ${e.hole}`)
+    expect(new Set(ends).size).toBe(ends.length)
+    // A wire from off the hub ends in one of the two outer holes of its half-row (away from the
+    // channel: holes 0 and 1 of a -top half, 3 and 4 of a -bot half), never one the jumpers keep.
+    for (const c of d.connections) {
+      if ((c.from.part === 'HUB') === (c.to.part === 'HUB')) continue
+      const e = c.from.part === 'HUB' ? c.from : c.to
+      expect(e.pin.endsWith('-top') ? [0, 1] : [3, 4], `${c.uid} ${e.pin} ${e.hole}`).toContain(e.hole)
+    }
+    expect(verifyDiagram(d, libraryLookup)).toEqual([])
+    expect(overlapping(d)).toEqual([])
   })
 })

@@ -1,7 +1,8 @@
 // Readability warnings for `check` and `gate` (never blocking): what makes a correct sheet hard to
 // follow. Read from the wires as drawn (wirePaths, after lane separation):
 // - wires-overlap: two wires (of any nets) lying on top of each other along one line for more than
-//   OVERLAP px, so neither can be traced (Ruling W1; never where both end at one point);
+//   OVERLAP px, so neither can be traced (Ruling W1; within SHARED_RUN of a point both end at, it is
+//   their shared terminal's stub and does not count);
 // - wires-crowded: two wires of different nets side by side within one grid step over more than
 //   CROWDED_RUN px (a row of stubs out to net labels at pin pitch is meant that way, so only two drawn
 //   on top of each other count);
@@ -33,9 +34,11 @@ export const CROSSINGS_MAX = 8
 export const LABEL_STUB = 30
 
 /** Every rule a readability finding can have; while any is reported, a gate is not ready (Ruling W1). */
-export const READABILITY_RULES = ['wires-overlap', 'wires-crowded', 'wire-hugs-part', 'label-covered', 'crossings-high', 'wire-over-board'] as const
+export const READABILITY_RULES = ['wires-overlap', 'wires-crowded', 'wire-hugs-part', 'label-covered', 'crossings-high', 'wire-over-board', 'wire-over-holes'] as const
 /** Two wires sharing a run longer than this (px) on one line are drawn on top of each other. */
 export const OVERLAP = 2
+/** Around a point two wires both end at, this much of a shared run (px, three grid steps) is not counted. */
+export const SHARED_RUN = 30
 
 export interface ReadabilityFinding {
   id: string
@@ -171,11 +174,20 @@ export function readabilityFindings(d: Diagram, routes: Routes = computeRoutes(d
           const lo = Math.max(s.lo, t.lo)
           const hi = Math.min(s.hi, t.hi)
           if (hi - lo <= OVERLAP) continue
-          const shared = endsOf.get(s.wire)!.some((p) => endsOf.get(t.wire)!.some((q) => Math.abs(p.x - q.x) < 0.5 && Math.abs(p.y - q.y) < 0.5))
-          if (shared) continue
+          // Only the stretch beyond SHARED_RUN of a point both wires end at counts: two wires into
+          // one terminal meet on its stub, but past that they must part.
+          const meet = endsOf.get(s.wire)!.filter((p) => endsOf.get(t.wire)!.some((q) => Math.abs(p.x - q.x) < 0.5 && Math.abs(p.y - q.y) < 0.5))
+          let pieces: [number, number][] = [[lo, hi]]
+          for (const p of meet) {
+            const [across, along] = s.h ? [p.y, p.x] : [p.x, p.y]
+            if (Math.abs(across - s.at) > 0.5) continue
+            pieces = pieces.flatMap(([u, v]) => [[u, Math.min(v, along - SHARED_RUN)], [Math.max(u, along + SHARED_RUN), v]] as [number, number][]).filter(([u, v]) => v > u)
+          }
+          const run = Math.max(0, ...pieces.map(([u, v]) => v - u))
+          if (run <= OVERLAP) continue
           const [a, b] = [s.wire, t.wire].sort(naturalCompare)
           const key = `${a}|${b}`
-          overlap.set(key, { a, b, run: Math.max(overlap.get(key)?.run ?? 0, hi - lo) })
+          overlap.set(key, { a, b, run: Math.max(overlap.get(key)?.run ?? 0, run) })
         }
   }
   for (const { a, b, run } of overlap.values())

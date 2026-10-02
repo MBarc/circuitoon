@@ -18,6 +18,7 @@ import { EXIT, type Io } from './io.ts'
 import { runGate } from './gate.ts'
 import { bomCsv } from '../format/bom.ts'
 import { bomQuantities } from '../agent/tables.ts'
+import { READABILITY_RULES } from '../agent/readabilityWarnings.ts'
 import { captionBox } from '../render/captionBox.ts'
 import { layoutModule } from '../format/module.ts'
 import { ledNetlist, tiltSensors } from '../agent/fixtures.testing.ts'
@@ -305,6 +306,11 @@ describe('circuitoon gate', () => {
     expect(over[0].message).toMatch(/^The wire BT1 \+ to BB1 \S+ hole \d+ runs over breadboard holes/)
     expect(over[0].wires).toHaveLength(1)
   })
+  it('is not ready with a wire drawn over breadboard holes in use (wire-over-holes counts)', async () => {
+    const { report } = await overC3(true)
+    expect(report.warnings.some((w) => w.rule === 'wire-over-holes')).toBe(true)
+    expect(report.ready).toBe(false)
+  })
   it('does not warn about a wire drawn over empty breadboard holes (Ruling C1)', async () => {
     const { report } = await overC3(false)
     expect(report.blocking).toEqual([])
@@ -464,7 +470,7 @@ describe('gate readiness (Ruling W1)', () => {
     const dir = await overCaption()
     const r = await cli(['gate', 'sheet.json', '-o', 'out'], { cwd: dir, env: noBrowser(dir) })
     const g = gateJson(dir)
-    const n = g.warnings.filter((w: { rule: string }) => ['wires-crowded', 'wire-hugs-part', 'label-covered', 'crossings-high', 'wire-over-board'].includes(w.rule)).length
+    const n = g.warnings.filter((w: { rule: string }) => (READABILITY_RULES as readonly string[]).includes(w.rule)).length
     expect(n).toBeGreaterThan(0)
     expect(g.ready).toBe(false)
     expect(r.out.split('\n')[0]).toBe(`NOT READY: ${n} readability warning${n === 1 ? '' : 's'}`)

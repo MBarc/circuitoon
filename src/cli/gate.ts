@@ -135,8 +135,6 @@ export async function runGate(bytes: Uint8Array, opts: { sheetPath: string; outD
   const required: { kind: GateArtifact['kind'] | 'link-or-file'; path: string }[] = []
   let link: GateReport['link'] = { url: null, file: null, chars: 0 }
   let rows: Pick<GateReport, 'bom' | 'quantities' | 'channels'> = { bom: null, quantities: [], channels: [] }
-  /** Readability warnings found (never blocking, but the sheet is not ready while any remain). */
-  let readable = 0
 
   const finish = (): { code: number; report: GateReport } => {
     const have = new Set(artifacts.map((a) => a.kind))
@@ -148,7 +146,7 @@ export async function runGate(bytes: Uint8Array, opts: { sheetPath: string; outD
     const report: GateReport = {
       format: GATE_FORMAT,
       ok: code === EXIT.ok,
-      ready: code === EXIT.ok && readable === 0,
+      ready: code === EXIT.ok && all.every((f) => f.severity !== 'warning' || !(READABILITY_RULES as readonly string[]).includes(f.rule)),
       diagram: { path: opts.sheetPath, sha256: sha256(bytes) },
       artifacts,
       blocking,
@@ -194,9 +192,7 @@ export async function runGate(bytes: Uint8Array, opts: { sheetPath: string; outD
     if (routes.get(c.uid)?.fallback)
       note('wire-over-holes', c.uid, 'warning', `The wire ${c.label ?? `${endpointName(d, c.from)} to ${endpointName(d, c.to)}`} runs over breadboard holes in use that it is not plugged into, so in the picture it may look plugged in there.`, { parts: [c.from.part, c.to.part], wires: [c.uid] })
   // Readability (never blocking): the agent clears these or explains each one that remains.
-  const readability = readabilityFindings(d, routes)
-  readable = readability.length
-  found.push(...readability.map(cliFinding))
+  found.push(...readabilityFindings(d, routes).map(cliFinding))
   const parsed = d.intent !== undefined ? parseNetlist(d.intent, intentLookup(d, libraryLookup)) : null
   // The bill of materials: bom.csv and gate.json's bill of quantities both come from this one bill.
   const bom = sheetBom(d, libraryLookup)
