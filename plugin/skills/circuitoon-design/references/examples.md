@@ -13,8 +13,8 @@ Every example is laid out with the default: wires (`--labels none`), labels only
 | `led-breadboard.netlist.json` | Parts mounted `on` a breadboard: their legs share strips, and the battery wires into free holes, each wire entering the board straight from its edge. Also a value, wire colors and cable ends. | 1 | 0 | 2 / 2 | 440 x 387 |
 | `esp32-bme280.netlist.json` | Two-pin nets wired pin to pin, so no breadboard is needed. The sensor is turned so its header faces the ESP32. Also a group and a note. | 1 | 2 | 0 / 0 | 370 x 270 |
 | `battery-switch.netlist.json` | A power chain through a switch. The IP5306's B- and 5V- are joined inside the part and wired as one node, so GND's three endpoints chain with no breadboard. | 2 | 3 | 0 / 0 | 640 x 247 |
-| `tilt-sensors-8.netlist.json` | A `repeat` with explicit bindings (8 copies) and a shared ground: each block of copies gets local rail strips (`DP1` to `DP3`) for its ground, and each switch's signal is a wire to its ESP32 pin. `render --focus tilt_1` frames one copy. | 11 | 49 | 2 / 5 | 730 x 917 |
-| `spirit-typewriter/` | A large design split into four sheets along real connectors. Each sheet is laid out from a partial with `layout --keep`. Its 42 channel nets and the four buses to the bank connectors ask for labels. See its `README.md`. | 45, 20, 19, 18 | 96, 184, 184, 184 | 12, 14, 15, 16 / 16, 20, 20, 20 | see README |
+| `tilt-sensors-8.netlist.json` | A `repeat` with explicit bindings (8 copies) and a shared ground: each block of copies gets local rail strips (`DP1` to `DP3`) for its ground, and each switch's signal is a wire to its ESP32 pin. `render --focus tilt_1` frames one copy. | 11 | 40 | 2 / 5 | 720 x 917 |
+| `spirit-typewriter/` | A large design split into four sheets along real connectors. Each sheet is laid out from a partial with `layout --keep`. Its 42 channel nets and the four buses to the bank connectors ask for labels. See its `README.md`. | 45, 20, 19, 18 | 98, 97, 97, 97 | 12, 14, 15, 16 / 14, 15, 15, 15 | see README |
 
 ## Warnings
 
