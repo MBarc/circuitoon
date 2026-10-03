@@ -219,7 +219,8 @@ function freePin(pm: PinModel, part: PinPart): string {
     // A GPIO with no limits at all: typed io, or left untyped (the MCP23017's GPA0-GPA6 carry no type).
     if ((p.type !== 'io' && p.type !== undefined) || busPins.has(p.name) || p.caps) return false
     const i = pm.netOf(part.id, p.name)
-    return i === undefined || !pm.net(i).some((o) => o.part !== part)
+    // Free: nothing else on its net, a pin of its own board included.
+    return i === undefined || !pm.net(i).some((o) => o.part !== part || o.pin !== p.name)
   })
   return free ? `, such as ${free.label ?? free.name}` : ''
 }
@@ -406,7 +407,8 @@ export function pinFindings(pm: PinModel): PinDraft[] {
       const base = { subject: p.part.designator, target: endName(p), nets: [i] }
       const notMine = (e: PinEnd) => e.part !== p.part
 
-      if (c.flash && (s.parts.size > 1 || !s.parts.has(p.part))) {
+      // Any other electrical end on the net counts, its own board's GND, supply or GPIO too.
+      if (c.flash && pm.net(i).some((e) => e !== p)) {
         // One finding per net: several boards' flash pins on one net are one mistake, said once.
         if (flashNets.has(i)) continue
         flashNets.add(i)
@@ -419,11 +421,11 @@ export function pinFindings(pm: PinModel): PinDraft[] {
             parts: [...boards].map((x) => x.id).concat(others.map((e) => e.part.id)), pins: [...flash, ...others].map(endPin), causes: flash.map((e) => causeKey(e.part.id, e.pin)) })
           continue
         }
-        const elsewhere = pm.net(i).filter(notMine)
+        const elsewhere = pm.net(i).filter((e) => e !== p)
         const n = elsewhere.length
         out.push({ ...base, rule: 'pin-flash',
           message: `${endName(p)} is a flash pin${note}, so nothing may be wired to it, but ${fewEnds(elsewhere)} ${n === 1 ? 'is' : 'are'}. The board will not run like this. Move ${n === 1 ? 'it' : 'them'} to a free GPIO${suggest(pm, p.part)}.`,
-          parts: [p.part.id, ...elsewhere.map((e) => e.part.id)], pins: [endPin(p), ...elsewhere.map(endPin)], causes: [cause] })
+          parts: [...new Set([p.part.id, ...elsewhere.map((e) => e.part.id)])], pins: [endPin(p), ...elsewhere.map(endPin)], causes: [cause] })
         continue
       }
 
