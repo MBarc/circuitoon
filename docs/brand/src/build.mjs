@@ -34,7 +34,11 @@ const T = {
   paper: '#F7F8F3', bg: '#E9EEE6', grid: '#DCE3D7', green: '#2F9E6E', yellow: '#F4B400', ink: '#23282F',
   text: '#23282F', muted: '#56615B', pin: '#C9CFD4',
 }
-const DARK = { ...T, bg: '#161B18', grid: '#1F2622', text: '#E4EAE5', muted: '#9CA8A0', shadow: '#4A5A50', edge: '#9AA79F' }
+// Dark mode is Graphite: neutral greys, and the drawing paper dimmed (not dark), as on the site.
+const DARK = { ...T, bg: '#1B1D20', grid: '#25282C', text: '#E8EAED', muted: '#A3A9B0', shadow: '#0C0D0F', edge: '#747B84' }
+const DIM_PAPER = { paper: '#DDDFE0', grid: '#CDD0D2' }
+/** A light CLI sheet SVG on the dimmed dark-mode paper (paper, grid, and the caption halos). */
+const dimPaper = (svgText) => svgText.replaceAll('#F7F8F3', DIM_PAPER.paper).replaceAll('#E1E6DB', DIM_PAPER.grid)
 const theme = (dark) => (dark ? DARK : { ...T, shadow: T.ink, edge: T.ink })
 
 // ---- Fonts and outlined text ----
@@ -126,6 +130,15 @@ const unescape = (s) => s.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&
 /** Replaces each <text> of a CLI sheet SVG with an outlined path, and prefixes ids with `ns`. */
 function outlineSheet(src, ns) {
   return src
+    // A multi-line note is one <text> of <tspan x dy> lines: split it into one <text> per line.
+    .replace(/<text([^>]*)>((?:<tspan[^>]*>[^<]*<\/tspan>)+)<\/text>/g, (_, a, spans) => {
+      let y = Number(attr(a, 'y') ?? 0)
+      const rest = a.replace(/\s(x|y)="[^"]*"/g, '')
+      return [...spans.matchAll(/<tspan([^>]*)>([^<]*)<\/tspan>/g)].map(([, sa, content]) => {
+        y += Number(attr(sa, 'dy') ?? 0)
+        return `<text x="${attr(sa, 'x') ?? attr(a, 'x') ?? 0}" y="${y}"${rest}>${content}</text>`
+      }).join('')
+    })
     .replace(/<text([^>]*)>([^<]*)<\/text>/g, (_, a, content) => {
       const size = Number(attr(a, 'font-size') ?? 10)
       const f = Number(attr(a, 'font-weight') ?? 400) >= 600 ? F.atkinson700 : F.atkinson400
@@ -243,8 +256,9 @@ write(join(PUBLIC, 'favicon.svg'), svg(64, 64, markAt(0, 0, 64, false)))
 const motifs = {}
 for (const dark of [false, true]) {
   const svgPath = join(tmp, `motif${dark ? '-dark' : ''}.svg`)
-  cli('render', join(here('./motif.circuitoon.json')), '-o', join(tmp, 'motif.png'), '--svg', svgPath, ...(dark ? ['--dark'] : []))
-  motifs[dark] = { ...nestable(outlineSheet(readFileSync(svgPath, 'utf8'), dark ? 'md' : 'ml')), vb: MOTIF_CROP }
+  cli('render', join(here('./motif.circuitoon.json')), '-o', join(tmp, 'motif.png'), '--svg', svgPath)
+  const src = readFileSync(svgPath, 'utf8')
+  motifs[dark] = { ...nestable(outlineSheet(dark ? dimPaper(src) : src, dark ? 'md' : 'ml')), vb: MOTIF_CROP }
 }
 write(join(BRAND, 'banner.svg'), banner(motifs[false], false))
 write(join(BRAND, 'banner-dark.svg'), banner(motifs[true], true))
@@ -255,8 +269,9 @@ cli('layout', HERO_NETLIST, '-o', heroSheet)
 const gate = JSON.parse(cli('gate', heroSheet, '-o', join(tmp, 'gate'), '--json'))
 if (!gate.ready || gate.blocking.length || gate.warnings.length) throw new Error('hero sheet does not pass gate cleanly: ' + JSON.stringify(gate.blocking.concat(gate.warnings)))
 cli('render', heroSheet, '-o', join(BRAND, 'hero.png'), '--scale', '2')
-cli('render', heroSheet, '-o', join(BRAND, 'hero-dark.png'), '--scale', '2', '--dark')
-out.push(join(BRAND, 'hero.png'), join(BRAND, 'hero-dark.png'))
+const heroSvg = join(tmp, 'hero.svg')
+cli('render', heroSheet, '-o', join(tmp, 'hero-tmp.png'), '--svg', heroSvg)
+out.push(join(BRAND, 'hero.png'))
 
 // Rasters through Chrome
 const browser = await chromium.launch({ channel: 'chrome', headless: true })
@@ -265,6 +280,15 @@ async function png(markup, w, h) {
   await page.setViewportSize({ width: w, height: h })
   await page.setContent(`<!doctype html><style>html,body{margin:0;background:transparent}svg{display:block}</style>${markup}`)
   return page.screenshot({ omitBackground: true, clip: { x: 0, y: 0, width: w, height: h } })
+}
+// hero-dark: the same sheet on the dimmed paper, text outlined, at 2x like the CLI's PNG
+{
+  const hero = nestable(outlineSheet(dimPaper(readFileSync(heroSvg, 'utf8')), 'hd'))
+  const [, , vw, vh] = hero.vb
+  const big = await browser.newPage({ deviceScaleFactor: 2, viewport: { width: vw, height: vh } })
+  await big.setContent(`<!doctype html><style>html,body{margin:0}svg{display:block}</style><svg xmlns="http://www.w3.org/2000/svg" width="${vw}" height="${vh}" viewBox="${hero.vb.join(' ')}">${hero.inner}</svg>`)
+  write(join(BRAND, 'hero-dark.png'), await big.screenshot({ clip: { x: 0, y: 0, width: vw, height: vh } }))
+  await big.close()
 }
 const icoPngs = []
 for (const s of [16, 32, 48]) icoPngs.push({ size: s, data: await png(iconSvg(s), s, s) })

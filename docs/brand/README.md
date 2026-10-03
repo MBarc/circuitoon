@@ -28,17 +28,24 @@ Sources in `src/`: `motif.circuitoon.json` is the banner and card sheet (9 V bat
 
 ## Colours
 
-| Token | Light | Dark |
+Dark mode is **Graphite**: neutral greys with no tint, so the yellow is the only colour in the chrome, and the drawing paper dimmed rather than dark, so every part keeps its light-mode colours without the glare.
+
+| Token | Light | Dark (Graphite) |
 | --- | --- | --- |
 | yellow (wordmark, chip) | `#F4B400` | `#F4B400` |
-| ink (outlines, text) | `#23282F` | `#23282F` outlines, `#E4EAE5` text |
+| ink (outlines) | `#23282F` | `#23282F` |
 | green (boards) | `#2F9E6E` | `#2F9E6E` |
-| background | `#E9EEE6` | `#161B18` |
-| paper (sheets) | `#F7F8F3` | |
-| hard shadow | `#23282F` | `#4A5A50` |
-| edge on dark | | `#9AA79F` |
+| background | `#E9EEE6` | `#1B1D20` |
+| panel | `#FBFCF9` | `#25282C` |
+| text | `#23282F` | `#E8EAED` (14:1 on the background) |
+| muted text | `#56615B` | `#A3A9B0` (7.1:1) |
+| rules | `#CCD5CC` | `#363A40` |
+| card edge | `#23282F` | `#747B84` (3.9:1) |
+| hard shadow | `#23282F` | `#0C0D0F` |
+| paper (sheets) | `#F7F8F3` | `#DDDFE0` |
+| sheet grid | `#E1E6DB` | `#CDD0D2` |
 
-The app's full token set is at the top of `src/styles.css`.
+The app's full token set is at the top of `src/styles.css`. The CLI's own `render --dark` still uses its separate dark sheet theme (`DARK_THEME` in `src/render/theme.ts`); the README's dark hero is drawn on the Graphite paper instead.
 
 ## Fonts
 
