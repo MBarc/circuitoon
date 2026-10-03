@@ -247,7 +247,11 @@ build({
   right: ['3V3', 'IO16', 'IO0', 'GND 2|GND', 'VCC', 'U0R', 'U0T', 'GND/R'],
   bottom: 6, wu: 11,
   types: typer({ gnd: ['GND'], v33: ['3V3', 'VCC'], v5: ['5V'], other: { 'GND/R': { type: 'passive' } }, gpio: (n) => /^IO\d+$/.test(n) || n === 'U0R' || n === 'U0T',
-    caps: esp32Caps(['IO0', 'IO2', 'IO12', 'IO15'], (n) => Number(n.slice(2))) }),
+    // IO16 is the chip select of the board's PSRAM (Random Nerd Tutorials' AI-Thinker pinout: "GPIO 16
+    // is connected to the internal PSRAM"; raphaelbs/esp32-cam-ai-thinker pin notes, from the board
+    // schematic: "connected to CS# pin1 of onboard PSRAM64"). A note only: with PSRAM turned off it is usable.
+    caps: { ...esp32Caps(['IO0', 'IO2', 'IO12', 'IO15'], (n) => Number(n.slice(2))),
+      IO16: { note: "IO16 is the chip select of the board's PSRAM: using it means turning PSRAM off, which most camera code needs." } } }),
   internal: [['GND', 'GND 2']],
   art: {
     shapes: (W, H) => [
@@ -281,7 +285,7 @@ build({
     // A/D converter", with no port, so no digital I/O and no pull-up. Cross-checked: Arduino's
     // docs-content (github.com/arduino/docs-content/pull/2584: "Analog pins A6 and A7 are not usable
     // as GPIO on ATmega168/328").
-    caps: Object.fromEntries(['A6', 'A7'].map((n) => [n, { inputOnly: true, noPullup: true, note: `${n} is an analog input only: no digital output and no internal pull-up.` }])),
+    caps: Object.fromEntries(['A6', 'A7'].map((n) => [n, { inputOnly: true, noPullup: true, note: `${n} goes only to the ADC: read it with analogRead.` }])),
   }),
   internal: [['GND', 'GND 2'], ['RST', 'RST 2']],
   art: {

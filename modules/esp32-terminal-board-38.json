@@ -17,7 +17,7 @@
       "side": "top",
       "caps": {
         "flash": true,
-        "note": "CMD is GPIO11, wired to the module's SPI flash."
+        "note": "CMD is GPIO11, a line of the module's SPI flash."
       }
     },
     {
@@ -25,7 +25,7 @@
       "side": "top",
       "caps": {
         "flash": true,
-        "note": "SD3 is GPIO10, wired to the module's SPI flash."
+        "note": "SD3 is GPIO10, a line of the module's SPI flash."
       }
     },
     {
@@ -33,7 +33,7 @@
       "side": "top",
       "caps": {
         "flash": true,
-        "note": "SD2 is GPIO9, wired to the module's SPI flash."
+        "note": "SD2 is GPIO9, a line of the module's SPI flash."
       }
     },
     {
@@ -92,7 +92,7 @@
       "caps": {
         "inputOnly": true,
         "noPullup": true,
-        "note": "GPIO35 has no output driver and no internal pull-up or pull-down."
+        "note": "GPIO35 is one of the ESP32's sensor inputs, GPIO34-39."
       }
     },
     {
@@ -102,7 +102,7 @@
       "caps": {
         "inputOnly": true,
         "noPullup": true,
-        "note": "GPIO34 has no output driver and no internal pull-up or pull-down."
+        "note": "GPIO34 is one of the ESP32's sensor inputs, GPIO34-39."
       }
     },
     {
@@ -112,7 +112,7 @@
       "caps": {
         "inputOnly": true,
         "noPullup": true,
-        "note": "GPIO39 has no output driver and no internal pull-up or pull-down."
+        "note": "SVN is GPIO39, one of the ESP32's sensor inputs, GPIO34-39."
       }
     },
     {
@@ -122,7 +122,7 @@
       "caps": {
         "inputOnly": true,
         "noPullup": true,
-        "note": "GPIO36 has no output driver and no internal pull-up or pull-down."
+        "note": "SVP is GPIO36, one of the ESP32's sensor inputs, GPIO34-39."
       }
     },
     {
@@ -141,7 +141,7 @@
       "side": "bottom",
       "caps": {
         "flash": true,
-        "note": "CLK is GPIO6, wired to the module's SPI flash."
+        "note": "CLK is GPIO6, a line of the module's SPI flash."
       }
     },
     {
@@ -149,7 +149,7 @@
       "side": "bottom",
       "caps": {
         "flash": true,
-        "note": "SD0 is GPIO7, wired to the module's SPI flash."
+        "note": "SD0 is GPIO7, a line of the module's SPI flash."
       }
     },
     {
@@ -157,7 +157,7 @@
       "side": "bottom",
       "caps": {
         "flash": true,
-        "note": "SD1 is GPIO8, wired to the module's SPI flash."
+        "note": "SD1 is GPIO8, a line of the module's SPI flash."
       }
     },
     {
@@ -175,7 +175,8 @@
       "type": "io",
       "caps": {
         "strapping": "low",
-        "note": "GPIO2 must be low or floating at reset to upload over USB; it does not change a normal boot."
+        "downloadOnly": true,
+        "note": "GPIO2 high at reset makes uploads over USB fail; a normal boot is unaffected."
       }
     },
     {

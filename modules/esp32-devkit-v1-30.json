@@ -26,7 +26,7 @@
       "caps": {
         "inputOnly": true,
         "noPullup": true,
-        "note": "GPIO36 has no output driver and no internal pull-up or pull-down."
+        "note": "VP is GPIO36, one of the ESP32's sensor inputs, GPIO34-39."
       }
     },
     {
@@ -36,7 +36,7 @@
       "caps": {
         "inputOnly": true,
         "noPullup": true,
-        "note": "GPIO39 has no output driver and no internal pull-up or pull-down."
+        "note": "VN is GPIO39, one of the ESP32's sensor inputs, GPIO34-39."
       }
     },
     {
@@ -46,7 +46,7 @@
       "caps": {
         "inputOnly": true,
         "noPullup": true,
-        "note": "GPIO34 has no output driver and no internal pull-up or pull-down."
+        "note": "GPIO34 is one of the ESP32's sensor inputs, GPIO34-39."
       }
     },
     {
@@ -56,7 +56,7 @@
       "caps": {
         "inputOnly": true,
         "noPullup": true,
-        "note": "GPIO35 has no output driver and no internal pull-up or pull-down."
+        "note": "GPIO35 is one of the ESP32's sensor inputs, GPIO34-39."
       }
     },
     {
@@ -187,7 +187,8 @@
       "type": "io",
       "caps": {
         "strapping": "low",
-        "note": "GPIO2 must be low or floating at reset to upload over USB; it does not change a normal boot."
+        "downloadOnly": true,
+        "note": "GPIO2 high at reset makes uploads over USB fail; a normal boot is unaffected."
       }
     },
     {

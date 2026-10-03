@@ -51,7 +51,8 @@
       "type": "io",
       "caps": {
         "strapping": "low",
-        "note": "GPIO2 must be low or floating at reset to upload over USB; it does not change a normal boot."
+        "downloadOnly": true,
+        "note": "GPIO2 high at reset makes uploads over USB fail; a normal boot is unaffected."
       }
     },
     {
@@ -92,7 +93,10 @@
     {
       "name": "IO16",
       "side": "right",
-      "type": "io"
+      "type": "io",
+      "caps": {
+        "note": "IO16 is the chip select of the board's PSRAM: using it means turning PSRAM off, which most camera code needs."
+      }
     },
     {
       "name": "IO0",

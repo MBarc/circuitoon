@@ -82,7 +82,8 @@
       "type": "io",
       "caps": {
         "strapping": "high",
-        "note": "D8 is GPIO8. GPIO8 must be high at reset to upload in download mode; it does not change a normal boot."
+        "downloadOnly": true,
+        "note": "D8 is GPIO8. GPIO8 low at reset makes uploads in download mode fail; a normal boot is unaffected."
       }
     },
     {

@@ -179,7 +179,8 @@ function freePin(pm: PinModel, part: PinPart): string {
   const busPins = new Set(i2c ? [i2c.sda, i2c.scl, ...(i2c.address && 'pins' in i2c.address ? i2c.address.pins.map((p) => p.pin) : [])] : [])
   const all = [...m.pins.filter((p): p is PinDef => !isSpacer(p)), ...(m.holes ?? [])]
   const free = all.find((p) => {
-    if (p.type !== 'io' || busPins.has(p.name) || p.caps?.inputOnly || p.caps?.outputOnly || p.caps?.flash || p.caps?.strapping) return false
+    // A GPIO with no limits at all: typed io, or left untyped (the MCP23017's GPA0-GPA6 carry no type).
+    if ((p.type !== 'io' && p.type !== undefined) || busPins.has(p.name) || p.caps) return false
     const i = pm.netOf(part.id, p.name)
     return i === undefined || !pm.net(i).some((o) => o.part !== part)
   })
@@ -192,11 +193,12 @@ function freePin(pm: PinModel, part: PinPart): string {
 export function capsText(c: PinCaps | undefined): string[] {
   if (!c) return []
   const out: string[] = []
-  if (c.flash) out.push('connected to the board\'s flash memory: never connect anything')
+  if (c.flash) out.push('flash pin: never connect anything')
   if (c.inputOnly) out.push('input only')
   if (c.outputOnly) out.push('output only')
   if (c.noPullup) out.push('no internal pull-up or pull-down')
   if (c.strapping === 'either') out.push('strapping pin (read at reset; either level boots)')
+  else if (c.strapping && c.downloadOnly) out.push(`strapping pin: ${c.strapping} at reset only for flashing over serial`)
   else if (c.strapping) out.push(`strapping pin: must be ${c.strapping} at reset`)
   return out
 }
@@ -207,7 +209,9 @@ const TYPE_WORDS: Record<PinType, string> = {
 /** One line on what a pin does: its type and supply, its caps, its I2C role, its note. */
 export function pinDoes(e: PinEnd): string {
   const i2c = i2cOf(e.part.module)
-  const parts = [e.type ? `${TYPE_WORDS[e.type]}${e.supply ? ` ${e.supply}` : ''}` : 'type not known']
+  // The caps say "input only" or "output only" themselves: do not say "input" first.
+  const said = (e.type === 'input' && e.caps?.inputOnly) || (e.type === 'output' && e.caps?.outputOnly)
+  const parts = said ? [] : [e.type ? `${TYPE_WORDS[e.type]}${e.supply ? ` ${e.supply}` : ''}` : 'type not known']
   if (i2c?.sda === e.pin) parts.push('I2C data (SDA)')
   if (i2c?.scl === e.pin) parts.push('I2C clock (SCL)')
   const a = i2c?.address
@@ -269,7 +273,9 @@ function pinLevel(pm: PinModel, part: PinPart, pin: string, floating?: 0 | 1): 0
   const pulls = net.filter(isResistor).map((e) => farRail(pm, e))
   if (pulls.includes('ground') && !pulls.includes('supply')) return 0
   if (pulls.includes('supply') && !pulls.includes('ground')) return 1
-  if (net.length) return 'driven'
+  // Only something that can drive a level sets it: an output or an io pin (a GPIO). Other inputs
+  // (another chip's address pins), passive parts with no rail behind them and bare strips leave it floating.
+  if (net.some((e) => e.type === 'output' || e.type === 'io')) return 'driven'
   return floating ?? null
 }
 
@@ -358,7 +364,7 @@ export function pinFindings(pm: PinModel): PinDraft[] {
         const elsewhere = pm.net(i).filter(notMine)
         const n = elsewhere.length
         out.push({ ...base, rule: 'pin-flash',
-          message: `${endName(p)} is connected to the board's flash memory${note}, so nothing may be wired to it, but ${fewNames(elsewhere.map(endName))} ${n === 1 ? 'is' : 'are'}. The board will not run like this. Move ${n === 1 ? 'it' : 'them'} to a free GPIO${suggest(pm, p.part)}.`,
+          message: `${endName(p)} is a flash pin${note}, so nothing may be wired to it, but ${fewNames(elsewhere.map(endName))} ${n === 1 ? 'is' : 'are'}. The board will not run like this. Move ${n === 1 ? 'it' : 'them'} to a free GPIO${suggest(pm, p.part)}.`,
           parts: [p.part.id, ...elsewhere.map((e) => e.part.id)], pins: [endPin(p), ...elsewhere.map(endPin)], causes: [cause] })
         continue
       }
@@ -385,9 +391,10 @@ export function pinFindings(pm: PinModel): PinDraft[] {
           }
         }
         if (c.noPullup && s.switches.length && !s.outputs.some((e) => e !== p) && !s.ios.some(notMine)) {
-          const pulled = s.resistors.some((r) => farRail(pm, r) !== null)
           const sw0 = s.switches[0]
           const rail = farRail(pm, sw0)
+          // Held only by a resistor to the other rail: a pull-up for a switch to ground, a pull-down for one to the supply.
+          const pulled = s.resistors.some((r) => { const far = farRail(pm, r); return far !== null && far !== rail })
           if (!pulled && rail) {
             const [to, hold, fix] = rail === 'ground'
               ? ['ground', 'high', `a pull-up resistor (10 kOhm) from ${p.label} to the logic supply`]
@@ -401,7 +408,8 @@ export function pinFindings(pm: PinModel): PinDraft[] {
       }
 
       if (c.outputOnly) {
-        const read = [...s.switches, ...s.outputs.filter(notMine)]
+        // A switch is a read only when it pulls the pin to a rail; GPA7 -> switch -> GPA0 (a key matrix) drives through it.
+        const read = [...s.switches.filter((w) => farRail(pm, w) !== null), ...s.outputs.filter(notMine)]
         if (read.length) {
           const what = fewNames([...new Set(read.map((e) => (isSwitch(e) ? `${e.part.designator} (a switch)` : endName(e))))])
           out.push({ ...base, rule: 'pin-output-only',
@@ -421,8 +429,10 @@ export function pinFindings(pm: PinModel): PinDraft[] {
         for (const w of s.switches)
           if (farRail(pm, w) === bad) culprits.push({ e: w, text: `${w.part.designator} pulls it to ${railName} whenever it is closed at reset` })
         if (culprits.length) {
-          out.push({ ...base, rule: 'pin-strapping',
-            message: `${endName(p)} is a strapping pin that must be ${c.strapping} at reset${note}, but ${andList(culprits.map((x) => x.text))}. Move that circuit to a GPIO that is not a strapping pin${suggest(pm, p.part)}, or make sure it is ${c.strapping} while the board starts.`,
+          const message = c.downloadOnly
+            ? `${endName(p)} is a strapping pin that only matters when flashing over serial${note || `: it must be ${c.strapping} at reset for an upload, and a normal boot is unaffected`}, but ${andList(culprits.map((x) => x.text))}, so uploads can fail. Move that circuit to a GPIO that is not a strapping pin${suggest(pm, p.part)}, or make sure it is ${c.strapping} while you upload.`
+            : `${endName(p)} is a strapping pin that must be ${c.strapping} at reset${note}, but ${andList(culprits.map((x) => x.text))}. Move that circuit to a GPIO that is not a strapping pin${suggest(pm, p.part)}, or make sure it is ${c.strapping} while the board starts.`
+          out.push({ ...base, rule: 'pin-strapping', message,
             parts: [p.part.id, ...culprits.map((x) => x.e.part.id)], pins: [endPin(p), ...culprits.map((x) => endPin(x.e))], causes: [cause] })
         }
       }

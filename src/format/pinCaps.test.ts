@@ -31,15 +31,26 @@ describe('pin capabilities of the built-in boards', () => {
       'CLK flash', 'CMD flash', 'P0 strap-high', 'P12 strap-low', 'P15 strap-either', 'P2 strap-low', 'P34 inputOnly,noPullup', 'P35 inputOnly,noPullup', 'P5 strap-either',
       'SD0 flash', 'SD1 flash', 'SD2 flash', 'SD3 flash', 'SVN inputOnly,noPullup', 'SVP inputOnly,noPullup',
     ])
-    expect(pinCaps(load('esp32-devkitc-v4'), 'D0')?.note).toBe('D0 is GPIO7, wired to the module\'s SPI flash.')
+    expect(pinCaps(load('esp32-devkitc-v4'), 'D0')?.note).toBe('D0 is GPIO7, a line of the module\'s SPI flash.')
   })
-  it('ESP32-CAM: the strapping pins it breaks out', () => {
-    expect(capped('esp32-cam')).toEqual(['IO0 strap-high', 'IO12 strap-low', 'IO15 strap-either', 'IO2 strap-low'])
+  it('ESP32-CAM: the strapping pins it breaks out, and IO16 noted as the PSRAM chip select', () => {
+    expect(capped('esp32-cam')).toEqual(['IO0 strap-high', 'IO12 strap-low', 'IO15 strap-either', 'IO16 note', 'IO2 strap-low'])
+    expect(pinCaps(load('esp32-cam'), 'IO16')?.note).toMatch(/^IO16 is the chip select of the board's PSRAM/)
   })
   it('ESP32-S3: GPIO0, 3, 45, 46, and the octal-memory note on 35-37', () => {
     expect(capped('esp32-s3-devkitc-1')).toEqual(['0 strap-high', '3 strap-either', '35 note', '36 note', '37 note', '45 strap-low', '46 strap-low'])
     expect(capped('xiao-esp32s3')).toEqual(['D2 strap-either'])
     expect(pinCaps(load('xiao-esp32s3'), 'D2')?.note).toMatch(/^D2 is GPIO3\. /)
+  })
+  it('the download-only strapping pins say so: ESP32 GPIO2, S3 GPIO46, C3 GPIO8', () => {
+    const only = (id: string) => pinsOf(load(id)).filter((p) => p.caps?.downloadOnly).map((p) => p.name)
+    expect(only('esp32-devkitc-v4')).toEqual(['IO2'])
+    expect(only('esp32-devkit-v1-30')).toEqual(['D2'])
+    expect(only('esp32-s3-devkitc-1')).toEqual(['46'])
+    expect(only('esp32-c3-supermini')).toEqual(['8'])
+    expect(only('xiao-esp32c3')).toEqual(['D8'])
+    for (const id of ['esp32-devkitc-v4', 'esp32-s3-devkitc-1', 'esp32-c3-supermini'])
+      for (const p of pinsOf(load(id)).filter((x) => x.caps?.downloadOnly)) expect(p.caps!.note).toMatch(/a normal boot is unaffected\.$/)
   })
   it('ESP32-C3: GPIO2, 8 and 9 high at reset', () => {
     expect(capped('esp32-c3-supermini')).toEqual(['2 strap-high', '8 strap-high', '9 strap-high'])

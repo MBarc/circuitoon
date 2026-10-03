@@ -16,11 +16,13 @@
 //   which agree on every pin. LME also says GPIO5 and GPIO15 "must be HIGH during boot"; the
 //   datasheet shows those two only change the SDIO slave timing and the boot log, so they are
 //   "either": a normal boot works at both levels.
-const ESP32_IN = (gpio) => ({ inputOnly: true, noPullup: true, note: `GPIO${gpio} has no output driver and no internal pull-up or pull-down.` })
-const ESP32_FLASH = (label, gpio) => ({ flash: true, note: `${label} is GPIO${gpio}, wired to the module's SPI flash.` })
+/** An input-only pin's note: what it is, without repeating what the caps already say. */
+const ESP32_IN = (label, gpio) => ({ inputOnly: true, noPullup: true,
+  note: /^(IO|D|P)\d+$/.test(label) ? `GPIO${gpio} is one of the ESP32's sensor inputs, GPIO34-39.` : `${label} is GPIO${gpio}, one of the ESP32's sensor inputs, GPIO34-39.` })
+const ESP32_FLASH = (label, gpio) => ({ flash: true, note: `${label} is GPIO${gpio}, a line of the module's SPI flash.` })
 export const ESP32_STRAP = {
   0: { strapping: 'high', note: 'GPIO0 low at reset starts the serial download mode instead of your program.' },
-  2: { strapping: 'low', note: 'GPIO2 must be low or floating at reset to upload over USB; it does not change a normal boot.' },
+  2: { strapping: 'low', downloadOnly: true, note: 'GPIO2 high at reset makes uploads over USB fail; a normal boot is unaffected.' },
   5: { strapping: 'either', note: 'GPIO5 only sets the SDIO slave timing at reset.' },
   12: { strapping: 'low', note: 'GPIO12 (MTDI) high at reset sets the flash voltage to 1.8 V, and the 3.3 V flash on this module then fails to boot.' },
   15: { strapping: 'either', note: 'GPIO15 (MTDO) low at reset only silences the boot messages on UART0.' },
@@ -29,7 +31,7 @@ export const ESP32_STRAP = {
 export const esp32Caps = (names, gpio) => Object.fromEntries(names.flatMap((n) => {
   const g = gpio(n)
   if (g === null) return []
-  if (g >= 34 && g <= 39) return [[n, ESP32_IN(g)]]
+  if (g >= 34 && g <= 39) return [[n, ESP32_IN(n, g)]]
   if (g >= 6 && g <= 11) return [[n, ESP32_FLASH(n, g)]]
   return ESP32_STRAP[g] ? [[n, ESP32_STRAP[g]]] : []
 }))
@@ -45,7 +47,7 @@ export const S3_STRAP = {
   0: { strapping: 'high', note: 'GPIO0 low at reset starts the download mode instead of your program.' },
   3: { strapping: 'either', note: 'GPIO3 picks the JTAG source at reset only when an eFuse enables it.' },
   45: { strapping: 'low', note: 'GPIO45 high at reset sets the flash voltage to 1.8 V, and a module with 3.3 V flash then fails to boot.' },
-  46: { strapping: 'low', note: 'GPIO46 must be low at reset to upload in download mode; it does not change a normal boot.' },
+  46: { strapping: 'low', downloadOnly: true, note: 'GPIO46 high at reset makes uploads in download mode fail; a normal boot is unaffected.' },
 }
 export const S3_OCTAL = (g) => ({ note: `On boards with octal flash or PSRAM (N8R8, N16R8, WROOM-2) GPIO${g} belongs to the memory: leave it free on those.` })
 // ESP32-C3 (Espressif "ESP32-C3 Series Datasheet" v2.4, section 3, Tables 3-1 to 3-3): GPIO9 (weak
@@ -58,7 +60,7 @@ export const S3_OCTAL = (g) => ({ note: `On boards with octal flash or PSRAM (N8
 // they are JTAG pins, so they are not marked.
 export const C3_STRAP = {
   2: { strapping: 'high', note: 'Espressif recommends keeping GPIO2 high at reset to avoid boot glitches.' },
-  8: { strapping: 'high', note: 'GPIO8 must be high at reset to upload in download mode; it does not change a normal boot.' },
+  8: { strapping: 'high', downloadOnly: true, note: 'GPIO8 low at reset makes uploads in download mode fail; a normal boot is unaffected.' },
   9: { strapping: 'high', note: 'GPIO9 low at reset starts the download mode instead of your program.' },
 }
 /** Caps from a strap table, each note prefixed by the header name when it differs ("D9 is GPIO9: ..."). */

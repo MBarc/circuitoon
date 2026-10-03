@@ -759,15 +759,18 @@ function validateModule(raw) {
 			"flash",
 			"noPullup",
 			"strapping",
+			"downloadOnly",
 			"note"
 		].includes(k)) errors.push(`${at}.caps.${k}: unknown capability`);
 		for (const k of [
 			"inputOnly",
 			"outputOnly",
 			"flash",
-			"noPullup"
+			"noPullup",
+			"downloadOnly"
 		]) if (c[k] !== void 0 && c[k] !== true) errors.push(`${at}.caps.${k}: must be true when present`);
 		if (c.inputOnly && c.outputOnly) errors.push(`${at}.caps: a pin cannot be both inputOnly and outputOnly`);
+		if (c.downloadOnly && c.strapping !== "high" && c.strapping !== "low") errors.push(`${at}.caps.downloadOnly: only on a strapping pin that needs "high" or "low"`);
 		if (c.strapping !== void 0 && !STRAPPING_LEVELS.includes(c.strapping)) errors.push(`${at}.caps.strapping: must be "high", "low" or "either"`);
 		if (c.note !== void 0 && (typeof c.note !== "string" || c.note.trim() === "")) errors.push(`${at}.caps.note: must be a non-empty string`);
 	};
@@ -5556,7 +5559,7 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 				"caps": {
 					"inputOnly": true,
 					"noPullup": true,
-					"note": "A6 is an analog input only: no digital output and no internal pull-up."
+					"note": "A6 goes only to the ADC: read it with analogRead."
 				}
 			},
 			{
@@ -5566,7 +5569,7 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 				"caps": {
 					"inputOnly": true,
 					"noPullup": true,
-					"note": "A7 is an analog input only: no digital output and no internal pull-up."
+					"note": "A7 goes only to the ADC: read it with analogRead."
 				}
 			},
 			{
@@ -14824,7 +14827,8 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 				"type": "io",
 				"caps": {
 					"strapping": "high",
-					"note": "GPIO8 must be high at reset to upload in download mode; it does not change a normal boot."
+					"downloadOnly": true,
+					"note": "GPIO8 low at reset makes uploads in download mode fail; a normal boot is unaffected."
 				}
 			},
 			{
@@ -15241,7 +15245,8 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 				"type": "io",
 				"caps": {
 					"strapping": "low",
-					"note": "GPIO2 must be low or floating at reset to upload over USB; it does not change a normal boot."
+					"downloadOnly": true,
+					"note": "GPIO2 high at reset makes uploads over USB fail; a normal boot is unaffected."
 				}
 			},
 			{
@@ -15282,7 +15287,8 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			{
 				"name": "IO16",
 				"side": "right",
-				"type": "io"
+				"type": "io",
+				"caps": { "note": "IO16 is the chip select of the board's PSRAM: using it means turning PSRAM off, which most camera code needs." }
 			},
 			{
 				"name": "IO0",
@@ -15655,7 +15661,7 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 				"caps": {
 					"inputOnly": true,
 					"noPullup": true,
-					"note": "GPIO36 has no output driver and no internal pull-up or pull-down."
+					"note": "VP is GPIO36, one of the ESP32's sensor inputs, GPIO34-39."
 				}
 			},
 			{
@@ -15665,7 +15671,7 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 				"caps": {
 					"inputOnly": true,
 					"noPullup": true,
-					"note": "GPIO39 has no output driver and no internal pull-up or pull-down."
+					"note": "VN is GPIO39, one of the ESP32's sensor inputs, GPIO34-39."
 				}
 			},
 			{
@@ -15675,7 +15681,7 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 				"caps": {
 					"inputOnly": true,
 					"noPullup": true,
-					"note": "GPIO34 has no output driver and no internal pull-up or pull-down."
+					"note": "GPIO34 is one of the ESP32's sensor inputs, GPIO34-39."
 				}
 			},
 			{
@@ -15685,7 +15691,7 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 				"caps": {
 					"inputOnly": true,
 					"noPullup": true,
-					"note": "GPIO35 has no output driver and no internal pull-up or pull-down."
+					"note": "GPIO35 is one of the ESP32's sensor inputs, GPIO34-39."
 				}
 			},
 			{
@@ -15816,7 +15822,8 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 				"type": "io",
 				"caps": {
 					"strapping": "low",
-					"note": "GPIO2 must be low or floating at reset to upload over USB; it does not change a normal boot."
+					"downloadOnly": true,
+					"note": "GPIO2 high at reset makes uploads over USB fail; a normal boot is unaffected."
 				}
 			},
 			{
@@ -16366,7 +16373,7 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 				"caps": {
 					"inputOnly": true,
 					"noPullup": true,
-					"note": "GPIO36 has no output driver and no internal pull-up or pull-down."
+					"note": "VP is GPIO36, one of the ESP32's sensor inputs, GPIO34-39."
 				}
 			},
 			{
@@ -16376,7 +16383,7 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 				"caps": {
 					"inputOnly": true,
 					"noPullup": true,
-					"note": "GPIO39 has no output driver and no internal pull-up or pull-down."
+					"note": "VN is GPIO39, one of the ESP32's sensor inputs, GPIO34-39."
 				}
 			},
 			{
@@ -16386,7 +16393,7 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 				"caps": {
 					"inputOnly": true,
 					"noPullup": true,
-					"note": "GPIO34 has no output driver and no internal pull-up or pull-down."
+					"note": "GPIO34 is one of the ESP32's sensor inputs, GPIO34-39."
 				}
 			},
 			{
@@ -16396,7 +16403,7 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 				"caps": {
 					"inputOnly": true,
 					"noPullup": true,
-					"note": "GPIO35 has no output driver and no internal pull-up or pull-down."
+					"note": "GPIO35 is one of the ESP32's sensor inputs, GPIO34-39."
 				}
 			},
 			{
@@ -16453,7 +16460,7 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 				"side": "left",
 				"caps": {
 					"flash": true,
-					"note": "D2 is GPIO9, wired to the module's SPI flash."
+					"note": "D2 is GPIO9, a line of the module's SPI flash."
 				}
 			},
 			{
@@ -16461,7 +16468,7 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 				"side": "left",
 				"caps": {
 					"flash": true,
-					"note": "D3 is GPIO10, wired to the module's SPI flash."
+					"note": "D3 is GPIO10, a line of the module's SPI flash."
 				}
 			},
 			{
@@ -16469,7 +16476,7 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 				"side": "left",
 				"caps": {
 					"flash": true,
-					"note": "CMD is GPIO11, wired to the module's SPI flash."
+					"note": "CMD is GPIO11, a line of the module's SPI flash."
 				}
 			},
 			{
@@ -16572,7 +16579,8 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 				"type": "io",
 				"caps": {
 					"strapping": "low",
-					"note": "GPIO2 must be low or floating at reset to upload over USB; it does not change a normal boot."
+					"downloadOnly": true,
+					"note": "GPIO2 high at reset makes uploads over USB fail; a normal boot is unaffected."
 				}
 			},
 			{
@@ -16589,7 +16597,7 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 				"side": "right",
 				"caps": {
 					"flash": true,
-					"note": "D1 is GPIO8, wired to the module's SPI flash."
+					"note": "D1 is GPIO8, a line of the module's SPI flash."
 				}
 			},
 			{
@@ -16597,7 +16605,7 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 				"side": "right",
 				"caps": {
 					"flash": true,
-					"note": "D0 is GPIO7, wired to the module's SPI flash."
+					"note": "D0 is GPIO7, a line of the module's SPI flash."
 				}
 			},
 			{
@@ -16605,7 +16613,7 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 				"side": "right",
 				"caps": {
 					"flash": true,
-					"note": "CLK is GPIO6, wired to the module's SPI flash."
+					"note": "CLK is GPIO6, a line of the module's SPI flash."
 				}
 			}
 		],
@@ -17269,7 +17277,8 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 				"type": "io",
 				"caps": {
 					"strapping": "low",
-					"note": "GPIO46 must be low at reset to upload in download mode; it does not change a normal boot."
+					"downloadOnly": true,
+					"note": "GPIO46 high at reset makes uploads in download mode fail; a normal boot is unaffected."
 				}
 			},
 			{
@@ -18098,7 +18107,7 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 				"side": "top",
 				"caps": {
 					"flash": true,
-					"note": "CMD is GPIO11, wired to the module's SPI flash."
+					"note": "CMD is GPIO11, a line of the module's SPI flash."
 				}
 			},
 			{
@@ -18106,7 +18115,7 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 				"side": "top",
 				"caps": {
 					"flash": true,
-					"note": "SD3 is GPIO10, wired to the module's SPI flash."
+					"note": "SD3 is GPIO10, a line of the module's SPI flash."
 				}
 			},
 			{
@@ -18114,7 +18123,7 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 				"side": "top",
 				"caps": {
 					"flash": true,
-					"note": "SD2 is GPIO9, wired to the module's SPI flash."
+					"note": "SD2 is GPIO9, a line of the module's SPI flash."
 				}
 			},
 			{
@@ -18173,7 +18182,7 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 				"caps": {
 					"inputOnly": true,
 					"noPullup": true,
-					"note": "GPIO35 has no output driver and no internal pull-up or pull-down."
+					"note": "GPIO35 is one of the ESP32's sensor inputs, GPIO34-39."
 				}
 			},
 			{
@@ -18183,7 +18192,7 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 				"caps": {
 					"inputOnly": true,
 					"noPullup": true,
-					"note": "GPIO34 has no output driver and no internal pull-up or pull-down."
+					"note": "GPIO34 is one of the ESP32's sensor inputs, GPIO34-39."
 				}
 			},
 			{
@@ -18193,7 +18202,7 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 				"caps": {
 					"inputOnly": true,
 					"noPullup": true,
-					"note": "GPIO39 has no output driver and no internal pull-up or pull-down."
+					"note": "SVN is GPIO39, one of the ESP32's sensor inputs, GPIO34-39."
 				}
 			},
 			{
@@ -18203,7 +18212,7 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 				"caps": {
 					"inputOnly": true,
 					"noPullup": true,
-					"note": "GPIO36 has no output driver and no internal pull-up or pull-down."
+					"note": "SVP is GPIO36, one of the ESP32's sensor inputs, GPIO34-39."
 				}
 			},
 			{
@@ -18222,7 +18231,7 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 				"side": "bottom",
 				"caps": {
 					"flash": true,
-					"note": "CLK is GPIO6, wired to the module's SPI flash."
+					"note": "CLK is GPIO6, a line of the module's SPI flash."
 				}
 			},
 			{
@@ -18230,7 +18239,7 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 				"side": "bottom",
 				"caps": {
 					"flash": true,
-					"note": "SD0 is GPIO7, wired to the module's SPI flash."
+					"note": "SD0 is GPIO7, a line of the module's SPI flash."
 				}
 			},
 			{
@@ -18238,7 +18247,7 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 				"side": "bottom",
 				"caps": {
 					"flash": true,
-					"note": "SD1 is GPIO8, wired to the module's SPI flash."
+					"note": "SD1 is GPIO8, a line of the module's SPI flash."
 				}
 			},
 			{
@@ -18256,7 +18265,8 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 				"type": "io",
 				"caps": {
 					"strapping": "low",
-					"note": "GPIO2 must be low or floating at reset to upload over USB; it does not change a normal boot."
+					"downloadOnly": true,
+					"note": "GPIO2 high at reset makes uploads over USB fail; a normal boot is unaffected."
 				}
 			},
 			{
@@ -42678,7 +42688,8 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 				"type": "io",
 				"caps": {
 					"strapping": "high",
-					"note": "D8 is GPIO8. GPIO8 must be high at reset to upload in download mode; it does not change a normal boot."
+					"downloadOnly": true,
+					"note": "D8 is GPIO8. GPIO8 low at reset makes uploads in download mode fail; a normal boot is unaffected."
 				}
 			},
 			{
@@ -43453,7 +43464,7 @@ function freePin(pm, part) {
 		...i2c.address && "pins" in i2c.address ? i2c.address.pins.map((p) => p.pin) : []
 	] : []);
 	const free = [...m.pins.filter((p) => !isSpacer(p)), ...m.holes ?? []].find((p) => {
-		if (p.type !== "io" || busPins.has(p.name) || p.caps?.inputOnly || p.caps?.outputOnly || p.caps?.flash || p.caps?.strapping) return false;
+		if (p.type !== "io" && p.type !== void 0 || busPins.has(p.name) || p.caps) return false;
 		const i = pm.netOf(part.id, p.name);
 		return i === void 0 || !pm.net(i).some((o) => o.part !== part);
 	});
@@ -43463,11 +43474,12 @@ function freePin(pm, part) {
 function capsText(c) {
 	if (!c) return [];
 	const out = [];
-	if (c.flash) out.push("connected to the board's flash memory: never connect anything");
+	if (c.flash) out.push("flash pin: never connect anything");
 	if (c.inputOnly) out.push("input only");
 	if (c.outputOnly) out.push("output only");
 	if (c.noPullup) out.push("no internal pull-up or pull-down");
 	if (c.strapping === "either") out.push("strapping pin (read at reset; either level boots)");
+	else if (c.strapping && c.downloadOnly) out.push(`strapping pin: ${c.strapping} at reset only for flashing over serial`);
 	else if (c.strapping) out.push(`strapping pin: must be ${c.strapping} at reset`);
 	return out;
 }
@@ -43484,7 +43496,7 @@ var TYPE_WORDS = {
 /** One line on what a pin does: its type and supply, its caps, its I2C role, its note. */
 function pinDoes(e) {
 	const i2c = i2cOf(e.part.module);
-	const parts = [e.type ? `${TYPE_WORDS[e.type]}${e.supply ? ` ${e.supply}` : ""}` : "type not known"];
+	const parts = e.type === "input" && e.caps?.inputOnly || e.type === "output" && e.caps?.outputOnly ? [] : [e.type ? `${TYPE_WORDS[e.type]}${e.supply ? ` ${e.supply}` : ""}` : "type not known"];
 	if (i2c?.sda === e.pin) parts.push("I2C data (SDA)");
 	if (i2c?.scl === e.pin) parts.push("I2C clock (SCL)");
 	const a = i2c?.address;
@@ -43530,7 +43542,7 @@ function pinLevel(pm, part, pin, floating) {
 	const pulls = net.filter(isResistor).map((e) => farRail(pm, e));
 	if (pulls.includes("ground") && !pulls.includes("supply")) return 0;
 	if (pulls.includes("supply") && !pulls.includes("ground")) return 1;
-	if (net.length) return "driven";
+	if (net.some((e) => e.type === "output" || e.type === "io")) return "driven";
 	return floating ?? null;
 }
 function i2cAddress(pm, part) {
@@ -43630,7 +43642,7 @@ function pinFindings(pm) {
 			out.push({
 				...base,
 				rule: "pin-flash",
-				message: `${endName(p)} is connected to the board's flash memory${note}, so nothing may be wired to it, but ${fewNames(elsewhere.map(endName))} ${n === 1 ? "is" : "are"}. The board will not run like this. Move ${n === 1 ? "it" : "them"} to a free GPIO${suggest(pm, p.part)}.`,
+				message: `${endName(p)} is a flash pin${note}, so nothing may be wired to it, but ${fewNames(elsewhere.map(endName))} ${n === 1 ? "is" : "are"}. The board will not run like this. Move ${n === 1 ? "it" : "them"} to a free GPIO${suggest(pm, p.part)}.`,
 				parts: [p.part.id, ...elsewhere.map((e) => e.part.id)],
 				pins: [endPin(p), ...elsewhere.map(endPin)],
 				causes: [cause]
@@ -43664,10 +43676,12 @@ function pinFindings(pm) {
 				}
 			}
 			if (c.noPullup && s.switches.length && !s.outputs.some((e) => e !== p) && !s.ios.some(notMine)) {
-				const pulled = s.resistors.some((r) => farRail(pm, r) !== null);
 				const sw0 = s.switches[0];
 				const rail = farRail(pm, sw0);
-				if (!pulled && rail) {
+				if (!s.resistors.some((r) => {
+					const far = farRail(pm, r);
+					return far !== null && far !== rail;
+				}) && rail) {
 					const [to, hold, fix] = rail === "ground" ? [
 						"ground",
 						"high",
@@ -43690,7 +43704,7 @@ function pinFindings(pm) {
 			}
 		}
 		if (c.outputOnly) {
-			const read = [...s.switches, ...s.outputs.filter(notMine)];
+			const read = [...s.switches.filter((w) => farRail(pm, w) !== null), ...s.outputs.filter(notMine)];
 			if (read.length) {
 				const what = fewNames([...new Set(read.map((e) => isSwitch(e) ? `${e.part.designator} (a switch)` : endName(e)))]);
 				out.push({
@@ -43720,14 +43734,17 @@ function pinFindings(pm) {
 				e: w,
 				text: `${w.part.designator} pulls it to ${railName} whenever it is closed at reset`
 			});
-			if (culprits.length) out.push({
-				...base,
-				rule: "pin-strapping",
-				message: `${endName(p)} is a strapping pin that must be ${c.strapping} at reset${note}, but ${andList(culprits.map((x) => x.text))}. Move that circuit to a GPIO that is not a strapping pin${suggest(pm, p.part)}, or make sure it is ${c.strapping} while the board starts.`,
-				parts: [p.part.id, ...culprits.map((x) => x.e.part.id)],
-				pins: [endPin(p), ...culprits.map((x) => endPin(x.e))],
-				causes: [cause]
-			});
+			if (culprits.length) {
+				const message = c.downloadOnly ? `${endName(p)} is a strapping pin that only matters when flashing over serial${note || `: it must be ${c.strapping} at reset for an upload, and a normal boot is unaffected`}, but ${andList(culprits.map((x) => x.text))}, so uploads can fail. Move that circuit to a GPIO that is not a strapping pin${suggest(pm, p.part)}, or make sure it is ${c.strapping} while you upload.` : `${endName(p)} is a strapping pin that must be ${c.strapping} at reset${note}, but ${andList(culprits.map((x) => x.text))}. Move that circuit to a GPIO that is not a strapping pin${suggest(pm, p.part)}, or make sure it is ${c.strapping} while the board starts.`;
+				out.push({
+					...base,
+					rule: "pin-strapping",
+					message,
+					parts: [p.part.id, ...culprits.map((x) => x.e.part.id)],
+					pins: [endPin(p), ...culprits.map((x) => endPin(x.e))],
+					causes: [cause]
+				});
+			}
 		}
 	}
 	for (const bus of i2cBuses(pm)) out.push(...busFindings(pm, bus));

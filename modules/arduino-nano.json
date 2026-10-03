@@ -64,7 +64,7 @@
       "caps": {
         "inputOnly": true,
         "noPullup": true,
-        "note": "A6 is an analog input only: no digital output and no internal pull-up."
+        "note": "A6 goes only to the ADC: read it with analogRead."
       }
     },
     {
@@ -74,7 +74,7 @@
       "caps": {
         "inputOnly": true,
         "noPullup": true,
-        "note": "A7 is an analog input only: no digital output and no internal pull-up."
+        "note": "A7 goes only to the ADC: read it with analogRead."
       }
     },
     {

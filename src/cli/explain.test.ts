@@ -55,7 +55,8 @@ describe('circuitoon explain', () => {
     expect(schemaErrors(loadSchema('explain'), out)).toEqual([])
     expect(out.ok).toBe(false)
     const d34 = out.parts.find((p: { designator: string }) => p.designator === 'U1').pins.find((p: { pin: string }) => p.pin === 'D34')
-    expect(d34.does).toBe('input, input only, no internal pull-up or pull-down. GPIO34 has no output driver and no internal pull-up or pull-down.')
+    // Said once: no "input, input only", and the note adds what the caps do not say.
+    expect(d34.does).toBe("input only, no internal pull-up or pull-down. GPIO34 is one of the ESP32's sensor inputs, GPIO34-39.")
     expect(out.findings).toMatchObject([{ rule: 'pin-input-only', severity: 'error', parts: ['U1', 'K1'], wires: [] }])
     expect(out.unconnected).toEqual([{ part: 'S1', designator: 'S1', module: 'push-button', name: 'Push button' }])
     const text = (await cli(['explain', 'n.json'], { cwd: dir })).out

@@ -32,6 +32,8 @@ export interface PinCaps {
    * normally, it only changes a detail (`note` says which).
    */
   strapping?: 'high' | 'low' | 'either'
+  /** The strapping level matters only to enter the serial download mode (flashing); a normal boot ignores it (ESP32 GPIO2, S3 GPIO46, C3 GPIO8). */
+  downloadOnly?: true
   /** One plain sentence on what the pin does at boot or why it is limited, shown by explain and in findings. */
   note?: string
 }
@@ -246,10 +248,11 @@ export function validateModule(raw: unknown): ValidationResult {
     const c = t.caps
     if (!isObj(c)) return void errors.push(`${at}.caps: must be an object (inputOnly, outputOnly, flash, noPullup, strapping, note)`)
     for (const k of Object.keys(c))
-      if (!['inputOnly', 'outputOnly', 'flash', 'noPullup', 'strapping', 'note'].includes(k)) errors.push(`${at}.caps.${k}: unknown capability`)
-    for (const k of ['inputOnly', 'outputOnly', 'flash', 'noPullup'])
+      if (!['inputOnly', 'outputOnly', 'flash', 'noPullup', 'strapping', 'downloadOnly', 'note'].includes(k)) errors.push(`${at}.caps.${k}: unknown capability`)
+    for (const k of ['inputOnly', 'outputOnly', 'flash', 'noPullup', 'downloadOnly'])
       if (c[k] !== undefined && c[k] !== true) errors.push(`${at}.caps.${k}: must be true when present`)
     if (c.inputOnly && c.outputOnly) errors.push(`${at}.caps: a pin cannot be both inputOnly and outputOnly`)
+    if (c.downloadOnly && c.strapping !== 'high' && c.strapping !== 'low') errors.push(`${at}.caps.downloadOnly: only on a strapping pin that needs "high" or "low"`)
     if (c.strapping !== undefined && !(STRAPPING_LEVELS as readonly unknown[]).includes(c.strapping)) errors.push(`${at}.caps.strapping: must be "high", "low" or "either"`)
     if (c.note !== undefined && (typeof c.note !== 'string' || c.note.trim() === '')) errors.push(`${at}.caps.note: must be a non-empty string`)
   }

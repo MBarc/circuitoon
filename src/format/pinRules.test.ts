@@ -74,7 +74,7 @@ describe('pin-flash', () => {
     const f = only(board([part('U2', 'chip')], [wire('u1.SD0', 'u2.D')]), 'pin-flash')
     expect(f).toHaveLength(1)
     expect(f[0].severity).toBe('error')
-    expect(f[0].message).toBe("U1 SD0 is connected to the board's flash memory (SD0 is GPIO7, a flash data line), so nothing may be wired to it, but U2 D is. The board will not run like this. Move it to a free GPIO, such as IO13.")
+    expect(f[0].message).toBe("U1 SD0 is a flash pin (SD0 is GPIO7, a flash data line), so nothing may be wired to it, but U2 D is. The board will not run like this. Move it to a free GPIO, such as IO13.")
   })
   it('stays quiet while the flash pin is left free', () => {
     expect(only(board([part('U2', 'chip')], [wire('u1.IO13', 'u2.D')]), 'pin-flash')).toEqual([])

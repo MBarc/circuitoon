@@ -687,7 +687,7 @@ describe('pin capabilities and I2C on the built-in parts', () => {
   const v1 = (parts: PartInstance[], wires: Wire[]) => sheet([at('u1', 'U1', 'esp32-devkit-v1-30'), ...parts], wires)
   it('a relay driven from input-only D34 is an error; from D13 it is fine', () => {
     const relay = (pin: string) => v1([at('k1', 'K1', 'relay-module-1ch-5v', 400)], [['k1|DC+', 'u1|VIN'], ['k1|DC-', 'u1|GND'], ['k1|IN', `u1|${pin}`]])
-    expect(found(relay('D34'))).toEqual(['pin-input-only: U1 D34 is input only (GPIO34 has no output driver and no internal pull-up or pull-down): it cannot drive K1 IN, and nothing else on the net does. Move the wire to a GPIO that can output, such as D32.'])
+    expect(found(relay('D34'))).toEqual(["pin-input-only: U1 D34 is input only (GPIO34 is one of the ESP32's sensor inputs, GPIO34-39): it cannot drive K1 IN, and nothing else on the net does. Move the wire to a GPIO that can output, such as D32."])
     expect(found(relay('D13'))).toEqual([])
   })
   it('anything on a DevKitC flash pin is an error', () => {
@@ -719,6 +719,34 @@ describe('pin capabilities and I2C on the built-in parts', () => {
       ...['u2', 'u3'].flatMap((u): Wire[] => [[`${u}|VCC`, 'u1|3V3'], [`${u}|GND`, 'u1|GND'], [`${u}|SDA`, 'u1|D21'], [`${u}|SCL`, 'u1|D22']]), ...extra])
     expect(found(two([]))).toEqual(["i2c-address-clash: U2 and U3 are both at I2C address 0x76 on the bus at U1 D21 (SDA) and U1 D22 (SCL): they answer together and the bus fails. Give each its own address: wire U3's address pins (SDO) differently."])
     expect(found(two([['u3|SDO', 'u1|3V3']]))).toEqual([])
+  })
+  // Review fixes (2026-10-02).
+  it("address pins tied only to each other float (the other chip's inputs drive nothing); tied to GND they clash", () => {
+    const [p2, w2] = mcp('u2', 400, [])
+    const [p3, w3] = mcp('u3', 600, [])
+    const each = (to: (a: string) => string): Wire[] => ['A0', 'A1', 'A2'].map((a): Wire => [`u2|${a}`, to(a)])
+    const floating = kinds(v1([p2, p3], [...w2, ...w3, ...each((a) => `u3|${a}`)]))
+    expect(floating.filter((k) => k.includes('address'))).toEqual(['warning i2c-address-floating', 'warning i2c-address-floating'])
+    const grounded = kinds(v1([p2, p3], [...w2, ...w3, ...each((a) => `u3|${a}`), ...each(() => 'u1|GND')]))
+    expect(grounded.filter((k) => k.includes('address'))).toEqual(['error i2c-address-clash'])
+  })
+  it('a key matrix through GPA7 (GPA7 -> switch -> GPA0) is not a read of GPA7', () => {
+    const d = sheet([at('u1', 'U1', 'mcp23017-dip28'), at('s1', 'S1', 'push-button', 300)], [['u1|GPA7', 's1|1'], ['s1|2', 'u1|GPA0']])
+    expect(kinds(d)).toEqual([])
+  })
+  it('a tilt switch on GPA7 names a real free pin of the chip (its GPIOs are untyped)', () => {
+    const d = sheet([at('u1', 'U1', 'mcp23017-dip28'), at('s1', 'S1', 'tilt-switch-sw520d', 300)], [['u1|GPA7', 's1|1'], ['s1|2', 'u1|VSS']])
+    expect(found(d).filter((m) => m.startsWith('pin-'))).toEqual([
+      'pin-output-only: U1 GPA7 is output only (Microchip made GPA7 and GPB7 output only in datasheet revision D; read inputs on the other 14 pins), but it is wired to S1 (a switch) as an input. Use another pin to read it, such as GPB0.',
+    ])
+  })
+  it('a resistor to the same rail as the switch is no pull-up: D34 with a switch and a resistor both to GND still warns', () => {
+    const d = v1([at('s1', 'S1', 'push-button', 400), at('r1', 'R1', 'resistor', 600)], [['s1|1', 'u1|D34'], ['s1|2', 'u1|GND'], ['r1|1', 'u1|D34'], ['r1|2', 'u1|GND']])
+    expect(kinds(d)).toEqual(['warning pin-no-pullup'])
+  })
+  it('a download-only strapping pin (D2) says it matters only when flashing, not that the board fails to boot', () => {
+    const [m] = checkDiagram(v1([at('r1', 'R1', 'resistor', 400)], [['r1|1', 'u1|D2'], ['r1|2', 'u1|3V3']])).filter((f) => f.rule === 'pin-strapping')
+    expect(m.message).toBe('U1 D2 is a strapping pin that only matters when flashing over serial (GPIO2 high at reset makes uploads over USB fail; a normal boot is unaffected), but R1 pulls it up to the supply, so uploads can fail. Move that circuit to a GPIO that is not a strapping pin, such as D32, or make sure it is low while you upload.')
   })
 })
 
