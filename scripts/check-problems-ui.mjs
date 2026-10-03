@@ -5,8 +5,8 @@
 // and wires on the canvas, Select (selection, pan into view, focus; a hole problem selects only
 // its wire), the badge bringing the list back and naming the counts by severity, each Select
 // button's unique name and description, Delete on the broken row (focus to the next row), undo
-// putting a stale light out, the empty state, and a sheet whose only finding is a note (a battery
-// bank: no badge, still "No problems found", the note under Notes). Saves light and
+// putting a stale light out, the empty state, and a sheet whose only findings are notes (a battery
+// bank: no badge, still "No problems found", the notes under Notes). Saves light and
 // dark screenshots of each state.
 //
 // Usage (from the repo root, after `npm run build`):
@@ -75,6 +75,9 @@ const bankFile = join(out, 'battery-bank-1s4p.circuitoon.json')
 {
   const bank = JSON.parse(readFileSync('src/format/fixtures/battery-bank-1s4p.circuitoon.json', 'utf8'))
   bank.connections.find((c) => c.uid === 'w9').from.hole = 3
+  // Its parts as the library has them now (Ruling D1: the old copies would list as out of date);
+  // the current OLED adds an I2C pull-ups note, so the sheet has two notes and no problem.
+  for (const id of Object.keys(bank.modules)) if (existsSync(`modules/${id}.json`)) bank.modules[id] = JSON.parse(readFileSync(`modules/${id}.json`, 'utf8'))
   writeFileSync(bankFile, JSON.stringify(bank))
 }
 
@@ -238,10 +241,11 @@ for (const scheme of ['light', 'dark']) {
   check((await badge.count()) === 0, `${scheme}: a sheet with only a note shows no problems badge`)
   check((await page.locator('#problems-title').textContent()) === 'No problems found in the drawn connections.', `${scheme}: a sheet with only a note still reads "No problems found"`)
   const noteRows = page.locator('.problem-notes li')
-  check((await noteRows.count()) === 1 && (await noteRows.first().getAttribute('class')) === 'info', `${scheme}: the note is one info row under Notes`)
-  check((await noteRows.first().locator('.problem-title').textContent()) === 'Note: Parallel battery bank', `${scheme}: the note row says it is a note`)
-  check((await page.locator('.problem-notes .problems-count').textContent()) === '1 note', `${scheme}: Notes counts one note`)
-  await noteRows.first().hover()
+  const bankRow = noteRows.filter({ hasText: 'Parallel battery bank' })
+  check((await noteRows.count()) === 2 && (await bankRow.count()) === 1 && (await bankRow.getAttribute('class')) === 'info', `${scheme}: the bank note is an info row under Notes`)
+  check((await bankRow.locator('.problem-title').textContent()) === 'Note: Parallel battery bank', `${scheme}: the note row says it is a note`)
+  check((await page.locator('.problem-notes .problems-count').textContent()) === '2 notes', `${scheme}: Notes counts its notes`)
+  await bankRow.hover()
   await pause()
   const noteLit = { halos: await page.locator('.problem-hi.info .problem-halo').count(), pins: await page.locator('.problem-hi.info .problem-pin').count() }
   check(noteLit.halos === 4 && noteLit.pins === 8, `${scheme}: hovering the note lights the four cells in blue (${JSON.stringify(noteLit)})`)

@@ -826,8 +826,8 @@ describe('every message ends with what to do', () => {
       }
     if (missing.length) console.log('NOACT\n' + [...new Set(missing)].join('\n'))
     expect(missing).toEqual([])
-    // Every rule is reached here.
-    expect([...seen].sort()).toEqual(Object.keys(RULES).sort())
+    // Every rule is reached here, but module-drift, which the editor adds (moduleDrift.ts), never the checker.
+    expect([...seen].sort()).toEqual(Object.keys(RULES).filter((r) => r !== 'module-drift').sort())
   })
 })
 

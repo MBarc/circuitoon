@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { highlightOf, isProblem, problemsOf, reconcileHighlight, severityCounts } from './problems.ts'
+import { canUpdateParts, driftFindings, highlightOf, isProblem, problemsOf, reconcileHighlight, severityCounts, updatePartsInStore } from './problems.ts'
+import { readFileSync } from 'node:fs'
+import { libraryLookup } from '../agent/catalog.ts'
 import { EditorStore } from './store.ts'
 import { moveParts } from './ops.ts'
-import type { Diagram } from '../format/diagram.ts'
+import { type Diagram, validateDiagram } from '../format/diagram.ts'
 import type { ModuleDef } from '../format/module.ts'
 
 const bat: ModuleDef = {
@@ -130,5 +132,49 @@ describe('EditorStore highlight and reveal', () => {
     const n = s.getState().reveal
     s.reveal()
     expect(s.getState().reveal).toBe(n + 1)
+  })
+})
+
+describe('Update parts to current library (Ruling D1)', () => {
+  const bank = (): Diagram => {
+    const r = validateDiagram(JSON.parse(readFileSync(new URL('../format/fixtures/battery-bank-1s4p.circuitoon.json', import.meta.url), 'utf8')))
+    if (!r.ok) throw new Error(r.errors.join('; '))
+    return r.diagram
+  }
+  it("lists each out-of-date part of Michael's sheet as a warning that offers the update", () => {
+    const drift = driftFindings(bank())
+    expect(drift.map((f) => [f.rule, f.severity])).toEqual([['module-drift', 'warning'], ['module-drift', 'warning']])
+    expect(drift.every((f) => f.message.includes('Update parts to current library'))).toBe(true)
+    expect(problemsOf(new EditorStore(bank())).filter((f) => f.rule === 'module-drift')).toHaveLength(2)
+  })
+  it('updates every such part as one undo step, says what changed, and leaves nothing to update', () => {
+    const before = bank()
+    const s = new EditorStore(before)
+    expect(canUpdateParts(before)).toBe(true)
+    const r = updatePartsInStore(s)!
+    expect(r.lines.some((l) => /^Updated U\d+ \(esp32-devkit-v1-30\): pins .* \(pin data\)\.$/.test(l))).toBe(true)
+    const after = s.getState().diagram
+    expect(after).toBe(r.diagram)
+    expect(after.modules['esp32-devkit-v1-30']).toEqual(libraryLookup('esp32-devkit-v1-30'))
+    expect(after.parts).toBe(before.parts)
+    expect(driftFindings(after)).toEqual([])
+    expect(canUpdateParts(after)).toBe(false)
+    expect(updatePartsInStore(s)).toBeNull()
+    s.undo()
+    expect(s.getState().diagram).toBe(before)
+  })
+  it('lists a part whose pins changed as an error, and leaves it alone', () => {
+    const d = bank()
+    const esp = structuredClone(d.modules['esp32-devkit-v1-30']) as unknown as { pins: { name?: string }[] }
+    const [a, b] = [esp.pins.find((p) => p.name === 'D21')!, esp.pins.find((p) => p.name === 'D22')!]
+    ;[a.name, b.name] = ['D22', 'D21']
+    d.modules = { ...d.modules, 'esp32-devkit-v1-30': esp as unknown as ModuleDef }
+    const drift = driftFindings(d)
+    expect(drift[0]).toMatchObject({ severity: 'error', id: 'module-drift|esp32-devkit-v1-30' })
+    expect(drift[0].message).toContain('place it again from the Parts panel')
+    const s = new EditorStore(d)
+    const r = updatePartsInStore(s)!
+    expect(s.getState().diagram.modules['esp32-devkit-v1-30']).toBe(d.modules['esp32-devkit-v1-30'])
+    expect(r.lines.some((l) => l.startsWith('Left U'))).toBe(true)
   })
 })

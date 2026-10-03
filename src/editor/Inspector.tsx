@@ -10,7 +10,7 @@ import { CABLE_PRESETS, END_KINDS, END_NAMES, END_SIZE, type EndKind, type WireE
 import { CableEnd } from '../render/CableEnd.tsx'
 import { INK } from '../render/Part.tsx'
 import { hexEditChanged, shownHex } from './color.ts'
-import { checkFailed, highlightOf, isProblem, severityCounts, useProblems } from './problems.ts'
+import { canUpdateParts, checkFailed, highlightOf, isProblem, severityCounts, updatePartsInStore, useProblems } from './problems.ts'
 import { type Finding, RULES, brokenConnection } from '../format/checks.ts'
 import { SeverityMark } from './SeverityMark.tsx'
 import { CAPACITOR_VALUES, RESISTOR_VALUES, editableParams, formatValue, paramValue, parseValueIn, pickUnitExp, scaledNumber, unitChoices } from '../format/values.ts'
@@ -345,7 +345,7 @@ function selectLabels(findings: Finding[]): string[] {
  * parallel battery bank) are not problems: they are listed apart, under Notes, and a sheet with
  * only notes still reads "No problems found".
  */
-export function ProblemList({ store, findings }: { store: EditorStore; findings: Finding[] }) {
+export function ProblemList({ store, findings, onUpdateParts }: { store: EditorStore; findings: Finding[]; onUpdateParts?: () => void }) {
   const errors = findings.filter((f) => f.severity === 'error').length
   // The canvas light belongs to this list: it goes out when the list does (a selection, an empty list).
   useEffect(() => () => store.setHighlight(null), [store])
@@ -410,6 +410,21 @@ export function ProblemList({ store, findings }: { store: EditorStore; findings:
           >
             Select
           </button>
+          {f.rule === 'module-drift' && f.severity === 'warning' && onUpdateParts && (
+            <button
+              type="button"
+              className="tool small"
+              data-update-parts=""
+              aria-label="Update parts to current library"
+              aria-describedby={`problem-message-${i}`}
+              onClick={() => {
+                store.setHighlight(null)
+                onUpdateParts()
+              }}
+            >
+              Update parts
+            </button>
+          )}
           {broken && (
             <button
               type="button"
@@ -481,6 +496,15 @@ function HandShapedWarning({ diagram, wire }: { diagram: Diagram; wire: Connecti
 export function Inspector({ store }: { store: EditorStore }) {
   const { diagram, selection, wireStyle } = useEditorState(store)
   const findings = useProblems(store)
+  // What the last Update parts to current library changed, shown while the sheet is the one it made (an undo hides it).
+  const [updated, setUpdated] = useState<{ diagram: Diagram; lines: string[] } | null>(null)
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- only the parts and their modules decide it
+  const updatable = useMemo(() => canUpdateParts(diagram), [diagram.parts, diagram.modules])
+  const updateParts = () => {
+    const r = updatePartsInStore(store)
+    if (r) setUpdated(r)
+    focusSoon(() => document.getElementById('update-parts-report') ?? document.getElementById('sheet-heading'))
+  }
   // The mains look, held while a gesture is open: a preview frame never starts a mains analysis.
   const heldRef = useRef<Map<string, WireLook>>(new Map())
   const looks = holdLooks(heldRef, diagram, store.dragging || store.gestureActive)
@@ -498,8 +522,20 @@ export function Inspector({ store }: { store: EditorStore }) {
         <h2 id="sheet-heading" tabIndex={-1}>Sheet</h2>
         <CommitInput id="sheet-title" label="Title" value={diagram.title} onCommit={(title) => store.commit({ ...diagram, title: title.trim() || 'Untitled sheet' })} />
         <p className="hint new-wires">New wires: {newWireStyle(wireStyle)}</p>
+        {updatable && (
+          <div className="update-parts">
+            <p className="hint">The library has newer data for parts on this sheet. Updating keeps the wiring as drawn.</p>
+            <button type="button" className="tool" data-update-parts-sheet="" onClick={updateParts}>Update parts to current library</button>
+          </div>
+        )}
+        {updated && updated.diagram === diagram && (
+          <div className="update-parts-report" id="update-parts-report" role="status" tabIndex={-1}>
+            <h3>Parts updated</h3>
+            <ul>{updated.lines.map((l) => <li key={l}>{l}</li>)}</ul>
+          </div>
+        )}
         <p className="hint">Drag from a pin tip or a hole to another pin or hole to add a wire. Drag on the paper to select, middle-drag or Space+drag to pan, scroll to zoom. Shift+drag adds to the selection. Ctrl+C, Ctrl+X and Ctrl+V copy, cut and paste. R rotates, Delete removes, Ctrl+Z undoes. Arrow keys nudge a grid step (Shift for five). A drag snaps to other parts; hold Ctrl or Cmd to drag on the grid alone.</p>
-        <ProblemList store={store} findings={findings} />
+        <ProblemList store={store} findings={findings} onUpdateParts={updateParts} />
       </aside>
     )
 

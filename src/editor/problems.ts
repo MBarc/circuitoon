@@ -5,6 +5,9 @@
 import { useEffect } from 'react'
 import { type Finding, checkDiagram } from '../format/checks.ts'
 import type { Diagram } from '../format/diagram.ts'
+import { moduleDrift, updateLines, updateParts } from '../format/moduleDrift.ts'
+import { andList } from '../format/words.ts'
+import { modulesById } from '../library.ts'
 import { type EditorStore, type Highlight, useEditorState } from './store.ts'
 
 interface Checked {
@@ -28,7 +31,7 @@ export function problemsOf(store: EditorStore): Finding[] {
   let findings: Finding[] = []
   let failed = false
   try {
-    findings = checkDiagram(d)
+    findings = [...driftFindings(d), ...checkDiagram(d)]
   } catch (err) {
     // A checker bug must never take the editor down: the list shows one row saying so.
     console.error('The wiring checker hit an error on this sheet', err)
@@ -80,4 +83,49 @@ export function useProblems(store: EditorStore): Finding[] {
   const findings = problemsOf(store)
   useEffect(() => reconcileHighlight(store, findings), [store, findings, highlight])
   return findings
+}
+
+const libraryOf = (id: string) => (Object.hasOwn(modulesById, id) ? modulesById[id] : undefined)
+
+/**
+ * One finding per stored built-in part older than the library (Ruling D1): a warning when the
+ * library only adds or describes data (Update parts takes it), an error when its pins, holes,
+ * internal joins or geometry changed (the part must be placed again). Errors first.
+ */
+export function driftFindings(d: Pick<Diagram, 'parts' | 'modules'>): Finding[] {
+  const out: Finding[] = []
+  for (const id of Object.keys(d.modules).sort()) {
+    const lib = libraryOf(id)
+    const drift = lib && moduleDrift(d.modules[id], lib)
+    if (!drift) continue
+    const parts = d.parts.filter((p) => p.module === id)
+    if (!parts.length) continue
+    const names = andList(parts.map((p) => p.designator))
+    const them = parts.length === 1 ? 'it' : 'them'
+    const message =
+      drift.kind === 'block'
+        ? `${names}: the library's ${lib.name} has changed: ${drift.what.join(', ')}. ${names} ${parts.length === 1 ? 'is' : 'are'} drawn from old part data; delete ${them} and place ${them} again from the Parts panel.`
+        : `${names}: the library has newer data for ${lib.name}: ${drift.what.join(', ')}. The wiring stays as drawn; Update parts to current library takes it, so the checks use it.`
+    out.push({
+      id: `module-drift|${id}`, rule: 'module-drift', severity: drift.kind === 'block' ? 'error' : 'warning', message,
+      subject: parts[0].designator, target: names, parts: parts.map((p) => p.uid), pins: [], wires: [],
+      select: { parts: parts.map((p) => p.uid), wires: [] },
+    })
+  }
+  return out.sort((a, b) => Number(a.severity !== 'error') - Number(b.severity !== 'error'))
+}
+
+/** True when Update parts to current library would change the sheet. */
+export const canUpdateParts = (d: Diagram): boolean => updateParts(d, libraryOf).updated.length > 0
+
+/**
+ * Update parts to current library (Ruling D1): every stored built-in part whose drift is the update
+ * kind takes the library copy, as one undo step. Returns the lines saying what changed (blocking
+ * drift is listed as left alone), and the sheet it committed, or null when nothing changed.
+ */
+export function updatePartsInStore(store: EditorStore): { diagram: Diagram; lines: string[] } | null {
+  const u = updateParts(store.getState().diagram, libraryOf)
+  if (!u.updated.length) return null
+  store.commit(u.diagram)
+  return { diagram: u.diagram, lines: updateLines(u) }
 }

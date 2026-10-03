@@ -383,3 +383,15 @@ button.wordmark { background: none; border: 0; padding: 0; cursor: pointer; }
   .bom-actions .hint { display: none; }
 }
 .bom-table td:last-child a { white-space: nowrap; }
+
+/* Update parts to current library (Ruling D1): an offer card under the sheet title while the library has newer data, and what it changed. */
+.update-parts {
+  display: grid; gap: 8px; padding: 10px 12px;
+  border: 1.5px solid var(--card-edge); border-left: 6px solid var(--yellow); border-radius: 8px; background: var(--bg);
+}
+.update-parts .hint { color: var(--text); }
+.update-parts .tool { justify-self: start; font-weight: 700; }
+.update-parts-report { display: grid; gap: 6px; padding: 10px 12px; border: 1.5px solid var(--rule); border-radius: 8px; background: var(--bg); }
+.update-parts-report:focus { outline: 2px solid var(--text); outline-offset: 2px; }
+.update-parts-report h3 { margin: 0; font: 600 15px/1.2 "Fredoka", system-ui, sans-serif; }
+.update-parts-report ul { margin: 0; padding-left: 18px; font-size: 13.5px; line-height: 1.35; }
