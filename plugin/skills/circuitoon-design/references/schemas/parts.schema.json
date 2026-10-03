@@ -23,14 +23,15 @@
             "type": "array",
             "items": {
               "type": "object",
-              "required": ["name", "label", "type", "supply", "capacity"],
+              "required": ["name", "label", "type", "supply", "capacity", "caps"],
               "additionalProperties": false,
               "properties": {
                 "name": { "type": "string" },
                 "label": { "type": ["string", "null"] },
                 "type": { "enum": ["power_in", "power_out", "ground", "input", "output", "io", "passive", "nc", null] },
                 "supply": { "type": ["string", "null"] },
-                "capacity": { "type": "integer" }
+                "capacity": { "type": "integer" },
+                "caps": { "type": ["object", "null"] }
               }
             }
           },
@@ -38,7 +39,7 @@
             "type": "array",
             "items": {
               "type": "object",
-              "required": ["name", "label", "type", "supply", "holes", "rail", "capacity"],
+              "required": ["name", "label", "type", "supply", "holes", "rail", "capacity", "caps"],
               "additionalProperties": false,
               "properties": {
                 "name": { "type": "string" },
@@ -47,7 +48,8 @@
                 "supply": { "type": ["string", "null"] },
                 "holes": { "type": "integer" },
                 "rail": { "enum": ["+", "-", null] },
-                "capacity": { "type": "integer" }
+                "capacity": { "type": "integer" },
+                "caps": { "type": ["object", "null"] }
               }
             }
           }

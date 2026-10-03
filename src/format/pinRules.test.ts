@@ -192,7 +192,7 @@ describe('i2c-address-clash', () => {
     const f = only(bus([['U2', 'exp'], ['U3', 'exp']], [...strap('u2', ['0', '0', '0']), ...strap('u3', ['0', '0', '0'])]), 'i2c-address-clash')
     expect(f).toHaveLength(1)
     expect(f[0].severity).toBe('error')
-    expect(f[0].message).toBe("U2 and U3 are all at I2C address 0x20 on the bus at U1 IO21 (SDA) and U1 IO22 (SCL): they answer together and the bus fails. Give each its own address: wire U3's address pins (A0, A1, A2) differently.")
+    expect(f[0].message).toBe("U2 and U3 are both at I2C address 0x20 on the bus at U1 IO21 (SDA) and U1 IO22 (SCL): they answer together and the bus fails. Give each its own address: wire U3's address pins (A0, A1, A2) differently.")
   })
   it('stays quiet when the address pins differ', () => {
     expect(only(bus([['U2', 'exp'], ['U3', 'exp']], [...strap('u2', ['0', '0', '0']), ...strap('u3', ['1', '0', '0'])]), 'i2c-address-clash')).toEqual([])

@@ -717,7 +717,7 @@ describe('pin capabilities and I2C on the built-in parts', () => {
   it('two GY-BME280 boards with SDO left open are both at 0x76: an error; SDO to 3V3 on one fixes it', () => {
     const two = (extra: Wire[]) => v1([at('u2', 'U2', 'bme280-module-6pin', 400), at('u3', 'U3', 'bme280-module-6pin', 600)], [
       ...['u2', 'u3'].flatMap((u): Wire[] => [[`${u}|VCC`, 'u1|3V3'], [`${u}|GND`, 'u1|GND'], [`${u}|SDA`, 'u1|D21'], [`${u}|SCL`, 'u1|D22']]), ...extra])
-    expect(found(two([]))).toEqual(["i2c-address-clash: U2 and U3 are all at I2C address 0x76 on the bus at U1 D21 (SDA) and U1 D22 (SCL): they answer together and the bus fails. Give each its own address: wire U3's address pins (SDO) differently."])
+    expect(found(two([]))).toEqual(["i2c-address-clash: U2 and U3 are both at I2C address 0x76 on the bus at U1 D21 (SDA) and U1 D22 (SCL): they answer together and the bus fails. Give each its own address: wire U3's address pins (SDO) differently."])
     expect(found(two([['u3|SDO', 'u1|3V3']]))).toEqual([])
   })
 })

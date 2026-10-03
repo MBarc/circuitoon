@@ -40,6 +40,8 @@ Without `art`, the part is drawn as a plain box with its pins, which is enough f
 | `capacity` | How many wire ends a pin or pad takes: 1 to 8, default 1. Use 2 for a screw terminal that takes two wires. |
 | `internal` | Pins joined inside the part, for example `[["GND", "GND 2"]]`. Never use it for a switch. |
 | `holes` | Interior header pads: `{ "name", "at": [[x, y]], "holeStyle": "pad" }`, on the 10 px grid inside the body. |
+| `caps` | On a pin or pad, what it cannot do, from the chip's datasheet only: `inputOnly`, `outputOnly`, `flash`, `noPullup` (each `true`), `strapping` (`"high"`, `"low"` or `"either"`: the level the boot needs at reset) and `note` (one sentence on why). Leave it out when the datasheet does not say. The pin rules fire only on what is set. |
+| `electrical.i2c` | For an I2C device: `{ "sda": "SDA", "scl": "SCL", "address": { "base": 32, "pins": [{ "pin": "A0", "add": 1 }] }, "pullups": false }`. `address` may instead be `{ "fixed": 118 }`. Set `pullups` only when the maker says whether the board has SDA/SCL pull-ups; leave it out otherwise. |
 | `electrical.params` | Values the part carries, for example `{ "resistance": { "unit": "ohm", "default": 1000 } }`. |
 
 ## Pins

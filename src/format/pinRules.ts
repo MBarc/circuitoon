@@ -492,7 +492,7 @@ function busFindings(pm: PinModel, bus: I2cBus): PinDraft[] {
         : `move ${x.part.designator} to another I2C bus (its address is fixed)`
     }
     out.push({ rule: 'i2c-address-clash', subject: list[0].part.designator, target: at,
-      message: `${andList(list.map((x) => x.part.designator))} are all at I2C address ${addressText(address)} on the bus at ${at}: they answer together and the bus fails. Give each its own address: ${orList(list.slice(1).map(hint))}.`,
+      message: `${andList(list.map((x) => x.part.designator))} are ${list.length === 2 ? 'both' : 'all'} at I2C address ${addressText(address)} on the bus at ${at}: they answer together and the bus fails. Give each its own address: ${orList(list.slice(1).map(hint))}.`,
       parts: list.map((x) => x.part.id), pins: list.flatMap((x) => [{ part: x.part.id, pin: x.spec.sda }]), nets: [bus.sda, bus.scl], causes: [`i2c-address:${addressText(address)}`, ...list.map((x) => x.part.id)] })
   }
   return out
