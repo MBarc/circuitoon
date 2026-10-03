@@ -59,6 +59,8 @@ export const endName = (e: PinEnd): string => `${e.part.designator} ${e.label}`
 const endPin = (e: PinEnd) => ({ part: e.part.id, pin: e.pin })
 /** Names as a list, the first three and a count of the rest when there are more than four. */
 const fewNames = (names: string[]) => (names.length > 4 ? `${names.slice(0, 3).join(', ')} and ${names.length - 3} more` : andList(names))
+/** The ends' names for fewNames, naming only the ones it shows (a huge net is not named end by end). */
+const fewEnds = (ends: PinEnd[]) => fewNames(ends.length > 4 ? [...ends.slice(0, 3).map(endName), ...Array<string>(ends.length - 3).fill('')] : ends.map(endName))
 const model = (e: PinEnd): string | undefined => (e.part.module.electrical as { model?: string } | undefined)?.model
 
 // ---- Building the model ----
@@ -141,18 +143,34 @@ function componentOf(m: ModuleDef, pin: string): string {
   for (const g of m.internal ?? []) if (g.includes(pin)) return g[0]
   return pin
 }
-/** The pins of a two-sided part (resistor, switch, LED) on the other side from `pin`. */
+/** Per module, each pin's other side: the pins of a two-sided part (resistor, switch, LED) not joined to it inside. Cached. */
+const sideCache = new WeakMap<ModuleDef, Map<string, string[]>>()
 function otherSide(e: PinEnd): string[] {
   const m = e.part.module
-  const names = [...m.pins.filter((p): p is PinDef => !isSpacer(p)).map((p) => p.name), ...(m.holes ?? []).map((g) => g.name)]
-  const mine = componentOf(m, e.pin)
-  return names.filter((n) => componentOf(m, n) !== mine)
+  let map = sideCache.get(m)
+  if (!map) sideCache.set(m, (map = new Map()))
+  let list = map.get(e.pin)
+  if (!list) {
+    const names = [...m.pins.filter((p): p is PinDef => !isSpacer(p)).map((p) => p.name), ...(m.holes ?? []).map((g) => g.name)]
+    const mine = componentOf(m, e.pin)
+    map.set(e.pin, (list = names.filter((n) => componentOf(m, n) !== mine)))
+  }
+  return list
+}
+/** Each net's role, worked out once per model. */
+const roleCache = new WeakMap<PinModel, Map<number, Role>>()
+function netRole(pm: PinModel, i: number): Role {
+  let map = roleCache.get(pm)
+  if (!map) roleCache.set(pm, (map = new Map()))
+  let role = map.get(i)
+  if (role === undefined) map.set(i, (role = roleOf(pm.net(i))))
+  return role
 }
 /** The roles of the nets on the far side of a two-sided part. */
 function farRoles(pm: PinModel, e: PinEnd): Role[] {
   return otherSide(e).map((n) => {
     const i = pm.netOf(e.part.id, n)
-    return i === undefined ? 'signal' : roleOf(pm.net(i))
+    return i === undefined ? 'signal' : netRole(pm, i)
   })
 }
 const isResistor = (e: PinEnd) => model(e) === 'resistor'
@@ -367,7 +385,7 @@ export function pinFindings(pm: PinModel): PinDraft[] {
         const elsewhere = pm.net(i).filter(notMine)
         const n = elsewhere.length
         out.push({ ...base, rule: 'pin-flash',
-          message: `${endName(p)} is a flash pin${note}, so nothing may be wired to it, but ${fewNames(elsewhere.map(endName))} ${n === 1 ? 'is' : 'are'}. The board will not run like this. Move ${n === 1 ? 'it' : 'them'} to a free GPIO${suggest(pm, p.part)}.`,
+          message: `${endName(p)} is a flash pin${note}, so nothing may be wired to it, but ${fewEnds(elsewhere)} ${n === 1 ? 'is' : 'are'}. The board will not run like this. Move ${n === 1 ? 'it' : 'them'} to a free GPIO${suggest(pm, p.part)}.`,
           parts: [p.part.id, ...elsewhere.map((e) => e.part.id)], pins: [endPin(p), ...elsewhere.map(endPin)], causes: [cause] })
         continue
       }
