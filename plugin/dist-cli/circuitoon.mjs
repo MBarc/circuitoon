@@ -62795,7 +62795,7 @@ function checkCommand(args, io) {
 	const all = verifyDiagram(diagram, libraryLookup);
 	const checked = withoutStale(checkDiagram(diagram), all);
 	return report(io, args, "circuitoon-cli/check/1", uniqueIds([
-		...diagram.intent !== void 0 ? all.filter((f) => !alsoChecked(f, checked)) : [],
+		...diagram.intent !== void 0 ? all.filter((f) => !alsoChecked(f, checked)) : all.filter((f) => f.rule === "module-drift"),
 		...checked,
 		...readabilityFindings(diagram)
 	].map(cliFinding)));
@@ -66424,11 +66424,10 @@ function extractNetlist(d) {
 				m
 			});
 		}
-		if (pins.length === 1 && strips.length) pins.push(strips.sort((a, b) => naturalCompare(a.ref, b.ref) || naturalCompare(a.name, b.name))[0]);
-		if (pins.length < 2) continue;
-		pins.sort((a, b) => naturalCompare(a.ref, b.ref) || naturalCompare(a.name, b.name));
+		if (!pins.length || pins.length + strips.length < 2) continue;
+		const order = (a, b) => naturalCompare(a.ref, b.ref) || naturalCompare(a.name, b.name);
 		nets.push({
-			pins,
+			pins: [...pins, ...strips].sort(order),
 			...label !== void 0 ? { label } : {}
 		});
 	}
@@ -66458,7 +66457,7 @@ function extractNetlist(d) {
 		if (outs.length === 1) claim(i, outs[0]);
 	});
 	nets.forEach((net, i) => {
-		const pick = net.pins.find((p) => p.m.category === "Microcontrollers") ?? net.pins.find((p) => pinDef(p.m, p.name)?.type === "power_out") ?? net.pins[0];
+		const pick = net.pins.find((p) => p.m.category === "Microcontrollers") ?? net.pins.find((p) => pinDef(p.m, p.name)?.type === "power_out") ?? net.pins.find((p) => !isBoard(p.m)) ?? net.pins[0];
 		let name = `${pick.ref}_${pick.name}`;
 		for (let k = 2; names.has(name); k++) name = `${pick.ref}_${pick.name}_${k}`;
 		claim(i, name);
