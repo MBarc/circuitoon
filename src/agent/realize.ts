@@ -20,6 +20,7 @@ import { type Pt, worldHoles } from '../format/geometry.ts'
 import { isBoard, isSpacer, type ModuleDef, type PinDef, terminalCapacity } from '../format/module.ts'
 import { normalizeEnds } from '../format/cables.ts'
 import { tipLabelBoxes } from '../render/captionBox.ts'
+import { type BoardStrip, exitDirt, holeExits } from '../format/boardEntry.ts'
 import { type Intent, type IntentNet, type Terminal, terminalKey, terminalName } from './netlist.ts'
 import { internalComponent } from './internal.ts'
 import { naturalCompare } from './order.ts'
@@ -53,13 +54,26 @@ export interface Realization {
 }
 
 export interface RealizeOptions {
-  /** Which nets get net labels (default auto); a mains net or one with local strips never does. */
+  /**
+   * Which nets get net labels (default none: only the nets that ask, `"label": true`; Ruling W1).
+   * A mains net or one with local strips never does.
+   */
   labels?: LabelMode
   /** The net-label module; without it no net is labelled. */
   labelModule?: ModuleDef
+  /** Spare boards placed as hubs (Ruling W1): a signal net that claims a strip takes one of theirs first. */
+  hubs?: string[]
+  /** Parked boards (no connection, in the "Not yet wired" frame): never claimed. */
+  parked?: string[]
 }
 
 export type NetKind = 'ground' | 'power' | 'signal'
+/** A pin farther than this (px, along the grid) from its net's strips may get a local strip on a hub (Ruling W1). */
+const FAR = 300
+/** A hole whose cheapest straight way out passes over another hole costs at least this (holeChoice). */
+const DIRTY = 600
+/** Holes at the inner end of a hub half-row kept for the jumpers that join the net's half-rows. */
+const JUMPER_HOLES = 3
 const SIGNAL_COLORS = ['blue', 'green', 'yellow', 'orange', 'purple', 'white', 'brown', 'pink', 'gray']
 
 interface Strip {
@@ -164,19 +178,106 @@ export function realize(intent: Intent, d: Diagram, locals: LocalDistribution[] 
     const c = f.filter((i) => !labelled.has(holeKey(s.board, s.name, i)))
     return c.length ? c : f
   }
-  const nearestHole = (s: Strip, at: Pt): number | null => {
+  // Ruling W1: a wire ends on a board in use by one straight run in from an edge, so a hole is
+  // chosen whose run toward the wire's other end crosses no other strip's hole in use, and that lies
+  // on no run already planned for another wire's hole.
+  const boardRect = new Map<string, { x: number; y: number; w: number; h: number }>()
+  const rectOf = (board: string) => {
+    let r = boardRect.get(board)
+    if (!r) boardRect.set(board, (r = bodyRect(partBy.get(board)!, layoutModule(modOf(board)))))
+    return r
+  }
+  const runs = new Map<string, [Pt, Pt][]>()
+  /** Where wire ends already sit, by board. */
+  const wiredAt = new Map<string, Pt[]>()
+  const onSeg = (p: Pt, [a, b]: [Pt, Pt]) =>
+    Math.abs(a.x - b.x) < 1 ? Math.abs(p.x - a.x) <= 3 && p.y >= Math.min(a.y, b.y) - 3 && p.y <= Math.max(a.y, b.y) + 3 : Math.abs(p.y - a.y) <= 3 && p.x >= Math.min(a.x, b.x) - 3 && p.x <= Math.max(a.x, b.x) + 3
+  /** The straight run from hole `i` of `s` out to the board edge that heads best toward `at`. */
+  const boardStrips = new Map<string, BoardStrip[]>()
+  const stripsOfBoard = (board: string) => {
+    let list = boardStrips.get(board)
+    if (!list) boardStrips.set(board, (list = [...strips.values()].filter((o) => o.board === board).map((o) => ({ id: o.name, holes: o.holes, rail: !!o.rail }))))
+    return list
+  }
+  /** Each hole's key by its position, per board (built once), so whether a hole is in use is one lookup. */
+  const keyAt = new Map<string, Map<string, string>>()
+  const usedAt = (board: string) => {
+    let m = keyAt.get(board)
+    if (!m) {
+      keyAt.set(board, (m = new Map()))
+      for (const o of strips.values()) if (o.board === board) o.holes.forEach((p, j) => m!.set(`${Math.round(p.x)},${Math.round(p.y)}`, holeKey(o.board, o.name, j)))
+    }
+    const at = m
+    return (q: Pt) => {
+      const k = at.get(`${Math.round(q.x)},${Math.round(q.y)}`)
+      return k !== undefined && used.has(k)
+    }
+  }
+  /** The cleanest straight way out of hole `i` of `s` (boardEntry.ts), and how unclean it is, plus its run. */
+  const exitOf = (s: Strip, i: number, at: Pt): { run: [Pt, Pt]; dirt: number; ownUsed: number } => {
+    const r = rectOf(s.board)
+    const h = s.holes[i]
+    const exits = holeExits(r, stripsOfBoard(s.board), s.name, h, usedAt(s.board))
+    const cost = (e: { edge: Pt }) => dist(h, e.edge) + dist(e.edge, at)
+    const best = exits.reduce<(typeof exits)[number] | null>((a, x) => (!a || exitDirt(x) < exitDirt(a) || (exitDirt(x) === exitDirt(a) && cost(x) < cost(a)) ? x : a), null)
+    return best ? { run: [h, best.edge], dirt: exitDirt(best), ownUsed: best.ownUsed } : { run: [h, h], dirt: 99, ownUsed: 0 }
+  }
+  const runClash = (s: Strip, i: number, at: Pt): number => {
+    const { run, dirt } = exitOf(s, i, at)
+    let n = dirt
+    for (const r of runs.get(s.board) ?? []) if (onSeg(s.holes[i], r)) n += 10
+    // A rail hole level with a strip whose legs or wires are in use, or which is the hub's or a
+    // mounted part's strip, would stand in the way of that strip's own straight way out to the edge.
+    if (s.rail) {
+      const h = s.holes[i]
+      const along = Math.abs(s.holes[0].y - s.holes[s.holes.length - 1].y) < 1 ? 'x' : 'y'
+      for (const o of strips.values()) {
+        if (o.board !== s.board || o === s || o.rail) continue
+        if ((owner.has(o.key) || o.holes.some((p, j) => used.has(holeKey(o.board, o.name, j)))) && o.holes.some((p) => Math.abs(p[along] - h[along]) < 3)) n += 12
+      }
+    }
+    return n
+  }
+  /** The best free hole of `s` for a wire toward `at`, and its cost: near, with a clean straight way out. */
+  const holeChoice = (s: Strip, at: Pt): { i: number; cost: number } | null => {
     const pref = preferred.get(s.key)
-    if (pref !== undefined && !used.has(holeKey(s.board, s.name, pref))) return pref
-    let best: number | null = null
-    for (const i of clear(s)) if (best === null || dist(s.holes[i], at) < dist(s.holes[best], at)) best = i
+    if (pref !== undefined && !used.has(holeKey(s.board, s.name, pref))) return { i: pref, cost: 0 }
+    let best: { i: number; cost: number } | null = null
+    for (const i of clear(s)) {
+      // A hole right beside another wire's end costs a little: wire ends a hole apart leave in pairs
+      // one grid step apart, which reads as crowded.
+      const h = s.holes[i]
+      const beside = (wiredAt.get(s.board) ?? []).filter((q) => Math.abs(q.x - h.x) + Math.abs(q.y - h.y) <= 12).length
+      const c = dist(h, at) + 100 * runClash(s, i, at) + 25 * beside
+      if (!best || c < best.cost) best = { i, cost: c }
+    }
+    return best
+  }
+  const nearestHole = (s: Strip, at: Pt): number | null => {
+    const best = holeChoice(s, at)
+    if (best) runs.set(s.board, [...(runs.get(s.board) ?? []), exitOf(s, best.i, at).run])
+    return best?.i ?? null
+  }
+  /** Of `list`, the strip whose best hole for a wire toward `at` costs least (Ruling W1: a clean way in counts, not distance alone). */
+  const bestDp = (list: Strip[], at: Pt): Strip | null => {
+    let best: Strip | null = null
+    let bestCost = Infinity
+    for (const st of list) {
+      const c = holeChoice(st, at)
+      if (c && c.cost < bestCost) {
+        best = st
+        bestCost = c.cost
+      }
+    }
     return best
   }
   const stripName = (s: Strip) => `${s.board} ${s.name}`
   const pinEnd = (t: Terminal): Endpoint => (modOf(t.ref).holes?.some((g) => g.name === t.name) ? { part: t.ref, pin: t.name, hole: t.hole ?? 0 } : { part: t.ref, pin: t.name })
   const pointOf = (ep: Endpoint): Pt => resolveEndpoint(d, ep)!.end
   const kindOf = (n: IntentNet): NetKind => netKind(intent, n)
-  // Local strips serve only their block's net: never claimed by another net.
-  const localBoards = new Set(locals.flatMap((l) => l.strips))
+  // Local strips serve only their block's net, and parked boards nothing: never claimed by another net.
+  const localBoards = new Set([...locals.flatMap((l) => l.strips), ...(opts.parked ?? [])])
+  const hubs = new Set(opts.hubs ?? [])
 
   const connections: Connection[] = []
   const netOfWire = new Map<string, string>()
@@ -195,6 +296,7 @@ export function realize(intent: Intent, d: Diagram, locals: LocalDistribution[] 
   }
   const holeEnd = (s: Strip, i: number): Endpoint => {
     used.add(holeKey(s.board, s.name, i))
+    wiredAt.set(s.board, [...(wiredAt.get(s.board) ?? []), s.holes[i]])
     return { part: s.board, pin: s.name, hole: i }
   }
   /** The member of `node` with an end left, nearest `toward`; takes that end. */
@@ -243,13 +345,13 @@ export function realize(intent: Intent, d: Diagram, locals: LocalDistribution[] 
     }
   }
   const claim = (ni: number, at: Pt, kind: NetKind, board?: string): Strip | null => {
-    const rank = (s: Strip) => (kind === 'ground' ? (s.rail === '-' ? 0 : s.rail ? -1 : 1) : kind === 'power' ? (s.rail === '+' ? 0 : s.rail ? -1 : 1) : s.rail ? -1 : 0)
+    const rank = (s: Strip) => (kind === 'ground' ? (s.rail === '-' ? 0 : s.rail ? -1 : 1) : kind === 'power' ? (s.rail === '+' ? 0 : s.rail ? -1 : 1) : s.rail ? -1 : hubs.size && !hubs.has(s.board) ? 1 : 0)
     let best: Strip | null = null
     let bestRank = 0
     let bestDist = 0
     for (const s of strips.values()) {
       const r = rank(s)
-      if (r < 0 || localBoards.has(s.board) || owner.has(s.key) || reserved.has(s.key) || (board !== undefined && s.board !== board) || free(s).length !== s.holes.length - (covered.get(s.key) ?? 0)) continue
+      if (r < 0 || localBoards.has(s.board) || (hubPlan.size > 0 && hubs.has(s.board)) || owner.has(s.key) || reserved.has(s.key) || (board !== undefined && s.board !== board) || free(s).length !== s.holes.length - (covered.get(s.key) ?? 0)) continue
       const dd = dist(s.holes[0], at)
       if (!best || r < bestRank || (r === bestRank && dd < bestDist)) {
         best = s
@@ -290,8 +392,8 @@ export function realize(intent: Intent, d: Diagram, locals: LocalDistribution[] 
   // group's pins, the net's strips), each joined to it by short routing stubs, instead of wires
   // running between them. All or nothing per net: when one endpoint finds no clear spot, the net is
   // wired as before.
-  const mode = opts.labels ?? 'auto'
-  const placer = opts.labelModule && mode !== 'none' ? new LabelPlacer(d, opts.labelModule) : null
+  const mode = opts.labels ?? 'none'
+  const placer = opts.labelModule && (mode !== 'none' || intent.nets.some((n) => n.label)) ? new LabelPlacer(d, opts.labelModule) : null
   const labels: PartInstance[] = []
   const labelledNets: string[] = []
   const unlabelled: string[] = []
@@ -301,7 +403,7 @@ export function realize(intent: Intent, d: Diagram, locals: LocalDistribution[] 
   const mainsNet = (n: IntentNet) => n.terminals.some((t) => mainsOf(modOf(t.ref)).terminals.has(t.name))
   /** Whether a net is drawn with labels, from its endpoints (each node's first pin, and the net's strips as one). */
   const wants = (net: IntentNet, kind: NetKind, ends: { at: Pt; group: string | undefined }[]) =>
-    ends.length >= 2 && (!!net.label || mode === 'all' || autoLabels({ kind, ends }))
+    ends.length >= 2 && (!!net.label || mode === 'all' || (mode === 'auto' && autoLabels({ kind, ends })))
   /** The loose pins of a net as nodes (one per part-internal component, in natural order), and its first strip. */
   const shapeOf = (net: IntentNet) => {
     const byComp = new Map<string, Terminal[]>()
@@ -508,6 +610,206 @@ export function realize(intent: Intent, d: Diagram, locals: LocalDistribution[] 
     return true
   }
 
+  // Ruling W1: a hub breadboard is laid out so every wire into it can be traced. Its strips come in
+  // rows (two half-strips on one line, the centre channel between them), and a wire from off the
+  // board only ever takes the outer hole of a half-strip, entering from the board's edge on that
+  // half's side: never one hole behind another wire's end, never across the channel. A net served
+  // from both sides takes as many rows as its busier side has wires; its half-strips are joined
+  // on the board by short jumpers (across the channel in a row, and from row to row on one side).
+  // Nets take rows in the pin order of the part most of them reach (two displays on one bus share
+  // their order, so both ribbons stay flat), a supply pin of that part keeping its place too for
+  // the supply net's own rows, with an empty row between nets where the board has room.
+  type HubRow = { halves: [Strip, Strip] }
+  const hubRows: HubRow[] = []
+  /** Which way a half-strip's holes run from its outer end (away from the other half) to its inner end. */
+  const outward = (half: Strip, other: Strip) => {
+    const o = other.holes.reduce((a, h) => ({ x: a.x + h.x / other.holes.length, y: a.y + h.y / other.holes.length }), { x: 0, y: 0 })
+    return half.holes.map((h, i) => ({ i, d: dist(h, o) })).sort((a, b) => b.d - a.d).map((x) => x.i)
+  }
+  const hub = [...hubs][0]
+  let rowsHorizontal = true
+  let hubMid: Pt = { x: 0, y: 0 }
+  if (hub) {
+    const list = [...strips.values()].filter((st) => st.board === hub && !st.rail && st.holes.length > 1)
+    rowsHorizontal = list.length > 0 && list[0].holes.every((h) => Math.abs(h.y - list[0].holes[0].y) < 0.5)
+    const line = (st: Strip) => Math.round(rowsHorizontal ? st.holes[0].y : st.holes[0].x)
+    const along = (st: Strip) => (rowsHorizontal ? st.holes[0].x : st.holes[0].y)
+    const byLine = new Map<number, Strip[]>()
+    for (const st of list) byLine.set(line(st), [...(byLine.get(line(st)) ?? []), st])
+    for (const k of [...byLine.keys()].sort((a, b) => a - b)) {
+      const pair = byLine.get(k)!.sort((a, b) => along(a) - along(b))
+      if (pair.length === 2 && !pair.some((st) => owner.has(st.key) || reserved.has(st.key))) hubRows.push({ halves: [pair[0], pair[1]] })
+    }
+    const all = list.flatMap((st) => st.holes)
+    hubMid = { x: all.reduce((a, h) => a + h.x, 0) / Math.max(1, all.length), y: all.reduce((a, h) => a + h.y, 0) / Math.max(1, all.length) }
+  }
+  /** 0 for the half on the low side (west, or north for upright rows), 1 for the other. */
+  const sideOf = (p: Pt) => ((rowsHorizontal ? p.x : p.y) < (rowsHorizontal ? hubMid.x : hubMid.y) ? 0 : 1)
+  /** Order along the rows' stacking axis. */
+  const stackOf = (p: Pt) => (rowsHorizontal ? p.y : p.x)
+  /** The nodes of a net served from the hub: every node of a hub net, or of a supply net those clearly nearer the hub than its own strips. */
+  const nodesOfNet = (net: IntentNet) => {
+    const byComp = new Map<string, Terminal[]>()
+    for (const t of net.terminals) {
+      if (t.infra || legBy.has(terminalKey(t.ref, t.name))) continue
+      const c = `${t.ref} ${internalComponent(modOf(t.ref), t.name)}`
+      byComp.set(c, [...(byComp.get(c) ?? []), t])
+    }
+    return [...byComp.keys()].sort(naturalCompare).map((c) => byComp.get(c)!)
+  }
+  const netStrips = (net: IntentNet) => {
+    const keys = new Set<string>()
+    for (const t of net.terminals) {
+      if (t.infra) keys.add(groupKey(t.ref, t.name))
+      const pl = legBy.get(terminalKey(t.ref, t.name))
+      if (pl) keys.add(groupKey(pl.board, pl.group))
+    }
+    return [...keys].flatMap((k) => (strips.get(k) ? [strips.get(k)!] : []))
+  }
+  const hubbedNode = (at: Pt, own: Strip[]) => {
+    const there = own.length ? Math.min(...own.flatMap((st) => st.holes.map((h) => dist(h, at)))) : Infinity
+    return dist(at, hubMid) < there && there > FAR
+  }
+  /** The rows each planned net takes on the hub, and for a supply net whether it is fed by a trunk from its own strips. */
+  const hubPlan = new Map<number, { rows: HubRow[]; trunk: boolean }>()
+  if (hub && hubRows.length) {
+    const needs: { ni: number; at: Pt; ends: Terminal[] }[] = []
+    intent.nets.forEach((net, ni) => {
+      if (net.label || kindOf(net) !== 'signal' || netStrips(net).length) return
+      const caps = new Map<string, { cap: number; t: Terminal }>()
+      for (const t of net.terminals) {
+        const c = `${t.ref} ${internalComponent(modOf(t.ref), t.name)}`
+        caps.set(c, { cap: (caps.get(c)?.cap ?? 0) + terminalCapacity(modOf(t.ref), t.name), t: caps.get(c)?.t ?? t })
+      }
+      const list = [...caps.values()]
+      if (list.length < 3 || list.filter((x) => x.cap >= 2).length >= list.length - 2) return
+      needs.push({ ni, at: pointOf(pinEnd((list.find((x) => modOf(x.t.ref).category === 'Microcontrollers') ?? list[0]).t)), ends: list.map((x) => x.t) })
+    })
+    const reach = new Map<string, number>()
+    for (const n of needs) for (const t of new Set(n.ends.map((x) => x.ref))) reach.set(t, (reach.get(t) ?? 0) + 1)
+    const lead = [...reach].sort((a, b) => b[1] - a[1] || Number(modOf(a[0]).category === 'Microcontrollers') - Number(modOf(b[0]).category === 'Microcontrollers') || naturalCompare(a[0], b[0]))[0]?.[0]
+    const hubbedNets = new Set(needs.map((n) => n.ni))
+    const plan: number[] = []
+    if (lead) {
+      const pins = intent.nets.flatMap((net, ni) => net.terminals.filter((t) => t.ref === lead && !t.infra).map((t) => ({ ni, at: pointOf(pinEnd(t)) })))
+      for (const pin of pins.sort((a, b) => stackOf(a.at) - stackOf(b.at))) {
+        const net = intent.nets[pin.ni]
+        if (plan.includes(pin.ni)) continue
+        if (hubbedNets.has(pin.ni) || (kindOf(net) !== 'signal' && !net.label && netStrips(net).length)) plan.push(pin.ni)
+      }
+    }
+    for (const n of needs) if (!plan.includes(n.ni)) plan.push(n.ni)
+    // Rows each net needs: as many as its busier side has wires (a supply net's trunk counts on the
+    // side facing its own strips).
+    const want = plan.map((ni) => {
+      const net = intent.nets[ni]
+      const supply = !hubbedNets.has(ni)
+      const own = netStrips(net)
+      const ends = nodesOfNet(net).map((m) => pointOf(pinEnd(m[0]))).filter((at) => !supply || hubbedNode(at, own))
+      if (supply && ends.length < 2) return 0
+      const count = [0, 0]
+      for (const at of ends) count[sideOf(at)]++
+      if (supply && own.length) count[sideOf(own[0].holes[0])]++
+      return Math.max(1, ...count)
+    })
+    const total = want.reduce((a, b) => a + b, 0)
+    const gap = total + plan.filter((_, i) => want[i]).length - 1 <= hubRows.length ? 1 : 0
+    let at = 0
+    plan.forEach((ni, i) => {
+      if (!want[i] || at + want[i] > hubRows.length) return
+      const rows = hubRows.slice(at, at + want[i])
+      for (const r of rows) for (const h of r.halves) owner.set(h.key, ni)
+      hubPlan.set(ni, { rows, trunk: !hubbedNets.has(ni) })
+      at += want[i] + gap
+    })
+  }
+  /**
+   * Wires a planned hub net: each item (a node, or the trunk from the net's own strips) takes the
+   * outer hole of a half-strip on its side, rows in stacking order; then the half-strips are joined.
+   */
+  const wireHub = (ni: number, items: ({ node: Node; at: Pt } | { trunk: Strip; at: Pt })[]) => {
+    const { rows } = hubPlan.get(ni)!
+    const bySide: (typeof items)[] = [[], []]
+    for (const it of items) bySide[sideOf(it.at)].push(it)
+    for (const side of [0, 1] as const) {
+      bySide[side].sort((a, b) => stackOf(a.at) - stackOf(b.at))
+      bySide[side].forEach((it, k) => {
+        // The inner JUMPER_HOLES holes of each half-row are the joining jumpers' own: a wire from
+        // off the board never takes one. Past its rows, an item takes the outermost free hole left
+        // in any of them; with none, a free strip of the hub joined by a jumper.
+        const outerFree = (row: HubRow) => {
+          const half = row.halves[side]
+          const order = outward(half, row.halves[1 - side]).slice(0, half.holes.length - JUMPER_HOLES)
+          const i = order.find((j) => !used.has(holeKey(half.board, half.name, j)))
+          return i === undefined ? null : { half, i }
+        }
+        let spot = k < rows.length ? outerFree(rows[k]) : null
+        for (const row of rows) spot ??= outerFree(row)
+        if (!spot) {
+          const ext = [...strips.values()].find((st) => hubs.has(st.board) && !st.rail && !owner.has(st.key) && !reserved.has(st.key) && free(st).length === st.holes.length)
+          if (ext) {
+            owner.set(ext.key, ni)
+            jumper(ni, rows[rows.length - 1].halves[side], ext)
+            const i = free(ext)[0]
+            spot = { half: ext, i }
+          }
+        }
+        if (!spot) return void errors.push(`strip full: net ${intent.nets[ni].name} has no free hole left on its hub rows`)
+        const { half, i } = spot
+        if ('node' in it) {
+          const e = take(it.node, half.holes[i])
+          wire(ni, e, holeEnd(half, i), true)
+        } else {
+          const from = nearestHole(it.trunk, half.holes[i])
+          if (from === null) return void errors.push(`strip full: net ${intent.nets[ni].name} has no free hole left on ${stripName(it.trunk)}`)
+          wire(ni, holeEnd(it.trunk, from), holeEnd(half, i), true)
+        }
+      })
+    }
+    // Joins: across the channel in each row that has wires on the other side from the spine, and
+    // from row to row on the spine side (holes alternating one and two in from the inner end, so
+    // no two jumpers share a line).
+    const spine: 0 | 1 = bySide[1].length > bySide[0].length ? 1 : 0
+    // The jumpers' holes, innermost first; one already taken (by a jumper above) gives way to the next free one.
+    const inner = (half: Strip, other: Strip, back = 0) => {
+      const order = outward(half, other)
+      const want = order[half.holes.length - 1 - back]
+      if (!used.has(holeKey(half.board, half.name, want))) return want
+      return [...order].reverse().find((j) => !used.has(holeKey(half.board, half.name, j))) ?? want
+    }
+    const pin = (half: Strip, i: number): Endpoint => holeEnd(half, i)
+    rows.forEach((row, k) => {
+      const far = row.halves[1 - spine]
+      const nearHalf = row.halves[spine]
+      const wired = (h: Strip) => connections.some((c) => [c.from, c.to].some((e) => e.part === h.board && e.pin === h.name))
+      if (wired(far)) wire(ni, pin(nearHalf, inner(nearHalf, far)), pin(far, inner(far, nearHalf)), true)
+      if (k + 1 < rows.length) {
+        const next = rows[k + 1]
+        const back = 1 + (k % 2)
+        wire(ni, pin(nearHalf, inner(nearHalf, far, back)), pin(next.halves[spine], inner(next.halves[spine], next.halves[1 - spine], back)), true)
+      }
+    })
+  }
+  /**
+   * The free strip nearest `at` that net `ni` may claim (its kind's rail first, by a little), never
+   * on a hub (its rows are planned); claimed, or null when there is none.
+   */
+  const localClaim = (ni: number, at: Pt, kind: NetKind): Strip | null => {
+    const rank = (st: Strip) => (kind === 'ground' ? (st.rail === '-' ? 0 : st.rail ? -1 : 1) : kind === 'power' ? (st.rail === '+' ? 0 : st.rail ? -1 : 1) : st.rail ? -1 : 0)
+    let best: Strip | null = null
+    let bestCost = Infinity
+    for (const st of strips.values()) {
+      if (rank(st) < 0 || localBoards.has(st.board) || hubs.has(st.board) || owner.has(st.key) || reserved.has(st.key) || free(st).length !== st.holes.length - (covered.get(st.key) ?? 0)) continue
+      const cost = Math.min(...free(st).map((i) => dist(st.holes[i], at))) + 50 * rank(st)
+      if (cost < bestCost) {
+        best = st
+        bestCost = cost
+      }
+    }
+    if (best) owner.set(best.key, ni)
+    return best
+  }
+
   for (const [ni, net] of intent.nets.entries()) {
     const kind = kindOf(net)
     const dps: Strip[] = []
@@ -540,6 +842,11 @@ export function realize(intent: Intent, d: Diagram, locals: LocalDistribution[] 
     for (const g of groups) for (const st of g.strips) owner.set(st.key, ni)
     const groupOf = (n: Node) => groups.find((g) => g.refs.has(n.members[0].ref))
     if (labelNet(ni, net, kind, nodes, dps, groups.length > 0)) continue
+    const plannedHub = hubPlan.get(ni)
+    if (plannedHub && !plannedHub.trunk && !groups.length) {
+      wireHub(ni, nodes.map((n) => ({ node: n, at: first(n) })))
+      continue
+    }
     const own = nodes.filter((n) => !groupOf(n))
     // Local strips carry their block's pins. A net with no strips of its own whose other pins are
     // two or more claims one for them, so each block keeps a single trunk; a lone other pin's wire
@@ -646,21 +953,67 @@ export function realize(intent: Intent, d: Diagram, locals: LocalDistribution[] 
     // strips are local ones (one other pin, or nothing left to claim) wires its other pins to those.
     const reach = dps.length ? dps : pool
     const totalFree = () => reach.reduce((sum, s) => sum + free(s).length, 0)
-    for (const [k, node] of own.entries()) {
+    // Nearest pins first (Ruling W1): a pin right beside the net's strips takes a hole there before
+    // a far one does, so the far ones are the ones that get a local strip of their own.
+    const toStrips = (n: Node) => Math.min(...reach.flatMap((st) => st.holes.map((h) => dist(h, first(n)))))
+    // A supply net with rows planned on the hub: the pins clearly nearer the hub than the net's own
+    // strips take them, fed by one trunk from the nearest of those strips.
+    let rest = own
+    const hubbed = plannedHub?.trunk && dps.length ? own.filter((n) => hubbedNode(first(n), dps)) : []
+    if (hubbed.length) rest = own.filter((n) => !hubbed.includes(n))
+    const queue = rest.map((n) => ({ n, d: toStrips(n) })).sort((a, b) => a.d - b.d).map((x) => x.n)
+    for (const [k, node] of queue.entries()) {
       const at = first(node)
-      while (totalFree() < own.length - k) {
+      // Ruling W1: a pin far from every strip of its net, with a free strip much nearer, gets that
+      // strip, joined to the net by one trunk jumper, so the parts there take short wires instead
+      // of each running back across the sheet (displays beside a hub, batteries beside a rail).
+      const near = nearestDp(reach, at)
+      const far = near ? Math.min(...free(near).map((i) => dist(near.holes[i], at))) : Infinity
+      if (near && far > FAR && rest.length - k >= 1) {
+        const local = localClaim(ni, at, kind)
+        // For a lone pin, only a rail or a strip on another board: a jumper across one board to a
+        // nearer column saves nothing.
+        if (local && rest.length - k < 2 && local.board === near.board && !local.rail) owner.delete(local.key)
+        else if (local) {
+          const there = Math.min(...local.holes.map((h) => dist(h, at)))
+          if (there * 2 < far && jumper(ni, near, local)) reach.push(local)
+          else owner.delete(local.key)
+        }
+      }
+      while (totalFree() < rest.length - k) {
         const from = nearestDp(reach, at)
         const ext = from && (claim(ni, from.holes[0], kind, from.board) ?? claim(ni, at, kind))
         if (!from || !ext || !jumper(ni, from, ext)) break
         reach.push(ext)
       }
-      const target = nearestDp(reach, at)
+      let target = bestDp(reach, at)
+      // Ruling W1: a wire must reach its hole by a clean straight run. When every free hole of the
+      // net's strips can only be reached over other holes because another wire already ends in that
+      // strip (its outer hole is taken), a free strip beside it is claimed and joined by one short
+      // jumper instead.
+      const was = target && holeChoice(target, at)
+      const wiredAlready = (st: Strip) => connections.some((c) => [c.from, c.to].some((e) => e.part === st.board && e.pin === st.name))
+      if (target && was && was.cost >= DIRTY && wiredAlready(target) && exitOf(target, was.i, at).ownUsed > 0) {
+        const ext = claim(ni, target.holes[0], kind, target.board)
+        const now = ext && holeChoice(ext, at)
+        if (ext && now && now.cost < was.cost && jumper(ni, target, ext)) {
+          reach.push(ext)
+          target = ext
+        } else if (ext) owner.delete(ext.key)
+      }
       if (!target) {
         errors.push(`strip full: net ${net.name} has no free hole left on ${reach.map(stripName).join(', ')}${under(reach)}`)
         break
       }
       const e = take(node, at)
       wire(ni, e, holeEnd(target, nearestHole(target, pointOf(e))!), true)
+    }
+    // The supply pins served from the hub, last, so the trunk can leave from whichever of the net's
+    // strips (rails included) has the cleanest way out toward the hub.
+    if (hubbed.length) {
+      const trunk = bestDp(reach, hubMid)
+      if (trunk) wireHub(ni, [{ trunk, at: trunk.holes[0] }, ...hubbed.map((n) => ({ node: n, at: first(n) }))])
+      else errors.push(`strip full: net ${net.name} has no free hole left on ${reach.map(stripName).join(', ')}${under(reach)}`)
     }
   }
   return errors.length ? { ok: false, errors } : { ok: true, value: { connections, netOfWire, labels, labelled: labelledNets, unlabelled } }

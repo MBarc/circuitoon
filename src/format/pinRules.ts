@@ -270,12 +270,15 @@ function pinLevel(pm: PinModel, part: PinPart, pin: string, floating?: 0 | 1): 0
   if (role === 'ground') return 0
   if (role === 'supply') return 1
   if (role === 'mixed') return 'driven'
+  // A net that powers a part (the chip's own VCC, say) is a supply rail while anything runs: high.
+  if (net.some((e) => e.type === 'power_in')) return 1
   const pulls = net.filter(isResistor).map((e) => farRail(pm, e))
   if (pulls.includes('ground') && !pulls.includes('supply')) return 0
   if (pulls.includes('supply') && !pulls.includes('ground')) return 1
   // Only something that can drive a level sets it: an output or an io pin (a GPIO). Other inputs
   // (another chip's address pins), passive parts with no rail behind them and bare strips leave it floating.
-  if (net.some((e) => e.type === 'output' || e.type === 'io')) return 'driven'
+  // A connector carries the net on from somewhere this sheet does not show: its level is not known here.
+  if (net.some((e) => e.type === 'output' || e.type === 'io' || model(e) === 'connector')) return 'driven'
   return floating ?? null
 }
 

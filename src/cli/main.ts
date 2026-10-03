@@ -16,13 +16,14 @@ import { renderCommand } from './render.ts'
 import { checkCommand, verifyCommand } from './verifyCmd.ts'
 import { bomCommand } from './bomCmd.ts'
 import { explainCommand } from './explain.ts'
+import { netlistCommand } from './netlistCmd.ts'
 
 export const USAGE = `circuitoon <command> [options]
 
   parts [--search text] [--json]            built-in parts: pins, labels, types, supplies, hole groups
   part <id> [--json]                        one part in full
   layout <netlist.json> -o <sheet.json>     lay out a netlist; or layout --keep <partial.json> -o <sheet.json>
-                                            [--labels auto|none|all]: which nets are drawn with net labels (default auto)
+                                            [--labels none|auto|all]: which nets get net labels (default none: wires, labels only on nets marked "label": true)
   verify <sheet.json> [--json]              the sheet against its intent
   check <sheet.json> [--json]               the wiring checker, plus verify when the sheet has an intent
   explain <sheet.json|netlist.json> [--json]
@@ -32,6 +33,8 @@ export const USAGE = `circuitoon <command> [options]
                                             [--tiles <px>]: also zoomed tiles of the sheet, <px> square each, as <sheet>-tile-<row>-<col>.png
   link <sheet.json> [-o <dir>] [--json]     a link that opens the sheet in Circuitoon
   bom <sheet.json> [-o <bom.csv>] [--json]  the bill of materials: parts, wires and connectors; -o writes CSV
+  netlist <sheet.json> [-o <netlist.json>] [--json]
+                                            the netlist of any drawn sheet, from what conducts on it; lay it out again with layout
   gate <sheet.json> -o <dir> [--json]       every check, the renders, the bill and the link; exits 0 only when nothing blocks
 
 Exit codes: 0 ok, 1 findings that block, 2 invalid input, 3 environment problem (such as no browser)
@@ -39,7 +42,7 @@ or an internal error of the tool.
 `
 
 export type Command = (args: Args, io: Io) => number | Promise<number>
-export const COMMANDS: Record<string, Command> = { parts: partsCommand, part: partCommand, layout: layoutCommand, render: renderCommand, link: linkCommand, bom: bomCommand, verify: verifyCommand, check: checkCommand, explain: explainCommand, gate: gateCommand }
+export const COMMANDS: Record<string, Command> = { parts: partsCommand, part: partCommand, layout: layoutCommand, render: renderCommand, link: linkCommand, bom: bomCommand, netlist: netlistCommand, verify: verifyCommand, check: checkCommand, explain: explainCommand, gate: gateCommand }
 
 type ErrorCode = 'usage' | 'input' | 'blocked' | 'environment' | 'internal'
 const CODE_OF: Record<number, ErrorCode> = { [EXIT.blocked]: 'blocked', [EXIT.input]: 'input', [EXIT.environment]: 'environment' }

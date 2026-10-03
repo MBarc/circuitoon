@@ -30,6 +30,21 @@ export interface RouteRequest {
   /** Grid nodes already used by earlier wires, so this route can take its own lane next to them. */
   occupied?: Occupancy
   /**
+   * Grid nodes used by earlier wires of this wire's bundle (wires between the same two parts, Ruling
+   * W1): a step that runs alongside one of them exactly two grid steps away costs less, so a bus is
+   * drawn as a ribbon of parallel lanes.
+   */
+  bundle?: Occupancy
+  /** Set when the route found lies along an earlier wire or a reserved lead-out run (it could not avoid it). */
+  overlapped?: { hit: boolean }
+  /**
+   * Ends this wire shares with earlier wires (two into one terminal): near one of them it may lie
+   * along an earlier wire, since wires into one terminal meet on its stub anyway.
+   */
+  shared?: Pt[]
+  /** Every pin's lead-out run on the sheet: no other wire lies along one (strict, like `occupied`). */
+  stubs?: Occupancy
+  /**
    * Straight run, in px, a pin end must leave along `fromDir` (or arrive along `toDir`) before its
    * first bend, so a connector drawn there sits on one straight segment (see cables.ts). Ignored
    * for a hole end. Even from a tip off the grid, the jog onto the grid comes after this run.
@@ -50,6 +65,8 @@ export interface RouteOptions {
    * parallel wires keep two grid steps apart where there is room (a cost, never a block).
    */
   adjacentCost?: number
+  /** Cost taken off a step that runs two grid steps beside a wire of its own bundle (see `bundle`). */
+  bundleBonus?: number
 }
 
 /**
@@ -159,8 +176,16 @@ export const CLEARANCE = 4
 
 const H_BIT = 1
 const V_BIT = 2
+/** Default extra cost for a step along a grid line another wire already runs on (see RouteOptions.parallelCost). */
+export const PARALLEL_COST = 40
 /** Default extra cost for running beside another wire one grid step away (see RouteOptions.adjacentCost). */
 export const ADJACENT_COST = 20
+/** Extra cost of a step along an earlier wire (strict routing): a detour up to about this long is preferred. */
+const OVERLAP_COST = 800
+/** Grid cells around an end shared with earlier wires where this wire may lie along them (see RouteRequest.shared). */
+const SHARED_REACH = 3
+/** Default cost taken off a step two grid steps beside a wire of the same bundle (see RouteOptions.bundleBonus). */
+export const BUNDLE_BONUS = 4
 
 /**
  * Nodes farther than this many grid cells from the origin on either axis (about 335 million px at
@@ -481,6 +506,13 @@ function buffers(n: number) {
   return { cost, prev: scratch.prev, closed, heap: scratch.heap }
 }
 
+/** Per-search window layers (lanes, lead-out runs, near shared ends, ribbon), reused and cleared, never reallocated per search. */
+const layers: Uint8Array[] = []
+function layer(i: number, n: number): Uint8Array {
+  if (!layers[i] || layers[i].length < n) layers[i] = new Uint8Array(Math.max(n, (layers[i]?.length ?? 0) * 2))
+  return layers[i].subarray(0, n).fill(0)
+}
+
 /** Column and row step for each heading in DIRS order (right, down, left, up). */
 const STEP_X = [1, 0, -1, 0]
 const STEP_Y = [0, 1, 0, -1]
@@ -489,15 +521,24 @@ export function routeOrthogonal(req: RouteRequest, opts: RouteOptions = {}): Pt[
   const g = opts.grid ?? 10
   const clearance = opts.clearance ?? CLEARANCE
   const bendCost = opts.bendCost ?? 30
-  const parallelCost = opts.parallelCost ?? 40
+  const parallelCost = opts.parallelCost ?? PARALLEL_COST
   const adjacentCost = opts.adjacentCost ?? ADJACENT_COST
+  const bundleBonus = opts.bundleBonus ?? BUNDLE_BONUS
   // A lead-out moves the first grid node the search may bend at out along the pin's axis.
   const ahead = (p: Pt, d: Pt, lead = 0): Pt => ({ x: p.x + d.x * lead, y: p.y + d.y * lead })
   const start = req.fromDir ? leave(ahead(req.from, req.fromDir, req.fromLead), req.fromDir, g) : onGrid(req.from, g)
   const goal = req.toDir ? leave(ahead(req.to, req.toDir, req.toLead), req.toDir, g) : onGrid(req.to, g)
+  // Ruling W1: a route never runs along a grid edge an earlier wire runs along (two wires on top of
+  // each other cannot be traced); only when no route avoids that is one allowed, at a cost.
+  const strict = !!req.occupied?.size || !!req.stubs?.size
   for (const margin of opts.margins ?? MARGINS) {
-    const path = search(start, goal, req, g, clearance, bendCost, parallelCost, adjacentCost, margin)
+    const hit = { hit: false }
+    const found = search(start, goal, req, g, clearance, bendCost, parallelCost, adjacentCost, bundleBonus, margin, strict, hit)
+    // A route along an earlier wire is taken from the first window that finds any route (its cost
+    // already prefers any detour inside it); a wider window would cost far more to search.
+    const path = found
     if (path) {
+      if (req.overlapped) req.overlapped.hit = hit.hit
       // A tip off the grid (a part loaded between grid lines) meets the first and last grid node
       // with a corner, turned so the wire still leaves and enters along the stub.
       const first = path[0]
@@ -526,8 +567,13 @@ function search(
   bendCost: number,
   parallelCost: number,
   adjacentCost: number,
+  bundleBonus: number,
   margin: number,
+  strict = false,
+  overlapped: { hit: boolean } = { hit: false },
 ): Pt[] | null {
+  /** A step along an earlier wire costs as much as a long detour: taken only when none is near. */
+  const overlapCost = OVERLAP_COST
   const x0 = Math.floor((Math.min(start.x, goal.x) - margin) / g) * g
   const y0 = Math.floor((Math.min(start.y, goal.y) - margin) / g) * g
   const x1 = Math.ceil((Math.max(start.x, goal.x) + margin) / g) * g
@@ -586,8 +632,30 @@ function search(
   // Copy the occupancy for this window once, row by row, so the inner loop reads one byte per edge.
   let parallel: Uint8Array | null = null
   if (req.occupied?.size) {
-    parallel = new Uint8Array(cols * rows)
+    parallel = layer(0, cols * rows)
     req.occupied.copyWindow(x0, y0, cols, rows, g, parallel)
+  }
+  // The lanes refused outright (strict): everywhere but near an end shared with earlier wires.
+  const solid = parallel
+  let stubs: Uint8Array | null = null
+  if (strict && req.stubs?.size) {
+    stubs = layer(1, cols * rows)
+    req.stubs.copyWindow(x0, y0, cols, rows, g, stubs)
+  }
+  let near: Uint8Array | null = null
+  if (strict && req.shared?.length) {
+    near = layer(2, cols * rows)
+    for (const p of req.shared) {
+      const pc = Math.round((p.x - x0) / g)
+      const pr = Math.round((p.y - y0) / g)
+      for (let r = Math.max(0, pr - SHARED_REACH); r <= Math.min(rows - 1, pr + SHARED_REACH); r++)
+        for (let c = Math.max(0, pc - SHARED_REACH); c <= Math.min(cols - 1, pc + SHARED_REACH); c++) near[r * cols + c] = 1
+    }
+  }
+  let ribbon: Uint8Array | null = null
+  if (req.bundle?.size && bundleBonus) {
+    ribbon = layer(3, cols * rows)
+    req.bundle.copyWindow(x0, y0, cols, rows, g, ribbon)
   }
 
   const gc = goalCell % cols
@@ -638,18 +706,33 @@ function search(
         }
         continue
       }
+      // Strict: a step with both ends on an earlier wire's line, or on a pin's lead-out run, in the
+      // step's own direction (the two would lie on top of each other) is taken only when nothing else
+      // reaches the goal, but near a shared end: it costs more than any detour the window holds.
       let c = here + g + (nd !== d ? bendCost : 0)
+      if (strict) {
+        const sb = nd & 1 ? V_BIT : H_BIT
+        if (((solid && solid[ncell] & solid[cell] & sb) || (stubs && stubs[ncell] & stubs[cell] & sb)) && !(near && near[ncell])) c += overlapCost
+      }
       if (ncell === goalCell) {
         // Behind a lead-out the wire must arrive along it, or it would double back over it.
         if (endDir >= 0 && nd !== endDir && req.toLead) continue
         if (endDir >= 0 && nd !== endDir) c += bendCost
       } else if (lanes) {
         const lane = parallel!
-        if (lane[ncell] & (nd & 1 ? V_BIT : H_BIT)) c += parallelCost
+        const bit = nd & 1 ? V_BIT : H_BIT
+        if (lane[ncell] & bit) {
+          // Both ends of this step on an earlier wire's line: the two would lie on top of each other.
+          c += parallelCost
+        }
         // Beside a lane: a vertical run in the column left or right, a horizontal one on the row above or below.
         else if (adjacentCost && (nd & 1
           ? (nc > 0 && lane[ncell - 1] & V_BIT) || (nc + 1 < cols && lane[ncell + 1] & V_BIT)
           : (nr > 0 && lane[ncell - cols] & H_BIT) || (nr + 1 < rows && lane[ncell + cols] & H_BIT))) c += adjacentCost
+        // Two steps beside a wire of its own bundle, on the same axis: the next lane of a ribbon.
+        else if (ribbon !== null && (nd & 1
+          ? (nc > 1 && ribbon[ncell - 2] & V_BIT) || (nc + 2 < cols && ribbon[ncell + 2] & V_BIT)
+          : (nr > 1 && ribbon[ncell - 2 * cols] & H_BIT) || (nr + 2 < rows && ribbon[ncell + 2 * cols] & H_BIT))) c -= bundleBonus
       }
       const ns = ncell * 4 + nd
       if (c < cost[ns]) {
@@ -666,5 +749,15 @@ function search(
     const cell = st >> 2
     cells.push({ x: x0 + (cell % cols) * g, y: y0 + Math.floor(cell / cols) * g })
   }
-  return cells.reverse()
+  const path = cells.reverse()
+  if (strict) {
+    // Whether the path took such a step after all.
+    const at = (p: Pt) => ((p.y - y0) / g) * cols + (p.x - x0) / g
+    for (let k = 1; k < path.length && !overlapped.hit; k++) {
+      const [u, v] = [at(path[k - 1]), at(path[k])]
+      const sb = path[k - 1].y === path[k].y ? H_BIT : V_BIT
+      if (((solid && solid[u] & solid[v] & sb) || (stubs && stubs[u] & stubs[v] & sb)) && !(near && near[v])) overlapped.hit = true
+    }
+  }
+  return path
 }

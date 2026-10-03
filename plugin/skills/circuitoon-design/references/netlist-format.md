@@ -49,7 +49,7 @@ Net labels (`"label": true` on a net):
 - A net label is a named flag at a pin. Every label with the same name is one connection, exactly as if wired, so a long or many-ended net (GND, 5V, SDA, SCL) stays readable. Names match after trimming spaces and are case-sensitive: `SDA` and `sda` are two nets.
 - `label` is `true` or `false`; anything else is an error. A net that joins a mains terminal (an outlet contact, a lamp holder, a relay's contacts) never takes a label: mains is always drawn as wires, so the cable checks can see it.
 - Verify counts a connection made through labels like one made by wires; labels are infrastructure, like `routing` wires, never extra parts. The bill of materials leaves them out.
-- The layout draws a labelled net as one label per endpoint (the pins of one repeat copy share one), each joined by a short `routing` stub; an endpoint with no room for its label is wired to the nearest label of the net. `layout --labels auto` (default) also labels long or many-ended nets on its own; `--labels none` turns labels off, even where a net asks.
+- The layout draws a labelled net as one label per endpoint (the pins of one repeat copy share one), each joined by a short `routing` stub; an endpoint with no room for its label is wired to the nearest label of the net. Sheets are drawn with wires by default (`layout --labels none`), so ask for labels only on the nets the user wants them on; `--labels auto` also labels long or many-ended nets on its own, and `--labels all` every net.
 
 The `wires` settings:
 
@@ -77,6 +77,8 @@ The `wires` settings:
   - a free strip or rail of a breadboard or rail strip in the netlist, which the layout claims for it (ground takes a `-` rail, power takes a `+` rail, a signal takes a column strip).
 
   With none of these, the layout stops with "needs a distribution point: net X".
+- A breadboard in the netlist that is on no net and has nothing mounted on it is spare: when a signal net needs a strip, the layout places the first spare board beside the microcontroller as a hub, turned so its strips are rows, and claims strips there first. Every other part with no connection at all (spare boards too) is parked in a "Not yet wired" frame below the wired parts, and the layout never claims a strip on a parked board.
+- A pin far from every strip of its net, with a free strip much nearer, gets that strip, joined to the net by one trunk jumper.
 - Pins that a part joins inside itself count as one node. That node takes as many wires as its pins together. Examples: the ESP32's GND pins (`GND`, `GND 2`, `GND 3`), and the IP5306's B- and 5V-.
   - Listing more of them in the net (`"U1.GND", "U1.GND 2"`) gives the node more wire ends, so a net of three can chain through the part with no strip: one wire into `U1.GND`, the next out of `U1.GND 2`.
   - When a net has no strip and none can be claimed, the layout also counts the joined pins you did not list, as long as they are on no other net, not in `nc` and not plugged into a board. So `U1.GND` with two sensor grounds lays out with one wire on `U1.GND 2`. Verify treats those pins as part of the net.

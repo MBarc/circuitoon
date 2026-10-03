@@ -7,7 +7,7 @@
 // must verify clean against its own intent before it is returned, so a kept part that shorts two
 // nets through a strip is caught here. Wires are coloured by role (colors.ts). The sheet embeds its modules and stores the netlist as
 // `intent`, so every later check re-verifies against it. Pure.
-import { DIAGRAM_FORMAT, type Diagram, type PartInstance, computeRoutes, moduleOf, resolveEndpoint } from '../format/diagram.ts'
+import { DIAGRAM_FORMAT, type Connection, type Diagram, type PartInstance, computeRoutes, moduleOf, resolveEndpoint } from '../format/diagram.ts'
 import { ROUTE_REACH, withinReach } from '../format/router.ts'
 import { tightFootprint, union } from './footprint.ts'
 import { type Intent, type ModuleLookup, parseNetlist } from './netlist.ts'
@@ -40,7 +40,8 @@ export interface LayoutOutput {
 export type LayoutResult = { ok: true; value: LayoutOutput } | { ok: false; stage: 'input' | 'layout'; errors: string[] }
 
 export function layoutNetlist(raw: unknown, opts: { library?: ModuleLookup; keep?: KeepMap; labels?: LabelMode } = {}): LayoutResult {
-  const mode = opts.labels ?? 'auto'
+  // Wires are the default (Ruling W1): only nets that ask (`"label": true`) get labels.
+  const mode = opts.labels ?? 'none'
   const library = opts.library ?? libraryLookup
   const parsed = parseNetlist(raw, library)
   if (!parsed.ok) return { ok: false, stage: 'input', errors: parsed.errors }
@@ -72,7 +73,7 @@ export function layoutNetlist(raw: unknown, opts: { library?: ModuleLookup; keep
     if (over.body.length || captions.length)
       return { ok: false, stage: 'layout', errors: [...over.body.map((o) => `body overlap: ${o}; move one of them`), ...captions.map((o) => `caption overlap: ${o}; move one of them`)] }
     const labelModule = library(LABEL_MODULE)
-    const real = realize(intent, base, placed.locals, { labels: mode, labelModule })
+    const real = realize(intent, base, placed.locals, { labels: mode, labelModule, hubs: placed.hubs, parked: placed.parked })
     if (!real.ok) {
       if (!rails) continue
       return { ok: false, stage: 'layout', errors: real.errors }
@@ -85,7 +86,7 @@ export function layoutNetlist(raw: unknown, opts: { library?: ModuleLookup; keep
       : {}
     const wired: Diagram = { ...base, ...labelled, connections: real.value.connections }
     // Colours by the checker's net roles, so the sheet never breaks the colour convention it checks.
-    const diagram: Diagram = { ...wired, connections: colorByRole(intent, wired, real.value.netOfWire) }
+    const diagram: Diagram = { ...wired, connections: bundled(wired, colorByRole(intent, wired, real.value.netOfWire)) }
     const routes = computeRoutes(diagram)
     const stuck = diagram.connections.filter((c) => routes.get(c.uid)?.blocked)
     blocked = [...new Set(stuck.map((c) => real.value.netOfWire.get(c.uid)!))].sort(naturalCompare)
@@ -111,4 +112,32 @@ export function layoutNetlist(raw: unknown, opts: { library?: ModuleLookup; keep
     return { ok: true, value: { diagram, report, intent, attempts: i + 1, netOfWire: real.value.netOfWire } }
   }
   return { ok: false, stage: 'layout', errors: [`routes blocked after ${SPACINGS.length} placements with more spacing each time: ${blocked.join(', ')}`] }
+}
+
+/**
+ * The wires in routing order (Ruling W1): bundle by bundle (wires between the same two parts, a
+ * mounted part counting as its board), the largest bundle first, so each bus is routed while its
+ * room is free and its lanes form one ribbon; inside a bundle in the order their ends sit along the
+ * first part (top to bottom, then left to right), so neighbouring lanes never cross. Ties keep the
+ * realized order. Wire uids are unchanged.
+ */
+function bundled(d: Diagram, connections: Connection[]): Connection[] {
+  const unit = new Map(d.parts.map((p) => [p.uid, p.mount?.board ?? p.uid]))
+  const keyOf = (c: Connection) => [unit.get(c.from.part) ?? c.from.part, unit.get(c.to.part) ?? c.to.part].sort(naturalCompare)
+  const size = new Map<string, number>()
+  const first = new Map<string, number>()
+  connections.forEach((c, i) => {
+    const k = JSON.stringify(keyOf(c))
+    size.set(k, (size.get(k) ?? 0) + 1)
+    if (!first.has(k)) first.set(k, i)
+  })
+  const at = (c: Connection) => {
+    const [lead] = keyOf(c)
+    const e = (unit.get(c.from.part) ?? c.from.part) === lead ? c.from : c.to
+    return resolveEndpoint(d, e)?.end ?? { x: 0, y: 0 }
+  }
+  return connections
+    .map((c, i) => ({ c, i, k: JSON.stringify(keyOf(c)), p: at(c) }))
+    .sort((a, b) => size.get(b.k)! - size.get(a.k)! || first.get(a.k)! - first.get(b.k)! || a.p.y - b.p.y || a.p.x - b.p.x || a.i - b.i)
+    .map((x) => x.c)
 }

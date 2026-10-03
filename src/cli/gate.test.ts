@@ -8,7 +8,8 @@ import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFi
 import { join } from 'node:path'
 import { NO_INTENT } from '../agent/verify.ts'
 import { VALUE_DROPPED, validateDiagram, wirePaths } from '../format/diagram.ts'
-import { worldHoles } from '../format/geometry.ts'
+import { bodyRect, worldHoles } from '../format/geometry.ts'
+import { plugsOf } from '../format/breadboard.ts'
 import { exportFileName } from '../editor/files.ts'
 import { cli, tempDir } from './cliHarness.testing.ts'
 import { loadSchema, schemaErrors } from './jsonSchema.testing.ts'
@@ -17,6 +18,9 @@ import { EXIT, type Io } from './io.ts'
 import { runGate } from './gate.ts'
 import { bomCsv } from '../format/bom.ts'
 import { bomQuantities } from '../agent/tables.ts'
+import { READABILITY_RULES } from '../agent/readabilityWarnings.ts'
+import { captionBox } from '../render/captionBox.ts'
+import { layoutModule } from '../format/module.ts'
 import { ledNetlist, tiltSensors } from '../agent/fixtures.testing.ts'
 
 const browser = findBrowser(process.env)
@@ -131,7 +135,7 @@ describe('circuitoon gate', () => {
     expect(r.out).toContain('GATE INCOMPLETE')
     expect(r.err).toContain('No Chrome or Edge found')
     const g = gateJson(dir)
-    expect(g.format).toBe('circuitoon-cli/gate/2')
+    expect(g.format).toBe('circuitoon-cli/gate/3')
     expect(schemaErrors(loadSchema('gate'), g)).toEqual([])
     expect(g.ok).toBe(false)
     expect(g.blocking).toEqual([])
@@ -280,10 +284,16 @@ describe('circuitoon gate', () => {
       const v = validateDiagram(s)
       if (!v.ok) throw new Error(v.errors.join('; '))
       const bb = v.diagram.parts.find((p) => p.uid === 'BB1')!
-      const far = worldHoles(bb, v.diagram.modules[bb.module]).find((g) => g.name === 'c3-top')!.at[0]
-      const w = s.connections.find((c) => (c.from as { part: string }).part === 'BT1')!
-      w.route = [[far.x, far.y]]
-      if (busy) s.connections.push({ uid: 'x', from: { part: 'BB1', pin: 'c3-top', hole: 0 }, to: { part: 'BB1', pin: 'c3-top', hole: 4 }, routing: true })
+      const w = s.connections.find((c) => (c.from as { part: string; pin: string }).part === 'BT1' && (c.from as { pin: string }).pin === '+')!
+      // A strip no wire and no leg uses (never the one the wire itself ends in).
+      const taken = new Set([...v.diagram.connections.flatMap((c) => [c.from.pin, c.to.pin]), ...plugsOf(v.diagram).map((pl) => pl.group)])
+      const strip = ['c3-top', 'c9-top', 'c25-top'].find((g) => !taken.has(g))!
+      const far = worldHoles(bb, v.diagram.modules[bb.module]).find((g) => g.name === strip)!.at[0]
+      // Down through that strip's hole 0, along its row past the board's first column, up beside the
+      // rails and in along its own + rail to its hole.
+      const end = worldHoles(bb, v.diagram.modules[bb.module]).find((g) => g.name === (w.to as { pin: string }).pin)!.at[(w.to as { hole?: number }).hole ?? 0]
+      w.route = [[far.x, far.y], [end.x - 20, far.y], [end.x - 20, end.y]]
+      if (busy) s.connections.push({ uid: 'x', from: { part: 'BB1', pin: strip, hole: 0 }, to: { part: 'BB1', pin: strip, hole: 4 }, routing: true })
     })
     return runGate(readFileSync(join(dir, 'sheet.json')), { sheetPath: 'sheet.json', outDir: join(dir, 'out'), io: quietIo(dir) })
   }
@@ -293,8 +303,13 @@ describe('circuitoon gate', () => {
     expect(code).toBe(EXIT.environment)
     const over = report.warnings.filter((f) => f.rule === 'wire-over-holes')
     expect(over).toHaveLength(1)
-    expect(over[0].message).toMatch(/^The wire BT1 \+ to BB1 c\d+-top hole \d runs over breadboard holes/)
+    expect(over[0].message).toMatch(/^The wire BT1 \+ to BB1 \S+ hole \d+ runs over breadboard holes/)
     expect(over[0].wires).toHaveLength(1)
+  })
+  it('is not ready with a wire drawn over breadboard holes in use (wire-over-holes counts)', async () => {
+    const { report } = await overC3(true)
+    expect(report.warnings.some((w) => w.rule === 'wire-over-holes')).toBe(true)
+    expect(report.ready).toBe(false)
   })
   it('does not warn about a wire drawn over empty breadboard holes (Ruling C1)', async () => {
     const { report } = await overC3(false)
@@ -408,5 +423,56 @@ describe('circuitoon gate', () => {
     expect((await cli(['gate', 'missing.json', '-o', 'out'], { cwd: dir })).code).toBe(2)
     expect((await cli(['gate', 'missing.json'], { cwd: dir })).code).toBe(2)
     expect(existsSync(join(dir, 'out'))).toBe(false)
+  })
+})
+
+describe('gate readiness (Ruling W1)', () => {
+  const fakePng = (_svg: unknown, _scale: number, out: string) => {
+    writeFileSync(out, 'png')
+    return { ok: true as const, width: 1, height: 1 }
+  }
+  /** The laid-out LED sheet with the battery moved so its body sits on R1's caption. */
+  const overCaption = async () => {
+    const dir = await laidOut()
+    edit(dir, (s) => {
+      const v = validateDiagram(s)
+      if (!v.ok) throw new Error(v.errors.join('; '))
+      const r1 = v.diagram.parts.find((p) => p.uid === 'R1')!
+      const bt = v.diagram.parts.find((p) => p.uid === 'BT1')!
+      const cap = captionBox(r1, v.diagram.modules[r1.module])
+      const body = bodyRect(bt, layoutModule(v.diagram.modules[bt.module]))
+      const raw = s.parts.find((p) => p.uid === 'BT1')!
+      raw.x = Math.round((bt.x + cap.x + cap.w / 2 - (body.x + body.w / 2)) / 10) * 10
+      raw.y = Math.round((bt.y + cap.y + cap.h + 40 - (body.y + body.h / 2)) / 10) * 10
+    })
+    return dir
+  }
+  it('is ready when the gate passes with no readability warnings', async () => {
+    const example = JSON.parse(readFileSync(join(import.meta.dirname, '..', '..', 'plugin', 'skills', 'circuitoon-design', 'references', 'examples', 'esp32-bme280.netlist.json'), 'utf8'))
+    const dir = await laidOut(example)
+    const { code, report } = await runGate(readFileSync(join(dir, 'sheet.json')), { sheetPath: 'sheet.json', outDir: join(dir, 'out'), io: quietIo(dir), png: fakePng })
+    expect(code).toBe(EXIT.ok)
+    expect(report.format).toBe('circuitoon-cli/gate/3')
+    expect(report.ready).toBe(true)
+    expect(schemaErrors(loadSchema('gate'), report)).toEqual([])
+  })
+  it('is not ready while a readability warning remains, though it still exits 0', async () => {
+    const dir = await overCaption()
+    const { code, report } = await runGate(readFileSync(join(dir, 'sheet.json')), { sheetPath: 'sheet.json', outDir: join(dir, 'out'), io: quietIo(dir), png: fakePng })
+    expect(report.blocking).toEqual([])
+    expect(code).toBe(EXIT.ok)
+    expect(report.ok).toBe(true)
+    expect(report.ready).toBe(false)
+    expect(report.warnings.some((w) => w.rule === 'label-covered')).toBe(true)
+    expect(schemaErrors(loadSchema('gate'), report)).toEqual([])
+  })
+  it('says NOT READY on the first line of the summary, with the count of readability warnings', async () => {
+    const dir = await overCaption()
+    const r = await cli(['gate', 'sheet.json', '-o', 'out'], { cwd: dir, env: noBrowser(dir) })
+    const g = gateJson(dir)
+    const n = g.warnings.filter((w: { rule: string }) => (READABILITY_RULES as readonly string[]).includes(w.rule)).length
+    expect(n).toBeGreaterThan(0)
+    expect(g.ready).toBe(false)
+    expect(r.out.split('\n')[0]).toBe(`NOT READY: ${n} readability warning${n === 1 ? '' : 's'}`)
   })
 })

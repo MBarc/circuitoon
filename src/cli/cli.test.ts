@@ -108,8 +108,8 @@ describe('circuitoon layout', () => {
       nets: [{ name: '3V3', pins: ['U1.3V3', 'U2.VIN', 'U3.VIN'] }],
     }
     writeFileSync(join(dir, 'crowded.json'), JSON.stringify(crowded))
-    // Drawn with labels (the default), three header pins need no distribution point; without them they do.
-    const labelled = JSON.parse((await cli(['layout', 'crowded.json', '-o', 'out.json', '--json'], { cwd: dir })).out)
+    // Drawn with labels (--labels auto), three header pins need no distribution point; with wires (the default) they do.
+    const labelled = JSON.parse((await cli(['layout', 'crowded.json', '-o', 'out.json', '--json', '--labels', 'auto'], { cwd: dir })).out)
     expect(labelled.ok).toBe(true)
     expect(labelled.report.labels).toEqual({ mode: 'auto', nets: ['3V3'], unplaced: [] })
     expect(schemaErrors(loadSchema('layout'), labelled)).toEqual([])

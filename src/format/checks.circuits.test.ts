@@ -730,6 +730,12 @@ describe('pin capabilities and I2C on the built-in parts', () => {
     const grounded = kinds(v1([p2, p3], [...w2, ...w3, ...each((a) => `u3|${a}`), ...each(() => 'u1|GND')]))
     expect(grounded.filter((k) => k.includes('address'))).toEqual(['error i2c-address-clash'])
   })
+  it("an address pin on the chip's own VCC net is high; one wired only to a connector comes from another sheet (not floating)", () => {
+    const [p2, w2] = mcp('u2', 400, [['u2|A0', 'u1|3V3'], ['u2|A1', 'u1|GND']])
+    const [p3, w3] = mcp('u3', 600, [['u3|A0', 'u3|VDD'], ['u3|A1', 'u1|GND'], ['u3|A2', 'j1|1']])
+    const d = v1([p2, p3, at('j1', 'J1', 'jst-xh-2', 800)], [...w2, ...w3, ['u2|A2', 'u1|GND']])
+    expect(kinds(d).filter((k) => k.includes('address'))).toEqual([])
+  })
   it('a key matrix through GPA7 (GPA7 -> switch -> GPA0) is not a read of GPA7', () => {
     const d = sheet([at('u1', 'U1', 'mcp23017-dip28'), at('s1', 'S1', 'push-button', 300)], [['u1|GPA7', 's1|1'], ['s1|2', 'u1|GPA0']])
     expect(kinds(d)).toEqual([])

@@ -88,6 +88,8 @@ describe('the bill with net labels (rule V3)', () => {
     expect(on.ends).toBe(2 * on.jumpers)
     expect(off.ends).toBe(2 * off.jumpers)
     expect(off.jumpers - on.jumpers).toBeGreaterThan(0)
-    expect(off.jumpers - on.jumpers).toBeLessThanOrEqual(2 * off.viaStrips)
+    // A hub breadboard (Ruling W1) gives each of its nets a row per wire on its busier side, joined
+    // across the channel and from row to row by short jumpers: up to four per net there.
+    expect(off.jumpers - on.jumpers).toBeLessThanOrEqual(4 * off.viaStrips)
   }, 120_000)
 })
