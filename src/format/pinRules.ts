@@ -54,7 +54,10 @@ export interface PinDraft {
   causes: string[]
 }
 
-const key = (part: string, pin: string) => JSON.stringify([part, pin])
+/** A part's pin as one map key (map lookups only). */
+const key = (part: string, pin: string) => `${part}\u0000${pin}`
+/** A pin as it appears in a finding's causes (the checker's node key form). */
+const causeKey = (part: string, pin: string) => JSON.stringify([part, pin])
 export const endName = (e: PinEnd): string => `${e.part.designator} ${e.label}`
 const endPin = (e: PinEnd) => ({ part: e.part.id, pin: e.pin })
 /** Names as a list, the first three and a count of the rest when there are more than four. */
@@ -94,13 +97,15 @@ export function pinEnd(part: PinPart, pin: string): PinEnd | null {
  * pin data costs almost nothing.
  */
 export function lazyPinModel(parts: PinPart[], count: number, keysOf: (i: number) => [string, string][], netOf: PinModel['netOf']): PinModel {
-  const byId = new Map(parts.map((p) => [p.id, p]))
+  let byId: Map<string, PinPart> | undefined
   const built = new Map<number, PinEnd[]>()
   const net = (i: number) => {
     let ends = built.get(i)
     if (!ends) {
+      pinWork.nets++
+      byId ??= new Map(parts.map((p) => [p.id, p]))
       ends = keysOf(i).flatMap(([id, pin]) => {
-        const part = byId.get(id)
+        const part = byId!.get(id)
         const e = part && pinEnd(part, pin)
         return e ? [e] : []
       })
@@ -116,6 +121,20 @@ export function buildPinModel(parts: PinPart[], nets: [string, string][][]): Pin
   const index = new Map<string, number>()
   nets.forEach((list, i) => { for (const [id, pin] of list) index.set(key(id, pin), i) })
   return lazyPinModel(parts, nets.length, (i) => nets[i], (part, pin) => index.get(key(part, pin)))
+}
+
+/**
+ * How much pin-rule work ran, for the tests that prove a sheet without pin data costs nothing:
+ * `passes` counts rule passes that had a part to look at, `nets` the nets built for them.
+ */
+export const pinWork = { passes: 0, nets: 0 }
+
+/** Whether a module gives the pin rules anything to read: a pin with caps, or I2C data. Cached. */
+const dataCache = new WeakMap<ModuleDef, boolean>()
+export function hasPinData(m: ModuleDef): boolean {
+  let has = dataCache.get(m)
+  if (has === undefined) dataCache.set(m, (has = cappedPins(m).length > 0 || i2cOf(m) !== null))
+  return has
 }
 
 /** The pins and pads of a module that carry caps, cached per module. */
@@ -254,9 +273,9 @@ export interface I2cBus {
 }
 
 /** Every I2C bus: a pair of SDA and SCL nets that a declared I2C device sits on. In part order. */
-export function i2cBuses(pm: PinModel): I2cBus[] {
+export function i2cBuses(pm: PinModel, parts: PinPart[] = pm.parts): I2cBus[] {
   const buses = new Map<string, I2cBus>()
-  for (const part of pm.parts) {
+  for (const part of parts) {
     const spec = i2cOf(part.module)
     if (!spec) continue
     const sda = pm.netOf(part.id, spec.sda)
@@ -362,13 +381,19 @@ function summarize(net: PinEnd[]): NetSummary {
 /** Every pin-rule finding on the model. */
 export function pinFindings(pm: PinModel): PinDraft[] {
   const out: PinDraft[] = []
+  // Only parts with pin data start any work; only the nets their capped pins and I2C pins sit on
+  // (and the far side of a resistor or switch on those) are ever built.
+  const active = pm.parts.filter((p) => hasPinData(p.module))
+  if (!active.length) return out
+  pinWork.passes++
+  const flashNets = new Set<number>()
   const summaries = new Map<number, NetSummary>()
   const summary = (i: number) => {
     let s = summaries.get(i)
     if (!s) summaries.set(i, (s = summarize(pm.net(i))))
     return s
   }
-  for (const part of pm.parts) {
+  for (const part of active) {
     for (const name of cappedPins(part.module)) {
       const i = pm.netOf(part.id, name)
       if (i === undefined) continue
@@ -377,11 +402,23 @@ export function pinFindings(pm: PinModel): PinDraft[] {
       const c = p?.caps
       if (!p || !c) continue
       const note = c.note ? ` (${c.note.replace(/\.$/, '')})` : ''
-      const cause = key(p.part.id, p.pin)
+      const cause = causeKey(p.part.id, p.pin)
       const base = { subject: p.part.designator, target: endName(p), nets: [i] }
       const notMine = (e: PinEnd) => e.part !== p.part
 
       if (c.flash && (s.parts.size > 1 || !s.parts.has(p.part))) {
+        // One finding per net: several boards' flash pins on one net are one mistake, said once.
+        if (flashNets.has(i)) continue
+        flashNets.add(i)
+        const flash = pm.net(i).filter((e) => e.caps?.flash)
+        const boards = new Set(flash.map((e) => e.part))
+        if (boards.size > 1) {
+          const others = pm.net(i).filter((e) => !boards.has(e.part))
+          out.push({ ...base, rule: 'pin-flash',
+            message: `${fewEnds(flash)} are flash pins${note}, wired together${others.length ? ` and to ${fewEnds(others)}` : ''}, and nothing may be wired to a flash pin. The boards will not run like this. Move every wire off them to free GPIOs.`,
+            parts: [...boards].map((x) => x.id).concat(others.map((e) => e.part.id)), pins: [...flash, ...others].map(endPin), causes: flash.map((e) => causeKey(e.part.id, e.pin)) })
+          continue
+        }
         const elsewhere = pm.net(i).filter(notMine)
         const n = elsewhere.length
         out.push({ ...base, rule: 'pin-flash',
@@ -423,7 +460,7 @@ export function pinFindings(pm: PinModel): PinDraft[] {
             const sw = sw0.part.designator
             out.push({ ...base, rule: 'pin-no-pullup',
               message: `${endName(p)} has no internal pull-up or pull-down, and ${sw} switches it to ${to} with no resistor to hold it ${hold} while ${sw} is open: the input floats and reads noise. Add ${fix}, or read ${sw} on a GPIO with an internal pull-up${suggest(pm, p.part)}.`,
-              parts: [p.part.id, sw0.part.id], pins: [endPin(p), endPin(sw0)], causes: [cause, key(sw0.part.id, sw0.pin)] })
+              parts: [p.part.id, sw0.part.id], pins: [endPin(p), endPin(sw0)], causes: [cause, causeKey(sw0.part.id, sw0.pin)] })
           }
         }
       }
@@ -460,7 +497,7 @@ export function pinFindings(pm: PinModel): PinDraft[] {
     }
   }
 
-  for (const bus of i2cBuses(pm)) out.push(...busFindings(pm, bus))
+  for (const bus of i2cBuses(pm, active)) out.push(...busFindings(pm, bus))
   return out
 }
 

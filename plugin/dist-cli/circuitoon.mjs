@@ -43938,7 +43938,10 @@ function naturalCompare(a, b) {
 }
 //#endregion
 //#region src/format/pinRules.ts
-var key = (part, pin) => JSON.stringify([part, pin]);
+/** A part's pin as one map key (map lookups only). */
+var key = (part, pin) => `${part}\u0000${pin}`;
+/** A pin as it appears in a finding's causes (the checker's node key form). */
+var causeKey = (part, pin) => JSON.stringify([part, pin]);
 var endName = (e) => `${e.part.designator} ${e.label}`;
 var endPin = (e) => ({
 	part: e.part.id,
@@ -43983,11 +43986,13 @@ function pinEnd(part, pin) {
 * pin data costs almost nothing.
 */
 function lazyPinModel(parts, count, keysOf, netOf) {
-	const byId = new Map(parts.map((p) => [p.id, p]));
+	let byId;
 	const built = /* @__PURE__ */ new Map();
 	const net = (i) => {
 		let ends = built.get(i);
 		if (!ends) {
+			pinWork.nets++;
+			byId ??= new Map(parts.map((p) => [p.id, p]));
 			ends = keysOf(i).flatMap(([id, pin]) => {
 				const part = byId.get(id);
 				const e = part && pinEnd(part, pin);
@@ -44011,6 +44016,21 @@ function buildPinModel(parts, nets) {
 		for (const [id, pin] of list) index.set(key(id, pin), i);
 	});
 	return lazyPinModel(parts, nets.length, (i) => nets[i], (part, pin) => index.get(key(part, pin)));
+}
+/**
+* How much pin-rule work ran, for the tests that prove a sheet without pin data costs nothing:
+* `passes` counts rule passes that had a part to look at, `nets` the nets built for them.
+*/
+var pinWork = {
+	passes: 0,
+	nets: 0
+};
+/** Whether a module gives the pin rules anything to read: a pin with caps, or I2C data. Cached. */
+var dataCache = /* @__PURE__ */ new WeakMap();
+function hasPinData(m) {
+	let has = dataCache.get(m);
+	if (has === void 0) dataCache.set(m, has = cappedPins(m).length > 0 || i2cOf(m) !== null);
+	return has;
 }
 /** The pins and pads of a module that carry caps, cached per module. */
 var cappedCache = /* @__PURE__ */ new WeakMap();
@@ -44130,9 +44150,9 @@ function pinDoes(e) {
 	return e.caps?.note ? `${text}. ${e.caps.note}` : text;
 }
 /** Every I2C bus: a pair of SDA and SCL nets that a declared I2C device sits on. In part order. */
-function i2cBuses(pm) {
+function i2cBuses(pm, parts = pm.parts) {
 	const buses = /* @__PURE__ */ new Map();
-	for (const part of pm.parts) {
+	for (const part of parts) {
 		const spec = i2cOf(part.module);
 		if (!spec) continue;
 		const sda = pm.netOf(part.id, spec.sda);
@@ -44240,13 +44260,17 @@ function summarize(net) {
 /** Every pin-rule finding on the model. */
 function pinFindings(pm) {
 	const out = [];
+	const active = pm.parts.filter((p) => hasPinData(p.module));
+	if (!active.length) return out;
+	pinWork.passes++;
+	const flashNets = /* @__PURE__ */ new Set();
 	const summaries = /* @__PURE__ */ new Map();
 	const summary = (i) => {
 		let s = summaries.get(i);
 		if (!s) summaries.set(i, s = summarize(pm.net(i)));
 		return s;
 	};
-	for (const part of pm.parts) for (const name of cappedPins(part.module)) {
+	for (const part of active) for (const name of cappedPins(part.module)) {
 		const i = pm.netOf(part.id, name);
 		if (i === void 0) continue;
 		const s = summary(i);
@@ -44254,7 +44278,7 @@ function pinFindings(pm) {
 		const c = p?.caps;
 		if (!p || !c) continue;
 		const note = c.note ? ` (${c.note.replace(/\.$/, "")})` : "";
-		const cause = key(p.part.id, p.pin);
+		const cause = causeKey(p.part.id, p.pin);
 		const base = {
 			subject: p.part.designator,
 			target: endName(p),
@@ -44262,6 +44286,22 @@ function pinFindings(pm) {
 		};
 		const notMine = (e) => e.part !== p.part;
 		if (c.flash && (s.parts.size > 1 || !s.parts.has(p.part))) {
+			if (flashNets.has(i)) continue;
+			flashNets.add(i);
+			const flash = pm.net(i).filter((e) => e.caps?.flash);
+			const boards = new Set(flash.map((e) => e.part));
+			if (boards.size > 1) {
+				const others = pm.net(i).filter((e) => !boards.has(e.part));
+				out.push({
+					...base,
+					rule: "pin-flash",
+					message: `${fewEnds(flash)} are flash pins${note}, wired together${others.length ? ` and to ${fewEnds(others)}` : ""}, and nothing may be wired to a flash pin. The boards will not run like this. Move every wire off them to free GPIOs.`,
+					parts: [...boards].map((x) => x.id).concat(others.map((e) => e.part.id)),
+					pins: [...flash, ...others].map(endPin),
+					causes: flash.map((e) => causeKey(e.part.id, e.pin))
+				});
+				continue;
+			}
 			const elsewhere = pm.net(i).filter(notMine);
 			const n = elsewhere.length;
 			out.push({
@@ -44323,7 +44363,7 @@ function pinFindings(pm) {
 						message: `${endName(p)} has no internal pull-up or pull-down, and ${sw} switches it to ${to} with no resistor to hold it ${hold} while ${sw} is open: the input floats and reads noise. Add ${fix}, or read ${sw} on a GPIO with an internal pull-up${suggest(pm, p.part)}.`,
 						parts: [p.part.id, sw0.part.id],
 						pins: [endPin(p), endPin(sw0)],
-						causes: [cause, key(sw0.part.id, sw0.pin)]
+						causes: [cause, causeKey(sw0.part.id, sw0.pin)]
 					});
 				}
 			}
@@ -44372,7 +44412,7 @@ function pinFindings(pm) {
 			}
 		}
 	}
-	for (const bus of i2cBuses(pm)) out.push(...busFindings(pm, bus));
+	for (const bus of i2cBuses(pm, active)) out.push(...busFindings(pm, bus));
 	return out;
 }
 /** The pin to name a bus line by: the controller's pin (an MCU), else the first device's. */
@@ -49379,7 +49419,10 @@ function checkDiagram(d) {
 		});
 	}
 	for (const f of mains?.findings ?? []) add(f);
-	const pm = lazyPinModel(d.parts.flatMap((p) => {
+	const pinFound = !d.parts.some((p) => {
+		const m = moduleOf(d, p.module);
+		return !!m && hasPinData(m);
+	}) ? [] : pinFindings(lazyPinModel(d.parts.flatMap((p) => {
 		const m = moduleOf(d, p.module);
 		return m ? [{
 			id: p.uid,
@@ -49387,8 +49430,8 @@ function checkDiagram(d) {
 			module: m,
 			settings: p.settings
 		}] : [];
-	}), nl.nets.length, (i) => nl.nets[i].some(hazardous) ? [] : nl.nets[i].map((k) => JSON.parse(k)), (part, pin) => nl.netOf.get(nodeKey(part, pin)));
-	for (const f of pinFindings(pm)) add({
+	}), nl.nets.length, (i) => netTerms[i].map((t) => [t.part.uid, t.name]), (part, pin) => nl.netOf.get(nodeKey(part, pin))));
+	for (const f of pinFound) add({
 		rule: f.rule,
 		subject: f.subject,
 		target: f.target,

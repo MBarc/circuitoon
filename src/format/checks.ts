@@ -14,7 +14,7 @@ import { type Netlist, conductors, netlist, nodeKey } from './netlist.ts'
 import { partValue, primaryParam } from './values.ts'
 import { andList, natural, orList } from './words.ts'
 import { type MainsAnalysis, analyseMainsCached } from './mains.ts'
-import { type PinRuleId, lazyPinModel, pinFindings } from './pinRules.ts'
+import { type PinRuleId, hasPinData, lazyPinModel, pinFindings } from './pinRules.ts'
 import { unknownFeedWords } from './mainsRules.ts'
 
 /** `info` is a note, not a problem: it never blocks and never counts as one. */
@@ -925,9 +925,12 @@ export function checkDiagram(d: Diagram): Finding[] {
 
   // Pin capabilities (input only, output only, flash, strapping, no pull-up) and I2C buses
   // (pull-ups, addresses), from the caps and I2C data the modules declare. Mains nets never enter.
-  const pinParts = d.parts.flatMap((p) => { const m = moduleOf(d, p.module); return m ? [{ id: p.uid, designator: p.designator, module: m, settings: p.settings }] : [] })
-  const pm = lazyPinModel(pinParts, nl.nets.length, (i) => (nl.nets[i].some(hazardous) ? [] : nl.nets[i].map((k) => JSON.parse(k) as [string, string])), (part, pin) => nl.netOf.get(nodeKey(part, pin)))
-  for (const f of pinFindings(pm))
+  // A sheet with no capped pin and no I2C device skips the pass altogether.
+  const pinFound = !d.parts.some((p) => { const m = moduleOf(d, p.module); return !!m && hasPinData(m) }) ? [] : pinFindings(lazyPinModel(
+    d.parts.flatMap((p) => { const m = moduleOf(d, p.module); return m ? [{ id: p.uid, designator: p.designator, module: m, settings: p.settings }] : [] }),
+    // The checker's own terminals per net (mains nets already left out), not the node keys parsed again.
+    nl.nets.length, (i) => netTerms[i].map((t): [string, string] => [t.part.uid, t.name]), (part, pin) => nl.netOf.get(nodeKey(part, pin))))
+  for (const f of pinFound)
     add({ rule: f.rule, subject: f.subject, target: f.target, message: f.message, parts: f.parts.filter((u) => partByUid.has(u)), pins: f.pins, wires: [...new Set(f.nets.flatMap((i) => netWires[i] ?? []))], causes: f.causes })
 
   // Net labels: a label needs a name, a name needs a second label to join, and a label never stands

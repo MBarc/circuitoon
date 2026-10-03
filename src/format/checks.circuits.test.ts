@@ -4,6 +4,7 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { RULES, checkDiagram } from './checks.ts'
+import { pinWork } from './pinRules.ts'
 import type { Connection, Diagram, PartInstance } from './diagram.ts'
 import { type ModuleDef, externalPower, validateModule } from './module.ts'
 import { load } from './builtinModules.testing.ts'
@@ -753,6 +754,26 @@ describe('pin capabilities and I2C on the built-in parts', () => {
   it('a download-only strapping pin (D2) says it matters only when flashing, not that the board fails to boot', () => {
     const [m] = checkDiagram(v1([at('r1', 'R1', 'resistor', 400)], [['r1|1', 'u1|D2'], ['r1|2', 'u1|3V3']])).filter((f) => f.rule === 'pin-strapping')
     expect(m.message).toBe('U1 D2 is a strapping pin that only matters when flashing over serial (GPIO2 high at reset makes uploads over USB fail; a normal boot is unaffected), but R1 pulls it up to the supply, so uploads can fail. Move that circuit to a GPIO that is not a strapping pin, such as D32, or make sure it is low while you upload.')
+  })
+})
+
+describe('pin rules cost nothing where there is nothing to check', () => {
+  it('a sheet with no capped pin and no I2C device runs no pin-rule pass and builds no net for it', () => {
+    // Batteries, resistors, LEDs and a Pico: no caps, no I2C data anywhere.
+    const parts = [at('u1', 'U1', 'rpi-pico'), at('bt1', 'BT1', 'battery-holder-2xaa', 300), at('r1', 'R1', 'resistor', 600), at('d1', 'D1', 'led', 900)]
+    const d = sheet(parts, [['bt1|+', 'r1|1'], ['r1|2', 'd1|A'], ['d1|K', 'bt1|-'], ['u1|GP2', 'r1|1']])
+    const before = { ...pinWork }
+    checkDiagram(d)
+    expect(pinWork).toEqual(before)
+  })
+  it('on a sheet with an ESP32, only the nets of its capped pins (and what hangs off them) are built', () => {
+    // D12 has a pull-up (capped, two nets: D12's and R1's far side, 3V3); D13 and D14 are free GPIOs on their own nets.
+    const d = sheet([at('u1', 'U1', 'esp32-devkit-v1-30'), at('r1', 'R1', 'resistor', 400), at('r2', 'R2', 'resistor', 600)],
+      [['r1|1', 'u1|D12'], ['r1|2', 'u1|3V3'], ['r2|1', 'u1|D13'], ['r2|2', 'u1|D14']])
+    const before = { ...pinWork }
+    checkDiagram(d)
+    expect(pinWork.passes - before.passes).toBe(1)
+    expect(pinWork.nets - before.nets).toBe(2)
   })
 })
 

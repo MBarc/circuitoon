@@ -76,6 +76,12 @@ describe('pin-flash', () => {
     expect(f[0].severity).toBe('error')
     expect(f[0].message).toBe("U1 SD0 is a flash pin (SD0 is GPIO7, a flash data line), so nothing may be wired to it, but U2 D is. The board will not run like this. Move it to a free GPIO, such as IO13.")
   })
+  it('gives one finding for flash pins of several boards tied to one net', () => {
+    const d = { ...board([], []), parts: [part('U1', 'esp'), part('U2', 'esp'), part('U3', 'chip')], connections: [wire('u1.SD0', 'u2.SD0'), wire('u2.SD0', 'u3.D')] }
+    const f = only(d, 'pin-flash')
+    expect(f).toHaveLength(1)
+    expect(f[0].message).toBe('U1 SD0 and U2 SD0 are flash pins (SD0 is GPIO7, a flash data line), wired together and to U3 D, and nothing may be wired to a flash pin. The boards will not run like this. Move every wire off them to free GPIOs.')
+  })
   it('stays quiet while the flash pin is left free', () => {
     expect(only(board([part('U2', 'chip')], [wire('u1.IO13', 'u2.D')]), 'pin-flash')).toEqual([])
   })
