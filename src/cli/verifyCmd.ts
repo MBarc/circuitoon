@@ -100,10 +100,12 @@ export function verifyCommand(args: Args, io: Io): number {
 
 export function checkCommand(args: Args, io: Io): number {
   const diagram = sheetOf('check', args, io)
-  // Module drift is known with or without an intent; only a sheet with one reports verify's findings.
+  // Module drift is known with or without an intent, and always reported (blocking or warning), so
+  // the covered holes it hides (withoutStale) are never hidden silently; only a sheet with an intent
+  // reports verify's other findings.
   const all = verifyDiagram(diagram, libraryLookup)
   const checked = withoutStale(checkDiagram(diagram), all)
-  const verified = diagram.intent !== undefined ? all.filter((f) => !alsoChecked(f, checked)) : []
+  const verified = diagram.intent !== undefined ? all.filter((f) => !alsoChecked(f, checked)) : all.filter((f) => f.rule === 'module-drift')
   // Readability warnings (never blocking): crowded wires, wires hugging parts, covered labels, many crossings.
   return report(io, args, 'circuitoon-cli/check/1', uniqueIds([...verified, ...checked, ...readabilityFindings(diagram)].map(cliFinding)))
 }
