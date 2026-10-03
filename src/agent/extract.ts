@@ -1,8 +1,9 @@
 // A netlist (circuitoon-netlist/1) extracted from any drawn sheet, so a user's hand-drawn sheet can be
 // laid out again without copying it by hand (Ruling W1). Parts keep their module, values, settings and mount
 // (`on`); nets come from what actually conducts on the sheet: wires, breadboard strips, mounted legs,
-// a part's internal joins and net labels. Only component pins are listed: a strip is how the sheet
-// shares a net, not part of the circuit, so the layout chooses its own. Of the pins a part joins
+// a part's internal joins and net labels. Component pins are listed, then the strips and rails the
+// sheet wires each net through, so it lays out again with wires (a leg in a strip alone does not
+// list the strip: the layout seats the part itself). Of the pins a part joins
 // inside itself, only those with a connection of their own are listed (an ESP32's spare GND 3 is
 // not). Net names come from net labels, then roles (GND, and a supply rail such as 5V or 3V3), then
 // `<ref>_<pin>`. A sheet laid out from an intent leaves out the boards the layout added for routing
@@ -86,12 +87,13 @@ export function extractNetlist(d: Diagram): Record<string, unknown> {
       if (!ref || isBoard(m) || !direct.has(k)) continue
       pins.push({ ref, name, m })
     }
-    // A net with one component pin wired to a strip (a board's hole group) keeps it, and its name,
-    // by naming the strip as its second endpoint (Michael's VIN).
-    if (pins.length === 1 && strips.length) pins.push(strips.sort((a, b) => naturalCompare(a.ref, b.ref) || naturalCompare(a.name, b.name))[0])
-    if (pins.length < 2) continue
-    pins.sort((a, b) => naturalCompare(a.ref, b.ref) || naturalCompare(a.name, b.name))
-    nets.push({ pins, ...(label !== undefined ? { label } : {}) })
+    // The strips and rails of kept boards that the sheet wires this net through (a wire end in one of
+    // their holes) stay endpoints: they are where the net is shared, so
+    // laid out again with wires it still has its distribution point (a power net on BB1's top+ rail),
+    // and a net with one component pin keeps its name (Michael's VIN).
+    if (!pins.length || pins.length + strips.length < 2) continue
+    const order = (a: Pin, b: Pin) => naturalCompare(a.ref, b.ref) || naturalCompare(a.name, b.name)
+    nets.push({ pins: [...pins, ...strips].sort(order), ...(label !== undefined ? { label } : {}) })
   }
 
   // Names: labels first, then ground, then a rail the consumers share or a source gives, then a pin.
@@ -121,8 +123,8 @@ export function extractNetlist(d: Diagram): Record<string, unknown> {
     if (outs.length === 1) claim(i, outs[0])
   })
   nets.forEach((net, i) => {
-    // An MCU's pin names a signal best; else a source's pin; else the first pin.
-    const pick = net.pins.find((p) => p.m.category === 'Microcontrollers') ?? net.pins.find((p) => pinDef(p.m, p.name)?.type === 'power_out') ?? net.pins[0]
+    // An MCU's pin names a signal best; else a source's pin; else the first component pin.
+    const pick = net.pins.find((p) => p.m.category === 'Microcontrollers') ?? net.pins.find((p) => pinDef(p.m, p.name)?.type === 'power_out') ?? net.pins.find((p) => !isBoard(p.m)) ?? net.pins[0]
     let name = `${pick.ref}_${pick.name}`
     for (let k = 2; names.has(name); k++) name = `${pick.ref}_${pick.name}_${k}`
     claim(i, name)

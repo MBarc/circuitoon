@@ -190,10 +190,21 @@ describe('extractNetlist', () => {
     expect(verifyDiagram(sheet, libraryLookup).filter((f) => f.severity === 'error')).toEqual([])
     const extracted = extractNetlist(sheet)
     expect(settingsOf(extracted.parts as { ref: string; settings?: Record<string, string> }[])).toEqual(want)
-    // Extraction keeps component pins only, so the second layout labels the power nets rather than needing a rail.
-    const again = sheetOf(extracted, 'all')
+    const again = sheetOf(extracted)
     expect(settingsOf(again.parts)).toEqual(want)
     expect(checkDiagram(again).filter((f) => f.rule === 'i2c-address-clash')).toEqual([])
+  })
+  it('keeps the rails and strips a sheet wires its nets through, so it lays out again with wires and verifies clean', () => {
+    // 3V3 and GND reach the OLEDs only through BB1's top rails: without them the second layout has no distribution point.
+    const sheet = sheetOf(twoOleds())
+    const extracted = extractNetlist(sheet)
+    const nets = extracted.nets as { name: string; pins: unknown[] }[]
+    expect(nets.find((n) => n.name === '3V3')!.pins).toContain('BB1.top+')
+    expect(nets.find((n) => n.name === 'GND')!.pins).toContain('BB1.top-')
+    const r = layoutNetlist(extracted, { labels: 'none' })
+    if (!r.ok) throw new Error(r.errors.join('; '))
+    expect(verifyDiagram(r.value.diagram, libraryLookup)).toEqual([])
+    expect(electrical(parse(extractNetlist(r.value.diagram)))).toEqual(electrical(parse(twoOleds())))
   })
   it('reports a setting that differs between the sheet and the intent as value-drift', () => {
     const sheet = sheetOf(twoOleds())
