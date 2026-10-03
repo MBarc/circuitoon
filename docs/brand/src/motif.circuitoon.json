@@ -1,0 +1,486 @@
+{
+  "format": "circuitoon-diagram/1",
+  "title": "Button lights an LED",
+  "modules": {
+    "battery-9v": {
+      "format": "circuitoon-module/1",
+      "id": "battery-9v",
+      "version": 2,
+      "name": "9V battery",
+      "category": "Batteries",
+      "pins": [
+        {
+          "name": "+",
+          "side": "top",
+          "type": "power_out",
+          "supply": "9V"
+        },
+        {
+          "spacer": true,
+          "side": "top"
+        },
+        {
+          "spacer": true,
+          "side": "top"
+        },
+        {
+          "spacer": true,
+          "side": "top"
+        },
+        {
+          "spacer": true,
+          "side": "top"
+        },
+        {
+          "name": "-",
+          "side": "top",
+          "type": "ground"
+        }
+      ],
+      "electrical": {
+        "model": "voltage_source",
+        "terminals": {
+          "pos": "+",
+          "neg": "-"
+        },
+        "params": {
+          "voltage": {
+            "unit": "V",
+            "default": 9
+          }
+        }
+      },
+      "art": {
+        "w": 80,
+        "h": 90,
+        "shapes": [
+          {
+            "type": "rect",
+            "x": 13,
+            "y": 0,
+            "w": 14,
+            "h": 10,
+            "fill": "#D5DAE1",
+            "radius": 2
+          },
+          {
+            "type": "rect",
+            "x": 62,
+            "y": 0,
+            "w": 16,
+            "h": 10,
+            "fill": "#D5DAE1",
+            "radius": 4
+          },
+          {
+            "type": "rect",
+            "x": 4,
+            "y": 8,
+            "w": 72,
+            "h": 14,
+            "fill": "#3A3F47",
+            "radius": 3
+          },
+          {
+            "type": "rect",
+            "x": 4,
+            "y": 20,
+            "w": 72,
+            "h": 68,
+            "fill": "#D98C2B",
+            "radius": 5
+          },
+          {
+            "type": "rect",
+            "x": 5,
+            "y": 44,
+            "w": 70,
+            "h": 26,
+            "fill": "#2B2F36",
+            "outline": false,
+            "label": "9V",
+            "labelColor": "#F4B400",
+            "labelSize": 15
+          }
+        ]
+      }
+    },
+    "led": {
+      "format": "circuitoon-module/1",
+      "id": "led",
+      "version": 1,
+      "name": "LED",
+      "category": "Indicators",
+      "pins": [
+        {
+          "name": "A",
+          "label": "+",
+          "side": "left",
+          "type": "passive"
+        },
+        {
+          "name": "K",
+          "label": "-",
+          "side": "right",
+          "type": "passive"
+        }
+      ],
+      "electrical": {
+        "model": "led",
+        "terminals": {
+          "anode": "A",
+          "cathode": "K"
+        },
+        "params": {
+          "color": {
+            "default": "red"
+          },
+          "forwardVoltage": {
+            "unit": "V",
+            "default": 2
+          },
+          "maxCurrent": {
+            "unit": "A",
+            "default": 0.02
+          }
+        }
+      },
+      "states": [
+        "off",
+        "lit",
+        "burnt"
+      ],
+      "art": {
+        "w": 40,
+        "h": 40,
+        "shapes": [
+          {
+            "type": "rect",
+            "x": 0,
+            "y": 18.5,
+            "w": 14,
+            "h": 3,
+            "fill": "#B8BEC7",
+            "radius": 1.5
+          },
+          {
+            "type": "rect",
+            "x": 26,
+            "y": 18.5,
+            "w": 14,
+            "h": 3,
+            "fill": "#B8BEC7",
+            "radius": 1.5
+          },
+          {
+            "type": "rect",
+            "x": 11,
+            "y": 4,
+            "w": 18,
+            "h": 24,
+            "fill": "#FF6B6B",
+            "radius": 9
+          },
+          {
+            "type": "rect",
+            "x": 9,
+            "y": 25,
+            "w": 22,
+            "h": 6,
+            "fill": "#C93C3C",
+            "radius": 1.5
+          },
+          {
+            "type": "rect",
+            "x": 14,
+            "y": 8,
+            "w": 4,
+            "h": 9,
+            "fill": "#FFC9C9",
+            "radius": 2,
+            "outline": false
+          }
+        ]
+      }
+    },
+    "push-button": {
+      "format": "circuitoon-module/1",
+      "id": "push-button",
+      "version": 1,
+      "name": "Push button",
+      "category": "Switches",
+      "pins": [
+        {
+          "name": "1",
+          "side": "left",
+          "type": "passive"
+        },
+        {
+          "name": "2",
+          "side": "right",
+          "type": "passive"
+        }
+      ],
+      "electrical": {
+        "model": "switch",
+        "terminals": {
+          "a": "1",
+          "b": "2"
+        },
+        "params": {
+          "normallyOpen": {
+            "default": true
+          }
+        }
+      },
+      "states": [
+        "released",
+        "pressed"
+      ],
+      "art": {
+        "w": 50,
+        "h": 40,
+        "shapes": [
+          {
+            "type": "rect",
+            "x": 0,
+            "y": 18.5,
+            "w": 12,
+            "h": 3,
+            "fill": "#B8BEC7",
+            "radius": 1.5
+          },
+          {
+            "type": "rect",
+            "x": 38,
+            "y": 18.5,
+            "w": 12,
+            "h": 3,
+            "fill": "#B8BEC7",
+            "radius": 1.5
+          },
+          {
+            "type": "rect",
+            "x": 9,
+            "y": 6,
+            "w": 32,
+            "h": 28,
+            "fill": "#3A3F47",
+            "radius": 3
+          },
+          {
+            "type": "rect",
+            "x": 16,
+            "y": 12,
+            "w": 18,
+            "h": 16,
+            "fill": "#E0483E",
+            "radius": 8
+          }
+        ]
+      }
+    },
+    "resistor": {
+      "format": "circuitoon-module/1",
+      "id": "resistor",
+      "version": 1,
+      "name": "Resistor (1/4 W)",
+      "category": "Passives",
+      "pins": [
+        {
+          "name": "1",
+          "side": "left",
+          "type": "passive"
+        },
+        {
+          "name": "2",
+          "side": "right",
+          "type": "passive"
+        }
+      ],
+      "electrical": {
+        "model": "resistor",
+        "terminals": {
+          "a": "1",
+          "b": "2"
+        },
+        "params": {
+          "resistance": {
+            "unit": "ohm",
+            "default": 1000
+          }
+        }
+      },
+      "art": {
+        "w": 60,
+        "h": 40,
+        "shapes": [
+          {
+            "type": "rect",
+            "x": 0,
+            "y": 18.5,
+            "w": 12,
+            "h": 3,
+            "fill": "#B8BEC7",
+            "radius": 1.5
+          },
+          {
+            "type": "rect",
+            "x": 48,
+            "y": 18.5,
+            "w": 12,
+            "h": 3,
+            "fill": "#B8BEC7",
+            "radius": 1.5
+          },
+          {
+            "type": "rect",
+            "x": 8,
+            "y": 12,
+            "w": 44,
+            "h": 16,
+            "fill": "#F1D9A7",
+            "radius": 8
+          },
+          {
+            "type": "rect",
+            "x": 16,
+            "y": 13,
+            "w": 4,
+            "h": 14,
+            "fill": "#8B5A2B",
+            "outline": false,
+            "band": 1
+          },
+          {
+            "type": "rect",
+            "x": 23,
+            "y": 13,
+            "w": 4,
+            "h": 14,
+            "fill": "#1B1B1B",
+            "outline": false,
+            "band": 2
+          },
+          {
+            "type": "rect",
+            "x": 30,
+            "y": 13,
+            "w": 4,
+            "h": 14,
+            "fill": "#D8413A",
+            "outline": false,
+            "band": 3
+          },
+          {
+            "type": "rect",
+            "x": 41,
+            "y": 13,
+            "w": 4,
+            "h": 14,
+            "fill": "#E0B43C",
+            "outline": false,
+            "band": 4
+          }
+        ]
+      }
+    }
+  },
+  "parts": [
+    {
+      "uid": "BT1",
+      "designator": "BT1",
+      "module": "battery-9v",
+      "x": 40,
+      "y": 60,
+      "rotation": 90
+    },
+    {
+      "uid": "S1",
+      "designator": "S1",
+      "module": "push-button",
+      "x": 160,
+      "y": 30,
+      "rotation": 0
+    },
+    {
+      "uid": "R1",
+      "designator": "R1",
+      "module": "resistor",
+      "x": 245,
+      "y": 30,
+      "rotation": 0,
+      "values": {
+        "resistance": {
+          "value": 220,
+          "unit": "ohm"
+        }
+      }
+    },
+    {
+      "uid": "D1",
+      "designator": "D1",
+      "module": "led",
+      "x": 360,
+      "y": 30,
+      "rotation": 0,
+      "values": {
+        "color": "red"
+      }
+    }
+  ],
+  "connections": [
+    {
+      "uid": "w1",
+      "from": {
+        "part": "BT1",
+        "pin": "+"
+      },
+      "to": {
+        "part": "S1",
+        "pin": "1"
+      },
+      "color": "red",
+      "gauge": 22
+    },
+    {
+      "uid": "w2",
+      "from": {
+        "part": "S1",
+        "pin": "2"
+      },
+      "to": {
+        "part": "R1",
+        "pin": "1"
+      },
+      "color": "yellow",
+      "gauge": 22
+    },
+    {
+      "uid": "w3",
+      "from": {
+        "part": "R1",
+        "pin": "2"
+      },
+      "to": {
+        "part": "D1",
+        "pin": "A"
+      },
+      "color": "#F48C06",
+      "gauge": 24
+    },
+    {
+      "uid": "w4",
+      "from": {
+        "part": "D1",
+        "pin": "K"
+      },
+      "to": {
+        "part": "BT1",
+        "pin": "-"
+      },
+      "color": "black",
+      "gauge": 22
+    }
+  ]
+}
