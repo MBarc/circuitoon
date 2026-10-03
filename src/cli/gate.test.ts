@@ -340,6 +340,26 @@ describe('circuitoon gate', () => {
     const c = await cli(['check', 'sheet.json', '--json'], { cwd: dir })
     expect(JSON.parse(c.out).findings.map((f: { rule: string }) => f.rule)).not.toContain('covered-hole')
   })
+  it('blocks a part whose body covers occupied holes though its copy drifted only in its name', async () => {
+    // R1's body covers D1's legs (c2-top and c6-top hole 0); only R1's module name is out of date.
+    const dir = await laidOut()
+    edit(dir, (s) => {
+      const mods = s.modules as Record<string, Record<string, unknown>>
+      mods.resistor.name = 'Resistor (old)'
+      const bb = s.parts.find((p) => p.uid === 'BB1')!
+      for (const p of s.parts) if (p.uid === 'R1' || p.uid === 'D1') Object.assign(p, { x: (bb.x as number) + (p.uid === 'R1' ? 30 : 40), y: (bb.y as number) + 40, rotation: 0, mount: { board: 'BB1' } })
+      s.connections = s.connections.filter((c) => ![c.from, c.to].some((e) => ['R1', 'D1'].includes((e as { part: string }).part)))
+    })
+    const v = validateDiagram(JSON.parse(readFileSync(join(dir, 'sheet.json'), 'utf8')))
+    if (!v.ok) throw new Error(v.errors.join('; '))
+    expect(plugsOf(v.diagram).filter((p) => p.part === 'D1')).toHaveLength(2)
+    const { code, report } = await runGate(readFileSync(join(dir, 'sheet.json')), { sheetPath: 'sheet.json', outDir: join(dir, 'out'), io: quietIo(dir) })
+    expect(report.warnings.filter((f) => f.rule === 'module-drift')).toHaveLength(1)
+    expect(report.blocking.map((f) => f.rule)).toContain('covered-hole')
+    expect(code).toBe(1)
+    expect(report.ok).toBe(false)
+    expect(report.ready).toBe(false)
+  })
   it('lists a note (info) under notes, never blocking, and prints it', async () => {
     const dir = tempDir()
     writeFileSync(join(dir, 'sheet.json'), readFileSync(new URL('../format/fixtures/battery-bank-1s4p.circuitoon.json', import.meta.url)))

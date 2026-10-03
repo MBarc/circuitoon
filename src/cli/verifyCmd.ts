@@ -66,10 +66,11 @@ export function alsoChecked(f: { id: string; rule: string }, checked: { id: stri
 
 /**
  * The checker's findings, less any covered-hole that involves a part whose embedded module blocks as
- * module-drift (`verified` holds verify's findings): that hole is covered by, or holds a leg of, the
- * old drawing, and module-drift already says to place the part again.
+ * module-drift because its body or pins moved (`verified` holds verify's findings, see driftedParts):
+ * that hole is covered by, or holds a leg of, the old drawing, and module-drift already blocks and
+ * says to place the part again. Warning-only drift never hides a covered hole.
  */
-export function withoutStale<F extends { rule: string; parts: string[] }>(checked: F[], verified: { rule: string; severity: string; parts: string[] }[]): F[] {
+export function withoutStale<F extends { rule: string; parts: string[] }>(checked: F[], verified: { rule: string; severity: string; parts: string[]; redraw?: true }[]): F[] {
   const stale = driftedParts(verified)
   return stale.size ? checked.filter((f) => f.rule !== 'covered-hole' || !f.parts.some((p) => stale.has(p))) : checked
 }

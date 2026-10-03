@@ -30,12 +30,18 @@ export interface VerifyFinding {
   parts: string[]
   pins: Endpoint[]
   wires: string[]
+  /**
+   * Set on a blocking module-drift whose body or pin positions moved (the part must be placed
+   * again): what its stored copy covers is the old drawing's, so that finding replaces covered-hole
+   * for the part. Never set on warning-only or electrical-only drift. Not part of any CLI output.
+   */
+  redraw?: true
 }
 
 export const NO_INTENT = 'no intent: lay out from a netlist or add intent'
 
 type Draft = Omit<VerifyFinding, 'id'> & { causes: string[] }
-type Add = (rule: VerifyRule, message: string, causes: string[], more?: { parts?: string[]; pins?: Endpoint[]; wires?: string[]; severity?: VerifyFinding['severity'] }) => void
+type Add = (rule: VerifyRule, message: string, causes: string[], more?: { parts?: string[]; pins?: Endpoint[]; wires?: string[]; severity?: VerifyFinding['severity']; redraw?: true }) => void
 
 /** JSON with object keys sorted, so two modules compare by content whatever their key order. */
 function canonical(v: unknown): string {
@@ -114,7 +120,7 @@ function moduleDrift(d: Diagram, library: ModuleLookup, add: Add) {
       // the old drawing sat; the part itself must be placed again.
       const names = andList(d.parts.filter((p) => p.module === id).map((p) => p.designator))
       const one = parts.length === 1
-      add('module-drift', `${whose} of ${id} no longer matches the current library: ${electrical.join(', ')} differ. Its body and pins are drawn differently now, so ${names} must be placed again: remove ${one ? `${names}'s` : 'their'} x, y and rotation from the partial before layout --keep (kept as ${one ? 'it is, it stays' : 'they are, they stay'} where the old drawing sat), or lay the sheet out again from the netlist.`, causes, { parts })
+      add('module-drift', `${whose} of ${id} no longer matches the current library: ${electrical.join(', ')} differ. Its body and pins are drawn differently now, so ${names} must be placed again: remove ${one ? `${names}'s` : 'their'} x, y and rotation from the partial before layout --keep (kept as ${one ? 'it is, it stays' : 'they are, they stay'} where the old drawing sat), or lay the sheet out again from the netlist.`, causes, { parts, redraw: true })
     } else if (electrical.length)
       add('module-drift', `${whose} of ${id} no longer matches the current library: ${electrical.join(', ')} differ. Lay the sheet out again with the current library.`, causes, { parts })
     else
@@ -143,7 +149,7 @@ export function intentLookup(d: Diagram, library: ModuleLookup): ModuleLookup {
 
 export function verifyDiagram(d: Diagram, library: ModuleLookup): VerifyFinding[] {
   const found: Draft[] = []
-  const add: Add = (rule, message, causes, more = {}) => found.push({ rule, message, causes, severity: more.severity ?? 'error', parts: more.parts ?? [], pins: more.pins ?? [], wires: more.wires ?? [] })
+  const add: Add = (rule, message, causes, more = {}) => found.push({ rule, message, causes, severity: more.severity ?? 'error', parts: more.parts ?? [], pins: more.pins ?? [], wires: more.wires ?? [], ...(more.redraw ? { redraw: true as const } : {}) })
   moduleDrift(d, library, add)
   if (d.intent === undefined) add('intent', NO_INTENT, ['intent'])
   else {
@@ -383,12 +389,14 @@ function covered(d: Diagram, add: Add, stale: ReadonlySet<string>) {
 }
 
 /**
- * The parts whose embedded module drifted from the library (module-drift, blocking or not): their
- * stored copy is out of date, so whatever it covers (and whatever its legs land in) is the old
- * drawing's or the old footprint's, not the part's.
+ * The parts whose embedded module drifted from the library so far that they must be placed again
+ * (a blocking module-drift whose body or pin positions moved): whatever their stored copy covers,
+ * and whatever their legs land in, is the old drawing's, and that blocking finding replaces it.
+ * Warning-only (cosmetic) drift and electrical drift with an unchanged body replace nothing: the
+ * holes their bodies cover are covered as drawn, so covered-hole still reports them.
  */
-export function driftedParts(findings: { rule: string; severity: string; parts: string[] }[]): Set<string> {
-  return new Set(findings.filter((f) => f.rule === 'module-drift').flatMap((f) => f.parts))
+export function driftedParts(findings: { rule: string; severity: string; parts: string[]; redraw?: true }[]): Set<string> {
+  return new Set(findings.filter((f) => f.rule === 'module-drift' && f.severity === 'error' && f.redraw).flatMap((f) => f.parts))
 }
 
 /** A covered-hole use that comes from a stale embedded copy: its covering part, or its leg's part, drifted. */
