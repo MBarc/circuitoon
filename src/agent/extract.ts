@@ -47,10 +47,14 @@ export function extractNetlist(d: Diagram): Record<string, unknown> {
   }
   // A sheet laid out from an intent: boards it never named were added by the layout for routing.
   const intent = d.intent !== undefined ? parseNetlist(d.intent, (id) => moduleOf(d, id) ?? libraryLookup(id)) : null
+  // Intent refs are designators (as verify reads them), never uids: a cut and paste gives a part a
+  // new uid but keeps its designator. A board that hosts a mounted part stays whatever the intent
+  // says, so that part keeps its mount (`on`).
   const intentRefs = intent?.ok ? new Set(intent.intent.parts.map((p) => p.ref)) : null
+  const hosts = new Set(d.parts.flatMap((p) => (p.mount && !isNetLabel(moduleOf(d, p.module)) ? [p.mount.board] : [])))
   const kept = d.parts.filter((p) => {
     const m = moduleOf(d, p.module)
-    return m && !isNetLabel(m) && !(intentRefs && isBoard(m) && !intentRefs.has(p.uid))
+    return m && !isNetLabel(m) && !(intentRefs && isBoard(m) && !intentRefs.has(p.designator) && !hosts.has(p.uid))
   })
   const make = refMaker()
   const refOf = new Map(kept.map((p) => [p.uid, make(p.designator || p.uid)]))

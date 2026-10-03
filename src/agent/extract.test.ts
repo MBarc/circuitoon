@@ -98,6 +98,29 @@ describe('extractNetlist', () => {
     expect(got.parts.map((p) => p.ref)).toContain('BB1')
     expect(electrical(got)).toEqual(electrical(parse(tiltSensors())))
   })
+  it('matches intent refs by designator, not uid: a board whose uid changed (cut and paste) is kept with its mounts', () => {
+    const base = sheetOf(ledNetlist())
+    const re = (u: string) => (u === 'BB1' ? 'p1' : u === 'R1' ? 'p2' : u)
+    const d: Diagram = {
+      ...base,
+      parts: base.parts.map((p) => ({ ...p, uid: re(p.uid), ...(p.mount ? { mount: { ...p.mount, board: re(p.mount.board) } } : {}) })),
+      connections: base.connections.map((c) => ({ ...c, from: { ...c.from, part: re(c.from.part) }, to: { ...c.to, part: re(c.to.part) } })),
+    }
+    expect(d.parts.find((p) => p.designator === 'BB1')!.uid).toBe('p1')
+    const got = parse(extractNetlist(d))
+    expect(partsOf(got)).toEqual(partsOf(parse(ledNetlist())))
+    expect(electrical(got)).toEqual(electrical(parse(ledNetlist())))
+  })
+  it('keeps a board the intent never named when a kept part is mounted on it', () => {
+    const base = sheetOf(ledNetlist())
+    // The intent names no board, so BB1 reads as one the layout added; R1 and D1 still sit on it.
+    const intent = structuredClone(base.intent) as { parts: { ref: string; on?: string }[]; nets: unknown[] }
+    intent.parts = intent.parts.filter((p) => p.ref !== 'BB1').map(({ on: _on, ...p }) => p)
+    const got = parse(extractNetlist({ ...base, intent }))
+    expect(got.parts.map((p) => p.ref)).toContain('BB1')
+    expect(got.parts.find((p) => p.ref === 'R1')!.on).toBe('BB1')
+    expect(got.parts.find((p) => p.ref === 'D1')!.on).toBe('BB1')
+  })
   it('turns designators into valid, unique refs, and keeps a part with no connections', () => {
     const base = sheetOf(ledNetlist())
     const d: Diagram = {
