@@ -66,10 +66,11 @@ export function alsoChecked(f: { id: string; rule: string }, checked: { id: stri
 
 /**
  * The checker's findings, less any covered-hole that involves a part whose embedded module blocks as
- * module-drift (`verified` holds verify's findings): that hole is covered by, or holds a leg of, the
- * old drawing, and module-drift already says to place the part again.
+ * module-drift because its body or pins moved (`verified` holds verify's findings, see driftedParts):
+ * that hole is covered by, or holds a leg of, the old drawing, and module-drift already blocks and
+ * says to place the part again. Warning-only drift never hides a covered hole.
  */
-export function withoutStale<F extends { rule: string; parts: string[] }>(checked: F[], verified: { rule: string; severity: string; parts: string[] }[]): F[] {
+export function withoutStale<F extends { rule: string; parts: string[] }>(checked: F[], verified: { rule: string; severity: string; parts: string[]; redraw?: true }[]): F[] {
   const stale = driftedParts(verified)
   return stale.size ? checked.filter((f) => f.rule !== 'covered-hole' || !f.parts.some((p) => stale.has(p))) : checked
 }
@@ -99,10 +100,12 @@ export function verifyCommand(args: Args, io: Io): number {
 
 export function checkCommand(args: Args, io: Io): number {
   const diagram = sheetOf('check', args, io)
-  // Module drift is known with or without an intent; only a sheet with one reports verify's findings.
+  // Module drift is known with or without an intent, and always reported (blocking or warning), so
+  // the covered holes it hides (withoutStale) are never hidden silently; only a sheet with an intent
+  // reports verify's other findings.
   const all = verifyDiagram(diagram, libraryLookup)
   const checked = withoutStale(checkDiagram(diagram), all)
-  const verified = diagram.intent !== undefined ? all.filter((f) => !alsoChecked(f, checked)) : []
+  const verified = diagram.intent !== undefined ? all.filter((f) => !alsoChecked(f, checked)) : all.filter((f) => f.rule === 'module-drift')
   // Readability warnings (never blocking): crowded wires, wires hugging parts, covered labels, many crossings.
   return report(io, args, 'circuitoon-cli/check/1', uniqueIds([...verified, ...checked, ...readabilityFindings(diagram)].map(cliFinding)))
 }

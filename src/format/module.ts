@@ -185,6 +185,19 @@ export const isNum = (v: unknown): v is number => typeof v === 'number' && Numbe
 const isPos = (v: unknown): v is number => isNum(v) && v > 0
 
 /**
+ * The largest a module's body, art, shapes and footprint may reach in module px, either way from
+ * its origin (the largest built-in part, a full breadboard, is 680 px wide). Coverage, captions,
+ * board rings and mount searches walk a part's area on the 10 px grid, so an untrusted module
+ * without this bound (a footprint 1e12 px wide) would freeze the editor.
+ */
+export const MODULE_PX_MAX = 4000
+const MODULE_UNITS_MAX = MODULE_PX_MAX / 10
+/** A finite number from -MODULE_PX_MAX to MODULE_PX_MAX. */
+const inBounds = (v: unknown): v is number => isNum(v) && Math.abs(v) <= MODULE_PX_MAX
+/** A number above 0, at most MODULE_PX_MAX. */
+const sizeInBounds = (v: unknown): v is number => isPos(v) && v <= MODULE_PX_MAX
+
+/**
  * The magnitudes a part value can have, shared by module defaults, the overrides a diagram
  * stores and the value field: exactly 0 (where the param allows it), or 1e-15 to 1e12 either
  * sign. formatValue shows every one of them with an SI prefix (p to G); anything smaller or larger
@@ -281,8 +294,8 @@ export function validateModule(raw: unknown): ValidationResult {
       names.add(p.name)
       checkType(p, at)
       checkMains(p, at)
-      if (p.bus !== undefined && !(isObj(p.bus) && Number.isInteger(p.bus.length) && (p.bus.length as number) >= 2))
-        errors.push(`${at}.bus: must be { "length": <whole number, 2 or more> }`)
+      if (p.bus !== undefined && !(isObj(p.bus) && Number.isInteger(p.bus.length) && (p.bus.length as number) >= 2 && (p.bus.length as number) <= MODULE_UNITS_MAX))
+        errors.push(`${at}.bus: must be { "length": <whole number, 2 to ${MODULE_UNITS_MAX}> } (at most ${MODULE_PX_MAX} px)`)
       if (p.label !== undefined && typeof p.label !== 'string') errors.push(`${at}.label: must be a string`)
       checkSupply(p, at)
       checkCaps(p, at)
@@ -315,6 +328,7 @@ export function validateModule(raw: unknown): ValidationResult {
         if (!Array.isArray(g.at) || g.at.length === 0) return void errors.push(`${at}.at: required, at least one [x, y] position`)
         g.at.forEach((p, j) => {
           if (!(Array.isArray(p) && p.length === 2 && isNum(p[0]) && isNum(p[1]))) return void errors.push(`${at}.at[${j}]: must be [x, y]`)
+          if (!inBounds(p[0]) || !inBounds(p[1])) return void errors.push(`${at}.at[${j}]: must be within +-${MODULE_PX_MAX} px`)
           if (p[0] % GRID !== 0 || p[1] % GRID !== 0) errors.push(`${at}.at[${j}]: must sit on the 10 px grid`)
           const key = `${p[0]},${p[1]}`
           if (positions.has(key)) errors.push(`${at}.at[${j}]: another hole already sits at ${p[0]}, ${p[1]}`)
@@ -328,8 +342,8 @@ export function validateModule(raw: unknown): ValidationResult {
     else if (!Array.isArray(raw.pins) || raw.pins.length !== 1 || (Array.isArray(raw.holes) && raw.holes.length) || raw.internal !== undefined)
       errors.push('netLabel: a net label has exactly one pin and no hole groups or internal joins')
   }
-  if (raw.footprint !== undefined && raw.footprint !== 'legs' && !(isObj(raw.footprint) && isNum(raw.footprint.x) && isNum(raw.footprint.y) && isPos(raw.footprint.w) && isPos(raw.footprint.h)))
-    errors.push('footprint: must be "legs" or { "x", "y", "w", "h" } in module px, with w and h above 0')
+  if (raw.footprint !== undefined && raw.footprint !== 'legs' && !(isObj(raw.footprint) && inBounds(raw.footprint.x) && inBounds(raw.footprint.y) && sizeInBounds(raw.footprint.w) && sizeInBounds(raw.footprint.h)))
+    errors.push(`footprint: must be "legs" or { "x", "y", "w", "h" } in module px, x and y within +-${MODULE_PX_MAX}, w and h above 0 and at most ${MODULE_PX_MAX}`)
 
   // Pins and hole groups only: internal nodes (a plug's prongs) have no pin stub to power.
   const pinNames = new Set(names)
@@ -345,19 +359,19 @@ export function validateModule(raw: unknown): ValidationResult {
       })
   }
 
-  if (raw.size !== undefined && !(isObj(raw.size) && isPos(raw.size.w) && isPos(raw.size.h)))
-    errors.push('size: must be { "w": <units>, "h": <units> } with positive numbers')
+  if (raw.size !== undefined && !(isObj(raw.size) && isPos(raw.size.w) && isPos(raw.size.h) && raw.size.w <= MODULE_UNITS_MAX && raw.size.h <= MODULE_UNITS_MAX))
+    errors.push(`size: must be { "w": <units>, "h": <units> } with positive numbers, at most ${MODULE_UNITS_MAX} units (${MODULE_PX_MAX} px)`)
 
   if (raw.art !== undefined) {
     const art = raw.art
-    if (!isObj(art) || !isPos(art.w) || !isPos(art.h) || !Array.isArray(art.shapes))
-      errors.push('art: must be { "w", "h", "shapes": [...] } with positive w and h')
+    if (!isObj(art) || !sizeInBounds(art.w) || !sizeInBounds(art.h) || !Array.isArray(art.shapes))
+      errors.push(`art: must be { "w", "h", "shapes": [...] } with w and h above 0 and at most ${MODULE_PX_MAX}`)
     else {
       if (art.pinLabels !== undefined && art.pinLabels !== 'inside' && art.pinLabels !== 'tips') errors.push('art.pinLabels: must be "inside" or "tips"')
       art.shapes.forEach((s, i) => {
         const at = `art.shapes[${i}]`
         if (!isObj(s) || s.type !== 'rect') return void errors.push(`${at}: only "rect" shapes are supported`)
-        for (const k of ['x', 'y', 'w', 'h']) if (!isNum(s[k])) errors.push(`${at}.${k}: must be a number`)
+        for (const k of ['x', 'y', 'w', 'h']) if (!inBounds(s[k])) errors.push(`${at}.${k}: must be a number within +-${MODULE_PX_MAX}`)
         if (typeof s.fill !== 'string') errors.push(`${at}.fill: required color`)
         if (s.radius !== undefined && !isNum(s.radius)) errors.push(`${at}.radius: must be a number`)
         if (s.outline !== undefined && typeof s.outline !== 'boolean') errors.push(`${at}.outline: must be true or false`)
@@ -370,6 +384,11 @@ export function validateModule(raw: unknown): ValidationResult {
     }
   }
 
+  // Many pins on one side (or long buses) widen the body past size and art: the drawn body is bounded too.
+  if (!errors.length && Array.isArray(raw.pins)) {
+    const lay = computeLayout(raw as unknown as ModuleDef)
+    if (lay.w > MODULE_PX_MAX || lay.h > MODULE_PX_MAX) errors.push(`pins: the body they need (${lay.w} x ${lay.h} px) is over ${MODULE_PX_MAX} px`)
+  }
   if (!errors.length && Array.isArray(raw.holes)) {
     const lay = computeLayout(raw as unknown as ModuleDef)
     ;(raw.holes as HoleGroup[]).forEach((g, i) =>

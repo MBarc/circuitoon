@@ -76,8 +76,8 @@ describe('validateModule', () => {
       expect(r.errors).toEqual([
         'category: must be a string',
         'pins[0].supply: must be a string',
-        'size: must be { "w": <units>, "h": <units> } with positive numbers',
-        'art: must be { "w", "h", "shapes": [...] } with positive w and h',
+        'size: must be { "w": <units>, "h": <units> } with positive numbers, at most 400 units (4000 px)',
+        'art: must be { "w", "h", "shapes": [...] } with w and h above 0 and at most 4000',
       ])
     const r2 = validateModule({
       ...base,
@@ -217,7 +217,7 @@ describe('validateModule', () => {
     const pins = [{ name: 'A', side: 'bottom' }]
     expect(validateModule({ ...base, pins, footprint: 'legs' }).ok).toBe(true)
     expect(validateModule({ ...base, pins, footprint: { x: 0, y: 25, w: 40, h: 10 } }).ok).toBe(true)
-    const msg = 'footprint: must be "legs" or { "x", "y", "w", "h" } in module px, with w and h above 0'
+    const msg = 'footprint: must be "legs" or { "x", "y", "w", "h" } in module px, x and y within +-4000, w and h above 0 and at most 4000'
     for (const bad of ['none', { x: 0, y: 0, w: 0, h: 10 }, { x: 0, y: 0, w: 10 }, [0, 0, 10, 10]])
       expect(validateModule({ ...base, pins, footprint: bad }), JSON.stringify(bad)).toEqual({ ok: false, errors: [msg] })
   })

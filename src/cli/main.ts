@@ -17,6 +17,7 @@ import { checkCommand, verifyCommand } from './verifyCmd.ts'
 import { bomCommand } from './bomCmd.ts'
 import { explainCommand } from './explain.ts'
 import { netlistCommand } from './netlistCmd.ts'
+import { updateCommand } from './updateCmd.ts'
 
 export const USAGE = `circuitoon <command> [options]
 
@@ -26,6 +27,8 @@ export const USAGE = `circuitoon <command> [options]
                                             [--labels none|auto|all]: which nets get net labels (default none: wires, labels only on nets marked "label": true)
   verify <sheet.json> [--json]              the sheet against its intent
   check <sheet.json> [--json]               the wiring checker, plus verify when the sheet has an intent
+  update <sheet.json> [-o <out.json>] [--json]
+                                            bring stored parts up to date where the library only adds data; blocking drift is listed
   explain <sheet.json|netlist.json> [--json]
                                             every connection in plain English by net, what each pin in use does,
                                             unconnected parts and the pin-rule findings
@@ -42,7 +45,7 @@ or an internal error of the tool.
 `
 
 export type Command = (args: Args, io: Io) => number | Promise<number>
-export const COMMANDS: Record<string, Command> = { parts: partsCommand, part: partCommand, layout: layoutCommand, render: renderCommand, link: linkCommand, bom: bomCommand, netlist: netlistCommand, verify: verifyCommand, check: checkCommand, explain: explainCommand, gate: gateCommand }
+export const COMMANDS: Record<string, Command> = { parts: partsCommand, part: partCommand, layout: layoutCommand, render: renderCommand, link: linkCommand, bom: bomCommand, netlist: netlistCommand, verify: verifyCommand, check: checkCommand, explain: explainCommand, update: updateCommand, gate: gateCommand }
 
 type ErrorCode = 'usage' | 'input' | 'blocked' | 'environment' | 'internal'
 const CODE_OF: Record<number, ErrorCode> = { [EXIT.blocked]: 'blocked', [EXIT.input]: 'input', [EXIT.environment]: 'environment' }

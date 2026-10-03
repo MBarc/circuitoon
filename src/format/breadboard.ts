@@ -264,10 +264,22 @@ function coverOf(part: PartInstance, m: ModuleDef, board: PartInstance, bm: Modu
     // Every hole sits on the board's own 10 px lattice, so only lattice points inside a shape are looked up.
     const ox = ((first.x % GRID) + GRID) % GRID
     const oy = ((first.y % GRID) + GRID) % GRID
+    // Only the board's own holes can be covered: each shape is clipped to the box around them, so
+    // an oversized body (an untrusted module that skipped validation) walks no more than the board.
+    let [bx0, by0, bx1, by1] = [Infinity, Infinity, -Infinity, -Infinity]
+    for (const g of idx.groups)
+      for (const p of g.at) {
+        bx0 = Math.min(bx0, p.x)
+        by0 = Math.min(by0, p.y)
+        bx1 = Math.max(bx1, p.x)
+        by1 = Math.max(by1, p.y)
+      }
     for (const s of bodyShapes(m)) {
       const r = worldRect(part, lay, s)
-      for (let y = oy + GRID * (Math.floor((r.y - oy) / GRID) + 1); y < r.y + r.h; y += GRID)
-        for (let x = ox + GRID * (Math.floor((r.x - ox) / GRID) + 1); x < r.x + r.w; x += GRID) {
+      const yEnd = Math.min(r.y + r.h, by1 + 1)
+      const xEnd = Math.min(r.x + r.w, bx1 + 1)
+      for (let y = oy + GRID * (Math.floor((Math.max(r.y, by0 - GRID) - oy) / GRID) + 1); y < yEnd; y += GRID)
+        for (let x = ox + GRID * (Math.floor((Math.max(r.x, bx0 - GRID) - ox) / GRID) + 1); x < xEnd; x += GRID) {
           const h = holeAt(idx, { x, y })
           if (h && !own.has(pointKey(x, y))) found.set(h[0] * 1e6 + h[1], h)
         }

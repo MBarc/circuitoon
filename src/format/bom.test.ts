@@ -183,4 +183,23 @@ describe('labelled nets (rule V3)', () => {
     expect(bom.wires.find((w) => w.labelled)?.count).toBe(2)
     expect(bom.wires.filter((w) => !w.labelled).reduce((n, w) => n + w.count, 0)).toBe(1)
   })
+  it('counts labels of different names wired to each other as one net: A, label X, wire, label Y, B is one wire', () => {
+    const d: Diagram = {
+      format: 'circuitoon-diagram/1', title: 'L', modules: { two, 'net-label': label },
+      parts: [part('U1', 'two'), part('U2', 'two'), lab('n1', 'X'), lab('n2', 'Y')],
+      connections: [stub('s1', 'u1.A', 'n1.NET'), stub('s2', 'n1.NET', 'n2.NET'), stub('s3', 'n2.NET', 'u2.A')],
+    }
+    const bom = billOfMaterials(d)
+    expect(bom.wires).toEqual([expect.objectContaining({ count: 1, labelled: true })])
+    expect(bomCsv(bom)).toContain('"Wire","1","Hookup wire","22 AWG, black","","","","for labelled nets (length not drawn)"')
+  })
+  it('counts an alias chain as one net: X and Y joined, and a second X label elsewhere', () => {
+    // U1.A to X, X to Y, Y to U2.A, and U3.A to another X label: three pieces of one net, two wires.
+    const d: Diagram = {
+      format: 'circuitoon-diagram/1', title: 'L', modules: { two, 'net-label': label },
+      parts: [part('U1', 'two'), part('U2', 'two'), part('U3', 'two'), lab('n1', 'X'), lab('n2', 'Y'), lab('n3', 'X')],
+      connections: [stub('s1', 'u1.A', 'n1.NET'), stub('s2', 'n1.NET', 'n2.NET'), stub('s3', 'n2.NET', 'u2.A'), stub('s4', 'u3.A', 'n3.NET')],
+    }
+    expect(billOfMaterials(d).wires).toEqual([expect.objectContaining({ count: 2, labelled: true })])
+  })
 })

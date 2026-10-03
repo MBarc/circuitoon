@@ -63,6 +63,8 @@ export type RuleId =
   | 'label-unnamed'
   | 'label-mains'
   | 'label-alone'
+  /** Never from checkDiagram: the editor's Problems list adds it for a stored part older than the library (moduleDrift.ts). */
+  | 'module-drift'
   | PinRuleId
 
 /** Rule order within one severity and one subject, and each rule's short heading. */
@@ -117,6 +119,8 @@ export const RULES: Record<RuleId, { severity: Severity; title: string }> = {
   'wire-color-supply': { severity: 'warning', title: 'Supply wire not red' },
   'wire-color-signal': { severity: 'warning', title: 'Signal wire in a power color' },
   'label-alone': { severity: 'warning', title: 'Label connects nothing' },
+  // Its severity is the drift's own (an error when the part must be placed again); listed by the editor only.
+  'module-drift': { severity: 'warning', title: 'Part data out of date' },
   'battery-bank': { severity: 'info', title: 'Parallel battery bank' },
   'i2c-pullups-unknown': { severity: 'info', title: 'Check the I2C pull-ups' },
 }

@@ -72,7 +72,7 @@ describe('circuitoon explain', () => {
     writeFileSync(join(dir, 'old.json'), JSON.stringify(sheet))
     const out = JSON.parse((await cli(['explain', 'old.json', '--json'], { cwd: dir })).out)
     expect(out.notes).toHaveLength(1)
-    expect(out.notes[0]).toMatch(/^The sheet's copy of esp32-devkitc-v4 no longer matches the current library.*Until then, its pin capabilities and I2C data are the old copy's\.$/)
+    expect(out.notes[0]).toMatch(/^The sheet's copy of esp32-devkitc-v4 differs from the current library only in .*pins \(pin data\).*run `circuitoon update` or use Update parts in the editor\. Until then, its pin capabilities and I2C data are the old copy's\.$/)
   })
   it('exits 2 on a file that is neither a sheet nor a netlist, and is in the usage', async () => {
     const dir = tempDir()

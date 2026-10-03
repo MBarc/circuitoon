@@ -207,13 +207,51 @@ describe('circuitoon verify and check', () => {
     // The hand-drawn sheet also has readability warnings (many crossings, and wires drawn into
     // neighbouring holes of one strip that lie on top of each other there): never blocking.
     const readable = new Set<string>(READABILITY_RULES)
-    expect(out.findings.filter((f: CliFinding) => !readable.has(f.rule)).map((f: CliFinding) => `${f.severity} ${f.rule}`)).toEqual(['info battery-bank'])
+    // Its ESP32 and OLED copies predate the library's pin and I2C data (Ruling D1): warnings, never blocking.
+    expect(out.findings.filter((f: CliFinding) => !readable.has(f.rule)).map((f: CliFinding) => `${f.severity} ${f.rule}`)).toEqual(['warning module-drift', 'warning module-drift', 'warning module-drift', 'info battery-bank'])
+    expect(out.findings.filter((f: CliFinding) => f.rule === 'module-drift').every((f: CliFinding) => f.message.includes('the library has newer data for this part; run `circuitoon update` or use Update parts in the editor') || f.message.includes('The library has newer data for this part; run `circuitoon update` or use Update parts in the editor'))).toBe(true)
     expect(out.findings.filter((f: CliFinding) => readable.has(f.rule)).every((f: CliFinding) => f.severity === 'warning')).toBe(true)
     const text = await cli(['check', 'sheet.json'], { cwd: dir })
     expect(text.code).toBe(0)
     expect(text.out).toContain('INFO battery-bank: BT1-BT4 form a parallel battery bank (4P, 3.7 V).')
   })
 
+  it('reports module-drift in check on a sheet without an intent: a warning for a name-only change', async () => {
+    const dir = await laidOut()
+    edit(dir, (s) => {
+      delete s.intent
+      ;(s.modules as Record<string, { name: string }>).resistor.name = 'Resistor (old)'
+    })
+    const c = await cli(['check', 'sheet.json', '--json'], { cwd: dir })
+    expect(c.code).toBe(0)
+    const drift = JSON.parse(c.out).findings.filter((f: CliFinding) => f.rule === 'module-drift')
+    expect(drift.map((f: CliFinding) => f.severity)).toEqual(['warning'])
+    expect(drift[0].parts).toEqual(['R1'])
+  })
+  it("reports module-drift in check on a sheet without an intent when it hides an old copy's covered holes", async () => {
+    // The DIP-28 as drawn before Ruling C2, seated with a wire end under its old body.
+    const dir = tempDir()
+    const dip = JSON.parse(readFileSync(join('modules', 'mcp23017-dip28.json'), 'utf8'))
+    dip.pins = dip.pins.map((p: { side: string }) => ({ ...p, side: p.side === 'bottom' ? 'left' : 'right' }))
+    dip.size = { w: 10, h: 19 }
+    dip.art = { w: 100, h: 190, pinLabels: 'inside', shapes: [{ type: 'rect', x: 0, y: 0, w: 100, h: 190, fill: '#1E2126' }] }
+    writeFileSync(join(dir, 'sheet.json'), JSON.stringify({
+      format: 'circuitoon-diagram/1', title: 'old dip',
+      modules: { 'breadboard-half': JSON.parse(readFileSync(join('modules', 'breadboard-half.json'), 'utf8')), 'mcp23017-dip28': dip },
+      parts: [
+        { uid: 'BB1', designator: 'BB1', module: 'breadboard-half', x: 0, y: 0 },
+        { uid: 'U1', designator: 'U1', module: 'mcp23017-dip28', x: 60, y: 20, rotation: 90, mount: { board: 'BB1' } },
+      ],
+      connections: [{ uid: 'w1', from: { part: 'BB1', pin: 'c5-top', hole: 2 }, to: { part: 'BB1', pin: 'c25-top', hole: 0 } }],
+    }))
+    const c = await cli(['check', 'sheet.json', '--json'], { cwd: dir })
+    expect(c.code).toBe(1)
+    const rules = JSON.parse(c.out).findings.map((f: CliFinding) => `${f.severity} ${f.rule}`)
+    expect(rules).toContain('error module-drift')
+    expect(rules).not.toContain('error covered-hole')
+    // Without an intent, verify's other findings stay out of check.
+    expect(rules).not.toContain('error intent')
+  })
   it('keeps only the finding fields, prints plain text, and makes every id unique', () => {
     const f: CliFinding = { id: 'mount|a', rule: 'mount', severity: 'warning', message: 'm', parts: ['p'], pins: [], wires: [] }
     expect(cliFinding({ ...f, subject: 'x', target: 'y' } as CliFinding)).toEqual(f)

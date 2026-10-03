@@ -317,6 +317,27 @@ describe('verifyDiagram against the library (stored modules are not trusted)', (
     expect(f.filter((x) => x.rule === 'module-drift').map((x) => x.parts)).toEqual([['U1']])
     expect(f.filter((x) => x.rule === 'covered-hole')).toEqual([])
   })
+  /** R1's body covering D1's legs (c2-top and c6-top hole 0) on a half board, with R1's copy changed by `change`. */
+  const overLegs = (change: (m: Record<string, unknown>) => void): Diagram => {
+    const r = structuredClone(modules.resistor) as unknown as Record<string, unknown>
+    change(r)
+    const on = (uid: string, module: string, x: number): PartInstance => ({ uid, designator: uid, module, x, y: 40, mount: { board: 'BB1' } })
+    return {
+      format: 'circuitoon-diagram/1', title: 'over legs', modules: { 'breadboard-half': modules['breadboard-half'], resistor: r as unknown as ModuleDef, led: modules.led },
+      parts: [{ uid: 'BB1', designator: 'BB1', module: 'breadboard-half', x: 0, y: 0 }, on('R1', 'resistor', 30), on('D1', 'led', 40)],
+      connections: [],
+    }
+  }
+  it('still reports covered-hole under a part whose copy drifted only in its name (warning-only drift)', () => {
+    const f = verifyDiagram(overLegs((m) => void (m.name = 'Resistor (old)')), libraryLookup)
+    expect(f.filter((x) => x.rule === 'module-drift').map((x) => x.severity)).toEqual(['warning'])
+    expect(f.filter((x) => x.rule === 'covered-hole').length).toBeGreaterThan(0)
+  })
+  it('still reports covered-hole under a part whose electrical data drifted but whose body did not move', () => {
+    const f = verifyDiagram(overLegs((m) => void (m.electrical = { ...(m.electrical as object), model: 'led' })), libraryLookup)
+    expect(f.filter((x) => x.rule === 'module-drift').map((x) => x.severity)).toEqual(['error'])
+    expect(f.filter((x) => x.rule === 'covered-hole').length).toBeGreaterThan(0)
+  })
   it('only warns when a stored copy lacks the top-view footprint (it changes covered holes, not connections)', () => {
     const d = sheet()
     const sw = structuredClone(modules['tilt-switch-sw520d']) as unknown as Record<string, unknown>
@@ -343,7 +364,8 @@ describe('verifyDiagram against the library (stored modules are not trusted)', (
       (m) => void ((m.pins as Record<string, unknown>[]).find((p) => p.name === 'A')!.capacity = 2),
       (m) => void ((m.pins as Record<string, unknown>[]).find((p) => p.name === 'A')!.mains = 'L'),
       (m) => void (m.internal = [['A', 'K']]),
-      (m) => void (m.electrical = {}),
+      (m) => void (m.electrical = { ...(m.electrical as object), model: 'resistor' }),
+      (m) => void ((m.pins as Record<string, unknown>[]).find((p) => p.name === 'A')!.type = 'power_in'),
       (m) => void (m.holes = []),
     ]
     for (const change of cases) {

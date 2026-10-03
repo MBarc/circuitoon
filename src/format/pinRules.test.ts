@@ -82,6 +82,19 @@ describe('pin-flash', () => {
     expect(f).toHaveLength(1)
     expect(f[0].message).toBe('U1 SD0 and U2 SD0 are flash pins (SD0 is GPIO7, a flash data line), wired together and to U3 D, and nothing may be wired to a flash pin. The boards will not run like this. Move every wire off them to free GPIOs.')
   })
+  it("is an error when a flash pin is wired to its own board's GND", () => {
+    const f = only(board([], [wire('u1.SD0', 'u1.GND')]), 'pin-flash')
+    expect(f.map((x) => x.message)).toEqual(['U1 SD0 is a flash pin (SD0 is GPIO7, a flash data line), so nothing may be wired to it, but U1 GND is. The board will not run like this. Move it to a free GPIO, such as IO13.'])
+    expect(f[0].parts).toEqual(['u1'])
+  })
+  it("is an error when a flash pin is wired to its own board's supply", () => {
+    expect(only(board([], [wire('u1.SD0', 'u1.3V3')]), 'pin-flash').map((x) => x.message)).toEqual([expect.stringContaining('but U1 3V3 is.')])
+  })
+  it("is an error when a flash pin is wired to one of its own board's GPIOs", () => {
+    const f = only(board([], [wire('u1.SD0', 'u1.IO13')]), 'pin-flash')
+    expect(f.map((x) => x.message)).toEqual([expect.stringContaining('but U1 IO13 is.')])
+    expect(f[0].message).not.toContain('such as IO13')
+  })
   it('stays quiet while the flash pin is left free', () => {
     expect(only(board([part('U2', 'chip')], [wire('u1.IO13', 'u2.D')]), 'pin-flash')).toEqual([])
   })
