@@ -1,0 +1,89 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "circuitoon update --json",
+  "type": "object",
+  "required": [
+    "format",
+    "ok",
+    "sheet",
+    "output",
+    "updated",
+    "blocked"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "format": {
+      "const": "circuitoon-cli/update/1"
+    },
+    "ok": {
+      "type": "boolean"
+    },
+    "sheet": {
+      "type": "string"
+    },
+    "output": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "updated": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "parts",
+          "what"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "parts": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "what": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "blocked": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "parts",
+          "what"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "parts": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "what": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    }
+  }
+}

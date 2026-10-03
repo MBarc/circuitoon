@@ -152,9 +152,9 @@ export function updateParts(d: Diagram, library: (id: string) => ModuleDef | und
   return { diagram: modules ? { ...d, modules } : d, updated, blocked }
 }
 
-/** One line per change: "U1 (esp32-devkit-v1-30): pins VP/VN (pin data)." or "esp32-x (no parts): ...". */
+/** One line per change: "Updated U1 (esp32-devkit-v1-30): pins VP/VN (pin data)." (an unused copy is named by its id). */
 export function updateLines(u: PartsUpdate): string[] {
-  const who = (x: { id: string; parts: string[] }) => `${x.parts.length ? x.parts.join(', ') : 'no parts'} (${x.id})`
+  const who = (x: { id: string; parts: string[] }) => (x.parts.length ? `${x.parts.join(', ')} (${x.id})` : `${x.id} (no parts on the sheet)`)
   return [
     ...u.updated.map((x) => `Updated ${who(x)}: ${x.what.join(', ')}.`),
     ...u.blocked.map((x) => `Left ${who(x)}: ${x.what.join(', ')} changed in the library, so ${x.parts.length > 1 ? 'they' : 'it'} must be placed again.`),
