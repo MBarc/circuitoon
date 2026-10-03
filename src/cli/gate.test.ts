@@ -360,6 +360,22 @@ describe('circuitoon gate', () => {
     expect(report.ok).toBe(false)
     expect(report.ready).toBe(false)
   })
+  it('reports blocked-route for a wire whose every way out of its breadboard hole runs through a part', async () => {
+    const dir = await laidOut()
+    edit(dir, (s) => {
+      const v = validateDiagram(s)
+      if (!v.ok) throw new Error(v.errors.join('; '))
+      const w = v.diagram.connections.find((c) => c.from.part === 'BT1' && c.from.pin === '+')!
+      const bb = v.diagram.parts.find((p) => p.uid === 'BB1')!
+      const h = worldHoles(bb, v.diagram.modules[bb.module]).find((g) => g.name === w.to.pin)!.at[w.to.hole ?? 0]
+      ;(s.modules as Record<string, unknown>).resistor ??= JSON.parse(readFileSync(join('modules', 'resistor.json'), 'utf8'))
+      for (const [uid, x, y] of [['X1', h.x - 75, h.y - 20], ['X2', h.x + 15, h.y - 20], ['X3', h.x - 30, h.y - 55], ['X4', h.x - 30, h.y + 15]] as const)
+        s.parts.push({ uid, designator: uid, module: 'resistor', x, y })
+    })
+    const { code, report } = await runGate(readFileSync(join(dir, 'sheet.json')), { sheetPath: 'sheet.json', outDir: join(dir, 'out'), io: quietIo(dir) })
+    expect(code).toBe(1)
+    expect(report.blocking.filter((f) => f.rule === 'blocked-route').map((f) => f.message)).toEqual([expect.stringMatching(/^The wire BT1 \+ to BB1 c\d+-top hole \d+ has no clear route/)])
+  })
   it('lists a note (info) under notes, never blocking, and prints it', async () => {
     const dir = tempDir()
     writeFileSync(join(dir, 'sheet.json'), readFileSync(new URL('../format/fixtures/battery-bank-1s4p.circuitoon.json', import.meta.url)))

@@ -4,7 +4,8 @@
 // flat surface wires may cross (C1). No rule ever blocks a wire: when no route keeps off a
 // populated board, the wire crosses it, flagged `overBoard`, and the readability check reports it.
 import { describe, expect, it } from 'vitest'
-import { type Diagram, type PartInstance, computeRoutes, moduleOf, resolveEndpoint } from './diagram.ts'
+import { type Diagram, type PartInstance, computeRoutes, moduleOf, obstaclesFor, partObstacles, resolveEndpoint, wirePaths } from './diagram.ts'
+import { manualRouteBlocked } from './wireEdit.ts'
 import { type Pt, type Rect, bodyRect } from './geometry.ts'
 import { layoutModule } from './module.ts'
 import { layoutNetlist } from '../agent/layout.ts'
@@ -93,5 +94,29 @@ describe('a populated breadboard in the way', () => {
     expect(r.blocked).toBe(false)
     expect(r.overBoard).toBe(true)
     expect(readabilityFindings(d, routes).some((f) => f.rule === 'wire-over-board' && f.wires.includes('x'))).toBe(true)
+  })
+  it('blocks a wire whose every straight way out of its hole runs through a part, as routed and as drawn', () => {
+    // Four loose resistors box in the hole BT1 + is wired to (c6-top hole 1): each straight run from
+    // it to the board's edge crosses a body.
+    const base = led()
+    const c = base.connections.find((x) => x.from.part === 'BT1' && x.from.pin === '+')!
+    const h = resolveEndpoint(base, c.to)!.end
+    const res = (uid: string, x: number, y: number): PartInstance => ({ uid, designator: uid, module: 'resistor', x, y })
+    const d: Diagram = {
+      ...base,
+      modules: { ...base.modules, resistor: libraryLookup('resistor')! },
+      parts: [...base.parts, res('X1', h.x - 75, h.y - 20), res('X2', h.x + 15, h.y - 20), res('X3', h.x - 30, h.y - 55), res('X4', h.x - 30, h.y + 15)],
+    }
+    const routes = computeRoutes(d)
+    const r = routes.get(c.uid)!
+    const own = obstaclesFor(partObstacles(d), resolveEndpoint(d, c.from)!, resolveEndpoint(d, c.to)!)
+    expect(manualRouteBlocked(r.points, own)).toBe(true)
+    expect(r.blocked).toBe(true)
+    expect(wirePaths(d, routes).find((w) => w.conn.uid === c.uid)!.blocked).toBe(true)
+    // Every route reported clear is clear.
+    for (const w of d.connections) {
+      const rw = routes.get(w.uid)!
+      if (!rw.blocked) expect(manualRouteBlocked(rw.points, obstaclesFor(partObstacles(d), resolveEndpoint(d, w.from)!, resolveEndpoint(d, w.to)!)), w.uid).toBe(false)
+    }
   })
 })

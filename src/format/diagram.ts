@@ -567,12 +567,35 @@ function pathRunsOver(pts: Pt[], index: PointIndex, skip: ReadonlySet<string>): 
   return pts.slice(1).some((p, i) => runsOver(pts[i], p, index, skip))
 }
 
+/**
+ * A wire's route (see routeOnce), flagged blocked whenever the assembled path runs through a body
+ * this wire must avoid. Pieces are searched separately (a board hole's straight run out to the
+ * edge, then the search beyond it), so the whole is checked again here: a route through a part is
+ * never reported clear, and gate reports it as blocked-route.
+ */
 export function routeWire(
   d: Diagram,
   c: Connection,
   obstacles: Rect[],
   occupied?: Occupancy,
   avoid: RouteAvoid = routeAvoid(d),
+  bundle?: Occupancy,
+  shared?: Pt[],
+  stubs?: Occupancy,
+): WireRoute | null {
+  const r = routeOnce(d, c, obstacles, occupied, avoid, bundle, shared, stubs)
+  if (!r || r.blocked || c.route) return r
+  const a = resolveEndpoint(d, c.from)
+  const b = resolveEndpoint(d, c.to)
+  return a && b && manualRouteBlocked(r.points, obstaclesFor(obstacles, a, b)) ? { ...r, blocked: true } : r
+}
+
+function routeOnce(
+  d: Diagram,
+  c: Connection,
+  obstacles: Rect[],
+  occupied: Occupancy | undefined,
+  avoid: RouteAvoid,
   bundle?: Occupancy,
   shared?: Pt[],
   stubs?: Occupancy,
@@ -644,8 +667,9 @@ export function routeWire(
     const out = (v: number, lo: boolean) => (lo ? Math.floor((v - CLEARANCE - 1) / GRID) * GRID : Math.ceil((v + CLEARANCE + 1) / GRID) * GRID)
     return holeExits(board.rect, avoid.stripsOf.get(board.uid) ?? [], stripOf(ep) ?? '', p, (q) => avoid.usedHole.has(holeSpot(q))).map((x) => {
       const end = x.dir.x < 0 ? { x: out(r.x, true), y: p.y } : x.dir.x > 0 ? { x: out(r.x + r.w, false), y: p.y } : x.dir.y < 0 ? { x: p.x, y: out(r.y, true) } : { x: p.x, y: out(r.y + r.h, false) }
-      const dirt = exitDirt(x) + (onLane(p, { x: end.x + x.dir.x * GRID, y: end.y + x.dir.y * GRID }) ? 100 : 0) + (manualRouteBlocked([p, end], bodiesOff(p)) ? 200 : 0)
-      return { end, dir: x.dir, dirt }
+      const obstructed = manualRouteBlocked([p, end], bodiesOff(p))
+      const dirt = exitDirt(x) + (onLane(p, { x: end.x + x.dir.x * GRID, y: end.y + x.dir.y * GRID }) ? 100 : 0) + (obstructed ? 200 : 0)
+      return { end, dir: x.dir, dirt, obstructed }
     })
   }
   /** Whether the run from hole `from` toward `to` leaves its board by one of its cleanest ways out. */
@@ -673,7 +697,10 @@ export function routeWire(
     if (!board || board === inside) return [{ end: e, run: [] }]
     const p = e.end
     const len = (end: Pt) => Math.abs(end.x - p.x) + Math.abs(end.y - p.y) + Math.abs(end.x - other.x) + Math.abs(end.y - other.y)
+    // A way out through a part's body is never taken: with none clear, the route across the board
+    // below is the fallback (and routeWire flags it blocked if that too runs through a body).
     return exitsFor(board, ep, p)
+      .filter((x) => !x.obstructed)
       .sort((u, v) => u.dirt - v.dirt || len(u.end) - len(v.end))
       .map((x) => ({ end: { end: x.end, dir: x.dir }, run: [p] }))
   }
