@@ -334,7 +334,7 @@ describe('verifyDiagram against the library (stored modules are not trusted)', (
     expect(f.filter((x) => x.rule === 'covered-hole').length).toBeGreaterThan(0)
   })
   it('still reports covered-hole under a part whose electrical data drifted but whose body did not move', () => {
-    const f = verifyDiagram(overLegs((m) => void (m.electrical = {})), libraryLookup)
+    const f = verifyDiagram(overLegs((m) => void (m.electrical = { ...(m.electrical as object), model: 'led' })), libraryLookup)
     expect(f.filter((x) => x.rule === 'module-drift').map((x) => x.severity)).toEqual(['error'])
     expect(f.filter((x) => x.rule === 'covered-hole').length).toBeGreaterThan(0)
   })
@@ -364,7 +364,8 @@ describe('verifyDiagram against the library (stored modules are not trusted)', (
       (m) => void ((m.pins as Record<string, unknown>[]).find((p) => p.name === 'A')!.capacity = 2),
       (m) => void ((m.pins as Record<string, unknown>[]).find((p) => p.name === 'A')!.mains = 'L'),
       (m) => void (m.internal = [['A', 'K']]),
-      (m) => void (m.electrical = {}),
+      (m) => void (m.electrical = { ...(m.electrical as object), model: 'resistor' }),
+      (m) => void ((m.pins as Record<string, unknown>[]).find((p) => p.name === 'A')!.type = 'power_in'),
       (m) => void (m.holes = []),
     ]
     for (const change of cases) {

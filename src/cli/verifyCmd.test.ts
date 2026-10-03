@@ -4,7 +4,6 @@ import { describe, expect, it } from 'vitest'
 import { readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { NO_INTENT } from '../agent/verify.ts'
-import { libraryLookup } from '../agent/catalog.ts'
 import { NOT_CHECKED } from '../agent/notChecked.ts'
 import { cli, tempDir } from './cliHarness.testing.ts'
 import { READABILITY_RULES } from '../agent/readabilityWarnings.ts'
@@ -199,10 +198,6 @@ describe('circuitoon verify and check', () => {
       const at = w.from as { part: string; pin: string; hole: number }
       const taken = takenHoles(r.diagram)
       w.from = { ...at, hole: [0, 1, 2, 3, 4].find((i) => !taken.has(holeKey(at.part, at.pin, i)))! }
-      // Its built-in parts saved before the library's pin data (module-drift, reported by check on any
-      // sheet) are brought up to date, as placing them again would; the current OLED then adds an I2C note.
-      const mods = s.modules as Record<string, unknown>
-      for (const id of Object.keys(mods)) if (libraryLookup(id)) mods[id] = libraryLookup(id)
     })
     const c = await cli(['check', 'sheet.json', '--json'], { cwd: dir })
     expect(c.code).toBe(0)
@@ -212,7 +207,9 @@ describe('circuitoon verify and check', () => {
     // The hand-drawn sheet also has readability warnings (many crossings, and wires drawn into
     // neighbouring holes of one strip that lie on top of each other there): never blocking.
     const readable = new Set<string>(READABILITY_RULES)
-    expect(out.findings.filter((f: CliFinding) => !readable.has(f.rule)).map((f: CliFinding) => `${f.severity} ${f.rule}`)).toEqual(['info battery-bank', 'info i2c-pullups-unknown'])
+    // Its ESP32 and OLED copies predate the library's pin and I2C data (Ruling D1): warnings, never blocking.
+    expect(out.findings.filter((f: CliFinding) => !readable.has(f.rule)).map((f: CliFinding) => `${f.severity} ${f.rule}`)).toEqual(['warning module-drift', 'warning module-drift', 'warning module-drift', 'info battery-bank'])
+    expect(out.findings.filter((f: CliFinding) => f.rule === 'module-drift').every((f: CliFinding) => f.message.includes('the library has newer data for this part; run `circuitoon update` or use Update parts in the editor') || f.message.includes('The library has newer data for this part; run `circuitoon update` or use Update parts in the editor'))).toBe(true)
     expect(out.findings.filter((f: CliFinding) => readable.has(f.rule)).every((f: CliFinding) => f.severity === 'warning')).toBe(true)
     const text = await cli(['check', 'sheet.json'], { cwd: dir })
     expect(text.code).toBe(0)
