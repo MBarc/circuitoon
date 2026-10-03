@@ -8,6 +8,8 @@ import { downloadText } from './editor/files.ts'
 import { groupLibrary } from './editor/libraryGroups.ts'
 
 const REPO = 'https://github.com/MBarc/circuitoon'
+/** The README's agent section: the plugin install commands and the netlist loop. */
+const AGENT_SETUP = `${REPO}#for-ai-agents`
 
 /**
  * A module's `source` field is one or more URLs joined by whitespace. Only http: and https:
@@ -96,7 +98,10 @@ export function Landing() {
   return (
     <>
       <header className="topbar">
-        <a className="wordmark" href="./" aria-label="Circuitoon home">Circuitoon</a>
+        <a className="brand" href="./" aria-label="Circuitoon home">
+          <img className="brand-mark" src={`${import.meta.env.BASE_URL}favicon.svg`} alt="" width="40" height="40" />
+          <span className="wordmark">Circuitoon</span>
+        </a>
         <nav className="top-links">
           <a className="gh" href="#/editor">Open the editor</a>
           <a className="gh" href={REPO}>Source on GitHub</a>
@@ -105,16 +110,21 @@ export function Landing() {
       <main>
         <section className="hero">
           <div className="hero-text">
-            <h1>Wiring diagrams you can drag around.</h1>
+            <h1>Circuit diagrams AI agents can design, check and hand you.</h1>
             <p>
-              Circuitoon turns parts and pins into a clean wiring sheet. Drop modules on the page, wire pin to pin,
-              and the wires follow when you move things.
+              An agent installs the Circuitoon plugin and describes the circuit as a netlist. Circuitoon lays it out,
+              checks every connection and every pin rule the parts declare, and hands back a sheet you can open here,
+              drag around and edit. The wires follow when you move things.
             </p>
             <p className="status">
-              Early build. The editor works for placing parts and drawing wires; saving in the browser, the art studio
-              and PDF export come next.
+              Early build. Working today: the editor with breadboards, the wiring checker, net labels, the bill of
+              materials, share links and the agent plugin. Not yet: saving in the browser (export JSON to keep a
+              sheet), PDF export and the art studio.
             </p>
-            <p><a className="cta" href="#/editor">Open the editor</a></p>
+            <p className="ctas">
+              <a className="cta" href="#/editor">Open the editor</a>
+              <a className="cta cta-quiet" href={AGENT_SETUP}>Set up the agent plugin</a>
+            </p>
           </div>
           <figure className="sticker">
             <Sheet diagram={buttonLed} captions={captions} box={{ x: 20, y: -6, w: 480, h: 212 }} label="Sample sheet: a 9 volt battery, push button, 220 ohm resistor and red LED wired in a loop" />
