@@ -37,7 +37,11 @@
     {
       "name": "GPB7",
       "side": "bottom",
-      "type": "output"
+      "type": "output",
+      "caps": {
+        "outputOnly": true,
+        "note": "Microchip made GPA7 and GPB7 output only in datasheet revision D; read inputs on the other 14 pins."
+      }
     },
     {
       "name": "VDD",
@@ -74,7 +78,11 @@
     {
       "name": "GPA7",
       "side": "top",
-      "type": "output"
+      "type": "output",
+      "caps": {
+        "outputOnly": true,
+        "note": "Microchip made GPA7 and GPB7 output only in datasheet revision D; read inputs on the other 14 pins."
+      }
     },
     {
       "name": "GPA6",
@@ -141,7 +149,29 @@
   },
   "electrical": {
     "model": "io-expander",
-    "params": {}
+    "params": {},
+    "i2c": {
+      "sda": "SDA",
+      "scl": "SCL",
+      "address": {
+        "base": 32,
+        "pins": [
+          {
+            "pin": "A0",
+            "add": 1
+          },
+          {
+            "pin": "A1",
+            "add": 2
+          },
+          {
+            "pin": "A2",
+            "add": 4
+          }
+        ]
+      },
+      "pullups": false
+    }
   },
   "art": {
     "w": 160,

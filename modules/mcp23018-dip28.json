@@ -141,7 +141,11 @@
   },
   "electrical": {
     "model": "io-expander",
-    "params": {}
+    "params": {},
+    "i2c": {
+      "sda": "SDA",
+      "scl": "SCL"
+    }
   },
   "art": {
     "w": 160,

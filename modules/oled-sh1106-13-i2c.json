@@ -35,7 +35,20 @@
   "footprint": "legs",
   "electrical": {
     "model": "display",
-    "params": {}
+    "params": {},
+    "settings": {
+      "address": [
+        "0x3C",
+        "0x3D"
+      ]
+    },
+    "i2c": {
+      "sda": "SDA",
+      "scl": "SCL",
+      "address": {
+        "setting": "address"
+      }
+    }
   },
   "art": {
     "w": 150,

@@ -60,12 +60,22 @@
     {
       "name": "A6",
       "side": "left",
-      "type": "input"
+      "type": "input",
+      "caps": {
+        "inputOnly": true,
+        "noPullup": true,
+        "note": "A6 is an analog input only: no digital output and no internal pull-up."
+      }
     },
     {
       "name": "A7",
       "side": "left",
-      "type": "input"
+      "type": "input",
+      "caps": {
+        "inputOnly": true,
+        "noPullup": true,
+        "note": "A7 is an analog input only: no digital output and no internal pull-up."
+      }
     },
     {
       "name": "5V",

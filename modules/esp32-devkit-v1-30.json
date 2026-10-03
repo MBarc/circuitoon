@@ -22,22 +22,42 @@
     {
       "name": "VP",
       "side": "left",
-      "type": "input"
+      "type": "input",
+      "caps": {
+        "inputOnly": true,
+        "noPullup": true,
+        "note": "GPIO36 has no output driver and no internal pull-up or pull-down."
+      }
     },
     {
       "name": "VN",
       "side": "left",
-      "type": "input"
+      "type": "input",
+      "caps": {
+        "inputOnly": true,
+        "noPullup": true,
+        "note": "GPIO39 has no output driver and no internal pull-up or pull-down."
+      }
     },
     {
       "name": "D34",
       "side": "left",
-      "type": "input"
+      "type": "input",
+      "caps": {
+        "inputOnly": true,
+        "noPullup": true,
+        "note": "GPIO34 has no output driver and no internal pull-up or pull-down."
+      }
     },
     {
       "name": "D35",
       "side": "left",
-      "type": "input"
+      "type": "input",
+      "caps": {
+        "inputOnly": true,
+        "noPullup": true,
+        "note": "GPIO35 has no output driver and no internal pull-up or pull-down."
+      }
     },
     {
       "name": "D32",
@@ -72,7 +92,11 @@
     {
       "name": "D12",
       "side": "left",
-      "type": "io"
+      "type": "io",
+      "caps": {
+        "strapping": "low",
+        "note": "GPIO12 (MTDI) high at reset sets the flash voltage to 1.8 V, and the 3.3 V flash on this module then fails to boot."
+      }
     },
     {
       "name": "D13",
@@ -136,7 +160,11 @@
     {
       "name": "D5",
       "side": "right",
-      "type": "io"
+      "type": "io",
+      "caps": {
+        "strapping": "either",
+        "note": "GPIO5 only sets the SDIO slave timing at reset."
+      }
     },
     {
       "name": "TX2",
@@ -156,12 +184,20 @@
     {
       "name": "D2",
       "side": "right",
-      "type": "io"
+      "type": "io",
+      "caps": {
+        "strapping": "low",
+        "note": "GPIO2 must be low or floating at reset to upload over USB; it does not change a normal boot."
+      }
     },
     {
       "name": "D15",
       "side": "right",
-      "type": "io"
+      "type": "io",
+      "caps": {
+        "strapping": "either",
+        "note": "GPIO15 (MTDO) low at reset only silences the boot messages on UART0."
+      }
     },
     {
       "name": "GND 2",

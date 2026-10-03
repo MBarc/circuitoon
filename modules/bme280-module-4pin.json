@@ -35,7 +35,20 @@
   "footprint": "legs",
   "electrical": {
     "model": "sensor",
-    "params": {}
+    "params": {},
+    "settings": {
+      "address": [
+        "0x76",
+        "0x77"
+      ]
+    },
+    "i2c": {
+      "sda": "SDA",
+      "scl": "SCL",
+      "address": {
+        "setting": "address"
+      }
+    }
   },
   "art": {
     "w": 70,

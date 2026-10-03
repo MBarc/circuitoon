@@ -13,6 +13,30 @@ export const SIDES: Side[] = ['top', 'right', 'bottom', 'left']
 export const PIN_TYPES = ['power_in', 'power_out', 'ground', 'input', 'output', 'io', 'passive', 'nc'] as const
 export type PinType = (typeof PIN_TYPES)[number]
 
+/**
+ * What a pin can and cannot do, from the maker's datasheet (PRD "Pin capabilities"). Every field is
+ * optional and a missing field claims nothing: the pin rules fire only on what is set here.
+ */
+export interface PinCaps {
+  /** Reads only: no output driver (ESP32 GPIO34-39, Nano A6/A7). It must never be the only thing driving a net. */
+  inputOnly?: true
+  /** Drives only: it must not be read as an input (MCP23017 GPA7/GPB7). */
+  outputOnly?: true
+  /** Wired to the board's SPI flash or PSRAM (ESP32 GPIO6-11): nothing may be connected to it. */
+  flash?: true
+  /** No internal pull-up or pull-down: a switch on it needs an external resistor. */
+  noPullup?: true
+  /**
+   * A strapping pin, read at reset: the level the boot needs. "high" or "low": the other level
+   * changes how the chip starts (download mode, the flash voltage); "either": both levels boot
+   * normally, it only changes a detail (`note` says which).
+   */
+  strapping?: 'high' | 'low' | 'either'
+  /** One plain sentence on what the pin does at boot or why it is limited, shown by explain and in findings. */
+  note?: string
+}
+export const STRAPPING_LEVELS = ['high', 'low', 'either'] as const
+
 export interface PinDef {
   name: string
   side: Side
@@ -26,6 +50,8 @@ export interface PinDef {
   mains?: Requirement
   /** An intentional bond to PE (a metal enclosure, a class 1 supply secondary). */
   bond?: 'pe'
+  /** What the pin can and cannot do (input only, strapping, flash ...), from the datasheet. */
+  caps?: PinCaps
 }
 export interface SpacerDef {
   spacer: true
@@ -80,6 +106,8 @@ export interface HoleGroup {
   mains?: Requirement
   /** An intentional bond to PE (a metal enclosure, a class 1 supply secondary). */
   bond?: 'pe'
+  /** What the pad can and cannot do, as on a pin. */
+  caps?: PinCaps
 }
 
 export interface ModuleDef {
@@ -213,6 +241,18 @@ export function validateModule(raw: unknown): ValidationResult {
     if (t.mains !== undefined && !(REQUIREMENTS as readonly unknown[]).includes(t.mains)) errors.push(`${at}.mains: must be one of "L", "N", "PE", "line"`)
     if (t.bond !== undefined && t.bond !== 'pe') errors.push(`${at}.bond: must be "pe"`)
   }
+  const checkCaps = (t: Record<string, unknown>, at: string) => {
+    if (t.caps === undefined) return
+    const c = t.caps
+    if (!isObj(c)) return void errors.push(`${at}.caps: must be an object (inputOnly, outputOnly, flash, noPullup, strapping, note)`)
+    for (const k of Object.keys(c))
+      if (!['inputOnly', 'outputOnly', 'flash', 'noPullup', 'strapping', 'note'].includes(k)) errors.push(`${at}.caps.${k}: unknown capability`)
+    for (const k of ['inputOnly', 'outputOnly', 'flash', 'noPullup'])
+      if (c[k] !== undefined && c[k] !== true) errors.push(`${at}.caps.${k}: must be true when present`)
+    if (c.inputOnly && c.outputOnly) errors.push(`${at}.caps: a pin cannot be both inputOnly and outputOnly`)
+    if (c.strapping !== undefined && !(STRAPPING_LEVELS as readonly unknown[]).includes(c.strapping)) errors.push(`${at}.caps.strapping: must be "high", "low" or "either"`)
+    if (c.note !== undefined && (typeof c.note !== 'string' || c.note.trim() === '')) errors.push(`${at}.caps.note: must be a non-empty string`)
+  }
   const checkSupply = (t: Record<string, unknown>, at: string) => {
     if (t.supply !== undefined && typeof t.supply !== 'string') errors.push(`${at}.supply: must be a string`)
     else if (typeof t.supply === 'string' && !/^[^/\s]+(\/[^/\s]+)*$/.test(t.supply))
@@ -242,6 +282,7 @@ export function validateModule(raw: unknown): ValidationResult {
         errors.push(`${at}.bus: must be { "length": <whole number, 2 or more> }`)
       if (p.label !== undefined && typeof p.label !== 'string') errors.push(`${at}.label: must be a string`)
       checkSupply(p, at)
+      checkCaps(p, at)
       if (p.capacity !== undefined && !(Number.isInteger(p.capacity) && (p.capacity as number) >= 1 && (p.capacity as number) <= CAPACITY_MAX))
         errors.push(`${at}.capacity: must be a whole number from 1 to ${CAPACITY_MAX}`)
     })
@@ -262,6 +303,7 @@ export function validateModule(raw: unknown): ValidationResult {
         checkType(g, at)
         checkMains(g, at)
         checkSupply(g, at)
+        checkCaps(g, at)
         if (g.capacity !== undefined) {
           if (g.holeStyle !== 'pad') errors.push(`${at}.capacity: only pins and header pads (holeStyle "pad") take a capacity`)
           else if (!(Number.isInteger(g.capacity) && (g.capacity as number) >= 1 && (g.capacity as number) <= CAPACITY_MAX))
@@ -362,6 +404,8 @@ export function validateModule(raw: unknown): ValidationResult {
           errors.push(`electrical.settings.${k}: must be a list of 2 or more different choices, the first the default`)
   }
 
+  if (isObj(raw.electrical) && raw.electrical.i2c !== undefined) validateI2c(raw.electrical.i2c, raw.electrical.settings, pinNames, errors)
+
   if (isObj(raw.electrical) && raw.electrical.external !== undefined) {
     const ext = raw.electrical.external
     if (!Array.isArray(ext)) errors.push('electrical.external: must be a list of { "pin", "volts", "via" }')
@@ -439,6 +483,66 @@ export function validateModule(raw: unknown): ValidationResult {
   }
 
   return errors.length ? { ok: false, errors } : { ok: true, module: raw as unknown as ModuleDef }
+}
+
+/** A 7-bit I2C address. */
+const isAddress = (v: unknown): v is number => Number.isInteger(v) && (v as number) >= 0 && (v as number) <= 0x7f
+/** A setting choice that names an address: "0x3C". */
+export const parseAddress = (s: string): number | null => (/^0x[0-9a-f]{1,2}$/i.test(s) && isAddress(parseInt(s, 16)) ? parseInt(s, 16) : null)
+/** An address as the user reads it: "0x3C". */
+export const addressText = (a: number): string => `0x${a.toString(16).toUpperCase().padStart(2, '0')}`
+
+function validateI2c(i2c: unknown, settings: unknown, pins: Set<string>, errors: string[]) {
+  const at = 'electrical.i2c'
+  if (!isObj(i2c)) return void errors.push(`${at}: must be { "sda", "scl", "address"?, "pullups"? }`)
+  for (const k of Object.keys(i2c)) if (!['sda', 'scl', 'address', 'pullups'].includes(k)) errors.push(`${at}.${k}: unknown field`)
+  for (const k of ['sda', 'scl'])
+    if (typeof i2c[k] !== 'string' || !pins.has(i2c[k] as string)) errors.push(`${at}.${k}: no pin named "${String(i2c[k])}"`)
+  if (i2c.pullups !== undefined && typeof i2c.pullups !== 'boolean') errors.push(`${at}.pullups: must be true or false (leave it out when not known)`)
+  const a = i2c.address
+  if (a === undefined) return
+  const forms = '{ "fixed" }, { "base", "pins" } or { "setting" }'
+  if (!isObj(a)) return void errors.push(`${at}.address: must be ${forms}`)
+  if (a.fixed !== undefined) {
+    if (!isAddress(a.fixed)) errors.push(`${at}.address.fixed: must be a 7-bit address (0 to 127)`)
+    if (Object.keys(a).length > 1) errors.push(`${at}.address: "fixed" takes no other field`)
+  } else if (a.base !== undefined) {
+    if (!isAddress(a.base)) errors.push(`${at}.address.base: must be a 7-bit address (0 to 127)`)
+    if (!Array.isArray(a.pins) || !a.pins.length) return void errors.push(`${at}.address.pins: required, a list of { "pin", "add", "floating"? }`)
+    a.pins.forEach((p, i) => {
+      const pa = `${at}.address.pins[${i}]`
+      if (!isObj(p)) return void errors.push(`${pa}: must be { "pin", "add", "floating"? }`)
+      if (typeof p.pin !== 'string' || !pins.has(p.pin)) errors.push(`${pa}.pin: no pin named "${String(p.pin)}"`)
+      if (!(Number.isInteger(p.add) && (p.add as number) > 0 && (p.add as number) <= 0x7f)) errors.push(`${pa}.add: must be a whole number from 1 to 127`)
+      if (p.floating !== undefined && p.floating !== 0 && p.floating !== 1) errors.push(`${pa}.floating: must be 0 or 1 (the level the board pulls the pin to when nothing is connected)`)
+    })
+  } else if (a.setting !== undefined) {
+    const choices = isObj(settings) ? settings[a.setting as string] : undefined
+    if (typeof a.setting !== 'string' || !Array.isArray(choices)) errors.push(`${at}.address.setting: no setting named "${String(a.setting)}" in electrical.settings`)
+    else if (choices.some((c) => typeof c !== 'string' || parseAddress(c) === null)) errors.push(`${at}.address.setting: every choice of electrical.settings.${a.setting} must be an address such as "0x3C"`)
+  } else errors.push(`${at}.address: must be ${forms}`)
+}
+
+/** How a device's I2C address is set: fixed, by address pins, or by a part setting (a resistor or jumper on the board). */
+export type I2cAddress = { fixed: number } | { base: number; pins: { pin: string; add: number; floating?: 0 | 1 }[] } | { setting: string }
+export interface I2cSpec {
+  sda: string
+  scl: string
+  address?: I2cAddress
+  /** true: the board has pull-ups on SDA and SCL; false: it has none; undefined: not known. */
+  pullups?: boolean
+}
+
+/** The module's I2C device data (`electrical.i2c`), or null. Trusts validateModule. */
+export function i2cOf(m: ModuleDef): I2cSpec | null {
+  const e = m.electrical
+  return isObj(e) && isObj(e.i2c) && typeof e.i2c.sda === 'string' && typeof e.i2c.scl === 'string' ? (e.i2c as unknown as I2cSpec) : null
+}
+
+/** A pin's or hole group's capabilities, or undefined. */
+export function pinCaps(m: ModuleDef, name: string): PinCaps | undefined {
+  const pin = m.pins.find((p): p is PinDef => !isSpacer(p) && p.name === name)
+  return pin ? pin.caps : holeGroupOf(m, name)?.caps
 }
 
 /**

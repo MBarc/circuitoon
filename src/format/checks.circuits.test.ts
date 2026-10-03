@@ -39,7 +39,8 @@ describe('correct circuits give no findings', () => {
   it('ESP32 DevKit V1 with a BME280 on its 3V3', () => {
     const d = sheet([at('u1', 'U1', 'esp32-devkit-v1-30'), at('u2', 'U2', 'bme280-module-4pin', 400)],
       [['u2|VIN', 'u1|3V3'], ['u2|GND', 'u1|GND'], ['u2|SDA', 'u1|D21'], ['u2|SCL', 'u1|D22']])
-    expect(found(d)).toEqual([])
+    // Only a note (never a problem): no second source says whether the 4-pin BME280 board has I2C pull-ups.
+    expect(checkDiagram(d).map((f) => `${f.severity} ${f.rule}`)).toEqual(['info i2c-pullups-unknown'])
   })
   it('Arduino Nano on a 9 V battery at VIN, a relay module on its 5V pin', () => {
     const d = sheet([at('u1', 'U1', 'arduino-nano'), at('k1', 'K1', 'relay-module-1ch-5v', 400), at('bt1', 'BT1', 'battery-9v', -300)],
@@ -245,6 +246,7 @@ describe('damaging or dead circuits are caught', () => {
     expect(found(d)).toEqual([
       "no-power: U2 has no power: VIN is connected but nothing supplies it. Connect it to a 3.3 V or 5 V supply, such as a board's 3V3 or 5V pin.",
       "no-power: U3 has no power: VCC is connected but nothing supplies it. Connect it to a 3.3 V or 5 V supply, such as a board's 3V3 or 5V pin.",
+      'i2c-pullups-unknown: The I2C bus at U1 D21 (SDA) and U1 D22 (SCL), with U2 and U3 on it, has no pull-up resistor wired on SDA and SCL, and it is not known whether U2 and U3 have pull-ups on board: check whether a module provides pull-ups; if none does, add a 4.7 kOhm resistor from SDA and another from SCL to the logic supply.',
     ])
   })
   it('sensors on a breadboard + rail that is never jumpered to a supply have no power', () => {
@@ -387,7 +389,7 @@ const bb = () => at('bb', 'BB1', 'breadboard-half', 0, { y: 400 })
 const set = (v: number) => volts(v)
 const hobby: Case[] = [
   ['C1 ESP32 V1 + BME280-4 via breadboard rails on 3V3', [at('u1', 'U1', 'esp32-devkit-v1-30', -400), bb(), at('u2', 'U2', 'bme280-module-4pin', 500)],
-    [['u1|3V3', 'bb|top+|0'], ['u1|GND', 'bb|top-|0'], ['u2|VIN', 'bb|top+|5'], ['u2|GND', 'bb|top-|5'], ['u2|SDA', 'u1|D21'], ['u2|SCL', 'u1|D22']], []],
+    [['u1|3V3', 'bb|top+|0'], ['u1|GND', 'bb|top-|0'], ['u2|VIN', 'bb|top+|5'], ['u2|GND', 'bb|top-|5'], ['u2|SDA', 'u1|D21'], ['u2|SCL', 'u1|D22']], ['i2c-pullups-unknown']],
   ['C2 ESP32-S3 + BME280-6 + SSD1306 on 3V3', [at('u1', 'U1', 'esp32-s3-devkitc-1'), at('u2', 'U2', 'bme280-module-6pin', 400), at('u3', 'U3', 'oled-ssd1306-096-i2c', 600)],
     [['u2|VCC', 'u1|3V3'], ['u2|GND', 'u1|G'], ['u3|VCC', 'u2|VCC'], ['u3|GND', 'u1|G 2'], ['u2|SDA', 'u1|8'], ['u2|SCL', 'u1|9'], ['u3|SDA', 'u2|SDA'], ['u3|SCL', 'u2|SCL']], []],
   ['C6 Nano + HC-SR04 + SG90 + relay on 5V', [at('u1', 'U1', 'arduino-nano'), at('u2', 'U2', 'ultrasonic-hc-sr04', 400), at('m1', 'M1', 'servo-sg90', 600), at('k1', 'K1', 'relay-module-1ch-5v', 800)],
@@ -675,6 +677,48 @@ describe('parallel battery banks (Ruling V1)', () => {
       [['bt1|+', 'u1|B+'], ['bt2|+', 'u1|B+'], ['bt1|-', 'u1|B-'], ['bt2|-', 'u1|OUT-']])
     expect(rules(through)).not.toContain('battery-bank')
     expect(rules(through)).toContain('supplies-parallel')
+  })
+})
+
+describe('pin capabilities and I2C on the built-in parts', () => {
+  /** The pin and I2C findings only (these small sheets leave some power pins unwired on purpose). */
+  const kinds = (d: Diagram) => checkDiagram(d).filter((f) => /^(pin|i2c)-/.test(f.rule)).map((f) => `${f.severity} ${f.rule}`)
+  /** An ESP32 DevKit V1 on USB, plus the given parts and wires. */
+  const v1 = (parts: PartInstance[], wires: Wire[]) => sheet([at('u1', 'U1', 'esp32-devkit-v1-30'), ...parts], wires)
+  it('a relay driven from input-only D34 is an error; from D13 it is fine', () => {
+    const relay = (pin: string) => v1([at('k1', 'K1', 'relay-module-1ch-5v', 400)], [['k1|DC+', 'u1|VIN'], ['k1|DC-', 'u1|GND'], ['k1|IN', `u1|${pin}`]])
+    expect(found(relay('D34'))).toEqual(['pin-input-only: U1 D34 is input only (GPIO34 has no output driver and no internal pull-up or pull-down): it cannot drive K1 IN, and nothing else on the net does. Move the wire to a GPIO that can output, such as D32.'])
+    expect(found(relay('D13'))).toEqual([])
+  })
+  it('anything on a DevKitC flash pin is an error', () => {
+    const d = sheet([at('u1', 'U1', 'esp32-devkitc-v4'), at('k1', 'K1', 'relay-module-1ch-5v', 400)], [['k1|DC+', 'u1|5V'], ['k1|DC-', 'u1|GND'], ['k1|IN', 'u1|D0']])
+    expect(kinds(d)).toEqual(['error pin-flash'])
+  })
+  it('a tilt switch on MCP23017 GPA7 is an error; on GPA6 it is fine', () => {
+    const tilt = (pin: string) => sheet([at('u1', 'U1', 'mcp23017-dip28'), at('s1', 'S1', 'tilt-switch-sw520d', 300)], [['u1|' + pin, 's1|1'], ['s1|2', 'u1|VSS']])
+    expect(kinds(tilt('GPA7'))).toEqual(['error pin-output-only'])
+    expect(kinds(tilt('GPA6'))).toEqual([])
+  })
+  it('a pull-up on D12 (must be low at reset) warns; a button on D35 with no pull-up warns', () => {
+    expect(kinds(v1([at('r1', 'R1', 'resistor', 400)], [['r1|1', 'u1|D12'], ['r1|2', 'u1|3V3']]))).toEqual(['warning pin-strapping'])
+    expect(kinds(v1([at('s1', 'S1', 'push-button', 400)], [['s1|1', 'u1|D35'], ['s1|2', 'u1|GND']]))).toEqual(['warning pin-no-pullup'])
+    expect(kinds(v1([at('s1', 'S1', 'push-button', 400), at('r1', 'R1', 'resistor', 600)], [['s1|1', 'u1|D35'], ['s1|2', 'u1|GND'], ['r1|1', 'u1|D35'], ['r1|2', 'u1|3V3']]))).toEqual([])
+  })
+  /** An MCP23017 on the ESP32's I2C pins, powered, RESET high, with the given address pin wiring. */
+  const mcp = (u: string, x: number, address: Wire[]): [PartInstance, Wire[]] => [at(u, u.toUpperCase(), 'mcp23017-dip28', x),
+    [[`${u}|VDD`, 'u1|3V3'], [`${u}|VSS`, 'u1|GND'], [`${u}|RESET`, 'u1|3V3'], [`${u}|SDA`, 'u1|D21'], [`${u}|SCL`, 'u1|D22'], ...address]]
+  const low = (u: string): Wire[] => ['A0', 'A1', 'A2'].map((a): Wire => [`${u}|${a}`, 'u1|GND'])
+  it('a bare MCP23017 with no pull-ups warns; an address pin left open warns', () => {
+    const [p, w] = mcp('u2', 400, low('u2'))
+    expect(kinds(v1([p], w))).toEqual(['warning i2c-pullups'])
+    const [q, x] = mcp('u2', 400, low('u2').slice(1))
+    expect(kinds(v1([q], x))).toEqual(['warning i2c-pullups', 'warning i2c-address-floating'])
+  })
+  it('two GY-BME280 boards with SDO left open are both at 0x76: an error; SDO to 3V3 on one fixes it', () => {
+    const two = (extra: Wire[]) => v1([at('u2', 'U2', 'bme280-module-6pin', 400), at('u3', 'U3', 'bme280-module-6pin', 600)], [
+      ...['u2', 'u3'].flatMap((u): Wire[] => [[`${u}|VCC`, 'u1|3V3'], [`${u}|GND`, 'u1|GND'], [`${u}|SDA`, 'u1|D21'], [`${u}|SCL`, 'u1|D22']]), ...extra])
+    expect(found(two([]))).toEqual(["i2c-address-clash: U2 and U3 are all at I2C address 0x76 on the bus at U1 D21 (SDA) and U1 D22 (SCL): they answer together and the bus fails. Give each its own address: wire U3's address pins (SDO) differently."])
+    expect(found(two([['u3|SDO', 'u1|3V3']]))).toEqual([])
   })
 })
 

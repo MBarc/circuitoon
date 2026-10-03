@@ -187,7 +187,12 @@ function dht22Case(x, y) {
   write('bme280-module-4pin.json', moduleJson({footprint: 'legs', 
     inside: true, id: 'bme280-module-4pin', name: 'BME280 sensor module (4-pin, I2C: VIN GND SCL SDA)', category: 'Sensors',
     source: 'https://lastminuteengineers.com/bme280-arduino-tutorial/ https://www.makerguides.com/how-to-interface-bme280-pressure-sensor-with-arduino/',
-    pins: bottom.pins, wu, hu, electrical: { model: 'sensor', params: {} }, shapes,
+    // Address 0x76 as shipped, 0x77 with the solder jumper on the back moved (Last Minute
+    // Engineers: "cut the trace between the middle and left copper pads ... solder blob between
+    // the middle and right"; Makerguides: "By default, the address is set to 0x76 ... shorting the
+    // first two or the last two pads"); BME280 datasheet: SDO low 0x76, high 0x77. Pull-ups: only
+    // Makerguides shows them, so they stay unknown.
+    pins: bottom.pins, wu, hu, electrical: { model: 'sensor', params: {}, settings: { address: ['0x76', '0x77'] }, i2c: { sda: 'SDA', scl: 'SCL', address: { setting: 'address' } } }, shapes,
   }))
 }
 
@@ -218,7 +223,12 @@ function dht22Case(x, y) {
   write('bme280-module-6pin.json', moduleJson({footprint: 'legs', 
     inside: true, id: 'bme280-module-6pin', name: 'BME280 sensor module (GY-BME280, 6-pin, 3.3 V: VCC GND SCL SDA CSB SDO)', category: 'Sensors',
     source: 'https://shillehtek.com/blogs/shillehtek-product-manuals/bme280-environmental-sensor-raspberry-pi-arduino-esp32-i2c-humidity-pressure-and-temperature-measurement https://protosupplies.com/product/gy-bme280-pressure-humidity-temperature-sensor-module/',
-    pins: bottom.pins, wu, hu, electrical: { model: 'sensor', params: {} }, shapes,
+    // I2C: 0x76 + SDO (BME280 datasheet: SDO to GND 0x76, to VDDIO 0x77). The board pulls SDO low
+    // and has 10 kOhm pull-ups on SCL and SDA: ProtoSupplies ("A weak pull-down resistor on the
+    // module pulls SDO low so 0x76 is the default address if the SDO pin is not connected"; "the
+    // I2C interface is an open-drain interface with 10K pull-up resistors") and ShillehTek ("The
+    // module has built-in 10 kOhm I2C pull-ups"; 0x76 "when the SDO pin is left unconnected").
+    pins: bottom.pins, wu, hu, electrical: { model: 'sensor', params: {}, i2c: { sda: 'SDA', scl: 'SCL', address: { base: 0x76, pins: [{ pin: 'SDO', add: 1, floating: 0 }] }, pullups: true } }, shapes,
   }))
 }
 
