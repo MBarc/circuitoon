@@ -535,8 +535,10 @@ describe('wirePaths', () => {
     const routes = computeRoutes(diagram)
     wirePaths(diagram, routes) // warm-up
     // Best of ten, retried twice: the full suite runs files in parallel, so a single slow sample
-    // is CPU contention, not a regression (isolated runs measured 16-20 ms; 24-26 ms since Ruling W1,
-    // as wires that keep off each other's lines cross more often, so more hops are drawn).
+    // is CPU contention, not a regression (isolated runs measured 16-20 ms before Ruling W1). Since
+    // W1 the wires on this random sheet weave to keep off each other's lines: 9046 route points
+    // against 5098, and 35-50 ms under load where the pre-W1 build measured 18-25 ms. The pre-W1
+    // drawing code takes the same 35-45 ms on the W1 routes, so the cost is the geometry, not the code.
     let ms = Infinity
     let out = wirePaths(diagram, routes)
     for (let k = 0; k < 10; k++) {
@@ -546,7 +548,7 @@ describe('wirePaths', () => {
     }
     console.log(`wirePaths 200 parts / 500 wires: ${ms.toFixed(2)} ms, ${out.reduce((n, w) => n + (w.d.match(/A/g)?.length ?? 0), 0)} hops`)
     expect(out).toHaveLength(500)
-    expect(ms).toBeLessThan(40)
+    expect(ms).toBeLessThan(60)
   })
 
   it('draws the same sheet with cable ends on every wire within the frame budget', { timeout: 60_000, retry: 2 }, () => {
@@ -570,7 +572,7 @@ describe('wirePaths', () => {
     console.log(`wirePaths 200 parts / 500 cabled wires: ${ms.toFixed(2)} ms`)
     expect(out).toHaveLength(500)
     expect(out.every((w) => w.cables[0] && w.cables[1])).toBe(true)
-    expect(ms).toBeLessThan(40)
+    expect(ms).toBeLessThan(60)
   })
 })
 
