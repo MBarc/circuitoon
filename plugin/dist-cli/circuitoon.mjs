@@ -48622,6 +48622,10 @@ var RULES = {
 		severity: "warning",
 		title: "Label connects nothing"
 	},
+	"module-drift": {
+		severity: "warning",
+		title: "Part data out of date"
+	},
 	"battery-bank": {
 		severity: "info",
 		title: "Parallel battery bank"
@@ -61086,6 +61090,168 @@ function renderSheetSvg(d, opts = {}) {
 		height
 	};
 }
+//#endregion
+//#region src/format/moduleDrift.ts
+/** JSON with object keys sorted, so two modules compare by content whatever their key order. */
+function canonical(v) {
+	if (Array.isArray(v)) return `[${v.map(canonical).join(",")}]`;
+	if (isObj(v)) return `{${Object.keys(v).sort().filter((k) => v[k] !== void 0).map((k) => `${JSON.stringify(k)}:${canonical(v[k])}`).join(",")}}`;
+	return JSON.stringify(v) ?? "null";
+}
+/** Top-level fields that only describe or draw the part (the footprint changes covered holes, never connections). */
+var DESCRIPTIVE = /* @__PURE__ */ new Set([
+	"art",
+	"name",
+	"source",
+	"description",
+	"category",
+	"version",
+	"footprint"
+]);
+/** Pin fields that are notes about a pin, never what it is or where it sits. */
+var PIN_DESCRIPTIVE = /* @__PURE__ */ new Set(["caps", "label"]);
+/** Pin fields that say what a pin is and where it sits: any change blocks. */
+var PIN_STRUCTURAL = [
+	"name",
+	"side",
+	"type",
+	"bus"
+];
+/** `electrical` fields the library refines as data: any change is an update. */
+var ELECTRICAL_DATA = /* @__PURE__ */ new Set([
+	"i2c",
+	"settings",
+	"ratings"
+]);
+/** Top-level fields whose any change blocks (with the pins, and the geometry test). */
+var STRUCTURAL = /* @__PURE__ */ new Set([
+	"holes",
+	"internal",
+	"netLabel"
+]);
+var FIELD_NAMES = {
+	holes: "hole groups",
+	internal: "internal joins",
+	electrical: "electrical data",
+	netLabel: "net label flag"
+};
+var ELECTRICAL_NAMES = {
+	i2c: "I2C data",
+	settings: "settings",
+	ratings: "ratings"
+};
+/** True when everything `a` says, `b` says too: `b` may only add (an absent value in `a` is nothing said). */
+function adds(a, b) {
+	if (a === void 0) return true;
+	if (isObj(a) && isObj(b)) return Object.keys(a).every((k) => adds(a[k], b[k]));
+	return canonical(a) === canonical(b);
+}
+/** "pins A/B", or "12 pins" for a redrawn part (Ruling C2), from pin names (spacers as "spacer"). */
+function pinWords(names) {
+	if (names.size > 8) return `${names.size} pins`;
+	return names.size ? `pins ${[...names].join("/")}` : "pins";
+}
+var pinLabel = (p) => isObj(p) && typeof p.name === "string" ? p.name : "spacer";
+var typeOf$1 = (p) => p.type === void 0 ? "io" : p.type;
+/**
+* Whether the part's geometry moved: a different body size, or pin positions (side and place on the
+* body, whatever their names) that differ. Its legs then land elsewhere.
+*/
+function movedGeometry(stored, lib) {
+	const [a, b] = [layoutModule(stored), layoutModule(lib)];
+	if (a.w !== b.w || a.h !== b.h || a.pins.length !== b.pins.length) return true;
+	return a.pins.some((p, i) => p.side !== b.pins[i].side || p.edge.x !== b.pins[i].edge.x || p.edge.y !== b.pins[i].edge.y);
+}
+/** How `stored` differs from the library's `lib`, or null when they are the same by content. */
+function moduleDrift(stored, lib) {
+	if (canonical(stored) === canonical(lib)) return null;
+	const [s, l] = [stored, lib];
+	const block = [];
+	const update = [];
+	const [sp, lp] = [Array.isArray(s.pins) ? s.pins : [], Array.isArray(l.pins) ? l.pins : []];
+	const pinsBlock = /* @__PURE__ */ new Set();
+	const pinsUpdate = /* @__PURE__ */ new Set();
+	for (let i = 0; i < Math.max(sp.length, lp.length); i++) {
+		const [a, b] = [sp[i], lp[i]];
+		if (canonical(a) === canonical(b)) continue;
+		const names = [i < lp.length ? pinLabel(b) : null, i < sp.length ? pinLabel(a) : null].filter((x) => x !== null);
+		const structural = !isObj(a) || !isObj(b) || isSpacer(a) !== isSpacer(b) || PIN_STRUCTURAL.some((k) => k === "type" ? typeOf$1(a) !== typeOf$1(b) : canonical(a[k]) !== canonical(b[k])) || Object.keys(a).some((k) => !PIN_STRUCTURAL.includes(k) && !PIN_DESCRIPTIVE.has(k) && !adds(a[k], b[k]));
+		for (const n of names) (structural ? pinsBlock : pinsUpdate).add(n);
+	}
+	if (pinsBlock.size) block.push(pinWords(pinsBlock));
+	if (pinsUpdate.size) update.push(`${pinWords(pinsUpdate)} (pin data)`);
+	for (const k of [.../* @__PURE__ */ new Set([...Object.keys(l), ...Object.keys(s)])]) {
+		if (k === "pins" || canonical(s[k]) === canonical(l[k])) continue;
+		if (DESCRIPTIVE.has(k)) update.push(k);
+		else if (STRUCTURAL.has(k)) block.push(FIELD_NAMES[k] ?? k);
+		else if (k === "electrical" && isObj(l.electrical) && (s.electrical === void 0 || isObj(s.electrical))) {
+			const [se, le] = [s.electrical ?? {}, l.electrical];
+			for (const e of [.../* @__PURE__ */ new Set([...Object.keys(le), ...Object.keys(se)])]) {
+				if (canonical(se[e]) === canonical(le[e])) continue;
+				if (ELECTRICAL_DATA.has(e)) update.push(ELECTRICAL_NAMES[e]);
+				else (adds(se[e], le[e]) ? update : block).push(`electrical ${e}`);
+			}
+		} else (adds(s[k], l[k]) ? update : block).push(FIELD_NAMES[k] ?? k);
+	}
+	const moved = movedGeometry(stored, lib);
+	if (moved && !block.length) block.push("size");
+	if (block.length) return {
+		kind: "block",
+		moved,
+		what: block
+	};
+	return {
+		kind: "update",
+		moved: false,
+		what: update
+	};
+}
+var UPDATE_ADVICE = "the library has newer data for this part; run `circuitoon update` or use Update parts in the editor";
+/**
+* Brings a sheet's stored built-in parts up to date where that is safe (Ruling D1): each copy whose
+* drift is the update kind is replaced by the library's; a copy whose drift blocks is left alone and
+* listed. `library` finds a built-in part by id.
+*/
+function updateParts(d, library) {
+	const updated = [];
+	const blocked = [];
+	let modules = null;
+	for (const id of Object.keys(d.modules).sort()) {
+		const lib = library(id);
+		if (!lib) continue;
+		const drift = moduleDrift(d.modules[id], lib);
+		if (!drift) continue;
+		const parts = d.parts.filter((p) => p.module === id).map((p) => p.designator);
+		if (drift.kind === "block") {
+			blocked.push({
+				id,
+				parts,
+				what: drift.what
+			});
+			continue;
+		}
+		modules ??= { ...d.modules };
+		modules[id] = lib;
+		updated.push({
+			id,
+			parts,
+			what: drift.what
+		});
+	}
+	return {
+		diagram: modules ? {
+			...d,
+			modules
+		} : d,
+		updated,
+		blocked
+	};
+}
+/** One line per change: "Updated U1 (esp32-devkit-v1-30): pins VP/VN (pin data)." (an unused copy is named by its id). */
+function updateLines(u) {
+	const who = (x) => x.parts.length ? `${x.parts.join(", ")} (${x.id})` : `${x.id} (no parts on the sheet)`;
+	return [...u.updated.map((x) => `Updated ${who(x)}: ${x.what.join(", ")}.`), ...u.blocked.map((x) => `Left ${who(x)}: ${x.what.join(", ")} changed in the library, so ${x.parts.length > 1 ? "they" : "it"} must be placed again.`)];
+}
 var NAME = /^[A-Za-z][A-Za-z0-9_]*$/;
 /** An endpoint as text, for binding reuse checks and the channel table: "U2.GPA0", "BB1.c5-top hole 2". */
 function endpointText(ep) {
@@ -61671,69 +61837,15 @@ var ORDER = [
 	"covered-hole"
 ];
 var NO_INTENT = "no intent: lay out from a netlist or add intent";
-/** JSON with object keys sorted, so two modules compare by content whatever their key order. */
-function canonical(v) {
-	if (Array.isArray(v)) return `[${v.map(canonical).join(",")}]`;
-	if (isObj(v)) return `{${Object.keys(v).sort().filter((k) => v[k] !== void 0).map((k) => `${JSON.stringify(k)}:${canonical(v[k])}`).join(",")}}`;
-	return JSON.stringify(v) ?? "null";
-}
-/** Module fields that change only how a part looks or is described, never what it connects. */
-var COSMETIC = /* @__PURE__ */ new Set([
-	"art",
-	"name",
-	"source",
-	"description",
-	"category",
-	"version",
-	"footprint"
-]);
-var FIELD_NAMES = {
-	holes: "hole groups",
-	internal: "internal joins",
-	electrical: "electrical data"
-};
-/** The pins whose entries differ, by name (spacers as "spacer"), in the library's order. */
-function pinDiff(stored, lib) {
-	const [a, b] = [Array.isArray(stored) ? stored : [], Array.isArray(lib) ? lib : []];
-	const label = (p) => isObj(p) && typeof p.name === "string" ? p.name : "spacer";
-	const names = /* @__PURE__ */ new Set();
-	for (let i = 0; i < Math.max(a.length, b.length); i++) {
-		if (canonical(a[i]) === canonical(b[i])) continue;
-		if (i < b.length) names.add(label(b[i]));
-		if (i < a.length) names.add(label(a[i]));
-	}
-	if (names.size > 8) return `${names.size} pins`;
-	return names.size ? `pins ${[...names].join("/")}` : "pins";
-}
-/** The electrically meaningful fields that differ (empty when only cosmetic fields do). */
-function electricalDiff(stored, lib) {
-	const [s, l] = [stored, lib];
-	return [.../* @__PURE__ */ new Set([...Object.keys(l), ...Object.keys(s)])].filter((k) => !COSMETIC.has(k) && canonical(s[k]) !== canonical(l[k])).map((k) => k === "pins" ? pinDiff(s.pins, l.pins) : FIELD_NAMES[k] ?? k);
-}
-/**
-* Whether the part's geometry moved: a different body size, or pin positions (side and place on the
-* body, whatever their names) that differ. Its legs then land elsewhere, so a kept position no
-* longer means the same seat. Renamed or retyped pins alone move nothing.
-*/
-function movedGeometry(stored, lib) {
-	const [a, b] = [layoutModule(stored), layoutModule(lib)];
-	if (a.w !== b.w || a.h !== b.h || a.pins.length !== b.pins.length) return true;
-	return a.pins.some((p, i) => p.side !== b.pins[i].side || p.edge.x !== b.pins[i].edge.x || p.edge.y !== b.pins[i].edge.y);
-}
-/** The cosmetic fields that differ. */
-function cosmeticDiff(stored, lib) {
-	const [s, l] = [stored, lib];
-	return [...COSMETIC].filter((k) => canonical(s[k]) !== canonical(l[k]));
-}
 /**
 * Every module a sheet stores under a library id, in `modules` or in `intent.modules`, is compared
 * with the library by content (Ruling T14: the library is edited without version bumps, so the
 * version says nothing). The stored copy is what the editor draws and what verify reads, so a
-* stored BME280 with SDA and SCL swapped would otherwise verify against itself. A difference in
-* pins, hole groups, internal joins, electrical data or any other field that is not cosmetic
-* blocks; a difference in art, name, source, description, category or version only warns.
+* stored BME280 with SDA and SCL swapped would otherwise verify against itself. Ruling D1 decides
+* by what changed (moduleDrift.ts): pins, holes, internal joins or geometry block; data the library
+* only adds or describes (pin caps, I2C data, a footprint, art) warns, with how to update.
 */
-function moduleDrift(d, library, add) {
+function driftFindings(d, library, add) {
 	const own = isObj(d.intent) && isObj(d.intent.modules) ? d.intent.modules : {};
 	const copies = [...Object.entries(d.modules).map(([id, m]) => [
 		id,
@@ -61746,20 +61858,22 @@ function moduleDrift(d, library, add) {
 	])];
 	for (const [id, whose, raw] of copies) {
 		const lib = library(id);
-		if (!lib || !isObj(raw) || canonical(raw) === canonical(lib)) continue;
-		const stored = raw;
+		if (!lib || !isObj(raw)) continue;
+		const drift = moduleDrift(raw, lib);
+		if (!drift) continue;
 		const parts = d.parts.filter((p) => p.module === id).map((p) => p.uid);
-		const causes = whose.startsWith("The intent") ? [`intent:${id}`] : [id];
-		const electrical = electricalDiff(stored, lib);
-		if (electrical.length && movedGeometry(stored, lib) && parts.length) {
+		const intentCopy = whose.startsWith("The intent");
+		const causes = intentCopy ? [`intent:${id}`] : [id];
+		const what = drift.what.join(", ");
+		if (drift.kind === "block" && drift.moved && parts.length) {
 			const names = andList(d.parts.filter((p) => p.module === id).map((p) => p.designator));
 			const one = parts.length === 1;
-			add("module-drift", `${whose} of ${id} no longer matches the current library: ${electrical.join(", ")} differ. Its body and pins are drawn differently now, so ${names} must be placed again: remove ${one ? `${names}'s` : "their"} x, y and rotation from the partial before layout --keep (kept as ${one ? "it is, it stays" : "they are, they stay"} where the old drawing sat), or lay the sheet out again from the netlist.`, causes, {
+			add("module-drift", `${whose} of ${id} no longer matches the current library: ${what} differ. Its body and pins are drawn differently now, so ${names} must be placed again: remove ${one ? `${names}'s` : "their"} x, y and rotation from the partial before layout --keep (kept as ${one ? "it is, it stays" : "they are, they stay"} where the old drawing sat), or lay the sheet out again from the netlist.`, causes, {
 				parts,
 				redraw: true
 			});
-		} else if (electrical.length) add("module-drift", `${whose} of ${id} no longer matches the current library: ${electrical.join(", ")} differ. Lay the sheet out again with the current library.`, causes, { parts });
-		else add("module-drift", `${whose} of ${id} differs from the current library only in ${cosmeticDiff(stored, lib).join(", ")}; its pins and electrical data match. Lay the sheet out again to pick up the current part.`, causes, {
+		} else if (drift.kind === "block") add("module-drift", `${whose} of ${id} no longer matches the current library: ${what} differ. Lay the sheet out again with the current library.`, causes, { parts });
+		else add("module-drift", `${whose} of ${id} differs from the current library only in ${what}; its pins and connections match. ${intentCopy ? "Lay the sheet out again to pick up the current part." : `${UPDATE_ADVICE[0].toUpperCase()}${UPDATE_ADVICE.slice(1)}.`}`, causes, {
 			parts,
 			severity: "warning"
 		});
@@ -61794,7 +61908,7 @@ function verifyDiagram(d, library) {
 		wires: more.wires ?? [],
 		...more.redraw ? { redraw: true } : {}
 	});
-	moduleDrift(d, library, add);
+	driftFindings(d, library, add);
 	if (d.intent === void 0) add("intent", NO_INTENT, ["intent"]);
 	else {
 		const r = parseNetlist(d.intent, intentLookup(d, library));
@@ -66545,6 +66659,40 @@ function netlistCommand(args, io) {
 	return EXIT.ok;
 }
 //#endregion
+//#region src/cli/updateCmd.ts
+var UPDATE_CMD_FORMAT = "circuitoon-cli/update/1";
+function updateCommand(args, io) {
+	const [input, ...rest] = args.positionals;
+	if (!input) throw new CliError("update: give a sheet file", EXIT.input);
+	if (rest.length) throw new CliError(`update: give one sheet file, not ${args.positionals.length}`, EXIT.input);
+	const { diagram, warnings } = loadSheet(io, input);
+	for (const w of warnings) io.stderr(`warning: ${w}\n`);
+	const u = updateParts(diagram, libraryLookup);
+	const out = flag(args, "--out") ?? input;
+	const changed = u.updated.length > 0;
+	if (changed || out !== input) {
+		const raw = readJson(io, input);
+		for (const x of u.updated) raw.modules[x.id] = u.diagram.modules[x.id];
+		writeFile(io, out, `${JSON.stringify(raw, null, 2)}\n`);
+	}
+	const ok = u.blocked.length === 0;
+	if (args.flags.has("--json")) printJson(io, {
+		format: UPDATE_CMD_FORMAT,
+		ok,
+		sheet: input,
+		output: changed || out !== input ? out : null,
+		updated: u.updated,
+		blocked: u.blocked
+	});
+	else {
+		const lines = updateLines(u);
+		if (!lines.length) io.stdout("Every part is up to date with the library.\n");
+		else io.stdout(`${lines.join("\n")}\n`);
+		if (changed || out !== input) io.stdout(`Wrote ${out}.\n`);
+	}
+	return ok ? EXIT.ok : EXIT.blocked;
+}
+//#endregion
 //#region src/cli/main.ts
 var USAGE = `circuitoon <command> [options]
 
@@ -66554,6 +66702,8 @@ var USAGE = `circuitoon <command> [options]
                                             [--labels none|auto|all]: which nets get net labels (default none: wires, labels only on nets marked "label": true)
   verify <sheet.json> [--json]              the sheet against its intent
   check <sheet.json> [--json]               the wiring checker, plus verify when the sheet has an intent
+  update <sheet.json> [-o <out.json>] [--json]
+                                            bring stored parts up to date where the library only adds data; blocking drift is listed
   explain <sheet.json|netlist.json> [--json]
                                             every connection in plain English by net, what each pin in use does,
                                             unconnected parts and the pin-rule findings
@@ -66579,6 +66729,7 @@ var COMMANDS = {
 	verify: verifyCommand,
 	check: checkCommand,
 	explain: explainCommand,
+	update: updateCommand,
 	gate: gateCommand
 };
 var CODE_OF = {
