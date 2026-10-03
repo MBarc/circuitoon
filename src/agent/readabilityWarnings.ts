@@ -1,5 +1,8 @@
 // Readability warnings for `check` and `gate` (never blocking): what makes a correct sheet hard to
 // follow. Read from the wires as drawn (wirePaths, after lane separation):
+// - wires-overlap: two wires (of any nets) lying on top of each other along one line for more than
+//   OVERLAP px, so neither can be traced (Ruling W1; within SHARED_RUN of a point both end at, it is
+//   their shared terminal's stub and does not count);
 // - wires-crowded: two wires of different nets side by side within one grid step over more than
 //   CROWDED_RUN px (a row of stubs out to net labels at pin pitch is meant that way, so only two drawn
 //   on top of each other count);
@@ -15,6 +18,7 @@ import { isNetLabel, layoutModule } from '../format/module.ts'
 import { endpointName } from '../format/checks.ts'
 import { flagRect, labelName } from '../format/netLabels.ts'
 import { netlist, nodeKey } from '../format/netlist.ts'
+import { plugOfPin } from '../format/breadboard.ts'
 import { placedCaptionBox, tipLabelBoxes } from '../render/captionBox.ts'
 import { seatedLabels } from '../format/seatedLabels.ts'
 import { naturalCompare } from './order.ts'
@@ -29,9 +33,16 @@ export const CROSSINGS_MAX = 8
 /** A wire to a net label shorter than this (px) is a layout stub; a row of them is not crowded. */
 export const LABEL_STUB = 30
 
+/** Every rule a readability finding can have; while any is reported, a gate is not ready (Ruling W1). */
+export const READABILITY_RULES = ['wires-overlap', 'wires-crowded', 'wire-hugs-part', 'label-covered', 'crossings-high', 'wire-over-board', 'wire-over-holes'] as const
+/** Two wires sharing a run longer than this (px) on one line are drawn on top of each other. */
+export const OVERLAP = 2
+/** Around a point two wires both end at, this much of a shared run (px, three grid steps) is not counted. */
+export const SHARED_RUN = 30
+
 export interface ReadabilityFinding {
   id: string
-  rule: 'wires-crowded' | 'wire-hugs-part' | 'label-covered' | 'crossings-high'
+  rule: (typeof READABILITY_RULES)[number]
   severity: 'warning'
   message: string
   parts: string[]
@@ -39,14 +50,24 @@ export interface ReadabilityFinding {
   wires: string[]
 }
 
-interface Seg { wire: string; h: boolean; at: number; lo: number; hi: number }
+interface Seg {
+  wire: string
+  h: boolean
+  at: number
+  lo: number
+  hi: number
+  /** On the run into a pin (a wire's first or last segment ending at a pin): that pin's part. */
+  into?: string
+}
 
-function segmentsOf(wire: string, pts: Pt[]): Seg[] {
+function segmentsOf(wire: string, pts: Pt[], ends: [string | undefined, string | undefined] = [undefined, undefined]): Seg[] {
   const out: Seg[] = []
   for (let k = 1; k < pts.length; k++) {
     const [a, b] = [pts[k - 1], pts[k]]
-    if (a.y === b.y && a.x !== b.x) out.push({ wire, h: true, at: a.y, lo: Math.min(a.x, b.x), hi: Math.max(a.x, b.x) })
-    else if (a.x === b.x && a.y !== b.y) out.push({ wire, h: false, at: a.x, lo: Math.min(a.y, b.y), hi: Math.max(a.y, b.y) })
+    const into = k === 1 ? ends[0] : k === pts.length - 1 ? ends[1] : undefined
+    const tag = into !== undefined ? { into } : {}
+    if (a.y === b.y && a.x !== b.x) out.push({ wire, h: true, at: a.y, lo: Math.min(a.x, b.x), hi: Math.max(a.x, b.x), ...tag })
+    else if (a.x === b.x && a.y !== b.y) out.push({ wire, h: false, at: a.x, lo: Math.min(a.y, b.y), hi: Math.max(a.y, b.y), ...tag })
   }
   return out
 }
@@ -81,7 +102,15 @@ export function readabilityFindings(d: Diagram, routes: Routes = computeRoutes(d
     }
     return n
   }
-  const segs = drawn.flatMap((w) => segmentsOf(w.conn.uid, w.points))
+  // An end on a part (not a net label) tags the run into it with that part, or with its board for a
+  // hole or a plugged leg: rows of holes and rails sit at a pitch of their own, like a header's pins.
+  const pinEnd = (e: Endpoint) => {
+    const p = d.parts.find((x) => x.uid === e.part)
+    const m = p && moduleOf(d, p.module)
+    if (!m || isNetLabel(m)) return undefined
+    return p.mount && plugOfPin(d, p.uid, e.pin) ? p.mount.board : e.part
+  }
+  const segs = drawn.flatMap((w) => segmentsOf(w.conn.uid, w.points, [pinEnd(w.conn.from), pinEnd(w.conn.to)]))
   const labelParts = new Set(parts0(d).filter((p) => isNetLabel(moduleOf(d, p.module))).map((p) => p.uid))
   const lengthOf = new Map(drawn.map((w) => [w.conn.uid, w.points.slice(1).reduce((n, p, i) => n + Math.abs(p.x - w.points[i].x) + Math.abs(p.y - w.points[i].y), 0)]))
   /** A short stub out to a net label (under LABEL_STUB px): a fan-out row of them is meant that way. */
@@ -116,16 +145,55 @@ export function readabilityFindings(d: Diagram, routes: Routes = computeRoutes(d
         // A row of stubs out to net labels at the pins' own pitch is laid out that way on purpose; only
         // two of them drawn on top of each other are crowded.
         if (s.at !== t.at && stub(s.wire) && stub(t.wire)) continue
+        // Neither are two wires running into neighbouring pins of one header, or holes of one board,
+        // at its own pitch, as jumpers there always sit (Ruling W1).
+        if (s.at !== t.at && s.into !== undefined && s.into === t.into) continue
         const run = Math.min(s.hi, t.hi) - Math.max(s.lo, t.lo)
         if (run <= CROWDED_RUN) continue
         const [a, b] = [s.wire, t.wire].sort(naturalCompare)
         const key = `${a}|${b}`
         const gap = Math.abs(s.at - t.at)
+        if (gap === 0) continue // on top of each other: wires-overlap reports it
         const was = crowded.get(key)
         if (!was || gap < was.gap || (gap === was.gap && run > was.run)) crowded.set(key, { a, b, gap, run })
       }
     }
   }
+  // On top of each other (Ruling W1): two wires, of any nets, sharing a run on one line. Not where
+  // both end at the same point (two wires on one screw terminal) and the shared run starts there.
+  const endsOf = new Map(drawn.map((w) => [w.conn.uid, [w.points[0], w.points[w.points.length - 1]]]))
+  const overlap = new Map<string, { a: string; b: string; run: number }>()
+  for (const list of [hs, vs]) {
+    const buckets = new Map<number, number[]>()
+    list.forEach((x, i) => buckets.set(x.at, [...(buckets.get(x.at) ?? []), i]))
+    for (const idx of buckets.values())
+      for (let i = 0; i < idx.length; i++)
+        for (let j = i + 1; j < idx.length; j++) {
+          const [s, t] = [list[idx[i]], list[idx[j]]]
+          if (s.wire === t.wire) continue
+          const lo = Math.max(s.lo, t.lo)
+          const hi = Math.min(s.hi, t.hi)
+          if (hi - lo <= OVERLAP) continue
+          // Only the stretch beyond SHARED_RUN of a point both wires end at counts: two wires into
+          // one terminal meet on its stub, but past that they must part.
+          const meet = endsOf.get(s.wire)!.filter((p) => endsOf.get(t.wire)!.some((q) => Math.abs(p.x - q.x) < 0.5 && Math.abs(p.y - q.y) < 0.5))
+          let pieces: [number, number][] = [[lo, hi]]
+          for (const p of meet) {
+            const [across, along] = s.h ? [p.y, p.x] : [p.x, p.y]
+            if (Math.abs(across - s.at) > 0.5) continue
+            pieces = pieces.flatMap(([u, v]) => [[u, Math.min(v, along - SHARED_RUN)], [Math.max(u, along + SHARED_RUN), v]] as [number, number][]).filter(([u, v]) => v > u)
+          }
+          const run = Math.max(0, ...pieces.map(([u, v]) => v - u))
+          if (run <= OVERLAP) continue
+          const [a, b] = [s.wire, t.wire].sort(naturalCompare)
+          const key = `${a}|${b}`
+          overlap.set(key, { a, b, run: Math.max(overlap.get(key)?.run ?? 0, run) })
+        }
+  }
+  for (const { a, b, run } of overlap.values())
+    out.push({ id: `wires-overlap|${a},${b}`, rule: 'wires-overlap', severity: 'warning', parts: [], pins: [], wires: [a, b],
+      message: `The wires ${name(a)} and ${name(b)} lie on top of each other for ${Math.round(run)} px, so neither can be traced. Lay the sheet out again, or drag one of them onto its own line.` })
+
   for (const { a, b, gap, run } of crowded.values())
     out.push({ id: `wires-crowded|${a},${b}`, rule: 'wires-crowded', severity: 'warning', parts: [], pins: [], wires: [a, b],
       message: `The wires ${name(a)} and ${name(b)} run side by side, ${gap} px apart, for ${run} px. Move one of them at least ${2 * GRID_STEP} px away (drag its segment), or draw one of the nets with net labels.` })
@@ -184,6 +252,12 @@ export function readabilityFindings(d: Diagram, routes: Routes = computeRoutes(d
       out.push({ id: `label-covered|${p.uid}|${b.p.uid}`, rule: 'label-covered', severity: 'warning', parts: [p.uid, b.p.uid], pins: [], wires: [],
         message: `${p.designator}'s body covers ${what(b)}. Move one of the parts so it reads clearly.` })
     }
+
+  // Over a populated board (Ruling W1): no route kept off it, so the wire was let across it.
+  for (const c of d.connections)
+    if (routes.get(c.uid)?.overBoard)
+      out.push({ id: `wire-over-board|${c.uid}`, rule: 'wire-over-board', severity: 'warning', parts: [c.from.part, c.to.part], pins: [], wires: [c.uid],
+        message: `The wire ${name(c.uid)} runs across a breadboard with parts on it, because no route around it was found, so it may read as plugged in there. Give the parts more room (layout --keep with fewer parts pinned), or move the parts it joins away from the board.` })
 
   // Crossings per wire.
   const crossings = new Map<string, Set<string>>()

@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "circuitoon netlist --json",
+  "type": "object",
+  "required": ["format", "ok", "sheet", "output", "netlist"],
+  "additionalProperties": false,
+  "properties": {
+    "format": { "const": "circuitoon-cli/netlist/1" },
+    "ok": { "type": "boolean" },
+    "sheet": { "type": "string" },
+    "output": { "type": ["string", "null"] },
+    "netlist": {
+      "type": "object",
+      "required": ["format", "title", "parts", "nets"],
+      "properties": {
+        "format": { "const": "circuitoon-netlist/1" },
+        "title": { "type": "string" },
+        "parts": { "type": "array" },
+        "nets": { "type": "array" }
+      }
+    }
+  }
+}

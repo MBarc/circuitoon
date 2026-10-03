@@ -6,6 +6,7 @@ import { join } from 'node:path'
 import { NO_INTENT } from '../agent/verify.ts'
 import { NOT_CHECKED } from '../agent/notChecked.ts'
 import { cli, tempDir } from './cliHarness.testing.ts'
+import { READABILITY_RULES } from '../agent/readabilityWarnings.ts'
 import { loadSchema, schemaErrors } from './jsonSchema.testing.ts'
 import { ledNetlist } from '../agent/fixtures.testing.ts'
 import { validateDiagram } from '../format/diagram.ts'
@@ -203,8 +204,9 @@ describe('circuitoon verify and check', () => {
     const out = JSON.parse(c.out)
     expect(schemaErrors(loadSchema('findings'), out)).toEqual([])
     expect(out.ok).toBe(true)
-    // The hand-drawn sheet also has readability warnings (many crossings): never blocking.
-    const readable = new Set(['wires-crowded', 'wire-hugs-part', 'label-covered', 'crossings-high'])
+    // The hand-drawn sheet also has readability warnings (many crossings, and wires drawn into
+    // neighbouring holes of one strip that lie on top of each other there): never blocking.
+    const readable = new Set<string>(READABILITY_RULES)
     expect(out.findings.filter((f: CliFinding) => !readable.has(f.rule)).map((f: CliFinding) => `${f.severity} ${f.rule}`)).toEqual(['info battery-bank'])
     expect(out.findings.filter((f: CliFinding) => readable.has(f.rule)).every((f: CliFinding) => f.severity === 'warning')).toBe(true)
     const text = await cli(['check', 'sheet.json'], { cwd: dir })

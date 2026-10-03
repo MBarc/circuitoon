@@ -35,12 +35,13 @@ Under `--json`, every failure that has no command result prints one error docume
 | --- | --- | --- |
 | `parts [--search text]` | Lists built-in parts: category, pins (name, label, type, supply, capacity), hole groups, source. An untyped pin reports type `null`. | `schemas/parts.schema.json` |
 | `part <id>` | One module in full. | `schemas/part.schema.json` |
-| `layout <netlist.json> -o <sheet.json> [--labels auto\|none\|all]` | Places, mounts, wires and routes. `--labels` picks which nets get net labels (default `auto`; see SKILL.md "Net labels"). Prints the readability report (with the readability warnings count, the label mode, the labelled nets and any net with an endpoint that had no room for its label), the bill of quantities and the channel table. | `schemas/layout.schema.json` |
+| `layout <netlist.json> -o <sheet.json> [--labels none\|auto\|all]` | Places, mounts, wires and routes. `--labels` picks which nets get net labels: by default `none`, wires only, except nets marked `"label": true` (see SKILL.md "Wires and net labels"). Prints the readability report (with the readability warnings count, the label mode, the labelled nets and any net with an endpoint that had no room for its label), the bill of quantities and the channel table. | `schemas/layout.schema.json` |
 | `layout --keep <partial.json> -o <sheet.json>` | The same, keeping the positions the partial gives (see `netlist-format.md`). | `schemas/layout.schema.json` |
 | `verify <sheet.json>` | Checks the sheet against its intent: parts, modules, values, mounts, missing connections, merges, extra connections, nc, terminal capacity, and a wire end or leg in a hole under a part's body (covered-hole). | `schemas/findings.schema.json` |
-| `check <sheet.json>` | The wiring checker (shorts, reversed power, wrong voltage, no ground, outputs that fight, ...), plus verify when the sheet has an intent, plus the readability warnings (`wires-crowded`, `wire-hugs-part`, `label-covered`, `crossings-high`; never blocking, also in `gate`). | `schemas/findings.schema.json` |
+| `check <sheet.json>` | The wiring checker (shorts, reversed power, wrong voltage, no ground, outputs that fight, ...), plus verify when the sheet has an intent, plus the readability warnings (`wires-overlap`, `wires-crowded`, `wire-hugs-part`, `label-covered`, `crossings-high`, `wire-over-board`; never blocking, also in `gate`). | `schemas/findings.schema.json` |
 | `render <sheet.json> -o <png> [--svg <svg>] [--dark] [--scale n] [--focus <copy or group>] [--tiles <px>]` | A PNG (through Chrome or Edge) and a standalone SVG. `--focus` frames one repeat copy (`ball_3`) or group (`Power`), with the wires that touch it. `--tiles <px>` (200 to 4000) also writes the sheet, or the focused part, cut into overlapping tiles about `<px>` sheet px square, as `<png name>-tile-<row>-<col>.png`, for reading a large sheet up close. | `schemas/render.schema.json` |
 | `link <sheet.json> [-o <dir>]` | A link that opens the sheet in the editor. Past 64 KB of payload, the sheet file is written instead. | `schemas/link.schema.json` |
+| `netlist <sheet.json> [-o <netlist.json>]` | The `circuitoon-netlist/1` of any drawn sheet, from what conducts on it: parts, modules, values, mounts (`on`), and nets through wires, breadboard strips, mounted legs, internal joins and net labels. Nets are named from labels, then GND, a supply rail (5V, 3V3), then `<ref>_<pin>`. Prints the netlist, or writes it with `-o`. Run it before laying out a user's drawn sheet; never copy one by hand. | `schemas/netlist.schema.json` |
 | `bom <sheet.json> [-o <bom.csv>]` | The bill of materials (see below). Prints one line per row; `-o` writes it as CSV. Never blocks: exit 0, or 2 when the sheet does not load. | `schemas/bom.schema.json` |
 | `gate <sheet.json> -o <dir>` | Everything above (see below). Exits 0 only when nothing blocks. | `schemas/gate.schema.json` |
 
@@ -58,7 +59,7 @@ The readability report lists:
 - `focus-<copy>.png` for the first copy of a repeat;
 - `link.txt`, or the sheet file when the link would be too long;
 - `bom.csv`, the bill of materials (the same file `bom -o` writes);
-- `gate.json` (format `circuitoon-cli/gate/2`; version 2 added the required `bom` field and the `bom` artifact), with the SHA-256 of the sheet and of every artifact, the blocking findings, the warnings, the notes, the "not checked" list, the link, the bill of materials (`bom`, the rows `bom.csv` is written from), the bill of quantities (the bill's parts summed per module; `added` is how many of each part the layout added as routing infrastructure) and the channel table.
+- `gate.json` (format `circuitoon-cli/gate/3`; version 2 added the required `bom` field and the `bom` artifact, version 3 the required `ready`: true only when the gate passed and no readability warning remains), with the SHA-256 of the sheet and of every artifact, the blocking findings, the warnings, the notes, the "not checked" list, the link, the bill of materials (`bom`, the rows `bom.csv` is written from), the bill of quantities (the bill's parts summed per module; `added` is how many of each part the layout added as routing infrastructure) and the channel table.
 
 ## Bill of materials
 
@@ -70,7 +71,7 @@ The readability report lists:
 
 The CSV has the columns `Type` (Part, Wire or Connector), `Qty`, `Description`, `Value`, `Designators`, `Category`, `Source` and `Notes`. Every field is quoted (RFC 4180, CRLF line ends), units are plain ASCII (`4.7 kohm`), and a value that starts with `=`, `+`, `-` or `@` gets a leading `'` so no spreadsheet runs it as a formula.
 
-Text mode starts with `GATE PASSED`, `GATE BLOCKED` or `GATE INCOMPLETE`.
+Text mode starts with `GATE PASSED`, `GATE BLOCKED` or `GATE INCOMPLETE`. When readability warnings remain, a line `NOT READY: N readability warnings` comes first (the exit code is unchanged: they never block). A sheet that is not ready is presented only with each of those warnings listed to the user, with why it stays.
 
 ## Findings
 

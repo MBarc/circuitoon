@@ -269,7 +269,7 @@ describe('routing with boards and holes', () => {
     // The board's holes sit on y = 0..40 and none is in use, so the wire runs straight over row y = 20.
     expect(computeRoutes(d).get('w')).toEqual({ points: [{ x: 48, y: 20 }, { x: 192, y: 20 }], blocked: false })
   })
-  it('routes a wire from a hole center straight along a row of empty holes of other strips', () => {
+  it('routes a wire from a hole center straight along a row of empty holes of a board with nothing mounted (Rulings C1 and W2)', () => {
     const d: Diagram = {
       format: 'circuitoon-diagram/1', title: 't', modules: { bb, two },
       parts: [{ uid: 'b', designator: 'BB1', module: 'bb', x: 0, y: 0 }, { uid: 'a', designator: 'R1', module: 'two', x: 100, y: -10 }],
@@ -277,7 +277,7 @@ describe('routing with boards and holes', () => {
     }
     expect(computeRoutes(d).get('w')).toEqual({ points: [{ x: 10, y: 10 }, { x: 92, y: 10 }], blocked: false })
   })
-  it('routes a wire between holes on opposite sides of an empty breadboard as one straight run', () => {
+  it('routes a wire between holes on opposite sides of an empty breadboard as one straight run (Rulings C1 and W2)', () => {
     const half = load('breadboard-half')
     const d: Diagram = {
       format: 'circuitoon-diagram/1', title: 't', modules: { 'breadboard-half': half },

@@ -121,7 +121,7 @@ class Bucketed {
 export class LabelPlacer {
   /** Everything a flag must stay off: bodies grown for their stubs, captions, pin names, notes, labels placed. */
   private flagsOff = new Bucketed()
-  /** What a stub must not cross: bodies (boards aside), captions, notes, labels placed and their stubs. */
+  /** What a stub must not cross: bodies (boards too), captions, notes, labels placed and their stubs. */
   private stubsOff = new Bucketed()
   private used = new Set<string>()
   private seq = 0
@@ -138,7 +138,8 @@ export class LabelPlacer {
       const body = bodyRect(p, layoutModule(pm))
       const caption = placedCaptionBox(p, pm, seated.get(p.uid))
       this.flagsOff.push({ r: grow(body, STUB_ROOM) }, { r: caption }, ...tipLabelBoxes(p, pm).map((r) => ({ r })))
-      if (!isBoard(pm)) this.stubsOff.push({ r: body, part: p.uid })
+      // Boards too (Ruling W1: no wire crosses a breadboard in use); a stub from a board's own hole may leave across it.
+      this.stubsOff.push({ r: body, part: p.uid })
       this.stubsOff.push({ r: caption })
     }
     for (const a of [...(d.annotations ?? []), ...(extra.annotations ?? [])]) {

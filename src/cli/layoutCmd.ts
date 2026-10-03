@@ -1,5 +1,6 @@
 // `circuitoon layout <netlist.json> -o <sheet.json>` and `layout --keep <partial.json> -o <sheet.json>`,
-// with `--labels auto|none|all` (which nets get net labels; the report records the mode and the nets)
+// with `--labels none|auto|all` (which nets get net labels: by default none but the nets that ask,
+// Ruling W1; the report records the mode and the nets)
 // (agent toolkit spec 2 and 4.2). Prints the readability report, the bill of quantities and, for
 // repeats, the channel allocation table. An invalid netlist exits 2; one that cannot be laid out
 // (no seat, needs a distribution point, strip full, blocked routes) exits 1. A partial that names a
@@ -32,7 +33,7 @@ export function layoutCommand(args: Args, io: Io): number {
   const json = args.flags.has('--json')
   const out = flag(args, '--out')
   const keepPath = flag(args, '--keep')
-  const labels = (flag(args, '--labels') ?? 'auto') as LabelMode
+  const labels = (flag(args, '--labels') ?? 'none') as LabelMode
   if (!LABEL_MODES.includes(labels)) throw new CliError(`layout: --labels must be ${LABEL_MODES.join(', ')}`, EXIT.input)
   const [input] = args.positionals
   if (!out) throw new CliError('layout: -o <sheet.json> is required', EXIT.input)

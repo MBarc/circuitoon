@@ -3,7 +3,7 @@
 // internally joined pins wired as one.
 import { describe, expect, it } from 'vitest'
 import { type Diagram, type Endpoint, computeRoutes, resolveEndpoint, serializeDiagram, validateDiagram } from '../format/diagram.ts'
-import { type Pt, type Rect, bodyRect, worldHoles } from '../format/geometry.ts'
+import { type Pt, type Rect, bodyRect, worldHoles, worldPins } from '../format/geometry.ts'
 import { isBoard, layoutModule } from '../format/module.ts'
 import { annotationRect } from '../render/annotationGeometry.ts'
 import { coveredHoles, mountIssues, plugsOf } from '../format/breadboard.ts'
@@ -415,9 +415,15 @@ describe('notes and wires', () => {
       const note = annotationRect(d.annotations!.find((a) => a.type === 'text')!)
       const u2 = d.parts.find((p) => p.uid === 'U2')!
       const body = bodyRect(u2, layoutModule(d.modules[u2.module]))
-      // The BME280's pins point down: nothing of the note lies in the band straight below it.
-      const below = { x: body.x, y: body.y + body.h, w: body.w, h: 10_000 }
-      expect(note.x < below.x + below.w && note.x + note.w > below.x && note.y + note.h > below.y).toBe(false)
+      // Nothing of the note lies in the band straight out from the side the BME280's pins point to
+      // (down as drawn; the layout may turn it so they face the ESP32).
+      const dir = worldPins(u2, d.modules[u2.module])[0].dir
+      const band =
+        dir.y > 0 ? { x: body.x, y: body.y + body.h, w: body.w, h: 10_000 }
+        : dir.y < 0 ? { x: body.x, y: body.y - 10_000, w: body.w, h: 10_000 }
+        : dir.x > 0 ? { x: body.x + body.w, y: body.y, w: 10_000, h: body.h }
+        : { x: body.x - 10_000, y: body.y, w: 10_000, h: body.h }
+      expect(note.x < band.x + band.w && note.x + note.w > band.x && note.y < band.y + band.h && note.y + note.h > band.y).toBe(false)
       const r0 = note
       const box = { x: r0.x - 3, y: r0.y - 3, w: r0.w + 6, h: r0.h + 6 }
       for (const [uid, r] of computeRoutes(d)) expect(crosses(r!.points, box), uid).toBe(false)

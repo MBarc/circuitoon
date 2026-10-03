@@ -26,7 +26,7 @@
       "refs": "B{copy}{ref}",
       "template": {
         "parts": [{ "ref": "SA", "module": "tilt-switch-sw520d" }, { "ref": "SB", "module": "tilt-switch-sw520d" }],
-        "nets": [{ "name": "CH", "pins": ["SA.1", "SB.1"] }, { "name": "GND", "pins": ["SA.2", "SB.2"] }],
+        "nets": [{ "name": "CH", "pins": ["SA.1", "SB.1"], "label": true }, { "name": "GND", "pins": ["SA.2", "SB.2"] }],
         "ports": ["CH", "GND"]
       },
       "bindings": [

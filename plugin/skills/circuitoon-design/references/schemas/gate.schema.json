@@ -5,6 +5,7 @@
   "required": [
     "format",
     "ok",
+    "ready",
     "diagram",
     "artifacts",
     "blocking",
@@ -19,9 +20,12 @@
   "additionalProperties": false,
   "properties": {
     "format": {
-      "const": "circuitoon-cli/gate/2"
+      "const": "circuitoon-cli/gate/3"
     },
     "ok": {
+      "type": "boolean"
+    },
+    "ready": {
       "type": "boolean"
     },
     "diagram": {
