@@ -3,8 +3,18 @@
 // sources, for picking parts and writing a netlist. An untyped pin reports type null: it is never
 // guessed (amendment A14).
 import { library } from '../library.ts'
-import { isBoard, isNetLabel, isSpacer, type ModuleDef, type PinDef, terminalCapacity } from '../format/module.ts'
+import { type I2cSpec, addressText, i2cOf, isBoard, isNetLabel, isSpacer, type ModuleDef, type PinDef, terminalCapacity } from '../format/module.ts'
+
+/** How a device's I2C address is set, in words. */
+function i2cAddressText(i2c: I2cSpec): string {
+  const a = i2c.address
+  if (!a) return 'not known'
+  if ('fixed' in a) return `${addressText(a.fixed)} (fixed)`
+  if ('setting' in a) return `set on the board (part setting "${a.setting}")`
+  return `${addressText(a.base)} plus ${a.pins.map((p) => `${p.pin} (+${p.add}${p.floating !== undefined ? `, ${p.floating} when not connected` : ''})`).join(', ')}`
+}
 import { naturalCompare } from '../agent/order.ts'
+import { capsText } from '../format/pinRules.ts'
 import type { Args } from './args.ts'
 import { CliError, EXIT, type Io, flag, printJson } from './io.ts'
 
@@ -19,8 +29,8 @@ export function partSummary(m: ModuleDef) {
     netLabel: isNetLabel(m),
     pins: m.pins
       .filter((p): p is PinDef => !isSpacer(p))
-      .map((p) => ({ name: p.name, label: p.label ?? null, type: p.type ?? null, supply: p.supply ?? null, capacity: terminalCapacity(m, p.name) })),
-    holes: (m.holes ?? []).map((g) => ({ name: g.name, label: g.label ?? null, type: g.type ?? null, supply: g.supply ?? null, holes: g.at.length, rail: g.rail ?? null, capacity: terminalCapacity(m, g.name) })),
+      .map((p) => ({ name: p.name, label: p.label ?? null, type: p.type ?? null, supply: p.supply ?? null, capacity: terminalCapacity(m, p.name), caps: p.caps ?? null })),
+    holes: (m.holes ?? []).map((g) => ({ name: g.name, label: g.label ?? null, type: g.type ?? null, supply: g.supply ?? null, holes: g.at.length, rail: g.rail ?? null, capacity: terminalCapacity(m, g.name), caps: g.caps ?? null })),
   }
 }
 
@@ -28,7 +38,8 @@ const modules = (): ModuleDef[] => library.flatMap((e) => (e.ok ? [e.module] : [
 
 type Pin = ReturnType<typeof partSummary>['pins'][number]
 const pinText = (p: Pin) =>
-  [p.name, p.label && p.label !== p.name ? `(${p.label})` : '', p.type ?? 'untyped', p.supply ?? '', p.capacity > 1 ? `takes ${p.capacity}` : ''].filter(Boolean).join(' ')
+  [p.name, p.label && p.label !== p.name ? `(${p.label})` : '', p.type ?? 'untyped', p.supply ?? '', p.capacity > 1 ? `takes ${p.capacity}` : '',
+    capsText(p.caps ?? undefined).length ? `[${capsText(p.caps ?? undefined).join('; ')}]` : ''].filter(Boolean).join(' ')
 
 export function partsCommand(args: Args, io: Io): number {
   const q = (flag(args, '--search') ?? '').toLowerCase()
@@ -66,6 +77,9 @@ export function partCommand(args: Args, io: Io): number {
   for (const p of m.pins) if (!isSpacer(p)) lines.push(`  ${p.side.padEnd(6)} ${pinText(s.pins.find((x) => x.name === p.name)!)}`)
   for (const g of s.holes) lines.push(`  hole group ${g.name}${g.label ? ` (${g.label})` : ''}: ${g.holes} hole${g.holes === 1 ? '' : 's'}${g.type ? `, ${g.type}` : ''}${g.supply ? ` ${g.supply}` : ''}${g.rail ? `, rail ${g.rail}` : ''}`)
   for (const group of m.internal ?? []) lines.push(`joined inside the part: ${group.join(' = ')}`)
+  for (const p of [...m.pins.filter((x): x is PinDef => !isSpacer(x)), ...(m.holes ?? [])]) if (p.caps?.note) lines.push(`note on ${p.label ?? p.name}: ${p.caps.note}`)
+  const i2c = i2cOf(m)
+  if (i2c) lines.push(`I2C device: SDA ${i2c.sda}, SCL ${i2c.scl}; address ${i2cAddressText(i2c)}; pull-ups on board: ${i2c.pullups === undefined ? 'not known' : i2c.pullups ? 'yes' : 'no'}`)
   io.stdout(`${lines.join('\n')}\n`)
   return EXIT.ok
 }

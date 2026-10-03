@@ -654,6 +654,11 @@ var PIN_TYPES = [
 	"passive",
 	"nc"
 ];
+var STRAPPING_LEVELS = [
+	"high",
+	"low",
+	"either"
+];
 var isSpacer = (p) => "spacer" in p && p.spacer === true;
 /** A net label module (`netLabel: true`): see ModuleDef.netLabel. */
 var isNetLabel = (m) => m?.netLabel === true;
@@ -744,6 +749,31 @@ function validateModule(raw) {
 		if (t.mains !== void 0 && !REQUIREMENTS.includes(t.mains)) errors.push(`${at}.mains: must be one of "L", "N", "PE", "line"`);
 		if (t.bond !== void 0 && t.bond !== "pe") errors.push(`${at}.bond: must be "pe"`);
 	};
+	const checkCaps = (t, at) => {
+		if (t.caps === void 0) return;
+		const c = t.caps;
+		if (!isObj(c)) return void errors.push(`${at}.caps: must be an object (inputOnly, outputOnly, flash, noPullup, strapping, note)`);
+		for (const k of Object.keys(c)) if (![
+			"inputOnly",
+			"outputOnly",
+			"flash",
+			"noPullup",
+			"strapping",
+			"downloadOnly",
+			"note"
+		].includes(k)) errors.push(`${at}.caps.${k}: unknown capability`);
+		for (const k of [
+			"inputOnly",
+			"outputOnly",
+			"flash",
+			"noPullup",
+			"downloadOnly"
+		]) if (c[k] !== void 0 && c[k] !== true) errors.push(`${at}.caps.${k}: must be true when present`);
+		if (c.inputOnly && c.outputOnly) errors.push(`${at}.caps: a pin cannot be both inputOnly and outputOnly`);
+		if (c.downloadOnly && c.strapping !== "high" && c.strapping !== "low") errors.push(`${at}.caps.downloadOnly: only on a strapping pin that needs "high" or "low"`);
+		if (c.strapping !== void 0 && !STRAPPING_LEVELS.includes(c.strapping)) errors.push(`${at}.caps.strapping: must be "high", "low" or "either"`);
+		if (c.note !== void 0 && (typeof c.note !== "string" || c.note.trim() === "")) errors.push(`${at}.caps.note: must be a non-empty string`);
+	};
 	const checkSupply = (t, at) => {
 		if (t.supply !== void 0 && typeof t.supply !== "string") errors.push(`${at}.supply: must be a string`);
 		else if (typeof t.supply === "string" && !/^[^/\s]+(\/[^/\s]+)*$/.test(t.supply)) errors.push(`${at}.supply: must be one or more rail names separated by "/", for example "3V3/5V"`);
@@ -768,6 +798,7 @@ function validateModule(raw) {
 		if (p.bus !== void 0 && !(isObj(p.bus) && Number.isInteger(p.bus.length) && p.bus.length >= 2)) errors.push(`${at}.bus: must be { "length": <whole number, 2 or more> }`);
 		if (p.label !== void 0 && typeof p.label !== "string") errors.push(`${at}.label: must be a string`);
 		checkSupply(p, at);
+		checkCaps(p, at);
 		if (p.capacity !== void 0 && !(Number.isInteger(p.capacity) && p.capacity >= 1 && p.capacity <= 8)) errors.push(`${at}.capacity: must be a whole number from 1 to 8`);
 	});
 	const positions = /* @__PURE__ */ new Set();
@@ -785,6 +816,7 @@ function validateModule(raw) {
 			checkType(g, at);
 			checkMains(g, at);
 			checkSupply(g, at);
+			checkCaps(g, at);
 			if (g.capacity !== void 0) {
 				if (g.holeStyle !== "pad") errors.push(`${at}.capacity: only pins and header pads (holeStyle "pad") take a capacity`);
 				else if (!(Number.isInteger(g.capacity) && g.capacity >= 1 && g.capacity <= 8)) errors.push(`${at}.capacity: must be a whole number from 1 to 8`);
@@ -867,6 +899,7 @@ function validateModule(raw) {
 		if (!isObj(s)) errors.push("electrical.settings: must be an object of setting name to a list of choices");
 		else for (const [k, v] of Object.entries(s)) if (!Array.isArray(v) || v.length < 2 || v.some((c) => typeof c !== "string" || c === "") || new Set(v).size !== v.length) errors.push(`electrical.settings.${k}: must be a list of 2 or more different choices, the first the default`);
 	}
+	if (isObj(raw.electrical) && raw.electrical.i2c !== void 0) validateI2c(raw.electrical.i2c, raw.electrical.settings, pinNames, errors);
 	if (isObj(raw.electrical) && raw.electrical.external !== void 0) {
 		const ext = raw.electrical.external;
 		if (!Array.isArray(ext)) errors.push("electrical.external: must be a list of { \"pin\", \"volts\", \"via\" }");
@@ -929,6 +962,51 @@ function validateModule(raw) {
 		ok: true,
 		module: raw
 	};
+}
+/** A 7-bit I2C address. */
+var isAddress = (v) => Number.isInteger(v) && v >= 0 && v <= 127;
+/** A setting choice that names an address: "0x3C". */
+var parseAddress = (s) => /^0x[0-9a-f]{1,2}$/i.test(s) && isAddress(parseInt(s, 16)) ? parseInt(s, 16) : null;
+/** An address as the user reads it: "0x3C". */
+var addressText = (a) => `0x${a.toString(16).toUpperCase().padStart(2, "0")}`;
+function validateI2c(i2c, settings, pins, errors) {
+	const at = "electrical.i2c";
+	if (!isObj(i2c)) return void errors.push(`${at}: must be { "sda", "scl", "address"?, "pullups"? }`);
+	for (const k of Object.keys(i2c)) if (![
+		"sda",
+		"scl",
+		"address",
+		"pullups"
+	].includes(k)) errors.push(`${at}.${k}: unknown field`);
+	for (const k of ["sda", "scl"]) if (typeof i2c[k] !== "string" || !pins.has(i2c[k])) errors.push(`${at}.${k}: no pin named "${String(i2c[k])}"`);
+	if (i2c.pullups !== void 0 && typeof i2c.pullups !== "boolean") errors.push(`${at}.pullups: must be true or false (leave it out when not known)`);
+	const a = i2c.address;
+	if (a === void 0) return;
+	const forms = "{ \"fixed\" }, { \"base\", \"pins\" } or { \"setting\" }";
+	if (!isObj(a)) return void errors.push(`${at}.address: must be ${forms}`);
+	if (a.fixed !== void 0) {
+		if (!isAddress(a.fixed)) errors.push(`${at}.address.fixed: must be a 7-bit address (0 to 127)`);
+		if (Object.keys(a).length > 1) errors.push(`${at}.address: "fixed" takes no other field`);
+	} else if (a.base !== void 0) {
+		if (!isAddress(a.base)) errors.push(`${at}.address.base: must be a 7-bit address (0 to 127)`);
+		if (!Array.isArray(a.pins) || !a.pins.length) return void errors.push(`${at}.address.pins: required, a list of { "pin", "add", "floating"? }`);
+		a.pins.forEach((p, i) => {
+			const pa = `${at}.address.pins[${i}]`;
+			if (!isObj(p)) return void errors.push(`${pa}: must be { "pin", "add", "floating"? }`);
+			if (typeof p.pin !== "string" || !pins.has(p.pin)) errors.push(`${pa}.pin: no pin named "${String(p.pin)}"`);
+			if (!(Number.isInteger(p.add) && p.add > 0 && p.add <= 127)) errors.push(`${pa}.add: must be a whole number from 1 to 127`);
+			if (p.floating !== void 0 && p.floating !== 0 && p.floating !== 1) errors.push(`${pa}.floating: must be 0 or 1 (the level the board pulls the pin to when nothing is connected)`);
+		});
+	} else if (a.setting !== void 0) {
+		const choices = isObj(settings) ? settings[a.setting] : void 0;
+		if (typeof a.setting !== "string" || !Array.isArray(choices)) errors.push(`${at}.address.setting: no setting named "${String(a.setting)}" in electrical.settings`);
+		else if (choices.some((c) => typeof c !== "string" || parseAddress(c) === null)) errors.push(`${at}.address.setting: every choice of electrical.settings.${a.setting} must be an address such as "0x3C"`);
+	} else errors.push(`${at}.address: must be ${forms}`);
+}
+/** The module's I2C device data (`electrical.i2c`), or null. Trusts validateModule. */
+function i2cOf(m) {
+	const e = m.electrical;
+	return isObj(e) && isObj(e.i2c) && typeof e.i2c.sda === "string" && typeof e.i2c.scl === "string" ? e.i2c : null;
 }
 /**
 * Groups of ground pins the wiring checker treats as one return (`electrical.commonReturn`): a
@@ -6083,12 +6161,22 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			{
 				"name": "A6",
 				"side": "left",
-				"type": "input"
+				"type": "input",
+				"caps": {
+					"inputOnly": true,
+					"noPullup": true,
+					"note": "A6 goes only to the ADC: read it with analogRead."
+				}
 			},
 			{
 				"name": "A7",
 				"side": "left",
-				"type": "input"
+				"type": "input",
+				"caps": {
+					"inputOnly": true,
+					"noPullup": true,
+					"note": "A7 goes only to the ADC: read it with analogRead."
+				}
 			},
 			{
 				"name": "5V",
@@ -8225,7 +8313,13 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 		footprint: "legs",
 		electrical: {
 			"model": "sensor",
-			"params": {}
+			"params": {},
+			"settings": { "address": ["0x76", "0x77"] },
+			"i2c": {
+				"sda": "SDA",
+				"scl": "SCL",
+				"address": { "setting": "address" }
+			}
 		},
 		art: {
 			"w": 70,
@@ -8389,7 +8483,20 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 		footprint: "legs",
 		electrical: {
 			"model": "sensor",
-			"params": {}
+			"params": {},
+			"i2c": {
+				"sda": "SDA",
+				"scl": "SCL",
+				"address": {
+					"base": 118,
+					"pins": [{
+						"pin": "SDO",
+						"add": 1,
+						"floating": 0
+					}]
+				},
+				"pullups": true
+			}
 		},
 		art: {
 			"w": 90,
@@ -15323,12 +15430,21 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			{
 				"name": "8",
 				"side": "left",
-				"type": "io"
+				"type": "io",
+				"caps": {
+					"strapping": "high",
+					"downloadOnly": true,
+					"note": "GPIO8 low at reset makes uploads in download mode fail; a normal boot is unaffected."
+				}
 			},
 			{
 				"name": "9",
 				"side": "left",
-				"type": "io"
+				"type": "io",
+				"caps": {
+					"strapping": "high",
+					"note": "GPIO9 low at reset starts the download mode instead of your program."
+				}
 			},
 			{
 				"name": "10",
@@ -15375,7 +15491,11 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			{
 				"name": "2",
 				"side": "right",
-				"type": "io"
+				"type": "io",
+				"caps": {
+					"strapping": "high",
+					"note": "Espressif recommends keeping GPIO2 high at reset to avoid boot glitches."
+				}
 			},
 			{
 				"name": "1",
@@ -15700,7 +15820,11 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			{
 				"name": "IO12",
 				"side": "left",
-				"type": "io"
+				"type": "io",
+				"caps": {
+					"strapping": "low",
+					"note": "GPIO12 (MTDI) high at reset sets the flash voltage to 1.8 V, and the 3.3 V flash on this module then fails to boot."
+				}
 			},
 			{
 				"name": "IO13",
@@ -15710,7 +15834,11 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			{
 				"name": "IO15",
 				"side": "left",
-				"type": "io"
+				"type": "io",
+				"caps": {
+					"strapping": "either",
+					"note": "GPIO15 (MTDO) low at reset only silences the boot messages on UART0."
+				}
 			},
 			{
 				"name": "IO14",
@@ -15720,7 +15848,12 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			{
 				"name": "IO2",
 				"side": "left",
-				"type": "io"
+				"type": "io",
+				"caps": {
+					"strapping": "low",
+					"downloadOnly": true,
+					"note": "GPIO2 high at reset makes uploads over USB fail; a normal boot is unaffected."
+				}
 			},
 			{
 				"name": "IO4",
@@ -15760,12 +15893,17 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			{
 				"name": "IO16",
 				"side": "right",
-				"type": "io"
+				"type": "io",
+				"caps": { "note": "IO16 is the chip select of the board's PSRAM: using it means turning PSRAM off, which most camera code needs." }
 			},
 			{
 				"name": "IO0",
 				"side": "right",
-				"type": "io"
+				"type": "io",
+				"caps": {
+					"strapping": "high",
+					"note": "GPIO0 low at reset starts the serial download mode instead of your program."
+				}
 			},
 			{
 				"name": "GND 2",
@@ -16125,22 +16263,42 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			{
 				"name": "VP",
 				"side": "left",
-				"type": "input"
+				"type": "input",
+				"caps": {
+					"inputOnly": true,
+					"noPullup": true,
+					"note": "VP is GPIO36, one of the ESP32's sensor inputs, GPIO34-39."
+				}
 			},
 			{
 				"name": "VN",
 				"side": "left",
-				"type": "input"
+				"type": "input",
+				"caps": {
+					"inputOnly": true,
+					"noPullup": true,
+					"note": "VN is GPIO39, one of the ESP32's sensor inputs, GPIO34-39."
+				}
 			},
 			{
 				"name": "D34",
 				"side": "left",
-				"type": "input"
+				"type": "input",
+				"caps": {
+					"inputOnly": true,
+					"noPullup": true,
+					"note": "GPIO34 is one of the ESP32's sensor inputs, GPIO34-39."
+				}
 			},
 			{
 				"name": "D35",
 				"side": "left",
-				"type": "input"
+				"type": "input",
+				"caps": {
+					"inputOnly": true,
+					"noPullup": true,
+					"note": "GPIO35 is one of the ESP32's sensor inputs, GPIO34-39."
+				}
 			},
 			{
 				"name": "D32",
@@ -16175,7 +16333,11 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			{
 				"name": "D12",
 				"side": "left",
-				"type": "io"
+				"type": "io",
+				"caps": {
+					"strapping": "low",
+					"note": "GPIO12 (MTDI) high at reset sets the flash voltage to 1.8 V, and the 3.3 V flash on this module then fails to boot."
+				}
 			},
 			{
 				"name": "D13",
@@ -16239,7 +16401,11 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			{
 				"name": "D5",
 				"side": "right",
-				"type": "io"
+				"type": "io",
+				"caps": {
+					"strapping": "either",
+					"note": "GPIO5 only sets the SDIO slave timing at reset."
+				}
 			},
 			{
 				"name": "TX2",
@@ -16259,12 +16425,21 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			{
 				"name": "D2",
 				"side": "right",
-				"type": "io"
+				"type": "io",
+				"caps": {
+					"strapping": "low",
+					"downloadOnly": true,
+					"note": "GPIO2 high at reset makes uploads over USB fail; a normal boot is unaffected."
+				}
 			},
 			{
 				"name": "D15",
 				"side": "right",
-				"type": "io"
+				"type": "io",
+				"caps": {
+					"strapping": "either",
+					"note": "GPIO15 (MTDO) low at reset only silences the boot messages on UART0."
+				}
 			},
 			{
 				"name": "GND 2",
@@ -16800,22 +16975,42 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			{
 				"name": "VP",
 				"side": "left",
-				"type": "input"
+				"type": "input",
+				"caps": {
+					"inputOnly": true,
+					"noPullup": true,
+					"note": "VP is GPIO36, one of the ESP32's sensor inputs, GPIO34-39."
+				}
 			},
 			{
 				"name": "VN",
 				"side": "left",
-				"type": "input"
+				"type": "input",
+				"caps": {
+					"inputOnly": true,
+					"noPullup": true,
+					"note": "VN is GPIO39, one of the ESP32's sensor inputs, GPIO34-39."
+				}
 			},
 			{
 				"name": "IO34",
 				"side": "left",
-				"type": "input"
+				"type": "input",
+				"caps": {
+					"inputOnly": true,
+					"noPullup": true,
+					"note": "GPIO34 is one of the ESP32's sensor inputs, GPIO34-39."
+				}
 			},
 			{
 				"name": "IO35",
 				"side": "left",
-				"type": "input"
+				"type": "input",
+				"caps": {
+					"inputOnly": true,
+					"noPullup": true,
+					"note": "GPIO35 is one of the ESP32's sensor inputs, GPIO34-39."
+				}
 			},
 			{
 				"name": "IO32",
@@ -16850,7 +17045,11 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			{
 				"name": "IO12",
 				"side": "left",
-				"type": "io"
+				"type": "io",
+				"caps": {
+					"strapping": "low",
+					"note": "GPIO12 (MTDI) high at reset sets the flash voltage to 1.8 V, and the 3.3 V flash on this module then fails to boot."
+				}
 			},
 			{
 				"name": "GND",
@@ -16864,15 +17063,27 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			},
 			{
 				"name": "D2",
-				"side": "left"
+				"side": "left",
+				"caps": {
+					"flash": true,
+					"note": "D2 is GPIO9, a line of the module's SPI flash."
+				}
 			},
 			{
 				"name": "D3",
-				"side": "left"
+				"side": "left",
+				"caps": {
+					"flash": true,
+					"note": "D3 is GPIO10, a line of the module's SPI flash."
+				}
 			},
 			{
 				"name": "CMD",
-				"side": "left"
+				"side": "left",
+				"caps": {
+					"flash": true,
+					"note": "CMD is GPIO11, a line of the module's SPI flash."
+				}
 			},
 			{
 				"name": "5V",
@@ -16938,7 +17149,11 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			{
 				"name": "IO5",
 				"side": "right",
-				"type": "io"
+				"type": "io",
+				"caps": {
+					"strapping": "either",
+					"note": "GPIO5 only sets the SDIO slave timing at reset."
+				}
 			},
 			{
 				"name": "IO17",
@@ -16958,29 +17173,54 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			{
 				"name": "IO0",
 				"side": "right",
-				"type": "io"
+				"type": "io",
+				"caps": {
+					"strapping": "high",
+					"note": "GPIO0 low at reset starts the serial download mode instead of your program."
+				}
 			},
 			{
 				"name": "IO2",
 				"side": "right",
-				"type": "io"
+				"type": "io",
+				"caps": {
+					"strapping": "low",
+					"downloadOnly": true,
+					"note": "GPIO2 high at reset makes uploads over USB fail; a normal boot is unaffected."
+				}
 			},
 			{
 				"name": "IO15",
 				"side": "right",
-				"type": "io"
+				"type": "io",
+				"caps": {
+					"strapping": "either",
+					"note": "GPIO15 (MTDO) low at reset only silences the boot messages on UART0."
+				}
 			},
 			{
 				"name": "D1",
-				"side": "right"
+				"side": "right",
+				"caps": {
+					"flash": true,
+					"note": "D1 is GPIO8, a line of the module's SPI flash."
+				}
 			},
 			{
 				"name": "D0",
-				"side": "right"
+				"side": "right",
+				"caps": {
+					"flash": true,
+					"note": "D0 is GPIO7, a line of the module's SPI flash."
+				}
 			},
 			{
 				"name": "CLK",
-				"side": "right"
+				"side": "right",
+				"caps": {
+					"flash": true,
+					"note": "CLK is GPIO6, a line of the module's SPI flash."
+				}
 			}
 		],
 		internal: [[
@@ -17631,12 +17871,21 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			{
 				"name": "3",
 				"side": "left",
-				"type": "io"
+				"type": "io",
+				"caps": {
+					"strapping": "either",
+					"note": "GPIO3 picks the JTAG source at reset only when an eFuse enables it."
+				}
 			},
 			{
 				"name": "46",
 				"side": "left",
-				"type": "io"
+				"type": "io",
+				"caps": {
+					"strapping": "low",
+					"downloadOnly": true,
+					"note": "GPIO46 high at reset makes uploads in download mode fail; a normal boot is unaffected."
+				}
 			},
 			{
 				"name": "9",
@@ -17740,25 +17989,36 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			},
 			{
 				"name": "37",
-				"side": "right"
+				"side": "right",
+				"caps": { "note": "On boards with octal flash or PSRAM (N8R8, N16R8, WROOM-2) GPIO37 belongs to the memory: leave it free on those." }
 			},
 			{
 				"name": "36",
-				"side": "right"
+				"side": "right",
+				"caps": { "note": "On boards with octal flash or PSRAM (N8R8, N16R8, WROOM-2) GPIO36 belongs to the memory: leave it free on those." }
 			},
 			{
 				"name": "35",
-				"side": "right"
+				"side": "right",
+				"caps": { "note": "On boards with octal flash or PSRAM (N8R8, N16R8, WROOM-2) GPIO35 belongs to the memory: leave it free on those." }
 			},
 			{
 				"name": "0",
 				"side": "right",
-				"type": "io"
+				"type": "io",
+				"caps": {
+					"strapping": "high",
+					"note": "GPIO0 low at reset starts the download mode instead of your program."
+				}
 			},
 			{
 				"name": "45",
 				"side": "right",
-				"type": "io"
+				"type": "io",
+				"caps": {
+					"strapping": "low",
+					"note": "GPIO45 high at reset sets the flash voltage to 1.8 V, and a module with 3.3 V flash then fails to boot."
+				}
 			},
 			{
 				"name": "48",
@@ -18450,15 +18710,27 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			},
 			{
 				"name": "CMD",
-				"side": "top"
+				"side": "top",
+				"caps": {
+					"flash": true,
+					"note": "CMD is GPIO11, a line of the module's SPI flash."
+				}
 			},
 			{
 				"name": "SD3",
-				"side": "top"
+				"side": "top",
+				"caps": {
+					"flash": true,
+					"note": "SD3 is GPIO10, a line of the module's SPI flash."
+				}
 			},
 			{
 				"name": "SD2",
-				"side": "top"
+				"side": "top",
+				"caps": {
+					"flash": true,
+					"note": "SD2 is GPIO9, a line of the module's SPI flash."
+				}
 			},
 			{
 				"name": "P13",
@@ -18473,7 +18745,11 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			{
 				"name": "P12",
 				"side": "top",
-				"type": "io"
+				"type": "io",
+				"caps": {
+					"strapping": "low",
+					"note": "GPIO12 (MTDI) high at reset sets the flash voltage to 1.8 V, and the 3.3 V flash on this module then fails to boot."
+				}
 			},
 			{
 				"name": "P14",
@@ -18508,22 +18784,42 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			{
 				"name": "P35",
 				"side": "top",
-				"type": "input"
+				"type": "input",
+				"caps": {
+					"inputOnly": true,
+					"noPullup": true,
+					"note": "GPIO35 is one of the ESP32's sensor inputs, GPIO34-39."
+				}
 			},
 			{
 				"name": "P34",
 				"side": "top",
-				"type": "input"
+				"type": "input",
+				"caps": {
+					"inputOnly": true,
+					"noPullup": true,
+					"note": "GPIO34 is one of the ESP32's sensor inputs, GPIO34-39."
+				}
 			},
 			{
 				"name": "SVN",
 				"side": "top",
-				"type": "input"
+				"type": "input",
+				"caps": {
+					"inputOnly": true,
+					"noPullup": true,
+					"note": "SVN is GPIO39, one of the ESP32's sensor inputs, GPIO34-39."
+				}
 			},
 			{
 				"name": "SVP",
 				"side": "top",
-				"type": "input"
+				"type": "input",
+				"caps": {
+					"inputOnly": true,
+					"noPullup": true,
+					"note": "SVP is GPIO36, one of the ESP32's sensor inputs, GPIO34-39."
+				}
 			},
 			{
 				"name": "EN",
@@ -18538,30 +18834,55 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			},
 			{
 				"name": "CLK",
-				"side": "bottom"
+				"side": "bottom",
+				"caps": {
+					"flash": true,
+					"note": "CLK is GPIO6, a line of the module's SPI flash."
+				}
 			},
 			{
 				"name": "SD0",
-				"side": "bottom"
+				"side": "bottom",
+				"caps": {
+					"flash": true,
+					"note": "SD0 is GPIO7, a line of the module's SPI flash."
+				}
 			},
 			{
 				"name": "SD1",
-				"side": "bottom"
+				"side": "bottom",
+				"caps": {
+					"flash": true,
+					"note": "SD1 is GPIO8, a line of the module's SPI flash."
+				}
 			},
 			{
 				"name": "P15",
 				"side": "bottom",
-				"type": "io"
+				"type": "io",
+				"caps": {
+					"strapping": "either",
+					"note": "GPIO15 (MTDO) low at reset only silences the boot messages on UART0."
+				}
 			},
 			{
 				"name": "P2",
 				"side": "bottom",
-				"type": "io"
+				"type": "io",
+				"caps": {
+					"strapping": "low",
+					"downloadOnly": true,
+					"note": "GPIO2 high at reset makes uploads over USB fail; a normal boot is unaffected."
+				}
 			},
 			{
 				"name": "P0",
 				"side": "bottom",
-				"type": "io"
+				"type": "io",
+				"caps": {
+					"strapping": "high",
+					"note": "GPIO0 low at reset starts the serial download mode instead of your program."
+				}
 			},
 			{
 				"name": "P4",
@@ -18581,7 +18902,11 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			{
 				"name": "P5",
 				"side": "bottom",
-				"type": "io"
+				"type": "io",
+				"caps": {
+					"strapping": "either",
+					"note": "GPIO5 only sets the SDIO slave timing at reset."
+				}
 			},
 			{
 				"name": "P18",
@@ -22766,7 +23091,11 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 				"name": "GPA7",
 				"at": [[40, 100]],
 				"holeStyle": "pad",
-				"type": "output"
+				"type": "output",
+				"caps": {
+					"outputOnly": true,
+					"note": "Microchip made GPA7 and GPB7 output only in datasheet revision D; read inputs on the other 14 pins."
+				}
 			},
 			{
 				"name": "VCC",
@@ -22828,7 +23157,11 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 				"name": "GPB7",
 				"at": [[50, 100]],
 				"holeStyle": "pad",
-				"type": "output"
+				"type": "output",
+				"caps": {
+					"outputOnly": true,
+					"note": "Microchip made GPA7 and GPB7 output only in datasheet revision D; read inputs on the other 14 pins."
+				}
 			},
 			{
 				"name": "A2",
@@ -22905,7 +23238,28 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 		},
 		electrical: {
 			"model": "io-expander",
-			"params": {}
+			"params": {},
+			"i2c": {
+				"sda": "SDA",
+				"scl": "SCL",
+				"address": {
+					"base": 32,
+					"pins": [
+						{
+							"pin": "A0",
+							"add": 1
+						},
+						{
+							"pin": "A1",
+							"add": 2
+						},
+						{
+							"pin": "A2",
+							"add": 4
+						}
+					]
+				}
+			}
 		},
 		art: {
 			"w": 180,
@@ -23418,7 +23772,11 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			{
 				"name": "GPB7",
 				"side": "bottom",
-				"type": "output"
+				"type": "output",
+				"caps": {
+					"outputOnly": true,
+					"note": "Microchip made GPA7 and GPB7 output only in datasheet revision D; read inputs on the other 14 pins."
+				}
 			},
 			{
 				"name": "VDD",
@@ -23455,7 +23813,11 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			{
 				"name": "GPA7",
 				"side": "top",
-				"type": "output"
+				"type": "output",
+				"caps": {
+					"outputOnly": true,
+					"note": "Microchip made GPA7 and GPB7 output only in datasheet revision D; read inputs on the other 14 pins."
+				}
 			},
 			{
 				"name": "GPA6",
@@ -23522,7 +23884,29 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 		},
 		electrical: {
 			"model": "io-expander",
-			"params": {}
+			"params": {},
+			"i2c": {
+				"sda": "SDA",
+				"scl": "SCL",
+				"address": {
+					"base": 32,
+					"pins": [
+						{
+							"pin": "A0",
+							"add": 1
+						},
+						{
+							"pin": "A1",
+							"add": 2
+						},
+						{
+							"pin": "A2",
+							"add": 4
+						}
+					]
+				},
+				"pullups": false
+			}
 		},
 		art: {
 			"w": 160,
@@ -23967,7 +24351,11 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 		},
 		electrical: {
 			"model": "io-expander",
-			"params": {}
+			"params": {},
+			"i2c": {
+				"sda": "SDA",
+				"scl": "SCL"
+			}
 		},
 		art: {
 			"w": 160,
@@ -25037,7 +25425,13 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 		footprint: "legs",
 		electrical: {
 			"model": "display",
-			"params": {}
+			"params": {},
+			"settings": { "address": ["0x3C", "0x3D"] },
+			"i2c": {
+				"sda": "SDA",
+				"scl": "SCL",
+				"address": { "setting": "address" }
+			}
 		},
 		art: {
 			"w": 150,
@@ -25231,7 +25625,13 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 		footprint: "legs",
 		electrical: {
 			"model": "display",
-			"params": {}
+			"params": {},
+			"settings": { "address": ["0x3C", "0x3D"] },
+			"i2c": {
+				"sda": "SDA",
+				"scl": "SCL",
+				"address": { "setting": "address" }
+			}
 		},
 		art: {
 			"w": 150,
@@ -25425,7 +25825,11 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 		footprint: "legs",
 		electrical: {
 			"model": "display",
-			"params": {}
+			"params": {},
+			"i2c": {
+				"sda": "SDA",
+				"scl": "SCL"
+			}
 		},
 		art: {
 			"w": 220,
@@ -25579,7 +25983,13 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 		footprint: "legs",
 		electrical: {
 			"model": "display",
-			"params": {}
+			"params": {},
+			"settings": { "address": ["0x3C", "0x3D"] },
+			"i2c": {
+				"sda": "SDA",
+				"scl": "SCL",
+				"address": { "setting": "address" }
+			}
 		},
 		art: {
 			"w": 130,
@@ -25773,7 +26183,13 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 		footprint: "legs",
 		electrical: {
 			"model": "display",
-			"params": {}
+			"params": {},
+			"settings": { "address": ["0x3C", "0x3D"] },
+			"i2c": {
+				"sda": "SDA",
+				"scl": "SCL",
+				"address": { "setting": "address" }
+			}
 		},
 		art: {
 			"w": 130,
@@ -42805,7 +43221,11 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			{
 				"name": "D0",
 				"side": "left",
-				"type": "io"
+				"type": "io",
+				"caps": {
+					"strapping": "high",
+					"note": "D0 is GPIO2. Espressif recommends keeping GPIO2 high at reset to avoid boot glitches."
+				}
 			},
 			{
 				"name": "D1",
@@ -42862,12 +43282,21 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			{
 				"name": "D9",
 				"side": "right",
-				"type": "io"
+				"type": "io",
+				"caps": {
+					"strapping": "high",
+					"note": "D9 is GPIO9. GPIO9 low at reset starts the download mode instead of your program."
+				}
 			},
 			{
 				"name": "D8",
 				"side": "right",
-				"type": "io"
+				"type": "io",
+				"caps": {
+					"strapping": "high",
+					"downloadOnly": true,
+					"note": "D8 is GPIO8. GPIO8 low at reset makes uploads in download mode fail; a normal boot is unaffected."
+				}
 			},
 			{
 				"name": "D7",
@@ -43162,7 +43591,11 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			{
 				"name": "D2",
 				"side": "left",
-				"type": "io"
+				"type": "io",
+				"caps": {
+					"strapping": "either",
+					"note": "D2 is GPIO3. GPIO3 picks the JTAG source at reset only when an eFuse enables it."
+				}
 			},
 			{
 				"name": "D3",
@@ -43504,7 +43937,595 @@ function naturalCompare(a, b) {
 	return collator.compare(a, b) || (a < b ? -1 : a > b ? 1 : 0);
 }
 //#endregion
+//#region src/format/pinRules.ts
+/** A part's pin as one map key (map lookups only). */
+var key = (part, pin) => `${part}\u0000${pin}`;
+/** A pin as it appears in a finding's causes (the checker's node key form). */
+var causeKey = (part, pin) => JSON.stringify([part, pin]);
+var endName = (e) => `${e.part.designator} ${e.label}`;
+var endPin = (e) => ({
+	part: e.part.id,
+	pin: e.pin
+});
+/** Names as a list, the first three and a count of the rest when there are more than four. */
+var fewNames = (names) => names.length > 4 ? `${names.slice(0, 3).join(", ")} and ${names.length - 3} more` : andList(names);
+/** The ends' names for fewNames, naming only the ones it shows (a huge net is not named end by end). */
+var fewEnds = (ends) => fewNames(ends.length > 4 ? [...ends.slice(0, 3).map(endName), ...Array(ends.length - 3).fill("")] : ends.map(endName));
+var model$1 = (e) => e.part.module.electrical?.model;
+/** Per module, each pin's and typed pad's end data by name (null for a bare board strip); cached. */
+var endCache = /* @__PURE__ */ new WeakMap();
+function endData(m) {
+	let map = endCache.get(m);
+	if (map) return map;
+	map = /* @__PURE__ */ new Map();
+	const external = new Set(externalPower(m).map((x) => x.pin));
+	const board = isBoard(m);
+	for (const def of [...m.pins.filter((p) => !isSpacer(p)), ...m.holes ?? []]) if (!map.has(def.name)) map.set(def.name, board && !def.type ? null : {
+		pin: def.name,
+		label: def.label ?? def.name,
+		type: def.type,
+		supply: def.supply,
+		caps: def.caps,
+		external: external.has(def.name)
+	});
+	endCache.set(m, map);
+	return map;
+}
+/** The end for a part's pin, or null for a missing pin, a bare board strip or a net label. */
+function pinEnd(part, pin) {
+	if (isNetLabel(part.module)) return null;
+	const data = endData(part.module).get(pin);
+	return data ? {
+		part,
+		...data
+	} : null;
+}
+/**
+* A model over `count` nets whose members `keysOf(i)` lists as [part id, pin name] pairs, with the
+* caller's own pin-to-net lookup. Nets are built only when a rule looks at them, so a sheet with no
+* pin data costs almost nothing.
+*/
+function lazyPinModel(parts, count, keysOf, netOf) {
+	let byId;
+	const built = /* @__PURE__ */ new Map();
+	const net = (i) => {
+		let ends = built.get(i);
+		if (!ends) {
+			pinWork.nets++;
+			byId ??= new Map(parts.map((p) => [p.id, p]));
+			ends = keysOf(i).flatMap(([id, pin]) => {
+				const part = byId.get(id);
+				const e = part && pinEnd(part, pin);
+				return e ? [e] : [];
+			});
+			built.set(i, ends);
+		}
+		return ends;
+	};
+	return {
+		parts,
+		count,
+		net,
+		netOf
+	};
+}
+/** A model from nets given as [part id, pin name] pairs (a netlist's nets). */
+function buildPinModel(parts, nets) {
+	const index = /* @__PURE__ */ new Map();
+	nets.forEach((list, i) => {
+		for (const [id, pin] of list) index.set(key(id, pin), i);
+	});
+	return lazyPinModel(parts, nets.length, (i) => nets[i], (part, pin) => index.get(key(part, pin)));
+}
+/**
+* How much pin-rule work ran, for the tests that prove a sheet without pin data costs nothing:
+* `passes` counts rule passes that had a part to look at, `nets` the nets built for them.
+*/
+var pinWork = {
+	passes: 0,
+	nets: 0
+};
+/** Whether a module gives the pin rules anything to read: a pin with caps, or I2C data. Cached. */
+var dataCache = /* @__PURE__ */ new WeakMap();
+function hasPinData(m) {
+	let has = dataCache.get(m);
+	if (has === void 0) dataCache.set(m, has = cappedPins(m).length > 0 || i2cOf(m) !== null);
+	return has;
+}
+/** The pins and pads of a module that carry caps, cached per module. */
+var cappedCache = /* @__PURE__ */ new WeakMap();
+function cappedPins(m) {
+	let list = cappedCache.get(m);
+	if (!list) cappedCache.set(m, list = [...m.pins.filter((p) => !isSpacer(p)), ...m.holes ?? []].filter((p) => p.caps).map((p) => p.name));
+	return list;
+}
+/** A pin that holds its net at a supply voltage: a power output or a board's USB pin. A power input alone holds nothing up. */
+var isSupplyEnd = (e) => e.type === "power_out" || e.external;
+/** What a net is tied to: ground, a supply rail, both (a short or a cell link), or neither. */
+function roleOf$2(net) {
+	const g = net.some((e) => e.type === "ground");
+	const s = net.some(isSupplyEnd);
+	return g && s ? "mixed" : g ? "ground" : s ? "supply" : "signal";
+}
+/** A part's pins grouped by the electrical component they share inside it (`internal`). */
+function componentOf(m, pin) {
+	for (const g of m.internal ?? []) if (g.includes(pin)) return g[0];
+	return pin;
+}
+/** Per module, each pin's other side: the pins of a two-sided part (resistor, switch, LED) not joined to it inside. Cached. */
+var sideCache = /* @__PURE__ */ new WeakMap();
+function otherSide(e) {
+	const m = e.part.module;
+	let map = sideCache.get(m);
+	if (!map) sideCache.set(m, map = /* @__PURE__ */ new Map());
+	let list = map.get(e.pin);
+	if (!list) {
+		const names = [...m.pins.filter((p) => !isSpacer(p)).map((p) => p.name), ...(m.holes ?? []).map((g) => g.name)];
+		const mine = componentOf(m, e.pin);
+		map.set(e.pin, list = names.filter((n) => componentOf(m, n) !== mine));
+	}
+	return list;
+}
+/** Each net's role, worked out once per model. */
+var roleCache = /* @__PURE__ */ new WeakMap();
+function netRole(pm, i) {
+	let map = roleCache.get(pm);
+	if (!map) roleCache.set(pm, map = /* @__PURE__ */ new Map());
+	let role = map.get(i);
+	if (role === void 0) map.set(i, role = roleOf$2(pm.net(i)));
+	return role;
+}
+/** The roles of the nets on the far side of a two-sided part. */
+function farRoles(pm, e) {
+	return otherSide(e).map((n) => {
+		const i = pm.netOf(e.part.id, n);
+		return i === void 0 ? "signal" : netRole(pm, i);
+	});
+}
+var isResistor = (e) => model$1(e) === "resistor";
+var isSwitch = (e) => model$1(e) === "switch";
+var isLed = (e) => model$1(e) === "led";
+/** The far side's rail: ground or supply when every far net is that one rail. */
+function farRail(pm, e) {
+	const roles = farRoles(pm, e);
+	return roles.length && roles.every((r) => r === "ground") ? "ground" : roles.length && roles.every((r) => r === "supply") ? "supply" : null;
+}
+/** A free GPIO of the same part with no limits, to suggest instead: " such as D13", or "". */
+var suggestCache = /* @__PURE__ */ new WeakMap();
+function suggest(pm, part) {
+	let cache = suggestCache.get(pm);
+	if (!cache) suggestCache.set(pm, cache = /* @__PURE__ */ new Map());
+	let text = cache.get(part);
+	if (text === void 0) cache.set(part, text = freePin(pm, part));
+	return text;
+}
+function freePin(pm, part) {
+	const m = part.module;
+	const i2c = i2cOf(m);
+	const busPins = new Set(i2c ? [
+		i2c.sda,
+		i2c.scl,
+		...i2c.address && "pins" in i2c.address ? i2c.address.pins.map((p) => p.pin) : []
+	] : []);
+	const free = [...m.pins.filter((p) => !isSpacer(p)), ...m.holes ?? []].find((p) => {
+		if (p.type !== "io" && p.type !== void 0 || busPins.has(p.name) || p.caps) return false;
+		const i = pm.netOf(part.id, p.name);
+		return i === void 0 || !pm.net(i).some((o) => o.part !== part);
+	});
+	return free ? `, such as ${free.label ?? free.name}` : "";
+}
+/** What a pin's caps say, in words: "input only, no internal pull-up or pull-down". Empty when it has none. */
+function capsText(c) {
+	if (!c) return [];
+	const out = [];
+	if (c.flash) out.push("flash pin: never connect anything");
+	if (c.inputOnly) out.push("input only");
+	if (c.outputOnly) out.push("output only");
+	if (c.noPullup) out.push("no internal pull-up or pull-down");
+	if (c.strapping === "either") out.push("strapping pin (read at reset; either level boots)");
+	else if (c.strapping && c.downloadOnly) out.push(`strapping pin: ${c.strapping} at reset only for flashing over serial`);
+	else if (c.strapping) out.push(`strapping pin: must be ${c.strapping} at reset`);
+	return out;
+}
+var TYPE_WORDS = {
+	power_in: "power in",
+	power_out: "power out",
+	ground: "ground",
+	input: "input",
+	output: "output",
+	io: "input/output",
+	passive: "passive",
+	nc: "not connected inside"
+};
+/** One line on what a pin does: its type and supply, its caps, its I2C role, its note. */
+function pinDoes(e) {
+	const i2c = i2cOf(e.part.module);
+	const parts = e.type === "input" && e.caps?.inputOnly || e.type === "output" && e.caps?.outputOnly ? [] : [e.type ? `${TYPE_WORDS[e.type]}${e.supply ? ` ${e.supply}` : ""}` : "type not known"];
+	if (i2c?.sda === e.pin) parts.push("I2C data (SDA)");
+	if (i2c?.scl === e.pin) parts.push("I2C clock (SCL)");
+	const a = i2c?.address;
+	if (a && "pins" in a && a.pins.some((p) => p.pin === e.pin)) parts.push("I2C address pin");
+	parts.push(...capsText(e.caps));
+	const text = parts.join(", ");
+	return e.caps?.note ? `${text}. ${e.caps.note}` : text;
+}
+/** Every I2C bus: a pair of SDA and SCL nets that a declared I2C device sits on. In part order. */
+function i2cBuses(pm, parts = pm.parts) {
+	const buses = /* @__PURE__ */ new Map();
+	for (const part of parts) {
+		const spec = i2cOf(part.module);
+		if (!spec) continue;
+		const sda = pm.netOf(part.id, spec.sda);
+		const scl = pm.netOf(part.id, spec.scl);
+		if (sda === void 0 || scl === void 0 || sda === scl) continue;
+		if (!pm.net(sda).some((e) => e.part !== part)) continue;
+		const k = `${sda}|${scl}`;
+		const bus = buses.get(k) ?? {
+			sda,
+			scl,
+			devices: []
+		};
+		bus.devices.push({
+			part,
+			spec,
+			sda,
+			scl
+		});
+		buses.set(k, bus);
+	}
+	return [...buses.values()];
+}
+/** The level an address pin sits at: 0 or 1, null when floating with no default, 'driven' when a signal sets it. */
+function pinLevel(pm, part, pin, floating) {
+	const i = pm.netOf(part.id, pin);
+	const net = i === void 0 ? [] : pm.net(i).filter((e) => !(e.part === part && e.pin === pin));
+	const role = roleOf$2(net);
+	if (role === "ground") return 0;
+	if (role === "supply") return 1;
+	if (role === "mixed") return "driven";
+	if (net.some((e) => e.type === "power_in")) return 1;
+	const pulls = net.filter(isResistor).map((e) => farRail(pm, e));
+	if (pulls.includes("ground") && !pulls.includes("supply")) return 0;
+	if (pulls.includes("supply") && !pulls.includes("ground")) return 1;
+	if (net.some((e) => e.type === "output" || e.type === "io" || model$1(e) === "connector")) return "driven";
+	return floating ?? null;
+}
+function i2cAddress(pm, part) {
+	const a = i2cOf(part.module)?.address;
+	if (!a) return null;
+	if ("fixed" in a) return {
+		address: a.fixed,
+		floating: [],
+		how: "fixed"
+	};
+	if ("setting" in a) {
+		const choice = partSetting(part, part.module, a.setting);
+		return {
+			address: choice === null ? null : parseAddress(choice),
+			floating: [],
+			how: `set on the board (${a.setting} ${choice ?? "not set"})`
+		};
+	}
+	let address = a.base;
+	const floating = [];
+	const levels = [];
+	let driven = false;
+	for (const p of a.pins) {
+		const level = pinLevel(pm, part, p.pin, p.floating);
+		const label = pinEnd(part, p.pin)?.label ?? p.pin;
+		if (level === null) floating.push(label);
+		else if (level === "driven") driven = true;
+		else if (level === 1) address += p.add;
+		levels.push(`${label}=${level === null ? "floating" : level === "driven" ? "set by a signal" : level}`);
+	}
+	const how = levels.join(", ");
+	return floating.length || driven ? {
+		address: null,
+		floating,
+		how
+	} : {
+		address,
+		floating,
+		how
+	};
+}
+function summarize(net) {
+	const s = {
+		role: roleOf$2(net),
+		ends: /* @__PURE__ */ new Map(),
+		parts: /* @__PURE__ */ new Set(),
+		outputs: [],
+		supplies: [],
+		grounds: [],
+		ios: [],
+		inputs: [],
+		switches: [],
+		resistors: [],
+		leds: []
+	};
+	for (const e of net) {
+		s.ends.set(key(e.part.id, e.pin), e);
+		s.parts.add(e.part);
+		if (e.type === "output") s.outputs.push(e);
+		if (isSupplyEnd(e)) s.supplies.push(e);
+		if (e.type === "ground") s.grounds.push(e);
+		if (e.type === "io") s.ios.push(e);
+		if (e.type === "input") s.inputs.push(e);
+		if (isSwitch(e)) s.switches.push(e);
+		else if (isResistor(e)) s.resistors.push(e);
+		else if (isLed(e)) s.leds.push(e);
+	}
+	return s;
+}
+/** Every pin-rule finding on the model. */
+function pinFindings(pm) {
+	const out = [];
+	const active = pm.parts.filter((p) => hasPinData(p.module));
+	if (!active.length) return out;
+	pinWork.passes++;
+	const flashNets = /* @__PURE__ */ new Set();
+	const summaries = /* @__PURE__ */ new Map();
+	const summary = (i) => {
+		let s = summaries.get(i);
+		if (!s) summaries.set(i, s = summarize(pm.net(i)));
+		return s;
+	};
+	for (const part of active) for (const name of cappedPins(part.module)) {
+		const i = pm.netOf(part.id, name);
+		if (i === void 0) continue;
+		const s = summary(i);
+		const p = s.ends.get(key(part.id, name));
+		const c = p?.caps;
+		if (!p || !c) continue;
+		const note = c.note ? ` (${c.note.replace(/\.$/, "")})` : "";
+		const cause = causeKey(p.part.id, p.pin);
+		const base = {
+			subject: p.part.designator,
+			target: endName(p),
+			nets: [i]
+		};
+		const notMine = (e) => e.part !== p.part;
+		if (c.flash && (s.parts.size > 1 || !s.parts.has(p.part))) {
+			if (flashNets.has(i)) continue;
+			flashNets.add(i);
+			const flash = pm.net(i).filter((e) => e.caps?.flash);
+			const boards = new Set(flash.map((e) => e.part));
+			if (boards.size > 1) {
+				const others = pm.net(i).filter((e) => !boards.has(e.part));
+				out.push({
+					...base,
+					rule: "pin-flash",
+					message: `${fewEnds(flash)} are flash pins${note}, wired together${others.length ? ` and to ${fewEnds(others)}` : ""}, and nothing may be wired to a flash pin. The boards will not run like this. Move every wire off them to free GPIOs.`,
+					parts: [...boards].map((x) => x.id).concat(others.map((e) => e.part.id)),
+					pins: [...flash, ...others].map(endPin),
+					causes: flash.map((e) => causeKey(e.part.id, e.pin))
+				});
+				continue;
+			}
+			const elsewhere = pm.net(i).filter(notMine);
+			const n = elsewhere.length;
+			out.push({
+				...base,
+				rule: "pin-flash",
+				message: `${endName(p)} is a flash pin${note}, so nothing may be wired to it, but ${fewEnds(elsewhere)} ${n === 1 ? "is" : "are"}. The board will not run like this. Move ${n === 1 ? "it" : "them"} to a free GPIO${suggest(pm, p.part)}.`,
+				parts: [p.part.id, ...elsewhere.map((e) => e.part.id)],
+				pins: [endPin(p), ...elsewhere.map(endPin)],
+				causes: [cause]
+			});
+			continue;
+		}
+		if (c.inputOnly) {
+			const other = (e) => e !== p;
+			if (!(s.outputs.some(other) || s.supplies.some(other) || s.grounds.some(other) || s.ios.some(notMine) || s.switches.length > 0)) {
+				const sinks = s.inputs.filter(notMine);
+				const leds = [...s.leds];
+				for (const r of s.resistors) for (const n of otherSide(r)) {
+					const j = pm.netOf(r.part.id, n);
+					if (j !== void 0) leds.push(...summary(j).leds);
+				}
+				const loads = [...sinks.map(endName), ...[...new Set(leds.map((e) => e.part))].map((x) => `${x.designator} (an LED)`)];
+				if (loads.length) {
+					out.push({
+						...base,
+						rule: "pin-input-only",
+						message: `${endName(p)} is input only${note}: it cannot drive ${fewNames(loads)}, and nothing else on the net does. Move the wire to a GPIO that can output${suggest(pm, p.part)}.`,
+						parts: [
+							p.part.id,
+							...sinks.map((e) => e.part.id),
+							...leds.map((e) => e.part.id)
+						],
+						pins: [endPin(p), ...sinks.map(endPin)],
+						causes: [cause]
+					});
+					continue;
+				}
+			}
+			if (c.noPullup && s.switches.length && !s.outputs.some((e) => e !== p) && !s.ios.some(notMine)) {
+				const sw0 = s.switches[0];
+				const rail = farRail(pm, sw0);
+				if (!s.resistors.some((r) => {
+					const far = farRail(pm, r);
+					return far !== null && far !== rail;
+				}) && rail) {
+					const [to, hold, fix] = rail === "ground" ? [
+						"ground",
+						"high",
+						`a pull-up resistor (10 kOhm) from ${p.label} to the logic supply`
+					] : [
+						"the supply",
+						"low",
+						`a pull-down resistor (10 kOhm) from ${p.label} to GND`
+					];
+					const sw = sw0.part.designator;
+					out.push({
+						...base,
+						rule: "pin-no-pullup",
+						message: `${endName(p)} has no internal pull-up or pull-down, and ${sw} switches it to ${to} with no resistor to hold it ${hold} while ${sw} is open: the input floats and reads noise. Add ${fix}, or read ${sw} on a GPIO with an internal pull-up${suggest(pm, p.part)}.`,
+						parts: [p.part.id, sw0.part.id],
+						pins: [endPin(p), endPin(sw0)],
+						causes: [cause, causeKey(sw0.part.id, sw0.pin)]
+					});
+				}
+			}
+		}
+		if (c.outputOnly) {
+			const read = [...s.switches.filter((w) => farRail(pm, w) !== null), ...s.outputs.filter(notMine)];
+			if (read.length) {
+				const what = fewNames([...new Set(read.map((e) => isSwitch(e) ? `${e.part.designator} (a switch)` : endName(e)))]);
+				out.push({
+					...base,
+					rule: "pin-output-only",
+					message: `${endName(p)} is output only${note}, but it is wired to ${what} as an input. Use another pin to read ${read.length === 1 ? "it" : "them"}${suggest(pm, p.part)}.`,
+					parts: [p.part.id, ...read.map((e) => e.part.id)],
+					pins: [endPin(p), ...read.map(endPin)],
+					causes: [cause]
+				});
+			}
+		}
+		if (c.strapping === "high" || c.strapping === "low") {
+			const bad = c.strapping === "high" ? "ground" : "supply";
+			const railName = bad === "ground" ? "GND" : "the supply";
+			const culprits = [];
+			const direct = s.role === "mixed" ? void 0 : (bad === "ground" ? s.grounds : s.supplies).find((e) => e !== p);
+			if (direct) culprits.push({
+				e: direct,
+				text: `it is wired straight to ${endName(direct)}`
+			});
+			for (const r of s.resistors) if (farRail(pm, r) === bad) culprits.push({
+				e: r,
+				text: `${r.part.designator} pulls it ${bad === "ground" ? "down to GND" : "up to the supply"}`
+			});
+			for (const w of s.switches) if (farRail(pm, w) === bad) culprits.push({
+				e: w,
+				text: `${w.part.designator} pulls it to ${railName} whenever it is closed at reset`
+			});
+			if (culprits.length) {
+				const message = c.downloadOnly ? `${endName(p)} is a strapping pin that only matters when flashing over serial${note || `: it must be ${c.strapping} at reset for an upload, and a normal boot is unaffected`}, but ${andList(culprits.map((x) => x.text))}, so uploads can fail. Move that circuit to a GPIO that is not a strapping pin${suggest(pm, p.part)}, or make sure it is ${c.strapping} while you upload.` : `${endName(p)} is a strapping pin that must be ${c.strapping} at reset${note}, but ${andList(culprits.map((x) => x.text))}. Move that circuit to a GPIO that is not a strapping pin${suggest(pm, p.part)}, or make sure it is ${c.strapping} while the board starts.`;
+				out.push({
+					...base,
+					rule: "pin-strapping",
+					message,
+					parts: [p.part.id, ...culprits.map((x) => x.e.part.id)],
+					pins: [endPin(p), ...culprits.map((x) => endPin(x.e))],
+					causes: [cause]
+				});
+			}
+		}
+	}
+	for (const bus of i2cBuses(pm, active)) out.push(...busFindings(pm, bus));
+	return out;
+}
+/** The pin to name a bus line by: the controller's pin (an MCU), else the first device's. */
+function lineName(pm, net, fallback) {
+	const ends = [...pm.net(net)].sort((a, b) => natural.compare(endName(a), endName(b)));
+	return endName(ends.find((e) => model$1(e) === "mcu") ?? fallback ?? ends[0]);
+}
+function busFindings(pm, bus) {
+	const out = [];
+	const devs = [...bus.devices].sort((a, b) => natural.compare(a.part.designator, b.part.designator));
+	const first = devs[0];
+	const sdaName = lineName(pm, bus.sda, pinEnd(first.part, first.spec.sda));
+	const sclName = lineName(pm, bus.scl, pinEnd(first.part, first.spec.scl));
+	const at = `${sdaName} (SDA) and ${sclName} (SCL)`;
+	const parts = devs.map((x) => x.part.id);
+	const pins = devs.flatMap((x) => [{
+		part: x.part.id,
+		pin: x.spec.sda
+	}, {
+		part: x.part.id,
+		pin: x.spec.scl
+	}]);
+	const causes = [`i2c:${sdaName}|${sclName}`];
+	const onboard = devs.some((x) => x.spec.pullups === true);
+	const wired = (net) => pm.net(net).some((e) => isResistor(e) && farRail(pm, e) === "supply");
+	const missing = onboard ? [] : [[bus.sda, "SDA"], [bus.scl, "SCL"]].filter(([n]) => !wired(n)).map(([, l]) => l);
+	if (missing.length) {
+		const unknown = devs.filter((x) => x.spec.pullups === void 0);
+		const lines = missing.length === 2 ? "SDA and SCL" : missing[0];
+		const fix = `add a 4.7 kOhm resistor from ${missing.length === 2 ? "SDA and another from SCL" : missing[0]} to the logic supply`;
+		const names = andList(devs.map((x) => x.part.designator));
+		if (unknown.length) out.push({
+			rule: "i2c-pullups-unknown",
+			subject: first.part.designator,
+			target: at,
+			parts,
+			pins,
+			nets: [bus.sda, bus.scl],
+			causes,
+			message: `The I2C bus at ${at}, with ${names} on it, has no pull-up resistor wired on ${lines}, and it is not known whether ${andList(unknown.map((x) => x.part.designator))} ${unknown.length === 1 ? "has" : "have"} pull-ups on board: check whether a module provides pull-ups; if none does, ${fix}.`
+		});
+		else out.push({
+			rule: "i2c-pullups",
+			subject: first.part.designator,
+			target: at,
+			parts,
+			pins,
+			nets: [bus.sda, bus.scl],
+			causes,
+			message: `The I2C bus at ${at}, with ${names} on it, has no pull-up on ${lines}: ${names} ${devs.length === 1 ? "has" : "have"} none on board and none is wired, so the bus cannot work. I2C needs one pull-up on SDA and one on SCL: ${fix}.`
+		});
+	}
+	const byAddress = /* @__PURE__ */ new Map();
+	for (const x of devs) {
+		const r = i2cAddress(pm, x.part);
+		if (!r) continue;
+		if (r.floating.length) {
+			const n = r.floating.length;
+			out.push({
+				rule: "i2c-address-floating",
+				subject: x.part.designator,
+				target: `${x.part.designator} ${r.floating[0]}`,
+				message: `${x.part.designator} ${andList(r.floating)} ${n === 1 ? "is" : "are"} not connected, so ${x.part.designator}'s I2C address is undefined: each address pin must be tied to GND or the supply. Connect ${n === 1 ? "it" : "them"} to GND or to the supply to choose its address.`,
+				parts: [x.part.id],
+				pins: r.floating.map((l) => ({
+					part: x.part.id,
+					pin: pinNameOf(x.part, l)
+				})),
+				nets: [],
+				causes: [`i2c-address:${x.part.id}`]
+			});
+			continue;
+		}
+		if (r.address === null) continue;
+		byAddress.set(r.address, [...byAddress.get(r.address) ?? [], x]);
+	}
+	for (const [address, list] of byAddress) {
+		if (list.length < 2) continue;
+		const hint = (x) => {
+			const a = x.spec.address;
+			return "pins" in a ? `wire ${x.part.designator}'s address pins (${a.pins.map((p) => pinEnd(x.part, p.pin)?.label ?? p.pin).join(", ")}) differently` : "setting" in a ? `move ${x.part.designator}'s address resistor on the board and set its ${a.setting} in the Inspector` : `move ${x.part.designator} to another I2C bus (its address is fixed)`;
+		};
+		out.push({
+			rule: "i2c-address-clash",
+			subject: list[0].part.designator,
+			target: at,
+			message: `${andList(list.map((x) => x.part.designator))} are ${list.length === 2 ? "both" : "all"} at I2C address ${addressText(address)} on the bus at ${at}: they answer together and the bus fails. Give each its own address: ${orList(list.slice(1).map(hint))}.`,
+			parts: list.map((x) => x.part.id),
+			pins: list.flatMap((x) => [{
+				part: x.part.id,
+				pin: x.spec.sda
+			}]),
+			nets: [bus.sda, bus.scl],
+			causes: [`i2c-address:${addressText(address)}`, ...list.map((x) => x.part.id)]
+		});
+	}
+	return out;
+}
+/** A pin's name from its label (address pins are named by label in messages). */
+function pinNameOf(part, label) {
+	const m = part.module;
+	return m.pins.find((p) => !isSpacer(p) && (p.label ?? p.name) === label)?.name ?? (m.holes ?? []).find((g) => (g.label ?? g.name) === label)?.name ?? label;
+}
+//#endregion
 //#region src/cli/parts.ts
+/** How a device's I2C address is set, in words. */
+function i2cAddressText(i2c) {
+	const a = i2c.address;
+	if (!a) return "not known";
+	if ("fixed" in a) return `${addressText(a.fixed)} (fixed)`;
+	if ("setting" in a) return `set on the board (part setting "${a.setting}")`;
+	return `${addressText(a.base)} plus ${a.pins.map((p) => `${p.pin} (+${p.add}${p.floating !== void 0 ? `, ${p.floating} when not connected` : ""})`).join(", ")}`;
+}
 function partSummary(m) {
 	return {
 		id: m.id,
@@ -43519,7 +44540,8 @@ function partSummary(m) {
 			label: p.label ?? null,
 			type: p.type ?? null,
 			supply: p.supply ?? null,
-			capacity: terminalCapacity(m, p.name)
+			capacity: terminalCapacity(m, p.name),
+			caps: p.caps ?? null
 		})),
 		holes: (m.holes ?? []).map((g) => ({
 			name: g.name,
@@ -43528,7 +44550,8 @@ function partSummary(m) {
 			supply: g.supply ?? null,
 			holes: g.at.length,
 			rail: g.rail ?? null,
-			capacity: terminalCapacity(m, g.name)
+			capacity: terminalCapacity(m, g.name),
+			caps: g.caps ?? null
 		}))
 	};
 }
@@ -43538,7 +44561,8 @@ var pinText = (p) => [
 	p.label && p.label !== p.name ? `(${p.label})` : "",
 	p.type ?? "untyped",
 	p.supply ?? "",
-	p.capacity > 1 ? `takes ${p.capacity}` : ""
+	p.capacity > 1 ? `takes ${p.capacity}` : "",
+	capsText(p.caps ?? void 0).length ? `[${capsText(p.caps ?? void 0).join("; ")}]` : ""
 ].filter(Boolean).join(" ");
 function partsCommand(args, io) {
 	const q = (flag(args, "--search") ?? "").toLowerCase();
@@ -43585,6 +44609,9 @@ function partCommand(args, io) {
 	for (const p of m.pins) if (!isSpacer(p)) lines.push(`  ${p.side.padEnd(6)} ${pinText(s.pins.find((x) => x.name === p.name))}`);
 	for (const g of s.holes) lines.push(`  hole group ${g.name}${g.label ? ` (${g.label})` : ""}: ${g.holes} hole${g.holes === 1 ? "" : "s"}${g.type ? `, ${g.type}` : ""}${g.supply ? ` ${g.supply}` : ""}${g.rail ? `, rail ${g.rail}` : ""}`);
 	for (const group of m.internal ?? []) lines.push(`joined inside the part: ${group.join(" = ")}`);
+	for (const p of [...m.pins.filter((x) => !isSpacer(x)), ...m.holes ?? []]) if (p.caps?.note) lines.push(`note on ${p.label ?? p.name}: ${p.caps.note}`);
+	const i2c = i2cOf(m);
+	if (i2c) lines.push(`I2C device: SDA ${i2c.sda}, SCL ${i2c.scl}; address ${i2cAddressText(i2c)}; pull-ups on board: ${i2c.pullups === void 0 ? "not known" : i2c.pullups ? "yes" : "no"}`);
 	io.stdout(`${lines.join("\n")}\n`);
 	return EXIT.ok;
 }
@@ -47418,9 +48445,41 @@ var RULES = {
 		severity: "error",
 		title: "Voltage too high"
 	},
+	"pin-flash": {
+		severity: "error",
+		title: "Wired to a flash pin"
+	},
+	"pin-input-only": {
+		severity: "error",
+		title: "Input-only pin drives"
+	},
+	"pin-output-only": {
+		severity: "error",
+		title: "Output-only pin read"
+	},
+	"i2c-address-clash": {
+		severity: "error",
+		title: "I2C address clash"
+	},
 	"supply-too-low": {
 		severity: "warning",
 		title: "Voltage too low"
+	},
+	"pin-strapping": {
+		severity: "warning",
+		title: "Strapping pin pulled"
+	},
+	"pin-no-pullup": {
+		severity: "warning",
+		title: "Input has no pull-up"
+	},
+	"i2c-pullups": {
+		severity: "warning",
+		title: "No I2C pull-ups"
+	},
+	"i2c-address-floating": {
+		severity: "warning",
+		title: "I2C address undefined"
 	},
 	"supply-unknown": {
 		severity: "warning",
@@ -47517,6 +48576,10 @@ var RULES = {
 	"battery-bank": {
 		severity: "info",
 		title: "Parallel battery bank"
+	},
+	"i2c-pullups-unknown": {
+		severity: "info",
+		title: "Check the I2C pull-ups"
 	}
 };
 var RULE_ORDER = Object.keys(RULES);
@@ -48356,6 +49419,28 @@ function checkDiagram(d) {
 		});
 	}
 	for (const f of mains?.findings ?? []) add(f);
+	const pinFound = !d.parts.some((p) => {
+		const m = moduleOf(d, p.module);
+		return !!m && hasPinData(m);
+	}) ? [] : pinFindings(lazyPinModel(d.parts.flatMap((p) => {
+		const m = moduleOf(d, p.module);
+		return m ? [{
+			id: p.uid,
+			designator: p.designator,
+			module: m,
+			settings: p.settings
+		}] : [];
+	}), nl.nets.length, (i) => netTerms[i].map((t) => [t.part.uid, t.name]), (part, pin) => nl.netOf.get(nodeKey(part, pin))));
+	for (const f of pinFound) add({
+		rule: f.rule,
+		subject: f.subject,
+		target: f.target,
+		message: f.message,
+		parts: f.parts.filter((u) => partByUid.has(u)),
+		pins: f.pins,
+		wires: [...new Set(f.nets.flatMap((i) => netWires[i] ?? []))],
+		causes: f.causes
+	});
 	const groups = labelGroups(d);
 	for (const l of labelsOf(d)) {
 		if (l.name) continue;
@@ -60948,9 +62033,9 @@ var libraryLookup = (id) => Object.hasOwn(modulesById, id) ? modulesById[id] : v
 //#region src/agent/notChecked.ts
 var NOT_CHECKED = [
 	"Current and heat: wire gauge against current, regulator and battery limits, and part temperatures.",
-	"I2C and SPI addresses and bus conflicts.",
-	"Required configuration inputs left floating (for example an MCP23017 RESET or its address pins): unless the intent lists them, they are only as checked as the checker's no-power rules.",
-	"Firmware behaviour: pin modes, pull-ups, boot strapping pins.",
+	"SPI bus conflicts; I2C addresses and pull-ups only as far as the parts declare them (not a part with no I2C data, nor a bus that continues on another sheet).",
+	"Required configuration inputs left floating (for example an MCP23017 RESET): unless the intent lists them, only I2C address pins are checked.",
+	"Firmware behaviour: pin modes, the internal pull-ups firmware turns on, and what drives a strapping pin at reset (only what is wired to it is checked).",
 	"Timing and signal integrity.",
 	"Mechanical fit: enclosures, connector sizes and cable lengths.",
 	"Mains wiring beyond its connections.",
@@ -64988,6 +66073,195 @@ function bomCommand(args, io) {
 	return EXIT.ok;
 }
 //#endregion
+//#region src/cli/explain.ts
+var EXPLAIN_FORMAT = "circuitoon-cli/explain/1";
+/** The rules explain reports: the pin-capability and I2C rules. */
+var isPinRule = (rule) => /^(pin|i2c)-/.test(rule);
+/** A module's short name: its name up to the first " (" ("ESP32 DevKit V1 (30 pin, DOIT)" is "ESP32 DevKit V1"). */
+var shortName = (m) => m.name.split(" (")[0];
+var model = (m) => m.electrical?.model;
+/** Explain lists real parts only: no breadboards, rail strips or net labels. */
+var listed = (m) => !isBoard(m) && !isNetLabel(m);
+function fromSheet(d) {
+	const nl = netlist(d, plugsOf(d));
+	const pm = buildPinModel(d.parts.flatMap((p) => {
+		const m = moduleOf(d, p.module);
+		return m ? [{
+			id: p.uid,
+			designator: p.designator,
+			module: m,
+			settings: p.settings
+		}] : [];
+	}), nl.nets.map((keys) => keys.map((k) => JSON.parse(k))));
+	const names = nl.nets.map(() => null);
+	for (const l of labelsOf(d)) {
+		const i = nl.netOf.get(JSON.stringify([l.part.uid, l.pin]));
+		if (i !== void 0 && l.name && names[i] === null) names[i] = l.name;
+	}
+	const findings = uniqueIds(checkDiagram(d).filter((f) => isPinRule(f.rule)).map(cliFinding));
+	const notes = verifyDiagram(d, libraryLookup).filter((f) => f.rule === "module-drift").map((f) => `${f.message} Until then, its pin capabilities and I2C data are the old copy's.`);
+	return {
+		source: "sheet",
+		title: d.title,
+		model: pm,
+		names,
+		findings,
+		notes
+	};
+}
+function fromNetlist(raw, path) {
+	const r = parseNetlist(raw, libraryLookup);
+	if (!r.ok) throw new CliError(`${path} is not a valid netlist: ${r.errors.slice(0, 5).join("; ")}`, EXIT.input);
+	const intent = r.intent;
+	const pm = buildPinModel(intent.parts.flatMap((p) => {
+		const m = intent.modules[p.module];
+		return m ? [{
+			id: p.ref,
+			designator: p.ref,
+			module: m
+		}] : [];
+	}), intent.nets.map((n) => n.terminals.map((t) => [t.ref, t.name])));
+	const findings = uniqueIds(pinFindings(pm).map((f) => ({
+		id: `${f.rule}|${[...new Set(f.causes)].sort().join(",")}`,
+		rule: f.rule,
+		severity: RULES[f.rule].severity,
+		message: f.message,
+		parts: f.parts,
+		pins: f.pins,
+		wires: []
+	})));
+	return {
+		source: "netlist",
+		title: intent.title,
+		model: pm,
+		names: intent.nets.map((n) => n.name),
+		findings,
+		notes: []
+	};
+}
+/** A net's ends in reading order: the MCU first, then by designator and pin. */
+var ordered = (net) => [...net].sort((a, b) => Number(model(b.part.module) === "mcu") - Number(model(a.part.module) === "mcu") || natural.compare(a.part.designator, b.part.designator) || natural.compare(a.label, b.label) || natural.compare(a.pin, b.pin));
+/** A sheet net's name when no label names it: GND, the supply pin's label, else a pin of the first part that is not the MCU. */
+function autoName(net, role) {
+	const ends = ordered(net);
+	if (role === "ground") return "GND";
+	if (role === "supply") {
+		const e = ends.find((x) => x.type === "power_out" || x.external) ?? ends.find((x) => x.type === "power_in") ?? ends[0];
+		return /[A-Za-z0-9]/.test(e.label) ? e.label : endName(e);
+	}
+	return endName(ends.find((e) => model(e.part.module) !== "mcu") ?? ends[0]);
+}
+var endText = (e) => `${shortName(e.part.module)} (${e.part.designator}) ${e.label}`;
+function explain(x) {
+	const pm = x.model;
+	const used = /* @__PURE__ */ new Set();
+	const taken = /* @__PURE__ */ new Map();
+	const all = Array.from({ length: pm.count }, (_, i) => pm.net(i));
+	const nets = all.flatMap((net, i) => {
+		const seen = /* @__PURE__ */ new Set();
+		const ends = ordered(net.filter((e) => listed(e.part.module))).filter((e) => {
+			const k = JSON.stringify([e.part.id, (e.part.module.internal ?? []).find((g) => g.includes(e.pin))?.[0] ?? e.pin]);
+			return !seen.has(k) && !!seen.add(k);
+		});
+		if (new Set(ends.map((e) => e.part)).size < 2) return [];
+		for (const e of ends) used.add(JSON.stringify([e.part.id, e.pin]));
+		const role = roleOf$2(ends);
+		let name = x.names[i] ?? autoName(ends, role);
+		const n = (taken.get(name) ?? 0) + 1;
+		taken.set(name, n);
+		if (n > 1) name = `${name} (${n})`;
+		return [{
+			name,
+			role,
+			text: `${name}: ${ends.map(endText).join(" -> ")}`,
+			ends: ends.map((e) => ({
+				part: e.part.id,
+				designator: e.part.designator,
+				module: e.part.module.id,
+				pin: e.pin,
+				label: e.label
+			}))
+		}];
+	});
+	const parts = pm.parts.filter((p) => listed(p.module)).sort((a, b) => natural.compare(a.designator, b.designator));
+	const connected = new Set([...used].map((k) => JSON.parse(k)[0]));
+	const perPart = parts.filter((p) => connected.has(p.id)).map((p) => {
+		const pins = all.flat().filter((e) => e.part === p && used.has(JSON.stringify([p.id, e.pin]))).sort((a, b) => natural.compare(a.label, b.label));
+		const addr = i2cOf(p.module) ? i2cAddress(pm, p) : null;
+		return {
+			part: p.id,
+			designator: p.designator,
+			module: p.module.id,
+			name: p.module.name,
+			i2cAddress: addr ? {
+				address: addr.address === null ? null : addressText(addr.address),
+				how: addr.how
+			} : null,
+			pins: pins.map((e) => ({
+				pin: e.pin,
+				label: e.label,
+				does: pinDoes(e),
+				caps: e.caps ?? null
+			}))
+		};
+	});
+	const unconnected = parts.filter((p) => !connected.has(p.id)).map((p) => ({
+		part: p.id,
+		designator: p.designator,
+		module: p.module.id,
+		name: p.module.name
+	}));
+	return {
+		format: EXPLAIN_FORMAT,
+		source: x.source,
+		title: x.title,
+		ok: !x.findings.some((f) => f.severity === "error"),
+		notes: x.notes,
+		nets,
+		parts: perPart,
+		unconnected,
+		findings: x.findings
+	};
+}
+function explainText(r) {
+	const lines = [`Explain: ${r.title} (${r.source})`, ""];
+	if (r.notes.length) lines.push("Notes:", ...r.notes.map((n) => `  ${n}`), "");
+	lines.push("Connections, by net:");
+	lines.push(...r.nets.length ? r.nets.map((n) => `  ${n.text}`) : ["  none"]);
+	lines.push("", "Pins in use, by part:");
+	for (const p of r.parts) {
+		const addr = p.i2cAddress ? `: I2C address ${p.i2cAddress.address ?? "undefined"} (${p.i2cAddress.how})` : "";
+		lines.push(`  ${p.designator} ${p.name} [${p.module}]${addr}`);
+		for (const pin of p.pins) lines.push(`    ${p.designator} ${pin.label}: ${pin.does}`);
+	}
+	if (!r.parts.length) lines.push("  none");
+	lines.push("", "Not connected:");
+	lines.push(...r.unconnected.length ? r.unconnected.map((p) => `  ${p.designator} ${p.name} [${p.module}]`) : ["  none"]);
+	lines.push("", "Pin rule findings:");
+	lines.push(r.findings.length ? findingsText(r.findings).split("\n").map((l) => `  ${l}`).join("\n") : "  none");
+	return `${lines.join("\n")}\n`;
+}
+function explainCommand(args, io) {
+	const [input, ...rest] = args.positionals;
+	if (!input) throw new CliError("explain: give a sheet or a netlist file", EXIT.input);
+	if (rest.length) throw new CliError(`explain: give one file, not ${args.positionals.length}`, EXIT.input);
+	const raw = readJson(io, input);
+	const format = raw?.format;
+	let x;
+	if (format === "circuitoon-netlist/1") x = fromNetlist(raw, input);
+	else if (format === "circuitoon-partial/1") x = fromNetlist(raw.intent, input);
+	else {
+		const r = validateDiagram(raw);
+		if (!r.ok) throw new CliError(`${input} is not a Circuitoon sheet or netlist: ${r.errors.slice(0, 5).join("; ")}`, EXIT.input);
+		for (const w of r.warnings) io.stderr(`warning: ${w}\n`);
+		x = fromSheet(r.diagram);
+	}
+	const result = explain(x);
+	if (args.flags.has("--json")) printJson(io, result);
+	else io.stdout(explainText(result));
+	return EXIT.ok;
+}
+//#endregion
 //#region src/agent/extract.ts
 /** A valid, unique netlist ref for a designator: other characters become `_`, and a leading non-letter gets a `P`. */
 function refMaker() {
@@ -65177,6 +66451,9 @@ var USAGE = `circuitoon <command> [options]
                                             [--labels none|auto|all]: which nets get net labels (default none: wires, labels only on nets marked "label": true)
   verify <sheet.json> [--json]              the sheet against its intent
   check <sheet.json> [--json]               the wiring checker, plus verify when the sheet has an intent
+  explain <sheet.json|netlist.json> [--json]
+                                            every connection in plain English by net, what each pin in use does,
+                                            unconnected parts and the pin-rule findings
   render <sheet.json> -o <sheet.png> [--svg <sheet.svg>] [--dark] [--scale n] [--focus <copy or group>]
                                             [--tiles <px>]: also zoomed tiles of the sheet, <px> square each, as <sheet>-tile-<row>-<col>.png
   link <sheet.json> [-o <dir>] [--json]     a link that opens the sheet in Circuitoon
@@ -65198,6 +66475,7 @@ var COMMANDS = {
 	netlist: netlistCommand,
 	verify: verifyCommand,
 	check: checkCommand,
+	explain: explainCommand,
 	gate: gateCommand
 };
 var CODE_OF = {

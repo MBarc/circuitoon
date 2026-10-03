@@ -40,7 +40,7 @@ describe('circuitoon verify and check', () => {
     const out = JSON.parse(v.out)
     expect(schemaErrors(loadSchema('findings'), out)).toEqual([])
     expect(out).toMatchObject({ format: 'circuitoon-cli/verify/1', ok: true, findings: [] })
-    expect(out.notChecked.join(' ')).toContain('I2C and SPI addresses')
+    expect(out.notChecked.join(' ')).toContain('SPI bus conflicts')
     const c = await cli(['check', 'sheet.json', '--json'], { cwd: dir })
     expect(c.code).toBe(0)
     const cout = JSON.parse(c.out)

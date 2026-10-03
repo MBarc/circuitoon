@@ -19,7 +19,11 @@
     {
       "name": "D2",
       "side": "left",
-      "type": "io"
+      "type": "io",
+      "caps": {
+        "strapping": "either",
+        "note": "D2 is GPIO3. GPIO3 picks the JTAG source at reset only when an eFuse enables it."
+      }
     },
     {
       "name": "D3",

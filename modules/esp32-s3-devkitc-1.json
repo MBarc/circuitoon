@@ -80,12 +80,21 @@
     {
       "name": "3",
       "side": "left",
-      "type": "io"
+      "type": "io",
+      "caps": {
+        "strapping": "either",
+        "note": "GPIO3 picks the JTAG source at reset only when an eFuse enables it."
+      }
     },
     {
       "name": "46",
       "side": "left",
-      "type": "io"
+      "type": "io",
+      "caps": {
+        "strapping": "low",
+        "downloadOnly": true,
+        "note": "GPIO46 high at reset makes uploads in download mode fail; a normal boot is unaffected."
+      }
     },
     {
       "name": "9",
@@ -189,25 +198,42 @@
     },
     {
       "name": "37",
-      "side": "right"
+      "side": "right",
+      "caps": {
+        "note": "On boards with octal flash or PSRAM (N8R8, N16R8, WROOM-2) GPIO37 belongs to the memory: leave it free on those."
+      }
     },
     {
       "name": "36",
-      "side": "right"
+      "side": "right",
+      "caps": {
+        "note": "On boards with octal flash or PSRAM (N8R8, N16R8, WROOM-2) GPIO36 belongs to the memory: leave it free on those."
+      }
     },
     {
       "name": "35",
-      "side": "right"
+      "side": "right",
+      "caps": {
+        "note": "On boards with octal flash or PSRAM (N8R8, N16R8, WROOM-2) GPIO35 belongs to the memory: leave it free on those."
+      }
     },
     {
       "name": "0",
       "side": "right",
-      "type": "io"
+      "type": "io",
+      "caps": {
+        "strapping": "high",
+        "note": "GPIO0 low at reset starts the download mode instead of your program."
+      }
     },
     {
       "name": "45",
       "side": "right",
-      "type": "io"
+      "type": "io",
+      "caps": {
+        "strapping": "low",
+        "note": "GPIO45 high at reset sets the flash voltage to 1.8 V, and a module with 3.3 V flash then fails to boot."
+      }
     },
     {
       "name": "48",

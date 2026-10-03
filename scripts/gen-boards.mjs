@@ -6,6 +6,7 @@
 // It overwrites the 9 files in modules/ in place; re-run after changing a board's pin list,
 // art or the shared header/pinLabels rules here, then `git diff` the result before committing.
 import { emit, finish, log } from './lib/gen-output.mjs'
+import { C3_STRAP, S3_OCTAL, S3_STRAP, esp32Caps, strapCaps } from './lib/pin-caps.mjs'
 import { fileURLToPath } from 'node:url'
 const OUT = fileURLToPath(new URL('../modules/', import.meta.url))
 
@@ -21,6 +22,7 @@ function pinsFor(side, list, types) {
     if (label) p.label = label
     if (t.type) p.type = t.type
     if (t.supply) p.supply = t.supply
+    if (t.caps) p.caps = t.caps
     return p
   })
 }
@@ -79,8 +81,8 @@ function build({ file, id, name, source, left, right, top = 0, bottom = 0, wu, t
 // `gpio` picks the general-purpose I/O pins (the board's GPIO names per its cited pinout, UART
 // TX/RX included): they are `io`, so the wiring checker treats them as signal pins. Pins tied to
 // the module's flash (DevKitC SD0-SD3, CMD, CLK), control pins and anything else keep no type.
-function typer({ gnd = [], v33 = [], v5 = [], inputs = [], other = {}, gpio = () => false }) {
-  return (name) => {
+function typer({ gnd = [], v33 = [], v5 = [], inputs = [], other = {}, gpio = () => false, caps = {} }) {
+  const base = (name) => {
     if (other[name]) return other[name]
     if (gnd.some((g) => name === g || name.startsWith(g + ' '))) return { type: 'ground' }
     if (v33.some((g) => name === g || name.startsWith(g + ' '))) return { type: 'power_out', supply: '3V3' }
@@ -89,7 +91,9 @@ function typer({ gnd = [], v33 = [], v5 = [], inputs = [], other = {}, gpio = ()
     if (gpio(name)) return { type: 'io' }
     return {}
   }
+  return (name) => (caps[name] ? { ...base(name), caps: caps[name] } : base(name))
 }
+
 
 // Shared art bits
 const usbMicro = (W, H, top) => r(W / 2 - 11, top ? -5 : H - 12, 22, 17, METAL, { radius: 2 })
@@ -108,7 +112,10 @@ build({
   right: ['GND 2|GND', 'IO23', 'IO22', 'TX', 'RX', 'IO21', 'GND 3|GND', 'IO19', 'IO18', 'IO5', 'IO17', 'IO16', 'IO4', 'IO0', 'IO2', 'IO15', 'D1', 'D0', 'CLK'],
   top: 2, wu: 12, usb: '5V', usbDiode: true, // schematic: VBUS through D3 (BAT760) to EXT_5V, header J2 pin 19
   // GPIO: IOnn and the UART0 pins; D0-D3, CMD and CLK are the module's flash pins (untyped).
-  types: typer({ gnd: ['GND'], v33: ['3V3'], v5: ['5V'], inputs: ['EN', 'VP', 'VN', 'IO34', 'IO35'], gpio: (n) => /^IO\d+$/.test(n) || n === 'TX' || n === 'RX' }),
+  types: typer({ gnd: ['GND'], v33: ['3V3'], v5: ['5V'], inputs: ['EN', 'VP', 'VN', 'IO34', 'IO35'], gpio: (n) => /^IO\d+$/.test(n) || n === 'TX' || n === 'RX',
+    // Header names to GPIO per the DevKitC V4 user guide's header tables (SD0 = GPIO7 ... CMD = GPIO11).
+    caps: esp32Caps(['VP', 'VN', 'IO34', 'IO35', 'IO0', 'IO2', 'IO5', 'IO12', 'IO15', 'CLK', 'D0', 'D1', 'D2', 'D3', 'CMD'],
+      (n) => ({ VP: 36, VN: 39, CLK: 6, D0: 7, D1: 8, D2: 9, D3: 10, CMD: 11 })[n] ?? Number(n.slice(2))) }),
   internal: [['GND', 'GND 2', 'GND 3']],
   art: {
     shapes: (W, H) => [
@@ -134,7 +141,9 @@ build({
   right: ['D23', 'D22', 'TX0', 'RX0', 'D21', 'D19', 'D18', 'D5', 'TX2', 'RX2', 'D4', 'D2', 'D15', 'GND 2|GND', '3V3'],
   top: 2, wu: 12, usb: 'VIN', usbDiode: true, // DOIT schematic: VCCUSB through D1 (SS14) to VIN, header J1 pin 1
   types: typer({ gnd: ['GND'], v33: ['3V3'], inputs: ['EN', 'VP', 'VN', 'D34', 'D35'], other: { VIN: { type: 'power_in', supply: '5V/7V/9V/12V' } },
-    gpio: (n) => /^D\d+$/.test(n) || /^(TX|RX)[02]$/.test(n) }),
+    gpio: (n) => /^D\d+$/.test(n) || /^(TX|RX)[02]$/.test(n),
+    // Dnn is GPIOnn; this board breaks out no flash pin and not GPIO0.
+    caps: esp32Caps(['VP', 'VN', 'D34', 'D35', 'D2', 'D5', 'D12', 'D15'], (n) => ({ VP: 36, VN: 39 })[n] ?? Number(n.slice(1))) }),
   internal: [['GND', 'GND 2']],
   art: {
     shapes: (W, H) => [
@@ -159,7 +168,8 @@ build({
   // embedded ESP32-S3-WROOM-1/1U modules, and boards with ESP32-S3-WROOM-2 modules, the pins GPIO35,
   // GPIO36 and GPIO37 are used for the internal communication between ESP32-S3 and SPI flash/PSRAM
   // memory, thus not available for external use" (the N8R8 and similar), so no rule fires on them.
-  types: typer({ gnd: ['G'], v33: ['3V3'], v5: ['5V'], inputs: ['RST'], gpio: (n) => (/^\d+$/.test(n) && !['35', '36', '37'].includes(n)) || n === 'TX' || n === 'RX' }),
+  types: typer({ gnd: ['G'], v33: ['3V3'], v5: ['5V'], inputs: ['RST'], gpio: (n) => (/^\d+$/.test(n) && !['35', '36', '37'].includes(n)) || n === 'TX' || n === 'RX',
+    caps: { ...strapCaps(S3_STRAP, { 0: 0, 3: 3, 45: 45, 46: 46 }), 35: S3_OCTAL(35), 36: S3_OCTAL(36), 37: S3_OCTAL(37) } }),
   internal: [['G', 'G 2', 'G 3', 'G 4'], ['3V3', '3V3 2']],
   art: {
     shapes: (W, H) => [
@@ -181,7 +191,7 @@ build({
   left: ['5', '6', '7', '8', '9', '10', '20', '21'],
   right: ['5V', 'G', '3.3', '4', '3', '2', '1', '0'],
   wu: 8, usb: '5V', // Nologo schematic (on the source page): header H2 pin 8 is VBUS itself, no diode (BAT60J sits between VBUS and VSYS)
-  types: typer({ gnd: ['G'], v33: ['3.3'], v5: ['5V'], gpio: (n) => /^\d+$/.test(n) }),
+  types: typer({ gnd: ['G'], v33: ['3.3'], v5: ['5V'], gpio: (n) => /^\d+$/.test(n), caps: strapCaps(C3_STRAP, { 2: 2, 8: 8, 9: 9 }) }),
   art: {
     shapes: (W, H) => [
       r(W / 2 - 13, -6, 26, 22, METAL, { radius: 3 }),
@@ -196,11 +206,13 @@ build({
 // 5/6. Seeed XIAO ESP32-C3 / ESP32-S3, front view with USB-C at top.
 const xiaoLeft = ['D0', 'D1', 'D2', 'D3', 'D4', 'D5', 'D6']
 const xiaoRight = ['5V', 'GND', '3V3', 'D10', 'D9', 'D8', 'D7']
-const xiaoTypes = typer({ gnd: ['GND'], v33: ['3V3'], v5: ['5V'], gpio: (n) => /^D\d+$/.test(n) })
+// Dn to GPIO per Seeed's wiki pin tables and front pinout images (both cited on each board): XIAO
+// ESP32-C3 D0 = GPIO2, D8 = GPIO8, D9 = GPIO9 (the BOOT button); XIAO ESP32-S3 D2 = GPIO3.
+const xiaoTypes = (caps) => typer({ gnd: ['GND'], v33: ['3V3'], v5: ['5V'], gpio: (n) => /^D\d+$/.test(n), caps })
 build({
   file: 'xiao-esp32c3.json', id: 'xiao-esp32c3', name: 'Seeed XIAO ESP32-C3',
   source: 'https://wiki.seeedstudio.com/XIAO_ESP32C3_Getting_Started/ https://files.seeedstudio.com/wiki/XIAO_WiFi/XIAO_ESP32-C3_front_pinout.png',
-  left: xiaoLeft, right: xiaoRight, wu: 9, types: xiaoTypes, usb: '5V', // Seeed wiki: "5V - This is 5v out from the USB port"; no diode documented (feed it only through your own diode)
+  left: xiaoLeft, right: xiaoRight, wu: 9, types: xiaoTypes(strapCaps(C3_STRAP, { D0: 2, D8: 8, D9: 9 })), usb: '5V', // Seeed wiki: "5V - This is 5v out from the USB port"; no diode documented (feed it only through your own diode)
   art: {
     pcb: XIAO,
     shapes: (W, H) => [
@@ -214,7 +226,7 @@ build({
 build({
   file: 'xiao-esp32s3.json', id: 'xiao-esp32s3', name: 'Seeed XIAO ESP32-S3',
   source: 'https://wiki.seeedstudio.com/xiao_esp32s3_getting_started/ https://files.seeedstudio.com/wiki/SeeedStudio-XIAO-ESP32S3/img/XIAO_ESP32-S3_front_pinout.png',
-  left: xiaoLeft, right: xiaoRight, wu: 9, types: xiaoTypes, usb: '5V', // Seeed wiki: "5V - This is 5v out from the USB port"; no diode documented (feed it only through your own diode)
+  left: xiaoLeft, right: xiaoRight, wu: 9, types: xiaoTypes(strapCaps(S3_STRAP, { D2: 3 })), usb: '5V', // Seeed wiki: "5V - This is 5v out from the USB port"; no diode documented (feed it only through your own diode)
   art: {
     pcb: XIAO,
     shapes: (W, H) => [
@@ -234,7 +246,12 @@ build({
   left: ['5V', 'GND', 'IO12', 'IO13', 'IO15', 'IO14', 'IO2', 'IO4'],
   right: ['3V3', 'IO16', 'IO0', 'GND 2|GND', 'VCC', 'U0R', 'U0T', 'GND/R'],
   bottom: 6, wu: 11,
-  types: typer({ gnd: ['GND'], v33: ['3V3', 'VCC'], v5: ['5V'], other: { 'GND/R': { type: 'passive' } }, gpio: (n) => /^IO\d+$/.test(n) || n === 'U0R' || n === 'U0T' }),
+  types: typer({ gnd: ['GND'], v33: ['3V3', 'VCC'], v5: ['5V'], other: { 'GND/R': { type: 'passive' } }, gpio: (n) => /^IO\d+$/.test(n) || n === 'U0R' || n === 'U0T',
+    // IO16 is the chip select of the board's PSRAM (Random Nerd Tutorials' AI-Thinker pinout: "GPIO 16
+    // is connected to the internal PSRAM"; raphaelbs/esp32-cam-ai-thinker pin notes, from the board
+    // schematic: "connected to CS# pin1 of onboard PSRAM64"). A note only: with PSRAM turned off it is usable.
+    caps: { ...esp32Caps(['IO0', 'IO2', 'IO12', 'IO15'], (n) => Number(n.slice(2))),
+      IO16: { note: "IO16 is the chip select of the board's PSRAM: using it means turning PSRAM off, which most camera code needs." } } }),
   internal: [['GND', 'GND 2']],
   art: {
     shapes: (W, H) => [
@@ -264,6 +281,11 @@ build({
     // D0-D13 (RX0/TX1 are D0/D1) and A0-A5 are digital I/O; A6/A7 are analog inputs only.
     gpio: (n) => /^D\d+$/.test(n) || /^A[0-5]$/.test(n) || n === 'RX0' || n === 'TX1',
     other: { VIN: { type: 'power_in', supply: '7V/7.4V/9V/12V' } },
+    // ATmega328P datasheet (DS40002061, pin descriptions): "ADC7:6 ... serve as analog inputs to the
+    // A/D converter", with no port, so no digital I/O and no pull-up. Cross-checked: Arduino's
+    // docs-content (github.com/arduino/docs-content/pull/2584: "Analog pins A6 and A7 are not usable
+    // as GPIO on ATmega168/328").
+    caps: Object.fromEntries(['A6', 'A7'].map((n) => [n, { inputOnly: true, noPullup: true, note: `${n} goes only to the ADC: read it with analogRead.` }])),
   }),
   internal: [['GND', 'GND 2'], ['RST', 'RST 2']],
   art: {

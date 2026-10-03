@@ -77,7 +77,9 @@ try {
 } catch (e) {
   findings = JSON.parse(e.stdout).findings ?? [{ message: String(e) }]
 }
-check(findings.length === 0, `the GND/5V/SDA/SCL sheet checks clean through the CLI${findings.length ? ` (got ${findings.map((f) => f.message).join(' | ')})` : ''}`)
+// Notes are not problems: the BME280's I2C pull-ups are not known, so the bus gets an info note.
+const problems = findings.filter((f) => f.severity !== 'info')
+check(problems.length === 0, `the GND/5V/SDA/SCL sheet checks clean through the CLI${problems.length ? ` (got ${problems.map((f) => f.message).join(' | ')})` : ''}`)
 cli(['render', demoFile, '-o', join(shots, 'labels-sheet-light.png')])
 cli(['render', demoFile, '-o', join(shots, 'labels-sheet-dark.png'), '--dark'])
 

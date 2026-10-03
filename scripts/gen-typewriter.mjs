@@ -10,6 +10,7 @@
 // then `git diff` the result before committing. src/format/typewriter.test.ts pins the order.
 import { finish } from './lib/gen-output.mjs'
 import { moduleJson, r, side, slots, write } from './lib/parts.mjs'
+import { esp32Caps } from './lib/pin-caps.mjs'
 
 const METAL = '#C9CED6', TIN = '#D5DAE1', LEAD = '#B8BEC7', DARK = '#1B1F24', BLACK = '#2B2F36'
 const GREY = '#3A3F47', GOLD = '#E0B43C', RED = '#E0483E', HOLE = '#6B727C', MOUNT = '#15181C'
@@ -92,6 +93,11 @@ const passive = { type: 'passive' }
     RX: { type: 'io' }, TX: { type: 'io' },
     ...Object.fromEntries([0, 2, 4, 5, 12, 13, 14, 15, 16, 17, 18, 19, 21, 22, 23, 25, 26, 27, 32, 33].map((n) => [`P${n}`, { type: 'io' }])),
   }
+  // The seated DevKitC's pin capabilities (lib/pin-caps.mjs): SVP/SVN/P34/P35 input only, the
+  // flash pins CLK and SD0-SD3/CMD (GPIO6-11, per the DevKitC user guide), strapping P0/P2/P5/P12/P15.
+  const caps = esp32Caps(['SVP', 'SVN', 'P34', 'P35', 'P0', 'P2', 'P5', 'P12', 'P15', 'CLK', 'SD0', 'SD1', 'SD2', 'SD3', 'CMD'],
+    (n) => ({ SVP: 36, SVN: 39, CLK: 6, SD0: 7, SD1: 8, SD2: 9, SD3: 10, CMD: 11 })[n] ?? Number(n.slice(1)))
+  for (const [n, c] of Object.entries(caps)) types[n] = { ...(types[n] ?? {}), caps: c }
   const topList = ['5V', 'CMD', 'SD3', 'SD2', 'P13', 'GND', 'P12', 'P14', 'P27', 'P26', 'P25', 'P33', 'P32', 'P35', 'P34', 'SVN', 'SVP', 'EN', '3V3']
   const bottomList = ['CLK', 'SD0', 'SD1', 'P15', 'P2', 'P0', 'P4', 'P16', 'P17', 'P5', 'P18', 'P19', 'GND 2|GND', 'P21', 'RX', 'TX', 'P22', 'P23', 'GND 3|GND']
   const top = side('top', topList, types, wu)

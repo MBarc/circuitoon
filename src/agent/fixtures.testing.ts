@@ -140,8 +140,9 @@ export function ledRails(pairs: number, rails: number) {
  */
 export function typewriter() {
   const boards = ['BB1', 'BB2', 'BB3']
-  const bank = (u: string, b: string) => Array.from({ length: 8 }, (_, i) => `${u}.GP${b}${i}`)
-  const channels = [...bank('U2', 'A'), ...bank('U2', 'B'), ...bank('U3', 'A'), ...bank('U3', 'B'), ...bank('U4', 'A'), 'U4.GPB0', 'U4.GPB1']
+  // GPA7 and GPB7 are output only on the MCP23017 (pin-output-only), so each chip reads 14 balls: 42 in all.
+  const bank = (u: string, b: string) => Array.from({ length: 7 }, (_, i) => `${u}.GP${b}${i}`)
+  const channels = ['U2', 'U3', 'U4'].flatMap((u) => [...bank(u, 'A'), ...bank(u, 'B')])
   return {
     format: 'circuitoon-netlist/1',
     title: 'Spirit Typewriter (layout fixture)',

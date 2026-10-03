@@ -1,0 +1,110 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "circuitoon explain <sheet|netlist> --json",
+  "type": "object",
+  "required": ["format", "source", "title", "ok", "notes", "nets", "parts", "unconnected", "findings"],
+  "additionalProperties": false,
+  "properties": {
+    "format": { "const": "circuitoon-cli/explain/1" },
+    "source": { "enum": ["sheet", "netlist"] },
+    "title": { "type": "string" },
+    "ok": { "type": "boolean" },
+    "notes": { "type": "array", "items": { "type": "string" } },
+    "nets": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "role", "text", "ends"],
+        "additionalProperties": false,
+        "properties": {
+          "name": { "type": "string" },
+          "role": { "enum": ["ground", "supply", "signal", "mixed"] },
+          "text": { "type": "string" },
+          "ends": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["part", "designator", "module", "pin", "label"],
+              "additionalProperties": false,
+              "properties": {
+                "part": { "type": "string" },
+                "designator": { "type": "string" },
+                "module": { "type": "string" },
+                "pin": { "type": "string" },
+                "label": { "type": "string" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "parts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["part", "designator", "module", "name", "i2cAddress", "pins"],
+        "additionalProperties": false,
+        "properties": {
+          "part": { "type": "string" },
+          "designator": { "type": "string" },
+          "module": { "type": "string" },
+          "name": { "type": "string" },
+          "i2cAddress": {
+            "type": ["object", "null"],
+            "required": ["address", "how"],
+            "additionalProperties": false,
+            "properties": { "address": { "type": ["string", "null"] }, "how": { "type": "string" } }
+          },
+          "pins": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["pin", "label", "does", "caps"],
+              "additionalProperties": false,
+              "properties": {
+                "pin": { "type": "string" },
+                "label": { "type": "string" },
+                "does": { "type": "string" },
+                "caps": { "type": ["object", "null"] }
+              }
+            }
+          }
+        }
+      }
+    },
+    "unconnected": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["part", "designator", "module", "name"],
+        "additionalProperties": false,
+        "properties": { "part": { "type": "string" }, "designator": { "type": "string" }, "module": { "type": "string" }, "name": { "type": "string" } }
+      }
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "rule", "severity", "message", "parts", "pins", "wires"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "string" },
+          "rule": { "type": "string" },
+          "severity": { "enum": ["error", "warning", "info"] },
+          "message": { "type": "string" },
+          "parts": { "type": "array", "items": { "type": "string" } },
+          "pins": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["part", "pin"],
+              "additionalProperties": false,
+              "properties": { "part": { "type": "string" }, "pin": { "type": "string" }, "hole": { "type": "integer" }, "offset": { "type": "integer" } }
+            }
+          },
+          "wires": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    }
+  }
+}

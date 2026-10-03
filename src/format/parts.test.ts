@@ -191,6 +191,7 @@ describe('built-in chips and displays keep the physical pin order', () => {
 
   it('displays use the display electrical model', () => {
     for (const file of Object.keys(parts).filter((f) => parts[f].category === 'Displays'))
-      expect(load(file).electrical).toEqual({ model: 'display', params: {} })
+      // The I2C displays add their bus data (and the address setting where the board has one).
+      expect(load(file).electrical).toMatchObject({ model: 'display', params: {} })
   })
 })

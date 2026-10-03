@@ -45,7 +45,22 @@
   "footprint": "legs",
   "electrical": {
     "model": "sensor",
-    "params": {}
+    "params": {},
+    "i2c": {
+      "sda": "SDA",
+      "scl": "SCL",
+      "address": {
+        "base": 118,
+        "pins": [
+          {
+            "pin": "SDO",
+            "add": 1,
+            "floating": 0
+          }
+        ]
+      },
+      "pullups": true
+    }
   },
   "art": {
     "w": 90,

@@ -60,12 +60,22 @@
     {
       "name": "A6",
       "side": "left",
-      "type": "input"
+      "type": "input",
+      "caps": {
+        "inputOnly": true,
+        "noPullup": true,
+        "note": "A6 goes only to the ADC: read it with analogRead."
+      }
     },
     {
       "name": "A7",
       "side": "left",
-      "type": "input"
+      "type": "input",
+      "caps": {
+        "inputOnly": true,
+        "noPullup": true,
+        "note": "A7 goes only to the ADC: read it with analogRead."
+      }
     },
     {
       "name": "5V",

@@ -32,6 +32,7 @@ function pinsFor(side, list, types) {
     if (label) p.label = label
     if (t.type) p.type = t.type
     if (t.supply) p.supply = t.supply
+    if (t.caps) p.caps = t.caps
     return p
   })
 }
@@ -84,7 +85,7 @@ function moduleJson({ id, name, category, source, pins, wu, hu, electrical, shap
 // right, top = pins 28 down to 15 left to right (the array order, unchanged). The pin names draw
 // past each pin's tip, since a 30 px body has no room for them inside.
 
-function dip28({ file, id, name, source, byNumber, mark, types }) {
+function dip28({ file, id, name, source, byNumber, mark, types, i2c }) {
   if (byNumber.length !== 28) throw new Error(`${file}: need 28 pins`)
   const wu = 16, hu = 3
   const W = wu * 10, H = hu * 10
@@ -102,7 +103,7 @@ function dip28({ file, id, name, source, byNumber, mark, types }) {
     r(xs[0] - 2, H - 11, 4, 4, CHIP_MARK, { radius: 2, outline: false }),
     r(xs[2], 9, xs[11] - xs[2], 12, CHIP, { outline: false, label: mark, labelColor: METAL, labelSize: 8 }),
   ]
-  write(file, moduleJson({ id, name, category: 'Chips', source, pins, wu, hu, electrical: { model: 'io-expander', params: {} }, shapes, pinLabels: 'tips' }))
+  write(file, moduleJson({ id, name, category: 'Chips', source, pins, wu, hu, electrical: { model: 'io-expander', params: {}, ...(i2c ? { i2c } : {}) }, shapes, pinLabels: 'tips' }))
 }
 
 // Duplicate datasheet names get a numbered pin name and the datasheet text as label.
@@ -121,6 +122,18 @@ const chipTypes = (extra) => typer({
   ...extra,
 })
 
+// MCP23017 pin capabilities and I2C data, from the datasheet (DS20001952D, 2022):
+//   - Table 2-1: GPA7 and GPB7 "Bidirectional I/O pin ... / Output only (MCP23017)"; the Features
+//     list says the same. Cross-checked: Adafruit_CircuitPython_MCP230xx issue #57 ("Datasheet
+//     Change Due To Issue Discovered In MCP23017 Chip": SDA can be corrupted when GPA7/GPB7 are
+//     inputs, so Microchip made them output only).
+//   - Section 3.3.1: the I2C client address is 0 1 0 0 A2 A1 A0, so 0x20 plus A2A1A0; Table 2-1:
+//     A0-A2 "Hardware address pin. Must be externally biased." (no default when left open).
+//   - A bare chip has no pull-up on SDA or SCL: the datasheet specifies its I2C timing with an
+//     external RPU of 1 kOhm on SCL and SDA (I2C AC characteristics test conditions).
+const MCP23017_CAPS = { outputOnly: true, note: 'Microchip made GPA7 and GPB7 output only in datasheet revision D; read inputs on the other 14 pins.' }
+const MCP23017_ADDRESS = { base: 0x20, pins: [{ pin: 'A0', add: 1 }, { pin: 'A1', add: 2 }, { pin: 'A2', add: 4 }] }
+
 // 1. MCP23017, 28-pin SPDIP. Table 2-1 (SPDIP column). GPA7/GPB7 are output-only on the MCP23017
 //    per the current datasheet revision. Pin 12 is "SCK" in that table (shared with the MCP23S17);
 //    it is the I2C clock, SCL.
@@ -131,7 +144,8 @@ dip28({
     'GPB0', 'GPB1', 'GPB2', 'GPB3', 'GPB4', 'GPB5', 'GPB6', 'GPB7', 'VDD', 'VSS', 'NC', 'SCL', 'SDA', 'NC',
     'A0', 'A1', 'A2', 'RESET', 'INTB', 'INTA', 'GPA0', 'GPA1', 'GPA2', 'GPA3', 'GPA4', 'GPA5', 'GPA6', 'GPA7',
   ]),
-  types: chipTypes({ A0: { type: 'input' }, A1: { type: 'input' }, A2: { type: 'input' }, GPA7: { type: 'output' }, GPB7: { type: 'output' } }),
+  types: chipTypes({ A0: { type: 'input' }, A1: { type: 'input' }, A2: { type: 'input' }, GPA7: { type: 'output', caps: MCP23017_CAPS }, GPB7: { type: 'output', caps: MCP23017_CAPS } }),
+  i2c: { sda: 'SDA', scl: 'SCL', address: MCP23017_ADDRESS, pullups: false },
 })
 
 // 2. MCP23018, 28-pin PDIP. Table 1-1 (28L PDIP/SOIC column): NC on 2, 14, 17 and 28; one analog
@@ -144,6 +158,9 @@ dip28({
     'ADDR', 'RESET', 'NC', 'INTB', 'INTA', 'GPA0', 'GPA1', 'GPA2', 'GPA3', 'GPA4', 'GPA5', 'GPA6', 'GPA7', 'NC',
   ]),
   types: chipTypes({ ADDR: { type: 'input' } }),
+  // The address is set by the voltage on ADDR (a resistor divider), which is not modelled; whether
+  // SDA/SCL need pull-ups is left unknown here (not cross-checked for this chip).
+  i2c: { sda: 'SDA', scl: 'SCL' },
 })
 
 // 3. MCP23017 breakout sold as CJMCU-2317 (MCP23017/MCP23S17 dual-marked). Seen from the component
@@ -178,7 +195,7 @@ dip28({
   const types = typer({
     VCC: { type: 'power_in', supply: '3V3/5V' }, GND: { type: 'ground' }, NC: { type: 'nc' },
     SCL: { type: 'input' }, SDA: { type: 'io' }, RESET: { type: 'input' }, A0: { type: 'input' }, A1: { type: 'input' }, A2: { type: 'input' },
-    INTA: { type: 'output' }, INTB: { type: 'output' }, GPA7: { type: 'output' }, GPB7: { type: 'output' },
+    INTA: { type: 'output' }, INTB: { type: 'output' }, GPA7: { type: 'output', caps: MCP23017_CAPS }, GPB7: { type: 'output', caps: MCP23017_CAPS },
   })
   const holes = []
   // Silkscreen-style text beside each pad, right-aligned before it or left-aligned after it.
@@ -194,6 +211,7 @@ dip28({
       g.holeStyle = 'pad'
       g.type = t.type ?? 'io'
       if (t.supply) g.supply = t.supply
+      if (t.caps) g.caps = t.caps
       holes.push(g)
       const text = label ?? name
       const w = Math.ceil(text.length * 4.2)
@@ -229,7 +247,10 @@ dip28({
     holes,
     internal: [['GND', 'GND 2'], ['VCC', 'VCC 2']],
     size: { w: W / 10, h: H / 10 },
-    electrical: { model: 'io-expander', params: {} },
+    // Pull-ups on SDA/SCL: Studio Pieters says the 8-pin "103" array on this board is the I2C
+    // pull-ups, but no second source confirms it for this layout, so they stay unknown. Nothing
+    // says the board pulls A0-A2, so they have no default either (the chip needs them biased).
+    electrical: { model: 'io-expander', params: {}, i2c: { sda: 'SDA', scl: 'SCL', address: MCP23017_ADDRESS } },
     art: { w: W, h: H, shapes },
   }
   emit(OUT + 'mcp23017-cjmcu-2317.json', JSON.stringify(m, null, 2) + '\n')
@@ -306,6 +327,15 @@ tft({
 
 const oledTypes = typer({ VCC: { type: 'power_in', supply: '3V3/5V' }, GND: { type: 'ground' }, SCL: { type: 'input' }, SDA: { type: 'io' } })
 
+// I2C on the 0.96" and 1.3" modules: the address is 0x3C (8-bit 0x78) as shipped, 0x3D (0x7A) with
+// the address resistor on the back moved (lcdwiki MC130GX: "Solder the 0x78 side resistance ...
+// (default)"; the MC096 and MC130 schematics show the 0x78/0x7A resistor pair on SA0; Addicore:
+// "Default: 0x78, Solder Selectable: 0x7A"). It is a part setting, so a moved resistor can be
+// recorded in the Inspector. Pull-ups: the lcdwiki schematics fit 4.7 kOhm on SCL and SDA, but
+// these modules are sold by many makers and generic boards are reported without them, so they
+// stay unknown (the checker then asks to check).
+const OLED_I2C = { settings: { address: ['0x3C', '0x3D'] }, i2c: { sda: 'SDA', scl: 'SCL', address: { setting: 'address' } } }
+
 /** Blue PCB, black glass with a yellow/blue text hint, FPC tail under the glass. */
 function oled({ file, id, name, source, top, wu, hu }) {
   const W = wu * 10, H = hu * 10
@@ -322,7 +352,7 @@ function oled({ file, id, name, source, top, wu, hu }) {
     r(12, gy + 27, (W - 24) * 0.7, 5, OLED_BLUE, { radius: 1, outline: false }),
     r(W / 2 - 18, gy + gh, 36, 10, FPC, { radius: 1 }),
   ]
-  write(file, moduleJson({ id, name, category: 'Displays', source, pins, wu, hu, electrical: { model: 'display', params: {} }, shapes, footprint: 'legs' }))
+  write(file, moduleJson({ id, name, category: 'Displays', source, pins, wu, hu, electrical: { model: 'display', params: {}, ...OLED_I2C }, shapes, footprint: 'legs' }))
 }
 
 // 7/8. 0.96" 128x64 SSD1306 I2C. Both power orders are widespread: lcdwiki sells both (MC096GX
@@ -367,7 +397,8 @@ oled({
   write('oled-ssd1306-091-i2c.json', moduleJson({footprint: 'legs', 
     id: 'oled-ssd1306-091-i2c', name: '0.91" OLED 128x32 SSD1306 (I2C)', category: 'Displays',
     source: 'https://www.lcdwiki.com/0.91inch_IIC_OLED_Module_SSD1306_SKU:MC091GX https://www.lcdwiki.com/res/MC091GX/0.91inch_IIC_OLED_Module_MC091GX_User_Manual_EN.pdf',
-    pins: pinsFor('left', left, oledTypes), wu, hu, electrical: { model: 'display', params: {} }, shapes,
+    // I2C bus pins only: no source found gives this module's address, and its pull-ups stay unknown as above.
+    pins: pinsFor('left', left, oledTypes), wu, hu, electrical: { model: 'display', params: {}, i2c: { sda: 'SDA', scl: 'SCL' } }, shapes,
   }))
 }
 

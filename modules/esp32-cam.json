@@ -20,7 +20,11 @@
     {
       "name": "IO12",
       "side": "left",
-      "type": "io"
+      "type": "io",
+      "caps": {
+        "strapping": "low",
+        "note": "GPIO12 (MTDI) high at reset sets the flash voltage to 1.8 V, and the 3.3 V flash on this module then fails to boot."
+      }
     },
     {
       "name": "IO13",
@@ -30,7 +34,11 @@
     {
       "name": "IO15",
       "side": "left",
-      "type": "io"
+      "type": "io",
+      "caps": {
+        "strapping": "either",
+        "note": "GPIO15 (MTDO) low at reset only silences the boot messages on UART0."
+      }
     },
     {
       "name": "IO14",
@@ -40,7 +48,12 @@
     {
       "name": "IO2",
       "side": "left",
-      "type": "io"
+      "type": "io",
+      "caps": {
+        "strapping": "low",
+        "downloadOnly": true,
+        "note": "GPIO2 high at reset makes uploads over USB fail; a normal boot is unaffected."
+      }
     },
     {
       "name": "IO4",
@@ -80,12 +93,19 @@
     {
       "name": "IO16",
       "side": "right",
-      "type": "io"
+      "type": "io",
+      "caps": {
+        "note": "IO16 is the chip select of the board's PSRAM: using it means turning PSRAM off, which most camera code needs."
+      }
     },
     {
       "name": "IO0",
       "side": "right",
-      "type": "io"
+      "type": "io",
+      "caps": {
+        "strapping": "high",
+        "note": "GPIO0 low at reset starts the serial download mode instead of your program."
+      }
     },
     {
       "name": "GND 2",

@@ -14,6 +14,7 @@ import { type Netlist, conductors, netlist, nodeKey } from './netlist.ts'
 import { partValue, primaryParam } from './values.ts'
 import { andList, natural, orList } from './words.ts'
 import { type MainsAnalysis, analyseMainsCached } from './mains.ts'
+import { type PinRuleId, hasPinData, lazyPinModel, pinFindings } from './pinRules.ts'
 import { unknownFeedWords } from './mainsRules.ts'
 
 /** `info` is a note, not a problem: it never blocks and never counts as one. */
@@ -62,6 +63,7 @@ export type RuleId =
   | 'label-unnamed'
   | 'label-mains'
   | 'label-alone'
+  | PinRuleId
 
 /** Rule order within one severity and one subject, and each rule's short heading. */
 export const RULES: Record<RuleId, { severity: Severity; title: string }> = {
@@ -83,7 +85,15 @@ export const RULES: Record<RuleId, { severity: Severity; title: string }> = {
   reversed: { severity: 'error', title: 'Power reversed' },
   'supplies-fight': { severity: 'error', title: 'Supplies fight' },
   'supply-too-high': { severity: 'error', title: 'Voltage too high' },
+  'pin-flash': { severity: 'error', title: 'Wired to a flash pin' },
+  'pin-input-only': { severity: 'error', title: 'Input-only pin drives' },
+  'pin-output-only': { severity: 'error', title: 'Output-only pin read' },
+  'i2c-address-clash': { severity: 'error', title: 'I2C address clash' },
   'supply-too-low': { severity: 'warning', title: 'Voltage too low' },
+  'pin-strapping': { severity: 'warning', title: 'Strapping pin pulled' },
+  'pin-no-pullup': { severity: 'warning', title: 'Input has no pull-up' },
+  'i2c-pullups': { severity: 'warning', title: 'No I2C pull-ups' },
+  'i2c-address-floating': { severity: 'warning', title: 'I2C address undefined' },
   'supply-unknown': { severity: 'warning', title: 'Check the supply voltage' },
   'supplies-parallel': { severity: 'warning', title: 'Supplies tied together' },
   'outputs-fight': { severity: 'warning', title: 'Outputs fight' },
@@ -108,6 +118,7 @@ export const RULES: Record<RuleId, { severity: Severity; title: string }> = {
   'wire-color-signal': { severity: 'warning', title: 'Signal wire in a power color' },
   'label-alone': { severity: 'warning', title: 'Label connects nothing' },
   'battery-bank': { severity: 'info', title: 'Parallel battery bank' },
+  'i2c-pullups-unknown': { severity: 'info', title: 'Check the I2C pull-ups' },
 }
 const RULE_ORDER = Object.keys(RULES) as RuleId[]
 
@@ -911,6 +922,16 @@ export function checkDiagram(d: Diagram): Finding[] {
   }
 
   for (const f of mains?.findings ?? []) add(f)
+
+  // Pin capabilities (input only, output only, flash, strapping, no pull-up) and I2C buses
+  // (pull-ups, addresses), from the caps and I2C data the modules declare. Mains nets never enter.
+  // A sheet with no capped pin and no I2C device skips the pass altogether.
+  const pinFound = !d.parts.some((p) => { const m = moduleOf(d, p.module); return !!m && hasPinData(m) }) ? [] : pinFindings(lazyPinModel(
+    d.parts.flatMap((p) => { const m = moduleOf(d, p.module); return m ? [{ id: p.uid, designator: p.designator, module: m, settings: p.settings }] : [] }),
+    // The checker's own terminals per net (mains nets already left out), not the node keys parsed again.
+    nl.nets.length, (i) => netTerms[i].map((t): [string, string] => [t.part.uid, t.name]), (part, pin) => nl.netOf.get(nodeKey(part, pin))))
+  for (const f of pinFound)
+    add({ rule: f.rule, subject: f.subject, target: f.target, message: f.message, parts: f.parts.filter((u) => partByUid.has(u)), pins: f.pins, wires: [...new Set(f.nets.flatMap((i) => netWires[i] ?? []))], causes: f.causes })
 
   // Net labels: a label needs a name, a name needs a second label to join, and a label never stands
   // in for mains wiring (it would hide a live conductor behind a flag and skip every cable check).

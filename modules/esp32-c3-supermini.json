@@ -24,12 +24,21 @@
     {
       "name": "8",
       "side": "left",
-      "type": "io"
+      "type": "io",
+      "caps": {
+        "strapping": "high",
+        "downloadOnly": true,
+        "note": "GPIO8 low at reset makes uploads in download mode fail; a normal boot is unaffected."
+      }
     },
     {
       "name": "9",
       "side": "left",
-      "type": "io"
+      "type": "io",
+      "caps": {
+        "strapping": "high",
+        "note": "GPIO9 low at reset starts the download mode instead of your program."
+      }
     },
     {
       "name": "10",
@@ -76,7 +85,11 @@
     {
       "name": "2",
       "side": "right",
-      "type": "io"
+      "type": "io",
+      "caps": {
+        "strapping": "high",
+        "note": "Espressif recommends keeping GPIO2 high at reset to avoid boot glitches."
+      }
     },
     {
       "name": "1",

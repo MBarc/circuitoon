@@ -14,15 +14,27 @@
     },
     {
       "name": "CMD",
-      "side": "top"
+      "side": "top",
+      "caps": {
+        "flash": true,
+        "note": "CMD is GPIO11, a line of the module's SPI flash."
+      }
     },
     {
       "name": "SD3",
-      "side": "top"
+      "side": "top",
+      "caps": {
+        "flash": true,
+        "note": "SD3 is GPIO10, a line of the module's SPI flash."
+      }
     },
     {
       "name": "SD2",
-      "side": "top"
+      "side": "top",
+      "caps": {
+        "flash": true,
+        "note": "SD2 is GPIO9, a line of the module's SPI flash."
+      }
     },
     {
       "name": "P13",
@@ -37,7 +49,11 @@
     {
       "name": "P12",
       "side": "top",
-      "type": "io"
+      "type": "io",
+      "caps": {
+        "strapping": "low",
+        "note": "GPIO12 (MTDI) high at reset sets the flash voltage to 1.8 V, and the 3.3 V flash on this module then fails to boot."
+      }
     },
     {
       "name": "P14",
@@ -72,22 +88,42 @@
     {
       "name": "P35",
       "side": "top",
-      "type": "input"
+      "type": "input",
+      "caps": {
+        "inputOnly": true,
+        "noPullup": true,
+        "note": "GPIO35 is one of the ESP32's sensor inputs, GPIO34-39."
+      }
     },
     {
       "name": "P34",
       "side": "top",
-      "type": "input"
+      "type": "input",
+      "caps": {
+        "inputOnly": true,
+        "noPullup": true,
+        "note": "GPIO34 is one of the ESP32's sensor inputs, GPIO34-39."
+      }
     },
     {
       "name": "SVN",
       "side": "top",
-      "type": "input"
+      "type": "input",
+      "caps": {
+        "inputOnly": true,
+        "noPullup": true,
+        "note": "SVN is GPIO39, one of the ESP32's sensor inputs, GPIO34-39."
+      }
     },
     {
       "name": "SVP",
       "side": "top",
-      "type": "input"
+      "type": "input",
+      "caps": {
+        "inputOnly": true,
+        "noPullup": true,
+        "note": "SVP is GPIO36, one of the ESP32's sensor inputs, GPIO34-39."
+      }
     },
     {
       "name": "EN",
@@ -102,30 +138,55 @@
     },
     {
       "name": "CLK",
-      "side": "bottom"
+      "side": "bottom",
+      "caps": {
+        "flash": true,
+        "note": "CLK is GPIO6, a line of the module's SPI flash."
+      }
     },
     {
       "name": "SD0",
-      "side": "bottom"
+      "side": "bottom",
+      "caps": {
+        "flash": true,
+        "note": "SD0 is GPIO7, a line of the module's SPI flash."
+      }
     },
     {
       "name": "SD1",
-      "side": "bottom"
+      "side": "bottom",
+      "caps": {
+        "flash": true,
+        "note": "SD1 is GPIO8, a line of the module's SPI flash."
+      }
     },
     {
       "name": "P15",
       "side": "bottom",
-      "type": "io"
+      "type": "io",
+      "caps": {
+        "strapping": "either",
+        "note": "GPIO15 (MTDO) low at reset only silences the boot messages on UART0."
+      }
     },
     {
       "name": "P2",
       "side": "bottom",
-      "type": "io"
+      "type": "io",
+      "caps": {
+        "strapping": "low",
+        "downloadOnly": true,
+        "note": "GPIO2 high at reset makes uploads over USB fail; a normal boot is unaffected."
+      }
     },
     {
       "name": "P0",
       "side": "bottom",
-      "type": "io"
+      "type": "io",
+      "caps": {
+        "strapping": "high",
+        "note": "GPIO0 low at reset starts the serial download mode instead of your program."
+      }
     },
     {
       "name": "P4",
@@ -145,7 +206,11 @@
     {
       "name": "P5",
       "side": "bottom",
-      "type": "io"
+      "type": "io",
+      "caps": {
+        "strapping": "either",
+        "note": "GPIO5 only sets the SDIO slave timing at reset."
+      }
     },
     {
       "name": "P18",

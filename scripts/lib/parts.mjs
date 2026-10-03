@@ -19,7 +19,7 @@ export function slots(len, n) {
 /**
  * Pins for one side from a slot list: 'NAME' or 'NAME|label' is a pin, null is a spacer (a
  * physical gap). `types` maps a pin to { type, supply }, looked up by its label first, then by its
- * name. Returns the pins, the px position of each pin by name (`pos`) and the px positions of the
+ * name (and `caps`, when set, is copied too). Returns the pins, the px position of each pin by name (`pos`) and the px positions of the
  * pins in order, spacers left out (`at`).
  */
 export function side(sideName, list, types, len) {
@@ -33,6 +33,7 @@ export function side(sideName, list, types, len) {
     const t = (label !== undefined ? types[label] : undefined) ?? types[name] ?? {}
     if (t.type) p.type = t.type
     if (t.supply) p.supply = t.supply
+    if (t.caps) p.caps = t.caps
     pos[name] = all[i]
     return p
   })
