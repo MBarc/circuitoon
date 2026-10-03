@@ -6,7 +6,7 @@
 // endpoints themselves, and a pin whose only neighbours are infrastructure is unconnected. Pure.
 import { type Diagram, type Endpoint, type PartInstance, moduleOf } from '../format/diagram.ts'
 import { holeUses, mountIssues, plugsOf } from '../format/breadboard.ts'
-import { PARAM_RULES, holeGroupOf, isBoard, isNetLabel, isObj, layoutModule, type ModuleDef, terminalCapacity, validParamValue } from '../format/module.ts'
+import { PARAM_RULES, holeGroupOf, isBoard, isNetLabel, isObj, layoutModule, type ModuleDef, moduleSettings, partSetting, terminalCapacity, validParamValue } from '../format/module.ts'
 import { andList } from '../format/words.ts'
 import { netlist, nodeKey } from '../format/netlist.ts'
 import { coveredMessage, coveredUses, endpointName } from '../format/checks.ts'
@@ -192,7 +192,7 @@ function paramKeys(...ms: ModuleDef[]): string[] {
  * Every value that differs between the intent and the sheet (amendment A2). Value params compare
  * effective values on both sides (override when valid, else the module default), so an override
  * the intent lacks and a dropped override are both caught. Other part state (an LED color) is
- * compared as stored, in both directions.
+ * compared as stored, in both directions, and settings as chosen (else the module's default).
  */
 function valueDrifts(ip: IntentPart, want: ModuleDef, part: PartInstance, have: ModuleDef): { key: string; text: string }[] {
   const out: { key: string; text: string }[] = []
@@ -210,6 +210,12 @@ function valueDrifts(ip: IntentPart, want: ModuleDef, part: PartInstance, have: 
     const w = JSON.stringify(ip.values?.[key] ?? null)
     const h = JSON.stringify(part.values?.[key] ?? null)
     if (w !== h) out.push({ key, text: `${key} is ${h} on the sheet but ${w} in the intent.` })
+  }
+  // Enumerated settings (an OLED's I2C address, a fuse holder's fuse) compare as chosen, the module's default when unset.
+  for (const key of new Set([...Object.keys(moduleSettings(want)), ...Object.keys(moduleSettings(have))])) {
+    const w = partSetting(ip, want, key)
+    const h = partSetting(part, have, key)
+    if (w !== h) out.push({ key: `setting:${key}`, text: `setting ${key} is ${JSON.stringify(h)} on the sheet but ${JSON.stringify(w)} in the intent.` })
   }
   return out
 }

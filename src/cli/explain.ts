@@ -68,7 +68,7 @@ function fromNetlist(raw: unknown, path: string): Explained {
   const intent = r.intent
   const parts: PinPart[] = intent.parts.flatMap((p) => {
     const m = intent.modules[p.module]
-    return m ? [{ id: p.ref, designator: p.ref, module: m }] : []
+    return m ? [{ id: p.ref, designator: p.ref, module: m, ...(p.settings ? { settings: p.settings } : {}) }] : []
   })
   const pm = buildPinModel(parts, intent.nets.map((n) => n.terminals.map((t): [string, string] => [t.ref, t.name])))
   const findings = uniqueIds(pinFindings(pm).map((f) => ({

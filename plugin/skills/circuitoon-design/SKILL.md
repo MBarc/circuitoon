@@ -112,7 +112,7 @@ Net labels, when the user asks:
 
 ## Re-laying out a user's drawn sheet
 
-To lay out a sheet the user drew (or one they edited), **run `circuitoon netlist <their sheet.json> -o netlist.json` first, and lay out that file. Never copy the circuit into a netlist by hand.** The command reads what actually conducts on the sheet: wires, breadboard strips, mounted legs, a part's internal joins and net labels. It keeps the parts, their modules, values and mounts (`on`), names nets from the sheet's labels, then GND, a supply rail such as 5V or 3V3, then `<ref>_<pin>`, and turns designators into valid refs (`ESP32 Breadboard` becomes `ESP32_Breadboard`). Rename nets and add `groups` and `notes` after, if they help; then `layout` and `gate` as usual.
+To lay out a sheet the user drew (or one they edited), **run `circuitoon netlist <their sheet.json> -o netlist.json` first, and lay out that file. Never copy the circuit into a netlist by hand.** The command reads what actually conducts on the sheet: wires, breadboard strips, mounted legs, a part's internal joins and net labels. It keeps the parts, their modules, values, settings and mounts (`on`), names nets from the sheet's labels, then GND, a supply rail such as 5V or 3V3, then `<ref>_<pin>`, and turns designators into valid refs (`ESP32 Breadboard` becomes `ESP32_Breadboard`). Rename nets and add `groups` and `notes` after, if they help; then `layout` and `gate` as usual.
 
 ## Improving a layout
 

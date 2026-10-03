@@ -1,5 +1,5 @@
 // A netlist (circuitoon-netlist/1) extracted from any drawn sheet, so a user's hand-drawn sheet can be
-// laid out again without copying it by hand (Ruling W1). Parts keep their module, values and mount
+// laid out again without copying it by hand (Ruling W1). Parts keep their module, values, settings and mount
 // (`on`); nets come from what actually conducts on the sheet: wires, breadboard strips, mounted legs,
 // a part's internal joins and net labels. Only component pins are listed: a strip is how the sheet
 // shares a net, not part of the circuit, so the layout chooses its own. Of the pins a part joins
@@ -7,8 +7,8 @@
 // not). Net names come from net labels, then roles (GND, and a supply rail such as 5V or 3V3), then
 // `<ref>_<pin>`. A sheet laid out from an intent leaves out the boards the layout added for routing
 // (local rail strips), since its intent never named them. Pure.
-import { type Diagram, moduleOf } from '../format/diagram.ts'
-import { isBoard, isNetLabel, isSpacer, type ModuleDef, type PinDef } from '../format/module.ts'
+import { type Diagram, type PartInstance, moduleOf } from '../format/diagram.ts'
+import { isBoard, isNetLabel, isSpacer, type ModuleDef, moduleSettings, type PinDef } from '../format/module.ts'
 import { plugsOf } from '../format/breadboard.ts'
 import { netlist, nodeKey } from '../format/netlist.ts'
 import { labelName } from '../format/netLabels.ts'
@@ -27,6 +27,13 @@ function refMaker() {
     taken.add(ref)
     return ref
   }
+}
+
+/** A part's setting choices its module offers (an OLED's address, a fuse holder's fuse), or undefined when it stores none. */
+function settingsOf(p: PartInstance, m: ModuleDef): Record<string, string> | undefined {
+  const offered = moduleSettings(m)
+  const kept = Object.entries(p.settings ?? {}).filter(([k, v]) => Object.hasOwn(offered, k) && offered[k].includes(v))
+  return kept.length ? Object.fromEntries(kept) : undefined
 }
 
 const pinDef = (m: ModuleDef, name: string): PinDef | undefined => m.pins.find((p): p is PinDef => !isSpacer(p) && p.name === name)
@@ -161,7 +168,8 @@ export function extractNetlist(d: Diagram): Record<string, unknown> {
     parts: kept.map((p) => {
       const board = p.mount?.board
       const on = board !== undefined ? refOf.get(board) : undefined
-      return { ref: refOf.get(p.uid)!, module: p.module, ...(p.values && Object.keys(p.values).length ? { values: p.values } : {}), ...(on ? { on } : {}) }
+      const settings = settingsOf(p, moduleOf(d, p.module)!)
+      return { ref: refOf.get(p.uid)!, module: p.module, ...(p.values && Object.keys(p.values).length ? { values: p.values } : {}), ...(settings ? { settings } : {}), ...(on ? { on } : {}) }
     }),
     nets: order.map((i) => ({ name: named[i]!, pins: nets[i].pins.map((p) => `${p.ref}.${p.name}`) })),
     ...(Object.keys(color).length || ends ? { wires: { ...(Object.keys(color).length ? { color } : {}), ...(ends ? { ends } : {}) } } : {}),

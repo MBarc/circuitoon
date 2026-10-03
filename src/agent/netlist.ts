@@ -2,7 +2,7 @@
 // describe a circuit, checked against every contract rule. Nothing is guessed: each violation is an
 // error naming its path. Repeated sub-circuits are expanded first (repeat.ts), so every rule here
 // also holds for every copy. Pure.
-import { type ModuleDef, type PinDef, PARAM_RULES, isBoard, isNetLabel, isObj, isNum, isSpacer, validParamValue, validateModule } from '../format/module.ts'
+import { type ModuleDef, type PinDef, PARAM_RULES, isBoard, isNetLabel, isObj, isNum, isSpacer, moduleSettings, validParamValue, validateModule } from '../format/module.ts'
 import { mainsOf } from '../format/mainsModel.ts'
 import { ANNOTATION_LABEL_MAX, ANNOTATION_TEXT_MAX, isValidColor } from '../format/diagram.ts'
 import { type EndKind, isEndKind } from '../format/cables.ts'
@@ -28,6 +28,8 @@ export interface IntentPart {
   ref: string
   module: string
   values?: Record<string, unknown>
+  /** Choices for the module's enumerated settings (`electrical.settings`), such as an OLED's I2C address or a fuse holder's fuse. */
+  settings?: Record<string, string>
   /** The board ref this part plugs into. */
   on?: string
 }
@@ -160,6 +162,24 @@ export function parseNetlist(raw: unknown, library: ModuleLookup): IntentResult 
       else {
         errors.push(...valueErrors(p.values, `${at}.values`))
         part.values = p.values
+      }
+    }
+    if (p.settings !== undefined) {
+      if (!isObj(p.settings)) errors.push(`${at}.settings: must be an object of setting name to choice`)
+      else {
+        const offered = moduleSettings(m)
+        const names = Object.keys(offered)
+        let ok = true
+        for (const [key, choice] of Object.entries(p.settings)) {
+          if (!Object.hasOwn(offered, key)) {
+            ok = false
+            errors.push(`${at}.settings.${key}: ${m.id} has no setting "${key}"${names.length ? ` (it has ${names.join(', ')})` : ' (it has none)'}`)
+          } else if (typeof choice !== 'string' || !offered[key].includes(choice)) {
+            ok = false
+            errors.push(`${at}.settings.${key}: must be one of ${offered[key].map((c) => JSON.stringify(c)).join(', ')}`)
+          }
+        }
+        if (ok && Object.keys(p.settings).length) part.settings = p.settings as Record<string, string>
       }
     }
     if (p.on !== undefined) {

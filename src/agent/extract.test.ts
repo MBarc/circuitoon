@@ -13,6 +13,7 @@ import { verifyDiagram } from './verify.ts'
 import { readabilityFindings } from './readabilityWarnings.ts'
 import { internalComponent } from './internal.ts'
 import { type Diagram, validateDiagram } from '../format/diagram.ts'
+import { checkDiagram } from '../format/checks.ts'
 import { ledNetlist, tiltSensors } from './fixtures.testing.ts'
 import { labelPin as labelPinOf } from '../format/netLabels.ts'
 
@@ -137,6 +138,56 @@ describe('extractNetlist', () => {
     const got = extractNetlist(d) as { nets: { name: string; pins: string[] }[] }
     expect(got.nets.find((n) => n.name === 'VIN')?.pins).toEqual(['BB1.c25-top', 'U2.5V'])
     expect(parse(got).nets.some((n) => n.name === 'VIN')).toBe(true)
+  })
+  /** An ESP32 with two identical OLEDs at different addresses on one I2C bus, and a fuse holder with no fuse. */
+  const twoOleds = () => ({
+    format: 'circuitoon-netlist/1',
+    title: 'Two OLEDs',
+    parts: [
+      { ref: 'U1', module: 'esp32-devkitc-v4' },
+      { ref: 'BB1', module: 'breadboard-half' },
+      { ref: 'OLED1', module: 'oled-ssd1306-096-i2c', settings: { address: '0x3C' } },
+      { ref: 'OLED2', module: 'oled-ssd1306-096-i2c', settings: { address: '0x3D' } },
+      { ref: 'F1', module: 'fuse-holder-5x20-inline', settings: { fuse: 'absent' } },
+    ],
+    nets: [
+      { name: 'SDA', pins: ['U1.IO21', 'OLED1.SDA', 'OLED2.SDA'] },
+      { name: 'SCL', pins: ['U1.IO22', 'OLED1.SCL', 'OLED2.SCL'] },
+      { name: '3V3', pins: ['U1.3V3', 'OLED1.VCC', 'OLED2.VCC', 'BB1.top+'] },
+      { name: 'GND', pins: ['U1.GND', 'OLED1.GND', 'OLED2.GND', 'BB1.top-'] },
+    ],
+  })
+  const settingsOf = (parts: { ref?: string; designator?: string; settings?: Record<string, string> }[]) =>
+    Object.fromEntries(parts.filter((p) => p.settings).map((p) => [p.ref ?? p.designator, p.settings]))
+  it('keeps part settings through the netlist, layout, extraction and a second layout (two OLEDs at 0x3C and 0x3D, a fuse)', () => {
+    const want = { OLED1: { address: '0x3C' }, OLED2: { address: '0x3D' }, F1: { fuse: 'absent' } }
+    expect(settingsOf(parse(twoOleds()).parts)).toEqual(want)
+    const sheet = sheetOf(twoOleds())
+    expect(settingsOf(sheet.parts)).toEqual(want)
+    expect(verifyDiagram(sheet, libraryLookup).filter((f) => f.severity === 'error')).toEqual([])
+    const extracted = extractNetlist(sheet)
+    expect(settingsOf(extracted.parts as { ref: string; settings?: Record<string, string> }[])).toEqual(want)
+    // Extraction keeps component pins only, so the second layout labels the power nets rather than needing a rail.
+    const again = sheetOf(extracted, 'all')
+    expect(settingsOf(again.parts)).toEqual(want)
+    expect(checkDiagram(again).filter((f) => f.rule === 'i2c-address-clash')).toEqual([])
+  })
+  it('reports a setting that differs between the sheet and the intent as value-drift', () => {
+    const sheet = sheetOf(twoOleds())
+    sheet.parts.find((p) => p.designator === 'OLED2')!.settings = { address: '0x3C' }
+    const drift = verifyDiagram(sheet, libraryLookup).filter((f) => f.rule === 'value-drift')
+    expect(drift.map((f) => f.message)).toEqual(['OLED2 setting address is "0x3C" on the sheet but "0x3D" in the intent.'])
+  })
+  it('rejects a setting the module does not have, or a choice it does not offer', () => {
+    const n = twoOleds()
+    n.parts[2].settings = { address: '0x3E' }
+    ;(n.parts[4] as Record<string, unknown>).settings = { colour: 'red' }
+    const r = parseNetlist(n, libraryLookup)
+    expect(r.ok).toBe(false)
+    if (!r.ok) {
+      expect(r.errors).toContain('parts[2].settings.address: must be one of "0x3C", "0x3D"')
+      expect(r.errors).toContain('parts[4].settings.colour: fuse-holder-5x20-inline has no setting "colour" (it has fuse)')
+    }
   })
   it('keeps one wire color per net and the wire ends every wire shares', () => {
     const got = extractNetlist(sheetOf(ledNetlist())) as { wires?: { color?: Record<string, string>; ends?: string } }
