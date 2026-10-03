@@ -156,7 +156,8 @@ export function billOfMaterials(d: Diagram, opts: BomOptions = {}): Bom {
 }
 
 /**
- * Rule V3: the real wires a sheet's labelled nets need. Per label name, the pieces the labels join
+ * Rule V3: the real wires a sheet's labelled nets need. Per label name (names wired to each other
+ * counting as one), the pieces the labels join
  * are the nodes the wires to those labels start from, grouped by what joins them without labels
  * (wires, strips, internal joins, plugged legs): a breadboard strip is one piece, two pins on one
  * label are two. A name joining `n` pieces takes `n - 1` wires, with the netlist's cable ends (its
@@ -178,11 +179,25 @@ function labelledWires(d: Diagram, toLabel: (c: Connection) => boolean): { ends:
     if (a !== b) parent.set(a, b)
   }
   const nameOf = new Map(labels.map((l) => [l.part.uid, l.name]))
+  // Label names wired to each other (label X to label Y) are aliases of one net: grouped first, so
+  // A to X, X to Y, Y to B is one net of two pieces, not two nets of one piece each.
+  const alias = new Map<string, string>()
+  const top = (n: string): string => {
+    let r = n
+    while (alias.has(r) && alias.get(r) !== r) r = alias.get(r)!
+    return r
+  }
+  for (const c of d.connections) {
+    const [x, y] = [nameOf.get(c.from.part), nameOf.get(c.to.part)]
+    if (x === undefined || y === undefined) continue
+    const [rx, ry] = [top(x), top(y)]
+    if (rx !== ry) alias.set(rx, ry)
+  }
   const byName = new Map<string, { roots: Set<string>; stubs: Connection[] }>()
   for (const c of d.connections) {
     const [lab, end] = nameOf.has(c.to.part) ? [c.to, c.from] : nameOf.has(c.from.part) ? [c.from, c.to] : [null, null]
     if (!lab || !end || nameOf.has(end.part)) continue
-    const name = nameOf.get(lab.part)!
+    const name = top(nameOf.get(lab.part)!)
     let g = byName.get(name)
     if (!g) byName.set(name, (g = { roots: new Set(), stubs: [] }))
     g.roots.add(find(nodeKey(end.part, end.pin)))
