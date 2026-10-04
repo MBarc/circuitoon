@@ -13,7 +13,7 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
-import { checker, flagOf, launchChrome, noSavePicker, startPreview } from './lib/browser-check.mjs'
+import { checker, flagOf, launchChrome, noSavePicker, startPreview, fileItem } from './lib/browser-check.mjs'
 
 const out = resolve(flagOf('--out', join(tmpdir(), 'circuitoon-bom-ui')))
 const shots = resolve(flagOf('--shots', '.superpowers'))
@@ -135,7 +135,7 @@ for (const scheme of ['light', 'dark']) {
   check(!(await problems.getByText('Signal wire in a power color').count()), `${scheme}: the signal warning is gone once the wire is yellow`)
 
   // --- The Bill of materials dialog. ---
-  await page.getByRole('button', { name: 'Bill of materials' }).click()
+  await fileItem(page, 'Bill of materials').click()
   const dialog = page.getByRole('dialog', { name: 'Bill of materials' })
   check(await dialog.isVisible(), `${scheme}: Bill of materials opens a dialog`)
   const rows = await dialog.locator('tbody tr').allTextContents()
@@ -176,7 +176,7 @@ for (const scheme of ['light', 'dark']) {
     }
   })
   const p = await open(picking)
-  await p.page.getByRole('button', { name: 'Bill of materials' }).click()
+  await fileItem(p.page, 'Bill of materials').click()
   await p.page.getByRole('dialog', { name: 'Bill of materials' }).getByRole('button', { name: 'Export CSV' }).click()
   await p.page.waitForFunction(() => window.__written.length === 1)
   const pick = await p.page.evaluate(() => window.__picks[0])

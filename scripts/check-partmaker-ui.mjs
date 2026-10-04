@@ -12,7 +12,7 @@ import { execFileSync } from 'node:child_process'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
-import { checker, flagOf, launchChrome, noSavePicker, startPreview } from './lib/browser-check.mjs'
+import { checker, flagOf, launchChrome, noSavePicker, startPreview, fileItem } from './lib/browser-check.mjs'
 
 const out = resolve(flagOf('--out', join(tmpdir(), 'circuitoon-partmaker-ui')))
 const shots = resolve(flagOf('--shots', '.superpowers'))
@@ -346,7 +346,7 @@ writeFileSync(join(out, 'cli-net.json'), JSON.stringify({
   nets: [{ name: '3V3', pins: ['U1.3V3', 'U2.VCC'] }, { name: 'GND', pins: ['U1.GND', 'U2.GND'] }, { name: 'SCL', pins: ['U1.IO22', 'U2.SCL'] }, { name: 'SDA', pins: ['U1.IO21', 'U2.SDA'] }],
 }))
 cli('layout', join(out, 'cli-net.json'), '-o', join(out, 'cli-sheet.circuitoon.json'))
-await page.getByRole('button', { name: 'Import JSON' }).click()
+await fileItem(page, 'Import JSON').click()
 await page.locator('input[type=file]').setInputFiles(join(out, 'cli-sheet.circuitoon.json'))
 await page.waitForFunction(() => document.querySelector('.toolbar .title')?.textContent === 'CLI round trip')
 const cliUid = await page.evaluate(() => [...document.querySelectorAll('svg.canvas [data-part]')].map((e) => e.getAttribute('data-part')))

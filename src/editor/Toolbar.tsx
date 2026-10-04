@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { type EditorStore, useEditorState } from './store.ts'
 import type { Diagram } from '../format/diagram.ts'
 import { deleteSelection, EMPTY_SELECTION, rotateParts } from './ops.ts'
@@ -14,6 +14,92 @@ import { ExportDialog } from './ExportDialog.tsx'
 import { LoadWarnings } from './LoadWarnings.tsx'
 import { MAINS_NOTICE, hasMains, withSheetNotes } from '../format/mains.ts'
 import { ThemeSwitch } from '../ThemeSwitch.tsx'
+
+/**
+ * The File menu: a button with a dropdown of the sheet's file actions. Arrow keys move, Home and End
+ * jump, Escape closes and returns focus to the button, choosing an item closes it first.
+ */
+function FileMenu({ items }: { items: { label: string; title?: string; haspopup?: boolean; run: () => void }[] }) {
+  const [open, setOpen] = useState(false)
+  const root = useRef<HTMLDivElement>(null)
+  const button = useRef<HTMLButtonElement>(null)
+  const refs = useRef<(HTMLButtonElement | null)[]>([])
+  const focusItem = (i: number) => refs.current[(i + items.length) % items.length]?.focus()
+  const close = (refocus: boolean) => {
+    setOpen(false)
+    if (refocus) button.current?.focus()
+  }
+  useEffect(() => {
+    if (!open) return
+    const away = (e: PointerEvent) => !root.current?.contains(e.target as Node) && setOpen(false)
+    document.addEventListener('pointerdown', away)
+    return () => document.removeEventListener('pointerdown', away)
+  }, [open])
+  const at = () => refs.current.findIndex((b) => b === document.activeElement)
+  return (
+    <div className="file-menu" ref={root}>
+      <button
+        ref={button}
+        type="button"
+        className="tool"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={() => setOpen(!open)}
+        onKeyDown={(e) => {
+          if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+            e.preventDefault()
+            setOpen(true)
+            requestAnimationFrame(() => focusItem(e.key === 'ArrowDown' ? 0 : -1))
+          }
+        }}
+      >
+        File
+        <svg viewBox="0 0 10 6" aria-hidden="true"><path d="M1 1l4 4 4-4" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg>
+      </button>
+      {open && (
+        <div
+          className="file-menu-list"
+          role="menu"
+          aria-label="File"
+          ref={(el) => el?.querySelector<HTMLButtonElement>('button')?.focus({ preventScroll: true })}
+          onKeyDown={(e) => {
+            const keys: Record<string, () => void> = {
+              ArrowDown: () => focusItem(at() + 1),
+              ArrowUp: () => focusItem(at() - 1),
+              Home: () => focusItem(0),
+              End: () => focusItem(-1),
+              Escape: () => close(true),
+              Tab: () => close(true),
+            }
+            const k = keys[e.key]
+            if (!k) return
+            e.preventDefault()
+            e.stopPropagation()
+            k()
+          }}
+        >
+          {items.map((it, i) => (
+            <button
+              key={it.label}
+              ref={(el) => { refs.current[i] = el }}
+              type="button"
+              role="menuitem"
+              tabIndex={-1}
+              title={it.title}
+              aria-haspopup={it.haspopup ? 'dialog' : undefined}
+              onClick={() => {
+                close(true)
+                it.run()
+              }}
+            >
+              {it.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
 
 const plural = (n: number, one: string) => `${n} ${one}${n === 1 ? '' : 's'}`
 
@@ -167,20 +253,30 @@ export function Toolbar({ store, warnings, onClose }: { store: EditorStore; warn
         Snap to objects
       </button>
       <span className="sep" aria-hidden="true" />
-      <button type="button" className="tool" onClick={() => {
-        if (!okToDiscard()) return
-        store.load(emptyDiagram())
-        loaded()
-        setLoadWarnings(null)
-      }}>New sheet</button>
-      <button type="button" className="tool" onClick={() => {
-        if (!okToDiscard()) return
-        importBase.current = store.getState().diagram
-        fileRef.current?.click()
-      }}>Import JSON</button>
-      <button type="button" className="tool" aria-haspopup="dialog" onClick={() => void exportJson()}>Export JSON</button>
-      <button type="button" className="tool" aria-haspopup="dialog" title="Save the sheet as a KiCad netlist (.net) for KiCad's PCB Editor: File > Import > Netlist" onClick={() => void exportKicad()}>Export KiCad</button>
-      <button type="button" className="tool" aria-haspopup="dialog" onClick={() => setBomOpen(true)}>Bill of materials</button>
+      <FileMenu
+        items={[
+          {
+            label: 'New sheet',
+            run: () => {
+              if (!okToDiscard()) return
+              store.load(emptyDiagram())
+              loaded()
+              setLoadWarnings(null)
+            },
+          },
+          {
+            label: 'Import JSON',
+            run: () => {
+              if (!okToDiscard()) return
+              importBase.current = store.getState().diagram
+              fileRef.current?.click()
+            },
+          },
+          { label: 'Export JSON', haspopup: true, run: () => void exportJson() },
+          { label: 'Export KiCad', haspopup: true, title: "Save the sheet as a KiCad netlist (.net) for KiCad's PCB Editor: File > Import > Netlist", run: () => void exportKicad() },
+          { label: 'Bill of materials', haspopup: true, run: () => setBomOpen(true) },
+        ]}
+      />
       {findings.length > 0 && (
         <button
           type="button"

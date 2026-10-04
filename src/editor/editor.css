@@ -19,6 +19,22 @@
 .toolbar .theme-switch { width: 31px; height: 31px; border-width: 1.5px; box-shadow: 2px 2px 0 var(--shadow); }
 .toolbar .theme-switch svg { width: 20px; height: 20px; }
 .toolbar .sep { width: 1px; align-self: stretch; background: var(--rule); margin: 0 4px; }
+/* The File menu: a tool button with a chevron, and a sticker-edged dropdown under it. */
+.file-menu { position: relative; }
+.file-menu > .tool { display: inline-flex; align-items: center; gap: 6px; }
+.file-menu > .tool svg { width: 10px; height: 6px; flex: none; }
+.file-menu > .tool[aria-expanded="true"] { border-color: var(--text); background: color-mix(in srgb, var(--yellow) 24%, transparent); }
+.file-menu-list {
+  position: absolute; top: calc(100% + 6px); left: 0; z-index: 30; min-width: 190px;
+  display: flex; flex-direction: column; padding: 4px;
+  background: var(--panel); border: 1.5px solid var(--text); border-radius: 8px; box-shadow: 3px 3px 0 var(--shadow);
+}
+.file-menu-list button {
+  font: 700 14px/1 "Atkinson Hyperlegible", system-ui, sans-serif; color: var(--text); background: transparent;
+  border: 0; border-radius: 5px; padding: 9px 10px; text-align: left; cursor: pointer;
+}
+.file-menu-list button:hover, .file-menu-list button:focus-visible { background: color-mix(in srgb, var(--yellow) 30%, transparent); outline: none; }
+.file-menu-list button:focus-visible { box-shadow: inset 0 0 0 2px var(--text); }
 .toolbar .message { flex-basis: 100%; margin: 0; font-size: 14px; }
 .toolbar .message.error { color: var(--error); }
 /* What the KiCad export saved: a sticker-edged note under the toolbar like the load warnings, green

@@ -11,7 +11,7 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
-import { checker, flagOf, launchChrome, noSavePicker, startPreview } from './lib/browser-check.mjs'
+import { checker, flagOf, launchChrome, noSavePicker, startPreview, fileItem } from './lib/browser-check.mjs'
 
 const out = resolve(flagOf('--out', join(tmpdir(), 'circuitoon-export-ui')))
 const shots = resolve(flagOf('--shots', '.superpowers'))
@@ -46,7 +46,7 @@ for (const scheme of ['light', 'dark']) {
   const context = await browser.newContext({ viewport: { width: 1400, height: 900 }, colorScheme: scheme, acceptDownloads: true })
   await noSavePicker(context)
   const { page, errors } = await open(context)
-  const exportButton = page.getByRole('button', { name: 'Export JSON' })
+  const exportButton = fileItem(page, 'Export JSON')
   const dialog = page.getByRole('dialog', { name: 'Export JSON' })
   const field = dialog.getByLabel('File name')
 
@@ -84,7 +84,7 @@ for (const scheme of ['light', 'dark']) {
   const [empty] = await Promise.all([page.waitForEvent('download'), dialog.getByRole('button', { name: 'Export', exact: true }).click()])
   check(empty.suggestedFilename() === 'circuitoon.circuitoon.json', `${scheme}: a name with nothing usable left saves as circuitoon.circuitoon.json (${empty.suggestedFilename()})`)
 
-  await page.getByRole('button', { name: 'New sheet' }).click()
+  await fileItem(page, 'New sheet').click()
   await exportButton.click()
   check((await field.inputValue()) === 'Untitled sheet', `${scheme}: a new sheet starts from its own title again (${await field.inputValue()})`)
   await page.keyboard.press('Escape')
@@ -104,7 +104,7 @@ for (const scheme of ['light', 'dark']) {
     }
   })
   const p = await open(picking)
-  const pb = p.page.getByRole('button', { name: 'Export JSON' })
+  const pb = fileItem(p.page, 'Export JSON')
   const noDownload = downloads(p.page)
   await pb.click()
   await p.page.waitForFunction(() => window.__written.length === 1)

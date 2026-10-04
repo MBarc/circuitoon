@@ -14,7 +14,7 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
-import { checker, exportDownload, flagOf, launchChrome, noSavePicker, startPreview } from './lib/browser-check.mjs'
+import { checker, exportDownload, flagOf, launchChrome, noSavePicker, startPreview, fileItem } from './lib/browser-check.mjs'
 
 const out = resolve(flagOf('--out', join(tmpdir(), 'circuitoon-guides-ui')))
 const shots = resolve(flagOf('--shots', '.superpowers'))
@@ -87,7 +87,7 @@ for (const scheme of ['light', 'dark']) {
   async function load(scale) {
     // A new sheet first, so the wait below cannot see the previous copy's parts.
     if (await page.locator('.editor').count()) {
-      await page.getByRole('button', { name: 'New sheet' }).click()
+      await fileItem(page, 'New sheet').click()
       await page.waitForFunction(() => document.querySelectorAll('[data-part]').length === 0)
     }
     await page.locator('input[type=file]').setInputFiles(sheetFile)
