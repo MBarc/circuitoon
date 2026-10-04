@@ -312,9 +312,10 @@ writeFileSync(join(PUBLIC, 'site.webmanifest'), JSON.stringify({
   background_color: T.bg,
   theme_color: T.bg,
   icons: [
-    { src: 'icon-192.png', sizes: '192x192', type: 'image/png' },
-    { src: 'icon-512.png', sizes: '512x512', type: 'image/png' },
-    { src: 'icon-maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+    // ?v= busts browser icon caches; bump it (and the links in index.html) when the icons change.
+    { src: 'icon-192.png?v=2', sizes: '192x192', type: 'image/png' },
+    { src: 'icon-512.png?v=2', sizes: '512x512', type: 'image/png' },
+    { src: 'icon-maskable-512.png?v=2', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
   ],
 }, null, 2) + '\n')
 out.push(join(PUBLIC, 'site.webmanifest'))
