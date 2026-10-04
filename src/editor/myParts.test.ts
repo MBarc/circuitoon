@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { MY_PARTS_KEY, MyPartsStore, duplicatePart, freeId, importPart, partFileText, readMyParts, readMyPartsReport, replaceSheetModule, skippedNotice, writeMyParts, type KeyValue, type MyPart } from './myParts.ts'
+import { MY_PARTS_KEY, MyPartsStore, duplicatePart, freeId, importPart, partFileText, placeOnSheet, readMyParts, readMyPartsReport, replaceSheetModule, skippedNotice, updateSheetModule, writeMyParts, type KeyValue, type MyPart } from './myParts.ts'
 import { validateModule } from '../format/module.ts'
 import { moduleFromSpec, unmodeled } from '../format/partMaker.ts'
 import { addPasted, draftFromPart, emptyDraft, idClash, moveRow, moveRowToSide, pinRow, saveId, savedModule, specFromDraft } from './partDraft.ts'
@@ -7,6 +7,7 @@ import { SIDES } from '../format/module.ts'
 import { parsePinLines } from '../format/partMaker.ts'
 import { emptyDiagram } from '../format/diagram.ts'
 import { addPart } from './ops.ts'
+import { EditorStore } from './store.ts'
 import { modulesById } from '../library.ts'
 
 const memory = (init: Record<string, string> = {}): KeyValue & { data: Record<string, string> } => {
@@ -284,5 +285,39 @@ describe('editing an imported part keeps what the part maker does not model', ()
     const p = imported('resistor')
     const r = savedModule(draftFromPart(p), p.module.id, p.module, true)
     expect(r.ok && r.module.electrical).toBeUndefined()
+  })
+})
+
+describe('placing one of My parts', () => {
+  it('never changes parts already on the sheet: edit, undo, place, then undo and redo keep every wire', () => {
+    const v1 = part('A').module
+    const v2 = moduleFromSpec({ name: 'A', source: 'https://example.com/a', pins: { left: [{ name: 'VCC', type: 'power_in', supply: '3V3' }, { name: 'GND', type: 'ground' }] } })
+    let d = addPart(emptyDiagram(), v1, 0, 0).diagram
+    d = addPart(d, modulesById.resistor, 200, 0).diagram
+    const [u, r] = d.parts.map((x) => x.uid)
+    d = { ...d, connections: [{ uid: 'w1', from: { part: u, pin: 'OUT' }, to: { part: r, pin: '1' } }] }
+    const store = new EditorStore(d)
+    // Edit: the explicit update drops the wire to OUT and says so.
+    const upd = updateSheetModule(store.getState().diagram, v2)
+    expect(upd.lost).toBe(1)
+    store.commit(upd.diagram)
+    store.undo()
+    expect(store.getState().diagram.connections).toHaveLength(1)
+    // Place the edited version from My parts: the sheet keeps its copy and the wire.
+    const placed = placeOnSheet(store.getState().diagram, v2, 400, 0)
+    store.commit(placed.diagram)
+    const after = store.getState().diagram
+    expect(after.modules['custom-a']).toEqual(v1)
+    expect(after.connections.map((c) => c.uid)).toEqual(['w1'])
+    expect(after.parts.filter((p) => p.module === 'custom-a')).toHaveLength(2)
+    store.undo()
+    expect(store.getState().diagram.parts).toHaveLength(2)
+    expect(store.getState().diagram.connections).toHaveLength(1)
+    store.redo()
+    expect(store.getState().diagram.parts).toHaveLength(3)
+    expect(store.getState().diagram.connections.map((c) => c.uid)).toEqual(['w1'])
+    expect(store.getState().diagram.modules['custom-a']).toEqual(v1)
+    // A part the sheet does not have yet is placed as given.
+    expect(placeOnSheet(emptyDiagram(), v2, 0, 0).diagram.modules['custom-a']).toEqual(v2)
   })
 })

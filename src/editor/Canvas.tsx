@@ -15,12 +15,12 @@ import { type LabelLook, type WireLook, drawnColor, holdLabelLooks, holdLooks, n
 import { flagRect, labelName, labelsOf } from '../format/netLabels.ts'
 import { cellGate } from './hoverCell.ts'
 import { seatedLabels } from '../format/seatedLabels.ts'
-import { addPart, addWire, EMPTY_SELECTION, marqueeSelection, moveAnnotations, moveParts, reconnectWire, sameEndpoint, setWireRoute, settleDrop, settleMounts, settleSeats, settlingOf, updateWire, withMounted } from './ops.ts'
+import { addWire, EMPTY_SELECTION, marqueeSelection, moveAnnotations, moveParts, reconnectWire, sameEndpoint, setWireRoute, settleDrop, settleMounts, settleSeats, settlingOf, updateWire, withMounted } from './ops.ts'
 import { netlist, netPoints } from '../format/netlist.ts'
 import { bendHandleAt, insertBend, isOrthogonal, moveSegment, removeBend, segmentHandleAt, segmentsOf, toRoute, type Axis } from '../format/wireEdit.ts'
-import { lookupModule, replaceSheetModule } from './myParts.ts'
+import { lookupModule, placeOnSheet, placementModule } from './myParts.ts'
 import { bodyRect } from '../format/geometry.ts'
-import { isCustom, isNetLabel, layoutModule, type ModuleDef } from '../format/module.ts'
+import { isNetLabel, layoutModule, type ModuleDef } from '../format/module.ts'
 import { MODULE_MIME } from './LibraryPanel.tsx'
 import type { Connection, Diagram, Endpoint } from '../format/diagram.ts'
 import type { Selection } from './ops.ts'
@@ -200,13 +200,14 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
   }
 
   function placeModule(moduleId: string | ModuleDef, at: Pt) {
-    // The library, then My parts, then the sheet's own copy (a custom part someone else made).
-    const m = typeof moduleId === 'string' ? (lookupModule(moduleId) ?? moduleOf(store.getState().diagram, moduleId)) : moduleId
-    if (!m) return
+    // The sheet's own copy when it has one (placing never changes the parts already there), else the
+    // library, then My parts.
+    const d = store.getState().diagram
+    const found = typeof moduleId === 'string' ? (moduleOf(d, moduleId) ?? lookupModule(moduleId)) : moduleId
+    if (!found) return
+    const m = placementModule(d, found)
     const lay = layoutModule(m)
-    // A custom part edited since the sheet took its copy: the sheet takes the new one first.
-    const base = isCustom(m) ? replaceSheetModule(store.getState().diagram, m) : store.getState().diagram
-    const { diagram: next, uid } = addPart(base, m, snap(at.x - lay.w / 2), snap(at.y - lay.h / 2))
+    const { diagram: next, uid } = placeOnSheet(d, m, snap(at.x - lay.w / 2), snap(at.y - lay.h / 2))
     // Dropped with every leg on free holes of a board, the new part plugs in: one undo step.
     store.commit(settleMounts(next, [uid]))
     store.select({ parts: [uid], wires: [] })

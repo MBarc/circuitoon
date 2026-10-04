@@ -11,7 +11,7 @@ import { GRID } from './snap.ts'
 import { clipText, clipToPaste, copySelection, cutMemo, cutSelection, pasteClip, planPaste, type PasteMemo } from './clipboard.ts'
 import { PartMaker } from './PartMaker.tsx'
 import { draftFromPart } from './partDraft.ts'
-import { type MyPart, importPart, myParts, partFileText, replaceSheetModule } from './myParts.ts'
+import { type MyPart, importPart, myParts, partFileText, updateSheetModule } from './myParts.ts'
 import { PART_FILE, cleanBaseName, downloadText, saveWithPicker, type SavePicker } from './files.ts'
 import { ExportDialog } from './ExportDialog.tsx'
 import { submitToLibrary } from './partSubmit.ts'
@@ -222,6 +222,17 @@ function usePartMaker(store: EditorStore, canvas: { current: CanvasApi | null })
     if (m) edit(mine ?? { module: m, saved: Date.now() })
   }
 
+  /** The explicit update: the sheet takes My parts' version of a part, and says what wires that removed. */
+  const updateModule = (id: string) => {
+    const mine = myParts.get(id)
+    const d = store.getState().diagram
+    if (!mine) return
+    const { diagram: next, lost } = updateSheetModule(d, mine.module)
+    if (next === d) return
+    store.commit(next)
+    say(`The sheet now uses the My parts version of ${mine.module.name}${lost ? `; ${lost} wire${lost === 1 ? '' : 's'} to removed pins ${lost === 1 ? 'was' : 'were'} taken out` : ''}. Undo puts it back.`)
+  }
+
   const ui = (
     <>
       {open && (
@@ -229,7 +240,7 @@ function usePartMaker(store: EditorStore, canvas: { current: CanvasApi | null })
           key={open.key}
           editing={open.editing}
           initial={open.editing ? draftFromPart(open.editing) : undefined}
-          taken={new Set(myParts.getSnapshot().map((p) => p.module.id))}
+          taken={new Set([...myParts.getSnapshot().map((p) => p.module.id), ...Object.keys(store.getState().diagram.modules)])}
           onCancel={() => setOpen(null)}
           onExport={(p) => void exportPart(p)}
           extra={(p) => (
@@ -243,10 +254,9 @@ function usePartMaker(store: EditorStore, canvas: { current: CanvasApi | null })
             if (wasId) {
               if (!myParts.replace(wasId, p)) return say(`${p.module.name} was not saved: another part in My parts already has the id ${p.module.id}.`)
               const d = store.getState().diagram
-              const next = replaceSheetModule(d, p.module)
+              const { diagram: next, lost } = updateSheetModule(d, p.module)
               if (next !== d) {
                 store.commit(next)
-                const lost = d.connections.length - next.connections.length
                 say(`Saved ${p.module.name}. The sheet uses the new version${lost ? `; ${lost} wire${lost === 1 ? '' : 's'} to removed pins ${lost === 1 ? 'was' : 'were'} taken out` : ''}.`)
               } else say(`Saved ${p.module.name}.`)
             } else {
@@ -272,7 +282,7 @@ function usePartMaker(store: EditorStore, canvas: { current: CanvasApi | null })
       {notice && <p key={notice.key} className="editor-notice" role="status">{notice.text}</p>}
     </>
   )
-  return { handlers, editModule, ui }
+  return { handlers, editModule, updateModule, ui }
 }
 
 export function Editor({ initial, warnings, onClose, onDirty }: { initial: Diagram; warnings?: string[]; onClose: () => void; onDirty?: (dirty: boolean) => void }) {
@@ -294,7 +304,7 @@ export function Editor({ initial, warnings, onClose, onDirty }: { initial: Diagr
       <Toolbar store={store} warnings={warnings} onClose={onClose} />
       <LibraryPanel onAdd={(id) => canvasApi.current?.addAtCenter(id)} parts={parts.handlers} />
       <Canvas store={store} onReady={(api) => (canvasApi.current = api)} />
-      <Inspector store={store} onEditPart={parts.editModule} />
+      <Inspector store={store} onEditPart={parts.editModule} onUpdatePart={parts.updateModule} />
       {parts.ui}
     </div>
   )

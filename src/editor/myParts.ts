@@ -3,6 +3,7 @@
 // quota, a disabled API): every access is wrapped, and the list then just lives for this tab. Entries
 // are validated on load, so a hand-edited or stale store never breaks the panel.
 import { CUSTOM_PREFIX, type ModuleDef, isObj, validateModule } from '../format/module.ts'
+import { addPart } from './ops.ts'
 import { slugify } from '../format/partMaker.ts'
 import { type Diagram, moduleOf } from '../format/diagram.ts'
 import { modulesById } from '../library.ts'
@@ -144,6 +145,24 @@ export function replaceSheetModule(d: Diagram, m: ModuleDef): Diagram {
   const users = new Set(d.parts.filter((p) => p.module === m.id).map((p) => p.uid))
   const keeps = (ep: { part: string; pin: string }) => !users.has(ep.part) || names.has(ep.pin)
   return { ...d, modules: { ...d.modules, [m.id]: m }, connections: d.connections.filter((c) => keeps(c.from) && keeps(c.to)) }
+}
+
+/** The sheet with `m` as its copy, and how many wires that removed. */
+export function updateSheetModule(d: Diagram, m: ModuleDef): { diagram: Diagram; lost: number } {
+  const next = replaceSheetModule(d, m)
+  return { diagram: next, lost: d.connections.length - next.connections.length }
+}
+
+/**
+ * The module a placement uses: the sheet's own copy of `m.id` when it has one, else `m`. Placing a
+ * part never changes the parts already on the sheet; taking a newer My parts version is a separate,
+ * explicit update (updateSheetModule) that reports the wires it removes.
+ */
+export const placementModule = (d: Diagram, m: ModuleDef): ModuleDef => moduleOf(d, m.id) ?? m
+
+/** Places `m` (the sheet's copy of it, when it has one) with its body's top left at x, y. */
+export function placeOnSheet(d: Diagram, m: ModuleDef, x: number, y: number): { diagram: Diagram; uid: string } {
+  return addPart(d, placementModule(d, m), x, y)
 }
 
 type Listener = () => void

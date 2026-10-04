@@ -1,7 +1,8 @@
 // Properties of whatever is selected. Text fields commit on Enter or when they lose focus,
 // so typing a name is one undo step, not one per keystroke.
 import { ArrangePanel } from './ArrangePanel.tsx'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
+import { myParts, updateSheetModule } from './myParts.ts'
 import { type EditorStore, useEditorState } from './store.ts'
 import { LABEL_NAME_MAX, carryWireStyle, clearPartValue, clearWireRoute, deleteSelection, renameLabel, rotateParts, setWireEnds, updateAnnotation, updatePart, updatePartSetting, updatePartValue, updateWire, type WireStyle } from './ops.ts'
 import { ANNOTATION_LABEL_MAX, ANNOTATION_TEXT_MAX, type Connection, type Diagram, type Endpoint, NAMED_COLORS, STRIPED_COLORS, isValidColor, moduleOf, partObstacles, routeWire, wireColor, wireStripe, wireWidth } from '../format/diagram.ts'
@@ -493,7 +494,8 @@ function HandShapedWarning({ diagram, wire }: { diagram: Diagram; wire: Connecti
   return blocked ? <p className="hint warn" role="status">This wire passes through a part.</p> : null
 }
 
-export function Inspector({ store, onEditPart }: { store: EditorStore; onEditPart?: (moduleId: string) => void }) {
+export function Inspector({ store, onEditPart, onUpdatePart }: { store: EditorStore; onEditPart?: (moduleId: string) => void; onUpdatePart?: (moduleId: string) => void }) {
+  const mine = useSyncExternalStore(myParts.subscribe, myParts.getSnapshot)
   const { diagram, selection, wireStyle } = useEditorState(store)
   const findings = useProblems(store)
   // What the last Update parts to current library changed, shown while the sheet is the one it made (an undo hides it).
@@ -651,6 +653,18 @@ export function Inspector({ store, onEditPart }: { store: EditorStore; onEditPar
           <div className="custom-note">
             <p className="hint">A part you or someone else made. Its pins are as they were entered, and nobody has checked them against a datasheet.</p>
             {onEditPart && <button type="button" className="tool small" onClick={() => onEditPart(part.module)}>Edit part</button>}
+            {(() => {
+              const newer = onUpdatePart && m ? mine.find((p) => p.module.id === part.module)?.module : undefined
+              if (!newer || JSON.stringify(newer) === JSON.stringify(m)) return null
+              const { lost } = updateSheetModule(diagram, newer)
+              const uses = diagram.parts.filter((p) => p.module === part.module).length
+              return (
+                <div className="custom-update">
+                  <p className="hint">My parts has a different version of this part. This sheet keeps its own until you update it{uses > 1 ? `, which changes all ${uses} of them` : ''}{lost ? ` and removes ${lost} wire${lost === 1 ? '' : 's'} to pins it no longer has` : ''}.</p>
+                  <button type="button" className="tool small" onClick={() => onUpdatePart!(part.module)}>Use the My parts version</button>
+                </div>
+              )
+            })()}
           </div>
         )}
         <CommitInput
