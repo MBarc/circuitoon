@@ -86,7 +86,7 @@ describe('circuitoon render', () => {
     expect(missing.code).toBe(2)
   })
   // Headless Chrome occasionally paints a frame late on a loaded machine; retry before failing.
-  it.skipIf(!browser)('writes a PNG at the requested scale that shows the whole drawing', { retry: 2 }, async () => {
+  it.skipIf(!browser)('writes a PNG at the requested scale that shows the whole drawing', { retry: 2, timeout: 120_000 }, async () => {
     const dir = await sheetFrom(ledNetlist())
     const r = await cli(['render', 'sheet.json', '-o', 'sheet.png', '--svg', 'sheet.svg', '--scale', '2', '--json'], { cwd: dir })
     expect(r.code).toBe(0)
@@ -97,7 +97,7 @@ describe('circuitoon render', () => {
     expect({ w: png.readUInt32BE(16), h: png.readUInt32BE(20) }).toEqual({ w: w * 2, h: h * 2 })
     expect(JSON.parse(r.out).outputs.find((o: { kind: string }) => o.kind === 'png')).toMatchObject({ width: w * 2, height: h * 2 })
     expectWholeDrawing(decodePng(png), LIGHT_THEME, 2)
-  }, 120_000)
+  })
   it.skipIf(!browser)('draws the dark theme on dark paper, whole', async () => {
     const dir = await sheetFrom(ledNetlist())
     expect((await cli(['render', 'sheet.json', '-o', 'dark.png', '--dark', '--scale', '1'], { cwd: dir })).code).toBe(0)
