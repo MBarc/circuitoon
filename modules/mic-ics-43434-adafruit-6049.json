@@ -1,0 +1,289 @@
+{
+  "format": "circuitoon-module/1",
+  "id": "mic-ics-43434-adafruit-6049",
+  "version": 1,
+  "name": "I2S MEMS microphone breakout ICS-43434 (Adafruit 6049)",
+  "category": "Sensors",
+  "source": "https://www.adafruit.com/product/6049 https://github.com/adafruit/Adafruit-I2S-MEMS-Microphone-Breakout-PCB https://cdn-shop.adafruit.com/970x728/6049-02.jpg https://cdn-shop.adafruit.com/product-files/6049/6049_DS-000069-ICS-43434-v1.2.pdf",
+  "pins": [
+    {
+      "name": "3V",
+      "side": "bottom",
+      "type": "power_in",
+      "supply": "3V3"
+    },
+    {
+      "name": "GND",
+      "side": "bottom",
+      "type": "ground"
+    },
+    {
+      "name": "BCLK",
+      "side": "bottom",
+      "type": "input"
+    },
+    {
+      "name": "DOUT",
+      "side": "bottom",
+      "type": "output"
+    },
+    {
+      "name": "LRCL",
+      "side": "bottom",
+      "type": "input"
+    },
+    {
+      "name": "SEL",
+      "side": "bottom",
+      "type": "input"
+    }
+  ],
+  "size": {
+    "w": 8,
+    "h": 7
+  },
+  "footprint": "legs",
+  "electrical": {
+    "model": "sensor",
+    "params": {}
+  },
+  "art": {
+    "w": 80,
+    "h": 70,
+    "pinLabels": "inside",
+    "shapes": [
+      {
+        "type": "rect",
+        "x": 0,
+        "y": 0,
+        "w": 80,
+        "h": 70,
+        "fill": "#2B2F36",
+        "radius": 5
+      },
+      {
+        "type": "rect",
+        "x": 5,
+        "y": 5,
+        "w": 14,
+        "h": 14,
+        "fill": "#D5DAE1",
+        "radius": 7,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 8.5,
+        "y": 8.5,
+        "w": 7,
+        "h": 7,
+        "fill": "#6B727C",
+        "radius": 3.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 61,
+        "y": 5,
+        "w": 14,
+        "h": 14,
+        "fill": "#D5DAE1",
+        "radius": 7,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 64.5,
+        "y": 8.5,
+        "w": 7,
+        "h": 7,
+        "fill": "#6B727C",
+        "radius": 3.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 16,
+        "y": 59,
+        "w": 8,
+        "h": 8,
+        "fill": "#E0B43C",
+        "radius": 4,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 18.5,
+        "y": 61.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 26,
+        "y": 59,
+        "w": 8,
+        "h": 8,
+        "fill": "#E0B43C",
+        "radius": 4,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 28.5,
+        "y": 61.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 36,
+        "y": 59,
+        "w": 8,
+        "h": 8,
+        "fill": "#E0B43C",
+        "radius": 4,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 38.5,
+        "y": 61.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 46,
+        "y": 59,
+        "w": 8,
+        "h": 8,
+        "fill": "#E0B43C",
+        "radius": 4,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 48.5,
+        "y": 61.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 56,
+        "y": 59,
+        "w": 8,
+        "h": 8,
+        "fill": "#E0B43C",
+        "radius": 4,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 58.5,
+        "y": 61.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 66,
+        "y": 59,
+        "w": 8,
+        "h": 8,
+        "fill": "#E0B43C",
+        "radius": 4,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 68.5,
+        "y": 61.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 32,
+        "y": 6,
+        "w": 16,
+        "h": 18,
+        "fill": "#C9CED6",
+        "radius": 2
+      },
+      {
+        "type": "rect",
+        "x": 35,
+        "y": 9,
+        "w": 10,
+        "h": 12,
+        "fill": "#D5DAE1",
+        "radius": 1,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 10,
+        "y": 26,
+        "w": 6,
+        "h": 8,
+        "fill": "#C8A27A",
+        "radius": 1,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 18,
+        "y": 26,
+        "w": 6,
+        "h": 8,
+        "fill": "#C8A27A",
+        "radius": 1,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 18,
+        "y": 26,
+        "w": 44,
+        "h": 9,
+        "fill": "#2B2F36",
+        "outline": false,
+        "label": "ICS-43434",
+        "labelColor": "#F4F6F8",
+        "labelSize": 5
+      }
+    ]
+  },
+  "kicad": {
+    "footprint": "Connector_PinSocket_2.54mm:PinSocket_1x06_P2.54mm_Vertical",
+    "pins": {
+      "3V": "1",
+      "GND": "2",
+      "BCLK": "3",
+      "DOUT": "4",
+      "LRCL": "5",
+      "SEL": "6"
+    },
+    "value": "ICS-43434 breakout"
+  }
+}

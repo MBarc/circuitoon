@@ -61,6 +61,7 @@ const PREFIXES: [RegExp, string][] = [
   [/^relay/, 'K'],
   [/^servo/, 'M'],
   [/^(jst-|dupont-|usb-panel-)/, 'J'],
+  [/^mic-/, 'MK'],
   [/^net-label$/, 'NL'],
 ]
 

@@ -1,0 +1,411 @@
+{
+  "format": "circuitoon-module/1",
+  "id": "lcd-rpi-touch-display-7",
+  "version": 1,
+  "name": "Raspberry Pi Touch Display 7\" (2015, DSI, 5V INT SDA SCL GND)",
+  "category": "Displays",
+  "source": "https://www.raspberrypi.com/documentation/accessories/display.html https://github.com/raspberrypi/documentation/blob/master/documentation/asciidoc/accessories/display/images/display_plugs.png https://www.adafruit.com/product/2718 https://cdn-shop.adafruit.com/970x728/2718-03.jpg https://datasheets.raspberrypi.com/display/7-inch-display-product-brief.pdf https://forums.raspberrypi.com/viewtopic.php?t=227980",
+  "pins": [
+    {
+      "name": "DSI",
+      "side": "left",
+      "type": "passive"
+    },
+    {
+      "name": "5V",
+      "side": "top",
+      "type": "power_in",
+      "supply": "5V"
+    },
+    {
+      "name": "INT",
+      "side": "top",
+      "type": "output"
+    },
+    {
+      "name": "SDA",
+      "side": "top",
+      "type": "io"
+    },
+    {
+      "name": "SCL",
+      "side": "top",
+      "type": "io"
+    },
+    {
+      "name": "GND",
+      "side": "top",
+      "type": "ground"
+    }
+  ],
+  "size": {
+    "w": 24,
+    "h": 15
+  },
+  "electrical": {
+    "model": "display",
+    "params": {}
+  },
+  "art": {
+    "w": 240,
+    "h": 150,
+    "pinLabels": "inside",
+    "shapes": [
+      {
+        "type": "rect",
+        "x": 0,
+        "y": 0,
+        "w": 240,
+        "h": 150,
+        "fill": "#1B1F24",
+        "radius": 8
+      },
+      {
+        "type": "rect",
+        "x": 10,
+        "y": 8,
+        "w": 220,
+        "h": 134,
+        "fill": "#B8BEC7",
+        "radius": 4
+      },
+      {
+        "type": "rect",
+        "x": 18,
+        "y": 14,
+        "w": 12,
+        "h": 12,
+        "fill": "#9AA1AB",
+        "radius": 2
+      },
+      {
+        "type": "rect",
+        "x": 22,
+        "y": 18,
+        "w": 4,
+        "h": 4,
+        "fill": "#6B727C",
+        "radius": 2,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 210,
+        "y": 14,
+        "w": 12,
+        "h": 12,
+        "fill": "#9AA1AB",
+        "radius": 2
+      },
+      {
+        "type": "rect",
+        "x": 214,
+        "y": 18,
+        "w": 4,
+        "h": 4,
+        "fill": "#6B727C",
+        "radius": 2,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 18,
+        "y": 124,
+        "w": 12,
+        "h": 12,
+        "fill": "#9AA1AB",
+        "radius": 2
+      },
+      {
+        "type": "rect",
+        "x": 22,
+        "y": 128,
+        "w": 4,
+        "h": 4,
+        "fill": "#6B727C",
+        "radius": 2,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 210,
+        "y": 124,
+        "w": 12,
+        "h": 12,
+        "fill": "#9AA1AB",
+        "radius": 2
+      },
+      {
+        "type": "rect",
+        "x": 214,
+        "y": 128,
+        "w": 4,
+        "h": 4,
+        "fill": "#6B727C",
+        "radius": 2,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 110,
+        "y": 124,
+        "w": 40,
+        "h": 18,
+        "fill": "#E8A33D",
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 70,
+        "y": 8,
+        "w": 120,
+        "h": 122,
+        "fill": "#2F9E6E",
+        "radius": 4
+      },
+      {
+        "type": "rect",
+        "x": 74,
+        "y": 50,
+        "w": 8,
+        "h": 8,
+        "fill": "#D5DAE1",
+        "radius": 4,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 76,
+        "y": 52,
+        "w": 4,
+        "h": 4,
+        "fill": "#6B727C",
+        "radius": 2,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 178,
+        "y": 12,
+        "w": 8,
+        "h": 8,
+        "fill": "#D5DAE1",
+        "radius": 4,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 180,
+        "y": 14,
+        "w": 4,
+        "h": 4,
+        "fill": "#6B727C",
+        "radius": 2,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 74,
+        "y": 118,
+        "w": 8,
+        "h": 8,
+        "fill": "#D5DAE1",
+        "radius": 4,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 76,
+        "y": 120,
+        "w": 4,
+        "h": 4,
+        "fill": "#6B727C",
+        "radius": 2,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 178,
+        "y": 118,
+        "w": 8,
+        "h": 8,
+        "fill": "#D5DAE1",
+        "radius": 4,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 180,
+        "y": 120,
+        "w": 4,
+        "h": 4,
+        "fill": "#6B727C",
+        "radius": 2,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 94,
+        "y": 2,
+        "w": 52,
+        "h": 10,
+        "fill": "#2B2F36",
+        "radius": 1
+      },
+      {
+        "type": "rect",
+        "x": 98,
+        "y": 5,
+        "w": 4,
+        "h": 4,
+        "fill": "#E0B43C",
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 108,
+        "y": 5,
+        "w": 4,
+        "h": 4,
+        "fill": "#E0B43C",
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 118,
+        "y": 5,
+        "w": 4,
+        "h": 4,
+        "fill": "#E0B43C",
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 128,
+        "y": 5,
+        "w": 4,
+        "h": 4,
+        "fill": "#E0B43C",
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 138,
+        "y": 5,
+        "w": 4,
+        "h": 4,
+        "fill": "#E0B43C",
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 0,
+        "y": 70,
+        "w": 84,
+        "h": 20,
+        "fill": "#E9ECEF",
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 40,
+        "y": 70,
+        "w": 6,
+        "h": 20,
+        "fill": "#3D6FD6",
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 74,
+        "y": 66,
+        "w": 14,
+        "h": 28,
+        "fill": "#E9DDC4",
+        "radius": 1
+      },
+      {
+        "type": "rect",
+        "x": 104,
+        "y": 58,
+        "w": 22,
+        "h": 22,
+        "fill": "#1E2126",
+        "radius": 1
+      },
+      {
+        "type": "rect",
+        "x": 134,
+        "y": 56,
+        "w": 50,
+        "h": 10,
+        "fill": "#237A55",
+        "outline": false,
+        "label": "Raspberry Pi Display",
+        "labelColor": "#F4F6F8",
+        "labelSize": 4.5
+      },
+      {
+        "type": "rect",
+        "x": 142,
+        "y": 70,
+        "w": 14,
+        "h": 14,
+        "fill": "#1E2126",
+        "radius": 1
+      },
+      {
+        "type": "rect",
+        "x": 76,
+        "y": 96,
+        "w": 18,
+        "h": 12,
+        "fill": "#C9CED6",
+        "radius": 2,
+        "label": "PWR IN",
+        "labelSize": 3.5
+      },
+      {
+        "type": "rect",
+        "x": 158,
+        "y": 90,
+        "w": 26,
+        "h": 22,
+        "fill": "#C9CED6",
+        "radius": 1
+      },
+      {
+        "type": "rect",
+        "x": 162,
+        "y": 98,
+        "w": 18,
+        "h": 6,
+        "fill": "#6B727C",
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 110,
+        "y": 114,
+        "w": 40,
+        "h": 8,
+        "fill": "#E9DDC4",
+        "radius": 1,
+        "label": "PANEL",
+        "labelSize": 4
+      },
+      {
+        "type": "rect",
+        "x": 194,
+        "y": 34,
+        "w": 30,
+        "h": 10,
+        "fill": "#B8BEC7",
+        "outline": false,
+        "label": "7in 800x480",
+        "labelColor": "#2B2F36",
+        "labelSize": 4.5
+      }
+    ]
+  }
+}

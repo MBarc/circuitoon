@@ -19788,6 +19788,362 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			"note": "Placeholder: an in-line fuse holder lives on the cable. On a board, use a PCB fuse holder for 5 x 20 mm fuses instead."
 		}
 	},
+	"../modules/gps-neo-m8n-gy-gpsv3.json": {
+		format: "circuitoon-module/1",
+		id: "gps-neo-m8n-gy-gpsv3",
+		version: 1,
+		name: "GPS module NEO-M8N (GY-GPSV3, VCC RX TX GND, u.FL)",
+		category: "Communication",
+		source: "https://shillehtek.com/blogs/shillehtek-product-manuals/gps-module-neo-m8n-antenna-battery-arduino-esp32-manual https://openelab.io/products/u-blox-neo-m8n-0 https://content.u-blox.com/sites/default/files/NEO-M8-FW3_DataSheet_UBX-15031086.pdf",
+		pins: [
+			{
+				"name": "VCC",
+				"side": "top",
+				"type": "power_in",
+				"supply": "3V3/5V"
+			},
+			{
+				"name": "RX",
+				"side": "top",
+				"type": "input"
+			},
+			{
+				"name": "TX",
+				"side": "top",
+				"type": "output"
+			},
+			{
+				"name": "GND",
+				"side": "top",
+				"type": "ground"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"name": "ANT",
+				"side": "bottom",
+				"type": "passive"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			}
+		],
+		size: {
+			"w": 10,
+			"h": 12
+		},
+		footprint: "legs",
+		electrical: {
+			"model": "radio",
+			"params": {}
+		},
+		art: {
+			"w": 100,
+			"h": 120,
+			"pinLabels": "inside",
+			"shapes": [
+				{
+					"type": "rect",
+					"x": 0,
+					"y": 0,
+					"w": 100,
+					"h": 120,
+					"fill": "#1E4F8A",
+					"radius": 4
+				},
+				{
+					"type": "rect",
+					"x": 6,
+					"y": 6,
+					"w": 12,
+					"h": 12,
+					"fill": "#D5DAE1",
+					"radius": 6,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 9,
+					"y": 9,
+					"w": 6,
+					"h": 6,
+					"fill": "#6B727C",
+					"radius": 3,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 82,
+					"y": 6,
+					"w": 12,
+					"h": 12,
+					"fill": "#D5DAE1",
+					"radius": 6,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 85,
+					"y": 9,
+					"w": 6,
+					"h": 6,
+					"fill": "#6B727C",
+					"radius": 3,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 6,
+					"y": 102,
+					"w": 12,
+					"h": 12,
+					"fill": "#D5DAE1",
+					"radius": 6,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 9,
+					"y": 105,
+					"w": 6,
+					"h": 6,
+					"fill": "#6B727C",
+					"radius": 3,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 82,
+					"y": 102,
+					"w": 12,
+					"h": 12,
+					"fill": "#D5DAE1",
+					"radius": 6,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 85,
+					"y": 105,
+					"w": 6,
+					"h": 6,
+					"fill": "#6B727C",
+					"radius": 3,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 36,
+					"y": 3,
+					"w": 8,
+					"h": 8,
+					"fill": "#E0B43C",
+					"radius": 4,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 38.5,
+					"y": 5.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 46,
+					"y": 3,
+					"w": 8,
+					"h": 8,
+					"fill": "#E0B43C",
+					"radius": 4,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 48.5,
+					"y": 5.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 56,
+					"y": 3,
+					"w": 8,
+					"h": 8,
+					"fill": "#E0B43C",
+					"radius": 4,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 58.5,
+					"y": 5.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 66,
+					"y": 3,
+					"w": 8,
+					"h": 8,
+					"fill": "#E0B43C",
+					"radius": 4,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 68.5,
+					"y": 5.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 8,
+					"y": 30,
+					"w": 18,
+					"h": 18,
+					"fill": "#D5DAE1",
+					"radius": 9
+				},
+				{
+					"type": "rect",
+					"x": 34,
+					"y": 30,
+					"w": 12,
+					"h": 8,
+					"fill": "#1E2126",
+					"radius": 1
+				},
+				{
+					"type": "rect",
+					"x": 8,
+					"y": 66,
+					"w": 14,
+					"h": 20,
+					"fill": "#1E2126",
+					"radius": 1
+				},
+				{
+					"type": "rect",
+					"x": 30,
+					"y": 44,
+					"w": 50,
+					"h": 46,
+					"fill": "#C9CED6",
+					"radius": 2
+				},
+				{
+					"type": "rect",
+					"x": 34,
+					"y": 50,
+					"w": 42,
+					"h": 34,
+					"fill": "#F4F6F8",
+					"radius": 1,
+					"label": "NEO-M8N",
+					"labelColor": "#2B2F36",
+					"labelSize": 6
+				},
+				{
+					"type": "rect",
+					"x": 52,
+					"y": 30,
+					"w": 6,
+					"h": 4,
+					"fill": "#E0483E",
+					"radius": 1,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 69,
+					"y": 98,
+					"w": 2,
+					"h": 22,
+					"fill": "#E0B43C",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 63,
+					"y": 90,
+					"w": 14,
+					"h": 14,
+					"fill": "#E0B43C",
+					"radius": 2
+				},
+				{
+					"type": "rect",
+					"x": 66,
+					"y": 93,
+					"w": 8,
+					"h": 8,
+					"fill": "#D5DAE1",
+					"radius": 4,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 68.5,
+					"y": 95.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				}
+			]
+		},
+		kicad: {
+			"footprint": "Connector_PinSocket_2.54mm:PinSocket_1x04_P2.54mm_Vertical",
+			"pins": {
+				"VCC": "1",
+				"RX": "2",
+				"TX": "3",
+				"GND": "4"
+			},
+			"value": "GY-NEO-M8N",
+			"note": "ANT is the u.FL jack on the module, not on this header."
+		}
+	},
 	"../modules/hlk-pm01.json": {
 		format: "circuitoon-module/1",
 		id: "hlk-pm01",
@@ -22522,6 +22878,1137 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			},
 			"placeholder": true,
 			"note": "Placeholder: a lamp holder is wired to the board through this terminal block. Choose one rated for the lamp."
+		}
+	},
+	"../modules/lcd-rpi-touch-display-2-5.json": {
+		format: "circuitoon-module/1",
+		id: "lcd-rpi-touch-display-2-5",
+		version: 1,
+		name: "Raspberry Pi Touch Display 2, 5\" (DSI, J1 5V GND)",
+		category: "Displays",
+		source: "https://www.raspberrypi.com/documentation/accessories/touch-display-2.html https://github.com/raspberrypi/documentation/blob/master/documentation/asciidoc/accessories/touch-display-2/images/touch-display-2-ffc.jpg https://pip-assets.raspberrypi.com/categories/1083-raspberry-pi-touch-display-2/documents/RP-010430-MM-1-touch-display-2-5-inch-product-brief.pdf https://pip-assets.raspberrypi.com/categories/1083-raspberry-pi-touch-display-2/documents/RP-009106-MM-8-touch-display-2-product-brief.pdf",
+		pins: [
+			{
+				"name": "5V",
+				"side": "left",
+				"type": "power_in",
+				"supply": "5V"
+			},
+			{
+				"name": "GND",
+				"side": "left",
+				"type": "ground"
+			},
+			{
+				"name": "DSI",
+				"side": "bottom",
+				"type": "passive"
+			}
+		],
+		size: {
+			"w": 12,
+			"h": 18
+		},
+		electrical: {
+			"model": "display",
+			"params": {}
+		},
+		art: {
+			"w": 120,
+			"h": 180,
+			"pinLabels": "inside",
+			"shapes": [
+				{
+					"type": "rect",
+					"x": 0,
+					"y": 0,
+					"w": 120,
+					"h": 180,
+					"fill": "#1B1F24",
+					"radius": 8
+				},
+				{
+					"type": "rect",
+					"x": 10,
+					"y": 10,
+					"w": 100,
+					"h": 160,
+					"fill": "#B8BEC7",
+					"radius": 3
+				},
+				{
+					"type": "rect",
+					"x": 34,
+					"y": 22,
+					"w": 3,
+					"h": 120,
+					"fill": "#9AA1AB",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 83,
+					"y": 22,
+					"w": 3,
+					"h": 120,
+					"fill": "#9AA1AB",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 16,
+					"y": 20,
+					"w": 16,
+					"h": 12,
+					"fill": "#9AA1AB",
+					"radius": 2
+				},
+				{
+					"type": "rect",
+					"x": 22,
+					"y": 24,
+					"w": 4,
+					"h": 4,
+					"fill": "#6B727C",
+					"radius": 2,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 88,
+					"y": 20,
+					"w": 16,
+					"h": 12,
+					"fill": "#9AA1AB",
+					"radius": 2
+				},
+				{
+					"type": "rect",
+					"x": 94,
+					"y": 24,
+					"w": 4,
+					"h": 4,
+					"fill": "#6B727C",
+					"radius": 2,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 16,
+					"y": 148,
+					"w": 16,
+					"h": 12,
+					"fill": "#9AA1AB",
+					"radius": 2
+				},
+				{
+					"type": "rect",
+					"x": 22,
+					"y": 152,
+					"w": 4,
+					"h": 4,
+					"fill": "#6B727C",
+					"radius": 2,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 88,
+					"y": 148,
+					"w": 16,
+					"h": 12,
+					"fill": "#9AA1AB",
+					"radius": 2
+				},
+				{
+					"type": "rect",
+					"x": 94,
+					"y": 152,
+					"w": 4,
+					"h": 4,
+					"fill": "#6B727C",
+					"radius": 2,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 19,
+					"y": 71,
+					"w": 10,
+					"h": 10,
+					"fill": "#D5DAE1",
+					"radius": 5
+				},
+				{
+					"type": "rect",
+					"x": 22,
+					"y": 74,
+					"w": 4,
+					"h": 4,
+					"fill": "#6B727C",
+					"radius": 2,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 91,
+					"y": 71,
+					"w": 10,
+					"h": 10,
+					"fill": "#D5DAE1",
+					"radius": 5
+				},
+				{
+					"type": "rect",
+					"x": 94,
+					"y": 74,
+					"w": 4,
+					"h": 4,
+					"fill": "#6B727C",
+					"radius": 2,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 19,
+					"y": 128,
+					"w": 10,
+					"h": 10,
+					"fill": "#D5DAE1",
+					"radius": 5
+				},
+				{
+					"type": "rect",
+					"x": 22,
+					"y": 131,
+					"w": 4,
+					"h": 4,
+					"fill": "#6B727C",
+					"radius": 2,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 91,
+					"y": 128,
+					"w": 10,
+					"h": 10,
+					"fill": "#D5DAE1",
+					"radius": 5
+				},
+				{
+					"type": "rect",
+					"x": 94,
+					"y": 131,
+					"w": 4,
+					"h": 4,
+					"fill": "#6B727C",
+					"radius": 2,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 40,
+					"y": 82,
+					"w": 40,
+					"h": 44,
+					"fill": "#2F9E6E",
+					"radius": 2
+				},
+				{
+					"type": "rect",
+					"x": 16,
+					"y": 78,
+					"w": 26,
+					"h": 34,
+					"fill": "#2F9E6E",
+					"radius": 2
+				},
+				{
+					"type": "rect",
+					"x": 4,
+					"y": 88,
+					"w": 20,
+					"h": 4,
+					"fill": "#E0483E",
+					"radius": 1,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 4,
+					"y": 98,
+					"w": 20,
+					"h": 4,
+					"fill": "#2B2F36",
+					"radius": 1,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 22,
+					"y": 83,
+					"w": 14,
+					"h": 24,
+					"fill": "#F4F6F8",
+					"radius": 1
+				},
+				{
+					"type": "rect",
+					"x": 34,
+					"y": 88.5,
+					"w": 4,
+					"h": 3,
+					"fill": "#C9CED6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 34,
+					"y": 98.5,
+					"w": 4,
+					"h": 3,
+					"fill": "#C9CED6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 42,
+					"y": 80,
+					"w": 12,
+					"h": 8,
+					"fill": "#2F9E6E",
+					"outline": false,
+					"label": "J1",
+					"labelColor": "#F4F6F8",
+					"labelSize": 4
+				},
+				{
+					"type": "rect",
+					"x": 48,
+					"y": 112,
+					"w": 24,
+					"h": 68,
+					"fill": "#E9ECEF",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 48,
+					"y": 128,
+					"w": 24,
+					"h": 5,
+					"fill": "#3D6FD6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 43,
+					"y": 106,
+					"w": 34,
+					"h": 12,
+					"fill": "#E9DDC4",
+					"radius": 1,
+					"label": "J2",
+					"labelColor": "#2B2F36",
+					"labelSize": 4
+				},
+				{
+					"type": "rect",
+					"x": 30,
+					"y": 34,
+					"w": 60,
+					"h": 12,
+					"fill": "#B8BEC7",
+					"outline": false,
+					"label": "Touch Display 2",
+					"labelColor": "#2B2F36",
+					"labelSize": 5
+				},
+				{
+					"type": "rect",
+					"x": 30,
+					"y": 46,
+					"w": 60,
+					"h": 10,
+					"fill": "#B8BEC7",
+					"outline": false,
+					"label": "5in 720x1280",
+					"labelColor": "#2B2F36",
+					"labelSize": 4.5
+				}
+			]
+		}
+	},
+	"../modules/lcd-rpi-touch-display-2-7.json": {
+		format: "circuitoon-module/1",
+		id: "lcd-rpi-touch-display-2-7",
+		version: 1,
+		name: "Raspberry Pi Touch Display 2, 7\" (DSI, J1 5V GND)",
+		category: "Displays",
+		source: "https://www.raspberrypi.com/documentation/accessories/touch-display-2.html https://github.com/raspberrypi/documentation/blob/master/documentation/asciidoc/accessories/touch-display-2/images/touch-display-2-ffc.jpg https://pip-assets.raspberrypi.com/categories/1083-raspberry-pi-touch-display-2/documents/RP-009106-MM-8-touch-display-2-product-brief.pdf https://www.adafruit.com/product/6079",
+		pins: [
+			{
+				"name": "5V",
+				"side": "left",
+				"type": "power_in",
+				"supply": "5V"
+			},
+			{
+				"name": "GND",
+				"side": "left",
+				"type": "ground"
+			},
+			{
+				"name": "DSI",
+				"side": "bottom",
+				"type": "passive"
+			}
+		],
+		size: {
+			"w": 14,
+			"h": 22
+		},
+		electrical: {
+			"model": "display",
+			"params": {}
+		},
+		art: {
+			"w": 140,
+			"h": 220,
+			"pinLabels": "inside",
+			"shapes": [
+				{
+					"type": "rect",
+					"x": 0,
+					"y": 0,
+					"w": 140,
+					"h": 220,
+					"fill": "#1B1F24",
+					"radius": 8
+				},
+				{
+					"type": "rect",
+					"x": 10,
+					"y": 10,
+					"w": 120,
+					"h": 200,
+					"fill": "#B8BEC7",
+					"radius": 3
+				},
+				{
+					"type": "rect",
+					"x": 44,
+					"y": 22,
+					"w": 3,
+					"h": 160,
+					"fill": "#9AA1AB",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 93,
+					"y": 22,
+					"w": 3,
+					"h": 160,
+					"fill": "#9AA1AB",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 16,
+					"y": 20,
+					"w": 16,
+					"h": 12,
+					"fill": "#9AA1AB",
+					"radius": 2
+				},
+				{
+					"type": "rect",
+					"x": 22,
+					"y": 24,
+					"w": 4,
+					"h": 4,
+					"fill": "#6B727C",
+					"radius": 2,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 108,
+					"y": 20,
+					"w": 16,
+					"h": 12,
+					"fill": "#9AA1AB",
+					"radius": 2
+				},
+				{
+					"type": "rect",
+					"x": 114,
+					"y": 24,
+					"w": 4,
+					"h": 4,
+					"fill": "#6B727C",
+					"radius": 2,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 16,
+					"y": 188,
+					"w": 16,
+					"h": 12,
+					"fill": "#9AA1AB",
+					"radius": 2
+				},
+				{
+					"type": "rect",
+					"x": 22,
+					"y": 192,
+					"w": 4,
+					"h": 4,
+					"fill": "#6B727C",
+					"radius": 2,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 108,
+					"y": 188,
+					"w": 16,
+					"h": 12,
+					"fill": "#9AA1AB",
+					"radius": 2
+				},
+				{
+					"type": "rect",
+					"x": 114,
+					"y": 192,
+					"w": 4,
+					"h": 4,
+					"fill": "#6B727C",
+					"radius": 2,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 29,
+					"y": 87,
+					"w": 10,
+					"h": 10,
+					"fill": "#D5DAE1",
+					"radius": 5
+				},
+				{
+					"type": "rect",
+					"x": 32,
+					"y": 90,
+					"w": 4,
+					"h": 4,
+					"fill": "#6B727C",
+					"radius": 2,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 101,
+					"y": 87,
+					"w": 10,
+					"h": 10,
+					"fill": "#D5DAE1",
+					"radius": 5
+				},
+				{
+					"type": "rect",
+					"x": 104,
+					"y": 90,
+					"w": 4,
+					"h": 4,
+					"fill": "#6B727C",
+					"radius": 2,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 29,
+					"y": 158,
+					"w": 10,
+					"h": 10,
+					"fill": "#D5DAE1",
+					"radius": 5
+				},
+				{
+					"type": "rect",
+					"x": 32,
+					"y": 161,
+					"w": 4,
+					"h": 4,
+					"fill": "#6B727C",
+					"radius": 2,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 101,
+					"y": 158,
+					"w": 10,
+					"h": 10,
+					"fill": "#D5DAE1",
+					"radius": 5
+				},
+				{
+					"type": "rect",
+					"x": 104,
+					"y": 161,
+					"w": 4,
+					"h": 4,
+					"fill": "#6B727C",
+					"radius": 2,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 50,
+					"y": 106,
+					"w": 40,
+					"h": 44,
+					"fill": "#2F9E6E",
+					"radius": 2
+				},
+				{
+					"type": "rect",
+					"x": 26,
+					"y": 98,
+					"w": 26,
+					"h": 34,
+					"fill": "#2F9E6E",
+					"radius": 2
+				},
+				{
+					"type": "rect",
+					"x": 4,
+					"y": 108,
+					"w": 30,
+					"h": 4,
+					"fill": "#E0483E",
+					"radius": 1,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 4,
+					"y": 118,
+					"w": 30,
+					"h": 4,
+					"fill": "#2B2F36",
+					"radius": 1,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 32,
+					"y": 103,
+					"w": 14,
+					"h": 24,
+					"fill": "#F4F6F8",
+					"radius": 1
+				},
+				{
+					"type": "rect",
+					"x": 44,
+					"y": 108.5,
+					"w": 4,
+					"h": 3,
+					"fill": "#C9CED6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 44,
+					"y": 118.5,
+					"w": 4,
+					"h": 3,
+					"fill": "#C9CED6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 52,
+					"y": 100,
+					"w": 12,
+					"h": 8,
+					"fill": "#2F9E6E",
+					"outline": false,
+					"label": "J1",
+					"labelColor": "#F4F6F8",
+					"labelSize": 4
+				},
+				{
+					"type": "rect",
+					"x": 58,
+					"y": 136,
+					"w": 24,
+					"h": 84,
+					"fill": "#E9ECEF",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 58,
+					"y": 152,
+					"w": 24,
+					"h": 5,
+					"fill": "#3D6FD6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 53,
+					"y": 130,
+					"w": 34,
+					"h": 12,
+					"fill": "#E9DDC4",
+					"radius": 1,
+					"label": "J2",
+					"labelColor": "#2B2F36",
+					"labelSize": 4
+				},
+				{
+					"type": "rect",
+					"x": 40,
+					"y": 34,
+					"w": 60,
+					"h": 12,
+					"fill": "#B8BEC7",
+					"outline": false,
+					"label": "Touch Display 2",
+					"labelColor": "#2B2F36",
+					"labelSize": 5
+				},
+				{
+					"type": "rect",
+					"x": 40,
+					"y": 46,
+					"w": 60,
+					"h": 10,
+					"fill": "#B8BEC7",
+					"outline": false,
+					"label": "7in 720x1280",
+					"labelColor": "#2B2F36",
+					"labelSize": 4.5
+				}
+			]
+		}
+	},
+	"../modules/lcd-rpi-touch-display-7.json": {
+		format: "circuitoon-module/1",
+		id: "lcd-rpi-touch-display-7",
+		version: 1,
+		name: "Raspberry Pi Touch Display 7\" (2015, DSI, 5V INT SDA SCL GND)",
+		category: "Displays",
+		source: "https://www.raspberrypi.com/documentation/accessories/display.html https://github.com/raspberrypi/documentation/blob/master/documentation/asciidoc/accessories/display/images/display_plugs.png https://www.adafruit.com/product/2718 https://cdn-shop.adafruit.com/970x728/2718-03.jpg https://datasheets.raspberrypi.com/display/7-inch-display-product-brief.pdf https://forums.raspberrypi.com/viewtopic.php?t=227980",
+		pins: [
+			{
+				"name": "DSI",
+				"side": "left",
+				"type": "passive"
+			},
+			{
+				"name": "5V",
+				"side": "top",
+				"type": "power_in",
+				"supply": "5V"
+			},
+			{
+				"name": "INT",
+				"side": "top",
+				"type": "output"
+			},
+			{
+				"name": "SDA",
+				"side": "top",
+				"type": "io"
+			},
+			{
+				"name": "SCL",
+				"side": "top",
+				"type": "io"
+			},
+			{
+				"name": "GND",
+				"side": "top",
+				"type": "ground"
+			}
+		],
+		size: {
+			"w": 24,
+			"h": 15
+		},
+		electrical: {
+			"model": "display",
+			"params": {}
+		},
+		art: {
+			"w": 240,
+			"h": 150,
+			"pinLabels": "inside",
+			"shapes": [
+				{
+					"type": "rect",
+					"x": 0,
+					"y": 0,
+					"w": 240,
+					"h": 150,
+					"fill": "#1B1F24",
+					"radius": 8
+				},
+				{
+					"type": "rect",
+					"x": 10,
+					"y": 8,
+					"w": 220,
+					"h": 134,
+					"fill": "#B8BEC7",
+					"radius": 4
+				},
+				{
+					"type": "rect",
+					"x": 18,
+					"y": 14,
+					"w": 12,
+					"h": 12,
+					"fill": "#9AA1AB",
+					"radius": 2
+				},
+				{
+					"type": "rect",
+					"x": 22,
+					"y": 18,
+					"w": 4,
+					"h": 4,
+					"fill": "#6B727C",
+					"radius": 2,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 210,
+					"y": 14,
+					"w": 12,
+					"h": 12,
+					"fill": "#9AA1AB",
+					"radius": 2
+				},
+				{
+					"type": "rect",
+					"x": 214,
+					"y": 18,
+					"w": 4,
+					"h": 4,
+					"fill": "#6B727C",
+					"radius": 2,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 18,
+					"y": 124,
+					"w": 12,
+					"h": 12,
+					"fill": "#9AA1AB",
+					"radius": 2
+				},
+				{
+					"type": "rect",
+					"x": 22,
+					"y": 128,
+					"w": 4,
+					"h": 4,
+					"fill": "#6B727C",
+					"radius": 2,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 210,
+					"y": 124,
+					"w": 12,
+					"h": 12,
+					"fill": "#9AA1AB",
+					"radius": 2
+				},
+				{
+					"type": "rect",
+					"x": 214,
+					"y": 128,
+					"w": 4,
+					"h": 4,
+					"fill": "#6B727C",
+					"radius": 2,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 110,
+					"y": 124,
+					"w": 40,
+					"h": 18,
+					"fill": "#E8A33D",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 70,
+					"y": 8,
+					"w": 120,
+					"h": 122,
+					"fill": "#2F9E6E",
+					"radius": 4
+				},
+				{
+					"type": "rect",
+					"x": 74,
+					"y": 50,
+					"w": 8,
+					"h": 8,
+					"fill": "#D5DAE1",
+					"radius": 4,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 76,
+					"y": 52,
+					"w": 4,
+					"h": 4,
+					"fill": "#6B727C",
+					"radius": 2,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 178,
+					"y": 12,
+					"w": 8,
+					"h": 8,
+					"fill": "#D5DAE1",
+					"radius": 4,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 180,
+					"y": 14,
+					"w": 4,
+					"h": 4,
+					"fill": "#6B727C",
+					"radius": 2,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 74,
+					"y": 118,
+					"w": 8,
+					"h": 8,
+					"fill": "#D5DAE1",
+					"radius": 4,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 76,
+					"y": 120,
+					"w": 4,
+					"h": 4,
+					"fill": "#6B727C",
+					"radius": 2,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 178,
+					"y": 118,
+					"w": 8,
+					"h": 8,
+					"fill": "#D5DAE1",
+					"radius": 4,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 180,
+					"y": 120,
+					"w": 4,
+					"h": 4,
+					"fill": "#6B727C",
+					"radius": 2,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 94,
+					"y": 2,
+					"w": 52,
+					"h": 10,
+					"fill": "#2B2F36",
+					"radius": 1
+				},
+				{
+					"type": "rect",
+					"x": 98,
+					"y": 5,
+					"w": 4,
+					"h": 4,
+					"fill": "#E0B43C",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 108,
+					"y": 5,
+					"w": 4,
+					"h": 4,
+					"fill": "#E0B43C",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 118,
+					"y": 5,
+					"w": 4,
+					"h": 4,
+					"fill": "#E0B43C",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 128,
+					"y": 5,
+					"w": 4,
+					"h": 4,
+					"fill": "#E0B43C",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 138,
+					"y": 5,
+					"w": 4,
+					"h": 4,
+					"fill": "#E0B43C",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 0,
+					"y": 70,
+					"w": 84,
+					"h": 20,
+					"fill": "#E9ECEF",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 40,
+					"y": 70,
+					"w": 6,
+					"h": 20,
+					"fill": "#3D6FD6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 74,
+					"y": 66,
+					"w": 14,
+					"h": 28,
+					"fill": "#E9DDC4",
+					"radius": 1
+				},
+				{
+					"type": "rect",
+					"x": 104,
+					"y": 58,
+					"w": 22,
+					"h": 22,
+					"fill": "#1E2126",
+					"radius": 1
+				},
+				{
+					"type": "rect",
+					"x": 134,
+					"y": 56,
+					"w": 50,
+					"h": 10,
+					"fill": "#237A55",
+					"outline": false,
+					"label": "Raspberry Pi Display",
+					"labelColor": "#F4F6F8",
+					"labelSize": 4.5
+				},
+				{
+					"type": "rect",
+					"x": 142,
+					"y": 70,
+					"w": 14,
+					"h": 14,
+					"fill": "#1E2126",
+					"radius": 1
+				},
+				{
+					"type": "rect",
+					"x": 76,
+					"y": 96,
+					"w": 18,
+					"h": 12,
+					"fill": "#C9CED6",
+					"radius": 2,
+					"label": "PWR IN",
+					"labelSize": 3.5
+				},
+				{
+					"type": "rect",
+					"x": 158,
+					"y": 90,
+					"w": 26,
+					"h": 22,
+					"fill": "#C9CED6",
+					"radius": 1
+				},
+				{
+					"type": "rect",
+					"x": 162,
+					"y": 98,
+					"w": 18,
+					"h": 6,
+					"fill": "#6B727C",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 110,
+					"y": 114,
+					"w": 40,
+					"h": 8,
+					"fill": "#E9DDC4",
+					"radius": 1,
+					"label": "PANEL",
+					"labelSize": 4
+				},
+				{
+					"type": "rect",
+					"x": 194,
+					"y": 34,
+					"w": 30,
+					"h": 10,
+					"fill": "#B8BEC7",
+					"outline": false,
+					"label": "7in 800x480",
+					"labelColor": "#2B2F36",
+					"labelSize": 4.5
+				}
+			]
 		}
 	},
 	"../modules/lcd-st7796s-4in-spi-touch.json": {
@@ -25686,6 +27173,799 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 				"ADDR": "15"
 			},
 			"value": "MCP23018"
+		}
+	},
+	"../modules/mic-ics-40300.json": {
+		format: "circuitoon-module/1",
+		id: "mic-ics-40300",
+		version: 1,
+		name: "Microphone ICS-40300 (TDK, analog MEMS, bare SMD)",
+		category: "Sensors",
+		source: "https://datasheet.octopart.com/ICS-40300-InvenSense-datasheet-27080197.pdf https://cdn.eicom.ru/media/PDF/8097381.pdf https://invensense.tdk.com/products/analog/ics-40300/ https://www.farnell.com/datasheets/1838551.pdf",
+		pins: [
+			{
+				"name": "GND",
+				"side": "left",
+				"type": "ground"
+			},
+			{
+				"name": "GND 2",
+				"side": "left",
+				"label": "GND",
+				"type": "ground"
+			},
+			{
+				"name": "GND 3",
+				"side": "left",
+				"label": "GND",
+				"type": "ground"
+			},
+			{
+				"name": "OUTPUT",
+				"side": "right",
+				"type": "output"
+			},
+			{
+				"name": "GND 4",
+				"side": "right",
+				"label": "GND",
+				"type": "ground"
+			},
+			{
+				"name": "VDD",
+				"side": "right",
+				"type": "power_in",
+				"supply": "1V8/3V3"
+			}
+		],
+		size: {
+			"w": 12,
+			"h": 6
+		},
+		electrical: {
+			"model": "sensor",
+			"params": {}
+		},
+		art: {
+			"w": 120,
+			"h": 60,
+			"pinLabels": "inside",
+			"shapes": [
+				{
+					"type": "rect",
+					"x": 0,
+					"y": 18.5,
+					"w": 40,
+					"h": 3,
+					"fill": "#E0B43C",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 0,
+					"y": 28.5,
+					"w": 40,
+					"h": 3,
+					"fill": "#E0B43C",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 0,
+					"y": 38.5,
+					"w": 40,
+					"h": 3,
+					"fill": "#E0B43C",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 80,
+					"y": 18.5,
+					"w": 40,
+					"h": 3,
+					"fill": "#E0B43C",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 80,
+					"y": 28.5,
+					"w": 40,
+					"h": 3,
+					"fill": "#E0B43C",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 80,
+					"y": 38.5,
+					"w": 40,
+					"h": 3,
+					"fill": "#E0B43C",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 30,
+					"y": 4,
+					"w": 60,
+					"h": 52,
+					"fill": "#C9CED6",
+					"radius": 3
+				},
+				{
+					"type": "rect",
+					"x": 33,
+					"y": 7,
+					"w": 54,
+					"h": 46,
+					"fill": "#D5DAE1",
+					"radius": 2,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 40,
+					"y": 38,
+					"w": 40,
+					"h": 12,
+					"fill": "#D5DAE1",
+					"outline": false,
+					"label": "ICS-40300",
+					"labelColor": "#2B2F36",
+					"labelSize": 5
+				},
+				{
+					"type": "rect",
+					"x": 41,
+					"y": 27,
+					"w": 6,
+					"h": 6,
+					"fill": "#6B727C",
+					"radius": 3,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 82,
+					"y": 8,
+					"w": 4,
+					"h": 4,
+					"fill": "#2B2F36",
+					"radius": 2,
+					"outline": false
+				}
+			]
+		}
+	},
+	"../modules/mic-ics-43434-adafruit-6049.json": {
+		format: "circuitoon-module/1",
+		id: "mic-ics-43434-adafruit-6049",
+		version: 1,
+		name: "I2S MEMS microphone breakout ICS-43434 (Adafruit 6049)",
+		category: "Sensors",
+		source: "https://www.adafruit.com/product/6049 https://github.com/adafruit/Adafruit-I2S-MEMS-Microphone-Breakout-PCB https://cdn-shop.adafruit.com/970x728/6049-02.jpg https://cdn-shop.adafruit.com/product-files/6049/6049_DS-000069-ICS-43434-v1.2.pdf",
+		pins: [
+			{
+				"name": "3V",
+				"side": "bottom",
+				"type": "power_in",
+				"supply": "3V3"
+			},
+			{
+				"name": "GND",
+				"side": "bottom",
+				"type": "ground"
+			},
+			{
+				"name": "BCLK",
+				"side": "bottom",
+				"type": "input"
+			},
+			{
+				"name": "DOUT",
+				"side": "bottom",
+				"type": "output"
+			},
+			{
+				"name": "LRCL",
+				"side": "bottom",
+				"type": "input"
+			},
+			{
+				"name": "SEL",
+				"side": "bottom",
+				"type": "input"
+			}
+		],
+		size: {
+			"w": 8,
+			"h": 7
+		},
+		footprint: "legs",
+		electrical: {
+			"model": "sensor",
+			"params": {}
+		},
+		art: {
+			"w": 80,
+			"h": 70,
+			"pinLabels": "inside",
+			"shapes": [
+				{
+					"type": "rect",
+					"x": 0,
+					"y": 0,
+					"w": 80,
+					"h": 70,
+					"fill": "#2B2F36",
+					"radius": 5
+				},
+				{
+					"type": "rect",
+					"x": 5,
+					"y": 5,
+					"w": 14,
+					"h": 14,
+					"fill": "#D5DAE1",
+					"radius": 7,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 8.5,
+					"y": 8.5,
+					"w": 7,
+					"h": 7,
+					"fill": "#6B727C",
+					"radius": 3.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 61,
+					"y": 5,
+					"w": 14,
+					"h": 14,
+					"fill": "#D5DAE1",
+					"radius": 7,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 64.5,
+					"y": 8.5,
+					"w": 7,
+					"h": 7,
+					"fill": "#6B727C",
+					"radius": 3.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 16,
+					"y": 59,
+					"w": 8,
+					"h": 8,
+					"fill": "#E0B43C",
+					"radius": 4,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 18.5,
+					"y": 61.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 26,
+					"y": 59,
+					"w": 8,
+					"h": 8,
+					"fill": "#E0B43C",
+					"radius": 4,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 28.5,
+					"y": 61.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 36,
+					"y": 59,
+					"w": 8,
+					"h": 8,
+					"fill": "#E0B43C",
+					"radius": 4,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 38.5,
+					"y": 61.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 46,
+					"y": 59,
+					"w": 8,
+					"h": 8,
+					"fill": "#E0B43C",
+					"radius": 4,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 48.5,
+					"y": 61.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 56,
+					"y": 59,
+					"w": 8,
+					"h": 8,
+					"fill": "#E0B43C",
+					"radius": 4,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 58.5,
+					"y": 61.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 66,
+					"y": 59,
+					"w": 8,
+					"h": 8,
+					"fill": "#E0B43C",
+					"radius": 4,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 68.5,
+					"y": 61.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 32,
+					"y": 6,
+					"w": 16,
+					"h": 18,
+					"fill": "#C9CED6",
+					"radius": 2
+				},
+				{
+					"type": "rect",
+					"x": 35,
+					"y": 9,
+					"w": 10,
+					"h": 12,
+					"fill": "#D5DAE1",
+					"radius": 1,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 10,
+					"y": 26,
+					"w": 6,
+					"h": 8,
+					"fill": "#C8A27A",
+					"radius": 1,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 18,
+					"y": 26,
+					"w": 6,
+					"h": 8,
+					"fill": "#C8A27A",
+					"radius": 1,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 18,
+					"y": 26,
+					"w": 44,
+					"h": 9,
+					"fill": "#2B2F36",
+					"outline": false,
+					"label": "ICS-43434",
+					"labelColor": "#F4F6F8",
+					"labelSize": 5
+				}
+			]
+		},
+		kicad: {
+			"footprint": "Connector_PinSocket_2.54mm:PinSocket_1x06_P2.54mm_Vertical",
+			"pins": {
+				"3V": "1",
+				"GND": "2",
+				"BCLK": "3",
+				"DOUT": "4",
+				"LRCL": "5",
+				"SEL": "6"
+			},
+			"value": "ICS-43434 breakout"
+		}
+	},
+	"../modules/mic-ics-43434.json": {
+		format: "circuitoon-module/1",
+		id: "mic-ics-43434",
+		version: 1,
+		name: "Microphone ICS-43434 (TDK, I2S MEMS, bare SMD)",
+		category: "Sensors",
+		source: "https://cdn-shop.adafruit.com/product-files/6049/6049_DS-000069-ICS-43434-v1.2.pdf https://www.mouser.com/datasheet/2/400/ds_000069_ics_43434_v1_2-2581173.pdf https://gitlab.com/kicad/libraries/kicad-symbols/-/blob/master/Sensor_Audio.kicad_symdir/ICS-43434.kicad_sym https://github.com/adafruit/Adafruit-I2S-MEMS-Microphone-Breakout-PCB",
+		pins: [
+			{
+				"name": "GND",
+				"side": "top",
+				"type": "ground"
+			},
+			{
+				"name": "SCK",
+				"side": "left",
+				"type": "input"
+			},
+			{
+				"name": "LR",
+				"side": "right",
+				"type": "input"
+			},
+			{
+				"name": "VDD",
+				"side": "bottom",
+				"type": "power_in",
+				"supply": "1V8/3V3"
+			},
+			{
+				"name": "SD",
+				"side": "bottom",
+				"type": "output"
+			},
+			{
+				"name": "WS",
+				"side": "bottom",
+				"type": "input"
+			}
+		],
+		size: {
+			"w": 10,
+			"h": 11
+		},
+		electrical: {
+			"model": "sensor",
+			"params": {}
+		},
+		art: {
+			"w": 100,
+			"h": 110,
+			"pinLabels": "inside",
+			"shapes": [
+				{
+					"type": "rect",
+					"x": 48.5,
+					"y": 0,
+					"w": 3,
+					"h": 36,
+					"fill": "#E0B43C",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 38.5,
+					"y": 74,
+					"w": 3,
+					"h": 36,
+					"fill": "#E0B43C",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 48.5,
+					"y": 74,
+					"w": 3,
+					"h": 36,
+					"fill": "#E0B43C",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 58.5,
+					"y": 74,
+					"w": 3,
+					"h": 36,
+					"fill": "#E0B43C",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 0,
+					"y": 58.5,
+					"w": 28,
+					"h": 3,
+					"fill": "#E0B43C",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 72,
+					"y": 58.5,
+					"w": 28,
+					"h": 3,
+					"fill": "#E0B43C",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 26,
+					"y": 34,
+					"w": 48,
+					"h": 42,
+					"fill": "#C9CED6",
+					"radius": 3
+				},
+				{
+					"type": "rect",
+					"x": 29,
+					"y": 37,
+					"w": 42,
+					"h": 36,
+					"fill": "#D5DAE1",
+					"radius": 2,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 30,
+					"y": 55,
+					"w": 40,
+					"h": 12,
+					"fill": "#D5DAE1",
+					"outline": false,
+					"label": "ICS-43434",
+					"labelColor": "#2B2F36",
+					"labelSize": 5
+				},
+				{
+					"type": "rect",
+					"x": 47,
+					"y": 41,
+					"w": 6,
+					"h": 6,
+					"fill": "#6B727C",
+					"radius": 3,
+					"outline": false
+				}
+			]
+		},
+		kicad: {
+			"symbol": "Sensor_Audio:ICS-43434",
+			"footprint": "Sensor_Audio:InvenSense_ICS-43434-6_3.5x2.65mm",
+			"pins": {
+				"WS": "1",
+				"LR": "2",
+				"GND": "3",
+				"SCK": "4",
+				"VDD": "5",
+				"SD": "6"
+			},
+			"value": "ICS-43434"
+		}
+	},
+	"../modules/mic-spu0410lr5h-qb.json": {
+		format: "circuitoon-module/1",
+		id: "mic-spu0410lr5h-qb",
+		version: 1,
+		name: "Microphone SPU0410LR5H-QB (Knowles, analog MEMS, bare SMD)",
+		category: "Sensors",
+		source: "https://mm.digikey.com/Volume0/opasdata/d220001/medias/docus/384/SPU0410LR5H-QB_RevH_3-27-13.pdf https://datasheet.octopart.com/SPU0410LR5H-QB-Knowles-Acoustics-datasheet-8852744.pdf https://www.flux.ai/jecstronic/spu0410lr5h-qb",
+		pins: [
+			{
+				"name": "OUTPUT",
+				"side": "top",
+				"type": "output"
+			},
+			{
+				"name": "GND",
+				"side": "top",
+				"type": "ground"
+			},
+			{
+				"name": "VDD",
+				"side": "top",
+				"type": "power_in",
+				"supply": "1V8/3V3"
+			},
+			{
+				"name": "GND 2",
+				"side": "bottom",
+				"label": "GND",
+				"type": "ground"
+			},
+			{
+				"name": "GND 3",
+				"side": "bottom",
+				"label": "GND",
+				"type": "ground"
+			},
+			{
+				"name": "GND 4",
+				"side": "bottom",
+				"label": "GND",
+				"type": "ground"
+			}
+		],
+		size: {
+			"w": 8,
+			"h": 12
+		},
+		electrical: {
+			"model": "sensor",
+			"params": {}
+		},
+		art: {
+			"w": 80,
+			"h": 120,
+			"pinLabels": "inside",
+			"shapes": [
+				{
+					"type": "rect",
+					"x": 28.5,
+					"y": 0,
+					"w": 3,
+					"h": 42,
+					"fill": "#E0B43C",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 38.5,
+					"y": 0,
+					"w": 3,
+					"h": 42,
+					"fill": "#E0B43C",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 48.5,
+					"y": 0,
+					"w": 3,
+					"h": 42,
+					"fill": "#E0B43C",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 28.5,
+					"y": 78,
+					"w": 3,
+					"h": 42,
+					"fill": "#E0B43C",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 38.5,
+					"y": 78,
+					"w": 3,
+					"h": 42,
+					"fill": "#E0B43C",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 48.5,
+					"y": 78,
+					"w": 3,
+					"h": 42,
+					"fill": "#E0B43C",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 8,
+					"y": 40,
+					"w": 64,
+					"h": 40,
+					"fill": "#C9CED6",
+					"radius": 3
+				},
+				{
+					"type": "rect",
+					"x": 11,
+					"y": 43,
+					"w": 58,
+					"h": 34,
+					"fill": "#D5DAE1",
+					"radius": 2,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 22,
+					"y": 48,
+					"w": 36,
+					"h": 10,
+					"fill": "#D5DAE1",
+					"outline": false,
+					"label": "SPU0410",
+					"labelColor": "#2B2F36",
+					"labelSize": 5
+				},
+				{
+					"type": "rect",
+					"x": 22,
+					"y": 58,
+					"w": 36,
+					"h": 10,
+					"fill": "#D5DAE1",
+					"outline": false,
+					"label": "LR5H-QB",
+					"labelColor": "#2B2F36",
+					"labelSize": 4.5
+				},
+				{
+					"type": "rect",
+					"x": 14,
+					"y": 46,
+					"w": 4,
+					"h": 4,
+					"fill": "#2B2F36",
+					"radius": 2,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 37,
+					"y": 68,
+					"w": 6,
+					"h": 6,
+					"fill": "#6B727C",
+					"radius": 3,
+					"outline": false
+				}
+			]
 		}
 	},
 	"../modules/microsd-spi-3v3.json": {
@@ -37409,6 +39689,174 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 				"GP16": "21"
 			},
 			"note": "The debug pads (SWCLK, GND, SWDIO) are not on this footprint."
+		}
+	},
+	"../modules/rtl-sdr-blog-v4.json": {
+		format: "circuitoon-module/1",
+		id: "rtl-sdr-blog-v4",
+		version: 1,
+		name: "RTL-SDR Blog V4 USB dongle (USB-A plug, SMA antenna)",
+		category: "Communication",
+		source: "https://www.rtl-sdr.com/wp-content/uploads/2024/12/RTLSDR_V4_Datasheet_V_1_0.pdf https://www.rtl-sdr.com/v4/ https://www.rtl-sdr.com/buy-rtl-sdr-dvb-t-dongles/ https://en.wikipedia.org/wiki/USB_hardware#Pinouts",
+		pins: [
+			{
+				"name": "VBUS",
+				"side": "left",
+				"type": "power_in",
+				"supply": "5V"
+			},
+			{
+				"name": "D-",
+				"side": "left",
+				"type": "io"
+			},
+			{
+				"name": "D+",
+				"side": "left",
+				"type": "io"
+			},
+			{
+				"name": "GND",
+				"side": "left",
+				"type": "ground"
+			},
+			{
+				"name": "ANT",
+				"side": "right",
+				"type": "passive"
+			}
+		],
+		size: {
+			"w": 17,
+			"h": 6
+		},
+		electrical: {
+			"model": "radio",
+			"params": {}
+		},
+		art: {
+			"w": 170,
+			"h": 60,
+			"pinLabels": "inside",
+			"shapes": [
+				{
+					"type": "rect",
+					"x": 0,
+					"y": 6,
+					"w": 44,
+					"h": 48,
+					"fill": "#C9CED6",
+					"radius": 1
+				},
+				{
+					"type": "rect",
+					"x": 3,
+					"y": 10,
+					"w": 36,
+					"h": 40,
+					"fill": "#F4F6F8",
+					"radius": 1
+				},
+				{
+					"type": "rect",
+					"x": 40,
+					"y": 2,
+					"w": 104,
+					"h": 56,
+					"fill": "#2B2F36",
+					"radius": 6
+				},
+				{
+					"type": "rect",
+					"x": 54,
+					"y": 16,
+					"w": 70,
+					"h": 12,
+					"fill": "#2B2F36",
+					"outline": false,
+					"label": "RTL-SDR Blog",
+					"labelColor": "#F4F6F8",
+					"labelSize": 6
+				},
+				{
+					"type": "rect",
+					"x": 54,
+					"y": 30,
+					"w": 70,
+					"h": 12,
+					"fill": "#2B2F36",
+					"outline": false,
+					"label": "V4",
+					"labelColor": "#F4F6F8",
+					"labelSize": 6
+				},
+				{
+					"type": "rect",
+					"x": 136,
+					"y": 24,
+					"w": 3,
+					"h": 3,
+					"fill": "#E0483E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 142,
+					"y": 17,
+					"w": 12,
+					"h": 26,
+					"fill": "#E0B43C",
+					"radius": 2
+				},
+				{
+					"type": "rect",
+					"x": 154,
+					"y": 21,
+					"w": 16,
+					"h": 18,
+					"fill": "#E0B43C",
+					"radius": 1
+				},
+				{
+					"type": "rect",
+					"x": 156,
+					"y": 21,
+					"w": 1.5,
+					"h": 18,
+					"fill": "#8A6A1E",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 161,
+					"y": 21,
+					"w": 1.5,
+					"h": 18,
+					"fill": "#8A6A1E",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 166,
+					"y": 21,
+					"w": 1.5,
+					"h": 18,
+					"fill": "#8A6A1E",
+					"outline": false
+				}
+			]
+		},
+		kicad: {
+			"footprint": "Connector_USB:USB_A_Molex_67643_Horizontal",
+			"pins": {
+				"VBUS": "1",
+				"D-": "2",
+				"D+": "3",
+				"GND": "4"
+			},
+			"value": "RTL-SDR Blog V4",
+			"note": "The USB-A receptacle the dongle plugs into; the SMA antenna jack stays on the dongle."
 		}
 	},
 	"../modules/servo-sg90.json": {

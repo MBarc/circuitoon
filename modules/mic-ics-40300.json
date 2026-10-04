@@ -1,0 +1,164 @@
+{
+  "format": "circuitoon-module/1",
+  "id": "mic-ics-40300",
+  "version": 1,
+  "name": "Microphone ICS-40300 (TDK, analog MEMS, bare SMD)",
+  "category": "Sensors",
+  "source": "https://datasheet.octopart.com/ICS-40300-InvenSense-datasheet-27080197.pdf https://cdn.eicom.ru/media/PDF/8097381.pdf https://invensense.tdk.com/products/analog/ics-40300/ https://www.farnell.com/datasheets/1838551.pdf",
+  "pins": [
+    {
+      "name": "GND",
+      "side": "left",
+      "type": "ground"
+    },
+    {
+      "name": "GND 2",
+      "side": "left",
+      "label": "GND",
+      "type": "ground"
+    },
+    {
+      "name": "GND 3",
+      "side": "left",
+      "label": "GND",
+      "type": "ground"
+    },
+    {
+      "name": "OUTPUT",
+      "side": "right",
+      "type": "output"
+    },
+    {
+      "name": "GND 4",
+      "side": "right",
+      "label": "GND",
+      "type": "ground"
+    },
+    {
+      "name": "VDD",
+      "side": "right",
+      "type": "power_in",
+      "supply": "1V8/3V3"
+    }
+  ],
+  "size": {
+    "w": 12,
+    "h": 6
+  },
+  "electrical": {
+    "model": "sensor",
+    "params": {}
+  },
+  "art": {
+    "w": 120,
+    "h": 60,
+    "pinLabels": "inside",
+    "shapes": [
+      {
+        "type": "rect",
+        "x": 0,
+        "y": 18.5,
+        "w": 40,
+        "h": 3,
+        "fill": "#E0B43C",
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 0,
+        "y": 28.5,
+        "w": 40,
+        "h": 3,
+        "fill": "#E0B43C",
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 0,
+        "y": 38.5,
+        "w": 40,
+        "h": 3,
+        "fill": "#E0B43C",
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 80,
+        "y": 18.5,
+        "w": 40,
+        "h": 3,
+        "fill": "#E0B43C",
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 80,
+        "y": 28.5,
+        "w": 40,
+        "h": 3,
+        "fill": "#E0B43C",
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 80,
+        "y": 38.5,
+        "w": 40,
+        "h": 3,
+        "fill": "#E0B43C",
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 30,
+        "y": 4,
+        "w": 60,
+        "h": 52,
+        "fill": "#C9CED6",
+        "radius": 3
+      },
+      {
+        "type": "rect",
+        "x": 33,
+        "y": 7,
+        "w": 54,
+        "h": 46,
+        "fill": "#D5DAE1",
+        "radius": 2,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 40,
+        "y": 38,
+        "w": 40,
+        "h": 12,
+        "fill": "#D5DAE1",
+        "outline": false,
+        "label": "ICS-40300",
+        "labelColor": "#2B2F36",
+        "labelSize": 5
+      },
+      {
+        "type": "rect",
+        "x": 41,
+        "y": 27,
+        "w": 6,
+        "h": 6,
+        "fill": "#6B727C",
+        "radius": 3,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 82,
+        "y": 8,
+        "w": 4,
+        "h": 4,
+        "fill": "#2B2F36",
+        "radius": 2,
+        "outline": false
+      }
+    ]
+  }
+}

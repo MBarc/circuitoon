@@ -47,6 +47,7 @@ export const KNOWN_FOOTPRINTS: Record<string, string[]> = {
   "Connector_PinSocket_2.54mm:PinSocket_1x15_P2.54mm_Vertical": ["1","2","3","4","5","6","7","8","9","10","11","12","13","14","15"],
   "Connector_PinSocket_2.54mm:PinSocket_1x19_P2.54mm_Vertical": ["1","2","3","4","5","6","7","8","9","10","11","12","13","14","15","16","17","18","19"],
   "Connector_PinSocket_2.54mm:PinSocket_1x22_P2.54mm_Vertical": ["1","2","3","4","5","6","7","8","9","10","11","12","13","14","15","16","17","18","19","20","21","22"],
+  "Connector_USB:USB_A_Molex_67643_Horizontal": ["1","2","3","4","SH"],
   "Converter_ACDC:Converter_ACDC_Hi-Link_HLK-PMxx": ["1","2","3","4"],
   "Converter_ACDC:Converter_ACDC_MeanWell_IRM-03-xx_THT": ["1","3","5","14","16"],
   "Converter_ACDC:Converter_ACDC_MeanWell_IRM-05-xx_THT": ["1","2","3","4"],
@@ -60,6 +61,7 @@ export const KNOWN_FOOTPRINTS: Record<string, string[]> = {
   "Resistor_THT:R_Axial_DIN0309_L9.0mm_D3.2mm_P12.70mm_Horizontal": ["1","2"],
   "Resistor_THT:R_Axial_DIN0617_L17.0mm_D6.0mm_P20.32mm_Horizontal": ["1","2"],
   "Sensor:ASAIR_AM2302_P2.54mm_Vertical": ["1","2","3","4"],
+  "Sensor_Audio:InvenSense_ICS-43434-6_3.5x2.65mm": ["1","2","3","4","5","6"],
   "TerminalBlock_Phoenix:TerminalBlock_Phoenix_MKDS-1,5-2_1x02_P5.00mm_Horizontal": ["1","2"],
   "TerminalBlock_Phoenix:TerminalBlock_Phoenix_MKDS-1,5-3_1x03_P5.00mm_Horizontal": ["1","2","3"],
 }
