@@ -174,7 +174,8 @@ describe('tampered My parts', () => {
     return c
   }
 
-  it('validation never throws on malformed nested objects, anywhere in a module', () => {
+  // Exhaustive: every path of eight real modules times three malformed shapes, so it gets more than the default 5 s.
+  it('validation never throws on malformed nested objects, anywhere in a module', { timeout: 60_000 }, () => {
     const rich = ['bme280-module-4pin', 'outlet-au-as3112', 'adapter-barrel-au', 'tp4056-module', 'lamp-holder-e26', 'arduino-nano', 'fuse-holder-5x20-inline']
     for (const m of [part().module, ...rich.map((id) => modulesById[id])])
       for (const p of paths(m))
