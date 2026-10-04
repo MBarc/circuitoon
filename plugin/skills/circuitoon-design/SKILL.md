@@ -107,7 +107,7 @@ Net labels, when the user asks:
 - **`--labels auto`** also labels ground and supply nets with three or more endpoints or far apart, and signal nets between different groups or repeat copies or spread far apart; **`--labels all`** labels every net that can be. Use them only when the user asks for labels in general.
 - When wires alone stay unreadable after the steps in "Improving a layout" (hundreds of crossings), say so and offer labels on the worst nets; do not switch on your own.
 - **Dense groups fan out:** a part with 4 or more labelled pins or pads on one side gets its labels as one ordered row beside it, in pin order. An endpoint with no room for a label is wired to the nearest label of its net; the report lists those nets.
-- **Mains is never labelled**: a net with a mains terminal is always wired (and `"label": true` on it is an error).
+- **Mains and USB are never labelled**: a net with a mains terminal or a USB port is always wired (and `"label": true` on it is an error).
 - Labels are not parts: verify counts a label join as a connection, and the bill of materials leaves labels out.
 
 ## Re-laying out a user's drawn sheet

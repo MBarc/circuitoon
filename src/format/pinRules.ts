@@ -247,6 +247,10 @@ const TYPE_WORDS: Record<PinType, string> = {
 }
 /** One line on what a pin does: its type and supply, its caps, its I2C role, its note. */
 export function pinDoes(e: PinEnd): string {
+  const text = pinWords(e)
+  return e.caps?.note ? `${text}. ${e.caps.note}` : text
+}
+function pinWords(e: PinEnd): string {
   // A USB port is its connector, role and current, not a signal (USB design 1.1).
   const usb = e.type === 'usb' ? usbOf(e.part.module, e.pin) : undefined
   if (usb) return usbWords(usb)
@@ -259,8 +263,7 @@ export function pinDoes(e: PinEnd): string {
   const a = i2c?.address
   if (a && 'pins' in a && a.pins.some((p) => p.pin === e.pin)) parts.push('I2C address pin')
   parts.push(...capsText(e.caps))
-  const text = parts.join(', ')
-  return e.caps?.note ? `${text}. ${e.caps.note}` : text
+  return parts.join(', ')
 }
 
 // ---- I2C ----

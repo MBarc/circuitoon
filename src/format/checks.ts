@@ -449,10 +449,21 @@ const drives = (t: Terminal) => (t.type === 'power_out' && t.dead !== 'unpowered
 
 // ---- Wording ----
 
+/** The first wire between each pair of node keys, both ways round, built once per connection list. */
+const wirePairs = new WeakMap<Connection[], Map<string, Connection>>()
 /** The wire that joins two terminals directly, if one does. */
 function wireBetween(d: Diagram, a: Terminal, b: Terminal): Connection | undefined {
-  const is = (ep: Endpoint, t: Terminal) => ep.part === t.part.uid && ep.pin === t.name
-  return d.connections.find((c) => (is(c.from, a) && is(c.to, b)) || (is(c.from, b) && is(c.to, a)))
+  let pairs = wirePairs.get(d.connections)
+  if (!pairs) {
+    pairs = new Map()
+    for (const c of d.connections) {
+      const [x, y] = [nodeKey(c.from.part, c.from.pin), nodeKey(c.to.part, c.to.pin)]
+      if (!pairs.has(x + y)) pairs.set(x + y, c)
+      if (!pairs.has(y + x)) pairs.set(y + x, c)
+    }
+    wirePairs.set(d.connections, pairs)
+  }
+  return pairs.get(a.key + b.key)
 }
 /** "Remove the wire from A to B." (in the order the wire was drawn) when one joins them directly, else the fallback. */
 const removeWire = (d: Diagram, a: Terminal, b: Terminal, fallback: string) => {
@@ -688,12 +699,16 @@ export function checkDiagram(d: Diagram): Finding[] {
     if (i !== undefined) netWires[i].push(c.uid)
   }
 
-  // A net with a USB port is judged by the USB rules alone (usb.ts), like a mains net by the mains rules.
+  // A USB port is judged by the USB rules alone (usb.ts), like a mains net by the mains rules: it
+  // leaves its net, and the ordinary pins jumpered onto it keep their DC checks (a short among them
+  // is still a short). The pin rules skip such a net altogether.
   const isUsb = (t: Terminal | null) => t?.type === 'usb'
-  const netTerms = nl.nets.map((keys) => {
+  const usbNets = new Set<number>()
+  const netTerms = nl.nets.map((keys, i) => {
     if (keys.some(hazardous)) return []
     const terms = keys.map(terminal)
-    return terms.some(isUsb) ? [] : terms.filter((t): t is Terminal => t !== null)
+    if (terms.some(isUsb)) usbNets.add(i)
+    return terms.filter((t): t is Terminal => t !== null && !isUsb(t))
   })
   // A USB cable or plug-in joins the two boards' grounds (never VBUS to a 5V pin: that may sit behind
   // a diode or a switch). Each board's first ground pin stands for its ground; a link on a net with
@@ -987,7 +1002,21 @@ export function checkDiagram(d: Diagram): Finding[] {
 
   for (const f of mains?.findings ?? []) add(f)
 
-  if (usbAny) for (const f of usbFindings(d, nl, netWires)) add(f)
+  // A DC input is fed when another part's supply, at a voltage the input accepts, is on its net and
+  // that supply's return is on the input part's ground (a hub's own power, USB design 1.1).
+  const dcFed = (uid: string, pin: string): boolean => {
+    const t = terminal(nodeKey(uid, pin))
+    const i = t ? nl.netOf.get(t.key) : undefined
+    if (!t || i === undefined) return false
+    const rails = knownRails(t.supply)
+    const grounds = new Set(t.info.grounds.map((g) => nl.netOf.get(nodeKey(uid, g))).filter((x) => x !== undefined))
+    return netTerms[i].some((o) => {
+      const s = o.part === t.part ? null : sourceOf(o)
+      if (!s || s.v === null || (rails && (s.v > Math.max(...rails) + EPS || s.v < LOW_TOLERANCE * Math.min(...rails) - EPS))) return false
+      return o.info.returnGrounds(o.name).some((g) => grounds.has(nl.netOf.get(nodeKey(o.part.uid, g))!))
+    })
+  }
+  if (usbAny) for (const f of usbFindings(d, nl, netWires, dcFed)) add(f)
 
   // Pin capabilities (input only, output only, flash, strapping, no pull-up) and I2C buses
   // (pull-ups, addresses), from the caps and I2C data the modules declare. Mains nets never enter.
@@ -995,7 +1024,7 @@ export function checkDiagram(d: Diagram): Finding[] {
   const pinFound = !d.parts.some((p) => { const m = moduleOf(d, p.module); return !!m && hasPinData(m) }) ? [] : pinFindings(lazyPinModel(
     d.parts.flatMap((p) => { const m = moduleOf(d, p.module); return m ? [{ id: p.uid, designator: p.designator, module: m, settings: p.settings }] : [] }),
     // The checker's own terminals per net (mains nets already left out), not the node keys parsed again.
-    nl.nets.length, (i) => netTerms[i].map((t): [string, string] => [t.part.uid, t.name]), (part, pin) => nl.netOf.get(nodeKey(part, pin))))
+    nl.nets.length, (i) => (usbNets.has(i) ? [] : netTerms[i]).map((t): [string, string] => [t.part.uid, t.name]), (part, pin) => nl.netOf.get(nodeKey(part, pin))))
   for (const f of pinFound)
     add({ rule: f.rule, subject: f.subject, target: f.target, message: f.message, parts: f.parts.filter((u) => partByUid.has(u)), pins: f.pins, wires: [...new Set(f.nets.flatMap((i) => netWires[i] ?? []))], causes: f.causes })
 

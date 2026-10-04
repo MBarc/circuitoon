@@ -134,6 +134,19 @@ function reacher(d: Diagram, links: UsbLink[]): (p: Port) => Port | null {
 }
 
 /**
+ * The host side and device side of two linked ports, or null when that is not clear (two dual
+ * ports, a role error): a dual port hosts a device and is a device to a host.
+ */
+export function usbSides(p: Port, q: Port): [Port, Port] | null {
+  const [a, b] = [p.usb.role, q.usb.role]
+  if (a === 'host' && (b === 'device' || b === 'dual')) return [p, q]
+  if (b === 'host' && (a === 'device' || a === 'dual')) return [q, p]
+  if (a === 'dual' && b === 'device') return [p, q]
+  if (b === 'dual' && a === 'device') return [q, p]
+  return null
+}
+
+/**
  * Who USB powers. `fed`: parts a link powers (a device or charge-only port with a link, or a dual
  * port whose far end is a host or a hub's downstream port): never "no power". `hosting`: parts not
  * fed whose dual port hosts a device, so that port powers nothing on them.
@@ -149,9 +162,10 @@ export function usbPower(d: Diagram): { fed: Set<string>; hosting: Set<string>; 
     for (const p of [l.from, l.to]) {
       if (p.usb.role !== 'device' && p.usb.role !== 'dual') continue
       const q = reach(p)
-      if (q?.usb.role === 'host') hosted.push({ port: p, host: q })
-      if (p.usb.role === 'device' || q?.usb.role === 'host') fed.add(p.part.uid)
-      else if (q?.usb.role === 'device') hosting.add(p.part.uid)
+      const s = q && usbSides(p, q)
+      if (s?.[1] === p) hosted.push({ port: p, host: s[0] })
+      if (p.usb.role === 'device' || s?.[1] === p) fed.add(p.part.uid)
+      else if (s?.[0] === p) hosting.add(p.part.uid)
     }
   for (const u of fed) hosting.delete(u)
   return { fed, hosting, hosted }
@@ -182,8 +196,11 @@ function nodeWords(d: Diagram, key: string): string {
   return `${part.designator} ${pinLabel(m, pin)}`
 }
 
-/** Every USB finding on the sheet. `nl` is the sheet's netlist; `netWires` its wires per net. */
-export function usbFindings(d: Diagram, nl: Netlist, netWires: string[][]): UsbDraft[] {
+/**
+ * Every USB finding on the sheet. `nl` is the sheet's netlist; `netWires` its wires per net; `dcFed`
+ * whether a part's DC input pin has a suitable supply and its return (a hub's own power).
+ */
+export function usbFindings(d: Diagram, nl: Netlist, netWires: string[][], dcFed: (part: string, pin: string) => boolean): UsbDraft[] {
   const out: UsbDraft[] = []
   const portByKey = portIndex(d)
   if (!portByKey.size) return out
@@ -303,10 +320,8 @@ export function usbFindings(d: Diagram, nl: Netlist, netWires: string[][]): UsbD
     if (!h) return false
     if (h.power === 'self') return true
     if (h.power === 'bus') return false
-    // Self-powered when its DC input pin is wired to something.
-    const k = nodeKey(p.part.uid, h.power.pin)
-    const i = nl.netOf.get(k)
-    return i !== undefined && nl.nets[i].length > 1
+    // Self-powered only when a supply and its return reach its DC input: a bare or signal wire is not one.
+    return dcFed(p.part.uid, h.power.pin)
   }
   const downstreamOf = (p: Port): Port[] => usbPorts(p.module).filter((q) => q.usb.hub === 'downstream').map((q) => portOf(d, { part: p.part.uid, pin: q.name })!)
   const demand = (dev: Port, depth = 0): Demand => {
@@ -331,18 +346,9 @@ export function usbFindings(d: Diagram, nl: Netlist, netWires: string[][]): UsbD
     if (h.usb.source !== undefined) return h.usb.source
     return h.usb.role === 'host' && h.usb.version ? DEFAULT_SOURCE[h.usb.version] : null
   }
-  /** The host side and device side of a pair, or null when that is not clear (two dual ports, a role error). */
-  const sides = ([p, q]: [Port, Port]): [Port, Port] | null => {
-    const [a, b] = [p.usb.role, q.usb.role]
-    if (a === 'host' && (b === 'device' || b === 'dual')) return [p, q]
-    if (b === 'host' && (a === 'device' || a === 'dual')) return [q, p]
-    if (a === 'dual' && b === 'device') return [p, q]
-    if (b === 'dual' && a === 'device') return [q, p]
-    return null
-  }
   const asked = new Map<string, { host: Port; dev: Port; demand: Demand }>()
   for (const pair of pairs) {
-    const s = sides(pair)
+    const s = usbSides(...pair)
     if (s) asked.set(s[0].key, { host: s[0], dev: s[1], demand: demand(s[1]) })
   }
   const names = (ps: Port[]) => {

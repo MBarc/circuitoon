@@ -95,6 +95,16 @@ describe('netlist "label"', () => {
     expect(r.ok).toBe(false)
     if (!r.ok) expect(r.errors.join()).toMatch(/nets\[0\]\.label: net LIVE joins mains terminal E1 L; mains is always drawn as wires/)
   })
+  it('refuses a label on a net with a USB port', () => {
+    const raw = {
+      format: 'circuitoon-netlist/1', title: 'ESP32 on a Pi',
+      parts: [{ ref: 'U1', module: 'rpi-4-model-b' }, { ref: 'U2', module: 'esp32-devkitc-v4' }],
+      nets: [{ name: 'USB', pins: ['U1.USB2-1', 'U2.USB'], label: true }],
+    }
+    const r = parseNetlist(raw, libraryLookup)
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.errors.join()).toMatch(/nets\[0\]\.label: net USB joins USB port U1 USB2-1; USB is always drawn as a cable or a plug-in, never as labels/)
+  })
   it('refuses net-label parts in the parts list (the layout places labels)', () => {
     const raw = intent()
     raw.parts.push({ ref: 'NL1', module: 'net-label' })

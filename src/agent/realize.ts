@@ -57,7 +57,7 @@ export interface Realization {
 export interface RealizeOptions {
   /**
    * Which nets get net labels (default none: only the nets that ask, `"label": true`; Ruling W1).
-   * A mains net or one with local strips never does.
+   * A mains or USB net, or one with local strips, never does.
    */
   labels?: LabelMode
   /** The net-label module; without it no net is labelled. */
@@ -410,7 +410,8 @@ export function realize(intent: Intent, d: Diagram, locals: LocalDistribution[] 
   const groupOfRef = new Map<string, string>()
   for (const g of intent.groups) for (const r of g.refs) groupOfRef.set(r, `group ${g.name}`)
   for (const c of intent.copies) for (const r of c.refs) groupOfRef.set(r, `copy ${c.id}`)
-  const mainsNet = (n: IntentNet) => n.terminals.some((t) => mainsOf(modOf(t.ref)).terminals.has(t.name))
+  // Mains and USB are never labelled: each is drawn as its real cable (or a plug-in), so it can be checked.
+  const cableNet = (n: IntentNet) => n.terminals.some((t) => mainsOf(modOf(t.ref)).terminals.has(t.name) || !!usbOf(modOf(t.ref), t.name))
   /** Whether a net is drawn with labels, from its endpoints (each node's first pin, and the net's strips as one). */
   const wants = (net: IntentNet, kind: NetKind, ends: { at: Pt; group: string | undefined }[]) =>
     ends.length >= 2 && (!!net.label || mode === 'all' || (mode === 'auto' && autoLabels({ kind, ends })))
@@ -438,7 +439,7 @@ export function realize(intent: Intent, d: Diagram, locals: LocalDistribution[] 
   if (placer) {
     const byPart = new Map<string, { key: string; name: string; at: Pt; dir: Pt | null }[]>()
     intent.nets.forEach((net, ni) => {
-      if (locals.some((l) => l.net === ni) || mainsNet(net)) return
+      if (locals.some((l) => l.net === ni) || cableNet(net)) return
       const { heads, strip } = shapeOf(net)
       const ends = [...heads.map((t) => ({ at: pointOf(pinEnd(t)), group: groupOfRef.get(t.ref) })), ...(strip ? [{ at: strip.holes[0], group: groupOfRef.get(strip.board) }] : [])]
       if (!wants(net, kindOf(net), ends)) return
@@ -495,7 +496,7 @@ export function realize(intent: Intent, d: Diagram, locals: LocalDistribution[] 
   }
 
   const labelNet = (ni: number, net: IntentNet, kind: NetKind, nodes: Node[], dps: Strip[], local: boolean): boolean => {
-    if (!placer || local || mainsNet(net)) return false
+    if (!placer || local || cableNet(net)) return false
     const head = (n: Node) => pointOf(pinEnd(n.members[0]))
     const ends = [
       ...nodes.map((n) => ({ at: head(n), group: groupOfRef.get(n.members[0].ref) })),

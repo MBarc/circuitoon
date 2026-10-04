@@ -116,15 +116,27 @@ describe('USB rules on library parts', () => {
       'warning usb-power: J1 USB supplies 500 mA, but H1 UP and the devices on its hub draw 540 mA, and more where the draw is unknown. The port can shut down or brown out. Use a powered hub, or a supply for H1.',
     ])
   })
-  it('the same tree with the hub on its own 5 V adapter: quiet', () => {
-    const d = sheet([['J1', 'computer-usb-port'], ['H1', 'usb-hub-powered-4port'], ['U1', 'rtl-sdr-blog-v4'], ['U2', 'rtl-sdr-blog-v4'], ['PS1', 'adapter-barrel-us']],
+  it('the same tree with the hub on its own 4.5 V pack: quiet', () => {
+    const d = sheet([['J1', 'computer-usb-port'], ['H1', 'usb-hub-powered-4port'], ['U1', 'rtl-sdr-blog-v4'], ['U2', 'rtl-sdr-blog-v4'], ['PS1', 'battery-holder-3xaaa']],
       [['j1|USB', 'h1|UP', { from: 'usb-a', to: 'usb-b' }], ['h1|P1', 'u1|USB'], ['h1|P2', 'u2|USB'], ['ps1|+', 'h1|DC+'], ['ps1|-', 'h1|DC-']])
     expect(usb(d).filter((f) => !f.startsWith('info'))).toEqual([])
+  })
+  it('an adapter with no mains input supplies nothing: the hub stays bus-powered', () => {
+    const d = sheet([['J1', 'computer-usb-port'], ['H1', 'usb-hub-powered-4port'], ['U1', 'rtl-sdr-blog-v4'], ['PS1', 'adapter-barrel-us']],
+      [['j1|USB', 'h1|UP', { from: 'usb-a', to: 'usb-b' }], ['h1|P1', 'u1|USB'], ['ps1|+', 'h1|DC+'], ['ps1|-', 'h1|DC-']])
+    expect(usb(d).filter((f) => !f.startsWith('info')).map((f) => f.split(':')[0])).toEqual(['warning usb-hub-bus-power'])
   })
   it('the FE1.1s with its 5V pad unwired is bus-powered: its stated 500 mA ports give 100 mA', () => {
     const d = sheet([['J1', 'computer-usb-port'], ['H1', 'usb-hub-fe11s-circuitneato'], ['U1', 'rtl-sdr-blog-v4']],
       [['j1|USB', 'h1|USB-C', { from: 'usb-a', to: 'usb-c' }], ['h1|P1', 'u1|USB']])
     expect(usb(d)).toEqual([
+      'warning usb-hub-bus-power: H1 is a bus-powered hub, so H1 1 gives at most 100 mA, but U1 USB draws 270 mA. Power the hub from its own supply, or plug U1 into the host directly.',
+    ])
+  })
+  it('the FE1.1s with its 5V pad on an ESP32\'s RX is still bus-powered', () => {
+    const d = sheet([['J1', 'computer-usb-port'], ['H1', 'usb-hub-fe11s-circuitneato'], ['U1', 'rtl-sdr-blog-v4'], ['U2', 'esp32-devkitc-v4']],
+      [['j1|USB', 'h1|USB-C', { from: 'usb-a', to: 'usb-c' }], ['h1|P1', 'u1|USB'], ['h1|5V', 'u2|RX']])
+    expect(usb(d).filter((f) => f.includes('usb-hub-bus-power'))).toEqual([
       'warning usb-hub-bus-power: H1 is a bus-powered hub, so H1 1 gives at most 100 mA, but U1 USB draws 270 mA. Power the hub from its own supply, or plug U1 into the host directly.',
     ])
   })
@@ -167,6 +179,13 @@ describe('USB rules on library parts', () => {
     const d = sheet([['J1', 'computer-usb-port'], ['U1', 'tp4056-module'], ['BT1', 'battery-holder-3xaaa']],
       [['j1|USB', 'u1|USB-C', { from: 'usb-a', to: 'usb-c' }], ['bt1|+', 'u1|IN+'], ['bt1|-', 'u1|IN-']])
     expect(usb(d).filter((f) => /backfeed/.test(f)).map((f) => f.split(':')[0])).toEqual(['warning usb-backfeed'])
+  })
+  it('VBUS back-feed from a dual-role host: a powered Pico hosting a TP4056 whose IN+ is fed', () => {
+    const d = sheet([['U1', 'rpi-pico'], ['BT1', 'battery-holder-3xaaa'], ['U2', 'tp4056-module'], ['BT2', 'battery-holder-3xaaa']],
+      [['u1|USB', 'u2|USB-C', { from: 'usb-micro-b', to: 'usb-c' }], ['bt1|+', 'u1|VBUS'], ['bt1|-', 'u1|GND'], ['bt2|+', 'u2|IN+'], ['bt2|-', 'u2|IN-']])
+    expect(usb(d).filter((f) => /backfeed/.test(f))).toEqual([
+      'warning usb-backfeed: U2 IN+ is wired to BT2 +, and it is also U2 USB-C\'s VBUS while U1 USB powers that port: the supply drives current back into the host\'s USB port, or the host into the supply. Power U2 from one of them: unplug the cable or remove the supply.',
+    ])
   })
   it('VBUS back-feed behind a diode (DevKitC 5V) is a note, not a warning', () => {
     const d = sheet([['J1', 'computer-usb-port'], ['U1', 'esp32-devkitc-v4'], ['BT1', 'battery-holder-3xaaa']],

@@ -48,7 +48,7 @@ The part fields:
 Net labels (`"label": true` on a net):
 
 - A net label is a named flag at a pin. Every label with the same name is one connection, exactly as if wired, so a long or many-ended net (GND, 5V, SDA, SCL) stays readable. Names match after trimming spaces and are case-sensitive: `SDA` and `sda` are two nets.
-- `label` is `true` or `false`; anything else is an error. A net that joins a mains terminal (an outlet contact, a lamp holder, a relay's contacts) never takes a label: mains is always drawn as wires, so the cable checks can see it.
+- `label` is `true` or `false`; anything else is an error. A net that joins a mains terminal (an outlet contact, a lamp holder, a relay's contacts) never takes a label: mains is always drawn as wires, so the cable checks can see it. Nor does a net that joins a USB port: it is always drawn as the USB cable or plug-in it is, in every `--labels` mode.
 - Verify counts a connection made through labels like one made by wires; labels are infrastructure, like `routing` wires, never extra parts. The bill of materials leaves them out.
 - The layout draws a labelled net as one label per endpoint (the pins of one repeat copy share one), each joined by a short `routing` stub; an endpoint with no room for its label is wired to the nearest label of the net. Sheets are drawn with wires by default (`layout --labels none`), so ask for labels only on the nets the user wants them on; `--labels auto` also labels long or many-ended nets on its own, and `--labels all` every net.
 

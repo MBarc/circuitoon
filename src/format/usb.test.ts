@@ -81,6 +81,11 @@ describe('correct USB hookups give no USB problem', () => {
     expect(usbFindings(sheet([['J1', 'pc'], ['U1', 'sdr']], [['j1|USB1', 'u1|USB']]))).toEqual([])
     expect(usbFindings(sheet([['U1', 'otg'], ['U2', 'disk']], [['u1|USB', 'u2|USB', { from: 'usb-c', to: 'usb-micro-b' }]]))).toEqual([])
   })
+  it('a dual port hosting a device powers it, as a host port does (for back-feed)', () => {
+    const p = usbPower(sheet([['U1', 'otg'], ['U2', 'disk']], [['u1|USB', 'u2|USB', { from: 'usb-c', to: 'usb-micro-b' }]]))
+    expect(p.hosted.map((h) => `${h.host.title} powers ${h.port.title}`)).toEqual(['U1 USB powers U2 USB'])
+    expect([...p.fed, ...p.hosting]).toEqual(['u2', 'u1'])
+  })
   it('a self-powered hub (DC wired) feeding 400 mA per port', () => {
     const d = sheet([['J1', 'pc'], ['H1', 'hub'], ['P1', 'psu'], ['U1', 'disk'], ['U2', 'disk']], [
       ['j1|USB1', 'h1|UP', { from: 'usb-a', to: 'usb-b' }], ['p1|+', 'h1|DC+'], ['p1|-', 'h1|DC-'],
@@ -104,6 +109,17 @@ describe('usb-to-pin', () => {
     expect(usbFindings(sheet([['U1', 'mcu'], ['U2', 'mcu']], [['u1|USB', 'u2|IO5']]))).toEqual([
       'usb-to-pin: U1 USB is a USB port, and it is wired to U2 IO5. A USB port connects only to another USB port, by a USB cable or by plugging in: never by jumper wires to pins, which skip the cable\'s shielding and twisted pair and can short VBUS. Remove the wire and connect U1 USB to a USB port.',
     ])
+  })
+  it('a short among the other pins on that net is still a short', () => {
+    // P1 + wired to its own -, and a USB port wired onto that net.
+    const d = sheet([['P1', 'psu'], ['U1', 'mcu']], [['p1|+', 'p1|-'], ['u1|USB', 'p1|+']])
+    expect(checkDiagram(d).map((f) => f.rule)).toEqual(['short', 'usb-to-pin'])
+    // The same short through a part's internal join (J1 A and B are one conductor).
+    const j = { format: 'circuitoon-module/1', id: 'jumper', name: 'jumper', pins: [{ name: 'A', side: 'left', type: 'passive' }, { name: 'B', side: 'right', type: 'passive' }], internal: [['A', 'B']] }
+    const r = validateModule(j)
+    if (!r.ok) throw new Error(r.errors.join('; '))
+    const via = sheet([['P1', 'psu'], ['J1', 'jumper'], ['U1', 'mcu']], [['p1|+', 'j1|A'], ['j1|B', 'p1|-'], ['u1|USB', 'j1|A']])
+    expect(checkDiagram({ ...via, modules: { ...via.modules, jumper: r.module } }).map((f) => f.rule)).toEqual(['short', 'usb-to-pin'])
   })
   it('stays quiet on port-to-port links', () => {
     expect(usbRules(sheet([['J1', 'pc'], ['U1', 'disk']], [['j1|USB1', 'u1|USB', A_MICRO]]))).toEqual([])
@@ -182,6 +198,29 @@ describe('power budget', () => {
       ['j1|USB1', 'h1|UP', { from: 'usb-a', to: 'usb-b' }], ['p1|+', 'h1|DC+'], ['p1|-', 'h1|DC-'], ['h1|P1', 'u1|USB', A_MICRO],
     ])
     expect(checkDiagram(d).filter((f) => f.rule.startsWith('usb')).map((f) => `${f.severity} ${f.rule} ${f.target}`)).toEqual(['info usb-power-unknown H1 P1'])
+  })
+})
+
+describe('a hub is self-powered only by a supply and its return on the DC input', () => {
+  // J1 -> H1 -> H2 -> a 400 mA disk; each hub's own 50 mA.
+  const chain = (extra: [string, string][], wires: W[]) => sheet([['J1', 'pc'], ['H1', 'hub'], ['H2', 'hub'], ['U1', 'disk'], ...extra], [
+    ['j1|USB1', 'h1|UP', { from: 'usb-a', to: 'usb-b' }], ['h1|P1', 'h2|UP', { from: 'usb-a', to: 'usb-b' }], ['h2|P1', 'u1|USB', A_MICRO], ...wires,
+  ])
+  const BUS = [
+    'usb-hub-bus-power: H1 is a bus-powered hub, so H1 P1 gives at most 100 mA, but H2 UP draws 450 mA. Power the hub from its own supply, or plug H2 into the host directly.',
+    'usb-hub-bus-power: H2 is a bus-powered hub, so H2 P1 gives at most 100 mA, but U1 USB draws 400 mA. Power the hub from its own supply, or plug U1 into the host directly.',
+  ]
+  it("floating inputs: two hubs' DC inputs wired only to each other", () => {
+    expect(usbFindings(chain([], [['h1|DC+', 'h2|DC+'], ['h1|DC-', 'h2|DC-']]))).toEqual(BUS)
+  })
+  it('a signal pin on the DC input is no supply', () => {
+    expect(usbFindings(chain([['U2', 'mcu']], [['h1|DC+', 'u2|IO5'], ['h2|DC+', 'u2|IO5']]))).toEqual(BUS)
+  })
+  it("a supply with no return to the hub's ground is no supply", () => {
+    expect(usbFindings(chain([['P1', 'psu']], [['p1|+', 'h1|DC+'], ['p1|+', 'h2|DC+']]))).toEqual(BUS)
+  })
+  it('mixed: H1 on its own supply, H2 bus-powered from it', () => {
+    expect(usbFindings(chain([['P1', 'psu']], [['p1|+', 'h1|DC+'], ['p1|-', 'h1|DC-']]))).toEqual([BUS[1]])
   })
 })
 

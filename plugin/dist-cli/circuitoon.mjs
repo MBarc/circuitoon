@@ -66142,6 +66142,18 @@ function reacher(d, links) {
 	};
 }
 /**
+* The host side and device side of two linked ports, or null when that is not clear (two dual
+* ports, a role error): a dual port hosts a device and is a device to a host.
+*/
+function usbSides(p, q) {
+	const [a, b] = [p.usb.role, q.usb.role];
+	if (a === "host" && (b === "device" || b === "dual")) return [p, q];
+	if (b === "host" && (a === "device" || a === "dual")) return [q, p];
+	if (a === "dual" && b === "device") return [p, q];
+	if (b === "dual" && a === "device") return [q, p];
+	return null;
+}
+/**
 * Who USB powers. `fed`: parts a link powers (a device or charge-only port with a link, or a dual
 * port whose far end is a host or a hub's downstream port): never "no power". `hosting`: parts not
 * fed whose dual port hosts a device, so that port powers nothing on them.
@@ -66156,12 +66168,13 @@ function usbPower(d) {
 	for (const l of links) for (const p of [l.from, l.to]) {
 		if (p.usb.role !== "device" && p.usb.role !== "dual") continue;
 		const q = reach(p);
-		if (q?.usb.role === "host") hosted.push({
+		const s = q && usbSides(p, q);
+		if (s?.[1] === p) hosted.push({
 			port: p,
-			host: q
+			host: s[0]
 		});
-		if (p.usb.role === "device" || q?.usb.role === "host") fed.add(p.part.uid);
-		else if (q?.usb.role === "device") hosting.add(p.part.uid);
+		if (p.usb.role === "device" || s?.[1] === p) fed.add(p.part.uid);
+		else if (s?.[0] === p) hosting.add(p.part.uid);
 	}
 	for (const u of fed) hosting.delete(u);
 	return {
@@ -66184,8 +66197,11 @@ function nodeWords(d, key) {
 	if (isNetLabel(m)) return labelName(part) ? `label ${labelName(part)}` : `${part.designator} (unnamed label)`;
 	return `${part.designator} ${pinLabel$1(m, pin)}`;
 }
-/** Every USB finding on the sheet. `nl` is the sheet's netlist; `netWires` its wires per net. */
-function usbFindings(d, nl, netWires) {
+/**
+* Every USB finding on the sheet. `nl` is the sheet's netlist; `netWires` its wires per net; `dcFed`
+* whether a part's DC input pin has a suitable supply and its return (a hub's own power).
+*/
+function usbFindings(d, nl, netWires, dcFed) {
 	const out = [];
 	const portByKey = portIndex(d);
 	if (!portByKey.size) return out;
@@ -66314,9 +66330,7 @@ function usbFindings(d, nl, netWires) {
 		if (!h) return false;
 		if (h.power === "self") return true;
 		if (h.power === "bus") return false;
-		const k = nodeKey(p.part.uid, h.power.pin);
-		const i = nl.netOf.get(k);
-		return i !== void 0 && nl.nets[i].length > 1;
+		return dcFed(p.part.uid, h.power.pin);
 	};
 	const downstreamOf = (p) => usbPorts(p.module).filter((q) => q.usb.hub === "downstream").map((q) => portOf(d, {
 		part: p.part.uid,
@@ -66348,18 +66362,9 @@ function usbFindings(d, nl, netWires) {
 		if (h.usb.source !== void 0) return h.usb.source;
 		return h.usb.role === "host" && h.usb.version ? DEFAULT_SOURCE[h.usb.version] : null;
 	};
-	/** The host side and device side of a pair, or null when that is not clear (two dual ports, a role error). */
-	const sides = ([p, q]) => {
-		const [a, b] = [p.usb.role, q.usb.role];
-		if (a === "host" && (b === "device" || b === "dual")) return [p, q];
-		if (b === "host" && (a === "device" || a === "dual")) return [q, p];
-		if (a === "dual" && b === "device") return [p, q];
-		if (b === "dual" && a === "device") return [q, p];
-		return null;
-	};
 	const asked = /* @__PURE__ */ new Map();
 	for (const pair of pairs) {
-		const s = sides(pair);
+		const s = usbSides(...pair);
 		if (s) asked.set(s[0].key, {
 			host: s[0],
 			dev: s[1],
@@ -66635,6 +66640,10 @@ var TYPE_WORDS = {
 };
 /** One line on what a pin does: its type and supply, its caps, its I2C role, its note. */
 function pinDoes(e) {
+	const text = pinWords$1(e);
+	return e.caps?.note ? `${text}. ${e.caps.note}` : text;
+}
+function pinWords$1(e) {
 	const usb = e.type === "usb" ? usbOf(e.part.module, e.pin) : void 0;
 	if (usb) return usbWords(usb);
 	const i2c = i2cOf(e.part.module);
@@ -66644,8 +66653,7 @@ function pinDoes(e) {
 	const a = i2c?.address;
 	if (a && "pins" in a && a.pins.some((p) => p.pin === e.pin)) parts.push("I2C address pin");
 	parts.push(...capsText(e.caps));
-	const text = parts.join(", ");
-	return e.caps?.note ? `${text}. ${e.caps.note}` : text;
+	return parts.join(", ");
 }
 /** Every I2C bus: a pair of SDA and SCL nets that a declared I2C device sits on. In part order. */
 function i2cBuses(pm, parts = pm.parts) {
@@ -71271,10 +71279,21 @@ var mayFeed = (t) => !t.bare && (t.type === void 0 || t.type === "passive" || is
 * is a wiring mistake whatever the input. Only an unpowered converter's outputs drive nothing.
 */
 var drives = (t) => t.type === "power_out" && t.dead !== "unpowered" || t.info.external.has(t.name);
+/** The first wire between each pair of node keys, both ways round, built once per connection list. */
+var wirePairs = /* @__PURE__ */ new WeakMap();
 /** The wire that joins two terminals directly, if one does. */
 function wireBetween(d, a, b) {
-	const is = (ep, t) => ep.part === t.part.uid && ep.pin === t.name;
-	return d.connections.find((c) => is(c.from, a) && is(c.to, b) || is(c.from, b) && is(c.to, a));
+	let pairs = wirePairs.get(d.connections);
+	if (!pairs) {
+		pairs = /* @__PURE__ */ new Map();
+		for (const c of d.connections) {
+			const [x, y] = [nodeKey(c.from.part, c.from.pin), nodeKey(c.to.part, c.to.pin)];
+			if (!pairs.has(x + y)) pairs.set(x + y, c);
+			if (!pairs.has(y + x)) pairs.set(y + x, c);
+		}
+		wirePairs.set(d.connections, pairs);
+	}
+	return pairs.get(a.key + b.key);
 }
 /** "Remove the wire from A to B." (in the order the wire was drawn) when one joins them directly, else the fallback. */
 var removeWire = (d, a, b, fallback) => {
@@ -71494,10 +71513,12 @@ function checkDiagram(d) {
 		if (i !== void 0) netWires[i].push(c.uid);
 	}
 	const isUsb = (t) => t?.type === "usb";
-	const netTerms = nl.nets.map((keys) => {
+	const usbNets = /* @__PURE__ */ new Set();
+	const netTerms = nl.nets.map((keys, i) => {
 		if (keys.some(hazardous)) return [];
 		const terms = keys.map(terminal);
-		return terms.some(isUsb) ? [] : terms.filter((t) => t !== null);
+		if (terms.some(isUsb)) usbNets.add(i);
+		return terms.filter((t) => t !== null && !isUsb(t));
 	});
 	const usbGrounds = [];
 	const usbGrounded = /* @__PURE__ */ new Set();
@@ -71942,7 +71963,19 @@ function checkDiagram(d) {
 		});
 	}
 	for (const f of mains?.findings ?? []) add(f);
-	if (usbAny) for (const f of usbFindings(d, nl, netWires)) add(f);
+	const dcFed = (uid, pin) => {
+		const t = terminal(nodeKey(uid, pin));
+		const i = t ? nl.netOf.get(t.key) : void 0;
+		if (!t || i === void 0) return false;
+		const rails = knownRails(t.supply);
+		const grounds = new Set(t.info.grounds.map((g) => nl.netOf.get(nodeKey(uid, g))).filter((x) => x !== void 0));
+		return netTerms[i].some((o) => {
+			const s = o.part === t.part ? null : sourceOf(o);
+			if (!s || s.v === null || rails && (s.v > Math.max(...rails) + EPS || s.v < LOW_TOLERANCE * Math.min(...rails) - EPS)) return false;
+			return o.info.returnGrounds(o.name).some((g) => grounds.has(nl.netOf.get(nodeKey(o.part.uid, g))));
+		});
+	};
+	if (usbAny) for (const f of usbFindings(d, nl, netWires, dcFed)) add(f);
 	const pinFound = !d.parts.some((p) => {
 		const m = moduleOf(d, p.module);
 		return !!m && hasPinData(m);
@@ -71954,7 +71987,7 @@ function checkDiagram(d) {
 			module: m,
 			settings: p.settings
 		}] : [];
-	}), nl.nets.length, (i) => netTerms[i].map((t) => [t.part.uid, t.name]), (part, pin) => nl.netOf.get(nodeKey(part, pin))));
+	}), nl.nets.length, (i) => (usbNets.has(i) ? [] : netTerms[i]).map((t) => [t.part.uid, t.name]), (part, pin) => nl.netOf.get(nodeKey(part, pin))));
 	for (const f of pinFound) add({
 		rule: f.rule,
 		subject: f.subject,
@@ -84339,10 +84372,18 @@ function parseNetlist(raw, library) {
 					const m = byRef.get(t.ref)?.module;
 					return !!m && mainsOf(m).terminals.has(t.name);
 				});
+				const usb = terminals.find((t) => {
+					const m = byRef.get(t.ref)?.module;
+					return !!m && !!usbOf(m, t.name);
+				});
 				if (hot) errors.push(`${at}.label: net ${name} joins mains terminal ${terminalName({
 					...hot,
 					hole: void 0
 				})}; mains is always drawn as wires, never as labels`);
+				else if (usb) errors.push(`${at}.label: net ${name} joins USB port ${terminalName({
+					...usb,
+					hole: void 0
+				})}; USB is always drawn as a cable or a plug-in, never as labels`);
 				else labelled = true;
 			}
 		}
@@ -86898,7 +86939,7 @@ function realize(intent, d, locals = [], opts = {}) {
 	const groupOfRef = /* @__PURE__ */ new Map();
 	for (const g of intent.groups) for (const r of g.refs) groupOfRef.set(r, `group ${g.name}`);
 	for (const c of intent.copies) for (const r of c.refs) groupOfRef.set(r, `copy ${c.id}`);
-	const mainsNet = (n) => n.terminals.some((t) => mainsOf(modOf(t.ref)).terminals.has(t.name));
+	const cableNet = (n) => n.terminals.some((t) => mainsOf(modOf(t.ref)).terminals.has(t.name) || !!usbOf(modOf(t.ref), t.name));
 	/** Whether a net is drawn with labels, from its endpoints (each node's first pin, and the net's strips as one). */
 	const wants = (net, kind, ends) => ends.length >= 2 && (!!net.label || mode === "all" || mode === "auto" && autoLabels({
 		kind,
@@ -86926,7 +86967,7 @@ function realize(intent, d, locals = [], opts = {}) {
 	if (placer) {
 		const byPart = /* @__PURE__ */ new Map();
 		intent.nets.forEach((net, ni) => {
-			if (locals.some((l) => l.net === ni) || mainsNet(net)) return;
+			if (locals.some((l) => l.net === ni) || cableNet(net)) return;
 			const { heads, strip } = shapeOf(net);
 			const ends = [...heads.map((t) => ({
 				at: pointOf(pinEnd(t)),
@@ -87017,7 +87058,7 @@ function realize(intent, d, locals = [], opts = {}) {
 		}
 	}
 	const labelNet = (ni, net, kind, nodes, dps, local) => {
-		if (!placer || local || mainsNet(net)) return false;
+		if (!placer || local || cableNet(net)) return false;
 		const head = (n) => pointOf(pinEnd(n.members[0]));
 		const ends = [...nodes.map((n) => ({
 			at: head(n),
