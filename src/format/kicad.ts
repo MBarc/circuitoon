@@ -347,10 +347,15 @@ export function writeKicad(src: KicadSource, opts: KicadOptions = {}): KicadExpo
       seen.add(id)
       nodes.push(at)
     }
-    // A net needs pads on two parts to join anything, unless it carries a name someone gave it: a
-    // part's own internal join (an ESP32's two GND pins, wired to nothing else) is the part's business.
-    const parts = new Set(pins.map((p) => p.ref))
-    if (!nodes.length || (parts.size < 2 && net.name === undefined)) continue
+    // An unnamed net is left out only when it joins nothing on the board: a single pad, or pads of one
+    // footprint that the part joins inside itself (a tactile switch's leg pair, a terminal block's
+    // wire and board sides). Two pads of one part that the part does not join (a jumper across a
+    // terminal block) and pads on two footprints of one part (an ESP32's left and right strips) are
+    // real traces.
+    const footprints = new Set(nodes.map((n) => n.comp))
+    const names = [...new Set(pins.map((p) => p.name))]
+    const internalOnly = footprints.size === 1 && (pins[0]?.m.internal ?? []).some((g) => names.every((n) => g.includes(n)))
+    if (!nodes.length || (net.name === undefined && (nodes.length < 2 || internalOnly))) continue
     pins.sort((a, b) => natural(a.ref, b.ref) || natural(a.name, b.name))
     built.push({ nodes, pins, ...(net.name !== undefined ? { label: net.name } : {}) })
   }

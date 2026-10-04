@@ -15,7 +15,7 @@ import { parseNetlist } from '../agent/netlist.ts'
 import { libraryLookup } from '../agent/catalog.ts'
 
 const lib = (id: string) => libraryLookup(id)
-const MODS = ['resistor', 'led', 'battery-9v', 'breadboard-mini', 'net-label', 'esp32-devkit-v1-30', 'outlet-schuko-cee7-3', 'tactile-switch-6mm-4pin']
+const MODS = ['resistor', 'led', 'battery-9v', 'breadboard-mini', 'net-label', 'esp32-devkit-v1-30', 'outlet-schuko-cee7-3', 'tactile-switch-6mm-4pin', 'terminal-block-mstb-508-2']
 const modules: Record<string, ModuleDef> = Object.fromEntries(MODS.map((id) => [id, load(id)]))
 let seq = 0
 const part = (uid: string, designator: string, module: string, extra: Partial<PartInstance> = {}): PartInstance => ({ uid, designator, module, x: (seq++ % 6) * 120, y: Math.floor(seq / 6) * 160, ...extra })
@@ -91,6 +91,28 @@ describe('KiCad netlist text', () => {
     expect(n.nets.find((net) => net.name === 'GND')!.nodes.map((x) => `${x.ref}.${x.pin}.${x.pinfunction}`)).toEqual(['R1.2.2', 'U1A.14.GND', 'U1B.14.GND 2'])
     expect(n.nets.find((net) => net.name === 'U1_D23')!.nodes.map((x) => `${x.ref}.${x.pin}`)).toEqual(['R1.1', 'U1B.1'])
     expect(x.notes).toEqual(["U1: Each header is its own socket strip: place them at the board's real row spacing."])
+  })
+
+  it('keeps a wire between two pins of one part: a jumper across a terminal block, a link between two strips of a board', () => {
+    const d = sheet(
+      [part('t', 'X1', 'terminal-block-mstb-508-2'), part('u', 'U1', 'esp32-devkit-v1-30')],
+      [wire('w1', ['t', '1'], ['t', '2']), wire('w2', ['u', 'D4'], ['u', 'D23']), wire('w3', ['u', 'D13'], ['u', 'D5'])],
+    )
+    const n = checkKicadNetlist(toKicadNetlist(d, { library: lib }).text)
+    const nets = n.nets.map((net) => net.nodes.map((x) => `${x.ref}.${x.pin}`))
+    expect(nets).toContainEqual(['X1.1', 'X1.2'])
+    // D4 and D23 are both on the right strip; D13 is on the left one.
+    expect(nets).toContainEqual(['U1B.1', 'U1B.11'])
+    expect(nets).toContainEqual(['U1A.13', 'U1B.8'])
+    // The board's own GND join spans its two strips, so it is a trace too; a terminal block's wire
+    // and board sides ("1" and "1 pcb") share one pad and make no net of their own.
+    expect(nets).toContainEqual(['U1A.14', 'U1B.14'])
+    expect(nets).toHaveLength(4)
+  })
+
+  it('leaves out a net that is only a part joining its own pins on one footprint', () => {
+    const d = sheet([part('s', 'SW1', 'tactile-switch-6mm-4pin'), part('t', 'X1', 'terminal-block-mstb-508-2')], [wire('w1', ['s', '1'], ['s', '2']), wire('w2', ['t', '1'], ['t', '1 pcb'])])
+    expect(checkKicadNetlist(toKicadNetlist(d, { library: lib }).text).nets).toEqual([])
   })
 
   it('gives a part without a mapping a generic pin header and a warning', () => {

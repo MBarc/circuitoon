@@ -90,6 +90,36 @@ describe('the KiCad mapping of the built-in parts', () => {
     pads('dht22-bare', { VCC: '1', DATA: '2', NC: '3', GND: '4' })
   })
 
+  it('numbers every pad of the strips of the key boards in physical order', () => {
+    // Written out from the makers' pinouts (DOIT DevKit V1, Espressif DevKitC V4 J2/J3, the CJMCU-2317's
+    // three rows seen from the chip side, the 4.0" ST7796S module's header and SD header), not
+    // derived from the modules, so a swap in a module or the mapping fails here.
+    const strips: Record<string, string[][]> = {
+      'esp32-devkit-v1-30': [
+        ['EN', 'VP', 'VN', 'D34', 'D35', 'D32', 'D33', 'D25', 'D26', 'D27', 'D14', 'D12', 'D13', 'GND', 'VIN'],
+        ['D23', 'D22', 'TX0', 'RX0', 'D21', 'D19', 'D18', 'D5', 'TX2', 'RX2', 'D4', 'D2', 'D15', 'GND 2', '3V3'],
+      ],
+      'esp32-devkitc-v4': [
+        ['3V3', 'EN', 'VP', 'VN', 'IO34', 'IO35', 'IO32', 'IO33', 'IO25', 'IO26', 'IO27', 'IO14', 'IO12', 'GND', 'IO13', 'D2', 'D3', 'CMD', '5V'],
+        ['GND 2', 'IO23', 'IO22', 'TX', 'RX', 'IO21', 'GND 3', 'IO19', 'IO18', 'IO5', 'IO17', 'IO16', 'IO4', 'IO0', 'IO2', 'IO15', 'D1', 'D0', 'CLK'],
+      ],
+      'mcp23017-cjmcu-2317': [
+        ['GND', 'INTA', 'GPA0', 'GPA1', 'GPA2', 'GPA3', 'GPA4', 'GPA5', 'GPA6', 'GPA7'],
+        ['VCC', 'INTB', 'GPB0', 'GPB1', 'GPB2', 'GPB3', 'GPB4', 'GPB5', 'GPB6', 'GPB7'],
+        ['A2', 'A1', 'A0', 'RESET', 'NC', 'NC 2', 'SDA', 'SCL', 'GND 2', 'VCC 2'],
+      ],
+      'lcd-st7796s-4in-spi-touch': [
+        ['VCC', 'GND', 'CS', 'RESET', 'DC/RS', 'SDI(MOSI)', 'SCK', 'LED', 'SDO(MISO)', 'T_CLK', 'T_CS', 'T_DIN', 'T_DO', 'T_IRQ'],
+        ['SD_CS', 'SD_MOSI', 'SD_MISO', 'SD_SCK'],
+      ],
+    }
+    for (const [id, rows] of Object.entries(strips)) {
+      const headers = byId(id).kicad!.headers!
+      expect(headers.map((h) => h.pins), id).toEqual(rows.map((row) => Object.fromEntries(row.map((n, i) => [n, String(i + 1)]))))
+      headers.forEach((h, i) => expect(h.footprint, `${id} header ${i}`).toBe(`Connector_PinSocket_2.54mm:PinSocket_1x${String(rows[i].length).padStart(2, '0')}_P2.54mm_Vertical`))
+    }
+  })
+
   it('gives each row of a dev board or breakout its own socket strip, pin 1 its first pin', () => {
     const v1 = byId('esp32-devkit-v1-30').kicad!
     expect(v1.headers!.map((h) => [h.footprint.split(':')[1], Object.keys(h.pins)[0], h.pins.EN ?? h.pins.D23])).toEqual([

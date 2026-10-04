@@ -69089,8 +69089,10 @@ function writeKicad(src, opts = {}) {
 			seen.add(id);
 			nodes.push(at);
 		}
-		const parts = new Set(pins.map((p) => p.ref));
-		if (!nodes.length || parts.size < 2 && net.name === void 0) continue;
+		const footprints = new Set(nodes.map((n) => n.comp));
+		const names = [...new Set(pins.map((p) => p.name))];
+		const internalOnly = footprints.size === 1 && (pins[0]?.m.internal ?? []).some((g) => names.every((n) => g.includes(n)));
+		if (!nodes.length || net.name === void 0 && (nodes.length < 2 || internalOnly)) continue;
 		pins.sort((a, b) => natural(a.ref, b.ref) || natural(a.name, b.name));
 		built.push({
 			nodes,
