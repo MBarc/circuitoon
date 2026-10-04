@@ -244,5 +244,17 @@
         "outline": false
       }
     ]
+  },
+  "kicad": {
+    "footprint": "Connector_PinSocket_2.54mm:PinSocket_1x06_P2.54mm_Vertical",
+    "pins": {
+      "VCC": "1",
+      "GND": "2",
+      "SCL": "3",
+      "SDA": "4",
+      "CSB": "5",
+      "SDO": "6"
+    },
+    "value": "GY-BME280"
   }
 }

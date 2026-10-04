@@ -292,5 +292,34 @@
         "labelSize": 9
       }
     ]
+  },
+  "kicad": {
+    "headers": [
+      {
+        "name": "left header, pin 1 VCC",
+        "footprint": "Connector_PinSocket_2.54mm:PinSocket_1x08_P2.54mm_Vertical",
+        "pins": {
+          "VCC": "1",
+          "GND": "2",
+          "CS": "3",
+          "RESET": "4",
+          "A0": "5",
+          "SDA": "6",
+          "SCK": "7",
+          "LED": "8"
+        }
+      },
+      {
+        "name": "right header, pin 1 SD_CS",
+        "footprint": "Connector_PinSocket_2.54mm:PinSocket_1x04_P2.54mm_Vertical",
+        "pins": {
+          "SD_CS": "1",
+          "SD_MOSI": "2",
+          "SD_MISO": "3",
+          "SD_SCK": "4"
+        }
+      }
+    ],
+    "value": "ST7735 1.8in"
   }
 }

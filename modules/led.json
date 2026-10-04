@@ -94,5 +94,14 @@
         "outline": false
       }
     ]
+  },
+  "kicad": {
+    "symbol": "Device:LED",
+    "footprint": "LED_THT:LED_D5.0mm",
+    "pins": {
+      "K": "1",
+      "A": "2"
+    },
+    "value": "LED"
   }
 }

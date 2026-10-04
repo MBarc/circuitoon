@@ -7,6 +7,7 @@
 // It overwrites those files in modules/ in place; re-run after changing a part's pin list or art,
 // then `git diff` the result before committing. src/format/parts.test.ts pins the order.
 import { emit, finish, log } from './lib/gen-output.mjs'
+import { moduleText } from './lib/kicad.mjs'
 import { fileURLToPath } from 'node:url'
 const OUT = fileURLToPath(new URL('../modules/', import.meta.url))
 
@@ -60,7 +61,7 @@ const mountHoles = (W, H, inset = 5, s = 8) => [
 ].map(([x, y]) => r(x, y, s, s, MOUNT, { radius: s / 2, outline: false }))
 
 function write(file, m) {
-  emit(OUT + file, JSON.stringify(m, null, 2) + '\n')
+  emit(OUT + file, moduleText(m))
   const n = m.pins.filter((p) => !p.spacer).length
   log(file, 'pins', n, 'body', m.art.w, 'x', m.art.h)
 }
@@ -253,7 +254,7 @@ dip28({
     electrical: { model: 'io-expander', params: {}, i2c: { sda: 'SDA', scl: 'SCL', address: MCP23017_ADDRESS } },
     art: { w: W, h: H, shapes },
   }
-  emit(OUT + 'mcp23017-cjmcu-2317.json', JSON.stringify(m, null, 2) + '\n')
+  emit(OUT + 'mcp23017-cjmcu-2317.json', moduleText(m))
   log('mcp23017-cjmcu-2317.json', 'pads', holes.length, 'body', W, 'x', H)
 }
 

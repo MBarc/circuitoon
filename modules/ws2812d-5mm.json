@@ -146,5 +146,15 @@
         "outline": false
       }
     ]
+  },
+  "kicad": {
+    "footprint": "LED_THT:LED_D5.0mm-4_RGB",
+    "pins": {
+      "DOUT": "1",
+      "VDD": "2",
+      "GND": "3",
+      "DIN": "4"
+    },
+    "value": "WS2812D-F5"
   }
 }

@@ -4,6 +4,7 @@
 // uses `write` supports `--check`; call `finish(...)` from that module as the generator's last line.
 import { fileURLToPath } from 'node:url'
 import { emit, log } from './gen-output.mjs'
+import { moduleText } from './kicad.mjs'
 
 const OUT = fileURLToPath(new URL('../../modules/', import.meta.url))
 
@@ -63,7 +64,7 @@ export function moduleJson({ id, name, category, source, pins, internal, wu, hu,
 
 /** Writes (or, with --check, compares) modules/<file> and logs its pin count and body size. */
 export function write(file, m) {
-  emit(OUT + file, JSON.stringify(m, null, 2) + '\n')
+  emit(OUT + file, moduleText(m))
   const n = m.pins.filter((p) => !p.spacer).length
   log(file, 'pins', n, 'body', m.art.w, 'x', m.art.h)
 }

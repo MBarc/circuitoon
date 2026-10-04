@@ -194,5 +194,15 @@
         "labelSize": 8
       }
     ]
+  },
+  "kicad": {
+    "footprint": "Connector_PinHeader_2.54mm:PinHeader_1x03_P2.54mm_Vertical",
+    "pins": {
+      "GND": "1",
+      "VCC": "2",
+      "PWM": "3"
+    },
+    "value": "SG90",
+    "note": "The servo cable plugs onto this header."
   }
 }

@@ -351,5 +351,15 @@
         "outline": false
       }
     ]
+  },
+  "kicad": {
+    "footprint": "Sensor:ASAIR_AM2302_P2.54mm_Vertical",
+    "pins": {
+      "VCC": "1",
+      "DATA": "2",
+      "NC": "3",
+      "GND": "4"
+    },
+    "value": "DHT22"
   }
 }

@@ -64,5 +64,13 @@
         "labelSize": 7
       }
     ]
+  },
+  "kicad": {
+    "symbol": "Device:C",
+    "footprint": "Capacitor_THT:C_Disc_D5.0mm_W2.5mm_P5.00mm",
+    "pins": {
+      "1": "1",
+      "2": "2"
+    }
   }
 }

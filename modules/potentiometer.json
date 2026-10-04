@@ -104,5 +104,14 @@
         "radius": 1.5
       }
     ]
+  },
+  "kicad": {
+    "symbol": "Device:R_Potentiometer",
+    "footprint": "Potentiometer_THT:Potentiometer_Alps_RK09K_Single_Vertical",
+    "pins": {
+      "1": "1",
+      "3": "3",
+      "W": "2"
+    }
   }
 }

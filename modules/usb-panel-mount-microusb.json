@@ -120,5 +120,16 @@
         "radius": 2
       }
     ]
+  },
+  "kicad": {
+    "footprint": "Connector_PinHeader_2.54mm:PinHeader_1x04_P2.54mm_Vertical",
+    "pins": {
+      "VBUS": "1",
+      "D-": "2",
+      "D+": "3",
+      "GND": "4"
+    },
+    "value": "USB panel mount",
+    "note": "The cable's leads solder to this header."
   }
 }

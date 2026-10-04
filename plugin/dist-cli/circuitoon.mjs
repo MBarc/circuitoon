@@ -851,6 +851,7 @@ function validateModule(raw) {
 	}
 	if (raw.footprint !== void 0 && raw.footprint !== "legs" && !(isObj(raw.footprint) && inBounds(raw.footprint.x) && inBounds(raw.footprint.y) && sizeInBounds(raw.footprint.w) && sizeInBounds(raw.footprint.h))) errors.push(`footprint: must be "legs" or { "x", "y", "w", "h" } in module px, x and y within +-${MODULE_PX_MAX}, w and h above 0 and at most ${MODULE_PX_MAX}`);
 	const pinNames = new Set(names);
+	if (raw.kicad !== void 0) validateKicad(raw.kicad, pinNames, Array.isArray(raw.internal) ? raw.internal : [], errors);
 	claimInternalNodes(raw, names, errors);
 	if (raw.internal !== void 0) {
 		if (!Array.isArray(raw.internal)) errors.push("internal: must be a list of pin-name groups");
@@ -979,6 +980,66 @@ function validateModule(raw) {
 		ok: true,
 		module: raw
 	};
+}
+/** A KiCad library id, "Library:Name": no spaces, quotes or second colon. */
+var KICAD_LIB_ID = /^[^\s:"]+:[^\s:"]+$/;
+/** A footprint pad number: "1", "A3", "MP". */
+var KICAD_PAD = /^[A-Za-z0-9_.+-]{1,16}$/;
+var KICAD_KEYS = [
+	"symbol",
+	"footprint",
+	"pins",
+	"value",
+	"headers",
+	"placeholder",
+	"note"
+];
+function validateKicad(k, pins, internal, errors) {
+	const at = "kicad";
+	if (!isObj(k)) return void errors.push(`${at}: must be { "footprint", "pins"?, "symbol"?, "value"? } or { "headers": [...] }`);
+	for (const key of Object.keys(k)) if (!KICAD_KEYS.includes(key)) errors.push(`${at}.${key}: unknown field`);
+	if (k.footprint === void 0 === (k.headers === void 0)) errors.push(`${at}: give exactly one of "footprint" or "headers"`);
+	if (k.symbol !== void 0 && !(typeof k.symbol === "string" && KICAD_LIB_ID.test(k.symbol))) errors.push(`${at}.symbol: must be a KiCad library id, "Library:Symbol"`);
+	for (const key of ["value", "note"]) if (k[key] !== void 0 && (typeof k[key] !== "string" || k[key].trim() === "")) errors.push(`${at}.${key}: must be a non-empty string`);
+	if (k.placeholder !== void 0 && k.placeholder !== true) errors.push(`${at}.placeholder: must be true when present`);
+	const joined = (a, b) => internal.some((g) => Array.isArray(g) && g.includes(a) && g.includes(b));
+	const checkPins = (p, where, seen) => {
+		if (!isObj(p) || !Object.keys(p).length) return void errors.push(`${where}: must be an object of pin name to pad number, at least one pin`);
+		const byPad = /* @__PURE__ */ new Map();
+		for (const [name, pad] of Object.entries(p)) {
+			if (!pins.has(name)) errors.push(`${where}.${name}: no pin or hole group named "${name}"`);
+			if (seen.has(name)) errors.push(`${where}.${name}: "${name}" is mapped twice`);
+			seen.add(name);
+			if (typeof pad !== "string" || !KICAD_PAD.test(pad)) {
+				errors.push(`${where}.${name}: must be a pad number such as "1"`);
+				continue;
+			}
+			const other = byPad.get(pad);
+			if (other !== void 0 && !joined(other, name)) errors.push(`${where}.${name}: pad "${pad}" is already "${other}", and the part does not join them`);
+			byPad.set(pad, name);
+		}
+	};
+	if (k.footprint !== void 0) {
+		if (typeof k.footprint !== "string" || !KICAD_LIB_ID.test(k.footprint)) errors.push(`${at}.footprint: must be a KiCad library id, "Library:Footprint"`);
+		if (k.pins !== void 0) checkPins(k.pins, `${at}.pins`, /* @__PURE__ */ new Set());
+	}
+	if (k.headers !== void 0) {
+		if (k.pins !== void 0) errors.push(`${at}.pins: with "headers", each header lists its own pins`);
+		if (!Array.isArray(k.headers) || !k.headers.length) return void errors.push(`${at}.headers: must be a list of { "footprint", "pins", "name"? }`);
+		const seen = /* @__PURE__ */ new Set();
+		k.headers.forEach((h, i) => {
+			const where = `${at}.headers[${i}]`;
+			if (!isObj(h)) return void errors.push(`${where}: must be { "footprint", "pins", "name"? }`);
+			for (const key of Object.keys(h)) if (![
+				"name",
+				"footprint",
+				"pins"
+			].includes(key)) errors.push(`${where}.${key}: unknown field`);
+			if (typeof h.footprint !== "string" || !KICAD_LIB_ID.test(h.footprint)) errors.push(`${where}.footprint: must be a KiCad library id, "Library:Footprint"`);
+			if (h.name !== void 0 && (typeof h.name !== "string" || h.name.trim() === "")) errors.push(`${where}.name: must be a non-empty string`);
+			checkPins(h.pins, `${where}.pins`, seen);
+		});
+	}
 }
 /** A 7-bit I2C address. */
 var isAddress = (v) => Number.isInteger(v) && v >= 0 && v <= 127;
@@ -5508,6 +5569,15 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"outline": false
 				}
 			]
+		},
+		kicad: {
+			"footprint": "Connector_BarrelJack:BarrelJack_Horizontal",
+			"pins": {
+				"+": "1",
+				"-": "2"
+			},
+			"value": "DC jack",
+			"note": "The jack the adapter plugs into; pad 1 is the centre pin, so this assumes a centre-positive adapter."
 		}
 	},
 	"../modules/adapter-barrel-eu.json": {
@@ -5655,6 +5725,15 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"outline": false
 				}
 			]
+		},
+		kicad: {
+			"footprint": "Connector_BarrelJack:BarrelJack_Horizontal",
+			"pins": {
+				"+": "1",
+				"-": "2"
+			},
+			"value": "DC jack",
+			"note": "The jack the adapter plugs into; pad 1 is the centre pin, so this assumes a centre-positive adapter."
 		}
 	},
 	"../modules/adapter-barrel-uk.json": {
@@ -5827,6 +5906,15 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"outline": false
 				}
 			]
+		},
+		kicad: {
+			"footprint": "Connector_BarrelJack:BarrelJack_Horizontal",
+			"pins": {
+				"+": "1",
+				"-": "2"
+			},
+			"value": "DC jack",
+			"note": "The jack the adapter plugs into; pad 1 is the centre pin, so this assumes a centre-positive adapter."
 		}
 	},
 	"../modules/adapter-barrel-us.json": {
@@ -5974,6 +6062,15 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"outline": false
 				}
 			]
+		},
+		kicad: {
+			"footprint": "Connector_BarrelJack:BarrelJack_Horizontal",
+			"pins": {
+				"+": "1",
+				"-": "2"
+			},
+			"value": "DC jack",
+			"note": "The jack the adapter plugs into; pad 1 is the centre pin, so this assumes a centre-positive adapter."
 		}
 	},
 	"../modules/ams1117-33-module.json": {
@@ -6146,6 +6243,15 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"outline": false
 				}
 			]
+		},
+		kicad: {
+			"footprint": "Connector_PinSocket_2.54mm:PinSocket_1x03_P2.54mm_Vertical",
+			"pins": {
+				"GND": "1",
+				"OUT": "2",
+				"VIN": "3"
+			},
+			"value": "AMS1117-3.3 module"
 		}
 	},
 	"../modules/arduino-nano.json": {
@@ -6849,6 +6955,43 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"outline": false
 				}
 			]
+		},
+		kicad: {
+			"symbol": "MCU_Module:Arduino_Nano_v3.x",
+			"footprint": "Module:Arduino_Nano",
+			"pins": {
+				"D13": "16",
+				"3V3": "17",
+				"AREF": "18",
+				"A0": "19",
+				"A1": "20",
+				"A2": "21",
+				"A3": "22",
+				"A4": "23",
+				"A5": "24",
+				"A6": "25",
+				"A7": "26",
+				"5V": "27",
+				"RST": "28",
+				"GND": "29",
+				"VIN": "30",
+				"D12": "15",
+				"D11": "14",
+				"D10": "13",
+				"D9": "12",
+				"D8": "11",
+				"D7": "10",
+				"D6": "9",
+				"D5": "8",
+				"D4": "7",
+				"D3": "6",
+				"D2": "5",
+				"GND 2": "4",
+				"RST 2": "3",
+				"RX0": "2",
+				"TX1": "1"
+			},
+			"value": "Arduino Nano"
 		}
 	},
 	"../modules/battery-18650-cell.json": {
@@ -6931,6 +7074,15 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"radius": 3
 				}
 			]
+		},
+		kicad: {
+			"symbol": "Device:Battery_Cell",
+			"footprint": "Battery:BatteryHolder_Keystone_1042_1x18650",
+			"pins": {
+				"+": "1",
+				"-": "2"
+			},
+			"value": "18650"
 		}
 	},
 	"../modules/battery-18650-holder-2s.json": {
@@ -7053,6 +7205,16 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"radius": 1.5
 				}
 			]
+		},
+		kicad: {
+			"symbol": "Device:Battery",
+			"footprint": "Connector_JST:JST_XH_B2B-XH-A_1x02_P2.50mm_Vertical",
+			"pins": {
+				"+": "1",
+				"-": "2"
+			},
+			"value": "2x18650 holder",
+			"note": "Battery leads: a 2-pin lead connector, + on pin 1."
 		}
 	},
 	"../modules/battery-18650-holder.json": {
@@ -7148,6 +7310,16 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"radius": 1.5
 				}
 			]
+		},
+		kicad: {
+			"symbol": "Device:Battery_Cell",
+			"footprint": "Connector_JST:JST_XH_B2B-XH-A_1x02_P2.50mm_Vertical",
+			"pins": {
+				"+": "1",
+				"-": "2"
+			},
+			"value": "18650 holder",
+			"note": "Battery leads: a 2-pin lead connector, + on pin 1."
 		}
 	},
 	"../modules/battery-9v.json": {
@@ -7249,6 +7421,15 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"labelSize": 15
 				}
 			]
+		},
+		kicad: {
+			"symbol": "Device:Battery",
+			"footprint": "Battery:BatteryHolder_MPD_BA9VPC_1xPP3",
+			"pins": {
+				"+": "1",
+				"-": "2"
+			},
+			"value": "9V"
 		}
 	},
 	"../modules/battery-aa.json": {
@@ -7331,6 +7512,15 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"radius": 3
 				}
 			]
+		},
+		kicad: {
+			"symbol": "Device:Battery_Cell",
+			"footprint": "Battery:BatteryHolder_Keystone_2460_1xAA",
+			"pins": {
+				"+": "1",
+				"-": "2"
+			},
+			"value": "AA"
 		}
 	},
 	"../modules/battery-aaa.json": {
@@ -7413,6 +7603,15 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"radius": 3
 				}
 			]
+		},
+		kicad: {
+			"symbol": "Device:Battery_Cell",
+			"footprint": "Battery:BatteryHolder_Keystone_2466_1xAAA",
+			"pins": {
+				"+": "1",
+				"-": "2"
+			},
+			"value": "AAA"
 		}
 	},
 	"../modules/battery-cr1220.json": {
@@ -7486,6 +7685,15 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"labelSize": 5
 				}
 			]
+		},
+		kicad: {
+			"symbol": "Device:Battery_Cell",
+			"footprint": "Battery:BatteryHolder_Keystone_3000_1x12mm",
+			"pins": {
+				"+": "1",
+				"-": "2"
+			},
+			"value": "CR1220"
 		}
 	},
 	"../modules/battery-cr2016.json": {
@@ -7559,6 +7767,16 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"labelSize": 6.5
 				}
 			]
+		},
+		kicad: {
+			"symbol": "Device:Battery_Cell",
+			"footprint": "Connector_JST:JST_XH_B2B-XH-A_1x02_P2.50mm_Vertical",
+			"pins": {
+				"+": "1",
+				"-": "2"
+			},
+			"value": "CR2016",
+			"note": "KiCad's library has no holder made for CR2016: a 2-pin lead connector, + on pin 1."
 		}
 	},
 	"../modules/battery-cr2025.json": {
@@ -7632,6 +7850,15 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"labelSize": 6.5
 				}
 			]
+		},
+		kicad: {
+			"symbol": "Device:Battery_Cell",
+			"footprint": "Battery:BatteryHolder_Keystone_3034_1x20mm",
+			"pins": {
+				"+": "1",
+				"-": "2"
+			},
+			"value": "CR2025"
 		}
 	},
 	"../modules/battery-cr2032.json": {
@@ -7705,6 +7932,15 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"labelSize": 6.5
 				}
 			]
+		},
+		kicad: {
+			"symbol": "Device:Battery_Cell",
+			"footprint": "Battery:BatteryHolder_Keystone_3034_1x20mm",
+			"pins": {
+				"+": "1",
+				"-": "2"
+			},
+			"value": "CR2032"
 		}
 	},
 	"../modules/battery-holder-2xaa.json": {
@@ -7824,6 +8060,16 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"radius": 1.5
 				}
 			]
+		},
+		kicad: {
+			"symbol": "Device:Battery",
+			"footprint": "Connector_JST:JST_XH_B2B-XH-A_1x02_P2.50mm_Vertical",
+			"pins": {
+				"+": "1",
+				"-": "2"
+			},
+			"value": "2xAA holder",
+			"note": "Battery leads: a 2-pin lead connector, + on pin 1."
 		}
 	},
 	"../modules/battery-holder-3xaaa.json": {
@@ -7973,6 +8219,16 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"radius": 1.5
 				}
 			]
+		},
+		kicad: {
+			"symbol": "Device:Battery",
+			"footprint": "Connector_JST:JST_XH_B2B-XH-A_1x02_P2.50mm_Vertical",
+			"pins": {
+				"+": "1",
+				"-": "2"
+			},
+			"value": "3xAAA holder",
+			"note": "Battery leads: a 2-pin lead connector, + on pin 1."
 		}
 	},
 	"../modules/battery-holder-4xaa.json": {
@@ -8152,6 +8408,16 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"radius": 1.5
 				}
 			]
+		},
+		kicad: {
+			"symbol": "Device:Battery",
+			"footprint": "Connector_JST:JST_XH_B2B-XH-A_1x02_P2.50mm_Vertical",
+			"pins": {
+				"+": "1",
+				"-": "2"
+			},
+			"value": "4xAA holder",
+			"note": "Battery leads: a 2-pin lead connector, + on pin 1."
 		}
 	},
 	"../modules/battery-holder-cr2032.json": {
@@ -8250,6 +8516,16 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"radius": 1.5
 				}
 			]
+		},
+		kicad: {
+			"symbol": "Device:Battery_Cell",
+			"footprint": "Connector_JST:JST_XH_B2B-XH-A_1x02_P2.50mm_Vertical",
+			"pins": {
+				"+": "1",
+				"-": "2"
+			},
+			"value": "CR2032 holder",
+			"note": "Battery leads: a 2-pin lead connector, + on pin 1."
 		}
 	},
 	"../modules/battery-lr44.json": {
@@ -8323,6 +8599,16 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"labelSize": 5
 				}
 			]
+		},
+		kicad: {
+			"symbol": "Device:Battery_Cell",
+			"footprint": "Connector_JST:JST_XH_B2B-XH-A_1x02_P2.50mm_Vertical",
+			"pins": {
+				"+": "1",
+				"-": "2"
+			},
+			"value": "LR44",
+			"note": "KiCad's library has no LR44 holder: a 2-pin lead connector, + on pin 1."
 		}
 	},
 	"../modules/bme280-module-4pin.json": {
@@ -8483,6 +8769,16 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"outline": false
 				}
 			]
+		},
+		kicad: {
+			"footprint": "Connector_PinSocket_2.54mm:PinSocket_1x04_P2.54mm_Vertical",
+			"pins": {
+				"VIN": "1",
+				"GND": "2",
+				"SCL": "3",
+				"SDA": "4"
+			},
+			"value": "BME280"
 		}
 	},
 	"../modules/bme280-module-6pin.json": {
@@ -8729,6 +9025,18 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"outline": false
 				}
 			]
+		},
+		kicad: {
+			"footprint": "Connector_PinSocket_2.54mm:PinSocket_1x06_P2.54mm_Vertical",
+			"pins": {
+				"VCC": "1",
+				"GND": "2",
+				"SCL": "3",
+				"SDA": "4",
+				"CSB": "5",
+				"SDO": "6"
+			},
+			"value": "GY-BME280"
 		}
 	},
 	"../modules/breadboard-full.json": {
@@ -13280,6 +13588,15 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"labelSize": 10
 				}
 			]
+		},
+		kicad: {
+			"symbol": "Device:Buzzer",
+			"footprint": "Buzzer_Beeper:Buzzer_12x9.5RM7.6",
+			"pins": {
+				"+": "1",
+				"-": "2"
+			},
+			"value": "Buzzer"
 		}
 	},
 	"../modules/capacitor-ceramic.json": {
@@ -13343,6 +13660,14 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"labelSize": 7
 				}
 			]
+		},
+		kicad: {
+			"symbol": "Device:C",
+			"footprint": "Capacitor_THT:C_Disc_D5.0mm_W2.5mm_P5.00mm",
+			"pins": {
+				"1": "1",
+				"2": "2"
+			}
 		}
 	},
 	"../modules/capacitor-electrolytic.json": {
@@ -13427,6 +13752,14 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"labelSize": 9
 				}
 			]
+		},
+		kicad: {
+			"symbol": "Device:C_Polarized",
+			"footprint": "Capacitor_THT:CP_Radial_D5.0mm_P2.00mm",
+			"pins": {
+				"+": "1",
+				"-": "2"
+			}
 		}
 	},
 	"../modules/capacitor-film.json": {
@@ -13490,6 +13823,14 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"labelSize": 7
 				}
 			]
+		},
+		kicad: {
+			"symbol": "Device:C",
+			"footprint": "Capacitor_THT:C_Rect_L7.2mm_W2.5mm_P5.00mm_FKS2_FKP2_MKS2_MKP2",
+			"pins": {
+				"1": "1",
+				"2": "2"
+			}
 		}
 	},
 	"../modules/capacitor-tantalum.json": {
@@ -13563,6 +13904,14 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"radius": 2
 				}
 			]
+		},
+		kicad: {
+			"symbol": "Device:C_Polarized",
+			"footprint": "Capacitor_THT:CP_Radial_Tantal_D5.0mm_P2.50mm",
+			"pins": {
+				"+": "1",
+				"-": "2"
+			}
 		}
 	},
 	"../modules/charger-usb-5v-au.json": {
@@ -13827,6 +14176,15 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"outline": false
 				}
 			]
+		},
+		kicad: {
+			"footprint": "Connector_JST:JST_XH_B2B-XH-A_1x02_P2.50mm_Vertical",
+			"pins": {
+				"5V": "1",
+				"GND": "2"
+			},
+			"value": "USB 5V input",
+			"note": "The charger reaches the board through a cable: a 2-pin lead connector for its 5V and GND."
 		}
 	},
 	"../modules/charger-usb-5v-eu.json": {
@@ -13971,6 +14329,15 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"outline": false
 				}
 			]
+		},
+		kicad: {
+			"footprint": "Connector_JST:JST_XH_B2B-XH-A_1x02_P2.50mm_Vertical",
+			"pins": {
+				"5V": "1",
+				"GND": "2"
+			},
+			"value": "USB 5V input",
+			"note": "The charger reaches the board through a cable: a 2-pin lead connector for its 5V and GND."
 		}
 	},
 	"../modules/charger-usb-5v-uk.json": {
@@ -14140,6 +14507,15 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"outline": false
 				}
 			]
+		},
+		kicad: {
+			"footprint": "Connector_JST:JST_XH_B2B-XH-A_1x02_P2.50mm_Vertical",
+			"pins": {
+				"5V": "1",
+				"GND": "2"
+			},
+			"value": "USB 5V input",
+			"note": "The charger reaches the board through a cable: a 2-pin lead connector for its 5V and GND."
 		}
 	},
 	"../modules/charger-usb-5v-us.json": {
@@ -14284,6 +14660,15 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"outline": false
 				}
 			]
+		},
+		kicad: {
+			"footprint": "Connector_JST:JST_XH_B2B-XH-A_1x02_P2.50mm_Vertical",
+			"pins": {
+				"5V": "1",
+				"GND": "2"
+			},
+			"value": "USB 5V input",
+			"note": "The charger reaches the board through a cable: a 2-pin lead connector for its 5V and GND."
 		}
 	},
 	"../modules/dht22-bare.json": {
@@ -14639,6 +15024,16 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"outline": false
 				}
 			]
+		},
+		kicad: {
+			"footprint": "Sensor:ASAIR_AM2302_P2.54mm_Vertical",
+			"pins": {
+				"VCC": "1",
+				"DATA": "2",
+				"NC": "3",
+				"GND": "4"
+			},
+			"value": "DHT22"
 		}
 	},
 	"../modules/dht22-module.json": {
@@ -15019,6 +15414,15 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"outline": false
 				}
 			]
+		},
+		kicad: {
+			"footprint": "Connector_PinSocket_2.54mm:PinSocket_1x03_P2.54mm_Vertical",
+			"pins": {
+				"+": "1",
+				"out": "2",
+				"-": "3"
+			},
+			"value": "DHT22 module"
 		}
 	},
 	"../modules/dupont-1x2.json": {
@@ -15127,6 +15531,14 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"outline": false
 				}
 			]
+		},
+		kicad: {
+			"footprint": "Connector_PinHeader_2.54mm:PinHeader_1x02_P2.54mm_Vertical",
+			"pins": {
+				"1": "1",
+				"2": "2"
+			},
+			"note": "The pin header the housing plugs onto."
 		}
 	},
 	"../modules/dupont-1x3.json": {
@@ -15272,6 +15684,15 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"outline": false
 				}
 			]
+		},
+		kicad: {
+			"footprint": "Connector_PinHeader_2.54mm:PinHeader_1x03_P2.54mm_Vertical",
+			"pins": {
+				"1": "1",
+				"2": "2",
+				"3": "3"
+			},
+			"note": "The pin header the housing plugs onto."
 		}
 	},
 	"../modules/dupont-1x4.json": {
@@ -15451,6 +15872,16 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"outline": false
 				}
 			]
+		},
+		kicad: {
+			"footprint": "Connector_PinHeader_2.54mm:PinHeader_1x04_P2.54mm_Vertical",
+			"pins": {
+				"1": "1",
+				"2": "2",
+				"3": "3",
+				"4": "4"
+			},
+			"note": "The pin header the housing plugs onto."
 		}
 	},
 	"../modules/esp32-c3-supermini.json": {
@@ -15845,6 +16276,36 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"labelSize": 7
 				}
 			]
+		},
+		kicad: {
+			"headers": [{
+				"name": "left header, pin 1 5",
+				"footprint": "Connector_PinSocket_2.54mm:PinSocket_1x08_P2.54mm_Vertical",
+				"pins": {
+					"5": "1",
+					"6": "2",
+					"7": "3",
+					"8": "4",
+					"9": "5",
+					"10": "6",
+					"20": "7",
+					"21": "8"
+				}
+			}, {
+				"name": "right header, pin 1 5V",
+				"footprint": "Connector_PinSocket_2.54mm:PinSocket_1x08_P2.54mm_Vertical",
+				"pins": {
+					"0": "8",
+					"1": "7",
+					"2": "6",
+					"3": "5",
+					"4": "4",
+					"5V": "1",
+					"G": "2",
+					"3.3": "3"
+				}
+			}],
+			"note": "Each header is its own socket strip: place them at the board's real row spacing."
 		}
 	},
 	"../modules/esp32-cam.json": {
@@ -16286,6 +16747,36 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"labelSize": 9
 				}
 			]
+		},
+		kicad: {
+			"headers": [{
+				"name": "left header, pin 1 5V",
+				"footprint": "Connector_PinSocket_2.54mm:PinSocket_1x08_P2.54mm_Vertical",
+				"pins": {
+					"5V": "1",
+					"GND": "2",
+					"IO12": "3",
+					"IO13": "4",
+					"IO15": "5",
+					"IO14": "6",
+					"IO2": "7",
+					"IO4": "8"
+				}
+			}, {
+				"name": "right header, pin 1 3V3",
+				"footprint": "Connector_PinSocket_2.54mm:PinSocket_1x08_P2.54mm_Vertical",
+				"pins": {
+					"3V3": "1",
+					"IO16": "2",
+					"IO0": "3",
+					"GND 2": "4",
+					"VCC": "5",
+					"U0R": "6",
+					"U0T": "7",
+					"GND/R": "8"
+				}
+			}],
+			"note": "Each header is its own socket strip: place them at the board's real row spacing."
 		}
 	},
 	"../modules/esp32-devkit-v1-30.json": {
@@ -16992,6 +17483,50 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"radius": 2
 				}
 			]
+		},
+		kicad: {
+			"headers": [{
+				"name": "left header, pin 1 EN",
+				"footprint": "Connector_PinSocket_2.54mm:PinSocket_1x15_P2.54mm_Vertical",
+				"pins": {
+					"EN": "1",
+					"VP": "2",
+					"VN": "3",
+					"D34": "4",
+					"D35": "5",
+					"D32": "6",
+					"D33": "7",
+					"D25": "8",
+					"D26": "9",
+					"D27": "10",
+					"D14": "11",
+					"D12": "12",
+					"D13": "13",
+					"GND": "14",
+					"VIN": "15"
+				}
+			}, {
+				"name": "right header, pin 1 D23",
+				"footprint": "Connector_PinSocket_2.54mm:PinSocket_1x15_P2.54mm_Vertical",
+				"pins": {
+					"D23": "1",
+					"D22": "2",
+					"TX0": "3",
+					"RX0": "4",
+					"D21": "5",
+					"D19": "6",
+					"D18": "7",
+					"D5": "8",
+					"TX2": "9",
+					"RX2": "10",
+					"D4": "11",
+					"D2": "12",
+					"D15": "13",
+					"GND 2": "14",
+					"3V3": "15"
+				}
+			}],
+			"note": "Each header is its own socket strip: place them at the board's real row spacing."
 		}
 	},
 	"../modules/esp32-devkitc-v4.json": {
@@ -17836,6 +18371,58 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"radius": 2
 				}
 			]
+		},
+		kicad: {
+			"headers": [{
+				"name": "left header, pin 1 3V3",
+				"footprint": "Connector_PinSocket_2.54mm:PinSocket_1x19_P2.54mm_Vertical",
+				"pins": {
+					"3V3": "1",
+					"EN": "2",
+					"VP": "3",
+					"VN": "4",
+					"IO34": "5",
+					"IO35": "6",
+					"IO32": "7",
+					"IO33": "8",
+					"IO25": "9",
+					"IO26": "10",
+					"IO27": "11",
+					"IO14": "12",
+					"IO12": "13",
+					"GND": "14",
+					"IO13": "15",
+					"D2": "16",
+					"D3": "17",
+					"CMD": "18",
+					"5V": "19"
+				}
+			}, {
+				"name": "right header, pin 1 GND 2",
+				"footprint": "Connector_PinSocket_2.54mm:PinSocket_1x19_P2.54mm_Vertical",
+				"pins": {
+					"GND 2": "1",
+					"IO23": "2",
+					"IO22": "3",
+					"TX": "4",
+					"RX": "5",
+					"IO21": "6",
+					"GND 3": "7",
+					"IO19": "8",
+					"IO18": "9",
+					"IO5": "10",
+					"IO17": "11",
+					"IO16": "12",
+					"IO4": "13",
+					"IO0": "14",
+					"IO2": "15",
+					"IO15": "16",
+					"D1": "17",
+					"D0": "18",
+					"CLK": "19"
+				}
+			}],
+			"note": "Each header is its own socket strip: place them at the board's real row spacing."
 		}
 	},
 	"../modules/esp32-s3-devkitc-1.json": {
@@ -18741,6 +19328,64 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"radius": 3
 				}
 			]
+		},
+		kicad: {
+			"headers": [{
+				"name": "left header, pin 1 3V3",
+				"footprint": "Connector_PinSocket_2.54mm:PinSocket_1x22_P2.54mm_Vertical",
+				"pins": {
+					"3": "13",
+					"4": "4",
+					"5": "5",
+					"6": "6",
+					"7": "7",
+					"8": "12",
+					"9": "15",
+					"10": "16",
+					"11": "17",
+					"12": "18",
+					"13": "19",
+					"14": "20",
+					"15": "8",
+					"16": "9",
+					"17": "10",
+					"18": "11",
+					"46": "14",
+					"3V3": "1",
+					"3V3 2": "2",
+					"RST": "3",
+					"5V": "21",
+					"G": "22"
+				}
+			}, {
+				"name": "right header, pin 1 G 2",
+				"footprint": "Connector_PinSocket_2.54mm:PinSocket_1x22_P2.54mm_Vertical",
+				"pins": {
+					"0": "14",
+					"1": "4",
+					"2": "5",
+					"19": "20",
+					"20": "19",
+					"21": "18",
+					"35": "13",
+					"36": "12",
+					"37": "11",
+					"38": "10",
+					"39": "9",
+					"40": "8",
+					"41": "7",
+					"42": "6",
+					"45": "15",
+					"47": "17",
+					"48": "16",
+					"G 2": "1",
+					"TX": "2",
+					"RX": "3",
+					"G 3": "21",
+					"G 4": "22"
+				}
+			}],
+			"note": "Each header is its own socket strip: place them at the board's real row spacing."
 		}
 	},
 	"../modules/esp32-terminal-board-38.json": {
@@ -19132,6 +19777,15 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"outline": false
 				}
 			]
+		},
+		kicad: {
+			"footprint": "TerminalBlock_Phoenix:TerminalBlock_Phoenix_MKDS-1,5-2_1x02_P5.00mm_Horizontal",
+			"pins": {
+				"1": "1",
+				"2": "2"
+			},
+			"placeholder": true,
+			"note": "Placeholder: an in-line fuse holder lives on the cable. On a board, use a PCB fuse holder for 5 x 20 mm fuses instead."
 		}
 	},
 	"../modules/hlk-pm01.json": {
@@ -19253,6 +19907,17 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"labelSize": 6
 				}
 			]
+		},
+		kicad: {
+			"symbol": "Converter_ACDC:HLK-PM01",
+			"footprint": "Converter_ACDC:Converter_ACDC_Hi-Link_HLK-PMxx",
+			"pins": {
+				"AC 1": "1",
+				"AC 2": "2",
+				"-Vo": "3",
+				"+Vo": "4"
+			},
+			"value": "HLK-PM01"
 		}
 	},
 	"../modules/hlk-pm03.json": {
@@ -19374,6 +20039,17 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"labelSize": 6
 				}
 			]
+		},
+		kicad: {
+			"symbol": "Converter_ACDC:HLK-PM03",
+			"footprint": "Converter_ACDC:Converter_ACDC_Hi-Link_HLK-PMxx",
+			"pins": {
+				"AC 1": "1",
+				"AC 2": "2",
+				"-Vo": "3",
+				"+Vo": "4"
+			},
+			"value": "HLK-PM03"
 		}
 	},
 	"../modules/ip5306-usbc-module.json": {
@@ -19734,6 +20410,26 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"outline": false
 				}
 			]
+		},
+		kicad: {
+			"headers": [{
+				"name": "battery pads, pin 1 B-",
+				"footprint": "Connector_PinHeader_2.54mm:PinHeader_1x02_P2.54mm_Vertical",
+				"pins": {
+					"B-": "1",
+					"B+": "2"
+				}
+			}, {
+				"name": "bottom pads, pin 1 K",
+				"footprint": "Connector_PinHeader_2.54mm:PinHeader_1x03_P2.54mm_Vertical",
+				"pins": {
+					"K": "1",
+					"5V+": "2",
+					"5V-": "3"
+				}
+			}],
+			"value": "IP5306 module",
+			"note": "The module has solder pads, not header pins: wire them to these headers."
 		}
 	},
 	"../modules/irm-03-3v3.json": {
@@ -19939,6 +20635,17 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"outline": false
 				}
 			]
+		},
+		kicad: {
+			"symbol": "Converter_ACDC:IRM-03-3.3",
+			"footprint": "Converter_ACDC:Converter_ACDC_MeanWell_IRM-03-xx_THT",
+			"pins": {
+				"AC/L": "1",
+				"AC/N": "3",
+				"-V": "14",
+				"+V": "16"
+			},
+			"value": "IRM-03-3.3"
 		}
 	},
 	"../modules/irm-03-5.json": {
@@ -20144,6 +20851,17 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"outline": false
 				}
 			]
+		},
+		kicad: {
+			"symbol": "Converter_ACDC:IRM-03-5",
+			"footprint": "Converter_ACDC:Converter_ACDC_MeanWell_IRM-03-xx_THT",
+			"pins": {
+				"AC/L": "1",
+				"AC/N": "3",
+				"-V": "14",
+				"+V": "16"
+			},
+			"value": "IRM-03-5"
 		}
 	},
 	"../modules/irm-05-5.json": {
@@ -20299,6 +21017,17 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"labelSize": 8
 				}
 			]
+		},
+		kicad: {
+			"symbol": "Converter_ACDC:IRM-05-5",
+			"footprint": "Converter_ACDC:Converter_ACDC_MeanWell_IRM-05-xx_THT",
+			"pins": {
+				"AC/N": "1",
+				"AC/L": "2",
+				"-V": "3",
+				"+V": "4"
+			},
+			"value": "IRM-05-5"
 		}
 	},
 	"../modules/jst-xh-2.json": {
@@ -20408,6 +21137,13 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"outline": false
 				}
 			]
+		},
+		kicad: {
+			"footprint": "Connector_JST:JST_XH_B2B-XH-A_1x02_P2.50mm_Vertical",
+			"pins": {
+				"1": "1",
+				"2": "2"
+			}
 		}
 	},
 	"../modules/jst-xh-3.json": {
@@ -20545,6 +21281,14 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"outline": false
 				}
 			]
+		},
+		kicad: {
+			"footprint": "Connector_JST:JST_XH_B3B-XH-A_1x03_P2.50mm_Vertical",
+			"pins": {
+				"1": "1",
+				"2": "2",
+				"3": "3"
+			}
 		}
 	},
 	"../modules/jst-xh-4.json": {
@@ -20707,6 +21451,15 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"outline": false
 				}
 			]
+		},
+		kicad: {
+			"footprint": "Connector_JST:JST_XH_B4B-XH-A_1x04_P2.50mm_Vertical",
+			"pins": {
+				"1": "1",
+				"2": "2",
+				"3": "3",
+				"4": "4"
+			}
 		}
 	},
 	"../modules/l298n-module.json": {
@@ -21588,6 +22341,15 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"radius": 4
 				}
 			]
+		},
+		kicad: {
+			"footprint": "TerminalBlock_Phoenix:TerminalBlock_Phoenix_MKDS-1,5-2_1x02_P5.00mm_Horizontal",
+			"pins": {
+				"L": "1",
+				"N": "2"
+			},
+			"placeholder": true,
+			"note": "Placeholder: a lamp holder is wired to the board through this terminal block. Choose one rated for the lamp."
 		}
 	},
 	"../modules/lamp-holder-e27.json": {
@@ -21750,6 +22512,16 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"radius": 4
 				}
 			]
+		},
+		kicad: {
+			"footprint": "TerminalBlock_Phoenix:TerminalBlock_Phoenix_MKDS-1,5-3_1x03_P5.00mm_Horizontal",
+			"pins": {
+				"L": "1",
+				"N": "2",
+				"PE": "3"
+			},
+			"placeholder": true,
+			"note": "Placeholder: a lamp holder is wired to the board through this terminal block. Choose one rated for the lamp."
 		}
 	},
 	"../modules/lcd-st7796s-4in-spi-touch.json": {
@@ -22145,6 +22917,38 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"labelSize": 9
 				}
 			]
+		},
+		kicad: {
+			"headers": [{
+				"name": "left header, pin 1 VCC",
+				"footprint": "Connector_PinSocket_2.54mm:PinSocket_1x14_P2.54mm_Vertical",
+				"pins": {
+					"VCC": "1",
+					"GND": "2",
+					"CS": "3",
+					"RESET": "4",
+					"DC/RS": "5",
+					"SDI(MOSI)": "6",
+					"SCK": "7",
+					"LED": "8",
+					"SDO(MISO)": "9",
+					"T_CLK": "10",
+					"T_CS": "11",
+					"T_DIN": "12",
+					"T_DO": "13",
+					"T_IRQ": "14"
+				}
+			}, {
+				"name": "right header, pin 1 SD_CS",
+				"footprint": "Connector_PinSocket_2.54mm:PinSocket_1x04_P2.54mm_Vertical",
+				"pins": {
+					"SD_CS": "1",
+					"SD_MOSI": "2",
+					"SD_MISO": "3",
+					"SD_SCK": "4"
+				}
+			}],
+			"value": "ST7796S 4.0in"
 		}
 	},
 	"../modules/led.json": {
@@ -22238,6 +23042,15 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"outline": false
 				}
 			]
+		},
+		kicad: {
+			"symbol": "Device:LED",
+			"footprint": "LED_THT:LED_D5.0mm",
+			"pins": {
+				"K": "1",
+				"A": "2"
+			},
+			"value": "LED"
 		}
 	},
 	"../modules/level-shifter-bss138-4ch.json": {
@@ -22720,6 +23533,32 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"radius": 1
 				}
 			]
+		},
+		kicad: {
+			"headers": [{
+				"name": "top header, pin 1 HV1",
+				"footprint": "Connector_PinSocket_2.54mm:PinSocket_1x06_P2.54mm_Vertical",
+				"pins": {
+					"HV1": "1",
+					"HV2": "2",
+					"HV": "3",
+					"GND": "4",
+					"HV3": "5",
+					"HV4": "6"
+				}
+			}, {
+				"name": "bottom header, pin 1 LV1",
+				"footprint": "Connector_PinSocket_2.54mm:PinSocket_1x06_P2.54mm_Vertical",
+				"pins": {
+					"LV1": "1",
+					"LV2": "2",
+					"LV": "3",
+					"GND 2": "4",
+					"LV3": "5",
+					"LV4": "6"
+				}
+			}],
+			"value": "BSS138 level shifter"
 		}
 	},
 	"../modules/lm2596-buck-module.json": {
@@ -23070,6 +23909,25 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"outline": false
 				}
 			]
+		},
+		kicad: {
+			"headers": [{
+				"name": "input pads, pin 1 IN+",
+				"footprint": "Connector_PinHeader_2.54mm:PinHeader_1x02_P2.54mm_Vertical",
+				"pins": {
+					"IN+": "1",
+					"IN-": "2"
+				}
+			}, {
+				"name": "output pads, pin 1 OUT+",
+				"footprint": "Connector_PinHeader_2.54mm:PinHeader_1x02_P2.54mm_Vertical",
+				"pins": {
+					"OUT+": "1",
+					"OUT-": "2"
+				}
+			}],
+			"value": "LM2596 module",
+			"note": "The module has solder pads, not header pins: wire them to these headers."
 		}
 	},
 	"../modules/mcp23017-cjmcu-2317.json": {
@@ -23780,6 +24638,60 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"labelSize": 6.5
 				}
 			]
+		},
+		kicad: {
+			"headers": [
+				{
+					"name": "row 1 of 3 (chip side, left to right), pin 1 GND",
+					"footprint": "Connector_PinSocket_2.54mm:PinSocket_1x10_P2.54mm_Vertical",
+					"pins": {
+						"GND": "1",
+						"INTA": "2",
+						"GPA0": "3",
+						"GPA1": "4",
+						"GPA2": "5",
+						"GPA3": "6",
+						"GPA4": "7",
+						"GPA5": "8",
+						"GPA6": "9",
+						"GPA7": "10"
+					}
+				},
+				{
+					"name": "row 2 of 3 (chip side, left to right), pin 1 VCC",
+					"footprint": "Connector_PinSocket_2.54mm:PinSocket_1x10_P2.54mm_Vertical",
+					"pins": {
+						"VCC": "1",
+						"INTB": "2",
+						"GPB0": "3",
+						"GPB1": "4",
+						"GPB2": "5",
+						"GPB3": "6",
+						"GPB4": "7",
+						"GPB5": "8",
+						"GPB6": "9",
+						"GPB7": "10"
+					}
+				},
+				{
+					"name": "row 3 of 3 (chip side, left to right), pin 1 A2",
+					"footprint": "Connector_PinSocket_2.54mm:PinSocket_1x10_P2.54mm_Vertical",
+					"pins": {
+						"A2": "1",
+						"A1": "2",
+						"A0": "3",
+						"RESET": "4",
+						"NC": "5",
+						"NC 2": "6",
+						"SDA": "7",
+						"SCL": "8",
+						"GND 2": "9",
+						"VCC 2": "10"
+					}
+				}
+			],
+			"value": "CJMCU-2317",
+			"note": "Each row is its own socket strip: place them as the board's rows sit."
 		}
 	},
 	"../modules/mcp23017-dip28.json": {
@@ -24255,6 +25167,41 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"labelSize": 8
 				}
 			]
+		},
+		kicad: {
+			"symbol": "Interface_Expansion:MCP23017x-x-SP",
+			"footprint": "Package_DIP:DIP-28_W7.62mm",
+			"pins": {
+				"GPB0": "1",
+				"GPB1": "2",
+				"GPB2": "3",
+				"GPB3": "4",
+				"GPB4": "5",
+				"GPB5": "6",
+				"GPB6": "7",
+				"GPB7": "8",
+				"VDD": "9",
+				"VSS": "10",
+				"NC": "11",
+				"SCL": "12",
+				"SDA": "13",
+				"NC 2": "14",
+				"GPA7": "28",
+				"GPA6": "27",
+				"GPA5": "26",
+				"GPA4": "25",
+				"GPA3": "24",
+				"GPA2": "23",
+				"GPA1": "22",
+				"GPA0": "21",
+				"INTA": "20",
+				"INTB": "19",
+				"RESET": "18",
+				"A2": "17",
+				"A1": "16",
+				"A0": "15"
+			},
+			"value": "MCP23017"
 		}
 	},
 	"../modules/mcp23018-dip28.json": {
@@ -24704,6 +25651,41 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"labelSize": 8
 				}
 			]
+		},
+		kicad: {
+			"symbol": "Interface_Expansion:MCP23018x-x-SP",
+			"footprint": "Package_DIP:DIP-28_W7.62mm",
+			"pins": {
+				"VSS": "1",
+				"NC": "2",
+				"GPB0": "3",
+				"GPB1": "4",
+				"GPB2": "5",
+				"GPB3": "6",
+				"GPB4": "7",
+				"GPB5": "8",
+				"GPB6": "9",
+				"GPB7": "10",
+				"VDD": "11",
+				"SCL": "12",
+				"SDA": "13",
+				"NC 2": "14",
+				"NC 4": "28",
+				"GPA7": "27",
+				"GPA6": "26",
+				"GPA5": "25",
+				"GPA4": "24",
+				"GPA3": "23",
+				"GPA2": "22",
+				"GPA1": "21",
+				"GPA0": "20",
+				"INTA": "19",
+				"INTB": "18",
+				"NC 3": "17",
+				"RESET": "16",
+				"ADDR": "15"
+			},
+			"value": "MCP23018"
 		}
 	},
 	"../modules/microsd-spi-3v3.json": {
@@ -24980,6 +25962,18 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"radius": 1
 				}
 			]
+		},
+		kicad: {
+			"footprint": "Connector_PinSocket_2.54mm:PinSocket_1x06_P2.54mm_Vertical",
+			"pins": {
+				"3V3": "1",
+				"CS": "2",
+				"MOSI": "3",
+				"CLK": "4",
+				"MISO": "5",
+				"GND": "6"
+			},
+			"value": "microSD 3.3V"
 		}
 	},
 	"../modules/microsd-spi-5v.json": {
@@ -25405,6 +26399,18 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"radius": 1
 				}
 			]
+		},
+		kicad: {
+			"footprint": "Connector_PinSocket_2.54mm:PinSocket_1x06_P2.54mm_Vertical",
+			"pins": {
+				"GND": "1",
+				"VCC": "2",
+				"MISO": "3",
+				"MOSI": "4",
+				"SCK": "5",
+				"CS": "6"
+			},
+			"value": "microSD 5V"
 		}
 	},
 	"../modules/net-label.json": {
@@ -25635,6 +26641,16 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"radius": 1
 				}
 			]
+		},
+		kicad: {
+			"footprint": "Connector_PinSocket_2.54mm:PinSocket_1x04_P2.54mm_Vertical",
+			"pins": {
+				"VCC": "1",
+				"GND": "2",
+				"SCL": "3",
+				"SDA": "4"
+			},
+			"value": "SH1106 1.3in"
 		}
 	},
 	"../modules/oled-sh1106-13-i2c.json": {
@@ -25835,6 +26851,16 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"radius": 1
 				}
 			]
+		},
+		kicad: {
+			"footprint": "Connector_PinSocket_2.54mm:PinSocket_1x04_P2.54mm_Vertical",
+			"pins": {
+				"GND": "1",
+				"VCC": "2",
+				"SCL": "3",
+				"SDA": "4"
+			},
+			"value": "SH1106 1.3in"
 		}
 	},
 	"../modules/oled-ssd1306-091-i2c.json": {
@@ -25993,6 +27019,16 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"radius": 1
 				}
 			]
+		},
+		kicad: {
+			"footprint": "Connector_PinSocket_2.54mm:PinSocket_1x04_P2.54mm_Vertical",
+			"pins": {
+				"SDA": "1",
+				"SCL": "2",
+				"VCC": "3",
+				"GND": "4"
+			},
+			"value": "SSD1306 0.91in"
 		}
 	},
 	"../modules/oled-ssd1306-096-i2c-vcc-gnd.json": {
@@ -26193,6 +27229,16 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"radius": 1
 				}
 			]
+		},
+		kicad: {
+			"footprint": "Connector_PinSocket_2.54mm:PinSocket_1x04_P2.54mm_Vertical",
+			"pins": {
+				"VCC": "1",
+				"GND": "2",
+				"SCL": "3",
+				"SDA": "4"
+			},
+			"value": "SSD1306 0.96in"
 		}
 	},
 	"../modules/oled-ssd1306-096-i2c.json": {
@@ -26393,6 +27439,16 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"radius": 1
 				}
 			]
+		},
+		kicad: {
+			"footprint": "Connector_PinSocket_2.54mm:PinSocket_1x04_P2.54mm_Vertical",
+			"pins": {
+				"GND": "1",
+				"VCC": "2",
+				"SCL": "3",
+				"SDA": "4"
+			},
+			"value": "SSD1306 0.96in"
 		}
 	},
 	"../modules/outlet-au-as3112.json": {
@@ -26685,6 +27741,16 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"outline": false
 				}
 			]
+		},
+		kicad: {
+			"footprint": "TerminalBlock_Phoenix:TerminalBlock_Phoenix_MKDS-1,5-3_1x03_P5.00mm_Horizontal",
+			"pins": {
+				"L": "1",
+				"N": "2",
+				"PE": "3"
+			},
+			"placeholder": true,
+			"note": "Placeholder: an outlet is a panel part; wire it to this terminal block. Choose a terminal rated for the mains current."
 		}
 	},
 	"../modules/outlet-fr-cee7-5.json": {
@@ -26816,6 +27882,16 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"radius": 5
 				}
 			]
+		},
+		kicad: {
+			"footprint": "TerminalBlock_Phoenix:TerminalBlock_Phoenix_MKDS-1,5-3_1x03_P5.00mm_Horizontal",
+			"pins": {
+				"L": "1",
+				"N": "2",
+				"PE": "3"
+			},
+			"placeholder": true,
+			"note": "Placeholder: an outlet is a panel part; wire it to this terminal block. Choose a terminal rated for the mains current."
 		}
 	},
 	"../modules/outlet-jp-1-15r-duplex-polarized.json": {
@@ -27003,6 +28079,17 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"outline": false
 				}
 			]
+		},
+		kicad: {
+			"footprint": "TerminalBlock_Phoenix:TerminalBlock_Phoenix_MKDS-1,5-2_1x02_P5.00mm_Horizontal",
+			"pins": {
+				"L1": "1",
+				"L2": "1",
+				"N1": "2",
+				"N2": "2"
+			},
+			"placeholder": true,
+			"note": "Placeholder: an outlet is a panel part; wire it to this terminal block. Choose a terminal rated for the mains current."
 		}
 	},
 	"../modules/outlet-jp-1-15r-duplex.json": {
@@ -27190,6 +28277,17 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"outline": false
 				}
 			]
+		},
+		kicad: {
+			"footprint": "TerminalBlock_Phoenix:TerminalBlock_Phoenix_MKDS-1,5-2_1x02_P5.00mm_Horizontal",
+			"pins": {
+				"L1": "1",
+				"L2": "1",
+				"N1": "2",
+				"N2": "2"
+			},
+			"placeholder": true,
+			"note": "Placeholder: an outlet is a panel part; wire it to this terminal block. Choose a terminal rated for the mains current."
 		}
 	},
 	"../modules/outlet-schuko-cee7-3.json": {
@@ -27330,6 +28428,16 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"radius": 2
 				}
 			]
+		},
+		kicad: {
+			"footprint": "TerminalBlock_Phoenix:TerminalBlock_Phoenix_MKDS-1,5-3_1x03_P5.00mm_Horizontal",
+			"pins": {
+				"L": "1",
+				"N": "2",
+				"PE": "3"
+			},
+			"placeholder": true,
+			"note": "Placeholder: an outlet is a panel part; wire it to this terminal block. Choose a terminal rated for the mains current."
 		}
 	},
 	"../modules/outlet-uk-bs1363.json": {
@@ -27481,6 +28589,16 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"outline": false
 				}
 			]
+		},
+		kicad: {
+			"footprint": "TerminalBlock_Phoenix:TerminalBlock_Phoenix_MKDS-1,5-3_1x03_P5.00mm_Horizontal",
+			"pins": {
+				"L": "1",
+				"N": "2",
+				"PE": "3"
+			},
+			"placeholder": true,
+			"note": "Placeholder: an outlet is a panel part; wire it to this terminal block. Choose a terminal rated for the mains current."
 		}
 	},
 	"../modules/outlet-us-5-15r-duplex.json": {
@@ -27719,6 +28837,19 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"outline": false
 				}
 			]
+		},
+		kicad: {
+			"footprint": "TerminalBlock_Phoenix:TerminalBlock_Phoenix_MKDS-1,5-3_1x03_P5.00mm_Horizontal",
+			"pins": {
+				"L1": "1",
+				"L2": "1",
+				"N1": "2",
+				"N2": "2",
+				"PE1": "3",
+				"PE2": "3"
+			},
+			"placeholder": true,
+			"note": "Placeholder: an outlet is a panel part; wire it to this terminal block. Choose a terminal rated for the mains current."
 		}
 	},
 	"../modules/outlet-us-5-20r-duplex.json": {
@@ -27977,6 +29108,19 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"outline": false
 				}
 			]
+		},
+		kicad: {
+			"footprint": "TerminalBlock_Phoenix:TerminalBlock_Phoenix_MKDS-1,5-3_1x03_P5.00mm_Horizontal",
+			"pins": {
+				"L1": "1",
+				"L2": "1",
+				"N1": "2",
+				"N2": "2",
+				"PE1": "3",
+				"PE2": "3"
+			},
+			"placeholder": true,
+			"note": "Placeholder: an outlet is a panel part; wire it to this terminal block. Choose a terminal rated for the mains current."
 		}
 	},
 	"../modules/pir-hc-sr501.json": {
@@ -28153,6 +29297,15 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"outline": false
 				}
 			]
+		},
+		kicad: {
+			"footprint": "Connector_PinSocket_2.54mm:PinSocket_1x03_P2.54mm_Vertical",
+			"pins": {
+				"GND": "1",
+				"OUT": "2",
+				"VCC": "3"
+			},
+			"value": "HC-SR501"
 		}
 	},
 	"../modules/plug-au-as3112-2lead.json": {
@@ -28412,6 +29565,15 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"outline": false
 				}
 			]
+		},
+		kicad: {
+			"footprint": "TerminalBlock_Phoenix:TerminalBlock_Phoenix_MKDS-1,5-2_1x02_P5.00mm_Horizontal",
+			"pins": {
+				"L": "1",
+				"N": "2"
+			},
+			"placeholder": true,
+			"note": "Placeholder: a cord plug is not a board part; this terminal block is where its cord would land. Choose a terminal rated for the mains current."
 		}
 	},
 	"../modules/plug-au-as3112-3lead.json": {
@@ -28712,6 +29874,16 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"outline": false
 				}
 			]
+		},
+		kicad: {
+			"footprint": "TerminalBlock_Phoenix:TerminalBlock_Phoenix_MKDS-1,5-3_1x03_P5.00mm_Horizontal",
+			"pins": {
+				"L": "1",
+				"N": "2",
+				"PE": "3"
+			},
+			"placeholder": true,
+			"note": "Placeholder: a cord plug is not a board part; this terminal block is where its cord would land. Choose a terminal rated for the mains current."
 		}
 	},
 	"../modules/plug-eu-cee7-16.json": {
@@ -28852,6 +30024,15 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"outline": false
 				}
 			]
+		},
+		kicad: {
+			"footprint": "TerminalBlock_Phoenix:TerminalBlock_Phoenix_MKDS-1,5-2_1x02_P5.00mm_Horizontal",
+			"pins": {
+				"L": "1",
+				"N": "2"
+			},
+			"placeholder": true,
+			"note": "Placeholder: a cord plug is not a board part; this terminal block is where its cord would land. Choose a terminal rated for the mains current."
 		}
 	},
 	"../modules/plug-eu-cee7-7.json": {
@@ -29098,6 +30279,16 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"outline": false
 				}
 			]
+		},
+		kicad: {
+			"footprint": "TerminalBlock_Phoenix:TerminalBlock_Phoenix_MKDS-1,5-3_1x03_P5.00mm_Horizontal",
+			"pins": {
+				"L": "1",
+				"N": "2",
+				"PE": "3"
+			},
+			"placeholder": true,
+			"note": "Placeholder: a cord plug is not a board part; this terminal block is where its cord would land. Choose a terminal rated for the mains current."
 		}
 	},
 	"../modules/plug-jp-1-15p.json": {
@@ -29238,6 +30429,15 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"outline": false
 				}
 			]
+		},
+		kicad: {
+			"footprint": "TerminalBlock_Phoenix:TerminalBlock_Phoenix_MKDS-1,5-2_1x02_P5.00mm_Horizontal",
+			"pins": {
+				"L": "1",
+				"N": "2"
+			},
+			"placeholder": true,
+			"note": "Placeholder: a cord plug is not a board part; this terminal block is where its cord would land. Choose a terminal rated for the mains current."
 		}
 	},
 	"../modules/plug-uk-bs1363-2lead.json": {
@@ -29420,6 +30620,15 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"outline": false
 				}
 			]
+		},
+		kicad: {
+			"footprint": "TerminalBlock_Phoenix:TerminalBlock_Phoenix_MKDS-1,5-2_1x02_P5.00mm_Horizontal",
+			"pins": {
+				"L": "1",
+				"N": "2"
+			},
+			"placeholder": true,
+			"note": "Placeholder: a cord plug is not a board part; this terminal block is where its cord would land. Choose a terminal rated for the mains current."
 		}
 	},
 	"../modules/plug-uk-bs1363-3lead.json": {
@@ -29622,6 +30831,16 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"outline": false
 				}
 			]
+		},
+		kicad: {
+			"footprint": "TerminalBlock_Phoenix:TerminalBlock_Phoenix_MKDS-1,5-3_1x03_P5.00mm_Horizontal",
+			"pins": {
+				"L": "1",
+				"N": "2",
+				"PE": "3"
+			},
+			"placeholder": true,
+			"note": "Placeholder: a cord plug is not a board part; this terminal block is where its cord would land. Choose a terminal rated for the mains current."
 		}
 	},
 	"../modules/plug-us-1-15p.json": {
@@ -29761,6 +30980,15 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"outline": false
 				}
 			]
+		},
+		kicad: {
+			"footprint": "TerminalBlock_Phoenix:TerminalBlock_Phoenix_MKDS-1,5-2_1x02_P5.00mm_Horizontal",
+			"pins": {
+				"L": "1",
+				"N": "2"
+			},
+			"placeholder": true,
+			"note": "Placeholder: a cord plug is not a board part; this terminal block is where its cord would land. Choose a terminal rated for the mains current."
 		}
 	},
 	"../modules/plug-us-5-15p.json": {
@@ -29941,6 +31169,16 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"outline": false
 				}
 			]
+		},
+		kicad: {
+			"footprint": "TerminalBlock_Phoenix:TerminalBlock_Phoenix_MKDS-1,5-3_1x03_P5.00mm_Horizontal",
+			"pins": {
+				"L": "1",
+				"N": "2",
+				"PE": "3"
+			},
+			"placeholder": true,
+			"note": "Placeholder: a cord plug is not a board part; this terminal block is where its cord would land. Choose a terminal rated for the mains current."
 		}
 	},
 	"../modules/potentiometer-panel-10k.json": {
@@ -30101,6 +31339,16 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"outline": false
 				}
 			]
+		},
+		kicad: {
+			"symbol": "Device:R_Potentiometer",
+			"footprint": "Connector_JST:JST_XH_B3B-XH-A_1x03_P2.50mm_Vertical",
+			"pins": {
+				"1": "1",
+				"3": "3",
+				"W": "2"
+			},
+			"note": "A panel potentiometer is wired to the board: a lead connector, wiper on pin 2."
 		}
 	},
 	"../modules/potentiometer.json": {
@@ -30207,6 +31455,15 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"radius": 1.5
 				}
 			]
+		},
+		kicad: {
+			"symbol": "Device:R_Potentiometer",
+			"footprint": "Potentiometer_THT:Potentiometer_Alps_RK09K_Single_Vertical",
+			"pins": {
+				"1": "1",
+				"3": "3",
+				"W": "2"
+			}
 		}
 	},
 	"../modules/power-rail-strip.json": {
@@ -30383,6 +31640,14 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"radius": 8
 				}
 			]
+		},
+		kicad: {
+			"symbol": "Switch:SW_Push",
+			"footprint": "Button_Switch_THT:SW_PUSH_6mm",
+			"pins": {
+				"1": "1",
+				"2": "2"
+			}
 		}
 	},
 	"../modules/relay-module-1ch-5v.json": {
@@ -30850,6 +32115,28 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"labelSize": 5
 				}
 			]
+		},
+		kicad: {
+			"headers": [{
+				"name": "contacts NO COM NC (screw terminal on the module)",
+				"footprint": "TerminalBlock_Phoenix:TerminalBlock_Phoenix_MKDS-1,5-3_1x03_P5.00mm_Horizontal",
+				"pins": {
+					"NO": "1",
+					"COM": "2",
+					"NC": "3"
+				}
+			}, {
+				"name": "control header, pin 1 IN",
+				"footprint": "Connector_PinSocket_2.54mm:PinSocket_1x03_P2.54mm_Vertical",
+				"pins": {
+					"IN": "1",
+					"DC-": "2",
+					"DC+": "3"
+				}
+			}],
+			"value": "Relay module 5V",
+			"placeholder": true,
+			"note": "Placeholder for the contacts: they are screw terminals on the module, wired to this terminal block. Rate it for what the relay switches."
 		}
 	},
 	"../modules/resistor-half-watt.json": {
@@ -30950,6 +32237,14 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"band": 4
 				}
 			]
+		},
+		kicad: {
+			"symbol": "Device:R",
+			"footprint": "Resistor_THT:R_Axial_DIN0309_L9.0mm_D3.2mm_P12.70mm_Horizontal",
+			"pins": {
+				"1": "1",
+				"2": "2"
+			}
 		}
 	},
 	"../modules/resistor.json": {
@@ -31050,6 +32345,14 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"band": 4
 				}
 			]
+		},
+		kicad: {
+			"symbol": "Device:R",
+			"footprint": "Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal",
+			"pins": {
+				"1": "1",
+				"2": "2"
+			}
 		}
 	},
 	"../modules/rfm95-lora-breakout.json": {
@@ -31675,6 +32978,35 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"outline": false
 				}
 			]
+		},
+		kicad: {
+			"headers": [{
+				"name": "bottom header, pin 1 VIN",
+				"footprint": "Connector_PinSocket_2.54mm:PinSocket_1x09_P2.54mm_Vertical",
+				"pins": {
+					"VIN": "1",
+					"GND": "2",
+					"EN": "3",
+					"G0": "4",
+					"SCK": "5",
+					"MISO": "6",
+					"MOSI": "7",
+					"CS": "8",
+					"RST": "9"
+				}
+			}, {
+				"name": "top row, pin 1 G1",
+				"footprint": "Connector_PinSocket_2.54mm:PinSocket_1x05_P2.54mm_Vertical",
+				"pins": {
+					"G1": "1",
+					"G2": "2",
+					"G3": "3",
+					"G4": "4",
+					"G5": "5"
+				}
+			}],
+			"value": "RFM95W",
+			"note": "ANT is the antenna pad, not on these headers."
 		}
 	},
 	"../modules/rocker-switch-kcd1.json": {
@@ -31781,6 +33113,16 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"labelSize": 9
 				}
 			]
+		},
+		kicad: {
+			"symbol": "Switch:SW_SPST",
+			"footprint": "Connector_JST:JST_XH_B2B-XH-A_1x02_P2.50mm_Vertical",
+			"pins": {
+				"1": "1",
+				"2": "2"
+			},
+			"value": "KCD1-101",
+			"note": "A panel-mounted rocker switch is wired to the board: a 2-pin lead connector."
 		}
 	},
 	"../modules/rpi-pico-2-w.json": {
@@ -32046,7 +33388,53 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 				"max": 5.5
 			}]
 		},
-		art: /* @__PURE__ */ JSON.parse("{\"w\":120,\"h\":230,\"pinLabels\":\"inside\",\"shapes\":[{\"type\":\"rect\",\"x\":0,\"y\":0,\"w\":120,\"h\":230,\"fill\":\"#2F9E6E\",\"radius\":4},{\"type\":\"rect\",\"x\":0,\"y\":16.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":-1.5,\"y\":18.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":0,\"y\":26.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":-1.5,\"y\":28.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":0,\"y\":36.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":-1.5,\"y\":38.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":0,\"y\":46.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":-1.5,\"y\":48.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":0,\"y\":56.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":-1.5,\"y\":58.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":0,\"y\":66.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":-1.5,\"y\":68.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":0,\"y\":76.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":-1.5,\"y\":78.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":0,\"y\":86.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":-1.5,\"y\":88.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":0,\"y\":96.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":-1.5,\"y\":98.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":0,\"y\":106.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":-1.5,\"y\":108.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":0,\"y\":116.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":-1.5,\"y\":118.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":0,\"y\":126.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":-1.5,\"y\":128.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":0,\"y\":136.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":-1.5,\"y\":138.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":0,\"y\":146.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":-1.5,\"y\":148.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":0,\"y\":156.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":-1.5,\"y\":158.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":0,\"y\":166.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":-1.5,\"y\":168.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":0,\"y\":176.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":-1.5,\"y\":178.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":0,\"y\":186.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":-1.5,\"y\":188.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":0,\"y\":196.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":-1.5,\"y\":198.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":0,\"y\":206.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":-1.5,\"y\":208.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":110,\"y\":16.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":118.5,\"y\":18.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":110,\"y\":26.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":118.5,\"y\":28.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":110,\"y\":36.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":118.5,\"y\":38.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":110,\"y\":46.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":118.5,\"y\":48.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":110,\"y\":56.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":118.5,\"y\":58.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":110,\"y\":66.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":118.5,\"y\":68.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":110,\"y\":76.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":118.5,\"y\":78.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":110,\"y\":86.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":118.5,\"y\":88.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":110,\"y\":96.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":118.5,\"y\":98.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":110,\"y\":106.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":118.5,\"y\":108.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":110,\"y\":116.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":118.5,\"y\":118.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":110,\"y\":126.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":118.5,\"y\":128.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":110,\"y\":136.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":118.5,\"y\":138.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":110,\"y\":146.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":118.5,\"y\":148.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":110,\"y\":156.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":118.5,\"y\":158.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":110,\"y\":166.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":118.5,\"y\":168.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":110,\"y\":176.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":118.5,\"y\":178.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":110,\"y\":186.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":118.5,\"y\":188.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":110,\"y\":196.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":118.5,\"y\":198.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":110,\"y\":206.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":118.5,\"y\":208.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":26,\"y\":12,\"w\":11,\"h\":11,\"fill\":\"#E0B43C\",\"radius\":5.5,\"outline\":false},{\"type\":\"rect\",\"x\":29,\"y\":15,\"w\":5,\"h\":5,\"fill\":\"#F4F1EA\",\"radius\":2.5,\"outline\":false},{\"type\":\"rect\",\"x\":83,\"y\":12,\"w\":11,\"h\":11,\"fill\":\"#E0B43C\",\"radius\":5.5,\"outline\":false},{\"type\":\"rect\",\"x\":86,\"y\":15,\"w\":5,\"h\":5,\"fill\":\"#F4F1EA\",\"radius\":2.5,\"outline\":false},{\"type\":\"rect\",\"x\":26,\"y\":207,\"w\":11,\"h\":11,\"fill\":\"#E0B43C\",\"radius\":5.5,\"outline\":false},{\"type\":\"rect\",\"x\":29,\"y\":210,\"w\":5,\"h\":5,\"fill\":\"#F4F1EA\",\"radius\":2.5,\"outline\":false},{\"type\":\"rect\",\"x\":83,\"y\":207,\"w\":11,\"h\":11,\"fill\":\"#E0B43C\",\"radius\":5.5,\"outline\":false},{\"type\":\"rect\",\"x\":86,\"y\":210,\"w\":5,\"h\":5,\"fill\":\"#F4F1EA\",\"radius\":2.5,\"outline\":false},{\"type\":\"rect\",\"x\":47,\"y\":-7,\"w\":26,\"h\":19,\"fill\":\"#C9CED6\",\"radius\":2},{\"type\":\"rect\",\"x\":52,\"y\":-3,\"w\":16,\"h\":5,\"fill\":\"#1B1F24\",\"radius\":1,\"outline\":false},{\"type\":\"rect\",\"x\":28,\"y\":30,\"w\":7,\"h\":5,\"fill\":\"#6BE08A\",\"radius\":1},{\"type\":\"rect\",\"x\":30,\"y\":46,\"w\":14,\"h\":20,\"fill\":\"#F4F1EA\",\"radius\":3},{\"type\":\"rect\",\"x\":33,\"y\":51,\"w\":8,\"h\":10,\"fill\":\"#D5DAE1\",\"radius\":4,\"outline\":false},{\"type\":\"rect\",\"x\":62,\"y\":36,\"w\":14,\"h\":16,\"fill\":\"#1B1F24\",\"radius\":1},{\"type\":\"rect\",\"x\":44,\"y\":40,\"w\":12,\"h\":10,\"fill\":\"#1B1F24\",\"radius\":1},{\"type\":\"rect\",\"x\":46,\"y\":115,\"w\":28,\"h\":28,\"fill\":\"#1B1F24\",\"radius\":2,\"label\":\"RP2350\",\"labelColor\":\"#D5DAE1\",\"labelSize\":6.5},{\"type\":\"rect\",\"x\":49.25,\"y\":151,\"w\":1.5,\"h\":79,\"fill\":\"#237A55\",\"outline\":false},{\"type\":\"rect\",\"x\":59.25,\"y\":151,\"w\":1.5,\"h\":79,\"fill\":\"#237A55\",\"outline\":false},{\"type\":\"rect\",\"x\":69.25,\"y\":151,\"w\":1.5,\"h\":79,\"fill\":\"#237A55\",\"outline\":false},{\"type\":\"rect\",\"x\":43,\"y\":144,\"w\":34,\"h\":14,\"fill\":\"#2F9E6E\",\"radius\":1,\"outline\":false},{\"type\":\"rect\",\"x\":46.5,\"y\":147.5,\"w\":7,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":3.5,\"outline\":false},{\"type\":\"rect\",\"x\":48.5,\"y\":149.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":56.5,\"y\":147.5,\"w\":7,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":3.5,\"outline\":false},{\"type\":\"rect\",\"x\":58.5,\"y\":149.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":66.5,\"y\":147.5,\"w\":7,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":3.5,\"outline\":false},{\"type\":\"rect\",\"x\":68.5,\"y\":149.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":38,\"y\":160,\"w\":44,\"h\":32,\"fill\":\"#D5DAE1\",\"radius\":2,\"label\":\"Pico 2 W\",\"labelSize\":9},{\"type\":\"rect\",\"x\":46,\"y\":210,\"w\":28,\"h\":2,\"fill\":\"#E0B43C\",\"outline\":false},{\"type\":\"rect\",\"x\":46,\"y\":210,\"w\":2,\"h\":8,\"fill\":\"#E0B43C\",\"outline\":false},{\"type\":\"rect\",\"x\":54.67,\"y\":210,\"w\":2,\"h\":8,\"fill\":\"#E0B43C\",\"outline\":false},{\"type\":\"rect\",\"x\":63.34,\"y\":210,\"w\":2,\"h\":8,\"fill\":\"#E0B43C\",\"outline\":false},{\"type\":\"rect\",\"x\":72.00999999999999,\"y\":210,\"w\":2,\"h\":8,\"fill\":\"#E0B43C\",\"outline\":false}]}")
+		art: /* @__PURE__ */ JSON.parse("{\"w\":120,\"h\":230,\"pinLabels\":\"inside\",\"shapes\":[{\"type\":\"rect\",\"x\":0,\"y\":0,\"w\":120,\"h\":230,\"fill\":\"#2F9E6E\",\"radius\":4},{\"type\":\"rect\",\"x\":0,\"y\":16.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":-1.5,\"y\":18.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":0,\"y\":26.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":-1.5,\"y\":28.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":0,\"y\":36.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":-1.5,\"y\":38.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":0,\"y\":46.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":-1.5,\"y\":48.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":0,\"y\":56.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":-1.5,\"y\":58.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":0,\"y\":66.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":-1.5,\"y\":68.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":0,\"y\":76.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":-1.5,\"y\":78.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":0,\"y\":86.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":-1.5,\"y\":88.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":0,\"y\":96.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":-1.5,\"y\":98.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":0,\"y\":106.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":-1.5,\"y\":108.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":0,\"y\":116.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":-1.5,\"y\":118.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":0,\"y\":126.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":-1.5,\"y\":128.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":0,\"y\":136.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":-1.5,\"y\":138.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":0,\"y\":146.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":-1.5,\"y\":148.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":0,\"y\":156.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":-1.5,\"y\":158.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":0,\"y\":166.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":-1.5,\"y\":168.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":0,\"y\":176.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":-1.5,\"y\":178.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":0,\"y\":186.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":-1.5,\"y\":188.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":0,\"y\":196.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":-1.5,\"y\":198.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":0,\"y\":206.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":-1.5,\"y\":208.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":110,\"y\":16.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":118.5,\"y\":18.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":110,\"y\":26.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":118.5,\"y\":28.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":110,\"y\":36.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":118.5,\"y\":38.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":110,\"y\":46.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":118.5,\"y\":48.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":110,\"y\":56.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":118.5,\"y\":58.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":110,\"y\":66.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":118.5,\"y\":68.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":110,\"y\":76.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":118.5,\"y\":78.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":110,\"y\":86.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":118.5,\"y\":88.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":110,\"y\":96.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":118.5,\"y\":98.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":110,\"y\":106.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":118.5,\"y\":108.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":110,\"y\":116.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":118.5,\"y\":118.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":110,\"y\":126.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":118.5,\"y\":128.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":110,\"y\":136.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":118.5,\"y\":138.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":110,\"y\":146.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":118.5,\"y\":148.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":110,\"y\":156.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":118.5,\"y\":158.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":110,\"y\":166.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":118.5,\"y\":168.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":110,\"y\":176.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":118.5,\"y\":178.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":110,\"y\":186.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":118.5,\"y\":188.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":110,\"y\":196.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":118.5,\"y\":198.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":110,\"y\":206.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":118.5,\"y\":208.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":26,\"y\":12,\"w\":11,\"h\":11,\"fill\":\"#E0B43C\",\"radius\":5.5,\"outline\":false},{\"type\":\"rect\",\"x\":29,\"y\":15,\"w\":5,\"h\":5,\"fill\":\"#F4F1EA\",\"radius\":2.5,\"outline\":false},{\"type\":\"rect\",\"x\":83,\"y\":12,\"w\":11,\"h\":11,\"fill\":\"#E0B43C\",\"radius\":5.5,\"outline\":false},{\"type\":\"rect\",\"x\":86,\"y\":15,\"w\":5,\"h\":5,\"fill\":\"#F4F1EA\",\"radius\":2.5,\"outline\":false},{\"type\":\"rect\",\"x\":26,\"y\":207,\"w\":11,\"h\":11,\"fill\":\"#E0B43C\",\"radius\":5.5,\"outline\":false},{\"type\":\"rect\",\"x\":29,\"y\":210,\"w\":5,\"h\":5,\"fill\":\"#F4F1EA\",\"radius\":2.5,\"outline\":false},{\"type\":\"rect\",\"x\":83,\"y\":207,\"w\":11,\"h\":11,\"fill\":\"#E0B43C\",\"radius\":5.5,\"outline\":false},{\"type\":\"rect\",\"x\":86,\"y\":210,\"w\":5,\"h\":5,\"fill\":\"#F4F1EA\",\"radius\":2.5,\"outline\":false},{\"type\":\"rect\",\"x\":47,\"y\":-7,\"w\":26,\"h\":19,\"fill\":\"#C9CED6\",\"radius\":2},{\"type\":\"rect\",\"x\":52,\"y\":-3,\"w\":16,\"h\":5,\"fill\":\"#1B1F24\",\"radius\":1,\"outline\":false},{\"type\":\"rect\",\"x\":28,\"y\":30,\"w\":7,\"h\":5,\"fill\":\"#6BE08A\",\"radius\":1},{\"type\":\"rect\",\"x\":30,\"y\":46,\"w\":14,\"h\":20,\"fill\":\"#F4F1EA\",\"radius\":3},{\"type\":\"rect\",\"x\":33,\"y\":51,\"w\":8,\"h\":10,\"fill\":\"#D5DAE1\",\"radius\":4,\"outline\":false},{\"type\":\"rect\",\"x\":62,\"y\":36,\"w\":14,\"h\":16,\"fill\":\"#1B1F24\",\"radius\":1},{\"type\":\"rect\",\"x\":44,\"y\":40,\"w\":12,\"h\":10,\"fill\":\"#1B1F24\",\"radius\":1},{\"type\":\"rect\",\"x\":46,\"y\":115,\"w\":28,\"h\":28,\"fill\":\"#1B1F24\",\"radius\":2,\"label\":\"RP2350\",\"labelColor\":\"#D5DAE1\",\"labelSize\":6.5},{\"type\":\"rect\",\"x\":49.25,\"y\":151,\"w\":1.5,\"h\":79,\"fill\":\"#237A55\",\"outline\":false},{\"type\":\"rect\",\"x\":59.25,\"y\":151,\"w\":1.5,\"h\":79,\"fill\":\"#237A55\",\"outline\":false},{\"type\":\"rect\",\"x\":69.25,\"y\":151,\"w\":1.5,\"h\":79,\"fill\":\"#237A55\",\"outline\":false},{\"type\":\"rect\",\"x\":43,\"y\":144,\"w\":34,\"h\":14,\"fill\":\"#2F9E6E\",\"radius\":1,\"outline\":false},{\"type\":\"rect\",\"x\":46.5,\"y\":147.5,\"w\":7,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":3.5,\"outline\":false},{\"type\":\"rect\",\"x\":48.5,\"y\":149.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":56.5,\"y\":147.5,\"w\":7,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":3.5,\"outline\":false},{\"type\":\"rect\",\"x\":58.5,\"y\":149.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":66.5,\"y\":147.5,\"w\":7,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":3.5,\"outline\":false},{\"type\":\"rect\",\"x\":68.5,\"y\":149.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":38,\"y\":160,\"w\":44,\"h\":32,\"fill\":\"#D5DAE1\",\"radius\":2,\"label\":\"Pico 2 W\",\"labelSize\":9},{\"type\":\"rect\",\"x\":46,\"y\":210,\"w\":28,\"h\":2,\"fill\":\"#E0B43C\",\"outline\":false},{\"type\":\"rect\",\"x\":46,\"y\":210,\"w\":2,\"h\":8,\"fill\":\"#E0B43C\",\"outline\":false},{\"type\":\"rect\",\"x\":54.67,\"y\":210,\"w\":2,\"h\":8,\"fill\":\"#E0B43C\",\"outline\":false},{\"type\":\"rect\",\"x\":63.34,\"y\":210,\"w\":2,\"h\":8,\"fill\":\"#E0B43C\",\"outline\":false},{\"type\":\"rect\",\"x\":72.00999999999999,\"y\":210,\"w\":2,\"h\":8,\"fill\":\"#E0B43C\",\"outline\":false}]}"),
+		kicad: {
+			"footprint": "Module:RaspberryPi_Pico_Common_THT",
+			"pins": {
+				"GP0": "1",
+				"GP1": "2",
+				"GND": "3",
+				"GP2": "4",
+				"GP3": "5",
+				"GP4": "6",
+				"GP5": "7",
+				"GND 2": "8",
+				"GP6": "9",
+				"GP7": "10",
+				"GP8": "11",
+				"GP9": "12",
+				"GND 3": "13",
+				"GP10": "14",
+				"GP11": "15",
+				"GP12": "16",
+				"GP13": "17",
+				"GND 4": "18",
+				"GP14": "19",
+				"GP15": "20",
+				"VBUS": "40",
+				"VSYS": "39",
+				"GND 5": "38",
+				"3V3_EN": "37",
+				"3V3(OUT)": "36",
+				"ADC_VREF": "35",
+				"GP28/ADC2": "34",
+				"AGND": "33",
+				"GP27/ADC1": "32",
+				"GP26/ADC0": "31",
+				"RUN": "30",
+				"GP22": "29",
+				"GND 6": "28",
+				"GP21": "27",
+				"GP20": "26",
+				"GP19": "25",
+				"GP18": "24",
+				"GND 7": "23",
+				"GP17": "22",
+				"GP16": "21"
+			},
+			"note": "The debug pads (SWCLK, GND, SWDIO) are not on this footprint."
+		}
 	},
 	"../modules/rpi-pico-2.json": {
 		format: "circuitoon-module/1",
@@ -33355,6 +34743,52 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"outline": false
 				}
 			]
+		},
+		kicad: {
+			"footprint": "Module:RaspberryPi_Pico_Common_THT",
+			"pins": {
+				"GP0": "1",
+				"GP1": "2",
+				"GND": "3",
+				"GP2": "4",
+				"GP3": "5",
+				"GP4": "6",
+				"GP5": "7",
+				"GND 2": "8",
+				"GP6": "9",
+				"GP7": "10",
+				"GP8": "11",
+				"GP9": "12",
+				"GND 3": "13",
+				"GP10": "14",
+				"GP11": "15",
+				"GP12": "16",
+				"GP13": "17",
+				"GND 4": "18",
+				"GP14": "19",
+				"GP15": "20",
+				"VBUS": "40",
+				"VSYS": "39",
+				"GND 5": "38",
+				"3V3_EN": "37",
+				"3V3(OUT)": "36",
+				"ADC_VREF": "35",
+				"GP28/ADC2": "34",
+				"AGND": "33",
+				"GP27/ADC1": "32",
+				"GP26/ADC0": "31",
+				"RUN": "30",
+				"GP22": "29",
+				"GND 6": "28",
+				"GP21": "27",
+				"GP20": "26",
+				"GP19": "25",
+				"GP18": "24",
+				"GND 7": "23",
+				"GP17": "22",
+				"GP16": "21"
+			},
+			"note": "The debug pads (SWCLK, GND, SWDIO) are not on this footprint."
 		}
 	},
 	"../modules/rpi-pico-h.json": {
@@ -34260,6 +35694,53 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"outline": false
 				}
 			]
+		},
+		kicad: {
+			"symbol": "MCU_Module:RaspberryPi_Pico",
+			"footprint": "Module:RaspberryPi_Pico_Common_THT",
+			"pins": {
+				"GP0": "1",
+				"GP1": "2",
+				"GND": "3",
+				"GP2": "4",
+				"GP3": "5",
+				"GP4": "6",
+				"GP5": "7",
+				"GND 2": "8",
+				"GP6": "9",
+				"GP7": "10",
+				"GP8": "11",
+				"GP9": "12",
+				"GND 3": "13",
+				"GP10": "14",
+				"GP11": "15",
+				"GP12": "16",
+				"GP13": "17",
+				"GND 4": "18",
+				"GP14": "19",
+				"GP15": "20",
+				"VBUS": "40",
+				"VSYS": "39",
+				"GND 5": "38",
+				"3V3_EN": "37",
+				"3V3(OUT)": "36",
+				"ADC_VREF": "35",
+				"GP28/ADC2": "34",
+				"AGND": "33",
+				"GP27/ADC1": "32",
+				"GP26/ADC0": "31",
+				"RUN": "30",
+				"GP22": "29",
+				"GND 6": "28",
+				"GP21": "27",
+				"GP20": "26",
+				"GP19": "25",
+				"GP18": "24",
+				"GND 7": "23",
+				"GP17": "22",
+				"GP16": "21"
+			},
+			"note": "The debug pads (SWCLK, GND, SWDIO) are not on this footprint."
 		}
 	},
 	"../modules/rpi-pico-w.json": {
@@ -34525,7 +36006,54 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 				"max": 5.5
 			}]
 		},
-		art: /* @__PURE__ */ JSON.parse("{\"w\":120,\"h\":230,\"pinLabels\":\"inside\",\"shapes\":[{\"type\":\"rect\",\"x\":0,\"y\":0,\"w\":120,\"h\":230,\"fill\":\"#2F9E6E\",\"radius\":4},{\"type\":\"rect\",\"x\":0,\"y\":16.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":-1.5,\"y\":18.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":0,\"y\":26.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":-1.5,\"y\":28.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":0,\"y\":36.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":-1.5,\"y\":38.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":0,\"y\":46.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":-1.5,\"y\":48.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":0,\"y\":56.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":-1.5,\"y\":58.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":0,\"y\":66.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":-1.5,\"y\":68.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":0,\"y\":76.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":-1.5,\"y\":78.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":0,\"y\":86.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":-1.5,\"y\":88.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":0,\"y\":96.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":-1.5,\"y\":98.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":0,\"y\":106.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":-1.5,\"y\":108.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":0,\"y\":116.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":-1.5,\"y\":118.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":0,\"y\":126.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":-1.5,\"y\":128.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":0,\"y\":136.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":-1.5,\"y\":138.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":0,\"y\":146.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":-1.5,\"y\":148.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":0,\"y\":156.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":-1.5,\"y\":158.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":0,\"y\":166.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":-1.5,\"y\":168.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":0,\"y\":176.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":-1.5,\"y\":178.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":0,\"y\":186.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":-1.5,\"y\":188.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":0,\"y\":196.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":-1.5,\"y\":198.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":0,\"y\":206.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":-1.5,\"y\":208.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":110,\"y\":16.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":118.5,\"y\":18.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":110,\"y\":26.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":118.5,\"y\":28.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":110,\"y\":36.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":118.5,\"y\":38.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":110,\"y\":46.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":118.5,\"y\":48.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":110,\"y\":56.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":118.5,\"y\":58.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":110,\"y\":66.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":118.5,\"y\":68.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":110,\"y\":76.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":118.5,\"y\":78.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":110,\"y\":86.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":118.5,\"y\":88.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":110,\"y\":96.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":118.5,\"y\":98.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":110,\"y\":106.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":118.5,\"y\":108.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":110,\"y\":116.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":118.5,\"y\":118.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":110,\"y\":126.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":118.5,\"y\":128.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":110,\"y\":136.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":118.5,\"y\":138.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":110,\"y\":146.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":118.5,\"y\":148.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":110,\"y\":156.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":118.5,\"y\":158.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":110,\"y\":166.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":118.5,\"y\":168.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":110,\"y\":176.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":118.5,\"y\":178.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":110,\"y\":186.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":118.5,\"y\":188.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":110,\"y\":196.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":118.5,\"y\":198.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":110,\"y\":206.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":118.5,\"y\":208.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":26,\"y\":12,\"w\":11,\"h\":11,\"fill\":\"#E0B43C\",\"radius\":5.5,\"outline\":false},{\"type\":\"rect\",\"x\":29,\"y\":15,\"w\":5,\"h\":5,\"fill\":\"#F4F1EA\",\"radius\":2.5,\"outline\":false},{\"type\":\"rect\",\"x\":83,\"y\":12,\"w\":11,\"h\":11,\"fill\":\"#E0B43C\",\"radius\":5.5,\"outline\":false},{\"type\":\"rect\",\"x\":86,\"y\":15,\"w\":5,\"h\":5,\"fill\":\"#F4F1EA\",\"radius\":2.5,\"outline\":false},{\"type\":\"rect\",\"x\":26,\"y\":207,\"w\":11,\"h\":11,\"fill\":\"#E0B43C\",\"radius\":5.5,\"outline\":false},{\"type\":\"rect\",\"x\":29,\"y\":210,\"w\":5,\"h\":5,\"fill\":\"#F4F1EA\",\"radius\":2.5,\"outline\":false},{\"type\":\"rect\",\"x\":83,\"y\":207,\"w\":11,\"h\":11,\"fill\":\"#E0B43C\",\"radius\":5.5,\"outline\":false},{\"type\":\"rect\",\"x\":86,\"y\":210,\"w\":5,\"h\":5,\"fill\":\"#F4F1EA\",\"radius\":2.5,\"outline\":false},{\"type\":\"rect\",\"x\":47,\"y\":-7,\"w\":26,\"h\":19,\"fill\":\"#C9CED6\",\"radius\":2},{\"type\":\"rect\",\"x\":52,\"y\":-3,\"w\":16,\"h\":5,\"fill\":\"#1B1F24\",\"radius\":1,\"outline\":false},{\"type\":\"rect\",\"x\":28,\"y\":30,\"w\":7,\"h\":5,\"fill\":\"#6BE08A\",\"radius\":1},{\"type\":\"rect\",\"x\":30,\"y\":46,\"w\":14,\"h\":20,\"fill\":\"#F4F1EA\",\"radius\":3},{\"type\":\"rect\",\"x\":33,\"y\":51,\"w\":8,\"h\":10,\"fill\":\"#D5DAE1\",\"radius\":4,\"outline\":false},{\"type\":\"rect\",\"x\":62,\"y\":36,\"w\":14,\"h\":16,\"fill\":\"#1B1F24\",\"radius\":1},{\"type\":\"rect\",\"x\":44,\"y\":40,\"w\":12,\"h\":10,\"fill\":\"#1B1F24\",\"radius\":1},{\"type\":\"rect\",\"x\":46,\"y\":115,\"w\":28,\"h\":28,\"fill\":\"#1B1F24\",\"radius\":2,\"label\":\"RP2040\",\"labelColor\":\"#D5DAE1\",\"labelSize\":6.5},{\"type\":\"rect\",\"x\":49.25,\"y\":151,\"w\":1.5,\"h\":79,\"fill\":\"#237A55\",\"outline\":false},{\"type\":\"rect\",\"x\":59.25,\"y\":151,\"w\":1.5,\"h\":79,\"fill\":\"#237A55\",\"outline\":false},{\"type\":\"rect\",\"x\":69.25,\"y\":151,\"w\":1.5,\"h\":79,\"fill\":\"#237A55\",\"outline\":false},{\"type\":\"rect\",\"x\":43,\"y\":144,\"w\":34,\"h\":14,\"fill\":\"#2F9E6E\",\"radius\":1,\"outline\":false},{\"type\":\"rect\",\"x\":46.5,\"y\":147.5,\"w\":7,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":3.5,\"outline\":false},{\"type\":\"rect\",\"x\":48.5,\"y\":149.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":56.5,\"y\":147.5,\"w\":7,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":3.5,\"outline\":false},{\"type\":\"rect\",\"x\":58.5,\"y\":149.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":66.5,\"y\":147.5,\"w\":7,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":3.5,\"outline\":false},{\"type\":\"rect\",\"x\":68.5,\"y\":149.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":38,\"y\":160,\"w\":44,\"h\":32,\"fill\":\"#D5DAE1\",\"radius\":2,\"label\":\"Pico W\",\"labelSize\":9},{\"type\":\"rect\",\"x\":46,\"y\":210,\"w\":28,\"h\":2,\"fill\":\"#E0B43C\",\"outline\":false},{\"type\":\"rect\",\"x\":46,\"y\":210,\"w\":2,\"h\":8,\"fill\":\"#E0B43C\",\"outline\":false},{\"type\":\"rect\",\"x\":54.67,\"y\":210,\"w\":2,\"h\":8,\"fill\":\"#E0B43C\",\"outline\":false},{\"type\":\"rect\",\"x\":63.34,\"y\":210,\"w\":2,\"h\":8,\"fill\":\"#E0B43C\",\"outline\":false},{\"type\":\"rect\",\"x\":72.00999999999999,\"y\":210,\"w\":2,\"h\":8,\"fill\":\"#E0B43C\",\"outline\":false}]}")
+		art: /* @__PURE__ */ JSON.parse("{\"w\":120,\"h\":230,\"pinLabels\":\"inside\",\"shapes\":[{\"type\":\"rect\",\"x\":0,\"y\":0,\"w\":120,\"h\":230,\"fill\":\"#2F9E6E\",\"radius\":4},{\"type\":\"rect\",\"x\":0,\"y\":16.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":-1.5,\"y\":18.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":0,\"y\":26.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":-1.5,\"y\":28.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":0,\"y\":36.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":-1.5,\"y\":38.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":0,\"y\":46.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":-1.5,\"y\":48.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":0,\"y\":56.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":-1.5,\"y\":58.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":0,\"y\":66.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":-1.5,\"y\":68.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":0,\"y\":76.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":-1.5,\"y\":78.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":0,\"y\":86.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":-1.5,\"y\":88.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":0,\"y\":96.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":-1.5,\"y\":98.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":0,\"y\":106.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":-1.5,\"y\":108.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":0,\"y\":116.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":-1.5,\"y\":118.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":0,\"y\":126.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":-1.5,\"y\":128.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":0,\"y\":136.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":-1.5,\"y\":138.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":0,\"y\":146.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":-1.5,\"y\":148.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":0,\"y\":156.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":-1.5,\"y\":158.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":0,\"y\":166.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":-1.5,\"y\":168.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":0,\"y\":176.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":-1.5,\"y\":178.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":0,\"y\":186.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":-1.5,\"y\":188.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":0,\"y\":196.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":-1.5,\"y\":198.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":0,\"y\":206.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":-1.5,\"y\":208.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":110,\"y\":16.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":118.5,\"y\":18.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":110,\"y\":26.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":118.5,\"y\":28.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":110,\"y\":36.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":118.5,\"y\":38.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":110,\"y\":46.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":118.5,\"y\":48.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":110,\"y\":56.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":118.5,\"y\":58.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":110,\"y\":66.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":118.5,\"y\":68.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":110,\"y\":76.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":118.5,\"y\":78.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":110,\"y\":86.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":118.5,\"y\":88.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":110,\"y\":96.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":118.5,\"y\":98.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":110,\"y\":106.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":118.5,\"y\":108.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":110,\"y\":116.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":118.5,\"y\":118.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":110,\"y\":126.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":118.5,\"y\":128.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":110,\"y\":136.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":118.5,\"y\":138.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":110,\"y\":146.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":118.5,\"y\":148.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":110,\"y\":156.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":118.5,\"y\":158.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":110,\"y\":166.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":118.5,\"y\":168.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":110,\"y\":176.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":118.5,\"y\":178.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":110,\"y\":186.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":118.5,\"y\":188.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":110,\"y\":196.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":118.5,\"y\":198.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":110,\"y\":206.5,\"w\":10,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":118.5,\"y\":208.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":26,\"y\":12,\"w\":11,\"h\":11,\"fill\":\"#E0B43C\",\"radius\":5.5,\"outline\":false},{\"type\":\"rect\",\"x\":29,\"y\":15,\"w\":5,\"h\":5,\"fill\":\"#F4F1EA\",\"radius\":2.5,\"outline\":false},{\"type\":\"rect\",\"x\":83,\"y\":12,\"w\":11,\"h\":11,\"fill\":\"#E0B43C\",\"radius\":5.5,\"outline\":false},{\"type\":\"rect\",\"x\":86,\"y\":15,\"w\":5,\"h\":5,\"fill\":\"#F4F1EA\",\"radius\":2.5,\"outline\":false},{\"type\":\"rect\",\"x\":26,\"y\":207,\"w\":11,\"h\":11,\"fill\":\"#E0B43C\",\"radius\":5.5,\"outline\":false},{\"type\":\"rect\",\"x\":29,\"y\":210,\"w\":5,\"h\":5,\"fill\":\"#F4F1EA\",\"radius\":2.5,\"outline\":false},{\"type\":\"rect\",\"x\":83,\"y\":207,\"w\":11,\"h\":11,\"fill\":\"#E0B43C\",\"radius\":5.5,\"outline\":false},{\"type\":\"rect\",\"x\":86,\"y\":210,\"w\":5,\"h\":5,\"fill\":\"#F4F1EA\",\"radius\":2.5,\"outline\":false},{\"type\":\"rect\",\"x\":47,\"y\":-7,\"w\":26,\"h\":19,\"fill\":\"#C9CED6\",\"radius\":2},{\"type\":\"rect\",\"x\":52,\"y\":-3,\"w\":16,\"h\":5,\"fill\":\"#1B1F24\",\"radius\":1,\"outline\":false},{\"type\":\"rect\",\"x\":28,\"y\":30,\"w\":7,\"h\":5,\"fill\":\"#6BE08A\",\"radius\":1},{\"type\":\"rect\",\"x\":30,\"y\":46,\"w\":14,\"h\":20,\"fill\":\"#F4F1EA\",\"radius\":3},{\"type\":\"rect\",\"x\":33,\"y\":51,\"w\":8,\"h\":10,\"fill\":\"#D5DAE1\",\"radius\":4,\"outline\":false},{\"type\":\"rect\",\"x\":62,\"y\":36,\"w\":14,\"h\":16,\"fill\":\"#1B1F24\",\"radius\":1},{\"type\":\"rect\",\"x\":44,\"y\":40,\"w\":12,\"h\":10,\"fill\":\"#1B1F24\",\"radius\":1},{\"type\":\"rect\",\"x\":46,\"y\":115,\"w\":28,\"h\":28,\"fill\":\"#1B1F24\",\"radius\":2,\"label\":\"RP2040\",\"labelColor\":\"#D5DAE1\",\"labelSize\":6.5},{\"type\":\"rect\",\"x\":49.25,\"y\":151,\"w\":1.5,\"h\":79,\"fill\":\"#237A55\",\"outline\":false},{\"type\":\"rect\",\"x\":59.25,\"y\":151,\"w\":1.5,\"h\":79,\"fill\":\"#237A55\",\"outline\":false},{\"type\":\"rect\",\"x\":69.25,\"y\":151,\"w\":1.5,\"h\":79,\"fill\":\"#237A55\",\"outline\":false},{\"type\":\"rect\",\"x\":43,\"y\":144,\"w\":34,\"h\":14,\"fill\":\"#2F9E6E\",\"radius\":1,\"outline\":false},{\"type\":\"rect\",\"x\":46.5,\"y\":147.5,\"w\":7,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":3.5,\"outline\":false},{\"type\":\"rect\",\"x\":48.5,\"y\":149.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":56.5,\"y\":147.5,\"w\":7,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":3.5,\"outline\":false},{\"type\":\"rect\",\"x\":58.5,\"y\":149.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":66.5,\"y\":147.5,\"w\":7,\"h\":7,\"fill\":\"#E0B43C\",\"radius\":3.5,\"outline\":false},{\"type\":\"rect\",\"x\":68.5,\"y\":149.5,\"w\":3,\"h\":3,\"fill\":\"#8A6A1E\",\"radius\":1.5,\"outline\":false},{\"type\":\"rect\",\"x\":38,\"y\":160,\"w\":44,\"h\":32,\"fill\":\"#D5DAE1\",\"radius\":2,\"label\":\"Pico W\",\"labelSize\":9},{\"type\":\"rect\",\"x\":46,\"y\":210,\"w\":28,\"h\":2,\"fill\":\"#E0B43C\",\"outline\":false},{\"type\":\"rect\",\"x\":46,\"y\":210,\"w\":2,\"h\":8,\"fill\":\"#E0B43C\",\"outline\":false},{\"type\":\"rect\",\"x\":54.67,\"y\":210,\"w\":2,\"h\":8,\"fill\":\"#E0B43C\",\"outline\":false},{\"type\":\"rect\",\"x\":63.34,\"y\":210,\"w\":2,\"h\":8,\"fill\":\"#E0B43C\",\"outline\":false},{\"type\":\"rect\",\"x\":72.00999999999999,\"y\":210,\"w\":2,\"h\":8,\"fill\":\"#E0B43C\",\"outline\":false}]}"),
+		kicad: {
+			"symbol": "MCU_Module:RaspberryPi_Pico_W",
+			"footprint": "Module:RaspberryPi_Pico_Common_THT",
+			"pins": {
+				"GP0": "1",
+				"GP1": "2",
+				"GND": "3",
+				"GP2": "4",
+				"GP3": "5",
+				"GP4": "6",
+				"GP5": "7",
+				"GND 2": "8",
+				"GP6": "9",
+				"GP7": "10",
+				"GP8": "11",
+				"GP9": "12",
+				"GND 3": "13",
+				"GP10": "14",
+				"GP11": "15",
+				"GP12": "16",
+				"GP13": "17",
+				"GND 4": "18",
+				"GP14": "19",
+				"GP15": "20",
+				"VBUS": "40",
+				"VSYS": "39",
+				"GND 5": "38",
+				"3V3_EN": "37",
+				"3V3(OUT)": "36",
+				"ADC_VREF": "35",
+				"GP28/ADC2": "34",
+				"AGND": "33",
+				"GP27/ADC1": "32",
+				"GP26/ADC0": "31",
+				"RUN": "30",
+				"GP22": "29",
+				"GND 6": "28",
+				"GP21": "27",
+				"GP20": "26",
+				"GP19": "25",
+				"GP18": "24",
+				"GND 7": "23",
+				"GP17": "22",
+				"GP16": "21"
+			},
+			"note": "The debug pads (SWCLK, GND, SWDIO) are not on this footprint."
+		}
 	},
 	"../modules/rpi-pico.json": {
 		format: "circuitoon-module/1",
@@ -35834,6 +37362,53 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"outline": false
 				}
 			]
+		},
+		kicad: {
+			"symbol": "MCU_Module:RaspberryPi_Pico",
+			"footprint": "Module:RaspberryPi_Pico_Common_THT",
+			"pins": {
+				"GP0": "1",
+				"GP1": "2",
+				"GND": "3",
+				"GP2": "4",
+				"GP3": "5",
+				"GP4": "6",
+				"GP5": "7",
+				"GND 2": "8",
+				"GP6": "9",
+				"GP7": "10",
+				"GP8": "11",
+				"GP9": "12",
+				"GND 3": "13",
+				"GP10": "14",
+				"GP11": "15",
+				"GP12": "16",
+				"GP13": "17",
+				"GND 4": "18",
+				"GP14": "19",
+				"GP15": "20",
+				"VBUS": "40",
+				"VSYS": "39",
+				"GND 5": "38",
+				"3V3_EN": "37",
+				"3V3(OUT)": "36",
+				"ADC_VREF": "35",
+				"GP28/ADC2": "34",
+				"AGND": "33",
+				"GP27/ADC1": "32",
+				"GP26/ADC0": "31",
+				"RUN": "30",
+				"GP22": "29",
+				"GND 6": "28",
+				"GP21": "27",
+				"GP20": "26",
+				"GP19": "25",
+				"GP18": "24",
+				"GND 7": "23",
+				"GP17": "22",
+				"GP16": "21"
+			},
+			"note": "The debug pads (SWCLK, GND, SWDIO) are not on this footprint."
 		}
 	},
 	"../modules/servo-sg90.json": {
@@ -36032,6 +37607,16 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"labelSize": 8
 				}
 			]
+		},
+		kicad: {
+			"footprint": "Connector_PinHeader_2.54mm:PinHeader_1x03_P2.54mm_Vertical",
+			"pins": {
+				"GND": "1",
+				"VCC": "2",
+				"PWM": "3"
+			},
+			"value": "SG90",
+			"note": "The servo cable plugs onto this header."
 		}
 	},
 	"../modules/ssr-fotek-25da.json": {
@@ -36387,6 +37972,26 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"outline": false
 				}
 			]
+		},
+		kicad: {
+			"headers": [{
+				"name": "load terminals 1 2",
+				"footprint": "TerminalBlock_Phoenix:TerminalBlock_Phoenix_MKDS-1,5-2_1x02_P5.00mm_Horizontal",
+				"pins": {
+					"1": "1",
+					"2": "2"
+				}
+			}, {
+				"name": "control terminals 4 (-) 3 (+)",
+				"footprint": "TerminalBlock_Phoenix:TerminalBlock_Phoenix_MKDS-1,5-2_1x02_P5.00mm_Horizontal",
+				"pins": {
+					"3": "2",
+					"4": "1"
+				}
+			}],
+			"value": "SSR-25DA",
+			"placeholder": true,
+			"note": "Placeholder: the relay is panel-mounted with screw terminals; these terminal blocks are where its wires land. Keep the load side apart from the control side."
 		}
 	},
 	"../modules/tactile-switch-12mm-4pin.json": {
@@ -36548,6 +38153,16 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"radius": 22
 				}
 			]
+		},
+		kicad: {
+			"symbol": "Switch:SW_Push",
+			"footprint": "Button_Switch_THT:SW_PUSH-12mm",
+			"pins": {
+				"1": "1",
+				"2": "1",
+				"3": "2",
+				"4": "2"
+			}
 		}
 	},
 	"../modules/tactile-switch-6mm-4pin.json": {
@@ -36669,6 +38284,16 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"radius": 9
 				}
 			]
+		},
+		kicad: {
+			"symbol": "Switch:SW_Push",
+			"footprint": "Button_Switch_THT:SW_PUSH_6mm",
+			"pins": {
+				"1": "1",
+				"2": "1",
+				"3": "2",
+				"4": "2"
+			}
 		}
 	},
 	"../modules/terminal-block-kf2edg-508-2.json": {
@@ -36787,6 +38412,16 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"outline": false
 				}
 			]
+		},
+		kicad: {
+			"footprint": "Connector_Phoenix_MSTB:PhoenixContact_MSTBA_2,5_2-G-5,08_1x02_P5.08mm_Horizontal",
+			"pins": {
+				"1": "1",
+				"2": "2",
+				"1 pcb": "1",
+				"2 pcb": "2"
+			},
+			"note": "A clone of the Phoenix MSTBA header: check its hole size against the clone's datasheet."
 		}
 	},
 	"../modules/terminal-block-kf2edg-508-3.json": {
@@ -36946,6 +38581,18 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"outline": false
 				}
 			]
+		},
+		kicad: {
+			"footprint": "Connector_Phoenix_MSTB:PhoenixContact_MSTBA_2,5_3-G-5,08_1x03_P5.08mm_Horizontal",
+			"pins": {
+				"1": "1",
+				"2": "2",
+				"3": "3",
+				"1 pcb": "1",
+				"2 pcb": "2",
+				"3 pcb": "3"
+			},
+			"note": "A clone of the Phoenix MSTBA header: check its hole size against the clone's datasheet."
 		}
 	},
 	"../modules/terminal-block-kf301-500-2.json": {
@@ -37064,6 +38711,16 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"outline": false
 				}
 			]
+		},
+		kicad: {
+			"footprint": "TerminalBlock_Phoenix:TerminalBlock_Phoenix_MKDS-1,5-2_1x02_P5.00mm_Horizontal",
+			"pins": {
+				"1": "1",
+				"2": "2",
+				"1 pcb": "1",
+				"2 pcb": "2"
+			},
+			"note": "A clone of the Phoenix MKDS 1,5: check its hole size against the clone's datasheet."
 		}
 	},
 	"../modules/terminal-block-kf301-500-3.json": {
@@ -37223,6 +38880,18 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"outline": false
 				}
 			]
+		},
+		kicad: {
+			"footprint": "TerminalBlock_Phoenix:TerminalBlock_Phoenix_MKDS-1,5-3_1x03_P5.00mm_Horizontal",
+			"pins": {
+				"1": "1",
+				"2": "2",
+				"3": "3",
+				"1 pcb": "1",
+				"2 pcb": "2",
+				"3 pcb": "3"
+			},
+			"note": "A clone of the Phoenix MKDS 1,5: check its hole size against the clone's datasheet."
 		}
 	},
 	"../modules/terminal-block-mc-381-2.json": {
@@ -37372,6 +39041,15 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"outline": false
 				}
 			]
+		},
+		kicad: {
+			"footprint": "Connector_Phoenix_MC:PhoenixContact_MC_1,5_2-G-3.81_1x02_P3.81mm_Horizontal",
+			"pins": {
+				"1": "1",
+				"2": "2",
+				"1 pcb": "1",
+				"2 pcb": "2"
+			}
 		}
 	},
 	"../modules/terminal-block-mc-381-3.json": {
@@ -37547,6 +39225,17 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"outline": false
 				}
 			]
+		},
+		kicad: {
+			"footprint": "Connector_Phoenix_MC:PhoenixContact_MC_1,5_3-G-3.81_1x03_P3.81mm_Horizontal",
+			"pins": {
+				"1": "1",
+				"2": "2",
+				"3": "3",
+				"1 pcb": "1",
+				"2 pcb": "2",
+				"3 pcb": "3"
+			}
 		}
 	},
 	"../modules/terminal-block-mc-381-4.json": {
@@ -37762,6 +39451,19 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"outline": false
 				}
 			]
+		},
+		kicad: {
+			"footprint": "Connector_Phoenix_MC:PhoenixContact_MC_1,5_4-G-3.81_1x04_P3.81mm_Horizontal",
+			"pins": {
+				"1": "1",
+				"2": "2",
+				"3": "3",
+				"4": "4",
+				"1 pcb": "1",
+				"2 pcb": "2",
+				"3 pcb": "3",
+				"4 pcb": "4"
+			}
 		}
 	},
 	"../modules/terminal-block-mc-381-5.json": {
@@ -38017,6 +39719,21 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"outline": false
 				}
 			]
+		},
+		kicad: {
+			"footprint": "Connector_Phoenix_MC:PhoenixContact_MC_1,5_5-G-3.81_1x05_P3.81mm_Horizontal",
+			"pins": {
+				"1": "1",
+				"2": "2",
+				"3": "3",
+				"4": "4",
+				"5": "5",
+				"1 pcb": "1",
+				"2 pcb": "2",
+				"3 pcb": "3",
+				"4 pcb": "4",
+				"5 pcb": "5"
+			}
 		}
 	},
 	"../modules/terminal-block-mc-381-6.json": {
@@ -38312,6 +40029,23 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"outline": false
 				}
 			]
+		},
+		kicad: {
+			"footprint": "Connector_Phoenix_MC:PhoenixContact_MC_1,5_6-G-3.81_1x06_P3.81mm_Horizontal",
+			"pins": {
+				"1": "1",
+				"2": "2",
+				"3": "3",
+				"4": "4",
+				"5": "5",
+				"6": "6",
+				"1 pcb": "1",
+				"2 pcb": "2",
+				"3 pcb": "3",
+				"4 pcb": "4",
+				"5 pcb": "5",
+				"6 pcb": "6"
+			}
 		}
 	},
 	"../modules/terminal-block-mstb-508-2.json": {
@@ -38461,6 +40195,15 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"outline": false
 				}
 			]
+		},
+		kicad: {
+			"footprint": "Connector_Phoenix_MSTB:PhoenixContact_MSTBA_2,5_2-G-5,08_1x02_P5.08mm_Horizontal",
+			"pins": {
+				"1": "1",
+				"2": "2",
+				"1 pcb": "1",
+				"2 pcb": "2"
+			}
 		}
 	},
 	"../modules/terminal-block-mstb-508-3.json": {
@@ -38655,6 +40398,17 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"outline": false
 				}
 			]
+		},
+		kicad: {
+			"footprint": "Connector_Phoenix_MSTB:PhoenixContact_MSTBA_2,5_3-G-5,08_1x03_P5.08mm_Horizontal",
+			"pins": {
+				"1": "1",
+				"2": "2",
+				"3": "3",
+				"1 pcb": "1",
+				"2 pcb": "2",
+				"3 pcb": "3"
+			}
 		}
 	},
 	"../modules/terminal-block-mstb-508-4.json": {
@@ -38870,6 +40624,19 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"outline": false
 				}
 			]
+		},
+		kicad: {
+			"footprint": "Connector_Phoenix_MSTB:PhoenixContact_MSTBA_2,5_4-G-5,08_1x04_P5.08mm_Horizontal",
+			"pins": {
+				"1": "1",
+				"2": "2",
+				"3": "3",
+				"4": "4",
+				"1 pcb": "1",
+				"2 pcb": "2",
+				"3 pcb": "3",
+				"4 pcb": "4"
+			}
 		}
 	},
 	"../modules/terminal-block-mstb-508-5.json": {
@@ -39125,6 +40892,21 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"outline": false
 				}
 			]
+		},
+		kicad: {
+			"footprint": "Connector_Phoenix_MSTB:PhoenixContact_MSTBA_2,5_5-G-5,08_1x05_P5.08mm_Horizontal",
+			"pins": {
+				"1": "1",
+				"2": "2",
+				"3": "3",
+				"4": "4",
+				"5": "5",
+				"1 pcb": "1",
+				"2 pcb": "2",
+				"3 pcb": "3",
+				"4 pcb": "4",
+				"5 pcb": "5"
+			}
 		}
 	},
 	"../modules/terminal-block-mstb-508-6.json": {
@@ -39420,6 +41202,23 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"outline": false
 				}
 			]
+		},
+		kicad: {
+			"footprint": "Connector_Phoenix_MSTB:PhoenixContact_MSTBA_2,5_6-G-5,08_1x06_P5.08mm_Horizontal",
+			"pins": {
+				"1": "1",
+				"2": "2",
+				"3": "3",
+				"4": "4",
+				"5": "5",
+				"6": "6",
+				"1 pcb": "1",
+				"2 pcb": "2",
+				"3 pcb": "3",
+				"4 pcb": "4",
+				"5 pcb": "5",
+				"6 pcb": "6"
+			}
 		}
 	},
 	"../modules/tft-ili9341-24-spi.json": {
@@ -39806,6 +41605,38 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"labelSize": 9
 				}
 			]
+		},
+		kicad: {
+			"headers": [{
+				"name": "left header, pin 1 VCC",
+				"footprint": "Connector_PinSocket_2.54mm:PinSocket_1x14_P2.54mm_Vertical",
+				"pins": {
+					"VCC": "1",
+					"GND": "2",
+					"CS": "3",
+					"RESET": "4",
+					"DC": "5",
+					"SDI(MOSI)": "6",
+					"SCK": "7",
+					"LED": "8",
+					"SDO(MISO)": "9",
+					"T_CLK": "10",
+					"T_CS": "11",
+					"T_DIN": "12",
+					"T_DO": "13",
+					"T_IRQ": "14"
+				}
+			}, {
+				"name": "right header, pin 1 SD_CS",
+				"footprint": "Connector_PinSocket_2.54mm:PinSocket_1x04_P2.54mm_Vertical",
+				"pins": {
+					"SD_CS": "1",
+					"SD_MOSI": "2",
+					"SD_MISO": "3",
+					"SD_SCK": "4"
+				}
+			}],
+			"value": "ILI9341 2.4in"
 		}
 	},
 	"../modules/tft-ili9341-28-spi-touch.json": {
@@ -40201,6 +42032,38 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"labelSize": 9
 				}
 			]
+		},
+		kicad: {
+			"headers": [{
+				"name": "left header, pin 1 VCC",
+				"footprint": "Connector_PinSocket_2.54mm:PinSocket_1x14_P2.54mm_Vertical",
+				"pins": {
+					"VCC": "1",
+					"GND": "2",
+					"CS": "3",
+					"RESET": "4",
+					"DC": "5",
+					"SDI(MOSI)": "6",
+					"SCK": "7",
+					"LED": "8",
+					"SDO(MISO)": "9",
+					"T_CLK": "10",
+					"T_CS": "11",
+					"T_DIN": "12",
+					"T_DO": "13",
+					"T_IRQ": "14"
+				}
+			}, {
+				"name": "right header, pin 1 SD_CS",
+				"footprint": "Connector_PinSocket_2.54mm:PinSocket_1x04_P2.54mm_Vertical",
+				"pins": {
+					"SD_CS": "1",
+					"SD_MOSI": "2",
+					"SD_MISO": "3",
+					"SD_SCK": "4"
+				}
+			}],
+			"value": "ILI9341 2.8in"
 		}
 	},
 	"../modules/tft-st7735-18-spi.json": {
@@ -40497,6 +42360,32 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"labelSize": 9
 				}
 			]
+		},
+		kicad: {
+			"headers": [{
+				"name": "left header, pin 1 VCC",
+				"footprint": "Connector_PinSocket_2.54mm:PinSocket_1x08_P2.54mm_Vertical",
+				"pins": {
+					"VCC": "1",
+					"GND": "2",
+					"CS": "3",
+					"RESET": "4",
+					"A0": "5",
+					"SDA": "6",
+					"SCK": "7",
+					"LED": "8"
+				}
+			}, {
+				"name": "right header, pin 1 SD_CS",
+				"footprint": "Connector_PinSocket_2.54mm:PinSocket_1x04_P2.54mm_Vertical",
+				"pins": {
+					"SD_CS": "1",
+					"SD_MOSI": "2",
+					"SD_MISO": "3",
+					"SD_SCK": "4"
+				}
+			}],
+			"value": "ST7735 1.8in"
 		}
 	},
 	"../modules/tft-st7789-154-spi.json": {
@@ -40724,6 +42613,20 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"labelSize": 8
 				}
 			]
+		},
+		kicad: {
+			"footprint": "Connector_PinSocket_2.54mm:PinSocket_1x08_P2.54mm_Vertical",
+			"pins": {
+				"GND": "1",
+				"VCC": "2",
+				"SCL": "3",
+				"SDA": "4",
+				"RES": "5",
+				"DC": "6",
+				"CS": "7",
+				"BLK": "8"
+			},
+			"value": "ST7789 1.54in"
 		}
 	},
 	"../modules/tilt-switch-sw460d.json": {
@@ -40815,6 +42718,15 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"outline": false
 				}
 			]
+		},
+		kicad: {
+			"footprint": "Resistor_THT:R_Axial_DIN0617_L17.0mm_D6.0mm_P20.32mm_Horizontal",
+			"pins": {
+				"1": "1",
+				"2": "2"
+			},
+			"value": "SW-460D",
+			"note": "An axial footprint long enough for the 15 mm tube."
 		}
 	},
 	"../modules/tilt-switch-sw520d.json": {
@@ -40899,6 +42811,15 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"outline": false
 				}
 			]
+		},
+		kicad: {
+			"footprint": "Connector_PinHeader_2.54mm:PinHeader_1x02_P2.54mm_Vertical",
+			"pins": {
+				"1": "1",
+				"2": "2"
+			},
+			"value": "SW-520D",
+			"note": "Solder the switch's two leads into these pads."
 		}
 	},
 	"../modules/tp4056-module.json": {
@@ -41346,6 +43267,27 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"outline": false
 				}
 			]
+		},
+		kicad: {
+			"headers": [{
+				"name": "input pads, pin 1 IN+",
+				"footprint": "Connector_PinHeader_2.54mm:PinHeader_1x02_P2.54mm_Vertical",
+				"pins": {
+					"IN+": "1",
+					"IN-": "2"
+				}
+			}, {
+				"name": "output pads, pin 1 OUT+",
+				"footprint": "Connector_PinHeader_2.54mm:PinHeader_1x04_P2.54mm_Vertical",
+				"pins": {
+					"OUT+": "1",
+					"B+": "2",
+					"B-": "3",
+					"OUT-": "4"
+				}
+			}],
+			"value": "TP4056 module",
+			"note": "The module has solder pads, not header pins: wire them to these headers."
 		}
 	},
 	"../modules/ultrasonic-hc-sr04.json": {
@@ -41573,6 +43515,16 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"outline": false
 				}
 			]
+		},
+		kicad: {
+			"footprint": "Connector_PinSocket_2.54mm:PinSocket_1x04_P2.54mm_Vertical",
+			"pins": {
+				"VCC": "1",
+				"Trig": "2",
+				"Echo": "3",
+				"GND": "4"
+			},
+			"value": "HC-SR04"
 		}
 	},
 	"../modules/usb-panel-mount-microusb.json": {
@@ -41697,6 +43649,17 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"radius": 2
 				}
 			]
+		},
+		kicad: {
+			"footprint": "Connector_PinHeader_2.54mm:PinHeader_1x04_P2.54mm_Vertical",
+			"pins": {
+				"VBUS": "1",
+				"D-": "2",
+				"D+": "3",
+				"GND": "4"
+			},
+			"value": "USB panel mount",
+			"note": "The cable's leads solder to this header."
 		}
 	},
 	"../modules/usb-panel-mount-usbc.json": {
@@ -41826,6 +43789,18 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"radius": 2
 				}
 			]
+		},
+		kicad: {
+			"footprint": "Connector_PinHeader_2.54mm:PinHeader_1x05_P2.54mm_Vertical",
+			"pins": {
+				"VBUS": "1",
+				"D-": "2",
+				"D+": "3",
+				"GND": "4",
+				"CC": "5"
+			},
+			"value": "USB-C panel mount",
+			"note": "The cable's leads solder to this header."
 		}
 	},
 	"../modules/wago-221-412.json": {
@@ -42660,6 +44635,36 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"radius": 2
 				}
 			]
+		},
+		kicad: {
+			"headers": [{
+				"name": "left header, pin 1 RST",
+				"footprint": "Connector_PinSocket_2.54mm:PinSocket_1x08_P2.54mm_Vertical",
+				"pins": {
+					"RST": "1",
+					"A0": "2",
+					"D0": "3",
+					"D5": "4",
+					"D6": "5",
+					"D7": "6",
+					"D8": "7",
+					"3V3": "8"
+				}
+			}, {
+				"name": "right header, pin 1 TX",
+				"footprint": "Connector_PinSocket_2.54mm:PinSocket_1x08_P2.54mm_Vertical",
+				"pins": {
+					"TX": "1",
+					"RX": "2",
+					"D1": "3",
+					"D2": "4",
+					"D3": "5",
+					"D4": "6",
+					"GND": "7",
+					"5V": "8"
+				}
+			}],
+			"note": "Each header is its own socket strip: place them at the board's real row spacing."
 		}
 	},
 	"../modules/ws2812b-strip.json": {
@@ -43107,6 +45112,27 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"outline": false
 				}
 			]
+		},
+		kicad: {
+			"headers": [{
+				"name": "input leads, pin 1 GND",
+				"footprint": "Connector_JST:JST_XH_B3B-XH-A_1x03_P2.50mm_Vertical",
+				"pins": {
+					"GND": "1",
+					"DIN": "2",
+					"5V": "3"
+				}
+			}, {
+				"name": "output leads, pin 1 GND",
+				"footprint": "Connector_JST:JST_XH_B3B-XH-A_1x03_P2.50mm_Vertical",
+				"pins": {
+					"GND 2": "1",
+					"DOUT": "2",
+					"5V 2": "3"
+				}
+			}],
+			"value": "WS2812B strip",
+			"note": "The strip is wired to the board: a lead connector for each end."
 		}
 	},
 	"../modules/ws2812d-5mm.json": {
@@ -43257,6 +45283,16 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"outline": false
 				}
 			]
+		},
+		kicad: {
+			"footprint": "LED_THT:LED_D5.0mm-4_RGB",
+			"pins": {
+				"DOUT": "1",
+				"VDD": "2",
+				"GND": "3",
+				"DIN": "4"
+			},
+			"value": "WS2812D-F5"
 		}
 	},
 	"../modules/xiao-esp32c3.json": {
@@ -43617,6 +45653,34 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"outline": false
 				}
 			]
+		},
+		kicad: {
+			"headers": [{
+				"name": "left header, pin 1 D0",
+				"footprint": "Connector_PinSocket_2.54mm:PinSocket_1x07_P2.54mm_Vertical",
+				"pins": {
+					"D0": "1",
+					"D1": "2",
+					"D2": "3",
+					"D3": "4",
+					"D4": "5",
+					"D5": "6",
+					"D6": "7"
+				}
+			}, {
+				"name": "right header, pin 1 5V",
+				"footprint": "Connector_PinSocket_2.54mm:PinSocket_1x07_P2.54mm_Vertical",
+				"pins": {
+					"5V": "1",
+					"GND": "2",
+					"3V3": "3",
+					"D10": "4",
+					"D9": "5",
+					"D8": "6",
+					"D7": "7"
+				}
+			}],
+			"note": "Each header is its own socket strip: place them at the board's real row spacing."
 		}
 	},
 	"../modules/xiao-esp32s3.json": {
@@ -43968,6 +46032,34 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"radius": 1
 				}
 			]
+		},
+		kicad: {
+			"headers": [{
+				"name": "left header, pin 1 D0",
+				"footprint": "Connector_PinSocket_2.54mm:PinSocket_1x07_P2.54mm_Vertical",
+				"pins": {
+					"D0": "1",
+					"D1": "2",
+					"D2": "3",
+					"D3": "4",
+					"D4": "5",
+					"D5": "6",
+					"D6": "7"
+				}
+			}, {
+				"name": "right header, pin 1 5V",
+				"footprint": "Connector_PinSocket_2.54mm:PinSocket_1x07_P2.54mm_Vertical",
+				"pins": {
+					"5V": "1",
+					"GND": "2",
+					"3V3": "3",
+					"D10": "4",
+					"D9": "5",
+					"D8": "6",
+					"D7": "7"
+				}
+			}],
+			"note": "Each header is its own socket strip: place them at the board's real row spacing."
 		}
 	}
 })).map(([path, raw]) => ({
@@ -61162,10 +63254,16 @@ function movedGeometry(stored, lib) {
 	if (a.w !== b.w || a.h !== b.h || a.pins.length !== b.pins.length) return true;
 	return a.pins.some((p, i) => p.side !== b.pins[i].side || p.edge.x !== b.pins[i].edge.x || p.edge.y !== b.pins[i].edge.y);
 }
-/** How `stored` differs from the library's `lib`, or null when they are the same by content. */
+/** The module's fields without `kicad`. */
+function withoutKicad(m) {
+	const rest = { ...m };
+	delete rest.kicad;
+	return rest;
+}
+/** How `stored` differs from the library's `lib`, or null when they are the same by content (the KiCad mapping aside). */
 function moduleDrift(stored, lib) {
-	if (canonical(stored) === canonical(lib)) return null;
-	const [s, l] = [stored, lib];
+	const [s, l] = [withoutKicad(stored), withoutKicad(lib)];
+	if (canonical(s) === canonical(l)) return null;
 	const block = [];
 	const update = [];
 	const [sp, lp] = [Array.isArray(s.pins) ? s.pins : [], Array.isArray(l.pins) ? l.pins : []];

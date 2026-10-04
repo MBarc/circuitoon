@@ -11,6 +11,8 @@
 //   settings, ratings, a footprint, art, name, source, description, category, version, or any field
 //   the stored copy lacks that the library has. The sheet is right as drawn; the library only knows
 //   more. `circuitoon update` and the editor's Update parts take the library copy.
+// - neither: the KiCad mapping (`kicad`). It is export data that a KiCad export reads from the
+//   library, so a copy saved before the library had it is not out of date.
 //
 // Pure: shared by verify, the CLI's update command and the editor.
 import type { Diagram } from './diagram.ts'
@@ -71,10 +73,19 @@ function movedGeometry(stored: ModuleDef, lib: ModuleDef): boolean {
   return a.pins.some((p, i) => p.side !== b.pins[i].side || p.edge.x !== b.pins[i].edge.x || p.edge.y !== b.pins[i].edge.y)
 }
 
-/** How `stored` differs from the library's `lib`, or null when they are the same by content. */
+/** The module's fields without `kicad`. */
+function withoutKicad(m: ModuleDef): Record<string, unknown> {
+  const rest: Record<string, unknown> = { ...m }
+  delete rest.kicad
+  return rest
+}
+
+/** How `stored` differs from the library's `lib`, or null when they are the same by content (the KiCad mapping aside). */
 export function moduleDrift(stored: ModuleDef, lib: ModuleDef): ModuleDriftResult | null {
-  if (canonical(stored) === canonical(lib)) return null
-  const [s, l] = [stored as unknown as Record<string, unknown>, lib as unknown as Record<string, unknown>]
+  // The KiCad mapping is export data, read from the library when a sheet is exported
+  // (format/kicad.ts): a copy with an older one, or none, is not out of date.
+  const [s, l] = [withoutKicad(stored), withoutKicad(lib)]
+  if (canonical(s) === canonical(l)) return null
   const block: string[] = []
   const update: string[] = []
 

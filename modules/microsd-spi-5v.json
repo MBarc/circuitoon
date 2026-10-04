@@ -421,5 +421,17 @@
         "radius": 1
       }
     ]
+  },
+  "kicad": {
+    "footprint": "Connector_PinSocket_2.54mm:PinSocket_1x06_P2.54mm_Vertical",
+    "pins": {
+      "GND": "1",
+      "VCC": "2",
+      "MISO": "3",
+      "MOSI": "4",
+      "SCK": "5",
+      "CS": "6"
+    },
+    "value": "microSD 5V"
   }
 }

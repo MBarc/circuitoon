@@ -83,5 +83,14 @@
         "radius": 3
       }
     ]
+  },
+  "kicad": {
+    "symbol": "Device:Battery_Cell",
+    "footprint": "Battery:BatteryHolder_Keystone_2460_1xAA",
+    "pins": {
+      "+": "1",
+      "-": "2"
+    },
+    "value": "AA"
   }
 }

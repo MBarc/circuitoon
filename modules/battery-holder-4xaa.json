@@ -177,5 +177,15 @@
         "radius": 1.5
       }
     ]
+  },
+  "kicad": {
+    "symbol": "Device:Battery",
+    "footprint": "Connector_JST:JST_XH_B2B-XH-A_1x02_P2.50mm_Vertical",
+    "pins": {
+      "+": "1",
+      "-": "2"
+    },
+    "value": "4xAA holder",
+    "note": "Battery leads: a 2-pin lead connector, + on pin 1."
   }
 }

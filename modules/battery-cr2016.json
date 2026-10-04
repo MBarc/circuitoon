@@ -74,5 +74,15 @@
         "labelSize": 6.5
       }
     ]
+  },
+  "kicad": {
+    "symbol": "Device:Battery_Cell",
+    "footprint": "Connector_JST:JST_XH_B2B-XH-A_1x02_P2.50mm_Vertical",
+    "pins": {
+      "+": "1",
+      "-": "2"
+    },
+    "value": "CR2016",
+    "note": "KiCad's library has no holder made for CR2016: a 2-pin lead connector, + on pin 1."
   }
 }
