@@ -16,7 +16,7 @@ import { andList, natural, orList } from './words.ts'
 import { type MainsAnalysis, analyseMainsCached } from './mains.ts'
 import { type PinRuleId, hasPinData, lazyPinModel, pinFindings } from './pinRules.ts'
 import { unknownFeedWords } from './mainsRules.ts'
-import { type UsbRuleId, usbFedParts, usbFindings, usbLink } from './usb.ts'
+import { type UsbRuleId, usbFindings, usbLink, usbPower } from './usb.ts'
 
 /** `info` is a note, not a problem: it never blocks and never counts as one. */
 export type Severity = 'error' | 'warning' | 'info'
@@ -750,7 +750,7 @@ export function checkDiagram(d: Diagram): Finding[] {
   const { reversed, returnGroup } = checkPotentials({ d, nl, netTerms, netWires, terminal, plugs, shorted, add, skip: hazardous, usbGrounds })
 
   // Per part: power and ground reach it from another part.
-  const usbFed = usbAny ? usbFedParts(d) : new Set<string>()
+  const { fed: usbFed, hosting: usbHosting } = usbAny ? usbPower(d) : { fed: new Set<string>(), hosting: new Set<string>() }
   const others = (t: Terminal) => {
     const i = nl.netOf.get(t.key)
     return i === undefined ? [] : netTerms[i].filter((o) => o.part !== t.part)
@@ -771,7 +771,8 @@ export function checkDiagram(d: Diagram): Finding[] {
     return [...seen.values()].sort((a, b) => natural.compare(termName(a), termName(b)))
   }
   for (const p of d.parts) {
-    if (!connected.has(p.uid)) continue
+    // A USB link alone makes a part wired only when it hosts a device: then it must be powered.
+    if (!connected.has(p.uid) && !usbHosting.has(p.uid)) continue
     const m = moduleOf(d, p.module)
     if (!m) continue
     // Only the power and ground pins matter here (a breadboard's many strips are skipped).
@@ -781,8 +782,9 @@ export function checkDiagram(d: Diagram): Finding[] {
     const ins = terms.filter((t) => t.type === 'power_in')
     // A part with a pin on USB power is its own supply.
     // A part with its power reversed is reported as such, not as unpowered.
-    // A part on a USB link takes its power through the port (a dongle, a charger's USB input).
-    if (ins.length && !moduleInfo(m).external.size && !reversed.has(p.uid) && !usbFed.has(p.uid)) {
+    // A part on a USB link takes its power through the port (a dongle, a charger's USB input); a
+    // board whose dual port hosts a device is not on USB power from it.
+    if (ins.length && (!moduleInfo(m).external.size || usbHosting.has(p.uid)) && !reversed.has(p.uid) && !usbFed.has(p.uid)) {
       const fed =
         ins.some((t) => others(t).some(mayFeed)) ||
         terms.some((t) => t.type === 'power_out' && others(t).some(isSource))

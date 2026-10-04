@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest'
 import { checkDiagram } from './checks.ts'
 import type { Connection, Diagram, PartInstance } from './diagram.ts'
 import { type ModuleDef, validateModule } from './module.ts'
-import { isPluggedIn, usbEndsFor, usbFedParts } from './usb.ts'
+import { isPluggedIn, usbEndsFor, usbPower } from './usb.ts'
 import { billOfMaterials } from './bom.ts'
 import type { WireEnds } from './cables.ts'
 
@@ -94,7 +94,7 @@ describe('correct USB hookups give no USB problem', () => {
   })
   it('a charger fed by USB is powered (no "no power" for its unwired IN+)', () => {
     const d = sheet([['J1', 'pc'], ['U1', 'chg']], [['j1|USB1', 'u1|USB', { from: 'usb-a', to: 'usb-c' }]])
-    expect(usbFedParts(d)).toEqual(new Set(['u1']))
+    expect(usbPower(d).fed).toEqual(new Set(['u1']))
     expect(checkDiagram(d).map((f) => f.rule)).not.toContain('no-power')
   })
 })

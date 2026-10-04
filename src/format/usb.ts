@@ -105,15 +105,55 @@ export function cableWords(a: EndKind, b: EndKind): string {
   return p ? `a ${p.name}` : `a cable with a ${END_NAMES[a]} and a ${END_NAMES[b]}`
 }
 
-/** The parts a linked USB port powers (a device, dual or charge-only port with a link): never "no power". */
-export function usbFedParts(d: Diagram): Set<string> {
-  const out = new Set<string>()
-  for (const c of d.connections) {
-    const l = usbLink(d, c)
-    if (!l) continue
-    for (const p of [l.from, l.to]) if (p.usb.role === 'device' || p.usb.role === 'dual') out.add(p.part.uid)
+/** The port at the far end of a port's link, followed through extensions; null when it ends at nothing. */
+function reacher(d: Diagram, links: UsbLink[]): (p: Port) => Port | null {
+  const far = new Map<string, Port>()
+  for (const l of links) {
+    // Two plugs never meet: no bus to judge (usb-fit says so).
+    if (l.from.usb.gender === 'plug' && l.to.usb.gender === 'plug') continue
+    far.set(l.from.key, l.to)
+    far.set(l.to.key, l.from)
   }
-  return out
+  const through = (p: Port): Port | null => {
+    if (p.usb.role !== 'passthrough' || !p.usb.through) return null
+    return portOf(d, { part: p.part.uid, pin: p.usb.through })
+  }
+  return (p) => {
+    const seen = new Set<string>([p.key])
+    let q = far.get(p.key) ?? null
+    while (q && q.usb.role === 'passthrough') {
+      if (seen.has(q.key)) return null
+      seen.add(q.key)
+      const t = through(q)
+      if (!t) return null
+      seen.add(t.key)
+      q = far.get(t.key) ?? null
+    }
+    return q
+  }
+}
+
+/**
+ * Who USB powers. `fed`: parts a link powers (a device or charge-only port with a link, or a dual
+ * port whose far end is a host or a hub's downstream port): never "no power". `hosting`: parts not
+ * fed whose dual port hosts a device, so that port powers nothing on them.
+ */
+export function usbPower(d: Diagram): { fed: Set<string>; hosting: Set<string> } {
+  const fed = new Set<string>()
+  const hosting = new Set<string>()
+  const links = d.connections.map((c) => usbLink(d, c)).filter((l) => l !== null)
+  const reach = reacher(d, links)
+  for (const l of links)
+    for (const p of [l.from, l.to]) {
+      if (p.usb.role === 'device') fed.add(p.part.uid)
+      else if (p.usb.role === 'dual') {
+        const q = reach(p)
+        if (q?.usb.role === 'host') fed.add(p.part.uid)
+        else if (q?.usb.role === 'device') hosting.add(p.part.uid)
+      }
+    }
+  for (const u of fed) hosting.delete(u)
+  return { fed, hosting }
 }
 
 export type UsbRuleId = 'usb-to-pin' | 'usb-fit' | 'usb-role' | 'usb-power' | 'usb-hub-bus-power' | 'usb-power-unknown'
@@ -227,31 +267,7 @@ export function usbFindings(d: Diagram, nl: Netlist, netWires: string[][]): UsbD
   }
 
   // The bus, port to port: links plus passthrough joins (an extension's two ends).
-  const far = new Map<string, Port>()
-  for (const l of links) {
-    // Two plugs never meet: no bus to judge (usb-fit says so).
-    if (l.from.usb.gender === 'plug' && l.to.usb.gender === 'plug') continue
-    far.set(l.from.key, l.to)
-    far.set(l.to.key, l.from)
-  }
-  const through = (p: Port): Port | null => {
-    if (p.usb.role !== 'passthrough' || !p.usb.through) return null
-    return portOf(d, { part: p.part.uid, pin: p.usb.through })
-  }
-  /** The port at the far end of `p`'s link, followed through extensions; null when it ends at nothing. */
-  const reach = (p: Port): Port | null => {
-    const seen = new Set<string>([p.key])
-    let q = far.get(p.key) ?? null
-    while (q && q.usb.role === 'passthrough') {
-      if (seen.has(q.key)) return null
-      seen.add(q.key)
-      const t = through(q)
-      if (!t) return null
-      seen.add(t.key)
-      q = far.get(t.key) ?? null
-    }
-    return q
-  }
+  const reach = reacher(d, links)
 
   // Rule usb-role: one end must be able to host and the other to be a device.
   const judged = new Set<string>()

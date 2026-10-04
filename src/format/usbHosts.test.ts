@@ -137,6 +137,13 @@ describe('USB rules on library parts', () => {
       [['u1|USB2-1', 'u2|USB', { from: 'usb-a', to: 'usb-micro-b' }], ['u2|GND', 'u3|GND'], ['u1|GPIO14', 'u3|RX']])
     expect(checkDiagram(d).map((f) => f.rule).filter((r) => /ground/.test(r))).toEqual([])
   })
+  it('a Pico hosting an ESP32 is not fed by that port: unpowered, it has no power', () => {
+    const d = sheet([['U1', 'rpi-pico'], ['U2', 'esp32-devkitc-v4']], [['u1|USB', 'u2|USB', { from: 'usb-micro-b', to: 'usb-micro-b' }]])
+    expect(checkDiagram(d).filter((f) => f.rule === 'no-power').map((f) => f.subject)).toEqual(['U1'])
+    // On a computer's port the Pico is a device, and fed.
+    const fed = sheet([['J1', 'computer-usb-port'], ['U1', 'rpi-pico']], [['j1|USB', 'u1|USB', { from: 'usb-a', to: 'usb-micro-b' }]])
+    expect(checkDiagram(fed).map((f) => f.rule)).not.toContain('no-power')
+  })
   it('jumper wires from a Pi\'s GPIO to a USB port are an error', () => {
     const d = sheet([['U1', 'rpi-4-model-b'], ['U2', 'esp32-devkitc-v4']], [['u1|GPIO14', 'u2|USB']])
     expect(usb(d).map((f) => f.split(':')[0])).toEqual(['error usb-to-pin'])
