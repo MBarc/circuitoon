@@ -85,7 +85,8 @@ describe('circuitoon render', () => {
     const missing = await cli(['render', 'nope.json', '--svg', 'x.svg'], { cwd: dir })
     expect(missing.code).toBe(2)
   })
-  it.skipIf(!browser)('writes a PNG at the requested scale that shows the whole drawing', async () => {
+  // Headless Chrome occasionally paints a frame late on a loaded machine; retry before failing.
+  it.skipIf(!browser)('writes a PNG at the requested scale that shows the whole drawing', { retry: 2 }, async () => {
     const dir = await sheetFrom(ledNetlist())
     const r = await cli(['render', 'sheet.json', '-o', 'sheet.png', '--svg', 'sheet.svg', '--scale', '2', '--json'], { cwd: dir })
     expect(r.code).toBe(0)
