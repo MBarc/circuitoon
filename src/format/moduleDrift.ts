@@ -67,10 +67,42 @@ const typeOf = (p: Record<string, unknown>) => (p.type === undefined ? 'io' : p.
  * Whether the part's geometry moved: a different body size, or pin positions (side and place on the
  * body, whatever their names) that differ. Its legs then land elsewhere.
  */
-function movedGeometry(stored: ModuleDef, lib: ModuleDef): boolean {
+function movedGeometry(stored: ModuleDef, lib: ModuleDef, added: ReadonlySet<string>): boolean {
   const [a, b] = [layoutModule(stored), layoutModule(lib)]
-  if (a.w !== b.w || a.h !== b.h || a.pins.length !== b.pins.length) return true
-  return a.pins.some((p, i) => p.side !== b.pins[i].side || p.edge.x !== b.pins[i].edge.x || p.edge.y !== b.pins[i].edge.y)
+  if (a.w !== b.w || a.h !== b.h || a.pins.length + added.size !== b.pins.length) return true
+  if (!added.size) return a.pins.some((p, i) => p.side !== b.pins[i].side || p.edge.x !== b.pins[i].edge.x || p.edge.y !== b.pins[i].edge.y)
+  // Pins match by name: a USB port the library added sits between them in layout order.
+  const at = new Map(b.pins.map((p) => [p.name, p]))
+  return a.pins.some((p) => {
+    const q = at.get(p.name)
+    return !q || added.has(p.name) || p.side !== q.side || p.edge.x !== q.edge.x || p.edge.y !== q.edge.y
+  })
+}
+
+const isUsbPin = (p: unknown): p is { name: string } => isObj(p) && p.type === 'usb' && typeof p.name === 'string' && !isSpacer(p as never)
+
+/**
+ * Ruling U1 (USB design 1.3): the library may add USB ports to a part, each in a slot the stored copy
+ * holds as a spacer or appended after its last entry. Returns the library's pin list with those
+ * ports taken back out (a spacer where one was, nothing past the end), so the remaining comparison
+ * sees only what else changed, and the names of the ports it took out.
+ */
+function withoutAddedUsb(sp: unknown[], lp: unknown[]): { pins: unknown[]; added: Set<string> } {
+  const stored = new Set(sp.filter((p) => isObj(p) && typeof p.name === 'string').map((p) => (p as { name: string }).name))
+  const added = new Set<string>()
+  const pins: unknown[] = []
+  lp.forEach((b, i) => {
+    const fresh = isUsbPin(b) && !stored.has(b.name)
+    if (i < sp.length) {
+      const a = sp[i]
+      if (fresh && isObj(a) && isSpacer(a as never) && (a as { side?: unknown }).side === (b as { side?: unknown }).side) {
+        added.add(b.name)
+        pins.push(a)
+      } else pins.push(b)
+    } else if (fresh) added.add(b.name)
+    else if (!(isObj(b) && isSpacer(b as never))) pins.push(b)
+  })
+  return { pins, added }
 }
 
 /** The module's fields without `kicad`. */
@@ -90,7 +122,9 @@ export function moduleDrift(stored: ModuleDef, lib: ModuleDef): ModuleDriftResul
   const update: string[] = []
 
   // Pins, by place in the list (the place is where a pin sits).
-  const [sp, lp] = [Array.isArray(s.pins) ? s.pins : [], Array.isArray(l.pins) ? l.pins : []]
+  const sp = Array.isArray(s.pins) ? s.pins : []
+  const { pins: lp, added } = withoutAddedUsb(sp, Array.isArray(l.pins) ? l.pins : [])
+  if (added.size) update.push(`USB ${added.size === 1 ? 'port' : 'ports'} ${[...added].join('/')}`)
   const pinsBlock = new Set<string>()
   const pinsUpdate = new Set<string>()
   for (let i = 0; i < Math.max(sp.length, lp.length); i++) {
@@ -120,7 +154,7 @@ export function moduleDrift(stored: ModuleDef, lib: ModuleDef): ModuleDriftResul
     } else (adds(s[k], l[k]) ? update : block).push(FIELD_NAMES[k] ?? k)
   }
 
-  const moved = movedGeometry(stored, lib)
+  const moved = movedGeometry(stored, lib, added)
   if (moved && !block.length) block.push('size')
   if (block.length) return { kind: 'block', moved, what: block }
   return { kind: 'update', moved: false, what: update }

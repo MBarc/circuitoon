@@ -148,7 +148,8 @@ export function validateSpec(raw: unknown): SpecResult {
         else if (p.name.trim().length > PIN_NAME_MAX) errors.push(`${at}.name: at most ${PIN_NAME_MAX} characters`)
         else count++
         if (p.label !== undefined && (typeof p.label !== 'string' || p.label.length > PIN_NAME_MAX)) errors.push(`${at}.label: must be a string, at most ${PIN_NAME_MAX} characters`)
-        if (p.type !== undefined && !PIN_TYPES.includes(p.type as PinType)) errors.push(`${at}.type: must be one of ${PIN_TYPES.join(', ')}`)
+        // A USB port needs its connector and role, which the part maker does not ask for.
+        if (p.type !== undefined && (!PIN_TYPES.includes(p.type as PinType) || p.type === 'usb')) errors.push(`${at}.type: must be one of ${PIN_TYPES.filter((t) => t !== 'usb').join(', ')}`)
         if (p.supply !== undefined && typeof p.supply !== 'string') errors.push(`${at}.supply: must be a string such as "3V3" or "3V3/5V"`)
       })
     }

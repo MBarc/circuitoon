@@ -242,7 +242,7 @@ export function capsText(c: PinCaps | undefined): string[] {
 }
 
 const TYPE_WORDS: Record<PinType, string> = {
-  power_in: 'power in', power_out: 'power out', ground: 'ground', input: 'input', output: 'output', io: 'input/output', passive: 'passive', nc: 'not connected inside',
+  power_in: 'power in', power_out: 'power out', ground: 'ground', input: 'input', output: 'output', io: 'input/output', passive: 'passive', nc: 'not connected inside', usb: 'USB port',
 }
 /** One line on what a pin does: its type and supply, its caps, its I2C role, its note. */
 export function pinDoes(e: PinEnd): string {

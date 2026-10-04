@@ -189,7 +189,7 @@ export function intentSource(intent: { title: string; parts: { ref: string; modu
 
 /** KiCad's electrical pin type for a Circuitoon pin type. */
 const PIN_TYPE: Record<PinType, string> = {
-  power_in: 'power_in', power_out: 'power_out', ground: 'power_in', input: 'input', output: 'output', io: 'bidirectional', passive: 'passive', nc: 'no_connect',
+  power_in: 'power_in', power_out: 'power_out', ground: 'power_in', input: 'input', output: 'output', io: 'bidirectional', passive: 'passive', nc: 'no_connect', usb: 'passive',
 }
 
 /** Every pin and pad group of a module, in order: pins (no spacers), then hole groups. */
