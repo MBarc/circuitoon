@@ -2,8 +2,12 @@
 // speed, current, and where each sits on the body. Sources are cited where each generator adds the
 // port; .superpowers/usb-pinouts.md has a table per part for the independent review. A wrong port is
 // worse than a missing one, so a change here must be re-checked against the source.
+import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { layoutModule, usbPorts } from './module.ts'
+import { validateDiagram } from './diagram.ts'
+import { checkDiagram } from './checks.ts'
+import { toKicadNetlist } from './kicad.ts'
 import { load, moduleFiles, withoutUsb } from './builtinModules.testing.ts'
 import { moduleDrift } from './moduleDrift.ts'
 
@@ -79,4 +83,22 @@ describe('Ruling U1 on the library: a sheet saved before the ports gets Update p
       expect(drift?.kind).toBe('update')
       expect(drift?.what.join(' ')).toMatch(/^USB ports? /)
     })
+})
+
+describe('a sheet saved with the old four-contact RTL-SDR', () => {
+  // The RTL-SDR as main shipped it (VBUS, D-, D+, GND contact pins and ANT), powered from a Pi's 5V and GND by jumpers.
+  const raw = JSON.parse(readFileSync(new URL('./fixtures/rtl-sdr-four-contacts.circuitoon.json', import.meta.url), 'utf8'))
+  it('loads, keeps its stored copy (a block, not an update) and checks and exports as drawn', () => {
+    const r = validateDiagram(raw)
+    expect(r.ok).toBe(true)
+    if (!r.ok) return
+    const d = r.diagram
+    const stored = d.modules!['rtl-sdr-blog-v4']
+    expect(usbPorts(stored)).toEqual([])
+    expect(moduleDrift(stored, load('rtl-sdr-blog-v4'))?.kind).toBe('block')
+    const rules = checkDiagram(d).map((f) => f.rule)
+    expect(rules.filter((x) => x.startsWith('usb'))).toEqual([])
+    expect(rules).not.toContain('no-power')
+    expect(toKicadNetlist(d).text).toMatch(/\(ref "U2"\)/)
+  })
 })
