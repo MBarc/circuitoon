@@ -6,7 +6,7 @@ import { useSyncExternalStore } from 'react'
 import type { Diagram, Endpoint } from '../format/diagram.ts'
 import type { Severity } from '../format/checks.ts'
 import { EMPTY_SELECTION, type Selection, type WireStyle } from './ops.ts'
-import { loadNewWireEnds, saveNewWireEnds } from './cableDefault.ts'
+import { loadNewWireEnds, saveNewWireEnds, usbEnds } from './cableDefault.ts'
 import { loadSnapObjects, saveSnapObjects } from './snapPref.ts'
 
 /** The colour new wires start with until the user picks one. */
@@ -197,6 +197,9 @@ export class EditorStore {
   }
 
   setWireStyle(wireStyle: WireStyle) {
+    // A USB cable picked for a USB link is never the next plain wire's cable: new USB links get
+    // theirs from their ports (ops.addWire), and a GPIO wire with USB plugs would be nonsense.
+    if (usbEnds(wireStyle.ends)) wireStyle = { ...wireStyle, ends: this.state.wireStyle.ends }
     const was = this.state.wireStyle.ends
     if (was?.from !== wireStyle.ends?.from || was?.to !== wireStyle.ends?.to) saveNewWireEnds(wireStyle.ends)
     this.set({ wireStyle })

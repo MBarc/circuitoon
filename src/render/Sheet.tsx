@@ -16,8 +16,9 @@ import { WireLabel } from './WireLabel.tsx'
 import { CableLayer } from './CableEnd.tsx'
 import { FrameMark, NoteMark } from './Annotations.tsx'
 import { SITE_THEME, type SheetTheme } from './theme.ts'
-import { BLOCKED_STROKE, Bolts, HazardOutline, MainsNotice, NOTICE_MIN_WIDTH, Stripe, boltInsets, noticeHeight, noticeLines } from './Mains.tsx'
+import { BLOCKED_STROKE, Bolts, PluggedLink, HazardOutline, MainsNotice, NOTICE_MIN_WIDTH, Stripe, boltInsets, noticeHeight, noticeLines } from './Mains.tsx'
 import { MAINS_NOTICE, hasMains } from '../format/mains.ts'
+import { isPluggedIn } from '../format/usb.ts'
 
 /**
  * The sheet's viewBox: `box`, plus on a mains sheet the footer band for the notice (spec 6), at least
@@ -85,6 +86,7 @@ export function Sheet({ diagram, captions = {}, box, label, decorative = false, 
           const look = looks.get(conn.uid)
           const name = drawnColor(conn, looks)
           const stripe = wireStripe(name)
+          if (isPluggedIn(diagram, conn)) return <g key={conn.uid} data-wire={conn.uid}><PluggedLink d={d} casing={theme.casing} /></g>
           return (
             <g key={conn.uid} data-wire={conn.uid}>
               {look?.hazard && <HazardOutline d={d} width={w} />}

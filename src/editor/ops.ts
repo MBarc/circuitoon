@@ -1,5 +1,6 @@
 // Immutable diagram edits. Every function returns a new Diagram and never mutates its input,
 // so the store can keep old versions for undo.
+import { portOf, usbEndsFor } from '../format/usb.ts'
 import { ANNOTATION_LABEL_MAX, ANNOTATION_TEXT_MAX, COORD_LIMIT, type Connection, type Diagram, type Endpoint, type PartInstance, colorFamily, moduleOf } from '../format/diagram.ts'
 import { isBoard, isNetLabel, layoutModule, moduleSettings, partSetting, type ModuleDef } from '../format/module.ts'
 import { FLAG_MAX_CHARS, LABEL_VALUE, labelName } from '../format/netLabels.ts'
@@ -336,6 +337,14 @@ export function addWire(d: Diagram, from: Endpoint, to: Endpoint, style: WireSty
   if (sameEndpoint(d, from, to)) return null
   if (d.connections.some((c) => (sameEndpoint(d, c.from, from) && sameEndpoint(d, c.to, to)) || (sameEndpoint(d, c.from, to) && sameEndpoint(d, c.to, from)))) return null
   const uid = nextUid(d, 'w')
+  // Two USB ports get a USB cable whose plugs fit them, in a black jacket, or (a plug into a socket)
+  // no cable at all: USB design 2.1 and 2.2. Any other wire takes the new-wire style.
+  const [a, b] = [portOf(d, from), portOf(d, to)]
+  if (a && b) {
+    const usbEnds = usbEndsFor(a.usb, b.usb)
+    const cable: Connection = { uid, from, to, color: 'black', gauge: style.gauge, ...(usbEnds ? { ends: usbEnds } : {}) }
+    return { uid, diagram: { ...d, connections: [...d.connections, cable] } }
+  }
   const ends = normalizeEnds(style.ends)
   const wire: Connection = { uid, from, to, color: style.color, gauge: style.gauge, ...(ends ? { ends } : {}) }
   return { uid, diagram: { ...d, connections: [...d.connections, wire] } }
