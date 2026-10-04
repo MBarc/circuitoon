@@ -10,8 +10,8 @@ import { BODY_COLORS, DEFAULT_COLORS, buildPart, lintModule, parsePinLines, type
 import { CATEGORY_ORDER } from './libraryGroups.ts'
 import { Part, partBounds } from '../render/Part.tsx'
 import { SeverityMark } from './SeverityMark.tsx'
-import { type Draft, type PinRow, addPasted, draftId, emptyDraft, gapRow, moveRow, moveRowToSide, pinCount, pinRow, specFromDraft } from './partDraft.ts'
-import { type MyPart, freeId } from './myParts.ts'
+import { type Draft, type PinRow, addPasted, emptyDraft, gapRow, idClash, moveRow, moveRowToSide, pinCount, pinRow, saveId, specFromDraft } from './partDraft.ts'
+import type { MyPart } from './myParts.ts'
 
 const SIDE_NAME: Record<Side, string> = { left: 'Left', right: 'Right', top: 'Top', bottom: 'Bottom' }
 const SIDE_ORDER: Record<Side, string> = { left: 'top to bottom', right: 'top to bottom', top: 'left to right', bottom: 'left to right' }
@@ -91,12 +91,13 @@ export function PartMaker({ editing, taken, onSave, onExport, onCancel, extra, i
     setDraft(next)
     setDirty(true)
   }
-  const id = editing ? editing.module.id : freeId(draftId(draft), taken)
-  const spec = useMemo(() => ({ ...specFromDraft(draft), id: id.replace(/^custom-/, '') }), [draft, id])
+  const id = saveId(draft, editing ? editing.module.id : null, taken)
+  const spec = useMemo(() => ({ ...specFromDraft(draft), id }), [draft, id])
   const built = useMemo(() => buildPart(spec), [spec])
   const lint = useMemo(() => (built.ok ? lintModule(built.module) : null), [built])
   const part: MyPart | null = built.ok ? { module: built.module, ...(draft.maker.trim() ? { maker: draft.maker.trim() } : {}), saved: Date.now() } : null
-  const blockers = !draft.name.trim() ? ['Give the part a name.'] : !built.ok ? built.errors : lint && !lint.ok ? lint.errors.map((e) => e.message) : []
+  const clash = built.ok ? idClash(built.module.id, editing ? editing.module.id : null, taken) : null
+  const blockers = !draft.name.trim() ? ['Give the part a name.'] : !built.ok ? built.errors : clash ? [clash] : lint && !lint.ok ? lint.errors.map((e) => e.message) : []
   const canSave = blockers.length === 0 && !!part
 
   const rows = draft.pins[side]

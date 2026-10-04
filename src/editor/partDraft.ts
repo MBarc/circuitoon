@@ -2,7 +2,8 @@
 // the conversions to and from a part spec. Pure, so it is unit-tested apart from the dialog.
 import { SIDES, type PinCaps, type PinType, type Side } from '../format/module.ts'
 import { type PartSpec, type PartStyle, type PastedPin, DEFAULT_CATEGORY, DEFAULT_COLORS, SPEC_FORMAT, customId, specFromModule } from '../format/partMaker.ts'
-import type { MyPart } from './myParts.ts'
+import { type MyPart, freeId } from './myParts.ts'
+import { modulesById } from '../library.ts'
 
 export interface PinRow {
   /** Stable React key and focus target. */
@@ -99,7 +100,7 @@ export function specFromDraft(d: Draft): PartSpec {
     pins,
   }
   if (source.length) spec.source = source
-  if (d.id) spec.id = d.id.replace(/^custom-/, '')
+  if (d.id) spec.id = d.id
   // Joins name pins; keep only those whose pins all still exist.
   if (d.internal?.length) {
     const names = new Set(SIDES.flatMap((s) => d.pins[s].filter((r) => !r.spacer).map((r) => r.name.trim())))
@@ -111,6 +112,16 @@ export function specFromDraft(d: Draft): PartSpec {
 
 /** The id a new part would get. */
 export const draftId = (d: Draft): string => d.id ?? customId({ name: d.name.trim() || 'part' })
+
+/** The id the dialog saves under: an edited part keeps its exact id; a new one gets a free id from its name. */
+export const saveId = (d: Draft, editingId: string | null, taken: Set<string>): string => editingId ?? freeId(draftId(d), taken)
+
+/** Why a part built with id `id` cannot be saved, or null: it would replace another part, or change the edited part's id. */
+export function idClash(id: string, editingId: string | null, taken: Set<string>): string | null {
+  if (editingId !== null && id !== editingId) return `Saving would change its id from ${editingId} to ${id}, so sheets using it would lose it. Nothing was saved.`
+  if (editingId === null && (taken.has(id) || Object.hasOwn(modulesById, id))) return `Another part in My parts already has the id ${id}. Change the name.`
+  return null
+}
 
 /** Pins pasted into the draft: each lands at the end of its side (a pasted "Right:" line switches sides). An empty first row on a side is replaced. */
 export function addPasted(d: Draft, pasted: PastedPin[]): Draft {

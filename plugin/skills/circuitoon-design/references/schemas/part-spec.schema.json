@@ -8,7 +8,7 @@
   "properties": {
     "format": { "const": "circuitoon-part-spec/1" },
     "name": { "type": "string", "description": "What a maker would call it, at most 120 characters." },
-    "id": { "type": "string", "description": "Lowercase kebab-case. The module id is \"custom-\" plus this, or plus the name made kebab-case." },
+    "id": { "type": "string", "maxLength": 200, "description": "Lowercase kebab-case. The module id is this exactly when it starts with \"custom-\", else \"custom-\" plus this; left out, \"custom-\" plus the name made kebab-case." },
     "category": { "type": "string", "description": "A Parts panel group such as Sensors or Displays; default Custom." },
     "source": { "type": ["string", "array"], "items": { "type": "string" }, "description": "The maker's datasheet and a second source that agrees: URLs, one string separated by spaces or a list." },
     "version": { "type": "integer" },

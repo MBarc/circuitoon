@@ -28,7 +28,7 @@ export type PartStyle = 'board' | 'chip'
 export interface PartSpec {
   format?: typeof SPEC_FORMAT
   name: string
-  /** Kebab-case; the module id is "custom-" + this (or + the name, made kebab-case). */
+  /** Kebab-case; the module id is this when it starts with "custom-", else "custom-" + this (or + the name, made kebab-case). Kept exactly, never cut. */
   id?: string
   category?: string
   /** The datasheet and pinout URLs, one string separated by spaces or a list. */
@@ -50,6 +50,7 @@ export const DEFAULT_COLORS: Record<PartStyle, string> = { board: '#2F9E6E', chi
 export const BODY_COLORS = ['#2F9E6E', '#1E4F8A', '#2B2F36', '#7B3FA0', '#C0392B', '#F4B400', '#EEF0EC', '#D98C2B']
 const UNITS_MAX = MODULE_PX_MAX / GRID
 const NAME_MAX = 120
+const ID_MAX = 200
 
 const GOLD = '#E0B43C'
 export const HOLE_FILL = '#8A6A1E'
@@ -73,9 +74,9 @@ export function slugify(s: string): string {
   return slug || 'part'
 }
 
-/** The module id for a spec: "custom-" + its id or its name, kebab-case. */
+/** The module id for a spec: its id exactly ("custom-" added when missing), else "custom-" + its name, kebab-case. */
 export function customId(spec: Pick<PartSpec, 'id' | 'name'>): string {
-  const base = slugify(spec.id ?? spec.name)
+  const base = spec.id ?? slugify(spec.name)
   return base.startsWith(CUSTOM_PREFIX) ? base : CUSTOM_PREFIX + base
 }
 
@@ -89,7 +90,7 @@ export function validateSpec(raw: unknown): SpecResult {
   if (raw.format !== undefined && raw.format !== SPEC_FORMAT) errors.push(`format: must be "${SPEC_FORMAT}" when present`)
   if (typeof raw.name !== 'string' || raw.name.trim() === '') errors.push('name: required')
   else if (raw.name.length > NAME_MAX) errors.push(`name: at most ${NAME_MAX} characters`)
-  if (raw.id !== undefined && (typeof raw.id !== 'string' || !ID_RE.test(raw.id))) errors.push('id: must be lowercase kebab-case, for example "my-sensor"')
+  if (raw.id !== undefined && (typeof raw.id !== 'string' || !ID_RE.test(raw.id) || raw.id.length > ID_MAX)) errors.push(`id: must be lowercase kebab-case, for example "my-sensor", at most ${ID_MAX} characters`)
   if (raw.category !== undefined && (typeof raw.category !== 'string' || raw.category.trim() === '' || raw.category.length > 60)) errors.push('category: must be a non-empty string, at most 60 characters')
   if (raw.source !== undefined && typeof raw.source !== 'string' && !(Array.isArray(raw.source) && raw.source.every((s) => typeof s === 'string')))
     errors.push('source: must be a string or a list of strings (URLs)')
@@ -410,7 +411,7 @@ export function specFromModule(m: ModuleDef): PartSpec {
   const spec: PartSpec = {
     format: SPEC_FORMAT,
     name: m.name,
-    id: m.id.startsWith(CUSTOM_PREFIX) ? m.id.slice(CUSTOM_PREFIX.length) || undefined : m.id,
+    id: m.id,
     category: m.category ?? DEFAULT_CATEGORY,
     ...(m.source ? { source: m.source } : {}),
     ...(m.version && m.version > 1 ? { version: m.version } : {}),
@@ -418,7 +419,6 @@ export function specFromModule(m: ModuleDef): PartSpec {
     pins,
     ...(m.internal?.length ? { internal: m.internal } : {}),
   }
-  if (spec.id === undefined) delete spec.id
   const auto = buildPart({ ...spec, body: color ? { color } : undefined })
   const sized = auto.ok && m.size && (auto.module.size?.w !== m.size.w || auto.module.size?.h !== m.size.h)
   spec.body = { ...(sized && m.size ? { w: m.size.w, h: m.size.h } : {}), ...(color ? { color } : {}) }

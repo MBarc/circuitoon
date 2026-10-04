@@ -188,13 +188,19 @@ export class MyPartsStore {
   save(p: MyPart) {
     this.set([p, ...this.parts.filter((x) => x.module.id !== p.module.id)])
   }
-  /** Replaces the part stored as `oldId` (its id may change), keeping its place in the list. */
-  replace(oldId: string, p: MyPart) {
+  /**
+   * Replaces the part stored as `oldId`, keeping its place in the list. False, and nothing changes,
+   * when `p` has another id that a different part already uses: a save never overwrites another part.
+   */
+  replace(oldId: string, p: MyPart): boolean {
+    if (p.module.id !== oldId && this.get(p.module.id)) return false
     const i = this.parts.findIndex((x) => x.module.id === oldId)
-    if (i < 0) return this.save(p)
-    const next = this.parts.filter((x, j) => j === i || x.module.id !== p.module.id)
-    next[next.findIndex((x) => x.module.id === oldId)] = p
-    this.set(next)
+    if (i < 0) {
+      this.save(p)
+      return true
+    }
+    this.set(this.parts.map((x, j) => (j === i ? p : x)))
+    return true
   }
   remove(id: string) {
     this.set(this.parts.filter((p) => p.module.id !== id))

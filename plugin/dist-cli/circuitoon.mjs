@@ -192,7 +192,7 @@ function validateMains(raw, names, errors) {
 	if (!isObj(el)) return;
 	const nodes = new Set(Array.isArray(el.internalNodes) ? el.internalNodes.filter(isStr) : []);
 	const term = (v, at) => {
-		if (!isStr(v) || !names.has(v)) errors.push(`${at}: no pin, hole group or internal node named "${String(v)}"`);
+		if (!isStr(v) || !names.has(v)) errors.push(`${at}: no pin, hole group or internal node named "${show(v)}"`);
 	};
 	const termList = (v, at) => {
 		if (!Array.isArray(v) || v.length === 0) return void errors.push(`${at}: must be a list of 1 or more terminal names`);
@@ -228,7 +228,7 @@ function validateMains(raw, names, errors) {
 				if (prev) errors.push(`${at}.${key}[${i}]: "${n}" is already ${prev.role} of source "${prev.src}" (a terminal carries exactly one conductor)`);
 				else conductorOf.set(n, {
 					role,
-					src: String(s.id),
+					src: show(s.id),
 					at: `${at}.${key}[${i}]`
 				});
 			});
@@ -261,7 +261,7 @@ function validateMains(raw, names, errors) {
 		if (Array.isArray(x.pins)) for (const n of x.pins) {
 			if (!isStr(n)) continue;
 			if (inDomain.has(n)) errors.push(`${at}.pins: "${n}" is already in domain "${inDomain.get(n)}"`);
-			else inDomain.set(n, String(x.name));
+			else inDomain.set(n, show(x.name));
 		}
 	});
 	if (el.isolation !== void 0 && !oneOf(ISOLATIONS, el.isolation)) errors.push(`electrical.isolation: must be one of ${words(ISOLATIONS)}`);
@@ -411,10 +411,10 @@ function validateMains(raw, names, errors) {
 			s.contacts.forEach((c, j) => {
 				const cat = `${at}.contacts[${j}]`;
 				if (!isObj(c)) return void errors.push(`${cat}: must be an object`);
-				if (!isStr(c.group) || !holes.includes(c.group)) errors.push(`${cat}.group: no hole group named "${String(c.group)}"`);
+				if (!isStr(c.group) || !holes.includes(c.group)) errors.push(`${cat}.group: no hole group named "${show(c.group)}"`);
 				else if (owner.has(c.group)) errors.push(`${cat}.group: "${c.group}" already belongs to socket "${owner.get(c.group)}"`);
 				else {
-					owner.set(c.group, String(s.id));
+					owner.set(c.group, show(s.id));
 					if (oneOf(CONDUCTORS, c.role)) socketContacts.push({
 						group: c.group,
 						role: c.role,
@@ -494,7 +494,7 @@ function mainsOf(m) {
 	const strs = (v) => Array.isArray(v) ? v.filter(isStr) : [];
 	const internalNodes = strs(el.internalNodes);
 	const acSources = list("acSources").map((s) => ({
-		id: String(s.id),
+		id: show(s.id),
 		live: strs(s.live),
 		neutral: strs(s.neutral),
 		earth: strs(s.earth)
@@ -506,21 +506,21 @@ function mainsOf(m) {
 		range: Array.isArray(c.range) ? c.range : null
 	}));
 	const protective = list("protective").map((e) => ({
-		from: String(e.from),
-		to: String(e.to),
+		from: show(e.from),
+		to: show(e.to),
 		kind: "fuse",
 		rating: isNum(e.rating) ? e.rating : null
 	}));
 	const domains = list("domains").map((x) => ({
-		name: String(x.name),
+		name: show(x.name),
 		pins: strs(x.pins),
 		kind: x.kind
 	}));
 	const domainOf = /* @__PURE__ */ new Map();
 	for (const x of domains) for (const p of x.pins) domainOf.set(p, x);
 	const acInput = isObj(el.acInput) ? {
-		a: String(el.acInput.a),
-		b: String(el.acInput.b),
+		a: show(el.acInput.a),
+		b: show(el.acInput.b),
 		range: el.acInput.range
 	} : null;
 	const ratings = list("ratings").map((r) => ({
@@ -533,10 +533,10 @@ function mainsOf(m) {
 		conditions: isStr(r.conditions) ? r.conditions : null
 	}));
 	const contacts = list("contacts").map((c) => ({
-		id: String(c.id),
+		id: show(c.id),
 		kind: c.kind,
 		poles: (Array.isArray(c.poles) ? c.poles.filter(isObj) : []).map((p) => ({
-			com: String(p.com),
+			com: show(p.com),
 			no: isStr(p.no) ? p.no : null,
 			nc: isStr(p.nc) ? p.nc : null
 		}))
@@ -550,9 +550,9 @@ function mainsOf(m) {
 	const plug = plugRaw ? {
 		family: plugRaw.family,
 		profiles: (Array.isArray(plugRaw.profiles) ? plugRaw.profiles.filter(isObj) : []).map((pr) => ({
-			id: String(pr.id),
+			id: show(pr.id),
 			contacts: (Array.isArray(pr.contacts) ? pr.contacts.filter(isObj) : []).map((c) => ({
-				pin: String(c.pin),
+				pin: show(c.pin),
 				at: c.at,
 				mains: c.mains
 			}))
@@ -560,10 +560,10 @@ function mainsOf(m) {
 	} : null;
 	const conductingPins = plug ? plug.profiles.flatMap((pr) => pr.contacts.filter((c) => c.mains !== "mechanical").map((c) => c.pin)) : [];
 	const sockets = list("sockets").map((s) => ({
-		id: String(s.id),
+		id: show(s.id),
 		family: s.family,
 		contacts: (Array.isArray(s.contacts) ? s.contacts.filter(isObj) : []).map((c) => ({
-			group: String(c.group),
+			group: show(c.group),
 			role: c.role
 		}))
 	}));
@@ -692,6 +692,18 @@ var insideLabelSides = (m) => usesInsideLabels(m) ? [...SIDES] : [];
 var isBoard = (m) => !!m && !!m.holes?.length && m.obstacle === false;
 var isObj = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
 var isNum = (v) => typeof v === "number" && Number.isFinite(v);
+/**
+* Any untrusted value as text for a message, never throwing: String() throws on an object whose
+* toString is not a function (`{"toString": null}` from JSON), so validation never coerces.
+*/
+function show(v) {
+	if (typeof v === "string") return v;
+	try {
+		return JSON.stringify(v) ?? typeof v;
+	} catch {
+		return typeof v;
+	}
+}
 var isPos = (v) => isNum(v) && v > 0;
 /**
 * The largest a module's body, art, shapes and footprint may reach in module px, either way from
@@ -753,7 +765,7 @@ function validateModule(raw) {
 		errors: ["module must be a JSON object"]
 	};
 	if (raw.format === void 0) errors.push("format: missing (expected \"circuitoon-module/1\")");
-	else if (raw.format !== "circuitoon-module/1") errors.push(`format: unsupported "${String(raw.format)}" (expected "${MODULE_FORMAT}")`);
+	else if (raw.format !== "circuitoon-module/1") errors.push(`format: unsupported "${show(raw.format)}" (expected "${MODULE_FORMAT}")`);
 	if (typeof raw.id !== "string" || !/^[a-z0-9]+(-[a-z0-9]+)*$/.test(raw.id)) errors.push("id: required, lowercase kebab-case (for example \"mcp23017-breakout\")");
 	if (typeof raw.name !== "string" || raw.name.trim() === "") errors.push("name: required");
 	if (raw.version !== void 0 && !(Number.isInteger(raw.version) && raw.version >= 1)) errors.push("version: must be a whole number, 1 or more");
@@ -866,7 +878,7 @@ function validateModule(raw) {
 		else raw.internal.forEach((group, i) => {
 			if (!Array.isArray(group) || group.length < 2) return void errors.push(`internal[${i}]: needs 2 or more pin names`);
 			group.forEach((n, j) => {
-				if (!names.has(n)) errors.push(`internal[${i}][${j}]: no pin named "${String(n)}"`);
+				if (!names.has(n)) errors.push(`internal[${i}][${j}]: no pin named "${show(n)}"`);
 			});
 		});
 	}
@@ -932,7 +944,7 @@ function validateModule(raw) {
 		else ext.forEach((e, i) => {
 			const at = `electrical.external[${i}]`;
 			if (!isObj(e)) return void errors.push(`${at}: must be { "pin", "volts", "via" }`);
-			if (typeof e.pin !== "string" || !pinNames.has(e.pin)) errors.push(`${at}.pin: no pin named "${String(e.pin)}"`);
+			if (typeof e.pin !== "string" || !pinNames.has(e.pin)) errors.push(`${at}.pin: no pin named "${show(e.pin)}"`);
 			if (!isPos(e.volts)) errors.push(`${at}.volts: must be a number above 0`);
 			if (typeof e.via !== "string" || e.via.trim() === "") errors.push(`${at}.via: required, what powers the pin (for example "USB")`);
 			if (e.diode !== void 0 && typeof e.diode !== "boolean") errors.push(`${at}.diode: must be true or false`);
@@ -946,7 +958,7 @@ function validateModule(raw) {
 		else groups.forEach((g, i) => {
 			if (!Array.isArray(g) || g.length < 2) return void errors.push(`electrical.commonReturn[${i}]: needs 2 or more ground pin names`);
 			g.forEach((n, j) => {
-				if (typeof n !== "string" || !grounds.has(n)) errors.push(`electrical.commonReturn[${i}][${j}]: no ground pin named "${String(n)}"`);
+				if (typeof n !== "string" || !grounds.has(n)) errors.push(`electrical.commonReturn[${i}][${j}]: no ground pin named "${show(n)}"`);
 			});
 		});
 	}
@@ -959,7 +971,7 @@ function validateModule(raw) {
 		if (!isObj(returns)) errors.push("electrical.returns: must be an object of output pin name to ground pin name");
 		else for (const [out, g] of Object.entries(returns)) {
 			if (!outs.has(out)) errors.push(`electrical.returns.${out}: no power_out or external pin named "${out}"`);
-			if (typeof g !== "string" || !grounds.has(g)) errors.push(`electrical.returns.${out}: no ground pin named "${String(g)}"`);
+			if (typeof g !== "string" || !grounds.has(g)) errors.push(`electrical.returns.${out}: no ground pin named "${show(g)}"`);
 		}
 	}
 	if (isObj(raw.electrical)) {
@@ -970,7 +982,7 @@ function validateModule(raw) {
 			if (!hasVoltage) errors.push("electrical.voltageOutputs: only for a module with a voltage param");
 			if (!Array.isArray(el.voltageOutputs) || el.voltageOutputs.length === 0) errors.push("electrical.voltageOutputs: must be a list of power_out pin names");
 			else el.voltageOutputs.forEach((n, i) => {
-				if (typeof n !== "string" || !outs.includes(n)) errors.push(`electrical.voltageOutputs[${i}]: no power_out pin named "${String(n)}"`);
+				if (typeof n !== "string" || !outs.includes(n)) errors.push(`electrical.voltageOutputs[${i}]: no power_out pin named "${show(n)}"`);
 			});
 		} else if (hasVoltage && outs.length > 1) errors.push(`electrical.voltageOutputs: required, the module has a voltage value and ${outs.length} power_out pins; name the ones the value sets`);
 	}
@@ -1004,7 +1016,7 @@ function validateI2c(i2c, settings, pins, errors) {
 		"address",
 		"pullups"
 	].includes(k)) errors.push(`${at}.${k}: unknown field`);
-	for (const k of ["sda", "scl"]) if (typeof i2c[k] !== "string" || !pins.has(i2c[k])) errors.push(`${at}.${k}: no pin named "${String(i2c[k])}"`);
+	for (const k of ["sda", "scl"]) if (typeof i2c[k] !== "string" || !pins.has(i2c[k])) errors.push(`${at}.${k}: no pin named "${show(i2c[k])}"`);
 	if (i2c.pullups !== void 0 && typeof i2c.pullups !== "boolean") errors.push(`${at}.pullups: must be true or false (leave it out when not known)`);
 	const a = i2c.address;
 	if (a === void 0) return;
@@ -1019,13 +1031,13 @@ function validateI2c(i2c, settings, pins, errors) {
 		a.pins.forEach((p, i) => {
 			const pa = `${at}.address.pins[${i}]`;
 			if (!isObj(p)) return void errors.push(`${pa}: must be { "pin", "add", "floating"? }`);
-			if (typeof p.pin !== "string" || !pins.has(p.pin)) errors.push(`${pa}.pin: no pin named "${String(p.pin)}"`);
+			if (typeof p.pin !== "string" || !pins.has(p.pin)) errors.push(`${pa}.pin: no pin named "${show(p.pin)}"`);
 			if (!(Number.isInteger(p.add) && p.add > 0 && p.add <= 127)) errors.push(`${pa}.add: must be a whole number from 1 to 127`);
 			if (p.floating !== void 0 && p.floating !== 0 && p.floating !== 1) errors.push(`${pa}.floating: must be 0 or 1 (the level the board pulls the pin to when nothing is connected)`);
 		});
 	} else if (a.setting !== void 0) {
-		const choices = isObj(settings) ? settings[a.setting] : void 0;
-		if (typeof a.setting !== "string" || !Array.isArray(choices)) errors.push(`${at}.address.setting: no setting named "${String(a.setting)}" in electrical.settings`);
+		const choices = isObj(settings) && typeof a.setting === "string" && Object.hasOwn(settings, a.setting) ? settings[a.setting] : void 0;
+		if (typeof a.setting !== "string" || !Array.isArray(choices)) errors.push(`${at}.address.setting: no setting named "${show(a.setting)}" in electrical.settings`);
 		else if (choices.some((c) => typeof c !== "string" || parseAddress(c) === null)) errors.push(`${at}.address.setting: every choice of electrical.settings.${a.setting} must be an address such as "0x3C"`);
 	} else errors.push(`${at}.address: must be ${forms}`);
 }
@@ -66761,6 +66773,7 @@ var DEFAULT_COLORS = {
 };
 var UNITS_MAX = MODULE_PX_MAX / 10;
 var NAME_MAX = 120;
+var ID_MAX = 200;
 var GOLD = "#E0B43C";
 var HOLE_FILL = "#8A6A1E";
 var PLATE = "#F7F8F3";
@@ -66798,9 +66811,9 @@ var PIN_KEYS = [
 function slugify(s) {
 	return s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60).replace(/-+$/, "") || "part";
 }
-/** The module id for a spec: "custom-" + its id or its name, kebab-case. */
+/** The module id for a spec: its id exactly ("custom-" added when missing), else "custom-" + its name, kebab-case. */
 function customId(spec) {
-	const base = slugify(spec.id ?? spec.name);
+	const base = spec.id ?? slugify(spec.name);
 	return base.startsWith("custom-") ? base : CUSTOM_PREFIX + base;
 }
 /** Checks a parsed JSON value against the part spec format. Errors name the exact path. */
@@ -66814,7 +66827,7 @@ function validateSpec(raw) {
 	if (raw.format !== void 0 && raw.format !== "circuitoon-part-spec/1") errors.push(`format: must be "${SPEC_FORMAT}" when present`);
 	if (typeof raw.name !== "string" || raw.name.trim() === "") errors.push("name: required");
 	else if (raw.name.length > NAME_MAX) errors.push(`name: at most ${NAME_MAX} characters`);
-	if (raw.id !== void 0 && (typeof raw.id !== "string" || !ID_RE.test(raw.id))) errors.push("id: must be lowercase kebab-case, for example \"my-sensor\"");
+	if (raw.id !== void 0 && (typeof raw.id !== "string" || !ID_RE.test(raw.id) || raw.id.length > ID_MAX)) errors.push(`id: must be lowercase kebab-case, for example "my-sensor", at most ${ID_MAX} characters`);
 	if (raw.category !== void 0 && (typeof raw.category !== "string" || raw.category.trim() === "" || raw.category.length > 60)) errors.push("category: must be a non-empty string, at most 60 characters");
 	if (raw.source !== void 0 && typeof raw.source !== "string" && !(Array.isArray(raw.source) && raw.source.every((s) => typeof s === "string"))) errors.push("source: must be a string or a list of strings (URLs)");
 	if (raw.version !== void 0 && !(Number.isInteger(raw.version) && raw.version >= 1)) errors.push("version: must be a whole number, 1 or more");

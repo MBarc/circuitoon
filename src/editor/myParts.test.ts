@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { MY_PARTS_KEY, MyPartsStore, duplicatePart, freeId, importPart, partFileText, readMyParts, readMyPartsReport, replaceSheetModule, skippedNotice, writeMyParts, type KeyValue, type MyPart } from './myParts.ts'
 import { validateModule } from '../format/module.ts'
 import { moduleFromSpec } from '../format/partMaker.ts'
-import { addPasted, draftFromPart, emptyDraft, moveRow, moveRowToSide, pinRow, specFromDraft } from './partDraft.ts'
+import { addPasted, draftFromPart, emptyDraft, idClash, moveRow, moveRowToSide, pinRow, saveId, specFromDraft } from './partDraft.ts'
 import { parsePinLines } from '../format/partMaker.ts'
 import { emptyDiagram } from '../format/diagram.ts'
 import { addPart } from './ops.ts'
@@ -195,5 +195,54 @@ describe('tampered My parts', () => {
     expect(store.skipped).toBe(2)
     expect(skippedNotice(2)).toMatch(/2 saved parts in this browser could not be read/)
     expect(skippedNotice(1)).toMatch(/1 saved part in this browser could not be read/)
+  })
+})
+
+describe('editing keeps a part its exact id', () => {
+  const long = 'A long sensor name that runs well past the sixty character slug limit'
+  const make = (name: string) => moduleFromSpec({ name, pins: { left: [{ name: 'VCC', type: 'power_in', supply: '3V3' }, { name: 'GND', type: 'ground' }] } })
+  /** What the dialog saves: the draft built under the id it would save with. */
+  const save = (d: ReturnType<typeof draftFromPart>, editingId: string | null, taken: Set<string>) => {
+    const id = saveId(d, editingId, taken)
+    return moduleFromSpec({ ...specFromDraft(d), id })
+  }
+
+  it('a long name: the second part keeps its -2 and editing it never lands on the first', () => {
+    const a = make(long)
+    expect(a.id.length).toBeGreaterThan(60)
+    const b = save({ ...emptyDraft(), name: long, pins: draftFromPart({ module: a, saved: 1 }).pins }, null, new Set([a.id]))
+    expect(b.id).toBe(`${a.id}-2`)
+    const edited = save(draftFromPart({ module: b, saved: 1 }), b.id, new Set([a.id, b.id]))
+    expect(edited.id).toBe(b.id)
+    const s = memory()
+    const store = new MyPartsStore(() => s)
+    store.save({ module: a, saved: 1 })
+    store.save({ module: b, saved: 1 })
+    store.replace(b.id, { module: edited, saved: 2 })
+    expect(store.getSnapshot().map((p) => p.module.id).sort()).toEqual([a.id, b.id].sort())
+  })
+
+  it('duplicates and imported ids keep theirs too', () => {
+    const a = make(long)
+    const copy = duplicatePart({ module: a, saved: 1 }, [{ module: a, saved: 1 }])
+    expect(save(draftFromPart(copy), copy.module.id, new Set([a.id, copy.module.id])).id).toBe(copy.module.id)
+    for (const id of ['custom-custom-x', `custom-${'b'.repeat(80)}`, 'custom-x-2']) {
+      const r = importPart(JSON.stringify({ ...make('X'), id }), [])
+      expect(r.ok && r.part.module.id).toBe(id)
+      if (r.ok) expect(save(draftFromPart(r.part), id, new Set([id, 'custom-x'])).id).toBe(id)
+    }
+  })
+
+  it('refuses a save that would land on another part, with a clear message', () => {
+    expect(idClash('custom-a', null, new Set(['custom-a']))).toMatch(/Another part in My parts already has the id custom-a/)
+    expect(idClash('custom-b', 'custom-a', new Set(['custom-a', 'custom-b']))).toMatch(/would change its id from custom-a to custom-b/)
+    expect(idClash('custom-a', 'custom-a', new Set(['custom-a']))).toBeNull()
+    expect(idClash('custom-c', null, new Set(['custom-a']))).toBeNull()
+    const s = memory()
+    const store = new MyPartsStore(() => s)
+    store.save(part('A'))
+    store.save(part('B'))
+    expect(store.replace('custom-b', part('A'))).toBe(false)
+    expect(store.getSnapshot().map((p) => p.module.id)).toEqual(['custom-b', 'custom-a'])
   })
 })

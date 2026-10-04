@@ -241,7 +241,7 @@ function usePartMaker(store: EditorStore, canvas: { current: CanvasApi | null })
           onSave={(p, wasId) => {
             setOpen(null)
             if (wasId) {
-              myParts.replace(wasId, p)
+              if (!myParts.replace(wasId, p)) return say(`${p.module.name} was not saved: another part in My parts already has the id ${p.module.id}.`)
               const d = store.getState().diagram
               const next = replaceSheetModule(d, p.module)
               if (next !== d) {
