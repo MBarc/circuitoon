@@ -4,7 +4,8 @@
 // model of nets, so the checker (a sheet's real connectivity) and `circuitoon explain` (a netlist's
 // nets) share every rule and every message. Nothing is guessed: a pin with no caps, a module with no
 // I2C data, an address pin driven by a signal, all stay quiet. Pure, no React.
-import { type I2cSpec, type ModuleDef, type PinCaps, type PinDef, type PinType, addressText, externalPower, holeGroupOf, i2cOf, isBoard, isNetLabel, isSpacer, parseAddress, partSetting } from './module.ts'
+import { usbWords } from './usb.ts'
+import { type I2cSpec, type ModuleDef, type PinCaps, type PinDef, type PinType, addressText, usbOf, externalPower, holeGroupOf, i2cOf, isBoard, isNetLabel, isSpacer, parseAddress, partSetting } from './module.ts'
 import { andList, natural, orList } from './words.ts'
 
 /** A part as the pin rules see it: `id` is a sheet uid or a netlist ref. */
@@ -246,6 +247,9 @@ const TYPE_WORDS: Record<PinType, string> = {
 }
 /** One line on what a pin does: its type and supply, its caps, its I2C role, its note. */
 export function pinDoes(e: PinEnd): string {
+  // A USB port is its connector, role and current, not a signal (USB design 1.1).
+  const usb = e.type === 'usb' ? usbOf(e.part.module, e.pin) : undefined
+  if (usb) return usbWords(usb)
   const i2c = i2cOf(e.part.module)
   // The caps say "input only" or "output only" themselves: do not say "input" first.
   const said = (e.type === 'input' && e.caps?.inputOnly) || (e.type === 'output' && e.caps?.outputOnly)

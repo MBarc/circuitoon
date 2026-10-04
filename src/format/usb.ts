@@ -10,6 +10,13 @@ import { labelName } from './netLabels.ts'
 import { type Netlist, nodeKey } from './netlist.ts'
 import { andList, natural } from './words.ts'
 
+/** A USB port in words: "USB micro-B receptacle, device, 2.0 full speed, draws 270 mA". */
+export function usbWords(u: UsbSpec): string {
+  return [`USB ${u.connector} ${u.gender}`, u.role, u.power === 'only' ? 'charge only' : '', u.hub ? `hub ${u.hub}` : '',
+    [u.version, u.speed ? `${u.speed} speed` : ''].filter(Boolean).join(' '), u.source !== undefined ? `supplies ${u.source} mA` : '',
+    u.draw !== undefined ? `draws ${u.draw} mA` : u.role === 'device' ? 'draw not known' : '', u.through ? `passes the bus through to ${u.through}` : ''].filter(Boolean).join(', ')
+}
+
 /** The cable plug that fits each USB receptacle. */
 export const PLUG_KIND: Record<UsbConnector, EndKind> = { A: 'usb-a', B: 'usb-b', 'mini-B': 'usb-mini-b', 'micro-B': 'usb-micro-b', C: 'usb-c' }
 /** A connector in a sentence. */

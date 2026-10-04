@@ -23,15 +23,16 @@
             "type": "array",
             "items": {
               "type": "object",
-              "required": ["name", "label", "type", "supply", "capacity", "caps"],
+              "required": ["name", "label", "type", "supply", "capacity", "caps", "usb"],
               "additionalProperties": false,
               "properties": {
                 "name": { "type": "string" },
                 "label": { "type": ["string", "null"] },
-                "type": { "enum": ["power_in", "power_out", "ground", "input", "output", "io", "passive", "nc", null] },
+                "type": { "enum": ["power_in", "power_out", "ground", "input", "output", "io", "passive", "nc", "usb", null] },
                 "supply": { "type": ["string", "null"] },
                 "capacity": { "type": "integer" },
-                "caps": { "type": ["object", "null"] }
+                "caps": { "type": ["object", "null"] },
+                "usb": { "type": ["object", "null"] }
               }
             }
           },

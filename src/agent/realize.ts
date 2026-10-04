@@ -17,7 +17,8 @@ import { mainsOf } from '../format/mainsModel.ts'
 import { FANOUT_MIN, type LabelMode, LabelPlacer, type LabelSpot, autoLabels, edgeExits } from './labelling.ts'
 import { coveredHoles, plugsOf } from '../format/breadboard.ts'
 import { type Pt, worldHoles } from '../format/geometry.ts'
-import { isBoard, isSpacer, type ModuleDef, type PinDef, terminalCapacity } from '../format/module.ts'
+import { isBoard, isSpacer, type ModuleDef, type PinDef, terminalCapacity, usbOf } from '../format/module.ts'
+import { usbEndsFor } from '../format/usb.ts'
 import { normalizeEnds } from '../format/cables.ts'
 import { tipLabelBoxes } from '../render/captionBox.ts'
 import { type BoardStrip, exitDirt, holeExits } from '../format/boardEntry.ts'
@@ -287,11 +288,20 @@ export function realize(intent: Intent, d: Diagram, locals: LocalDistribution[] 
     const kind = kindOf(n)
     return n.color ?? (kind === 'ground' ? 'black' : kind === 'power' ? 'red' : SIGNAL_COLORS[signal++ % SIGNAL_COLORS.length])
   })
+  const usbAt = (ep: Endpoint) => {
+    const p = partBy.get(ep.part)
+    const m = p && moduleOf(d, p.module)
+    return m ? usbOf(m, ep.pin) : undefined
+  }
   const wire = (ni: number, from: Endpoint, to: Endpoint, routing: boolean, toLabel = false) => {
     const uid = `w${connections.length + 1}`
     // The layout chooses every colour on purpose (the netlist's, else by role): colorSet, so it is judged.
     // A stub to a net label is drawn plain: no connector belongs at a label.
-    connections.push({ uid, from, to, color: colors[ni], colorSet: true, gauge: 22, ...(ends && !toLabel ? { ends } : {}), ...(routing ? { routing: true } : {}) })
+    // Two USB ports get the USB cable that fits them, or none when one is a plug (USB design 2.1, 2.2).
+    const [ua, ub] = [usbAt(from), usbAt(to)]
+    const usbEnds = ua && ub ? usbEndsFor(ua, ub) : undefined
+    if (ua && ub) connections.push({ uid, from, to, color: 'black', colorSet: true, gauge: 22, ...(usbEnds ? { ends: usbEnds } : {}) })
+    else connections.push({ uid, from, to, color: colors[ni], colorSet: true, gauge: 22, ...(ends && !toLabel ? { ends } : {}), ...(routing ? { routing: true } : {}) })
     netOfWire.set(uid, intent.nets[ni].name)
   }
   const holeEnd = (s: Strip, i: number): Endpoint => {
