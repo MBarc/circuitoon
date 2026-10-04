@@ -1,5 +1,5 @@
 // Browser check for Update parts to current library (Ruling D1). Opens Michael's 1S4P battery-bank
-// sheet, whose ESP32 and OLED copies predate the library's pin and I2C data, in the built editor,
+// sheet, whose ESP32, IP5306 and OLED copies predate the library's pin, USB port and I2C data, in the built editor,
 // then through the real UI: the Problems list shows each out-of-date part as a warning ("Part data
 // out of date") with an Update parts button, and the sheet Inspector offers "Update parts to current
 // library"; the row's button updates every such part as one step and reports what changed (the
@@ -60,9 +60,9 @@ for (const scheme of ['light', 'dark']) {
   await pause(400)
 
   // The offer: one warning per out-of-date part, each with its button, and the sheet's own.
-  check((await driftRows.count()) === 2, `${scheme}: the Problems list has a warning per out-of-date part (${await driftRows.count()})`)
+  check((await driftRows.count()) === 3, `${scheme}: the Problems list has a warning per out-of-date part (${await driftRows.count()})`)
   check((await driftRows.evaluateAll((els) => els.every((e) => e.className === 'warning'))), `${scheme}: they are warnings`)
-  check((await rowButtons.count()) === 2, `${scheme}: each has an Update parts button`)
+  check((await rowButtons.count()) === 3, `${scheme}: each has an Update parts button`)
   check((await rowButtons.first().getAttribute('aria-label')) === 'Update parts to current library', `${scheme}: the row button is named Update parts to current library`)
   check((await offer.count()) === 1 && (await offer.isVisible()), `${scheme}: the sheet Inspector offers Update parts to current library`)
   const wiresBefore = await wiring()
@@ -74,7 +74,7 @@ for (const scheme of ['light', 'dark']) {
   await pause(400)
   check((await report.isVisible()) && (await report.getAttribute('role')) === 'status', `${scheme}: a report says what changed`)
   const lines = await report.locator('li').allTextContents()
-  check(lines.some((l) => /^Updated U\d+ \(esp32-devkit-v1-30\): pins .* \(pin data\)\.$/.test(l)), `${scheme}: the report names the ESP32 and its new pin data (${lines.join(' | ')})`)
+  check(lines.some((l) => /^Updated U\d+ \(esp32-devkit-v1-30\): USB port USB, pins .* \(pin data\)\.$/.test(l)), `${scheme}: the report names the ESP32 and its new pin data (${lines.join(' | ')})`)
   check(lines.some((l) => l.includes('(oled-ssd1306-096-i2c)') && l.includes('I2C data')), `${scheme}: the report names the OLED and its I2C data`)
   check((await driftRows.count()) === 0 && (await offer.count()) === 0, `${scheme}: the warnings and the offer are gone`)
   check((await wiring()) === wiresBefore, `${scheme}: the wiring is as drawn`)
@@ -84,7 +84,7 @@ for (const scheme of ['light', 'dark']) {
   // Undo: one step back, the report hides.
   await page.getByRole('button', { name: 'Undo', exact: true }).click()
   await pause(400)
-  check((await driftRows.count()) === 2 && (await offer.count()) === 1, `${scheme}: one Undo brings the old copies back`)
+  check((await driftRows.count()) === 3 && (await offer.count()) === 1, `${scheme}: one Undo brings the old copies back`)
   check((await report.count()) === 0, `${scheme}: and hides the report`)
 
   // The Inspector's button does the same.
