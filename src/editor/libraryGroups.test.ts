@@ -38,7 +38,7 @@ describe('groupLibrary', () => {
 
   it('fixes the category order from Batteries through Mains, with Prototyping right after Batteries', () => {
     expect(CATEGORY_ORDER).toEqual([
-      'Batteries', 'Prototyping', 'Power', 'Microcontrollers', 'Sensors', 'Communication', 'Displays', 'Motors and actuators',
+      'Batteries', 'Prototyping', 'Power', 'Microcontrollers', 'Computers', 'Sensors', 'Communication', 'Displays', 'Motors and actuators',
       'Chips', 'Semiconductors', 'Passives', 'Indicators', 'Switches', 'Connectors', 'Wiring', 'Mains',
     ])
   })

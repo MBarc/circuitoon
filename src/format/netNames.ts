@@ -48,6 +48,7 @@ export function nameNets(nets: { pins: NamedPin[]; label?: string }[]): string[]
     if (outs.length === 1) claim(i, outs[0])
   })
   nets.forEach((net, i) => {
+    if (named[i] !== undefined || !net.pins.length) return
     // An MCU's pin names a signal best; else a source's pin; else the first component pin.
     const pick = net.pins.find((p) => p.m.category === 'Microcontrollers') ?? net.pins.find((p) => pinDef(p.m, p.name)?.type === 'power_out') ?? net.pins.find((p) => !isBoard(p.m)) ?? net.pins[0]
     let name = `${pick.ref}_${pick.name}`

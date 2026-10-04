@@ -23,6 +23,10 @@ const NO_PAD: Record<string, string[]> = {
   'rfm95-lora-breakout': ['ANT'],
   'gps-neo-m8n-gy-gpsv3': ['ANT'],
   'arduino-uno-r4-wifi': ['OFF', 'GND 4', 'VRTC'],
+  // Flat-cable sockets, not on the 40-pin header.
+  'rpi-4-model-b': ['CAMERA', 'DISPLAY'],
+  'rpi-5': ['CAM/DISP 1', 'CAM/DISP 0'],
+  'rpi-zero-2-w': ['CAMERA'],
 }
 
 /** Each footprint of a mapping with its pin-to-pad map. */

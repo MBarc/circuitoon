@@ -313,6 +313,8 @@ describe('usesInsideLabels', () => {
       // Raspberry Pi touch displays, GPS and RTL-SDR, MEMS microphones (gen-rfpi.mjs).
       'lcd-rpi-touch-display-7.json', 'lcd-rpi-touch-display-2-7.json', 'lcd-rpi-touch-display-2-5.json', 'gps-neo-m8n-gy-gpsv3.json', 'rtl-sdr-blog-v4.json',
       'mic-ics-40300.json', 'mic-spu0410lr5h-qb.json', 'mic-ics-43434.json', 'mic-ics-43434-adafruit-6049.json',
+      // Raspberry Pi 4, 5, Zero 2 W and the two USB hubs (gen-usb.mjs).
+      'rpi-4-model-b.json', 'rpi-5.json', 'rpi-zero-2-w.json', 'usb-hub-fe11s-circuitneato.json', 'usb-hub-powered-4port.json',
     ])
     const files = readdirSync(dir).filter((f) => f.endsWith('.json'))
     expect(files.filter((f) => boardFiles.has(f))).toHaveLength(boardFiles.size)

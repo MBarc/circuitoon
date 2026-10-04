@@ -1,0 +1,659 @@
+{
+  "format": "circuitoon-module/1",
+  "id": "usb-hub-fe11s-circuitneato",
+  "version": 1,
+  "name": "USB 2.0 hub board FE1.1s (Circuitneato, USB-C in, 4 x USB-A)",
+  "category": "Connectors",
+  "source": "https://circuitneato.com/how-to-use-the-fe1-1s-usb-hub/ https://circuitneato.com/media/2025/06/00032-2-1.jpg https://cdn-shop.adafruit.com/product-files/2991/FE1.1s%20Data%20Sheet%20(Rev.%201.0).pdf",
+  "pins": [
+    {
+      "name": "USB-C",
+      "side": "left",
+      "type": "usb",
+      "usb": {
+        "connector": "C",
+        "gender": "receptacle",
+        "role": "device",
+        "hub": "upstream",
+        "version": "2.0",
+        "speed": "high",
+        "draw": 100
+      }
+    },
+    {
+      "spacer": true,
+      "side": "left"
+    },
+    {
+      "spacer": true,
+      "side": "left"
+    },
+    {
+      "spacer": true,
+      "side": "left"
+    },
+    {
+      "spacer": true,
+      "side": "left"
+    },
+    {
+      "spacer": true,
+      "side": "left"
+    },
+    {
+      "spacer": true,
+      "side": "left"
+    },
+    {
+      "spacer": true,
+      "side": "left"
+    },
+    {
+      "spacer": true,
+      "side": "left"
+    },
+    {
+      "spacer": true,
+      "side": "bottom"
+    },
+    {
+      "spacer": true,
+      "side": "bottom"
+    },
+    {
+      "name": "P4",
+      "side": "bottom",
+      "label": "4",
+      "type": "usb",
+      "usb": {
+        "connector": "A",
+        "gender": "receptacle",
+        "role": "host",
+        "hub": "downstream",
+        "version": "2.0",
+        "speed": "high",
+        "source": 500
+      }
+    },
+    {
+      "spacer": true,
+      "side": "bottom"
+    },
+    {
+      "spacer": true,
+      "side": "bottom"
+    },
+    {
+      "spacer": true,
+      "side": "bottom"
+    },
+    {
+      "spacer": true,
+      "side": "bottom"
+    },
+    {
+      "spacer": true,
+      "side": "bottom"
+    },
+    {
+      "spacer": true,
+      "side": "bottom"
+    },
+    {
+      "spacer": true,
+      "side": "bottom"
+    },
+    {
+      "spacer": true,
+      "side": "bottom"
+    },
+    {
+      "spacer": true,
+      "side": "bottom"
+    },
+    {
+      "name": "P3",
+      "side": "bottom",
+      "label": "3",
+      "type": "usb",
+      "usb": {
+        "connector": "A",
+        "gender": "receptacle",
+        "role": "host",
+        "hub": "downstream",
+        "version": "2.0",
+        "speed": "high",
+        "source": 500
+      }
+    },
+    {
+      "spacer": true,
+      "side": "bottom"
+    },
+    {
+      "spacer": true,
+      "side": "bottom"
+    },
+    {
+      "spacer": true,
+      "side": "bottom"
+    },
+    {
+      "spacer": true,
+      "side": "bottom"
+    },
+    {
+      "spacer": true,
+      "side": "bottom"
+    },
+    {
+      "spacer": true,
+      "side": "bottom"
+    },
+    {
+      "spacer": true,
+      "side": "bottom"
+    },
+    {
+      "spacer": true,
+      "side": "bottom"
+    },
+    {
+      "spacer": true,
+      "side": "bottom"
+    },
+    {
+      "name": "P2",
+      "side": "bottom",
+      "label": "2",
+      "type": "usb",
+      "usb": {
+        "connector": "A",
+        "gender": "receptacle",
+        "role": "host",
+        "hub": "downstream",
+        "version": "2.0",
+        "speed": "high",
+        "source": 500
+      }
+    },
+    {
+      "spacer": true,
+      "side": "bottom"
+    },
+    {
+      "spacer": true,
+      "side": "bottom"
+    },
+    {
+      "spacer": true,
+      "side": "bottom"
+    },
+    {
+      "spacer": true,
+      "side": "bottom"
+    },
+    {
+      "spacer": true,
+      "side": "bottom"
+    },
+    {
+      "spacer": true,
+      "side": "bottom"
+    },
+    {
+      "spacer": true,
+      "side": "bottom"
+    },
+    {
+      "spacer": true,
+      "side": "bottom"
+    },
+    {
+      "spacer": true,
+      "side": "bottom"
+    },
+    {
+      "name": "P1",
+      "side": "bottom",
+      "label": "1",
+      "type": "usb",
+      "usb": {
+        "connector": "A",
+        "gender": "receptacle",
+        "role": "host",
+        "hub": "downstream",
+        "version": "2.0",
+        "speed": "high",
+        "source": 500
+      }
+    },
+    {
+      "spacer": true,
+      "side": "bottom"
+    },
+    {
+      "spacer": true,
+      "side": "bottom"
+    }
+  ],
+  "size": {
+    "w": 37,
+    "h": 11
+  },
+  "holes": [
+    {
+      "name": "D+",
+      "at": [
+        [
+          340,
+          20
+        ]
+      ],
+      "holeStyle": "pad",
+      "type": "io"
+    },
+    {
+      "name": "D-",
+      "at": [
+        [
+          350,
+          20
+        ]
+      ],
+      "holeStyle": "pad",
+      "type": "io"
+    },
+    {
+      "name": "GND",
+      "at": [
+        [
+          360,
+          20
+        ]
+      ],
+      "holeStyle": "pad",
+      "type": "ground"
+    },
+    {
+      "name": "SCL",
+      "at": [
+        [
+          340,
+          30
+        ]
+      ],
+      "holeStyle": "pad",
+      "type": "io"
+    },
+    {
+      "name": "SDA",
+      "at": [
+        [
+          350,
+          30
+        ]
+      ],
+      "holeStyle": "pad",
+      "type": "io"
+    },
+    {
+      "name": "5V",
+      "at": [
+        [
+          360,
+          30
+        ]
+      ],
+      "holeStyle": "pad",
+      "type": "power_in",
+      "supply": "5V"
+    }
+  ],
+  "electrical": {
+    "model": "hub",
+    "params": {},
+    "usbHub": {
+      "power": {
+        "pin": "5V"
+      }
+    },
+    "usbBudget": [
+      {
+        "ports": [
+          "P1",
+          "P2",
+          "P3",
+          "P4"
+        ],
+        "mA": 2000,
+        "note": "the board gives 2 A combined"
+      }
+    ]
+  },
+  "art": {
+    "w": 370,
+    "h": 110,
+    "pinLabels": "inside",
+    "shapes": [
+      {
+        "type": "rect",
+        "x": 0,
+        "y": 0,
+        "w": 370,
+        "h": 110,
+        "fill": "#1F2328",
+        "radius": 4
+      },
+      {
+        "type": "rect",
+        "x": -4,
+        "y": 8,
+        "w": 30,
+        "h": 26,
+        "fill": "#C9CED6",
+        "radius": 6
+      },
+      {
+        "type": "rect",
+        "x": 64,
+        "y": 16,
+        "w": 12,
+        "h": 12,
+        "fill": "#D5DAE1",
+        "radius": 6,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 67,
+        "y": 19,
+        "w": 6,
+        "h": 6,
+        "fill": "#6B727C",
+        "radius": 3,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 184,
+        "y": 16,
+        "w": 12,
+        "h": 12,
+        "fill": "#D5DAE1",
+        "radius": 6,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 187,
+        "y": 19,
+        "w": 6,
+        "h": 6,
+        "fill": "#6B727C",
+        "radius": 3,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 184,
+        "y": 64,
+        "w": 12,
+        "h": 12,
+        "fill": "#D5DAE1",
+        "radius": 6,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 187,
+        "y": 67,
+        "w": 6,
+        "h": 6,
+        "fill": "#6B727C",
+        "radius": 3,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 64,
+        "y": 72,
+        "w": 12,
+        "h": 12,
+        "fill": "#D5DAE1",
+        "radius": 6,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 67,
+        "y": 75,
+        "w": 6,
+        "h": 6,
+        "fill": "#6B727C",
+        "radius": 3,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 120,
+        "y": 12,
+        "w": 50,
+        "h": 18,
+        "fill": "#1E2126",
+        "radius": 1,
+        "label": "FE1.1s",
+        "labelColor": "#D5DAE1",
+        "labelSize": 6
+      },
+      {
+        "type": "rect",
+        "x": 16,
+        "y": 76,
+        "w": 48,
+        "h": 36,
+        "fill": "#C9CED6",
+        "radius": 2
+      },
+      {
+        "type": "rect",
+        "x": 24,
+        "y": 104,
+        "w": 32,
+        "h": 6,
+        "fill": "#8A9099",
+        "radius": 1,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 116,
+        "y": 76,
+        "w": 48,
+        "h": 36,
+        "fill": "#C9CED6",
+        "radius": 2
+      },
+      {
+        "type": "rect",
+        "x": 124,
+        "y": 104,
+        "w": 32,
+        "h": 6,
+        "fill": "#8A9099",
+        "radius": 1,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 216,
+        "y": 76,
+        "w": 48,
+        "h": 36,
+        "fill": "#C9CED6",
+        "radius": 2
+      },
+      {
+        "type": "rect",
+        "x": 224,
+        "y": 104,
+        "w": 32,
+        "h": 6,
+        "fill": "#8A9099",
+        "radius": 1,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 316,
+        "y": 76,
+        "w": 48,
+        "h": 36,
+        "fill": "#C9CED6",
+        "radius": 2
+      },
+      {
+        "type": "rect",
+        "x": 324,
+        "y": 104,
+        "w": 32,
+        "h": 6,
+        "fill": "#8A9099",
+        "radius": 1,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 36,
+        "y": 64,
+        "w": 8,
+        "h": 9,
+        "fill": "#1F2328",
+        "outline": false,
+        "label": "4",
+        "labelColor": "#F4F6F8",
+        "labelSize": 6
+      },
+      {
+        "type": "rect",
+        "x": 136,
+        "y": 64,
+        "w": 8,
+        "h": 9,
+        "fill": "#1F2328",
+        "outline": false,
+        "label": "3",
+        "labelColor": "#F4F6F8",
+        "labelSize": 6
+      },
+      {
+        "type": "rect",
+        "x": 236,
+        "y": 64,
+        "w": 8,
+        "h": 9,
+        "fill": "#1F2328",
+        "outline": false,
+        "label": "2",
+        "labelColor": "#F4F6F8",
+        "labelSize": 6
+      },
+      {
+        "type": "rect",
+        "x": 336,
+        "y": 64,
+        "w": 8,
+        "h": 9,
+        "fill": "#1F2328",
+        "outline": false,
+        "label": "1",
+        "labelColor": "#F4F6F8",
+        "labelSize": 6
+      },
+      {
+        "type": "rect",
+        "x": 335.5,
+        "y": 7.5,
+        "w": 9,
+        "h": 7,
+        "fill": "#1F2328",
+        "outline": false,
+        "label": "D+",
+        "labelColor": "#F4F6F8",
+        "labelSize": 3.4
+      },
+      {
+        "type": "rect",
+        "x": 345.5,
+        "y": 7.5,
+        "w": 9,
+        "h": 7,
+        "fill": "#1F2328",
+        "outline": false,
+        "label": "D-",
+        "labelColor": "#F4F6F8",
+        "labelSize": 3.4
+      },
+      {
+        "type": "rect",
+        "x": 355.5,
+        "y": 7.5,
+        "w": 9,
+        "h": 7,
+        "fill": "#1F2328",
+        "outline": false,
+        "label": "GND",
+        "labelColor": "#F4F6F8",
+        "labelSize": 3.4
+      },
+      {
+        "type": "rect",
+        "x": 335.5,
+        "y": 35.5,
+        "w": 9,
+        "h": 7,
+        "fill": "#1F2328",
+        "outline": false,
+        "label": "SCL",
+        "labelColor": "#F4F6F8",
+        "labelSize": 3.4
+      },
+      {
+        "type": "rect",
+        "x": 345.5,
+        "y": 35.5,
+        "w": 9,
+        "h": 7,
+        "fill": "#1F2328",
+        "outline": false,
+        "label": "SDA",
+        "labelColor": "#F4F6F8",
+        "labelSize": 3.4
+      },
+      {
+        "type": "rect",
+        "x": 355.5,
+        "y": 35.5,
+        "w": 9,
+        "h": 7,
+        "fill": "#1F2328",
+        "outline": false,
+        "label": "5V",
+        "labelColor": "#F4F6F8",
+        "labelSize": 3.4
+      },
+      {
+        "type": "rect",
+        "x": 220,
+        "y": 14,
+        "w": 90,
+        "h": 12,
+        "fill": "#1F2328",
+        "outline": false,
+        "label": "Circuitneato",
+        "labelColor": "#F4F6F8",
+        "labelSize": 7
+      }
+    ]
+  }
+}

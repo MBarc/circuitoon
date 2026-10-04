@@ -214,6 +214,16 @@ const KICAD = {
   // GPS: the 4-pin header; ANT is the u.FL jack on the module, not a header pin.
   'gps-neo-m8n-gy-gpsv3': (m) => ({ ...oneRow(m, 'top'), value: 'GY-NEO-M8N', note: 'ANT is the u.FL jack on the module, not on this header.' }),
 
+  // Raspberry Pi 4, 5 and Zero 2 W: the 40-pin header as the 2 x 20 socket a Pi plugs onto, pad n the
+  // header's physical pin n (the hole groups are in physical order, gen-usb.mjs). The camera and
+  // display connectors are flat-cable sockets, not on it; the USB ports come in as USB connectors.
+  ...Object.fromEntries(['rpi-4-model-b', 'rpi-5', 'rpi-zero-2-w'].map((id) => [id, (m) => ({
+    footprint: 'Connector_PinSocket_2.54mm:PinSocket_2x20_P2.54mm_Vertical',
+    pins: Object.fromEntries(m.holes.map((g, i) => [g.name, String(i + 1)])),
+    value: m.name,
+    note: 'The 40-pin header as the 2 x 20 socket the Pi plugs onto; the camera and display connectors are not on it.',
+  })])),
+
   // Sensors
   'bme280-module-4pin': (m) => ({ ...oneRow(m, 'bottom'), value: 'BME280' }),
   'bme280-module-6pin': (m) => ({ ...oneRow(m, 'bottom'), value: 'GY-BME280' }),
@@ -361,6 +371,9 @@ export const UNMAPPED = {
   'lcd-rpi-touch-display-7': 'A panel wired to the Pi by its DSI flat cable and jumper wires: it is not mounted on a PCB.',
   'lcd-rpi-touch-display-2-7': 'A panel wired to the Pi by its DSI flat cable and power lead: it is not mounted on a PCB.',
   'lcd-rpi-touch-display-2-5': 'A panel wired to the Pi by its DSI flat cable and power lead: it is not mounted on a PCB.',
+  'computer-usb-port': 'A computer: only its USB port comes in, as a USB connector (src/format/kicad.ts).',
+  'usb-hub-fe11s-circuitneato': 'A hub board cabled to the project, not mounted on it; its USB ports come in as USB connectors.',
+  'usb-hub-powered-4port': 'A boxed hub cabled to the project; its USB ports come in as USB connectors.',
   'rtl-sdr-blog-v4': 'A USB dongle: its plug comes in as a USB connector (src/format/kicad.ts), and the SMA antenna jack stays on the dongle.',
   'mic-ics-40300': 'KiCad has no footprint for its land pattern: Knowles_LGA-6_4.72x3.76mm (same size) puts the port ring 3.29 mm from the pad row, the ICS-40300 2.62 mm.',
   'mic-spu0410lr5h-qb': 'KiCad has no footprint for its 3.76 x 3.00 mm LGA-6 package.',

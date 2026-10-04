@@ -143,16 +143,16 @@ describe('Update parts to current library (Ruling D1)', () => {
   }
   it("lists each out-of-date part of Michael's sheet as a warning that offers the update", () => {
     const drift = driftFindings(bank())
-    expect(drift.map((f) => [f.rule, f.severity])).toEqual([['module-drift', 'warning'], ['module-drift', 'warning']])
+    expect(drift.map((f) => [f.rule, f.severity])).toEqual([['module-drift', 'warning'], ['module-drift', 'warning'], ['module-drift', 'warning']])
     expect(drift.every((f) => f.message.includes('Update parts to current library'))).toBe(true)
-    expect(problemsOf(new EditorStore(bank())).filter((f) => f.rule === 'module-drift')).toHaveLength(2)
+    expect(problemsOf(new EditorStore(bank())).filter((f) => f.rule === 'module-drift')).toHaveLength(3)
   })
   it('updates every such part as one undo step, says what changed, and leaves nothing to update', () => {
     const before = bank()
     const s = new EditorStore(before)
     expect(canUpdateParts(before)).toBe(true)
     const r = updatePartsInStore(s)!
-    expect(r.lines.some((l) => /^Updated U\d+ \(esp32-devkit-v1-30\): pins .* \(pin data\)\.$/.test(l))).toBe(true)
+    expect(r.lines.some((l) => /^Updated U\d+ \(esp32-devkit-v1-30\): USB port USB, pins .* \(pin data\)\.$/.test(l))).toBe(true)
     const after = s.getState().diagram
     expect(after).toBe(r.diagram)
     expect(after.modules['esp32-devkit-v1-30']).toEqual(libraryLookup('esp32-devkit-v1-30'))
