@@ -81,5 +81,14 @@
         "labelSize": 10
       }
     ]
+  },
+  "kicad": {
+    "symbol": "Device:Buzzer",
+    "footprint": "Buzzer_Beeper:Buzzer_12x9.5RM7.6",
+    "pins": {
+      "+": "1",
+      "-": "2"
+    },
+    "value": "Buzzer"
   }
 }

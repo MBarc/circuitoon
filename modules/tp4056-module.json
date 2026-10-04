@@ -457,5 +457,29 @@
         "outline": false
       }
     ]
+  },
+  "kicad": {
+    "headers": [
+      {
+        "name": "input pads, pin 1 IN+",
+        "footprint": "Connector_PinHeader_2.54mm:PinHeader_1x02_P2.54mm_Vertical",
+        "pins": {
+          "IN+": "1",
+          "IN-": "2"
+        }
+      },
+      {
+        "name": "output pads, pin 1 OUT+",
+        "footprint": "Connector_PinHeader_2.54mm:PinHeader_1x04_P2.54mm_Vertical",
+        "pins": {
+          "OUT+": "1",
+          "B+": "2",
+          "B-": "3",
+          "OUT-": "4"
+        }
+      }
+    ],
+    "value": "TP4056 module",
+    "note": "The module has solder pads, not header pins: wire them to these headers."
   }
 }

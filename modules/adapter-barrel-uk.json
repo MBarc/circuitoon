@@ -184,5 +184,14 @@
         "outline": false
       }
     ]
+  },
+  "kicad": {
+    "footprint": "Connector_BarrelJack:BarrelJack_Horizontal",
+    "pins": {
+      "+": "1",
+      "-": "2"
+    },
+    "value": "DC jack",
+    "note": "The jack the adapter plugs into; pad 1 is the centre pin, so this assumes a centre-positive adapter."
   }
 }

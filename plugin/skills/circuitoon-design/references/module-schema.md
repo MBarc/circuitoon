@@ -45,6 +45,7 @@ Without `art`, the part is drawn as a plain box with its pins, which is enough f
 | `caps` | On a pin or pad, what it cannot do, from the chip's datasheet only: `inputOnly`, `outputOnly`, `flash`, `noPullup` (each `true`), `strapping` (`"high"`, `"low"` or `"either"`: the level the boot needs at reset), `downloadOnly` (`true` when that level only matters for flashing over serial) and `note` (one sentence on why). Leave it out when the datasheet does not say. The pin rules fire only on what is set. |
 | `electrical.i2c` | For an I2C device: `{ "sda": "SDA", "scl": "SCL", "address": { "base": 32, "pins": [{ "pin": "A0", "add": 1 }] }, "pullups": false }`. `address` may instead be `{ "fixed": 118 }`. Set `pullups` only when the maker says whether the board has SDA/SCL pull-ups; leave it out otherwise. |
 | `electrical.params` | Values the part carries, for example `{ "resistance": { "unit": "ohm", "default": 1000 } }`. |
+| `kicad` | Optional: the part's KiCad footprint for `circuitoon kicad`. `{ "footprint": "Connector_PinSocket_2.54mm:PinSocket_1x04_P2.54mm_Vertical", "pins": { "VCC": "1", "GND": "2", "IN1": "3", "IN2": "4" } }`: a footprint from KiCad's standard libraries and each pin's pad number, read from the footprint file. A board with several header rows uses `"headers": [{ "name", "footprint", "pins" }, ...]` instead, one socket strip per row. Leave it out when unsure: the part then exports on a generic pin header, with a warning. |
 
 ## Pins
 

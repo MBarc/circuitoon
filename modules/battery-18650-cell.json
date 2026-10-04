@@ -83,5 +83,14 @@
         "radius": 3
       }
     ]
+  },
+  "kicad": {
+    "symbol": "Device:Battery_Cell",
+    "footprint": "Battery:BatteryHolder_Keystone_1042_1x18650",
+    "pins": {
+      "+": "1",
+      "-": "2"
+    },
+    "value": "18650"
   }
 }

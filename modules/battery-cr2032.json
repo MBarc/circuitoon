@@ -74,5 +74,14 @@
         "labelSize": 6.5
       }
     ]
+  },
+  "kicad": {
+    "symbol": "Device:Battery_Cell",
+    "footprint": "Battery:BatteryHolder_Keystone_3034_1x20mm",
+    "pins": {
+      "+": "1",
+      "-": "2"
+    },
+    "value": "CR2032"
   }
 }

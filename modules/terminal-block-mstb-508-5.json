@@ -269,5 +269,20 @@
         "outline": false
       }
     ]
+  },
+  "kicad": {
+    "footprint": "Connector_Phoenix_MSTB:PhoenixContact_MSTBA_2,5_5-G-5,08_1x05_P5.08mm_Horizontal",
+    "pins": {
+      "1": "1",
+      "2": "2",
+      "3": "3",
+      "4": "4",
+      "5": "5",
+      "1 pcb": "1",
+      "2 pcb": "2",
+      "3 pcb": "3",
+      "4 pcb": "4",
+      "5 pcb": "5"
+    }
   }
 }

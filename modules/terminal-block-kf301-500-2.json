@@ -125,5 +125,15 @@
         "outline": false
       }
     ]
+  },
+  "kicad": {
+    "footprint": "TerminalBlock_Phoenix:TerminalBlock_Phoenix_MKDS-1,5-2_1x02_P5.00mm_Horizontal",
+    "pins": {
+      "1": "1",
+      "2": "2",
+      "1 pcb": "1",
+      "2 pcb": "2"
+    },
+    "note": "A clone of the Phoenix MKDS 1,5: check its hole size against the clone's datasheet."
   }
 }

@@ -428,5 +428,38 @@
         "radius": 2
       }
     ]
+  },
+  "kicad": {
+    "headers": [
+      {
+        "name": "left header, pin 1 RST",
+        "footprint": "Connector_PinSocket_2.54mm:PinSocket_1x08_P2.54mm_Vertical",
+        "pins": {
+          "RST": "1",
+          "A0": "2",
+          "D0": "3",
+          "D5": "4",
+          "D6": "5",
+          "D7": "6",
+          "D8": "7",
+          "3V3": "8"
+        }
+      },
+      {
+        "name": "right header, pin 1 TX",
+        "footprint": "Connector_PinSocket_2.54mm:PinSocket_1x08_P2.54mm_Vertical",
+        "pins": {
+          "TX": "1",
+          "RX": "2",
+          "D1": "3",
+          "D2": "4",
+          "D3": "5",
+          "D4": "6",
+          "GND": "7",
+          "5V": "8"
+        }
+      }
+    ],
+    "note": "Each header is its own socket strip: place them at the board's real row spacing."
   }
 }

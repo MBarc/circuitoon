@@ -213,5 +213,16 @@
         "outline": false
       }
     ]
+  },
+  "kicad": {
+    "symbol": "Converter_ACDC:IRM-03-5",
+    "footprint": "Converter_ACDC:Converter_ACDC_MeanWell_IRM-03-xx_THT",
+    "pins": {
+      "AC/L": "1",
+      "AC/N": "3",
+      "-V": "14",
+      "+V": "16"
+    },
+    "value": "IRM-03-5"
   }
 }

@@ -369,5 +369,28 @@
         "outline": false
       }
     ]
+  },
+  "kicad": {
+    "headers": [
+      {
+        "name": "load terminals 1 2",
+        "footprint": "TerminalBlock_Phoenix:TerminalBlock_Phoenix_MKDS-1,5-2_1x02_P5.00mm_Horizontal",
+        "pins": {
+          "1": "1",
+          "2": "2"
+        }
+      },
+      {
+        "name": "control terminals 4 (-) 3 (+)",
+        "footprint": "TerminalBlock_Phoenix:TerminalBlock_Phoenix_MKDS-1,5-2_1x02_P5.00mm_Horizontal",
+        "pins": {
+          "3": "2",
+          "4": "1"
+        }
+      }
+    ],
+    "value": "SSR-25DA",
+    "placeholder": true,
+    "note": "Placeholder: the relay is panel-mounted with screw terminals; these terminal blocks are where its wires land. Keep the load side apart from the control side."
   }
 }

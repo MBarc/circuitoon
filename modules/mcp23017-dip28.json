@@ -471,5 +471,40 @@
         "labelSize": 8
       }
     ]
+  },
+  "kicad": {
+    "symbol": "Interface_Expansion:MCP23017x-x-SP",
+    "footprint": "Package_DIP:DIP-28_W7.62mm",
+    "pins": {
+      "GPB0": "1",
+      "GPB1": "2",
+      "GPB2": "3",
+      "GPB3": "4",
+      "GPB4": "5",
+      "GPB5": "6",
+      "GPB6": "7",
+      "GPB7": "8",
+      "VDD": "9",
+      "VSS": "10",
+      "NC": "11",
+      "SCL": "12",
+      "SDA": "13",
+      "NC 2": "14",
+      "GPA7": "28",
+      "GPA6": "27",
+      "GPA5": "26",
+      "GPA4": "25",
+      "GPA3": "24",
+      "GPA2": "23",
+      "GPA1": "22",
+      "GPA0": "21",
+      "INTA": "20",
+      "INTB": "19",
+      "RESET": "18",
+      "A2": "17",
+      "A1": "16",
+      "A0": "15"
+    },
+    "value": "MCP23017"
   }
 }

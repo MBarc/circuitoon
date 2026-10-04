@@ -470,5 +470,30 @@
         "labelSize": 5
       }
     ]
+  },
+  "kicad": {
+    "headers": [
+      {
+        "name": "contacts NO COM NC (screw terminal on the module)",
+        "footprint": "TerminalBlock_Phoenix:TerminalBlock_Phoenix_MKDS-1,5-3_1x03_P5.00mm_Horizontal",
+        "pins": {
+          "NO": "1",
+          "COM": "2",
+          "NC": "3"
+        }
+      },
+      {
+        "name": "control header, pin 1 IN",
+        "footprint": "Connector_PinSocket_2.54mm:PinSocket_1x03_P2.54mm_Vertical",
+        "pins": {
+          "IN": "1",
+          "DC-": "2",
+          "DC+": "3"
+        }
+      }
+    ],
+    "value": "Relay module 5V",
+    "placeholder": true,
+    "note": "Placeholder for the contacts: they are screw terminals on the module, wired to this terminal block. Rate it for what the relay switches."
   }
 }

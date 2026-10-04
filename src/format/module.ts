@@ -112,6 +112,42 @@ export interface HoleGroup {
   caps?: PinCaps
 }
 
+/**
+ * One KiCad footprint of a part that maps to several (`kicad.headers`): a dev board's left and right
+ * headers, each a socket the board plugs into. Exported as its own component, the part's reference
+ * plus a letter (U1A, U1B).
+ */
+export interface KicadHeader {
+  /** What the header is, for the reader in KiCad ("left header"). */
+  name?: string
+  /** A KiCad library footprint, "Library:Footprint". */
+  footprint: string
+  /** Every pin on this header: Circuitoon pin or hole group name to footprint pad number. */
+  pins: Record<string, string>
+}
+
+/**
+ * How the part goes into KiCad (PRD "KiCad mapping"): its footprint and which footprint pad each pin
+ * is, so an exported KiCad netlist (format/kicad.ts) places a footprint with the right nets. Either
+ * one `footprint` (with `pins`, or pads named like the pins) or several `headers`.
+ */
+export interface KicadDef {
+  /** The KiCad library symbol, "Library:Symbol" (Device:R); only written into the netlist as its source. */
+  symbol?: string
+  /** A KiCad library footprint, "Library:Footprint". */
+  footprint?: string
+  /** Circuitoon pin or hole group name to footprint pad number. Left out: each pad is named like its pin. */
+  pins?: Record<string, string>
+  /** The KiCad value when the part has no value param ("MCP23017"). Default: the part's short name. */
+  value?: string
+  /** One footprint per header instead of `footprint` (a dev board's two rows, at a pitch the library has no single footprint for). */
+  headers?: KicadHeader[]
+  /** The footprint is a stand-in (a terminal block to wire an outlet to), not the part's own. */
+  placeholder?: true
+  /** One plain sentence on the choice, shown with the export ("wire the panel switch to these pads"). */
+  note?: string
+}
+
 export interface ModuleDef {
   format: typeof MODULE_FORMAT
   id: string
@@ -143,6 +179,8 @@ export interface ModuleDef {
    * part: never in the bill of materials, never mounted, never an extra part in verification.
    */
   netLabel?: true
+  /** How the part goes into KiCad: footprint and pad numbers (see KicadDef). */
+  kicad?: KicadDef
   /**
    * Made by a user or an agent in the part maker (src/format/partMaker.ts), not taken from the
    * library: unverified. Its id starts with "custom-", which no built-in id does.
@@ -374,6 +412,7 @@ export function validateModule(raw: unknown): ValidationResult {
 
   // Pins and hole groups only: internal nodes (a plug's prongs) have no pin stub to power.
   const pinNames = new Set(names)
+  if (raw.kicad !== undefined) validateKicad(raw.kicad, pinNames, Array.isArray(raw.internal) ? raw.internal : [], errors)
   claimInternalNodes(raw, names, errors)
   if (raw.internal !== undefined) {
     if (!Array.isArray(raw.internal)) errors.push('internal: must be a list of pin-name groups')
@@ -532,6 +571,57 @@ export function validateModule(raw: unknown): ValidationResult {
   }
 
   return errors.length ? { ok: false, errors } : { ok: true, module: raw as unknown as ModuleDef }
+}
+
+/** A KiCad library id, "Library:Name": no spaces, quotes or second colon. */
+export const KICAD_LIB_ID = /^[^\s:"]+:[^\s:"]+$/
+/** A footprint pad number: "1", "A3", "MP". */
+export const KICAD_PAD = /^[A-Za-z0-9_.+-]{1,16}$/
+const KICAD_KEYS = ['symbol', 'footprint', 'pins', 'value', 'headers', 'placeholder', 'note']
+
+function validateKicad(k: unknown, pins: Set<string>, internal: unknown[], errors: string[]) {
+  const at = 'kicad'
+  if (!isObj(k)) return void errors.push(`${at}: must be { "footprint", "pins"?, "symbol"?, "value"? } or { "headers": [...] }`)
+  for (const key of Object.keys(k)) if (!KICAD_KEYS.includes(key)) errors.push(`${at}.${key}: unknown field`)
+  if ((k.footprint === undefined) === (k.headers === undefined)) errors.push(`${at}: give exactly one of "footprint" or "headers"`)
+  if (k.symbol !== undefined && !(typeof k.symbol === 'string' && KICAD_LIB_ID.test(k.symbol))) errors.push(`${at}.symbol: must be a KiCad library id, "Library:Symbol"`)
+  for (const key of ['value', 'note']) if (k[key] !== undefined && (typeof k[key] !== 'string' || k[key].trim() === '')) errors.push(`${at}.${key}: must be a non-empty string`)
+  if (k.placeholder !== undefined && k.placeholder !== true) errors.push(`${at}.placeholder: must be true when present`)
+  // Two pins may share a pad only when the part joins them inside itself (a tactile switch's leg pairs).
+  const joined = (a: string, b: string) => internal.some((g) => Array.isArray(g) && g.includes(a) && g.includes(b))
+  const checkPins = (p: unknown, where: string, seen: Set<string>) => {
+    if (!isObj(p) || !Object.keys(p).length) return void errors.push(`${where}: must be an object of pin name to pad number, at least one pin`)
+    const byPad = new Map<string, string>()
+    for (const [name, pad] of Object.entries(p)) {
+      if (!pins.has(name)) errors.push(`${where}.${name}: no pin or hole group named "${name}"`)
+      if (seen.has(name)) errors.push(`${where}.${name}: "${name}" is mapped twice`)
+      seen.add(name)
+      if (typeof pad !== 'string' || !KICAD_PAD.test(pad)) {
+        errors.push(`${where}.${name}: must be a pad number such as "1"`)
+        continue
+      }
+      const other = byPad.get(pad)
+      if (other !== undefined && !joined(other, name)) errors.push(`${where}.${name}: pad "${pad}" is already "${other}", and the part does not join them`)
+      byPad.set(pad, name)
+    }
+  }
+  if (k.footprint !== undefined) {
+    if (typeof k.footprint !== 'string' || !KICAD_LIB_ID.test(k.footprint)) errors.push(`${at}.footprint: must be a KiCad library id, "Library:Footprint"`)
+    if (k.pins !== undefined) checkPins(k.pins, `${at}.pins`, new Set())
+  }
+  if (k.headers !== undefined) {
+    if (k.pins !== undefined) errors.push(`${at}.pins: with "headers", each header lists its own pins`)
+    if (!Array.isArray(k.headers) || !k.headers.length) return void errors.push(`${at}.headers: must be a list of { "footprint", "pins", "name"? }`)
+    const seen = new Set<string>()
+    k.headers.forEach((h, i) => {
+      const where = `${at}.headers[${i}]`
+      if (!isObj(h)) return void errors.push(`${where}: must be { "footprint", "pins", "name"? }`)
+      for (const key of Object.keys(h)) if (!['name', 'footprint', 'pins'].includes(key)) errors.push(`${where}.${key}: unknown field`)
+      if (typeof h.footprint !== 'string' || !KICAD_LIB_ID.test(h.footprint)) errors.push(`${where}.footprint: must be a KiCad library id, "Library:Footprint"`)
+      if (h.name !== undefined && (typeof h.name !== 'string' || h.name.trim() === '')) errors.push(`${where}.name: must be a non-empty string`)
+      checkPins(h.pins, `${where}.pins`, seen)
+    })
+  }
 }
 
 /** A 7-bit I2C address. */

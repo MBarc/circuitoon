@@ -93,6 +93,12 @@ for (const scheme of ['light', 'dark']) {
   const viewBox = () => page.evaluate(() => document.querySelector('svg.canvas').getAttribute('viewBox'))
   const box = (uid) => page.locator(`[data-part="${uid}"], [data-annotation="${uid}"]`).first().boundingBox()
   const partCount = () => page.locator('[data-part]').count()
+  // A part's box relative to the sheet, so a toolbar that grows a row (the Problems button appearing
+  // once a cut leaves a finding) does not read as the part moving.
+  const sheetBox = async (uid) => {
+    const [b, c] = await Promise.all([box(uid), page.locator('svg.canvas').boundingBox()])
+    return b && c && { ...b, x: b.x - c.x, y: b.y - c.y }
+  }
   // Whether a screen point is bare paper (no part, wire, mark or handle under it).
   const bare = (x, y) =>
     page.evaluate(({ x, y }) => {
@@ -370,7 +376,7 @@ for (const scheme of ['light', 'dark']) {
 
   // Cut: gone in one step, back with undo; Ctrl+V after a cut puts it back where it was.
   await around(bt.uid)
-  const b0 = await box(bt.uid)
+  const b0 = await sheetBox(bt.uid)
   await page.keyboard.press('Control+x')
   check((await page.locator(`[data-part="${bt.uid}"]`).count()) === 0, `${scheme}: Ctrl+X removes BT1`)
   const cut = await page.evaluate(() => navigator.clipboard.readText())
@@ -385,7 +391,7 @@ for (const scheme of ['light', 'dark']) {
   await page.keyboard.press('Control+v')
   await pause()
   const back = (await selected()).parts[0]
-  const b1 = back && (await box(back))
+  const b1 = back && (await sheetBox(back))
   check(!!b1 && Math.abs(b1.x - b0.x) < 1 && Math.abs(b1.y - b0.y) < 1 && (await page.locator(`[data-part="${back}"] text`).allTextContents()).some((t) => t.includes('BT1')),
     `${scheme}: pasting right after a cut puts BT1 back where it was, with the pointer over the sheet`)
 

@@ -223,5 +223,15 @@
         "outline": false
       }
     ]
+  },
+  "kicad": {
+    "footprint": "Connector_PinSocket_2.54mm:PinSocket_1x04_P2.54mm_Vertical",
+    "pins": {
+      "VCC": "1",
+      "Trig": "2",
+      "Echo": "3",
+      "GND": "4"
+    },
+    "value": "HC-SR04"
   }
 }

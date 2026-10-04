@@ -154,5 +154,14 @@
         "outline": false
       }
     ]
+  },
+  "kicad": {
+    "footprint": "Connector_Phoenix_MC:PhoenixContact_MC_1,5_2-G-3.81_1x02_P3.81mm_Horizontal",
+    "pins": {
+      "1": "1",
+      "2": "2",
+      "1 pcb": "1",
+      "2 pcb": "2"
+    }
   }
 }

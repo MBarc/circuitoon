@@ -160,5 +160,14 @@
         "outline": false
       }
     ]
+  },
+  "kicad": {
+    "footprint": "Connector_JST:JST_XH_B2B-XH-A_1x02_P2.50mm_Vertical",
+    "pins": {
+      "5V": "1",
+      "GND": "2"
+    },
+    "value": "USB 5V input",
+    "note": "The charger reaches the board through a cable: a 2-pin lead connector for its 5V and GND."
   }
 }

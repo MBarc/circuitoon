@@ -392,5 +392,38 @@
         "labelSize": 7
       }
     ]
+  },
+  "kicad": {
+    "headers": [
+      {
+        "name": "left header, pin 1 5",
+        "footprint": "Connector_PinSocket_2.54mm:PinSocket_1x08_P2.54mm_Vertical",
+        "pins": {
+          "5": "1",
+          "6": "2",
+          "7": "3",
+          "8": "4",
+          "9": "5",
+          "10": "6",
+          "20": "7",
+          "21": "8"
+        }
+      },
+      {
+        "name": "right header, pin 1 5V",
+        "footprint": "Connector_PinSocket_2.54mm:PinSocket_1x08_P2.54mm_Vertical",
+        "pins": {
+          "0": "8",
+          "1": "7",
+          "2": "6",
+          "3": "5",
+          "4": "4",
+          "5V": "1",
+          "G": "2",
+          "3.3": "3"
+        }
+      }
+    ],
+    "note": "Each header is its own socket strip: place them at the board's real row spacing."
   }
 }

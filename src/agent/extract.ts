@@ -9,10 +9,11 @@
 // `<ref>_<pin>`. A sheet laid out from an intent leaves out the boards the layout added for routing
 // (local rail strips), since its intent never named them. Pure.
 import { type Diagram, type PartInstance, moduleOf } from '../format/diagram.ts'
-import { isBoard, isNetLabel, isSpacer, type ModuleDef, moduleSettings, type PinDef } from '../format/module.ts'
+import { isBoard, isNetLabel, type ModuleDef, moduleSettings } from '../format/module.ts'
 import { plugsOf } from '../format/breadboard.ts'
 import { netlist, nodeKey } from '../format/netlist.ts'
 import { labelName } from '../format/netLabels.ts'
+import { nameNets } from '../format/netNames.ts'
 import { NETLIST_FORMAT, REF_PATTERN, parseNetlist } from './netlist.ts'
 import { libraryLookup } from './catalog.ts'
 import { naturalCompare } from './order.ts'
@@ -36,10 +37,6 @@ function settingsOf(p: PartInstance, m: ModuleDef): Record<string, string> | und
   const kept = Object.entries(p.settings ?? {}).filter(([k, v]) => Object.hasOwn(offered, k) && offered[k].includes(v))
   return kept.length ? Object.fromEntries(kept) : undefined
 }
-
-const pinDef = (m: ModuleDef, name: string): PinDef | undefined => m.pins.find((p): p is PinDef => !isSpacer(p) && p.name === name)
-/** A supply rail name worth naming a net after: 5V, 3V3, 12V (not 3.7V or 5V/7V). */
-const RAIL = /^\d+V\d*$/
 
 export function extractNetlist(d: Diagram): Record<string, unknown> {
   const modOf = (uid: string) => {
@@ -96,39 +93,7 @@ export function extractNetlist(d: Diagram): Record<string, unknown> {
     nets.push({ pins: [...pins, ...strips].sort(order), ...(label !== undefined ? { label } : {}) })
   }
 
-  // Names: labels first, then ground, then a rail the consumers share or a source gives, then a pin.
-  const names = new Set<string>()
-  const named: (string | undefined)[] = nets.map(() => undefined)
-  const claim = (i: number, name: string | undefined) => {
-    if (named[i] !== undefined || !name || names.has(name)) return
-    named[i] = name
-    names.add(name)
-  }
-  const types = (net: (typeof nets)[number]) => net.pins.map((p) => pinDef(p.m, p.name))
-  nets.forEach((net, i) => claim(i, net.label))
-  nets.forEach((net, i) => {
-    if (!types(net).some((t) => t?.type === 'ground')) return
-    let name = 'GND'
-    for (let k = 2; names.has(name) && named[i] === undefined; k++) name = `GND_${k}`
-    claim(i, name)
-  })
-  nets.forEach((net, i) => {
-    const ins = types(net).filter((t) => t?.type === 'power_in' && t.supply).map((t) => t!.supply!.split('/'))
-    if (!ins.length) return
-    const common = ins.reduce((a, b) => a.filter((r) => b.includes(r)))
-    if (common.length === 1 && RAIL.test(common[0])) claim(i, common[0])
-  })
-  nets.forEach((net, i) => {
-    const outs = [...new Set(types(net).filter((t) => t?.type === 'power_out' && t.supply && RAIL.test(t.supply)).map((t) => t!.supply!))]
-    if (outs.length === 1) claim(i, outs[0])
-  })
-  nets.forEach((net, i) => {
-    // An MCU's pin names a signal best; else a source's pin; else the first component pin.
-    const pick = net.pins.find((p) => p.m.category === 'Microcontrollers') ?? net.pins.find((p) => pinDef(p.m, p.name)?.type === 'power_out') ?? net.pins.find((p) => !isBoard(p.m)) ?? net.pins[0]
-    let name = `${pick.ref}_${pick.name}`
-    for (let k = 2; names.has(name); k++) name = `${pick.ref}_${pick.name}_${k}`
-    claim(i, name)
-  })
+  const named = nameNets(nets)
 
   // One color per net when all its wires agree, and the cable ends when every wire has the same both ends.
   const nodeNet = new Map<string, number>()

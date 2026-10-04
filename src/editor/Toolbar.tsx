@@ -5,13 +5,17 @@ import { deleteSelection, EMPTY_SELECTION, rotateParts } from './ops.ts'
 import { isProblem, severityCounts, useProblems } from './problems.ts'
 import { SeverityMark } from './SeverityMark.tsx'
 import { emptyDiagram, serializeDiagram } from '../format/diagram.ts'
-import { BOM_FILE, EXPORT_SUFFIX, defaultBaseName, downloadText, readDiagramFile, saveWithPicker, type SavePicker } from './files.ts'
+import { BOM_FILE, EXPORT_SUFFIX, KICAD_FILE, defaultBaseName, downloadText, readDiagramFile, saveWithPicker, type SavePicker } from './files.ts'
+import { type KicadExport, toKicadNetlist } from '../format/kicad.ts'
+import { modulesById } from '../library.ts'
 import { BomPanel } from './BomPanel.tsx'
 import { type Bom, bomCsv } from '../format/bom.ts'
 import { ExportDialog } from './ExportDialog.tsx'
 import { LoadWarnings } from './LoadWarnings.tsx'
 import { MAINS_NOTICE, hasMains, withSheetNotes } from '../format/mains.ts'
 import { ThemeSwitch } from '../ThemeSwitch.tsx'
+
+const plural = (n: number, one: string) => `${n} ${one}${n === 1 ? '' : 's'}`
 
 export function Toolbar({ store, warnings, onClose }: { store: EditorStore; warnings?: string[]; onClose: () => void }) {
   const { diagram, selection, snapObjects } = useEditorState(store)
@@ -28,6 +32,10 @@ export function Toolbar({ store, warnings, onClose }: { store: EditorStore; warn
   const [bomOpen, setBomOpen] = useState(false)
   const lastBomName = useRef<string | null>(null)
   const [namingBom, setNamingBom] = useState<{ base: string; text: string } | null>(null)
+  // The base name last chosen for the KiCad netlist, its naming dialog, and what the last export reported.
+  const lastKicadName = useRef<string | null>(null)
+  const [namingKicad, setNamingKicad] = useState<{ base: string; x: KicadExport } | null>(null)
+  const [kicadNotice, setKicadNotice] = useState<{ name: string; summary: string; check: string[]; attention: boolean } | null>(null)
   // Warnings the open sheet was loaded with; every one stays reachable until dismissed.
   const [loadWarnings, setLoadWarnings] = useState<{ list: string[]; key: number } | null>(warnings?.length ? { list: warnings, key: 0 } : null)
   const hasSel = selection.parts.length + selection.wires.length + (selection.annotations?.length ?? 0) > 0
@@ -42,7 +50,9 @@ export function Toolbar({ store, warnings, onClose }: { store: EditorStore; warn
   /** A new or imported sheet starts with its own file name again. */
   function loaded() {
     lastName.current = null
+    lastKicadName.current = null
     setError(null)
+    setKicadNotice(null)
   }
 
   const exportText = () => serializeDiagram(withSheetNotes(store.getState().diagram))
@@ -86,6 +96,34 @@ export function Toolbar({ store, warnings, onClose }: { store: EditorStore; warn
       if (r.status !== 'unavailable') return
     }
     setNamingBom({ base, text })
+  }
+
+  /** Says what the KiCad export saved, and what needs a look in KiCad (its warnings, then its notes). */
+  function kicadSaved(name: string, x: KicadExport) {
+    setKicadNotice({ name, summary: `${plural(x.components, 'footprint')}, ${plural(x.nets, 'net')}`, check: [...x.warnings, ...x.notes], attention: x.warnings.length > 0 })
+  }
+
+  /**
+   * Export KiCad: the sheet as a KiCad netlist (`<base>.net`), through the same Save As dialog or
+   * in-app naming dialog as Export JSON. A sheet saved before a part had a KiCad footprint takes the
+   * library's.
+   */
+  async function exportKicad() {
+    const d = store.getState().diagram
+    const x = toKicadNetlist(d, { library: (id) => (Object.hasOwn(modulesById, id) ? modulesById[id] : undefined) })
+    const base = defaultBaseName(d.title, lastKicadName.current ?? lastName.current)
+    const picker = (window as { showSaveFilePicker?: SavePicker }).showSaveFilePicker
+    if (picker) {
+      const r = await saveWithPicker(picker.bind(window), base, x.text, KICAD_FILE)
+      if (r.status === 'saved') {
+        lastKicadName.current = r.base
+        setError(null)
+        kicadSaved(r.base + KICAD_FILE.suffix, x)
+      }
+      if (r.status === 'failed') setError(r.message)
+      if (r.status !== 'unavailable') return
+    }
+    setNamingKicad({ base, x })
   }
 
   async function importFile(file: File) {
@@ -141,6 +179,7 @@ export function Toolbar({ store, warnings, onClose }: { store: EditorStore; warn
         fileRef.current?.click()
       }}>Import JSON</button>
       <button type="button" className="tool" aria-haspopup="dialog" onClick={() => void exportJson()}>Export JSON</button>
+      <button type="button" className="tool" aria-haspopup="dialog" title="Save the sheet as a KiCad netlist (.net) for KiCad's PCB Editor: File > Import > Netlist" onClick={() => void exportKicad()}>Export KiCad</button>
       <button type="button" className="tool" aria-haspopup="dialog" onClick={() => setBomOpen(true)}>Bill of materials</button>
       {findings.length > 0 && (
         <button
@@ -171,6 +210,21 @@ export function Toolbar({ store, warnings, onClose }: { store: EditorStore; warn
         }}
       />
       {error && <p className="message error" role="alert">{error}</p>}
+      {kicadNotice && (
+        <section className={`kicad-notice${kicadNotice.attention ? ' attention' : ''}`} role="status" aria-label="KiCad export">
+          <p className="kn-head">
+            <strong>Saved {kicadNotice.name}</strong>
+            <span>{kicadNotice.summary}. In KiCad's PCB Editor: File &gt; Import &gt; Netlist.</span>
+          </p>
+          <button type="button" className="tool" onClick={() => setKicadNotice(null)}>Dismiss</button>
+          {kicadNotice.check.length > 0 && (
+            <>
+              <p className="kn-check">{kicadNotice.attention ? 'Check in KiCad:' : 'Good to know in KiCad:'}</p>
+              <ul className="kn-list">{kicadNotice.check.map((c) => <li key={c}>{c}</li>)}</ul>
+            </>
+          )}
+        </section>
+      )}
       {loadWarnings && <LoadWarnings key={loadWarnings.key} warnings={loadWarnings.list} onDismiss={() => setLoadWarnings(null)} />}
       {mains && <p className="print-notice">{MAINS_NOTICE}</p>}
       {naming !== null && (
@@ -182,6 +236,20 @@ export function Toolbar({ store, warnings, onClose }: { store: EditorStore; warn
             lastName.current = base
             downloadText(base + EXPORT_SUFFIX, exportText())
             store.markSaved()
+          }}
+        />
+      )}
+      {namingKicad !== null && (
+        <ExportDialog
+          title="Export KiCad netlist"
+          kind={KICAD_FILE}
+          initial={namingKicad.base}
+          onCancel={() => setNamingKicad(null)}
+          onExport={(base) => {
+            lastKicadName.current = base
+            downloadText(base + KICAD_FILE.suffix, namingKicad.x.text, 'text/plain')
+            kicadSaved(base + KICAD_FILE.suffix, namingKicad.x)
+            setNamingKicad(null)
           }}
         />
       )}

@@ -75,6 +75,19 @@ Anything that touches the wall. The spec is `docs/superpowers/specs/2026-09-27-m
 - `protection`: `class-1` (needs a PE terminal or a PE plug contact) or `class-2`.
 - `polarityHazard`: one sentence saying what wiring the part the wrong way round does, added to the polarity finding when N lands on its L side ("Its screw shell is then live, so touching it while changing the bulb may shock."). Declare it only when the source ties a hazard to polarity (Ruling 38: the E26 holder declares it, its shell must be on N; the E27 holder does not, ruling B7).
 
+## KiCad mapping (`kicad`)
+
+Every new part gets a `kicad` field, or a deliberate reason not to (PRD "KiCad mapping"; the KiCad netlist export reads it).
+
+- **Where it lives**: a generated part's mapping goes in `scripts/lib/kicad.mjs` (the generators apply it through `moduleText`); a part left unmapped goes in its `UNMAPPED` list with the reason. A hand-written part carries `kicad` as the last key of its JSON.
+- **Footprints come from KiCad's standard libraries only** (gitlab.com/kicad/libraries/kicad-footprints). Open the footprint's `.kicad_mod` file and read its pad numbers and positions; never guess them. Add the footprint and its pads to `src/format/kicadFootprints.testing.ts`; `kicadMap.test.ts` fails on a footprint or pad not listed there.
+- **Pad numbers**: a chip's pad is its package pin number (KiCad's own symbol, in kicad-symbols, is a good cross-check: the Nano, the Pico and the MCP23017/18 match it). A header's pad 1 is the first pin in the module's order, numbered along the row.
+- **Breakouts and dev boards**: a `Connector_PinSocket_2.54mm:PinSocket_1xNN_P2.54mm_Vertical` per header row, as `headers` (each with a `name` like `"left header, pin 1 EN"`). Even two adjacent rows get a 1xNN each, never one 2xNN: which row is pad 1 depends on which way up the board plugs in. Use a single footprint only when KiCad has the board's own (`Module:Arduino_Nano`, `Module:RaspberryPi_Pico_Common_THT`). A module with solder pads gets pin headers to wire it to, with a note.
+- **Wired-on parts** (wire-lead battery holders, panel switches and pots, LED strip ends) get a JST-XH lead connector; loose cells a KiCad battery holder (pad 1 is +).
+- **Mains**: a part with its own PCB footprint (Hi-Link, Mean Well, a Phoenix header) uses it. A part that is wired to the board instead (outlets, plugs, lamp and fuse holders, an SSR, relay contacts) gets a screw terminal with `"placeholder": true` and a note that starts "Placeholder:" and says what to rate it for.
+- **Joined pins** (a tactile switch's leg pairs, a terminal block's wire and board sides, a duplex outlet's two L contacts) share one pad; the validator allows that only for pins `internal` joins.
+- **When unsure, leave it unmapped.** A wrong pad is a wrong trace on a real board; an unmapped part still exports, on a generic header with a warning.
+
 ## Sources that have worked
 - Espressif esp-dev-kits user guides (DevKitC, S3-DevKitC-1) with J1/J2/J3 tables and pin-layout images.
 - Seeed wiki front pinout images (XIAO).

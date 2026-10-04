@@ -129,5 +129,16 @@
         "labelSize": 6
       }
     ]
+  },
+  "kicad": {
+    "symbol": "Converter_ACDC:HLK-PM01",
+    "footprint": "Converter_ACDC:Converter_ACDC_Hi-Link_HLK-PMxx",
+    "pins": {
+      "AC 1": "1",
+      "AC 2": "2",
+      "-Vo": "3",
+      "+Vo": "4"
+    },
+    "value": "HLK-PM01"
   }
 }

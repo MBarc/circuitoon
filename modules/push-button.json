@@ -73,5 +73,13 @@
         "radius": 8
       }
     ]
+  },
+  "kicad": {
+    "symbol": "Switch:SW_Push",
+    "footprint": "Button_Switch_THT:SW_PUSH_6mm",
+    "pins": {
+      "1": "1",
+      "2": "2"
+    }
   }
 }

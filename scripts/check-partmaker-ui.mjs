@@ -5,7 +5,7 @@
 // Export file saves a .circuitoon-part.json through the editor's naming dialog, and Import part
 // brings it back after a delete. Submit to library copies the part JSON and opens the issue form with
 // the name and maker filled in (window.open and the clipboard are stubbed). Saves the dialog, My parts
-// and a placed custom part in light and Graphite dark to .superpowers/partmaker-*.png.
+// and a placed custom part in light and Graphite dark (picked with the theme switch) to .superpowers/partmaker-*.png.
 //
 // Usage (after `npm run build`): npm run check:partmaker-ui -- [--out <dir>] [--shots <dir>] [--port 4231]
 import { execFileSync } from 'node:child_process'
@@ -304,8 +304,13 @@ const res = await page.evaluate(() => JSON.parse(localStorage.getItem('circuitoo
 check(res?.electrical?.params?.resistance?.default === JSON.parse(readFileSync('modules/resistor.json', 'utf8')).electrical.params.resistance.default, 'a no-op save keeps its resistance')
 await (await openActions('Resistor (1/4 W)')).getByRole('button', { name: 'Delete' }).click()
 
-// ---- Graphite dark ----
-await page.emulateMedia({ colorScheme: 'dark' })
+// ---- Graphite dark, picked with the theme switch on a light device ----
+/** Clicks the toolbar's theme switch (System, Light, Dark, round) until it shows `choice`. */
+const setTheme = async (choice) => {
+  for (let i = 0; i < 3 && (await page.locator('.theme-switch').getAttribute('data-theme-choice')) !== choice; i++) await page.locator('.theme-switch').click()
+  return page.evaluate(() => document.documentElement.getAttribute('data-theme'))
+}
+check((await setTheme('dark')) === 'dark', 'the theme switch picks Dark on a light device')
 await page.locator('.mine-group .lib-item.mine').first().click()
 await page.waitForTimeout(200)
 check((await page.locator('svg.canvas [data-part]').count()) === 1, 'clicking one of My parts places it on the sheet')
@@ -314,7 +319,20 @@ await shot('myparts-dark', page.locator('.library'))
 await (await openActions()).getByRole('button', { name: 'Edit' }).click()
 await dialog().waitFor()
 await shot('dialog-dark', dialog())
+const dialogBg = () => dialog().evaluate((e) => getComputedStyle(e).backgroundColor)
+const darkBg = await dialogBg()
 await dialog().getByRole('button', { name: 'Cancel' }).click()
+// Light picked with the switch on a dark device: the dialog follows the switch, not the device.
+await page.emulateMedia({ colorScheme: 'dark' })
+check((await setTheme('light')) === 'light', 'the theme switch picks Light on a dark device')
+await (await openActions()).getByRole('button', { name: 'Edit' }).click()
+await dialog().waitFor()
+await shot('dialog-switch-light', dialog())
+const lightBg = await dialogBg()
+check(lightBg !== darkBg, `the dialog's colours follow the switch (light ${lightBg}, dark ${darkBg})`)
+await dialog().getByRole('button', { name: 'Cancel' }).click()
+await setTheme('system')
+await page.emulateMedia({ colorScheme: 'light' })
 
 // ---- Round trip from the CLI: module new, embedded in a netlist, laid out, opened in the editor ----
 const cli = (...a) => execFileSync(process.execPath, ['plugin/bin/circuitoon.mjs', ...a], { encoding: 'utf8' })

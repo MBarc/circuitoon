@@ -101,5 +101,13 @@
         "band": 4
       }
     ]
+  },
+  "kicad": {
+    "symbol": "Device:R",
+    "footprint": "Resistor_THT:R_Axial_DIN0309_L9.0mm_D3.2mm_P12.70mm_Horizontal",
+    "pins": {
+      "1": "1",
+      "2": "2"
+    }
   }
 }

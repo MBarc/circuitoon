@@ -175,5 +175,15 @@
         "outline": false
       }
     ]
+  },
+  "kicad": {
+    "footprint": "Connector_PinHeader_2.54mm:PinHeader_1x04_P2.54mm_Vertical",
+    "pins": {
+      "1": "1",
+      "2": "2",
+      "3": "3",
+      "4": "4"
+    },
+    "note": "The pin header the housing plugs onto."
   }
 }

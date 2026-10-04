@@ -483,5 +483,34 @@
         "radius": 1
       }
     ]
+  },
+  "kicad": {
+    "headers": [
+      {
+        "name": "top header, pin 1 HV1",
+        "footprint": "Connector_PinSocket_2.54mm:PinSocket_1x06_P2.54mm_Vertical",
+        "pins": {
+          "HV1": "1",
+          "HV2": "2",
+          "HV": "3",
+          "GND": "4",
+          "HV3": "5",
+          "HV4": "6"
+        }
+      },
+      {
+        "name": "bottom header, pin 1 LV1",
+        "footprint": "Connector_PinSocket_2.54mm:PinSocket_1x06_P2.54mm_Vertical",
+        "pins": {
+          "LV1": "1",
+          "LV2": "2",
+          "LV": "3",
+          "GND 2": "4",
+          "LV3": "5",
+          "LV4": "6"
+        }
+      }
+    ],
+    "value": "BSS138 level shifter"
   }
 }

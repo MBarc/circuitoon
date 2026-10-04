@@ -592,7 +592,7 @@ export function parsePinLines(text: string, side: Side = 'left'): { pins: Pasted
 /** What a module field is, for the list of what the part maker would drop. */
 const FIELD_WORDS: Record<string, string> = {
   electrical: 'electrical data (values, I2C, power and mains)', holes: 'hole groups', art: 'its own drawing', size: 'its body size',
-  states: 'states', obstacle: 'routing over it', footprint: 'a breadboard footprint', netLabel: 'the net label role', pins: 'pin details (bus, capacity, mains roles)',
+  kicad: 'its KiCad footprint', states: 'states', obstacle: 'routing over it', footprint: 'a breadboard footprint', netLabel: 'the net label role', pins: 'pin details (bus, capacity, mains roles)',
 }
 
 /**

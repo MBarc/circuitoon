@@ -74,5 +74,14 @@
         "labelSize": 5
       }
     ]
+  },
+  "kicad": {
+    "symbol": "Device:Battery_Cell",
+    "footprint": "Battery:BatteryHolder_Keystone_3000_1x12mm",
+    "pins": {
+      "+": "1",
+      "-": "2"
+    },
+    "value": "CR1220"
   }
 }

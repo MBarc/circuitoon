@@ -274,5 +274,14 @@
         "outline": false
       }
     ]
+  },
+  "kicad": {
+    "footprint": "TerminalBlock_Phoenix:TerminalBlock_Phoenix_MKDS-1,5-2_1x02_P5.00mm_Horizontal",
+    "pins": {
+      "L": "1",
+      "N": "2"
+    },
+    "placeholder": true,
+    "note": "Placeholder: a cord plug is not a board part; this terminal block is where its cord would land. Choose a terminal rated for the mains current."
   }
 }
