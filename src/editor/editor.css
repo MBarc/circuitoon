@@ -15,6 +15,9 @@
 .toolbar .wordmark { font-size: 24px; margin-right: 8px; }
 /* A long title gives way (ellipsis, full title on hover) before the tools wrap to a second row. */
 .toolbar .title { font: 600 18px/1.2 "Fredoka", system-ui, sans-serif; flex: 1 1 0; min-width: 5em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* The theme switch sits on the first row beside the title, the height of the tools. */
+.toolbar .theme-switch { width: 31px; height: 31px; border-width: 1.5px; box-shadow: 2px 2px 0 var(--shadow); }
+.toolbar .theme-switch svg { width: 20px; height: 20px; }
 .toolbar .sep { width: 1px; align-self: stretch; background: var(--rule); margin: 0 4px; }
 .toolbar .message { flex-basis: 100%; margin: 0; font-size: 14px; }
 .toolbar .message.error { color: var(--error); }
@@ -259,7 +262,9 @@
 }
 
 .start { min-height: 100%; background: var(--bg); color: var(--text); }
-.start-bar { max-width: 1120px; margin-inline: auto; padding: 20px; }
+.start-bar { max-width: 1120px; margin-inline: auto; padding: 20px; position: relative; }
+/* Out of the flow, so the bar keeps the height and layout it had before the switch. */
+.start-bar .theme-switch { position: absolute; right: 20px; top: calc(50% - 17px); }
 .start-main { max-width: 1120px; margin-inline: auto; padding: 8px 20px 48px; display: grid; gap: 20px; }
 .start-main h1 { font: 600 clamp(28px, 4vw, 40px)/1.1 "Fredoka", system-ui, sans-serif; margin: 0; }
 .start-options { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr)); gap: 18px; align-items: stretch; }
@@ -282,9 +287,8 @@
 button.wordmark { background: none; border: 0; padding: 0; cursor: pointer; }
 
 /* Mains notice (spec 6): orange like the hazard outline, never dismissible. */
-.mains-badge { display: inline-flex; align-items: center; padding: 3px 9px; border: 1.5px solid #F48C06; border-radius: 6px; background: #FFF4E5; color: var(--ink); font: 700 12.5px/1.2 "Atkinson Hyperlegible", system-ui, sans-serif; }
-.mains-notice { margin: 0; padding: 8px 10px; border-left: 4px solid #F48C06; border-radius: 4px; background: #FFF4E5; color: #3A2A10; font-size: 13.5px; line-height: 1.35; }
-@media (prefers-color-scheme: dark) { .mains-badge, .mains-notice { background: #3A2A10; color: #FFE8C7; } }
+.mains-badge { display: inline-flex; align-items: center; padding: 3px 9px; border: 1.5px solid #F48C06; border-radius: 6px; background: var(--mains-bg); color: var(--mains-badge-text); font: 700 12.5px/1.2 "Atkinson Hyperlegible", system-ui, sans-serif; }
+.mains-notice { margin: 0; padding: 8px 10px; border-left: 4px solid #F48C06; border-radius: 4px; background: var(--mains-bg); color: var(--mains-text); font-size: 13.5px; line-height: 1.35; }
 .print-notice { display: none; }
 @media print {
   .print-notice { display: block; position: fixed; z-index: 1000; left: 10mm; right: 10mm; bottom: 10mm; margin: 0; padding: 4mm; border: 1.5px solid #F48C06; background: #FFF4E5; color: #000; font-size: 11pt; }

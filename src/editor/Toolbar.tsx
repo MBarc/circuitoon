@@ -11,6 +11,7 @@ import { type Bom, bomCsv } from '../format/bom.ts'
 import { ExportDialog } from './ExportDialog.tsx'
 import { LoadWarnings } from './LoadWarnings.tsx'
 import { MAINS_NOTICE, hasMains, withSheetNotes } from '../format/mains.ts'
+import { ThemeSwitch } from '../ThemeSwitch.tsx'
 
 export function Toolbar({ store, warnings, onClose }: { store: EditorStore; warnings?: string[]; onClose: () => void }) {
   const { diagram, selection, snapObjects } = useEditorState(store)
@@ -106,6 +107,7 @@ export function Toolbar({ store, warnings, onClose }: { store: EditorStore; warn
     <header className="toolbar">
       <button type="button" className="wordmark" onClick={() => okToDiscard() && onClose()} title="Back to the start screen">Circuitoon</button>
       <span className="title" title={diagram.title}>{diagram.title}</span>
+      <ThemeSwitch />
       <button type="button" className="tool" disabled={!store.canUndo} onClick={() => store.undo()}>Undo</button>
       <button type="button" className="tool" disabled={!store.canRedo} onClick={() => store.redo()}>Redo</button>
       <span className="sep" aria-hidden="true" />

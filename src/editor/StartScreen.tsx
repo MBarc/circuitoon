@@ -4,6 +4,7 @@ import { type Diagram, emptyDiagram } from '../format/diagram.ts'
 import { buttonLed, captions } from '../samples/buttonLed.ts'
 import { Sheet } from '../render/Sheet.tsx'
 import { readDiagramFile } from './files.ts'
+import { ThemeSwitch } from '../ThemeSwitch.tsx'
 
 export function StartScreen({ onOpen, notice = null, busy = false }: { onOpen: (d: Diagram, warnings?: string[]) => void; notice?: string | null; busy?: boolean }) {
   const fileRef = useRef<HTMLInputElement>(null)
@@ -20,6 +21,7 @@ export function StartScreen({ onOpen, notice = null, busy = false }: { onOpen: (
     <div className="start">
       <header className="start-bar">
         <a className="wordmark" href="#/">Circuitoon</a>
+        <ThemeSwitch />
       </header>
       <main className="start-main">
         <h1>Start a wiring sheet</h1>
