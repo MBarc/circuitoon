@@ -37,7 +37,7 @@ Without `art`, the part is drawn as a plain box with its pins, which is enough f
 | --- | --- |
 | `id` | Lowercase kebab-case. It may not reuse a built-in id. |
 | `pins[]` | See "Pins" below. |
-| `type` | One of `power_in`, `power_out`, `ground`, `input`, `output`, `io`, `passive` or `nc`. Leave it out when unsure: the checker never guesses about an untyped pin. |
+| `type` | One of `power_in`, `power_out`, `ground`, `input`, `output`, `io`, `passive`, `nc` or `usb`. Leave it out when unsure: the checker never guesses about an untyped pin. A `usb` pin is a whole USB socket or plug and needs `usb`: `{ "connector": "A" | "B" | "mini-B" | "micro-B" | "C", "gender": "receptacle" | "plug", "role": "host" | "device" | "dual" | "passthrough", "version"?, "speed"?, "source"? (mA a host supplies), "draw"? (mA a device takes), "power"?: "only", "hub"?, "through"? }`, every optional field only when the maker's documentation states it. The part maker and `module new` do not make USB ports. |
 | `supply` | The voltage the pin sees: `3V3`, `5V` or `3.7V`. Write several accepted rails as `3V3/5V`. |
 | `capacity` | How many wire ends a pin or pad takes: 1 to 8, default 1. Use 2 for a screw terminal that takes two wires. |
 | `internal` | Pins joined inside the part, for example `[["GND", "GND 2"]]`. Never use it for a switch. |
