@@ -26,6 +26,7 @@ A USB socket or plug is one pin with `type: "usb"` and a `usb` object, never sep
 - `power: "only"`: a charge-only input with no data lines (the TP4056 and IP5306 USB-C inputs, the Pi Zero's PWR IN).
 - `hub`: `upstream` or `downstream` on a hub's ports (an upstream port has role `device`, a downstream one `host`).
 - `through`: on a `passthrough` port, the name of the other end.
+- `vbus`: on a device or dual port, the board's own pin or pad (never a USB port) that the port's VBUS feeds, where a source says so: Pico `VBUS`, TP4056 `IN+`, the Arduino and ESP32 boards' `5V` or `VIN` (the pin of their `electrical.external` entry, with its `diode` flag; on the Zero only the native port).
 
 Module level, in `electrical`:
 - `usbBudget: [{ ports: [...], mA, setting?: [name, choice], note? }]`: a current shared by several ports (Pi 4: 1.2 A over its four ports; Pi 5: 1.6 A with a 5 A supply, 600 mA otherwise, chosen by the part setting `supply`).
@@ -59,14 +60,16 @@ All in `src/format/usb.ts`, run by checkDiagram; nets holding a USB port leave t
 | `usb-fit` | error | a cable plug does not fit its port; two receptacles with no cable; a plug-to-plug link; a direct plug into a different connector; a port with more than one link; a cable end that is not a USB plug |
 | `usb-role` | error | host to host, device to device (passthrough ports followed to the real end); a hub upstream port facing anything but a host or another hub's downstream port gets its own wording |
 | `usb-power` | warning | the known draw on a host port, a shared budget or a bus-powered hub's upstream exceeds what it supplies |
-| `usb-hub-bus-power` | warning | a bus-powered hub downstream port (100 mA, USB 2.0 specification) feeds a device that draws more |
+| `usb-hub-bus-power` | warning | a bus-powered hub downstream port (100 mA, USB 2.0 specification, even where the board states more) feeds a device that draws more |
+| `usb-backfeed` | warning | a supply is wired to a port's `vbus` pin while a host powers that port (replaces the general "also gets 5 V from USB" warning there) |
+| `usb-backfeed-diode` | info | the same, but the board has a diode between VBUS and that pin: the host is protected |
 | `usb-power-unknown` | info | a host port's tree has devices whose draw is unknown, and the known part does not already exceed the supply |
 
-Demand of a port = its device's `draw`; through a bus-powered hub, the hub's own `draw` plus every downstream demand; a self-powered hub's upstream draws its own `draw`. A part with a linked device or power port counts as powered for `no-power`.
+Demand of a port = its device's `draw`; through a bus-powered hub, the hub's own `draw` plus every downstream demand; a self-powered hub's upstream draws its own `draw`. A part with a linked device port, or a dual port whose far end is a host, counts as powered for `no-power`; a board whose dual port hosts a device is not on USB power and gets `no-power` when nothing else feeds it. A USB link joins the two boards' grounds in the ground model (each board's first ground pin); VBUS is never joined to a 5V pin.
 
 ## 4. KiCad, BOM, explain
-- Every linked USB port becomes its own connector component (`U1_USB`) on a KiCad standard footprint: A receptacle `USB_A_Molex_67643_Horizontal`, USB 3 A `USB3_A_Molex_48393-001`, A plug `USB3_A_Plug_Wuerth_692112030100_Horizontal`, B `USB_B_OST_USB-B1HSxx_Horizontal`, mini-B `USB_Mini-B_Lumberg_2486_01_Horizontal`, micro-B `USB_Micro-B_Molex-105017-0001`, C `USB_C_Receptacle_GCT_USB4105-xx-A_16P_TopMnt_Horizontal`, C plug `USB_C_Plug_Molex_105444`. A link becomes four nets, VBUS, D-, D+ and GND, on the pads the USB pinout gives (C: every VBUS and GND pad, both D+ and D- pads on a receptacle). Mini-B and micro-B plugs have no library footprint: left out with a warning.
-- BOM: USB cables by kind; direct plug-ins are not bought.
+- KiCad: USB links are off-board. A dev board's USB socket and the cable or dongle in it are not on the carrier PCB, so a USB link is left out of the netlist (no Connector_USB footprints, no VBUS/D-/D+/GND nets), with one note per link in the export report: "U1 USB to U2 USB is a USB cable, off-board" (or "a USB plug-in"). A USB socket really on the PCB is a part with its own footprint (a panel-mount extension's header) and exports like any part. (Revised after review: the first version exported each linked port as a Connector_USB footprint with four nets.)
+- BOM: USB cables by kind; direct plug-ins are not bought (the dongle is a part row).
 - explain: a USB port reads as its connector, gender, role, version and current.
 
 ## 5. Pin notes on any part
