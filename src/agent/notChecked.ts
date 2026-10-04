@@ -8,5 +8,5 @@ export const NOT_CHECKED: string[] = [
   'Timing and signal integrity.',
   'Mechanical fit: enclosures, connector sizes and cable lengths.',
   'Mains wiring beyond its connections.',
-  'Each part\'s own correctness beyond its cited sources; custom parts embedded in the netlist are unverified.',
+  'Each part\'s own correctness beyond its cited sources; custom parts (made in the part maker or embedded in a netlist) are user-made and unverified.',
 ]

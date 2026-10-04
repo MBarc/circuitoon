@@ -16,13 +16,14 @@ describe('plugin packaging', () => {
     expect(m.plugins).toHaveLength(1)
     expect(m.plugins[0]).toMatchObject({ name: 'circuitoon', source: './plugin' })
   })
-  it('ships the manifest, the design skill, the bin and the bundle, and nothing repo-internal', () => {
+  it('ships the manifest, the design and custom-part skills, the bin and the bundle, and nothing repo-internal', () => {
     const p = json('plugin/.claude-plugin/plugin.json')
     expect(p.name).toBe('circuitoon')
     expect(p.version).toBe(json('package.json').version)
     expect(json('.claude-plugin/marketplace.json').plugins[0].version).toBe(p.version)
-    expect(readdirSync('plugin/skills')).toEqual(['circuitoon-design'])
+    expect(readdirSync('plugin/skills')).toEqual(['circuitoon-custom-part', 'circuitoon-design'])
     expect(readFileSync('plugin/skills/circuitoon-design/SKILL.md', 'utf8')).toMatch(/^---\r?\nname: circuitoon-design\r?\ndescription: .+\r?\n---\r?\n/)
+    expect(readFileSync('plugin/skills/circuitoon-custom-part/SKILL.md', 'utf8')).toMatch(/^---\r?\nname: circuitoon-custom-part\r?\ndescription: .+\r?\n---\r?\n/)
     for (const f of ['plugin/bin/circuitoon.mjs', 'plugin/dist-cli/circuitoon.mjs']) expect(existsSync(f), f).toBe(true)
   })
   it('has no em or en dashes in anything it ships (the third-party bundle aside)', () => {

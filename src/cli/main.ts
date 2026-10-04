@@ -18,6 +18,8 @@ import { bomCommand } from './bomCmd.ts'
 import { explainCommand } from './explain.ts'
 import { netlistCommand } from './netlistCmd.ts'
 import { updateCommand } from './updateCmd.ts'
+import { moduleCommand } from './moduleCmd.ts'
+import { readFileSync } from 'node:fs'
 
 export const USAGE = `circuitoon <command> [options]
 
@@ -39,13 +41,18 @@ export const USAGE = `circuitoon <command> [options]
   netlist <sheet.json> [-o <netlist.json>] [--json]
                                             the netlist of any drawn sheet, from what conducts on it; lay it out again with layout
   gate <sheet.json> -o <dir> [--json]       every check, the renders, the bill and the link; exits 0 only when nothing blocks
+  module new [--spec <spec.json>] [-o <part.json>] [--json]
+                                            a custom part from a part spec (or the spec on standard input), with Sticker art
+  module check <part.json> [--json]         lint a part: duplicate pins, art against pins, impossible caps, untyped power pins
+  module render <part.json> -o <part.png> [--svg <part.svg>] [--dark] [--scale n]
+                                            draw one part alone, to look at it
 
 Exit codes: 0 ok, 1 findings that block, 2 invalid input, 3 environment problem (such as no browser)
 or an internal error of the tool.
 `
 
 export type Command = (args: Args, io: Io) => number | Promise<number>
-export const COMMANDS: Record<string, Command> = { parts: partsCommand, part: partCommand, layout: layoutCommand, render: renderCommand, link: linkCommand, bom: bomCommand, netlist: netlistCommand, verify: verifyCommand, check: checkCommand, explain: explainCommand, update: updateCommand, gate: gateCommand }
+export const COMMANDS: Record<string, Command> = { parts: partsCommand, part: partCommand, layout: layoutCommand, render: renderCommand, link: linkCommand, bom: bomCommand, netlist: netlistCommand, verify: verifyCommand, check: checkCommand, explain: explainCommand, update: updateCommand, gate: gateCommand, module: moduleCommand }
 
 type ErrorCode = 'usage' | 'input' | 'blocked' | 'environment' | 'internal'
 const CODE_OF: Record<number, ErrorCode> = { [EXIT.blocked]: 'blocked', [EXIT.input]: 'input', [EXIT.environment]: 'environment' }
@@ -99,6 +106,8 @@ export function run(argv: string[]): Promise<number> {
     stderr: (s) => void process.stderr.write(s),
     cwd: process.cwd(),
     env: process.env,
+    // Only a pipe or a file: an interactive terminal would wait for typing.
+    stdin: () => (process.stdin.isTTY ? '' : readFileSync(0, 'utf8')),
   }
   const crash = (err: unknown) => {
     process.exitCode = internalFailure(io, argv.includes('--json'), err)

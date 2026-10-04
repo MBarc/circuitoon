@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "circuitoon module check <part.json> --json",
+  "type": "object",
+  "required": ["format", "ok", "path", "id", "name", "custom", "pins", "size", "errors", "warnings"],
+  "additionalProperties": false,
+  "properties": {
+    "format": { "const": "circuitoon-cli/module-check/1" },
+    "ok": { "type": "boolean", "description": "True when there are no errors. Warnings never fail the check." },
+    "path": { "type": "string" },
+    "id": { "type": ["string", "null"] },
+    "name": { "type": ["string", "null"] },
+    "custom": { "type": "boolean" },
+    "pins": { "type": "integer", "description": "Pins, spacers left out; 0 when the module is not valid." },
+    "size": {
+      "type": ["object", "null"],
+      "required": ["w", "h"],
+      "additionalProperties": false,
+      "properties": { "w": { "type": "integer" }, "h": { "type": "integer" } },
+      "description": "The drawn body in px, or null when the module is not valid."
+    },
+    "errors": { "$ref": "#/$defs/issues" },
+    "warnings": { "$ref": "#/$defs/issues" }
+  },
+  "$defs": {
+    "issues": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["code", "message"],
+        "additionalProperties": false,
+        "properties": {
+          "code": { "type": "string", "description": "duplicate-pin, invalid, type-caps, art-pins, caps-on-power, power-untyped, power-no-supply, ground-supply, supply-unknown, no-types, no-source, source-not-url, not-custom, long-name" },
+          "message": { "type": "string" },
+          "pin": { "type": "string" }
+        }
+      }
+    }
+  }
+}

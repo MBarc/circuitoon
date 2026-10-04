@@ -23,6 +23,7 @@ import { intentLookup, verifyDiagram } from '../agent/verify.ts'
 import { parseNetlist } from '../agent/netlist.ts'
 import { libraryLookup } from '../agent/catalog.ts'
 import { NOT_CHECKED } from '../agent/notChecked.ts'
+import { customPartNote, sheetCustomParts } from '../agent/customParts.ts'
 import { READABILITY_RULES, readabilityFindings } from '../agent/readabilityWarnings.ts'
 import { type ChannelRow, type QuantityRow, bomQuantities, channelTable, sheetBom } from '../agent/tables.ts'
 import { type Bom, bomCsv } from '../format/bom.ts'
@@ -193,6 +194,9 @@ export async function runGate(bytes: Uint8Array, opts: { sheetPath: string; outD
       note('wire-over-holes', c.uid, 'warning', `The wire ${c.label ?? `${endpointName(d, c.from)} to ${endpointName(d, c.to)}`} runs over breadboard holes in use that it is not plugged into, so in the picture it may look plugged in there.`, { parts: [c.from.part, c.to.part], wires: [c.uid] })
   // Readability (never blocking): the agent clears these or explains each one that remains.
   found.push(...readabilityFindings(d, routes).map(cliFinding))
+  // Custom parts (never blocking): user-made and unverified, named so the user knows which to check.
+  for (const c of sheetCustomParts(d, libraryLookup))
+    found.push({ id: `custom-part|${c.module}`, rule: 'custom-part', severity: 'info', message: customPartNote(c), parts: c.parts, pins: [], wires: [] })
   const parsed = d.intent !== undefined ? parseNetlist(d.intent, intentLookup(d, libraryLookup)) : null
   // The bill of materials: bom.csv and gate.json's bill of quantities both come from this one bill.
   const bom = sheetBom(d, libraryLookup)

@@ -13,6 +13,8 @@ export interface Io {
   stderr(text: string): void
   cwd: string
   env: Record<string, string | undefined>
+  /** Reads all of standard input (a spec piped to `module new`); left out where there is none. */
+  stdin?: () => string
 }
 
 /** The exit codes a failure can carry: never 0, which is success. */

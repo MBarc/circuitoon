@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "circuitoon module new --json",
+  "type": "object",
+  "required": ["format", "ok", "path", "module", "notes", "errors", "warnings"],
+  "additionalProperties": false,
+  "properties": {
+    "format": { "const": "circuitoon-cli/module-new/1" },
+    "ok": { "type": "boolean", "description": "False when the lint found errors; the part is then not written." },
+    "path": { "type": ["string", "null"], "description": "The file written with -o, or null." },
+    "module": { "type": "object", "description": "The circuitoon-module/1 part, with \"custom\": true and an id starting with \"custom-\"." },
+    "notes": { "type": "array", "items": { "type": "string" }, "description": "What the part maker adjusted: numbered repeated names, a left-out name plate." },
+    "errors": { "$ref": "#/$defs/issues" },
+    "warnings": { "$ref": "#/$defs/issues" }
+  },
+  "$defs": {
+    "issues": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["code", "message"],
+        "additionalProperties": false,
+        "properties": {
+          "code": { "type": "string" },
+          "message": { "type": "string" },
+          "pin": { "type": "string" }
+        }
+      }
+    }
+  }
+}

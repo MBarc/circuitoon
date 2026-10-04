@@ -317,8 +317,9 @@ function partArt(pins: PinEntry[], style: PartStyle, color: string, name: string
     const light = luminance(color) > 0.3
     const shapes = [
       rect(0, 0, W, H, color, { radius: 3 }),
-      // The pin 1 mark, top left like a datasheet's top view.
-      rect(5, 5, 5, 5, light ? INK : METAL, { radius: 2.5, outline: false }),
+      // The pin 1 mark: beside the first left pin (top left), else bottom left, where a DIP drawn
+      // lying down has its pin 1 (the library's convention).
+      rect(5, pins.some((p) => p.side === 'left') || !pins.some((p) => p.side === 'bottom') ? 5 : H - 11, 6, 6, light ? INK : METAL, { radius: 3, outline: false }),
     ]
     if (g.plate) shapes.push(rect((W - plateWidth(text, 8)) / 2, (H - PLATE_H) / 2, plateWidth(text, 8), PLATE_H, color, { outline: false, label: text, labelColor: light ? INK : PLATE, labelSize: 8 }))
     return { w: W, h: H, pinLabels: 'tips', shapes }
