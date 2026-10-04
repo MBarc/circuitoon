@@ -180,6 +180,13 @@ describe('USB rules on library parts', () => {
       [['j1|USB', 'u1|USB-C', { from: 'usb-a', to: 'usb-c' }], ['bt1|+', 'u1|IN+'], ['bt1|-', 'u1|IN-']])
     expect(usb(d).filter((f) => /backfeed/.test(f)).map((f) => f.split(':')[0])).toEqual(['warning usb-backfeed'])
   })
+  it('VBUS back-feed from a dual-role host: a powered Pico hosting a TP4056 whose IN+ is fed', () => {
+    const d = sheet([['U1', 'rpi-pico'], ['BT1', 'battery-holder-3xaaa'], ['U2', 'tp4056-module'], ['BT2', 'battery-holder-3xaaa']],
+      [['u1|USB', 'u2|USB-C', { from: 'usb-micro-b', to: 'usb-c' }], ['bt1|+', 'u1|VBUS'], ['bt1|-', 'u1|GND'], ['bt2|+', 'u2|IN+'], ['bt2|-', 'u2|IN-']])
+    expect(usb(d).filter((f) => /backfeed/.test(f))).toEqual([
+      'warning usb-backfeed: U2 IN+ is wired to BT2 +, and it is also U2 USB-C\'s VBUS while U1 USB powers that port: the supply drives current back into the host\'s USB port, or the host into the supply. Power U2 from one of them: unplug the cable or remove the supply.',
+    ])
+  })
   it('VBUS back-feed behind a diode (DevKitC 5V) is a note, not a warning', () => {
     const d = sheet([['J1', 'computer-usb-port'], ['U1', 'esp32-devkitc-v4'], ['BT1', 'battery-holder-3xaaa']],
       [['j1|USB', 'u1|USB', { from: 'usb-a', to: 'usb-micro-b' }], ['bt1|+', 'u1|5V'], ['bt1|-', 'u1|GND']])

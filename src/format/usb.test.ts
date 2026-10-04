@@ -81,6 +81,11 @@ describe('correct USB hookups give no USB problem', () => {
     expect(usbFindings(sheet([['J1', 'pc'], ['U1', 'sdr']], [['j1|USB1', 'u1|USB']]))).toEqual([])
     expect(usbFindings(sheet([['U1', 'otg'], ['U2', 'disk']], [['u1|USB', 'u2|USB', { from: 'usb-c', to: 'usb-micro-b' }]]))).toEqual([])
   })
+  it('a dual port hosting a device powers it, as a host port does (for back-feed)', () => {
+    const p = usbPower(sheet([['U1', 'otg'], ['U2', 'disk']], [['u1|USB', 'u2|USB', { from: 'usb-c', to: 'usb-micro-b' }]]))
+    expect(p.hosted.map((h) => `${h.host.title} powers ${h.port.title}`)).toEqual(['U1 USB powers U2 USB'])
+    expect([...p.fed, ...p.hosting]).toEqual(['u2', 'u1'])
+  })
   it('a self-powered hub (DC wired) feeding 400 mA per port', () => {
     const d = sheet([['J1', 'pc'], ['H1', 'hub'], ['P1', 'psu'], ['U1', 'disk'], ['U2', 'disk']], [
       ['j1|USB1', 'h1|UP', { from: 'usb-a', to: 'usb-b' }], ['p1|+', 'h1|DC+'], ['p1|-', 'h1|DC-'],
