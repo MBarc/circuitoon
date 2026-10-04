@@ -6254,6 +6254,6323 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			"value": "AMS1117-3.3 module"
 		}
 	},
+	"../modules/arduino-due.json": {
+		format: "circuitoon-module/1",
+		id: "arduino-due",
+		version: 1,
+		name: "Arduino Due",
+		category: "Microcontrollers",
+		source: "https://docs.arduino.cc/resources/datasheets/A000062-datasheet.pdf https://docs.arduino.cc/resources/pinouts/A000056-full-pinout.pdf https://docs.arduino.cc/resources/schematics/A000056-schematics.pdf https://github.com/arduino/docs-content/blob/main/content/hardware/mega/boards/due/tech-specs.yml",
+		pins: [
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"name": "NC",
+				"side": "left",
+				"type": "nc"
+			},
+			{
+				"name": "IOREF",
+				"side": "left",
+				"type": "power_out",
+				"supply": "3V3"
+			},
+			{
+				"name": "RESET",
+				"side": "left",
+				"type": "input",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "3V3",
+				"side": "left",
+				"type": "power_out",
+				"supply": "3V3"
+			},
+			{
+				"name": "5V",
+				"side": "left",
+				"type": "power_in",
+				"supply": "5V"
+			},
+			{
+				"name": "GND",
+				"side": "left",
+				"type": "ground"
+			},
+			{
+				"name": "GND 2",
+				"side": "left",
+				"label": "GND",
+				"type": "ground"
+			},
+			{
+				"name": "VIN",
+				"side": "left",
+				"type": "power_in",
+				"supply": "7V/7.4V/9V/12V"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"name": "A0",
+				"side": "left",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "A1",
+				"side": "left",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "A2",
+				"side": "left",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "A3",
+				"side": "left",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "A4",
+				"side": "left",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "A5",
+				"side": "left",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "A6",
+				"side": "left",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "A7",
+				"side": "left",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"name": "A8",
+				"side": "left",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "A9",
+				"side": "left",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "A10",
+				"side": "left",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "A11",
+				"side": "left",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "DAC0",
+				"side": "left",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "DAC1",
+				"side": "left",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "CANRX",
+				"side": "left",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "CANTX",
+				"side": "left",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "SCL1",
+				"side": "right",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "SDA1",
+				"side": "right",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "AREF",
+				"side": "right",
+				"type": "input",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "GND 3",
+				"side": "right",
+				"label": "GND",
+				"type": "ground"
+			},
+			{
+				"name": "D13",
+				"side": "right",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "D12",
+				"side": "right",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "D11",
+				"side": "right",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "D10",
+				"side": "right",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "D9",
+				"side": "right",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "D8",
+				"side": "right",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"spacer": true,
+				"side": "right"
+			},
+			{
+				"name": "D7",
+				"side": "right",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "D6",
+				"side": "right",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "D5",
+				"side": "right",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "D4",
+				"side": "right",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "D3",
+				"side": "right",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "D2",
+				"side": "right",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "D1",
+				"side": "right",
+				"label": "D1/TX",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "D0",
+				"side": "right",
+				"label": "D0/RX",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"spacer": true,
+				"side": "right"
+			},
+			{
+				"name": "D14",
+				"side": "right",
+				"label": "TX3",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "D15",
+				"side": "right",
+				"label": "RX3",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "D16",
+				"side": "right",
+				"label": "TX2",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "D17",
+				"side": "right",
+				"label": "RX2",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "D18",
+				"side": "right",
+				"label": "TX1",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "D19",
+				"side": "right",
+				"label": "RX1",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "D20",
+				"side": "right",
+				"label": "SDA",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "D21",
+				"side": "right",
+				"label": "SCL",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"spacer": true,
+				"side": "right"
+			}
+		],
+		internal: [
+			[
+				"GND",
+				"GND 2",
+				"GND 3",
+				"GND 4",
+				"GND 5"
+			],
+			[
+				"5V",
+				"5V 2",
+				"5V 3"
+			],
+			["3V3", "IOREF"]
+		],
+		size: {
+			"w": 21,
+			"h": 42
+		},
+		holes: [
+			{
+				"name": "5V 2",
+				"label": "5V",
+				"at": [[200, 380]],
+				"holeStyle": "pad",
+				"type": "power_in",
+				"supply": "5V"
+			},
+			{
+				"name": "D22",
+				"at": [[190, 380]],
+				"holeStyle": "pad",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "D24",
+				"at": [[180, 380]],
+				"holeStyle": "pad",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "D26",
+				"at": [[170, 380]],
+				"holeStyle": "pad",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "D28",
+				"at": [[160, 380]],
+				"holeStyle": "pad",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "D30",
+				"at": [[150, 380]],
+				"holeStyle": "pad",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "D32",
+				"at": [[140, 380]],
+				"holeStyle": "pad",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "D34",
+				"at": [[130, 380]],
+				"holeStyle": "pad",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "D36",
+				"at": [[120, 380]],
+				"holeStyle": "pad",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "D38",
+				"at": [[110, 380]],
+				"holeStyle": "pad",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "D40",
+				"at": [[100, 380]],
+				"holeStyle": "pad",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "D42",
+				"at": [[90, 380]],
+				"holeStyle": "pad",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "D44",
+				"at": [[80, 380]],
+				"holeStyle": "pad",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "D46",
+				"at": [[70, 380]],
+				"holeStyle": "pad",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "D48",
+				"at": [[60, 380]],
+				"holeStyle": "pad",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "D50",
+				"at": [[50, 380]],
+				"holeStyle": "pad",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "D52",
+				"at": [[40, 380]],
+				"holeStyle": "pad",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "GND 4",
+				"label": "GND",
+				"at": [[30, 380]],
+				"holeStyle": "pad",
+				"type": "ground"
+			},
+			{
+				"name": "5V 3",
+				"label": "5V",
+				"at": [[200, 390]],
+				"holeStyle": "pad",
+				"type": "power_in",
+				"supply": "5V"
+			},
+			{
+				"name": "D23",
+				"at": [[190, 390]],
+				"holeStyle": "pad",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "D25",
+				"at": [[180, 390]],
+				"holeStyle": "pad",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "D27",
+				"at": [[170, 390]],
+				"holeStyle": "pad",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "D29",
+				"at": [[160, 390]],
+				"holeStyle": "pad",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "D31",
+				"at": [[150, 390]],
+				"holeStyle": "pad",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "D33",
+				"at": [[140, 390]],
+				"holeStyle": "pad",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "D35",
+				"at": [[130, 390]],
+				"holeStyle": "pad",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "D37",
+				"at": [[120, 390]],
+				"holeStyle": "pad",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "D39",
+				"at": [[110, 390]],
+				"holeStyle": "pad",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "D41",
+				"at": [[100, 390]],
+				"holeStyle": "pad",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "D43",
+				"at": [[90, 390]],
+				"holeStyle": "pad",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "D45",
+				"at": [[80, 390]],
+				"holeStyle": "pad",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "D47",
+				"at": [[70, 390]],
+				"holeStyle": "pad",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "D49",
+				"at": [[60, 390]],
+				"holeStyle": "pad",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "D51",
+				"at": [[50, 390]],
+				"holeStyle": "pad",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "D53",
+				"at": [[40, 390]],
+				"holeStyle": "pad",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "GND 5",
+				"label": "GND",
+				"at": [[30, 390]],
+				"holeStyle": "pad",
+				"type": "ground"
+			}
+		],
+		electrical: {
+			"model": "mcu",
+			"params": {},
+			"external": [{
+				"pin": "5V",
+				"volts": 5,
+				"via": "USB"
+			}]
+		},
+		art: /* @__PURE__ */ JSON.parse("{\"w\":210,\"h\":420,\"pinLabels\":\"inside\",\"shapes\":[{\"type\":\"rect\",\"x\":0,\"y\":0,\"w\":210,\"h\":420,\"fill\":\"#17708A\",\"radius\":5},{\"type\":\"rect\",\"x\":2,\"y\":105,\"w\":9,\"h\":80,\"fill\":\"#1B1F24\",\"radius\":1},{\"type\":\"rect\",\"x\":5,\"y\":108.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":5,\"y\":118.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":5,\"y\":128.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":5,\"y\":138.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":5,\"y\":148.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":5,\"y\":158.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":5,\"y\":168.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":5,\"y\":178.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":2,\"y\":195,\"w\":9,\"h\":80,\"fill\":\"#1B1F24\",\"radius\":1},{\"type\":\"rect\",\"x\":5,\"y\":198.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":5,\"y\":208.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":5,\"y\":218.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":5,\"y\":228.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":5,\"y\":238.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":5,\"y\":248.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":5,\"y\":258.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":5,\"y\":268.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":2,\"y\":285,\"w\":9,\"h\":80,\"fill\":\"#1B1F24\",\"radius\":1},{\"type\":\"rect\",\"x\":5,\"y\":288.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":5,\"y\":298.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":5,\"y\":308.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":5,\"y\":318.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":5,\"y\":328.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":5,\"y\":338.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":5,\"y\":348.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":5,\"y\":358.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":199,\"y\":65,\"w\":9,\"h\":100,\"fill\":\"#1B1F24\",\"radius\":1},{\"type\":\"rect\",\"x\":202,\"y\":68.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":202,\"y\":78.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":202,\"y\":88.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":202,\"y\":98.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":202,\"y\":108.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":202,\"y\":118.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":202,\"y\":128.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":202,\"y\":138.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":202,\"y\":148.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":202,\"y\":158.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":199,\"y\":175,\"w\":9,\"h\":80,\"fill\":\"#1B1F24\",\"radius\":1},{\"type\":\"rect\",\"x\":202,\"y\":178.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":202,\"y\":188.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":202,\"y\":198.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":202,\"y\":208.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":202,\"y\":218.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":202,\"y\":228.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":202,\"y\":238.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":202,\"y\":248.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":199,\"y\":265,\"w\":9,\"h\":80,\"fill\":\"#1B1F24\",\"radius\":1},{\"type\":\"rect\",\"x\":202,\"y\":268.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":202,\"y\":278.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":202,\"y\":288.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":202,\"y\":298.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":202,\"y\":308.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":202,\"y\":318.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":202,\"y\":328.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":202,\"y\":338.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":14,\"y\":-14,\"w\":38,\"h\":58,\"fill\":\"#1B1F24\",\"radius\":3},{\"type\":\"rect\",\"x\":26,\"y\":-12,\"w\":14,\"h\":6,\"fill\":\"#3A3F47\",\"radius\":2,\"outline\":false},{\"type\":\"rect\",\"x\":70,\"y\":-7,\"w\":24,\"h\":18,\"fill\":\"#C9CED6\",\"radius\":2},{\"type\":\"rect\",\"x\":74,\"y\":-5,\"w\":16,\"h\":3,\"fill\":\"#8A9099\",\"radius\":1,\"outline\":false},{\"type\":\"rect\",\"x\":132,\"y\":-7,\"w\":24,\"h\":18,\"fill\":\"#C9CED6\",\"radius\":2},{\"type\":\"rect\",\"x\":136,\"y\":-5,\"w\":16,\"h\":3,\"fill\":\"#8A9099\",\"radius\":1,\"outline\":false},{\"type\":\"rect\",\"x\":178,\"y\":22,\"w\":20,\"h\":20,\"fill\":\"#C9CED6\",\"radius\":2},{\"type\":\"rect\",\"x\":183,\"y\":27,\"w\":10,\"h\":10,\"fill\":\"#3A3F47\",\"radius\":5,\"outline\":false},{\"type\":\"rect\",\"x\":100,\"y\":60,\"w\":20,\"h\":20,\"fill\":\"#2B2F36\",\"radius\":2},{\"type\":\"rect\",\"x\":77,\"y\":173,\"w\":64,\"h\":52,\"fill\":\"#C9CED6\",\"radius\":1,\"outline\":false},{\"type\":\"rect\",\"x\":83,\"y\":167,\"w\":52,\"h\":64,\"fill\":\"#C9CED6\",\"radius\":1,\"outline\":false},{\"type\":\"rect\",\"x\":80,\"y\":170,\"w\":58,\"h\":58,\"fill\":\"#2B2F36\",\"radius\":2,\"label\":\"SAM3X8E\",\"labelColor\":\"#D5DAE1\",\"labelSize\":6},{\"type\":\"rect\",\"x\":110,\"y\":108,\"w\":5,\"h\":4,\"fill\":\"#F4B400\",\"radius\":1},{\"type\":\"rect\",\"x\":120,\"y\":108,\"w\":5,\"h\":4,\"fill\":\"#F4B400\",\"radius\":1},{\"type\":\"rect\",\"x\":130,\"y\":108,\"w\":5,\"h\":4,\"fill\":\"#3FB56B\",\"radius\":1},{\"type\":\"rect\",\"x\":66,\"y\":256,\"w\":90,\"h\":18,\"fill\":\"#17708A\",\"outline\":false,\"label\":\"DUE\",\"labelColor\":\"#F4F1EA\",\"labelSize\":14},{\"type\":\"rect\",\"x\":96,\"y\":300,\"w\":26,\"h\":17,\"fill\":\"#1B1F24\",\"radius\":1},{\"type\":\"rect\",\"x\":100,\"y\":304,\"w\":3,\"h\":3,\"fill\":\"#C9CED6\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":100,\"y\":311,\"w\":3,\"h\":3,\"fill\":\"#C9CED6\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":108,\"y\":304,\"w\":3,\"h\":3,\"fill\":\"#C9CED6\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":108,\"y\":311,\"w\":3,\"h\":3,\"fill\":\"#C9CED6\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":116,\"y\":304,\"w\":3,\"h\":3,\"fill\":\"#C9CED6\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":116,\"y\":311,\"w\":3,\"h\":3,\"fill\":\"#C9CED6\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":130,\"y\":330,\"w\":40,\"h\":12,\"fill\":\"#1B1F24\",\"radius\":1},{\"type\":\"rect\",\"x\":24,\"y\":374,\"w\":182,\"h\":22,\"fill\":\"#1B1F24\",\"radius\":1},{\"type\":\"rect\",\"x\":195.5,\"y\":367,\"w\":9,\"h\":7,\"fill\":\"#17708A\",\"outline\":false,\"label\":\"5V\",\"labelColor\":\"#F4F1EA\",\"labelSize\":4.2},{\"type\":\"rect\",\"x\":185.5,\"y\":367,\"w\":9,\"h\":7,\"fill\":\"#17708A\",\"outline\":false,\"label\":\"22\",\"labelColor\":\"#F4F1EA\",\"labelSize\":4.2},{\"type\":\"rect\",\"x\":175.5,\"y\":367,\"w\":9,\"h\":7,\"fill\":\"#17708A\",\"outline\":false,\"label\":\"24\",\"labelColor\":\"#F4F1EA\",\"labelSize\":4.2},{\"type\":\"rect\",\"x\":165.5,\"y\":367,\"w\":9,\"h\":7,\"fill\":\"#17708A\",\"outline\":false,\"label\":\"26\",\"labelColor\":\"#F4F1EA\",\"labelSize\":4.2},{\"type\":\"rect\",\"x\":155.5,\"y\":367,\"w\":9,\"h\":7,\"fill\":\"#17708A\",\"outline\":false,\"label\":\"28\",\"labelColor\":\"#F4F1EA\",\"labelSize\":4.2},{\"type\":\"rect\",\"x\":145.5,\"y\":367,\"w\":9,\"h\":7,\"fill\":\"#17708A\",\"outline\":false,\"label\":\"30\",\"labelColor\":\"#F4F1EA\",\"labelSize\":4.2},{\"type\":\"rect\",\"x\":135.5,\"y\":367,\"w\":9,\"h\":7,\"fill\":\"#17708A\",\"outline\":false,\"label\":\"32\",\"labelColor\":\"#F4F1EA\",\"labelSize\":4.2},{\"type\":\"rect\",\"x\":125.5,\"y\":367,\"w\":9,\"h\":7,\"fill\":\"#17708A\",\"outline\":false,\"label\":\"34\",\"labelColor\":\"#F4F1EA\",\"labelSize\":4.2},{\"type\":\"rect\",\"x\":115.5,\"y\":367,\"w\":9,\"h\":7,\"fill\":\"#17708A\",\"outline\":false,\"label\":\"36\",\"labelColor\":\"#F4F1EA\",\"labelSize\":4.2},{\"type\":\"rect\",\"x\":105.5,\"y\":367,\"w\":9,\"h\":7,\"fill\":\"#17708A\",\"outline\":false,\"label\":\"38\",\"labelColor\":\"#F4F1EA\",\"labelSize\":4.2},{\"type\":\"rect\",\"x\":95.5,\"y\":367,\"w\":9,\"h\":7,\"fill\":\"#17708A\",\"outline\":false,\"label\":\"40\",\"labelColor\":\"#F4F1EA\",\"labelSize\":4.2},{\"type\":\"rect\",\"x\":85.5,\"y\":367,\"w\":9,\"h\":7,\"fill\":\"#17708A\",\"outline\":false,\"label\":\"42\",\"labelColor\":\"#F4F1EA\",\"labelSize\":4.2},{\"type\":\"rect\",\"x\":75.5,\"y\":367,\"w\":9,\"h\":7,\"fill\":\"#17708A\",\"outline\":false,\"label\":\"44\",\"labelColor\":\"#F4F1EA\",\"labelSize\":4.2},{\"type\":\"rect\",\"x\":65.5,\"y\":367,\"w\":9,\"h\":7,\"fill\":\"#17708A\",\"outline\":false,\"label\":\"46\",\"labelColor\":\"#F4F1EA\",\"labelSize\":4.2},{\"type\":\"rect\",\"x\":55.5,\"y\":367,\"w\":9,\"h\":7,\"fill\":\"#17708A\",\"outline\":false,\"label\":\"48\",\"labelColor\":\"#F4F1EA\",\"labelSize\":4.2},{\"type\":\"rect\",\"x\":45.5,\"y\":367,\"w\":9,\"h\":7,\"fill\":\"#17708A\",\"outline\":false,\"label\":\"50\",\"labelColor\":\"#F4F1EA\",\"labelSize\":4.2},{\"type\":\"rect\",\"x\":35.5,\"y\":367,\"w\":9,\"h\":7,\"fill\":\"#17708A\",\"outline\":false,\"label\":\"52\",\"labelColor\":\"#F4F1EA\",\"labelSize\":4.2},{\"type\":\"rect\",\"x\":24.6,\"y\":367,\"w\":10.8,\"h\":7,\"fill\":\"#17708A\",\"outline\":false,\"label\":\"GND\",\"labelColor\":\"#F4F1EA\",\"labelSize\":4.2},{\"type\":\"rect\",\"x\":195.5,\"y\":395,\"w\":9,\"h\":7,\"fill\":\"#17708A\",\"outline\":false,\"label\":\"5V\",\"labelColor\":\"#F4F1EA\",\"labelSize\":4.2},{\"type\":\"rect\",\"x\":185.5,\"y\":395,\"w\":9,\"h\":7,\"fill\":\"#17708A\",\"outline\":false,\"label\":\"23\",\"labelColor\":\"#F4F1EA\",\"labelSize\":4.2},{\"type\":\"rect\",\"x\":175.5,\"y\":395,\"w\":9,\"h\":7,\"fill\":\"#17708A\",\"outline\":false,\"label\":\"25\",\"labelColor\":\"#F4F1EA\",\"labelSize\":4.2},{\"type\":\"rect\",\"x\":165.5,\"y\":395,\"w\":9,\"h\":7,\"fill\":\"#17708A\",\"outline\":false,\"label\":\"27\",\"labelColor\":\"#F4F1EA\",\"labelSize\":4.2},{\"type\":\"rect\",\"x\":155.5,\"y\":395,\"w\":9,\"h\":7,\"fill\":\"#17708A\",\"outline\":false,\"label\":\"29\",\"labelColor\":\"#F4F1EA\",\"labelSize\":4.2},{\"type\":\"rect\",\"x\":145.5,\"y\":395,\"w\":9,\"h\":7,\"fill\":\"#17708A\",\"outline\":false,\"label\":\"31\",\"labelColor\":\"#F4F1EA\",\"labelSize\":4.2},{\"type\":\"rect\",\"x\":135.5,\"y\":395,\"w\":9,\"h\":7,\"fill\":\"#17708A\",\"outline\":false,\"label\":\"33\",\"labelColor\":\"#F4F1EA\",\"labelSize\":4.2},{\"type\":\"rect\",\"x\":125.5,\"y\":395,\"w\":9,\"h\":7,\"fill\":\"#17708A\",\"outline\":false,\"label\":\"35\",\"labelColor\":\"#F4F1EA\",\"labelSize\":4.2},{\"type\":\"rect\",\"x\":115.5,\"y\":395,\"w\":9,\"h\":7,\"fill\":\"#17708A\",\"outline\":false,\"label\":\"37\",\"labelColor\":\"#F4F1EA\",\"labelSize\":4.2},{\"type\":\"rect\",\"x\":105.5,\"y\":395,\"w\":9,\"h\":7,\"fill\":\"#17708A\",\"outline\":false,\"label\":\"39\",\"labelColor\":\"#F4F1EA\",\"labelSize\":4.2},{\"type\":\"rect\",\"x\":95.5,\"y\":395,\"w\":9,\"h\":7,\"fill\":\"#17708A\",\"outline\":false,\"label\":\"41\",\"labelColor\":\"#F4F1EA\",\"labelSize\":4.2},{\"type\":\"rect\",\"x\":85.5,\"y\":395,\"w\":9,\"h\":7,\"fill\":\"#17708A\",\"outline\":false,\"label\":\"43\",\"labelColor\":\"#F4F1EA\",\"labelSize\":4.2},{\"type\":\"rect\",\"x\":75.5,\"y\":395,\"w\":9,\"h\":7,\"fill\":\"#17708A\",\"outline\":false,\"label\":\"45\",\"labelColor\":\"#F4F1EA\",\"labelSize\":4.2},{\"type\":\"rect\",\"x\":65.5,\"y\":395,\"w\":9,\"h\":7,\"fill\":\"#17708A\",\"outline\":false,\"label\":\"47\",\"labelColor\":\"#F4F1EA\",\"labelSize\":4.2},{\"type\":\"rect\",\"x\":55.5,\"y\":395,\"w\":9,\"h\":7,\"fill\":\"#17708A\",\"outline\":false,\"label\":\"49\",\"labelColor\":\"#F4F1EA\",\"labelSize\":4.2},{\"type\":\"rect\",\"x\":45.5,\"y\":395,\"w\":9,\"h\":7,\"fill\":\"#17708A\",\"outline\":false,\"label\":\"51\",\"labelColor\":\"#F4F1EA\",\"labelSize\":4.2},{\"type\":\"rect\",\"x\":35.5,\"y\":395,\"w\":9,\"h\":7,\"fill\":\"#17708A\",\"outline\":false,\"label\":\"53\",\"labelColor\":\"#F4F1EA\",\"labelSize\":4.2},{\"type\":\"rect\",\"x\":24.6,\"y\":395,\"w\":10.8,\"h\":7,\"fill\":\"#17708A\",\"outline\":false,\"label\":\"GND\",\"labelColor\":\"#F4F1EA\",\"labelSize\":4.2}]}"),
+		kicad: {
+			"headers": [
+				{
+					"name": "power header, pin 1 NC",
+					"footprint": "Connector_PinSocket_2.54mm:PinSocket_1x08_P2.54mm_Vertical",
+					"pins": {
+						"NC": "1",
+						"IOREF": "2",
+						"RESET": "3",
+						"3V3": "4",
+						"5V": "5",
+						"GND": "6",
+						"GND 2": "7",
+						"VIN": "8"
+					}
+				},
+				{
+					"name": "analog header, pin 1 A0",
+					"footprint": "Connector_PinSocket_2.54mm:PinSocket_1x08_P2.54mm_Vertical",
+					"pins": {
+						"A0": "1",
+						"A1": "2",
+						"A2": "3",
+						"A3": "4",
+						"A4": "5",
+						"A5": "6",
+						"A6": "7",
+						"A7": "8"
+					}
+				},
+				{
+					"name": "analog header, pin 1 A8",
+					"footprint": "Connector_PinSocket_2.54mm:PinSocket_1x08_P2.54mm_Vertical",
+					"pins": {
+						"A8": "1",
+						"A9": "2",
+						"A10": "3",
+						"A11": "4",
+						"DAC0": "5",
+						"DAC1": "6",
+						"CANRX": "7",
+						"CANTX": "8"
+					}
+				},
+				{
+					"name": "digital header, pin 1 SCL1",
+					"footprint": "Connector_PinSocket_2.54mm:PinSocket_1x10_P2.54mm_Vertical",
+					"pins": {
+						"SCL1": "1",
+						"SDA1": "2",
+						"AREF": "3",
+						"GND 3": "4",
+						"D13": "5",
+						"D12": "6",
+						"D11": "7",
+						"D10": "8",
+						"D9": "9",
+						"D8": "10"
+					}
+				},
+				{
+					"name": "digital header, pin 1 D7",
+					"footprint": "Connector_PinSocket_2.54mm:PinSocket_1x08_P2.54mm_Vertical",
+					"pins": {
+						"D7": "1",
+						"D6": "2",
+						"D5": "3",
+						"D4": "4",
+						"D3": "5",
+						"D2": "6",
+						"D1": "7",
+						"D0": "8"
+					}
+				},
+				{
+					"name": "communication header, pin 1 D14",
+					"footprint": "Connector_PinSocket_2.54mm:PinSocket_1x08_P2.54mm_Vertical",
+					"pins": {
+						"D14": "1",
+						"D15": "2",
+						"D16": "3",
+						"D17": "4",
+						"D18": "5",
+						"D19": "6",
+						"D20": "7",
+						"D21": "8"
+					}
+				},
+				{
+					"name": "2 x 18 header, even row, pin 1 5V",
+					"footprint": "Connector_PinSocket_2.54mm:PinSocket_1x18_P2.54mm_Vertical",
+					"pins": {
+						"5V 2": "1",
+						"D22": "2",
+						"D24": "3",
+						"D26": "4",
+						"D28": "5",
+						"D30": "6",
+						"D32": "7",
+						"D34": "8",
+						"D36": "9",
+						"D38": "10",
+						"D40": "11",
+						"D42": "12",
+						"D44": "13",
+						"D46": "14",
+						"D48": "15",
+						"D50": "16",
+						"D52": "17",
+						"GND 4": "18"
+					}
+				},
+				{
+					"name": "2 x 18 header, odd row, pin 1 5V",
+					"footprint": "Connector_PinSocket_2.54mm:PinSocket_1x18_P2.54mm_Vertical",
+					"pins": {
+						"5V 3": "1",
+						"D23": "2",
+						"D25": "3",
+						"D27": "4",
+						"D29": "5",
+						"D31": "6",
+						"D33": "7",
+						"D35": "8",
+						"D37": "9",
+						"D39": "10",
+						"D41": "11",
+						"D43": "12",
+						"D45": "13",
+						"D47": "14",
+						"D49": "15",
+						"D51": "16",
+						"D53": "17",
+						"GND 5": "18"
+					}
+				}
+			],
+			"value": "Arduino Due",
+			"note": "Each header is its own socket strip: place them at the board's real positions."
+		}
+	},
+	"../modules/arduino-leonardo.json": {
+		format: "circuitoon-module/1",
+		id: "arduino-leonardo",
+		version: 1,
+		name: "Arduino Leonardo",
+		category: "Microcontrollers",
+		source: "https://docs.arduino.cc/resources/pinouts/A000057-full-pinout.pdf https://docs.arduino.cc/resources/schematics/A000057-schematics.pdf https://github.com/arduino/docs-content/blob/main/content/hardware/hero/boards/leonardo/tech-specs.yml https://gitlab.com/kicad/libraries/kicad-symbols/-/blob/master/MCU_Module.kicad_symdir/Arduino_Leonardo.kicad_sym",
+		pins: [
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"name": "NC",
+				"side": "left",
+				"type": "nc"
+			},
+			{
+				"name": "IOREF",
+				"side": "left",
+				"type": "power_in",
+				"supply": "5V"
+			},
+			{
+				"name": "RESET",
+				"side": "left",
+				"type": "input"
+			},
+			{
+				"name": "3V3",
+				"side": "left",
+				"type": "power_out",
+				"supply": "3V3"
+			},
+			{
+				"name": "5V",
+				"side": "left",
+				"type": "power_in",
+				"supply": "5V"
+			},
+			{
+				"name": "GND",
+				"side": "left",
+				"type": "ground"
+			},
+			{
+				"name": "GND 2",
+				"side": "left",
+				"label": "GND",
+				"type": "ground"
+			},
+			{
+				"name": "VIN",
+				"side": "left",
+				"type": "power_in",
+				"supply": "7V/7.4V/9V/12V"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"name": "A0",
+				"side": "left",
+				"type": "io"
+			},
+			{
+				"name": "A1",
+				"side": "left",
+				"type": "io"
+			},
+			{
+				"name": "A2",
+				"side": "left",
+				"type": "io"
+			},
+			{
+				"name": "A3",
+				"side": "left",
+				"type": "io"
+			},
+			{
+				"name": "A4",
+				"side": "left",
+				"type": "io"
+			},
+			{
+				"name": "A5",
+				"side": "left",
+				"type": "io"
+			},
+			{
+				"spacer": true,
+				"side": "right"
+			},
+			{
+				"spacer": true,
+				"side": "right"
+			},
+			{
+				"spacer": true,
+				"side": "right"
+			},
+			{
+				"spacer": true,
+				"side": "right"
+			},
+			{
+				"name": "SCL",
+				"side": "right",
+				"type": "io"
+			},
+			{
+				"name": "SDA",
+				"side": "right",
+				"type": "io"
+			},
+			{
+				"name": "AREF",
+				"side": "right",
+				"type": "input"
+			},
+			{
+				"name": "GND 3",
+				"side": "right",
+				"label": "GND",
+				"type": "ground"
+			},
+			{
+				"name": "D13",
+				"side": "right",
+				"type": "io"
+			},
+			{
+				"name": "D12",
+				"side": "right",
+				"type": "io"
+			},
+			{
+				"name": "D11",
+				"side": "right",
+				"type": "io"
+			},
+			{
+				"name": "D10",
+				"side": "right",
+				"type": "io"
+			},
+			{
+				"name": "D9",
+				"side": "right",
+				"type": "io"
+			},
+			{
+				"name": "D8",
+				"side": "right",
+				"type": "io"
+			},
+			{
+				"spacer": true,
+				"side": "right"
+			},
+			{
+				"name": "D7",
+				"side": "right",
+				"type": "io"
+			},
+			{
+				"name": "D6",
+				"side": "right",
+				"type": "io"
+			},
+			{
+				"name": "D5",
+				"side": "right",
+				"type": "io"
+			},
+			{
+				"name": "D4",
+				"side": "right",
+				"type": "io"
+			},
+			{
+				"name": "D3",
+				"side": "right",
+				"type": "io"
+			},
+			{
+				"name": "D2",
+				"side": "right",
+				"type": "io"
+			},
+			{
+				"name": "D1",
+				"side": "right",
+				"label": "D1/TX",
+				"type": "io"
+			},
+			{
+				"name": "D0",
+				"side": "right",
+				"label": "D0/RX",
+				"type": "io"
+			}
+		],
+		internal: [
+			[
+				"GND",
+				"GND 2",
+				"GND 3"
+			],
+			["5V", "IOREF"],
+			["SDA", "D2"],
+			["SCL", "D3"]
+		],
+		size: {
+			"w": 21,
+			"h": 27
+		},
+		electrical: {
+			"model": "mcu",
+			"params": {},
+			"external": [{
+				"pin": "5V",
+				"volts": 5,
+				"via": "USB"
+			}]
+		},
+		art: {
+			"w": 210,
+			"h": 270,
+			"pinLabels": "inside",
+			"shapes": [
+				{
+					"type": "rect",
+					"x": 0,
+					"y": 0,
+					"w": 210,
+					"h": 270,
+					"fill": "#17708A",
+					"radius": 5
+				},
+				{
+					"type": "rect",
+					"x": 2,
+					"y": 105,
+					"w": 9,
+					"h": 80,
+					"fill": "#1B1F24",
+					"radius": 1
+				},
+				{
+					"type": "rect",
+					"x": 5,
+					"y": 108.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#3A3F47",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 5,
+					"y": 118.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#3A3F47",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 5,
+					"y": 128.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#3A3F47",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 5,
+					"y": 138.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#3A3F47",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 5,
+					"y": 148.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#3A3F47",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 5,
+					"y": 158.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#3A3F47",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 5,
+					"y": 168.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#3A3F47",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 5,
+					"y": 178.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#3A3F47",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 2,
+					"y": 195,
+					"w": 9,
+					"h": 60,
+					"fill": "#1B1F24",
+					"radius": 1
+				},
+				{
+					"type": "rect",
+					"x": 5,
+					"y": 198.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#3A3F47",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 5,
+					"y": 208.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#3A3F47",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 5,
+					"y": 218.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#3A3F47",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 5,
+					"y": 228.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#3A3F47",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 5,
+					"y": 238.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#3A3F47",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 5,
+					"y": 248.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#3A3F47",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 199,
+					"y": 65,
+					"w": 9,
+					"h": 100,
+					"fill": "#1B1F24",
+					"radius": 1
+				},
+				{
+					"type": "rect",
+					"x": 202,
+					"y": 68.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#3A3F47",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 202,
+					"y": 78.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#3A3F47",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 202,
+					"y": 88.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#3A3F47",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 202,
+					"y": 98.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#3A3F47",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 202,
+					"y": 108.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#3A3F47",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 202,
+					"y": 118.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#3A3F47",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 202,
+					"y": 128.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#3A3F47",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 202,
+					"y": 138.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#3A3F47",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 202,
+					"y": 148.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#3A3F47",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 202,
+					"y": 158.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#3A3F47",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 199,
+					"y": 175,
+					"w": 9,
+					"h": 80,
+					"fill": "#1B1F24",
+					"radius": 1
+				},
+				{
+					"type": "rect",
+					"x": 202,
+					"y": 178.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#3A3F47",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 202,
+					"y": 188.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#3A3F47",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 202,
+					"y": 198.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#3A3F47",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 202,
+					"y": 208.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#3A3F47",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 202,
+					"y": 218.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#3A3F47",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 202,
+					"y": 228.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#3A3F47",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 202,
+					"y": 238.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#3A3F47",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 202,
+					"y": 248.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#3A3F47",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 14,
+					"y": -14,
+					"w": 38,
+					"h": 58,
+					"fill": "#1B1F24",
+					"radius": 3
+				},
+				{
+					"type": "rect",
+					"x": 26,
+					"y": -12,
+					"w": 14,
+					"h": 6,
+					"fill": "#3A3F47",
+					"radius": 2,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 136,
+					"y": -7,
+					"w": 24,
+					"h": 18,
+					"fill": "#C9CED6",
+					"radius": 2
+				},
+				{
+					"type": "rect",
+					"x": 140,
+					"y": -5,
+					"w": 16,
+					"h": 3,
+					"fill": "#8A9099",
+					"radius": 1,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 178,
+					"y": 6,
+					"w": 20,
+					"h": 20,
+					"fill": "#C9CED6",
+					"radius": 2
+				},
+				{
+					"type": "rect",
+					"x": 183,
+					"y": 11,
+					"w": 10,
+					"h": 10,
+					"fill": "#3A3F47",
+					"radius": 5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 93,
+					"y": 143,
+					"w": 46,
+					"h": 34,
+					"fill": "#C9CED6",
+					"radius": 1,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 99,
+					"y": 137,
+					"w": 34,
+					"h": 46,
+					"fill": "#C9CED6",
+					"radius": 1,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 96,
+					"y": 140,
+					"w": 40,
+					"h": 40,
+					"fill": "#2B2F36",
+					"radius": 2,
+					"label": "32U4",
+					"labelColor": "#D5DAE1",
+					"labelSize": 7
+				},
+				{
+					"type": "rect",
+					"x": 110,
+					"y": 40,
+					"w": 5,
+					"h": 4,
+					"fill": "#F4B400",
+					"radius": 1
+				},
+				{
+					"type": "rect",
+					"x": 120,
+					"y": 40,
+					"w": 5,
+					"h": 4,
+					"fill": "#F4B400",
+					"radius": 1
+				},
+				{
+					"type": "rect",
+					"x": 130,
+					"y": 40,
+					"w": 5,
+					"h": 4,
+					"fill": "#F4B400",
+					"radius": 1
+				},
+				{
+					"type": "rect",
+					"x": 140,
+					"y": 40,
+					"w": 5,
+					"h": 4,
+					"fill": "#3FB56B",
+					"radius": 1
+				},
+				{
+					"type": "rect",
+					"x": 60,
+					"y": 90,
+					"w": 100,
+					"h": 16,
+					"fill": "#17708A",
+					"outline": false,
+					"label": "LEONARDO",
+					"labelColor": "#F4F1EA",
+					"labelSize": 10
+				},
+				{
+					"type": "rect",
+					"x": 92,
+					"y": 248,
+					"w": 26,
+					"h": 17,
+					"fill": "#1B1F24",
+					"radius": 1
+				},
+				{
+					"type": "rect",
+					"x": 96,
+					"y": 252,
+					"w": 3,
+					"h": 3,
+					"fill": "#C9CED6",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 96,
+					"y": 259,
+					"w": 3,
+					"h": 3,
+					"fill": "#C9CED6",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 104,
+					"y": 252,
+					"w": 3,
+					"h": 3,
+					"fill": "#C9CED6",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 104,
+					"y": 259,
+					"w": 3,
+					"h": 3,
+					"fill": "#C9CED6",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 112,
+					"y": 252,
+					"w": 3,
+					"h": 3,
+					"fill": "#C9CED6",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 112,
+					"y": 259,
+					"w": 3,
+					"h": 3,
+					"fill": "#C9CED6",
+					"radius": .5,
+					"outline": false
+				}
+			]
+		},
+		kicad: {
+			"symbol": "MCU_Module:Arduino_Leonardo",
+			"footprint": "Module:Arduino_UNO_R3",
+			"pins": {
+				"NC": "1",
+				"IOREF": "2",
+				"RESET": "3",
+				"3V3": "4",
+				"5V": "5",
+				"GND": "6",
+				"GND 2": "7",
+				"VIN": "8",
+				"A0": "9",
+				"A1": "10",
+				"A2": "11",
+				"A3": "12",
+				"A4": "13",
+				"A5": "14",
+				"SCL": "32",
+				"SDA": "31",
+				"AREF": "30",
+				"GND 3": "29",
+				"D13": "28",
+				"D12": "27",
+				"D11": "26",
+				"D10": "25",
+				"D9": "24",
+				"D8": "23",
+				"D7": "22",
+				"D6": "21",
+				"D5": "20",
+				"D4": "19",
+				"D3": "18",
+				"D2": "17",
+				"D1": "16",
+				"D0": "15"
+			},
+			"value": "Arduino Leonardo"
+		}
+	},
+	"../modules/arduino-mega-2560.json": {
+		format: "circuitoon-module/1",
+		id: "arduino-mega-2560",
+		version: 1,
+		name: "Arduino Mega 2560 Rev3",
+		category: "Microcontrollers",
+		source: "https://docs.arduino.cc/resources/datasheets/A000067-datasheet.pdf https://docs.arduino.cc/resources/pinouts/A000067-full-pinout.pdf https://docs.arduino.cc/resources/schematics/A000067-schematics.pdf",
+		pins: [
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"name": "NC",
+				"side": "left",
+				"type": "nc"
+			},
+			{
+				"name": "IOREF",
+				"side": "left",
+				"type": "power_in",
+				"supply": "5V"
+			},
+			{
+				"name": "RESET",
+				"side": "left",
+				"type": "input"
+			},
+			{
+				"name": "3V3",
+				"side": "left",
+				"type": "power_out",
+				"supply": "3V3"
+			},
+			{
+				"name": "5V",
+				"side": "left",
+				"type": "power_in",
+				"supply": "5V"
+			},
+			{
+				"name": "GND",
+				"side": "left",
+				"type": "ground"
+			},
+			{
+				"name": "GND 2",
+				"side": "left",
+				"label": "GND",
+				"type": "ground"
+			},
+			{
+				"name": "VIN",
+				"side": "left",
+				"type": "power_in",
+				"supply": "7V/7.4V/9V/12V"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"name": "A0",
+				"side": "left",
+				"type": "io"
+			},
+			{
+				"name": "A1",
+				"side": "left",
+				"type": "io"
+			},
+			{
+				"name": "A2",
+				"side": "left",
+				"type": "io"
+			},
+			{
+				"name": "A3",
+				"side": "left",
+				"type": "io"
+			},
+			{
+				"name": "A4",
+				"side": "left",
+				"type": "io"
+			},
+			{
+				"name": "A5",
+				"side": "left",
+				"type": "io"
+			},
+			{
+				"name": "A6",
+				"side": "left",
+				"type": "io"
+			},
+			{
+				"name": "A7",
+				"side": "left",
+				"type": "io"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"name": "A8",
+				"side": "left",
+				"type": "io"
+			},
+			{
+				"name": "A9",
+				"side": "left",
+				"type": "io"
+			},
+			{
+				"name": "A10",
+				"side": "left",
+				"type": "io"
+			},
+			{
+				"name": "A11",
+				"side": "left",
+				"type": "io"
+			},
+			{
+				"name": "A12",
+				"side": "left",
+				"type": "io"
+			},
+			{
+				"name": "A13",
+				"side": "left",
+				"type": "io"
+			},
+			{
+				"name": "A14",
+				"side": "left",
+				"type": "io"
+			},
+			{
+				"name": "A15",
+				"side": "left",
+				"type": "io"
+			},
+			{
+				"name": "SCL",
+				"side": "right",
+				"type": "io"
+			},
+			{
+				"name": "SDA",
+				"side": "right",
+				"type": "io"
+			},
+			{
+				"name": "AREF",
+				"side": "right",
+				"type": "input"
+			},
+			{
+				"name": "GND 3",
+				"side": "right",
+				"label": "GND",
+				"type": "ground"
+			},
+			{
+				"name": "D13",
+				"side": "right",
+				"type": "io"
+			},
+			{
+				"name": "D12",
+				"side": "right",
+				"type": "io"
+			},
+			{
+				"name": "D11",
+				"side": "right",
+				"type": "io"
+			},
+			{
+				"name": "D10",
+				"side": "right",
+				"type": "io"
+			},
+			{
+				"name": "D9",
+				"side": "right",
+				"type": "io"
+			},
+			{
+				"name": "D8",
+				"side": "right",
+				"type": "io"
+			},
+			{
+				"spacer": true,
+				"side": "right"
+			},
+			{
+				"name": "D7",
+				"side": "right",
+				"type": "io"
+			},
+			{
+				"name": "D6",
+				"side": "right",
+				"type": "io"
+			},
+			{
+				"name": "D5",
+				"side": "right",
+				"type": "io"
+			},
+			{
+				"name": "D4",
+				"side": "right",
+				"type": "io"
+			},
+			{
+				"name": "D3",
+				"side": "right",
+				"type": "io"
+			},
+			{
+				"name": "D2",
+				"side": "right",
+				"type": "io"
+			},
+			{
+				"name": "D1",
+				"side": "right",
+				"label": "D1/TX",
+				"type": "io"
+			},
+			{
+				"name": "D0",
+				"side": "right",
+				"label": "D0/RX",
+				"type": "io"
+			},
+			{
+				"spacer": true,
+				"side": "right"
+			},
+			{
+				"name": "D14",
+				"side": "right",
+				"label": "TX3",
+				"type": "io"
+			},
+			{
+				"name": "D15",
+				"side": "right",
+				"label": "RX3",
+				"type": "io"
+			},
+			{
+				"name": "D16",
+				"side": "right",
+				"label": "TX2",
+				"type": "io"
+			},
+			{
+				"name": "D17",
+				"side": "right",
+				"label": "RX2",
+				"type": "io"
+			},
+			{
+				"name": "D18",
+				"side": "right",
+				"label": "TX1",
+				"type": "io"
+			},
+			{
+				"name": "D19",
+				"side": "right",
+				"label": "RX1",
+				"type": "io"
+			},
+			{
+				"name": "D20",
+				"side": "right",
+				"label": "SDA",
+				"type": "io"
+			},
+			{
+				"name": "D21",
+				"side": "right",
+				"label": "SCL",
+				"type": "io"
+			},
+			{
+				"spacer": true,
+				"side": "right"
+			}
+		],
+		internal: [
+			[
+				"GND",
+				"GND 2",
+				"GND 3",
+				"GND 4",
+				"GND 5"
+			],
+			[
+				"5V",
+				"IOREF",
+				"5V 2",
+				"5V 3"
+			],
+			["SDA", "D20"],
+			["SCL", "D21"]
+		],
+		size: {
+			"w": 21,
+			"h": 42
+		},
+		holes: [
+			{
+				"name": "5V 2",
+				"label": "5V",
+				"at": [[200, 380]],
+				"holeStyle": "pad",
+				"type": "power_in",
+				"supply": "5V"
+			},
+			{
+				"name": "D22",
+				"at": [[190, 380]],
+				"holeStyle": "pad",
+				"type": "io"
+			},
+			{
+				"name": "D24",
+				"at": [[180, 380]],
+				"holeStyle": "pad",
+				"type": "io"
+			},
+			{
+				"name": "D26",
+				"at": [[170, 380]],
+				"holeStyle": "pad",
+				"type": "io"
+			},
+			{
+				"name": "D28",
+				"at": [[160, 380]],
+				"holeStyle": "pad",
+				"type": "io"
+			},
+			{
+				"name": "D30",
+				"at": [[150, 380]],
+				"holeStyle": "pad",
+				"type": "io"
+			},
+			{
+				"name": "D32",
+				"at": [[140, 380]],
+				"holeStyle": "pad",
+				"type": "io"
+			},
+			{
+				"name": "D34",
+				"at": [[130, 380]],
+				"holeStyle": "pad",
+				"type": "io"
+			},
+			{
+				"name": "D36",
+				"at": [[120, 380]],
+				"holeStyle": "pad",
+				"type": "io"
+			},
+			{
+				"name": "D38",
+				"at": [[110, 380]],
+				"holeStyle": "pad",
+				"type": "io"
+			},
+			{
+				"name": "D40",
+				"at": [[100, 380]],
+				"holeStyle": "pad",
+				"type": "io"
+			},
+			{
+				"name": "D42",
+				"at": [[90, 380]],
+				"holeStyle": "pad",
+				"type": "io"
+			},
+			{
+				"name": "D44",
+				"at": [[80, 380]],
+				"holeStyle": "pad",
+				"type": "io"
+			},
+			{
+				"name": "D46",
+				"at": [[70, 380]],
+				"holeStyle": "pad",
+				"type": "io"
+			},
+			{
+				"name": "D48",
+				"at": [[60, 380]],
+				"holeStyle": "pad",
+				"type": "io"
+			},
+			{
+				"name": "D50",
+				"at": [[50, 380]],
+				"holeStyle": "pad",
+				"type": "io"
+			},
+			{
+				"name": "D52",
+				"at": [[40, 380]],
+				"holeStyle": "pad",
+				"type": "io"
+			},
+			{
+				"name": "GND 4",
+				"label": "GND",
+				"at": [[30, 380]],
+				"holeStyle": "pad",
+				"type": "ground"
+			},
+			{
+				"name": "5V 3",
+				"label": "5V",
+				"at": [[200, 390]],
+				"holeStyle": "pad",
+				"type": "power_in",
+				"supply": "5V"
+			},
+			{
+				"name": "D23",
+				"at": [[190, 390]],
+				"holeStyle": "pad",
+				"type": "io"
+			},
+			{
+				"name": "D25",
+				"at": [[180, 390]],
+				"holeStyle": "pad",
+				"type": "io"
+			},
+			{
+				"name": "D27",
+				"at": [[170, 390]],
+				"holeStyle": "pad",
+				"type": "io"
+			},
+			{
+				"name": "D29",
+				"at": [[160, 390]],
+				"holeStyle": "pad",
+				"type": "io"
+			},
+			{
+				"name": "D31",
+				"at": [[150, 390]],
+				"holeStyle": "pad",
+				"type": "io"
+			},
+			{
+				"name": "D33",
+				"at": [[140, 390]],
+				"holeStyle": "pad",
+				"type": "io"
+			},
+			{
+				"name": "D35",
+				"at": [[130, 390]],
+				"holeStyle": "pad",
+				"type": "io"
+			},
+			{
+				"name": "D37",
+				"at": [[120, 390]],
+				"holeStyle": "pad",
+				"type": "io"
+			},
+			{
+				"name": "D39",
+				"at": [[110, 390]],
+				"holeStyle": "pad",
+				"type": "io"
+			},
+			{
+				"name": "D41",
+				"at": [[100, 390]],
+				"holeStyle": "pad",
+				"type": "io"
+			},
+			{
+				"name": "D43",
+				"at": [[90, 390]],
+				"holeStyle": "pad",
+				"type": "io"
+			},
+			{
+				"name": "D45",
+				"at": [[80, 390]],
+				"holeStyle": "pad",
+				"type": "io"
+			},
+			{
+				"name": "D47",
+				"at": [[70, 390]],
+				"holeStyle": "pad",
+				"type": "io"
+			},
+			{
+				"name": "D49",
+				"at": [[60, 390]],
+				"holeStyle": "pad",
+				"type": "io"
+			},
+			{
+				"name": "D51",
+				"at": [[50, 390]],
+				"holeStyle": "pad",
+				"type": "io"
+			},
+			{
+				"name": "D53",
+				"at": [[40, 390]],
+				"holeStyle": "pad",
+				"type": "io"
+			},
+			{
+				"name": "GND 5",
+				"label": "GND",
+				"at": [[30, 390]],
+				"holeStyle": "pad",
+				"type": "ground"
+			}
+		],
+		electrical: {
+			"model": "mcu",
+			"params": {},
+			"external": [{
+				"pin": "5V",
+				"volts": 5,
+				"via": "USB"
+			}]
+		},
+		art: /* @__PURE__ */ JSON.parse("{\"w\":210,\"h\":420,\"pinLabels\":\"inside\",\"shapes\":[{\"type\":\"rect\",\"x\":0,\"y\":0,\"w\":210,\"h\":420,\"fill\":\"#17708A\",\"radius\":5},{\"type\":\"rect\",\"x\":2,\"y\":105,\"w\":9,\"h\":80,\"fill\":\"#1B1F24\",\"radius\":1},{\"type\":\"rect\",\"x\":5,\"y\":108.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":5,\"y\":118.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":5,\"y\":128.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":5,\"y\":138.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":5,\"y\":148.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":5,\"y\":158.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":5,\"y\":168.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":5,\"y\":178.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":2,\"y\":195,\"w\":9,\"h\":80,\"fill\":\"#1B1F24\",\"radius\":1},{\"type\":\"rect\",\"x\":5,\"y\":198.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":5,\"y\":208.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":5,\"y\":218.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":5,\"y\":228.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":5,\"y\":238.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":5,\"y\":248.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":5,\"y\":258.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":5,\"y\":268.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":2,\"y\":285,\"w\":9,\"h\":80,\"fill\":\"#1B1F24\",\"radius\":1},{\"type\":\"rect\",\"x\":5,\"y\":288.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":5,\"y\":298.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":5,\"y\":308.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":5,\"y\":318.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":5,\"y\":328.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":5,\"y\":338.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":5,\"y\":348.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":5,\"y\":358.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":199,\"y\":65,\"w\":9,\"h\":100,\"fill\":\"#1B1F24\",\"radius\":1},{\"type\":\"rect\",\"x\":202,\"y\":68.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":202,\"y\":78.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":202,\"y\":88.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":202,\"y\":98.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":202,\"y\":108.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":202,\"y\":118.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":202,\"y\":128.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":202,\"y\":138.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":202,\"y\":148.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":202,\"y\":158.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":199,\"y\":175,\"w\":9,\"h\":80,\"fill\":\"#1B1F24\",\"radius\":1},{\"type\":\"rect\",\"x\":202,\"y\":178.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":202,\"y\":188.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":202,\"y\":198.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":202,\"y\":208.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":202,\"y\":218.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":202,\"y\":228.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":202,\"y\":238.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":202,\"y\":248.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":199,\"y\":265,\"w\":9,\"h\":80,\"fill\":\"#1B1F24\",\"radius\":1},{\"type\":\"rect\",\"x\":202,\"y\":268.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":202,\"y\":278.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":202,\"y\":288.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":202,\"y\":298.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":202,\"y\":308.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":202,\"y\":318.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":202,\"y\":328.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":202,\"y\":338.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":14,\"y\":-14,\"w\":38,\"h\":58,\"fill\":\"#1B1F24\",\"radius\":3},{\"type\":\"rect\",\"x\":26,\"y\":-12,\"w\":14,\"h\":6,\"fill\":\"#3A3F47\",\"radius\":2,\"outline\":false},{\"type\":\"rect\",\"x\":124,\"y\":-12,\"w\":46,\"h\":50,\"fill\":\"#C9CED6\",\"radius\":2},{\"type\":\"rect\",\"x\":132,\"y\":-10,\"w\":30,\"h\":6,\"fill\":\"#8A9099\",\"radius\":1,\"outline\":false},{\"type\":\"rect\",\"x\":178,\"y\":6,\"w\":20,\"h\":20,\"fill\":\"#C9CED6\",\"radius\":2},{\"type\":\"rect\",\"x\":183,\"y\":11,\"w\":10,\"h\":10,\"fill\":\"#3A3F47\",\"radius\":5,\"outline\":false},{\"type\":\"rect\",\"x\":100,\"y\":62,\"w\":20,\"h\":20,\"fill\":\"#2B2F36\",\"radius\":2},{\"type\":\"rect\",\"x\":84,\"y\":92,\"w\":22,\"h\":9,\"fill\":\"#C9CED6\",\"radius\":4.5},{\"type\":\"rect\",\"x\":81,\"y\":179,\"w\":56,\"h\":44,\"fill\":\"#C9CED6\",\"radius\":1,\"outline\":false},{\"type\":\"rect\",\"x\":87,\"y\":173,\"w\":44,\"h\":56,\"fill\":\"#C9CED6\",\"radius\":1,\"outline\":false},{\"type\":\"rect\",\"x\":84,\"y\":176,\"w\":50,\"h\":50,\"fill\":\"#2B2F36\",\"radius\":2,\"label\":\"ATMEGA2560\",\"labelColor\":\"#D5DAE1\",\"labelSize\":5.5},{\"type\":\"rect\",\"x\":124,\"y\":112,\"w\":5,\"h\":4,\"fill\":\"#F4B400\",\"radius\":1},{\"type\":\"rect\",\"x\":124,\"y\":120,\"w\":5,\"h\":4,\"fill\":\"#F4B400\",\"radius\":1},{\"type\":\"rect\",\"x\":124,\"y\":128,\"w\":5,\"h\":4,\"fill\":\"#F4B400\",\"radius\":1},{\"type\":\"rect\",\"x\":150,\"y\":300,\"w\":5,\"h\":4,\"fill\":\"#3FB56B\",\"radius\":1},{\"type\":\"rect\",\"x\":66,\"y\":252,\"w\":90,\"h\":16,\"fill\":\"#17708A\",\"outline\":false,\"label\":\"MEGA\",\"labelColor\":\"#F4F1EA\",\"labelSize\":13},{\"type\":\"rect\",\"x\":66,\"y\":270,\"w\":90,\"h\":10,\"fill\":\"#17708A\",\"outline\":false,\"label\":\"2560 Rev3\",\"labelColor\":\"#F4F1EA\",\"labelSize\":7},{\"type\":\"rect\",\"x\":96,\"y\":318,\"w\":26,\"h\":17,\"fill\":\"#1B1F24\",\"radius\":1},{\"type\":\"rect\",\"x\":100,\"y\":322,\"w\":3,\"h\":3,\"fill\":\"#C9CED6\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":100,\"y\":329,\"w\":3,\"h\":3,\"fill\":\"#C9CED6\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":108,\"y\":322,\"w\":3,\"h\":3,\"fill\":\"#C9CED6\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":108,\"y\":329,\"w\":3,\"h\":3,\"fill\":\"#C9CED6\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":116,\"y\":322,\"w\":3,\"h\":3,\"fill\":\"#C9CED6\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":116,\"y\":329,\"w\":3,\"h\":3,\"fill\":\"#C9CED6\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":24,\"y\":374,\"w\":182,\"h\":22,\"fill\":\"#1B1F24\",\"radius\":1},{\"type\":\"rect\",\"x\":195.5,\"y\":367,\"w\":9,\"h\":7,\"fill\":\"#17708A\",\"outline\":false,\"label\":\"5V\",\"labelColor\":\"#F4F1EA\",\"labelSize\":4.2},{\"type\":\"rect\",\"x\":185.5,\"y\":367,\"w\":9,\"h\":7,\"fill\":\"#17708A\",\"outline\":false,\"label\":\"22\",\"labelColor\":\"#F4F1EA\",\"labelSize\":4.2},{\"type\":\"rect\",\"x\":175.5,\"y\":367,\"w\":9,\"h\":7,\"fill\":\"#17708A\",\"outline\":false,\"label\":\"24\",\"labelColor\":\"#F4F1EA\",\"labelSize\":4.2},{\"type\":\"rect\",\"x\":165.5,\"y\":367,\"w\":9,\"h\":7,\"fill\":\"#17708A\",\"outline\":false,\"label\":\"26\",\"labelColor\":\"#F4F1EA\",\"labelSize\":4.2},{\"type\":\"rect\",\"x\":155.5,\"y\":367,\"w\":9,\"h\":7,\"fill\":\"#17708A\",\"outline\":false,\"label\":\"28\",\"labelColor\":\"#F4F1EA\",\"labelSize\":4.2},{\"type\":\"rect\",\"x\":145.5,\"y\":367,\"w\":9,\"h\":7,\"fill\":\"#17708A\",\"outline\":false,\"label\":\"30\",\"labelColor\":\"#F4F1EA\",\"labelSize\":4.2},{\"type\":\"rect\",\"x\":135.5,\"y\":367,\"w\":9,\"h\":7,\"fill\":\"#17708A\",\"outline\":false,\"label\":\"32\",\"labelColor\":\"#F4F1EA\",\"labelSize\":4.2},{\"type\":\"rect\",\"x\":125.5,\"y\":367,\"w\":9,\"h\":7,\"fill\":\"#17708A\",\"outline\":false,\"label\":\"34\",\"labelColor\":\"#F4F1EA\",\"labelSize\":4.2},{\"type\":\"rect\",\"x\":115.5,\"y\":367,\"w\":9,\"h\":7,\"fill\":\"#17708A\",\"outline\":false,\"label\":\"36\",\"labelColor\":\"#F4F1EA\",\"labelSize\":4.2},{\"type\":\"rect\",\"x\":105.5,\"y\":367,\"w\":9,\"h\":7,\"fill\":\"#17708A\",\"outline\":false,\"label\":\"38\",\"labelColor\":\"#F4F1EA\",\"labelSize\":4.2},{\"type\":\"rect\",\"x\":95.5,\"y\":367,\"w\":9,\"h\":7,\"fill\":\"#17708A\",\"outline\":false,\"label\":\"40\",\"labelColor\":\"#F4F1EA\",\"labelSize\":4.2},{\"type\":\"rect\",\"x\":85.5,\"y\":367,\"w\":9,\"h\":7,\"fill\":\"#17708A\",\"outline\":false,\"label\":\"42\",\"labelColor\":\"#F4F1EA\",\"labelSize\":4.2},{\"type\":\"rect\",\"x\":75.5,\"y\":367,\"w\":9,\"h\":7,\"fill\":\"#17708A\",\"outline\":false,\"label\":\"44\",\"labelColor\":\"#F4F1EA\",\"labelSize\":4.2},{\"type\":\"rect\",\"x\":65.5,\"y\":367,\"w\":9,\"h\":7,\"fill\":\"#17708A\",\"outline\":false,\"label\":\"46\",\"labelColor\":\"#F4F1EA\",\"labelSize\":4.2},{\"type\":\"rect\",\"x\":55.5,\"y\":367,\"w\":9,\"h\":7,\"fill\":\"#17708A\",\"outline\":false,\"label\":\"48\",\"labelColor\":\"#F4F1EA\",\"labelSize\":4.2},{\"type\":\"rect\",\"x\":45.5,\"y\":367,\"w\":9,\"h\":7,\"fill\":\"#17708A\",\"outline\":false,\"label\":\"50\",\"labelColor\":\"#F4F1EA\",\"labelSize\":4.2},{\"type\":\"rect\",\"x\":35.5,\"y\":367,\"w\":9,\"h\":7,\"fill\":\"#17708A\",\"outline\":false,\"label\":\"52\",\"labelColor\":\"#F4F1EA\",\"labelSize\":4.2},{\"type\":\"rect\",\"x\":24.6,\"y\":367,\"w\":10.8,\"h\":7,\"fill\":\"#17708A\",\"outline\":false,\"label\":\"GND\",\"labelColor\":\"#F4F1EA\",\"labelSize\":4.2},{\"type\":\"rect\",\"x\":195.5,\"y\":395,\"w\":9,\"h\":7,\"fill\":\"#17708A\",\"outline\":false,\"label\":\"5V\",\"labelColor\":\"#F4F1EA\",\"labelSize\":4.2},{\"type\":\"rect\",\"x\":185.5,\"y\":395,\"w\":9,\"h\":7,\"fill\":\"#17708A\",\"outline\":false,\"label\":\"23\",\"labelColor\":\"#F4F1EA\",\"labelSize\":4.2},{\"type\":\"rect\",\"x\":175.5,\"y\":395,\"w\":9,\"h\":7,\"fill\":\"#17708A\",\"outline\":false,\"label\":\"25\",\"labelColor\":\"#F4F1EA\",\"labelSize\":4.2},{\"type\":\"rect\",\"x\":165.5,\"y\":395,\"w\":9,\"h\":7,\"fill\":\"#17708A\",\"outline\":false,\"label\":\"27\",\"labelColor\":\"#F4F1EA\",\"labelSize\":4.2},{\"type\":\"rect\",\"x\":155.5,\"y\":395,\"w\":9,\"h\":7,\"fill\":\"#17708A\",\"outline\":false,\"label\":\"29\",\"labelColor\":\"#F4F1EA\",\"labelSize\":4.2},{\"type\":\"rect\",\"x\":145.5,\"y\":395,\"w\":9,\"h\":7,\"fill\":\"#17708A\",\"outline\":false,\"label\":\"31\",\"labelColor\":\"#F4F1EA\",\"labelSize\":4.2},{\"type\":\"rect\",\"x\":135.5,\"y\":395,\"w\":9,\"h\":7,\"fill\":\"#17708A\",\"outline\":false,\"label\":\"33\",\"labelColor\":\"#F4F1EA\",\"labelSize\":4.2},{\"type\":\"rect\",\"x\":125.5,\"y\":395,\"w\":9,\"h\":7,\"fill\":\"#17708A\",\"outline\":false,\"label\":\"35\",\"labelColor\":\"#F4F1EA\",\"labelSize\":4.2},{\"type\":\"rect\",\"x\":115.5,\"y\":395,\"w\":9,\"h\":7,\"fill\":\"#17708A\",\"outline\":false,\"label\":\"37\",\"labelColor\":\"#F4F1EA\",\"labelSize\":4.2},{\"type\":\"rect\",\"x\":105.5,\"y\":395,\"w\":9,\"h\":7,\"fill\":\"#17708A\",\"outline\":false,\"label\":\"39\",\"labelColor\":\"#F4F1EA\",\"labelSize\":4.2},{\"type\":\"rect\",\"x\":95.5,\"y\":395,\"w\":9,\"h\":7,\"fill\":\"#17708A\",\"outline\":false,\"label\":\"41\",\"labelColor\":\"#F4F1EA\",\"labelSize\":4.2},{\"type\":\"rect\",\"x\":85.5,\"y\":395,\"w\":9,\"h\":7,\"fill\":\"#17708A\",\"outline\":false,\"label\":\"43\",\"labelColor\":\"#F4F1EA\",\"labelSize\":4.2},{\"type\":\"rect\",\"x\":75.5,\"y\":395,\"w\":9,\"h\":7,\"fill\":\"#17708A\",\"outline\":false,\"label\":\"45\",\"labelColor\":\"#F4F1EA\",\"labelSize\":4.2},{\"type\":\"rect\",\"x\":65.5,\"y\":395,\"w\":9,\"h\":7,\"fill\":\"#17708A\",\"outline\":false,\"label\":\"47\",\"labelColor\":\"#F4F1EA\",\"labelSize\":4.2},{\"type\":\"rect\",\"x\":55.5,\"y\":395,\"w\":9,\"h\":7,\"fill\":\"#17708A\",\"outline\":false,\"label\":\"49\",\"labelColor\":\"#F4F1EA\",\"labelSize\":4.2},{\"type\":\"rect\",\"x\":45.5,\"y\":395,\"w\":9,\"h\":7,\"fill\":\"#17708A\",\"outline\":false,\"label\":\"51\",\"labelColor\":\"#F4F1EA\",\"labelSize\":4.2},{\"type\":\"rect\",\"x\":35.5,\"y\":395,\"w\":9,\"h\":7,\"fill\":\"#17708A\",\"outline\":false,\"label\":\"53\",\"labelColor\":\"#F4F1EA\",\"labelSize\":4.2},{\"type\":\"rect\",\"x\":24.6,\"y\":395,\"w\":10.8,\"h\":7,\"fill\":\"#17708A\",\"outline\":false,\"label\":\"GND\",\"labelColor\":\"#F4F1EA\",\"labelSize\":4.2}]}"),
+		kicad: {
+			"headers": [
+				{
+					"name": "power header, pin 1 NC",
+					"footprint": "Connector_PinSocket_2.54mm:PinSocket_1x08_P2.54mm_Vertical",
+					"pins": {
+						"NC": "1",
+						"IOREF": "2",
+						"RESET": "3",
+						"3V3": "4",
+						"5V": "5",
+						"GND": "6",
+						"GND 2": "7",
+						"VIN": "8"
+					}
+				},
+				{
+					"name": "analog header, pin 1 A0",
+					"footprint": "Connector_PinSocket_2.54mm:PinSocket_1x08_P2.54mm_Vertical",
+					"pins": {
+						"A0": "1",
+						"A1": "2",
+						"A2": "3",
+						"A3": "4",
+						"A4": "5",
+						"A5": "6",
+						"A6": "7",
+						"A7": "8"
+					}
+				},
+				{
+					"name": "analog header, pin 1 A8",
+					"footprint": "Connector_PinSocket_2.54mm:PinSocket_1x08_P2.54mm_Vertical",
+					"pins": {
+						"A8": "1",
+						"A9": "2",
+						"A10": "3",
+						"A11": "4",
+						"A12": "5",
+						"A13": "6",
+						"A14": "7",
+						"A15": "8"
+					}
+				},
+				{
+					"name": "digital header, pin 1 SCL",
+					"footprint": "Connector_PinSocket_2.54mm:PinSocket_1x10_P2.54mm_Vertical",
+					"pins": {
+						"SCL": "1",
+						"SDA": "2",
+						"AREF": "3",
+						"GND 3": "4",
+						"D13": "5",
+						"D12": "6",
+						"D11": "7",
+						"D10": "8",
+						"D9": "9",
+						"D8": "10"
+					}
+				},
+				{
+					"name": "digital header, pin 1 D7",
+					"footprint": "Connector_PinSocket_2.54mm:PinSocket_1x08_P2.54mm_Vertical",
+					"pins": {
+						"D7": "1",
+						"D6": "2",
+						"D5": "3",
+						"D4": "4",
+						"D3": "5",
+						"D2": "6",
+						"D1": "7",
+						"D0": "8"
+					}
+				},
+				{
+					"name": "communication header, pin 1 D14",
+					"footprint": "Connector_PinSocket_2.54mm:PinSocket_1x08_P2.54mm_Vertical",
+					"pins": {
+						"D14": "1",
+						"D15": "2",
+						"D16": "3",
+						"D17": "4",
+						"D18": "5",
+						"D19": "6",
+						"D20": "7",
+						"D21": "8"
+					}
+				},
+				{
+					"name": "2 x 18 header, even row, pin 1 5V",
+					"footprint": "Connector_PinSocket_2.54mm:PinSocket_1x18_P2.54mm_Vertical",
+					"pins": {
+						"5V 2": "1",
+						"D22": "2",
+						"D24": "3",
+						"D26": "4",
+						"D28": "5",
+						"D30": "6",
+						"D32": "7",
+						"D34": "8",
+						"D36": "9",
+						"D38": "10",
+						"D40": "11",
+						"D42": "12",
+						"D44": "13",
+						"D46": "14",
+						"D48": "15",
+						"D50": "16",
+						"D52": "17",
+						"GND 4": "18"
+					}
+				},
+				{
+					"name": "2 x 18 header, odd row, pin 1 5V",
+					"footprint": "Connector_PinSocket_2.54mm:PinSocket_1x18_P2.54mm_Vertical",
+					"pins": {
+						"5V 3": "1",
+						"D23": "2",
+						"D25": "3",
+						"D27": "4",
+						"D29": "5",
+						"D31": "6",
+						"D33": "7",
+						"D35": "8",
+						"D37": "9",
+						"D39": "10",
+						"D41": "11",
+						"D43": "12",
+						"D45": "13",
+						"D47": "14",
+						"D49": "15",
+						"D51": "16",
+						"D53": "17",
+						"GND 5": "18"
+					}
+				}
+			],
+			"value": "Arduino Mega 2560",
+			"note": "Each header is its own socket strip: place them at the board's real positions."
+		}
+	},
+	"../modules/arduino-micro.json": {
+		format: "circuitoon-module/1",
+		id: "arduino-micro",
+		version: 1,
+		name: "Arduino Micro",
+		category: "Microcontrollers",
+		source: "https://docs.arduino.cc/resources/pinouts/A000053-full-pinout.pdf https://docs.arduino.cc/resources/schematics/A000053-schematics.pdf https://github.com/arduino/docs-content/blob/main/content/hardware/hero/boards/micro/tech-specs.yml",
+		pins: [
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"name": "D13",
+				"side": "left",
+				"type": "io"
+			},
+			{
+				"name": "3V3",
+				"side": "left",
+				"type": "power_out",
+				"supply": "3V3"
+			},
+			{
+				"name": "AREF",
+				"side": "left",
+				"type": "input"
+			},
+			{
+				"name": "A0",
+				"side": "left",
+				"type": "io"
+			},
+			{
+				"name": "A1",
+				"side": "left",
+				"type": "io"
+			},
+			{
+				"name": "A2",
+				"side": "left",
+				"type": "io"
+			},
+			{
+				"name": "A3",
+				"side": "left",
+				"type": "io"
+			},
+			{
+				"name": "A4",
+				"side": "left",
+				"type": "io"
+			},
+			{
+				"name": "A5",
+				"side": "left",
+				"type": "io"
+			},
+			{
+				"name": "NC",
+				"side": "left",
+				"type": "nc"
+			},
+			{
+				"name": "NC 2",
+				"side": "left",
+				"label": "NC",
+				"type": "nc"
+			},
+			{
+				"name": "5V",
+				"side": "left",
+				"type": "power_in",
+				"supply": "5V"
+			},
+			{
+				"name": "RESET",
+				"side": "left",
+				"type": "input"
+			},
+			{
+				"name": "GND",
+				"side": "left",
+				"type": "ground"
+			},
+			{
+				"name": "VIN",
+				"side": "left",
+				"type": "power_in",
+				"supply": "7V/7.4V/9V"
+			},
+			{
+				"name": "D14",
+				"side": "left",
+				"label": "CIPO",
+				"type": "io"
+			},
+			{
+				"name": "D15",
+				"side": "left",
+				"label": "SCK",
+				"type": "io"
+			},
+			{
+				"spacer": true,
+				"side": "right"
+			},
+			{
+				"name": "D12",
+				"side": "right",
+				"type": "io"
+			},
+			{
+				"name": "D11",
+				"side": "right",
+				"type": "io"
+			},
+			{
+				"name": "D10",
+				"side": "right",
+				"type": "io"
+			},
+			{
+				"name": "D9",
+				"side": "right",
+				"type": "io"
+			},
+			{
+				"name": "D8",
+				"side": "right",
+				"type": "io"
+			},
+			{
+				"name": "D7",
+				"side": "right",
+				"type": "io"
+			},
+			{
+				"name": "D6",
+				"side": "right",
+				"type": "io"
+			},
+			{
+				"name": "D5",
+				"side": "right",
+				"type": "io"
+			},
+			{
+				"name": "D4",
+				"side": "right",
+				"type": "io"
+			},
+			{
+				"name": "D3",
+				"side": "right",
+				"label": "D3/SCL",
+				"type": "io"
+			},
+			{
+				"name": "D2",
+				"side": "right",
+				"label": "D2/SDA",
+				"type": "io"
+			},
+			{
+				"name": "GND 2",
+				"side": "right",
+				"label": "GND",
+				"type": "ground"
+			},
+			{
+				"name": "RESET 2",
+				"side": "right",
+				"label": "RESET",
+				"type": "input"
+			},
+			{
+				"name": "D0",
+				"side": "right",
+				"label": "D0/RX",
+				"type": "io"
+			},
+			{
+				"name": "D1",
+				"side": "right",
+				"label": "D1/TX",
+				"type": "io"
+			},
+			{
+				"name": "D17",
+				"side": "right",
+				"label": "SS",
+				"type": "io"
+			},
+			{
+				"name": "D16",
+				"side": "right",
+				"label": "COPI",
+				"type": "io"
+			}
+		],
+		internal: [["GND", "GND 2"], ["RESET", "RESET 2"]],
+		size: {
+			"w": 8,
+			"h": 20
+		},
+		electrical: {
+			"model": "mcu",
+			"params": {},
+			"external": [{
+				"pin": "5V",
+				"volts": 5,
+				"via": "USB"
+			}]
+		},
+		art: {
+			"w": 80,
+			"h": 200,
+			"pinLabels": "inside",
+			"shapes": [
+				{
+					"type": "rect",
+					"x": 0,
+					"y": 0,
+					"w": 80,
+					"h": 200,
+					"fill": "#17708A",
+					"radius": 5
+				},
+				{
+					"type": "rect",
+					"x": 2,
+					"y": 25,
+					"w": 8,
+					"h": 170,
+					"fill": "#E0B43C",
+					"radius": 2,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 4.5,
+					"y": 28.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 4.5,
+					"y": 38.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 4.5,
+					"y": 48.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 4.5,
+					"y": 58.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 4.5,
+					"y": 68.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 4.5,
+					"y": 78.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 4.5,
+					"y": 88.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 4.5,
+					"y": 98.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 4.5,
+					"y": 108.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 4.5,
+					"y": 118.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 4.5,
+					"y": 128.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 4.5,
+					"y": 138.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 4.5,
+					"y": 148.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 4.5,
+					"y": 158.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 4.5,
+					"y": 168.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 4.5,
+					"y": 178.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 4.5,
+					"y": 188.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 70,
+					"y": 25,
+					"w": 8,
+					"h": 170,
+					"fill": "#E0B43C",
+					"radius": 2,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 72.5,
+					"y": 28.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 72.5,
+					"y": 38.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 72.5,
+					"y": 48.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 72.5,
+					"y": 58.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 72.5,
+					"y": 68.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 72.5,
+					"y": 78.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 72.5,
+					"y": 88.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 72.5,
+					"y": 98.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 72.5,
+					"y": 108.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 72.5,
+					"y": 118.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 72.5,
+					"y": 128.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 72.5,
+					"y": 138.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 72.5,
+					"y": 148.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 72.5,
+					"y": 158.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 72.5,
+					"y": 168.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 72.5,
+					"y": 178.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 72.5,
+					"y": 188.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 28,
+					"y": -7,
+					"w": 24,
+					"h": 18,
+					"fill": "#C9CED6",
+					"radius": 2
+				},
+				{
+					"type": "rect",
+					"x": 32,
+					"y": -5,
+					"w": 16,
+					"h": 3,
+					"fill": "#8A9099",
+					"radius": 1,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 26,
+					"y": 70,
+					"w": 28,
+					"h": 28,
+					"fill": "#2B2F36",
+					"radius": 2,
+					"label": "32U4",
+					"labelColor": "#D5DAE1",
+					"labelSize": 6
+				},
+				{
+					"type": "rect",
+					"x": 32,
+					"y": 132,
+					"w": 16,
+					"h": 16,
+					"fill": "#C9CED6",
+					"radius": 2
+				},
+				{
+					"type": "rect",
+					"x": 35,
+					"y": 135,
+					"w": 10,
+					"h": 10,
+					"fill": "#3A3F47",
+					"radius": 5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 28,
+					"y": 120,
+					"w": 5,
+					"h": 4,
+					"fill": "#F4B400",
+					"radius": 1
+				},
+				{
+					"type": "rect",
+					"x": 47,
+					"y": 120,
+					"w": 5,
+					"h": 4,
+					"fill": "#3FB56B",
+					"radius": 1
+				},
+				{
+					"type": "rect",
+					"x": 30,
+					"y": 170,
+					"w": 20,
+					"h": 14,
+					"fill": "#1B1F24",
+					"radius": 1
+				}
+			]
+		},
+		kicad: {
+			"headers": [{
+				"name": "left header, pin 1 D13",
+				"footprint": "Connector_PinSocket_2.54mm:PinSocket_1x17_P2.54mm_Vertical",
+				"pins": {
+					"D13": "1",
+					"3V3": "2",
+					"AREF": "3",
+					"A0": "4",
+					"A1": "5",
+					"A2": "6",
+					"A3": "7",
+					"A4": "8",
+					"A5": "9",
+					"NC": "10",
+					"NC 2": "11",
+					"5V": "12",
+					"RESET": "13",
+					"GND": "14",
+					"VIN": "15",
+					"D14": "16",
+					"D15": "17"
+				}
+			}, {
+				"name": "right header, pin 1 D12",
+				"footprint": "Connector_PinSocket_2.54mm:PinSocket_1x17_P2.54mm_Vertical",
+				"pins": {
+					"D12": "1",
+					"D11": "2",
+					"D10": "3",
+					"D9": "4",
+					"D8": "5",
+					"D7": "6",
+					"D6": "7",
+					"D5": "8",
+					"D4": "9",
+					"D3": "10",
+					"D2": "11",
+					"GND 2": "12",
+					"RESET 2": "13",
+					"D0": "14",
+					"D1": "15",
+					"D17": "16",
+					"D16": "17"
+				}
+			}],
+			"note": "Each header is its own socket strip: place them at the board's real row spacing.",
+			"value": "Arduino Micro"
+		}
+	},
+	"../modules/arduino-nano-33-ble.json": {
+		format: "circuitoon-module/1",
+		id: "arduino-nano-33-ble",
+		version: 1,
+		name: "Arduino Nano 33 BLE / BLE Sense",
+		category: "Microcontrollers",
+		source: "https://docs.arduino.cc/resources/datasheets/ABX00030-datasheet.pdf https://docs.arduino.cc/resources/pinouts/ABX00030-full-pinout.pdf https://docs.arduino.cc/resources/datasheets/ABX00031-datasheet.pdf https://docs.arduino.cc/resources/pinouts/ABX00031-full-pinout.pdf https://gitlab.com/kicad/libraries/kicad-footprints/-/blob/master/Module.pretty/Arduino_Nano.kicad_mod",
+		pins: [
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"name": "D13",
+				"side": "left",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "3V3",
+				"side": "left",
+				"type": "power_out",
+				"supply": "3V3"
+			},
+			{
+				"name": "AREF",
+				"side": "left",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "A0",
+				"side": "left",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "A1",
+				"side": "left",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "A2",
+				"side": "left",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "A3",
+				"side": "left",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "A4",
+				"side": "left",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "A5",
+				"side": "left",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "A6",
+				"side": "left",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "A7",
+				"side": "left",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "5V",
+				"side": "left",
+				"type": "nc",
+				"caps": { "note": "This pin is not connected as shipped; shorting the VUSB jumper on the board puts USB 5 V on it." }
+			},
+			{
+				"name": "RST",
+				"side": "left",
+				"type": "input",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "GND",
+				"side": "left",
+				"type": "ground"
+			},
+			{
+				"name": "VIN",
+				"side": "left",
+				"type": "power_in",
+				"supply": "5V/7V/7.4V/9V/12V"
+			},
+			{
+				"spacer": true,
+				"side": "right"
+			},
+			{
+				"name": "D12",
+				"side": "right",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "D11",
+				"side": "right",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "D10",
+				"side": "right",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "D9",
+				"side": "right",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "D8",
+				"side": "right",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "D7",
+				"side": "right",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "D6",
+				"side": "right",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "D5",
+				"side": "right",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "D4",
+				"side": "right",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "D3",
+				"side": "right",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "D2",
+				"side": "right",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "GND 2",
+				"side": "right",
+				"label": "GND",
+				"type": "ground"
+			},
+			{
+				"name": "RST 2",
+				"side": "right",
+				"label": "RST",
+				"type": "input",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "RX",
+				"side": "right",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "TX",
+				"side": "right",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			}
+		],
+		internal: [["GND", "GND 2"], ["RST", "RST 2"]],
+		size: {
+			"w": 8,
+			"h": 18
+		},
+		electrical: {
+			"model": "mcu",
+			"params": {}
+		},
+		art: {
+			"w": 80,
+			"h": 180,
+			"pinLabels": "inside",
+			"shapes": [
+				{
+					"type": "rect",
+					"x": 0,
+					"y": 0,
+					"w": 80,
+					"h": 180,
+					"fill": "#17708A",
+					"radius": 5
+				},
+				{
+					"type": "rect",
+					"x": 2,
+					"y": 25,
+					"w": 8,
+					"h": 150,
+					"fill": "#E0B43C",
+					"radius": 2,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 4.5,
+					"y": 28.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 4.5,
+					"y": 38.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 4.5,
+					"y": 48.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 4.5,
+					"y": 58.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 4.5,
+					"y": 68.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 4.5,
+					"y": 78.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 4.5,
+					"y": 88.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 4.5,
+					"y": 98.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 4.5,
+					"y": 108.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 4.5,
+					"y": 118.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 4.5,
+					"y": 128.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 4.5,
+					"y": 138.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 4.5,
+					"y": 148.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 4.5,
+					"y": 158.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 4.5,
+					"y": 168.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 70,
+					"y": 25,
+					"w": 8,
+					"h": 150,
+					"fill": "#E0B43C",
+					"radius": 2,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 72.5,
+					"y": 28.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 72.5,
+					"y": 38.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 72.5,
+					"y": 48.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 72.5,
+					"y": 58.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 72.5,
+					"y": 68.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 72.5,
+					"y": 78.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 72.5,
+					"y": 88.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 72.5,
+					"y": 98.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 72.5,
+					"y": 108.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 72.5,
+					"y": 118.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 72.5,
+					"y": 128.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 72.5,
+					"y": 138.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 72.5,
+					"y": 148.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 72.5,
+					"y": 158.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 72.5,
+					"y": 168.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 28,
+					"y": -7,
+					"w": 24,
+					"h": 18,
+					"fill": "#C9CED6",
+					"radius": 2
+				},
+				{
+					"type": "rect",
+					"x": 32,
+					"y": -5,
+					"w": 16,
+					"h": 3,
+					"fill": "#8A9099",
+					"radius": 1,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 32,
+					"y": 24,
+					"w": 16,
+					"h": 16,
+					"fill": "#C9CED6",
+					"radius": 2
+				},
+				{
+					"type": "rect",
+					"x": 35,
+					"y": 27,
+					"w": 10,
+					"h": 10,
+					"fill": "#3A3F47",
+					"radius": 5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 30,
+					"y": 60,
+					"w": 20,
+					"h": 20,
+					"fill": "#2B2F36",
+					"radius": 2
+				},
+				{
+					"type": "rect",
+					"x": 24,
+					"y": 110,
+					"w": 32,
+					"h": 46,
+					"fill": "#D5DAE1",
+					"radius": 2,
+					"label": "NINA",
+					"labelColor": "#2B2F36",
+					"labelSize": 6
+				},
+				{
+					"type": "rect",
+					"x": 24,
+					"y": 156,
+					"w": 32,
+					"h": 12,
+					"fill": "#6E9C3A",
+					"radius": 1
+				}
+			]
+		},
+		kicad: {
+			"footprint": "Module:Arduino_Nano",
+			"pins": {
+				"D13": "16",
+				"3V3": "17",
+				"AREF": "18",
+				"A0": "19",
+				"A1": "20",
+				"A2": "21",
+				"A3": "22",
+				"A4": "23",
+				"A5": "24",
+				"A6": "25",
+				"A7": "26",
+				"5V": "27",
+				"RST": "28",
+				"GND": "29",
+				"VIN": "30",
+				"D12": "15",
+				"D11": "14",
+				"D10": "13",
+				"D9": "12",
+				"D8": "11",
+				"D7": "10",
+				"D6": "9",
+				"D5": "8",
+				"D4": "7",
+				"D3": "6",
+				"D2": "5",
+				"GND 2": "4",
+				"RST 2": "3",
+				"RX": "2",
+				"TX": "1"
+			},
+			"value": "Arduino Nano 33 BLE"
+		}
+	},
+	"../modules/arduino-nano-33-iot.json": {
+		format: "circuitoon-module/1",
+		id: "arduino-nano-33-iot",
+		version: 1,
+		name: "Arduino Nano 33 IoT",
+		category: "Microcontrollers",
+		source: "https://docs.arduino.cc/resources/datasheets/ABX00027-datasheet.pdf https://docs.arduino.cc/resources/pinouts/ABX00027-full-pinout.pdf https://docs.arduino.cc/resources/schematics/ABX00027-schematics.pdf https://gitlab.com/kicad/libraries/kicad-footprints/-/blob/master/Module.pretty/Arduino_Nano.kicad_mod",
+		pins: [
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"name": "D13",
+				"side": "left",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "3V3",
+				"side": "left",
+				"type": "power_out",
+				"supply": "3V3"
+			},
+			{
+				"name": "AREF",
+				"side": "left",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "A0",
+				"side": "left",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "A1",
+				"side": "left",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "A2",
+				"side": "left",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "A3",
+				"side": "left",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "A4",
+				"side": "left",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "A5",
+				"side": "left",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "A6",
+				"side": "left",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "A7",
+				"side": "left",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "5V",
+				"side": "left",
+				"type": "nc",
+				"caps": { "note": "This pin is not connected as shipped; shorting the VUSB jumper on the board puts USB 5 V on it." }
+			},
+			{
+				"name": "RST",
+				"side": "left",
+				"type": "input",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "GND",
+				"side": "left",
+				"type": "ground"
+			},
+			{
+				"name": "VIN",
+				"side": "left",
+				"type": "power_in",
+				"supply": "5V/7V/7.4V/9V/12V"
+			},
+			{
+				"spacer": true,
+				"side": "right"
+			},
+			{
+				"name": "D12",
+				"side": "right",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "D11",
+				"side": "right",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "D10",
+				"side": "right",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "D9",
+				"side": "right",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "D8",
+				"side": "right",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "D7",
+				"side": "right",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "D6",
+				"side": "right",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "D5",
+				"side": "right",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "D4",
+				"side": "right",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "D3",
+				"side": "right",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "D2",
+				"side": "right",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "GND 2",
+				"side": "right",
+				"label": "GND",
+				"type": "ground"
+			},
+			{
+				"name": "RST 2",
+				"side": "right",
+				"label": "RST",
+				"type": "input",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "RX",
+				"side": "right",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "TX",
+				"side": "right",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			}
+		],
+		internal: [["GND", "GND 2"], ["RST", "RST 2"]],
+		size: {
+			"w": 8,
+			"h": 18
+		},
+		electrical: {
+			"model": "mcu",
+			"params": {}
+		},
+		art: {
+			"w": 80,
+			"h": 180,
+			"pinLabels": "inside",
+			"shapes": [
+				{
+					"type": "rect",
+					"x": 0,
+					"y": 0,
+					"w": 80,
+					"h": 180,
+					"fill": "#17708A",
+					"radius": 5
+				},
+				{
+					"type": "rect",
+					"x": 2,
+					"y": 25,
+					"w": 8,
+					"h": 150,
+					"fill": "#E0B43C",
+					"radius": 2,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 4.5,
+					"y": 28.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 4.5,
+					"y": 38.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 4.5,
+					"y": 48.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 4.5,
+					"y": 58.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 4.5,
+					"y": 68.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 4.5,
+					"y": 78.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 4.5,
+					"y": 88.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 4.5,
+					"y": 98.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 4.5,
+					"y": 108.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 4.5,
+					"y": 118.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 4.5,
+					"y": 128.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 4.5,
+					"y": 138.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 4.5,
+					"y": 148.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 4.5,
+					"y": 158.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 4.5,
+					"y": 168.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 70,
+					"y": 25,
+					"w": 8,
+					"h": 150,
+					"fill": "#E0B43C",
+					"radius": 2,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 72.5,
+					"y": 28.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 72.5,
+					"y": 38.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 72.5,
+					"y": 48.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 72.5,
+					"y": 58.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 72.5,
+					"y": 68.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 72.5,
+					"y": 78.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 72.5,
+					"y": 88.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 72.5,
+					"y": 98.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 72.5,
+					"y": 108.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 72.5,
+					"y": 118.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 72.5,
+					"y": 128.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 72.5,
+					"y": 138.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 72.5,
+					"y": 148.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 72.5,
+					"y": 158.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 72.5,
+					"y": 168.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 28,
+					"y": -7,
+					"w": 24,
+					"h": 18,
+					"fill": "#C9CED6",
+					"radius": 2
+				},
+				{
+					"type": "rect",
+					"x": 32,
+					"y": -5,
+					"w": 16,
+					"h": 3,
+					"fill": "#8A9099",
+					"radius": 1,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 32,
+					"y": 24,
+					"w": 16,
+					"h": 16,
+					"fill": "#C9CED6",
+					"radius": 2
+				},
+				{
+					"type": "rect",
+					"x": 35,
+					"y": 27,
+					"w": 10,
+					"h": 10,
+					"fill": "#3A3F47",
+					"radius": 5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 28,
+					"y": 58,
+					"w": 24,
+					"h": 24,
+					"fill": "#2B2F36",
+					"radius": 2,
+					"label": "SAMD21",
+					"labelColor": "#D5DAE1",
+					"labelSize": 4.5
+				},
+				{
+					"type": "rect",
+					"x": 24,
+					"y": 114,
+					"w": 32,
+					"h": 54,
+					"fill": "#D5DAE1",
+					"radius": 2,
+					"label": "NINA",
+					"labelColor": "#2B2F36",
+					"labelSize": 6
+				}
+			]
+		},
+		kicad: {
+			"footprint": "Module:Arduino_Nano",
+			"pins": {
+				"D13": "16",
+				"3V3": "17",
+				"AREF": "18",
+				"A0": "19",
+				"A1": "20",
+				"A2": "21",
+				"A3": "22",
+				"A4": "23",
+				"A5": "24",
+				"A6": "25",
+				"A7": "26",
+				"5V": "27",
+				"RST": "28",
+				"GND": "29",
+				"VIN": "30",
+				"D12": "15",
+				"D11": "14",
+				"D10": "13",
+				"D9": "12",
+				"D8": "11",
+				"D7": "10",
+				"D6": "9",
+				"D5": "8",
+				"D4": "7",
+				"D3": "6",
+				"D2": "5",
+				"GND 2": "4",
+				"RST 2": "3",
+				"RX": "2",
+				"TX": "1"
+			},
+			"value": "Arduino Nano 33 IoT"
+		}
+	},
+	"../modules/arduino-nano-esp32.json": {
+		format: "circuitoon-module/1",
+		id: "arduino-nano-esp32",
+		version: 1,
+		name: "Arduino Nano ESP32",
+		category: "Microcontrollers",
+		source: "https://docs.arduino.cc/resources/datasheets/ABX00083-datasheet.pdf https://docs.arduino.cc/resources/pinouts/ABX00083-full-pinout.pdf https://docs.arduino.cc/resources/schematics/ABX00083-schematics.pdf https://github.com/arduino/docs-content/blob/main/content/hardware/nano/boards/nano-esp32/tutorials/cheat-sheet/cheat-sheet.md https://gitlab.com/kicad/libraries/kicad-symbols/-/blob/master/MCU_Module.kicad_symdir/Arduino_Nano_ESP32.kicad_sym https://gitlab.com/kicad/libraries/kicad-footprints/-/blob/master/Module.pretty/Arduino_Nano.kicad_mod",
+		pins: [
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"name": "D13",
+				"side": "left",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "3V3",
+				"side": "left",
+				"type": "power_out",
+				"supply": "3V3"
+			},
+			{
+				"name": "B0",
+				"side": "left",
+				"type": "io",
+				"caps": {
+					"strapping": "low",
+					"downloadOnly": true,
+					"note": "B0 is GPIO46. GPIO46 high at reset makes uploads in download mode fail; a normal boot is unaffected."
+				}
+			},
+			{
+				"name": "A0",
+				"side": "left",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "A1",
+				"side": "left",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "A2",
+				"side": "left",
+				"type": "io",
+				"caps": {
+					"strapping": "either",
+					"note": "A2 is GPIO3. GPIO3 picks the JTAG source at reset only when an eFuse enables it."
+				}
+			},
+			{
+				"name": "A3",
+				"side": "left",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "A4",
+				"side": "left",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "A5",
+				"side": "left",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "A6",
+				"side": "left",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "A7",
+				"side": "left",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "VBUS",
+				"side": "left",
+				"type": "power_in",
+				"supply": "5V"
+			},
+			{
+				"name": "B1",
+				"side": "left",
+				"type": "io",
+				"caps": {
+					"strapping": "high",
+					"note": "B1 is GPIO0. GPIO0 low at reset starts the download mode instead of your program."
+				}
+			},
+			{
+				"name": "GND",
+				"side": "left",
+				"type": "ground"
+			},
+			{
+				"name": "VIN",
+				"side": "left",
+				"type": "power_in",
+				"supply": "7V/7.4V/9V/12V"
+			},
+			{
+				"spacer": true,
+				"side": "right"
+			},
+			{
+				"name": "D12",
+				"side": "right",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "D11",
+				"side": "right",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "D10",
+				"side": "right",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "D9",
+				"side": "right",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "D8",
+				"side": "right",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "D7",
+				"side": "right",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "D6",
+				"side": "right",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "D5",
+				"side": "right",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "D4",
+				"side": "right",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "D3",
+				"side": "right",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "D2",
+				"side": "right",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "GND 2",
+				"side": "right",
+				"label": "GND",
+				"type": "ground"
+			},
+			{
+				"name": "RST",
+				"side": "right",
+				"type": "input",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "RX0",
+				"side": "right",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "TX0",
+				"side": "right",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			}
+		],
+		internal: [["GND", "GND 2"]],
+		size: {
+			"w": 8,
+			"h": 18
+		},
+		electrical: {
+			"model": "mcu",
+			"params": {},
+			"external": [{
+				"pin": "VBUS",
+				"volts": 5,
+				"via": "USB"
+			}]
+		},
+		art: {
+			"w": 80,
+			"h": 180,
+			"pinLabels": "inside",
+			"shapes": [
+				{
+					"type": "rect",
+					"x": 0,
+					"y": 0,
+					"w": 80,
+					"h": 180,
+					"fill": "#17708A",
+					"radius": 5
+				},
+				{
+					"type": "rect",
+					"x": 2,
+					"y": 25,
+					"w": 8,
+					"h": 150,
+					"fill": "#E0B43C",
+					"radius": 2,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 4.5,
+					"y": 28.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 4.5,
+					"y": 38.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 4.5,
+					"y": 48.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 4.5,
+					"y": 58.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 4.5,
+					"y": 68.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 4.5,
+					"y": 78.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 4.5,
+					"y": 88.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 4.5,
+					"y": 98.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 4.5,
+					"y": 108.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 4.5,
+					"y": 118.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 4.5,
+					"y": 128.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 4.5,
+					"y": 138.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 4.5,
+					"y": 148.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 4.5,
+					"y": 158.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 4.5,
+					"y": 168.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 70,
+					"y": 25,
+					"w": 8,
+					"h": 150,
+					"fill": "#E0B43C",
+					"radius": 2,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 72.5,
+					"y": 28.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 72.5,
+					"y": 38.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 72.5,
+					"y": 48.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 72.5,
+					"y": 58.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 72.5,
+					"y": 68.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 72.5,
+					"y": 78.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 72.5,
+					"y": 88.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 72.5,
+					"y": 98.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 72.5,
+					"y": 108.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 72.5,
+					"y": 118.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 72.5,
+					"y": 128.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 72.5,
+					"y": 138.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 72.5,
+					"y": 148.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 72.5,
+					"y": 158.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 72.5,
+					"y": 168.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 27,
+					"y": -8,
+					"w": 26,
+					"h": 22,
+					"fill": "#C9CED6",
+					"radius": 5
+				},
+				{
+					"type": "rect",
+					"x": 32,
+					"y": -4,
+					"w": 16,
+					"h": 4,
+					"fill": "#8A9099",
+					"radius": 2,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 32,
+					"y": 24,
+					"w": 16,
+					"h": 16,
+					"fill": "#C9CED6",
+					"radius": 2
+				},
+				{
+					"type": "rect",
+					"x": 35,
+					"y": 27,
+					"w": 10,
+					"h": 10,
+					"fill": "#3A3F47",
+					"radius": 5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 28,
+					"y": 56,
+					"w": 24,
+					"h": 24,
+					"fill": "#2B2F36",
+					"radius": 2
+				},
+				{
+					"type": "rect",
+					"x": 24,
+					"y": 110,
+					"w": 32,
+					"h": 48,
+					"fill": "#D5DAE1",
+					"radius": 2,
+					"label": "NORA",
+					"labelColor": "#2B2F36",
+					"labelSize": 6
+				},
+				{
+					"type": "rect",
+					"x": 24,
+					"y": 158,
+					"w": 32,
+					"h": 10,
+					"fill": "#6E9C3A",
+					"radius": 1
+				}
+			]
+		},
+		kicad: {
+			"symbol": "MCU_Module:Arduino_Nano_ESP32",
+			"footprint": "Module:Arduino_Nano",
+			"pins": {
+				"D13": "16",
+				"3V3": "17",
+				"B0": "18",
+				"A0": "19",
+				"A1": "20",
+				"A2": "21",
+				"A3": "22",
+				"A4": "23",
+				"A5": "24",
+				"A6": "25",
+				"A7": "26",
+				"VBUS": "27",
+				"B1": "28",
+				"GND": "29",
+				"VIN": "30",
+				"D12": "15",
+				"D11": "14",
+				"D10": "13",
+				"D9": "12",
+				"D8": "11",
+				"D7": "10",
+				"D6": "9",
+				"D5": "8",
+				"D4": "7",
+				"D3": "6",
+				"D2": "5",
+				"GND 2": "4",
+				"RST": "3",
+				"RX0": "2",
+				"TX0": "1"
+			},
+			"value": "Arduino Nano ESP32"
+		}
+	},
+	"../modules/arduino-nano-every.json": {
+		format: "circuitoon-module/1",
+		id: "arduino-nano-every",
+		version: 1,
+		name: "Arduino Nano Every",
+		category: "Microcontrollers",
+		source: "https://docs.arduino.cc/resources/datasheets/ABX00028-datasheet.pdf https://docs.arduino.cc/resources/pinouts/ABX00028-full-pinout.pdf https://docs.arduino.cc/resources/schematics/ABX00028-schematics.pdf https://gitlab.com/kicad/libraries/kicad-symbols/-/blob/master/MCU_Module.kicad_symdir/Arduino_Nano_Every.kicad_sym https://gitlab.com/kicad/libraries/kicad-footprints/-/blob/master/Module.pretty/Arduino_Nano.kicad_mod",
+		pins: [
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"name": "D13",
+				"side": "left",
+				"type": "io"
+			},
+			{
+				"name": "3V3",
+				"side": "left",
+				"type": "power_out",
+				"supply": "3V3"
+			},
+			{
+				"name": "AREF",
+				"side": "left",
+				"type": "io"
+			},
+			{
+				"name": "A0",
+				"side": "left",
+				"type": "io"
+			},
+			{
+				"name": "A1",
+				"side": "left",
+				"type": "io"
+			},
+			{
+				"name": "A2",
+				"side": "left",
+				"type": "io"
+			},
+			{
+				"name": "A3",
+				"side": "left",
+				"type": "io"
+			},
+			{
+				"name": "A4",
+				"side": "left",
+				"type": "io"
+			},
+			{
+				"name": "A5",
+				"side": "left",
+				"type": "io"
+			},
+			{
+				"name": "A6",
+				"side": "left",
+				"type": "io"
+			},
+			{
+				"name": "A7",
+				"side": "left",
+				"type": "io"
+			},
+			{
+				"name": "5V",
+				"side": "left",
+				"type": "power_in",
+				"supply": "5V"
+			},
+			{
+				"name": "RST",
+				"side": "left",
+				"type": "input"
+			},
+			{
+				"name": "GND",
+				"side": "left",
+				"type": "ground"
+			},
+			{
+				"name": "VIN",
+				"side": "left",
+				"type": "power_in",
+				"supply": "7V/7.4V/9V/12V"
+			},
+			{
+				"spacer": true,
+				"side": "right"
+			},
+			{
+				"name": "D12",
+				"side": "right",
+				"type": "io"
+			},
+			{
+				"name": "D11",
+				"side": "right",
+				"type": "io"
+			},
+			{
+				"name": "D10",
+				"side": "right",
+				"type": "io"
+			},
+			{
+				"name": "D9",
+				"side": "right",
+				"type": "io"
+			},
+			{
+				"name": "D8",
+				"side": "right",
+				"type": "io"
+			},
+			{
+				"name": "D7",
+				"side": "right",
+				"type": "io"
+			},
+			{
+				"name": "D6",
+				"side": "right",
+				"type": "io"
+			},
+			{
+				"name": "D5",
+				"side": "right",
+				"type": "io"
+			},
+			{
+				"name": "D4",
+				"side": "right",
+				"type": "io"
+			},
+			{
+				"name": "D3",
+				"side": "right",
+				"type": "io"
+			},
+			{
+				"name": "D2",
+				"side": "right",
+				"type": "io"
+			},
+			{
+				"name": "GND 2",
+				"side": "right",
+				"label": "GND",
+				"type": "ground"
+			},
+			{
+				"name": "RST 2",
+				"side": "right",
+				"label": "RST",
+				"type": "input"
+			},
+			{
+				"name": "RX",
+				"side": "right",
+				"type": "io"
+			},
+			{
+				"name": "TX",
+				"side": "right",
+				"type": "io"
+			}
+		],
+		internal: [["GND", "GND 2"], ["RST", "RST 2"]],
+		size: {
+			"w": 8,
+			"h": 18
+		},
+		electrical: {
+			"model": "mcu",
+			"params": {},
+			"external": [{
+				"pin": "5V",
+				"volts": 5,
+				"via": "USB",
+				"diode": true
+			}]
+		},
+		art: {
+			"w": 80,
+			"h": 180,
+			"pinLabels": "inside",
+			"shapes": [
+				{
+					"type": "rect",
+					"x": 0,
+					"y": 0,
+					"w": 80,
+					"h": 180,
+					"fill": "#17708A",
+					"radius": 5
+				},
+				{
+					"type": "rect",
+					"x": 2,
+					"y": 25,
+					"w": 8,
+					"h": 150,
+					"fill": "#E0B43C",
+					"radius": 2,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 4.5,
+					"y": 28.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 4.5,
+					"y": 38.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 4.5,
+					"y": 48.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 4.5,
+					"y": 58.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 4.5,
+					"y": 68.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 4.5,
+					"y": 78.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 4.5,
+					"y": 88.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 4.5,
+					"y": 98.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 4.5,
+					"y": 108.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 4.5,
+					"y": 118.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 4.5,
+					"y": 128.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 4.5,
+					"y": 138.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 4.5,
+					"y": 148.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 4.5,
+					"y": 158.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 4.5,
+					"y": 168.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 70,
+					"y": 25,
+					"w": 8,
+					"h": 150,
+					"fill": "#E0B43C",
+					"radius": 2,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 72.5,
+					"y": 28.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 72.5,
+					"y": 38.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 72.5,
+					"y": 48.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 72.5,
+					"y": 58.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 72.5,
+					"y": 68.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 72.5,
+					"y": 78.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 72.5,
+					"y": 88.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 72.5,
+					"y": 98.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 72.5,
+					"y": 108.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 72.5,
+					"y": 118.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 72.5,
+					"y": 128.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 72.5,
+					"y": 138.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 72.5,
+					"y": 148.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 72.5,
+					"y": 158.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 72.5,
+					"y": 168.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 28,
+					"y": -7,
+					"w": 24,
+					"h": 18,
+					"fill": "#C9CED6",
+					"radius": 2
+				},
+				{
+					"type": "rect",
+					"x": 32,
+					"y": -5,
+					"w": 16,
+					"h": 3,
+					"fill": "#8A9099",
+					"radius": 1,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 32,
+					"y": 24,
+					"w": 16,
+					"h": 16,
+					"fill": "#C9CED6",
+					"radius": 2
+				},
+				{
+					"type": "rect",
+					"x": 35,
+					"y": 27,
+					"w": 10,
+					"h": 10,
+					"fill": "#3A3F47",
+					"radius": 5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 27,
+					"y": 60,
+					"w": 26,
+					"h": 26,
+					"fill": "#2B2F36",
+					"radius": 2,
+					"label": "4809",
+					"labelColor": "#D5DAE1",
+					"labelSize": 6
+				},
+				{
+					"type": "rect",
+					"x": 31,
+					"y": 100,
+					"w": 18,
+					"h": 18,
+					"fill": "#2B2F36",
+					"radius": 2
+				},
+				{
+					"type": "rect",
+					"x": 28,
+					"y": 132,
+					"w": 5,
+					"h": 4,
+					"fill": "#F4B400",
+					"radius": 1
+				},
+				{
+					"type": "rect",
+					"x": 47,
+					"y": 132,
+					"w": 5,
+					"h": 4,
+					"fill": "#3FB56B",
+					"radius": 1
+				}
+			]
+		},
+		kicad: {
+			"symbol": "MCU_Module:Arduino_Nano_Every",
+			"footprint": "Module:Arduino_Nano",
+			"pins": {
+				"D13": "16",
+				"3V3": "17",
+				"AREF": "18",
+				"A0": "19",
+				"A1": "20",
+				"A2": "21",
+				"A3": "22",
+				"A4": "23",
+				"A5": "24",
+				"A6": "25",
+				"A7": "26",
+				"5V": "27",
+				"RST": "28",
+				"GND": "29",
+				"VIN": "30",
+				"D12": "15",
+				"D11": "14",
+				"D10": "13",
+				"D9": "12",
+				"D8": "11",
+				"D7": "10",
+				"D6": "9",
+				"D5": "8",
+				"D4": "7",
+				"D3": "6",
+				"D2": "5",
+				"GND 2": "4",
+				"RST 2": "3",
+				"RX": "2",
+				"TX": "1"
+			},
+			"value": "Arduino Nano Every"
+		}
+	},
+	"../modules/arduino-nano-rp2040-connect.json": {
+		format: "circuitoon-module/1",
+		id: "arduino-nano-rp2040-connect",
+		version: 1,
+		name: "Arduino Nano RP2040 Connect",
+		category: "Microcontrollers",
+		source: "https://docs.arduino.cc/resources/datasheets/ABX00053-datasheet.pdf https://docs.arduino.cc/resources/pinouts/ABX00053-full-pinout.pdf https://docs.arduino.cc/resources/schematics/ABX00053-schematics.pdf https://github.com/arduino/docs-content/blob/main/content/hardware/nano/boards/nano-rp2040-connect/tutorials/rp2040-01-technical-reference/rp2040-01-technical-reference.md https://gitlab.com/kicad/libraries/kicad-symbols/-/blob/master/MCU_Module.kicad_symdir/Arduino_Nano_RP2040_Connect.kicad_sym https://gitlab.com/kicad/libraries/kicad-footprints/-/blob/master/Module.pretty/Arduino_Nano.kicad_mod",
+		pins: [
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"name": "D13",
+				"side": "left",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "3V3",
+				"side": "left",
+				"type": "power_out",
+				"supply": "3V3"
+			},
+			{
+				"name": "AREF",
+				"side": "left",
+				"label": "REF",
+				"type": "nc",
+				"caps": { "note": "REF is not connected on this board: the analog reference is fixed at 3.3 V." }
+			},
+			{
+				"name": "A0",
+				"side": "left",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "A1",
+				"side": "left",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "A2",
+				"side": "left",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "A3",
+				"side": "left",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "A4",
+				"side": "left",
+				"type": "io",
+				"caps": { "note": "A4 is the board's I2C SDA, pulled up to 3.3 V with 4.7 kΩ and shared with the onboard chips: use it for I2C only." }
+			},
+			{
+				"name": "A5",
+				"side": "left",
+				"type": "io",
+				"caps": { "note": "A5 is the board's I2C SCL, pulled up to 3.3 V with 4.7 kΩ and shared with the onboard chips: use it for I2C only." }
+			},
+			{
+				"name": "A6",
+				"side": "left",
+				"type": "input",
+				"caps": {
+					"inputOnly": true,
+					"note": "A6 is read by the Wi-Fi module's ADC: use it as an analog input only."
+				}
+			},
+			{
+				"name": "A7",
+				"side": "left",
+				"type": "input",
+				"caps": {
+					"inputOnly": true,
+					"note": "A7 is read by the Wi-Fi module's ADC: use it as an analog input only."
+				}
+			},
+			{
+				"name": "5V",
+				"side": "left",
+				"type": "nc",
+				"caps": { "note": "This pin is not connected as shipped; shorting the VUSB pads on the board puts USB 5 V on it." }
+			},
+			{
+				"name": "REC",
+				"side": "left",
+				"type": "input",
+				"caps": {
+					"strapping": "high",
+					"note": "REC is the RP2040's BOOTSEL line: low at reset starts the USB bootloader instead of your sketch."
+				}
+			},
+			{
+				"name": "GND",
+				"side": "left",
+				"type": "ground"
+			},
+			{
+				"name": "VIN",
+				"side": "left",
+				"type": "power_in",
+				"supply": "5V/7V/7.4V/9V/12V"
+			},
+			{
+				"spacer": true,
+				"side": "right"
+			},
+			{
+				"name": "D12",
+				"side": "right",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "D11",
+				"side": "right",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "D10",
+				"side": "right",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "D9",
+				"side": "right",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "D8",
+				"side": "right",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "D7",
+				"side": "right",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "D6",
+				"side": "right",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "D5",
+				"side": "right",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "D4",
+				"side": "right",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "D3",
+				"side": "right",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "D2",
+				"side": "right",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "GND 2",
+				"side": "right",
+				"label": "GND",
+				"type": "ground"
+			},
+			{
+				"name": "RST",
+				"side": "right",
+				"type": "input",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "RX",
+				"side": "right",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "TX",
+				"side": "right",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			}
+		],
+		internal: [["GND", "GND 2"]],
+		size: {
+			"w": 8,
+			"h": 18
+		},
+		electrical: {
+			"model": "mcu",
+			"params": {}
+		},
+		art: {
+			"w": 80,
+			"h": 180,
+			"pinLabels": "inside",
+			"shapes": [
+				{
+					"type": "rect",
+					"x": 0,
+					"y": 0,
+					"w": 80,
+					"h": 180,
+					"fill": "#17708A",
+					"radius": 5
+				},
+				{
+					"type": "rect",
+					"x": 2,
+					"y": 25,
+					"w": 8,
+					"h": 150,
+					"fill": "#E0B43C",
+					"radius": 2,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 4.5,
+					"y": 28.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 4.5,
+					"y": 38.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 4.5,
+					"y": 48.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 4.5,
+					"y": 58.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 4.5,
+					"y": 68.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 4.5,
+					"y": 78.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 4.5,
+					"y": 88.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 4.5,
+					"y": 98.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 4.5,
+					"y": 108.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 4.5,
+					"y": 118.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 4.5,
+					"y": 128.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 4.5,
+					"y": 138.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 4.5,
+					"y": 148.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 4.5,
+					"y": 158.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 4.5,
+					"y": 168.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 70,
+					"y": 25,
+					"w": 8,
+					"h": 150,
+					"fill": "#E0B43C",
+					"radius": 2,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 72.5,
+					"y": 28.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 72.5,
+					"y": 38.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 72.5,
+					"y": 48.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 72.5,
+					"y": 58.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 72.5,
+					"y": 68.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 72.5,
+					"y": 78.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 72.5,
+					"y": 88.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 72.5,
+					"y": 98.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 72.5,
+					"y": 108.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 72.5,
+					"y": 118.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 72.5,
+					"y": 128.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 72.5,
+					"y": 138.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 72.5,
+					"y": 148.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 72.5,
+					"y": 158.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 72.5,
+					"y": 168.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 28,
+					"y": -7,
+					"w": 24,
+					"h": 18,
+					"fill": "#C9CED6",
+					"radius": 2
+				},
+				{
+					"type": "rect",
+					"x": 32,
+					"y": -5,
+					"w": 16,
+					"h": 3,
+					"fill": "#8A9099",
+					"radius": 1,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 32,
+					"y": 24,
+					"w": 16,
+					"h": 16,
+					"fill": "#C9CED6",
+					"radius": 2
+				},
+				{
+					"type": "rect",
+					"x": 35,
+					"y": 27,
+					"w": 10,
+					"h": 10,
+					"fill": "#3A3F47",
+					"radius": 5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 27,
+					"y": 56,
+					"w": 26,
+					"h": 26,
+					"fill": "#2B2F36",
+					"radius": 2,
+					"label": "RP2040",
+					"labelColor": "#D5DAE1",
+					"labelSize": 4.5
+				},
+				{
+					"type": "rect",
+					"x": 24,
+					"y": 114,
+					"w": 32,
+					"h": 54,
+					"fill": "#D5DAE1",
+					"radius": 2,
+					"label": "NINA",
+					"labelColor": "#2B2F36",
+					"labelSize": 6
+				}
+			]
+		},
+		kicad: {
+			"symbol": "MCU_Module:Arduino_Nano_RP2040_Connect",
+			"footprint": "Module:Arduino_Nano",
+			"pins": {
+				"D13": "16",
+				"3V3": "17",
+				"AREF": "18",
+				"A0": "19",
+				"A1": "20",
+				"A2": "21",
+				"A3": "22",
+				"A4": "23",
+				"A5": "24",
+				"A6": "25",
+				"A7": "26",
+				"5V": "27",
+				"REC": "28",
+				"GND": "29",
+				"VIN": "30",
+				"D12": "15",
+				"D11": "14",
+				"D10": "13",
+				"D9": "12",
+				"D8": "11",
+				"D7": "10",
+				"D6": "9",
+				"D5": "8",
+				"D4": "7",
+				"D3": "6",
+				"D2": "5",
+				"GND 2": "4",
+				"RST": "3",
+				"RX": "2",
+				"TX": "1"
+			},
+			"value": "Arduino Nano RP2040 Connect"
+		}
+	},
 	"../modules/arduino-nano.json": {
 		format: "circuitoon-module/1",
 		id: "arduino-nano",
@@ -6992,6 +13309,4634 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 				"TX1": "1"
 			},
 			"value": "Arduino Nano"
+		}
+	},
+	"../modules/arduino-pro-mini-3v3.json": {
+		format: "circuitoon-module/1",
+		id: "arduino-pro-mini-3v3",
+		version: 1,
+		name: "Arduino Pro Mini 3.3V / 8MHz",
+		category: "Microcontrollers",
+		source: "https://cdn.sparkfun.com/assets/learn_tutorials/1/0/4/Graphical_Datasheet_Arduino_ProMini-3_3V_8MHzV2.png https://cdn.sparkfun.com/datasheets/Dev/Arduino/Boards/Arduino-Pro-Mini-v14.zip https://cdn.sparkfun.com/datasheets/Dev/Arduino/Boards/Arduino-Pro-Mini-v14.pdf https://learn.sparkfun.com/tutorials/using-the-arduino-pro-mini-33v/all https://docs.arduino.cc/retired/boards/arduino-pro-mini/",
+		pins: [
+			{
+				"name": "GND 3",
+				"side": "top",
+				"label": "BLK",
+				"type": "ground"
+			},
+			{
+				"name": "GND 4",
+				"side": "top",
+				"label": "GND",
+				"type": "ground"
+			},
+			{
+				"name": "VCC 2",
+				"side": "top",
+				"label": "VCC",
+				"type": "power_out",
+				"supply": "3V3"
+			},
+			{
+				"name": "RXI 2",
+				"side": "top",
+				"label": "RXI",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "TXO 2",
+				"side": "top",
+				"label": "TXO",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "DTR",
+				"side": "top",
+				"label": "GRN",
+				"type": "input",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"name": "TXO",
+				"side": "left",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "RXI",
+				"side": "left",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "RST",
+				"side": "left",
+				"type": "input",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "GND",
+				"side": "left",
+				"type": "ground"
+			},
+			{
+				"name": "D2",
+				"side": "left",
+				"label": "2",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "D3",
+				"side": "left",
+				"label": "3",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "D4",
+				"side": "left",
+				"label": "4",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "D5",
+				"side": "left",
+				"label": "5",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "D6",
+				"side": "left",
+				"label": "6",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "D7",
+				"side": "left",
+				"label": "7",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "D8",
+				"side": "left",
+				"label": "8",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "D9",
+				"side": "left",
+				"label": "9",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"spacer": true,
+				"side": "right"
+			},
+			{
+				"name": "RAW",
+				"side": "right",
+				"type": "power_in",
+				"supply": "3.7V/5V/7.4V/9V/12V"
+			},
+			{
+				"name": "GND 2",
+				"side": "right",
+				"label": "GND",
+				"type": "ground"
+			},
+			{
+				"name": "RST 2",
+				"side": "right",
+				"label": "RST",
+				"type": "input",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "VCC",
+				"side": "right",
+				"type": "power_out",
+				"supply": "3V3"
+			},
+			{
+				"name": "A3",
+				"side": "right",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "A2",
+				"side": "right",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "A1",
+				"side": "right",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "A0",
+				"side": "right",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "D13",
+				"side": "right",
+				"label": "13",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "D12",
+				"side": "right",
+				"label": "12",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "D11",
+				"side": "right",
+				"label": "11",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "D10",
+				"side": "right",
+				"label": "10",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			}
+		],
+		internal: [
+			[
+				"GND",
+				"GND 2",
+				"GND 3",
+				"GND 4"
+			],
+			["RST", "RST 2"],
+			["VCC", "VCC 2"],
+			["TXO", "TXO 2"],
+			["RXI", "RXI 2"]
+		],
+		size: {
+			"w": 8,
+			"h": 15
+		},
+		holes: [
+			{
+				"name": "A4",
+				"at": [[50, 70]],
+				"holeStyle": "pad",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "A5",
+				"at": [[50, 60]],
+				"holeStyle": "pad",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "A6",
+				"at": [[50, 120]],
+				"holeStyle": "pad",
+				"type": "input",
+				"caps": {
+					"inputOnly": true,
+					"noPullup": true,
+					"note": "A6 goes only to the ADC: read it with analogRead."
+				}
+			},
+			{
+				"name": "A7",
+				"at": [[50, 110]],
+				"holeStyle": "pad",
+				"type": "input",
+				"caps": {
+					"inputOnly": true,
+					"noPullup": true,
+					"note": "A7 goes only to the ADC: read it with analogRead."
+				}
+			}
+		],
+		electrical: {
+			"model": "mcu",
+			"params": {}
+		},
+		art: {
+			"w": 80,
+			"h": 150,
+			"pinLabels": "inside",
+			"shapes": [
+				{
+					"type": "rect",
+					"x": 0,
+					"y": 0,
+					"w": 80,
+					"h": 150,
+					"fill": "#1E4F8A",
+					"radius": 5
+				},
+				{
+					"type": "rect",
+					"x": 2,
+					"y": 25,
+					"w": 8,
+					"h": 120,
+					"fill": "#E0B43C",
+					"radius": 2,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 4.5,
+					"y": 28.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 4.5,
+					"y": 38.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 4.5,
+					"y": 48.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 4.5,
+					"y": 58.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 4.5,
+					"y": 68.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 4.5,
+					"y": 78.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 4.5,
+					"y": 88.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 4.5,
+					"y": 98.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 4.5,
+					"y": 108.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 4.5,
+					"y": 118.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 4.5,
+					"y": 128.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 4.5,
+					"y": 138.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 70,
+					"y": 25,
+					"w": 8,
+					"h": 120,
+					"fill": "#E0B43C",
+					"radius": 2,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 72.5,
+					"y": 28.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 72.5,
+					"y": 38.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 72.5,
+					"y": 48.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 72.5,
+					"y": 58.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 72.5,
+					"y": 68.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 72.5,
+					"y": 78.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 72.5,
+					"y": 88.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 72.5,
+					"y": 98.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 72.5,
+					"y": 108.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 72.5,
+					"y": 118.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 72.5,
+					"y": 128.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 72.5,
+					"y": 138.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 27,
+					"y": 70,
+					"w": 26,
+					"h": 26,
+					"fill": "#2B2F36",
+					"radius": 2,
+					"label": "328P",
+					"labelColor": "#D5DAE1",
+					"labelSize": 5.5
+				},
+				{
+					"type": "rect",
+					"x": 27,
+					"y": 128,
+					"w": 16,
+					"h": 16,
+					"fill": "#C9CED6",
+					"radius": 2
+				},
+				{
+					"type": "rect",
+					"x": 30,
+					"y": 131,
+					"w": 10,
+					"h": 10,
+					"fill": "#3A3F47",
+					"radius": 5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 26,
+					"y": 56,
+					"w": 18,
+					"h": 8,
+					"fill": "#1E4F8A",
+					"outline": false,
+					"label": "A5",
+					"labelColor": "#F4F1EA",
+					"labelSize": 5.5
+				},
+				{
+					"type": "rect",
+					"x": 26,
+					"y": 66,
+					"w": 18,
+					"h": 8,
+					"fill": "#1E4F8A",
+					"outline": false,
+					"label": "A4",
+					"labelColor": "#F4F1EA",
+					"labelSize": 5.5
+				},
+				{
+					"type": "rect",
+					"x": 26,
+					"y": 106,
+					"w": 18,
+					"h": 8,
+					"fill": "#1E4F8A",
+					"outline": false,
+					"label": "A7",
+					"labelColor": "#F4F1EA",
+					"labelSize": 5.5
+				},
+				{
+					"type": "rect",
+					"x": 26,
+					"y": 116,
+					"w": 18,
+					"h": 8,
+					"fill": "#1E4F8A",
+					"outline": false,
+					"label": "A6",
+					"labelColor": "#F4F1EA",
+					"labelSize": 5.5
+				}
+			]
+		},
+		kicad: {
+			"headers": [
+				{
+					"name": "left header, pin 1 TXO",
+					"footprint": "Connector_PinSocket_2.54mm:PinSocket_1x12_P2.54mm_Vertical",
+					"pins": {
+						"TXO": "1",
+						"RXI": "2",
+						"RST": "3",
+						"GND": "4",
+						"D2": "5",
+						"D3": "6",
+						"D4": "7",
+						"D5": "8",
+						"D6": "9",
+						"D7": "10",
+						"D8": "11",
+						"D9": "12"
+					}
+				},
+				{
+					"name": "right header, pin 1 RAW",
+					"footprint": "Connector_PinSocket_2.54mm:PinSocket_1x12_P2.54mm_Vertical",
+					"pins": {
+						"RAW": "1",
+						"GND 2": "2",
+						"RST 2": "3",
+						"VCC": "4",
+						"A3": "5",
+						"A2": "6",
+						"A1": "7",
+						"A0": "8",
+						"D13": "9",
+						"D12": "10",
+						"D11": "11",
+						"D10": "12"
+					}
+				},
+				{
+					"name": "programming header, pin 1 BLK",
+					"footprint": "Connector_PinSocket_2.54mm:PinSocket_1x06_P2.54mm_Vertical",
+					"pins": {
+						"GND 3": "1",
+						"GND 4": "2",
+						"VCC 2": "3",
+						"RXI 2": "4",
+						"TXO 2": "5",
+						"DTR": "6"
+					}
+				},
+				{
+					"name": "A4 A5 pads",
+					"footprint": "Connector_PinSocket_2.54mm:PinSocket_1x02_P2.54mm_Vertical",
+					"pins": {
+						"A4": "1",
+						"A5": "2"
+					}
+				},
+				{
+					"name": "A6 A7 pads",
+					"footprint": "Connector_PinSocket_2.54mm:PinSocket_1x02_P2.54mm_Vertical",
+					"pins": {
+						"A6": "1",
+						"A7": "2"
+					}
+				}
+			],
+			"value": "Arduino Pro Mini 3.3V",
+			"note": "Each header is its own socket strip: place them at the board's real positions."
+		}
+	},
+	"../modules/arduino-pro-mini-5v.json": {
+		format: "circuitoon-module/1",
+		id: "arduino-pro-mini-5v",
+		version: 1,
+		name: "Arduino Pro Mini 5V / 16MHz",
+		category: "Microcontrollers",
+		source: "https://cdn.sparkfun.com/assets/learn_tutorials/1/0/4/Graphical_Datasheet_Arduino_ProMini-5V_16MHzV2.png https://cdn.sparkfun.com/datasheets/Dev/Arduino/Boards/Arduino-Pro-Mini-v14.zip https://cdn.sparkfun.com/datasheets/Dev/Arduino/Boards/Arduino-Pro-Mini-v14.pdf https://learn.sparkfun.com/tutorials/using-the-arduino-pro-mini-33v/all https://docs.arduino.cc/retired/boards/arduino-pro-mini/",
+		pins: [
+			{
+				"name": "GND 3",
+				"side": "top",
+				"label": "BLK",
+				"type": "ground"
+			},
+			{
+				"name": "GND 4",
+				"side": "top",
+				"label": "GND",
+				"type": "ground"
+			},
+			{
+				"name": "VCC 2",
+				"side": "top",
+				"label": "VCC",
+				"type": "power_out",
+				"supply": "5V"
+			},
+			{
+				"name": "RXI 2",
+				"side": "top",
+				"label": "RXI",
+				"type": "io"
+			},
+			{
+				"name": "TXO 2",
+				"side": "top",
+				"label": "TXO",
+				"type": "io"
+			},
+			{
+				"name": "DTR",
+				"side": "top",
+				"label": "GRN",
+				"type": "input"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"name": "TXO",
+				"side": "left",
+				"type": "io"
+			},
+			{
+				"name": "RXI",
+				"side": "left",
+				"type": "io"
+			},
+			{
+				"name": "RST",
+				"side": "left",
+				"type": "input"
+			},
+			{
+				"name": "GND",
+				"side": "left",
+				"type": "ground"
+			},
+			{
+				"name": "D2",
+				"side": "left",
+				"label": "2",
+				"type": "io"
+			},
+			{
+				"name": "D3",
+				"side": "left",
+				"label": "3",
+				"type": "io"
+			},
+			{
+				"name": "D4",
+				"side": "left",
+				"label": "4",
+				"type": "io"
+			},
+			{
+				"name": "D5",
+				"side": "left",
+				"label": "5",
+				"type": "io"
+			},
+			{
+				"name": "D6",
+				"side": "left",
+				"label": "6",
+				"type": "io"
+			},
+			{
+				"name": "D7",
+				"side": "left",
+				"label": "7",
+				"type": "io"
+			},
+			{
+				"name": "D8",
+				"side": "left",
+				"label": "8",
+				"type": "io"
+			},
+			{
+				"name": "D9",
+				"side": "left",
+				"label": "9",
+				"type": "io"
+			},
+			{
+				"spacer": true,
+				"side": "right"
+			},
+			{
+				"name": "RAW",
+				"side": "right",
+				"type": "power_in",
+				"supply": "7V/7.4V/9V/12V"
+			},
+			{
+				"name": "GND 2",
+				"side": "right",
+				"label": "GND",
+				"type": "ground"
+			},
+			{
+				"name": "RST 2",
+				"side": "right",
+				"label": "RST",
+				"type": "input"
+			},
+			{
+				"name": "VCC",
+				"side": "right",
+				"type": "power_out",
+				"supply": "5V"
+			},
+			{
+				"name": "A3",
+				"side": "right",
+				"type": "io"
+			},
+			{
+				"name": "A2",
+				"side": "right",
+				"type": "io"
+			},
+			{
+				"name": "A1",
+				"side": "right",
+				"type": "io"
+			},
+			{
+				"name": "A0",
+				"side": "right",
+				"type": "io"
+			},
+			{
+				"name": "D13",
+				"side": "right",
+				"label": "13",
+				"type": "io"
+			},
+			{
+				"name": "D12",
+				"side": "right",
+				"label": "12",
+				"type": "io"
+			},
+			{
+				"name": "D11",
+				"side": "right",
+				"label": "11",
+				"type": "io"
+			},
+			{
+				"name": "D10",
+				"side": "right",
+				"label": "10",
+				"type": "io"
+			}
+		],
+		internal: [
+			[
+				"GND",
+				"GND 2",
+				"GND 3",
+				"GND 4"
+			],
+			["RST", "RST 2"],
+			["VCC", "VCC 2"],
+			["TXO", "TXO 2"],
+			["RXI", "RXI 2"]
+		],
+		size: {
+			"w": 8,
+			"h": 15
+		},
+		holes: [
+			{
+				"name": "A4",
+				"at": [[50, 70]],
+				"holeStyle": "pad",
+				"type": "io"
+			},
+			{
+				"name": "A5",
+				"at": [[50, 60]],
+				"holeStyle": "pad",
+				"type": "io"
+			},
+			{
+				"name": "A6",
+				"at": [[50, 120]],
+				"holeStyle": "pad",
+				"type": "input",
+				"caps": {
+					"inputOnly": true,
+					"noPullup": true,
+					"note": "A6 goes only to the ADC: read it with analogRead."
+				}
+			},
+			{
+				"name": "A7",
+				"at": [[50, 110]],
+				"holeStyle": "pad",
+				"type": "input",
+				"caps": {
+					"inputOnly": true,
+					"noPullup": true,
+					"note": "A7 goes only to the ADC: read it with analogRead."
+				}
+			}
+		],
+		electrical: {
+			"model": "mcu",
+			"params": {}
+		},
+		art: {
+			"w": 80,
+			"h": 150,
+			"pinLabels": "inside",
+			"shapes": [
+				{
+					"type": "rect",
+					"x": 0,
+					"y": 0,
+					"w": 80,
+					"h": 150,
+					"fill": "#1E4F8A",
+					"radius": 5
+				},
+				{
+					"type": "rect",
+					"x": 2,
+					"y": 25,
+					"w": 8,
+					"h": 120,
+					"fill": "#E0B43C",
+					"radius": 2,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 4.5,
+					"y": 28.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 4.5,
+					"y": 38.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 4.5,
+					"y": 48.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 4.5,
+					"y": 58.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 4.5,
+					"y": 68.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 4.5,
+					"y": 78.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 4.5,
+					"y": 88.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 4.5,
+					"y": 98.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 4.5,
+					"y": 108.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 4.5,
+					"y": 118.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 4.5,
+					"y": 128.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 4.5,
+					"y": 138.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 70,
+					"y": 25,
+					"w": 8,
+					"h": 120,
+					"fill": "#E0B43C",
+					"radius": 2,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 72.5,
+					"y": 28.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 72.5,
+					"y": 38.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 72.5,
+					"y": 48.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 72.5,
+					"y": 58.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 72.5,
+					"y": 68.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 72.5,
+					"y": 78.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 72.5,
+					"y": 88.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 72.5,
+					"y": 98.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 72.5,
+					"y": 108.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 72.5,
+					"y": 118.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 72.5,
+					"y": 128.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 72.5,
+					"y": 138.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#8A6A1E",
+					"radius": 1.5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 27,
+					"y": 70,
+					"w": 26,
+					"h": 26,
+					"fill": "#2B2F36",
+					"radius": 2,
+					"label": "328P",
+					"labelColor": "#D5DAE1",
+					"labelSize": 5.5
+				},
+				{
+					"type": "rect",
+					"x": 27,
+					"y": 128,
+					"w": 16,
+					"h": 16,
+					"fill": "#C9CED6",
+					"radius": 2
+				},
+				{
+					"type": "rect",
+					"x": 30,
+					"y": 131,
+					"w": 10,
+					"h": 10,
+					"fill": "#3A3F47",
+					"radius": 5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 26,
+					"y": 56,
+					"w": 18,
+					"h": 8,
+					"fill": "#1E4F8A",
+					"outline": false,
+					"label": "A5",
+					"labelColor": "#F4F1EA",
+					"labelSize": 5.5
+				},
+				{
+					"type": "rect",
+					"x": 26,
+					"y": 66,
+					"w": 18,
+					"h": 8,
+					"fill": "#1E4F8A",
+					"outline": false,
+					"label": "A4",
+					"labelColor": "#F4F1EA",
+					"labelSize": 5.5
+				},
+				{
+					"type": "rect",
+					"x": 26,
+					"y": 106,
+					"w": 18,
+					"h": 8,
+					"fill": "#1E4F8A",
+					"outline": false,
+					"label": "A7",
+					"labelColor": "#F4F1EA",
+					"labelSize": 5.5
+				},
+				{
+					"type": "rect",
+					"x": 26,
+					"y": 116,
+					"w": 18,
+					"h": 8,
+					"fill": "#1E4F8A",
+					"outline": false,
+					"label": "A6",
+					"labelColor": "#F4F1EA",
+					"labelSize": 5.5
+				}
+			]
+		},
+		kicad: {
+			"headers": [
+				{
+					"name": "left header, pin 1 TXO",
+					"footprint": "Connector_PinSocket_2.54mm:PinSocket_1x12_P2.54mm_Vertical",
+					"pins": {
+						"TXO": "1",
+						"RXI": "2",
+						"RST": "3",
+						"GND": "4",
+						"D2": "5",
+						"D3": "6",
+						"D4": "7",
+						"D5": "8",
+						"D6": "9",
+						"D7": "10",
+						"D8": "11",
+						"D9": "12"
+					}
+				},
+				{
+					"name": "right header, pin 1 RAW",
+					"footprint": "Connector_PinSocket_2.54mm:PinSocket_1x12_P2.54mm_Vertical",
+					"pins": {
+						"RAW": "1",
+						"GND 2": "2",
+						"RST 2": "3",
+						"VCC": "4",
+						"A3": "5",
+						"A2": "6",
+						"A1": "7",
+						"A0": "8",
+						"D13": "9",
+						"D12": "10",
+						"D11": "11",
+						"D10": "12"
+					}
+				},
+				{
+					"name": "programming header, pin 1 BLK",
+					"footprint": "Connector_PinSocket_2.54mm:PinSocket_1x06_P2.54mm_Vertical",
+					"pins": {
+						"GND 3": "1",
+						"GND 4": "2",
+						"VCC 2": "3",
+						"RXI 2": "4",
+						"TXO 2": "5",
+						"DTR": "6"
+					}
+				},
+				{
+					"name": "A4 A5 pads",
+					"footprint": "Connector_PinSocket_2.54mm:PinSocket_1x02_P2.54mm_Vertical",
+					"pins": {
+						"A4": "1",
+						"A5": "2"
+					}
+				},
+				{
+					"name": "A6 A7 pads",
+					"footprint": "Connector_PinSocket_2.54mm:PinSocket_1x02_P2.54mm_Vertical",
+					"pins": {
+						"A6": "1",
+						"A7": "2"
+					}
+				}
+			],
+			"value": "Arduino Pro Mini 5V",
+			"note": "Each header is its own socket strip: place them at the board's real positions."
+		}
+	},
+	"../modules/arduino-uno-r3.json": {
+		format: "circuitoon-module/1",
+		id: "arduino-uno-r3",
+		version: 1,
+		name: "Arduino Uno R3",
+		category: "Microcontrollers",
+		source: "https://docs.arduino.cc/resources/datasheets/A000066-datasheet.pdf https://docs.arduino.cc/resources/pinouts/A000066-full-pinout.pdf https://docs.arduino.cc/resources/schematics/A000066-schematics.pdf https://gitlab.com/kicad/libraries/kicad-symbols/-/blob/master/MCU_Module.kicad_symdir/Arduino_UNO_R3.kicad_sym https://gitlab.com/kicad/libraries/kicad-footprints/-/blob/master/Module.pretty/Arduino_UNO_R3.kicad_mod",
+		pins: [
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"name": "NC",
+				"side": "left",
+				"type": "nc"
+			},
+			{
+				"name": "IOREF",
+				"side": "left",
+				"type": "power_in",
+				"supply": "5V"
+			},
+			{
+				"name": "RESET",
+				"side": "left",
+				"type": "input"
+			},
+			{
+				"name": "3V3",
+				"side": "left",
+				"type": "power_out",
+				"supply": "3V3"
+			},
+			{
+				"name": "5V",
+				"side": "left",
+				"type": "power_in",
+				"supply": "5V"
+			},
+			{
+				"name": "GND",
+				"side": "left",
+				"type": "ground"
+			},
+			{
+				"name": "GND 2",
+				"side": "left",
+				"label": "GND",
+				"type": "ground"
+			},
+			{
+				"name": "VIN",
+				"side": "left",
+				"type": "power_in",
+				"supply": "7V/7.4V/9V/12V"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"name": "A0",
+				"side": "left",
+				"type": "io"
+			},
+			{
+				"name": "A1",
+				"side": "left",
+				"type": "io"
+			},
+			{
+				"name": "A2",
+				"side": "left",
+				"type": "io"
+			},
+			{
+				"name": "A3",
+				"side": "left",
+				"type": "io"
+			},
+			{
+				"name": "A4",
+				"side": "left",
+				"type": "io"
+			},
+			{
+				"name": "A5",
+				"side": "left",
+				"type": "io"
+			},
+			{
+				"spacer": true,
+				"side": "right"
+			},
+			{
+				"spacer": true,
+				"side": "right"
+			},
+			{
+				"spacer": true,
+				"side": "right"
+			},
+			{
+				"spacer": true,
+				"side": "right"
+			},
+			{
+				"name": "SCL",
+				"side": "right",
+				"type": "io"
+			},
+			{
+				"name": "SDA",
+				"side": "right",
+				"type": "io"
+			},
+			{
+				"name": "AREF",
+				"side": "right",
+				"type": "input"
+			},
+			{
+				"name": "GND 3",
+				"side": "right",
+				"label": "GND",
+				"type": "ground"
+			},
+			{
+				"name": "D13",
+				"side": "right",
+				"type": "io"
+			},
+			{
+				"name": "D12",
+				"side": "right",
+				"type": "io"
+			},
+			{
+				"name": "D11",
+				"side": "right",
+				"type": "io"
+			},
+			{
+				"name": "D10",
+				"side": "right",
+				"type": "io"
+			},
+			{
+				"name": "D9",
+				"side": "right",
+				"type": "io"
+			},
+			{
+				"name": "D8",
+				"side": "right",
+				"type": "io"
+			},
+			{
+				"spacer": true,
+				"side": "right"
+			},
+			{
+				"name": "D7",
+				"side": "right",
+				"type": "io"
+			},
+			{
+				"name": "D6",
+				"side": "right",
+				"type": "io"
+			},
+			{
+				"name": "D5",
+				"side": "right",
+				"type": "io"
+			},
+			{
+				"name": "D4",
+				"side": "right",
+				"type": "io"
+			},
+			{
+				"name": "D3",
+				"side": "right",
+				"type": "io"
+			},
+			{
+				"name": "D2",
+				"side": "right",
+				"type": "io"
+			},
+			{
+				"name": "D1",
+				"side": "right",
+				"label": "D1/TX",
+				"type": "io"
+			},
+			{
+				"name": "D0",
+				"side": "right",
+				"label": "D0/RX",
+				"type": "io"
+			}
+		],
+		internal: [
+			[
+				"GND",
+				"GND 2",
+				"GND 3"
+			],
+			["5V", "IOREF"],
+			["SDA", "A4"],
+			["SCL", "A5"]
+		],
+		size: {
+			"w": 21,
+			"h": 27
+		},
+		electrical: {
+			"model": "mcu",
+			"params": {},
+			"external": [{
+				"pin": "5V",
+				"volts": 5,
+				"via": "USB"
+			}]
+		},
+		art: {
+			"w": 210,
+			"h": 270,
+			"pinLabels": "inside",
+			"shapes": [
+				{
+					"type": "rect",
+					"x": 0,
+					"y": 0,
+					"w": 210,
+					"h": 270,
+					"fill": "#17708A",
+					"radius": 5
+				},
+				{
+					"type": "rect",
+					"x": 2,
+					"y": 105,
+					"w": 9,
+					"h": 80,
+					"fill": "#1B1F24",
+					"radius": 1
+				},
+				{
+					"type": "rect",
+					"x": 5,
+					"y": 108.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#3A3F47",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 5,
+					"y": 118.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#3A3F47",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 5,
+					"y": 128.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#3A3F47",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 5,
+					"y": 138.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#3A3F47",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 5,
+					"y": 148.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#3A3F47",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 5,
+					"y": 158.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#3A3F47",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 5,
+					"y": 168.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#3A3F47",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 5,
+					"y": 178.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#3A3F47",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 2,
+					"y": 195,
+					"w": 9,
+					"h": 60,
+					"fill": "#1B1F24",
+					"radius": 1
+				},
+				{
+					"type": "rect",
+					"x": 5,
+					"y": 198.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#3A3F47",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 5,
+					"y": 208.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#3A3F47",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 5,
+					"y": 218.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#3A3F47",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 5,
+					"y": 228.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#3A3F47",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 5,
+					"y": 238.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#3A3F47",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 5,
+					"y": 248.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#3A3F47",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 199,
+					"y": 65,
+					"w": 9,
+					"h": 100,
+					"fill": "#1B1F24",
+					"radius": 1
+				},
+				{
+					"type": "rect",
+					"x": 202,
+					"y": 68.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#3A3F47",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 202,
+					"y": 78.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#3A3F47",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 202,
+					"y": 88.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#3A3F47",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 202,
+					"y": 98.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#3A3F47",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 202,
+					"y": 108.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#3A3F47",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 202,
+					"y": 118.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#3A3F47",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 202,
+					"y": 128.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#3A3F47",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 202,
+					"y": 138.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#3A3F47",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 202,
+					"y": 148.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#3A3F47",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 202,
+					"y": 158.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#3A3F47",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 199,
+					"y": 175,
+					"w": 9,
+					"h": 80,
+					"fill": "#1B1F24",
+					"radius": 1
+				},
+				{
+					"type": "rect",
+					"x": 202,
+					"y": 178.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#3A3F47",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 202,
+					"y": 188.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#3A3F47",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 202,
+					"y": 198.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#3A3F47",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 202,
+					"y": 208.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#3A3F47",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 202,
+					"y": 218.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#3A3F47",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 202,
+					"y": 228.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#3A3F47",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 202,
+					"y": 238.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#3A3F47",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 202,
+					"y": 248.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#3A3F47",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 14,
+					"y": -14,
+					"w": 38,
+					"h": 58,
+					"fill": "#1B1F24",
+					"radius": 3
+				},
+				{
+					"type": "rect",
+					"x": 26,
+					"y": -12,
+					"w": 14,
+					"h": 6,
+					"fill": "#3A3F47",
+					"radius": 2,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 124,
+					"y": -12,
+					"w": 46,
+					"h": 50,
+					"fill": "#C9CED6",
+					"radius": 2
+				},
+				{
+					"type": "rect",
+					"x": 132,
+					"y": -10,
+					"w": 30,
+					"h": 6,
+					"fill": "#8A9099",
+					"radius": 1,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 178,
+					"y": 6,
+					"w": 20,
+					"h": 20,
+					"fill": "#C9CED6",
+					"radius": 2
+				},
+				{
+					"type": "rect",
+					"x": 183,
+					"y": 11,
+					"w": 10,
+					"h": 10,
+					"fill": "#3A3F47",
+					"radius": 5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 100,
+					"y": 62,
+					"w": 20,
+					"h": 20,
+					"fill": "#2B2F36",
+					"radius": 2
+				},
+				{
+					"type": "rect",
+					"x": 84,
+					"y": 92,
+					"w": 22,
+					"h": 9,
+					"fill": "#C9CED6",
+					"radius": 4.5
+				},
+				{
+					"type": "rect",
+					"x": 50,
+					"y": 116,
+					"w": 4,
+					"h": 3,
+					"fill": "#C9CED6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 80,
+					"y": 116,
+					"w": 4,
+					"h": 3,
+					"fill": "#C9CED6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 50,
+					"y": 125.5,
+					"w": 4,
+					"h": 3,
+					"fill": "#C9CED6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 80,
+					"y": 125.5,
+					"w": 4,
+					"h": 3,
+					"fill": "#C9CED6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 50,
+					"y": 135,
+					"w": 4,
+					"h": 3,
+					"fill": "#C9CED6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 80,
+					"y": 135,
+					"w": 4,
+					"h": 3,
+					"fill": "#C9CED6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 50,
+					"y": 144.5,
+					"w": 4,
+					"h": 3,
+					"fill": "#C9CED6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 80,
+					"y": 144.5,
+					"w": 4,
+					"h": 3,
+					"fill": "#C9CED6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 50,
+					"y": 154,
+					"w": 4,
+					"h": 3,
+					"fill": "#C9CED6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 80,
+					"y": 154,
+					"w": 4,
+					"h": 3,
+					"fill": "#C9CED6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 50,
+					"y": 163.5,
+					"w": 4,
+					"h": 3,
+					"fill": "#C9CED6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 80,
+					"y": 163.5,
+					"w": 4,
+					"h": 3,
+					"fill": "#C9CED6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 50,
+					"y": 173,
+					"w": 4,
+					"h": 3,
+					"fill": "#C9CED6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 80,
+					"y": 173,
+					"w": 4,
+					"h": 3,
+					"fill": "#C9CED6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 50,
+					"y": 182.5,
+					"w": 4,
+					"h": 3,
+					"fill": "#C9CED6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 80,
+					"y": 182.5,
+					"w": 4,
+					"h": 3,
+					"fill": "#C9CED6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 50,
+					"y": 192,
+					"w": 4,
+					"h": 3,
+					"fill": "#C9CED6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 80,
+					"y": 192,
+					"w": 4,
+					"h": 3,
+					"fill": "#C9CED6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 50,
+					"y": 201.5,
+					"w": 4,
+					"h": 3,
+					"fill": "#C9CED6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 80,
+					"y": 201.5,
+					"w": 4,
+					"h": 3,
+					"fill": "#C9CED6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 50,
+					"y": 211,
+					"w": 4,
+					"h": 3,
+					"fill": "#C9CED6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 80,
+					"y": 211,
+					"w": 4,
+					"h": 3,
+					"fill": "#C9CED6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 50,
+					"y": 220.5,
+					"w": 4,
+					"h": 3,
+					"fill": "#C9CED6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 80,
+					"y": 220.5,
+					"w": 4,
+					"h": 3,
+					"fill": "#C9CED6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 50,
+					"y": 230,
+					"w": 4,
+					"h": 3,
+					"fill": "#C9CED6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 80,
+					"y": 230,
+					"w": 4,
+					"h": 3,
+					"fill": "#C9CED6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 50,
+					"y": 239.5,
+					"w": 4,
+					"h": 3,
+					"fill": "#C9CED6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 80,
+					"y": 239.5,
+					"w": 4,
+					"h": 3,
+					"fill": "#C9CED6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 53,
+					"y": 112,
+					"w": 28,
+					"h": 138,
+					"fill": "#2B2F36",
+					"radius": 2
+				},
+				{
+					"type": "rect",
+					"x": 50,
+					"y": 252,
+					"w": 34,
+					"h": 9,
+					"fill": "#17708A",
+					"outline": false,
+					"label": "ATMEGA328P",
+					"labelColor": "#F4F1EA",
+					"labelSize": 4
+				},
+				{
+					"type": "rect",
+					"x": 124,
+					"y": 112,
+					"w": 5,
+					"h": 4,
+					"fill": "#F4B400",
+					"radius": 1
+				},
+				{
+					"type": "rect",
+					"x": 124,
+					"y": 120,
+					"w": 5,
+					"h": 4,
+					"fill": "#F4B400",
+					"radius": 1
+				},
+				{
+					"type": "rect",
+					"x": 124,
+					"y": 128,
+					"w": 5,
+					"h": 4,
+					"fill": "#F4B400",
+					"radius": 1
+				},
+				{
+					"type": "rect",
+					"x": 150,
+					"y": 238,
+					"w": 5,
+					"h": 4,
+					"fill": "#3FB56B",
+					"radius": 1
+				},
+				{
+					"type": "rect",
+					"x": 100,
+					"y": 150,
+					"w": 70,
+					"h": 16,
+					"fill": "#17708A",
+					"outline": false,
+					"label": "UNO",
+					"labelColor": "#F4F1EA",
+					"labelSize": 13
+				},
+				{
+					"type": "rect",
+					"x": 100,
+					"y": 168,
+					"w": 70,
+					"h": 10,
+					"fill": "#17708A",
+					"outline": false,
+					"label": "R3",
+					"labelColor": "#F4F1EA",
+					"labelSize": 8
+				},
+				{
+					"type": "rect",
+					"x": 128,
+					"y": 248,
+					"w": 26,
+					"h": 17,
+					"fill": "#1B1F24",
+					"radius": 1
+				},
+				{
+					"type": "rect",
+					"x": 132,
+					"y": 252,
+					"w": 3,
+					"h": 3,
+					"fill": "#C9CED6",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 132,
+					"y": 259,
+					"w": 3,
+					"h": 3,
+					"fill": "#C9CED6",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 140,
+					"y": 252,
+					"w": 3,
+					"h": 3,
+					"fill": "#C9CED6",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 140,
+					"y": 259,
+					"w": 3,
+					"h": 3,
+					"fill": "#C9CED6",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 148,
+					"y": 252,
+					"w": 3,
+					"h": 3,
+					"fill": "#C9CED6",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 148,
+					"y": 259,
+					"w": 3,
+					"h": 3,
+					"fill": "#C9CED6",
+					"radius": .5,
+					"outline": false
+				}
+			]
+		},
+		kicad: {
+			"symbol": "MCU_Module:Arduino_UNO_R3",
+			"footprint": "Module:Arduino_UNO_R3",
+			"pins": {
+				"NC": "1",
+				"IOREF": "2",
+				"RESET": "3",
+				"3V3": "4",
+				"5V": "5",
+				"GND": "6",
+				"GND 2": "7",
+				"VIN": "8",
+				"A0": "9",
+				"A1": "10",
+				"A2": "11",
+				"A3": "12",
+				"A4": "13",
+				"A5": "14",
+				"SCL": "32",
+				"SDA": "31",
+				"AREF": "30",
+				"GND 3": "29",
+				"D13": "28",
+				"D12": "27",
+				"D11": "26",
+				"D10": "25",
+				"D9": "24",
+				"D8": "23",
+				"D7": "22",
+				"D6": "21",
+				"D5": "20",
+				"D4": "19",
+				"D3": "18",
+				"D2": "17",
+				"D1": "16",
+				"D0": "15"
+			},
+			"value": "Arduino Uno R3"
+		}
+	},
+	"../modules/arduino-uno-r4-minima.json": {
+		format: "circuitoon-module/1",
+		id: "arduino-uno-r4-minima",
+		version: 1,
+		name: "Arduino Uno R4 Minima",
+		category: "Microcontrollers",
+		source: "https://docs.arduino.cc/resources/datasheets/ABX00080-datasheet.pdf https://docs.arduino.cc/resources/pinouts/ABX00080-full-pinout.pdf https://docs.arduino.cc/resources/schematics/ABX00080-schematics.pdf https://docs.arduino.cc/resources/datasheets/ra4m1-datasheet.pdf https://community.renesas.com/mcu/ra/f/forum/52046/how-to-bootload-the-ra4m1 https://www.hackster.io/IKTech95/introduction-to-ra-mcus-boot-modes-cf488d https://github.com/arduino/docs-content/blob/main/content/hardware/uno/boards/uno-r4-minima/tutorials/cheat-sheet/cheat-sheet.md",
+		pins: [
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"name": "BOOT",
+				"side": "left",
+				"type": "input",
+				"caps": {
+					"strapping": "high",
+					"note": "BOOT is the RA4M1's MD pin: low at reset starts the chip's own boot mode instead of your sketch."
+				}
+			},
+			{
+				"name": "IOREF",
+				"side": "left",
+				"type": "power_in",
+				"supply": "5V"
+			},
+			{
+				"name": "RESET",
+				"side": "left",
+				"type": "input"
+			},
+			{
+				"name": "3V3",
+				"side": "left",
+				"type": "power_out",
+				"supply": "3V3"
+			},
+			{
+				"name": "5V",
+				"side": "left",
+				"type": "power_in",
+				"supply": "5V"
+			},
+			{
+				"name": "GND",
+				"side": "left",
+				"type": "ground"
+			},
+			{
+				"name": "GND 2",
+				"side": "left",
+				"label": "GND",
+				"type": "ground"
+			},
+			{
+				"name": "VIN",
+				"side": "left",
+				"type": "power_in",
+				"supply": "7V/7.4V/9V/12V/24V"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"name": "A0",
+				"side": "left",
+				"type": "io"
+			},
+			{
+				"name": "A1",
+				"side": "left",
+				"type": "io"
+			},
+			{
+				"name": "A2",
+				"side": "left",
+				"type": "io"
+			},
+			{
+				"name": "A3",
+				"side": "left",
+				"type": "io"
+			},
+			{
+				"name": "A4",
+				"side": "left",
+				"type": "io"
+			},
+			{
+				"name": "A5",
+				"side": "left",
+				"type": "io"
+			},
+			{
+				"spacer": true,
+				"side": "right"
+			},
+			{
+				"spacer": true,
+				"side": "right"
+			},
+			{
+				"spacer": true,
+				"side": "right"
+			},
+			{
+				"spacer": true,
+				"side": "right"
+			},
+			{
+				"name": "SCL",
+				"side": "right",
+				"type": "io"
+			},
+			{
+				"name": "SDA",
+				"side": "right",
+				"type": "io"
+			},
+			{
+				"name": "AREF",
+				"side": "right",
+				"type": "input"
+			},
+			{
+				"name": "GND 3",
+				"side": "right",
+				"label": "GND",
+				"type": "ground"
+			},
+			{
+				"name": "D13",
+				"side": "right",
+				"type": "io"
+			},
+			{
+				"name": "D12",
+				"side": "right",
+				"type": "io"
+			},
+			{
+				"name": "D11",
+				"side": "right",
+				"type": "io"
+			},
+			{
+				"name": "D10",
+				"side": "right",
+				"type": "io"
+			},
+			{
+				"name": "D9",
+				"side": "right",
+				"type": "io"
+			},
+			{
+				"name": "D8",
+				"side": "right",
+				"type": "io"
+			},
+			{
+				"spacer": true,
+				"side": "right"
+			},
+			{
+				"name": "D7",
+				"side": "right",
+				"type": "io"
+			},
+			{
+				"name": "D6",
+				"side": "right",
+				"type": "io"
+			},
+			{
+				"name": "D5",
+				"side": "right",
+				"type": "io"
+			},
+			{
+				"name": "D4",
+				"side": "right",
+				"type": "io"
+			},
+			{
+				"name": "D3",
+				"side": "right",
+				"type": "io"
+			},
+			{
+				"name": "D2",
+				"side": "right",
+				"type": "io"
+			},
+			{
+				"name": "D1",
+				"side": "right",
+				"label": "D1/TX",
+				"type": "io"
+			},
+			{
+				"name": "D0",
+				"side": "right",
+				"label": "D0/RX",
+				"type": "io"
+			}
+		],
+		internal: [
+			[
+				"GND",
+				"GND 2",
+				"GND 3"
+			],
+			["5V", "IOREF"],
+			["SDA", "A4"],
+			["SCL", "A5"]
+		],
+		size: {
+			"w": 21,
+			"h": 27
+		},
+		electrical: {
+			"model": "mcu",
+			"params": {},
+			"external": [{
+				"pin": "5V",
+				"volts": 5,
+				"via": "USB",
+				"diode": true
+			}]
+		},
+		art: {
+			"w": 210,
+			"h": 270,
+			"pinLabels": "inside",
+			"shapes": [
+				{
+					"type": "rect",
+					"x": 0,
+					"y": 0,
+					"w": 210,
+					"h": 270,
+					"fill": "#17708A",
+					"radius": 5
+				},
+				{
+					"type": "rect",
+					"x": 2,
+					"y": 105,
+					"w": 9,
+					"h": 80,
+					"fill": "#1B1F24",
+					"radius": 1
+				},
+				{
+					"type": "rect",
+					"x": 5,
+					"y": 108.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#3A3F47",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 5,
+					"y": 118.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#3A3F47",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 5,
+					"y": 128.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#3A3F47",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 5,
+					"y": 138.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#3A3F47",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 5,
+					"y": 148.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#3A3F47",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 5,
+					"y": 158.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#3A3F47",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 5,
+					"y": 168.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#3A3F47",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 5,
+					"y": 178.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#3A3F47",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 2,
+					"y": 195,
+					"w": 9,
+					"h": 60,
+					"fill": "#1B1F24",
+					"radius": 1
+				},
+				{
+					"type": "rect",
+					"x": 5,
+					"y": 198.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#3A3F47",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 5,
+					"y": 208.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#3A3F47",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 5,
+					"y": 218.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#3A3F47",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 5,
+					"y": 228.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#3A3F47",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 5,
+					"y": 238.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#3A3F47",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 5,
+					"y": 248.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#3A3F47",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 199,
+					"y": 65,
+					"w": 9,
+					"h": 100,
+					"fill": "#1B1F24",
+					"radius": 1
+				},
+				{
+					"type": "rect",
+					"x": 202,
+					"y": 68.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#3A3F47",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 202,
+					"y": 78.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#3A3F47",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 202,
+					"y": 88.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#3A3F47",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 202,
+					"y": 98.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#3A3F47",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 202,
+					"y": 108.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#3A3F47",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 202,
+					"y": 118.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#3A3F47",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 202,
+					"y": 128.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#3A3F47",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 202,
+					"y": 138.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#3A3F47",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 202,
+					"y": 148.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#3A3F47",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 202,
+					"y": 158.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#3A3F47",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 199,
+					"y": 175,
+					"w": 9,
+					"h": 80,
+					"fill": "#1B1F24",
+					"radius": 1
+				},
+				{
+					"type": "rect",
+					"x": 202,
+					"y": 178.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#3A3F47",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 202,
+					"y": 188.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#3A3F47",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 202,
+					"y": 198.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#3A3F47",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 202,
+					"y": 208.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#3A3F47",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 202,
+					"y": 218.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#3A3F47",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 202,
+					"y": 228.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#3A3F47",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 202,
+					"y": 238.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#3A3F47",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 202,
+					"y": 248.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#3A3F47",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 14,
+					"y": -14,
+					"w": 38,
+					"h": 58,
+					"fill": "#1B1F24",
+					"radius": 3
+				},
+				{
+					"type": "rect",
+					"x": 26,
+					"y": -12,
+					"w": 14,
+					"h": 6,
+					"fill": "#3A3F47",
+					"radius": 2,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 130,
+					"y": -8,
+					"w": 30,
+					"h": 22,
+					"fill": "#C9CED6",
+					"radius": 5
+				},
+				{
+					"type": "rect",
+					"x": 135,
+					"y": -4,
+					"w": 20,
+					"h": 4,
+					"fill": "#8A9099",
+					"radius": 2,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 178,
+					"y": 6,
+					"w": 20,
+					"h": 20,
+					"fill": "#C9CED6",
+					"radius": 2
+				},
+				{
+					"type": "rect",
+					"x": 183,
+					"y": 11,
+					"w": 10,
+					"h": 10,
+					"fill": "#3A3F47",
+					"radius": 5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 93,
+					"y": 151,
+					"w": 46,
+					"h": 34,
+					"fill": "#C9CED6",
+					"radius": 1,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 99,
+					"y": 145,
+					"w": 34,
+					"h": 46,
+					"fill": "#C9CED6",
+					"radius": 1,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 96,
+					"y": 148,
+					"w": 40,
+					"h": 40,
+					"fill": "#2B2F36",
+					"radius": 2,
+					"label": "RA4M1",
+					"labelColor": "#D5DAE1",
+					"labelSize": 6
+				},
+				{
+					"type": "rect",
+					"x": 92,
+					"y": 246,
+					"w": 26,
+					"h": 17,
+					"fill": "#1B1F24",
+					"radius": 1
+				},
+				{
+					"type": "rect",
+					"x": 96,
+					"y": 250,
+					"w": 3,
+					"h": 3,
+					"fill": "#C9CED6",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 96,
+					"y": 257,
+					"w": 3,
+					"h": 3,
+					"fill": "#C9CED6",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 104,
+					"y": 250,
+					"w": 3,
+					"h": 3,
+					"fill": "#C9CED6",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 104,
+					"y": 257,
+					"w": 3,
+					"h": 3,
+					"fill": "#C9CED6",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 112,
+					"y": 250,
+					"w": 3,
+					"h": 3,
+					"fill": "#C9CED6",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 112,
+					"y": 257,
+					"w": 3,
+					"h": 3,
+					"fill": "#C9CED6",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 60,
+					"y": 40,
+					"w": 20,
+					"h": 26,
+					"fill": "#2B2F36",
+					"radius": 2
+				},
+				{
+					"type": "rect",
+					"x": 96,
+					"y": 46,
+					"w": 16,
+					"h": 16,
+					"fill": "#2B2F36",
+					"radius": 2
+				},
+				{
+					"type": "rect",
+					"x": 150,
+					"y": 74,
+					"w": 5,
+					"h": 4,
+					"fill": "#F4B400",
+					"radius": 1
+				},
+				{
+					"type": "rect",
+					"x": 150,
+					"y": 82,
+					"w": 5,
+					"h": 4,
+					"fill": "#F4B400",
+					"radius": 1
+				},
+				{
+					"type": "rect",
+					"x": 150,
+					"y": 90,
+					"w": 5,
+					"h": 4,
+					"fill": "#F4B400",
+					"radius": 1
+				},
+				{
+					"type": "rect",
+					"x": 110,
+					"y": 216,
+					"w": 5,
+					"h": 4,
+					"fill": "#3FB56B",
+					"radius": 1
+				},
+				{
+					"type": "rect",
+					"x": 60,
+					"y": 110,
+					"w": 76,
+					"h": 14,
+					"fill": "#17708A",
+					"outline": false,
+					"label": "UNO R4",
+					"labelColor": "#F4F1EA",
+					"labelSize": 10
+				},
+				{
+					"type": "rect",
+					"x": 60,
+					"y": 126,
+					"w": 76,
+					"h": 10,
+					"fill": "#17708A",
+					"outline": false,
+					"label": "MINIMA",
+					"labelColor": "#F4F1EA",
+					"labelSize": 7
+				}
+			]
+		},
+		kicad: {
+			"footprint": "Module:Arduino_UNO_R3",
+			"pins": {
+				"BOOT": "1",
+				"IOREF": "2",
+				"RESET": "3",
+				"3V3": "4",
+				"5V": "5",
+				"GND": "6",
+				"GND 2": "7",
+				"VIN": "8",
+				"A0": "9",
+				"A1": "10",
+				"A2": "11",
+				"A3": "12",
+				"A4": "13",
+				"A5": "14",
+				"SCL": "32",
+				"SDA": "31",
+				"AREF": "30",
+				"GND 3": "29",
+				"D13": "28",
+				"D12": "27",
+				"D11": "26",
+				"D10": "25",
+				"D9": "24",
+				"D8": "23",
+				"D7": "22",
+				"D6": "21",
+				"D5": "20",
+				"D4": "19",
+				"D3": "18",
+				"D2": "17",
+				"D1": "16",
+				"D0": "15"
+			},
+			"value": "Arduino Uno R4 Minima"
+		}
+	},
+	"../modules/arduino-uno-r4-wifi.json": {
+		format: "circuitoon-module/1",
+		id: "arduino-uno-r4-wifi",
+		version: 1,
+		name: "Arduino Uno R4 WiFi",
+		category: "Microcontrollers",
+		source: "https://docs.arduino.cc/resources/datasheets/ABX00087-datasheet.pdf https://docs.arduino.cc/resources/pinouts/ABX00087-full-pinout.pdf https://docs.arduino.cc/resources/schematics/ABX00087-schematics.pdf https://docs.arduino.cc/tutorials/uno-r4-wifi/vrtc-off https://docs.arduino.cc/resources/datasheets/ra4m1-datasheet.pdf https://community.renesas.com/mcu/ra/f/forum/52046/how-to-bootload-the-ra4m1 https://www.hackster.io/IKTech95/introduction-to-ra-mcus-boot-modes-cf488d https://github.com/arduino/docs-content/blob/main/content/hardware/uno/boards/uno-r4-minima/tutorials/cheat-sheet/cheat-sheet.md",
+		pins: [
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"name": "OFF",
+				"side": "left",
+				"type": "input",
+				"caps": { "note": "OFF tied to GND switches off the 5 V converter, so the board turns off when it runs from VIN or the barrel jack." }
+			},
+			{
+				"name": "GND 4",
+				"side": "left",
+				"label": "GND",
+				"type": "ground"
+			},
+			{
+				"name": "VRTC",
+				"side": "left",
+				"type": "power_in",
+				"supply": "3V/3V3"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"name": "BOOT",
+				"side": "left",
+				"type": "input",
+				"caps": {
+					"strapping": "high",
+					"note": "BOOT is the RA4M1's MD pin: low at reset starts the chip's own boot mode instead of your sketch."
+				}
+			},
+			{
+				"name": "IOREF",
+				"side": "left",
+				"type": "power_in",
+				"supply": "5V"
+			},
+			{
+				"name": "RESET",
+				"side": "left",
+				"type": "input"
+			},
+			{
+				"name": "3V3",
+				"side": "left",
+				"type": "power_out",
+				"supply": "3V3"
+			},
+			{
+				"name": "5V",
+				"side": "left",
+				"type": "power_in",
+				"supply": "5V"
+			},
+			{
+				"name": "GND",
+				"side": "left",
+				"type": "ground"
+			},
+			{
+				"name": "GND 2",
+				"side": "left",
+				"label": "GND",
+				"type": "ground"
+			},
+			{
+				"name": "VIN",
+				"side": "left",
+				"type": "power_in",
+				"supply": "7V/7.4V/9V/12V/24V"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"name": "A0",
+				"side": "left",
+				"type": "io"
+			},
+			{
+				"name": "A1",
+				"side": "left",
+				"type": "io"
+			},
+			{
+				"name": "A2",
+				"side": "left",
+				"type": "io"
+			},
+			{
+				"name": "A3",
+				"side": "left",
+				"type": "io"
+			},
+			{
+				"name": "A4",
+				"side": "left",
+				"type": "io"
+			},
+			{
+				"name": "A5",
+				"side": "left",
+				"type": "io"
+			},
+			{
+				"spacer": true,
+				"side": "right"
+			},
+			{
+				"spacer": true,
+				"side": "right"
+			},
+			{
+				"spacer": true,
+				"side": "right"
+			},
+			{
+				"spacer": true,
+				"side": "right"
+			},
+			{
+				"name": "SCL",
+				"side": "right",
+				"type": "io"
+			},
+			{
+				"name": "SDA",
+				"side": "right",
+				"type": "io"
+			},
+			{
+				"name": "AREF",
+				"side": "right",
+				"type": "input"
+			},
+			{
+				"name": "GND 3",
+				"side": "right",
+				"label": "GND",
+				"type": "ground"
+			},
+			{
+				"name": "D13",
+				"side": "right",
+				"type": "io"
+			},
+			{
+				"name": "D12",
+				"side": "right",
+				"type": "io"
+			},
+			{
+				"name": "D11",
+				"side": "right",
+				"type": "io"
+			},
+			{
+				"name": "D10",
+				"side": "right",
+				"type": "io"
+			},
+			{
+				"name": "D9",
+				"side": "right",
+				"type": "io"
+			},
+			{
+				"name": "D8",
+				"side": "right",
+				"type": "io"
+			},
+			{
+				"spacer": true,
+				"side": "right"
+			},
+			{
+				"name": "D7",
+				"side": "right",
+				"type": "io"
+			},
+			{
+				"name": "D6",
+				"side": "right",
+				"type": "io"
+			},
+			{
+				"name": "D5",
+				"side": "right",
+				"type": "io"
+			},
+			{
+				"name": "D4",
+				"side": "right",
+				"type": "io"
+			},
+			{
+				"name": "D3",
+				"side": "right",
+				"type": "io"
+			},
+			{
+				"name": "D2",
+				"side": "right",
+				"type": "io"
+			},
+			{
+				"name": "D1",
+				"side": "right",
+				"label": "D1/TX",
+				"type": "io"
+			},
+			{
+				"name": "D0",
+				"side": "right",
+				"label": "D0/RX",
+				"type": "io"
+			}
+		],
+		internal: [
+			[
+				"GND",
+				"GND 2",
+				"GND 3",
+				"GND 4"
+			],
+			["5V", "IOREF"],
+			["SDA", "A4"],
+			["SCL", "A5"]
+		],
+		size: {
+			"w": 21,
+			"h": 27
+		},
+		electrical: {
+			"model": "mcu",
+			"params": {},
+			"external": [{
+				"pin": "5V",
+				"volts": 5,
+				"via": "USB",
+				"diode": true
+			}]
+		},
+		art: /* @__PURE__ */ JSON.parse("{\"w\":210,\"h\":270,\"pinLabels\":\"inside\",\"shapes\":[{\"type\":\"rect\",\"x\":0,\"y\":0,\"w\":210,\"h\":270,\"fill\":\"#17708A\",\"radius\":5},{\"type\":\"rect\",\"x\":2,\"y\":65,\"w\":9,\"h\":30,\"fill\":\"#1B1F24\",\"radius\":1},{\"type\":\"rect\",\"x\":5,\"y\":68.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":5,\"y\":78.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":5,\"y\":88.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":2,\"y\":105,\"w\":9,\"h\":80,\"fill\":\"#1B1F24\",\"radius\":1},{\"type\":\"rect\",\"x\":5,\"y\":108.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":5,\"y\":118.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":5,\"y\":128.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":5,\"y\":138.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":5,\"y\":148.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":5,\"y\":158.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":5,\"y\":168.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":5,\"y\":178.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":2,\"y\":195,\"w\":9,\"h\":60,\"fill\":\"#1B1F24\",\"radius\":1},{\"type\":\"rect\",\"x\":5,\"y\":198.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":5,\"y\":208.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":5,\"y\":218.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":5,\"y\":228.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":5,\"y\":238.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":5,\"y\":248.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":199,\"y\":65,\"w\":9,\"h\":100,\"fill\":\"#1B1F24\",\"radius\":1},{\"type\":\"rect\",\"x\":202,\"y\":68.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":202,\"y\":78.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":202,\"y\":88.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":202,\"y\":98.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":202,\"y\":108.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":202,\"y\":118.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":202,\"y\":128.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":202,\"y\":138.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":202,\"y\":148.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":202,\"y\":158.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":199,\"y\":175,\"w\":9,\"h\":80,\"fill\":\"#1B1F24\",\"radius\":1},{\"type\":\"rect\",\"x\":202,\"y\":178.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":202,\"y\":188.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":202,\"y\":198.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":202,\"y\":208.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":202,\"y\":218.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":202,\"y\":228.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":202,\"y\":238.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":202,\"y\":248.5,\"w\":3,\"h\":3,\"fill\":\"#3A3F47\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":14,\"y\":-14,\"w\":38,\"h\":58,\"fill\":\"#1B1F24\",\"radius\":3},{\"type\":\"rect\",\"x\":26,\"y\":-12,\"w\":14,\"h\":6,\"fill\":\"#3A3F47\",\"radius\":2,\"outline\":false},{\"type\":\"rect\",\"x\":130,\"y\":-8,\"w\":30,\"h\":22,\"fill\":\"#C9CED6\",\"radius\":5},{\"type\":\"rect\",\"x\":135,\"y\":-4,\"w\":20,\"h\":4,\"fill\":\"#8A9099\",\"radius\":2,\"outline\":false},{\"type\":\"rect\",\"x\":178,\"y\":6,\"w\":20,\"h\":20,\"fill\":\"#C9CED6\",\"radius\":2},{\"type\":\"rect\",\"x\":183,\"y\":11,\"w\":10,\"h\":10,\"fill\":\"#3A3F47\",\"radius\":5,\"outline\":false},{\"type\":\"rect\",\"x\":93,\"y\":151,\"w\":46,\"h\":34,\"fill\":\"#C9CED6\",\"radius\":1,\"outline\":false},{\"type\":\"rect\",\"x\":99,\"y\":145,\"w\":34,\"h\":46,\"fill\":\"#C9CED6\",\"radius\":1,\"outline\":false},{\"type\":\"rect\",\"x\":96,\"y\":148,\"w\":40,\"h\":40,\"fill\":\"#2B2F36\",\"radius\":2,\"label\":\"RA4M1\",\"labelColor\":\"#D5DAE1\",\"labelSize\":6},{\"type\":\"rect\",\"x\":92,\"y\":246,\"w\":26,\"h\":17,\"fill\":\"#1B1F24\",\"radius\":1},{\"type\":\"rect\",\"x\":96,\"y\":250,\"w\":3,\"h\":3,\"fill\":\"#C9CED6\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":96,\"y\":257,\"w\":3,\"h\":3,\"fill\":\"#C9CED6\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":104,\"y\":250,\"w\":3,\"h\":3,\"fill\":\"#C9CED6\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":104,\"y\":257,\"w\":3,\"h\":3,\"fill\":\"#C9CED6\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":112,\"y\":250,\"w\":3,\"h\":3,\"fill\":\"#C9CED6\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":112,\"y\":257,\"w\":3,\"h\":3,\"fill\":\"#C9CED6\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":56,\"y\":14,\"w\":60,\"h\":40,\"fill\":\"#D5DAE1\",\"radius\":2,\"label\":\"ESP32-S3\",\"labelColor\":\"#2B2F36\",\"labelSize\":6},{\"type\":\"rect\",\"x\":50,\"y\":120,\"w\":40,\"h\":120,\"fill\":\"#2A1F1F\",\"radius\":2},{\"type\":\"rect\",\"x\":53,\"y\":123,\"w\":2.5,\"h\":4,\"fill\":\"#E5484D\",\"radius\":1,\"outline\":false},{\"type\":\"rect\",\"x\":57.6,\"y\":123,\"w\":2.5,\"h\":4,\"fill\":\"#E5484D\",\"radius\":1,\"outline\":false},{\"type\":\"rect\",\"x\":62.2,\"y\":123,\"w\":2.5,\"h\":4,\"fill\":\"#E5484D\",\"radius\":1,\"outline\":false},{\"type\":\"rect\",\"x\":66.8,\"y\":123,\"w\":2.5,\"h\":4,\"fill\":\"#E5484D\",\"radius\":1,\"outline\":false},{\"type\":\"rect\",\"x\":71.4,\"y\":123,\"w\":2.5,\"h\":4,\"fill\":\"#E5484D\",\"radius\":1,\"outline\":false},{\"type\":\"rect\",\"x\":76,\"y\":123,\"w\":2.5,\"h\":4,\"fill\":\"#E5484D\",\"radius\":1,\"outline\":false},{\"type\":\"rect\",\"x\":80.6,\"y\":123,\"w\":2.5,\"h\":4,\"fill\":\"#E5484D\",\"radius\":1,\"outline\":false},{\"type\":\"rect\",\"x\":85.19999999999999,\"y\":123,\"w\":2.5,\"h\":4,\"fill\":\"#E5484D\",\"radius\":1,\"outline\":false},{\"type\":\"rect\",\"x\":53,\"y\":132.6,\"w\":2.5,\"h\":4,\"fill\":\"#E5484D\",\"radius\":1,\"outline\":false},{\"type\":\"rect\",\"x\":57.6,\"y\":132.6,\"w\":2.5,\"h\":4,\"fill\":\"#E5484D\",\"radius\":1,\"outline\":false},{\"type\":\"rect\",\"x\":62.2,\"y\":132.6,\"w\":2.5,\"h\":4,\"fill\":\"#E5484D\",\"radius\":1,\"outline\":false},{\"type\":\"rect\",\"x\":66.8,\"y\":132.6,\"w\":2.5,\"h\":4,\"fill\":\"#E5484D\",\"radius\":1,\"outline\":false},{\"type\":\"rect\",\"x\":71.4,\"y\":132.6,\"w\":2.5,\"h\":4,\"fill\":\"#E5484D\",\"radius\":1,\"outline\":false},{\"type\":\"rect\",\"x\":76,\"y\":132.6,\"w\":2.5,\"h\":4,\"fill\":\"#E5484D\",\"radius\":1,\"outline\":false},{\"type\":\"rect\",\"x\":80.6,\"y\":132.6,\"w\":2.5,\"h\":4,\"fill\":\"#E5484D\",\"radius\":1,\"outline\":false},{\"type\":\"rect\",\"x\":85.19999999999999,\"y\":132.6,\"w\":2.5,\"h\":4,\"fill\":\"#E5484D\",\"radius\":1,\"outline\":false},{\"type\":\"rect\",\"x\":53,\"y\":142.2,\"w\":2.5,\"h\":4,\"fill\":\"#E5484D\",\"radius\":1,\"outline\":false},{\"type\":\"rect\",\"x\":57.6,\"y\":142.2,\"w\":2.5,\"h\":4,\"fill\":\"#E5484D\",\"radius\":1,\"outline\":false},{\"type\":\"rect\",\"x\":62.2,\"y\":142.2,\"w\":2.5,\"h\":4,\"fill\":\"#E5484D\",\"radius\":1,\"outline\":false},{\"type\":\"rect\",\"x\":66.8,\"y\":142.2,\"w\":2.5,\"h\":4,\"fill\":\"#E5484D\",\"radius\":1,\"outline\":false},{\"type\":\"rect\",\"x\":71.4,\"y\":142.2,\"w\":2.5,\"h\":4,\"fill\":\"#E5484D\",\"radius\":1,\"outline\":false},{\"type\":\"rect\",\"x\":76,\"y\":142.2,\"w\":2.5,\"h\":4,\"fill\":\"#E5484D\",\"radius\":1,\"outline\":false},{\"type\":\"rect\",\"x\":80.6,\"y\":142.2,\"w\":2.5,\"h\":4,\"fill\":\"#E5484D\",\"radius\":1,\"outline\":false},{\"type\":\"rect\",\"x\":85.19999999999999,\"y\":142.2,\"w\":2.5,\"h\":4,\"fill\":\"#E5484D\",\"radius\":1,\"outline\":false},{\"type\":\"rect\",\"x\":53,\"y\":151.8,\"w\":2.5,\"h\":4,\"fill\":\"#E5484D\",\"radius\":1,\"outline\":false},{\"type\":\"rect\",\"x\":57.6,\"y\":151.8,\"w\":2.5,\"h\":4,\"fill\":\"#E5484D\",\"radius\":1,\"outline\":false},{\"type\":\"rect\",\"x\":62.2,\"y\":151.8,\"w\":2.5,\"h\":4,\"fill\":\"#E5484D\",\"radius\":1,\"outline\":false},{\"type\":\"rect\",\"x\":66.8,\"y\":151.8,\"w\":2.5,\"h\":4,\"fill\":\"#E5484D\",\"radius\":1,\"outline\":false},{\"type\":\"rect\",\"x\":71.4,\"y\":151.8,\"w\":2.5,\"h\":4,\"fill\":\"#E5484D\",\"radius\":1,\"outline\":false},{\"type\":\"rect\",\"x\":76,\"y\":151.8,\"w\":2.5,\"h\":4,\"fill\":\"#E5484D\",\"radius\":1,\"outline\":false},{\"type\":\"rect\",\"x\":80.6,\"y\":151.8,\"w\":2.5,\"h\":4,\"fill\":\"#E5484D\",\"radius\":1,\"outline\":false},{\"type\":\"rect\",\"x\":85.19999999999999,\"y\":151.8,\"w\":2.5,\"h\":4,\"fill\":\"#E5484D\",\"radius\":1,\"outline\":false},{\"type\":\"rect\",\"x\":53,\"y\":161.4,\"w\":2.5,\"h\":4,\"fill\":\"#E5484D\",\"radius\":1,\"outline\":false},{\"type\":\"rect\",\"x\":57.6,\"y\":161.4,\"w\":2.5,\"h\":4,\"fill\":\"#E5484D\",\"radius\":1,\"outline\":false},{\"type\":\"rect\",\"x\":62.2,\"y\":161.4,\"w\":2.5,\"h\":4,\"fill\":\"#E5484D\",\"radius\":1,\"outline\":false},{\"type\":\"rect\",\"x\":66.8,\"y\":161.4,\"w\":2.5,\"h\":4,\"fill\":\"#E5484D\",\"radius\":1,\"outline\":false},{\"type\":\"rect\",\"x\":71.4,\"y\":161.4,\"w\":2.5,\"h\":4,\"fill\":\"#E5484D\",\"radius\":1,\"outline\":false},{\"type\":\"rect\",\"x\":76,\"y\":161.4,\"w\":2.5,\"h\":4,\"fill\":\"#E5484D\",\"radius\":1,\"outline\":false},{\"type\":\"rect\",\"x\":80.6,\"y\":161.4,\"w\":2.5,\"h\":4,\"fill\":\"#E5484D\",\"radius\":1,\"outline\":false},{\"type\":\"rect\",\"x\":85.19999999999999,\"y\":161.4,\"w\":2.5,\"h\":4,\"fill\":\"#E5484D\",\"radius\":1,\"outline\":false},{\"type\":\"rect\",\"x\":53,\"y\":171,\"w\":2.5,\"h\":4,\"fill\":\"#E5484D\",\"radius\":1,\"outline\":false},{\"type\":\"rect\",\"x\":57.6,\"y\":171,\"w\":2.5,\"h\":4,\"fill\":\"#E5484D\",\"radius\":1,\"outline\":false},{\"type\":\"rect\",\"x\":62.2,\"y\":171,\"w\":2.5,\"h\":4,\"fill\":\"#E5484D\",\"radius\":1,\"outline\":false},{\"type\":\"rect\",\"x\":66.8,\"y\":171,\"w\":2.5,\"h\":4,\"fill\":\"#E5484D\",\"radius\":1,\"outline\":false},{\"type\":\"rect\",\"x\":71.4,\"y\":171,\"w\":2.5,\"h\":4,\"fill\":\"#E5484D\",\"radius\":1,\"outline\":false},{\"type\":\"rect\",\"x\":76,\"y\":171,\"w\":2.5,\"h\":4,\"fill\":\"#E5484D\",\"radius\":1,\"outline\":false},{\"type\":\"rect\",\"x\":80.6,\"y\":171,\"w\":2.5,\"h\":4,\"fill\":\"#E5484D\",\"radius\":1,\"outline\":false},{\"type\":\"rect\",\"x\":85.19999999999999,\"y\":171,\"w\":2.5,\"h\":4,\"fill\":\"#E5484D\",\"radius\":1,\"outline\":false},{\"type\":\"rect\",\"x\":53,\"y\":180.6,\"w\":2.5,\"h\":4,\"fill\":\"#E5484D\",\"radius\":1,\"outline\":false},{\"type\":\"rect\",\"x\":57.6,\"y\":180.6,\"w\":2.5,\"h\":4,\"fill\":\"#E5484D\",\"radius\":1,\"outline\":false},{\"type\":\"rect\",\"x\":62.2,\"y\":180.6,\"w\":2.5,\"h\":4,\"fill\":\"#E5484D\",\"radius\":1,\"outline\":false},{\"type\":\"rect\",\"x\":66.8,\"y\":180.6,\"w\":2.5,\"h\":4,\"fill\":\"#E5484D\",\"radius\":1,\"outline\":false},{\"type\":\"rect\",\"x\":71.4,\"y\":180.6,\"w\":2.5,\"h\":4,\"fill\":\"#E5484D\",\"radius\":1,\"outline\":false},{\"type\":\"rect\",\"x\":76,\"y\":180.6,\"w\":2.5,\"h\":4,\"fill\":\"#E5484D\",\"radius\":1,\"outline\":false},{\"type\":\"rect\",\"x\":80.6,\"y\":180.6,\"w\":2.5,\"h\":4,\"fill\":\"#E5484D\",\"radius\":1,\"outline\":false},{\"type\":\"rect\",\"x\":85.19999999999999,\"y\":180.6,\"w\":2.5,\"h\":4,\"fill\":\"#E5484D\",\"radius\":1,\"outline\":false},{\"type\":\"rect\",\"x\":53,\"y\":190.2,\"w\":2.5,\"h\":4,\"fill\":\"#E5484D\",\"radius\":1,\"outline\":false},{\"type\":\"rect\",\"x\":57.6,\"y\":190.2,\"w\":2.5,\"h\":4,\"fill\":\"#E5484D\",\"radius\":1,\"outline\":false},{\"type\":\"rect\",\"x\":62.2,\"y\":190.2,\"w\":2.5,\"h\":4,\"fill\":\"#E5484D\",\"radius\":1,\"outline\":false},{\"type\":\"rect\",\"x\":66.8,\"y\":190.2,\"w\":2.5,\"h\":4,\"fill\":\"#E5484D\",\"radius\":1,\"outline\":false},{\"type\":\"rect\",\"x\":71.4,\"y\":190.2,\"w\":2.5,\"h\":4,\"fill\":\"#E5484D\",\"radius\":1,\"outline\":false},{\"type\":\"rect\",\"x\":76,\"y\":190.2,\"w\":2.5,\"h\":4,\"fill\":\"#E5484D\",\"radius\":1,\"outline\":false},{\"type\":\"rect\",\"x\":80.6,\"y\":190.2,\"w\":2.5,\"h\":4,\"fill\":\"#E5484D\",\"radius\":1,\"outline\":false},{\"type\":\"rect\",\"x\":85.19999999999999,\"y\":190.2,\"w\":2.5,\"h\":4,\"fill\":\"#E5484D\",\"radius\":1,\"outline\":false},{\"type\":\"rect\",\"x\":53,\"y\":199.8,\"w\":2.5,\"h\":4,\"fill\":\"#E5484D\",\"radius\":1,\"outline\":false},{\"type\":\"rect\",\"x\":57.6,\"y\":199.8,\"w\":2.5,\"h\":4,\"fill\":\"#E5484D\",\"radius\":1,\"outline\":false},{\"type\":\"rect\",\"x\":62.2,\"y\":199.8,\"w\":2.5,\"h\":4,\"fill\":\"#E5484D\",\"radius\":1,\"outline\":false},{\"type\":\"rect\",\"x\":66.8,\"y\":199.8,\"w\":2.5,\"h\":4,\"fill\":\"#E5484D\",\"radius\":1,\"outline\":false},{\"type\":\"rect\",\"x\":71.4,\"y\":199.8,\"w\":2.5,\"h\":4,\"fill\":\"#E5484D\",\"radius\":1,\"outline\":false},{\"type\":\"rect\",\"x\":76,\"y\":199.8,\"w\":2.5,\"h\":4,\"fill\":\"#E5484D\",\"radius\":1,\"outline\":false},{\"type\":\"rect\",\"x\":80.6,\"y\":199.8,\"w\":2.5,\"h\":4,\"fill\":\"#E5484D\",\"radius\":1,\"outline\":false},{\"type\":\"rect\",\"x\":85.19999999999999,\"y\":199.8,\"w\":2.5,\"h\":4,\"fill\":\"#E5484D\",\"radius\":1,\"outline\":false},{\"type\":\"rect\",\"x\":53,\"y\":209.39999999999998,\"w\":2.5,\"h\":4,\"fill\":\"#E5484D\",\"radius\":1,\"outline\":false},{\"type\":\"rect\",\"x\":57.6,\"y\":209.39999999999998,\"w\":2.5,\"h\":4,\"fill\":\"#E5484D\",\"radius\":1,\"outline\":false},{\"type\":\"rect\",\"x\":62.2,\"y\":209.39999999999998,\"w\":2.5,\"h\":4,\"fill\":\"#E5484D\",\"radius\":1,\"outline\":false},{\"type\":\"rect\",\"x\":66.8,\"y\":209.39999999999998,\"w\":2.5,\"h\":4,\"fill\":\"#E5484D\",\"radius\":1,\"outline\":false},{\"type\":\"rect\",\"x\":71.4,\"y\":209.39999999999998,\"w\":2.5,\"h\":4,\"fill\":\"#E5484D\",\"radius\":1,\"outline\":false},{\"type\":\"rect\",\"x\":76,\"y\":209.39999999999998,\"w\":2.5,\"h\":4,\"fill\":\"#E5484D\",\"radius\":1,\"outline\":false},{\"type\":\"rect\",\"x\":80.6,\"y\":209.39999999999998,\"w\":2.5,\"h\":4,\"fill\":\"#E5484D\",\"radius\":1,\"outline\":false},{\"type\":\"rect\",\"x\":85.19999999999999,\"y\":209.39999999999998,\"w\":2.5,\"h\":4,\"fill\":\"#E5484D\",\"radius\":1,\"outline\":false},{\"type\":\"rect\",\"x\":53,\"y\":219,\"w\":2.5,\"h\":4,\"fill\":\"#E5484D\",\"radius\":1,\"outline\":false},{\"type\":\"rect\",\"x\":57.6,\"y\":219,\"w\":2.5,\"h\":4,\"fill\":\"#E5484D\",\"radius\":1,\"outline\":false},{\"type\":\"rect\",\"x\":62.2,\"y\":219,\"w\":2.5,\"h\":4,\"fill\":\"#E5484D\",\"radius\":1,\"outline\":false},{\"type\":\"rect\",\"x\":66.8,\"y\":219,\"w\":2.5,\"h\":4,\"fill\":\"#E5484D\",\"radius\":1,\"outline\":false},{\"type\":\"rect\",\"x\":71.4,\"y\":219,\"w\":2.5,\"h\":4,\"fill\":\"#E5484D\",\"radius\":1,\"outline\":false},{\"type\":\"rect\",\"x\":76,\"y\":219,\"w\":2.5,\"h\":4,\"fill\":\"#E5484D\",\"radius\":1,\"outline\":false},{\"type\":\"rect\",\"x\":80.6,\"y\":219,\"w\":2.5,\"h\":4,\"fill\":\"#E5484D\",\"radius\":1,\"outline\":false},{\"type\":\"rect\",\"x\":85.19999999999999,\"y\":219,\"w\":2.5,\"h\":4,\"fill\":\"#E5484D\",\"radius\":1,\"outline\":false},{\"type\":\"rect\",\"x\":53,\"y\":228.6,\"w\":2.5,\"h\":4,\"fill\":\"#E5484D\",\"radius\":1,\"outline\":false},{\"type\":\"rect\",\"x\":57.6,\"y\":228.6,\"w\":2.5,\"h\":4,\"fill\":\"#E5484D\",\"radius\":1,\"outline\":false},{\"type\":\"rect\",\"x\":62.2,\"y\":228.6,\"w\":2.5,\"h\":4,\"fill\":\"#E5484D\",\"radius\":1,\"outline\":false},{\"type\":\"rect\",\"x\":66.8,\"y\":228.6,\"w\":2.5,\"h\":4,\"fill\":\"#E5484D\",\"radius\":1,\"outline\":false},{\"type\":\"rect\",\"x\":71.4,\"y\":228.6,\"w\":2.5,\"h\":4,\"fill\":\"#E5484D\",\"radius\":1,\"outline\":false},{\"type\":\"rect\",\"x\":76,\"y\":228.6,\"w\":2.5,\"h\":4,\"fill\":\"#E5484D\",\"radius\":1,\"outline\":false},{\"type\":\"rect\",\"x\":80.6,\"y\":228.6,\"w\":2.5,\"h\":4,\"fill\":\"#E5484D\",\"radius\":1,\"outline\":false},{\"type\":\"rect\",\"x\":85.19999999999999,\"y\":228.6,\"w\":2.5,\"h\":4,\"fill\":\"#E5484D\",\"radius\":1,\"outline\":false},{\"type\":\"rect\",\"x\":140,\"y\":66,\"w\":26,\"h\":17,\"fill\":\"#1B1F24\",\"radius\":1},{\"type\":\"rect\",\"x\":144,\"y\":70,\"w\":3,\"h\":3,\"fill\":\"#C9CED6\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":144,\"y\":77,\"w\":3,\"h\":3,\"fill\":\"#C9CED6\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":152,\"y\":70,\"w\":3,\"h\":3,\"fill\":\"#C9CED6\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":152,\"y\":77,\"w\":3,\"h\":3,\"fill\":\"#C9CED6\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":160,\"y\":70,\"w\":3,\"h\":3,\"fill\":\"#C9CED6\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":160,\"y\":77,\"w\":3,\"h\":3,\"fill\":\"#C9CED6\",\"radius\":0.5,\"outline\":false},{\"type\":\"rect\",\"x\":146,\"y\":224,\"w\":22,\"h\":12,\"fill\":\"#F4F1EA\",\"radius\":1},{\"type\":\"rect\",\"x\":96,\"y\":96,\"w\":72,\"h\":14,\"fill\":\"#17708A\",\"outline\":false,\"label\":\"UNO R4\",\"labelColor\":\"#F4F1EA\",\"labelSize\":10},{\"type\":\"rect\",\"x\":96,\"y\":112,\"w\":72,\"h\":10,\"fill\":\"#17708A\",\"outline\":false,\"label\":\"WiFi\",\"labelColor\":\"#F4F1EA\",\"labelSize\":7}]}"),
+		kicad: {
+			"footprint": "Module:Arduino_UNO_R3",
+			"pins": {
+				"BOOT": "1",
+				"IOREF": "2",
+				"RESET": "3",
+				"3V3": "4",
+				"5V": "5",
+				"GND": "6",
+				"GND 2": "7",
+				"VIN": "8",
+				"A0": "9",
+				"A1": "10",
+				"A2": "11",
+				"A3": "12",
+				"A4": "13",
+				"A5": "14",
+				"SCL": "32",
+				"SDA": "31",
+				"AREF": "30",
+				"GND 3": "29",
+				"D13": "28",
+				"D12": "27",
+				"D11": "26",
+				"D10": "25",
+				"D9": "24",
+				"D8": "23",
+				"D7": "22",
+				"D6": "21",
+				"D5": "20",
+				"D4": "19",
+				"D3": "18",
+				"D2": "17",
+				"D1": "16",
+				"D0": "15"
+			},
+			"value": "Arduino Uno R4 WiFi",
+			"note": "The OFF, GND 4, VRTC pins are not on this footprint."
+		}
+	},
+	"../modules/arduino-zero.json": {
+		format: "circuitoon-module/1",
+		id: "arduino-zero",
+		version: 1,
+		name: "Arduino Zero",
+		category: "Microcontrollers",
+		source: "https://docs.arduino.cc/resources/pinouts/ABX00003-full-pinout.pdf https://docs.arduino.cc/resources/schematics/ABX00003-schematics.pdf https://github.com/arduino/docs-content/blob/main/content/hardware/hero/boards/zero/tech-specs.yml https://github.com/arduino/ArduinoCore-samd/blob/master/variants/arduino_zero/variant.cpp",
+		pins: [
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"name": "ATN",
+				"side": "left",
+				"type": "nc",
+				"caps": { "note": "ATN has no connection on the Zero v4.0 schematic." }
+			},
+			{
+				"name": "IOREF",
+				"side": "left",
+				"type": "power_out",
+				"supply": "3V3"
+			},
+			{
+				"name": "RESET",
+				"side": "left",
+				"type": "input",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "3V3",
+				"side": "left",
+				"type": "power_out",
+				"supply": "3V3"
+			},
+			{
+				"name": "5V",
+				"side": "left",
+				"type": "power_in",
+				"supply": "5V"
+			},
+			{
+				"name": "GND",
+				"side": "left",
+				"type": "ground"
+			},
+			{
+				"name": "GND 2",
+				"side": "left",
+				"label": "GND",
+				"type": "ground"
+			},
+			{
+				"name": "VIN",
+				"side": "left",
+				"type": "power_in",
+				"supply": "5V/7V/7.4V/9V/12V"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"name": "A0",
+				"side": "left",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "A1",
+				"side": "left",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "A2",
+				"side": "left",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "A3",
+				"side": "left",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "A4",
+				"side": "left",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "A5",
+				"side": "left",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"spacer": true,
+				"side": "right"
+			},
+			{
+				"spacer": true,
+				"side": "right"
+			},
+			{
+				"spacer": true,
+				"side": "right"
+			},
+			{
+				"spacer": true,
+				"side": "right"
+			},
+			{
+				"name": "SCL",
+				"side": "right",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "SDA",
+				"side": "right",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "AREF",
+				"side": "right",
+				"type": "input",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "GND 3",
+				"side": "right",
+				"label": "GND",
+				"type": "ground"
+			},
+			{
+				"name": "D13",
+				"side": "right",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "D12",
+				"side": "right",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "D11",
+				"side": "right",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "D10",
+				"side": "right",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "D9",
+				"side": "right",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "D8",
+				"side": "right",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"spacer": true,
+				"side": "right"
+			},
+			{
+				"name": "D7",
+				"side": "right",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "D6",
+				"side": "right",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "D5",
+				"side": "right",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "D4",
+				"side": "right",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "D3",
+				"side": "right",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "D2",
+				"side": "right",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "D1",
+				"side": "right",
+				"label": "D1/TX",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "D0",
+				"side": "right",
+				"label": "D0/RX",
+				"type": "io",
+				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			}
+		],
+		internal: [[
+			"GND",
+			"GND 2",
+			"GND 3"
+		], ["3V3", "IOREF"]],
+		size: {
+			"w": 21,
+			"h": 27
+		},
+		electrical: {
+			"model": "mcu",
+			"params": {},
+			"external": [{
+				"pin": "5V",
+				"volts": 5,
+				"via": "USB"
+			}]
+		},
+		art: {
+			"w": 210,
+			"h": 270,
+			"pinLabels": "inside",
+			"shapes": [
+				{
+					"type": "rect",
+					"x": 0,
+					"y": 0,
+					"w": 210,
+					"h": 270,
+					"fill": "#17708A",
+					"radius": 5
+				},
+				{
+					"type": "rect",
+					"x": 2,
+					"y": 105,
+					"w": 9,
+					"h": 80,
+					"fill": "#1B1F24",
+					"radius": 1
+				},
+				{
+					"type": "rect",
+					"x": 5,
+					"y": 108.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#3A3F47",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 5,
+					"y": 118.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#3A3F47",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 5,
+					"y": 128.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#3A3F47",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 5,
+					"y": 138.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#3A3F47",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 5,
+					"y": 148.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#3A3F47",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 5,
+					"y": 158.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#3A3F47",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 5,
+					"y": 168.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#3A3F47",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 5,
+					"y": 178.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#3A3F47",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 2,
+					"y": 195,
+					"w": 9,
+					"h": 60,
+					"fill": "#1B1F24",
+					"radius": 1
+				},
+				{
+					"type": "rect",
+					"x": 5,
+					"y": 198.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#3A3F47",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 5,
+					"y": 208.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#3A3F47",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 5,
+					"y": 218.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#3A3F47",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 5,
+					"y": 228.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#3A3F47",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 5,
+					"y": 238.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#3A3F47",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 5,
+					"y": 248.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#3A3F47",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 199,
+					"y": 65,
+					"w": 9,
+					"h": 100,
+					"fill": "#1B1F24",
+					"radius": 1
+				},
+				{
+					"type": "rect",
+					"x": 202,
+					"y": 68.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#3A3F47",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 202,
+					"y": 78.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#3A3F47",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 202,
+					"y": 88.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#3A3F47",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 202,
+					"y": 98.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#3A3F47",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 202,
+					"y": 108.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#3A3F47",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 202,
+					"y": 118.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#3A3F47",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 202,
+					"y": 128.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#3A3F47",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 202,
+					"y": 138.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#3A3F47",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 202,
+					"y": 148.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#3A3F47",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 202,
+					"y": 158.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#3A3F47",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 199,
+					"y": 175,
+					"w": 9,
+					"h": 80,
+					"fill": "#1B1F24",
+					"radius": 1
+				},
+				{
+					"type": "rect",
+					"x": 202,
+					"y": 178.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#3A3F47",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 202,
+					"y": 188.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#3A3F47",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 202,
+					"y": 198.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#3A3F47",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 202,
+					"y": 208.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#3A3F47",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 202,
+					"y": 218.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#3A3F47",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 202,
+					"y": 228.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#3A3F47",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 202,
+					"y": 238.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#3A3F47",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 202,
+					"y": 248.5,
+					"w": 3,
+					"h": 3,
+					"fill": "#3A3F47",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 14,
+					"y": -14,
+					"w": 38,
+					"h": 58,
+					"fill": "#1B1F24",
+					"radius": 3
+				},
+				{
+					"type": "rect",
+					"x": 26,
+					"y": -12,
+					"w": 14,
+					"h": 6,
+					"fill": "#3A3F47",
+					"radius": 2,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 78,
+					"y": -7,
+					"w": 24,
+					"h": 18,
+					"fill": "#C9CED6",
+					"radius": 2
+				},
+				{
+					"type": "rect",
+					"x": 82,
+					"y": -5,
+					"w": 16,
+					"h": 3,
+					"fill": "#8A9099",
+					"radius": 1,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 140,
+					"y": -7,
+					"w": 24,
+					"h": 18,
+					"fill": "#C9CED6",
+					"radius": 2
+				},
+				{
+					"type": "rect",
+					"x": 144,
+					"y": -5,
+					"w": 16,
+					"h": 3,
+					"fill": "#8A9099",
+					"radius": 1,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 180,
+					"y": 26,
+					"w": 20,
+					"h": 20,
+					"fill": "#C9CED6",
+					"radius": 2
+				},
+				{
+					"type": "rect",
+					"x": 185,
+					"y": 31,
+					"w": 10,
+					"h": 10,
+					"fill": "#3A3F47",
+					"radius": 5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 107,
+					"y": 189,
+					"w": 40,
+					"h": 28,
+					"fill": "#C9CED6",
+					"radius": 1,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 113,
+					"y": 183,
+					"w": 28,
+					"h": 40,
+					"fill": "#C9CED6",
+					"radius": 1,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 110,
+					"y": 186,
+					"w": 34,
+					"h": 34,
+					"fill": "#2B2F36",
+					"radius": 2,
+					"label": "SAMD21",
+					"labelColor": "#D5DAE1",
+					"labelSize": 6
+				},
+				{
+					"type": "rect",
+					"x": 116,
+					"y": 104,
+					"w": 26,
+					"h": 26,
+					"fill": "#2B2F36",
+					"radius": 2,
+					"label": "EDBG",
+					"labelColor": "#D5DAE1",
+					"labelSize": 5
+				},
+				{
+					"type": "rect",
+					"x": 60,
+					"y": 150,
+					"w": 100,
+					"h": 16,
+					"fill": "#17708A",
+					"outline": false,
+					"label": "ZERO",
+					"labelColor": "#F4F1EA",
+					"labelSize": 12
+				},
+				{
+					"type": "rect",
+					"x": 100,
+					"y": 248,
+					"w": 26,
+					"h": 17,
+					"fill": "#1B1F24",
+					"radius": 1
+				},
+				{
+					"type": "rect",
+					"x": 104,
+					"y": 252,
+					"w": 3,
+					"h": 3,
+					"fill": "#C9CED6",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 104,
+					"y": 259,
+					"w": 3,
+					"h": 3,
+					"fill": "#C9CED6",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 112,
+					"y": 252,
+					"w": 3,
+					"h": 3,
+					"fill": "#C9CED6",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 112,
+					"y": 259,
+					"w": 3,
+					"h": 3,
+					"fill": "#C9CED6",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 120,
+					"y": 252,
+					"w": 3,
+					"h": 3,
+					"fill": "#C9CED6",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 120,
+					"y": 259,
+					"w": 3,
+					"h": 3,
+					"fill": "#C9CED6",
+					"radius": .5,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 66,
+					"y": 256,
+					"w": 26,
+					"h": 9,
+					"fill": "#1B1F24",
+					"radius": 1
+				}
+			]
+		},
+		kicad: {
+			"footprint": "Module:Arduino_UNO_R3",
+			"pins": {
+				"ATN": "1",
+				"IOREF": "2",
+				"RESET": "3",
+				"3V3": "4",
+				"5V": "5",
+				"GND": "6",
+				"GND 2": "7",
+				"VIN": "8",
+				"A0": "9",
+				"A1": "10",
+				"A2": "11",
+				"A3": "12",
+				"A4": "13",
+				"A5": "14",
+				"SCL": "32",
+				"SDA": "31",
+				"AREF": "30",
+				"GND 3": "29",
+				"D13": "28",
+				"D12": "27",
+				"D11": "26",
+				"D10": "25",
+				"D9": "24",
+				"D8": "23",
+				"D7": "22",
+				"D6": "21",
+				"D5": "20",
+				"D4": "19",
+				"D3": "18",
+				"D2": "17",
+				"D1": "16",
+				"D0": "15"
+			},
+			"value": "Arduino Zero"
 		}
 	},
 	"../modules/battery-18650-cell.json": {
