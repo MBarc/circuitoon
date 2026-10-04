@@ -679,11 +679,10 @@ function validateUsb(raw: Record<string, unknown>, errors: string[]) {
   }
   if (el.usbHub !== undefined) {
     const h = el.usbHub
-    // The DC input that makes a hub self-powered: a pin or a header pad.
-    const pinNames = new Set([...(Array.isArray(raw.pins) ? raw.pins : []), ...(Array.isArray(raw.holes) ? raw.holes : [])].filter(isObj).map((p) => p.name))
+    // The DC input that makes a hub self-powered: a pin or a header pad, never a USB port.
     const ok = isObj(h) && Object.keys(h).length === 1 &&
-      (h.power === 'bus' || h.power === 'self' || (isObj(h.power) && Object.keys(h.power).length === 1 && typeof h.power.pin === 'string' && pinNames.has(h.power.pin)))
-    if (!ok) errors.push('electrical.usbHub: must be { "power": "bus" }, { "power": "self" } or { "power": { "pin": <a pin or pad name> } }')
+      (h.power === 'bus' || h.power === 'self' || (isObj(h.power) && Object.keys(h.power).length === 1 && typeof h.power.pin === 'string' && powerPins.has(h.power.pin)))
+    if (!ok) errors.push('electrical.usbHub: must be { "power": "bus" }, { "power": "self" } or { "power": { "pin": <a pin or pad name, not a USB port> } }')
     if (hubPorts.filter((u) => u.hub === 'upstream').length !== 1 || !hubPorts.some((u) => u.hub === 'downstream'))
       errors.push('electrical.usbHub: a hub has exactly one upstream port and at least one downstream port')
   } else if (hubPorts.length) errors.push('electrical.usbHub: required on a part with hub ports (how its downstream ports are powered)')

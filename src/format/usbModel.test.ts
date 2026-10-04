@@ -95,6 +95,8 @@ describe('USB port validation', () => {
     expect(r.ok).toBe(true)
     expect(usbHubOf((r as { module: ModuleDef }).module)).toEqual({ power: { pin: 'DC+' } })
     expect(errorsOf(base([up, down], { params: {}, usbHub: { power: 'mains' } }))).toEqual([expect.stringMatching(/^electrical\.usbHub: must be/)])
+    // The DC input is a pin or pad, never a USB port.
+    expect(errorsOf(base([up, down], { params: {}, usbHub: { power: { pin: 'P1' } } }))).toEqual([expect.stringMatching(/^electrical\.usbHub: must be/)])
     expect(errorsOf(base([down], { params: {}, usbHub: { power: 'bus' } }))).toEqual(['electrical.usbHub: a hub has exactly one upstream port and at least one downstream port'])
   })
 })
