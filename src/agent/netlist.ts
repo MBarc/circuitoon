@@ -2,7 +2,7 @@
 // describe a circuit, checked against every contract rule. Nothing is guessed: each violation is an
 // error naming its path. Repeated sub-circuits are expanded first (repeat.ts), so every rule here
 // also holds for every copy. Pure.
-import { type ModuleDef, type PinDef, PARAM_RULES, isBoard, isNetLabel, isObj, isNum, isSpacer, moduleSettings, validParamValue, validateModule } from '../format/module.ts'
+import { type ModuleDef, type PinDef, PARAM_RULES, isBoard, isNetLabel, isObj, isNum, isSpacer, moduleSettings, usbOf, validParamValue, validateModule } from '../format/module.ts'
 import { mainsOf } from '../format/mainsModel.ts'
 import { ANNOTATION_LABEL_MAX, ANNOTATION_TEXT_MAX, isValidColor } from '../format/diagram.ts'
 import { type EndKind, isEndKind, isUsbEnd } from '../format/cables.ts'
@@ -292,7 +292,7 @@ export function parseNetlist(raw: unknown, library: ModuleLookup): IntentResult 
       terminals.push(t)
     }
     if (terminals.length < 2) errors.push(`${at}.pins: a net joins at least 2 pins`)
-    // A label never stands in for mains wiring: mains is drawn as real cable, so it can be checked.
+    // A label never stands in for mains wiring or a USB cable: both are drawn as they are, so they can be checked.
     let labelled = false
     if (label !== undefined) {
       if (typeof label !== 'boolean') errors.push(`${at}.label: must be true or false`)
@@ -301,7 +301,12 @@ export function parseNetlist(raw: unknown, library: ModuleLookup): IntentResult 
           const m = byRef.get(t.ref)?.module
           return !!m && mainsOf(m).terminals.has(t.name)
         })
+        const usb = terminals.find((t) => {
+          const m = byRef.get(t.ref)?.module
+          return !!m && !!usbOf(m, t.name)
+        })
         if (hot) errors.push(`${at}.label: net ${name} joins mains terminal ${terminalName({ ...hot, hole: undefined })}; mains is always drawn as wires, never as labels`)
+        else if (usb) errors.push(`${at}.label: net ${name} joins USB port ${terminalName({ ...usb, hole: undefined })}; USB is always drawn as a cable or a plug-in, never as labels`)
         else labelled = true
       }
     }

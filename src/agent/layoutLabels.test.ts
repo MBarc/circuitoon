@@ -99,6 +99,19 @@ describe('layout with net labels', () => {
     const v = ok(raw, 'all')
     expect(names(v.diagram)).toEqual([])
   })
+  it('never labels a USB net: the cable stays a cable in every mode', () => {
+    const raw = {
+      format: 'circuitoon-netlist/1', title: 'ESP32 on a Pi',
+      parts: [{ ref: 'U1', module: 'rpi-4-model-b' }, { ref: 'U2', module: 'esp32-devkitc-v4' }],
+      nets: [{ name: 'USB', pins: ['U1.USB2-1', 'U2.USB'] }],
+    }
+    for (const mode of ['all', 'auto', 'none'] as const) {
+      const v = ok(raw, mode)
+      expect(names(v.diagram)).toEqual([])
+      expect(v.diagram.connections.map((c) => `${c.from.part}.${c.from.pin} ${c.to.part}.${c.to.pin} ${c.ends?.from} ${c.ends?.to}`)).toEqual(['U1.USB2-1 U2.USB usb-a usb-micro-b'])
+      expect(checkDiagram(v.diagram).filter((f) => f.rule.startsWith('usb') && f.severity !== 'info')).toEqual([])
+    }
+  })
 })
 
 describe('a repeat block\'s shared ground', () => {
