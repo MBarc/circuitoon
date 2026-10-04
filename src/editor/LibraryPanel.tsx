@@ -8,7 +8,7 @@ import { library } from '../library.ts'
 import { Part, partBounds } from '../render/Part.tsx'
 import { groupLibrary, searchLibrary } from './libraryGroups.ts'
 import type { ModuleDef } from '../format/module.ts'
-import { type MyPart, myParts } from './myParts.ts'
+import { type MyPart, myParts, skippedNotice } from './myParts.ts'
 
 export const MODULE_MIME = 'application/x-circuitoon-module'
 
@@ -157,6 +157,7 @@ export function LibraryPanel({ onAdd, parts: handlers }: { onAdd: (moduleId: str
                 {shown.length ? shown.map((p) => (
                   <MyPartItem key={p.module.id} p={p} onAdd={onAdd} handlers={handlers} open={openPart === p.module.id} onToggle={() => setOpenPart(openPart === p.module.id ? null : p.module.id)} />
                 )) : <p className="hint">Parts you make or import land here. Make one with New part.</p>}
+                {myParts.skipped > 0 && <p className="hint warn" role="status">{skippedNotice(myParts.skipped)}</p>}
                 {!myParts.persisted && <p className="hint warn">This browser is not saving My parts, so they last only until the tab closes. Export them to keep them.</p>}
               </div>
             )}

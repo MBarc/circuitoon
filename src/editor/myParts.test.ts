@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { MY_PARTS_KEY, MyPartsStore, duplicatePart, freeId, importPart, partFileText, readMyParts, replaceSheetModule, writeMyParts, type KeyValue, type MyPart } from './myParts.ts'
+import { MY_PARTS_KEY, MyPartsStore, duplicatePart, freeId, importPart, partFileText, readMyParts, readMyPartsReport, replaceSheetModule, skippedNotice, writeMyParts, type KeyValue, type MyPart } from './myParts.ts'
+import { validateModule } from '../format/module.ts'
 import { moduleFromSpec } from '../format/partMaker.ts'
 import { addPasted, draftFromPart, emptyDraft, moveRow, moveRowToSide, pinRow, specFromDraft } from './partDraft.ts'
 import { parsePinLines } from '../format/partMaker.ts'
@@ -149,5 +150,50 @@ describe('the part maker draft', () => {
   it('keeps a size only when one is chosen, and drops internal joins whose pins are gone', () => {
     const d = { ...emptyDraft(), name: 'X', sized: true, w: 12, h: 5, pins: { left: [pinRow('GND'), pinRow('GND 2')], right: [], top: [], bottom: [] }, internal: [['GND', 'GND 2'], ['GND', 'OLD']] }
     expect(specFromDraft(d)).toMatchObject({ body: { w: 12, h: 5 }, internal: [['GND', 'GND 2']] })
+  })
+})
+
+describe('tampered My parts', () => {
+  // An object whose toString and valueOf are not functions: String() and template literals throw on it.
+  const evil = () => JSON.parse('{"toString":null,"valueOf":null}')
+  const paths = (v: unknown, p: (string | number)[] = [], out: (string | number)[][] = []) => {
+    if (v && typeof v === 'object') for (const [k, x] of Object.entries(v)) {
+      const q = [...p, Array.isArray(v) ? Number(k) : k]
+      out.push(q)
+      paths(x, q, out)
+    }
+    return out
+  }
+  const swap = (m: unknown, path: (string | number)[], bad: unknown) => {
+    const c = structuredClone(m) as Record<string | number, unknown>
+    let o = c
+    for (const k of path.slice(0, -1)) o = o[k] as Record<string | number, unknown>
+    o[path[path.length - 1]] = bad
+    return c
+  }
+
+  it('validation never throws on malformed nested objects, anywhere in a module', () => {
+    const rich = ['bme280-module-4pin', 'outlet-au-as3112', 'adapter-barrel-au', 'tp4056-module', 'lamp-holder-e26', 'arduino-nano', 'fuse-holder-5x20-inline']
+    for (const m of [part().module, ...rich.map((id) => modulesById[id])])
+      for (const p of paths(m))
+        for (const bad of [evil(), [evil()], [[evil(), evil()]]]) {
+          const c = swap(m, p, bad)
+          expect(() => validateModule(c), `${m.id} ${p.join('.')}`).not.toThrow()
+          expect(() => importPart(JSON.stringify(c), []), `${m.id} ${p.join('.')}`).not.toThrow()
+        }
+  })
+
+  it('skips a stored entry that cannot be read, keeps the rest and says so; startup never fails', () => {
+    const good = part('Good')
+    const bad = { ...part('Bad'), module: { ...part('Bad').module, format: evil() } }
+    const nested = { ...part('Nested'), module: { ...part('Nested').module, internal: [[evil(), evil()]] } }
+    const s = memory({ [MY_PARTS_KEY]: JSON.stringify({ format: 'circuitoon-my-parts/1', parts: [bad, good, nested] }) })
+    expect(readMyPartsReport(s)).toMatchObject({ skipped: 2 })
+    expect(readMyParts(s).map((p) => p.module.id)).toEqual(['custom-good'])
+    const store = new MyPartsStore(() => s)
+    expect(store.getSnapshot().map((p) => p.module.id)).toEqual(['custom-good'])
+    expect(store.skipped).toBe(2)
+    expect(skippedNotice(2)).toMatch(/2 saved parts in this browser could not be read/)
+    expect(skippedNotice(1)).toMatch(/1 saved part in this browser could not be read/)
   })
 })

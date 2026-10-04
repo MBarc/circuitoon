@@ -270,6 +270,21 @@ const u2 = await page.evaluate(() => [...document.querySelectorAll('svg.canvas [
 await page.locator(`svg.canvas [data-part="${u2}"]`).first().click({ position: { x: 40, y: 20 } })
 check((await page.locator('.inspector h2#selection-title').textContent()).includes('CLI made sensor') && (await page.locator('.inspector .custom-badge').isVisible()), 'its custom part shows the custom badge in the Inspector')
 
+// ---- A tampered store: the bad entry is left out with a notice, the editor still starts ----
+await page.evaluate(() => {
+  const s = JSON.parse(localStorage.getItem('circuitoon.myParts'))
+  const bad = JSON.parse(JSON.stringify(s.parts[0]))
+  bad.module.id = 'custom-tampered'
+  bad.module.format = JSON.parse('{"toString":null,"valueOf":null}')
+  s.parts.push(bad)
+  localStorage.setItem('circuitoon.myParts', JSON.stringify(s))
+})
+await page.reload({ waitUntil: 'networkidle' })
+await page.getByRole('button', { name: /New diagram/ }).click()
+await page.waitForSelector('.mine-group')
+check((await page.locator('.mine-group .lib-item.mine').count()) === 2, 'a tampered store still loads the good parts')
+check((await page.locator('.mine-group .hint.warn').first().textContent())?.includes('1 saved part in this browser could not be read'), 'and says one entry was left out')
+
 check(errors.length === 0, `no page errors (${errors.join(' | ')})`)
 await browser.close()
 done()

@@ -29,28 +29,46 @@ const defaultStorage = (): KeyValue | null => {
   }
 }
 
-/** Reads the stored list; anything unreadable or invalid is left out, never thrown. */
-export function readMyParts(storage: KeyValue | null = defaultStorage()): MyPart[] {
+/**
+ * Reads the stored list; anything unreadable or invalid is left out and counted, never thrown. Each
+ * entry is checked on its own, so one tampered entry costs only itself.
+ */
+export function readMyPartsReport(storage: KeyValue | null = defaultStorage()): { parts: MyPart[]; skipped: number } {
   let raw: unknown
   try {
     const text = storage?.getItem(MY_PARTS_KEY)
-    if (!text) return []
+    if (!text) return { parts: [], skipped: 0 }
     raw = JSON.parse(text)
   } catch {
-    return []
+    return { parts: [], skipped: 0 }
   }
   const list = isObj(raw) && raw.format === STORE_FORMAT && Array.isArray(raw.parts) ? raw.parts : []
   const seen = new Set<string>()
-  const out: MyPart[] = []
+  const parts: MyPart[] = []
+  let skipped = 0
   for (const e of list) {
-    if (!isObj(e)) continue
-    const v = validateModule(e.module)
-    if (!v.ok || v.module.custom !== true || seen.has(v.module.id)) continue
-    seen.add(v.module.id)
-    out.push({ module: v.module, ...(typeof e.maker === 'string' && e.maker ? { maker: e.maker } : {}), saved: typeof e.saved === 'number' ? e.saved : 0 })
+    try {
+      const v = isObj(e) ? validateModule(e.module) : null
+      if (!v || !v.ok || v.module.custom !== true) {
+        skipped++
+        continue
+      }
+      if (seen.has(v.module.id)) continue
+      seen.add(v.module.id)
+      parts.push({ module: v.module, ...(typeof e.maker === 'string' && e.maker ? { maker: e.maker } : {}), saved: typeof e.saved === 'number' ? e.saved : 0 })
+    } catch {
+      skipped++
+    }
   }
-  return out
+  return { parts, skipped }
 }
+
+/** The stored parts that could be read (see readMyPartsReport). */
+export const readMyParts = (storage: KeyValue | null = defaultStorage()): MyPart[] => readMyPartsReport(storage).parts
+
+/** What the Parts panel says when stored entries could not be read. */
+export const skippedNotice = (n: number): string =>
+  `${n} saved ${n === 1 ? 'part' : 'parts'} in this browser could not be read (damaged or from a newer version), so ${n === 1 ? 'it was' : 'they were'} left out. Saving My parts again drops ${n === 1 ? 'it' : 'them'}.`
 
 /** Writes the list; false when storage refused it (the list still lives for this tab). */
 export function writeMyParts(parts: MyPart[], storage: KeyValue | null = defaultStorage()): boolean {
@@ -97,7 +115,12 @@ export function importPart(text: string, parts: MyPart[], fileName = 'The file')
     const base = slugify(raw.id)
     raw = { ...raw, custom: true, id: base.startsWith(CUSTOM_PREFIX) ? base : CUSTOM_PREFIX + base }
   }
-  const v = validateModule(raw)
+  let v: ReturnType<typeof validateModule>
+  try {
+    v = validateModule(raw)
+  } catch {
+    v = { ok: false, errors: ['it could not be read'] }
+  }
   if (!v.ok) return { ok: false, message: `${fileName} is not a Circuitoon part: ${v.errors.slice(0, 3).join('; ')}` }
   const m = v.module
   const same = parts.find((p) => p.module.id === m.id)
@@ -131,11 +154,15 @@ export class MyPartsStore {
   private listeners = new Set<Listener>()
   /** False after a write storage refused: the panel says the parts last only for this tab. */
   persisted = true
+  /** Stored entries that could not be read on the last load: the panel says so. */
+  skipped = 0
   private storage: () => KeyValue | null
 
   constructor(storage: () => KeyValue | null = defaultStorage) {
     this.storage = storage
-    this.parts = readMyParts(storage())
+    const r = readMyPartsReport(storage())
+    this.parts = r.parts
+    this.skipped = r.skipped
   }
 
   subscribe = (fn: Listener): (() => void) => {
@@ -153,6 +180,7 @@ export class MyPartsStore {
   private set(parts: MyPart[]) {
     this.parts = parts
     this.persisted = writeMyParts(parts, this.storage())
+    if (this.persisted) this.skipped = 0
     this.listeners.forEach((fn) => fn())
   }
 
@@ -181,7 +209,9 @@ export class MyPartsStore {
   }
   /** Re-reads storage (another tab saved). */
   reload() {
-    this.parts = readMyParts(this.storage())
+    const r = readMyPartsReport(this.storage())
+    this.parts = r.parts
+    this.skipped = r.skipped
     this.listeners.forEach((fn) => fn())
   }
 }
