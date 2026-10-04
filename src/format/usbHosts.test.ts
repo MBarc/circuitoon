@@ -116,6 +116,13 @@ describe('USB rules on library parts', () => {
       [['j1|USB', 'h1|UP', { from: 'usb-a', to: 'usb-b' }], ['h1|P1', 'u1|USB'], ['h1|P2', 'u2|USB'], ['ps1|+', 'h1|DC+'], ['ps1|-', 'h1|DC-']])
     expect(usb(d).filter((f) => !f.startsWith('info'))).toEqual([])
   })
+  it('the FE1.1s with its 5V pad unwired is bus-powered: its stated 500 mA ports give 100 mA', () => {
+    const d = sheet([['J1', 'computer-usb-port'], ['H1', 'usb-hub-fe11s-circuitneato'], ['U1', 'rtl-sdr-blog-v4']],
+      [['j1|USB', 'h1|USB-C', { from: 'usb-a', to: 'usb-c' }], ['h1|P1', 'u1|USB']])
+    expect(usb(d)).toEqual([
+      'warning usb-hub-bus-power: H1 is a bus-powered hub, so H1 1 gives at most 100 mA, but U1 USB draws 270 mA. Power the hub from its own supply, or plug U1 into the host directly.',
+    ])
+  })
   it('jumper wires from a Pi\'s GPIO to a USB port are an error', () => {
     const d = sheet([['U1', 'rpi-4-model-b'], ['U2', 'esp32-devkitc-v4']], [['u1|GPIO14', 'u2|USB']])
     expect(usb(d).map((f) => f.split(':')[0])).toEqual(['error usb-to-pin'])

@@ -306,8 +306,12 @@ export function usbFindings(d: Diagram, nl: Netlist, netWires: string[][]): UsbD
     return own
   }
   const sourceOf = (h: Port): number | null => {
+    if (h.usb.hub === 'downstream') {
+      // A stated per-port figure assumes the hub has its own supply; bus-powered, a port gives at most 100 mA.
+      const own = h.usb.source ?? DEFAULT_SOURCE[h.usb.version ?? '2.0']
+      return hubSelfPowered(h) ? own : Math.min(own, BUS_HUB_PORT_MA)
+    }
     if (h.usb.source !== undefined) return h.usb.source
-    if (h.usb.hub === 'downstream') return hubSelfPowered(h) ? DEFAULT_SOURCE[h.usb.version ?? '2.0'] : BUS_HUB_PORT_MA
     return h.usb.role === 'host' && h.usb.version ? DEFAULT_SOURCE[h.usb.version] : null
   }
   /** The host side and device side of a pair, or null when that is not clear (two dual ports, a role error). */
@@ -336,7 +340,7 @@ export function usbFindings(d: Diagram, nl: Netlist, netWires: string[][]): UsbD
     if (supply !== null && dm.mA > supply) {
       if (busHub)
         out.push({ rule: 'usb-hub-bus-power', subject: host.part.designator, target: host.title,
-          message: `${host.part.designator} is a bus-powered hub, so ${host.title} gives at most ${mA(BUS_HUB_PORT_MA)}, but ${dev.title} draws ${mA(dm.mA)}. Power the hub from its own supply, or plug ${dev.part.designator} into the host directly.`,
+          message: `${host.part.designator} is a bus-powered hub, so ${host.title} gives at most ${mA(supply)}, but ${dev.title} draws ${mA(dm.mA)}. Power the hub from its own supply, or plug ${dev.part.designator} into the host directly.`,
           parts, pins: [pinOf(host), pinOf(dev)], wires: wiresOf([host, dev]), causes: [host.key, dev.key] })
       else
         out.push({ rule: 'usb-power', subject: host.part.designator, target: host.title,
