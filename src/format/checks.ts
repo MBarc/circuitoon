@@ -693,6 +693,21 @@ export function checkDiagram(d: Diagram): Finding[] {
     const terms = keys.map(terminal)
     return terms.some(isUsb) ? [] : terms.filter((t): t is Terminal => t !== null)
   })
+  // A USB cable or plug-in joins the two boards' grounds (never VBUS to a 5V pin: that may sit behind
+  // a diode or a switch). Each board's first ground pin stands for its ground; a link on a net with
+  // other pins (usb-to-pin) joins nothing.
+  const usbGrounds: [string, string][] = []
+  const usbGrounded = new Set<string>()
+  if (usbAny)
+    for (const c of d.connections) {
+      const l = brokenSet.has(c.uid) ? null : usbLink(d, c)
+      const i = l ? nl.netOf.get(l.from.key) : undefined
+      if (!l || i === undefined || nl.nets[i].some((k) => terminal(k)?.type !== 'usb')) continue
+      const [ga, gb] = [l.from, l.to].map((p) => moduleInfo(p.module).grounds[0])
+      if (!ga || !gb || l.from.part === l.to.part) continue
+      usbGrounds.push([nodeKey(l.from.part.uid, ga), nodeKey(l.to.part.uid, gb)])
+      usbGrounded.add(l.from.part.uid).add(l.to.part.uid)
+    }
   /** Supplies (by source id) already reported as wired to their own ground, and their parts. */
   const shorted = new Set<string>()
   const shortedParts = new Set<string>()
@@ -732,7 +747,7 @@ export function checkDiagram(d: Diagram): Finding[] {
         parts: drivers.map((t) => t.part.uid), pins: drivers.map(termPin), wires, causes: drivers.map((t) => t.key) })
   })
 
-  const { reversed, returnGroup } = checkPotentials({ d, nl, netTerms, netWires, terminal, plugs, shorted, add, skip: hazardous })
+  const { reversed, returnGroup } = checkPotentials({ d, nl, netTerms, netWires, terminal, plugs, shorted, add, skip: hazardous, usbGrounds })
 
   // Per part: power and ground reach it from another part.
   const usbFed = usbAny ? usbFedParts(d) : new Set<string>()
@@ -795,7 +810,7 @@ export function checkDiagram(d: Diagram): Finding[] {
     }
     const grounds = terms.filter((t) => t.type === 'ground')
     // A part already reported as shorted gets no second finding about its ground.
-    if (grounds.length && !shortedParts.has(p.uid) && !grounds.some((t) => others(t).some((o) => !o.bare))) {
+    if (grounds.length && !shortedParts.has(p.uid) && !usbGrounded.has(p.uid) && !grounds.some((t) => others(t).some((o) => !o.bare))) {
       const wired = [...new Set(grounds.filter((t) => others(t).length).map((t) => t.label))]
       const ownOnly = [...new Set(grounds.filter((t) => {
         const i = nl.netOf.get(t.key)
@@ -818,7 +833,8 @@ export function checkDiagram(d: Diagram): Finding[] {
     let list = groundedCache.get(p.uid)
     if (!list) {
       const m = moduleOf(d, p.module)
-      list = m ? moduleInfo(m).grounds.map((g) => terminal(nodeKey(p.uid, g))!).filter((t) => others(t).some((o) => !o.bare)) : []
+      // A ground pin is grounded when it leads to another part, or stands for the board's ground on a USB link.
+      list = m ? moduleInfo(m).grounds.map((g) => terminal(nodeKey(p.uid, g))!).filter((t, i) => others(t).some((o) => !o.bare) || (i === 0 && usbGrounded.has(p.uid))) : []
       groundedCache.set(p.uid, list)
     }
     return list
@@ -1102,6 +1118,8 @@ interface PotentialInput {
   shorted: Set<string>
   /** Node keys on hazardous mains nets: no source edge, switch or common return with an end there enters the solver (spec 3). */
   skip: (key: string) => boolean
+  /** Ground pins a USB link joins, one pair per link: 0 V apart. */
+  usbGrounds: [string, string][]
   add: (f: { rule: RuleId; subject: string; target: string; message: string; parts: string[]; pins: Endpoint[]; wires: string[]; causes: string[] }) => void
 }
 
@@ -1113,7 +1131,7 @@ interface PotentialInput {
  * supplies fighting; a loop that agrees is supplies in parallel. A load gets the potential of its
  * power input over that of its own ground, so a series stack adds up.
  */
-function checkPotentials({ d, nl, netTerms, netWires, terminal, plugs, shorted, skip, add }: PotentialInput): { reversed: Set<string>; returnGroup: (key: string) => string } {
+function checkPotentials({ d, nl, netTerms, netWires, terminal, plugs, shorted, skip, add, usbGrounds }: PotentialInput): { reversed: Set<string>; returnGroup: (key: string) => string } {
   const reversed = new Set<string>()
   const netOfKey = (key: string) => {
     const i = nl.netOf.get(key)
@@ -1126,6 +1144,7 @@ function checkPotentials({ d, nl, netTerms, netWires, terminal, plugs, shorted, 
   const edges: Edge[] = []
   const diodes: Edge[] = []
   const unknownOn = new Map<string, Source[]>()
+  for (const [a, b] of usbGrounds) edges.push({ from: netOfKey(a), to: netOfKey(b), v: 0, fromKey: a, toKey: b })
   const outOn = new Map<string, Source[]>()
   /** Cells by bank (Ruling V1): same module and voltage, every + on one net and every - on another. */
   const bankCells = new Map<string, Source[]>()

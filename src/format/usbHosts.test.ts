@@ -123,6 +123,20 @@ describe('USB rules on library parts', () => {
       'warning usb-hub-bus-power: H1 is a bus-powered hub, so H1 1 gives at most 100 mA, but U1 USB draws 270 mA. Power the hub from its own supply, or plug U1 into the host directly.',
     ])
   })
+  it('a USB cable joins the two boards\' grounds: UART jumpers beside it need no ground wire', () => {
+    const d = sheet([['U1', 'rpi-4-model-b'], ['U2', 'esp32-devkitc-v4']],
+      [['u1|USB2-1', 'u2|USB', { from: 'usb-a', to: 'usb-micro-b' }], ['u1|GPIO14', 'u2|RX'], ['u1|GPIO15', 'u2|TX']])
+    expect(checkDiagram(d).map((f) => f.rule).filter((r) => /ground/.test(r))).toEqual([])
+    // Without the cable both boards are ungrounded.
+    const bare = { ...d, connections: d.connections.slice(1) }
+    expect(checkDiagram(bare).map((f) => f.rule).filter((r) => /ground/.test(r))).toEqual(['no-ground', 'no-ground'])
+  })
+  it('a USB cable joins grounds for the common-ground rule too', () => {
+    // U2's GND is wired to a sensor's; U1 talks to the sensor and reaches its ground only through the cable.
+    const d = sheet([['U1', 'rpi-4-model-b'], ['U2', 'esp32-devkitc-v4'], ['U3', 'esp32-devkitc-v4']],
+      [['u1|USB2-1', 'u2|USB', { from: 'usb-a', to: 'usb-micro-b' }], ['u2|GND', 'u3|GND'], ['u1|GPIO14', 'u3|RX']])
+    expect(checkDiagram(d).map((f) => f.rule).filter((r) => /ground/.test(r))).toEqual([])
+  })
   it('jumper wires from a Pi\'s GPIO to a USB port are an error', () => {
     const d = sheet([['U1', 'rpi-4-model-b'], ['U2', 'esp32-devkitc-v4']], [['u1|GPIO14', 'u2|USB']])
     expect(usb(d).map((f) => f.split(':')[0])).toEqual(['error usb-to-pin'])
