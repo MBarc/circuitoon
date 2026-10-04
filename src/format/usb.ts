@@ -182,8 +182,11 @@ function nodeWords(d: Diagram, key: string): string {
   return `${part.designator} ${pinLabel(m, pin)}`
 }
 
-/** Every USB finding on the sheet. `nl` is the sheet's netlist; `netWires` its wires per net. */
-export function usbFindings(d: Diagram, nl: Netlist, netWires: string[][]): UsbDraft[] {
+/**
+ * Every USB finding on the sheet. `nl` is the sheet's netlist; `netWires` its wires per net; `dcFed`
+ * whether a part's DC input pin has a suitable supply and its return (a hub's own power).
+ */
+export function usbFindings(d: Diagram, nl: Netlist, netWires: string[][], dcFed: (part: string, pin: string) => boolean): UsbDraft[] {
   const out: UsbDraft[] = []
   const portByKey = portIndex(d)
   if (!portByKey.size) return out
@@ -303,10 +306,8 @@ export function usbFindings(d: Diagram, nl: Netlist, netWires: string[][]): UsbD
     if (!h) return false
     if (h.power === 'self') return true
     if (h.power === 'bus') return false
-    // Self-powered when its DC input pin is wired to something.
-    const k = nodeKey(p.part.uid, h.power.pin)
-    const i = nl.netOf.get(k)
-    return i !== undefined && nl.nets[i].length > 1
+    // Self-powered only when a supply and its return reach its DC input: a bare or signal wire is not one.
+    return dcFed(p.part.uid, h.power.pin)
   }
   const downstreamOf = (p: Port): Port[] => usbPorts(p.module).filter((q) => q.usb.hub === 'downstream').map((q) => portOf(d, { part: p.part.uid, pin: q.name })!)
   const demand = (dev: Port, depth = 0): Demand => {

@@ -987,7 +987,21 @@ export function checkDiagram(d: Diagram): Finding[] {
 
   for (const f of mains?.findings ?? []) add(f)
 
-  if (usbAny) for (const f of usbFindings(d, nl, netWires)) add(f)
+  // A DC input is fed when another part's supply, at a voltage the input accepts, is on its net and
+  // that supply's return is on the input part's ground (a hub's own power, USB design 1.1).
+  const dcFed = (uid: string, pin: string): boolean => {
+    const t = terminal(nodeKey(uid, pin))
+    const i = t ? nl.netOf.get(t.key) : undefined
+    if (!t || i === undefined) return false
+    const rails = knownRails(t.supply)
+    const grounds = new Set(t.info.grounds.map((g) => nl.netOf.get(nodeKey(uid, g))).filter((x) => x !== undefined))
+    return netTerms[i].some((o) => {
+      const s = o.part === t.part ? null : sourceOf(o)
+      if (!s || s.v === null || (rails && (s.v > Math.max(...rails) + EPS || s.v < LOW_TOLERANCE * Math.min(...rails) - EPS))) return false
+      return o.info.returnGrounds(o.name).some((g) => grounds.has(nl.netOf.get(nodeKey(o.part.uid, g))!))
+    })
+  }
+  if (usbAny) for (const f of usbFindings(d, nl, netWires, dcFed)) add(f)
 
   // Pin capabilities (input only, output only, flash, strapping, no pull-up) and I2C buses
   // (pull-ups, addresses), from the caps and I2C data the modules declare. Mains nets never enter.

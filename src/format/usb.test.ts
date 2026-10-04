@@ -185,6 +185,29 @@ describe('power budget', () => {
   })
 })
 
+describe('a hub is self-powered only by a supply and its return on the DC input', () => {
+  // J1 -> H1 -> H2 -> a 400 mA disk; each hub's own 50 mA.
+  const chain = (extra: [string, string][], wires: W[]) => sheet([['J1', 'pc'], ['H1', 'hub'], ['H2', 'hub'], ['U1', 'disk'], ...extra], [
+    ['j1|USB1', 'h1|UP', { from: 'usb-a', to: 'usb-b' }], ['h1|P1', 'h2|UP', { from: 'usb-a', to: 'usb-b' }], ['h2|P1', 'u1|USB', A_MICRO], ...wires,
+  ])
+  const BUS = [
+    'usb-hub-bus-power: H1 is a bus-powered hub, so H1 P1 gives at most 100 mA, but H2 UP draws 450 mA. Power the hub from its own supply, or plug H2 into the host directly.',
+    'usb-hub-bus-power: H2 is a bus-powered hub, so H2 P1 gives at most 100 mA, but U1 USB draws 400 mA. Power the hub from its own supply, or plug U1 into the host directly.',
+  ]
+  it("floating inputs: two hubs' DC inputs wired only to each other", () => {
+    expect(usbFindings(chain([], [['h1|DC+', 'h2|DC+'], ['h1|DC-', 'h2|DC-']]))).toEqual(BUS)
+  })
+  it('a signal pin on the DC input is no supply', () => {
+    expect(usbFindings(chain([['U2', 'mcu']], [['h1|DC+', 'u2|IO5'], ['h2|DC+', 'u2|IO5']]))).toEqual(BUS)
+  })
+  it("a supply with no return to the hub's ground is no supply", () => {
+    expect(usbFindings(chain([['P1', 'psu']], [['p1|+', 'h1|DC+'], ['p1|+', 'h2|DC+']]))).toEqual(BUS)
+  })
+  it('mixed: H1 on its own supply, H2 bus-powered from it', () => {
+    expect(usbFindings(chain([['P1', 'psu']], [['p1|+', 'h1|DC+'], ['p1|-', 'h1|DC-']]))).toEqual([BUS[1]])
+  })
+})
+
 describe('bill of materials', () => {
   it('lists a USB cable by kind, never its plugs as loose connectors, and buys nothing for a plug-in', () => {
     const d = sheet([['J1', 'pc'], ['U1', 'mcu'], ['U2', 'sdr']], [['j1|USB1', 'u1|USB', A_MICRO], ['j1|USB2', 'u2|USB']])
