@@ -1,0 +1,66 @@
+name: Part submission
+description: Offer a part you made in the Circuitoon part maker for the built-in library.
+title: "Part: "
+labels: ["part submission"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for offering a part. Before it ships, the part is rebuilt for the library and its pinout is checked against the links you give here and a second source. A wrong pin can burn someone's board, so the links matter more than anything else on this form.
+
+        In the part maker, **Submit to library** copies the part JSON for you. Paste it in the box below. If you'd rather not use GitHub, export the part file and send it some other way.
+  - type: input
+    id: part-name
+    attributes:
+      label: Part name
+      description: What a maker would call it.
+      placeholder: INA219 current sensor breakout
+    validations:
+      required: true
+  - type: input
+    id: maker
+    attributes:
+      label: Maker or model
+      description: Who makes it, and the model or product number, so the right variant gets checked.
+      placeholder: Adafruit 904
+    validations:
+      required: false
+  - type: textarea
+    id: datasheets
+    attributes:
+      label: Datasheet or product links
+      description: The maker's datasheet or pinout page, plus any second source you used (another vendor's pinout, a clear photo of the silkscreen). One per line.
+      placeholder: |
+        https://www.example.com/datasheet.pdf
+        https://www.example.com/product-page
+    validations:
+      required: true
+  - type: textarea
+    id: photos
+    attributes:
+      label: Photo links
+      description: Optional. Photos of both sides of the board help confirm the pin order. You can also drag images into this box.
+    validations:
+      required: false
+  - type: textarea
+    id: part-json
+    attributes:
+      label: Part JSON
+      description: Paste the part here (Submit to library put it on your clipboard, or open the exported .circuitoon-part.json file).
+      render: json
+    validations:
+      required: true
+  - type: textarea
+    id: notes
+    attributes:
+      label: Anything else
+      description: Optional. Variants, pins you were unsure of, or where the sources disagreed.
+    validations:
+      required: false
+  - type: checkboxes
+    id: licence
+    attributes:
+      label: Licence
+      options:
+        - label: I offer this part under the project's MIT licence, and I have the right to do so.
+          required: true

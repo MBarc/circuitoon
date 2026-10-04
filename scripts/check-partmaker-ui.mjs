@@ -8,7 +8,8 @@
 // and a placed custom part in light and Graphite dark to .superpowers/partmaker-*.png.
 //
 // Usage (after `npm run build`): npm run check:partmaker-ui -- [--out <dir>] [--shots <dir>] [--port 4231]
-import { mkdirSync, readFileSync } from 'node:fs'
+import { execFileSync } from 'node:child_process'
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { checker, flagOf, launchChrome, noSavePicker, startPreview } from './lib/browser-check.mjs'
@@ -187,10 +188,43 @@ check(exported.format === 'circuitoon-module/1' && exported.id === ID && exporte
 
 await (await openActions()).getByRole('button', { name: 'Delete' }).click()
 check((await page.locator('.mine-group .lib-item.mine').count()) === 0, 'Delete removes it from My parts')
-await page.locator('[data-testid=import-part]').setInputFiles(file)
+const [chooser] = await Promise.all([page.waitForEvent('filechooser'), page.getByRole('button', { name: 'Import part' }).click()])
+await chooser.setFiles(file)
+check((await page.locator('input[type=file]').count()) === 1, 'the editor keeps one file input on the page (Import part makes its own)')
 await page.waitForSelector('.mine-group .lib-item.mine')
 check((await page.locator('.mine-group .lib-item.mine').textContent()).includes(NAME), 'Import part brings the exported file back')
 check((await page.locator('.editor-notice').textContent()).includes('Imported'), 'and says so')
+
+// ---- Submit to library: the JSON on the clipboard, the issue form with the name (and maker) filled in ----
+await page.evaluate(() => {
+  window.__opened.length = 0
+  window.__copied.length = 0
+})
+await (await openActions()).getByRole('button', { name: 'Submit to library' }).click()
+await page.waitForFunction(() => window.__opened.length === 1)
+let opened = new URL((await page.evaluate(() => window.__opened))[0])
+check(opened.origin + opened.pathname === 'https://github.com/MBarc/circuitoon/issues/new', `Submit opens the repo's new issue page (${opened.origin}${opened.pathname})`)
+check(opened.searchParams.get('template') === 'part-submission.yml' && opened.searchParams.get('part-name') === NAME, `with the part submission form and the name filled in (${opened.search})`)
+let copied = (await page.evaluate(() => window.__copied))[0]
+check(JSON.parse(copied).id === ID && JSON.parse(copied).custom === true, 'and the part JSON on the clipboard')
+check((await page.locator('.editor-notice').textContent()).includes('Paste it into the Part JSON box'), 'a notice says where to paste it')
+// From the dialog: the maker typed there goes into the form too.
+await (await openActions()).getByRole('button', { name: 'Edit' }).click()
+await dialog().waitFor()
+await dialog().getByLabel(/Maker or model/).fill(MAKER)
+check((await dialog().locator('.pm-submit .hint').textContent()).includes('you need a GitHub account'), 'the dialog says Submit needs a GitHub account, and what to do without one')
+await page.evaluate(() => {
+  window.__opened.length = 0
+  window.__copied.length = 0
+})
+await dialog().getByRole('button', { name: 'Submit to library' }).click()
+await page.waitForFunction(() => window.__opened.length === 1)
+opened = new URL((await page.evaluate(() => window.__opened))[0])
+check(opened.searchParams.get('maker') === MAKER && opened.searchParams.get('title') === `Part: ${NAME}`, `the dialog's Submit fills in the maker and title (${opened.search})`)
+copied = (await page.evaluate(() => window.__copied))[0]
+check(JSON.parse(copied).pins.length === 5, 'and copies the part being edited')
+await dialog().getByRole('button', { name: 'Save changes' }).click()
+await dialog().waitFor({ state: 'detached' })
 
 // Duplicate, then edit the copy: the dialog opens filled in.
 await (await openActions()).getByRole('button', { name: 'Duplicate' }).click()
@@ -212,6 +246,28 @@ await (await openActions()).getByRole('button', { name: 'Edit' }).click()
 await dialog().waitFor()
 await shot('dialog-dark', dialog())
 await dialog().getByRole('button', { name: 'Cancel' }).click()
+
+// ---- Round trip from the CLI: module new, embedded in a netlist, laid out, opened in the editor ----
+const cli = (...a) => execFileSync(process.execPath, ['plugin/bin/circuitoon.mjs', ...a], { encoding: 'utf8' })
+writeFileSync(join(out, 'spec.json'), JSON.stringify({ name: 'CLI made sensor', category: 'Sensors', source: 'https://example.com/a https://example.com/b', pins: { left: [{ name: 'VCC', type: 'power_in', supply: '3V3/5V' }, { name: 'GND', type: 'ground' }, { name: 'SCL', type: 'input' }, { name: 'SDA', type: 'io' }] } }))
+cli('module', 'new', '--spec', join(out, 'spec.json'), '-o', join(out, 'cli-part.json'))
+const cliPart = JSON.parse(readFileSync(join(out, 'cli-part.json'), 'utf8'))
+writeFileSync(join(out, 'cli-net.json'), JSON.stringify({
+  format: 'circuitoon-netlist/1', title: 'CLI round trip', modules: { [cliPart.id]: cliPart },
+  parts: [{ ref: 'U1', module: 'esp32-devkitc-v4' }, { ref: 'U2', module: cliPart.id }],
+  nets: [{ name: '3V3', pins: ['U1.3V3', 'U2.VCC'] }, { name: 'GND', pins: ['U1.GND', 'U2.GND'] }, { name: 'SCL', pins: ['U1.IO22', 'U2.SCL'] }, { name: 'SDA', pins: ['U1.IO21', 'U2.SDA'] }],
+}))
+cli('layout', join(out, 'cli-net.json'), '-o', join(out, 'cli-sheet.circuitoon.json'))
+await page.getByRole('button', { name: 'Import JSON' }).click()
+await page.locator('input[type=file]').setInputFiles(join(out, 'cli-sheet.circuitoon.json'))
+await page.waitForFunction(() => document.querySelector('.toolbar .title')?.textContent === 'CLI round trip')
+const cliUid = await page.evaluate(() => [...document.querySelectorAll('svg.canvas [data-part]')].map((e) => e.getAttribute('data-part')))
+check(cliUid.length === 2, `a sheet laid out by the CLI with a custom part opens in the editor (${cliUid.length} parts)`)
+const cliWires = await page.evaluate(() => new Set([...document.querySelectorAll('svg.canvas [data-wire]')].map((e) => e.getAttribute('data-wire'))).size)
+check(cliWires === 4, `with its four wires (${cliWires})`)
+const u2 = await page.evaluate(() => [...document.querySelectorAll('svg.canvas [data-part]')].find((e) => e.textContent.includes('CLI made sensor'))?.getAttribute('data-part'))
+await page.locator(`svg.canvas [data-part="${u2}"]`).first().click({ position: { x: 40, y: 20 } })
+check((await page.locator('.inspector h2#selection-title').textContent()).includes('CLI made sensor') && (await page.locator('.inspector .custom-badge').isVisible()), 'its custom part shows the custom badge in the Inspector')
 
 check(errors.length === 0, `no page errors (${errors.join(' | ')})`)
 await browser.close()

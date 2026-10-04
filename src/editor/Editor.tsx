@@ -14,6 +14,7 @@ import { draftFromPart } from './partDraft.ts'
 import { type MyPart, importPart, myParts, partFileText, replaceSheetModule } from './myParts.ts'
 import { PART_FILE, cleanBaseName, downloadText, saveWithPicker, type SavePicker } from './files.ts'
 import { ExportDialog } from './ExportDialog.tsx'
+import { submitToLibrary } from './partSubmit.ts'
 import './editor.css'
 import './partMaker.css'
 
@@ -189,11 +190,22 @@ function usePartMaker(store: EditorStore, canvas: { current: CanvasApi | null })
     setNaming({ base, text })
   }
 
+  async function submit(p: MyPart) {
+    const copied = await submitToLibrary(partFileText(p), p.module.name, p.maker)
+    say(copied
+      ? `Copied ${p.module.name}'s JSON. Paste it into the Part JSON box of the form that opened.`
+      : 'Could not copy the part JSON here. Export the part file and paste its contents into the form instead.')
+  }
+  const submitButton = (p: MyPart | null, small = false) => (
+    <button type="button" className={small ? 'tool small' : 'tool'} disabled={!p} title="Opens a GitHub issue form, which needs a GitHub account, and copies the part to paste in. Without an account, use Export file and send the file." onClick={() => p && void submit(p)}>Submit to library</button>
+  )
+
   const edit = (p: MyPart) => setOpen({ editing: p, key: Date.now() })
   const handlers = {
     onNew: () => setOpen({ editing: null, key: Date.now() }),
     onEdit: edit,
     onExport: (p: MyPart) => void exportPart(p),
+    partActions: (p: MyPart) => submitButton(p, true),
     onImport: (file: File) => {
       void file.text().then((text) => {
         const r = importPart(text, myParts.getSnapshot(), file.name)
@@ -220,6 +232,12 @@ function usePartMaker(store: EditorStore, canvas: { current: CanvasApi | null })
           taken={new Set(myParts.getSnapshot().map((p) => p.module.id))}
           onCancel={() => setOpen(null)}
           onExport={(p) => void exportPart(p)}
+          extra={(p) => (
+            <div className="pm-submit">
+              {submitButton(p)}
+              <p className="hint">Offer this part for the built-in library. It opens a GitHub issue form (you need a GitHub account) and copies the part for you to paste in. No account? Export the file and send it to the project another way.</p>
+            </div>
+          )}
           onSave={(p, wasId) => {
             setOpen(null)
             if (wasId) {
