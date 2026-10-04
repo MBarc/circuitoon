@@ -544,7 +544,7 @@ export interface PastedPin {
  * Pins from pasted lines, one pin a line: an optional pin number, the name, then optionally a type
  * word (power, ground, in, out, io, passive, nc, power_out ...) and a supply ("3V3", "5V", "3V3/5V").
  * Separators are spaces, tabs, commas, semicolons or "|". A line "Left:" (or Right, Top, Bottom)
- * sends the lines after it to that side; blank lines, "#" comments and a header row are skipped.
+ * sends the lines after it to that side; blank lines, lines starting with "#" (comments) and a header row are skipped; "#" or "-" inside a name is part of it.
  * A line it cannot read is reported by number and left out, never guessed.
  */
 export function parsePinLines(text: string, side: Side = 'left'): { pins: PastedPin[]; errors: string[] } {
@@ -556,20 +556,23 @@ export function parsePinLines(text: string, side: Side = 'left'): { pins: Pasted
   let at = side
   lines.forEach((line, i) => {
     const n = i + 1
-    const body = line.replace(/#.*$/, '').trim()
-    if (!body) return
+    const body = line.trim()
+    // Only a whole line starting with "#" is a comment: "#" inside a name (RESET#, #CS) is the name.
+    if (!body || body.startsWith('#')) return
     const head = /^(left|right|top|bottom)\s*:?\s*$/i.exec(body)
     if (head) {
       at = head[1].toLowerCase() as Side
       return
     }
-    const tokens = body.split(/[\s,;|]+/).filter((t) => t && t !== '-')
+    const tokens = body.split(/[\s,;|]+/).filter(Boolean)
     if (tokens.every((t) => HEADER_WORDS.has(t.toLowerCase()))) return
     // A leading pin number ("1", "12.", "pin 3" is read as the number 3) is the order, already given by the line.
     if (/^(pin)$/i.test(tokens[0]) && /^\d+\.?$/.test(tokens[1] ?? '')) tokens.splice(0, 2)
     else if (/^(pin)?\d+\.?$/i.test(tokens[0]) && tokens.length > 1) tokens.shift()
     const [name, ...rest] = tokens
     if (!name) return void errors.push(`Line ${n}: no pin name.`)
+    // "1 - ground": a pin named "-" of type ground, or a dash between the number and the name? Not guessed.
+    if (name === '-' && rest.length) return void errors.push(`Line ${n}: a lone "-" could be a pin named "-" or a separator. Write the pin name right after the number (for example "1 GND ground"), or "1 -" alone for a pin named "-".`)
     const pin: PinSpecObject = { name }
     for (const t of rest) {
       const type = Object.hasOwn(TYPE_WORDS, t.toLowerCase()) ? TYPE_WORDS[t.toLowerCase()] : undefined

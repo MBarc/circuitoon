@@ -294,7 +294,7 @@ export function PartMaker({ editing, taken, onSave, onExport, onCancel, extra, i
           </div>}
           {!pinsOnly && <details ref={pasteRef} className="pm-paste">
             <summary>Paste pins</summary>
-            <p className="hint">One pin a line: an optional number, the name, then a type and a voltage if you know them. <code>1 VCC power 3V3</code>, <code>GND</code>. A line saying <code>Right:</code> sends the next pins to that side.</p>
+            <p className="hint">One pin a line: an optional number, the name, then a type and a voltage if you know them. <code>1 VCC power 3V3</code>, <code>GND</code>. A line saying <code>Right:</code> sends the next pins to that side; a line starting with <code>#</code> is a comment.</p>
             <textarea aria-label="Pasted pins" rows={4} value={paste} onChange={(e) => setPaste(e.target.value)} placeholder={'1 VCC power 3V3\n2 GND ground\n3 SDA io'} />
             <button type="button" className="tool small" disabled={!paste.trim()} onClick={() => {
               const r = parsePinLines(paste, side)

@@ -233,7 +233,8 @@ describe('parsePinLines', () => {
     expect(parsePinLines('GND').pins).toEqual([{ side: 'left', pin: { name: 'GND' } }])
   })
   it('switches sides on a side line and skips blanks, comments and a header row', () => {
-    const r = parsePinLines('Pin Name Type\n# the left header\nVCC\n\nright:\nA0 # analog\nTop\nB', 'left')
+    const r = parsePinLines('Pin Name Type\n# the left header\nVCC\n\nright:\n  # indented comment\nA0\nTop\nB', 'left')
+    expect(r.errors).toEqual([])
     expect(r.pins.map((p) => `${p.side}:${p.pin.name}`)).toEqual(['left:VCC', 'right:A0', 'top:B'])
     expect(parsePinLines('X', 'bottom').pins[0].side).toBe('bottom')
   })
@@ -241,6 +242,25 @@ describe('parsePinLines', () => {
     const r = parsePinLines('VCC\nGPIO4 sometimes')
     expect(r.pins).toHaveLength(1)
     expect(r.errors).toEqual(['Line 2: "sometimes" is not a pin type or a supply voltage (types: power, power_out, ground, in, out, io, passive, nc; supplies like 3V3 or 5V).'])
+  })
+  it('keeps punctuation in pin names: only a line starting with # is a comment', () => {
+    const r = parsePinLines('2 RESET# input\n3 #CS in\n4 -\n5 V- ground\n6 IN-')
+    expect(r.errors).toEqual([])
+    expect(r.pins.map((p) => p.pin)).toEqual([
+      { name: 'RESET#', type: 'input' },
+      { name: '#CS', type: 'input' },
+      { name: '-' },
+      { name: 'V-', type: 'ground' },
+      { name: 'IN-' },
+    ])
+  })
+  it('rejects an ambiguous line instead of rewriting it', () => {
+    const r = parsePinLines('1 - ground\nA0 # analog\nOK')
+    expect(r.pins.map((p) => p.pin)).toEqual([{ name: 'OK' }])
+    expect(r.errors).toEqual([
+      'Line 1: a lone "-" could be a pin named "-" or a separator. Write the pin name right after the number (for example "1 GND ground"), or "1 -" alone for a pin named "-".',
+      'Line 2: "#" is not a pin type or a supply voltage (types: power, power_out, ground, in, out, io, passive, nc; supplies like 3V3 or 5V).',
+    ])
   })
   it('reads a pin number written as "pin 3" or "3." and a power_out with a split supply', () => {
     expect(parsePinLines('pin 3 VOUT power_out 3V3/5V\n4. EN in').pins.map((p) => p.pin)).toEqual([
