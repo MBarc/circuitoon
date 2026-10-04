@@ -15,7 +15,10 @@
     {
       "name": "RX",
       "side": "top",
-      "type": "input"
+      "type": "input",
+      "caps": {
+        "note": "RX goes straight to the NEO-M8N's UART input, which takes at most 3.6 V: from a 5 V board, shift the level down first."
+      }
     },
     {
       "name": "TX",

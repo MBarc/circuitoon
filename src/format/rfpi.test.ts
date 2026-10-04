@@ -58,6 +58,12 @@ describe('built-in Pi displays, GPS, RTL-SDR and MEMS microphones keep the physi
     expect(pin(gps, 'VCC')).toMatchObject({ type: 'power_in', supply: '3V3/5V' })
     expect(pin(gps, 'RX')?.type).toBe('input')
     expect(pin(gps, 'TX')?.type).toBe('output')
+    // Informational notes (caps.note, allowed on any part), each from the part's source.
+    expect(pin(gps, 'RX')?.caps).toEqual({ note: "RX goes straight to the NEO-M8N's UART input, which takes at most 3.6 V: from a 5 V board, shift the level down first." })
+    expect(pin(load('lcd-rpi-touch-display-7.json'), 'INT')?.caps?.note).toMatch(/^INT is not used/)
+    expect(pin(load('rtl-sdr-blog-v4.json'), 'ANT')?.caps?.note).toMatch(/4\.5 V \(up to 180 mA\)/)
+    for (const n of ['WS', 'LR', 'SCK']) expect(pin(load('mic-ics-43434.json'), n)?.caps?.note).toMatch(/at most VDD \+ 0\.3 V/)
+    expect(pin(load('mic-ics-43434-adafruit-6049.json'), 'SEL')?.caps?.note).toMatch(/pulled to GND/)
     const sdr = load('rtl-sdr-blog-v4.json')
     // Datasheet: "USB Connector: USB-A Male", "Typical Current Draw 250 - 270 mA".
     expect(pin(sdr, 'USB')).toMatchObject({ type: 'usb', usb: { connector: 'A', gender: 'plug', role: 'device', version: '2.0', draw: 270 } })

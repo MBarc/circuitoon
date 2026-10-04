@@ -21,7 +21,10 @@
     {
       "name": "ANT",
       "side": "right",
-      "type": "passive"
+      "type": "passive",
+      "caps": {
+        "note": "ANT carries 4.5 V (up to 180 mA) when the software bias tee is on: connect only an antenna or an LNA made for it."
+      }
     }
   ],
   "size": {

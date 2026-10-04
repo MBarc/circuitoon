@@ -51,8 +51,11 @@ const mount = (x, y, d = 12) => [r(x - d / 2, y - d / 2, d, d, TIN, { radius: d 
 {
   const wu = 24, hu = 15, W = wu * 10, H = hu * 10
   const types = {
-    '5V': { type: 'power_in', supply: '5V' }, GND: { type: 'ground' }, SDA: { type: 'io' }, SCL: { type: 'io' },
-    INT: { type: 'output' },
+    // Notes (caps.note, informational) from the sources above: 6by9 on INT; the SDA/SCL use from the docs.
+    '5V': { type: 'power_in', supply: '5V' }, GND: { type: 'ground' },
+    SDA: { type: 'io', caps: { note: `SDA is the touch controller's I2C, needed only on Pis older than the B+: later ones carry it on the DSI cable, so leave it unconnected there.` } },
+    SCL: { type: 'io', caps: { note: `SCL is the touch controller's I2C, needed only on Pis older than the B+: later ones carry it on the DSI cable, so leave it unconnected there.` } },
+    INT: { type: 'output', caps: { note: `INT is not used: "Interrupts aren't used. Leave it disconnected." (Raspberry Pi engineer 6by9).` } },
     DSI: { type: 'passive' },
   }
   const top = side('top', ['5V', 'INT', 'SDA', 'SCL', 'GND'], types, wu)
@@ -161,7 +164,8 @@ td2({
   const wu = 10, hu = 12, W = wu * 10, H = hu * 10
   const types = {
     VCC: { type: 'power_in', supply: '3V3/5V' }, GND: { type: 'ground' },
-    RX: { type: 'input' },
+    // u-blox NEO-M8 data sheet (UBX-15031086) sections 4.1/4.2: RXD takes at most 3.6 V.
+    RX: { type: 'input', caps: { note: `RX goes straight to the NEO-M8N's UART input, which takes at most 3.6 V: from a 5 V board, shift the level down first.` } },
     TX: { type: 'output' }, ANT: { type: 'passive' },
   }
   const top = side('top', ['VCC', 'RX', 'TX', 'GND'], types, wu)
@@ -203,7 +207,7 @@ td2({
 //    4.5 V, 180 mA on ANT, for an LNA only (that current comes from USB too, on top of the 270 mA).
 {
   const wu = 17, hu = 6, W = wu * 10, H = hu * 10
-  const types = { ANT: { type: 'passive' } }
+  const types = { ANT: { type: 'passive', caps: { note: 'ANT carries 4.5 V (up to 180 mA) when the software bias tee is on: connect only an antenna or an LNA made for it.' } } }
   const left = { pins: [usbPort('USB', 'left', { connector: 'A', gender: 'plug', role: 'device', version: '2.0', draw: 270 })] }
   const right = side('right', ['ANT'], types, hu)
   const y = right.pos.ANT
@@ -305,9 +309,10 @@ const pin1 = (x, y) => r(x - 2, y - 2, 4, 4, BLACK, { radius: 2, outline: false 
 {
   const wu = 10, hu = 11, W = wu * 10, H = hu * 10
   const types = {
-    WS: { type: 'input' },
-    LR: { type: 'input' },
-    GND: { type: 'ground' }, SCK: { type: 'input' }, VDD: { type: 'power_in', supply: '1V8/3V3' },
+    // DS-000069 absolute maximum ratings: digital pins at most VDD + 0.3 V.
+    WS: { type: 'input', caps: { note: `WS takes at most VDD + 0.3 V: drive it from logic at the mic's own supply, never 5 V.` } },
+    LR: { type: 'input', caps: { note: 'LR takes at most VDD + 0.3 V: tie it to GND or VDD, never 5 V.' } },
+    GND: { type: 'ground' }, SCK: { type: 'input', caps: { note: `SCK takes at most VDD + 0.3 V: drive it from logic at the mic's own supply, never 5 V.` } }, VDD: { type: 'power_in', supply: '1V8/3V3' },
     SD: { type: 'output' },
   }
   const top = side('top', ['GND'], types, wu)
@@ -337,7 +342,7 @@ const pin1 = (x, y) => r(x - 2, y - 2, 4, 4, BLACK, { radius: 2, outline: false 
   const wu = 8, hu = 7, W = wu * 10, H = hu * 10
   const types = {
     '3V': { type: 'power_in', supply: '3V3' }, GND: { type: 'ground' }, BCLK: { type: 'input' }, DOUT: { type: 'output' }, LRCL: { type: 'input' },
-    SEL: { type: 'input' },
+    SEL: { type: 'input', caps: { note: 'SEL is pulled to GND on the board (left channel): tie it to 3V for the right channel.' } },
   }
   const bottom = side('bottom', ['3V', 'GND', 'BCLK', 'DOUT', 'LRCL', 'SEL'], types, wu)
   const shapes = [
