@@ -58,6 +58,11 @@ describe('the hubs', () => {
     expect(pos).toEqual({ 'USB-C': 'left 20', 4: 'bottom 40', 3: 'bottom 140', 2: 'bottom 240', 1: 'bottom 340' })
     expect(m.holes!.map((g) => `${g.name} ${g.at[0].join(',')}`)).toEqual(['D+ 340,20', 'D- 350,20', 'GND 360,20', 'SCL 340,30', 'SDA 350,30', '5V 360,30'])
     expect(usbHubOf(m)).toEqual({ power: { pin: '5V' } })
+    expect(m.holes!.find((g) => g.name === '5V')?.caps?.note).toMatch(/"Disable USB Power" jumper.*Older red versions .* bus-powered only, 500 mA total/)
+  })
+  it('Pi 5 CAM/DISP 0 and 1: the order is noted as resting on one source', () => {
+    for (const n of ['CAM/DISP 0', 'CAM/DISP 1'])
+      expect(load('rpi-5').pins.find((p) => 'name' in p && p.name === n)).toMatchObject({ caps: { note: expect.stringMatching(/gpiozero/) } })
   })
   it('the generic powered hub: B upstream, four A downstream, DC input', () => {
     const m = load('usb-hub-powered-4port')

@@ -307,7 +307,10 @@
       ],
       "holeStyle": "pad",
       "type": "power_in",
-      "supply": "5V"
+      "supply": "5V",
+      "caps": {
+        "note": "With external 5 V wired here, set the board's \"Disable USB Power\" jumper, which stops the hub back-feeding the host's USB port. Older red versions of this board are bus-powered only, 500 mA total for all four ports."
+      }
     }
   ],
   "electrical": {

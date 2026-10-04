@@ -140,6 +140,7 @@ const USB2_HOST = { connector: 'A', gender: 'receptacle', role: 'host', version:
 //    micro HDMI 0 (25.8 mm) and 1 (39.2 mm), then the two four-lane MIPI connectors, CAM/DISP 1 and
 //    CAM/DISP 0 left to right (gpiozero's art labels them 1 and 0), each one pin. The supply
 //    setting picks the shared USB limit: 1.6 A with a 5 A supply (the official 27 W one), 600 mA otherwise.
+const CAM_DISP_NOTE = "Which connector is 0 and which is 1 rests on one source (gpiozero's board art: 1 on the left, 0 on the right); check the silkscreen on your board."
 {
   const wu = 34, hu = 22, W = wu * 10, H = hu * 10, yEven = 20, yOdd = 30
   const holes = header40(30, yEven, yOdd)
@@ -151,8 +152,8 @@ const USB2_HOST = { connector: 'A', gender: 'receptacle', role: 'host', version:
     ]),
     ...portSide('bottom', wu, [
       [40, usbPort('USB-C', 'bottom', { connector: 'C', gender: 'receptacle', role: 'device', draw: 800 }, 'PWR')],
-      [190, { name: 'CAM/DISP 1', side: 'bottom', type: 'passive' }],
-      [210, { name: 'CAM/DISP 0', side: 'bottom', type: 'passive' }],
+      [190, { name: 'CAM/DISP 1', side: 'bottom', type: 'passive', caps: { note: CAM_DISP_NOTE } }],
+      [210, { name: 'CAM/DISP 0', side: 'bottom', type: 'passive', caps: { note: CAM_DISP_NOTE } }],
     ]),
   ]
   const shapes = [
@@ -272,7 +273,8 @@ const USB2_HOST = { connector: 'A', gender: 'receptacle', role: 'host', version:
   const pad = (name, x, y, t) => ({ name, at: [[x, y]], holeStyle: 'pad', ...t })
   const holes = [
     pad('D+', 340, 20, { type: 'io' }), pad('D-', 350, 20, { type: 'io' }), pad('GND', 360, 20, { type: 'ground' }),
-    pad('SCL', 340, 30, { type: 'io' }), pad('SDA', 350, 30, { type: 'io' }), pad('5V', 360, 30, { type: 'power_in', supply: '5V' }),
+    pad('SCL', 340, 30, { type: 'io' }), pad('SDA', 350, 30, { type: 'io' }),
+    pad('5V', 360, 30, { type: 'power_in', supply: '5V', caps: { note: `With external 5 V wired here, set the board's "Disable USB Power" jumper, which stops the hub back-feeding the host's USB port. Older red versions of this board are bus-powered only, 500 mA total for all four ports.` } }),
   ]
   const socket = (x) => [r(x - 24, H - 34, 48, 36, METAL, { radius: 2 }), r(x - 16, H - 6, 32, 6, '#8A9099', { radius: 1, outline: false })]
   const shapes = [
