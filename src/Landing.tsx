@@ -6,6 +6,7 @@ import { buttonLed, captions } from './samples/buttonLed.ts'
 import { isSpacer, type ModuleDef } from './format/module.ts'
 import { downloadText } from './editor/files.ts'
 import { groupLibrary } from './editor/libraryGroups.ts'
+import { ThemeSwitch } from './ThemeSwitch.tsx'
 
 const REPO = 'https://github.com/MBarc/circuitoon'
 /** The README's agent section: the plugin install commands and the netlist loop. */
@@ -105,6 +106,7 @@ export function Landing() {
         <nav className="top-links">
           <a className="gh" href="#/editor">Open the editor</a>
           <a className="gh" href={REPO}>Source on GitHub</a>
+          <ThemeSwitch />
         </nav>
       </header>
       <main>

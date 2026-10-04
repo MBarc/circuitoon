@@ -26,6 +26,7 @@
     "check:bom-ui": "node scripts/check-bom-ui.mjs",
     "check:labels-ui": "node scripts/check-labels-ui.mjs",
     "check:update-ui": "node scripts/check-update-ui.mjs",
+    "check:theme-ui": "node scripts/check-theme-ui.mjs",
     "deploy": "bash scripts/deploy.sh"
   },
   "dependencies": {

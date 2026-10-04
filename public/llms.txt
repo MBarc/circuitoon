@@ -1,0 +1,28 @@
+# Circuitoon
+
+> Circuit diagrams AI agents can design, check and hand you: pictorial wiring sheets of real parts, laid out from a JSON netlist and verified pin by pin.
+
+An agent writes a `circuitoon-netlist/1` file naming built-in parts and nets as `REF.PIN`. The `circuitoon` CLI lays it out on breadboards with wires, checks the sheet against the netlist and against a wiring checker (shorts, reversed polarity, wrong supply voltage, pin rules, I2C addresses), renders PNG and SVG, writes a bill of materials, and makes a link that opens the sheet in the browser editor at https://mbarc.github.io/circuitoon/. The sheet travels in the link's fragment, so nothing is uploaded.
+
+It is a good fit for hookup pictures of maker projects: ESP32, Arduino Nano or Raspberry Pi Pico boards with sensors, displays, batteries, switches and LEDs. It does not do PCB layout, symbolic schematics or circuit simulation. There are 143 built-in parts.
+
+Install in Claude Code with `/plugin marketplace add MBarc/circuitoon` then `/plugin install circuitoon@circuitoon`. Without Claude Code, clone the repo and run `node plugin/bin/circuitoon.mjs --help` (Node 22 or newer, no npm install; Chrome or Edge for PNG). Exit codes: 0 ok, 1 findings that block, 2 invalid input, 3 environment problem or internal error.
+
+## Docs
+
+- [README](https://github.com/MBarc/circuitoon/blob/main/README.md): what it does, when to use it, install, the command list, exit codes, and what is and isn't verified.
+- [circuitoon-design skill](https://github.com/MBarc/circuitoon/blob/main/plugin/skills/circuitoon-design/SKILL.md): the full agent workflow, the rules for presenting a sheet, and how to read the gate.
+- [Netlist format](https://github.com/MBarc/circuitoon/blob/main/plugin/skills/circuitoon-design/references/netlist-format.md): every field of `circuitoon-netlist/1`, repeats, net labels and the `--keep` partial format.
+- [CLI reference](https://github.com/MBarc/circuitoon/blob/main/plugin/skills/circuitoon-design/references/cli.md): commands, flags, exit codes, gate outputs and the bill of materials.
+
+## Schemas
+
+- [JSON schemas](https://github.com/MBarc/circuitoon/tree/main/plugin/skills/circuitoon-design/references/schemas): every command's `--json` output, one file each, plus the error document.
+- [Error schema](https://github.com/MBarc/circuitoon/blob/main/plugin/skills/circuitoon-design/references/schemas/error.schema.json): what a failed command prints under `--json`.
+- [Gate schema](https://github.com/MBarc/circuitoon/blob/main/plugin/skills/circuitoon-design/references/schemas/gate.schema.json): `gate.json`, with `ok`, `ready`, artifact hashes and the "not checked" list.
+
+## Optional
+
+- [Embedded parts](https://github.com/MBarc/circuitoon/blob/main/plugin/skills/circuitoon-design/references/module-schema.md): how to add a part that isn't built in, from its maker's documentation.
+- [Worked examples](https://github.com/MBarc/circuitoon/blob/main/plugin/skills/circuitoon-design/references/examples.md): five netlists that pass the gate, from one LED to a design split across four sheets.
+- [Product plan](https://github.com/MBarc/circuitoon/blob/main/docs/PRD.md): the formats, the checker's rules and the roadmap.

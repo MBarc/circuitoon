@@ -6,6 +6,8 @@
     <meta name="description" content="Circuit diagrams AI agents can design, check and hand you." />
     <meta name="theme-color" content="#E9EEE6" media="(prefers-color-scheme: light)" />
     <meta name="theme-color" content="#1B1D20" media="(prefers-color-scheme: dark)" />
+    <!-- The chosen theme, applied before first paint so the page never flashes the other one (src/theme.ts applyTheme). -->
+    <script>try{var t=localStorage.getItem('circuitoon.theme');if(t==='light'||t==='dark'){document.documentElement.setAttribute('data-theme',t);document.querySelectorAll('meta[name="theme-color"]').forEach(function(m){m.setAttribute('content',t==='dark'?'#1B1D20':'#E9EEE6')})}}catch(e){}</script>
     <link rel="icon" href="/circuitoon/favicon.ico?v=2" sizes="16x16 32x32 48x48" />
     <link rel="icon" href="/circuitoon/favicon.svg?v=2" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="/circuitoon/apple-touch-icon.png?v=2" />
