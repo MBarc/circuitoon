@@ -170,6 +170,11 @@ describe('USB rules on library parts', () => {
       'info usb-backfeed-diode: U1 5V is wired to BT1 + while J1 USB powers U1 USB, but U1 has a diode between USB VBUS and 5V, so the supply cannot drive current back into the host. Keep both if you like: the higher one powers the board.',
     ])
   })
+  it('the IP5306\'s 2 A is a recommended adapter, not a measured draw: a note, never a warning', () => {
+    const d = sheet([['J1', 'computer-usb-port'], ['U1', 'ip5306-usbc-module']], [['j1|USB', 'u1|USB-C', { from: 'usb-a', to: 'usb-c' }]])
+    expect(usb(d).map((f) => f.split(':')[0])).toEqual(['info usb-power-unknown'])
+    expect(load('ip5306-usbc-module').pins.find((p) => 'name' in p && p.name === 'USB-C')).toMatchObject({ caps: { note: expect.stringMatching(/5 V 2 A adapter/) } })
+  })
   it('jumper wires from a Pi\'s GPIO to a USB port are an error', () => {
     const d = sheet([['U1', 'rpi-4-model-b'], ['U2', 'esp32-devkitc-v4']], [['u1|GPIO14', 'u2|USB']])
     expect(usb(d).map((f) => f.split(':')[0])).toEqual(['error usb-to-pin'])

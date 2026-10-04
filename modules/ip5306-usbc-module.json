@@ -77,8 +77,10 @@
         "connector": "C",
         "gender": "receptacle",
         "role": "device",
-        "power": "only",
-        "draw": 2000
+        "power": "only"
+      },
+      "caps": {
+        "note": "One maker page recommends a 5 V 2 A adapter for this input; its actual input current is not measured, so check it before relying on a 500 mA USB port."
       }
     },
     {

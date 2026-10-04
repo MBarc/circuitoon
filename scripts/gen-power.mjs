@@ -63,9 +63,13 @@ function sop(x, y, w, h, n, label, labelSize = 5) {
   write('ip5306-usbc-module.json', moduleJson({
     category: 'Power', inside: true, id: 'ip5306-usbc-module', name: 'IP5306 USB-C charge/boost module (18650, 5 V out)',
     source: 'https://done.land/components/power/powersupplies/battery/chargers/charge-discharge/ip5306/x-150/ https://www.amazon.com/dp/B0DDLF99HN',
-    // The USB-C input on the right edge is a charge-only port (USB design 1.1): "It requires a 5V 2A
-    // input" (done.land, the X-150 page), charging the cell at up to 2.1 A.
-    pins: [...left.pins, ...bottom.pins, ...portSide('right', hu, [[50, usbPort('USB-C', 'right', { connector: 'C', gender: 'receptacle', role: 'device', power: 'only', draw: 2000 })]])],
+    // The USB-C input on the right edge is a charge-only port (USB design 1.1). "It requires a 5V 2A
+    // input" (done.land, the X-150 page) is a recommended adapter rating from one page, not a measured
+    // draw: a note on the port, and the draw stays unknown.
+    pins: [...left.pins, ...bottom.pins, ...portSide('right', hu, [[50, {
+      ...usbPort('USB-C', 'right', { connector: 'C', gender: 'receptacle', role: 'device', power: 'only' }),
+      caps: { note: 'One maker page recommends a 5 V 2 A adapter for this input; its actual input current is not measured, so check it before relying on a 500 mA USB port.' },
+    }]])],
     internal: [['B-', '5V-']], wu, hu,
     electrical: { model: 'power_bank', params: {} }, shapes,
   }))
