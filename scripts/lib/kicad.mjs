@@ -147,12 +147,23 @@ const KICAD = {
     note: 'ANT is the antenna pad, not on these headers.',
   }),
 
+  // GPS: the 4-pin header; ANT is the u.FL jack on the module, not a header pin.
+  'gps-neo-m8n-gy-gpsv3': (m) => ({ ...oneRow(m, 'top'), value: 'GY-NEO-M8N', note: 'ANT is the u.FL jack on the module, not on this header.' }),
+  // A USB dongle reaches the board through the USB-A receptacle it plugs into (pad 1 VBUS, 2 D-, 3 D+, 4 GND).
+  'rtl-sdr-blog-v4': () => ({
+    footprint: 'Connector_USB:USB_A_Molex_67643_Horizontal', pins: { VBUS: '1', 'D-': '2', 'D+': '3', GND: '4' }, value: 'RTL-SDR Blog V4',
+    note: 'The USB-A receptacle the dongle plugs into; the SMA antenna jack stays on the dongle.',
+  }),
+
   // Sensors
   'bme280-module-4pin': (m) => ({ ...oneRow(m, 'bottom'), value: 'BME280' }),
   'bme280-module-6pin': (m) => ({ ...oneRow(m, 'bottom'), value: 'GY-BME280' }),
   'dht22-module': (m) => ({ ...oneRow(m, 'bottom'), value: 'DHT22 module' }),
   // DHT22 is ASAIR's AM2302: pins 1 VCC, 2 DATA, 3 NC, 4 GND, as the module draws them.
   'dht22-bare': () => ({ footprint: 'Sensor:ASAIR_AM2302_P2.54mm_Vertical', pins: { VCC: '1', DATA: '2', NC: '3', GND: '4' }, value: 'DHT22' }),
+  // TDK's DS-000069 pin numbers, which KiCad's ICS-43434 symbol and footprint use.
+  'mic-ics-43434': () => ({ symbol: 'Sensor_Audio:ICS-43434', footprint: 'Sensor_Audio:InvenSense_ICS-43434-6_3.5x2.65mm', pins: { WS: '1', LR: '2', GND: '3', SCK: '4', VDD: '5', SD: '6' }, value: 'ICS-43434' }),
+  'mic-ics-43434-adafruit-6049': (m) => ({ ...oneRow(m, 'bottom'), value: 'ICS-43434 breakout' }),
   'pir-hc-sr501': (m) => ({ ...oneRow(m, 'bottom'), value: 'HC-SR501' }),
   'ultrasonic-hc-sr04': (m) => ({ ...oneRow(m, 'bottom'), value: 'HC-SR04' }),
   'tilt-switch-sw520d': () => ({ footprint: pinHeader(2), pins: { 1: '1', 2: '2' }, value: 'SW-520D', note: 'Solder the switch\'s two leads into these pads.' }),
@@ -288,6 +299,11 @@ const KICAD = {
 export const UNMAPPED = {
   'l298n-module': 'The real board\'s logic header (ENA and ENB jumper pins beside IN1-IN4) is not transcribed pin for pin.',
   'esp32-terminal-board-38': 'A carrier board with screw terminals: it is wired to, not mounted on, a PCB.',
+  'lcd-rpi-touch-display-7': 'A panel wired to the Pi by its DSI flat cable and jumper wires: it is not mounted on a PCB.',
+  'lcd-rpi-touch-display-2-7': 'A panel wired to the Pi by its DSI flat cable and power lead: it is not mounted on a PCB.',
+  'lcd-rpi-touch-display-2-5': 'A panel wired to the Pi by its DSI flat cable and power lead: it is not mounted on a PCB.',
+  'mic-ics-40300': 'KiCad has no footprint for its land pattern: Knowles_LGA-6_4.72x3.76mm (same size) puts the port ring 3.29 mm from the pad row, the ICS-40300 2.62 mm.',
+  'mic-spu0410lr5h-qb': 'KiCad has no footprint for its 3.76 x 3.00 mm LGA-6 package.',
   'wago-221-412': 'A wire splice: it joins wires off the board.',
   'wago-221-413': 'A wire splice: it joins wires off the board.',
   'wago-221-415': 'A wire splice: it joins wires off the board.',

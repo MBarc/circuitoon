@@ -1,0 +1,176 @@
+{
+  "format": "circuitoon-module/1",
+  "id": "mic-spu0410lr5h-qb",
+  "version": 1,
+  "name": "Microphone SPU0410LR5H-QB (Knowles, analog MEMS, bare SMD)",
+  "category": "Sensors",
+  "source": "https://mm.digikey.com/Volume0/opasdata/d220001/medias/docus/384/SPU0410LR5H-QB_RevH_3-27-13.pdf https://datasheet.octopart.com/SPU0410LR5H-QB-Knowles-Acoustics-datasheet-8852744.pdf https://www.flux.ai/jecstronic/spu0410lr5h-qb",
+  "pins": [
+    {
+      "name": "OUTPUT",
+      "side": "top",
+      "type": "output"
+    },
+    {
+      "name": "GND",
+      "side": "top",
+      "type": "ground"
+    },
+    {
+      "name": "VDD",
+      "side": "top",
+      "type": "power_in",
+      "supply": "1V8/3V3"
+    },
+    {
+      "name": "GND 2",
+      "side": "bottom",
+      "label": "GND",
+      "type": "ground"
+    },
+    {
+      "name": "GND 3",
+      "side": "bottom",
+      "label": "GND",
+      "type": "ground"
+    },
+    {
+      "name": "GND 4",
+      "side": "bottom",
+      "label": "GND",
+      "type": "ground"
+    }
+  ],
+  "size": {
+    "w": 8,
+    "h": 12
+  },
+  "electrical": {
+    "model": "sensor",
+    "params": {}
+  },
+  "art": {
+    "w": 80,
+    "h": 120,
+    "pinLabels": "inside",
+    "shapes": [
+      {
+        "type": "rect",
+        "x": 28.5,
+        "y": 0,
+        "w": 3,
+        "h": 42,
+        "fill": "#E0B43C",
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 38.5,
+        "y": 0,
+        "w": 3,
+        "h": 42,
+        "fill": "#E0B43C",
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 48.5,
+        "y": 0,
+        "w": 3,
+        "h": 42,
+        "fill": "#E0B43C",
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 28.5,
+        "y": 78,
+        "w": 3,
+        "h": 42,
+        "fill": "#E0B43C",
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 38.5,
+        "y": 78,
+        "w": 3,
+        "h": 42,
+        "fill": "#E0B43C",
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 48.5,
+        "y": 78,
+        "w": 3,
+        "h": 42,
+        "fill": "#E0B43C",
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 8,
+        "y": 40,
+        "w": 64,
+        "h": 40,
+        "fill": "#C9CED6",
+        "radius": 3
+      },
+      {
+        "type": "rect",
+        "x": 11,
+        "y": 43,
+        "w": 58,
+        "h": 34,
+        "fill": "#D5DAE1",
+        "radius": 2,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 22,
+        "y": 48,
+        "w": 36,
+        "h": 10,
+        "fill": "#D5DAE1",
+        "outline": false,
+        "label": "SPU0410",
+        "labelColor": "#2B2F36",
+        "labelSize": 5
+      },
+      {
+        "type": "rect",
+        "x": 22,
+        "y": 58,
+        "w": 36,
+        "h": 10,
+        "fill": "#D5DAE1",
+        "outline": false,
+        "label": "LR5H-QB",
+        "labelColor": "#2B2F36",
+        "labelSize": 4.5
+      },
+      {
+        "type": "rect",
+        "x": 14,
+        "y": 46,
+        "w": 4,
+        "h": 4,
+        "fill": "#2B2F36",
+        "radius": 2,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 37,
+        "y": 68,
+        "w": 6,
+        "h": 6,
+        "fill": "#6B727C",
+        "radius": 3,
+        "outline": false
+      }
+    ]
+  }
+}

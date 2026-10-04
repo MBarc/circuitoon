@@ -21,6 +21,8 @@ const NO_PAD: Record<string, string[]> = {
   'rpi-pico-2': ['SWCLK', 'GND DBG', 'SWDIO'],
   'rpi-pico-2-w': ['SWCLK', 'GND DBG', 'SWDIO'],
   'rfm95-lora-breakout': ['ANT'],
+  'gps-neo-m8n-gy-gpsv3': ['ANT'],
+  'rtl-sdr-blog-v4': ['ANT'],
 }
 
 /** Each footprint of a mapping with its pin-to-pad map. */

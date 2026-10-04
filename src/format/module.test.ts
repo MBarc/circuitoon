@@ -308,6 +308,9 @@ describe('usesInsideLabels', () => {
       'hlk-pm01.json', 'hlk-pm03.json', 'irm-03-5.json', 'irm-03-3v3.json', 'irm-05-5.json', 'ssr-fotek-25da.json',
       ...['mstb-508', 'mc-381'].flatMap((s) => [2, 3, 4, 5, 6].map((n) => `terminal-block-${s}-${n}.json`)),
       'terminal-block-kf2edg-508-2.json', 'terminal-block-kf2edg-508-3.json', 'terminal-block-kf301-500-2.json', 'terminal-block-kf301-500-3.json',
+      // Raspberry Pi touch displays, GPS and RTL-SDR, MEMS microphones (gen-rfpi.mjs).
+      'lcd-rpi-touch-display-7.json', 'lcd-rpi-touch-display-2-7.json', 'lcd-rpi-touch-display-2-5.json', 'gps-neo-m8n-gy-gpsv3.json', 'rtl-sdr-blog-v4.json',
+      'mic-ics-40300.json', 'mic-spu0410lr5h-qb.json', 'mic-ics-43434.json', 'mic-ics-43434-adafruit-6049.json',
     ])
     const files = readdirSync(dir).filter((f) => f.endsWith('.json'))
     expect(files.filter((f) => boardFiles.has(f))).toHaveLength(boardFiles.size)

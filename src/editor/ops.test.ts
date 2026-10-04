@@ -73,6 +73,9 @@ describe('ops', () => {
     for (const id of ['tilt-switch-sw520d', 'tilt-switch-sw460d', 'tactile-switch-6mm-4pin', 'tactile-switch-12mm-4pin'])
       expect(designatorPrefix(mk(id))).toBe('S')
     expect(designatorPrefix(mk('potentiometer-panel-10k'))).toBe('RV')
+    // Microphones are MK (KiCad's reference for them); microSD modules, which start "mic" too, stay U.
+    for (const id of ['mic-ics-40300', 'mic-spu0410lr5h-qb', 'mic-ics-43434', 'mic-ics-43434-adafruit-6049']) expect(designatorPrefix(mk(id))).toBe('MK')
+    for (const id of ['microsd-spi-3v3', 'microsd-spi-5v']) expect(designatorPrefix(mk(id))).toBe('U')
     expect(designatorPrefix(mk('esp32-terminal-board-38'))).toBe('U')
   })
   it('gives display ids (lcd, oled, tft) the DS prefix and keeps chips on U', () => {
