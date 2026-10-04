@@ -303,6 +303,8 @@ describe('usesInsideLabels', () => {
       'ws2812b-strip.json', 'ws2812d-5mm.json', 'dht22-module.json', 'dht22-bare.json',
       'bme280-module-4pin.json', 'bme280-module-6pin.json', 'pir-hc-sr501.json', 'ultrasonic-hc-sr04.json',
       'arduino-nano.json', 'wemos-d1-mini.json', 'relay-module-1ch-5v.json', 'l298n-module.json',
+      'arduino-uno-r3.json', 'arduino-uno-r4-minima.json', 'arduino-uno-r4-wifi.json', 'arduino-leonardo.json', 'arduino-zero.json', 'arduino-mega-2560.json', 'arduino-due.json', 'arduino-micro.json',
+      'arduino-nano-every.json', 'arduino-nano-33-iot.json', 'arduino-nano-33-ble.json', 'arduino-nano-esp32.json', 'arduino-nano-rp2040-connect.json', 'arduino-pro-mini-5v.json', 'arduino-pro-mini-3v3.json',
       'rfm95-lora-breakout.json', 'level-shifter-bss138-4ch.json', 'servo-sg90.json',
       'esp32-terminal-board-38.json', 'usb-panel-mount-microusb.json', 'usb-panel-mount-usbc.json',
       'hlk-pm01.json', 'hlk-pm03.json', 'irm-03-5.json', 'irm-03-3v3.json', 'irm-05-5.json', 'ssr-fotek-25da.json',

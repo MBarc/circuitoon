@@ -1,0 +1,713 @@
+{
+  "format": "circuitoon-module/1",
+  "id": "arduino-nano-esp32",
+  "version": 1,
+  "name": "Arduino Nano ESP32",
+  "category": "Microcontrollers",
+  "source": "https://docs.arduino.cc/resources/datasheets/ABX00083-datasheet.pdf https://docs.arduino.cc/resources/pinouts/ABX00083-full-pinout.pdf https://docs.arduino.cc/resources/schematics/ABX00083-schematics.pdf https://github.com/arduino/docs-content/blob/main/content/hardware/nano/boards/nano-esp32/tutorials/cheat-sheet/cheat-sheet.md https://gitlab.com/kicad/libraries/kicad-symbols/-/blob/master/MCU_Module.kicad_symdir/Arduino_Nano_ESP32.kicad_sym https://gitlab.com/kicad/libraries/kicad-footprints/-/blob/master/Module.pretty/Arduino_Nano.kicad_mod",
+  "pins": [
+    {
+      "spacer": true,
+      "side": "left"
+    },
+    {
+      "name": "D13",
+      "side": "left",
+      "type": "io",
+      "caps": {
+        "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it."
+      }
+    },
+    {
+      "name": "3V3",
+      "side": "left",
+      "type": "power_out",
+      "supply": "3V3"
+    },
+    {
+      "name": "B0",
+      "side": "left",
+      "type": "io",
+      "caps": {
+        "strapping": "low",
+        "downloadOnly": true,
+        "note": "B0 is GPIO46. GPIO46 high at reset makes uploads in download mode fail; a normal boot is unaffected."
+      }
+    },
+    {
+      "name": "A0",
+      "side": "left",
+      "type": "io",
+      "caps": {
+        "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it."
+      }
+    },
+    {
+      "name": "A1",
+      "side": "left",
+      "type": "io",
+      "caps": {
+        "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it."
+      }
+    },
+    {
+      "name": "A2",
+      "side": "left",
+      "type": "io",
+      "caps": {
+        "strapping": "either",
+        "note": "A2 is GPIO3. GPIO3 picks the JTAG source at reset only when an eFuse enables it."
+      }
+    },
+    {
+      "name": "A3",
+      "side": "left",
+      "type": "io",
+      "caps": {
+        "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it."
+      }
+    },
+    {
+      "name": "A4",
+      "side": "left",
+      "type": "io",
+      "caps": {
+        "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it."
+      }
+    },
+    {
+      "name": "A5",
+      "side": "left",
+      "type": "io",
+      "caps": {
+        "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it."
+      }
+    },
+    {
+      "name": "A6",
+      "side": "left",
+      "type": "io",
+      "caps": {
+        "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it."
+      }
+    },
+    {
+      "name": "A7",
+      "side": "left",
+      "type": "io",
+      "caps": {
+        "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it."
+      }
+    },
+    {
+      "name": "VBUS",
+      "side": "left",
+      "type": "power_in",
+      "supply": "5V"
+    },
+    {
+      "name": "B1",
+      "side": "left",
+      "type": "io",
+      "caps": {
+        "strapping": "high",
+        "note": "B1 is GPIO0. GPIO0 low at reset starts the download mode instead of your program."
+      }
+    },
+    {
+      "name": "GND",
+      "side": "left",
+      "type": "ground"
+    },
+    {
+      "name": "VIN",
+      "side": "left",
+      "type": "power_in",
+      "supply": "7V/7.4V/9V/12V"
+    },
+    {
+      "spacer": true,
+      "side": "right"
+    },
+    {
+      "name": "D12",
+      "side": "right",
+      "type": "io",
+      "caps": {
+        "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it."
+      }
+    },
+    {
+      "name": "D11",
+      "side": "right",
+      "type": "io",
+      "caps": {
+        "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it."
+      }
+    },
+    {
+      "name": "D10",
+      "side": "right",
+      "type": "io",
+      "caps": {
+        "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it."
+      }
+    },
+    {
+      "name": "D9",
+      "side": "right",
+      "type": "io",
+      "caps": {
+        "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it."
+      }
+    },
+    {
+      "name": "D8",
+      "side": "right",
+      "type": "io",
+      "caps": {
+        "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it."
+      }
+    },
+    {
+      "name": "D7",
+      "side": "right",
+      "type": "io",
+      "caps": {
+        "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it."
+      }
+    },
+    {
+      "name": "D6",
+      "side": "right",
+      "type": "io",
+      "caps": {
+        "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it."
+      }
+    },
+    {
+      "name": "D5",
+      "side": "right",
+      "type": "io",
+      "caps": {
+        "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it."
+      }
+    },
+    {
+      "name": "D4",
+      "side": "right",
+      "type": "io",
+      "caps": {
+        "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it."
+      }
+    },
+    {
+      "name": "D3",
+      "side": "right",
+      "type": "io",
+      "caps": {
+        "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it."
+      }
+    },
+    {
+      "name": "D2",
+      "side": "right",
+      "type": "io",
+      "caps": {
+        "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it."
+      }
+    },
+    {
+      "name": "GND 2",
+      "side": "right",
+      "label": "GND",
+      "type": "ground"
+    },
+    {
+      "name": "RST",
+      "side": "right",
+      "type": "input",
+      "caps": {
+        "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it."
+      }
+    },
+    {
+      "name": "RX0",
+      "side": "right",
+      "type": "io",
+      "caps": {
+        "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it."
+      }
+    },
+    {
+      "name": "TX0",
+      "side": "right",
+      "type": "io",
+      "caps": {
+        "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it."
+      }
+    }
+  ],
+  "internal": [
+    [
+      "GND",
+      "GND 2"
+    ]
+  ],
+  "size": {
+    "w": 8,
+    "h": 18
+  },
+  "electrical": {
+    "model": "mcu",
+    "params": {},
+    "external": [
+      {
+        "pin": "VBUS",
+        "volts": 5,
+        "via": "USB"
+      }
+    ]
+  },
+  "art": {
+    "w": 80,
+    "h": 180,
+    "pinLabels": "inside",
+    "shapes": [
+      {
+        "type": "rect",
+        "x": 0,
+        "y": 0,
+        "w": 80,
+        "h": 180,
+        "fill": "#17708A",
+        "radius": 5
+      },
+      {
+        "type": "rect",
+        "x": 2,
+        "y": 25,
+        "w": 8,
+        "h": 150,
+        "fill": "#E0B43C",
+        "radius": 2,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 4.5,
+        "y": 28.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 4.5,
+        "y": 38.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 4.5,
+        "y": 48.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 4.5,
+        "y": 58.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 4.5,
+        "y": 68.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 4.5,
+        "y": 78.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 4.5,
+        "y": 88.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 4.5,
+        "y": 98.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 4.5,
+        "y": 108.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 4.5,
+        "y": 118.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 4.5,
+        "y": 128.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 4.5,
+        "y": 138.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 4.5,
+        "y": 148.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 4.5,
+        "y": 158.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 4.5,
+        "y": 168.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 70,
+        "y": 25,
+        "w": 8,
+        "h": 150,
+        "fill": "#E0B43C",
+        "radius": 2,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 72.5,
+        "y": 28.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 72.5,
+        "y": 38.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 72.5,
+        "y": 48.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 72.5,
+        "y": 58.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 72.5,
+        "y": 68.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 72.5,
+        "y": 78.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 72.5,
+        "y": 88.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 72.5,
+        "y": 98.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 72.5,
+        "y": 108.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 72.5,
+        "y": 118.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 72.5,
+        "y": 128.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 72.5,
+        "y": 138.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 72.5,
+        "y": 148.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 72.5,
+        "y": 158.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 72.5,
+        "y": 168.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 27,
+        "y": -8,
+        "w": 26,
+        "h": 22,
+        "fill": "#C9CED6",
+        "radius": 5
+      },
+      {
+        "type": "rect",
+        "x": 32,
+        "y": -4,
+        "w": 16,
+        "h": 4,
+        "fill": "#8A9099",
+        "radius": 2,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 32,
+        "y": 24,
+        "w": 16,
+        "h": 16,
+        "fill": "#C9CED6",
+        "radius": 2
+      },
+      {
+        "type": "rect",
+        "x": 35,
+        "y": 27,
+        "w": 10,
+        "h": 10,
+        "fill": "#3A3F47",
+        "radius": 5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 28,
+        "y": 56,
+        "w": 24,
+        "h": 24,
+        "fill": "#2B2F36",
+        "radius": 2
+      },
+      {
+        "type": "rect",
+        "x": 24,
+        "y": 110,
+        "w": 32,
+        "h": 48,
+        "fill": "#D5DAE1",
+        "radius": 2,
+        "label": "NORA",
+        "labelColor": "#2B2F36",
+        "labelSize": 6
+      },
+      {
+        "type": "rect",
+        "x": 24,
+        "y": 158,
+        "w": 32,
+        "h": 10,
+        "fill": "#6E9C3A",
+        "radius": 1
+      }
+    ]
+  },
+  "kicad": {
+    "symbol": "MCU_Module:Arduino_Nano_ESP32",
+    "footprint": "Module:Arduino_Nano",
+    "pins": {
+      "D13": "16",
+      "3V3": "17",
+      "B0": "18",
+      "A0": "19",
+      "A1": "20",
+      "A2": "21",
+      "A3": "22",
+      "A4": "23",
+      "A5": "24",
+      "A6": "25",
+      "A7": "26",
+      "VBUS": "27",
+      "B1": "28",
+      "GND": "29",
+      "VIN": "30",
+      "D12": "15",
+      "D11": "14",
+      "D10": "13",
+      "D9": "12",
+      "D8": "11",
+      "D7": "10",
+      "D6": "9",
+      "D5": "8",
+      "D4": "7",
+      "D3": "6",
+      "D2": "5",
+      "GND 2": "4",
+      "RST": "3",
+      "RX0": "2",
+      "TX0": "1"
+    },
+    "value": "Arduino Nano ESP32"
+  }
+}

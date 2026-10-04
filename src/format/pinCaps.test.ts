@@ -65,7 +65,7 @@ describe('pin capabilities of the built-in boards', () => {
   })
   it('only the boards above carry caps (the Picos, the D1 mini and the rest claim nothing)', () => {
     const withCaps = moduleFiles().map((f) => f.replace('.json', '')).filter((id) => capped(id).length)
-    expect(withCaps).toEqual(['arduino-nano', 'esp32-c3-supermini', 'esp32-cam', 'esp32-devkit-v1-30', 'esp32-devkitc-v4', 'esp32-s3-devkitc-1', 'esp32-terminal-board-38', 'mcp23017-cjmcu-2317', 'mcp23017-dip28', 'xiao-esp32c3', 'xiao-esp32s3'])
+    expect(withCaps).toEqual(['arduino-due', 'arduino-nano-33-ble', 'arduino-nano-33-iot', 'arduino-nano-esp32', 'arduino-nano-rp2040-connect', 'arduino-nano', 'arduino-pro-mini-3v3', 'arduino-pro-mini-5v', 'arduino-uno-r4-minima', 'arduino-uno-r4-wifi', 'arduino-zero', 'esp32-c3-supermini', 'esp32-cam', 'esp32-devkit-v1-30', 'esp32-devkitc-v4', 'esp32-s3-devkitc-1', 'esp32-terminal-board-38', 'mcp23017-cjmcu-2317', 'mcp23017-dip28', 'xiao-esp32c3', 'xiao-esp32s3'])
   })
 })
 

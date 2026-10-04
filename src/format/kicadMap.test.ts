@@ -23,6 +23,7 @@ const NO_PAD: Record<string, string[]> = {
   'rfm95-lora-breakout': ['ANT'],
   'gps-neo-m8n-gy-gpsv3': ['ANT'],
   'rtl-sdr-blog-v4': ['ANT'],
+  'arduino-uno-r4-wifi': ['OFF', 'GND 4', 'VRTC'],
 }
 
 /** Each footprint of a mapping with its pin-to-pad map. */
