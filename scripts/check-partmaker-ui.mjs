@@ -37,7 +37,14 @@ await context.addInitScript(() => {
     window.__opened.push(String(url))
     return null
   }
-  Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async (t) => void window.__copied.push(t) } })
+  // A slow clipboard (a permission prompt) or a denied one: __clipDelay ms, then __clipDeny throws.
+  window.__clipDelay = 0
+  window.__clipDeny = false
+  Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async (t) => {
+    await new Promise((r) => setTimeout(r, window.__clipDelay))
+    if (window.__clipDeny) throw new DOMException('Write permission denied.', 'NotAllowedError')
+    window.__copied.push(t)
+  } } })
 })
 const page = await context.newPage()
 const errors = []
@@ -222,20 +229,42 @@ check((await page.locator('.editor-notice').textContent()).includes('Imported'),
 await page.evaluate(() => {
   window.__opened.length = 0
   window.__copied.length = 0
+  window.__clipDelay = 1500
 })
 await (await openActions()).getByRole('button', { name: 'Submit to library' }).click()
-await page.waitForFunction(() => window.__opened.length === 1)
+const early = await page.evaluate(() => [window.__opened.length, window.__copied.length])
+check(early[0] === 1 && early[1] === 0, `the form opens within the click, before a slow clipboard answers (${early})`)
+await page.waitForFunction(() => window.__copied.length === 1)
+await page.evaluate(() => void (window.__clipDelay = 0))
 let opened = new URL((await page.evaluate(() => window.__opened))[0])
 check(opened.origin + opened.pathname === 'https://github.com/MBarc/circuitoon/issues/new', `Submit opens the repo's new issue page (${opened.origin}${opened.pathname})`)
 check(opened.searchParams.get('template') === 'part-submission.yml' && opened.searchParams.get('part-name') === NAME, `with the part submission form and the name filled in (${opened.search})`)
 let copied = (await page.evaluate(() => window.__copied))[0]
 check(JSON.parse(copied).id === ID && JSON.parse(copied).custom === true, 'and the part JSON on the clipboard')
 check((await page.locator('.editor-notice').textContent()).includes('Paste it into the Part JSON box'), 'a notice says where to paste it')
+const actions = await openActions()
+const formLink = actions.getByRole('link', { name: 'Open the form' })
+check((await formLink.getAttribute('href')) === opened.href && (await formLink.getAttribute('target')) === '_blank', 'the action row also has the form as a plain link')
+// Denied: the form still opens, and Copy part is there to try again.
+await page.evaluate(() => {
+  window.__opened.length = 0
+  window.__copied.length = 0
+  window.__clipDeny = true
+})
+await actions.getByRole('button', { name: 'Submit to library' }).click()
+check((await page.evaluate(() => window.__opened.length)) === 1, 'with the clipboard denied, Submit still opens the form')
+await page.waitForFunction(() => document.querySelector('.editor-notice')?.textContent.match(/could not be copied|Copied/))
+check(/could not be copied here\. Use Copy part|Copied/.test(await page.locator('.editor-notice').textContent()), `and the notice says what happened to the copy (${await page.locator('.editor-notice').textContent()})`)
+await page.evaluate(() => void (window.__clipDeny = false))
+await actions.getByRole('button', { name: 'Copy part' }).click()
+await page.waitForFunction(() => window.__copied.length === 1)
+check(JSON.parse((await page.evaluate(() => window.__copied))[0]).id === ID, 'Copy part copies the part JSON on its own')
 // From the dialog: the maker typed there goes into the form too.
 await (await openActions()).getByRole('button', { name: 'Edit' }).click()
 await dialog().waitFor()
 await dialog().getByLabel(/Maker or model/).fill(MAKER)
 check((await dialog().locator('.pm-submit .hint').textContent()).includes('you need a GitHub account'), 'the dialog says Submit needs a GitHub account, and what to do without one')
+check(await dialog().getByRole('link', { name: 'Open the form' }).isVisible() && await dialog().getByRole('button', { name: 'Copy part' }).isVisible(), 'the dialog shows the form link and Copy part beside Submit')
 await page.evaluate(() => {
   window.__opened.length = 0
   window.__copied.length = 0
@@ -244,6 +273,7 @@ await dialog().getByRole('button', { name: 'Submit to library' }).click()
 await page.waitForFunction(() => window.__opened.length === 1)
 opened = new URL((await page.evaluate(() => window.__opened))[0])
 check(opened.searchParams.get('maker') === MAKER && opened.searchParams.get('title') === `Part: ${NAME}`, `the dialog's Submit fills in the maker and title (${opened.search})`)
+await page.waitForFunction(() => window.__copied.length === 1)
 copied = (await page.evaluate(() => window.__copied))[0]
 check(JSON.parse(copied).pins.length === 5, 'and copies the part being edited')
 await dialog().getByRole('button', { name: 'Save changes' }).click()

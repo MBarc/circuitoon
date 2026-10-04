@@ -41,11 +41,14 @@ export async function copyText(text: string): Promise<boolean> {
 }
 
 /**
- * Copies the part file text and opens the issue form in a new tab. Returns whether the copy worked,
- * so the caller can say to export the file instead when it did not.
+ * Opens the issue form in a new tab, then copies the part file text. The tab opens first and
+ * synchronously, inside the click: a browser opens a new tab only while the click's user activation
+ * lasts, and waiting for the clipboard (a permission prompt) can use it up. `copied` says whether the
+ * copy worked, so the caller can offer Copy part or Export file when it did not; `url` is the form,
+ * for a link in case the tab was blocked anyway.
  */
-export async function submitToLibrary(text: string, name: string, maker?: string): Promise<boolean> {
-  const copied = await copyText(text)
-  window.open(submissionUrl(name, maker), '_blank', 'noopener')
-  return copied
+export function submitToLibrary(text: string, name: string, maker?: string): { url: string; copied: Promise<boolean> } {
+  const url = submissionUrl(name, maker)
+  window.open(url, '_blank', 'noopener')
+  return { url, copied: copyText(text) }
 }

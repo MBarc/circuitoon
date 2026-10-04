@@ -14,7 +14,7 @@ import { draftFromPart } from './partDraft.ts'
 import { type MyPart, importPart, myParts, partFileText, updateSheetModule } from './myParts.ts'
 import { PART_FILE, cleanBaseName, downloadText, saveWithPicker, type SavePicker } from './files.ts'
 import { ExportDialog } from './ExportDialog.tsx'
-import { submitToLibrary } from './partSubmit.ts'
+import { copyText, submissionUrl, submitToLibrary } from './partSubmit.ts'
 import './editor.css'
 import './partMaker.css'
 
@@ -190,15 +190,29 @@ function usePartMaker(store: EditorStore, canvas: { current: CanvasApi | null })
     setNaming({ base, text })
   }
 
-  async function submit(p: MyPart) {
-    const copied = await submitToLibrary(partFileText(p), p.module.name, p.maker)
-    say(copied
-      ? `Copied ${p.module.name}'s JSON. Paste it into the Part JSON box of the form that opened.`
-      : 'Could not copy the part JSON here. Export the part file and paste its contents into the form instead.')
+  // The form opens inside the click, before the clipboard is asked (see submitToLibrary).
+  function submit(p: MyPart) {
+    const { copied } = submitToLibrary(partFileText(p), p.module.name, p.maker)
+    void copied.then((ok) => say(ok
+      ? `Copied ${p.module.name}'s JSON. Paste it into the Part JSON box of the form that opened (no tab? use Open the form).`
+      : 'The form opened, but the part could not be copied here. Use Copy part, or Export file and paste its contents into the form.'))
   }
-  const submitButton = (p: MyPart | null, small = false) => (
-    <button type="button" className={small ? 'tool small' : 'tool'} disabled={!p} title="Opens a GitHub issue form, which needs a GitHub account, and copies the part to paste in. Without an account, use Export file and send the file." onClick={() => p && void submit(p)}>Submit to library</button>
-  )
+  function copyPart(p: MyPart) {
+    void copyText(partFileText(p)).then((ok) => say(ok
+      ? `Copied ${p.module.name}'s JSON.`
+      : 'Could not copy the part JSON here. Export the part file and paste its contents into the form instead.'))
+  }
+  /** Submit to library, and its fallbacks: the form as a plain link, and Copy part. */
+  const submitButton = (p: MyPart | null, small = false) => {
+    const cls = small ? 'tool small' : 'tool'
+    return (
+      <>
+        <button type="button" className={cls} disabled={!p} title="Opens a GitHub issue form, which needs a GitHub account, and copies the part to paste in. Without an account, use Export file and send the file." onClick={() => p && submit(p)}>Submit to library</button>
+        {p && <a className={`${cls} link-tool`} href={submissionUrl(p.module.name, p.maker)} target="_blank" rel="noopener noreferrer">Open the form</a>}
+        <button type="button" className={cls} disabled={!p} onClick={() => p && copyPart(p)}>Copy part</button>
+      </>
+    )
+  }
 
   const edit = (p: MyPart) => setOpen({ editing: p, key: Date.now() })
   const handlers = {
@@ -245,7 +259,7 @@ function usePartMaker(store: EditorStore, canvas: { current: CanvasApi | null })
           onExport={(p) => void exportPart(p)}
           extra={(p) => (
             <div className="pm-submit">
-              {submitButton(p)}
+              <div className="pm-submit-row">{submitButton(p)}</div>
               <p className="hint">Offer this part for the built-in library. It opens a GitHub issue form (you need a GitHub account) and copies the part for you to paste in. No account? Export the file and send it to the project another way.</p>
             </div>
           )}

@@ -1,6 +1,6 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { readFileSync } from 'node:fs'
-import { FIELD_IDS, SUBMIT_TEMPLATE, submissionUrl } from './partSubmit.ts'
+import { FIELD_IDS, SUBMIT_TEMPLATE, submissionUrl, submitToLibrary } from './partSubmit.ts'
 
 const form = readFileSync(`.github/ISSUE_TEMPLATE/${SUBMIT_TEMPLATE}`, 'utf8')
 
@@ -32,5 +32,32 @@ describe('the import skill', () => {
     expect(commands.some((l) => /gh issue comment \S+ --repo \S+ --body-file /.test(l))).toBe(true)
     expect(commands.some((l) => /^gh issue close /.test(l))).toBe(true)
     expect(skill).toMatch(/Submission text never goes on a command line/)
+  })
+})
+
+describe('submitToLibrary', () => {
+  const setup = (writeText: (t: string) => Promise<void>) => {
+    const events: string[] = []
+    vi.stubGlobal('window', { open: (url: string) => void events.push(`open ${url}`) })
+    vi.stubGlobal('navigator', { clipboard: { writeText: (t: string) => (events.push('copy'), writeText(t)) } })
+    vi.stubGlobal('document', { createElement: () => { throw new Error('no DOM') } })
+    return events
+  }
+  afterEach(() => void vi.unstubAllGlobals())
+
+  it('opens the form within the click, before a slow clipboard answers', async () => {
+    let resolve = () => {}
+    const events = setup(() => new Promise<void>((r) => (resolve = r)))
+    const r = submitToLibrary('{"id":"custom-a"}', 'A')
+    expect(events[0]).toBe(`open ${submissionUrl('A')}`)
+    expect(r.url).toBe(submissionUrl('A'))
+    resolve()
+    expect(await r.copied).toBe(true)
+  })
+  it('still opens the form, and says the copy failed, when the clipboard is denied', async () => {
+    const events = setup(() => Promise.reject(new Error('NotAllowedError')))
+    const r = submitToLibrary('{}', 'A', 'Acme')
+    expect(events[0]).toBe(`open ${submissionUrl('A', 'Acme')}`)
+    expect(await r.copied).toBe(false)
   })
 })
