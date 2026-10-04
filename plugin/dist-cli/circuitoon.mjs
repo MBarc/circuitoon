@@ -852,7 +852,8 @@ function validateModule(raw) {
 			"draw",
 			"power",
 			"hub",
-			"through"
+			"through",
+			"vbus"
 		].includes(k)) errors.push(`${at}.usb.${k}: unknown field`);
 		if (!USB_CONNECTORS.includes(u.connector)) errors.push(`${at}.usb.connector: must be one of ${USB_CONNECTORS.join(", ")}`);
 		if (u.gender !== "receptacle" && u.gender !== "plug") errors.push(`${at}.usb.gender: must be "receptacle" or "plug"`);
@@ -867,6 +868,7 @@ function validateModule(raw) {
 		if (u.hub !== void 0 && !(u.hub === "upstream" && u.role === "device" || u.hub === "downstream" && u.role === "host")) errors.push(`${at}.usb.hub: "upstream" on a device port or "downstream" on a host port`);
 		if (u.role === "passthrough" !== (u.through !== void 0)) errors.push(`${at}.usb.through: a passthrough port names its other end, and only it does`);
 		else if (u.through !== void 0 && typeof u.through !== "string") errors.push(`${at}.usb.through: must be a port name`);
+		if (u.vbus !== void 0 && u.role !== "device" && u.role !== "dual") errors.push(`${at}.usb.vbus: only a device or dual port feeds the board's VBUS`);
 	};
 	const names = /* @__PURE__ */ new Set();
 	const hasHoles = Array.isArray(raw.holes) && raw.holes.length > 0;
@@ -1065,6 +1067,8 @@ function validateModule(raw) {
 /** Cross-pin USB data: passthrough partners, shared budgets and hub power (one port's own fields are checked with its pin). */
 function validateUsb(raw, errors) {
 	const ports = new Map((Array.isArray(raw.pins) ? raw.pins : []).filter((p) => isObj(p) && p.type === "usb" && typeof p.name === "string" && isObj(p.usb)).map((p) => [p.name, p.usb]));
+	const powerPins = new Set([...Array.isArray(raw.pins) ? raw.pins : [], ...Array.isArray(raw.holes) ? raw.holes : []].filter((p) => isObj(p) && p.type !== "usb").map((p) => p.name));
+	for (const [name, u] of ports) if (u.vbus !== void 0 && !(typeof u.vbus === "string" && powerPins.has(u.vbus))) errors.push(`pins: USB port "${name}" has vbus "${show(u.vbus)}", which must name one of the part's own pins or pads (not a USB port)`);
 	for (const [name, u] of ports) {
 		if (u.role !== "passthrough" || typeof u.through !== "string") continue;
 		const other = ports.get(u.through);
@@ -1102,8 +1106,7 @@ function validateUsb(raw, errors) {
 	}
 	if (el.usbHub !== void 0) {
 		const h = el.usbHub;
-		const pinNames = new Set([...Array.isArray(raw.pins) ? raw.pins : [], ...Array.isArray(raw.holes) ? raw.holes : []].filter(isObj).map((p) => p.name));
-		if (!(isObj(h) && Object.keys(h).length === 1 && (h.power === "bus" || h.power === "self" || isObj(h.power) && Object.keys(h.power).length === 1 && typeof h.power.pin === "string" && pinNames.has(h.power.pin)))) errors.push("electrical.usbHub: must be { \"power\": \"bus\" }, { \"power\": \"self\" } or { \"power\": { \"pin\": <a pin or pad name> } }");
+		if (!(isObj(h) && Object.keys(h).length === 1 && (h.power === "bus" || h.power === "self" || isObj(h.power) && Object.keys(h.power).length === 1 && typeof h.power.pin === "string" && powerPins.has(h.power.pin)))) errors.push("electrical.usbHub: must be { \"power\": \"bus\" }, { \"power\": \"self\" } or { \"power\": { \"pin\": <a pin or pad name, not a USB port> } }");
 		if (hubPorts.filter((u) => u.hub === "upstream").length !== 1 || !hubPorts.some((u) => u.hub === "downstream")) errors.push("electrical.usbHub: a hub has exactly one upstream port and at least one downstream port");
 	} else if (hubPorts.length) errors.push("electrical.usbHub: required on a part with hub ports (how its downstream ports are powered)");
 }
@@ -6827,7 +6830,8 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"gender": "receptacle",
 					"role": "device",
 					"version": "2.0",
-					"speed": "full"
+					"speed": "full",
+					"vbus": "5V"
 				}
 			},
 			{
@@ -6859,7 +6863,8 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"gender": "receptacle",
 					"role": "dual",
 					"version": "2.0",
-					"speed": "high"
+					"speed": "high",
+					"vbus": "5V"
 				}
 			},
 			{
@@ -7606,7 +7611,8 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"gender": "receptacle",
 					"role": "device",
 					"version": "2.0",
-					"speed": "full"
+					"speed": "full",
+					"vbus": "5V"
 				}
 			},
 			{
@@ -8642,7 +8648,8 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"gender": "receptacle",
 					"role": "device",
 					"version": "2.0",
-					"speed": "full"
+					"speed": "full",
+					"vbus": "5V"
 				}
 			},
 			{
@@ -9271,7 +9278,8 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"gender": "receptacle",
 					"role": "device",
 					"version": "2.0",
-					"speed": "full"
+					"speed": "full",
+					"vbus": "5V"
 				}
 			}
 		],
@@ -11318,7 +11326,8 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"gender": "receptacle",
 					"role": "device",
 					"version": "1.1",
-					"speed": "full"
+					"speed": "full",
+					"vbus": "VBUS"
 				}
 			}
 		],
@@ -11958,7 +11967,8 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"gender": "receptacle",
 					"role": "device",
 					"version": "2.0",
-					"speed": "full"
+					"speed": "full",
+					"vbus": "5V"
 				}
 			}
 		],
@@ -13285,7 +13295,8 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"gender": "receptacle",
 					"role": "device",
 					"version": "2.0",
-					"speed": "full"
+					"speed": "full",
+					"vbus": "5V"
 				}
 			}
 		],
@@ -15508,7 +15519,8 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"gender": "receptacle",
 					"role": "device",
 					"version": "2.0",
-					"speed": "full"
+					"speed": "full",
+					"vbus": "5V"
 				}
 			},
 			{
@@ -16741,7 +16753,8 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"gender": "receptacle",
 					"role": "device",
 					"version": "2.0",
-					"speed": "full"
+					"speed": "full",
+					"vbus": "5V"
 				}
 			},
 			{
@@ -17739,7 +17752,8 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"gender": "receptacle",
 					"role": "device",
 					"version": "1.1",
-					"speed": "full"
+					"speed": "full",
+					"vbus": "5V"
 				}
 			},
 			{
@@ -18154,7 +18168,8 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"gender": "receptacle",
 					"role": "dual",
 					"version": "2.0",
-					"speed": "full"
+					"speed": "full",
+					"vbus": "5V"
 				}
 			},
 			{
@@ -27979,7 +27994,8 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"connector": "C",
 					"gender": "receptacle",
 					"role": "device",
-					"speed": "full"
+					"speed": "full",
+					"vbus": "5V"
 				}
 			}
 		],
@@ -28997,7 +29013,8 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"gender": "receptacle",
 					"role": "device",
 					"version": "2.0",
-					"speed": "full"
+					"speed": "full",
+					"vbus": "VIN"
 				}
 			}
 		],
@@ -29822,7 +29839,8 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"gender": "receptacle",
 					"role": "device",
 					"version": "2.0",
-					"speed": "full"
+					"speed": "full",
+					"vbus": "5V"
 				}
 			}
 		],
@@ -30733,7 +30751,8 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"gender": "receptacle",
 					"role": "device",
 					"version": "2.0",
-					"speed": "full"
+					"speed": "full",
+					"vbus": "5V"
 				}
 			},
 			{
@@ -30749,7 +30768,8 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"gender": "receptacle",
 					"role": "dual",
 					"version": "1.1",
-					"speed": "full"
+					"speed": "full",
+					"vbus": "5V"
 				}
 			},
 			{
@@ -31765,7 +31785,8 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"gender": "receptacle",
 					"role": "device",
 					"version": "2.0",
-					"speed": "full"
+					"speed": "full",
+					"vbus": "5V"
 				}
 			},
 			{
@@ -32647,9 +32668,9 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"connector": "C",
 					"gender": "receptacle",
 					"role": "device",
-					"power": "only",
-					"draw": 2e3
-				}
+					"power": "only"
+				},
+				"caps": { "note": "One maker page recommends a 5 V 2 A adapter for this input; its actual input current is not measured, so check it before relying on a 500 mA USB port." }
 			},
 			{
 				"spacer": true,
@@ -49278,7 +49299,8 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			{
 				"name": "CAM/DISP 1",
 				"side": "bottom",
-				"type": "passive"
+				"type": "passive",
+				"caps": { "note": "Which connector is 0 and which is 1 rests on one source (gpiozero's board art: 1 on the left, 0 on the right); check the silkscreen on your board." }
 			},
 			{
 				"spacer": true,
@@ -49287,7 +49309,8 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			{
 				"name": "CAM/DISP 0",
 				"side": "bottom",
-				"type": "passive"
+				"type": "passive",
+				"caps": { "note": "Which connector is 0 and which is 1 rests on one source (gpiozero's board art: 1 on the left, 0 on the right); check the silkscreen on your board." }
 			},
 			{
 				"spacer": true,
@@ -50713,7 +50736,8 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"gender": "receptacle",
 					"role": "dual",
 					"version": "1.1",
-					"speed": "full"
+					"speed": "full",
+					"vbus": "VBUS"
 				}
 			}
 		],
@@ -51036,7 +51060,8 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"gender": "receptacle",
 					"role": "dual",
 					"version": "1.1",
-					"speed": "full"
+					"speed": "full",
+					"vbus": "VBUS"
 				}
 			}
 		],
@@ -52403,7 +52428,8 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"gender": "receptacle",
 					"role": "dual",
 					"version": "1.1",
-					"speed": "full"
+					"speed": "full",
+					"vbus": "VBUS"
 				}
 			}
 		],
@@ -53367,7 +53393,8 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"gender": "receptacle",
 					"role": "dual",
 					"version": "1.1",
-					"speed": "full"
+					"speed": "full",
+					"vbus": "VBUS"
 				}
 			}
 		],
@@ -53691,7 +53718,8 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"gender": "receptacle",
 					"role": "dual",
 					"version": "1.1",
-					"speed": "full"
+					"speed": "full",
+					"vbus": "VBUS"
 				}
 			}
 		],
@@ -61555,7 +61583,8 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"gender": "receptacle",
 					"role": "device",
 					"power": "only",
-					"draw": 1e3
+					"draw": 1e3,
+					"vbus": "IN+"
 				}
 			},
 			{
@@ -62520,7 +62549,8 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 				"at": [[360, 30]],
 				"holeStyle": "pad",
 				"type": "power_in",
-				"supply": "5V"
+				"supply": "5V",
+				"caps": { "note": "With external 5 V wired here, set the board's \"Disable USB Power\" jumper, which stops the hub back-feeding the host's USB port. Older red versions of this board are bus-powered only, 500 mA total for all four ports." }
 			}
 		],
 		electrical: {
@@ -64127,7 +64157,8 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"gender": "receptacle",
 					"role": "device",
 					"version": "2.0",
-					"speed": "full"
+					"speed": "full",
+					"vbus": "5V"
 				}
 			}
 		],
@@ -65197,7 +65228,8 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"connector": "C",
 					"gender": "receptacle",
 					"role": "device",
-					"speed": "full"
+					"speed": "full",
+					"vbus": "5V"
 				}
 			}
 		],
@@ -65587,7 +65619,8 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"connector": "C",
 					"gender": "receptacle",
 					"role": "device",
-					"speed": "full"
+					"speed": "full",
+					"vbus": "5V"
 				}
 			}
 		],
@@ -66079,15 +66112,63 @@ function cableWords(a, b) {
 	const p = CABLE_PRESETS.find((q) => q.from === a && q.to === b || q.from === b && q.to === a);
 	return p ? `a ${p.name}` : `a cable with a ${END_NAMES[a]} and a ${END_NAMES[b]}`;
 }
-/** The parts a linked USB port powers (a device, dual or charge-only port with a link): never "no power". */
-function usbFedParts(d) {
-	const out = /* @__PURE__ */ new Set();
-	for (const c of d.connections) {
-		const l = usbLink(d, c);
-		if (!l) continue;
-		for (const p of [l.from, l.to]) if (p.usb.role === "device" || p.usb.role === "dual") out.add(p.part.uid);
+/** The port at the far end of a port's link, followed through extensions; null when it ends at nothing. */
+function reacher(d, links) {
+	const far = /* @__PURE__ */ new Map();
+	for (const l of links) {
+		if (l.from.usb.gender === "plug" && l.to.usb.gender === "plug") continue;
+		far.set(l.from.key, l.to);
+		far.set(l.to.key, l.from);
 	}
-	return out;
+	const through = (p) => {
+		if (p.usb.role !== "passthrough" || !p.usb.through) return null;
+		return portOf(d, {
+			part: p.part.uid,
+			pin: p.usb.through
+		});
+	};
+	return (p) => {
+		const seen = /* @__PURE__ */ new Set([p.key]);
+		let q = far.get(p.key) ?? null;
+		while (q && q.usb.role === "passthrough") {
+			if (seen.has(q.key)) return null;
+			seen.add(q.key);
+			const t = through(q);
+			if (!t) return null;
+			seen.add(t.key);
+			q = far.get(t.key) ?? null;
+		}
+		return q;
+	};
+}
+/**
+* Who USB powers. `fed`: parts a link powers (a device or charge-only port with a link, or a dual
+* port whose far end is a host or a hub's downstream port): never "no power". `hosting`: parts not
+* fed whose dual port hosts a device, so that port powers nothing on them.
+*/
+function usbPower(d) {
+	const fed = /* @__PURE__ */ new Set();
+	const hosting = /* @__PURE__ */ new Set();
+	/** Device and dual ports a host powers (for VBUS back-feed). */
+	const hosted = [];
+	const links = d.connections.map((c) => usbLink(d, c)).filter((l) => l !== null);
+	const reach = reacher(d, links);
+	for (const l of links) for (const p of [l.from, l.to]) {
+		if (p.usb.role !== "device" && p.usb.role !== "dual") continue;
+		const q = reach(p);
+		if (q?.usb.role === "host") hosted.push({
+			port: p,
+			host: q
+		});
+		if (p.usb.role === "device" || q?.usb.role === "host") fed.add(p.part.uid);
+		else if (q?.usb.role === "device") hosting.add(p.part.uid);
+	}
+	for (const u of fed) hosting.delete(u);
+	return {
+		fed,
+		hosting,
+		hosted
+	};
 }
 var mA = (n) => `${Math.round(n)} mA`;
 var pinOf = (p) => ({
@@ -66199,33 +66280,7 @@ function usbFindings(d, nl, netWires) {
 			continue;
 		}
 	}
-	const far = /* @__PURE__ */ new Map();
-	for (const l of links) {
-		if (l.from.usb.gender === "plug" && l.to.usb.gender === "plug") continue;
-		far.set(l.from.key, l.to);
-		far.set(l.to.key, l.from);
-	}
-	const through = (p) => {
-		if (p.usb.role !== "passthrough" || !p.usb.through) return null;
-		return portOf(d, {
-			part: p.part.uid,
-			pin: p.usb.through
-		});
-	};
-	/** The port at the far end of `p`'s link, followed through extensions; null when it ends at nothing. */
-	const reach = (p) => {
-		const seen = /* @__PURE__ */ new Set([p.key]);
-		let q = far.get(p.key) ?? null;
-		while (q && q.usb.role === "passthrough") {
-			if (seen.has(q.key)) return null;
-			seen.add(q.key);
-			const t = through(q);
-			if (!t) return null;
-			seen.add(t.key);
-			q = far.get(t.key) ?? null;
-		}
-		return q;
-	};
+	const reach = reacher(d, links);
 	const judged = /* @__PURE__ */ new Set();
 	const pairs = [];
 	for (const p of portByKey.values()) {
@@ -66286,8 +66341,11 @@ function usbFindings(d, nl, netWires) {
 		return own;
 	};
 	const sourceOf = (h) => {
+		if (h.usb.hub === "downstream") {
+			const own = h.usb.source ?? DEFAULT_SOURCE[h.usb.version ?? "2.0"];
+			return hubSelfPowered(h) ? own : Math.min(own, 100);
+		}
 		if (h.usb.source !== void 0) return h.usb.source;
-		if (h.usb.hub === "downstream") return hubSelfPowered(h) ? DEFAULT_SOURCE[h.usb.version ?? "2.0"] : 100;
 		return h.usb.role === "host" && h.usb.version ? DEFAULT_SOURCE[h.usb.version] : null;
 	};
 	/** The host side and device side of a pair, or null when that is not clear (two dual ports, a role error). */
@@ -66322,7 +66380,7 @@ function usbFindings(d, nl, netWires) {
 				rule: "usb-hub-bus-power",
 				subject: host.part.designator,
 				target: host.title,
-				message: `${host.part.designator} is a bus-powered hub, so ${host.title} gives at most ${mA(100)}, but ${dev.title} draws ${mA(dm.mA)}. Power the hub from its own supply, or plug ${dev.part.designator} into the host directly.`,
+				message: `${host.part.designator} is a bus-powered hub, so ${host.title} gives at most ${mA(supply)}, but ${dev.title} draws ${mA(dm.mA)}. Power the hub from its own supply, or plug ${dev.part.designator} into the host directly.`,
 				parts,
 				pins: [pinOf(host), pinOf(dev)],
 				wires: wiresOf([host, dev]),
@@ -70957,6 +71015,10 @@ var RULES = {
 		severity: "warning",
 		title: "Bus-powered hub overloaded"
 	},
+	"usb-backfeed": {
+		severity: "warning",
+		title: "Supply on USB VBUS"
+	},
 	"module-drift": {
 		severity: "warning",
 		title: "Part data out of date"
@@ -70972,6 +71034,10 @@ var RULES = {
 	"usb-power-unknown": {
 		severity: "info",
 		title: "USB current not known"
+	},
+	"usb-backfeed-diode": {
+		severity: "info",
+		title: "Supply on USB VBUS, behind a diode"
 	}
 };
 var RULE_ORDER = Object.keys(RULES);
@@ -71433,6 +71499,17 @@ function checkDiagram(d) {
 		const terms = keys.map(terminal);
 		return terms.some(isUsb) ? [] : terms.filter((t) => t !== null);
 	});
+	const usbGrounds = [];
+	const usbGrounded = /* @__PURE__ */ new Set();
+	if (usbAny) for (const c of d.connections) {
+		const l = brokenSet.has(c.uid) ? null : usbLink(d, c);
+		const i = l ? nl.netOf.get(l.from.key) : void 0;
+		if (!l || i === void 0 || nl.nets[i].some((k) => terminal(k)?.type !== "usb")) continue;
+		const [ga, gb] = [l.from, l.to].map((p) => moduleInfo(p.module).grounds[0]);
+		if (!ga || !gb || l.from.part === l.to.part) continue;
+		usbGrounds.push([nodeKey(l.from.part.uid, ga), nodeKey(l.to.part.uid, gb)]);
+		usbGrounded.add(l.from.part.uid).add(l.to.part.uid);
+	}
 	/** Supplies (by source id) already reported as wired to their own ground, and their parts. */
 	const shorted = /* @__PURE__ */ new Set();
 	const shortedParts = /* @__PURE__ */ new Set();
@@ -71489,9 +71566,14 @@ function checkDiagram(d) {
 		plugs,
 		shorted,
 		add,
-		skip: hazardous
+		skip: hazardous,
+		usbGrounds
 	});
-	const usbFed = usbAny ? usbFedParts(d) : /* @__PURE__ */ new Set();
+	const { fed: usbFed, hosting: usbHosting, hosted: usbHosted } = usbAny ? usbPower(d) : {
+		fed: /* @__PURE__ */ new Set(),
+		hosting: /* @__PURE__ */ new Set(),
+		hosted: []
+	};
 	const others = (t) => {
 		const i = nl.netOf.get(t.key);
 		return i === void 0 ? [] : netTerms[i].filter((o) => o.part !== t.part);
@@ -71512,7 +71594,7 @@ function checkDiagram(d) {
 		return [...seen.values()].sort((a, b) => natural$1.compare(termName(a), termName(b)));
 	};
 	for (const p of d.parts) {
-		if (!connected.has(p.uid)) continue;
+		if (!connected.has(p.uid) && !usbHosting.has(p.uid)) continue;
 		const m = moduleOf(d, p.module);
 		if (!m) continue;
 		const terms = [...moduleInfo(m).defs.entries()].filter(([, def]) => {
@@ -71520,7 +71602,7 @@ function checkDiagram(d) {
 			return ty === "power_in" || ty === "power_out" || ty === "ground";
 		}).map(([n]) => terminal(nodeKey(p.uid, n))).filter((t) => t !== null && !hazardous(t.key));
 		const ins = terms.filter((t) => t.type === "power_in");
-		if (ins.length && !moduleInfo(m).external.size && !reversed.has(p.uid) && !usbFed.has(p.uid)) {
+		if (ins.length && (!moduleInfo(m).external.size || usbHosting.has(p.uid)) && !reversed.has(p.uid) && !usbFed.has(p.uid)) {
 			if (!(ins.some((t) => others(t).some(mayFeed)) || terms.some((t) => t.type === "power_out" && others(t).some(isSource)))) {
 				const vias = [...new Map(ins.flatMap((t) => others(t)).filter((o) => o.dead === "unknown").map((o) => [o.key, o])).values()].sort((a, b) => natural$1.compare(termName(a), termName(b)));
 				if (vias.length) {
@@ -71558,7 +71640,7 @@ function checkDiagram(d) {
 			}
 		}
 		const grounds = terms.filter((t) => t.type === "ground");
-		if (grounds.length && !shortedParts.has(p.uid) && !grounds.some((t) => others(t).some((o) => !o.bare))) {
+		if (grounds.length && !shortedParts.has(p.uid) && !usbGrounded.has(p.uid) && !grounds.some((t) => others(t).some((o) => !o.bare))) {
 			const wired = [...new Set(grounds.filter((t) => others(t).length).map((t) => t.label))];
 			const ownOnly = [...new Set(grounds.filter((t) => {
 				const i = nl.netOf.get(t.key);
@@ -71579,12 +71661,52 @@ function checkDiagram(d) {
 			});
 		}
 	}
+	for (const { port, host } of usbHosted) {
+		if (!port.usb.vbus) continue;
+		const t = terminal(nodeKey(port.part.uid, port.usb.vbus));
+		const feeders = t ? others(t).filter(isSource).sort((a, b) => natural$1.compare(termName(a), termName(b))) : [];
+		if (!t || !feeders.length) continue;
+		const des = port.part.designator;
+		const base = {
+			subject: des,
+			target: termName(t),
+			parts: [
+				port.part.uid,
+				host.part.uid,
+				...feeders.map((o) => o.part.uid)
+			],
+			pins: [
+				termPin(t),
+				{
+					part: port.part.uid,
+					pin: port.name
+				},
+				...feeders.map(termPin)
+			],
+			wires: [],
+			causes: [t.key, port.key]
+		};
+		if (t.info.external.get(t.name)?.diode) add({
+			rule: "usb-backfeed-diode",
+			...base,
+			message: `${termName(t)} is wired to ${andList(feeders.map(termName))} while ${host.title} powers ${port.title}, but ${des} has a diode between USB VBUS and ${t.label}, so the supply cannot drive current back into the host. Keep both if you like: the higher one powers the board.`
+		});
+		else {
+			add({
+				rule: "usb-backfeed",
+				...base,
+				message: `${termName(t)} is wired to ${andList(feeders.map(termName))}, and it is also ${port.title}'s VBUS while ${host.title} powers that port: the supply drives current back into the host's USB port, or the host into the supply. Power ${des} from one of them: unplug the cable or remove the supply.`
+			});
+			const dup = findings.findIndex((x) => x.rule === "supplies-parallel" && x.target === termName(t));
+			if (dup >= 0) findings.splice(dup, 1);
+		}
+	}
 	const groundedCache = /* @__PURE__ */ new Map();
 	const groundedPins = (p) => {
 		let list = groundedCache.get(p.uid);
 		if (!list) {
 			const m = moduleOf(d, p.module);
-			list = m ? moduleInfo(m).grounds.map((g) => terminal(nodeKey(p.uid, g))).filter((t) => others(t).some((o) => !o.bare)) : [];
+			list = m ? moduleInfo(m).grounds.map((g) => terminal(nodeKey(p.uid, g))).filter((t, i) => others(t).some((o) => !o.bare) || i === 0 && usbGrounded.has(p.uid)) : [];
 			groundedCache.set(p.uid, list);
 		}
 		return list;
@@ -72002,7 +72124,7 @@ function minus(a, b) {
 * supplies fighting; a loop that agrees is supplies in parallel. A load gets the potential of its
 * power input over that of its own ground, so a series stack adds up.
 */
-function checkPotentials({ d, nl, netTerms, netWires, terminal, plugs, shorted, skip, add }) {
+function checkPotentials({ d, nl, netTerms, netWires, terminal, plugs, shorted, skip, add, usbGrounds }) {
 	const reversed = /* @__PURE__ */ new Set();
 	const netOfKey = (key) => {
 		const i = nl.netOf.get(key);
@@ -72013,6 +72135,13 @@ function checkPotentials({ d, nl, netTerms, netWires, terminal, plugs, shorted, 
 	const edges = [];
 	const diodes = [];
 	const unknownOn = /* @__PURE__ */ new Map();
+	for (const [a, b] of usbGrounds) edges.push({
+		from: netOfKey(a),
+		to: netOfKey(b),
+		v: 0,
+		fromKey: a,
+		toKey: b
+	});
 	const outOn = /* @__PURE__ */ new Map();
 	/** Cells by bank (Ruling V1): same module and voltage, every + on one net and every - on another. */
 	const bankCells = /* @__PURE__ */ new Map();
@@ -89430,126 +89559,6 @@ var PIN_TYPE = {
 function terminalsOf(m) {
 	return [...m.pins.filter((p) => !isSpacer(p) && p.type !== "usb"), ...m.holes ?? []];
 }
-/** The four lines a USB 2.0 link carries, the nets a USB cable or plug-in becomes. */
-var USB_LINES = [
-	"VBUS",
-	"D-",
-	"D+",
-	"GND"
-];
-/**
-* The KiCad standard-library footprint for each USB port (USB design section 4), with the pads of
-* each line, as read from the footprint files (kicadFootprints.testing.ts) and named by KiCad's
-* Connector symbols USB_A, USB3_A, USB_B, USB_B_Mini, USB_B_Micro, USB_C_Receptacle_USB2.0_16P and
-* USB_C_Plug_USB2.0. A USB 3.0 A port uses the USB 3 footprint; only its USB 2.0 pads (1-4) are
-* wired, as the link carries no SuperSpeed lines. Mini-B, micro-B and B plugs have no footprint in
-* the library.
-*/
-var USB_FOOTPRINTS = {
-	"A receptacle": {
-		footprint: "Connector_USB:USB_A_Molex_67643_Horizontal",
-		pads: {
-			VBUS: ["1"],
-			"D-": ["2"],
-			"D+": ["3"],
-			GND: ["4"]
-		}
-	},
-	"A receptacle 3.0": {
-		footprint: "Connector_USB:USB3_A_Molex_48393-001",
-		pads: {
-			VBUS: ["1"],
-			"D-": ["2"],
-			"D+": ["3"],
-			GND: ["4"]
-		}
-	},
-	"A plug": {
-		footprint: "Connector_USB:USB3_A_Plug_Wuerth_692112030100_Horizontal",
-		pads: {
-			VBUS: ["1"],
-			"D-": ["2"],
-			"D+": ["3"],
-			GND: ["4"]
-		}
-	},
-	"B receptacle": {
-		footprint: "Connector_USB:USB_B_OST_USB-B1HSxx_Horizontal",
-		pads: {
-			VBUS: ["1"],
-			"D-": ["2"],
-			"D+": ["3"],
-			GND: ["4"]
-		}
-	},
-	"mini-B receptacle": {
-		footprint: "Connector_USB:USB_Mini-B_Lumberg_2486_01_Horizontal",
-		pads: {
-			VBUS: ["1"],
-			"D-": ["2"],
-			"D+": ["3"],
-			GND: ["5"]
-		}
-	},
-	"micro-B receptacle": {
-		footprint: "Connector_USB:USB_Micro-B_Molex-105017-0001",
-		pads: {
-			VBUS: ["1"],
-			"D-": ["2"],
-			"D+": ["3"],
-			GND: ["5"]
-		}
-	},
-	"C receptacle": {
-		footprint: "Connector_USB:USB_C_Receptacle_GCT_USB4105-xx-A_16P_TopMnt_Horizontal",
-		pads: {
-			VBUS: [
-				"A4",
-				"A9",
-				"B4",
-				"B9"
-			],
-			"D-": ["A7", "B7"],
-			"D+": ["A6", "B6"],
-			GND: [
-				"A1",
-				"A12",
-				"B1",
-				"B12"
-			]
-		}
-	},
-	"C plug": {
-		footprint: "Connector_USB:USB_C_Plug_Molex_105444",
-		pads: {
-			VBUS: [
-				"A4",
-				"A9",
-				"B4",
-				"B9"
-			],
-			"D-": ["A7"],
-			"D+": ["A6"],
-			GND: [
-				"A1",
-				"A12",
-				"B1",
-				"B12"
-			]
-		}
-	}
-};
-/** The footprint entry a USB port comes in on, or undefined (a plug the library has no footprint for). */
-function usbFootprint(u) {
-	const key = `${u.connector} ${u.gender}${u.connector === "A" && u.gender === "receptacle" && u.version === "3.0" ? " 3.0" : ""}`;
-	return Object.hasOwn(USB_FOOTPRINTS, key) ? USB_FOOTPRINTS[key] : void 0;
-}
-var USB_PIN_TYPE = {
-	VBUS: "passive",
-	"D-": "bidirectional",
-	"D+": "bidirectional",
-	GND: "passive"
-};
 var pad2 = (n) => String(n).padStart(2, "0");
 /** The generic footprint an unmapped part comes in on: a 0.1 in pin header with a pad per pin. */
 function genericFootprint(pins) {
@@ -89612,49 +89621,25 @@ function writeKicad(src, opts = {}) {
 	/** Part key to its reference (a part's own, before any header letter), for naming nets. */
 	const partRef = /* @__PURE__ */ new Map();
 	const modOf = new Map(kept.map(({ p }) => [p.key, p.module]));
-	const portKey = (key, pin) => JSON.stringify([key, pin]);
-	const isPort = (key, pin) => !!modOf.get(key) && usbPorts(modOf.get(key)).some((q) => q.name === pin);
-	const usbNets = [];
-	const linked = /* @__PURE__ */ new Set();
+	const portName = (key, pin) => {
+		const part = src.parts.find((x) => x.key === key);
+		const port = part && usbPorts(part.module).find((q) => q.name === pin);
+		return port ? {
+			title: `${part.designator} ${port.label ?? port.name}`,
+			plug: port.usb.gender === "plug"
+		} : void 0;
+	};
+	const usbNotes = [];
 	for (const net of src.nets) {
-		const ports = net.nodes.filter(([k, pin]) => isPort(k, pin));
+		const ports = net.nodes.flatMap(([k, pin]) => modOf.has(k) ? [portName(k, pin)].filter((x) => x !== void 0) : []).sort((a, b) => natural(a.title, b.title));
 		if (!ports.length) continue;
-		if (ports.length === net.nodes.length && ports.length >= 2) {
-			usbNets.push(ports);
-			for (const [k, pin] of ports) linked.add(portKey(k, pin));
-		} else if (ports.length < net.nodes.length) warnings.push(`${andWords(ports.map(([k, pin]) => `${kicadRef(src.parts.find((x) => x.key === k)?.designator ?? k)} ${pin}`))}: a USB port on a net with other pins is left out of it. Connect USB ports only to USB ports.`);
+		if (ports.length === net.nodes.length) for (const q of ports.slice(1)) usbNotes.push(`${ports[0].title} to ${q.title} is ${ports[0].plug || q.plug ? "a USB plug-in" : "a USB cable"}, off-board`);
+		else warnings.push(`${andWords(ports.map((q) => q.title))}: a USB port on a net with other pins is left out of it. Connect USB ports only to USB ports.`);
 	}
-	const usbComp = /* @__PURE__ */ new Map();
 	for (const { p, map } of kept) {
 		const m = p.module;
 		const ref = claimRef(kicadRef(p.designator || p.key));
 		partRef.set(p.key, ref);
-		for (const port of usbPorts(m)) {
-			if (!linked.has(portKey(p.key, port.name))) continue;
-			const fp = usbFootprint(port.usb);
-			if (!fp) {
-				warnings.push(`${ref} ${port.label ?? port.name} (${m.id}): KiCad's standard library has no footprint for a ${port.usb.connector} plug, so this USB port is left out.`);
-				continue;
-			}
-			const pads = /* @__PURE__ */ new Map();
-			for (const line of USB_LINES) for (const pad of fp.pads[line]) pads.set(pad, {
-				names: [line],
-				type: USB_PIN_TYPE[line]
-			});
-			const c = {
-				ref: claimRef(`${ref}_${port.name.replace(/[^A-Za-z0-9]/g, "") || "USB"}`),
-				value: `USB ${port.usb.connector} ${port.usb.gender}`,
-				footprint: fp.footprint,
-				lib: "Circuitoon",
-				part: `usb-${port.usb.connector}-${port.usb.gender}`,
-				description: `USB ${port.usb.connector} ${port.usb.gender}, port ${port.label ?? port.name} of ${m.name} (Circuitoon part ${m.id})`,
-				uuid: stableUuid(`${p.key}#usb#${port.name}`),
-				module: m.id,
-				pads: new Map([...pads].sort((a, b) => natural(a[0], b[0])))
-			};
-			comps.push(c);
-			usbComp.set(portKey(p.key, port.name), c);
-		}
 		const k = map.kicad;
 		const value = kicadValue(p, m, k);
 		const terms = new Map(terminalsOf(m).map((t) => [t.name, t]));
@@ -89723,7 +89708,7 @@ function writeKicad(src, opts = {}) {
 			warnings.push(`${ref} (${m.id}): ${k.note ?? "the footprint is a placeholder, not the part's own."}`);
 		} else if (k.note) noteRefs.set(k.note, [...noteRefs.get(k.note) ?? [], ref]);
 	}
-	const notes = [...noteRefs].map(([note, refs]) => `${refs.join(", ")}: ${note}`);
+	const notes = [...[...noteRefs].map(([note, refs]) => `${refs.join(", ")}: ${note}`), ...usbNotes];
 	const built = [];
 	for (const net of src.nets) {
 		const nodes = [];
@@ -89756,19 +89741,6 @@ function writeKicad(src, opts = {}) {
 			nodes,
 			pins,
 			...net.name !== void 0 ? { label: net.name } : {}
-		});
-	}
-	for (const ports of usbNets) {
-		const at = ports.flatMap(([k, pin]) => usbComp.has(portKey(k, pin)) ? [usbComp.get(portKey(k, pin))] : []);
-		if (at.length < 2) continue;
-		const base = [...at].map((c) => c.ref).sort(natural)[0];
-		for (const line of USB_LINES) built.push({
-			nodes: at.flatMap((comp) => [...comp.pads].filter(([, v]) => v.names[0] === line).map(([pad]) => ({
-				comp,
-				pad
-			}))),
-			pins: [],
-			label: `${base}_${line}`
 		});
 	}
 	const rawNames = nameNets(built);
