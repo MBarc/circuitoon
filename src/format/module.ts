@@ -143,7 +143,18 @@ export interface ModuleDef {
    * part: never in the bill of materials, never mounted, never an extra part in verification.
    */
   netLabel?: true
+  /**
+   * Made by a user or an agent in the part maker (src/format/partMaker.ts), not taken from the
+   * library: unverified. Its id starts with "custom-", which no built-in id does.
+   */
+  custom?: true
 }
+
+/** The id prefix every custom part has and no built-in part may use. */
+export const CUSTOM_PREFIX = 'custom-'
+
+/** A part made in the part maker (`custom: true`): user-made and unverified. */
+export const isCustom = (m: ModuleDef | undefined): boolean => m?.custom === true
 
 export const isSpacer = (p: PinEntry): p is SpacerDef => 'spacer' in p && p.spacer === true
 
@@ -247,6 +258,10 @@ export function validateModule(raw: unknown): ValidationResult {
     errors.push('version: must be a whole number, 1 or more')
   if (raw.category !== undefined && typeof raw.category !== 'string') errors.push('category: must be a string')
   if (raw.source !== undefined && typeof raw.source !== 'string') errors.push('source: must be a string (one or more URLs)')
+  if (raw.custom !== undefined) {
+    if (raw.custom !== true) errors.push('custom: must be true when present')
+    else if (typeof raw.id === 'string' && !raw.id.startsWith(CUSTOM_PREFIX)) errors.push(`custom: a custom part's id must start with "${CUSTOM_PREFIX}"`)
+  }
 
   // Electrical metadata shared by pins and hole groups.
   const checkType = (t: Record<string, unknown>, at: string) => {
