@@ -317,7 +317,7 @@ export function PartMaker({ editing, taken, onSave, onExport, onCancel, extra, i
           {preview && (
             <p className="pm-facts">
               <span className="custom-badge">custom</span>
-              {preview.pins.filter((p) => !isSpacer(p)).length} pins, {preview.size?.w} x {preview.size?.h} grid squares
+              {preview.pins.filter((p) => !isSpacer(p)).length} pins{preview.size ? `, ${preview.size.w} x ${preview.size.h} grid squares` : ''}
               <span className="pm-id" title="The part's id, used in sheets and netlists">{preview.id}</span>
             </p>
           )}
