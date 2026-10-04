@@ -37,12 +37,14 @@
   "$defs": {
     "side": {
       "type": "array",
+      "maxItems": 398,
+      "description": "At most 398 pins and gaps a side, so the body stays within 4000 px.",
       "items": {
         "type": ["string", "null", "object"],
         "additionalProperties": false,
         "properties": {
-          "name": { "type": "string", "description": "The silkscreen text. A repeated name is numbered: a second GND becomes \"GND 2\" with the label \"GND\"." },
-          "label": { "type": "string" },
+          "name": { "type": "string", "maxLength": 60, "description": "The silkscreen text. A repeated name is numbered: a second GND becomes \"GND 2\" with the label \"GND\"." },
+          "label": { "type": "string", "maxLength": 60 },
           "type": { "enum": ["power_in", "power_out", "ground", "input", "output", "io", "passive", "nc"] },
           "supply": { "type": "string", "description": "The rails the pin sees or takes: \"3V3\", \"5V\", \"3V3/5V\"." },
           "caps": { "type": "object", "description": "Pin capabilities from the chip's datasheet: inputOnly, outputOnly, flash, noPullup, strapping, downloadOnly, note." },

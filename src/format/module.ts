@@ -178,7 +178,7 @@ export const usesTipLabels = (m: ModuleDef): boolean => m.art?.pinLabels === 'ti
  */
 export function pinRoom(m: ModuleDef): number {
   if (!usesTipLabels(m)) return LEAD + 10
-  const longest = Math.max(0, ...m.pins.filter((p): p is PinDef => !isSpacer(p)).map((p) => (p.label ?? p.name).length))
+  const longest = m.pins.reduce((n, p) => (isSpacer(p) ? n : Math.max(n, (p.label ?? p.name).length)), 0)
   return LEAD + 2 + Math.ceil(longest * 4.5 + 3)
 }
 

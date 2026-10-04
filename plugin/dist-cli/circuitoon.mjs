@@ -682,7 +682,7 @@ var usesTipLabels = (m) => m.art?.pinLabels === "tips";
 */
 function pinRoom(m) {
 	if (!usesTipLabels(m)) return 18;
-	const longest = Math.max(0, ...m.pins.filter((p) => !isSpacer(p)).map((p) => (p.label ?? p.name).length));
+	const longest = m.pins.reduce((n, p) => isSpacer(p) ? n : Math.max(n, (p.label ?? p.name).length), 0);
 	return 10 + Math.ceil(longest * 4.5 + 3);
 }
 /** Sides whose pin names draw inside the body: every side for an "inside" module (a board's
@@ -66773,6 +66773,9 @@ var DEFAULT_COLORS = {
 };
 var UNITS_MAX = MODULE_PX_MAX / 10;
 var NAME_MAX = 120;
+/** Pins and gaps a side may hold: each takes 10 px, and the body keeps a unit at each end, within the 4000 px cap. */
+var SLOTS_MAX = UNITS_MAX - 2;
+var PIN_NAME_MAX = 60;
 var ID_MAX = 200;
 var GOLD = "#E0B43C";
 var HOLE_FILL = "#8A6A1E";
@@ -66856,11 +66859,16 @@ function validateSpec(raw) {
 			errors.push(`pins.${side}: must be a list`);
 			continue;
 		}
+		if (list.length > SLOTS_MAX) {
+			errors.push(`pins.${side}: at most ${SLOTS_MAX} pins and gaps a side (${list.length} given), so the body stays within ${MODULE_PX_MAX} px`);
+			continue;
+		}
 		list.forEach((p, i) => {
 			const at = `pins.${side}[${i}]`;
 			if (p === null) return;
 			if (typeof p === "string") {
 				if (p.trim() === "") errors.push(`${at}: a pin name may not be empty`);
+				else if (p.trim().length > PIN_NAME_MAX) errors.push(`${at}: a pin name is at most ${PIN_NAME_MAX} characters`);
 				else count++;
 				return;
 			}
@@ -66872,8 +66880,9 @@ function validateSpec(raw) {
 				return;
 			}
 			if (typeof p.name !== "string" || p.name.trim() === "") errors.push(`${at}.name: required`);
+			else if (p.name.trim().length > PIN_NAME_MAX) errors.push(`${at}.name: at most ${PIN_NAME_MAX} characters`);
 			else count++;
-			if (p.label !== void 0 && typeof p.label !== "string") errors.push(`${at}.label: must be a string`);
+			if (p.label !== void 0 && (typeof p.label !== "string" || p.label.length > PIN_NAME_MAX)) errors.push(`${at}.label: must be a string, at most ${PIN_NAME_MAX} characters`);
 			if (p.type !== void 0 && !PIN_TYPES.includes(p.type)) errors.push(`${at}.type: must be one of ${PIN_TYPES.join(", ")}`);
 			if (p.supply !== void 0 && typeof p.supply !== "string") errors.push(`${at}.supply: must be a string such as "3V3" or "3V3/5V"`);
 		});
@@ -66995,7 +67004,7 @@ function cornersCross(pins, wu, hu, zone) {
 function geometry(pins, style, plate, given) {
 	const slots = (s) => pins.filter((p) => p.side === s).length;
 	const has = (s) => pins.some((p) => p.side === s && !isSpacer(p));
-	const longest = (s) => Math.max(0, ...pins.filter((p) => p.side === s).map((p) => labelText(p).length));
+	const longest = (s) => pins.reduce((n, p) => p.side === s ? Math.max(n, labelText(p).length) : n, 0);
 	const zone = {
 		top: 6,
 		right: 6,
@@ -67168,7 +67177,7 @@ function buildPart(raw) {
 		"right",
 		"top",
 		"bottom"
-	]) pins.push(...sideEntries(side, spec.pins[side] ?? []));
+	]) for (const p of sideEntries(side, spec.pins[side] ?? [])) pins.push(p);
 	const renamed = numberRepeats(pins);
 	if (renamed.length) notes.push(`Repeated pin names were numbered in physical order: ${renamed.join(", ")}. If they are joined inside the part, list them in "internal".`);
 	const g = geometry(pins, style, plateText(spec.name), spec.body);

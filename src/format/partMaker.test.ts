@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { HOLE_FILL, buildPart, customId, lintModule, moduleFromSpec, parsePinLines, plateText, slugify, specFromModule, validateSpec, type PartSpec } from './partMaker.ts'
-import { MODULE_PX_MAX, isSpacer, layoutModule, validateModule, type ModuleDef, type PinDef } from './module.ts'
+import { MODULE_PX_MAX, isSpacer, pinRoom, layoutModule, validateModule, type ModuleDef, type PinDef } from './module.ts'
 import { load, moduleFiles } from './builtinModules.testing.ts'
 
 const builtinModules = () => moduleFiles().map(load)
@@ -247,5 +247,29 @@ describe('parsePinLines', () => {
       { name: 'VOUT', type: 'power_out', supply: '3V3/5V' },
       { name: 'EN', type: 'input' },
     ])
+  })
+})
+
+describe('limits', () => {
+  const huge = 150_000
+  it('rejects an oversized pin list before building, instead of overflowing the stack', () => {
+    const r = buildPart({ name: 'Huge', pins: { left: Array.from({ length: huge }, (_, i) => `P${i}`) } })
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.errors.join(' ')).toMatch(/pins\.left: at most 398 pins and gaps a side/)
+    expect(buildPart({ name: 'Gaps', pins: { top: ['A', ...Array(huge).fill(null)] } }).ok).toBe(false)
+    expect(buildPart({ name: 'Max', pins: { left: Array.from({ length: 398 }, (_, i) => `${i}`) } }).ok).toBe(true)
+    expect(validateSpec({ name: 'Long', pins: { left: ['x'.repeat(61)] } })).toMatchObject({ ok: false, errors: expect.arrayContaining(['pins.left[0]: a pin name is at most 60 characters']) })
+  })
+  it('refuses an oversized paste with one error, never parsing it', () => {
+    const r = parsePinLines(Array.from({ length: huge }, (_, i) => `${i} P${i} io`).join('\n'))
+    expect(r.pins).toEqual([])
+    expect(r.errors).toEqual([expect.stringMatching(/too long to paste/)])
+    expect(parsePinLines('A\n'.repeat(1592)).pins).toHaveLength(1592)
+  })
+  it('a validated module with many pins measures without spreading them as arguments', () => {
+    const m = { format: 'circuitoon-module/1', id: 'x', name: 'x', art: { w: 10, h: 10, pinLabels: 'tips', shapes: [] }, pins: Array.from({ length: huge }, (_, i) => ({ name: `P${i}`, side: 'left' })) } as unknown as ModuleDef
+    expect(() => validateModule(m)).not.toThrow()
+    expect(validateModule(m).ok).toBe(false)
+    expect(pinRoom(m)).toBe(8 + 2 + Math.ceil(7 * 4.5 + 3))
   })
 })

@@ -50,6 +50,12 @@ export const DEFAULT_COLORS: Record<PartStyle, string> = { board: '#2F9E6E', chi
 export const BODY_COLORS = ['#2F9E6E', '#1E4F8A', '#2B2F36', '#7B3FA0', '#C0392B', '#F4B400', '#EEF0EC', '#D98C2B']
 const UNITS_MAX = MODULE_PX_MAX / GRID
 const NAME_MAX = 120
+/** Pins and gaps a side may hold: each takes 10 px, and the body keeps a unit at each end, within the 4000 px cap. */
+export const SLOTS_MAX = UNITS_MAX - 2
+const PIN_NAME_MAX = 60
+/** A paste longer than this is refused whole (a part has at most 4 x SLOTS_MAX pins, one a line). */
+export const PASTE_LINES_MAX = 2000
+export const PASTE_CHARS_MAX = 200_000
 const ID_MAX = 200
 
 const GOLD = '#E0B43C'
@@ -118,11 +124,16 @@ export function validateSpec(raw: unknown): SpecResult {
         errors.push(`pins.${side}: must be a list`)
         continue
       }
+      if (list.length > SLOTS_MAX) {
+        errors.push(`pins.${side}: at most ${SLOTS_MAX} pins and gaps a side (${list.length} given), so the body stays within ${MODULE_PX_MAX} px`)
+        continue
+      }
       list.forEach((p, i) => {
         const at = `pins.${side}[${i}]`
         if (p === null) return
         if (typeof p === 'string') {
           if (p.trim() === '') errors.push(`${at}: a pin name may not be empty`)
+          else if (p.trim().length > PIN_NAME_MAX) errors.push(`${at}: a pin name is at most ${PIN_NAME_MAX} characters`)
           else count++
           return
         }
@@ -134,8 +145,9 @@ export function validateSpec(raw: unknown): SpecResult {
           return
         }
         if (typeof p.name !== 'string' || p.name.trim() === '') errors.push(`${at}.name: required`)
+        else if (p.name.trim().length > PIN_NAME_MAX) errors.push(`${at}.name: at most ${PIN_NAME_MAX} characters`)
         else count++
-        if (p.label !== undefined && typeof p.label !== 'string') errors.push(`${at}.label: must be a string`)
+        if (p.label !== undefined && (typeof p.label !== 'string' || p.label.length > PIN_NAME_MAX)) errors.push(`${at}.label: must be a string, at most ${PIN_NAME_MAX} characters`)
         if (p.type !== undefined && !PIN_TYPES.includes(p.type as PinType)) errors.push(`${at}.type: must be one of ${PIN_TYPES.join(', ')}`)
         if (p.supply !== undefined && typeof p.supply !== 'string') errors.push(`${at}.supply: must be a string such as "3V3" or "3V3/5V"`)
       })
@@ -242,7 +254,7 @@ function cornersCross(pins: PinEntry[], wu: number, hu: number, zone: Record<Sid
 function geometry(pins: PinEntry[], style: PartStyle, plate: string, given?: { w?: number; h?: number }): Geometry {
   const slots = (s: Side) => pins.filter((p) => p.side === s).length
   const has = (s: Side) => pins.some((p) => p.side === s && !isSpacer(p))
-  const longest = (s: Side) => Math.max(0, ...pins.filter((p) => p.side === s).map((p) => labelText(p).length))
+  const longest = (s: Side) => pins.reduce((n, p) => (p.side === s ? Math.max(n, labelText(p).length) : n), 0)
   const zone = { top: 6, right: 6, bottom: 6, left: 6 } as Record<Side, number>
   if (style === 'board') for (const s of SIDES) if (has(s)) zone[s] = INSET + labelPx(longest(s)) + 4
   const pw = plateWidth(plate, 8)
@@ -349,7 +361,7 @@ export function buildPart(raw: unknown): BuildResult {
   const notes: string[] = []
   const pins: PinEntry[] = []
   // The module lists sides in one fixed order; each side keeps its physical order.
-  for (const side of ['left', 'right', 'top', 'bottom'] as Side[]) pins.push(...sideEntries(side, spec.pins[side] ?? []))
+  for (const side of ['left', 'right', 'top', 'bottom'] as Side[]) for (const p of sideEntries(side, spec.pins[side] ?? [])) pins.push(p)
   // Trailing and leading gaps on a side would only move its pins: kept, they are the user's choice.
   const renamed = numberRepeats(pins)
   if (renamed.length) notes.push(`Repeated pin names were numbered in physical order: ${renamed.join(', ')}. If they are joined inside the part, list them in "internal".`)
@@ -538,8 +550,11 @@ export interface PastedPin {
 export function parsePinLines(text: string, side: Side = 'left'): { pins: PastedPin[]; errors: string[] } {
   const pins: PastedPin[] = []
   const errors: string[] = []
+  const lines = text.split(/\r?\n/, PASTE_LINES_MAX + 1)
+  if (text.length > PASTE_CHARS_MAX || lines.length > PASTE_LINES_MAX)
+    return { pins, errors: [`This is too long to paste: at most ${PASTE_LINES_MAX} lines and ${PASTE_CHARS_MAX} characters (a part has at most ${SLOTS_MAX} pins a side). Nothing was added.`] }
   let at = side
-  text.split(/\r?\n/).forEach((line, i) => {
+  lines.forEach((line, i) => {
     const n = i + 1
     const body = line.replace(/#.*$/, '').trim()
     if (!body) return
