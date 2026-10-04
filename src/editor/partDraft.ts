@@ -1,7 +1,7 @@
 // The part maker dialog's working copy of a part (a draft): rows per side that the person edits, and
 // the conversions to and from a part spec. Pure, so it is unit-tested apart from the dialog.
-import { SIDES, type PinCaps, type PinType, type Side } from '../format/module.ts'
-import { type PartSpec, type PartStyle, type PastedPin, DEFAULT_CATEGORY, DEFAULT_COLORS, SPEC_FORMAT, customId, specFromModule } from '../format/partMaker.ts'
+import { SIDES, isSpacer, validateModule, type ModuleDef, type PinCaps, type PinEntry, type PinType, type Side } from '../format/module.ts'
+import { type BuildResult, type PartSpec, type PartStyle, type PastedPin, DEFAULT_CATEGORY, DEFAULT_COLORS, SPEC_FORMAT, buildPart, customId, specFromModule, unmodeled } from '../format/partMaker.ts'
 import { type MyPart, freeId } from './myParts.ts'
 import { modulesById } from '../library.ts'
 
@@ -154,3 +154,25 @@ export function moveRowToSide(d: Draft, side: Side, from: number, to: Side): Dra
 }
 
 export const pinCount = (d: Draft, side: Side): number => d.pins[side].filter((r) => !r.spacer).length
+
+/**
+ * What the dialog saves for a draft under `id`. A part the part maker cannot rebuild exactly (see
+ * unmodeled: an imported resistor, a board with holes) is edited in place unless `converted`: its
+ * name, category, links and each pin's type and voltage change, and every other field is kept as it
+ * was. The dialog keeps its pins' names, order and sides fixed until the person converts it.
+ */
+export function savedModule(d: Draft, id: string, editing: ModuleDef | null, converted: boolean): BuildResult {
+  if (!editing || converted || !unmodeled(editing).length) return buildPart({ ...specFromDraft(d), id })
+  const seen = { left: 0, right: 0, top: 0, bottom: 0 } as Record<Side, number>
+  const pins = editing.pins.map((p): PinEntry => {
+    const r = d.pins[p.side][seen[p.side]++]
+    if (isSpacer(p) || !r || r.spacer) return p
+    const { type: _t, supply: _s, ...rest } = p
+    return { ...rest, ...(r.type ? { type: r.type } : {}), ...(r.supply.trim() ? { supply: r.supply.trim() } : {}) }
+  })
+  const { source: _src, ...base } = editing
+  const source = d.source.split(/\s+/).filter(Boolean).join(' ')
+  const m: ModuleDef = { ...base, name: d.name.trim(), ...(d.category.trim() ? { category: d.category.trim() } : {}), ...(source ? { source } : {}), pins }
+  const v = validateModule(m)
+  return v.ok ? { ok: true, module: m, notes: [] } : { ok: false, errors: v.errors }
+}

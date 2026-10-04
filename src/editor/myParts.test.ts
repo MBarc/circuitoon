@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import { MY_PARTS_KEY, MyPartsStore, duplicatePart, freeId, importPart, partFileText, readMyParts, readMyPartsReport, replaceSheetModule, skippedNotice, writeMyParts, type KeyValue, type MyPart } from './myParts.ts'
 import { validateModule } from '../format/module.ts'
-import { moduleFromSpec } from '../format/partMaker.ts'
-import { addPasted, draftFromPart, emptyDraft, idClash, moveRow, moveRowToSide, pinRow, saveId, specFromDraft } from './partDraft.ts'
+import { moduleFromSpec, unmodeled } from '../format/partMaker.ts'
+import { addPasted, draftFromPart, emptyDraft, idClash, moveRow, moveRowToSide, pinRow, saveId, savedModule, specFromDraft } from './partDraft.ts'
+import { SIDES } from '../format/module.ts'
 import { parsePinLines } from '../format/partMaker.ts'
 import { emptyDiagram } from '../format/diagram.ts'
 import { addPart } from './ops.ts'
@@ -244,5 +245,44 @@ describe('editing keeps a part its exact id', () => {
     store.save(part('B'))
     expect(store.replace('custom-b', part('A'))).toBe(false)
     expect(store.getSnapshot().map((p) => p.module.id)).toEqual(['custom-b', 'custom-a'])
+  })
+})
+
+describe('editing an imported part keeps what the part maker does not model', () => {
+  const imported = (id: string) => {
+    const r = importPart(JSON.stringify(modulesById[id]), [])
+    if (!r.ok) throw new Error(r.message)
+    return r.part
+  }
+  it('a no-op edit of an imported resistor keeps its resistance', () => {
+    const p = imported('resistor')
+    expect(unmodeled(p.module)).toEqual(expect.arrayContaining([expect.stringMatching(/electrical/)]))
+    const r = savedModule(draftFromPart(p), p.module.id, p.module, false)
+    expect(r.ok && r.module).toEqual(p.module)
+    if (r.ok) expect((r.module.electrical as { params: { resistance: { default: number } } }).params.resistance.default).toBe(modulesById.resistor.electrical && (modulesById.resistor.electrical as { params: { resistance: { default: number } } }).params.resistance.default)
+  })
+  it('pin types and voltages, the name and the links change; holes, mains, capacity and art stay', () => {
+    for (const id of ['tp4056-module', 'outlet-au-as3112', 'bme280-module-4pin']) {
+      const p = imported(id)
+      const d = draftFromPart(p)
+      const side = SIDES.find((s) => d.pins[s].some((r) => !r.spacer && r.type !== 'ground'))
+      const i = side ? d.pins[side].findIndex((r) => !r.spacer && r.type !== 'ground') : -1
+      const edited = side ? { ...d, name: 'Renamed', pins: { ...d.pins, [side]: d.pins[side].map((r, j) => (j === i ? { ...r, supply: '5V' } : r)) } } : { ...d, name: 'Renamed' }
+      const r = savedModule(edited, p.module.id, p.module, false)
+      expect(r.ok && r.module, id).toBeTruthy()
+      if (!r.ok) continue
+      if (side) expect(r.module.pins.filter((x) => x.side === side && !('spacer' in x))[0], id).toMatchObject({ supply: '5V' })
+      const { name, pins, ...rest } = r.module
+      const { name: _n, pins: oldPins, ...oldRest } = p.module
+      expect(name).toBe('Renamed')
+      expect(rest).toEqual(oldRest)
+      expect(pins.filter((x) => !('spacer' in x)).map((x) => ({ ...x, supply: undefined }))).toEqual(oldPins.filter((x) => !('spacer' in x)).map((x) => ({ ...x, supply: undefined })))
+    }
+  })
+  it('a part made in the part maker edits fully; converting an imported one is explicit and drops the rest', () => {
+    expect(unmodeled(part().module)).toEqual([])
+    const p = imported('resistor')
+    const r = savedModule(draftFromPart(p), p.module.id, p.module, true)
+    expect(r.ok && r.module.electrical).toBeUndefined()
   })
 })

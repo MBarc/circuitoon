@@ -6,11 +6,11 @@
 // pasted as lines ("1 VCC power", "GND"). Saving needs a part with no errors.
 import { type ReactNode, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { PIN_TYPES, SIDES, isSpacer, pinRoom, type PinType, type Side } from '../format/module.ts'
-import { BODY_COLORS, DEFAULT_COLORS, buildPart, lintModule, parsePinLines, type PartStyle } from '../format/partMaker.ts'
+import { BODY_COLORS, DEFAULT_COLORS, lintModule, parsePinLines, unmodeled, type PartStyle } from '../format/partMaker.ts'
 import { CATEGORY_ORDER } from './libraryGroups.ts'
 import { Part, partBounds } from '../render/Part.tsx'
 import { SeverityMark } from './SeverityMark.tsx'
-import { type Draft, type PinRow, addPasted, emptyDraft, gapRow, idClash, moveRow, moveRowToSide, pinCount, pinRow, saveId, specFromDraft } from './partDraft.ts'
+import { type Draft, type PinRow, addPasted, emptyDraft, gapRow, idClash, moveRow, moveRowToSide, pinCount, pinRow, saveId, savedModule } from './partDraft.ts'
 import type { MyPart } from './myParts.ts'
 
 const SIDE_NAME: Record<Side, string> = { left: 'Left', right: 'Right', top: 'Top', bottom: 'Bottom' }
@@ -92,8 +92,12 @@ export function PartMaker({ editing, taken, onSave, onExport, onCancel, extra, i
     setDirty(true)
   }
   const id = saveId(draft, editing ? editing.module.id : null, taken)
-  const spec = useMemo(() => ({ ...specFromDraft(draft), id }), [draft, id])
-  const built = useMemo(() => buildPart(spec), [spec])
+  // A part the part maker cannot rebuild exactly (an imported resistor, a board with holes) is edited
+  // in place, pin types and voltages only, until the person converts it to a plain custom part.
+  const limited = useMemo(() => (editing ? unmodeled(editing.module) : []), [editing])
+  const [converted, setConverted] = useState(false)
+  const pinsOnly = limited.length > 0 && !converted
+  const built = useMemo(() => savedModule(draft, id, editing?.module ?? null, converted), [draft, id, editing, converted])
   const lint = useMemo(() => (built.ok ? lintModule(built.module) : null), [built])
   const part: MyPart | null = built.ok ? { module: built.module, ...(draft.maker.trim() ? { maker: draft.maker.trim() } : {}), saved: Date.now() } : null
   const clash = built.ok ? idClash(built.module.id, editing ? editing.module.id : null, taken) : null
@@ -156,7 +160,7 @@ export function PartMaker({ editing, taken, onSave, onExport, onCancel, extra, i
           <label className="field">Datasheet and pinout links <span className="pm-opt">one per line</span>
             <textarea rows={3} value={draft.source} placeholder="https://..." onChange={(e) => update({ ...draft, source: e.target.value })} />
           </label>
-          <fieldset className="pm-style">
+          <fieldset className="pm-style" disabled={pinsOnly}>
             <legend>Drawn as</legend>
             {(['board', 'chip'] as PartStyle[]).map((s) => (
               <label key={s} className={draft.style === s ? 'on' : undefined}>
@@ -168,7 +172,7 @@ export function PartMaker({ editing, taken, onSave, onExport, onCancel, extra, i
               </label>
             ))}
           </fieldset>
-          <fieldset className="pm-colors">
+          <fieldset className="pm-colors" disabled={pinsOnly}>
             <legend>Body colour</legend>
             <div className="pm-swatches">
               {BODY_COLORS.map((c) => (
@@ -180,7 +184,7 @@ export function PartMaker({ editing, taken, onSave, onExport, onCancel, extra, i
               </label>
             </div>
           </fieldset>
-          <fieldset className="pm-size">
+          <fieldset className="pm-size" disabled={pinsOnly}>
             <legend>Body size</legend>
             <label><input type="checkbox" checked={!draft.sized} onChange={(e) => update({ ...draft, sized: !e.target.checked, ...(preview?.size ? { w: preview.size.w, h: preview.size.h } : {}) })} /> Fit the pins and labels</label>
             {draft.sized && (
@@ -194,11 +198,20 @@ export function PartMaker({ editing, taken, onSave, onExport, onCancel, extra, i
         </section>
 
         <section className="pm-pins" aria-label="Pins">
+          {pinsOnly && (
+            <div className="pm-limited" role="note">
+              <p>This part has {limited.join(', ')}, which the part maker does not edit. Here you can change its name, links and each pin's type and voltage; everything else is kept as it is.</p>
+              <button type="button" className="tool small" onClick={() => {
+                if (window.confirm(`Convert ${editing?.module.name} to a plain custom part? It is redrawn by the part maker, and saving drops: ${limited.join(', ')}.`)) setConverted(true)
+              }}>Convert to a plain custom part</button>
+            </div>
+          )}
           <SidePicker
             draft={draft}
             side={side}
             onPick={setSide}
             onDropPin={(to, e) => {
+              if (pinsOnly) return
               const from = Number(e.dataTransfer.getData(PIN_MIME))
               if (!Number.isInteger(from)) return
               e.preventDefault()
@@ -217,7 +230,7 @@ export function PartMaker({ editing, taken, onSave, onExport, onCancel, extra, i
                   data-row={r.key}
                   className={r.spacer ? 'pm-row gap' : 'pm-row'}
                   onKeyDown={(e) => {
-                    if (!e.altKey || (e.key !== 'ArrowUp' && e.key !== 'ArrowDown')) return
+                    if (pinsOnly || !e.altKey || (e.key !== 'ArrowUp' && e.key !== 'ArrowDown')) return
                     e.preventDefault()
                     const field = (e.target as HTMLElement).dataset.field ?? 'name'
                     move(i, i + (e.key === 'ArrowUp' ? -1 : 1), field)
@@ -230,13 +243,13 @@ export function PartMaker({ editing, taken, onSave, onExport, onCancel, extra, i
                   }}
                   onDrop={(e) => {
                     const from = Number(e.dataTransfer.getData(PIN_MIME))
-                    if (!Number.isInteger(from)) return
+                    if (pinsOnly || !Number.isInteger(from)) return
                     e.preventDefault()
                     update(moveRow(draft, side, from, i))
                   }}
                 >
                   <span
-                    className="pm-grip" draggable title="Drag to reorder, or onto another side of the body"
+                    className="pm-grip" draggable={!pinsOnly} title="Drag to reorder, or onto another side of the body"
                     onDragStart={(e) => {
                       e.dataTransfer.setData(PIN_MIME, String(i))
                       e.dataTransfer.effectAllowed = 'move'
@@ -248,7 +261,7 @@ export function PartMaker({ editing, taken, onSave, onExport, onCancel, extra, i
                     <span className="pm-gap-text">Gap (no pin here)</span>
                   ) : (
                     <>
-                      <input data-field="name" aria-label={`Name of pin ${i + 1}`} className="pm-in-name" value={r.name} placeholder="Name" maxLength={40} onChange={(e) => setRow(i, { name: e.target.value })} />
+                      <input data-field="name" aria-label={`Name of pin ${i + 1}`} className="pm-in-name" value={r.name} placeholder="Name" maxLength={40} readOnly={pinsOnly} onChange={(e) => setRow(i, { name: e.target.value })} />
                       <select data-field="type" aria-label={`Type of ${label}`} value={r.type} onChange={(e) => setRow(i, { type: e.target.value as PinType | '' })}>
                         <option value="">Type not set</option>
                         {PIN_TYPES.map((t) => <option key={t} value={t}>{TYPE_NAME[t]}</option>)}
@@ -256,7 +269,7 @@ export function PartMaker({ editing, taken, onSave, onExport, onCancel, extra, i
                       <input data-field="supply" aria-label={`Voltage of ${label}`} className="pm-in-supply" value={r.supply} placeholder={r.type === 'power_in' || r.type === 'power_out' ? '3V3/5V' : 'Volts'} maxLength={30} onChange={(e) => setRow(i, { supply: e.target.value })} />
                     </>
                   )}
-                  <span className="pm-row-tools">
+                  {!pinsOnly && <span className="pm-row-tools">
                     <button type="button" data-field="up" className="tool icon tiny" aria-label={`Move ${label} up`} disabled={i === 0} onClick={() => move(i, i - 1, 'up')}>
                       <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M3 7.5 6 4.5l3 3" /></svg>
                     </button>
@@ -266,20 +279,20 @@ export function PartMaker({ editing, taken, onSave, onExport, onCancel, extra, i
                     <button type="button" className="tool icon tiny danger" aria-label={`Remove ${label}`} onClick={() => setRows(rows.filter((_, j) => j !== i))}>
                       <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M3.5 3.5l5 5M8.5 3.5l-5 5" /></svg>
                     </button>
-                  </span>
+                  </span>}
                 </li>
               )
             })}
           </ol>
-          <div className="pm-add">
+          {!pinsOnly && <div className="pm-add">
             <button type="button" className="tool small" onClick={() => {
               const row = pinRow()
               focusKey.current = { key: row.key, field: 'name' }
               setRows([...rows, row])
             }}>Add pin</button>
             <button type="button" className="tool small" onClick={() => setRows([...rows, gapRow()])}>Add gap</button>
-          </div>
-          <details ref={pasteRef} className="pm-paste">
+          </div>}
+          {!pinsOnly && <details ref={pasteRef} className="pm-paste">
             <summary>Paste pins</summary>
             <p className="hint">One pin a line: an optional number, the name, then a type and a voltage if you know them. <code>1 VCC power 3V3</code>, <code>GND</code>. A line saying <code>Right:</code> sends the next pins to that side.</p>
             <textarea aria-label="Pasted pins" rows={4} value={paste} onChange={(e) => setPaste(e.target.value)} placeholder={'1 VCC power 3V3\n2 GND ground\n3 SDA io'} />
@@ -290,7 +303,7 @@ export function PartMaker({ editing, taken, onSave, onExport, onCancel, extra, i
               if (!r.errors.length) setPaste('')
             }}>Add these pins to the {SIDE_NAME[side].toLowerCase()} side</button>
             {pasteErrors.length > 0 && <ul className="pm-paste-errors" role="alert">{pasteErrors.map((e) => <li key={e}>{e}</li>)}</ul>}
-          </details>
+          </details>}
         </section>
 
         <section className="pm-preview" aria-label="Preview">

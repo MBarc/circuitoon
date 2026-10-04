@@ -110,6 +110,12 @@
 .tool.icon.tiny svg { width: 12px; height: 12px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .tool.icon.tiny:hover:not(:disabled) { box-shadow: none; }
 .pm-add { display: flex; gap: 6px; }
+/* A part the part maker cannot rebuild: pins edit in place until it is converted. */
+.pm-limited { display: grid; justify-items: start; gap: 8px; padding: 10px 12px; border: 1.5px dashed var(--rule); border-radius: 8px; font-size: 13.5px; line-height: 1.4; }
+.pm-limited p { margin: 0; }
+.pm-grip[draggable="false"] { visibility: hidden; }
+.pm-row input[readonly] { color: var(--text); cursor: default; }
+.pm-row input[readonly]:hover { border-color: transparent; }
 .pm-paste { display: grid; gap: 6px; border-top: 1.5px solid var(--rule); padding-top: 10px; }
 .pm-paste summary { cursor: pointer; font: 600 15px/1.2 "Fredoka", system-ui, sans-serif; }
 .pm-paste .hint { margin-top: 6px; }

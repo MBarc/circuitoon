@@ -236,6 +236,21 @@ check(JSON.stringify(await rowNames()) === '["VCC","GND","SCL","SDA"]', 'with it
 await shot('dialog-edit-light', dialog())
 await dialog().getByRole('button', { name: 'Cancel' }).click()
 
+// ---- An imported resistor: edited in place, its value kept ----
+const [resChooser] = await Promise.all([page.waitForEvent('filechooser'), page.getByRole('button', { name: 'Import part' }).click()])
+await resChooser.setFiles(resolve('modules/resistor.json'))
+await page.waitForSelector('.mine-group .lib-item.mine >> text=Resistor')
+await (await openActions('Resistor (1/4 W)')).getByRole('button', { name: 'Edit' }).click()
+await dialog().waitFor()
+check((await dialog().locator('.pm-limited').textContent()).includes('electrical data'), 'an imported resistor opens with a note that its electrical data is kept')
+check(!(await dialog().getByRole('button', { name: 'Add pin' }).isVisible()) && (await dialog().getByLabel('Name of pin 1').getAttribute('readonly')) !== null, 'and its pins edit in place only')
+await shot('dialog-imported-light', dialog())
+await dialog().getByRole('button', { name: 'Save changes' }).click()
+await dialog().waitFor({ state: 'detached' })
+const res = await page.evaluate(() => JSON.parse(localStorage.getItem('circuitoon.myParts')).parts.find((p) => p.module.id === 'custom-resistor').module)
+check(res?.electrical?.params?.resistance?.default === JSON.parse(readFileSync('modules/resistor.json', 'utf8')).electrical.params.resistance.default, 'a no-op save keeps its resistance')
+await (await openActions('Resistor (1/4 W)')).getByRole('button', { name: 'Delete' }).click()
+
 // ---- Graphite dark ----
 await page.emulateMedia({ colorScheme: 'dark' })
 await page.locator('.mine-group .lib-item.mine').first().click()

@@ -581,3 +581,24 @@ export function parsePinLines(text: string, side: Side = 'left'): { pins: Pasted
   })
   return { pins, errors }
 }
+
+/** What a module field is, for the list of what the part maker would drop. */
+const FIELD_WORDS: Record<string, string> = {
+  electrical: 'electrical data (values, I2C, power and mains)', holes: 'hole groups', art: 'its own drawing', size: 'its body size',
+  states: 'states', obstacle: 'routing over it', footprint: 'a breadboard footprint', netLabel: 'the net label role', pins: 'pin details (bus, capacity, mains roles)',
+}
+
+/**
+ * What the part maker cannot rebuild from this module's spec, in words: empty for a part it made,
+ * else the fields a rebuild would change or drop (an imported resistor's value, a board's holes).
+ */
+export function unmodeled(m: ModuleDef): string[] {
+  const r = buildPart(specFromModule(m))
+  if (!r.ok) return ['pins the part maker cannot draw']
+  const rebuilt = r.module as unknown as Record<string, unknown>
+  const own = m as unknown as Record<string, unknown>
+  const keys = new Set([...Object.keys(own), ...Object.keys(rebuilt)])
+  // The category and source are edited in the dialog; a missing category only gains the default.
+  for (const k of ['format', 'id', 'custom', 'version', 'name', 'category', 'source', 'internal']) keys.delete(k)
+  return [...keys].filter((k) => JSON.stringify(own[k]) !== JSON.stringify(rebuilt[k])).map((k) => FIELD_WORDS[k] ?? k)
+}
