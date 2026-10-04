@@ -20,7 +20,7 @@ export const jstXh = (n) => `Connector_JST:JST_XH_B${n}B-XH-A_1x${pad2(n)}_P2.50
 /** A 5.0 mm screw terminal (Phoenix MKDS 1,5): the stand-in a mains part is wired to. */
 export const screwTerminal = (n) => `TerminalBlock_Phoenix:TerminalBlock_Phoenix_MKDS-1,5-${n}_1x${pad2(n)}_P5.00mm_Horizontal`
 
-// USB ports are never header pads: each comes in as its own USB connector (src/format/kicad.ts).
+// USB ports are never header pads: USB links are off-board (src/format/kicad.ts).
 const names = (m, side) => m.pins.filter((p) => !p.spacer && p.side === side && p.type !== 'usb').map((p) => p.name)
 const numbered = (list) => Object.fromEntries(list.map((n, i) => [n, String(i + 1)]))
 /** One footprint for the pins of one side, pad 1 the first pin. */
@@ -216,7 +216,7 @@ const KICAD = {
 
   // Raspberry Pi 4, 5 and Zero 2 W: the 40-pin header as the 2 x 20 socket a Pi plugs onto, pad n the
   // header's physical pin n (the hole groups are in physical order, gen-usb.mjs). The camera and
-  // display connectors are flat-cable sockets, not on it; the USB ports come in as USB connectors.
+  // display connectors are flat-cable sockets, not on it; the USB ports are off-board.
   ...Object.fromEntries(['rpi-4-model-b', 'rpi-5', 'rpi-zero-2-w'].map((id) => [id, (m) => ({
     footprint: 'Connector_PinSocket_2.54mm:PinSocket_2x20_P2.54mm_Vertical',
     pins: Object.fromEntries(m.holes.map((g, i) => [g.name, String(i + 1)])),
@@ -371,10 +371,10 @@ export const UNMAPPED = {
   'lcd-rpi-touch-display-7': 'A panel wired to the Pi by its DSI flat cable and jumper wires: it is not mounted on a PCB.',
   'lcd-rpi-touch-display-2-7': 'A panel wired to the Pi by its DSI flat cable and power lead: it is not mounted on a PCB.',
   'lcd-rpi-touch-display-2-5': 'A panel wired to the Pi by its DSI flat cable and power lead: it is not mounted on a PCB.',
-  'computer-usb-port': 'A computer: only its USB port comes in, as a USB connector (src/format/kicad.ts).',
-  'usb-hub-fe11s-circuitneato': 'A hub board cabled to the project, not mounted on it; its USB ports come in as USB connectors.',
-  'usb-hub-powered-4port': 'A boxed hub cabled to the project; its USB ports come in as USB connectors.',
-  'rtl-sdr-blog-v4': 'A USB dongle: its plug comes in as a USB connector (src/format/kicad.ts), and the SMA antenna jack stays on the dongle.',
+  'computer-usb-port': 'A computer: only its USB port, and USB links are off-board (src/format/kicad.ts).',
+  'usb-hub-fe11s-circuitneato': 'A hub board cabled to the project, not mounted on it.',
+  'usb-hub-powered-4port': 'A boxed hub cabled to the project.',
+  'rtl-sdr-blog-v4': 'A USB dongle, off-board like its USB link (src/format/kicad.ts); the SMA antenna jack stays on the dongle.',
   'mic-ics-40300': 'KiCad has no footprint for its land pattern: Knowles_LGA-6_4.72x3.76mm (same size) puts the port ring 3.29 mm from the pad row, the ICS-40300 2.62 mm.',
   'mic-spu0410lr5h-qb': 'KiCad has no footprint for its 3.76 x 3.00 mm LGA-6 package.',
   'wago-221-412': 'A wire splice: it joins wires off the board.',

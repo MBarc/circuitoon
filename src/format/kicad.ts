@@ -8,7 +8,7 @@
 // on a generic pin header with a pad per pin, and a warning says so. Pure; the caller passes the
 // library so a sheet saved before the library had a part's mapping still exports with it.
 import { type Diagram, moduleOf } from './diagram.ts'
-import { type HoleGroup, type KicadDef, type ModuleDef, type PinDef, type PinType, type UsbSpec, isBoard, isCustom, isNetLabel, isSpacer, usbPorts } from './module.ts'
+import { type HoleGroup, type KicadDef, type ModuleDef, type PinDef, type PinType, isBoard, isCustom, isNetLabel, isSpacer, usbPorts } from './module.ts'
 import { netlist } from './netlist.ts'
 import { plugsOf } from './breadboard.ts'
 import { labelName } from './netLabels.ts'
@@ -103,7 +103,7 @@ export function kicadValue(part: { values?: Record<string, unknown> }, m: Module
 
 /** Pin names with their sides, then hole group names, in order: what a mapping by name relies on. */
 const terminalKey = (m: ModuleDef): string =>
-  // USB ports are left out: they come in as USB connectors of their own, never on the mapping (a copy
+  // USB ports are left out: they are never on the mapping (a copy
   // saved before the library added them still names the same header pins).
   JSON.stringify([m.pins.filter((p): p is PinDef => !isSpacer(p) && p.type !== 'usb').map((p) => [p.name, p.side]), (m.holes ?? []).map((g) => g.name)])
 
@@ -197,37 +197,9 @@ const PIN_TYPE: Record<PinType, string> = {
 
 /** Every pin and pad group of a module, in order: pins (no spacers), then hole groups. */
 function terminalsOf(m: ModuleDef): (PinDef | HoleGroup)[] {
-  // A USB port is never a pad of the part's footprint: it comes in as a USB connector of its own.
+  // A USB port is never a pad of the part's footprint: USB links are off-board.
   return [...m.pins.filter((p): p is PinDef => !isSpacer(p) && p.type !== 'usb'), ...(m.holes ?? [])]
 }
-
-/** The four lines a USB 2.0 link carries, the nets a USB cable or plug-in becomes. */
-export const USB_LINES = ['VBUS', 'D-', 'D+', 'GND'] as const
-type UsbLine = (typeof USB_LINES)[number]
-/**
- * The KiCad standard-library footprint for each USB port (USB design section 4), with the pads of
- * each line, as read from the footprint files (kicadFootprints.testing.ts) and named by KiCad's
- * Connector symbols USB_A, USB3_A, USB_B, USB_B_Mini, USB_B_Micro, USB_C_Receptacle_USB2.0_16P and
- * USB_C_Plug_USB2.0. A USB 3.0 A port uses the USB 3 footprint; only its USB 2.0 pads (1-4) are
- * wired, as the link carries no SuperSpeed lines. Mini-B, micro-B and B plugs have no footprint in
- * the library.
- */
-export const USB_FOOTPRINTS: Record<string, { footprint: string; pads: Record<UsbLine, string[]> }> = {
-  'A receptacle': { footprint: 'Connector_USB:USB_A_Molex_67643_Horizontal', pads: { VBUS: ['1'], 'D-': ['2'], 'D+': ['3'], GND: ['4'] } },
-  'A receptacle 3.0': { footprint: 'Connector_USB:USB3_A_Molex_48393-001', pads: { VBUS: ['1'], 'D-': ['2'], 'D+': ['3'], GND: ['4'] } },
-  'A plug': { footprint: 'Connector_USB:USB3_A_Plug_Wuerth_692112030100_Horizontal', pads: { VBUS: ['1'], 'D-': ['2'], 'D+': ['3'], GND: ['4'] } },
-  'B receptacle': { footprint: 'Connector_USB:USB_B_OST_USB-B1HSxx_Horizontal', pads: { VBUS: ['1'], 'D-': ['2'], 'D+': ['3'], GND: ['4'] } },
-  'mini-B receptacle': { footprint: 'Connector_USB:USB_Mini-B_Lumberg_2486_01_Horizontal', pads: { VBUS: ['1'], 'D-': ['2'], 'D+': ['3'], GND: ['5'] } },
-  'micro-B receptacle': { footprint: 'Connector_USB:USB_Micro-B_Molex-105017-0001', pads: { VBUS: ['1'], 'D-': ['2'], 'D+': ['3'], GND: ['5'] } },
-  'C receptacle': { footprint: 'Connector_USB:USB_C_Receptacle_GCT_USB4105-xx-A_16P_TopMnt_Horizontal', pads: { VBUS: ['A4', 'A9', 'B4', 'B9'], 'D-': ['A7', 'B7'], 'D+': ['A6', 'B6'], GND: ['A1', 'A12', 'B1', 'B12'] } },
-  'C plug': { footprint: 'Connector_USB:USB_C_Plug_Molex_105444', pads: { VBUS: ['A4', 'A9', 'B4', 'B9'], 'D-': ['A7'], 'D+': ['A6'], GND: ['A1', 'A12', 'B1', 'B12'] } },
-}
-/** The footprint entry a USB port comes in on, or undefined (a plug the library has no footprint for). */
-export function usbFootprint(u: UsbSpec): (typeof USB_FOOTPRINTS)[string] | undefined {
-  const key = `${u.connector} ${u.gender}${u.connector === 'A' && u.gender === 'receptacle' && u.version === '3.0' ? ' 3.0' : ''}`
-  return Object.hasOwn(USB_FOOTPRINTS, key) ? USB_FOOTPRINTS[key] : undefined
-}
-const USB_PIN_TYPE: Record<UsbLine, string> = { VBUS: 'passive', 'D-': 'bidirectional', 'D+': 'bidirectional', GND: 'passive' }
 
 const pad2 = (n: number) => String(n).padStart(2, '0')
 /** The generic footprint an unmapped part comes in on: a 0.1 in pin header with a pad per pin. */
@@ -304,45 +276,27 @@ export function writeKicad(src: KicadSource, opts: KicadOptions = {}): KicadExpo
   const partRef = new Map<string, string>()
   const modOf = new Map(kept.map(({ p }) => [p.key, p.module]))
 
-  // USB links (USB design section 4): a net of USB ports only (a cable or a plug pushed in). Its
-  // ports come in as USB connectors, and the link as four nets, VBUS, D-, D+ and GND. A USB port on a
-  // net with anything else (the checker's usb-to-pin error) is left out of it.
-  const portKey = (key: string, pin: string) => JSON.stringify([key, pin])
-  const isPort = (key: string, pin: string) => !!modOf.get(key) && usbPorts(modOf.get(key)!).some((q) => q.name === pin)
-  const usbNets: [string, string][][] = []
-  const linked = new Set<string>()
-  for (const net of src.nets) {
-    const ports = net.nodes.filter(([k, pin]) => isPort(k, pin))
-    if (!ports.length) continue
-    if (ports.length === net.nodes.length && ports.length >= 2) {
-      usbNets.push(ports)
-      for (const [k, pin] of ports) linked.add(portKey(k, pin))
-    } else if (ports.length < net.nodes.length) warnings.push(`${andWords(ports.map(([k, pin]) => `${kicadRef(src.parts.find((x) => x.key === k)?.designator ?? k)} ${pin}`))}: a USB port on a net with other pins is left out of it. Connect USB ports only to USB ports.`)
+  // USB links (USB design section 4): a dev board's USB socket and the cable or dongle in it are off
+  // the carrier PCB, so a net of USB ports only (a cable or a plug pushed in) is left out, with a note
+  // per link. A USB port on a net with anything else (the checker's usb-to-pin error) is left out of it.
+  const portName = (key: string, pin: string) => {
+    const part = src.parts.find((x) => x.key === key)
+    const port = part && usbPorts(part.module).find((q) => q.name === pin)
+    return port ? { title: `${part.designator} ${port.label ?? port.name}`, plug: port.usb.gender === 'plug' } : undefined
   }
-  const usbComp = new Map<string, Comp>()
+  const usbNotes: string[] = []
+  for (const net of src.nets) {
+    const ports = net.nodes.flatMap(([k, pin]) => (modOf.has(k) ? [portName(k, pin)].filter((x) => x !== undefined) : [])).sort((a, b) => natural(a.title, b.title))
+    if (!ports.length) continue
+    if (ports.length === net.nodes.length) {
+      for (const q of ports.slice(1)) usbNotes.push(`${ports[0].title} to ${q.title} is ${ports[0].plug || q.plug ? 'a USB plug-in' : 'a USB cable'}, off-board`)
+    } else warnings.push(`${andWords(ports.map((q) => q.title))}: a USB port on a net with other pins is left out of it. Connect USB ports only to USB ports.`)
+  }
 
   for (const { p, map } of kept) {
     const m = p.module
     const ref = claimRef(kicadRef(p.designator || p.key))
     partRef.set(p.key, ref)
-    for (const port of usbPorts(m)) {
-      if (!linked.has(portKey(p.key, port.name))) continue
-      const fp = usbFootprint(port.usb)
-      if (!fp) {
-        warnings.push(`${ref} ${port.label ?? port.name} (${m.id}): KiCad's standard library has no footprint for a ${port.usb.connector} plug, so this USB port is left out.`)
-        continue
-      }
-      const pads = new Map<string, { names: string[]; type: string }>()
-      for (const line of USB_LINES) for (const pad of fp.pads[line]) pads.set(pad, { names: [line], type: USB_PIN_TYPE[line] })
-      const c: Comp = {
-        ref: claimRef(`${ref}_${port.name.replace(/[^A-Za-z0-9]/g, '') || 'USB'}`),
-        value: `USB ${port.usb.connector} ${port.usb.gender}`, footprint: fp.footprint, lib: 'Circuitoon', part: `usb-${port.usb.connector}-${port.usb.gender}`,
-        description: `USB ${port.usb.connector} ${port.usb.gender}, port ${port.label ?? port.name} of ${m.name} (Circuitoon part ${m.id})`,
-        uuid: stableUuid(`${p.key}#usb#${port.name}`), module: m.id, pads: new Map([...pads].sort((a, b) => natural(a[0], b[0]))),
-      }
-      comps.push(c)
-      usbComp.set(portKey(p.key, port.name), c)
-    }
     const k = map.kicad
     const value = kicadValue(p, m, k)
     const terms = new Map(terminalsOf(m).map((t) => [t.name, t]))
@@ -364,7 +318,7 @@ export function writeKicad(src: KicadSource, opts: KicadOptions = {}): KicadExpo
       return c
     }
     const [symLib, symPart] = k?.symbol ? k.symbol.split(':') : ['Circuitoon', m.id]
-    if (!k && !terminalsOf(m).length) continue // only USB ports (a computer's port): they come in below
+    if (!k && !terminalsOf(m).length) continue // only USB ports (a computer's port): off-board
     if (!k) {
       const names = terminalsOf(m).map((t) => t.name)
       const pins = Object.fromEntries(names.map((n, i) => [n, String(i + 1)]))
@@ -396,7 +350,7 @@ export function writeKicad(src: KicadSource, opts: KicadOptions = {}): KicadExpo
       warnings.push(`${ref} (${m.id}): ${k.note ?? 'the footprint is a placeholder, not the part\'s own.'}`)
     } else if (k.note) noteRefs.set(k.note, [...(noteRefs.get(k.note) ?? []), ref])
   }
-  const notes = [...noteRefs].map(([note, refs]) => `${refs.join(', ')}: ${note}`)
+  const notes = [...[...noteRefs].map(([note, refs]) => `${refs.join(', ')}: ${note}`), ...usbNotes]
 
   // Nets: each source net's component pins, on the pads they land on; infrastructure drops out.
   const built: { nodes: { comp: Comp; pad: string }[]; label?: string; pins: NamedPin[] }[] = []
@@ -430,13 +384,6 @@ export function writeKicad(src: KicadSource, opts: KicadOptions = {}): KicadExpo
     if (!nodes.length || (net.name === undefined && (nodes.length < 2 || internalOnly))) continue
     pins.sort((a, b) => natural(a.ref, b.ref) || natural(a.name, b.name))
     built.push({ nodes, pins, ...(net.name !== undefined ? { label: net.name } : {}) })
-  }
-  for (const ports of usbNets) {
-    const at = ports.flatMap(([k, pin]) => (usbComp.has(portKey(k, pin)) ? [usbComp.get(portKey(k, pin))!] : []))
-    if (at.length < 2) continue
-    const base = [...at].map((c) => c.ref).sort(natural)[0]
-    for (const line of USB_LINES)
-      built.push({ nodes: at.flatMap((comp) => [...comp.pads].filter(([, v]) => v.names[0] === line).map(([pad]) => ({ comp, pad }))), pins: [], label: `${base}_${line}` })
   }
   const rawNames = nameNets(built)
   const used = new Set<string>()

@@ -6,8 +6,8 @@ import { checkDiagram } from './checks.ts'
 import type { Connection, Diagram, PartInstance } from './diagram.ts'
 import { type ModuleDef, layoutModule, usbBudgets, usbHubOf } from './module.ts'
 import { load } from './builtinModules.testing.ts'
-import { USB_FOOTPRINTS, toKicadNetlist } from './kicad.ts'
-import { KNOWN_FOOTPRINTS } from './kicadFootprints.testing.ts'
+import { toKicadNetlist } from './kicad.ts'
+import { billOfMaterials } from './bom.ts'
 
 // Written out from Raspberry Pi's GPIO pinout diagram (pins 1-40), not from the generator.
 const J8_BY_PIN = [
@@ -129,44 +129,24 @@ describe('USB rules on library parts', () => {
   })
 })
 
-describe('KiCad: USB ports come in as USB connectors, a link as four nets', () => {
-  it('every USB footprint is a known one, and each line\'s pads are on it', () => {
-    for (const { footprint, pads } of Object.values(USB_FOOTPRINTS)) {
-      expect(Object.hasOwn(KNOWN_FOOTPRINTS, footprint), footprint).toBe(true)
-      for (const list of Object.values(pads)) for (const pad of list) expect(KNOWN_FOOTPRINTS[footprint], `${footprint} ${pad}`).toContain(pad)
-    }
-  })
-  it('an ESP32 cabled to a Pi 4 and an RTL-SDR plugged in', () => {
+describe('KiCad: USB links are off-board', () => {
+  it('an ESP32 cabled to a Pi 4 and an RTL-SDR plugged in: no USB footprints or nets, a note per link, the BOM has them', () => {
     const d = sheet([['U1', 'rpi-4-model-b'], ['U2', 'esp32-devkit-v1-30'], ['U3', 'rtl-sdr-blog-v4']],
       [['u1|USB2-1', 'u2|USB', { from: 'usb-a', to: 'usb-micro-b' }], ['u1|USB3-1', 'u3|USB']])
     const x = toKicadNetlist(d)
-    const comp = (ref: string) => new RegExp(`\\(comp \\(ref "${ref}"\\)\\n      \\(value "[^"]*"\\)\\n      \\(footprint "([^"]+)"\\)`).exec(x.text)?.[1]
-    expect(comp('U1_USB21')).toBe('Connector_USB:USB_A_Molex_67643_Horizontal')
-    expect(comp('U1_USB31')).toBe('Connector_USB:USB3_A_Molex_48393-001')
-    expect(comp('U2_USB')).toBe('Connector_USB:USB_Micro-B_Molex-105017-0001')
-    expect(comp('U3_USB')).toBe('Connector_USB:USB3_A_Plug_Wuerth_692112030100_Horizontal')
-    // Unlinked ports (USB2-2, USB3-2, the Pi's USB-C) are not exported.
-    expect(comp('U1_USB22')).toBeUndefined()
-    // The cable: VBUS pad 1 to micro-B pad 1, GND pad 4 to micro-B pad 5 (pad 4 is ID).
-    const net = (name: string) => x.text.split('(net ').find((s) => s.includes(`(name "${name}")`)) ?? ''
-    expect(net('U1_USB21_VBUS')).toMatch(/\(ref "U1_USB21"\) \(pin "1"\)[\s\S]*\(ref "U2_USB"\) \(pin "1"\)/)
-    expect(net('U1_USB21_GND')).toMatch(/\(ref "U1_USB21"\) \(pin "4"\)[\s\S]*\(ref "U2_USB"\) \(pin "5"\)/)
-    expect(net('U1_USB21_D-')).toMatch(/\(ref "U1_USB21"\) \(pin "2"\)[\s\S]*\(ref "U2_USB"\) \(pin "2"\)/)
-    expect(net('U1_USB21_D+')).toMatch(/\(ref "U1_USB21"\) \(pin "3"\)[\s\S]*\(ref "U2_USB"\) \(pin "3"\)/)
-    expect(net('U1_USB31_VBUS')).toMatch(/\(ref "U1_USB31"\) \(pin "1"\)[\s\S]*\(ref "U3_USB"\) \(pin "1"\)/)
+    expect(x.text).not.toContain('Connector_USB')
+    expect(x.text).not.toMatch(/VBUS|_D\+|_D-/)
+    expect(x.notes.filter((s) => /USB/.test(s))).toEqual(['U1 USB2 to U2 USB is a USB cable, off-board', 'U1 USB3 to U3 USB is a USB plug-in, off-board'])
     expect(x.warnings.filter((w) => /USB/.test(w))).toEqual([])
+    const bom = billOfMaterials(d)
+    expect(bom.wires.map((w) => [w.cable, w.count])).toEqual([['USB A to micro-B cable', 1]])
+    expect(bom.parts.map((p) => p.module)).toContain('rtl-sdr-blog-v4')
   })
-  it('a USB-C link wires every VBUS and GND pad, and both D+ and D- pads of a receptacle', () => {
-    const d = sheet([['J1', 'computer-usb-port'], ['U1', 'tp4056-module']], [['j1|USB', 'u1|USB-C', { from: 'usb-a', to: 'usb-c' }]])
-    const x = toKicadNetlist(d)
-    const net = (name: string) => x.text.split('(net ').find((s) => s.includes(`(name "${name}")`)) ?? ''
-    for (const pad of ['A4', 'A9', 'B4', 'B9']) expect(net('J1_USB_VBUS')).toContain(`(ref "U1_USBC") (pin "${pad}")`)
-    for (const pad of ['A7', 'B7']) expect(net('J1_USB_D-')).toContain(`(ref "U1_USBC") (pin "${pad}")`)
-    // The computer has no footprint of its own, only its port.
-    expect(x.text).not.toMatch(/\(ref "J1"\)/)
-  })
-  it('a micro-B plug has no library footprint: left out with a warning', () => {
+  it('a panel-mount extension keeps its own header footprint; its USB link is still off-board', () => {
     const d = sheet([['U1', 'esp32-devkitc-v4'], ['X1', 'usb-panel-mount-microusb']], [['x1|PLUG', 'u1|USB']])
-    expect(toKicadNetlist(d).warnings).toContain("X1 PLUG (usb-panel-mount-microusb): KiCad's standard library has no footprint for a micro-B plug, so this USB port is left out.")
+    const x = toKicadNetlist(d)
+    expect(x.text).toMatch(/\(comp \(ref "X1"\)\n {6}\(value "USB panel mount"\)\n {6}\(footprint "Connector_PinHeader_2.54mm:PinHeader_1x04_P2.54mm_Vertical"\)/)
+    expect(x.notes).toContain('U1 USB to X1 PLUG is a USB plug-in, off-board')
+    expect(x.text).not.toContain('Connector_USB')
   })
 })

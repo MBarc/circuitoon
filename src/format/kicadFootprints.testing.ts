@@ -1,6 +1,6 @@
 // The KiCad footprints the built-in parts map to (the `kicad` field), each with its pad numbers as
 // read from the footprint file in KiCad's standard library (gitlab.com/kicad/libraries/
-// kicad-footprints, master, read 2026-10-03; the USB connectors and the 2 x 20 socket read 2026-10-04). kicadMap.test.ts checks every mapping against it, so a
+// kicad-footprints, master, read 2026-10-03; the 2 x 20 socket read 2026-10-04). kicadMap.test.ts checks every mapping against it, so a
 // pad that a footprint does not have, or a footprint not listed here, fails the build. Add a
 // footprint here, from its .kicad_mod file, before a part maps to it. Test helper.
 export const KNOWN_FOOTPRINTS: Record<string, string[]> = {
@@ -52,14 +52,7 @@ export const KNOWN_FOOTPRINTS: Record<string, string[]> = {
   "Connector_PinSocket_2.54mm:PinSocket_1x19_P2.54mm_Vertical": ["1","2","3","4","5","6","7","8","9","10","11","12","13","14","15","16","17","18","19"],
   "Connector_PinSocket_2.54mm:PinSocket_1x22_P2.54mm_Vertical": ["1","2","3","4","5","6","7","8","9","10","11","12","13","14","15","16","17","18","19","20","21","22"],
   "Connector_PinSocket_2.54mm:PinSocket_2x20_P2.54mm_Vertical": ["1","2","3","4","5","6","7","8","9","10","11","12","13","14","15","16","17","18","19","20","21","22","23","24","25","26","27","28","29","30","31","32","33","34","35","36","37","38","39","40"],
-  "Connector_USB:USB3_A_Molex_48393-001": ["1","2","3","4","5","6","7","8","9","SH"],
-  "Connector_USB:USB3_A_Plug_Wuerth_692112030100_Horizontal": ["1","2","3","4","5","6","7","8","9","SH"],
   "Connector_USB:USB_A_Molex_67643_Horizontal": ["1","2","3","4","SH"],
-  "Connector_USB:USB_B_OST_USB-B1HSxx_Horizontal": ["1","2","3","4","SH"],
-  "Connector_USB:USB_C_Plug_Molex_105444": ["A1","A10","A11","A12","A2","A3","A4","A5","A6","A7","A8","A9","B1","B10","B11","B12","B2","B3","B4","B5","B8","B9","SH"],
-  "Connector_USB:USB_C_Receptacle_GCT_USB4105-xx-A_16P_TopMnt_Horizontal": ["A1","A12","A4","A5","A6","A7","A8","A9","B1","B12","B4","B5","B6","B7","B8","B9","SH"],
-  "Connector_USB:USB_Micro-B_Molex-105017-0001": ["1","2","3","4","5","SH"],
-  "Connector_USB:USB_Mini-B_Lumberg_2486_01_Horizontal": ["1","2","3","4","5","SH"],
   "Converter_ACDC:Converter_ACDC_Hi-Link_HLK-PMxx": ["1","2","3","4"],
   "Converter_ACDC:Converter_ACDC_MeanWell_IRM-03-xx_THT": ["1","3","5","14","16"],
   "Converter_ACDC:Converter_ACDC_MeanWell_IRM-05-xx_THT": ["1","2","3","4"],
