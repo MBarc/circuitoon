@@ -3,7 +3,7 @@
 // panel stays organized as more parts are added. My parts (the person's custom parts, see
 // myParts.ts) sit at the top with New part and Import part; each has Edit, Duplicate, Export and
 // Delete (and whatever `partActions` adds, such as Submit to library).
-import { type ReactNode, useMemo, useRef, useState, useSyncExternalStore } from 'react'
+import { type ReactNode, useMemo, useState, useSyncExternalStore } from 'react'
 import { library } from '../library.ts'
 import { Part, partBounds } from '../render/Part.tsx'
 import { groupLibrary, searchLibrary } from './libraryGroups.ts'
@@ -97,7 +97,6 @@ export function LibraryPanel({ onAdd, parts: handlers }: { onAdd: (moduleId: str
   const [query, setQuery] = useState('')
   const mine = useSyncExternalStore(myParts.subscribe, myParts.getSnapshot)
   const [openPart, setOpenPart] = useState<string | null>(null)
-  const importRef = useRef<HTMLInputElement>(null)
   const q0 = query.trim().toLowerCase()
   const shownMine = q0 ? mine.filter((p) => `${p.module.name} ${p.module.id} ${p.module.category ?? ''}`.toLowerCase().includes(q0)) : mine
   const [collapsed, setCollapsed] = useState<Set<string>>(() => loadCollapsed())
@@ -131,12 +130,15 @@ export function LibraryPanel({ onAdd, parts: handlers }: { onAdd: (moduleId: str
       {handlers && (
         <div className="mine-tools">
           <button type="button" className="tool small primary" onClick={handlers.onNew}>New part</button>
-          <button type="button" className="tool small" onClick={() => importRef.current?.click()}>Import part</button>
-          <input ref={importRef} type="file" accept=".json,application/json" hidden data-testid="import-part" onChange={(e) => {
-            const f = e.target.files?.[0]
-            if (f) handlers.onImport(f)
-            e.target.value = ''
-          }} />
+          <button type="button" className="tool small" onClick={() => {
+            // Made on demand, so the editor keeps one file input on the page (Import JSON's).
+            const input = Object.assign(document.createElement('input'), { type: 'file', accept: '.json,application/json' })
+            input.addEventListener('change', () => {
+              const f = input.files?.[0]
+              if (f) handlers.onImport(f)
+            })
+            input.click()
+          }}>Import part</button>
         </div>
       )}
       {handlers && (() => {
