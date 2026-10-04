@@ -7081,7 +7081,7 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			{
 				"name": "IOREF",
 				"side": "left",
-				"type": "power_in",
+				"type": "power_out",
 				"supply": "5V"
 			},
 			{
@@ -7939,7 +7939,7 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			{
 				"name": "IOREF",
 				"side": "left",
-				"type": "power_in",
+				"type": "power_out",
 				"supply": "5V"
 			},
 			{
@@ -12093,7 +12093,10 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 				"name": "D3",
 				"side": "right",
 				"type": "io",
-				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+				"caps": {
+					"noPullup": true,
+					"note": "D3 cannot use the internal pull-up (Arduino technical reference: \"digital pin 3 cannot be configured as INPUT_PULLUP\"): add an external resistor."
+				}
 			},
 			{
 				"name": "D2",
@@ -14728,7 +14731,7 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			{
 				"name": "IOREF",
 				"side": "left",
-				"type": "power_in",
+				"type": "power_out",
 				"supply": "5V"
 			},
 			{
@@ -15877,7 +15880,7 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			{
 				"name": "IOREF",
 				"side": "left",
-				"type": "power_in",
+				"type": "power_out",
 				"supply": "5V"
 			},
 			{
@@ -16791,7 +16794,7 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			{
 				"name": "IOREF",
 				"side": "left",
-				"type": "power_in",
+				"type": "power_out",
 				"supply": "5V"
 			},
 			{

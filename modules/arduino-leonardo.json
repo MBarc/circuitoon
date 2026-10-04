@@ -46,7 +46,7 @@
     {
       "name": "IOREF",
       "side": "left",
-      "type": "power_in",
+      "type": "power_out",
       "supply": "5V"
     },
     {

@@ -208,7 +208,8 @@
       "side": "right",
       "type": "io",
       "caps": {
-        "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it."
+        "noPullup": true,
+        "note": "D3 cannot use the internal pull-up (Arduino technical reference: \"digital pin 3 cannot be configured as INPUT_PULLUP\"): add an external resistor."
       }
     },
     {

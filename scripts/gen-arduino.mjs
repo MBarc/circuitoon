@@ -147,6 +147,7 @@ function shield({ file, id, name, source, W = 210, H = 270, left, right, own, ca
 const VIN_7_12 = { type: 'power_in', supply: '7V/7.4V/9V/12V' }
 const P5 = { type: 'power_in', supply: '5V' }
 const P33 = { type: 'power_out', supply: '3V3' }
+const P5_OUT = { type: 'power_out', supply: '5V' }
 const IN = { type: 'input' }
 
 // 1. Arduino Uno R3 (A000066). Datasheet sec. 5 JANALOG: 1 NC, 2 IOREF ("connected to 5V"), 3 Reset,
@@ -161,7 +162,7 @@ shield({
   source: 'https://docs.arduino.cc/resources/datasheets/A000066-datasheet.pdf https://docs.arduino.cc/resources/pinouts/A000066-full-pinout.pdf https://docs.arduino.cc/resources/schematics/A000066-schematics.pdf https://gitlab.com/kicad/libraries/kicad-symbols/-/blob/master/MCU_Module.kicad_symdir/Arduino_UNO_R3.kicad_sym https://gitlab.com/kicad/libraries/kicad-footprints/-/blob/master/Module.pretty/Arduino_UNO_R3.kicad_mod',
   left: [...R3_POWER('NC'), ...header(20, ['A0', 'A1', 'A2', 'A3', 'A4', 'A5'])],
   right: [...R3_DIGITAL_HI('SCL', 'SDA'), ...R3_DIGITAL_LO],
-  own: { NC: { type: 'nc' }, IOREF: P5, RESET: IN, '3V3': P33, '5V': P5, VIN: VIN_7_12, SCL: { type: 'io' }, SDA: { type: 'io' }, AREF: IN },
+  own: { NC: { type: 'nc' }, IOREF: P5_OUT, RESET: IN, '3V3': P33, '5V': P5, VIN: VIN_7_12, SCL: { type: 'io' }, SDA: { type: 'io' }, AREF: IN },
   internal: [['GND', 'GND 2', 'GND 3'], ['5V', 'IOREF'], ['SDA', 'A4'], ['SCL', 'A5']],
   external: { pin: '5V', volts: 5, via: 'USB' },
   art: [
@@ -189,7 +190,7 @@ shield({
 //    flashes the bootloader by shorting BOOT to GND.
 const R4_SOURCE = 'https://docs.arduino.cc/resources/datasheets/ra4m1-datasheet.pdf https://community.renesas.com/mcu/ra/f/forum/52046/how-to-bootload-the-ra4m1 https://www.hackster.io/IKTech95/introduction-to-ra-mcus-boot-modes-cf488d https://github.com/arduino/docs-content/blob/main/content/hardware/uno/boards/uno-r4-minima/tutorials/cheat-sheet/cheat-sheet.md'
 const R4_BOOT = { strapping: 'high', note: 'BOOT is the RA4M1\'s MD pin: low at reset starts the chip\'s own boot mode instead of your sketch.' }
-const R4_OWN = { BOOT: IN, IOREF: P5, RESET: IN, '3V3': P33, '5V': P5, VIN: { type: 'power_in', supply: '7V/7.4V/9V/12V/24V' }, SCL: { type: 'io' }, SDA: { type: 'io' }, AREF: IN }
+const R4_OWN = { BOOT: IN, IOREF: P5_OUT, RESET: IN, '3V3': P33, '5V': P5, VIN: { type: 'power_in', supply: '7V/7.4V/9V/12V/24V' }, SCL: { type: 'io' }, SDA: { type: 'io' }, AREF: IN }
 const R4_LEFT = [...R3_POWER('BOOT'), ...header(20, ['A0', 'A1', 'A2', 'A3', 'A4', 'A5'])]
 const R4_INTERNAL = [['GND', 'GND 2', 'GND 3'], ['5V', 'IOREF'], ['SDA', 'A4'], ['SCL', 'A5']]
 const R4_USB = { pin: '5V', volts: 5, via: 'USB', diode: true }
@@ -244,7 +245,7 @@ shield({
   source: 'https://docs.arduino.cc/resources/pinouts/A000057-full-pinout.pdf https://docs.arduino.cc/resources/schematics/A000057-schematics.pdf https://github.com/arduino/docs-content/blob/main/content/hardware/hero/boards/leonardo/tech-specs.yml https://gitlab.com/kicad/libraries/kicad-symbols/-/blob/master/MCU_Module.kicad_symdir/Arduino_Leonardo.kicad_sym',
   left: [...R3_POWER('NC'), ...header(20, ['A0', 'A1', 'A2', 'A3', 'A4', 'A5'])],
   right: [...R3_DIGITAL_HI('SCL', 'SDA'), ...R3_DIGITAL_LO],
-  own: { NC: { type: 'nc' }, IOREF: P5, RESET: IN, '3V3': P33, '5V': P5, VIN: VIN_7_12, SCL: { type: 'io' }, SDA: { type: 'io' }, AREF: IN },
+  own: { NC: { type: 'nc' }, IOREF: P5_OUT, RESET: IN, '3V3': P33, '5V': P5, VIN: VIN_7_12, SCL: { type: 'io' }, SDA: { type: 'io' }, AREF: IN },
   internal: [['GND', 'GND 2', 'GND 3'], ['5V', 'IOREF'], ['SDA', 'D2'], ['SCL', 'D3']],
   external: { pin: '5V', volts: 5, via: 'USB' },
   art: [
@@ -320,7 +321,7 @@ shield({
   source: 'https://docs.arduino.cc/resources/datasheets/A000067-datasheet.pdf https://docs.arduino.cc/resources/pinouts/A000067-full-pinout.pdf https://docs.arduino.cc/resources/schematics/A000067-schematics.pdf',
   left: [...R3_POWER('NC'), ...header(20, ['A0', 'A1', 'A2', 'A3', 'A4', 'A5', 'A6', 'A7']), ...header(29, ['A8', 'A9', 'A10', 'A11', 'A12', 'A13', 'A14', 'A15'])],
   right: [...R3_DIGITAL_HI('SCL', 'SDA'), ...R3_DIGITAL_LO, ...MEGA_COMM],
-  own: { NC: { type: 'nc' }, IOREF: P5, RESET: IN, '3V3': P33, '5V': P5, VIN: VIN_7_12, SCL: { type: 'io' }, SDA: { type: 'io' }, AREF: IN },
+  own: { NC: { type: 'nc' }, IOREF: P5_OUT, RESET: IN, '3V3': P33, '5V': P5, VIN: VIN_7_12, SCL: { type: 'io' }, SDA: { type: 'io' }, AREF: IN },
   internal: [['GND', 'GND 2', 'GND 3', 'GND 4', 'GND 5'], ['5V', 'IOREF', '5V 2', '5V 3'], ['SDA', 'D20'], ['SCL', 'D21']],
   external: { pin: '5V', volts: 5, via: 'USB' },
   holes: DOUBLE(P5),
@@ -506,6 +507,7 @@ small({
     AREF: { note: 'REF is not connected on this board: the analog reference is fixed at 3.3 V.' },
     '5V': { note: 'This pin is not connected as shipped; shorting the VUSB pads on the board puts USB 5 V on it.' },
     REC: { strapping: 'high', note: 'REC is the RP2040\'s BOOTSEL line: low at reset starts the USB bootloader instead of your sketch.' },
+    D3: { noPullup: true, note: 'D3 cannot use the internal pull-up (Arduino technical reference: "digital pin 3 cannot be configured as INPUT_PULLUP"): add an external resistor.' },
     A4: { note: 'A4 is the board\'s I2C SDA, pulled up to 3.3 V with 4.7 kΩ and shared with the onboard chips: use it for I2C only.' },
     A5: { note: 'A5 is the board\'s I2C SCL, pulled up to 3.3 V with 4.7 kΩ and shared with the onboard chips: use it for I2C only.' },
     A6: { inputOnly: true, note: 'A6 is read by the Wi-Fi module\'s ADC: use it as an analog input only.' },
