@@ -55,10 +55,19 @@ Get an independent pinout review before merging (`circuitoon-add-part` step 9): 
 
 ## 6. Ship, credit, close
 
-Ship with the `circuitoon-ship` skill. Then close the issue with a comment that thanks the submitter, names the part and its library id, and says it is live:
+Ship with the `circuitoon-ship` skill. Then comment on the issue to thank the submitter, name the part and its library id, and say it is live, and close it.
+
+Submission text never goes on a command line. The part name, the login, the sources and anything else that came from the issue can hold `$()`, backticks or quotes, and a shell runs those. Write the comment to a file in your scratchpad with the Write tool, for example:
+
+> Thanks @<login>! <Part name> is now in the built-in library as `<id>` (live at https://mbarc.github.io/circuitoon/). Its pinout was checked against <sources>. <Anything that changed from the submission, and why.>
+
+Then post that file and close the issue as two separate commands, with only the issue number and the file path on the command line:
 
 ```bash
-gh issue close <n> --repo MBarc/circuitoon --comment "Thanks @<login>! <Part name> is now in the built-in library as \`<id>\` (live at https://mbarc.github.io/circuitoon/). Its pinout was checked against <sources>. <Anything that changed from the submission, and why.>"
+gh issue comment <n> --repo MBarc/circuitoon --body-file <scratchpad>/close-comment.md
+gh issue close <n> --repo MBarc/circuitoon
 ```
+
+Every other comment on a submission (asking for the licence box in step 1, or for better sources in step 3) goes the same way: Write tool, then `--body-file`.
 
 If the part changed from the submission (a pin order, a type, a supply), say what and why, politely: the submitter may have the other variant.

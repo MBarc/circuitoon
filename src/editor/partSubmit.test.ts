@@ -23,3 +23,14 @@ describe('Submit to library', () => {
     expect(/[–—]/.test(form)).toBe(false)
   })
 })
+
+describe('the import skill', () => {
+  const skill = readFileSync('.claude/skills/circuitoon-import-part/SKILL.md', 'utf8')
+  it('never puts submission text on a command line: comments go through a file', () => {
+    const commands = [...skill.matchAll(/```bash\n([\s\S]*?)```/g)].flatMap((m) => m[1].split('\n'))
+    for (const line of commands) expect(line, line).not.toMatch(/--(comment|body|title)[ =]/)
+    expect(commands.some((l) => /gh issue comment \S+ --repo \S+ --body-file /.test(l))).toBe(true)
+    expect(commands.some((l) => /^gh issue close /.test(l))).toBe(true)
+    expect(skill).toMatch(/Submission text never goes on a command line/)
+  })
+})
