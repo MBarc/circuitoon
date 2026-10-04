@@ -17,6 +17,7 @@ import { checkCommand, verifyCommand } from './verifyCmd.ts'
 import { bomCommand } from './bomCmd.ts'
 import { explainCommand } from './explain.ts'
 import { netlistCommand } from './netlistCmd.ts'
+import { kicadCommand } from './kicadCmd.ts'
 import { updateCommand } from './updateCmd.ts'
 
 export const USAGE = `circuitoon <command> [options]
@@ -38,6 +39,9 @@ export const USAGE = `circuitoon <command> [options]
   bom <sheet.json> [-o <bom.csv>] [--json]  the bill of materials: parts, wires and connectors; -o writes CSV
   netlist <sheet.json> [-o <netlist.json>] [--json]
                                             the netlist of any drawn sheet, from what conducts on it; lay it out again with layout
+  kicad <sheet.json|netlist.json> [-o <out.net>] [--json]
+                                            the design as a KiCad netlist (.net) for the PCB Editor's Import > Netlist;
+                                            parts without a KiCad footprint come in on a generic header, with a warning
   gate <sheet.json> -o <dir> [--json]       every check, the renders, the bill and the link; exits 0 only when nothing blocks
 
 Exit codes: 0 ok, 1 findings that block, 2 invalid input, 3 environment problem (such as no browser)
@@ -45,7 +49,7 @@ or an internal error of the tool.
 `
 
 export type Command = (args: Args, io: Io) => number | Promise<number>
-export const COMMANDS: Record<string, Command> = { parts: partsCommand, part: partCommand, layout: layoutCommand, render: renderCommand, link: linkCommand, bom: bomCommand, netlist: netlistCommand, verify: verifyCommand, check: checkCommand, explain: explainCommand, update: updateCommand, gate: gateCommand }
+export const COMMANDS: Record<string, Command> = { parts: partsCommand, part: partCommand, layout: layoutCommand, render: renderCommand, link: linkCommand, bom: bomCommand, netlist: netlistCommand, kicad: kicadCommand, verify: verifyCommand, check: checkCommand, explain: explainCommand, update: updateCommand, gate: gateCommand }
 
 type ErrorCode = 'usage' | 'input' | 'blocked' | 'environment' | 'internal'
 const CODE_OF: Record<number, ErrorCode> = { [EXIT.blocked]: 'blocked', [EXIT.input]: 'input', [EXIT.environment]: 'environment' }

@@ -2924,7 +2924,7 @@ function endPlacement(points, which, reach, otherReach = 0) {
 //#endregion
 //#region src/format/words.ts
 /** Natural order, so U2 sorts before U10. */
-var natural = new Intl.Collator("en", {
+var natural$1 = new Intl.Collator("en", {
 	numeric: true,
 	sensitivity: "base"
 });
@@ -46070,12 +46070,12 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 var modulesById = Object.fromEntries(library.flatMap((e) => e.ok ? [[e.module.id, e.module]] : []));
 //#endregion
 //#region src/agent/order.ts
-var collator = new Intl.Collator("en", {
+var collator$1 = new Intl.Collator("en", {
 	numeric: true,
 	sensitivity: "base"
 });
 function naturalCompare(a, b) {
-	return collator.compare(a, b) || (a < b ? -1 : a > b ? 1 : 0);
+	return collator$1.compare(a, b) || (a < b ? -1 : a > b ? 1 : 0);
 }
 //#endregion
 //#region src/format/pinRules.ts
@@ -46558,12 +46558,12 @@ function pinFindings(pm) {
 }
 /** The pin to name a bus line by: the controller's pin (an MCU), else the first device's. */
 function lineName(pm, net, fallback) {
-	const ends = [...pm.net(net)].sort((a, b) => natural.compare(endName(a), endName(b)));
+	const ends = [...pm.net(net)].sort((a, b) => natural$1.compare(endName(a), endName(b)));
 	return endName(ends.find((e) => model$1(e) === "mcu") ?? fallback ?? ends[0]);
 }
 function busFindings(pm, bus) {
 	const out = [];
-	const devs = [...bus.devices].sort((a, b) => natural.compare(a.part.designator, b.part.designator));
+	const devs = [...bus.devices].sort((a, b) => natural$1.compare(a.part.designator, b.part.designator));
 	const first = devs[0];
 	const sdaName = lineName(pm, bus.sda, pinEnd(first.part, first.spec.sda));
 	const sclName = lineName(pm, bus.scl, pinEnd(first.part, first.spec.scl));
@@ -47722,7 +47722,7 @@ function witnessPhrase(g, cands, w) {
 			name: groupName(g, gi),
 			word: wordsOf(g.groups[gi].def)[w.mask >>> j & 1]
 		};
-	}).sort((a, b) => natural.compare(a.name, b.name));
+	}).sort((a, b) => natural$1.compare(a.name, b.name));
 	const word = conds[0].word;
 	if (conds.length > 1 && conds.every((c) => c.word === word)) {
 		const list = conds.map((c) => c.name);
@@ -47743,7 +47743,7 @@ function statePhrase(g, cands, witnesses, holds) {
 		w: x,
 		n: x.kept.length,
 		text: witnessPhrase(g, cands, x)
-	})).sort((a, b) => a.n - b.n || natural.compare(a.text, b.text));
+	})).sort((a, b) => a.n - b.n || natural$1.compare(a.text, b.text));
 	const shown = sorted.slice(0, 4);
 	let rest = 0;
 	if (holds && sorted.length > shown.length) {
@@ -48242,7 +48242,7 @@ function throughLoad(p, c, x) {
 * wrong with their inputs and what to do, grouped by kind, converters in designator order.
 */
 function unknownFeedWords(list) {
-	const sorted = [...list].sort((a, b) => natural.compare(a.designator, b.designator));
+	const sorted = [...list].sort((a, b) => natural$1.compare(a.designator, b.designator));
 	const of = (kinds) => sorted.filter((x) => kinds.includes(x.status.kind ?? "wiring"));
 	const poss = (xs) => andList(xs.map((x) => `${x.designator}'s`));
 	const states = [];
@@ -48332,7 +48332,7 @@ function watchList(p) {
 		const sep = cls === "separated" ? classed.find((x) => x.c === "separated").t : null;
 		list.push({
 			node: i,
-			terms: classed.map((x) => x.t).sort((a, b) => natural.compare(termName$1(a), termName$1(b))),
+			terms: classed.map((x) => x.t).sort((a, b) => natural$1.compare(termName$1(a), termName$1(b))),
 			cls,
 			sep,
 			bonds: Int32Array.from(sep ? bondNodes(p, sep) : []),
@@ -48715,7 +48715,7 @@ function shortDraft(p, r, s, other) {
 }
 function crossDraft(p, r, s, a, t, b) {
 	const rank = (c) => CONDS.indexOf(c);
-	const [x, cx, y, cy] = rank(a) < rank(b) || rank(a) === rank(b) && natural.compare(s.part.designator, t.part.designator) <= 0 ? [
+	const [x, cx, y, cy] = rank(a) < rank(b) || rank(a) === rank(b) && natural$1.compare(s.part.designator, t.part.designator) <= 0 ? [
 		s,
 		a,
 		t,
@@ -48860,7 +48860,7 @@ function absorb(into, unit) {
 	if (unit.incomplete) {
 		const groups = unit.incomplete === "groups";
 		const g = unit.p.g;
-		const parts = [...new Set(groups ? unit.cands.map((i) => g.groups[i].part) : unit.p.sources.map((s) => s.part))].sort((a, b) => natural.compare(a.designator, b.designator));
+		const parts = [...new Set(groups ? unit.cands.map((i) => g.groups[i].part) : unit.p.sources.map((s) => s.part))].sort((a, b) => natural$1.compare(a.designator, b.designator));
 		into.open.push({
 			kind: unit.incomplete,
 			count: groups ? unit.cands.length : unit.p.sources.length,
@@ -49140,7 +49140,7 @@ function grouped() {
 		},
 		entries: () => [...map.values()].map((e) => ({
 			...e,
-			terms: e.terms.sort((a, b) => natural.compare(termName$1(a), termName$1(b)))
+			terms: e.terms.sort((a, b) => natural$1.compare(termName$1(a), termName$1(b)))
 		}))
 	};
 }
@@ -49259,7 +49259,7 @@ function dataMissing(acc) {
 		const d = part.designator;
 		const label = (n) => termAt(g, nodeKey(part.uid, n))?.label ?? n;
 		const out = [];
-		const undeclared = [...info.terminals].filter((t) => !info.declaredConduction.has(t)).sort(natural.compare);
+		const undeclared = [...info.terminals].filter((t) => !info.declaredConduction.has(t)).sort(natural$1.compare);
 		if (undeclared.some((n) => hotTerm(acc, part, n))) {
 			const one = undeclared.length === 1;
 			const names = andList(undeclared.map(label));
@@ -49422,7 +49422,7 @@ function polarityTable(acc) {
 	}
 	const parts = [];
 	for (const [part, list] of byPart) {
-		list.sort((a, b) => natural.compare(termName$1(a), termName$1(b)));
+		list.sort((a, b) => natural$1.compare(termName$1(a), termName$1(b)));
 		for (let s = 0; s < list.length; s += REQ_CHUNK) {
 			const terms = list.slice(s, s + REQ_CHUNK);
 			parts.push({
@@ -49783,9 +49783,9 @@ function mergeUnpolarized(drafts) {
 		else byOutlets.set(key, [d]);
 	}
 	for (const items of byOutlets.values()) {
-		items.sort((a, b) => natural.compare(a.subject, b.subject) || natural.compare(a.unpolarized.clause, b.unpolarized.clause));
+		items.sort((a, b) => natural$1.compare(a.subject, b.subject) || natural$1.compare(a.unpolarized.clause, b.unpolarized.clause));
 		const srcs = items[0].unpolarized.outlets.map((o) => o.part);
-		const names = [...new Set(srcs.map((x) => x.designator))].sort(natural.compare);
+		const names = [...new Set(srcs.map((x) => x.designator))].sort(natural$1.compare);
 		const parts = [...new Set(items.map((x) => x.subject))];
 		const doubles = [...new Set(items.filter((x) => x.unpolarized.doublePole).map((x) => x.subject))];
 		const either = doubles.length ? `, or a double-pole switch or relay in place of ${andList(doubles)}` : "";
@@ -50022,7 +50022,7 @@ function loosePlugs(p) {
 		if (g.seated.has(part.uid)) continue;
 		const plug = mainsOf(moduleOf(g.d, part.module)).plug;
 		if (!plug) continue;
-		const names = [...new Set(plug.profiles.flatMap((pr) => pr.contacts.filter((c) => c.mains !== "mechanical").map((c) => c.pin)))].sort(natural.compare).filter((n) => {
+		const names = [...new Set(plug.profiles.flatMap((pr) => pr.contacts.filter((c) => c.mains !== "mechanical").map((c) => c.pin)))].sort(natural$1.compare).filter((n) => {
 			const i = g.nodeOf.get(nodeKey(part.uid, n));
 			return i !== void 0 && p.inRel[i] === 1;
 		});
@@ -50215,7 +50215,7 @@ function fuseRules(acc) {
 	}
 	g.loads.forEach((ld, i) => {
 		if (acc.loadComplete[i] || !acc.loadFit[i]) return;
-		const holders = [...acc.loadFixers.get(i) ?? []].sort((x, y) => natural.compare(x.designator, y.designator));
+		const holders = [...acc.loadFixers.get(i) ?? []].sort((x, y) => natural$1.compare(x.designator, y.designator));
 		const d = ld.part.designator;
 		const names = holders.map((h) => h.designator);
 		out.push({
@@ -50337,7 +50337,7 @@ function stripRule(acc, earthStrips) {
 		if (strip(t)) add(t, false);
 	}
 	return [...byBoard.values()].map(({ board, live, earth }) => {
-		const sorted = (m) => [...m.values()].sort((a, b) => natural.compare(termName$1(a), termName$1(b)));
+		const sorted = (m) => [...m.values()].sort((a, b) => natural$1.compare(termName$1(a), termName$1(b)));
 		const [on, pe] = [sorted(live), sorted(earth)];
 		const clauses = [...on.length ? [`${andList(on.map(termName$1))} ${on.length === 1 ? "carries" : "carry"} mains`] : [], ...pe.length ? [`${andList(pe.map(termName$1))} ${pe.length === 1 ? "is" : "are"} on the earth path`] : []];
 		const terms = [...on, ...pe];
@@ -51047,7 +51047,7 @@ function railAdvice(loads, it) {
 	return commonRails(loads).length ? `${what}: connect ${it} to ${supplyFor(loads)}.` : `${what}: these parts need different supply voltages; split the rail and power each part from a supply it accepts.`;
 }
 /** Builds a node key's terminal (null for a missing part, module or pin), with its converter's dead state from `mains`. */
-function terminalsOf(d, partByUid, mains) {
+function terminalsOf$1(d, partByUid, mains) {
 	return (key) => {
 		const [uid, name] = JSON.parse(key);
 		const part = partByUid.get(uid);
@@ -51114,7 +51114,7 @@ function netRoles(d) {
 	if (hit && hit.parts === d.parts && hit.modules === d.modules) return hit.result;
 	const mains = analyseMainsCached(d);
 	const nl = netlist(d, plugsOf(d));
-	const terminal = terminalsOf(d, new Map(d.parts.map((p) => [p.uid, p])), mains);
+	const terminal = terminalsOf$1(d, new Map(d.parts.map((p) => [p.uid, p])), mains);
 	return rememberRoles(d, nl, nl.nets.map((keys) => roleOf(keys, termsOf(terminal, keys), mains)), terminal, mains);
 }
 var termsOf = (terminal, keys) => keys.map(terminal).filter((t) => t !== null);
@@ -51167,7 +51167,7 @@ function checkDiagram(d) {
 			}
 		});
 	};
-	const terminal = terminalsOf(d, partByUid, mains);
+	const terminal = terminalsOf$1(d, partByUid, mains);
 	const netWires = nl.nets.map(() => []);
 	const connected = new Set(plugs.map((pl) => pl.part));
 	for (const c of d.connections) {
@@ -51250,10 +51250,10 @@ function checkDiagram(d) {
 				if (o.type !== "power_in" || o.info.external.has(o.name)) continue;
 				const id = JSON.stringify([o.part.uid, o.info.comp.get(o.name)]);
 				const cur = seen.get(id);
-				if (!cur || natural.compare(termName(o), termName(cur)) < 0) seen.set(id, o);
+				if (!cur || natural$1.compare(termName(o), termName(cur)) < 0) seen.set(id, o);
 			}
 		}
-		return [...seen.values()].sort((a, b) => natural.compare(termName(a), termName(b)));
+		return [...seen.values()].sort((a, b) => natural$1.compare(termName(a), termName(b)));
 	};
 	for (const p of d.parts) {
 		if (!connected.has(p.uid)) continue;
@@ -51266,7 +51266,7 @@ function checkDiagram(d) {
 		const ins = terms.filter((t) => t.type === "power_in");
 		if (ins.length && !moduleInfo(m).external.size && !reversed.has(p.uid)) {
 			if (!(ins.some((t) => others(t).some(mayFeed)) || terms.some((t) => t.type === "power_out" && others(t).some(isSource)))) {
-				const vias = [...new Map(ins.flatMap((t) => others(t)).filter((o) => o.dead === "unknown").map((o) => [o.key, o])).values()].sort((a, b) => natural.compare(termName(a), termName(b)));
+				const vias = [...new Map(ins.flatMap((t) => others(t)).filter((o) => o.dead === "unknown").map((o) => [o.key, o])).values()].sort((a, b) => natural$1.compare(termName(a), termName(b)));
 				if (vias.length) {
 					const convs = [...new Set(vias.map((o) => o.part))];
 					const words = unknownFeedWords(convs.map((c) => ({
@@ -51347,13 +51347,13 @@ function checkDiagram(d) {
 			if (t.bare || !(typed(t) || t.type === void 0)) continue;
 			const n = termName(t);
 			const cur = rep.get(t.part);
-			if (!cur || typed(t) && !typed(cur.t) || typed(t) === typed(cur.t) && natural.compare(n, cur.n) < 0) rep.set(t.part, {
+			if (!cur || typed(t) && !typed(cur.t) || typed(t) === typed(cur.t) && natural$1.compare(n, cur.n) < 0) rep.set(t.part, {
 				t,
 				n
 			});
 		}
 		if (rep.size < 2) return;
-		const list = [...rep.values()].filter((x) => groupsOf(x.t.part).size).sort((x, y) => natural.compare(x.n, y.n));
+		const list = [...rep.values()].filter((x) => groupsOf(x.t.part).size).sort((x, y) => natural$1.compare(x.n, y.n));
 		for (let ai = 0; ai < list.length; ai++) for (let bi = ai + 1; bi < list.length; bi++) {
 			const [a, b] = [list[ai], list[bi]];
 			if (!typed(a.t) && !typed(b.t)) continue;
@@ -51361,7 +51361,7 @@ function checkDiagram(d) {
 			if ([...groupsOf(b.t.part)].some((g) => ga.has(g))) continue;
 			const key = [a.t.part.uid, b.t.part.uid].sort().join("\0");
 			const prev = best.get(key);
-			if (!prev || natural.compare(a.n + " " + b.n, prev.an + " " + prev.bn) < 0) best.set(key, {
+			if (!prev || natural$1.compare(a.n + " " + b.n, prev.an + " " + prev.bn) < 0) best.set(key, {
 				a: a.t,
 				b: b.t,
 				an: a.n,
@@ -51522,7 +51522,7 @@ function checkDiagram(d) {
 			hole: u.hole
 		});
 		const wires = [...new Set(ends.map((e) => e.wire))];
-		const names = wires.map((w) => wireName(d, d.connections.find((c) => c.uid === w))).sort(natural.compare);
+		const names = wires.map((w) => wireName(d, d.connections.find((c) => c.uid === w))).sort(natural$1.compare);
 		const far = ends.map((e) => d.connections.find((c) => c.uid === e.wire)[e.end === "from" ? "to" : "from"].part);
 		const takes = u.cap === 1 ? "one wire end" : `${u.cap} wire ends`;
 		add({
@@ -51655,9 +51655,9 @@ function checkDiagram(d) {
 			return role === "ground" ? fam !== "black" : role === "supply" ? fam !== "red" : fam !== "other";
 		});
 		if (!bad.length) return;
-		const named = [...netTerms[i]].filter((t) => !t.bare).sort((a, b) => natural.compare(termName(a), termName(b)));
+		const named = [...netTerms[i]].filter((t) => !t.bare).sort((a, b) => natural$1.compare(termName(a), termName(b)));
 		const at = (role === "ground" ? named.find((t) => t.type === "ground") : role === "supply" ? named.find(positiveRail) : void 0) ?? named[0];
-		const names = bad.map((c) => wireName(d, c)).sort(natural.compare);
+		const names = bad.map((c) => wireName(d, c)).sort(natural$1.compare);
 		const list = names.length > 4 ? `${names.slice(0, 3).join(", ")} and ${names.length - 3} more` : andList(names);
 		const n = bad.length;
 		const wires = bad.map((c) => c.uid);
@@ -51691,7 +51691,7 @@ function checkDiagram(d) {
 	const sorted = findings.map((f) => ({
 		...f,
 		severity: RULES[f.rule].severity
-	})).sort((a, b) => rank(a.severity) - rank(b.severity) || natural.compare(a.subject, b.subject) || RULE_ORDER.indexOf(a.rule) - RULE_ORDER.indexOf(b.rule) || (a.message < b.message ? -1 : a.message > b.message ? 1 : 0));
+	})).sort((a, b) => rank(a.severity) - rank(b.severity) || natural$1.compare(a.subject, b.subject) || RULE_ORDER.indexOf(a.rule) - RULE_ORDER.indexOf(b.rule) || (a.message < b.message ? -1 : a.message > b.message ? 1 : 0));
 	const seen = /* @__PURE__ */ new Map();
 	return sorted.map(({ causes, ...f }) => {
 		const base = `${f.rule}|${[...new Set(causes)].sort().join(",")}`;
@@ -51853,7 +51853,7 @@ function checkPotentials({ d, nl, netTerms, netWires, terminal, plugs, shorted, 
 	const spare = /* @__PURE__ */ new Set();
 	for (const [k, list] of bankCells) {
 		if (list.length < 2) continue;
-		list.sort((a, b) => natural.compare(termName(a.term), termName(b.term)));
+		list.sort((a, b) => natural$1.compare(termName(a.term), termName(b.term)));
 		for (const s of list) bankOf.set(s.id, k);
 		for (const s of list.slice(1)) spare.add(s.id);
 	}
@@ -51945,7 +51945,7 @@ function checkPotentials({ d, nl, netTerms, netWires, terminal, plugs, shorted, 
 		}
 		return [...fromA, ...fromB.reverse()];
 	};
-	const sorted = (list) => [...list].sort((a, b) => natural.compare(termName(a.term), termName(b.term)));
+	const sorted = (list) => [...list].sort((a, b) => natural$1.compare(termName(a.term), termName(b.term)));
 	/** What to do about supplies of unknown voltage or return: give them one. */
 	const fixUnknown = (list) => {
 		const open = sorted(list);
@@ -52111,7 +52111,7 @@ function checkPotentials({ d, nl, netTerms, netWires, terminal, plugs, shorted, 
 			const t = terminal(nodeKey(ep.part, ep.pin));
 			return t ? termName(t) : endpointName(d, ep);
 		};
-		const names = cuts.map((c) => `${end(c.from)} to ${end(c.to)}`).sort(natural.compare);
+		const names = cuts.map((c) => `${end(c.from)} to ${end(c.to)}`).sort(natural$1.compare);
 		return names.length && names.length <= 3 ? `Remove one of these wires: ${orList(names).replace(/ or /, ", or ")}.` : "Remove one of the wires that close the loop.";
 	};
 	const loopShort = (all, loop) => add({
@@ -52211,7 +52211,7 @@ function checkPotentials({ d, nl, netTerms, netWires, terminal, plugs, shorted, 
 		const [a, b] = [pot.get(e.from) ?? lin0(), pot.get(e.to) ?? lin0()];
 		return !a.u.size && !b.u.size ? a.c + e.v - b.c : null;
 	};
-	const cross = [...diodes].sort((x, y) => natural.compare(termName(x.src.term), termName(y.src.term)) || (x.src.term.key < y.src.term.key ? -1 : 1)).filter((e) => (groupOf.get(e.from) ?? e.from) !== (groupOf.get(e.to) ?? e.to));
+	const cross = [...diodes].sort((x, y) => natural$1.compare(termName(x.src.term), termName(y.src.term)) || (x.src.term.key < y.src.term.key ? -1 : 1)).filter((e) => (groupOf.get(e.from) ?? e.from) !== (groupOf.get(e.to) ?? e.to));
 	const gOf = (n) => groupOf.get(n) ?? n;
 	const lifted = new Set(cross.map((e) => gOf(e.to)));
 	const off = /* @__PURE__ */ new Map();
@@ -63501,7 +63501,7 @@ var NETLIST_FORMAT = "circuitoon-netlist/1";
 /** A part reference: a letter, then letters, digits or underscores. */
 var REF_PATTERN = /^[A-Za-z][A-Za-z0-9_]*$/;
 /** One key per pin or hole group of a part (a hole index never makes a second key). */
-var terminalKey = (ref, name) => JSON.stringify([ref, name]);
+var terminalKey$1 = (ref, name) => JSON.stringify([ref, name]);
 /** "U1 GND", or "BB1 c5-top hole 2". */
 var terminalName = (t) => `${t.ref} ${t.name}${t.hole !== void 0 ? ` hole ${t.hole}` : ""}`;
 /** A part that can plug into a board: not a board, with legs, none of them a bus. */
@@ -63750,7 +63750,7 @@ function parseNetlist(raw, library) {
 		for (const { ep, at: pat, binding } of pins) {
 			const t = resolve(ep, pat);
 			if (!t) continue;
-			const key = terminalKey(t.ref, t.name);
+			const key = terminalKey$1(t.ref, t.name);
 			const other = inNet.get(key);
 			const prior = boundAs.get(key);
 			if (other !== void 0 && binding !== void 0 && prior !== void 0) {
@@ -63805,7 +63805,7 @@ function parseNetlist(raw, library) {
 			const t = resolve(ep, `nc[${i}]`);
 			if (!t) return;
 			if (t.infra) return void errors.push(`nc[${i}]: ${terminalName(t)} is a breadboard hole group, not a pin`);
-			const net = inNet.get(terminalKey(t.ref, t.name));
+			const net = inNet.get(terminalKey$1(t.ref, t.name));
 			if (net !== void 0) return void errors.push(`nc[${i}]: ${terminalName(t)} is in net "${net}", so it cannot be not connected`);
 			nc.push(t);
 		});
@@ -64623,7 +64623,7 @@ function readabilityFindings(d, routes = computeRoutes(d)) {
 * with " to " ("J1-1 to J1-3", "MCP Breadboard 1 to MCP Breadboard 3"), so it never reads as one name.
 */
 function designatorRanges(names) {
-	const sorted = [...names].sort(natural.compare);
+	const sorted = [...names].sort(natural$1.compare);
 	const parsed = sorted.map((n) => /^(.*?)(\d+)$/.exec(n));
 	const out = [];
 	for (let i = 0; i < sorted.length;) {
@@ -64686,11 +64686,11 @@ function billOfMaterials(d, opts = {}) {
 		row.designators.push(p.designator);
 	}
 	for (const r of parts.values()) {
-		r.designators.sort(natural.compare);
+		r.designators.sort(natural$1.compare);
 		r.refs = designatorRanges(r.designators);
 	}
 	const cat = (c) => c ?? "￿";
-	const partRows = [...parts.values()].sort((a, b) => natural.compare(cat(a.category), cat(b.category)) || natural.compare(a.name, b.name) || natural.compare(a.designators[0] ?? "", b.designators[0] ?? ""));
+	const partRows = [...parts.values()].sort((a, b) => natural$1.compare(cat(a.category), cat(b.category)) || natural$1.compare(a.name, b.name) || natural$1.compare(a.designators[0] ?? "", b.designators[0] ?? ""));
 	const looks = d.connections.some((c) => c.color === void 0) ? wireLooks(d) : /* @__PURE__ */ new Map();
 	const wires = /* @__PURE__ */ new Map();
 	const connectors = /* @__PURE__ */ new Map();
@@ -64727,12 +64727,12 @@ function billOfMaterials(d, opts = {}) {
 		const stub = v.stubs[0];
 		add(v.ends, stub.gauge ?? 22, drawnColor(stub, looks), v.count, 0, true);
 	}
-	const wireRows = [...wires.values()].sort((a, b) => Number(a.labelled) - Number(b.labelled) || natural.compare(a.cable, b.cable) || a.gauge - b.gauge || natural.compare(a.color, b.color));
+	const wireRows = [...wires.values()].sort((a, b) => Number(a.labelled) - Number(b.labelled) || natural$1.compare(a.cable, b.cable) || a.gauge - b.gauge || natural$1.compare(a.color, b.color));
 	const connectorRows = [...connectors].map(([kind, count]) => ({
 		kind,
 		name: END_NAMES[kind],
 		count
-	})).sort((a, b) => natural.compare(a.name, b.name));
+	})).sort((a, b) => natural$1.compare(a.name, b.name));
 	return {
 		title: d.title,
 		parts: partRows,
@@ -65970,9 +65970,9 @@ function realize(intent, d, locals = [], opts = {}) {
 		const parts = [...new Set(list.flatMap((s) => [...coveredBy.get(s.key) ?? []]))].sort(naturalCompare);
 		return parts.length ? ` (the other holes there lie under ${joinList(parts.map((u) => `${partBy.get(u)?.designator ?? u}'s body`))})` : "";
 	};
-	const legBy = new Map(plugs.map((pl) => [terminalKey(pl.part, pl.pin), pl]));
+	const legBy = new Map(plugs.map((pl) => [terminalKey$1(pl.part, pl.pin), pl]));
 	const netOfTerminal = /* @__PURE__ */ new Map();
-	intent.nets.forEach((n, i) => n.terminals.forEach((t) => netOfTerminal.set(terminalKey(t.ref, t.name), i)));
+	intent.nets.forEach((n, i) => n.terminals.forEach((t) => netOfTerminal.set(terminalKey$1(t.ref, t.name), i)));
 	const strips = /* @__PURE__ */ new Map();
 	for (const p of [...d.parts].sort((a, b) => naturalCompare(a.uid, b.uid))) {
 		const m = moduleOf(d, p.module);
@@ -65988,7 +65988,7 @@ function realize(intent, d, locals = [], opts = {}) {
 	const owner = /* @__PURE__ */ new Map();
 	const reserved = /* @__PURE__ */ new Set();
 	for (const pl of plugs) {
-		const ni = netOfTerminal.get(terminalKey(pl.part, pl.pin));
+		const ni = netOfTerminal.get(terminalKey$1(pl.part, pl.pin));
 		if (ni === void 0) reserved.add(groupKey(pl.board, pl.group));
 		else owner.set(groupKey(pl.board, pl.group), ni);
 	}
@@ -66184,7 +66184,7 @@ function realize(intent, d, locals = [], opts = {}) {
 		return pinEnd(best);
 	};
 	const capOf = (n) => [...n.left.values()].reduce((a, b) => a + b, 0);
-	const ncKeys = new Set(intent.nc.map((t) => terminalKey(t.ref, t.name)));
+	const ncKeys = new Set(intent.nc.map((t) => terminalKey$1(t.ref, t.name)));
 	/** Pins joined inside a part that one net borrowed (below), so no other net takes them too. */
 	const borrowed = /* @__PURE__ */ new Set();
 	/**
@@ -66197,7 +66197,7 @@ function realize(intent, d, locals = [], opts = {}) {
 		const comp = internalComponent(m, n.members[0].name);
 		const names = new Set(n.members.map((t) => t.name));
 		return [...new Set((m.internal ?? []).flat())].filter((name) => !names.has(name) && internalComponent(m, name) === comp && !m.holes?.some((g) => g.name === name)).filter((name) => {
-			const k = terminalKey(ref, name);
+			const k = terminalKey$1(ref, name);
 			return !netOfTerminal.has(k) && !ncKeys.has(k) && !legBy.has(k) && !borrowed.has(k);
 		}).sort(naturalCompare).map((name) => ({
 			ref,
@@ -66287,7 +66287,7 @@ function realize(intent, d, locals = [], opts = {}) {
 		const byComp = /* @__PURE__ */ new Map();
 		let strip;
 		for (const t of net.terminals) {
-			const pl = legBy.get(terminalKey(t.ref, t.name));
+			const pl = legBy.get(terminalKey$1(t.ref, t.name));
 			if (t.infra || pl) {
 				strip ??= strips.get(t.infra ? groupKey(t.ref, t.name) : groupKey(pl.board, pl.group));
 				continue;
@@ -66599,7 +66599,7 @@ function realize(intent, d, locals = [], opts = {}) {
 	const nodesOfNet = (net) => {
 		const byComp = /* @__PURE__ */ new Map();
 		for (const t of net.terminals) {
-			if (t.infra || legBy.has(terminalKey(t.ref, t.name))) continue;
+			if (t.infra || legBy.has(terminalKey$1(t.ref, t.name))) continue;
 			const c = `${t.ref} ${internalComponent(modOf(t.ref), t.name)}`;
 			byComp.set(c, [...byComp.get(c) ?? [], t]);
 		}
@@ -66609,7 +66609,7 @@ function realize(intent, d, locals = [], opts = {}) {
 		const keys = /* @__PURE__ */ new Set();
 		for (const t of net.terminals) {
 			if (t.infra) keys.add(groupKey(t.ref, t.name));
-			const pl = legBy.get(terminalKey(t.ref, t.name));
+			const pl = legBy.get(terminalKey$1(t.ref, t.name));
 			if (pl) keys.add(groupKey(pl.board, pl.group));
 		}
 		return [...keys].flatMap((k) => strips.get(k) ? [strips.get(k)] : []);
@@ -66772,13 +66772,13 @@ function realize(intent, d, locals = [], opts = {}) {
 		};
 		for (const t of net.terminals) if (t.infra) addDp(strips.get(groupKey(t.ref, t.name)));
 		const legStrips = net.terminals.flatMap((t) => {
-			const pl = legBy.get(terminalKey(t.ref, t.name));
+			const pl = legBy.get(terminalKey$1(t.ref, t.name));
 			return pl ? [groupKey(pl.board, pl.group)] : [];
 		});
 		for (const k of [...new Set(legStrips)].sort(naturalCompare)) addDp(strips.get(k));
 		const byComp = /* @__PURE__ */ new Map();
 		for (const t of net.terminals) {
-			if (t.infra || legBy.has(terminalKey(t.ref, t.name))) continue;
+			if (t.infra || legBy.has(terminalKey$1(t.ref, t.name))) continue;
 			const c = `${t.ref} ${internalComponent(modOf(t.ref), t.name)}`;
 			byComp.set(c, [...byComp.get(c) ?? [], t]);
 		}
@@ -66832,7 +66832,7 @@ function realize(intent, d, locals = [], opts = {}) {
 					left: new Map([...n.left, ...spares[i].map((t) => [t.name, terminalCapacity(modOf(t.ref), t.name)])])
 				}));
 				if (chainable(grown)) {
-					for (const t of spares.flat()) borrowed.add(terminalKey(t.ref, t.name));
+					for (const t of spares.flat()) borrowed.add(terminalKey$1(t.ref, t.name));
 					chainUp(ni, grown);
 					continue;
 				}
@@ -67234,10 +67234,10 @@ function placeParts(intent, opts) {
 	const pinNet = /* @__PURE__ */ new Map();
 	const netsOf = /* @__PURE__ */ new Map();
 	intent.nets.forEach((n, i) => n.terminals.forEach((t) => {
-		pinNet.set(terminalKey(t.ref, t.name), i);
+		pinNet.set(terminalKey$1(t.ref, t.name), i);
 		netsOf.set(t.ref, (netsOf.get(t.ref) ?? /* @__PURE__ */ new Set()).add(i));
 	}));
-	const netOfPin = (part, pin) => pinNet.get(terminalKey(part, pin));
+	const netOfPin = (part, pin) => pinNet.get(terminalKey$1(part, pin));
 	const refs = intent.parts.map((p) => p.ref).sort(naturalCompare);
 	const units = [];
 	const grouped = /* @__PURE__ */ new Set();
@@ -67647,7 +67647,7 @@ function placeParts(intent, opts) {
 			return worldPins({
 				...inst.get(ref),
 				rotation: r
-			}, m).filter((w) => placed.has(pinNet.get(terminalKey(ref, w.name)) ?? -1)).reduce((a, w) => a + w.dir.x * want.x + w.dir.y * want.y, 0);
+			}, m).filter((w) => placed.has(pinNet.get(terminalKey$1(ref, w.name)) ?? -1)).reduce((a, w) => a + w.dir.x * want.x + w.dir.y * want.y, 0);
 		};
 		const now = inst.get(ref).rotation ?? 0;
 		let best = now;
@@ -68384,7 +68384,7 @@ var EXPLAIN_FORMAT = "circuitoon-cli/explain/1";
 /** The rules explain reports: the pin-capability and I2C rules. */
 var isPinRule = (rule) => /^(pin|i2c)-/.test(rule);
 /** A module's short name: its name up to the first " (" ("ESP32 DevKit V1 (30 pin, DOIT)" is "ESP32 DevKit V1"). */
-var shortName = (m) => m.name.split(" (")[0];
+var shortName$1 = (m) => m.name.split(" (")[0];
 var model = (m) => m.electrical?.model;
 /** Explain lists real parts only: no breadboards, rail strips or net labels. */
 var listed = (m) => !isBoard(m) && !isNetLabel(m);
@@ -68447,7 +68447,7 @@ function fromNetlist(raw, path) {
 	};
 }
 /** A net's ends in reading order: the MCU first, then by designator and pin. */
-var ordered = (net) => [...net].sort((a, b) => Number(model(b.part.module) === "mcu") - Number(model(a.part.module) === "mcu") || natural.compare(a.part.designator, b.part.designator) || natural.compare(a.label, b.label) || natural.compare(a.pin, b.pin));
+var ordered = (net) => [...net].sort((a, b) => Number(model(b.part.module) === "mcu") - Number(model(a.part.module) === "mcu") || natural$1.compare(a.part.designator, b.part.designator) || natural$1.compare(a.label, b.label) || natural$1.compare(a.pin, b.pin));
 /** A sheet net's name when no label names it: GND, the supply pin's label, else a pin of the first part that is not the MCU. */
 function autoName(net, role) {
 	const ends = ordered(net);
@@ -68458,7 +68458,7 @@ function autoName(net, role) {
 	}
 	return endName(ends.find((e) => model(e.part.module) !== "mcu") ?? ends[0]);
 }
-var endText = (e) => `${shortName(e.part.module)} (${e.part.designator}) ${e.label}`;
+var endText = (e) => `${shortName$1(e.part.module)} (${e.part.designator}) ${e.label}`;
 function explain(x) {
 	const pm = x.model;
 	const used = /* @__PURE__ */ new Set();
@@ -68490,10 +68490,10 @@ function explain(x) {
 			}))
 		}];
 	});
-	const parts = pm.parts.filter((p) => listed(p.module)).sort((a, b) => natural.compare(a.designator, b.designator));
+	const parts = pm.parts.filter((p) => listed(p.module)).sort((a, b) => natural$1.compare(a.designator, b.designator));
 	const connected = new Set([...used].map((k) => JSON.parse(k)[0]));
 	const perPart = parts.filter((p) => connected.has(p.id)).map((p) => {
-		const pins = all.flat().filter((e) => e.part === p && used.has(JSON.stringify([p.id, e.pin]))).sort((a, b) => natural.compare(a.label, b.label));
+		const pins = all.flat().filter((e) => e.part === p && used.has(JSON.stringify([p.id, e.pin]))).sort((a, b) => natural$1.compare(a.label, b.label));
 		const addr = i2cOf(p.module) ? i2cAddress(pm, p) : null;
 		return {
 			part: p.id,
@@ -68569,6 +68569,52 @@ function explainCommand(args, io) {
 	return EXIT.ok;
 }
 //#endregion
+//#region src/format/netNames.ts
+/** A pin's (or a header pad's) type and supply. Breadboard strips have neither. */
+var pinDef = (m, name) => m.pins.find((p) => !isSpacer(p) && p.name === name) ?? holeGroupOf(m, name);
+/** A supply rail name worth naming a net after: 5V, 3V3, 12V (not 3.7V or 5V/7V). */
+var RAIL = /^\d+V\d*$/;
+/**
+* One unique name per net: its net label first, then ground (GND, GND_2 ...), then a supply rail
+* the consumers share or one source gives (5V, 3V3), then `<ref>_<pin>` of an MCU pin, else a
+* source's pin, else the first component pin. `pins` must be in a stable order (they decide the
+* fallback name). Shared by the netlist extractor and the KiCad export.
+*/
+function nameNets(nets) {
+	const names = /* @__PURE__ */ new Set();
+	const named = nets.map(() => void 0);
+	const claim = (i, name) => {
+		if (named[i] !== void 0 || !name || names.has(name)) return;
+		named[i] = name;
+		names.add(name);
+	};
+	const types = (net) => net.pins.map((p) => pinDef(p.m, p.name));
+	nets.forEach((net, i) => claim(i, net.label));
+	nets.forEach((net, i) => {
+		if (!types(net).some((t) => t?.type === "ground")) return;
+		let name = "GND";
+		for (let k = 2; names.has(name) && named[i] === void 0; k++) name = `GND_${k}`;
+		claim(i, name);
+	});
+	nets.forEach((net, i) => {
+		const ins = types(net).filter((t) => t?.type === "power_in" && t.supply).map((t) => t.supply.split("/"));
+		if (!ins.length) return;
+		const common = ins.reduce((a, b) => a.filter((r) => b.includes(r)));
+		if (common.length === 1 && RAIL.test(common[0])) claim(i, common[0]);
+	});
+	nets.forEach((net, i) => {
+		const outs = [...new Set(types(net).filter((t) => t?.type === "power_out" && t.supply && RAIL.test(t.supply)).map((t) => t.supply))];
+		if (outs.length === 1) claim(i, outs[0]);
+	});
+	nets.forEach((net, i) => {
+		const pick = net.pins.find((p) => p.m.category === "Microcontrollers") ?? net.pins.find((p) => pinDef(p.m, p.name)?.type === "power_out") ?? net.pins.find((p) => !isBoard(p.m)) ?? net.pins[0];
+		let name = `${pick.ref}_${pick.name}`;
+		for (let k = 2; names.has(name); k++) name = `${pick.ref}_${pick.name}_${k}`;
+		claim(i, name);
+	});
+	return named.map((n) => n);
+}
+//#endregion
 //#region src/agent/extract.ts
 /** A valid, unique netlist ref for a designator: other characters become `_`, and a leading non-letter gets a `P`. */
 function refMaker() {
@@ -68588,9 +68634,6 @@ function settingsOf(p, m) {
 	const kept = Object.entries(p.settings ?? {}).filter(([k, v]) => Object.hasOwn(offered, k) && offered[k].includes(v));
 	return kept.length ? Object.fromEntries(kept) : void 0;
 }
-var pinDef = (m, name) => m.pins.find((p) => !isSpacer(p) && p.name === name);
-/** A supply rail name worth naming a net after: 5V, 3V3, 12V (not 3.7V or 5V/7V). */
-var RAIL = /^\d+V\d*$/;
 function extractNetlist(d) {
 	const modOf = (uid) => {
 		const p = d.parts.find((x) => x.uid === uid);
@@ -68643,37 +68686,7 @@ function extractNetlist(d) {
 			...label !== void 0 ? { label } : {}
 		});
 	}
-	const names = /* @__PURE__ */ new Set();
-	const named = nets.map(() => void 0);
-	const claim = (i, name) => {
-		if (named[i] !== void 0 || !name || names.has(name)) return;
-		named[i] = name;
-		names.add(name);
-	};
-	const types = (net) => net.pins.map((p) => pinDef(p.m, p.name));
-	nets.forEach((net, i) => claim(i, net.label));
-	nets.forEach((net, i) => {
-		if (!types(net).some((t) => t?.type === "ground")) return;
-		let name = "GND";
-		for (let k = 2; names.has(name) && named[i] === void 0; k++) name = `GND_${k}`;
-		claim(i, name);
-	});
-	nets.forEach((net, i) => {
-		const ins = types(net).filter((t) => t?.type === "power_in" && t.supply).map((t) => t.supply.split("/"));
-		if (!ins.length) return;
-		const common = ins.reduce((a, b) => a.filter((r) => b.includes(r)));
-		if (common.length === 1 && RAIL.test(common[0])) claim(i, common[0]);
-	});
-	nets.forEach((net, i) => {
-		const outs = [...new Set(types(net).filter((t) => t?.type === "power_out" && t.supply && RAIL.test(t.supply)).map((t) => t.supply))];
-		if (outs.length === 1) claim(i, outs[0]);
-	});
-	nets.forEach((net, i) => {
-		const pick = net.pins.find((p) => p.m.category === "Microcontrollers") ?? net.pins.find((p) => pinDef(p.m, p.name)?.type === "power_out") ?? net.pins.find((p) => !isBoard(p.m)) ?? net.pins[0];
-		let name = `${pick.ref}_${pick.name}`;
-		for (let k = 2; names.has(name); k++) name = `${pick.ref}_${pick.name}_${k}`;
-		claim(i, name);
-	});
+	const named = nameNets(nets);
 	const nodeNet = /* @__PURE__ */ new Map();
 	nets.forEach((net, i) => net.pins.forEach((p) => nodeNet.set(JSON.stringify([p.ref, p.name]), i)));
 	const netOfKey = (k) => {
@@ -68757,6 +68770,451 @@ function netlistCommand(args, io) {
 	return EXIT.ok;
 }
 //#endregion
+//#region src/format/kicad.ts
+var collator = new Intl.Collator("en", {
+	numeric: true,
+	sensitivity: "base"
+});
+var natural = (a, b) => collator.compare(a, b) || (a < b ? -1 : a > b ? 1 : 0);
+/** A string as a KiCad S-expression atom: always quoted, with `\` and `"` escaped and line breaks as `\n`. */
+var quote = (s) => `"${s.replace(/\\/g, "\\\\").replace(/"/g, "\\\"").replace(/\r?\n/g, "\\n")}"`;
+/** A reference KiCad takes: letters, digits and `_`, starting with a letter ("R1", "DS1", "U2_2"). */
+function kicadRef(designator) {
+	const base = designator.trim().replace(/[^A-Za-z0-9_]/g, "_") || "X";
+	return /^[A-Za-z]/.test(base) ? base : `X${base}`;
+}
+/** A net name KiCad takes: letters, digits and `_ + - . ( )`, anything else (spaces, `/`, `~`) as `_`. */
+var kicadNetName = (name) => name.trim().replace(/[^A-Za-z0-9_+\-.()]/g, "_") || "N";
+var PREFIX = [
+	[1e9, "G"],
+	[1e6, "M"],
+	[1e3, "k"],
+	[1, ""],
+	[.001, "m"],
+	[1e-6, "u"],
+	[1e-9, "n"],
+	[1e-12, "p"]
+];
+/** A number the way KiCad values read: 330, 4.7k, 100n, 10u (3 significant digits, ASCII prefixes). */
+function siValue(v) {
+	if (v === 0) return "0";
+	const abs = Math.abs(v);
+	let i = PREFIX.findIndex(([f]) => abs >= f * .9995);
+	if (i < 0) i = PREFIX.length - 1;
+	let n = Number((v / PREFIX[i][0]).toPrecision(3));
+	if (Math.abs(n) >= 1e3 && i > 0) {
+		i--;
+		n = Number((v / PREFIX[i][0]).toPrecision(3));
+	}
+	return `${n}${PREFIX[i][1]}`;
+}
+/** The module's name up to the first " (": "ESP32 DevKit V1 (30 pin, DOIT)" is "ESP32 DevKit V1". */
+var shortName = (m) => m.name.split(" (")[0];
+/** The KiCad value: a resistance or capacitance (330, 100n), else the mapping's value, else the part's short name. */
+function kicadValue(part, m, k) {
+	const v = partValue(part, m);
+	if (v && (v.name === "resistance" || v.name === "capacitance")) return siValue(v.value);
+	return (k?.value ?? shortName(m)).replace(/\s+/g, " ").trim();
+}
+/** Pin names with their sides, then hole group names, in order: what a mapping by name relies on. */
+var terminalKey = (m) => JSON.stringify([m.pins.filter((p) => !isSpacer(p)).map((p) => [p.name, p.side]), (m.holes ?? []).map((g) => g.name)]);
+/**
+* The mapping to export a part with: the library's, when the part is built in and its stored copy
+* has the same pins in the same order (the mapping is export data the library refines, and a copy
+* saved before the library had it, or with older pin data, still names the same pins); else the
+* stored copy's own. `stale` is set when the library has a mapping the copy cannot use because its
+* pins changed.
+*/
+function mappingOf(stored, library) {
+	const lib = library?.(stored.id);
+	if (lib?.kicad) {
+		if (lib === stored || terminalKey(stored) === terminalKey(lib)) return { kicad: lib.kicad };
+		if (!stored.kicad) return { stale: true };
+	}
+	return stored.kicad ? { kicad: stored.kicad } : {};
+}
+/** Breadboards, rail strips and net labels: no PCB meaning. A board with a mapping (an outlet) is a real part. */
+var isInfrastructure = (m, k) => isNetLabel(m) || isBoard(m) && !k;
+/** A sheet as the export sees it: its parts and its nets, from what conducts on it. */
+function sheetSource(d) {
+	const parts = d.parts.flatMap((p) => {
+		const m = moduleOf(d, p.module);
+		return m ? [{
+			key: p.uid,
+			designator: p.designator,
+			module: m,
+			...p.values ? { values: p.values } : {}
+		}] : [];
+	});
+	const byUid = new Map(d.parts.map((p) => [p.uid, p]));
+	const nets = netlist(d, plugsOf(d)).nets.map((keys) => {
+		const nodes = keys.map((k) => JSON.parse(k));
+		const labels = nodes.flatMap(([uid]) => {
+			const p = byUid.get(uid);
+			const m = p && moduleOf(d, p.module);
+			return p && isNetLabel(m) && labelName(p) ? [labelName(p)] : [];
+		}).sort(natural);
+		return {
+			nodes,
+			...labels.length ? { name: labels[0] } : {}
+		};
+	});
+	return {
+		title: d.title,
+		parts,
+		nets
+	};
+}
+/** The intent of a parsed netlist as the export sees it: its nets joined where a part joins pins inside itself. */
+function intentSource(intent) {
+	const parts = intent.parts.flatMap((p) => {
+		const m = Object.hasOwn(intent.modules, p.module) ? intent.modules[p.module] : void 0;
+		return m ? [{
+			key: p.ref,
+			designator: p.ref,
+			module: m,
+			...p.values ? { values: p.values } : {}
+		}] : [];
+	});
+	const parent = /* @__PURE__ */ new Map();
+	const find = (k) => {
+		let r = k;
+		while (parent.get(r) !== r) r = parent.get(r);
+		parent.set(k, r);
+		return r;
+	};
+	const add = (k) => void (parent.has(k) || parent.set(k, k));
+	const join = (a, b) => {
+		add(a);
+		add(b);
+		const [ra, rb] = [find(a), find(b)];
+		if (ra !== rb) parent.set(ra, rb);
+	};
+	const key = (ref, name) => JSON.stringify([ref, name]);
+	const nameOf = /* @__PURE__ */ new Map();
+	for (const net of intent.nets) {
+		const keys = net.terminals.map((t) => key(t.ref, t.name));
+		keys.forEach((k) => add(k));
+		for (let i = 1; i < keys.length; i++) join(keys[0], keys[i]);
+		if (keys.length && !nameOf.has(keys[0])) nameOf.set(keys[0], net.name);
+	}
+	for (const p of parts) for (const g of p.module.internal ?? []) if (g.some((n) => parent.has(key(p.key, n)))) for (let i = 1; i < g.length; i++) join(key(p.key, g[0]), key(p.key, g[i]));
+	const groups = /* @__PURE__ */ new Map();
+	for (const k of parent.keys()) {
+		const r = find(k);
+		groups.set(r, [...groups.get(r) ?? [], k]);
+	}
+	const nets = [...groups.values()].map((keys) => {
+		const names = keys.flatMap((k) => nameOf.has(k) ? [nameOf.get(k)] : []).sort(natural);
+		return {
+			nodes: keys.sort().map((k) => JSON.parse(k)),
+			...names.length ? { name: names[0] } : {}
+		};
+	});
+	return {
+		title: intent.title,
+		parts,
+		nets
+	};
+}
+/** KiCad's electrical pin type for a Circuitoon pin type. */
+var PIN_TYPE = {
+	power_in: "power_in",
+	power_out: "power_out",
+	ground: "power_in",
+	input: "input",
+	output: "output",
+	io: "bidirectional",
+	passive: "passive",
+	nc: "no_connect"
+};
+/** Every pin and pad group of a module, in order: pins (no spacers), then hole groups. */
+function terminalsOf(m) {
+	return [...m.pins.filter((p) => !isSpacer(p)), ...m.holes ?? []];
+}
+var pad2 = (n) => String(n).padStart(2, "0");
+/** The generic footprint an unmapped part comes in on: a 0.1 in pin header with a pad per pin. */
+function genericFootprint(pins) {
+	if (pins <= 40) return `Connector_PinHeader_2.54mm:PinHeader_1x${pad2(Math.max(1, pins))}_P2.54mm_Vertical`;
+	return `Connector_PinHeader_2.54mm:PinHeader_2x${pad2(Math.min(40, Math.ceil(pins / 2)))}_P2.54mm_Vertical`;
+}
+/**
+* A stable UUID from a string (a part's uid, plus the header): the same part keeps its UUID from
+* export to export, so Pcbnew can link footprints by it. Four 32-bit FNV-style hashes, shaped as
+* a version 8 (custom) UUID.
+*/
+function stableUuid(seed) {
+	const h = [
+		2166136261,
+		2654435769,
+		2246822507,
+		3266489909
+	];
+	const mul = [
+		16777619,
+		1540483477,
+		668265261,
+		374761393
+	];
+	for (let i = 0; i < seed.length; i++) {
+		const c = seed.charCodeAt(i);
+		for (let j = 0; j < 4; j++) h[j] = Math.imul(h[j] ^ c, mul[j]);
+	}
+	for (let j = 0; j < 4; j++) {
+		let x = h[j] ^ h[(j + 1) % 4];
+		x = Math.imul(x ^ x >>> 16, 2246822507);
+		x = Math.imul(x ^ x >>> 13, 3266489909);
+		h[j] = x ^ x >>> 16;
+	}
+	const hex = h.map((x) => (x >>> 0).toString(16).padStart(8, "0")).join("");
+	const variant = (parseInt(hex[16], 16) & 3 | 8).toString(16);
+	return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-8${hex.slice(13, 16)}-${variant}${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
+}
+/** Writes an export source (a sheet's or a netlist's) as a KiCad netlist. */
+function writeKicad(src, opts = {}) {
+	const warnings = [];
+	const unmapped = [];
+	const placeholders = [];
+	/** Each mapping note, with the parts it is about. */
+	const noteRefs = /* @__PURE__ */ new Map();
+	const taken = /* @__PURE__ */ new Set();
+	const claimRef = (base) => {
+		let ref = base;
+		for (let k = 2; taken.has(ref); k++) ref = `${base}_${k}`;
+		taken.add(ref);
+		return ref;
+	};
+	const kept = src.parts.map((p) => ({
+		p,
+		map: mappingOf(p.module, opts.library)
+	})).filter(({ p, map }) => !isInfrastructure(p.module, map.kicad)).sort((a, b) => natural(a.p.designator, b.p.designator) || natural(a.p.key, b.p.key));
+	const comps = [];
+	/** Part key and pin name to the component and pad it lands on. */
+	const padOf = /* @__PURE__ */ new Map();
+	/** Part key to its reference (a part's own, before any header letter), for naming nets. */
+	const partRef = /* @__PURE__ */ new Map();
+	const modOf = new Map(kept.map(({ p }) => [p.key, p.module]));
+	for (const { p, map } of kept) {
+		const m = p.module;
+		const ref = claimRef(kicadRef(p.designator || p.key));
+		partRef.set(p.key, ref);
+		const k = map.kicad;
+		const value = kicadValue(p, m, k);
+		const terms = new Map(terminalsOf(m).map((t) => [t.name, t]));
+		const typeOf = (name) => {
+			const t = terms.get(name);
+			return t ? PIN_TYPE[t.type ?? ("side" in t ? "io" : "passive")] : "passive";
+		};
+		const describe = (extra) => `${m.name}${extra ? `, ${extra}` : ""} (Circuitoon part ${m.id})`;
+		const make = (cref, footprint, pins, lib, part, description, seed) => {
+			const pads = /* @__PURE__ */ new Map();
+			for (const [name, pad] of Object.entries(pins)) {
+				const entry = pads.get(pad);
+				if (entry) entry.names.push(name);
+				else pads.set(pad, {
+					names: [name],
+					type: typeOf(name)
+				});
+			}
+			const c = {
+				ref: cref,
+				value,
+				footprint,
+				lib,
+				part,
+				description,
+				uuid: stableUuid(seed),
+				module: m.id,
+				pads: new Map([...pads].sort((a, b) => natural(a[0], b[0])))
+			};
+			for (const [name, pad] of Object.entries(pins)) padOf.set(JSON.stringify([p.key, name]), {
+				comp: c,
+				pad
+			});
+			comps.push(c);
+			return c;
+		};
+		const [symLib, symPart] = k?.symbol ? k.symbol.split(":") : ["Circuitoon", m.id];
+		if (!k) {
+			const names = terminalsOf(m).map((t) => t.name);
+			const pins = Object.fromEntries(names.map((n, i) => [n, String(i + 1)]));
+			const fp = genericFootprint(names.length);
+			make(ref, fp, pins, "Circuitoon", m.id, describe(), p.key);
+			unmapped.push({
+				ref,
+				module: m.id
+			});
+			warnings.push(map.stale ? `${ref} (${m.id}): its pins differ from the library's part, so the library's KiCad footprint does not fit it; it comes in on a generic ${fp.split(":")[1]}. Place the part again, or choose its footprint in KiCad.` : `${ref} (${m.id}): no KiCad footprint is known for this part, so it comes in on a generic ${fp.split(":")[1]} with a pad per pin in Circuitoon's order. Choose its real footprint in KiCad.`);
+			continue;
+		}
+		if (k.headers) k.headers.forEach((h, i) => {
+			const letter = String.fromCharCode(65 + i % 26);
+			const cref = claimRef(/\d$/.test(ref) ? `${ref}${letter}` : `${ref}_${letter}`);
+			const n = new Set(Object.values(h.pins)).size;
+			make(cref, h.footprint, h.pins, "Connector_Generic", `Conn_01x${pad2(n)}`, describe(h.name), `${p.key}#${i}`);
+		});
+		else {
+			const pins = k.pins ?? Object.fromEntries(terminalsOf(m).map((t) => [t.name, t.name]));
+			make(ref, k.footprint, pins, symLib, symPart, describe(), p.key);
+		}
+		if (k.placeholder) {
+			placeholders.push({
+				ref,
+				module: m.id
+			});
+			warnings.push(`${ref} (${m.id}): ${k.note ?? "the footprint is a placeholder, not the part's own."}`);
+		} else if (k.note) noteRefs.set(k.note, [...noteRefs.get(k.note) ?? [], ref]);
+	}
+	const notes = [...noteRefs].map(([note, refs]) => `${refs.join(", ")}: ${note}`);
+	const built = [];
+	for (const net of src.nets) {
+		const nodes = [];
+		const pins = [];
+		const seen = /* @__PURE__ */ new Set();
+		for (const [key, pin] of net.nodes) {
+			const m = modOf.get(key);
+			if (!m) continue;
+			const at = padOf.get(JSON.stringify([key, pin]));
+			if (!at) {
+				if (terminalsOf(m).some((t) => t.name === pin)) warnings.push(`${partRef.get(key)} ${pin} (${m.id}) has no pad on its KiCad footprint, so it is left out of its net.`);
+				continue;
+			}
+			pins.push({
+				ref: partRef.get(key),
+				name: pin,
+				m
+			});
+			const id = `${at.comp.ref}\u0000${at.pad}`;
+			if (seen.has(id)) continue;
+			seen.add(id);
+			nodes.push(at);
+		}
+		const parts = new Set(pins.map((p) => p.ref));
+		if (!nodes.length || parts.size < 2 && net.name === void 0) continue;
+		pins.sort((a, b) => natural(a.ref, b.ref) || natural(a.name, b.name));
+		built.push({
+			nodes,
+			pins,
+			...net.name !== void 0 ? { label: net.name } : {}
+		});
+	}
+	const rawNames = nameNets(built);
+	const used = /* @__PURE__ */ new Set();
+	const names = rawNames.map((n) => {
+		const base = kicadNetName(n);
+		let name = base;
+		for (let k = 2; used.has(name); k++) name = `${base}_${k}`;
+		used.add(name);
+		return name;
+	});
+	const order = built.map((_, i) => i).sort((a, b) => natural(names[a], names[b]));
+	const out = [];
+	out.push("(export (version \"E\")");
+	out.push("  (design");
+	out.push(`    (source ${quote(opts.source ?? `${src.title || "Untitled sheet"}.circuitoon.json`)})`);
+	out.push("    (tool \"Circuitoon\"))");
+	out.push("  (components");
+	for (const c of comps) {
+		out.push(`    (comp (ref ${quote(c.ref)})`);
+		out.push(`      (value ${quote(c.value)})`);
+		out.push(`      (footprint ${quote(c.footprint)})`);
+		out.push(`      (libsource (lib ${quote(c.lib)}) (part ${quote(c.part)}) (description ${quote(c.description)}))`);
+		out.push(`      (fields (field (name "Footprint") ${quote(c.footprint)}) (field (name "Description") ${quote(c.description)}))`);
+		out.push(`      (property (name "Circuitoon part") (value ${quote(c.module)}))`);
+		out.push("      (sheetpath (names \"/\") (tstamps \"/\"))");
+		out.push(`      (tstamps ${quote(c.uuid)}))`);
+	}
+	out.push("  )");
+	out.push("  (libparts");
+	const libparts = /* @__PURE__ */ new Map();
+	for (const c of comps) if (!libparts.has(`${c.lib}:${c.part}`)) libparts.set(`${c.lib}:${c.part}`, c);
+	for (const c of [...libparts.values()].sort((a, b) => natural(`${a.lib}:${a.part}`, `${b.lib}:${b.part}`))) {
+		const own = c.lib === "Circuitoon";
+		const header = c.lib === "Connector_Generic";
+		out.push(`    (libpart (lib ${quote(c.lib)}) (part ${quote(c.part)})`);
+		out.push(`      (description ${quote(header ? `Generic connector, single row, ${c.part.slice(5)}` : own ? c.description : `KiCad symbol ${c.lib}:${c.part}`)})`);
+		out.push("      (pins");
+		for (const [pad, { names: pn, type }] of c.pads) out.push(`        (pin (num ${quote(pad)}) (name ${quote(own ? pn.join("/") : header ? `Pin_${pad}` : "~")}) (type ${quote(header ? "passive" : type)}))`);
+		out.push("      ))");
+	}
+	out.push("  )");
+	out.push("  (nets");
+	order.forEach((i, code) => {
+		out.push(`    (net (code ${quote(String(code + 1))}) (name ${quote(names[i])})`);
+		const nodes = [...built[i].nodes].sort((a, b) => natural(a.comp.ref, b.comp.ref) || natural(a.pad, b.pad));
+		for (const { comp, pad } of nodes) {
+			const info = comp.pads.get(pad);
+			out.push(`      (node (ref ${quote(comp.ref)}) (pin ${quote(pad)}) (pinfunction ${quote(info.names.join("/"))}) (pintype ${quote(info.type)}))`);
+		}
+		out[out.length - 1] += ")";
+	});
+	out.push("  )");
+	out.push(")");
+	return {
+		text: `${out.join("\n")}\n`,
+		warnings,
+		components: comps.length,
+		nets: built.length,
+		unmapped,
+		placeholders,
+		notes
+	};
+}
+//#endregion
+//#region src/cli/kicadCmd.ts
+var KICAD_FORMAT = "circuitoon-cli/kicad/1";
+function kicadCommand(args, io) {
+	const [input, ...rest] = args.positionals;
+	if (!input) throw new CliError("kicad: give a sheet or netlist file", EXIT.input);
+	if (rest.length) throw new CliError(`kicad: give one sheet or netlist file, not ${args.positionals.length}`, EXIT.input);
+	const raw = readJson(io, input);
+	const name = input.split(/[\\/]/).pop();
+	let source;
+	let x;
+	if (raw?.format === "circuitoon-netlist/1") {
+		const r = parseNetlist(raw, libraryLookup);
+		if (!r.ok) throw new CliError(`${input} is not a valid netlist: ${r.errors.slice(0, 5).join("; ")}`, EXIT.input);
+		source = "netlist";
+		x = writeKicad(intentSource(r.intent), {
+			library: libraryLookup,
+			source: name
+		});
+	} else {
+		const r = validateDiagram(raw);
+		if (!r.ok) throw new CliError(`${input} is neither a Circuitoon sheet nor a netlist: ${r.errors.slice(0, 5).join("; ")}`, EXIT.input);
+		for (const w of r.warnings) io.stderr(`warning: ${w}\n`);
+		source = "sheet";
+		x = writeKicad(sheetSource(r.diagram), {
+			library: libraryLookup,
+			source: name
+		});
+	}
+	const out = flag(args, "--out") ?? null;
+	if (out) writeFile(io, out, x.text);
+	if (args.flags.has("--json")) {
+		printJson(io, {
+			format: KICAD_FORMAT,
+			ok: true,
+			input,
+			source,
+			output: out,
+			components: x.components,
+			nets: x.nets,
+			unmapped: x.unmapped,
+			placeholders: x.placeholders,
+			warnings: x.warnings,
+			notes: x.notes,
+			...out ? {} : { netlist: x.text }
+		});
+		return EXIT.ok;
+	}
+	for (const w of x.warnings) io.stderr(`warning: ${w}\n`);
+	for (const n of x.notes) io.stderr(`note: ${n}\n`);
+	if (out) io.stdout(`Wrote ${out}: ${x.components} components, ${x.nets} nets${x.unmapped.length ? `, ${x.unmapped.length} on a generic footprint` : ""}. Open it in KiCad's PCB Editor with File > Import > Netlist.\n`);
+	else io.stdout(x.text);
+	return EXIT.ok;
+}
+//#endregion
 //#region src/cli/updateCmd.ts
 var UPDATE_CMD_FORMAT = "circuitoon-cli/update/1";
 function updateCommand(args, io) {
@@ -68811,6 +69269,9 @@ var USAGE = `circuitoon <command> [options]
   bom <sheet.json> [-o <bom.csv>] [--json]  the bill of materials: parts, wires and connectors; -o writes CSV
   netlist <sheet.json> [-o <netlist.json>] [--json]
                                             the netlist of any drawn sheet, from what conducts on it; lay it out again with layout
+  kicad <sheet.json|netlist.json> [-o <out.net>] [--json]
+                                            the design as a KiCad netlist (.net) for the PCB Editor's Import > Netlist;
+                                            parts without a KiCad footprint come in on a generic header, with a warning
   gate <sheet.json> -o <dir> [--json]       every check, the renders, the bill and the link; exits 0 only when nothing blocks
 
 Exit codes: 0 ok, 1 findings that block, 2 invalid input, 3 environment problem (such as no browser)
@@ -68824,6 +69285,7 @@ var COMMANDS = {
 	link: linkCommand,
 	bom: bomCommand,
 	netlist: netlistCommand,
+	kicad: kicadCommand,
 	verify: verifyCommand,
 	check: checkCommand,
 	explain: explainCommand,

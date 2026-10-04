@@ -20,8 +20,6 @@ export type ModuleLibrary = (id: string) => ModuleDef | undefined
 export interface KicadOptions {
   /** The built-in parts: a stored copy without a mapping (or an older one) takes the library's when its pins are the same. */
   library?: ModuleLibrary
-  /** The export time for the design header (ISO 8601). Left out: no date, so the same sheet gives the same file. */
-  date?: string
   /** The file the netlist came from, for the design header. */
   source?: string
 }
@@ -372,7 +370,6 @@ export function writeKicad(src: KicadSource, opts: KicadOptions = {}): KicadExpo
   out.push('(export (version "E")')
   out.push('  (design')
   out.push(`    (source ${quote(opts.source ?? `${src.title || 'Untitled sheet'}.circuitoon.json`)})`)
-  if (opts.date) out.push(`    (date ${quote(opts.date)})`)
   out.push('    (tool "Circuitoon"))')
   out.push('  (components')
   for (const c of comps) {

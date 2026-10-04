@@ -248,6 +248,18 @@ A module is one self-contained JSON file: name, pins by side and order, optional
 | param `acVoltage` | with `acSources` | The source voltage, unit `VAC`, nominal RMS line to neutral, 1 to 1000; defaults to the region's nominal (US 120, EU, UK and AU 230, JP 100) and is editable per outlet. Separate from the DC `voltage` param. |
 | param `fuseRating` | no | A fuse holder's rating, unit `A`, above 0 up to 100; optional (missing means unknown, which is a warning). |
 | `states` | no | Reserved for V3 (for example `lit`, `burnt`, `on`); art shapes may bind to them later. |
+| `kicad` | no | How the part goes into KiCad (see "KiCad mapping" below): `{ "symbol"?, "footprint", "pins"?, "value"?, "placeholder"?, "note"? }` or `{ "headers": [{ "name"?, "footprint", "pins" }], ... }`. Export data only: it never makes a stored copy of a part out of date. |
+
+**KiCad mapping (`kicad`).** What the KiCad netlist export (see Import, export and saving) needs to place the part on a PCB.
+
+- `footprint`: a footprint in KiCad's standard libraries, `"Library:Footprint"` (`"Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal"`).
+- `pins`: each pin or hole group name to its footprint pad number (`{ "K": "1", "A": "2" }` for an LED). Left out, each pad is named like its pin. Two pins may share a pad only when `internal` joins them (a tactile switch's leg pairs, a terminal block's wire and board sides).
+- `symbol`: the KiCad symbol, `"Library:Symbol"` (`"Device:R"`), written into the netlist as the part's source. `value`: the KiCad value when the part has no resistance or capacitance value (`"MCP23017"`); default the part's short name.
+- `headers`: instead of `footprint` and `pins`, one footprint per header row, each `{ "name"?, "footprint", "pins" }`, exported as its own component (the part's reference plus a letter: U2A, U2B). For dev boards and breakouts: their row spacing varies between makers and clones and KiCad has no footprint for most of them, so each row is a socket strip to place at the board's real spacing. A pin is on at most one header.
+- `placeholder: true`: the footprint stands in for a part that is wired to the board, not mounted on it (a terminal block for an outlet, a plug, a lamp holder, an in-line fuse holder). The export warns about it. `note`: one plain sentence on the choice, shown with the export.
+- **Pad numbers follow the physical pin order**: a chip's pad is its package pin number (from the datasheet or KiCad's own symbol); a header's pad 1 is the first pin in the order the module lists them. A wrong pad is worse than none: a part whose layout is not known pin for pin stays unmapped, and the export gives it a generic header with a warning.
+- Breakout boards and dev modules map to 0.1 inch socket strips (`Connector_PinSocket_2.54mm`) matching their real header rows, so the PCB gets the sockets the board plugs into; a module with solder pads instead of header pins maps to pin headers to wire it to, with a note. Loose cells map to KiCad's battery holders; wire-lead holders, panel switches and panel potentiometers to a JST-XH lead connector.
+- Every footprint a built-in part names, with its pads, is listed in `src/format/kicadFootprints.testing.ts` (read from the footprint files), and a test checks each mapping against it. Generated parts get their mapping from `scripts/lib/kicad.mjs`, which also lists the parts deliberately left unmapped and why; hand-written parts carry it in their JSON.
 
 **Geometry.**
 
@@ -398,8 +410,17 @@ Files are the unit of sharing; the browser keeps a working copy so a refresh doe
 | Import module | module `.json` | Adds to the parts library; one file or many at once. |
 | Export module | module `.json` | From the library or the art studio. |
 | Export library | `.circuitoon-library.json` | `{ "format": "circuitoon-library/1", "modules": [ ... ] }`, for backup or moving browsers. |
+| Export KiCad netlist | `.net` | The sheet as a KiCad netlist (see "KiCad netlist export"), from the toolbar's Export KiCad, with the same Save As dialog (or naming dialog) as Export JSON. |
 
 Deferred past V1: SVG and PNG export, multi-page tiling, parts-list and connection-table pages.
+
+**KiCad netlist export.** Step 1 of KiCad support: a sheet (the editor's Export KiCad, or `circuitoon kicad <sheet>`) or a netlist (`circuitoon kicad <netlist>`) becomes a KiCad netlist, the S-expression file KiCad's schematic editor writes (`(export (version "E") (design ...) (components ...) (libparts ...) (nets ...))`, read by KiCad 7, 8 and 9). The user opens KiCad's PCB Editor, File > Import > Netlist, and every part arrives with a footprint and its pads on the right nets. KiCad's schematic editor cannot import a netlist; a schematic is not part of this step.
+
+- **Components**: one per part (`comp` with `ref`, `value`, `footprint`, `libsource`, `fields`, `sheetpath` and `tstamps`), from the part's `kicad` mapping; a part with `headers` gives one component per header, its reference plus a letter (U2A, U2B; `Front_Display_A` after a name that ends in a letter). The mapping is read from the library when the sheet's stored copy names the same pins in the same order, so a sheet saved before the mapping existed still exports with it.
+- **References** keep letters, digits and `_`, starting with a letter (`Front Display` becomes `Front_Display`, a duplicate gets `_2`). **Values** are a resistance or capacitance written the KiCad way (`330`, `4.7k`, `100n`, `10u`), else the mapping's `value`, else the part's short name. Each component's `tstamps` is a UUID derived from the part (its uid, or a netlist's ref), so exporting again keeps Pcbnew's link to its footprints.
+- **Nets** come from `netlist()`: wires, breadboard strips and rails, mounted legs, internal joins and net labels (a netlist's nets, joined where a part joins pins inside itself). Each is named from its net label (a netlist's own name), then GND, then a supply rail (5V, 3V3), then `<ref>_<pin>`, in the characters KiCad takes (others become `_`). Nodes carry the pad number, the Circuitoon pin name as `pinfunction` and the pin type as KiCad's `pintype`. A net that touches only one part's own pins (its internal join, wired to nothing else) is left out, as is a net with no pad.
+- **Left out**: breadboards, rail strips and net labels, which have no PCB meaning. A connection through a breadboard strip becomes a direct connection between the component pins.
+- **Warnings, never blocking**: a part without a mapping comes in on a generic `Connector_PinHeader_2.54mm` header (one pad per pin and hole group, in the module's order; `2xNN` past 40 pins) for the user to replace; a placeholder footprint is named with its note; a pin with no pad on its footprint (a Pico's debug pads) is left out of its net. The mapping's notes on other parts ("Each header is its own socket strip") come with the export.
 
 **Links.** `#/editor?d=v1.<payload>` opens a diagram carried in the URL fragment: the payload is the diagram JSON, compressed with raw deflate and written in base64url. A payload may be up to 64 KB; opening stops past 5 MB of JSON, 2,000 parts or 10,000 connections, and a damaged or oversized payload shows the usual load error. After loading, the address bar goes back to `#/editor` without reloading the editor. The fragment is never sent to a server, so nothing is uploaded, but anyone with the link can see the diagram. `circuitoon link` makes these links; it applies the same limits, and for a sheet over any of them it makes no link and writes the sheet as a `.circuitoon.json` file to import instead.
 
@@ -486,6 +507,12 @@ V1 is done when someone can build a wiring sheet for a real breadboard project f
 - [x] Hosting: GitHub Pages from the public repo `MBarc/circuitoon` (https://mbarc.github.io/circuitoon/).
 
 ## Changelog
+
+### KiCad netlist export (plugin 0.7.0)
+
+- **Parts know their KiCad footprint.** Modules gain an optional `kicad` field (see "KiCad mapping"), filled in for every built-in part where the mapping is sound: passives, LEDs and DIP chips on standard footprints with their package pad numbers, dev boards and breakouts on a socket strip per header row, cells on KiCad's battery holders, mains parts on their own footprints (Hi-Link, Mean Well, Phoenix headers) or on placeholder terminal blocks. Left unmapped, with the reason in `scripts/lib/kicad.mjs`: the L298N module, the ESP32 screw terminal board and the Wago splices.
+- **`circuitoon kicad <sheet|netlist> [-o out.net]`** and the editor's **Export KiCad** write the design as a KiCad netlist (see "KiCad netlist export"; schema `kicad.schema.json`). Unmapped parts are warnings: exit 0.
+- **Existing sheets** need nothing: the mapping is export data, so it never counts as `module-drift`, and the export reads it from the library.
 
 ### Pin rules and explain (plugin 0.6.0)
 

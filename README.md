@@ -41,7 +41,7 @@ It also works backwards. `circuitoon netlist` reads a sheet someone drew by hand
 
 ### Don't use it for
 
-- PCB layout or Gerber files. Circuitoon stops at the wiring.
+- PCB layout or Gerber files. Circuitoon stops at the wiring. It can hand the design to KiCad as a netlist (`circuitoon kicad`), and the board is drawn there.
 - Symbolic schematics. Parts are drawn as pictures, never as IEEE symbols, and there is no schematic-symbol editor.
 - Simulation. Nothing solves the circuit yet. The checker compares declared pin types and supply rails, and DC simulation is planned for V2.
 - Parts it doesn't know, unless you can source them. You may embed a part from its maker's documentation, but it is reported as custom and unverified.
@@ -104,6 +104,7 @@ If `gate.json` says `"ready": false`, readability warnings remain (overlapping w
 | `link <sheet.json>` | A link that opens the sheet in the editor. Past 64 KB of payload it writes the sheet file instead. |
 | `bom <sheet.json> [-o bom.csv]` | The bill of materials: parts, wires by cable, gauge and color, and connectors. |
 | `netlist <sheet.json>` | The `circuitoon-netlist/1` of any drawn sheet, read from what actually conducts on it. |
+| `kicad <sheet.json\|netlist.json> [-o out.net]` | A KiCad netlist for the PCB Editor (File > Import > Netlist). Each part gets a footprint; parts without one come in on a generic header, with a warning. |
 | `explain <sheet.json\|netlist.json>` | Every connection in plain English, what each pin in use does, unconnected parts and pin-rule findings. |
 | `update <sheet.json>` | Brings a sheet's stored parts up to date when the library has only added data. Blocking drift is listed, not changed. |
 
@@ -217,6 +218,7 @@ What you can do in it:
 - Join pins with net labels instead of a drawn wire.
 - Group parts in frames and explain them with notes.
 - Export the bill of materials as CSV.
+- Export a KiCad netlist (`.net`) to start a PCB in KiCad.
 - Import and export `.circuitoon.json`.
 - Take newer part data from the library with Update parts to current library, when a sheet was drawn with an older copy.
 
@@ -267,11 +269,11 @@ The CLI bundle `plugin/dist-cli/circuitoon.mjs` is committed. After any change u
 
 ## Status and roadmap
 
-Early development. The editor, the wiring checker and the agent toolkit (plugin 0.6.1) work today. Still to come in V1: saving sheets in the browser, PDF export, and an art studio for drawing your own parts.
+Early development. The editor, the wiring checker and the agent toolkit (plugin 0.7.0) work today. Still to come in V1: saving sheets in the browser, PDF export, and an art studio for drawing your own parts.
 
 - V2: DC simulation in the browser, with voltages, currents and overcurrent.
 - V3: animation driven by that simulation. LEDs light up, switches flip.
-- Being explored: firmware for the boards on a sheet, and KiCad export.
+- Being explored: firmware for the boards on a sheet, and taking KiCad export past the netlist.
 
 The bar from the start was a wiring sheet built by hand for the Spirit Typewriter, a project with 42 two-switch balls on three MCP23017 banks. That design now ships as [a worked example](plugin/skills/circuitoon-design/references/examples/spirit-typewriter/), split into four sheets and laid out by the CLI.
 

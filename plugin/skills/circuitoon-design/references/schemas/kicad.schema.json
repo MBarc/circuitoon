@@ -1,0 +1,101 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "circuitoon kicad --json",
+  "type": "object",
+  "required": [
+    "format",
+    "ok",
+    "input",
+    "source",
+    "output",
+    "components",
+    "nets",
+    "unmapped",
+    "placeholders",
+    "warnings",
+    "notes"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "format": {
+      "const": "circuitoon-cli/kicad/1"
+    },
+    "ok": {
+      "const": true
+    },
+    "input": {
+      "type": "string"
+    },
+    "source": {
+      "enum": [
+        "sheet",
+        "netlist"
+      ]
+    },
+    "output": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "components": {
+      "type": "integer"
+    },
+    "nets": {
+      "type": "integer"
+    },
+    "unmapped": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "ref",
+          "module"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "ref": {
+            "type": "string"
+          },
+          "module": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "placeholders": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "ref",
+          "module"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "ref": {
+            "type": "string"
+          },
+          "module": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "warnings": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "notes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "netlist": {
+      "type": "string"
+    }
+  }
+}
