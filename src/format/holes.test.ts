@@ -84,7 +84,7 @@ describe('hole groups in modules', () => {
     const pad = (g: Record<string, unknown>) => ({ ...bb, holes: [...bb.holes!, { name: 'VCC', at: [[60, 60]], holeStyle: 'pad', ...g }] })
     expect(validateModule(pad({ type: 'power_in', supply: '3V3/5V' })).ok).toBe(true)
     expect(errorsOf(pad({ type: 'volts', supply: '3V3//5V' }))).toEqual([
-      'holes[9].type: must be one of power_in, power_out, ground, input, output, io, passive, nc',
+      'holes[9].type: must be one of power_in, power_out, ground, input, output, io, passive, nc, usb',
       'holes[9].supply: must be one or more rail names separated by "/", for example "3V3/5V"',
     ])
     expect(errorsOf(pad({ supply: 5 }))).toEqual(['holes[9].supply: must be a string'])

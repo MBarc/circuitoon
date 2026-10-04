@@ -213,13 +213,13 @@ describe('cable ends', () => {
   })
   it('drops an unknown end kind with a warning, keeping the other end', () => {
     const d = structuredClone(buttonLed) as unknown as { connections: Record<string, unknown>[] }
-    d.connections[0].ends = { from: 'usb-c', to: 'banana' }
+    d.connections[0].ends = { from: 'usb-z', to: 'banana' }
     const r = validateDiagram(d)
     expect(r.ok).toBe(true)
     if (!r.ok) return
-    expect(r.warnings).toEqual(['connections[0].ends.from: unknown cable end "usb-c", so that end is drawn as bare wire'])
+    expect(r.warnings).toEqual(['connections[0].ends.from: unknown cable end "usb-z", so that end is drawn as bare wire'])
     expect(r.diagram.connections[0].ends).toEqual({ to: 'banana' })
-    expect((d.connections[0].ends as Record<string, unknown>).from).toBe('usb-c') // not mutated
+    expect((d.connections[0].ends as Record<string, unknown>).from).toBe('usb-z') // not mutated
   })
   it('drops ends that are not an object, and unknown keys in ends, with warnings', () => {
     const d = structuredClone(buttonLed) as unknown as { connections: Record<string, unknown>[] }

@@ -816,6 +816,24 @@ describe('every message ends with what to do', () => {
       [mw('o|L', 'm1|NET'), mw('m2|NET', 'l|L'), mw('o|N', 'l|N')], { 'net-label': load('net-label') }))
     expect(rules(live)).toContain('label-mains')
   })
+  it('on the USB rules', () => {
+    const port = (name: string, side: string, usb: Record<string, unknown>) => ({ name, side, type: 'usb', usb })
+    const host = custom({ id: 'usb-host', pins: [port('USB', 'right', { connector: 'A', gender: 'receptacle', role: 'host', version: '2.0' }), { name: 'IO', side: 'left', type: 'io' }] })
+    const dev = custom({ id: 'usb-dev', pins: [port('USB', 'left', { connector: 'micro-B', gender: 'receptacle', role: 'device' })] })
+    const big = custom({ id: 'usb-big', pins: [port('USB', 'left', { connector: 'A', gender: 'plug', role: 'device', draw: 600 })] })
+    const hub = custom({ id: 'usb-hub', pins: [port('UP', 'left', { connector: 'B', gender: 'receptacle', role: 'device', hub: 'upstream', draw: 50 }), port('P1', 'right', { connector: 'A', gender: 'receptacle', role: 'host', hub: 'downstream' })],
+      electrical: { params: {}, usbHub: { power: 'bus' } } })
+    const cabled = (d: Diagram, ends: Connection['ends']) => built({ ...d, connections: d.connections.map((c) => ({ ...c, ends })) })
+    expect(rules(sheetWith([host, dev], [at('u1', 'U1', 'usb-host'), at('u2', 'U2', 'usb-dev', 300)], [['u1|IO', 'u2|USB']]))).toContain('usb-to-pin')
+    expect(rules(sheetWith([host, dev], [at('u1', 'U1', 'usb-host'), at('u2', 'U2', 'usb-dev', 300)], [['u1|USB', 'u2|USB']]))).toContain('usb-fit')
+    const twoHosts = sheetWith([host], [at('u1', 'U1', 'usb-host'), at('u2', 'U2', 'usb-host', 300)], [['u1|USB', 'u2|USB']])
+    expect(rules(cabled(twoHosts, { from: 'usb-a', to: 'usb-a' }))).toContain('usb-role')
+    expect(rules(sheetWith([host, big], [at('u1', 'U1', 'usb-host'), at('u2', 'U2', 'usb-big', 300)], [['u1|USB', 'u2|USB']]))).toContain('usb-power')
+    const tree = sheetWith([host, hub, big], [at('u1', 'U1', 'usb-host'), at('h1', 'H1', 'usb-hub', 300), at('u2', 'U2', 'usb-big', 600)], [['u1|USB', 'h1|UP'], ['h1|P1', 'u2|USB']])
+    expect(rules(built({ ...tree, connections: tree.connections.map((c, i) => (i === 0 ? { ...c, ends: { from: 'usb-a', to: 'usb-b' } } : c)) }))).toContain('usb-hub-bus-power')
+    const unknown = sheetWith([host, dev], [at('u1', 'U1', 'usb-host'), at('u2', 'U2', 'usb-dev', 300)], [['u1|USB', 'u2|USB']])
+    expect(rules(cabled(unknown, { from: 'usb-a', to: 'usb-micro-b' }))).toEqual(['usb-power-unknown'])
+  })
   it('on every finding of every sheet built in this file', () => {
     const missing: string[] = []
     const seen = new Set<string>()

@@ -15,6 +15,11 @@ export const END_KINDS = [
   'jst-sh',
   'grove',
   'banana',
+  'usb-a',
+  'usb-b',
+  'usb-mini-b',
+  'usb-micro-b',
+  'usb-c',
 ] as const
 export type EndKind = (typeof END_KINDS)[number]
 
@@ -42,7 +47,15 @@ export const END_NAMES: Record<EndKind, string> = {
   'jst-sh': 'JST-SH (Qwiic)',
   grove: 'Grove plug',
   banana: 'Banana plug',
+  'usb-a': 'USB-A plug',
+  'usb-b': 'USB-B plug',
+  'usb-mini-b': 'Mini-B plug',
+  'usb-micro-b': 'Micro-B plug',
+  'usb-c': 'USB-C plug',
 }
+
+/** A USB cable's plug end (USB design 2.1): only these ends go on a cable between two USB ports. */
+export const isUsbEnd = (k: EndKind): boolean => k.startsWith('usb-')
 
 /**
  * A named pair of ends, as sold. Presets exist only in the editor; the file stores the ends.
@@ -74,6 +87,12 @@ export const CABLE_PRESETS: CablePreset[] = [
   preset('qwiic', 'Qwiic / STEMMA QT end (per wire)', 'jst-sh'),
   preset('grove', 'Grove end (per wire)', 'grove'),
   preset('banana', 'Banana leads', 'banana'),
+  preset('usb-a-micro-b', 'USB A to micro-B cable', 'usb-a', 'usb-micro-b'),
+  preset('usb-a-mini-b', 'USB A to mini-B cable', 'usb-a', 'usb-mini-b'),
+  preset('usb-a-b', 'USB A to B cable', 'usb-a', 'usb-b'),
+  preset('usb-a-c', 'USB A to C cable', 'usb-a', 'usb-c'),
+  preset('usb-c-c', 'USB C to C cable', 'usb-c'),
+  preset('usb-c-micro-b', 'USB C to micro-B cable', 'usb-c', 'usb-micro-b'),
 ]
 
 export function endKind(ends: WireEnds | undefined, which: 'from' | 'to'): EndKind {
@@ -138,6 +157,11 @@ export const END_SIZE: Record<EndKind, { reach: number; trim: number; exposed: b
   'jst-sh': { reach: 8, trim: 5, exposed: false },
   grove: { reach: 14, trim: 10, exposed: false },
   banana: { reach: 28, trim: 22, exposed: false },
+  'usb-a': { reach: 30, trim: 24, exposed: false },
+  'usb-b': { reach: 30, trim: 24, exposed: false },
+  'usb-mini-b': { reach: 26, trim: 20, exposed: false },
+  'usb-micro-b': { reach: 26, trim: 20, exposed: false },
+  'usb-c': { reach: 26, trim: 20, exposed: false },
 }
 
 /** Smallest a connector is squashed to on a short end segment; below that it overhangs the corner. */

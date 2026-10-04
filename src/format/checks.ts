@@ -16,6 +16,7 @@ import { andList, natural, orList } from './words.ts'
 import { type MainsAnalysis, analyseMainsCached } from './mains.ts'
 import { type PinRuleId, hasPinData, lazyPinModel, pinFindings } from './pinRules.ts'
 import { unknownFeedWords } from './mainsRules.ts'
+import { type UsbRuleId, usbFedParts, usbFindings, usbLink } from './usb.ts'
 
 /** `info` is a note, not a problem: it never blocks and never counts as one. */
 export type Severity = 'error' | 'warning' | 'info'
@@ -66,6 +67,7 @@ export type RuleId =
   /** Never from checkDiagram: the editor's Problems list adds it for a stored part older than the library (moduleDrift.ts). */
   | 'module-drift'
   | PinRuleId
+  | UsbRuleId
 
 /** Rule order within one severity and one subject, and each rule's short heading. */
 export const RULES: Record<RuleId, { severity: Severity; title: string }> = {
@@ -91,6 +93,9 @@ export const RULES: Record<RuleId, { severity: Severity; title: string }> = {
   'pin-input-only': { severity: 'error', title: 'Input-only pin drives' },
   'pin-output-only': { severity: 'error', title: 'Output-only pin read' },
   'i2c-address-clash': { severity: 'error', title: 'I2C address clash' },
+  'usb-to-pin': { severity: 'error', title: 'USB wired to pins' },
+  'usb-fit': { severity: 'error', title: 'USB plug does not fit' },
+  'usb-role': { severity: 'error', title: 'USB roles clash' },
   'supply-too-low': { severity: 'warning', title: 'Voltage too low' },
   'pin-strapping': { severity: 'warning', title: 'Strapping pin pulled' },
   'pin-no-pullup': { severity: 'warning', title: 'Input has no pull-up' },
@@ -119,10 +124,13 @@ export const RULES: Record<RuleId, { severity: Severity; title: string }> = {
   'wire-color-supply': { severity: 'warning', title: 'Supply wire not red' },
   'wire-color-signal': { severity: 'warning', title: 'Signal wire in a power color' },
   'label-alone': { severity: 'warning', title: 'Label connects nothing' },
+  'usb-power': { severity: 'warning', title: 'USB port overloaded' },
+  'usb-hub-bus-power': { severity: 'warning', title: 'Bus-powered hub overloaded' },
   // Its severity is the drift's own (an error when the part must be placed again); listed by the editor only.
   'module-drift': { severity: 'warning', title: 'Part data out of date' },
   'battery-bank': { severity: 'info', title: 'Parallel battery bank' },
   'i2c-pullups-unknown': { severity: 'info', title: 'Check the I2C pull-ups' },
+  'usb-power-unknown': { severity: 'info', title: 'USB current not known' },
 }
 const RULE_ORDER = Object.keys(RULES) as RuleId[]
 
@@ -663,18 +671,28 @@ export function checkDiagram(d: Diagram): Finding[] {
 
   const terminal = terminalsOf(d, partByUid, mains)
 
+  const usbAny = d.parts.some((p) => moduleOf(d, p.module)?.pins.some((q) => !isSpacer(q) && q.type === 'usb'))
   // Wires per net, and which parts have a wire that conducts or a plugged leg.
   const netWires: string[][] = nl.nets.map(() => [])
   const connected = new Set<string>(plugs.map((pl) => pl.part))
   for (const c of d.connections) {
     if (brokenSet.has(c.uid)) continue
-    connected.add(c.from.part)
-    connected.add(c.to.part)
+    // A USB link brings power and ground through the cable: it does not make a part wired.
+    if (!(usbAny && usbLink(d, c))) {
+      connected.add(c.from.part)
+      connected.add(c.to.part)
+    }
     const i = nl.netOf.get(nodeKey(c.from.part, c.from.pin))
     if (i !== undefined) netWires[i].push(c.uid)
   }
 
-  const netTerms = nl.nets.map((keys) => (keys.some(hazardous) ? [] : keys.map(terminal).filter((t): t is Terminal => t !== null)))
+  // A net with a USB port is judged by the USB rules alone (usb.ts), like a mains net by the mains rules.
+  const isUsb = (t: Terminal | null) => t?.type === 'usb'
+  const netTerms = nl.nets.map((keys) => {
+    if (keys.some(hazardous)) return []
+    const terms = keys.map(terminal)
+    return terms.some(isUsb) ? [] : terms.filter((t): t is Terminal => t !== null)
+  })
   /** Supplies (by source id) already reported as wired to their own ground, and their parts. */
   const shorted = new Set<string>()
   const shortedParts = new Set<string>()
@@ -717,6 +735,7 @@ export function checkDiagram(d: Diagram): Finding[] {
   const { reversed, returnGroup } = checkPotentials({ d, nl, netTerms, netWires, terminal, plugs, shorted, add, skip: hazardous })
 
   // Per part: power and ground reach it from another part.
+  const usbFed = usbAny ? usbFedParts(d) : new Set<string>()
   const others = (t: Terminal) => {
     const i = nl.netOf.get(t.key)
     return i === undefined ? [] : netTerms[i].filter((o) => o.part !== t.part)
@@ -747,7 +766,8 @@ export function checkDiagram(d: Diagram): Finding[] {
     const ins = terms.filter((t) => t.type === 'power_in')
     // A part with a pin on USB power is its own supply.
     // A part with its power reversed is reported as such, not as unpowered.
-    if (ins.length && !moduleInfo(m).external.size && !reversed.has(p.uid)) {
+    // A part on a USB link takes its power through the port (a dongle, a charger's USB input).
+    if (ins.length && !moduleInfo(m).external.size && !reversed.has(p.uid) && !usbFed.has(p.uid)) {
       const fed =
         ins.some((t) => others(t).some(mayFeed)) ||
         terms.some((t) => t.type === 'power_out' && others(t).some(isSource))
@@ -926,6 +946,8 @@ export function checkDiagram(d: Diagram): Finding[] {
   }
 
   for (const f of mains?.findings ?? []) add(f)
+
+  if (usbAny) for (const f of usbFindings(d, nl, netWires)) add(f)
 
   // Pin capabilities (input only, output only, flash, strapping, no pull-up) and I2C buses
   // (pull-ups, addresses), from the caps and I2C data the modules declare. Mains nets never enter.
