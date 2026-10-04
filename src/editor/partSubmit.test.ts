@@ -2,7 +2,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { FIELD_IDS, SUBMIT_TEMPLATE, submissionUrl, submitToLibrary } from './partSubmit.ts'
 
-const form = readFileSync(`.github/ISSUE_TEMPLATE/${SUBMIT_TEMPLATE}`, 'utf8')
+// Windows checkouts may store these files with CRLF line ends; the assertions are about content.
+const read = (path: string) => readFileSync(path, 'utf8').replace(/\r\n/g, '\n')
+const form = read(`.github/ISSUE_TEMPLATE/${SUBMIT_TEMPLATE}`)
 
 describe('Submit to library', () => {
   it('opens the part submission form with the title, name and maker filled in', () => {
@@ -25,7 +27,7 @@ describe('Submit to library', () => {
 })
 
 describe('the import skill', () => {
-  const skill = readFileSync('.claude/skills/circuitoon-import-part/SKILL.md', 'utf8')
+  const skill = read('.claude/skills/circuitoon-import-part/SKILL.md')
   it('never puts submission text on a command line: comments go through a file', () => {
     const commands = [...skill.matchAll(/```bash\n([\s\S]*?)```/g)].flatMap((m) => m[1].split('\n'))
     for (const line of commands) expect(line, line).not.toMatch(/--(comment|body|title)[ =]/)
