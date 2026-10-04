@@ -81,6 +81,17 @@
       "name": "D7",
       "side": "right",
       "type": "io"
+    },
+    {
+      "name": "USB",
+      "side": "top",
+      "type": "usb",
+      "usb": {
+        "connector": "C",
+        "gender": "receptacle",
+        "role": "device",
+        "speed": "full"
+      }
     }
   ],
   "size": {

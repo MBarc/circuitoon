@@ -271,6 +271,62 @@
       "side": "right",
       "label": "G",
       "type": "ground"
+    },
+    {
+      "spacer": true,
+      "side": "bottom"
+    },
+    {
+      "spacer": true,
+      "side": "bottom"
+    },
+    {
+      "spacer": true,
+      "side": "bottom"
+    },
+    {
+      "name": "UART",
+      "side": "bottom",
+      "type": "usb",
+      "usb": {
+        "connector": "micro-B",
+        "gender": "receptacle",
+        "role": "device",
+        "version": "2.0",
+        "speed": "full"
+      }
+    },
+    {
+      "spacer": true,
+      "side": "bottom"
+    },
+    {
+      "name": "USB",
+      "side": "bottom",
+      "type": "usb",
+      "usb": {
+        "connector": "micro-B",
+        "gender": "receptacle",
+        "role": "dual",
+        "version": "1.1",
+        "speed": "full"
+      }
+    },
+    {
+      "spacer": true,
+      "side": "bottom"
+    },
+    {
+      "spacer": true,
+      "side": "bottom"
+    },
+    {
+      "spacer": true,
+      "side": "bottom"
+    },
+    {
+      "spacer": true,
+      "side": "bottom"
     }
   ],
   "internal": [

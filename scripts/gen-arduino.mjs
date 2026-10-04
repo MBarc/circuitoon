@@ -10,6 +10,7 @@
 // Run from the repo root: `node scripts/gen-arduino.mjs` (add `--check` to compare with modules/).
 import { finish } from './lib/gen-output.mjs'
 import { moduleJson, r, slots, write } from './lib/parts.mjs'
+import { portSide, usbPort } from './lib/usb.mjs'
 import { S3_STRAP, strapCaps } from './lib/pin-caps.mjs'
 
 const TEAL = '#17708A', BLUE = '#1E4F8A', DARK = '#1B1F24', CHIP = '#2B2F36', BTN = '#3A3F47'
@@ -109,6 +110,23 @@ const led = (x, y, fill) => r(x, y, 5, 4, fill, { radius: 1 })
 /** Silkscreen text plate (no outline). */
 const silk = (x, y, w, h, text, size) => r(x, y, w, h, TEAL, { outline: false, label: text, labelColor: SILK, labelSize: size })
 
+// ---- USB ports ----------------------------------------------------------------------------------
+//
+// One port per connector, on the top edge where the art draws it (USB design 1.1). Connectors from each
+// board's full pinout and the art above; roles from what the port is wired to (schematics): the
+// ATmega16U2 USB-to-serial on the Uno R3, Mega and the Due's programming port, the boards' own USB
+// on the rest. Two ports host as well as serve: the Zero's and the Due's native ports ("Using the
+// Native port enables you to use the Zero [Due] as a client USB peripheral ... or as a USB host
+// device", Arduino's getting-started guides). Speeds from the USB chip each port reaches (the
+// ATmega16U2, 32U4, SAMD21, SAMD11, nRF52840, RA4M1 and RP2040 are full-speed devices; the Due's
+// SAM3X8E native port is USB 2.0 high speed). No source gives a board's USB current: unknown.
+const DEV = (connector, version = '2.0') => ({ connector, gender: 'receptacle', role: 'device', version, speed: 'full' })
+// The ESP32-S3 (the Uno R4 WiFi's USB bridge, the Nano ESP32's own USB) and the RP2040 are USB 1.1
+// full-speed controllers (Espressif: "compliant with the USB 1.1 specification"; RP2040 datasheet: "USB 1.1").
+const DEV11 = (connector) => DEV(connector, '1.1')
+const topPort = (W, x, name, usb) => portSide('top', W / 10, [[x, usbPort(name, 'top', usb)]])
+const centrePort = (usb) => [usbPort('USB', 'top', usb)]
+
 // ---- Shield boards (Uno, Leonardo, Zero, Mega, Due) ------------------------------------------------
 //
 // Rows, read off Arduino's full-pinout sheets and KiCad's Module:Arduino_UNO_R3 footprint (pads 1-8
@@ -134,9 +152,10 @@ function shieldArt(W, H, left, right, extra) {
   ]
 }
 
-function shield({ file, id, name, source, W = 210, H = 270, left, right, own, caps, io33, internal, external, holes, art }) {
+function shield({ file, id, name, source, W = 210, H = 270, left, right, own, caps, io33, internal, external, holes, art, ports = [] }) {
   const typeOf = typer({ own, caps, io33 })
-  const pins = [...place('left', left, H / 10, typeOf), ...place('right', right, H / 10, typeOf)]
+  // USB ports last, on the free top edge at the drawn connector (USB design 1.3: an additive update).
+  const pins = [...place('left', left, H / 10, typeOf), ...place('right', right, H / 10, typeOf), ...ports]
   const electrical = { model: 'mcu', params: {} }
   if (external) electrical.external = [external]
   const m = moduleJson({ id, name, category: 'Microcontrollers', source, pins, internal, wu: W / 10, hu: H / 10, electrical, inside: true, holes, shapes: shieldArt(W, H, left, right, [...art, ...(holes ? holeLabels(holes) : [])]) })
@@ -159,6 +178,7 @@ const IN = { type: 'input' }
 //    "6-20V input"; Arduino recommends 7-12 V, the Nano's range here.
 shield({
   file: 'arduino-uno-r3.json', id: 'arduino-uno-r3', name: 'Arduino Uno R3',
+  ports: topPort(210, 150, 'USB', DEV('B')),
   source: 'https://docs.arduino.cc/resources/datasheets/A000066-datasheet.pdf https://docs.arduino.cc/resources/pinouts/A000066-full-pinout.pdf https://docs.arduino.cc/resources/schematics/A000066-schematics.pdf https://gitlab.com/kicad/libraries/kicad-symbols/-/blob/master/MCU_Module.kicad_symdir/Arduino_UNO_R3.kicad_sym https://gitlab.com/kicad/libraries/kicad-footprints/-/blob/master/Module.pretty/Arduino_UNO_R3.kicad_mod',
   left: [...R3_POWER('NC'), ...header(20, ['A0', 'A1', 'A2', 'A3', 'A4', 'A5'])],
   right: [...R3_DIGITAL_HI('SCL', 'SDA'), ...R3_DIGITAL_LO],
@@ -202,6 +222,7 @@ const r4Art = (extra) => [
 ]
 shield({
   file: 'arduino-uno-r4-minima.json', id: 'arduino-uno-r4-minima', name: 'Arduino Uno R4 Minima',
+  ports: topPort(210, 150, 'USB', DEV('C')),
   source: `https://docs.arduino.cc/resources/datasheets/ABX00080-datasheet.pdf https://docs.arduino.cc/resources/pinouts/ABX00080-full-pinout.pdf https://docs.arduino.cc/resources/schematics/ABX00080-schematics.pdf ${R4_SOURCE}`,
   left: R4_LEFT, right: [...R3_DIGITAL_HI('SCL', 'SDA'), ...R3_DIGITAL_LO],
   own: R4_OWN, caps: { BOOT: R4_BOOT }, internal: R4_INTERNAL, external: R4_USB,
@@ -219,6 +240,7 @@ shield({
 // The 2 x 3 ESP32-S3 header, the Qwiic connector and the ICSP header are drawn, not pinned.
 shield({
   file: 'arduino-uno-r4-wifi.json', id: 'arduino-uno-r4-wifi', name: 'Arduino Uno R4 WiFi',
+  ports: topPort(210, 150, 'USB', DEV11('C')),
   source: `https://docs.arduino.cc/resources/datasheets/ABX00087-datasheet.pdf https://docs.arduino.cc/resources/pinouts/ABX00087-full-pinout.pdf https://docs.arduino.cc/resources/schematics/ABX00087-schematics.pdf https://docs.arduino.cc/tutorials/uno-r4-wifi/vrtc-off ${R4_SOURCE}`,
   left: [...header(7, ['OFF', 'GND 4|GND', 'VRTC']), ...R4_LEFT], right: [...R3_DIGITAL_HI('SCL', 'SDA'), ...R3_DIGITAL_LO],
   own: { ...R4_OWN, OFF: IN, VRTC: { type: 'power_in', supply: '3V/3V3' } },
@@ -242,6 +264,7 @@ shield({
 //    (tech specs; the pinout says 6-20 V input).
 shield({
   file: 'arduino-leonardo.json', id: 'arduino-leonardo', name: 'Arduino Leonardo',
+  ports: topPort(210, 150, 'USB', DEV('micro-B')),
   source: 'https://docs.arduino.cc/resources/pinouts/A000057-full-pinout.pdf https://docs.arduino.cc/resources/schematics/A000057-schematics.pdf https://github.com/arduino/docs-content/blob/main/content/hardware/hero/boards/leonardo/tech-specs.yml https://gitlab.com/kicad/libraries/kicad-symbols/-/blob/master/MCU_Module.kicad_symdir/Arduino_Leonardo.kicad_sym',
   left: [...R3_POWER('NC'), ...header(20, ['A0', 'A1', 'A2', 'A3', 'A4', 'A5'])],
   right: [...R3_DIGITAL_HI('SCL', 'SDA'), ...R3_DIGITAL_LO],
@@ -265,6 +288,8 @@ shield({
 //    (PMV48XP) to +5V, a switch. Tech specs: "I/O Voltage: 3.3V", "Input voltage (nominal): 5-18V".
 shield({
   file: 'arduino-zero.json', id: 'arduino-zero', name: 'Arduino Zero',
+  // Left of the two: the programming port (EDBG, USB2 on the pinout), right: the SAMD21's native port (USB1).
+  ports: portSide('top', 21, [[90, usbPort('PROG', 'top', { connector: 'micro-B', gender: 'receptacle', role: 'device', version: '2.0' })], [150, usbPort('NATIVE', 'top', { connector: 'micro-B', gender: 'receptacle', role: 'dual', version: '2.0', speed: 'full' })]]),
   source: 'https://docs.arduino.cc/resources/pinouts/ABX00003-full-pinout.pdf https://docs.arduino.cc/resources/schematics/ABX00003-schematics.pdf https://github.com/arduino/docs-content/blob/main/content/hardware/hero/boards/zero/tech-specs.yml https://github.com/arduino/ArduinoCore-samd/blob/master/variants/arduino_zero/variant.cpp',
   left: [...R3_POWER('ATN'), ...header(20, ['A0', 'A1', 'A2', 'A3', 'A4', 'A5'])],
   right: [...R3_DIGITAL_HI('SCL', 'SDA'), ...R3_DIGITAL_LO],
@@ -318,6 +343,7 @@ const MEGA_COMM = header(27, ['D14|TX3', 'D15|RX3', 'D16|TX2', 'D17|RX2', 'D18|T
 // 7-12 V recommended.
 shield({
   file: 'arduino-mega-2560.json', id: 'arduino-mega-2560', name: 'Arduino Mega 2560 Rev3', W: MEGA_W, H: MEGA_H,
+  ports: topPort(MEGA_W, 150, 'USB', DEV('B')),
   source: 'https://docs.arduino.cc/resources/datasheets/A000067-datasheet.pdf https://docs.arduino.cc/resources/pinouts/A000067-full-pinout.pdf https://docs.arduino.cc/resources/schematics/A000067-schematics.pdf',
   left: [...R3_POWER('NC'), ...header(20, ['A0', 'A1', 'A2', 'A3', 'A4', 'A5', 'A6', 'A7']), ...header(29, ['A8', 'A9', 'A10', 'A11', 'A12', 'A13', 'A14', 'A15'])],
   right: [...R3_DIGITAL_HI('SCL', 'SDA'), ...R3_DIGITAL_LO, ...MEGA_COMM],
@@ -345,6 +371,8 @@ shield({
 // header, not on D11-D13).
 shield({
   file: 'arduino-due.json', id: 'arduino-due', name: 'Arduino Due', W: MEGA_W, H: MEGA_H,
+  // Left of the two (next to the DC jack): the programming port (ATmega16U2, USB2 on the pinout); right: the SAM3X8E's native port (USB1).
+  ports: portSide('top', MEGA_W / 10, [[80, usbPort('PROG', 'top', DEV('micro-B'))], [140, usbPort('NATIVE', 'top', { connector: 'micro-B', gender: 'receptacle', role: 'dual', version: '2.0', speed: 'high' })]]),
   source: 'https://docs.arduino.cc/resources/datasheets/A000062-datasheet.pdf https://docs.arduino.cc/resources/pinouts/A000056-full-pinout.pdf https://docs.arduino.cc/resources/schematics/A000056-schematics.pdf https://github.com/arduino/docs-content/blob/main/content/hardware/mega/boards/due/tech-specs.yml',
   left: [...R3_POWER('NC'), ...header(20, ['A0', 'A1', 'A2', 'A3', 'A4', 'A5', 'A6', 'A7']), ...header(29, ['A8', 'A9', 'A10', 'A11', 'DAC0', 'DAC1', 'CANRX', 'CANTX'])],
   right: [...R3_DIGITAL_HI('SCL1', 'SDA1'), ...R3_DIGITAL_LO, ...MEGA_COMM],
@@ -368,7 +396,7 @@ shield({
 //
 // Two 0.6 in rows like the Nano in gen-boards.mjs (same body, pad strips and inside labels), USB at
 // the top with one empty row above the headers for it.
-function small({ file, id, name, source, left, right, top = 1, wu = 8, own, caps, io33, internal, external, pcb = TEAL, art, topPins, holes }) {
+function small({ file, id, name, source, left, right, top = 1, wu = 8, own, caps, io33, internal, external, pcb = TEAL, art, topPins, holes, ports = [] }) {
   const n = Math.max(left.length, right.length)
   const hu = n + top + 2
   const W = wu * 10, H = hu * 10
@@ -378,6 +406,7 @@ function small({ file, id, name, source, left, right, top = 1, wu = 8, own, caps
   const pins = [
     ...(topPins ? place('top', topPins.map((s, i) => [Math.ceil((wu - topPins.length + 1) / 2) + i, s]), wu, typeOf) : []),
     ...place('left', rows(left), hu, typeOf), ...place('right', rows(right), hu, typeOf),
+    ...ports,
   ]
   const ys = left.map((_, i) => (first + i) * 10)
   const electrical = { model: 'mcu', params: {} }
@@ -400,6 +429,7 @@ const nanoArt = (usb, body) => (W, H) => [...usb(W), ...body(W, H)]
 //    nominal; only the rails both cover are listed.
 small({
   file: 'arduino-micro.json', id: 'arduino-micro', name: 'Arduino Micro',
+  ports: centrePort(DEV('micro-B')),
   source: 'https://docs.arduino.cc/resources/pinouts/A000053-full-pinout.pdf https://docs.arduino.cc/resources/schematics/A000053-schematics.pdf https://github.com/arduino/docs-content/blob/main/content/hardware/hero/boards/micro/tech-specs.yml',
   left: ['D13', '3V3', 'AREF', 'A0', 'A1', 'A2', 'A3', 'A4', 'A5', 'NC', 'NC 2|NC', '5V', 'RESET', 'GND', 'VIN', 'D14|CIPO', 'D15|SCK'],
   right: ['D12', 'D11', 'D10', 'D9', 'D8', 'D7', 'D6', 'D5', 'D4', 'D3|D3/SCL', 'D2|D2/SDA', 'GND 2|GND', 'RESET 2|RESET', 'D0|D0/RX', 'D1|D1/TX', 'D17|SS', 'D16|COPI'],
@@ -421,6 +451,7 @@ small({
 const NANO_SOURCE_KICAD = 'https://gitlab.com/kicad/libraries/kicad-footprints/-/blob/master/Module.pretty/Arduino_Nano.kicad_mod'
 small({
   file: 'arduino-nano-every.json', id: 'arduino-nano-every', name: 'Arduino Nano Every',
+  ports: centrePort(DEV('micro-B')),
   source: `https://docs.arduino.cc/resources/datasheets/ABX00028-datasheet.pdf https://docs.arduino.cc/resources/pinouts/ABX00028-full-pinout.pdf https://docs.arduino.cc/resources/schematics/ABX00028-schematics.pdf https://gitlab.com/kicad/libraries/kicad-symbols/-/blob/master/MCU_Module.kicad_symdir/Arduino_Nano_Every.kicad_sym ${NANO_SOURCE_KICAD}`,
   left: NANO_LEFT('AREF', '5V', 'RST'), right: NANO_RIGHT('RST 2|RST', 'RX', 'TX'),
   own: { '3V3': P33, AREF: { type: 'io' }, '5V': P5, RST: IN, 'RST 2': IN, VIN: VIN_7_12, RX: { type: 'io' }, TX: { type: 'io' } },
@@ -443,6 +474,7 @@ const NANO33_OWN = { '3V3': P33, AREF: { type: 'io' }, '5V': { type: 'nc' }, RST
 const VUSB_NC = { note: 'This pin is not connected as shipped; shorting the VUSB jumper on the board puts USB 5 V on it.' }
 small({
   file: 'arduino-nano-33-iot.json', id: 'arduino-nano-33-iot', name: 'Arduino Nano 33 IoT',
+  ports: centrePort(DEV('micro-B')),
   source: `https://docs.arduino.cc/resources/datasheets/ABX00027-datasheet.pdf https://docs.arduino.cc/resources/pinouts/ABX00027-full-pinout.pdf https://docs.arduino.cc/resources/schematics/ABX00027-schematics.pdf ${NANO_SOURCE_KICAD}`,
   left: NANO_LEFT('AREF', '5V', 'RST'), right: NANO_RIGHT('RST 2|RST', 'RX', 'TX'),
   own: NANO33_OWN, io33: true, caps: { '5V': VUSB_NC },
@@ -457,6 +489,7 @@ small({
 // an internal I2C bus, not on the headers (datasheet sec. 1).
 small({
   file: 'arduino-nano-33-ble.json', id: 'arduino-nano-33-ble', name: 'Arduino Nano 33 BLE / BLE Sense',
+  ports: centrePort(DEV('micro-B')),
   source: `https://docs.arduino.cc/resources/datasheets/ABX00030-datasheet.pdf https://docs.arduino.cc/resources/pinouts/ABX00030-full-pinout.pdf https://docs.arduino.cc/resources/datasheets/ABX00031-datasheet.pdf https://docs.arduino.cc/resources/pinouts/ABX00031-full-pinout.pdf ${NANO_SOURCE_KICAD}`,
   left: NANO_LEFT('AREF', '5V', 'RST'), right: NANO_RIGHT('RST 2|RST', 'RX', 'TX'),
   own: NANO33_OWN, io33: true, caps: { '5V': VUSB_NC },
@@ -475,6 +508,7 @@ small({
 //    A2 = GPIO3, the ESP32-S3 strapping pins it breaks out (S3_STRAP in lib/pin-caps.mjs).
 small({
   file: 'arduino-nano-esp32.json', id: 'arduino-nano-esp32', name: 'Arduino Nano ESP32',
+  ports: centrePort(DEV11('C')),
   source: `https://docs.arduino.cc/resources/datasheets/ABX00083-datasheet.pdf https://docs.arduino.cc/resources/pinouts/ABX00083-full-pinout.pdf https://docs.arduino.cc/resources/schematics/ABX00083-schematics.pdf https://github.com/arduino/docs-content/blob/main/content/hardware/nano/boards/nano-esp32/tutorials/cheat-sheet/cheat-sheet.md https://gitlab.com/kicad/libraries/kicad-symbols/-/blob/master/MCU_Module.kicad_symdir/Arduino_Nano_ESP32.kicad_sym ${NANO_SOURCE_KICAD}`,
   left: ['D13', '3V3', 'B0', 'A0', 'A1', 'A2', 'A3', 'A4', 'A5', 'A6', 'A7', 'VBUS', 'B1', 'GND', 'VIN'],
   right: NANO_RIGHT('RST', 'RX0', 'TX0'),
@@ -499,6 +533,7 @@ small({
 //    REC as the RP2040's QSPI_CSn, which the RP2040 datasheet's boot ROM reads at reset (low: USB boot).
 small({
   file: 'arduino-nano-rp2040-connect.json', id: 'arduino-nano-rp2040-connect', name: 'Arduino Nano RP2040 Connect',
+  ports: centrePort(DEV11('micro-B')),
   source: `https://docs.arduino.cc/resources/datasheets/ABX00053-datasheet.pdf https://docs.arduino.cc/resources/pinouts/ABX00053-full-pinout.pdf https://docs.arduino.cc/resources/schematics/ABX00053-schematics.pdf https://github.com/arduino/docs-content/blob/main/content/hardware/nano/boards/nano-rp2040-connect/tutorials/rp2040-01-technical-reference/rp2040-01-technical-reference.md https://gitlab.com/kicad/libraries/kicad-symbols/-/blob/master/MCU_Module.kicad_symdir/Arduino_Nano_RP2040_Connect.kicad_sym ${NANO_SOURCE_KICAD}`,
   left: NANO_LEFT('AREF|REF', '5V', 'REC'), right: NANO_RIGHT('RST', 'RX', 'TX'),
   own: { '3V3': P33, AREF: { type: 'nc' }, '5V': { type: 'nc' }, REC: IN, RST: IN, VIN: { type: 'power_in', supply: '5V/7V/7.4V/9V/12V' }, RX: { type: 'io' }, TX: { type: 'io' }, A6: IN, A7: IN },

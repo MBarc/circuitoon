@@ -11,6 +11,7 @@
 import { finish } from './lib/gen-output.mjs'
 import { moduleJson, r, side, slots, write } from './lib/parts.mjs'
 import { esp32Caps } from './lib/pin-caps.mjs'
+import { portSide, usbPort } from './lib/usb.mjs'
 
 const METAL = '#C9CED6', TIN = '#D5DAE1', LEAD = '#B8BEC7', DARK = '#1B1F24', BLACK = '#2B2F36'
 const GREY = '#3A3F47', GOLD = '#E0B43C', RED = '#E0483E', HOLE = '#6B727C', MOUNT = '#15181C'
@@ -143,7 +144,10 @@ const passive = { type: 'passive' }
   write('esp32-terminal-board-38.json', moduleJson({
     id: 'esp32-terminal-board-38', name: 'ESP32 DevKitC V4 on 38-pin screw terminal board', category: 'Microcontrollers',
     source: 'https://protosupplies.com/product/esp32-s-screw-terminal-adapter/ https://www.otronic.nl/en/breakout-board-for-esp32-s-38-pins.html',
-    pins: [...top.pins, ...bottom.pins], internal: [['GND', 'GND 2', 'GND 3']], wu, hu,
+    // The seated DevKitC's micro USB overhangs the left end (art y 91-119): its port, as on the
+    // esp32-devkitc-v4 part (gen-boards.mjs), on the free left edge.
+    pins: [...top.pins, ...bottom.pins, ...portSide('left', hu, [[100, usbPort('USB', 'left', { connector: 'micro-B', gender: 'receptacle', role: 'device', version: '2.0', speed: 'full' })]])],
+    internal: [['GND', 'GND 2', 'GND 3']], wu, hu,
     // Its 5V terminal is the seated DevKitC's 5V pin, which carries that board's USB 5 V (see
     // gen-boards.mjs: VBUS through a Schottky diode, D3, to EXT_5V), a 5 V source while it is on
     // USB that can only raise its net.
@@ -226,7 +230,11 @@ tactile({ file: 'tactile-switch-6mm-4pin.json', id: 'tactile-switch-6mm-4pin', n
 //      well, since a C-to-C link needs it for the two ends to detect each other. Every conductor,
 //      VBUS and GND included, is passive: the cable passes power through, it neither supplies nor
 //      grounds anything itself.
-function usbPanel({ file, id, name, source, list, hu, tip }) {
+//      The bulkhead socket and the plug are also USB ports (USB design 1.1), appended so the
+//      conductor pins keep their places: the socket on the free left edge, the plug on the top edge
+//      over the plug's end (the right side holds the conductors). Both are passthrough: the bus goes
+//      on from one to the other.
+function usbPanel({ file, id, name, source, list, hu, tip, connector, socketY }) {
   const wu = 12, W = wu * 10, H = hu * 10
   const types = { VBUS: passive, 'D-': passive, 'D+': passive, GND: passive, CC: passive }
   const right = side('right', list, types, hu)
@@ -243,7 +251,12 @@ function usbPanel({ file, id, name, source, list, hu, tip }) {
     r(108, y0 + 4, W - 108, y1 - y0 - 8, METAL, { radius: 2 }),
   ]
   write(file, moduleJson({
-    id, name, category: 'Connectors', source, pins: right.pins, wu, hu,
+    id, name, category: 'Connectors', source, wu, hu,
+    pins: [
+      ...right.pins,
+      ...portSide('left', hu, [[socketY, usbPort('SOCKET', 'left', { connector, gender: 'receptacle', role: 'passthrough', through: 'PLUG' })]]),
+      ...portSide('top', wu, [[110, usbPort('PLUG', 'top', { connector, gender: 'plug', role: 'passthrough', through: 'SOCKET' })]]),
+    ],
     electrical: { model: 'connector', params: {} }, inside: true, shapes,
   }))
 }
@@ -251,12 +264,12 @@ function usbPanel({ file, id, name, source, list, hu, tip }) {
 usbPanel({
   file: 'usb-panel-mount-microusb.json', id: 'usb-panel-mount-microusb', name: 'USB panel-mount extension (micro-USB)',
   source: 'https://www.adafruit.com/product/3258 https://en.wikipedia.org/wiki/USB_hardware#Pinouts',
-  list: ['VBUS', 'D-', 'D+', null, 'GND'], hu: 7, tip: 3,
+  list: ['VBUS', 'D-', 'D+', null, 'GND'], hu: 7, tip: 3, connector: 'micro-B', socketY: 40,
 })
 usbPanel({
   file: 'usb-panel-mount-usbc.json', id: 'usb-panel-mount-usbc', name: 'USB panel-mount extension (USB-C)',
   source: 'https://en.wikipedia.org/wiki/USB-C#Receptacles https://en.wikipedia.org/wiki/USB_hardware#Pinouts',
-  list: ['VBUS', 'D-', 'D+', 'GND', null, 'CC'], hu: 8, tip: 8,
+  list: ['VBUS', 'D-', 'D+', 'GND', null, 'CC'], hu: 8, tip: 8, connector: 'C', socketY: 40,
 })
 
 // ---------------------------------------------------------------------------------------------

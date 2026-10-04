@@ -15,6 +15,7 @@
 // Pico W / Pico 2 W: three pads inside the board above the wireless module, drawn in the art at
 // their real spot with traces to the bottom-edge pins, as the official diagram leads them out).
 import { emit, finish, log } from './lib/gen-output.mjs'
+import { usbPort } from './lib/usb.mjs'
 import { moduleText } from './lib/kicad.mjs'
 import { fileURLToPath } from 'node:url'
 const OUT = fileURLToPath(new URL('../modules/', import.meta.url))
@@ -129,7 +130,11 @@ const SRC = {
 function build({ id, name, source, shapes }) {
   const m = {
     format: 'circuitoon-module/1', id, version: 1, name, category: 'Microcontrollers', source,
-    pins: [...pinsFor('left', LEFT), ...pinsFor('right', RIGHT), ...pinsFor('bottom', BOTTOM)],
+    // The micro-USB at the top (USB design 1.1). Every Pico datasheet: "USB 1.1 PHY and controller which
+    // can be used in both Device and Host mode" (host mode needs 5 V fed to VBUS), so the port is dual,
+    // full speed. No source gives the board's USB draw: unknown.
+    pins: [...pinsFor('left', LEFT), ...pinsFor('right', RIGHT), ...pinsFor('bottom', BOTTOM),
+      usbPort('USB', 'top', { connector: 'micro-B', gender: 'receptacle', role: 'dual', version: '1.1', speed: 'full' })],
     internal: [GROUNDS],
     size: { w: WU, h: HU },
     // Datasheet: "VBUS is the micro-USB input voltage, connected to micro-USB port pin 1. This is

@@ -7,25 +7,16 @@
   "source": "https://www.rtl-sdr.com/wp-content/uploads/2024/12/RTLSDR_V4_Datasheet_V_1_0.pdf https://www.rtl-sdr.com/v4/ https://www.rtl-sdr.com/buy-rtl-sdr-dvb-t-dongles/ https://en.wikipedia.org/wiki/USB_hardware#Pinouts",
   "pins": [
     {
-      "name": "VBUS",
+      "name": "USB",
       "side": "left",
-      "type": "power_in",
-      "supply": "5V"
-    },
-    {
-      "name": "D-",
-      "side": "left",
-      "type": "io"
-    },
-    {
-      "name": "D+",
-      "side": "left",
-      "type": "io"
-    },
-    {
-      "name": "GND",
-      "side": "left",
-      "type": "ground"
+      "type": "usb",
+      "usb": {
+        "connector": "A",
+        "gender": "plug",
+        "role": "device",
+        "version": "2.0",
+        "draw": 270
+      }
     },
     {
       "name": "ANT",
@@ -153,16 +144,5 @@
         "outline": false
       }
     ]
-  },
-  "kicad": {
-    "footprint": "Connector_USB:USB_A_Molex_67643_Horizontal",
-    "pins": {
-      "VBUS": "1",
-      "D-": "2",
-      "D+": "3",
-      "GND": "4"
-    },
-    "value": "RTL-SDR Blog V4",
-    "note": "The USB-A receptacle the dongle plugs into; the SMA antenna jack stays on the dongle."
   }
 }

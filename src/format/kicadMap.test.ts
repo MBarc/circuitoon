@@ -22,7 +22,6 @@ const NO_PAD: Record<string, string[]> = {
   'rpi-pico-2-w': ['SWCLK', 'GND DBG', 'SWDIO'],
   'rfm95-lora-breakout': ['ANT'],
   'gps-neo-m8n-gy-gpsv3': ['ANT'],
-  'rtl-sdr-blog-v4': ['ANT'],
   'arduino-uno-r4-wifi': ['OFF', 'GND 4', 'VRTC'],
 }
 
@@ -57,7 +56,8 @@ describe('the KiCad mapping of the built-in parts', () => {
 
   it('gives every pin and pad group of a mapped part a pad, bar the listed few', () => {
     for (const m of modules.filter((x) => x.kicad)) {
-      const names = [...pinsOf(m).map((p) => p.name), ...(m.holes ?? []).map((g) => g.name)]
+      // USB ports come in as their own USB connectors (kicad.ts), never on the part's footprint.
+      const names = [...pinsOf(m).filter((p) => p.type !== 'usb').map((p) => p.name), ...(m.holes ?? []).map((g) => g.name)]
       const unpadded = names.filter((n) => padOf(m, n) === undefined)
       expect(unpadded, m.id).toEqual(NO_PAD[m.id] ?? [])
     }

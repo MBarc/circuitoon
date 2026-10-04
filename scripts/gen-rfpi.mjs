@@ -18,6 +18,7 @@
 // they keep one pin per contact.
 import { finish } from './lib/gen-output.mjs'
 import { moduleJson, r, side, write } from './lib/parts.mjs'
+import { usbPort } from './lib/usb.mjs'
 
 const METAL = '#C9CED6', TIN = '#D5DAE1', HOLE = '#6B727C', CHIP = '#1E2126', GOLD = '#E0B43C', GOLD_HOLE = '#8A6A1E'
 const BEZEL = '#1B1F24', BACK = '#B8BEC7', BACK_DARK = '#9AA1AB', GREEN = '#2F9E6E', GREEN_DARK = '#237A55'
@@ -195,14 +196,15 @@ td2({
 // ---------------------------------------------------------------------------------------------
 // 5. RTL-SDR Blog V4 (R828D tuner, RTL2832U), a USB dongle: "USB Connector: USB-A Male",
 //    "Input Connector: 1x SMA" (RTL-SDR Blog V4 datasheet), an SMA female antenna port (RTL-SDR
-//    Blog store page); typical draw 250-270 mA from USB. No headers: the plug's four contacts are
-//    its pins, in USB-A contact order 1 VBUS, 2 D-, 3 D+, 4 GND (USB 2.0 pinout), so it wires to a
-//    host's USB lines or a USB breakout; ANT is the SMA jack. The software bias tee can put 4.5 V,
-//    180 mA on ANT, for an LNA only.
+//    Blog store page); "Typical Current Draw 250 - 270 mA" (datasheet), recorded as 270 mA. The plug
+//    is one USB port (USB design 1.1): a USB-A plug device that goes straight into a host's socket.
+//    It used to be four contact pins (VBUS, D-, D+, GND); a sheet saved with those keeps its copy
+//    and is asked to place the part again. ANT is the SMA jack. The software bias tee can put
+//    4.5 V, 180 mA on ANT, for an LNA only (that current comes from USB too, on top of the 270 mA).
 {
   const wu = 17, hu = 6, W = wu * 10, H = hu * 10
-  const types = { VBUS: { type: 'power_in', supply: '5V' }, 'D-': { type: 'io' }, 'D+': { type: 'io' }, GND: { type: 'ground' }, ANT: { type: 'passive' } }
-  const left = side('left', ['VBUS', 'D-', 'D+', 'GND'], types, hu)
+  const types = { ANT: { type: 'passive' } }
+  const left = { pins: [usbPort('USB', 'left', { connector: 'A', gender: 'plug', role: 'device', version: '2.0', draw: 270 })] }
   const right = side('right', ['ANT'], types, hu)
   const y = right.pos.ANT
   const shapes = [

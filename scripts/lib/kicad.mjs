@@ -20,7 +20,8 @@ export const jstXh = (n) => `Connector_JST:JST_XH_B${n}B-XH-A_1x${pad2(n)}_P2.50
 /** A 5.0 mm screw terminal (Phoenix MKDS 1,5): the stand-in a mains part is wired to. */
 export const screwTerminal = (n) => `TerminalBlock_Phoenix:TerminalBlock_Phoenix_MKDS-1,5-${n}_1x${pad2(n)}_P5.00mm_Horizontal`
 
-const names = (m, side) => m.pins.filter((p) => !p.spacer && p.side === side).map((p) => p.name)
+// USB ports are never header pads: each comes in as its own USB connector (src/format/kicad.ts).
+const names = (m, side) => m.pins.filter((p) => !p.spacer && p.side === side && p.type !== 'usb').map((p) => p.name)
 const numbered = (list) => Object.fromEntries(list.map((n, i) => [n, String(i + 1)]))
 /** One footprint for the pins of one side, pad 1 the first pin. */
 const oneRow = (m, side, fp = socket) => {
@@ -212,11 +213,6 @@ const KICAD = {
 
   // GPS: the 4-pin header; ANT is the u.FL jack on the module, not a header pin.
   'gps-neo-m8n-gy-gpsv3': (m) => ({ ...oneRow(m, 'top'), value: 'GY-NEO-M8N', note: 'ANT is the u.FL jack on the module, not on this header.' }),
-  // A USB dongle reaches the board through the USB-A receptacle it plugs into (pad 1 VBUS, 2 D-, 3 D+, 4 GND).
-  'rtl-sdr-blog-v4': () => ({
-    footprint: 'Connector_USB:USB_A_Molex_67643_Horizontal', pins: { VBUS: '1', 'D-': '2', 'D+': '3', GND: '4' }, value: 'RTL-SDR Blog V4',
-    note: 'The USB-A receptacle the dongle plugs into; the SMA antenna jack stays on the dongle.',
-  }),
 
   // Sensors
   'bme280-module-4pin': (m) => ({ ...oneRow(m, 'bottom'), value: 'BME280' }),
@@ -365,6 +361,7 @@ export const UNMAPPED = {
   'lcd-rpi-touch-display-7': 'A panel wired to the Pi by its DSI flat cable and jumper wires: it is not mounted on a PCB.',
   'lcd-rpi-touch-display-2-7': 'A panel wired to the Pi by its DSI flat cable and power lead: it is not mounted on a PCB.',
   'lcd-rpi-touch-display-2-5': 'A panel wired to the Pi by its DSI flat cable and power lead: it is not mounted on a PCB.',
+  'rtl-sdr-blog-v4': 'A USB dongle: its plug comes in as a USB connector (src/format/kicad.ts), and the SMA antenna jack stays on the dongle.',
   'mic-ics-40300': 'KiCad has no footprint for its land pattern: Knowles_LGA-6_4.72x3.76mm (same size) puts the port ring 3.29 mm from the pad row, the ICS-40300 2.62 mm.',
   'mic-spu0410lr5h-qb': 'KiCad has no footprint for its 3.76 x 3.00 mm LGA-6 package.',
   'wago-221-412': 'A wire splice: it joins wires off the board.',

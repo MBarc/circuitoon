@@ -119,6 +119,18 @@
     {
       "spacer": true,
       "side": "right"
+    },
+    {
+      "name": "USB",
+      "side": "bottom",
+      "type": "usb",
+      "usb": {
+        "connector": "micro-B",
+        "gender": "receptacle",
+        "role": "device",
+        "version": "2.0",
+        "speed": "full"
+      }
     }
   ],
   "size": {

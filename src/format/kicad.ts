@@ -102,7 +102,9 @@ export function kicadValue(part: { values?: Record<string, unknown> }, m: Module
 
 /** Pin names with their sides, then hole group names, in order: what a mapping by name relies on. */
 const terminalKey = (m: ModuleDef): string =>
-  JSON.stringify([m.pins.filter((p): p is PinDef => !isSpacer(p)).map((p) => [p.name, p.side]), (m.holes ?? []).map((g) => g.name)])
+  // USB ports are left out: they come in as USB connectors of their own, never on the mapping (a copy
+  // saved before the library added them still names the same header pins).
+  JSON.stringify([m.pins.filter((p): p is PinDef => !isSpacer(p) && p.type !== 'usb').map((p) => [p.name, p.side]), (m.holes ?? []).map((g) => g.name)])
 
 /**
  * The mapping to export a part with: the library's, when the part is built in and its stored copy

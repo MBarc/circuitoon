@@ -4,7 +4,7 @@
 // A wrong pad is worse than a missing part, so a change here must be re-checked against the source.
 import { describe, expect, it } from 'vitest'
 import { isSpacer, layoutModule, type Side } from './module.ts'
-import { load, pinsOf, pin } from './builtinModules.testing.ts'
+import { load, pinsOf, pin, withoutUsb } from './builtinModules.testing.ts'
 
 
 // Each side lists its slots in array order; null is a spacer (a physical gap between pads).
@@ -31,7 +31,7 @@ const power: Record<string, Want> = {
 
 describe('built-in power modules keep the physical pad order', () => {
   for (const [file, want] of Object.entries(power)) {
-    const m = load(file)
+    const m = withoutUsb(load(file))
     it(`${file}: every side matches the source, slot for slot, on pitch`, () => {
       expect(m.category).toBe('Power')
       expect(m.source).toMatch(/^https:\/\/\S+ https:\/\//)

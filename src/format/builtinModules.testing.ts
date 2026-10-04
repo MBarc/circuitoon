@@ -22,3 +22,17 @@ export const pinsOf = (m: ModuleDef): PinDef[] => m.pins.filter((p): p is PinDef
 
 /** The pin named `name`, or undefined. */
 export const pin = (m: ModuleDef, name: string): PinDef | undefined => pinsOf(m).find((p) => p.name === name)
+
+/**
+ * The module as it was before its USB ports (USB design 1.3): each port back to the spacer it took,
+ * and a side that holds only ports and their spacers dropped. The header pin-order tests compare
+ * this; usbParts.test.ts pins the ports themselves.
+ */
+export function withoutUsb(m: ModuleDef): ModuleDef {
+  const portSides = new Set(m.pins.filter((p) => !isSpacer(p) && p.type === 'usb').map((p) => p.side))
+  const onlyPorts = [...portSides].filter((s) => m.pins.every((p) => p.side !== s || isSpacer(p) || p.type === 'usb'))
+  const pins = m.pins
+    .filter((p) => !onlyPorts.includes(p.side))
+    .map((p) => (!isSpacer(p) && p.type === 'usb' ? { spacer: true as const, side: p.side } : p))
+  return { ...m, pins }
+}

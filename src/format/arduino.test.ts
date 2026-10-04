@@ -5,7 +5,7 @@
 // the module's `source`.
 import { describe, expect, it } from 'vitest'
 import { externalPower, layoutModule, type ModuleDef } from './module.ts'
-import { load, pin, pinsOf } from './builtinModules.testing.ts'
+import { load, pin, pinsOf, withoutUsb } from './builtinModules.testing.ts'
 
 const R3_POWER = (first: string) => [first, 'IOREF', 'RESET', '3V3', '5V', 'GND', 'GND', 'VIN']
 const A0_5 = ['A0', 'A1', 'A2', 'A3', 'A4', 'A5']
@@ -49,7 +49,7 @@ const rowsOf = (m: ModuleDef, side: 'left' | 'right' | 'top') => layoutModule(m)
 
 describe('Arduino boards keep the physical header order', () => {
   for (const [id, want] of Object.entries(boards)) {
-    const m = load(id)
+    const m = withoutUsb(load(id))
     it(`${id}: rows match the source pinout, in the Microcontrollers group`, () => {
       expect(m.category).toBe('Microcontrollers')
       expect(m.source).toMatch(/^https:\/\//)
