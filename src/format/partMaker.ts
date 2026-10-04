@@ -158,13 +158,16 @@ export function validateSpec(raw: unknown): SpecResult {
   return errors.length ? { ok: false, errors } : { ok: true, spec: raw as unknown as PartSpec }
 }
 
-/** Pin entries for one side, from the spec, in order. */
+/**
+ * Pin entries for one side, from the spec, in order. Every pin gets an explicit label (its name
+ * unless the spec gives one): the renderer hides unlabelled names on a part with one or two pins
+ * (a resistor's "1" and "2"), and a custom part's names are the point of it.
+ */
 function sideEntries(side: Side, list: PinSpec[]): PinEntry[] {
   return list.map((p): PinEntry => {
     if (p === null || (typeof p === 'object' && p.spacer)) return { spacer: true, side }
-    if (typeof p === 'string') return { name: p.trim(), side }
-    const pin: PinDef = { name: p.name!.trim(), side }
-    if (p.label !== undefined && p.label !== '') pin.label = p.label
+    if (typeof p === 'string') return { name: p.trim(), side, label: p.trim() }
+    const pin: PinDef = { name: p.name!.trim(), side, label: p.label !== undefined && p.label !== '' ? p.label : p.name!.trim() }
     if (p.type) pin.type = p.type
     if (p.supply !== undefined && p.supply.trim() !== '') pin.supply = p.supply.trim()
     if (p.caps && Object.keys(p.caps).length) pin.caps = p.caps
@@ -413,7 +416,8 @@ export function specFromModule(m: ModuleDef): PartSpec {
       continue
     }
     const o: PinSpecObject = { name: p.name }
-    if (p.label !== undefined) o.label = p.label
+    // A label equal to the name is the part maker's own, so a renamed pin takes its new name.
+    if (p.label !== undefined && p.label !== p.name) o.label = p.label
     if (p.type) o.type = p.type
     if (p.supply) o.supply = p.supply
     if (p.caps) o.caps = p.caps
@@ -598,8 +602,10 @@ const FIELD_WORDS: Record<string, string> = {
 export function unmodeled(m: ModuleDef): string[] {
   const r = buildPart(specFromModule(m))
   if (!r.ok) return ['pins the part maker cannot draw']
-  const rebuilt = r.module as unknown as Record<string, unknown>
-  const own = m as unknown as Record<string, unknown>
+  // A pin's label defaults to its name (parts saved before labels were explicit have none).
+  const labelled = (x: ModuleDef) => ({ ...x, pins: x.pins.map((p) => (isSpacer(p) ? p : { ...p, label: p.label ?? p.name })) }) as unknown as Record<string, unknown>
+  const rebuilt = labelled(r.module)
+  const own = labelled(m)
   const keys = new Set([...Object.keys(own), ...Object.keys(rebuilt)])
   // The category and source are edited in the dialog; a missing category only gains the default.
   for (const k of ['format', 'id', 'custom', 'version', 'name', 'category', 'source', 'internal']) keys.delete(k)

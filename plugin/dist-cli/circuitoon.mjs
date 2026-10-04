@@ -66897,7 +66897,11 @@ function validateSpec(raw) {
 		spec: raw
 	};
 }
-/** Pin entries for one side, from the spec, in order. */
+/**
+* Pin entries for one side, from the spec, in order. Every pin gets an explicit label (its name
+* unless the spec gives one): the renderer hides unlabelled names on a part with one or two pins
+* (a resistor's "1" and "2"), and a custom part's names are the point of it.
+*/
 function sideEntries(side, list) {
 	return list.map((p) => {
 		if (p === null || typeof p === "object" && p.spacer) return {
@@ -66906,13 +66910,14 @@ function sideEntries(side, list) {
 		};
 		if (typeof p === "string") return {
 			name: p.trim(),
-			side
+			side,
+			label: p.trim()
 		};
 		const pin = {
 			name: p.name.trim(),
-			side
+			side,
+			label: p.label !== void 0 && p.label !== "" ? p.label : p.name.trim()
 		};
-		if (p.label !== void 0 && p.label !== "") pin.label = p.label;
 		if (p.type) pin.type = p.type;
 		if (p.supply !== void 0 && p.supply.trim() !== "") pin.supply = p.supply.trim();
 		if (p.caps && Object.keys(p.caps).length) pin.caps = p.caps;

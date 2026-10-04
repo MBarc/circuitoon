@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { HOLE_FILL, buildPart, customId, lintModule, moduleFromSpec, parsePinLines, plateText, slugify, specFromModule, validateSpec, type PartSpec } from './partMaker.ts'
+import { createElement } from 'react'
+import { renderToStaticMarkup } from 'react-dom/server'
+import { Part } from '../render/Part.tsx'
+import { HOLE_FILL, buildPart, customId, lintModule, moduleFromSpec, parsePinLines, plateText, slugify, specFromModule, unmodeled, validateSpec, type PartSpec } from './partMaker.ts'
 import { MODULE_PX_MAX, isSpacer, pinRoom, layoutModule, validateModule, type ModuleDef, type PinDef } from './module.ts'
 import { load, moduleFiles } from './builtinModules.testing.ts'
 
@@ -77,7 +80,7 @@ describe('moduleFromSpec', () => {
     const r = buildPart({ name: 'X', pins: { left: [{ name: 'GND', type: 'ground' }, 'VCC'], right: [{ name: 'GND', type: 'ground' }, 'GND'] } })
     expect(r.ok).toBe(true)
     if (!r.ok) return
-    expect(pinsOf(r.module).map((p) => [p.name, p.label])).toEqual([['GND', undefined], ['VCC', undefined], ['GND 2', 'GND'], ['GND 3', 'GND']])
+    expect(pinsOf(r.module).map((p) => [p.name, p.label])).toEqual([['GND', 'GND'], ['VCC', 'VCC'], ['GND 2', 'GND'], ['GND 3', 'GND']])
     expect(r.notes[0]).toContain('GND -> GND 2')
   })
 
@@ -291,5 +294,30 @@ describe('limits', () => {
     expect(() => validateModule(m)).not.toThrow()
     expect(validateModule(m).ok).toBe(false)
     expect(pinRoom(m)).toBe(8 + 2 + Math.ceil(7 * 4.5 + 3))
+  })
+})
+
+describe('small custom parts', () => {
+  it('a one- or two-pin part draws every pin name, in both styles', () => {
+    for (const style of ['board', 'chip'] as const)
+      for (const names of [['SDA', 'SCL'], ['OUT']]) {
+        const m = moduleFromSpec({ name: 'Tiny', style, pins: { left: names } })
+        const svg = renderToStaticMarkup(createElement('svg', null, createElement(Part, { module: m })))
+        for (const n of names) expect(svg, `${style} ${n}`).toContain(`>${n}</text>`)
+      }
+  })
+  it('the labels are explicit but never stick to a renamed pin when edited', () => {
+    const m = moduleFromSpec({ name: 'Tiny', pins: { left: ['SDA', { name: 'GND 2', label: 'GND' }] } })
+    expect(m.pins).toMatchObject([{ name: 'SDA', label: 'SDA' }, { name: 'GND 2', label: 'GND' }])
+    expect(specFromModule(m).pins.left).toEqual([{ name: 'SDA' }, { name: 'GND 2', label: 'GND' }])
+    expect(moduleFromSpec(specFromModule(m))).toEqual(m)
+  })
+})
+
+describe('unmodeled', () => {
+  it('a part saved before pin labels were explicit still edits fully', () => {
+    const m = moduleFromSpec({ name: 'Old', pins: { left: ['SDA', 'SCL', 'GND'] } })
+    const old = { ...m, pins: m.pins.map((p) => (isSpacer(p) ? p : { name: p.name, side: p.side })) }
+    expect(unmodeled(old)).toEqual([])
   })
 })
