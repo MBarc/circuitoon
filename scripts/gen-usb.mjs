@@ -281,7 +281,6 @@ const USB2_HOST = { connector: 'A', gender: 'receptacle', role: 'host', version:
     ...[[70, 22], [190, 22], [190, 70], [70, 78]].flatMap(([x, y]) => [r(x - 6, y - 6, 12, 12, TIN, { radius: 6, outline: false }), r(x - 3, y - 3, 6, 6, HOLE, { radius: 3, outline: false })]),
     r(120, 12, 50, 18, CHIP, { radius: 1, label: 'FE1.1s', labelColor: TIN, labelSize: 6 }),
     ...socket(40), ...socket(140), ...socket(240), ...socket(340),
-    ...[['4', 40], ['3', 140], ['2', 240], ['1', 340]].map(([t, x]) => r(x - 4, H - 46, 8, 9, HUB_BLACK, { outline: false, label: t, labelColor: SILK, labelSize: 6 })),
     ...[['D+', 340, 11], ['D-', 350, 11], ['GND', 360, 11], ['SCL', 340, 39], ['SDA', 350, 39], ['5V', 360, 39]].map(([t, x, y]) => r(x - 4.5, y - 3.5, 9, 7, HUB_BLACK, { outline: false, label: t, labelColor: SILK, labelSize: 3.4 })),
     r(220, 14, 90, 12, HUB_BLACK, { outline: false, label: 'Circuitneato', labelColor: SILK, labelSize: 7 }),
   ]
