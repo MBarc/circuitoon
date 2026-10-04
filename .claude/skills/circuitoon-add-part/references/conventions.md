@@ -94,5 +94,6 @@ Every new part gets a `kicad` field, or a deliberate reason not to (PRD "KiCad m
 - lcdwiki.com module pages (MSP/Hosyond TFTs, MC0xx OLEDs) with tables, schematics and top/back photos.
 - Microchip datasheets (MCP23017 DS20001952, MCP23018 DS20002103).
 - Raspberry Pi datasheets on datasheets.raspberrypi.com (Pico family pinout diagrams).
+- Arduino: `docs.arduino.cc/resources/{datasheets,pinouts,schematics}/<SKU>-{datasheet,full-pinout,schematics}.pdf` (the hardware page lists which exist; older boards have no datasheet). Full pinouts have a text layer but read best rendered; newer datasheets have numbered header tables, sometimes with typos (Due, Uno R3 JDIGITAL), so cross-check with the pinout and KiCad's `MCU_Module` symbols. Tutorials and cheat sheets are plain Markdown in github.com/arduino/docs-content (docs.arduino.cc pages are JS-rendered and fetch empty).
 - For clones: randomnerdtutorials, lastminuteengineers, espboards.dev as independent cross-checks.
 - Phoenix Contact: phoenixcontact.com answers HTTP 403 to scripted and headless requests. Digi-Key serves Phoenix's own sheets at `https://media.digikey.com/pdf/Data%20Sheets/Phoenix%20Contact%20PDFs/<item>.pdf`, but they can be older revisions (2010 or 2016) whose ratings differ from the current page: record the sheet date with every value.

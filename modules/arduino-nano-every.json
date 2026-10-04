@@ -1,0 +1,649 @@
+{
+  "format": "circuitoon-module/1",
+  "id": "arduino-nano-every",
+  "version": 1,
+  "name": "Arduino Nano Every",
+  "category": "Microcontrollers",
+  "source": "https://docs.arduino.cc/resources/datasheets/ABX00028-datasheet.pdf https://docs.arduino.cc/resources/pinouts/ABX00028-full-pinout.pdf https://docs.arduino.cc/resources/schematics/ABX00028-schematics.pdf https://gitlab.com/kicad/libraries/kicad-symbols/-/blob/master/MCU_Module.kicad_symdir/Arduino_Nano_Every.kicad_sym https://gitlab.com/kicad/libraries/kicad-footprints/-/blob/master/Module.pretty/Arduino_Nano.kicad_mod",
+  "pins": [
+    {
+      "spacer": true,
+      "side": "left"
+    },
+    {
+      "name": "D13",
+      "side": "left",
+      "type": "io"
+    },
+    {
+      "name": "3V3",
+      "side": "left",
+      "type": "power_out",
+      "supply": "3V3"
+    },
+    {
+      "name": "AREF",
+      "side": "left",
+      "type": "io"
+    },
+    {
+      "name": "A0",
+      "side": "left",
+      "type": "io"
+    },
+    {
+      "name": "A1",
+      "side": "left",
+      "type": "io"
+    },
+    {
+      "name": "A2",
+      "side": "left",
+      "type": "io"
+    },
+    {
+      "name": "A3",
+      "side": "left",
+      "type": "io"
+    },
+    {
+      "name": "A4",
+      "side": "left",
+      "type": "io"
+    },
+    {
+      "name": "A5",
+      "side": "left",
+      "type": "io"
+    },
+    {
+      "name": "A6",
+      "side": "left",
+      "type": "io"
+    },
+    {
+      "name": "A7",
+      "side": "left",
+      "type": "io"
+    },
+    {
+      "name": "5V",
+      "side": "left",
+      "type": "power_in",
+      "supply": "5V"
+    },
+    {
+      "name": "RST",
+      "side": "left",
+      "type": "input"
+    },
+    {
+      "name": "GND",
+      "side": "left",
+      "type": "ground"
+    },
+    {
+      "name": "VIN",
+      "side": "left",
+      "type": "power_in",
+      "supply": "7V/7.4V/9V/12V"
+    },
+    {
+      "spacer": true,
+      "side": "right"
+    },
+    {
+      "name": "D12",
+      "side": "right",
+      "type": "io"
+    },
+    {
+      "name": "D11",
+      "side": "right",
+      "type": "io"
+    },
+    {
+      "name": "D10",
+      "side": "right",
+      "type": "io"
+    },
+    {
+      "name": "D9",
+      "side": "right",
+      "type": "io"
+    },
+    {
+      "name": "D8",
+      "side": "right",
+      "type": "io"
+    },
+    {
+      "name": "D7",
+      "side": "right",
+      "type": "io"
+    },
+    {
+      "name": "D6",
+      "side": "right",
+      "type": "io"
+    },
+    {
+      "name": "D5",
+      "side": "right",
+      "type": "io"
+    },
+    {
+      "name": "D4",
+      "side": "right",
+      "type": "io"
+    },
+    {
+      "name": "D3",
+      "side": "right",
+      "type": "io"
+    },
+    {
+      "name": "D2",
+      "side": "right",
+      "type": "io"
+    },
+    {
+      "name": "GND 2",
+      "side": "right",
+      "label": "GND",
+      "type": "ground"
+    },
+    {
+      "name": "RST 2",
+      "side": "right",
+      "label": "RST",
+      "type": "input"
+    },
+    {
+      "name": "RX",
+      "side": "right",
+      "type": "io"
+    },
+    {
+      "name": "TX",
+      "side": "right",
+      "type": "io"
+    }
+  ],
+  "internal": [
+    [
+      "GND",
+      "GND 2"
+    ],
+    [
+      "RST",
+      "RST 2"
+    ]
+  ],
+  "size": {
+    "w": 8,
+    "h": 18
+  },
+  "electrical": {
+    "model": "mcu",
+    "params": {},
+    "external": [
+      {
+        "pin": "5V",
+        "volts": 5,
+        "via": "USB",
+        "diode": true
+      }
+    ]
+  },
+  "art": {
+    "w": 80,
+    "h": 180,
+    "pinLabels": "inside",
+    "shapes": [
+      {
+        "type": "rect",
+        "x": 0,
+        "y": 0,
+        "w": 80,
+        "h": 180,
+        "fill": "#17708A",
+        "radius": 5
+      },
+      {
+        "type": "rect",
+        "x": 2,
+        "y": 25,
+        "w": 8,
+        "h": 150,
+        "fill": "#E0B43C",
+        "radius": 2,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 4.5,
+        "y": 28.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 4.5,
+        "y": 38.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 4.5,
+        "y": 48.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 4.5,
+        "y": 58.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 4.5,
+        "y": 68.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 4.5,
+        "y": 78.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 4.5,
+        "y": 88.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 4.5,
+        "y": 98.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 4.5,
+        "y": 108.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 4.5,
+        "y": 118.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 4.5,
+        "y": 128.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 4.5,
+        "y": 138.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 4.5,
+        "y": 148.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 4.5,
+        "y": 158.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 4.5,
+        "y": 168.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 70,
+        "y": 25,
+        "w": 8,
+        "h": 150,
+        "fill": "#E0B43C",
+        "radius": 2,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 72.5,
+        "y": 28.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 72.5,
+        "y": 38.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 72.5,
+        "y": 48.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 72.5,
+        "y": 58.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 72.5,
+        "y": 68.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 72.5,
+        "y": 78.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 72.5,
+        "y": 88.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 72.5,
+        "y": 98.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 72.5,
+        "y": 108.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 72.5,
+        "y": 118.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 72.5,
+        "y": 128.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 72.5,
+        "y": 138.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 72.5,
+        "y": 148.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 72.5,
+        "y": 158.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 72.5,
+        "y": 168.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 28,
+        "y": -7,
+        "w": 24,
+        "h": 18,
+        "fill": "#C9CED6",
+        "radius": 2
+      },
+      {
+        "type": "rect",
+        "x": 32,
+        "y": -5,
+        "w": 16,
+        "h": 3,
+        "fill": "#8A9099",
+        "radius": 1,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 32,
+        "y": 24,
+        "w": 16,
+        "h": 16,
+        "fill": "#C9CED6",
+        "radius": 2
+      },
+      {
+        "type": "rect",
+        "x": 35,
+        "y": 27,
+        "w": 10,
+        "h": 10,
+        "fill": "#3A3F47",
+        "radius": 5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 27,
+        "y": 60,
+        "w": 26,
+        "h": 26,
+        "fill": "#2B2F36",
+        "radius": 2,
+        "label": "4809",
+        "labelColor": "#D5DAE1",
+        "labelSize": 6
+      },
+      {
+        "type": "rect",
+        "x": 31,
+        "y": 100,
+        "w": 18,
+        "h": 18,
+        "fill": "#2B2F36",
+        "radius": 2
+      },
+      {
+        "type": "rect",
+        "x": 28,
+        "y": 132,
+        "w": 5,
+        "h": 4,
+        "fill": "#F4B400",
+        "radius": 1
+      },
+      {
+        "type": "rect",
+        "x": 47,
+        "y": 132,
+        "w": 5,
+        "h": 4,
+        "fill": "#3FB56B",
+        "radius": 1
+      }
+    ]
+  },
+  "kicad": {
+    "symbol": "MCU_Module:Arduino_Nano_Every",
+    "footprint": "Module:Arduino_Nano",
+    "pins": {
+      "D13": "16",
+      "3V3": "17",
+      "AREF": "18",
+      "A0": "19",
+      "A1": "20",
+      "A2": "21",
+      "A3": "22",
+      "A4": "23",
+      "A5": "24",
+      "A6": "25",
+      "A7": "26",
+      "5V": "27",
+      "RST": "28",
+      "GND": "29",
+      "VIN": "30",
+      "D12": "15",
+      "D11": "14",
+      "D10": "13",
+      "D9": "12",
+      "D8": "11",
+      "D7": "10",
+      "D6": "9",
+      "D5": "8",
+      "D4": "7",
+      "D3": "6",
+      "D2": "5",
+      "GND 2": "4",
+      "RST 2": "3",
+      "RX": "2",
+      "TX": "1"
+    },
+    "value": "Arduino Nano Every"
+  }
+}

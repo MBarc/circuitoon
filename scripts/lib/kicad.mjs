@@ -84,6 +84,68 @@ const terminalBlock = (n, footprint, note) => {
   return { footprint, pins, ...(note ? { note } : {}) }
 }
 
+// The Arduino family (gen-arduino.mjs). Uno-shaped boards fit KiCad's Module:Arduino_UNO_R3, whose
+// pads (and the MCU_Module:Arduino_UNO_R3 / Arduino_Leonardo symbols) run 1-8 down the power
+// header, 9-14 the analog one, then 15 D0 up the digital side to 32 at its top (SCL): the module
+// lists the left side top to bottom (pad 1 first) and the right side top to bottom (pad 32 first).
+// Nano-shaped boards use Module:Arduino_Nano as the Nano does. Mega, Due, Micro and Pro Mini have no
+// KiCad footprint: one socket strip per header.
+const unoR3 = (value, symbol, skip = []) => (m) => {
+  const pins = {}
+  names(m, 'left').filter((n) => !skip.includes(n)).forEach((n, i) => (pins[n] = String(i + 1)))
+  names(m, 'right').forEach((n, i) => (pins[n] = String(32 - i)))
+  return {
+    ...(symbol ? { symbol } : {}), footprint: 'Module:Arduino_UNO_R3', pins, value,
+    ...(skip.length ? { note: `The ${skip.join(', ')} pins are not on this footprint.` } : {}),
+  }
+}
+const nanoForm = (value, symbol) => (m) => {
+  const pins = {}
+  names(m, 'left').forEach((n, i) => (pins[n] = String(16 + i)))
+  names(m, 'right').forEach((n, i) => (pins[n] = String(15 - i)))
+  return { ...(symbol ? { symbol } : {}), footprint: 'Module:Arduino_Nano', pins, value }
+}
+/** Mega-shaped boards: three left headers (8 each), three right (10, 8, 8), the 2 x 18 as two rows from its 5V end. */
+const megaForm = (value) => (m) => {
+  const l = names(m, 'left'), rt = names(m, 'right')
+  const ys = [...new Set(m.holes.map((g) => g.at[0][1]))].sort((a, b) => a - b)
+  const row = (y) => m.holes.filter((g) => g.at[0][1] === y).sort((a, b) => b.at[0][0] - a.at[0][0]).map((g) => g.name)
+  return {
+    ...groups([
+      ['power header, pin 1 NC', l.slice(0, 8), socket], ['analog header, pin 1 A0', l.slice(8, 16), socket], [`analog header, pin 1 ${l[16]}`, l.slice(16), socket],
+      [`digital header, pin 1 ${rt[0]}`, rt.slice(0, 10), socket], ['digital header, pin 1 D7', rt.slice(10, 18), socket], ['communication header, pin 1 D14', rt.slice(18), socket],
+      ['2 x 18 header, even row, pin 1 5V', row(ys[0]), socket], ['2 x 18 header, odd row, pin 1 5V', row(ys[1]), socket],
+    ]),
+    value,
+    note: 'Each header is its own socket strip: place them at the board\'s real positions.',
+  }
+}
+const proMini = (value) => (m) => ({
+  ...groups([
+    ['left header, pin 1 TXO', names(m, 'left'), socket], ['right header, pin 1 RAW', names(m, 'right'), socket],
+    ['programming header, pin 1 BLK', names(m, 'top'), socket], ['A4 A5 pads', ['A4', 'A5'], socket], ['A6 A7 pads', ['A6', 'A7'], socket],
+  ]),
+  value,
+  note: 'Each header is its own socket strip: place them at the board\'s real positions.',
+})
+const ARDUINO = {
+  'arduino-uno-r3': unoR3('Arduino Uno R3', 'MCU_Module:Arduino_UNO_R3'),
+  'arduino-uno-r4-minima': unoR3('Arduino Uno R4 Minima'),
+  'arduino-uno-r4-wifi': unoR3('Arduino Uno R4 WiFi', undefined, ['OFF', 'GND 4', 'VRTC']),
+  'arduino-leonardo': unoR3('Arduino Leonardo', 'MCU_Module:Arduino_Leonardo'),
+  'arduino-zero': unoR3('Arduino Zero'),
+  'arduino-mega-2560': megaForm('Arduino Mega 2560'),
+  'arduino-due': megaForm('Arduino Due'),
+  'arduino-micro': (m) => ({ ...devBoard(m), value: 'Arduino Micro' }),
+  'arduino-nano-every': nanoForm('Arduino Nano Every', 'MCU_Module:Arduino_Nano_Every'),
+  'arduino-nano-33-iot': nanoForm('Arduino Nano 33 IoT'),
+  'arduino-nano-33-ble': nanoForm('Arduino Nano 33 BLE'),
+  'arduino-nano-esp32': nanoForm('Arduino Nano ESP32', 'MCU_Module:Arduino_Nano_ESP32'),
+  'arduino-nano-rp2040-connect': nanoForm('Arduino Nano RP2040 Connect', 'MCU_Module:Arduino_Nano_RP2040_Connect'),
+  'arduino-pro-mini-5v': proMini('Arduino Pro Mini 5V'),
+  'arduino-pro-mini-3v3': proMini('Arduino Pro Mini 3.3V'),
+}
+
 const KICAD = {
   // Microcontrollers
   'esp32-devkit-v1-30': devBoard,
@@ -102,6 +164,7 @@ const KICAD = {
     names(m, 'right').forEach((n, i) => (pins[n] = String(15 - i)))
     return { symbol: 'MCU_Module:Arduino_Nano_v3.x', footprint: 'Module:Arduino_Nano', pins, value: 'Arduino Nano' }
   },
+  ...ARDUINO,
   'rpi-pico': pico('MCU_Module:RaspberryPi_Pico'),
   'rpi-pico-h': pico('MCU_Module:RaspberryPi_Pico'),
   'rpi-pico-w': pico('MCU_Module:RaspberryPi_Pico_W'),

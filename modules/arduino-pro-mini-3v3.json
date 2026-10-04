@@ -1,0 +1,779 @@
+{
+  "format": "circuitoon-module/1",
+  "id": "arduino-pro-mini-3v3",
+  "version": 1,
+  "name": "Arduino Pro Mini 3.3V / 8MHz",
+  "category": "Microcontrollers",
+  "source": "https://cdn.sparkfun.com/assets/learn_tutorials/1/0/4/Graphical_Datasheet_Arduino_ProMini-3_3V_8MHzV2.png https://cdn.sparkfun.com/datasheets/Dev/Arduino/Boards/Arduino-Pro-Mini-v14.zip https://cdn.sparkfun.com/datasheets/Dev/Arduino/Boards/Arduino-Pro-Mini-v14.pdf https://learn.sparkfun.com/tutorials/using-the-arduino-pro-mini-33v/all https://docs.arduino.cc/retired/boards/arduino-pro-mini/",
+  "pins": [
+    {
+      "name": "GND 3",
+      "side": "top",
+      "label": "BLK",
+      "type": "ground"
+    },
+    {
+      "name": "GND 4",
+      "side": "top",
+      "label": "GND",
+      "type": "ground"
+    },
+    {
+      "name": "VCC 2",
+      "side": "top",
+      "label": "VCC",
+      "type": "power_out",
+      "supply": "3V3"
+    },
+    {
+      "name": "RXI 2",
+      "side": "top",
+      "label": "RXI",
+      "type": "io",
+      "caps": {
+        "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it."
+      }
+    },
+    {
+      "name": "TXO 2",
+      "side": "top",
+      "label": "TXO",
+      "type": "io",
+      "caps": {
+        "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it."
+      }
+    },
+    {
+      "name": "DTR",
+      "side": "top",
+      "label": "GRN",
+      "type": "input",
+      "caps": {
+        "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it."
+      }
+    },
+    {
+      "spacer": true,
+      "side": "left"
+    },
+    {
+      "name": "TXO",
+      "side": "left",
+      "type": "io",
+      "caps": {
+        "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it."
+      }
+    },
+    {
+      "name": "RXI",
+      "side": "left",
+      "type": "io",
+      "caps": {
+        "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it."
+      }
+    },
+    {
+      "name": "RST",
+      "side": "left",
+      "type": "input",
+      "caps": {
+        "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it."
+      }
+    },
+    {
+      "name": "GND",
+      "side": "left",
+      "type": "ground"
+    },
+    {
+      "name": "D2",
+      "side": "left",
+      "label": "2",
+      "type": "io",
+      "caps": {
+        "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it."
+      }
+    },
+    {
+      "name": "D3",
+      "side": "left",
+      "label": "3",
+      "type": "io",
+      "caps": {
+        "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it."
+      }
+    },
+    {
+      "name": "D4",
+      "side": "left",
+      "label": "4",
+      "type": "io",
+      "caps": {
+        "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it."
+      }
+    },
+    {
+      "name": "D5",
+      "side": "left",
+      "label": "5",
+      "type": "io",
+      "caps": {
+        "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it."
+      }
+    },
+    {
+      "name": "D6",
+      "side": "left",
+      "label": "6",
+      "type": "io",
+      "caps": {
+        "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it."
+      }
+    },
+    {
+      "name": "D7",
+      "side": "left",
+      "label": "7",
+      "type": "io",
+      "caps": {
+        "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it."
+      }
+    },
+    {
+      "name": "D8",
+      "side": "left",
+      "label": "8",
+      "type": "io",
+      "caps": {
+        "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it."
+      }
+    },
+    {
+      "name": "D9",
+      "side": "left",
+      "label": "9",
+      "type": "io",
+      "caps": {
+        "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it."
+      }
+    },
+    {
+      "spacer": true,
+      "side": "right"
+    },
+    {
+      "name": "RAW",
+      "side": "right",
+      "type": "power_in",
+      "supply": "3.7V/5V/7.4V/9V/12V"
+    },
+    {
+      "name": "GND 2",
+      "side": "right",
+      "label": "GND",
+      "type": "ground"
+    },
+    {
+      "name": "RST 2",
+      "side": "right",
+      "label": "RST",
+      "type": "input",
+      "caps": {
+        "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it."
+      }
+    },
+    {
+      "name": "VCC",
+      "side": "right",
+      "type": "power_out",
+      "supply": "3V3"
+    },
+    {
+      "name": "A3",
+      "side": "right",
+      "type": "io",
+      "caps": {
+        "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it."
+      }
+    },
+    {
+      "name": "A2",
+      "side": "right",
+      "type": "io",
+      "caps": {
+        "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it."
+      }
+    },
+    {
+      "name": "A1",
+      "side": "right",
+      "type": "io",
+      "caps": {
+        "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it."
+      }
+    },
+    {
+      "name": "A0",
+      "side": "right",
+      "type": "io",
+      "caps": {
+        "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it."
+      }
+    },
+    {
+      "name": "D13",
+      "side": "right",
+      "label": "13",
+      "type": "io",
+      "caps": {
+        "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it."
+      }
+    },
+    {
+      "name": "D12",
+      "side": "right",
+      "label": "12",
+      "type": "io",
+      "caps": {
+        "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it."
+      }
+    },
+    {
+      "name": "D11",
+      "side": "right",
+      "label": "11",
+      "type": "io",
+      "caps": {
+        "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it."
+      }
+    },
+    {
+      "name": "D10",
+      "side": "right",
+      "label": "10",
+      "type": "io",
+      "caps": {
+        "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it."
+      }
+    }
+  ],
+  "internal": [
+    [
+      "GND",
+      "GND 2",
+      "GND 3",
+      "GND 4"
+    ],
+    [
+      "RST",
+      "RST 2"
+    ],
+    [
+      "VCC",
+      "VCC 2"
+    ],
+    [
+      "TXO",
+      "TXO 2"
+    ],
+    [
+      "RXI",
+      "RXI 2"
+    ]
+  ],
+  "size": {
+    "w": 8,
+    "h": 15
+  },
+  "holes": [
+    {
+      "name": "A4",
+      "at": [
+        [
+          50,
+          70
+        ]
+      ],
+      "holeStyle": "pad",
+      "type": "io",
+      "caps": {
+        "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it."
+      }
+    },
+    {
+      "name": "A5",
+      "at": [
+        [
+          50,
+          60
+        ]
+      ],
+      "holeStyle": "pad",
+      "type": "io",
+      "caps": {
+        "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it."
+      }
+    },
+    {
+      "name": "A6",
+      "at": [
+        [
+          50,
+          120
+        ]
+      ],
+      "holeStyle": "pad",
+      "type": "input",
+      "caps": {
+        "inputOnly": true,
+        "noPullup": true,
+        "note": "A6 goes only to the ADC: read it with analogRead."
+      }
+    },
+    {
+      "name": "A7",
+      "at": [
+        [
+          50,
+          110
+        ]
+      ],
+      "holeStyle": "pad",
+      "type": "input",
+      "caps": {
+        "inputOnly": true,
+        "noPullup": true,
+        "note": "A7 goes only to the ADC: read it with analogRead."
+      }
+    }
+  ],
+  "electrical": {
+    "model": "mcu",
+    "params": {}
+  },
+  "art": {
+    "w": 80,
+    "h": 150,
+    "pinLabels": "inside",
+    "shapes": [
+      {
+        "type": "rect",
+        "x": 0,
+        "y": 0,
+        "w": 80,
+        "h": 150,
+        "fill": "#1E4F8A",
+        "radius": 5
+      },
+      {
+        "type": "rect",
+        "x": 2,
+        "y": 25,
+        "w": 8,
+        "h": 120,
+        "fill": "#E0B43C",
+        "radius": 2,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 4.5,
+        "y": 28.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 4.5,
+        "y": 38.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 4.5,
+        "y": 48.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 4.5,
+        "y": 58.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 4.5,
+        "y": 68.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 4.5,
+        "y": 78.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 4.5,
+        "y": 88.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 4.5,
+        "y": 98.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 4.5,
+        "y": 108.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 4.5,
+        "y": 118.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 4.5,
+        "y": 128.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 4.5,
+        "y": 138.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 70,
+        "y": 25,
+        "w": 8,
+        "h": 120,
+        "fill": "#E0B43C",
+        "radius": 2,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 72.5,
+        "y": 28.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 72.5,
+        "y": 38.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 72.5,
+        "y": 48.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 72.5,
+        "y": 58.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 72.5,
+        "y": 68.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 72.5,
+        "y": 78.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 72.5,
+        "y": 88.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 72.5,
+        "y": 98.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 72.5,
+        "y": 108.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 72.5,
+        "y": 118.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 72.5,
+        "y": 128.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 72.5,
+        "y": 138.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#8A6A1E",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 27,
+        "y": 70,
+        "w": 26,
+        "h": 26,
+        "fill": "#2B2F36",
+        "radius": 2,
+        "label": "328P",
+        "labelColor": "#D5DAE1",
+        "labelSize": 5.5
+      },
+      {
+        "type": "rect",
+        "x": 27,
+        "y": 128,
+        "w": 16,
+        "h": 16,
+        "fill": "#C9CED6",
+        "radius": 2
+      },
+      {
+        "type": "rect",
+        "x": 30,
+        "y": 131,
+        "w": 10,
+        "h": 10,
+        "fill": "#3A3F47",
+        "radius": 5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 26,
+        "y": 56,
+        "w": 18,
+        "h": 8,
+        "fill": "#1E4F8A",
+        "outline": false,
+        "label": "A5",
+        "labelColor": "#F4F1EA",
+        "labelSize": 5.5
+      },
+      {
+        "type": "rect",
+        "x": 26,
+        "y": 66,
+        "w": 18,
+        "h": 8,
+        "fill": "#1E4F8A",
+        "outline": false,
+        "label": "A4",
+        "labelColor": "#F4F1EA",
+        "labelSize": 5.5
+      },
+      {
+        "type": "rect",
+        "x": 26,
+        "y": 106,
+        "w": 18,
+        "h": 8,
+        "fill": "#1E4F8A",
+        "outline": false,
+        "label": "A7",
+        "labelColor": "#F4F1EA",
+        "labelSize": 5.5
+      },
+      {
+        "type": "rect",
+        "x": 26,
+        "y": 116,
+        "w": 18,
+        "h": 8,
+        "fill": "#1E4F8A",
+        "outline": false,
+        "label": "A6",
+        "labelColor": "#F4F1EA",
+        "labelSize": 5.5
+      }
+    ]
+  },
+  "kicad": {
+    "headers": [
+      {
+        "name": "left header, pin 1 TXO",
+        "footprint": "Connector_PinSocket_2.54mm:PinSocket_1x12_P2.54mm_Vertical",
+        "pins": {
+          "TXO": "1",
+          "RXI": "2",
+          "RST": "3",
+          "GND": "4",
+          "D2": "5",
+          "D3": "6",
+          "D4": "7",
+          "D5": "8",
+          "D6": "9",
+          "D7": "10",
+          "D8": "11",
+          "D9": "12"
+        }
+      },
+      {
+        "name": "right header, pin 1 RAW",
+        "footprint": "Connector_PinSocket_2.54mm:PinSocket_1x12_P2.54mm_Vertical",
+        "pins": {
+          "RAW": "1",
+          "GND 2": "2",
+          "RST 2": "3",
+          "VCC": "4",
+          "A3": "5",
+          "A2": "6",
+          "A1": "7",
+          "A0": "8",
+          "D13": "9",
+          "D12": "10",
+          "D11": "11",
+          "D10": "12"
+        }
+      },
+      {
+        "name": "programming header, pin 1 BLK",
+        "footprint": "Connector_PinSocket_2.54mm:PinSocket_1x06_P2.54mm_Vertical",
+        "pins": {
+          "GND 3": "1",
+          "GND 4": "2",
+          "VCC 2": "3",
+          "RXI 2": "4",
+          "TXO 2": "5",
+          "DTR": "6"
+        }
+      },
+      {
+        "name": "A4 A5 pads",
+        "footprint": "Connector_PinSocket_2.54mm:PinSocket_1x02_P2.54mm_Vertical",
+        "pins": {
+          "A4": "1",
+          "A5": "2"
+        }
+      },
+      {
+        "name": "A6 A7 pads",
+        "footprint": "Connector_PinSocket_2.54mm:PinSocket_1x02_P2.54mm_Vertical",
+        "pins": {
+          "A6": "1",
+          "A7": "2"
+        }
+      }
+    ],
+    "value": "Arduino Pro Mini 3.3V",
+    "note": "Each header is its own socket strip: place them at the board's real positions."
+  }
+}

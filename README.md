@@ -224,7 +224,7 @@ What you can do in it:
 
 ## Parts
 
-There are 143 built-in parts in 15 categories, drawn in a flat Sticker style: 15 microcontroller boards (ESP32 variants, Raspberry Pi Picos, an Arduino Nano, a D1 mini), sensors, displays, batteries, passives and connectors. The biggest category is mains, at 51: plugs and outlets for several countries, terminal blocks, Wago connectors, lamp holders, wall chargers and AC-DC modules.
+There are 158 built-in parts in 15 categories, drawn in a flat Sticker style: 30 microcontroller boards (ESP32 variants, Raspberry Pi Picos, the Arduino family from the Pro Mini and Nanos to the Uno, Mega and Due, a D1 mini), sensors, displays, batteries, passives and connectors. The biggest category is mains, at 51: plugs and outlets for several countries, terminal blocks, Wago connectors, lamp holders, wall chargers and AC-DC modules.
 
 Each part is one JSON file in `modules/` listing its pins and the side each one sits on:
 

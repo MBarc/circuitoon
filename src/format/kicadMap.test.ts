@@ -21,6 +21,7 @@ const NO_PAD: Record<string, string[]> = {
   'rpi-pico-2': ['SWCLK', 'GND DBG', 'SWDIO'],
   'rpi-pico-2-w': ['SWCLK', 'GND DBG', 'SWDIO'],
   'rfm95-lora-breakout': ['ANT'],
+  'arduino-uno-r4-wifi': ['OFF', 'GND 4', 'VRTC'],
 }
 
 /** Each footprint of a mapping with its pin-to-pad map. */
