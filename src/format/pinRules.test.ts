@@ -5,7 +5,8 @@ import { describe, expect, it } from 'vitest'
 import { type Finding, checkDiagram } from './checks.ts'
 import type { Connection, Diagram, PartInstance } from './diagram.ts'
 import { type ModuleDef, type PinDef, validateModule } from './module.ts'
-import { buildPinModel, i2cAddress } from './pinRules.ts'
+import { buildPinModel, i2cAddress, pinDoes } from './pinRules.ts'
+import { load } from './builtinModules.testing.ts'
 
 const mod = (id: string, pins: PinDef[], extra: Partial<ModuleDef> = {}): ModuleDef => ({ format: 'circuitoon-module/1', id, name: id, pins, ...extra })
 
@@ -239,6 +240,15 @@ describe('i2c-address-floating', () => {
     expect(i2cAddress(buildPinModel(parts, []), parts[0])?.address).toBe(0x76)
     const pm = buildPinModel([...parts, { id: 'u1', designator: 'U1', module: esp }], [[['u2', 'SDO'], ['u1', '3V3']]])
     expect(i2cAddress(pm, parts[0])?.address).toBe(0x77)
+  })
+})
+
+describe('what a pin does', () => {
+  it('a USB port reads as the port, then its note (IP5306 USB-C)', () => {
+    const m = load('ip5306-usbc-module')
+    const pin = m.pins.find((p): p is PinDef => 'name' in p && p.name === 'USB-C')!
+    expect(pinDoes({ part: { id: 'u1', designator: 'U1', module: m }, pin: 'USB-C', label: 'USB-C', type: pin.type, caps: pin.caps, external: false })).toBe(
+      'USB C receptacle, device, charge only, draw not known. One maker page recommends a 5 V 2 A adapter for this input; its actual input current is not measured, so check it before relying on a 500 mA USB port.')
   })
 })
 
