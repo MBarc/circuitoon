@@ -5,7 +5,7 @@
 import { type ModuleDef, type PinDef, PARAM_RULES, isBoard, isNetLabel, isObj, isNum, isSpacer, moduleSettings, validParamValue, validateModule } from '../format/module.ts'
 import { mainsOf } from '../format/mainsModel.ts'
 import { ANNOTATION_LABEL_MAX, ANNOTATION_TEXT_MAX, isValidColor } from '../format/diagram.ts'
-import { type EndKind, isEndKind } from '../format/cables.ts'
+import { type EndKind, isEndKind, isUsbEnd } from '../format/cables.ts'
 import { type RawNet, type RawPart, type RepeatCopy, endpointText, expandRepeat } from './repeat.ts'
 
 export const NETLIST_FORMAT = 'circuitoon-netlist/1'
@@ -377,6 +377,8 @@ export function parseNetlist(raw: unknown, library: ModuleLookup): IntentResult 
       }
       if (kind !== undefined) {
         if (!isEndKind(kind)) errors.push(`wires.ends: unknown cable end ${JSON.stringify(kind)}`)
+        // A USB link gets the cable that fits its two ports from the layout; USB plugs on every wire mean nothing.
+        else if (isUsbEnd(kind)) errors.push(`wires.ends: ${JSON.stringify(kind)} is a USB plug: a net of two USB ports gets its USB cable from the layout, so leave it out here`)
         else ends = kind
       }
     }

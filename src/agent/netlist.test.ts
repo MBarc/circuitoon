@@ -190,3 +190,19 @@ describe('parseNetlist repeat bindings after pin resolution', () => {
     expect(i.nets.find((x) => x.name === 'sw_1.SIG')!.terminals.map((t) => `${t.ref}.${t.name}`)).toEqual(['S_1.1', 'N1.AREF'])
   })
 })
+
+describe('USB in a netlist', () => {
+  const base = {
+    format: 'circuitoon-netlist/1', title: 'USB',
+    parts: [{ ref: 'U1', module: 'rpi-4-model-b' }, { ref: 'U2', module: 'esp32-devkit-v1-30' }],
+    nets: [{ name: 'USB', pins: ['U1.USB2-1', 'U2.USB'] }],
+  }
+  it('takes a net of two USB ports', () => {
+    expect(parseNetlist(base, libraryLookup).ok).toBe(true)
+  })
+  it('refuses USB plugs as the cable end of every wire: the layout picks a USB link\'s cable', () => {
+    const r = parseNetlist({ ...base, wires: { ends: 'usb-c' } }, libraryLookup)
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.errors).toEqual(['wires.ends: "usb-c" is a USB plug: a net of two USB ports gets its USB cable from the layout, so leave it out here'])
+  })
+})
