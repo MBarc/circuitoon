@@ -452,5 +452,29 @@
         "outline": false
       }
     ]
+  },
+  "kicad": {
+    "headers": [
+      {
+        "name": "input leads, pin 1 GND",
+        "footprint": "Connector_JST:JST_XH_B3B-XH-A_1x03_P2.50mm_Vertical",
+        "pins": {
+          "GND": "1",
+          "DIN": "2",
+          "5V": "3"
+        }
+      },
+      {
+        "name": "output leads, pin 1 GND",
+        "footprint": "Connector_JST:JST_XH_B3B-XH-A_1x03_P2.50mm_Vertical",
+        "pins": {
+          "GND 2": "1",
+          "DOUT": "2",
+          "5V 2": "3"
+        }
+      }
+    ],
+    "value": "WS2812B strip",
+    "note": "The strip is wired to the board: a lead connector for each end."
   }
 }

@@ -445,5 +445,40 @@
         "labelSize": 8
       }
     ]
+  },
+  "kicad": {
+    "symbol": "Interface_Expansion:MCP23018x-x-SP",
+    "footprint": "Package_DIP:DIP-28_W7.62mm",
+    "pins": {
+      "VSS": "1",
+      "NC": "2",
+      "GPB0": "3",
+      "GPB1": "4",
+      "GPB2": "5",
+      "GPB3": "6",
+      "GPB4": "7",
+      "GPB5": "8",
+      "GPB6": "9",
+      "GPB7": "10",
+      "VDD": "11",
+      "SCL": "12",
+      "SDA": "13",
+      "NC 2": "14",
+      "NC 4": "28",
+      "GPA7": "27",
+      "GPA6": "26",
+      "GPA5": "25",
+      "GPA4": "24",
+      "GPA3": "23",
+      "GPA2": "22",
+      "GPA1": "21",
+      "GPA0": "20",
+      "INTA": "19",
+      "INTB": "18",
+      "NC 3": "17",
+      "RESET": "16",
+      "ADDR": "15"
+    },
+    "value": "MCP23018"
   }
 }

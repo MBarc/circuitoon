@@ -101,5 +101,13 @@
         "band": 4
       }
     ]
+  },
+  "kicad": {
+    "symbol": "Device:R",
+    "footprint": "Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal",
+    "pins": {
+      "1": "1",
+      "2": "2"
+    }
   }
 }

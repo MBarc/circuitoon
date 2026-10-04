@@ -203,5 +203,15 @@
         "radius": 1
       }
     ]
+  },
+  "kicad": {
+    "footprint": "Connector_PinSocket_2.54mm:PinSocket_1x04_P2.54mm_Vertical",
+    "pins": {
+      "GND": "1",
+      "VCC": "2",
+      "SCL": "3",
+      "SDA": "4"
+    },
+    "value": "SH1106 1.3in"
   }
 }

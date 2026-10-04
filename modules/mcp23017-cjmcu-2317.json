@@ -865,5 +865,59 @@
         "labelSize": 6.5
       }
     ]
+  },
+  "kicad": {
+    "headers": [
+      {
+        "name": "row 1 of 3 (chip side, left to right), pin 1 GND",
+        "footprint": "Connector_PinSocket_2.54mm:PinSocket_1x10_P2.54mm_Vertical",
+        "pins": {
+          "GND": "1",
+          "INTA": "2",
+          "GPA0": "3",
+          "GPA1": "4",
+          "GPA2": "5",
+          "GPA3": "6",
+          "GPA4": "7",
+          "GPA5": "8",
+          "GPA6": "9",
+          "GPA7": "10"
+        }
+      },
+      {
+        "name": "row 2 of 3 (chip side, left to right), pin 1 VCC",
+        "footprint": "Connector_PinSocket_2.54mm:PinSocket_1x10_P2.54mm_Vertical",
+        "pins": {
+          "VCC": "1",
+          "INTB": "2",
+          "GPB0": "3",
+          "GPB1": "4",
+          "GPB2": "5",
+          "GPB3": "6",
+          "GPB4": "7",
+          "GPB5": "8",
+          "GPB6": "9",
+          "GPB7": "10"
+        }
+      },
+      {
+        "name": "row 3 of 3 (chip side, left to right), pin 1 A2",
+        "footprint": "Connector_PinSocket_2.54mm:PinSocket_1x10_P2.54mm_Vertical",
+        "pins": {
+          "A2": "1",
+          "A1": "2",
+          "A0": "3",
+          "RESET": "4",
+          "NC": "5",
+          "NC 2": "6",
+          "SDA": "7",
+          "SCL": "8",
+          "GND 2": "9",
+          "VCC 2": "10"
+        }
+      }
+    ],
+    "value": "CJMCU-2317",
+    "note": "Each row is its own socket strip: place them as the board's rows sit."
   }
 }

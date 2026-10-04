@@ -391,5 +391,40 @@
         "labelSize": 9
       }
     ]
+  },
+  "kicad": {
+    "headers": [
+      {
+        "name": "left header, pin 1 VCC",
+        "footprint": "Connector_PinSocket_2.54mm:PinSocket_1x14_P2.54mm_Vertical",
+        "pins": {
+          "VCC": "1",
+          "GND": "2",
+          "CS": "3",
+          "RESET": "4",
+          "DC": "5",
+          "SDI(MOSI)": "6",
+          "SCK": "7",
+          "LED": "8",
+          "SDO(MISO)": "9",
+          "T_CLK": "10",
+          "T_CS": "11",
+          "T_DIN": "12",
+          "T_DO": "13",
+          "T_IRQ": "14"
+        }
+      },
+      {
+        "name": "right header, pin 1 SD_CS",
+        "footprint": "Connector_PinSocket_2.54mm:PinSocket_1x04_P2.54mm_Vertical",
+        "pins": {
+          "SD_CS": "1",
+          "SD_MOSI": "2",
+          "SD_MISO": "3",
+          "SD_SCK": "4"
+        }
+      }
+    ],
+    "value": "ILI9341 2.8in"
   }
 }

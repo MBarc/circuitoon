@@ -223,5 +223,19 @@
         "labelSize": 8
       }
     ]
+  },
+  "kicad": {
+    "footprint": "Connector_PinSocket_2.54mm:PinSocket_1x08_P2.54mm_Vertical",
+    "pins": {
+      "GND": "1",
+      "VCC": "2",
+      "SCL": "3",
+      "SDA": "4",
+      "RES": "5",
+      "DC": "6",
+      "CS": "7",
+      "BLK": "8"
+    },
+    "value": "ST7789 1.54in"
   }
 }

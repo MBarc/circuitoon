@@ -53,6 +53,7 @@ export interface FileKind {
 }
 export const SHEET_FILE: FileKind = { suffix: EXPORT_SUFFIX, ext: EXPORT_SUFFIX, retryExt: '.json', loose: '.json', description: 'Circuitoon diagram', mime: 'application/json' }
 export const BOM_FILE: FileKind = { suffix: '-bom.csv', ext: '.csv', loose: '.csv', description: 'Bill of materials (CSV)', mime: 'text/csv' }
+export const KICAD_FILE: FileKind = { suffix: '.net', ext: '.net', loose: '.net', description: 'KiCad netlist', mime: 'text/plain' }
 /** The longest file name base Export writes (the whole name stays well under every OS limit). */
 export const BASE_NAME_MAX = 120
 // Refused in file names on Windows or macOS, plus every control character.
@@ -62,7 +63,7 @@ const NOT_IN_NAMES = /[\\/:*?"<>|\u0000-\u001f\u007f]/g
 /**
  * A file name base the user typed, made safe to save: characters Windows or macOS refuse and
  * control characters removed, a typed suffix of the kind dropped (`.circuitoon.json` or `.json` for
- * a sheet, `-bom.csv` or `.csv` for a bill of materials: the suffix is added once, on export), a
+ * a sheet, `-bom.csv` or `.csv` for a bill of materials, `.net` for a KiCad netlist: the suffix is added once, on export), a
  * Windows device name (CON, COM1, ...) prefixed with `_`, cut to BASE_NAME_MAX characters, trimmed,
  * trailing dots dropped, and "circuitoon" when nothing is left.
  */
@@ -93,7 +94,7 @@ const errorName = (e: unknown) => (e instanceof Error || e instanceof DOMExcepti
 
 /**
  * Saves `text` through the browser's Save As dialog, suggesting `base` + the kind's suffix
- * (`.circuitoon.json` for a sheet, `-bom.csv` for a bill of materials). Cancelled when the user
+ * (`.circuitoon.json` for a sheet, `-bom.csv` for a bill of materials, `.net` for a KiCad netlist). Cancelled when the user
  * closes the dialog; unavailable when the picker cannot be used here (the caller then asks for a
  * name itself); failed, with a message, when the chosen file cannot be written. A browser that
  * refuses a sheet's two-part extension is asked again with plain `.json`.

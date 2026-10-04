@@ -93,5 +93,14 @@
         "outline": false
       }
     ]
+  },
+  "kicad": {
+    "footprint": "Resistor_THT:R_Axial_DIN0617_L17.0mm_D6.0mm_P20.32mm_Horizontal",
+    "pins": {
+      "1": "1",
+      "2": "2"
+    },
+    "value": "SW-460D",
+    "note": "An axial footprint long enough for the 15 mm tube."
   }
 }

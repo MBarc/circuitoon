@@ -154,5 +154,15 @@
         "radius": 1
       }
     ]
+  },
+  "kicad": {
+    "footprint": "Connector_PinSocket_2.54mm:PinSocket_1x04_P2.54mm_Vertical",
+    "pins": {
+      "SDA": "1",
+      "SCL": "2",
+      "VCC": "3",
+      "GND": "4"
+    },
+    "value": "SSD1306 0.91in"
   }
 }

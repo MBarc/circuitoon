@@ -142,5 +142,14 @@
         "radius": 4
       }
     ]
+  },
+  "kicad": {
+    "footprint": "TerminalBlock_Phoenix:TerminalBlock_Phoenix_MKDS-1,5-2_1x02_P5.00mm_Horizontal",
+    "pins": {
+      "L": "1",
+      "N": "2"
+    },
+    "placeholder": true,
+    "note": "Placeholder: a lamp holder is wired to the board through this terminal block. Choose one rated for the lamp."
   }
 }

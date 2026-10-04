@@ -99,5 +99,14 @@
         "labelSize": 15
       }
     ]
+  },
+  "kicad": {
+    "symbol": "Device:Battery",
+    "footprint": "Battery:BatteryHolder_MPD_BA9VPC_1xPP3",
+    "pins": {
+      "+": "1",
+      "-": "2"
+    },
+    "value": "9V"
   }
 }

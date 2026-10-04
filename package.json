@@ -1,7 +1,7 @@
 {
   "name": "circuitoon",
   "private": true,
-  "version": "0.6.1",
+  "version": "0.7.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -27,6 +27,7 @@
     "check:labels-ui": "node scripts/check-labels-ui.mjs",
     "check:update-ui": "node scripts/check-update-ui.mjs",
     "check:theme-ui": "node scripts/check-theme-ui.mjs",
+    "check:kicad-ui": "node scripts/check-kicad-ui.mjs",
     "deploy": "bash scripts/deploy.sh"
   },
   "dependencies": {

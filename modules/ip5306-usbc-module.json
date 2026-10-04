@@ -361,5 +361,28 @@
         "outline": false
       }
     ]
+  },
+  "kicad": {
+    "headers": [
+      {
+        "name": "battery pads, pin 1 B-",
+        "footprint": "Connector_PinHeader_2.54mm:PinHeader_1x02_P2.54mm_Vertical",
+        "pins": {
+          "B-": "1",
+          "B+": "2"
+        }
+      },
+      {
+        "name": "bottom pads, pin 1 K",
+        "footprint": "Connector_PinHeader_2.54mm:PinHeader_1x03_P2.54mm_Vertical",
+        "pins": {
+          "K": "1",
+          "5V+": "2",
+          "5V-": "3"
+        }
+      }
+    ],
+    "value": "IP5306 module",
+    "note": "The module has solder pads, not header pins: wire them to these headers."
   }
 }

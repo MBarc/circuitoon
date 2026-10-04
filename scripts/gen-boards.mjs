@@ -6,6 +6,7 @@
 // It overwrites the 9 files in modules/ in place; re-run after changing a board's pin list,
 // art or the shared header/pinLabels rules here, then `git diff` the result before committing.
 import { emit, finish, log } from './lib/gen-output.mjs'
+import { moduleText } from './lib/kicad.mjs'
 import { C3_STRAP, S3_OCTAL, S3_STRAP, esp32Caps, strapCaps } from './lib/pin-caps.mjs'
 import { fileURLToPath } from 'node:url'
 const OUT = fileURLToPath(new URL('../modules/', import.meta.url))
@@ -73,7 +74,7 @@ function build({ file, id, name, source, left, right, top = 0, bottom = 0, wu, t
   // Every generated board is a two-row header part: pin names always draw inside the body,
   // beside each pin, like the board's own silkscreen (see art.pinLabels in the PRD).
   m.art = { w: W, h: H, pinLabels: 'inside', shapes }
-  emit(OUT + file, JSON.stringify(m, null, 2) + '\n')
+  emit(OUT + file, moduleText(m))
   log(file, 'pins', left.length + right.length, 'body', W, 'x', H, 'first/last pin y', pinYs[0], pinYs[pinYs.length - 1])
 }
 

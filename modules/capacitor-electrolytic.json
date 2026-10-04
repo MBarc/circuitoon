@@ -85,5 +85,13 @@
         "labelSize": 9
       }
     ]
+  },
+  "kicad": {
+    "symbol": "Device:C_Polarized",
+    "footprint": "Capacitor_THT:CP_Radial_D5.0mm_P2.00mm",
+    "pins": {
+      "+": "1",
+      "-": "2"
+    }
   }
 }

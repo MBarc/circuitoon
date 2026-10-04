@@ -308,5 +308,18 @@
         "outline": false
       }
     ]
+  },
+  "kicad": {
+    "footprint": "TerminalBlock_Phoenix:TerminalBlock_Phoenix_MKDS-1,5-3_1x03_P5.00mm_Horizontal",
+    "pins": {
+      "L1": "1",
+      "L2": "1",
+      "N1": "2",
+      "N2": "2",
+      "PE1": "3",
+      "PE2": "3"
+    },
+    "placeholder": true,
+    "note": "Placeholder: an outlet is a panel part; wire it to this terminal block. Choose a terminal rated for the mains current."
   }
 }

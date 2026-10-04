@@ -64,5 +64,13 @@
         "labelSize": 7
       }
     ]
+  },
+  "kicad": {
+    "symbol": "Device:C",
+    "footprint": "Capacitor_THT:C_Rect_L7.2mm_W2.5mm_P5.00mm_FKS2_FKP2_MKS2_MKP2",
+    "pins": {
+      "1": "1",
+      "2": "2"
+    }
   }
 }

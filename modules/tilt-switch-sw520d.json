@@ -86,5 +86,14 @@
         "outline": false
       }
     ]
+  },
+  "kicad": {
+    "footprint": "Connector_PinHeader_2.54mm:PinHeader_1x02_P2.54mm_Vertical",
+    "pins": {
+      "1": "1",
+      "2": "2"
+    },
+    "value": "SW-520D",
+    "note": "Solder the switch's two leads into these pads."
   }
 }

@@ -376,5 +376,14 @@
         "outline": false
       }
     ]
+  },
+  "kicad": {
+    "footprint": "Connector_PinSocket_2.54mm:PinSocket_1x03_P2.54mm_Vertical",
+    "pins": {
+      "+": "1",
+      "out": "2",
+      "-": "3"
+    },
+    "value": "DHT22 module"
   }
 }

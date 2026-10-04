@@ -15,6 +15,7 @@
 // Pico W / Pico 2 W: three pads inside the board above the wireless module, drawn in the art at
 // their real spot with traces to the bottom-edge pins, as the official diagram leads them out).
 import { emit, finish, log } from './lib/gen-output.mjs'
+import { moduleText } from './lib/kicad.mjs'
 import { fileURLToPath } from 'node:url'
 const OUT = fileURLToPath(new URL('../modules/', import.meta.url))
 
@@ -147,7 +148,7 @@ function build({ id, name, source, shapes }) {
     },
     art: { w: W, h: H, pinLabels: 'inside', shapes: [r(0, 0, W, H, PCB, { radius: 4 }), ...shapes] },
   }
-  emit(OUT + id + '.json', JSON.stringify(m, null, 2) + '\n')
+  emit(OUT + id + '.json', moduleText(m))
   log(id, 'pins', LEFT.length + RIGHT.length + BOTTOM.length, 'body', W, 'x', H)
 }
 

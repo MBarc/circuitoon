@@ -121,5 +121,15 @@
         "labelSize": 9
       }
     ]
+  },
+  "kicad": {
+    "symbol": "Switch:SW_SPST",
+    "footprint": "Connector_JST:JST_XH_B2B-XH-A_1x02_P2.50mm_Vertical",
+    "pins": {
+      "1": "1",
+      "2": "2"
+    },
+    "value": "KCD1-101",
+    "note": "A panel-mounted rocker switch is wired to the board: a 2-pin lead connector."
   }
 }
