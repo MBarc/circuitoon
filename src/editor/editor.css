@@ -21,6 +21,25 @@
 .toolbar .sep { width: 1px; align-self: stretch; background: var(--rule); margin: 0 4px; }
 .toolbar .message { flex-basis: 100%; margin: 0; font-size: 14px; }
 .toolbar .message.error { color: var(--error); }
+/* What the KiCad export saved: a sticker-edged note under the toolbar like the load warnings, green
+   when the file is ready to import, yellow when something needs a look in KiCad (listed, scrolling). */
+.kicad-notice {
+  flex-basis: 100%;
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 12px; align-items: center;
+  background: var(--bg); color: var(--text);
+  border: 1.5px solid var(--card-edge); border-left: 6px solid var(--green); border-radius: 8px;
+  padding: 8px 10px 8px 12px; font-size: 14px;
+}
+.kicad-notice.attention { border-left-color: var(--yellow); }
+.kicad-notice .tool { padding: 5px 9px; font-size: 13px; }
+.kn-head { margin: 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; }
+.kn-head strong { font: 600 16px/1.2 "Fredoka", system-ui, sans-serif; }
+.kn-check { grid-column: 1 / -1; margin: 2px 0 0; font-weight: 700; }
+.kn-list {
+  grid-column: 1 / -1; margin: 0; padding: 0 4px 0 18px;
+  display: grid; gap: 4px; align-content: start; line-height: 1.35;
+  max-height: 25vh; overflow-y: auto; overscroll-behavior: contain;
+}
 /* Warnings a file opened with: a sticker-edged note under the toolbar, yellow for caution. The
    first few show; "Show all" opens the rest. Value replacements are listed first and carry a tag. */
 .load-warnings {

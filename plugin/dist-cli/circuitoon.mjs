@@ -69210,7 +69210,8 @@ function kicadCommand(args, io) {
 	}
 	for (const w of x.warnings) io.stderr(`warning: ${w}\n`);
 	for (const n of x.notes) io.stderr(`note: ${n}\n`);
-	if (out) io.stdout(`Wrote ${out}: ${x.components} components, ${x.nets} nets${x.unmapped.length ? `, ${x.unmapped.length} on a generic footprint` : ""}. Open it in KiCad's PCB Editor with File > Import > Netlist.\n`);
+	const plural = (n, one) => `${n} ${one}${n === 1 ? "" : "s"}`;
+	if (out) io.stdout(`Wrote ${out}: ${plural(x.components, "component")}, ${plural(x.nets, "net")}${x.unmapped.length ? `, ${x.unmapped.length} on a generic footprint` : ""}. Open it in KiCad's PCB Editor with File > Import > Netlist.\n`);
 	else io.stdout(x.text);
 	return EXIT.ok;
 }

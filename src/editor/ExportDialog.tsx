@@ -1,6 +1,6 @@
 // Names the exported file where the browser has no Save As dialog of its own (no
 // showSaveFilePicker): a small modal with the base name, the kind's fixed suffix after it
-// (.circuitoon.json for a sheet, -bom.csv for a bill of materials), Export and Cancel. Enter exports, Escape cancels. Naming the file never renames the sheet.
+// (.circuitoon.json for a sheet, -bom.csv for a bill of materials, .net for a KiCad netlist), Export and Cancel. Enter exports, Escape cancels. Naming the file never renames the sheet.
 import { useEffect, useId, useRef, useState } from 'react'
 import { type FileKind, SHEET_FILE, cleanBaseName } from './files.ts'
 
