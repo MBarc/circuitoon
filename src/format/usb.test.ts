@@ -110,6 +110,17 @@ describe('usb-to-pin', () => {
       'usb-to-pin: U1 USB is a USB port, and it is wired to U2 IO5. A USB port connects only to another USB port, by a USB cable or by plugging in: never by jumper wires to pins, which skip the cable\'s shielding and twisted pair and can short VBUS. Remove the wire and connect U1 USB to a USB port.',
     ])
   })
+  it('a short among the other pins on that net is still a short', () => {
+    // P1 + wired to its own -, and a USB port wired onto that net.
+    const d = sheet([['P1', 'psu'], ['U1', 'mcu']], [['p1|+', 'p1|-'], ['u1|USB', 'p1|+']])
+    expect(checkDiagram(d).map((f) => f.rule)).toEqual(['short', 'usb-to-pin'])
+    // The same short through a part's internal join (J1 A and B are one conductor).
+    const j = { format: 'circuitoon-module/1', id: 'jumper', name: 'jumper', pins: [{ name: 'A', side: 'left', type: 'passive' }, { name: 'B', side: 'right', type: 'passive' }], internal: [['A', 'B']] }
+    const r = validateModule(j)
+    if (!r.ok) throw new Error(r.errors.join('; '))
+    const via = sheet([['P1', 'psu'], ['J1', 'jumper'], ['U1', 'mcu']], [['p1|+', 'j1|A'], ['j1|B', 'p1|-'], ['u1|USB', 'j1|A']])
+    expect(checkDiagram({ ...via, modules: { ...via.modules, jumper: r.module } }).map((f) => f.rule)).toEqual(['short', 'usb-to-pin'])
+  })
   it('stays quiet on port-to-port links', () => {
     expect(usbRules(sheet([['J1', 'pc'], ['U1', 'disk']], [['j1|USB1', 'u1|USB', A_MICRO]]))).toEqual([])
   })
