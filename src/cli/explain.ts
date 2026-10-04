@@ -24,8 +24,8 @@ import { type CliFinding, cliFinding, findingsText, uniqueIds } from './verifyCm
 
 export const EXPLAIN_FORMAT = 'circuitoon-cli/explain/1'
 
-/** The rules explain reports: the pin-capability and I2C rules. */
-const isPinRule = (rule: string) => /^(pin|i2c)-/.test(rule)
+/** The rules explain reports: the pin-capability, I2C and USB port rules. */
+const isPinRule = (rule: string) => /^(pin|i2c|usb)-/.test(rule)
 
 /** A module's short name: its name up to the first " (" ("ESP32 DevKit V1 (30 pin, DOIT)" is "ESP32 DevKit V1"). */
 export const shortName = (m: ModuleDef): string => m.name.split(' (')[0]

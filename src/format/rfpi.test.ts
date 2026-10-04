@@ -16,8 +16,8 @@ const parts: Record<string, Want> = {
   'lcd-rpi-touch-display-2-5.json': { category: 'Displays', sides: { left: ['5V', 'GND'], bottom: ['DSI'] } },
   // GY-GPSV3-NEO-M8N: header J1 VCC RX TX GND, u.FL bottom right.
   'gps-neo-m8n-gy-gpsv3.json': { category: 'Communication', sides: { top: ['VCC', 'RX', 'TX', 'GND'], bottom: [null, null, null, null, null, 'ANT', null, null] } },
-  // USB-A contacts 1-4, SMA at the far end.
-  'rtl-sdr-blog-v4.json': { category: 'Communication', sides: { left: ['VBUS', 'D-', 'D+', 'GND'], right: ['ANT'] } },
+  // The USB-A plug is one port (USB design 1.1); SMA at the far end.
+  'rtl-sdr-blog-v4.json': { category: 'Communication', sides: { left: ['USB'], right: ['ANT'] } },
   // Top view: pads 2, 3 (ring), 4 on the left; 1, 6, 5 on the right.
   'mic-ics-40300.json': { category: 'Sensors', sides: { left: ['GND', 'GND 2', 'GND 3'], right: ['OUTPUT', 'GND 4', 'VDD'] } },
   // Top view: pads 1, 5, 4 along the top; 2, 6 (ring), 3 along the bottom.
@@ -58,8 +58,15 @@ describe('built-in Pi displays, GPS, RTL-SDR and MEMS microphones keep the physi
     expect(pin(gps, 'VCC')).toMatchObject({ type: 'power_in', supply: '3V3/5V' })
     expect(pin(gps, 'RX')?.type).toBe('input')
     expect(pin(gps, 'TX')?.type).toBe('output')
+    // Informational notes (caps.note, allowed on any part), each from the part's source.
+    expect(pin(gps, 'RX')?.caps).toEqual({ note: "RX goes straight to the NEO-M8N's UART input, which takes at most 3.6 V: from a 5 V board, shift the level down first." })
+    expect(pin(load('lcd-rpi-touch-display-7.json'), 'INT')?.caps?.note).toMatch(/^INT is not used/)
+    expect(pin(load('rtl-sdr-blog-v4.json'), 'ANT')?.caps?.note).toMatch(/4\.5 V \(up to 180 mA\)/)
+    for (const n of ['WS', 'LR', 'SCK']) expect(pin(load('mic-ics-43434.json'), n)?.caps?.note).toMatch(/at most VDD \+ 0\.3 V/)
+    expect(pin(load('mic-ics-43434-adafruit-6049.json'), 'SEL')?.caps?.note).toMatch(/pulled to GND/)
     const sdr = load('rtl-sdr-blog-v4.json')
-    expect(pin(sdr, 'VBUS')).toMatchObject({ type: 'power_in', supply: '5V' })
+    // Datasheet: "USB Connector: USB-A Male", "Typical Current Draw 250 - 270 mA".
+    expect(pin(sdr, 'USB')).toMatchObject({ type: 'usb', usb: { connector: 'A', gender: 'plug', role: 'device', version: '2.0', draw: 270 } })
     for (const f of ['mic-ics-40300.json', 'mic-spu0410lr5h-qb.json']) {
       expect(pin(load(f), 'OUTPUT')?.type).toBe('output')
       expect(pin(load(f), 'VDD')).toMatchObject({ type: 'power_in', supply: '1V8/3V3' })
@@ -72,6 +79,5 @@ describe('built-in Pi displays, GPS, RTL-SDR and MEMS microphones keep the physi
 
   it('numbers the bare mic pads by the datasheet pin numbers', () => {
     expect(load('mic-ics-43434.json').kicad?.pins).toEqual({ WS: '1', LR: '2', GND: '3', SCK: '4', VDD: '5', SD: '6' })
-    expect(load('rtl-sdr-blog-v4.json').kicad?.pins).toEqual({ VBUS: '1', 'D-': '2', 'D+': '3', GND: '4' })
   })
 })

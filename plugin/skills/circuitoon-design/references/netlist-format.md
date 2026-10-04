@@ -55,7 +55,7 @@ Net labels (`"label": true` on a net):
 The `wires` settings:
 
 - `color` maps a net name to a color. Use one of `red`, `black`, `blue`, `green`, `yellow`, `orange`, `white`, `purple`, `gray`, `brown` or `pink`, or `#RRGGBB`. Nets inside a repeat are named `<copy>.<net>`, for example `tilt_3.SIG`.
-- `ends` is one cable end for every wire: `bare`, `dupont-male`, `dupont-female`, `solid-jumper`, `alligator`, `stripped`, `ferrule`, `jst-xh`, `jst-ph`, `jst-sh`, `grove` or `banana`.
+- `ends` is one cable end for every wire: `bare`, `dupont-male`, `dupont-female`, `solid-jumper`, `alligator`, `stripped`, `ferrule`, `jst-xh`, `jst-ph`, `jst-sh`, `grove` or `banana`. A net of two USB ports (pins of type `usb`) is a USB link: the layout gives it the USB cable whose plugs fit the two ports, or no cable when one port is a plug, so USB plug ends are never set here.
 - By default the layout follows the wire color convention: ground nets are black, positive supply rails (3V3, 5V, VIN, a battery's +, a regulator's output) are red, and each signal net gets a color from a palette without red or black. Signal nets that share a part get different colors while the palette lasts.
 - A `color` you give wins, so keep it to the convention: black for ground, red for a positive supply, never red or black for a signal. The checker warns (`wire-color-ground`, `wire-color-supply`, `wire-color-signal`) on any wire that breaks it. Mains wiring is exempt: it keeps its regional identity colors.
 

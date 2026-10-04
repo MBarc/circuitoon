@@ -5,7 +5,7 @@
 // must be re-checked against the source.
 import { describe, expect, it } from 'vitest'
 import { externalPower, isSpacer, layoutModule, type Side } from './module.ts'
-import { load, pinsOf, pin } from './builtinModules.testing.ts'
+import { load, pinsOf, pin, withoutUsb } from './builtinModules.testing.ts'
 
 
 // Each side lists its slots in array order; null is a spacer (a physical gap).
@@ -42,7 +42,7 @@ const parts: Record<string, Want> = {
 
 describe('Spirit Typewriter parts keep the physical pin order', () => {
   for (const [file, want] of Object.entries(parts)) {
-    const m = load(file)
+    const m = withoutUsb(load(file))
     it(`${file}: every side matches the source, slot for slot, on pitch`, () => {
       expect(m.category).toBe(want.category)
       expect(m.source).toMatch(/^https:\/\/\S+ https:\/\//)
@@ -90,6 +90,6 @@ describe('Spirit Typewriter parts keep the physical pin order', () => {
   })
 
   it('USB panel-mount cables pass every conductor through: VBUS and GND are passive, not a supply or a ground', () => {
-    for (const f of ['usb-panel-mount-microusb.json', 'usb-panel-mount-usbc.json']) for (const p of pinsOf(load(f))) expect(p.type).toBe('passive')
+    for (const f of ['usb-panel-mount-microusb.json', 'usb-panel-mount-usbc.json']) for (const p of pinsOf(withoutUsb(load(f)))) expect(p.type).toBe('passive')
   })
 })

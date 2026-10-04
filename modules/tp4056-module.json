@@ -17,8 +17,17 @@
       "side": "left"
     },
     {
-      "spacer": true,
-      "side": "left"
+      "name": "USB-C",
+      "side": "left",
+      "type": "usb",
+      "usb": {
+        "connector": "C",
+        "gender": "receptacle",
+        "role": "device",
+        "power": "only",
+        "draw": 1000,
+        "vbus": "IN+"
+      }
     },
     {
       "spacer": true,

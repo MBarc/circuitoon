@@ -14,12 +14,18 @@
     {
       "name": "SCK",
       "side": "left",
-      "type": "input"
+      "type": "input",
+      "caps": {
+        "note": "SCK takes at most VDD + 0.3 V: drive it from logic at the mic's own supply, never 5 V."
+      }
     },
     {
       "name": "LR",
       "side": "right",
-      "type": "input"
+      "type": "input",
+      "caps": {
+        "note": "LR takes at most VDD + 0.3 V: tie it to GND or VDD, never 5 V."
+      }
     },
     {
       "name": "VDD",
@@ -35,7 +41,10 @@
     {
       "name": "WS",
       "side": "bottom",
-      "type": "input"
+      "type": "input",
+      "caps": {
+        "note": "WS takes at most VDD + 0.3 V: drive it from logic at the mic's own supply, never 5 V."
+      }
     }
   ],
   "size": {

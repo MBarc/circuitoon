@@ -173,6 +173,7 @@ With `--json`, a failure prints `{ "ok": false, "exit": N, "error": { "code", "m
 - Pin names. They come from the built-in parts, and each part cites the sources of its pinout.
 - Wiring faults: shorts, reversed polarity, supply voltage too high or too low, supplies or outputs fighting, no common ground, unpowered parts, bad breadboard seating and mains wiring.
 - Pin rules declared by each part: input-only and output-only pins, flash and strapping pins, I2C addresses and pull-ups.
+- USB: ports wired to pins with jumper wires, cables whose plugs do not fit, two hosts or two devices joined, and the current a host port, a Pi's shared budget or a bus-powered hub is asked for.
 - Readability: overlapping or crowded wires, wires hugging parts they don't touch, covered labels, too many crossings, wires over populated breadboards. Any of these makes `ready` false.
 
 ### What is not checked
@@ -229,7 +230,7 @@ What you can do in it:
 
 ## Parts
 
-There are 167 built-in parts in 15 categories, drawn in a flat Sticker style: 30 microcontroller boards (ESP32 variants, Raspberry Pi Picos, the Arduino family from the Pro Mini and Nanos to the Uno, Mega and Due, a D1 mini), sensors, displays, batteries, passives and connectors. The biggest category is mains, at 51: plugs and outlets for several countries, terminal blocks, Wago connectors, lamp holders, wall chargers and AC-DC modules.
+There are 173 built-in parts in 16 categories, drawn in a flat Sticker style: 30 microcontroller boards (ESP32 variants, Raspberry Pi Picos, the Arduino family from the Pro Mini and Nanos to the Uno, Mega and Due, a D1 mini), computers (Raspberry Pi 4, Raspberry Pi 5, Raspberry Pi Zero 2 W and a computer's USB port), USB hubs, sensors, displays, batteries, passives and connectors. Every board's USB connector is a USB port: cable it to a Pi, a computer or a hub, or plug a dongle straight in. The biggest category is mains, at 51: plugs and outlets for several countries, terminal blocks, Wago connectors, lamp holders, wall chargers and AC-DC modules.
 
 Each part is one JSON file in `modules/` listing its pins and the side each one sits on:
 
@@ -284,7 +285,7 @@ The CLI bundle `plugin/dist-cli/circuitoon.mjs` is committed. After any change u
 
 ## Status and roadmap
 
-Early development. The editor, the wiring checker, the part maker and the agent toolkit (plugin 0.8.0) work today. Still to come in V1: saving sheets in the browser, PDF export, and an art studio for drawing a part's artwork by hand.
+Early development. The editor, the wiring checker, the part maker and the agent toolkit (plugin 0.9.0) work today. Still to come in V1: saving sheets in the browser, PDF export, and an art studio for drawing a part's artwork by hand.
 
 - V2: DC simulation in the browser, with voltages, currents and overcurrent.
 - V3: animation driven by that simulation. LEDs light up, switches flip.

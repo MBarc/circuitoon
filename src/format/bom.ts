@@ -7,7 +7,8 @@
 import { type Connection, type Diagram, moduleOf } from './diagram.ts'
 import { conductors, nodeKey } from './netlist.ts'
 import { labelsOf } from './netLabels.ts'
-import { END_KINDS, END_NAMES, END_SIZE, type EndKind, endKind, isEndKind, presetOf } from './cables.ts'
+import { END_KINDS, END_NAMES, END_SIZE, type EndKind, endKind, isEndKind, isUsbEnd, presetOf } from './cables.ts'
+import { isPluggedIn } from './usb.ts'
 import { editableParams, formatValue, paramValue } from './values.ts'
 import { drawnColor, wireLooks } from './mainsLook.ts'
 import { natural } from './words.ts'
@@ -95,8 +96,8 @@ function cableOf(a: EndKind, b: EndKind): string {
   if (preset) return CABLE_NAMES[preset.id] ?? preset.name
   return `${END_NAMES[a]} to ${END_NAMES[b]} lead`
 }
-/** Ends a connector is fitted to: not a bare, stripped or solid-core end. */
-const isConnector = (k: EndKind) => k !== 'bare' && !END_SIZE[k].exposed
+/** Ends a connector is fitted to: not a bare, stripped or solid-core end, and not a USB cable's moulded plug (bought with the cable). */
+const isConnector = (k: EndKind) => k !== 'bare' && !END_SIZE[k].exposed && !isUsbEnd(k)
 
 const byOrder = (a: EndKind, b: EndKind) => END_KINDS.indexOf(a) - END_KINDS.indexOf(b)
 
@@ -142,7 +143,8 @@ export function billOfMaterials(d: Diagram, opts: BomOptions = {}): Bom {
   const labelUids = new Set(labelsOf(d).map((l) => l.part.uid))
   const toLabel = (c: Connection) => labelUids.has(c.from.part) || labelUids.has(c.to.part)
   for (const c of d.connections) {
-    if (toLabel(c)) continue
+    // A USB plug pushed straight into a socket is no wire to buy (USB design 2.2).
+    if (toLabel(c) || isPluggedIn(d, c)) continue
     const ends = [endKind(c.ends, 'from'), endKind(c.ends, 'to')].sort(byOrder) as [EndKind, EndKind]
     add(ends, c.gauge ?? 22, drawnColor(c, looks), 1, c.routing ? 1 : 0, false)
   }

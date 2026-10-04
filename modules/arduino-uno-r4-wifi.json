@@ -241,6 +241,91 @@
       "side": "right",
       "label": "D0/RX",
       "type": "io"
+    },
+    {
+      "spacer": true,
+      "side": "top"
+    },
+    {
+      "spacer": true,
+      "side": "top"
+    },
+    {
+      "spacer": true,
+      "side": "top"
+    },
+    {
+      "spacer": true,
+      "side": "top"
+    },
+    {
+      "spacer": true,
+      "side": "top"
+    },
+    {
+      "spacer": true,
+      "side": "top"
+    },
+    {
+      "spacer": true,
+      "side": "top"
+    },
+    {
+      "spacer": true,
+      "side": "top"
+    },
+    {
+      "spacer": true,
+      "side": "top"
+    },
+    {
+      "spacer": true,
+      "side": "top"
+    },
+    {
+      "spacer": true,
+      "side": "top"
+    },
+    {
+      "spacer": true,
+      "side": "top"
+    },
+    {
+      "spacer": true,
+      "side": "top"
+    },
+    {
+      "name": "USB",
+      "side": "top",
+      "type": "usb",
+      "usb": {
+        "connector": "C",
+        "gender": "receptacle",
+        "role": "device",
+        "version": "1.1",
+        "speed": "full",
+        "vbus": "5V"
+      }
+    },
+    {
+      "spacer": true,
+      "side": "top"
+    },
+    {
+      "spacer": true,
+      "side": "top"
+    },
+    {
+      "spacer": true,
+      "side": "top"
+    },
+    {
+      "spacer": true,
+      "side": "top"
+    },
+    {
+      "spacer": true,
+      "side": "top"
     }
   ],
   "internal": [

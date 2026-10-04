@@ -63,9 +63,14 @@ describe('pin capabilities of the built-in boards', () => {
     expect(capped('mcp23017-dip28')).toEqual(['GPA7 outputOnly', 'GPB7 outputOnly'])
     expect(capped('mcp23017-cjmcu-2317')).toEqual(['GPA7 outputOnly', 'GPB7 outputOnly'])
   })
-  it('only the boards above carry caps (the Picos, the D1 mini and the rest claim nothing)', () => {
-    const withCaps = moduleFiles().map((f) => f.replace('.json', '')).filter((id) => capped(id).length)
-    expect(withCaps).toEqual(['arduino-due', 'arduino-nano-33-ble', 'arduino-nano-33-iot', 'arduino-nano-esp32', 'arduino-nano-rp2040-connect', 'arduino-nano', 'arduino-pro-mini-3v3', 'arduino-pro-mini-5v', 'arduino-uno-r4-minima', 'arduino-uno-r4-wifi', 'arduino-zero', 'esp32-c3-supermini', 'esp32-cam', 'esp32-devkit-v1-30', 'esp32-devkitc-v4', 'esp32-s3-devkitc-1', 'esp32-terminal-board-38', 'mcp23017-cjmcu-2317', 'mcp23017-dip28', 'xiao-esp32c3', 'xiao-esp32s3'])
+  it('only the boards above carry capabilities beyond a note (the Picos, the D1 mini and the rest claim nothing)', () => {
+    // A note alone (caps.note) is informational and allowed on any part (USB design section 5): the
+    // Raspberry Pi header's GPIO0-3, the GPS RX limit. Every other capability is pinned above.
+    const ids = moduleFiles().map((f) => f.replace('.json', ''))
+    const LIST = ['arduino-due', 'arduino-nano-33-ble', 'arduino-nano-33-iot', 'arduino-nano-esp32', 'arduino-nano-rp2040-connect', 'arduino-nano', 'arduino-pro-mini-3v3', 'arduino-pro-mini-5v', 'arduino-uno-r4-minima', 'arduino-uno-r4-wifi', 'arduino-zero', 'esp32-c3-supermini', 'esp32-cam', 'esp32-devkit-v1-30', 'esp32-devkitc-v4', 'esp32-s3-devkitc-1', 'esp32-terminal-board-38', 'mcp23017-cjmcu-2317', 'mcp23017-dip28', 'xiao-esp32c3', 'xiao-esp32s3']
+    const beyondNote = ids.filter((id) => capped(id).some((c) => !c.endsWith(' note')))
+    expect(beyondNote.filter((id) => !LIST.includes(id))).toEqual([])
+    expect(LIST.filter((id) => !capped(id).length)).toEqual([])
   })
 })
 

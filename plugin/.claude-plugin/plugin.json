@@ -1,6 +1,6 @@
 {
   "name": "circuitoon",
-  "version": "0.8.1",
+  "version": "0.9.0",
   "description": "Design, verify and render Circuitoon wiring diagrams from a netlist: the circuitoon CLI (layout, verify, check, render, link, gate, kicad, module) and the circuitoon-design and circuitoon-custom-part skills.",
   "author": { "name": "MBarc" },
   "homepage": "https://mbarc.github.io/circuitoon/",

@@ -7,6 +7,7 @@ import { type EditorStore, useEditorState } from './store.ts'
 import { LABEL_NAME_MAX, carryWireStyle, clearPartValue, clearWireRoute, deleteSelection, renameLabel, rotateParts, setWireEnds, updateAnnotation, updatePart, updatePartSetting, updatePartValue, updateWire, type WireStyle } from './ops.ts'
 import { ANNOTATION_LABEL_MAX, ANNOTATION_TEXT_MAX, type Connection, type Diagram, type Endpoint, NAMED_COLORS, STRIPED_COLORS, isValidColor, moduleOf, partObstacles, routeWire, wireColor, wireStripe, wireWidth } from '../format/diagram.ts'
 import { type WireLook, holdLooks } from '../format/mainsLook.ts'
+import { usbLink } from '../format/usb.ts'
 import { CABLE_PRESETS, END_KINDS, END_NAMES, END_SIZE, type EndKind, type WireEnds, endKind, normalizeEnds, presetEnds, presetOf, sharedCable, swapEnds } from '../format/cables.ts'
 import { CableEnd } from '../render/CableEnd.tsx'
 import { INK } from '../render/Part.tsx'
@@ -733,6 +734,7 @@ export function Inspector({ store, onEditPart, onUpdatePart }: { store: EditorSt
     if (remember) store.setWireStyle({ ...wireStyle, ends: normalizeEnds(ends) })
   }
   const cable = presetOf(wire.ends)
+  const link = usbLink(diagram, wire)
 
   return (
     <aside className="inspector" aria-label="Properties">
@@ -763,6 +765,13 @@ export function Inspector({ store, onEditPart, onUpdatePart }: { store: EditorSt
           ))}
         </select>
       </label>
+      {link && (
+        <p className="hint" data-usb-link={link.direct ? 'plugged' : 'cable'}>
+          {link.direct
+            ? `${link.from.usb.gender === 'plug' ? link.from.title : link.to.title} plugs straight into ${link.from.usb.gender === 'plug' ? link.to.title : link.from.title}: no cable.`
+            : 'A USB cable: its plugs must fit both ports.'}
+        </p>
+      )}
       <div className="cable">
         <CableSelect id="wire-cable" value={cable?.id ?? 'custom'} onPick={(pid) => setEnds(presetEnds(pid), true)} />
         <CablePreview ends={wire.ends} color={color} gauge={wire.gauge} />

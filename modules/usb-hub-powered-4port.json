@@ -1,0 +1,352 @@
+{
+  "format": "circuitoon-module/1",
+  "id": "usb-hub-powered-4port",
+  "version": 1,
+  "name": "Powered USB 2.0 hub, 4 ports (generic: USB-B up, 5 V DC in)",
+  "category": "Connectors",
+  "source": "https://www.usb.org/document-library/usb-20-specification",
+  "pins": [
+    {
+      "spacer": true,
+      "side": "left"
+    },
+    {
+      "name": "UP",
+      "side": "left",
+      "type": "usb",
+      "usb": {
+        "connector": "B",
+        "gender": "receptacle",
+        "role": "device",
+        "hub": "upstream",
+        "version": "2.0",
+        "speed": "high"
+      }
+    },
+    {
+      "spacer": true,
+      "side": "left"
+    },
+    {
+      "spacer": true,
+      "side": "left"
+    },
+    {
+      "spacer": true,
+      "side": "left"
+    },
+    {
+      "spacer": true,
+      "side": "left"
+    },
+    {
+      "spacer": true,
+      "side": "left"
+    },
+    {
+      "name": "DC+",
+      "side": "left",
+      "type": "power_in",
+      "supply": "5V"
+    },
+    {
+      "name": "DC-",
+      "side": "left",
+      "type": "ground"
+    },
+    {
+      "spacer": true,
+      "side": "left"
+    },
+    {
+      "spacer": true,
+      "side": "left"
+    },
+    {
+      "spacer": true,
+      "side": "left"
+    },
+    {
+      "spacer": true,
+      "side": "right"
+    },
+    {
+      "name": "P1",
+      "side": "right",
+      "label": "1",
+      "type": "usb",
+      "usb": {
+        "connector": "A",
+        "gender": "receptacle",
+        "role": "host",
+        "hub": "downstream",
+        "version": "2.0",
+        "speed": "high"
+      }
+    },
+    {
+      "spacer": true,
+      "side": "right"
+    },
+    {
+      "spacer": true,
+      "side": "right"
+    },
+    {
+      "name": "P2",
+      "side": "right",
+      "label": "2",
+      "type": "usb",
+      "usb": {
+        "connector": "A",
+        "gender": "receptacle",
+        "role": "host",
+        "hub": "downstream",
+        "version": "2.0",
+        "speed": "high"
+      }
+    },
+    {
+      "spacer": true,
+      "side": "right"
+    },
+    {
+      "spacer": true,
+      "side": "right"
+    },
+    {
+      "name": "P3",
+      "side": "right",
+      "label": "3",
+      "type": "usb",
+      "usb": {
+        "connector": "A",
+        "gender": "receptacle",
+        "role": "host",
+        "hub": "downstream",
+        "version": "2.0",
+        "speed": "high"
+      }
+    },
+    {
+      "spacer": true,
+      "side": "right"
+    },
+    {
+      "spacer": true,
+      "side": "right"
+    },
+    {
+      "name": "P4",
+      "side": "right",
+      "label": "4",
+      "type": "usb",
+      "usb": {
+        "connector": "A",
+        "gender": "receptacle",
+        "role": "host",
+        "hub": "downstream",
+        "version": "2.0",
+        "speed": "high"
+      }
+    },
+    {
+      "spacer": true,
+      "side": "right"
+    }
+  ],
+  "size": {
+    "w": 14,
+    "h": 14
+  },
+  "electrical": {
+    "model": "hub",
+    "params": {},
+    "usbHub": {
+      "power": {
+        "pin": "DC+"
+      }
+    }
+  },
+  "art": {
+    "w": 140,
+    "h": 140,
+    "pinLabels": "inside",
+    "shapes": [
+      {
+        "type": "rect",
+        "x": 0,
+        "y": 0,
+        "w": 140,
+        "h": 140,
+        "fill": "#E9ECEF",
+        "radius": 10
+      },
+      {
+        "type": "rect",
+        "x": 10,
+        "y": 10,
+        "w": 120,
+        "h": 120,
+        "fill": "#BFC5CD",
+        "radius": 6,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 110,
+        "y": 21,
+        "w": 32,
+        "h": 18,
+        "fill": "#C9CED6",
+        "radius": 2
+      },
+      {
+        "type": "rect",
+        "x": 132,
+        "y": 24,
+        "w": 6,
+        "h": 12,
+        "fill": "#2B2F36",
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 110,
+        "y": 51,
+        "w": 32,
+        "h": 18,
+        "fill": "#C9CED6",
+        "radius": 2
+      },
+      {
+        "type": "rect",
+        "x": 132,
+        "y": 54,
+        "w": 6,
+        "h": 12,
+        "fill": "#2B2F36",
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 110,
+        "y": 81,
+        "w": 32,
+        "h": 18,
+        "fill": "#C9CED6",
+        "radius": 2
+      },
+      {
+        "type": "rect",
+        "x": 132,
+        "y": 84,
+        "w": 6,
+        "h": 12,
+        "fill": "#2B2F36",
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 110,
+        "y": 111,
+        "w": 32,
+        "h": 18,
+        "fill": "#C9CED6",
+        "radius": 2
+      },
+      {
+        "type": "rect",
+        "x": 132,
+        "y": 114,
+        "w": 6,
+        "h": 12,
+        "fill": "#2B2F36",
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": -2,
+        "y": 20,
+        "w": 22,
+        "h": 20,
+        "fill": "#C9CED6",
+        "radius": 3
+      },
+      {
+        "type": "rect",
+        "x": -2,
+        "y": 25,
+        "w": 10,
+        "h": 10,
+        "fill": "#2B2F36",
+        "radius": 1,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": -2,
+        "y": 82,
+        "w": 20,
+        "h": 26,
+        "fill": "#2B2F36",
+        "radius": 4,
+        "label": "DC",
+        "labelColor": "#F4F6F8",
+        "labelSize": 5
+      },
+      {
+        "type": "rect",
+        "x": 40,
+        "y": 54,
+        "w": 60,
+        "h": 32,
+        "fill": "#E9ECEF",
+        "radius": 4,
+        "label": "USB 2.0 HUB",
+        "labelColor": "#2B2F36",
+        "labelSize": 6
+      },
+      {
+        "type": "rect",
+        "x": 94,
+        "y": 27,
+        "w": 6,
+        "h": 6,
+        "fill": "#2F9E6E",
+        "radius": 3,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 94,
+        "y": 57,
+        "w": 6,
+        "h": 6,
+        "fill": "#2F9E6E",
+        "radius": 3,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 94,
+        "y": 87,
+        "w": 6,
+        "h": 6,
+        "fill": "#2F9E6E",
+        "radius": 3,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 94,
+        "y": 117,
+        "w": 6,
+        "h": 6,
+        "fill": "#2F9E6E",
+        "radius": 3,
+        "outline": false
+      }
+    ]
+  }
+}

@@ -249,6 +249,18 @@
       "caps": {
         "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it."
       }
+    },
+    {
+      "name": "USB",
+      "side": "top",
+      "type": "usb",
+      "usb": {
+        "connector": "micro-B",
+        "gender": "receptacle",
+        "role": "device",
+        "version": "1.1",
+        "speed": "full"
+      }
     }
   ],
   "internal": [

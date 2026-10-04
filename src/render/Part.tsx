@@ -1,7 +1,7 @@
 // Draws one module in the Sticker style: flat fills, dark ink outline on every shape (a dark body gets
 // the theme's outline color instead, when the theme sets one).
 import { memo } from 'react'
-import { insideLabelSides, isNetLabel, type ModuleDef, type PinType, type PlacedPin, type Side, layoutModule, LEAD } from '../format/module.ts'
+import { insideLabelSides, isNetLabel, type ModuleDef, type PinType, type PlacedPin, type Side, type UsbSpec, layoutModule, LEAD, usbOf } from '../format/module.ts'
 import type { LabelLook } from '../format/mainsLook.ts'
 import { NetLabelFlag } from './NetLabel.tsx'
 import { bodyRect, pivot, worldPins, type Rect, type Rotation, type WorldPin } from '../format/geometry.ts'
@@ -61,7 +61,32 @@ function headerSides(m: ModuleDef): Set<Side> {
   return new Set(insideLabelSides(m))
 }
 
-function PinStub({ p }: { p: PlacedPin }) {
+/** Across-the-edge width and corner radius of each USB connector's glyph, in px. */
+const USB_GLYPH: Record<UsbSpec['connector'], [number, number]> = { A: [12, 0.8], B: [11, 2], 'mini-B': [7.5, 1.2], 'micro-B': [7, 1.2], C: [8, 3.2] }
+const USB_SLOT = '#2B2F36'
+const USB_TONGUE = '#F4F6F8'
+
+/**
+ * A USB port in place of a pin stub (USB design 1.2): the connector's metal shell standing out of the
+ * body edge where the wire attaches, its opening dark for a socket, or with its white contact tongue
+ * for a plug. Drawn in a frame whose +x points out of the body.
+ */
+function UsbGlyph({ p, usb }: { p: PlacedPin; usb: UsbSpec }) {
+  const [w, rx] = USB_GLYPH[usb.connector]
+  const angle = p.dir.x > 0 ? 0 : p.dir.y > 0 ? 90 : p.dir.x < 0 ? 180 : 270
+  const plug = usb.gender === 'plug'
+  return (
+    <g data-usb-port={p.name} data-usb-gender={usb.gender} transform={`translate(${p.edge.x} ${p.edge.y}) rotate(${angle})`}>
+      <rect x={-3} y={-w / 2} width={LEAD + 3} height={w} rx={rx} fill={METAL} stroke={INK} strokeWidth={1.1} />
+      {plug
+        ? <rect x={-1} y={-w / 2 + 1.6} width={LEAD - 0.5} height={Math.max(1.4, w / 2 - 1.6)} rx={0.6} fill={USB_TONGUE} stroke={INK} strokeWidth={0.6} />
+        : <rect x={LEAD - 3.2} y={-w / 2 + 1.4} width={2.6} height={w - 2.8} rx={Math.min(rx, 1)} fill={USB_SLOT} />}
+    </g>
+  )
+}
+
+function PinStub({ p, usb }: { p: PlacedPin; usb?: UsbSpec }) {
+  if (usb) return <UsbGlyph p={p} usb={usb} />
   if (p.bus) {
     const len = p.bus.length * 10
     const horiz = p.side === 'top' || p.side === 'bottom'
@@ -226,7 +251,7 @@ export const Part = memo(function Part({ module: m, x = 0, y = 0, rotation = 0, 
   return (
     <g transform={`translate(${x} ${y})`}>
       <g transform={rotation ? `rotate(${rotation} ${c.x} ${c.y})` : undefined}>
-        {lay.pins.map((p) => <PinStub key={p.name} p={p} />)}
+        {lay.pins.map((p) => <PinStub key={p.name} p={p} usb={p.type === 'usb' ? usbOf(m, p.name) : undefined} />)}
         {art ? (
           <g transform={`translate(${ax} ${ay})`}>
             {art.shapes.map((s, i) => (

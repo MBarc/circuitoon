@@ -15,6 +15,7 @@ function i2cAddressText(i2c: I2cSpec): string {
 }
 import { naturalCompare } from '../agent/order.ts'
 import { capsText } from '../format/pinRules.ts'
+import { usbWords } from '../format/usb.ts'
 import type { Args } from './args.ts'
 import { CliError, EXIT, type Io, flag, printJson } from './io.ts'
 
@@ -29,7 +30,7 @@ export function partSummary(m: ModuleDef) {
     netLabel: isNetLabel(m),
     pins: m.pins
       .filter((p): p is PinDef => !isSpacer(p))
-      .map((p) => ({ name: p.name, label: p.label ?? null, type: p.type ?? null, supply: p.supply ?? null, capacity: terminalCapacity(m, p.name), caps: p.caps ?? null })),
+      .map((p) => ({ name: p.name, label: p.label ?? null, type: p.type ?? null, supply: p.supply ?? null, capacity: terminalCapacity(m, p.name), caps: p.caps ?? null, usb: p.usb ?? null })),
     holes: (m.holes ?? []).map((g) => ({ name: g.name, label: g.label ?? null, type: g.type ?? null, supply: g.supply ?? null, holes: g.at.length, rail: g.rail ?? null, capacity: terminalCapacity(m, g.name), caps: g.caps ?? null })),
   }
 }
@@ -38,7 +39,7 @@ const modules = (): ModuleDef[] => library.flatMap((e) => (e.ok ? [e.module] : [
 
 type Pin = ReturnType<typeof partSummary>['pins'][number]
 const pinText = (p: Pin) =>
-  [p.name, p.label && p.label !== p.name ? `(${p.label})` : '', p.type ?? 'untyped', p.supply ?? '', p.capacity > 1 ? `takes ${p.capacity}` : '',
+  [p.name, p.label && p.label !== p.name ? `(${p.label})` : '', p.usb ? `[${usbWords(p.usb)}]` : p.type ?? 'untyped', p.supply ?? '', p.capacity > 1 ? `takes ${p.capacity}` : '',
     capsText(p.caps ?? undefined).length ? `[${capsText(p.caps ?? undefined).join('; ')}]` : ''].filter(Boolean).join(' ')
 
 export function partsCommand(args: Args, io: Io): number {

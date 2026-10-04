@@ -5,7 +5,7 @@
 // the source.
 import { describe, expect, it } from 'vitest'
 import { isSpacer, layoutModule } from './module.ts'
-import { load, pin, pinsOf } from './builtinModules.testing.ts'
+import { load, pin, pinsOf, withoutUsb } from './builtinModules.testing.ts'
 
 
 // Silkscreen text (label ?? name), top to bottom.
@@ -52,7 +52,7 @@ const boards: Record<string, { left: string[]; right: string[] }> = {
 
 describe('built-in boards keep the physical header order', () => {
   for (const [file, want] of Object.entries(boards)) {
-    const m = load(file)
+    const m = withoutUsb(load(file))
     it(`${file}: rows match the source pinout, on pitch, facing each other`, () => {
       expect(m.category).toBe('Microcontrollers')
       expect(m.source).toMatch(/^https:\/\//)

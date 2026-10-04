@@ -20,17 +20,26 @@
     {
       "name": "INT",
       "side": "top",
-      "type": "output"
+      "type": "output",
+      "caps": {
+        "note": "INT is not used: \"Interrupts aren't used. Leave it disconnected.\" (Raspberry Pi engineer 6by9)."
+      }
     },
     {
       "name": "SDA",
       "side": "top",
-      "type": "io"
+      "type": "io",
+      "caps": {
+        "note": "SDA is the touch controller's I2C, needed only on Pis older than the B+: later ones carry it on the DSI cable, so leave it unconnected there."
+      }
     },
     {
       "name": "SCL",
       "side": "top",
-      "type": "io"
+      "type": "io",
+      "caps": {
+        "note": "SCL is the touch controller's I2C, needed only on Pis older than the B+: later ones carry it on the DSI cable, so leave it unconnected there."
+      }
     },
     {
       "name": "GND",

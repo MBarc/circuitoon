@@ -16,6 +16,15 @@ const STRAND = '#8C939D'
 const SHADE = '#9DA4AE'
 const EDGE = 1.2
 
+/** A USB plug end: shell length, shell height, boot height and shell corner radius, in px. */
+const USB_PLUG: Record<'usb-a' | 'usb-b' | 'usb-mini-b' | 'usb-micro-b' | 'usb-c', [number, number, number, number]> = {
+  'usb-a': [12, 9, 11, 0.8],
+  'usb-b': [11, 8.5, 11, 1.6],
+  'usb-mini-b': [8, 5.5, 8.5, 1],
+  'usb-micro-b': [7, 4.2, 8, 1],
+  'usb-c': [8, 4.8, 8, 2.4],
+}
+
 export interface CableEndProps {
   kind: EndKind
   x: number
@@ -171,6 +180,24 @@ export const CableEnd = memo(function CableEnd({ kind, x, y, angle, scale: s, co
         </>
       )
       break
+    case 'usb-a':
+    case 'usb-b':
+    case 'usb-mini-b':
+    case 'usb-micro-b':
+    case 'usb-c': {
+      // A metal plug shell (its width says which connector) and the cable's moulded boot.
+      const [shell, h, boot, rx] = USB_PLUG[kind]
+      body = (
+        <>
+          {box(0, shell, h, METAL, rx, 1)}
+          {line(1.2, shell - 1.5, 0, SHADE, Math.max(0.8, h / 4))}
+          {box(shell - 1, 26 + (kind === 'usb-a' || kind === 'usb-b' ? 4 : 0), boot, color, 2)}
+          {rib(shell + 4, boot - 2.4)}
+          {line(shell + 6, 22, -boot / 4, GLINT, 0.9, 0.6)}
+        </>
+      )
+      break
+    }
     case 'bare':
       return null
   }

@@ -1,0 +1,161 @@
+{
+  "format": "circuitoon-module/1",
+  "id": "computer-usb-port",
+  "version": 1,
+  "name": "Computer USB port (USB 2.0, USB-A)",
+  "category": "Computers",
+  "source": "https://www.usb.org/document-library/usb-20-specification",
+  "pins": [
+    {
+      "spacer": true,
+      "side": "right"
+    },
+    {
+      "spacer": true,
+      "side": "right"
+    },
+    {
+      "spacer": true,
+      "side": "right"
+    },
+    {
+      "spacer": true,
+      "side": "right"
+    },
+    {
+      "name": "USB",
+      "side": "right",
+      "type": "usb",
+      "usb": {
+        "connector": "A",
+        "gender": "receptacle",
+        "role": "host",
+        "version": "2.0",
+        "speed": "high"
+      }
+    },
+    {
+      "spacer": true,
+      "side": "right"
+    },
+    {
+      "spacer": true,
+      "side": "right"
+    },
+    {
+      "spacer": true,
+      "side": "right"
+    }
+  ],
+  "size": {
+    "w": 14,
+    "h": 10
+  },
+  "electrical": {
+    "model": "computer",
+    "params": {}
+  },
+  "art": {
+    "w": 140,
+    "h": 100,
+    "shapes": [
+      {
+        "type": "rect",
+        "x": 16,
+        "y": 4,
+        "w": 108,
+        "h": 56,
+        "fill": "#BFC5CD",
+        "radius": 4
+      },
+      {
+        "type": "rect",
+        "x": 22,
+        "y": 10,
+        "w": 96,
+        "h": 44,
+        "fill": "#1B2733",
+        "radius": 2
+      },
+      {
+        "type": "rect",
+        "x": 30,
+        "y": 18,
+        "w": 50,
+        "h": 6,
+        "fill": "#3D6FD6",
+        "radius": 1,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 30,
+        "y": 28,
+        "w": 70,
+        "h": 4,
+        "fill": "#5C646E",
+        "radius": 1,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 30,
+        "y": 36,
+        "w": 40,
+        "h": 4,
+        "fill": "#5C646E",
+        "radius": 1,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 2,
+        "y": 58,
+        "w": 136,
+        "h": 36,
+        "fill": "#E9ECEF",
+        "radius": 5
+      },
+      {
+        "type": "rect",
+        "x": 14,
+        "y": 64,
+        "w": 100,
+        "h": 5,
+        "fill": "#BFC5CD",
+        "radius": 1,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 14,
+        "y": 71,
+        "w": 100,
+        "h": 5,
+        "fill": "#BFC5CD",
+        "radius": 1,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 14,
+        "y": 78,
+        "w": 100,
+        "h": 5,
+        "fill": "#BFC5CD",
+        "radius": 1,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 52,
+        "y": 86,
+        "w": 36,
+        "h": 5,
+        "fill": "#BFC5CD",
+        "radius": 2,
+        "outline": false
+      }
+    ]
+  }
+}

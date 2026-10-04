@@ -10,8 +10,41 @@ export const CAPACITY_MAX = 8
 
 export type Side = 'top' | 'bottom' | 'left' | 'right'
 export const SIDES: Side[] = ['top', 'right', 'bottom', 'left']
-export const PIN_TYPES = ['power_in', 'power_out', 'ground', 'input', 'output', 'io', 'passive', 'nc'] as const
+export const PIN_TYPES = ['power_in', 'power_out', 'ground', 'input', 'output', 'io', 'passive', 'nc', 'usb'] as const
 export type PinType = (typeof PIN_TYPES)[number]
+
+// ---- USB ports (docs/superpowers/specs/2026-10-04-usb-design.md) ----
+export const USB_CONNECTORS = ['A', 'B', 'mini-B', 'micro-B', 'C'] as const
+export type UsbConnector = (typeof USB_CONNECTORS)[number]
+export const USB_ROLES = ['host', 'device', 'dual', 'passthrough'] as const
+export type UsbRole = (typeof USB_ROLES)[number]
+export const USB_VERSIONS = ['1.1', '2.0', '3.0'] as const
+export const USB_SPEEDS = ['low', 'full', 'high', 'super'] as const
+/**
+ * A USB socket or plug (a pin with `type: "usb"`): one port, never separate VBUS/D+/D- wires. Every
+ * optional field claims nothing when left out; a missing `draw` or `source` is unknown, never zero.
+ */
+export interface UsbSpec {
+  connector: UsbConnector
+  gender: 'receptacle' | 'plug'
+  role: UsbRole
+  version?: (typeof USB_VERSIONS)[number]
+  speed?: (typeof USB_SPEEDS)[number]
+  /** mA a host, dual or hub downstream port supplies, as sourced (a host port without it takes its version's USB default). */
+  source?: number
+  /** mA a device takes from the port, as sourced. */
+  draw?: number
+  /** A charge-only input: no data lines. */
+  power?: 'only'
+  /** A hub's port: upstream (role device) or downstream (role host). */
+  hub?: 'upstream' | 'downstream'
+  /** On a passthrough port: the other end the bus continues to. */
+  through?: string
+  /** The board's own pin or pad this port's VBUS feeds (Pico VBUS, a dev board's 5V), where a source says so. */
+  vbus?: string
+}
+/** The most current a port may declare, in mA (USB-C at 5 A). */
+export const USB_MA_MAX = 5000
 
 /**
  * What a pin can and cannot do, from the maker's datasheet (PRD "Pin capabilities"). Every field is
@@ -54,6 +87,8 @@ export interface PinDef {
   bond?: 'pe'
   /** What the pin can and cannot do (input only, strapping, flash ...), from the datasheet. */
   caps?: PinCaps
+  /** A USB port's connector, gender, role and current (only on a `usb` pin, and required there). */
+  usb?: UsbSpec
 }
 export interface SpacerDef {
   spacer: true
@@ -340,6 +375,30 @@ export function validateModule(raw: unknown): ValidationResult {
       errors.push(`${at}.supply: must be one or more rail names separated by "/", for example "3V3/5V"`)
   }
 
+  const checkUsb = (t: Record<string, unknown>, at: string) => {
+    if (t.type !== 'usb') return void (t.usb !== undefined && errors.push(`${at}.usb: only on a pin with type "usb"`))
+    const u = t.usb
+    if (!isObj(u)) return void errors.push(`${at}.usb: required on a USB port, { "connector", "gender", "role", ... }`)
+    for (const k of Object.keys(u))
+      if (!['connector', 'gender', 'role', 'version', 'speed', 'source', 'draw', 'power', 'hub', 'through', 'vbus'].includes(k)) errors.push(`${at}.usb.${k}: unknown field`)
+    if (!(USB_CONNECTORS as readonly unknown[]).includes(u.connector)) errors.push(`${at}.usb.connector: must be one of ${USB_CONNECTORS.join(', ')}`)
+    if (u.gender !== 'receptacle' && u.gender !== 'plug') errors.push(`${at}.usb.gender: must be "receptacle" or "plug"`)
+    if (!(USB_ROLES as readonly unknown[]).includes(u.role)) errors.push(`${at}.usb.role: must be one of ${USB_ROLES.join(', ')}`)
+    if (u.version !== undefined && !(USB_VERSIONS as readonly unknown[]).includes(u.version)) errors.push(`${at}.usb.version: must be one of ${USB_VERSIONS.join(', ')}`)
+    if (u.speed !== undefined && !(USB_SPEEDS as readonly unknown[]).includes(u.speed)) errors.push(`${at}.usb.speed: must be one of ${USB_SPEEDS.join(', ')}`)
+    for (const k of ['source', 'draw'])
+      if (u[k] !== undefined && !(isNum(u[k]) && (u[k] as number) >= 0 && (u[k] as number) <= USB_MA_MAX)) errors.push(`${at}.usb.${k}: must be mA, from 0 to ${USB_MA_MAX} (leave it out when not known)`)
+    if (u.source !== undefined && u.role !== 'host' && u.role !== 'dual') errors.push(`${at}.usb.source: only a host or dual port supplies current`)
+    if (u.draw !== undefined && u.role !== 'device' && u.role !== 'dual') errors.push(`${at}.usb.draw: only a device or dual port draws current`)
+    if (u.power !== undefined && u.power !== 'only') errors.push(`${at}.usb.power: must be "only" (a charge-only input)`)
+    if (u.power === 'only' && u.role !== 'device') errors.push(`${at}.usb.power: a charge-only port is a device port`)
+    if (u.hub !== undefined && !((u.hub === 'upstream' && u.role === 'device') || (u.hub === 'downstream' && u.role === 'host')))
+      errors.push(`${at}.usb.hub: "upstream" on a device port or "downstream" on a host port`)
+    if ((u.role === 'passthrough') !== (u.through !== undefined)) errors.push(`${at}.usb.through: a passthrough port names its other end, and only it does`)
+    else if (u.through !== undefined && typeof u.through !== 'string') errors.push(`${at}.usb.through: must be a port name`)
+    if (u.vbus !== undefined && u.role !== 'device' && u.role !== 'dual') errors.push(`${at}.usb.vbus: only a device or dual port feeds the board's VBUS`)
+  }
+
   const names = new Set<string>()
   // A board has only hole groups, so its pin list may be empty.
   const hasHoles = Array.isArray(raw.holes) && raw.holes.length > 0
@@ -364,6 +423,7 @@ export function validateModule(raw: unknown): ValidationResult {
       if (p.label !== undefined && typeof p.label !== 'string') errors.push(`${at}.label: must be a string`)
       checkSupply(p, at)
       checkCaps(p, at)
+      checkUsb(p, at)
       if (p.capacity !== undefined && !(Number.isInteger(p.capacity) && (p.capacity as number) >= 1 && (p.capacity as number) <= CAPACITY_MAX))
         errors.push(`${at}.capacity: must be a whole number from 1 to ${CAPACITY_MAX}`)
     })
@@ -385,6 +445,7 @@ export function validateModule(raw: unknown): ValidationResult {
         checkMains(g, at)
         checkSupply(g, at)
         checkCaps(g, at)
+        if (g.type === 'usb' || g.usb !== undefined) errors.push(`${at}: a USB port is a pin on the body edge, not a hole group`)
         if (g.capacity !== undefined) {
           if (g.holeStyle !== 'pad') errors.push(`${at}.capacity: only pins and header pads (holeStyle "pad") take a capacity`)
           else if (!(Number.isInteger(g.capacity) && (g.capacity as number) >= 1 && (g.capacity as number) <= CAPACITY_MAX))
@@ -558,6 +619,7 @@ export function validateModule(raw: unknown): ValidationResult {
       errors.push(`electrical.voltageOutputs: required, the module has a voltage value and ${outs.length} power_out pins; name the ones the value sets`)
   }
 
+  validateUsb(raw, errors)
   validateMains(raw, names, errors)
   // Only a plug whose fields are already valid is measured.
   if (!errors.length && isObj(raw.electrical) && isObj(raw.electrical.plug) && Array.isArray(raw.electrical.plug.profiles)) {
@@ -571,6 +633,92 @@ export function validateModule(raw: unknown): ValidationResult {
   }
 
   return errors.length ? { ok: false, errors } : { ok: true, module: raw as unknown as ModuleDef }
+}
+
+/** Cross-pin USB data: passthrough partners, shared budgets and hub power (one port's own fields are checked with its pin). */
+function validateUsb(raw: Record<string, unknown>, errors: string[]) {
+  const ports = new Map(
+    (Array.isArray(raw.pins) ? raw.pins : [])
+      .filter((p): p is Record<string, unknown> => isObj(p) && p.type === 'usb' && typeof p.name === 'string' && isObj(p.usb))
+      .map((p) => [p.name as string, p.usb as Record<string, unknown>]),
+  )
+  // The board's own pins and pads, USB ports aside: what a port's VBUS or a hub's DC input can name.
+  const powerPins = new Set([...(Array.isArray(raw.pins) ? raw.pins : []), ...(Array.isArray(raw.holes) ? raw.holes : [])].filter((p) => isObj(p) && p.type !== 'usb').map((p) => (p as Record<string, unknown>).name))
+  for (const [name, u] of ports)
+    if (u.vbus !== undefined && !(typeof u.vbus === 'string' && powerPins.has(u.vbus)))
+      errors.push(`pins: USB port "${name}" has vbus "${show(u.vbus)}", which must name one of the part's own pins or pads (not a USB port)`)
+  for (const [name, u] of ports) {
+    if (u.role !== 'passthrough' || typeof u.through !== 'string') continue
+    const other = ports.get(u.through)
+    if (!other || other.through !== name || u.through === name)
+      errors.push(`pins: USB port "${name}" passes through to "${u.through}", which must be another passthrough port that names "${name}" back`)
+  }
+  const el = raw.electrical
+  const hubPorts = [...ports.values()].filter((u) => u.hub !== undefined)
+  if (!isObj(el)) {
+    if (hubPorts.length) errors.push('electrical.usbHub: required on a part with hub ports (how its downstream ports are powered)')
+    return
+  }
+  if (el.usbBudget !== undefined) {
+    if (!Array.isArray(el.usbBudget)) errors.push('electrical.usbBudget: must be a list of { "ports", "mA", "setting"?, "note"? }')
+    else
+      el.usbBudget.forEach((b, i) => {
+        const at = `electrical.usbBudget[${i}]`
+        if (!isObj(b)) return void errors.push(`${at}: must be { "ports", "mA", "setting"?, "note"? }`)
+        for (const k of Object.keys(b)) if (!['ports', 'mA', 'setting', 'note'].includes(k)) errors.push(`${at}.${k}: unknown field`)
+        if (!Array.isArray(b.ports) || !b.ports.length) errors.push(`${at}.ports: required, a list of USB port names`)
+        else b.ports.forEach((n, j) => { if (typeof n !== 'string' || !ports.has(n)) errors.push(`${at}.ports[${j}]: no USB port named "${show(n)}"`) })
+        if (!(isNum(b.mA) && b.mA > 0 && b.mA <= 4 * USB_MA_MAX)) errors.push(`${at}.mA: must be a current in mA, above 0`)
+        if (b.note !== undefined && (typeof b.note !== 'string' || !b.note.trim())) errors.push(`${at}.note: must be a non-empty string`)
+        if (b.setting !== undefined) {
+          const s = b.setting
+          const choices = Array.isArray(s) && s.length === 2 && typeof s[0] === 'string' && isObj(el.settings) && Object.hasOwn(el.settings, s[0]) ? el.settings[s[0]] : undefined
+          if (!Array.isArray(choices) || !Array.isArray(s) || !choices.includes(s[1])) errors.push(`${at}.setting: must be [setting name, choice] from electrical.settings`)
+        }
+      })
+  }
+  if (el.usbHub !== undefined) {
+    const h = el.usbHub
+    // The DC input that makes a hub self-powered: a pin or a header pad, never a USB port.
+    const ok = isObj(h) && Object.keys(h).length === 1 &&
+      (h.power === 'bus' || h.power === 'self' || (isObj(h.power) && Object.keys(h.power).length === 1 && typeof h.power.pin === 'string' && powerPins.has(h.power.pin)))
+    if (!ok) errors.push('electrical.usbHub: must be { "power": "bus" }, { "power": "self" } or { "power": { "pin": <a pin or pad name, not a USB port> } }')
+    if (hubPorts.filter((u) => u.hub === 'upstream').length !== 1 || !hubPorts.some((u) => u.hub === 'downstream'))
+      errors.push('electrical.usbHub: a hub has exactly one upstream port and at least one downstream port')
+  } else if (hubPorts.length) errors.push('electrical.usbHub: required on a part with hub ports (how its downstream ports are powered)')
+}
+
+/** A part's USB ports (pins with `type: "usb"`), in pin order. Trusts validateModule. */
+export function usbPorts(m: ModuleDef): (PinDef & { usb: UsbSpec })[] {
+  return m.pins.filter((p): p is PinDef & { usb: UsbSpec } => !isSpacer(p) && p.type === 'usb' && isObj(p.usb))
+}
+
+/** The USB port named `name`, or undefined (not a pin, or not a USB port). */
+export function usbOf(m: ModuleDef, name: string): UsbSpec | undefined {
+  const p = m.pins.find((q): q is PinDef => !isSpacer(q) && q.name === name)
+  return p?.type === 'usb' && isObj(p.usb) ? p.usb : undefined
+}
+
+/** How a hub's downstream ports are powered (`electrical.usbHub`), or null for a part that is no hub. */
+export type UsbHubPower = 'bus' | 'self' | { pin: string }
+export function usbHubOf(m: ModuleDef): { power: UsbHubPower } | null {
+  const e = m.electrical
+  return isObj(e) && isObj(e.usbHub) ? (e.usbHub as { power: UsbHubPower }) : null
+}
+
+/** A current shared by several USB ports (Pi 4: 1.2 A over its four). */
+export interface UsbBudget {
+  ports: string[]
+  mA: number
+  /** Applies only when the part's setting has this choice (Pi 5: the supply). */
+  setting?: [string, string]
+  note?: string
+}
+/** The shared USB current limits (`electrical.usbBudget`) that apply with the part's settings. */
+export function usbBudgets(part: { settings?: Record<string, string> }, m: ModuleDef): UsbBudget[] {
+  const e = m.electrical
+  if (!isObj(e) || !Array.isArray(e.usbBudget)) return []
+  return (e.usbBudget as UsbBudget[]).filter((b) => !b.setting || partSetting(part, m, b.setting[0]) === b.setting[1])
 }
 
 /** A KiCad library id, "Library:Name": no spaces, quotes or second colon. */

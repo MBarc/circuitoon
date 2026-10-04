@@ -229,6 +229,19 @@
     {
       "name": "SWDIO",
       "side": "bottom"
+    },
+    {
+      "name": "USB",
+      "side": "top",
+      "type": "usb",
+      "usb": {
+        "connector": "micro-B",
+        "gender": "receptacle",
+        "role": "dual",
+        "version": "1.1",
+        "speed": "full",
+        "vbus": "VBUS"
+      }
     }
   ],
   "internal": [

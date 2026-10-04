@@ -8,7 +8,7 @@
 // on a generic pin header with a pad per pin, and a warning says so. Pure; the caller passes the
 // library so a sheet saved before the library had a part's mapping still exports with it.
 import { type Diagram, moduleOf } from './diagram.ts'
-import { type HoleGroup, type KicadDef, type ModuleDef, type PinDef, type PinType, isBoard, isCustom, isNetLabel, isSpacer } from './module.ts'
+import { type HoleGroup, type KicadDef, type ModuleDef, type PinDef, type PinType, isBoard, isCustom, isNetLabel, isSpacer, usbPorts } from './module.ts'
 import { netlist } from './netlist.ts'
 import { plugsOf } from './breadboard.ts'
 import { labelName } from './netLabels.ts'
@@ -61,6 +61,7 @@ export interface KicadExport {
 
 const collator = new Intl.Collator('en', { numeric: true, sensitivity: 'base' })
 const natural = (a: string, b: string): number => collator.compare(a, b) || (a < b ? -1 : a > b ? 1 : 0)
+const andWords = (xs: string[]) => (xs.length < 2 ? xs.join('') : `${xs.slice(0, -1).join(', ')} and ${xs[xs.length - 1]}`)
 
 /** A string as a KiCad S-expression atom: always quoted, with `\` and `"` escaped and line breaks as `\n`. */
 export const quote = (s: string): string => `"${s.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\r?\n/g, '\\n')}"`
@@ -102,7 +103,9 @@ export function kicadValue(part: { values?: Record<string, unknown> }, m: Module
 
 /** Pin names with their sides, then hole group names, in order: what a mapping by name relies on. */
 const terminalKey = (m: ModuleDef): string =>
-  JSON.stringify([m.pins.filter((p): p is PinDef => !isSpacer(p)).map((p) => [p.name, p.side]), (m.holes ?? []).map((g) => g.name)])
+  // USB ports are left out: they are never on the mapping (a copy
+  // saved before the library added them still names the same header pins).
+  JSON.stringify([m.pins.filter((p): p is PinDef => !isSpacer(p) && p.type !== 'usb').map((p) => [p.name, p.side]), (m.holes ?? []).map((g) => g.name)])
 
 /**
  * The mapping to export a part with: the library's, when the part is built in and its stored copy
@@ -189,12 +192,13 @@ export function intentSource(intent: { title: string; parts: { ref: string; modu
 
 /** KiCad's electrical pin type for a Circuitoon pin type. */
 const PIN_TYPE: Record<PinType, string> = {
-  power_in: 'power_in', power_out: 'power_out', ground: 'power_in', input: 'input', output: 'output', io: 'bidirectional', passive: 'passive', nc: 'no_connect',
+  power_in: 'power_in', power_out: 'power_out', ground: 'power_in', input: 'input', output: 'output', io: 'bidirectional', passive: 'passive', nc: 'no_connect', usb: 'passive',
 }
 
 /** Every pin and pad group of a module, in order: pins (no spacers), then hole groups. */
 function terminalsOf(m: ModuleDef): (PinDef | HoleGroup)[] {
-  return [...m.pins.filter((p): p is PinDef => !isSpacer(p)), ...(m.holes ?? [])]
+  // A USB port is never a pad of the part's footprint: USB links are off-board.
+  return [...m.pins.filter((p): p is PinDef => !isSpacer(p) && p.type !== 'usb'), ...(m.holes ?? [])]
 }
 
 const pad2 = (n: number) => String(n).padStart(2, '0')
@@ -272,6 +276,23 @@ export function writeKicad(src: KicadSource, opts: KicadOptions = {}): KicadExpo
   const partRef = new Map<string, string>()
   const modOf = new Map(kept.map(({ p }) => [p.key, p.module]))
 
+  // USB links (USB design section 4): a dev board's USB socket and the cable or dongle in it are off
+  // the carrier PCB, so a net of USB ports only (a cable or a plug pushed in) is left out, with a note
+  // per link. A USB port on a net with anything else (the checker's usb-to-pin error) is left out of it.
+  const portName = (key: string, pin: string) => {
+    const part = src.parts.find((x) => x.key === key)
+    const port = part && usbPorts(part.module).find((q) => q.name === pin)
+    return port ? { title: `${part.designator} ${port.label ?? port.name}`, plug: port.usb.gender === 'plug' } : undefined
+  }
+  const usbNotes: string[] = []
+  for (const net of src.nets) {
+    const ports = net.nodes.flatMap(([k, pin]) => (modOf.has(k) ? [portName(k, pin)].filter((x) => x !== undefined) : [])).sort((a, b) => natural(a.title, b.title))
+    if (!ports.length) continue
+    if (ports.length === net.nodes.length) {
+      for (const q of ports.slice(1)) usbNotes.push(`${ports[0].title} to ${q.title} is ${ports[0].plug || q.plug ? 'a USB plug-in' : 'a USB cable'}, off-board`)
+    } else warnings.push(`${andWords(ports.map((q) => q.title))}: a USB port on a net with other pins is left out of it. Connect USB ports only to USB ports.`)
+  }
+
   for (const { p, map } of kept) {
     const m = p.module
     const ref = claimRef(kicadRef(p.designator || p.key))
@@ -297,6 +318,7 @@ export function writeKicad(src: KicadSource, opts: KicadOptions = {}): KicadExpo
       return c
     }
     const [symLib, symPart] = k?.symbol ? k.symbol.split(':') : ['Circuitoon', m.id]
+    if (!k && !terminalsOf(m).length) continue // only USB ports (a computer's port): off-board
     if (!k) {
       const names = terminalsOf(m).map((t) => t.name)
       const pins = Object.fromEntries(names.map((n, i) => [n, String(i + 1)]))
@@ -328,7 +350,7 @@ export function writeKicad(src: KicadSource, opts: KicadOptions = {}): KicadExpo
       warnings.push(`${ref} (${m.id}): ${k.note ?? 'the footprint is a placeholder, not the part\'s own.'}`)
     } else if (k.note) noteRefs.set(k.note, [...(noteRefs.get(k.note) ?? []), ref])
   }
-  const notes = [...noteRefs].map(([note, refs]) => `${refs.join(', ')}: ${note}`)
+  const notes = [...[...noteRefs].map(([note, refs]) => `${refs.join(', ')}: ${note}`), ...usbNotes]
 
   // Nets: each source net's component pins, on the pads they land on; infrastructure drops out.
   const built: { nodes: { comp: Comp; pad: string }[]; label?: string; pins: NamedPin[] }[] = []

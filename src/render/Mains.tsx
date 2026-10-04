@@ -20,6 +20,18 @@ export const BLOCKED_DASH = '6 5'
  * would close the 5 px gaps and the wire would no longer read as blocked.
  */
 export const BLOCKED_STROKE = { strokeDasharray: BLOCKED_DASH, strokeLinecap: 'butt' } as const
+/**
+ * A USB plug pushed straight into a socket (USB design 2.2): no cable, so the link is a dotted grey
+ * line from plug to socket, whatever the connection's stored colour.
+ */
+export function PluggedLink({ d, casing }: { d: string; casing: string }) {
+  return (
+    <g data-plugged="">
+      <path d={d} stroke={casing} strokeWidth={4.2} strokeDasharray="0.1 5" strokeLinecap="round" />
+      <path d={d} stroke="#9AA2AD" strokeWidth={2.4} strokeDasharray="0.1 5" strokeLinecap="round" />
+    </g>
+  )
+}
 
 /**
  * The stripe of a two-colour wire (green-yellow earth), over its base colour. On a blocked wire it

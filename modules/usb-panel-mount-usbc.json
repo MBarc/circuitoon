@@ -34,6 +34,84 @@
       "name": "CC",
       "side": "right",
       "type": "passive"
+    },
+    {
+      "spacer": true,
+      "side": "left"
+    },
+    {
+      "spacer": true,
+      "side": "left"
+    },
+    {
+      "name": "SOCKET",
+      "side": "left",
+      "type": "usb",
+      "usb": {
+        "connector": "C",
+        "gender": "receptacle",
+        "role": "passthrough",
+        "through": "PLUG"
+      }
+    },
+    {
+      "spacer": true,
+      "side": "left"
+    },
+    {
+      "spacer": true,
+      "side": "left"
+    },
+    {
+      "spacer": true,
+      "side": "left"
+    },
+    {
+      "spacer": true,
+      "side": "top"
+    },
+    {
+      "spacer": true,
+      "side": "top"
+    },
+    {
+      "spacer": true,
+      "side": "top"
+    },
+    {
+      "spacer": true,
+      "side": "top"
+    },
+    {
+      "spacer": true,
+      "side": "top"
+    },
+    {
+      "spacer": true,
+      "side": "top"
+    },
+    {
+      "spacer": true,
+      "side": "top"
+    },
+    {
+      "spacer": true,
+      "side": "top"
+    },
+    {
+      "spacer": true,
+      "side": "top"
+    },
+    {
+      "name": "PLUG",
+      "side": "top",
+      "type": "usb",
+      "usb": {
+        "connector": "C",
+        "gender": "plug",
+        "role": "passthrough",
+        "through": "SOCKET"
+      }
     }
   ],
   "size": {

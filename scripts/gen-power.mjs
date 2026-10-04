@@ -8,6 +8,7 @@
 // then `git diff` the result before committing. src/format/power.test.ts pins the order.
 import { finish } from './lib/gen-output.mjs'
 import { moduleJson, r, side, write } from './lib/parts.mjs'
+import { intoSpacer, portSide, usbPort } from './lib/usb.mjs'
 
 const METAL = '#C9CED6', TIN = '#D5DAE1', HOLE = '#6B727C', CHIP = '#1E2126'
 const BLUE = '#1E4F8A', BLACK_PCB = '#2B2F36', MOUNT = '#123356', CAP = '#B8BEC7', CAP_TOP = '#8E96A1'
@@ -35,7 +36,7 @@ function sop(x, y, w, h, n, label, labelSize = 5) {
 //    bank module"; 25 x 20 mm). Seen from the component side with the USB-C input at the right:
 //    battery pads on the left edge, "-" above "+" (next to a battery symbol); on the bottom edge
 //    the K (key) pad at the far left, then the output pads "+" "5V" "-" at the right. The USB-C
-//    socket is charge input only (drawn, not wired). Optional USB-A output sits on the back.
+//    socket is charge input only: a charge-only USB port. Optional USB-A output sits on the back.
 //    Battery and output grounds are the same net (IP5306 has no low-side switch).
 {
   const wu = 12, hu = 10, W = wu * 10, H = hu * 10
@@ -62,7 +63,14 @@ function sop(x, y, w, h, n, label, labelSize = 5) {
   write('ip5306-usbc-module.json', moduleJson({
     category: 'Power', inside: true, id: 'ip5306-usbc-module', name: 'IP5306 USB-C charge/boost module (18650, 5 V out)',
     source: 'https://done.land/components/power/powersupplies/battery/chargers/charge-discharge/ip5306/x-150/ https://www.amazon.com/dp/B0DDLF99HN',
-    pins: [...left.pins, ...bottom.pins], internal: [['B-', '5V-']], wu, hu,
+    // The USB-C input on the right edge is a charge-only port (USB design 1.1). "It requires a 5V 2A
+    // input" (done.land, the X-150 page) is a recommended adapter rating from one page, not a measured
+    // draw: a note on the port, and the draw stays unknown.
+    pins: [...left.pins, ...bottom.pins, ...portSide('right', hu, [[50, {
+      ...usbPort('USB-C', 'right', { connector: 'C', gender: 'receptacle', role: 'device', power: 'only' }),
+      caps: { note: 'One maker page recommends a 5 V 2 A adapter for this input; its actual input current is not measured, so check it before relying on a 500 mA USB port.' },
+    }]])],
+    internal: [['B-', '5V-']], wu, hu,
     electrical: { model: 'power_bank', params: {} }, shapes,
   }))
 }
@@ -98,7 +106,13 @@ function sop(x, y, w, h, n, label, labelSize = 5) {
   write('tp4056-module.json', moduleJson({
     category: 'Power', inside: true, id: 'tp4056-module', name: 'TP4056 Li-ion charger (USB-C, with protection)',
     source: 'https://www.amazon.com/dp/B07PKND8KG https://www.addicore.com/products/tp4056-tc4056a-lithium-battery-charger-and-protection-module https://www.teachmemicro.com/tp4056-charging-module-pinout-wiring-charging-current-and-arduino-use/',
-    pins: [...left.pins, ...right.pins], internal: [['IN-', 'OUT-'], ['B+', 'OUT+']], wu, hu,
+    // The USB-C socket between the IN pads is a charge-only port (USB design 1.1), in the left side's
+    // third slot (y 40, the socket spans 30-60). It draws the charge current: about 1 A with the
+    // 1.2 kOhm R_PROG these boards ship with (TP4056 datasheet, R_PROG table; teachmemicro: "Many TP4056
+    // modules are configured for a charge current of about 1 A"). IN+ and IN- are the same 5 V input as
+    // the socket (its VBUS and GND), so `vbus` is IN+: feed one or the other, never both.
+    pins: intoSpacer([...left.pins, ...right.pins], 'left', 2, usbPort('USB-C', 'left', { connector: 'C', gender: 'receptacle', role: 'device', power: 'only', draw: 1000, vbus: 'IN+' })),
+    internal: [['IN-', 'OUT-'], ['B+', 'OUT+']], wu, hu,
     // commonReturn: the DW01A/8205A protection switch sits between B- and OUT-. It conducts in
     // normal use, so the wiring checker treats both as one return (an approximation: it opens on
     // over-discharge, overcharge or overcurrent). They stay separate nets on the sheet.

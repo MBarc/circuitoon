@@ -653,8 +653,35 @@ var PIN_TYPES = [
 	"output",
 	"io",
 	"passive",
-	"nc"
+	"nc",
+	"usb"
 ];
+var USB_CONNECTORS = [
+	"A",
+	"B",
+	"mini-B",
+	"micro-B",
+	"C"
+];
+var USB_ROLES = [
+	"host",
+	"device",
+	"dual",
+	"passthrough"
+];
+var USB_VERSIONS = [
+	"1.1",
+	"2.0",
+	"3.0"
+];
+var USB_SPEEDS = [
+	"low",
+	"full",
+	"high",
+	"super"
+];
+/** The most current a port may declare, in mA (USB-C at 5 A). */
+var USB_MA_MAX = 5e3;
 var STRAPPING_LEVELS = [
 	"high",
 	"low",
@@ -811,6 +838,38 @@ function validateModule(raw) {
 		if (t.supply !== void 0 && typeof t.supply !== "string") errors.push(`${at}.supply: must be a string`);
 		else if (typeof t.supply === "string" && !/^[^/\s]+(\/[^/\s]+)*$/.test(t.supply)) errors.push(`${at}.supply: must be one or more rail names separated by "/", for example "3V3/5V"`);
 	};
+	const checkUsb = (t, at) => {
+		if (t.type !== "usb") return void (t.usb !== void 0 && errors.push(`${at}.usb: only on a pin with type "usb"`));
+		const u = t.usb;
+		if (!isObj(u)) return void errors.push(`${at}.usb: required on a USB port, { "connector", "gender", "role", ... }`);
+		for (const k of Object.keys(u)) if (![
+			"connector",
+			"gender",
+			"role",
+			"version",
+			"speed",
+			"source",
+			"draw",
+			"power",
+			"hub",
+			"through",
+			"vbus"
+		].includes(k)) errors.push(`${at}.usb.${k}: unknown field`);
+		if (!USB_CONNECTORS.includes(u.connector)) errors.push(`${at}.usb.connector: must be one of ${USB_CONNECTORS.join(", ")}`);
+		if (u.gender !== "receptacle" && u.gender !== "plug") errors.push(`${at}.usb.gender: must be "receptacle" or "plug"`);
+		if (!USB_ROLES.includes(u.role)) errors.push(`${at}.usb.role: must be one of ${USB_ROLES.join(", ")}`);
+		if (u.version !== void 0 && !USB_VERSIONS.includes(u.version)) errors.push(`${at}.usb.version: must be one of ${USB_VERSIONS.join(", ")}`);
+		if (u.speed !== void 0 && !USB_SPEEDS.includes(u.speed)) errors.push(`${at}.usb.speed: must be one of ${USB_SPEEDS.join(", ")}`);
+		for (const k of ["source", "draw"]) if (u[k] !== void 0 && !(isNum(u[k]) && u[k] >= 0 && u[k] <= 5e3)) errors.push(`${at}.usb.${k}: must be mA, from 0 to ${USB_MA_MAX} (leave it out when not known)`);
+		if (u.source !== void 0 && u.role !== "host" && u.role !== "dual") errors.push(`${at}.usb.source: only a host or dual port supplies current`);
+		if (u.draw !== void 0 && u.role !== "device" && u.role !== "dual") errors.push(`${at}.usb.draw: only a device or dual port draws current`);
+		if (u.power !== void 0 && u.power !== "only") errors.push(`${at}.usb.power: must be "only" (a charge-only input)`);
+		if (u.power === "only" && u.role !== "device") errors.push(`${at}.usb.power: a charge-only port is a device port`);
+		if (u.hub !== void 0 && !(u.hub === "upstream" && u.role === "device" || u.hub === "downstream" && u.role === "host")) errors.push(`${at}.usb.hub: "upstream" on a device port or "downstream" on a host port`);
+		if (u.role === "passthrough" !== (u.through !== void 0)) errors.push(`${at}.usb.through: a passthrough port names its other end, and only it does`);
+		else if (u.through !== void 0 && typeof u.through !== "string") errors.push(`${at}.usb.through: must be a port name`);
+		if (u.vbus !== void 0 && u.role !== "device" && u.role !== "dual") errors.push(`${at}.usb.vbus: only a device or dual port feeds the board's VBUS`);
+	};
 	const names = /* @__PURE__ */ new Set();
 	const hasHoles = Array.isArray(raw.holes) && raw.holes.length > 0;
 	if (!Array.isArray(raw.pins) || raw.pins.length === 0 && !hasHoles) errors.push("pins: required, at least one pin");
@@ -832,6 +891,7 @@ function validateModule(raw) {
 		if (p.label !== void 0 && typeof p.label !== "string") errors.push(`${at}.label: must be a string`);
 		checkSupply(p, at);
 		checkCaps(p, at);
+		checkUsb(p, at);
 		if (p.capacity !== void 0 && !(Number.isInteger(p.capacity) && p.capacity >= 1 && p.capacity <= 8)) errors.push(`${at}.capacity: must be a whole number from 1 to 8`);
 	});
 	const positions = /* @__PURE__ */ new Set();
@@ -850,6 +910,7 @@ function validateModule(raw) {
 			checkMains(g, at);
 			checkSupply(g, at);
 			checkCaps(g, at);
+			if (g.type === "usb" || g.usb !== void 0) errors.push(`${at}: a USB port is a pin on the body edge, not a hole group`);
 			if (g.capacity !== void 0) {
 				if (g.holeStyle !== "pad") errors.push(`${at}.capacity: only pins and header pads (holeStyle "pad") take a capacity`);
 				else if (!(Number.isInteger(g.capacity) && g.capacity >= 1 && g.capacity <= 8)) errors.push(`${at}.capacity: must be a whole number from 1 to 8`);
@@ -987,6 +1048,7 @@ function validateModule(raw) {
 			});
 		} else if (hasVoltage && outs.length > 1) errors.push(`electrical.voltageOutputs: required, the module has a voltage value and ${outs.length} power_out pins; name the ones the value sets`);
 	}
+	validateUsb(raw, errors);
 	validateMains(raw, names, errors);
 	if (!errors.length && isObj(raw.electrical) && isObj(raw.electrical.plug) && Array.isArray(raw.electrical.plug.profiles)) {
 		const lay = computeLayout(raw);
@@ -1001,6 +1063,71 @@ function validateModule(raw) {
 		ok: true,
 		module: raw
 	};
+}
+/** Cross-pin USB data: passthrough partners, shared budgets and hub power (one port's own fields are checked with its pin). */
+function validateUsb(raw, errors) {
+	const ports = new Map((Array.isArray(raw.pins) ? raw.pins : []).filter((p) => isObj(p) && p.type === "usb" && typeof p.name === "string" && isObj(p.usb)).map((p) => [p.name, p.usb]));
+	const powerPins = new Set([...Array.isArray(raw.pins) ? raw.pins : [], ...Array.isArray(raw.holes) ? raw.holes : []].filter((p) => isObj(p) && p.type !== "usb").map((p) => p.name));
+	for (const [name, u] of ports) if (u.vbus !== void 0 && !(typeof u.vbus === "string" && powerPins.has(u.vbus))) errors.push(`pins: USB port "${name}" has vbus "${show(u.vbus)}", which must name one of the part's own pins or pads (not a USB port)`);
+	for (const [name, u] of ports) {
+		if (u.role !== "passthrough" || typeof u.through !== "string") continue;
+		const other = ports.get(u.through);
+		if (!other || other.through !== name || u.through === name) errors.push(`pins: USB port "${name}" passes through to "${u.through}", which must be another passthrough port that names "${name}" back`);
+	}
+	const el = raw.electrical;
+	const hubPorts = [...ports.values()].filter((u) => u.hub !== void 0);
+	if (!isObj(el)) {
+		if (hubPorts.length) errors.push("electrical.usbHub: required on a part with hub ports (how its downstream ports are powered)");
+		return;
+	}
+	if (el.usbBudget !== void 0) {
+		if (!Array.isArray(el.usbBudget)) errors.push("electrical.usbBudget: must be a list of { \"ports\", \"mA\", \"setting\"?, \"note\"? }");
+		else el.usbBudget.forEach((b, i) => {
+			const at = `electrical.usbBudget[${i}]`;
+			if (!isObj(b)) return void errors.push(`${at}: must be { "ports", "mA", "setting"?, "note"? }`);
+			for (const k of Object.keys(b)) if (![
+				"ports",
+				"mA",
+				"setting",
+				"note"
+			].includes(k)) errors.push(`${at}.${k}: unknown field`);
+			if (!Array.isArray(b.ports) || !b.ports.length) errors.push(`${at}.ports: required, a list of USB port names`);
+			else b.ports.forEach((n, j) => {
+				if (typeof n !== "string" || !ports.has(n)) errors.push(`${at}.ports[${j}]: no USB port named "${show(n)}"`);
+			});
+			if (!(isNum(b.mA) && b.mA > 0 && b.mA <= 2e4)) errors.push(`${at}.mA: must be a current in mA, above 0`);
+			if (b.note !== void 0 && (typeof b.note !== "string" || !b.note.trim())) errors.push(`${at}.note: must be a non-empty string`);
+			if (b.setting !== void 0) {
+				const s = b.setting;
+				const choices = Array.isArray(s) && s.length === 2 && typeof s[0] === "string" && isObj(el.settings) && Object.hasOwn(el.settings, s[0]) ? el.settings[s[0]] : void 0;
+				if (!Array.isArray(choices) || !Array.isArray(s) || !choices.includes(s[1])) errors.push(`${at}.setting: must be [setting name, choice] from electrical.settings`);
+			}
+		});
+	}
+	if (el.usbHub !== void 0) {
+		const h = el.usbHub;
+		if (!(isObj(h) && Object.keys(h).length === 1 && (h.power === "bus" || h.power === "self" || isObj(h.power) && Object.keys(h.power).length === 1 && typeof h.power.pin === "string" && powerPins.has(h.power.pin)))) errors.push("electrical.usbHub: must be { \"power\": \"bus\" }, { \"power\": \"self\" } or { \"power\": { \"pin\": <a pin or pad name, not a USB port> } }");
+		if (hubPorts.filter((u) => u.hub === "upstream").length !== 1 || !hubPorts.some((u) => u.hub === "downstream")) errors.push("electrical.usbHub: a hub has exactly one upstream port and at least one downstream port");
+	} else if (hubPorts.length) errors.push("electrical.usbHub: required on a part with hub ports (how its downstream ports are powered)");
+}
+/** A part's USB ports (pins with `type: "usb"`), in pin order. Trusts validateModule. */
+function usbPorts(m) {
+	return m.pins.filter((p) => !isSpacer(p) && p.type === "usb" && isObj(p.usb));
+}
+/** The USB port named `name`, or undefined (not a pin, or not a USB port). */
+function usbOf(m, name) {
+	const p = m.pins.find((q) => !isSpacer(q) && q.name === name);
+	return p?.type === "usb" && isObj(p.usb) ? p.usb : void 0;
+}
+function usbHubOf(m) {
+	const e = m.electrical;
+	return isObj(e) && isObj(e.usbHub) ? e.usbHub : null;
+}
+/** The shared USB current limits (`electrical.usbBudget`) that apply with the part's settings. */
+function usbBudgets(part, m) {
+	const e = m.electrical;
+	if (!isObj(e) || !Array.isArray(e.usbBudget)) return [];
+	return e.usbBudget.filter((b) => !b.setting || partSetting(part, m, b.setting[0]) === b.setting[1]);
 }
 /** A KiCad library id, "Library:Name": no spaces, quotes or second colon. */
 var KICAD_LIB_ID = /^[^\s:"]+:[^\s:"]+$/;
@@ -2182,10 +2309,10 @@ var NONE_SET = /* @__PURE__ */ new Set();
 */
 var pointKey = (x, y) => (x + OFF) * 2 ** 26 + (y + OFF);
 var inRange = (n) => Number.isInteger(n) && n > -OFF && n < OFF;
-var indexCache = /* @__PURE__ */ new WeakMap();
+var indexCache$1 = /* @__PURE__ */ new WeakMap();
 /** World hole positions of a part with hole groups, and a lookup from grid point to hole. */
 function holeIndex(part, m) {
-	const hit = indexCache.get(part);
+	const hit = indexCache$1.get(part);
 	if (hit && hit.m === m) return hit.index;
 	const groups = worldHoles(part, m);
 	const byPoint = /* @__PURE__ */ new Map();
@@ -2196,7 +2323,7 @@ function holeIndex(part, m) {
 		groups,
 		byPoint
 	};
-	indexCache.set(part, {
+	indexCache$1.set(part, {
 		m,
 		index
 	});
@@ -2775,7 +2902,12 @@ var END_KINDS = [
 	"jst-ph",
 	"jst-sh",
 	"grove",
-	"banana"
+	"banana",
+	"usb-a",
+	"usb-b",
+	"usb-mini-b",
+	"usb-micro-b",
+	"usb-c"
 ];
 function isEndKind(v) {
 	return typeof v === "string" && END_KINDS.includes(v);
@@ -2793,8 +2925,15 @@ var END_NAMES = {
 	"jst-ph": "JST-PH plug",
 	"jst-sh": "JST-SH (Qwiic)",
 	grove: "Grove plug",
-	banana: "Banana plug"
+	banana: "Banana plug",
+	"usb-a": "USB-A plug",
+	"usb-b": "USB-B plug",
+	"usb-mini-b": "Mini-B plug",
+	"usb-micro-b": "Micro-B plug",
+	"usb-c": "USB-C plug"
 };
+/** A USB cable's plug end (USB design 2.1): only these ends go on a cable between two USB ports. */
+var isUsbEnd = (k) => k.startsWith("usb-");
 var preset = (id, name, from, to = from) => ({
 	id,
 	name,
@@ -2815,7 +2954,13 @@ var CABLE_PRESETS = [
 	preset("jst-ph", "JST-PH lead", "jst-ph"),
 	preset("qwiic", "Qwiic / STEMMA QT end (per wire)", "jst-sh"),
 	preset("grove", "Grove end (per wire)", "grove"),
-	preset("banana", "Banana leads", "banana")
+	preset("banana", "Banana leads", "banana"),
+	preset("usb-a-micro-b", "USB A to micro-B cable", "usb-a", "usb-micro-b"),
+	preset("usb-a-mini-b", "USB A to mini-B cable", "usb-a", "usb-mini-b"),
+	preset("usb-a-b", "USB A to B cable", "usb-a", "usb-b"),
+	preset("usb-a-c", "USB A to C cable", "usb-a", "usb-c"),
+	preset("usb-c-c", "USB C to C cable", "usb-c"),
+	preset("usb-c-micro-b", "USB C to micro-B cable", "usb-c", "usb-micro-b")
 ];
 function endKind(ends, which) {
 	return ends?.[which] ?? "bare";
@@ -2899,6 +3044,31 @@ var END_SIZE = {
 	banana: {
 		reach: 28,
 		trim: 22,
+		exposed: false
+	},
+	"usb-a": {
+		reach: 30,
+		trim: 24,
+		exposed: false
+	},
+	"usb-b": {
+		reach: 30,
+		trim: 24,
+		exposed: false
+	},
+	"usb-mini-b": {
+		reach: 26,
+		trim: 20,
+		exposed: false
+	},
+	"usb-micro-b": {
+		reach: 26,
+		trim: 20,
+		exposed: false
+	},
+	"usb-c": {
+		reach: 26,
+		trim: 20,
 		exposed: false
 	}
 };
@@ -6626,6 +6796,100 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			{
 				"spacer": true,
 				"side": "right"
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"name": "PROG",
+				"side": "top",
+				"type": "usb",
+				"usb": {
+					"connector": "micro-B",
+					"gender": "receptacle",
+					"role": "device",
+					"version": "2.0",
+					"speed": "full",
+					"vbus": "5V"
+				}
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"name": "NATIVE",
+				"side": "top",
+				"type": "usb",
+				"usb": {
+					"connector": "micro-B",
+					"gender": "receptacle",
+					"role": "dual",
+					"version": "2.0",
+					"speed": "high",
+					"vbus": "5V"
+				}
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"spacer": true,
+				"side": "top"
 			}
 		],
 		internal: [
@@ -7285,6 +7549,91 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 				"side": "right",
 				"label": "D0/RX",
 				"type": "io"
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"name": "USB",
+				"side": "top",
+				"type": "usb",
+				"usb": {
+					"connector": "micro-B",
+					"gender": "receptacle",
+					"role": "device",
+					"version": "2.0",
+					"speed": "full",
+					"vbus": "5V"
+				}
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"spacer": true,
+				"side": "top"
 			}
 		],
 		internal: [
@@ -8237,6 +8586,91 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			{
 				"spacer": true,
 				"side": "right"
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"name": "USB",
+				"side": "top",
+				"type": "usb",
+				"usb": {
+					"connector": "B",
+					"gender": "receptacle",
+					"role": "device",
+					"version": "2.0",
+					"speed": "full",
+					"vbus": "5V"
+				}
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"spacer": true,
+				"side": "top"
 			}
 		],
 		internal: [
@@ -8834,6 +9268,19 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 				"side": "right",
 				"label": "COPI",
 				"type": "io"
+			},
+			{
+				"name": "USB",
+				"side": "top",
+				"type": "usb",
+				"usb": {
+					"connector": "micro-B",
+					"gender": "receptacle",
+					"role": "device",
+					"version": "2.0",
+					"speed": "full",
+					"vbus": "5V"
+				}
 			}
 		],
 		internal: [["GND", "GND 2"], ["RESET", "RESET 2"]],
@@ -9548,6 +9995,18 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 				"side": "right",
 				"type": "io",
 				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "USB",
+				"side": "top",
+				"type": "usb",
+				"usb": {
+					"connector": "micro-B",
+					"gender": "receptacle",
+					"role": "device",
+					"version": "2.0",
+					"speed": "full"
+				}
 			}
 		],
 		internal: [["GND", "GND 2"], ["RST", "RST 2"]],
@@ -10195,6 +10654,18 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 				"side": "right",
 				"type": "io",
 				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "USB",
+				"side": "top",
+				"type": "usb",
+				"usb": {
+					"connector": "micro-B",
+					"gender": "receptacle",
+					"role": "device",
+					"version": "2.0",
+					"speed": "full"
+				}
 			}
 		],
 		internal: [["GND", "GND 2"], ["RST", "RST 2"]],
@@ -10845,6 +11316,19 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 				"side": "right",
 				"type": "io",
 				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "USB",
+				"side": "top",
+				"type": "usb",
+				"usb": {
+					"connector": "C",
+					"gender": "receptacle",
+					"role": "device",
+					"version": "1.1",
+					"speed": "full",
+					"vbus": "VBUS"
+				}
 			}
 		],
 		internal: [["GND", "GND 2"]],
@@ -11473,6 +11957,19 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 				"name": "TX",
 				"side": "right",
 				"type": "io"
+			},
+			{
+				"name": "USB",
+				"side": "top",
+				"type": "usb",
+				"usb": {
+					"connector": "micro-B",
+					"gender": "receptacle",
+					"role": "device",
+					"version": "2.0",
+					"speed": "full",
+					"vbus": "5V"
+				}
 			}
 		],
 		internal: [["GND", "GND 2"], ["RST", "RST 2"]],
@@ -12148,6 +12645,18 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 				"side": "right",
 				"type": "io",
 				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"name": "USB",
+				"side": "top",
+				"type": "usb",
+				"usb": {
+					"connector": "micro-B",
+					"gender": "receptacle",
+					"role": "device",
+					"version": "1.1",
+					"speed": "full"
+				}
 			}
 		],
 		internal: [["GND", "GND 2"]],
@@ -12776,6 +13285,19 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 				"name": "TX1",
 				"side": "right",
 				"type": "io"
+			},
+			{
+				"name": "USB",
+				"side": "top",
+				"type": "usb",
+				"usb": {
+					"connector": "mini-B",
+					"gender": "receptacle",
+					"role": "device",
+					"version": "2.0",
+					"speed": "full",
+					"vbus": "5V"
+				}
 			}
 		],
 		internal: [["GND", "GND 2"], ["RST", "RST 2"]],
@@ -14935,6 +15457,91 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 				"side": "right",
 				"label": "D0/RX",
 				"type": "io"
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"name": "USB",
+				"side": "top",
+				"type": "usb",
+				"usb": {
+					"connector": "B",
+					"gender": "receptacle",
+					"role": "device",
+					"version": "2.0",
+					"speed": "full",
+					"vbus": "5V"
+				}
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"spacer": true,
+				"side": "top"
 			}
 		],
 		internal: [
@@ -16084,6 +16691,91 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 				"side": "right",
 				"label": "D0/RX",
 				"type": "io"
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"name": "USB",
+				"side": "top",
+				"type": "usb",
+				"usb": {
+					"connector": "C",
+					"gender": "receptacle",
+					"role": "device",
+					"version": "2.0",
+					"speed": "full",
+					"vbus": "5V"
+				}
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"spacer": true,
+				"side": "top"
 			}
 		],
 		internal: [
@@ -16998,6 +17690,91 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 				"side": "right",
 				"label": "D0/RX",
 				"type": "io"
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"name": "USB",
+				"side": "top",
+				"type": "usb",
+				"usb": {
+					"connector": "C",
+					"gender": "receptacle",
+					"role": "device",
+					"version": "1.1",
+					"speed": "full",
+					"vbus": "5V"
+				}
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"spacer": true,
+				"side": "top"
 			}
 		],
 		internal: [
@@ -17322,6 +18099,98 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 				"label": "D0/RX",
 				"type": "io",
 				"caps": { "note": "This board runs its pins at 3.3 V: 5 V on this pin can damage it." }
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"name": "PROG",
+				"side": "top",
+				"type": "usb",
+				"usb": {
+					"connector": "micro-B",
+					"gender": "receptacle",
+					"role": "device",
+					"version": "2.0"
+				}
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"name": "NATIVE",
+				"side": "top",
+				"type": "usb",
+				"usb": {
+					"connector": "micro-B",
+					"gender": "receptacle",
+					"role": "dual",
+					"version": "2.0",
+					"speed": "full",
+					"vbus": "5V"
+				}
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"spacer": true,
+				"side": "top"
 			}
 		],
 		internal: [[
@@ -25640,6 +26509,167 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			"note": "The charger reaches the board through a cable: a 2-pin lead connector for its 5V and GND."
 		}
 	},
+	"../modules/computer-usb-port.json": {
+		format: "circuitoon-module/1",
+		id: "computer-usb-port",
+		version: 1,
+		name: "Computer USB port (USB 2.0, USB-A)",
+		category: "Computers",
+		source: "https://www.usb.org/document-library/usb-20-specification",
+		pins: [
+			{
+				"spacer": true,
+				"side": "right"
+			},
+			{
+				"spacer": true,
+				"side": "right"
+			},
+			{
+				"spacer": true,
+				"side": "right"
+			},
+			{
+				"spacer": true,
+				"side": "right"
+			},
+			{
+				"name": "USB",
+				"side": "right",
+				"type": "usb",
+				"usb": {
+					"connector": "A",
+					"gender": "receptacle",
+					"role": "host",
+					"version": "2.0",
+					"speed": "high"
+				}
+			},
+			{
+				"spacer": true,
+				"side": "right"
+			},
+			{
+				"spacer": true,
+				"side": "right"
+			},
+			{
+				"spacer": true,
+				"side": "right"
+			}
+		],
+		size: {
+			"w": 14,
+			"h": 10
+		},
+		electrical: {
+			"model": "computer",
+			"params": {}
+		},
+		art: {
+			"w": 140,
+			"h": 100,
+			"shapes": [
+				{
+					"type": "rect",
+					"x": 16,
+					"y": 4,
+					"w": 108,
+					"h": 56,
+					"fill": "#BFC5CD",
+					"radius": 4
+				},
+				{
+					"type": "rect",
+					"x": 22,
+					"y": 10,
+					"w": 96,
+					"h": 44,
+					"fill": "#1B2733",
+					"radius": 2
+				},
+				{
+					"type": "rect",
+					"x": 30,
+					"y": 18,
+					"w": 50,
+					"h": 6,
+					"fill": "#3D6FD6",
+					"radius": 1,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 30,
+					"y": 28,
+					"w": 70,
+					"h": 4,
+					"fill": "#5C646E",
+					"radius": 1,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 30,
+					"y": 36,
+					"w": 40,
+					"h": 4,
+					"fill": "#5C646E",
+					"radius": 1,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 2,
+					"y": 58,
+					"w": 136,
+					"h": 36,
+					"fill": "#E9ECEF",
+					"radius": 5
+				},
+				{
+					"type": "rect",
+					"x": 14,
+					"y": 64,
+					"w": 100,
+					"h": 5,
+					"fill": "#BFC5CD",
+					"radius": 1,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 14,
+					"y": 71,
+					"w": 100,
+					"h": 5,
+					"fill": "#BFC5CD",
+					"radius": 1,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 14,
+					"y": 78,
+					"w": 100,
+					"h": 5,
+					"fill": "#BFC5CD",
+					"radius": 1,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 52,
+					"y": 86,
+					"w": 36,
+					"h": 5,
+					"fill": "#BFC5CD",
+					"radius": 2,
+					"outline": false
+				}
+			]
+		}
+	},
 	"../modules/dht22-bare.json": {
 		format: "circuitoon-module/1",
 		id: "dht22-bare",
@@ -26955,6 +27985,18 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 				"name": "0",
 				"side": "right",
 				"type": "io"
+			},
+			{
+				"name": "USB",
+				"side": "top",
+				"type": "usb",
+				"usb": {
+					"connector": "C",
+					"gender": "receptacle",
+					"role": "device",
+					"speed": "full",
+					"vbus": "5V"
+				}
 			}
 		],
 		size: {
@@ -27961,6 +29003,19 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 				"side": "right",
 				"type": "power_out",
 				"supply": "3V3"
+			},
+			{
+				"name": "USB",
+				"side": "bottom",
+				"type": "usb",
+				"usb": {
+					"connector": "micro-B",
+					"gender": "receptacle",
+					"role": "device",
+					"version": "2.0",
+					"speed": "full",
+					"vbus": "VIN"
+				}
 			}
 		],
 		internal: [["GND", "GND 2"]],
@@ -28773,6 +29828,19 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 				"caps": {
 					"flash": true,
 					"note": "CLK is GPIO6, a line of the module's SPI flash."
+				}
+			},
+			{
+				"name": "USB",
+				"side": "bottom",
+				"type": "usb",
+				"usb": {
+					"connector": "micro-B",
+					"gender": "receptacle",
+					"role": "device",
+					"version": "2.0",
+					"speed": "full",
+					"vbus": "5V"
 				}
 			}
 		],
@@ -29661,6 +30729,64 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 				"side": "right",
 				"label": "G",
 				"type": "ground"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"name": "UART",
+				"side": "bottom",
+				"type": "usb",
+				"usb": {
+					"connector": "micro-B",
+					"gender": "receptacle",
+					"role": "device",
+					"version": "2.0",
+					"speed": "full",
+					"vbus": "5V"
+				}
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"name": "USB",
+				"side": "bottom",
+				"type": "usb",
+				"usb": {
+					"connector": "micro-B",
+					"gender": "receptacle",
+					"role": "dual",
+					"version": "1.1",
+					"speed": "full",
+					"vbus": "5V"
+				}
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
 			}
 		],
 		internal: [[
@@ -30617,6 +31743,91 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 				"side": "bottom",
 				"label": "GND",
 				"type": "ground"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"name": "USB",
+				"side": "left",
+				"type": "usb",
+				"usb": {
+					"connector": "micro-B",
+					"gender": "receptacle",
+					"role": "device",
+					"version": "2.0",
+					"speed": "full",
+					"vbus": "5V"
+				}
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"spacer": true,
+				"side": "left"
 			}
 		],
 		internal: [[
@@ -30774,7 +31985,8 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			{
 				"name": "RX",
 				"side": "top",
-				"type": "input"
+				"type": "input",
+				"caps": { "note": "RX goes straight to the NEO-M8N's UART input, which takes at most 3.6 V: from a 5 V board, shift the level down first." }
 			},
 			{
 				"name": "TX",
@@ -31435,6 +32647,46 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 				"name": "5V-",
 				"side": "bottom",
 				"type": "ground"
+			},
+			{
+				"spacer": true,
+				"side": "right"
+			},
+			{
+				"spacer": true,
+				"side": "right"
+			},
+			{
+				"spacer": true,
+				"side": "right"
+			},
+			{
+				"name": "USB-C",
+				"side": "right",
+				"type": "usb",
+				"usb": {
+					"connector": "C",
+					"gender": "receptacle",
+					"role": "device",
+					"power": "only"
+				},
+				"caps": { "note": "One maker page recommends a 5 V 2 A adapter for this input; its actual input current is not measured, so check it before relying on a 500 mA USB port." }
+			},
+			{
+				"spacer": true,
+				"side": "right"
+			},
+			{
+				"spacer": true,
+				"side": "right"
+			},
+			{
+				"spacer": true,
+				"side": "right"
+			},
+			{
+				"spacer": true,
+				"side": "right"
 			}
 		],
 		internal: [["B-", "5V-"]],
@@ -34591,17 +35843,20 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			{
 				"name": "INT",
 				"side": "top",
-				"type": "output"
+				"type": "output",
+				"caps": { "note": "INT is not used: \"Interrupts aren't used. Leave it disconnected.\" (Raspberry Pi engineer 6by9)." }
 			},
 			{
 				"name": "SDA",
 				"side": "top",
-				"type": "io"
+				"type": "io",
+				"caps": { "note": "SDA is the touch controller's I2C, needed only on Pis older than the B+: later ones carry it on the DSI cable, so leave it unconnected there." }
 			},
 			{
 				"name": "SCL",
 				"side": "top",
-				"type": "io"
+				"type": "io",
+				"caps": { "note": "SCL is the touch controller's I2C, needed only on Pis older than the B+: later ones carry it on the DSI cable, so leave it unconnected there." }
 			},
 			{
 				"name": "GND",
@@ -38345,7 +39600,8 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			{
 				"name": "SEL",
 				"side": "bottom",
-				"type": "input"
+				"type": "input",
+				"caps": { "note": "SEL is pulled to GND on the board (left channel): tie it to 3V for the right channel." }
 			}
 		],
 		size: {
@@ -38613,12 +39869,14 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			{
 				"name": "SCK",
 				"side": "left",
-				"type": "input"
+				"type": "input",
+				"caps": { "note": "SCK takes at most VDD + 0.3 V: drive it from logic at the mic's own supply, never 5 V." }
 			},
 			{
 				"name": "LR",
 				"side": "right",
-				"type": "input"
+				"type": "input",
+				"caps": { "note": "LR takes at most VDD + 0.3 V: tie it to GND or VDD, never 5 V." }
 			},
 			{
 				"name": "VDD",
@@ -38634,7 +39892,8 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			{
 				"name": "WS",
 				"side": "bottom",
-				"type": "input"
+				"type": "input",
+				"caps": { "note": "WS takes at most VDD + 0.3 V: drive it from logic at the mic's own supply, never 5 V." }
 			}
 		],
 		size: {
@@ -46374,6 +47633,2868 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			"note": "A panel-mounted rocker switch is wired to the board: a 2-pin lead connector."
 		}
 	},
+	"../modules/rpi-4-model-b.json": {
+		format: "circuitoon-module/1",
+		id: "rpi-4-model-b",
+		version: 1,
+		name: "Raspberry Pi 4 Model B",
+		category: "Computers",
+		source: "https://www.raspberrypi.com/documentation/computers/raspberry-pi.html https://pip.raspberrypi.com/documents/RP-008343-DS https://github.com/gpiozero/gpiozero/blob/master/gpiozero/pins/data.py https://pinout.xyz/",
+		pins: [
+			{
+				"spacer": true,
+				"side": "right"
+			},
+			{
+				"spacer": true,
+				"side": "right"
+			},
+			{
+				"spacer": true,
+				"side": "right"
+			},
+			{
+				"spacer": true,
+				"side": "right"
+			},
+			{
+				"spacer": true,
+				"side": "right"
+			},
+			{
+				"spacer": true,
+				"side": "right"
+			},
+			{
+				"spacer": true,
+				"side": "right"
+			},
+			{
+				"spacer": true,
+				"side": "right"
+			},
+			{
+				"spacer": true,
+				"side": "right"
+			},
+			{
+				"name": "USB3-1",
+				"side": "right",
+				"label": "USB3",
+				"type": "usb",
+				"usb": {
+					"connector": "A",
+					"gender": "receptacle",
+					"role": "host",
+					"version": "3.0",
+					"speed": "super"
+				}
+			},
+			{
+				"name": "USB3-2",
+				"side": "right",
+				"label": "USB3",
+				"type": "usb",
+				"usb": {
+					"connector": "A",
+					"gender": "receptacle",
+					"role": "host",
+					"version": "3.0",
+					"speed": "super"
+				}
+			},
+			{
+				"spacer": true,
+				"side": "right"
+			},
+			{
+				"spacer": true,
+				"side": "right"
+			},
+			{
+				"spacer": true,
+				"side": "right"
+			},
+			{
+				"spacer": true,
+				"side": "right"
+			},
+			{
+				"spacer": true,
+				"side": "right"
+			},
+			{
+				"name": "USB2-1",
+				"side": "right",
+				"label": "USB2",
+				"type": "usb",
+				"usb": {
+					"connector": "A",
+					"gender": "receptacle",
+					"role": "host",
+					"version": "2.0",
+					"speed": "high"
+				}
+			},
+			{
+				"name": "USB2-2",
+				"side": "right",
+				"label": "USB2",
+				"type": "usb",
+				"usb": {
+					"connector": "A",
+					"gender": "receptacle",
+					"role": "host",
+					"version": "2.0",
+					"speed": "high"
+				}
+			},
+			{
+				"spacer": true,
+				"side": "right"
+			},
+			{
+				"spacer": true,
+				"side": "right"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"name": "USB-C",
+				"side": "bottom",
+				"label": "PWR",
+				"type": "usb",
+				"usb": {
+					"connector": "C",
+					"gender": "receptacle",
+					"role": "device",
+					"version": "2.0",
+					"draw": 600
+				}
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"name": "CAMERA",
+				"side": "bottom",
+				"type": "passive"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"name": "DISPLAY",
+				"side": "left",
+				"type": "passive"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			}
+		],
+		internal: [
+			[
+				"GND",
+				"GND 2",
+				"GND 3",
+				"GND 4",
+				"GND 5",
+				"GND 6",
+				"GND 7",
+				"GND 8"
+			],
+			["3V3", "3V3 2"],
+			["5V", "5V 2"]
+		],
+		size: {
+			"w": 34,
+			"h": 22
+		},
+		holes: [
+			{
+				"name": "3V3",
+				"at": [[30, 30]],
+				"holeStyle": "pad",
+				"type": "power_out",
+				"supply": "3V3"
+			},
+			{
+				"name": "5V",
+				"at": [[30, 20]],
+				"holeStyle": "pad",
+				"type": "power_in",
+				"supply": "5V"
+			},
+			{
+				"name": "GPIO2",
+				"at": [[40, 30]],
+				"holeStyle": "pad",
+				"type": "io",
+				"caps": { "note": "GPIO2 is I2C SDA and has a fixed pull-up resistor to 3.3 V on the board, so it reads high when nothing drives it." }
+			},
+			{
+				"name": "5V 2",
+				"label": "5V",
+				"at": [[40, 20]],
+				"holeStyle": "pad",
+				"type": "power_in",
+				"supply": "5V"
+			},
+			{
+				"name": "GPIO3",
+				"at": [[50, 30]],
+				"holeStyle": "pad",
+				"type": "io",
+				"caps": { "note": "GPIO3 is I2C SCL and has a fixed pull-up resistor to 3.3 V on the board, so it reads high when nothing drives it." }
+			},
+			{
+				"name": "GND",
+				"at": [[50, 20]],
+				"holeStyle": "pad",
+				"type": "ground"
+			},
+			{
+				"name": "GPIO4",
+				"at": [[60, 30]],
+				"holeStyle": "pad",
+				"type": "io"
+			},
+			{
+				"name": "GPIO14",
+				"at": [[60, 20]],
+				"holeStyle": "pad",
+				"type": "io"
+			},
+			{
+				"name": "GND 2",
+				"label": "GND",
+				"at": [[70, 30]],
+				"holeStyle": "pad",
+				"type": "ground"
+			},
+			{
+				"name": "GPIO15",
+				"at": [[70, 20]],
+				"holeStyle": "pad",
+				"type": "io"
+			},
+			{
+				"name": "GPIO17",
+				"at": [[80, 30]],
+				"holeStyle": "pad",
+				"type": "io"
+			},
+			{
+				"name": "GPIO18",
+				"at": [[80, 20]],
+				"holeStyle": "pad",
+				"type": "io"
+			},
+			{
+				"name": "GPIO27",
+				"at": [[90, 30]],
+				"holeStyle": "pad",
+				"type": "io"
+			},
+			{
+				"name": "GND 3",
+				"label": "GND",
+				"at": [[90, 20]],
+				"holeStyle": "pad",
+				"type": "ground"
+			},
+			{
+				"name": "GPIO22",
+				"at": [[100, 30]],
+				"holeStyle": "pad",
+				"type": "io"
+			},
+			{
+				"name": "GPIO23",
+				"at": [[100, 20]],
+				"holeStyle": "pad",
+				"type": "io"
+			},
+			{
+				"name": "3V3 2",
+				"label": "3V3",
+				"at": [[110, 30]],
+				"holeStyle": "pad",
+				"type": "power_out",
+				"supply": "3V3"
+			},
+			{
+				"name": "GPIO24",
+				"at": [[110, 20]],
+				"holeStyle": "pad",
+				"type": "io"
+			},
+			{
+				"name": "GPIO10",
+				"at": [[120, 30]],
+				"holeStyle": "pad",
+				"type": "io"
+			},
+			{
+				"name": "GND 4",
+				"label": "GND",
+				"at": [[120, 20]],
+				"holeStyle": "pad",
+				"type": "ground"
+			},
+			{
+				"name": "GPIO9",
+				"at": [[130, 30]],
+				"holeStyle": "pad",
+				"type": "io"
+			},
+			{
+				"name": "GPIO25",
+				"at": [[130, 20]],
+				"holeStyle": "pad",
+				"type": "io"
+			},
+			{
+				"name": "GPIO11",
+				"at": [[140, 30]],
+				"holeStyle": "pad",
+				"type": "io"
+			},
+			{
+				"name": "GPIO8",
+				"at": [[140, 20]],
+				"holeStyle": "pad",
+				"type": "io"
+			},
+			{
+				"name": "GND 5",
+				"label": "GND",
+				"at": [[150, 30]],
+				"holeStyle": "pad",
+				"type": "ground"
+			},
+			{
+				"name": "GPIO7",
+				"at": [[150, 20]],
+				"holeStyle": "pad",
+				"type": "io"
+			},
+			{
+				"name": "GPIO0",
+				"at": [[160, 30]],
+				"holeStyle": "pad",
+				"type": "io",
+				"caps": { "note": "GPIO0 (ID_SD) is reserved for advanced use: the HAT ID EEPROM. Leave it unconnected unless you add one." }
+			},
+			{
+				"name": "GPIO1",
+				"at": [[160, 20]],
+				"holeStyle": "pad",
+				"type": "io",
+				"caps": { "note": "GPIO1 (ID_SC) is reserved for advanced use: the HAT ID EEPROM. Leave it unconnected unless you add one." }
+			},
+			{
+				"name": "GPIO5",
+				"at": [[170, 30]],
+				"holeStyle": "pad",
+				"type": "io"
+			},
+			{
+				"name": "GND 6",
+				"label": "GND",
+				"at": [[170, 20]],
+				"holeStyle": "pad",
+				"type": "ground"
+			},
+			{
+				"name": "GPIO6",
+				"at": [[180, 30]],
+				"holeStyle": "pad",
+				"type": "io"
+			},
+			{
+				"name": "GPIO12",
+				"at": [[180, 20]],
+				"holeStyle": "pad",
+				"type": "io"
+			},
+			{
+				"name": "GPIO13",
+				"at": [[190, 30]],
+				"holeStyle": "pad",
+				"type": "io"
+			},
+			{
+				"name": "GND 7",
+				"label": "GND",
+				"at": [[190, 20]],
+				"holeStyle": "pad",
+				"type": "ground"
+			},
+			{
+				"name": "GPIO19",
+				"at": [[200, 30]],
+				"holeStyle": "pad",
+				"type": "io"
+			},
+			{
+				"name": "GPIO16",
+				"at": [[200, 20]],
+				"holeStyle": "pad",
+				"type": "io"
+			},
+			{
+				"name": "GPIO26",
+				"at": [[210, 30]],
+				"holeStyle": "pad",
+				"type": "io"
+			},
+			{
+				"name": "GPIO20",
+				"at": [[210, 20]],
+				"holeStyle": "pad",
+				"type": "io"
+			},
+			{
+				"name": "GND 8",
+				"label": "GND",
+				"at": [[220, 30]],
+				"holeStyle": "pad",
+				"type": "ground"
+			},
+			{
+				"name": "GPIO21",
+				"at": [[220, 20]],
+				"holeStyle": "pad",
+				"type": "io"
+			}
+		],
+		electrical: {
+			"model": "computer",
+			"params": {},
+			"external": [{
+				"pin": "5V",
+				"volts": 5,
+				"via": "USB-C"
+			}],
+			"usbBudget": [{
+				"ports": [
+					"USB3-1",
+					"USB3-2",
+					"USB2-1",
+					"USB2-2"
+				],
+				"mA": 1200,
+				"note": "1.2 A across all four ports"
+			}]
+		},
+		art: {
+			"w": 340,
+			"h": 220,
+			"pinLabels": "inside",
+			"shapes": [
+				{
+					"type": "rect",
+					"x": 0,
+					"y": 0,
+					"w": 340,
+					"h": 220,
+					"fill": "#2E7D4F",
+					"radius": 12
+				},
+				{
+					"type": "rect",
+					"x": 8,
+					"y": 8,
+					"w": 12,
+					"h": 12,
+					"fill": "#D5DAE1",
+					"radius": 6,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 11,
+					"y": 11,
+					"w": 6,
+					"h": 6,
+					"fill": "#6B727C",
+					"radius": 3,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 236,
+					"y": 8,
+					"w": 12,
+					"h": 12,
+					"fill": "#D5DAE1",
+					"radius": 6,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 239,
+					"y": 11,
+					"w": 6,
+					"h": 6,
+					"fill": "#6B727C",
+					"radius": 3,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 8,
+					"y": 200,
+					"w": 12,
+					"h": 12,
+					"fill": "#D5DAE1",
+					"radius": 6,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 11,
+					"y": 203,
+					"w": 6,
+					"h": 6,
+					"fill": "#6B727C",
+					"radius": 3,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 236,
+					"y": 200,
+					"w": 12,
+					"h": 12,
+					"fill": "#D5DAE1",
+					"radius": 6,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 239,
+					"y": 203,
+					"w": 6,
+					"h": 6,
+					"fill": "#6B727C",
+					"radius": 3,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 24,
+					"y": 14,
+					"w": 202,
+					"h": 22,
+					"fill": "#2B2F36",
+					"radius": 1
+				},
+				{
+					"type": "rect",
+					"x": 25.5,
+					"y": 36,
+					"w": 9,
+					"h": 7,
+					"fill": "#2E7D4F",
+					"outline": false,
+					"label": "3V",
+					"labelColor": "#F4F6F8",
+					"labelSize": 4.2
+				},
+				{
+					"type": "rect",
+					"x": 25.5,
+					"y": 7,
+					"w": 9,
+					"h": 7,
+					"fill": "#2E7D4F",
+					"outline": false,
+					"label": "5V",
+					"labelColor": "#F4F6F8",
+					"labelSize": 4.2
+				},
+				{
+					"type": "rect",
+					"x": 35.5,
+					"y": 36,
+					"w": 9,
+					"h": 7,
+					"fill": "#2E7D4F",
+					"outline": false,
+					"label": "2",
+					"labelColor": "#F4F6F8",
+					"labelSize": 4.2
+				},
+				{
+					"type": "rect",
+					"x": 35.5,
+					"y": 7,
+					"w": 9,
+					"h": 7,
+					"fill": "#2E7D4F",
+					"outline": false,
+					"label": "5V",
+					"labelColor": "#F4F6F8",
+					"labelSize": 4.2
+				},
+				{
+					"type": "rect",
+					"x": 45.5,
+					"y": 36,
+					"w": 9,
+					"h": 7,
+					"fill": "#2E7D4F",
+					"outline": false,
+					"label": "3",
+					"labelColor": "#F4F6F8",
+					"labelSize": 4.2
+				},
+				{
+					"type": "rect",
+					"x": 45.5,
+					"y": 7,
+					"w": 9,
+					"h": 7,
+					"fill": "#2E7D4F",
+					"outline": false,
+					"label": "GND",
+					"labelColor": "#F4F6F8",
+					"labelSize": 3.6
+				},
+				{
+					"type": "rect",
+					"x": 55.5,
+					"y": 36,
+					"w": 9,
+					"h": 7,
+					"fill": "#2E7D4F",
+					"outline": false,
+					"label": "4",
+					"labelColor": "#F4F6F8",
+					"labelSize": 4.2
+				},
+				{
+					"type": "rect",
+					"x": 55.5,
+					"y": 7,
+					"w": 9,
+					"h": 7,
+					"fill": "#2E7D4F",
+					"outline": false,
+					"label": "14",
+					"labelColor": "#F4F6F8",
+					"labelSize": 4.2
+				},
+				{
+					"type": "rect",
+					"x": 65.5,
+					"y": 36,
+					"w": 9,
+					"h": 7,
+					"fill": "#2E7D4F",
+					"outline": false,
+					"label": "GND",
+					"labelColor": "#F4F6F8",
+					"labelSize": 3.6
+				},
+				{
+					"type": "rect",
+					"x": 65.5,
+					"y": 7,
+					"w": 9,
+					"h": 7,
+					"fill": "#2E7D4F",
+					"outline": false,
+					"label": "15",
+					"labelColor": "#F4F6F8",
+					"labelSize": 4.2
+				},
+				{
+					"type": "rect",
+					"x": 75.5,
+					"y": 36,
+					"w": 9,
+					"h": 7,
+					"fill": "#2E7D4F",
+					"outline": false,
+					"label": "17",
+					"labelColor": "#F4F6F8",
+					"labelSize": 4.2
+				},
+				{
+					"type": "rect",
+					"x": 75.5,
+					"y": 7,
+					"w": 9,
+					"h": 7,
+					"fill": "#2E7D4F",
+					"outline": false,
+					"label": "18",
+					"labelColor": "#F4F6F8",
+					"labelSize": 4.2
+				},
+				{
+					"type": "rect",
+					"x": 85.5,
+					"y": 36,
+					"w": 9,
+					"h": 7,
+					"fill": "#2E7D4F",
+					"outline": false,
+					"label": "27",
+					"labelColor": "#F4F6F8",
+					"labelSize": 4.2
+				},
+				{
+					"type": "rect",
+					"x": 85.5,
+					"y": 7,
+					"w": 9,
+					"h": 7,
+					"fill": "#2E7D4F",
+					"outline": false,
+					"label": "GND",
+					"labelColor": "#F4F6F8",
+					"labelSize": 3.6
+				},
+				{
+					"type": "rect",
+					"x": 95.5,
+					"y": 36,
+					"w": 9,
+					"h": 7,
+					"fill": "#2E7D4F",
+					"outline": false,
+					"label": "22",
+					"labelColor": "#F4F6F8",
+					"labelSize": 4.2
+				},
+				{
+					"type": "rect",
+					"x": 95.5,
+					"y": 7,
+					"w": 9,
+					"h": 7,
+					"fill": "#2E7D4F",
+					"outline": false,
+					"label": "23",
+					"labelColor": "#F4F6F8",
+					"labelSize": 4.2
+				},
+				{
+					"type": "rect",
+					"x": 105.5,
+					"y": 36,
+					"w": 9,
+					"h": 7,
+					"fill": "#2E7D4F",
+					"outline": false,
+					"label": "3V",
+					"labelColor": "#F4F6F8",
+					"labelSize": 4.2
+				},
+				{
+					"type": "rect",
+					"x": 105.5,
+					"y": 7,
+					"w": 9,
+					"h": 7,
+					"fill": "#2E7D4F",
+					"outline": false,
+					"label": "24",
+					"labelColor": "#F4F6F8",
+					"labelSize": 4.2
+				},
+				{
+					"type": "rect",
+					"x": 115.5,
+					"y": 36,
+					"w": 9,
+					"h": 7,
+					"fill": "#2E7D4F",
+					"outline": false,
+					"label": "10",
+					"labelColor": "#F4F6F8",
+					"labelSize": 4.2
+				},
+				{
+					"type": "rect",
+					"x": 115.5,
+					"y": 7,
+					"w": 9,
+					"h": 7,
+					"fill": "#2E7D4F",
+					"outline": false,
+					"label": "GND",
+					"labelColor": "#F4F6F8",
+					"labelSize": 3.6
+				},
+				{
+					"type": "rect",
+					"x": 125.5,
+					"y": 36,
+					"w": 9,
+					"h": 7,
+					"fill": "#2E7D4F",
+					"outline": false,
+					"label": "9",
+					"labelColor": "#F4F6F8",
+					"labelSize": 4.2
+				},
+				{
+					"type": "rect",
+					"x": 125.5,
+					"y": 7,
+					"w": 9,
+					"h": 7,
+					"fill": "#2E7D4F",
+					"outline": false,
+					"label": "25",
+					"labelColor": "#F4F6F8",
+					"labelSize": 4.2
+				},
+				{
+					"type": "rect",
+					"x": 135.5,
+					"y": 36,
+					"w": 9,
+					"h": 7,
+					"fill": "#2E7D4F",
+					"outline": false,
+					"label": "11",
+					"labelColor": "#F4F6F8",
+					"labelSize": 4.2
+				},
+				{
+					"type": "rect",
+					"x": 135.5,
+					"y": 7,
+					"w": 9,
+					"h": 7,
+					"fill": "#2E7D4F",
+					"outline": false,
+					"label": "8",
+					"labelColor": "#F4F6F8",
+					"labelSize": 4.2
+				},
+				{
+					"type": "rect",
+					"x": 145.5,
+					"y": 36,
+					"w": 9,
+					"h": 7,
+					"fill": "#2E7D4F",
+					"outline": false,
+					"label": "GND",
+					"labelColor": "#F4F6F8",
+					"labelSize": 3.6
+				},
+				{
+					"type": "rect",
+					"x": 145.5,
+					"y": 7,
+					"w": 9,
+					"h": 7,
+					"fill": "#2E7D4F",
+					"outline": false,
+					"label": "7",
+					"labelColor": "#F4F6F8",
+					"labelSize": 4.2
+				},
+				{
+					"type": "rect",
+					"x": 155.5,
+					"y": 36,
+					"w": 9,
+					"h": 7,
+					"fill": "#2E7D4F",
+					"outline": false,
+					"label": "0",
+					"labelColor": "#F4F6F8",
+					"labelSize": 4.2
+				},
+				{
+					"type": "rect",
+					"x": 155.5,
+					"y": 7,
+					"w": 9,
+					"h": 7,
+					"fill": "#2E7D4F",
+					"outline": false,
+					"label": "1",
+					"labelColor": "#F4F6F8",
+					"labelSize": 4.2
+				},
+				{
+					"type": "rect",
+					"x": 165.5,
+					"y": 36,
+					"w": 9,
+					"h": 7,
+					"fill": "#2E7D4F",
+					"outline": false,
+					"label": "5",
+					"labelColor": "#F4F6F8",
+					"labelSize": 4.2
+				},
+				{
+					"type": "rect",
+					"x": 165.5,
+					"y": 7,
+					"w": 9,
+					"h": 7,
+					"fill": "#2E7D4F",
+					"outline": false,
+					"label": "GND",
+					"labelColor": "#F4F6F8",
+					"labelSize": 3.6
+				},
+				{
+					"type": "rect",
+					"x": 175.5,
+					"y": 36,
+					"w": 9,
+					"h": 7,
+					"fill": "#2E7D4F",
+					"outline": false,
+					"label": "6",
+					"labelColor": "#F4F6F8",
+					"labelSize": 4.2
+				},
+				{
+					"type": "rect",
+					"x": 175.5,
+					"y": 7,
+					"w": 9,
+					"h": 7,
+					"fill": "#2E7D4F",
+					"outline": false,
+					"label": "12",
+					"labelColor": "#F4F6F8",
+					"labelSize": 4.2
+				},
+				{
+					"type": "rect",
+					"x": 185.5,
+					"y": 36,
+					"w": 9,
+					"h": 7,
+					"fill": "#2E7D4F",
+					"outline": false,
+					"label": "13",
+					"labelColor": "#F4F6F8",
+					"labelSize": 4.2
+				},
+				{
+					"type": "rect",
+					"x": 185.5,
+					"y": 7,
+					"w": 9,
+					"h": 7,
+					"fill": "#2E7D4F",
+					"outline": false,
+					"label": "GND",
+					"labelColor": "#F4F6F8",
+					"labelSize": 3.6
+				},
+				{
+					"type": "rect",
+					"x": 195.5,
+					"y": 36,
+					"w": 9,
+					"h": 7,
+					"fill": "#2E7D4F",
+					"outline": false,
+					"label": "19",
+					"labelColor": "#F4F6F8",
+					"labelSize": 4.2
+				},
+				{
+					"type": "rect",
+					"x": 195.5,
+					"y": 7,
+					"w": 9,
+					"h": 7,
+					"fill": "#2E7D4F",
+					"outline": false,
+					"label": "16",
+					"labelColor": "#F4F6F8",
+					"labelSize": 4.2
+				},
+				{
+					"type": "rect",
+					"x": 205.5,
+					"y": 36,
+					"w": 9,
+					"h": 7,
+					"fill": "#2E7D4F",
+					"outline": false,
+					"label": "26",
+					"labelColor": "#F4F6F8",
+					"labelSize": 4.2
+				},
+				{
+					"type": "rect",
+					"x": 205.5,
+					"y": 7,
+					"w": 9,
+					"h": 7,
+					"fill": "#2E7D4F",
+					"outline": false,
+					"label": "20",
+					"labelColor": "#F4F6F8",
+					"labelSize": 4.2
+				},
+				{
+					"type": "rect",
+					"x": 215.5,
+					"y": 36,
+					"w": 9,
+					"h": 7,
+					"fill": "#2E7D4F",
+					"outline": false,
+					"label": "GND",
+					"labelColor": "#F4F6F8",
+					"labelSize": 3.6
+				},
+				{
+					"type": "rect",
+					"x": 215.5,
+					"y": 7,
+					"w": 9,
+					"h": 7,
+					"fill": "#2E7D4F",
+					"outline": false,
+					"label": "21",
+					"labelColor": "#F4F6F8",
+					"labelSize": 4.2
+				},
+				{
+					"type": "rect",
+					"x": 240,
+					"y": 34,
+					"w": 14,
+					"h": 14,
+					"fill": "#2B2F36",
+					"radius": 1
+				},
+				{
+					"type": "rect",
+					"x": 95,
+					"y": 82,
+					"w": 56,
+					"h": 56,
+					"fill": "#C9CED6",
+					"radius": 3,
+					"label": "BCM2711",
+					"labelColor": "#2B2F36",
+					"labelSize": 7
+				},
+				{
+					"type": "rect",
+					"x": 160,
+					"y": 86,
+					"w": 34,
+					"h": 48,
+					"fill": "#1E2126",
+					"radius": 2,
+					"label": "RAM",
+					"labelColor": "#D5DAE1",
+					"labelSize": 6
+				},
+				{
+					"type": "rect",
+					"x": 30,
+					"y": 58,
+					"w": 46,
+					"h": 30,
+					"fill": "#C9CED6",
+					"radius": 2,
+					"label": "WiFi",
+					"labelColor": "#2B2F36",
+					"labelSize": 6
+				},
+				{
+					"type": "rect",
+					"x": 258,
+					"y": 9,
+					"w": 86,
+					"h": 62,
+					"fill": "#C9CED6",
+					"radius": 2
+				},
+				{
+					"type": "rect",
+					"x": 326,
+					"y": 22,
+					"w": 12,
+					"h": 36,
+					"fill": "#2B2F36",
+					"radius": 1,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 274,
+					"y": 90,
+					"w": 70,
+					"h": 50,
+					"fill": "#C9CED6",
+					"radius": 2
+				},
+				{
+					"type": "rect",
+					"x": 334,
+					"y": 95,
+					"w": 4,
+					"h": 15,
+					"fill": "#3D6FD6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 334,
+					"y": 120,
+					"w": 4,
+					"h": 15,
+					"fill": "#3D6FD6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 274,
+					"y": 160,
+					"w": 70,
+					"h": 50,
+					"fill": "#C9CED6",
+					"radius": 2
+				},
+				{
+					"type": "rect",
+					"x": 334,
+					"y": 165,
+					"w": 4,
+					"h": 15,
+					"fill": "#2B2F36",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 334,
+					"y": 190,
+					"w": 4,
+					"h": 15,
+					"fill": "#2B2F36",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 28,
+					"y": 202,
+					"w": 32,
+					"h": 20,
+					"fill": "#C9CED6",
+					"radius": 5
+				},
+				{
+					"type": "rect",
+					"x": 90,
+					"y": 204,
+					"w": 24,
+					"h": 18,
+					"fill": "#C9CED6",
+					"radius": 2
+				},
+				{
+					"type": "rect",
+					"x": 143,
+					"y": 204,
+					"w": 24,
+					"h": 18,
+					"fill": "#C9CED6",
+					"radius": 2
+				},
+				{
+					"type": "rect",
+					"x": 174,
+					"y": 140,
+					"w": 12,
+					"h": 66,
+					"fill": "#E9DDC4",
+					"radius": 1,
+					"label": "",
+					"labelColor": "#2B2F36",
+					"labelSize": 4
+				},
+				{
+					"type": "rect",
+					"x": 198,
+					"y": 194,
+					"w": 26,
+					"h": 26,
+					"fill": "#2B2F36",
+					"radius": 13
+				},
+				{
+					"type": "rect",
+					"x": 8,
+					"y": 84,
+					"w": 12,
+					"h": 52,
+					"fill": "#E9DDC4",
+					"radius": 1,
+					"label": "",
+					"labelColor": "#2B2F36",
+					"labelSize": 4
+				},
+				{
+					"type": "rect",
+					"x": 30,
+					"y": 150,
+					"w": 120,
+					"h": 14,
+					"fill": "#2E7D4F",
+					"outline": false,
+					"label": "Raspberry Pi 4 Model B",
+					"labelColor": "#F4F6F8",
+					"labelSize": 7
+				}
+			]
+		},
+		kicad: {
+			"footprint": "Connector_PinSocket_2.54mm:PinSocket_2x20_P2.54mm_Vertical",
+			"pins": {
+				"3V3": "1",
+				"5V": "2",
+				"GPIO2": "3",
+				"5V 2": "4",
+				"GPIO3": "5",
+				"GND": "6",
+				"GPIO4": "7",
+				"GPIO14": "8",
+				"GND 2": "9",
+				"GPIO15": "10",
+				"GPIO17": "11",
+				"GPIO18": "12",
+				"GPIO27": "13",
+				"GND 3": "14",
+				"GPIO22": "15",
+				"GPIO23": "16",
+				"3V3 2": "17",
+				"GPIO24": "18",
+				"GPIO10": "19",
+				"GND 4": "20",
+				"GPIO9": "21",
+				"GPIO25": "22",
+				"GPIO11": "23",
+				"GPIO8": "24",
+				"GND 5": "25",
+				"GPIO7": "26",
+				"GPIO0": "27",
+				"GPIO1": "28",
+				"GPIO5": "29",
+				"GND 6": "30",
+				"GPIO6": "31",
+				"GPIO12": "32",
+				"GPIO13": "33",
+				"GND 7": "34",
+				"GPIO19": "35",
+				"GPIO16": "36",
+				"GPIO26": "37",
+				"GPIO20": "38",
+				"GND 8": "39",
+				"GPIO21": "40"
+			},
+			"value": "Raspberry Pi 4 Model B",
+			"note": "The 40-pin header as the 2 x 20 socket the Pi plugs onto; the camera and display connectors are not on it."
+		}
+	},
+	"../modules/rpi-5.json": {
+		format: "circuitoon-module/1",
+		id: "rpi-5",
+		version: 1,
+		name: "Raspberry Pi 5",
+		category: "Computers",
+		source: "https://www.raspberrypi.com/documentation/computers/raspberry-pi.html https://pip.raspberrypi.com/documents/RP-008347-DS https://github.com/gpiozero/gpiozero/blob/master/gpiozero/pins/data.py https://pinout.xyz/ https://aegisdigitalmuseum.kennesaw.edu/items/show/300",
+		pins: [
+			{
+				"spacer": true,
+				"side": "right"
+			},
+			{
+				"name": "USB2-1",
+				"side": "right",
+				"label": "USB2",
+				"type": "usb",
+				"usb": {
+					"connector": "A",
+					"gender": "receptacle",
+					"role": "host",
+					"version": "2.0",
+					"speed": "high"
+				}
+			},
+			{
+				"name": "USB2-2",
+				"side": "right",
+				"label": "USB2",
+				"type": "usb",
+				"usb": {
+					"connector": "A",
+					"gender": "receptacle",
+					"role": "host",
+					"version": "2.0",
+					"speed": "high"
+				}
+			},
+			{
+				"spacer": true,
+				"side": "right"
+			},
+			{
+				"spacer": true,
+				"side": "right"
+			},
+			{
+				"spacer": true,
+				"side": "right"
+			},
+			{
+				"spacer": true,
+				"side": "right"
+			},
+			{
+				"spacer": true,
+				"side": "right"
+			},
+			{
+				"name": "USB3-1",
+				"side": "right",
+				"label": "USB3",
+				"type": "usb",
+				"usb": {
+					"connector": "A",
+					"gender": "receptacle",
+					"role": "host",
+					"version": "3.0",
+					"speed": "super"
+				}
+			},
+			{
+				"name": "USB3-2",
+				"side": "right",
+				"label": "USB3",
+				"type": "usb",
+				"usb": {
+					"connector": "A",
+					"gender": "receptacle",
+					"role": "host",
+					"version": "3.0",
+					"speed": "super"
+				}
+			},
+			{
+				"spacer": true,
+				"side": "right"
+			},
+			{
+				"spacer": true,
+				"side": "right"
+			},
+			{
+				"spacer": true,
+				"side": "right"
+			},
+			{
+				"spacer": true,
+				"side": "right"
+			},
+			{
+				"spacer": true,
+				"side": "right"
+			},
+			{
+				"spacer": true,
+				"side": "right"
+			},
+			{
+				"spacer": true,
+				"side": "right"
+			},
+			{
+				"spacer": true,
+				"side": "right"
+			},
+			{
+				"spacer": true,
+				"side": "right"
+			},
+			{
+				"spacer": true,
+				"side": "right"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"name": "USB-C",
+				"side": "bottom",
+				"label": "PWR",
+				"type": "usb",
+				"usb": {
+					"connector": "C",
+					"gender": "receptacle",
+					"role": "device",
+					"draw": 800
+				}
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"name": "CAM/DISP 1",
+				"side": "bottom",
+				"type": "passive",
+				"caps": { "note": "Which connector is 0 and which is 1 rests on one source (gpiozero's board art: 1 on the left, 0 on the right); check the silkscreen on your board." }
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"name": "CAM/DISP 0",
+				"side": "bottom",
+				"type": "passive",
+				"caps": { "note": "Which connector is 0 and which is 1 rests on one source (gpiozero's board art: 1 on the left, 0 on the right); check the silkscreen on your board." }
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			}
+		],
+		internal: [
+			[
+				"GND",
+				"GND 2",
+				"GND 3",
+				"GND 4",
+				"GND 5",
+				"GND 6",
+				"GND 7",
+				"GND 8"
+			],
+			["3V3", "3V3 2"],
+			["5V", "5V 2"]
+		],
+		size: {
+			"w": 34,
+			"h": 22
+		},
+		holes: [
+			{
+				"name": "3V3",
+				"at": [[30, 30]],
+				"holeStyle": "pad",
+				"type": "power_out",
+				"supply": "3V3"
+			},
+			{
+				"name": "5V",
+				"at": [[30, 20]],
+				"holeStyle": "pad",
+				"type": "power_in",
+				"supply": "5V"
+			},
+			{
+				"name": "GPIO2",
+				"at": [[40, 30]],
+				"holeStyle": "pad",
+				"type": "io",
+				"caps": { "note": "GPIO2 is I2C SDA and has a fixed pull-up resistor to 3.3 V on the board, so it reads high when nothing drives it." }
+			},
+			{
+				"name": "5V 2",
+				"label": "5V",
+				"at": [[40, 20]],
+				"holeStyle": "pad",
+				"type": "power_in",
+				"supply": "5V"
+			},
+			{
+				"name": "GPIO3",
+				"at": [[50, 30]],
+				"holeStyle": "pad",
+				"type": "io",
+				"caps": { "note": "GPIO3 is I2C SCL and has a fixed pull-up resistor to 3.3 V on the board, so it reads high when nothing drives it." }
+			},
+			{
+				"name": "GND",
+				"at": [[50, 20]],
+				"holeStyle": "pad",
+				"type": "ground"
+			},
+			{
+				"name": "GPIO4",
+				"at": [[60, 30]],
+				"holeStyle": "pad",
+				"type": "io"
+			},
+			{
+				"name": "GPIO14",
+				"at": [[60, 20]],
+				"holeStyle": "pad",
+				"type": "io"
+			},
+			{
+				"name": "GND 2",
+				"label": "GND",
+				"at": [[70, 30]],
+				"holeStyle": "pad",
+				"type": "ground"
+			},
+			{
+				"name": "GPIO15",
+				"at": [[70, 20]],
+				"holeStyle": "pad",
+				"type": "io"
+			},
+			{
+				"name": "GPIO17",
+				"at": [[80, 30]],
+				"holeStyle": "pad",
+				"type": "io"
+			},
+			{
+				"name": "GPIO18",
+				"at": [[80, 20]],
+				"holeStyle": "pad",
+				"type": "io"
+			},
+			{
+				"name": "GPIO27",
+				"at": [[90, 30]],
+				"holeStyle": "pad",
+				"type": "io"
+			},
+			{
+				"name": "GND 3",
+				"label": "GND",
+				"at": [[90, 20]],
+				"holeStyle": "pad",
+				"type": "ground"
+			},
+			{
+				"name": "GPIO22",
+				"at": [[100, 30]],
+				"holeStyle": "pad",
+				"type": "io"
+			},
+			{
+				"name": "GPIO23",
+				"at": [[100, 20]],
+				"holeStyle": "pad",
+				"type": "io"
+			},
+			{
+				"name": "3V3 2",
+				"label": "3V3",
+				"at": [[110, 30]],
+				"holeStyle": "pad",
+				"type": "power_out",
+				"supply": "3V3"
+			},
+			{
+				"name": "GPIO24",
+				"at": [[110, 20]],
+				"holeStyle": "pad",
+				"type": "io"
+			},
+			{
+				"name": "GPIO10",
+				"at": [[120, 30]],
+				"holeStyle": "pad",
+				"type": "io"
+			},
+			{
+				"name": "GND 4",
+				"label": "GND",
+				"at": [[120, 20]],
+				"holeStyle": "pad",
+				"type": "ground"
+			},
+			{
+				"name": "GPIO9",
+				"at": [[130, 30]],
+				"holeStyle": "pad",
+				"type": "io"
+			},
+			{
+				"name": "GPIO25",
+				"at": [[130, 20]],
+				"holeStyle": "pad",
+				"type": "io"
+			},
+			{
+				"name": "GPIO11",
+				"at": [[140, 30]],
+				"holeStyle": "pad",
+				"type": "io"
+			},
+			{
+				"name": "GPIO8",
+				"at": [[140, 20]],
+				"holeStyle": "pad",
+				"type": "io"
+			},
+			{
+				"name": "GND 5",
+				"label": "GND",
+				"at": [[150, 30]],
+				"holeStyle": "pad",
+				"type": "ground"
+			},
+			{
+				"name": "GPIO7",
+				"at": [[150, 20]],
+				"holeStyle": "pad",
+				"type": "io"
+			},
+			{
+				"name": "GPIO0",
+				"at": [[160, 30]],
+				"holeStyle": "pad",
+				"type": "io",
+				"caps": { "note": "GPIO0 (ID_SD) is reserved for advanced use: the HAT ID EEPROM. Leave it unconnected unless you add one." }
+			},
+			{
+				"name": "GPIO1",
+				"at": [[160, 20]],
+				"holeStyle": "pad",
+				"type": "io",
+				"caps": { "note": "GPIO1 (ID_SC) is reserved for advanced use: the HAT ID EEPROM. Leave it unconnected unless you add one." }
+			},
+			{
+				"name": "GPIO5",
+				"at": [[170, 30]],
+				"holeStyle": "pad",
+				"type": "io"
+			},
+			{
+				"name": "GND 6",
+				"label": "GND",
+				"at": [[170, 20]],
+				"holeStyle": "pad",
+				"type": "ground"
+			},
+			{
+				"name": "GPIO6",
+				"at": [[180, 30]],
+				"holeStyle": "pad",
+				"type": "io"
+			},
+			{
+				"name": "GPIO12",
+				"at": [[180, 20]],
+				"holeStyle": "pad",
+				"type": "io"
+			},
+			{
+				"name": "GPIO13",
+				"at": [[190, 30]],
+				"holeStyle": "pad",
+				"type": "io"
+			},
+			{
+				"name": "GND 7",
+				"label": "GND",
+				"at": [[190, 20]],
+				"holeStyle": "pad",
+				"type": "ground"
+			},
+			{
+				"name": "GPIO19",
+				"at": [[200, 30]],
+				"holeStyle": "pad",
+				"type": "io"
+			},
+			{
+				"name": "GPIO16",
+				"at": [[200, 20]],
+				"holeStyle": "pad",
+				"type": "io"
+			},
+			{
+				"name": "GPIO26",
+				"at": [[210, 30]],
+				"holeStyle": "pad",
+				"type": "io"
+			},
+			{
+				"name": "GPIO20",
+				"at": [[210, 20]],
+				"holeStyle": "pad",
+				"type": "io"
+			},
+			{
+				"name": "GND 8",
+				"label": "GND",
+				"at": [[220, 30]],
+				"holeStyle": "pad",
+				"type": "ground"
+			},
+			{
+				"name": "GPIO21",
+				"at": [[220, 20]],
+				"holeStyle": "pad",
+				"type": "io"
+			}
+		],
+		electrical: {
+			"model": "computer",
+			"params": {},
+			"settings": { "supply": ["5V 5A (27 W)", "5V 3A"] },
+			"external": [{
+				"pin": "5V",
+				"volts": 5,
+				"via": "USB-C"
+			}],
+			"usbBudget": [{
+				"ports": [
+					"USB2-1",
+					"USB2-2",
+					"USB3-1",
+					"USB3-2"
+				],
+				"mA": 1600,
+				"setting": ["supply", "5V 5A (27 W)"],
+				"note": "1.6 A across all four ports with a 5 A supply, shared with the fan header"
+			}, {
+				"ports": [
+					"USB2-1",
+					"USB2-2",
+					"USB3-1",
+					"USB3-2"
+				],
+				"mA": 600,
+				"setting": ["supply", "5V 3A"],
+				"note": "600 mA across all four ports with a 3 A supply, shared with the fan header"
+			}]
+		},
+		art: {
+			"w": 340,
+			"h": 220,
+			"pinLabels": "inside",
+			"shapes": [
+				{
+					"type": "rect",
+					"x": 0,
+					"y": 0,
+					"w": 340,
+					"h": 220,
+					"fill": "#2E7D4F",
+					"radius": 12
+				},
+				{
+					"type": "rect",
+					"x": 8,
+					"y": 8,
+					"w": 12,
+					"h": 12,
+					"fill": "#D5DAE1",
+					"radius": 6,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 11,
+					"y": 11,
+					"w": 6,
+					"h": 6,
+					"fill": "#6B727C",
+					"radius": 3,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 236,
+					"y": 8,
+					"w": 12,
+					"h": 12,
+					"fill": "#D5DAE1",
+					"radius": 6,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 239,
+					"y": 11,
+					"w": 6,
+					"h": 6,
+					"fill": "#6B727C",
+					"radius": 3,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 8,
+					"y": 200,
+					"w": 12,
+					"h": 12,
+					"fill": "#D5DAE1",
+					"radius": 6,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 11,
+					"y": 203,
+					"w": 6,
+					"h": 6,
+					"fill": "#6B727C",
+					"radius": 3,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 236,
+					"y": 200,
+					"w": 12,
+					"h": 12,
+					"fill": "#D5DAE1",
+					"radius": 6,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 239,
+					"y": 203,
+					"w": 6,
+					"h": 6,
+					"fill": "#6B727C",
+					"radius": 3,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 24,
+					"y": 14,
+					"w": 202,
+					"h": 22,
+					"fill": "#2B2F36",
+					"radius": 1
+				},
+				{
+					"type": "rect",
+					"x": 25.5,
+					"y": 36,
+					"w": 9,
+					"h": 7,
+					"fill": "#2E7D4F",
+					"outline": false,
+					"label": "3V",
+					"labelColor": "#F4F6F8",
+					"labelSize": 4.2
+				},
+				{
+					"type": "rect",
+					"x": 25.5,
+					"y": 7,
+					"w": 9,
+					"h": 7,
+					"fill": "#2E7D4F",
+					"outline": false,
+					"label": "5V",
+					"labelColor": "#F4F6F8",
+					"labelSize": 4.2
+				},
+				{
+					"type": "rect",
+					"x": 35.5,
+					"y": 36,
+					"w": 9,
+					"h": 7,
+					"fill": "#2E7D4F",
+					"outline": false,
+					"label": "2",
+					"labelColor": "#F4F6F8",
+					"labelSize": 4.2
+				},
+				{
+					"type": "rect",
+					"x": 35.5,
+					"y": 7,
+					"w": 9,
+					"h": 7,
+					"fill": "#2E7D4F",
+					"outline": false,
+					"label": "5V",
+					"labelColor": "#F4F6F8",
+					"labelSize": 4.2
+				},
+				{
+					"type": "rect",
+					"x": 45.5,
+					"y": 36,
+					"w": 9,
+					"h": 7,
+					"fill": "#2E7D4F",
+					"outline": false,
+					"label": "3",
+					"labelColor": "#F4F6F8",
+					"labelSize": 4.2
+				},
+				{
+					"type": "rect",
+					"x": 45.5,
+					"y": 7,
+					"w": 9,
+					"h": 7,
+					"fill": "#2E7D4F",
+					"outline": false,
+					"label": "GND",
+					"labelColor": "#F4F6F8",
+					"labelSize": 3.6
+				},
+				{
+					"type": "rect",
+					"x": 55.5,
+					"y": 36,
+					"w": 9,
+					"h": 7,
+					"fill": "#2E7D4F",
+					"outline": false,
+					"label": "4",
+					"labelColor": "#F4F6F8",
+					"labelSize": 4.2
+				},
+				{
+					"type": "rect",
+					"x": 55.5,
+					"y": 7,
+					"w": 9,
+					"h": 7,
+					"fill": "#2E7D4F",
+					"outline": false,
+					"label": "14",
+					"labelColor": "#F4F6F8",
+					"labelSize": 4.2
+				},
+				{
+					"type": "rect",
+					"x": 65.5,
+					"y": 36,
+					"w": 9,
+					"h": 7,
+					"fill": "#2E7D4F",
+					"outline": false,
+					"label": "GND",
+					"labelColor": "#F4F6F8",
+					"labelSize": 3.6
+				},
+				{
+					"type": "rect",
+					"x": 65.5,
+					"y": 7,
+					"w": 9,
+					"h": 7,
+					"fill": "#2E7D4F",
+					"outline": false,
+					"label": "15",
+					"labelColor": "#F4F6F8",
+					"labelSize": 4.2
+				},
+				{
+					"type": "rect",
+					"x": 75.5,
+					"y": 36,
+					"w": 9,
+					"h": 7,
+					"fill": "#2E7D4F",
+					"outline": false,
+					"label": "17",
+					"labelColor": "#F4F6F8",
+					"labelSize": 4.2
+				},
+				{
+					"type": "rect",
+					"x": 75.5,
+					"y": 7,
+					"w": 9,
+					"h": 7,
+					"fill": "#2E7D4F",
+					"outline": false,
+					"label": "18",
+					"labelColor": "#F4F6F8",
+					"labelSize": 4.2
+				},
+				{
+					"type": "rect",
+					"x": 85.5,
+					"y": 36,
+					"w": 9,
+					"h": 7,
+					"fill": "#2E7D4F",
+					"outline": false,
+					"label": "27",
+					"labelColor": "#F4F6F8",
+					"labelSize": 4.2
+				},
+				{
+					"type": "rect",
+					"x": 85.5,
+					"y": 7,
+					"w": 9,
+					"h": 7,
+					"fill": "#2E7D4F",
+					"outline": false,
+					"label": "GND",
+					"labelColor": "#F4F6F8",
+					"labelSize": 3.6
+				},
+				{
+					"type": "rect",
+					"x": 95.5,
+					"y": 36,
+					"w": 9,
+					"h": 7,
+					"fill": "#2E7D4F",
+					"outline": false,
+					"label": "22",
+					"labelColor": "#F4F6F8",
+					"labelSize": 4.2
+				},
+				{
+					"type": "rect",
+					"x": 95.5,
+					"y": 7,
+					"w": 9,
+					"h": 7,
+					"fill": "#2E7D4F",
+					"outline": false,
+					"label": "23",
+					"labelColor": "#F4F6F8",
+					"labelSize": 4.2
+				},
+				{
+					"type": "rect",
+					"x": 105.5,
+					"y": 36,
+					"w": 9,
+					"h": 7,
+					"fill": "#2E7D4F",
+					"outline": false,
+					"label": "3V",
+					"labelColor": "#F4F6F8",
+					"labelSize": 4.2
+				},
+				{
+					"type": "rect",
+					"x": 105.5,
+					"y": 7,
+					"w": 9,
+					"h": 7,
+					"fill": "#2E7D4F",
+					"outline": false,
+					"label": "24",
+					"labelColor": "#F4F6F8",
+					"labelSize": 4.2
+				},
+				{
+					"type": "rect",
+					"x": 115.5,
+					"y": 36,
+					"w": 9,
+					"h": 7,
+					"fill": "#2E7D4F",
+					"outline": false,
+					"label": "10",
+					"labelColor": "#F4F6F8",
+					"labelSize": 4.2
+				},
+				{
+					"type": "rect",
+					"x": 115.5,
+					"y": 7,
+					"w": 9,
+					"h": 7,
+					"fill": "#2E7D4F",
+					"outline": false,
+					"label": "GND",
+					"labelColor": "#F4F6F8",
+					"labelSize": 3.6
+				},
+				{
+					"type": "rect",
+					"x": 125.5,
+					"y": 36,
+					"w": 9,
+					"h": 7,
+					"fill": "#2E7D4F",
+					"outline": false,
+					"label": "9",
+					"labelColor": "#F4F6F8",
+					"labelSize": 4.2
+				},
+				{
+					"type": "rect",
+					"x": 125.5,
+					"y": 7,
+					"w": 9,
+					"h": 7,
+					"fill": "#2E7D4F",
+					"outline": false,
+					"label": "25",
+					"labelColor": "#F4F6F8",
+					"labelSize": 4.2
+				},
+				{
+					"type": "rect",
+					"x": 135.5,
+					"y": 36,
+					"w": 9,
+					"h": 7,
+					"fill": "#2E7D4F",
+					"outline": false,
+					"label": "11",
+					"labelColor": "#F4F6F8",
+					"labelSize": 4.2
+				},
+				{
+					"type": "rect",
+					"x": 135.5,
+					"y": 7,
+					"w": 9,
+					"h": 7,
+					"fill": "#2E7D4F",
+					"outline": false,
+					"label": "8",
+					"labelColor": "#F4F6F8",
+					"labelSize": 4.2
+				},
+				{
+					"type": "rect",
+					"x": 145.5,
+					"y": 36,
+					"w": 9,
+					"h": 7,
+					"fill": "#2E7D4F",
+					"outline": false,
+					"label": "GND",
+					"labelColor": "#F4F6F8",
+					"labelSize": 3.6
+				},
+				{
+					"type": "rect",
+					"x": 145.5,
+					"y": 7,
+					"w": 9,
+					"h": 7,
+					"fill": "#2E7D4F",
+					"outline": false,
+					"label": "7",
+					"labelColor": "#F4F6F8",
+					"labelSize": 4.2
+				},
+				{
+					"type": "rect",
+					"x": 155.5,
+					"y": 36,
+					"w": 9,
+					"h": 7,
+					"fill": "#2E7D4F",
+					"outline": false,
+					"label": "0",
+					"labelColor": "#F4F6F8",
+					"labelSize": 4.2
+				},
+				{
+					"type": "rect",
+					"x": 155.5,
+					"y": 7,
+					"w": 9,
+					"h": 7,
+					"fill": "#2E7D4F",
+					"outline": false,
+					"label": "1",
+					"labelColor": "#F4F6F8",
+					"labelSize": 4.2
+				},
+				{
+					"type": "rect",
+					"x": 165.5,
+					"y": 36,
+					"w": 9,
+					"h": 7,
+					"fill": "#2E7D4F",
+					"outline": false,
+					"label": "5",
+					"labelColor": "#F4F6F8",
+					"labelSize": 4.2
+				},
+				{
+					"type": "rect",
+					"x": 165.5,
+					"y": 7,
+					"w": 9,
+					"h": 7,
+					"fill": "#2E7D4F",
+					"outline": false,
+					"label": "GND",
+					"labelColor": "#F4F6F8",
+					"labelSize": 3.6
+				},
+				{
+					"type": "rect",
+					"x": 175.5,
+					"y": 36,
+					"w": 9,
+					"h": 7,
+					"fill": "#2E7D4F",
+					"outline": false,
+					"label": "6",
+					"labelColor": "#F4F6F8",
+					"labelSize": 4.2
+				},
+				{
+					"type": "rect",
+					"x": 175.5,
+					"y": 7,
+					"w": 9,
+					"h": 7,
+					"fill": "#2E7D4F",
+					"outline": false,
+					"label": "12",
+					"labelColor": "#F4F6F8",
+					"labelSize": 4.2
+				},
+				{
+					"type": "rect",
+					"x": 185.5,
+					"y": 36,
+					"w": 9,
+					"h": 7,
+					"fill": "#2E7D4F",
+					"outline": false,
+					"label": "13",
+					"labelColor": "#F4F6F8",
+					"labelSize": 4.2
+				},
+				{
+					"type": "rect",
+					"x": 185.5,
+					"y": 7,
+					"w": 9,
+					"h": 7,
+					"fill": "#2E7D4F",
+					"outline": false,
+					"label": "GND",
+					"labelColor": "#F4F6F8",
+					"labelSize": 3.6
+				},
+				{
+					"type": "rect",
+					"x": 195.5,
+					"y": 36,
+					"w": 9,
+					"h": 7,
+					"fill": "#2E7D4F",
+					"outline": false,
+					"label": "19",
+					"labelColor": "#F4F6F8",
+					"labelSize": 4.2
+				},
+				{
+					"type": "rect",
+					"x": 195.5,
+					"y": 7,
+					"w": 9,
+					"h": 7,
+					"fill": "#2E7D4F",
+					"outline": false,
+					"label": "16",
+					"labelColor": "#F4F6F8",
+					"labelSize": 4.2
+				},
+				{
+					"type": "rect",
+					"x": 205.5,
+					"y": 36,
+					"w": 9,
+					"h": 7,
+					"fill": "#2E7D4F",
+					"outline": false,
+					"label": "26",
+					"labelColor": "#F4F6F8",
+					"labelSize": 4.2
+				},
+				{
+					"type": "rect",
+					"x": 205.5,
+					"y": 7,
+					"w": 9,
+					"h": 7,
+					"fill": "#2E7D4F",
+					"outline": false,
+					"label": "20",
+					"labelColor": "#F4F6F8",
+					"labelSize": 4.2
+				},
+				{
+					"type": "rect",
+					"x": 215.5,
+					"y": 36,
+					"w": 9,
+					"h": 7,
+					"fill": "#2E7D4F",
+					"outline": false,
+					"label": "GND",
+					"labelColor": "#F4F6F8",
+					"labelSize": 3.6
+				},
+				{
+					"type": "rect",
+					"x": 215.5,
+					"y": 7,
+					"w": 9,
+					"h": 7,
+					"fill": "#2E7D4F",
+					"outline": false,
+					"label": "21",
+					"labelColor": "#F4F6F8",
+					"labelSize": 4.2
+				},
+				{
+					"type": "rect",
+					"x": 30,
+					"y": 58,
+					"w": 40,
+					"h": 40,
+					"fill": "#C9CED6",
+					"radius": 2,
+					"label": "WiFi",
+					"labelColor": "#2B2F36",
+					"labelSize": 6
+				},
+				{
+					"type": "rect",
+					"x": 84,
+					"y": 104,
+					"w": 60,
+					"h": 50,
+					"fill": "#C9CED6",
+					"radius": 3,
+					"label": "BCM2712",
+					"labelColor": "#2B2F36",
+					"labelSize": 7
+				},
+				{
+					"type": "rect",
+					"x": 100,
+					"y": 58,
+					"w": 44,
+					"h": 30,
+					"fill": "#1E2126",
+					"radius": 2,
+					"label": "RAM",
+					"labelColor": "#D5DAE1",
+					"labelSize": 6
+				},
+				{
+					"type": "rect",
+					"x": 160,
+					"y": 62,
+					"w": 34,
+					"h": 34,
+					"fill": "#1E2126",
+					"radius": 2,
+					"label": "RP1",
+					"labelColor": "#D5DAE1",
+					"labelSize": 6
+				},
+				{
+					"type": "rect",
+					"x": 274,
+					"y": 10,
+					"w": 70,
+					"h": 50,
+					"fill": "#C9CED6",
+					"radius": 2
+				},
+				{
+					"type": "rect",
+					"x": 334,
+					"y": 15,
+					"w": 4,
+					"h": 15,
+					"fill": "#2B2F36",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 334,
+					"y": 40,
+					"w": 4,
+					"h": 15,
+					"fill": "#2B2F36",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 274,
+					"y": 80,
+					"w": 70,
+					"h": 50,
+					"fill": "#C9CED6",
+					"radius": 2
+				},
+				{
+					"type": "rect",
+					"x": 334,
+					"y": 85,
+					"w": 4,
+					"h": 15,
+					"fill": "#3D6FD6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 334,
+					"y": 110,
+					"w": 4,
+					"h": 15,
+					"fill": "#3D6FD6",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 258,
+					"y": 149,
+					"w": 86,
+					"h": 62,
+					"fill": "#C9CED6",
+					"radius": 2
+				},
+				{
+					"type": "rect",
+					"x": 326,
+					"y": 162,
+					"w": 12,
+					"h": 36,
+					"fill": "#2B2F36",
+					"radius": 1,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 28,
+					"y": 202,
+					"w": 32,
+					"h": 20,
+					"fill": "#C9CED6",
+					"radius": 5
+				},
+				{
+					"type": "rect",
+					"x": 90,
+					"y": 204,
+					"w": 24,
+					"h": 18,
+					"fill": "#C9CED6",
+					"radius": 2
+				},
+				{
+					"type": "rect",
+					"x": 143,
+					"y": 204,
+					"w": 24,
+					"h": 18,
+					"fill": "#C9CED6",
+					"radius": 2
+				},
+				{
+					"type": "rect",
+					"x": 184,
+					"y": 148,
+					"w": 12,
+					"h": 62,
+					"fill": "#E9DDC4",
+					"radius": 1,
+					"label": "",
+					"labelColor": "#2B2F36",
+					"labelSize": 4
+				},
+				{
+					"type": "rect",
+					"x": 204,
+					"y": 148,
+					"w": 12,
+					"h": 62,
+					"fill": "#E9DDC4",
+					"radius": 1,
+					"label": "",
+					"labelColor": "#2B2F36",
+					"labelSize": 4
+				},
+				{
+					"type": "rect",
+					"x": 4,
+					"y": 70,
+					"w": 10,
+					"h": 60,
+					"fill": "#E9DDC4",
+					"radius": 1
+				},
+				{
+					"type": "rect",
+					"x": 30,
+					"y": 162,
+					"w": 70,
+					"h": 14,
+					"fill": "#2E7D4F",
+					"outline": false,
+					"label": "Raspberry Pi 5",
+					"labelColor": "#F4F6F8",
+					"labelSize": 7
+				}
+			]
+		},
+		kicad: {
+			"footprint": "Connector_PinSocket_2.54mm:PinSocket_2x20_P2.54mm_Vertical",
+			"pins": {
+				"3V3": "1",
+				"5V": "2",
+				"GPIO2": "3",
+				"5V 2": "4",
+				"GPIO3": "5",
+				"GND": "6",
+				"GPIO4": "7",
+				"GPIO14": "8",
+				"GND 2": "9",
+				"GPIO15": "10",
+				"GPIO17": "11",
+				"GPIO18": "12",
+				"GPIO27": "13",
+				"GND 3": "14",
+				"GPIO22": "15",
+				"GPIO23": "16",
+				"3V3 2": "17",
+				"GPIO24": "18",
+				"GPIO10": "19",
+				"GND 4": "20",
+				"GPIO9": "21",
+				"GPIO25": "22",
+				"GPIO11": "23",
+				"GPIO8": "24",
+				"GND 5": "25",
+				"GPIO7": "26",
+				"GPIO0": "27",
+				"GPIO1": "28",
+				"GPIO5": "29",
+				"GND 6": "30",
+				"GPIO6": "31",
+				"GPIO12": "32",
+				"GPIO13": "33",
+				"GND 7": "34",
+				"GPIO19": "35",
+				"GPIO16": "36",
+				"GPIO26": "37",
+				"GPIO20": "38",
+				"GND 8": "39",
+				"GPIO21": "40"
+			},
+			"value": "Raspberry Pi 5",
+			"note": "The 40-pin header as the 2 x 20 socket the Pi plugs onto; the camera and display connectors are not on it."
+		}
+	},
 	"../modules/rpi-pico-2-w.json": {
 		format: "circuitoon-module/1",
 		id: "rpi-pico-2-w",
@@ -46605,6 +50726,19 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			{
 				"name": "SWDIO",
 				"side": "bottom"
+			},
+			{
+				"name": "USB",
+				"side": "top",
+				"type": "usb",
+				"usb": {
+					"connector": "micro-B",
+					"gender": "receptacle",
+					"role": "dual",
+					"version": "1.1",
+					"speed": "full",
+					"vbus": "VBUS"
+				}
 			}
 		],
 		internal: [[
@@ -46916,6 +51050,19 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			{
 				"name": "SWDIO",
 				"side": "bottom"
+			},
+			{
+				"name": "USB",
+				"side": "top",
+				"type": "usb",
+				"usb": {
+					"connector": "micro-B",
+					"gender": "receptacle",
+					"role": "dual",
+					"version": "1.1",
+					"speed": "full",
+					"vbus": "VBUS"
+				}
 			}
 		],
 		internal: [[
@@ -48271,6 +52418,19 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			{
 				"name": "SWDIO",
 				"side": "bottom"
+			},
+			{
+				"name": "USB",
+				"side": "top",
+				"type": "usb",
+				"usb": {
+					"connector": "micro-B",
+					"gender": "receptacle",
+					"role": "dual",
+					"version": "1.1",
+					"speed": "full",
+					"vbus": "VBUS"
+				}
 			}
 		],
 		internal: [[
@@ -49223,6 +53383,19 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			{
 				"name": "SWDIO",
 				"side": "bottom"
+			},
+			{
+				"name": "USB",
+				"side": "top",
+				"type": "usb",
+				"usb": {
+					"connector": "micro-B",
+					"gender": "receptacle",
+					"role": "dual",
+					"version": "1.1",
+					"speed": "full",
+					"vbus": "VBUS"
+				}
 			}
 		],
 		internal: [[
@@ -49535,6 +53708,19 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			{
 				"name": "SWDIO",
 				"side": "bottom"
+			},
+			{
+				"name": "USB",
+				"side": "top",
+				"type": "usb",
+				"usb": {
+					"connector": "micro-B",
+					"gender": "receptacle",
+					"role": "dual",
+					"version": "1.1",
+					"speed": "full",
+					"vbus": "VBUS"
+				}
 			}
 		],
 		internal: [[
@@ -50660,6 +54846,1159 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			"note": "The debug pads (SWCLK, GND, SWDIO) are not on this footprint."
 		}
 	},
+	"../modules/rpi-zero-2-w.json": {
+		format: "circuitoon-module/1",
+		id: "rpi-zero-2-w",
+		version: 1,
+		name: "Raspberry Pi Zero 2 W",
+		category: "Computers",
+		source: "https://www.raspberrypi.com/documentation/computers/raspberry-pi.html https://pip.raspberrypi.com/documents/RP-008358-DS https://github.com/gpiozero/gpiozero/blob/master/gpiozero/pins/data.py https://pinout.xyz/ https://www.wevolver.com/article/raspberry-pi-zero-2-w-pinout-comprehensive-guide-for-engineers https://industrialmonitordirect.com/blogs/knowledgebase/raspberry-pi-zero-w-2-usb-hub-not-working-fix",
+		pins: [
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"name": "USB",
+				"side": "bottom",
+				"type": "usb",
+				"usb": {
+					"connector": "micro-B",
+					"gender": "receptacle",
+					"role": "dual",
+					"version": "2.0",
+					"speed": "high"
+				}
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"name": "PWR IN",
+				"side": "bottom",
+				"type": "usb",
+				"usb": {
+					"connector": "micro-B",
+					"gender": "receptacle",
+					"role": "device",
+					"power": "only",
+					"draw": 350
+				}
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"spacer": true,
+				"side": "right"
+			},
+			{
+				"spacer": true,
+				"side": "right"
+			},
+			{
+				"spacer": true,
+				"side": "right"
+			},
+			{
+				"spacer": true,
+				"side": "right"
+			},
+			{
+				"name": "CAMERA",
+				"side": "right",
+				"type": "passive"
+			},
+			{
+				"spacer": true,
+				"side": "right"
+			},
+			{
+				"spacer": true,
+				"side": "right"
+			},
+			{
+				"spacer": true,
+				"side": "right"
+			},
+			{
+				"spacer": true,
+				"side": "right"
+			},
+			{
+				"spacer": true,
+				"side": "right"
+			}
+		],
+		internal: [
+			[
+				"GND",
+				"GND 2",
+				"GND 3",
+				"GND 4",
+				"GND 5",
+				"GND 6",
+				"GND 7",
+				"GND 8"
+			],
+			["3V3", "3V3 2"],
+			["5V", "5V 2"]
+		],
+		size: {
+			"w": 26,
+			"h": 12
+		},
+		holes: [
+			{
+				"name": "3V3",
+				"at": [[30, 30]],
+				"holeStyle": "pad",
+				"type": "power_out",
+				"supply": "3V3"
+			},
+			{
+				"name": "5V",
+				"at": [[30, 20]],
+				"holeStyle": "pad",
+				"type": "power_in",
+				"supply": "5V"
+			},
+			{
+				"name": "GPIO2",
+				"at": [[40, 30]],
+				"holeStyle": "pad",
+				"type": "io",
+				"caps": { "note": "GPIO2 is I2C SDA and has a fixed pull-up resistor to 3.3 V on the board, so it reads high when nothing drives it." }
+			},
+			{
+				"name": "5V 2",
+				"label": "5V",
+				"at": [[40, 20]],
+				"holeStyle": "pad",
+				"type": "power_in",
+				"supply": "5V"
+			},
+			{
+				"name": "GPIO3",
+				"at": [[50, 30]],
+				"holeStyle": "pad",
+				"type": "io",
+				"caps": { "note": "GPIO3 is I2C SCL and has a fixed pull-up resistor to 3.3 V on the board, so it reads high when nothing drives it." }
+			},
+			{
+				"name": "GND",
+				"at": [[50, 20]],
+				"holeStyle": "pad",
+				"type": "ground"
+			},
+			{
+				"name": "GPIO4",
+				"at": [[60, 30]],
+				"holeStyle": "pad",
+				"type": "io"
+			},
+			{
+				"name": "GPIO14",
+				"at": [[60, 20]],
+				"holeStyle": "pad",
+				"type": "io"
+			},
+			{
+				"name": "GND 2",
+				"label": "GND",
+				"at": [[70, 30]],
+				"holeStyle": "pad",
+				"type": "ground"
+			},
+			{
+				"name": "GPIO15",
+				"at": [[70, 20]],
+				"holeStyle": "pad",
+				"type": "io"
+			},
+			{
+				"name": "GPIO17",
+				"at": [[80, 30]],
+				"holeStyle": "pad",
+				"type": "io"
+			},
+			{
+				"name": "GPIO18",
+				"at": [[80, 20]],
+				"holeStyle": "pad",
+				"type": "io"
+			},
+			{
+				"name": "GPIO27",
+				"at": [[90, 30]],
+				"holeStyle": "pad",
+				"type": "io"
+			},
+			{
+				"name": "GND 3",
+				"label": "GND",
+				"at": [[90, 20]],
+				"holeStyle": "pad",
+				"type": "ground"
+			},
+			{
+				"name": "GPIO22",
+				"at": [[100, 30]],
+				"holeStyle": "pad",
+				"type": "io"
+			},
+			{
+				"name": "GPIO23",
+				"at": [[100, 20]],
+				"holeStyle": "pad",
+				"type": "io"
+			},
+			{
+				"name": "3V3 2",
+				"label": "3V3",
+				"at": [[110, 30]],
+				"holeStyle": "pad",
+				"type": "power_out",
+				"supply": "3V3"
+			},
+			{
+				"name": "GPIO24",
+				"at": [[110, 20]],
+				"holeStyle": "pad",
+				"type": "io"
+			},
+			{
+				"name": "GPIO10",
+				"at": [[120, 30]],
+				"holeStyle": "pad",
+				"type": "io"
+			},
+			{
+				"name": "GND 4",
+				"label": "GND",
+				"at": [[120, 20]],
+				"holeStyle": "pad",
+				"type": "ground"
+			},
+			{
+				"name": "GPIO9",
+				"at": [[130, 30]],
+				"holeStyle": "pad",
+				"type": "io"
+			},
+			{
+				"name": "GPIO25",
+				"at": [[130, 20]],
+				"holeStyle": "pad",
+				"type": "io"
+			},
+			{
+				"name": "GPIO11",
+				"at": [[140, 30]],
+				"holeStyle": "pad",
+				"type": "io"
+			},
+			{
+				"name": "GPIO8",
+				"at": [[140, 20]],
+				"holeStyle": "pad",
+				"type": "io"
+			},
+			{
+				"name": "GND 5",
+				"label": "GND",
+				"at": [[150, 30]],
+				"holeStyle": "pad",
+				"type": "ground"
+			},
+			{
+				"name": "GPIO7",
+				"at": [[150, 20]],
+				"holeStyle": "pad",
+				"type": "io"
+			},
+			{
+				"name": "GPIO0",
+				"at": [[160, 30]],
+				"holeStyle": "pad",
+				"type": "io",
+				"caps": { "note": "GPIO0 (ID_SD) is reserved for advanced use: the HAT ID EEPROM. Leave it unconnected unless you add one." }
+			},
+			{
+				"name": "GPIO1",
+				"at": [[160, 20]],
+				"holeStyle": "pad",
+				"type": "io",
+				"caps": { "note": "GPIO1 (ID_SC) is reserved for advanced use: the HAT ID EEPROM. Leave it unconnected unless you add one." }
+			},
+			{
+				"name": "GPIO5",
+				"at": [[170, 30]],
+				"holeStyle": "pad",
+				"type": "io"
+			},
+			{
+				"name": "GND 6",
+				"label": "GND",
+				"at": [[170, 20]],
+				"holeStyle": "pad",
+				"type": "ground"
+			},
+			{
+				"name": "GPIO6",
+				"at": [[180, 30]],
+				"holeStyle": "pad",
+				"type": "io"
+			},
+			{
+				"name": "GPIO12",
+				"at": [[180, 20]],
+				"holeStyle": "pad",
+				"type": "io"
+			},
+			{
+				"name": "GPIO13",
+				"at": [[190, 30]],
+				"holeStyle": "pad",
+				"type": "io"
+			},
+			{
+				"name": "GND 7",
+				"label": "GND",
+				"at": [[190, 20]],
+				"holeStyle": "pad",
+				"type": "ground"
+			},
+			{
+				"name": "GPIO19",
+				"at": [[200, 30]],
+				"holeStyle": "pad",
+				"type": "io"
+			},
+			{
+				"name": "GPIO16",
+				"at": [[200, 20]],
+				"holeStyle": "pad",
+				"type": "io"
+			},
+			{
+				"name": "GPIO26",
+				"at": [[210, 30]],
+				"holeStyle": "pad",
+				"type": "io"
+			},
+			{
+				"name": "GPIO20",
+				"at": [[210, 20]],
+				"holeStyle": "pad",
+				"type": "io"
+			},
+			{
+				"name": "GND 8",
+				"label": "GND",
+				"at": [[220, 30]],
+				"holeStyle": "pad",
+				"type": "ground"
+			},
+			{
+				"name": "GPIO21",
+				"at": [[220, 20]],
+				"holeStyle": "pad",
+				"type": "io"
+			}
+		],
+		electrical: {
+			"model": "computer",
+			"params": {},
+			"external": [{
+				"pin": "5V",
+				"volts": 5,
+				"via": "micro USB"
+			}]
+		},
+		art: {
+			"w": 260,
+			"h": 120,
+			"pinLabels": "inside",
+			"shapes": [
+				{
+					"type": "rect",
+					"x": 0,
+					"y": 0,
+					"w": 260,
+					"h": 120,
+					"fill": "#2E7D4F",
+					"radius": 10
+				},
+				{
+					"type": "rect",
+					"x": 8,
+					"y": 8,
+					"w": 12,
+					"h": 12,
+					"fill": "#D5DAE1",
+					"radius": 6,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 11,
+					"y": 11,
+					"w": 6,
+					"h": 6,
+					"fill": "#6B727C",
+					"radius": 3,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 236,
+					"y": 8,
+					"w": 12,
+					"h": 12,
+					"fill": "#D5DAE1",
+					"radius": 6,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 239,
+					"y": 11,
+					"w": 6,
+					"h": 6,
+					"fill": "#6B727C",
+					"radius": 3,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 8,
+					"y": 100,
+					"w": 12,
+					"h": 12,
+					"fill": "#D5DAE1",
+					"radius": 6,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 11,
+					"y": 103,
+					"w": 6,
+					"h": 6,
+					"fill": "#6B727C",
+					"radius": 3,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 236,
+					"y": 100,
+					"w": 12,
+					"h": 12,
+					"fill": "#D5DAE1",
+					"radius": 6,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 239,
+					"y": 103,
+					"w": 6,
+					"h": 6,
+					"fill": "#6B727C",
+					"radius": 3,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 24,
+					"y": 14,
+					"w": 202,
+					"h": 22,
+					"fill": "#215C3A",
+					"radius": 1
+				},
+				{
+					"type": "rect",
+					"x": 25.5,
+					"y": 36,
+					"w": 9,
+					"h": 7,
+					"fill": "#2E7D4F",
+					"outline": false,
+					"label": "3V",
+					"labelColor": "#F4F6F8",
+					"labelSize": 4.2
+				},
+				{
+					"type": "rect",
+					"x": 25.5,
+					"y": 7,
+					"w": 9,
+					"h": 7,
+					"fill": "#2E7D4F",
+					"outline": false,
+					"label": "5V",
+					"labelColor": "#F4F6F8",
+					"labelSize": 4.2
+				},
+				{
+					"type": "rect",
+					"x": 35.5,
+					"y": 36,
+					"w": 9,
+					"h": 7,
+					"fill": "#2E7D4F",
+					"outline": false,
+					"label": "2",
+					"labelColor": "#F4F6F8",
+					"labelSize": 4.2
+				},
+				{
+					"type": "rect",
+					"x": 35.5,
+					"y": 7,
+					"w": 9,
+					"h": 7,
+					"fill": "#2E7D4F",
+					"outline": false,
+					"label": "5V",
+					"labelColor": "#F4F6F8",
+					"labelSize": 4.2
+				},
+				{
+					"type": "rect",
+					"x": 45.5,
+					"y": 36,
+					"w": 9,
+					"h": 7,
+					"fill": "#2E7D4F",
+					"outline": false,
+					"label": "3",
+					"labelColor": "#F4F6F8",
+					"labelSize": 4.2
+				},
+				{
+					"type": "rect",
+					"x": 45.5,
+					"y": 7,
+					"w": 9,
+					"h": 7,
+					"fill": "#2E7D4F",
+					"outline": false,
+					"label": "GND",
+					"labelColor": "#F4F6F8",
+					"labelSize": 3.6
+				},
+				{
+					"type": "rect",
+					"x": 55.5,
+					"y": 36,
+					"w": 9,
+					"h": 7,
+					"fill": "#2E7D4F",
+					"outline": false,
+					"label": "4",
+					"labelColor": "#F4F6F8",
+					"labelSize": 4.2
+				},
+				{
+					"type": "rect",
+					"x": 55.5,
+					"y": 7,
+					"w": 9,
+					"h": 7,
+					"fill": "#2E7D4F",
+					"outline": false,
+					"label": "14",
+					"labelColor": "#F4F6F8",
+					"labelSize": 4.2
+				},
+				{
+					"type": "rect",
+					"x": 65.5,
+					"y": 36,
+					"w": 9,
+					"h": 7,
+					"fill": "#2E7D4F",
+					"outline": false,
+					"label": "GND",
+					"labelColor": "#F4F6F8",
+					"labelSize": 3.6
+				},
+				{
+					"type": "rect",
+					"x": 65.5,
+					"y": 7,
+					"w": 9,
+					"h": 7,
+					"fill": "#2E7D4F",
+					"outline": false,
+					"label": "15",
+					"labelColor": "#F4F6F8",
+					"labelSize": 4.2
+				},
+				{
+					"type": "rect",
+					"x": 75.5,
+					"y": 36,
+					"w": 9,
+					"h": 7,
+					"fill": "#2E7D4F",
+					"outline": false,
+					"label": "17",
+					"labelColor": "#F4F6F8",
+					"labelSize": 4.2
+				},
+				{
+					"type": "rect",
+					"x": 75.5,
+					"y": 7,
+					"w": 9,
+					"h": 7,
+					"fill": "#2E7D4F",
+					"outline": false,
+					"label": "18",
+					"labelColor": "#F4F6F8",
+					"labelSize": 4.2
+				},
+				{
+					"type": "rect",
+					"x": 85.5,
+					"y": 36,
+					"w": 9,
+					"h": 7,
+					"fill": "#2E7D4F",
+					"outline": false,
+					"label": "27",
+					"labelColor": "#F4F6F8",
+					"labelSize": 4.2
+				},
+				{
+					"type": "rect",
+					"x": 85.5,
+					"y": 7,
+					"w": 9,
+					"h": 7,
+					"fill": "#2E7D4F",
+					"outline": false,
+					"label": "GND",
+					"labelColor": "#F4F6F8",
+					"labelSize": 3.6
+				},
+				{
+					"type": "rect",
+					"x": 95.5,
+					"y": 36,
+					"w": 9,
+					"h": 7,
+					"fill": "#2E7D4F",
+					"outline": false,
+					"label": "22",
+					"labelColor": "#F4F6F8",
+					"labelSize": 4.2
+				},
+				{
+					"type": "rect",
+					"x": 95.5,
+					"y": 7,
+					"w": 9,
+					"h": 7,
+					"fill": "#2E7D4F",
+					"outline": false,
+					"label": "23",
+					"labelColor": "#F4F6F8",
+					"labelSize": 4.2
+				},
+				{
+					"type": "rect",
+					"x": 105.5,
+					"y": 36,
+					"w": 9,
+					"h": 7,
+					"fill": "#2E7D4F",
+					"outline": false,
+					"label": "3V",
+					"labelColor": "#F4F6F8",
+					"labelSize": 4.2
+				},
+				{
+					"type": "rect",
+					"x": 105.5,
+					"y": 7,
+					"w": 9,
+					"h": 7,
+					"fill": "#2E7D4F",
+					"outline": false,
+					"label": "24",
+					"labelColor": "#F4F6F8",
+					"labelSize": 4.2
+				},
+				{
+					"type": "rect",
+					"x": 115.5,
+					"y": 36,
+					"w": 9,
+					"h": 7,
+					"fill": "#2E7D4F",
+					"outline": false,
+					"label": "10",
+					"labelColor": "#F4F6F8",
+					"labelSize": 4.2
+				},
+				{
+					"type": "rect",
+					"x": 115.5,
+					"y": 7,
+					"w": 9,
+					"h": 7,
+					"fill": "#2E7D4F",
+					"outline": false,
+					"label": "GND",
+					"labelColor": "#F4F6F8",
+					"labelSize": 3.6
+				},
+				{
+					"type": "rect",
+					"x": 125.5,
+					"y": 36,
+					"w": 9,
+					"h": 7,
+					"fill": "#2E7D4F",
+					"outline": false,
+					"label": "9",
+					"labelColor": "#F4F6F8",
+					"labelSize": 4.2
+				},
+				{
+					"type": "rect",
+					"x": 125.5,
+					"y": 7,
+					"w": 9,
+					"h": 7,
+					"fill": "#2E7D4F",
+					"outline": false,
+					"label": "25",
+					"labelColor": "#F4F6F8",
+					"labelSize": 4.2
+				},
+				{
+					"type": "rect",
+					"x": 135.5,
+					"y": 36,
+					"w": 9,
+					"h": 7,
+					"fill": "#2E7D4F",
+					"outline": false,
+					"label": "11",
+					"labelColor": "#F4F6F8",
+					"labelSize": 4.2
+				},
+				{
+					"type": "rect",
+					"x": 135.5,
+					"y": 7,
+					"w": 9,
+					"h": 7,
+					"fill": "#2E7D4F",
+					"outline": false,
+					"label": "8",
+					"labelColor": "#F4F6F8",
+					"labelSize": 4.2
+				},
+				{
+					"type": "rect",
+					"x": 145.5,
+					"y": 36,
+					"w": 9,
+					"h": 7,
+					"fill": "#2E7D4F",
+					"outline": false,
+					"label": "GND",
+					"labelColor": "#F4F6F8",
+					"labelSize": 3.6
+				},
+				{
+					"type": "rect",
+					"x": 145.5,
+					"y": 7,
+					"w": 9,
+					"h": 7,
+					"fill": "#2E7D4F",
+					"outline": false,
+					"label": "7",
+					"labelColor": "#F4F6F8",
+					"labelSize": 4.2
+				},
+				{
+					"type": "rect",
+					"x": 155.5,
+					"y": 36,
+					"w": 9,
+					"h": 7,
+					"fill": "#2E7D4F",
+					"outline": false,
+					"label": "0",
+					"labelColor": "#F4F6F8",
+					"labelSize": 4.2
+				},
+				{
+					"type": "rect",
+					"x": 155.5,
+					"y": 7,
+					"w": 9,
+					"h": 7,
+					"fill": "#2E7D4F",
+					"outline": false,
+					"label": "1",
+					"labelColor": "#F4F6F8",
+					"labelSize": 4.2
+				},
+				{
+					"type": "rect",
+					"x": 165.5,
+					"y": 36,
+					"w": 9,
+					"h": 7,
+					"fill": "#2E7D4F",
+					"outline": false,
+					"label": "5",
+					"labelColor": "#F4F6F8",
+					"labelSize": 4.2
+				},
+				{
+					"type": "rect",
+					"x": 165.5,
+					"y": 7,
+					"w": 9,
+					"h": 7,
+					"fill": "#2E7D4F",
+					"outline": false,
+					"label": "GND",
+					"labelColor": "#F4F6F8",
+					"labelSize": 3.6
+				},
+				{
+					"type": "rect",
+					"x": 175.5,
+					"y": 36,
+					"w": 9,
+					"h": 7,
+					"fill": "#2E7D4F",
+					"outline": false,
+					"label": "6",
+					"labelColor": "#F4F6F8",
+					"labelSize": 4.2
+				},
+				{
+					"type": "rect",
+					"x": 175.5,
+					"y": 7,
+					"w": 9,
+					"h": 7,
+					"fill": "#2E7D4F",
+					"outline": false,
+					"label": "12",
+					"labelColor": "#F4F6F8",
+					"labelSize": 4.2
+				},
+				{
+					"type": "rect",
+					"x": 185.5,
+					"y": 36,
+					"w": 9,
+					"h": 7,
+					"fill": "#2E7D4F",
+					"outline": false,
+					"label": "13",
+					"labelColor": "#F4F6F8",
+					"labelSize": 4.2
+				},
+				{
+					"type": "rect",
+					"x": 185.5,
+					"y": 7,
+					"w": 9,
+					"h": 7,
+					"fill": "#2E7D4F",
+					"outline": false,
+					"label": "GND",
+					"labelColor": "#F4F6F8",
+					"labelSize": 3.6
+				},
+				{
+					"type": "rect",
+					"x": 195.5,
+					"y": 36,
+					"w": 9,
+					"h": 7,
+					"fill": "#2E7D4F",
+					"outline": false,
+					"label": "19",
+					"labelColor": "#F4F6F8",
+					"labelSize": 4.2
+				},
+				{
+					"type": "rect",
+					"x": 195.5,
+					"y": 7,
+					"w": 9,
+					"h": 7,
+					"fill": "#2E7D4F",
+					"outline": false,
+					"label": "16",
+					"labelColor": "#F4F6F8",
+					"labelSize": 4.2
+				},
+				{
+					"type": "rect",
+					"x": 205.5,
+					"y": 36,
+					"w": 9,
+					"h": 7,
+					"fill": "#2E7D4F",
+					"outline": false,
+					"label": "26",
+					"labelColor": "#F4F6F8",
+					"labelSize": 4.2
+				},
+				{
+					"type": "rect",
+					"x": 205.5,
+					"y": 7,
+					"w": 9,
+					"h": 7,
+					"fill": "#2E7D4F",
+					"outline": false,
+					"label": "20",
+					"labelColor": "#F4F6F8",
+					"labelSize": 4.2
+				},
+				{
+					"type": "rect",
+					"x": 215.5,
+					"y": 36,
+					"w": 9,
+					"h": 7,
+					"fill": "#2E7D4F",
+					"outline": false,
+					"label": "GND",
+					"labelColor": "#F4F6F8",
+					"labelSize": 3.6
+				},
+				{
+					"type": "rect",
+					"x": 215.5,
+					"y": 7,
+					"w": 9,
+					"h": 7,
+					"fill": "#2E7D4F",
+					"outline": false,
+					"label": "21",
+					"labelColor": "#F4F6F8",
+					"labelSize": 4.2
+				},
+				{
+					"type": "rect",
+					"x": 70,
+					"y": 52,
+					"w": 50,
+					"h": 46,
+					"fill": "#C9CED6",
+					"radius": 3,
+					"label": "RP3A0",
+					"labelColor": "#2B2F36",
+					"labelSize": 7
+				},
+				{
+					"type": "rect",
+					"x": 30,
+					"y": 52,
+					"w": 30,
+					"h": 30,
+					"fill": "#1E2126",
+					"radius": 2
+				},
+				{
+					"type": "rect",
+					"x": 34,
+					"y": 98,
+					"w": 30,
+					"h": 22,
+					"fill": "#C9CED6",
+					"radius": 2
+				},
+				{
+					"type": "rect",
+					"x": 148,
+					"y": 104,
+					"w": 24,
+					"h": 18,
+					"fill": "#C9CED6",
+					"radius": 2
+				},
+				{
+					"type": "rect",
+					"x": 198,
+					"y": 104,
+					"w": 24,
+					"h": 18,
+					"fill": "#C9CED6",
+					"radius": 2
+				},
+				{
+					"type": "rect",
+					"x": 246,
+					"y": 40,
+					"w": 12,
+					"h": 44,
+					"fill": "#E9DDC4",
+					"radius": 1,
+					"label": "",
+					"labelColor": "#2B2F36",
+					"labelSize": 4
+				},
+				{
+					"type": "rect",
+					"x": 130,
+					"y": 60,
+					"w": 96,
+					"h": 12,
+					"fill": "#2E7D4F",
+					"outline": false,
+					"label": "Raspberry Pi Zero 2 W",
+					"labelColor": "#F4F6F8",
+					"labelSize": 6
+				}
+			]
+		},
+		kicad: {
+			"footprint": "Connector_PinSocket_2.54mm:PinSocket_2x20_P2.54mm_Vertical",
+			"pins": {
+				"3V3": "1",
+				"5V": "2",
+				"GPIO2": "3",
+				"5V 2": "4",
+				"GPIO3": "5",
+				"GND": "6",
+				"GPIO4": "7",
+				"GPIO14": "8",
+				"GND 2": "9",
+				"GPIO15": "10",
+				"GPIO17": "11",
+				"GPIO18": "12",
+				"GPIO27": "13",
+				"GND 3": "14",
+				"GPIO22": "15",
+				"GPIO23": "16",
+				"3V3 2": "17",
+				"GPIO24": "18",
+				"GPIO10": "19",
+				"GND 4": "20",
+				"GPIO9": "21",
+				"GPIO25": "22",
+				"GPIO11": "23",
+				"GPIO8": "24",
+				"GND 5": "25",
+				"GPIO7": "26",
+				"GPIO0": "27",
+				"GPIO1": "28",
+				"GPIO5": "29",
+				"GND 6": "30",
+				"GPIO6": "31",
+				"GPIO12": "32",
+				"GPIO13": "33",
+				"GND 7": "34",
+				"GPIO19": "35",
+				"GPIO16": "36",
+				"GPIO26": "37",
+				"GPIO20": "38",
+				"GND 8": "39",
+				"GPIO21": "40"
+			},
+			"value": "Raspberry Pi Zero 2 W",
+			"note": "The 40-pin header as the 2 x 20 socket the Pi plugs onto; the camera and display connectors are not on it."
+		}
+	},
 	"../modules/rtl-sdr-blog-v4.json": {
 		format: "circuitoon-module/1",
 		id: "rtl-sdr-blog-v4",
@@ -50667,34 +56006,23 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 		name: "RTL-SDR Blog V4 USB dongle (USB-A plug, SMA antenna)",
 		category: "Communication",
 		source: "https://www.rtl-sdr.com/wp-content/uploads/2024/12/RTLSDR_V4_Datasheet_V_1_0.pdf https://www.rtl-sdr.com/v4/ https://www.rtl-sdr.com/buy-rtl-sdr-dvb-t-dongles/ https://en.wikipedia.org/wiki/USB_hardware#Pinouts",
-		pins: [
-			{
-				"name": "VBUS",
-				"side": "left",
-				"type": "power_in",
-				"supply": "5V"
-			},
-			{
-				"name": "D-",
-				"side": "left",
-				"type": "io"
-			},
-			{
-				"name": "D+",
-				"side": "left",
-				"type": "io"
-			},
-			{
-				"name": "GND",
-				"side": "left",
-				"type": "ground"
-			},
-			{
-				"name": "ANT",
-				"side": "right",
-				"type": "passive"
+		pins: [{
+			"name": "USB",
+			"side": "left",
+			"type": "usb",
+			"usb": {
+				"connector": "A",
+				"gender": "plug",
+				"role": "device",
+				"version": "2.0",
+				"draw": 270
 			}
-		],
+		}, {
+			"name": "ANT",
+			"side": "right",
+			"type": "passive",
+			"caps": { "note": "ANT carries 4.5 V (up to 180 mA) when the software bias tee is on: connect only an antenna or an LNA made for it." }
+		}],
 		size: {
 			"w": 17,
 			"h": 6
@@ -50815,17 +56143,6 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"outline": false
 				}
 			]
-		},
-		kicad: {
-			"footprint": "Connector_USB:USB_A_Molex_67643_Horizontal",
-			"pins": {
-				"VBUS": "1",
-				"D-": "2",
-				"D+": "3",
-				"GND": "4"
-			},
-			"value": "RTL-SDR Blog V4",
-			"note": "The USB-A receptacle the dongle plugs into; the SMA antenna jack stays on the dongle."
 		}
 	},
 	"../modules/servo-sg90.json": {
@@ -56258,8 +61575,17 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 				"side": "left"
 			},
 			{
-				"spacer": true,
-				"side": "left"
+				"name": "USB-C",
+				"side": "left",
+				"type": "usb",
+				"usb": {
+					"connector": "C",
+					"gender": "receptacle",
+					"role": "device",
+					"power": "only",
+					"draw": 1e3,
+					"vbus": "IN+"
+				}
 			},
 			{
 				"spacer": true,
@@ -56944,6 +62270,930 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			"value": "HC-SR04"
 		}
 	},
+	"../modules/usb-hub-fe11s-circuitneato.json": {
+		format: "circuitoon-module/1",
+		id: "usb-hub-fe11s-circuitneato",
+		version: 1,
+		name: "USB 2.0 hub board FE1.1s (Circuitneato, USB-C in, 4 x USB-A)",
+		category: "Connectors",
+		source: "https://circuitneato.com/how-to-use-the-fe1-1s-usb-hub/ https://circuitneato.com/media/2025/06/00032-2-1.jpg https://cdn-shop.adafruit.com/product-files/2991/FE1.1s%20Data%20Sheet%20(Rev.%201.0).pdf",
+		pins: [
+			{
+				"name": "USB-C",
+				"side": "left",
+				"type": "usb",
+				"usb": {
+					"connector": "C",
+					"gender": "receptacle",
+					"role": "device",
+					"hub": "upstream",
+					"version": "2.0",
+					"speed": "high",
+					"draw": 100
+				}
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"name": "P4",
+				"side": "bottom",
+				"label": "4",
+				"type": "usb",
+				"usb": {
+					"connector": "A",
+					"gender": "receptacle",
+					"role": "host",
+					"hub": "downstream",
+					"version": "2.0",
+					"speed": "high",
+					"source": 500
+				}
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"name": "P3",
+				"side": "bottom",
+				"label": "3",
+				"type": "usb",
+				"usb": {
+					"connector": "A",
+					"gender": "receptacle",
+					"role": "host",
+					"hub": "downstream",
+					"version": "2.0",
+					"speed": "high",
+					"source": 500
+				}
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"name": "P2",
+				"side": "bottom",
+				"label": "2",
+				"type": "usb",
+				"usb": {
+					"connector": "A",
+					"gender": "receptacle",
+					"role": "host",
+					"hub": "downstream",
+					"version": "2.0",
+					"speed": "high",
+					"source": 500
+				}
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"name": "P1",
+				"side": "bottom",
+				"label": "1",
+				"type": "usb",
+				"usb": {
+					"connector": "A",
+					"gender": "receptacle",
+					"role": "host",
+					"hub": "downstream",
+					"version": "2.0",
+					"speed": "high",
+					"source": 500
+				}
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			},
+			{
+				"spacer": true,
+				"side": "bottom"
+			}
+		],
+		size: {
+			"w": 37,
+			"h": 11
+		},
+		holes: [
+			{
+				"name": "D+",
+				"at": [[340, 20]],
+				"holeStyle": "pad",
+				"type": "io"
+			},
+			{
+				"name": "D-",
+				"at": [[350, 20]],
+				"holeStyle": "pad",
+				"type": "io"
+			},
+			{
+				"name": "GND",
+				"at": [[360, 20]],
+				"holeStyle": "pad",
+				"type": "ground"
+			},
+			{
+				"name": "SCL",
+				"at": [[340, 30]],
+				"holeStyle": "pad",
+				"type": "io"
+			},
+			{
+				"name": "SDA",
+				"at": [[350, 30]],
+				"holeStyle": "pad",
+				"type": "io"
+			},
+			{
+				"name": "5V",
+				"at": [[360, 30]],
+				"holeStyle": "pad",
+				"type": "power_in",
+				"supply": "5V",
+				"caps": { "note": "With external 5 V wired here, set the board's \"Disable USB Power\" jumper, which stops the hub back-feeding the host's USB port. Older red versions of this board are bus-powered only, 500 mA total for all four ports." }
+			}
+		],
+		electrical: {
+			"model": "hub",
+			"params": {},
+			"usbHub": { "power": { "pin": "5V" } },
+			"usbBudget": [{
+				"ports": [
+					"P1",
+					"P2",
+					"P3",
+					"P4"
+				],
+				"mA": 2e3,
+				"note": "the board gives 2 A combined"
+			}]
+		},
+		art: {
+			"w": 370,
+			"h": 110,
+			"pinLabels": "inside",
+			"shapes": [
+				{
+					"type": "rect",
+					"x": 0,
+					"y": 0,
+					"w": 370,
+					"h": 110,
+					"fill": "#1F2328",
+					"radius": 4
+				},
+				{
+					"type": "rect",
+					"x": -4,
+					"y": 8,
+					"w": 30,
+					"h": 26,
+					"fill": "#C9CED6",
+					"radius": 6
+				},
+				{
+					"type": "rect",
+					"x": 64,
+					"y": 16,
+					"w": 12,
+					"h": 12,
+					"fill": "#D5DAE1",
+					"radius": 6,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 67,
+					"y": 19,
+					"w": 6,
+					"h": 6,
+					"fill": "#6B727C",
+					"radius": 3,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 184,
+					"y": 16,
+					"w": 12,
+					"h": 12,
+					"fill": "#D5DAE1",
+					"radius": 6,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 187,
+					"y": 19,
+					"w": 6,
+					"h": 6,
+					"fill": "#6B727C",
+					"radius": 3,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 184,
+					"y": 64,
+					"w": 12,
+					"h": 12,
+					"fill": "#D5DAE1",
+					"radius": 6,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 187,
+					"y": 67,
+					"w": 6,
+					"h": 6,
+					"fill": "#6B727C",
+					"radius": 3,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 64,
+					"y": 72,
+					"w": 12,
+					"h": 12,
+					"fill": "#D5DAE1",
+					"radius": 6,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 67,
+					"y": 75,
+					"w": 6,
+					"h": 6,
+					"fill": "#6B727C",
+					"radius": 3,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 120,
+					"y": 12,
+					"w": 50,
+					"h": 18,
+					"fill": "#1E2126",
+					"radius": 1,
+					"label": "FE1.1s",
+					"labelColor": "#D5DAE1",
+					"labelSize": 6
+				},
+				{
+					"type": "rect",
+					"x": 16,
+					"y": 76,
+					"w": 48,
+					"h": 36,
+					"fill": "#C9CED6",
+					"radius": 2
+				},
+				{
+					"type": "rect",
+					"x": 24,
+					"y": 104,
+					"w": 32,
+					"h": 6,
+					"fill": "#8A9099",
+					"radius": 1,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 116,
+					"y": 76,
+					"w": 48,
+					"h": 36,
+					"fill": "#C9CED6",
+					"radius": 2
+				},
+				{
+					"type": "rect",
+					"x": 124,
+					"y": 104,
+					"w": 32,
+					"h": 6,
+					"fill": "#8A9099",
+					"radius": 1,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 216,
+					"y": 76,
+					"w": 48,
+					"h": 36,
+					"fill": "#C9CED6",
+					"radius": 2
+				},
+				{
+					"type": "rect",
+					"x": 224,
+					"y": 104,
+					"w": 32,
+					"h": 6,
+					"fill": "#8A9099",
+					"radius": 1,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 316,
+					"y": 76,
+					"w": 48,
+					"h": 36,
+					"fill": "#C9CED6",
+					"radius": 2
+				},
+				{
+					"type": "rect",
+					"x": 324,
+					"y": 104,
+					"w": 32,
+					"h": 6,
+					"fill": "#8A9099",
+					"radius": 1,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 335.5,
+					"y": 7.5,
+					"w": 9,
+					"h": 7,
+					"fill": "#1F2328",
+					"outline": false,
+					"label": "D+",
+					"labelColor": "#F4F6F8",
+					"labelSize": 3.4
+				},
+				{
+					"type": "rect",
+					"x": 345.5,
+					"y": 7.5,
+					"w": 9,
+					"h": 7,
+					"fill": "#1F2328",
+					"outline": false,
+					"label": "D-",
+					"labelColor": "#F4F6F8",
+					"labelSize": 3.4
+				},
+				{
+					"type": "rect",
+					"x": 355.5,
+					"y": 7.5,
+					"w": 9,
+					"h": 7,
+					"fill": "#1F2328",
+					"outline": false,
+					"label": "GND",
+					"labelColor": "#F4F6F8",
+					"labelSize": 3.4
+				},
+				{
+					"type": "rect",
+					"x": 335.5,
+					"y": 35.5,
+					"w": 9,
+					"h": 7,
+					"fill": "#1F2328",
+					"outline": false,
+					"label": "SCL",
+					"labelColor": "#F4F6F8",
+					"labelSize": 3.4
+				},
+				{
+					"type": "rect",
+					"x": 345.5,
+					"y": 35.5,
+					"w": 9,
+					"h": 7,
+					"fill": "#1F2328",
+					"outline": false,
+					"label": "SDA",
+					"labelColor": "#F4F6F8",
+					"labelSize": 3.4
+				},
+				{
+					"type": "rect",
+					"x": 355.5,
+					"y": 35.5,
+					"w": 9,
+					"h": 7,
+					"fill": "#1F2328",
+					"outline": false,
+					"label": "5V",
+					"labelColor": "#F4F6F8",
+					"labelSize": 3.4
+				},
+				{
+					"type": "rect",
+					"x": 220,
+					"y": 14,
+					"w": 90,
+					"h": 12,
+					"fill": "#1F2328",
+					"outline": false,
+					"label": "Circuitneato",
+					"labelColor": "#F4F6F8",
+					"labelSize": 7
+				}
+			]
+		}
+	},
+	"../modules/usb-hub-powered-4port.json": {
+		format: "circuitoon-module/1",
+		id: "usb-hub-powered-4port",
+		version: 1,
+		name: "Powered USB 2.0 hub, 4 ports (generic: USB-B up, 5 V DC in)",
+		category: "Connectors",
+		source: "https://www.usb.org/document-library/usb-20-specification",
+		pins: [
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"name": "UP",
+				"side": "left",
+				"type": "usb",
+				"usb": {
+					"connector": "B",
+					"gender": "receptacle",
+					"role": "device",
+					"hub": "upstream",
+					"version": "2.0",
+					"speed": "high"
+				}
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"name": "DC+",
+				"side": "left",
+				"type": "power_in",
+				"supply": "5V"
+			},
+			{
+				"name": "DC-",
+				"side": "left",
+				"type": "ground"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"spacer": true,
+				"side": "right"
+			},
+			{
+				"name": "P1",
+				"side": "right",
+				"label": "1",
+				"type": "usb",
+				"usb": {
+					"connector": "A",
+					"gender": "receptacle",
+					"role": "host",
+					"hub": "downstream",
+					"version": "2.0",
+					"speed": "high"
+				}
+			},
+			{
+				"spacer": true,
+				"side": "right"
+			},
+			{
+				"spacer": true,
+				"side": "right"
+			},
+			{
+				"name": "P2",
+				"side": "right",
+				"label": "2",
+				"type": "usb",
+				"usb": {
+					"connector": "A",
+					"gender": "receptacle",
+					"role": "host",
+					"hub": "downstream",
+					"version": "2.0",
+					"speed": "high"
+				}
+			},
+			{
+				"spacer": true,
+				"side": "right"
+			},
+			{
+				"spacer": true,
+				"side": "right"
+			},
+			{
+				"name": "P3",
+				"side": "right",
+				"label": "3",
+				"type": "usb",
+				"usb": {
+					"connector": "A",
+					"gender": "receptacle",
+					"role": "host",
+					"hub": "downstream",
+					"version": "2.0",
+					"speed": "high"
+				}
+			},
+			{
+				"spacer": true,
+				"side": "right"
+			},
+			{
+				"spacer": true,
+				"side": "right"
+			},
+			{
+				"name": "P4",
+				"side": "right",
+				"label": "4",
+				"type": "usb",
+				"usb": {
+					"connector": "A",
+					"gender": "receptacle",
+					"role": "host",
+					"hub": "downstream",
+					"version": "2.0",
+					"speed": "high"
+				}
+			},
+			{
+				"spacer": true,
+				"side": "right"
+			}
+		],
+		size: {
+			"w": 14,
+			"h": 14
+		},
+		electrical: {
+			"model": "hub",
+			"params": {},
+			"usbHub": { "power": { "pin": "DC+" } }
+		},
+		art: {
+			"w": 140,
+			"h": 140,
+			"pinLabels": "inside",
+			"shapes": [
+				{
+					"type": "rect",
+					"x": 0,
+					"y": 0,
+					"w": 140,
+					"h": 140,
+					"fill": "#E9ECEF",
+					"radius": 10
+				},
+				{
+					"type": "rect",
+					"x": 10,
+					"y": 10,
+					"w": 120,
+					"h": 120,
+					"fill": "#BFC5CD",
+					"radius": 6,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 110,
+					"y": 21,
+					"w": 32,
+					"h": 18,
+					"fill": "#C9CED6",
+					"radius": 2
+				},
+				{
+					"type": "rect",
+					"x": 132,
+					"y": 24,
+					"w": 6,
+					"h": 12,
+					"fill": "#2B2F36",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 110,
+					"y": 51,
+					"w": 32,
+					"h": 18,
+					"fill": "#C9CED6",
+					"radius": 2
+				},
+				{
+					"type": "rect",
+					"x": 132,
+					"y": 54,
+					"w": 6,
+					"h": 12,
+					"fill": "#2B2F36",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 110,
+					"y": 81,
+					"w": 32,
+					"h": 18,
+					"fill": "#C9CED6",
+					"radius": 2
+				},
+				{
+					"type": "rect",
+					"x": 132,
+					"y": 84,
+					"w": 6,
+					"h": 12,
+					"fill": "#2B2F36",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 110,
+					"y": 111,
+					"w": 32,
+					"h": 18,
+					"fill": "#C9CED6",
+					"radius": 2
+				},
+				{
+					"type": "rect",
+					"x": 132,
+					"y": 114,
+					"w": 6,
+					"h": 12,
+					"fill": "#2B2F36",
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": -2,
+					"y": 20,
+					"w": 22,
+					"h": 20,
+					"fill": "#C9CED6",
+					"radius": 3
+				},
+				{
+					"type": "rect",
+					"x": -2,
+					"y": 25,
+					"w": 10,
+					"h": 10,
+					"fill": "#2B2F36",
+					"radius": 1,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": -2,
+					"y": 82,
+					"w": 20,
+					"h": 26,
+					"fill": "#2B2F36",
+					"radius": 4,
+					"label": "DC",
+					"labelColor": "#F4F6F8",
+					"labelSize": 5
+				},
+				{
+					"type": "rect",
+					"x": 40,
+					"y": 54,
+					"w": 60,
+					"h": 32,
+					"fill": "#E9ECEF",
+					"radius": 4,
+					"label": "USB 2.0 HUB",
+					"labelColor": "#2B2F36",
+					"labelSize": 6
+				},
+				{
+					"type": "rect",
+					"x": 94,
+					"y": 27,
+					"w": 6,
+					"h": 6,
+					"fill": "#2F9E6E",
+					"radius": 3,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 94,
+					"y": 57,
+					"w": 6,
+					"h": 6,
+					"fill": "#2F9E6E",
+					"radius": 3,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 94,
+					"y": 87,
+					"w": 6,
+					"h": 6,
+					"fill": "#2F9E6E",
+					"radius": 3,
+					"outline": false
+				},
+				{
+					"type": "rect",
+					"x": 94,
+					"y": 117,
+					"w": 6,
+					"h": 6,
+					"fill": "#2F9E6E",
+					"radius": 3,
+					"outline": false
+				}
+			]
+		}
+	},
 	"../modules/usb-panel-mount-microusb.json": {
 		format: "circuitoon-module/1",
 		id: "usb-panel-mount-microusb",
@@ -56975,6 +63225,80 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 				"name": "GND",
 				"side": "right",
 				"type": "passive"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"name": "SOCKET",
+				"side": "left",
+				"type": "usb",
+				"usb": {
+					"connector": "micro-B",
+					"gender": "receptacle",
+					"role": "passthrough",
+					"through": "PLUG"
+				}
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"name": "PLUG",
+				"side": "top",
+				"type": "usb",
+				"usb": {
+					"connector": "micro-B",
+					"gender": "plug",
+					"role": "passthrough",
+					"through": "SOCKET"
+				}
 			}
 		],
 		size: {
@@ -57115,6 +63439,84 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 				"name": "CC",
 				"side": "right",
 				"type": "passive"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"name": "SOCKET",
+				"side": "left",
+				"type": "usb",
+				"usb": {
+					"connector": "C",
+					"gender": "receptacle",
+					"role": "passthrough",
+					"through": "PLUG"
+				}
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"spacer": true,
+				"side": "left"
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"spacer": true,
+				"side": "top"
+			},
+			{
+				"name": "PLUG",
+				"side": "top",
+				"type": "usb",
+				"usb": {
+					"connector": "C",
+					"gender": "plug",
+					"role": "passthrough",
+					"through": "SOCKET"
+				}
 			}
 		],
 		size: {
@@ -57745,6 +64147,19 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			{
 				"spacer": true,
 				"side": "right"
+			},
+			{
+				"name": "USB",
+				"side": "bottom",
+				"type": "usb",
+				"usb": {
+					"connector": "micro-B",
+					"gender": "receptacle",
+					"role": "device",
+					"version": "2.0",
+					"speed": "full",
+					"vbus": "5V"
+				}
 			}
 		],
 		size: {
@@ -58804,6 +65219,18 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 				"name": "D7",
 				"side": "right",
 				"type": "io"
+			},
+			{
+				"name": "USB",
+				"side": "top",
+				"type": "usb",
+				"usb": {
+					"connector": "C",
+					"gender": "receptacle",
+					"role": "device",
+					"speed": "full",
+					"vbus": "5V"
+				}
 			}
 		],
 		size: {
@@ -59183,6 +65610,18 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 				"name": "D7",
 				"side": "right",
 				"type": "io"
+			},
+			{
+				"name": "USB",
+				"side": "top",
+				"type": "usb",
+				"usb": {
+					"connector": "C",
+					"gender": "receptacle",
+					"role": "device",
+					"speed": "full",
+					"vbus": "5V"
+				}
 			}
 		],
 		size: {
@@ -59495,6 +65934,504 @@ function naturalCompare(a, b) {
 	return collator$1.compare(a, b) || (a < b ? -1 : a > b ? 1 : 0);
 }
 //#endregion
+//#region src/format/netlist.ts
+/** One key per part pin or hole group; JSON keeps any character in a uid or name unambiguous. */
+var nodeKey = (part, pin) => JSON.stringify([part, pin]);
+/**
+* Everything that conducts, as joins between node keys: the edges whose connected components are
+* the nets. A wire conducts only when both ends resolve; a broken one stays in the file for repair
+* and is listed in `broken` (file order).
+*/
+function conductors(d, plugs = plugsOf(d)) {
+	const joins = [];
+	const broken = [];
+	for (const c of d.connections) if (resolveEndpoint(d, c.from) && resolveEndpoint(d, c.to)) joins.push({
+		a: nodeKey(c.from.part, c.from.pin),
+		b: nodeKey(c.to.part, c.to.pin),
+		wire: c.uid
+	});
+	else broken.push(c.uid);
+	for (const p of d.parts) {
+		const m = moduleOf(d, p.module);
+		for (const group of m?.internal ?? []) for (let i = 1; i < group.length; i++) joins.push({
+			a: nodeKey(p.uid, group[0]),
+			b: nodeKey(p.uid, group[i])
+		});
+	}
+	for (const pl of plugs) if (!pl.mechanical) joins.push({
+		a: nodeKey(pl.part, pl.pin),
+		b: nodeKey(pl.board, pl.group)
+	});
+	for (const [name, list] of labelGroups(d)) for (let i = 1; i < list.length; i++) joins.push({
+		a: nodeKey(list[0].part.uid, list[0].pin),
+		b: nodeKey(list[i].part.uid, list[i].pin),
+		label: name
+	});
+	return {
+		joins,
+		broken
+	};
+}
+function netlist(d, plugs = plugsOf(d)) {
+	const parent = /* @__PURE__ */ new Map();
+	const find = (k) => {
+		let root = k;
+		for (let up = parent.get(root); up !== void 0 && up !== root; up = parent.get(root)) root = up;
+		for (let cur = k; cur !== root;) {
+			const next = parent.get(cur);
+			parent.set(cur, root);
+			cur = next;
+		}
+		return root;
+	};
+	const join = (a, b) => {
+		if (!parent.has(a)) parent.set(a, a);
+		if (!parent.has(b)) parent.set(b, b);
+		const ra = find(a);
+		const rb = find(b);
+		if (ra !== rb) parent.set(ra, rb);
+	};
+	const { joins, broken } = conductors(d, plugs);
+	for (const j of joins) join(j.a, j.b);
+	const byRoot = /* @__PURE__ */ new Map();
+	for (const k of parent.keys()) {
+		const r = find(k);
+		const list = byRoot.get(r);
+		if (list) list.push(k);
+		else byRoot.set(r, [k]);
+	}
+	const nets = [...byRoot.values()].filter((n) => n.length > 1).map((n) => n.sort());
+	nets.sort((a, b) => a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0);
+	const netOf = /* @__PURE__ */ new Map();
+	nets.forEach((n, i) => n.forEach((k) => netOf.set(k, i)));
+	return {
+		nets,
+		netOf,
+		broken: broken.sort()
+	};
+}
+//#endregion
+//#region src/format/usb.ts
+/** A USB port in words: "USB micro-B receptacle, device, 2.0 full speed, draws 270 mA". */
+function usbWords(u) {
+	return [
+		`USB ${u.connector} ${u.gender}`,
+		u.role,
+		u.power === "only" ? "charge only" : "",
+		u.hub ? `hub ${u.hub}` : "",
+		[u.version, u.speed ? `${u.speed} speed` : ""].filter(Boolean).join(" "),
+		u.source !== void 0 ? `supplies ${u.source} mA` : "",
+		u.draw !== void 0 ? `draws ${u.draw} mA` : u.role === "device" ? "draw not known" : "",
+		u.through ? `passes the bus through to ${u.through}` : ""
+	].filter(Boolean).join(", ");
+}
+/** The cable plug that fits each USB receptacle. */
+var PLUG_KIND = {
+	A: "usb-a",
+	B: "usb-b",
+	"mini-B": "usb-mini-b",
+	"micro-B": "usb-micro-b",
+	C: "usb-c"
+};
+/** A connector in a sentence. */
+var CONNECTOR_WORDS = {
+	A: "USB-A",
+	B: "USB-B",
+	"mini-B": "mini-B",
+	"micro-B": "micro-B",
+	C: "USB-C"
+};
+/** The USB default a host port supplies when its maker gives no figure (USB 2.0 and 3.0 specifications). */
+var DEFAULT_SOURCE = {
+	"1.1": 500,
+	"2.0": 500,
+	"3.0": 900
+};
+var pinLabel$1 = (m, name) => {
+	const p = m.pins.find((q) => !isSpacer(q) && q.name === name);
+	return p && !isSpacer(p) ? p.label ?? p.name : name;
+};
+var indexCache = /* @__PURE__ */ new WeakMap();
+/** Every USB port on the sheet by node key, built once per sheet object (most sheets have none). */
+function portIndex(d) {
+	let index = indexCache.get(d);
+	if (index) return index;
+	index = /* @__PURE__ */ new Map();
+	for (const part of d.parts) {
+		const m = moduleOf(d, part.module);
+		if (!m || !m.pins.some((p) => !isSpacer(p) && p.type === "usb")) continue;
+		for (const p of usbPorts(m)) {
+			const key = nodeKey(part.uid, p.name);
+			index.set(key, {
+				part,
+				module: m,
+				name: p.name,
+				title: `${part.designator} ${p.label ?? p.name}`,
+				usb: p.usb,
+				key
+			});
+		}
+	}
+	indexCache.set(d, index);
+	return index;
+}
+/** The USB port an endpoint names, or null (not a USB port, a missing part, or an offset or hole that cannot be on one). */
+function portOf(d, ep) {
+	if (ep.offset !== void 0 || ep.hole !== void 0) return null;
+	return portIndex(d).get(nodeKey(ep.part, ep.pin)) ?? null;
+}
+/**
+* The ends a new connection between two USB ports gets (USB design 2.1): between two receptacles, the
+* cable whose plugs fit them; none when either port is a plug, which pushes straight in (or, for two
+* plugs, cannot meet at all: the checker says so).
+*/
+function usbEndsFor(a, b) {
+	return a.gender === "receptacle" && b.gender === "receptacle" ? {
+		from: PLUG_KIND[a.connector],
+		to: PLUG_KIND[b.connector]
+	} : void 0;
+}
+/** The connection as a USB link, or null when it does not join two USB ports (or does not resolve). */
+function usbLink(d, c) {
+	const from = portOf(d, c.from);
+	const to = from && portOf(d, c.to);
+	if (!from || !to) return null;
+	return {
+		conn: c,
+		from,
+		to,
+		direct: from.usb.gender === "plug" || to.usb.gender === "plug"
+	};
+}
+/** True for a plug pushed straight into a socket: drawn as a short dashed link, never a wire to buy. */
+function isPluggedIn(d, c) {
+	return usbLink(d, c)?.direct === true;
+}
+/** The cable preset these ends make, as a name ("USB A to micro-B cable"), or a description. */
+function cableWords(a, b) {
+	const p = CABLE_PRESETS.find((q) => q.from === a && q.to === b || q.from === b && q.to === a);
+	return p ? `a ${p.name}` : `a cable with a ${END_NAMES[a]} and a ${END_NAMES[b]}`;
+}
+/** The port at the far end of a port's link, followed through extensions; null when it ends at nothing. */
+function reacher(d, links) {
+	const far = /* @__PURE__ */ new Map();
+	for (const l of links) {
+		if (l.from.usb.gender === "plug" && l.to.usb.gender === "plug") continue;
+		far.set(l.from.key, l.to);
+		far.set(l.to.key, l.from);
+	}
+	const through = (p) => {
+		if (p.usb.role !== "passthrough" || !p.usb.through) return null;
+		return portOf(d, {
+			part: p.part.uid,
+			pin: p.usb.through
+		});
+	};
+	return (p) => {
+		const seen = /* @__PURE__ */ new Set([p.key]);
+		let q = far.get(p.key) ?? null;
+		while (q && q.usb.role === "passthrough") {
+			if (seen.has(q.key)) return null;
+			seen.add(q.key);
+			const t = through(q);
+			if (!t) return null;
+			seen.add(t.key);
+			q = far.get(t.key) ?? null;
+		}
+		return q;
+	};
+}
+/**
+* Who USB powers. `fed`: parts a link powers (a device or charge-only port with a link, or a dual
+* port whose far end is a host or a hub's downstream port): never "no power". `hosting`: parts not
+* fed whose dual port hosts a device, so that port powers nothing on them.
+*/
+function usbPower(d) {
+	const fed = /* @__PURE__ */ new Set();
+	const hosting = /* @__PURE__ */ new Set();
+	/** Device and dual ports a host powers (for VBUS back-feed). */
+	const hosted = [];
+	const links = d.connections.map((c) => usbLink(d, c)).filter((l) => l !== null);
+	const reach = reacher(d, links);
+	for (const l of links) for (const p of [l.from, l.to]) {
+		if (p.usb.role !== "device" && p.usb.role !== "dual") continue;
+		const q = reach(p);
+		if (q?.usb.role === "host") hosted.push({
+			port: p,
+			host: q
+		});
+		if (p.usb.role === "device" || q?.usb.role === "host") fed.add(p.part.uid);
+		else if (q?.usb.role === "device") hosting.add(p.part.uid);
+	}
+	for (const u of fed) hosting.delete(u);
+	return {
+		fed,
+		hosting,
+		hosted
+	};
+}
+var mA = (n) => `${Math.round(n)} mA`;
+var pinOf = (p) => ({
+	part: p.part.uid,
+	pin: p.name
+});
+/** What is at a node key, in words: "U2 GPIO5", "label SDA", "BB1 hole strip". */
+function nodeWords(d, key) {
+	const [uid, pin] = JSON.parse(key);
+	const part = d.parts.find((p) => p.uid === uid);
+	const m = part && moduleOf(d, part.module);
+	if (!part || !m) return pin;
+	if (isNetLabel(m)) return labelName(part) ? `label ${labelName(part)}` : `${part.designator} (unnamed label)`;
+	return `${part.designator} ${pinLabel$1(m, pin)}`;
+}
+/** Every USB finding on the sheet. `nl` is the sheet's netlist; `netWires` its wires per net. */
+function usbFindings(d, nl, netWires) {
+	const out = [];
+	const portByKey = portIndex(d);
+	if (!portByKey.size) return out;
+	const mixed = /* @__PURE__ */ new Set();
+	nl.nets.forEach((keys, i) => {
+		const ports = keys.filter((k) => portByKey.has(k)).map((k) => portByKey.get(k));
+		const others = keys.filter((k) => !portByKey.has(k));
+		if (!ports.length || !others.length) return;
+		mixed.add(i);
+		const names = others.map((k) => nodeWords(d, k)).sort(natural$1.compare);
+		const list = names.length > 3 ? `${names.slice(0, 2).join(", ")} and ${names.length - 2} more` : andList(names);
+		for (const p of ports) out.push({
+			rule: "usb-to-pin",
+			subject: p.part.designator,
+			target: p.title,
+			message: `${p.title} is a USB port, and it is wired to ${list}. A USB port connects only to another USB port, by a USB cable or by plugging in: never by jumper wires to pins, which skip the cable's shielding and twisted pair and can short VBUS. Remove the wire and connect ${p.title} to a USB port.`,
+			parts: [p.part.uid, ...others.map((k) => JSON.parse(k)[0])],
+			pins: [pinOf(p)],
+			wires: netWires[i] ?? [],
+			causes: [p.key, ...others]
+		});
+	});
+	const links = [];
+	const linksAt = /* @__PURE__ */ new Map();
+	for (const c of d.connections) {
+		const l = usbLink(d, c);
+		if (!l) continue;
+		const i = nl.netOf.get(l.from.key);
+		if (i !== void 0 && mixed.has(i)) continue;
+		links.push(l);
+		for (const p of [l.from, l.to]) linksAt.set(p.key, [...linksAt.get(p.key) ?? [], l]);
+	}
+	const crowded = /* @__PURE__ */ new Set();
+	for (const [key, list] of linksAt) {
+		if (list.length < 2) continue;
+		crowded.add(key);
+		const p = portByKey.get(key);
+		const far = list.map((l) => (l.from.key === key ? l.to : l.from).title).sort(natural$1.compare);
+		out.push({
+			rule: "usb-fit",
+			subject: p.part.designator,
+			target: p.title,
+			message: `${p.title} has ${list.length} connections (${andList(far)}), but a USB port takes one plug. Keep one; to share a port, put a USB hub between them.`,
+			parts: [p.part.uid, ...list.flatMap((l) => [l.from.part.uid, l.to.part.uid])],
+			pins: [pinOf(p)],
+			wires: list.map((l) => l.conn.uid),
+			causes: [key]
+		});
+	}
+	for (const l of links) {
+		const { from: a, to: b, conn: c } = l;
+		const say = (message) => out.push({
+			rule: "usb-fit",
+			subject: a.part.designator,
+			target: `${a.title} to ${b.title}`,
+			message,
+			parts: [a.part.uid, b.part.uid],
+			pins: [pinOf(a), pinOf(b)],
+			wires: [c.uid],
+			causes: [c.uid]
+		});
+		const ends = [endKind(c.ends, "from"), endKind(c.ends, "to")];
+		if (a.usb.gender === "plug" && b.usb.gender === "plug") {
+			say(`${a.title} and ${b.title} are both plugs (${CONNECTOR_WORDS[a.usb.connector]} and ${CONNECTOR_WORDS[b.usb.connector]}), and two plugs cannot meet. Connect each to a matching socket instead.`);
+			continue;
+		}
+		if (l.direct) {
+			const [plug, socket] = a.usb.gender === "plug" ? [a, b] : [b, a];
+			if (ends.some((k) => k !== "bare")) {
+				say(`${plug.title} is a ${CONNECTOR_WORDS[plug.usb.connector]} plug: it goes straight into ${socket.title}, with no cable. Set this connection's cable to Wire, which draws it as plugged in.`);
+				continue;
+			}
+			if (plug.usb.connector !== socket.usb.connector) {
+				say(`${plug.title}'s ${CONNECTOR_WORDS[plug.usb.connector]} plug does not fit ${socket.title}, a ${CONNECTOR_WORDS[socket.usb.connector]} socket. Use an adapter or a port with a ${CONNECTOR_WORDS[plug.usb.connector]} socket.`);
+				continue;
+			}
+			continue;
+		}
+		const want = [PLUG_KIND[a.usb.connector], PLUG_KIND[b.usb.connector]];
+		if (ends[0] === "bare" && ends[1] === "bare") {
+			say(`No USB cable is chosen between ${a.title} (${CONNECTOR_WORDS[a.usb.connector]}) and ${b.title} (${CONNECTOR_WORDS[b.usb.connector]}). Use ${cableWords(want[0], want[1])}.`);
+			continue;
+		}
+		const wrong = [0, 1].filter((i) => ends[i] !== want[i]);
+		if (wrong.length) {
+			const bits = wrong.map((i) => {
+				const p = i === 0 ? a : b;
+				const k = ends[i];
+				return k === "bare" || !isUsbEnd(k) ? `the end at ${p.title} is a ${END_NAMES[k].toLowerCase()}, not a USB plug` : `its ${END_NAMES[k]} does not fit ${p.title}, a ${CONNECTOR_WORDS[p.usb.connector]} socket`;
+			});
+			say(`The cable from ${a.title} to ${b.title} does not fit: ${andList(bits)}. Use ${cableWords(want[0], want[1])}.`);
+			continue;
+		}
+	}
+	const reach = reacher(d, links);
+	const judged = /* @__PURE__ */ new Set();
+	const pairs = [];
+	for (const p of portByKey.values()) {
+		if (p.usb.role === "passthrough" || crowded.has(p.key)) continue;
+		const q = reach(p);
+		if (!q || crowded.has(q.key)) continue;
+		const id = [p.key, q.key].sort().join("|");
+		if (judged.has(id)) continue;
+		judged.add(id);
+		pairs.push([p, q]);
+		const [x, y] = [p, q].sort((s, t) => natural$1.compare(s.title, t.title));
+		const wires = links.filter((l) => [l.from.part.uid, l.to.part.uid].some((u) => u === x.part.uid || u === y.part.uid)).map((l) => l.conn.uid);
+		const say = (message) => out.push({
+			rule: "usb-role",
+			subject: x.part.designator,
+			target: `${x.title} to ${y.title}`,
+			message,
+			parts: [x.part.uid, y.part.uid],
+			pins: [pinOf(x), pinOf(y)],
+			wires,
+			causes: [x.key, y.key]
+		});
+		const hubUp = [x, y].find((s) => s.usb.hub === "upstream");
+		if (x.usb.role === "host" && y.usb.role === "host") {
+			const what = (s) => s.usb.hub === "downstream" ? `a hub's downstream port` : "a host port";
+			say(`${x.title} (${what(x)}) is connected to ${y.title} (${what(y)}): two hosts cannot talk, and both may drive VBUS into each other. Connect a host to a device, or to a hub's upstream port.`);
+		} else if (x.usb.role === "device" && y.usb.role === "device") say(hubUp ? `${hubUp.title} is a hub's upstream port, and it is connected to ${(hubUp === x ? y : x).title}, which is a device, not a host. A hub's upstream port must face a host or another hub's downstream port: connect it to one.` : `${x.title} and ${y.title} are both device ports: neither can host the other, and neither supplies VBUS. Connect each to a host, such as a computer, a Raspberry Pi or a hub's downstream port.`);
+	}
+	const hubSelfPowered = (p) => {
+		const h = usbHubOf(p.module);
+		if (!h) return false;
+		if (h.power === "self") return true;
+		if (h.power === "bus") return false;
+		const k = nodeKey(p.part.uid, h.power.pin);
+		const i = nl.netOf.get(k);
+		return i !== void 0 && nl.nets[i].length > 1;
+	};
+	const downstreamOf = (p) => usbPorts(p.module).filter((q) => q.usb.hub === "downstream").map((q) => portOf(d, {
+		part: p.part.uid,
+		pin: q.name
+	}));
+	const demand = (dev, depth = 0) => {
+		const own = dev.usb.draw === void 0 ? {
+			mA: 0,
+			unknown: [dev]
+		} : {
+			mA: dev.usb.draw,
+			unknown: []
+		};
+		if (dev.usb.hub !== "upstream" || hubSelfPowered(dev) || depth > 8) return own;
+		for (const ds of downstreamOf(dev)) {
+			const q = reach(ds);
+			if (!q || q.usb.role === "host") continue;
+			const sub = demand(q, depth + 1);
+			own.mA += sub.mA;
+			own.unknown.push(...sub.unknown);
+		}
+		return own;
+	};
+	const sourceOf = (h) => {
+		if (h.usb.hub === "downstream") {
+			const own = h.usb.source ?? DEFAULT_SOURCE[h.usb.version ?? "2.0"];
+			return hubSelfPowered(h) ? own : Math.min(own, 100);
+		}
+		if (h.usb.source !== void 0) return h.usb.source;
+		return h.usb.role === "host" && h.usb.version ? DEFAULT_SOURCE[h.usb.version] : null;
+	};
+	/** The host side and device side of a pair, or null when that is not clear (two dual ports, a role error). */
+	const sides = ([p, q]) => {
+		const [a, b] = [p.usb.role, q.usb.role];
+		if (a === "host" && (b === "device" || b === "dual")) return [p, q];
+		if (b === "host" && (a === "device" || a === "dual")) return [q, p];
+		if (a === "dual" && b === "device") return [p, q];
+		if (b === "dual" && a === "device") return [q, p];
+		return null;
+	};
+	const asked = /* @__PURE__ */ new Map();
+	for (const pair of pairs) {
+		const s = sides(pair);
+		if (s) asked.set(s[0].key, {
+			host: s[0],
+			dev: s[1],
+			demand: demand(s[1])
+		});
+	}
+	const names = (ps) => {
+		const list = [...new Set(ps.map((p) => p.title))].sort(natural$1.compare);
+		return list.length > 3 ? `${list.slice(0, 2).join(", ")} and ${list.length - 2} more` : andList(list);
+	};
+	const wiresOf = (ps) => links.filter((l) => ps.some((p) => p.part.uid === l.from.part.uid || p.part.uid === l.to.part.uid)).map((l) => l.conn.uid);
+	for (const { host, dev, demand: dm } of asked.values()) {
+		const supply = sourceOf(host);
+		const busHub = host.usb.hub === "downstream" && !hubSelfPowered(host);
+		const parts = [host.part.uid, dev.part.uid];
+		if (supply !== null && dm.mA > supply) {
+			if (busHub) out.push({
+				rule: "usb-hub-bus-power",
+				subject: host.part.designator,
+				target: host.title,
+				message: `${host.part.designator} is a bus-powered hub, so ${host.title} gives at most ${mA(supply)}, but ${dev.title} draws ${mA(dm.mA)}. Power the hub from its own supply, or plug ${dev.part.designator} into the host directly.`,
+				parts,
+				pins: [pinOf(host), pinOf(dev)],
+				wires: wiresOf([host, dev]),
+				causes: [host.key, dev.key]
+			});
+			else out.push({
+				rule: "usb-power",
+				subject: host.part.designator,
+				target: host.title,
+				message: `${host.title} supplies ${mA(supply)}, but ${dev.title}${dev.usb.hub === "upstream" ? " and the devices on its hub" : ""} draw${dev.usb.hub === "upstream" ? "" : "s"} ${mA(dm.mA)}${dm.unknown.length ? ", and more where the draw is unknown" : ""}. The port can shut down or brown out. Use a powered hub, or a supply for ${dev.part.designator}.`,
+				parts,
+				pins: [pinOf(host), pinOf(dev)],
+				wires: wiresOf([host, dev]),
+				causes: [host.key, dev.key]
+			});
+			continue;
+		}
+		if (dm.unknown.length && !busHub) out.push({
+			rule: "usb-power-unknown",
+			subject: host.part.designator,
+			target: host.title,
+			message: `The current ${host.title} is asked for is not fully known: ${names(dm.unknown)} ${dm.unknown.length === 1 ? "has" : "have"} no sourced draw${dm.mA ? ` (the rest draws ${mA(dm.mA)})` : ""}${supply !== null ? `, against the ${mA(supply)} the port supplies` : ""}. Check ${dm.unknown.length === 1 ? "its" : "their"} datasheet${dm.unknown.length === 1 ? "" : "s"}.`,
+			parts: [host.part.uid, ...dm.unknown.map((p) => p.part.uid)],
+			pins: [pinOf(host)],
+			wires: wiresOf([host, ...dm.unknown]),
+			causes: [host.key, "unknown"]
+		});
+	}
+	for (const part of d.parts) {
+		const m = moduleOf(d, part.module);
+		if (!m) continue;
+		for (const b of usbBudgets(part, m)) {
+			const used = b.ports.map((n) => asked.get(nodeKey(part.uid, n))).filter((x) => x !== void 0);
+			const total = used.reduce((s, u) => s + u.demand.mA, 0);
+			if (used.length < 1 || total <= b.mA) continue;
+			const ps = used.map((u) => u.host);
+			out.push({
+				rule: "usb-power",
+				subject: part.designator,
+				target: `${part.designator} USB ports`,
+				message: `${part.designator}'s USB ports share ${mA(b.mA)}${b.note ? ` (${b.note})` : ""}, but ${names(used.map((u) => u.dev))} draw ${mA(total)} together. Move a device to a powered hub, or give it its own supply.`,
+				parts: [part.uid, ...used.map((u) => u.dev.part.uid)],
+				pins: ps.map(pinOf),
+				wires: wiresOf([...ps, ...used.map((u) => u.dev)]),
+				causes: [part.uid, ...b.ports]
+			});
+		}
+	}
+	return out;
+}
+//#endregion
 //#region src/format/pinRules.ts
 /** A part's pin as one map key (map lookups only). */
 var key = (part, pin) => `${part}\u0000${pin}`;
@@ -59693,10 +66630,13 @@ var TYPE_WORDS = {
 	output: "output",
 	io: "input/output",
 	passive: "passive",
-	nc: "not connected inside"
+	nc: "not connected inside",
+	usb: "USB port"
 };
 /** One line on what a pin does: its type and supply, its caps, its I2C role, its note. */
 function pinDoes(e) {
+	const usb = e.type === "usb" ? usbOf(e.part.module, e.pin) : void 0;
+	if (usb) return usbWords(usb);
 	const i2c = i2cOf(e.part.module);
 	const parts = e.type === "input" && e.caps?.inputOnly || e.type === "output" && e.caps?.outputOnly ? [] : [e.type ? `${TYPE_WORDS[e.type]}${e.supply ? ` ${e.supply}` : ""}` : "type not known"];
 	if (i2c?.sda === e.pin) parts.push("I2C data (SDA)");
@@ -60099,7 +67039,8 @@ function partSummary(m) {
 			type: p.type ?? null,
 			supply: p.supply ?? null,
 			capacity: terminalCapacity(m, p.name),
-			caps: p.caps ?? null
+			caps: p.caps ?? null,
+			usb: p.usb ?? null
 		})),
 		holes: (m.holes ?? []).map((g) => ({
 			name: g.name,
@@ -60117,7 +67058,7 @@ var modules = () => library.flatMap((e) => e.ok ? [e.module] : []).sort((a, b) =
 var pinText = (p) => [
 	p.name,
 	p.label && p.label !== p.name ? `(${p.label})` : "",
-	p.type ?? "untyped",
+	p.usb ? `[${usbWords(p.usb)}]` : p.type ?? "untyped",
 	p.supply ?? "",
 	p.capacity > 1 ? `takes ${p.capacity}` : "",
 	capsText(p.caps ?? void 0).length ? `[${capsText(p.caps ?? void 0).join("; ")}]` : ""
@@ -60172,83 +67113,6 @@ function partCommand(args, io) {
 	if (i2c) lines.push(`I2C device: SDA ${i2c.sda}, SCL ${i2c.scl}; address ${i2cAddressText(i2c)}; pull-ups on board: ${i2c.pullups === void 0 ? "not known" : i2c.pullups ? "yes" : "no"}`);
 	io.stdout(`${lines.join("\n")}\n`);
 	return EXIT.ok;
-}
-//#endregion
-//#region src/format/netlist.ts
-/** One key per part pin or hole group; JSON keeps any character in a uid or name unambiguous. */
-var nodeKey = (part, pin) => JSON.stringify([part, pin]);
-/**
-* Everything that conducts, as joins between node keys: the edges whose connected components are
-* the nets. A wire conducts only when both ends resolve; a broken one stays in the file for repair
-* and is listed in `broken` (file order).
-*/
-function conductors(d, plugs = plugsOf(d)) {
-	const joins = [];
-	const broken = [];
-	for (const c of d.connections) if (resolveEndpoint(d, c.from) && resolveEndpoint(d, c.to)) joins.push({
-		a: nodeKey(c.from.part, c.from.pin),
-		b: nodeKey(c.to.part, c.to.pin),
-		wire: c.uid
-	});
-	else broken.push(c.uid);
-	for (const p of d.parts) {
-		const m = moduleOf(d, p.module);
-		for (const group of m?.internal ?? []) for (let i = 1; i < group.length; i++) joins.push({
-			a: nodeKey(p.uid, group[0]),
-			b: nodeKey(p.uid, group[i])
-		});
-	}
-	for (const pl of plugs) if (!pl.mechanical) joins.push({
-		a: nodeKey(pl.part, pl.pin),
-		b: nodeKey(pl.board, pl.group)
-	});
-	for (const [name, list] of labelGroups(d)) for (let i = 1; i < list.length; i++) joins.push({
-		a: nodeKey(list[0].part.uid, list[0].pin),
-		b: nodeKey(list[i].part.uid, list[i].pin),
-		label: name
-	});
-	return {
-		joins,
-		broken
-	};
-}
-function netlist(d, plugs = plugsOf(d)) {
-	const parent = /* @__PURE__ */ new Map();
-	const find = (k) => {
-		let root = k;
-		for (let up = parent.get(root); up !== void 0 && up !== root; up = parent.get(root)) root = up;
-		for (let cur = k; cur !== root;) {
-			const next = parent.get(cur);
-			parent.set(cur, root);
-			cur = next;
-		}
-		return root;
-	};
-	const join = (a, b) => {
-		if (!parent.has(a)) parent.set(a, a);
-		if (!parent.has(b)) parent.set(b, b);
-		const ra = find(a);
-		const rb = find(b);
-		if (ra !== rb) parent.set(ra, rb);
-	};
-	const { joins, broken } = conductors(d, plugs);
-	for (const j of joins) join(j.a, j.b);
-	const byRoot = /* @__PURE__ */ new Map();
-	for (const k of parent.keys()) {
-		const r = find(k);
-		const list = byRoot.get(r);
-		if (list) list.push(k);
-		else byRoot.set(r, [k]);
-	}
-	const nets = [...byRoot.values()].filter((n) => n.length > 1).map((n) => n.sort());
-	nets.sort((a, b) => a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0);
-	const netOf = /* @__PURE__ */ new Map();
-	nets.forEach((n, i) => n.forEach((k) => netOf.set(k, i)));
-	return {
-		nets,
-		netOf,
-		broken: broken.sort()
-	};
 }
 var CI = {
 	L: 0,
@@ -64019,6 +70883,18 @@ var RULES = {
 		severity: "error",
 		title: "I2C address clash"
 	},
+	"usb-to-pin": {
+		severity: "error",
+		title: "USB wired to pins"
+	},
+	"usb-fit": {
+		severity: "error",
+		title: "USB plug does not fit"
+	},
+	"usb-role": {
+		severity: "error",
+		title: "USB roles clash"
+	},
 	"supply-too-low": {
 		severity: "warning",
 		title: "Voltage too low"
@@ -64131,6 +71007,18 @@ var RULES = {
 		severity: "warning",
 		title: "Label connects nothing"
 	},
+	"usb-power": {
+		severity: "warning",
+		title: "USB port overloaded"
+	},
+	"usb-hub-bus-power": {
+		severity: "warning",
+		title: "Bus-powered hub overloaded"
+	},
+	"usb-backfeed": {
+		severity: "warning",
+		title: "Supply on USB VBUS"
+	},
 	"module-drift": {
 		severity: "warning",
 		title: "Part data out of date"
@@ -64142,6 +71030,14 @@ var RULES = {
 	"i2c-pullups-unknown": {
 		severity: "info",
 		title: "Check the I2C pull-ups"
+	},
+	"usb-power-unknown": {
+		severity: "info",
+		title: "USB current not known"
+	},
+	"usb-backfeed-diode": {
+		severity: "info",
+		title: "Supply on USB VBUS, behind a diode"
 	}
 };
 var RULE_ORDER = Object.keys(RULES);
@@ -64585,16 +71481,35 @@ function checkDiagram(d) {
 		});
 	};
 	const terminal = terminalsOf$1(d, partByUid, mains);
+	const usbAny = d.parts.some((p) => moduleOf(d, p.module)?.pins.some((q) => !isSpacer(q) && q.type === "usb"));
 	const netWires = nl.nets.map(() => []);
 	const connected = new Set(plugs.map((pl) => pl.part));
 	for (const c of d.connections) {
 		if (brokenSet.has(c.uid)) continue;
-		connected.add(c.from.part);
-		connected.add(c.to.part);
+		if (!(usbAny && usbLink(d, c))) {
+			connected.add(c.from.part);
+			connected.add(c.to.part);
+		}
 		const i = nl.netOf.get(nodeKey(c.from.part, c.from.pin));
 		if (i !== void 0) netWires[i].push(c.uid);
 	}
-	const netTerms = nl.nets.map((keys) => keys.some(hazardous) ? [] : keys.map(terminal).filter((t) => t !== null));
+	const isUsb = (t) => t?.type === "usb";
+	const netTerms = nl.nets.map((keys) => {
+		if (keys.some(hazardous)) return [];
+		const terms = keys.map(terminal);
+		return terms.some(isUsb) ? [] : terms.filter((t) => t !== null);
+	});
+	const usbGrounds = [];
+	const usbGrounded = /* @__PURE__ */ new Set();
+	if (usbAny) for (const c of d.connections) {
+		const l = brokenSet.has(c.uid) ? null : usbLink(d, c);
+		const i = l ? nl.netOf.get(l.from.key) : void 0;
+		if (!l || i === void 0 || nl.nets[i].some((k) => terminal(k)?.type !== "usb")) continue;
+		const [ga, gb] = [l.from, l.to].map((p) => moduleInfo(p.module).grounds[0]);
+		if (!ga || !gb || l.from.part === l.to.part) continue;
+		usbGrounds.push([nodeKey(l.from.part.uid, ga), nodeKey(l.to.part.uid, gb)]);
+		usbGrounded.add(l.from.part.uid).add(l.to.part.uid);
+	}
 	/** Supplies (by source id) already reported as wired to their own ground, and their parts. */
 	const shorted = /* @__PURE__ */ new Set();
 	const shortedParts = /* @__PURE__ */ new Set();
@@ -64651,8 +71566,14 @@ function checkDiagram(d) {
 		plugs,
 		shorted,
 		add,
-		skip: hazardous
+		skip: hazardous,
+		usbGrounds
 	});
+	const { fed: usbFed, hosting: usbHosting, hosted: usbHosted } = usbAny ? usbPower(d) : {
+		fed: /* @__PURE__ */ new Set(),
+		hosting: /* @__PURE__ */ new Set(),
+		hosted: []
+	};
 	const others = (t) => {
 		const i = nl.netOf.get(t.key);
 		return i === void 0 ? [] : netTerms[i].filter((o) => o.part !== t.part);
@@ -64673,7 +71594,7 @@ function checkDiagram(d) {
 		return [...seen.values()].sort((a, b) => natural$1.compare(termName(a), termName(b)));
 	};
 	for (const p of d.parts) {
-		if (!connected.has(p.uid)) continue;
+		if (!connected.has(p.uid) && !usbHosting.has(p.uid)) continue;
 		const m = moduleOf(d, p.module);
 		if (!m) continue;
 		const terms = [...moduleInfo(m).defs.entries()].filter(([, def]) => {
@@ -64681,7 +71602,7 @@ function checkDiagram(d) {
 			return ty === "power_in" || ty === "power_out" || ty === "ground";
 		}).map(([n]) => terminal(nodeKey(p.uid, n))).filter((t) => t !== null && !hazardous(t.key));
 		const ins = terms.filter((t) => t.type === "power_in");
-		if (ins.length && !moduleInfo(m).external.size && !reversed.has(p.uid)) {
+		if (ins.length && (!moduleInfo(m).external.size || usbHosting.has(p.uid)) && !reversed.has(p.uid) && !usbFed.has(p.uid)) {
 			if (!(ins.some((t) => others(t).some(mayFeed)) || terms.some((t) => t.type === "power_out" && others(t).some(isSource)))) {
 				const vias = [...new Map(ins.flatMap((t) => others(t)).filter((o) => o.dead === "unknown").map((o) => [o.key, o])).values()].sort((a, b) => natural$1.compare(termName(a), termName(b)));
 				if (vias.length) {
@@ -64719,7 +71640,7 @@ function checkDiagram(d) {
 			}
 		}
 		const grounds = terms.filter((t) => t.type === "ground");
-		if (grounds.length && !shortedParts.has(p.uid) && !grounds.some((t) => others(t).some((o) => !o.bare))) {
+		if (grounds.length && !shortedParts.has(p.uid) && !usbGrounded.has(p.uid) && !grounds.some((t) => others(t).some((o) => !o.bare))) {
 			const wired = [...new Set(grounds.filter((t) => others(t).length).map((t) => t.label))];
 			const ownOnly = [...new Set(grounds.filter((t) => {
 				const i = nl.netOf.get(t.key);
@@ -64740,12 +71661,52 @@ function checkDiagram(d) {
 			});
 		}
 	}
+	for (const { port, host } of usbHosted) {
+		if (!port.usb.vbus) continue;
+		const t = terminal(nodeKey(port.part.uid, port.usb.vbus));
+		const feeders = t ? others(t).filter(isSource).sort((a, b) => natural$1.compare(termName(a), termName(b))) : [];
+		if (!t || !feeders.length) continue;
+		const des = port.part.designator;
+		const base = {
+			subject: des,
+			target: termName(t),
+			parts: [
+				port.part.uid,
+				host.part.uid,
+				...feeders.map((o) => o.part.uid)
+			],
+			pins: [
+				termPin(t),
+				{
+					part: port.part.uid,
+					pin: port.name
+				},
+				...feeders.map(termPin)
+			],
+			wires: [],
+			causes: [t.key, port.key]
+		};
+		if (t.info.external.get(t.name)?.diode) add({
+			rule: "usb-backfeed-diode",
+			...base,
+			message: `${termName(t)} is wired to ${andList(feeders.map(termName))} while ${host.title} powers ${port.title}, but ${des} has a diode between USB VBUS and ${t.label}, so the supply cannot drive current back into the host. Keep both if you like: the higher one powers the board.`
+		});
+		else {
+			add({
+				rule: "usb-backfeed",
+				...base,
+				message: `${termName(t)} is wired to ${andList(feeders.map(termName))}, and it is also ${port.title}'s VBUS while ${host.title} powers that port: the supply drives current back into the host's USB port, or the host into the supply. Power ${des} from one of them: unplug the cable or remove the supply.`
+			});
+			const dup = findings.findIndex((x) => x.rule === "supplies-parallel" && x.target === termName(t));
+			if (dup >= 0) findings.splice(dup, 1);
+		}
+	}
 	const groundedCache = /* @__PURE__ */ new Map();
 	const groundedPins = (p) => {
 		let list = groundedCache.get(p.uid);
 		if (!list) {
 			const m = moduleOf(d, p.module);
-			list = m ? moduleInfo(m).grounds.map((g) => terminal(nodeKey(p.uid, g))).filter((t) => others(t).some((o) => !o.bare)) : [];
+			list = m ? moduleInfo(m).grounds.map((g) => terminal(nodeKey(p.uid, g))).filter((t, i) => others(t).some((o) => !o.bare) || i === 0 && usbGrounded.has(p.uid)) : [];
 			groundedCache.set(p.uid, list);
 		}
 		return list;
@@ -64981,6 +71942,7 @@ function checkDiagram(d) {
 		});
 	}
 	for (const f of mains?.findings ?? []) add(f);
+	if (usbAny) for (const f of usbFindings(d, nl, netWires)) add(f);
 	const pinFound = !d.parts.some((p) => {
 		const m = moduleOf(d, p.module);
 		return !!m && hasPinData(m);
@@ -65162,7 +72124,7 @@ function minus(a, b) {
 * supplies fighting; a loop that agrees is supplies in parallel. A load gets the potential of its
 * power input over that of its own ground, so a series stack adds up.
 */
-function checkPotentials({ d, nl, netTerms, netWires, terminal, plugs, shorted, skip, add }) {
+function checkPotentials({ d, nl, netTerms, netWires, terminal, plugs, shorted, skip, add, usbGrounds }) {
 	const reversed = /* @__PURE__ */ new Set();
 	const netOfKey = (key) => {
 		const i = nl.netOf.get(key);
@@ -65173,6 +72135,13 @@ function checkPotentials({ d, nl, netTerms, netWires, terminal, plugs, shorted, 
 	const edges = [];
 	const diodes = [];
 	const unknownOn = /* @__PURE__ */ new Map();
+	for (const [a, b] of usbGrounds) edges.push({
+		from: netOfKey(a),
+		to: netOfKey(b),
+		v: 0,
+		fromKey: a,
+		toKey: b
+	});
 	const outOn = /* @__PURE__ */ new Map();
 	/** Cells by bank (Ruling V1): same module and voltage, every + on one net and every - on another. */
 	const bankCells = /* @__PURE__ */ new Map();
@@ -75524,7 +82493,62 @@ var HEADER_INSET = 12;
 function headerSides(m) {
 	return new Set(insideLabelSides(m));
 }
-function PinStub({ p }) {
+/** Across-the-edge width and corner radius of each USB connector's glyph, in px. */
+var USB_GLYPH = {
+	A: [12, .8],
+	B: [11, 2],
+	"mini-B": [7.5, 1.2],
+	"micro-B": [7, 1.2],
+	C: [8, 3.2]
+};
+var USB_SLOT = "#2B2F36";
+var USB_TONGUE = "#F4F6F8";
+/**
+* A USB port in place of a pin stub (USB design 1.2): the connector's metal shell standing out of the
+* body edge where the wire attaches, its opening dark for a socket, or with its white contact tongue
+* for a plug. Drawn in a frame whose +x points out of the body.
+*/
+function UsbGlyph({ p, usb }) {
+	const [w, rx] = USB_GLYPH[usb.connector];
+	const angle = p.dir.x > 0 ? 0 : p.dir.y > 0 ? 90 : p.dir.x < 0 ? 180 : 270;
+	const plug = usb.gender === "plug";
+	return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("g", {
+		"data-usb-port": p.name,
+		"data-usb-gender": usb.gender,
+		transform: `translate(${p.edge.x} ${p.edge.y}) rotate(${angle})`,
+		children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("rect", {
+			x: -3,
+			y: -w / 2,
+			width: 11,
+			height: w,
+			rx,
+			fill: METAL$1,
+			stroke: INK$2,
+			strokeWidth: 1.1
+		}), plug ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("rect", {
+			x: -1,
+			y: -w / 2 + 1.6,
+			width: 7.5,
+			height: Math.max(1.4, w / 2 - 1.6),
+			rx: .6,
+			fill: USB_TONGUE,
+			stroke: INK$2,
+			strokeWidth: .6
+		}) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("rect", {
+			x: 4.8,
+			y: -w / 2 + 1.4,
+			width: 2.6,
+			height: w - 2.8,
+			rx: Math.min(rx, 1),
+			fill: USB_SLOT
+		})]
+	});
+}
+function PinStub({ p, usb }) {
+	if (usb) return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(UsbGlyph, {
+		p,
+		usb
+	});
 	if (p.bus) {
 		const len = p.bus.length * 10;
 		const horiz = p.side === "top" || p.side === "bottom";
@@ -75768,7 +82792,10 @@ var Part = (0, import_react.memo)(function Part({ module: m, x = 0, y = 0, rotat
 			/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("g", {
 				transform: rotation ? `rotate(${rotation} ${c.x} ${c.y})` : void 0,
 				children: [
-					lay.pins.map((p) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)(PinStub, { p }, p.name)),
+					lay.pins.map((p) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)(PinStub, {
+						p,
+						usb: p.type === "usb" ? usbOf(m, p.name) : void 0
+					}, p.name)),
 					art ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("g", {
 						transform: `translate(${ax} ${ay})`,
 						children: art.shapes.map((s, i) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("g", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("rect", {
@@ -75924,6 +82951,39 @@ var TIN = "#E4E7EB";
 var STRAND = "#8C939D";
 var SHADE = "#9DA4AE";
 var EDGE = 1.2;
+/** A USB plug end: shell length, shell height, boot height and shell corner radius, in px. */
+var USB_PLUG = {
+	"usb-a": [
+		12,
+		9,
+		11,
+		.8
+	],
+	"usb-b": [
+		11,
+		8.5,
+		11,
+		1.6
+	],
+	"usb-mini-b": [
+		8,
+		5.5,
+		8.5,
+		1
+	],
+	"usb-micro-b": [
+		7,
+		4.2,
+		8,
+		1
+	],
+	"usb-c": [
+		8,
+		4.8,
+		8,
+		2.4
+	]
+};
 var CableEnd = (0, import_react.memo)(function CableEnd({ kind, x, y, angle, scale: s, color, width }) {
 	const box = (x0, x1, h, fill, rx, sw = EDGE, dy = 0) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("rect", {
 		x: x0 * s,
@@ -76064,6 +83124,21 @@ var CableEnd = (0, import_react.memo)(function CableEnd({ kind, x, y, angle, sca
 				box(1.6, 3.8, 3, SHADE, .5, .8)
 			] });
 			break;
+		case "usb-a":
+		case "usb-b":
+		case "usb-mini-b":
+		case "usb-micro-b":
+		case "usb-c": {
+			const [shell, h, boot, rx] = USB_PLUG[kind];
+			body = /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
+				box(0, shell, h, METAL$1, rx, 1),
+				line(1.2, shell - 1.5, 0, SHADE, Math.max(.8, h / 4)),
+				box(shell - 1, 26 + (kind === "usb-a" || kind === "usb-b" ? 4 : 0), boot, color, 2),
+				rib(shell + 4, boot - 2.4),
+				line(shell + 6, 22, -boot / 4, GLINT, .9, .6)
+			] });
+			break;
+		}
 		case "bare": return null;
 	}
 	return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("g", {
@@ -76244,6 +83319,28 @@ var BLOCKED_STROKE = {
 	strokeDasharray: "6 5",
 	strokeLinecap: "butt"
 };
+/**
+* A USB plug pushed straight into a socket (USB design 2.2): no cable, so the link is a dotted grey
+* line from plug to socket, whatever the connection's stored colour.
+*/
+function PluggedLink({ d, casing }) {
+	return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("g", {
+		"data-plugged": "",
+		children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("path", {
+			d,
+			stroke: casing,
+			strokeWidth: 4.2,
+			strokeDasharray: "0.1 5",
+			strokeLinecap: "round"
+		}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("path", {
+			d,
+			stroke: "#9AA2AD",
+			strokeWidth: 2.4,
+			strokeDasharray: "0.1 5",
+			strokeLinecap: "round"
+		})]
+	});
+}
 /**
 * The stripe of a two-colour wire (green-yellow earth), over its base colour. On a blocked wire it
 * keeps the blocked dash's 11 px period and covers only the first half of each dash, so the gaps
@@ -76455,6 +83552,13 @@ function Sheet({ diagram, captions = {}, box, label, decorative = false, theme =
 					const look = looks.get(conn.uid);
 					const name = drawnColor(conn, looks);
 					const stripe = wireStripe(name);
+					if (isPluggedIn(diagram, conn)) return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("g", {
+						"data-wire": conn.uid,
+						children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(PluggedLink, {
+							d,
+							casing: theme.casing
+						})
+					}, conn.uid);
 					return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("g", {
 						"data-wire": conn.uid,
 						children: [
@@ -76666,10 +83770,42 @@ var typeOf$1 = (p) => p.type === void 0 ? "io" : p.type;
 * Whether the part's geometry moved: a different body size, or pin positions (side and place on the
 * body, whatever their names) that differ. Its legs then land elsewhere.
 */
-function movedGeometry(stored, lib) {
+function movedGeometry(stored, lib, added) {
 	const [a, b] = [layoutModule(stored), layoutModule(lib)];
-	if (a.w !== b.w || a.h !== b.h || a.pins.length !== b.pins.length) return true;
-	return a.pins.some((p, i) => p.side !== b.pins[i].side || p.edge.x !== b.pins[i].edge.x || p.edge.y !== b.pins[i].edge.y);
+	if (a.w !== b.w || a.h !== b.h || a.pins.length + added.size !== b.pins.length) return true;
+	if (!added.size) return a.pins.some((p, i) => p.side !== b.pins[i].side || p.edge.x !== b.pins[i].edge.x || p.edge.y !== b.pins[i].edge.y);
+	const at = new Map(b.pins.map((p) => [p.name, p]));
+	return a.pins.some((p) => {
+		const q = at.get(p.name);
+		return !q || added.has(p.name) || p.side !== q.side || p.edge.x !== q.edge.x || p.edge.y !== q.edge.y;
+	});
+}
+var isUsbPin = (p) => isObj(p) && p.type === "usb" && typeof p.name === "string" && !isSpacer(p);
+/**
+* Ruling U1 (USB design 1.3): the library may add USB ports to a part, each in a slot the stored copy
+* holds as a spacer or appended after its last entry. Returns the library's pin list with those
+* ports taken back out (a spacer where one was, nothing past the end), so the remaining comparison
+* sees only what else changed, and the names of the ports it took out.
+*/
+function withoutAddedUsb(sp, lp) {
+	const stored = new Set(sp.filter((p) => isObj(p) && typeof p.name === "string").map((p) => p.name));
+	const added = /* @__PURE__ */ new Set();
+	const pins = [];
+	lp.forEach((b, i) => {
+		const fresh = isUsbPin(b) && !stored.has(b.name);
+		if (i < sp.length) {
+			const a = sp[i];
+			if (fresh && isObj(a) && isSpacer(a) && a.side === b.side) {
+				added.add(b.name);
+				pins.push(a);
+			} else pins.push(b);
+		} else if (fresh) added.add(b.name);
+		else if (!(isObj(b) && isSpacer(b))) pins.push(b);
+	});
+	return {
+		pins,
+		added
+	};
 }
 /** The module's fields without `kicad`. */
 function withoutKicad(m) {
@@ -76683,7 +83819,9 @@ function moduleDrift(stored, lib) {
 	if (canonical(s) === canonical(l)) return null;
 	const block = [];
 	const update = [];
-	const [sp, lp] = [Array.isArray(s.pins) ? s.pins : [], Array.isArray(l.pins) ? l.pins : []];
+	const sp = Array.isArray(s.pins) ? s.pins : [];
+	const { pins: lp, added } = withoutAddedUsb(sp, Array.isArray(l.pins) ? l.pins : []);
+	if (added.size) update.push(`USB ${added.size === 1 ? "port" : "ports"} ${[...added].join("/")}`);
 	const pinsBlock = /* @__PURE__ */ new Set();
 	const pinsUpdate = /* @__PURE__ */ new Set();
 	for (let i = 0; i < Math.max(sp.length, lp.length); i++) {
@@ -76708,7 +83846,7 @@ function moduleDrift(stored, lib) {
 			}
 		} else (adds(s[k], l[k]) ? update : block).push(FIELD_NAMES[k] ?? k);
 	}
-	const moved = movedGeometry(stored, lib);
+	const moved = movedGeometry(stored, lib, added);
 	if (moved && !block.length) block.push("size");
 	if (block.length) return {
 		kind: "block",
@@ -77282,6 +84420,7 @@ function parseNetlist(raw, library) {
 			}
 			if (kind !== void 0) {
 				if (!isEndKind(kind)) errors.push(`wires.ends: unknown cable end ${JSON.stringify(kind)}`);
+				else if (isUsbEnd(kind)) errors.push(`wires.ends: ${JSON.stringify(kind)} is a USB plug: a net of two USB ports gets its USB cable from the layout, so leave it out here`);
 				else ends = kind;
 			}
 		}
@@ -78109,8 +85248,8 @@ function cableOf(a, b) {
 	if (preset) return CABLE_NAMES[preset.id] ?? preset.name;
 	return `${END_NAMES[a]} to ${END_NAMES[b]} lead`;
 }
-/** Ends a connector is fitted to: not a bare, stripped or solid-core end. */
-var isConnector = (k) => k !== "bare" && !END_SIZE[k].exposed;
+/** Ends a connector is fitted to: not a bare, stripped or solid-core end, and not a USB cable's moulded plug (bought with the cable). */
+var isConnector = (k) => k !== "bare" && !END_SIZE[k].exposed && !isUsbEnd(k);
 var byOrder = (a, b) => END_KINDS.indexOf(a) - END_KINDS.indexOf(b);
 /** The bill of materials for `d`. */
 function billOfMaterials(d, opts = {}) {
@@ -78178,7 +85317,7 @@ function billOfMaterials(d, opts = {}) {
 	const labelUids = new Set(labelsOf(d).map((l) => l.part.uid));
 	const toLabel = (c) => labelUids.has(c.from.part) || labelUids.has(c.to.part);
 	for (const c of d.connections) {
-		if (toLabel(c)) continue;
+		if (toLabel(c) || isPluggedIn(d, c)) continue;
 		add([endKind(c.ends, "from"), endKind(c.ends, "to")].sort(byOrder), c.gauge ?? 22, drawnColor(c, looks), 1, c.routing ? 1 : 0, false);
 	}
 	for (const v of labelledWires(d, toLabel)) {
@@ -79617,9 +86756,25 @@ function realize(intent, d, locals = [], opts = {}) {
 		const kind = kindOf(n);
 		return n.color ?? (kind === "ground" ? "black" : kind === "power" ? "red" : SIGNAL_COLORS[signal++ % SIGNAL_COLORS.length]);
 	});
+	const usbAt = (ep) => {
+		const p = partBy.get(ep.part);
+		const m = p && moduleOf(d, p.module);
+		return m ? usbOf(m, ep.pin) : void 0;
+	};
 	const wire = (ni, from, to, routing, toLabel = false) => {
 		const uid = `w${connections.length + 1}`;
-		connections.push({
+		const [ua, ub] = [usbAt(from), usbAt(to)];
+		const usbEnds = ua && ub ? usbEndsFor(ua, ub) : void 0;
+		if (ua && ub) connections.push({
+			uid,
+			from,
+			to,
+			color: "black",
+			colorSet: true,
+			gauge: 22,
+			...usbEnds ? { ends: usbEnds } : {}
+		});
+		else connections.push({
 			uid,
 			from,
 			to,
@@ -81848,8 +89003,8 @@ function bomCommand(args, io) {
 //#endregion
 //#region src/cli/explain.ts
 var EXPLAIN_FORMAT = "circuitoon-cli/explain/1";
-/** The rules explain reports: the pin-capability and I2C rules. */
-var isPinRule = (rule) => /^(pin|i2c)-/.test(rule);
+/** The rules explain reports: the pin-capability, I2C and USB port rules. */
+var isPinRule = (rule) => /^(pin|i2c|usb)-/.test(rule);
 /** A module's short name: its name up to the first " (" ("ESP32 DevKit V1 (30 pin, DOIT)" is "ESP32 DevKit V1"). */
 var shortName$1 = (m) => m.name.split(" (")[0];
 var model = (m) => m.electrical?.model;
@@ -82075,6 +89230,7 @@ function nameNets(nets) {
 		if (outs.length === 1) claim(i, outs[0]);
 	});
 	nets.forEach((net, i) => {
+		if (named[i] !== void 0 || !net.pins.length) return;
 		const pick = net.pins.find((p) => p.m.category === "Microcontrollers") ?? net.pins.find((p) => pinDef(p.m, p.name)?.type === "power_out") ?? net.pins.find((p) => !isBoard(p.m)) ?? net.pins[0];
 		let name = `${pick.ref}_${pick.name}`;
 		for (let k = 2; names.has(name); k++) name = `${pick.ref}_${pick.name}_${k}`;
@@ -82244,6 +89400,7 @@ var collator = new Intl.Collator("en", {
 	sensitivity: "base"
 });
 var natural = (a, b) => collator.compare(a, b) || (a < b ? -1 : a > b ? 1 : 0);
+var andWords = (xs) => xs.length < 2 ? xs.join("") : `${xs.slice(0, -1).join(", ")} and ${xs[xs.length - 1]}`;
 /** A string as a KiCad S-expression atom: always quoted, with `\` and `"` escaped and line breaks as `\n`. */
 var quote = (s) => `"${s.replace(/\\/g, "\\\\").replace(/"/g, "\\\"").replace(/\r?\n/g, "\\n")}"`;
 /** A reference KiCad takes: letters, digits and `_`, starting with a letter ("R1", "DS1", "U2_2"). */
@@ -82285,7 +89442,7 @@ function kicadValue(part, m, k) {
 	return (k?.value ?? shortName(m)).replace(/\s+/g, " ").trim();
 }
 /** Pin names with their sides, then hole group names, in order: what a mapping by name relies on. */
-var terminalKey = (m) => JSON.stringify([m.pins.filter((p) => !isSpacer(p)).map((p) => [p.name, p.side]), (m.holes ?? []).map((g) => g.name)]);
+var terminalKey = (m) => JSON.stringify([m.pins.filter((p) => !isSpacer(p) && p.type !== "usb").map((p) => [p.name, p.side]), (m.holes ?? []).map((g) => g.name)]);
 /**
 * The mapping to export a part with: the library's, when the part is built in and its stored copy
 * has the same pins in the same order (the mapping is export data the library refines, and a copy
@@ -82395,11 +89552,12 @@ var PIN_TYPE = {
 	output: "output",
 	io: "bidirectional",
 	passive: "passive",
-	nc: "no_connect"
+	nc: "no_connect",
+	usb: "passive"
 };
 /** Every pin and pad group of a module, in order: pins (no spacers), then hole groups. */
 function terminalsOf(m) {
-	return [...m.pins.filter((p) => !isSpacer(p)), ...m.holes ?? []];
+	return [...m.pins.filter((p) => !isSpacer(p) && p.type !== "usb"), ...m.holes ?? []];
 }
 var pad2 = (n) => String(n).padStart(2, "0");
 /** The generic footprint an unmapped part comes in on: a 0.1 in pin header with a pad per pin. */
@@ -82463,6 +89621,21 @@ function writeKicad(src, opts = {}) {
 	/** Part key to its reference (a part's own, before any header letter), for naming nets. */
 	const partRef = /* @__PURE__ */ new Map();
 	const modOf = new Map(kept.map(({ p }) => [p.key, p.module]));
+	const portName = (key, pin) => {
+		const part = src.parts.find((x) => x.key === key);
+		const port = part && usbPorts(part.module).find((q) => q.name === pin);
+		return port ? {
+			title: `${part.designator} ${port.label ?? port.name}`,
+			plug: port.usb.gender === "plug"
+		} : void 0;
+	};
+	const usbNotes = [];
+	for (const net of src.nets) {
+		const ports = net.nodes.flatMap(([k, pin]) => modOf.has(k) ? [portName(k, pin)].filter((x) => x !== void 0) : []).sort((a, b) => natural(a.title, b.title));
+		if (!ports.length) continue;
+		if (ports.length === net.nodes.length) for (const q of ports.slice(1)) usbNotes.push(`${ports[0].title} to ${q.title} is ${ports[0].plug || q.plug ? "a USB plug-in" : "a USB cable"}, off-board`);
+		else warnings.push(`${andWords(ports.map((q) => q.title))}: a USB port on a net with other pins is left out of it. Connect USB ports only to USB ports.`);
+	}
 	for (const { p, map } of kept) {
 		const m = p.module;
 		const ref = claimRef(kicadRef(p.designator || p.key));
@@ -82504,6 +89677,7 @@ function writeKicad(src, opts = {}) {
 			return c;
 		};
 		const [symLib, symPart] = k?.symbol ? k.symbol.split(":") : ["Circuitoon", m.id];
+		if (!k && !terminalsOf(m).length) continue;
 		if (!k) {
 			const names = terminalsOf(m).map((t) => t.name);
 			const pins = Object.fromEntries(names.map((n, i) => [n, String(i + 1)]));
@@ -82534,7 +89708,7 @@ function writeKicad(src, opts = {}) {
 			warnings.push(`${ref} (${m.id}): ${k.note ?? "the footprint is a placeholder, not the part's own."}`);
 		} else if (k.note) noteRefs.set(k.note, [...noteRefs.get(k.note) ?? [], ref]);
 	}
-	const notes = [...noteRefs].map(([note, refs]) => `${refs.join(", ")}: ${note}`);
+	const notes = [...[...noteRefs].map(([note, refs]) => `${refs.join(", ")}: ${note}`), ...usbNotes];
 	const built = [];
 	for (const net of src.nets) {
 		const nodes = [];
@@ -82839,7 +90013,7 @@ function validateSpec(raw) {
 			else if (p.name.trim().length > PIN_NAME_MAX) errors.push(`${at}.name: at most ${PIN_NAME_MAX} characters`);
 			else count++;
 			if (p.label !== void 0 && (typeof p.label !== "string" || p.label.length > PIN_NAME_MAX)) errors.push(`${at}.label: must be a string, at most ${PIN_NAME_MAX} characters`);
-			if (p.type !== void 0 && !PIN_TYPES.includes(p.type)) errors.push(`${at}.type: must be one of ${PIN_TYPES.join(", ")}`);
+			if (p.type !== void 0 && (!PIN_TYPES.includes(p.type) || p.type === "usb")) errors.push(`${at}.type: must be one of ${PIN_TYPES.filter((t) => t !== "usb").join(", ")}`);
 			if (p.supply !== void 0 && typeof p.supply !== "string") errors.push(`${at}.supply: must be a string such as "3V3" or "3V3/5V"`);
 		});
 	}

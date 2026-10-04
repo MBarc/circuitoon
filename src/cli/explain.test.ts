@@ -83,3 +83,25 @@ describe('circuitoon explain', () => {
     expect(USAGE).toContain('explain <sheet.json|netlist.json> [--json]')
   })
 })
+
+describe('circuitoon explain and layout on USB links', () => {
+  const usb = {
+    format: 'circuitoon-netlist/1', title: 'Pi 4 with an ESP32 and an RTL-SDR on USB',
+    parts: [{ ref: 'U1', module: 'rpi-4-model-b' }, { ref: 'U2', module: 'esp32-devkit-v1-30' }, { ref: 'U3', module: 'rtl-sdr-blog-v4' }],
+    nets: [{ name: 'USB-ESP', pins: ['U1.USB2-1', 'U2.USB'] }, { name: 'USB-SDR', pins: ['U1.USB3-1', 'U3.USB'] }],
+  }
+  it('lays a cable between two sockets and plugs the dongle straight in; explain names each port', async () => {
+    const dir = await files(usb)
+    const sheet = JSON.parse(readFileSync(join(dir, 'sheet.json'), 'utf8'))
+    const link = (a: string) => sheet.connections.find((c: { from: { pin: string }; to: { pin: string } }) => c.from.pin === a || c.to.pin === a)
+    expect(link('USB2-1').ends).toBeDefined()
+    expect([link('USB2-1').ends.from, link('USB2-1').ends.to].sort()).toEqual(['usb-a', 'usb-micro-b'])
+    expect(link('USB3-1').ends).toBeUndefined()
+    const r = await cli(['explain', 'sheet.json'], { cwd: dir })
+    expect(r.code).toBe(0)
+    expect(r.out).toContain('    U2 USB: USB micro-B receptacle, device, 2.0 full speed, draw not known')
+    expect(r.out).toContain('    U3 USB: USB A plug, device, 2.0, draws 270 mA')
+    expect(r.out).toContain('    U1 USB3: USB A receptacle, host, 3.0 super speed')
+    expect(r.out).toMatch(/INFO usb-power-unknown: The current U1 USB2 is asked for is not fully known/)
+  })
+})

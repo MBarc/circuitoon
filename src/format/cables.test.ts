@@ -14,6 +14,7 @@ describe('end kinds and presets', () => {
     expect(CABLE_PRESETS.map((p) => p.name)).toEqual([
       'Wire', 'Dupont M-M', 'Dupont M-F', 'Dupont F-F', 'Solid-core jumper', 'Alligator leads', 'Alligator to Dupont M',
       'Stripped hookup wire', 'Ferrules', 'JST-XH lead', 'JST-PH lead', 'Qwiic / STEMMA QT end (per wire)', 'Grove end (per wire)', 'Banana leads',
+      'USB A to micro-B cable', 'USB A to mini-B cable', 'USB A to B cable', 'USB A to C cable', 'USB C to C cable', 'USB C to micro-B cable',
     ])
     expect(new Set(CABLE_PRESETS.map((p) => p.id)).size).toBe(CABLE_PRESETS.length)
   })

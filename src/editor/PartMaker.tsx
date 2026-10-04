@@ -16,7 +16,7 @@ import type { MyPart } from './myParts.ts'
 const SIDE_NAME: Record<Side, string> = { left: 'Left', right: 'Right', top: 'Top', bottom: 'Bottom' }
 const SIDE_ORDER: Record<Side, string> = { left: 'top to bottom', right: 'top to bottom', top: 'left to right', bottom: 'left to right' }
 const TYPE_NAME: Record<PinType, string> = {
-  power_in: 'Power in', power_out: 'Power out', ground: 'Ground', input: 'Input', output: 'Output', io: 'In/out', passive: 'Passive', nc: 'Not connected',
+  power_in: 'Power in', power_out: 'Power out', ground: 'Ground', input: 'Input', output: 'Output', io: 'In/out', passive: 'Passive', nc: 'Not connected', usb: 'USB port',
 }
 const PIN_MIME = 'application/x-circuitoon-pin'
 
@@ -264,7 +264,7 @@ export function PartMaker({ editing, taken, onSave, onExport, onCancel, extra, i
                       <input data-field="name" aria-label={`Name of pin ${i + 1}`} className="pm-in-name" value={r.name} placeholder="Name" maxLength={40} readOnly={pinsOnly} onChange={(e) => setRow(i, { name: e.target.value })} />
                       <select data-field="type" aria-label={`Type of ${label}`} value={r.type} onChange={(e) => setRow(i, { type: e.target.value as PinType | '' })}>
                         <option value="">Type not set</option>
-                        {PIN_TYPES.map((t) => <option key={t} value={t}>{TYPE_NAME[t]}</option>)}
+                        {PIN_TYPES.filter((t) => t !== 'usb').map((t) => <option key={t} value={t}>{TYPE_NAME[t]}</option>)}
                       </select>
                       <input data-field="supply" aria-label={`Voltage of ${label}`} className="pm-in-supply" value={r.supply} placeholder={r.type === 'power_in' || r.type === 'power_out' ? '3V3/5V' : 'Volts'} maxLength={30} onChange={(e) => setRow(i, { supply: e.target.value })} />
                     </>

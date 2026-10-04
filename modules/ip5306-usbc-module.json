@@ -56,6 +56,48 @@
       "name": "5V-",
       "side": "bottom",
       "type": "ground"
+    },
+    {
+      "spacer": true,
+      "side": "right"
+    },
+    {
+      "spacer": true,
+      "side": "right"
+    },
+    {
+      "spacer": true,
+      "side": "right"
+    },
+    {
+      "name": "USB-C",
+      "side": "right",
+      "type": "usb",
+      "usb": {
+        "connector": "C",
+        "gender": "receptacle",
+        "role": "device",
+        "power": "only"
+      },
+      "caps": {
+        "note": "One maker page recommends a 5 V 2 A adapter for this input; its actual input current is not measured, so check it before relying on a 500 mA USB port."
+      }
+    },
+    {
+      "spacer": true,
+      "side": "right"
+    },
+    {
+      "spacer": true,
+      "side": "right"
+    },
+    {
+      "spacer": true,
+      "side": "right"
+    },
+    {
+      "spacer": true,
+      "side": "right"
     }
   ],
   "internal": [

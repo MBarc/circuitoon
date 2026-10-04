@@ -35,7 +35,10 @@
     {
       "name": "SEL",
       "side": "bottom",
-      "type": "input"
+      "type": "input",
+      "caps": {
+        "note": "SEL is pulled to GND on the board (left channel): tie it to 3V for the right channel."
+      }
     }
   ],
   "size": {

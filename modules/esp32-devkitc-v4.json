@@ -274,6 +274,19 @@
         "flash": true,
         "note": "CLK is GPIO6, a line of the module's SPI flash."
       }
+    },
+    {
+      "name": "USB",
+      "side": "bottom",
+      "type": "usb",
+      "usb": {
+        "connector": "micro-B",
+        "gender": "receptacle",
+        "role": "device",
+        "version": "2.0",
+        "speed": "full",
+        "vbus": "5V"
+      }
     }
   ],
   "internal": [

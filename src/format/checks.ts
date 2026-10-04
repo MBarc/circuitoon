@@ -16,6 +16,7 @@ import { andList, natural, orList } from './words.ts'
 import { type MainsAnalysis, analyseMainsCached } from './mains.ts'
 import { type PinRuleId, hasPinData, lazyPinModel, pinFindings } from './pinRules.ts'
 import { unknownFeedWords } from './mainsRules.ts'
+import { type UsbRuleId, usbFindings, usbLink, usbPower } from './usb.ts'
 
 /** `info` is a note, not a problem: it never blocks and never counts as one. */
 export type Severity = 'error' | 'warning' | 'info'
@@ -66,6 +67,7 @@ export type RuleId =
   /** Never from checkDiagram: the editor's Problems list adds it for a stored part older than the library (moduleDrift.ts). */
   | 'module-drift'
   | PinRuleId
+  | UsbRuleId
 
 /** Rule order within one severity and one subject, and each rule's short heading. */
 export const RULES: Record<RuleId, { severity: Severity; title: string }> = {
@@ -91,6 +93,9 @@ export const RULES: Record<RuleId, { severity: Severity; title: string }> = {
   'pin-input-only': { severity: 'error', title: 'Input-only pin drives' },
   'pin-output-only': { severity: 'error', title: 'Output-only pin read' },
   'i2c-address-clash': { severity: 'error', title: 'I2C address clash' },
+  'usb-to-pin': { severity: 'error', title: 'USB wired to pins' },
+  'usb-fit': { severity: 'error', title: 'USB plug does not fit' },
+  'usb-role': { severity: 'error', title: 'USB roles clash' },
   'supply-too-low': { severity: 'warning', title: 'Voltage too low' },
   'pin-strapping': { severity: 'warning', title: 'Strapping pin pulled' },
   'pin-no-pullup': { severity: 'warning', title: 'Input has no pull-up' },
@@ -119,10 +124,15 @@ export const RULES: Record<RuleId, { severity: Severity; title: string }> = {
   'wire-color-supply': { severity: 'warning', title: 'Supply wire not red' },
   'wire-color-signal': { severity: 'warning', title: 'Signal wire in a power color' },
   'label-alone': { severity: 'warning', title: 'Label connects nothing' },
+  'usb-power': { severity: 'warning', title: 'USB port overloaded' },
+  'usb-hub-bus-power': { severity: 'warning', title: 'Bus-powered hub overloaded' },
+  'usb-backfeed': { severity: 'warning', title: 'Supply on USB VBUS' },
   // Its severity is the drift's own (an error when the part must be placed again); listed by the editor only.
   'module-drift': { severity: 'warning', title: 'Part data out of date' },
   'battery-bank': { severity: 'info', title: 'Parallel battery bank' },
   'i2c-pullups-unknown': { severity: 'info', title: 'Check the I2C pull-ups' },
+  'usb-power-unknown': { severity: 'info', title: 'USB current not known' },
+  'usb-backfeed-diode': { severity: 'info', title: 'Supply on USB VBUS, behind a diode' },
 }
 const RULE_ORDER = Object.keys(RULES) as RuleId[]
 
@@ -663,18 +673,43 @@ export function checkDiagram(d: Diagram): Finding[] {
 
   const terminal = terminalsOf(d, partByUid, mains)
 
+  const usbAny = d.parts.some((p) => moduleOf(d, p.module)?.pins.some((q) => !isSpacer(q) && q.type === 'usb'))
   // Wires per net, and which parts have a wire that conducts or a plugged leg.
   const netWires: string[][] = nl.nets.map(() => [])
   const connected = new Set<string>(plugs.map((pl) => pl.part))
   for (const c of d.connections) {
     if (brokenSet.has(c.uid)) continue
-    connected.add(c.from.part)
-    connected.add(c.to.part)
+    // A USB link brings power and ground through the cable: it does not make a part wired.
+    if (!(usbAny && usbLink(d, c))) {
+      connected.add(c.from.part)
+      connected.add(c.to.part)
+    }
     const i = nl.netOf.get(nodeKey(c.from.part, c.from.pin))
     if (i !== undefined) netWires[i].push(c.uid)
   }
 
-  const netTerms = nl.nets.map((keys) => (keys.some(hazardous) ? [] : keys.map(terminal).filter((t): t is Terminal => t !== null)))
+  // A net with a USB port is judged by the USB rules alone (usb.ts), like a mains net by the mains rules.
+  const isUsb = (t: Terminal | null) => t?.type === 'usb'
+  const netTerms = nl.nets.map((keys) => {
+    if (keys.some(hazardous)) return []
+    const terms = keys.map(terminal)
+    return terms.some(isUsb) ? [] : terms.filter((t): t is Terminal => t !== null)
+  })
+  // A USB cable or plug-in joins the two boards' grounds (never VBUS to a 5V pin: that may sit behind
+  // a diode or a switch). Each board's first ground pin stands for its ground; a link on a net with
+  // other pins (usb-to-pin) joins nothing.
+  const usbGrounds: [string, string][] = []
+  const usbGrounded = new Set<string>()
+  if (usbAny)
+    for (const c of d.connections) {
+      const l = brokenSet.has(c.uid) ? null : usbLink(d, c)
+      const i = l ? nl.netOf.get(l.from.key) : undefined
+      if (!l || i === undefined || nl.nets[i].some((k) => terminal(k)?.type !== 'usb')) continue
+      const [ga, gb] = [l.from, l.to].map((p) => moduleInfo(p.module).grounds[0])
+      if (!ga || !gb || l.from.part === l.to.part) continue
+      usbGrounds.push([nodeKey(l.from.part.uid, ga), nodeKey(l.to.part.uid, gb)])
+      usbGrounded.add(l.from.part.uid).add(l.to.part.uid)
+    }
   /** Supplies (by source id) already reported as wired to their own ground, and their parts. */
   const shorted = new Set<string>()
   const shortedParts = new Set<string>()
@@ -714,9 +749,10 @@ export function checkDiagram(d: Diagram): Finding[] {
         parts: drivers.map((t) => t.part.uid), pins: drivers.map(termPin), wires, causes: drivers.map((t) => t.key) })
   })
 
-  const { reversed, returnGroup } = checkPotentials({ d, nl, netTerms, netWires, terminal, plugs, shorted, add, skip: hazardous })
+  const { reversed, returnGroup } = checkPotentials({ d, nl, netTerms, netWires, terminal, plugs, shorted, add, skip: hazardous, usbGrounds })
 
   // Per part: power and ground reach it from another part.
+  const { fed: usbFed, hosting: usbHosting, hosted: usbHosted } = usbAny ? usbPower(d) : { fed: new Set<string>(), hosting: new Set<string>(), hosted: [] }
   const others = (t: Terminal) => {
     const i = nl.netOf.get(t.key)
     return i === undefined ? [] : netTerms[i].filter((o) => o.part !== t.part)
@@ -737,7 +773,8 @@ export function checkDiagram(d: Diagram): Finding[] {
     return [...seen.values()].sort((a, b) => natural.compare(termName(a), termName(b)))
   }
   for (const p of d.parts) {
-    if (!connected.has(p.uid)) continue
+    // A USB link alone makes a part wired only when it hosts a device: then it must be powered.
+    if (!connected.has(p.uid) && !usbHosting.has(p.uid)) continue
     const m = moduleOf(d, p.module)
     if (!m) continue
     // Only the power and ground pins matter here (a breadboard's many strips are skipped).
@@ -747,7 +784,9 @@ export function checkDiagram(d: Diagram): Finding[] {
     const ins = terms.filter((t) => t.type === 'power_in')
     // A part with a pin on USB power is its own supply.
     // A part with its power reversed is reported as such, not as unpowered.
-    if (ins.length && !moduleInfo(m).external.size && !reversed.has(p.uid)) {
+    // A part on a USB link takes its power through the port (a dongle, a charger's USB input); a
+    // board whose dual port hosts a device is not on USB power from it.
+    if (ins.length && (!moduleInfo(m).external.size || usbHosting.has(p.uid)) && !reversed.has(p.uid) && !usbFed.has(p.uid)) {
       const fed =
         ins.some((t) => others(t).some(mayFeed)) ||
         terms.some((t) => t.type === 'power_out' && others(t).some(isSource))
@@ -775,7 +814,7 @@ export function checkDiagram(d: Diagram): Finding[] {
     }
     const grounds = terms.filter((t) => t.type === 'ground')
     // A part already reported as shorted gets no second finding about its ground.
-    if (grounds.length && !shortedParts.has(p.uid) && !grounds.some((t) => others(t).some((o) => !o.bare))) {
+    if (grounds.length && !shortedParts.has(p.uid) && !usbGrounded.has(p.uid) && !grounds.some((t) => others(t).some((o) => !o.bare))) {
       const wired = [...new Set(grounds.filter((t) => others(t).length).map((t) => t.label))]
       const ownOnly = [...new Set(grounds.filter((t) => {
         const i = nl.netOf.get(t.key)
@@ -792,13 +831,34 @@ export function checkDiagram(d: Diagram): Finding[] {
     }
   }
 
+  // VBUS back-feed: a supply on the pin a port's VBUS feeds while a host powers that port.
+  for (const { port, host } of usbHosted) {
+    if (!port.usb.vbus) continue
+    const t = terminal(nodeKey(port.part.uid, port.usb.vbus))
+    const feeders = t ? others(t).filter(isSource).sort((a, b) => natural.compare(termName(a), termName(b))) : []
+    if (!t || !feeders.length) continue
+    const des = port.part.designator
+    const base = { subject: des, target: termName(t), parts: [port.part.uid, host.part.uid, ...feeders.map((o) => o.part.uid)], pins: [termPin(t), { part: port.part.uid, pin: port.name }, ...feeders.map(termPin)], wires: [], causes: [t.key, port.key] }
+    if (t.info.external.get(t.name)?.diode)
+      add({ rule: 'usb-backfeed-diode', ...base,
+        message: `${termName(t)} is wired to ${andList(feeders.map(termName))} while ${host.title} powers ${port.title}, but ${des} has a diode between USB VBUS and ${t.label}, so the supply cannot drive current back into the host. Keep both if you like: the higher one powers the board.` })
+    else {
+      add({ rule: 'usb-backfeed', ...base,
+        message: `${termName(t)} is wired to ${andList(feeders.map(termName))}, and it is also ${port.title}'s VBUS while ${host.title} powers that port: the supply drives current back into the host's USB port, or the host into the supply. Power ${des} from one of them: unplug the cable or remove the supply.` })
+      // It replaces the general "also gets 5 V from USB" note on that pin.
+      const dup = findings.findIndex((x) => x.rule === 'supplies-parallel' && x.target === termName(t))
+      if (dup >= 0) findings.splice(dup, 1)
+    }
+  }
+
   // A signal between two parts that are each grounded, but not to each other: no reference.
   const groundedCache = new Map<string, Terminal[]>()
   const groundedPins = (p: PartInstance) => {
     let list = groundedCache.get(p.uid)
     if (!list) {
       const m = moduleOf(d, p.module)
-      list = m ? moduleInfo(m).grounds.map((g) => terminal(nodeKey(p.uid, g))!).filter((t) => others(t).some((o) => !o.bare)) : []
+      // A ground pin is grounded when it leads to another part, or stands for the board's ground on a USB link.
+      list = m ? moduleInfo(m).grounds.map((g) => terminal(nodeKey(p.uid, g))!).filter((t, i) => others(t).some((o) => !o.bare) || (i === 0 && usbGrounded.has(p.uid))) : []
       groundedCache.set(p.uid, list)
     }
     return list
@@ -926,6 +986,8 @@ export function checkDiagram(d: Diagram): Finding[] {
   }
 
   for (const f of mains?.findings ?? []) add(f)
+
+  if (usbAny) for (const f of usbFindings(d, nl, netWires)) add(f)
 
   // Pin capabilities (input only, output only, flash, strapping, no pull-up) and I2C buses
   // (pull-ups, addresses), from the caps and I2C data the modules declare. Mains nets never enter.
@@ -1080,6 +1142,8 @@ interface PotentialInput {
   shorted: Set<string>
   /** Node keys on hazardous mains nets: no source edge, switch or common return with an end there enters the solver (spec 3). */
   skip: (key: string) => boolean
+  /** Ground pins a USB link joins, one pair per link: 0 V apart. */
+  usbGrounds: [string, string][]
   add: (f: { rule: RuleId; subject: string; target: string; message: string; parts: string[]; pins: Endpoint[]; wires: string[]; causes: string[] }) => void
 }
 
@@ -1091,7 +1155,7 @@ interface PotentialInput {
  * supplies fighting; a loop that agrees is supplies in parallel. A load gets the potential of its
  * power input over that of its own ground, so a series stack adds up.
  */
-function checkPotentials({ d, nl, netTerms, netWires, terminal, plugs, shorted, skip, add }: PotentialInput): { reversed: Set<string>; returnGroup: (key: string) => string } {
+function checkPotentials({ d, nl, netTerms, netWires, terminal, plugs, shorted, skip, add, usbGrounds }: PotentialInput): { reversed: Set<string>; returnGroup: (key: string) => string } {
   const reversed = new Set<string>()
   const netOfKey = (key: string) => {
     const i = nl.netOf.get(key)
@@ -1104,6 +1168,7 @@ function checkPotentials({ d, nl, netTerms, netWires, terminal, plugs, shorted, 
   const edges: Edge[] = []
   const diodes: Edge[] = []
   const unknownOn = new Map<string, Source[]>()
+  for (const [a, b] of usbGrounds) edges.push({ from: netOfKey(a), to: netOfKey(b), v: 0, fromKey: a, toKey: b })
   const outOn = new Map<string, Source[]>()
   /** Cells by bank (Ruling V1): same module and voltage, every + on one net and every - on another. */
   const bankCells = new Map<string, Source[]>()

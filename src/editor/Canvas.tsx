@@ -10,7 +10,8 @@ import { LegDots, TakenHoles } from '../render/Boards.tsx'
 import { WireLabel } from '../render/WireLabel.tsx'
 import { CableLayer } from '../render/CableEnd.tsx'
 import { FrameMark, NoteMark } from '../render/Annotations.tsx'
-import { BLOCKED_STROKE, Bolts, HazardOutline, Stripe, boltInsets } from '../render/Mains.tsx'
+import { BLOCKED_STROKE, Bolts, HazardOutline, PluggedLink, Stripe, boltInsets } from '../render/Mains.tsx'
+import { isPluggedIn } from '../format/usb.ts'
 import { type LabelLook, type WireLook, drawnColor, holdLabelLooks, holdLooks, newWireColor, startColor } from '../format/mainsLook.ts'
 import { flagRect, labelName, labelsOf } from '../format/netLabels.ts'
 import { cellGate } from './hoverCell.ts'
@@ -711,7 +712,7 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
     }
     if (drag.kind === 'reconnect') {
       const to = endUnder(e, taken)
-      const next = to && reconnectWire(store.getState().diagram, drag.uid, drag.end, to)
+      const next = to && reconnectWire(store.getState().diagram, drag.uid, drag.end, to, store.getState().wireStyle)
       if (next) {
         store.commit(next)
         store.select({ parts: [], wires: [drag.uid] })
@@ -856,10 +857,14 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
             return (
               <g key={conn.uid} data-wire={conn.uid} opacity={dimmed ? 0.3 : undefined}>
                 {selected && <path d={conn.ends ? polyline(points) : d} stroke="var(--focus)" strokeOpacity={0.35} strokeWidth={w + 10} />}
-                {look?.hazard && <HazardOutline d={d} width={w} />}
-                <path d={d} stroke={INK} strokeWidth={w + 2.2} {...dash} />
-                <path className="wire-color" d={d} stroke={wireColor(name)} strokeWidth={w} {...dash} />
-                {stripe && <Stripe d={d} width={w} color={stripe} blocked={blocked} />}
+                {isPluggedIn(diagram, conn) ? <PluggedLink d={d} casing={INK} /> : (
+                  <>
+                    {look?.hazard && <HazardOutline d={d} width={w} />}
+                    <path d={d} stroke={INK} strokeWidth={w + 2.2} {...dash} />
+                    <path className="wire-color" d={d} stroke={wireColor(name)} strokeWidth={w} {...dash} />
+                    {stripe && <Stripe d={d} width={w} color={stripe} blocked={blocked} />}
+                  </>
+                )}
                 <path d={conn.ends ? polyline(points) : d} className="wire-hit" strokeWidth={Math.max(12, w + 8)} />
               </g>
             )
