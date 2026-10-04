@@ -53,6 +53,8 @@ export interface FileKind {
 }
 export const SHEET_FILE: FileKind = { suffix: EXPORT_SUFFIX, ext: EXPORT_SUFFIX, retryExt: '.json', loose: '.json', description: 'Circuitoon diagram', mime: 'application/json' }
 export const BOM_FILE: FileKind = { suffix: '-bom.csv', ext: '.csv', loose: '.csv', description: 'Bill of materials (CSV)', mime: 'text/csv' }
+/** A custom part (a module), for My parts, a netlist's `modules` or a library submission. */
+export const PART_FILE: FileKind = { suffix: '.circuitoon-part.json', ext: '.circuitoon-part.json', retryExt: '.json', loose: '.json', description: 'Circuitoon part', mime: 'application/json' }
 /** The longest file name base Export writes (the whole name stays well under every OS limit). */
 export const BASE_NAME_MAX = 120
 // Refused in file names on Windows or macOS, plus every control character.

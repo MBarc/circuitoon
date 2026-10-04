@@ -14,7 +14,7 @@ import { canUpdateParts, checkFailed, highlightOf, isProblem, severityCounts, up
 import { type Finding, RULES, brokenConnection } from '../format/checks.ts'
 import { SeverityMark } from './SeverityMark.tsx'
 import { CAPACITOR_VALUES, RESISTOR_VALUES, editableParams, formatValue, paramValue, parseValueIn, pickUnitExp, scaledNumber, unitChoices } from '../format/values.ts'
-import { isNetLabel, moduleSettings, partSetting } from '../format/module.ts'
+import { isCustom, isNetLabel, moduleSettings, partSetting } from '../format/module.ts'
 import { labelMates, labelName } from '../format/netLabels.ts'
 import { MAINS_NOTICE, hasMains } from '../format/mains.ts'
 
@@ -493,7 +493,7 @@ function HandShapedWarning({ diagram, wire }: { diagram: Diagram; wire: Connecti
   return blocked ? <p className="hint warn" role="status">This wire passes through a part.</p> : null
 }
 
-export function Inspector({ store }: { store: EditorStore }) {
+export function Inspector({ store, onEditPart }: { store: EditorStore; onEditPart?: (moduleId: string) => void }) {
   const { diagram, selection, wireStyle } = useEditorState(store)
   const findings = useProblems(store)
   // What the last Update parts to current library changed, shown while the sheet is the one it made (an undo hides it).
@@ -646,7 +646,13 @@ export function Inspector({ store }: { store: EditorStore }) {
     const m = moduleOf(diagram, part.module)
     return (
       <aside className="inspector" aria-label="Properties">
-        <h2 id="selection-title" tabIndex={-1}>{m?.name ?? part.module}</h2>
+        <h2 id="selection-title" tabIndex={-1}>{m?.name ?? part.module}{isCustom(m) && <span className="custom-badge">custom</span>}</h2>
+        {isCustom(m) && (
+          <div className="custom-note">
+            <p className="hint">A part you or someone else made. Its pins are as they were entered, and nobody has checked them against a datasheet.</p>
+            {onEditPart && <button type="button" className="tool small" onClick={() => onEditPart(part.module)}>Edit part</button>}
+          </div>
+        )}
         <CommitInput
           id="part-designator"
           label="Name on sheet"

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useSyncExternalStore } from 'react'
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import type { Diagram } from '../format/diagram.ts'
 import { EditorStore } from './store.ts'
 import { Canvas, type CanvasApi } from './Canvas.tsx'
@@ -9,7 +9,13 @@ import { deleteSelection, EMPTY_SELECTION, rotateParts } from './ops.ts'
 import { nudgeSelection } from './align.ts'
 import { GRID } from './snap.ts'
 import { clipText, clipToPaste, copySelection, cutMemo, cutSelection, pasteClip, planPaste, type PasteMemo } from './clipboard.ts'
+import { PartMaker } from './PartMaker.tsx'
+import { draftFromPart } from './partDraft.ts'
+import { type MyPart, importPart, myParts, partFileText, replaceSheetModule } from './myParts.ts'
+import { PART_FILE, cleanBaseName, downloadText, saveWithPicker, type SavePicker } from './files.ts'
+import { ExportDialog } from './ExportDialog.tsx'
 import './editor.css'
+import './partMaker.css'
 
 /** Arrow keys as a one-grid-step move. */
 const ARROWS: Record<string, [number, number]> = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }
@@ -154,6 +160,103 @@ function useUnloadGuard(store: EditorStore) {
   }, [dirty])
 }
 
+/**
+ * The part maker and My parts for one editor: the New part / Edit dialog, saving (a new part is
+ * placed on the sheet; an edited one replaces the sheet's copy), exporting a part file through the
+ * Save As dialog or the editor's own naming dialog, importing one, and a short notice of what happened.
+ */
+function usePartMaker(store: EditorStore, canvas: { current: CanvasApi | null }) {
+  const [open, setOpen] = useState<{ editing: MyPart | null; key: number } | null>(null)
+  const [naming, setNaming] = useState<{ base: string; text: string } | null>(null)
+  const [notice, setNotice] = useState<{ text: string; key: number } | null>(null)
+  const say = (text: string) => setNotice({ text, key: Date.now() })
+  useEffect(() => {
+    if (!notice) return
+    const t = setTimeout(() => setNotice(null), 7000)
+    return () => clearTimeout(t)
+  }, [notice])
+
+  async function exportPart(p: MyPart) {
+    const base = cleanBaseName(p.module.name, PART_FILE)
+    const text = partFileText(p)
+    const picker = (window as { showSaveFilePicker?: SavePicker }).showSaveFilePicker
+    if (picker) {
+      const r = await saveWithPicker(picker.bind(window), base, text, PART_FILE)
+      if (r.status === 'saved') say(`Saved ${r.base}${PART_FILE.suffix}.`)
+      if (r.status === 'failed') say(r.message)
+      if (r.status !== 'unavailable') return
+    }
+    setNaming({ base, text })
+  }
+
+  const edit = (p: MyPart) => setOpen({ editing: p, key: Date.now() })
+  const handlers = {
+    onNew: () => setOpen({ editing: null, key: Date.now() }),
+    onEdit: edit,
+    onExport: (p: MyPart) => void exportPart(p),
+    onImport: (file: File) => {
+      void file.text().then((text) => {
+        const r = importPart(text, myParts.getSnapshot(), file.name)
+        if (!r.ok) return say(r.message)
+        myParts.save(r.part)
+        say(r.note ?? `Imported ${r.part.module.name} into My parts.`)
+      }, () => say(`${file.name} could not be read.`))
+    },
+  }
+  /** Edit a part from the Inspector: the My parts copy when there is one, else the sheet's copy (saved to My parts on Save). */
+  const editModule = (id: string) => {
+    const mine = myParts.get(id)
+    const m = mine?.module ?? store.getState().diagram.modules[id]
+    if (m) edit(mine ?? { module: m, saved: Date.now() })
+  }
+
+  const ui = (
+    <>
+      {open && (
+        <PartMaker
+          key={open.key}
+          editing={open.editing}
+          initial={open.editing ? draftFromPart(open.editing) : undefined}
+          taken={new Set(myParts.getSnapshot().map((p) => p.module.id))}
+          onCancel={() => setOpen(null)}
+          onExport={(p) => void exportPart(p)}
+          onSave={(p, wasId) => {
+            setOpen(null)
+            if (wasId) {
+              myParts.replace(wasId, p)
+              const d = store.getState().diagram
+              const next = replaceSheetModule(d, p.module)
+              if (next !== d) {
+                store.commit(next)
+                const lost = d.connections.length - next.connections.length
+                say(`Saved ${p.module.name}. The sheet uses the new version${lost ? `; ${lost} wire${lost === 1 ? '' : 's'} to removed pins ${lost === 1 ? 'was' : 'were'} taken out` : ''}.`)
+              } else say(`Saved ${p.module.name}.`)
+            } else {
+              myParts.save(p)
+              canvas.current?.addModuleAtCenter(p.module)
+              say(`Saved ${p.module.name} to My parts and placed it.`)
+            }
+          }}
+        />
+      )}
+      {naming && (
+        <ExportDialog
+          title="Export part"
+          kind={PART_FILE}
+          initial={naming.base}
+          onCancel={() => setNaming(null)}
+          onExport={(base) => {
+            downloadText(base + PART_FILE.suffix, naming.text)
+            setNaming(null)
+          }}
+        />
+      )}
+      {notice && <p key={notice.key} className="editor-notice" role="status">{notice.text}</p>}
+    </>
+  )
+  return { handlers, editModule, ui }
+}
+
 export function Editor({ initial, warnings, onClose, onDirty }: { initial: Diagram; warnings?: string[]; onClose: () => void; onDirty?: (dirty: boolean) => void }) {
   const store = useMemo(() => new EditorStore(initial), [initial])
   const canvasApi = useRef<CanvasApi | null>(null)
@@ -167,12 +270,14 @@ export function Editor({ initial, warnings, onClose, onDirty }: { initial: Diagr
   useEffect(() => {
     onDirty?.(dirty)
   }, [dirty, onDirty])
+  const parts = usePartMaker(store, canvasApi)
   return (
     <div className="editor">
       <Toolbar store={store} warnings={warnings} onClose={onClose} />
-      <LibraryPanel onAdd={(id) => canvasApi.current?.addAtCenter(id)} />
+      <LibraryPanel onAdd={(id) => canvasApi.current?.addAtCenter(id)} parts={parts.handlers} />
       <Canvas store={store} onReady={(api) => (canvasApi.current = api)} />
-      <Inspector store={store} />
+      <Inspector store={store} onEditPart={parts.editModule} />
+      {parts.ui}
     </div>
   )
 }
