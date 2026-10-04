@@ -111,7 +111,7 @@ export function billOfMaterials(d: Diagram, opts: BomOptions = {}): Bom {
     const key = JSON.stringify([p.module, text])
     let row = parts.get(key)
     if (!row) {
-      row = { module: p.module, name: m?.name ?? p.module, value: text, category: m?.category ?? null, source: (m?.source ?? '').split(/\s+/).filter(Boolean), count: 0, added: 0, designators: [], refs: '', custom: !!opts.custom?.has(p.module) }
+      row = { module: p.module, name: m?.name ?? p.module, value: text, category: m?.category ?? null, source: (m?.source ?? '').split(/\s+/).filter(Boolean), count: 0, added: 0, designators: [], refs: '', custom: !!opts.custom?.has(p.module) || m?.custom === true }
       parts.set(key, row)
     }
     row.count++

@@ -10,6 +10,7 @@ import { type Diagram, type PartInstance, DIAGRAM_FORMAT, validateDiagram } from
 import type { ModuleDef } from './module.ts'
 import { genericFootprint, intentSource, kicadNetName, kicadRef, mappingOf, quote, siValue, stableUuid, toKicadNetlist, writeKicad } from './kicad.ts'
 import { load } from './builtinModules.testing.ts'
+import { moduleFromSpec } from './partMaker.ts'
 import { checkKicadNetlist, parseSexpr } from './sexpr.testing.ts'
 import { parseNetlist } from '../agent/netlist.ts'
 import { libraryLookup } from '../agent/catalog.ts'
@@ -124,6 +125,24 @@ describe('KiCad netlist text', () => {
     expect(n.nets[0].nodes.map((x) => `${x.ref}.${x.pin}.${x.pinfunction}`)).toEqual(['R1.1.1', 'S_1.2.OUT'])
     expect(x.unmapped).toEqual([{ ref: 'S_1', module: 'my-sensor' }])
     expect(x.warnings).toEqual(['S_1 (my-sensor): no KiCad footprint is known for this part, so it comes in on a generic PinHeader_1x03_P2.54mm_Vertical with a pad per pin in Circuitoon\'s order. Choose its real footprint in KiCad.'])
+  })
+
+  it('exports a custom part, from the part maker or imported, on the generic header with a warning', () => {
+    const made = moduleFromSpec({ name: 'Bench sensor', pins: { left: [{ name: 'VCC', type: 'power_in', supply: '3V3' }, { name: 'GND', type: 'ground' }, 'SDA', 'SCL'] } })
+    // An imported copy of a library part keeps its kicad field, but a custom part's mapping is unverified.
+    const imported: ModuleDef = { ...load('resistor'), id: 'custom-resistor', custom: true }
+    expect(imported.kicad).toBeDefined()
+    const d = sheet([part('s', 'U1', made.id), part('c', 'R9', imported.id), part('r', 'R1', 'resistor')], [wire('w1', ['s', 'SDA'], ['r', '1']), wire('w2', ['c', '1'], ['r', '2'])], { [made.id]: made, [imported.id]: imported })
+    const x = toKicadNetlist(d, { library: lib })
+    const n = checkKicadNetlist(x.text)
+    expect(n.comps.find((c) => c.ref === 'U1')).toMatchObject({ footprint: 'Connector_PinHeader_2.54mm:PinHeader_1x04_P2.54mm_Vertical', part: made.id })
+    expect(n.comps.find((c) => c.ref === 'R9')).toMatchObject({ footprint: 'Connector_PinHeader_2.54mm:PinHeader_1x02_P2.54mm_Vertical', part: 'custom-resistor' })
+    expect(x.unmapped).toEqual([{ ref: 'R9', module: 'custom-resistor' }, { ref: 'U1', module: made.id }])
+    expect(x.warnings).toEqual([
+      `R9 (custom-resistor): a custom part, unverified, so it comes in on a generic PinHeader_1x02_P2.54mm_Vertical with a pad per pin in Circuitoon's order. Choose its real footprint in KiCad.`,
+      `U1 (${made.id}): a custom part, unverified, so it comes in on a generic PinHeader_1x04_P2.54mm_Vertical with a pad per pin in Circuitoon's order. Choose its real footprint in KiCad.`,
+    ])
+    expect(n.nets.map((net) => net.nodes.map((x) => `${x.ref}.${x.pin}.${x.pinfunction}`))).toEqual([['R1.1.1', 'U1.3.SDA'], ['R1.2.2', 'R9.1.1']])
   })
 
   it('warns about a placeholder footprint and puts joined pins on one pad', () => {

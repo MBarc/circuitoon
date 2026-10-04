@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "circuitoon-part-spec/1: the input of circuitoon module new",
+  "description": "A custom part: its name, category, body and pins per side in physical order. Left and right pins run top to bottom, top and bottom pins left to right. A pin is a name, null for a physical gap, or an object.",
+  "type": "object",
+  "required": ["name", "pins"],
+  "additionalProperties": false,
+  "properties": {
+    "format": { "const": "circuitoon-part-spec/1" },
+    "name": { "type": "string", "description": "What a maker would call it, at most 120 characters." },
+    "id": { "type": "string", "maxLength": 200, "description": "Lowercase kebab-case. The module id is this exactly when it starts with \"custom-\", else \"custom-\" plus this; left out, \"custom-\" plus the name made kebab-case." },
+    "category": { "type": "string", "description": "A Parts panel group such as Sensors or Displays; default Custom." },
+    "source": { "type": ["string", "array"], "items": { "type": "string" }, "description": "The maker's datasheet and a second source that agrees: URLs, one string separated by spaces or a list." },
+    "version": { "type": "integer" },
+    "style": { "enum": ["board", "chip"], "description": "board (default): a header strip and pin names inside the body. chip: a dark body with names past the pin tips." },
+    "body": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "w": { "type": "integer", "description": "Width in grid units (10 px), 2 to 400. Left out, it fits the pins and labels." },
+        "h": { "type": "integer", "description": "Height in grid units (10 px), 2 to 400." },
+        "color": { "type": "string", "description": "Body colour, #RRGGBB." }
+      }
+    },
+    "pins": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "left": { "$ref": "#/$defs/side" },
+        "right": { "$ref": "#/$defs/side" },
+        "top": { "$ref": "#/$defs/side" },
+        "bottom": { "$ref": "#/$defs/side" }
+      }
+    },
+    "internal": { "type": "array", "items": { "type": "array", "items": { "type": "string" } }, "description": "Pins joined inside the part, for example [[\"GND\", \"GND 2\"]]." }
+  },
+  "$defs": {
+    "side": {
+      "type": "array",
+      "maxItems": 398,
+      "description": "At most 398 pins and gaps a side, so the body stays within 4000 px.",
+      "items": {
+        "type": ["string", "null", "object"],
+        "additionalProperties": false,
+        "properties": {
+          "name": { "type": "string", "maxLength": 60, "description": "The silkscreen text. A repeated name is numbered: a second GND becomes \"GND 2\" with the label \"GND\"." },
+          "label": { "type": "string", "maxLength": 60 },
+          "type": { "enum": ["power_in", "power_out", "ground", "input", "output", "io", "passive", "nc"] },
+          "supply": { "type": "string", "description": "The rails the pin sees or takes: \"3V3\", \"5V\", \"3V3/5V\"." },
+          "caps": { "type": "object", "description": "Pin capabilities from the chip's datasheet: inputOnly, outputOnly, flash, noPullup, strapping, downloadOnly, note." },
+          "spacer": { "const": true }
+        }
+      }
+    }
+  }
+}

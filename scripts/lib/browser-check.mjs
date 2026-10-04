@@ -82,12 +82,20 @@ export const noSavePicker = (target) =>
     delete window.showSaveFilePicker
   })
 
+/** A File menu entry of the editor toolbar: `.click()` opens the menu, then chooses the item. */
+export const fileItem = (page, name) => ({
+  async click() {
+    await page.getByRole('button', { name: 'File', exact: true }).click()
+    await page.getByRole('menuitem', { name, exact: true }).click()
+  },
+})
+
 /**
  * Exports through the toolbar's Export JSON and the naming dialog (see `noSavePicker`), typing
  * `name` as the file name when given, and returns the download.
  */
 export async function exportDownload(page, name) {
-  await page.getByRole('button', { name: 'Export JSON' }).click()
+  await fileItem(page, 'Export JSON').click()
   const dialog = page.getByRole('dialog', { name: 'Export JSON' })
   if (name !== undefined) await dialog.getByLabel('File name').fill(name)
   const [download] = await Promise.all([page.waitForEvent('download'), dialog.getByRole('button', { name: 'Export', exact: true }).click()])

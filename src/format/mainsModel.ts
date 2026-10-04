@@ -2,7 +2,7 @@
 // 1 and 2): AC sources, how mains terminals conduct, isolation domains, ratings, contact groups,
 // earth, protective devices, plug profiles and sockets. Validation lives here (validateModule calls
 // it) and so does `mainsOf`, the parsed view every mains check reads. Pure.
-import { GRID, type ModuleDef, isNum, isObj } from './module.ts'
+import { GRID, type ModuleDef, isNum, isObj, show } from './module.ts'
 
 export const CONDUCTORS = ['L', 'N', 'PE'] as const
 export type Conductor = (typeof CONDUCTORS)[number]
@@ -124,7 +124,7 @@ export function validateMains(raw: Record<string, unknown>, names: Set<string>, 
   if (!isObj(el)) return
   const nodes = new Set(Array.isArray(el.internalNodes) ? el.internalNodes.filter(isStr) : [])
   const term = (v: unknown, at: string) => {
-    if (!isStr(v) || !names.has(v)) errors.push(`${at}: no pin, hole group or internal node named "${String(v)}"`)
+    if (!isStr(v) || !names.has(v)) errors.push(`${at}: no pin, hole group or internal node named "${show(v)}"`)
   }
   const termList = (v: unknown, at: string) => {
     if (!Array.isArray(v) || v.length === 0) return void errors.push(`${at}: must be a list of 1 or more terminal names`)
@@ -161,7 +161,7 @@ export function validateMains(raw: Record<string, unknown>, names: Set<string>, 
         if (!isStr(n) || !names.has(n)) return
         const prev = conductorOf.get(n)
         if (prev) errors.push(`${at}.${key}[${i}]: "${n}" is already ${prev.role} of source "${prev.src}" (a terminal carries exactly one conductor)`)
-        else conductorOf.set(n, { role, src: String(s.id), at: `${at}.${key}[${i}]` })
+        else conductorOf.set(n, { role, src: show(s.id), at: `${at}.${key}[${i}]` })
       })
     }
   })
@@ -197,7 +197,7 @@ export function validateMains(raw: Record<string, unknown>, names: Set<string>, 
       for (const n of x.pins) {
         if (!isStr(n)) continue
         if (inDomain.has(n)) errors.push(`${at}.pins: "${n}" is already in domain "${inDomain.get(n)}"`)
-        else inDomain.set(n, String(x.name))
+        else inDomain.set(n, show(x.name))
       }
   })
   if (el.isolation !== undefined && !oneOf(ISOLATIONS, el.isolation)) errors.push(`electrical.isolation: must be one of ${words(ISOLATIONS)}`)
@@ -358,10 +358,10 @@ export function validateMains(raw: Record<string, unknown>, names: Set<string>, 
       s.contacts.forEach((c, j) => {
         const cat = `${at}.contacts[${j}]`
         if (!isObj(c)) return void errors.push(`${cat}: must be an object`)
-        if (!isStr(c.group) || !holes.includes(c.group)) errors.push(`${cat}.group: no hole group named "${String(c.group)}"`)
+        if (!isStr(c.group) || !holes.includes(c.group)) errors.push(`${cat}.group: no hole group named "${show(c.group)}"`)
         else if (owner.has(c.group)) errors.push(`${cat}.group: "${c.group}" already belongs to socket "${owner.get(c.group)}"`)
         else {
-          owner.set(c.group, String(s.id))
+          owner.set(c.group, show(s.id))
           if (oneOf(CONDUCTORS, c.role)) socketContacts.push({ group: c.group, role: c.role, at: `${cat}.group` })
         }
         if (!oneOf(CONDUCTORS, c.role)) errors.push(`${cat}.role: must be "L", "N" or "PE"`)
@@ -443,21 +443,21 @@ export function mainsOf(m: ModuleDef): MainsInfo {
   const list = (k: string) => (Array.isArray(el[k]) ? (el[k] as unknown[]).filter(isObj) : [])
   const strs = (v: unknown) => (Array.isArray(v) ? v.filter(isStr) : [])
   const internalNodes = strs(el.internalNodes)
-  const acSources = list('acSources').map((s) => ({ id: String(s.id), live: strs(s.live), neutral: strs(s.neutral), earth: strs(s.earth) }))
+  const acSources = list('acSources').map((s) => ({ id: show(s.id), live: strs(s.live), neutral: strs(s.neutral), earth: strs(s.earth) }))
   const ac = isObj(el.ac) ? el.ac : null
   const conducts = list('conducts').map((c) => ({ pins: strs(c.pins) as [string, string], kind: c.kind as 'load' | 'leakage', range: Array.isArray(c.range) ? (c.range as [number, number]) : null }))
-  const protective = list('protective').map((e) => ({ from: String(e.from), to: String(e.to), kind: 'fuse' as const, rating: isNum(e.rating) ? e.rating : null }))
-  const domains = list('domains').map((x) => ({ name: String(x.name), pins: strs(x.pins), kind: x.kind as DomainKind }))
+  const protective = list('protective').map((e) => ({ from: show(e.from), to: show(e.to), kind: 'fuse' as const, rating: isNum(e.rating) ? e.rating : null }))
+  const domains = list('domains').map((x) => ({ name: show(x.name), pins: strs(x.pins), kind: x.kind as DomainKind }))
   const domainOf = new Map<string, Domain>()
   for (const x of domains) for (const p of x.pins) domainOf.set(p, x)
-  const acInput = isObj(el.acInput) ? { a: String(el.acInput.a), b: String(el.acInput.b), range: el.acInput.range as [number, number] } : null
+  const acInput = isObj(el.acInput) ? { a: show(el.acInput.a), b: show(el.acInput.b), range: el.acInput.range as [number, number] } : null
   const ratings = list('ratings').map((r) => ({
     pins: strs(r.pins), kind: r.kind as Rating['kind'], service: r.service as Rating['service'], volts: Number(r.volts),
     amps: isNum(r.amps) ? r.amps : null, provenance: r.provenance as Rating['provenance'], conditions: isStr(r.conditions) ? r.conditions : null,
   }))
   const contacts = list('contacts').map((c) => ({
-    id: String(c.id), kind: c.kind as ContactKind,
-    poles: (Array.isArray(c.poles) ? c.poles.filter(isObj) : []).map((p) => ({ com: String(p.com), no: isStr(p.no) ? p.no : null, nc: isStr(p.nc) ? p.nc : null })),
+    id: show(c.id), kind: c.kind as ContactKind,
+    poles: (Array.isArray(c.poles) ? c.poles.filter(isObj) : []).map((p) => ({ com: show(p.com), no: isStr(p.no) ? p.no : null, nc: isStr(p.nc) ? p.nc : null })),
   }))
   const contactTerminals = new Set(contacts.flatMap((c) => c.poles.flatMap((p) => [p.com, p.no, p.nc].filter(isStr))))
   const plugRaw = isObj(el.plug) ? el.plug : null
@@ -465,16 +465,16 @@ export function mainsOf(m: ModuleDef): MainsInfo {
     ? {
         family: plugRaw.family as PlugFamily,
         profiles: (Array.isArray(plugRaw.profiles) ? plugRaw.profiles.filter(isObj) : []).map((pr) => ({
-          id: String(pr.id),
-          contacts: (Array.isArray(pr.contacts) ? pr.contacts.filter(isObj) : []).map((c) => ({ pin: String(c.pin), at: c.at as { x: number; y: number }, mains: c.mains as PlugRole })),
+          id: show(pr.id),
+          contacts: (Array.isArray(pr.contacts) ? pr.contacts.filter(isObj) : []).map((c) => ({ pin: show(c.pin), at: c.at as { x: number; y: number }, mains: c.mains as PlugRole })),
         })),
       }
     : null
   // A mechanical contact's pin is not a mains terminal: it carries no conductor (Ruling 39).
   const conductingPins = plug ? plug.profiles.flatMap((pr) => pr.contacts.filter((c) => c.mains !== 'mechanical').map((c) => c.pin)) : []
   const sockets = list('sockets').map((s) => ({
-    id: String(s.id), family: s.family as SocketFamily,
-    contacts: (Array.isArray(s.contacts) ? s.contacts.filter(isObj) : []).map((c) => ({ group: String(c.group), role: c.role as Conductor })),
+    id: show(s.id), family: s.family as SocketFamily,
+    contacts: (Array.isArray(s.contacts) ? s.contacts.filter(isObj) : []).map((c) => ({ group: show(c.group), role: c.role as Conductor })),
   }))
   const requirement = new Map<string, Requirement>()
   const bonds = new Set<string>()

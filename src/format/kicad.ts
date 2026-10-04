@@ -8,7 +8,7 @@
 // on a generic pin header with a pad per pin, and a warning says so. Pure; the caller passes the
 // library so a sheet saved before the library had a part's mapping still exports with it.
 import { type Diagram, moduleOf } from './diagram.ts'
-import { type HoleGroup, type KicadDef, type ModuleDef, type PinDef, type PinType, isBoard, isNetLabel, isSpacer } from './module.ts'
+import { type HoleGroup, type KicadDef, type ModuleDef, type PinDef, type PinType, isBoard, isCustom, isNetLabel, isSpacer } from './module.ts'
 import { netlist } from './netlist.ts'
 import { plugsOf } from './breadboard.ts'
 import { labelName } from './netLabels.ts'
@@ -112,6 +112,8 @@ const terminalKey = (m: ModuleDef): string =>
  * pins changed.
  */
 export function mappingOf(stored: ModuleDef, library?: ModuleLibrary): { kicad?: KicadDef; stale?: true } {
+  // A custom part (the part maker, or an imported file) is unverified, its mapping too: the generic header.
+  if (isCustom(stored)) return {}
   const lib = library?.(stored.id)
   if (lib?.kicad) {
     if (lib === stored || terminalKey(stored) === terminalKey(lib)) return { kicad: lib.kicad }
@@ -301,7 +303,9 @@ export function writeKicad(src: KicadSource, opts: KicadOptions = {}): KicadExpo
       const fp = genericFootprint(names.length)
       make(ref, fp, pins, 'Circuitoon', m.id, describe(), p.key)
       unmapped.push({ ref, module: m.id })
-      warnings.push(map.stale
+      warnings.push(isCustom(m)
+        ? `${ref} (${m.id}): a custom part, unverified, so it comes in on a generic ${fp.split(':')[1]} with a pad per pin in Circuitoon's order. Choose its real footprint in KiCad.`
+        : map.stale
         ? `${ref} (${m.id}): its pins differ from the library's part, so the library's KiCad footprint does not fit it; it comes in on a generic ${fp.split(':')[1]}. Place the part again, or choose its footprint in KiCad.`
         : `${ref} (${m.id}): no KiCad footprint is known for this part, so it comes in on a generic ${fp.split(':')[1]} with a pad per pin in Circuitoon's order. Choose its real footprint in KiCad.`)
       continue

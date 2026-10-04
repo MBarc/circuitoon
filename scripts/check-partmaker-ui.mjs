@@ -1,0 +1,377 @@
+// Browser check for the part maker and My parts, in the built app. New part opens the dialog; pasted
+// lines become pins on two sides; Alt+Up/Down and dragging reorder them; the live preview is the real
+// renderer and follows every edit. Save and place puts the part on the sheet and in My parts (with
+// its custom badge, in the Inspector too); a wire draws to its pins; My parts survives a reload;
+// Export file saves a .circuitoon-part.json through the editor's naming dialog, and Import part
+// brings it back after a delete. Submit to library copies the part JSON and opens the issue form with
+// the name and maker filled in (window.open and the clipboard are stubbed). Saves the dialog, My parts
+// and a placed custom part in light and Graphite dark (picked with the theme switch) to .superpowers/partmaker-*.png.
+//
+// Usage (after `npm run build`): npm run check:partmaker-ui -- [--out <dir>] [--shots <dir>] [--port 4231]
+import { execFileSync } from 'node:child_process'
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join, resolve } from 'node:path'
+import { checker, flagOf, launchChrome, noSavePicker, startPreview, fileItem } from './lib/browser-check.mjs'
+
+const out = resolve(flagOf('--out', join(tmpdir(), 'circuitoon-partmaker-ui')))
+const shots = resolve(flagOf('--shots', '.superpowers'))
+const port = Number(flagOf('--port', '4231'))
+mkdirSync(out, { recursive: true })
+mkdirSync(shots, { recursive: true })
+
+const NAME = 'Bench humidity sensor (I2C)'
+const MAKER = 'Test Maker HS-1'
+const ID = 'custom-bench-humidity-sensor-i2c'
+
+const { base } = await startPreview(port)
+const { check, done } = checker()
+const browser = await launchChrome()
+const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, colorScheme: 'light', acceptDownloads: true })
+await noSavePicker(context)
+// Stubs: window.open records the URL instead of opening a tab; the clipboard records what is written.
+await context.addInitScript(() => {
+  window.__opened = []
+  window.__copied = []
+  window.open = (url) => {
+    window.__opened.push(String(url))
+    return null
+  }
+  // A slow clipboard (a permission prompt) or a denied one: __clipDelay ms, then __clipDeny throws.
+  window.__clipDelay = 0
+  window.__clipDeny = false
+  Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async (t) => {
+    await new Promise((r) => setTimeout(r, window.__clipDelay))
+    if (window.__clipDeny) throw new DOMException('Write permission denied.', 'NotAllowedError')
+    window.__copied.push(t)
+  } } })
+})
+const page = await context.newPage()
+const errors = []
+page.on('pageerror', (e) => errors.push(e.message))
+page.on('console', (m) => m.type() === 'error' && errors.push(m.text()))
+page.on('dialog', (d) => d.accept())
+
+const dialog = () => page.locator('dialog.pm-dialog')
+const rowNames = (side) => dialog().locator('.pm-rows .pm-row').evaluateAll((rows) => rows.map((r) => r.querySelector('[data-field="name"]')?.value ?? 'gap'))
+const pick = (side) => dialog().getByRole('button', { name: new RegExp(`^${side} \\d+$`) }).click()
+const shot = async (name, target) => {
+  await page.mouse.move(700, 890)
+  await page.waitForTimeout(250)
+  const path = join(shots, `partmaker-${name}.png`)
+  await (target ?? page).screenshot({ path })
+  console.log('saved', path)
+}
+/** Opens a My parts item's action row (it may already be open). */
+const openActions = async (name = NAME) => {
+  const more = page.getByRole('button', { name: `Actions for ${name}` }).first()
+  if ((await more.getAttribute('aria-expanded')) !== 'true') await more.click()
+  return page.getByRole('group', { name: `${name} actions` }).first()
+}
+const newSheet = async () => {
+  await page.goto(`${base}#/editor`, { waitUntil: 'networkidle' })
+  await page.getByRole('button', { name: /New diagram/ }).click()
+  await page.waitForSelector('.library')
+}
+
+// ---- Make a part ----
+await newSheet()
+check(await page.getByRole('button', { name: 'New part' }).isVisible(), 'the Parts panel has a New part button')
+check((await page.locator('.mine-group .hint').first().textContent())?.includes('Parts you make or import land here'), 'My parts starts empty with a hint')
+await page.getByRole('button', { name: 'New part' }).click()
+await dialog().waitFor()
+check(await dialog().getByRole('heading', { name: 'New part' }).isVisible(), 'New part opens the part maker dialog')
+check(await dialog().locator('[data-testid=pm-name]').evaluate((e) => e === document.activeElement), 'the name field has focus')
+await dialog().locator('[data-testid=pm-name]').fill(NAME)
+await dialog().getByLabel(/Maker or model/).fill(MAKER)
+await dialog().getByLabel(/Datasheet and pinout links/).fill('https://example.com/hs1-datasheet.pdf\nhttps://example.com/hs1-pinout')
+await dialog().getByLabel('Category').fill('Sensors')
+const pasteBox = dialog().getByLabel('Pasted pins')
+if (!(await pasteBox.isVisible())) await dialog().locator('.pm-paste summary').click()
+await pasteBox.fill('1 VCC power 3V3/5V\n2 GND ground\n3 SCL in\n4 SDA io\nRight:\nINT out\nnot a pin line here')
+await dialog().getByRole('button', { name: /Add these pins/ }).click()
+check(JSON.stringify(await rowNames()) === '["VCC","GND","SCL","SDA"]', `pasted lines become the left pins, replacing the empty first row (${await rowNames()})`)
+check((await dialog().locator('.pm-paste-errors').textContent())?.includes('Line 7'), 'a line it cannot read is reported by number')
+await pick('Right')
+check(JSON.stringify(await rowNames()) === '["INT"]', 'the "Right:" line sent INT to the right side')
+check((await dialog().getByRole('button', { name: /^Right 1$/ }).getAttribute('aria-pressed')) === 'true', 'the side picker shows Right picked, with its count')
+await pick('Left')
+
+// The preview is the real renderer and follows the pins.
+const previewText = () => dialog().locator('[data-testid=pm-preview] svg').textContent()
+let txt = await previewText()
+check(['VCC', 'GND', 'SCL', 'SDA', 'INT', 'Bench humidity sensor'].every((t) => txt.includes(t)), `the live preview draws the part with every pin label (${txt})`)
+check((await dialog().locator('[data-testid=pm-preview] svg rect').count()) > 10, 'the preview has the Sticker art (body, header, holes, plate)')
+const ready = await dialog().locator('.pm-issue.ok').textContent().catch(() => '')
+check(ready.includes('Ready'), `a sourced, typed part lints clean (${ready})`)
+
+// Keyboard reorder: Alt+Up on SDA, focus stays on it; Alt+Down puts it back.
+await dialog().getByLabel('Name of pin 4').focus()
+await page.keyboard.press('Alt+ArrowUp')
+check(JSON.stringify(await rowNames()) === '["VCC","GND","SDA","SCL"]', `Alt+Up moves a pin up (${await rowNames()})`)
+check(await page.evaluate(() => document.activeElement?.value) === 'SDA', 'focus stays on the moved pin')
+await page.keyboard.press('Alt+ArrowDown')
+check(JSON.stringify(await rowNames()) === '["VCC","GND","SCL","SDA"]', 'Alt+Down moves it back')
+// Buttons.
+await dialog().getByRole('button', { name: 'Move GND up' }).click()
+check(JSON.stringify(await rowNames()) === '["GND","VCC","SCL","SDA"]', 'the Move up button reorders')
+// Drag: GND's grip onto the second row puts it back in second place.
+await dialog().locator('.pm-row').nth(0).locator('.pm-grip').dragTo(dialog().locator('.pm-row').nth(1))
+check(JSON.stringify(await rowNames()) === '["VCC","GND","SCL","SDA"]', `dragging a pin reorders it (${await rowNames()})`)
+txt = await previewText()
+check(txt.indexOf('VCC') < txt.indexOf('GND') && txt.indexOf('GND') < txt.indexOf('SCL'), 'the preview follows the new order')
+// Add and remove a pin.
+await dialog().getByRole('button', { name: 'Add pin' }).click()
+check(await page.evaluate(() => document.activeElement?.getAttribute('aria-label')) === 'Name of pin 5', 'Add pin adds a row and focuses its name')
+await page.keyboard.type('EXTRA')
+check((await previewText()).includes('EXTRA'), 'the preview shows a typed pin')
+await dialog().getByRole('button', { name: 'Remove EXTRA' }).click()
+check(!(await previewText()).includes('EXTRA'), 'Remove takes it out')
+await shot('dialog-light', dialog())
+
+// ---- Save and place ----
+await dialog().getByRole('button', { name: 'Save and place' }).click()
+await dialog().waitFor({ state: 'detached' })
+const placed = await page.locator('svg.canvas [data-part]').count()
+check(placed === 1, `Save and place puts the part on the sheet (${placed})`)
+const item = page.locator('.mine-group .lib-item.mine')
+check((await item.count()) === 1 && (await item.textContent()).includes(NAME), 'it is in My parts')
+check(await item.locator('.custom-badge').isVisible(), 'with a custom badge in the Parts panel')
+const inspectorTitle = page.locator('.inspector h2#selection-title')
+check((await inspectorTitle.textContent()).includes(NAME) && (await inspectorTitle.locator('.custom-badge').isVisible()), 'the Inspector shows the part with its custom badge')
+check(await page.locator('.editor-notice').isVisible(), 'a notice says it was saved and placed')
+
+// ---- Wire to it ----
+await page.getByLabel('Search parts').fill('resistor')
+await page.locator('.lib-item', { hasText: /^Resistor \(1\/4 W\)$/ }).first().click()
+await page.getByLabel('Search parts').fill('')
+const uids = await page.evaluate(() => [...document.querySelectorAll('svg.canvas [data-part]')].map((e) => e.getAttribute('data-part')))
+const [pUid, rUid] = uids
+// Move the resistor off to the right so the wire has room.
+const center = async (sel) => {
+  const b = await page.locator(sel).first().boundingBox()
+  return { x: b.x + b.width / 2, y: b.y + b.height / 2 }
+}
+const r = await center(`svg.canvas [data-part="${rUid}"]`)
+await page.mouse.move(r.x, r.y)
+await page.mouse.down()
+await page.mouse.move(r.x + 180, r.y + 60, { steps: 8 })
+await page.mouse.up()
+await page.waitForTimeout(200)
+const a = await center(`[data-pin-part="${pUid}"][data-pin="INT"]`)
+const b = await center(`[data-pin-part="${rUid}"][data-pin="1"]`)
+await page.mouse.move(a.x, a.y)
+await page.mouse.down()
+await page.mouse.move((a.x + b.x) / 2, (a.y + b.y) / 2, { steps: 6 })
+await page.mouse.move(b.x, b.y, { steps: 6 })
+await page.mouse.up()
+await page.waitForTimeout(300)
+const wires = await page.evaluate(() => new Set([...document.querySelectorAll('svg.canvas [data-wire]')].map((e) => e.getAttribute('data-wire'))).size)
+check(wires === 1, `a wire draws from the custom part's INT pin to the resistor (${wires} wire)`)
+await page.locator(`svg.canvas [data-part="${pUid}"]`).first().click({ position: { x: 30, y: 20 } })
+await page.waitForTimeout(150)
+await shot('placed-light')
+await shot('myparts-light', page.locator('.library'))
+
+// ---- Placing never changes the parts already on the sheet: edit, undo, place, undo, redo ----
+const keep = await page.evaluate(() => localStorage.getItem('circuitoon.myParts'))
+const wireCount = () => page.evaluate(() => new Set([...document.querySelectorAll('svg.canvas [data-wire]')].map((e) => e.getAttribute('data-wire'))).size)
+const partCount = () => page.locator('svg.canvas [data-part]').count()
+await (await openActions()).getByRole('button', { name: 'Edit' }).click()
+await dialog().waitFor()
+await pick('Right')
+await dialog().getByRole('button', { name: 'Remove INT' }).click()
+await dialog().getByRole('button', { name: 'Save changes' }).click()
+await dialog().waitFor({ state: 'detached' })
+check((await wireCount()) === 0 && (await page.locator('.editor-notice').textContent()).includes('1 wire to removed pins was taken out'), 'saving an edit that removes a wired pin takes the wire out and says so')
+await page.getByRole('button', { name: 'Undo', exact: true }).click()
+check((await wireCount()) === 1, 'Undo puts the old copy and its wire back')
+await page.locator('.mine-group .lib-item.mine').first().click()
+await page.waitForTimeout(200)
+check((await partCount()) === 3 && (await wireCount()) === 1, `placing the edited part from My parts keeps the existing wire (${await partCount()} parts, ${await wireCount()} wires)`)
+check(await page.locator('.inspector .custom-update').isVisible() && (await page.locator('.inspector .custom-update').textContent()).includes('removes 1 wire'), 'the Inspector offers the My parts version as a separate update, saying it removes a wire')
+await page.getByRole('button', { name: 'Undo', exact: true }).click()
+check((await partCount()) === 2 && (await wireCount()) === 1, 'Undo takes the placed part away, the wire stays')
+await page.getByRole('button', { name: 'Redo', exact: true }).click()
+check((await partCount()) === 3 && (await wireCount()) === 1, 'Redo places it again, the wire still there')
+await page.evaluate((v) => localStorage.setItem('circuitoon.myParts', v), keep)
+
+// ---- Reload: My parts persists ----
+await page.reload({ waitUntil: 'networkidle' })
+await page.getByRole('button', { name: /New diagram/ }).click()
+await page.waitForSelector('.mine-group')
+check((await page.locator('.mine-group .lib-item.mine').count()) === 1, 'My parts survives a reload')
+const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('circuitoon.myParts')))
+check(stored?.parts?.[0]?.module?.id === ID && stored.parts[0].maker === MAKER, `it is stored with its id and maker (${stored?.parts?.[0]?.module?.id})`)
+
+// ---- Export the part file, delete, import it back ----
+await (await openActions()).getByRole('button', { name: 'Export file' }).click()
+const exportDialog = page.getByRole('dialog', { name: 'Export part' })
+check(await exportDialog.isVisible(), 'Export file opens the naming dialog where there is no Save As dialog')
+check((await exportDialog.locator('.export-suffix').textContent()) === '.circuitoon-part.json', 'with the .circuitoon-part.json suffix')
+const [download] = await Promise.all([page.waitForEvent('download'), exportDialog.getByRole('button', { name: 'Export', exact: true }).click()])
+const file = join(out, download.suggestedFilename())
+await download.saveAs(file)
+check(download.suggestedFilename() === 'Bench humidity sensor (I2C).circuitoon-part.json', `the file is named after the part (${download.suggestedFilename()})`)
+const exported = JSON.parse(readFileSync(file, 'utf8'))
+check(exported.format === 'circuitoon-module/1' && exported.id === ID && exported.custom === true && exported.pins.length === 5, 'the file is the custom module')
+
+await (await openActions()).getByRole('button', { name: 'Delete' }).click()
+check((await page.locator('.mine-group .lib-item.mine').count()) === 0, 'Delete removes it from My parts')
+const [chooser] = await Promise.all([page.waitForEvent('filechooser'), page.getByRole('button', { name: 'Import part' }).click()])
+await chooser.setFiles(file)
+check((await page.locator('input[type=file]').count()) === 1, 'the editor keeps one file input on the page (Import part makes its own)')
+await page.waitForSelector('.mine-group .lib-item.mine')
+check((await page.locator('.mine-group .lib-item.mine').textContent()).includes(NAME), 'Import part brings the exported file back')
+check((await page.locator('.editor-notice').textContent()).includes('Imported'), 'and says so')
+
+// ---- Submit to library: the JSON on the clipboard, the issue form with the name (and maker) filled in ----
+await page.evaluate(() => {
+  window.__opened.length = 0
+  window.__copied.length = 0
+  window.__clipDelay = 1500
+})
+await (await openActions()).getByRole('button', { name: 'Submit to library' }).click()
+const early = await page.evaluate(() => [window.__opened.length, window.__copied.length])
+check(early[0] === 1 && early[1] === 0, `the form opens within the click, before a slow clipboard answers (${early})`)
+await page.waitForFunction(() => window.__copied.length === 1)
+await page.evaluate(() => void (window.__clipDelay = 0))
+let opened = new URL((await page.evaluate(() => window.__opened))[0])
+check(opened.origin + opened.pathname === 'https://github.com/MBarc/circuitoon/issues/new', `Submit opens the repo's new issue page (${opened.origin}${opened.pathname})`)
+check(opened.searchParams.get('template') === 'part-submission.yml' && opened.searchParams.get('part-name') === NAME, `with the part submission form and the name filled in (${opened.search})`)
+let copied = (await page.evaluate(() => window.__copied))[0]
+check(JSON.parse(copied).id === ID && JSON.parse(copied).custom === true, 'and the part JSON on the clipboard')
+check((await page.locator('.editor-notice').textContent()).includes('Paste it into the Part JSON box'), 'a notice says where to paste it')
+const actions = await openActions()
+const formLink = actions.getByRole('link', { name: 'Open the form' })
+check((await formLink.getAttribute('href')) === opened.href && (await formLink.getAttribute('target')) === '_blank', 'the action row also has the form as a plain link')
+// Denied: the form still opens, and Copy part is there to try again.
+await page.evaluate(() => {
+  window.__opened.length = 0
+  window.__copied.length = 0
+  window.__clipDeny = true
+})
+await actions.getByRole('button', { name: 'Submit to library' }).click()
+check((await page.evaluate(() => window.__opened.length)) === 1, 'with the clipboard denied, Submit still opens the form')
+await page.waitForFunction(() => document.querySelector('.editor-notice')?.textContent.match(/could not be copied|Copied/))
+check(/could not be copied here\. Use Copy part|Copied/.test(await page.locator('.editor-notice').textContent()), `and the notice says what happened to the copy (${await page.locator('.editor-notice').textContent()})`)
+await page.evaluate(() => void (window.__clipDeny = false))
+await actions.getByRole('button', { name: 'Copy part' }).click()
+await page.waitForFunction(() => window.__copied.length === 1)
+check(JSON.parse((await page.evaluate(() => window.__copied))[0]).id === ID, 'Copy part copies the part JSON on its own')
+// From the dialog: the maker typed there goes into the form too.
+await (await openActions()).getByRole('button', { name: 'Edit' }).click()
+await dialog().waitFor()
+await dialog().getByLabel(/Maker or model/).fill(MAKER)
+check((await dialog().locator('.pm-submit .hint').textContent()).includes('you need a GitHub account'), 'the dialog says Submit needs a GitHub account, and what to do without one')
+check(await dialog().getByRole('link', { name: 'Open the form' }).isVisible() && await dialog().getByRole('button', { name: 'Copy part' }).isVisible(), 'the dialog shows the form link and Copy part beside Submit')
+await page.evaluate(() => {
+  window.__opened.length = 0
+  window.__copied.length = 0
+})
+await dialog().getByRole('button', { name: 'Submit to library' }).click()
+await page.waitForFunction(() => window.__opened.length === 1)
+opened = new URL((await page.evaluate(() => window.__opened))[0])
+check(opened.searchParams.get('maker') === MAKER && opened.searchParams.get('title') === `Part: ${NAME}`, `the dialog's Submit fills in the maker and title (${opened.search})`)
+await page.waitForFunction(() => window.__copied.length === 1)
+copied = (await page.evaluate(() => window.__copied))[0]
+check(JSON.parse(copied).pins.length === 5, 'and copies the part being edited')
+await dialog().getByRole('button', { name: 'Save changes' }).click()
+await dialog().waitFor({ state: 'detached' })
+
+// Duplicate, then edit the copy: the dialog opens filled in.
+await (await openActions()).getByRole('button', { name: 'Duplicate' }).click()
+check((await page.locator('.mine-group .lib-item.mine').count()) === 2, 'Duplicate adds a copy')
+await (await openActions()).getByRole('button', { name: 'Edit' }).click()
+await dialog().waitFor()
+check((await dialog().getByRole('heading').first().textContent()) === `Edit ${NAME}`, 'Edit opens the part maker on the part')
+check(JSON.stringify(await rowNames()) === '["VCC","GND","SCL","SDA"]', 'with its pins')
+await shot('dialog-edit-light', dialog())
+await dialog().getByRole('button', { name: 'Cancel' }).click()
+
+// ---- An imported resistor: edited in place, its value kept ----
+const [resChooser] = await Promise.all([page.waitForEvent('filechooser'), page.getByRole('button', { name: 'Import part' }).click()])
+await resChooser.setFiles(resolve('modules/resistor.json'))
+await page.waitForSelector('.mine-group .lib-item.mine >> text=Resistor')
+await (await openActions('Resistor (1/4 W)')).getByRole('button', { name: 'Edit' }).click()
+await dialog().waitFor()
+check((await dialog().locator('.pm-limited').textContent()).includes('electrical data'), 'an imported resistor opens with a note that its electrical data is kept')
+check(!(await dialog().getByRole('button', { name: 'Add pin' }).isVisible()) && (await dialog().getByLabel('Name of pin 1').getAttribute('readonly')) !== null, 'and its pins edit in place only')
+await shot('dialog-imported-light', dialog())
+check(!(await dialog().locator('.pm-facts').textContent()).includes(' x  grid') && !(await dialog().locator('.pm-facts').textContent()).includes('undefined') && (await dialog().locator('.pm-facts').textContent()).includes('2 pins') && !(await dialog().locator('.pm-facts').textContent()).includes('grid squares'), 'a part with no size states its pins and no empty size')
+await dialog().getByRole('button', { name: 'Save changes' }).click()
+await dialog().waitFor({ state: 'detached' })
+const res = await page.evaluate(() => JSON.parse(localStorage.getItem('circuitoon.myParts')).parts.find((p) => p.module.id === 'custom-resistor').module)
+check(res?.electrical?.params?.resistance?.default === JSON.parse(readFileSync('modules/resistor.json', 'utf8')).electrical.params.resistance.default, 'a no-op save keeps its resistance')
+await (await openActions('Resistor (1/4 W)')).getByRole('button', { name: 'Delete' }).click()
+
+// ---- Graphite dark, picked with the theme switch on a light device ----
+/** Clicks the toolbar's theme switch (System, Light, Dark, round) until it shows `choice`. */
+const setTheme = async (choice) => {
+  for (let i = 0; i < 3 && (await page.locator('.theme-switch').getAttribute('data-theme-choice')) !== choice; i++) await page.locator('.theme-switch').click()
+  return page.evaluate(() => document.documentElement.getAttribute('data-theme'))
+}
+check((await setTheme('dark')) === 'dark', 'the theme switch picks Dark on a light device')
+await page.locator('.mine-group .lib-item.mine').first().click()
+await page.waitForTimeout(200)
+check((await page.locator('svg.canvas [data-part]').count()) === 1, 'clicking one of My parts places it on the sheet')
+await shot('placed-dark')
+await shot('myparts-dark', page.locator('.library'))
+await (await openActions()).getByRole('button', { name: 'Edit' }).click()
+await dialog().waitFor()
+await shot('dialog-dark', dialog())
+const dialogBg = () => dialog().evaluate((e) => getComputedStyle(e).backgroundColor)
+const darkBg = await dialogBg()
+await dialog().getByRole('button', { name: 'Cancel' }).click()
+// Light picked with the switch on a dark device: the dialog follows the switch, not the device.
+await page.emulateMedia({ colorScheme: 'dark' })
+check((await setTheme('light')) === 'light', 'the theme switch picks Light on a dark device')
+await (await openActions()).getByRole('button', { name: 'Edit' }).click()
+await dialog().waitFor()
+await shot('dialog-switch-light', dialog())
+const lightBg = await dialogBg()
+check(lightBg !== darkBg, `the dialog's colours follow the switch (light ${lightBg}, dark ${darkBg})`)
+await dialog().getByRole('button', { name: 'Cancel' }).click()
+await setTheme('system')
+await page.emulateMedia({ colorScheme: 'light' })
+
+// ---- Round trip from the CLI: module new, embedded in a netlist, laid out, opened in the editor ----
+const cli = (...a) => execFileSync(process.execPath, ['plugin/bin/circuitoon.mjs', ...a], { encoding: 'utf8' })
+writeFileSync(join(out, 'spec.json'), JSON.stringify({ name: 'CLI made sensor', category: 'Sensors', source: 'https://example.com/a https://example.com/b', pins: { left: [{ name: 'VCC', type: 'power_in', supply: '3V3/5V' }, { name: 'GND', type: 'ground' }, { name: 'SCL', type: 'input' }, { name: 'SDA', type: 'io' }] } }))
+cli('module', 'new', '--spec', join(out, 'spec.json'), '-o', join(out, 'cli-part.json'))
+const cliPart = JSON.parse(readFileSync(join(out, 'cli-part.json'), 'utf8'))
+writeFileSync(join(out, 'cli-net.json'), JSON.stringify({
+  format: 'circuitoon-netlist/1', title: 'CLI round trip', modules: { [cliPart.id]: cliPart },
+  parts: [{ ref: 'U1', module: 'esp32-devkitc-v4' }, { ref: 'U2', module: cliPart.id }],
+  nets: [{ name: '3V3', pins: ['U1.3V3', 'U2.VCC'] }, { name: 'GND', pins: ['U1.GND', 'U2.GND'] }, { name: 'SCL', pins: ['U1.IO22', 'U2.SCL'] }, { name: 'SDA', pins: ['U1.IO21', 'U2.SDA'] }],
+}))
+cli('layout', join(out, 'cli-net.json'), '-o', join(out, 'cli-sheet.circuitoon.json'))
+await fileItem(page, 'Import JSON').click()
+await page.locator('input[type=file]').setInputFiles(join(out, 'cli-sheet.circuitoon.json'))
+await page.waitForFunction(() => document.querySelector('.toolbar .title')?.textContent === 'CLI round trip')
+const cliUid = await page.evaluate(() => [...document.querySelectorAll('svg.canvas [data-part]')].map((e) => e.getAttribute('data-part')))
+check(cliUid.length === 2, `a sheet laid out by the CLI with a custom part opens in the editor (${cliUid.length} parts)`)
+const cliWires = await page.evaluate(() => new Set([...document.querySelectorAll('svg.canvas [data-wire]')].map((e) => e.getAttribute('data-wire'))).size)
+check(cliWires === 4, `with its four wires (${cliWires})`)
+const u2 = await page.evaluate(() => [...document.querySelectorAll('svg.canvas [data-part]')].find((e) => e.textContent.includes('CLI made sensor'))?.getAttribute('data-part'))
+await page.locator(`svg.canvas [data-part="${u2}"]`).first().click({ position: { x: 40, y: 20 } })
+check((await page.locator('.inspector h2#selection-title').textContent()).includes('CLI made sensor') && (await page.locator('.inspector .custom-badge').isVisible()), 'its custom part shows the custom badge in the Inspector')
+
+// ---- A tampered store: the bad entry is left out with a notice, the editor still starts ----
+await page.evaluate(() => {
+  const s = JSON.parse(localStorage.getItem('circuitoon.myParts'))
+  const bad = JSON.parse(JSON.stringify(s.parts[0]))
+  bad.module.id = 'custom-tampered'
+  bad.module.format = JSON.parse('{"toString":null,"valueOf":null}')
+  s.parts.push(bad)
+  localStorage.setItem('circuitoon.myParts', JSON.stringify(s))
+})
+await page.reload({ waitUntil: 'networkidle' })
+await page.getByRole('button', { name: /New diagram/ }).click()
+await page.waitForSelector('.mine-group')
+check((await page.locator('.mine-group .lib-item.mine').count()) === 2, 'a tampered store still loads the good parts')
+check((await page.locator('.mine-group .hint.warn').first().textContent())?.includes('1 saved part in this browser could not be read'), 'and says one entry was left out')
+
+check(errors.length === 0, `no page errors (${errors.join(' | ')})`)
+await browser.close()
+done()

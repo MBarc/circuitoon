@@ -2,6 +2,8 @@
 
 Embed a part only when `circuitoon parts --search` has no match.
 
+The easy way is `circuitoon module new --spec spec.json -o part.json`: it draws the part, marks it custom and lints it (see the `circuitoon-custom-part` skill). This page is the format underneath, for parts you write by hand.
+
 - Take every pin from the maker's documentation (a datasheet, the maker's wiki, or a vendor pinout with a legible silkscreen).
 - List those URLs in `source`, separated by spaces.
 - If a pin cannot be verified, do not add the part: tell the user what is missing.

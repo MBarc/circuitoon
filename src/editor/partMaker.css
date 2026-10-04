@@ -1,0 +1,179 @@
+/* Custom parts: the badge, My parts in the Parts panel, the part maker dialog and the notice. */
+
+/* The badge is drawn with a dashed edge, the sheet's mark for "not checked": a part someone made
+   by hand, not a library part. It takes the colour of the text around it. */
+.custom-badge {
+  display: inline-block; margin-left: 6px; padding: 0 5px; vertical-align: 1px;
+  border: 1.4px dashed currentColor; border-radius: 5px;
+  font: 700 11px/1.35 "Atkinson Hyperlegible", system-ui, sans-serif; letter-spacing: 0.01em; white-space: nowrap;
+}
+.inspector h2 .custom-badge { font-size: 11.5px; vertical-align: 2px; }
+.custom-note { display: grid; gap: 6px; justify-items: start; padding: 8px 10px; border: 1.5px dashed var(--rule); border-radius: 8px; }
+.custom-update { display: grid; gap: 6px; justify-items: start; border-top: 1.5px solid var(--rule); padding-top: 6px; }
+.lib-name { min-width: 0; overflow-wrap: anywhere; }
+
+.mine-tools { display: flex; gap: 6px; flex-wrap: wrap; }
+.mine-group .lib-group-head span:first-child { font-family: "Fredoka", system-ui, sans-serif; font-weight: 600; font-size: 14.5px; }
+.mine-item { display: grid; gap: 4px; }
+.mine-row { display: flex; align-items: stretch; gap: 4px; }
+.mine-row .lib-item { flex: 1; min-width: 0; border-style: dashed; }
+.mine-more {
+  flex: none; width: 26px; display: grid; place-items: center; padding: 0; cursor: pointer;
+  color: var(--text); background: transparent; border: 1.5px solid var(--rule); border-radius: 8px;
+}
+.mine-more:hover, .mine-more[aria-expanded="true"] { border-color: var(--text); }
+.mine-more svg { width: 14px; height: 14px; fill: currentColor; }
+.mine-actions { display: flex; flex-wrap: wrap; gap: 4px; padding: 2px 0 4px 6px; border-left: 2px solid var(--yellow); }
+.mine-actions .tool.small { padding: 4px 7px; font-size: 12.5px; }
+.mine-group .hint { font-size: 12.5px; }
+
+/* The part maker: the export dialog's sticker card, three columns between a head and the actions;
+   each column scrolls on its own so the preview stays in view while a long pin list scrolls. */
+.pm-dialog {
+  width: min(1180px, calc(100vw - 32px)); height: min(820px, calc(100vh - 32px)); padding: 0;
+  color: var(--text); background: var(--panel);
+  border: 2.5px solid var(--card-edge); border-radius: 12px; box-shadow: 4px 5px 0 var(--shadow);
+}
+.pm-dialog::backdrop { background: rgba(22, 27, 24, 0.38); }
+.pm-form {
+  height: 100%; display: grid;
+  grid-template-columns: 240px minmax(0, 1fr) minmax(300px, 400px);
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-areas: "head head head" "about pins preview" "actions actions actions";
+}
+.pm-head { grid-area: head; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 14px; padding: 14px 18px 10px; border-bottom: 1.5px solid var(--rule); }
+.pm-head h2 { margin: 0; font: 600 22px/1.2 "Fredoka", system-ui, sans-serif; overflow-wrap: anywhere; }
+.pm-about, .pm-pins, .pm-preview { overflow-y: auto; overscroll-behavior: contain; padding: 14px 16px; display: grid; gap: 12px; align-content: start; }
+.pm-about { grid-area: about; border-right: 1px solid var(--rule); }
+.pm-pins { grid-area: pins; }
+.pm-preview { grid-area: preview; border-left: 1px solid var(--rule); background: var(--bg); }
+.pm-opt { font-weight: 400; color: var(--muted); font-size: 12.5px; }
+.pm-dialog fieldset { margin: 0; padding: 0; border: 0; display: grid; gap: 6px; min-width: 0; }
+.pm-dialog legend { padding: 0; margin-bottom: 4px; font-size: 14px; font-weight: 700; }
+.pm-style label {
+  display: flex; align-items: center; gap: 8px; padding: 6px 8px; cursor: pointer; font-size: 13.5px;
+  border: 1.5px solid var(--rule); border-radius: 8px;
+}
+.pm-style label.on { border-color: var(--text); background: color-mix(in srgb, var(--yellow) 22%, transparent); }
+.pm-style input { margin: 0; }
+.pm-swatches { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
+.pm-color-pick { display: grid; aspect-ratio: 1; border: 2px dashed var(--rule); border-radius: 6px; overflow: hidden; cursor: pointer; }
+.pm-color-pick input { width: 140%; height: 140%; margin: -20%; border: 0; padding: 0; cursor: pointer; background: none; }
+.pm-size label { display: flex; align-items: center; gap: 6px; font-size: 13.5px; }
+.pm-size-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.pm-size-row input { width: 64px; font: 400 14px/1.2 "Atkinson Hyperlegible", system-ui, sans-serif; color: var(--text); background: var(--bg); border: 1.5px solid var(--rule); border-radius: 6px; padding: 4px 6px; }
+
+/* The side picker: a little drawing of the part, each edge a tab with its pin count. */
+.pm-sides {
+  position: relative; justify-self: center; width: 280px; height: 132px;
+  display: grid; grid-template-columns: 76px 1fr 76px; grid-template-rows: 34px 1fr 34px;
+  grid-template-areas: ". top ." "left body right" ". bottom .";
+}
+.pm-body { grid-area: body; margin: 4px; border: 2px solid #23282F; border-radius: 8px; box-shadow: 2px 3px 0 var(--shadow); }
+.pm-side {
+  z-index: 1; display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  font: 700 13px/1 "Atkinson Hyperlegible", system-ui, sans-serif; color: var(--text); cursor: pointer;
+  background: var(--panel); border: 1.5px solid var(--rule); border-radius: 8px; padding: 0 8px;
+}
+.pm-side-top { grid-area: top; justify-self: center; align-self: end; height: 28px; }
+.pm-side-bottom { grid-area: bottom; justify-self: center; align-self: start; height: 28px; }
+.pm-side-left { grid-area: left; align-self: center; justify-self: end; height: 30px; }
+.pm-side-right { grid-area: right; align-self: center; justify-self: start; height: 30px; }
+.pm-side:hover { border-color: var(--text); }
+.pm-side[aria-pressed="true"] { background: var(--yellow); color: #23282F; border-color: #23282F; box-shadow: 2px 2px 0 var(--shadow); }
+.pm-count { min-width: 18px; padding: 1px 5px; border-radius: 9px; background: var(--bg); color: var(--text); font-size: 11.5px; }
+.pm-side[aria-pressed="true"] .pm-count { background: #FFFFFF; color: #23282F; }
+.pm-side-title { margin: 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; font: 600 17px/1.2 "Fredoka", system-ui, sans-serif; }
+.pm-side-title .hint { font: 400 13px/1.3 "Atkinson Hyperlegible", system-ui, sans-serif; }
+.pm-empty { padding: 10px; border: 1.5px dashed var(--rule); border-radius: 8px; text-align: center; }
+
+.pm-rows { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.pm-row {
+  display: grid; grid-template-columns: 10px 22px minmax(70px, 1fr) minmax(96px, 128px) 74px auto; gap: 6px; align-items: center;
+  padding: 4px 6px 4px 4px; border: 1.5px solid var(--rule); border-radius: 8px; background: var(--panel);
+}
+.pm-row:focus-within { border-color: var(--text); }
+.pm-row.gap { background: repeating-linear-gradient(135deg, transparent 0 6px, color-mix(in srgb, var(--rule) 55%, transparent) 6px 8px); }
+.pm-gap-text { grid-column: 3 / 6; font-size: 13px; color: var(--muted); font-style: italic; }
+.pm-grip {
+  align-self: stretch; cursor: grab; border-radius: 3px;
+  background-image: radial-gradient(circle, var(--muted) 1.1px, transparent 1.3px); background-size: 5px 5px; background-position: center;
+}
+.pm-num { font: 700 12px/1 "Atkinson Hyperlegible", system-ui, sans-serif; color: var(--muted); text-align: right; font-variant-numeric: tabular-nums; }
+.pm-row input, .pm-row select {
+  min-width: 0; width: 100%; font: 400 14px/1.2 "Atkinson Hyperlegible", system-ui, sans-serif; color: var(--text);
+  background: var(--bg); border: 1.5px solid transparent; border-radius: 6px; padding: 5px 6px;
+}
+.pm-row input:hover, .pm-row select:hover { border-color: var(--rule); }
+.pm-row input.pm-in-name { font-weight: 700; }
+.pm-row-tools { display: inline-flex; gap: 2px; }
+.tool.icon.tiny { width: 24px; height: 24px; border-radius: 6px; border-width: 1px; }
+.tool.icon.tiny svg { width: 12px; height: 12px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.tool.icon.tiny:hover:not(:disabled) { box-shadow: none; }
+.pm-add { display: flex; gap: 6px; }
+/* A part the part maker cannot rebuild: pins edit in place until it is converted. */
+.pm-limited { display: grid; justify-items: start; gap: 8px; padding: 10px 12px; border: 1.5px dashed var(--rule); border-radius: 8px; font-size: 13.5px; line-height: 1.4; }
+.pm-limited p { margin: 0; }
+.pm-grip[draggable="false"] { visibility: hidden; }
+.pm-row input[readonly] { color: var(--text); cursor: default; }
+.pm-row input[readonly]:hover { border-color: transparent; }
+.pm-paste { display: grid; gap: 6px; border-top: 1.5px solid var(--rule); padding-top: 10px; }
+.pm-paste summary { cursor: pointer; font: 600 15px/1.2 "Fredoka", system-ui, sans-serif; }
+.pm-paste .hint { margin-top: 6px; }
+.pm-paste textarea {
+  display: block; width: 100%; margin-bottom: 8px;
+  font: 400 13.5px/1.45 ui-monospace, "Cascadia Mono", Consolas, monospace; color: var(--text);
+  background: var(--bg); border: 1.5px solid var(--rule); border-radius: 6px; padding: 6px 8px; resize: vertical;
+}
+.pm-paste .tool { display: block; }
+.pm-paste-errors { margin: 0; padding-left: 18px; color: var(--error); font-size: 13px; }
+
+/* The preview: the part on sheet paper (light in both themes, as every drawing), drawn by the real renderer. */
+.pm-paper {
+  display: grid; place-items: center; min-height: 230px; padding: 12px;
+  background-color: var(--paper);
+  background-image: linear-gradient(var(--grid) 1px, transparent 1px), linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+  background-size: 10px 10px;
+  border: 2.5px solid var(--sticker-edge); border-radius: 10px; box-shadow: 3px 4px 0 var(--shadow);
+}
+.pm-paper svg { width: 100%; max-height: 340px; font-family: "Atkinson Hyperlegible", system-ui, sans-serif; }
+.pm-paper .hint { color: #56615B; text-align: center; max-width: 24ch; }
+.pm-facts { margin: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; font-size: 13px; color: var(--muted); }
+.pm-facts .custom-badge { margin-left: 0; color: var(--text); }
+.pm-id { font: 400 12px/1.3 ui-monospace, "Cascadia Mono", Consolas, monospace; overflow-wrap: anywhere; }
+.pm-lint { display: grid; gap: 6px; }
+.pm-issue { margin: 0; display: grid; grid-template-columns: 18px minmax(0, 1fr); gap: 8px; align-items: start; font-size: 13.5px; line-height: 1.4; overflow-wrap: anywhere; }
+.pm-issue .sev-mark { margin-top: 1px; }
+.pm-issue.error { color: var(--error); font-weight: 700; }
+.pm-submit { display: grid; gap: 6px; padding-top: 10px; border-top: 1.5px dashed var(--rule); }
+.pm-submit-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+a.tool.link-tool { display: inline-block; text-decoration: none; }
+.pm-actions { grid-area: actions; display: flex; align-items: center; gap: 8px; padding: 12px 18px; border-top: 1.5px solid var(--rule); }
+.pm-spacer { flex: 1; }
+
+/* Narrow screens: one scrolling column, the preview first, the actions pinned to the bottom. */
+@media (max-width: 900px) {
+  .pm-dialog { height: calc(100vh - 24px); }
+  .pm-form { display: flex; flex-direction: column; overflow-y: auto; }
+  .pm-about, .pm-pins, .pm-preview { overflow: visible; border: 0; flex: none; }
+  .pm-head { order: 0; flex: none; }
+  .pm-preview { order: 1; }
+  .pm-about { order: 2; }
+  .pm-pins { order: 3; }
+  .pm-actions { order: 4; flex: none; position: sticky; bottom: 0; background: var(--panel); }
+  .pm-row { grid-template-columns: 10px 18px minmax(60px, 1fr) 96px; }
+  .pm-row .pm-in-supply { grid-column: 3; }
+  .pm-row-tools { grid-column: 4; justify-self: end; }
+}
+
+/* What a part action did (saved, imported, exported): a sticker note over the bottom of the sheet. */
+.editor-notice {
+  position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); z-index: 20; margin: 0;
+  max-width: min(560px, calc(100vw - 32px)); padding: 9px 14px; font-size: 14px; font-weight: 700;
+  color: var(--text); background: var(--panel); border: 2px solid var(--card-edge); border-left: 6px solid var(--yellow); border-radius: 10px; box-shadow: 3px 4px 0 var(--shadow);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .editor-notice { animation: notice-in 160ms ease-out; }
+}
+@keyframes notice-in { from { opacity: 0; transform: translate(-50%, 6px); } }
+.pm-swatches .swatch { border-color: var(--card-edge); }

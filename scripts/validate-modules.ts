@@ -1,7 +1,7 @@
 // Validates every file in /modules against the module format. Run in CI: npm run validate
 import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { validateModule } from '../src/format/module.ts'
+import { CUSTOM_PREFIX, validateModule } from '../src/format/module.ts'
 
 const dir = join(import.meta.dirname, '..', 'modules')
 const ids = new Map<string, string>()
@@ -19,6 +19,12 @@ for (const file of readdirSync(dir).filter((f) => f.endsWith('.json')).sort()) {
   const r = validateModule(raw)
   if (!r.ok) {
     console.error(`FAIL ${file}:\n  ${r.errors.join('\n  ')}`)
+    failed++
+    continue
+  }
+  // The custom- prefix and flag belong to parts made in the part maker, never to the library.
+  if (r.module.custom || r.module.id.startsWith(CUSTOM_PREFIX)) {
+    console.error(`FAIL ${file}: built-in parts may not be custom or use an id starting with "${CUSTOM_PREFIX}"`)
     failed++
     continue
   }

@@ -6,9 +6,9 @@ import { main } from './main.ts'
 
 export const tempDir = (): string => mkdtempSync(join(tmpdir(), 'circuitoon-cli-'))
 
-export async function cli(argv: string[], opts: { cwd?: string; env?: Record<string, string | undefined> } = {}) {
+export async function cli(argv: string[], opts: { cwd?: string; env?: Record<string, string | undefined>; stdin?: string } = {}) {
   let out = ''
   let err = ''
-  const code = await main(argv, { stdout: (s) => void (out += s), stderr: (s) => void (err += s), cwd: opts.cwd ?? process.cwd(), env: opts.env ?? process.env })
+  const code = await main(argv, { stdout: (s) => void (out += s), stderr: (s) => void (err += s), cwd: opts.cwd ?? process.cwd(), env: opts.env ?? process.env, ...(opts.stdin !== undefined ? { stdin: () => opts.stdin! } : {}) })
   return { code, out, err }
 }

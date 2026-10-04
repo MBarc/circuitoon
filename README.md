@@ -44,7 +44,7 @@ It also works backwards. `circuitoon netlist` reads a sheet someone drew by hand
 - PCB layout or Gerber files. Circuitoon stops at the wiring. It can hand the design to KiCad as a netlist (`circuitoon kicad`), and the board is drawn there.
 - Symbolic schematics. Parts are drawn as pictures, never as IEEE symbols, and there is no schematic-symbol editor.
 - Simulation. Nothing solves the circuit yet. The checker compares declared pin types and supply rails, and DC simulation is planned for V2.
-- Parts it doesn't know, unless you can source them. You may embed a part from its maker's documentation, but it is reported as custom and unverified.
+- Parts it doesn't know, unless you can source them. You can make one with `circuitoon module new` from its maker's documentation, but it is reported as custom and unverified.
 
 ### Install
 
@@ -107,6 +107,9 @@ If `gate.json` says `"ready": false`, readability warnings remain (overlapping w
 | `kicad <sheet.json\|netlist.json> [-o out.net]` | A KiCad netlist for the PCB Editor (File > Import > Netlist). Each part gets a footprint; parts without one come in on a generic header, with a warning. |
 | `explain <sheet.json\|netlist.json>` | Every connection in plain English, what each pin in use does, unconnected parts and pin-rule findings. |
 | `update <sheet.json>` | Brings a sheet's stored parts up to date when the library has only added data. Blocking drift is listed, not changed. |
+| `module new --spec <spec.json> [-o part.json]` | A custom part from a short spec: name, category and pins per side in physical order. It draws the part, marks it custom and lints it. Also reads the spec on stdin. |
+| `module check <part.json>` | Lints a part: duplicate pins, art that doesn't match the pins, impossible pin limits, power pins with no type or voltage, no source. |
+| `module render <part.json> -o <png>` | Draws one part alone so you can look at it. |
 
 Every command takes `--json` and then prints exactly one JSON document on stdout. Diagnostics go to stderr.
 
@@ -193,7 +196,8 @@ All of this lives in [`plugin/skills/circuitoon-design/`](plugin/skills/circuito
 - [references/cli.md](plugin/skills/circuitoon-design/references/cli.md): every command, flag and JSON output.
 - [references/netlist-format.md](plugin/skills/circuitoon-design/references/netlist-format.md): the netlist, repeats and the `--keep` partial format.
 - [references/module-schema.md](plugin/skills/circuitoon-design/references/module-schema.md): how to embed a part that isn't built in.
-- [references/schemas/](plugin/skills/circuitoon-design/references/schemas/): JSON schemas for every command's `--json` output and the error document (13 files). The input netlist is specified in [netlist-format.md](plugin/skills/circuitoon-design/references/netlist-format.md).
+- [circuitoon-custom-part](plugin/skills/circuitoon-custom-part/SKILL.md): the skill for making one with `module new`, sourced from the maker's datasheet and checked against a second source.
+- [references/schemas/](plugin/skills/circuitoon-design/references/schemas/): JSON schemas for every command's `--json` output, the error document and the part spec (16 files). The input netlist is specified in [netlist-format.md](plugin/skills/circuitoon-design/references/netlist-format.md).
 - [references/examples.md](plugin/skills/circuitoon-design/references/examples.md): five worked examples that pass `gate`, from one LED on a breadboard to a design split across four sheets.
 
 ## The editor
@@ -221,6 +225,7 @@ What you can do in it:
 - Export a KiCad netlist (`.net`) to start a PCB in KiCad.
 - Import and export `.circuitoon.json`.
 - Take newer part data from the library with Update parts to current library, when a sheet was drawn with an older copy.
+- Make your own parts with New part (see below).
 
 ## Parts
 
@@ -254,6 +259,16 @@ Follow the `circuitoon-add-part` skill in [.claude/skills/](.claude/skills/circu
 
 A wrong pin in the library ends up as a wrong wire on someone's bench, so step 5 isn't optional.
 
+### Making your own part
+
+Nobody can draw every part in existence, so you can make the ones you need. In the editor, New part in the Parts panel opens the part maker. Give the part a name and a category, then list its pins side by side in the order the maker's pinout shows them. You can type them, drag them around, or paste lines like `1 VCC power 3V3` and `GND`. The preview draws the part as you go, and a short list under it flags anything doubtful, like a power pin with no voltage.
+
+Saving puts the part on the sheet and under My parts at the top of the panel. My parts stay in your browser, and you can edit, duplicate, export or delete them. A part exports as a `.circuitoon-part.json` file and imports the same way. Your parts carry a "custom" badge everywhere, because nobody has checked them. The checker uses whatever pin types you gave.
+
+Agents do the same with `circuitoon module new`, `module check` and `module render`. The `circuitoon-custom-part` skill walks through it.
+
+If a part turns out well, Submit to library offers it for the built-in library. It copies the part and opens a GitHub issue form, so you need a GitHub account. Without one, export the part file and send it some other way. Every submitted part is rebuilt and its pinout checked against two sources before it ships.
+
 ## Developing
 
 ```bash
@@ -269,7 +284,7 @@ The CLI bundle `plugin/dist-cli/circuitoon.mjs` is committed. After any change u
 
 ## Status and roadmap
 
-Early development. The editor, the wiring checker and the agent toolkit (plugin 0.7.0) work today. Still to come in V1: saving sheets in the browser, PDF export, and an art studio for drawing your own parts.
+Early development. The editor, the wiring checker, the part maker and the agent toolkit (plugin 0.8.0) work today. Still to come in V1: saving sheets in the browser, PDF export, and an art studio for drawing a part's artwork by hand.
 
 - V2: DC simulation in the browser, with voltages, currents and overcurrent.
 - V3: animation driven by that simulation. LEDs light up, switches flip.
@@ -295,4 +310,4 @@ docs/           PRD.md, design specs and plans, brand assets
 
 ## Licence
 
-To be decided. There's no LICENSE file in the repo yet.
+MIT, see [LICENSE](LICENSE). Parts submitted through the part submission form are shared under the same licence.

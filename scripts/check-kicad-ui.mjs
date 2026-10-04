@@ -11,7 +11,7 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
-import { checker, flagOf, launchChrome, noSavePicker, startPreview } from './lib/browser-check.mjs'
+import { checker, flagOf, launchChrome, noSavePicker, startPreview, fileItem } from './lib/browser-check.mjs'
 import { checkKicadNetlist } from '../src/format/sexpr.testing.ts'
 
 const out = resolve(flagOf('--out', join(tmpdir(), 'circuitoon-kicad-ui')))
@@ -54,7 +54,7 @@ for (const scheme of ['light', 'dark']) {
   const context = await browser.newContext({ viewport: { width: 1400, height: 900 }, colorScheme: scheme, acceptDownloads: true })
   await noSavePicker(context)
   const { page, errors } = await open(context, bankFile, TITLE)
-  const button = page.getByRole('button', { name: 'Export KiCad' })
+  const button = fileItem(page, 'Export KiCad')
   const dialog = page.getByRole('dialog', { name: 'Export KiCad netlist' })
   const field = dialog.getByLabel('File name')
   await button.click()
@@ -94,7 +94,7 @@ for (const scheme of ['light', 'dark']) {
   const mctx = await browser.newContext({ viewport: { width: 1400, height: 900 }, colorScheme: scheme, acceptDownloads: true })
   await noSavePicker(mctx)
   const m = await open(mctx, motorFile, 'Motor')
-  await m.page.getByRole('button', { name: 'Export KiCad' }).click()
+  await fileItem(m.page, 'Export KiCad').click()
   const [md] = await Promise.all([m.page.waitForEvent('download'), m.page.getByRole('dialog', { name: 'Export KiCad netlist' }).getByRole('button', { name: 'Export', exact: true }).click()])
   check(md.suggestedFilename() === 'Motor.net', `${scheme}: the motor sheet downloads Motor.net`)
   const mnotice = m.page.locator('.toolbar .kicad-notice')
@@ -116,7 +116,7 @@ for (const scheme of ['light', 'dark']) {
     }
   })
   const p = await open(picking, bankFile, TITLE)
-  await p.page.getByRole('button', { name: 'Export KiCad' }).click()
+  await fileItem(p.page, 'Export KiCad').click()
   await p.page.waitForFunction(() => window.__written.length === 1)
   const picks = await p.page.evaluate(() => window.__picks)
   check(picks[0]?.suggestedName === `${TITLE}.net`, `${scheme}: the Save As dialog suggests ${TITLE}.net (${picks[0]?.suggestedName})`)

@@ -16,7 +16,7 @@ import { execFileSync } from 'node:child_process'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
-import { checker, exportDownload, flagOf, launchChrome, noSavePicker, startPreview } from './lib/browser-check.mjs'
+import { checker, exportDownload, flagOf, launchChrome, noSavePicker, startPreview, fileItem } from './lib/browser-check.mjs'
 
 const out = resolve(flagOf('--out', join(tmpdir(), 'circuitoon-select-ui')))
 const port = Number(flagOf('--port', '4195'))
@@ -419,7 +419,7 @@ for (const scheme of ['light', 'dark']) {
   await page.mouse.click(from.x, from.y)
   await around(back)
   await page.keyboard.press('Control+c')
-  await page.getByRole('button', { name: 'New sheet' }).click()
+  await fileItem(page, 'New sheet').click()
   await page.waitForFunction(() => document.querySelectorAll('[data-part]').length === 0)
   await page.mouse.move(wrap.x + wrap.width / 2, wrap.y + wrap.height / 2)
   await page.keyboard.press('Control+v')

@@ -181,7 +181,18 @@ export interface ModuleDef {
   netLabel?: true
   /** How the part goes into KiCad: footprint and pad numbers (see KicadDef). */
   kicad?: KicadDef
+  /**
+   * Made by a user or an agent in the part maker (src/format/partMaker.ts), not taken from the
+   * library: unverified. Its id starts with "custom-", which no built-in id does.
+   */
+  custom?: true
 }
+
+/** The id prefix every custom part has and no built-in part may use. */
+export const CUSTOM_PREFIX = 'custom-'
+
+/** A part made in the part maker (`custom: true`): user-made and unverified. */
+export const isCustom = (m: ModuleDef | undefined): boolean => m?.custom === true
 
 export const isSpacer = (p: PinEntry): p is SpacerDef => 'spacer' in p && p.spacer === true
 
@@ -205,7 +216,7 @@ export const usesTipLabels = (m: ModuleDef): boolean => m.art?.pinLabels === 'ti
  */
 export function pinRoom(m: ModuleDef): number {
   if (!usesTipLabels(m)) return LEAD + 10
-  const longest = Math.max(0, ...m.pins.filter((p): p is PinDef => !isSpacer(p)).map((p) => (p.label ?? p.name).length))
+  const longest = m.pins.reduce((n, p) => (isSpacer(p) ? n : Math.max(n, (p.label ?? p.name).length)), 0)
   return LEAD + 2 + Math.ceil(longest * 4.5 + 3)
 }
 
@@ -220,6 +231,18 @@ export type ValidationResult = { ok: true; module: ModuleDef } | { ok: false; er
 
 export const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v)
 export const isNum = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v)
+/**
+ * Any untrusted value as text for a message, never throwing: String() throws on an object whose
+ * toString is not a function (`{"toString": null}` from JSON), so validation never coerces.
+ */
+export function show(v: unknown): string {
+  if (typeof v === 'string') return v
+  try {
+    return JSON.stringify(v) ?? typeof v
+  } catch {
+    return typeof v
+  }
+}
 const isPos = (v: unknown): v is number => isNum(v) && v > 0
 
 /**
@@ -277,7 +300,7 @@ export function validateModule(raw: unknown): ValidationResult {
   if (!isObj(raw)) return { ok: false, errors: ['module must be a JSON object'] }
 
   if (raw.format === undefined) errors.push('format: missing (expected "circuitoon-module/1")')
-  else if (raw.format !== MODULE_FORMAT) errors.push(`format: unsupported "${String(raw.format)}" (expected "${MODULE_FORMAT}")`)
+  else if (raw.format !== MODULE_FORMAT) errors.push(`format: unsupported "${show(raw.format)}" (expected "${MODULE_FORMAT}")`)
   if (typeof raw.id !== 'string' || !/^[a-z0-9]+(-[a-z0-9]+)*$/.test(raw.id))
     errors.push('id: required, lowercase kebab-case (for example "mcp23017-breakout")')
   if (typeof raw.name !== 'string' || raw.name.trim() === '') errors.push('name: required')
@@ -285,6 +308,10 @@ export function validateModule(raw: unknown): ValidationResult {
     errors.push('version: must be a whole number, 1 or more')
   if (raw.category !== undefined && typeof raw.category !== 'string') errors.push('category: must be a string')
   if (raw.source !== undefined && typeof raw.source !== 'string') errors.push('source: must be a string (one or more URLs)')
+  if (raw.custom !== undefined) {
+    if (raw.custom !== true) errors.push('custom: must be true when present')
+    else if (typeof raw.id === 'string' && !raw.id.startsWith(CUSTOM_PREFIX)) errors.push(`custom: a custom part's id must start with "${CUSTOM_PREFIX}"`)
+  }
 
   // Electrical metadata shared by pins and hole groups.
   const checkType = (t: Record<string, unknown>, at: string) => {
@@ -393,7 +420,7 @@ export function validateModule(raw: unknown): ValidationResult {
       raw.internal.forEach((group, i) => {
         if (!Array.isArray(group) || group.length < 2) return void errors.push(`internal[${i}]: needs 2 or more pin names`)
         group.forEach((n, j) => {
-          if (!names.has(n as string)) errors.push(`internal[${i}][${j}]: no pin named "${String(n)}"`)
+          if (!names.has(n as string)) errors.push(`internal[${i}][${j}]: no pin named "${show(n)}"`)
         })
       })
   }
@@ -474,7 +501,7 @@ export function validateModule(raw: unknown): ValidationResult {
       ext.forEach((e, i) => {
         const at = `electrical.external[${i}]`
         if (!isObj(e)) return void errors.push(`${at}: must be { "pin", "volts", "via" }`)
-        if (typeof e.pin !== 'string' || !pinNames.has(e.pin)) errors.push(`${at}.pin: no pin named "${String(e.pin)}"`)
+        if (typeof e.pin !== 'string' || !pinNames.has(e.pin)) errors.push(`${at}.pin: no pin named "${show(e.pin)}"`)
         if (!isPos(e.volts)) errors.push(`${at}.volts: must be a number above 0`)
         if (typeof e.via !== 'string' || e.via.trim() === '') errors.push(`${at}.via: required, what powers the pin (for example "USB")`)
         if (e.diode !== undefined && typeof e.diode !== 'boolean') errors.push(`${at}.diode: must be true or false`)
@@ -492,7 +519,7 @@ export function validateModule(raw: unknown): ValidationResult {
       groups.forEach((g, i) => {
         if (!Array.isArray(g) || g.length < 2) return void errors.push(`electrical.commonReturn[${i}]: needs 2 or more ground pin names`)
         g.forEach((n, j) => {
-          if (typeof n !== 'string' || !grounds.has(n)) errors.push(`electrical.commonReturn[${i}][${j}]: no ground pin named "${String(n)}"`)
+          if (typeof n !== 'string' || !grounds.has(n)) errors.push(`electrical.commonReturn[${i}][${j}]: no ground pin named "${show(n)}"`)
         })
       })
   }
@@ -509,7 +536,7 @@ export function validateModule(raw: unknown): ValidationResult {
     else
       for (const [out, g] of Object.entries(returns)) {
         if (!outs.has(out)) errors.push(`electrical.returns.${out}: no power_out or external pin named "${out}"`)
-        if (typeof g !== 'string' || !grounds.has(g)) errors.push(`electrical.returns.${out}: no ground pin named "${String(g)}"`)
+        if (typeof g !== 'string' || !grounds.has(g)) errors.push(`electrical.returns.${out}: no ground pin named "${show(g)}"`)
       }
   }
 
@@ -525,7 +552,7 @@ export function validateModule(raw: unknown): ValidationResult {
       if (!Array.isArray(el.voltageOutputs) || el.voltageOutputs.length === 0) errors.push('electrical.voltageOutputs: must be a list of power_out pin names')
       else
         el.voltageOutputs.forEach((n, i) => {
-          if (typeof n !== 'string' || !outs.includes(n)) errors.push(`electrical.voltageOutputs[${i}]: no power_out pin named "${String(n)}"`)
+          if (typeof n !== 'string' || !outs.includes(n)) errors.push(`electrical.voltageOutputs[${i}]: no power_out pin named "${show(n)}"`)
         })
     } else if (hasVoltage && outs.length > 1)
       errors.push(`electrical.voltageOutputs: required, the module has a voltage value and ${outs.length} power_out pins; name the ones the value sets`)
@@ -609,7 +636,7 @@ function validateI2c(i2c: unknown, settings: unknown, pins: Set<string>, errors:
   if (!isObj(i2c)) return void errors.push(`${at}: must be { "sda", "scl", "address"?, "pullups"? }`)
   for (const k of Object.keys(i2c)) if (!['sda', 'scl', 'address', 'pullups'].includes(k)) errors.push(`${at}.${k}: unknown field`)
   for (const k of ['sda', 'scl'])
-    if (typeof i2c[k] !== 'string' || !pins.has(i2c[k] as string)) errors.push(`${at}.${k}: no pin named "${String(i2c[k])}"`)
+    if (typeof i2c[k] !== 'string' || !pins.has(i2c[k] as string)) errors.push(`${at}.${k}: no pin named "${show(i2c[k])}"`)
   if (i2c.pullups !== undefined && typeof i2c.pullups !== 'boolean') errors.push(`${at}.pullups: must be true or false (leave it out when not known)`)
   const a = i2c.address
   if (a === undefined) return
@@ -624,13 +651,13 @@ function validateI2c(i2c: unknown, settings: unknown, pins: Set<string>, errors:
     a.pins.forEach((p, i) => {
       const pa = `${at}.address.pins[${i}]`
       if (!isObj(p)) return void errors.push(`${pa}: must be { "pin", "add", "floating"? }`)
-      if (typeof p.pin !== 'string' || !pins.has(p.pin)) errors.push(`${pa}.pin: no pin named "${String(p.pin)}"`)
+      if (typeof p.pin !== 'string' || !pins.has(p.pin)) errors.push(`${pa}.pin: no pin named "${show(p.pin)}"`)
       if (!(Number.isInteger(p.add) && (p.add as number) > 0 && (p.add as number) <= 0x7f)) errors.push(`${pa}.add: must be a whole number from 1 to 127`)
       if (p.floating !== undefined && p.floating !== 0 && p.floating !== 1) errors.push(`${pa}.floating: must be 0 or 1 (the level the board pulls the pin to when nothing is connected)`)
     })
   } else if (a.setting !== undefined) {
-    const choices = isObj(settings) ? settings[a.setting as string] : undefined
-    if (typeof a.setting !== 'string' || !Array.isArray(choices)) errors.push(`${at}.address.setting: no setting named "${String(a.setting)}" in electrical.settings`)
+    const choices = isObj(settings) && typeof a.setting === 'string' && Object.hasOwn(settings, a.setting) ? settings[a.setting] : undefined
+    if (typeof a.setting !== 'string' || !Array.isArray(choices)) errors.push(`${at}.address.setting: no setting named "${show(a.setting)}" in electrical.settings`)
     else if (choices.some((c) => typeof c !== 'string' || parseAddress(c) === null)) errors.push(`${at}.address.setting: every choice of electrical.settings.${a.setting} must be an address such as "0x3C"`)
   } else errors.push(`${at}.address: must be ${forms}`)
 }
