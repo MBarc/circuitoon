@@ -31,6 +31,7 @@
     "check:toolbar-ui": "node scripts/check-toolbar-ui.mjs",
     "check:kicad-ui": "node scripts/check-kicad-ui.mjs",
     "check:partmaker-ui": "node scripts/check-partmaker-ui.mjs",
+    "check:usb-ui": "node scripts/check-usb-ui.mjs",
     "deploy": "bash scripts/deploy.sh"
   },
   "dependencies": {
