@@ -109,7 +109,8 @@
         "connector": "C",
         "gender": "receptacle",
         "role": "device",
-        "speed": "full"
+        "speed": "full",
+        "vbus": "5V"
       }
     }
   ],

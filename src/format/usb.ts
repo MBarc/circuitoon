@@ -138,25 +138,26 @@ function reacher(d: Diagram, links: UsbLink[]): (p: Port) => Port | null {
  * port whose far end is a host or a hub's downstream port): never "no power". `hosting`: parts not
  * fed whose dual port hosts a device, so that port powers nothing on them.
  */
-export function usbPower(d: Diagram): { fed: Set<string>; hosting: Set<string> } {
+export function usbPower(d: Diagram): { fed: Set<string>; hosting: Set<string>; hosted: { port: Port; host: Port }[] } {
   const fed = new Set<string>()
   const hosting = new Set<string>()
+  /** Device and dual ports a host powers (for VBUS back-feed). */
+  const hosted: { port: Port; host: Port }[] = []
   const links = d.connections.map((c) => usbLink(d, c)).filter((l) => l !== null)
   const reach = reacher(d, links)
   for (const l of links)
     for (const p of [l.from, l.to]) {
-      if (p.usb.role === 'device') fed.add(p.part.uid)
-      else if (p.usb.role === 'dual') {
-        const q = reach(p)
-        if (q?.usb.role === 'host') fed.add(p.part.uid)
-        else if (q?.usb.role === 'device') hosting.add(p.part.uid)
-      }
+      if (p.usb.role !== 'device' && p.usb.role !== 'dual') continue
+      const q = reach(p)
+      if (q?.usb.role === 'host') hosted.push({ port: p, host: q })
+      if (p.usb.role === 'device' || q?.usb.role === 'host') fed.add(p.part.uid)
+      else if (q?.usb.role === 'device') hosting.add(p.part.uid)
     }
   for (const u of fed) hosting.delete(u)
-  return { fed, hosting }
+  return { fed, hosting, hosted }
 }
 
-export type UsbRuleId = 'usb-to-pin' | 'usb-fit' | 'usb-role' | 'usb-power' | 'usb-hub-bus-power' | 'usb-power-unknown'
+export type UsbRuleId = 'usb-to-pin' | 'usb-fit' | 'usb-role' | 'usb-power' | 'usb-hub-bus-power' | 'usb-backfeed' | 'usb-power-unknown' | 'usb-backfeed-diode'
 export interface UsbDraft {
   rule: UsbRuleId
   subject: string

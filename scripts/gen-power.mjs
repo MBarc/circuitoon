@@ -105,8 +105,9 @@ function sop(x, y, w, h, n, label, labelSize = 5) {
     // The USB-C socket between the IN pads is a charge-only port (USB design 1.1), in the left side's
     // third slot (y 40, the socket spans 30-60). It draws the charge current: about 1 A with the
     // 1.2 kOhm R_PROG these boards ship with (TP4056 datasheet, R_PROG table; teachmemicro: "Many TP4056
-    // modules are configured for a charge current of about 1 A").
-    pins: intoSpacer([...left.pins, ...right.pins], 'left', 2, usbPort('USB-C', 'left', { connector: 'C', gender: 'receptacle', role: 'device', power: 'only', draw: 1000 })),
+    // modules are configured for a charge current of about 1 A"). IN+ and IN- are the same 5 V input as
+    // the socket (its VBUS and GND), so `vbus` is IN+: feed one or the other, never both.
+    pins: intoSpacer([...left.pins, ...right.pins], 'left', 2, usbPort('USB-C', 'left', { connector: 'C', gender: 'receptacle', role: 'device', power: 'only', draw: 1000, vbus: 'IN+' })),
     internal: [['IN-', 'OUT-'], ['B+', 'OUT+']], wu, hu,
     // commonReturn: the DW01A/8205A protection switch sits between B- and OUT-. It conducts in
     // normal use, so the wiring checker treats both as one return (an approximation: it opens on

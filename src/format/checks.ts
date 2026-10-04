@@ -126,11 +126,13 @@ export const RULES: Record<RuleId, { severity: Severity; title: string }> = {
   'label-alone': { severity: 'warning', title: 'Label connects nothing' },
   'usb-power': { severity: 'warning', title: 'USB port overloaded' },
   'usb-hub-bus-power': { severity: 'warning', title: 'Bus-powered hub overloaded' },
+  'usb-backfeed': { severity: 'warning', title: 'Supply on USB VBUS' },
   // Its severity is the drift's own (an error when the part must be placed again); listed by the editor only.
   'module-drift': { severity: 'warning', title: 'Part data out of date' },
   'battery-bank': { severity: 'info', title: 'Parallel battery bank' },
   'i2c-pullups-unknown': { severity: 'info', title: 'Check the I2C pull-ups' },
   'usb-power-unknown': { severity: 'info', title: 'USB current not known' },
+  'usb-backfeed-diode': { severity: 'info', title: 'Supply on USB VBUS, behind a diode' },
 }
 const RULE_ORDER = Object.keys(RULES) as RuleId[]
 
@@ -750,7 +752,7 @@ export function checkDiagram(d: Diagram): Finding[] {
   const { reversed, returnGroup } = checkPotentials({ d, nl, netTerms, netWires, terminal, plugs, shorted, add, skip: hazardous, usbGrounds })
 
   // Per part: power and ground reach it from another part.
-  const { fed: usbFed, hosting: usbHosting } = usbAny ? usbPower(d) : { fed: new Set<string>(), hosting: new Set<string>() }
+  const { fed: usbFed, hosting: usbHosting, hosted: usbHosted } = usbAny ? usbPower(d) : { fed: new Set<string>(), hosting: new Set<string>(), hosted: [] }
   const others = (t: Terminal) => {
     const i = nl.netOf.get(t.key)
     return i === undefined ? [] : netTerms[i].filter((o) => o.part !== t.part)
@@ -826,6 +828,26 @@ export function checkDiagram(d: Diagram): Finding[] {
         ? `${p.designator} has no ground: ${andList(ownOnly)} ${isAre(ownOnly.length)} wired only to ${p.designator}'s own pins. Connect ${ownOnly.length === 1 ? 'it' : 'them'} to the ground of the circuit.`
         : `${p.designator} has no ground: connect ${what}.`
       add({ rule: 'no-ground', subject: p.designator, target: p.designator, message, parts: [p.uid], pins: grounds.map(termPin), wires: [], causes: grounds.map((t) => t.key) })
+    }
+  }
+
+  // VBUS back-feed: a supply on the pin a port's VBUS feeds while a host powers that port.
+  for (const { port, host } of usbHosted) {
+    if (!port.usb.vbus) continue
+    const t = terminal(nodeKey(port.part.uid, port.usb.vbus))
+    const feeders = t ? others(t).filter(isSource).sort((a, b) => natural.compare(termName(a), termName(b))) : []
+    if (!t || !feeders.length) continue
+    const des = port.part.designator
+    const base = { subject: des, target: termName(t), parts: [port.part.uid, host.part.uid, ...feeders.map((o) => o.part.uid)], pins: [termPin(t), { part: port.part.uid, pin: port.name }, ...feeders.map(termPin)], wires: [], causes: [t.key, port.key] }
+    if (t.info.external.get(t.name)?.diode)
+      add({ rule: 'usb-backfeed-diode', ...base,
+        message: `${termName(t)} is wired to ${andList(feeders.map(termName))} while ${host.title} powers ${port.title}, but ${des} has a diode between USB VBUS and ${t.label}, so the supply cannot drive current back into the host. Keep both if you like: the higher one powers the board.` })
+    else {
+      add({ rule: 'usb-backfeed', ...base,
+        message: `${termName(t)} is wired to ${andList(feeders.map(termName))}, and it is also ${port.title}'s VBUS while ${host.title} powers that port: the supply drives current back into the host's USB port, or the host into the supply. Power ${des} from one of them: unplug the cable or remove the supply.` })
+      // It replaces the general "also gets 5 V from USB" note on that pin.
+      const dup = findings.findIndex((x) => x.rule === 'supplies-parallel' && x.target === termName(t))
+      if (dup >= 0) findings.splice(dup, 1)
     }
   }
 

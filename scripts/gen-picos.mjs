@@ -134,7 +134,7 @@ function build({ id, name, source, shapes }) {
     // can be used in both Device and Host mode" (host mode needs 5 V fed to VBUS), so the port is dual,
     // full speed. No source gives the board's USB draw: unknown.
     pins: [...pinsFor('left', LEFT), ...pinsFor('right', RIGHT), ...pinsFor('bottom', BOTTOM),
-      usbPort('USB', 'top', { connector: 'micro-B', gender: 'receptacle', role: 'dual', version: '1.1', speed: 'full' })],
+      usbPort('USB', 'top', { connector: 'micro-B', gender: 'receptacle', role: 'dual', version: '1.1', speed: 'full', vbus: 'VBUS' })],
     internal: [GROUNDS],
     size: { w: WU, h: HU },
     // Datasheet: "VBUS is the micro-USB input voltage, connected to micro-USB port pin 1. This is

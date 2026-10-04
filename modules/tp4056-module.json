@@ -25,7 +25,8 @@
         "gender": "receptacle",
         "role": "device",
         "power": "only",
-        "draw": 1000
+        "draw": 1000,
+        "vbus": "IN+"
       }
     },
     {

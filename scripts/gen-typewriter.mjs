@@ -146,7 +146,7 @@ const passive = { type: 'passive' }
     source: 'https://protosupplies.com/product/esp32-s-screw-terminal-adapter/ https://www.otronic.nl/en/breakout-board-for-esp32-s-38-pins.html',
     // The seated DevKitC's micro USB overhangs the left end (art y 91-119): its port, as on the
     // esp32-devkitc-v4 part (gen-boards.mjs), on the free left edge.
-    pins: [...top.pins, ...bottom.pins, ...portSide('left', hu, [[100, usbPort('USB', 'left', { connector: 'micro-B', gender: 'receptacle', role: 'device', version: '2.0', speed: 'full' })]])],
+    pins: [...top.pins, ...bottom.pins, ...portSide('left', hu, [[100, usbPort('USB', 'left', { connector: 'micro-B', gender: 'receptacle', role: 'device', version: '2.0', speed: 'full', vbus: '5V' })]])],
     internal: [['GND', 'GND 2', 'GND 3']], wu, hu,
     // Its 5V terminal is the seated DevKitC's 5V pin, which carries that board's USB 5 V (see
     // gen-boards.mjs: VBUS through a Schottky diode, D3, to EXT_5V), a 5 V source while it is on

@@ -10,7 +10,7 @@
 // Run from the repo root: `node scripts/gen-arduino.mjs` (add `--check` to compare with modules/).
 import { finish } from './lib/gen-output.mjs'
 import { moduleJson, r, slots, write } from './lib/parts.mjs'
-import { portSide, usbPort } from './lib/usb.mjs'
+import { portSide, usbPort, withVbus } from './lib/usb.mjs'
 import { S3_STRAP, strapCaps } from './lib/pin-caps.mjs'
 
 const TEAL = '#17708A', BLUE = '#1E4F8A', DARK = '#1B1F24', CHIP = '#2B2F36', BTN = '#3A3F47'
@@ -152,10 +152,11 @@ function shieldArt(W, H, left, right, extra) {
   ]
 }
 
-function shield({ file, id, name, source, W = 210, H = 270, left, right, own, caps, io33, internal, external, holes, art, ports = [] }) {
+// `vbusPorts`: the ports whose VBUS reaches the `external` pin, when not every port does.
+function shield({ file, id, name, source, W = 210, H = 270, left, right, own, caps, io33, internal, external, holes, art, ports = [], vbusPorts }) {
   const typeOf = typer({ own, caps, io33 })
   // USB ports last, on the free top edge at the drawn connector (USB design 1.3: an additive update).
-  const pins = [...place('left', left, H / 10, typeOf), ...place('right', right, H / 10, typeOf), ...ports]
+  const pins = [...place('left', left, H / 10, typeOf), ...place('right', right, H / 10, typeOf), ...(external ? withVbus(ports, external.pin, vbusPorts) : ports)]
   const electrical = { model: 'mcu', params: {} }
   if (external) electrical.external = [external]
   const m = moduleJson({ id, name, category: 'Microcontrollers', source, pins, internal, wu: W / 10, hu: H / 10, electrical, inside: true, holes, shapes: shieldArt(W, H, left, right, [...art, ...(holes ? holeLabels(holes) : [])]) })
@@ -298,6 +299,8 @@ shield({
   caps: { ATN: { note: 'ATN has no connection on the Zero v4.0 schematic.' } },
   internal: [['GND', 'GND 2', 'GND 3'], ['3V3', 'IOREF']],
   external: { pin: '5V', volts: 5, via: 'USB' },
+  // The schematic shows the native port's USBVCC reaching +5V; the programming port's path is not transcribed.
+  vbusPorts: ['NATIVE'],
   art: [
     ...barrelJack(14), ...usbMicro(78), ...usbMicro(140), ...resetButton(180, 26),
     ...qfp(110, 186, 34, 'SAMD21', 6), r(116, 104, 26, 26, CHIP, { radius: 2, label: 'EDBG', labelColor: CAN, labelSize: 5 }),
@@ -406,7 +409,7 @@ function small({ file, id, name, source, left, right, top = 1, wu = 8, own, caps
   const pins = [
     ...(topPins ? place('top', topPins.map((s, i) => [Math.ceil((wu - topPins.length + 1) / 2) + i, s]), wu, typeOf) : []),
     ...place('left', rows(left), hu, typeOf), ...place('right', rows(right), hu, typeOf),
-    ...ports,
+    ...(external ? withVbus(ports, external.pin) : ports),
   ]
   const ys = left.map((_, i) => (first + i) * 10)
   const electrical = { model: 'mcu', params: {} }

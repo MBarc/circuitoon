@@ -144,6 +144,32 @@ describe('USB rules on library parts', () => {
     const fed = sheet([['J1', 'computer-usb-port'], ['U1', 'rpi-pico']], [['j1|USB', 'u1|USB', { from: 'usb-a', to: 'usb-micro-b' }]])
     expect(checkDiagram(fed).map((f) => f.rule)).not.toContain('no-power')
   })
+  it('VBUS back-feed: a 5 V supply on a Pico\'s VBUS while its USB is cabled to a computer', () => {
+    const d = sheet([['J1', 'computer-usb-port'], ['U1', 'rpi-pico'], ['BT1', 'battery-holder-3xaaa']],
+      [['j1|USB', 'u1|USB', { from: 'usb-a', to: 'usb-micro-b' }], ['bt1|+', 'u1|VBUS'], ['bt1|-', 'u1|GND']])
+    expect(usb(d).filter((f) => /backfeed/.test(f))).toEqual([
+      'warning usb-backfeed: U1 VBUS is wired to BT1 +, and it is also U1 USB\'s VBUS while J1 USB powers that port: the supply drives current back into the host\'s USB port, or the host into the supply. Power U1 from one of them: unplug the cable or remove the supply.',
+    ])
+    // A 5 V supply there: the back-feed warning replaces the general "also gets 5 V from USB" one.
+    const five = sheet([['J1', 'computer-usb-port'], ['U1', 'rpi-pico'], ['U2', 'arduino-pro-mini-5v']],
+      [['j1|USB', 'u1|USB', { from: 'usb-a', to: 'usb-micro-b' }], ['u2|VCC', 'u1|VBUS'], ['u2|GND', 'u1|GND']])
+    expect(checkDiagram(five).filter((f) => f.severity !== 'info').map((f) => f.rule)).toEqual(['usb-backfeed'])
+    // Off the host, the supply alone powers it: quiet.
+    const alone = { ...d, connections: d.connections.slice(1) }
+    expect(usb(alone).filter((f) => /backfeed/.test(f))).toEqual([])
+  })
+  it('VBUS back-feed: a TP4056 with its USB-C cabled and IN+ fed', () => {
+    const d = sheet([['J1', 'computer-usb-port'], ['U1', 'tp4056-module'], ['BT1', 'battery-holder-3xaaa']],
+      [['j1|USB', 'u1|USB-C', { from: 'usb-a', to: 'usb-c' }], ['bt1|+', 'u1|IN+'], ['bt1|-', 'u1|IN-']])
+    expect(usb(d).filter((f) => /backfeed/.test(f)).map((f) => f.split(':')[0])).toEqual(['warning usb-backfeed'])
+  })
+  it('VBUS back-feed behind a diode (DevKitC 5V) is a note, not a warning', () => {
+    const d = sheet([['J1', 'computer-usb-port'], ['U1', 'esp32-devkitc-v4'], ['BT1', 'battery-holder-3xaaa']],
+      [['j1|USB', 'u1|USB', { from: 'usb-a', to: 'usb-micro-b' }], ['bt1|+', 'u1|5V'], ['bt1|-', 'u1|GND']])
+    expect(usb(d).filter((f) => /backfeed/.test(f))).toEqual([
+      'info usb-backfeed-diode: U1 5V is wired to BT1 + while J1 USB powers U1 USB, but U1 has a diode between USB VBUS and 5V, so the supply cannot drive current back into the host. Keep both if you like: the higher one powers the board.',
+    ])
+  })
   it('jumper wires from a Pi\'s GPIO to a USB port are an error', () => {
     const d = sheet([['U1', 'rpi-4-model-b'], ['U2', 'esp32-devkitc-v4']], [['u1|GPIO14', 'u2|USB']])
     expect(usb(d).map((f) => f.split(':')[0])).toEqual(['error usb-to-pin'])

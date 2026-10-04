@@ -58,6 +58,14 @@ describe('USB port validation', () => {
     expect(errorsOf(base(lone))).toEqual([expect.stringMatching(/^pins: USB port "S" passes through to "X"/)])
     expect(errorsOf(base([port({ ...DEVICE, through: 'S' })]))).toEqual([expect.stringMatching(/usb\.through: a passthrough port names its other end/)])
   })
+  it('vbus names the board\'s own pin or pad, never a USB port, on a device or dual port', () => {
+    const v5 = { name: '5V', side: 'left', type: 'power_in', supply: '5V' }
+    expect(errorsOf(base([v5, port({ ...DEVICE, vbus: '5V' })]))).toEqual([])
+    expect(errorsOf({ ...base([port({ ...DEVICE, vbus: 'VB' })]), holes: [{ name: 'VB', at: [[20, 20]], holeStyle: 'pad', type: 'power_in' }] })).toEqual([])
+    expect(errorsOf(base([v5, port({ ...DEVICE, vbus: 'VIN' })]))).toEqual(['pins: USB port "USB" has vbus "VIN", which must name one of the part\'s own pins or pads (not a USB port)'])
+    expect(errorsOf(base([port({ ...DEVICE, vbus: 'USB2' }), port(DEVICE, 'USB2')]))).toEqual(['pins: USB port "USB" has vbus "USB2", which must name one of the part\'s own pins or pads (not a USB port)'])
+    expect(errorsOf(base([v5, port({ connector: 'A', gender: 'receptacle', role: 'host', vbus: '5V' })]))).toEqual(['pins[1].usb.vbus: only a device or dual port feeds the board\'s VBUS'])
+  })
   it('never on a hole group', () => {
     const raw = { ...base([{ name: 'GND', side: 'left', type: 'ground' }]), holes: [{ name: 'U', at: [[20, 20]], holeStyle: 'pad', type: 'usb' }] }
     expect(errorsOf(raw)).toEqual(['holes[0]: a USB port is a pin on the body edge, not a hole group'])

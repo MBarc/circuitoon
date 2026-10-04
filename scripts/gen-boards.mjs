@@ -8,7 +8,7 @@
 import { emit, finish, log } from './lib/gen-output.mjs'
 import { moduleText } from './lib/kicad.mjs'
 import { C3_STRAP, S3_OCTAL, S3_STRAP, esp32Caps, strapCaps } from './lib/pin-caps.mjs'
-import { portSide, usbPort } from './lib/usb.mjs'
+import { portSide, usbPort, withVbus } from './lib/usb.mjs'
 import { fileURLToPath } from 'node:url'
 const OUT = fileURLToPath(new URL('../modules/', import.meta.url))
 
@@ -59,7 +59,7 @@ function build({ file, id, name, source, left, right, top = 0, bottom = 0, wu, t
     ...spacers('left', top), ...pinsFor('left', left, types), ...spacers('left', bottom),
     ...spacers('right', top), ...pinsFor('right', right, types), ...spacers('right', bottom),
     // USB ports last, on a side the headers leave free (USB design 1.3: an additive update).
-    ...ports,
+    ...(usb ? withVbus(ports, usb) : ports),
   ]
   const shapes = [r(0, 0, W, H, art.pcb ?? PCB, { radius: 5 }), ...headers(W, pinYs), ...art.shapes(W, H, pinYs)]
   const m = {

@@ -40,6 +40,8 @@ export interface UsbSpec {
   hub?: 'upstream' | 'downstream'
   /** On a passthrough port: the other end the bus continues to. */
   through?: string
+  /** The board's own pin or pad this port's VBUS feeds (Pico VBUS, a dev board's 5V), where a source says so. */
+  vbus?: string
 }
 /** The most current a port may declare, in mA (USB-C at 5 A). */
 export const USB_MA_MAX = 5000
@@ -378,7 +380,7 @@ export function validateModule(raw: unknown): ValidationResult {
     const u = t.usb
     if (!isObj(u)) return void errors.push(`${at}.usb: required on a USB port, { "connector", "gender", "role", ... }`)
     for (const k of Object.keys(u))
-      if (!['connector', 'gender', 'role', 'version', 'speed', 'source', 'draw', 'power', 'hub', 'through'].includes(k)) errors.push(`${at}.usb.${k}: unknown field`)
+      if (!['connector', 'gender', 'role', 'version', 'speed', 'source', 'draw', 'power', 'hub', 'through', 'vbus'].includes(k)) errors.push(`${at}.usb.${k}: unknown field`)
     if (!(USB_CONNECTORS as readonly unknown[]).includes(u.connector)) errors.push(`${at}.usb.connector: must be one of ${USB_CONNECTORS.join(', ')}`)
     if (u.gender !== 'receptacle' && u.gender !== 'plug') errors.push(`${at}.usb.gender: must be "receptacle" or "plug"`)
     if (!(USB_ROLES as readonly unknown[]).includes(u.role)) errors.push(`${at}.usb.role: must be one of ${USB_ROLES.join(', ')}`)
@@ -394,6 +396,7 @@ export function validateModule(raw: unknown): ValidationResult {
       errors.push(`${at}.usb.hub: "upstream" on a device port or "downstream" on a host port`)
     if ((u.role === 'passthrough') !== (u.through !== undefined)) errors.push(`${at}.usb.through: a passthrough port names its other end, and only it does`)
     else if (u.through !== undefined && typeof u.through !== 'string') errors.push(`${at}.usb.through: must be a port name`)
+    if (u.vbus !== undefined && u.role !== 'device' && u.role !== 'dual') errors.push(`${at}.usb.vbus: only a device or dual port feeds the board's VBUS`)
   }
 
   const names = new Set<string>()
@@ -639,6 +642,11 @@ function validateUsb(raw: Record<string, unknown>, errors: string[]) {
       .filter((p): p is Record<string, unknown> => isObj(p) && p.type === 'usb' && typeof p.name === 'string' && isObj(p.usb))
       .map((p) => [p.name as string, p.usb as Record<string, unknown>]),
   )
+  // The board's own pins and pads, USB ports aside: what a port's VBUS or a hub's DC input can name.
+  const powerPins = new Set([...(Array.isArray(raw.pins) ? raw.pins : []), ...(Array.isArray(raw.holes) ? raw.holes : [])].filter((p) => isObj(p) && p.type !== 'usb').map((p) => (p as Record<string, unknown>).name))
+  for (const [name, u] of ports)
+    if (u.vbus !== undefined && !(typeof u.vbus === 'string' && powerPins.has(u.vbus)))
+      errors.push(`pins: USB port "${name}" has vbus "${show(u.vbus)}", which must name one of the part's own pins or pads (not a USB port)`)
   for (const [name, u] of ports) {
     if (u.role !== 'passthrough' || typeof u.through !== 'string') continue
     const other = ports.get(u.through)

@@ -35,3 +35,13 @@ export function intoSpacer(pins, side, index, pin) {
     return pin
   })
 }
+
+/**
+ * The pins with `usb.vbus` set to `pin` on the USB ports named in `names` (every port when left out):
+ * the board pin each port's VBUS feeds, from the same schematic or maker docs as the board's
+ * `electrical.external` entry for that pin. The checker warns when a supply is wired to that pin
+ * while a host powers the port (VBUS back-feed).
+ */
+export function withVbus(pins, pin, names) {
+  return pins.map((p) => (p.type === 'usb' && (!names || names.includes(p.name)) ? { ...p, usb: { ...p.usb, vbus: pin } } : p))
+}

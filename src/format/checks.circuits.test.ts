@@ -833,6 +833,13 @@ describe('every message ends with what to do', () => {
     expect(rules(built({ ...tree, connections: tree.connections.map((c, i) => (i === 0 ? { ...c, ends: { from: 'usb-a', to: 'usb-b' } } : c)) }))).toContain('usb-hub-bus-power')
     const unknown = sheetWith([host, dev], [at('u1', 'U1', 'usb-host'), at('u2', 'U2', 'usb-dev', 300)], [['u1|USB', 'u2|USB']])
     expect(rules(cabled(unknown, { from: 'usb-a', to: 'usb-micro-b' }))).toEqual(['usb-power-unknown'])
+    // VBUS back-feed: a battery on the pin the port's VBUS feeds while a host powers the port; behind a diode, a note.
+    const vbusDev = (id: string, diode: boolean) => custom({ id, pins: [port('USB', 'left', { connector: 'micro-B', gender: 'receptacle', role: 'device', draw: 100, vbus: 'VB' }), { name: 'VB', side: 'right', type: 'power_in', supply: '5V' }, { name: 'G', side: 'right', type: 'ground' }],
+      electrical: { params: {}, ...(diode ? { external: [{ pin: 'VB', volts: 5, via: 'USB', diode: true }] } : {}) } })
+    for (const [id, rule] of [['usb-vb', 'usb-backfeed'], ['usb-vb-diode', 'usb-backfeed-diode']]) {
+      const s = sheetWith([host, vbusDev(id, id !== 'usb-vb')], [at('u1', 'U1', 'usb-host'), at('u2', 'U2', id, 300), at('bt1', 'BT1', 'battery-9v', 600)], [['u1|USB', 'u2|USB'], ['bt1|+', 'u2|VB'], ['bt1|-', 'u2|G']])
+      expect(rules(built({ ...s, connections: s.connections.map((c, i) => (i === 0 ? { ...c, ends: { from: 'usb-a', to: 'usb-micro-b' } } : c)) }))).toContain(rule)
+    }
   })
   it('on every finding of every sheet built in this file', () => {
     const missing: string[] = []

@@ -293,7 +293,8 @@
         "gender": "receptacle",
         "role": "device",
         "version": "2.0",
-        "speed": "full"
+        "speed": "full",
+        "vbus": "5V"
       }
     },
     {
@@ -309,7 +310,8 @@
         "gender": "receptacle",
         "role": "dual",
         "version": "1.1",
-        "speed": "full"
+        "speed": "full",
+        "vbus": "5V"
       }
     },
     {
