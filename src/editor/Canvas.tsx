@@ -712,7 +712,7 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
     }
     if (drag.kind === 'reconnect') {
       const to = endUnder(e, taken)
-      const next = to && reconnectWire(store.getState().diagram, drag.uid, drag.end, to)
+      const next = to && reconnectWire(store.getState().diagram, drag.uid, drag.end, to, store.getState().wireStyle)
       if (next) {
         store.commit(next)
         store.select({ parts: [], wires: [drag.uid] })

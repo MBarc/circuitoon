@@ -352,10 +352,12 @@ export function addWire(d: Diagram, from: Endpoint, to: Endpoint, style: WireSty
 
 /**
  * Moves one end of an existing wire onto a different pin, keeping its color, gauge and label. A
- * hand-shaped wire becomes automatic again, since its bends were made for the old pin. Refused (returns null) for a missing wire, a self-loop, dropping back onto the pin the
+ * hand-shaped wire becomes automatic again, since its bends were made for the old pin. An end moved
+ * onto or off a USB port gets new cable ends: the USB cable (or plug-in) for two ports, else the
+ * new-wire `style`'s ends (a plain wire without one). Refused (returns null) for a missing wire, a self-loop, dropping back onto the pin the
  * end is already on, or a duplicate of another wire's endpoints in either direction.
  */
-export function reconnectWire(d: Diagram, uid: string, end: 'from' | 'to', target: Endpoint): Diagram | null {
+export function reconnectWire(d: Diagram, uid: string, end: 'from' | 'to', target: Endpoint, style?: WireStyle): Diagram | null {
   const wire = d.connections.find((c) => c.uid === uid)
   if (!wire) return null
   const current = wire[end]
@@ -368,12 +370,15 @@ export function reconnectWire(d: Diagram, uid: string, end: 'from' | 'to', targe
     (c) => c.uid !== uid && ((sameEndpoint(d, c.from, from) && sameEndpoint(d, c.to, to)) || (sameEndpoint(d, c.from, to) && sameEndpoint(d, c.to, from))),
   )
   if (dup) return null
+  const [a, b] = [portOf(d, from), portOf(d, to)]
+  const recable = portOf(d, current) !== null || portOf(d, target) !== null
+  const ends = !recable ? wire.ends : a && b ? usbEndsFor(a.usb, b.usb) : normalizeEnds(style?.ends)
   return {
     ...d,
     connections: d.connections.map((c) => {
       if (c.uid !== uid) return c
-      const { route: _dropped, ...rest } = c
-      return { ...rest, [end]: target }
+      const { route: _dropped, ends: _ends, ...rest } = c
+      return { ...rest, [end]: target, ...(ends ? { ends } : {}) }
     }),
   }
 }
