@@ -75,8 +75,8 @@ export function findingLines<F extends { severity: string; message: string }>(fi
 
 /** The stderr summary; `refOf` names parts by ref where the result keeps uids. */
 export function summary(o: SimOutcome, refOf: Map<string, string> = new Map()): string {
-  if (o.status === 'unavailable') return `Simulation unavailable: ${o.reason}\n`
-  if (o.status === 'failed') return `Simulation failed: ${o.finding.message}\n`
+  // The topological findings decided before the engine ran still stand.
+  if (o.status !== 'ok') return `${[o.status === 'failed' ? `Simulation failed: ${o.finding.message}` : `Simulation unavailable: ${o.reason}`, ...findingLines(o.findings)].join('\n')}\n`
   const r = o.result
   const count = (s: string) => r.findings.filter((f) => f.severity === s).length
   const lines = [`Simulation: typical and peak solved in ${Math.round(r.engine.ms)} ms (${r.engine.runs} engine runs). ${plural(count('error'), 'blocking finding')}, ${plural(count('warning'), 'warning')}, ${plural(count('note'), 'note')}.`]

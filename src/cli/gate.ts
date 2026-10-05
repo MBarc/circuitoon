@@ -232,20 +232,29 @@ export async function runGate(bytes: Uint8Array, opts: { sheetPath: string; outD
       // A throwing solve is a failed outcome, as in the session: the checker's findings still stand.
       const outcome: SimOutcome = await solve(d, engine, 1, { library: libraryLookup }).then(
         (s) => s.outcome,
-        (e) => ({ status: 'failed', revision: 1, finding: noConvergence(null, String(e), []) }),
+        (e) => ({ status: 'failed', revision: 1, finding: noConvergence(null, String(e), []), findings: [] }),
       )
+      // Filed with the gate's findings; a failed or unavailable solve still carries the topological
+      // ones (a short blocks with no engine), which block on the same rule as an ok solve's.
+      const file = (findings: SimFinding[]) => {
+        for (const f of findings) {
+          sim.provenanceCounts[f.basis]++
+          found.push({ id: `${f.code}|${f.parts.join(',')}|${f.corner ?? ''}`, rule: f.code, severity: f.severity === 'note' ? 'info' : f.severity, message: f.message, parts: f.parts, pins: f.pins ?? [], wires: [] })
+        }
+      }
       if (outcome.status === 'ok') {
         const r = outcome.result
-        const counts = { ...sim.provenanceCounts }
-        for (const f of r.findings) counts[f.basis]++
-        sim = { status: 'ok', findings: r.findings, budget: r.budget, provenanceCounts: counts }
-        for (const f of r.findings)
-          found.push({ id: `${f.code}|${f.parts.join(',')}|${f.corner ?? ''}`, rule: f.code, severity: f.severity === 'note' ? 'info' : f.severity, message: f.message, parts: f.parts, pins: [], wires: [] })
+        sim = { ...sim, status: 'ok', findings: r.findings, budget: r.budget }
+        file(r.findings)
       } else if (outcome.status === 'failed') {
         // A failed solve never blocks (it may be our model, not the circuit): a warning, here and in sim.
-        sim = { ...sim, status: 'failed', findings: [{ ...outcome.finding, severity: 'warning' }], reason: outcome.finding.message }
+        sim = { ...sim, status: 'failed', findings: [{ ...outcome.finding, severity: 'warning' }, ...outcome.findings], reason: outcome.finding.message }
         found.push({ id: 'sim-no-convergence', rule: 'sim-no-convergence', severity: 'warning', message: outcome.finding.message, parts: outcome.finding.parts, pins: [], wires: [] })
-      } else sim = { ...sim, status: 'unavailable', reason: outcome.reason }
+        file(outcome.findings)
+      } else {
+        sim = { ...sim, status: 'unavailable', findings: outcome.findings, reason: outcome.reason }
+        file(outcome.findings)
+      }
     } finally {
       if (opts.engine === undefined) engine.dispose()
     }

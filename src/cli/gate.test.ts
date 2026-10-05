@@ -552,6 +552,32 @@ describe('gate/4: simulation (spec 7)', () => {
     expect(r.code).toBe(1)
     expect(r.out).toContain('GATE FAILED (simulation): 1 blocking finding (sheet.json)')
   }, 120_000)
+  it('fails on a real short even when the engine fails or is unavailable: the topological findings still block', async () => {
+    for (const status of ['failed', 'unavailable'] as const) {
+      const dir = await shorted()
+      gateEngine.make = () => failing(status)
+      const r = await cli(['gate', 'sheet.json', '-o', 'out'], { cwd: dir, env: noBrowser(dir) })
+      const g = gateJson(dir)
+      expect(schemaErrors(loadSchema('gate'), g)).toEqual([])
+      expect(r.code).toBe(1)
+      expect(g.sim.status).toBe(status)
+      expect(g.sim.findings.some((f: { code: string }) => f.code === 'sim-short')).toBe(true)
+      expect(g.blocking.filter((f: { rule: string }) => f.rule.startsWith('sim-')).map((f: { rule: string }) => f.rule)).toEqual(['sim-short'])
+      expect(r.out).toContain('GATE FAILED (simulation): 1 blocking finding (sheet.json)')
+    }
+  }, 240_000)
+  it('fails on an LED straight across 2xAA (Phase D ruling: past twice a representative absolute maximum)', async () => {
+    const dir = tempDir()
+    writeFileSync(join(dir, 'n.json'), JSON.stringify({
+      format: 'circuitoon-netlist/1', title: 'bare LED',
+      parts: [{ ref: 'BT1', module: 'battery-holder-2xaa' }, { ref: 'D1', module: 'led' }],
+      nets: [{ name: 'A', pins: ['BT1.+', 'D1.A'] }, { name: 'GND', pins: ['D1.K', 'BT1.-'] }],
+    }))
+    expect((await cli(['layout', 'n.json', '-o', 'sheet.json'], { cwd: dir })).code).toBe(0)
+    const r = await cli(['gate', 'sheet.json', '-o', 'out'], { cwd: dir, env: noBrowser(dir) })
+    expect(r.code).toBe(1)
+    expect(gateJson(dir).blocking.some((f: { rule: string; message: string }) => f.rule === 'sim-over-abs-max' && f.message.includes('Add a series resistor (about '))).toBe(true)
+  }, 120_000)
   it('fails with the plain banner when the checker and the simulation both block (matrix row 1)', async () => {
     const dir = await shorted()
     edit(dir, (s) => void delete s.intent)

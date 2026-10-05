@@ -1,7 +1,7 @@
 // Spec 2: a solve runs the typical and peak corners (2 engine runs) and assembles a SimResult; the
 // session keeps one solve in flight and one pending (a newer request replaces the pending one),
 // drops results for older revisions and after stop(), and a failure carries the last good result.
-import { afterAll, describe, expect, it } from 'vitest'
+import { afterAll, describe, expect, it, vi } from 'vitest'
 import { makeEngine, type Engine, type RunOutcome } from './engine/engine.ts'
 import type { EngineHost } from './engine/host.ts'
 import { createNodeEngineHost } from './engine/nodeEngine.ts'
@@ -126,5 +126,42 @@ describe('SimSession', () => {
     await g.flush()
     expect(g.calls).toEqual([1, 2, 2])
     expect(got.map((o) => (o.status === 'ok' ? o.result.revision : o.status))).toEqual([2])
+  })
+  it('an onOutcome that throws once does not stop later requests (it is logged)', async () => {
+    const g = gatedEngine()
+    const got: number[] = []
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      const s = new SimSession(g.engine, (o) => {
+        got.push(o.status === 'ok' ? o.result.revision : -1)
+        if (got.length === 1) throw new Error('editor bug')
+      })
+      s.request(led, 1)
+      await g.flush()
+      s.request(led, 2)
+      await g.flush()
+      expect(got).toEqual([1, 2])
+      expect(logged).toHaveBeenCalledTimes(1)
+    } finally {
+      logged.mockRestore()
+    }
+  })
+})
+
+describe('solve when the engine fails or is unavailable', () => {
+  const shorted = sheet([{ uid: 'bt1', module: cellModule(3.7, 0.05) }, { uid: 's1', module: 'rocker-switch-kcd1', values: { 'contact.s': 'closed' } }], [['bt1.+', 's1.1'], ['s1.2', 'bt1.-']])
+  const engine = (status: 'failed' | 'unavailable'): Engine => ({
+    host: { runs: 0, info: null } as unknown as EngineHost,
+    init: async () => ({ name: 'ngspice', version: '45.2', build: 'fake' }),
+    run: async (_c, _a, revision) => (status === 'failed' ? { status, revision, error: 'singular matrix', nodes: [] } : { status, reason: 'no engine' }),
+    dispose() {},
+  })
+  it('still carries the topological findings: a real short is named with no engine', async () => {
+    for (const status of ['failed', 'unavailable'] as const) {
+      const { outcome } = await solve(shorted, engine(status), 1)
+      expect(outcome.status).toBe(status)
+      if (outcome.status === 'ok') return
+      expect(outcome.findings.filter((f) => f.code === 'sim-short')).toEqual([expect.objectContaining({ severity: 'error', basis: 'topology', parts: ['bt1', 's1'] })])
+    }
   })
 })

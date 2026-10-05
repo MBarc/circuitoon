@@ -95,8 +95,8 @@ In KiCad: open the PCB Editor, then File > Import > Netlist, choose the file and
 
 `circuitoon sim <sheet.json|netlist.json> [--probe <ref[.pin]|net:NAME>]...` solves the sheet as a DC circuit in its saved state: switch positions (`values["contact.<group>"]`) and GPIO states (`values["gpio.<pin>"]`). A netlist is laid out first. It prints the outcome (`schemas/sim.schema.json`) on stdout and a short summary on stderr, and reports simulation findings only (`sim-*`); the wiring checker's findings stay in `check` and `gate`.
 
-- Exit 0: solved, nothing blocks. Exit 1: a blocking finding (an `error`: at the typical corner, decided on datasheet, user or topology values). Exit 2: bad input. Exit 3: the solve failed or the engine is unavailable.
-- Each finding has `basis` and `inputs`: a finding decided on `representative` or `estimate` values is a warning worded "Likely", never blocking. Findings at the peak corner are warnings labelled with the peak's condition.
+- Exit 0: solved, nothing blocks. Exit 1: a blocking finding (an `error`: at the typical corner, decided on datasheet, user or topology values). Exit 2: bad input. Exit 3: the solve failed or the engine is unavailable; the outcome's `findings` still lists what was decided before the solve (a short, supplies that fight, a floating input), and `gate` blocks on those errors.
+- Each finding has `basis` and `inputs`: a finding decided on `representative` or `estimate` values is a warning worded "Likely", never blocking, with one exception: a reading more than twice a representative absolute maximum (an LED with no resistor) stays a blocking error. Findings at the peak corner are warnings labelled with the peak's condition. A pin-level finding (a floating input, a pin over its limit) also lists its `pins`.
 - `--probe` repeats. `REF.PIN` reads a pin's voltage, `REF` a part's current per pin and its power, `net:NAME` a net's voltage. Probes saved in the sheet are read too.
 - Readings: a voltage names its reference (`"reference": "GND"`); `floating` means nothing on the sheet drives that node; `undefined` means it is not simulated (mains wiring).
 

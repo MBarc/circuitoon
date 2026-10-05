@@ -6,7 +6,7 @@ import type { Diagram, Probe } from '../format/diagram.ts'
 import { type BuildOptions, buildCircuit } from './build.ts'
 import type { Engine } from './engine/engine.ts'
 import { classifyCached } from './floating.ts'
-import { analyseFindings, noConvergence } from './findings.ts'
+import { analyseFindings, finalize, noConvergence, topologyFindings } from './findings.ts'
 import type { Circuit, Corner } from './model.ts'
 import { type SimOutcome, type SimResult, budget, probeReadings, readRun } from './results.ts'
 import type { RawRun } from './spice.ts'
@@ -17,17 +17,19 @@ export interface SolveOptions extends BuildOptions { probes?: Probe[] }
 export async function solve(d: Diagram, engine: Engine, revision: number, opts: SolveOptions = {}): Promise<{ outcome: SimOutcome; circuit: Circuit }> {
   const c = buildCircuit(d, opts)
   const cls = classifyCached(c, { kind: 'op' })
+  // Decided before the engine runs, so a failed or unavailable outcome still names a real short.
+  const topo = topologyFindings(c, cls)
   const raws = {} as Record<Corner, RawRun>
   const before = engine.host.runs
   let ms = 0
   for (const corner of ['typical', 'peak'] as const) {
     const r = await engine.run(c, { kind: 'op', corner }, revision)
-    if (r.status === 'unavailable') return { circuit: c, outcome: { status: 'unavailable', reason: r.reason } }
-    if (r.status === 'failed') return { circuit: c, outcome: { status: 'failed', revision, finding: noConvergence(c, r.error, r.nodes) } }
+    if (r.status === 'unavailable') return { circuit: c, outcome: { status: 'unavailable', reason: r.reason, findings: finalize(topo.drafts, '') } }
+    if (r.status === 'failed') return { circuit: c, outcome: { status: 'failed', revision, finding: noConvergence(c, r.error, r.nodes), findings: finalize(topo.drafts, '') } }
     raws[corner] = r.raw
     ms += r.ms
   }
-  const { findings, outside } = analyseFindings(c, cls, raws)
+  const { findings, outside } = analyseFindings(c, cls, raws, topo)
   const corners = { typical: readRun(c, cls, raws.typical, outside), peak: readRun(c, cls, raws.peak, outside) }
   const info = engine.host.info
   const result: SimResult = {
@@ -83,11 +85,16 @@ export class SimSession {
       } catch (e) {
         // A throw (building the circuit, compiling it, the engine) is a failed solve, never an
         // unhandled rejection, and the loop goes on to any request that arrived meanwhile.
-        outcome = { status: 'failed', revision: job.revision, finding: noConvergence(null, String(e), []) }
+        outcome = { status: 'failed', revision: job.revision, finding: noConvergence(null, String(e), []), findings: [] }
       }
       if (this.stopped || job.revision !== this.latest) continue
       if (outcome.status === 'ok') this.lastGood = { revision: job.revision, result: outcome.result }
-      this.onOutcome(outcome.status === 'failed' && this.lastGood ? { ...outcome, lastGood: this.lastGood } : outcome, circuit)
+      try {
+        this.onOutcome(outcome.status === 'failed' && this.lastGood ? { ...outcome, lastGood: this.lastGood } : outcome, circuit)
+      } catch (e) {
+        // A throwing callback is the caller's bug: logged, never allowed to wedge the loop.
+        console.error('SimSession: onOutcome threw', e)
+      }
     }
     this.running = false
   }

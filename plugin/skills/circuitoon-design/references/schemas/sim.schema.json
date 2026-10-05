@@ -40,6 +40,13 @@
     },
     "reason": {
       "type": "string"
+    },
+    "findings": {
+      "type": "array",
+      "description": "A failed or unavailable outcome: the topological findings decided before the engine ran (empty when the solve threw before the circuit was built).",
+      "items": {
+        "$ref": "#/$defs/finding"
+      }
     }
   },
   "$defs": {
@@ -181,6 +188,26 @@
         },
         "raw": {
           "type": "string"
+        },
+        "pins": {
+          "type": "array",
+          "description": "The pins a pin-level finding is about (a floating input, a pin over its limit).",
+          "items": {
+            "type": "object",
+            "required": [
+              "part",
+              "pin"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "part": {
+                "type": "string"
+              },
+              "pin": {
+                "type": "string"
+              }
+            }
+          }
         }
       }
     },

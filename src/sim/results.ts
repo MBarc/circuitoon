@@ -63,10 +63,15 @@ export interface SimResult {
   notes: string[]
   engine: { name: 'ngspice'; version: string; build: string; runs: number; ms: number }
 }
+/**
+ * A failed or unavailable outcome still carries the topological findings (a short, supplies that
+ * fight, a floating input, the notes), decided before the engine runs; empty when the solve threw
+ * before the circuit was built.
+ */
 export type SimOutcome =
   | { status: 'ok'; result: SimResult }
-  | { status: 'failed'; revision: number; finding: SimFinding; lastGood?: { revision: number; result: SimResult } }
-  | { status: 'unavailable'; reason: string }
+  | { status: 'failed'; revision: number; finding: SimFinding; findings: SimFinding[]; lastGood?: { revision: number; result: SimResult } }
+  | { status: 'unavailable'; reason: string; findings: SimFinding[] }
 
 export interface Outside { nets: Set<string>; parts: Set<string>; rails: Set<string> }
 export const NO_OUTSIDE: Outside = { nets: new Set(), parts: new Set(), rails: new Set() }
