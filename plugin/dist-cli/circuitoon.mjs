@@ -13906,16 +13906,7 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			"w": 8,
 			"h": 18
 		},
-		electrical: {
-			"model": "mcu",
-			"params": {},
-			"external": [{
-				"pin": "5V",
-				"volts": 5,
-				"via": "USB",
-				"diode": true
-			}]
-		},
+		electrical: /* @__PURE__ */ JSON.parse("{\"model\":\"mcu\",\"params\":{},\"external\":[{\"pin\":\"5V\",\"volts\":5,\"via\":\"USB\",\"diode\":true}],\"sim\":{\"limits\":[{\"of\":{\"pin\":\"RX0\"},\"kind\":\"absMaxCurrent\",\"value\":0.04,\"source\":\"https://ww1.microchip.com/downloads/aemDocuments/documents/MCU08/ProductDocuments/DataSheets/ATmega48A-PA-88A-PA-168A-PA-328-P-DS-DS40002061B.pdf\",\"provenance\":\"datasheet\",\"conditions\":\"absolute maximum rating\",\"note\":\"chip, not board. Section 29.1 Absolute Maximum Ratings (p. 308): DC current per I/O pin 40.0 mA. The datasheet gives no continuous per-pin rating: the 20 mA in Table 30-1 is a VOH/VOL test condition (notes 3 and 4, p. 323).\"},{\"of\":{\"pin\":\"TX1\"},\"kind\":\"absMaxCurrent\",\"value\":0.04,\"source\":\"https://ww1.microchip.com/downloads/aemDocuments/documents/MCU08/ProductDocuments/DataSheets/ATmega48A-PA-88A-PA-168A-PA-328-P-DS-DS40002061B.pdf\",\"provenance\":\"datasheet\",\"conditions\":\"absolute maximum rating\",\"note\":\"chip, not board. Section 29.1 Absolute Maximum Ratings (p. 308): DC current per I/O pin 40.0 mA. The datasheet gives no continuous per-pin rating: the 20 mA in Table 30-1 is a VOH/VOL test condition (notes 3 and 4, p. 323).\"},{\"of\":{\"pin\":\"D2\"},\"kind\":\"absMaxCurrent\",\"value\":0.04,\"source\":\"https://ww1.microchip.com/downloads/aemDocuments/documents/MCU08/ProductDocuments/DataSheets/ATmega48A-PA-88A-PA-168A-PA-328-P-DS-DS40002061B.pdf\",\"provenance\":\"datasheet\",\"conditions\":\"absolute maximum rating\",\"note\":\"chip, not board. Section 29.1 Absolute Maximum Ratings (p. 308): DC current per I/O pin 40.0 mA. The datasheet gives no continuous per-pin rating: the 20 mA in Table 30-1 is a VOH/VOL test condition (notes 3 and 4, p. 323).\"},{\"of\":{\"pin\":\"D3\"},\"kind\":\"absMaxCurrent\",\"value\":0.04,\"source\":\"https://ww1.microchip.com/downloads/aemDocuments/documents/MCU08/ProductDocuments/DataSheets/ATmega48A-PA-88A-PA-168A-PA-328-P-DS-DS40002061B.pdf\",\"provenance\":\"datasheet\",\"conditions\":\"absolute maximum rating\",\"note\":\"chip, not board. Section 29.1 Absolute Maximum Ratings (p. 308): DC current per I/O pin 40.0 mA. The datasheet gives no continuous per-pin rating: the 20 mA in Table 30-1 is a VOH/VOL test condition (notes 3 and 4, p. 323).\"},{\"of\":{\"pin\":\"D4\"},\"kind\":\"absMaxCurrent\",\"value\":0.04,\"source\":\"https://ww1.microchip.com/downloads/aemDocuments/documents/MCU08/ProductDocuments/DataSheets/ATmega48A-PA-88A-PA-168A-PA-328-P-DS-DS40002061B.pdf\",\"provenance\":\"datasheet\",\"conditions\":\"absolute maximum rating\",\"note\":\"chip, not board. Section 29.1 Absolute Maximum Ratings (p. 308): DC current per I/O pin 40.0 mA. The datasheet gives no continuous per-pin rating: the 20 mA in Table 30-1 is a VOH/VOL test condition (notes 3 and 4, p. 323).\"},{\"of\":{\"pin\":\"D5\"},\"kind\":\"absMaxCurrent\",\"value\":0.04,\"source\":\"https://ww1.microchip.com/downloads/aemDocuments/documents/MCU08/ProductDocuments/DataSheets/ATmega48A-PA-88A-PA-168A-PA-328-P-DS-DS40002061B.pdf\",\"provenance\":\"datasheet\",\"conditions\":\"absolute maximum rating\",\"note\":\"chip, not board. Section 29.1 Absolute Maximum Ratings (p. 308): DC current per I/O pin 40.0 mA. The datasheet gives no continuous per-pin rating: the 20 mA in Table 30-1 is a VOH/VOL test condition (notes 3 and 4, p. 323).\"},{\"of\":{\"pin\":\"D6\"},\"kind\":\"absMaxCurrent\",\"value\":0.04,\"source\":\"https://ww1.microchip.com/downloads/aemDocuments/documents/MCU08/ProductDocuments/DataSheets/ATmega48A-PA-88A-PA-168A-PA-328-P-DS-DS40002061B.pdf\",\"provenance\":\"datasheet\",\"conditions\":\"absolute maximum rating\",\"note\":\"chip, not board. Section 29.1 Absolute Maximum Ratings (p. 308): DC current per I/O pin 40.0 mA. The datasheet gives no continuous per-pin rating: the 20 mA in Table 30-1 is a VOH/VOL test condition (notes 3 and 4, p. 323).\"},{\"of\":{\"pin\":\"D7\"},\"kind\":\"absMaxCurrent\",\"value\":0.04,\"source\":\"https://ww1.microchip.com/downloads/aemDocuments/documents/MCU08/ProductDocuments/DataSheets/ATmega48A-PA-88A-PA-168A-PA-328-P-DS-DS40002061B.pdf\",\"provenance\":\"datasheet\",\"conditions\":\"absolute maximum rating\",\"note\":\"chip, not board. Section 29.1 Absolute Maximum Ratings (p. 308): DC current per I/O pin 40.0 mA. The datasheet gives no continuous per-pin rating: the 20 mA in Table 30-1 is a VOH/VOL test condition (notes 3 and 4, p. 323).\"},{\"of\":{\"pin\":\"D8\"},\"kind\":\"absMaxCurrent\",\"value\":0.04,\"source\":\"https://ww1.microchip.com/downloads/aemDocuments/documents/MCU08/ProductDocuments/DataSheets/ATmega48A-PA-88A-PA-168A-PA-328-P-DS-DS40002061B.pdf\",\"provenance\":\"datasheet\",\"conditions\":\"absolute maximum rating\",\"note\":\"chip, not board. Section 29.1 Absolute Maximum Ratings (p. 308): DC current per I/O pin 40.0 mA. The datasheet gives no continuous per-pin rating: the 20 mA in Table 30-1 is a VOH/VOL test condition (notes 3 and 4, p. 323).\"},{\"of\":{\"pin\":\"D9\"},\"kind\":\"absMaxCurrent\",\"value\":0.04,\"source\":\"https://ww1.microchip.com/downloads/aemDocuments/documents/MCU08/ProductDocuments/DataSheets/ATmega48A-PA-88A-PA-168A-PA-328-P-DS-DS40002061B.pdf\",\"provenance\":\"datasheet\",\"conditions\":\"absolute maximum rating\",\"note\":\"chip, not board. Section 29.1 Absolute Maximum Ratings (p. 308): DC current per I/O pin 40.0 mA. The datasheet gives no continuous per-pin rating: the 20 mA in Table 30-1 is a VOH/VOL test condition (notes 3 and 4, p. 323).\"},{\"of\":{\"pin\":\"D10\"},\"kind\":\"absMaxCurrent\",\"value\":0.04,\"source\":\"https://ww1.microchip.com/downloads/aemDocuments/documents/MCU08/ProductDocuments/DataSheets/ATmega48A-PA-88A-PA-168A-PA-328-P-DS-DS40002061B.pdf\",\"provenance\":\"datasheet\",\"conditions\":\"absolute maximum rating\",\"note\":\"chip, not board. Section 29.1 Absolute Maximum Ratings (p. 308): DC current per I/O pin 40.0 mA. The datasheet gives no continuous per-pin rating: the 20 mA in Table 30-1 is a VOH/VOL test condition (notes 3 and 4, p. 323).\"},{\"of\":{\"pin\":\"D11\"},\"kind\":\"absMaxCurrent\",\"value\":0.04,\"source\":\"https://ww1.microchip.com/downloads/aemDocuments/documents/MCU08/ProductDocuments/DataSheets/ATmega48A-PA-88A-PA-168A-PA-328-P-DS-DS40002061B.pdf\",\"provenance\":\"datasheet\",\"conditions\":\"absolute maximum rating\",\"note\":\"chip, not board. Section 29.1 Absolute Maximum Ratings (p. 308): DC current per I/O pin 40.0 mA. The datasheet gives no continuous per-pin rating: the 20 mA in Table 30-1 is a VOH/VOL test condition (notes 3 and 4, p. 323).\"},{\"of\":{\"pin\":\"D12\"},\"kind\":\"absMaxCurrent\",\"value\":0.04,\"source\":\"https://ww1.microchip.com/downloads/aemDocuments/documents/MCU08/ProductDocuments/DataSheets/ATmega48A-PA-88A-PA-168A-PA-328-P-DS-DS40002061B.pdf\",\"provenance\":\"datasheet\",\"conditions\":\"absolute maximum rating\",\"note\":\"chip, not board. Section 29.1 Absolute Maximum Ratings (p. 308): DC current per I/O pin 40.0 mA. The datasheet gives no continuous per-pin rating: the 20 mA in Table 30-1 is a VOH/VOL test condition (notes 3 and 4, p. 323).\"},{\"of\":{\"pin\":\"D13\"},\"kind\":\"absMaxCurrent\",\"value\":0.04,\"source\":\"https://ww1.microchip.com/downloads/aemDocuments/documents/MCU08/ProductDocuments/DataSheets/ATmega48A-PA-88A-PA-168A-PA-328-P-DS-DS40002061B.pdf\",\"provenance\":\"datasheet\",\"conditions\":\"absolute maximum rating\",\"note\":\"chip, not board. Section 29.1 Absolute Maximum Ratings (p. 308): DC current per I/O pin 40.0 mA. The datasheet gives no continuous per-pin rating: the 20 mA in Table 30-1 is a VOH/VOL test condition (notes 3 and 4, p. 323).\"},{\"of\":{\"pin\":\"A0\"},\"kind\":\"absMaxCurrent\",\"value\":0.04,\"source\":\"https://ww1.microchip.com/downloads/aemDocuments/documents/MCU08/ProductDocuments/DataSheets/ATmega48A-PA-88A-PA-168A-PA-328-P-DS-DS40002061B.pdf\",\"provenance\":\"datasheet\",\"conditions\":\"absolute maximum rating\",\"note\":\"chip, not board. Section 29.1 Absolute Maximum Ratings (p. 308): DC current per I/O pin 40.0 mA. The datasheet gives no continuous per-pin rating: the 20 mA in Table 30-1 is a VOH/VOL test condition (notes 3 and 4, p. 323).\"},{\"of\":{\"pin\":\"A1\"},\"kind\":\"absMaxCurrent\",\"value\":0.04,\"source\":\"https://ww1.microchip.com/downloads/aemDocuments/documents/MCU08/ProductDocuments/DataSheets/ATmega48A-PA-88A-PA-168A-PA-328-P-DS-DS40002061B.pdf\",\"provenance\":\"datasheet\",\"conditions\":\"absolute maximum rating\",\"note\":\"chip, not board. Section 29.1 Absolute Maximum Ratings (p. 308): DC current per I/O pin 40.0 mA. The datasheet gives no continuous per-pin rating: the 20 mA in Table 30-1 is a VOH/VOL test condition (notes 3 and 4, p. 323).\"},{\"of\":{\"pin\":\"A2\"},\"kind\":\"absMaxCurrent\",\"value\":0.04,\"source\":\"https://ww1.microchip.com/downloads/aemDocuments/documents/MCU08/ProductDocuments/DataSheets/ATmega48A-PA-88A-PA-168A-PA-328-P-DS-DS40002061B.pdf\",\"provenance\":\"datasheet\",\"conditions\":\"absolute maximum rating\",\"note\":\"chip, not board. Section 29.1 Absolute Maximum Ratings (p. 308): DC current per I/O pin 40.0 mA. The datasheet gives no continuous per-pin rating: the 20 mA in Table 30-1 is a VOH/VOL test condition (notes 3 and 4, p. 323).\"},{\"of\":{\"pin\":\"A3\"},\"kind\":\"absMaxCurrent\",\"value\":0.04,\"source\":\"https://ww1.microchip.com/downloads/aemDocuments/documents/MCU08/ProductDocuments/DataSheets/ATmega48A-PA-88A-PA-168A-PA-328-P-DS-DS40002061B.pdf\",\"provenance\":\"datasheet\",\"conditions\":\"absolute maximum rating\",\"note\":\"chip, not board. Section 29.1 Absolute Maximum Ratings (p. 308): DC current per I/O pin 40.0 mA. The datasheet gives no continuous per-pin rating: the 20 mA in Table 30-1 is a VOH/VOL test condition (notes 3 and 4, p. 323).\"},{\"of\":{\"pin\":\"A4\"},\"kind\":\"absMaxCurrent\",\"value\":0.04,\"source\":\"https://ww1.microchip.com/downloads/aemDocuments/documents/MCU08/ProductDocuments/DataSheets/ATmega48A-PA-88A-PA-168A-PA-328-P-DS-DS40002061B.pdf\",\"provenance\":\"datasheet\",\"conditions\":\"absolute maximum rating\",\"note\":\"chip, not board. Section 29.1 Absolute Maximum Ratings (p. 308): DC current per I/O pin 40.0 mA. The datasheet gives no continuous per-pin rating: the 20 mA in Table 30-1 is a VOH/VOL test condition (notes 3 and 4, p. 323).\"},{\"of\":{\"pin\":\"A5\"},\"kind\":\"absMaxCurrent\",\"value\":0.04,\"source\":\"https://ww1.microchip.com/downloads/aemDocuments/documents/MCU08/ProductDocuments/DataSheets/ATmega48A-PA-88A-PA-168A-PA-328-P-DS-DS40002061B.pdf\",\"provenance\":\"datasheet\",\"conditions\":\"absolute maximum rating\",\"note\":\"chip, not board. Section 29.1 Absolute Maximum Ratings (p. 308): DC current per I/O pin 40.0 mA. The datasheet gives no continuous per-pin rating: the 20 mA in Table 30-1 is a VOH/VOL test condition (notes 3 and 4, p. 323).\"},{\"of\":{\"domain\":\"5V\"},\"kind\":\"ioTotalCurrent\",\"value\":0.2,\"source\":\"https://ww1.microchip.com/downloads/aemDocuments/documents/MCU08/ProductDocuments/DataSheets/ATmega48A-PA-88A-PA-168A-PA-328-P-DS-DS40002061B.pdf\",\"provenance\":\"estimate\",\"conditions\":\"absolute maximum rating\",\"note\":\"chip, not board. Section 29.1 (p. 308): DC current VCC and GND pins 200.0 mA, stated per pin; used here as the package total for GPIO current, which is conservative when the package has more than one VCC/GND pin. Table 30-1 notes 3 and 4 (p. 323) also cap port-group sums: IOH 150 mA for C0-C5, D0-D4, ADC7, RESET and 150 mA for B0-B5, D5-D7, ADC6, XTAL1, XTAL2; IOL 100 mA each for C0-C5/ADC6/ADC7, B0-B5/D5-D7/XTAL, D0-D4/RESET. Group sums cannot be expressed here.\"},{\"of\":{\"domain\":\"5V\"},\"kind\":\"vinMax\",\"value\":5.5,\"source\":\"https://ww1.microchip.com/downloads/aemDocuments/documents/MCU08/ProductDocuments/DataSheets/ATmega48A-PA-88A-PA-168A-PA-328-P-DS-DS40002061B.pdf\",\"provenance\":\"datasheet\",\"conditions\":\"operating range, -40 to 85 C\",\"note\":\"chip, not board. Table 29-8 (p. 312) heading: VCC = 1.8 V to 5.5 V. Section 29.1 (p. 308) gives 6.0 V as the maximum operating voltage under absolute maximum ratings.\"},{\"of\":{\"domain\":\"VIN\"},\"kind\":\"vinMax\",\"value\":15,\"source\":\"https://www.ti.com/lit/ds/symlink/lm1117.pdf https://docs.arduino.cc/resources/datasheets/A000005-datasheet.pdf\",\"provenance\":\"datasheet\",\"conditions\":\"recommended operating condition\",\"note\":\"LM1117 (IC2 LM1117IMPX-5.0 on the Nano V3.3 schematic) Recommended Operating Conditions 7.3 (p. 4): input voltage max 15 V; absolute maximum 20 V (7.1, p. 4). The Nano datasheet (A000005, p. 2) gives \\\"7-15V unregulated external power supply (pin 30)\\\".\"},{\"of\":{\"domain\":\"USB\"},\"kind\":\"current\",\"value\":0.5,\"source\":\"https://www.bourns.com/docs/Product-Datasheets/mf-fsmf.pdf\",\"provenance\":\"datasheet\",\"conditions\":\"Ihold at 23 C, still air\",\"note\":\"F1 on the Nano V3.3 schematic is \\\"MFFSMF050\\\" (Bourns MF-FSMF050X) on USB VBUS. MF-FSMF Electrical Characteristic (p. 1): Ihold 0.50 A, Itrip 1.00 A at 23 C; the thermal derating table (p. 2) lowers Ihold with temperature.\"}],\"power\":{\"domains\":[{\"name\":\"VIN\",\"pin\":\"VIN\",\"ret\":\"GND\",\"nominal\":9},{\"name\":\"USB\",\"pin\":\"USB#vbus\",\"ret\":\"USB#gnd\",\"nominal\":5},{\"name\":\"5V\",\"pin\":\"5V\",\"ret\":\"GND\",\"nominal\":5},{\"name\":\"3V3\",\"pin\":\"3V3\",\"ret\":\"GND\",\"nominal\":3.3}],\"draw\":[{\"domain\":\"5V\",\"typical\":{\"value\":0.0095,\"unit\":\"A\",\"source\":\"https://ww1.microchip.com/downloads/aemDocuments/documents/MCU08/ProductDocuments/DataSheets/ATmega48A-PA-88A-PA-168A-PA-328-P-DS-DS40002061B.pdf\",\"provenance\":\"estimate\",\"note\":\"chip, not board (ATmega328P-MU, VQFN-32 \\\"328P-MUR\\\" on the schematic). Read from Figure 31-333 (p. 502, typical active supply current vs frequency, 1-20 MHz): about 9.5 mA on the 5.0 V curve at 16 MHz, 25 C. Table 29-8 (p. 312) gives only 8 MHz: 5.2 mA typ, 9 mA max at VCC = 5 V. A value read off a typical curve, so an estimate. Excludes the board's USB-UART bridge and LEDs (see unaccounted).\"},\"minVolts\":{\"value\":3.78,\"unit\":\"V\",\"source\":\"https://ww1.microchip.com/downloads/aemDocuments/documents/MCU08/ProductDocuments/DataSheets/ATmega48A-PA-88A-PA-168A-PA-328-P-DS-DS40002061B.pdf\",\"provenance\":\"estimate\",\"note\":\"Figure 29-1 Maximum Frequency vs. VCC (p. 312): linear from 10 MHz at 2.7 V to 20 MHz at 4.5 V, so 16 MHz needs 2.7 + (16 - 10) / (20 - 10) x 1.8 = 3.78 V. Chip, not board.\"}}],\"rails\":[{\"id\":\"vin-ldo\",\"inputs\":[{\"domain\":\"VIN\",\"via\":\"direct\"}],\"output\":\"5V\",\"kind\":\"ldo\",\"vout\":{\"value\":5,\"unit\":\"V\",\"source\":\"https://www.ti.com/lit/ds/symlink/lm1117.pdf\",\"provenance\":\"datasheet\",\"note\":\"LM1117IMPX-5.0 (IC2 on the Nano V3.3 schematic; the \\\"I\\\" grade, so table 7.6). 7.6 LM1117I Electrical Characteristics (p. 7): LM1117I-5.0 output voltage 5.00 V typ (4.95 to 5.05 V at 25 C).\"},\"dropout\":{\"value\":1.1,\"unit\":\"V\",\"source\":\"https://www.ti.com/lit/ds/symlink/lm1117.pdf\",\"provenance\":\"datasheet\",\"note\":\"7.6 LM1117I Electrical Characteristics continued (p. 8): dropout typ 1.1 V at IOUT = 100 mA, 25 C (max 1.3 V over -40 to 125 C); 1.15 V at 500 mA, 1.2 V at 800 mA. The 100 mA point is nearest the board's typical load.\"},\"ioutMax\":{\"value\":0.8,\"unit\":\"A\",\"source\":\"https://www.ti.com/lit/ds/symlink/lm1117.pdf\",\"provenance\":\"datasheet\",\"note\":\"p. 1 Features: output current 800 mA; 7.6 (p. 8) current limit min 800 mA (typ 1200) at VIN - VOUT = 5 V, 25 C. Thermal limits (SOT-223) cap the real current lower at high VIN.\"},\"iq\":{\"value\":0.005,\"unit\":\"A\",\"source\":\"https://www.ti.com/lit/ds/symlink/lm1117.pdf\",\"provenance\":\"datasheet\",\"note\":\"7.6 (p. 8): LM1117I-5.0 quiescent current typ 5 mA at VIN <= 15 V, 25 C (max 15 mA over temperature).\"},\"reverse\":\"body-diode\"},{\"id\":\"usb-diode\",\"inputs\":[{\"domain\":\"USB\",\"via\":\"direct\"}],\"output\":\"5V\",\"kind\":\"switch\",\"vf\":{\"value\":0.31,\"unit\":\"V\",\"source\":\"https://www.vishay.com/docs/88915/ss1p3l.pdf\",\"provenance\":\"estimate\",\"note\":\"D1 on the Nano V3.3 schematic is an SS1P3L (Vishay), VUSB anode to +5V cathode (\\\"+5V AUTO SELECTOR\\\"). Read from Fig. 3 Typical Instantaneous Forward Characteristics (p. 3), 25 C curve at about 0.1 A: about 0.31 V. The only tabulated value is the maximum, 0.45 V at IF = 1.0 A, 25 C (Electrical Characteristics, p. 2).\"},\"reverse\":\"blocks\"},{\"id\":\"3v3-ft232\",\"inputs\":[{\"domain\":\"5V\",\"via\":\"direct\"}],\"output\":\"3V3\",\"kind\":\"ldo\",\"vout\":{\"value\":3.3,\"unit\":\"V\",\"source\":\"https://cdn.sparkfun.com/datasheets/BreakoutBoards/DS_FT232R.pdf\",\"provenance\":\"datasheet\",\"note\":\"The Nano's 3V3 pin is the FT232RL 3V3OUT (pin 17, IC1 on the Nano V3.3 schematic). FT232R datasheet v2.10, Table 5.2 (p. 18): 3.3 V regulator output min 3.0, typ 3.3, max 3.6 V.\"},\"dropout\":{\"value\":0.7,\"unit\":\"V\",\"source\":\"https://cdn.sparkfun.com/datasheets/BreakoutBoards/DS_FT232R.pdf\",\"provenance\":\"estimate\",\"note\":\"The FT232R datasheet gives no dropout. Table 5.2 (p. 18): VCC operating supply min 4.0 V with the internal oscillator, so the 3.3 V output is assumed to hold down to VCC = 4.0 V: 4.0 - 3.3 = 0.7 V.\"},\"ioutMax\":{\"value\":0.05,\"unit\":\"A\",\"source\":\"https://cdn.sparkfun.com/datasheets/BreakoutBoards/DS_FT232R.pdf\",\"provenance\":\"datasheet\",\"note\":\"Pin description (p. 8) and section 4 (p. 15): \\\"Up to 50mA can be drawn from this pin to power external logic\\\"; \\\"a maximum current of 50mA\\\". The LDO also feeds the FT232R's own USB transceiver.\"},\"reverse\":\"body-diode\"}]},\"gpio\":{\"domain\":\"5V\",\"pins\":[\"RX0\",\"TX1\",\"D2\",\"D3\",\"D4\",\"D5\",\"D6\",\"D7\",\"D8\",\"D9\",\"D10\",\"D11\",\"D12\",\"D13\",\"A0\",\"A1\",\"A2\",\"A3\",\"A4\",\"A5\",\"A6\",\"A7\"],\"outputResistance\":{\"value\":25,\"unit\":\"ohm\",\"source\":\"https://ww1.microchip.com/downloads/aemDocuments/documents/MCU08/ProductDocuments/DataSheets/ATmega48A-PA-88A-PA-168A-PA-328-P-DS-DS40002061B.pdf\",\"provenance\":\"estimate\",\"note\":\"Read from the typical 25 C curves at VCC = 5 V: Figure 31-353 (p. 513) VOL about 0.47 V at 20 mA sink = 23.5 ohm; Figure 31-355 (p. 514) VOH about 4.48 V at 20 mA source = (5 - 4.48) / 0.02 = 26 ohm; mean about 25 ohm. Worst case from Table 30-1 (pp. 322-323): VOL max 0.9 V at 20 mA (45 ohm), VOH min 4.2 V at 20 mA (40 ohm). Chip, not board.\"},\"pullup\":{\"value\":35000,\"unit\":\"ohm\",\"source\":\"https://ww1.microchip.com/downloads/aemDocuments/documents/MCU08/ProductDocuments/DataSheets/ATmega48A-PA-88A-PA-168A-PA-328-P-DS-DS40002061B.pdf\",\"provenance\":\"estimate\",\"note\":\"Table 30-1 (p. 323) RPU I/O pin pull-up resistor min 20 kohm, max 50 kohm, no typical; midpoint taken. Chip, not board.\"},\"inputLeakage\":{\"value\":0.000001,\"unit\":\"A\",\"source\":\"https://ww1.microchip.com/downloads/aemDocuments/documents/MCU08/ProductDocuments/DataSheets/ATmega48A-PA-88A-PA-168A-PA-328-P-DS-DS40002061B.pdf\",\"provenance\":\"datasheet\",\"note\":\"chip, not board. Table 30-1 (p. 323) IIL / IIH input leakage current I/O pin max 1 uA at VCC = 5.5 V (absolute value).\"}},\"usbPorts\":{\"USB\":{\"gnd\":\"GND\"}}}}"),
 		art: {
 			"w": 80,
 			"h": 180,
@@ -16159,15 +16150,7 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			"w": 21,
 			"h": 27
 		},
-		electrical: {
-			"model": "mcu",
-			"params": {},
-			"external": [{
-				"pin": "5V",
-				"volts": 5,
-				"via": "USB"
-			}]
-		},
+		electrical: /* @__PURE__ */ JSON.parse("{\"model\":\"mcu\",\"params\":{},\"external\":[{\"pin\":\"5V\",\"volts\":5,\"via\":\"USB\"}],\"sim\":{\"limits\":[{\"of\":{\"pin\":\"D0\"},\"kind\":\"absMaxCurrent\",\"value\":0.04,\"source\":\"https://ww1.microchip.com/downloads/aemDocuments/documents/MCU08/ProductDocuments/DataSheets/ATmega48A-PA-88A-PA-168A-PA-328-P-DS-DS40002061B.pdf\",\"provenance\":\"datasheet\",\"conditions\":\"absolute maximum rating\",\"note\":\"chip, not board. Section 29.1 Absolute Maximum Ratings (p. 308): DC current per I/O pin 40.0 mA. The datasheet gives no continuous per-pin rating: the 20 mA in Table 30-1 is a VOH/VOL test condition (notes 3 and 4, p. 323).\"},{\"of\":{\"pin\":\"D1\"},\"kind\":\"absMaxCurrent\",\"value\":0.04,\"source\":\"https://ww1.microchip.com/downloads/aemDocuments/documents/MCU08/ProductDocuments/DataSheets/ATmega48A-PA-88A-PA-168A-PA-328-P-DS-DS40002061B.pdf\",\"provenance\":\"datasheet\",\"conditions\":\"absolute maximum rating\",\"note\":\"chip, not board. Section 29.1 Absolute Maximum Ratings (p. 308): DC current per I/O pin 40.0 mA. The datasheet gives no continuous per-pin rating: the 20 mA in Table 30-1 is a VOH/VOL test condition (notes 3 and 4, p. 323).\"},{\"of\":{\"pin\":\"D2\"},\"kind\":\"absMaxCurrent\",\"value\":0.04,\"source\":\"https://ww1.microchip.com/downloads/aemDocuments/documents/MCU08/ProductDocuments/DataSheets/ATmega48A-PA-88A-PA-168A-PA-328-P-DS-DS40002061B.pdf\",\"provenance\":\"datasheet\",\"conditions\":\"absolute maximum rating\",\"note\":\"chip, not board. Section 29.1 Absolute Maximum Ratings (p. 308): DC current per I/O pin 40.0 mA. The datasheet gives no continuous per-pin rating: the 20 mA in Table 30-1 is a VOH/VOL test condition (notes 3 and 4, p. 323).\"},{\"of\":{\"pin\":\"D3\"},\"kind\":\"absMaxCurrent\",\"value\":0.04,\"source\":\"https://ww1.microchip.com/downloads/aemDocuments/documents/MCU08/ProductDocuments/DataSheets/ATmega48A-PA-88A-PA-168A-PA-328-P-DS-DS40002061B.pdf\",\"provenance\":\"datasheet\",\"conditions\":\"absolute maximum rating\",\"note\":\"chip, not board. Section 29.1 Absolute Maximum Ratings (p. 308): DC current per I/O pin 40.0 mA. The datasheet gives no continuous per-pin rating: the 20 mA in Table 30-1 is a VOH/VOL test condition (notes 3 and 4, p. 323).\"},{\"of\":{\"pin\":\"D4\"},\"kind\":\"absMaxCurrent\",\"value\":0.04,\"source\":\"https://ww1.microchip.com/downloads/aemDocuments/documents/MCU08/ProductDocuments/DataSheets/ATmega48A-PA-88A-PA-168A-PA-328-P-DS-DS40002061B.pdf\",\"provenance\":\"datasheet\",\"conditions\":\"absolute maximum rating\",\"note\":\"chip, not board. Section 29.1 Absolute Maximum Ratings (p. 308): DC current per I/O pin 40.0 mA. The datasheet gives no continuous per-pin rating: the 20 mA in Table 30-1 is a VOH/VOL test condition (notes 3 and 4, p. 323).\"},{\"of\":{\"pin\":\"D5\"},\"kind\":\"absMaxCurrent\",\"value\":0.04,\"source\":\"https://ww1.microchip.com/downloads/aemDocuments/documents/MCU08/ProductDocuments/DataSheets/ATmega48A-PA-88A-PA-168A-PA-328-P-DS-DS40002061B.pdf\",\"provenance\":\"datasheet\",\"conditions\":\"absolute maximum rating\",\"note\":\"chip, not board. Section 29.1 Absolute Maximum Ratings (p. 308): DC current per I/O pin 40.0 mA. The datasheet gives no continuous per-pin rating: the 20 mA in Table 30-1 is a VOH/VOL test condition (notes 3 and 4, p. 323).\"},{\"of\":{\"pin\":\"D6\"},\"kind\":\"absMaxCurrent\",\"value\":0.04,\"source\":\"https://ww1.microchip.com/downloads/aemDocuments/documents/MCU08/ProductDocuments/DataSheets/ATmega48A-PA-88A-PA-168A-PA-328-P-DS-DS40002061B.pdf\",\"provenance\":\"datasheet\",\"conditions\":\"absolute maximum rating\",\"note\":\"chip, not board. Section 29.1 Absolute Maximum Ratings (p. 308): DC current per I/O pin 40.0 mA. The datasheet gives no continuous per-pin rating: the 20 mA in Table 30-1 is a VOH/VOL test condition (notes 3 and 4, p. 323).\"},{\"of\":{\"pin\":\"D7\"},\"kind\":\"absMaxCurrent\",\"value\":0.04,\"source\":\"https://ww1.microchip.com/downloads/aemDocuments/documents/MCU08/ProductDocuments/DataSheets/ATmega48A-PA-88A-PA-168A-PA-328-P-DS-DS40002061B.pdf\",\"provenance\":\"datasheet\",\"conditions\":\"absolute maximum rating\",\"note\":\"chip, not board. Section 29.1 Absolute Maximum Ratings (p. 308): DC current per I/O pin 40.0 mA. The datasheet gives no continuous per-pin rating: the 20 mA in Table 30-1 is a VOH/VOL test condition (notes 3 and 4, p. 323).\"},{\"of\":{\"pin\":\"D8\"},\"kind\":\"absMaxCurrent\",\"value\":0.04,\"source\":\"https://ww1.microchip.com/downloads/aemDocuments/documents/MCU08/ProductDocuments/DataSheets/ATmega48A-PA-88A-PA-168A-PA-328-P-DS-DS40002061B.pdf\",\"provenance\":\"datasheet\",\"conditions\":\"absolute maximum rating\",\"note\":\"chip, not board. Section 29.1 Absolute Maximum Ratings (p. 308): DC current per I/O pin 40.0 mA. The datasheet gives no continuous per-pin rating: the 20 mA in Table 30-1 is a VOH/VOL test condition (notes 3 and 4, p. 323).\"},{\"of\":{\"pin\":\"D9\"},\"kind\":\"absMaxCurrent\",\"value\":0.04,\"source\":\"https://ww1.microchip.com/downloads/aemDocuments/documents/MCU08/ProductDocuments/DataSheets/ATmega48A-PA-88A-PA-168A-PA-328-P-DS-DS40002061B.pdf\",\"provenance\":\"datasheet\",\"conditions\":\"absolute maximum rating\",\"note\":\"chip, not board. Section 29.1 Absolute Maximum Ratings (p. 308): DC current per I/O pin 40.0 mA. The datasheet gives no continuous per-pin rating: the 20 mA in Table 30-1 is a VOH/VOL test condition (notes 3 and 4, p. 323).\"},{\"of\":{\"pin\":\"D10\"},\"kind\":\"absMaxCurrent\",\"value\":0.04,\"source\":\"https://ww1.microchip.com/downloads/aemDocuments/documents/MCU08/ProductDocuments/DataSheets/ATmega48A-PA-88A-PA-168A-PA-328-P-DS-DS40002061B.pdf\",\"provenance\":\"datasheet\",\"conditions\":\"absolute maximum rating\",\"note\":\"chip, not board. Section 29.1 Absolute Maximum Ratings (p. 308): DC current per I/O pin 40.0 mA. The datasheet gives no continuous per-pin rating: the 20 mA in Table 30-1 is a VOH/VOL test condition (notes 3 and 4, p. 323).\"},{\"of\":{\"pin\":\"D11\"},\"kind\":\"absMaxCurrent\",\"value\":0.04,\"source\":\"https://ww1.microchip.com/downloads/aemDocuments/documents/MCU08/ProductDocuments/DataSheets/ATmega48A-PA-88A-PA-168A-PA-328-P-DS-DS40002061B.pdf\",\"provenance\":\"datasheet\",\"conditions\":\"absolute maximum rating\",\"note\":\"chip, not board. Section 29.1 Absolute Maximum Ratings (p. 308): DC current per I/O pin 40.0 mA. The datasheet gives no continuous per-pin rating: the 20 mA in Table 30-1 is a VOH/VOL test condition (notes 3 and 4, p. 323).\"},{\"of\":{\"pin\":\"D12\"},\"kind\":\"absMaxCurrent\",\"value\":0.04,\"source\":\"https://ww1.microchip.com/downloads/aemDocuments/documents/MCU08/ProductDocuments/DataSheets/ATmega48A-PA-88A-PA-168A-PA-328-P-DS-DS40002061B.pdf\",\"provenance\":\"datasheet\",\"conditions\":\"absolute maximum rating\",\"note\":\"chip, not board. Section 29.1 Absolute Maximum Ratings (p. 308): DC current per I/O pin 40.0 mA. The datasheet gives no continuous per-pin rating: the 20 mA in Table 30-1 is a VOH/VOL test condition (notes 3 and 4, p. 323).\"},{\"of\":{\"pin\":\"D13\"},\"kind\":\"absMaxCurrent\",\"value\":0.04,\"source\":\"https://ww1.microchip.com/downloads/aemDocuments/documents/MCU08/ProductDocuments/DataSheets/ATmega48A-PA-88A-PA-168A-PA-328-P-DS-DS40002061B.pdf\",\"provenance\":\"datasheet\",\"conditions\":\"absolute maximum rating\",\"note\":\"chip, not board. Section 29.1 Absolute Maximum Ratings (p. 308): DC current per I/O pin 40.0 mA. The datasheet gives no continuous per-pin rating: the 20 mA in Table 30-1 is a VOH/VOL test condition (notes 3 and 4, p. 323).\"},{\"of\":{\"pin\":\"A0\"},\"kind\":\"absMaxCurrent\",\"value\":0.04,\"source\":\"https://ww1.microchip.com/downloads/aemDocuments/documents/MCU08/ProductDocuments/DataSheets/ATmega48A-PA-88A-PA-168A-PA-328-P-DS-DS40002061B.pdf\",\"provenance\":\"datasheet\",\"conditions\":\"absolute maximum rating\",\"note\":\"chip, not board. Section 29.1 Absolute Maximum Ratings (p. 308): DC current per I/O pin 40.0 mA. The datasheet gives no continuous per-pin rating: the 20 mA in Table 30-1 is a VOH/VOL test condition (notes 3 and 4, p. 323).\"},{\"of\":{\"pin\":\"A1\"},\"kind\":\"absMaxCurrent\",\"value\":0.04,\"source\":\"https://ww1.microchip.com/downloads/aemDocuments/documents/MCU08/ProductDocuments/DataSheets/ATmega48A-PA-88A-PA-168A-PA-328-P-DS-DS40002061B.pdf\",\"provenance\":\"datasheet\",\"conditions\":\"absolute maximum rating\",\"note\":\"chip, not board. Section 29.1 Absolute Maximum Ratings (p. 308): DC current per I/O pin 40.0 mA. The datasheet gives no continuous per-pin rating: the 20 mA in Table 30-1 is a VOH/VOL test condition (notes 3 and 4, p. 323).\"},{\"of\":{\"pin\":\"A2\"},\"kind\":\"absMaxCurrent\",\"value\":0.04,\"source\":\"https://ww1.microchip.com/downloads/aemDocuments/documents/MCU08/ProductDocuments/DataSheets/ATmega48A-PA-88A-PA-168A-PA-328-P-DS-DS40002061B.pdf\",\"provenance\":\"datasheet\",\"conditions\":\"absolute maximum rating\",\"note\":\"chip, not board. Section 29.1 Absolute Maximum Ratings (p. 308): DC current per I/O pin 40.0 mA. The datasheet gives no continuous per-pin rating: the 20 mA in Table 30-1 is a VOH/VOL test condition (notes 3 and 4, p. 323).\"},{\"of\":{\"pin\":\"A3\"},\"kind\":\"absMaxCurrent\",\"value\":0.04,\"source\":\"https://ww1.microchip.com/downloads/aemDocuments/documents/MCU08/ProductDocuments/DataSheets/ATmega48A-PA-88A-PA-168A-PA-328-P-DS-DS40002061B.pdf\",\"provenance\":\"datasheet\",\"conditions\":\"absolute maximum rating\",\"note\":\"chip, not board. Section 29.1 Absolute Maximum Ratings (p. 308): DC current per I/O pin 40.0 mA. The datasheet gives no continuous per-pin rating: the 20 mA in Table 30-1 is a VOH/VOL test condition (notes 3 and 4, p. 323).\"},{\"of\":{\"pin\":\"A4\"},\"kind\":\"absMaxCurrent\",\"value\":0.04,\"source\":\"https://ww1.microchip.com/downloads/aemDocuments/documents/MCU08/ProductDocuments/DataSheets/ATmega48A-PA-88A-PA-168A-PA-328-P-DS-DS40002061B.pdf\",\"provenance\":\"datasheet\",\"conditions\":\"absolute maximum rating\",\"note\":\"chip, not board. Section 29.1 Absolute Maximum Ratings (p. 308): DC current per I/O pin 40.0 mA. The datasheet gives no continuous per-pin rating: the 20 mA in Table 30-1 is a VOH/VOL test condition (notes 3 and 4, p. 323).\"},{\"of\":{\"pin\":\"A5\"},\"kind\":\"absMaxCurrent\",\"value\":0.04,\"source\":\"https://ww1.microchip.com/downloads/aemDocuments/documents/MCU08/ProductDocuments/DataSheets/ATmega48A-PA-88A-PA-168A-PA-328-P-DS-DS40002061B.pdf\",\"provenance\":\"datasheet\",\"conditions\":\"absolute maximum rating\",\"note\":\"chip, not board. Section 29.1 Absolute Maximum Ratings (p. 308): DC current per I/O pin 40.0 mA. The datasheet gives no continuous per-pin rating: the 20 mA in Table 30-1 is a VOH/VOL test condition (notes 3 and 4, p. 323).\"},{\"of\":{\"domain\":\"5V\"},\"kind\":\"ioTotalCurrent\",\"value\":0.2,\"source\":\"https://ww1.microchip.com/downloads/aemDocuments/documents/MCU08/ProductDocuments/DataSheets/ATmega48A-PA-88A-PA-168A-PA-328-P-DS-DS40002061B.pdf\",\"provenance\":\"estimate\",\"conditions\":\"absolute maximum rating\",\"note\":\"chip, not board. Section 29.1 (p. 308): DC current VCC and GND pins 200.0 mA, stated per pin; used here as the package total for GPIO current, which is conservative when the package has more than one VCC/GND pin. Table 30-1 notes 3 and 4 (p. 323) also cap port-group sums: IOH 150 mA for C0-C5, D0-D4, ADC7, RESET and 150 mA for B0-B5, D5-D7, ADC6, XTAL1, XTAL2; IOL 100 mA each for C0-C5/ADC6/ADC7, B0-B5/D5-D7/XTAL, D0-D4/RESET. Group sums cannot be expressed here.\"},{\"of\":{\"domain\":\"5V\"},\"kind\":\"vinMax\",\"value\":5.5,\"source\":\"https://ww1.microchip.com/downloads/aemDocuments/documents/MCU08/ProductDocuments/DataSheets/ATmega48A-PA-88A-PA-168A-PA-328-P-DS-DS40002061B.pdf\",\"provenance\":\"datasheet\",\"conditions\":\"operating range, -40 to 85 C\",\"note\":\"chip, not board. Table 29-8 (p. 312) heading: VCC = 1.8 V to 5.5 V. Section 29.1 (p. 308) gives 6.0 V as the maximum operating voltage under absolute maximum ratings.\"},{\"of\":{\"domain\":\"VIN\"},\"kind\":\"vinMax\",\"value\":20,\"source\":\"https://docs.arduino.cc/resources/datasheets/A000066-datasheet.pdf https://www.onsemi.com/pdf/datasheet/ncp1117-d.pdf\",\"provenance\":\"datasheet\",\"conditions\":\"board maximum rating\",\"note\":\"Arduino UNO R3 datasheet (A000066) section 2.2 Power Consumption (p. 6): VINMax maximum input voltage from VIN pad 20 V (min 6 V). Equals the NCP1117 absolute maximum input voltage, 20 V (Maximum Ratings, p. 2). NCP1117 note 6 (p. 4): output current must not exceed 1.0 A with Vin above 12 V; the regulator's dissipation (Vin - 5 V) x Iout limits current long before that.\"},{\"of\":{\"domain\":\"USB\"},\"kind\":\"vinMax\",\"value\":5.5,\"source\":\"https://docs.arduino.cc/resources/datasheets/A000066-datasheet.pdf\",\"provenance\":\"datasheet\",\"conditions\":\"board maximum rating\",\"note\":\"Arduino UNO R3 datasheet (A000066) section 2.2 Power Consumption (p. 6): VUSBMax maximum input voltage from USB connector 5.5 V.\"},{\"of\":{\"domain\":\"USB\"},\"kind\":\"current\",\"value\":0.5,\"source\":\"https://www.bourns.com/docs/Product-Datasheets/mf-msmf.pdf\",\"provenance\":\"datasheet\",\"conditions\":\"Ihold at 23 C, still air\",\"note\":\"F1 on the Uno schematic is a Bourns MF-MSMF050-2 (500 mA) from USB VBUS to USBVCC. MF-MSMF Electrical Characteristics (p. 1), MF-MSMF050: Ihold 0.50 A, Itrip 1.00 A at 23 C. Hold current falls with temperature (derating table in the same datasheet).\"}],\"power\":{\"domains\":[{\"name\":\"VIN\",\"pin\":\"VIN\",\"ret\":\"GND\",\"nominal\":9},{\"name\":\"USB\",\"pin\":\"USB#vbus\",\"ret\":\"USB#gnd\",\"nominal\":5},{\"name\":\"5V\",\"pin\":\"5V\",\"ret\":\"GND\",\"nominal\":5},{\"name\":\"3V3\",\"pin\":\"3V3\",\"ret\":\"GND\",\"nominal\":3.3}],\"draw\":[{\"domain\":\"5V\",\"typical\":{\"value\":0.0095,\"unit\":\"A\",\"source\":\"https://ww1.microchip.com/downloads/aemDocuments/documents/MCU08/ProductDocuments/DataSheets/ATmega48A-PA-88A-PA-168A-PA-328-P-DS-DS40002061B.pdf\",\"provenance\":\"estimate\",\"note\":\"chip, not board (ATmega328P-PU, DIP-28). Read from Figure 31-333 (p. 502, typical active supply current vs frequency, 1-20 MHz): about 9.5 mA on the 5.0 V curve at 16 MHz, 25 C. Table 29-8 (p. 312) gives only 8 MHz: 5.2 mA typ, 9 mA max at VCC = 5 V. A value read off a typical curve, so an estimate. Excludes the board's USB-UART bridge and LEDs (see unaccounted).\"},\"minVolts\":{\"value\":3.78,\"unit\":\"V\",\"source\":\"https://ww1.microchip.com/downloads/aemDocuments/documents/MCU08/ProductDocuments/DataSheets/ATmega48A-PA-88A-PA-168A-PA-328-P-DS-DS40002061B.pdf\",\"provenance\":\"estimate\",\"note\":\"Figure 29-1 Maximum Frequency vs. VCC (p. 312): linear from 10 MHz at 2.7 V to 20 MHz at 4.5 V, so 16 MHz needs 2.7 + (16 - 10) / (20 - 10) x 1.8 = 3.78 V. Chip, not board.\"}}],\"rails\":[{\"id\":\"vin-ldo\",\"inputs\":[{\"domain\":\"VIN\",\"via\":\"direct\"}],\"output\":\"5V\",\"kind\":\"ldo\",\"vout\":{\"value\":5,\"unit\":\"V\",\"source\":\"https://www.onsemi.com/pdf/datasheet/ncp1117-d.pdf\",\"provenance\":\"datasheet\",\"note\":\"NCP1117ST50T3G (U1 on the Uno Rev3 schematic). Electrical Characteristics (p. 3): 5.0 V version 5.000 V typ (4.950 to 5.050 V at Vin = 7.0 V, Iout = 10 mA, 25 C).\"},\"dropout\":{\"value\":0.95,\"unit\":\"V\",\"source\":\"https://www.onsemi.com/pdf/datasheet/ncp1117-d.pdf\",\"provenance\":\"datasheet\",\"note\":\"Electrical Characteristics (p. 3): dropout (measured at Vout - 100 mV) typ 0.95 V at Iout = 100 mA (max 1.10 V); 1.01 V at 500 mA, 1.07 V typ / 1.20 V max at 800 mA. The 100 mA point is nearest the board's typical load.\"},\"ioutMax\":{\"value\":1,\"unit\":\"A\",\"source\":\"https://www.onsemi.com/pdf/datasheet/ncp1117-d.pdf\",\"provenance\":\"datasheet\",\"note\":\"p. 1: \\\"output current in excess of 1.0 A\\\"; Electrical Characteristics (p. 3) output current limit min 1000 mA (typ 1500) at Vin - Vout = 5 V, 25 C; note 6 (p. 4): not above 1.0 A with Vin above 12 V. Thermal limits (SOT-223, RthJA 160 C/W minimum pad, p. 2) cap the real current far lower at high VIN.\"},\"iq\":{\"value\":0.006,\"unit\":\"A\",\"source\":\"https://www.onsemi.com/pdf/datasheet/ncp1117-d.pdf\",\"provenance\":\"datasheet\",\"note\":\"Electrical Characteristics continued (p. 4): quiescent current, 5.0 V version at Vin = 15 V, typ 6.0 mA, max 10 mA.\"},\"reverse\":\"body-diode\"},{\"id\":\"usb-switch\",\"inputs\":[{\"domain\":\"USB\",\"via\":\"direct\"}],\"output\":\"5V\",\"kind\":\"switch\",\"ron\":{\"value\":0.21,\"unit\":\"ohm\",\"source\":\"https://www.onsemi.com/pdf/datasheet/fdn340p-d.pdf https://www.bourns.com/docs/Product-Datasheets/mf-msmf.pdf\",\"provenance\":\"estimate\",\"note\":\"Series path USB VBUS -> F1 MF-MSMF050-2 -> USBVCC -> T1 FDN340P -> +5V (Uno Rev3 schematic). FDN340P RDS(on) typ 60 mohm (max 70) at VGS = -4.5 V, ID = -2 A, 25 C (Electrical Characteristics, p. 2; the gate is pulled to about 0 V by the LMV358 comparator, so VGS is about -5 V). MF-MSMF050 resistance Rmin 0.15 ohm, R1max 1.0 ohm (p. 1). 0.06 + 0.15 = 0.21 ohm; after a trip or reflow the fuse can sit up to 1.0 ohm, about 1.07 ohm in total.\"},\"reverse\":\"blocks\"},{\"id\":\"3v3-ldo\",\"inputs\":[{\"domain\":\"5V\",\"via\":\"direct\"}],\"output\":\"3V3\",\"kind\":\"ldo\",\"vout\":{\"value\":3.3,\"unit\":\"V\",\"source\":\"https://www.ti.com/lit/ds/symlink/lp2985.pdf\",\"provenance\":\"datasheet\",\"note\":\"LP2985-33DBVR (U2 on the Uno Rev3 schematic; standard grade, not the LP2985A), fixed 3.3 V output. Electrical Characteristics (p. 5): output voltage tolerance +/-3.0 % over 1 mA to 150 mA for the legacy standard-grade chip (+/-2.5 % over 1 to 50 mA; new chip +/-0.5 %).\"},\"dropout\":{\"value\":0.12,\"unit\":\"V\",\"source\":\"https://www.ti.com/lit/ds/symlink/lp2985.pdf\",\"provenance\":\"datasheet\",\"note\":\"Electrical Characteristics continued (p. 6): dropout typ 120 mV at IOUT = 50 mA, 25 C, for both the legacy and the new chip (max 150 / 145 mV). At 150 mA: 280 mV typ legacy, 180 mV new chip. Which die a given board carries is not known.\"},\"ioutMax\":{\"value\":0.15,\"unit\":\"A\",\"source\":\"https://www.ti.com/lit/ds/symlink/lp2985.pdf\",\"provenance\":\"datasheet\",\"note\":\"Recommended Operating Conditions (p. 4): output current 0 to 150 mA. Peak output current min 300 mA (p. 7).\"},\"iq\":{\"value\":0.000069,\"unit\":\"A\",\"source\":\"https://www.ti.com/lit/ds/symlink/lp2985.pdf\",\"provenance\":\"datasheet\",\"note\":\"Electrical Characteristics continued (p. 6): GND pin current at IOUT = 0 mA typ 69 uA (new chip; 65 uA legacy chip), max 95 uA; it rises with load (765 to 850 uA typ at 150 mA).\"},\"reverse\":\"body-diode\"}]},\"gpio\":{\"domain\":\"5V\",\"pins\":[\"D0\",\"D1\",\"D2\",\"D3\",\"D4\",\"D5\",\"D6\",\"D7\",\"D8\",\"D9\",\"D10\",\"D11\",\"D12\",\"D13\",\"A0\",\"A1\",\"A2\",\"A3\",\"A4\",\"A5\"],\"outputResistance\":{\"value\":25,\"unit\":\"ohm\",\"source\":\"https://ww1.microchip.com/downloads/aemDocuments/documents/MCU08/ProductDocuments/DataSheets/ATmega48A-PA-88A-PA-168A-PA-328-P-DS-DS40002061B.pdf\",\"provenance\":\"estimate\",\"note\":\"Read from the typical 25 C curves at VCC = 5 V: Figure 31-353 (p. 513) VOL about 0.47 V at 20 mA sink = 23.5 ohm; Figure 31-355 (p. 514) VOH about 4.48 V at 20 mA source = (5 - 4.48) / 0.02 = 26 ohm; mean about 25 ohm. Worst case from Table 30-1 (pp. 322-323): VOL max 0.9 V at 20 mA (45 ohm), VOH min 4.2 V at 20 mA (40 ohm). Chip, not board.\"},\"pullup\":{\"value\":35000,\"unit\":\"ohm\",\"source\":\"https://ww1.microchip.com/downloads/aemDocuments/documents/MCU08/ProductDocuments/DataSheets/ATmega48A-PA-88A-PA-168A-PA-328-P-DS-DS40002061B.pdf\",\"provenance\":\"estimate\",\"note\":\"Table 30-1 (p. 323) RPU I/O pin pull-up resistor min 20 kohm, max 50 kohm, no typical; midpoint taken. Chip, not board.\"},\"inputLeakage\":{\"value\":0.000001,\"unit\":\"A\",\"source\":\"https://ww1.microchip.com/downloads/aemDocuments/documents/MCU08/ProductDocuments/DataSheets/ATmega48A-PA-88A-PA-168A-PA-328-P-DS-DS40002061B.pdf\",\"provenance\":\"datasheet\",\"note\":\"chip, not board. Table 30-1 (p. 323) IIL / IIH input leakage current I/O pin max 1 uA at VCC = 5.5 V (absolute value).\"}},\"usbPorts\":{\"USB\":{\"gnd\":\"GND\"}}}}"),
 		art: {
 			"w": 210,
 			"h": 270,
@@ -55301,7 +55284,248 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 				"via": "USB",
 				"diode": true,
 				"max": 5.5
-			}]
+			}],
+			"sim": {
+				"limits": [
+					{
+						"of": { "domain": "3V3" },
+						"kind": "ioTotalCurrent",
+						"value": .05,
+						"source": "https://datasheets.raspberrypi.com/rp2040/rp2040-datasheet.pdf",
+						"provenance": "datasheet",
+						"conditions": "IOVDD = 3.3 V, -40 to 85 C",
+						"note": "chip, not board. Table 625 Digital IO characteristics (p. 616): IIOVDD_MAX maximum total IOVDD current 50 mA (sum of all current sourced by GPIO and QSPI pins) and IIOVSS_MAX 50 mA (sum sunk). The QSPI flash pins share this budget."
+					},
+					{
+						"of": { "domain": "3V3" },
+						"kind": "vinMax",
+						"value": 3.63,
+						"source": "https://datasheets.raspberrypi.com/rp2040/rp2040-datasheet.pdf",
+						"provenance": "datasheet",
+						"conditions": "absolute maximum rating",
+						"note": "chip, not board. Table 622 Absolute maximum ratings for digital IO (p. 614): IOVDD max 3.63 V. Applies when 3V3(OUT) is driven from outside."
+					},
+					{
+						"of": { "domain": "VSYS" },
+						"kind": "vinMax",
+						"value": 5.5,
+						"source": "https://datasheets.raspberrypi.com/pico/pico-datasheet.pdf https://www.richtek.com/assets/product_file/RT6150A=RT6150B/DS6150AB-06.pdf",
+						"provenance": "datasheet",
+						"conditions": "recommended operating condition",
+						"note": "Pico datasheet section 2.3 Recommended operating conditions (pp. 10-11): VSYS max 5.5 V. RT6150A/B Recommended Operating Conditions (p. 4): supply input voltage 1.8 to 5.5 V (absolute maximum 6 V on VIN)."
+					},
+					{
+						"of": { "domain": "VBUS" },
+						"kind": "vinMax",
+						"value": 5.5,
+						"source": "https://datasheets.raspberrypi.com/pico/pico-datasheet.pdf",
+						"provenance": "datasheet",
+						"conditions": "recommended operating condition",
+						"note": "Pico datasheet section 2.3 Recommended operating conditions (p. 10): VBUS 5 V +/- 10 %, so 5.5 V."
+					}
+				],
+				"power": {
+					"domains": [
+						{
+							"name": "USB",
+							"pin": "USB#vbus",
+							"ret": "USB#gnd",
+							"nominal": 5
+						},
+						{
+							"name": "VBUS",
+							"pin": "VBUS",
+							"ret": "GND",
+							"nominal": 5
+						},
+						{
+							"name": "VSYS",
+							"pin": "VSYS",
+							"ret": "GND",
+							"nominal": 4.7
+						},
+						{
+							"name": "3V3",
+							"pin": "3V3(OUT)",
+							"ret": "GND",
+							"nominal": 3.3
+						}
+					],
+					"draw": [{
+						"domain": "3V3",
+						"typical": {
+							"value": .012,
+							"unit": "A",
+							"source": "https://datasheets.raspberrypi.com/rp2040/rp2040-datasheet.pdf",
+							"provenance": "estimate",
+							"note": "chip, not board. Table 637 Power Consumption (p. 623), BOOTSEL mode - Active, typical average: DVDD 9.4 mA + IOVDD 1.2 mA + USB_VDD 1.4 mA = 12.0 mA. On the Pico, DVDD comes from the on-chip LDO fed from 3.3 V, so its input current is about the DVDD current. In BOOTSEL the bootrom's USB bootloader chains clk_sys from clk_usb (48 MHz; RP2040-E16 erratum, p. 634); user code at the default 125 MHz draws more DVDD (Table 635, p. 622, gives per-MHz figures per peripheral). Excludes flash, LED and board extras (see unaccounted)."
+						},
+						"peak": {
+							"value": .021,
+							"unit": "A",
+							"source": "https://datasheets.raspberrypi.com/rp2040/rp2040-datasheet.pdf",
+							"provenance": "estimate",
+							"note": "Worst-case device, BOOTSEL mode - Active, Table 637 (p. 623) maximum average: DVDD 14.7 + IOVDD 4.3 + USB_VDD 2.0 = 21.0 mA, across temperature extremes and maximum voltage; chip, not board."
+						},
+						"minVolts": {
+							"value": 1.62,
+							"unit": "V",
+							"source": "https://datasheets.raspberrypi.com/rp2040/rp2040-datasheet.pdf",
+							"provenance": "datasheet",
+							"note": "chip, not board. Table 634 Power Supply Specifications (p. 622): IOVDD and VREG_VIN min 1.62 V. USB_VDD needs 3.135 V and ADC performance is compromised below 2.97 V (Table 634 note c), so USB and the ADC fail before this."
+						}
+					}],
+					"rails": [
+						{
+							"id": "usb-vbus",
+							"inputs": [{
+								"domain": "USB",
+								"via": "direct"
+							}],
+							"output": "VBUS",
+							"kind": "switch",
+							"ron": {
+								"value": .01,
+								"unit": "ohm",
+								"source": "https://datasheets.raspberrypi.com/pico/RPi-Pico-R3-PUBLIC-20200119.zip",
+								"provenance": "estimate",
+								"note": "Pico R3 schematic (RPI-PICO-R3-PUBLIC-SCHEMATIC.pdf in the design files): micro-USB J1 VBUS is wired straight to the VBUS net and pin 40, no part in series. 10 mohm stands for the copper trace (assumed; not measured)."
+							},
+							"reverse": "body-diode"
+						},
+						{
+							"id": "vbus-diode",
+							"inputs": [{
+								"domain": "VBUS",
+								"via": "direct"
+							}],
+							"output": "VSYS",
+							"kind": "switch",
+							"vf": {
+								"value": .245,
+								"unit": "V",
+								"source": "https://www.onsemi.com/pdf/datasheet/mbr120vlsft1-d.pdf",
+								"provenance": "estimate",
+								"note": "D1 on the Pico R3 schematic and BOM is an onsemi MBR120VLSFT1G. Read from Figure 1 Typical Forward Voltage (p. 3), TJ = 25 C curve at IF = 0.1 A (the graph floor): about 0.245 V. The tabulated values are maxima: 0.275 V at 0.1 A, 0.315 V at 0.5 A, 0.340 V at 1.0 A, TJ = 25 C (Electrical Characteristics, p. 2)."
+							},
+							"reverse": "blocks"
+						},
+						{
+							"id": "buck-boost",
+							"inputs": [{
+								"domain": "VSYS",
+								"via": "direct"
+							}],
+							"output": "3V3",
+							"kind": "buck",
+							"vout": {
+								"value": 3.3,
+								"unit": "V",
+								"source": "https://www.richtek.com/assets/product_file/RT6150A=RT6150B/DS6150AB-06.pdf",
+								"provenance": "datasheet",
+								"note": "RT6150B-33GQW (U2 on the Pico R3 schematic and BOM), fixed 3.3 V output option (p. 1 Features: \"Fixed 3.3V and Adjustable Output Voltage Options\")."
+							},
+							"efficiency": {
+								"value": .8,
+								"unit": "1",
+								"source": "https://www.richtek.com/assets/product_file/RT6150A=RT6150B/DS6150AB-06.pdf",
+								"provenance": "estimate",
+								"note": "Read from Typical Operating Characteristics (p. 7), PS = L (the Pico default, GPIO23 low): \"Efficiency vs. Input Voltage\" at VIN about 4.7 V gives about 78 % at 10 mA and about 89 % at 100 mA; \"Buck-Boost 3.3V Efficiency\" at 10 to 30 mA lies between about 69 % (VIN 5.5 V) and 87 % (VIN 4.2 V). 0.8 for the Pico's 10 to 50 mA at VSYS about 4.7 V."
+							},
+							"vinMin": {
+								"value": 1.8,
+								"unit": "V",
+								"source": "https://www.richtek.com/assets/product_file/RT6150A=RT6150B/DS6150AB-06.pdf https://datasheets.raspberrypi.com/pico/pico-datasheet.pdf",
+								"provenance": "datasheet",
+								"note": "RT6150A/B Recommended Operating Conditions (p. 4): supply input voltage 1.8 to 5.5 V; input UVLO falling 1.55 V typ (1.4 V min), rising 1.65 V typ (1.8 V max), Electrical Characteristics (p. 4). Pico datasheet section 2.3 (pp. 10-11): VSYS min 1.8 V. Below vout the converter boosts (see notes)."
+							},
+							"vinMax": {
+								"value": 5.5,
+								"unit": "V",
+								"source": "https://www.richtek.com/assets/product_file/RT6150A=RT6150B/DS6150AB-06.pdf",
+								"provenance": "datasheet",
+								"note": "RT6150A/B Recommended Operating Conditions (p. 4): supply input voltage max 5.5 V (absolute maximum 6 V)."
+							},
+							"ioutMax": {
+								"value": .8,
+								"unit": "A",
+								"source": "https://www.richtek.com/assets/product_file/RT6150A=RT6150B/DS6150AB-06.pdf",
+								"provenance": "datasheet",
+								"note": "p. 1 Features: \"Up to 800mA Continuous Output Current\". The \"Maximum Output Current vs. Input Voltage\" curve (p. 7) shows the limit falls to about 350 mA at VIN = 1.8 V. The Pico datasheet pin descriptions (p. 8) recommend keeping the 3V3 pin load below 300 mA."
+							},
+							"iq": {
+								"value": 6e-5,
+								"unit": "A",
+								"source": "https://www.richtek.com/assets/product_file/RT6150A=RT6150B/DS6150AB-06.pdf",
+								"provenance": "datasheet",
+								"note": "Electrical Characteristics (p. 4): quiescent current 60 uA typ at IOUT = 0 mA, PS = 0 V (Power Save Mode), VIN = VOUT = 3.6 V."
+							},
+							"offPath": "open",
+							"reverse": "blocks"
+						}
+					]
+				},
+				"gpio": {
+					"domain": "3V3",
+					"pins": [
+						"GP0",
+						"GP1",
+						"GP2",
+						"GP3",
+						"GP4",
+						"GP5",
+						"GP6",
+						"GP7",
+						"GP8",
+						"GP9",
+						"GP10",
+						"GP11",
+						"GP12",
+						"GP13",
+						"GP14",
+						"GP15",
+						"GP16",
+						"GP17",
+						"GP18",
+						"GP19",
+						"GP20",
+						"GP21",
+						"GP22",
+						"GP26/ADC0",
+						"GP27/ADC1",
+						"GP28/ADC2"
+					],
+					"outputResistance": {
+						"value": 38,
+						"unit": "ohm",
+						"source": "https://datasheets.raspberrypi.com/rp2040/rp2040-datasheet.pdf",
+						"provenance": "estimate",
+						"note": "Default drive strength 4 mA (PADS_BANK0 GPIO DRIVE reset 0x1 = 4MA, Table 341, p. 301). Read from Figure 171 typical IV curves (p. 618), 4 mA setting at 10 mA: output high about 2.85 V, (3.3 - 2.85) / 0.01 = 45 ohm; output low about 0.30 V, 0.30 / 0.01 = 30 ohm; mean about 38 ohm. Worst case from Table 625 (p. 616): VOH min 2.62 V and VOL max 0.5 V at the selected current. Chip, not board."
+					},
+					"pullup": {
+						"value": 65e3,
+						"unit": "ohm",
+						"source": "https://datasheets.raspberrypi.com/rp2040/rp2040-datasheet.pdf",
+						"provenance": "estimate",
+						"note": "Table 625 (p. 616): RPU pull-up resistance min 50 kohm, max 80 kohm, no typical; midpoint taken. Chip, not board."
+					},
+					"pulldown": {
+						"value": 65e3,
+						"unit": "ohm",
+						"source": "https://datasheets.raspberrypi.com/rp2040/rp2040-datasheet.pdf",
+						"provenance": "estimate",
+						"note": "Table 625 (p. 616): RPD pull-down resistance min 50 kohm, max 80 kohm, no typical; midpoint taken. Chip, not board."
+					},
+					"inputLeakage": {
+						"value": 1e-6,
+						"unit": "A",
+						"source": "https://datasheets.raspberrypi.com/rp2040/rp2040-datasheet.pdf",
+						"provenance": "datasheet",
+						"note": "chip, not board. Table 625 (p. 615): pin input leakage current IIN max 1 uA."
+					}
+				},
+				"usbPorts": { "USB": { "gnd": "GND" } }
+			}
 		},
 		art: {
 			"w": 120,

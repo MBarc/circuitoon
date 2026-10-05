@@ -120,3 +120,12 @@ describe('external supplies (spec 4.7)', () => {
     expect(simOf(load('adapter-barrel-us'))!.power!.source!.voltage).toBe('param:voltage')
   })
 })
+
+describe('Arduino Uno, Nano and Pi Pico (spec 3.4)', () => {
+  it.each([['arduino-uno-r3', '5V'], ['arduino-nano', '5V'], ['rpi-pico', '3V3']])('%s: chip draw labelled as chip, a regulator, GPIO on %s', (id, io) => {
+    const sim = simOf(load(id))!
+    expect(sim.power!.draw!.some((d) => /chip, not board/.test(d.typical.note ?? ''))).toBe(true)
+    expect(sim.power!.rails!.some((r) => r.kind !== 'switch')).toBe(true)
+    expect(sim.gpio!.domain).toBe(io)
+  })
+})
