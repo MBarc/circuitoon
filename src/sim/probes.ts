@@ -1,5 +1,5 @@
 // Probes (spec 6.2): the mapping between a sheet's probes (part uids and pins) and a netlist's (refs
-// and net names). Task 25b adds the sheet's editing ops. Pure.
+// and net names), and the sheet's probe editing ops (add, remove, rename). Pure.
 import type { Diagram, Probe, ProbeAnchor } from '../format/diagram.ts'
 import type { Intent, NetlistProbe } from '../agent/netlist.ts'
 import { naturalCompare } from '../agent/order.ts'
@@ -40,9 +40,12 @@ export function nextProbeId(d: Diagram): string {
   const n = Math.max(0, ...(d.probes ?? []).map((p) => Number(p.id.slice(1))))
   return `P${n + 1}`
 }
+/** A probe name as saved: trimmed, at most 40 characters; blank is no name. */
+const probeName = (name: string | undefined) => name?.trim().slice(0, 40) || undefined
 export function addProbe(d: Diagram, at: ProbeAnchor, name?: string): { diagram: Diagram; id: string } {
   const id = nextProbeId(d)
-  return { id, diagram: { ...d, probes: [...(d.probes ?? []), { id, ...(name ? { name } : {}), at }] } }
+  const clean = probeName(name)
+  return { id, diagram: { ...d, probes: [...(d.probes ?? []), { id, ...(clean ? { name: clean } : {}), at }] } }
 }
 export function removeProbe(d: Diagram, id: string): Diagram {
   const probes = (d.probes ?? []).filter((p) => p.id !== id)
@@ -50,6 +53,7 @@ export function removeProbe(d: Diagram, id: string): Diagram {
   return probes.length ? { ...rest, probes } : rest
 }
 export function renameProbe(d: Diagram, id: string, name: string): Diagram {
-  const clean = name.trim().slice(0, 40)
+  if (!d.probes?.some((p) => p.id === id)) return d
+  const clean = probeName(name)
   return { ...d, probes: (d.probes ?? []).map((p) => (p.id !== id ? p : clean ? { ...p, name: clean } : { id: p.id, at: p.at })) }
 }

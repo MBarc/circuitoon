@@ -20,4 +20,16 @@ describe('probe editing ops', () => {
     expect(deleteSelection(b.diagram, { parts: ['D1'], wires: [] }).probes?.map((p) => p.id)).toEqual(['P2'])
     expect(deleteSelection(b.diagram, { parts: ['D1', 'R1'], wires: [] }).probes).toBeUndefined()
   })
+  it('add trims and clamps a name as rename does (40 characters; blank is no name); renaming a missing probe changes nothing', () => {
+    const laid = layoutNetlist(ledNetlist())
+    if (!laid.ok) throw new Error(laid.errors.join('; '))
+    const s = laid.value.diagram
+    const long = `  ${'x'.repeat(50)}  `
+    const added = addProbe(s, { part: 'D1', pin: 'A' }, long).diagram
+    expect(added.probes?.[0].name).toBe('x'.repeat(40))
+    expect(added.probes?.[0]).toEqual(renameProbe(addProbe(s, { part: 'D1', pin: 'A' }).diagram, 'P1', long).probes?.[0])
+    expect(addProbe(s, { part: 'D1' }, '   ').diagram.probes?.[0]).toEqual({ id: 'P1', at: { part: 'D1' } })
+    expect(renameProbe(added, 'P9', 'other')).toBe(added)
+    expect(renameProbe(s, 'P1', 'other')).toBe(s)
+  })
 })
