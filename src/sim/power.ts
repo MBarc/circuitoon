@@ -8,7 +8,7 @@ import type { Diagram, PartInstance } from '../format/diagram.ts'
 import type { ModuleDef } from '../format/module.ts'
 import { mainsOf } from '../format/mainsModel.ts'
 import { nodeKey } from '../format/netlist.ts'
-import { type Draw, type Quantity, type Rail, simOf } from '../format/simModel.ts'
+import { type Draw, type Quantity, railProblem, simOf } from '../format/simModel.ts'
 import { gpioState, simOverride } from '../format/simState.ts'
 import { DEFAULT_SOURCE, usbLink, usbSides } from '../format/usb.ts'
 import { paramValue } from '../format/values.ts'
@@ -16,20 +16,6 @@ import type { Builder } from './build.ts'
 import { CABLE_OHMS, IQ_DEFAULT, MIN_VOLTS_FRACTION, NO_POWER_DATA, OR_DIODE_VF, PLUG_OHMS, RAIL_DIRECT_OHMS, ROUT_DEFAULT, loadEstimate } from './estimates.ts'
 import { schottky } from './ledModels.ts'
 import type { Param, ResolvedRail } from './model.ts'
-
-const REQUIRED: Record<Rail['kind'], (keyof Rail)[]> = {
-  ldo: ['vout', 'dropout', 'ioutMax'],
-  buck: ['vout', 'efficiency', 'vinMin', 'vinMax', 'ioutMax'],
-  boost: ['vout', 'efficiency', 'vinMin', 'vinMax', 'ioutMax'],
-  switch: [],
-}
-
-/** The required fields a rail lacks (spec 3.2 table) in words, or null. */
-export function railProblem(r: Rail): string | null {
-  const missing: string[] = REQUIRED[r.kind].filter((k) => r[k] === undefined)
-  if (r.kind === 'switch' && r.ron === undefined && r.vf === undefined) missing.push('ron or vf')
-  return missing.length ? `rail ${r.id} needs ${missing.join(', ')}` : null
-}
 
 /**
  * The pin a USB port's simulation node is on: `<port>#gnd` is the board's ground pin when

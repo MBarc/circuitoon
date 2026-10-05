@@ -1,6 +1,7 @@
 // Module definition format (circuitoon-module/1): types, validation and pin layout.
 // Spec: docs/PRD.md, "Module definition format". Erasable TS only, so node can run it directly.
 import { REQUIREMENTS, type Requirement, claimInternalNodes, validateMains } from './mainsModel.ts'
+import { validateSim } from './simModel.ts'
 
 export const MODULE_FORMAT = 'circuitoon-module/1'
 export const GRID = 10 // px per grid unit at 100% zoom; also the pin pitch
@@ -621,6 +622,7 @@ export function validateModule(raw: unknown): ValidationResult {
 
   validateUsb(raw, errors)
   validateMains(raw, names, errors)
+  validateSim(raw, names, errors)
   // Only a plug whose fields are already valid is measured.
   if (!errors.length && isObj(raw.electrical) && isObj(raw.electrical.plug) && Array.isArray(raw.electrical.plug.profiles)) {
     const lay = computeLayout(raw as unknown as ModuleDef)
