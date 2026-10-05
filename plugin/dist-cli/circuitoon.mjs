@@ -94150,7 +94150,11 @@ async function runGate(bytes, opts) {
 	});
 	const engine = opts.engine !== void 0 ? opts.engine : gateEngine.make();
 	if (engine) try {
-		const { outcome } = await solve(d, engine, 1, { library: libraryLookup });
+		const outcome = await solve(d, engine, 1, { library: libraryLookup }).then((s) => s.outcome, (e) => ({
+			status: "failed",
+			revision: 1,
+			finding: noConvergence(null, String(e), [])
+		}));
 		if (outcome.status === "ok") {
 			const r = outcome.result;
 			const counts = { ...sim.provenanceCounts };
@@ -94174,7 +94178,10 @@ async function runGate(bytes, opts) {
 			sim = {
 				...sim,
 				status: "failed",
-				findings: [outcome.finding],
+				findings: [{
+					...outcome.finding,
+					severity: "warning"
+				}],
 				reason: outcome.finding.message
 			};
 			found.push({
@@ -94301,6 +94308,7 @@ async function gateCommand(args, io) {
 	}
 	if (args.flags.has("--json")) printJson(io, report);
 	else {
+		if (report.sim.status === "unavailable") io.stderr(`Simulation unavailable: ${report.sim.reason}\n`);
 		const head = gateBanner(code, report, input);
 		const notReady = readabilityCount(report);
 		const lines = [...notReady ? [`NOT READY: ${plural(notReady, "readability warning")}`] : [], head];

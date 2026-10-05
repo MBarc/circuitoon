@@ -550,7 +550,61 @@ describe('gate/4: simulation (spec 7)', () => {
     expect(g.sim.status).toBe('ok')
     expect(g.blocking.some((f: { rule: string }) => f.rule === 'sim-short')).toBe(true)
     expect(r.code).toBe(1)
-    expect(r.out).toMatch(/GATE FAILED/)
+    expect(r.out).toContain('GATE FAILED (simulation): 1 blocking finding (sheet.json)')
+  }, 120_000)
+  it('fails with the plain banner when the checker and the simulation both block (matrix row 1)', async () => {
+    const dir = await shorted()
+    edit(dir, (s) => void delete s.intent)
+    const r = await cli(['gate', 'sheet.json', '-o', 'out'], { cwd: dir, env: noBrowser(dir) })
+    const g = gateJson(dir)
+    expect(r.code).toBe(1)
+    expect(g.ok).toBe(false)
+    expect(g.ready).toBe(false)
+    expect(g.blocking.map((f: { message: string }) => f.message)).toContain(NO_INTENT)
+    expect(g.blocking.some((f: { rule: string }) => f.rule === 'sim-short')).toBe(true)
+    expect(r.out).toMatch(/GATE FAILED: \d+ blocking findings \(sheet\.json\)/)
+  }, 120_000)
+  it('is incomplete (exit 3), keeping the checker findings, when the engine throws', async () => {
+    const dir = await laidOut()
+    edit(dir, (s) => void delete s.intent)
+    const bytes = readFileSync(join(dir, 'sheet.json'))
+    const throwing: Engine = { ...failing('failed'), run: async () => { throw new Error('worker crashed') } }
+    const withSim = await runGate(bytes, { sheetPath: 'sheet.json', outDir: join(dir, 'out'), io: quietIo(dir), engine: throwing })
+    const without = await runGate(bytes, { sheetPath: 'sheet.json', outDir: join(dir, 'out2'), io: quietIo(dir), engine: null })
+    // The checker's verdict is untouched: the intent still blocks.
+    expect(withSim.report.blocking).toEqual(without.report.blocking)
+    expect(withSim.code).toBe(EXIT.blocked)
+    expect(withSim.report.sim.status).toBe('failed')
+    expect(withSim.report.sim.findings.map((f) => f.severity)).toEqual(['warning'])
+    expect(withSim.report.sim.findings[0].raw).toContain('worker crashed')
+    // With nothing blocking, the throw is exit 3 and the INCOMPLETE banner.
+    const clean = await laidOut()
+    const r = await runGate(readFileSync(join(clean, 'sheet.json')), { sheetPath: 'sheet.json', outDir: join(clean, 'out'), io: quietIo(clean), engine: throwing })
+    expect(r.code).toBe(EXIT.environment)
+    expect(r.report.blocking).toEqual([])
+    expect(r.report.warnings.some((f) => f.rule === 'sim-no-convergence')).toBe(true)
+    expect(gateBanner(r.code, r.report, 'sheet.json')).toContain('GATE INCOMPLETE (simulation did not converge')
+  }, 120_000)
+  it('says why the simulation is unavailable on stderr in text mode', async () => {
+    const dir = await laidOut()
+    gateEngine.make = () => failing('unavailable')
+    const r = await cli(['gate', 'sheet.json', '-o', 'out'], { cwd: dir, env: noBrowser(dir) })
+    expect(r.code).toBe(EXIT.environment)
+    expect(r.err).toContain('Simulation unavailable: no engine')
+    expect(r.out).toContain('GATE INCOMPLETE (simulation unavailable): sheet.json')
+  }, 120_000)
+  it('folds the "not powered: S1 is open" warnings into one line in the text output (ruling R30)', async () => {
+    const dir = tempDir()
+    writeFileSync(join(dir, 'n.json'), JSON.stringify({
+      format: 'circuitoon-netlist/1', title: 'off',
+      parts: [{ ref: 'BB1', module: 'breadboard-half' }, { ref: 'BT1', module: 'battery-holder-2xaa' }, { ref: 'S1', module: 'rocker-switch-kcd1' }, { ref: 'U1', module: 'esp32-devkit-v1-30' }, { ref: 'U2', module: 'esp32-devkit-v1-30' }],
+      nets: [{ name: 'VB', pins: ['BT1.+', 'S1.1'] }, { name: 'V', pins: ['S1.2', 'U1.3V3', 'U2.3V3'] }, { name: 'GND', pins: ['BT1.-', 'U1.GND', 'U2.GND'] }],
+    }))
+    expect((await cli(['layout', 'n.json', '-o', 'sheet.json'], { cwd: dir })).code).toBe(0)
+    const r = await cli(['gate', 'sheet.json', '-o', 'out'], { cwd: dir, env: noBrowser(dir) })
+    const off = r.out.split('\n').filter((l) => l.includes('S1 is open'))
+    expect(off).toEqual(['WARNING sim-brownout: not powered in the current state because S1 is open: U1 3V3, U2 3V3. Set S1 to its operating position to simulate them running.'])
+    expect(gateJson(dir).warnings.filter((f: { rule: string }) => f.rule === 'sim-brownout')).toHaveLength(2)
   }, 120_000)
   it('is incomplete (exit 3) when the solve fails or the engine is unavailable, and never blocks on it', async () => {
     for (const [status, banner] of [['failed', 'simulation did not converge'], ['unavailable', 'simulation unavailable']] as const) {

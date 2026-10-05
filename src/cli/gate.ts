@@ -38,7 +38,8 @@ import { findingLines } from './simCmd.ts'
 import { type Engine, makeEngine } from '../sim/engine/engine.ts'
 import { createNodeEngineHost } from '../sim/engine/nodeEngine.ts'
 import { solve } from '../sim/session.ts'
-import type { DomainBudget, SimFinding } from '../sim/results.ts'
+import type { DomainBudget, SimFinding, SimOutcome } from '../sim/results.ts'
+import { noConvergence } from '../sim/findings.ts'
 import type { Basis } from '../sim/model.ts'
 
 export const GATE_FORMAT = 'circuitoon-cli/gate/4'
@@ -228,7 +229,11 @@ export async function runGate(bytes: Uint8Array, opts: { sheetPath: string; outD
   const engine = opts.engine !== undefined ? opts.engine : gateEngine.make()
   if (engine)
     try {
-      const { outcome } = await solve(d, engine, 1, { library: libraryLookup })
+      // A throwing solve is a failed outcome, as in the session: the checker's findings still stand.
+      const outcome: SimOutcome = await solve(d, engine, 1, { library: libraryLookup }).then(
+        (s) => s.outcome,
+        (e) => ({ status: 'failed', revision: 1, finding: noConvergence(null, String(e), []) }),
+      )
       if (outcome.status === 'ok') {
         const r = outcome.result
         const counts = { ...sim.provenanceCounts }
@@ -237,8 +242,8 @@ export async function runGate(bytes: Uint8Array, opts: { sheetPath: string; outD
         for (const f of r.findings)
           found.push({ id: `${f.code}|${f.parts.join(',')}|${f.corner ?? ''}`, rule: f.code, severity: f.severity === 'note' ? 'info' : f.severity, message: f.message, parts: f.parts, pins: [], wires: [] })
       } else if (outcome.status === 'failed') {
-        sim = { ...sim, status: 'failed', findings: [outcome.finding], reason: outcome.finding.message }
-        // A failed solve never blocks (it may be our model, not the circuit).
+        // A failed solve never blocks (it may be our model, not the circuit): a warning, here and in sim.
+        sim = { ...sim, status: 'failed', findings: [{ ...outcome.finding, severity: 'warning' }], reason: outcome.finding.message }
         found.push({ id: 'sim-no-convergence', rule: 'sim-no-convergence', severity: 'warning', message: outcome.finding.message, parts: outcome.finding.parts, pins: [], wires: [] })
       } else sim = { ...sim, status: 'unavailable', reason: outcome.reason }
     } finally {
@@ -338,6 +343,7 @@ export async function gateCommand(args: Args, io: Io): Promise<number> {
     for (const w of report.warnings) if (w.rule === 'environment') io.stderr(`${w.message}\n`)
   if (args.flags.has('--json')) printJson(io, report)
   else {
+    if (report.sim.status === 'unavailable') io.stderr(`Simulation unavailable: ${report.sim.reason}\n`)
     const head = gateBanner(code, report, input)
     // Ruling W1: a sheet with readability warnings left is not ready, whatever the exit code says.
     const notReady = readabilityCount(report)
