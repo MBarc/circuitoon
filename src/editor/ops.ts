@@ -309,13 +309,16 @@ export function deleteSelection(d: Diagram, sel: Selection): Diagram {
   const parts = new Set(sel.parts)
   const wires = new Set(sel.wires)
   const notes = new Set(sel.annotations ?? [])
+  const { probes: before, ...rest } = d
+  const probes = (before ?? []).filter((p) => !parts.has(p.at.part))
   return {
-    ...d,
+    ...rest,
     // A deleted board's parts stay on the sheet, unmounted.
     parts: d.parts.filter((p) => !parts.has(p.uid)).map((p) => (p.mount && parts.has(p.mount.board) ? withoutMount(p) : p)),
     connections: d.connections.filter((c) => !wires.has(c.uid) && !parts.has(c.from.part) && !parts.has(c.to.part)),
     // Frames and notes are only rewritten when some are selected, so the key never appears from nothing.
     ...(d.annotations && notes.size ? { annotations: d.annotations.filter((a) => !notes.has(a.uid)) } : {}),
+    ...(probes.length ? { probes } : {}),
   }
 }
 

@@ -1,6 +1,6 @@
 // Probes (spec 6.2): the mapping between a sheet's probes (part uids and pins) and a netlist's (refs
 // and net names). Task 25b adds the sheet's editing ops. Pure.
-import type { Probe } from '../format/diagram.ts'
+import type { Diagram, Probe, ProbeAnchor } from '../format/diagram.ts'
 import type { Intent, NetlistProbe } from '../agent/netlist.ts'
 import { naturalCompare } from '../agent/order.ts'
 import { nodeKey } from '../format/netlist.ts'
@@ -33,4 +33,22 @@ export function probesForNetlist(probes: Probe[], refOf: Map<string, string>, ne
     warn?.(`probe ${p.id} sat on a part the netlist leaves out (${p.at.part}), so it was dropped`)
     return []
   })
+}
+
+export function nextProbeId(d: Diagram): string {
+  const n = Math.max(0, ...(d.probes ?? []).map((p) => Number(p.id.slice(1))))
+  return `P${n + 1}`
+}
+export function addProbe(d: Diagram, at: ProbeAnchor, name?: string): { diagram: Diagram; id: string } {
+  const id = nextProbeId(d)
+  return { id, diagram: { ...d, probes: [...(d.probes ?? []), { id, ...(name ? { name } : {}), at }] } }
+}
+export function removeProbe(d: Diagram, id: string): Diagram {
+  const probes = (d.probes ?? []).filter((p) => p.id !== id)
+  const { probes: _p, ...rest } = d
+  return probes.length ? { ...rest, probes } : rest
+}
+export function renameProbe(d: Diagram, id: string, name: string): Diagram {
+  const clean = name.trim().slice(0, 40)
+  return { ...d, probes: (d.probes ?? []).map((p) => (p.id !== id ? p : clean ? { ...p, name: clean } : { id: p.id, at: p.at })) }
 }
