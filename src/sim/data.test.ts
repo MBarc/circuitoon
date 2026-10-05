@@ -59,3 +59,20 @@ describe('batteries, resistors and the KCD1 (spec 3.1, 3.4)', () => {
     expect(simOf(load('rocker-switch-kcd1'))?.modelParams?.contactResistance).toMatchObject({ unit: 'ohm', provenance: 'datasheet' })
   })
 })
+
+describe('ESP32 DevKits (spec 3.4)', () => {
+  for (const [id, five] of [['esp32-devkit-v1-30', 'VIN'], ['esp32-devkitc-v4', '5V']] as const)
+    it(`${id}: three domains, a USB diode and an LDO, a chip draw labelled as chip, GPIO and limits`, () => {
+      const sim = simOf(load(id))!
+      expect(sim.usbPorts).toEqual({ USB: { gnd: 'GND' } })
+      expect(sim.power!.domains.map((d) => d.name).sort()).toEqual(['3V3', five, 'USB'].sort())
+      expect(sim.power!.rails!.map((r) => r.kind).sort()).toEqual(['ldo', 'switch'])
+      const draw = sim.power!.draw!.find((d) => d.domain === '3V3')!
+      expect(draw.typical.note).toMatch(/chip, not board/)
+      expect(draw.peak?.note).toBeTruthy()
+      expect(draw.minVolts).toBeDefined()
+      expect(sim.gpio!.domain).toBe('3V3')
+      expect(sim.gpio!.pins.length).toBeGreaterThan(15)
+      expect(sim.limits!.some((l) => l.kind === 'ioTotalCurrent')).toBe(true)
+    })
+})

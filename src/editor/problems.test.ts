@@ -152,7 +152,7 @@ describe('Update parts to current library (Ruling D1)', () => {
     const s = new EditorStore(before)
     expect(canUpdateParts(before)).toBe(true)
     const r = updatePartsInStore(s)!
-    expect(r.lines.some((l) => /^Updated U\d+ \(esp32-devkit-v1-30\): USB port USB, pins .* \(pin data\)\.$/.test(l))).toBe(true)
+    expect(r.lines.some((l) => /^Updated U\d+ \(esp32-devkit-v1-30\): USB port USB, pins .* \(pin data\), electrical sim\.$/.test(l))).toBe(true)
     const after = s.getState().diagram
     expect(after).toBe(r.diagram)
     expect(after.modules['esp32-devkit-v1-30']).toEqual(libraryLookup('esp32-devkit-v1-30'))
