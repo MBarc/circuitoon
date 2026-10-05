@@ -95,3 +95,9 @@ export function hostModule(id = 'test-host'): ModuleDef {
     sim: { power: { domains: [{ name: 'USB', pin: 'USB#vbus', ret: 'USB#gnd', nominal: 5 }], source: { domain: 'USB', voltage: q(5, 'V'), rInternal: q(0.05, 'ohm', 'estimate'), imax: q(0.5, 'A') } } },
   })
 }
+
+/** A sheet from a netlist with each net wired pin to pin in order (no layout: the simulator needs only connectivity). Uids are the refs. */
+export function netSheet(n: { parts: { ref: string; module: string; values?: Record<string, unknown> }[]; nets: { name: string; pins: string[] }[] }): Diagram {
+  const wires = n.nets.flatMap((net) => net.pins.slice(1).map((p, i): [string, string] => [net.pins[i], p]))
+  return sheet(n.parts.map((p) => ({ uid: p.ref, module: p.module, designator: p.ref, ...(p.values ? { values: p.values } : {}) })), wires)
+}

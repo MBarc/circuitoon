@@ -92670,7 +92670,8 @@ var Builder = class {
 				value: {
 					value: l.value,
 					basis: l.provenance,
-					label: `${m.id}.${this.ref(p.uid)}.limits.${l.kind}.${what}`
+					label: `${m.id}.${this.ref(p.uid)}.limits.${l.kind}.${what}`,
+					...l.note ? { note: l.note } : {}
 				}
 			});
 		}
@@ -92847,7 +92848,8 @@ var Builder = class {
 				const imax = iOver !== null ? this.user(iOver, label("imax")) : limit ? {
 					value: limit.value,
 					basis: limit.provenance,
-					label: label("limits.sourceCurrent")
+					label: label("limits.sourceCurrent"),
+					...limit.note ? { note: limit.note } : {}
 				} : void 0;
 				const id = `${p.uid}.cell`;
 				if (plus && minus) this.add({

@@ -199,7 +199,7 @@ export class Builder {
       const what = 'pin' in l.of ? l.of.pin : 'domain' in l.of ? l.of.domain : 'part'
       this.limit({
         part: p.uid, of: l.of, kind: l.kind, ...(l.conditions ? { conditions: l.conditions } : {}),
-        value: { value: l.value, basis: l.provenance, label: `${m.id}.${this.ref(p.uid)}.limits.${l.kind}.${what}` },
+        value: { value: l.value, basis: l.provenance, label: `${m.id}.${this.ref(p.uid)}.limits.${l.kind}.${what}`, ...(l.note ? { note: l.note } : {}) },
       })
     }
   }
@@ -316,7 +316,7 @@ export class Builder {
         const rInternal = rOver !== null ? this.user(rOver, label('rInternal')) : this.param(sim?.modelParams?.rInternal ?? cellEstimate(volts).rInternal, label('rInternal'))
         const iOver = simOverride(p, 'sim.imax')
         const limit = sim?.limits?.find((l) => l.kind === 'sourceCurrent')
-        const imax = iOver !== null ? this.user(iOver, label('imax')) : limit ? { value: limit.value, basis: limit.provenance, label: label('limits.sourceCurrent') } : undefined
+        const imax = iOver !== null ? this.user(iOver, label('imax')) : limit ? { value: limit.value, basis: limit.provenance, label: label('limits.sourceCurrent'), ...(limit.note ? { note: limit.note } : {}) } : undefined
         const id = `${p.uid}.cell`
         if (plus && minus) this.add({ kind: 'cell', id, part: p.uid, p: plus, n: minus, int: `${id}#int`, volts: this.user(volts, label('voltage')), rInternal, ...(imax ? { imax } : {}), role: 'cell' })
         // Spec 3.5: the override replaces the module's sourceCurrent limit, and only that value is `user`.

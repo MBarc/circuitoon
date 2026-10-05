@@ -1,0 +1,31 @@
+{
+  "format": "circuitoon-netlist/1",
+  "title": "Spirit Typewriter power and display bus",
+  "parts": [
+    { "ref": "BT1", "module": "battery-18650-holder" },
+    { "ref": "BT2", "module": "battery-18650-holder" },
+    { "ref": "BT3", "module": "battery-18650-holder" },
+    { "ref": "BT4", "module": "battery-18650-holder" },
+    { "ref": "U5", "module": "ip5306-usbc-module" },
+    { "ref": "SW1", "module": "rocker-switch-kcd1", "values": { "contact.s": "closed" } },
+    { "ref": "U1", "module": "esp32-devkit-v1-30", "values": { "gpio.D21": "input-pullup", "gpio.D22": "input-pullup" } },
+    { "ref": "DS1", "module": "oled-ssd1306-096-i2c" },
+    { "ref": "DS2", "module": "lcd-st7796s-4in-spi-touch" },
+    { "ref": "DS3", "module": "lcd-st7796s-4in-spi-touch" },
+    { "ref": "U2", "module": "mcp23017-cjmcu-2317" },
+    { "ref": "U3", "module": "mcp23017-cjmcu-2317" },
+    { "ref": "U4", "module": "mcp23017-cjmcu-2317" },
+    { "ref": "R1", "module": "resistor", "values": { "resistance": { "value": 330, "unit": "ohm" } } },
+    { "ref": "D1", "module": "led" }
+  ],
+  "nets": [
+    { "name": "BAT", "pins": ["BT1.+", "BT2.+", "BT3.+", "BT4.+", "SW1.1"] },
+    { "name": "BSW", "pins": ["SW1.2", "U5.B+"] },
+    { "name": "GND", "pins": ["BT1.-", "BT2.-", "BT3.-", "BT4.-", "U5.B-", "U5.5V-", "U1.GND", "DS1.GND", "DS2.GND", "DS3.GND", "U2.GND", "U3.GND", "U4.GND", "D1.K"] },
+    { "name": "5V", "pins": ["U5.5V+", "U1.VIN", "R1.1"] },
+    { "name": "LED_A", "pins": ["R1.2", "D1.A"] },
+    { "name": "3V3", "pins": ["U1.3V3", "DS1.VCC", "DS2.VCC", "DS2.LED", "DS3.VCC", "DS3.LED", "U2.VCC", "U3.VCC", "U4.VCC"] },
+    { "name": "SDA", "pins": ["U1.D21", "DS1.SDA", "U2.SDA", "U3.SDA", "U4.SDA"] },
+    { "name": "SCL", "pins": ["U1.D22", "DS1.SCL", "U2.SCL", "U3.SCL", "U4.SCL"] }
+  ]
+}
