@@ -11,7 +11,7 @@ import { makeEngine } from './engine/engine.ts'
 import { createNodeEngineHost } from './engine/nodeEngine.ts'
 import { ledHandCalc, ledModel } from './ledModels.ts'
 import { type Corner, netNode } from './model.ts'
-import type { RawRun } from './spice.ts'
+import { FEEDBACK_LOAD, type RawRun } from './spice.ts'
 import { type PartSpec, boardModule, q, boostModule, buckModule, cellModule, hostModule, ldoModule, sheet } from './testing.ts'
 
 const engine = makeEngine(createNodeEngineHost())
@@ -83,8 +83,8 @@ describe.each(KINDS)('the $kind model (spec 4.3)', ({ mod, open, id, vin, vout, 
   }, 60_000)
   it('output backfed above vout: it neither sinks nor fights', async () => {
     const raw = await solve(rig(mod(), vin, load, { parts: [{ uid: 'bt2', module: cellModule(6, 0.01, 'cell-b') }, R('r2', 1)], wires: [['bt2.+', 'r2.1'], ['r2.2', 'u1.OUT'], ['bt2.-', 'u1.GND']] }))
-    // Off reads as solver zero: the boost gives -3e-82 A, so "never sinks" is > -1 pA, not >= 0.
-    expect(raw.dev[id]).toBeGreaterThan(-1e-12)
+    // It sinks at most its internal feedback load (Phase C checkpoint ruling), never more.
+    expect(raw.dev[id]).toBeGreaterThan(-FEEDBACK_LOAD * 1.001)
     expect(raw.dev[id]).toBeLessThan(1e-3)
     // Nothing flows back out of the input either (every rail here blocks reverse current). The boost's
     // pass-through Schottky, reverse biased, leaks its IS (0.25 uA, measured -2.53e-7 A), so 0.3 uA there.
@@ -111,7 +111,9 @@ describe.each(KINDS)('the $kind model (spec 4.3)', ({ mod, open, id, vin, vout, 
     const pout = raw.v[OUT] * iout
     const eff = m.rail.efficiency?.value ?? 1
     const iq = m.rail.iq.value * raw.v[IN]
-    const losses = m.rail.kind === 'ldo' ? (raw.v[IN] - raw.v[OUT]) * iout + iq : vctl * iout * (1 / eff - 1) + (vctl - raw.v[OUT]) * iout + iq
+    // The feedback load: an LDO passes it from the input, a converter pays it at its efficiency.
+    const sink = m.rail.kind === 'ldo' ? FEEDBACK_LOAD * raw.v[IN] : (vctl * FEEDBACK_LOAD) / eff
+    const losses = sink + (m.rail.kind === 'ldo' ? (raw.v[IN] - raw.v[OUT]) * iout + iq : vctl * iout * (1 / eff - 1) + (vctl - raw.v[OUT]) * iout + iq)
     near(pin, pout + losses)
   }, 60_000)
 })
@@ -154,18 +156,18 @@ describe('pass-through and whole chains (spec 4.2, 4.6, 4.7)', () => {
     expect(I(await solve(rig(ldoModule({ reverse: 'body-diode' }, 'test-ldo-body'), 3, 100, back)), 'u1', 'IN')).toBeLessThan(-0.5)
     expect(I(await solve(rig(ldoModule(), 3, 100, back)), 'u1', 'IN')).toBeGreaterThan(0)
   }, 60_000)
-  it('battery -> LDO -> GPIO high -> LED: the battery covers the LED, the draw and iq', async () => {
+  it('battery -> LDO -> GPIO high -> LED: the battery covers the LED, the draw, iq and the feedback load', async () => {
     const raw = await solve(sheet([{ uid: 'bt1', module: cellModule(5, 0.01) }, { uid: 'u1', module: boardModule(), values: { 'gpio.IO1': 'high' } }, R('r1', 150), { uid: 'd1', module: 'led' }],
       [['bt1.+', 'u1.VIN'], ['bt1.-', 'u1.GND'], ['u1.IO1', 'r1.1'], ['r1.2', 'd1.A'], ['d1.K', 'u1.GND']]))
     const delivered = -I(raw, 'bt1', '+')
     expect(I(raw, 'd1', 'A')).toBeGreaterThan(0.005)
-    near(delivered, I(raw, 'd1', 'A') + 0.05 + 0.005)
+    near(delivered, I(raw, 'd1', 'A') + 0.05 + 0.005 + FEEDBACK_LOAD)
   }, 60_000)
   it('battery -> host rail -> USB cable -> device: the host delivers what the device takes, through both conductors', async () => {
     const d = sheet([{ uid: 'h1', module: hostModule() }, { uid: 'u1', module: boardModule() }], [['h1.USB', 'u1.USB']])
     const raw = await solve(d)
     // A rail output reads positive delivered (Task 13 review): the host source here, a cell device.
-    near(raw.dev['h1.source'], 0.05 + 0.005)
+    near(raw.dev['h1.source'], 0.05 + 0.005 + FEEDBACK_LOAD)
     const c = buildCircuit(d)
     const flow = (id: string) => {
       const r = c.devices.find((x) => x.id === id)
@@ -181,9 +183,9 @@ describe('pass-through and whole chains (spec 4.2, 4.6, 4.7)', () => {
     const sum = (part: string) => Object.values(raw.pins[part] ?? {}).reduce((s, x) => s + x, 0)
     expect(Math.abs(sum('u1'))).toBeLessThan(1e-9)
     expect(Math.abs(sum('h1'))).toBeLessThan(1e-9)
-    // The device takes its draw and the LDO's iq into VBUS and returns it on GND.
-    near(I(raw, 'u1', 'USB#vbus'), 0.05 + 0.005)
-    near(-I(raw, 'u1', 'GND'), 0.05 + 0.005)
+    // The device takes its draw, the LDO's iq and its feedback load into VBUS and returns it on GND.
+    near(I(raw, 'u1', 'USB#vbus'), 0.05 + 0.005 + FEEDBACK_LOAD)
+    near(-I(raw, 'u1', 'GND'), 0.05 + 0.005 + FEEDBACK_LOAD)
   }, 60_000)
   it('battery -> host rail -> USB cable -> device: the cell pays for the device through both conductors (spec 4.7)', async () => {
     // A host whose USB port is the output of a `ron` switch rail from VIN, fed by a cell.
@@ -200,7 +202,7 @@ describe('pass-through and whole chains (spec 4.2, 4.6, 4.7)', () => {
       [['bt1.+', 'h1.VIN'], ['bt1.-', 'h1.GND'], ['h1.USB', 'u1.USB']])
     const c = buildCircuit(d)
     const raw = await solve(d)
-    const draw = 0.05 + 0.005
+    const draw = 0.05 + 0.005 + FEEDBACK_LOAD
     near(raw.dev['bt1.cell'], draw)
     const dev = (id: string) => {
       const r = c.devices.find((x) => x.id === id)
@@ -218,5 +220,26 @@ describe('pass-through and whole chains (spec 4.2, 4.6, 4.7)', () => {
     const raw = await solve(sheet([{ uid: 'bt1', module: cellModule(0, 0.01) }, { uid: 'u1', module: boardModule() }], [['bt1.+', 'u1.VIN'], ['bt1.-', 'u1.GND']]))
     // Measured 1.1e-18 A: the rail output and the load fold-back are exactly 0 at 0 V (Task 15 ruling).
     expect(Math.abs(I(raw, 'u1', 'VIN'))).toBeLessThan(1e-6)
+  }, 60_000)
+})
+
+describe('unloaded regulator outputs (Phase C checkpoint, finding 1)', () => {
+  // Before the feedback load: the AMS1117 module read 8.99 V, the Uno's 3V3 5.005 V, the Nano's 4.74 V.
+  it('an unloaded AMS1117 module on 9 V sits at 3.30 V', async () => {
+    const raw = await solve(sheet([{ uid: 'bt1', module: 'battery-9v' }, { uid: 'u1', module: 'ams1117-33-module' }], [['bt1.+', 'u1.VIN'], ['bt1.-', 'u1.GND']]))
+    expect(Math.abs(raw.v['u1:OUT'] - 3.3)).toBeLessThanOrEqual(0.01)
+    // It delivers nothing; the input pays iq and the feedback load.
+    expect(Math.abs(raw.dev['u1.rail.ldo'])).toBeLessThan(1e-9)
+    near(raw.dev['bt1.cell'], 0.005 + FEEDBACK_LOAD)
+  }, 60_000)
+  it.each([['arduino-uno-r3'], ['arduino-nano']])('%s on 9 V: the unloaded 3V3 sits at 3.3 V', async (board) => {
+    const raw = await solve(sheet([{ uid: 'bt1', module: 'battery-9v' }, { uid: 'u1', module: board }], [['bt1.+', 'u1.VIN'], ['bt1.-', 'u1.GND']]))
+    expect(Math.abs(raw.v['u1:3V3'] - 3.3)).toBeLessThanOrEqual(0.02)
+    expect(Math.abs(raw.v['u1:5V'] - 5)).toBeLessThanOrEqual(0.02)
+  }, 60_000)
+  it('a regulator at the 1 milliohm rout floor solves unloaded and loaded', async () => {
+    const stiff = () => ldoModule({ rout: q(1e-3, 'ohm') }, 'test-ldo-stiff')
+    expect(Math.abs((await solve(rig(stiff(), 5, 1e6))).v[OUT] - 3.3)).toBeLessThan(0.005)
+    expect(Math.abs((await solve(rig(stiff(), 5, 33))).v[OUT] - 3.3)).toBeLessThan(0.005)
   }, 60_000)
 })

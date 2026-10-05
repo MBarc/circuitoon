@@ -26,6 +26,15 @@ const MIN_VOLTS_MIN = 1e-3
 const EFFICIENCY_MIN = 0.01
 /** The numerical join of floating nodes and second islands (spec 4.4). */
 const R_TIE = 1e9
+/**
+ * The internal feedback load on every rail output (Phase C checkpoint ruling): a softplus output
+ * cannot sink, so an unloaded output would climb above vout. 1 mA from out to ret, only while Vctl
+ * is above 0 (full from FEEDBACK_ON), so a dead rail supplies and draws nothing; the input pays for
+ * it. A fixed 1 mA rather than max(iq, 1 mA): a fixed-output regulator's datasheet iq already holds
+ * its internal divider, so iq-sized would count it twice; the cost is at most 1 mA of extra draw.
+ */
+export const FEEDBACK_LOAD = 1e-3
+const FEEDBACK_ON = 0.1
 /** A boost's pass-through diode (spec 4.2), Schottky at 100 mA: a modelling choice. */
 const OFF_PATH_VF = 0.35
 
@@ -121,24 +130,34 @@ export function compile(c: Circuit, cls: Classification, a: Analysis): Compiled 
       }
       case 'rail': {
         const r = d.rail
-        const [bctl, bout, vo, fin, bin, biq] = ['ctl', 'out', 'o', 'in', 'in', 'iq'].map((s, i) => name(i === 3 ? 'f' : i === 2 ? 'v' : 'b', `${d.id}.${s}`))
+        const [bctl, bout, vo, fin, bin, biq, bsink, bpay] = ['ctl', 'out', 'o', 'in', 'in', 'iq', 'sink', 'sinkin'].map((s, i) => name(i === 3 ? 'f' : i === 2 ? 'v' : 'b', `${d.id}.${s}`))
+        const rout = Math.max(r.rout.value, ROUT_MIN)
+        // The output's softplus knee (not KV), sized so its current at zero headroom (k ln 2 / rout) is
+        // the feedback load: unloaded, the output then sits exactly at Vctl. With KV it gave 35 mA at
+        // 0.1 ohm, and a 1 mA load held the output 19.5 mV above vout (measured 3.3195 V).
+        const ko = (FEEDBACK_LOAD * rout) / Math.LN2
         const els: El[] = [{
           nodes: [d.in, d.inRet, d.out, d.ret, d.ctl, d.o],
           read: { dev: d.id, name: vo, sign: 1 },
           lines: (n) => {
             const vin = `v(${n(d.in)},${n(d.inRet)})`
+            const vc = `v(${n(d.ctl)},${n(d.ret)})`
             const vctl = r.kind === 'ldo' ? smin(num(r.vout!.value), smax(`${vin}-${num(r.dropout!.value)}`, '0')) : `${enable(vin, r.vinMin!.value, r.vinMax!.value)}*${num(r.vout!.value)}`
             // softplus(Vctl - Vout) - softplus(-Vout): exactly 0 at Vctl = 0, so a dead rail supplies nothing (ruling, Task 15).
-            const iout = `(${sp(`v(${n(d.ctl)},${n(d.ret)})-v(${n(d.o)},${n(d.ret)})`)}-${sp(`-v(${n(d.o)},${n(d.ret)})`)})/${num(Math.max(r.rout.value, ROUT_MIN))}`
+            const iout = `(${sp(`${vc}-v(${n(d.o)},${n(d.ret)})`, ko)}-${sp(`-v(${n(d.o)},${n(d.ret)})`, ko)})/${num(rout)}`
+            // The feedback load, on the inside of the output sense so the rail's reading is what it delivers.
+            const sink = `${num(FEEDBACK_LOAD)}*${fold(vc, FEEDBACK_ON)}`
             const out = [
               `${bctl} ${n(d.ctl)} ${n(d.ret)} v=${vctl}`,
               `${bout} ${n(d.ret)} ${n(d.o)} i=${iout}`,
+              `${bsink} ${n(d.o)} ${n(d.ret)} i=${sink}`,
               `${vo} ${n(d.o)} ${n(d.out)} dc 0`,
               // A buck or boost input repeats the output expression instead of reading i(vo): measured, the
               // i(vo) form fails op on a weak cell with a boost's pass-through diode (fix wave, finding 2).
-              r.kind === 'ldo'
-                ? `${fin} ${n(d.in)} ${n(d.inRet)} ${vo} 1`
-                : `${bin} ${n(d.in)} ${n(d.inRet)} i=v(${n(d.ctl)},${n(d.ret)})*(${iout})/(${num(Math.max(r.efficiency!.value, EFFICIENCY_MIN))}*max(${vin},0.5))`,
+              // That expression includes the feedback load; an LDO's input pays it through its own source.
+              ...(r.kind === 'ldo'
+                ? [`${fin} ${n(d.in)} ${n(d.inRet)} ${vo} 1`, `${bpay} ${n(d.in)} ${n(d.inRet)} i=${sink}`]
+                : [`${bin} ${n(d.in)} ${n(d.inRet)} i=${vc}*(${iout})/(${num(Math.max(r.efficiency!.value, EFFICIENCY_MIN))}*max(${vin},0.5))`]),
             ]
             // iq folds back below a 1 V knee on the input (smin(1, Vin)), so a dead input draws 0.
             if (r.iq.value > 0) out.push(`${biq} ${n(d.in)} ${n(d.inRet)} i=${num(r.iq.value)}*${smin('1', pos(vin), KR)}`)
