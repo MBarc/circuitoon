@@ -210,6 +210,14 @@ describe('power models: fix round 1', () => {
     expect([d.usb, d.devices.filter((x) => x.id.startsWith('usb.')), d.taps.filter((t) => t.part === 'u1')]).toEqual([[], [], []])
     expect(d.unsimulated).toEqual([{ part: 'u1', reason: 'incomplete power data: rail bad needs vout, dropout, ioutMax' }])
   })
+  it('compiles the USB link to a custom device with gpio but no power data, without a crash or a charge-input note', () => {
+    const b = boardModule()
+    const { power: _, ...gpioOnly } = simOfMod(b)
+    const dev = withSim(b, gpioOnly as Sim, 'test-gpio-only', 'switch')
+    const c = buildCircuit(sheet([{ uid: 'h1', module: hostModule() }, { uid: 'u1', module: dev }], [['h1.USB', 'u1.USB']]))
+    expect(c.usb).toHaveLength(1)
+    expect(c.notes.filter((n) => n.includes('charge input'))).toEqual([])
+  })
   it('compiles no link between two ports with no clear host and device', () => {
     const c = buildCircuit(sheet([{ uid: 'h1', module: hostModule() }, { uid: 'h2', module: hostModule() }], [['h1.USB', 'h2.USB']]))
     expect([c.usb, c.devices.filter((d) => d.id.startsWith('usb.'))]).toEqual([[], []])
