@@ -1,6 +1,6 @@
 diff -ruN a/configure.ac b/configure.ac
---- a/configure.ac	2025-09-05 13:19:52.000000000 +0000
-+++ b/configure.ac	2026-10-05 11:25:43.269045951 +0000
+--- a/configure.ac
++++ b/configure.ac
 @@ -345,7 +345,7 @@
      fi
  
@@ -45,8 +45,8 @@ diff -ruN a/configure.ac b/configure.ac
                   tests/hisimhv1/Makefile
                   tests/hisimhv2/Makefile
 diff -ruN a/src/Makefile.am b/src/Makefile.am
---- a/src/Makefile.am	2025-08-31 14:22:13.000000000 +0000
-+++ b/src/Makefile.am	2026-10-05 11:25:43.252036069 +0000
+--- a/src/Makefile.am
++++ b/src/Makefile.am
 @@ -73,7 +73,6 @@
  	spicelib/devices/isrc/libisrc.la		\
  	spicelib/devices/hfet1/libhfet.la		\
@@ -56,8 +56,8 @@ diff -ruN a/src/Makefile.am b/src/Makefile.am
  	spicelib/devices/hisimhv1/libhisimhv1.la	\
  	spicelib/devices/hisimhv2/libhisimhv2.la	\
 diff -ruN a/src/spicelib/devices/Makefile.am b/src/spicelib/devices/Makefile.am
---- a/src/spicelib/devices/Makefile.am	2025-08-31 14:22:13.000000000 +0000
-+++ b/src/spicelib/devices/Makefile.am	2026-10-05 11:25:43.252036069 +0000
+--- a/src/spicelib/devices/Makefile.am
++++ b/src/spicelib/devices/Makefile.am
 @@ -27,7 +27,6 @@
  	isrc	\
  	hfet1	\
@@ -75,8 +75,8 @@ diff -ruN a/src/spicelib/devices/Makefile.am b/src/spicelib/devices/Makefile.am
  	hisimhv1	\
  	hisimhv2	\
 diff -ruN a/src/spicelib/devices/dev.c b/src/spicelib/devices/dev.c
---- a/src/spicelib/devices/dev.c	2025-08-31 14:22:14.000000000 +0000
-+++ b/src/spicelib/devices/dev.c	2026-10-05 11:25:43.256288540 +0000
+--- a/src/spicelib/devices/dev.c
++++ b/src/spicelib/devices/dev.c
 @@ -165,7 +165,6 @@
      get_dio_info,
      get_hfeta_info,
@@ -86,8 +86,8 @@ diff -ruN a/src/spicelib/devices/dev.c b/src/spicelib/devices/dev.c
      get_hsmhv_info,
      get_hsmhv2_info,
 diff -ruN a/src/xspice/Makefile.am b/src/xspice/Makefile.am
---- a/src/xspice/Makefile.am	2025-08-31 14:22:42.000000000 +0000
-+++ b/src/xspice/Makefile.am	2026-10-05 11:25:43.273298421 +0000
+--- a/src/xspice/Makefile.am
++++ b/src/xspice/Makefile.am
 @@ -9,7 +9,7 @@
               tlines/msline_common.c tlines/msline_common.h \
               tlines/tline_common.c tlines/tline_common.h
@@ -98,8 +98,8 @@ diff -ruN a/src/xspice/Makefile.am b/src/xspice/Makefile.am
  dist-hook:
  	rm -f "$(distdir)/icm/makedefs"
 diff -ruN a/tests/Makefile.am b/tests/Makefile.am
---- a/tests/Makefile.am	2025-08-31 14:22:14.000000000 +0000
-+++ b/tests/Makefile.am	2026-10-05 11:25:43.260541010 +0000
+--- a/tests/Makefile.am
++++ b/tests/Makefile.am
 @@ -19,7 +19,6 @@
  	bsim4		\
  	bsimsoi		\

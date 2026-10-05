@@ -2,11 +2,13 @@
 # Builds ngspice to WebAssembly (spec 2.2). Adapted from eecircuit-engine's MIT-licensed Docker/run.sh
 # at EECIRCUIT_COMMIT (the emconfigure and emmake flow and the configure edits), but as a shared
 # library with XSPICE, driven through its C API: no Asyncify, no interactive prompt, no PDK models.
-# Writes /out/ngspice.mjs, /out/ngspice.wasm, /out/build-info.txt, /out/compiled-dirs.txt and
-# /out/licence-scan.txt.
+# eecircuit-engine: MIT License, Copyright (c) 2024 EElab.dev.
+# Writes /out/ngspice.mjs, /out/ngspice.wasm, /out/build-info.txt, /out/compiled-dirs.txt,
+# /out/licence-scan.txt and the licence texts that ship beside the binary (/out/LICENSE-*.txt).
 set -euo pipefail
 source /work/versions.env
 MODE="${BUILD_MODE_OVERRIDE:-$BUILD_MODE}"
+case "$MODE" in shared|shared-noxspice|exe) ;; *) echo "build: unknown mode '$MODE' (shared, shared-noxspice or exe)"; exit 2;; esac
 mkdir -p /src /out && cd /src
 curl -fsSL -o ngspice.tar.gz "$NGSPICE_URL"
 echo "$NGSPICE_SHA256  ngspice.tar.gz" | sha256sum -c -
@@ -54,8 +56,19 @@ fi
 find src \( -name '*.o' -o -name '*.lo' \) -printf '%h\n' | sed -e 's|^src/||' -e 's|/\.libs$||' | sort -u > /out/compiled-dirs.txt
 : > /out/licence-scan.txt
 while read -r d; do
-  hit=$(grep -l -E 'GNU (Lesser )?General Public|LGPL|GPL|Mozilla Public' "../src/$d"/*.[ch] 2>/dev/null | head -3 | tr '\n' ' ' || true)
+  hit=$(cd ../src && grep -l -E 'GNU (Lesser )?General Public|LGPL|GPL|Mozilla Public' "$d"/*.[ch] 2>/dev/null | head -3 | sed 's|.*/||' | paste -sd' ' || true)
   if [ -n "$hit" ]; then echo "$d: $hit" >> /out/licence-scan.txt; fi
 done < /out/compiled-dirs.txt
+# Licence texts that go with the binary: ngspice's COPYING (the BSD-3-Clause text, XSPICE's public
+# domain notice and the LGPL 2.1 text numparam's "LGPLv2 or newer" may be taken under), the LGPL 2
+# text, and the Emscripten runtime linked into the wasm (Emscripten's libc and runtime, musl,
+# compiler-rt).
+cp ../COPYING /out/LICENSE-ngspice.txt
+cp /usr/share/common-licenses/LGPL-2 /out/LICENSE-LGPL-2.txt
+E=/emsdk/upstream/emscripten
+{ echo "== Emscripten ($E/LICENSE)"; cat "$E/LICENSE"
+  echo; echo "== musl libc ($E/system/lib/libc/musl/COPYRIGHT)"; cat "$E/system/lib/libc/musl/COPYRIGHT"
+  echo; echo "== compiler-rt ($E/system/lib/compiler-rt/LICENSE.TXT)"; cat "$E/system/lib/compiler-rt/LICENSE.TXT"
+} > /out/LICENSE-emscripten.txt
 { echo "mode=$MODE"; echo "ngspice=$NGSPICE_VERSION"; echo "emsdk=$EMSDK_VERSION"; emcc --version | head -1; } > /out/build-info.txt
 echo "build: done ($MODE)"; ls -la /out

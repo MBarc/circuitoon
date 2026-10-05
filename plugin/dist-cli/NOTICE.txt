@@ -13,10 +13,20 @@ which keep their own licences:
 
 The KLU solver (SuiteSparse) is not compiled into this build (--disable-klu).
 
+ngspice.wasm also contains the Emscripten runtime: Emscripten's own libc and runtime code (MIT or
+University of Illinois/NCSA), musl libc (MIT) and LLVM compiler-rt (Apache-2.0 with LLVM exceptions).
+
+The licence texts are in these files beside this one:
+
+- LICENSE-ngspice.txt: ngspice's COPYING (the BSD-3-Clause text and copyright, the XSPICE
+  public-domain notice, and the GNU LGPL 2.1 text).
+- LICENSE-LGPL-2.txt: the GNU Library General Public License, version 2 (numparam is LGPLv2 or later).
+- LICENSE-emscripten.txt: the Emscripten, musl and compiler-rt licences.
+
 Directories compiled into this build that mention another licence (from the build's scan):
-frontend: ../src/frontend/parse-bison.c ../src/frontend/parse-bison.h 
-frontend/numparam: ../src/frontend/numparam/mystring.c ../src/frontend/numparam/spicenum.c ../src/frontend/numparam/xpressn.c 
-spicelib/parser: ../src/spicelib/parser/inpptree-parser.c ../src/spicelib/parser/inpptree-parser.h
+frontend: parse-bison.c parse-bison.h
+frontend/numparam: mystring.c spicenum.c xpressn.c
+spicelib/parser: inpptree-parser.c inpptree-parser.h
 
 The exact ngspice source tarball, our patches, the build script, the emsdk version and relinking
 instructions are published with this engine build at:

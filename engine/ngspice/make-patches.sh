@@ -30,5 +30,6 @@ sed -i 's/AC_CHECK_FUNCS(\[times getrusage\])/AC_CHECK_FUNCS([times])/' configur
 must 'SUBDIRS = mif cm enh evt ipc idn cmpp icm verilog vhdl' src/xspice/Makefile.am
 sed -i 's/^SUBDIRS = mif cm enh evt ipc idn cmpp icm verilog vhdl$/SUBDIRS = mif cm enh evt ipc idn/' src/xspice/Makefile.am
 cd /tmp
-diff -ruN a b > /work/patches/0001-emscripten-build.patch || [ $? -eq 1 ]
+# Strip diff's file timestamps so the patch is byte-identical on every run.
+{ diff -ruN a b || [ $? -eq 1 ]; } | sed -E 's/^((---|\+\+\+) [^\t]+)\t.*$/\1/' > /work/patches/0001-emscripten-build.patch
 echo "make-patches: wrote patches/0001-emscripten-build.patch ($(wc -l < /work/patches/0001-emscripten-build.patch) lines)"

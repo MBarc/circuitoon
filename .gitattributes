@@ -7,4 +7,5 @@ src/format/checks.ts text eol=lf
 # The engine (live simulation spec 2.2): the WASM is binary, byte for byte; the build files stay LF so
 # the Docker build reads them on Windows checkouts too.
 engine/** text eol=lf
+public/sim/** text eol=lf
 *.wasm binary

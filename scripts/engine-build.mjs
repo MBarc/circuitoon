@@ -14,6 +14,10 @@ const env = Object.fromEntries(
 )
 const i = process.argv.indexOf('--mode')
 const mode = i > 0 ? process.argv[i + 1] : env.BUILD_MODE
+if (!['shared', 'shared-noxspice', 'exe'].includes(mode)) {
+  console.error(`engine: unknown mode '${mode}' (shared, shared-noxspice or exe)`)
+  process.exit(2)
+}
 const out = join(root, 'engine/out')
 mkdirSync(out, { recursive: true })
 // MSYS_NO_PATHCONV: from Git Bash, keep /out a container path.
@@ -31,6 +35,8 @@ const manifest = {
   wasmSha256: createHash('sha256').update(wasm).digest('hex'),
   release: `https://github.com/MBarc/circuitoon/releases/tag/${env.RELEASE_TAG}`,
 }
+// The licence texts build.sh copies beside the binary; NOTICE.txt names them.
+const LICENCES = ['LICENSE-ngspice.txt', 'LICENSE-LGPL-2.txt', 'LICENSE-emscripten.txt']
 const scan = readFileSync(join(out, 'licence-scan.txt'), 'utf8').trim()
 const notice = readFileSync(join(root, 'engine/ngspice/NOTICE.template.txt'), 'utf8')
   .replaceAll('{{VERSION}}', env.NGSPICE_VERSION)
@@ -39,7 +45,7 @@ const notice = readFileSync(join(root, 'engine/ngspice/NOTICE.template.txt'), 'u
   .replace('{{SCAN}}', scan || '(none found)')
 for (const dir of ['public/sim', 'plugin/dist-cli']) {
   mkdirSync(join(root, dir), { recursive: true })
-  for (const f of ['ngspice.mjs', 'ngspice.wasm']) copyFileSync(join(out, f), join(root, dir, f))
+  for (const f of ['ngspice.mjs', 'ngspice.wasm', ...LICENCES]) copyFileSync(join(out, f), join(root, dir, f))
   writeFileSync(join(root, dir, 'engine.json'), `${JSON.stringify(manifest, null, 2)}\n`)
   writeFileSync(join(root, dir, 'NOTICE.txt'), notice)
 }
