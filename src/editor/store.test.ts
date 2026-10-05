@@ -337,3 +337,17 @@ describe('boards with mounted parts in the store', () => {
     roundTrip(s, start)
   })
 })
+
+describe('simulation state', () => {
+  it('turning Simulate off clears the result, the probe tool and a held button (spec 6.1: never saved)', () => {
+    const s = new EditorStore(emptyDiagram())
+    s.setSimulate(true)
+    s.setSimTool('probe')
+    s.setHeld({ part: 'b1', group: 's' })
+    s.setSim({ phase: 'solving' })
+    s.setSimulate(false)
+    const st = s.getState()
+    expect([st.simulate, st.simTool, st.sim, st.held]).toEqual([false, 'select', null, null])
+    expect(s.dirty).toBe(false)
+  })
+})

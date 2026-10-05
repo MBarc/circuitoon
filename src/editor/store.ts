@@ -8,9 +8,17 @@ import type { Severity } from '../format/checks.ts'
 import { EMPTY_SELECTION, type Selection, type WireStyle } from './ops.ts'
 import { loadNewWireEnds, saveNewWireEnds, usbEnds } from './cableDefault.ts'
 import { loadSnapObjects, saveSnapObjects } from './snapPref.ts'
+import type { SimOutcome } from '../sim/results.ts'
+import type { Circuit } from '../sim/model.ts'
 
 /** The colour new wires start with until the user picks one. */
 export const NEW_WIRE_COLOR = 'blue'
+
+/** What the simulation shows now (spec 6.1); live state, never saved and never undo history. */
+export type SimView =
+  | { phase: 'loading'; loaded: number; total: number }
+  | { phase: 'solving' }
+  | { phase: 'done'; outcome: SimOutcome; circuit: Circuit | null }
 
 export interface EditorState {
   diagram: Diagram
@@ -24,6 +32,13 @@ export interface EditorState {
   reveal: number
   /** Whether a drag snaps to other objects' edges, wired pins and equal gaps (the grid always applies). Remembered per browser. */
   snapObjects: boolean
+  /** Simulate is on (spec 6.1). Not saved. */
+  simulate: boolean
+  /** The Probe tool (spec 6.2) or ordinary editing. */
+  simTool: 'select' | 'probe'
+  sim: SimView | null
+  /** A momentary button held down while simulating (spec 4.0, 6.3): closed only while held, never saved. */
+  held: { part: string; group: string } | null
 }
 
 export interface Highlight {
@@ -55,7 +70,7 @@ export class EditorStore {
     // New wires start blue: a signal colour (red and black mean power and ground), so a plain signal
     // wire never raises wire-color-signal. Ground and supply wires still take black and red by role.
     const wireStyle: WireStyle = ends ? { color: NEW_WIRE_COLOR, gauge: 22, ends } : { color: NEW_WIRE_COLOR, gauge: 22 }
-    this.state = { diagram, selection: EMPTY_SELECTION, wireStyle, highlight: null, reveal: 0, snapObjects: loadSnapObjects() }
+    this.state = { diagram, selection: EMPTY_SELECTION, wireStyle, highlight: null, reveal: 0, snapObjects: loadSnapObjects(), simulate: false, simTool: 'select', sim: null, held: null }
   }
 
   getState = (): EditorState => this.state
@@ -221,6 +236,22 @@ export class EditorStore {
     this.set({ snapObjects: on })
   }
 
+  setSimulate(on: boolean) {
+    if (on === this.state.simulate) return
+    this.set(on ? { simulate: true } : { simulate: false, simTool: 'select', sim: null, held: null })
+  }
+  setSimTool(simTool: 'select' | 'probe') {
+    if (simTool !== this.state.simTool) this.set({ simTool })
+  }
+  setSim(sim: SimView | null) {
+    this.set({ sim })
+  }
+  setHeld(held: { part: string; group: string } | null) {
+    const h = this.state.held
+    if (h === held || (h && held && h.part === held.part && h.group === held.group)) return
+    this.set({ held })
+  }
+
   /** Replaces the whole document (import, new sheet) and clears history. */
   load(diagram: Diagram) {
     this.end()
@@ -228,7 +259,7 @@ export class EditorStore {
     this.past = []
     this.future = []
     this.unsaved = false
-    this.set({ diagram, selection: EMPTY_SELECTION, highlight: null })
+    this.set({ diagram, selection: EMPTY_SELECTION, highlight: null, held: null })
   }
 }
 

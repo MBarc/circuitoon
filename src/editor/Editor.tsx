@@ -5,6 +5,7 @@ import { Canvas, type CanvasApi } from './Canvas.tsx'
 import { Inspector } from './Inspector.tsx'
 import { LibraryPanel } from './LibraryPanel.tsx'
 import { Toolbar } from './Toolbar.tsx'
+import { useSimulation } from './simulation.ts'
 import { deleteSelection, EMPTY_SELECTION, rotateParts } from './ops.ts'
 import { nudgeSelection } from './align.ts'
 import { GRID } from './snap.ts'
@@ -135,6 +136,14 @@ function useEditorKeys(store: EditorStore) {
         const step = GRID * (e.shiftKey ? 5 : 1)
         const [ux, uy] = ARROWS[e.key]
         store.commit(nudgeSelection(s.diagram, sel, ux * step, uy * step), `nudge:${JSON.stringify([sel.parts, sel.annotations ?? []])}`)
+      } else if (key === 's' && !mod && !e.altKey) {
+        if (gesture) return
+        e.preventDefault()
+        store.setSimulate(!s.simulate)
+      } else if (key === 'p' && !mod && !e.altKey) {
+        if (gesture) return
+        e.preventDefault()
+        store.setSimTool(s.simTool === 'probe' ? 'select' : 'probe')
       } else if (key === 'r' && !mod) {
         if (gesture) return
         if (s.selection.parts.length) store.commit(rotateParts(s.diagram, s.selection.parts))
@@ -142,6 +151,7 @@ function useEditorKeys(store: EditorStore) {
         // A wire-draw or reconnect gesture handles its own Escape (Canvas.tsx cancels the drag);
         // clearing the selection here too would fight with that.
         if (gesture) return
+        if (s.simTool === 'probe') return store.setSimTool('select')
         store.select(EMPTY_SELECTION)
       }
     }
@@ -305,6 +315,7 @@ export function Editor({ initial, warnings, onClose, onDirty }: { initial: Diagr
   useEditorKeys(store)
   useEditorClipboard(store, canvasApi)
   useUnloadGuard(store)
+  useSimulation(store)
   // Tells the owner whether there are unsaved changes (EditorApp asks before a link replaces them).
   const dirty = useSyncExternalStore(store.subscribe, () => store.dirty)
   // A block body: an expression body would return onDirty's result, which React would later call as
