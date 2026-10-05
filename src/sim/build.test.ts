@@ -8,6 +8,10 @@ import { cellModule, sheet } from './testing.ts'
 import { type Device, netNode } from './model.ts'
 import type { ModuleDef } from '../format/module.ts'
 import { load } from '../format/builtinModules.testing.ts'
+import { toKicadNetlist } from '../format/kicad.ts'
+import { checkKicadNetlist } from '../format/sexpr.testing.ts'
+import { libraryLookup } from '../agent/catalog.ts'
+import { sheetNets } from '../agent/extract.ts'
 
 const kinds = (devs: Device[]) => devs.map((d) => `${d.kind}:${d.id}`)
 
@@ -137,5 +141,23 @@ describe('buildCircuit: fix round 1', () => {
     const c = buildCircuit(sheet([{ uid: 'r1', module: bare('resistor', { a: '1', b: '2' }) }, { uid: 'v1', module: bare('voltage_source', { pos: '1', neg: '2' }) }], []))
     expect([c.devices, c.taps, c.parts]).toEqual([[], [], {}])
     expect(c.unsimulated).toEqual([{ part: 'r1', reason: 'no resistance value' }, { part: 'v1', reason: 'no voltage value' }])
+  })
+})
+
+describe('buildCircuit: net names shared with extract and KiCad (spec 2, fix wave finding 6)', () => {
+  it('gives a labelled net, GND and the 3V3 rail the same name in the simulator, extract and KiCad', () => {
+    const d = sheet([
+      { uid: 'u1', module: 'esp32-devkit-v1-30' }, { uid: 'r1', module: 'resistor', values: { resistance: { value: 330, unit: 'ohm' } } }, { uid: 'd1', module: 'led' },
+      { uid: 'l1', module: 'net-label', values: { net: 'LED_SIG' } }, { uid: 'l2', module: 'net-label', values: { net: 'LED_SIG' } },
+    ], [['u1.3V3', 'r1.1'], ['r1.2', 'l1.NET'], ['l2.NET', 'd1.A'], ['d1.K', 'u1.GND']])
+    const sim = buildCircuit(d).pinNet
+    const at = (uid: string, pin: string) => sim[JSON.stringify([uid, pin])]
+    const extract = new Set(sheetNets(d).nets.map((n) => n.name))
+    const kicad = new Set(checkKicadNetlist(toKicadNetlist(d, { library: libraryLookup }).text).nets.map((n) => n.name))
+    expect([at('r1', '2'), at('d1', 'A'), at('d1', 'K'), at('r1', '1')]).toEqual(['LED_SIG', 'LED_SIG', 'GND', '3V3'])
+    for (const name of ['LED_SIG', 'GND', '3V3']) {
+      expect(extract.has(name)).toBe(true)
+      expect(kicad.has(name)).toBe(true)
+    }
   })
 })
