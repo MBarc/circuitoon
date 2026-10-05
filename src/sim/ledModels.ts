@@ -1,7 +1,8 @@
 // LED and diode models (spec 4): an LED is a diode whose IS is refitted so V = forwardVoltage at
 // 20 mA, with N and RS held per colour, so forwardVoltage stays the user's knob. This table is the
-// one place per-colour data lives (ruling R12). Until Task 20 sources each colour, every colour
-// carries the spike's red curve shape (an estimate) and no absolute maximum. Ruling R18: the body
+// one place per-colour data lives (ruling R12). Each colour's absolute maximum and curve come from one
+// representative Kingbright 5 mm datasheet. Red, green, yellow and orange keep the spike's red curve
+// shape (an estimate); blue and white refit RS (N held at 3.73) through two datasheet points. Ruling R18: the body
 // diode and the Schottky fit are modelling choices.
 import type { DiodeModel } from './model.ts'
 
@@ -17,14 +18,16 @@ export interface LedColour {
   /** From one representative 5 mm datasheet for the colour (`representative`, spec 3.4). */
   absMaxCurrent?: { value: number; source: string }
 }
-const SPIKE = 'the spike red LED curve (IS 93.2p, N 3.73, RS 7.5): an estimate of the shape'
+// Blue and white rise faster than the spike shape: their RS (23.3 ohm) is solved so that, with IS fitted
+// at 3.3 V and 20 mA, the curve also passes 3.0 V at 10 mA. Two points fix only N*VT*ln2 + 0.01*RS, so N
+// is held at the spike's 3.73 (a physical ideality) and RS takes the rest.
 export const LED_COLOURS: Record<string, LedColour> = {
-  red: { n: 3.73, rs: 7.5, shape: SPIKE },
-  green: { n: 3.73, rs: 7.5, shape: SPIKE },
-  yellow: { n: 3.73, rs: 7.5, shape: SPIKE },
-  orange: { n: 3.73, rs: 7.5, shape: SPIKE },
-  blue: { n: 3.73, rs: 7.5, shape: SPIKE },
-  white: { n: 3.73, rs: 7.5, shape: SPIKE },
+  red: { n: 3.73, rs: 7.5, shape: 'spike curve; limit from Kingbright WP7113ID datasheet, p. 2', absMaxCurrent: { value: 0.03, source: 'https://www.kingbrightusa.com/images/catalog/SPEC/WP7113ID.pdf' } },
+  green: { n: 3.73, rs: 7.5, shape: 'spike curve; limit from Kingbright WP7113GD datasheet, p. 2', absMaxCurrent: { value: 0.025, source: 'https://www.kingbrightusa.com/images/catalog/SPEC/WP7113GD.pdf' } },
+  yellow: { n: 3.73, rs: 7.5, shape: 'spike curve; limit from Kingbright WP7113YD datasheet, p. 2', absMaxCurrent: { value: 0.03, source: 'https://www.kingbrightusa.com/images/catalog/SPEC/WP7113YD.pdf' } },
+  orange: { n: 3.73, rs: 7.5, shape: 'spike curve; limit from Kingbright WP7113SED datasheet, p. 2', absMaxCurrent: { value: 0.03, source: 'https://www.kingbrightusa.com/images/catalog/SPEC/WP7113SED.pdf' } },
+  blue: { n: 3.73, rs: 23.3, shape: 'fitted to Kingbright WP7113QBC/D datasheet points: 3.0 V at 10 mA, 3.3 V at 20 mA (p. 3 graph, p. 2 table), representative', absMaxCurrent: { value: 0.03, source: 'https://www.kingbrightusa.com/images/catalog/SPEC/WP7113QBC-D.pdf' } },
+  white: { n: 3.73, rs: 23.3, shape: 'fitted to Kingbright WP7113QWC/D datasheet points: 3.0 V at 10 mA, 3.3 V at 20 mA (p. 3 graph, p. 2 table), representative', absMaxCurrent: { value: 0.03, source: 'https://www.kingbrightusa.com/images/catalog/SPEC/WP7113QWC-D.pdf' } },
 }
 
 /** The IS that puts the diode at `v` volts when `i` amps flow. */

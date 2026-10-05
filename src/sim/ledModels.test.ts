@@ -18,6 +18,12 @@ describe('LED colour models', () => {
     expect(model.rs).toBe(7.5)
     expect(model.is).toBeCloseTo(9.4e-11, 12)
   })
+  for (const colour of ['blue', 'white'])
+    it(`${colour} at 3.3 V passes both datasheet points (3.0 V at 10 mA, 3.3 V at 20 mA) within 30 mV`, () => {
+      const { model } = ledModel(colour, 3.3)
+      expect(Math.abs(diodeVoltage(model, 0.01) - 3.0)).toBeLessThan(0.03)
+      expect(Math.abs(diodeVoltage(model, 0.02) - 3.3)).toBeLessThan(0.03)
+    })
   it('uses the red curve for a colour it does not know, and says so', () => {
     const r = ledModel('ultraviolet', 3.2)
     expect(r.known).toBe(false)

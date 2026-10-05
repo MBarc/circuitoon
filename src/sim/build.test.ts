@@ -33,7 +33,7 @@ describe('buildCircuit: primitives', () => {
     expect(cell.kind === 'cell' && [cell.volts.value, cell.volts.basis, cell.rInternal.value, cell.rInternal.basis]).toEqual([5, 'user', 1e-6, 'representative'])
     const led = c.devices.find((d) => d.kind === 'diode')!
     expect(led.kind === 'diode' && led.model.is).toBeCloseTo(9.4e-11, 12)
-    expect(c.limits.filter((l) => l.part === 'd1').map((l) => [l.kind, l.value.value, l.value.basis, l.value.label])).toEqual([['current', 0.02, 'representative', 'led.D1.maxCurrent']])
+    expect(c.limits.filter((l) => l.part === 'd1').map((l) => [l.kind, l.value.value, l.value.basis, l.value.label])).toEqual([['current', 0.02, 'representative', 'led.D1.maxCurrent'], ['absMaxCurrent', 0.03, 'representative', 'led-colours.red.absMaxCurrent']])
   })
   it('falls back to the default forwardVoltage outside 1.0 to 5.0 V, with a note', () => {
     const fallback = buildCircuit(ledSheet).devices.find((d) => d.kind === 'diode')!
