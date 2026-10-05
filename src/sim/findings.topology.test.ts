@@ -7,8 +7,9 @@ import { buildCircuit } from './build.ts'
 import { classify } from './floating.ts'
 import { type Draft, finalize, noConvergence, topologyFindings } from './findings.ts'
 import { netNode } from './model.ts'
-import { boardModule, cellModule, ldoModule, sheet } from './testing.ts'
+import { boardModule, cellModule, ldoModule, q, sheet } from './testing.ts'
 import type { Diagram } from '../format/diagram.ts'
+import type { ModuleDef } from '../format/module.ts'
 
 const R = (uid: string, ohms: number) => ({ uid, module: 'resistor', values: { resistance: { value: ohms, unit: 'ohm' } } })
 const codes = (d: Diagram) => {
@@ -28,6 +29,12 @@ describe('topological findings', () => {
     const f = codes(sheet([{ uid: 'bt1', module: cellModule(3, 15) }], [['bt1.+', 'bt1.-']])).filter((x) => x.code === 'sim-short')
     expect(f).toHaveLength(1)
   })
+  it('names the source itself when the short runs through its own contact', () => {
+    const c = buildCircuit(sheet([{ uid: 'bt1', module: cellModule(3.7, 0.05) }], []))
+    c.devices.push({ kind: 'switch', id: 'bt1.s.1.no', part: 'bt1', group: 's', contact: 'no', latching: true, a: 'bt1:+', b: 'bt1:-', closed: true, ron: { value: 0.02, basis: 'estimate', label: 'x' } })
+    const f = finalize(topologyFindings(c, classify(c)).drafts, '').filter((x) => x.code === 'sim-short')
+    expect(f.map((x) => [x.parts, x.message])).toEqual([[['bt1'], 'BT1 is shorted: its + and - are joined through BT1 itself and wires. Nothing limits the current, so BT1 and the wires can overheat.']])
+  })
   it('finds a rail output shorted to its return', () => {
     const c = buildCircuit(sheet([{ uid: 'bt1', module: cellModule(5, 0.05) }, { uid: 'u1', module: ldoModule() }], [['bt1.+', 'u1.IN'], ['bt1.-', 'u1.GND'], ['u1.OUT', 'u1.GND']]))
     const t = topologyFindings(c, classify(c))
@@ -40,8 +47,27 @@ describe('topological findings', () => {
     // Both voltages are electrical.params values, which count as user (ruling R13).
     expect(pair(3.7, 5, [['b1.+', 'b2.+'], ['b1.-', 'b2.-']])).toEqual([expect.objectContaining({ severity: 'error', basis: 'user', parts: ['b1', 'b2'] })])
     expect(pair(3.7, 5, [['b1.+', 'b2.+']])).toEqual([])
-    expect(pair(3.7, 3.7, [['b1.-', 'b2.+']])).toEqual([])
+    expect(pair(3.7, 5, [['b1.-', 'b2.+']])).toEqual([])
     expect(pair(3.7, 3.7, [['b1.+', 'b2.+'], ['b1.-', 'b2.-']])).toEqual([])
+  })
+  it('never flags rail outputs that block reverse current (they OR), but does flag body-diode ones', () => {
+    const ored = (reverse: 'blocks' | 'body-diode') =>
+      codes(sheet([{ uid: 'bt1', module: cellModule(5, 0.05) }, { uid: 'u1', module: ldoModule({ reverse }) }, { uid: 'u2', module: ldoModule({ reverse, vout: q(3, 'V') }, 'ldo-3v0') }],
+        [['bt1.+', 'u1.IN'], ['bt1.+', 'u2.IN'], ['bt1.-', 'u1.GND'], ['bt1.-', 'u2.GND'], ['u1.OUT', 'u2.OUT']])).filter((f) => f.code === 'sim-source-conflict')
+    expect(ored('blocks')).toEqual([])
+    expect(ored('body-diode').map((f) => f.parts)).toEqual([['u1', 'u2']])
+  })
+  it('pairs two outputs of one part when they are different pins wired together', () => {
+    const rail = (id: string, output: string, v: number) => ({ id, inputs: [{ domain: 'IN', via: 'direct' }], output, kind: 'ldo', vout: q(v, 'V'), dropout: q(0.3, 'V'), ioutMax: q(0.5, 'A'), iq: q(0.001, 'A'), reverse: 'body-diode' })
+    const dual = {
+      format: 'circuitoon-module/1', id: 'dual-ldo', name: 'dual-ldo',
+      pins: [{ name: 'IN', type: 'power_in', side: 'left' }, { name: 'GND', type: 'ground', side: 'left' }, { name: 'OUT5', type: 'power_out', side: 'right' }, { name: 'OUT3', type: 'power_out', side: 'right' }],
+      electrical: { model: 'regulator', sim: { power: { domains: [{ name: 'IN', pin: 'IN', ret: 'GND', nominal: 9 }, { name: 'OUT5', pin: 'OUT5', ret: 'GND', nominal: 5 }, { name: 'OUT3', pin: 'OUT3', ret: 'GND', nominal: 3.3 }], rails: [rail('r5', 'OUT5', 5), rail('r3', 'OUT3', 3.3)] } } },
+    } as ModuleDef
+    const f = (wires: [string, string][]) =>
+      codes(sheet([{ uid: 'bt1', module: cellModule(9, 0.05) }, { uid: 'u1', module: dual }], [['bt1.+', 'u1.IN'], ['bt1.-', 'u1.GND'], ...wires])).filter((x) => x.code === 'sim-source-conflict')
+    expect(f([['u1.OUT5', 'u1.OUT3']]).map((x) => x.parts)).toEqual([['u1', 'u1']])
+    expect(f([])).toEqual([])
   })
   it('flags an input held only by its input leakage (it is not a DC path)', () => {
     const all = codes(sheet([{ uid: 'bt1', module: cellModule(5, 0.05) }, { uid: 'u1', module: boardModule({ leak: true }) }, R('r9', 1000)], [['bt1.+', 'u1.VIN'], ['bt1.-', 'u1.GND'], ['u1.IO1', 'r9.1']]))
@@ -54,6 +80,12 @@ describe('topological findings', () => {
     expect(f({}, [['u1.IO1', 'r9.1']]).map((x) => x.message)).toEqual(['U1 IO1 is an input with nothing driving it: it floats, so it reads at random. Wire it to a signal, add a pull-up or pull-down resistor, or set its simulated state to input-pullup or input-pulldown.'])
     expect(f({ 'gpio.IO1': 'input-pullup' }, [['u1.IO1', 'r9.1']])).toEqual([])
     expect(f({ 'gpio.IO2': 'input-pullup' }, [['u1.IO1', 'r1.1'], ['r1.2', 'u1.GND']])).toEqual([])
+  })
+  it('does not flag an input wired to a part that is not simulated (its state is unknown, not floating)', () => {
+    const f = (wires: [string, string][]) =>
+      codes(sheet([{ uid: 'bt1', module: cellModule(5, 0.05) }, { uid: 'u1', module: boardModule() }, { uid: 'u2', module: 'bme280-module-4pin' }, R('r9', 1000)], [['bt1.+', 'u1.VIN'], ['bt1.-', 'u1.GND'], ...wires])).filter((x) => x.code === 'sim-floating-input')
+    expect(f([['u1.IO1', 'u2.SDA']])).toEqual([])
+    expect(f([['u1.IO1', 'r9.1']]).map((x) => x.parts)).toEqual([['u1']])
   })
   it('notes parts with no power data, and the estimates in use', () => {
     const all = codes(sheet([{ uid: 'u1', module: 'bme280-module-4pin' }, { uid: 'u2', module: boardModule({}) }], []))

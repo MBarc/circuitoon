@@ -126,8 +126,10 @@ export function topologyFindings(c: Circuit, cls: Classification): { drafts: Dra
   for (const s of srcs) {
     if (!g.same(s.p, s.n)) continue
     shorted.add(s.device)
-    const via = g.pathParts(s.p, s.n).filter((p) => p !== s.part)
-    const through = andList([...via.map((p) => refOf(c, p)), 'wires'])
+    const path = g.pathParts(s.p, s.n)
+    const via = path.filter((p) => p !== s.part)
+    // A contact or jumper inside the source's own part is named too ("BT1 itself").
+    const through = andList([...path.map((p) => (p === s.part ? `${refOf(c, p)} itself` : refOf(c, p))), 'wires'])
     if (s.rail) shortedRails.add(s.device)
     drafts.push({
       code: 'sim-short', severity: 'error', parts: [s.part, ...via], inputs: [], key: `sim-short|${s.device}`,
@@ -142,19 +144,27 @@ export function topologyFindings(c: Circuit, cls: Classification): { drafts: Dra
   for (let i = 0; i < fighters.length; i++)
     for (let j = i + 1; j < fighters.length; j++) {
       const [a, b] = [fighters[i], fighters[j]]
-      if (a.part === b.part || !g.same(a.p, b.p) || !g.same(a.n, b.n) || Math.abs(a.volts.value - b.volts.value) <= 0.1) continue
+      // Two outputs of one part are paired only when they are different pins (a 5 V and a 3.3 V output wired together).
+      if ((a.part === b.part && a.p === b.p) || !g.same(a.p, b.p) || !g.same(a.n, b.n) || Math.abs(a.volts.value - b.volts.value) <= 0.1) continue
       drafts.push({
         code: 'sim-source-conflict', severity: 'error', parts: [a.part, b.part], inputs: [a.volts, b.volts], key: `sim-source-conflict|${a.device}|${b.device}`,
         message: `${a.label} (${V(a.volts.value)}) and ${b.label} (${V(b.volts.value)}) are wired in parallel, plus to plus and minus to minus: the higher one drives current into the lower one, which can damage both.`,
       })
     }
   // Floating means not defined (driven or held). Ruling R32: only an input wired to something; a spare pin reads nothing.
-  for (const gp of c.gpio)
-    if (gp.state === 'input' && pinState(c, cls, gp.key) === 'floating' && Object.entries(c.pinNet).some(([k, n]) => k !== gp.key && n === c.pinNet[gp.key]))
+  // Fix-round ruling: an input sharing a net with a pin of another part that is not (fully) simulated
+  // is unknown, not floating; sim-incomplete lists that part. Boards, net labels and connectors are
+  // in neither c.parts nor c.unsimulated, so they never hide a floating input.
+  const unknown = new Set(c.unsimulated.map((u) => u.part))
+  for (const gp of c.gpio) {
+    if (gp.state !== 'input' || pinState(c, cls, gp.key) !== 'floating') continue
+    const others = Object.entries(c.pinNet).filter(([k, n]) => k !== gp.key && n === c.pinNet[gp.key]).map(([k]) => (JSON.parse(k) as [string, string])[0])
+    if (others.length && !others.some((uid) => uid !== gp.part && unknown.has(uid)))
       drafts.push({
         code: 'sim-floating-input', severity: 'warning', parts: [gp.part], inputs: [], key: `sim-floating-input|${gp.part}|${gp.pin}`,
         message: `${refOf(c, gp.part)} ${gp.pin} is an input with nothing driving it: it floats, so it reads at random. Wire it to a signal, add a pull-up or pull-down resistor, or set its simulated state to input-pullup or input-pulldown.`,
       })
+  }
   const missing = [...new Set(c.unsimulated.filter((u) => u.reason === NO_POWER_DATA).map((u) => u.part))].sort(naturalCompare)
   if (missing.length) {
     const designators = missing.map((uid) => refOf(c, uid))
