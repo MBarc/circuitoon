@@ -10,6 +10,7 @@ import { placedCaptionBox, tipLabelBoxes } from '../render/captionBox.ts'
 import { seatedLabels } from './seatedLabels.ts'
 import { LABEL_VALUE, flagRect } from './netLabels.ts'
 import { annotationRect, frameTab } from '../render/annotationGeometry.ts'
+import { isSimValueKey, simValueProblem, switchGroups } from './simState.ts'
 import { type BoardStrip, exitDirt, holeExits } from './boardEntry.ts'
 
 /** How every load warning about a dropped value override ends: the part now shows its module
@@ -1473,6 +1474,22 @@ export function validateDiagram(raw: unknown): DiagramResult {
           const who = typeof p.designator === 'string' && p.designator !== '' ? p.designator : `part ${i}`
           const dropped: string[] = []
           for (const [key, entry] of Object.entries(p.values)) {
+            // Simulation state and overrides (spec 3.5, 4.0, 4.6; ruling R24): a bad one is dropped.
+            if (isSimValueKey(key)) {
+              const problem = simValueProblem(key, entry, typeof p.module === 'string' ? modules.get(p.module) : undefined)
+              if (problem) {
+                dropped.push(key)
+                warnings.push(`${at}.values.${key}: ${who} has ${key} ${JSON.stringify(entry)}, but ${problem.text}; ${problem.electrical ? VALUE_DROPPED : 'it was dropped, so the default state is used'}`)
+              }
+              continue
+            }
+            // A legacy switch state that is not a position (ruling R3) keeps the default, said once.
+            if (key === 'state' && typeof p.module === 'string') {
+              const sm = modules.get(p.module)
+              const groups = sm ? switchGroups(sm) : []
+              if (groups.length > 1 || (groups.length === 1 && !['on', 'closed', 'pressed', 'off', 'open', 'released'].includes(String(entry))))
+                warnings.push(`${at}.values.state: ${who}'s state ${JSON.stringify(entry)} is not a switch position the simulator can read, so the switch is simulated open`)
+            }
             // An override of an editable value param (resistance, capacitance, voltage) that is
             // malformed, in the wrong unit or out of range is dropped with a warning, so the
             // module default is shown and the user is told, rather than a different value being

@@ -4,6 +4,7 @@
 // also holds for every copy. Pure.
 import { type ModuleDef, type PinDef, PARAM_RULES, isBoard, isNetLabel, isObj, isNum, isSpacer, moduleSettings, usbOf, validParamValue, validateModule } from '../format/module.ts'
 import { mainsOf } from '../format/mainsModel.ts'
+import { isSimValueKey, simValueProblem } from '../format/simState.ts'
 import { ANNOTATION_LABEL_MAX, ANNOTATION_TEXT_MAX, isValidColor } from '../format/diagram.ts'
 import { type EndKind, isEndKind, isUsbEnd } from '../format/cables.ts'
 import { type RawNet, type RawPart, type RepeatCopy, endpointText, expandRepeat } from './repeat.ts'
@@ -68,9 +69,14 @@ export const terminalName = (t: Terminal): string => `${t.ref} ${t.name}${t.hole
 /** A part that can plug into a board: not a board, with legs, none of them a bus. */
 const mountable = (m: ModuleDef) => !isBoard(m) && m.pins.some((p) => !isSpacer(p)) && !m.pins.some((p) => !isSpacer(p) && p.bus)
 
-function valueErrors(values: Record<string, unknown>, at: string): string[] {
+function valueErrors(values: Record<string, unknown>, at: string, m: ModuleDef): string[] {
   const out: string[] = []
   for (const [key, entry] of Object.entries(values)) {
+    if (isSimValueKey(key)) {
+      const p = simValueProblem(key, entry, m)
+      if (p) out.push(`${at}.${key}: ${p.text}`)
+      continue
+    }
     if (!Object.hasOwn(PARAM_RULES, key)) continue
     const rule = PARAM_RULES[key]
     if (!(isObj(entry) && isNum(entry.value) && entry.unit === rule.unit && validParamValue(key, entry.value)))
@@ -160,7 +166,7 @@ export function parseNetlist(raw: unknown, library: ModuleLookup): IntentResult 
     if (p.values !== undefined) {
       if (!isObj(p.values)) errors.push(`${at}.values: must be an object`)
       else {
-        errors.push(...valueErrors(p.values, `${at}.values`))
+        errors.push(...valueErrors(p.values, `${at}.values`, m))
         part.values = p.values
       }
     }

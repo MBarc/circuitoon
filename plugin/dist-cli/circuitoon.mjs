@@ -174,7 +174,7 @@ var SOURCE_LISTS = [
 var article = (c) => c === "PE" ? "a" : "an";
 var isStr = (v) => typeof v === "string" && v !== "";
 var oneOf = (list, v) => typeof v === "string" && list.includes(v);
-var words = (list) => list.map((x) => `"${x}"`).join(", ");
+var words$1 = (list) => list.map((x) => `"${x}"`).join(", ");
 /** `electrical.internalNodes`: named terminals inside the part (a plug's prongs), added to `names`. */
 function claimInternalNodes(raw, names, errors) {
 	const el = raw.electrical;
@@ -238,7 +238,7 @@ function validateMains(raw, names, errors) {
 		if (!(isObj(el.params) && isObj(el.params.acVoltage))) errors.push("electrical.acSources: needs an acVoltage param (electrical.params.acVoltage), the source voltage");
 		if (el.ac === void 0) errors.push("electrical.ac: required with acSources ({ \"hz\", \"region\" })");
 	}
-	if (el.ac !== void 0 && !(isObj(el.ac) && isNum(el.ac.hz) && el.ac.hz > 0 && oneOf(REGIONS, el.ac.region))) errors.push(`electrical.ac: must be { "hz": <above 0>, "region": one of ${words(REGIONS)} }`);
+	if (el.ac !== void 0 && !(isObj(el.ac) && isNum(el.ac.hz) && el.ac.hz > 0 && oneOf(REGIONS, el.ac.region))) errors.push(`electrical.ac: must be { "hz": <above 0>, "region": one of ${words$1(REGIONS)} }`);
 	each("conducts", (c, at) => {
 		if (!(Array.isArray(c.pins) && c.pins.length === 2 && c.pins[0] !== c.pins[1])) errors.push(`${at}.pins: must be two different terminal names`);
 		else c.pins.forEach((n, i) => term(n, `${at}.pins[${i}]`));
@@ -264,7 +264,7 @@ function validateMains(raw, names, errors) {
 			else inDomain.set(n, show(x.name));
 		}
 	});
-	if (el.isolation !== void 0 && !oneOf(ISOLATIONS, el.isolation)) errors.push(`electrical.isolation: must be one of ${words(ISOLATIONS)}`);
+	if (el.isolation !== void 0 && !oneOf(ISOLATIONS, el.isolation)) errors.push(`electrical.isolation: must be one of ${words$1(ISOLATIONS)}`);
 	if (el.isolationProvenance !== void 0 && !oneOf(PROVENANCES, el.isolationProvenance)) errors.push("electrical.isolationProvenance: must be \"datasheet\" or \"unverified\"");
 	if (el.safeguard !== void 0 && el.safeguard !== "protective-screen") errors.push("electrical.safeguard: must be \"protective-screen\"");
 	const kinds = Array.isArray(el.domains) ? el.domains.filter(isObj).map((x) => x.kind) : [];
@@ -338,7 +338,7 @@ function validateMains(raw, names, errors) {
 		const p = el.plug;
 		if (!isObj(p)) errors.push("electrical.plug: must be { \"family\", \"profiles\": [...] }");
 		else {
-			if (!oneOf(PLUG_FAMILIES, p.family)) errors.push(`electrical.plug.family: must be one of ${words(PLUG_FAMILIES)}`);
+			if (!oneOf(PLUG_FAMILIES, p.family)) errors.push(`electrical.plug.family: must be one of ${words$1(PLUG_FAMILIES)}`);
 			if (raw.obstacle === false) errors.push("electrical.plug: a plug-in device cannot be a board (\"obstacle\": false)");
 			if (!Array.isArray(p.profiles) || !p.profiles.length) errors.push("electrical.plug.profiles: must be a list of 1 or more profiles");
 			else {
@@ -401,10 +401,10 @@ function validateMains(raw, names, errors) {
 		const region = isObj(el.ac) && oneOf(REGIONS, el.ac.region) ? el.ac.region : null;
 		each("sockets", (s, at) => {
 			named(ids, s.id, `${at}.id`);
-			if (!oneOf(SOCKET_FAMILIES, s.family)) errors.push(`${at}.family: must be one of ${words(SOCKET_FAMILIES)}`);
+			if (!oneOf(SOCKET_FAMILIES, s.family)) errors.push(`${at}.family: must be one of ${words$1(SOCKET_FAMILIES)}`);
 			else if (region && !REGION_SOCKETS[region].includes(s.family)) {
 				const ok = REGION_SOCKETS[region];
-				errors.push(`${at}.family: "${s.family}" is not a socket of region "${region}" (expected ${ok.length > 1 ? "one of " : ""}${words(ok)})`);
+				errors.push(`${at}.family: "${s.family}" is not a socket of region "${region}" (expected ${ok.length > 1 ? "one of " : ""}${words$1(ok)})`);
 			}
 			if (!Array.isArray(s.contacts) || !s.contacts.length) return void errors.push(`${at}.contacts: must be a list of { "group", "role" }`);
 			const roles = /* @__PURE__ */ new Set();
@@ -1233,6 +1233,11 @@ function validateI2c(i2c, settings, pins, errors) {
 function i2cOf(m) {
 	const e = m.electrical;
 	return isObj(e) && isObj(e.i2c) && typeof e.i2c.sda === "string" && typeof e.i2c.scl === "string" ? e.i2c : null;
+}
+/** A pin's or hole group's capabilities, or undefined. */
+function pinCaps(m, name) {
+	const pin = m.pins.find((p) => !isSpacer(p) && p.name === name);
+	return pin ? pin.caps : holeGroupOf(m, name)?.caps;
 }
 /**
 * Groups of ground pins the wiring checker treats as one return (`electrical.commonReturn`): a
@@ -3679,6 +3684,133 @@ function wrapNote(text, width = 48) {
 	}).join("\n");
 }
 //#endregion
+//#region src/format/simModel.ts
+/** The module's `electrical.sim`, or null. Trusts validateModule (validateSim, Task 16). */
+function simOf(m) {
+	const e = m?.electrical;
+	return isObj(e) && isObj(e.sim) ? e.sim : null;
+}
+//#endregion
+//#region src/format/simState.ts
+var GPIO_STATES = [
+	"input",
+	"input-pullup",
+	"input-pulldown",
+	"high",
+	"low"
+];
+var modelOf = (m) => isObj(m.electrical) ? m.electrical.model : void 0;
+var words = (list) => list.map((s) => `"${s}"`).join(", ");
+/** Every contact group: `electrical.contacts`, or ruling R2's implicit group "s" on a switch with terminals a and b. */
+function switchGroups(m) {
+	const momentary = (isObj(m.electrical) && isObj(m.electrical.params) ? m.electrical.params : {}).normallyOpen !== void 0;
+	const declared = mainsOf(m).contacts;
+	if (declared.length) return declared.map((g) => ({
+		id: g.id,
+		kind: g.kind,
+		poles: g.poles,
+		changeover: g.poles.some((p) => p.no !== null && p.nc !== null),
+		momentary: momentary && g.kind === "switch"
+	}));
+	const t = isObj(m.electrical) && isObj(m.electrical.terminals) ? m.electrical.terminals : null;
+	if (modelOf(m) !== "switch" || !t || typeof t.a !== "string" || typeof t.b !== "string") return [];
+	return [{
+		id: "s",
+		kind: "switch",
+		poles: [{
+			com: t.a,
+			no: t.b,
+			nc: null
+		}],
+		changeover: false,
+		momentary
+	}];
+}
+var positions = (g) => g.changeover ? ["no", "nc"] : ["open", "closed"];
+/** Why a GPIO state is not allowed on a pin with these caps (spec 3.3), or null. */
+function gpioProblem(caps, v) {
+	if (!GPIO_STATES.includes(v)) return `must be one of ${words(GPIO_STATES)}`;
+	if (caps?.inputOnly && (v === "high" || v === "low")) return "the pin is input only, so it cannot drive high or low";
+	if (caps?.outputOnly && v.startsWith("input")) return "the pin is output only, so it cannot be an input";
+	if (caps?.noPullup && (v === "input-pullup" || v === "input-pulldown")) return "the pin has no internal pull-up or pull-down";
+	return null;
+}
+var isSimValueKey = (key) => key.startsWith("gpio.") || key.startsWith("contact.") || key.startsWith("sim.");
+var amount = (entry, unit, allowZero) => isObj(entry) && isNum(entry.value) && entry.unit === unit && (allowZero ? entry.value >= 0 : entry.value > 0) && entry.value <= 1e6 ? null : `it must be { "value": <number ${allowZero ? "0 or more" : "above 0"}>, "unit": "${unit}" }`;
+/**
+* What is wrong with one simulation value on a part, or null. `electrical` marks a `sim.*`
+* number (dropping it changes the solved circuit: the loader ends its warning with VALUE_DROPPED).
+* With no module to check against (not embedded), nothing is claimed.
+*/
+function simValueProblem(key, entry, m) {
+	if (!m) return null;
+	if (key.startsWith("gpio.")) {
+		const pin = key.slice(5);
+		if (!simOf(m)?.gpio?.pins.includes(pin)) return {
+			text: `pin "${pin}" is not a GPIO pin of ${m.name}`,
+			electrical: false
+		};
+		if (typeof entry !== "string") return {
+			text: `it must be one of ${words(GPIO_STATES)}`,
+			electrical: false
+		};
+		const p = gpioProblem(pinCaps(m, pin), entry);
+		return p ? {
+			text: p,
+			electrical: false
+		} : null;
+	}
+	if (key.startsWith("contact.")) {
+		const g = switchGroups(m).find((x) => x.id === key.slice(8));
+		if (!g) return {
+			text: `${m.name} has no contact group "${key.slice(8)}"`,
+			electrical: false
+		};
+		if (g.kind !== "switch") return {
+			text: `a ${g.kind} is always shown at rest`,
+			electrical: false
+		};
+		if (g.momentary) return {
+			text: "it is a momentary button; its position is never saved",
+			electrical: false
+		};
+		const allowed = positions(g);
+		return typeof entry === "string" && allowed.includes(entry) ? null : {
+			text: `it must be ${allowed.map((s) => `"${s}"`).join(" or ")}`,
+			electrical: false
+		};
+	}
+	const sim = simOf(m);
+	const isCell = isObj(m.electrical) && m.electrical.model === "voltage_source";
+	if (key === "sim.rInternal" || key === "sim.imax") {
+		if (!isCell && !sim?.power?.source) return {
+			text: `${m.name} is not a battery or supply`,
+			electrical: true
+		};
+		const p = amount(entry, key === "sim.imax" ? "A" : "ohm", false);
+		return p ? {
+			text: p,
+			electrical: true
+		} : null;
+	}
+	const draw = /^sim\.draw\.(.+)\.(typical|peak)$/.exec(key);
+	if (draw) {
+		if (!sim?.power?.domains.some((d) => d.name === draw[1])) return {
+			text: `${m.name} has no supply domain "${draw[1]}"`,
+			electrical: true
+		};
+		const p = amount(entry, "A", true);
+		return p ? {
+			text: p,
+			electrical: true
+		} : null;
+	}
+	return {
+		text: "unknown simulation value (sim.draw.<domain>.typical, sim.draw.<domain>.peak, sim.rInternal or sim.imax)",
+		electrical: true
+	};
+}
+//#endregion
 //#region src/format/boardEntry.ts
 /**
 * How unclean a way out is, lowest best. Every hole the run passes over counts: one in use most
@@ -5171,6 +5303,26 @@ function validateDiagram(raw) {
 				const who = typeof p.designator === "string" && p.designator !== "" ? p.designator : `part ${i}`;
 				const dropped = [];
 				for (const [key, entry] of Object.entries(p.values)) {
+					if (isSimValueKey(key)) {
+						const problem = simValueProblem(key, entry, typeof p.module === "string" ? modules.get(p.module) : void 0);
+						if (problem) {
+							dropped.push(key);
+							warnings.push(`${at}.values.${key}: ${who} has ${key} ${JSON.stringify(entry)}, but ${problem.text}; ${problem.electrical ? VALUE_DROPPED : "it was dropped, so the default state is used"}`);
+						}
+						continue;
+					}
+					if (key === "state" && typeof p.module === "string") {
+						const sm = modules.get(p.module);
+						const groups = sm ? switchGroups(sm) : [];
+						if (groups.length > 1 || groups.length === 1 && ![
+							"on",
+							"closed",
+							"pressed",
+							"off",
+							"open",
+							"released"
+						].includes(String(entry))) warnings.push(`${at}.values.state: ${who}'s state ${JSON.stringify(entry)} is not a switch position the simulator can read, so the switch is simulated open`);
+					}
 					if (Object.hasOwn(PARAM_RULES, key)) {
 						const rule = PARAM_RULES[key];
 						const where = `${at}.values.${key}: ${who} has ${key}`;
@@ -84094,9 +84246,14 @@ var terminalKey$1 = (ref, name) => JSON.stringify([ref, name]);
 var terminalName = (t) => `${t.ref} ${t.name}${t.hole !== void 0 ? ` hole ${t.hole}` : ""}`;
 /** A part that can plug into a board: not a board, with legs, none of them a bus. */
 var mountable = (m) => !isBoard(m) && m.pins.some((p) => !isSpacer(p)) && !m.pins.some((p) => !isSpacer(p) && p.bus);
-function valueErrors(values, at) {
+function valueErrors(values, at, m) {
 	const out = [];
 	for (const [key, entry] of Object.entries(values)) {
+		if (isSimValueKey(key)) {
+			const p = simValueProblem(key, entry, m);
+			if (p) out.push(`${at}.${key}: ${p.text}`);
+			continue;
+		}
 		if (!Object.hasOwn(PARAM_RULES, key)) continue;
 		const rule = PARAM_RULES[key];
 		if (!(isObj(entry) && isNum(entry.value) && entry.unit === rule.unit && validParamValue(key, entry.value))) out.push(`${at}.${key}: must be { "value": <number>, "unit": "${rule.unit}" } within ${rule.range}`);
@@ -84214,7 +84371,7 @@ function parseNetlist(raw, library) {
 		if (p.values !== void 0) {
 			if (!isObj(p.values)) errors.push(`${at}.values: must be an object`);
 			else {
-				errors.push(...valueErrors(p.values, `${at}.values`));
+				errors.push(...valueErrors(p.values, `${at}.values`, m));
 				part.values = p.values;
 			}
 		}
