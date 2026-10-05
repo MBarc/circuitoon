@@ -4,7 +4,7 @@
 // defaults, and the checks the loader (diagram.ts) and the netlist parser use. Pure.
 import { type ModuleDef, type PinCaps, isNum, isObj, pinCaps } from './module.ts'
 import { type ContactKind, type Pole, mainsOf } from './mainsModel.ts'
-import { simOf } from './simModel.ts'
+import { type GpioSpec, simOf } from './simModel.ts'
 
 export type ContactPosition = 'open' | 'closed' | 'no' | 'nc'
 export type GpioState = 'input' | 'input-pullup' | 'input-pulldown' | 'high' | 'low'
@@ -64,12 +64,17 @@ export function closedPairs(g: SwitchGroup, pos: ContactPosition): [string, stri
   })
 }
 
-/** Why a GPIO state is not allowed on a pin with these caps (spec 3.3), or null. */
-export function gpioProblem(caps: PinCaps | undefined, v: string): string | null {
+/**
+ * Why a GPIO state is not allowed on a pin with these caps (spec 3.3), or null. With the module's
+ * sim.gpio, a pull its data does not state is refused too (an MCP23017 or an AVR has pull-ups only).
+ */
+export function gpioProblem(caps: PinCaps | undefined, v: string, gpio?: GpioSpec | null): string | null {
   if (!(GPIO_STATES as readonly string[]).includes(v)) return `must be one of ${words(GPIO_STATES)}`
   if (caps?.inputOnly && (v === 'high' || v === 'low')) return 'the pin is input only, so it cannot drive high or low'
   if (caps?.outputOnly && v.startsWith('input')) return 'the pin is output only, so it cannot be an input'
   if (caps?.noPullup && (v === 'input-pullup' || v === 'input-pulldown')) return 'the pin has no internal pull-up or pull-down'
+  if (gpio && v === 'input-pullup' && !gpio.pullup) return 'the pin has no internal pull-up'
+  if (gpio && v === 'input-pulldown' && !gpio.pulldown) return 'the pin has no internal pull-down'
   return null
 }
 
@@ -78,7 +83,7 @@ export function gpioState(part: { values?: Record<string, unknown> }, m: ModuleD
   if (!simOf(m)?.gpio?.pins.includes(pin)) return null
   const caps = pinCaps(m, pin)
   const v = part.values?.[`gpio.${pin}`]
-  if (typeof v === 'string' && gpioProblem(caps, v) === null) return v as GpioState
+  if (typeof v === 'string' && gpioProblem(caps, v, simOf(m)?.gpio) === null) return v as GpioState
   return caps?.outputOnly ? null : 'input'
 }
 
@@ -100,7 +105,7 @@ export function simValueProblem(key: string, entry: unknown, m: ModuleDef | unde
     const pin = key.slice(5)
     if (!simOf(m)?.gpio?.pins.includes(pin)) return { text: `pin "${pin}" is not a GPIO pin of ${m.name}`, electrical: false }
     if (typeof entry !== 'string') return { text: `it must be one of ${words(GPIO_STATES)}`, electrical: false }
-    const p = gpioProblem(pinCaps(m, pin), entry)
+    const p = gpioProblem(pinCaps(m, pin), entry, simOf(m)?.gpio)
     return p ? { text: p, electrical: false } : null
   }
   if (key.startsWith('contact.')) {

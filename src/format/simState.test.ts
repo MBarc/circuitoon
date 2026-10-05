@@ -69,6 +69,17 @@ describe('GPIO state (spec 3.3, 4.6)', () => {
     expect(gpioState(part({ 'gpio.IO4': 'input-pulldown' }), board, 'IO4')).toBe('input')
     expect(gpioState(part({}), board, '3V3')).toBeNull()
   })
+  it('refuses a pull the module data does not state (Phase C checkpoint: the MCP23017 has pull-ups only)', () => {
+    const mcp = load('mcp23017-cjmcu-2317')
+    expect(simValueProblem('gpio.GPA0', 'input-pulldown', mcp)?.text).toBe('the pin has no internal pull-down')
+    expect(simValueProblem('gpio.GPA0', 'input-pullup', mcp)).toBeNull()
+    expect(gpioState(part({ 'gpio.GPA0': 'input-pulldown' }), mcp, 'GPA0')).toBe('input')
+    expect(gpioState(part({ 'gpio.GPA0': 'input-pullup' }), mcp, 'GPA0')).toBe('input-pullup')
+    // GPA7 is output only: no state until one is set.
+    expect(gpioState(part({}), mcp, 'GPA7')).toBeNull()
+    expect(simValueProblem('gpio.D2', 'input-pulldown', load('arduino-uno-r3'))?.text).toBe('the pin has no internal pull-down')
+    expect(simValueProblem('gpio.IO1', 'input-pullup', board)?.text).toBe('the pin has no internal pull-up')
+  })
   it('names what is wrong with a stored state or override', () => {
     expect(simValueProblem('gpio.IO2', 'high', board)?.text).toContain('input only')
     expect(simValueProblem('gpio.IO3', 'input', board)?.text).toContain('output only')

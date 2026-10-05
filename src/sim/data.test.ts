@@ -75,6 +75,8 @@ describe('ESP32 DevKits (spec 3.4)', () => {
       expect(sim.gpio!.domain).toBe('3V3')
       expect(sim.gpio!.pins.length).toBeGreaterThan(15)
       expect(sim.limits!.some((l) => l.kind === 'ioTotalCurrent')).toBe(true)
+      // Phase C checkpoint: the ESP32's 3.6 V supply maximum on the 3V3 pin.
+      expect(sim.limits!.find((l) => l.kind === 'vinMax' && 'domain' in l.of && l.of.domain === '3V3')).toMatchObject({ value: 3.6, provenance: 'datasheet' })
     })
 })
 
@@ -93,6 +95,12 @@ describe('displays and the MCP23017 breakout (spec 3.4)', () => {
     expect(sim.power!.draw!.length).toBeGreaterThan(0)
     // The datasheet's 25 mA per pin is an absolute maximum, so the pins carry absMaxCurrent only (controller ruling).
     expect(sim.limits!.some((l) => l.kind === 'absMaxCurrent' && 'pin' in l.of && l.of.pin === 'GPA0')).toBe(true)
+  })
+  it('gives the MCP23017 its 16 GPIO pins on VCC, with a pull-up and no pull-down (Phase C checkpoint)', () => {
+    const g = simOf(load('mcp23017-cjmcu-2317'))!.gpio!
+    expect(g.domain).toBe('VCC')
+    expect(g.pins).toEqual([...[0, 1, 2, 3, 4, 5, 6, 7].map((i) => `GPA${i}`), ...[0, 1, 2, 3, 4, 5, 6, 7].map((i) => `GPB${i}`)])
+    expect([g.pullup?.value, g.pulldown, g.inputLeakage?.value, g.outputResistance.value]).toEqual([66700, undefined, 1e-6, 75])
   })
 })
 

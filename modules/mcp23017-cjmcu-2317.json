@@ -613,6 +613,46 @@
           "note": "Section 1.0 Absolute Maximum Ratings, p. 3: maximum current into VDD pin 125 mA (out of VSS pin 150 mA). Chip, not board."
         }
       ],
+      "gpio": {
+        "domain": "VCC",
+        "pins": [
+          "GPA0",
+          "GPA1",
+          "GPA2",
+          "GPA3",
+          "GPA4",
+          "GPA5",
+          "GPA6",
+          "GPA7",
+          "GPB0",
+          "GPB1",
+          "GPB2",
+          "GPB3",
+          "GPB4",
+          "GPB5",
+          "GPB6",
+          "GPB7"
+        ],
+        "outputResistance": {
+          "value": 75,
+          "unit": "ohm",
+          "provenance": "estimate",
+          "note": "Derived from Table 1-1 D080, p. 4 (DS20001952D): GPIO VOL 0.6 V max at IOL = 8.0 mA, VDD = 4.5 V, so 0.6 / 0.008 = 75 ohm (sink side, an upper bound at 4.5 V). The source side is weaker on paper: D090 VOH VDD - 0.7 V min at IOH = -3.0 mA, VDD = 4.5 V, so 0.7 / 0.003 = 233 ohm at most. One resistance serves both states here, so 75 ohm is used: a high pin's current may read high, never low. At the 3.3 V nominal the drivers are somewhat weaker than at 4.5 V (not stated). Chip, not board."
+        },
+        "pullup": {
+          "value": 66700,
+          "unit": "ohm",
+          "provenance": "estimate",
+          "note": "Derived from Table 1-1 D070, p. 4 (DS20001952D): GPIO weak pull-up current IPU 40 min, 75 typ, 115 max uA at VDD = 5 V with the pin at VSS, so 5 V / 75 uA = 66.7 kohm typical (5 / 115 uA = 43.5 kohm to 5 / 40 uA = 125 kohm). The datasheet states a current, not a resistance, and none at 3.3 V. Enabled per pin by the GPPU register (section 3.5.7, Register 3-6). Chip, not board."
+        },
+        "inputLeakage": {
+          "value": 0.000001,
+          "unit": "A",
+          "source": "https://ww1.microchip.com/downloads/aemDocuments/documents/APID/ProductDocuments/DataSheets/MCP23017-Data-Sheet-DS20001952.pdf",
+          "provenance": "datasheet",
+          "note": "Table 1-1 D060, p. 4 (DS20001952D): I/O port pins input leakage IIL +/-1 uA max, VSS <= VPIN <= VDD, 1.8 to 5.5 V, -40 to +125 C. Chip, not board."
+        }
+      },
       "unaccounted": [
         "Power LED: none of the opened sources (digitaltown, ShillehTek manual, EasyEDA component page) show a power LED or a board schematic for the CJMCU-2317, so none is counted. If the board has one, its current is missing.",
         "Any on-board pull-up resistors (I2C, RESET, address pins): no schematic found; their current depends on the pin states."
