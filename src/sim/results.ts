@@ -35,7 +35,13 @@ export interface DomainBudget {
   part: string
   label: string
   volts: { typical: Reading; peak: Reading }
+  /**
+   * A source: what it delivers. A rail: what its output delivers. A domain: the magnitude of the
+   * current through the domain pin, whatever it feeds (the part's own draw, a rail, a pass-through).
+   */
   amps: { typical: CurrentReading; peak: CurrentReading }
+  /** Domain rows only: the part's own declared load on the domain (its draw, folded back at low voltage). */
+  ownDraw?: { typical: CurrentReading; peak: CurrentReading }
   limit?: { value: number; kind: string; basis: Provenance | 'user' }
   headroom?: number
   basis: Basis
@@ -91,7 +97,7 @@ function voltageOf(c: Circuit, cls: Classification, raw: RawRun, node: string, o
   const ref = cls.islands[isl].reference
   return { kind: 'value', value: raw.v[node] - (raw.v[ref] ?? 0), reference: nameOf(c, ref), trust: trustOf(out, nameOf(c, node), part) }
 }
-/** The voltage between two nodes of one island, or floating. */
+/** The voltage between two nodes of one island, or floating. Its reference is `b`, the row's own return, not spec 4.4's island reference (which node readings name). */
 function across(c: Circuit, cls: Classification, raw: RawRun, a: string, b: string, out: Outside, part?: string): Reading {
   const ia = islandOf(cls, raw, a)
   if (ia === undefined || ia !== islandOf(cls, raw, b)) return { kind: 'floating' }
@@ -108,24 +114,27 @@ export function readRun(c: Circuit, cls: Classification, raw: RawRun, out: Outsi
     const taps = c.taps.filter((t) => t.part === uid)
     const trust: Trust = out.parts.has(uid) ? 'outside-model' : 'ok'
     const pins: Record<string, CurrentReading> = {}
+    // A floating tap carries no real current, so it is left out of the power sum (an unwired GPIO
+    // never hides a board's power). Power is a value when the solved taps share one island.
     let power = 0
-    let complete = taps.length > 0
-    let reference: string | null = null
+    const islands = new Set<number>()
     for (const t of taps) {
       const i = raw.pins[uid]?.[t.pin]
-      if (i === undefined || !Number.isFinite(i) || nodeState(cls, t.node) === 'floating') {
+      const isl = i === undefined || !Number.isFinite(i) ? undefined : islandOf(cls, raw, t.node)
+      if (isl === undefined) {
         pins[t.pin] = { kind: 'indeterminate', why: 'nothing drives this pin (floating)' }
-        complete = false
         continue
       }
-      pins[t.pin] = { kind: 'value', value: i, trust }
-      power += raw.v[t.node] * i
-      const r = voltageOf(c, cls, raw, t.node, out)
-      if (r.kind === 'value') reference ??= r.reference
+      pins[t.pin] = { kind: 'value', value: i!, trust }
+      power += raw.v[t.node] * i!
+      islands.add(isl)
     }
+    const [only] = islands
     const run: PartRun = {
       pins,
-      power: complete && reference !== null ? { kind: 'value', value: power, reference, trust } : { kind: 'undefined', why: taps.length ? 'part of it floats' : 'not simulated' },
+      power: islands.size === 1
+        ? { kind: 'value', value: power, reference: nameOf(c, cls.islands[only].reference), trust }
+        : { kind: 'undefined', why: !taps.length ? 'not simulated' : islands.size ? 'it spans separate circuits' : 'nothing drives it (floating)' },
     }
     const led = c.devices.find((d): d is Extract<Device, { kind: 'diode' }> => d.kind === 'diode' && d.role === 'led' && d.part === uid)
     if (led) {
@@ -164,25 +173,31 @@ export function budget(c: Circuit, cls: Classification, raws: Record<Corner, Raw
       // The rail's current is its output sense as solved: what it delivers to the outside. The 1 mA
       // internal feedback load (spice.ts FEEDBACK_LOAD) sits inside that sense, so it is not in this
       // number; the rail's input pays it, so it shows in the upstream source's row.
-      const r = d.rail
       const a = both((raw) => amps(raw.dev[d.id], out.rails.has(d.id) ? 'outside-model' : 'ok'))
+      const r = d.rail
       rows.push({
         id: d.id, kind: 'rail', part: d.part, label: `${ref(d.part)} ${r.output} ${r.kind === 'ldo' ? 'regulator' : r.kind}`,
         volts: both((raw) => across(c, cls, raw, d.out, d.ret, out, d.part)), amps: a,
         ...(r.ioutMax ? { limit: { value: r.ioutMax.value, kind: 'ioutMax', basis: r.ioutMax.basis } } : {}),
-        ...headroom(r.ioutMax?.value, a), basis: basisOf([...(r.vout ? [r.vout] : []), ...(r.ioutMax ? [r.ioutMax] : [])]),
+        ...headroom(r.ioutMax?.value, a), basis: basisOf([r.vout, r.dropout, r.ioutMax, r.iq, r.rout].filter((x) => x !== undefined)),
       })
     }
   }
   for (const dom of c.domains) {
     const loads = c.devices.filter((d): d is Extract<Device, { kind: 'load' }> => d.kind === 'load' && d.part === dom.part && d.domain === dom.name)
     const volts = both((raw) => across(c, cls, raw, dom.pin, dom.ret, out, dom.part))
+    const tap = c.taps.find((t) => t.node === dom.pin)
     const a = both((raw, corner) => {
-      const v = across(c, cls, raw, dom.pin, dom.ret, out, dom.part)
+      const v = volts[corner]
+      const i = tap && raw.pins[tap.part]?.[tap.pin]
+      return v.kind === 'value' && i !== undefined ? amps(Math.abs(i), v.trust) : amps(undefined, 'ok')
+    })
+    const ownDraw = both((raw, corner) => {
+      const v = volts[corner]
       if (v.kind !== 'value') return amps(undefined, 'ok')
       return amps(loads.reduce((s, l) => s + (corner === 'peak' ? l.peak.value : l.typical.value) * foldValue(v.value, l.minVolts.value), 0), v.trust)
     })
-    rows.push({ id: `${dom.part}.domain.${dom.name}`, kind: 'domain', part: dom.part, label: `${ref(dom.part)} ${dom.name}`, volts, amps: a, basis: basisOf(loads.flatMap((l) => [l.typical, l.peak])) })
+    rows.push({ id: `${dom.part}.domain.${dom.name}`, kind: 'domain', part: dom.part, label: `${ref(dom.part)} ${dom.name}`, volts, amps: a, ownDraw, basis: basisOf(loads.flatMap((l) => [l.typical, l.peak])) })
   }
   return rows
 }

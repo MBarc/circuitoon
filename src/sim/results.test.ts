@@ -66,6 +66,8 @@ describe('readings', () => {
     const rail = b.find((x) => x.kind === 'rail')!
     expect(rail.volts.typical.kind === 'value' && rail.volts.typical.value).toBeCloseTo(3.29, 1)
     expect(rail.limit).toEqual({ value: 0.8, kind: 'ioutMax', basis: 'datasheet' })
+    // rout is the estimated default (ROUT_DEFAULT), so it lowers the row's basis.
+    expect(rail.basis).toBe('estimate')
     expect(rail.headroom).toBeCloseTo(0.8 - 0.1, 1)
     const src = b.find((x) => x.kind === 'source')!
     expect(src.amps.typical.kind === 'value' && src.amps.typical.value).toBeGreaterThan(0.1)
@@ -83,10 +85,23 @@ describe('readings', () => {
     const out = rail.amps.typical.kind === 'value' ? rail.amps.typical.value : Number.NaN
     const inA = src.amps.typical.kind === 'value' ? src.amps.typical.value : Number.NaN
     // Delivered: the resistor plus the board's own 3V3 draw (an estimate here), never the feedback load.
-    const dom = b.find((x) => x.label === 'U1 3V3')!.amps.typical
+    const dom = b.find((x) => x.label === 'U1 3V3')!.ownDraw!.typical
     expect(out).toBeCloseTo(v / 33 + (dom.kind === 'value' ? dom.value : Number.NaN), 5)
     expect(inA).toBeCloseTo(out + 0.005 + FEEDBACK_LOAD, 4)
     expect(b.find((x) => x.label === 'U1 USB')!.volts.typical).toEqual({ kind: 'floating' })
+    // Domain rows: the current through the domain pin (VIN carries what the battery delivers), and the declared draw apart.
+    const vin = b.find((x) => x.label === 'U1 VIN')!
+    expect(vin.amps.typical.kind === 'value' && vin.amps.typical.value).toBeCloseTo(inA, 6)
+    expect(vin.ownDraw?.typical).toEqual({ kind: 'value', value: 0, trust: 'ok' })
+    const d3 = b.find((x) => x.label === 'U1 3V3')!
+    expect(d3.amps.typical.kind === 'value' && d3.amps.typical.value).toBeCloseTo(v / 33, 6)
+    expect(d3.ownDraw?.typical).toEqual(dom)
+    // The board's IO1, IO2 and USB#vbus float, yet its power is a value: VIN in, less what 3V3 hands r1.
+    const run = readRun(c, cls, raws.typical)
+    expect(run.parts.u1.pins.IO1).toMatchObject({ kind: 'indeterminate' })
+    const vv = vin.volts.typical.kind === 'value' ? vin.volts.typical.value : Number.NaN
+    expect(run.parts.u1.power).toMatchObject({ kind: 'value', reference: 'GND' })
+    expect(run.parts.u1.power.kind === 'value' && run.parts.u1.power.value).toBeCloseTo(vv * inA - v * (v / 33), 6)
   }, 60_000)
   it('takes the weakest provenance as the basis, user and datasheet alike', () => {
     expect(basisOf([])).toBe('topology')
