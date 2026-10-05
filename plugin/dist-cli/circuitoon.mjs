@@ -86305,6 +86305,21 @@ function parseNetlist(raw, library) {
 		}
 	};
 }
+/**
+* How a sheet's intent finds its modules: the sheet's embedded copy first (so a later library
+* change never breaks an old sheet), then the library. Ids the intent embeds itself are left to it,
+* unless they are library ids: the netlist then rejects the embedded copy as a built-in part, and
+* module-drift compares it with the library. An embedded copy carries the library's sim data
+* (withLibrarySim), which is library data like the KiCad mapping.
+*/
+function intentLookup(d, library) {
+	const own = isObj(d.intent) && isObj(d.intent.modules) ? new Set(Object.keys(d.intent.modules)) : /* @__PURE__ */ new Set();
+	return (id) => {
+		if (own.has(id) && !library(id)) return void 0;
+		const m = moduleOf(d, id);
+		return m ? withLibrarySim(m, library) : library(id);
+	};
+}
 //#endregion
 //#region src/agent/internal.ts
 var cache = /* @__PURE__ */ new WeakMap();
@@ -86398,21 +86413,6 @@ function driftFindings(d, library, add) {
 */
 function libraryBoard(d, library, id) {
 	return moduleOf(d, id) !== void 0 && (isBoard(library(id)) || isNetLabel(moduleOf(d, id)));
-}
-/**
-* How a sheet's intent finds its modules: the sheet's embedded copy first (so a later library
-* change never breaks an old sheet), then the library. Ids the intent embeds itself are left to it,
-* unless they are library ids: the netlist then rejects the embedded copy as a built-in part, and
-* module-drift compares it with the library. An embedded copy carries the library's sim data
-* (withLibrarySim), which is library data like the KiCad mapping.
-*/
-function intentLookup(d, library) {
-	const own = isObj(d.intent) && isObj(d.intent.modules) ? new Set(Object.keys(d.intent.modules)) : /* @__PURE__ */ new Set();
-	return (id) => {
-		if (own.has(id) && !library(id)) return void 0;
-		const m = moduleOf(d, id);
-		return m ? withLibrarySim(m, library) : library(id);
-	};
 }
 function verifyDiagram(d, library) {
 	const found = [];
@@ -91129,7 +91129,7 @@ function sheetNets(d) {
 		const p = d.parts.find((x) => x.uid === uid);
 		return p ? moduleOf(d, p.module) : void 0;
 	};
-	const intent = d.intent !== void 0 ? parseNetlist(d.intent, (id) => moduleOf(d, id) ?? libraryLookup(id)) : null;
+	const intent = d.intent !== void 0 ? parseNetlist(d.intent, intentLookup(d, libraryLookup)) : null;
 	const intentRefs = intent?.ok ? new Set(intent.intent.parts.map((p) => p.ref)) : null;
 	const hosts = new Set(d.parts.flatMap((p) => p.mount && !isNetLabel(moduleOf(d, p.module)) ? [p.mount.board] : []));
 	const kept = d.parts.filter((p) => {

@@ -6,7 +6,7 @@ import { type ModuleDef, type PinDef, PARAM_RULES, isBoard, isNetLabel, isObj, i
 import { mainsOf } from '../format/mainsModel.ts'
 import { isSimValueKey, simValueProblem } from '../format/simState.ts'
 import { withLibrarySim } from '../format/simModel.ts'
-import { ANNOTATION_LABEL_MAX, ANNOTATION_TEXT_MAX, isValidColor } from '../format/diagram.ts'
+import { type Diagram, ANNOTATION_LABEL_MAX, ANNOTATION_TEXT_MAX, isValidColor, moduleOf } from '../format/diagram.ts'
 import { type EndKind, isEndKind, isUsbEnd } from '../format/cables.ts'
 import { type RawNet, type RawPart, type RepeatCopy, endpointText, expandRepeat } from './repeat.ts'
 
@@ -412,5 +412,21 @@ export function parseNetlist(raw: unknown, library: ModuleLookup): IntentResult 
       custom: ids.filter((id) => embedded.has(id)),
       ...(ends ? { ends } : {}),
     },
+  }
+}
+
+/**
+ * How a sheet's intent finds its modules: the sheet's embedded copy first (so a later library
+ * change never breaks an old sheet), then the library. Ids the intent embeds itself are left to it,
+ * unless they are library ids: the netlist then rejects the embedded copy as a built-in part, and
+ * module-drift compares it with the library. An embedded copy carries the library's sim data
+ * (withLibrarySim), which is library data like the KiCad mapping.
+ */
+export function intentLookup(d: Diagram, library: ModuleLookup): ModuleLookup {
+  const own = isObj(d.intent) && isObj(d.intent.modules) ? new Set(Object.keys(d.intent.modules)) : new Set<string>()
+  return (id) => {
+    if (own.has(id) && !library(id)) return undefined
+    const m = moduleOf(d, id)
+    return m ? withLibrarySim(m, library) : library(id)
   }
 }

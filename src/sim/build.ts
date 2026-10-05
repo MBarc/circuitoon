@@ -27,7 +27,6 @@ export interface BuildOptions {
   library?: ModuleLookup
 }
 
-
 const modelOf = (m: ModuleDef): string => (isObj(m.electrical) && typeof m.electrical.model === 'string' ? m.electrical.model : '')
 const terminals = (m: ModuleDef): Record<string, string> => {
   const t = isObj(m.electrical) && isObj(m.electrical.terminals) ? m.electrical.terminals : {}

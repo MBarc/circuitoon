@@ -4,7 +4,7 @@
 // emitted; mains nodes stay out; the build is deterministic.
 import { describe, expect, it } from 'vitest'
 import { Builder, buildCircuit } from './build.ts'
-import { boardModule, cellModule, sheet } from './testing.ts'
+import { cellModule, sheet } from './testing.ts'
 import { type Device, netNode } from './model.ts'
 import type { ModuleDef } from '../format/module.ts'
 import { load } from '../format/builtinModules.testing.ts'
@@ -13,7 +13,9 @@ import { checkKicadNetlist } from '../format/sexpr.testing.ts'
 import { libraryLookup } from '../agent/catalog.ts'
 import { validateDiagram } from '../format/diagram.ts'
 import { simOf } from '../format/simModel.ts'
-import { intentLookup } from '../agent/verify.ts'
+import { intentLookup } from '../agent/netlist.ts'
+import { verifyDiagram } from '../agent/verify.ts'
+import type { Diagram } from '../format/diagram.ts'
 import { sheetNets } from '../agent/extract.ts'
 
 const kinds = (devs: Device[]) => devs.map((d) => `${d.kind}:${d.id}`)
@@ -196,9 +198,36 @@ describe('a built-in part is simulated with the library sim (library data, like 
     const bare = validateDiagram(raw)
     expect(bare.ok && bare.warnings.some((w) => w.includes('gpio.IO2'))).toBe(true)
   })
-  it("uses a custom part's embedded sim, whatever the library has", () => {
-    const custom: ModuleDef = { ...boardModule(), id: 'custom-board', custom: true }
-    const c = buildCircuit(sheet([{ uid: 'u1', module: custom }], []), { library: () => load('esp32-devkitc-v4') })
-    expect(c.domains.map((d) => d.name).sort()).toEqual(['3V3', 'USB', 'VIN'])
+  /** A DevKitC copy with the library's pins whose embedded sim lists only IO2 as a GPIO. */
+  const narrowDevkit = (o: Partial<ModuleDef> = {}): ModuleDef => {
+    const m = structuredClone(load('esp32-devkitc-v4'))
+    const sim = (m.electrical as { sim: { gpio: { pins: string[] } } }).sim
+    sim.gpio.pins = ['IO2']
+    return { ...m, ...o }
+  }
+  const gpioPins = (d: Diagram, library?: (id: string) => ModuleDef | undefined) => buildCircuit(d, library ? { library } : {}).gpio.filter((g) => g.part === 'u1').map((g) => g.pin)
+  it("uses a custom part's embedded sim, even when the library has a part with its pins", () => {
+    const custom = narrowDevkit({ id: 'custom-board', custom: true })
+    expect(gpioPins(sheet([{ uid: 'u1', module: custom }], []), () => load('esp32-devkitc-v4'))).toEqual(['IO2'])
+  })
+  it("replaces a built-in copy's own sim with the library's, in validation and in the simulator", () => {
+    const raw = JSON.parse(JSON.stringify(sheet([{ uid: 'u1', module: narrowDevkit(), values: { 'gpio.IO4': 'high' } }], [])))
+    const r = validateDiagram(raw, { library: libraryLookup })
+    if (!r.ok) throw new Error(r.errors.join('; '))
+    expect([r.warnings, r.diagram.parts[0].values]).toEqual([[], { 'gpio.IO4': 'high' }])
+    const pins = gpioPins(r.diagram)
+    expect(pins).toEqual(simOf(load('esp32-devkitc-v4'))!.gpio!.pins)
+    expect(buildCircuit(r.diagram).gpio.find((g) => g.part === 'u1' && g.pin === 'IO4')?.state).toBe('high')
+  })
+  it('gives an intent saved with such a copy the same refs and net names in extract as in verify', () => {
+    const intent = { format: 'circuitoon-netlist/1', title: 't', parts: [{ ref: 'U1', module: 'esp32-devkitc-v4', values: { 'gpio.IO2': 'high' } }], nets: [] }
+    const d = (m: ModuleDef): Diagram => ({ ...sheet([{ uid: 'u1', designator: 'U1', module: m, values: { 'gpio.IO2': 'high' } }, { uid: 'bb1', designator: 'BB1', module: 'breadboard-half' }], []), intent })
+    const old = d(oldDevkit())
+    expect(verifyDiagram(old, libraryLookup).filter((f) => f.rule === 'intent')).toEqual([])
+    // The intent parses, so the breadboard it never names is left out, as verify reads it.
+    const nets = sheetNets(old)
+    expect(nets.kept.map((p) => p.designator)).toEqual(['U1'])
+    const current = sheetNets(d(load('esp32-devkitc-v4')))
+    expect([[...nets.refOf], nets.nets]).toEqual([[...current.refOf], current.nets])
   })
 })

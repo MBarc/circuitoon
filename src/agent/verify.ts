@@ -9,11 +9,10 @@ import { holeUses, mountIssues, plugsOf } from '../format/breadboard.ts'
 import { PARAM_RULES, holeGroupOf, isBoard, isNetLabel, isObj, layoutModule, type ModuleDef, moduleSettings, partSetting, terminalCapacity, validParamValue } from '../format/module.ts'
 import { andList } from '../format/words.ts'
 import { UPDATE_ADVICE, moduleDrift } from '../format/moduleDrift.ts'
-import { withLibrarySim } from '../format/simModel.ts'
 import { netlist, nodeKey } from '../format/netlist.ts'
 import { coveredMessage, coveredUses, endpointName } from '../format/checks.ts'
 import { formatValue } from '../format/values.ts'
-import { type Intent, type IntentPart, type ModuleLookup, type Terminal, parseNetlist } from './netlist.ts'
+import { type Intent, type IntentPart, type ModuleLookup, type Terminal, intentLookup, parseNetlist } from './netlist.ts'
 import { internalComponent } from './internal.ts'
 
 export type VerifyRule =
@@ -89,21 +88,6 @@ function libraryBoard(d: Diagram, library: ModuleLookup, id: string): boolean {
   return moduleOf(d, id) !== undefined && (isBoard(library(id)) || isNetLabel(moduleOf(d, id)))
 }
 
-/**
- * How a sheet's intent finds its modules: the sheet's embedded copy first (so a later library
- * change never breaks an old sheet), then the library. Ids the intent embeds itself are left to it,
- * unless they are library ids: the netlist then rejects the embedded copy as a built-in part, and
- * module-drift compares it with the library. An embedded copy carries the library's sim data
- * (withLibrarySim), which is library data like the KiCad mapping.
- */
-export function intentLookup(d: Diagram, library: ModuleLookup): ModuleLookup {
-  const own = isObj(d.intent) && isObj(d.intent.modules) ? new Set(Object.keys(d.intent.modules)) : new Set<string>()
-  return (id) => {
-    if (own.has(id) && !library(id)) return undefined
-    const m = moduleOf(d, id)
-    return m ? withLibrarySim(m, library) : library(id)
-  }
-}
 
 export function verifyDiagram(d: Diagram, library: ModuleLookup): VerifyFinding[] {
   const found: Draft[] = []

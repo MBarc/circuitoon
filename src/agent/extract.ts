@@ -14,7 +14,7 @@ import { plugsOf } from '../format/breadboard.ts'
 import { type Netlist, netlist, nodeKey } from '../format/netlist.ts'
 import { labelName } from '../format/netLabels.ts'
 import { nameNets } from '../format/netNames.ts'
-import { NETLIST_FORMAT, REF_PATTERN, parseNetlist } from './netlist.ts'
+import { NETLIST_FORMAT, REF_PATTERN, intentLookup, parseNetlist } from './netlist.ts'
 import { libraryLookup } from './catalog.ts'
 import { naturalCompare } from './order.ts'
 
@@ -51,7 +51,7 @@ export function sheetNets(d: Diagram): { refOf: Map<string, string>; kept: PartI
     return p ? moduleOf(d, p.module) : undefined
   }
   // A sheet laid out from an intent: boards it never named were added by the layout for routing.
-  const intent = d.intent !== undefined ? parseNetlist(d.intent, (id) => moduleOf(d, id) ?? libraryLookup(id)) : null
+  const intent = d.intent !== undefined ? parseNetlist(d.intent, intentLookup(d, libraryLookup)) : null
   // Intent refs are designators (as verify reads them), never uids: a cut and paste gives a part a
   // new uid but keeps its designator. A board that hosts a mounted part stays whatever the intent
   // says, so that part keeps its mount (`on`).
