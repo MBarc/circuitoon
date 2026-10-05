@@ -4,12 +4,14 @@ import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import { Worker, isMainThread, parentPort, workerData } from "node:worker_threads";
 //#region \0rolldown/runtime.js
 var __commonJSMin = (cb, mod) => () => (mod || (cb((mod = { exports: {} }).exports, mod), cb = null), mod.exports);
 var __require = /* #__PURE__ */ (() => createRequire(import.meta.url))();
 //#endregion
 //#region src/cli/args.ts
+var LIST_FLAGS = /* @__PURE__ */ new Set(["--probe"]);
 var VALUE_FLAGS = /* @__PURE__ */ new Set([
 	"--out",
 	"--svg",
@@ -33,6 +35,7 @@ var ALIASES = {
 function parseArgs(argv) {
 	const positionals = [];
 	const flags = /* @__PURE__ */ new Map();
+	const lists = /* @__PURE__ */ new Map();
 	for (let i = 0; i < argv.length; i++) {
 		const raw = argv[i];
 		const name = Object.hasOwn(ALIASES, raw) ? ALIASES[raw] : raw;
@@ -42,6 +45,16 @@ function parseArgs(argv) {
 		}
 		if (BOOL_FLAGS.has(name)) {
 			flags.set(name, true);
+			continue;
+		}
+		if (LIST_FLAGS.has(name)) {
+			const v = argv[i + 1];
+			if (v === void 0 || v.startsWith("--")) return {
+				ok: false,
+				error: `${raw} needs a value`
+			};
+			lists.set(name, [...lists.get(name) ?? [], v]);
+			i++;
 			continue;
 		}
 		if (!VALUE_FLAGS.has(name)) return {
@@ -62,7 +75,8 @@ function parseArgs(argv) {
 		value: {
 			command,
 			positionals: rest,
-			flags
+			flags,
+			lists
 		}
 	};
 }
@@ -683,6 +697,34 @@ function withLibrarySim(stored, library) {
 		electrical: e
 	};
 }
+var RAIL_REQUIRED = {
+	ldo: [
+		"vout",
+		"dropout",
+		"ioutMax"
+	],
+	buck: [
+		"vout",
+		"efficiency",
+		"vinMin",
+		"vinMax",
+		"ioutMax"
+	],
+	boost: [
+		"vout",
+		"efficiency",
+		"vinMin",
+		"vinMax",
+		"ioutMax"
+	],
+	switch: []
+};
+/** The required fields a rail lacks (spec 3.2 table) in words, or null. */
+function railProblem(r) {
+	const missing = RAIL_REQUIRED[r.kind].filter((k) => r[k] === void 0);
+	if (r.kind === "switch" && r.ron === void 0 && r.vf === void 0) missing.push("ron or vf");
+	return missing.length ? `rail ${r.id} needs ${missing.join(", ")}` : null;
+}
 /** The physics a module may state in sim.modelParams, with their units. */
 var MODEL_PARAMS = {
 	rInternal: "ohm",
@@ -715,7 +757,7 @@ var LIMIT_UNITS = {
 };
 var URLS = /^https?:\/\/\S+( https?:\/\/\S+)*$/;
 /** The compiler floors a rail's rout here (0 fails the solve), so a smaller stated value is an error. */
-var ROUT_MIN = .001;
+var ROUT_MIN$1 = .001;
 /** Checks `electrical.sim` (spec 3.1): shape, units by kind, provenance, and every name it uses. */
 function validateSim(raw, names, errors) {
 	const el = raw.electrical;
@@ -855,7 +897,7 @@ function validateSim(raw, names, errors) {
 					max: 1
 				} : k === "iq" ? {} : { positive: true });
 				const rout = val(r.rout);
-				if (rout !== void 0 && rout > 0 && rout < ROUT_MIN) errors.push(`${w}.rout.value: must be at least ${ROUT_MIN} (${ROUT_MIN * 1e3} milliohm)`);
+				if (rout !== void 0 && rout > 0 && rout < ROUT_MIN$1) errors.push(`${w}.rout.value: must be at least ${ROUT_MIN$1} (${ROUT_MIN$1 * 1e3} milliohm)`);
 				const vout = val(r.vout);
 				const dropout = val(r.dropout);
 				if (r.kind === "ldo" && vout !== void 0 && dropout !== void 0 && dropout >= vout) errors.push(`${w}.dropout: must be below vout (${vout} V)`);
@@ -2624,14 +2666,14 @@ var PLUG_FOR = {
 };
 //#endregion
 //#region src/format/breadboard.ts
-var OFF = 2 ** 25;
+var OFF$1 = 2 ** 25;
 var NONE_SET = /* @__PURE__ */ new Set();
 /**
 * One number per world grid point. Unique only for whole-number x and y within +-2^25 px, so
 * lookups go through `holeAt`, which checks both and compares the found hole exactly.
 */
-var pointKey = (x, y) => (x + OFF) * 2 ** 26 + (y + OFF);
-var inRange = (n) => Number.isInteger(n) && n > -OFF && n < OFF;
+var pointKey = (x, y) => (x + OFF$1) * 2 ** 26 + (y + OFF$1);
+var inRange = (n) => Number.isInteger(n) && n > -OFF$1 && n < OFF$1;
 var indexCache$1 = /* @__PURE__ */ new WeakMap();
 /** World hole positions of a part with hole groups, and a lookup from grid point to hole. */
 function holeIndex(part, m) {
@@ -4010,7 +4052,7 @@ var GPIO_STATES = [
 	"high",
 	"low"
 ];
-var modelOf = (m) => isObj(m.electrical) ? m.electrical.model : void 0;
+var modelOf$2 = (m) => isObj(m.electrical) ? m.electrical.model : void 0;
 var words = (list) => list.map((s) => `"${s}"`).join(", ");
 /** Every contact group: `electrical.contacts`, or ruling R2's implicit group "s" on a switch with terminals a and b. */
 function switchGroups(m) {
@@ -4024,7 +4066,7 @@ function switchGroups(m) {
 		momentary: momentary && g.kind === "switch"
 	}));
 	const t = isObj(m.electrical) && isObj(m.electrical.terminals) ? m.electrical.terminals : null;
-	if (modelOf(m) !== "switch" || !t || typeof t.a !== "string" || typeof t.b !== "string") return [];
+	if (modelOf$2(m) !== "switch" || !t || typeof t.a !== "string" || typeof t.b !== "string") return [];
 	return [{
 		id: "s",
 		kind: "switch",
@@ -4037,7 +4079,39 @@ function switchGroups(m) {
 		momentary
 	}];
 }
+var LEGACY_CLOSED = /* @__PURE__ */ new Set([
+	"on",
+	"closed",
+	"pressed"
+]);
+var LEGACY_OPEN = /* @__PURE__ */ new Set([
+	"off",
+	"open",
+	"released"
+]);
 var positions = (g) => g.changeover ? ["no", "nc"] : ["open", "closed"];
+/** A position that is not the rest one: com joins no. Index 1 of the mains model's groupState. */
+var isActive = (pos) => pos === "closed" || pos === "no";
+/**
+* A group's position now: `values["contact.<id>"]`; else, on a one-group switch, the legacy
+* `values.state` (ruling R3); else the rest position (open, or nc for a changeover), which is the
+* mains model's groupState 0. Relays and SSRs are always at rest (ruling R4); a momentary button
+* is active only while `held` (never saved).
+*/
+function contactPosition(part, m, g, held) {
+	const rest = g.changeover ? "nc" : "open";
+	const active = g.changeover ? "no" : "closed";
+	if (g.kind !== "switch") return rest;
+	if (g.momentary) return held ? active : rest;
+	const v = part.values?.[`contact.${g.id}`];
+	if (typeof v === "string" && positions(g).includes(v)) return v;
+	const legacy = part.values?.state;
+	if (switchGroups(m).length === 1 && typeof legacy === "string") {
+		if (LEGACY_CLOSED.has(legacy)) return active;
+		if (LEGACY_OPEN.has(legacy)) return rest;
+	}
+	return rest;
+}
 /**
 * Why a GPIO state is not allowed on a pin with these caps (spec 3.3), or null. With the module's
 * sim.gpio, a pull its data does not state is refused too (an MCP23017 or an AVR has pull-ups only).
@@ -4050,6 +4124,14 @@ function gpioProblem(caps, v, gpio) {
 	if (gpio && v === "input-pullup" && !gpio.pullup) return "the pin has no internal pull-up";
 	if (gpio && v === "input-pulldown" && !gpio.pulldown) return "the pin has no internal pull-down";
 	return null;
+}
+/** A GPIO pin's state: its admissible saved state, else "input"; null for an output-only pin with none set (open) and for a pin that is not GPIO-capable. */
+function gpioState(part, m, pin) {
+	if (!simOf(m)?.gpio?.pins.includes(pin)) return null;
+	const caps = pinCaps(m, pin);
+	const v = part.values?.[`gpio.${pin}`];
+	if (typeof v === "string" && gpioProblem(caps, v, simOf(m)?.gpio) === null) return v;
+	return caps?.outputOnly ? null : "input";
 }
 var isSimValueKey = (key) => key.startsWith("gpio.") || key.startsWith("contact.") || key.startsWith("sim.");
 var amount = (entry, unit, allowZero) => isObj(entry) && isNum(entry.value) && entry.unit === unit && (allowZero ? entry.value >= 0 : entry.value > 0) && entry.value <= 1e6 ? null : `it must be { "value": <number ${allowZero ? "0 or more" : "above 0"}>, "unit": "${unit}" }`;
@@ -4125,6 +4207,11 @@ function simValueProblem(key, entry, m) {
 		text: "unknown simulation value (sim.draw.<domain>.typical, sim.draw.<domain>.peak, sim.rInternal or sim.imax)",
 		electrical: true
 	};
+}
+/** A `sim.*` override's number (validated on load), or null. */
+function simOverride(part, key) {
+	const v = part.values?.[key];
+	return isObj(v) && isNum(v.value) ? v.value : null;
 }
 //#endregion
 //#region src/format/boardEntry.ts
@@ -72616,6 +72703,22 @@ function incompleteRule(acc) {
 }
 STATE_RULES.push(unprotectedRule);
 STATIC_RULES.push(fuseRules, cableRules, incompleteRule);
+/**
+* Converter availability in one contact state, the saved one, by part uid (live-simulation spec,
+* section 4 table): the spec section 1 availability rules applied to the state `active` gives
+* each contact group, instead of aggregated over every state. A sheet past MAX_SOURCES is not
+* judged: every converter is unknown, as in the enumeration.
+*/
+function convertersInState(d, active) {
+	const plugs = plugsOf(d);
+	const g = buildMainsGraph(d, plugs, netlist(d, plugs));
+	if (!g) return /* @__PURE__ */ new Map();
+	const p = prepare(g);
+	if (p.sources.length > 10) return new Map(g.converters.map((c) => [c.part.uid, notChecked(c)]));
+	for (const gi of p.groupIdx) p.groupState[gi] = active(g.groups[gi].part, g.groups[gi].def.id) ? 1 : 0;
+	analyseState(p);
+	return new Map(g.converters.map((c, i) => [c.part.uid, p.converterIdx.includes(i) ? inputState(p, c) : UNPOWERED]));
+}
 //#endregion
 //#region src/format/mains.ts
 /** True when some part's module declares mains data. */
@@ -73035,7 +73138,7 @@ function knownRails(supply) {
 var EPS = 1e-9;
 /** An input is taken to work down to this share of its lowest listed rail (no real ranges yet). */
 var LOW_TOLERANCE = .9;
-var volts = (v) => `${Number(v.toFixed(2))} V`;
+var volts$1 = (v) => `${Number(v.toFixed(2))} V`;
 /** A wire end as the user reads it: the part's designator (its uid when missing), the pin label or name, and the hole or bus offset. */
 function endpointName(d, ep) {
 	const part = d.parts.find((p) => p.uid === ep.part);
@@ -73291,7 +73394,7 @@ function supplyFor(ins) {
 	if (!common?.length) return "a compatible supply";
 	const r = common;
 	const [min, max] = [r[0], r[r.length - 1]];
-	const what = r.length <= 2 ? `a ${orList(r.map(volts))} supply` : `a ${volts(min)} to ${volts(max)} supply`;
+	const what = r.length <= 2 ? `a ${orList(r.map(volts$1))} supply` : `a ${volts$1(min)} to ${volts$1(max)} supply`;
 	const pins = [[3.3, "3V3"], [5, "5V"]].filter(([v]) => r.some((x) => Math.abs(x - v) <= EPS)).map(([, n]) => n);
 	const cell = [
 		9,
@@ -73301,7 +73404,7 @@ function supplyFor(ins) {
 		7.4,
 		3
 	].find((v) => v >= min - EPS && v <= max + EPS);
-	const example = pins.length ? `a board's ${orList(pins)} pin` : cell !== void 0 ? `a ${volts(cell)} battery` : "";
+	const example = pins.length ? `a board's ${orList(pins)} pin` : cell !== void 0 ? `a ${volts$1(cell)} battery` : "";
 	return example ? `${what}, such as ${example}` : what;
 }
 /** The rails every one of the inputs accepts, sorted; null when any input's rails are unknown. */
@@ -73317,7 +73420,7 @@ function commonRails(ins) {
 /** What an input accepts, in words: "needs 3.3 V", "accepts 3.3 V or 5 V", "accepts 7 V to 12 V". */
 function acceptsText(rails) {
 	const r = [...new Set(rails)].sort((a, b) => a - b);
-	return r.length === 1 ? `needs ${volts(r[0])}` : r.length === 2 ? `accepts ${orList(r.map(volts))}` : `accepts ${volts(r[0])} to ${volts(r[r.length - 1])}`;
+	return r.length === 1 ? `needs ${volts$1(r[0])}` : r.length === 2 ? `accepts ${orList(r.map(volts$1))}` : `accepts ${volts$1(r[0])} to ${volts$1(r[r.length - 1])}`;
 }
 /**
 * The advice for unfed power inputs (`it`: "it" or "them"), given every load on their nets. A rail
@@ -74076,7 +74179,7 @@ var lin0 = () => ({
 	u: /* @__PURE__ */ new Map()
 });
 /** `a` plus `sign` times edge `e`. */
-function step(a, e, sign) {
+function step$1(a, e, sign) {
 	const u = new Map(a.u);
 	if (e.v === null) {
 		const k = (u.get(e.src.id) ?? 0) + sign;
@@ -74286,7 +74389,7 @@ function checkPotentials({ d, nl, netTerms, netWires, terminal, plugs, shorted, 
 						loops.push(i);
 						continue;
 					}
-					pot.set(other, step(pot.get(n), e, e.from === n ? 1 : -1));
+					pot.set(other, step$1(pot.get(n), e, e.from === n ? 1 : -1));
 					up.set(other, i);
 					depth.set(other, depth.get(n) + 1);
 					groupOf.set(other, root);
@@ -74369,16 +74472,16 @@ function checkPotentials({ d, nl, netTerms, netWires, terminal, plugs, shorted, 
 			const from = s.external ? ` from ${s.external.via}` : shown !== s.term ? ` from ${andList(bank.map((x) => x.term.part.designator))}` : "";
 			if (bank.length > 1 && shown === s.term) return {
 				v,
-				text: `${andList(bank.map((x) => termName(x.term)))} (${volts(v)} in parallel)`
+				text: `${andList(bank.map((x) => termName(x.term)))} (${volts$1(v)} in parallel)`
 			};
 			return {
 				v,
-				text: `${termName(shown)} (${volts(v)}${from})`
+				text: `${termName(shown)} (${volts$1(v)}${from})`
 			};
 		}
 		return {
 			v,
-			text: `${andList(sorted(list).map((s) => termName(s.term)))} (${volts(v)} in series)`
+			text: `${andList(sorted(list).map((s) => termName(s.term)))} (${volts$1(v)} in series)`
 		};
 	};
 	/**
@@ -74507,7 +74610,7 @@ function checkPotentials({ d, nl, netTerms, netWires, terminal, plugs, shorted, 
 			if (only && !around.some((x) => only.has(x.e))) continue;
 			const cycle = around.filter((x) => x.e.src);
 			if (!cycle.length) continue;
-			const residual = minus(minus(pot.get(e.to), pot.get(e.from)), step(lin0(), e, 1));
+			const residual = minus(minus(pot.get(e.to), pot.get(e.from)), step$1(lin0(), e, 1));
 			if (residual.u.size) continue;
 			const mismatch = Math.abs(residual.c) > EPS;
 			const ahead = cycle.filter((x) => x.forward).map((x) => x.e.src);
@@ -74544,7 +74647,7 @@ function checkPotentials({ d, nl, netTerms, netWires, terminal, plugs, shorted, 
 						rule: "supplies-parallel",
 						subject: ext.term.part.designator,
 						target: termName(ext.term),
-						message: `${termName(ext.term)} also gets ${volts(ext.v)} from ${ext.external.via}; do not power ${ext.term.label} and ${connector} at the same time.`,
+						message: `${termName(ext.term)} also gets ${volts$1(ext.v)} from ${ext.external.via}; do not power ${ext.term.label} and ${connector} at the same time.`,
 						...involve(all)
 					});
 				} else add({
@@ -74563,15 +74666,15 @@ function checkPotentials({ d, nl, netTerms, netWires, terminal, plugs, shorted, 
 	/** How to bring a supply to `target` volts: set it when it is a value on the part, else move the wire or change the supply. */
 	const fixTo = (from, target) => {
 		const one = from.length === 1 ? from[0] : void 0;
-		if (one && settable(one)) return `Set ${one.term.part.designator} to ${volts(target)} or move the wire to a ${volts(target)} pin.`;
-		if (one && (one.external || one.term.info.external.size)) return `Move the wire to a ${volts(target)} pin.`;
-		return `Use a ${volts(target)} supply instead.`;
+		if (one && settable(one)) return `Set ${one.term.part.designator} to ${volts$1(target)} or move the wire to a ${volts$1(target)} pin.`;
+		if (one && (one.external || one.term.info.external.size)) return `Move the wire to a ${volts$1(target)} pin.`;
+		return `Use a ${volts$1(target)} supply instead.`;
 	};
 	/** Too high: where the voltage comes from ("is set to" for a value on the part) and the fix. */
 	const tooHigh = (t, max, v, from, what) => {
 		const one = from.length === 1 ? from[0] : void 0;
-		const gets = one && settable(one) ? `but ${termName(one.term)} is set to ${volts(v)}` : `but gets ${volts(v)} from ${what}`;
-		return `${termName(t)} accepts up to ${volts(max)} ${gets}. ${fixTo(from, max)}`;
+		const gets = one && settable(one) ? `but ${termName(one.term)} is set to ${volts$1(v)}` : `but gets ${volts$1(v)} from ${what}`;
+		return `${termName(t)} accepts up to ${volts$1(max)} ${gets}. ${fixTo(from, max)}`;
 	};
 	/** A diode-fed USB pin above what holds its net down: what happens and what to do. */
 	const backFeed = (pin, ext, under, what, v) => {
@@ -74580,7 +74683,7 @@ function checkPotentials({ d, nl, netTerms, netWires, terminal, plugs, shorted, 
 		const name = low ? cells ?? supplyName(low) : what;
 		const harm = low && isCell(low) ? "the cells" : under.length > 1 ? "them" : "it";
 		const fix = low && isCell(low) ? `Add a diode from ${termName(low)} to ${pin.label}, or unplug ${cells} before plugging in ${ext.via}.` : low ? removeWire(d, pin, low, `Do not wire ${termName(low)} to ${termName(pin)}.`) : `Do not wire ${what} to ${termName(pin)}.`;
-		return `When ${ext.via} is plugged in, ${termName(pin)} gets ${volts(ext.volts)} from ${ext.via}, which pushes current back into ${name} (${volts(v)}) and can damage ${harm}. ${fix}`;
+		return `When ${ext.via} is plugged in, ${termName(pin)} gets ${volts$1(ext.volts)} from ${ext.via}, which pushes current back into ${name} (${volts$1(v)}) and can damage ${harm}. ${fix}`;
 	};
 	const level = (e) => {
 		const [a, b] = [pot.get(e.from) ?? lin0(), pot.get(e.to) ?? lin0()];
@@ -74702,7 +74805,7 @@ function checkPotentials({ d, nl, netTerms, netWires, terminal, plugs, shorted, 
 			rule: "battery-bank",
 			subject: list[0].term.part.designator,
 			target: name,
-			message: `${name} form a parallel battery bank (${list.length}P, ${volts(list[0].v)}). Charge every cell to the same voltage, within about 0.1 V, before connecting them, and use matching cells.`,
+			message: `${name} form a parallel battery bank (${list.length}P, ${volts$1(list[0].v)}). Charge every cell to the same voltage, within about 0.1 V, before connecting them, and use matching cells.`,
 			parts: list.map((s) => s.term.part.uid),
 			pins: [...list.map((s) => termPin(s.term)), ...grounds.map(termPin)],
 			wires: [.../* @__PURE__ */ new Set([...wiresOf(netOfKey(list[0].term.key)), ...wiresOf(netOfKey(grounds[0].key))])],
@@ -74767,7 +74870,7 @@ function checkPotentials({ d, nl, netTerms, netWires, terminal, plugs, shorted, 
 					const gname = termName(terminal(nodeKey(t.part.uid, groundPin)));
 					if (adj && settings.every((x) => x > EPS)) add({
 						rule: "supply-unknown",
-						message: Math.abs(diff.c) <= EPS ? `${termName(adj.term)} is adjustable; set it to a voltage ${termName(t)} accepts (${orList(rails.map(volts))}).` : `${termName(adj.term)} is adjustable; set it so ${termName(t)} sees ${orList(rails.map(volts))}: ${orList(settings.map(volts))} on ${termName(adj.term)}, since the other supplies between ${termName(t)} and ${gname} ${diff.c > 0 ? "add" : "take away"} ${volts(Math.abs(diff.c))}.`,
+						message: Math.abs(diff.c) <= EPS ? `${termName(adj.term)} is adjustable; set it to a voltage ${termName(t)} accepts (${orList(rails.map(volts$1))}).` : `${termName(adj.term)} is adjustable; set it so ${termName(t)} sees ${orList(rails.map(volts$1))}: ${orList(settings.map(volts$1))} on ${termName(adj.term)}, since the other supplies between ${termName(t)} and ${gname} ${diff.c > 0 ? "add" : "take away"} ${volts$1(Math.abs(diff.c))}.`,
 						...base([adj])
 					});
 					else add({
@@ -74789,7 +74892,7 @@ function checkPotentials({ d, nl, netTerms, netWires, terminal, plugs, shorted, 
 					const x = on(net, (o) => o.type === "ground");
 					const y = on(ground, (o) => o.type === "power_out" || o.info.external.has(o.name));
 					const cells = from.length === 1 && isCell(from[0].term) ? mates(from[0]).map((s) => s.term.part.designator) : [];
-					const message = x && y && cells.length ? `${andList(cells)} ${cells.length > 1 ? "are" : "is"} wired in backwards: ${termName(t)} is wired to ${termName(x)} and ${termName(g)} to ${termName(y)}. This will damage ${t.part.designator}. Swap the two wires.` : x && y ? `${termName(t)} is wired to ${termName(x)} and ${termName(g)} to ${termName(y)}: the power is reversed and will damage ${t.part.designator}. Swap the two wires.` : `${termName(t)} sits ${volts(-v)} below ${termName(g)}: the power is reversed and will damage ${t.part.designator}. Swap its power wires.`;
+					const message = x && y && cells.length ? `${andList(cells)} ${cells.length > 1 ? "are" : "is"} wired in backwards: ${termName(t)} is wired to ${termName(x)} and ${termName(g)} to ${termName(y)}. This will damage ${t.part.designator}. Swap the two wires.` : x && y ? `${termName(t)} is wired to ${termName(x)} and ${termName(g)} to ${termName(y)}: the power is reversed and will damage ${t.part.designator}. Swap the two wires.` : `${termName(t)} sits ${volts$1(-v)} below ${termName(g)}: the power is reversed and will damage ${t.part.designator}. Swap its power wires.`;
 					reversed.add(t.part.uid);
 					add({
 						rule: "reversed",
@@ -74833,7 +74936,7 @@ function checkPotentials({ d, nl, netTerms, netWires, terminal, plugs, shorted, 
 			const floor = LOW_TOLERANCE * min;
 			if (v !== null && !unknown.length && v < floor - EPS) add({
 				rule: "supply-too-low",
-				message: `${termName(t)} needs at least ${floor.toFixed(1)} V; ${what} ${from.length === 1 && mates(from[0]).length === 1 ? "gives" : "give"} only ${volts(v)}. ${fixTo(from, min)}`,
+				message: `${termName(t)} needs at least ${floor.toFixed(1)} V; ${what} ${from.length === 1 && mates(from[0]).length === 1 ? "gives" : "give"} only ${volts$1(v)}. ${fixTo(from, min)}`,
 				...base(from)
 			});
 		}
@@ -86543,7 +86646,7 @@ function internalComponent(m, name) {
 }
 //#endregion
 //#region src/agent/verify.ts
-var ORDER = [
+var ORDER$1 = [
 	"intent",
 	"module-drift",
 	"part-missing",
@@ -86631,7 +86734,7 @@ function verifyDiagram(d, library) {
 	}
 	capacity(d, add);
 	covered(d, add, driftedParts(found));
-	found.sort((a, b) => ORDER.indexOf(a.rule) - ORDER.indexOf(b.rule) || (a.message < b.message ? -1 : a.message > b.message ? 1 : 0));
+	found.sort((a, b) => ORDER$1.indexOf(a.rule) - ORDER$1.indexOf(b.rule) || (a.message < b.message ? -1 : a.message > b.message ? 1 : 0));
 	const seen = /* @__PURE__ */ new Map();
 	return found.map(({ causes, ...f }) => {
 		const base = `${f.rule}|${[...new Set(causes)].sort().join(",")}`;
@@ -87932,7 +88035,7 @@ var GATE_FORMAT = "circuitoon-cli/gate/3";
 var sha256 = (bytes) => createHash("sha256").update(bytes).digest("hex");
 /** The loader's warning for a part whose module the file does not embed (a missing module blocks). */
 var MISSING_MODULE = "is not embedded in this file";
-var plural = (n, one) => `${n} ${one}${n === 1 ? "" : "s"}`;
+var plural$2 = (n, one) => `${n} ${one}${n === 1 ? "" : "s"}`;
 /** Removes `path` when it is a file inside `dir` and not `keep` (the sheet being gated); anything else stays. */
 function removeStale(dir, path, keep) {
 	const full = resolve(dir, path);
@@ -88174,9 +88277,9 @@ async function gateCommand(args, io) {
 	}
 	if (args.flags.has("--json")) printJson(io, report);
 	else {
-		const head = code === EXIT.ok ? `GATE PASSED: ${input} (sha256 ${report.diagram.sha256})` : code === EXIT.environment ? `GATE INCOMPLETE: nothing blocks, but not every render could be made (${input})` : `GATE BLOCKED: ${plural(report.blocking.length, "blocking finding")} (${input})`;
+		const head = code === EXIT.ok ? `GATE PASSED: ${input} (sha256 ${report.diagram.sha256})` : code === EXIT.environment ? `GATE INCOMPLETE: nothing blocks, but not every render could be made (${input})` : `GATE BLOCKED: ${plural$2(report.blocking.length, "blocking finding")} (${input})`;
 		const notReady = readabilityCount(report);
-		const lines = [...notReady ? [`NOT READY: ${plural(notReady, "readability warning")}`] : [], head];
+		const lines = [...notReady ? [`NOT READY: ${plural$2(notReady, "readability warning")}`] : [], head];
 		if (report.blocking.length) lines.push("", "Blocking:", findingsText(report.blocking));
 		if (report.warnings.length) lines.push("", "Warnings (report these to the user):", findingsText(report.warnings));
 		if (report.notes.length) lines.push("", "Notes (not problems; pass them on to the user):", findingsText(report.notes));
@@ -90798,6 +90901,9 @@ function probesForNetlist(probes, refOf, nets, warn) {
 		return [];
 	});
 }
+function nextProbeId(d) {
+	return `P${Math.max(0, ...(d.probes ?? []).map((p) => Number(p.id.slice(1)))) + 1}`;
+}
 //#endregion
 //#region src/agent/layout.ts
 var SPACINGS = [
@@ -92782,6 +92888,2972 @@ function moduleCommand(args, io) {
 	throw new CliError(sub ? `module: unknown subcommand "${sub}"; ${MODULE_USAGE.slice(8)}` : MODULE_USAGE, EXIT.input);
 }
 //#endregion
+//#region src/sim/model.ts
+/**
+* The node id of the net with this display name. Names are user text (a label "d1:A"), so the
+* prefix keeps them apart from `<uid>:<pin>` taps.
+*/
+var netNode = (name) => `net:${name}`;
+/**
+* The one resistor a GPIO pin's state compiles to (spec 4.6), or null: the output resistance from
+* the IO domain (high) or to its return (low), a pull, else the input leakage to the return.
+* `leak` marks the leakage, which is never a DC path (spec 2).
+*/
+function gpioBranch(d) {
+	const p = d.params;
+	if (d.state === "high") return {
+		a: d.vdd,
+		b: d.node,
+		ohms: p.outputResistance,
+		leak: false
+	};
+	if (d.state === "low") return {
+		a: d.node,
+		b: d.ret,
+		ohms: p.outputResistance,
+		leak: false
+	};
+	if (d.state === "input-pullup" && p.pullup) return {
+		a: d.vdd,
+		b: d.node,
+		ohms: p.pullup,
+		leak: false
+	};
+	if (d.state === "input-pulldown" && p.pulldown) return {
+		a: d.node,
+		b: d.ret,
+		ohms: p.pulldown,
+		leak: false
+	};
+	return p.leakage ? {
+		a: d.node,
+		b: d.ret,
+		ohms: p.leakage,
+		leak: true
+	} : null;
+}
+//#endregion
+//#region src/sim/floating.ts
+var OP = { kind: "op" };
+function deviceNodes(d) {
+	switch (d.kind) {
+		case "resistor":
+		case "capacitor": return [d.a, d.b];
+		case "diode": return [d.a, d.k];
+		case "cell": return [
+			d.p,
+			d.int,
+			d.n
+		];
+		case "load": return [d.p, d.n];
+		case "rail": return [
+			d.in,
+			d.inRet,
+			d.out,
+			d.ret,
+			d.ctl,
+			d.o
+		];
+		case "switch": return [d.a, d.b];
+		case "gpio": return [
+			d.node,
+			d.vdd,
+			d.ret
+		];
+	}
+}
+/** The resistive pairs, conducting both ways: resistors, closed contacts and a GPIO's state resistor (never its leakage). */
+function resistive(d) {
+	if (d.kind === "resistor" || d.kind === "switch" && d.closed) return [[d.a, d.b]];
+	const g = d.kind === "gpio" ? gpioBranch(d) : null;
+	return g && !g.leak ? [[g.a, g.b]] : [];
+}
+/** A capacitor is open in `op`; later analyses couple its plates. */
+var capacitorPairs = (d, a) => d.kind === "capacitor" && a.kind !== "op" ? [[d.a, d.b]] : [];
+/** The undirected terminal pairs that group nodes into islands (numerics and references only, not driven). */
+function dcEdges(d, a = OP) {
+	switch (d.kind) {
+		case "diode": return [[d.a, d.k]];
+		case "cell": return [[d.p, d.int], [d.int, d.n]];
+		case "rail": return [
+			[d.in, d.ctl],
+			[d.in, d.o],
+			[d.o, d.out]
+		];
+		default: return [...resistive(d), ...capacitorPairs(d, a)];
+	}
+}
+/** The directed arcs along which a device carries drive (the fix-round ruling on Task 12). */
+function driveArcs(d, a = OP) {
+	switch (d.kind) {
+		case "diode": return [[d.a, d.k]];
+		case "rail": return [
+			[d.in, d.ctl],
+			[d.in, d.o],
+			[d.o, d.out],
+			...d.rail.reverse === "body-diode" ? [[d.out, d.o], [d.o, d.in]] : []
+		];
+		default: return [...resistive(d), ...capacitorPairs(d, a)].flatMap(([x, y]) => [[x, y], [y, x]]);
+	}
+}
+/** Union-find over the DC paths and the pin senses, with `extra` joins (a switch closed in thought). */
+function dcFind(c, extra = [], a = OP) {
+	const parent = /* @__PURE__ */ new Map();
+	const find = (x) => {
+		let r = x;
+		while (parent.has(r) && parent.get(r) !== r) r = parent.get(r);
+		for (let cur = x; cur !== r;) {
+			const next = parent.get(cur);
+			parent.set(cur, r);
+			cur = next;
+		}
+		return r;
+	};
+	const join = (a, b) => {
+		const ra = find(a);
+		const rb = find(b);
+		if (ra !== rb) parent.set(ra, rb);
+	};
+	for (const t of c.taps) join(netNode(t.net), t.node);
+	for (const d of c.devices) for (const [x, y] of dcEdges(d, a)) join(x, y);
+	for (const [x, y] of extra) join(x, y);
+	return find;
+}
+var cellsOf = (c) => c.devices.filter((d) => d.kind === "cell");
+/** Breadth-first walk from `seeds` along `adj`, never entering a `stop` node (seeds always count). */
+function walk(seeds, adj, stop) {
+	const seen = new Set(seeds);
+	const queue = [...seeds];
+	for (let i = 0; i < queue.length; i++) for (const nb of adj.get(queue[i]) ?? []) if (!seen.has(nb) && !stop(nb)) {
+		seen.add(nb);
+		queue.push(nb);
+	}
+	return seen;
+}
+function reach(c, extra = [], a = OP) {
+	const all = reachWith(c, extra, a, /* @__PURE__ */ new Set());
+	const dead = new Set(c.devices.filter((d) => d.kind === "rail" && !all.defined.has(d.inRet)));
+	return dead.size ? reachWith(c, extra, a, dead) : all;
+}
+function reachWith(c, extra, a, dead) {
+	const drive = /* @__PURE__ */ new Map();
+	const hold = /* @__PURE__ */ new Map();
+	const arc = (m, a, b) => {
+		const l = m.get(a);
+		if (l) l.push(b);
+		else m.set(a, [b]);
+	};
+	const both = (a, b) => {
+		for (const m of [drive, hold]) arc(m, a, b), arc(m, b, a);
+	};
+	const netOf = /* @__PURE__ */ new Map();
+	for (const t of c.taps) {
+		netOf.set(t.node, netNode(t.net));
+		both(netNode(t.net), t.node);
+	}
+	for (const [x, y] of extra) both(x, y);
+	for (const d of c.devices) {
+		if (!dead.has(d)) for (const [x, y] of driveArcs(d, a)) arc(drive, x, y);
+		for (const [x, y] of resistive(d)) arc(hold, x, y), arc(hold, y, x);
+	}
+	const cells = cellsOf(c);
+	const seeds = cells.flatMap((d) => [d.p, d.int]);
+	const netOrSelf = (n) => netOf.get(n) ?? n;
+	const returns = /* @__PURE__ */ new Set();
+	for (const d of c.devices) if (d.kind === "cell" || d.kind === "load") returns.add(netOrSelf(d.n));
+	else if (d.kind === "rail") returns.add(netOrSelf(d.ret)).add(netOrSelf(d.inRet));
+	for (const n of seeds) returns.delete(netOrSelf(n));
+	const driven = walk(seeds, drive, (n) => returns.has(netOrSelf(n)));
+	const held = walk(cells.map((d) => d.n), hold, (n) => driven.has(n));
+	return {
+		driven,
+		defined: /* @__PURE__ */ new Set([...driven, ...held])
+	};
+}
+/** A domain is powered when its pin node is driven and its return node is defined (both node ids). */
+function powered(_c, cls, pin, ret) {
+	return cls.driven.has(pin) && cls.defined.has(ret);
+}
+/**
+* Ruling R30: the part uid of the open latching switch whose closing alone would power `node`, or
+* null. When `node` is not driven, the switch that would drive it (high side, or a low-side switch
+* that would let its rail regulate); else, given `ret` that is not defined, the switch that would
+* define it (low side). A group's poles close together (a DPST breaking both sides).
+*/
+function openSwitchFor(c, node, ret) {
+	const base = reach(c);
+	const fixes = !base.driven.has(node) ? (r) => r.driven.has(node) : ret !== void 0 && !base.defined.has(ret) ? (r) => r.defined.has(ret) : null;
+	if (!fixes) return null;
+	for (const o of c.openContacts) if (fixes(reach(c, o.pairs))) return o.part;
+	return null;
+}
+/** `analysis` decides what conducts: a capacitor is open only in `op`. */
+function classify(c, analysis = OP) {
+	const find = dcFind(c, [], analysis);
+	const nodes = /* @__PURE__ */ new Set();
+	for (const t of c.taps) nodes.add(netNode(t.net)).add(t.node);
+	for (const d of c.devices) for (const n of deviceNodes(d)) nodes.add(n);
+	const byRoot = /* @__PURE__ */ new Map();
+	for (const cell of cellsOf(c)) {
+		const r = find(cell.p);
+		byRoot.set(r, [...byRoot.get(r) ?? [], cell]);
+	}
+	const strongest = (list) => [...list].sort((a, b) => (b.imax?.value ?? -1) - (a.imax?.value ?? -1) || b.volts.value - a.volts.value || naturalCompare(a.part, b.part) || (a.id < b.id ? -1 : 1))[0];
+	const members = /* @__PURE__ */ new Map();
+	for (const n of [...nodes].sort()) {
+		const r = find(n);
+		if (byRoot.has(r)) members.set(r, [...members.get(r) ?? [], n]);
+	}
+	const islands = [...byRoot.entries()].map(([root, list]) => ({
+		ref: strongest(list),
+		nodes: members.get(root) ?? []
+	})).sort((a, b) => naturalCompare(a.ref.part, b.ref.part) || (a.ref.id < b.ref.id ? -1 : 1)).map(({ ref, nodes: ns }) => ({
+		reference: ref.n,
+		source: ref.id,
+		nodes: ns
+	}));
+	const islandOf = /* @__PURE__ */ new Map();
+	islands.forEach((isl, i) => isl.nodes.forEach((n) => islandOf.set(n, i)));
+	return {
+		...reach(c, [], analysis),
+		islands,
+		islandOf
+	};
+}
+var memo = /* @__PURE__ */ new WeakMap();
+function classifyCached(c, analysis = OP) {
+	let byKind = memo.get(c);
+	if (!byKind) memo.set(c, byKind = /* @__PURE__ */ new Map());
+	let hit = byKind.get(analysis.kind);
+	if (!hit) byKind.set(analysis.kind, hit = classify(c, analysis));
+	return hit;
+}
+/** A node's state: driven (powered), defined (held by a return through resistance) or floating. */
+function nodeState(cls, node) {
+	return cls.driven.has(node) ? "driven" : cls.defined.has(node) ? "defined" : "floating";
+}
+/** A sheet pin's state (by node key); floating when it is on no simulated net. */
+function pinState(c, cls, key) {
+	const net = c.pinNet[key];
+	return net === void 0 ? "floating" : nodeState(cls, netNode(net));
+}
+//#endregion
+//#region src/sim/ledModels.ts
+/** Thermal voltage at 27 C, the temperature ngspice solves at (TNOM). */
+var VT = 41440179735e-31 / 1602176634e-28;
+var LED_FIT_AMPS = .02;
+var LED_COLOURS = {
+	red: {
+		n: 3.73,
+		rs: 7.5,
+		shape: "spike curve; limit from Kingbright WP7113ID datasheet, p. 2",
+		absMaxCurrent: {
+			value: .03,
+			source: "https://www.kingbrightusa.com/images/catalog/SPEC/WP7113ID.pdf"
+		}
+	},
+	green: {
+		n: 3.73,
+		rs: 7.5,
+		shape: "spike curve; limit from Kingbright WP7113GD datasheet, p. 2",
+		absMaxCurrent: {
+			value: .025,
+			source: "https://www.kingbrightusa.com/images/catalog/SPEC/WP7113GD.pdf"
+		}
+	},
+	yellow: {
+		n: 3.73,
+		rs: 7.5,
+		shape: "spike curve; limit from Kingbright WP7113YD datasheet, p. 2",
+		absMaxCurrent: {
+			value: .03,
+			source: "https://www.kingbrightusa.com/images/catalog/SPEC/WP7113YD.pdf"
+		}
+	},
+	orange: {
+		n: 3.73,
+		rs: 7.5,
+		shape: "spike curve; limit from Kingbright WP7113SED datasheet, p. 2",
+		absMaxCurrent: {
+			value: .03,
+			source: "https://www.kingbrightusa.com/images/catalog/SPEC/WP7113SED.pdf"
+		}
+	},
+	blue: {
+		n: 3.73,
+		rs: 23.3,
+		shape: "fitted to Kingbright WP7113QBC/D datasheet points: 3.0 V at 10 mA, 3.3 V at 20 mA (p. 3 graph, p. 2 table), representative",
+		absMaxCurrent: {
+			value: .03,
+			source: "https://www.kingbrightusa.com/images/catalog/SPEC/WP7113QBC-D.pdf"
+		}
+	},
+	white: {
+		n: 3.73,
+		rs: 23.3,
+		shape: "fitted to Kingbright WP7113QWC/D datasheet points: 3.0 V at 10 mA, 3.3 V at 20 mA (p. 3 graph, p. 2 table), representative",
+		absMaxCurrent: {
+			value: .03,
+			source: "https://www.kingbrightusa.com/images/catalog/SPEC/WP7113QWC-D.pdf"
+		}
+	}
+};
+/** The IS that puts the diode at `v` volts when `i` amps flow. */
+function fitIs(v, i, n, rs) {
+	return i / (Math.exp((v - i * rs) / (n * VT)) - 1);
+}
+function ledModel(colour, forwardVoltage) {
+	const key = (colour ?? "red").trim().toLowerCase();
+	const known = Object.hasOwn(LED_COLOURS, key);
+	const c = known ? LED_COLOURS[key] : LED_COLOURS.red;
+	return {
+		model: {
+			is: fitIs(forwardVoltage, LED_FIT_AMPS, c.n, c.rs),
+			n: c.n,
+			rs: c.rs
+		},
+		colour: known ? key : "red",
+		known
+	};
+}
+/** A regulator's body diode: silicon (modelling choice). */
+var BODY_DIODE = {
+	is: 1e-12,
+	n: 1,
+	rs: .01
+};
+/**
+* A near-ideal diode (modelling choice): a blocking `ron` switch rail's one-way element, in series
+* with ron. N 0.01 gives about 3 mV at 50 mA; IS 0.1 uA is its reverse leakage.
+*/
+var IDEAL_DIODE = {
+	is: 1e-7,
+	n: .01,
+	rs: 0
+};
+/** A Schottky with `vf` volts at `at` amps (N 1.05, no RS): OR inputs, off paths and `vf` switch rails. */
+function schottky(vf, at = .1) {
+	return {
+		is: fitIs(vf, at, 1.05, 0),
+		n: 1.05,
+		rs: 0
+	};
+}
+//#endregion
+//#region src/sim/spice.ts
+/** Smoothing (ruling R18): k = 5 mV on volts, 0.005 on ratios. */
+var KV = .005;
+var KR = .005;
+/** The smallest resistance ever written: R is never 0 (spec 2). */
+var R_MIN = 1e-6;
+/** A rail's smallest rout: measured in our ngspice, an LDO with rout 0 or 1e-6 fails op ("Timestep too small"), 1 mOhm solves. */
+var ROUT_MIN = .001;
+/** Divisor guards; Task 16 validation rejects such values anyway, these only keep the text finite. */
+var MIN_VOLTS_MIN = .001;
+var EFFICIENCY_MIN = .01;
+/** The numerical join of floating nodes and second islands (spec 4.4). */
+var R_TIE = 1e9;
+/**
+* The internal feedback load on every rail output (Phase C checkpoint ruling): a softplus output
+* cannot sink, so an unloaded output would climb above vout. 1 mA from out to ret, only while Vctl
+* is above 0 (full from FEEDBACK_ON), so a dead rail supplies and draws nothing; the input pays for
+* it. A fixed 1 mA rather than max(iq, 1 mA): a fixed-output regulator's datasheet iq already holds
+* its internal divider, so iq-sized would count it twice; the cost is at most 1 mA of extra draw.
+*/
+var FEEDBACK_LOAD = .001;
+var FEEDBACK_ON = .1;
+/** A boost's pass-through diode (spec 4.2), Schottky at 100 mA: a modelling choice. */
+var OFF_PATH_VF = .35;
+var num = (x) => {
+	if (!Number.isFinite(x)) throw new Error(`spice: not a finite number (${x})`);
+	return String(Number(x.toPrecision(12)));
+};
+/** softplus(x) = k ln(1 + e^(x/k)), written so exp never overflows: max(x, 0) + k ln(1 + e^(-|x|/k)). */
+var sp = (x, k = KV) => `(max(${x},0)+${num(k)}*ln(1+exp(-abs(${x})/${num(k)})))`;
+var smax = (a, b, k = KV) => `(${b}+${sp(`(${a})-(${b})`, k)})`;
+var smin = (a, b, k = KV) => `(${a}-${sp(`(${a})-(${b})`, k)})`;
+/**
+* A smooth max(x, 0) that is exactly 0 at x = 0: softplus less its k ln 2 floor. Every gate of
+* something that must be off at 0 (a load, iq) uses it, else a dead rail still draws or supplies.
+*/
+var pos = (x, k = KV) => `(${sp(x, k)}-${num(k * Math.LN2)})`;
+/** The load fold-back f(V): 1 above minVolts, falling smoothly to exactly 0 at 0 V (spec 4 table). */
+var fold = (v, minVolts) => smin("1", `${pos(v)}/${num(Math.max(minVolts, MIN_VOLTS_MIN))}`, KR);
+var step = (a, b, x) => {
+	const t = `min(max((${x}-${num(a)})/${num(b - a)},0),1)`;
+	return `(${t}*${t}*(3-2*${t}))`;
+};
+/** A buck or boost's enable (spec 4.2). */
+var enable = (vin, lo, hi) => `(${step(lo - .05, lo, vin)}*(1-${step(hi, hi + .05, vin)}))`;
+/** The same functions on numbers, for results and findings. */
+var softplus = (x, k = KV) => Math.max(x, 0) + k * Math.log1p(Math.exp(-Math.abs(x) / k));
+var foldValue = (v, minVolts) => 1 - softplus(1 - (softplus(v) - KV * Math.LN2) / Math.max(minVolts, MIN_VOLTS_MIN), KR);
+var stepValue = (a, b, x) => {
+	const t = Math.min(Math.max((x - a) / (b - a), 0), 1);
+	return t * t * (3 - 2 * t);
+};
+var enableValue = (vin, lo, hi) => stepValue(lo - .05, lo, vin) * (1 - stepValue(hi, hi + .05, vin));
+function compile(c, cls, a) {
+	const used = /* @__PURE__ */ new Set();
+	const name = (prefix, id) => {
+		const base = `${prefix}_${id.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "")}`;
+		let n = base;
+		for (let k = 2; used.has(n); k++) n = `${base}_${k}`;
+		used.add(n);
+		return n;
+	};
+	const diode = (id, an, kn, m) => {
+		const d = name("d", id);
+		return {
+			nodes: [an, kn],
+			lines: (n) => [`.model m_${d} d(is=${num(m.is)} n=${num(m.n)} rs=${num(m.rs)})`, `${d} ${n(an)} ${n(kn)} m_${d}`]
+		};
+	};
+	let taps = 0;
+	const tapEl = (t) => {
+		const v = `vs_${++taps}`;
+		const net = netNode(t.net);
+		return {
+			nodes: [net, t.node],
+			lines: (n) => [`${v} ${n(net)} ${n(t.node)} dc 0`],
+			read: {
+				tap: t,
+				name: v
+			}
+		};
+	};
+	const resistor = (id, x, y, ohms) => {
+		const r = name("r", id);
+		return {
+			nodes: [x, y],
+			lines: (n) => [`${r} ${n(x)} ${n(y)} ${num(Math.max(ohms.value, R_MIN))}`]
+		};
+	};
+	const devEls = (d) => {
+		switch (d.kind) {
+			case "resistor": return [resistor(d.id, d.a, d.b, d.ohms)];
+			case "switch": return d.closed ? [resistor(d.id, d.a, d.b, d.ron)] : [];
+			case "gpio": {
+				const g = gpioBranch(d);
+				return g ? [resistor(d.id, g.a, g.b, g.ohms)] : [];
+			}
+			case "capacitor": {
+				const cn = name("c", d.id);
+				return [{
+					nodes: [d.a, d.b],
+					lines: (n) => [`${cn} ${n(d.a)} ${n(d.b)} ${num(d.farads)}`]
+				}];
+			}
+			case "diode": return [diode(d.id, d.a, d.k, d.model)];
+			case "cell": {
+				const v = name("v", d.id);
+				const r = name("r", `${d.id}.int`);
+				return [{
+					nodes: [
+						d.p,
+						d.int,
+						d.n
+					],
+					lines: (n) => [`${v} ${n(d.p)} ${n(d.int)} dc ${num(d.volts.value)}`, `${r} ${n(d.int)} ${n(d.n)} ${num(Math.max(d.rInternal.value, R_MIN))}`],
+					read: {
+						dev: d.id,
+						name: v,
+						sign: -1
+					}
+				}];
+			}
+			case "load": {
+				const b = name("b", d.id);
+				const amps = a.corner === "peak" ? d.peak.value : d.typical.value;
+				return [{
+					nodes: [d.p, d.n],
+					lines: (n) => [`${b} ${n(d.p)} ${n(d.n)} i=${num(amps)}*${fold(`v(${n(d.p)},${n(d.n)})`, d.minVolts.value)}`]
+				}];
+			}
+			case "rail": {
+				const r = d.rail;
+				const [bctl, bout, vo, fin, bin, biq, bsink, bpay] = [
+					"ctl",
+					"out",
+					"o",
+					"in",
+					"in",
+					"iq",
+					"sink",
+					"sinkin"
+				].map((s, i) => name(i === 3 ? "f" : i === 2 ? "v" : "b", `${d.id}.${s}`));
+				const rout = Math.max(r.rout.value, ROUT_MIN);
+				const ko = FEEDBACK_LOAD * rout / Math.LN2;
+				const els = [{
+					nodes: [
+						d.in,
+						d.inRet,
+						d.out,
+						d.ret,
+						d.ctl,
+						d.o
+					],
+					read: {
+						dev: d.id,
+						name: vo,
+						sign: 1
+					},
+					lines: (n) => {
+						const vin = `v(${n(d.in)},${n(d.inRet)})`;
+						const vc = `v(${n(d.ctl)},${n(d.ret)})`;
+						const vctl = r.kind === "ldo" ? smin(num(r.vout.value), smax(`${vin}-${num(r.dropout.value)}`, "0")) : `${enable(vin, r.vinMin.value, r.vinMax.value)}*${num(r.vout.value)}`;
+						const iout = `(${sp(`${vc}-v(${n(d.o)},${n(d.ret)})`, ko)}-${sp(`-v(${n(d.o)},${n(d.ret)})`, ko)})/${num(rout)}`;
+						const sink = `${num(FEEDBACK_LOAD)}*${fold(vc, FEEDBACK_ON)}`;
+						const out = [
+							`${bctl} ${n(d.ctl)} ${n(d.ret)} v=${vctl}`,
+							`${bout} ${n(d.ret)} ${n(d.o)} i=${iout}`,
+							`${bsink} ${n(d.o)} ${n(d.ret)} i=${sink}`,
+							`${vo} ${n(d.o)} ${n(d.out)} dc 0`,
+							...r.kind === "ldo" ? [`${fin} ${n(d.in)} ${n(d.inRet)} ${vo} 1`, `${bpay} ${n(d.in)} ${n(d.inRet)} i=${sink}`] : [`${bin} ${n(d.in)} ${n(d.inRet)} i=${vc}*(${iout})/(${num(Math.max(r.efficiency.value, EFFICIENCY_MIN))}*max(${vin},0.5))`]
+						];
+						if (r.iq.value > 0) out.push(`${biq} ${n(d.in)} ${n(d.inRet)} i=${num(r.iq.value)}*${smin("1", pos(vin), KR)}`);
+						return out;
+					}
+				}];
+				if (r.reverse === "body-diode") els.push(diode(`${d.id}.body`, d.out, d.in, BODY_DIODE));
+				if (r.kind !== "ldo" && r.offPath === "diode") els.push(diode(`${d.id}.off`, d.in, d.out, schottky(OFF_PATH_VF)));
+				return els;
+			}
+		}
+	};
+	const cp = (x, y) => x < y ? -1 : x > y ? 1 : 0;
+	const live = [...c.devices.map((dev) => ({
+		part: dev.part,
+		rank: 0,
+		key: dev.id,
+		dev
+	})), ...c.taps.map((tap) => ({
+		part: tap.part,
+		rank: 1,
+		key: tap.pin,
+		tap
+	}))].sort((x, y) => naturalCompare(x.part, y.part) || x.rank - y.rank || cp(x.key, y.key)).flatMap((e) => "dev" in e && e.dev ? devEls(e.dev) : [tapEl(e.tap)]).filter((e) => e.nodes.some((n) => cls.defined.has(n)));
+	const ground = cls.islands[0]?.reference;
+	if (!ground || !live.length) return {
+		text: "",
+		empty: true,
+		read: () => ({
+			v: {},
+			pins: {},
+			dev: {}
+		}),
+		nodesIn: () => []
+	};
+	const isNet = (node) => node.startsWith(netNode("")) ? 0 : 1;
+	const touched = [...new Set(live.flatMap((e) => e.nodes))].sort((x, y) => isNet(x) - isNet(y) || cp(x, y));
+	const spice = /* @__PURE__ */ new Map([[ground, "0"]]);
+	let k = 0;
+	for (const node of touched) if (!spice.has(node)) spice.set(node, `n${++k}`);
+	const n = (node) => spice.get(node);
+	const ties = [];
+	let f = 0;
+	for (const node of touched) if (!cls.defined.has(node)) ties.push(`r_float_${++f} ${n(node)} 0 ${num(R_TIE)}`);
+	let j = 0;
+	for (const isl of cls.islands.slice(1)) if (spice.has(isl.reference)) ties.push(`r_join_${++j} ${n(isl.reference)} 0 ${num(R_TIE)}`);
+	const text = [
+		"* circuitoon",
+		...live.flatMap((e) => e.lines(n)),
+		...ties,
+		".end",
+		""
+	].join("\n");
+	const back = new Map([...spice].map(([node, s]) => [s, node]));
+	return {
+		text,
+		empty: false,
+		read(vectors) {
+			const raw = {
+				v: {},
+				pins: {},
+				dev: {}
+			};
+			for (const node of touched) raw.v[node] = spice.get(node) === "0" ? 0 : vectors[spice.get(node)] ?? NaN;
+			for (const e of live) {
+				if (!e.read) continue;
+				const amps = vectors[`${e.read.name}#branch`] ?? NaN;
+				if ("tap" in e.read) (raw.pins[e.read.tap.part] ??= {})[e.read.tap.pin] = amps;
+				else raw.dev[e.read.dev] = e.read.sign * amps;
+			}
+			return raw;
+		},
+		nodesIn(error) {
+			return [...new Set([...error.matchAll(/\bn\d+\b/g)].map((m) => back.get(m[0])).filter((x) => !!x))];
+		}
+	};
+}
+//#endregion
+//#region src/sim/engine/engine.ts
+function makeEngine(host) {
+	return {
+		host,
+		init: () => host.init(),
+		async run(c, a, revision) {
+			const compiled = compile(c, classifyCached(c, a), a);
+			if (compiled.empty) return {
+				status: "ok",
+				revision,
+				raw: compiled.read({}),
+				ms: 0
+			};
+			const r = await host.runText(compiled.text);
+			if (r.status === "unavailable") return r;
+			if (r.status === "failed") return {
+				status: "failed",
+				revision,
+				error: r.error,
+				nodes: compiled.nodesIn(r.error)
+			};
+			return {
+				status: "ok",
+				revision,
+				raw: compiled.read(r.vectors),
+				ms: r.ms
+			};
+		},
+		dispose: () => host.dispose()
+	};
+}
+var message = (e) => e instanceof Error ? e.message : String(e);
+var EngineHost = class {
+	opts;
+	worker = null;
+	ready = null;
+	/** While the engine loads: fails the load now (dispose or recycle during a load). */
+	abortLoad = null;
+	waiting = /* @__PURE__ */ new Map();
+	onWorker = 0;
+	seq = 0;
+	queue = Promise.resolve();
+	info = null;
+	/** Engine runs that returned an answer, over every worker. */
+	runs = 0;
+	spawned = 0;
+	/** The WASM heap size the last run reported, in bytes. */
+	lastHeap = 0;
+	constructor(opts) {
+		this.opts = opts;
+	}
+	init() {
+		if (this.ready) return this.ready;
+		const ready = new Promise((resolve, reject) => {
+			let w;
+			try {
+				w = this.opts.spawn();
+			} catch (e) {
+				return reject(new Error(message(e)));
+			}
+			this.spawned++;
+			this.worker = w;
+			const limit = this.opts.loadTimeoutMs ?? 3e4;
+			const fail = (why) => {
+				clearTimeout(timer);
+				this.abortLoad = null;
+				reject(new Error(why));
+			};
+			const timer = setTimeout(() => fail(`the simulation engine did not load within ${limit / 1e3} s`), limit);
+			this.abortLoad = fail;
+			w.onMessage((m) => {
+				if (m.type === "ready") {
+					clearTimeout(timer);
+					this.abortLoad = null;
+					resolve(this.info = m.engine);
+				} else if (m.type === "fatal") fail(m.error);
+				else if (m.type === "progress") this.opts.onProgress?.(m.loaded, m.total);
+				else if (m.type === "result") {
+					this.lastHeap = m.heap;
+					this.waiting.get(m.id)?.(m);
+					this.waiting.delete(m.id);
+				}
+			});
+			w.onExit(() => {
+				if (this.worker !== w) return;
+				fail("the simulation engine stopped while loading");
+				this.recycle();
+			});
+		});
+		this.ready = ready;
+		ready.catch(() => {
+			if (this.ready === ready) this.recycle();
+		});
+		return ready;
+	}
+	timeout() {
+		const t = this.opts.timeoutMs;
+		return typeof t === "function" ? t() : t ?? 5e3;
+	}
+	once(text) {
+		const id = ++this.seq;
+		return new Promise((resolve) => {
+			const timer = setTimeout(() => {
+				this.waiting.delete(id);
+				resolve("timeout");
+			}, this.timeout());
+			this.waiting.set(id, (a) => {
+				clearTimeout(timer);
+				resolve(a);
+			});
+			this.worker.post({
+				type: "run",
+				id,
+				text
+			});
+		});
+	}
+	recycle() {
+		this.abortLoad?.("the simulation engine was stopped while loading");
+		this.worker?.terminate();
+		this.worker = null;
+		this.ready = null;
+		this.onWorker = 0;
+		for (const done of this.waiting.values()) done("timeout");
+		this.waiting.clear();
+	}
+	/** One engine run of a SPICE text, queued behind any run in progress. */
+	runText(text) {
+		const next = this.queue.then(() => this.attempt(text));
+		this.queue = next.catch(() => void 0);
+		return next;
+	}
+	async attempt(text) {
+		for (let attempt = 0; attempt < 2; attempt++) {
+			try {
+				await this.init();
+			} catch (e) {
+				return {
+					status: "unavailable",
+					reason: message(e)
+				};
+			}
+			const a = await this.once(text);
+			if (a === "timeout") {
+				this.recycle();
+				continue;
+			}
+			this.runs++;
+			this.onWorker++;
+			if (!a.ok) {
+				if (a.dead || this.onWorker >= (this.opts.recycleRuns ?? 2e3)) this.recycle();
+				return {
+					status: "failed",
+					error: a.error
+				};
+			}
+			if (this.onWorker >= (this.opts.recycleRuns ?? 2e3)) this.recycle();
+			return a.warnings ? {
+				status: "ok",
+				vectors: a.vectors,
+				warnings: a.warnings,
+				ms: a.ms
+			} : {
+				status: "ok",
+				vectors: a.vectors,
+				ms: a.ms
+			};
+		}
+		return {
+			status: "failed",
+			error: `the simulation engine did not answer within ${this.timeout() / 1e3} s, twice`
+		};
+	}
+	dispose() {
+		this.recycle();
+	}
+};
+//#endregion
+//#region src/sim/engine/ngspice.ts
+/** vector_info on wasm32 (sharedspice.h): v_name 0, v_type 4, v_flags 8, v_realdata 12, v_compdata 16, v_length 20. */
+var V_REALDATA = 12;
+var V_LENGTH = 20;
+var CIRCUIT = "/circuit.cir";
+var NgspiceCore = class {
+	m;
+	errors = [];
+	/** Set when ngspice called its exit callback: the instance is not used again (host.ts recycles it). */
+	dead = false;
+	runs = 0;
+	constructor(m) {
+		this.m = m;
+		const sendChar = m.addFunction((p) => {
+			const line = m.UTF8ToString(p);
+			if (line.startsWith("stderr ")) this.errors.push(line.slice(7));
+			return 0;
+		}, "iiii");
+		const exit = m.addFunction(() => {
+			this.dead = true;
+			return 0;
+		}, "iiiiii");
+		m._ngSpice_nospinit();
+		if (m._ngSpice_Init(sendChar, 0, exit, 0, 0, 0, 0) !== 0) throw new Error("ngSpice_Init failed");
+	}
+	withString(s, f) {
+		const n = this.m.lengthBytesUTF8(s) + 1;
+		const p = this.m._malloc(n);
+		this.m.stringToUTF8(s, p, n);
+		try {
+			return f(p);
+		} finally {
+			this.m._free(p);
+		}
+	}
+	command(c) {
+		this.withString(c, (p) => this.m._ngSpice_Command(p));
+	}
+	vectorNames(plot) {
+		return this.withString(plot, (p) => {
+			const list = this.m._ngSpice_AllVecs(p);
+			const out = [];
+			for (let i = 0; list; i++) {
+				const s = this.m.getValue(list + 4 * i, "*");
+				if (!s) break;
+				out.push(this.m.UTF8ToString(s));
+			}
+			return out;
+		});
+	}
+	vector(name) {
+		return this.withString(name, (p) => {
+			const info = this.m._ngGet_Vec_Info(p);
+			if (!info) return null;
+			const data = this.m.getValue(info + V_REALDATA, "*");
+			const length = this.m.getValue(info + V_LENGTH, "i32");
+			return data && length > 0 ? this.m.getValue(data, "double") : null;
+		});
+	}
+	/** One DC operating point: source + op + read + remcirc (spec 2.3). */
+	op(text) {
+		this.runs++;
+		this.errors = [];
+		this.m.FS.writeFile(CIRCUIT, text);
+		this.command("destroy all");
+		this.command(`source ${CIRCUIT}`);
+		this.command("op");
+		const plot = this.m.UTF8ToString(this.m._ngSpice_CurPlot());
+		const vectors = {};
+		if (!this.dead && plot && plot !== "const") for (const name of this.vectorNames(plot)) {
+			const v = this.vector(name);
+			if (v !== null) vectors[name] = v;
+		}
+		this.command("remcirc");
+		this.command("destroy all");
+		if (this.dead || Object.keys(vectors).length === 0) {
+			const isError = (l) => l.startsWith("Error");
+			return {
+				ok: false,
+				error: [...this.errors.filter(isError), ...this.errors.filter((l) => !isError(l))].join("\n") || "the operating point produced no data"
+			};
+		}
+		return this.errors.length ? {
+			ok: true,
+			vectors,
+			warnings: this.errors
+		} : {
+			ok: true,
+			vectors
+		};
+	}
+	setBreakpoint(t) {
+		return this.m._ngSpice_SetBkpt(t) !== 0;
+	}
+	heapBytes() {
+		return this.m.HEAPU8.length;
+	}
+};
+async function createCore(factory, wasmBinary) {
+	return new NgspiceCore(await factory({
+		wasmBinary,
+		print: () => {},
+		printErr: () => {}
+	}));
+}
+//#endregion
+//#region src/sim/engine/workerLoop.ts
+var why = (e) => e instanceof Error ? e.message : String(e);
+function serve(post, listen, load) {
+	const loading = load((loaded, total) => post({
+		type: "progress",
+		loaded,
+		total
+	}));
+	loading.then(({ info }) => post({
+		type: "ready",
+		engine: info
+	}), (e) => post({
+		type: "fatal",
+		error: e instanceof Error ? e.message : String(e)
+	}));
+	listen((m) => {
+		try {
+			if (m.type !== "run") return;
+			loading.then(({ core }) => {
+				const t0 = performance.now();
+				try {
+					if (m.text === "* circuitoon: debug hang") for (;;) performance.now();
+					const r = core.op(m.text);
+					const ms = performance.now() - t0;
+					post(r.ok ? {
+						type: "result",
+						id: m.id,
+						ok: true,
+						vectors: r.vectors,
+						...r.warnings && { warnings: r.warnings },
+						ms,
+						heap: core.heapBytes()
+					} : {
+						type: "result",
+						id: m.id,
+						ok: false,
+						error: r.error,
+						dead: core.dead,
+						ms,
+						heap: core.heapBytes()
+					});
+				} catch (e) {
+					post({
+						type: "result",
+						id: m.id,
+						ok: false,
+						error: `the simulation engine stopped: ${why(e)}`,
+						dead: true,
+						ms: performance.now() - t0,
+						heap: 0
+					});
+				}
+			}, () => void 0);
+		} catch (e) {
+			post({
+				type: "fatal",
+				error: why(e)
+			});
+		}
+	});
+}
+//#endregion
+//#region src/sim/engine/nodeEngine.ts
+var WASM = "ngspice.wasm";
+/** The directory with the engine: beside this file (the bundle), else public/sim from the source tree. */
+function engineDir() {
+	const here = dirname(fileURLToPath(import.meta.url));
+	for (const dir of [here, join(here, "..", "..", "..", "public", "sim")]) if (existsSync(join(dir, WASM))) return dir;
+	return null;
+}
+/** The factory, wasm bytes and manifest from an engine directory (public/sim or plugin/dist-cli). */
+async function loadEngineFiles(dir) {
+	const manifest = JSON.parse(readFileSync(join(dir, "engine.json"), "utf8"));
+	return {
+		factory: (await import(
+			/* @vite-ignore */
+			pathToFileURL(join(dir, "ngspice.mjs")).href
+)).default,
+		wasm: new Uint8Array(readFileSync(join(dir, "ngspice.wasm"))),
+		manifest
+	};
+}
+function createNodeEngineHost(opts = {}) {
+	return new EngineHost({
+		...opts,
+		spawn: () => {
+			const dir = engineDir();
+			if (!dir) throw new Error(`the simulation engine (${WASM}) is not installed beside the circuitoon CLI`);
+			const w = new Worker(fileURLToPath(import.meta.url), { workerData: { circuitoonSim: dir } });
+			return {
+				post: (m) => w.postMessage(m),
+				onMessage: (cb) => void w.on("message", (m) => cb(m)).unref(),
+				onExit: (cb) => void w.on("exit", cb),
+				terminate: () => void w.terminate()
+			};
+		}
+	});
+}
+var data = workerData;
+if (!isMainThread && data?.circuitoonSim) {
+	const dir = data.circuitoonSim;
+	serve((m) => parentPort.postMessage(m), (cb) => void parentPort.on("message", cb), async () => {
+		const { factory, wasm, manifest } = await loadEngineFiles(dir);
+		return {
+			core: await createCore(factory, wasm),
+			info: {
+				name: "ngspice",
+				version: manifest.ngspice,
+				build: manifest.build
+			}
+		};
+	});
+}
+//#endregion
+//#region src/sim/estimates.ts
+var est = (value, unit, note) => ({
+	value,
+	unit,
+	provenance: "estimate",
+	note
+});
+var CONTACT_OHMS = est(.02, "ohm", "default contact resistance of a closed switch, jumper or fuse");
+var ROUT_DEFAULT = est(.1, "ohm", "default regulator output resistance");
+var IQ_DEFAULT = est(0, "A", "quiescent current not given; taken as 0");
+var CABLE_OHMS = {
+	value: .1,
+	unit: "ohm",
+	provenance: "representative",
+	note: "one conductor of a typical 1 m USB cable (spec 4.7)"
+};
+var PLUG_OHMS = est(.02, "ohm", "a plug pushed straight into a socket: contact resistance per conductor");
+var OR_DIODE_VF = est(.35, "V", "Schottky OR diode, 0.35 V at 100 mA (modelling choice)");
+/** A `direct` rail input (ruling R17): 1 milliohm, never 0. */
+var RAIL_DIRECT_OHMS = .001;
+/** A load's minimum voltage when its draw gives none: 90 % of its domain's nominal (spec 3.2). */
+var MIN_VOLTS_FRACTION = .9;
+/** The unsimulated reason sim-incomplete counts (spec 3.1). */
+var NO_POWER_DATA = "no power data";
+/** The voltage-keyed fallback for a battery without its own rInternal (spec 3.1 table). */
+function cellEstimate(nominal) {
+	if (nominal >= 2.4 && nominal < 3) return {
+		rInternal: est(15, "ohm", "assumed a lithium coin cell"),
+		assumed: "lithium coin cell"
+	};
+	if (nominal === 9) return {
+		rInternal: est(1.5, "ohm", "assumed an alkaline 9 V battery"),
+		assumed: "alkaline 9 V"
+	};
+	for (let k = 1; k <= 6; k++) {
+		const per = nominal / k;
+		const cells = `${k} cell${k > 1 ? "s" : ""} in series`;
+		if (k <= 2 && per >= 3.6 && per <= 4.2) return {
+			rInternal: est(.05 * k, "ohm", `assumed Li-ion 18650, ${cells}, 0.05 ohm each`),
+			assumed: "Li-ion 18650"
+		};
+		if (per >= 1.2 && per <= 1.6) return {
+			rInternal: est(.15 * k, "ohm", `assumed alkaline AA, ${cells}, 0.15 ohm each`),
+			assumed: "alkaline AA"
+		};
+	}
+	return {
+		rInternal: est(.1, "ohm", "unknown chemistry: 0.1 ohm assumed"),
+		assumed: "unknown"
+	};
+}
+var modelOf$1 = (m) => m.electrical?.model;
+var C3_CLASS = /esp32-?c[36]/;
+var ROWS = [
+	{
+		row: "mcu, ESP32/ESP32-S3 class",
+		match: (m) => modelOf$1(m) === "mcu" && m.id.includes("esp32") && !C3_CLASS.test(m.id),
+		typical: .08,
+		peak: .5,
+		note: "Wi-Fi transmit bursts"
+	},
+	{
+		row: "mcu, ESP32-C3/C6 class",
+		match: (m) => modelOf$1(m) === "mcu" && C3_CLASS.test(m.id),
+		typical: .03,
+		peak: .35,
+		note: "radio transmit bursts"
+	},
+	{
+		row: "mcu, AVR/RP2040 boards",
+		match: (m) => modelOf$1(m) === "mcu",
+		typical: .025,
+		peak: .06,
+		note: "every peripheral busy"
+	},
+	{
+		row: "display, OLED",
+		match: (m) => modelOf$1(m) === "display" && m.id.includes("oled"),
+		typical: .015,
+		peak: .04,
+		note: "all pixels on"
+	},
+	{
+		row: "display, TFT with backlight",
+		match: (m) => modelOf$1(m) === "display",
+		typical: .06,
+		peak: .12,
+		note: "backlight dominates"
+	},
+	{
+		row: "sensor, breakout",
+		match: (m) => modelOf$1(m) === "sensor" || modelOf$1(m) === "breakout",
+		typical: .002,
+		peak: .01,
+		note: "measuring"
+	},
+	{
+		row: "radio",
+		match: (m) => modelOf$1(m) === "radio",
+		typical: .03,
+		peak: .25,
+		note: "transmit"
+	}
+];
+/** The load a powered part draws by category (spec 3.4), or null outside the table. */
+function loadEstimate(m) {
+	const r = ROWS.find((x) => x.match(m));
+	if (!r) return null;
+	return {
+		row: r.row,
+		typical: est(r.typical, "A", `category estimate: ${r.row}`),
+		peak: {
+			...est(r.peak, "A", `category estimate: ${r.row}`),
+			note: r.note
+		}
+	};
+}
+//#endregion
+//#region src/sim/power.ts
+/**
+* The pin a USB port's simulation node is on: `<port>#gnd` is the board's ground pin when
+* `sim.usbPorts` names it; else `<port>#vbus` / `<port>#gnd` is a pin of its own, tapped like any
+* other, so the current the port carries is sensed and the part's pin currents sum to 0.
+*/
+function usbPin(m, port, side) {
+	const gnd = simOf(m)?.usbPorts?.[port]?.gnd;
+	return side === "gnd" && gnd ? gnd : `${port}#${side}`;
+}
+/** The node a `sim` node reference names on part `uid`: a pin's tap (a USB port's node included). */
+function nodeRef(b, uid, m, ref) {
+	const usb = /^(.+)#(vbus|gnd)$/.exec(ref);
+	return b.tap(uid, usb ? usbPin(m, usb[1], usb[2]) : ref);
+}
+function powerPart(b, p, m) {
+	const sim = simOf(m);
+	const power = sim.power;
+	const ref = b.ref(p.uid);
+	const L = (path) => `${m.id}.${ref}.${path}`;
+	const P = (x, path) => b.param(x, L(path));
+	const bad = (power.rails ?? []).map(railProblem).find((x) => x !== null);
+	if (bad) return b.skip(p.uid, `incomplete power data: ${bad}`);
+	const domains = /* @__PURE__ */ new Map();
+	for (const dom of power.domains) {
+		const pin = nodeRef(b, p.uid, m, dom.pin);
+		const ret = nodeRef(b, p.uid, m, dom.ret);
+		if (!pin || !ret) continue;
+		domains.set(dom.name, {
+			pin,
+			ret,
+			nominal: dom.nominal
+		});
+		b.domain({
+			part: p.uid,
+			name: dom.name,
+			pin,
+			ret,
+			nominal: dom.nominal
+		});
+	}
+	let list = power.draw ?? [];
+	if (!list.length) {
+		const est = loadEstimate(m);
+		if (est && !power.domains.length) return b.skip(p.uid, NO_POWER_DATA);
+		if (est) {
+			const names = power.domains.map((x) => x.name);
+			const rails = power.rails ?? [];
+			const outs = rails.map((r) => r.output);
+			const last = outs.filter((o) => !rails.some((r) => r.inputs.some((x) => x.domain === o)));
+			list = [{
+				domain: [
+					sim.gpio?.domain,
+					...last,
+					...outs
+				].find((x) => x !== void 0 && names.includes(x)) ?? names[0],
+				typical: est.typical,
+				peak: est.peak
+			}];
+		} else if (!power.rails?.length && !power.source) b.unsimulated(p.uid, NO_POWER_DATA);
+	}
+	for (const dr of list) {
+		const dn = domains.get(dr.domain);
+		if (!dn) continue;
+		const tOver = simOverride(p, `sim.draw.${dr.domain}.typical`);
+		const pOver = simOverride(p, `sim.draw.${dr.domain}.peak`);
+		const typical = tOver !== null ? b.user(tOver, L(`draw.${dr.domain}.typical`)) : P(dr.typical, `draw.${dr.domain}.typical`);
+		const peak = pOver !== null ? b.user(pOver, L(`draw.${dr.domain}.peak`)) : dr.peak ? P(dr.peak, `draw.${dr.domain}.peak`) : typical;
+		const minVolts = "minVolts" in dr && dr.minVolts ? P(dr.minVolts, `draw.${dr.domain}.minVolts`) : {
+			value: MIN_VOLTS_FRACTION * dn.nominal,
+			basis: "estimate",
+			label: L(`draw.${dr.domain}.minVolts`),
+			note: "90 % of the domain nominal (spec 3.2)"
+		};
+		b.add({
+			kind: "load",
+			id: `${p.uid}.draw.${dr.domain}`,
+			part: p.uid,
+			p: dn.pin,
+			n: dn.ret,
+			domain: dr.domain,
+			typical,
+			peak,
+			...dr.peak?.note ? { peakNote: dr.peak.note } : {},
+			minVolts
+		});
+	}
+	for (const r of power.rails ?? []) {
+		const out = domains.get(r.output);
+		const ins = r.inputs.map((x) => ({
+			...x,
+			d: domains.get(x.domain)
+		})).filter((x) => {
+			if (!x.d) b.note(`${ref}: rail ${r.id}: input domain ${x.domain} is not simulated, so that input is left out`);
+			return x.d;
+		});
+		if (!out) b.note(`${ref}: rail ${r.id}: output domain ${r.output} is not simulated, so the rail is left out`);
+		else if (!ins.length) b.note(`${ref}: rail ${r.id} has no simulated input, so the rail is left out`);
+		if (!out || !ins.length) continue;
+		const id = `${p.uid}.rail.${r.id}`;
+		const inNode = `${id}#in`;
+		for (const x of ins) if (x.via === "diode") b.add({
+			kind: "diode",
+			id: `${id}.in.${x.domain}`,
+			part: p.uid,
+			a: x.d.pin,
+			k: inNode,
+			model: schottky(OR_DIODE_VF.value),
+			role: "rail-input"
+		});
+		else b.add({
+			kind: "resistor",
+			id: `${id}.in.${x.domain}`,
+			part: p.uid,
+			a: x.d.pin,
+			b: inNode,
+			ohms: b.param({
+				value: RAIL_DIRECT_OHMS,
+				unit: "ohm",
+				provenance: "estimate",
+				note: "direct rail input (ruling R17)"
+			}, L(`rails.${r.id}.input`)),
+			role: "rail-input"
+		});
+		if (r.kind === "switch") {
+			const block = r.reverse === "blocks";
+			if (r.ron) b.add({
+				kind: "resistor",
+				id,
+				part: p.uid,
+				a: inNode,
+				b: block ? `${id}#block` : out.pin,
+				ohms: P(r.ron, `rails.${r.id}.ron`),
+				role: "switch-rail"
+			});
+			if (r.ron && block) b.add({
+				kind: "diode",
+				id: `${id}.block`,
+				part: p.uid,
+				a: `${id}#block`,
+				k: out.pin,
+				model: IDEAL_DIODE,
+				role: "switch-rail"
+			});
+			if (!r.ron) b.add({
+				kind: "diode",
+				id,
+				part: p.uid,
+				a: inNode,
+				k: out.pin,
+				model: schottky(r.vf.value),
+				role: "switch-rail"
+			});
+			continue;
+		}
+		const opt = (x, key) => x ? P(x, `rails.${r.id}.${key}`) : void 0;
+		const rail = {
+			id: r.id,
+			kind: r.kind,
+			output: r.output,
+			inputs: r.inputs.map((x) => x.domain),
+			vout: opt(r.vout, "vout"),
+			dropout: opt(r.dropout, "dropout"),
+			ioutMax: opt(r.ioutMax, "ioutMax"),
+			efficiency: opt(r.efficiency, "efficiency"),
+			vinMin: opt(r.vinMin, "vinMin"),
+			vinMax: opt(r.vinMax, "vinMax"),
+			iq: P(r.iq ?? IQ_DEFAULT, `rails.${r.id}.iq`),
+			rout: P(r.rout ?? ROUT_DEFAULT, `rails.${r.id}.rout`),
+			reverse: r.reverse,
+			offPath: r.offPath ?? "open",
+			...r.minLoad ? { minLoad: {
+				amps: P(r.minLoad.amps, `rails.${r.id}.minLoad`),
+				note: r.minLoad.note
+			} } : {}
+		};
+		b.add({
+			kind: "rail",
+			id,
+			part: p.uid,
+			rail,
+			in: inNode,
+			inRet: ins[0].d.ret,
+			out: out.pin,
+			ret: out.ret,
+			ctl: `${id}#ctl`,
+			o: `${id}#o`,
+			outDomain: r.output
+		});
+	}
+	const s = power.source;
+	const sd = s && domains.get(s.domain);
+	let imaxOver = null;
+	if (s && sd) {
+		const ac = mainsOf(m);
+		const assumed = !!ac.acInput && !!ac.plug && !b.acOnSheet(p, m);
+		if (assumed) b.note(`${ref}: assumed plugged into a live outlet (its plug is not on the sheet)`);
+		if (ac.acInput && !assumed && !b.converterPowered(p.uid)) b.note(`${ref}: its mains input is off in the saved switch state, so its output is off`);
+		else {
+			const rOver = simOverride(p, "sim.rInternal");
+			const iOver = simOverride(p, "sim.imax");
+			imaxOver = iOver;
+			let volts;
+			if (s.voltage === "param:voltage") {
+				const v = paramValue(p, m, "voltage");
+				if (v === null) return b.skip(p.uid, "no voltage value");
+				volts = b.user(v, L("voltage"));
+			} else volts = P(s.voltage, "source.voltage");
+			const imax = iOver !== null ? b.user(iOver, L("imax")) : s.imax ? P(s.imax, "source.imax") : void 0;
+			const id = `${p.uid}.source`;
+			b.add({
+				kind: "cell",
+				id,
+				part: p.uid,
+				p: sd.pin,
+				n: sd.ret,
+				int: `${id}#int`,
+				volts,
+				rInternal: rOver !== null ? b.user(rOver, L("rInternal")) : P(s.rInternal, "source.rInternal"),
+				...imax ? { imax } : {},
+				role: "external",
+				domain: s.domain
+			});
+		}
+	}
+	const g = sim.gpio;
+	const io = g && domains.get(g.domain);
+	if (g && io) for (const pin of g.pins) {
+		const state = gpioState(p, m, pin);
+		b.gpio({
+			part: p.uid,
+			pin,
+			state,
+			domain: g.domain,
+			key: nodeKey(p.uid, pin)
+		});
+		if (state === null) {
+			b.unsimulated(p.uid, `pin ${pin}: output-only pin with no state set`);
+			continue;
+		}
+		const R = (x, key) => P(x, `gpio.${key}`);
+		const node = b.tap(p.uid, pin);
+		if (node) b.add({
+			kind: "gpio",
+			id: `${p.uid}.gpio.${pin}`,
+			part: p.uid,
+			pin,
+			node,
+			vdd: io.pin,
+			ret: io.ret,
+			domain: g.domain,
+			state,
+			params: {
+				outputResistance: R(g.outputResistance, "outputResistance"),
+				...g.pullup ? { pullup: R(g.pullup, "pullup") } : {},
+				...g.pulldown ? { pulldown: R(g.pulldown, "pulldown") } : {},
+				...g.inputLeakage && g.inputLeakage.value > 0 ? { leakage: {
+					...R(g.inputLeakage, "inputLeakage"),
+					value: io.nominal / g.inputLeakage.value,
+					note: "derived: domain nominal / inputLeakage"
+				} } : {}
+			}
+		});
+	}
+	if (imaxOver === null) return b.partLimits(p, m);
+	b.partLimits(p, m, ["sourceCurrent"]);
+	b.limit({
+		part: p.uid,
+		of: { part: true },
+		kind: "sourceCurrent",
+		value: b.user(imaxOver, L("imax"))
+	});
+}
+/** Each USB link that carries power: both conductors as cable resistances (spec 4.7). */
+function usbLinks(b, d) {
+	for (const c of [...d.connections].sort((x, y) => x.uid < y.uid ? -1 : 1)) {
+		const link = usbLink(d, c);
+		if (!link) continue;
+		const sides = usbSides(link.from, link.to);
+		if (!sides) continue;
+		const [host, dev] = sides;
+		const hm = b.module(host.part.module) ?? host.module;
+		const dm = b.module(dev.part.module) ?? dev.module;
+		if (!b.simulated(dev.part.uid)) continue;
+		if (host.usb.hub === "downstream") {
+			b.unsimulated(dev.part.uid, "powered through a hub: not simulated yet");
+			continue;
+		}
+		if (!simOf(hm)?.power) {
+			b.unsimulated(dev.part.uid, `powered from ${b.ref(host.part.uid)} over USB, which has no power data`);
+			continue;
+		}
+		if (!b.simulated(host.part.uid)) {
+			b.unsimulated(dev.part.uid, `powered over USB from ${b.ref(host.part.uid)}, which is not simulated`);
+			continue;
+		}
+		const ohms = link.direct ? PLUG_OHMS : CABLE_OHMS;
+		const label = `${link.direct ? "plug" : "cable"}.${c.uid}`;
+		const hv = b.node(host.part.uid, usbPin(hm, host.name, "vbus"));
+		const dv = b.node(dev.part.uid, usbPin(dm, dev.name, "vbus"));
+		const hg = b.node(host.part.uid, usbPin(hm, host.name, "gnd"));
+		const dg = b.node(dev.part.uid, usbPin(dm, dev.name, "gnd"));
+		if (!hv || !dv || !hg || !dg) continue;
+		const vbus = `usb.${c.uid}.vbus`;
+		const gnd = `usb.${c.uid}.gnd`;
+		b.add({
+			kind: "resistor",
+			id: vbus,
+			part: host.part.uid,
+			a: hv,
+			b: dv,
+			ohms: b.param(ohms, `${label}.vbus`),
+			role: "cable"
+		});
+		b.add({
+			kind: "resistor",
+			id: gnd,
+			part: host.part.uid,
+			a: hg,
+			b: dg,
+			ohms: b.param(ohms, `${label}.gnd`),
+			role: "cable"
+		});
+		const declared = host.usb.source;
+		const limit = declared !== void 0 ? {
+			value: declared / 1e3,
+			basis: "datasheet",
+			label: `${hm.id}.${b.ref(host.part.uid)}.usb.${host.name}.source`
+		} : {
+			value: DEFAULT_SOURCE[host.usb.version ?? "2.0"] / 1e3,
+			basis: "representative",
+			label: `usb-default.${host.usb.version ?? "2.0"}`,
+			note: "the USB default for the port version"
+		};
+		b.usbPath({
+			host: host.part.uid,
+			hostPort: host.name,
+			device: dev.part.uid,
+			devicePort: dev.name,
+			vbus,
+			gnd,
+			limit
+		});
+		const pw = simOf(dm)?.power;
+		if (!pw) continue;
+		const fed = pw.domains.filter((x) => x.pin === `${dev.name}#vbus`).map((x) => x.name);
+		const used = (n) => pw.rails?.some((r) => r.inputs.some((x) => x.domain === n)) || pw.draw?.some((x) => x.domain === n) || pw.source?.domain === n;
+		if (fed.length && !fed.some(used)) b.note(`${b.ref(dev.part.uid)}: ${dev.name} charge input is not simulated: the module runs from its battery only`);
+	}
+}
+//#endregion
+//#region src/sim/build.ts
+var modelOf = (m) => isObj(m.electrical) && typeof m.electrical.model === "string" ? m.electrical.model : "";
+var terminals = (m) => {
+	const t = isObj(m.electrical) && isObj(m.electrical.terminals) ? m.electrical.terminals : {};
+	return Object.fromEntries(Object.entries(t).filter((x) => typeof x[1] === "string"));
+};
+/** A number param outside PARAM_RULES (forwardVoltage, maxCurrent): a stored { value } override, else the module default. */
+function numParam(part, m, name) {
+	const stored = part.values?.[name];
+	if (isObj(stored) && isNum(stored.value)) return stored.value;
+	const p = isObj(m.electrical) && isObj(m.electrical.params) ? m.electrical.params[name] : void 0;
+	return isObj(p) && isNum(p.default) ? p.default : null;
+}
+var hasPowerPin = (m) => [...m.pins, ...m.holes ?? []].some((p) => !("spacer" in p && isSpacer(p)) && "type" in p && p.type === "power_in");
+var Builder = class {
+	d;
+	opts;
+	/** The sheet's modules, each with the sim it is simulated with (withLibrarySim). */
+	modules;
+	mainsKeys;
+	netOfKey = /* @__PURE__ */ new Map();
+	names = /* @__PURE__ */ new Set();
+	refOf;
+	tapsByKey = /* @__PURE__ */ new Map();
+	devices = [];
+	parts = {};
+	domains = [];
+	limits = [];
+	gpios = [];
+	usb = [];
+	unsim = [];
+	notes = [];
+	/** The part being built, which owns the notes made meanwhile. */
+	current = null;
+	converters = null;
+	constructor(d, opts) {
+		this.d = d;
+		this.opts = opts;
+		const library = opts.library ?? libraryLookup;
+		this.modules = Object.fromEntries(Object.entries(d.modules).map(([id, m]) => [id, withLibrarySim(m, library)]));
+		this.mainsKeys = analyseMainsCached(d)?.mainsKeys ?? /* @__PURE__ */ new Set();
+		const sn = sheetNets(d);
+		this.refOf = sn.refOf;
+		for (const net of sn.nets) {
+			this.names.add(net.name);
+			for (const k of net.keys) this.netOfKey.set(k, net.name);
+		}
+		for (const keys of sn.netlist.nets) {
+			const named = keys.find((k) => this.netOfKey.has(k));
+			const name = named ? this.netOfKey.get(named) : this.fresh(this.firstComponent(keys));
+			for (const k of keys) this.netOfKey.set(k, name);
+		}
+	}
+	ref(uid) {
+		return this.refOf.get(uid) ?? this.d.parts.find((p) => p.uid === uid)?.designator ?? uid;
+	}
+	modulesOf(uid) {
+		const p = this.d.parts.find((x) => x.uid === uid);
+		return p ? this.module(p.module) : void 0;
+	}
+	module(id) {
+		return moduleOf({ modules: this.modules }, id);
+	}
+	firstComponent(keys) {
+		const pins = keys.map((k) => JSON.parse(k));
+		const real = pins.filter(([uid]) => {
+			const m = this.modulesOf(uid);
+			return m && !isBoard(m) && !isNetLabel(m);
+		});
+		return (real.length ? real : pins).sort((a, b) => naturalCompare(this.ref(a[0]), this.ref(b[0])) || naturalCompare(a[1], b[1]))[0];
+	}
+	fresh([uid, pin]) {
+		const base = `${this.ref(uid)}_${pin}`;
+		let name = base;
+		for (let k = 2; this.names.has(name); k++) name = `${base}_${k}`;
+		this.names.add(name);
+		return name;
+	}
+	/** The display name of the net a part pin is on (named on first use for a singleton); null on mains wiring. */
+	netName(uid, pin) {
+		const key = nodeKey(uid, pin);
+		if (this.mainsKeys.has(key)) return null;
+		let net = this.netOfKey.get(key);
+		if (!net) {
+			net = this.fresh([uid, pin]);
+			this.netOfKey.set(key, net);
+		}
+		return net;
+	}
+	/** The node id (netNode) of the net a part pin is on; null on mains wiring. */
+	node(uid, pin) {
+		const net = this.netName(uid, pin);
+		return net === null ? null : netNode(net);
+	}
+	/** The pin node behind the pin's 0 V sense (ruling R19), made on first use; null on mains wiring. */
+	tap(uid, pin) {
+		const key = nodeKey(uid, pin);
+		const hit = this.tapsByKey.get(key);
+		if (hit) return hit.node;
+		const net = this.netName(uid, pin);
+		if (net === null) return null;
+		const t = {
+			part: uid,
+			pin,
+			net,
+			node: `${uid}:${pin}`
+		};
+		this.tapsByKey.set(key, t);
+		return t.node;
+	}
+	add(dev) {
+		this.devices.push(dev);
+	}
+	param(q, label) {
+		return {
+			value: q.value,
+			basis: q.provenance,
+			label,
+			...q.note ? { note: q.note } : {}
+		};
+	}
+	user(value, label) {
+		return {
+			value,
+			basis: "user",
+			label
+		};
+	}
+	/** The part is not simulated at all: everything recorded for it goes, and its notes give way to the reason. */
+	skip(uid, reason) {
+		const other = (x) => x.part !== uid;
+		delete this.parts[uid];
+		this.devices = this.devices.filter(other);
+		for (const [k, t] of this.tapsByKey) if (t.part === uid) this.tapsByKey.delete(k);
+		this.limits = this.limits.filter(other);
+		this.domains = this.domains.filter(other);
+		this.gpios = this.gpios.filter(other);
+		this.usb = this.usb.filter((x) => x.host !== uid && x.device !== uid);
+		this.notes = this.notes.filter(other);
+		this.unsim = this.unsim.filter(other);
+		this.unsim.push({
+			part: uid,
+			reason
+		});
+	}
+	/** Whether the part is simulated (compiled and not skipped). */
+	simulated(uid) {
+		return uid in this.parts;
+	}
+	/** One path or pin of a simulated part is not simulated (ruling R7, an unset output-only pin). */
+	unsimulated(uid, reason) {
+		this.unsim.push({
+			part: uid,
+			reason
+		});
+	}
+	/** A note, owned by the part being built (if any) so that skip() can drop it. */
+	note(text) {
+		this.notes.push({
+			part: this.current,
+			text
+		});
+	}
+	limit(l) {
+		this.limits.push(l);
+	}
+	domain(x) {
+		this.domains.push(x);
+	}
+	gpio(x) {
+		this.gpios.push(x);
+	}
+	usbPath(x) {
+		this.usb.push(x);
+	}
+	/** The module's sim.limits, as resolved limits of the part (spec 3.1). */
+	partLimits(p, m, skipKinds = []) {
+		for (const l of simOf(m)?.limits ?? []) {
+			if (skipKinds.includes(l.kind)) continue;
+			const what = "pin" in l.of ? l.of.pin : "domain" in l.of ? l.of.domain : "part";
+			this.limit({
+				part: p.uid,
+				of: l.of,
+				kind: l.kind,
+				...l.conditions ? { conditions: l.conditions } : {},
+				value: {
+					value: l.value,
+					basis: l.provenance,
+					label: `${m.id}.${this.ref(p.uid)}.limits.${l.kind}.${what}`
+				}
+			});
+		}
+	}
+	/** Whether an AC-DC converter's mains input is powered in the saved contact state (spec 4 table). */
+	converterPowered(uid) {
+		if (!this.converters) this.converters = convertersInState(this.d, (part, groupId) => {
+			const m = this.module(part.module);
+			const g = m && switchGroups(m).find((x) => x.id === groupId);
+			return !!m && !!g && isActive(contactPosition(part, m, g, this.isHeld(part.uid, groupId)));
+		});
+		return this.converters.get(uid)?.state === "powered";
+	}
+	/** Whether a plug-in supply's AC side is on the sheet: put in an outlet (mounted) or its plug or AC input wired. */
+	acOnSheet(p, m) {
+		if (p.mount) return true;
+		const info = mainsOf(m);
+		const ac = /* @__PURE__ */ new Set([
+			info.acInput?.a,
+			info.acInput?.b,
+			...info.plug?.profiles.flatMap((pr) => pr.contacts.map((c) => c.pin)) ?? []
+		]);
+		return this.d.connections.some((c) => [c.from, c.to].some((e) => e.part === p.uid && ac.has(e.pin)));
+	}
+	isHeld(uid, group) {
+		return this.opts.held?.part === uid && this.opts.held.group === group;
+	}
+	contactOhms(p, m) {
+		const q = simOf(m)?.modelParams?.contactResistance;
+		return this.param(q ?? CONTACT_OHMS, `${m.id}.${this.ref(p.uid)}.contactResistance`);
+	}
+	contact(p, m, id, x, y) {
+		const a = this.tap(p.uid, x);
+		const b = this.tap(p.uid, y);
+		if (a && b) this.add({
+			kind: "resistor",
+			id,
+			part: p.uid,
+			a,
+			b,
+			ohms: this.contactOhms(p, m),
+			role: "contact"
+		});
+	}
+	part(p) {
+		try {
+			this.compile(p);
+		} finally {
+			this.current = null;
+		}
+	}
+	compile(p) {
+		const m = this.module(p.module);
+		if (!m) return this.unsimulated(p.uid, "its module is not embedded in the sheet");
+		if (isNetLabel(m) || isBoard(m)) return;
+		const model = modelOf(m);
+		if (model === "connector") return;
+		const ref = this.ref(p.uid);
+		this.current = p.uid;
+		this.parts[p.uid] = {
+			uid: p.uid,
+			ref,
+			designator: p.designator,
+			module: m.id,
+			name: m.name,
+			model
+		};
+		const t = terminals(m);
+		const label = (path) => `${m.id}.${ref}.${path}`;
+		switch (model) {
+			case "resistor": {
+				const a = this.tap(p.uid, t.a);
+				const b = this.tap(p.uid, t.b);
+				const ohms = paramValue(p, m, "resistance");
+				if (ohms === null) return this.skip(p.uid, "no resistance value");
+				if (a && b) this.add({
+					kind: "resistor",
+					id: `${p.uid}.r`,
+					part: p.uid,
+					a,
+					b,
+					ohms: ohms === 0 ? this.contactOhms(p, m) : this.user(ohms, label("resistance")),
+					role: ohms === 0 ? "contact" : "resistor"
+				});
+				return this.partLimits(p, m);
+			}
+			case "potentiometer": {
+				const total = paramValue(p, m, "resistance") ?? 1e4;
+				const raw = p.values?.position;
+				const pos = isNum(raw) && raw >= 0 && raw <= 1 ? raw : .5;
+				const a = this.tap(p.uid, t.a);
+				const w = this.tap(p.uid, t.wiper);
+				const b = this.tap(p.uid, t.b);
+				if (a && w) this.add({
+					kind: "resistor",
+					id: `${p.uid}.aw`,
+					part: p.uid,
+					a,
+					b: w,
+					ohms: this.user(Math.max(1, total * pos), label("resistance")),
+					role: "resistor"
+				});
+				if (w && b) this.add({
+					kind: "resistor",
+					id: `${p.uid}.wb`,
+					part: p.uid,
+					a: w,
+					b,
+					ohms: this.user(Math.max(1, total * (1 - pos)), label("resistance")),
+					role: "resistor"
+				});
+				return this.partLimits(p, m);
+			}
+			case "led": {
+				const a = this.tap(p.uid, t.anode);
+				const k = this.tap(p.uid, t.cathode);
+				const params = isObj(m.electrical) && isObj(m.electrical.params) ? m.electrical.params : {};
+				const colourDefault = isObj(params.color) && typeof params.color.default === "string" ? params.color.default : "red";
+				const colour = typeof p.values?.color === "string" ? p.values.color : colourDefault;
+				const inBand = (v) => v !== null && Number.isFinite(v) && v >= 1 && v <= 5;
+				const fallback = numParam({
+					...p,
+					values: void 0
+				}, m, "forwardVoltage");
+				const vfDefault = inBand(fallback) ? fallback : 2;
+				const vf = numParam(p, m, "forwardVoltage") ?? vfDefault;
+				if (!inBand(vf)) this.note(`${ref}: forwardVoltage ${vf} V is outside 1.0 to 5.0 V; the default ${vfDefault} V is used`);
+				const fit = ledModel(colour, inBand(vf) ? vf : vfDefault);
+				if (!fit.known) this.note(`${ref}: no LED model for the colour "${colour}"; a red LED's curve is used`);
+				if (a && k) this.add({
+					kind: "diode",
+					id: `${p.uid}.led`,
+					part: p.uid,
+					a,
+					k,
+					model: fit.model,
+					role: "led"
+				});
+				const sim = simOf(m)?.limits ?? [];
+				const legacy = numParam(p, m, "maxCurrent");
+				if (!sim.some((l) => l.kind === "current") && legacy !== null) this.limit({
+					part: p.uid,
+					of: { part: true },
+					kind: "current",
+					value: {
+						value: legacy,
+						basis: "representative",
+						label: label("maxCurrent")
+					}
+				});
+				const abs = LED_COLOURS[fit.colour].absMaxCurrent;
+				if (!sim.some((l) => l.kind === "absMaxCurrent") && abs && fit.known) this.limit({
+					part: p.uid,
+					of: { part: true },
+					kind: "absMaxCurrent",
+					value: {
+						value: abs.value,
+						basis: "representative",
+						label: `led-colours.${fit.colour}.absMaxCurrent`
+					}
+				});
+				return this.partLimits(p, m);
+			}
+			case "voltage_source": {
+				const plus = this.tap(p.uid, t.pos);
+				const minus = this.tap(p.uid, t.neg);
+				const volts = paramValue(p, m, "voltage");
+				if (volts === null) return this.skip(p.uid, "no voltage value");
+				const sim = simOf(m);
+				const rOver = simOverride(p, "sim.rInternal");
+				const rInternal = rOver !== null ? this.user(rOver, label("rInternal")) : this.param(sim?.modelParams?.rInternal ?? cellEstimate(volts).rInternal, label("rInternal"));
+				const iOver = simOverride(p, "sim.imax");
+				const limit = sim?.limits?.find((l) => l.kind === "sourceCurrent");
+				const imax = iOver !== null ? this.user(iOver, label("imax")) : limit ? {
+					value: limit.value,
+					basis: limit.provenance,
+					label: label("limits.sourceCurrent")
+				} : void 0;
+				const id = `${p.uid}.cell`;
+				if (plus && minus) this.add({
+					kind: "cell",
+					id,
+					part: p.uid,
+					p: plus,
+					n: minus,
+					int: `${id}#int`,
+					volts: this.user(volts, label("voltage")),
+					rInternal,
+					...imax ? { imax } : {},
+					role: "cell"
+				});
+				if (iOver === null) return this.partLimits(p, m);
+				this.partLimits(p, m, ["sourceCurrent"]);
+				return this.limit({
+					part: p.uid,
+					of: { part: true },
+					kind: "sourceCurrent",
+					value: this.user(iOver, label("imax"))
+				});
+			}
+			case "capacitor": {
+				const a = this.tap(p.uid, t.a);
+				const b = this.tap(p.uid, t.b);
+				if (a && b) this.add({
+					kind: "capacitor",
+					id: `${p.uid}.c`,
+					part: p.uid,
+					a,
+					b,
+					farads: paramValue(p, m, "capacitance") ?? 1e-7
+				});
+				return;
+			}
+			case "fuse": {
+				if (partSetting(p, m, "fuse") !== "absent") for (const [i, e] of mainsOf(m).protective.entries()) this.contact(p, m, `${p.uid}.fuse.${i + 1}`, e.from, e.to);
+				const rating = paramValue(p, m, "fuseRating");
+				if (rating !== null) this.limit({
+					part: p.uid,
+					of: { part: true },
+					kind: "fuse",
+					value: this.user(rating, label("fuseRating"))
+				});
+				return;
+			}
+			case "switch":
+			case "relay":
+			case "ssr":
+				for (const g of switchGroups(m)) {
+					const active = isActive(contactPosition(p, m, g, this.isHeld(p.uid, g.id)));
+					g.poles.forEach((pole, i) => {
+						for (const [contact, to] of [["no", pole.no], ["nc", pole.nc]]) {
+							const a = to ? this.tap(p.uid, pole.com) : null;
+							const b = to ? this.tap(p.uid, to) : null;
+							if (a && b) this.add({
+								kind: "switch",
+								id: `${p.uid}.${g.id}.${i + 1}.${contact}`,
+								part: p.uid,
+								group: g.id,
+								contact,
+								latching: g.kind === "switch" && !g.momentary,
+								a,
+								b,
+								closed: active === (contact === "no"),
+								ron: this.contactOhms(p, m)
+							});
+						}
+					});
+					if (g.kind !== "switch") this.note(`${ref}: shown at rest; coil switching is simulated with firmware`);
+				}
+				if (simOf(m)?.power) return powerPart(this, p, m);
+				return this.partLimits(p, m);
+		}
+		if (simOf(m)?.power) return powerPart(this, p, m);
+		if (mainsOf(m).any) return this.skip(p.uid, "mains wiring is not simulated");
+		this.skip(p.uid, hasPowerPin(m) ? NO_POWER_DATA : "no simulation model");
+	}
+	done() {
+		const taps = [...this.tapsByKey.values()].sort((a, b) => naturalCompare(a.part, b.part) || (a.pin < b.pin ? -1 : a.pin > b.pin ? 1 : 0));
+		const devices = [...this.devices].sort((a, b) => naturalCompare(a.part, b.part) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+		const open = /* @__PURE__ */ new Map();
+		for (const d of devices) {
+			if (d.kind !== "switch" || !d.latching || d.contact !== "no" || d.closed) continue;
+			const key = JSON.stringify([d.part, d.group]);
+			if (!open.has(key)) open.set(key, {
+				part: d.part,
+				group: d.group,
+				pairs: []
+			});
+			open.get(key).pairs.push([d.a, d.b]);
+		}
+		const pinNet = {};
+		for (const [k, net] of [...this.netOfKey].sort((a, b) => a[0] < b[0] ? -1 : 1)) pinNet[k] = net;
+		return {
+			nets: [...new Set(taps.map((t) => t.net))].sort(),
+			taps,
+			devices,
+			parts: Object.fromEntries(Object.entries(this.parts).sort((a, b) => naturalCompare(a[0], b[0]))),
+			refs: Object.fromEntries(this.d.parts.map((p) => p.uid).sort(naturalCompare).map((uid) => [uid, this.ref(uid)])),
+			domains: this.domains,
+			limits: this.limits,
+			gpio: this.gpios,
+			usb: this.usb,
+			pinNet,
+			mains: [...this.mainsKeys].sort(),
+			openContacts: [...open.values()],
+			unsimulated: this.unsim,
+			unaccounted: Object.keys(this.parts).sort(naturalCompare).flatMap((uid) => {
+				const items = simOf(this.modulesOf(uid))?.unaccounted ?? [];
+				return items.length ? [{
+					part: uid,
+					items
+				}] : [];
+			}),
+			notes: [...new Set(this.notes.map((n) => n.text))]
+		};
+	}
+};
+function buildCircuit(d, opts = {}) {
+	const b = new Builder(d, opts);
+	for (const p of [...d.parts].sort((x, y) => naturalCompare(x.uid, y.uid))) b.part(p);
+	usbLinks(b, d);
+	return b.done();
+}
+//#endregion
+//#region src/sim/results.ts
+var NO_OUTSIDE = {
+	nets: /* @__PURE__ */ new Set(),
+	parts: /* @__PURE__ */ new Set(),
+	rails: /* @__PURE__ */ new Set()
+};
+var RANK = {
+	user: 0,
+	datasheet: 0,
+	representative: 1,
+	estimate: 2
+};
+/** The weakest provenance among the inputs (user = datasheet > representative > estimate); topology with none (spec 5.1). */
+function basisOf(params) {
+	if (!params.length) return "topology";
+	const worst = Math.max(...params.map((p) => RANK[p.basis]));
+	if (worst === 2) return "estimate";
+	if (worst === 1) return "representative";
+	return params.some((p) => p.basis === "datasheet") ? "datasheet" : "user";
+}
+var NET = netNode("");
+/** A node's display name: a net node's name, a pin tap's net, else the node id (an internal node). */
+var nameOf = (c, node) => node.startsWith(NET) ? node.slice(NET.length) : c.taps.find((t) => t.node === node)?.net ?? node;
+var trustOf = (out, net, part) => out.nets.has(net) || part !== void 0 && out.parts.has(part) ? "outside-model" : "ok";
+/** A solved, non-floating node's island (spec 2: islandOf includes floating nodes, which a tie gives a solver number). */
+function islandOf(cls, raw, node) {
+	return nodeState(cls, node) === "floating" || raw.v[node] === void 0 || !Number.isFinite(raw.v[node]) ? void 0 : cls.islandOf.get(node);
+}
+/** A node's voltage to its island's reference, or floating (spec 4.4). */
+function voltageOf(c, cls, raw, node, out, part) {
+	const isl = islandOf(cls, raw, node);
+	if (isl === void 0) return { kind: "floating" };
+	const ref = cls.islands[isl].reference;
+	return {
+		kind: "value",
+		value: raw.v[node] - (raw.v[ref] ?? 0),
+		reference: nameOf(c, ref),
+		trust: trustOf(out, nameOf(c, node), part)
+	};
+}
+/** The voltage between two nodes of one island, or floating. Its reference is `b`, the row's own return, not spec 4.4's island reference (which node readings name). */
+function across(c, cls, raw, a, b, out, part) {
+	const ia = islandOf(cls, raw, a);
+	if (ia === void 0 || ia !== islandOf(cls, raw, b)) return { kind: "floating" };
+	return {
+		kind: "value",
+		value: raw.v[a] - raw.v[b],
+		reference: nameOf(c, b),
+		trust: trustOf(out, nameOf(c, a), part)
+	};
+}
+function readRun(c, cls, raw, out = NO_OUTSIDE) {
+	const mains = new Set(c.mains.map((k) => c.pinNet[k]).filter((n) => !!n));
+	const nets = {};
+	for (const net of [...new Set(Object.values(c.pinNet))].sort()) nets[net] = mains.has(net) ? {
+		kind: "undefined",
+		why: "mains wiring is not simulated"
+	} : voltageOf(c, cls, raw, netNode(net), out);
+	const parts = {};
+	for (const uid of Object.keys(c.parts)) {
+		const taps = c.taps.filter((t) => t.part === uid);
+		const trust = out.parts.has(uid) ? "outside-model" : "ok";
+		const pins = {};
+		let power = 0;
+		const islands = /* @__PURE__ */ new Set();
+		for (const t of taps) {
+			const i = raw.pins[uid]?.[t.pin];
+			const isl = i === void 0 || !Number.isFinite(i) ? void 0 : islandOf(cls, raw, t.node);
+			if (isl === void 0) {
+				pins[t.pin] = {
+					kind: "indeterminate",
+					why: "nothing drives this pin (floating)"
+				};
+				continue;
+			}
+			pins[t.pin] = {
+				kind: "value",
+				value: i,
+				trust
+			};
+			power += raw.v[t.node] * i;
+			islands.add(isl);
+		}
+		const [only] = islands;
+		const run = {
+			pins,
+			power: islands.size === 1 ? {
+				kind: "value",
+				value: power,
+				reference: nameOf(c, cls.islands[only].reference),
+				trust
+			} : {
+				kind: "undefined",
+				why: !taps.length ? "not simulated" : islands.size ? "it spans separate circuits" : "nothing drives it (floating)"
+			}
+		};
+		const led = c.devices.find((d) => d.kind === "diode" && d.role === "led" && d.part === uid);
+		if (led) {
+			const anode = c.taps.find((t) => t.node === led.a);
+			const i = anode && pins[anode.pin]?.kind === "value" ? raw.pins[uid]?.[anode.pin] : void 0;
+			run.state = i !== void 0 && Math.abs(i) > 1e-4 ? "lit" : "dark";
+		}
+		parts[uid] = run;
+	}
+	return {
+		nets,
+		parts
+	};
+}
+var amps$1 = (value, trust) => value === void 0 || !Number.isFinite(value) ? {
+	kind: "indeterminate",
+	why: "not solved (floating)"
+} : {
+	kind: "value",
+	value,
+	trust
+};
+function budget(c, cls, raws, out = NO_OUTSIDE) {
+	const both = (f) => ({
+		typical: f(raws.typical, "typical"),
+		peak: f(raws.peak, "peak")
+	});
+	const headroom = (limit, a) => limit !== void 0 && a.typical.kind === "value" && a.peak.kind === "value" ? { headroom: limit - Math.max(Math.abs(a.typical.value), Math.abs(a.peak.value)) } : {};
+	const ref = (uid) => c.parts[uid]?.ref ?? uid;
+	const rows = [];
+	for (const d of c.devices) {
+		if (d.kind === "cell") {
+			const lim = d.imax;
+			const a = both((raw) => amps$1(raw.dev[d.id], out.parts.has(d.part) ? "outside-model" : "ok"));
+			rows.push({
+				id: d.id,
+				kind: "source",
+				part: d.part,
+				label: `${d.role === "cell" ? ref(d.part) : `${ref(d.part)} ${d.domain ?? "output"}`} delivering`,
+				volts: both((raw) => across(c, cls, raw, d.p, d.n, out, d.part)),
+				amps: a,
+				...lim ? { limit: {
+					value: lim.value,
+					kind: lim.label.endsWith("sourceCurrent") ? "sourceCurrent" : "imax",
+					basis: lim.basis
+				} } : {},
+				...headroom(lim?.value, a),
+				basis: basisOf([
+					d.volts,
+					d.rInternal,
+					...lim ? [lim] : []
+				])
+			});
+		}
+		if (d.kind === "rail") {
+			const a = both((raw) => amps$1(raw.dev[d.id], out.rails.has(d.id) ? "outside-model" : "ok"));
+			const r = d.rail;
+			rows.push({
+				id: d.id,
+				kind: "rail",
+				part: d.part,
+				label: `${ref(d.part)} ${r.output} ${r.kind === "ldo" ? "regulator" : r.kind}`,
+				volts: both((raw) => across(c, cls, raw, d.out, d.ret, out, d.part)),
+				amps: a,
+				...r.ioutMax ? { limit: {
+					value: r.ioutMax.value,
+					kind: "ioutMax",
+					basis: r.ioutMax.basis
+				} } : {},
+				...headroom(r.ioutMax?.value, a),
+				basis: basisOf([
+					r.vout,
+					r.dropout,
+					r.ioutMax,
+					r.iq,
+					r.rout
+				].filter((x) => x !== void 0))
+			});
+		}
+	}
+	for (const dom of c.domains) {
+		const loads = c.devices.filter((d) => d.kind === "load" && d.part === dom.part && d.domain === dom.name);
+		const volts = both((raw) => across(c, cls, raw, dom.pin, dom.ret, out, dom.part));
+		const tap = c.taps.find((t) => t.node === dom.pin);
+		const a = both((raw, corner) => {
+			const v = volts[corner];
+			const i = tap && raw.pins[tap.part]?.[tap.pin];
+			return v.kind === "value" && i !== void 0 ? amps$1(Math.abs(i), v.trust) : amps$1(void 0, "ok");
+		});
+		const ownDraw = both((raw, corner) => {
+			const v = volts[corner];
+			if (v.kind !== "value") return amps$1(void 0, "ok");
+			return amps$1(loads.reduce((s, l) => s + (corner === "peak" ? l.peak.value : l.typical.value) * foldValue(v.value, l.minVolts.value), 0), v.trust);
+		});
+		rows.push({
+			id: `${dom.part}.domain.${dom.name}`,
+			kind: "domain",
+			part: dom.part,
+			label: `${ref(dom.part)} ${dom.name}`,
+			volts,
+			amps: a,
+			ownDraw,
+			basis: basisOf(loads.flatMap((l) => [l.typical, l.peak]))
+		});
+	}
+	return rows;
+}
+var NOT_SIMULATED = {
+	pins: {},
+	power: {
+		kind: "undefined",
+		why: "not simulated"
+	}
+};
+function probeReadings(probes, c, corners) {
+	return probes.map((p) => {
+		const base = {
+			id: p.id,
+			...p.name ? { name: p.name } : {},
+			at: p.at
+		};
+		if (p.at.pin === void 0) return {
+			...base,
+			part: {
+				typical: corners.typical.parts[p.at.part] ?? NOT_SIMULATED,
+				peak: corners.peak.parts[p.at.part] ?? NOT_SIMULATED
+			}
+		};
+		const net = c.pinNet[nodeKey(p.at.part, p.at.pin)];
+		const read = (run) => net !== void 0 && run.nets[net] || { kind: "floating" };
+		return {
+			...base,
+			voltage: {
+				typical: read(corners.typical),
+				peak: read(corners.peak)
+			}
+		};
+	});
+}
+//#endregion
+//#region src/sim/findings.ts
+var V = (x) => formatValue(Number(x.toPrecision(3)), "V");
+var A = (x) => formatValue(Number(x.toPrecision(3)), "A");
+var W = (x) => formatValue(Number(x.toPrecision(3)), "W");
+var refOf = (c, uid) => c.refs[uid] ?? uid;
+var plural$1 = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+/** Every parameter a device was built from: what sim-estimate counts. */
+function deviceParams(d) {
+	switch (d.kind) {
+		case "resistor": return [d.ohms];
+		case "cell": return [
+			d.volts,
+			d.rInternal,
+			...d.imax ? [d.imax] : []
+		];
+		case "load": return [
+			d.typical,
+			d.peak,
+			d.minVolts
+		];
+		case "switch": return [d.ron];
+		case "gpio": {
+			const p = d.params;
+			return [
+				p.outputResistance,
+				p.pullup,
+				p.pulldown,
+				p.leakage
+			].filter((x) => !!x);
+		}
+		case "rail": {
+			const r = d.rail;
+			return [
+				r.vout,
+				r.dropout,
+				r.iq,
+				r.ioutMax,
+				r.efficiency,
+				r.vinMin,
+				r.vinMax,
+				r.rout,
+				r.minLoad?.amps
+			].filter((p) => !!p);
+		}
+		default: return [];
+	}
+}
+/**
+* The low paths (spec 5.2): wire joins (a pin tap to its net node), closed switch contacts, jumpers
+* and fuses (`contact` resistors) and USB cable conductors, as a union-find over node ids with the
+* part each step goes through.
+*/
+function lowGraph(c) {
+	const parent = /* @__PURE__ */ new Map();
+	const adj = /* @__PURE__ */ new Map();
+	const find = (x) => {
+		let r = x;
+		while (parent.has(r) && parent.get(r) !== r) r = parent.get(r);
+		return r;
+	};
+	const link = (a, b, part) => {
+		for (const n of [a, b]) if (!parent.has(n)) parent.set(n, n);
+		const [ra, rb] = [find(a), find(b)];
+		if (ra !== rb) parent.set(ra, rb);
+		adj.set(a, [...adj.get(a) ?? [], {
+			to: b,
+			part
+		}]);
+		adj.set(b, [...adj.get(b) ?? [], {
+			to: a,
+			part
+		}]);
+	};
+	for (const t of c.taps) link(netNode(t.net), t.node, null);
+	for (const d of c.devices) if (d.kind === "resistor" && (d.role === "contact" || d.role === "cable") || d.kind === "switch" && d.closed) link(d.a, d.b, d.part);
+	/** The parts a low path from a to b passes through (breadth first, so the shortest). */
+	const pathParts = (a, b) => {
+		const seen = /* @__PURE__ */ new Map([[a, null]]);
+		const queue = [a];
+		for (let q = 0; q < queue.length && !seen.has(b); q++) for (const e of adj.get(queue[q]) ?? []) if (!seen.has(e.to)) {
+			seen.set(e.to, {
+				from: queue[q],
+				part: e.part
+			});
+			queue.push(e.to);
+		}
+		const parts = [];
+		for (let at = seen.get(b); at; at = seen.get(at.from)) if (at.part && !parts.includes(at.part)) parts.unshift(at.part);
+		return parts;
+	};
+	return {
+		same: (a, b) => parent.has(a) && parent.has(b) && find(a) === find(b),
+		pathParts
+	};
+}
+function sources(c) {
+	return c.devices.flatMap((d) => {
+		if (d.kind === "cell") return [{
+			device: d.id,
+			part: d.part,
+			label: refOf(c, d.part),
+			p: d.p,
+			n: d.n,
+			volts: d.volts,
+			blocks: false,
+			rail: false
+		}];
+		if (d.kind === "rail" && d.rail.vout) return [{
+			device: d.id,
+			part: d.part,
+			label: `${refOf(c, d.part)} ${d.rail.output}`,
+			p: d.out,
+			n: d.ret,
+			volts: d.rail.vout,
+			blocks: d.rail.reverse === "blocks",
+			rail: true
+		}];
+		return [];
+	});
+}
+function topologyFindings(c, cls) {
+	const drafts = [];
+	const shortedRails = /* @__PURE__ */ new Set();
+	const g = lowGraph(c);
+	const srcs = sources(c);
+	const shorted = /* @__PURE__ */ new Set();
+	for (const s of srcs) {
+		if (!g.same(s.p, s.n)) continue;
+		shorted.add(s.device);
+		const path = g.pathParts(s.p, s.n);
+		const via = path.filter((p) => p !== s.part);
+		const through = andList([...path.map((p) => p === s.part ? `${refOf(c, p)} itself` : refOf(c, p)), "wires"]);
+		if (s.rail) shortedRails.add(s.device);
+		drafts.push({
+			code: "sim-short",
+			severity: "error",
+			parts: [s.part, ...via],
+			inputs: [],
+			key: `sim-short|${s.device}`,
+			message: s.rail ? `${s.label} output is shorted to its return through ${through}: the regulator is outside its model, so the voltages on it cannot be trusted.` : `${s.label} is shorted: its + and - are joined through ${through}. Nothing limits the current, so ${s.label} and the wires can overheat.`
+		});
+	}
+	const fighters = srcs.filter((s) => !s.blocks && !shorted.has(s.device));
+	for (let i = 0; i < fighters.length; i++) for (let j = i + 1; j < fighters.length; j++) {
+		const [a, b] = [fighters[i], fighters[j]];
+		if (a.part === b.part && a.p === b.p || !g.same(a.p, b.p) || !g.same(a.n, b.n) || Math.abs(a.volts.value - b.volts.value) <= .1) continue;
+		drafts.push({
+			code: "sim-source-conflict",
+			severity: "error",
+			parts: [a.part, b.part],
+			inputs: [a.volts, b.volts],
+			key: `sim-source-conflict|${a.device}|${b.device}`,
+			message: `${a.label} (${V(a.volts.value)}) and ${b.label} (${V(b.volts.value)}) are wired in parallel, plus to plus and minus to minus: the higher one drives current into the lower one, which can damage both.`
+		});
+	}
+	const unknown = new Set(c.unsimulated.map((u) => u.part));
+	for (const gp of c.gpio) {
+		if (gp.state !== "input" || pinState(c, cls, gp.key) !== "floating") continue;
+		const others = Object.entries(c.pinNet).filter(([k, n]) => k !== gp.key && n === c.pinNet[gp.key]).map(([k]) => JSON.parse(k)[0]);
+		if (others.length && !others.some((uid) => uid !== gp.part && unknown.has(uid))) drafts.push({
+			code: "sim-floating-input",
+			severity: "warning",
+			parts: [gp.part],
+			inputs: [],
+			key: `sim-floating-input|${gp.part}|${gp.pin}`,
+			message: `${refOf(c, gp.part)} ${gp.pin} is an input with nothing driving it: it floats, so it reads at random. Wire it to a signal, add a pull-up or pull-down resistor, or set its simulated state to input-pullup or input-pulldown.`
+		});
+	}
+	const missing = [...new Set(c.unsimulated.filter((u) => u.reason === NO_POWER_DATA).map((u) => u.part))].sort(naturalCompare);
+	if (missing.length) {
+		const designators = missing.map((uid) => refOf(c, uid));
+		drafts.push({
+			code: "sim-incomplete",
+			severity: "note",
+			parts: missing,
+			inputs: [],
+			key: "sim-incomplete",
+			message: `${plural$1(missing.length, "powered part")} ${missing.length === 1 ? "has" : "have"} no power data, so ${missing.length === 1 ? "it is" : "they are"} not simulated: ${andList(designators)}.`
+		});
+	}
+	const estimates = /* @__PURE__ */ new Map();
+	for (const p of [...c.devices.flatMap(deviceParams), ...c.limits.map((l) => l.value)]) if (p.basis === "estimate") estimates.set(p.label, p);
+	if (estimates.size) drafts.push({
+		code: "sim-estimate",
+		severity: "note",
+		parts: [...new Set(c.devices.filter((d) => deviceParams(d).some((p) => p.basis === "estimate")).map((d) => d.part))].sort(naturalCompare),
+		inputs: [...estimates.values()],
+		key: "sim-estimate",
+		message: `${plural$1(estimates.size, "value")} in this result ${estimates.size === 1 ? "is an estimate" : "are estimates"}: ${[...estimates.keys()].join(", ")}.`
+	});
+	return {
+		drafts,
+		shortedRails
+	};
+}
+var ORDER = {
+	error: 0,
+	warning: 1,
+	note: 2
+};
+/** The severity rules of spec 4.5 and 5.2, then one finding per key (typical wins over peak). */
+function finalize(drafts, peakNote) {
+	const out = /* @__PURE__ */ new Map();
+	for (const d of [...drafts].sort((a, b) => Number(a.corner === "peak") - Number(b.corner === "peak"))) {
+		if (out.has(d.key)) continue;
+		const basis = basisOf(d.inputs);
+		let severity = d.severity;
+		let message = d.message;
+		if (d.corner === "peak") {
+			if (severity === "error") severity = "warning";
+			message = `At peak${peakNote ? ` (${peakNote})` : ""}: ${message}`;
+		}
+		if (severity === "error" && (basis === "representative" || basis === "estimate")) {
+			severity = "warning";
+			const uncertain = d.inputs.filter((p) => p.basis === "representative" || p.basis === "estimate").map((p) => p.label);
+			message = `Likely: ${message} This is decided on ${basis} values: ${uncertain.join(", ")}.`;
+		}
+		out.set(d.key, {
+			code: d.code,
+			severity,
+			parts: d.parts,
+			message,
+			...d.corner ? { corner: d.corner } : {},
+			basis,
+			inputs: d.inputs.map((p) => `${p.label}: ${p.basis}`),
+			...d.raw ? { raw: d.raw } : {}
+		});
+	}
+	return [...out.values()].sort((a, b) => ORDER[a.severity] - ORDER[b.severity] || (a.code < b.code ? -1 : a.code > b.code ? 1 : 0) || naturalCompare(a.parts.join(), b.parts.join()));
+}
+/**
+* A run ngspice could not solve (spec 5.2): plain words, the parts on the nodes it named (node ids,
+* as Compiled.nodesIn gives them: a net, a pin tap or a device's internal node), its text kept as raw.
+* With no circuit (the solve threw before one was built) it names no parts.
+*/
+function noConvergence(c, error, nodes) {
+	const named = new Set(nodes);
+	const parts = !c ? [] : [.../* @__PURE__ */ new Set([...c.taps.filter((t) => named.has(netNode(t.net)) || named.has(t.node)).map((t) => t.part), ...c.devices.filter((d) => deviceNodes(d).some((n) => named.has(n))).map((d) => d.part)])].sort(naturalCompare);
+	return {
+		code: "sim-no-convergence",
+		severity: "error",
+		parts,
+		basis: "topology",
+		inputs: [],
+		raw: error,
+		message: `The simulator could not solve this circuit; this may be our model, not your circuit.${parts.length ? ` The parts on the nets it could not solve: ${andList(parts.map((p) => refOf(c, p)))}.` : ""}`
+	};
+}
+/** A node's net in node form (netNode of a pin tap's net), else the node itself (an internal node). */
+var netOfNode = (c) => {
+	const m = new Map(c.taps.map((t) => [t.node, netNode(t.net)]));
+	return (node) => m.get(node) ?? node;
+};
+/** The value findings of one solved corner (spec 5.2), and the rails that ran outside their model. */
+function runDrafts(c, cls, raw, corner) {
+	const drafts = [];
+	const outside = /* @__PURE__ */ new Set();
+	const add = (d) => void drafts.push({
+		...d,
+		corner
+	});
+	const solved = (n) => Number.isFinite(raw.v[n]);
+	const v = (n) => raw.v[n];
+	const on = (pin, ret) => powered(c, cls, pin, ret) && solved(pin) && solved(ret);
+	const pinI = (part, pin) => {
+		const i = raw.pins[part]?.[pin];
+		return i !== void 0 && Number.isFinite(i) ? i : void 0;
+	};
+	const taps = (part) => c.taps.filter((t) => t.part === part);
+	const netOf = netOfNode(c);
+	const ref = (uid) => refOf(c, uid);
+	const fmt = (x, unit) => unit === "A" ? A(x) : unit === "V" ? V(x) : W(x);
+	const cond = (l) => l.conditions ? ` (${l.conditions})` : "";
+	const delivered = (part, domain) => {
+		const src = c.devices.find((x) => x.kind === "cell" && x.part === part && (domain === void 0 || x.domain === domain));
+		const x = src ? raw.dev[src.id] : void 0;
+		return x === void 0 || !Number.isFinite(x) ? null : {
+			value: Math.abs(x),
+			what: `${ref(part)} delivers ${A(Math.abs(x))}`,
+			unit: "A"
+		};
+	};
+	const measure = (l) => {
+		const r = ref(l.part);
+		if ("pin" in l.of) {
+			const i = pinI(l.part, l.of.pin);
+			return i === void 0 ? null : {
+				value: Math.abs(i),
+				what: `${r} ${l.of.pin} carries ${A(Math.abs(i))}`,
+				unit: "A"
+			};
+		}
+		if ("domain" in l.of) {
+			const name = l.of.domain;
+			const dom = c.domains.find((x) => x.part === l.part && x.name === name);
+			if (!dom) return null;
+			if (l.kind === "vinMax" || l.kind === "vinMin") {
+				if (!on(dom.pin, dom.ret)) return null;
+				const x = v(dom.pin) - v(dom.ret);
+				return {
+					value: x,
+					what: `${r} ${name} is at ${V(x)}`,
+					unit: "V"
+				};
+			}
+			if (l.kind === "ioTotalCurrent") {
+				const sum = c.gpio.filter((g) => g.part === l.part && g.domain === name && (g.state === "high" || g.state === "low")).reduce((s, g) => s + Math.abs(pinI(g.part, g.pin) ?? 0), 0);
+				return {
+					value: sum,
+					what: `${r}'s GPIO pins on ${name} carry ${A(sum)} in all`,
+					unit: "A"
+				};
+			}
+			return delivered(l.part, name);
+		}
+		if (l.kind === "power") {
+			const p = Math.abs(taps(l.part).reduce((s, t) => s + (solved(t.node) ? v(t.node) : 0) * (pinI(l.part, t.pin) ?? 0), 0));
+			return {
+				value: p,
+				what: `${r} dissipates ${W(p)}`,
+				unit: "W"
+			};
+		}
+		if (l.kind === "sourceCurrent") return delivered(l.part);
+		if (l.kind === "vinMax" || l.kind === "vinMin") return null;
+		const i = Math.max(0, ...taps(l.part).map((t) => Math.abs(pinI(l.part, t.pin) ?? 0)));
+		return {
+			value: i,
+			what: `${r} carries ${A(i)}`,
+			unit: "A"
+		};
+	};
+	const subject = (l) => `${l.part}|${JSON.stringify(l.of)}`;
+	const overAbs = /* @__PURE__ */ new Set();
+	for (const l of c.limits) {
+		if (l.kind !== "absMaxCurrent" && l.kind !== "vinMax") continue;
+		const m = measure(l);
+		if (!m || m.value <= l.value.value) continue;
+		overAbs.add(subject(l));
+		add({
+			code: "sim-over-abs-max",
+			severity: "error",
+			parts: [l.part],
+			inputs: [l.value],
+			key: `abs|${subject(l)}|${l.kind}`,
+			message: `${m.what}, above its ${fmt(l.value.value, m.unit)} absolute maximum${cond(l)}: damage is likely.`
+		});
+	}
+	for (const l of c.limits) {
+		if (l.kind === "absMaxCurrent" || l.kind === "vinMax" || overAbs.has(subject(l))) continue;
+		const m = measure(l);
+		if (!m) continue;
+		const under = l.kind === "vinMin";
+		if (under ? m.value >= l.value.value : m.value <= l.value.value) continue;
+		const advice = c.parts[l.part]?.model === "led" ? " Add a series resistor, or a larger one, to bring it under the rating." : "";
+		add({
+			code: "sim-over-limit",
+			severity: "warning",
+			parts: [l.part],
+			inputs: [l.value],
+			key: `limit|${subject(l)}|${l.kind}`,
+			message: `${m.what}, ${under ? "below" : "above"} its ${fmt(l.value.value, m.unit)} ${under ? "minimum" : "rating"}${cond(l)}.${advice}`
+		});
+	}
+	for (const d of c.devices) if (d.kind === "cell" && d.role === "external" && d.imax && (raw.dev[d.id] ?? 0) > d.imax.value) add({
+		code: "sim-over-limit",
+		severity: "warning",
+		parts: [d.part],
+		inputs: [d.imax],
+		key: `imax|${d.id}`,
+		message: `${ref(d.part)} delivers ${A(raw.dev[d.id])}, above the ${A(d.imax.value)} it can supply.`
+	});
+	for (const u of c.usb) {
+		const cable = c.devices.find((x) => x.id === u.vbus);
+		if (cable?.kind !== "resistor" || !cls.driven.has(cable.a) || !solved(cable.a) || !solved(cable.b)) continue;
+		const i = (v(cable.a) - v(cable.b)) / Math.max(cable.ohms.value, 1e-6);
+		if (i > u.limit.value) add({
+			code: "sim-over-limit",
+			severity: "warning",
+			parts: [u.host, u.device],
+			inputs: [u.limit],
+			key: `usb|${u.vbus}`,
+			message: `${ref(u.host)} ${u.hostPort} supplies ${A(i)} over USB to ${ref(u.device)}, above the ${A(u.limit.value)} the port gives.`
+		});
+	}
+	for (const d of c.devices) {
+		if (d.kind !== "rail" || !on(d.in, d.inRet) || !solved(d.out)) continue;
+		const r = d.rail;
+		const iout = raw.dev[d.id] ?? 0;
+		const name = `${ref(d.part)} ${r.output} ${r.kind === "ldo" ? "regulator" : r.kind}`;
+		const outNet = netOf(d.out);
+		const loads = c.devices.filter((x) => x.kind === "load" && netOf(x.p) === outNet);
+		const expecting = c.devices.filter((x) => x.kind === "load" && netOf(x.p) === outNet || (x.kind === "resistor" || x.kind === "diode") && x.role === "rail-input" && netOf(x.a) === outNet);
+		if (r.ioutMax && iout > r.ioutMax.value) {
+			outside.add(d.id);
+			add({
+				code: "sim-outside-model",
+				severity: "warning",
+				parts: [d.part],
+				inputs: [r.ioutMax],
+				key: `outside|${d.id}`,
+				message: `${name} supplies ${A(iout)}, beyond the ${A(r.ioutMax.value)} its model covers: its voltages, and the readings upstream of it, cannot be trusted.`
+			});
+			add({
+				code: "sim-over-limit",
+				severity: "warning",
+				parts: [d.part],
+				inputs: [r.ioutMax],
+				key: `iout|${d.id}`,
+				message: `${name} supplies ${A(iout)}, above its ${A(r.ioutMax.value)} rating.`
+			});
+		}
+		const vin = v(d.in) - v(d.inRet);
+		if (r.kind === "ldo" && solved(d.ctl)) {
+			const vctl = v(d.ctl) - v(d.ret);
+			if (vctl < r.vout.value - .01 && v(d.out) - v(d.ret) <= vctl + .01) add({
+				code: "sim-dropout",
+				severity: "error",
+				parts: [d.part],
+				inputs: [
+					r.vout,
+					r.dropout,
+					...loads.map((l) => corner === "peak" ? l.peak : l.typical)
+				],
+				key: `dropout|${d.id}`,
+				message: `${name} cannot hold ${V(r.vout.value)}: its input is too low (${V(vin)}), so its output follows it down to about ${V(vctl)}.`
+			});
+		}
+		let enabled = true;
+		if (r.kind === "buck" || r.kind === "boost") {
+			const e = enableValue(vin, r.vinMin.value, r.vinMax.value);
+			enabled = e >= .5;
+			if (e > .01 && e < .99) {
+				outside.add(d.id);
+				add({
+					code: "sim-converter-off",
+					severity: "error",
+					parts: [d.part],
+					inputs: [r.vinMin, r.vinMax],
+					key: `edge|${d.id}`,
+					message: `${name}'s input (${V(vin)}) is at the edge of its range; it would cycle on and off, so its output and the readings upstream of it cannot be trusted.`
+				});
+			} else if (!enabled && expecting.length) {
+				const users = [...new Set(expecting.map((x) => x.part))].filter((p) => p !== d.part);
+				add({
+					code: "sim-converter-off",
+					severity: "error",
+					parts: [d.part, ...users],
+					inputs: [r.vinMin, r.vinMax],
+					key: `off|${d.id}`,
+					message: `${name} is off: its input (${V(vin)}) is ${vin < r.vinMin.value ? `below its ${V(r.vinMin.value)} minimum` : `above its ${V(r.vinMax.value)} maximum`}, but ${andList(users.map(ref))} ${users.length === 1 ? "expects" : "expect"} power from it.`
+				});
+			}
+		}
+		if (r.minLoad && enabled && iout < r.minLoad.amps.value) add({
+			code: "sim-min-load",
+			severity: "warning",
+			parts: [d.part],
+			inputs: [r.minLoad.amps],
+			key: `minload|${d.id}`,
+			message: `${name} supplies ${A(iout)}, below the ${A(r.minLoad.amps.value)} it needs to stay on: ${r.minLoad.note}.`
+		});
+	}
+	for (const l of c.devices) {
+		if (l.kind !== "load") continue;
+		if (!on(l.p, l.n)) {
+			if (corner === "typical") {
+				const sw = openSwitchFor(c, l.p, l.n);
+				add({
+					code: "sim-brownout",
+					severity: "warning",
+					parts: sw ? [l.part, sw] : [l.part],
+					inputs: [],
+					key: `unpowered|${l.id}`,
+					message: sw ? `${ref(l.part)} ${l.domain} is not powered in the current state: ${ref(sw)} is open. Set ${ref(sw)} to its operating position to simulate ${ref(l.part)} running.` : `${ref(l.part)} ${l.domain} is not powered in the current state: nothing on the sheet supplies it. Draw its supply (a battery, an adapter, or a computer USB port on its USB socket) to simulate it.`
+				});
+			}
+			continue;
+		}
+		const x = v(l.p) - v(l.n);
+		if (x < l.minVolts.value) add({
+			code: "sim-brownout",
+			severity: "error",
+			parts: [l.part],
+			inputs: [corner === "peak" ? l.peak : l.typical, l.minVolts],
+			key: `brownout|${l.id}`,
+			message: `${ref(l.part)} ${l.domain} is at ${V(x)}, below the ${V(l.minVolts.value)} it needs: it browns out.`
+		});
+	}
+	return {
+		drafts,
+		outside
+	};
+}
+/**
+* Spec 4.2: a rail outside its model marks its output and input nets, and every rail, path and
+* source feeding them, transitively. Paths are rail inputs, switch rails, cables, closed contacts,
+* jumpers and fuses (plain resistors are loads, not supply paths). Nets come back as display names,
+* as readings key them; parts are the marked rails', the paths' and the sources'.
+*/
+function propagate(c, rails) {
+	const netOf = netOfNode(c);
+	const marked = new Set(rails);
+	const nodes = /* @__PURE__ */ new Set();
+	const parts = /* @__PURE__ */ new Set();
+	const railDevs = c.devices.filter((d) => d.kind === "rail");
+	const mark = (d) => {
+		nodes.add(netOf(d.out)).add(netOf(d.in));
+		parts.add(d.part);
+	};
+	const paths = c.devices.flatMap((d) => {
+		if ((d.kind === "resistor" || d.kind === "diode") && (d.role === "rail-input" || d.role === "switch-rail" || d.role === "cable")) return [{
+			part: d.part,
+			a: netOf(d.a),
+			b: netOf(d.kind === "resistor" ? d.b : d.k)
+		}];
+		if (d.kind === "resistor" && d.role === "contact" || d.kind === "switch" && d.closed) return [{
+			part: d.part,
+			a: netOf(d.a),
+			b: netOf(d.b)
+		}];
+		return [];
+	});
+	for (const d of railDevs) if (marked.has(d.id)) mark(d);
+	for (let changed = true; changed;) {
+		changed = false;
+		for (const d of railDevs) if (!marked.has(d.id) && nodes.has(netOf(d.out))) {
+			marked.add(d.id);
+			mark(d);
+			changed = true;
+		}
+		for (const p of paths) if (nodes.has(p.a) !== nodes.has(p.b)) {
+			nodes.add(p.a).add(p.b);
+			parts.add(p.part);
+			changed = true;
+		}
+	}
+	for (const d of c.devices) if (d.kind === "cell" && nodes.has(netOf(d.p))) parts.add(d.part);
+	const NET = netNode("");
+	return {
+		nets: new Set([...nodes].filter((n) => n.startsWith(NET)).map((n) => n.slice(NET.length))),
+		parts,
+		rails: marked
+	};
+}
+/** Every finding of a solve, and what is outside the model (spec 4.1, 4.2, 4.5, 5.2). */
+function analyseFindings(c, cls, raws) {
+	const topo = topologyFindings(c, cls);
+	const typical = runDrafts(c, cls, raws.typical, "typical");
+	const peak = runDrafts(c, cls, raws.peak, "peak");
+	const outside = propagate(c, /* @__PURE__ */ new Set([
+		...topo.shortedRails,
+		...typical.outside,
+		...peak.outside
+	]));
+	const peakNote = [...new Set(c.devices.flatMap((d) => d.kind === "load" && d.peakNote ? [d.peakNote] : []))].join(", ");
+	return {
+		findings: finalize([
+			...topo.drafts,
+			...typical.drafts,
+			...peak.drafts
+		], peakNote),
+		outside
+	};
+}
+//#endregion
+//#region src/sim/session.ts
+async function solve(d, engine, revision, opts = {}) {
+	const c = buildCircuit(d, opts);
+	const cls = classifyCached(c, { kind: "op" });
+	const raws = {};
+	const before = engine.host.runs;
+	let ms = 0;
+	for (const corner of ["typical", "peak"]) {
+		const r = await engine.run(c, {
+			kind: "op",
+			corner
+		}, revision);
+		if (r.status === "unavailable") return {
+			circuit: c,
+			outcome: {
+				status: "unavailable",
+				reason: r.reason
+			}
+		};
+		if (r.status === "failed") return {
+			circuit: c,
+			outcome: {
+				status: "failed",
+				revision,
+				finding: noConvergence(c, r.error, r.nodes)
+			}
+		};
+		raws[corner] = r.raw;
+		ms += r.ms;
+	}
+	const { findings, outside } = analyseFindings(c, cls, raws);
+	const corners = {
+		typical: readRun(c, cls, raws.typical, outside),
+		peak: readRun(c, cls, raws.peak, outside)
+	};
+	const info = engine.host.info;
+	return {
+		circuit: c,
+		outcome: {
+			status: "ok",
+			result: {
+				format: "circuitoon-sim/1",
+				revision,
+				corners,
+				budget: budget(c, cls, raws, outside),
+				findings,
+				unsimulated: c.unsimulated,
+				probes: probeReadings([...d.probes ?? [], ...opts.probes ?? []], c, corners),
+				unaccounted: c.unaccounted,
+				notes: c.notes,
+				engine: {
+					name: "ngspice",
+					version: info?.version ?? "",
+					build: info?.build ?? "",
+					runs: engine.host.runs - before,
+					ms
+				}
+			}
+		}
+	};
+}
+//#endregion
+//#region src/cli/simCmd.ts
+var USAGE$1 = "sim: usage: circuitoon sim <sheet.json|netlist.json> [--probe <ref[.pin]|net:NAME>]...";
+var plural = (n, one) => `${n} ${one}${n === 1 ? "" : "s"}`;
+/**
+* One --probe: "REF.PIN", "REF" or "net:NAME" on the sheet (refs as the netlist names them). A net
+* name is the sheet's (extract's: labels, GND, rails, REF_PIN), else the intent's (the netlist's own
+* names, which a laid-out sheet keeps).
+*/
+function probeOf(spec, d, uidOf, nets, intent, id) {
+	if (spec.startsWith("net:")) {
+		const net = nets.find((n) => n.name === spec.slice(4));
+		if (net) {
+			const pin = [...net.pins].sort((a, b) => naturalCompare(a.ref, b.ref) || naturalCompare(a.name, b.name))[0];
+			return {
+				id,
+				name: spec,
+				at: {
+					part: uidOf.get(pin.ref),
+					pin: pin.name
+				}
+			};
+		}
+		const [p] = intent ? probesForSheet({
+			...intent,
+			probes: [{
+				id,
+				at: spec
+			}]
+		}) : [];
+		const uid = p && (uidOf.get(p.at.part) ?? d.parts.find((x) => x.uid === p.at.part)?.uid);
+		if (!uid) throw new CliError(`sim: --probe ${spec}: no net "${spec.slice(4)}"`, EXIT.input);
+		return {
+			id,
+			name: spec,
+			at: {
+				part: uid,
+				pin: p.at.pin
+			}
+		};
+	}
+	const dot = spec.indexOf(".");
+	const ref = dot < 0 ? spec : spec.slice(0, dot);
+	const uid = uidOf.get(ref) ?? d.parts.find((p) => p.uid === ref)?.uid;
+	if (!uid) throw new CliError(`sim: --probe ${spec}: no part "${ref}"`, EXIT.input);
+	if (dot < 0) return {
+		id,
+		name: spec,
+		at: { part: uid }
+	};
+	const pin = spec.slice(dot + 1);
+	const m = d.modules[d.parts.find((p) => p.uid === uid).module];
+	if (!(m && (m.pins.some((x) => "name" in x && x.name === pin) || (m.holes ?? []).some((h) => h.name === pin)))) throw new CliError(`sim: --probe ${spec}: ${ref} has no pin "${pin}"`, EXIT.input);
+	return {
+		id,
+		name: spec,
+		at: {
+			part: uid,
+			pin
+		}
+	};
+}
+var volts = (r) => r.kind === "value" ? `${r.value.toFixed(3)} V` : r.kind;
+var amps = (r) => r.kind === "value" ? `${(r.value * 1e3).toFixed(1)} mA` : r.kind;
+var OFF = /^(.+?) is not powered in the current state: (\S+) is open\./;
+function findingLines(findings) {
+	const lines = [];
+	for (let i = 0; i < findings.length; i++) {
+		const m = findings[i].severity === "warning" ? OFF.exec(findings[i].message) : null;
+		const run = [m?.[1]];
+		while (m && i + 1 < findings.length && findings[i + 1].severity === "warning") {
+			const next = OFF.exec(findings[i + 1].message);
+			if (next?.[2] !== m[2]) break;
+			run.push(next[1]);
+			i++;
+		}
+		if (m && run.length > 1) lines.push(`  warning: not powered in the current state because ${m[2]} is open: ${run.join(", ")}. Set ${m[2]} to its operating position to simulate them running.`);
+		else lines.push(`  ${findings[i].severity}: ${findings[i].message}`);
+	}
+	return lines;
+}
+/** The stderr summary; `refOf` names parts by ref where the result keeps uids. */
+function summary(o, refOf = /* @__PURE__ */ new Map()) {
+	if (o.status === "unavailable") return `Simulation unavailable: ${o.reason}\n`;
+	if (o.status === "failed") return `Simulation failed: ${o.finding.message}\n`;
+	const r = o.result;
+	const count = (s) => r.findings.filter((f) => f.severity === s).length;
+	const lines = [`Simulation: typical and peak solved in ${Math.round(r.engine.ms)} ms (${r.engine.runs} engine runs). ${plural(count("error"), "blocking finding")}, ${plural(count("warning"), "warning")}, ${plural(count("note"), "note")}.`];
+	lines.push(...findingLines(r.findings));
+	for (const b of r.budget) lines.push(`  budget ${b.label}: ${volts(b.volts.typical)}, ${amps(b.amps.typical)} (peak ${amps(b.amps.peak)})${b.limit ? `, limit ${(b.limit.value * 1e3).toFixed(0)} mA` : ""}`);
+	for (const u of r.unaccounted) lines.push(`  not in the budget: ${refOf.get(u.part) ?? u.part}: ${u.items.join("; ")}`);
+	for (const p of r.probes) {
+		const v = p.voltage?.typical;
+		if (v) lines.push(`  ${p.id} ${p.name ?? ""}: ${v.kind === "value" ? `${v.value.toFixed(3)} V (to ${v.reference})` : v.kind}`);
+	}
+	return `${lines.join("\n")}\n`;
+}
+async function simCommand(args, io, opts = {}) {
+	const [input, ...rest] = args.positionals;
+	if (!input) throw new CliError(USAGE$1, EXIT.input);
+	if (rest.length) throw new CliError(`sim: give one sheet or netlist file, not ${args.positionals.length}`, EXIT.input);
+	const raw = readJson(io, input);
+	let d;
+	let intent = null;
+	if (isObj(raw) && raw.format === "circuitoon-netlist/1") {
+		const r = layoutNetlist(raw, { library: libraryLookup });
+		if (!r.ok) throw new CliError(`${input}: ${r.errors.slice(0, 5).join("; ")}`, EXIT.input);
+		d = r.value.diagram;
+		intent = r.value.intent;
+		for (const w of r.value.intent.probeWarnings) io.stderr(`warning: ${w}\n`);
+		for (const p of r.value.intent.probes) if (p.ref) io.stderr(`note: probe ${p.id} names ref ${p.ref}; readings are relative to its island's reference (differential probes come later)\n`);
+	} else {
+		const v = validateDiagram(raw, { library: libraryLookup });
+		if (!v.ok) throw new CliError(`${input} is not a Circuitoon sheet or netlist: ${v.errors.slice(0, 5).join("; ")}`, EXIT.input);
+		d = v.diagram;
+		const parsed = d.intent !== void 0 ? parseNetlist(d.intent, intentLookup(d, libraryLookup)) : null;
+		if (parsed?.ok) intent = parsed.intent;
+		for (const w of v.warnings) io.stderr(`warning: ${w}\n`);
+	}
+	const sn = sheetNets(d);
+	const uidOf = new Map([...sn.refOf].map(([uid, ref]) => [ref, uid]));
+	let next = d;
+	const probes = (args.lists?.get("--probe") ?? []).map((s) => {
+		const p = probeOf(s, d, uidOf, sn.nets, intent, nextProbeId(next));
+		next = {
+			...next,
+			probes: [...next.probes ?? [], p]
+		};
+		return p;
+	});
+	const engine = opts.engine ?? makeEngine(createNodeEngineHost());
+	try {
+		const { outcome } = await solve(d, engine, 1, {
+			probes,
+			library: libraryLookup
+		});
+		printJson(io, outcome);
+		io.stderr(summary(outcome, sn.refOf));
+		if (outcome.status !== "ok") return EXIT.environment;
+		return outcome.result.findings.some((f) => f.severity === "error") ? EXIT.blocked : EXIT.ok;
+	} finally {
+		if (!opts.engine) engine.dispose();
+	}
+}
+//#endregion
 //#region src/cli/main.ts
 var USAGE = `circuitoon <command> [options]
 
@@ -92806,6 +95878,9 @@ var USAGE = `circuitoon <command> [options]
                                             the design as a KiCad netlist (.net) for the PCB Editor's Import > Netlist;
                                             parts without a KiCad footprint come in on a generic header, with a warning
   gate <sheet.json> -o <dir> [--json]       every check, the renders, the bill and the link; exits 0 only when nothing blocks
+  sim <sheet.json|netlist.json> [--probe <ref[.pin]|net:NAME>]...
+                                            solve the sheet as a DC circuit in its saved switch and GPIO state:
+                                            the outcome JSON on stdout (simulation findings only), a summary on stderr
   module new [--spec <spec.json>] [-o <part.json>] [--json]
                                             a custom part from a part spec (or the spec on standard input), with Sticker art
   module check <part.json> [--json]         lint a part: duplicate pins, art against pins, impossible caps, untyped power pins
@@ -92829,6 +95904,7 @@ var COMMANDS = {
 	explain: explainCommand,
 	update: updateCommand,
 	gate: gateCommand,
+	sim: simCommand,
 	module: moduleCommand
 };
 var CODE_OF = {
