@@ -5,7 +5,9 @@ import { mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { withSim } from './sim-data.mjs'
+
+// The helpers are plain JS for the generators; load them untyped.
+const { withSim } = await import(new URL('./sim-data.mjs', import.meta.url).href)
 
 describe('withSim', () => {
   const dir = mkdtempSync(join(tmpdir(), 'sim-data-'))
