@@ -12,7 +12,7 @@ import { createNodeEngineHost } from './engine/nodeEngine.ts'
 import { ledHandCalc, ledModel } from './ledModels.ts'
 import { type Corner, netNode } from './model.ts'
 import type { RawRun } from './spice.ts'
-import { type PartSpec, boardModule, boostModule, buckModule, cellModule, hostModule, ldoModule, sheet } from './testing.ts'
+import { type PartSpec, boardModule, q, boostModule, buckModule, cellModule, hostModule, ldoModule, sheet } from './testing.ts'
 
 const engine = makeEngine(createNodeEngineHost())
 afterAll(() => engine.dispose())
@@ -49,28 +49,33 @@ describe('accuracy (spec 9)', () => {
   }, 60_000)
 })
 
-// The short runs on `shorted`: a boost's pass-through diode (offPath 'diode') carries a short
-// straight from the input and the input sags below vinMin, so the converter is off (pinned in the
-// pass-through block below); the rail's own short is the boost without that path.
+// `open` is the module for the short and the off edges: a boost's pass-through diode (offPath
+// 'diode') carries a short straight from the input and the input sags below vinMin, so the
+// converter is off (pinned in the pass-through block below), and it holds an "off" output one diode
+// drop under the input; the rail's own short and off edges are the boost without that path.
+// `on` pairs are [vin, the model's V(out)]: the LDO at its edge sits k ln 2 (3.5 mV) under vout plus
+// the 10 mA x 0.1 ohm rout drop; at 4.0 V the 88 mA load drops 8.8 mV across rout below 4.0 - 1.1;
+// the buck's 0.5 A drops 50 mV; the boost's 0.2 A drops 20 mV.
+const boostOpen = () => boostModule({ offPath: 'open' }, 'test-boost-open')
+const buckIq = () => buckModule({ iq: q(0.005, 'A') }, 'test-buck-iq')
 const KINDS = [
-  { kind: 'LDO', mod: ldoModule, shorted: ldoModule, id: 'u1.rail.ldo', vin: 5, load: 33, on: [4.4, 3.3 - 0.0135], edge: [4.0, 2.9 - 0.0088], off: [] as number[] },
-  { kind: 'buck', mod: buckModule, shorted: buckModule, id: 'u1.rail.buck', vin: 12, load: 10, on: [6.1, 5 - 0.05], edge: [] as number[], off: [5.9, 24.1] },
-  { kind: 'boost', mod: boostModule, shorted: () => boostModule({ offPath: 'open' }, 'test-boost-open'), id: 'u1.rail.boost', vin: 3.7, load: 25, on: [2.95, 5 - 0.02], edge: [] as number[], off: [] as number[] },
+  { kind: 'LDO', mod: ldoModule, open: ldoModule, id: 'u1.rail.ldo', vin: 5, vout: 3.3, load: 33, on: [[4.4, 3.3 - 0.0135], [4.0, 2.9 - 0.0088]], off: [] as number[] },
+  { kind: 'buck', mod: buckIq, open: buckIq, id: 'u1.rail.buck', vin: 12, vout: 5, load: 10, on: [[6.1, 5 - 0.05], [23.9, 5 - 0.05]], off: [5.9, 24.1] },
+  { kind: 'boost', mod: boostModule, open: boostOpen, id: 'u1.rail.boost', vin: 3.7, vout: 5, load: 25, on: [[2.95, 5 - 0.02]], off: [2.85, 4.35] },
 ] as const
 
-describe.each(KINDS)('the $kind model (spec 4.3)', ({ mod, shorted, id, vin, load, on, edge, off }) => {
+describe.each(KINDS)('the $kind model (spec 4.3)', ({ mod, open, id, vin, vout, load, on, off }) => {
   it('dead input: no output and no negative node', async () => {
     const raw = await solve(rig(mod(), 0, load))
     expect(raw.v[OUT]).toBeLessThan(0.05)
     for (const v of Object.values(raw.v)) expect(v).toBeGreaterThan(-1e-3)
   }, 60_000)
   it('input at each threshold edge', async () => {
-    expect(Math.abs((await solve(rig(mod(), on[0], load))).v[OUT] - on[1])).toBeLessThan(0.03)
-    if (edge.length) expect(Math.abs((await solve(rig(mod(), edge[0], load))).v[OUT] - edge[1])).toBeLessThan(0.03)
-    for (const v of off) expect((await solve(rig(mod(), v, load))).v[OUT]).toBeLessThan(0.05)
+    for (const [v, want] of on) expect(Math.abs((await solve(rig(mod(), v, load))).v[OUT] - want)).toBeLessThan(0.005)
+    for (const v of off) expect((await solve(rig(open(), v, load))).v[OUT]).toBeLessThan(0.05)
   }, 60_000)
   it('output shorted: it converges and the input pays for the short, rout included', async () => {
-    const raw = await solve(rig(shorted(), vin, 0))
+    const raw = await solve(rig(open(), vin, 0))
     const iout = raw.dev[id]
     expect(iout).toBeGreaterThan(5)
     const pin = raw.v[IN] * I(raw, 'u1', 'IN')
@@ -81,6 +86,9 @@ describe.each(KINDS)('the $kind model (spec 4.3)', ({ mod, shorted, id, vin, loa
     // Off reads as solver zero: the boost gives -3e-82 A, so "never sinks" is > -1 pA, not >= 0.
     expect(raw.dev[id]).toBeGreaterThan(-1e-12)
     expect(raw.dev[id]).toBeLessThan(1e-3)
+    // Nothing flows back out of the input either (every rail here blocks reverse current). The boost's
+    // pass-through Schottky, reverse biased, leaks its IS (0.25 uA, measured -2.53e-7 A), so 0.3 uA there.
+    expect(I(raw, 'u1', 'IN')).toBeGreaterThanOrEqual(mod === boostModule ? -3e-7 : -1e-9)
   }, 60_000)
   it('two in parallel on one output share the load', async () => {
     const raw = await solve(sheet([{ uid: 'bt1', module: cellModule(vin, 0.01) }, { uid: 'u1', module: mod() }, { uid: 'u2', module: mod() }, R('r1', 10)],
@@ -89,6 +97,7 @@ describe.each(KINDS)('the $kind model (spec 4.3)', ({ mod, shorted, id, vin, loa
     expect(a).toBeGreaterThan(0.05)
     expect(b).toBeGreaterThan(0.05)
     near(a + b, raw.v[OUT] / 10)
+    expect(Math.abs(raw.v[OUT] - vout)).toBeLessThan(0.05)
   }, 60_000)
   it('conserves power: input = output + losses, within 1 %', async () => {
     const raw = await solve(rig(mod(), vin, load))
@@ -147,8 +156,40 @@ describe('pass-through and whole chains (spec 4.2, 4.6, 4.7)', () => {
     near(vbus, raw.dev['h1.source'])
     near(-flow(c.usb[0].gnd), vbus)
   }, 60_000)
+  it('battery -> host rail -> USB cable -> device: the cell pays for the device through both conductors (spec 4.7)', async () => {
+    // A host whose USB port is the output of a `ron` switch rail from VIN, fed by a cell.
+    const host: ModuleDef = {
+      format: 'circuitoon-module/1', id: 'test-host-railed', name: 'test-host-railed',
+      pins: [{ name: 'VIN', type: 'power_in', side: 'left' }, { name: 'GND', type: 'ground', side: 'left' },
+        { name: 'USB', type: 'usb', side: 'right', usb: { connector: 'A', gender: 'receptacle', role: 'host', version: '2.0', source: 500 } }],
+      electrical: { model: 'computer', sim: { usbPorts: { USB: { gnd: 'GND' } }, power: {
+        domains: [{ name: 'VIN', pin: 'VIN', ret: 'GND', nominal: 5 }, { name: 'USB', pin: 'USB#vbus', ret: 'USB#gnd', nominal: 5 }],
+        rails: [{ id: 'usb', inputs: [{ domain: 'VIN', via: 'direct' }], output: 'USB', kind: 'switch', ron: q(0.2, 'ohm'), reverse: 'blocks' }],
+      } } },
+    }
+    const d = sheet([{ uid: 'bt1', module: cellModule(5, 0.05) }, { uid: 'h1', module: host }, { uid: 'u1', module: boardModule() }],
+      [['bt1.+', 'h1.VIN'], ['bt1.-', 'h1.GND'], ['h1.USB', 'u1.USB']])
+    const c = buildCircuit(d)
+    const raw = await solve(d)
+    const draw = 0.05 + 0.005
+    near(raw.dev['bt1.cell'], draw)
+    const dev = (id: string) => {
+      const r = c.devices.find((x) => x.id === id)
+      if (r?.kind !== 'resistor') throw new Error(`no ${id}`)
+      return { ...r, amps: (raw.v[r.a] - raw.v[r.b]) / r.ohms.value }
+    }
+    const [vbus, gnd] = [dev(c.usb[0].vbus), dev(c.usb[0].gnd)]
+    near(vbus.amps, draw)
+    near(-gnd.amps, draw)
+    // The device's port sees the cell less its rInternal, the 1 mOhm rail input, ron and both conductors.
+    const drop = draw * (0.05 + 0.001 + 0.2 + vbus.ohms.value + gnd.ohms.value)
+    near(raw.v[vbus.b] - raw.v[gnd.b], 5 - drop, 0.001)
+  }, 60_000)
   it('a load on a dead rail draws (almost) nothing', async () => {
     const raw = await solve(sheet([{ uid: 'bt1', module: cellModule(0, 0.01) }, { uid: 'u1', module: boardModule() }], [['bt1.+', 'u1.VIN'], ['bt1.-', 'u1.GND']]))
-    expect(Math.abs(I(raw, 'u1', 'VIN'))).toBeLessThan(0.01 * 0.05)
+    // The floor is the smoothing (k = 5 mV), not 0: with Vctl = 0 the LDO's softplus output still
+    // pushes k ln(1 + e^(-V/k)) / rout, which holds 3V3 at 24 mV where the folded-back 50 mA load
+    // takes 0.41 mA; with iq that is 0.423 mA measured.
+    expect(Math.abs(I(raw, 'u1', 'VIN'))).toBeLessThan(4.5e-4)
   }, 60_000)
 })
