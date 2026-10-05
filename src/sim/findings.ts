@@ -7,7 +7,8 @@ import { formatValue } from '../format/values.ts'
 import { andList } from '../format/words.ts'
 import { naturalCompare } from '../agent/order.ts'
 import { NO_POWER_DATA } from './estimates.ts'
-import { type Classification, deviceNodes, openSwitchFor, pinState, powered } from './floating.ts'
+import { type Classification, deviceNodes, inputPowered, openSwitchFor, pinState, powered } from './floating.ts'
+import { LED_FIT_AMPS, diodeVoltage } from './ledModels.ts'
 import { type Circuit, type Corner, type Device, type Param, type ResolvedLimit, netNode } from './model.ts'
 import { type Outside, type SimCode, type SimFinding, basisOf } from './results.ts'
 import { type RawRun, enableValue } from './spice.ts'
@@ -38,6 +39,9 @@ export interface Draft {
   /** Identity across corners: the same key at peak is dropped when typical has it. */
   key: string
   raw?: string
+  pins?: { part: string; pin: string }[]
+  /** An over-limit reading's ratio to its limit (sim-over-abs-max: past 2x, a representative limit still blocks). */
+  overBy?: number
 }
 
 export const V = (x: number) => formatValue(Number(x.toPrecision(3)), 'V')
@@ -109,11 +113,11 @@ function lowGraph(c: Circuit) {
   return { same: (a: string, b: string) => parent.has(a) && parent.has(b) && find(a) === find(b), pathParts }
 }
 
-interface Source { device: string; part: string; label: string; p: string; n: string; volts: Param; blocks: boolean; rail: boolean }
+interface Source { device: string; part: string; label: string; p: string; n: string; volts: Param; blocks: boolean; rail?: RailDev }
 function sources(c: Circuit): Source[] {
   return c.devices.flatMap((d): Source[] => {
-    if (d.kind === 'cell') return [{ device: d.id, part: d.part, label: refOf(c, d.part), p: d.p, n: d.n, volts: d.volts, blocks: false, rail: false }]
-    if (d.kind === 'rail' && d.rail.vout) return [{ device: d.id, part: d.part, label: `${refOf(c, d.part)} ${d.rail.output}`, p: d.out, n: d.ret, volts: d.rail.vout, blocks: d.rail.reverse === 'blocks', rail: true }]
+    if (d.kind === 'cell') return [{ device: d.id, part: d.part, label: refOf(c, d.part), p: d.p, n: d.n, volts: d.volts, blocks: false }]
+    if (d.kind === 'rail' && d.rail.vout) return [{ device: d.id, part: d.part, label: `${refOf(c, d.part)} ${d.rail.output}`, p: d.out, n: d.ret, volts: d.rail.vout, blocks: d.rail.reverse === 'blocks', rail: d }]
     return []
   })
 }
@@ -140,13 +144,21 @@ export function topologyFindings(c: Circuit, cls: Classification): { drafts: Dra
     })
   }
   // A closed parallel loop (spec 5.2, Astra re-review A): + to + and - to - both through low paths.
-  // A rail output that blocks reverse current ORs rather than fights.
+  // A rail output that blocks reverse current ORs rather than fights. A rail whose input nothing
+  // else powers is not a supply (Phase D ruling: a DevKit's 3V3 pin fed from 2xAA backfeeds its own
+  // dead regulator); checked only for a pair that would otherwise fire, since it costs a reach.
   const fighters = srcs.filter((s) => !s.blocks && !shorted.has(s.device))
+  const liveCache = new Map<string, boolean>()
+  const live = (s: Source) => {
+    if (!s.rail) return true
+    if (!liveCache.has(s.device)) liveCache.set(s.device, inputPowered(c, s.rail))
+    return liveCache.get(s.device)!
+  }
   for (let i = 0; i < fighters.length; i++)
     for (let j = i + 1; j < fighters.length; j++) {
       const [a, b] = [fighters[i], fighters[j]]
       // Two outputs of one part are paired only when they are different pins (a 5 V and a 3.3 V output wired together).
-      if ((a.part === b.part && a.p === b.p) || !g.same(a.p, b.p) || !g.same(a.n, b.n) || Math.abs(a.volts.value - b.volts.value) <= 0.1) continue
+      if ((a.part === b.part && a.p === b.p) || !g.same(a.p, b.p) || !g.same(a.n, b.n) || Math.abs(a.volts.value - b.volts.value) <= 0.1 || !live(a) || !live(b)) continue
       drafts.push({
         code: 'sim-source-conflict', severity: 'error', parts: [a.part, b.part], inputs: [a.volts, b.volts], key: `sim-source-conflict|${a.device}|${b.device}`,
         message: `${a.label} (${V(a.volts.value)}) and ${b.label} (${V(b.volts.value)}) are wired in parallel, plus to plus and minus to minus: the higher one drives current into the lower one, which can damage both.`,
@@ -156,13 +168,16 @@ export function topologyFindings(c: Circuit, cls: Classification): { drafts: Dra
   // Fix-round ruling: an input sharing a net with a pin of another part that is not (fully) simulated
   // is unknown, not floating; sim-incomplete lists that part. Boards, net labels and connectors are
   // in neither c.parts nor c.unsimulated, so they never hide a floating input.
+  // An input on an unpowered board is not reported: the board's "not powered" warning covers it.
   const unknown = new Set(c.unsimulated.map((u) => u.part))
   for (const gp of c.gpio) {
     if (gp.state !== 'input' || pinState(c, cls, gp.key) !== 'floating') continue
+    const dom = c.domains.find((x) => x.part === gp.part && x.name === gp.domain)
+    if (dom && !powered(c, cls, dom.pin, dom.ret)) continue
     const others = Object.entries(c.pinNet).filter(([k, n]) => k !== gp.key && n === c.pinNet[gp.key]).map(([k]) => (JSON.parse(k) as [string, string])[0])
     if (others.length && !others.some((uid) => uid !== gp.part && unknown.has(uid)))
       drafts.push({
-        code: 'sim-floating-input', severity: 'warning', parts: [gp.part], inputs: [], key: `sim-floating-input|${gp.part}|${gp.pin}`,
+        code: 'sim-floating-input', severity: 'warning', parts: [gp.part], pins: [{ part: gp.part, pin: gp.pin }], inputs: [], key: `sim-floating-input|${gp.part}|${gp.pin}`,
         message: `${refOf(c, gp.part)} ${gp.pin} is an input with nothing driving it: it floats, so it reads at random. Wire it to a signal, add a pull-up or pull-down resistor, or set its simulated state to input-pullup or input-pulldown.`,
       })
   }
@@ -200,13 +215,19 @@ export function finalize(drafts: Draft[], peakNote: string): SimFinding[] {
       message = `At peak${peakNote ? ` (${peakNote})` : ''}: ${message}`
     }
     if (severity === 'error' && (basis === 'representative' || basis === 'estimate')) {
-      severity = 'warning'
       const uncertain = d.inputs.filter((p) => p.basis === 'representative' || p.basis === 'estimate').map((p) => p.label)
-      message = `Likely: ${message} This is decided on ${basis} values: ${uncertain.join(', ')}.`
+      // Phase D ruling: past twice a representative absolute maximum (an LED with no resistor), part
+      // variation cannot save it, so it still blocks. An estimate never does.
+      if (d.code === 'sim-over-abs-max' && basis === 'representative' && (d.overBy ?? 0) > 2)
+        message = `${message} This is decided on representative values (${uncertain.join(', ')}), but it is more than twice the limit.`
+      else {
+        severity = 'warning'
+        message = `Likely: ${message} This is decided on ${basis} values: ${uncertain.join(', ')}.`
+      }
     }
     out.set(d.key, {
       code: d.code, severity, parts: d.parts, message, ...(d.corner ? { corner: d.corner } : {}), basis,
-      inputs: d.inputs.map((p) => `${p.label}: ${p.basis}`), ...(d.raw ? { raw: d.raw } : {}),
+      inputs: d.inputs.map((p) => `${p.label}: ${p.basis}`), ...(d.raw ? { raw: d.raw } : {}), ...(d.pins ? { pins: d.pins } : {}),
     })
   }
   return [...out.values()].sort((a, b) => ORDER[a.severity] - ORDER[b.severity] || (a.code < b.code ? -1 : a.code > b.code ? 1 : 0) || naturalCompare(a.parts.join(), b.parts.join()))
@@ -229,6 +250,13 @@ export function noConvergence(c: Circuit | null, error: string, nodes: string[])
     code: 'sim-no-convergence', severity: 'error', parts, basis: 'topology', inputs: [], raw: error,
     message: `The simulator could not solve this circuit; this may be our model, not your circuit.${parts.length ? ` The parts on the nets it could not solve: ${andList(parts.map((p) => refOf(c!, p)))}.` : ''}`,
   }
+}
+
+const E12 = [10, 12, 15, 18, 22, 27, 33, 39, 47, 56, 68, 82, 100]
+/** The smallest E12 resistor value at or above `ohms`. */
+export function e12Up(ohms: number): number {
+  const decade = 10 ** Math.floor(Math.log10(ohms) - 1)
+  return Number((E12.find((x) => x * decade >= ohms * 0.999)! * decade).toPrecision(2))
 }
 
 type Load = Extract<Device, { kind: 'load' }>
@@ -264,11 +292,12 @@ export function runDrafts(c: Circuit, cls: Classification, raw: RawRun, corner: 
     return x === undefined || !Number.isFinite(x) ? null : { value: Math.abs(x), what: `${ref(part)} delivers ${A(Math.abs(x))}`, unit: 'A' as const }
   }
 
-  const measure = (l: ResolvedLimit): { value: number; what: string; unit: 'A' | 'V' | 'W' } | null => {
+  type Measured = { value: number; what: string; unit: 'A' | 'V' | 'W'; pins?: { part: string; pin: string }[] }
+  const measure = (l: ResolvedLimit): Measured | null => {
     const r = ref(l.part)
     if ('pin' in l.of) {
       const i = pinI(l.part, l.of.pin)
-      return i === undefined ? null : { value: Math.abs(i), what: `${r} ${l.of.pin} carries ${A(Math.abs(i))}`, unit: 'A' }
+      return i === undefined ? null : { value: Math.abs(i), what: `${r} ${l.of.pin} carries ${A(Math.abs(i))}`, unit: 'A', pins: [{ part: l.part, pin: l.of.pin }] }
     }
     if ('domain' in l.of) {
       const name = l.of.domain
@@ -280,8 +309,10 @@ export function runDrafts(c: Circuit, cls: Classification, raw: RawRun, corner: 
         return { value: x, what: `${r} ${name} is at ${V(x)}`, unit: 'V' }
       }
       if (l.kind === 'ioTotalCurrent') {
-        const sum = c.gpio.filter((g) => g.part === l.part && g.domain === name && (g.state === 'high' || g.state === 'low')).reduce((s, g) => s + Math.abs(pinI(g.part, g.pin) ?? 0), 0)
-        return { value: sum, what: `${r}'s GPIO pins on ${name} carry ${A(sum)} in all`, unit: 'A' }
+        const outs = c.gpio.filter((g) => g.part === l.part && g.domain === name && (g.state === 'high' || g.state === 'low'))
+        const sum = outs.reduce((s, g) => s + Math.abs(pinI(g.part, g.pin) ?? 0), 0)
+        const pins = outs.filter((g) => Math.abs(pinI(g.part, g.pin) ?? 0) > 0).map((g) => ({ part: g.part, pin: g.pin }))
+        return { value: sum, what: `${r}'s GPIO pins on ${name} carry ${A(sum)} in all`, unit: 'A', ...(pins.length ? { pins } : {}) }
       }
       return delivered(l.part, name)
     }
@@ -295,6 +326,32 @@ export function runDrafts(c: Circuit, cls: Classification, raw: RawRun, corner: 
     return { value: i, what: `${r} carries ${A(i)}`, unit: 'A' }
   }
 
+  /**
+   * An LED's resistor advice (spec 5.2's example): the series resistance, rounded up to an E12 value,
+   * that brings `amps` through it from the voltage its string sees now (the far end of a resistor
+   * already on its anode or cathode net, else the LED's own pins).
+   */
+  const ledAdvice = (part: string, amps: number): string => {
+    if (c.parts[part]?.model !== 'led') return ''
+    const generic = ' Add a series resistor, or a larger one, to bring it under the rating.'
+    const led = c.devices.find((x): x is Extract<Device, { kind: 'diode' }> => x.kind === 'diode' && x.role === 'led' && x.part === part)
+    if (!led) return generic
+    // In series only when the net joins just the LED pin and the resistor (never GND or a shared rail).
+    const far = (node: string) => {
+      const net = netOf(node)
+      const r = c.taps.filter((t) => netNode(t.net) === net).length === 2
+        ? c.devices.find((x): x is Extract<Device, { kind: 'resistor' }> => x.kind === 'resistor' && x.role === 'resistor' && (netOf(x.a) === net) !== (netOf(x.b) === net))
+        : undefined
+      return r ? { node: netOf(r.a) === net ? r.b : r.a, resistor: true } : { node, resistor: false }
+    }
+    const [a, k] = [far(led.a), far(led.k)]
+    if (!solved(a.node) || !solved(k.node)) return generic
+    const drive = v(a.node) - v(k.node)
+    const ohms = (drive - diodeVoltage(led.model, amps)) / amps
+    if (!(ohms > 0)) return generic
+    return ` ${a.resistor || k.resistor ? 'Use a larger series resistor' : 'Add a series resistor'} (about ${e12Up(ohms)} ohm at ${V(drive)}).`
+  }
+
   // Limits: an absolute maximum is sim-over-abs-max; any other rating is sim-over-limit, unless the
   // same subject is over an absolute maximum (then that one says it).
   const subject = (l: ResolvedLimit) => `${l.part}|${JSON.stringify(l.of)}`
@@ -304,7 +361,12 @@ export function runDrafts(c: Circuit, cls: Classification, raw: RawRun, corner: 
     const m = measure(l)
     if (!m || m.value <= l.value.value) continue
     overAbs.add(subject(l))
-    add({ code: 'sim-over-abs-max', severity: 'error', parts: [l.part], inputs: [l.value], key: `abs|${subject(l)}|${l.kind}`, message: `${m.what}, above its ${fmt(l.value.value, m.unit)} absolute maximum${cond(l)}: damage is likely.` })
+    const rating = c.limits.find((x) => x.kind === 'current' && subject(x) === subject(l))?.value.value
+    const advice = l.kind === 'absMaxCurrent' ? ledAdvice(l.part, Math.min(rating ?? LED_FIT_AMPS, l.value.value)) : ''
+    add({
+      code: 'sim-over-abs-max', severity: 'error', parts: [l.part], inputs: [l.value], key: `abs|${subject(l)}|${l.kind}`, overBy: m.value / l.value.value, ...(m.pins ? { pins: m.pins } : {}),
+      message: `${m.what}, above its ${fmt(l.value.value, m.unit)} absolute maximum${cond(l)}: damage is likely.${advice}`,
+    })
   }
   for (const l of c.limits) {
     if (l.kind === 'absMaxCurrent' || l.kind === 'vinMax' || overAbs.has(subject(l))) continue
@@ -312,8 +374,11 @@ export function runDrafts(c: Circuit, cls: Classification, raw: RawRun, corner: 
     if (!m) continue
     const under = l.kind === 'vinMin'
     if (under ? m.value >= l.value.value : m.value <= l.value.value) continue
-    const advice = c.parts[l.part]?.model === 'led' ? ' Add a series resistor, or a larger one, to bring it under the rating.' : ''
-    add({ code: 'sim-over-limit', severity: 'warning', parts: [l.part], inputs: [l.value], key: `limit|${subject(l)}|${l.kind}`, message: `${m.what}, ${under ? 'below' : 'above'} its ${fmt(l.value.value, m.unit)} ${under ? 'minimum' : 'rating'}${cond(l)}.${advice}` })
+    const advice = l.kind === 'current' ? ledAdvice(l.part, l.value.value) : ''
+    add({
+      code: 'sim-over-limit', severity: 'warning', parts: [l.part], inputs: [l.value], key: `limit|${subject(l)}|${l.kind}`, ...(m.pins ? { pins: m.pins } : {}),
+      message: `${m.what}, ${under ? 'below' : 'above'} its ${fmt(l.value.value, m.unit)} ${under ? 'minimum' : 'rating'}${cond(l)}.${advice}`,
+    })
   }
   for (const d of c.devices)
     if (d.kind === 'cell' && d.role === 'external' && d.imax && (raw.dev[d.id] ?? 0) > d.imax.value)
@@ -326,6 +391,10 @@ export function runDrafts(c: Circuit, cls: Classification, raw: RawRun, corner: 
     if (i > u.limit.value)
       add({ code: 'sim-over-limit', severity: 'warning', parts: [u.host, u.device], inputs: [u.limit], key: `usb|${u.vbus}`, message: `${ref(u.host)} ${u.hostPort} supplies ${A(i)} over USB to ${ref(u.device)}, above the ${A(u.limit.value)} the port gives.` })
   }
+
+  /** An open switch on `net` (a net node) whose closing would power a load that is unpowered now. */
+  const cutBySwitch = (net: string) =>
+    c.openContacts.some((o) => o.pairs.some(([a, b]) => netOf(a) === net || netOf(b) === net) && c.devices.some((l) => l.kind === 'load' && !on(l.p, l.n) && openSwitchFor(c, l.p, l.n) === o.part))
 
   // Rails (spec 4.1, 4.2): outside the model past ioutMax (a shorted output too: the model does not
   // limit it, so its current is huge and its voltages untrusted); dropout; a converter off or at the
@@ -367,8 +436,10 @@ export function runDrafts(c: Circuit, cls: Classification, raw: RawRun, corner: 
         })
       }
     }
-    if (r.minLoad && enabled && iout < r.minLoad.amps.value)
-      add({ code: 'sim-min-load', severity: 'warning', parts: [d.part], inputs: [r.minLoad.amps], key: `minload|${d.id}`, message: `${name} supplies ${A(iout)}, below the ${A(r.minLoad.amps.value)} it needs to stay on: ${r.minLoad.note}.` })
+    // Not when an open switch cuts its output from what it feeds: that switch's "not powered" warning
+    // says why the load is light, and setting it to its operating position settles both.
+    if (r.minLoad && enabled && iout < r.minLoad.amps.value && !cutBySwitch(outNet))
+      add({ code: 'sim-min-load', severity: 'warning', parts: [d.part], inputs: [r.minLoad.amps], key: `minload|${d.id}`, message: `${name} supplies ${A(iout)}, below the ${A(r.minLoad.amps.value)} it needs to stay on: ${r.minLoad.note.replace(/\.+$/, '')}.` })
   }
 
   // Loads (spec 5.2 sim-brownout).
@@ -445,11 +516,14 @@ export function propagate(c: Circuit, rails: Set<string>): Outside {
 }
 
 /** Every finding of a solve, and what is outside the model (spec 4.1, 4.2, 4.5, 5.2). */
-export function analyseFindings(c: Circuit, cls: Classification, raws: Record<Corner, RawRun>): { findings: SimFinding[]; outside: Outside } {
-  const topo = topologyFindings(c, cls)
+export function analyseFindings(c: Circuit, cls: Classification, raws: Record<Corner, RawRun>, topo = topologyFindings(c, cls)): { findings: SimFinding[]; outside: Outside } {
   const typical = runDrafts(c, cls, raws.typical, 'typical')
   const peak = runDrafts(c, cls, raws.peak, 'peak')
   const outside = propagate(c, new Set([...topo.shortedRails, ...typical.outside, ...peak.outside]))
   const peakNote = [...new Set(c.devices.flatMap((d) => (d.kind === 'load' && d.peakNote ? [d.peakNote] : [])))].join(', ')
-  return { findings: finalize([...topo.drafts, ...typical.drafts, ...peak.drafts], peakNote), outside }
+  // A shorted source's sim-short says it all: its delivered current over a rating (any subject but a
+  // pin) is the short's current, so it is not repeated as sim-over-limit.
+  const shorted = new Set(topo.drafts.filter((d) => d.code === 'sim-short').map((d) => d.parts[0]))
+  const value = [...typical.drafts, ...peak.drafts].filter((d) => !(d.code === 'sim-over-limit' && shorted.has(d.parts[0]) && !d.pins))
+  return { findings: finalize([...topo.drafts, ...value], peakNote), outside }
 }

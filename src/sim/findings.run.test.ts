@@ -1,6 +1,6 @@
 // Spec 5.2 value codes, each both ways, against the real engine; spec 4.2's upstream marking; 4.5's
-// corners; and the examples the spec gives: an LED on 5 V with no resistor is a "likely damage"
-// warning; a GPIO sinking over its limit; brownout and dropout blocking on datasheet values but
+// corners; and the examples the spec gives: an LED on 5 V with no resistor blocks (more than twice
+// its representative absolute maximum, Phase D ruling); a GPIO sinking over its limit; brownout and dropout blocking on datasheet values but
 // only warning on estimates; an AMS1117-like LDO on 3xAA in dropout at peak only.
 import { afterAll, describe, expect, it } from 'vitest'
 import type { Diagram } from '../format/diagram.ts'
@@ -11,7 +11,9 @@ import { classify } from './floating.ts'
 import { analyseFindings } from './findings.ts'
 import type { Corner } from './model.ts'
 import type { RawRun } from './spice.ts'
-import { boardModule, boostModule, cellModule, hostModule, ldoModule, q, sheet } from './testing.ts'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { boardModule, boostModule, cellModule, hostModule, ldoModule, netSheet, q, sheet } from './testing.ts'
 import { load } from '../format/builtinModules.testing.ts'
 import { simOf } from '../format/simModel.ts'
 
@@ -51,12 +53,31 @@ const board = (values: Record<string, unknown> = {}, vin = 5, rint = 0.05, mod =
   sheet([{ uid: 'bt1', module: cellModule(vin, rint) }, { uid: 'u1', module: mod, values }], [['bt1.+', 'u1.VIN'], ['bt1.-', 'u1.GND']])
 
 describe('value findings', () => {
-  it('an LED on 5 V with no resistor: over its representative absolute maximum, a "likely damage" warning only', async () => {
+  it('an LED on 5 V with no resistor: far over its representative absolute maximum, so it blocks, with the resistor to add', async () => {
     const r = await analyse(sheet([{ uid: 'bt1', module: cellModule(5, 1e-6) }, { uid: 'd1', module: 'led' }], [['bt1.+', 'd1.A'], ['d1.K', 'bt1.-']]))
     const [f] = of(r, 'sim-over-abs-max')
-    expect(f).toMatchObject({ severity: 'warning', basis: 'representative', corner: 'typical', parts: ['d1'] })
-    expect(f.message).toMatch(/^Likely: D1 carries .* absolute maximum: damage is likely\./)
+    expect(f).toMatchObject({ severity: 'error', basis: 'representative', corner: 'typical', parts: ['d1'] })
+    // (5 V - 2.0 V at 20 mA) / 20 mA = 150 ohm, an E12 value.
+    expect(f.message).toMatch(/^D1 carries .* absolute maximum: damage is likely\. Add a series resistor \(about 150 ohm at 5 V\)\. This is decided on representative values/)
     expect(of(r, 'sim-over-limit')).toEqual([])
+  }, 60_000)
+  it('an LED straight across 2xAA blocks; at 1.5x its representative absolute maximum it is a "likely" warning', async () => {
+    const bare = await analyse(sheet([{ uid: 'bt1', module: 'battery-holder-2xaa' }, { uid: 'd1', module: 'led' }], [['bt1.+', 'd1.A'], ['d1.K', 'bt1.-']]))
+    const [f] = of(bare, 'sim-over-abs-max')
+    expect(f).toMatchObject({ severity: 'error', corner: 'typical' })
+    expect(f.message).toMatch(/Add a series resistor \(about \d+ ohm at 2\.\d+ V\)\./)
+    // 68 ohm from 5 V: about 44 mA through a 30 mA red LED.
+    const r = await analyse(sheet([{ uid: 'bt1', module: cellModule(5, 1e-6) }, R('r1', 68), { uid: 'd1', module: 'led' }], [['bt1.+', 'r1.1'], ['r1.2', 'd1.A'], ['d1.K', 'bt1.-']]))
+    const [g] = of(r, 'sim-over-abs-max')
+    const ma = Number(/carries ([\d.]+) mA/.exec(g.message)![1])
+    expect(ma / 30).toBeGreaterThan(1.2)
+    expect(ma / 30).toBeLessThan(2)
+    expect(g).toMatchObject({ severity: 'warning', message: expect.stringMatching(/^Likely: D1 carries .* Use a larger series resistor \(about 150 ohm at 5 V\)\./) })
+  }, 60_000)
+  it('a shorted source is a short only: no over-limit on its delivered current', async () => {
+    const r = await analyse(sheet([{ uid: 'bt1', module: cellModule(3.7, 0.05) }, { uid: 's1', module: 'rocker-switch-kcd1', values: { 'contact.s': 'closed' } }], [['bt1.+', 's1.1'], ['s1.2', 'bt1.-']]))
+    expect(of(r, 'sim-short')).toHaveLength(1)
+    expect(of(r, 'sim-over-limit').filter((f) => f.parts[0] === 'bt1')).toEqual([])
   }, 60_000)
   it('a resistor over its power rating, and quiet at a sensible value', async () => {
     const d = (ohms: number) => sheet([{ uid: 'bt1', module: cellModule(3.7, 0.05) }, R('r1', ohms)], [['bt1.+', 'r1.1'], ['r1.2', 'bt1.-']])
@@ -67,7 +88,7 @@ describe('value findings', () => {
     const d = (ohms: number) => sheet([{ uid: 'bt1', module: cellModule(5, 0.05) }, { uid: 'u1', module: boardModule(), values: { 'gpio.IO1': 'low' } }, { uid: 'bt2', module: cellModule(5, 0.05, 'cell-b') }, R('r1', ohms)],
       [['bt1.+', 'u1.VIN'], ['bt1.-', 'u1.GND'], ['bt2.+', 'r1.1'], ['r1.2', 'u1.IO1'], ['bt2.-', 'u1.GND']])
     const [f] = of(await analyse(d(150)), 'sim-over-limit')
-    expect(f).toMatchObject({ severity: 'warning', basis: 'datasheet', parts: ['u1'] })
+    expect(f).toMatchObject({ severity: 'warning', basis: 'datasheet', parts: ['u1'], pins: [{ part: 'u1', pin: 'IO1' }] })
     expect(f.message).toMatch(/^U1 IO1 carries 27\.\d mA, above its 20 mA rating\.$/)
     expect(of(await analyse(d(1000)), 'sim-over-limit')).toEqual([])
   }, 60_000)
@@ -122,6 +143,15 @@ describe('value findings', () => {
     expect(f.message).toContain('it shuts itself off after 32 s')
     expect(of(await analyse(d(50)), 'sim-min-load')).toEqual([])
   }, 60_000)
+  it('no min-load on a boost whose output an open switch cuts from its load', async () => {
+    const d = (values: Record<string, unknown>) => sheet([{ uid: 'bt1', module: cellModule(3.7, 0.01) }, { uid: 'u1', module: boostModule({ minLoad: { amps: q(0.05, 'A'), note: 'it shuts itself off after 32 s' } }) }, { uid: 's1', module: 'rocker-switch-kcd1', values }, { uid: 'u2', module: boardModule() }],
+      [['bt1.+', 'u1.IN'], ['bt1.-', 'u1.GND'], ['u1.OUT', 's1.1'], ['s1.2', 'u2.VIN'], ['u2.GND', 'u1.GND']])
+    const open = await analyse(d({}))
+    expect(of(open, 'sim-min-load')).toEqual([])
+    expect(of(open, 'sim-brownout').map((f) => f.parts)).toEqual([['u2', 's1']])
+    // Closed, the board draws 50 mA: at the minimum, so quiet as well; the switch alone decided it.
+    expect(of(await analyse(d({ 'contact.s': 'closed' })), 'sim-min-load')).toEqual([])
+  }, 60_000)
   it('an LDO past ioutMax is outside its model and over its rating, and marks upstream readings', async () => {
     const r = await analyse(sheet([{ uid: 'bt1', module: cellModule(5, 0.05) }, { uid: 'u1', module: ldoModule() }, R('r1', 3)], [['bt1.+', 'u1.IN'], ['bt1.-', 'u1.GND'], ['u1.OUT', 'r1.1'], ['r1.2', 'u1.GND']]))
     expect(of(r, 'sim-outside-model')).toHaveLength(1)
@@ -140,11 +170,11 @@ describe('value findings', () => {
     expect(f).toMatchObject({ severity: 'warning', basis: 'topology', parts: ['u1', 's1'] })
     expect(f.message).toBe('U1 3V3 is not powered in the current state: S1 is open. Set S1 to its operating position to simulate U1 running.')
   }, 60_000)
-  it('a shorted LDO output: the short, over its rating and outside its model, its voltages and upstream marked', async () => {
+  it('a shorted LDO output: the short and outside its model (not over its rating: the short says it), its voltages and upstream marked', async () => {
     const r = await analyse(sheet([{ uid: 'bt1', module: cellModule(5, 0.05) }, { uid: 'u1', module: ldoModule() }], [['bt1.+', 'u1.IN'], ['bt1.-', 'u1.GND'], ['u1.OUT', 'u1.GND']]))
     expect(of(r, 'sim-short')).toHaveLength(1)
     expect(of(r, 'sim-outside-model')).toHaveLength(1)
-    expect(of(r, 'sim-over-limit').some((f) => f.message.includes('U1 OUT regulator supplies'))).toBe(true)
+    expect(of(r, 'sim-over-limit').filter((f) => f.parts[0] === 'u1')).toEqual([])
     expect(r.outside.rails.has('u1.rail.ldo')).toBe(true)
     expect(r.outside.nets.has('BT1_+')).toBe(true)
     expect([...r.outside.parts].sort()).toEqual(['bt1', 'u1'])
@@ -178,7 +208,15 @@ describe('value findings on the sourced modules', () => {
     const ohms = boost.vout!.value / (boost.minLoad!.amps.value / 5)
     const r = await analyse(sheet([{ uid: 'bt1', module: 'battery-18650-holder' }, { uid: 'u5', module: 'ip5306-usbc-module' }, R('r1', ohms)],
       [['bt1.+', 'u5.B+'], ['bt1.-', 'u5.B-'], ['u5.5V+', 'r1.1'], ['r1.2', 'u5.5V-']]))
-    expect(of(r, 'sim-min-load').some((f) => f.parts.includes('u5') && f.severity === 'warning')).toBe(true)
+    const [f] = of(r, 'sim-min-load').filter((x) => x.parts.includes('u5') && x.severity === 'warning')
+    expect(f).toBeDefined()
+    // The module's note ends with a period of its own: one full stop, never two.
+    expect(f.message).toMatch(/[^.]\.$/)
+  }, 60_000)
+  it('the battery-switch example with S1 open: the "not powered" warning only, no min-load', async () => {
+    const n = JSON.parse(readFileSync(join(import.meta.dirname, '..', '..', 'plugin', 'skills', 'circuitoon-design', 'references', 'examples', 'battery-switch.netlist.json'), 'utf8'))
+    const r = await analyse(netSheet(n))
+    expect(r.findings.filter((f) => f.code !== 'sim-estimate').map((f) => [f.code, f.severity, f.parts])).toEqual([['sim-brownout', 'warning', ['U2', 'S1']]])
   }, 60_000)
   it('an ESP32 DevKit on 3xAAA through the AMS1117 module: dropout at peak is a warning; at typical its severity follows its basis', async () => {
     const r = await analyse(sheet([{ uid: 'bt1', module: 'battery-holder-3xaaa' }, { uid: 'u2', module: 'ams1117-33-module' }, { uid: 'u1', module: 'esp32-devkit-v1-30' }],

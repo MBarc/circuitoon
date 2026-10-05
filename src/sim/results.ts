@@ -28,6 +28,8 @@ export interface SimFinding {
   basis: Basis
   inputs: string[]
   raw?: string
+  /** The pins a pin-level finding is about (a floating input, a pin over its limit), for the editor to mark. */
+  pins?: { part: string; pin: string }[]
 }
 export interface DomainBudget {
   id: string

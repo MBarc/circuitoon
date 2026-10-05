@@ -127,13 +127,14 @@ function walk(seeds: string[], adj: Map<string, string[]>, stop: (n: string) => 
 
 /** The driven and defined node sets, with `extra` joins (a switch closed in thought). */
 type Reach = { driven: Set<string>; defined: Set<string> }
-function reach(c: Circuit, extra: [string, string][] = [], a: Kind = OP): Reach {
-  const all = reachWith(c, extra, a, new Set())
+/** `off`: devices left out (they carry no drive), as if removed from the sheet. */
+function reach(c: Circuit, extra: [string, string][] = [], a: Kind = OP, off: Set<Device> = new Set()): Reach {
+  const all = reachWith(c, extra, a, off)
   // Fix wave finding 1: a rail regulates only when its input return is defined. `defined` grows from
   // the sources' returns through resistance, which no rail carries, so one more pass settles it.
   // ponytail: one pass; a rail whose return is defined only through another dead rail's output would need a fixpoint loop.
-  const dead = new Set(c.devices.filter((d) => d.kind === 'rail' && !all.defined.has(d.inRet)))
-  return dead.size ? reachWith(c, extra, a, dead) : all
+  const dead = new Set([...off, ...c.devices.filter((d) => d.kind === 'rail' && !all.defined.has(d.inRet))])
+  return dead.size > off.size ? reachWith(c, extra, a, dead) : all
 }
 function reachWith(c: Circuit, extra: [string, string][], a: Kind, dead: Set<Device>): Reach {
   const drive = new Map<string, string[]>()
@@ -176,6 +177,15 @@ function reachWith(c: Circuit, extra: [string, string][], a: Kind, dead: Set<Dev
 /** A domain is powered when its pin node is driven and its return node is defined (both node ids). */
 export function powered(_c: Circuit, cls: Classification, pin: string, ret: string): boolean {
   return cls.driven.has(pin) && cls.defined.has(ret)
+}
+
+/**
+ * Whether a rail's input is powered by something other than the rail itself: its own body diode,
+ * backfed from its output (a DevKit's 3V3 pin fed from a battery), does not count.
+ */
+export function inputPowered(c: Circuit, rail: Extract<Device, { kind: 'rail' }>): boolean {
+  const r = reach(c, [], OP, new Set([rail]))
+  return r.driven.has(rail.in) && r.defined.has(rail.inRet)
 }
 
 /**

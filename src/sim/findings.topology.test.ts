@@ -124,3 +124,43 @@ describe('finalize (spec 4.5, 5.2)', () => {
     expect(noConvergence(c, 'x', [cell.kind === 'cell' ? cell.int : '']).parts).toEqual(['bt1'])
   })
 })
+
+describe('Phase D fixes (topology)', () => {
+  it('does not call a DevKit 3V3 pin fed from 2xAA a supply fight: its regulator has no input of its own', () => {
+    const all = codes(sheet([{ uid: 'bt1', module: 'battery-holder-2xaa' }, { uid: 'u1', module: 'esp32-devkitc-v4' }], [['bt1.+', 'u1.3V3'], ['bt1.-', 'u1.GND']]))
+    expect(all.filter((f) => f.code === 'sim-source-conflict')).toEqual([])
+  })
+  it('still flags a live regulator ORed against a battery at a different voltage, unless it blocks reverse current', () => {
+    const ored = (reverse: 'blocks' | 'body-diode') =>
+      codes(sheet([{ uid: 'bt1', module: cellModule(5, 0.05) }, { uid: 'u1', module: ldoModule({ reverse }) }, { uid: 'bt2', module: cellModule(3.7, 0.05, 'cell-b') }],
+        [['bt1.+', 'u1.IN'], ['bt1.-', 'u1.GND'], ['u1.OUT', 'bt2.+'], ['bt2.-', 'u1.GND']])).filter((f) => f.code === 'sim-source-conflict')
+    expect(ored('body-diode').map((f) => f.parts)).toEqual([['bt2', 'u1']])
+    expect(ored('blocks')).toEqual([])
+  })
+  it('does not flag a floating input on a board that is not powered (its "not powered" warning covers it), and gives the pin', () => {
+    const f = (values: Record<string, unknown>) =>
+      codes(sheet([{ uid: 'bt1', module: cellModule(5, 0.05) }, { uid: 's1', module: 'rocker-switch-kcd1', values }, { uid: 'u1', module: boardModule() }, R('r9', 1000)],
+        [['bt1.+', 's1.1'], ['s1.2', 'u1.VIN'], ['bt1.-', 'u1.GND'], ['u1.IO1', 'r9.1']])).filter((x) => x.code === 'sim-floating-input')
+    expect(f({})).toEqual([])
+    expect(f({ 'contact.s': 'closed' })).toEqual([expect.objectContaining({ parts: ['u1'], pins: [{ part: 'u1', pin: 'IO1' }] })])
+    // Unplugged (no supply drawn at all): quiet too.
+    expect(codes(sheet([{ uid: 'u1', module: boardModule() }, R('r9', 1000)], [['u1.IO1', 'r9.1']])).filter((x) => x.code === 'sim-floating-input')).toEqual([])
+  })
+})
+
+describe('finalize: an over-abs-max past twice a representative limit (Phase D ruling)', () => {
+  const lim = (basis: 'representative' | 'estimate') => ({ value: 0.03, basis, label: `led.${basis}` })
+  const abs = (overBy: number, basis: 'representative' | 'estimate' = 'representative'): Draft =>
+    ({ code: 'sim-over-abs-max', severity: 'error', parts: ['d1'], message: 'D1 carries 90 mA, above its 30 mA absolute maximum: damage is likely.', inputs: [lim(basis)], key: 'k', corner: 'typical', overBy })
+  it('stays a blocking error past 2x, saying it is decided on representative values', () => {
+    const [f] = finalize([abs(3)], '')
+    expect(f).toMatchObject({ severity: 'error', basis: 'representative' })
+    expect(f.message).toBe('D1 carries 90 mA, above its 30 mA absolute maximum: damage is likely. This is decided on representative values (led.representative), but it is more than twice the limit.')
+  })
+  it('is a "likely" warning at 2x or under, on an estimate whatever the ratio, and at peak', () => {
+    expect(finalize([abs(1.5)], '')[0]).toMatchObject({ severity: 'warning', message: expect.stringMatching(/^Likely: /) })
+    expect(finalize([abs(2)], '')[0].severity).toBe('warning')
+    expect(finalize([abs(5, 'estimate')], '')[0].severity).toBe('warning')
+    expect(finalize([{ ...abs(5), corner: 'peak' }], '')[0].severity).toBe('warning')
+  })
+})

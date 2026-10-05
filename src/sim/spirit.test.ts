@@ -16,6 +16,7 @@ import { ledHandCalc, ledModel } from './ledModels.ts'
 import type { Circuit, Corner } from './model.ts'
 import type { SimOutcome } from './results.ts'
 import { solve } from './session.ts'
+import { findingLines } from '../cli/simCmd.ts'
 import { FEEDBACK_LOAD } from './spice.ts'
 import { netSheet } from './testing.ts'
 
@@ -144,4 +145,22 @@ describe('the Spirit Typewriter (spec 1)', () => {
     expect(outcome.result.findings.filter((f) => f.severity !== 'note')).toEqual([])
     expect(outcome.result.findings.map((f) => f.code)).toEqual(['sim-estimate'])
   })
+
+  it('with SW1 open: only the "not powered, SW1 is open" warnings (folded to one summary line), no floating-input or min-load noise', async () => {
+    const open = { ...n, parts: n.parts.map((p: { ref: string; values?: unknown }) => (p.ref === 'SW1' ? { ref: p.ref, module: 'rocker-switch-kcd1' } : p)) }
+    const { outcome } = await solve(netSheet(open), engine, 2)
+    if (outcome.status !== 'ok') throw new Error(JSON.stringify(outcome))
+    const shown = outcome.result.findings.filter((f) => f.severity !== 'note')
+    expect(shown.length).toBeGreaterThan(0)
+    for (const f of shown) expect([f.code, f.severity, f.message]).toEqual(['sim-brownout', 'warning', expect.stringContaining('SW1 is open')])
+    expect(findingLines(shown)).toHaveLength(1)
+  }, 60_000)
+  it('the shipped example sheet (1-main, SW1 open): its unpowered ESP32 inputs and cut-off boost add no noise', async () => {
+    const main = JSON.parse(readFileSync(join(import.meta.dirname, '..', '..', 'plugin', 'skills', 'circuitoon-design', 'references', 'examples', 'spirit-typewriter', '1-main.netlist.json'), 'utf8'))
+    const { outcome } = await solve(netSheet(main), engine, 3)
+    if (outcome.status !== 'ok') throw new Error(JSON.stringify(outcome))
+    const shown = outcome.result.findings.filter((f) => f.severity !== 'note')
+    expect(shown.map((f) => f.code).filter((c) => c !== 'sim-brownout')).toEqual([])
+    expect(findingLines(shown)).toEqual([expect.stringMatching(/^ {2}warning: not powered in the current state because SW1 is open: /)])
+  }, 60_000)
 })
