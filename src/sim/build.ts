@@ -25,6 +25,12 @@ export interface BuildOptions {
   held?: { part: string; group: string } | null
   /** The built-in parts, whose `electrical.sim` the simulator reads (default: the library). */
   library?: ModuleLookup
+  /**
+   * The netlist's own net names (the CLI given a netlist): each net by the node keys of its pins.
+   * A sheet net holding one of those pins takes the netlist's name; the rest keep the sheet's, made
+   * unique. The editor passes none.
+   */
+  netNames?: { name: string; keys: string[] }[]
 }
 
 const modelOf = (m: ModuleDef): string => (isObj(m.electrical) && typeof m.electrical.model === 'string' ? m.electrical.model : '')
@@ -83,6 +89,28 @@ export class Builder {
       const name = named ? this.netOfKey.get(named)! : this.fresh(this.firstComponent(keys))
       for (const k of keys) this.netOfKey.set(k, name)
     }
+    if (opts.netNames) this.rename(opts.netNames)
+  }
+
+  /** Sheet net names to the netlist's own (BuildOptions.netNames); an unnamed net clashing with one gets a suffix. */
+  private rename(netNames: { name: string; keys: string[] }[]): void {
+    const alias = new Map<string, string>()
+    const taken = new Set<string>()
+    for (const n of netNames) {
+      const sheet = n.keys.map((k) => this.netOfKey.get(k)).find((x) => x !== undefined)
+      if (sheet === undefined || alias.has(sheet) || taken.has(n.name)) continue
+      alias.set(sheet, n.name)
+      taken.add(n.name)
+    }
+    this.names = new Set(taken)
+    for (const sheet of [...new Set(this.netOfKey.values())].sort()) {
+      if (alias.has(sheet)) continue
+      let name = sheet
+      for (let k = 2; this.names.has(name); k++) name = `${sheet}_${k}`
+      this.names.add(name)
+      alias.set(sheet, name)
+    }
+    for (const [k, net] of this.netOfKey) this.netOfKey.set(k, alias.get(net)!)
   }
 
   ref(uid: string): string {
@@ -108,7 +136,8 @@ export class Builder {
   }
 
   private fresh([uid, pin]: [string, string]): string {
-    const base = `${this.ref(uid)}_${pin}`
+    // A USB port's own conductor (`USB#vbus`) reads as `U1_USB_VBUS`: `#` marks internal nodes.
+    const base = `${this.ref(uid)}_${pin.replace(/#(.*)$/, (_, x: string) => `_${x.toUpperCase()}`)}`
     let name = base
     for (let k = 2; this.names.has(name); k++) name = `${base}_${k}`
     this.names.add(name)

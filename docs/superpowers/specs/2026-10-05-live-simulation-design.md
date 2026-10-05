@@ -433,14 +433,14 @@ interface SimFinding {
 |---|---|---|
 | `sim-short` | **Topological, not by a current threshold.** In the current state, a *low path* (contacts, jumpers, fuses, cable conductors and wire joins only) connects a source's or rail output's terminal to **its own return**. The parts on that path are listed. A shorted high-resistance cell is found too. | error, basis `topology` |
 | `sim-source-conflict` | Two sources or rail outputs form a **closed loop through low paths on both sides**: plus to plus **and** minus to minus (parallel), with open-circuit voltages differing by more than 0.1 V. Joining only the positives, or wiring sources in series, never fires it (Astra re-review A). Rail outputs with `reverse: 'blocks'` are excluded, because they OR rather than fight. So is a rail output whose input nothing but the rail itself powers (a DevKit's 3V3 pin fed from 2xAA backfeeds its own dead regulator). | error; basis = the weaker provenance of the two voltages |
-| `sim-over-abs-max` | Over an `absMaxCurrent`, a `vinMax`, or a pin's absolute maximum. "Exceeds the absolute maximum rating; damage is likely." For an LED it names the series resistor to add ("about 150 ohm at 5 V"). The engine does not decide burnout: the LED shows dark-red with a warning ring, never "burnt". | error (still an error on a `representative` limit exceeded more than 2x) |
+| `sim-over-abs-max` | Over an `absMaxCurrent`, a `vinMax`, or a pin's absolute maximum. "Exceeds the absolute maximum rating; damage is likely." For an LED it names the series resistor to add ("about 150 ohm at 5 V"), sized from the driving node's unloaded voltage (a source's open-circuit voltage or a rail's `vout`), not the sagged reading. The engine does not decide burnout: the LED shows dark-red with a warning ring, never "burnt". | error (still an error on a `representative` limit exceeded more than 2x) |
 | `sim-over-limit` | Over a `current`, `power`, `sourceCurrent`, `ioTotalCurrent`, `ioutMax` or `imax` limit, or a USB host's sourced current, but under any absolute maximum. "Above its 20 mA rating." Not on a source in a `sim-short` (the short says it). | warning |
 | `sim-brownout` | A load's domain voltage below its `minVolts` (error). A load that nothing on the sheet powers in the current state is a **warning** with basis `topology`, worded "not powered in the current state", naming the open switch when one separates it from a source ("SW1 is open"); revision 5. | error; warning when not powered |
 | `sim-dropout` | An LDO whose control voltage `Vctl` is below `vout` - 10 mV (out of regulation; this excludes the `rout` drop). | error |
 | `sim-converter-off` | A buck or boost with `e < 0.5` while loads on its output domain expect power. | error |
 | `sim-min-load` | A rail with `minLoad` loaded below it, e.g. the IP5306 auto shutdown. Not while the rail is unpowered, or while an open switch cuts its output from a load it would power. | warning |
 | `sim-outside-model` | A rail beyond `ioutMax`, so its voltages can't be trusted. | warning |
-| `sim-floating-input` | A GPIO in `input` state on a floating node (classified before solving; the solver's 0 V is never used as evidence), on a board whose IO domain is powered (an unpowered board's "not powered" warning covers it). | warning |
+| `sim-floating-input` | A GPIO in `input` state on a floating node (classified before solving; the solver's 0 V is never used as evidence), on a board whose IO domain is powered (an unpowered board's "not powered" warning covers it), and whose net reaches no connector pin that leads off the sheet (another sheet drives it). | warning |
 | `sim-no-convergence` | ngspice failed after its own fallbacks. The message names the parts on the nets ngspice reported. | error |
 | `sim-incomplete` | Powered parts with no power data, listed. | note |
 | `sim-estimate` | N values in the result are estimates, listed. | note |
@@ -514,7 +514,10 @@ Messages are plain words, for example "LED1 carries 47 mA, above the 20 mA typic
 | `ok`, no blocking finding (5.2) | 0 |
 | `ok`, with blocking findings | 1 |
 | bad input | 2 |
-| `failed` or `unavailable` | 3 |
+| `failed` or `unavailable`, with blocking topological findings (a real short) | 1, as `gate` (revision 5, Phase D) |
+| `failed` or `unavailable`, nothing blocking | 3 |
+
+Given a netlist, or a sheet that carries its intent, `corners.*.nets` is keyed by the netlist's own net names; nets the netlist does not name keep the sheet's names. `sim` checks connectivity only: a netlist the layout cannot draw (a net that needs a distribution point) is simulated from its connections, never refused (revision 5, Phase D).
 
 **`gate`** becomes `circuitoon-cli/gate/4`. The full matrix (Astra finding 12):
 
@@ -676,3 +679,9 @@ From an independent review of the implementation plan (`docs/superpowers/plans/2
 | 5.2 | Phase D checkpoint rulings: `sim-source-conflict` leaves out a rail output whose input nothing but the rail itself powers; `sim-floating-input` is skipped on an unpowered board; `sim-min-load` is suppressed while an open switch cuts the rail's output; no `sim-over-limit` on a source that is in a `sim-short`. |
 | 5.1, 7 | Phase D checkpoint ruling: failed and unavailable outcomes carry the topological findings (decided before the engine runs), and `gate` blocks on their errors by the usual rule, so a real short with no engine still says GATE FAILED. `SimFinding` gains optional `pins` for pin-level findings (format stays `circuitoon-sim/1`). |
 | 3 (module drift) | Controller ruling: `electrical.sim` is library data, not drift, like `kicad`. A sheet's copy of a built-in part is never out of date for sim data alone, and the simulator reads a built-in part's sim from the library (when its pins match); a custom part's embedded sim is used as is. |
+| 7 | Phase D checkpoint ruling: `circuitoon sim` exits 1 when a failed or unavailable outcome carries blocking topological findings, as `gate` blocks on them; 3 only when nothing blocks. |
+| 7 | Phase D checkpoint ruling: given a netlist (or a sheet with its intent), `sim` keys net readings by the netlist's own net names (an alias over the sheet's names; nets the netlist does not name keep theirs, made unique), and a USB port's own conductor reads as `U1_USB_VBUS`, never an internal `#` name. The editor keeps the sheet's names. |
+| 7 | Phase D checkpoint ruling: `sim` validates connectivity only. Layout-readability rules (a net that needs a distribution point) never block a DC solve: a netlist the layout cannot draw is simulated from a sheet with each net wired pin to pin. |
+| 5.2 | Phase D checkpoint ruling: `sim-floating-input` is skipped when the input's net reaches a pin of a `connector` part that leads off the sheet (a header, a JST-XH plug, a USB panel socket: the Spirit's J1 to J3 inter-sheet connectors). A pin joined to another inside its part (`internal`, a Wago lever splice) only joins wires on the sheet and does not count. |
+| 5.2 | Phase D checkpoint ruling: an LED's resistor advice uses the driving node's unloaded voltage (a source's open-circuit voltage or a rail's `vout`), not the reading the overload sags: an LED straight on 2xAA reads "at 3 V". |
+| 2.3 | Phase D performance: a solve sends both corners to the worker in one message (a batch); the 5 s timeout, the retry and recycling apply per message, the worker stops a batch at its first failure, and every run answered counts toward the 2,000-run recycle (still 2 engine runs per solve). |

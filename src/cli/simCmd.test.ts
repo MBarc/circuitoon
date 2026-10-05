@@ -1,14 +1,17 @@
 // Spec 7: circuitoon sim prints the SimOutcome JSON on stdout and a short summary on stderr; exit 0
-// clean, 1 blocking, 2 bad input, 3 failed or unavailable; --probe repeats; a netlist is laid out
-// first; only simulation findings are reported.
+// clean, 1 blocking (a failed or unavailable solve's topological findings too), 2 bad input, 3
+// failed or unavailable; --probe repeats; a netlist is laid out first, else simulated from its
+// connections; readings use the netlist's net names; only simulation findings are reported.
 import { describe, expect, it } from 'vitest'
-import { writeFileSync } from 'node:fs'
+import { readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { cli, tempDir } from './cliHarness.testing.ts'
 import { loadSchema, schemaErrors } from './jsonSchema.testing.ts'
 import { ledNetlist } from '../agent/fixtures.testing.ts'
 import { parseArgs } from './args.ts'
 import { simCommand, summary } from './simCmd.ts'
+import { layoutNetlist } from '../agent/layout.ts'
+import { buildCircuit } from '../sim/build.ts'
 import type { Engine } from '../sim/engine/engine.ts'
 import type { EngineHost } from '../sim/engine/host.ts'
 import type { SimFinding, SimOutcome } from '../sim/results.ts'
@@ -53,7 +56,7 @@ describe('circuitoon sim', () => {
     expect(f).toMatchObject({ severity: 'error', basis: 'representative', parts: ['D1'] })
     expect(f.message).toContain('Add a series resistor (about ')
   }, 60_000)
-  it('exits 3 when the engine is unavailable, with a schema-valid outcome that still names a real short', async () => {
+  it('exits 1 when the engine is unavailable but a real short blocks (as gate), with a schema-valid outcome that names it', async () => {
     const dir = tempDir()
     write(dir, 'n.json', {
       format: 'circuitoon-netlist/1', title: 'short',
@@ -72,13 +75,60 @@ describe('circuitoon sim', () => {
     const parsed = parseArgs(['sim', 'n.json'])
     if (!parsed.ok) throw new Error('args')
     const code = await simCommand(parsed.value, { stdout: (t) => void (out += t), stderr: (t) => void (err += t), cwd: dir, env: {} }, { engine })
-    expect(code).toBe(3)
+    expect(code).toBe(1)
     const o = JSON.parse(out)
     expect(schemaErrors(loadSchema('sim'), o)).toEqual([])
     expect(o).toMatchObject({ status: 'unavailable', reason: 'no engine' })
     expect(o.findings.filter((f: SimFinding) => f.code === 'sim-short')).toEqual([expect.objectContaining({ severity: 'error', parts: ['BT1', 'S1'] })])
     expect(err.split('\n').slice(0, 2)).toEqual(['Simulation unavailable: no engine', expect.stringMatching(/^ {2}error: BT1 is shorted/)])
+    // With nothing blocking, an unavailable engine is exit 3.
+    write(dir, 'led.json', ledNetlist())
+    const led = parseArgs(['sim', 'led.json'])
+    if (!led.ok) throw new Error('args')
+    expect(await simCommand(led.value, { stdout() {}, stderr() {}, cwd: dir, env: {} }, { engine })).toBe(3)
   })
+  it('keys net readings by the netlist own names (VCC stays VCC), from a netlist and from its laid-out sheet; no internal node leaks', async () => {
+    const dir = tempDir()
+    write(dir, 'n.json', ledNetlist())
+    const r = await cli(['sim', 'n.json', '--probe', 'net:VCC'], { cwd: dir })
+    expect(r.code).toBe(0)
+    const o = JSON.parse(r.out)
+    const nets = Object.keys(o.result.corners.typical.nets)
+    expect(nets).toEqual(expect.arrayContaining(['VCC', 'LED_A', 'GND']))
+    expect(nets.filter((n) => n.includes('#'))).toEqual([])
+    expect(o.result.corners.typical.nets.VCC).toMatchObject({ kind: 'value', reference: 'GND' })
+    expect(o.result.probes[0].voltage.typical).toEqual(o.result.corners.typical.nets.VCC)
+    // The laid-out sheet keeps its intent, so it reads the same names.
+    const laid = layoutNetlist(ledNetlist())
+    if (!laid.ok) throw new Error('layout')
+    write(dir, 'sheet.json', laid.value.diagram)
+    const s = await cli(['sim', 'sheet.json'], { cwd: dir })
+    expect(Object.keys(JSON.parse(s.out).result.corners.typical.nets)).toEqual(nets)
+    // The editor (no netNames) keeps the sheet's own names.
+    const { intent: _, ...bare } = laid.value.diagram
+    expect(buildCircuit(bare).nets).not.toContain('VCC')
+  }, 60_000)
+  it('simulates a netlist the layout cannot draw (connectivity only): the Spirit Typewriter fixture never exits 2', async () => {
+    const r = await cli(['sim', join(import.meta.dirname, '../sim/fixtures/spirit-typewriter.netlist.json'), '--probe', 'D1'])
+    expect([0, 1]).toContain(r.code)
+    const o = JSON.parse(r.out)
+    expect(o.status).toBe('ok')
+    expect(Object.keys(o.result.corners.typical.nets)).toEqual(expect.arrayContaining(['BAT', 'BSW', '5V', '3V3', 'GND', 'SDA', 'SCL']))
+    expect(o.result.corners.typical.nets['3V3'].value).toBeCloseTo(3.27, 1)
+    // Part probes are in the summary.
+    expect(r.err).toMatch(/\n {2}P1 D1: lit, [\d.]+ mW, into A [\d.]+ mA, K -[\d.]+ mA\n/)
+  }, 60_000)
+  it('Spirit 1-main with SW1 closed: no floating input on the I2C pins its J1 to J3 carry to the bank sheets', async () => {
+    const dir = tempDir()
+    const n = JSON.parse(readFileSync(join(import.meta.dirname, '../../plugin/skills/circuitoon-design/references/examples/spirit-typewriter/1-main.netlist.json'), 'utf8'))
+    n.parts.find((p: { ref: string }) => p.ref === 'SW1').values = { 'contact.s': 'closed' }
+    write(dir, 'n.json', n)
+    const r = await cli(['sim', 'n.json'], { cwd: dir })
+    expect(r.code).toBe(0)
+    const floating = JSON.parse(r.out).result.findings.filter((f: SimFinding) => f.code === 'sim-floating-input').flatMap((f: SimFinding) => f.pins!.map((p) => p.pin))
+    expect(floating).not.toContain('IO21')
+    expect(floating).not.toContain('IO22')
+  }, 60_000)
   it('exits 2 on bad input: no file, not a sheet, an unknown probe', async () => {
     const dir = tempDir()
     expect((await cli(['sim'], { cwd: dir })).code).toBe(2)
@@ -97,5 +147,14 @@ describe('circuitoon sim', () => {
     const lines = summary(o).split('\n')
     expect(lines.filter((l) => l.includes('S1 is open'))).toEqual(['  warning: not powered in the current state because S1 is open: U1 VCC, U2 VCC. Set S1 to its operating position to simulate them running.'])
     expect(lines.filter((l) => l.includes('S2 is open'))).toHaveLength(1)
+  })
+  it('summary: nothing solved says so; a domain row prints its own draw, not the pin current', () => {
+    const none = { status: 'ok', result: { findings: [], probes: [], budget: [], unaccounted: [], engine: { ms: 0, runs: 0 } } } as unknown as SimOutcome
+    expect(summary(none).split('\n')[0]).toBe('Simulation: nothing powered; not solved. 0 blocking findings, 0 warnings, 0 notes.')
+    const v = { kind: 'value', value: 3.3, reference: 'GND', trust: 'ok' } as const
+    const a = (x: number) => ({ kind: 'value', value: x, trust: 'ok' }) as const
+    const row = { id: 'u1.domain.3V3', kind: 'domain', part: 'u1', label: 'U1 3V3', volts: { typical: v, peak: v }, amps: { typical: a(0.3), peak: a(0.3) }, ownDraw: { typical: a(0.1), peak: a(0.24) }, basis: 'datasheet' }
+    const o = { status: 'ok', result: { findings: [], probes: [], budget: [row], unaccounted: [], engine: { ms: 5, runs: 2 } } } as unknown as SimOutcome
+    expect(summary(o)).toContain('  budget U1 3V3: 3.300 V, 100.0 mA (peak 240.0 mA) own draw\n')
   })
 })

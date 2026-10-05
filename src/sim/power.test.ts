@@ -67,9 +67,9 @@ describe('power models', () => {
     expect(byId(c.devices, 'h1.source')).toMatchObject({ kind: 'cell', role: 'external', p: 'h1:USB#vbus', n: 'h1:USB#gnd' })
     // Fix wave finding 3: #vbus (and an unmapped #gnd) is a tapped pin, and the cable joins the port
     // nets outside both parts' senses, so each sense carries the port's current.
-    expect(c.taps.filter((t) => t.pin.includes('#')).map((t) => `${t.node}@${t.net}`)).toEqual(['h1:USB#gnd@H1_USB#gnd', 'h1:USB#vbus@H1_USB#vbus', 'u1:USB#vbus@U1_USB#vbus'])
-    expect(byId(c.devices, 'usb.w1.vbus')).toMatchObject({ kind: 'resistor', role: 'cable', a: 'net:H1_USB#vbus', b: 'net:U1_USB#vbus' })
-    expect(byId(c.devices, 'usb.w1.gnd')).toMatchObject({ kind: 'resistor', role: 'cable', a: 'net:H1_USB#gnd', b: `net:${c.pinNet[JSON.stringify(['u1', 'GND'])]}` })
+    expect(c.taps.filter((t) => t.pin.includes('#')).map((t) => `${t.node}@${t.net}`)).toEqual(['h1:USB#gnd@H1_USB_GND', 'h1:USB#vbus@H1_USB_VBUS', 'u1:USB#vbus@U1_USB_VBUS'])
+    expect(byId(c.devices, 'usb.w1.vbus')).toMatchObject({ kind: 'resistor', role: 'cable', a: 'net:H1_USB_VBUS', b: 'net:U1_USB_VBUS' })
+    expect(byId(c.devices, 'usb.w1.gnd')).toMatchObject({ kind: 'resistor', role: 'cable', a: 'net:H1_USB_GND', b: `net:${c.pinNet[JSON.stringify(['u1', 'GND'])]}` })
     expect(c.usb).toEqual([expect.objectContaining({ host: 'h1', device: 'u1', limit: expect.objectContaining({ value: 0.5, basis: 'datasheet' }) })])
   })
   it('lets an external source sim.imax override replace its sourceCurrent limit, as user', () => {
