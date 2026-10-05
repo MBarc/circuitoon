@@ -142,6 +142,9 @@ export function compile(c: Circuit, cls: Classification, a: Analysis): Compiled 
           lines: (n) => {
             const vin = `v(${n(d.in)},${n(d.inRet)})`
             const vc = `v(${n(d.ctl)},${n(d.ret)})`
+            // A buck has no input ceiling relative to vout here: Vctl is enable x vout at any input in
+            // range, even below vout. The Pi Pico's RT6150 is a buck-boost filed as `buck` and works only
+            // because of that; a future true-buck dropout (vin - headroom) must not apply to it.
             const vctl = r.kind === 'ldo' ? smin(num(r.vout!.value), smax(`${vin}-${num(r.dropout!.value)}`, '0')) : `${enable(vin, r.vinMin!.value, r.vinMax!.value)}*${num(r.vout!.value)}`
             // softplus(Vctl - Vout) - softplus(-Vout): exactly 0 at Vctl = 0, so a dead rail supplies nothing (ruling, Task 15).
             const iout = `(${sp(`${vc}-v(${n(d.o)},${n(d.ret)})`, ko)}-${sp(`-v(${n(d.o)},${n(d.ret)})`, ko)})/${num(rout)}`
