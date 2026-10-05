@@ -4,10 +4,12 @@
 // a breadboard hole included. A dangling or malformed probe is dropped with a warning.
 import { describe, expect, it } from 'vitest'
 import { validateDiagram } from '../format/diagram.ts'
+import { parseNetlist } from '../agent/netlist.ts'
+import { libraryLookup } from '../agent/catalog.ts'
 import { layoutNetlist } from '../agent/layout.ts'
 import { extractNetlist } from '../agent/extract.ts'
-import { ledNetlist } from '../agent/fixtures.testing.ts'
-import { probesForNetlist } from './probes.ts'
+import { ledNetlist, tiltSensors } from '../agent/fixtures.testing.ts'
+import { probesForNetlist, probesForSheet } from './probes.ts'
 
 const withProbes = () => ({
   ...ledNetlist(),
@@ -77,5 +79,40 @@ describe('probes', () => {
     if (!r.ok) return
     expect(r.value.diagram.probes).toBeUndefined()
     expect(r.value.intent.probeWarnings).toEqual(['probes[0]: no part "Q9", so the probe was dropped', 'probes[1]: no net "NOPE", so the probe was dropped'])
+  })
+  it('never sees a terminal-less net: parseNetlist refuses it, and probesForSheet skips one that is hand-built', () => {
+    const hostile = { ...ledNetlist(), nets: [...ledNetlist().nets, { name: 'EMPTY', pins: [] }], probes: [{ id: 'P1', at: 'net:EMPTY' }] }
+    const r = parseNetlist(hostile, libraryLookup)
+    expect(r.ok).toBe(false)
+    expect(layoutNetlist(hostile).ok).toBe(false)
+    const ok = parseNetlist(withProbes(), libraryLookup)
+    if (!ok.ok) throw new Error(ok.errors.join('; '))
+    const intent = { ...ok.intent, nets: ok.intent.nets.map((n) => (n.name === 'LED_A' ? { ...n, terminals: [] } : n)) }
+    expect(probesForSheet(intent).map((p) => p.id)).toEqual(['P1', 'P2', 'P4'])
+  })
+  it('rejects unknown keys inside a probe anchor and a netlist probe', () => {
+    const s = laid(withProbes()).diagram
+    const r = validateDiagram({ ...s, probes: [{ id: 'P1', at: { part: 'D1', pin: 'A', junk: 1 } }] })
+    expect(r.ok).toBe(true)
+    if (!r.ok) return
+    expect(r.diagram.probes).toBeUndefined()
+    expect(r.warnings.filter((w) => w.startsWith('probes['))).toEqual(['probes[0]: unknown field "at.junk", so the probe was dropped'])
+    const l = layoutNetlist({ ...ledNetlist(), probes: [{ id: 'P1', at: 'D1', junk: 1 }] })
+    expect(l.ok && l.value.intent.probeWarnings).toEqual(['probes[0]: unknown field "junk", so the probe was dropped'])
+  })
+  it('remaps a real probe on a routing strip the layout added to net:<name>', () => {
+    const sheet = laid(tiltSensors()).diagram
+    const strip = sheet.parts.find((p) => /^DP\d+$/.test(p.uid))
+    if (!strip) throw new Error('layout added no routing strip')
+    const isPart = (u: string) => !/^DP\d+$/.test(u) && !sheet.parts.find((p) => p.uid === u)?.module.startsWith('breadboard')
+    const wire = sheet.connections.find((c) => (c.from.part === strip.uid && isPart(c.to.part)) || (c.to.part === strip.uid && isPart(c.from.part)))
+    if (!wire) throw new Error('no wire joins the strip to a part')
+    const [mine, other] = wire.from.part === strip.uid ? [wire.from, wire.to] : [wire.to, wire.from]
+    const withProbe = { ...sheet, probes: [{ id: 'P1', at: { part: strip.uid, pin: mine.pin } }] }
+    const out = extractNetlist(withProbe) as { nets: { name: string; pins: string[] }[]; probes: { id: string; at: string }[] }
+    expect(out.probes).toHaveLength(1)
+    const want = out.nets.find((n) => n.pins.includes(`${other.part}.${other.pin}`))
+    expect(want).toBeDefined()
+    expect(out.probes[0].at).toBe(`net:${want!.name}`)
   })
 })

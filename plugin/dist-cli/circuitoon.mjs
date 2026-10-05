@@ -5563,6 +5563,9 @@ function probeProblem(p, ids, pinsOf) {
 	if (typeof p.id !== "string" || !PROBE_ID.test(p.id)) return "its id must be P and a number (P1, P2, ...)";
 	if (ids.has(p.id)) return `its id ${p.id} is used twice`;
 	if (p.name !== void 0 && !(typeof p.name === "string" && p.name.trim() && p.name.length <= 40)) return "its name must be text, at most 40 characters";
+	if (isObj(p.at)) {
+		for (const k of Object.keys(p.at)) if (!["part", "pin"].includes(k)) return `unknown field "at.${k}"`;
+	}
 	if (!isObj(p.at) || typeof p.at.part !== "string" || p.at.pin !== void 0 && typeof p.at.pin !== "string") return "its anchor must be { \"part\", \"pin\"? }";
 	const pins = pinsOf(p.at.part);
 	if (pins === void 0) return `no part "${p.at.part}"`;
@@ -86440,6 +86443,13 @@ function parseNetlist(raw, library) {
 			raw.probes.forEach((p, i) => {
 				const drop = (why) => void probeWarnings.push(`probes[${i}]: ${why}, so the probe was dropped`);
 				if (!isObj(p) || typeof p.at !== "string") return drop("must be { \"id\", \"name\"?, \"at\", \"ref\"? }");
+				const extra = Object.keys(p).find((k) => ![
+					"id",
+					"name",
+					"at",
+					"ref"
+				].includes(k));
+				if (extra) return drop(`unknown field "${extra}"`);
 				if (typeof p.id !== "string" || !PROBE_ID.test(p.id)) return drop("its id must be P and a number (P1, P2, ...)");
 				if (ids.has(p.id)) return drop(`its id ${p.id} is used twice`);
 				if (p.name !== void 0 && !(typeof p.name === "string" && p.name.trim() && p.name.length <= 40)) return drop("its name must be text, at most 40 characters");
@@ -90737,32 +90747,33 @@ function reportText(r) {
 //#region src/sim/probes.ts
 /** Layout (spec 6.2): netlist probes on the laid-out sheet, whose uids are the refs. net: picks a pin of the part the probe's name starts with, else the lowest ref. */
 function probesForSheet(intent) {
-	return intent.probes.map((p) => {
+	return intent.probes.flatMap((p) => {
 		const base = {
 			id: p.id,
 			...p.name ? { name: p.name } : {}
 		};
 		if (p.at.startsWith("net:")) {
 			const net = intent.nets.find((n) => n.name === p.at.slice(4));
+			if (!net?.terminals.length) return [];
 			const pins = net.terminals.some((t) => !t.infra) ? net.terminals.filter((t) => !t.infra) : net.terminals;
 			const named = p.name?.trim().split(/\s+/)[0];
 			const pick = pins.find((t) => t.ref === named) ?? [...pins].sort((a, b) => naturalCompare(a.ref, b.ref) || naturalCompare(a.name, b.name))[0];
-			return {
+			return [{
 				...base,
 				at: {
 					part: pick.ref,
 					pin: pick.name
 				}
-			};
+			}];
 		}
 		const dot = p.at.indexOf(".");
-		return {
+		return [{
 			...base,
 			at: dot < 0 ? { part: p.at } : {
 				part: p.at.slice(0, dot),
 				pin: p.at.slice(dot + 1)
 			}
-		};
+		}];
 	});
 }
 /** Extract (spec 6.2): sheet probes in ref form; a pin probe on a part the netlist leaves out becomes net:<its net>; a part probe there is dropped with a warning. */
@@ -90775,7 +90786,7 @@ function probesForNetlist(probes, refOf, nets, warn) {
 		const ref = refOf.get(p.at.part);
 		if (ref) return [{
 			...base,
-			at: p.at.pin ? `${ref}.${p.at.pin}` : ref
+			at: p.at.pin !== void 0 ? `${ref}.${p.at.pin}` : ref
 		}];
 		const key = p.at.pin !== void 0 ? nodeKey(p.at.part, p.at.pin) : null;
 		const net = key ? nets.find((n) => n.keys.includes(key)) : void 0;

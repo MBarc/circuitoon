@@ -412,6 +412,8 @@ export function parseNetlist(raw: unknown, library: ModuleLookup): IntentResult 
       raw.probes.forEach((p, i) => {
         const drop = (why: string) => void probeWarnings.push(`probes[${i}]: ${why}, so the probe was dropped`)
         if (!isObj(p) || typeof p.at !== 'string') return drop('must be { "id", "name"?, "at", "ref"? }')
+        const extra = Object.keys(p).find((k) => !['id', 'name', 'at', 'ref'].includes(k))
+        if (extra) return drop(`unknown field "${extra}"`)
         if (typeof p.id !== 'string' || !PROBE_ID.test(p.id)) return drop('its id must be P and a number (P1, P2, ...)')
         if (ids.has(p.id)) return drop(`its id ${p.id} is used twice`)
         if (p.name !== undefined && !(typeof p.name === 'string' && p.name.trim() && p.name.length <= 40)) return drop('its name must be text, at most 40 characters')

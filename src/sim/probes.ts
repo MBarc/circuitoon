@@ -7,17 +7,18 @@ import { nodeKey } from '../format/netlist.ts'
 
 /** Layout (spec 6.2): netlist probes on the laid-out sheet, whose uids are the refs. net: picks a pin of the part the probe's name starts with, else the lowest ref. */
 export function probesForSheet(intent: Intent): Probe[] {
-  return intent.probes.map((p): Probe => {
+  return intent.probes.flatMap((p): Probe[] => {
     const base = { id: p.id, ...(p.name ? { name: p.name } : {}) }
     if (p.at.startsWith('net:')) {
-      const net = intent.nets.find((n) => n.name === p.at.slice(4))!
+      const net = intent.nets.find((n) => n.name === p.at.slice(4))
+      if (!net?.terminals.length) return [] // parseNetlist already refuses nets of under 2 pins; a hand-built Intent is skipped, not crashed on
       const pins = net.terminals.some((t) => !t.infra) ? net.terminals.filter((t) => !t.infra) : net.terminals
       const named = p.name?.trim().split(/\s+/)[0]
       const pick = pins.find((t) => t.ref === named) ?? [...pins].sort((a, b) => naturalCompare(a.ref, b.ref) || naturalCompare(a.name, b.name))[0]
-      return { ...base, at: { part: pick.ref, pin: pick.name } }
+      return [{ ...base, at: { part: pick.ref, pin: pick.name } }]
     }
     const dot = p.at.indexOf('.')
-    return { ...base, at: dot < 0 ? { part: p.at } : { part: p.at.slice(0, dot), pin: p.at.slice(dot + 1) } }
+    return [{ ...base, at: dot < 0 ? { part: p.at } : { part: p.at.slice(0, dot), pin: p.at.slice(dot + 1) } }]
   })
 }
 
@@ -26,7 +27,7 @@ export function probesForNetlist(probes: Probe[], refOf: Map<string, string>, ne
   return probes.flatMap((p): NetlistProbe[] => {
     const base = { id: p.id, ...(p.name ? { name: p.name } : {}) }
     const ref = refOf.get(p.at.part)
-    if (ref) return [{ ...base, at: p.at.pin ? `${ref}.${p.at.pin}` : ref }]
+    if (ref) return [{ ...base, at: p.at.pin !== undefined ? `${ref}.${p.at.pin}` : ref }]
     const key = p.at.pin !== undefined ? nodeKey(p.at.part, p.at.pin) : null
     const net = key ? nets.find((n) => n.keys.includes(key)) : undefined
     if (net) return [{ ...base, at: `net:${net.name}` }]

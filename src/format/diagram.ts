@@ -1421,6 +1421,7 @@ function probeProblem(p: unknown, ids: Set<string>, pinsOf: (uid: string) => Set
   if (typeof p.id !== 'string' || !PROBE_ID.test(p.id)) return 'its id must be P and a number (P1, P2, ...)'
   if (ids.has(p.id)) return `its id ${p.id} is used twice`
   if (p.name !== undefined && !(typeof p.name === 'string' && p.name.trim() && p.name.length <= 40)) return 'its name must be text, at most 40 characters'
+  if (isObj(p.at)) for (const k of Object.keys(p.at)) if (!['part', 'pin'].includes(k)) return `unknown field "at.${k}"`
   if (!isObj(p.at) || typeof p.at.part !== 'string' || (p.at.pin !== undefined && typeof p.at.pin !== 'string')) return 'its anchor must be { "part", "pin"? }'
   const pins = pinsOf(p.at.part)
   if (pins === undefined) return `no part "${p.at.part}"`
