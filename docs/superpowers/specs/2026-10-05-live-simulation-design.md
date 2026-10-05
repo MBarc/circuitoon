@@ -1,8 +1,8 @@
 # Live DC simulation: design
 
-Status: revision 2 (2026-10-05).
+Status: revision 3 (2026-10-05).
 - Revision 1 was approved section by section by Michael.
-- Astra's review of revision 1 asked for a revision with 15 findings. Revision 2 answers all of them; section 12 maps each finding to its fix.
+- Astra reviewed revisions 1 and 2. Section 12 answers the first review; revision 3 answers the re-review (section 13).
 
 This is the second V2 sub-project, after mains outlets. Instruments, V3 animation and firmware come later.
 
@@ -143,7 +143,13 @@ interface Limit {
   - `representative` means a value from a representative datasheet for a generic part, for example "a typical 5 mm red LED". The source names which datasheet.
   - A user override (section 3.5) marks only the overridden value `user`.
 - **Legacy values:** the LED's existing `params.maxCurrent` (default 20 mA) is still read as a `current` limit with provenance `representative`, so old embedded modules keep working. If both are present, `sim.limits` wins.
-- **Validation:** `electrical.sim` is validated in full. Unknown keys are errors, a unit must match its kind, and every pin and domain it names must exist. Unknown or absent `sim` data means the part is not simulated; it is never a crash.
+- **Validation:** `electrical.sim` is validated in full. Unknown keys are errors, a unit must match its kind, and every pin and domain it names must exist.
+- **Primitives need no `sim` data (Astra re-review B).** The built-in primitive models compile from the existing `electrical.model`, `terminals` and `params` plus defaults, with or without `electrical.sim`, legacy embedded copies included. They are:
+  - `resistor`, `led`, `voltage_source` (batteries, cells, holders), `capacitor`, `switch`, `fuse`, `inductor`.
+
+  `sim` only adds or overrides values (contact resistance, LED limits, cell `rInternal`).
+- **Boards and modules** (every other model) need `sim.power` to be simulated. Without it, they are listed in `unsimulated` ("no power data"); this is never a crash.
+- **Required fields and defaults (Astra re-review C):** validation enforces the required fields per kind (section 3.2). A built-in module that lacks one fails `npm run validate`. A custom or embedded part that lacks one is not simulated, with the missing field named.
 
 ### 3.2 Power topology: `sim.power`
 
@@ -161,12 +167,22 @@ interface Rail {
   kind: 'ldo' | 'buck' | 'boost' | 'switch'
   vout?: Quantity; dropout?: Quantity; iq?: Quantity; ioutMax?: Quantity; efficiency?: Quantity
   vinMin?: Quantity; vinMax?: Quantity; rout?: Quantity
-  reverse: 'blocks' | 'body-diode'
+  reverse: 'blocks' | 'body-diode'                          // output to input path
+  offPath?: 'open' | 'diode'                                // buck/boost only: input to output through the inductor and diode when disabled (a boost's pass-through)
   minLoad?: { amps: Quantity; note: string }
   ron?: Quantity; vf?: Quantity                             // for kind 'switch' (load switch or diode path)
 }
 ```
 
+- **Required per rail kind:**
+
+  | Kind | Required | Default when absent (provenance `estimate`) |
+  |---|---|---|
+  | `ldo` | `vout`, `dropout`, `ioutMax` | `iq` 0 with a note; `rout` 0.1 Ω |
+  | `buck`, `boost` | `vout`, `efficiency`, `vinMin`, `vinMax`, `ioutMax` | `rout` 0.1 Ω; `offPath` `open` |
+  | `switch` | `ron` or `vf` | none |
+
+  A `draw` without `minVolts` uses 90 % of its domain's `nominal`, labelled `estimate`. Both the fold-back and `sim-brownout` use that value.
 - **Domains name a supply explicitly:** a pin, its return and a nominal voltage. Examples on a DevKit are `VIN` (5V pin to GND) and `3V3` (3V3 pin to GND). The existing pin `supply` strings stay what they are: accepted voltage alternatives for the checker, not rail references.
 - **`draw`** is a load on a domain: the board's own consumption, not what its GPIOs source (those are solved).
 - **Multi-input rails** declare how inputs combine. For example, a DevKit's VIN and USB VBUS both feed the LDO through diodes.
@@ -182,7 +198,11 @@ interface GpioSpec {
 ```
 
 - Only listed pins accept a sim state.
-- The existing `caps` constrain the states: `inputOnly` rejects high and low, `outputOnly` rejects the input states, and `noPullup` rejects `input-pullup`.
+- The existing `caps` constrain the states:
+  - `inputOnly` rejects high and low;
+  - `outputOnly` rejects the input states;
+  - `noPullup` (which means no internal pull-up **or** pull-down in this repo) rejects both `input-pullup` and `input-pulldown`.
+- **Default state:** a GPIO-capable pin defaults to `input`. An `outputOnly` pin has no admissible default: until a state is set it is open and listed in `unsimulated` ("output-only pin with no state set").
 - Pin current limits are `Limit`s on `{ pin }`. The package total is an `ioTotalCurrent` limit on the IO domain.
 
 ### 3.4 Sourcing (honest provenance)
@@ -246,7 +266,7 @@ Each override marks only its own value `user`.
 | `switch` rail | `R` = `ron`, or a diode with `vf`, from the input domain pin to the output domain pin. |
 | GPIO pin | Section 4.6. Current always flows from or to the board's real IO domain node. |
 | USB VBUS | Section 4.7. |
-| AC-DC converter output | A DC source **only when the mains checker says the converter is powered** (mains spec section 1). Otherwise its output is an open circuit. |
+| AC-DC converter output | A DC source only when the converter is powered **in the saved contact state** (Astra re-review 11). This uses a new single-state evaluation exported from `src/format/mainsRules.ts`, which applies the mains spec section 1 availability rules to one contact state instead of aggregating over all of them. Otherwise its output is an open circuit. |
 | Anything else | Not simulated: its pins are open, and it is listed in `unsimulated` with a reason. |
 
 ### 4.1 LDO model
@@ -254,8 +274,9 @@ Each override marks only its own value `user`.
 - **Output:** a voltage `B` source, `Vctl = min(vout, max(V(in) - dropout, 0))`, behind `rout` (default 0.1 Ω, `estimate`). It feeds the output through an ideal diode model (`N = 0.01`) when `reverse: 'blocks'`, so an externally powered output never sinks into the regulator.
 - **Body diode:** with `reverse: 'body-diode'`, a diode from output to input is added.
 - **Input current:** the output current (sensed by a 0 V source) plus `iq`, through a current-controlled source. Power is conserved, and the input pays for the output.
+- **Input current with overload:** the LDO's input current is the output current regardless of `rout`, so `rout` dissipation is drawn from the input automatically. No separate loss term is needed.
 - **Overload:**
-  - The model is valid up to `ioutMax`.
+  - The model is valid up to `ioutMax`. Beyond it, readings upstream are marked as in 4.2.
   - Above it, the output current is not limited by the model; the result flags `sim-outside-model` on the rail and `sim-over-limit` against `ioutMax`.
   - The **rail's voltages downstream are marked untrustworthy** in readings ("outside the regulator's rated range"), not shown as fact.
 - **Output short:** the topological short rule (5.2) fires. Voltages on the shorted rail are marked untrustworthy.
@@ -265,8 +286,13 @@ Each override marks only its own value `user`.
 
 - **Enable:** `e = smoothstep(vinMin - 50 mV, vinMin, V(in)) * (1 - smoothstep(vinMax, vinMax + 50 mV, V(in)))`.
 - **Output:** `B` source `V = e * vout` behind `rout` and the ideal blocking diode. When `e = 0` the output is open (the diode blocks), never a 0 V short. So an externally powered output is not shorted.
-- **Input current:** `I = P_out / (efficiency * max(V(in), 0.5))`, with `P_out = V(out) * I(out)` from the sense source. The `max(..., 0.5)` guard means there is never a division by zero, and `e = 0` makes `P_out` 0.
-- **Overload and short** are handled as in 4.1.
+- **Input current:** `I = P_int / (efficiency * max(V(in), 0.5))`.
+  - `P_int = V(ctl) * I(out)` is the power at the internal control node, **before** `rout`. So `rout`'s dissipation in a short or overload is paid for at the input (Astra re-review 1).
+  - The `max(..., 0.5)` guard means there is never a division by zero, and `e = 0` makes `P_int` 0.
+- **Off paths:**
+  - `reverse: 'body-diode'` adds a diode from output to input.
+  - `offPath: 'diode'` adds a diode from input to output: a boost converter's inductor and diode pass-through while disabled, so the output sits about one diode drop below the input instead of at 0.
+- **Overload and short** are handled as in 4.1. In addition, when a rail is outside its model, **every reading upstream of it is marked `outside-model` too**: its input domain's voltages and currents, and the sources and rails feeding that domain, transitively. The budget for that chain is shown as untrustworthy, not as a number.
 
 ### 4.3 Tests the models must pass
 
@@ -281,7 +307,11 @@ For each of the LDO, buck and boost models:
 ### 4.4 Ground and islands (Astra finding 10)
 
 - **Islands:** connected components of the DC-path graph, from section 2's classification.
-- **Islands with a source:** the reference is the return of the source with the largest `imax` (ties broken by part uid). The solver needs a single node `0`, so the other islands are joined to it through 1 GΩ **for numerics only**.
+- **Islands with a source:** the reference is the return of the source with the largest `imax`. Without any `imax`, it is the source with the highest open-circuit voltage; ties are broken by part uid.
+- **Floating nodes in the emitted circuit (Astra re-review 10):**
+  - An element whose terminals are **all** on floating nodes is omitted.
+  - A floating node that still touches an emitted element, such as a capacitor plate or an open input, gets 1 GΩ to node `0` so ngspice has a DC path.
+  - That number is never shown: section 2's classification decides that the reading is "floating". The solver needs a single node `0`, so the other islands are joined to it through 1 GΩ **for numerics only**.
 - **Islands without a source:** "floating". No voltages are reported.
 - **Readings:**
   - Every voltage reading names its island's reference ("relative to battery −").
@@ -311,13 +341,16 @@ For each of the LDO, buck and boost models:
 
 ### 4.7 USB power (Astra finding 2)
 
-- **VBUS is a conductor:** each USB link joins the two ports' `usb.vbus` pins through the cable's resistance (`representative`, 0.1 Ω for a 1 m cable).
+- **Simulation nodes for a port (Astra re-review 2):** each `type: "usb"` pin has two simulation-only nodes, `<pin>#vbus` and `<pin>#gnd`. These are internal: they are not module pins, and the checker's `usb.vbus` alias (which names a board pin such as VIN) is not used by the simulator.
+  - `<pin>#gnd` is joined to the board's ground pin, declared by `sim.usbPorts: { [usbPin]: { gnd: string } }`.
+  - `<pin>#vbus` is a node that `sim.power` refers to like a pin. A domain or rail input may name `"USB#vbus"`.
+- **Cable:** each USB link joins `#vbus` to `#vbus` and `#gnd` to `#gnd`, each through the cable's conductor resistance (`representative`, 0.1 Ω per conductor for a 1 m cable). The return current flows through the cable, too.
+- **Device-side diodes:** a DevKit's USB-to-VIN Schottky is a `switch` rail with `vf` from the domain on `USB#vbus` to the `VIN` domain. So VIN and USB VBUS are separate nodes, as on the real board.
 - **A host port gets its power from its board's rail:**
-  - The port's `vbus` pin is part of a declared domain. On a Pi, the 5 V rail through its USB power switch is a `switch` rail.
+  - The port's `#vbus` node is the output domain of a rail, for example a Pi's 5 V rail through its USB power switch, which is a `switch` rail with `ron`.
   - Load on the device side therefore loads the host's rail and, upstream, its supply.
   - Hubs pass VBUS through their `switch` rails to their downstream ports.
 - **External sources:** only a part that *is* an external supply gets a standalone source: the computer port, a wall adapter, a power bank. Its `imax` is the limit.
-- **Device-side diodes:** a board's diode between USB VBUS and its 5V pin is a `rails` input with `via: 'diode'`.
 
 ## 5. Results and findings
 
@@ -360,7 +393,8 @@ interface SimFinding {
 
 | Code | When | Severity (at typical) |
 |---|---|---|
-| `sim-short` | **Topological, not by a current threshold** (Astra finding 9): in the current state, a path made only of contacts, jumpers, fuses, cable VBUS and wire joins connects a source's or rail output's terminal to its own return, or connects two sources' outputs whose open-circuit voltages differ by more than 0.1 V. The parts on that path are listed. A shorted high-resistance cell is found too. | error, basis `topology` |
+| `sim-short` | **Topological, not by a current threshold.** In the current state, a *low path* (contacts, jumpers, fuses, cable conductors and wire joins only) connects a source's or rail output's terminal to **its own return**. The parts on that path are listed. A shorted high-resistance cell is found too. | error, basis `topology` |
+| `sim-source-conflict` | Two sources or rail outputs form a **closed loop through low paths on both sides**: plus to plus **and** minus to minus (parallel), with open-circuit voltages differing by more than 0.1 V. Joining only the positives, or wiring sources in series, never fires it (Astra re-review A). | error; basis = the weaker provenance of the two voltages |
 | `sim-over-abs-max` | Over an `absMaxCurrent`, a `vinMax`, or a pin's absolute maximum. "Exceeds the absolute maximum rating; damage is likely." The engine does not decide burnout: the LED shows dark-red with a warning ring, never "burnt". | error |
 | `sim-over-limit` | Over a `current`, `power`, `sourceCurrent`, `ioTotalCurrent`, `ioutMax` or `imax` limit, or a USB host's sourced current, but under any absolute maximum. "Above its 20 mA rating." | warning |
 | `sim-brownout` | A load's domain voltage below its `minVolts`. | error |
@@ -409,8 +443,8 @@ Messages are plain words, for example "LED1 carries 47 mA, above the 20 mA typic
   ```
 - **Saving in an agent netlist (Astra finding 15):** probes use refs and net names, for example `{ "id": "P1", "at": "BT1.+" }`, `{ "id": "P2", "at": "D1" }` and `{ "id": "P3", "at": "net:VBAT", "ref": "net:GND" }`.
   - `layout` resolves `net:` to a pin on that net, preferring the part named by the probe's `name`, then the lowest ref.
-  - `extract` writes probes back in ref form.
-  - A round-trip test runs sheet → netlist → layout → sheet.
+  - `extract` writes probes back in ref form. A probe anchored to a part that extraction removes, such as a routing breadboard added by layout, is **remapped to `net:<name>`** of the net it sat on (Astra re-review 15). A part probe on a removed part is dropped with a warning.
+  - A round-trip test runs sheet → netlist → layout → sheet, including a probe on a breadboard hole.
 - **Validation:** ids are unique (`P` plus an integer), and anchors must exist. A dangling probe gives a warning and is dropped, never an error.
 - **Drawing:**
   - Each probe is a coloured lead from its point to a reading tag, with colours from a fixed eight-colour order with 3:1 contrast in both themes.
@@ -489,12 +523,13 @@ Messages are plain words, for example "LED1 carries 47 mA, above the 20 mA typic
 - **Accuracy and conservation:**
   - LED + 150 Ω + 5 V gives V(anode) = 2.0008 V ± 1 mV;
   - a battery under load sags by `rInternal`;
-  - the converter suite in section 4.3;
+  - the converter suite in section 4.3, including input-side power during an output short, upstream outside-model marking and boost pass-through;
   - battery → LDO → GPIO high → LED conserves current;
   - battery → host rail → USB cable → device load conserves current;
   - a dead-rail load draws 0.
 - **Findings:** one test per code, both ways (fires and stays quiet). These include:
   - a topological short through a closed switch, and a shorted high-resistance cell;
+  - source conflict: positives joined only (quiet), two cells in series (quiet), 3.7 V and 5 V in parallel (fires), two equal cells in parallel (quiet);
   - an open switch removing that short;
   - a GPIO sinking over its limit;
   - the IP5306 under its minimum load;
@@ -555,3 +590,17 @@ Michael asked for Astra to be consulted along the way. Each checkpoint gets an A
 | 13 | Lifecycle stops at the browser | Node runs in a terminable `worker_threads` Worker; `SimOutcome` variants; revision ids; recycling by engine runs; failure sequence tests |
 | 14 | Licensing without corresponding source | Our own pinned Docker build; a release asset with exact source, patches and build materials; licences listed from the built configuration |
 | 15 | Probe identity in netlists | Pin-anchored sheet probes; ref and `net:` syntax in netlists; layout and extract mapping; `nameNets()`; round-trip test |
+
+## 13. Answers to Astra's re-review of revision 2
+
+| Item | Revision 3 |
+|---|---|
+| 1. Converter fault power | The input power is taken at the control node before `rout` (4.2), so short and overload losses reach the input. Outside-model marking propagates upstream. `offPath` covers boost pass-through, and `body-diode` applies to all kinds. |
+| 2. USB topology | Simulation-only `#vbus`/`#gnd` nodes per port; `sim.usbPorts` for the ground pin; both cable conductors are modelled; the DevKit's Schottky is a `switch` rail between separate nodes (4.7). |
+| 6. `noPullup`, output-only default | `noPullup` rejects both pulls; output-only pins have no default and stay open until set (3.3). |
+| 9 and A. Short rule | `sim-short` covers only a source to its own return. The new `sim-source-conflict` needs a closed parallel loop, and its basis is the voltages' provenance (5.2). Tests cover positives-only, series and parallel. |
+| 10. Floating numerics | Fully floating elements are omitted; touching floating nodes get 1 GΩ to `0` with the reading hidden; an `imax` fallback is defined (4.4). |
+| 11. Mains in the current state | A single-state availability evaluation in `mainsRules.ts` (section 4 table). |
+| 15. Probes on removed boards | Remapped to `net:` on extract; part probes dropped with a warning; a round-trip test (6.2). |
+| B. Legacy primitives | Primitive models compile without `sim` data; only boards and modules need `sim.power` (3.1). |
+| C. Defaults | A per-kind required-field table; `minVolts` defaults to 90 % of nominal (`estimate`); incomplete models are rejected before compiling (3.1, 3.2). |
