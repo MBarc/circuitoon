@@ -370,6 +370,7 @@ button.wordmark { background: none; border: 0; padding: 0; cursor: pointer; }
 /* Simulate: the yellow wash of a pressed toggle, plus a green wave while results are live. */
 .tool.sim-toggle[aria-pressed="true"] .sim-wave { stroke: var(--green); }
 .tool.sim-toggle[data-sim-phase="loading"] .sim-wave, .tool.sim-toggle[data-sim-phase="solving"] .sim-wave { stroke: var(--muted); }
+.tool.sim-toggle[data-sim-phase="failed"] .sim-wave { stroke: var(--error); }
 /* The simulation's status: a sticker-edged note under the toolbar, like the KiCad notice. */
 .sim-status {
   flex-basis: 100%;

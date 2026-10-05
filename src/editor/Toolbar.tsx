@@ -14,7 +14,7 @@ import { ExportDialog } from './ExportDialog.tsx'
 import { LoadWarnings } from './LoadWarnings.tsx'
 import { MAINS_NOTICE, hasMains, withSheetNotes } from '../format/mains.ts'
 import { ThemeSwitch } from '../ThemeSwitch.tsx'
-import { SimStatus } from './SimStatus.tsx'
+import { SimStatus, simPhase } from './SimStatus.tsx'
 
 /**
  * The File menu: a button with a dropdown of the sheet's file actions. Arrow keys move, Home and End
@@ -130,6 +130,7 @@ export function Toolbar({ store, warnings, onClose }: { store: EditorStore; warn
   const findings = useProblems(store).filter(isProblem)
   const errors = findings.filter((f) => f.severity === 'error').length
   const mains = hasMains(diagram)
+  const phase = simPhase({ simulate, sim })
 
   /** True when there is nothing to lose, or the user agrees to discard it. */
   const okToDiscard = () => !store.dirty || window.confirm(`Discard unsaved changes to ${diagram.title}?`)
@@ -259,8 +260,9 @@ export function Toolbar({ store, warnings, onClose }: { store: EditorStore; warn
         className="tool toggle sim-toggle"
         aria-pressed={simulate}
         aria-keyshortcuts="S"
-        data-sim-phase={simulate ? (sim?.phase ?? 'solving') : 'off'}
-        title="Solve the sheet as a DC circuit in its current switch and GPIO state, and keep it solved as you edit (S)"
+        aria-describedby="sim-phase"
+        data-sim-phase={phase.mark}
+        title={`Solve the sheet as a DC circuit in its current switch and GPIO state, and keep it solved as you edit (S). Now: ${phase.text}`}
         onClick={() => store.setSimulate(!simulate)}
       >
         <svg viewBox="0 0 18 18" aria-hidden="true">
@@ -268,6 +270,7 @@ export function Toolbar({ store, warnings, onClose }: { store: EditorStore; warn
         </svg>
         Simulate
       </button>
+      <span id="sim-phase" className="sr-only">{phase.text}</span>
       <button
         type="button"
         className="tool toggle"
