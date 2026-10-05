@@ -7,7 +7,8 @@ import { cellEstimate, loadEstimate } from './estimates.ts'
 
 describe('battery fallback by nominal voltage (spec 3.1 table)', () => {
   it.each([
-    [3.0, 15, 'lithium coin cell'],
+    [2.8, 15, 'lithium coin cell'],
+    [3.0, 0.3, 'alkaline AA'],
     [1.5, 0.15, 'alkaline AA'],
     [4.5, 0.45, 'alkaline AA'],
     [6, 0.6, 'alkaline AA'],

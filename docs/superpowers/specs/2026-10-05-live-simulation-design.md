@@ -160,8 +160,8 @@ interface Limit {
 
   | Nominal V | Assumed | rInternal |
   |---|---|---|
-  | ≤ 3.0 (coin) | lithium coin | 15 Ω |
-  | 1.2 to 1.6 per cell | alkaline AA | 0.15 Ω per cell |
+  | 2.4 to under 3.0 (coin) | lithium coin | 15 Ω |
+  | 1.2 to 1.6 per cell (exactly 3.0 is 2 x AA, 0.3 Ω) | alkaline AA | 0.15 Ω per cell |
   | 3.6 to 4.2 per cell | Li-ion 18650 | 0.05 Ω per cell |
   | 9 | alkaline 9 V | 1.5 Ω |
   | other | unknown | 0.1 Ω, with a note |
@@ -667,4 +667,5 @@ From an independent review of the implementation plan (`docs/superpowers/plans/2
 | 3.1 | Module `electrical.params` values, defaults included, count as `user` (the designer's stated value); only `sim` data carries datasheet, representative or estimate provenance. |
 | 5.2 | A load that nothing on the sheet powers in the current state gives `sim-brownout` as a warning (basis `topology`, "not powered in the current state"), the same whether the board is unplugged or behind an open switch with ground shared; the message names the open switch when one is the cause. The `circuitoon-design` skill tells agents to set switches to their operating position before `sim` or `gate`. |
 | 2.3 | Phase A checkpoint ruling: the worker is recycled only when the engine is dead (ngspice's exit callback, a thrown trap, a timeout, the worker exiting) and after 2,000 engine runs, not after an ordinary circuit failure (`ok: false`), which leaves the instance usable. |
+| 3.1 | Task 6 ruling: the coin-cell fallback applies only from 2.4 V to under 3.0 V. A legacy 3.0 V pack is 2 x alkaline AA (0.3 ohm), since an underestimate never blocks and a 15 ohm guess fakes brownouts; built-in coin cells carry their own rInternal. |
 | 2.2 | The engine has XSPICE without code models: the `icm` and `cmpp` code-model tools are not built (ruling R11), so `A` devices are unavailable. This is recorded debt; adding code models later is a patch plus a rebuild, with no adapter change. |

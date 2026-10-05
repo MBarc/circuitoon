@@ -22,8 +22,8 @@ export const NO_POWER_DATA = 'no power data'
 
 /** The voltage-keyed fallback for a battery without its own rInternal (spec 3.1 table). */
 export function cellEstimate(nominal: number): { rInternal: Quantity; assumed: string } {
-  // A lithium coin cell is 3 V exactly; 1.5 V and 2 x 1.5 V are alkaline (the plan said <= 3.0, which caught 1.5 V).
-  if (nominal === 3) return { rInternal: est(15, 'ohm', 'assumed a lithium coin cell'), assumed: 'lithium coin cell' }
+  // A lithium coin cell is 2.4 V to just under 3 V; exactly 3 V is a legacy 2 x AA holder (below).
+  if (nominal >= 2.4 && nominal < 3) return { rInternal: est(15, 'ohm', 'assumed a lithium coin cell'), assumed: 'lithium coin cell' }
   if (nominal === 9) return { rInternal: est(1.5, 'ohm', 'assumed an alkaline 9 V battery'), assumed: 'alkaline 9 V' }
   // Ruling R33: a voltage-keyed guess only where the series count is common: Li-ion as 1 or 2 cells,
   // alkaline as 1 to 6 (coin and 9 V are single, above). 12 V, 11.1 V (3S) and the like are unknown.
@@ -38,7 +38,7 @@ export function cellEstimate(nominal: number): { rInternal: Quantity; assumed: s
 
 export interface LoadEstimate { typical: Quantity; peak: Quantity & { note: string }; row: string }
 const modelOf = (m: ModuleDef) => (m.electrical as { model?: unknown } | undefined)?.model
-const C3_CLASS = /esp32-?c[36]|c3-supermini/
+const C3_CLASS = /esp32-?c[36]/
 const ROWS: { row: string; match: (m: ModuleDef) => boolean; typical: number; peak: number; note: string }[] = [
   { row: 'mcu, ESP32/ESP32-S3 class', match: (m) => modelOf(m) === 'mcu' && m.id.includes('esp32') && !C3_CLASS.test(m.id), typical: 0.08, peak: 0.5, note: 'Wi-Fi transmit bursts' },
   { row: 'mcu, ESP32-C3/C6 class', match: (m) => modelOf(m) === 'mcu' && C3_CLASS.test(m.id), typical: 0.03, peak: 0.35, note: 'radio transmit bursts' },
