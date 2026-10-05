@@ -176,6 +176,15 @@ describe('pass-through and whole chains (spec 4.2, 4.6, 4.7)', () => {
     near(vbus, raw.dev['h1.source'])
     near(-flow(c.usb[0].gnd), vbus)
   }, 60_000)
+  it('senses USB VBUS like a pin: the pin currents of each part sum to 0 (fix wave, finding 3)', async () => {
+    const raw = await solve(sheet([{ uid: 'h1', module: hostModule() }, { uid: 'u1', module: boardModule() }], [['h1.USB', 'u1.USB']]))
+    const sum = (part: string) => Object.values(raw.pins[part] ?? {}).reduce((s, x) => s + x, 0)
+    expect(Math.abs(sum('u1'))).toBeLessThan(1e-9)
+    expect(Math.abs(sum('h1'))).toBeLessThan(1e-9)
+    // The device takes its draw and the LDO's iq into VBUS and returns it on GND.
+    near(I(raw, 'u1', 'USB#vbus'), 0.05 + 0.005)
+    near(-I(raw, 'u1', 'GND'), 0.05 + 0.005)
+  }, 60_000)
   it('battery -> host rail -> USB cable -> device: the cell pays for the device through both conductors (spec 4.7)', async () => {
     // A host whose USB port is the output of a `ron` switch rail from VIN, fed by a cell.
     const host: ModuleDef = {

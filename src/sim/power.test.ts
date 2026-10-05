@@ -26,11 +26,15 @@ describe('power models', () => {
     const l = byId(c.devices, 'u1.draw.3V3')!
     expect(l.kind === 'load' && [l.typical.value, l.typical.basis]).toEqual([0.12, 'user'])
   })
-  it('uses the category estimate on a board with domains and no draw', () => {
-    const m: ModuleDef = { ...boardModule({ draw: false }), id: 'test-esp32-board' }
-    const c = buildCircuit(sheet([{ uid: 'u1', module: m }], []))
-    const l = byId(c.devices, 'u1.draw.VIN')!
-    expect(l.kind === 'load' && [l.typical.value, l.typical.basis]).toEqual([0.08, 'estimate'])
+  it('puts the category estimate on the GPIO domain, else a rail output, else the first domain (fix wave, finding 5)', () => {
+    // It used to land on domains[0] (VIN here), bypassing the board's LDO.
+    const estimateOn = (m: ModuleDef) => buildCircuit(sheet([{ uid: 'u1', module: m }], [])).devices.filter((d) => d.kind === 'load').map((d) => d.kind === 'load' && [d.id, d.typical.value, d.typical.basis])
+    const b = boardModule({ draw: false })
+    expect(estimateOn({ ...b, id: 'test-esp32-board' })).toEqual([['u1.draw.3V3', 0.08, 'estimate']])
+    const { gpio: _, ...noGpio } = simOfMod(b)
+    expect(estimateOn(withSim(b, noGpio, 'test-esp32-nogpio'))).toEqual([['u1.draw.3V3', 0.08, 'estimate']])
+    const noRails = { ...noGpio, power: { ...noGpio.power, rails: [] } }
+    expect(estimateOn(withSim(b, noRails, 'test-esp32-bare'))).toEqual([['u1.draw.VIN', 0.08, 'estimate']])
   })
   it('compiles GPIO states from the real IO domain node (spec 4.6)', () => {
     const c = buildCircuit(sheet([{ uid: 'u1', module: boardModule(), values: { 'gpio.IO1': 'high', 'gpio.IO2': 'input-pulldown' } }], []))
@@ -43,8 +47,11 @@ describe('power models', () => {
   it('joins a host and a device by a cable on both conductors, with the host port limit', () => {
     const c = buildCircuit(sheet([{ uid: 'h1', module: hostModule() }, { uid: 'u1', module: boardModule() }], [['h1.USB', 'u1.USB']]))
     expect(byId(c.devices, 'h1.source')).toMatchObject({ kind: 'cell', role: 'external', p: 'h1:USB#vbus', n: 'h1:USB#gnd' })
-    expect(byId(c.devices, 'usb.w1.vbus')).toMatchObject({ kind: 'resistor', role: 'cable', a: 'h1:USB#vbus', b: 'u1:USB#vbus' })
-    expect(byId(c.devices, 'usb.w1.gnd')).toMatchObject({ kind: 'resistor', role: 'cable', a: 'h1:USB#gnd', b: 'u1:GND' })
+    // Fix wave finding 3: #vbus (and an unmapped #gnd) is a tapped pin, and the cable joins the port
+    // nets outside both parts' senses, so each sense carries the port's current.
+    expect(c.taps.filter((t) => t.pin.includes('#')).map((t) => `${t.node}@${t.net}`)).toEqual(['h1:USB#gnd@H1_USB#gnd', 'h1:USB#vbus@H1_USB#vbus', 'u1:USB#vbus@U1_USB#vbus'])
+    expect(byId(c.devices, 'usb.w1.vbus')).toMatchObject({ kind: 'resistor', role: 'cable', a: 'net:H1_USB#vbus', b: 'net:U1_USB#vbus' })
+    expect(byId(c.devices, 'usb.w1.gnd')).toMatchObject({ kind: 'resistor', role: 'cable', a: 'net:H1_USB#gnd', b: `net:${c.pinNet[JSON.stringify(['u1', 'GND'])]}` })
     expect(c.usb).toEqual([expect.objectContaining({ host: 'h1', device: 'u1', limit: expect.objectContaining({ value: 0.5, basis: 'datasheet' }) })])
   })
   it('lets an external source sim.imax override replace its sourceCurrent limit, as user', () => {

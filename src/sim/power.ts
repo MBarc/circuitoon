@@ -2,8 +2,8 @@
 // return, the board's own draw as a voltage-aware load per domain, its rails (LDO, buck, boost,
 // load switch or diode) with the spec's defaults, its GPIO states hanging off the real IO domain
 // node, an external source (an AC-DC converter only when powered in the saved state), and USB
-// links as two cable conductors. Node references are pins or `<usbPin>#vbus` / `<usbPin>#gnd`
-// (ruling R5).
+// links as two cable conductors between the port nets. Node references are pins or `<usbPin>#vbus`
+// / `<usbPin>#gnd` (ruling R5), each tapped like a pin.
 import type { Diagram, PartInstance } from '../format/diagram.ts'
 import type { ModuleDef } from '../format/module.ts'
 import { mainsOf } from '../format/mainsModel.ts'
@@ -31,15 +31,19 @@ export function railProblem(r: Rail): string | null {
   return missing.length ? `rail ${r.id} needs ${missing.join(', ')}` : null
 }
 
-/** The node a `sim` node reference names on part `uid`: a pin's tap, or a USB port's simulation node. */
-function usbNode(b: Builder, uid: string, m: ModuleDef, port: string, side: 'vbus' | 'gnd'): string | null {
+/**
+ * The pin a USB port's simulation node is on: `<port>#gnd` is the board's ground pin when
+ * `sim.usbPorts` names it; else `<port>#vbus` / `<port>#gnd` is a pin of its own, tapped like any
+ * other, so the current the port carries is sensed and the part's pin currents sum to 0.
+ */
+function usbPin(m: ModuleDef, port: string, side: 'vbus' | 'gnd'): string {
   const gnd = simOf(m)?.usbPorts?.[port]?.gnd
-  if (side === 'gnd' && gnd) return b.tap(uid, gnd)
-  return `${uid}:${port}#${side}`
+  return side === 'gnd' && gnd ? gnd : `${port}#${side}`
 }
+/** The node a `sim` node reference names on part `uid`: a pin's tap (a USB port's node included). */
 function nodeRef(b: Builder, uid: string, m: ModuleDef, ref: string): string | null {
   const usb = /^(.+)#(vbus|gnd)$/.exec(ref)
-  return usb ? usbNode(b, uid, m, usb[1], usb[2] as 'vbus' | 'gnd') : b.tap(uid, ref)
+  return b.tap(uid, usb ? usbPin(m, usb[1], usb[2] as 'vbus' | 'gnd') : ref)
 }
 
 export function powerPart(b: Builder, p: PartInstance, m: ModuleDef): void {
@@ -61,15 +65,23 @@ export function powerPart(b: Builder, p: PartInstance, m: ModuleDef): void {
   }
 
   // The board's own consumption: a voltage-aware load per domain (spec 4 table), or the category
-  // estimate on the first domain when it states no draw (spec 3.4). A part that only converts or
+  // estimate when it states no draw (spec 3.4), on the GPIO domain, else the output of a rail that
+  // feeds no other rail, else any rail's output, else the first domain, so an estimate never
+  // bypasses the board's regulator. A part that only converts or
   // supplies (rails or a source) draws through its rails' iq; anything else with no draw and no
   // estimate is listed, never a silent 0 A.
   let list: Draw[] = power.draw ?? []
   if (!list.length) {
     const est = loadEstimate(m)
     if (est && !power.domains.length) return b.skip(p.uid, NO_POWER_DATA)
-    if (est) list = [{ domain: power.domains[0].name, typical: est.typical, peak: est.peak }]
-    else if (!power.rails?.length && !power.source) b.unsimulated(p.uid, NO_POWER_DATA)
+    if (est) {
+      const names = power.domains.map((x) => x.name)
+      const rails = power.rails ?? []
+      const outs = rails.map((r) => r.output)
+      const last = outs.filter((o) => !rails.some((r) => r.inputs.some((x) => x.domain === o)))
+      const domain = [sim.gpio?.domain, ...last, ...outs].find((x) => x !== undefined && names.includes(x)) ?? names[0]
+      list = [{ domain, typical: est.typical, peak: est.peak }]
+    } else if (!power.rails?.length && !power.source) b.unsimulated(p.uid, NO_POWER_DATA)
   }
   for (const dr of list) {
     const dn = domains.get(dr.domain)
@@ -198,10 +210,11 @@ export function usbLinks(b: Builder, d: Diagram): void {
     }
     const ohms = link.direct ? PLUG_OHMS : CABLE_OHMS
     const label = `${link.direct ? 'plug' : 'cable'}.${c.uid}`
-    const hv = usbNode(b, host.part.uid, host.module, host.name, 'vbus')
-    const dv = usbNode(b, dev.part.uid, dev.module, dev.name, 'vbus')
-    const hg = usbNode(b, host.part.uid, host.module, host.name, 'gnd')
-    const dg = usbNode(b, dev.part.uid, dev.module, dev.name, 'gnd')
+    // The cable is outside both parts: it joins the port nets, so each port's sense carries its current.
+    const hv = b.node(host.part.uid, usbPin(host.module, host.name, 'vbus'))
+    const dv = b.node(dev.part.uid, usbPin(dev.module, dev.name, 'vbus'))
+    const hg = b.node(host.part.uid, usbPin(host.module, host.name, 'gnd'))
+    const dg = b.node(dev.part.uid, usbPin(dev.module, dev.name, 'gnd'))
     if (!hv || !dv || !hg || !dg) continue
     const vbus = `usb.${c.uid}.vbus`
     const gnd = `usb.${c.uid}.gnd`
