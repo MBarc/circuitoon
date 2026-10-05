@@ -55,6 +55,9 @@
           "conditions": "fresh CR2032, 20 C",
           "note": "The holder is not the cell: estimate for a generic CR2032 lithium coin cell (Energizer CR2032 assumed) in each slot. Per-cell value (estimate): No maximum continuous current is published. The Panasonic CR2032 datasheet gives \"Continuous drain 0.2mA\" as its standard drain and charts continuous loads only down to 1 kOhm (\"Capacity vs. load resistance\", \"Operating voltage vs. load resistance\"); 3 V across 1 kOhm is about 3 mA, where capacity is already down to about 160 of 225 mAh at 20 C. Short pulses of tens of mA are possible (Energizer handbook, 75 ohm pulse) but are not continuous."
         }
+      ],
+      "unaccounted": [
+        "Contact and lead resistance of the holder itself (springs, tabs, wires): no datasheet for a generic holder, so it is not added to rInternal."
       ]
     }
   },

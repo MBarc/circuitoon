@@ -225,6 +225,12 @@
           "conditions": "recommended operating conditions, input voltage VIN max (4.65 to 5.5 V; 4.75 to 5.5 V in V1.10)",
           "note": "Recommended operation conditions, p. 4 of English V1.31 (and V1.10). Absolute maximum VIN is -0.3 to 6 V in V1.31 and -0.3 to 5.5 V in V1.10 (p. 4). Chip, not board: assumes the module's USB-C VBUS goes straight to the IP5306 VIN pin with no protection in between."
         }
+      ],
+      "unaccounted": [
+        "Charge-indicator LEDs (four in the module art): IP5306 LED indicator current is 4 mA in V1.31 (p. 6) but 10 mA in Chinese V1.3 and 25 mA in the I2C datasheet, and the LEDs are lit only for a while after a key press or while charging. Not modelled.",
+        "Flashlight LED driver on KEY (25 mA, V1.31 p. 6): whether the module fits a flashlight LED is not known; not modelled.",
+        "Boost operating current (IBAT 3 mA typ at VBAT = 3.7 V) is folded into the efficiency estimate rather than added as iq, because the solver's iq is drawn whether the boost is on or off.",
+        "Efficiency variation with load and battery voltage: one point (0.88) is used for the whole range."
       ]
     }
   },

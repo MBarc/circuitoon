@@ -679,7 +679,12 @@
         "USB": {
           "gnd": "GND"
         }
-      }
+      },
+      "unaccounted": [
+        "FT232RL USB-UART (IC1) on +5V: its datasheet gives Icc1 operating supply current 15 mA typ in normal operation (Table 5.2, p. 18), but per the sourcing protocol a bridge's idle current needs the board schematic or a measurement, so it is not added to draw.",
+        "Green PWR LED from +5V through RP1C 1 kohm to GND: roughly (5 V - 2 V) / 1 kohm = 3 mA for a green LED Vf of about 2 V (LED part unknown).",
+        "RX (red) and TX (green) LEDs through RP2B/RP2D 1 kohm from +5V, driven by FT232RL CBUS0/CBUS1 when serial traffic flows."
+      ]
     }
   },
   "art": {

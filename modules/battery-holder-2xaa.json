@@ -55,6 +55,9 @@
           "conditions": "fresh alkaline AA, 21 C",
           "note": "The holder is not the cell: estimate for a generic alkaline AA cell (Energizer E91 assumed) in each slot; in series every cell carries the same current, so the limit is one cell's (1 A). Per-cell value (estimate): No maximum discharge current is published for an alkaline AA. 1 A is the heaviest constant-current discharge the Energizer EN91 (alkaline AA) datasheet charts (\"Constant Current Performance\", axis to 1000 mA); delivered capacity falls steeply with drain (its \"Milliamp-Hours Capacity\" chart: about 2850 mAh at 25 mA, about 1400 mAh at 500 mA)."
         }
+      ],
+      "unaccounted": [
+        "Contact and lead resistance of the holder itself (springs, tabs, wires): no datasheet for a generic holder, so it is not added to rInternal."
       ]
     }
   },

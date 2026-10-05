@@ -21,6 +21,10 @@ describe('withSim', () => {
     // Generators on Windows pass backslash paths (fileURLToPath).
     expect(JSON.parse(withSim('C:\\x\\modules\\led.json', text, url)).electrical.sim).toEqual({ limits: [] })
   })
+  it("carries the patch's unaccounted list into electrical.sim (Phase C checkpoint, finding 4)", () => {
+    writeFileSync(join(dir, 'ams.json'), JSON.stringify({ id: 'ams', sim: { limits: [] }, unaccounted: ['power LED'], review: [] }))
+    expect(JSON.parse(withSim('C:/x/modules/ams.json', text, url)).electrical.sim).toEqual({ limits: [], unaccounted: ['power LED'] })
+  })
   it('leaves files that are not modules, and modules without a patch, untouched', () => {
     expect(withSim('C:/x/plugin/dist-cli/circuitoon.mjs', 'code', url)).toBe('code')
     expect(withSim('C:/x/modules/resistor.json', text, url)).toBe(text)

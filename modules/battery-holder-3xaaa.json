@@ -55,6 +55,9 @@
           "conditions": "fresh alkaline AAA, 21 C",
           "note": "The holder is not the cell: estimate for a generic alkaline AAA cell (Energizer E92 assumed) in each slot; in series every cell carries the same current, so the limit is one cell's (0.5 A). Per-cell value (estimate): No maximum discharge current is published for an alkaline AAA. 0.5 A is the heaviest continuous discharge the Energizer E92 datasheet charts (\"Milliamp-Hours Capacity\", continuous discharge to 0.8 V at 21 C, bars at 25/100/250/500 mA; about 450 mAh at 500 mA vs about 1150 mAh at 25 mA)."
         }
+      ],
+      "unaccounted": [
+        "Contact and lead resistance of the holder itself (springs, tabs, wires): no datasheet for a generic holder, so it is not added to rInternal."
       ]
     }
   },

@@ -39,9 +39,14 @@ describe('validateSim', () => {
     ['a rout of 0', (s: Record<string, unknown>) => (rail(s, 1).rout = { value: 0, unit: 'ohm', provenance: 'estimate', note: 'x' }), 'electrical.sim.power.rails[1].rout.value: must be above 0'],
     ['a minVolts of 0', (s: Record<string, unknown>) => ((s.power as { draw: Record<string, unknown>[] }).draw[0].minVolts = { value: 0, unit: 'V', provenance: 'estimate', note: 'x' }), 'electrical.sim.power.draw[0].minVolts.value: must be above 0'],
     ['an LDO dropout at or above its vout', (s: Record<string, unknown>) => ((rail(s, 1).dropout as { value: number }).value = 3.3), 'electrical.sim.power.rails[1].dropout: must be below vout (3.3 V)'],
+    ['an unaccounted list that is not strings', (s: Record<string, unknown>) => (s.unaccounted = ['power LED', '']), 'electrical.sim.unaccounted: must be a list of non-empty strings'],
+    ['an unaccounted that is not a list', (s: Record<string, unknown>) => (s.unaccounted = 'power LED'), 'electrical.sim.unaccounted: must be a list of non-empty strings'],
     ['a USB node with no usbPorts entry', (s: Record<string, unknown>) => delete s.usbPorts, 'electrical.sim.usbPorts.USB: required, electrical.sim.power uses "USB#vbus" (name the ground pin, so the return flows through the cable)'],
   ])('rejects %s', (_what, edit, message) => {
     expect(errorsOf(withSim(boardModule(), edit))).toContain(message)
+  })
+  it('accepts an unaccounted list of words (Phase C checkpoint, finding 4)', () => {
+    expect(errorsOf(withSim(boardModule(), (s) => (s.unaccounted = ['USB-UART bridge idle current'])))).toEqual([])
   })
   it('lets a part with no ground pin of its own (a host port) use its USB nodes without usbPorts', () => {
     expect((hostModule().electrical as { sim: { usbPorts?: unknown } }).sim.usbPorts).toBeUndefined()
@@ -58,7 +63,7 @@ describe('validateSim', () => {
     const paths: ((s: Record<string, unknown>, v: unknown) => void)[] = [
       (s, v) => (s.modelParams = v), (s, v) => (s.modelParams = { rInternal: v }), (s, v) => (s.limits = v), (s, v) => (s.limits = [v]),
       (s, v) => ((s.limits as Record<string, unknown>[])[0].of = v),
-      (s, v) => Object.assign((s.limits as Record<string, unknown>[])[0], { kind: v, value: v }), (s, v) => (s.power = v), (s, v) => (s.gpio = v), (s, v) => (s.usbPorts = v),
+      (s, v) => Object.assign((s.limits as Record<string, unknown>[])[0], { kind: v, value: v }), (s, v) => (s.power = v), (s, v) => (s.gpio = v), (s, v) => (s.usbPorts = v), (s, v) => (s.unaccounted = v), (s, v) => (s.unaccounted = [v]),
       (s, v) => (s.usbPorts = { USB: v }), (s, v) => ((s.gpio as Record<string, unknown>).pins = v), (s, v) => ((s.gpio as Record<string, unknown>).domain = v),
       ...['domains', 'draw', 'rails', 'source'].flatMap((k) => [
         (s: Record<string, unknown>, v: unknown) => ((s.power as Record<string, unknown>)[k] = v),

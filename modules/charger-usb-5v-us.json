@@ -121,7 +121,10 @@
             "note": "Mean Well NGE12 05-USB, SPECIFICATION p. 2: rated current 2.4 A, current range 0 to 2.4 A. Other 5 V USB chargers are commonly rated between 1 A and 3 A."
           }
         }
-      }
+      },
+      "unaccounted": [
+        "USB charger signalling on D+/D- (BC 1.2, Apple divider) is not modelled: devices see only VBUS."
+      ]
     }
   },
   "art": {

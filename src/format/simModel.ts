@@ -59,6 +59,8 @@ export interface SimSpec {
   gpio?: GpioSpec
   /** A USB pin's ground pin (spec 4.7). */
   usbPorts?: Record<string, { gnd: string }>
+  /** What the data leaves out, in words (sourcing protocol item 3: a board extra with no sourced number). */
+  unaccounted?: string[]
 }
 
 /** The module's `electrical.sim`, or null. Trusts validateModule (validateSim). */
@@ -144,7 +146,9 @@ export function validateSim(raw: Record<string, unknown>, names: Set<string>, er
   }
   /** A quantity's value when it is a finite number. */
   const val = (v: unknown) => (isObj(v) && isNum(v.value) ? v.value : undefined)
-  keys(s, ['modelParams', 'limits', 'power', 'gpio', 'usbPorts'], at)
+  keys(s, ['modelParams', 'limits', 'power', 'gpio', 'usbPorts', 'unaccounted'], at)
+  if (s.unaccounted !== undefined && !(Array.isArray(s.unaccounted) && s.unaccounted.every((x) => typeof x === 'string' && x.trim())))
+    errors.push(`${at}.unaccounted: must be a list of non-empty strings`)
 
   if (s.modelParams !== undefined) {
     if (!isObj(s.modelParams)) errors.push(`${at}.modelParams: must be an object`)

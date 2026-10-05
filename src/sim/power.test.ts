@@ -10,6 +10,7 @@ import type { Diagram, PartInstance } from '../format/diagram.ts'
 import { type ModuleDef, layoutModule } from '../format/module.ts'
 import { load } from '../format/builtinModules.testing.ts'
 import { pivot } from '../format/geometry.ts'
+import { simOf } from '../format/simModel.ts'
 import { mainsOf } from '../format/mainsModel.ts'
 import { SOCKET_PATTERNS } from '../format/plugging.ts'
 
@@ -115,6 +116,15 @@ describe('power models', () => {
     const off = buildCircuit(sheet(parts({}), wires))
     expect(byId(off.devices, 'p1.source')).toBeUndefined()
     expect(off.notes.join(' ')).toContain('P1: its mains input is off')
+  })
+  it("lists what each simulated part's data leaves out (sim.unaccounted, Phase C checkpoint finding 4)", () => {
+    const c = buildCircuit(sheet([{ uid: 'u1', module: 'esp32-devkit-v1-30' }, { uid: 'u2', module: 'ams1117-33-module' }, R10], []))
+    expect(c.unaccounted.map((x) => x.part)).toEqual(['u1', 'u2'])
+    expect(c.unaccounted[0].items).toEqual(simOf(load('esp32-devkit-v1-30'))!.unaccounted)
+    expect(c.unaccounted[0].items.length).toBeGreaterThan(0)
+    // A part that is not simulated lists nothing.
+    const none = buildCircuit(sheet([{ uid: 'u1', module: withSim(load('ams1117-33-module'), { ...simOfMod(load('ams1117-33-module')), power: { domains: [], rails: [badRail] } }, 'test-ams-bad') }], []))
+    expect(none.unaccounted).toEqual([])
   })
   it('takes a plug-in supply whose plug is not on the sheet as plugged in, with a note (Phase C checkpoint)', () => {
     for (const id of ['charger-usb-5v-us', 'adapter-barrel-eu']) {

@@ -113,5 +113,7 @@ export interface Circuit {
    */
   openContacts: { part: string; group: string; pairs: [string, string][] }[]
   unsimulated: { part: string; reason: string }[]
+  /** What each simulated part's data leaves out (its sim.unaccounted), for the budgets to list. */
+  unaccounted: { part: string; items: string[] }[]
   notes: string[]
 }

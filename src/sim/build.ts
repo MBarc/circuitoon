@@ -388,6 +388,10 @@ export class Builder {
       mains: [...this.mainsKeys].sort(),
       openContacts: [...open.values()],
       unsimulated: this.unsim,
+      unaccounted: Object.keys(this.parts).sort(naturalCompare).flatMap((uid) => {
+        const items = simOf(this.modulesOf(uid))?.unaccounted ?? []
+        return items.length ? [{ part: uid, items }] : []
+      }),
       notes: [...new Set(this.notes.map((n) => n.text))],
     }
   }

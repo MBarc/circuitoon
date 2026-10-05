@@ -150,7 +150,13 @@
             }
           }
         ]
-      }
+      },
+      "unaccounted": [
+        "XPT2046 touch controller supply current - not looked up; small next to the backlight.",
+        "SD card in the socket - card current varies by card (tens of mA when writing); not modelled.",
+        "XC6206 quiescent current (1 uA typ) - negligible.",
+        "White-LED forward voltage of the panel backlight - not given in the panel outline; the backlight current is an estimate that depends on it strongly."
+      ]
     }
   },
   "art": {

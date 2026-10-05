@@ -674,7 +674,12 @@
         "USB": {
           "gnd": "GND"
         }
-      }
+      },
+      "unaccounted": [
+        "CP2102 USB-UART bridge (U2), powered from VDD3V3 (VDD and REGIN tied to 3V3 on the schematic): no idle current on the schematic and no measurement.",
+        "Red power LED + R14 1 kohm from VDD3V3 to GND: the schematic gives the resistor, not the current (roughly (3.3 V - LED Vf) / 1 kohm, about 1 to 1.5 mA for a red LED Vf of 1.8 to 2.2 V, LED part unknown).",
+        "Module extras beyond the chip (SPI flash, crystal): the draw values are the chip's."
+      ]
     }
   },
   "art": {

@@ -103,6 +103,9 @@
           "conditions": "module maximum input voltage (5 V typical)",
           "note": "Representative module: ProtoSupplies AMS1117 5V to 3.3V module, 'Maximum Input Voltage 12V (5V Typical)'. The AMS1117 chip's absolute maximum input is 15 V (Absolute Maximum Ratings, p. 2); the module's lower figure presumably covers its capacitors and heat, which this source does not explain."
         }
+      ],
+      "unaccounted": [
+        "Red power LED on the module (ProtoSupplies: 'The module has a red power LED when power is applied'): its resistor value and current are not documented, so it is not added as a draw. Whether it sits on VIN or OUT is not known either."
       ]
     }
   },

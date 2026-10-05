@@ -87,7 +87,10 @@
             "note": "USB 2.0 specification, Table 7-7, p. 178: ICCPRT, high-power hub port (out), 500 mA minimum (five unit loads of 100 mA, section 7.2.1). A device may draw only 100 mA until configured. Many real ports trip above 500 mA; 500 mA is the guaranteed figure."
           }
         }
-      }
+      },
+      "unaccounted": [
+        "USB 3.x ports (900 mA) and BC 1.2 charging ports (up to 1.5 A) supply more; the module is declared USB 2.0, so these are left out."
+      ]
     }
   },
   "art": {

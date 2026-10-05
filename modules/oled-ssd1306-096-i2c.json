@@ -85,7 +85,12 @@
             }
           }
         ]
-      }
+      },
+      "unaccounted": [
+        "XC6206 quiescent current (1 uA typ, Torex datasheet) - negligible.",
+        "Current through the on-board 4.7 kohm I2C pull-ups when SDA or SCL is held low (up to 0.7 mA each at 3.3 V) - depends on bus traffic, flows through the bus master's pin rather than as a constant draw.",
+        "Charge-pump efficiency is not given in the SSD1306 datasheet; 70 % is assumed."
+      ]
     }
   },
   "art": {

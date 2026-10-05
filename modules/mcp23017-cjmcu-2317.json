@@ -612,6 +612,10 @@
           "conditions": "absolute maximum rating",
           "note": "Section 1.0 Absolute Maximum Ratings, p. 3: maximum current into VDD pin 125 mA (out of VSS pin 150 mA). Chip, not board."
         }
+      ],
+      "unaccounted": [
+        "Power LED: none of the opened sources (digitaltown, ShillehTek manual, EasyEDA component page) show a power LED or a board schematic for the CJMCU-2317, so none is counted. If the board has one, its current is missing.",
+        "Any on-board pull-up resistors (I2C, RESET, address pins): no schematic found; their current depends on the pin states."
       ]
     }
   },

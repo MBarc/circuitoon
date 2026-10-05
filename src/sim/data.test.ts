@@ -8,12 +8,13 @@ import { simOf } from '../format/simModel.ts'
 import { LED_COLOURS } from './ledModels.ts'
 
 const DIR = join(import.meta.dirname, '..', '..', 'scripts', 'sim-data')
-export const patches = (): { id: string; sim: unknown; review: unknown[] }[] =>
+export const patches = (): { id: string; sim: Record<string, unknown>; unaccounted?: string[]; review: unknown[] }[] =>
   readdirSync(DIR).filter((f) => f.endsWith('.json')).map((f) => JSON.parse(readFileSync(join(DIR, f), 'utf8')))
 
 describe('sourced simulation data', () => {
   it('matches each module file exactly', () => {
-    for (const p of patches()) expect(simOf(load(p.id)), p.id).toEqual(p.sim)
+    // A patch's unaccounted list lands in the module as sim.unaccounted (Phase C checkpoint, finding 4).
+    for (const p of patches()) expect(simOf(load(p.id)), p.id).toEqual(p.unaccounted?.length ? { ...p.sim, unaccounted: p.unaccounted } : p.sim)
   })
   it('has been checked by two independent reviewers (spec 3.4)', () => {
     for (const p of patches()) expect(p.review.length, p.id).toBeGreaterThanOrEqual(2)
