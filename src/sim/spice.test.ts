@@ -84,7 +84,11 @@ describe('compile', () => {
   })
   it('writes a buck input as the control-node power over efficiency, guarded below 0.5 V', () => {
     const t = text(sheet([{ uid: 'bt1', module: cellModule(12, 0.01) }, { uid: 'u1', module: buckModule() }, R('r1', 10)], [['bt1.+', 'u1.IN'], ['bt1.-', 'u1.GND'], ['u1.OUT', 'r1.1'], ['r1.2', 'u1.GND']]))
-    expect(t).toMatch(/^b_u1_rail_buck_in n\d+ n\d+ i=v\(n\d+,n\d+\)\*i\(v_u1_rail_buck_o\)\/\(0\.9\*max\(v\(n\d+,n\d+\),0\.5\)\)$/m)
+    // The output current is the output source's own expression, repeated, not i(vo) (fix wave, finding 2).
+    const iout = /^b_u1_rail_buck_out n\d+ n\d+ i=(.*)$/m.exec(t)![1]
+    expect(t).toContain(`i=v(n8,n11)*(${iout})/(0.9*max(v(n9,n11),0.5))`)
+    expect(t).toMatch(/^b_u1_rail_buck_in n9 n11 /m)
+    expect(t).not.toContain('i(v_u1_rail_buck_o)')
   })
   it('floors rout at 1 mOhm (0 fails op in our ngspice) and guards the efficiency divisor', () => {
     const wire: [string, string][] = [['bt1.+', 'u1.IN'], ['bt1.-', 'u1.GND'], ['u1.OUT', 'r1.1'], ['r1.2', 'u1.GND']]

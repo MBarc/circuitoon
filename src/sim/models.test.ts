@@ -129,6 +129,19 @@ describe('pass-through and whole chains (spec 4.2, 4.6, 4.7)', () => {
     expect(v).toBeGreaterThan(1.8)
     expect(v).toBeLessThan(2.5)
   }, 60_000)
+  it.each([0.5, 0.3])('a boost with pass-through on a weak cell (%s ohm) under a 2 A load converges to the edge state (fix wave, finding 2)', async (ohms) => {
+    // 3.7 V cannot deliver 11 W through this rInternal, so the converter settles at its undervoltage
+    // edge (Task 28 flags it). Before the fix this failed op ("timestep too small").
+    const d = (offPath: 'diode' | 'open') => sheet([{ uid: 'bt1', module: cellModule(3.7, ohms) }, { uid: 'u1', module: boostModule({ offPath }, `test-boost-${offPath}`) }, R('r1', 2.5)],
+      [['bt1.+', 'u1.IN'], ['bt1.-', 'u1.GND'], ['u1.OUT', 'r1.1'], ['r1.2', 'u1.GND']])
+    const raw = await solve(d('diode'))
+    expect(raw.v[IN]).toBeGreaterThan(2.85)
+    expect(raw.v[IN]).toBeLessThan(2.9)
+    // The pass-through is reverse biased there, so it is the same state as without it.
+    const open = await solve(d('open'))
+    near(raw.v[OUT], open.v[OUT], 0.001)
+    expect(raw.v[OUT]).toBeGreaterThan(raw.v[IN] - 0.35)
+  }, 60_000)
   it('a shorted boost output with pass-through: the input pays through the diode and the converter is off', async () => {
     const raw = await solve(rig(boostModule(), 3.7, 0))
     expect(I(raw, 'u1', 'IN')).toBeGreaterThan(5)

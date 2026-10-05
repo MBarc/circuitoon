@@ -118,14 +118,17 @@ export function compile(c: Circuit, cls: Classification, a: Analysis): Compiled 
           lines: (n) => {
             const vin = `v(${n(d.in)},${n(d.inRet)})`
             const vctl = r.kind === 'ldo' ? smin(num(r.vout!.value), smax(`${vin}-${num(r.dropout!.value)}`, '0')) : `${enable(vin, r.vinMin!.value, r.vinMax!.value)}*${num(r.vout!.value)}`
+            // softplus(Vctl - Vout) - softplus(-Vout): exactly 0 at Vctl = 0, so a dead rail supplies nothing (ruling, Task 15).
+            const iout = `(${sp(`v(${n(d.ctl)},${n(d.ret)})-v(${n(d.o)},${n(d.ret)})`)}-${sp(`-v(${n(d.o)},${n(d.ret)})`)})/${num(Math.max(r.rout.value, ROUT_MIN))}`
             const out = [
               `${bctl} ${n(d.ctl)} ${n(d.ret)} v=${vctl}`,
-              // softplus(Vctl - Vout) - softplus(-Vout): exactly 0 at Vctl = 0, so a dead rail supplies nothing (ruling, Task 15).
-              `${bout} ${n(d.ret)} ${n(d.o)} i=(${sp(`v(${n(d.ctl)},${n(d.ret)})-v(${n(d.o)},${n(d.ret)})`)}-${sp(`-v(${n(d.o)},${n(d.ret)})`)})/${num(Math.max(r.rout.value, ROUT_MIN))}`,
+              `${bout} ${n(d.ret)} ${n(d.o)} i=${iout}`,
               `${vo} ${n(d.o)} ${n(d.out)} dc 0`,
+              // A buck or boost input repeats the output expression instead of reading i(vo): measured, the
+              // i(vo) form fails op on a weak cell with a boost's pass-through diode (fix wave, finding 2).
               r.kind === 'ldo'
                 ? `${fin} ${n(d.in)} ${n(d.inRet)} ${vo} 1`
-                : `${bin} ${n(d.in)} ${n(d.inRet)} i=v(${n(d.ctl)},${n(d.ret)})*i(${vo})/(${num(Math.max(r.efficiency!.value, EFFICIENCY_MIN))}*max(${vin},0.5))`,
+                : `${bin} ${n(d.in)} ${n(d.inRet)} i=v(${n(d.ctl)},${n(d.ret)})*(${iout})/(${num(Math.max(r.efficiency!.value, EFFICIENCY_MIN))}*max(${vin},0.5))`,
             ]
             // iq folds back below a 1 V knee on the input (smin(1, Vin)), so a dead input draws 0.
             if (r.iq.value > 0) out.push(`${biq} ${n(d.in)} ${n(d.inRet)} i=${num(r.iq.value)}*${smin('1', pos(vin), KR)}`)
