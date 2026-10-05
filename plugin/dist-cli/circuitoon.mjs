@@ -91060,6 +91060,32 @@ function gpioBranch(d) {
 		leak: true
 	} : null;
 }
+var indexes = /* @__PURE__ */ new WeakMap();
+var push = (m, k, v) => {
+	const list = m.get(k);
+	if (list) list.push(v);
+	else m.set(k, [v]);
+};
+/** The circuit's index, built once per circuit (a circuit is never changed after build). */
+function indexOf(c) {
+	let ix = indexes.get(c);
+	if (!ix) {
+		ix = {
+			tapsOf: /* @__PURE__ */ new Map(),
+			devicesOf: /* @__PURE__ */ new Map(),
+			tapAt: /* @__PURE__ */ new Map(),
+			tapsOn: /* @__PURE__ */ new Map()
+		};
+		for (const t of c.taps) {
+			push(ix.tapsOf, t.part, t);
+			push(ix.tapsOn, t.net, t);
+			ix.tapAt.set(t.node, t);
+		}
+		for (const d of c.devices) push(ix.devicesOf, d.part, d);
+		indexes.set(c, ix);
+	}
+	return ix;
+}
 //#endregion
 //#region src/sim/floating.ts
 var OP = { kind: "op" };
@@ -91233,13 +91259,18 @@ function classify(c, analysis = OP) {
 	const byRoot = /* @__PURE__ */ new Map();
 	for (const cell of cellsOf(c)) {
 		const r = find(cell.p);
-		byRoot.set(r, [...byRoot.get(r) ?? [], cell]);
+		const list = byRoot.get(r);
+		if (list) list.push(cell);
+		else byRoot.set(r, [cell]);
 	}
 	const strongest = (list) => [...list].sort((a, b) => (b.imax?.value ?? -1) - (a.imax?.value ?? -1) || b.volts.value - a.volts.value || naturalCompare(a.part, b.part) || (a.id < b.id ? -1 : 1))[0];
 	const members = /* @__PURE__ */ new Map();
 	for (const n of [...nodes].sort()) {
 		const r = find(n);
-		if (byRoot.has(r)) members.set(r, [...members.get(r) ?? [], n]);
+		if (!byRoot.has(r)) continue;
+		const list = members.get(r);
+		if (list) list.push(n);
+		else members.set(r, [n]);
 	}
 	const islands = [...byRoot.entries()].map(([root, list]) => ({
 		ref: strongest(list),
@@ -91629,32 +91660,45 @@ function compile(c, cls, a) {
 //#endregion
 //#region src/sim/engine/engine.ts
 function makeEngine(host) {
-	return {
-		host,
-		init: () => host.init(),
-		async run(c, a, revision) {
-			const compiled = compile(c, classifyCached(c, a), a);
-			if (compiled.empty) return {
-				status: "ok",
-				revision,
-				raw: compiled.read({}),
-				ms: 0
-			};
-			const r = await host.runText(compiled.text);
-			if (r.status === "unavailable") return r;
-			if (r.status === "failed") return {
+	const runAll = async (c, analyses, revision) => {
+		const compiled = analyses.map((a) => compile(c, classifyCached(c, a), a));
+		const texts = compiled.filter((x) => !x.empty).map((x) => x.text);
+		const answers = texts.length ? await host.runTexts(texts) : [];
+		const out = [];
+		let next = 0;
+		for (const x of compiled) {
+			if (x.empty) {
+				out.push({
+					status: "ok",
+					revision,
+					raw: x.read({}),
+					ms: 0
+				});
+				continue;
+			}
+			const r = answers[next++];
+			if (!r) break;
+			if (r.status === "unavailable") return [...out, r];
+			if (r.status === "failed") return [...out, {
 				status: "failed",
 				revision,
 				error: r.error,
-				nodes: compiled.nodesIn(r.error)
-			};
-			return {
+				nodes: x.nodesIn(r.error)
+			}];
+			out.push({
 				status: "ok",
 				revision,
-				raw: compiled.read(r.vectors),
+				raw: x.read(r.vectors),
 				ms: r.ms
-			};
-		},
+			});
+		}
+		return out;
+	};
+	return {
+		host,
+		init: () => host.init(),
+		run: async (c, a, revision) => (await runAll(c, [a], revision))[0],
+		runAll,
 		dispose: () => host.dispose()
 	};
 }
@@ -91726,7 +91770,7 @@ var EngineHost = class {
 		const t = this.opts.timeoutMs;
 		return typeof t === "function" ? t() : t ?? 5e3;
 	}
-	once(text) {
+	once(texts) {
 		const id = ++this.seq;
 		return new Promise((resolve) => {
 			const timer = setTimeout(() => {
@@ -91740,7 +91784,7 @@ var EngineHost = class {
 			this.worker.post({
 				type: "run",
 				id,
-				text
+				texts
 			});
 		});
 	}
@@ -91754,51 +91798,54 @@ var EngineHost = class {
 		this.waiting.clear();
 	}
 	/** One engine run of a SPICE text, queued behind any run in progress. */
-	runText(text) {
-		const next = this.queue.then(() => this.attempt(text));
+	async runText(text) {
+		return (await this.runTexts([text]))[0];
+	}
+	/**
+	* Engine runs of several SPICE texts in one worker message, queued behind any request in
+	* progress: one outcome per text, in order, up to and including the first that is not ok.
+	*/
+	runTexts(texts) {
+		const next = this.queue.then(() => this.attempt(texts));
 		this.queue = next.catch(() => void 0);
 		return next;
 	}
-	async attempt(text) {
+	async attempt(texts) {
 		for (let attempt = 0; attempt < 2; attempt++) {
 			try {
 				await this.init();
 			} catch (e) {
-				return {
+				return [{
 					status: "unavailable",
 					reason: message(e)
-				};
+				}];
 			}
-			const a = await this.once(text);
+			const a = await this.once(texts);
 			if (a === "timeout") {
 				this.recycle();
 				continue;
 			}
-			this.runs++;
-			this.onWorker++;
-			if (!a.ok) {
-				if (a.dead || this.onWorker >= (this.opts.recycleRuns ?? 2e3)) this.recycle();
-				return {
-					status: "failed",
-					error: a.error
-				};
-			}
-			if (this.onWorker >= (this.opts.recycleRuns ?? 2e3)) this.recycle();
-			return a.warnings ? {
+			this.runs += a.runs.length;
+			this.onWorker += a.runs.length;
+			if (a.runs.some((r) => !r.ok && r.dead) || this.onWorker >= (this.opts.recycleRuns ?? 2e3)) this.recycle();
+			return a.runs.map((r) => !r.ok ? {
+				status: "failed",
+				error: r.error
+			} : r.warnings ? {
 				status: "ok",
-				vectors: a.vectors,
-				warnings: a.warnings,
-				ms: a.ms
+				vectors: r.vectors,
+				warnings: r.warnings,
+				ms: r.ms
 			} : {
 				status: "ok",
-				vectors: a.vectors,
-				ms: a.ms
-			};
+				vectors: r.vectors,
+				ms: r.ms
+			});
 		}
-		return {
+		return [{
 			status: "failed",
 			error: `the simulation engine did not answer within ${this.timeout() / 1e3} s, twice`
-		};
+		}];
 	}
 	dispose() {
 		this.recycle();
@@ -91930,39 +91977,43 @@ function serve(post, listen, load) {
 		try {
 			if (m.type !== "run") return;
 			loading.then(({ core }) => {
-				const t0 = performance.now();
-				try {
-					if (m.text === "* circuitoon: debug hang") for (;;) performance.now();
-					const r = core.op(m.text);
-					const ms = performance.now() - t0;
-					post(r.ok ? {
-						type: "result",
-						id: m.id,
-						ok: true,
-						vectors: r.vectors,
-						...r.warnings && { warnings: r.warnings },
-						ms,
-						heap: core.heapBytes()
-					} : {
-						type: "result",
-						id: m.id,
-						ok: false,
-						error: r.error,
-						dead: core.dead,
-						ms,
-						heap: core.heapBytes()
-					});
-				} catch (e) {
-					post({
-						type: "result",
-						id: m.id,
-						ok: false,
-						error: `the simulation engine stopped: ${why(e)}`,
-						dead: true,
-						ms: performance.now() - t0,
-						heap: 0
-					});
+				const runs = [];
+				let heap = 0;
+				for (const text of m.texts) {
+					const t0 = performance.now();
+					try {
+						if (text === "* circuitoon: debug hang") for (;;) performance.now();
+						const r = core.op(text);
+						const ms = performance.now() - t0;
+						heap = core.heapBytes();
+						runs.push(r.ok ? {
+							ok: true,
+							vectors: r.vectors,
+							...r.warnings && { warnings: r.warnings },
+							ms
+						} : {
+							ok: false,
+							error: r.error,
+							dead: core.dead,
+							ms
+						});
+					} catch (e) {
+						heap = 0;
+						runs.push({
+							ok: false,
+							error: `the simulation engine stopped: ${why(e)}`,
+							dead: true,
+							ms: performance.now() - t0
+						});
+					}
+					if (!runs[runs.length - 1].ok) break;
 				}
+				post({
+					type: "result",
+					id: m.id,
+					runs,
+					heap
+				});
 			}, () => void 0);
 		} catch (e) {
 			post({
@@ -92525,6 +92576,7 @@ var Builder = class {
 	gpios = [];
 	usb = [];
 	unsim = [];
+	offSheet = [];
 	notes = [];
 	/** The part being built, which owns the notes made meanwhile. */
 	current = null;
@@ -92546,6 +92598,27 @@ var Builder = class {
 			const name = named ? this.netOfKey.get(named) : this.fresh(this.firstComponent(keys));
 			for (const k of keys) this.netOfKey.set(k, name);
 		}
+		if (opts.netNames) this.rename(opts.netNames);
+	}
+	/** Sheet net names to the netlist's own (BuildOptions.netNames); an unnamed net clashing with one gets a suffix. */
+	rename(netNames) {
+		const alias = /* @__PURE__ */ new Map();
+		const taken = /* @__PURE__ */ new Set();
+		for (const n of netNames) {
+			const sheet = n.keys.map((k) => this.netOfKey.get(k)).find((x) => x !== void 0);
+			if (sheet === void 0 || alias.has(sheet) || taken.has(n.name)) continue;
+			alias.set(sheet, n.name);
+			taken.add(n.name);
+		}
+		this.names = new Set(taken);
+		for (const sheet of [...new Set(this.netOfKey.values())].sort()) {
+			if (alias.has(sheet)) continue;
+			let name = sheet;
+			for (let k = 2; this.names.has(name); k++) name = `${sheet}_${k}`;
+			this.names.add(name);
+			alias.set(sheet, name);
+		}
+		for (const [k, net] of this.netOfKey) this.netOfKey.set(k, alias.get(net));
 	}
 	ref(uid) {
 		return this.refOf.get(uid) ?? this.d.parts.find((p) => p.uid === uid)?.designator ?? uid;
@@ -92566,7 +92639,7 @@ var Builder = class {
 		return (real.length ? real : pins).sort((a, b) => naturalCompare(this.ref(a[0]), this.ref(b[0])) || naturalCompare(a[1], b[1]))[0];
 	}
 	fresh([uid, pin]) {
-		const base = `${this.ref(uid)}_${pin}`;
+		const base = `${this.ref(uid)}_${pin.replace(/#(.*)$/, (_, x) => `_${x.toUpperCase()}`)}`;
 		let name = base;
 		for (let k = 2; this.names.has(name); k++) name = `${base}_${k}`;
 		this.names.add(name);
@@ -92740,7 +92813,7 @@ var Builder = class {
 		if (!m) return this.unsimulated(p.uid, "its module is not embedded in the sheet");
 		if (isNetLabel(m) || isBoard(m)) return;
 		const model = modelOf(m);
-		if (model === "connector") return;
+		if (model === "connector") return this.connector(p, m);
 		const ref = this.ref(p.uid);
 		this.current = p.uid;
 		this.parts[p.uid] = {
@@ -92941,6 +93014,16 @@ var Builder = class {
 		if (mainsOf(m).any) return this.skip(p.uid, "mains wiring is not simulated");
 		this.skip(p.uid, hasPowerPin(m) ? NO_POWER_DATA : "no simulation model");
 	}
+	/**
+	* Phase D ruling: a `connector` part's pin leads off the sheet (a header, a JST-XH plug, a USB
+	* panel socket: J1 to J3 carry the Spirit's I2C bus to its bank sheets), so an input on its net is
+	* driven from elsewhere. A pin joined to another inside the part (`internal`: a Wago lever splice)
+	* only joins wires on the sheet, so it does not count.
+	*/
+	connector(p, m) {
+		const spliced = new Set((m.internal ?? []).flat());
+		for (const pin of [...m.pins, ...m.holes ?? []]) if ("name" in pin && typeof pin.name === "string" && !spliced.has(pin.name)) this.offSheet.push(nodeKey(p.uid, pin.name));
+	}
 	done() {
 		const taps = [...this.tapsByKey.values()].sort((a, b) => naturalCompare(a.part, b.part) || (a.pin < b.pin ? -1 : a.pin > b.pin ? 1 : 0));
 		const devices = [...this.devices].sort((a, b) => naturalCompare(a.part, b.part) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
@@ -92971,6 +93054,7 @@ var Builder = class {
 			mains: [...this.mainsKeys].sort(),
 			openContacts: [...open.values()],
 			unsimulated: this.unsim,
+			offSheet: [...this.offSheet].sort(),
 			unaccounted: Object.keys(this.parts).sort(naturalCompare).flatMap((uid) => {
 				const items = simOf(this.modulesOf(uid))?.unaccounted ?? [];
 				return items.length ? [{
@@ -93009,9 +93093,9 @@ function basisOf(params) {
 	if (worst === 1) return "representative";
 	return params.some((p) => p.basis === "datasheet") ? "datasheet" : "user";
 }
-var NET = netNode("");
+var NET$1 = netNode("");
 /** A node's display name: a net node's name, a pin tap's net, else the node id (an internal node). */
-var nameOf = (c, node) => node.startsWith(NET) ? node.slice(NET.length) : c.taps.find((t) => t.node === node)?.net ?? node;
+var nameOf = (c, node) => node.startsWith(NET$1) ? node.slice(NET$1.length) : indexOf(c).tapAt.get(node)?.net ?? node;
 var trustOf = (out, net, part) => out.nets.has(net) || part !== void 0 && out.parts.has(part) ? "outside-model" : "ok";
 /** A solved, non-floating node's island (spec 2: islandOf includes floating nodes, which a tie gives a solver number). */
 function islandOf(cls, raw, node) {
@@ -93048,8 +93132,9 @@ function readRun(c, cls, raw, out = NO_OUTSIDE) {
 		why: "mains wiring is not simulated"
 	} : voltageOf(c, cls, raw, netNode(net), out);
 	const parts = {};
+	const ix = indexOf(c);
 	for (const uid of Object.keys(c.parts)) {
-		const taps = c.taps.filter((t) => t.part === uid);
+		const taps = ix.tapsOf.get(uid) ?? [];
 		const trust = out.parts.has(uid) ? "outside-model" : "ok";
 		const pins = {};
 		let power = 0;
@@ -93085,9 +93170,9 @@ function readRun(c, cls, raw, out = NO_OUTSIDE) {
 				why: !taps.length ? "not simulated" : islands.size ? "it spans separate circuits" : "nothing drives it (floating)"
 			}
 		};
-		const led = c.devices.find((d) => d.kind === "diode" && d.role === "led" && d.part === uid);
+		const led = ix.devicesOf.get(uid)?.find((d) => d.kind === "diode" && d.role === "led");
 		if (led) {
-			const anode = c.taps.find((t) => t.node === led.a);
+			const anode = ix.tapAt.get(led.a);
 			const i = anode && pins[anode.pin]?.kind === "value" ? raw.pins[uid]?.[anode.pin] : void 0;
 			run.state = i !== void 0 && Math.abs(i) > 1e-4 ? "lit" : "dark";
 		}
@@ -93165,9 +93250,9 @@ function budget(c, cls, raws, out = NO_OUTSIDE) {
 		}
 	}
 	for (const dom of c.domains) {
-		const loads = c.devices.filter((d) => d.kind === "load" && d.part === dom.part && d.domain === dom.name);
+		const loads = (indexOf(c).devicesOf.get(dom.part) ?? []).filter((d) => d.kind === "load" && d.domain === dom.name);
 		const volts = both((raw) => across(c, cls, raw, dom.pin, dom.ret, out, dom.part));
-		const tap = c.taps.find((t) => t.node === dom.pin);
+		const tap = indexOf(c).tapAt.get(dom.pin);
 		const a = both((raw, corner) => {
 			const v = volts[corner];
 			const i = tap && raw.pins[tap.part]?.[tap.pin];
@@ -93288,14 +93373,17 @@ function lowGraph(c) {
 		for (const n of [a, b]) if (!parent.has(n)) parent.set(n, n);
 		const [ra, rb] = [find(a), find(b)];
 		if (ra !== rb) parent.set(ra, rb);
-		adj.set(a, [...adj.get(a) ?? [], {
-			to: b,
-			part
-		}]);
-		adj.set(b, [...adj.get(b) ?? [], {
-			to: a,
-			part
-		}]);
+		for (const [x, to] of [[a, b], [b, a]]) {
+			const list = adj.get(x);
+			if (list) list.push({
+				to,
+				part
+			});
+			else adj.set(x, [{
+				to,
+				part
+			}]);
+		}
 	};
 	for (const t of c.taps) link(netNode(t.net), t.node, null);
 	for (const d of c.devices) if (d.kind === "resistor" && (d.role === "contact" || d.role === "cable") || d.kind === "switch" && d.closed) link(d.a, d.b, d.part);
@@ -93385,11 +93473,14 @@ function topologyFindings(c, cls) {
 		});
 	}
 	const unknown = new Set(c.unsimulated.map((u) => u.part));
+	const offSheet = new Set(c.offSheet);
 	for (const gp of c.gpio) {
 		if (gp.state !== "input" || pinState(c, cls, gp.key) !== "floating") continue;
 		const dom = c.domains.find((x) => x.part === gp.part && x.name === gp.domain);
 		if (dom && !powered(c, cls, dom.pin, dom.ret)) continue;
-		const others = Object.entries(c.pinNet).filter(([k, n]) => k !== gp.key && n === c.pinNet[gp.key]).map(([k]) => JSON.parse(k)[0]);
+		const keys = Object.keys(c.pinNet).filter((k) => k !== gp.key && c.pinNet[k] === c.pinNet[gp.key]);
+		if (keys.some((k) => offSheet.has(k))) continue;
+		const others = keys.map((k) => JSON.parse(k)[0]);
 		if (others.length && !others.some((uid) => uid !== gp.part && unknown.has(uid))) drafts.push({
 			code: "sim-floating-input",
 			severity: "warning",
@@ -93507,10 +93598,14 @@ function e12Up(ohms) {
 	const decade = 10 ** Math.floor(Math.log10(ohms) - 1);
 	return Number((E12.find((x) => x * decade >= ohms * .999) * decade).toPrecision(2));
 }
+var NET = netNode("");
 /** A node's net in node form (netNode of a pin tap's net), else the node itself (an internal node). */
 var netOfNode = (c) => {
-	const m = new Map(c.taps.map((t) => [t.node, netNode(t.net)]));
-	return (node) => m.get(node) ?? node;
+	const at = indexOf(c).tapAt;
+	return (node) => {
+		const t = at.get(node);
+		return t ? netNode(t.net) : node;
+	};
 };
 /** The value findings of one solved corner (spec 5.2), and the rails that ran outside their model. */
 function runDrafts(c, cls, raw, corner) {
@@ -93527,13 +93622,14 @@ function runDrafts(c, cls, raw, corner) {
 		const i = raw.pins[part]?.[pin];
 		return i !== void 0 && Number.isFinite(i) ? i : void 0;
 	};
-	const taps = (part) => c.taps.filter((t) => t.part === part);
+	const ix = indexOf(c);
+	const taps = (part) => ix.tapsOf.get(part) ?? [];
 	const netOf = netOfNode(c);
 	const ref = (uid) => refOf(c, uid);
 	const fmt = (x, unit) => unit === "A" ? A(x) : unit === "V" ? V(x) : W(x);
 	const cond = (l) => l.conditions ? ` (${l.conditions})` : "";
 	const delivered = (part, domain) => {
-		const src = c.devices.find((x) => x.kind === "cell" && x.part === part && (domain === void 0 || x.domain === domain));
+		const src = ix.devicesOf.get(part)?.find((x) => x.kind === "cell" && (domain === void 0 || x.domain === domain));
 		const x = src ? raw.dev[src.id] : void 0;
 		return x === void 0 || !Number.isFinite(x) ? null : {
 			value: Math.abs(x),
@@ -93603,17 +93699,17 @@ function runDrafts(c, cls, raw, corner) {
 	};
 	/**
 	* An LED's resistor advice (spec 5.2's example): the series resistance, rounded up to an E12 value,
-	* that brings `amps` through it from the voltage its string sees now (the far end of a resistor
-	* already on its anode or cathode net, else the LED's own pins).
+	* that brings `amps` through it from the voltage across its string unloaded (the far end of a
+	* resistor already on its anode or cathode net, else the LED's own pins).
 	*/
 	const ledAdvice = (part, amps) => {
 		if (c.parts[part]?.model !== "led") return "";
 		const generic = " Add a series resistor, or a larger one, to bring it under the rating.";
-		const led = c.devices.find((x) => x.kind === "diode" && x.role === "led" && x.part === part);
+		const led = ix.devicesOf.get(part)?.find((x) => x.kind === "diode" && x.role === "led");
 		if (!led) return generic;
 		const far = (node) => {
 			const net = netOf(node);
-			const r = c.taps.filter((t) => netNode(t.net) === net).length === 2 ? c.devices.find((x) => x.kind === "resistor" && x.role === "resistor" && netOf(x.a) === net !== (netOf(x.b) === net)) : void 0;
+			const r = net.startsWith(NET) && ix.tapsOn.get(net.slice(NET.length))?.length === 2 ? c.devices.find((x) => x.kind === "resistor" && x.role === "resistor" && netOf(x.a) === net !== (netOf(x.b) === net)) : void 0;
 			return r ? {
 				node: netOf(r.a) === net ? r.b : r.a,
 				resistor: true
@@ -93624,7 +93720,8 @@ function runDrafts(c, cls, raw, corner) {
 		};
 		const [a, k] = [far(led.a), far(led.k)];
 		if (!solved(a.node) || !solved(k.node)) return generic;
-		const drive = v(a.node) - v(k.node);
+		const src = sources(c).find((x) => netOf(x.p) === netOf(a.node) && solved(x.n));
+		const drive = src ? src.volts.value - (v(k.node) - v(src.n)) : v(a.node) - v(k.node);
 		const ohms = (drive - diodeVoltage(led.model, amps)) / amps;
 		if (!(ohms > 0)) return generic;
 		return ` ${a.resistor || k.resistor ? "Use a larger series resistor" : "Add a series resistor"} (about ${e12Up(ohms)} ohm at ${V(drive)}).`;
@@ -93842,7 +93939,6 @@ function propagate(c, rails) {
 		}
 	}
 	for (const d of c.devices) if (d.kind === "cell" && nodes.has(netOf(d.p))) parts.add(d.part);
-	const NET = netNode("");
 	return {
 		nets: new Set([...nodes].filter((n) => n.startsWith(NET)).map((n) => n.slice(NET.length))),
 		parts,
@@ -93875,11 +93971,14 @@ async function solve(d, engine, revision, opts = {}) {
 	const raws = {};
 	const before = engine.host.runs;
 	let ms = 0;
-	for (const corner of ["typical", "peak"]) {
-		const r = await engine.run(c, {
-			kind: "op",
-			corner
-		}, revision);
+	const corners = ["typical", "peak"];
+	const runs = await engine.runAll(c, corners.map((corner) => ({
+		kind: "op",
+		corner
+	})), revision);
+	for (const [i, corner] of corners.entries()) {
+		const r = runs[i];
+		if (!r) throw new Error(`the engine gave no answer for the ${corner} corner`);
 		if (r.status === "unavailable") return {
 			circuit: c,
 			outcome: {
@@ -93901,7 +94000,7 @@ async function solve(d, engine, revision, opts = {}) {
 		ms += r.ms;
 	}
 	const { findings, outside } = analyseFindings(c, cls, raws, topo);
-	const corners = {
+	const read = {
 		typical: readRun(c, cls, raws.typical, outside),
 		peak: readRun(c, cls, raws.peak, outside)
 	};
@@ -93913,11 +94012,11 @@ async function solve(d, engine, revision, opts = {}) {
 			result: {
 				format: "circuitoon-sim/1",
 				revision,
-				corners,
+				corners: read,
 				budget: budget(c, cls, raws, outside),
 				findings,
 				unsimulated: c.unsimulated,
-				probes: probeReadings([...d.probes ?? [], ...opts.probes ?? []], c, corners),
+				probes: probeReadings([...d.probes ?? [], ...opts.probes ?? []], c, read),
 				unaccounted: c.unaccounted,
 				notes: c.notes,
 				engine: {
@@ -93937,23 +94036,11 @@ var USAGE$1 = "sim: usage: circuitoon sim <sheet.json|netlist.json> [--probe <re
 var plural$1 = (n, one) => `${n} ${one}${n === 1 ? "" : "s"}`;
 /**
 * One --probe: "REF.PIN", "REF" or "net:NAME" on the sheet (refs as the netlist names them). A net
-* name is the sheet's (extract's: labels, GND, rails, REF_PIN), else the intent's (the netlist's own
-* names, which a laid-out sheet keeps).
+* name is the intent's (the netlist's own names, which the readings use), else the sheet's
+* (extract's: labels, GND, rails, REF_PIN).
 */
 function probeOf(spec, d, uidOf, nets, intent, id) {
 	if (spec.startsWith("net:")) {
-		const net = nets.find((n) => n.name === spec.slice(4));
-		if (net) {
-			const pin = [...net.pins].sort((a, b) => naturalCompare(a.ref, b.ref) || naturalCompare(a.name, b.name))[0];
-			return {
-				id,
-				name: spec,
-				at: {
-					part: uidOf.get(pin.ref),
-					pin: pin.name
-				}
-			};
-		}
 		const [p] = intent ? probesForSheet({
 			...intent,
 			probes: [{
@@ -93962,13 +94049,23 @@ function probeOf(spec, d, uidOf, nets, intent, id) {
 			}]
 		}) : [];
 		const uid = p && (uidOf.get(p.at.part) ?? d.parts.find((x) => x.uid === p.at.part)?.uid);
-		if (!uid) throw new CliError(`sim: --probe ${spec}: no net "${spec.slice(4)}"`, EXIT.input);
-		return {
+		if (uid) return {
 			id,
 			name: spec,
 			at: {
 				part: uid,
 				pin: p.at.pin
+			}
+		};
+		const net = nets.find((n) => n.name === spec.slice(4));
+		if (!net) throw new CliError(`sim: --probe ${spec}: no net "${spec.slice(4)}"`, EXIT.input);
+		const pin = [...net.pins].sort((a, b) => naturalCompare(a.ref, b.ref) || naturalCompare(a.name, b.name))[0];
+		return {
+			id,
+			name: spec,
+			at: {
+				part: uidOf.get(pin.ref),
+				pin: pin.name
 			}
 		};
 	}
@@ -93995,6 +94092,50 @@ function probeOf(spec, d, uidOf, nets, intent, id) {
 }
 var volts = (r) => r.kind === "value" ? `${r.value.toFixed(3)} V` : r.kind;
 var amps = (r) => r.kind === "value" ? `${(r.value * 1e3).toFixed(1)} mA` : r.kind;
+var watts = (r) => r.kind === "value" ? `${(r.value * 1e3).toFixed(1)} mW` : r.kind === "undefined" ? `power ${r.why}` : r.kind;
+/**
+* Phase D ruling: sim checks connectivity, not layout readability. A netlist the layout cannot draw
+* (a net that needs a distribution point) is simulated from a sheet with each net wired pin to pin;
+* uids are the refs, as on a laid-out sheet, and board strips are left out (they only join pins the
+* net already lists).
+*/
+function connectionSheet(intent, raw) {
+	const connections = intent.nets.flatMap((n) => {
+		const pins = n.terminals.filter((t) => !t.infra);
+		return pins.slice(1).map((t, i) => ({
+			uid: "",
+			from: {
+				part: pins[i].ref,
+				pin: pins[i].name
+			},
+			to: {
+				part: t.ref,
+				pin: t.name
+			}
+		}));
+	});
+	const probes = probesForSheet(intent);
+	return {
+		format: DIAGRAM_FORMAT,
+		title: intent.title,
+		modules: intent.modules,
+		parts: intent.parts.map((p, i) => ({
+			uid: p.ref,
+			designator: p.ref,
+			module: p.module,
+			x: i % 8 * 400,
+			y: Math.floor(i / 8) * 400,
+			...p.values ? { values: p.values } : {},
+			...p.settings ? { settings: p.settings } : {}
+		})),
+		connections: connections.map((c, i) => ({
+			...c,
+			uid: `w${i + 1}`
+		})),
+		intent: structuredClone(raw),
+		...probes.length ? { probes } : {}
+	};
+}
 var OFF = /^(.+?) is not powered in the current state: (\S+) is open\./;
 function findingLines(findings, line = (f, m) => `  ${f.severity}: ${m}`) {
 	const lines = [];
@@ -94017,13 +94158,25 @@ function summary(o, refOf = /* @__PURE__ */ new Map()) {
 	if (o.status !== "ok") return `${[o.status === "failed" ? `Simulation failed: ${o.finding.message}` : `Simulation unavailable: ${o.reason}`, ...findingLines(o.findings)].join("\n")}\n`;
 	const r = o.result;
 	const count = (s) => r.findings.filter((f) => f.severity === s).length;
-	const lines = [`Simulation: typical and peak solved in ${Math.round(r.engine.ms)} ms (${r.engine.runs} engine runs). ${plural$1(count("error"), "blocking finding")}, ${plural$1(count("warning"), "warning")}, ${plural$1(count("note"), "note")}.`];
+	const lines = [`Simulation: ${r.engine.runs ? `typical and peak solved in ${Math.round(r.engine.ms)} ms (${r.engine.runs} engine runs)` : "nothing powered; not solved"}. ${plural$1(count("error"), "blocking finding")}, ${plural$1(count("warning"), "warning")}, ${plural$1(count("note"), "note")}.`];
 	lines.push(...findingLines(r.findings));
-	for (const b of r.budget) lines.push(`  budget ${b.label}: ${volts(b.volts.typical)}, ${amps(b.amps.typical)} (peak ${amps(b.amps.peak)})${b.limit ? `, limit ${(b.limit.value * 1e3).toFixed(0)} mA` : ""}`);
+	for (const b of r.budget) {
+		const a = b.kind === "domain" && b.ownDraw ? b.ownDraw : b.amps;
+		lines.push(`  budget ${b.label}: ${volts(b.volts.typical)}, ${amps(a.typical)} (peak ${amps(a.peak)})${b.kind === "domain" ? " own draw" : ""}${b.limit ? `, limit ${(b.limit.value * 1e3).toFixed(0)} mA` : ""}`);
+	}
 	for (const u of r.unaccounted) lines.push(`  not in the budget: ${refOf.get(u.part) ?? u.part}: ${u.items.join("; ")}`);
 	for (const p of r.probes) {
 		const v = p.voltage?.typical;
+		const part = p.part?.typical;
 		if (v) lines.push(`  ${p.id} ${p.name ?? ""}: ${v.kind === "value" ? `${v.value.toFixed(3)} V (to ${v.reference})` : v.kind}`);
+		else if (part) {
+			const pins = Object.entries(part.pins).map(([pin, i]) => `${pin} ${amps(i)}`);
+			lines.push(`  ${p.id} ${p.name ?? ""}: ${[
+				...part.state ? [part.state] : [],
+				watts(part.power),
+				...pins.length ? [`into ${pins.join(", ")}`] : []
+			].join(", ")}`);
+		}
 	}
 	return `${lines.join("\n")}\n`;
 }
@@ -94036,11 +94189,16 @@ async function simCommand(args, io, opts = {}) {
 	let intent = null;
 	if (isObj(raw) && raw.format === "circuitoon-netlist/1") {
 		const r = layoutNetlist(raw, { library: libraryLookup });
-		if (!r.ok) throw new CliError(`${input}: ${r.errors.slice(0, 5).join("; ")}`, EXIT.input);
-		d = r.value.diagram;
-		intent = r.value.intent;
-		for (const w of r.value.intent.probeWarnings) io.stderr(`warning: ${w}\n`);
-		for (const p of r.value.intent.probes) if (p.ref) io.stderr(`note: probe ${p.id} names ref ${p.ref}; readings are relative to its island's reference (differential probes come later)\n`);
+		if (!r.ok && r.stage === "input") throw new CliError(`${input}: ${r.errors.slice(0, 5).join("; ")}`, EXIT.input);
+		const parsed = r.ok ? {
+			ok: true,
+			intent: r.value.intent
+		} : parseNetlist(raw, libraryLookup);
+		if (!parsed.ok) throw new CliError(`${input}: ${parsed.errors.slice(0, 5).join("; ")}`, EXIT.input);
+		intent = parsed.intent;
+		d = r.ok ? r.value.diagram : connectionSheet(intent, raw);
+		for (const w of intent.probeWarnings) io.stderr(`warning: ${w}\n`);
+		for (const p of intent.probes) if (p.ref) io.stderr(`note: probe ${p.id} names ref ${p.ref}; readings are relative to its island's reference (differential probes come later)\n`);
 	} else {
 		const v = validateDiagram(raw, { library: libraryLookup });
 		if (!v.ok) throw new CliError(`${input} is not a Circuitoon sheet or netlist: ${v.errors.slice(0, 5).join("; ")}`, EXIT.input);
@@ -94060,16 +94218,21 @@ async function simCommand(args, io, opts = {}) {
 		};
 		return p;
 	});
+	const netNames = intent?.nets.map((n) => ({
+		name: n.name,
+		keys: n.terminals.flatMap((t) => t.infra || !uidOf.has(t.ref) ? [] : [nodeKey(uidOf.get(t.ref), t.name)])
+	}));
 	const engine = opts.engine ?? makeEngine(createNodeEngineHost());
 	try {
 		const { outcome } = await solve(d, engine, 1, {
 			probes,
-			library: libraryLookup
+			library: libraryLookup,
+			...netNames ? { netNames } : {}
 		});
 		printJson(io, outcome);
 		io.stderr(summary(outcome, sn.refOf));
-		if (outcome.status !== "ok") return EXIT.environment;
-		return outcome.result.findings.some((f) => f.severity === "error") ? EXIT.blocked : EXIT.ok;
+		if ((outcome.status === "ok" ? outcome.result.findings : outcome.findings).some((f) => f.severity === "error")) return EXIT.blocked;
+		return outcome.status === "ok" ? EXIT.ok : EXIT.environment;
 	} finally {
 		if (!opts.engine) engine.dispose();
 	}
