@@ -215,14 +215,19 @@ export function classify(c: Circuit, analysis: Kind = OP): Classification {
   const byRoot = new Map<string, Cell[]>()
   for (const cell of cellsOf(c)) {
     const r = find(cell.p)
-    byRoot.set(r, [...(byRoot.get(r) ?? []), cell])
+    const list = byRoot.get(r)
+    if (list) list.push(cell)
+    else byRoot.set(r, [cell])
   }
   const strongest = (list: Cell[]) =>
     [...list].sort((a, b) => (b.imax?.value ?? -1) - (a.imax?.value ?? -1) || b.volts.value - a.volts.value || naturalCompare(a.part, b.part) || (a.id < b.id ? -1 : 1))[0]
   const members = new Map<string, string[]>()
   for (const n of [...nodes].sort()) {
     const r = find(n)
-    if (byRoot.has(r)) members.set(r, [...(members.get(r) ?? []), n])
+    if (!byRoot.has(r)) continue
+    const list = members.get(r)
+    if (list) list.push(n)
+    else members.set(r, [n])
   }
   const islands: Island[] = [...byRoot.entries()]
     .map(([root, list]) => ({ ref: strongest(list), nodes: members.get(root) ?? [] }))

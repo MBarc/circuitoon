@@ -115,7 +115,33 @@ export interface Circuit {
    */
   openContacts: { part: string; group: string; pairs: [string, string][] }[]
   unsimulated: { part: string; reason: string }[]
+  /** Node keys of connector pins that lead off the sheet (build.ts connector()): an input on their net is driven from elsewhere. */
+  offSheet: string[]
   /** What each simulated part's data leaves out (its sim.unaccounted), for the budgets to list. */
   unaccounted: { part: string; items: string[] }[]
   notes: string[]
+}
+
+/** Taps and devices by part uid, and taps by pin node and by net name: lookups the results and findings repeat per part. */
+export interface CircuitIndex { tapsOf: Map<string, PinTap[]>; devicesOf: Map<string, Device[]>; tapAt: Map<string, PinTap>; tapsOn: Map<string, PinTap[]> }
+const indexes = new WeakMap<Circuit, CircuitIndex>()
+const push = <K, V>(m: Map<K, V[]>, k: K, v: V) => {
+  const list = m.get(k)
+  if (list) list.push(v)
+  else m.set(k, [v])
+}
+/** The circuit's index, built once per circuit (a circuit is never changed after build). */
+export function indexOf(c: Circuit): CircuitIndex {
+  let ix = indexes.get(c)
+  if (!ix) {
+    ix = { tapsOf: new Map(), devicesOf: new Map(), tapAt: new Map(), tapsOn: new Map() }
+    for (const t of c.taps) {
+      push(ix.tapsOf, t.part, t)
+      push(ix.tapsOn, t.net, t)
+      ix.tapAt.set(t.node, t)
+    }
+    for (const d of c.devices) push(ix.devicesOf, d.part, d)
+    indexes.set(c, ix)
+  }
+  return ix
 }

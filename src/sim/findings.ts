@@ -9,7 +9,7 @@ import { naturalCompare } from '../agent/order.ts'
 import { NO_POWER_DATA } from './estimates.ts'
 import { type Classification, deviceNodes, inputPowered, openSwitchFor, pinState, powered } from './floating.ts'
 import { LED_FIT_AMPS, diodeVoltage } from './ledModels.ts'
-import { type Circuit, type Corner, type Device, type Param, type ResolvedLimit, netNode } from './model.ts'
+import { type Circuit, type Corner, type Device, type Param, type ResolvedLimit, indexOf, netNode } from './model.ts'
 import { type Outside, type SimCode, type SimFinding, basisOf } from './results.ts'
 import { type RawRun, enableValue } from './spice.ts'
 
@@ -91,8 +91,11 @@ function lowGraph(c: Circuit) {
     for (const n of [a, b]) if (!parent.has(n)) parent.set(n, n)
     const [ra, rb] = [find(a), find(b)]
     if (ra !== rb) parent.set(ra, rb)
-    adj.set(a, [...(adj.get(a) ?? []), { to: b, part }])
-    adj.set(b, [...(adj.get(b) ?? []), { to: a, part }])
+    for (const [x, to] of [[a, b], [b, a]]) {
+      const list = adj.get(x)
+      if (list) list.push({ to, part })
+      else adj.set(x, [{ to, part }])
+    }
   }
   for (const t of c.taps) link(netNode(t.net), t.node, null)
   for (const d of c.devices)
@@ -169,12 +172,17 @@ export function topologyFindings(c: Circuit, cls: Classification): { drafts: Dra
   // is unknown, not floating; sim-incomplete lists that part. Boards, net labels and connectors are
   // in neither c.parts nor c.unsimulated, so they never hide a floating input.
   // An input on an unpowered board is not reported: the board's "not powered" warning covers it.
+  // Phase D ruling: nor is one whose net reaches a connector pin that leads off the sheet (c.offSheet):
+  // another sheet drives it.
   const unknown = new Set(c.unsimulated.map((u) => u.part))
+  const offSheet = new Set(c.offSheet)
   for (const gp of c.gpio) {
     if (gp.state !== 'input' || pinState(c, cls, gp.key) !== 'floating') continue
     const dom = c.domains.find((x) => x.part === gp.part && x.name === gp.domain)
     if (dom && !powered(c, cls, dom.pin, dom.ret)) continue
-    const others = Object.entries(c.pinNet).filter(([k, n]) => k !== gp.key && n === c.pinNet[gp.key]).map(([k]) => (JSON.parse(k) as [string, string])[0])
+    const keys = Object.keys(c.pinNet).filter((k) => k !== gp.key && c.pinNet[k] === c.pinNet[gp.key])
+    if (keys.some((k) => offSheet.has(k))) continue
+    const others = keys.map((k) => (JSON.parse(k) as [string, string])[0])
     if (others.length && !others.some((uid) => uid !== gp.part && unknown.has(uid)))
       drafts.push({
         code: 'sim-floating-input', severity: 'warning', parts: [gp.part], pins: [{ part: gp.part, pin: gp.pin }], inputs: [], key: `sim-floating-input|${gp.part}|${gp.pin}`,
@@ -259,12 +267,16 @@ export function e12Up(ohms: number): number {
   return Number((E12.find((x) => x * decade >= ohms * 0.999)! * decade).toPrecision(2))
 }
 
+const NET = netNode('')
 type Load = Extract<Device, { kind: 'load' }>
 type RailDev = Extract<Device, { kind: 'rail' }>
 /** A node's net in node form (netNode of a pin tap's net), else the node itself (an internal node). */
 const netOfNode = (c: Circuit) => {
-  const m = new Map(c.taps.map((t) => [t.node, netNode(t.net)]))
-  return (node: string) => m.get(node) ?? node
+  const at = indexOf(c).tapAt
+  return (node: string) => {
+    const t = at.get(node)
+    return t ? netNode(t.net) : node
+  }
 }
 
 /** The value findings of one solved corner (spec 5.2), and the rails that ran outside their model. */
@@ -281,13 +293,14 @@ export function runDrafts(c: Circuit, cls: Classification, raw: RawRun, corner: 
     const i = raw.pins[part]?.[pin]
     return i !== undefined && Number.isFinite(i) ? i : undefined
   }
-  const taps = (part: string) => c.taps.filter((t) => t.part === part)
+  const ix = indexOf(c)
+  const taps = (part: string) => ix.tapsOf.get(part) ?? []
   const netOf = netOfNode(c)
   const ref = (uid: string) => refOf(c, uid)
   const fmt = (x: number, unit: 'A' | 'V' | 'W') => (unit === 'A' ? A(x) : unit === 'V' ? V(x) : W(x))
   const cond = (l: ResolvedLimit) => (l.conditions ? ` (${l.conditions})` : '')
   const delivered = (part: string, domain?: string) => {
-    const src = c.devices.find((x) => x.kind === 'cell' && x.part === part && (domain === undefined || x.domain === domain))
+    const src = ix.devicesOf.get(part)?.find((x) => x.kind === 'cell' && (domain === undefined || x.domain === domain))
     const x = src ? raw.dev[src.id] : undefined
     return x === undefined || !Number.isFinite(x) ? null : { value: Math.abs(x), what: `${ref(part)} delivers ${A(Math.abs(x))}`, unit: 'A' as const }
   }
@@ -328,25 +341,29 @@ export function runDrafts(c: Circuit, cls: Classification, raw: RawRun, corner: 
 
   /**
    * An LED's resistor advice (spec 5.2's example): the series resistance, rounded up to an E12 value,
-   * that brings `amps` through it from the voltage its string sees now (the far end of a resistor
-   * already on its anode or cathode net, else the LED's own pins).
+   * that brings `amps` through it from the voltage across its string unloaded (the far end of a
+   * resistor already on its anode or cathode net, else the LED's own pins).
    */
   const ledAdvice = (part: string, amps: number): string => {
     if (c.parts[part]?.model !== 'led') return ''
     const generic = ' Add a series resistor, or a larger one, to bring it under the rating.'
-    const led = c.devices.find((x): x is Extract<Device, { kind: 'diode' }> => x.kind === 'diode' && x.role === 'led' && x.part === part)
+    const led = ix.devicesOf.get(part)?.find((x): x is Extract<Device, { kind: 'diode' }> => x.kind === 'diode' && x.role === 'led')
     if (!led) return generic
     // In series only when the net joins just the LED pin and the resistor (never GND or a shared rail).
     const far = (node: string) => {
       const net = netOf(node)
-      const r = c.taps.filter((t) => netNode(t.net) === net).length === 2
+      const r = net.startsWith(NET) && ix.tapsOn.get(net.slice(NET.length))?.length === 2
         ? c.devices.find((x): x is Extract<Device, { kind: 'resistor' }> => x.kind === 'resistor' && x.role === 'resistor' && (netOf(x.a) === net) !== (netOf(x.b) === net))
         : undefined
       return r ? { node: netOf(r.a) === net ? r.b : r.a, resistor: true } : { node, resistor: false }
     }
     const [a, k] = [far(led.a), far(led.k)]
     if (!solved(a.node) || !solved(k.node)) return generic
-    const drive = v(a.node) - v(k.node)
+    // Phase D ruling: the resistor is sized from the driving node's unloaded voltage (a source's
+    // open-circuit voltage, a rail's vout, measured from its return), not the reading the overload
+    // sags; anything else (a GPIO pin) uses the reading.
+    const src = sources(c).find((x) => netOf(x.p) === netOf(a.node) && solved(x.n))
+    const drive = src ? src.volts.value - (v(k.node) - v(src.n)) : v(a.node) - v(k.node)
     const ohms = (drive - diodeVoltage(led.model, amps)) / amps
     if (!(ohms > 0)) return generic
     return ` ${a.resistor || k.resistor ? 'Use a larger series resistor' : 'Add a series resistor'} (about ${e12Up(ohms)} ohm at ${V(drive)}).`
@@ -510,7 +527,6 @@ export function propagate(c: Circuit, rails: Set<string>): Outside {
       }
   }
   for (const d of c.devices) if (d.kind === 'cell' && nodes.has(netOf(d.p))) parts.add(d.part)
-  const NET = netNode('')
   const nets = new Set([...nodes].filter((n) => n.startsWith(NET)).map((n) => n.slice(NET.length)))
   return { nets, parts, rails: marked }
 }

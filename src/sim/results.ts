@@ -8,7 +8,7 @@ import type { Probe, ProbeAnchor } from '../format/diagram.ts'
 import type { Provenance } from '../format/simModel.ts'
 import { nodeKey } from '../format/netlist.ts'
 import { type Classification, nodeState } from './floating.ts'
-import { type Basis, type Circuit, type Corner, type Device, netNode } from './model.ts'
+import { type Basis, type Circuit, type Corner, type Device, indexOf, netNode } from './model.ts'
 import { type RawRun, foldValue } from './spice.ts'
 
 export type Trust = 'ok' | 'outside-model'
@@ -90,7 +90,7 @@ export function basisOf(params: { basis: Provenance | 'user' }[]): Basis {
 
 const NET = netNode('')
 /** A node's display name: a net node's name, a pin tap's net, else the node id (an internal node). */
-const nameOf = (c: Circuit, node: string) => (node.startsWith(NET) ? node.slice(NET.length) : (c.taps.find((t) => t.node === node)?.net ?? node))
+const nameOf = (c: Circuit, node: string) => (node.startsWith(NET) ? node.slice(NET.length) : (indexOf(c).tapAt.get(node)?.net ?? node))
 const trustOf = (out: Outside, net: string, part?: string): Trust => (out.nets.has(net) || (part !== undefined && out.parts.has(part)) ? 'outside-model' : 'ok')
 /** A solved, non-floating node's island (spec 2: islandOf includes floating nodes, which a tie gives a solver number). */
 function islandOf(cls: Classification, raw: RawRun, node: string): number | undefined {
@@ -117,8 +117,9 @@ export function readRun(c: Circuit, cls: Classification, raw: RawRun, out: Outsi
   for (const net of [...new Set(Object.values(c.pinNet))].sort())
     nets[net] = mains.has(net) ? { kind: 'undefined', why: 'mains wiring is not simulated' } : voltageOf(c, cls, raw, netNode(net), out)
   const parts: Record<string, PartRun> = {}
+  const ix = indexOf(c)
   for (const uid of Object.keys(c.parts)) {
-    const taps = c.taps.filter((t) => t.part === uid)
+    const taps = ix.tapsOf.get(uid) ?? []
     const trust: Trust = out.parts.has(uid) ? 'outside-model' : 'ok'
     const pins: Record<string, CurrentReading> = {}
     // A floating tap carries no real current, so it is left out of the power sum (an unwired GPIO
@@ -143,9 +144,9 @@ export function readRun(c: Circuit, cls: Classification, raw: RawRun, out: Outsi
         ? { kind: 'value', value: power, reference: nameOf(c, cls.islands[only].reference), trust }
         : { kind: 'undefined', why: !taps.length ? 'not simulated' : islands.size ? 'it spans separate circuits' : 'nothing drives it (floating)' },
     }
-    const led = c.devices.find((d): d is Extract<Device, { kind: 'diode' }> => d.kind === 'diode' && d.role === 'led' && d.part === uid)
+    const led = ix.devicesOf.get(uid)?.find((d): d is Extract<Device, { kind: 'diode' }> => d.kind === 'diode' && d.role === 'led')
     if (led) {
-      const anode = c.taps.find((t) => t.node === led.a)
+      const anode = ix.tapAt.get(led.a)
       const i = anode && pins[anode.pin]?.kind === 'value' ? raw.pins[uid]?.[anode.pin] : undefined
       run.state = i !== undefined && Math.abs(i) > LIT_AMPS ? 'lit' : 'dark'
     }
@@ -191,9 +192,9 @@ export function budget(c: Circuit, cls: Classification, raws: Record<Corner, Raw
     }
   }
   for (const dom of c.domains) {
-    const loads = c.devices.filter((d): d is Extract<Device, { kind: 'load' }> => d.kind === 'load' && d.part === dom.part && d.domain === dom.name)
+    const loads = (indexOf(c).devicesOf.get(dom.part) ?? []).filter((d): d is Extract<Device, { kind: 'load' }> => d.kind === 'load' && d.domain === dom.name)
     const volts = both((raw) => across(c, cls, raw, dom.pin, dom.ret, out, dom.part))
-    const tap = c.taps.find((t) => t.node === dom.pin)
+    const tap = indexOf(c).tapAt.get(dom.pin)
     const a = both((raw, corner) => {
       const v = volts[corner]
       const i = tap && raw.pins[tap.part]?.[tap.pin]

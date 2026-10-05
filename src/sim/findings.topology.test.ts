@@ -146,6 +146,14 @@ describe('Phase D fixes (topology)', () => {
     // Unplugged (no supply drawn at all): quiet too.
     expect(codes(sheet([{ uid: 'u1', module: boardModule() }, R('r9', 1000)], [['u1.IO1', 'r9.1']])).filter((x) => x.code === 'sim-floating-input')).toEqual([])
   })
+  it('does not flag an input whose net reaches a connector pin that leads off the sheet; a Wago splice does not count', () => {
+    const f = (connector: string) =>
+      codes(sheet([{ uid: 'bt1', module: cellModule(5, 0.05) }, { uid: 'u1', module: boardModule() }, { uid: 'j1', module: connector }],
+        [['bt1.+', 'u1.VIN'], ['bt1.-', 'u1.GND'], ['u1.IO1', 'j1.1']])).filter((x) => x.code === 'sim-floating-input')
+    expect(f('jst-xh-2')).toEqual([])
+    expect(f('dupont-1x2')).toEqual([])
+    expect(f('wago-221-412')).toEqual([expect.objectContaining({ pins: [{ part: 'u1', pin: 'IO1' }] })])
+  })
 })
 
 describe('finalize: an over-abs-max past twice a representative limit (Phase D ruling)', () => {

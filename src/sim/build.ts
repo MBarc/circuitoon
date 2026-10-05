@@ -58,6 +58,7 @@ export class Builder {
   private gpios: GpioPin[] = []
   private usb: UsbPath[] = []
   private unsim: { part: string; reason: string }[] = []
+  private offSheet: string[] = []
   private notes: { part: string | null; text: string }[] = []
   /** The part being built, which owns the notes made meanwhile. */
   private current: string | null = null
@@ -253,7 +254,7 @@ export class Builder {
     if (isNetLabel(m) || isBoard(m)) return
     const model = modelOf(m)
     // Connectors, breadboard strips and Wago blocks are one conductor in netlist() already (spec 4 table).
-    if (model === 'connector') return
+    if (model === 'connector') return this.connector(p, m)
     const ref = this.ref(p.uid)
     this.current = p.uid
     this.parts[p.uid] = { uid: p.uid, ref, designator: p.designator, module: m.id, name: m.name, model }
@@ -361,6 +362,18 @@ export class Builder {
     this.skip(p.uid, hasPowerPin(m) ? NO_POWER_DATA : 'no simulation model')
   }
 
+  /**
+   * Phase D ruling: a `connector` part's pin leads off the sheet (a header, a JST-XH plug, a USB
+   * panel socket: J1 to J3 carry the Spirit's I2C bus to its bank sheets), so an input on its net is
+   * driven from elsewhere. A pin joined to another inside the part (`internal`: a Wago lever splice)
+   * only joins wires on the sheet, so it does not count.
+   */
+  private connector(p: PartInstance, m: ModuleDef): void {
+    const spliced = new Set((m.internal ?? []).flat())
+    for (const pin of [...m.pins, ...(m.holes ?? [])])
+      if ('name' in pin && typeof pin.name === 'string' && !spliced.has(pin.name)) this.offSheet.push(nodeKey(p.uid, pin.name))
+  }
+
   done(): Circuit {
     // Pins within a part by code point ("+" before "-"), so the order never depends on a collator.
     const taps = [...this.tapsByKey.values()].sort((a, b) => naturalCompare(a.part, b.part) || (a.pin < b.pin ? -1 : a.pin > b.pin ? 1 : 0))
@@ -389,6 +402,7 @@ export class Builder {
       mains: [...this.mainsKeys].sort(),
       openContacts: [...open.values()],
       unsimulated: this.unsim,
+      offSheet: [...this.offSheet].sort(),
       unaccounted: Object.keys(this.parts).sort(naturalCompare).flatMap((uid) => {
         const items = simOf(this.modulesOf(uid))?.unaccounted ?? []
         return items.length ? [{ part: uid, items }] : []

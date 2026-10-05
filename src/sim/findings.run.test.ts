@@ -65,7 +65,8 @@ describe('value findings', () => {
     const bare = await analyse(sheet([{ uid: 'bt1', module: 'battery-holder-2xaa' }, { uid: 'd1', module: 'led' }], [['bt1.+', 'd1.A'], ['d1.K', 'bt1.-']]))
     const [f] = of(bare, 'sim-over-abs-max')
     expect(f).toMatchObject({ severity: 'error', corner: 'typical' })
-    expect(f.message).toMatch(/Add a series resistor \(about \d+ ohm at 2\.\d+ V\)\./)
+    // Phase D ruling: sized from the pack's unloaded 3.0 V, not the sagged reading: (3.0 V - about 2.0 V) / 20 mA, rounded up to E12.
+    expect(f.message).toMatch(/Add a series resistor \(about (51|56) ohm at 3 V\)\./)
     // 68 ohm from 5 V: about 44 mA through a 30 mA red LED.
     const r = await analyse(sheet([{ uid: 'bt1', module: cellModule(5, 1e-6) }, R('r1', 68), { uid: 'd1', module: 'led' }], [['bt1.+', 'r1.1'], ['r1.2', 'd1.A'], ['d1.K', 'bt1.-']]))
     const [g] = of(r, 'sim-over-abs-max')
