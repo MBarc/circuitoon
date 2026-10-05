@@ -117,6 +117,13 @@ describe.each(KINDS)('the $kind model (spec 4.3)', ({ mod, open, id, vin, vout, 
 })
 
 describe('pass-through and whole chains (spec 4.2, 4.6, 4.7)', () => {
+  it('a dead-input LDO creates no energy: its output power is at most its input power', async () => {
+    const raw = await solve(rig(ldoModule(), 0, 33))
+    const pout = raw.v[OUT] * raw.dev['u1.rail.ldo']
+    const pin = raw.v[IN] * I(raw, 'u1', 'IN')
+    // Before the ruling the softplus floor pushed k ln 2 / rout into the load: 1.4e-5 W measured here from a 0 V input.
+    expect(pout).toBeLessThanOrEqual(pin + 1e-12)
+  }, 60_000)
   it('a disabled boost passes its input through a diode drop (pass-through)', async () => {
     const v = (await solve(rig(boostModule(), 2.5, 100))).v[OUT]
     expect(v).toBeGreaterThan(1.8)
@@ -187,9 +194,7 @@ describe('pass-through and whole chains (spec 4.2, 4.6, 4.7)', () => {
   }, 60_000)
   it('a load on a dead rail draws (almost) nothing', async () => {
     const raw = await solve(sheet([{ uid: 'bt1', module: cellModule(0, 0.01) }, { uid: 'u1', module: boardModule() }], [['bt1.+', 'u1.VIN'], ['bt1.-', 'u1.GND']]))
-    // The floor is the smoothing (k = 5 mV), not 0: with Vctl = 0 the LDO's softplus output still
-    // pushes k ln(1 + e^(-V/k)) / rout, which holds 3V3 at 24 mV where the folded-back 50 mA load
-    // takes 0.41 mA; with iq that is 0.423 mA measured.
-    expect(Math.abs(I(raw, 'u1', 'VIN'))).toBeLessThan(4.5e-4)
+    // Measured 1.1e-18 A: the rail output and the load fold-back are exactly 0 at 0 V (Task 15 ruling).
+    expect(Math.abs(I(raw, 'u1', 'VIN'))).toBeLessThan(1e-6)
   }, 60_000)
 })

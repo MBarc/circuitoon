@@ -74,7 +74,8 @@ describe('compile', () => {
   it('writes an LDO as a smooth control node, one output current source, a sense and a current-controlled input', () => {
     const t = text(sheet([{ uid: 'bt1', module: cellModule(5, 0.01) }, { uid: 'u1', module: ldoModule({ reverse: 'body-diode' }) }, R('r1', 33)], [['bt1.+', 'u1.IN'], ['bt1.-', 'u1.GND'], ['u1.OUT', 'r1.1'], ['r1.2', 'u1.GND']]))
     expect(t).toMatch(/^b_u1_rail_ldo_ctl n\d+ n\d+ v=\(3\.3-\(max\(/m)
-    expect(t).toMatch(/^b_u1_rail_ldo_out n\d+ n\d+ i=\(max\(/m)
+    // softplus(Vctl - Vout) - softplus(-Vout): a dead rail supplies exactly 0 (Task 15 ruling).
+    expect(t).toMatch(/^b_u1_rail_ldo_out n\d+ n\d+ i=\(\(max\(v\(n\d+,n\d+\)-v\(n\d+,n\d+\),0\).*\)-\(max\(-v\(n\d+,n\d+\),0\).*\)\)\/0\.1$/m)
     expect(t).toMatch(/^v_u1_rail_ldo_o n\d+ n\d+ dc 0$/m)
     expect(t).toMatch(/^f_u1_rail_ldo_in n\d+ n\d+ v_u1_rail_ldo_o 1$/m)
     expect(t).toMatch(/^b_u1_rail_ldo_iq n\d+ n\d+ i=0\.005\*/m)
@@ -124,7 +125,7 @@ describe('compile', () => {
   })
   it('computes the same smooth functions in TypeScript', () => {
     expect(foldValue(3.3, 2.97)).toBeCloseTo(1, 6)
-    expect(foldValue(0, 2.97)).toBeLessThan(0.002)
+    expect(Math.abs(foldValue(0, 2.97))).toBeLessThan(1e-12)
     expect(enableValue(5.9, 6, 24)).toBe(0)
     expect(enableValue(6, 6, 24)).toBe(1)
     expect(enableValue(5.975, 6, 24)).toBeCloseTo(0.5, 9)
