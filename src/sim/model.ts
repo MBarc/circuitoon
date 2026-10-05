@@ -98,6 +98,8 @@ export interface Circuit {
   devices: Device[]
   /** Simulated parts by uid. */
   parts: Record<string, SimPart>
+  /** Every sheet part's reference by uid, simulated or not (findings name unsimulated parts too). */
+  refs: Record<string, string>
   domains: SimDomain[]
   limits: ResolvedLimit[]
   gpio: GpioPin[]

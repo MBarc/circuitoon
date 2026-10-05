@@ -380,6 +380,7 @@ export class Builder {
       taps,
       devices,
       parts: Object.fromEntries(Object.entries(this.parts).sort((a, b) => naturalCompare(a[0], b[0]))),
+      refs: Object.fromEntries(this.d.parts.map((p) => p.uid).sort(naturalCompare).map((uid) => [uid, this.ref(uid)])),
       domains: this.domains,
       limits: this.limits,
       gpio: this.gpios,
