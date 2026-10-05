@@ -96,12 +96,13 @@ describe('buildCircuit: fix round 1', () => {
 
   const withPower = (id: string): ModuleDef => {
     const m = load(id)
-    return { ...m, electrical: { ...(m.electrical as object), sim: { power: { domains: [] }, limits: [{ of: { part: true }, kind: 'current', value: 1, provenance: 'datasheet', source: 'https://example.com/x' }] } } }
+    return { ...m, electrical: { ...(m.electrical as object), sim: { power: { domains: [], rails: [{ id: 'r', inputs: [], output: 'X', kind: 'ldo', reverse: 'blocks' }] }, limits: [{ of: { part: true }, kind: 'current', value: 1, provenance: 'datasheet', source: 'https://example.com/x' }] } } }
   }
   it('purges a skipped part: a relay or latching switch with sim.power leaves no taps, notes, devices or open contacts', () => {
     const c = buildCircuit(sheet([{ uid: 'k1', module: withPower('relay-module-1ch-5v') }, { uid: 's1', module: withPower('rocker-switch-kcd1') }], []))
     expect([c.taps, c.devices, c.limits, c.openContacts, c.notes, c.parts]).toEqual([[], [], [], [], [], {}])
-    expect(c.unsimulated).toEqual([{ part: 'k1', reason: 'power models arrive in Task 11' }, { part: 's1', reason: 'power models arrive in Task 11' }])
+    const reason = 'incomplete power data: rail r needs vout, dropout, ioutMax'
+    expect(c.unsimulated).toEqual([{ part: 'k1', reason }, { part: 's1', reason }])
   })
   it('purges limits, domains, GPIOs and USB paths of a skipped part', () => {
     const b = new Builder(sheet([{ uid: 'r1', module: 'resistor' }], []), {})
