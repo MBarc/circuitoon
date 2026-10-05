@@ -2,9 +2,10 @@
 // solving. Three node states:
 // - driven: reached from a source's + terminal (or a fed rail output) along conducting elements in
 //   their conducting direction: resistors, closed contacts and a GPIO's state resistor both ways,
-//   diodes anode to cathode, rails in to out (and back only through a body diode). The walk never
-//   enters a return (a cell's -, a rail or load return), so a load tied to ground never lets ground
-//   "drive" the supply side.
+//   diodes anode to cathode, rails in to out (and back only through a body diode), a rail only
+//   when its input return is defined (a board whose ground is switched off regulates nothing). The
+//   walk never enters a return (a cell's -, a rail or load return), so a load tied to ground never
+//   lets ground "drive" the supply side.
 // - defined: not driven, but reached from a source's - through resistors and contacts only (a
 //   pull-down to ground is a real 0 V).
 // - floating: neither. Never reported as a voltage.
@@ -127,6 +128,14 @@ function walk(seeds: string[], adj: Map<string, string[]>, stop: (n: string) => 
 /** The driven and defined node sets, with `extra` joins (a switch closed in thought). */
 type Reach = { driven: Set<string>; defined: Set<string> }
 function reach(c: Circuit, extra: [string, string][] = [], a: Kind = OP): Reach {
+  const all = reachWith(c, extra, a, new Set())
+  // Fix wave finding 1: a rail regulates only when its input return is defined. `defined` grows from
+  // the sources' returns through resistance, which no rail carries, so one more pass settles it.
+  // ponytail: one pass; a rail whose return is defined only through another dead rail's output would need a fixpoint loop.
+  const dead = new Set(c.devices.filter((d) => d.kind === 'rail' && !all.defined.has(d.inRet)))
+  return dead.size ? reachWith(c, extra, a, dead) : all
+}
+function reachWith(c: Circuit, extra: [string, string][], a: Kind, dead: Set<Device>): Reach {
   const drive = new Map<string, string[]>()
   const hold = new Map<string, string[]>()
   const arc = (m: Map<string, string[]>, a: string, b: string) => {
@@ -145,7 +154,7 @@ function reach(c: Circuit, extra: [string, string][] = [], a: Kind = OP): Reach 
   }
   for (const [x, y] of extra) both(x, y)
   for (const d of c.devices) {
-    for (const [x, y] of driveArcs(d, a)) arc(drive, x, y)
+    if (!dead.has(d)) for (const [x, y] of driveArcs(d, a)) arc(drive, x, y)
     for (const [x, y] of resistive(d)) arc(hold, x, y), arc(hold, y, x)
   }
   const cells = cellsOf(c)
@@ -171,9 +180,9 @@ export function powered(_c: Circuit, cls: Classification, pin: string, ret: stri
 
 /**
  * Ruling R30: the part uid of the open latching switch whose closing alone would power `node`, or
- * null. When `node` is not driven, the switch that would drive it (high side); else, given `ret`
- * that is not defined, the switch that would define it (low side). A group's poles close together
- * (a DPST breaking both sides).
+ * null. When `node` is not driven, the switch that would drive it (high side, or a low-side switch
+ * that would let its rail regulate); else, given `ret` that is not defined, the switch that would
+ * define it (low side). A group's poles close together (a DPST breaking both sides).
  */
 export function openSwitchFor(c: Circuit, node: string, ret?: string): string | null {
   const base = reach(c)

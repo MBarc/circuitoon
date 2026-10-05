@@ -126,10 +126,26 @@ describe('floating classification', () => {
       const c = buildCircuit(sheet([{ uid: 'bt1', module: cellModule(5, 0.1) }, { uid: 's1', module: 'rocker-switch-kcd1' }, { uid: 'u1', module: boardModule() }],
         [['bt1.+', 'u1.VIN'], ['bt1.-', 's1.1'], ['s1.2', 'u1.GND']]))
       const cls = classify(c)
-      expect(cls.driven.has('u1:3V3')).toBe(true)
+      // Fix wave finding 1: the LDO's input return is not defined, so it regulates nothing (3V3 read driven before).
+      expect(cls.driven.has('u1:VIN')).toBe(true)
+      expect(cls.driven.has('u1:3V3')).toBe(false)
       expect(pinState(c, cls, nodeKey('u1', 'GND'))).toBe('floating')
       expect(powered(c, cls, 'u1:3V3', 'u1:GND')).toBe(false)
       expect(openSwitchFor(c, 'u1:3V3', 'u1:GND')).toBe('s1')
+      expect(openSwitchFor(c, 'u1:3V3')).toBe('s1')
+    })
+    it('does not let a low-side-switched DevKit drive its GPIO and an LED through a floating ground (fix wave, finding 1)', () => {
+      // The probe: 3V3, IO1 and D1_A read driven at 5.000 V, ground floating up through the 1 G tie.
+      const c = buildCircuit(sheet([{ uid: 'bt1', module: cellModule(5, 0.1) }, { uid: 's1', module: 'rocker-switch-kcd1' }, { uid: 'u1', module: boardModule(), values: { 'gpio.IO1': 'high' } }, R('r1', 150), { uid: 'd1', module: 'led' }],
+        [['bt1.+', 'u1.VIN'], ['bt1.-', 's1.1'], ['s1.2', 'u1.GND'], ['u1.IO1', 'r1.1'], ['r1.2', 'd1.A'], ['d1.K', 'u1.GND']]))
+      const cls = classify(c)
+      for (const [part, pin] of [['u1', '3V3'], ['u1', 'IO1'], ['d1', 'A']]) expect(pinState(c, cls, nodeKey(part, pin))).not.toBe('driven')
+      expect(powered(c, cls, 'u1:3V3', 'u1:GND')).toBe(false)
+      expect(openSwitchFor(c, 'u1:3V3', 'u1:GND')).toBe('s1')
+      const on = buildCircuit(sheet([{ uid: 'bt1', module: cellModule(5, 0.1) }, { uid: 's1', module: 'rocker-switch-kcd1', values: { 'contact.s': 'closed' } }, { uid: 'u1', module: boardModule(), values: { 'gpio.IO1': 'high' } }, R('r1', 150), { uid: 'd1', module: 'led' }],
+        [['bt1.+', 'u1.VIN'], ['bt1.-', 's1.1'], ['s1.2', 'u1.GND'], ['u1.IO1', 'r1.1'], ['r1.2', 'd1.A'], ['d1.K', 'u1.GND']]))
+      expect(pinState(on, classify(on), nodeKey('d1', 'A'))).toBe('driven')
+      expect(powered(on, classify(on), 'u1:3V3', 'u1:GND')).toBe(true)
     })
     it('names a double-pole switch that breaks both + and - (fix wave, finding 4)', () => {
       const dpst: ModuleDef = {
