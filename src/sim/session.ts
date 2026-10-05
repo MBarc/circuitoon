@@ -45,44 +45,54 @@ export async function solve(d: Diagram, engine: Engine, revision: number, opts: 
   return { circuit: c, outcome: { status: 'ok', result } }
 }
 
+/**
+ * One Simulate-on period. `stop()` is permanent: a stopped session ignores every later request, so
+ * the editor creates a new session each time Simulate is turned on.
+ */
 export class SimSession {
   private engine: Engine
-  private onOutcome: (o: SimOutcome, c: Circuit) => void
+  /** The circuit is absent when the solve threw before one was built. */
+  private onOutcome: (o: SimOutcome, c?: Circuit) => void
   private pending: { d: Diagram; revision: number; opts: SolveOptions } | null = null
   private running = false
   private latest = 0
   private stopped = false
   private lastGood: { revision: number; result: SimResult } | null = null
 
-  constructor(engine: Engine, onOutcome: (o: SimOutcome, c: Circuit) => void) {
+  constructor(engine: Engine, onOutcome: (o: SimOutcome, c?: Circuit) => void) {
     this.engine = engine
     this.onOutcome = onOutcome
   }
 
   request(d: Diagram, revision: number, opts: SolveOptions = {}): void {
     if (this.stopped) return
-    this.latest = revision
+    this.latest = Math.max(this.latest, revision)
     this.pending = { d, revision, opts }
     if (!this.running) void this.loop()
   }
 
   private async loop(): Promise<void> {
     this.running = true
-    try {
-      while (this.pending && !this.stopped) {
-        const job = this.pending
-        this.pending = null
-        const { outcome, circuit } = await solve(job.d, this.engine, job.revision, job.opts)
-        if (this.stopped || job.revision !== this.latest) continue
-        if (outcome.status === 'ok') this.lastGood = { revision: job.revision, result: outcome.result }
-        this.onOutcome(outcome.status === 'failed' && this.lastGood ? { ...outcome, lastGood: this.lastGood } : outcome, circuit)
+    while (this.pending && !this.stopped) {
+      const job = this.pending
+      this.pending = null
+      let outcome: SimOutcome
+      let circuit: Circuit | undefined
+      try {
+        ;({ outcome, circuit } = await solve(job.d, this.engine, job.revision, job.opts))
+      } catch (e) {
+        // A throw (building the circuit, compiling it, the engine) is a failed solve, never an
+        // unhandled rejection, and the loop goes on to any request that arrived meanwhile.
+        outcome = { status: 'failed', revision: job.revision, finding: noConvergence(null, String(e), []) }
       }
-    } finally {
-      // A throwing solve must not wedge the session: the next request starts a fresh loop.
-      this.running = false
+      if (this.stopped || job.revision !== this.latest) continue
+      if (outcome.status === 'ok') this.lastGood = { revision: job.revision, result: outcome.result }
+      this.onOutcome(outcome.status === 'failed' && this.lastGood ? { ...outcome, lastGood: this.lastGood } : outcome, circuit)
     }
+    this.running = false
   }
 
+  /** Permanent: results still in flight are dropped and later requests are ignored. */
   stop(): void {
     this.stopped = true
     this.pending = null

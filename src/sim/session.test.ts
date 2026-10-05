@@ -19,11 +19,13 @@ function gatedEngine() {
   const calls: number[] = []
   const gates: (() => void)[] = []
   let fail = false
+  let throws = false
   const engine: Engine = {
     host: { runs: 0, info: { name: 'ngspice', version: '45.2', build: 'fake' } } as unknown as EngineHost,
     init: async () => ({ name: 'ngspice', version: '45.2', build: 'fake' }),
     run: (_c, _a, revision) => {
       calls.push(revision)
+      if (throws) return new Promise<RunOutcome>((_res, rej) => gates.push(() => rej(new Error('worker crashed'))))
       return new Promise<RunOutcome>((res) => gates.push(() => res(fail ? { status: 'failed', revision, error: 'x', nodes: [] } : { status: 'ok', revision, raw: { v: {}, pins: {}, dev: {} }, ms: 1 })))
     },
     dispose() {},
@@ -34,7 +36,7 @@ function gatedEngine() {
       await new Promise((r) => setTimeout(r, 0))
     }
   }
-  return { engine, calls, flush, setFail: (f: boolean) => void (fail = f) }
+  return { engine, calls, flush, setFail: (f: boolean) => void (fail = f), setThrow: (t: boolean) => void (throws = t) }
 }
 
 describe('solve', () => {
@@ -82,5 +84,47 @@ describe('SimSession', () => {
     s.request(led, 2)
     await g.flush()
     expect(got[1]).toMatchObject({ status: 'failed', revision: 2, lastGood: { revision: 1 } })
+  })
+  it('ignores a request after stop()', async () => {
+    const g = gatedEngine()
+    const got: SimOutcome[] = []
+    const s = new SimSession(g.engine, (o) => got.push(o))
+    s.stop()
+    s.request(led, 1)
+    await g.flush()
+    expect([g.calls, got]).toEqual([[], []])
+  })
+  it('turns a throwing engine into a failed outcome with the last good result', async () => {
+    const g = gatedEngine()
+    const got: [SimOutcome, unknown][] = []
+    const s = new SimSession(g.engine, (o, c) => got.push([o, c]))
+    s.request(led, 1)
+    await g.flush()
+    g.setThrow(true)
+    s.request(led, 2)
+    await g.flush()
+    expect(got[1][0]).toMatchObject({ status: 'failed', revision: 2, finding: { code: 'sim-no-convergence', raw: 'Error: worker crashed' }, lastGood: { revision: 1 } })
+    expect(got[1][1]).toBeUndefined()
+  })
+  it('a throw on a malformed diagram still fails cleanly', async () => {
+    const g = gatedEngine()
+    const got: SimOutcome[] = []
+    const s = new SimSession(g.engine, (o) => got.push(o))
+    s.request({ ...led, parts: null } as never, 1)
+    await g.flush()
+    expect(got).toMatchObject([{ status: 'failed', revision: 1 }])
+  })
+  it('solves a request that arrived while the solve was throwing', async () => {
+    const g = gatedEngine()
+    const got: SimOutcome[] = []
+    const s = new SimSession(g.engine, (o) => got.push(o))
+    g.setThrow(true)
+    s.request(led, 1)
+    await new Promise((r) => setTimeout(r, 0))
+    s.request(led, 2)
+    g.setThrow(false)
+    await g.flush()
+    expect(g.calls).toEqual([1, 2, 2])
+    expect(got.map((o) => (o.status === 'ok' ? o.result.revision : o.status))).toEqual([2])
   })
 })

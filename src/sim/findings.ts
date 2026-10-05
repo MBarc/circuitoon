@@ -215,10 +215,11 @@ export function finalize(drafts: Draft[], peakNote: string): SimFinding[] {
 /**
  * A run ngspice could not solve (spec 5.2): plain words, the parts on the nodes it named (node ids,
  * as Compiled.nodesIn gives them: a net, a pin tap or a device's internal node), its text kept as raw.
+ * With no circuit (the solve threw before one was built) it names no parts.
  */
-export function noConvergence(c: Circuit, error: string, nodes: string[]): SimFinding {
+export function noConvergence(c: Circuit | null, error: string, nodes: string[]): SimFinding {
   const named = new Set(nodes)
-  const parts = [
+  const parts = !c ? [] : [
     ...new Set([
       ...c.taps.filter((t) => named.has(netNode(t.net)) || named.has(t.node)).map((t) => t.part),
       ...c.devices.filter((d) => deviceNodes(d).some((n) => named.has(n))).map((d) => d.part),
@@ -226,7 +227,7 @@ export function noConvergence(c: Circuit, error: string, nodes: string[]): SimFi
   ].sort(naturalCompare)
   return {
     code: 'sim-no-convergence', severity: 'error', parts, basis: 'topology', inputs: [], raw: error,
-    message: `The simulator could not solve this circuit; this may be our model, not your circuit.${parts.length ? ` The parts on the nets it could not solve: ${andList(parts.map((p) => refOf(c, p)))}.` : ''}`,
+    message: `The simulator could not solve this circuit; this may be our model, not your circuit.${parts.length ? ` The parts on the nets it could not solve: ${andList(parts.map((p) => refOf(c!, p)))}.` : ''}`,
   }
 }
 
