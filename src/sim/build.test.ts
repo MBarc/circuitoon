@@ -11,6 +11,9 @@ import { load } from '../format/builtinModules.testing.ts'
 import { toKicadNetlist } from '../format/kicad.ts'
 import { checkKicadNetlist } from '../format/sexpr.testing.ts'
 import { libraryLookup } from '../agent/catalog.ts'
+import { validateDiagram } from '../format/diagram.ts'
+import { simOf } from '../format/simModel.ts'
+import { intentLookup } from '../agent/verify.ts'
 import { sheetNets } from '../agent/extract.ts'
 
 const kinds = (devs: Device[]) => devs.map((d) => `${d.kind}:${d.id}`)
@@ -179,6 +182,19 @@ describe('a built-in part is simulated with the library sim (library data, like 
     const c = buildCircuit(sheet([{ uid: 'u1', module: oldDevkit() }], []))
     expect(c.domains.filter((d) => d.part === 'u1').map((d) => d.name).sort()).toEqual(['3V3', '5V', 'USB'])
     expect(c.devices.some((d) => d.kind === 'load' && d.part === 'u1')).toBe(true)
+  })
+  it('loads a saved GPIO state on such a copy with no warning, keeps it, and drives the pin', () => {
+    const raw = JSON.parse(JSON.stringify(sheet([{ uid: 'u1', module: oldDevkit(), values: { 'gpio.IO2': 'high' } }], [])))
+    const r = validateDiagram(raw, { library: libraryLookup })
+    if (!r.ok) throw new Error(r.errors.join('; '))
+    expect(r.warnings).toEqual([])
+    expect(r.diagram.parts[0].values).toEqual({ 'gpio.IO2': 'high' })
+    expect(buildCircuit(r.diagram).gpio.find((g) => g.part === 'u1' && g.pin === 'IO2')?.state).toBe('high')
+    // A netlist saved with the sheet reads the copy the same way.
+    expect(simOf(intentLookup(r.diagram, libraryLookup)('esp32-devkitc-v4'))?.gpio?.pins).toContain('IO2')
+    // Without the library the old copy has no GPIO data, so the value would be dropped.
+    const bare = validateDiagram(raw)
+    expect(bare.ok && bare.warnings.some((w) => w.includes('gpio.IO2'))).toBe(true)
   })
   it("uses a custom part's embedded sim, whatever the library has", () => {
     const custom: ModuleDef = { ...boardModule(), id: 'custom-board', custom: true }

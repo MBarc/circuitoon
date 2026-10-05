@@ -11,6 +11,7 @@ import { seatedLabels } from './seatedLabels.ts'
 import { LABEL_VALUE, flagRect } from './netLabels.ts'
 import { annotationRect, frameTab } from '../render/annotationGeometry.ts'
 import { isSimValueKey, simValueProblem, switchGroups } from './simState.ts'
+import { withLibrarySim } from './simModel.ts'
 import { type BoardStrip, exitDirt, holeExits } from './boardEntry.ts'
 
 /** How every load warning about a dropped value override ends: the part now shows its module
@@ -1409,8 +1410,10 @@ export const ANNOTATION_TEXT_MAX = 500
 /**
  * Checks a parsed diagram file. Structural problems refuse the load (errors); a connection
  * that names a missing part or pin still loads (warning), so no wire is silently dropped.
+ * `library` is the built-in parts: a saved sim value is checked against the library's sim data
+ * (withLibrarySim), so a copy saved before the library had it keeps its values. Pass it on every load.
  */
-export function validateDiagram(raw: unknown): DiagramResult {
+export function validateDiagram(raw: unknown, opts: { library?: (id: string) => ModuleDef | undefined } = {}): DiagramResult {
   const errors: string[] = []
   const warnings: string[] = []
   if (!isObj(raw)) return { ok: false, errors: ['diagram must be a JSON object'] }
@@ -1473,10 +1476,12 @@ export function validateDiagram(raw: unknown): DiagramResult {
         else {
           const who = typeof p.designator === 'string' && p.designator !== '' ? p.designator : `part ${i}`
           const dropped: string[] = []
+          const stored = typeof p.module === 'string' ? modules.get(p.module) : undefined
+          const simModule = stored && withLibrarySim(stored, opts.library)
           for (const [key, entry] of Object.entries(p.values)) {
             // Simulation state and overrides (spec 3.5, 4.0, 4.6; ruling R24): a bad one is dropped.
             if (isSimValueKey(key)) {
-              const problem = simValueProblem(key, entry, typeof p.module === 'string' ? modules.get(p.module) : undefined)
+              const problem = simValueProblem(key, entry, simModule)
               if (problem) {
                 dropped.push(key)
                 warnings.push(`${at}.values.${key}: ${who} has ${key} ${JSON.stringify(entry)}, but ${problem.text}; ${problem.electrical ? VALUE_DROPPED : 'it was dropped, so the default state is used'}`)

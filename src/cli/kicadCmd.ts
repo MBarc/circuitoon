@@ -27,7 +27,7 @@ export function kicadCommand(args: Args, io: Io): number {
     source = 'netlist'
     x = writeKicad(intentSource(r.intent), { library: libraryLookup, source: name })
   } else {
-    const r = validateDiagram(raw)
+    const r = validateDiagram(raw, { library: libraryLookup })
     if (!r.ok) throw new CliError(`${input} is neither a Circuitoon sheet nor a netlist: ${r.errors.slice(0, 5).join('; ')}`, EXIT.input)
     for (const w of r.warnings) io.stderr(`warning: ${w}\n`)
     source = 'sheet'

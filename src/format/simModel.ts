@@ -2,7 +2,7 @@
 // object, `electrical.sim`, so nothing that exists changes (`electrical.params` and
 // `electrical.ratings` keep their meaning). Types, the parsed view and validateSim (spec 3.1).
 // Pure, erasable TS (npm run validate runs it under Node).
-import { type ModuleDef, isNum, isObj, show } from './module.ts'
+import { type ModuleDef, isCustom, isNum, isObj, show, terminalsKey } from './module.ts'
 
 export type Provenance = 'datasheet' | 'representative' | 'estimate'
 export const PROVENANCES: readonly Provenance[] = ['datasheet', 'representative', 'estimate']
@@ -65,6 +65,24 @@ export interface SimSpec {
 export function simOf(m: ModuleDef | undefined): SimSpec | null {
   const e = m?.electrical
   return isObj(e) && isObj(e.sim) ? (e.sim as SimSpec) : null
+}
+
+/**
+ * The module a stored copy is simulated and validated as. `electrical.sim` is library data, like
+ * the KiCad mapping (format/kicad.ts mappingOf): a built-in part whose stored copy has the
+ * library's pins takes the library's sim, so a sheet saved before the library had it still
+ * simulates and keeps its saved sim values. A custom part, or a copy whose pins changed, keeps its own.
+ */
+export function withLibrarySim(stored: ModuleDef, library: ((id: string) => ModuleDef | undefined) | undefined): ModuleDef {
+  if (!library || isCustom(stored)) return stored
+  const lib = library(stored.id)
+  if (!lib || lib === stored || terminalsKey(stored) !== terminalsKey(lib)) return stored
+  const sim = isObj(lib.electrical) ? lib.electrical.sim : undefined
+  const e: Record<string, unknown> = isObj(stored.electrical) ? { ...stored.electrical } : {}
+  if (e.sim === sim) return stored
+  if (sim === undefined) delete e.sim
+  else e.sim = sim
+  return { ...stored, electrical: e }
 }
 
 const RAIL_REQUIRED: Record<RailKind, (keyof Rail)[]> = {

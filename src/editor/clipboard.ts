@@ -8,6 +8,7 @@ import { annotationRect } from '../render/annotationGeometry.ts'
 import { deleteSelection, designatorPrefix, withMounted, withinLimit, type Selection } from './ops.ts'
 import { MAX_FILE_BYTES } from './files.ts'
 import { linkLimit } from '../format/link.ts'
+import { libraryLookup } from '../agent/catalog.ts'
 
 export const CLIP_FORMAT = 'circuitoon-clip/1'
 const GRID = 10
@@ -87,7 +88,7 @@ export function parseClip(text: string): Clip | null {
   if (linkLimit({ parts: count(r.parts), connections: count(r.connections) })) return null
   let checked: ReturnType<typeof validateDiagram>
   try {
-    checked = validateDiagram({ format: DIAGRAM_FORMAT, title: 'clip', modules: r.modules, parts: r.parts, connections: r.connections, annotations: r.annotations })
+    checked = validateDiagram({ format: DIAGRAM_FORMAT, title: 'clip', modules: r.modules, parts: r.parts, connections: r.connections, annotations: r.annotations }, { library: libraryLookup })
   } catch {
     return null
   }

@@ -168,7 +168,7 @@ export async function runGate(bytes: Uint8Array, opts: { sheetPath: string; outD
     note('load', 'json', 'error', `${opts.sheetPath} is not valid JSON (${(e as Error).message})`)
     return finish()
   }
-  const v = validateDiagram(raw)
+  const v = validateDiagram(raw, { library: libraryLookup })
   if (!v.ok) {
     v.errors.forEach((e, i) => note('load', String(i), 'error', `${opts.sheetPath} is not a Circuitoon sheet: ${e}`))
     return finish()

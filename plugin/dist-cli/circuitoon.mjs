@@ -663,6 +663,26 @@ function simOf(m) {
 	const e = m?.electrical;
 	return isObj(e) && isObj(e.sim) ? e.sim : null;
 }
+/**
+* The module a stored copy is simulated and validated as. `electrical.sim` is library data, like
+* the KiCad mapping (format/kicad.ts mappingOf): a built-in part whose stored copy has the
+* library's pins takes the library's sim, so a sheet saved before the library had it still
+* simulates and keeps its saved sim values. A custom part, or a copy whose pins changed, keeps its own.
+*/
+function withLibrarySim(stored, library) {
+	if (!library || isCustom(stored)) return stored;
+	const lib = library(stored.id);
+	if (!lib || lib === stored || terminalsKey(stored) !== terminalsKey(lib)) return stored;
+	const sim = isObj(lib.electrical) ? lib.electrical.sim : void 0;
+	const e = isObj(stored.electrical) ? { ...stored.electrical } : {};
+	if (e.sim === sim) return stored;
+	if (sim === void 0) delete e.sim;
+	else e.sim = sim;
+	return {
+		...stored,
+		electrical: e
+	};
+}
 /** The physics a module may state in sim.modelParams, with their units. */
 var MODEL_PARAMS = {
 	rInternal: "ohm",
@@ -981,6 +1001,12 @@ var CUSTOM_PREFIX = "custom-";
 /** A part made in the part maker (`custom: true`): user-made and unverified. */
 var isCustom = (m) => m?.custom === true;
 var isSpacer = (p) => "spacer" in p && p.spacer === true;
+/**
+* Pin names with their sides, then hole group names, in order: what library data read by name (the
+* KiCad mapping, the sim data) relies on. USB ports are left out: a copy saved before the library
+* added them still names the same header pins.
+*/
+var terminalsKey = (m) => JSON.stringify([m.pins.filter((p) => !isSpacer(p) && p.type !== "usb").map((p) => [p.name, p.side]), (m.holes ?? []).map((g) => g.name)]);
 /** A net label module (`netLabel: true`): see ModuleDef.netLabel. */
 var isNetLabel = (m) => m?.netLabel === true;
 /** Opt-in flag (`art.pinLabels: "inside"`) for drawing pin names inside the body, like board
@@ -5520,8 +5546,10 @@ var COORD_LIMIT = 1e5;
 /**
 * Checks a parsed diagram file. Structural problems refuse the load (errors); a connection
 * that names a missing part or pin still loads (warning), so no wire is silently dropped.
+* `library` is the built-in parts: a saved sim value is checked against the library's sim data
+* (withLibrarySim), so a copy saved before the library had it keeps its values. Pass it on every load.
 */
-function validateDiagram(raw) {
+function validateDiagram(raw, opts = {}) {
 	const errors = [];
 	const warnings = [];
 	if (!isObj(raw)) return {
@@ -5585,9 +5613,11 @@ function validateDiagram(raw) {
 			else {
 				const who = typeof p.designator === "string" && p.designator !== "" ? p.designator : `part ${i}`;
 				const dropped = [];
+				const stored = typeof p.module === "string" ? modules.get(p.module) : void 0;
+				const simModule = stored && withLibrarySim(stored, opts.library);
 				for (const [key, entry] of Object.entries(p.values)) {
 					if (isSimValueKey(key)) {
-						const problem = simValueProblem(key, entry, typeof p.module === "string" ? modules.get(p.module) : void 0);
+						const problem = simValueProblem(key, entry, simModule);
 						if (problem) {
 							dropped.push(key);
 							warnings.push(`${at}.values.${key}: ${who} has ${key} ${JSON.stringify(entry)}, but ${problem.text}; ${problem.electrical ? VALUE_DROPPED : "it was dropped, so the default state is used"}`);
@@ -5817,117 +5847,6 @@ function serializeDiagram(d) {
 		})
 	} : d;
 	return JSON.stringify(out, null, 2) + "\n";
-}
-//#endregion
-//#region src/cli/io.ts
-/** Spec 4.2: 0 ok, 1 findings that block, 2 invalid input, 3 environment problem (no browser). */
-var EXIT = {
-	ok: 0,
-	blocked: 1,
-	input: 2,
-	environment: 3
-};
-var CliError = class extends Error {
-	code;
-	constructor(message, code) {
-		if (code !== EXIT.blocked && code !== EXIT.input && code !== EXIT.environment) throw new RangeError(`CliError exit code must be 1, 2 or 3, not ${String(code)}`);
-		super(message);
-		this.code = code;
-	}
-};
-var pathIn = (io, path) => resolve(io.cwd, path);
-function readJson(io, path) {
-	let text;
-	try {
-		text = readFileSync(pathIn(io, path), "utf8");
-	} catch {
-		throw new CliError(`${path}: cannot read the file`, EXIT.input);
-	}
-	try {
-		return JSON.parse(text);
-	} catch (e) {
-		throw new CliError(`${path}: not valid JSON (${e.message})`, EXIT.input);
-	}
-}
-/** Why a write failed, by Node error code: the path is at fault (exit 2) or the machine is (exit 3). */
-var WRITE_ERRORS = {
-	EISDIR: {
-		why: "it is a directory",
-		exit: EXIT.input
-	},
-	ERR_FS_EISDIR: {
-		why: "it is a directory",
-		exit: EXIT.input
-	},
-	ENOTDIR: {
-		why: "a folder on its path is a file",
-		exit: EXIT.input
-	},
-	EEXIST: {
-		why: "a folder on its path is a file",
-		exit: EXIT.input
-	},
-	ENOENT: {
-		why: "its folder cannot be created",
-		exit: EXIT.input
-	},
-	EINVAL: {
-		why: "not a valid path",
-		exit: EXIT.input
-	},
-	ENAMETOOLONG: {
-		why: "the path is too long",
-		exit: EXIT.input
-	},
-	EACCES: {
-		why: "permission denied",
-		exit: EXIT.environment
-	},
-	EPERM: {
-		why: "permission denied",
-		exit: EXIT.environment
-	},
-	EROFS: {
-		why: "the file system is read-only",
-		exit: EXIT.environment
-	},
-	ENOSPC: {
-		why: "no space left on the device",
-		exit: EXIT.environment
-	},
-	EDQUOT: {
-		why: "the disk quota is used up",
-		exit: EXIT.environment
-	}
-};
-/** A failed write as a CliError that names the path; an unknown cause is an environment problem. */
-function writeError(path, err) {
-	const code = err?.code;
-	const known = code !== void 0 && Object.hasOwn(WRITE_ERRORS, code) ? WRITE_ERRORS[code] : void 0;
-	return new CliError(`${path}: cannot write the file (${known?.why ?? (err instanceof Error ? err.message : String(err))})`, known?.exit ?? EXIT.environment);
-}
-function writeFile(io, path, content) {
-	const full = pathIn(io, path);
-	try {
-		mkdirSync(dirname(full), { recursive: true });
-		writeFileSync(full, content);
-	} catch (err) {
-		throw writeError(path, err);
-	}
-}
-var printJson = (io, value) => io.stdout(`${JSON.stringify(value, null, 2)}\n`);
-function flag(args, name) {
-	const v = args.flags.get(name);
-	return typeof v === "string" ? v : void 0;
-}
-/** A sheet loaded like the site loads it; one that does not load is invalid input (exit 2). */
-function loadSheet(io, path) {
-	const r = validateDiagram(readJson(io, path));
-	if (!r.ok) throw new CliError(`${path} is not a Circuitoon sheet: ${r.errors.slice(0, 5).join("; ")}`, EXIT.input);
-	return {
-		diagram: r.diagram,
-		warnings: r.warnings
-	};
 }
 var library = Object.entries(/* @__PURE__ */ Object.assign({
 	"../modules/adapter-barrel-au.json": {
@@ -67699,6 +67618,120 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 })).sort((a, b) => a.file.localeCompare(b.file));
 var modulesById = Object.fromEntries(library.flatMap((e) => e.ok ? [[e.module.id, e.module]] : []));
 //#endregion
+//#region src/agent/catalog.ts
+var libraryLookup = (id) => Object.hasOwn(modulesById, id) ? modulesById[id] : void 0;
+//#endregion
+//#region src/cli/io.ts
+/** Spec 4.2: 0 ok, 1 findings that block, 2 invalid input, 3 environment problem (no browser). */
+var EXIT = {
+	ok: 0,
+	blocked: 1,
+	input: 2,
+	environment: 3
+};
+var CliError = class extends Error {
+	code;
+	constructor(message, code) {
+		if (code !== EXIT.blocked && code !== EXIT.input && code !== EXIT.environment) throw new RangeError(`CliError exit code must be 1, 2 or 3, not ${String(code)}`);
+		super(message);
+		this.code = code;
+	}
+};
+var pathIn = (io, path) => resolve(io.cwd, path);
+function readJson(io, path) {
+	let text;
+	try {
+		text = readFileSync(pathIn(io, path), "utf8");
+	} catch {
+		throw new CliError(`${path}: cannot read the file`, EXIT.input);
+	}
+	try {
+		return JSON.parse(text);
+	} catch (e) {
+		throw new CliError(`${path}: not valid JSON (${e.message})`, EXIT.input);
+	}
+}
+/** Why a write failed, by Node error code: the path is at fault (exit 2) or the machine is (exit 3). */
+var WRITE_ERRORS = {
+	EISDIR: {
+		why: "it is a directory",
+		exit: EXIT.input
+	},
+	ERR_FS_EISDIR: {
+		why: "it is a directory",
+		exit: EXIT.input
+	},
+	ENOTDIR: {
+		why: "a folder on its path is a file",
+		exit: EXIT.input
+	},
+	EEXIST: {
+		why: "a folder on its path is a file",
+		exit: EXIT.input
+	},
+	ENOENT: {
+		why: "its folder cannot be created",
+		exit: EXIT.input
+	},
+	EINVAL: {
+		why: "not a valid path",
+		exit: EXIT.input
+	},
+	ENAMETOOLONG: {
+		why: "the path is too long",
+		exit: EXIT.input
+	},
+	EACCES: {
+		why: "permission denied",
+		exit: EXIT.environment
+	},
+	EPERM: {
+		why: "permission denied",
+		exit: EXIT.environment
+	},
+	EROFS: {
+		why: "the file system is read-only",
+		exit: EXIT.environment
+	},
+	ENOSPC: {
+		why: "no space left on the device",
+		exit: EXIT.environment
+	},
+	EDQUOT: {
+		why: "the disk quota is used up",
+		exit: EXIT.environment
+	}
+};
+/** A failed write as a CliError that names the path; an unknown cause is an environment problem. */
+function writeError(path, err) {
+	const code = err?.code;
+	const known = code !== void 0 && Object.hasOwn(WRITE_ERRORS, code) ? WRITE_ERRORS[code] : void 0;
+	return new CliError(`${path}: cannot write the file (${known?.why ?? (err instanceof Error ? err.message : String(err))})`, known?.exit ?? EXIT.environment);
+}
+function writeFile(io, path, content) {
+	const full = pathIn(io, path);
+	try {
+		mkdirSync(dirname(full), { recursive: true });
+		writeFileSync(full, content);
+	} catch (err) {
+		throw writeError(path, err);
+	}
+}
+var printJson = (io, value) => io.stdout(`${JSON.stringify(value, null, 2)}\n`);
+function flag(args, name) {
+	const v = args.flags.get(name);
+	return typeof v === "string" ? v : void 0;
+}
+/** A sheet loaded like the site loads it; one that does not load is invalid input (exit 2). */
+function loadSheet(io, path) {
+	const r = validateDiagram(readJson(io, path), { library: libraryLookup });
+	if (!r.ok) throw new CliError(`${path} is not a Circuitoon sheet: ${r.errors.slice(0, 5).join("; ")}`, EXIT.input);
+	return {
+		diagram: r.diagram,
+		warnings: r.warnings
+	};
+}
+//#endregion
 //#region src/agent/order.ts
 var collator$1 = new Intl.Collator("en", {
 	numeric: true,
@@ -85869,7 +85902,7 @@ var NETLIST_FORMAT = "circuitoon-netlist/1";
 /** A part reference: a letter, then letters, digits or underscores. */
 var REF_PATTERN = /^[A-Za-z][A-Za-z0-9_]*$/;
 /** One key per pin or hole group of a part (a hole index never makes a second key). */
-var terminalKey$1 = (ref, name) => JSON.stringify([ref, name]);
+var terminalKey = (ref, name) => JSON.stringify([ref, name]);
 /** "U1 GND", or "BB1 c5-top hole 2". */
 var terminalName = (t) => `${t.ref} ${t.name}${t.hole !== void 0 ? ` hole ${t.hole}` : ""}`;
 /** A part that can plug into a board: not a board, with legs, none of them a bus. */
@@ -85999,7 +86032,7 @@ function parseNetlist(raw, library) {
 		if (p.values !== void 0) {
 			if (!isObj(p.values)) errors.push(`${at}.values: must be an object`);
 			else {
-				errors.push(...valueErrors(p.values, `${at}.values`, m));
+				errors.push(...valueErrors(p.values, `${at}.values`, withLibrarySim(m, library)));
 				part.values = p.values;
 			}
 		}
@@ -86123,7 +86156,7 @@ function parseNetlist(raw, library) {
 		for (const { ep, at: pat, binding } of pins) {
 			const t = resolve(ep, pat);
 			if (!t) continue;
-			const key = terminalKey$1(t.ref, t.name);
+			const key = terminalKey(t.ref, t.name);
 			const other = inNet.get(key);
 			const prior = boundAs.get(key);
 			if (other !== void 0 && binding !== void 0 && prior !== void 0) {
@@ -86186,7 +86219,7 @@ function parseNetlist(raw, library) {
 			const t = resolve(ep, `nc[${i}]`);
 			if (!t) return;
 			if (t.infra) return void errors.push(`nc[${i}]: ${terminalName(t)} is a breadboard hole group, not a pin`);
-			const net = inNet.get(terminalKey$1(t.ref, t.name));
+			const net = inNet.get(terminalKey(t.ref, t.name));
 			if (net !== void 0) return void errors.push(`nc[${i}]: ${terminalName(t)} is in net "${net}", so it cannot be not connected`);
 			nc.push(t);
 		});
@@ -86370,11 +86403,16 @@ function libraryBoard(d, library, id) {
 * How a sheet's intent finds its modules: the sheet's embedded copy first (so a later library
 * change never breaks an old sheet), then the library. Ids the intent embeds itself are left to it,
 * unless they are library ids: the netlist then rejects the embedded copy as a built-in part, and
-* module-drift compares it with the library.
+* module-drift compares it with the library. An embedded copy carries the library's sim data
+* (withLibrarySim), which is library data like the KiCad mapping.
 */
 function intentLookup(d, library) {
 	const own = isObj(d.intent) && isObj(d.intent.modules) ? new Set(Object.keys(d.intent.modules)) : /* @__PURE__ */ new Set();
-	return (id) => own.has(id) && !library(id) ? void 0 : moduleOf(d, id) ?? library(id);
+	return (id) => {
+		if (own.has(id) && !library(id)) return void 0;
+		const m = moduleOf(d, id);
+		return m ? withLibrarySim(m, library) : library(id);
+	};
 }
 function verifyDiagram(d, library) {
 	const found = [];
@@ -86699,9 +86737,6 @@ function driftedParts(findings) {
 }
 /** A covered-hole use that comes from a stale embedded copy: its covering part, or its leg's part, drifted. */
 var isStale = (u, stale) => stale.has(u.cover.by) || !!u.leg && stale.has(u.leg.part);
-//#endregion
-//#region src/agent/catalog.ts
-var libraryLookup = (id) => Object.hasOwn(modulesById, id) ? modulesById[id] : void 0;
 //#endregion
 //#region src/agent/notChecked.ts
 var NOT_CHECKED = [
@@ -87816,7 +87851,7 @@ async function runGate(bytes, opts) {
 		note("load", "json", "error", `${opts.sheetPath} is not valid JSON (${e.message})`);
 		return finish();
 	}
-	const v = validateDiagram(raw);
+	const v = validateDiagram(raw, { library: libraryLookup });
 	if (!v.ok) {
 		v.errors.forEach((e, i) => note("load", String(i), "error", `${opts.sheetPath} is not a Circuitoon sheet: ${e}`));
 		return finish();
@@ -88402,9 +88437,9 @@ function realize(intent, d, locals = [], opts = {}) {
 		const parts = [...new Set(list.flatMap((s) => [...coveredBy.get(s.key) ?? []]))].sort(naturalCompare);
 		return parts.length ? ` (the other holes there lie under ${joinList(parts.map((u) => `${partBy.get(u)?.designator ?? u}'s body`))})` : "";
 	};
-	const legBy = new Map(plugs.map((pl) => [terminalKey$1(pl.part, pl.pin), pl]));
+	const legBy = new Map(plugs.map((pl) => [terminalKey(pl.part, pl.pin), pl]));
 	const netOfTerminal = /* @__PURE__ */ new Map();
-	intent.nets.forEach((n, i) => n.terminals.forEach((t) => netOfTerminal.set(terminalKey$1(t.ref, t.name), i)));
+	intent.nets.forEach((n, i) => n.terminals.forEach((t) => netOfTerminal.set(terminalKey(t.ref, t.name), i)));
 	const strips = /* @__PURE__ */ new Map();
 	for (const p of [...d.parts].sort((a, b) => naturalCompare(a.uid, b.uid))) {
 		const m = moduleOf(d, p.module);
@@ -88420,7 +88455,7 @@ function realize(intent, d, locals = [], opts = {}) {
 	const owner = /* @__PURE__ */ new Map();
 	const reserved = /* @__PURE__ */ new Set();
 	for (const pl of plugs) {
-		const ni = netOfTerminal.get(terminalKey$1(pl.part, pl.pin));
+		const ni = netOfTerminal.get(terminalKey(pl.part, pl.pin));
 		if (ni === void 0) reserved.add(groupKey(pl.board, pl.group));
 		else owner.set(groupKey(pl.board, pl.group), ni);
 	}
@@ -88632,7 +88667,7 @@ function realize(intent, d, locals = [], opts = {}) {
 		return pinEnd(best);
 	};
 	const capOf = (n) => [...n.left.values()].reduce((a, b) => a + b, 0);
-	const ncKeys = new Set(intent.nc.map((t) => terminalKey$1(t.ref, t.name)));
+	const ncKeys = new Set(intent.nc.map((t) => terminalKey(t.ref, t.name)));
 	/** Pins joined inside a part that one net borrowed (below), so no other net takes them too. */
 	const borrowed = /* @__PURE__ */ new Set();
 	/**
@@ -88645,7 +88680,7 @@ function realize(intent, d, locals = [], opts = {}) {
 		const comp = internalComponent(m, n.members[0].name);
 		const names = new Set(n.members.map((t) => t.name));
 		return [...new Set((m.internal ?? []).flat())].filter((name) => !names.has(name) && internalComponent(m, name) === comp && !m.holes?.some((g) => g.name === name)).filter((name) => {
-			const k = terminalKey$1(ref, name);
+			const k = terminalKey(ref, name);
 			return !netOfTerminal.has(k) && !ncKeys.has(k) && !legBy.has(k) && !borrowed.has(k);
 		}).sort(naturalCompare).map((name) => ({
 			ref,
@@ -88735,7 +88770,7 @@ function realize(intent, d, locals = [], opts = {}) {
 		const byComp = /* @__PURE__ */ new Map();
 		let strip;
 		for (const t of net.terminals) {
-			const pl = legBy.get(terminalKey$1(t.ref, t.name));
+			const pl = legBy.get(terminalKey(t.ref, t.name));
 			if (t.infra || pl) {
 				strip ??= strips.get(t.infra ? groupKey(t.ref, t.name) : groupKey(pl.board, pl.group));
 				continue;
@@ -89047,7 +89082,7 @@ function realize(intent, d, locals = [], opts = {}) {
 	const nodesOfNet = (net) => {
 		const byComp = /* @__PURE__ */ new Map();
 		for (const t of net.terminals) {
-			if (t.infra || legBy.has(terminalKey$1(t.ref, t.name))) continue;
+			if (t.infra || legBy.has(terminalKey(t.ref, t.name))) continue;
 			const c = `${t.ref} ${internalComponent(modOf(t.ref), t.name)}`;
 			byComp.set(c, [...byComp.get(c) ?? [], t]);
 		}
@@ -89057,7 +89092,7 @@ function realize(intent, d, locals = [], opts = {}) {
 		const keys = /* @__PURE__ */ new Set();
 		for (const t of net.terminals) {
 			if (t.infra) keys.add(groupKey(t.ref, t.name));
-			const pl = legBy.get(terminalKey$1(t.ref, t.name));
+			const pl = legBy.get(terminalKey(t.ref, t.name));
 			if (pl) keys.add(groupKey(pl.board, pl.group));
 		}
 		return [...keys].flatMap((k) => strips.get(k) ? [strips.get(k)] : []);
@@ -89220,13 +89255,13 @@ function realize(intent, d, locals = [], opts = {}) {
 		};
 		for (const t of net.terminals) if (t.infra) addDp(strips.get(groupKey(t.ref, t.name)));
 		const legStrips = net.terminals.flatMap((t) => {
-			const pl = legBy.get(terminalKey$1(t.ref, t.name));
+			const pl = legBy.get(terminalKey(t.ref, t.name));
 			return pl ? [groupKey(pl.board, pl.group)] : [];
 		});
 		for (const k of [...new Set(legStrips)].sort(naturalCompare)) addDp(strips.get(k));
 		const byComp = /* @__PURE__ */ new Map();
 		for (const t of net.terminals) {
-			if (t.infra || legBy.has(terminalKey$1(t.ref, t.name))) continue;
+			if (t.infra || legBy.has(terminalKey(t.ref, t.name))) continue;
 			const c = `${t.ref} ${internalComponent(modOf(t.ref), t.name)}`;
 			byComp.set(c, [...byComp.get(c) ?? [], t]);
 		}
@@ -89280,7 +89315,7 @@ function realize(intent, d, locals = [], opts = {}) {
 					left: new Map([...n.left, ...spares[i].map((t) => [t.name, terminalCapacity(modOf(t.ref), t.name)])])
 				}));
 				if (chainable(grown)) {
-					for (const t of spares.flat()) borrowed.add(terminalKey$1(t.ref, t.name));
+					for (const t of spares.flat()) borrowed.add(terminalKey(t.ref, t.name));
 					chainUp(ni, grown);
 					continue;
 				}
@@ -89682,10 +89717,10 @@ function placeParts(intent, opts) {
 	const pinNet = /* @__PURE__ */ new Map();
 	const netsOf = /* @__PURE__ */ new Map();
 	intent.nets.forEach((n, i) => n.terminals.forEach((t) => {
-		pinNet.set(terminalKey$1(t.ref, t.name), i);
+		pinNet.set(terminalKey(t.ref, t.name), i);
 		netsOf.set(t.ref, (netsOf.get(t.ref) ?? /* @__PURE__ */ new Set()).add(i));
 	}));
-	const netOfPin = (part, pin) => pinNet.get(terminalKey$1(part, pin));
+	const netOfPin = (part, pin) => pinNet.get(terminalKey(part, pin));
 	const refs = intent.parts.map((p) => p.ref).sort(naturalCompare);
 	const units = [];
 	const grouped = /* @__PURE__ */ new Set();
@@ -90095,7 +90130,7 @@ function placeParts(intent, opts) {
 			return worldPins({
 				...inst.get(ref),
 				rotation: r
-			}, m).filter((w) => placed.has(pinNet.get(terminalKey$1(ref, w.name)) ?? -1)).reduce((a, w) => a + w.dir.x * want.x + w.dir.y * want.y, 0);
+			}, m).filter((w) => placed.has(pinNet.get(terminalKey(ref, w.name)) ?? -1)).reduce((a, w) => a + w.dir.x * want.x + w.dir.y * want.y, 0);
 		};
 		const now = inst.get(ref).rotation ?? 0;
 		let best = now;
@@ -91007,7 +91042,7 @@ function explainCommand(args, io) {
 	if (format === "circuitoon-netlist/1") x = fromNetlist(raw, input);
 	else if (format === "circuitoon-partial/1") x = fromNetlist(raw.intent, input);
 	else {
-		const r = validateDiagram(raw);
+		const r = validateDiagram(raw, { library: libraryLookup });
 		if (!r.ok) throw new CliError(`${input} is not a Circuitoon sheet or netlist: ${r.errors.slice(0, 5).join("; ")}`, EXIT.input);
 		for (const w of r.warnings) io.stderr(`warning: ${w}\n`);
 		x = fromSheet(r.diagram);
@@ -91290,8 +91325,6 @@ function kicadValue(part, m, k) {
 	if (v && (v.name === "resistance" || v.name === "capacitance")) return siValue(v.value);
 	return (k?.value ?? shortName(m)).replace(/\s+/g, " ").trim();
 }
-/** Pin names with their sides, then hole group names, in order: what a mapping by name relies on. */
-var terminalKey = (m) => JSON.stringify([m.pins.filter((p) => !isSpacer(p) && p.type !== "usb").map((p) => [p.name, p.side]), (m.holes ?? []).map((g) => g.name)]);
 /**
 * The mapping to export a part with: the library's, when the part is built in and its stored copy
 * has the same pins in the same order (the mapping is export data the library refines, and a copy
@@ -91303,7 +91336,7 @@ function mappingOf(stored, library) {
 	if (isCustom(stored)) return {};
 	const lib = library?.(stored.id);
 	if (lib?.kicad) {
-		if (lib === stored || terminalKey(stored) === terminalKey(lib)) return { kicad: lib.kicad };
+		if (lib === stored || terminalsKey(stored) === terminalsKey(lib)) return { kicad: lib.kicad };
 		if (!stored.kicad) return { stale: true };
 	}
 	return stored.kicad ? { kicad: stored.kicad } : {};
@@ -91674,7 +91707,7 @@ function kicadCommand(args, io) {
 			source: name
 		});
 	} else {
-		const r = validateDiagram(raw);
+		const r = validateDiagram(raw, { library: libraryLookup });
 		if (!r.ok) throw new CliError(`${input} is neither a Circuitoon sheet nor a netlist: ${r.errors.slice(0, 5).join("; ")}`, EXIT.input);
 		for (const w of r.warnings) io.stderr(`warning: ${w}\n`);
 		source = "sheet";

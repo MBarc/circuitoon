@@ -168,7 +168,7 @@ export function explainCommand(args: Args, io: Io): number {
   if (format === 'circuitoon-netlist/1') x = fromNetlist(raw, input)
   else if (format === 'circuitoon-partial/1') x = fromNetlist((raw as { intent?: unknown }).intent, input)
   else {
-    const r = validateDiagram(raw)
+    const r = validateDiagram(raw, { library: libraryLookup })
     if (!r.ok) throw new CliError(`${input} is not a Circuitoon sheet or netlist: ${r.errors.slice(0, 5).join('; ')}`, EXIT.input)
     for (const w of r.warnings) io.stderr(`warning: ${w}\n`)
     x = fromSheet(r.diagram)

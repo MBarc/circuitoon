@@ -3,6 +3,7 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { type Diagram, validateDiagram } from '../format/diagram.ts'
+import { libraryLookup } from '../agent/catalog.ts'
 import type { Args } from './args.ts'
 
 /** Spec 4.2: 0 ok, 1 findings that block, 2 invalid input, 3 environment problem (no browser). */
@@ -88,7 +89,7 @@ export function flag(args: Args, name: string): string | undefined {
 
 /** A sheet loaded like the site loads it; one that does not load is invalid input (exit 2). */
 export function loadSheet(io: Io, path: string): { diagram: Diagram; warnings: string[] } {
-  const r = validateDiagram(readJson(io, path))
+  const r = validateDiagram(readJson(io, path), { library: libraryLookup })
   if (!r.ok) throw new CliError(`${path} is not a Circuitoon sheet: ${r.errors.slice(0, 5).join('; ')}`, EXIT.input)
   return { diagram: r.diagram, warnings: r.warnings }
 }

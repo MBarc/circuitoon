@@ -232,6 +232,14 @@ export const isCustom = (m: ModuleDef | undefined): boolean => m?.custom === tru
 
 export const isSpacer = (p: PinEntry): p is SpacerDef => 'spacer' in p && p.spacer === true
 
+/**
+ * Pin names with their sides, then hole group names, in order: what library data read by name (the
+ * KiCad mapping, the sim data) relies on. USB ports are left out: a copy saved before the library
+ * added them still names the same header pins.
+ */
+export const terminalsKey = (m: ModuleDef): string =>
+  JSON.stringify([m.pins.filter((p): p is PinDef => !isSpacer(p) && p.type !== 'usb').map((p) => [p.name, p.side]), (m.holes ?? []).map((g) => g.name)])
+
 /** A net label module (`netLabel: true`): see ModuleDef.netLabel. */
 export const isNetLabel = (m: ModuleDef | undefined): boolean => m?.netLabel === true
 

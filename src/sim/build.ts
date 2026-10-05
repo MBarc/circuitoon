@@ -4,13 +4,12 @@
 // model. Boards and modules with `electrical.sim.power` go through power.ts. Pure and
 // deterministic: parts in uid order, devices in id order.
 import { type Diagram, type PartInstance, moduleOf } from '../format/diagram.ts'
-import { type ModuleDef, isBoard, isCustom, isNetLabel, isNum, isObj, isSpacer, partSetting } from '../format/module.ts'
-import { terminalKey } from '../format/kicad.ts'
+import { type ModuleDef, isBoard, isNetLabel, isNum, isObj, isSpacer, partSetting } from '../format/module.ts'
 import { nodeKey } from '../format/netlist.ts'
 import { analyseMainsCached } from '../format/mains.ts'
 import { convertersInState } from '../format/mainsRules.ts'
 import { mainsOf } from '../format/mainsModel.ts'
-import { type Quantity, simOf } from '../format/simModel.ts'
+import { type Quantity, simOf, withLibrarySim } from '../format/simModel.ts'
 import { contactPosition, isActive, simOverride, switchGroups } from '../format/simState.ts'
 import { paramValue } from '../format/values.ts'
 import { sheetNets } from '../agent/extract.ts'
@@ -28,23 +27,6 @@ export interface BuildOptions {
   library?: ModuleLookup
 }
 
-/**
- * The module to simulate a stored copy as. `electrical.sim` is library data, like the KiCad mapping
- * (format/kicad.ts mappingOf): a built-in part whose stored copy has the library's pins takes the
- * library's sim, so a sheet saved before the library had it still simulates. A custom part, or a
- * copy whose pins changed, keeps its own.
- */
-export function withLibrarySim(stored: ModuleDef, library: ModuleLookup): ModuleDef {
-  if (isCustom(stored)) return stored
-  const lib = library(stored.id)
-  if (!lib || lib === stored || terminalKey(stored) !== terminalKey(lib)) return stored
-  const sim = isObj(lib.electrical) ? lib.electrical.sim : undefined
-  const e: Record<string, unknown> = isObj(stored.electrical) ? { ...stored.electrical } : {}
-  if (e.sim === sim) return stored
-  if (sim === undefined) delete e.sim
-  else e.sim = sim
-  return { ...stored, electrical: e }
-}
 
 const modelOf = (m: ModuleDef): string => (isObj(m.electrical) && typeof m.electrical.model === 'string' ? m.electrical.model : '')
 const terminals = (m: ModuleDef): Record<string, string> => {

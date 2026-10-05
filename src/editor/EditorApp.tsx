@@ -4,6 +4,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { Diagram } from '../format/diagram.ts'
 import { openLinkPayload, payloadFromHash } from '../format/link.ts'
+import { libraryLookup } from '../agent/catalog.ts'
 import { StartScreen } from './StartScreen.tsx'
 import { Editor } from './Editor.tsx'
 
@@ -29,7 +30,7 @@ export function EditorApp() {
       if (payload === null) return
       const mine = ++seq
       setOpening(true)
-      void openLinkPayload(payload).then((r) => {
+      void openLinkPayload(payload, libraryLookup).then((r) => {
         if (mine !== seq) return
         setOpening(false)
         clearPayload()

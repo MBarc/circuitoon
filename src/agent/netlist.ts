@@ -5,6 +5,7 @@
 import { type ModuleDef, type PinDef, PARAM_RULES, isBoard, isNetLabel, isObj, isNum, isSpacer, moduleSettings, usbOf, validParamValue, validateModule } from '../format/module.ts'
 import { mainsOf } from '../format/mainsModel.ts'
 import { isSimValueKey, simValueProblem } from '../format/simState.ts'
+import { withLibrarySim } from '../format/simModel.ts'
 import { ANNOTATION_LABEL_MAX, ANNOTATION_TEXT_MAX, isValidColor } from '../format/diagram.ts'
 import { type EndKind, isEndKind, isUsbEnd } from '../format/cables.ts'
 import { type RawNet, type RawPart, type RepeatCopy, endpointText, expandRepeat } from './repeat.ts'
@@ -166,7 +167,7 @@ export function parseNetlist(raw: unknown, library: ModuleLookup): IntentResult 
     if (p.values !== undefined) {
       if (!isObj(p.values)) errors.push(`${at}.values: must be an object`)
       else {
-        errors.push(...valueErrors(p.values, `${at}.values`, m))
+        errors.push(...valueErrors(p.values, `${at}.values`, withLibrarySim(m, library)))
         part.values = p.values
       }
     }

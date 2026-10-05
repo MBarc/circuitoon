@@ -8,7 +8,7 @@
 // on a generic pin header with a pad per pin, and a warning says so. Pure; the caller passes the
 // library so a sheet saved before the library had a part's mapping still exports with it.
 import { type Diagram, moduleOf } from './diagram.ts'
-import { type HoleGroup, type KicadDef, type ModuleDef, type PinDef, type PinType, isBoard, isCustom, isNetLabel, isSpacer, usbPorts } from './module.ts'
+import { type HoleGroup, type KicadDef, type ModuleDef, type PinDef, type PinType, isBoard, isCustom, isNetLabel, isSpacer, terminalsKey, usbPorts } from './module.ts'
 import { netlist } from './netlist.ts'
 import { plugsOf } from './breadboard.ts'
 import { labelName } from './netLabels.ts'
@@ -101,11 +101,6 @@ export function kicadValue(part: { values?: Record<string, unknown> }, m: Module
   return (k?.value ?? shortName(m)).replace(/\s+/g, ' ').trim()
 }
 
-/** Pin names with their sides, then hole group names, in order: what a mapping by name relies on. */
-export const terminalKey = (m: ModuleDef): string =>
-  // USB ports are left out: they are never on the mapping (a copy
-  // saved before the library added them still names the same header pins).
-  JSON.stringify([m.pins.filter((p): p is PinDef => !isSpacer(p) && p.type !== 'usb').map((p) => [p.name, p.side]), (m.holes ?? []).map((g) => g.name)])
 
 /**
  * The mapping to export a part with: the library's, when the part is built in and its stored copy
@@ -119,7 +114,7 @@ export function mappingOf(stored: ModuleDef, library?: ModuleLibrary): { kicad?:
   if (isCustom(stored)) return {}
   const lib = library?.(stored.id)
   if (lib?.kicad) {
-    if (lib === stored || terminalKey(stored) === terminalKey(lib)) return { kicad: lib.kicad }
+    if (lib === stored || terminalsKey(stored) === terminalsKey(lib)) return { kicad: lib.kicad }
     if (!stored.kicad) return { stale: true }
   }
   return stored.kicad ? { kicad: stored.kicad } : {}

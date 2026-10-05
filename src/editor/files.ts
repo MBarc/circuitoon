@@ -1,5 +1,6 @@
 // Opening and saving diagram files. Shared by the start screen and the editor toolbar.
 import { type Diagram, validateDiagram } from '../format/diagram.ts'
+import { libraryLookup } from '../agent/catalog.ts'
 
 export type OpenResult = { ok: true; diagram: Diagram; warnings: string[] } | { ok: false; message: string }
 
@@ -15,7 +16,7 @@ export async function readDiagramFile(file: File): Promise<OpenResult> {
     return { ok: false, message: `${file.name} is not valid JSON, so nothing was opened.` }
   }
   try {
-    const r = validateDiagram(raw)
+    const r = validateDiagram(raw, { library: libraryLookup })
     if (!r.ok) return { ok: false, message: `${file.name} is not a Circuitoon diagram: ${r.errors.slice(0, 3).join('; ')}` }
     return { ok: true, diagram: r.diagram, warnings: r.warnings }
   } catch (err) {
