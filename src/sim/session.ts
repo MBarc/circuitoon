@@ -22,24 +22,28 @@ export async function solve(d: Diagram, engine: Engine, revision: number, opts: 
   const raws = {} as Record<Corner, RawRun>
   const before = engine.host.runs
   let ms = 0
-  for (const corner of ['typical', 'peak'] as const) {
-    const r = await engine.run(c, { kind: 'op', corner }, revision)
+  // Both corners in one worker round trip.
+  const corners = ['typical', 'peak'] as const
+  const runs = await engine.runAll(c, corners.map((corner) => ({ kind: 'op', corner })), revision)
+  for (const [i, corner] of corners.entries()) {
+    const r = runs[i]
+    if (!r) throw new Error(`the engine gave no answer for the ${corner} corner`)
     if (r.status === 'unavailable') return { circuit: c, outcome: { status: 'unavailable', reason: r.reason, findings: finalize(topo.drafts, '') } }
     if (r.status === 'failed') return { circuit: c, outcome: { status: 'failed', revision, finding: noConvergence(c, r.error, r.nodes), findings: finalize(topo.drafts, '') } }
     raws[corner] = r.raw
     ms += r.ms
   }
   const { findings, outside } = analyseFindings(c, cls, raws, topo)
-  const corners = { typical: readRun(c, cls, raws.typical, outside), peak: readRun(c, cls, raws.peak, outside) }
+  const read = { typical: readRun(c, cls, raws.typical, outside), peak: readRun(c, cls, raws.peak, outside) }
   const info = engine.host.info
   const result: SimResult = {
     format: 'circuitoon-sim/1',
     revision,
-    corners,
+    corners: read,
     budget: budget(c, cls, raws, outside),
     findings,
     unsimulated: c.unsimulated,
-    probes: probeReadings([...(d.probes ?? []), ...(opts.probes ?? [])], c, corners),
+    probes: probeReadings([...(d.probes ?? []), ...(opts.probes ?? [])], c, read),
     unaccounted: c.unaccounted,
     notes: c.notes,
     engine: { name: 'ngspice', version: info?.version ?? '', build: info?.build ?? '', runs: engine.host.runs - before, ms },

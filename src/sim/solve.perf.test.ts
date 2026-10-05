@@ -39,7 +39,9 @@ describe('solve budget', () => {
   it('solves 201 parts (a battery and 100 resistor-LED pairs) in p95 30 ms or less, both corners', async () => {
     const c = buildCircuit(d)
     const ms = await p95(async (k) => {
-      for (const corner of ['typical', 'peak'] as const) expect((await engine.run(c, { kind: 'op', corner }, k)).status).toBe('ok')
+      // Both corners in one worker message, as solve sends them.
+      const runs = await engine.runAll(c, [{ kind: 'op', corner: 'typical' }, { kind: 'op', corner: 'peak' }], k)
+      expect(runs.map((r) => r.status)).toEqual(['ok', 'ok'])
     })
     expect(ms).toBeLessThanOrEqual(30)
   }, 120_000)

@@ -2,9 +2,9 @@
 // (an ordinary circuit failure keeps it); a fresh worker after a dead engine or an idle exit;
 // dispose during a load answers at once; a timeout terminates, retries once, then fails; recycling after
 // N engine runs; an engine that cannot load, or does not load in time, is "unavailable"; requests
-// run one at a time.
+// run one at a time; a batch is one message, with the timeout, retry and recycling per message.
 import { describe, expect, it } from 'vitest'
-import { EngineHost, type FromWorker, type ToWorker, type WorkerLike } from './host.ts'
+import { EngineHost, type FromWorker, type RunAnswer, type ToWorker, type WorkerLike } from './host.ts'
 
 /**
  * A fake worker: "bad" fails, "hang" never answers, "trap" answers as the worker loop does when
@@ -12,6 +12,7 @@ import { EngineHost, type FromWorker, type ToWorker, type WorkerLike } from './h
  */
 function fakes(opts: { fatal?: boolean; silent?: boolean } = {}) {
   const made: { terminated: boolean; exit: () => void }[] = []
+  const posted: string[][] = []
   const spawn = (): WorkerLike => {
     let listener: (m: FromWorker) => void = () => {}
     let exited: () => void = () => {}
@@ -20,12 +21,16 @@ function fakes(opts: { fatal?: boolean; silent?: boolean } = {}) {
     if (!opts.silent) queueMicrotask(() => listener(opts.fatal ? { type: 'fatal', error: 'no wasm' } : { type: 'ready', engine: { name: 'ngspice', version: '45.2', build: 'test' } }))
     return {
       post(m: ToWorker) {
-        if (m.text === 'hang') return
-        if (m.text === 'crash') return void queueMicrotask(() => exited())
-        if (m.text === 'trap') return void queueMicrotask(() => listener({ type: 'result', id: m.id, ok: false, error: 'the simulation engine stopped: Aborted()', dead: true, ms: 1, heap: 0 }))
-        queueMicrotask(() =>
-          listener(m.text === 'bad' ? { type: 'result', id: m.id, ok: false, error: 'singular', ms: 1, heap: 100 } : { type: 'result', id: m.id, ok: true, vectors: { a: 1 }, ms: 1, heap: 100 }),
-        )
+        posted.push(m.texts)
+        // As the worker loop does: the texts in order, stopping at the first failure.
+        const runs: RunAnswer[] = []
+        for (const text of m.texts) {
+          if (text === 'hang') return
+          if (text === 'crash') return void queueMicrotask(() => exited())
+          runs.push(text === 'trap' ? { ok: false, error: 'the simulation engine stopped: Aborted()', dead: true, ms: 1 } : text === 'bad' ? { ok: false, error: 'singular', ms: 1 } : { ok: true, vectors: { a: 1 }, ms: 1 })
+          if (!runs[runs.length - 1].ok) break
+        }
+        queueMicrotask(() => listener({ type: 'result', id: m.id, runs, heap: 100 }))
       },
       onMessage(cb) {
         listener = cb
@@ -38,7 +43,7 @@ function fakes(opts: { fatal?: boolean; silent?: boolean } = {}) {
       },
     }
   }
-  return { made, spawn }
+  return { made, spawn, posted }
 }
 
 describe('EngineHost', () => {
@@ -112,6 +117,35 @@ describe('EngineHost', () => {
     expect((await host.runText('crash')).status).toBe('failed')
     expect(Date.now() - t0).toBeLessThan(500)
     expect(await host.runText('ok')).toMatchObject({ status: 'ok' })
+  })
+  it('sends a batch as one message, counts each run, and stops at the first failure', async () => {
+    const f = fakes()
+    const host = new EngineHost({ spawn: f.spawn })
+    expect(await host.runTexts(['ok', 'ok'])).toEqual([{ status: 'ok', vectors: { a: 1 }, ms: 1 }, { status: 'ok', vectors: { a: 1 }, ms: 1 }])
+    expect(f.posted).toEqual([['ok', 'ok']])
+    expect(host.runs).toBe(2)
+    expect(await host.runTexts(['bad', 'ok'])).toEqual([{ status: 'failed', error: 'singular' }])
+    expect(host.runs).toBe(3)
+    expect(f.made[0].terminated).toBe(false)
+  })
+  it('times a batch out as one message: terminated, retried whole once, then failed', async () => {
+    const f = fakes()
+    const host = new EngineHost({ spawn: f.spawn, timeoutMs: 20 })
+    expect(await host.runTexts(['ok', 'hang'])).toEqual([{ status: 'failed', error: 'the simulation engine did not answer within 0.02 s, twice' }])
+    expect(f.posted).toEqual([['ok', 'hang'], ['ok', 'hang']])
+    expect(f.made.map((w) => w.terminated)).toEqual([true, true])
+    expect(host.runs).toBe(0)
+  })
+  it('recycles after a batch that reaches recycleRuns, and after a dead engine in a batch, never inside one', async () => {
+    const f = fakes()
+    const host = new EngineHost({ spawn: f.spawn, recycleRuns: 3 })
+    expect((await host.runTexts(['ok', 'ok'])).map((r) => r.status)).toEqual(['ok', 'ok'])
+    expect(f.made[0].terminated).toBe(false)
+    expect((await host.runTexts(['ok', 'ok'])).map((r) => r.status)).toEqual(['ok', 'ok'])
+    expect(f.made[0].terminated).toBe(true)
+    expect((await host.runTexts(['ok', 'trap', 'ok'])).map((r) => r.status)).toEqual(['ok', 'failed'])
+    expect(f.made[1].terminated).toBe(true)
+    expect(host.spawned).toBe(2)
   })
   it('runs one request at a time, in order', async () => {
     const host = new EngineHost({ spawn: fakes().spawn })

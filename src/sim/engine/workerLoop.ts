@@ -2,7 +2,7 @@
 // A run is synchronous inside the worker; the host (host.ts) terminates the worker on a timeout.
 // Anything thrown (a WASM abort, ngspice's exit) is answered as a failed run, never left unanswered.
 import type { NgspiceCore } from './ngspice.ts'
-import { DEBUG_HANG_TEXT, type EngineInfo, type FromWorker, type ToWorker } from './host.ts'
+import { DEBUG_HANG_TEXT, type EngineInfo, type FromWorker, type RunAnswer, type ToWorker } from './host.ts'
 
 const why = (e: unknown) => (e instanceof Error ? e.message : String(e))
 
@@ -20,18 +20,25 @@ export function serve(
     try {
       if (m.type !== 'run') return
       void loading.then(({ core }) => {
-        const t0 = performance.now()
-        try {
-          // Debug only: hang here so the tests can prove the host terminates a stuck worker.
-          if (m.text === DEBUG_HANG_TEXT) for (;;) performance.now()
-          const r = core.op(m.text)
-          const ms = performance.now() - t0
-          post(r.ok
-            ? { type: 'result', id: m.id, ok: true, vectors: r.vectors, ...(r.warnings && { warnings: r.warnings }), ms, heap: core.heapBytes() }
-            : { type: 'result', id: m.id, ok: false, error: r.error, dead: core.dead, ms, heap: core.heapBytes() })
-        } catch (e) {
-          post({ type: 'result', id: m.id, ok: false, error: `the simulation engine stopped: ${why(e)}`, dead: true, ms: performance.now() - t0, heap: 0 })
+        // The texts in order, stopping at the first failure: one answer per run made.
+        const runs: RunAnswer[] = []
+        let heap = 0
+        for (const text of m.texts) {
+          const t0 = performance.now()
+          try {
+            // Debug only: hang here so the tests can prove the host terminates a stuck worker.
+            if (text === DEBUG_HANG_TEXT) for (;;) performance.now()
+            const r = core.op(text)
+            const ms = performance.now() - t0
+            heap = core.heapBytes()
+            runs.push(r.ok ? { ok: true, vectors: r.vectors, ...(r.warnings && { warnings: r.warnings }), ms } : { ok: false, error: r.error, dead: core.dead, ms })
+          } catch (e) {
+            heap = 0
+            runs.push({ ok: false, error: `the simulation engine stopped: ${why(e)}`, dead: true, ms: performance.now() - t0 })
+          }
+          if (!runs[runs.length - 1].ok) break
         }
+        post({ type: 'result', id: m.id, runs, heap })
       }, () => undefined)
     } catch (e) {
       post({ type: 'fatal', error: why(e) })

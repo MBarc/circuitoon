@@ -25,6 +25,7 @@ import { READABILITY_RULES } from '../agent/readabilityWarnings.ts'
 import { captionBox } from '../render/captionBox.ts'
 import { layoutModule } from '../format/module.ts'
 import { ledNetlist, tiltSensors } from '../agent/fixtures.testing.ts'
+import { runAllOf } from '../sim/testing.ts'
 
 const browser = findBrowser(process.env)
 const noBrowser = (dir: string) => ({ CIRCUITOON_BROWSER: join(dir, 'no-such-browser.exe') })
@@ -526,12 +527,10 @@ describe('gate/4: simulation (spec 7)', () => {
   beforeEach(() => {
     gateEngine.make = realEngine
   })
-  const failing = (status: 'failed' | 'unavailable'): Engine => ({
-    host: { runs: 0, info: null } as unknown as EngineHost,
-    init: async () => ({ name: 'ngspice', version: '45.2', build: 'fake' }),
-    run: async (_c, _a, revision) => (status === 'failed' ? { status, revision, error: 'singular matrix', nodes: [] } : { status, reason: 'no engine' }),
-    dispose() {},
-  })
+  const failing = (status: 'failed' | 'unavailable'): Engine => {
+    const run: Engine['run'] = async (_c, _a, revision) => (status === 'failed' ? { status, revision, error: 'singular matrix', nodes: [] } : { status, reason: 'no engine' })
+    return { host: { runs: 0, info: null } as unknown as EngineHost, init: async () => ({ name: 'ngspice', version: '45.2', build: 'fake' }), run, runAll: runAllOf(run), dispose() {} }
+  }
   const shorted = async () => {
     const dir = tempDir()
     writeFileSync(join(dir, 'n.json'), JSON.stringify({
@@ -594,7 +593,8 @@ describe('gate/4: simulation (spec 7)', () => {
     const dir = await laidOut()
     edit(dir, (s) => void delete s.intent)
     const bytes = readFileSync(join(dir, 'sheet.json'))
-    const throwing: Engine = { ...failing('failed'), run: async () => { throw new Error('worker crashed') } }
+    const crash = async (): Promise<never> => { throw new Error('worker crashed') }
+    const throwing: Engine = { ...failing('failed'), run: crash, runAll: crash }
     const withSim = await runGate(bytes, { sheetPath: 'sheet.json', outDir: join(dir, 'out'), io: quietIo(dir), engine: throwing })
     const without = await runGate(bytes, { sheetPath: 'sheet.json', outDir: join(dir, 'out2'), io: quietIo(dir), engine: null })
     // The checker's verdict is untouched: the intent still blocks.

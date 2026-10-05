@@ -64,6 +64,7 @@ describe('circuitoon sim', () => {
       host: { runs: 0, info: null } as unknown as EngineHost,
       init: async () => ({ name: 'ngspice', version: '45.2', build: 'fake' }),
       run: async () => ({ status: 'unavailable', reason: 'no engine' }),
+      runAll: async () => [{ status: 'unavailable', reason: 'no engine' }],
       dispose() {},
     }
     let out = ''

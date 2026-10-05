@@ -4,6 +4,7 @@ import type { Connection, Diagram, PartInstance } from '../format/diagram.ts'
 import type { ModuleDef, PinDef } from '../format/module.ts'
 import type { Provenance, Quantity, Rail, SimUnit } from '../format/simModel.ts'
 import { load } from '../format/builtinModules.testing.ts'
+import type { Engine, RunOutcome } from './engine/engine.ts'
 
 export type PartSpec = { uid: string; module: string | ModuleDef; designator?: string; values?: Record<string, unknown>; settings?: Record<string, string> }
 
@@ -100,4 +101,16 @@ export function hostModule(id = 'test-host'): ModuleDef {
 export function netSheet(n: { parts: { ref: string; module: string; values?: Record<string, unknown> }[]; nets: { name: string; pins: string[] }[] }): Diagram {
   const wires = n.nets.flatMap((net) => net.pins.slice(1).map((p, i): [string, string] => [net.pins[i], p]))
   return sheet(n.parts.map((p) => ({ uid: p.ref, module: p.module, designator: p.ref, ...(p.values ? { values: p.values } : {}) })), wires)
+}
+
+/** A fake engine's runAll from its run: the analyses one by one, stopping after the first that is not ok. */
+export function runAllOf(run: Engine['run']): Engine['runAll'] {
+  return async (c, analyses, revision) => {
+    const out: RunOutcome[] = []
+    for (const a of analyses) {
+      out.push(await run(c, a, revision))
+      if (out[out.length - 1].status !== 'ok') break
+    }
+    return out
+  }
 }

@@ -31,9 +31,18 @@ describe('Engine', () => {
     const spawn = (): WorkerLike => {
       let cb: (m: FromWorker) => void = () => {}
       queueMicrotask(() => cb({ type: 'ready', engine: { name: 'ngspice', version: '45.2', build: 'fake' } }))
-      return { post: (m) => queueMicrotask(() => cb({ type: 'result', id: m.id, ok: false, error: 'singular matrix: check node n2', ms: 1, heap: 1 })), onMessage: (f) => (cb = f), onExit() {}, terminate() {} }
+      return { post: (m) => queueMicrotask(() => cb({ type: 'result', id: m.id, runs: [{ ok: false, error: 'singular matrix: check node n2', ms: 1 }], heap: 1 })), onMessage: (f) => (cb = f), onExit() {}, terminate() {} }
     }
     const r = await makeEngine(new EngineHost({ spawn })).run(buildCircuit(led), { kind: 'op', corner: 'typical' }, 3)
     expect(r).toEqual({ status: 'failed', revision: 3, error: 'singular matrix: check node n2', nodes: ['net:D1_A'] })
   })
+  it('runs both corners in one worker message (2 engine runs), the same as two single runs', async () => {
+    const c = buildCircuit(led)
+    const before = engine.host.runs
+    const both = await engine.runAll(c, [{ kind: 'op', corner: 'typical' }, { kind: 'op', corner: 'peak' }], 4)
+    expect(engine.host.runs - before).toBe(2)
+    const one = await engine.run(c, { kind: 'op', corner: 'peak' }, 4)
+    expect(both.map((r) => r.status)).toEqual(['ok', 'ok'])
+    if (both[1].status === 'ok' && one.status === 'ok') expect(both[1].raw).toEqual(one.raw)
+  }, 60_000)
 })

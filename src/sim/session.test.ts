@@ -6,7 +6,7 @@ import { makeEngine, type Engine, type RunOutcome } from './engine/engine.ts'
 import type { EngineHost } from './engine/host.ts'
 import { createNodeEngineHost } from './engine/nodeEngine.ts'
 import { SimSession, solve } from './session.ts'
-import { cellModule, sheet } from './testing.ts'
+import { cellModule, runAllOf, sheet } from './testing.ts'
 import type { SimOutcome } from './results.ts'
 
 const led = sheet(
@@ -20,14 +20,16 @@ function gatedEngine() {
   const gates: (() => void)[] = []
   let fail = false
   let throws = false
+  const run: Engine['run'] = (_c, _a, revision) => {
+    calls.push(revision)
+    if (throws) return new Promise<RunOutcome>((_res, rej) => gates.push(() => rej(new Error('worker crashed'))))
+    return new Promise<RunOutcome>((res) => gates.push(() => res(fail ? { status: 'failed', revision, error: 'x', nodes: [] } : { status: 'ok', revision, raw: { v: {}, pins: {}, dev: {} }, ms: 1 })))
+  }
   const engine: Engine = {
     host: { runs: 0, info: { name: 'ngspice', version: '45.2', build: 'fake' } } as unknown as EngineHost,
     init: async () => ({ name: 'ngspice', version: '45.2', build: 'fake' }),
-    run: (_c, _a, revision) => {
-      calls.push(revision)
-      if (throws) return new Promise<RunOutcome>((_res, rej) => gates.push(() => rej(new Error('worker crashed'))))
-      return new Promise<RunOutcome>((res) => gates.push(() => res(fail ? { status: 'failed', revision, error: 'x', nodes: [] } : { status: 'ok', revision, raw: { v: {}, pins: {}, dev: {} }, ms: 1 })))
-    },
+    run,
+    runAll: runAllOf(run),
     dispose() {},
   }
   const flush = async () => {
@@ -150,12 +152,10 @@ describe('SimSession', () => {
 
 describe('solve when the engine fails or is unavailable', () => {
   const shorted = sheet([{ uid: 'bt1', module: cellModule(3.7, 0.05) }, { uid: 's1', module: 'rocker-switch-kcd1', values: { 'contact.s': 'closed' } }], [['bt1.+', 's1.1'], ['s1.2', 'bt1.-']])
-  const engine = (status: 'failed' | 'unavailable'): Engine => ({
-    host: { runs: 0, info: null } as unknown as EngineHost,
-    init: async () => ({ name: 'ngspice', version: '45.2', build: 'fake' }),
-    run: async (_c, _a, revision) => (status === 'failed' ? { status, revision, error: 'singular matrix', nodes: [] } : { status, reason: 'no engine' }),
-    dispose() {},
-  })
+  const engine = (status: 'failed' | 'unavailable'): Engine => {
+    const run: Engine['run'] = async (_c, _a, revision) => (status === 'failed' ? { status, revision, error: 'singular matrix', nodes: [] } : { status, reason: 'no engine' })
+    return { host: { runs: 0, info: null } as unknown as EngineHost, init: async () => ({ name: 'ngspice', version: '45.2', build: 'fake' }), run, runAll: runAllOf(run), dispose() {} }
+  }
   it('still carries the topological findings: a real short is named with no engine', async () => {
     for (const status of ['failed', 'unavailable'] as const) {
       const { outcome } = await solve(shorted, engine(status), 1)

@@ -4,15 +4,20 @@
 // dead (ngspice exited, a WASM trap, a timeout, the worker exiting) and after 2,000 engine runs,
 // always between runs, but not after an ordinary circuit failure (ruling, amending spec 2.3). Loading has its own timeout, after which the
 // engine is "unavailable", so a caller (sim, gate) always gets an answer. Requests run one at a time.
+// A request is a batch of runs in one message (a solve's two corners: one worker round trip); the
+// timeout, the retry and recycling apply per message, and every run answered counts as an engine run.
 
 export interface EngineInfo { name: 'ngspice'; version: string; build: string }
-export type ToWorker = { type: 'run'; id: number; text: string }
+export type ToWorker = { type: 'run'; id: number; texts: string[] }
+/** One run's answer. `dead`: the engine cannot be used again (ngspice exited or the run trapped), so the worker is recycled. */
+export type RunAnswer =
+  | { ok: true; vectors: Record<string, number>; warnings?: string[]; ms: number }
+  | { ok: false; error: string; dead?: boolean; ms: number }
 export type FromWorker =
   | { type: 'ready'; engine: EngineInfo }
   | { type: 'progress'; loaded: number; total: number }
-  | { type: 'result'; id: number; ok: true; vectors: Record<string, number>; warnings?: string[]; ms: number; heap: number }
-  /** `dead`: the engine cannot be used again (ngspice exited or the run trapped), so the worker is recycled. */
-  | { type: 'result'; id: number; ok: false; error: string; dead?: boolean; ms: number; heap: number }
+  /** One answer per text, in order, up to and including the first failure (the rest are not run). */
+  | { type: 'result'; id: number; runs: RunAnswer[]; heap: number }
   | { type: 'fatal'; error: string }
 export interface WorkerLike {
   post(m: ToWorker): void
@@ -115,7 +120,7 @@ export class EngineHost {
     return typeof t === 'function' ? t() : (t ?? RUN_TIMEOUT_MS)
   }
 
-  private once(text: string): Promise<Answer> {
+  private once(texts: string[]): Promise<Answer> {
     const id = ++this.seq
     return new Promise<Answer>((resolve) => {
       const timer = setTimeout(() => {
@@ -126,7 +131,7 @@ export class EngineHost {
         clearTimeout(timer)
         resolve(a)
       })
-      this.worker!.post({ type: 'run', id, text })
+      this.worker!.post({ type: 'run', id, texts })
     })
   }
 
@@ -141,35 +146,39 @@ export class EngineHost {
   }
 
   /** One engine run of a SPICE text, queued behind any run in progress. */
-  runText(text: string): Promise<TextOutcome> {
-    const next = this.queue.then(() => this.attempt(text))
+  async runText(text: string): Promise<TextOutcome> {
+    return (await this.runTexts([text]))[0]
+  }
+
+  /**
+   * Engine runs of several SPICE texts in one worker message, queued behind any request in
+   * progress: one outcome per text, in order, up to and including the first that is not ok.
+   */
+  runTexts(texts: string[]): Promise<TextOutcome[]> {
+    const next = this.queue.then(() => this.attempt(texts))
     this.queue = next.catch(() => undefined)
     return next
   }
 
-  private async attempt(text: string): Promise<TextOutcome> {
+  private async attempt(texts: string[]): Promise<TextOutcome[]> {
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
         await this.init()
       } catch (e) {
-        return { status: 'unavailable', reason: message(e) }
+        return [{ status: 'unavailable', reason: message(e) }]
       }
-      const a = await this.once(text)
+      const a = await this.once(texts)
       if (a === 'timeout') {
         this.recycle()
         continue
       }
-      this.runs++
-      this.onWorker++
-      if (!a.ok) {
-        // An ordinary circuit failure leaves the engine usable; only a dead engine is replaced.
-        if (a.dead || this.onWorker >= (this.opts.recycleRuns ?? RECYCLE_RUNS)) this.recycle()
-        return { status: 'failed', error: a.error }
-      }
-      if (this.onWorker >= (this.opts.recycleRuns ?? RECYCLE_RUNS)) this.recycle()
-      return a.warnings ? { status: 'ok', vectors: a.vectors, warnings: a.warnings, ms: a.ms } : { status: 'ok', vectors: a.vectors, ms: a.ms }
+      this.runs += a.runs.length
+      this.onWorker += a.runs.length
+      // An ordinary circuit failure leaves the engine usable; only a dead engine is replaced.
+      if (a.runs.some((r) => !r.ok && r.dead) || this.onWorker >= (this.opts.recycleRuns ?? RECYCLE_RUNS)) this.recycle()
+      return a.runs.map((r): TextOutcome => (!r.ok ? { status: 'failed', error: r.error } : r.warnings ? { status: 'ok', vectors: r.vectors, warnings: r.warnings, ms: r.ms } : { status: 'ok', vectors: r.vectors, ms: r.ms }))
     }
-    return { status: 'failed', error: `the simulation engine did not answer within ${this.timeout() / 1000} s, twice` }
+    return [{ status: 'failed', error: `the simulation engine did not answer within ${this.timeout() / 1000} s, twice` }]
   }
 
   dispose(): void {
