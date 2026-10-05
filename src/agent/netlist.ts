@@ -6,7 +6,7 @@ import { type ModuleDef, type PinDef, PARAM_RULES, isBoard, isNetLabel, isObj, i
 import { mainsOf } from '../format/mainsModel.ts'
 import { isSimValueKey, simValueProblem } from '../format/simState.ts'
 import { withLibrarySim } from '../format/simModel.ts'
-import { type Diagram, ANNOTATION_LABEL_MAX, ANNOTATION_TEXT_MAX, isValidColor, moduleOf } from '../format/diagram.ts'
+import { type Diagram, ANNOTATION_LABEL_MAX, PROBE_ID, ANNOTATION_TEXT_MAX, isValidColor, moduleOf } from '../format/diagram.ts'
 import { type EndKind, isEndKind, isUsbEnd } from '../format/cables.ts'
 import { type RawNet, type RawPart, type RepeatCopy, endpointText, expandRepeat } from './repeat.ts'
 
@@ -45,6 +45,8 @@ export interface IntentNet {
    */
   label?: true
 }
+/** A probe in a netlist (live-simulation spec 6.2). */
+export interface NetlistProbe { id: string; name?: string; at: string; ref?: string }
 export interface Intent {
   title: string
   parts: IntentPart[]
@@ -58,6 +60,10 @@ export interface Intent {
   /** Used ids defined under `modules` in the netlist: custom, unverified parts. */
   custom: string[]
   ends?: EndKind
+  /** Probes (spec 6.2): "REF.PIN", "REF" or "net:NAME"; `ref` (ruling R6) is kept, not used for readings. */
+  probes: NetlistProbe[]
+  /** Probes that named nothing, each dropped with this warning (never an error, spec 6.2). */
+  probeWarnings: string[]
 }
 export type IntentResult = { ok: true; intent: Intent } | { ok: false; errors: string[] }
 
@@ -396,6 +402,40 @@ export function parseNetlist(raw: unknown, library: ModuleLookup): IntentResult 
     }
   }
 
+  const probes: NetlistProbe[] = []
+  const probeWarnings: string[] = []
+  if (raw.probes !== undefined) {
+    if (!Array.isArray(raw.probes)) probeWarnings.push('probes: must be a list, so it was dropped')
+    else {
+      const ids = new Set<string>()
+      const netNames = new Set(nets.map((n) => n.name))
+      raw.probes.forEach((p, i) => {
+        const drop = (why: string) => void probeWarnings.push(`probes[${i}]: ${why}, so the probe was dropped`)
+        if (!isObj(p) || typeof p.at !== 'string') return drop('must be { "id", "name"?, "at", "ref"? }')
+        if (typeof p.id !== 'string' || !PROBE_ID.test(p.id)) return drop('its id must be P and a number (P1, P2, ...)')
+        if (ids.has(p.id)) return drop(`its id ${p.id} is used twice`)
+        if (p.name !== undefined && !(typeof p.name === 'string' && p.name.trim() && p.name.length <= 40)) return drop('its name must be text, at most 40 characters')
+        if (p.ref !== undefined && !(typeof p.ref === 'string' && p.ref.startsWith('net:') && netNames.has(p.ref.slice(4)))) return drop('its ref must be net:<a net of this netlist>')
+        let at = p.at
+        if (at.startsWith('net:')) {
+          if (!netNames.has(at.slice(4))) return drop(`no net "${at.slice(4)}"`)
+        } else {
+          const dot = at.indexOf('.')
+          const ref = dot < 0 ? at : at.slice(0, dot)
+          const hit = byRef.get(ref)
+          if (!hit) return drop(`no part "${ref}"`)
+          if (dot >= 0) {
+            const r = byName(hit.module, ref, at.slice(dot + 1), `probes[${i}].at`)
+            if (!r.ok) return drop(r.error.replace(/^probes\[\d+\]\.at: /, ''))
+            at = `${ref}.${r.t.name}`
+          }
+        }
+        ids.add(p.id)
+        probes.push({ id: p.id, ...(typeof p.name === 'string' ? { name: p.name } : {}), at, ...(typeof p.ref === 'string' ? { ref: p.ref } : {}) })
+      })
+    }
+  }
+
   if (errors.length) return { ok: false, errors }
   const ids = [...used.keys()].sort()
   return {
@@ -408,6 +448,8 @@ export function parseNetlist(raw: unknown, library: ModuleLookup): IntentResult 
       groups,
       notes,
       copies: rep?.copies ?? [],
+      probes,
+      probeWarnings,
       modules: Object.fromEntries(ids.map((id) => [id, used.get(id)!])),
       custom: ids.filter((id) => embedded.has(id)),
       ...(ends ? { ends } : {}),

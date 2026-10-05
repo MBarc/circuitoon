@@ -17,6 +17,7 @@ import { nameNets } from '../format/netNames.ts'
 import { NETLIST_FORMAT, REF_PATTERN, intentLookup, parseNetlist } from './netlist.ts'
 import { libraryLookup } from './catalog.ts'
 import { naturalCompare } from './order.ts'
+import { probesForNetlist } from '../sim/probes.ts'
 
 /** A valid, unique netlist ref for a designator: other characters become `_`, and a leading non-letter gets a `P`. */
 function refMaker() {
@@ -104,7 +105,8 @@ export function sheetNets(d: Diagram): { refOf: Map<string, string>; kept: PartI
   return { refOf, kept, netlist: n, nets: nets.map((net, i) => ({ ...net, name: named[i]! })) }
 }
 
-export function extractNetlist(d: Diagram): Record<string, unknown> {
+/** `warn` hears of each probe extraction had to drop (spec 6.2). */
+export function extractNetlist(d: Diagram, warn?: (message: string) => void): Record<string, unknown> {
   const modOf = (uid: string) => {
     const p = d.parts.find((x) => x.uid === uid)
     return p ? moduleOf(d, p.module) : undefined
@@ -148,6 +150,7 @@ export function extractNetlist(d: Diagram): Record<string, unknown> {
   const custom: Record<string, ModuleDef> = {}
   for (const p of kept) if (!libraryLookup(p.module)) custom[p.module] = moduleOf(d, p.module)!
 
+  const probes = probesForNetlist(d.probes ?? [], refOf, nets, warn)
   const order = nets.map((_, i) => i).sort((a, b) => naturalCompare(named[a]!, named[b]!))
   return {
     format: NETLIST_FORMAT,
@@ -161,5 +164,6 @@ export function extractNetlist(d: Diagram): Record<string, unknown> {
     }),
     nets: order.map((i) => ({ name: named[i]!, pins: nets[i].pins.map((p) => `${p.ref}.${p.name}`) })),
     ...(Object.keys(color).length || ends ? { wires: { ...(Object.keys(color).length ? { color } : {}), ...(ends ? { ends } : {}) } } : {}),
+    ...(probes.length ? { probes } : {}),
   }
 }

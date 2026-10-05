@@ -56,6 +56,8 @@ export function layoutCommand(args: Args, io: Io): number {
     return r.stage === 'input' ? EXIT.input : EXIT.blocked
   }
   const { diagram, report, intent, attempts } = r.value
+  warnings = [...warnings, ...intent.probeWarnings]
+  if (!json) for (const w of intent.probeWarnings) io.stderr(`warning: ${w}\n`)
   writeFile(io, out, serializeDiagram(diagram))
   const q = bomQuantities(sheetBom(diagram))
   const ch = channelTable(intent)

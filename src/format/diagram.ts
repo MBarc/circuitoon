@@ -73,6 +73,11 @@ export interface Annotation {
   label?: string
   text?: string
 }
+/** Where a probe reads (live-simulation spec 6.2): a part (current per pin, and power) or one of its pins or hole groups. */
+export interface ProbeAnchor { part: string; pin?: string }
+export interface Probe { id: string; name?: string; at: ProbeAnchor }
+/** A probe id: P and a whole number from 1. */
+export const PROBE_ID = /^P[1-9]\d*$/
 export interface Diagram {
   format: typeof DIAGRAM_FORMAT
   title: string
@@ -87,6 +92,8 @@ export interface Diagram {
   intent?: unknown
   /** Notes stored with the sheet, such as the mains notice on every exported mains sheet (spec 6). */
   notes?: string[]
+  /** Saved probes (spec 6.2): readouts anchored to part uids and pins, never wires. */
+  probes?: Probe[]
 }
 
 export const NAMED_COLORS: Record<string, string> = {
@@ -1407,6 +1414,20 @@ export const ROUTE_POINT_LIMIT = 200
 export const ANNOTATION_LABEL_MAX = 80
 export const ANNOTATION_TEXT_MAX = 500
 
+/** What is wrong with one stored probe, or null. `pinsOf` gives a part's pin and hole names, null when its module is not embedded, undefined when there is no such part. */
+function probeProblem(p: unknown, ids: Set<string>, pinsOf: (uid: string) => Set<string> | null | undefined): string | null {
+  if (!isObj(p)) return 'must be { "id", "name"?, "at": { "part", "pin"? } }'
+  for (const k of Object.keys(p)) if (!['id', 'name', 'at'].includes(k)) return `unknown field "${k}"`
+  if (typeof p.id !== 'string' || !PROBE_ID.test(p.id)) return 'its id must be P and a number (P1, P2, ...)'
+  if (ids.has(p.id)) return `its id ${p.id} is used twice`
+  if (p.name !== undefined && !(typeof p.name === 'string' && p.name.trim() && p.name.length <= 40)) return 'its name must be text, at most 40 characters'
+  if (!isObj(p.at) || typeof p.at.part !== 'string' || (p.at.pin !== undefined && typeof p.at.pin !== 'string')) return 'its anchor must be { "part", "pin"? }'
+  const pins = pinsOf(p.at.part)
+  if (pins === undefined) return `no part "${p.at.part}"`
+  if (typeof p.at.pin === 'string' && pins && !pins.has(p.at.pin)) return `part "${p.at.part}" has no pin "${p.at.pin}"`
+  return null
+}
+
 /**
  * Checks a parsed diagram file. Structural problems refuse the load (errors); a connection
  * that names a missing part or pin still loads (warning), so no wire is silently dropped.
@@ -1685,11 +1706,39 @@ export function validateDiagram(raw: unknown, opts: { library?: (id: string) => 
     }
   }
 
+  // Probes (spec 6.2): a bad or dangling one is dropped with a warning, never an error.
+  let probesFix: Probe[] | undefined | null = null
+  if (raw.probes !== undefined) {
+    if (!Array.isArray(raw.probes)) {
+      probesFix = undefined
+      warnings.push('probes: must be a list, so it was dropped')
+    } else {
+      const kept: Probe[] = []
+      const ids = new Set<string>()
+      const pinsOf = (uid: string): Set<string> | null | undefined => {
+        if (!partModule.has(uid)) return undefined
+        const m = modules.get(partModule.get(uid)!)
+        return m ? new Set([...m.pins.flatMap((x) => ('name' in x && typeof x.name === 'string' ? [x.name] : [])), ...(m.holes ?? []).map((h) => h.name)]) : null
+      }
+      raw.probes.forEach((p, i) => {
+        const why = probeProblem(p, ids, pinsOf)
+        if (why) return void warnings.push(`probes[${i}]: ${why}, so the probe was dropped`)
+        kept.push(p as Probe)
+        ids.add((p as Probe).id)
+      })
+      if (kept.length !== raw.probes.length) probesFix = kept
+    }
+  }
+
   if (errors.length) return { ok: false, errors }
   let diagram = raw as unknown as Diagram
   if (notesFix !== null) {
     const { notes: _n, ...rest } = diagram
     diagram = notesFix ? { ...rest, notes: notesFix } : rest
+  }
+  if (probesFix !== null) {
+    const { probes: _p, ...rest } = diagram
+    diagram = probesFix?.length ? { ...rest, probes: probesFix } : rest
   }
   if (partFixes.size || droppedRoutes.size || endFixes.size)
     diagram = {

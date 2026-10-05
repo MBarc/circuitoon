@@ -4211,6 +4211,8 @@ function holeExits(rect, strips, own, p, used) {
 * default instead of the value the file asked for. The editor lists these warnings first. */
 var VALUE_DROPPED = "it was dropped and the module default is shown";
 var DIAGRAM_FORMAT = "circuitoon-diagram/1";
+/** A probe id: P and a whole number from 1. */
+var PROBE_ID = /^P[1-9]\d*$/;
 var NAMED_COLORS = {
 	red: "#E0483E",
 	black: "#2B2F36",
@@ -5550,6 +5552,23 @@ function isValidColor(c) {
 }
 /** Largest |x| or |y|, in px, a part position or a stored route point may have. */
 var COORD_LIMIT = 1e5;
+/** What is wrong with one stored probe, or null. `pinsOf` gives a part's pin and hole names, null when its module is not embedded, undefined when there is no such part. */
+function probeProblem(p, ids, pinsOf) {
+	if (!isObj(p)) return "must be { \"id\", \"name\"?, \"at\": { \"part\", \"pin\"? } }";
+	for (const k of Object.keys(p)) if (![
+		"id",
+		"name",
+		"at"
+	].includes(k)) return `unknown field "${k}"`;
+	if (typeof p.id !== "string" || !PROBE_ID.test(p.id)) return "its id must be P and a number (P1, P2, ...)";
+	if (ids.has(p.id)) return `its id ${p.id} is used twice`;
+	if (p.name !== void 0 && !(typeof p.name === "string" && p.name.trim() && p.name.length <= 40)) return "its name must be text, at most 40 characters";
+	if (!isObj(p.at) || typeof p.at.part !== "string" || p.at.pin !== void 0 && typeof p.at.pin !== "string") return "its anchor must be { \"part\", \"pin\"? }";
+	const pins = pinsOf(p.at.part);
+	if (pins === void 0) return `no part "${p.at.part}"`;
+	if (typeof p.at.pin === "string" && pins && !pins.has(p.at.pin)) return `part "${p.at.part}" has no pin "${p.at.pin}"`;
+	return null;
+}
 /**
 * Checks a parsed diagram file. Structural problems refuse the load (errors); a connection
 * that names a missing part or pin still loads (warning), so no wire is silently dropped.
@@ -5794,6 +5813,28 @@ function validateDiagram(raw, opts = {}) {
 			notesFix = raw.notes.filter((n) => typeof n === "string");
 		}
 	}
+	let probesFix = null;
+	if (raw.probes !== void 0) {
+		if (!Array.isArray(raw.probes)) {
+			probesFix = void 0;
+			warnings.push("probes: must be a list, so it was dropped");
+		} else {
+			const kept = [];
+			const ids = /* @__PURE__ */ new Set();
+			const pinsOf = (uid) => {
+				if (!partModule.has(uid)) return void 0;
+				const m = modules.get(partModule.get(uid));
+				return m ? /* @__PURE__ */ new Set([...m.pins.flatMap((x) => "name" in x && typeof x.name === "string" ? [x.name] : []), ...(m.holes ?? []).map((h) => h.name)]) : null;
+			};
+			raw.probes.forEach((p, i) => {
+				const why = probeProblem(p, ids, pinsOf);
+				if (why) return void warnings.push(`probes[${i}]: ${why}, so the probe was dropped`);
+				kept.push(p);
+				ids.add(p.id);
+			});
+			if (kept.length !== raw.probes.length) probesFix = kept;
+		}
+	}
 	if (errors.length) return {
 		ok: false,
 		errors
@@ -5804,6 +5845,13 @@ function validateDiagram(raw, opts = {}) {
 		diagram = notesFix ? {
 			...rest,
 			notes: notesFix
+		} : rest;
+	}
+	if (probesFix !== null) {
+		const { probes: _p, ...rest } = diagram;
+		diagram = probesFix?.length ? {
+			...rest,
+			probes: probesFix
 		} : rest;
 	}
 	if (partFixes.size || droppedRoutes.size || endFixes.size) diagram = {
@@ -86382,6 +86430,44 @@ function parseNetlist(raw, library) {
 			}
 		}
 	}
+	const probes = [];
+	const probeWarnings = [];
+	if (raw.probes !== void 0) {
+		if (!Array.isArray(raw.probes)) probeWarnings.push("probes: must be a list, so it was dropped");
+		else {
+			const ids = /* @__PURE__ */ new Set();
+			const netNames = new Set(nets.map((n) => n.name));
+			raw.probes.forEach((p, i) => {
+				const drop = (why) => void probeWarnings.push(`probes[${i}]: ${why}, so the probe was dropped`);
+				if (!isObj(p) || typeof p.at !== "string") return drop("must be { \"id\", \"name\"?, \"at\", \"ref\"? }");
+				if (typeof p.id !== "string" || !PROBE_ID.test(p.id)) return drop("its id must be P and a number (P1, P2, ...)");
+				if (ids.has(p.id)) return drop(`its id ${p.id} is used twice`);
+				if (p.name !== void 0 && !(typeof p.name === "string" && p.name.trim() && p.name.length <= 40)) return drop("its name must be text, at most 40 characters");
+				if (p.ref !== void 0 && !(typeof p.ref === "string" && p.ref.startsWith("net:") && netNames.has(p.ref.slice(4)))) return drop("its ref must be net:<a net of this netlist>");
+				let at = p.at;
+				if (at.startsWith("net:")) {
+					if (!netNames.has(at.slice(4))) return drop(`no net "${at.slice(4)}"`);
+				} else {
+					const dot = at.indexOf(".");
+					const ref = dot < 0 ? at : at.slice(0, dot);
+					const hit = byRef.get(ref);
+					if (!hit) return drop(`no part "${ref}"`);
+					if (dot >= 0) {
+						const r = byName(hit.module, ref, at.slice(dot + 1), `probes[${i}].at`);
+						if (!r.ok) return drop(r.error.replace(/^probes\[\d+\]\.at: /, ""));
+						at = `${ref}.${r.t.name}`;
+					}
+				}
+				ids.add(p.id);
+				probes.push({
+					id: p.id,
+					...typeof p.name === "string" ? { name: p.name } : {},
+					at,
+					...typeof p.ref === "string" ? { ref: p.ref } : {}
+				});
+			});
+		}
+	}
 	if (errors.length) return {
 		ok: false,
 		errors
@@ -86397,6 +86483,8 @@ function parseNetlist(raw, library) {
 			groups,
 			notes,
 			copies: rep?.copies ?? [],
+			probes,
+			probeWarnings,
 			modules: Object.fromEntries(ids.map((id) => [id, used.get(id)])),
 			custom: ids.filter((id) => embedded.has(id)),
 			...ends ? { ends } : {}
@@ -90646,6 +90734,60 @@ function reportText(r) {
 	return `Readability: body overlaps ${r.bodyOverlaps}, caption overlaps ${r.captionOverlaps}, wire crossings ${r.wireCrossings}, wire length ${r.wireLength} px, sheet ${r.sheet.w} x ${r.sheet.h} px, blocked nets ${r.blockedNets.length ? r.blockedNets.join(", ") : "none"}${r.readabilityWarnings !== void 0 ? `, readability warnings ${r.readabilityWarnings}` : ""}${r.labels ? `, labels ${r.labels.mode} (${r.labels.nets.length ? `nets ${r.labels.nets.join(", ")}` : "no nets labelled"}${r.labels.unplaced.length ? `; no room for a label at some endpoints of ${r.labels.unplaced.join(", ")}, wired instead` : ""})` : ""}.`;
 }
 //#endregion
+//#region src/sim/probes.ts
+/** Layout (spec 6.2): netlist probes on the laid-out sheet, whose uids are the refs. net: picks a pin of the part the probe's name starts with, else the lowest ref. */
+function probesForSheet(intent) {
+	return intent.probes.map((p) => {
+		const base = {
+			id: p.id,
+			...p.name ? { name: p.name } : {}
+		};
+		if (p.at.startsWith("net:")) {
+			const net = intent.nets.find((n) => n.name === p.at.slice(4));
+			const pins = net.terminals.some((t) => !t.infra) ? net.terminals.filter((t) => !t.infra) : net.terminals;
+			const named = p.name?.trim().split(/\s+/)[0];
+			const pick = pins.find((t) => t.ref === named) ?? [...pins].sort((a, b) => naturalCompare(a.ref, b.ref) || naturalCompare(a.name, b.name))[0];
+			return {
+				...base,
+				at: {
+					part: pick.ref,
+					pin: pick.name
+				}
+			};
+		}
+		const dot = p.at.indexOf(".");
+		return {
+			...base,
+			at: dot < 0 ? { part: p.at } : {
+				part: p.at.slice(0, dot),
+				pin: p.at.slice(dot + 1)
+			}
+		};
+	});
+}
+/** Extract (spec 6.2): sheet probes in ref form; a pin probe on a part the netlist leaves out becomes net:<its net>; a part probe there is dropped with a warning. */
+function probesForNetlist(probes, refOf, nets, warn) {
+	return probes.flatMap((p) => {
+		const base = {
+			id: p.id,
+			...p.name ? { name: p.name } : {}
+		};
+		const ref = refOf.get(p.at.part);
+		if (ref) return [{
+			...base,
+			at: p.at.pin ? `${ref}.${p.at.pin}` : ref
+		}];
+		const key = p.at.pin !== void 0 ? nodeKey(p.at.part, p.at.pin) : null;
+		const net = key ? nets.find((n) => n.keys.includes(key)) : void 0;
+		if (net) return [{
+			...base,
+			at: `net:${net.name}`
+		}];
+		warn?.(`probe ${p.id} sat on a part the netlist leaves out (${p.at.part}), so it was dropped`);
+		return [];
+	});
+}
+//#endregion
 //#region src/agent/layout.ts
 var SPACINGS = [
 	30,
@@ -90753,10 +90895,14 @@ function layoutNetlist(raw, opts = {}) {
 			stage: "layout",
 			errors: findings.map((f) => `verify ${f.rule}: ${f.message}`)
 		};
+		const probes = probesForSheet(intent);
 		return {
 			ok: true,
 			value: {
-				diagram,
+				diagram: probes.length ? {
+					...diagram,
+					probes
+				} : diagram,
 				report: {
 					...readability(diagram, routes, real.value.netOfWire),
 					readabilityWarnings: readabilityFindings(diagram, routes).length,
@@ -90904,6 +91050,8 @@ function layoutCommand(args, io) {
 		return r.stage === "input" ? EXIT.input : EXIT.blocked;
 	}
 	const { diagram, report, intent, attempts } = r.value;
+	warnings = [...warnings, ...intent.probeWarnings];
+	if (!json) for (const w of intent.probeWarnings) io.stderr(`warning: ${w}\n`);
 	writeFile(io, out, serializeDiagram(diagram));
 	const q = bomQuantities(sheetBom(diagram));
 	const ch = channelTable(intent);
@@ -91286,7 +91434,8 @@ function sheetNets(d) {
 		}))
 	};
 }
-function extractNetlist(d) {
+/** `warn` hears of each probe extraction had to drop (spec 6.2). */
+function extractNetlist(d, warn) {
 	const modOf = (uid) => {
 		const p = d.parts.find((x) => x.uid === uid);
 		return p ? moduleOf(d, p.module) : void 0;
@@ -91324,6 +91473,7 @@ function extractNetlist(d) {
 	const ends = wires && endKinds.size === 1 && !endKinds.has("") ? [...endKinds][0] : void 0;
 	const custom = {};
 	for (const p of kept) if (!libraryLookup(p.module)) custom[p.module] = moduleOf(d, p.module);
+	const probes = probesForNetlist(d.probes ?? [], refOf, nets, warn);
 	const order = nets.map((_, i) => i).sort((a, b) => naturalCompare(named[a], named[b]));
 	return {
 		format: NETLIST_FORMAT,
@@ -91348,7 +91498,8 @@ function extractNetlist(d) {
 		...Object.keys(color).length || ends ? { wires: {
 			...Object.keys(color).length ? { color } : {},
 			...ends ? { ends } : {}
-		} } : {}
+		} } : {},
+		...probes.length ? { probes } : {}
 	};
 }
 //#endregion
@@ -91360,7 +91511,7 @@ function netlistCommand(args, io) {
 	if (rest.length) throw new CliError(`netlist: give one sheet file, not ${args.positionals.length}`, EXIT.input);
 	const { diagram, warnings } = loadSheet(io, input);
 	for (const w of warnings) io.stderr(`warning: ${w}\n`);
-	const netlist = extractNetlist(diagram);
+	const netlist = extractNetlist(diagram, (w) => io.stderr(`warning: ${w}\n`));
 	const out = flag(args, "--out") ?? null;
 	const text = `${JSON.stringify(netlist, null, 2)}\n`;
 	if (out) writeFile(io, out, text);
