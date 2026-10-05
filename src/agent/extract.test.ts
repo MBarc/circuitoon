@@ -5,7 +5,7 @@
 import { describe, expect, it } from 'vitest'
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { extractNetlist } from './extract.ts'
+import { extractNetlist, sheetNets } from './extract.ts'
 import { layoutNetlist } from './layout.ts'
 import { type Intent, parseNetlist, terminalKey } from './netlist.ts'
 import { libraryLookup } from './catalog.ts'
@@ -252,5 +252,20 @@ describe.skipIf(!existsSync(hand))("Michael's hand-drawn Spirit Typewriter sheet
     expect(frame).toBeDefined()
     const unwired = again.parts.filter((p) => !again.connections.some((c) => c.from.part === p.uid || c.to.part === p.uid) && !p.mount && !again.parts.some((q) => q.mount?.board === p.uid))
     expect(unwired.map((p) => p.uid).sort()).toEqual(['MCP_Breadboard_1', 'MCP_Breadboard_2', 'MCP_Breadboard_3', 'U3', 'U4', 'U5'])
+  })
+})
+
+describe('sheetNets (shared with the simulator, spec 2)', () => {
+  it('names each net exactly as extract does, with the netlist() node keys it came from', () => {
+    const laid = layoutNetlist(ledNetlist())
+    if (!laid.ok) throw new Error(laid.errors.join('; '))
+    const d = laid.value.diagram
+    const s = sheetNets(d)
+    const extracted = extractNetlist(d) as { nets: { name: string }[] }
+    expect(s.nets.map((n) => n.name).sort()).toEqual(extracted.nets.map((n) => n.name).sort())
+    const gnd = s.nets.find((n) => n.name === 'GND')!
+    expect(gnd.keys).toContain(JSON.stringify(['D1', 'K']))
+    expect(s.netlist.nets.some((keys) => keys.every((k) => gnd.keys.includes(k)))).toBe(true)
+    expect(s.refOf.get('BT1')).toBe('BT1')
   })
 })

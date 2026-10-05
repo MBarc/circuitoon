@@ -11,7 +11,7 @@
 import { type Diagram, type PartInstance, moduleOf } from '../format/diagram.ts'
 import { isBoard, isNetLabel, type ModuleDef, moduleSettings } from '../format/module.ts'
 import { plugsOf } from '../format/breadboard.ts'
-import { netlist, nodeKey } from '../format/netlist.ts'
+import { type Netlist, netlist, nodeKey } from '../format/netlist.ts'
 import { labelName } from '../format/netLabels.ts'
 import { nameNets } from '../format/netNames.ts'
 import { NETLIST_FORMAT, REF_PATTERN, parseNetlist } from './netlist.ts'
@@ -38,7 +38,14 @@ function settingsOf(p: PartInstance, m: ModuleDef): Record<string, string> | und
   return kept.length ? Object.fromEntries(kept) : undefined
 }
 
-export function extractNetlist(d: Diagram): Record<string, unknown> {
+export interface SheetNet { name: string; keys: string[]; pins: { ref: string; name: string; m: ModuleDef }[]; label?: string }
+
+/**
+ * The nets extract writes, named by nameNets, each with the node keys of the netlist() net it came
+ * from (spec 2: the simulator names its nodes from this, so net:GND means the same net in the CLI,
+ * extract, KiCad and the simulator).
+ */
+export function sheetNets(d: Diagram): { refOf: Map<string, string>; kept: PartInstance[]; nets: SheetNet[]; netlist: Netlist } {
   const modOf = (uid: string) => {
     const p = d.parts.find((x) => x.uid === uid)
     return p ? moduleOf(d, p.module) : undefined
@@ -64,7 +71,7 @@ export function extractNetlist(d: Diagram): Record<string, unknown> {
   const n = netlist(d)
 
   type Pin = { ref: string; name: string; m: ModuleDef }
-  const nets: { pins: Pin[]; label?: string }[] = []
+  const nets: { pins: Pin[]; keys: string[]; label?: string }[] = []
   for (const keys of n.nets) {
     const pins: Pin[] = []
     const strips: Pin[] = []
@@ -90,10 +97,20 @@ export function extractNetlist(d: Diagram): Record<string, unknown> {
     // and a net with one component pin keeps its name (Michael's VIN).
     if (!pins.length || pins.length + strips.length < 2) continue
     const order = (a: Pin, b: Pin) => naturalCompare(a.ref, b.ref) || naturalCompare(a.name, b.name)
-    nets.push({ pins: [...pins, ...strips].sort(order), ...(label !== undefined ? { label } : {}) })
+    nets.push({ pins: [...pins, ...strips].sort(order), keys, ...(label !== undefined ? { label } : {}) })
   }
 
   const named = nameNets(nets)
+  return { refOf, kept, netlist: n, nets: nets.map((net, i) => ({ ...net, name: named[i]! })) }
+}
+
+export function extractNetlist(d: Diagram): Record<string, unknown> {
+  const modOf = (uid: string) => {
+    const p = d.parts.find((x) => x.uid === uid)
+    return p ? moduleOf(d, p.module) : undefined
+  }
+  const { refOf, kept, nets, netlist: n } = sheetNets(d)
+  const named = nets.map((x) => x.name)
 
   // One color per net when all its wires agree, and the cable ends when every wire has the same both ends.
   const nodeNet = new Map<string, number>()

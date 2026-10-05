@@ -89456,7 +89456,12 @@ function settingsOf(p, m) {
 	const kept = Object.entries(p.settings ?? {}).filter(([k, v]) => Object.hasOwn(offered, k) && offered[k].includes(v));
 	return kept.length ? Object.fromEntries(kept) : void 0;
 }
-function extractNetlist(d) {
+/**
+* The nets extract writes, named by nameNets, each with the node keys of the netlist() net it came
+* from (spec 2: the simulator names its nodes from this, so net:GND means the same net in the CLI,
+* extract, KiCad and the simulator).
+*/
+function sheetNets(d) {
 	const modOf = (uid) => {
 		const p = d.parts.find((x) => x.uid === uid);
 		return p ? moduleOf(d, p.module) : void 0;
@@ -89505,10 +89510,28 @@ function extractNetlist(d) {
 		const order = (a, b) => naturalCompare(a.ref, b.ref) || naturalCompare(a.name, b.name);
 		nets.push({
 			pins: [...pins, ...strips].sort(order),
+			keys,
 			...label !== void 0 ? { label } : {}
 		});
 	}
 	const named = nameNets(nets);
+	return {
+		refOf,
+		kept,
+		netlist: n,
+		nets: nets.map((net, i) => ({
+			...net,
+			name: named[i]
+		}))
+	};
+}
+function extractNetlist(d) {
+	const modOf = (uid) => {
+		const p = d.parts.find((x) => x.uid === uid);
+		return p ? moduleOf(d, p.module) : void 0;
+	};
+	const { refOf, kept, nets, netlist: n } = sheetNets(d);
+	const named = nets.map((x) => x.name);
 	const nodeNet = /* @__PURE__ */ new Map();
 	nets.forEach((net, i) => net.pins.forEach((p) => nodeNet.set(JSON.stringify([p.ref, p.name]), i)));
 	const netOfKey = (k) => {
