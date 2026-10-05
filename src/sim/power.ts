@@ -8,12 +8,12 @@ import type { Diagram, PartInstance } from '../format/diagram.ts'
 import type { ModuleDef } from '../format/module.ts'
 import { mainsOf } from '../format/mainsModel.ts'
 import { nodeKey } from '../format/netlist.ts'
-import { type Quantity, type Rail, simOf } from '../format/simModel.ts'
+import { type Draw, type Quantity, type Rail, simOf } from '../format/simModel.ts'
 import { gpioState, simOverride } from '../format/simState.ts'
 import { DEFAULT_SOURCE, usbLink, usbSides } from '../format/usb.ts'
 import { paramValue } from '../format/values.ts'
 import type { Builder } from './build.ts'
-import { CABLE_OHMS, IQ_DEFAULT, MIN_VOLTS_FRACTION, OR_DIODE_VF, PLUG_OHMS, RAIL_DIRECT_OHMS, ROUT_DEFAULT, loadEstimate } from './estimates.ts'
+import { CABLE_OHMS, IQ_DEFAULT, MIN_VOLTS_FRACTION, NO_POWER_DATA, OR_DIODE_VF, PLUG_OHMS, RAIL_DIRECT_OHMS, ROUT_DEFAULT, loadEstimate } from './estimates.ts'
 import { schottky } from './ledModels.ts'
 import type { Param, ResolvedRail } from './model.ts'
 
@@ -61,10 +61,16 @@ export function powerPart(b: Builder, p: PartInstance, m: ModuleDef): void {
   }
 
   // The board's own consumption: a voltage-aware load per domain (spec 4 table), or the category
-  // estimate on the first domain when it states no draw (spec 3.4).
-  const draws = power.draw ?? []
-  const est = draws.length ? null : loadEstimate(m)
-  const list = est ? [{ domain: power.domains[0].name, typical: est.typical, peak: est.peak }] : draws
+  // estimate on the first domain when it states no draw (spec 3.4). A part that only converts or
+  // supplies (rails or a source) draws through its rails' iq; anything else with no draw and no
+  // estimate is listed, never a silent 0 A.
+  let list: Draw[] = power.draw ?? []
+  if (!list.length) {
+    const est = loadEstimate(m)
+    if (est && !power.domains.length) return b.skip(p.uid, NO_POWER_DATA)
+    if (est) list = [{ domain: power.domains[0].name, typical: est.typical, peak: est.peak }]
+    else if (!power.rails?.length && !power.source) b.unsimulated(p.uid, NO_POWER_DATA)
+  }
   for (const dr of list) {
     const dn = domains.get(dr.domain)
     if (!dn) continue
@@ -79,7 +85,12 @@ export function powerPart(b: Builder, p: PartInstance, m: ModuleDef): void {
 
   for (const r of power.rails ?? []) {
     const out = domains.get(r.output)
-    const ins = r.inputs.map((x) => ({ ...x, d: domains.get(x.domain) })).filter((x) => x.d)
+    const ins = r.inputs.map((x) => ({ ...x, d: domains.get(x.domain) })).filter((x) => {
+      if (!x.d) b.note(`${ref}: rail ${r.id}: input domain ${x.domain} is not simulated, so that input is left out`)
+      return x.d
+    })
+    if (!out) b.note(`${ref}: rail ${r.id}: output domain ${r.output} is not simulated, so the rail is left out`)
+    else if (!ins.length) b.note(`${ref}: rail ${r.id} has no simulated input, so the rail is left out`)
     if (!out || !ins.length) continue
     const id = `${p.uid}.rail.${r.id}`
     // Ruling R17: one internal input node, a Schottky per diode input, 1 milliohm per direct one.
@@ -89,6 +100,7 @@ export function powerPart(b: Builder, p: PartInstance, m: ModuleDef): void {
       else b.add({ kind: 'resistor', id: `${id}.in.${x.domain}`, part: p.uid, a: x.d!.pin, b: inNode, ohms: b.param({ value: RAIL_DIRECT_OHMS, unit: 'ohm', provenance: 'estimate', note: 'direct rail input (ruling R17)' }, L(`rails.${r.id}.input`)), role: 'rail-input' })
     }
     if (r.kind === 'switch') {
+      // ponytail: a `ron` switch conducts both ways whatever `reverse` says; add a blocking diode in series when a sheet needs reverse blocking.
       if (r.ron) b.add({ kind: 'resistor', id, part: p.uid, a: inNode, b: out.pin, ohms: P(r.ron, `rails.${r.id}.ron`), role: 'switch-rail' })
       else b.add({ kind: 'diode', id, part: p.uid, a: inNode, k: out.pin, model: schottky(r.vf!.value), role: 'switch-rail' })
       continue
@@ -152,7 +164,7 @@ export function powerPart(b: Builder, p: PartInstance, m: ModuleDef): void {
       } else if (g.inputLeakage && g.inputLeakage.value > 0) {
         // Input leakage as the resistance that leaks that current at the domain's nominal voltage.
         const node = b.tap(p.uid, pin)
-        if (node) b.add({ kind: 'resistor', id, part: p.uid, a: node, b: io.ret, ohms: { ...R(g.inputLeakage, 'inputLeakage'), value: io.nominal / g.inputLeakage.value }, role: 'leak' })
+        if (node) b.add({ kind: 'resistor', id, part: p.uid, a: node, b: io.ret, ohms: { ...R(g.inputLeakage, 'inputLeakage'), value: io.nominal / g.inputLeakage.value, note: 'derived: domain nominal / inputLeakage' }, role: 'leak' })
       }
     }
   // Spec 3.5, as for a battery: the imax override replaces the module's sourceCurrent limit.
@@ -166,13 +178,22 @@ export function usbLinks(b: Builder, d: Diagram): void {
   for (const c of [...d.connections].sort((x, y) => (x.uid < y.uid ? -1 : 1))) {
     const link = usbLink(d, c)
     if (!link) continue
-    const [host, dev] = usbSides(link.from, link.to) ?? [link.from, link.to]
+    // No clear host and device (two hosts, two devices): usb-role reports it; nothing to compile.
+    const sides = usbSides(link.from, link.to)
+    if (!sides) continue
+    const [host, dev] = sides
+    // A device that is not simulated has nothing for the cable to feed.
+    if (!b.simulated(dev.part.uid)) continue
     if (host.usb.hub === 'downstream') {
       b.unsimulated(dev.part.uid, 'powered through a hub: not simulated yet')
       continue
     }
     if (!simOf(host.module)?.power) {
       b.unsimulated(dev.part.uid, `powered from ${b.ref(host.part.uid)} over USB, which has no power data`)
+      continue
+    }
+    if (!b.simulated(host.part.uid)) {
+      b.unsimulated(dev.part.uid, `powered over USB from ${b.ref(host.part.uid)}, which is not simulated`)
       continue
     }
     const ohms = link.direct ? PLUG_OHMS : CABLE_OHMS

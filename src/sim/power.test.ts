@@ -3,7 +3,7 @@
 // and the cases that are not simulated (hub, host without data, incomplete rail).
 import { describe, expect, it } from 'vitest'
 import { buildCircuit } from './build.ts'
-import { boardModule, cellModule, hostModule, ldoModule, q, sheet } from './testing.ts'
+import { boardModule, boostModule, buckModule, cellModule, hostModule, ldoModule, q, sheet } from './testing.ts'
 import type { Device } from './model.ts'
 import type { ModuleDef } from '../format/module.ts'
 import { load } from '../format/builtinModules.testing.ts'
@@ -91,5 +91,85 @@ describe('power models', () => {
     const off = buildCircuit(sheet(parts({}), wires))
     expect(byId(off.devices, 'p1.source')).toBeUndefined()
     expect(off.notes.join(' ')).toContain('P1: its mains input is off')
+  })
+})
+
+// Fix round 1: no crash or silent 0 A without draw data, USB ends that are not simulated, unclear
+// roles, notes for rails it cannot place, and the remaining GPIO, rail and USB cases.
+type Sim = { power: { domains: object[]; draw?: object[]; rails?: object[]; source?: object }; gpio?: object; usbPorts?: object; limits?: object[] }
+const simOfMod = (m: ModuleDef) => (m.electrical as { sim: Sim }).sim
+const withSim = (m: ModuleDef, sim: Sim, id: string, model?: string): ModuleDef => ({ ...m, id, electrical: { ...(m.electrical as object), ...(model ? { model } : {}), sim } })
+const withUsb = (m: ModuleDef, usb: object, id: string): ModuleDef => ({ ...m, id, pins: m.pins.map((p) => ('usb' in p && p.usb ? { ...p, usb: { ...p.usb, ...usb } } : p)) as ModuleDef['pins'] })
+const badRail = { id: 'bad', inputs: [], output: '3V3', kind: 'ldo', reverse: 'blocks' }
+
+describe('power models: fix round 1', () => {
+  it('skips a part whose category estimate applies but that has no domains, without a crash', () => {
+    const m = withSim(boardModule({ draw: false }), { power: { domains: [] } }, 'test-esp32-nodomains')
+    const c = buildCircuit(sheet([{ uid: 'u1', module: m }], []))
+    expect([c.devices, c.unsimulated]).toEqual([[], [{ part: 'u1', reason: 'no power data' }]])
+  })
+  it('lists a part with no draw, no estimate, no rails and no source as no power data, never a silent 0 A', () => {
+    const b = boardModule({ draw: false })
+    const m = withSim(b, { power: { domains: simOfMod(b).power.domains } }, 'test-thing', 'thing')
+    const c = buildCircuit(sheet([{ uid: 'u1', module: m }], []))
+    expect(c.unsimulated).toEqual([{ part: 'u1', reason: 'no power data' }])
+    expect(c.devices.filter((d) => d.kind === 'load')).toEqual([])
+  })
+  it('lists the device when its USB host is not simulated, and compiles no link to a device that is not', () => {
+    const h = hostModule()
+    const badHost = withSim(h, { power: { ...simOfMod(h).power, rails: [badRail] } }, 'test-bad-host')
+    const c = buildCircuit(sheet([{ uid: 'h1', module: badHost }, { uid: 'u1', module: boardModule() }], [['h1.USB', 'u1.USB']]))
+    expect(c.unsimulated).toContainEqual({ part: 'u1', reason: 'powered over USB from H1, which is not simulated' })
+    expect([c.usb, c.devices.filter((d) => d.id.startsWith('usb.'))]).toEqual([[], []])
+    const b = boardModule()
+    const badDev = withSim(b, { ...simOfMod(b), power: { ...simOfMod(b).power, rails: [badRail] } }, 'test-bad-dev')
+    const d = buildCircuit(sheet([{ uid: 'h1', module: hostModule() }, { uid: 'u1', module: badDev }], [['h1.USB', 'u1.USB']]))
+    expect([d.usb, d.devices.filter((x) => x.id.startsWith('usb.')), d.taps.filter((t) => t.part === 'u1')]).toEqual([[], [], []])
+    expect(d.unsimulated).toEqual([{ part: 'u1', reason: 'incomplete power data: rail bad needs vout, dropout, ioutMax' }])
+  })
+  it('compiles no link between two ports with no clear host and device', () => {
+    const c = buildCircuit(sheet([{ uid: 'h1', module: hostModule() }, { uid: 'h2', module: hostModule() }], [['h1.USB', 'h2.USB']]))
+    expect([c.usb, c.devices.filter((d) => d.id.startsWith('usb.'))]).toEqual([[], []])
+  })
+  it('uses the plug resistance for a plug pushed into a socket, and the USB default when the host states no source', () => {
+    const host = withUsb(hostModule(), { source: undefined, version: '3.0' }, 'test-host-3')
+    const dev = withUsb(boardModule(), { connector: 'A', gender: 'plug' }, 'test-plug-board')
+    const c = buildCircuit(sheet([{ uid: 'h1', module: host }, { uid: 'u1', module: dev }], [['h1.USB', 'u1.USB']]))
+    expect(byId(c.devices, 'usb.w1.vbus')).toMatchObject({ ohms: { value: 0.02, basis: 'estimate', label: 'plug.w1.vbus' } })
+    expect(c.usb[0].limit).toMatchObject({ value: 0.9, basis: 'representative', label: 'usb-default.3.0' })
+  })
+  it('compiles input-pullup and input leakage (labelled as derived) GPIO states', () => {
+    const c = buildCircuit(sheet([{ uid: 'u1', module: boardModule({ leak: true }), values: { 'gpio.IO1': 'input-pullup' } }], []))
+    expect(byId(c.devices, 'u1.gpio.IO1')).toMatchObject({ kind: 'resistor', role: 'pull', a: 'u1:3V3', b: 'u1:IO1', ohms: { value: 45000 } })
+    const leak = byId(c.devices, 'u1.gpio.IO2')!
+    expect(leak).toMatchObject({ kind: 'resistor', role: 'leak', a: 'u1:IO2', b: 'u1:GND' })
+    expect(leak.kind === 'resistor' && [leak.ohms.value, leak.ohms.note]).toEqual([3.3 / 5e-8, 'derived: domain nominal / inputLeakage'])
+  })
+  it('compiles a switch rail with ron as a resistor', () => {
+    const b = boardModule()
+    const sim = simOfMod(b)
+    const rails = (sim.power.rails as { id: string }[]).map((r) => (r.id === 'usb-diode' ? { ...r, vf: undefined, ron: q(0.05, 'ohm') } : r))
+    const c = buildCircuit(sheet([{ uid: 'u1', module: withSim(b, { ...sim, power: { ...sim.power, rails } }, 'test-ron-board') }], []))
+    expect(byId(c.devices, 'u1.rail.usb-diode')).toMatchObject({ kind: 'resistor', role: 'switch-rail', a: 'u1.rail.usb-diode#in', b: 'u1:VIN', ohms: { value: 0.05 } })
+  })
+  it('gives buck and boost rails the iq and rout defaults, and passes offPath and reverse through', () => {
+    const rail = (m: ModuleDef, id: string) => {
+      const d = byId(buildCircuit(sheet([{ uid: 'u1', module: m }], [])).devices, `u1.rail.${id}`)!
+      return d.kind === 'rail' ? d.rail : null
+    }
+    const buck = rail(buckModule(), 'buck')!
+    expect([buck.iq.value, buck.iq.basis, buck.rout.value, buck.rout.basis, buck.offPath, buck.reverse, buck.efficiency?.value]).toEqual([0, 'estimate', 0.1, 'estimate', 'open', 'blocks', 0.9])
+    const boost = rail(boostModule({ reverse: 'body-diode' }), 'boost')!
+    expect([boost.offPath, boost.reverse]).toEqual(['diode', 'body-diode'])
+  })
+  it('notes a rail input or a rail it cannot place, instead of dropping it silently', () => {
+    const one = ldoModule({ inputs: [{ domain: 'IN', via: 'direct' }, { domain: 'AUX', via: 'diode' }] }, 'test-ldo-aux')
+    const c = buildCircuit(sheet([{ uid: 'u1', module: one }], []))
+    expect(c.notes).toContain('U1: rail ldo: input domain AUX is not simulated, so that input is left out')
+    expect(byId(c.devices, 'u1.rail.ldo')).toBeDefined()
+    const none = ldoModule({ inputs: [{ domain: 'AUX', via: 'direct' }] }, 'test-ldo-none')
+    const d = buildCircuit(sheet([{ uid: 'u1', module: none }], []))
+    expect(d.notes).toContain('U1: rail ldo has no simulated input, so the rail is left out')
+    expect(byId(d.devices, 'u1.rail.ldo')).toBeUndefined()
   })
 })

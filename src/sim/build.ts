@@ -155,6 +155,10 @@ export class Builder {
     this.unsim = this.unsim.filter(other)
     this.unsim.push({ part: uid, reason })
   }
+  /** Whether the part is simulated (compiled and not skipped). */
+  simulated(uid: string): boolean {
+    return uid in this.parts
+  }
   /** One path or pin of a simulated part is not simulated (ruling R7, an unset output-only pin). */
   unsimulated(uid: string, reason: string): void {
     this.unsim.push({ part: uid, reason })
