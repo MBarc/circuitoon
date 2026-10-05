@@ -33,6 +33,7 @@
     "check:partmaker-ui": "node scripts/check-partmaker-ui.mjs",
     "check:usb-ui": "node scripts/check-usb-ui.mjs",
     "engine:build": "node scripts/engine-build.mjs",
+    "engine:release": "node scripts/engine-release.mjs",
     "deploy": "bash scripts/deploy.sh"
   },
   "dependencies": {

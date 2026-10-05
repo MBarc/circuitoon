@@ -9,4 +9,4 @@
    ngspice.mjs and ngspice.wasm with the exported functions listed in build.sh.
 3. To use a modified ngspice, change the source (or add a patch), rebuild, and copy the new
    ngspice.mjs and ngspice.wasm over public/sim/ (the site) or plugin/dist-cli/ (the CLI). Set
-   wasmBytes in engine.json to the new file's size.
+   wasmBytes and wasmSha256 in engine.json to the new file's size and SHA-256.
