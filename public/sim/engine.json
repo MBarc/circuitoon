@@ -1,0 +1,9 @@
+{
+  "ngspice": "45.2",
+  "build": "45.2-1",
+  "mode": "shared",
+  "emsdk": "6.0.11",
+  "wasmBytes": 4399513,
+  "wasmSha256": "286f48693917789b5d7f837b777c698942cf89133cb8af119934c0ceda5f1272",
+  "release": "https://github.com/MBarc/circuitoon/releases/tag/engine-ngspice-45.2-1"
+}

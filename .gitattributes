@@ -4,3 +4,7 @@ plugin/bin/*.mjs text eol=lf
 plugin/dist-cli/** text eol=lf
 # checks.ts once held a raw NUL, so git took it for binary and never normalised its line ends.
 src/format/checks.ts text eol=lf
+# The engine (live simulation spec 2.2): the WASM is binary, byte for byte; the build files stay LF so
+# the Docker build reads them on Windows checkouts too.
+engine/** text eol=lf
+*.wasm binary
