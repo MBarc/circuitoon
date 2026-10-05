@@ -163,21 +163,19 @@ export function powerPart(b: Builder, p: PartInstance, m: ModuleDef): void {
         continue
       }
       const R = (x: Quantity, key: string) => P(x, `gpio.${key}`)
-      const id = `${p.uid}.gpio.${pin}`
-      if (state === 'high' || state === 'low') {
-        const node = b.tap(p.uid, pin)
-        if (node) b.add({ kind: 'resistor', id, part: p.uid, a: state === 'high' ? io.pin : node, b: state === 'high' ? node : io.ret, ohms: R(g.outputResistance, 'outputResistance'), role: 'gpio' })
-      } else if (state === 'input-pullup' && g.pullup) {
-        const node = b.tap(p.uid, pin)
-        if (node) b.add({ kind: 'resistor', id, part: p.uid, a: io.pin, b: node, ohms: R(g.pullup, 'pullup'), role: 'pull' })
-      } else if (state === 'input-pulldown' && g.pulldown) {
-        const node = b.tap(p.uid, pin)
-        if (node) b.add({ kind: 'resistor', id, part: p.uid, a: node, b: io.ret, ohms: R(g.pulldown, 'pulldown'), role: 'pull' })
-      } else if (g.inputLeakage && g.inputLeakage.value > 0) {
-        // Input leakage as the resistance that leaks that current at the domain's nominal voltage.
-        const node = b.tap(p.uid, pin)
-        if (node) b.add({ kind: 'resistor', id, part: p.uid, a: node, b: io.ret, ohms: { ...R(g.inputLeakage, 'inputLeakage'), value: io.nominal / g.inputLeakage.value, note: 'derived: domain nominal / inputLeakage' }, role: 'leak' })
-      }
+      const node = b.tap(p.uid, pin)
+      // One device per pin whatever its state (gpioBranch picks the resistor). Input leakage is the
+      // resistance that leaks that current at the domain's nominal voltage.
+      if (node)
+        b.add({
+          kind: 'gpio', id: `${p.uid}.gpio.${pin}`, part: p.uid, pin, node, vdd: io.pin, ret: io.ret, domain: g.domain, state,
+          params: {
+            outputResistance: R(g.outputResistance, 'outputResistance'),
+            ...(g.pullup ? { pullup: R(g.pullup, 'pullup') } : {}),
+            ...(g.pulldown ? { pulldown: R(g.pulldown, 'pulldown') } : {}),
+            ...(g.inputLeakage && g.inputLeakage.value > 0 ? { leakage: { ...R(g.inputLeakage, 'inputLeakage'), value: io.nominal / g.inputLeakage.value, note: 'derived: domain nominal / inputLeakage' } } : {}),
+          },
+        })
     }
   // Spec 3.5, as for a battery: the imax override replaces the module's sourceCurrent limit.
   if (imaxOver === null) return b.partLimits(p, m)

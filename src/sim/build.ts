@@ -10,7 +10,7 @@ import { analyseMainsCached } from '../format/mains.ts'
 import { convertersInState } from '../format/mainsRules.ts'
 import { mainsOf } from '../format/mainsModel.ts'
 import { type Quantity, simOf } from '../format/simModel.ts'
-import { closedPairs, contactPosition, isActive, simOverride, switchGroups } from '../format/simState.ts'
+import { contactPosition, isActive, simOverride, switchGroups } from '../format/simState.ts'
 import { paramValue } from '../format/values.ts'
 import { sheetNets } from '../agent/extract.ts'
 import { naturalCompare } from '../agent/order.ts'
@@ -53,7 +53,6 @@ export class Builder {
   private notes: { part: string | null; text: string }[] = []
   /** The part being built, which owns the notes made meanwhile. */
   private current: string | null = null
-  private open: { part: string; group: string; a: string; b: string }[] = []
   private converters: Map<string, { state: string }> | null = null
 
   constructor(d: Diagram, opts: BuildOptions) {
@@ -146,7 +145,6 @@ export class Builder {
     delete this.parts[uid]
     this.devices = this.devices.filter(other)
     for (const [k, t] of this.tapsByKey) if (t.part === uid) this.tapsByKey.delete(k)
-    this.open = this.open.filter(other)
     this.limits = this.limits.filter(other)
     this.domains = this.domains.filter(other)
     this.gpios = this.gpios.filter(other)
@@ -319,16 +317,16 @@ export class Builder {
       case 'switch':
       case 'relay':
       case 'ssr': {
+        // Every contact is a switch device, open or closed, so a position is a state, not a topology.
         for (const g of switchGroups(m)) {
-          const pos = contactPosition(p, m, g, this.isHeld(p.uid, g.id))
-          closedPairs(g, pos).forEach(([x, y], i) => this.contact(p, m, `${p.uid}.${g.id}.${i + 1}`, x, y))
-          // A latching switch at rest: remember what it would join (ruling R30 names it).
-          if (g.kind === 'switch' && !g.momentary && !isActive(pos))
-            for (const [x, y] of closedPairs(g, g.changeover ? 'no' : 'closed')) {
-              const a = this.netName(p.uid, x)
-              const b = this.netName(p.uid, y)
-              if (a && b) this.open.push({ part: p.uid, group: g.id, a, b })
+          const active = isActive(contactPosition(p, m, g, this.isHeld(p.uid, g.id)))
+          g.poles.forEach((pole, i) => {
+            for (const [contact, to] of [['no', pole.no], ['nc', pole.nc]] as const) {
+              const a = to ? this.tap(p.uid, pole.com) : null
+              const b = to ? this.tap(p.uid, to) : null
+              if (a && b) this.add({ kind: 'switch', id: `${p.uid}.${g.id}.${i + 1}.${contact}`, part: p.uid, group: g.id, contact, latching: g.kind === 'switch' && !g.momentary, a, b, closed: active === (contact === 'no'), ron: this.contactOhms(p, m) })
             }
+          })
           if (g.kind !== 'switch') this.note(`${ref}: shown at rest; coil switching is simulated with firmware`)
         }
         // The coil (or any electronics) is a load only when the module has sim.power (spec 4 table); powerPart adds the limits then.
@@ -345,6 +343,14 @@ export class Builder {
     // Pins within a part by code point ("+" before "-"), so the order never depends on a collator.
     const taps = [...this.tapsByKey.values()].sort((a, b) => naturalCompare(a.part, b.part) || (a.pin < b.pin ? -1 : a.pin > b.pin ? 1 : 0))
     const devices = [...this.devices].sort((a, b) => naturalCompare(a.part, b.part) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
+    // Ruling R30: a latching group at rest would close all its `no` contacts together.
+    const open = new Map<string, Circuit['openContacts'][number]>()
+    for (const d of devices) {
+      if (d.kind !== 'switch' || !d.latching || d.contact !== 'no' || d.closed) continue
+      const key = JSON.stringify([d.part, d.group])
+      if (!open.has(key)) open.set(key, { part: d.part, group: d.group, pairs: [] })
+      open.get(key)!.pairs.push([d.a, d.b])
+    }
     const pinNet: Record<string, string> = {}
     for (const [k, net] of [...this.netOfKey].sort((a, b) => (a[0] < b[0] ? -1 : 1))) pinNet[k] = net
     return {
@@ -358,7 +364,7 @@ export class Builder {
       usb: this.usb,
       pinNet,
       mains: [...this.mainsKeys].sort(),
-      openContacts: this.open,
+      openContacts: [...open.values()],
       unsimulated: this.unsim,
       notes: [...new Set(this.notes.map((n) => n.text))],
     }

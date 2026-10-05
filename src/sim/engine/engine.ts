@@ -22,7 +22,7 @@ export function makeEngine(host: EngineHost): Engine {
     host,
     init: () => host.init(),
     async run(c, a, revision) {
-      const compiled = compile(c, classifyCached(c), a)
+      const compiled = compile(c, classifyCached(c, a), a)
       if (compiled.empty) return { status: 'ok', revision, raw: compiled.read({}), ms: 0 }
       const r = await host.runText(compiled.text)
       if (r.status === 'unavailable') return r

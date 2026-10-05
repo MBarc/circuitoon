@@ -4,11 +4,12 @@
 import { describe, expect, it } from 'vitest'
 import { buildCircuit } from './build.ts'
 import { boardModule, boostModule, buckModule, cellModule, hostModule, ldoModule, q, sheet } from './testing.ts'
-import type { Device } from './model.ts'
+import { type Device, gpioBranch } from './model.ts'
 import type { ModuleDef } from '../format/module.ts'
 import { load } from '../format/builtinModules.testing.ts'
 
 const byId = (devs: Device[], id: string) => devs.find((d) => d.id === id)
+const branch = (d: Device | undefined) => (d?.kind === 'gpio' ? gpioBranch(d) : undefined)
 
 describe('power models', () => {
   it('records domains, a voltage-aware load with the 90 % minVolts default, and both rails with defaults', () => {
@@ -36,13 +37,24 @@ describe('power models', () => {
     const noRails = { ...noGpio, power: { ...noGpio.power, rails: [] } }
     expect(estimateOn(withSim(b, noRails, 'test-esp32-bare'))).toEqual([['u1.draw.VIN', 0.08, 'estimate']])
   })
+  // Fix wave 7a: one gpio device per pin holds its state and every value; gpioBranch gives the
+  // resistor the state selects (these were separate resistor roles gpio, pull and leak).
   it('compiles GPIO states from the real IO domain node (spec 4.6)', () => {
     const c = buildCircuit(sheet([{ uid: 'u1', module: boardModule(), values: { 'gpio.IO1': 'high', 'gpio.IO2': 'input-pulldown' } }], []))
-    expect(byId(c.devices, 'u1.gpio.IO1')).toMatchObject({ kind: 'resistor', role: 'gpio', a: 'u1:3V3', b: 'u1:IO1' })
-    expect(byId(c.devices, 'u1.gpio.IO2')).toMatchObject({ kind: 'resistor', role: 'pull', a: 'u1:IO2', b: 'u1:GND' })
+    expect(byId(c.devices, 'u1.gpio.IO1')).toMatchObject({ kind: 'gpio', pin: 'IO1', node: 'u1:IO1', vdd: 'u1:3V3', ret: 'u1:GND', domain: '3V3', state: 'high' })
+    expect(branch(byId(c.devices, 'u1.gpio.IO1'))).toMatchObject({ a: 'u1:3V3', b: 'u1:IO1', ohms: { value: 30 }, leak: false })
+    expect(branch(byId(c.devices, 'u1.gpio.IO2'))).toMatchObject({ a: 'u1:IO2', b: 'u1:GND', ohms: { value: 45000 }, leak: false })
     expect(c.gpio.map((g) => `${g.pin}:${g.state}`)).toEqual(['IO1:high', 'IO2:input-pulldown'])
     const low = buildCircuit(sheet([{ uid: 'u1', module: boardModule(), values: { 'gpio.IO1': 'low' } }], []))
-    expect(byId(low.devices, 'u1.gpio.IO1')).toMatchObject({ a: 'u1:IO1', b: 'u1:GND' })
+    expect(branch(byId(low.devices, 'u1.gpio.IO1'))).toMatchObject({ a: 'u1:IO1', b: 'u1:GND' })
+  })
+  it('keeps one gpio device per pin whatever its state, so a state change is a parameter change', () => {
+    const shape = (state: string) => {
+      const c = buildCircuit(sheet([{ uid: 'u1', module: boardModule({ leak: true }), values: { 'gpio.IO1': state } }], []))
+      return JSON.stringify([c.taps, c.devices.map((d) => (d.kind === 'gpio' ? { ...d, state: 'x' } : d))])
+    }
+    const base = shape('input')
+    for (const s of ['input-pullup', 'input-pulldown', 'high', 'low']) expect(shape(s)).toBe(base)
   })
   it('joins a host and a device by a cable on both conductors, with the host port limit', () => {
     const c = buildCircuit(sheet([{ uid: 'h1', module: hostModule() }, { uid: 'u1', module: boardModule() }], [['h1.USB', 'u1.USB']]))
@@ -147,10 +159,10 @@ describe('power models: fix round 1', () => {
   })
   it('compiles input-pullup and input leakage (labelled as derived) GPIO states', () => {
     const c = buildCircuit(sheet([{ uid: 'u1', module: boardModule({ leak: true }), values: { 'gpio.IO1': 'input-pullup' } }], []))
-    expect(byId(c.devices, 'u1.gpio.IO1')).toMatchObject({ kind: 'resistor', role: 'pull', a: 'u1:3V3', b: 'u1:IO1', ohms: { value: 45000 } })
-    const leak = byId(c.devices, 'u1.gpio.IO2')!
-    expect(leak).toMatchObject({ kind: 'resistor', role: 'leak', a: 'u1:IO2', b: 'u1:GND' })
-    expect(leak.kind === 'resistor' && [leak.ohms.value, leak.ohms.note]).toEqual([3.3 / 5e-8, 'derived: domain nominal / inputLeakage'])
+    expect(branch(byId(c.devices, 'u1.gpio.IO1'))).toMatchObject({ a: 'u1:3V3', b: 'u1:IO1', ohms: { value: 45000 }, leak: false })
+    const leak = branch(byId(c.devices, 'u1.gpio.IO2'))!
+    expect(leak).toMatchObject({ a: 'u1:IO2', b: 'u1:GND', leak: true })
+    expect([leak.ohms.value, leak.ohms.note]).toEqual([3.3 / 5e-8, 'derived: domain nominal / inputLeakage'])
   })
   it('compiles a switch rail with ron as a resistor', () => {
     const b = boardModule()

@@ -6,8 +6,9 @@
 import { describe, expect, it } from 'vitest'
 import { nodeKey } from '../format/netlist.ts'
 import { buildCircuit } from './build.ts'
-import { classify, openSwitchFor, pinState, powered } from './floating.ts'
-import { netNode } from './model.ts'
+import type { ModuleDef } from '../format/module.ts'
+import { classify, classifyCached, openSwitchFor, pinState, powered } from './floating.ts'
+import { type Analysis, gpioBranch, netNode } from './model.ts'
 import { type PartSpec, boardModule, cellModule, ldoModule, sheet } from './testing.ts'
 
 const R = (uid: string, ohms = 100) => ({ uid, module: 'resistor', values: { resistance: { value: ohms, unit: 'ohm' } } })
@@ -15,7 +16,7 @@ const R = (uid: string, ohms = 100) => ({ uid, module: 'resistor', values: { res
 describe('floating classification', () => {
   it('does not count a GPIO input-leakage resistor as a path: a wired input that nothing drives floats', () => {
     const c = buildCircuit(sheet([{ uid: 'bt1', module: cellModule(5, 0.1) }, { uid: 'u1', module: boardModule({ leak: true }) }, R('r9')], [['bt1.+', 'u1.VIN'], ['bt1.-', 'u1.GND'], ['u1.IO1', 'r9.1']]))
-    expect(c.devices.some((d) => d.kind === 'resistor' && d.role === 'leak')).toBe(true)
+    expect(c.devices.some((d) => d.kind === 'gpio' && gpioBranch(d)?.leak)).toBe(true)
     expect(pinState(c, classify(c), nodeKey('u1', 'IO1'))).toBe('floating')
   })
   it('leaves a board behind an open switch unpowered though its ground is shared, and names the switch', () => {
@@ -28,11 +29,17 @@ describe('floating classification', () => {
     expect(openSwitchFor(c, 'u1:3V3')).toBe('s1')
     expect(openSwitchFor(c, 'u1:GND')).toBeNull()
   })
-  it('keeps a capacitor-only plate floating', () => {
+  it('keeps a capacitor-only plate floating in op, the default analysis', () => {
     const c = buildCircuit(sheet([{ uid: 'bt1', module: cellModule(5, 0.1) }, R('r1'), { uid: 'c1', module: 'capacitor-ceramic' }], [['bt1.+', 'r1.1'], ['r1.2', 'bt1.-'], ['c1.1', 'r1.1']]))
     const cls = classify(c)
     expect(pinState(c, cls, nodeKey('c1', '1'))).toBe('driven')
     expect(pinState(c, cls, nodeKey('c1', '2'))).toBe('floating')
+    expect(classify(c, { kind: 'op' })).toEqual(cls)
+    expect(classifyCached(c, { kind: 'op' })).toEqual(cls)
+    // Fix wave 7c: the capacitor is open only for op; a later analysis kind (none exists yet) couples its plates.
+    const later = { kind: 'tran' } as unknown as Pick<Analysis, 'kind'>
+    expect(pinState(c, classify(c, later), nodeKey('c1', '2'))).toBe('driven')
+    expect(pinState(c, classifyCached(c, later), nodeKey('c1', '2'))).toBe('driven')
   })
   it('floats what sits behind an open switch, and drives it once the switch is closed', () => {
     const parts = (values: Record<string, unknown>) => [{ uid: 'bt1', module: cellModule(5, 0.1) }, { uid: 's1', module: 'rocker-switch-kcd1', values }, R('r1')]
@@ -122,6 +129,18 @@ describe('floating classification', () => {
       expect(cls.driven.has('u1:3V3')).toBe(true)
       expect(pinState(c, cls, nodeKey('u1', 'GND'))).toBe('floating')
       expect(powered(c, cls, 'u1:3V3', 'u1:GND')).toBe(false)
+      expect(openSwitchFor(c, 'u1:3V3', 'u1:GND')).toBe('s1')
+    })
+    it('names a double-pole switch that breaks both + and - (fix wave, finding 4)', () => {
+      const dpst: ModuleDef = {
+        format: 'circuitoon-module/1', id: 'test-dpst', name: 'test-dpst',
+        pins: ['1A', '2A', '1B', '2B'].map((name, i) => ({ name, side: i % 2 ? 'right' : 'left' })),
+        electrical: { model: 'switch', contacts: [{ id: 's', kind: 'switch', poles: [{ com: '1A', no: '2A' }, { com: '1B', no: '2B' }] }] },
+      }
+      const c = buildCircuit(sheet([{ uid: 'bt1', module: cellModule(5, 0.1) }, { uid: 's1', module: dpst }, { uid: 'u1', module: boardModule() }],
+        [['bt1.+', 's1.1A'], ['s1.2A', 'u1.VIN'], ['bt1.-', 's1.1B'], ['s1.2B', 'u1.GND']]))
+      expect(c.openContacts).toEqual([{ part: 's1', group: 's', pairs: [['s1:1A', 's1:2A'], ['s1:1B', 's1:2B']] }])
+      expect(powered(c, classify(c), 'u1:3V3', 'u1:GND')).toBe(false)
       expect(openSwitchFor(c, 'u1:3V3', 'u1:GND')).toBe('s1')
     })
     it('names the high-side switch whether or not the return is given', () => {

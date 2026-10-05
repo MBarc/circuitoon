@@ -6,11 +6,13 @@
 // when it touches any defined node (driven, or held by a return: grounds and pull-downs are
 // defined, never driven); a floating node that still touches one, and every other island's
 // reference, get 1 G to node 0 for numerics only (spec 4.4). Reducing a part for DC happens here: a
-// capacitor is emitted and ngspice opens it in `op`.
+// capacitor is emitted and ngspice opens it in `op`; a closed contact is its resistance and an open
+// one no element at all (spec 4 table: the classification treats it as absent, so no 1e12 Roff
+// joins what it calls separate islands); a GPIO is the one resistor its state selects (gpioBranch).
 import { naturalCompare } from '../agent/order.ts'
 import type { Classification } from './floating.ts'
 import { BODY_DIODE, schottky } from './ledModels.ts'
-import { type Analysis, type Circuit, type Device, type DiodeModel, type PinTap, netNode } from './model.ts'
+import { type Analysis, type Circuit, type Device, type DiodeModel, type Param, type PinTap, gpioBranch, netNode } from './model.ts'
 
 /** Smoothing (ruling R18): k = 5 mV on volts, 0.005 on ratios. */
 const KV = 0.005
@@ -83,11 +85,19 @@ export function compile(c: Circuit, cls: Classification, a: Analysis): Compiled 
     const net = netNode(t.net)
     return { nodes: [net, t.node], lines: (n) => [`${v} ${n(net)} ${n(t.node)} dc 0`], read: { tap: t, name: v } }
   }
+  const resistor = (id: string, x: string, y: string, ohms: Param): El => {
+    const r = name('r', id)
+    return { nodes: [x, y], lines: (n) => [`${r} ${n(x)} ${n(y)} ${num(Math.max(ohms.value, R_MIN))}`] }
+  }
   const devEls = (d: Device): El[] => {
     switch (d.kind) {
-      case 'resistor': {
-        const r = name('r', d.id)
-        return [{ nodes: [d.a, d.b], lines: (n) => [`${r} ${n(d.a)} ${n(d.b)} ${num(Math.max(d.ohms.value, R_MIN))}`] }]
+      case 'resistor':
+        return [resistor(d.id, d.a, d.b, d.ohms)]
+      case 'switch':
+        return d.closed ? [resistor(d.id, d.a, d.b, d.ron)] : []
+      case 'gpio': {
+        const g = gpioBranch(d)
+        return g ? [resistor(d.id, g.a, g.b, g.ohms)] : []
       }
       case 'capacitor': {
         const cn = name('c', d.id)

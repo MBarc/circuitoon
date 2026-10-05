@@ -65,6 +65,21 @@ describe('compile', () => {
     expect(t.match(/^r_join_\d+ n\d+ 0 1000000000$/gm)).toHaveLength(1)
     expect(t).not.toContain('r_r9_r')
   })
+  it('writes a closed contact as its resistance and an open one as nothing; a GPIO as the resistor its state selects (fix wave 7)', () => {
+    const d = (contact: string, io1: string) => sheet([{ uid: 'bt1', module: cellModule(5, 0.1) }, { uid: 's1', module: 'rocker-switch-kcd1', values: { 'contact.s': contact } }, { uid: 'u1', module: boardModule({ leak: true }), values: { 'gpio.IO1': io1 } }],
+      [['bt1.+', 's1.1'], ['s1.2', 'u1.VIN'], ['bt1.-', 'u1.GND']])
+    const on = text(d('closed', 'high'))
+    expect(on).toMatch(/^r_s1_s_1_no n\d+ n\d+ 0\.02$/m)
+    expect(on).toMatch(/^r_u1_gpio_io1 n\d+ n\d+ 30$/m)
+    // IO2 is an input: its leakage, 3.3 V / 50 nA.
+    expect(on).toMatch(/^r_u1_gpio_io2 n\d+ n\d+ 66000000$/m)
+    expect(text(d('closed', 'input-pullup'))).toMatch(/^r_u1_gpio_io1 n\d+ n\d+ 45000$/m)
+    const sw = d('closed', 'high')
+    expect(text({ ...sw, parts: [...sw.parts].reverse() })).toBe(on)
+    const off = text(d('open', 'high'))
+    expect(off).not.toContain('r_s1_s_1_no')
+    expect(off).not.toContain('r_u1_gpio_io1')
+  })
   it('is empty when nothing is driven', () => {
     const c = buildCircuit(sheet([R('r1', 100)], []))
     const out = compile(c, classify(c), op)

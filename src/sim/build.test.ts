@@ -59,19 +59,25 @@ describe('buildCircuit: primitives', () => {
     const end = buildCircuit(sheet([{ uid: 'p1', module: 'potentiometer', values: { position: 0 } }], []))
     expect(end.devices.map((d) => d.kind === 'resistor' && d.ohms.value)).toEqual([1, 10000])
   })
+  // Fix wave 7b: every contact is a switch device at its position (an open one compiles to nothing),
+  // where an open contact used to be no device at all.
+  const states = (devs: Device[]) => devs.map((d) => d.kind === 'switch' && `${d.id}:${d.closed ? 'closed' : 'open'}`)
   it('closes a switch only in its saved position, and a button only while held', () => {
     const open = buildCircuit(sheet([{ uid: 's1', module: 'rocker-switch-kcd1' }], []))
-    expect(open.devices).toEqual([])
+    expect(states(open.devices)).toEqual(['s1.s.1.no:open'])
+    expect(open.devices[0]).toMatchObject({ a: 's1:1', b: 's1:2', latching: true, ron: { value: 0.02, basis: 'estimate' } })
     const closed = buildCircuit(sheet([{ uid: 's1', module: 'rocker-switch-kcd1', values: { 'contact.s': 'closed' } }], []))
-    expect(kinds(closed.devices)).toEqual(['resistor:s1.s.1'])
+    expect(states(closed.devices)).toEqual(['s1.s.1.no:closed'])
     const b = sheet([{ uid: 'b1', module: 'push-button' }], [])
-    expect(buildCircuit(b).devices).toEqual([])
-    expect(kinds(buildCircuit(b, { held: { part: 'b1', group: 's' } }).devices)).toEqual(['resistor:b1.s.1'])
+    expect(states(buildCircuit(b).devices)).toEqual(['b1.s.1.no:open'])
+    expect(buildCircuit(b).devices[0]).toMatchObject({ latching: false })
+    expect(states(buildCircuit(b, { held: { part: 'b1', group: 's' } }).devices)).toEqual(['b1.s.1.no:closed'])
   })
-  it('shows a relay at rest (NC closed) with a note', () => {
+  it('shows a relay at rest (NC closed, NO open) with a note', () => {
     const c = buildCircuit(sheet([{ uid: 'k1', module: 'relay-module-1ch-5v' }], []))
-    const r = c.devices.find((d) => d.kind === 'resistor')!
-    expect(r.kind === 'resistor' && [r.a, r.b]).toEqual(['k1:COM', 'k1:NC'])
+    const sw = c.devices.filter((d) => d.kind === 'switch').map((d) => d.kind === 'switch' && [d.contact, d.a, d.b, d.closed, d.latching])
+    expect(sw).toEqual([['nc', 'k1:COM', 'k1:NC', true, false], ['no', 'k1:COM', 'k1:NO', false, false]])
+    expect(c.openContacts).toEqual([])
     expect(c.notes.join(' ')).toContain('K1: shown at rest')
   })
   it('emits a capacitor, and names a singleton pin <ref>_<pin>', () => {
