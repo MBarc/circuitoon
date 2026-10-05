@@ -1,0 +1,86 @@
+// Spec 2 and 4: the circuit build. Every terminal of every simulated part; nets named as extract
+// names them; singletons `<ref>_<pin>`; a 0 ohm resistor, a closed switch and a fuse are real
+// contact branches; open switches and buttons add nothing; relays sit at rest; capacitors are
+// emitted; mains nodes stay out; the build is deterministic.
+import { describe, expect, it } from 'vitest'
+import { buildCircuit } from './build.ts'
+import { cellModule, sheet } from './testing.ts'
+import type { Device } from './model.ts'
+
+const kinds = (devs: Device[]) => devs.map((d) => `${d.kind}:${d.id}`)
+
+describe('buildCircuit: primitives', () => {
+  const ledSheet = sheet(
+    [{ uid: 'bt1', module: cellModule(5, 1e-6) }, { uid: 'r1', module: 'resistor', values: { resistance: { value: 150, unit: 'ohm' } } }, { uid: 'd1', module: 'led' }],
+    [['bt1.+', 'r1.1'], ['r1.2', 'd1.A'], ['d1.K', 'bt1.-']],
+  )
+  it('names nets as extract does and taps every pin that carries a device', () => {
+    const c = buildCircuit(ledSheet)
+    expect(c.nets).toEqual(['BT1_+', 'D1_A', 'GND'])
+    expect(c.taps.map((t) => `${t.node}@${t.net}`)).toEqual(['bt1:+@BT1_+', 'bt1:-@GND', 'd1:A@D1_A', 'd1:K@GND', 'r1:1@BT1_+', 'r1:2@D1_A'])
+    expect(kinds(c.devices)).toEqual(['cell:bt1.cell', 'diode:d1.led', 'resistor:r1.r'])
+    expect(c.pinNet[JSON.stringify(['d1', 'A'])]).toBe('D1_A')
+  })
+  it('compiles the cell with its own rInternal, the LED from forwardVoltage, and the legacy LED limit', () => {
+    const c = buildCircuit(ledSheet)
+    const cell = c.devices.find((d) => d.kind === 'cell')!
+    expect(cell.kind === 'cell' && [cell.volts.value, cell.volts.basis, cell.rInternal.value, cell.rInternal.basis]).toEqual([5, 'user', 1e-6, 'representative'])
+    const led = c.devices.find((d) => d.kind === 'diode')!
+    expect(led.kind === 'diode' && led.model.is).toBeCloseTo(9.4e-11, 12)
+    expect(c.limits.filter((l) => l.part === 'd1').map((l) => [l.kind, l.value.value, l.value.basis, l.value.label])).toEqual([['current', 0.02, 'representative', 'led.D1.maxCurrent']])
+  })
+  it('falls back to the default forwardVoltage outside 1.0 to 5.0 V, with a note', () => {
+    const fallback = buildCircuit(ledSheet).devices.find((d) => d.kind === 'diode')!
+    for (const value of [0.1, 0.99, 5.01]) {
+      const c = buildCircuit(sheet([{ uid: 'd1', module: 'led', values: { forwardVoltage: { value, unit: 'V' } } }], []))
+      expect(c.devices[0]).toEqual(fallback)
+      expect(c.notes).toEqual([`D1: forwardVoltage ${value} V is outside 1.0 to 5.0 V; the default 2 V is used`])
+    }
+    // A non-number (NaN, Infinity) is no stored value at all (isNum), so the default applies silently.
+    expect(buildCircuit(sheet([{ uid: 'd1', module: 'led', values: { forwardVoltage: { value: Number.NaN, unit: 'V' } } }], [])).devices[0]).toEqual(fallback)
+    const ok = buildCircuit(sheet([{ uid: 'd1', module: 'led', values: { forwardVoltage: { value: 3.1, unit: 'V' } } }], []))
+    expect(ok.notes).toEqual([])
+    expect(ok.devices[0].kind === 'diode' && ok.devices[0].model.is).not.toBe(fallback.kind === 'diode' && fallback.model.is)
+  })
+  it('makes a 0 ohm resistor a contact branch, never R = 0', () => {
+    const c = buildCircuit(sheet([{ uid: 'bt1', module: cellModule(3, 0.1) }, { uid: 'r1', module: 'resistor', values: { resistance: { value: 0, unit: 'ohm' } } }], [['bt1.+', 'r1.1'], ['r1.2', 'bt1.-']]))
+    const r = c.devices.find((d) => d.kind === 'resistor')!
+    expect(r.kind === 'resistor' && [r.role, r.ohms.value, r.ohms.basis]).toEqual(['contact', 0.02, 'estimate'])
+  })
+  it('splits a potentiometer at its position, at least 1 ohm each side', () => {
+    const c = buildCircuit(sheet([{ uid: 'p1', module: 'potentiometer', values: { position: 0.25 } }], []))
+    expect(c.devices.map((d) => d.kind === 'resistor' && d.ohms.value)).toEqual([2500, 7500])
+    const end = buildCircuit(sheet([{ uid: 'p1', module: 'potentiometer', values: { position: 0 } }], []))
+    expect(end.devices.map((d) => d.kind === 'resistor' && d.ohms.value)).toEqual([1, 10000])
+  })
+  it('closes a switch only in its saved position, and a button only while held', () => {
+    const open = buildCircuit(sheet([{ uid: 's1', module: 'rocker-switch-kcd1' }], []))
+    expect(open.devices).toEqual([])
+    const closed = buildCircuit(sheet([{ uid: 's1', module: 'rocker-switch-kcd1', values: { 'contact.s': 'closed' } }], []))
+    expect(kinds(closed.devices)).toEqual(['resistor:s1.s.1'])
+    const b = sheet([{ uid: 'b1', module: 'push-button' }], [])
+    expect(buildCircuit(b).devices).toEqual([])
+    expect(kinds(buildCircuit(b, { held: { part: 'b1', group: 's' } }).devices)).toEqual(['resistor:b1.s.1'])
+  })
+  it('shows a relay at rest (NC closed) with a note', () => {
+    const c = buildCircuit(sheet([{ uid: 'k1', module: 'relay-module-1ch-5v' }], []))
+    const r = c.devices.find((d) => d.kind === 'resistor')!
+    expect(r.kind === 'resistor' && [r.a, r.b]).toEqual(['k1:COM', 'k1:NC'])
+    expect(c.notes.join(' ')).toContain('K1: shown at rest')
+  })
+  it('emits a capacitor, and names a singleton pin <ref>_<pin>', () => {
+    const c = buildCircuit(sheet([{ uid: 'c1', module: 'capacitor-ceramic' }], []))
+    expect(c.devices[0]).toMatchObject({ kind: 'capacitor', a: 'c1:1', b: 'c1:2', farads: 1e-7 })
+    expect(c.taps.map((t) => t.net)).toEqual(['C1_1', 'C1_2'])
+  })
+  it('lists a powered part with no power data, and keeps conductors and boards out', () => {
+    const c = buildCircuit(sheet([{ uid: 'u1', module: 'bme280-module-4pin' }, { uid: 'bb1', module: 'breadboard-half' }, { uid: 'j1', module: 'jst-xh-2' }], []))
+    expect(c.unsimulated).toEqual([{ part: 'u1', reason: 'no power data' }])
+    expect(Object.keys(c.parts)).toEqual([])
+  })
+  it('is deterministic whatever the part order', () => {
+    const a = buildCircuit(ledSheet)
+    const b = buildCircuit({ ...ledSheet, parts: [...ledSheet.parts].reverse() })
+    expect(JSON.stringify(b)).toBe(JSON.stringify(a))
+  })
+})
