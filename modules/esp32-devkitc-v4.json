@@ -572,7 +572,7 @@
           },
           "kind": "vinMax",
           "value": 3.6,
-          "source": "https://www.espressif.com/sites/default/files/documentation/esp32_datasheet_en.pdf https://www.espressif.com/sites/default/files/documentation/esp32-wroom-32_datasheet_en.pdf",
+          "source": "https://www.espressif.com/sites/default/files/documentation/esp32-wroom-32_datasheet_en.pdf",
           "provenance": "datasheet",
           "conditions": "recommended operating maximum, which is also the absolute maximum",
           "note": "ESP32 Series Datasheet v5.3, Table 5-2 Recommended Power Supply Characteristics (p. 51): VDDA, VDD3P3_RTC, VDD3P3, VDD_SDIO (3.3 V mode) and VDD3P3_CPU 3.6 V max; Table 5-1 Absolute Maximum Ratings (p. 51): allowed input voltage 3.6 V max. The module agrees: ESP32-WROOM-32 datasheet v3.8, Table 13 Recommended Operating Conditions (p. 26), VDD33 3.0 to 3.6 V, and Table 12 (p. 26) 3.6 V absolute maximum. Chip and module, not board: the board's 3V3 pin is the module's 3V3 supply."

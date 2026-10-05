@@ -299,6 +299,20 @@
       "checked": 19,
       "corrected": [],
       "disputed": []
+    },
+    {
+      "date": "2026-10-06",
+      "reviewer": "independent reviewer 1 (phase C fixes)",
+      "checked": 22,
+      "corrected": [],
+      "disputed": []
+    },
+    {
+      "date": "2026-10-06",
+      "reviewer": "independent reviewer 2 (phase C fixes)",
+      "checked": 6,
+      "corrected": [],
+      "disputed": []
     }
   ]
 }
