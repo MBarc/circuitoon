@@ -6,7 +6,7 @@
 import { describe, expect, it } from 'vitest'
 import { nodeKey } from '../format/netlist.ts'
 import { buildCircuit } from './build.ts'
-import { classify, openSwitchFor, pinState } from './floating.ts'
+import { classify, openSwitchFor, pinState, powered } from './floating.ts'
 import { netNode } from './model.ts'
 import { type PartSpec, boardModule, cellModule, ldoModule, sheet } from './testing.ts'
 
@@ -103,6 +103,34 @@ describe('floating classification', () => {
       const cls = classify(c)
       expect(pinState(c, cls, nodeKey('u2', 'OUT'))).toBe('driven')
       expect(pinState(c, cls, nodeKey('u2', 'IN'))).toBe(drives ? 'driven' : 'floating')
+    })
+  })
+  describe('stacks and switched returns', () => {
+    it('drives the midpoint of two stacked cells and powers a board fed from the lower cell', () => {
+      const c = buildCircuit(sheet([{ uid: 'b1', module: cellModule(3.7, 0.05) }, { uid: 'b2', module: cellModule(3.7, 0.05) }, R('r1'), { uid: 'u1', module: boardModule() }],
+        [['b1.+', 'b2.-'], ['r1.1', 'b1.+'], ['r1.2', 'b1.-'], ['u1.VIN', 'b1.+'], ['u1.GND', 'b1.-']]))
+      const cls = classify(c)
+      expect(pinState(c, cls, nodeKey('r1', '1'))).toBe('driven')
+      expect(pinState(c, cls, nodeKey('b2', '+'))).toBe('driven')
+      expect(powered(c, cls, 'u1:3V3', 'u1:GND')).toBe(true)
+      expect(openSwitchFor(c, 'u1:3V3', 'u1:GND')).toBeNull()
+    })
+    it('leaves a board whose ground is behind an open switch unpowered, and names the switch', () => {
+      const c = buildCircuit(sheet([{ uid: 'bt1', module: cellModule(5, 0.1) }, { uid: 's1', module: 'rocker-switch-kcd1' }, { uid: 'u1', module: boardModule() }],
+        [['bt1.+', 'u1.VIN'], ['bt1.-', 's1.1'], ['s1.2', 'u1.GND']]))
+      const cls = classify(c)
+      expect(cls.driven.has('u1:3V3')).toBe(true)
+      expect(pinState(c, cls, nodeKey('u1', 'GND'))).toBe('floating')
+      expect(powered(c, cls, 'u1:3V3', 'u1:GND')).toBe(false)
+      expect(openSwitchFor(c, 'u1:3V3', 'u1:GND')).toBe('s1')
+    })
+    it('names the high-side switch whether or not the return is given', () => {
+      const c = buildCircuit(sheet([{ uid: 'bt1', module: cellModule(5, 0.1) }, { uid: 's1', module: 'rocker-switch-kcd1' }, { uid: 'u1', module: boardModule() }],
+        [['bt1.+', 's1.1'], ['s1.2', 'u1.VIN'], ['bt1.-', 'u1.GND']]))
+      const cls = classify(c)
+      expect(powered(c, cls, 'u1:3V3', 'u1:GND')).toBe(false)
+      expect(openSwitchFor(c, 'u1:3V3', 'u1:GND')).toBe('s1')
+      expect(openSwitchFor(c, 'u1:3V3')).toBe('s1')
     })
   })
 })

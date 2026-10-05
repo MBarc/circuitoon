@@ -116,7 +116,8 @@ function walk(seeds: string[], adj: Map<string, string[]>, stop: (n: string) => 
 }
 
 /** The driven and defined node sets, with `extra` joins (a switch closed in thought). */
-function reach(c: Circuit, extra: [string, string][] = []): { driven: Set<string>; defined: Set<string> } {
+type Reach = { driven: Set<string>; defined: Set<string> }
+function reach(c: Circuit, extra: [string, string][] = []): Reach {
   const drive = new Map<string, string[]>()
   const hold = new Map<string, string[]>()
   const arc = (m: Map<string, string[]>, a: string, b: string) => {
@@ -139,24 +140,40 @@ function reach(c: Circuit, extra: [string, string][] = []): { driven: Set<string
     if (d.kind === 'resistor' && d.role !== 'leak') arc(hold, d.a, d.b), arc(hold, d.b, d.a)
   }
   const cells = cellsOf(c)
+  const seeds = cells.flatMap((d) => [d.p, d.int])
+  const netOrSelf = (n: string) => netOf.get(n) ?? n
   const returns = new Set<string>()
-  const ret = (n: string) => returns.add(netOf.get(n) ?? n)
   for (const d of c.devices) {
-    if (d.kind === 'cell') ret(d.n)
-    else if (d.kind === 'load') ret(d.n)
-    else if (d.kind === 'rail') ret(d.ret), ret(d.inRet)
+    if (d.kind === 'cell' || d.kind === 'load') returns.add(netOrSelf(d.n))
+    else if (d.kind === 'rail') returns.add(netOrSelf(d.ret)).add(netOrSelf(d.inRet))
   }
-  // ponytail: a load or rail return is treated as ground even when wired to a supply (a low-side load); model low-side switching if parts need it.
-  const isReturn = (n: string) => returns.has(netOf.get(n) ?? n)
-  const driven = walk(cells.flatMap((d) => [d.p, d.int]), drive, isReturn)
+  // A net holding a source's + is a supply, even when it is also another cell's - (a stack).
+  for (const n of seeds) returns.delete(netOrSelf(n))
+  // ponytail: a return net never carries drive, so a node fed only through a part's ground pin (a load wired upside down) reads defined, not driven; walk returns too if such sheets matter.
+  const driven = walk(seeds, drive, (n) => returns.has(netOrSelf(n)))
   const held = walk(cells.map((d) => d.n), hold, (n) => driven.has(n))
   return { driven, defined: new Set([...driven, ...held]) }
 }
 
-/** Ruling R30: the part uid of the open latching switch whose closing alone would drive `node`, or null. */
-export function openSwitchFor(c: Circuit, node: string): string | null {
-  if (reach(c).driven.has(node)) return null
-  for (const o of c.openContacts) if (reach(c, [[netNode(o.a), netNode(o.b)]]).driven.has(node)) return o.part
+/** A domain is powered when its pin node is driven and its return node is defined (both node ids). */
+export function powered(_c: Circuit, cls: Classification, pin: string, ret: string): boolean {
+  return cls.driven.has(pin) && cls.defined.has(ret)
+}
+
+/**
+ * Ruling R30: the part uid of the open latching switch whose closing alone would power `node`, or
+ * null. When `node` is not driven, the switch that would drive it (high side); else, given `ret`
+ * that is not defined, the switch that would define it (low side).
+ */
+export function openSwitchFor(c: Circuit, node: string, ret?: string): string | null {
+  const base = reach(c)
+  const fixes = !base.driven.has(node)
+    ? (r: Reach) => r.driven.has(node)
+    : ret !== undefined && !base.defined.has(ret)
+      ? (r: Reach) => r.defined.has(ret)
+      : null
+  if (!fixes) return null
+  for (const o of c.openContacts) if (fixes(reach(c, [[netNode(o.a), netNode(o.b)]]))) return o.part
   return null
 }
 
