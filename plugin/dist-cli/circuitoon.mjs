@@ -833,7 +833,7 @@ function validateSim(raw, names, errors) {
 					max: 1
 				} : k === "iq" ? {} : { positive: true });
 				const rout = val(r.rout);
-				if (rout !== void 0 && rout > 0 && rout < ROUT_MIN) errors.push(`${w}.rout.value: must be at least ${ROUT_MIN} (1 milliohm)`);
+				if (rout !== void 0 && rout > 0 && rout < ROUT_MIN) errors.push(`${w}.rout.value: must be at least ${ROUT_MIN} (${ROUT_MIN * 1e3} milliohm)`);
 				const vout = val(r.vout);
 				const dropout = val(r.dropout);
 				if (r.kind === "ldo" && vout !== void 0 && dropout !== void 0 && dropout >= vout) errors.push(`${w}.dropout: must be below vout (${vout} V)`);
@@ -918,8 +918,9 @@ function validateSim(raw, names, errors) {
 		} else if ("domain" in of) {
 			if (typeof of.domain !== "string" || !domainNames.has(of.domain)) errors.push(`${w}.of.domain: no domain "${show(of.domain)}" in ${at}.power.domains`);
 		} else if (of.part !== true) errors.push(`${w}.of: must be { "pin" }, { "domain" } or { "part": true }`);
-		if (!LIMIT_KINDS.includes(l.kind)) errors.push(`${w}.kind: must be one of ${LIMIT_KINDS.join(", ")}`);
-		if (!(isNum(l.value) && l.value > 0)) errors.push(`${w}.value: must be above 0 (in ${LIMIT_UNITS[l.kind] ?? "its unit"})`);
+		const kindOk = LIMIT_KINDS.includes(l.kind);
+		if (!kindOk) errors.push(`${w}.kind: must be one of ${LIMIT_KINDS.join(", ")}`);
+		if (!(isNum(l.value) && l.value > 0)) errors.push(`${w}.value: must be above 0 (in ${kindOk ? LIMIT_UNITS[l.kind] : "its unit"})`);
 		if (l.conditions !== void 0 && !(typeof l.conditions === "string" && l.conditions.trim())) errors.push(`${w}.conditions: must be a non-empty string`);
 		sourced(l, w);
 	});

@@ -44,8 +44,31 @@ describe('validateSim', () => {
     expect(errorsOf(withSim(boardModule(), edit))).toContain(message)
   })
   it('lets a part with no ground pin of its own (a host port) use its USB nodes without usbPorts', () => {
-    expect(simModelUsbPorts(hostModule())).toBeUndefined()
+    expect((hostModule().electrical as { sim: { usbPorts?: unknown } }).sim.usbPorts).toBeUndefined()
     expect(errorsOf(hostModule())).toEqual([])
+  })
+  it.each([{ toString: 1 }, 'constructor', '__proto__'])('rejects a limit kind of %s without throwing', (kind) => {
+    // A bad value too, so the message reaches for the kind's unit.
+    const errs = errorsOf(withSim(boardModule(), (s) => Object.assign((s.limits as Record<string, unknown>[])[0], { kind, value: 0 })))
+    expect(errs).toContain('electrical.sim.limits[0].kind: must be one of current, absMaxCurrent, power, vinMax, vinMin, sourceCurrent, ioTotalCurrent')
+    expect(errs).toContain('electrical.sim.limits[0].value: must be above 0 (in its unit)')
+  })
+  it('survives hostile values in every section', () => {
+    const hostile: unknown[] = [null, [], 5, { toString: 1 }]
+    const paths: ((s: Record<string, unknown>, v: unknown) => void)[] = [
+      (s, v) => (s.modelParams = v), (s, v) => (s.modelParams = { rInternal: v }), (s, v) => (s.limits = v), (s, v) => (s.limits = [v]),
+      (s, v) => ((s.limits as Record<string, unknown>[])[0].of = v),
+      (s, v) => Object.assign((s.limits as Record<string, unknown>[])[0], { kind: v, value: v }), (s, v) => (s.power = v), (s, v) => (s.gpio = v), (s, v) => (s.usbPorts = v),
+      (s, v) => (s.usbPorts = { USB: v }), (s, v) => ((s.gpio as Record<string, unknown>).pins = v), (s, v) => ((s.gpio as Record<string, unknown>).domain = v),
+      ...['domains', 'draw', 'rails', 'source'].flatMap((k) => [
+        (s: Record<string, unknown>, v: unknown) => ((s.power as Record<string, unknown>)[k] = v),
+        (s: Record<string, unknown>, v: unknown) => ((s.power as Record<string, unknown>)[k] = [v]),
+      ]),
+      (s, v) => (rail(s, 1).inputs = [v]), (s, v) => (rail(s, 1).minLoad = v), (s, v) => (rail(s, 1).vout = v), (s, v) => (rail(s, 1).kind = v), (s, v) => (rail(s, 1).id = v),
+      (s, v) => ((s.power as { domains: Record<string, unknown>[] }).domains[0].pin = v), (s, v) => ((s.power as { domains: Record<string, unknown>[] }).domains[0].name = v),
+    ]
+    for (const v of hostile) for (const edit of paths) expect(() => validateModule(withSim(boardModule(), (s) => edit(s, v)))).not.toThrow()
+    for (const v of hostile) expect(() => validateModule({ ...boardModule(), electrical: { sim: v } })).not.toThrow()
   })
   it('requires a note on an estimate', () => {
     const m = withSim(boardModule(), (s) => ((s.gpio as { pullup: unknown }).pullup = { value: 45000, unit: 'ohm', provenance: 'estimate' }))
@@ -58,7 +81,3 @@ describe('validateSim', () => {
     expect(railProblem(rail)).toBe('rail ldo needs dropout')
   })
 })
-
-function simModelUsbPorts(m: ModuleDef): unknown {
-  return (m.electrical as { sim: { usbPorts?: unknown } }).sim.usbPorts
-}

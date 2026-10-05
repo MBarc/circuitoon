@@ -196,7 +196,7 @@ export function validateSim(raw: Record<string, unknown>, names: Set<string>, er
           for (const [k, unit] of Object.entries(RAIL_UNITS))
             if (r[k] !== undefined) quantity(r[k], `${w}.${k}`, unit, k === 'efficiency' ? { positive: true, max: 1 } : k === 'iq' ? {} : { positive: true })
           const rout = val(r.rout)
-          if (rout !== undefined && rout > 0 && rout < ROUT_MIN) errors.push(`${w}.rout.value: must be at least ${ROUT_MIN} (1 milliohm)`)
+          if (rout !== undefined && rout > 0 && rout < ROUT_MIN) errors.push(`${w}.rout.value: must be at least ${ROUT_MIN} (${ROUT_MIN * 1000} milliohm)`)
           const vout = val(r.vout)
           const dropout = val(r.dropout)
           if (r.kind === 'ldo' && vout !== undefined && dropout !== undefined && dropout >= vout) errors.push(`${w}.dropout: must be below vout (${vout} V)`)
@@ -267,8 +267,9 @@ export function validateSim(raw: Record<string, unknown>, names: Set<string>, er
       else if ('pin' in of) { if (typeof of.pin !== 'string' || !names.has(of.pin)) errors.push(`${w}.of.pin: no pin "${show(of.pin)}"`) }
       else if ('domain' in of) { if (typeof of.domain !== 'string' || !domainNames.has(of.domain)) errors.push(`${w}.of.domain: no domain "${show(of.domain)}" in ${at}.power.domains`) }
       else if (of.part !== true) errors.push(`${w}.of: must be { "pin" }, { "domain" } or { "part": true }`)
-      if (!(LIMIT_KINDS as readonly unknown[]).includes(l.kind)) errors.push(`${w}.kind: must be one of ${LIMIT_KINDS.join(', ')}`)
-      if (!(isNum(l.value) && l.value > 0)) errors.push(`${w}.value: must be above 0 (in ${LIMIT_UNITS[l.kind as LimitKind] ?? 'its unit'})`)
+      const kindOk = (LIMIT_KINDS as readonly unknown[]).includes(l.kind)
+      if (!kindOk) errors.push(`${w}.kind: must be one of ${LIMIT_KINDS.join(', ')}`)
+      if (!(isNum(l.value) && l.value > 0)) errors.push(`${w}.value: must be above 0 (in ${kindOk ? LIMIT_UNITS[l.kind as LimitKind] : 'its unit'})`)
       if (l.conditions !== undefined && !(typeof l.conditions === 'string' && l.conditions.trim())) errors.push(`${w}.conditions: must be a non-empty string`)
       sourced(l, w)
     })
