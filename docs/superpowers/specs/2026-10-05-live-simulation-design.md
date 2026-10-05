@@ -1,8 +1,10 @@
 # Live DC simulation: design
 
-Status: revision 3 (2026-10-05).
+Status: revision 4 (2026-10-05).
 - Revision 1 was approved section by section by Michael.
-- Astra reviewed revisions 1 and 2. Section 12 answers the first review; revision 3 answers the re-review (section 13).
+- Astra reviewed revisions 1 and 2: section 12 answers the first review, section 13 the re-review.
+- Codex hit its usage limit during Astra's review of revision 3, so a Claude reviewer reviewed it instead; section 14 answers that review.
+- Astra re-reviews after its reset (Oct 10).
 
 This is the second V2 sub-project, after mains outlets. Instruments, V3 animation and firmware come later.
 
@@ -51,7 +53,7 @@ diagram + library ─► src/sim/build.ts ─Circuit─► src/sim/spice.ts ─t
   - Reducing a part for DC (capacitor open, inductor as its DC resistance) happens in the compiler, per analysis. Only `op` exists in this slice, and `Analysis` stays a union so transient can be added later.
 - **`src/sim/build.ts`:** builds a `Circuit` from the diagram and the modules. It is pure and deterministic, and it holds every modelling decision (section 4).
   - It starts from **every terminal of every simulated part**, including singleton pins that `netlist()` omits.
-  - Net names come from the shared `nameNets()` (`src/format/netNames.ts`), the same names the CLI and the KiCad export use.
+  - Net names: the nets `netlist()` produces are named exactly as `extract` names them, via the shared `nameNets()` (`src/format/netNames.ts`). Singleton pins that `netlist()` omits are named separately as `<ref>_<pin>`, and never go through `nameNets()`. So `net:GND` means the same net in the CLI, `extract`, KiCad and the simulator (the Claude reviewer's finding 2).
 - **`src/sim/floating.ts`:** before solving, a graph pass classifies every node as `driven` (it has a DC path to a source) or `floating`.
   - Capacitors and open switches do not conduct for this pass.
   - Floating nodes are never reported as a voltage. Their probes and readings say "floating", whatever number the solver returns for them.
@@ -92,12 +94,15 @@ The checker (`src/format/checks.ts`) is unchanged, and **it never suppresses or 
   - the pinned ngspice release (45.2) tarball URL and its SHA-256;
   - our patches as `.patch` files;
   - the exact emsdk version.
-- **Build mode:**
-  - the ngspice executable with `--disable-xspice --disable-osdi`, as in eecircuit;
-  - no PDK models;
-  - the loader fetches a separate `ngspice.wasm` by URL in the browser and reads it from disk in Node.
-- The output is committed to `public/sim/` and `plugin/dist-cli/`. A CI-free check, `npm run engine:verify`, rebuilds in Docker and compares hashes. It is run before each engine change, not on every deploy.
-- **The JS wrapper** is our own small adapter (about 300 lines), modelled on eecircuit-engine's MIT `Simulation` class with attribution. There is no dependency on its private fields, and the old contract test is no longer needed.
+- **Build mode: ngspice as a shared library, with XSPICE, now.** We configure `--with-ngshared --enable-xspice --disable-osdi`, so the engine isn't rebuilt when firmware co-simulation arrives (the Claude reviewer's finding 7; Michael does not want to repeat work).
+  - Exported: `ngSpice_Init`, `ngSpice_Command`, `ngGet_Vec_Info`, `ngSpice_CurPlot`, `ngSpice_AllVecs` and `ngSpice_SetBkpt`, plus `addFunction` for the callbacks (`GetVSRCData` later).
+  - Commands run synchronously (`ngSpice_Command("op")`, never `bg_run`), so there are no threads, no SharedArrayBuffer and no COOP/COEP headers.
+  - Vectors are read through `ngGet_Vec_Info`, never by parsing stdout.
+  - There are no PDK models.
+  - The loader fetches a separate `ngspice.wasm` by URL in the browser and reads it from disk in Node.
+- **Fallback if the shared build cannot be made to work** at the engine checkpoint: the executable build (`--disable-xspice`, as in eecircuit), and the rebuild is recorded as accepted debt in the ledger. It is decided at the checkpoint, not later.
+- The output is committed to `public/sim/` and `plugin/dist-cli/`. `npm run engine:build` rebuilds it in Docker and runs the engine smoke tests. Byte-identical rebuilds are not required (emsdk builds are rarely reproducible); the release asset records the inputs instead.
+- **The JS wrapper** is our own small adapter over the exported C API. It does not depend on eecircuit-engine at run time.
 - **Licence compliance:**
   - `public/sim/NOTICE.txt` and the About dialog list ngspice's licences as found in the built configuration. The build script prints the compiled-in source directories; every non-BSD component found there is listed with its licence, and `numparam` (LGPLv2+) is expected.
   - **Each engine version is published as a GitHub release asset** on MBarc/circuitoon. The asset contains the exact ngspice source tarball, our patches, the build script and emsdk version, and relinking instructions. NOTICE links to that release, so the source sits beside the binary from the same place.
@@ -108,7 +113,7 @@ The checker (`src/format/checks.ts`) is unchanged, and **it never suppresses or 
 - **Loading:** the engine loads the first time Simulate is turned on (or on the first `sim` in the CLI).
 - **Instances:** one ngspice instance per worker.
 - **Each run:** `source` + `op` + read + `remcirc`.
-- **Recycling:** the worker is recycled after 2,000 **engine runs** (not solves), or once the WASM heap passes 128 MB, always between runs.
+- **Recycling:** the worker is recycled after 2,000 **engine runs** (not solves), and after any failure, always between runs.
 - **Timeouts:** 5 s per run. On a timeout the worker is terminated and recreated, and the run is retried once. A second timeout gives `status: 'failed'`.
 - **Failures:** an `op` with no data vector is a failure, with `getError()` text kept as `raw`.
 - **Tested sequences:** success, then failure, then success on the same session, plus worker cleanup after a failure.
@@ -117,7 +122,7 @@ The checker (`src/format/checks.ts`) is unchanged, and **it never suppresses or 
 
 ### 3.1 Where the new data lives: `electrical.sim`
 
-Revision 1 split `electrical.params` and added `electrical.ratings`. That collides with the existing `electrical.ratings` array (the mains insulation, terminal and switching ratings, e.g. on the KCD1) and with direct `params` readers such as the mains model's `acVoltage`. **Revision 2 changes nothing that exists.**
+Revision 1 split `electrical.params` and added `electrical.ratings`. That collides with the existing `electrical.ratings` array (the mains insulation, terminal and switching ratings, e.g. on the KCD1) and with direct `params` readers such as the mains model's `acVoltage`. **Since revision 2, nothing that exists changes.**
 
 - **`electrical.params` keeps its meaning:** the values a user edits per part (resistance, `voltage`, `color`, `forwardVoltage`, `acVoltage`). There is no migration, and no drift.
 - **`electrical.ratings` keeps its meaning:** the mains ratings array.
@@ -129,7 +134,10 @@ interface SimSpec {
   limits?: Limit[]                         // what results are compared against (5.2)
   power?: PowerSpec                        // 3.2
   gpio?: GpioSpec                          // 3.3
+  usbPorts?: Record<string, { gnd: string }>   // 4.7: a USB pin's ground pin
 }
+
+**Node references** in `sim` may name a module pin or a USB port's simulation node, written `<usbPin>#vbus`. Validation accepts both and rejects anything else.
 interface Quantity { value: number; unit: Unit; source?: string; provenance: Provenance; note?: string }
 type Provenance = 'datasheet' | 'representative' | 'estimate'
 interface Limit {
@@ -145,7 +153,16 @@ interface Limit {
 - **Legacy values:** the LED's existing `params.maxCurrent` (default 20 mA) is still read as a `current` limit with provenance `representative`, so old embedded modules keep working. If both are present, `sim.limits` wins.
 - **Validation:** `electrical.sim` is validated in full. Unknown keys are errors, a unit must match its kind, and every pin and domain it names must exist.
 - **Primitives need no `sim` data (Astra re-review B).** The built-in primitive models compile from the existing `electrical.model`, `terminals` and `params` plus defaults, with or without `electrical.sim`, legacy embedded copies included. They are:
-  - `resistor`, `led`, `voltage_source` (batteries, cells, holders), `capacitor`, `switch`, `fuse`, `inductor`.
+  - `resistor`, `potentiometer`, `led`, `voltage_source` (batteries, cells, holders), `capacitor`, `switch`, `fuse`.
+- **Batteries:** all 15 built-in `voltage_source` modules gain `sim.modelParams.rInternal` and `sim.limits` `sourceCurrent`, per chemistry. A CR2032 (about 15 Ω) is not an 18650 (about 0.05 Ω). Values are labelled `representative` or `estimate` with the cell assumed. A legacy embedded copy without them uses a voltage-keyed fallback in `src/sim/estimates.ts`, flagged `estimate`:
+
+  | Nominal V | Assumed | rInternal |
+  |---|---|---|
+  | ≤ 3.0 (coin) | lithium coin | 15 Ω |
+  | 1.2 to 1.6 per cell | alkaline AA | 0.15 Ω per cell |
+  | 3.6 to 4.2 per cell | Li-ion 18650 | 0.05 Ω per cell |
+  | 9 | alkaline 9 V | 1.5 Ω |
+  | other | unknown | 0.1 Ω, with a note |
 
   `sim` only adds or overrides values (contact resistance, LED limits, cell `rInternal`).
 - **Boards and modules** (every other model) need `sim.power` to be simulated. Without it, they are listed in `unsimulated` ("no power data"); this is never a crash.
@@ -256,11 +273,12 @@ Each override marks only its own value `user`.
 | Resistor | `R` from `values.resistance`. 0 ohm uses the jumper row. |
 | LED | `D` with a per-colour model (IS, N, RS) fitted so V = `forwardVoltage` at 20 mA. `forwardVoltage` stays the user knob (IS is refitted, N and RS held). The table is in `src/sim/ledModels.ts`, with a test per colour. |
 | Battery, cell, holder | `V` in series with `rInternal`. Parallel holders solve as such. |
+| Potentiometer | Two `R`s, a to wiper and wiper to b, split by `values.position` (0 to 1, default 0.5). Each side has at least 1 Ω. |
 | Switch, button, rocker, jumper, 0 Ω resistor, fuse | **A real branch, never a merge** (Astra finding 3). Closed: `R` = contact resistance (`modelParams.contactResistance`; default 20 mΩ, `estimate`). Open: no element. The current through it is measured, so fuse and switch limits can be checked. |
-| Inductor | `R` = its DCR (`modelParams.dcr`; default 0.1 Ω, `estimate`). |
 | Capacitor | Emitted as `C` with its value. ngspice treats it as open in `op`, and its plates read "floating" unless driven otherwise (section 2). |
+| Relay, SSR | Contacts are in their **rest position** (de-energised: NC closed, NO open), with a note "shown at rest; coil switching is simulated with firmware". The coil is a load only when the module has `sim.power`. |
 | Breadboard strips, rails, net labels, connectors, Wago | One node: these are one conductor in `netlist()` already. Their resistance is out of scope. |
-| Board load (`draw`) | A **voltage-aware load** per domain: `B` current source from the domain pin to its `ret`, `I = typical * f(V)`, where `f` is 1 above `minVolts` and falls linearly to 0 at 0 V. The node can never be pushed negative. This is labelled a model in the results. |
+| Board load (`draw`) | A **voltage-aware load** per domain: `B` current source from the domain pin to its `ret`, `I = typical * f(V)`, where `f` is 1 above `minVolts` and falls to 0 at 0 V, smoothed as in 4.1. The node can never be pushed negative. This is labelled a model in the results. |
 | `ldo` rail | Defined in 4.1. |
 | `buck` and `boost` rail | Defined in 4.2. |
 | `switch` rail | `R` = `ron`, or a diode with `vf`, from the input domain pin to the output domain pin. |
@@ -269,9 +287,22 @@ Each override marks only its own value `user`.
 | AC-DC converter output | A DC source only when the converter is powered **in the saved contact state** (Astra re-review 11). This uses a new single-state evaluation exported from `src/format/mainsRules.ts`, which applies the mains spec section 1 availability rules to one contact state instead of aggregating over all of them. Otherwise its output is an open circuit. |
 | Anything else | Not simulated: its pins are open, and it is listed in `unsimulated` with a reason. |
 
+### 4.0 Saved contact state (the Claude reviewer's finding 1)
+
+Switch positions get a defined home. `parts[].values["contact.<groupId>"]` holds a group's position, where `<groupId>` is an `electrical.contacts` id. It is additive, and validated against the group's kind:
+- `switch` (a pole is `com` and `no`): `"open"` or `"closed"`;
+- changeover (`com`, `no` and `nc`): `"no"` or `"nc"`.
+- **Default:** `"open"`, or `"nc"` for changeover groups. That is the same position the mains model's `groupState` index 0 uses, so both read one value.
+- **Legacy sheets:** a part's existing opaque visual state (the module's `states`, e.g. `"on"`) maps to `closed` for single-group switches. Anything ambiguous stays at the default, with a warning.
+- Clicking a switch while simulating writes this value. The mains single-state evaluation (section 4 table) reads the same value.
+- Buttons are momentary: the value is never written, and they are closed only while held.
+
 ### 4.1 LDO model
 
-- **Output:** a voltage `B` source, `Vctl = min(vout, max(V(in) - dropout, 0))`, behind `rout` (default 0.1 Ω, `estimate`). It feeds the output through an ideal diode model (`N = 0.01`) when `reverse: 'blocks'`, so an externally powered output never sinks into the regulator.
+- **Output, one smooth element (the Claude reviewer's finding 3):** an internal node `ctl` carries `Vctl = smin(vout, smax(V(in) - dropout, 0))`. The output is a single `B` current source into the output node, `I = softplus(Vctl - V(out)) / rout`, with `softplus(x) = k * ln(1 + exp(x / k))` and `k` = 5 mV. `smin` and `smax` are the same softplus-smoothed functions.
+  - With `reverse: 'blocks'`, this replaces "a voltage source + `rout` + an ideal diode". It cannot sink current, and it has no stiff diode for Newton to fight.
+  - `rout` defaults to 0.1 Ω (`estimate`).
+  - The load fold-back `f(V)` uses the same smoothing.
 - **Body diode:** with `reverse: 'body-diode'`, a diode from output to input is added.
 - **Input current:** the output current (sensed by a 0 V source) plus `iq`, through a current-controlled source. Power is conserved, and the input pays for the output.
 - **Input current with overload:** the LDO's input current is the output current regardless of `rout`, so `rout` dissipation is drawn from the input automatically. No separate loss term is needed.
@@ -285,7 +316,11 @@ Each override marks only its own value `user`.
 ### 4.2 Buck and boost model
 
 - **Enable:** `e = smoothstep(vinMin - 50 mV, vinMin, V(in)) * (1 - smoothstep(vinMax, vinMax + 50 mV, V(in)))`.
-- **Output:** `B` source `V = e * vout` behind `rout` and the ideal blocking diode. When `e = 0` the output is open (the diode blocks), never a 0 V short. So an externally powered output is not shorted.
+- **Output:** the same smooth current source as 4.1, with `Vctl = e * vout`. When `e = 0` it supplies nothing and sinks nothing, so an externally powered output is not shorted.
+- **Unstable in-between (the Claude reviewer's finding 4):** a constant-power input on a sagging source can settle with the enable half on, a state real undervoltage lockout never holds. If `0.01 < e < 0.99` in a solved corner:
+  - the rail and everything upstream are marked `outside-model`;
+  - `sim-converter-off` fires with "input at the edge of its range; it would cycle on and off";
+  - a test covers an overloaded weak battery.
 - **Input current:** `I = P_int / (efficiency * max(V(in), 0.5))`.
   - `P_int = V(ctl) * I(out)` is the power at the internal control node, **before** `rout`. So `rout`'s dissipation in a short or overload is paid for at the input (Astra re-review 1).
   - The `max(..., 0.5)` guard means there is never a division by zero, and `e = 0` makes `P_int` 0.
@@ -315,7 +350,6 @@ For each of the LDO, buck and boost models:
 - **Islands without a source:** "floating". No voltages are reported.
 - **Readings:**
   - Every voltage reading names its island's reference ("relative to battery −").
-  - A differential probe across two islands reads **"undefined (no connection between these points)"**.
   - Readings never subtract across the numerical joins.
 
 ### 4.5 Typical and peak corners
@@ -344,12 +378,12 @@ For each of the LDO, buck and boost models:
 - **Simulation nodes for a port (Astra re-review 2):** each `type: "usb"` pin has two simulation-only nodes, `<pin>#vbus` and `<pin>#gnd`. These are internal: they are not module pins, and the checker's `usb.vbus` alias (which names a board pin such as VIN) is not used by the simulator.
   - `<pin>#gnd` is joined to the board's ground pin, declared by `sim.usbPorts: { [usbPin]: { gnd: string } }`.
   - `<pin>#vbus` is a node that `sim.power` refers to like a pin. A domain or rail input may name `"USB#vbus"`.
-- **Cable:** each USB link joins `#vbus` to `#vbus` and `#gnd` to `#gnd`, each through the cable's conductor resistance (`representative`, 0.1 Ω per conductor for a 1 m cable). The return current flows through the cable, too.
+- **Cable:** each USB link joins `#vbus` to `#vbus` and `#gnd` to `#gnd`, each through the cable's conductor resistance (`representative`, 0.1 Ω per conductor for a 1 m cable). The return current flows through the cable, too. A plug pushed straight into a socket (no cable) uses the contact resistance, 20 mΩ per conductor.
 - **Device-side diodes:** a DevKit's USB-to-VIN Schottky is a `switch` rail with `vf` from the domain on `USB#vbus` to the `VIN` domain. So VIN and USB VBUS are separate nodes, as on the real board.
 - **A host port gets its power from its board's rail:**
   - The port's `#vbus` node is the output domain of a rail, for example a Pi's 5 V rail through its USB power switch, which is a `switch` rail with `ron`.
   - Load on the device side therefore loads the host's rail and, upstream, its supply.
-  - Hubs pass VBUS through their `switch` rails to their downstream ports.
+  - **Hubs are not simulated in this slice.** Devices behind a hub are listed in `unsimulated` ("powered through a hub: not simulated yet") rather than shown as dead.
 - **External sources:** only a part that *is* an external supply gets a standalone source: the computer port, a wall adapter, a power bank. Its `imax` is the limit.
 
 ## 5. Results and findings
@@ -394,11 +428,11 @@ interface SimFinding {
 | Code | When | Severity (at typical) |
 |---|---|---|
 | `sim-short` | **Topological, not by a current threshold.** In the current state, a *low path* (contacts, jumpers, fuses, cable conductors and wire joins only) connects a source's or rail output's terminal to **its own return**. The parts on that path are listed. A shorted high-resistance cell is found too. | error, basis `topology` |
-| `sim-source-conflict` | Two sources or rail outputs form a **closed loop through low paths on both sides**: plus to plus **and** minus to minus (parallel), with open-circuit voltages differing by more than 0.1 V. Joining only the positives, or wiring sources in series, never fires it (Astra re-review A). | error; basis = the weaker provenance of the two voltages |
+| `sim-source-conflict` | Two sources or rail outputs form a **closed loop through low paths on both sides**: plus to plus **and** minus to minus (parallel), with open-circuit voltages differing by more than 0.1 V. Joining only the positives, or wiring sources in series, never fires it (Astra re-review A). Rail outputs with `reverse: 'blocks'` are excluded, because they OR rather than fight. | error; basis = the weaker provenance of the two voltages |
 | `sim-over-abs-max` | Over an `absMaxCurrent`, a `vinMax`, or a pin's absolute maximum. "Exceeds the absolute maximum rating; damage is likely." The engine does not decide burnout: the LED shows dark-red with a warning ring, never "burnt". | error |
 | `sim-over-limit` | Over a `current`, `power`, `sourceCurrent`, `ioTotalCurrent`, `ioutMax` or `imax` limit, or a USB host's sourced current, but under any absolute maximum. "Above its 20 mA rating." | warning |
 | `sim-brownout` | A load's domain voltage below its `minVolts`. | error |
-| `sim-dropout` | An LDO with `V(in) - V(out)` below `dropout` + 20 mV (out of regulation). | error |
+| `sim-dropout` | An LDO whose control voltage `Vctl` is below `vout` - 10 mV (out of regulation; this excludes the `rout` drop). | error |
 | `sim-converter-off` | A buck or boost with `e < 0.5` while loads on its output domain expect power. | error |
 | `sim-min-load` | A rail with `minLoad` loaded below it, e.g. the IP5306 auto shutdown. | warning |
 | `sim-outside-model` | A rail beyond `ioutMax`, so its voltages can't be trusted. | warning |
@@ -433,13 +467,12 @@ Messages are plain words, for example "LED1 carries 47 mA, above the 20 mA typic
 
 - **Placing:** the Probe tool (`P`) clicks a pin, a breadboard hole, the end of a wire or a part.
   - A click on a wire anchors to the nearer of its two end pins.
-  - Shift-clicking a second point makes a differential voltage probe.
   - A part probe reads current per pin, plus power.
 - **Saving in the sheet:** a new optional top-level field, additive to `circuitoon-diagram/1`. Anchors are part uids and pin names, never wires, so wire edits can't strand a probe.
   ```json
   "probes": [ { "id": "P1", "name": "battery +", "at": { "part": "u3", "pin": "+" } },
               { "id": "P2", "at": { "part": "d1" } },
-              { "id": "P3", "at": { "part": "bb1", "pin": "a12" }, "ref": { "part": "u3", "pin": "-" } } ]
+              { "id": "P3", "at": { "part": "bb1", "pin": "a12" } } ]
   ```
 - **Saving in an agent netlist (Astra finding 15):** probes use refs and net names, for example `{ "id": "P1", "at": "BT1.+" }`, `{ "id": "P2", "at": "D1" }` and `{ "id": "P3", "at": "net:VBAT", "ref": "net:GND" }`.
   - `layout` resolves `net:` to a pin on that net, preferring the part named by the probe's `name`, then the lowest ref.
@@ -452,7 +485,7 @@ Messages are plain words, for example "LED1 carries 47 mA, above the 20 mA typic
   - A tag shows typical, with peak if it differs: "4.38 V (peak 4.21 V)". It shows "floating", "undefined" or "-" (Simulate off) as words, and readings outside the model are marked.
 - **The Probes panel** (right side; it replaces the inspector tab while the Probe tool is active) holds:
   - the reading list, with rename and delete;
-  - **Supplies**: each source, rail and domain with load against limit as a bar, typical and peak, headroom, and provenance;
+  - **Supplies**: each source, rail and domain as a table row: load against limit, typical and peak, headroom, and provenance;
   - the incomplete and estimate notes, with their parts.
 
 ### 6.3 On the sheet while simulating
@@ -487,7 +520,7 @@ Messages are plain words, for example "LED1 carries 47 mA, above the 20 mA typic
 | clean | `ok`, blocking findings | sim blocking findings | false | false | 1 | GATE FAILED (simulation) |
 | clean | `ok`, warnings only | [] | true | per existing readability rules | 0 | GATE PASSED, with warnings |
 | clean | `ok`, clean | [] | true | per existing rules | 0 | GATE PASSED |
-| clean | `failed` (no convergence) | [the failure] | false | false | 1 | GATE FAILED (simulation did not converge) |
+| clean | `failed` (no convergence) | [] | false | false | 3 | GATE INCOMPLETE (simulation did not converge; this may be our model, not your circuit) |
 | clean | `unavailable` (engine) | [] | false | false | 3 | GATE INCOMPLETE (simulation unavailable) |
 
 - **New fields:**
@@ -495,8 +528,6 @@ Messages are plain words, for example "LED1 carries 47 mA, above the 20 mA typic
   - `warnings`, which holds sim warnings; the existing info-only `notes` keeps only notes, including `sim-incomplete` and `sim-estimate`.
 - **Compatibility:** gate/4 is a new format. Every reader in the repo is updated: the skill docs, the `NOT_CHECKED` list in `src/agent/notChecked.ts` (simulation is now checked), and the tests. Nothing claims gate/3 readers keep working unchanged.
 - **Other commands:**
-  - `explain` gains a part's sim data with provenance;
-  - `render --sim` draws glow, probes and readings.
 - **The `circuitoon-design` skill:** set GPIO states for what the firmware does, run `sim`, fix every blocking finding, and read the warnings, then hand the sheet over.
 - **The plugin version** goes to 0.10.0.
 
@@ -507,7 +538,7 @@ Messages are plain words, for example "LED1 carries 47 mA, above the 20 mA typic
 | Engine download (gzip) | ≤ 2.5 MB, fetched only on the first Simulate |
 | Cold start in the browser | ≤ 1.5 s on the dev machine, with progress shown |
 | One solve (2 runs), 200 parts, Worker end to end | p95 ≤ 30 ms |
-| Worker heap after 2,000 runs | ≤ 64 MB above baseline |
+| Worker heap after 2,000 runs (one recycle period) | ≤ 64 MB above baseline |
 | Editor main bundle | at most +30 KB gzip (the engine is never in it) |
 | CLI `sim` on the Spirit Typewriter sheet, cold | ≤ 2 s |
 
@@ -519,7 +550,7 @@ Messages are plain words, for example "LED1 carries 47 mA, above the 20 mA typic
   - an open switch;
   - a source-less island;
   - a singleton pin;
-  - a cross-island differential probe reads "undefined".
+  - a probe on a source-less island reads "floating".
 - **Accuracy and conservation:**
   - LED + 150 Ω + 5 V gives V(anode) = 2.0008 V ± 1 mV;
   - a battery under load sags by `rInternal`;
@@ -540,7 +571,7 @@ Messages are plain words, for example "LED1 carries 47 mA, above the 20 mA typic
   - success, then failure, then success;
   - a timeout terminates the worker;
   - the heap stays in budget over 2,000 runs;
-  - `engine:verify` reproduces the committed `.wasm` hash.
+  - `engine:build` rebuilds the engine and its smoke tests pass (LED accuracy, `ngGet_Vec_Info` reads, `ngSpice_SetBkpt` accepted).
 - **Probes:** sheet ↔ netlist round trip; dangling anchors dropped with a warning.
 - **Spirit Typewriter fixture** (`src/sim/fixtures/`):
   - every powered part has power data with honest provenance, whether datasheet, representative or estimate;
@@ -553,7 +584,7 @@ Messages are plain words, for example "LED1 carries 47 mA, above the 20 mA typic
 
 Michael asked for Astra to be consulted along the way. Each checkpoint gets an Astra review before work continues, and the findings are acted on or answered with reasons.
 
-1. **This spec:** revision 2 goes to Astra for re-review, then to Michael.
+1. **This spec:** Michael reviews revision 4. Astra re-reviews it after its reset (Oct 10). Planning starts once Michael approves; Astra's findings are folded in when they arrive.
 2. **The implementation plan.**
 3. **Engine:** the Docker build, the release asset and NOTICE, the adapter and workers, and the lifecycle tests.
 4. **Model:** `model.ts`, `build.ts`, `floating.ts`, `spice.ts`, the converter, GPIO and USB models, and the accuracy and conservation tests.
@@ -567,7 +598,7 @@ Michael asked for Astra to be consulted along the way. Each checkpoint gets an A
 |---|---|
 | Datasheet numbers wrong or mislabelled | Two reviewers, a link per number, per-value provenance, and uncertain values never block |
 | Behavioural models fail to converge or mislead outside range | Smoothed enables, guarded divisions, blocking diodes, the section 4.3 suite, and `outside-model` trust marking |
-| Our own WASM build drifts or breaks | Pinned source, emsdk and patches; `engine:verify`; release asset per version |
+| Our own WASM build drifts or breaks | Pinned source, emsdk and patches; `engine:build` with smoke tests; release asset per version |
 | Simulated state is mistaken for the checker's any-state verdict | Separate groups with their assumptions stated (2.1) |
 | Probes clutter big sheets | Opt-in, with the existing collision-avoiding placement |
 
@@ -604,3 +635,21 @@ Michael asked for Astra to be consulted along the way. Each checkpoint gets an A
 | 15. Probes on removed boards | Remapped to `net:` on extract; part probes dropped with a warning; a round-trip test (6.2). |
 | B. Legacy primitives | Primitive models compile without `sim` data; only boards and modules need `sim.power` (3.1). |
 | C. Defaults | A per-kind required-field table; `minVolts` defaults to 90 % of nominal (`estimate`); incomplete models are rejected before compiling (3.1, 3.2). |
+
+## 14. Answers to the Claude review of revision 3
+
+| # | Finding | Revision 4 |
+|---|---|---|
+| 1 | No saved switch state | `values["contact.<groupId>"]`, defaults shared with the mains model, a legacy mapping, relays shown at rest (4.0) |
+| 2 | Net-name collision | The `netlist()` nets are named exactly as `extract` names them; singletons get their own namespace (2) |
+| 3 | Stiff diode, non-smooth min/max | One softplus current source per output; `smin`, `smax` and the fold-back are smoothed (4.1) |
+| 4 | Equilibrium halfway through the enable | `0.01 < e < 0.99` marks outside-model and fires `sim-converter-off`, with a test (4.2) |
+| 5 | Non-convergence failing a good circuit | `failed` gives GATE INCOMPLETE, exit 3 (7) |
+| 6 | Battery `rInternal` | Per-module values on all 15 built-in batteries; a voltage-keyed legacy fallback (3.1) |
+| 7 | Build mode forces a rebuild for firmware | Shared library with XSPICE now, with an executable-mode fallback decided at the engine checkpoint (2.2) |
+| 8 | ORed rails as conflicts | `blocks` rails are excluded (5.2) |
+| 9 | `usbPorts` and `#vbus` validation, direct plugs | Added to `SimSpec`; node-reference syntax; 20 mΩ contact for direct plugs (3.1, 4.7) |
+| 10 | Dropout misfires | Uses `Vctl` (5.2) |
+| 11 | Stale text | Fixed |
+| 12 | Potentiometer and inductor | Potentiometer added; inductor dropped (no module uses it) |
+| cuts | Over-engineering | Cut: hash-identical rebuilds, heap-based recycling, hub modelling, differential probes, `render --sim` and `explain` data, and Supplies bars (now a table). Host-rail modelling is kept, because conservation needs it (Astra finding 2). |
