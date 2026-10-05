@@ -1,10 +1,11 @@
 # Live DC simulation: design
 
-Status: revision 4 (2026-10-05).
+Status: revision 5 (2026-10-05).
 - Revision 1 was approved section by section by Michael.
 - Astra reviewed revisions 1 and 2: section 12 answers the first review, section 13 the re-review.
 - Codex hit its usage limit during Astra's review of revision 3, so a Claude reviewer reviewed it instead; section 14 answers that review.
 - Astra re-reviews after its reset (Oct 10).
+- Revision 5 folds in the amendments an independent review of the implementation plan required; section 15 lists them.
 
 This is the second V2 sub-project, after mains outlets. Instruments, V3 animation and firmware come later.
 
@@ -55,7 +56,7 @@ diagram + library ─► src/sim/build.ts ─Circuit─► src/sim/spice.ts ─t
   - It starts from **every terminal of every simulated part**, including singleton pins that `netlist()` omits.
   - Net names: the nets `netlist()` produces are named exactly as `extract` names them, via the shared `nameNets()` (`src/format/netNames.ts`). Singleton pins that `netlist()` omits are named separately as `<ref>_<pin>`, and never go through `nameNets()`. So `net:GND` means the same net in the CLI, `extract`, KiCad and the simulator (the Claude reviewer's finding 2).
 - **`src/sim/floating.ts`:** before solving, a graph pass classifies every node as `driven` (it has a DC path to a source) or `floating`.
-  - Capacitors and open switches do not conduct for this pass.
+  - Capacitors and open switches do not conduct for this pass. Nor do input-leakage resistors, loads, or a rail's return path (revision 5): **driven** means reachable from a source's + terminal or a rail output through the other conducting elements. A board behind an open switch is unpowered even when its ground is shared, and an input held only by its leakage floats.
   - Floating nodes are never reported as a voltage. Their probes and readings say "floating", whatever number the solver returns for them.
 - **`src/sim/spice.ts`:** the compiler. It is pure, and returns the SPICE text plus a name map back to device and part ids.
   - It never emits R = 0.
@@ -100,7 +101,7 @@ The checker (`src/format/checks.ts`) is unchanged, and **it never suppresses or 
   - Vectors are read through `ngGet_Vec_Info`, never by parsing stdout.
   - There are no PDK models.
   - The loader fetches a separate `ngspice.wasm` by URL in the browser and reads it from disk in Node.
-- **Fallback if the shared build cannot be made to work** at the engine checkpoint: the executable build (`--disable-xspice`, as in eecircuit), and the rebuild is recorded as accepted debt in the ledger. It is decided at the checkpoint, not later.
+- **Fallback ladder** (revision 5), decided at the engine checkpoint, not later. Rung 1 is the shared library with XSPICE (above). Rung 2, tried automatically when rung 1 cannot be made to build: the shared library without XSPICE (`--with-ngshared --disable-xspice`); the exports, the adapter and everything after them stay the same, and XSPICE is recorded as debt in the ledger. Rung 3, only if rung 2 fails too: the executable build (`--disable-xspice`, as in eecircuit); this rung means stop and redesign the adapter.
 - The output is committed to `public/sim/` and `plugin/dist-cli/`. `npm run engine:build` rebuilds it in Docker and runs the engine smoke tests. Byte-identical rebuilds are not required (emsdk builds are rarely reproducible); the release asset records the inputs instead.
 - **The JS wrapper** is our own small adapter over the exported C API. It does not depend on eecircuit-engine at run time.
 - **Licence compliance:**
@@ -150,6 +151,7 @@ interface Limit {
 - **Provenance is per value, never per part.**
   - `representative` means a value from a representative datasheet for a generic part, for example "a typical 5 mm red LED". The source names which datasheet.
   - A user override (section 3.5) marks only the overridden value `user`.
+- **Module parameters** (revision 5): `electrical.params` values, module defaults included, count as `user`: they are the designer's stated values (a 4xAA holder is 6 V because the sheet says so). Only `sim` data carries `datasheet`, `representative` or `estimate`.
 - **Legacy values:** the LED's existing `params.maxCurrent` (default 20 mA) is still read as a `current` limit with provenance `representative`, so old embedded modules keep working. If both are present, `sim.limits` wins.
 - **Validation:** `electrical.sim` is validated in full. Unknown keys are errors, a unit must match its kind, and every pin and domain it names must exist.
 - **Primitives need no `sim` data (Astra re-review B).** The built-in primitive models compile from the existing `electrical.model`, `terminals` and `params` plus defaults, with or without `electrical.sim`, legacy embedded copies included. They are:
@@ -431,7 +433,7 @@ interface SimFinding {
 | `sim-source-conflict` | Two sources or rail outputs form a **closed loop through low paths on both sides**: plus to plus **and** minus to minus (parallel), with open-circuit voltages differing by more than 0.1 V. Joining only the positives, or wiring sources in series, never fires it (Astra re-review A). Rail outputs with `reverse: 'blocks'` are excluded, because they OR rather than fight. | error; basis = the weaker provenance of the two voltages |
 | `sim-over-abs-max` | Over an `absMaxCurrent`, a `vinMax`, or a pin's absolute maximum. "Exceeds the absolute maximum rating; damage is likely." The engine does not decide burnout: the LED shows dark-red with a warning ring, never "burnt". | error |
 | `sim-over-limit` | Over a `current`, `power`, `sourceCurrent`, `ioTotalCurrent`, `ioutMax` or `imax` limit, or a USB host's sourced current, but under any absolute maximum. "Above its 20 mA rating." | warning |
-| `sim-brownout` | A load's domain voltage below its `minVolts`. | error |
+| `sim-brownout` | A load's domain voltage below its `minVolts` (error). A load that nothing on the sheet powers in the current state is a **warning** with basis `topology`, worded "not powered in the current state", naming the open switch when one separates it from a source ("SW1 is open"); revision 5. | error; warning when not powered |
 | `sim-dropout` | An LDO whose control voltage `Vctl` is below `vout` - 10 mV (out of regulation; this excludes the `rout` drop). | error |
 | `sim-converter-off` | A buck or boost with `e < 0.5` while loads on its output domain expect power. | error |
 | `sim-min-load` | A rail with `minLoad` loaded below it, e.g. the IP5306 auto shutdown. | warning |
@@ -653,3 +655,14 @@ Michael asked for Astra to be consulted along the way. Each checkpoint gets an A
 | 11 | Stale text | Fixed |
 | 12 | Potentiometer and inductor | Potentiometer added; inductor dropped (no module uses it) |
 | cuts | Over-engineering | Cut: hash-identical rebuilds, heap-based recycling, hub modelling, differential probes, `render --sim` and `explain` data, and Supplies bars (now a table). Host-rail modelling is kept, because conservation needs it (Astra finding 2). |
+
+## 15. Revision 5 amendments
+
+From an independent review of the implementation plan (`docs/superpowers/plans/2026-10-05-live-simulation.md`, rulings R13, R28 and R30):
+
+| Section | Amendment |
+|---|---|
+| 2 (floating.ts) | "Driven" means reachable from a source's + terminal or a rail output through conducting elements other than input-leakage resistors, loads and a rail's return path. So a board behind an open switch with its ground shared is unpowered, not a 0 V reading, and an input held only by leakage floats. |
+| 2.2 | The fallback is a ladder: rung 1 shared library with XSPICE; rung 2, tried automatically, shared library without XSPICE (same adapter, XSPICE recorded as debt); rung 3 the executable build, which means stop and redesign. |
+| 3.1 | Module `electrical.params` values, defaults included, count as `user` (the designer's stated value); only `sim` data carries datasheet, representative or estimate provenance. |
+| 5.2 | A load that nothing on the sheet powers in the current state gives `sim-brownout` as a warning (basis `topology`, "not powered in the current state"), the same whether the board is unplugged or behind an open switch with ground shared; the message names the open switch when one is the cause. The `circuitoon-design` skill tells agents to set switches to their operating position before `sim` or `gate`. |

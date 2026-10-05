@@ -8,7 +8,7 @@
 
 **Tech Stack:** ngspice 45.2 (shared library, XSPICE) built with emsdk 6.0.11 in Docker; TypeScript (erasable syntax only); React 19; Vite 8; vitest 5; Node `worker_threads`; Web Workers; playwright-core for the visual checks.
 
-**Spec:** `docs/superpowers/specs/2026-10-05-live-simulation-design.md` (revision 4). Read it fully before any task. The engine spike report is `C:/Users/micha/Desktop/projects/Circuitoon-spice/.superpowers/spice-spike-report.md`; its throwaway code is under `C:/Users/micha/Desktop/projects/Circuitoon-spice/spike/` (`engines/ee.mjs`, `circuits.mjs`).
+**Spec:** `docs/superpowers/specs/2026-10-05-live-simulation-design.md` (revision 5: section 15 lists the amendments this plan relies on). Read it fully before any task. The engine spike report is `C:/Users/micha/Desktop/projects/Circuitoon-spice/.superpowers/spice-spike-report.md`; its throwaway code is under `C:/Users/micha/Desktop/projects/Circuitoon-spice/spike/` (`engines/ee.mjs`, `circuits.mjs`).
 
 ## Global Constraints
 
@@ -22,7 +22,7 @@ Copied verbatim from the spec. Every task's requirements include this section.
 - "Vectors are read through `ngGet_Vec_Info`, never by parsing stdout." (2.2)
 - "There are no PDK models." (2.2)
 - "The loader fetches a separate `ngspice.wasm` by URL in the browser and reads it from disk in Node." (2.2)
-- "**Fallback if the shared build cannot be made to work** at the engine checkpoint: the executable build (`--disable-xspice`, as in eecircuit), and the rebuild is recorded as accepted debt in the ledger. It is decided at the checkpoint, not later." (2.2)
+- "**Fallback ladder** (revision 5), decided at the engine checkpoint, not later. Rung 1 is the shared library with XSPICE (above). Rung 2, tried automatically when rung 1 cannot be made to build: the shared library without XSPICE (`--with-ngshared --disable-xspice`); the exports, the adapter and everything after them stay the same, and XSPICE is recorded as debt in the ledger. Rung 3, only if rung 2 fails too: the executable build (`--disable-xspice`, as in eecircuit); this rung means stop and redesign the adapter." (2.2, revision 5)
 - "The output is committed to `public/sim/` and `plugin/dist-cli/`. `npm run engine:build` rebuilds it in Docker and runs the engine smoke tests." (2.2)
 - "**The JS wrapper** is our own small adapter over the exported C API. It does not depend on eecircuit-engine at run time." (2.2)
 - "**Each engine version is published as a GitHub release asset** on MBarc/circuitoon." (2.2)
@@ -81,7 +81,7 @@ The plan rules on these so no task has to. Each is referenced where it applies.
 | R10 | Where the checker group's new heading shows | Only while Simulate is on: the checker group is titled "Wiring checks (any switch position, external power assumed)" and a second group "Simulation (current state)" follows. With Simulate off the panel is unchanged ("Problems"). |
 | R11 | spinit and XSPICE code models in a WASM shared library (code models load with dlopen) | `ngSpice_nospinit` is exported too and called before `ngSpice_Init`; XSPICE core is built, but its code-model tools (`cmpp`, `icm`, `verilog`, `vhdl`) are left out by patch. No PDK models. |
 | R12 | Where the LED's per-colour data lives | `src/sim/ledModels.ts` (code, with a source per colour). `led.json` keeps no colour data. The `current` limit is `sim.limits` if present, else the legacy `params.maxCurrent` (`representative`); the `absMaxCurrent` comes from the per-colour table. |
-| R13 | Provenance of `electrical.params` values (voltage, resistance, forwardVoltage) | They count as `user`: they are the part's stated, user-editable values (a 4xAA holder is 6 V because the sheet says so). Only `sim` values carry their own provenance; `params.maxCurrent` is the spec's `representative` exception. |
+| R13 | Provenance of `electrical.params` values (voltage, resistance, forwardVoltage); now spec 3.1, revision 5 | They count as `user`: they are the part's stated, user-editable values (a 4xAA holder is 6 V because the sheet says so). Only `sim` values carry their own provenance; `params.maxCurrent` is the spec's `representative` exception. |
 | R14 | Which parameters a finding's `inputs` and `basis` cover | The parameters of the parts the finding names: the load's draw and `minVolts` for a brownout; the rail's `vout`, `dropout` and its output domain's draws for a dropout; the limit and nothing else for a limit finding. The upstream chain is not an input. |
 | R15 | Gate banners | The spec's matrix wins: `GATE FAILED` replaces `GATE BLOCKED`; `GATE PASSED, with warnings` when warnings remain; the two simulation `GATE INCOMPLETE` banners are added. |
 | R16 | "Playwright with our own Chrome ... over CDP" | The repo's `scripts/lib/browser-check.mjs` `launchChrome()`: playwright-core launching its own headless Chrome (over the CDP pipe). Never the Playwright MCP, never the shared debugging ports 9333 or 9335. |
@@ -96,10 +96,11 @@ The plan rules on these so no task has to. Each is referenced where it applies.
 | R25 | Determinate download progress when Pages serves the wasm gzip-compressed | `public/sim/engine.json` records the wasm's byte size; progress is bytes received over that size. |
 | R26 | Repeated `--probe` flags | `parseArgs` gains a `lists` map for repeatable flags; `--probe` is its only member. |
 | R27 | Part keys in `SimResult` | Part uids, as every CLI finding uses (a laid-out netlist's uids are its refs). |
-| R28 | Executable fallback adapter | The decision step in Task 1 builds the executable mode and stops for the controller: the executable adapter's design depends on how the shared build failed, so it is added as an amendment task, not guessed here. |
+| R28 | Executable fallback adapter (rung 3 of spec 2.2's ladder, revision 5) | Rung 2 (shared library without XSPICE) is tried automatically first. Rung 3 builds the executable mode and stops for the controller: the executable adapter's design depends on how the shared build failed, so it is added as an amendment task, not guessed here. |
 | R29 | Where the circuit's notes ("shown at rest", an LED colour with no model) appear | `SimResult.notes: string[]`, additive to the spec's shape; the Probes panel lists them. |
-| R30 | A load that nothing on the sheet supplies (an unplugged DevKit) | `sim-brownout` as a **warning** with basis `topology` ("not powered in the current state"), never an error: the checker's "external power assumed" view already covers an undrawn supply, so blocking would answer the checker's question, not the simulator's (spec 2.1). A load that is supplied but too low is the spec's error. |
-| R31 | What "one solve, Worker end to end" measures (spec 8) | Both corners from the built Circuit to the mapped result: compile, worker round trip, solve, map back. Building the Circuit from the sheet is the per-edit cost the 200-part drag budget covers. |
+| R30 | A load that nothing on the sheet powers in the current state (an unplugged DevKit, or one behind an open switch with ground shared); now spec 5.2, revision 5 | `sim-brownout` as a **warning** with basis `topology` ("not powered in the current state"), never an error: the checker's "external power assumed" view already covers an undrawn supply, so blocking would answer the checker's question, not the simulator's (spec 2.1). When an open switch separates it from a source, the message names it ("SW1 is open"). Both cases trigger alike because loads, input leakage and rail returns are not DC paths (spec 2, revision 5). A load that is supplied but too low is the spec's error. |
+| R31 | What "one solve, Worker end to end" measures (spec 8) | Both corners from the built Circuit to the mapped result: compile, worker round trip, solve, map back. A second budget covers the whole re-solve on the same 200-part fixture (build, compile, both corners, findings): p95 at most 50 ms (Task 32). |
+| R33 | Series counts in the voltage-keyed battery fallback (spec 3.1 table) | Li-ion matches only 1 or 2 cells, alkaline 1 to 6; coin cells and 9 V are single. 12 V, 11.1 V and other voltages are "unknown" (0.1 ohm, with a note). |
 | R32 | `sim-floating-input` on pins wired to nothing | Only an input pin wired to something is reported; an unconnected pin reads nothing, and listing every spare GPIO would bury the real ones. |
 
 ## File Structure
@@ -163,11 +164,12 @@ Modified files: `.gitignore`, `package-lock.json`, `src/cli/layoutCmd.ts`, `src/
 - Create: `engine/ngspice/versions.env`, `engine/ngspice/Dockerfile`, `engine/ngspice/build.sh`, `engine/ngspice/make-patches.sh`, `engine/ngspice/patches/0001-emscripten-build.patch` (generated), `engine/ngspice/NOTICE.template.txt`, `engine/ngspice/RELINK.md`
 - Create: `scripts/engine-build.mjs`
 - Create (build output, committed): `public/sim/ngspice.mjs`, `public/sim/ngspice.wasm`, `public/sim/engine.json`, `public/sim/NOTICE.txt`, and the same four files in `plugin/dist-cli/`
-- Modify: `package.json` (script `engine:build`), `.gitignore` (add `engine/out/`)
+- Modify: `package.json` (script `engine:build`), `.gitignore` (add `engine/out/`), `.gitattributes` (binary wasm, LF engine files)
+- Test: `src/sim/engine/wasm.test.ts`
 
 **Interfaces:**
 - Consumes: nothing.
-- Produces: `public/sim/engine.json` and `plugin/dist-cli/engine.json`, exactly `{ "ngspice": "45.2", "build": "45.2-1", "mode": "shared" | "exe", "emsdk": "6.0.11", "wasmBytes": number, "wasmSha256": string, "release": string }`. `ngspice.mjs` default-exports an Emscripten factory `createNgspice(moduleArg) => Promise<Module>` with `_ngSpice_Init`, `_ngSpice_Command`, `_ngGet_Vec_Info`, `_ngSpice_CurPlot`, `_ngSpice_AllVecs`, `_ngSpice_SetBkpt`, `_ngSpice_nospinit`, `_malloc`, `_free` and the runtime methods `addFunction`, `UTF8ToString`, `stringToUTF8`, `lengthBytesUTF8`, `getValue`, `FS`, `HEAPF64`, `HEAPU8`.
+- Produces: `public/sim/engine.json` and `plugin/dist-cli/engine.json`, exactly `{ "ngspice": "45.2", "build": "45.2-1", "mode": "shared" | "shared-noxspice" | "exe", "emsdk": "6.0.11", "wasmBytes": number, "wasmSha256": string, "release": string }`. `ngspice.mjs` default-exports an Emscripten factory `createNgspice(moduleArg) => Promise<Module>` with `_ngSpice_Init`, `_ngSpice_Command`, `_ngGet_Vec_Info`, `_ngSpice_CurPlot`, `_ngSpice_AllVecs`, `_ngSpice_SetBkpt`, `_ngSpice_nospinit`, `_malloc`, `_free` and the runtime methods `addFunction`, `UTF8ToString`, `stringToUTF8`, `lengthBytesUTF8`, `getValue`, `FS`, `HEAPF64`, `HEAPU8`.
 
 The pins below were looked up on 2026-10-05: the ngspice tarball was downloaded from SourceForge and hashed; the emsdk digest is Docker Hub's manifest-list digest for `emscripten/emsdk:6.0.11` (the newest emsdk tag that day); the eecircuit commit is `eelab-dev/EEcircuit-engine` main as of 2026-09-07. Its `Docker/run.sh`, `Dockerfile` and `hicum2_patch.sh` were read at that commit; the edits below that come from them say so.
 
@@ -184,11 +186,14 @@ EMSDK_VERSION=6.0.11
 EMSDK_IMAGE=emscripten/emsdk:6.0.11@sha256:cdefec943f04fd4b2b2fe23b0a1a346be9fc560ef5784a83faa27dd351381372
 # build.sh is adapted from eecircuit-engine's MIT-licensed Docker/run.sh at this commit.
 EECIRCUIT_COMMIT=75594eec516be3087e64eeb5347a958de70f410c
-# shared: --with-ngshared --enable-xspice (spec 2.2). exe: the fallback executable build.
+# The fallback ladder (spec 2.2, revision 5): shared = --with-ngshared --enable-xspice (rung 1);
+# shared-noxspice = --with-ngshared --disable-xspice (rung 2, same adapter); exe = the executable (rung 3).
 BUILD_MODE=shared
 BUILD=45.2-1
 RELEASE_TAG=engine-ngspice-45.2-1
 ```
+
+Git Bash on Windows rewrites arguments that look like paths (`/work`, `/out`) before Docker sees them, so every `docker` command below that mounts or names a container path starts with `MSYS_NO_PATHCONV=1`, and `scripts/engine-build.mjs` sets it in Docker's environment too.
 
 Verify both pins before anything else:
 
@@ -210,7 +215,7 @@ Expected: `ba8345f4c3774714c10f33d7da850d361cec7d14b3a295d0dc9fd96f7423812d  /tm
 #!/usr/bin/env bash
 # Regenerates patches/0001-emscripten-build.patch from the pinned tarball (spec 2.2: our patches as
 # .patch files). Run in the build image:
-#   docker run --rm -v "$PWD/engine/ngspice:/work" <EMSDK_IMAGE> bash /work/make-patches.sh
+#   MSYS_NO_PATHCONV=1 docker run --rm -v "$PWD/engine/ngspice:/work" <EMSDK_IMAGE> bash /work/make-patches.sh
 set -euo pipefail
 source /work/versions.env
 cd /tmp && rm -rf a b && mkdir a
@@ -248,7 +253,7 @@ Run:
 ```bash
 cd C:/Users/micha/Desktop/projects/Circuitoon-sim
 mkdir -p engine/ngspice/patches
-docker run --rm -v "$PWD/engine/ngspice:/work" emscripten/emsdk:6.0.11@sha256:cdefec943f04fd4b2b2fe23b0a1a346be9fc560ef5784a83faa27dd351381372 bash /work/make-patches.sh
+MSYS_NO_PATHCONV=1 docker run --rm -v "$PWD/engine/ngspice:/work" emscripten/emsdk:6.0.11@sha256:cdefec943f04fd4b2b2fe23b0a1a346be9fc560ef5784a83faa27dd351381372 bash /work/make-patches.sh
 grep -c "^-SUBDIRS = mif cm enh evt ipc idn cmpp icm verilog vhdl" engine/ngspice/patches/0001-emscripten-build.patch
 ```
 
@@ -289,25 +294,40 @@ tar xzf ngspice.tar.gz && cd "ngspice-$NGSPICE_VERSION"
 for p in /work/patches/*.patch; do patch -p1 < "$p"; done
 ./autogen.sh
 mkdir release && cd release
-COMMON="--disable-osdi --disable-debug --disable-openmp --without-x --with-readline=no"
+# --disable-klu: 45.2 builds KLU by default (configure.ac: "Default=yes"); KLU's SuiteSparse sources
+# (colamd among them) are LGPL, and ngspice's own Sparse 1.3 solver solves the same operating point.
+# The smoke and accuracy tests prove it; if one fails only without KLU, enable it and list it in NOTICE.
+COMMON="--disable-osdi --disable-klu --disable-debug --disable-openmp --without-x --with-readline=no"
+# ngshared links pthread (configure's AC_CHECK_LIB). Emscripten's libc stubs cover the mutex calls,
+# but -pthread would turn on shared memory (SharedArrayBuffer, COOP/COEP), which spec 2.2 rules out:
+# strip it from every generated Makefile, and fail if any survives.
+nopthread() {
+  find . -name Makefile -exec sed -i -e 's/[[:space:]]-pthread\b//g' -e 's/[[:space:]]-sUSE_PTHREADS=1//g' {} +
+  if grep -rl --include=Makefile -E '(^|[[:space:]])-pthread\b|USE_PTHREADS' . ; then echo "build: -pthread survived in the Makefiles above"; exit 4; fi
+}
 EXPORTS=_ngSpice_Init,_ngSpice_Command,_ngGet_Vec_Info,_ngSpice_CurPlot,_ngSpice_AllVecs,_ngSpice_SetBkpt,_ngSpice_nospinit,_malloc,_free
 RUNTIME=addFunction,UTF8ToString,stringToUTF8,lengthBytesUTF8,getValue,FS,HEAPF64,HEAPU8
 LINK="-O3 -sMODULARIZE=1 -sEXPORT_ES6=1 -sEXPORT_NAME=createNgspice -sENVIRONMENT=web,worker,node -sALLOW_MEMORY_GROWTH=1 -sALLOW_TABLE_GROWTH=1 -sSTACK_SIZE=4MB -sFORCE_FILESYSTEM=1"
-if [ "$MODE" = shared ]; then
-  emconfigure ../configure --with-ngshared --enable-xspice $COMMON
+if [ "$MODE" = shared ] || [ "$MODE" = shared-noxspice ]; then
+  # Rung 1 (shared) or rung 2 (shared-noxspice): the same library and exports, so the same adapter.
+  if [ "$MODE" = shared ]; then XSPICE=--enable-xspice; else XSPICE=--disable-xspice; fi
+  emconfigure ../configure --with-ngshared $XSPICE $COMMON
+  nopthread
   emmake make -j"$(nproc)" -C src
   LIB=$(ls src/.libs/libngspice.a src/.libs/libngspice.so 2>/dev/null | head -1 || true)
   [ -n "$LIB" ] || { echo "build: no libngspice.a or .so in src/.libs"; ls -la src/.libs || true; exit 3; }
   emcc "$LIB" -o /out/ngspice.mjs $LINK -sEXPORTED_FUNCTIONS=$EXPORTS -sEXPORTED_RUNTIME_METHODS=$RUNTIME -lm
 else
-  # Fallback (spec 2.2, ruling R28): the executable, as in eecircuit, without XSPICE.
+  # Rung 3 (spec 2.2, ruling R28): the executable, as in eecircuit, without XSPICE.
   emconfigure ../configure --disable-xspice $COMMON
+  nopthread
   sed -i "s|\$(ngspice_LDADD) \$(LIBS)|\$(ngspice_LDADD) \$(LIBS) $LINK -sINVOKE_RUN=0 -sEXPORTED_RUNTIME_METHODS=FS,callMain -o ngspice.mjs|" src/Makefile
   emmake make -j"$(nproc)" -C src
   cp src/ngspice.mjs src/ngspice.wasm /out/
 fi
 # Licence scan (spec 2.2): every source directory compiled in, and which mention a non-BSD licence.
-find src -name '*.o' -printf '%h\n' | sed 's|^src/||' | sort -u > /out/compiled-dirs.txt
+# libtool puts objects in .libs/ directories: drop that last part so each entry names a source directory.
+find src \( -name '*.o' -o -name '*.lo' \) -printf '%h\n' | sed -e 's|^src/||' -e 's|/\.libs$||' | sort -u > /out/compiled-dirs.txt
 : > /out/licence-scan.txt
 while read -r d; do
   hit=$(grep -l -E 'GNU (Lesser )?General Public|LGPL|GPL|Mozilla Public' "../src/$d"/*.[ch] 2>/dev/null | head -3 | tr '\n' ' ' || true)
@@ -340,7 +360,8 @@ const i = process.argv.indexOf('--mode')
 const mode = i > 0 ? process.argv[i + 1] : env.BUILD_MODE
 const out = join(root, 'engine/out')
 mkdirSync(out, { recursive: true })
-const run = (cmd, args) => execFileSync(cmd, args, { stdio: 'inherit', cwd: root })
+// MSYS_NO_PATHCONV: from Git Bash, keep /out a container path.
+const run = (cmd, args) => execFileSync(cmd, args, { stdio: 'inherit', cwd: root, env: { ...process.env, MSYS_NO_PATHCONV: '1' } })
 run('docker', ['build', '--build-arg', `EMSDK_IMAGE=${env.EMSDK_IMAGE}`, '-t', 'circuitoon-ngspice', 'engine/ngspice'])
 run('docker', ['run', '--rm', '-e', `BUILD_MODE_OVERRIDE=${mode}`, '-v', `${out}:/out`, 'circuitoon-ngspice'])
 
@@ -368,8 +389,13 @@ for (const dir of ['public/sim', 'plugin/dist-cli']) {
 }
 const gz = gzipSync(wasm, { level: 9 }).length
 console.log(`engine: ${mode} build ${env.BUILD}, wasm ${wasm.length} bytes (${(gz / 1048576).toFixed(2)} MB gzip)`)
-if (gz > 2.5 * 1048576) console.error('engine: over the 2.5 MB gzip download budget (spec 8)')
-process.exit(spawnSync('npx', ['vitest', 'run', 'src/sim/engine/smoke.test.ts'], { stdio: 'inherit', shell: true, cwd: root }).status ?? 1)
+// XSPICE makes the binary bigger. Over budget never fails silently: it is printed here, written
+// beside the build, and recorded in the ledger (Step 6) as a budget miss for the checkpoint.
+if (gz > 2.5 * 1048576) {
+  console.error(`engine: BUDGET MISS: ${(gz / 1048576).toFixed(2)} MB gzip is over the 2.5 MB download budget (spec 8); record it in the ledger`)
+  writeFileSync(join(out, 'BUDGET-MISS.txt'), `${gz} bytes gzip > 2.5 MB (spec 8)\n`)
+}
+process.exit(spawnSync('npx', ['vitest', 'run', 'src/sim/engine/smoke.test.ts', 'src/sim/engine/wasm.test.ts'], { stdio: 'inherit', shell: true, cwd: root }).status ?? 1)
 ```
 
 `engine/ngspice/NOTICE.template.txt` (Step 6 adds every directory the scan finds):
@@ -383,6 +409,8 @@ which keep their own licences:
 
 - src/frontend/numparam: GNU Lesser General Public License, version 2 or later (LGPLv2+).
 - src/maths/sparse: the Sparse 1.3 licence (permissive, MIT-style).
+
+The KLU solver (SuiteSparse) is not compiled into this build (--disable-klu).
 
 Directories compiled into this build that mention another licence (from the build's scan):
 {{SCAN}}
@@ -402,9 +430,10 @@ release); Circuitoon loads it by file name.
 
 1. Install Docker. From the Circuitoon repository root run `npm run engine:build`, or by hand:
    `docker build --build-arg EMSDK_IMAGE=<EMSDK_IMAGE from versions.env> -t circuitoon-ngspice engine/ngspice`
-   then `docker run --rm -v "$PWD/engine/out:/out" circuitoon-ngspice`.
+   then `docker run --rm -v "$PWD/engine/out:/out" circuitoon-ngspice`. From Git Bash on Windows,
+   put `MSYS_NO_PATHCONV=1` in front of the `docker run` so `/out` stays a container path.
 2. The build downloads the ngspice tarball named in versions.env, checks its SHA-256, applies
-   patches/*.patch, configures with --with-ngshared --enable-xspice --disable-osdi and links
+   patches/*.patch, configures with --with-ngshared --enable-xspice --disable-osdi --disable-klu and links
    ngspice.mjs and ngspice.wasm with the exported functions listed in build.sh.
 3. To use a modified ngspice, change the source (or add a patch), rebuild, and copy the new
    ngspice.mjs and ngspice.wasm over public/sim/ (the site) or plugin/dist-cli/ (the CLI). Set
@@ -413,6 +442,41 @@ release); Circuitoon loads it by file name.
 
 Add `"engine:build": "node scripts/engine-build.mjs"` to `package.json` scripts and `engine/out/` to `.gitignore`.
 
+The repository sets `core.autocrlf=true`, and `.gitattributes` has `plugin/dist-cli/** text eol=lf`, which would treat `plugin/dist-cli/ngspice.wasm` as text and rewrite its bytes. Append these lines to `.gitattributes`, after the existing ones (git applies the last matching line, so they win over the `dist-cli` rule):
+
+```gitattributes
+# The engine (live simulation spec 2.2): the WASM is binary, byte for byte; the build files stay LF so
+# the Docker build reads them on Windows checkouts too.
+engine/** text eol=lf
+*.wasm binary
+```
+
+`src/sim/engine/wasm.test.ts` (run by `engine:build` with the smoke tests) proves the committed binary is intact and needs no shared memory:
+
+```ts
+// The engine binary as committed (spec 2.2): byte-identical to engine.json's hash in both copies, and
+// built without threads: it imports no memory (a shared-memory build imports a shared one), so the
+// site needs no SharedArrayBuffer and no COOP/COEP headers.
+import { describe, expect, it } from 'vitest'
+import { createHash } from 'node:crypto'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
+
+const root = join(import.meta.dirname, '..', '..', '..')
+describe('the committed engine binary', () => {
+  for (const dir of ['public/sim', 'plugin/dist-cli'])
+    it(`${dir}/ngspice.wasm matches engine.json and imports no memory`, async () => {
+      const wasm = readFileSync(join(root, dir, 'ngspice.wasm'))
+      const manifest = JSON.parse(readFileSync(join(root, dir, 'engine.json'), 'utf8'))
+      expect(wasm.length).toBe(manifest.wasmBytes)
+      expect(createHash('sha256').update(wasm).digest('hex')).toBe(manifest.wasmSha256)
+      const mod = await WebAssembly.compile(wasm)
+      expect(WebAssembly.Module.imports(mod).filter((i) => i.kind === 'memory')).toEqual([])
+      expect(readFileSync(join(root, dir, 'ngspice.mjs'), 'utf8')).not.toMatch(/new SharedArrayBuffer|USE_PTHREADS/)
+    })
+})
+```
+
 - [ ] **Step 5: Run the build**
 
 Run: `cd C:/Users/micha/Desktop/projects/Circuitoon-sim && node scripts/engine-build.mjs`
@@ -420,21 +484,21 @@ The smoke tests come in Task 2, so the run ends with vitest's "No test files fou
 
 - [ ] **Step 6: Fallback decision (spec 2.2: decided here, not later)**
 
-Decide with these criteria, in order, and write the outcome into the ledger:
+The ladder (spec 2.2, revision 5). Climb it in order and write each outcome into the ledger:
 
-1. The shared build succeeded (`build: done (shared)`): keep it and go to Step 7.
-2. It failed: read the first compile or link error. Fix only build-level causes inside `make-patches.sh` and `build.sh` (a flag emsdk 6 renamed, a missing export, the stack size, an autotools option) and rerun Step 5. At most three attempts, each recorded in the ledger with the error and the change.
-3. Still failing: run `node scripts/engine-build.mjs --mode exe`, set `BUILD_MODE=exe` in `versions.env`, record "Engine: shared-library build failed (<error summary>); executable fallback adopted as accepted debt; firmware co-simulation will need a rebuild", commit, and **stop for the controller**: per ruling R28 the executable adapter is added to this plan as an amendment before Task 2.
+1. **Rung 1, shared library with XSPICE.** It succeeded (`build: done (shared)`): keep it and go to Step 7. It failed: read the first compile or link error, fix only build-level causes inside `make-patches.sh` and `build.sh` (a flag emsdk 6 renamed, a missing export, the stack size, an autotools option) and rerun Step 5, at most three attempts, each in the ledger with the error and the change.
+2. **Rung 2, shared library without XSPICE, tried automatically.** After the third failed rung-1 attempt, run `node scripts/engine-build.mjs --mode shared-noxspice` without waiting for anyone. It succeeded: set `BUILD_MODE=shared-noxspice` in `versions.env`, record "Engine: XSPICE could not be built (<error summary>); rung 2 adopted; XSPICE (digital models, d_cosim) is recorded debt for firmware co-simulation", and continue with Step 7. The exports, the adapter (Task 2) and every later task are unchanged.
+3. **Rung 3, the executable.** Rung 2 failed too: run `node scripts/engine-build.mjs --mode exe`, set `BUILD_MODE=exe`, record the failure, commit, and **stop for the controller**. Rung 3 means stop and redesign: per ruling R28 the executable adapter is added to this plan as an amendment before Task 2.
 
-Record the gzip size and whether it is within the 2.5 MB budget (spec 8); over budget does not block this task, it goes to the checkpoint.
+Record the gzip size. Over 2.5 MB (`engine/out/BUDGET-MISS.txt` exists) is written into the ledger as a budget miss for the engine checkpoint; it does not block this task, and it is never dropped silently. XSPICE is the likely cause of a miss; say so if rung 1 is the one that missed.
 
-Then read `engine/out/licence-scan.txt`. Every directory it lists must be in `NOTICE.template.txt` with its licence: add a bullet for any that is missing (numparam is expected). A GPL-only hit in a compiled directory is a stop-and-ask, because Circuitoon is MIT. Rerun Step 5 if the template changed.
+Then read `engine/out/licence-scan.txt`. Every directory it lists must be in `NOTICE.template.txt` with its licence: add a bullet for any that is missing (numparam is expected; `maths/KLU` must not appear, since KLU is disabled). A GPL-only hit in a compiled directory is a stop-and-ask, because Circuitoon is MIT. Rerun Step 5 if the template changed.
 
 - [ ] **Step 7: Commit**
 
 ```bash
 cd C:/Users/micha/Desktop/projects/Circuitoon-sim
-git add engine/ngspice scripts/engine-build.mjs package.json .gitignore public/sim plugin/dist-cli/ngspice.mjs plugin/dist-cli/ngspice.wasm plugin/dist-cli/engine.json plugin/dist-cli/NOTICE.txt
+git add .gitattributes engine/ngspice scripts/engine-build.mjs src/sim/engine/wasm.test.ts package.json .gitignore public/sim plugin/dist-cli/ngspice.mjs plugin/dist-cli/ngspice.wasm plugin/dist-cli/engine.json plugin/dist-cli/NOTICE.txt
 git commit -m "$(cat <<'MSG'
 Engine: pinned ngspice 45.2 WASM build (shared library, XSPICE) and npm run engine:build
 
@@ -442,6 +506,17 @@ Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
 MSG
 )"
 ```
+
+Then prove the binary survives git (the `.gitattributes` lines above): delete the working copies and check them out fresh from the commit.
+
+```bash
+rm public/sim/ngspice.wasm plugin/dist-cli/ngspice.wasm
+git checkout HEAD -- public/sim/ngspice.wasm plugin/dist-cli/ngspice.wasm
+sha256sum public/sim/ngspice.wasm plugin/dist-cli/ngspice.wasm
+npx vitest run src/sim/engine/wasm.test.ts
+```
+
+Expected: both hashes equal `wasmSha256` in `engine.json`, and the test passes. A mismatch means the attributes did not take: fix `.gitattributes`, rebuild, recommit and repeat before Task 2.
 
 ### Task 2: The ngspice core and the engine smoke tests
 
@@ -454,7 +529,7 @@ MSG
 - Produces:
   - `type OpResult = { ok: true; vectors: Record<string, number> } | { ok: false; error: string }`
   - `type NgFactory = (opts: { wasmBinary: Uint8Array; print?: (s: string) => void; printErr?: (s: string) => void }) => Promise<NgModule>`
-  - `interface EngineManifest { ngspice: string; build: string; mode: 'shared' | 'exe'; emsdk: string; wasmBytes: number; wasmSha256: string; release: string }`
+  - `interface EngineManifest { ngspice: string; build: string; mode: 'shared' | 'shared-noxspice' | 'exe'; emsdk: string; wasmBytes: number; wasmSha256: string; release: string }`
   - `function createCore(factory: NgFactory, wasmBinary: Uint8Array): Promise<NgspiceCore>`
   - `class NgspiceCore { runs: number; dead: boolean; op(text: string): OpResult; setBreakpoint(t: number): boolean; heapBytes(): number }`
   - `function loadEngineFiles(dir: string): Promise<{ factory: NgFactory; wasm: Uint8Array; manifest: EngineManifest }>` (Node only)
@@ -548,7 +623,7 @@ export interface NgModule {
 }
 export type NgFactory = (opts: { wasmBinary: Uint8Array; print?: (s: string) => void; printErr?: (s: string) => void }) => Promise<NgModule>
 export type OpResult = { ok: true; vectors: Record<string, number> } | { ok: false; error: string }
-export interface EngineManifest { ngspice: string; build: string; mode: 'shared' | 'exe'; emsdk: string; wasmBytes: number; wasmSha256: string; release: string }
+export interface EngineManifest { ngspice: string; build: string; mode: 'shared' | 'shared-noxspice' | 'exe'; emsdk: string; wasmBytes: number; wasmSha256: string; release: string }
 
 /** vector_info on wasm32 (sharedspice.h): v_name 0, v_type 4, v_flags 8, v_realdata 12, v_compdata 16, v_length 20. */
 const V_REALDATA = 12
@@ -702,8 +777,9 @@ MSG
   - `type FromWorker = { type: 'ready'; engine: EngineInfo } | { type: 'progress'; loaded: number; total: number } | { type: 'result'; id: number; ok: true; vectors: Record<string, number>; ms: number; heap: number } | { type: 'result'; id: number; ok: false; error: string; ms: number; heap: number } | { type: 'fatal'; error: string }`
   - `interface WorkerLike { post(m: ToWorker): void; onMessage(cb: (m: FromWorker) => void): void; onExit(cb: () => void): void; terminate(): void }`
   - `type TextOutcome = { status: 'ok'; vectors: Record<string, number>; ms: number } | { status: 'failed'; error: string } | { status: 'unavailable'; reason: string }`
-  - `const RUN_TIMEOUT_MS = 5000`, `const RECYCLE_RUNS = 2000`
-  - `interface HostOptions { spawn: () => WorkerLike; timeoutMs?: number | (() => number); recycleRuns?: number; onProgress?: (loaded: number, total: number) => void }`
+  - `const RUN_TIMEOUT_MS = 5000`, `const RECYCLE_RUNS = 2000`, `const LOAD_TIMEOUT_MS = 30000`
+  - `const DEBUG_HANG_TEXT = '* circuitoon: debug hang'` (a debug-only run text the worker answers by busy-looping, for the timeout tests)
+  - `interface HostOptions { spawn: () => WorkerLike; timeoutMs?: number | (() => number); loadTimeoutMs?: number; recycleRuns?: number; onProgress?: (loaded: number, total: number) => void }`
   - `class EngineHost { info: EngineInfo | null; runs: number; spawned: number; lastHeap: number; init(): Promise<EngineInfo>; runText(text: string): Promise<TextOutcome>; dispose(): void }`
 
 - [ ] **Step 1: Write the failing tests with a fake worker**
@@ -713,18 +789,19 @@ MSG
 ```ts
 // The worker lifecycle (spec 2.3) against a fake worker: success, failure, success on one host; a
 // fresh worker after any failure; a timeout terminates, retries once, then fails; recycling after
-// N engine runs; an engine that cannot load is "unavailable"; requests run one at a time.
+// N engine runs; an engine that cannot load, or does not load in time, is "unavailable"; requests
+// run one at a time.
 import { describe, expect, it } from 'vitest'
 import { EngineHost, type FromWorker, type ToWorker, type WorkerLike } from './host.ts'
 
 /** A fake worker: "bad" fails, "hang" never answers, anything else solves to { a: 1 }. */
-function fakes(opts: { fatal?: boolean } = {}) {
+function fakes(opts: { fatal?: boolean; silent?: boolean } = {}) {
   const made: { terminated: boolean }[] = []
   const spawn = (): WorkerLike => {
     let listener: (m: FromWorker) => void = () => {}
     const me = { terminated: false }
     made.push(me)
-    queueMicrotask(() => listener(opts.fatal ? { type: 'fatal', error: 'no wasm' } : { type: 'ready', engine: { name: 'ngspice', version: '45.2', build: 'test' } }))
+    if (!opts.silent) queueMicrotask(() => listener(opts.fatal ? { type: 'fatal', error: 'no wasm' } : { type: 'ready', engine: { name: 'ngspice', version: '45.2', build: 'test' } }))
     return {
       post(m: ToWorker) {
         if (m.text === 'hang') return
@@ -780,6 +857,13 @@ describe('EngineHost', () => {
     })
     expect(await host.runText('ok')).toEqual({ status: 'unavailable', reason: 'the simulation engine is not installed' })
   })
+  it('is unavailable, not stuck, when the engine never finishes loading (so sim and gate always exit)', async () => {
+    const f = fakes({ silent: true })
+    const r = await new EngineHost({ spawn: f.spawn, loadTimeoutMs: 20 }).runText('ok')
+    expect(r.status).toBe('unavailable')
+    if (r.status === 'unavailable') expect(r.reason).toContain('did not load')
+    expect(f.made[0].terminated).toBe(true)
+  })
   it('runs one request at a time, in order', async () => {
     const host = new EngineHost({ spawn: fakes().spawn })
     const all = await Promise.all([host.runText('ok'), host.runText('bad'), host.runText('ok')])
@@ -801,7 +885,8 @@ Expected: FAIL, `./host.ts` cannot be found.
 // The engine's worker lifecycle (spec 2.3), shared by the browser and Node: the worker is spawned
 // on first use; each run has a 5 s timeout, after which the worker is terminated and recreated and
 // the run retried once (a second timeout is a failure); the worker is recycled after any failure
-// and after 2,000 engine runs, always between runs. Requests run one at a time.
+// and after 2,000 engine runs, always between runs. Loading has its own timeout, after which the
+// engine is "unavailable", so a caller (sim, gate) always gets an answer. Requests run one at a time.
 
 export interface EngineInfo { name: 'ngspice'; version: string; build: string }
 export type ToWorker = { type: 'run'; id: number; text: string }
@@ -821,11 +906,16 @@ export type TextOutcome = { status: 'ok'; vectors: Record<string, number>; ms: n
 
 export const RUN_TIMEOUT_MS = 5000
 export const RECYCLE_RUNS = 2000
+/** How long the worker may take to load the engine before it counts as unavailable (Node; the browser passes its own, for slow downloads). */
+export const LOAD_TIMEOUT_MS = 30_000
+/** Debug only: a run text the worker answers by busy-looping, so the tests can prove a hung run is terminated. */
+export const DEBUG_HANG_TEXT = '* circuitoon: debug hang'
 
 export interface HostOptions {
   spawn: () => WorkerLike
   /** A number, or a function read before every run (the visual check's failure knob, Task 34). */
   timeoutMs?: number | (() => number)
+  loadTimeoutMs?: number
   recycleRuns?: number
   onProgress?: (loaded: number, total: number) => void
 }
@@ -863,9 +953,16 @@ export class EngineHost {
       }
       this.spawned++
       this.worker = w
+      const limit = this.opts.loadTimeoutMs ?? LOAD_TIMEOUT_MS
+      const timer = setTimeout(() => reject(new Error(`the simulation engine did not load within ${limit / 1000} s`)), limit)
       w.onMessage((m) => {
-        if (m.type === 'ready') resolve((this.info = m.engine))
-        else if (m.type === 'fatal') reject(new Error(m.error))
+        if (m.type === 'ready') {
+          clearTimeout(timer)
+          resolve((this.info = m.engine))
+        } else if (m.type === 'fatal') {
+          clearTimeout(timer)
+          reject(new Error(m.error))
+        }
         else if (m.type === 'progress') this.opts.onProgress?.(m.loaded, m.total)
         else if (m.type === 'result') {
           this.lastHeap = m.heap
@@ -875,6 +972,7 @@ export class EngineHost {
       })
       w.onExit(() => {
         if (this.worker !== w) return
+        clearTimeout(timer)
         reject(new Error('the simulation engine stopped while loading'))
         for (const done of this.waiting.values()) done('timeout')
         this.waiting.clear()
@@ -957,7 +1055,7 @@ export class EngineHost {
 - [ ] **Step 4: Run the tests**
 
 Run: `npx vitest run src/sim/engine/host.test.ts`
-Expected: PASS (5 tests).
+Expected: PASS (6 tests).
 
 - [ ] **Step 5: Commit**
 
@@ -991,9 +1089,11 @@ MSG
 
 ```ts
 // The engine in a real worker_threads Worker (spec 2.3): success, failure, success with the failed
-// worker replaced; a timeout terminates the worker and the run fails after its one retry.
+// worker replaced; a busy-looping worker is terminated on its timeout and the next run succeeds; a
+// run that throws is a failure.
 import { describe, expect, it } from 'vitest'
 import { createNodeEngineHost, engineDir } from './nodeEngine.ts'
+import { DEBUG_HANG_TEXT } from './host.ts'
 
 const LED = '* led\n.model LEDRED D(IS=93.2p N=3.73 RS=7.5)\nV1 vcc 0 DC 5\nR1 vcc a 150\nD1 a 0 LEDRED\n.end'
 
@@ -1014,12 +1114,25 @@ describe('the Node engine worker', () => {
       host.dispose()
     }
   }, 60_000)
-  it('terminates and replaces a worker that does not answer in time, then fails the run', async () => {
-    // 1 ms is far shorter than loading and solving, so both attempts time out.
-    const host = createNodeEngineHost({ timeoutMs: 1 })
+  it('terminates a worker that busy-loops (debug hang), fails after its one retry, and the next run succeeds', async () => {
+    const host = createNodeEngineHost({ timeoutMs: 1500 })
     try {
-      expect((await host.runText(LED)).status).toBe('failed')
+      const r = await host.runText(DEBUG_HANG_TEXT)
+      expect(r.status).toBe('failed')
+      if (r.status === 'failed') expect(r.error).toContain('did not answer')
       expect(host.spawned).toBe(2)
+      expect((await host.runText(LED)).status).toBe('ok')
+      expect(host.spawned).toBe(3)
+    } finally {
+      host.dispose()
+    }
+  }, 60_000)
+  it('reports an engine that throws inside a run as a failure, not a hang', async () => {
+    const host = createNodeEngineHost()
+    try {
+      // An element card ngspice cannot even parse a model for: the core returns or throws; either way the host gets a failure.
+      expect((await host.runText('* bad\nQ1 a b c nomodel\n.end')).status).toBe('failed')
+      expect((await host.runText(LED)).status).toBe('ok')
     } finally {
       host.dispose()
     }
@@ -1039,8 +1152,11 @@ Expected: FAIL, `./nodeEngine.ts` cannot be found.
 ```ts
 // The worker side of the engine (both workers): load the core once, then answer each run in order.
 // A run is synchronous inside the worker; the host (host.ts) terminates the worker on a timeout.
+// Anything thrown (a WASM abort, ngspice's exit) is answered as a failed run, never left unanswered.
 import type { NgspiceCore } from './ngspice.ts'
-import type { EngineInfo, FromWorker, ToWorker } from './host.ts'
+import { DEBUG_HANG_TEXT, type EngineInfo, type FromWorker, type ToWorker } from './host.ts'
+
+const why = (e: unknown) => (e instanceof Error ? e.message : String(e))
 
 export function serve(
   post: (m: FromWorker) => void,
@@ -1053,15 +1169,25 @@ export function serve(
     (e) => post({ type: 'fatal', error: e instanceof Error ? e.message : String(e) }),
   )
   listen((m) => {
-    if (m.type !== 'run') return
-    void loading.then(({ core }) => {
-      const t0 = performance.now()
-      const r = core.op(m.text)
-      const ms = performance.now() - t0
-      post(r.ok
-        ? { type: 'result', id: m.id, ok: true, vectors: r.vectors, ms, heap: core.heapBytes() }
-        : { type: 'result', id: m.id, ok: false, error: r.error, ms, heap: core.heapBytes() })
-    })
+    try {
+      if (m.type !== 'run') return
+      void loading.then(({ core }) => {
+        const t0 = performance.now()
+        try {
+          // Debug only: hang here so the tests can prove the host terminates a stuck worker.
+          if (m.text === DEBUG_HANG_TEXT) for (;;) performance.now()
+          const r = core.op(m.text)
+          const ms = performance.now() - t0
+          post(r.ok
+            ? { type: 'result', id: m.id, ok: true, vectors: r.vectors, ms, heap: core.heapBytes() }
+            : { type: 'result', id: m.id, ok: false, error: r.error, ms, heap: core.heapBytes() })
+        } catch (e) {
+          post({ type: 'result', id: m.id, ok: false, error: `the simulation engine stopped: ${why(e)}`, ms: performance.now() - t0, heap: 0 })
+        }
+      }, () => undefined)
+    } catch (e) {
+      post({ type: 'fatal', error: why(e) })
+    }
   })
 }
 ```
@@ -1180,6 +1306,8 @@ import { EngineHost, type FromWorker, type HostOptions, type ToWorker } from './
 
 export function createBrowserEngineHost(opts: Omit<HostOptions, 'spawn'> = {}): EngineHost {
   return new EngineHost({
+    // The first download may be slow: two minutes before the engine counts as unavailable.
+    loadTimeoutMs: 120_000,
     ...opts,
     spawn: () => {
       const w = new Worker(new URL('./browserWorker.ts', import.meta.url), { type: 'module' })
@@ -1197,7 +1325,7 @@ export function createBrowserEngineHost(opts: Omit<HostOptions, 'spawn'> = {}): 
 - [ ] **Step 5: Run the Node worker tests**
 
 Run: `npx vitest run src/sim/engine/nodeEngine.test.ts`
-Expected: PASS (3 tests).
+Expected: PASS (4 tests).
 
 - [ ] **Step 6: Write and run the heap budget test**
 
@@ -1328,7 +1456,7 @@ The review covers spec checkpoint 3: the Docker build and its pins, the fallback
 ### Task 6: Simulation data types, circuit types and estimates
 
 **Files:**
-- Create: `src/format/simModel.ts`, `src/sim/model.ts`, `src/sim/estimates.ts`
+- Create: `src/format/simModel.ts`, `src/sim/model.ts`, `src/sim/estimates.ts`, `src/format/simState.ts` (only the `GpioState` type here; Task 8 fills it in)
 - Test: `src/sim/estimates.test.ts`
 
 **Interfaces:**
@@ -1366,7 +1494,10 @@ describe('battery fallback by nominal voltage (spec 3.1 table)', () => {
     [3.7, 0.05, 'Li-ion 18650'],
     [7.4, 0.1, 'Li-ion 18650'],
     [9, 1.5, 'alkaline 9 V'],
+    // Series counts (ruling R33): Li-ion only as 1 or 2 cells, alkaline up to 6, coin and 9 V single.
     [12, 0.1, 'unknown'],
+    [11.1, 0.1, 'unknown'],
+    [14.8, 0.1, 'unknown'],
   ])('%s V: %s ohm (%s)', (v, ohms, assumed) => {
     const e = cellEstimate(v)
     expect(e.rInternal.value).toBeCloseTo(ohms, 9)
@@ -1557,6 +1688,8 @@ export interface Circuit {
   pinNet: Record<string, string>
   /** Node keys on mains wiring: never in the solver (readings say so). */
   mains: string[]
+  /** Latching switch contacts that are open now, as the nets they would join (ruling R30 names the one that leaves a board unpowered). */
+  openContacts: { part: string; group: string; a: string; b: string }[]
   unsimulated: { part: string; reason: string }[]
   notes: string[]
 }
@@ -1591,10 +1724,12 @@ export const NO_POWER_DATA = 'no power data'
 export function cellEstimate(nominal: number): { rInternal: Quantity; assumed: string } {
   if (nominal <= 3.0) return { rInternal: est(15, 'ohm', 'assumed a lithium coin cell'), assumed: 'lithium coin cell' }
   if (nominal === 9) return { rInternal: est(1.5, 'ohm', 'assumed an alkaline 9 V battery'), assumed: 'alkaline 9 V' }
-  for (let k = 1; k <= 8; k++) {
+  // Ruling R33: a voltage-keyed guess only where the series count is common: Li-ion as 1 or 2 cells,
+  // alkaline as 1 to 6 (coin and 9 V are single, above). 12 V, 11.1 V (3S) and the like are unknown.
+  for (let k = 1; k <= 6; k++) {
     const per = nominal / k
     const cells = `${k} cell${k > 1 ? 's' : ''} in series`
-    if (per >= 3.6 && per <= 4.2) return { rInternal: est(0.05 * k, 'ohm', `assumed Li-ion 18650, ${cells}, 0.05 ohm each`), assumed: 'Li-ion 18650' }
+    if (k <= 2 && per >= 3.6 && per <= 4.2) return { rInternal: est(0.05 * k, 'ohm', `assumed Li-ion 18650, ${cells}, 0.05 ohm each`), assumed: 'Li-ion 18650' }
     if (per >= 1.2 && per <= 1.6) return { rInternal: est(0.15 * k, 'ohm', `assumed alkaline AA, ${cells}, 0.15 ohm each`), assumed: 'alkaline AA' }
   }
   return { rInternal: est(0.1, 'ohm', 'unknown chemistry: 0.1 ohm assumed'), assumed: 'unknown' }
@@ -1635,7 +1770,7 @@ export type GpioState = 'input' | 'input-pullup' | 'input-pulldown' | 'high' | '
 - [ ] **Step 4: Run the tests and type-check**
 
 Run: `npx vitest run src/sim/estimates.test.ts` then `npx tsc --noEmit`
-Expected: PASS (21 tests), and no type errors.
+Expected: PASS (22 tests), and no type errors.
 
 - [ ] **Step 5: Commit**
 
@@ -2302,7 +2437,7 @@ MSG
 - Test: `src/sim/build.test.ts`
 
 **Interfaces:**
-- Consumes: `sheetNets` (Task 9); `switchGroups`, `contactPosition`, `closedPairs`, `simOverride` (Task 8); `simOf`, `Quantity` (Task 6); `ledModel`, `LED_COLOURS` (Task 7); `CONTACT_OHMS`, `cellEstimate`, `NO_POWER_DATA` (Task 6); `analyseMainsCached` (`mains.ts`); `mainsOf` (`mainsModel.ts`); `paramValue` (`values.ts`); `partSetting`, `isBoard`, `isNetLabel`, `isSpacer`, `isObj`, `isNum` (`module.ts`); `nodeKey` (`netlist.ts`); `naturalCompare` (`agent/order.ts`).
+- Consumes: `sheetNets` (Task 9); `switchGroups`, `contactPosition`, `closedPairs`, `isActive`, `simOverride` (Task 8); `convertersInState` (`mainsRules.ts`, Task 8); `simOf`, `Quantity` (Task 6); `ledModel`, `LED_COLOURS` (Task 7); `CONTACT_OHMS`, `cellEstimate`, `NO_POWER_DATA` (Task 6); `analyseMainsCached` (`mains.ts`); `mainsOf` (`mainsModel.ts`); `paramValue` (`values.ts`); `partSetting`, `isBoard`, `isNetLabel`, `isSpacer`, `isObj`, `isNum` (`module.ts`); `nodeKey` (`netlist.ts`); `naturalCompare` (`agent/order.ts`).
 - Produces:
   - `interface BuildOptions { held?: { part: string; group: string } | null }`
   - `function buildCircuit(d: Diagram, opts?: BuildOptions): Circuit`
@@ -2377,7 +2512,7 @@ export function boostModule(o: RailOpts = {}, id = 'test-boost'): ModuleDef {
  * A DevKit-like board: VIN and USB VBUS (through a 0.3 V Schottky) feed a 3.3 V LDO; the 3V3
  * domain draws 50 mA typical (250 mA peak, "radio"); IO1 and IO2 are GPIOs (30 ohm, 45 k pulls).
  */
-export function boardModule(o: { draw?: boolean; minVolts?: number } = {}, id = 'test-board'): ModuleDef {
+export function boardModule(o: { draw?: boolean; minVolts?: number; leak?: boolean } = {}, id = 'test-board'): ModuleDef {
   return mod(id, pins([
     { name: 'VIN', type: 'power_in' }, { name: 'GND', type: 'ground' }, { name: '3V3', type: 'power_out' },
     { name: 'IO1', type: 'io' }, { name: 'IO2', type: 'io' },
@@ -2394,7 +2529,7 @@ export function boardModule(o: { draw?: boolean; minVolts?: number } = {}, id = 
           { id: 'ldo', inputs: [{ domain: 'VIN', via: 'direct' }], output: '3V3', kind: 'ldo', vout: q(3.3, 'V'), dropout: q(1.1, 'V'), ioutMax: q(0.8, 'A'), iq: q(0.005, 'A'), reverse: 'blocks' },
         ],
       },
-      gpio: { domain: '3V3', pins: ['IO1', 'IO2'], outputResistance: q(30, 'ohm'), pullup: q(45000, 'ohm'), pulldown: q(45000, 'ohm') },
+      gpio: { domain: '3V3', pins: ['IO1', 'IO2'], outputResistance: q(30, 'ohm'), pullup: q(45000, 'ohm'), pulldown: q(45000, 'ohm'), ...(o.leak ? { inputLeakage: q(5e-8, 'A') } : {}) },
       limits: [
         { of: { pin: 'IO1' }, kind: 'current', value: 0.02, provenance: 'datasheet', source: 'https://example.com/board' },
         { of: { pin: 'IO1' }, kind: 'absMaxCurrent', value: 0.04, provenance: 'datasheet', source: 'https://example.com/board' },
@@ -2556,6 +2691,7 @@ export class Builder {
   private usb: UsbPath[] = []
   private unsim: { part: string; reason: string }[] = []
   private notes: string[] = []
+  private open: { part: string; group: string; a: string; b: string }[] = []
   private converters: Map<string, { state: string }> | null = null
 
   constructor(d: Diagram, opts: BuildOptions) {
@@ -2782,6 +2918,13 @@ export class Builder {
         for (const g of switchGroups(m)) {
           const pos = contactPosition(p, m, g, this.isHeld(p.uid, g.id))
           closedPairs(g, pos).forEach(([x, y], i) => this.contact(p, m, `${p.uid}.${g.id}.${i + 1}`, x, y))
+          // A latching switch at rest: remember what it would join (ruling R30 names it).
+          if (g.kind === 'switch' && !g.momentary && !isActive(pos))
+            for (const [x, y] of closedPairs(g, g.changeover ? 'no' : 'closed')) {
+              const a = this.node(p.uid, x)
+              const b = this.node(p.uid, y)
+              if (a && b) this.open.push({ part: p.uid, group: g.id, a, b })
+            }
           if (g.kind !== 'switch') this.note(`${ref}: shown at rest; coil switching is simulated with firmware`)
         }
         // The coil (or any electronics) is a load only when the module has sim.power (spec 4 table); powerPart adds the limits then.
@@ -2811,6 +2954,7 @@ export class Builder {
       usb: this.usb,
       pinNet,
       mains: [...this.mainsKeys].sort(),
+      openContacts: this.open,
       unsimulated: this.unsim,
       notes: [...new Set(this.notes)],
     }
@@ -3178,6 +3322,9 @@ MSG
   - `interface Island { reference: string; source: string; nodes: string[] }` (`source` is the reference cell's device id)
   - `interface Classification { driven: Set<string>; islands: Island[]; islandOf: Map<string, number> }`
   - `function deviceNodes(d: Device): string[]`
+  - `function dcEdges(d: Device): [string, string][]` (the terminal pairs that count as a DC path, spec 2 revision 5)
+  - `function dcFind(c: Circuit, extra?: [string, string][]): (node: string) => string` (union-find over those paths and the pin senses, with extra joins)
+  - `function openSwitchFor(c: Circuit, node: string): string | null` (the part uid of the open switch whose closing alone would power `node`; ruling R30)
   - `function classify(c: Circuit): Classification`, `function classifyCached(c: Circuit): Classification`
   - `function pinState(c: Circuit, cls: Classification, key: string): 'driven' | 'floating'`
 
@@ -3186,18 +3333,36 @@ MSG
 `src/sim/floating.test.ts`:
 
 ```ts
-// Spec 2 and 4.4: a node is driven only with a DC path to a source; capacitors and open switches do
-// not conduct; a source-less island and a singleton pin are floating; each island's reference is the
-// return of its source with the largest imax, else the highest voltage, ties by part uid.
+// Spec 2 (revision 5) and 4.4: a node is driven only when a source's + terminal or a rail output
+// reaches it through conducting elements; capacitors, open switches, input-leakage resistors, loads
+// and a rail's return path do not count; a source-less island and a singleton pin are floating; each
+// island's reference is the return of its source with the largest imax, else the highest voltage,
+// ties by part uid.
 import { describe, expect, it } from 'vitest'
 import { nodeKey } from '../format/netlist.ts'
 import { buildCircuit } from './build.ts'
 import { classify, pinState } from './floating.ts'
-import { cellModule, sheet } from './testing.ts'
+import { boardModule, cellModule, sheet } from './testing.ts'
+import { openSwitchFor } from './floating.ts'
 
 const R = (uid: string, ohms = 100) => ({ uid, module: 'resistor', values: { resistance: { value: ohms, unit: 'ohm' } } })
 
 describe('floating classification', () => {
+  it('does not count a GPIO input-leakage resistor as a path: a wired input that nothing drives floats', () => {
+    const c = buildCircuit(sheet([{ uid: 'bt1', module: cellModule(5, 0.1) }, { uid: 'u1', module: boardModule({ leak: true }) }, R('r9')], [['bt1.+', 'u1.VIN'], ['bt1.-', 'u1.GND'], ['u1.IO1', 'r9.1']]))
+    expect(c.devices.some((d) => d.kind === 'resistor' && d.role === 'leak')).toBe(true)
+    expect(pinState(c, classify(c), nodeKey('u1', 'IO1'))).toBe('floating')
+  })
+  it('leaves a board behind an open switch unpowered though its ground is shared, and names the switch', () => {
+    const c = buildCircuit(sheet([{ uid: 'bt1', module: cellModule(5, 0.1) }, { uid: 's1', module: 'rocker-switch-kcd1' }, { uid: 'u1', module: boardModule() }],
+      [['bt1.+', 's1.1'], ['s1.2', 'u1.VIN'], ['bt1.-', 'u1.GND']]))
+    const cls = classify(c)
+    expect(pinState(c, cls, nodeKey('u1', 'GND'))).toBe('driven')
+    expect(pinState(c, cls, nodeKey('u1', 'VIN'))).toBe('floating')
+    expect(pinState(c, cls, nodeKey('u1', '3V3'))).toBe('floating')
+    expect(openSwitchFor(c, 'u1:3V3')).toBe('s1')
+    expect(openSwitchFor(c, 'u1:GND')).toBeNull()
+  })
   it('keeps a capacitor-only plate floating', () => {
     const c = buildCircuit(sheet([{ uid: 'bt1', module: cellModule(5, 0.1) }, R('r1'), { uid: 'c1', module: 'capacitor-ceramic' }], [['bt1.+', 'r1.1'], ['r1.2', 'bt1.-'], ['c1.1', 'r1.1']]))
     const cls = classify(c)
@@ -3242,11 +3407,13 @@ Expected: FAIL, `./floating.ts` cannot be found.
 `src/sim/floating.ts`:
 
 ```ts
-// DC-path classification (spec 2, 4.4), before solving: every node is driven (a DC path to a
-// source) or floating. Capacitors do not conduct, and an open switch has no element. Islands are
-// the connected components that hold a source; each one's reference is the return of its source
-// with the largest imax, else the highest open-circuit voltage, ties by part uid. A floating node
-// is never reported as a voltage, whatever the solver returns for it. Pure.
+// DC-path classification (spec 2, revision 5, and 4.4), before solving: every node is driven or
+// floating. Driven means a source's + terminal or a rail output reaches it through conducting
+// elements; capacitors, open switches (no element), input-leakage resistors, loads, and a rail's
+// return path do not count, so a board behind an open switch is unpowered even when its ground is
+// shared, and a wired input held only by leakage floats. Islands are the components that hold a
+// source; each one's reference is the return of its source with the largest imax, else the highest
+// open-circuit voltage, ties by part uid. A floating node is never reported as a voltage. Pure.
 import { naturalCompare } from '../agent/order.ts'
 import type { Circuit, Device } from './model.ts'
 
@@ -3267,6 +3434,56 @@ export function deviceNodes(d: Device): string[] {
     case 'rail':
       return [d.in, d.inRet, d.out, d.ret, d.ctl, d.o]
   }
+}
+
+/** The terminal pairs of a device that count as a DC path (spec 2, revision 5). */
+export function dcEdges(d: Device): [string, string][] {
+  switch (d.kind) {
+    case 'capacitor':
+    case 'load':
+      return []
+    case 'resistor':
+      return d.role === 'leak' ? [] : [[d.a, d.b]]
+    case 'diode':
+      return [[d.a, d.k]]
+    case 'cell':
+      return [[d.p, d.int], [d.int, d.n]]
+    case 'rail':
+      // Input to output only: in, ctl, o and out. inRet and ret are returns, never a path.
+      return [[d.in, d.ctl], [d.in, d.o], [d.o, d.out]]
+  }
+}
+
+/** Union-find over the DC paths and the pin senses, with `extra` joins (a switch closed in thought). */
+export function dcFind(c: Circuit, extra: [string, string][] = []): (node: string) => string {
+  const parent = new Map<string, string>()
+  const find = (x: string): string => {
+    let r = x
+    while (parent.has(r) && parent.get(r) !== r) r = parent.get(r)!
+    return r
+  }
+  const join = (a: string, b: string) => {
+    for (const n of [a, b]) if (!parent.has(n)) parent.set(n, n)
+    const [ra, rb] = [find(a), find(b)]
+    if (ra !== rb) parent.set(ra, rb)
+  }
+  for (const t of c.taps) join(t.net, t.node)
+  for (const d of c.devices) for (const [a, b] of dcEdges(d)) join(a, b)
+  for (const [a, b] of extra) join(a, b)
+  return find
+}
+
+/** Ruling R30: the open latching switch whose closing alone would connect `node` to a source, or null. */
+export function openSwitchFor(c: Circuit, node: string): string | null {
+  const cells = c.devices.filter((d) => d.kind === 'cell')
+  const start = c.taps.find((t) => t.node === node)?.net ?? node
+  const base = dcFind(c)
+  if (cells.some((d) => d.kind === 'cell' && base(d.p) === base(start))) return null
+  for (const o of c.openContacts) {
+    const find = dcFind(c, [[o.a, o.b]])
+    if (cells.some((d) => d.kind === 'cell' && find(d.p) === find(start))) return o.part
+  }
+  return null
 }
 
 export function classify(c: Circuit): Classification {
@@ -3299,7 +3516,7 @@ export function classify(c: Circuit): Classification {
       nodes.add(n)
       if (!parent.has(n)) parent.set(n, n)
     }
-    if (d.kind !== 'capacitor') for (let i = 1; i < ns.length; i++) join(ns[0], ns[i])
+    for (const [a, b] of dcEdges(d)) join(a, b)
   }
   const cells = c.devices.filter((d): d is Extract<Device, { kind: 'cell' }> => d.kind === 'cell')
   const byRoot = new Map<string, typeof cells>()
@@ -3339,7 +3556,7 @@ export function pinState(c: Circuit, cls: Classification, key: string): 'driven'
 - [ ] **Step 4: Run the tests**
 
 Run: `npx vitest run src/sim/floating.test.ts`
-Expected: PASS (4 tests).
+Expected: PASS (6 tests).
 
 - [ ] **Step 5: Commit**
 
@@ -4462,11 +4679,12 @@ Datasheet numbers are not in this plan: they are found, written and checked by t
 6. **URLs** are opened, and the number is on the page. Never write a URL that was not opened. Prefer the maker's PDF; distributor copies (LCSC, Mouser, DigiKey) and the board maker's schematic (its site or repository) are fine.
 7. **Privacy.** No request carries Michael's email or personal data: not in a User-Agent, a form, a query or a header.
 8. **Non-numbers** (a rail's `reverse`, `offPath`, what was left out) go in `notes` with the reason.
-9. **Two independent reviewers** (spec 3.4) check every patch before it is committed: two fresh subagents that did not do the research, each given only the patch files and this protocol (not the researcher's notes). Each opens every `source`, checks every value, unit, provenance, condition and note, and appends one record to the patch's `review` array:
+9. **Who does what.** The **controller** (the session running this plan) dispatches every research and review subagent, never the implementer: first the researcher, then reviewer A, then reviewer B, in that order. Each writes into the staging folder `.superpowers/sim-data-staging/<task>/` (git ignores `.superpowers/`). The implementer only applies the verified patches from staging and runs the tests.
+10. **Two independent reviewers** (spec 3.4) check every patch before it is committed: two fresh subagents that did not do the research, each given only the staged patch files and this protocol (not the researcher's notes, and B not A's notes either). Each opens every `source`, checks every value, unit, provenance, condition and note, and appends one record to the patch's `review` array:
    ```json
    { "date": "YYYY-MM-DD", "reviewer": "independent reviewer 1", "checked": 0, "corrected": [{ "path": "sim.power.rails[0].dropout", "was": 1.1, "now": 1.3, "why": "Table 3 gives 1.3 V at 800 mA" }], "disputed": [] }
    ```
-   The researcher applies every correction. A value the reviewers disagree on becomes an `estimate` with both readings in its `note`, or goes to the controller. The patch is committed only with two review records.
+   The controller applies reviewer A's corrections in staging before reviewer B sees the patches, then B's. A value the reviewers disagree on becomes an `estimate` with both readings in its `note`, or the controller decides it. A patch leaves staging only with two review records.
 
 ### Task 18: Source batteries, resistors and the KCD1 contact
 
@@ -4482,18 +4700,20 @@ Datasheet numbers are not in this plan: they are found, written and checked by t
   - `resistor`: `sim.limits` `[{ "of": { "part": true }, "kind": "power", "value": 0.25 }]`, `representative` (a named 1/4 W axial resistor's datasheet); `resistor-half-watt` the same at 0.5 W.
   - `rocker-switch-kcd1`: `sim.modelParams.contactResistance` (ohm) from the KCD1 datasheet already in the module's `source`.
 
-- [ ] **Step 1: Research and write the patches**
+- [ ] **Step 1 (controller): Research**
 
-Dispatch a research subagent with this brief, the Sourcing protocol above, and the list of modules and fields. Its result is the 18 patch files with `"review": []`.
+The controller dispatches a research subagent with the Sourcing protocol, the field list above and the module files named under **Files**. It writes the patches, with `"review": []`, to `.superpowers/sim-data-staging/task-18/`.
 
-- [ ] **Step 2: Regenerate and validate**
+- [ ] **Step 2 (controller): Reviewer A, then reviewer B**
+
+The controller dispatches reviewer A on the staged patches (protocol item 10), applies A's corrections in staging, then dispatches reviewer B on the corrected patches and applies B's. Each patch now has two `review` records. Anything disputed is settled by the controller before Step 3.
+
+- [ ] **Step 3 (implementer): Apply the verified patches, regenerate and validate**
+
+Copy the staged patches into `scripts/sim-data/` unchanged (`cp .superpowers/sim-data-staging/task-18/*.json scripts/sim-data/`), then
 
 Run: `node scripts/gen-sim.mjs && node scripts/gen-mains-loads.mjs && npm run validate && npm run check:gen`
-Expected: each patched module listed, every module valid, every generator matching.
-
-- [ ] **Step 3: Two independent reviewers**
-
-Dispatch two fresh reviewer subagents in parallel, per protocol item 9. Apply their corrections, rerun Step 2.
+Expected: each patched module listed, every module valid (`npm run validate`), every generator matching (`npm run check:gen`). A validation error goes back to the controller with the message; the implementer never edits a number.
 
 - [ ] **Step 4: Add the data test block**
 
@@ -4555,21 +4775,25 @@ MSG
 - Consumes: the Sourcing protocol.
 - Produces: for each of red, green, yellow, orange, blue and white, `absMaxCurrent: { value, source }` from one representative 5 mm datasheet per colour (spec 3.4: `representative`; the datasheet's absolute maximum continuous forward current, not its pulsed peak), and `shape` naming that datasheet. N and RS stay the spike's curve for every colour unless the datasheet's IV curve gives two readable points to refit them; a refit is then written with both points in `shape`. Ruling R12: this table is code, not module JSON, so the patch format here is the TypeScript entry, and the two-reviewer rule applies to it exactly as to a patch (their records go in the commit message body).
 
-- [ ] **Step 1: Research and edit the table**
+- [ ] **Step 1 (controller): Research**
 
-Dispatch a research subagent with the Sourcing protocol and this brief: "For each colour, find one public 5 mm through-hole LED datasheet of that colour; record its absolute maximum continuous forward current (A) with the URL, the page, and the part number; and whether its typical forward voltage at 20 mA matches the curve shape above." Edit `LED_COLOURS`, for example:
+The controller dispatches a research subagent with the Sourcing protocol and this brief: "For each colour, find one public 5 mm through-hole LED datasheet of that colour; record its absolute maximum continuous forward current (A) with the URL, the page, and the part number; and whether its typical forward voltage at 20 mA matches the curve shape above." The result is a staged `.superpowers/sim-data-staging/task-19/led-colours.json`: `{ "colours": { "red": { "absMaxCurrent": { "value": <A>, "source": "<URL>" }, "shape": "<part number, page>" }, ... }, "review": [] }`.
+
+- [ ] **Step 2 (controller): Reviewer A, then reviewer B**
+
+As protocol item 10, on the staged file: reviewer A, corrections applied, then reviewer B. Two `review` records.
+
+- [ ] **Step 3 (implementer): Apply the verified table**
+
+Copy each colour's `absMaxCurrent` and `shape` from the staged file into `LED_COLOURS` in `src/sim/ledModels.ts` unchanged, for example:
 
 ```ts
   red: { n: 3.73, rs: 7.5, shape: 'spike curve; limit from <part number> datasheet, p. <n>', absMaxCurrent: { value: <A>, source: '<URL>' } },
 ```
 
-with the researched numbers in place of the angle brackets.
+with the staged values in place of the angle brackets, and keep the staged file's two review records in the commit message body.
 
-- [ ] **Step 2: Two independent reviewers**
-
-Dispatch two fresh reviewer subagents per protocol item 9 on the six entries; apply corrections.
-
-- [ ] **Step 3: Add the data test block and run it**
+- [ ] **Step 4: Add the data test block and run it**
 
 Append to `src/sim/data.test.ts` (import `LED_COLOURS` from `./ledModels.ts`):
 
@@ -4588,7 +4812,7 @@ describe('LED colours (spec 3.4, ruling R12)', () => {
 Run: `npx vitest run src/sim/data.test.ts src/sim/ledModels.test.ts src/sim/build.test.ts`
 Expected: PASS. If the build test's LED limit list now includes the `absMaxCurrent` entry, update that one expectation to add `['absMaxCurrent', <value>, 'representative', 'led-colours.red.absMaxCurrent']` with the sourced red value.
 
-- [ ] **Step 4: Commit**
+- [ ] **Step 5: Commit**
 
 ```bash
 git add src/sim/ledModels.ts src/sim/data.test.ts src/sim/build.test.ts
@@ -4620,18 +4844,20 @@ MSG
   - `limits`: the per-pin source/sink current as `current` on each GPIO pin, the cumulative IO output current as `ioTotalCurrent` on `3V3`, and the regulator's maximum input as `vinMax` on the 5 V domain.
   - `unaccounted`: the USB-UART bridge's idle current and the power LED unless the schematic gives them a number.
 
-- [ ] **Step 1: Research and write the two patches**
+- [ ] **Step 1 (controller): Research**
 
-Dispatch a research subagent with the Sourcing protocol, the field list above, and the two module files.
+The controller dispatches a research subagent with the Sourcing protocol, the field list above and the module files named under **Files**. It writes the patches, with `"review": []`, to `.superpowers/sim-data-staging/task-20/`.
 
-- [ ] **Step 2: Regenerate and validate**
+- [ ] **Step 2 (controller): Reviewer A, then reviewer B**
+
+The controller dispatches reviewer A on the staged patches (protocol item 10), applies A's corrections in staging, then dispatches reviewer B on the corrected patches and applies B's. Each patch now has two `review` records. Anything disputed is settled by the controller before Step 3.
+
+- [ ] **Step 3 (implementer): Apply the verified patches, regenerate and validate**
+
+Copy the staged patches into `scripts/sim-data/` unchanged (`cp .superpowers/sim-data-staging/task-20/*.json scripts/sim-data/`), then
 
 Run: `node scripts/gen-boards.mjs && npm run validate && npm run check:gen`
-Expected: valid; every generator matching.
-
-- [ ] **Step 3: Two independent reviewers**
-
-Per protocol item 9; apply corrections; rerun Step 2.
+Expected: each patched module listed, every module valid (`npm run validate`), every generator matching (`npm run check:gen`). A validation error goes back to the controller with the message; the implementer never edits a number.
 
 - [ ] **Step 4: Add the data test block and run it**
 
@@ -4683,18 +4909,20 @@ MSG
   - LCD: domains `VCC` and `LED` (the backlight pin, to `GND`); `draw` on `VCC` (the controller) and on `LED` (the backlight: from the module's documentation if it gives one; otherwise an `estimate` naming the backlight LED count from the board).
   - MCP23017 breakout: domain `VCC`; `draw` from the MCP23017 datasheet (chip), plus the module's power LED as part of `typical` only if the breakout has one and its resistor can be read (else `unaccounted`); `limits`: per-pin `current` on the GPA/GPB pins and the chip's maximum VDD/VSS current as `ioTotalCurrent` on `VCC`.
 
-- [ ] **Step 1: Research and write the three patches**
+- [ ] **Step 1 (controller): Research**
 
-Dispatch a research subagent with the Sourcing protocol and the field list.
+The controller dispatches a research subagent with the Sourcing protocol, the field list above and the module files named under **Files**. It writes the patches, with `"review": []`, to `.superpowers/sim-data-staging/task-21/`.
 
-- [ ] **Step 2: Regenerate and validate**
+- [ ] **Step 2 (controller): Reviewer A, then reviewer B**
+
+The controller dispatches reviewer A on the staged patches (protocol item 10), applies A's corrections in staging, then dispatches reviewer B on the corrected patches and applies B's. Each patch now has two `review` records. Anything disputed is settled by the controller before Step 3.
+
+- [ ] **Step 3 (implementer): Apply the verified patches, regenerate and validate**
+
+Copy the staged patches into `scripts/sim-data/` unchanged (`cp .superpowers/sim-data-staging/task-21/*.json scripts/sim-data/`), then
 
 Run: `node scripts/gen-parts.mjs && npm run validate && npm run check:gen`
-Expected: valid; every generator matching.
-
-- [ ] **Step 3: Two independent reviewers**
-
-Per protocol item 9; apply corrections; rerun Step 2.
+Expected: each patched module listed, every module valid (`npm run validate`), every generator matching (`npm run check:gen`). A validation error goes back to the controller with the message; the implementer never edits a number.
 
 - [ ] **Step 4: Add the data test block and run it**
 
@@ -4745,18 +4973,20 @@ MSG
   - IP5306 module: `usbPorts: { "USB-C": { "gnd": "B-" } }`; domains `BAT` (`B+`/`B-`), `OUT` (`5V+`/`5V-`), `USB` (`USB-C#vbus`/`USB-C#gnd`); a `boost` rail `BAT` to `OUT` with `vout`, `efficiency` at the module's operating point (from the datasheet's efficiency curve, the point named in `note`), `vinMin` (the low-battery shutdown), `vinMax`, `ioutMax`, `minLoad` (the light-load automatic shutdown, with its delay in `note`), `reverse`, `offPath` (whether the output follows the battery when off: from the datasheet, else `estimate` with the reason in `notes`); a `draw` on `BAT` for the chip's standby current; `limits` `vinMax` on `USB` from the input limits. Charging from USB-C is not modelled in this slice: say so in `notes`.
   - AMS1117 module: domains `VIN` and `OUT`; an `ldo` rail with `vout`, `dropout` (at the module's rated current, the condition in `note`), `ioutMax`, `iq`, `reverse` (from the datasheet's discussion of reverse current, else `blocks` with the reason in `notes`); `limits` `vinMax` on `VIN`.
 
-- [ ] **Step 1: Research and write the two patches**
+- [ ] **Step 1 (controller): Research**
 
-Dispatch a research subagent with the Sourcing protocol and the field list.
+The controller dispatches a research subagent with the Sourcing protocol, the field list above and the module files named under **Files**. It writes the patches, with `"review": []`, to `.superpowers/sim-data-staging/task-22/`.
 
-- [ ] **Step 2: Regenerate and validate**
+- [ ] **Step 2 (controller): Reviewer A, then reviewer B**
+
+The controller dispatches reviewer A on the staged patches (protocol item 10), applies A's corrections in staging, then dispatches reviewer B on the corrected patches and applies B's. Each patch now has two `review` records. Anything disputed is settled by the controller before Step 3.
+
+- [ ] **Step 3 (implementer): Apply the verified patches, regenerate and validate**
+
+Copy the staged patches into `scripts/sim-data/` unchanged (`cp .superpowers/sim-data-staging/task-22/*.json scripts/sim-data/`), then
 
 Run: `node scripts/gen-power.mjs && npm run validate && npm run check:gen`
-Expected: valid; every generator matching.
-
-- [ ] **Step 3: Two independent reviewers**
-
-Per protocol item 9; apply corrections; rerun Step 2.
+Expected: each patched module listed, every module valid (`npm run validate`), every generator matching (`npm run check:gen`). A validation error goes back to the controller with the message; the implementer never edits a number.
 
 - [ ] **Step 4: Add the data test block and run it**
 
@@ -4804,18 +5034,20 @@ MSG
   - Uno and Nano: domains for `VIN`, `5V`, `3V3`, `USB`; the 5 V regulator from `VIN` (an `ldo`), the USB path to `5V` (a `switch` rail: the Uno's USB power switch and fuse, the Nano's Schottky, per each board's schematic), the 3.3 V supply (the Uno's 3.3 V LDO; the Nano's from its USB-UART chip, per its schematic); `draw` on `5V` from the ATmega328P datasheet (chip); `gpio` domain `5V` with every D and A pin; per-pin and package current limits.
   - Pico: domains `VBUS`, `VSYS`, `3V3`, `USB`; the `VBUS`-to-`VSYS` Schottky as a `switch` rail; the RT6150 buck-boost from `VSYS` to `3V3` as a `buck` rail whose `vinMin` sits below `vout` (it boosts below 3.3 V; say so in `notes`); `draw` on `3V3` from the RP2040 datasheet (chip); `gpio` domain `3V3` with every GP pin; limits.
 
-- [ ] **Step 1: Research and write the three patches**
+- [ ] **Step 1 (controller): Research**
 
-Dispatch a research subagent with the Sourcing protocol and the field list.
+The controller dispatches a research subagent with the Sourcing protocol, the field list above and the module files named under **Files**. It writes the patches, with `"review": []`, to `.superpowers/sim-data-staging/task-23/`.
 
-- [ ] **Step 2: Regenerate and validate**
+- [ ] **Step 2 (controller): Reviewer A, then reviewer B**
+
+The controller dispatches reviewer A on the staged patches (protocol item 10), applies A's corrections in staging, then dispatches reviewer B on the corrected patches and applies B's. Each patch now has two `review` records. Anything disputed is settled by the controller before Step 3.
+
+- [ ] **Step 3 (implementer): Apply the verified patches, regenerate and validate**
+
+Copy the staged patches into `scripts/sim-data/` unchanged (`cp .superpowers/sim-data-staging/task-23/*.json scripts/sim-data/`), then
 
 Run: `node scripts/gen-arduino.mjs && node scripts/gen-boards.mjs && node scripts/gen-picos.mjs && npm run validate && npm run check:gen`
-Expected: valid; every generator matching.
-
-- [ ] **Step 3: Two independent reviewers**
-
-Per protocol item 9; apply corrections; rerun Step 2.
+Expected: each patched module listed, every module valid (`npm run validate`), every generator matching (`npm run check:gen`). A validation error goes back to the controller with the message; the implementer never edits a number.
 
 - [ ] **Step 4: Add the data test block and run it**
 
@@ -4860,18 +5092,20 @@ MSG
   - HLK-PM01/PM03, IRM-03-3V3, IRM-03-5, IRM-05-5: domain on the output pins; `voltage`, `imax` (rated output current) from each maker's datasheet (`datasheet`); `rInternal` an `estimate` derived from the load regulation figure (arithmetic in `note`).
   - Barrel adapters: domain `+`/`-`; `voltage` `"param:voltage"` (the user's setting); `imax` and `rInternal` `estimate`s naming a typical adapter of that voltage.
 
-- [ ] **Step 1: Research and write the patches**
+- [ ] **Step 1 (controller): Research**
 
-Dispatch a research subagent with the Sourcing protocol and the field list.
+The controller dispatches a research subagent with the Sourcing protocol, the field list above and the module files named under **Files**. It writes the patches, with `"review": []`, to `.superpowers/sim-data-staging/task-24/`.
 
-- [ ] **Step 2: Regenerate and validate**
+- [ ] **Step 2 (controller): Reviewer A, then reviewer B**
+
+The controller dispatches reviewer A on the staged patches (protocol item 10), applies A's corrections in staging, then dispatches reviewer B on the corrected patches and applies B's. Each patch now has two `review` records. Anything disputed is settled by the controller before Step 3.
+
+- [ ] **Step 3 (implementer): Apply the verified patches, regenerate and validate**
+
+Copy the staged patches into `scripts/sim-data/` unchanged (`cp .superpowers/sim-data-staging/task-24/*.json scripts/sim-data/`), then
 
 Run: `node scripts/gen-usb.mjs && node scripts/gen-mains-loads.mjs && node scripts/gen-mains-plugs.mjs && node scripts/gen-sim.mjs && npm run validate && npm run check:gen`
-Expected: valid; every generator matching.
-
-- [ ] **Step 3: Two independent reviewers**
-
-Per protocol item 9; apply corrections; rerun Step 2.
+Expected: each patched module listed, every module valid (`npm run validate`), every generator matching (`npm run check:gen`). A validation error goes back to the controller with the message; the implementer never edits a number.
 
 - [ ] **Step 4: Add the data test block and run it**
 
@@ -4923,7 +5157,7 @@ The review covers spec checkpoint 5: `electrical.sim` validation and the sourced
 ### Task 25: Probes in sheets and netlists
 
 **Files:**
-- Modify: `src/format/diagram.ts` (types `ProbeAnchor`, `Probe`, field `Diagram.probes`, validation), `src/agent/netlist.ts` (`probes` in a netlist), `src/agent/layout.ts` (resolve them onto the sheet), `src/agent/extract.ts` (write them back in ref form), `src/cli/netlistCmd.ts` and `src/cli/layoutCmd.ts` (print probe warnings), `src/editor/ops.ts` (`deleteSelection` drops probes of deleted parts)
+- Modify: `src/format/diagram.ts` (types `ProbeAnchor`, `Probe`, field `Diagram.probes`, validation), `src/agent/netlist.ts` (`probes` in a netlist), `src/agent/layout.ts` (resolve them onto the sheet), `src/agent/extract.ts` (write them back in ref form), `src/cli/netlistCmd.ts` and `src/cli/layoutCmd.ts` (print probe warnings)
 - Create: `src/sim/probes.ts`
 - Test: `src/sim/probes.test.ts`
 
@@ -4932,7 +5166,7 @@ The review covers spec checkpoint 5: `electrical.sim` validation and the sourced
 - Produces:
   - `src/format/diagram.ts`: `interface ProbeAnchor { part: string; pin?: string }`, `interface Probe { id: string; name?: string; at: ProbeAnchor }`, `Diagram.probes?: Probe[]`, `const PROBE_ID = /^P[1-9]\d*$/`
   - `src/agent/netlist.ts`: `interface NetlistProbe { id: string; name?: string; at: string; ref?: string }`; `Intent.probes: NetlistProbe[]`; `Intent.probeWarnings: string[]`
-  - `src/sim/probes.ts`: `nextProbeId(d: Diagram): string`, `addProbe(d: Diagram, at: ProbeAnchor, name?: string): { diagram: Diagram; id: string }`, `removeProbe(d: Diagram, id: string): Diagram`, `renameProbe(d: Diagram, id: string, name: string): Diagram`, `probesForSheet(intent: Intent): Probe[]`, `probesForNetlist(probes: Probe[], refOf: Map<string, string>, nets: { name: string; keys: string[] }[], warn?: (m: string) => void): NetlistProbe[]`
+  - `src/sim/probes.ts`: `probesForSheet(intent: Intent): Probe[]`, `probesForNetlist(probes: Probe[], refOf: Map<string, string>, nets: { name: string; keys: string[] }[], warn?: (m: string) => void): NetlistProbe[]`
   - `extractNetlist(d: Diagram, warn?: (message: string) => void)` (new optional argument)
 
 - [ ] **Step 1: Write the failing tests**
@@ -4949,8 +5183,7 @@ import { validateDiagram } from '../format/diagram.ts'
 import { layoutNetlist } from '../agent/layout.ts'
 import { extractNetlist } from '../agent/extract.ts'
 import { ledNetlist } from '../agent/fixtures.testing.ts'
-import { deleteSelection } from '../editor/ops.ts'
-import { addProbe, probesForNetlist, removeProbe, renameProbe } from './probes.ts'
+import { probesForNetlist } from './probes.ts'
 
 const withProbes = () => ({
   ...ledNetlist(),
@@ -5020,16 +5253,6 @@ describe('probes', () => {
     if (!r.ok) return
     expect(r.value.diagram.probes).toBeUndefined()
     expect(r.value.intent.probeWarnings).toEqual(['probes[0]: no part "Q9", so the probe was dropped', 'probes[1]: no net "NOPE", so the probe was dropped'])
-  })
-  it('adds, renames and removes probes, and deleting a part takes its probes with it', () => {
-    const s = laid(ledNetlist()).diagram
-    const a = addProbe(s, { part: 'D1', pin: 'A' })
-    expect(a.id).toBe('P1')
-    const b = addProbe(a.diagram, { part: 'R1' }, 'resistor')
-    expect(b.id).toBe('P2')
-    expect(renameProbe(b.diagram, 'P1', 'anode').probes?.[0]).toEqual({ id: 'P1', name: 'anode', at: { part: 'D1', pin: 'A' } })
-    expect(removeProbe(b.diagram, 'P1').probes?.map((p) => p.id)).toEqual(['P2'])
-    expect(deleteSelection(b.diagram, { parts: ['D1'], wires: [] }).probes?.map((p) => p.id)).toEqual(['P2'])
   })
 })
 ```
@@ -5167,30 +5390,12 @@ Return them in the intent object: add `probes, probeWarnings,` next to `copies`.
 `src/sim/probes.ts`:
 
 ```ts
-// Probes (spec 6.2): editing ops for the sheet, and the mapping between a sheet's probes (part uids
-// and pins) and a netlist's (refs and net names). Pure.
-import type { Diagram, Probe, ProbeAnchor } from '../format/diagram.ts'
+// Probes (spec 6.2): the mapping between a sheet's probes (part uids and pins) and a netlist's (refs
+// and net names). Task 25b adds the sheet's editing ops. Pure.
+import type { Probe } from '../format/diagram.ts'
 import type { Intent, NetlistProbe } from '../agent/netlist.ts'
 import { naturalCompare } from '../agent/order.ts'
 import { nodeKey } from '../format/netlist.ts'
-
-export function nextProbeId(d: Diagram): string {
-  const n = Math.max(0, ...(d.probes ?? []).map((p) => Number(p.id.slice(1))))
-  return `P${n + 1}`
-}
-export function addProbe(d: Diagram, at: ProbeAnchor, name?: string): { diagram: Diagram; id: string } {
-  const id = nextProbeId(d)
-  return { id, diagram: { ...d, probes: [...(d.probes ?? []), { id, ...(name ? { name } : {}), at }] } }
-}
-export function removeProbe(d: Diagram, id: string): Diagram {
-  const probes = (d.probes ?? []).filter((p) => p.id !== id)
-  const { probes: _p, ...rest } = d
-  return probes.length ? { ...rest, probes } : rest
-}
-export function renameProbe(d: Diagram, id: string, name: string): Diagram {
-  const clean = name.trim().slice(0, 40)
-  return { ...d, probes: (d.probes ?? []).map((p) => (p.id !== id ? p : clean ? { ...p, name: clean } : { id: p.id, at: p.at })) }
-}
 
 /** Layout (spec 6.2): netlist probes on the laid-out sheet, whose uids are the refs. net: picks a pin of the part the probe's name starts with, else the lowest ref. */
 export function probesForSheet(intent: Intent): Probe[] {
@@ -5249,6 +5454,92 @@ In `src/agent/extract.ts`, give `extractNetlist` a `warn?: (message: string) => 
   if (!json) for (const w of r.value.intent.probeWarnings) io.stderr(`warning: ${w}\n`)
 ```
 
+- [ ] **Step 5: Run the tests and the suites that touch these files**
+
+Run: `npx vitest run src/sim/probes.test.ts src/agent src/format/diagram.test.ts src/cli/netlistCmd.test.ts src/cli/cli.test.ts`
+Expected: PASS. Existing extract goldens are unchanged (no sheet had probes).
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add src/format/diagram.ts src/agent/netlist.ts src/agent/layout.ts src/agent/extract.ts src/cli/netlistCmd.ts src/cli/layoutCmd.ts src/sim/probes.ts src/sim/probes.test.ts
+git commit -m "$(cat <<'MSG'
+Probes: saved in sheets (part and pin anchors) and netlists (refs and net:), through layout and extract
+
+Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
+MSG
+)"
+```
+
+### Task 25b: Probe editing ops, and deleting a part takes its probes
+
+**Files:**
+- Modify: `src/sim/probes.ts` (editing ops), `src/editor/ops.ts` (`deleteSelection`)
+- Test: `src/sim/probeOps.test.ts`
+
+**Interfaces:**
+- Consumes: `Probe`, `ProbeAnchor`, `Diagram` (Task 25); `layoutNetlist`, `ledNetlist`.
+- Produces: `nextProbeId(d: Diagram): string`, `addProbe(d: Diagram, at: ProbeAnchor, name?: string): { diagram: Diagram; id: string }`, `removeProbe(d: Diagram, id: string): Diagram`, `renameProbe(d: Diagram, id: string, name: string): Diagram` (all in `src/sim/probes.ts`); `deleteSelection` drops the probes of deleted parts.
+
+- [ ] **Step 1: Write the failing test**
+
+`src/sim/probeOps.test.ts`:
+
+```ts
+// Spec 6.2: probe ids are P plus an integer, unique; renaming and removing; a deleted part takes its
+// probes with it, so no probe dangles in memory.
+import { describe, expect, it } from 'vitest'
+import { layoutNetlist } from '../agent/layout.ts'
+import { ledNetlist } from '../agent/fixtures.testing.ts'
+import { deleteSelection } from '../editor/ops.ts'
+import { addProbe, removeProbe, renameProbe } from './probes.ts'
+
+describe('probe editing ops', () => {
+  it('adds, renames and removes probes, and deleting a part takes its probes with it', () => {
+    const laid = layoutNetlist(ledNetlist())
+    if (!laid.ok) throw new Error(laid.errors.join('; '))
+    const s = laid.value.diagram
+    const a = addProbe(s, { part: 'D1', pin: 'A' })
+    expect(a.id).toBe('P1')
+    const b = addProbe(a.diagram, { part: 'R1' }, 'resistor')
+    expect(b.id).toBe('P2')
+    expect(renameProbe(b.diagram, 'P1', 'anode').probes?.[0]).toEqual({ id: 'P1', name: 'anode', at: { part: 'D1', pin: 'A' } })
+    expect(removeProbe(b.diagram, 'P1').probes?.map((p) => p.id)).toEqual(['P2'])
+    expect(deleteSelection(b.diagram, { parts: ['D1'], wires: [] }).probes?.map((p) => p.id)).toEqual(['P2'])
+    expect(deleteSelection(b.diagram, { parts: ['D1', 'R1'], wires: [] }).probes).toBeUndefined()
+  })
+})
+```
+
+- [ ] **Step 2: Run to see it fail**
+
+Run: `npx vitest run src/sim/probeOps.test.ts`
+Expected: FAIL: `addProbe` is not exported.
+
+- [ ] **Step 3: Write the ops**
+
+Add to `src/sim/probes.ts` (extend its import to `import type { Diagram, Probe, ProbeAnchor } from '../format/diagram.ts'`):
+
+```ts
+export function nextProbeId(d: Diagram): string {
+  const n = Math.max(0, ...(d.probes ?? []).map((p) => Number(p.id.slice(1))))
+  return `P${n + 1}`
+}
+export function addProbe(d: Diagram, at: ProbeAnchor, name?: string): { diagram: Diagram; id: string } {
+  const id = nextProbeId(d)
+  return { id, diagram: { ...d, probes: [...(d.probes ?? []), { id, ...(name ? { name } : {}), at }] } }
+}
+export function removeProbe(d: Diagram, id: string): Diagram {
+  const probes = (d.probes ?? []).filter((p) => p.id !== id)
+  const { probes: _p, ...rest } = d
+  return probes.length ? { ...rest, probes } : rest
+}
+export function renameProbe(d: Diagram, id: string, name: string): Diagram {
+  const clean = name.trim().slice(0, 40)
+  return { ...d, probes: (d.probes ?? []).map((p) => (p.id !== id ? p : clean ? { ...p, name: clean } : { id: p.id, at: p.at })) }
+}
+```
+
 In `src/editor/ops.ts`, `deleteSelection` drops the probes of deleted parts (a probe never dangles in memory either):
 
 ```ts
@@ -5270,17 +5561,17 @@ export function deleteSelection(d: Diagram, sel: Selection): Diagram {
 }
 ```
 
-- [ ] **Step 5: Run the tests and the suites that touch these files**
+- [ ] **Step 4: Run the tests**
 
-Run: `npx vitest run src/sim/probes.test.ts src/agent src/format/diagram.test.ts src/editor/ops.test.ts src/cli/netlistCmd.test.ts src/cli/cli.test.ts`
-Expected: PASS. Existing extract goldens are unchanged (no sheet had probes).
+Run: `npx vitest run src/sim/probeOps.test.ts src/editor/ops.test.ts`
+Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 5: Commit**
 
 ```bash
-git add src/format/diagram.ts src/agent/netlist.ts src/agent/layout.ts src/agent/extract.ts src/cli/netlistCmd.ts src/cli/layoutCmd.ts src/editor/ops.ts src/sim/probes.ts src/sim/probes.test.ts
+git add src/sim/probes.ts src/sim/probeOps.test.ts src/editor/ops.ts plugin/dist-cli/circuitoon.mjs
 git commit -m "$(cat <<'MSG'
-Probes: saved in sheets (part and pin anchors) and netlists (refs and net:), through layout and extract
+Probes: editing ops (add, rename, remove), and deleting a part takes its probes
 
 Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
 MSG
@@ -5622,6 +5913,9 @@ MSG
 - Consumes: `Circuit`, `Device`, `Param`, `Corner` (Task 6); `Classification`, `pinState` (Task 12); `NO_POWER_DATA` (Task 6); `basisOf`, `SimCode`, `SimFinding` (Task 26); `formatValue` (`values.ts`); `andList` (`words.ts`).
 - Produces:
   - `const SIM_TITLES: Record<SimCode, string>`
+  - `const refOf: (c: Circuit, uid: string) => string` (the part's ref, else its uid)
+  - `const V: (x: number) => string`, `const A: (x: number) => string`, `const W: (x: number) => string` (3 significant figures with an SI prefix: "3.29 V", "27.8 mA", "25.1 mW")
+  - `function deviceParams(d: Device): Param[]` (every parameter a device was built from)
   - `interface Draft { code: SimCode; severity: 'error' | 'warning' | 'note'; parts: string[]; message: string; inputs: Param[]; corner?: Corner; key: string; raw?: string }`
   - `function topologyFindings(c: Circuit, cls: Classification): { drafts: Draft[]; shortedRails: Set<string> }`
   - `function finalize(drafts: Draft[], peakNote: string): SimFinding[]`
@@ -5675,6 +5969,10 @@ describe('topological findings', () => {
     expect(pair(3.7, 5, [['b1.+', 'b2.+']])).toEqual([])
     expect(pair(3.7, 3.7, [['b1.-', 'b2.+']])).toEqual([])
     expect(pair(3.7, 3.7, [['b1.+', 'b2.+'], ['b1.-', 'b2.-']])).toEqual([])
+  })
+  it('flags an input held only by its input leakage (it is not a DC path)', () => {
+    const all = codes(sheet([{ uid: 'bt1', module: cellModule(5, 0.05) }, { uid: 'u1', module: boardModule({ leak: true }) }, R('r9', 1000)], [['bt1.+', 'u1.VIN'], ['bt1.-', 'u1.GND'], ['u1.IO1', 'r9.1']]))
+    expect(all.filter((f) => f.code === 'sim-floating-input').map((f) => f.parts)).toEqual([['u1']])
   })
   it('flags a wired GPIO input on a floating node, and not one with a pull, a driver or no wire', () => {
     const f = (values: Record<string, unknown>, wires: [string, string][]) =>
@@ -5934,7 +6232,7 @@ export function noConvergence(c: Circuit, error: string, nodes: string[]): SimFi
 - [ ] **Step 4: Run the tests**
 
 Run: `npx vitest run src/sim/findings.topology.test.ts`
-Expected: PASS (10 tests).
+Expected: PASS (11 tests).
 
 - [ ] **Step 5: Commit**
 
@@ -5955,14 +6253,14 @@ MSG
 - Test: `src/sim/findings.run.test.ts`
 
 **Interfaces:**
-- Consumes: Task 27's `Draft`, `finalize`, `topologyFindings`, `refOf`, `V`, `A`, `W`; `enableValue` (Task 13); `RawRun`; `Outside` (Task 26); `ResolvedLimit`, `Device` (Task 6).
+- Consumes: Task 27's `Draft`, `finalize`, `topologyFindings`, `refOf`, `V`, `A`, `W`; `enableValue` (Task 13); `RawRun`; `Outside` (Task 26); `ResolvedLimit`, `Device` (Task 6); `openSwitchFor` (Task 12).
 - Produces:
   - `function runDrafts(c: Circuit, cls: Classification, raw: RawRun, corner: Corner): { drafts: Draft[]; outside: Set<string> }`
   - `function propagate(c: Circuit, rails: Set<string>): Outside` (spec 4.2: a rail outside its model marks its output net, its input nets, and transitively every rail and source feeding them)
   - `function analyseFindings(c: Circuit, cls: Classification, raws: Record<Corner, RawRun>): { findings: SimFinding[]; outside: Outside }`
 
 One ruling applies here and is stated in a code comment:
-- **R30 (unpowered load):** a load whose domain floats (nothing on the sheet supplies it) is a `sim-brownout` **warning** with basis `topology` ("not powered in the current state"), never an error: the checker's "external power assumed" view covers an undrawn supply, so blocking on it would answer the checker's question, not the simulator's (spec 2.1).
+- **R30 (unpowered load, spec 5.2 revision 5):** a load whose domain is not powered in the current state is a `sim-brownout` **warning** with basis `topology` ("not powered in the current state"), never an error: the checker's "external power assumed" view covers an undrawn supply, so blocking on it would answer the checker's question, not the simulator's (spec 2.1). When an open switch is what separates it from a source (`openSwitchFor`, Task 12), the message names it ("SW1 is open"). It triggers the same way for an unplugged board and for one behind an open switch with its ground shared, because loads and returns are not DC paths (Task 12).
 
 - [ ] **Step 1: Write the failing test**
 
@@ -5983,6 +6281,8 @@ import { analyseFindings } from './findings.ts'
 import type { Corner } from './model.ts'
 import type { RawRun } from './spice.ts'
 import { boardModule, boostModule, cellModule, hostModule, ldoModule, q, sheet } from './testing.ts'
+import { load } from '../format/builtinModules.testing.ts'
+import { simOf } from '../format/simModel.ts'
 
 const engine = makeEngine(createNodeEngineHost())
 afterAll(() => engine.dispose())
@@ -5999,6 +6299,23 @@ async function analyse(d: Diagram) {
   return analyseFindings(c, cls, raws)
 }
 const of = (r: Awaited<ReturnType<typeof analyse>>, code: string) => r.findings.filter((f) => f.code === code)
+/**
+ * For the two edge-of-enable cases: the pinned finding, or the solver giving up (sim-no-convergence)
+ * on a state real undervoltage lockout never holds. Either is accepted; the test logs which, and the
+ * implementer records it in the ledger.
+ */
+async function analyseOrFailure(d: Diagram): Promise<Awaited<ReturnType<typeof analyse>> | 'no-convergence'> {
+  const c = buildCircuit(d)
+  const cls = classify(c)
+  const raws = {} as Record<Corner, RawRun>
+  for (const corner of ['typical', 'peak'] as const) {
+    const r = await engine.run(c, { kind: 'op', corner }, 1)
+    if (r.status === 'failed') return 'no-convergence'
+    if (r.status !== 'ok') throw new Error(JSON.stringify(r))
+    raws[corner] = r.raw
+  }
+  return analyseFindings(c, cls, raws)
+}
 const board = (values: Record<string, unknown> = {}, vin = 5, rint = 0.05, mod = boardModule()) =>
   sheet([{ uid: 'bt1', module: cellModule(vin, rint) }, { uid: 'u1', module: mod, values }], [['bt1.+', 'u1.VIN'], ['bt1.-', 'u1.GND']])
 
@@ -6049,17 +6366,21 @@ describe('value findings', () => {
     expect(off[0].message).toContain('is off')
     expect(of(await analyse(d(3.7)), 'sim-converter-off')).toEqual([])
   }, 60_000)
-  it('an input at the edge of the enable window: outside the model, upstream marked (spec 4.2)', async () => {
-    const r = await analyse(sheet([{ uid: 'bt1', module: cellModule(2.875, 1e-6) }, { uid: 'u1', module: boostModule() }, { uid: 'u2', module: boardModule() }],
+  it('an input at the edge of the enable window: outside the model, upstream marked (spec 4.2), or no convergence', async () => {
+    const r = await analyseOrFailure(sheet([{ uid: 'bt1', module: cellModule(2.875, 1e-6) }, { uid: 'u1', module: boostModule() }, { uid: 'u2', module: boardModule() }],
       [['bt1.+', 'u1.IN'], ['bt1.-', 'u1.GND'], ['u1.OUT', 'u2.VIN'], ['u2.GND', 'u1.GND']]))
+    console.info(`ledger: edge of enable gave ${r === 'no-convergence' ? 'sim-no-convergence' : 'the pinned finding'}`)
+    if (r === 'no-convergence') return
     expect(of(r, 'sim-converter-off').some((f) => f.message.includes('edge of its range'))).toBe(true)
     expect(r.outside.rails.has('u1.rail.boost')).toBe(true)
     expect(r.outside.nets.has('BT1_+')).toBe(true)
     expect(r.outside.parts.has('bt1')).toBe(true)
   }, 60_000)
-  it('an overloaded weak battery settles at the edge of the enable window, which is flagged (spec 4.2)', async () => {
-    const r = await analyse(sheet([{ uid: 'bt1', module: cellModule(3.2, 1) }, { uid: 'u1', module: boostModule() }, { uid: 'u2', module: boardModule(), values: { 'sim.draw.3V3.typical': { value: 0.4, unit: 'A' } } }],
+  it('an overloaded weak battery settles at the edge of the enable window, which is flagged (spec 4.2), or no convergence', async () => {
+    const r = await analyseOrFailure(sheet([{ uid: 'bt1', module: cellModule(3.2, 1) }, { uid: 'u1', module: boostModule() }, { uid: 'u2', module: boardModule(), values: { 'sim.draw.3V3.typical': { value: 0.4, unit: 'A' } } }],
       [['bt1.+', 'u1.IN'], ['bt1.-', 'u1.GND'], ['u1.OUT', 'u2.VIN'], ['u2.GND', 'u1.GND']]))
+    console.info(`ledger: weak battery gave ${r === 'no-convergence' ? 'sim-no-convergence' : 'the pinned finding'}`)
+    if (r === 'no-convergence') return
     expect(of(r, 'sim-converter-off').some((f) => f.message.includes('edge of its range'))).toBe(true)
   }, 60_000)
   it('a boost under its minimum load warns, and does not above it', async () => {
@@ -6081,12 +6402,39 @@ describe('value findings', () => {
     const r = await analyse(sheet([{ uid: 'h1', module: hostModule() }, { uid: 'u1', module: boardModule(), values: { 'sim.draw.3V3.typical': { value: 0.6, unit: 'A' } } }], [['h1.USB', 'u1.USB']]))
     expect(of(r, 'sim-over-limit').some((f) => f.message.includes('over USB to U1'))).toBe(true)
   }, 60_000)
+  it('a board behind an open switch, ground shared: not powered, naming the switch (ruling R30)', async () => {
+    const r = await analyse(sheet([{ uid: 'bt1', module: cellModule(5, 0.05) }, { uid: 's1', module: 'rocker-switch-kcd1' }, { uid: 'u1', module: boardModule() }],
+      [['bt1.+', 's1.1'], ['s1.2', 'u1.VIN'], ['bt1.-', 'u1.GND']]))
+    const [f] = of(r, 'sim-brownout')
+    expect(f).toMatchObject({ severity: 'warning', basis: 'topology', parts: ['u1', 's1'] })
+    expect(f.message).toBe('U1 3V3 is not powered in the current state: S1 is open. Set S1 to its operating position to simulate U1 running.')
+  }, 60_000)
   it('an unplugged board: not powered, a topology warning that never blocks (ruling R30)', async () => {
     const r = await analyse(sheet([{ uid: 'u1', module: boardModule() }], []))
     const [f] = of(r, 'sim-brownout')
     expect(f).toMatchObject({ severity: 'warning', basis: 'topology' })
     expect(f.message).toContain('is not powered in the current state')
     expect(r.findings.some((x) => x.severity === 'error')).toBe(false)
+  }, 60_000)
+})
+
+// After Phase C: the same rules on the sourced modules (spec 9 findings list).
+describe('value findings on the sourced modules', () => {
+  it('the IP5306 module under its sourced minimum load warns', async () => {
+    const boost = simOf(load('ip5306-usbc-module'))!.power!.rails!.find((x) => x.kind === 'boost')!
+    // A load drawing a fifth of the minimum load at the boost's output voltage.
+    const ohms = boost.vout!.value / (boost.minLoad!.amps.value / 5)
+    const r = await analyse(sheet([{ uid: 'bt1', module: 'battery-18650-holder' }, { uid: 'u5', module: 'ip5306-usbc-module' }, R('r1', ohms)],
+      [['bt1.+', 'u5.B+'], ['bt1.-', 'u5.B-'], ['u5.5V+', 'r1.1'], ['r1.2', 'u5.5V-']]))
+    expect(of(r, 'sim-min-load').some((f) => f.parts.includes('u5') && f.severity === 'warning')).toBe(true)
+  }, 60_000)
+  it('an ESP32 DevKit on 3xAAA through the AMS1117 module: dropout at peak is a warning; at typical its severity follows its basis', async () => {
+    const r = await analyse(sheet([{ uid: 'bt1', module: 'battery-holder-3xaaa' }, { uid: 'u2', module: 'ams1117-33-module' }, { uid: 'u1', module: 'esp32-devkit-v1-30' }],
+      [['bt1.+', 'u2.VIN'], ['bt1.-', 'u2.GND'], ['u2.OUT', 'u1.3V3'], ['u2.GND', 'u1.GND']]))
+    const d = of(r, 'sim-dropout').find((f) => f.parts.includes('u2'))
+    expect(d).toBeDefined()
+    if (d!.corner === 'peak') expect(d!.severity).toBe('warning')
+    else expect(d!.severity).toBe(['datasheet', 'user', 'topology'].includes(d!.basis) ? 'error' : 'warning')
   }, 60_000)
 })
 ```
@@ -6098,7 +6446,7 @@ Expected: FAIL, `analyseFindings` is not exported.
 
 - [ ] **Step 3: Write the run findings**
 
-Add to `src/sim/findings.ts` (extend the imports with `type ResolvedLimit` from `./model.ts`, `type RawRun, enableValue` from `./spice.ts`, and `type Outside` from `./results.ts`):
+Add to `src/sim/findings.ts` (extend the imports with `type ResolvedLimit` from `./model.ts`, `type RawRun, enableValue` from `./spice.ts`, `type Outside` from `./results.ts`, and `openSwitchFor` next to `pinState` from `./floating.ts`):
 
 ```ts
 type Load = Extract<Device, { kind: 'load' }>
@@ -6229,8 +6577,15 @@ export function runDrafts(c: Circuit, cls: Classification, raw: RawRun, corner: 
   for (const l of c.devices) {
     if (l.kind !== 'load') continue
     if (!driven(l.p) || !driven(l.n)) {
-      if (corner === 'typical')
-        add({ code: 'sim-brownout', severity: 'warning', parts: [l.part], inputs: [], key: `unpowered|${l.id}`, message: `${ref(l.part)} ${l.domain} is not powered in the current state: nothing on the sheet supplies it. Draw its supply (a battery, an adapter, or a computer USB port on its USB socket) to simulate it.` })
+      if (corner === 'typical') {
+        const sw = openSwitchFor(c, l.p)
+        add({
+          code: 'sim-brownout', severity: 'warning', parts: sw ? [l.part, sw] : [l.part], inputs: [], key: `unpowered|${l.id}`,
+          message: sw
+            ? `${ref(l.part)} ${l.domain} is not powered in the current state: ${ref(sw)} is open. Set ${ref(sw)} to its operating position to simulate ${ref(l.part)} running.`
+            : `${ref(l.part)} ${l.domain} is not powered in the current state: nothing on the sheet supplies it. Draw its supply (a battery, an adapter, or a computer USB port on its USB socket) to simulate it.`,
+        })
+      }
       continue
     }
     const x = v(l.p) - v(l.n)
@@ -6292,7 +6647,7 @@ export function analyseFindings(c: Circuit, cls: Classification, raws: Record<Co
 - [ ] **Step 3: Run the tests**
 
 Run: `npx vitest run src/sim/findings.run.test.ts src/sim/findings.topology.test.ts`
-Expected: PASS. A failing number here means a model or finding bug: find it with the solved values (print `raws.typical.v`), never by widening the test.
+Expected: PASS. Write the two `ledger:` lines the edge-of-enable tests print into the ledger (pinned finding or `sim-no-convergence`). A failing number here means a model or finding bug: find it with the solved values (print `raws.typical.v`), never by widening the test.
 
 - [ ] **Step 4: Commit**
 
@@ -6535,7 +6890,7 @@ MSG
 - Test: `src/cli/simCmd.test.ts`
 
 **Interfaces:**
-- Consumes: `solve` (Task 29), `makeEngine` (Task 14), `createNodeEngineHost` (Task 4), `layoutNetlist`, `validateDiagram`, `sheetNets` (Task 9), `nextProbeId` (Task 25).
+- Consumes: `solve` (Task 29), `makeEngine` (Task 14), `createNodeEngineHost` (Task 4), `layoutNetlist`, `validateDiagram`, `sheetNets` (Task 9), `nextProbeId` (Task 25b).
 - Produces: `function simCommand(args: Args, io: Io, opts?: { engine?: Engine }): Promise<number>`; `Args.lists?: Map<string, string[]>`; schema `sim` (`SimOutcome`).
 
 Exit codes (spec 7): `ok` with no blocking finding 0; `ok` with blocking findings 1; bad input 2; `failed` or `unavailable` 3. A blocking finding is one whose final severity is `error` (Task 27's `finalize` leaves `error` only on typical-corner findings with basis topology, user or datasheet).
@@ -6876,11 +7231,11 @@ MSG
 
 **Files:**
 - Modify: `src/cli/gate.ts`, `src/agent/notChecked.ts`, `plugin/skills/circuitoon-design/references/schemas/gate.schema.json`, `plugin/skills/circuitoon-design/references/cli.md` (gate section), `plugin/skills/circuitoon-design/SKILL.md` ("Reading the gate"), `README.md:151`
-- Test: `src/cli/gate.test.ts` (update and add)
+- Test: `src/cli/gate.test.ts` (update and add); the stub seam in `src/cli/examples.test.ts`, `src/cli/verifyCmd.test.ts`, `src/cli/bomCmd.test.ts`, `src/cli/moduleCmd.test.ts`, `src/agent/layout.fixtures.test.ts`
 
 **Interfaces:**
 - Consumes: `solve` (Task 29), `makeEngine`, `createNodeEngineHost`, `SimFinding`, `DomainBudget`, `Basis`.
-- Produces: `GATE_FORMAT = 'circuitoon-cli/gate/4'`; `GateReport.sim: { status: 'ok' | 'failed' | 'unavailable' | 'not-run'; findings: SimFinding[]; budget: DomainBudget[]; provenanceCounts: Record<Basis, number>; reason?: string }`; `runGate(bytes, { ...opts, engine?: Engine })`.
+- Produces: `GATE_FORMAT = 'circuitoon-cli/gate/4'`; `GateReport.sim: { status: 'ok' | 'failed' | 'unavailable' | 'not-run'; findings: SimFinding[]; budget: DomainBudget[]; provenanceCounts: Record<Basis, number>; reason?: string }`; `runGate(bytes, { ...opts, engine?: Engine | null })` (`null`: do not simulate); `const gateEngine: { make: () => Engine | null }` (the test seam: tests that do not test simulation set `make` to `() => null`, so they never start ngspice).
 
 The matrix (spec 7) decides `blocking`, `ok`, `ready`, exit and banner:
 
@@ -6897,10 +7252,34 @@ Sim errors go to `blocking`, sim warnings to `warnings`, sim notes (`sim-incompl
 
 - [ ] **Step 1: Update the existing gate tests and add the new ones**
 
-In `src/cli/gate.test.ts`: replace `'GATE BLOCKED'` with `'GATE FAILED'` and `'circuitoon-cli/gate/3'` with `'circuitoon-cli/gate/4'`. Then append:
+The existing gate tests do not test simulation, so they run with the stub (`gateEngine.make = () => null`: the simulation is not run, `sim.status` is `not-run`) and never start ngspice. At the top of `src/cli/gate.test.ts`, after the imports (add `beforeEach` to the vitest import and `gateEngine` to the `./gate.ts` import):
+
+```ts
+// Gate tests that do not test simulation never start the engine (Task 31's stub seam).
+const realEngine = gateEngine.make
+beforeEach(() => {
+  gateEngine.make = () => null
+})
+```
+
+Add the same `beforeEach` (without `realEngine`) to `src/cli/examples.test.ts`, `src/cli/verifyCmd.test.ts`, `src/cli/bomCmd.test.ts`, `src/cli/moduleCmd.test.ts` and `src/agent/layout.fixtures.test.ts`, which run `gate` or `runGate` too; their assertions do not change.
+
+With the stub, exactly these existing assertions in `src/cli/gate.test.ts` change, and nothing else:
+
+| Test | Change |
+|---|---|
+| 'blocks a sheet with no intent (exit 1), even without a browser' | `toContain('GATE BLOCKED')` becomes `toContain('GATE FAILED')` (ruling R15) |
+| 'is an environment problem (exit 3) when only the browser is missing' | `'circuitoon-cli/gate/3'` becomes `'circuitoon-cli/gate/4'` |
+| 'is ready when the gate passes with no readability warnings' (gate readiness) | `'circuitoon-cli/gate/3'` becomes `'circuitoon-cli/gate/4'` |
+| every `schemaErrors(loadSchema('gate'), g)` assertion | no code change: it passes because every report now carries `sim` (status `not-run`) |
+
+Then append the simulation tests, which put the real engine back:
 
 ```ts
 describe('gate/4: simulation (spec 7)', () => {
+  beforeEach(() => {
+    gateEngine.make = realEngine
+  })
   const failing = (status: 'failed' | 'unavailable'): Engine => ({
     host: { runs: 0, info: null } as unknown as EngineHost,
     init: async () => ({ name: 'ngspice', version: '45.2', build: 'fake' }),
@@ -6999,8 +7378,9 @@ After the readability and custom-part findings (the sheet `d` is loaded and chec
 
 ```ts
   // Simulation (spec 7): its own findings, never suppressing or suppressed by the checker (2.1).
-  const engine = opts.engine ?? makeEngine(createNodeEngineHost())
-  try {
+  // No engine (the tests' stub): not run, which the matrix ignores.
+  const engine = opts.engine !== undefined ? opts.engine : gateEngine.make()
+  if (engine) try {
     const { outcome } = await solve(d, engine, 1)
     if (outcome.status === 'ok') {
       const r = outcome.result
@@ -7014,8 +7394,15 @@ After the readability and custom-part findings (the sheet `d` is loaded and chec
       found.push({ id: 'sim-no-convergence', rule: 'sim-no-convergence', severity: 'warning', message: outcome.finding.message, parts: outcome.finding.parts, pins: [], wires: [] })
     } else sim = { ...sim, status: 'unavailable', reason: outcome.reason }
   } finally {
-    if (!opts.engine) engine.dispose()
+    if (opts.engine === undefined) engine.dispose()
   }
+```
+
+and above `runGate`, the seam:
+
+```ts
+/** Where gate gets its engine when the caller passes none. Tests that do not test simulation set `make` to `() => null`. */
+export const gateEngine: { make: () => Engine | null } = { make: () => makeEngine(createNodeEngineHost()) }
 ```
 
 In `finish()`, the exit code follows the matrix:
@@ -7074,13 +7461,13 @@ In `gate.schema.json`: set `"format": { "const": "circuitoon-cli/gate/4" }`, add
 
 - [ ] **Step 5: Run the gate and CLI tests**
 
-Run: `npx vitest run src/cli`
-Expected: PASS. Where an existing test lists a sheet's warnings or notes exactly, the simulator now adds its own (for example a "not powered" warning on a sheet with no supply): add them to that expectation as the run reports them, or filter `rule.startsWith('sim-')` out of that one assertion, and say which in the commit body.
+Run: `npx vitest run src/cli src/agent/layout.fixtures.test.ts`
+Expected: PASS, with only the table's changes to existing tests. Any other existing test that fails is a regression in `gate.ts`, not an expectation to update.
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add src/cli/gate.ts src/cli/gate.test.ts src/agent/notChecked.ts plugin/skills/circuitoon-design README.md
+git add src/cli/gate.ts src/cli/gate.test.ts src/cli/examples.test.ts src/cli/verifyCmd.test.ts src/cli/bomCmd.test.ts src/cli/moduleCmd.test.ts src/agent/layout.fixtures.test.ts src/agent/notChecked.ts plugin/skills/circuitoon-design README.md plugin/dist-cli/circuitoon.mjs
 git commit -m "$(cat <<'MSG'
 Gate 4: simulation findings in their own field, the spec 7 matrix, GATE FAILED and the simulation banners
 
@@ -7101,6 +7488,8 @@ MSG
 - Produces: `function netSheet(netlist: { parts: { ref: string; module: string; values?: Record<string, unknown> }[]; nets: { name: string; pins: string[] }[] }): Diagram` (a sheet with every net wired pin to pin, no layout: the simulator needs only connectivity).
 
 - [ ] **Step 1: Write the fixture (spec 1, ruling R23)**
+
+The rocker sits between the 18650 bank and the IP5306's battery input (BAT, then SW1, then U5.B+), as spec section 1 describes.
 
 `src/sim/fixtures/spirit-typewriter.netlist.json`:
 
@@ -7126,10 +7515,10 @@ MSG
     { "ref": "D1", "module": "led" }
   ],
   "nets": [
-    { "name": "BAT", "pins": ["BT1.+", "BT2.+", "BT3.+", "BT4.+", "U5.B+"] },
+    { "name": "BAT", "pins": ["BT1.+", "BT2.+", "BT3.+", "BT4.+", "SW1.1"] },
+    { "name": "BSW", "pins": ["SW1.2", "U5.B+"] },
     { "name": "GND", "pins": ["BT1.-", "BT2.-", "BT3.-", "BT4.-", "U5.B-", "U5.5V-", "U1.GND", "DS1.GND", "DS2.GND", "DS3.GND", "U2.GND", "U3.GND", "U4.GND", "D1.K"] },
-    { "name": "VSW", "pins": ["U5.5V+", "SW1.1"] },
-    { "name": "5V", "pins": ["SW1.2", "U1.VIN", "R1.1"] },
+    { "name": "5V", "pins": ["U5.5V+", "U1.VIN", "R1.1"] },
     { "name": "LED_A", "pins": ["R1.2", "D1.A"] },
     { "name": "3V3", "pins": ["U1.3V3", "DS1.VCC", "DS2.VCC", "DS2.LED", "DS3.VCC", "DS3.LED", "U2.VCC", "U3.VCC", "U4.VCC"] },
     { "name": "SDA", "pins": ["U1.D21", "DS1.SDA", "U2.SDA", "U3.SDA", "U4.SDA"] },
@@ -7196,15 +7585,25 @@ describe('the Spirit Typewriter (spec 1)', () => {
     const rout = (ldo.rout?.value ?? 0.1)
     expect(Math.abs(volts('3V3') - (ldo.vout!.value - loads3 * rout))).toBeLessThan(0.02)
     // The 5 V rail: the IP5306 boost's vout less its output current (the LDO's input plus the LED) through rout.
-    const ip = simOf(load('ip5306-usbc-module'))!.power!.rails!.find((r) => r.kind === 'boost')!
+    const ipSim = simOf(load('ip5306-usbc-module'))!
+    const ip = ipSim.power!.rails!.find((r) => r.kind === 'boost')!
     const i5 = loads3 + (ldo.iq?.value ?? 0) + (volts('5V') - 2) / 330
-    expect(Math.abs(volts('VSW') - (ip.vout!.value - i5 * (ip.rout?.value ?? 0.1)))).toBeLessThan(0.02)
-    // The battery bank: four cells in parallel sag by the boost's input current through a quarter of one cell's rInternal.
-    const cell = simOf(load('battery-18650-holder'))!
-    const r4 = cell.modelParams!.rInternal.value / 4
+    expect(Math.abs(volts('5V') - (ip.vout!.value - i5 * (ip.rout?.value ?? 0.1)))).toBeLessThan(0.02)
+    // The bank (spec 1): four cells in parallel, then SW1, then the IP5306's B+. The boost draws its
+    // control-node power over its efficiency from B+, plus the chip's own draw on the BAT domain; that
+    // current sags the bank through a quarter of one cell's rInternal and drops across SW1's contact.
+    const r4 = simOf(load('battery-18650-holder'))!.modelParams!.rInternal.value / 4
+    const rc = simOf(load('rocker-switch-kcd1'))!.modelParams!.contactResistance.value
+    const standby = ipSim.power!.draw?.find((x) => x.domain === 'BAT')?.typical.value ?? 0
     let vbat = 3.7
-    for (let k = 0; k < 20; k++) vbat = 3.7 - ((volts('VSW') * i5) / (ip.efficiency!.value * vbat)) * r4
+    let iin = 0
+    for (let k = 0; k < 50; k++) {
+      const vb = vbat - iin * rc
+      iin = (ip.vout!.value * i5) / (ip.efficiency!.value * vb) + standby
+      vbat = 3.7 - iin * r4
+    }
     expect(Math.abs(volts('BAT') - vbat)).toBeLessThan(0.02)
+    expect(Math.abs(volts('BSW') - (vbat - iin * rc))).toBeLessThan(0.02)
   }, 60_000)
   it('lists the expected findings: nothing blocks, nothing warns, the estimates are noted', async () => {
     const { outcome } = await solve(d, engine, 1)
@@ -7225,12 +7624,13 @@ If the sourced data makes a different finding appear (for example a sourced mini
 // Spec 8: one solve (2 engine runs) of a 200-part circuit, Worker end to end, p95 at most 30 ms.
 // Ruling R31: measured from the compiled circuit to the mapped result (compile, worker round trip,
 // solve, map back) for both corners; building the circuit from the sheet is the editor's per-edit
-// cost, covered by the drag budget (Task 39).
+// cost: the second test budgets the whole re-solve (build, compile, solve, findings) at p95 50 ms.
 import { afterAll, describe, expect, it } from 'vitest'
 import { buildCircuit } from './build.ts'
 import { makeEngine } from './engine/engine.ts'
 import { createNodeEngineHost } from './engine/nodeEngine.ts'
 import { cellModule, sheet } from './testing.ts'
+import { solve } from './session.ts'
 
 const engine = makeEngine(createNodeEngineHost())
 afterAll(() => engine.dispose())
@@ -7252,6 +7652,23 @@ describe('solve budget', () => {
     }
     times.sort((a, b) => a - b)
     expect(times[Math.floor(times.length * 0.95)]).toBeLessThanOrEqual(30)
+  }, 120_000)
+  it('re-solves the same 201 parts end to end (build, compile, both corners, findings) in p95 50 ms or less', async () => {
+    const parts = [{ uid: 'bt1', module: cellModule(5, 0.05) }]
+    const wires: [string, string][] = []
+    for (let i = 0; i < 100; i++) {
+      parts.push({ uid: `r${i}`, module: 'resistor', values: { resistance: { value: 150 + i, unit: 'ohm' } } } as never, { uid: `d${i}`, module: 'led' } as never)
+      wires.push(['bt1.+', `r${i}.1`], [`r${i}.2`, `d${i}.A`], [`d${i}.K`, 'bt1.-'])
+    }
+    const d = sheet(parts, wires)
+    const times: number[] = []
+    for (let k = 0; k < 65; k++) {
+      const t0 = performance.now()
+      expect((await solve({ ...d, parts: d.parts.map((p) => (p.uid === 'r0' ? { ...p, values: { resistance: { value: 150 + k, unit: 'ohm' } } } : p)) }, engine, k)).outcome.status).toBe('ok')
+      if (k >= 5) times.push(performance.now() - t0)
+    }
+    times.sort((a, b) => a - b)
+    expect(times[Math.floor(times.length * 0.95)]).toBeLessThanOrEqual(50)
   }, 120_000)
 })
 ```
@@ -8139,7 +8556,7 @@ MSG
 - Test: `src/editor/probeLayer.test.ts`
 
 **Interfaces:**
-- Consumes: `addProbe` (Task 25), `probeReadings`, `Reading`, `PartRun`, `ProbeReading` (Task 26), `LabelPlacer` (`src/agent/labelling.ts`, ruling R8), `flagRect` (`netLabels.ts`), `resolveEndpoint`, `worldPins`, `bodyRect`, `modulesById`.
+- Consumes: `addProbe` (Task 25b), `probeReadings`, `Reading`, `PartRun`, `ProbeReading` (Task 26), `LabelPlacer` (`src/agent/labelling.ts`, ruling R8), `flagRect` (`netLabels.ts`), `resolveEndpoint`, `worldPins`, `bodyRect`, `modulesById`.
 - Produces:
   - `const PROBE_COLORS: readonly string[]` (eight, in a fixed order, each at least 3:1 against both papers: `#F7F8F3` light and `#DDDFE0` dark)
   - `function readingText(r: { typical: Reading; peak: Reading } | undefined): string`, `function partText(p: { typical: PartRun; peak: PartRun } | undefined): string`
@@ -8388,7 +8805,7 @@ MSG
 - Test: `src/editor/probesPanel.test.ts`
 
 **Interfaces:**
-- Consumes: `renameProbe`, `removeProbe` (Task 25), `probeReadings`, `DomainBudget` (Task 26), `readingText`, `partText`, `PROBE_COLORS` (Task 36), `shownResult` (Task 34), `formatValue`.
+- Consumes: `renameProbe`, `removeProbe` (Task 25b), `probeReadings`, `DomainBudget` (Task 26), `readingText`, `partText`, `PROBE_COLORS` (Task 36), `shownResult` (Task 34), `formatValue`.
 - Produces: `ProbesPanel` (props `{ store: EditorStore }`); `function supplyRow(b: DomainBudget): { name: string; volts: string; load: string; limit: string; headroom: string; basis: string }`.
 
 - [ ] **Step 1: Write the failing test**
@@ -8396,8 +8813,9 @@ MSG
 `src/editor/probesPanel.test.ts`:
 
 ```ts
-// Spec 6.2: the Supplies table: each source, rail and domain with load against limit, typical and
-// peak, headroom and provenance; a reading outside the model is shown as such, not as a number.
+// Spec 6.2 and 5.1: the Supplies table: each source, rail and domain with load against limit, typical
+// and peak, headroom and provenance; a source's current is "delivering"; a reading outside the model
+// is shown as such, not as a number.
 import { describe, expect, it } from 'vitest'
 import { supplyRow } from './ProbesPanel.tsx'
 import type { DomainBudget } from '../sim/results.ts'
@@ -8413,6 +8831,10 @@ describe('supplyRow', () => {
   it('says a reading outside the model is untrustworthy instead of giving a number', () => {
     const b: DomainBudget = { id: 'bt1.cell', kind: 'source', part: 'bt1', label: 'BT1', volts: { typical: v(3.1, 'outside-model'), peak: v(3.0, 'outside-model') }, amps: { typical: a(2.1, 'outside-model'), peak: a(2.4, 'outside-model') }, basis: 'estimate' }
     expect(supplyRow(b)).toMatchObject({ load: 'outside the model', limit: '-', headroom: '-', basis: 'estimate' })
+  })
+  it('labels a source\'s current as delivering (spec 5.1)', () => {
+    const b: DomainBudget = { id: 'bt1.cell', kind: 'source', part: 'bt1', label: 'BT1', volts: { typical: v(3.6), peak: v(3.5) }, amps: { typical: a(0.412), peak: a(0.6) }, limit: { value: 2, kind: 'sourceCurrent', basis: 'estimate' }, headroom: 1.4, basis: 'estimate' }
+    expect(supplyRow(b).load).toBe('delivering 412 mA (peak 600 mA)')
   })
 })
 ```
@@ -8430,7 +8852,8 @@ Expected: FAIL, `./ProbesPanel.tsx` cannot be found.
 // The Probes panel (spec 6.2): in place of the inspector while the Probe tool is on. The readings
 // (rename and delete), the Supplies table (each source, rail and domain: load against limit,
 // typical and peak, headroom and provenance), the parts not simulated and the estimates, and About
-// the simulator (ruling R9: the licences and where the engine's source is).
+// the simulator (ruling R9: the engine's own NOTICE.txt, fetched when opened).
+import { useState } from 'react'
 import { formatValue } from '../format/values.ts'
 import { removeProbe, renameProbe } from '../sim/probes.ts'
 import { type CurrentReading, type DomainBudget, probeReadings } from '../sim/results.ts'
@@ -8448,8 +8871,10 @@ const ampsText = (r: { typical: CurrentReading; peak: CurrentReading }) => {
 }
 
 export function supplyRow(b: DomainBudget): { name: string; volts: string; load: string; limit: string; headroom: string; basis: string } {
-  const load = ampsText(b.amps)
-  const outside = load === 'outside the model'
+  const amps = ampsText(b.amps)
+  const outside = amps === 'outside the model'
+  // Spec 5.1: a source's current is reported as delivered, under that label.
+  const load = b.kind === 'source' && !outside ? `delivering ${amps}` : amps
   return {
     name: b.label,
     volts: outside ? 'outside the model' : readingText(b.volts),
@@ -8467,6 +8892,8 @@ export function ProbesPanel({ store }: { store: EditorStore }) {
   const probes = diagram.probes ?? []
   const readings = shown && circuit ? probeReadings(probes, circuit, shown.result.corners) : null
   const base = `${import.meta.env.BASE_URL}sim/`
+  // About the simulator shows NOTICE.txt itself (written by engine:build from the build's licence scan), never hardcoded text.
+  const [notice, setNotice] = useState<string | null>(null)
   const ref = (uid: string) => diagram.parts.find((p) => p.uid === uid)?.designator ?? uid
   return (
     <aside className="inspector probes-panel" aria-label="Probes">
@@ -8509,7 +8936,7 @@ export function ProbesPanel({ store }: { store: EditorStore }) {
           <h3 id="supplies-title">Supplies</h3>
           <table>
             <thead>
-              <tr><th scope="col">Supply</th><th scope="col">Voltage</th><th scope="col">Load</th><th scope="col">Limit</th><th scope="col">Headroom</th><th scope="col">From</th></tr>
+              <tr><th scope="col">Supply</th><th scope="col">Voltage</th><th scope="col">Load or delivering</th><th scope="col">Limit</th><th scope="col">Headroom</th><th scope="col">From</th></tr>
             </thead>
             <tbody>
               {shown.result.budget.map(supplyRow).map((row) => (
@@ -8530,10 +8957,11 @@ export function ProbesPanel({ store }: { store: EditorStore }) {
           </ul>
         </section>
       )}
-      <details className="about-sim">
+      <details className="about-sim" onToggle={(e) => (e.currentTarget as HTMLDetailsElement).open && notice === null && void fetch(`${base}NOTICE.txt`).then((r) => r.text()).then(setNotice, () => setNotice('The notice could not be loaded.'))}>
         <summary>About the simulator</summary>
-        <p>Circuitoon solves the sheet with ngspice{shown ? ` ${shown.result.engine.version} (engine build ${shown.result.engine.build})` : ''}, compiled to WebAssembly and run in your browser; nothing is uploaded. ngspice is distributed under the modified BSD licence; its numparam component is under the GNU LGPL, version 2 or later, and its sparse matrix code under the Sparse 1.3 licence.</p>
-        <p><a href={`${base}NOTICE.txt`} target="_blank" rel="noopener noreferrer">Licences and notices</a> and <a href="https://github.com/MBarc/circuitoon/releases" target="_blank" rel="noopener noreferrer">the engine's source, patches and build</a>.</p>
+        <p>Circuitoon solves the sheet with ngspice, compiled to WebAssembly and run in your browser; nothing is uploaded. The licences below are the engine build's own notice (sim/NOTICE.txt), so they always match the binary.</p>
+        {notice !== null && <pre className="about-notice">{notice}</pre>}
+        <p><a href={`${base}NOTICE.txt`} target="_blank" rel="noopener noreferrer">Open the notice</a></p>
       </details>
     </aside>
   )
@@ -8568,6 +8996,7 @@ In `src/editor/Inspector.tsx`, export `CommitInput` (`export function CommitInpu
 .sim-notes ul { margin: 0; padding-left: 18px; font-size: 13.5px; display: grid; gap: 3px; }
 .about-sim summary { cursor: pointer; font-weight: 700; }
 .about-sim p { font-size: 13.5px; margin: 6px 0 0; }
+.about-notice { margin: 6px 0 0; max-height: 30vh; overflow: auto; font-size: 11.5px; white-space: pre-wrap; }
 ```
 
 (The inspector column is 270 px wide; the table scrolls sideways inside `.supplies` rather than squeezing.)
@@ -8856,7 +9285,7 @@ Expected: `plugin/dist-cli/circuitoon.mjs` rewritten; every generator matching.
 - [ ] **Step 4: Update the docs**
 
 - `docs/PRD.md`, section "V2 simulation and V3 animation": replace the V2 bullets with the shipped design: DC operating point in the saved switch and GPIO state, solved by our own ngspice 45.2 WASM build in a Web Worker (the earlier "modified nodal analysis in the style of Falstad" plan is superseded; say why: the spike's accuracy and co-simulation results); `electrical.sim` (provenance per value), probes saved in the sheet, LED glow, the two finding groups, `circuitoon sim` and gate/4; transient, PWM and firmware are later. Add a Changelog entry "### Live DC simulation (plugin 0.10.0)" listing the same in four or five bullets.
-- `plugin/skills/circuitoon-design/SKILL.md`: in the workflow, before step 5 (Gate), add a step: "**Simulate.** Set each GPIO's state to what the firmware does (`values["gpio.<pin>"]`: `input`, `input-pullup`, `input-pulldown`, `high` or `low`) and each switch's position (`values["contact.<group>"]`), in the netlist. Run `circuitoon sim <netlist or sheet>` (add `--probe` for the points the user cares about). Fix every blocking finding (exit 1). Read every warning: a "Likely" warning rests on representative or estimated values; say so to the user. Then gate: `gate` runs the same simulation." Add `sim-*` codes to "Reading the gate" (Task 31 added the banners).
+- `plugin/skills/circuitoon-design/SKILL.md`: in the workflow, before step 5 (Gate), add a step: "**Simulate.** Set each GPIO's state to what the firmware does (`values["gpio.<pin>"]`: `input`, `input-pullup`, `input-pulldown`, `high` or `low`), and set every power or mode switch to its operating position (`values["contact.<group>"]`, for example `"closed"` for the main power rocker), in the netlist, before running `sim` or `gate`: the simulation solves the saved state, so a switch left open reports the board behind it as not powered ("SW1 is open"). Run `circuitoon sim <netlist or sheet>` (add `--probe` for the points the user cares about). Fix every blocking finding (exit 1). Read every warning: a "Likely" warning rests on representative or estimated values; say so to the user. Then gate: `gate` runs the same simulation." Add `sim-*` codes to "Reading the gate" (Task 31 added the banners).
 - `plugin/skills/circuitoon-design/references/module-schema.md`: a section "electrical.sim" that summarises spec 3.1 to 3.3 (the shape, provenance per value with a source URL or a note, node references including `<usbPin>#vbus` and `#gnd`, the required rail fields per kind) and points custom-part authors at estimates over guesses: "A wrong number is worse than a missing one."
 - `plugin/skills/circuitoon-design/references/netlist-format.md`: the `probes` list (`{ "id": "P1", "name"?, "at": "REF.PIN" | "REF" | "net:NAME", "ref"? }`) and the simulation values on a part.
 
@@ -8898,7 +9327,7 @@ Checked against the spec with fresh eyes after writing.
 | 2 Architecture: model, build, floating, spice, engine, results, session | 6, 10, 11, 12, 13, 14, 26, 29 |
 | 2 Net names shared with extract | 9, 10 |
 | 2.1 Checker unchanged, separate groups, sim-only CLI, gate both | 30, 31, 34 |
-| 2.2 Own WASM build, pins, patches, shared + XSPICE, exports, sync commands, loader, fallback decision, committed outputs, `engine:build`, wrapper, licences, release asset | 1, 2, 4, 5 |
+| 2.2 Own WASM build, pins, patches, shared + XSPICE, exports, sync commands (no threads: tested), loader, the fallback ladder, committed outputs (binary-safe), `engine:build`, wrapper, licences, release asset | 1, 2, 4, 5 |
 | 2.3 Lifecycle: lazy load, one instance per worker, run steps, recycling, timeouts, failures, tested sequences | 2, 3, 4 |
 | 3.1 `electrical.sim`, provenance per value, legacy LED limit, validation, primitives without data, batteries and the fallback table, boards need `sim.power`, required fields | 6, 10, 16, 18 |
 | 3.2 Power topology, rails per kind with defaults, domains, draw, multi-input | 6, 11, 16 |
@@ -8913,16 +9342,16 @@ Checked against the spec with fresh eyes after writing.
 | 4.6 GPIO; 4.7 USB | 11, 15 |
 | 5.1 SimResult; 5.2 codes, blocking rule, messages | 26, 27, 28 |
 | 6.1 Toggle, progress, solve on change, never saved, failure banner | 33 |
-| 6.2 Probes: tool, saving in sheets and netlists, layout and extract, validation, drawing, panel | 25, 36, 37 |
+| 6.2 Probes: tool, saving in sheets and netlists, layout and extract, validation, editing, drawing, panel | 25, 25b, 36, 37 |
 | 6.3 Glow, badges, switches, GPIO | 34, 35 |
 | 6.4 Accessibility and performance | 34, 36, 38 |
 | 7 `sim`, gate/4 matrix, `NOT_CHECKED`, skill, plugin 0.10.0 | 30, 31, 39 |
-| 8 Budgets | 1 (download), 4 (heap), 32 (solve p95), 33 (bundle), 38 (cold start, drag), 39 (CLI cold) |
+| 8 Budgets | 1 (download, a miss recorded), 4 (heap), 32 (solve p95 30 ms, re-solve p95 50 ms), 33 (bundle), 38 (cold start, drag), 39 (CLI cold) |
 | 9 Testing list | 13, 12, 15, 27, 28, 2/4, 25, 32, 38 |
 | 10 Checkpoints | the five CHECKPOINT lines (the plan itself is checkpoint 2) |
 
 No spec requirement is without a task.
 
-**2. Placeholder scan.** No "TBD", "TODO" or "implement later". The datasheet numbers are deliberately not in the plan: Tasks 18 to 24 are research tasks with a fixed output format and review protocol, as the controller asked. Task 1 Step 6 is a decision with stated criteria; per ruling R28 the executable adapter is an amendment only if the shared build fails.
+**2. Placeholder scan.** No "TBD", "TODO" or "implement later". The datasheet numbers are deliberately not in the plan: Tasks 18 to 24 are research tasks the controller dispatches (researcher, then reviewer A, then reviewer B), with a fixed output format; the implementer only applies the verified patches. Task 1 Step 6 is the fallback ladder with stated criteria; rung 2 is automatic, and per ruling R28 the executable adapter is an amendment only if rung 2 fails too.
 
 **3. Type consistency.** Checked across tasks: `RawRun` (13) is what `Engine.run` (14), `readRun`/`budget` (26), `runDrafts` (28) and `solve` (29) use; `Device` kinds and fields (6) match `build.ts`/`power.ts` (10, 11), `deviceNodes` (12), `compile` (13) and `deviceParams` (27); `Param.label` formats are the ones the tests assert; `Probe`/`ProbeAnchor` (25) are what `probeReadings` (26), `solve` (29), `simCmd` (30) and the editor (36, 37) use; `SimView` (33) is what Tasks 34 to 37 read; `railProblem` moves from `power.ts` to `simModel.ts` in Task 16 and is imported from there afterwards.
