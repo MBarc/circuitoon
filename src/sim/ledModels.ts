@@ -49,6 +49,12 @@ export function ledModel(colour: string | undefined, forwardVoltage: number): { 
 /** A regulator's body diode: silicon (modelling choice). */
 export const BODY_DIODE: DiodeModel = { is: 1e-12, n: 1, rs: 0.01 }
 
+/**
+ * A near-ideal diode (modelling choice): a blocking `ron` switch rail's one-way element, in series
+ * with ron. N 0.01 gives about 3 mV at 50 mA; IS 0.1 uA is its reverse leakage.
+ */
+export const IDEAL_DIODE: DiodeModel = { is: 1e-7, n: 0.01, rs: 0 }
+
 /** A Schottky with `vf` volts at `at` amps (N 1.05, no RS): OR inputs, off paths and `vf` switch rails. */
 export function schottky(vf: number, at = 0.1): DiodeModel {
   return { is: fitIs(vf, at, 1.05, 0), n: 1.05, rs: 0 }

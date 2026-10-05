@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest'
 import { buildCircuit } from './build.ts'
 import { boardModule, boostModule, buckModule, cellModule, hostModule, ldoModule, q, sheet } from './testing.ts'
 import { type Device, gpioBranch } from './model.ts'
+import { IDEAL_DIODE } from './ledModels.ts'
 import type { Diagram, PartInstance } from '../format/diagram.ts'
 import { type ModuleDef, layoutModule } from '../format/module.ts'
 import { load } from '../format/builtinModules.testing.ts'
@@ -209,12 +210,19 @@ describe('power models: fix round 1', () => {
     expect(leak).toMatchObject({ a: 'u1:IO2', b: 'u1:GND', leak: true })
     expect([leak.ohms.value, leak.ohms.note]).toEqual([3.3 / 5e-8, 'derived: domain nominal / inputLeakage'])
   })
-  it('compiles a switch rail with ron as a resistor', () => {
+  it('compiles a switch rail with ron as a resistor, one-way through a near-ideal diode when it blocks (Phase C checkpoint, finding 3)', () => {
     const b = boardModule()
     const sim = simOfMod(b)
-    const rails = (sim.power.rails as { id: string }[]).map((r) => (r.id === 'usb-diode' ? { ...r, vf: undefined, ron: q(0.05, 'ohm') } : r))
-    const c = buildCircuit(sheet([{ uid: 'u1', module: withSim(b, { ...sim, power: { ...sim.power, rails } }, 'test-ron-board') }], []))
-    expect(byId(c.devices, 'u1.rail.usb-diode')).toMatchObject({ kind: 'resistor', role: 'switch-rail', a: 'u1.rail.usb-diode#in', b: 'u1:VIN', ohms: { value: 0.05 } })
+    const ron = (reverse: string) => {
+      const rails = (sim.power.rails as { id: string }[]).map((r) => (r.id === 'usb-diode' ? { ...r, vf: undefined, ron: q(0.05, 'ohm'), reverse } : r))
+      return buildCircuit(sheet([{ uid: 'u1', module: withSim(b, { ...sim, power: { ...sim.power, rails } }, `test-ron-${reverse}`) }], []))
+    }
+    const blocks = ron('blocks')
+    expect(byId(blocks.devices, 'u1.rail.usb-diode')).toMatchObject({ kind: 'resistor', role: 'switch-rail', a: 'u1.rail.usb-diode#in', b: 'u1.rail.usb-diode#block', ohms: { value: 0.05 } })
+    expect(byId(blocks.devices, 'u1.rail.usb-diode.block')).toMatchObject({ kind: 'diode', role: 'switch-rail', a: 'u1.rail.usb-diode#block', k: 'u1:VIN', model: IDEAL_DIODE })
+    const both = ron('body-diode')
+    expect(byId(both.devices, 'u1.rail.usb-diode')).toMatchObject({ kind: 'resistor', a: 'u1.rail.usb-diode#in', b: 'u1:VIN' })
+    expect(byId(both.devices, 'u1.rail.usb-diode.block')).toBeUndefined()
   })
   it('gives buck and boost rails the iq and rout defaults, and passes offPath and reverse through', () => {
     const rail = (m: ModuleDef, id: string) => {

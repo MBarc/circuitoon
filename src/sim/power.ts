@@ -15,7 +15,7 @@ import { DEFAULT_SOURCE, usbLink, usbSides } from '../format/usb.ts'
 import { paramValue } from '../format/values.ts'
 import type { Builder } from './build.ts'
 import { CABLE_OHMS, IQ_DEFAULT, MIN_VOLTS_FRACTION, NO_POWER_DATA, OR_DIODE_VF, PLUG_OHMS, RAIL_DIRECT_OHMS, ROUT_DEFAULT, loadEstimate } from './estimates.ts'
-import { schottky } from './ledModels.ts'
+import { IDEAL_DIODE, schottky } from './ledModels.ts'
 import type { Param, ResolvedRail } from './model.ts'
 
 /**
@@ -99,9 +99,12 @@ export function powerPart(b: Builder, p: PartInstance, m: ModuleDef): void {
       else b.add({ kind: 'resistor', id: `${id}.in.${x.domain}`, part: p.uid, a: x.d!.pin, b: inNode, ohms: b.param({ value: RAIL_DIRECT_OHMS, unit: 'ohm', provenance: 'estimate', note: 'direct rail input (ruling R17)' }, L(`rails.${r.id}.input`)), role: 'rail-input' })
     }
     if (r.kind === 'switch') {
-      // ponytail: a `ron` switch conducts both ways whatever `reverse` says; add a blocking diode in series when a sheet needs reverse blocking.
-      if (r.ron) b.add({ kind: 'resistor', id, part: p.uid, a: inNode, b: out.pin, ohms: P(r.ron, `rails.${r.id}.ron`), role: 'switch-rail' })
-      else b.add({ kind: 'diode', id, part: p.uid, a: inNode, k: out.pin, model: schottky(r.vf!.value), role: 'switch-rail' })
+      // A blocking `ron` switch is one-way (Phase C checkpoint, finding 3: an Uno on 9 V backfed a
+      // computer's port): ron, then a near-ideal diode. With `body-diode` it conducts both ways.
+      const block = r.reverse === 'blocks'
+      if (r.ron) b.add({ kind: 'resistor', id, part: p.uid, a: inNode, b: block ? `${id}#block` : out.pin, ohms: P(r.ron, `rails.${r.id}.ron`), role: 'switch-rail' })
+      if (r.ron && block) b.add({ kind: 'diode', id: `${id}.block`, part: p.uid, a: `${id}#block`, k: out.pin, model: IDEAL_DIODE, role: 'switch-rail' })
+      if (!r.ron) b.add({ kind: 'diode', id, part: p.uid, a: inNode, k: out.pin, model: schottky(r.vf!.value), role: 'switch-rail' })
       continue
     }
     const opt = (x: Quantity | undefined, key: string): Param | undefined => (x ? P(x, `rails.${r.id}.${key}`) : undefined)

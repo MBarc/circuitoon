@@ -254,3 +254,16 @@ describe('plug-in supplies (Phase C checkpoint, finding 2)', () => {
     near(raw.dev['ps1.source'], (raw.v['ps1:5V'] - raw.v['ps1:GND']) / 10)
   }, 60_000)
 })
+
+describe('one-way switch rails (Phase C checkpoint, finding 3)', () => {
+  it('an Uno on 9 V does not backfeed a computer port through its USB switch', async () => {
+    const parts: PartSpec[] = [{ uid: 'bt1', module: 'battery-9v' }, { uid: 'u1', module: 'arduino-uno-r3' }]
+    const wires: [string, string][] = [['bt1.+', 'u1.VIN'], ['bt1.-', 'u1.GND']]
+    // Before: the port took -8.3 mA (current pushed back into the computer).
+    const raw = await solve(sheet([...parts, { uid: 'h1', module: 'computer-usb-port' }], [...wires, ['h1.USB', 'u1.USB']]))
+    expect(raw.dev['h1.source']).toBeGreaterThanOrEqual(-1e-6)
+    // With no cable, the Uno's USB VBUS is not held at 5 V from its own 5 V rail (it floats now, so it has no reading).
+    const alone = await solve(sheet(parts, wires))
+    expect(alone.v['u1:USB#vbus'] ?? 0).toBeLessThan(1)
+  }, 60_000)
+})
