@@ -91158,10 +91158,11 @@ function walk(seeds, adj, stop) {
 	}
 	return seen;
 }
-function reach(c, extra = [], a = OP) {
-	const all = reachWith(c, extra, a, /* @__PURE__ */ new Set());
-	const dead = new Set(c.devices.filter((d) => d.kind === "rail" && !all.defined.has(d.inRet)));
-	return dead.size ? reachWith(c, extra, a, dead) : all;
+/** `off`: devices left out (they carry no drive), as if removed from the sheet. */
+function reach(c, extra = [], a = OP, off = /* @__PURE__ */ new Set()) {
+	const all = reachWith(c, extra, a, off);
+	const dead = /* @__PURE__ */ new Set([...off, ...c.devices.filter((d) => d.kind === "rail" && !all.defined.has(d.inRet))]);
+	return dead.size > off.size ? reachWith(c, extra, a, dead) : all;
 }
 function reachWith(c, extra, a, dead) {
 	const drive = /* @__PURE__ */ new Map();
@@ -91201,6 +91202,14 @@ function reachWith(c, extra, a, dead) {
 /** A domain is powered when its pin node is driven and its return node is defined (both node ids). */
 function powered(_c, cls, pin, ret) {
 	return cls.driven.has(pin) && cls.defined.has(ret);
+}
+/**
+* Whether a rail's input is powered by something other than the rail itself: its own body diode,
+* backfed from its output (a DevKit's 3V3 pin fed from a battery), does not count.
+*/
+function inputPowered(c, rail) {
+	const r = reach(c, [], OP, /* @__PURE__ */ new Set([rail]));
+	return r.driven.has(rail.in) && r.defined.has(rail.inRet);
 }
 /**
 * Ruling R30: the part uid of the open latching switch whose closing alone would power `node`, or
@@ -91329,6 +91338,9 @@ var LED_COLOURS = {
 /** The IS that puts the diode at `v` volts when `i` amps flow. */
 function fitIs(v, i, n, rs) {
 	return i / (Math.exp((v - i * rs) / (n * VT)) - 1);
+}
+function diodeVoltage(m, i) {
+	return m.n * VT * Math.log(i / m.is + 1) + i * m.rs;
 }
 function ledModel(colour, forwardVoltage) {
 	const key = (colour ?? "red").trim().toLowerCase();
@@ -93316,8 +93328,7 @@ function sources(c) {
 			p: d.p,
 			n: d.n,
 			volts: d.volts,
-			blocks: false,
-			rail: false
+			blocks: false
 		}];
 		if (d.kind === "rail" && d.rail.vout) return [{
 			device: d.id,
@@ -93327,7 +93338,7 @@ function sources(c) {
 			n: d.ret,
 			volts: d.rail.vout,
 			blocks: d.rail.reverse === "blocks",
-			rail: true
+			rail: d
 		}];
 		return [];
 	});
@@ -93355,9 +93366,15 @@ function topologyFindings(c, cls) {
 		});
 	}
 	const fighters = srcs.filter((s) => !s.blocks && !shorted.has(s.device));
+	const liveCache = /* @__PURE__ */ new Map();
+	const live = (s) => {
+		if (!s.rail) return true;
+		if (!liveCache.has(s.device)) liveCache.set(s.device, inputPowered(c, s.rail));
+		return liveCache.get(s.device);
+	};
 	for (let i = 0; i < fighters.length; i++) for (let j = i + 1; j < fighters.length; j++) {
 		const [a, b] = [fighters[i], fighters[j]];
-		if (a.part === b.part && a.p === b.p || !g.same(a.p, b.p) || !g.same(a.n, b.n) || Math.abs(a.volts.value - b.volts.value) <= .1) continue;
+		if (a.part === b.part && a.p === b.p || !g.same(a.p, b.p) || !g.same(a.n, b.n) || Math.abs(a.volts.value - b.volts.value) <= .1 || !live(a) || !live(b)) continue;
 		drafts.push({
 			code: "sim-source-conflict",
 			severity: "error",
@@ -93370,11 +93387,17 @@ function topologyFindings(c, cls) {
 	const unknown = new Set(c.unsimulated.map((u) => u.part));
 	for (const gp of c.gpio) {
 		if (gp.state !== "input" || pinState(c, cls, gp.key) !== "floating") continue;
+		const dom = c.domains.find((x) => x.part === gp.part && x.name === gp.domain);
+		if (dom && !powered(c, cls, dom.pin, dom.ret)) continue;
 		const others = Object.entries(c.pinNet).filter(([k, n]) => k !== gp.key && n === c.pinNet[gp.key]).map(([k]) => JSON.parse(k)[0]);
 		if (others.length && !others.some((uid) => uid !== gp.part && unknown.has(uid))) drafts.push({
 			code: "sim-floating-input",
 			severity: "warning",
 			parts: [gp.part],
+			pins: [{
+				part: gp.part,
+				pin: gp.pin
+			}],
 			inputs: [],
 			key: `sim-floating-input|${gp.part}|${gp.pin}`,
 			message: `${refOf(c, gp.part)} ${gp.pin} is an input with nothing driving it: it floats, so it reads at random. Wire it to a signal, add a pull-up or pull-down resistor, or set its simulated state to input-pullup or input-pulldown.`
@@ -93425,9 +93448,12 @@ function finalize(drafts, peakNote) {
 			message = `At peak${peakNote ? ` (${peakNote})` : ""}: ${message}`;
 		}
 		if (severity === "error" && (basis === "representative" || basis === "estimate")) {
-			severity = "warning";
 			const uncertain = d.inputs.filter((p) => p.basis === "representative" || p.basis === "estimate").map((p) => p.label);
-			message = `Likely: ${message} This is decided on ${basis} values: ${uncertain.join(", ")}.`;
+			if (d.code === "sim-over-abs-max" && basis === "representative" && (d.overBy ?? 0) > 2) message = `${message} This is decided on representative values (${uncertain.join(", ")}), but it is more than twice the limit.`;
+			else {
+				severity = "warning";
+				message = `Likely: ${message} This is decided on ${basis} values: ${uncertain.join(", ")}.`;
+			}
 		}
 		out.set(d.key, {
 			code: d.code,
@@ -93437,7 +93463,8 @@ function finalize(drafts, peakNote) {
 			...d.corner ? { corner: d.corner } : {},
 			basis,
 			inputs: d.inputs.map((p) => `${p.label}: ${p.basis}`),
-			...d.raw ? { raw: d.raw } : {}
+			...d.raw ? { raw: d.raw } : {},
+			...d.pins ? { pins: d.pins } : {}
 		});
 	}
 	return [...out.values()].sort((a, b) => ORDER[a.severity] - ORDER[b.severity] || (a.code < b.code ? -1 : a.code > b.code ? 1 : 0) || naturalCompare(a.parts.join(), b.parts.join()));
@@ -93459,6 +93486,26 @@ function noConvergence(c, error, nodes) {
 		raw: error,
 		message: `The simulator could not solve this circuit; this may be our model, not your circuit.${parts.length ? ` The parts on the nets it could not solve: ${andList(parts.map((p) => refOf(c, p)))}.` : ""}`
 	};
+}
+var E12 = [
+	10,
+	12,
+	15,
+	18,
+	22,
+	27,
+	33,
+	39,
+	47,
+	56,
+	68,
+	82,
+	100
+];
+/** The smallest E12 resistor value at or above `ohms`. */
+function e12Up(ohms) {
+	const decade = 10 ** Math.floor(Math.log10(ohms) - 1);
+	return Number((E12.find((x) => x * decade >= ohms * .999) * decade).toPrecision(2));
 }
 /** A node's net in node form (netNode of a pin tap's net), else the node itself (an internal node). */
 var netOfNode = (c) => {
@@ -93501,7 +93548,11 @@ function runDrafts(c, cls, raw, corner) {
 			return i === void 0 ? null : {
 				value: Math.abs(i),
 				what: `${r} ${l.of.pin} carries ${A(Math.abs(i))}`,
-				unit: "A"
+				unit: "A",
+				pins: [{
+					part: l.part,
+					pin: l.of.pin
+				}]
 			};
 		}
 		if ("domain" in l.of) {
@@ -93518,11 +93569,17 @@ function runDrafts(c, cls, raw, corner) {
 				};
 			}
 			if (l.kind === "ioTotalCurrent") {
-				const sum = c.gpio.filter((g) => g.part === l.part && g.domain === name && (g.state === "high" || g.state === "low")).reduce((s, g) => s + Math.abs(pinI(g.part, g.pin) ?? 0), 0);
+				const outs = c.gpio.filter((g) => g.part === l.part && g.domain === name && (g.state === "high" || g.state === "low"));
+				const sum = outs.reduce((s, g) => s + Math.abs(pinI(g.part, g.pin) ?? 0), 0);
+				const pins = outs.filter((g) => Math.abs(pinI(g.part, g.pin) ?? 0) > 0).map((g) => ({
+					part: g.part,
+					pin: g.pin
+				}));
 				return {
 					value: sum,
 					what: `${r}'s GPIO pins on ${name} carry ${A(sum)} in all`,
-					unit: "A"
+					unit: "A",
+					...pins.length ? { pins } : {}
 				};
 			}
 			return delivered(l.part, name);
@@ -93544,6 +93601,34 @@ function runDrafts(c, cls, raw, corner) {
 			unit: "A"
 		};
 	};
+	/**
+	* An LED's resistor advice (spec 5.2's example): the series resistance, rounded up to an E12 value,
+	* that brings `amps` through it from the voltage its string sees now (the far end of a resistor
+	* already on its anode or cathode net, else the LED's own pins).
+	*/
+	const ledAdvice = (part, amps) => {
+		if (c.parts[part]?.model !== "led") return "";
+		const generic = " Add a series resistor, or a larger one, to bring it under the rating.";
+		const led = c.devices.find((x) => x.kind === "diode" && x.role === "led" && x.part === part);
+		if (!led) return generic;
+		const far = (node) => {
+			const net = netOf(node);
+			const r = c.taps.filter((t) => netNode(t.net) === net).length === 2 ? c.devices.find((x) => x.kind === "resistor" && x.role === "resistor" && netOf(x.a) === net !== (netOf(x.b) === net)) : void 0;
+			return r ? {
+				node: netOf(r.a) === net ? r.b : r.a,
+				resistor: true
+			} : {
+				node,
+				resistor: false
+			};
+		};
+		const [a, k] = [far(led.a), far(led.k)];
+		if (!solved(a.node) || !solved(k.node)) return generic;
+		const drive = v(a.node) - v(k.node);
+		const ohms = (drive - diodeVoltage(led.model, amps)) / amps;
+		if (!(ohms > 0)) return generic;
+		return ` ${a.resistor || k.resistor ? "Use a larger series resistor" : "Add a series resistor"} (about ${e12Up(ohms)} ohm at ${V(drive)}).`;
+	};
 	const subject = (l) => `${l.part}|${JSON.stringify(l.of)}`;
 	const overAbs = /* @__PURE__ */ new Set();
 	for (const l of c.limits) {
@@ -93551,13 +93636,17 @@ function runDrafts(c, cls, raw, corner) {
 		const m = measure(l);
 		if (!m || m.value <= l.value.value) continue;
 		overAbs.add(subject(l));
+		const rating = c.limits.find((x) => x.kind === "current" && subject(x) === subject(l))?.value.value;
+		const advice = l.kind === "absMaxCurrent" ? ledAdvice(l.part, Math.min(rating ?? .02, l.value.value)) : "";
 		add({
 			code: "sim-over-abs-max",
 			severity: "error",
 			parts: [l.part],
 			inputs: [l.value],
 			key: `abs|${subject(l)}|${l.kind}`,
-			message: `${m.what}, above its ${fmt(l.value.value, m.unit)} absolute maximum${cond(l)}: damage is likely.`
+			overBy: m.value / l.value.value,
+			...m.pins ? { pins: m.pins } : {},
+			message: `${m.what}, above its ${fmt(l.value.value, m.unit)} absolute maximum${cond(l)}: damage is likely.${advice}`
 		});
 	}
 	for (const l of c.limits) {
@@ -93566,13 +93655,14 @@ function runDrafts(c, cls, raw, corner) {
 		if (!m) continue;
 		const under = l.kind === "vinMin";
 		if (under ? m.value >= l.value.value : m.value <= l.value.value) continue;
-		const advice = c.parts[l.part]?.model === "led" ? " Add a series resistor, or a larger one, to bring it under the rating." : "";
+		const advice = l.kind === "current" ? ledAdvice(l.part, l.value.value) : "";
 		add({
 			code: "sim-over-limit",
 			severity: "warning",
 			parts: [l.part],
 			inputs: [l.value],
 			key: `limit|${subject(l)}|${l.kind}`,
+			...m.pins ? { pins: m.pins } : {},
 			message: `${m.what}, ${under ? "below" : "above"} its ${fmt(l.value.value, m.unit)} ${under ? "minimum" : "rating"}${cond(l)}.${advice}`
 		});
 	}
@@ -93597,6 +93687,8 @@ function runDrafts(c, cls, raw, corner) {
 			message: `${ref(u.host)} ${u.hostPort} supplies ${A(i)} over USB to ${ref(u.device)}, above the ${A(u.limit.value)} the port gives.`
 		});
 	}
+	/** An open switch on `net` (a net node) whose closing would power a load that is unpowered now. */
+	const cutBySwitch = (net) => c.openContacts.some((o) => o.pairs.some(([a, b]) => netOf(a) === net || netOf(b) === net) && c.devices.some((l) => l.kind === "load" && !on(l.p, l.n) && openSwitchFor(c, l.p, l.n) === o.part));
 	for (const d of c.devices) {
 		if (d.kind !== "rail" || !on(d.in, d.inRet) || !solved(d.out)) continue;
 		const r = d.rail;
@@ -93666,13 +93758,13 @@ function runDrafts(c, cls, raw, corner) {
 				});
 			}
 		}
-		if (r.minLoad && enabled && iout < r.minLoad.amps.value) add({
+		if (r.minLoad && enabled && iout < r.minLoad.amps.value && !cutBySwitch(outNet)) add({
 			code: "sim-min-load",
 			severity: "warning",
 			parts: [d.part],
 			inputs: [r.minLoad.amps],
 			key: `minload|${d.id}`,
-			message: `${name} supplies ${A(iout)}, below the ${A(r.minLoad.amps.value)} it needs to stay on: ${r.minLoad.note}.`
+			message: `${name} supplies ${A(iout)}, below the ${A(r.minLoad.amps.value)} it needs to stay on: ${r.minLoad.note.replace(/\.+$/, "")}.`
 		});
 	}
 	for (const l of c.devices) {
@@ -93758,8 +93850,7 @@ function propagate(c, rails) {
 	};
 }
 /** Every finding of a solve, and what is outside the model (spec 4.1, 4.2, 4.5, 5.2). */
-function analyseFindings(c, cls, raws) {
-	const topo = topologyFindings(c, cls);
+function analyseFindings(c, cls, raws, topo = topologyFindings(c, cls)) {
 	const typical = runDrafts(c, cls, raws.typical, "typical");
 	const peak = runDrafts(c, cls, raws.peak, "peak");
 	const outside = propagate(c, /* @__PURE__ */ new Set([
@@ -93768,12 +93859,10 @@ function analyseFindings(c, cls, raws) {
 		...peak.outside
 	]));
 	const peakNote = [...new Set(c.devices.flatMap((d) => d.kind === "load" && d.peakNote ? [d.peakNote] : []))].join(", ");
+	const shorted = new Set(topo.drafts.filter((d) => d.code === "sim-short").map((d) => d.parts[0]));
+	const value = [...typical.drafts, ...peak.drafts].filter((d) => !(d.code === "sim-over-limit" && shorted.has(d.parts[0]) && !d.pins));
 	return {
-		findings: finalize([
-			...topo.drafts,
-			...typical.drafts,
-			...peak.drafts
-		], peakNote),
+		findings: finalize([...topo.drafts, ...value], peakNote),
 		outside
 	};
 }
@@ -93782,6 +93871,7 @@ function analyseFindings(c, cls, raws) {
 async function solve(d, engine, revision, opts = {}) {
 	const c = buildCircuit(d, opts);
 	const cls = classifyCached(c, { kind: "op" });
+	const topo = topologyFindings(c, cls);
 	const raws = {};
 	const before = engine.host.runs;
 	let ms = 0;
@@ -93794,7 +93884,8 @@ async function solve(d, engine, revision, opts = {}) {
 			circuit: c,
 			outcome: {
 				status: "unavailable",
-				reason: r.reason
+				reason: r.reason,
+				findings: finalize(topo.drafts, "")
 			}
 		};
 		if (r.status === "failed") return {
@@ -93802,13 +93893,14 @@ async function solve(d, engine, revision, opts = {}) {
 			outcome: {
 				status: "failed",
 				revision,
-				finding: noConvergence(c, r.error, r.nodes)
+				finding: noConvergence(c, r.error, r.nodes),
+				findings: finalize(topo.drafts, "")
 			}
 		};
 		raws[corner] = r.raw;
 		ms += r.ms;
 	}
-	const { findings, outside } = analyseFindings(c, cls, raws);
+	const { findings, outside } = analyseFindings(c, cls, raws, topo);
 	const corners = {
 		typical: readRun(c, cls, raws.typical, outside),
 		peak: readRun(c, cls, raws.peak, outside)
@@ -93922,8 +94014,7 @@ function findingLines(findings, line = (f, m) => `  ${f.severity}: ${m}`) {
 }
 /** The stderr summary; `refOf` names parts by ref where the result keeps uids. */
 function summary(o, refOf = /* @__PURE__ */ new Map()) {
-	if (o.status === "unavailable") return `Simulation unavailable: ${o.reason}\n`;
-	if (o.status === "failed") return `Simulation failed: ${o.finding.message}\n`;
+	if (o.status !== "ok") return `${[o.status === "failed" ? `Simulation failed: ${o.finding.message}` : `Simulation unavailable: ${o.reason}`, ...findingLines(o.findings)].join("\n")}\n`;
 	const r = o.result;
 	const count = (s) => r.findings.filter((f) => f.severity === s).length;
 	const lines = [`Simulation: typical and peak solved in ${Math.round(r.engine.ms)} ms (${r.engine.runs} engine runs). ${plural$1(count("error"), "blocking finding")}, ${plural$1(count("warning"), "warning")}, ${plural$1(count("note"), "note")}.`];
@@ -94155,27 +94246,32 @@ async function runGate(bytes, opts) {
 		const outcome = await solve(d, engine, 1, { library: libraryLookup }).then((s) => s.outcome, (e) => ({
 			status: "failed",
 			revision: 1,
-			finding: noConvergence(null, String(e), [])
+			finding: noConvergence(null, String(e), []),
+			findings: []
 		}));
+		const file = (findings) => {
+			for (const f of findings) {
+				sim.provenanceCounts[f.basis]++;
+				found.push({
+					id: `${f.code}|${f.parts.join(",")}|${f.corner ?? ""}`,
+					rule: f.code,
+					severity: f.severity === "note" ? "info" : f.severity,
+					message: f.message,
+					parts: f.parts,
+					pins: f.pins ?? [],
+					wires: []
+				});
+			}
+		};
 		if (outcome.status === "ok") {
 			const r = outcome.result;
-			const counts = { ...sim.provenanceCounts };
-			for (const f of r.findings) counts[f.basis]++;
 			sim = {
+				...sim,
 				status: "ok",
 				findings: r.findings,
-				budget: r.budget,
-				provenanceCounts: counts
+				budget: r.budget
 			};
-			for (const f of r.findings) found.push({
-				id: `${f.code}|${f.parts.join(",")}|${f.corner ?? ""}`,
-				rule: f.code,
-				severity: f.severity === "note" ? "info" : f.severity,
-				message: f.message,
-				parts: f.parts,
-				pins: [],
-				wires: []
-			});
+			file(r.findings);
 		} else if (outcome.status === "failed") {
 			sim = {
 				...sim,
@@ -94183,7 +94279,7 @@ async function runGate(bytes, opts) {
 				findings: [{
 					...outcome.finding,
 					severity: "warning"
-				}],
+				}, ...outcome.findings],
 				reason: outcome.finding.message
 			};
 			found.push({
@@ -94195,11 +94291,16 @@ async function runGate(bytes, opts) {
 				pins: [],
 				wires: []
 			});
-		} else sim = {
-			...sim,
-			status: "unavailable",
-			reason: outcome.reason
-		};
+			file(outcome.findings);
+		} else {
+			sim = {
+				...sim,
+				status: "unavailable",
+				findings: outcome.findings,
+				reason: outcome.reason
+			};
+			file(outcome.findings);
+		}
 	} finally {
 		if (opts.engine === void 0) engine.dispose();
 	}
