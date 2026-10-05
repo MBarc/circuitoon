@@ -1,0 +1,86 @@
+// Spec 2: a solve runs the typical and peak corners (2 engine runs) and assembles a SimResult; the
+// session keeps one solve in flight and one pending (a newer request replaces the pending one),
+// drops results for older revisions and after stop(), and a failure carries the last good result.
+import { afterAll, describe, expect, it } from 'vitest'
+import { makeEngine, type Engine, type RunOutcome } from './engine/engine.ts'
+import type { EngineHost } from './engine/host.ts'
+import { createNodeEngineHost } from './engine/nodeEngine.ts'
+import { SimSession, solve } from './session.ts'
+import { cellModule, sheet } from './testing.ts'
+import type { SimOutcome } from './results.ts'
+
+const led = sheet(
+  [{ uid: 'bt1', module: cellModule(5, 1e-6) }, { uid: 'r1', module: 'resistor', values: { resistance: { value: 150, unit: 'ohm' } } }, { uid: 'd1', module: 'led' }],
+  [['bt1.+', 'r1.1'], ['r1.2', 'd1.A'], ['d1.K', 'bt1.-']],
+)
+
+/** An engine whose runs finish only when released, recording each run's revision. */
+function gatedEngine() {
+  const calls: number[] = []
+  const gates: (() => void)[] = []
+  let fail = false
+  const engine: Engine = {
+    host: { runs: 0, info: { name: 'ngspice', version: '45.2', build: 'fake' } } as unknown as EngineHost,
+    init: async () => ({ name: 'ngspice', version: '45.2', build: 'fake' }),
+    run: (_c, _a, revision) => {
+      calls.push(revision)
+      return new Promise<RunOutcome>((res) => gates.push(() => res(fail ? { status: 'failed', revision, error: 'x', nodes: [] } : { status: 'ok', revision, raw: { v: {}, pins: {}, dev: {} }, ms: 1 })))
+    },
+    dispose() {},
+  }
+  const flush = async () => {
+    for (let i = 0; i < 40; i++) {
+      gates.shift()?.()
+      await new Promise((r) => setTimeout(r, 0))
+    }
+  }
+  return { engine, calls, flush, setFail: (f: boolean) => void (fail = f) }
+}
+
+describe('solve', () => {
+  const engine = makeEngine(createNodeEngineHost())
+  afterAll(() => engine.dispose())
+  it('runs both corners and returns a serialisable SimResult with probes', async () => {
+    const { outcome } = await solve({ ...led, probes: [{ id: 'P1', at: { part: 'd1', pin: 'A' } }] }, engine, 4)
+    expect(outcome.status).toBe('ok')
+    if (outcome.status !== 'ok') return
+    const r = outcome.result
+    expect([r.format, r.revision, r.engine.name, r.engine.runs]).toEqual(['circuitoon-sim/1', 4, 'ngspice', 2])
+    expect(r.probes[0].voltage?.typical).toMatchObject({ kind: 'value', reference: 'GND' })
+    expect(JSON.parse(JSON.stringify(r))).toEqual(r)
+  }, 60_000)
+})
+
+describe('SimSession', () => {
+  it('keeps one solve in flight and one pending, and delivers only the newest revision', async () => {
+    const g = gatedEngine()
+    const got: SimOutcome[] = []
+    const s = new SimSession(g.engine, (o) => got.push(o))
+    s.request(led, 1)
+    s.request(led, 2)
+    s.request(led, 3)
+    await g.flush()
+    expect(g.calls).toEqual([1, 1, 3, 3])
+    expect(got.map((o) => (o.status === 'ok' ? o.result.revision : -1))).toEqual([3])
+  })
+  it('drops a result that arrives after stop()', async () => {
+    const g = gatedEngine()
+    const got: SimOutcome[] = []
+    const s = new SimSession(g.engine, (o) => got.push(o))
+    s.request(led, 1)
+    s.stop()
+    await g.flush()
+    expect(got).toEqual([])
+  })
+  it('gives a failure the last good result', async () => {
+    const g = gatedEngine()
+    const got: SimOutcome[] = []
+    const s = new SimSession(g.engine, (o) => got.push(o))
+    s.request(led, 1)
+    await g.flush()
+    g.setFail(true)
+    s.request(led, 2)
+    await g.flush()
+    expect(got[1]).toMatchObject({ status: 'failed', revision: 2, lastGood: { revision: 1 } })
+  })
+})
