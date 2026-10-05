@@ -27,7 +27,7 @@ nopthread() {
   find . -name Makefile -exec sed -i -e 's/[[:space:]]-pthread\b//g' -e 's/[[:space:]]-sUSE_PTHREADS=1//g' {} +
   if grep -rl --include=Makefile -E '(^|[[:space:]])-pthread\b|USE_PTHREADS' . ; then echo "build: -pthread survived in the Makefiles above"; exit 4; fi
 }
-EXPORTS=_ngSpice_Init,_ngSpice_Command,_ngGet_Vec_Info,_ngSpice_CurPlot,_ngSpice_AllVecs,_ngSpice_SetBkpt,_ngSpice_nospinit,_malloc,_free
+EXPORTS=_ngSpice_Init,_ngSpice_Init_Sync,_ngSpice_Command,_ngSpice_running,_ngSpice_Circ,_ngGet_Vec_Info,_ngGet_Evt_NodeInfo,_ngSpice_AllEvtNodes,_ngSpice_CurPlot,_ngSpice_AllVecs,_ngSpice_SetBkpt,_ngSpice_nospinit,_malloc,_free
 RUNTIME=addFunction,UTF8ToString,stringToUTF8,lengthBytesUTF8,getValue,FS,HEAPF64,HEAPU8
 LINK="-O3 -sMODULARIZE=1 -sEXPORT_ES6=1 -sEXPORT_NAME=createNgspice -sENVIRONMENT=web,worker,node -sALLOW_MEMORY_GROWTH=1 -sALLOW_TABLE_GROWTH=1 -sSTACK_SIZE=4MB -sFORCE_FILESYSTEM=1"
 if [ "$MODE" = shared ] || [ "$MODE" = shared-noxspice ]; then
@@ -70,5 +70,7 @@ E=/emsdk/upstream/emscripten
   echo; echo "== musl libc ($E/system/lib/libc/musl/COPYRIGHT)"; cat "$E/system/lib/libc/musl/COPYRIGHT"
   echo; echo "== compiler-rt ($E/system/lib/compiler-rt/LICENSE.TXT)"; cat "$E/system/lib/compiler-rt/LICENSE.TXT"
 } > /out/LICENSE-emscripten.txt
-{ echo "mode=$MODE"; echo "ngspice=$NGSPICE_VERSION"; echo "emsdk=$EMSDK_VERSION"; emcc --version | head -1; } > /out/build-info.txt
+# The build tools' versions (the emsdk image is pinned by digest; apt packages are not), for reproducing a build.
+{ echo "mode=$MODE"; echo "ngspice=$NGSPICE_VERSION"; echo "emsdk=$EMSDK_VERSION"; emcc --version | head -1
+  dpkg-query -W -f='apt ${Package}=${Version}\n' autoconf automake libtool bison flex patch make; } > /out/build-info.txt
 echo "build: done ($MODE)"; ls -la /out

@@ -1,9 +1,10 @@
 // npm run engine:release: packs what spec 2.2 asks the release to carry (the exact ngspice tarball,
-// our patches, the build files with the emsdk version, RELINK.md) and publishes it as a GitHub
-// release asset with gh. Re-running for an existing tag replaces the asset (--clobber).
+// our patches, the build files with the emsdk version, RELINK.md, LICENSE-eecircuit.txt for the
+// adapted build script, and the last build's build-info.txt, compiled-dirs.txt and licence-scan.txt)
+// and publishes it as a GitHub release asset with gh. Re-running for an existing tag replaces the asset (--clobber).
 // --dry-run builds and prints the tarball but makes no gh calls.
 import { execFileSync } from 'node:child_process'
-import { copyFileSync, cpSync, mkdtempSync, readFileSync, statSync, writeFileSync } from 'node:fs'
+import { copyFileSync, cpSync, existsSync, mkdtempSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { createHash } from 'node:crypto'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
@@ -22,6 +23,8 @@ execFileSync('curl', ['-fsSL', '-o', tarball, env.NGSPICE_URL], { stdio: 'inheri
 const sum = createHash('sha256').update(readFileSync(tarball)).digest('hex')
 if (sum !== env.NGSPICE_SHA256) throw new Error(`engine-release: tarball hash ${sum} does not match versions.env`)
 copyFileSync(join(root, 'public/sim/engine.json'), join(dir, 'engine.json'))
+// The last build's record (tool versions, compiled directories, licence scan), when this checkout built it.
+for (const f of ['build-info.txt', 'compiled-dirs.txt', 'licence-scan.txt']) if (existsSync(join(root, 'engine/out', f))) copyFileSync(join(root, 'engine/out', f), join(dir, f))
 writeFileSync(join(dir, 'README.txt'), `Circuitoon engine build ${env.BUILD}: ngspice ${env.NGSPICE_VERSION}, emsdk ${env.EMSDK_VERSION} (${env.EMSDK_IMAGE}).\nSee RELINK.md to rebuild and replace ngspice.wasm.\n`)
 const tar = join(parent, `${name}.tar.gz`)
 // relative paths with cwd=parent: Git Bash's GNU tar reads a drive letter as host:path
