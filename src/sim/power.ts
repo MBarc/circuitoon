@@ -222,5 +222,11 @@ export function usbLinks(b: Builder, d: Diagram): void {
       ? { value: declared / 1000, basis: 'datasheet', label: `${hm.id}.${b.ref(host.part.uid)}.usb.${host.name}.source` }
       : { value: DEFAULT_SOURCE[host.usb.version ?? '2.0'] / 1000, basis: 'representative', label: `usb-default.${host.usb.version ?? '2.0'}`, note: 'the USB default for the port version' }
     b.usbPath({ host: host.part.uid, hostPort: host.name, device: dev.part.uid, devicePort: dev.name, vbus, gnd, limit })
+    // A fed port whose domain nothing draws from: the IP5306 module's USB-C, the one charge input
+    // in the library (Phase C checkpoint, finding 5). Said, so a dead input is never silent.
+    const pw = simOf(dm)!.power!
+    const fed = pw.domains.filter((x) => x.pin === `${dev.name}#vbus`).map((x) => x.name)
+    const used = (n: string) => pw.rails?.some((r) => r.inputs.some((x) => x.domain === n)) || pw.draw?.some((x) => x.domain === n) || pw.source?.domain === n
+    if (fed.length && !fed.some(used)) b.note(`${b.ref(dev.part.uid)}: ${dev.name} charge input is not simulated: the module runs from its battery only`)
   }
 }

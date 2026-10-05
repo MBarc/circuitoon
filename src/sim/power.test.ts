@@ -117,6 +117,14 @@ describe('power models', () => {
     expect(byId(off.devices, 'p1.source')).toBeUndefined()
     expect(off.notes.join(' ')).toContain('P1: its mains input is off')
   })
+  it('says the IP5306 USB-C charge input is not simulated when a cable feeds it (Phase C checkpoint, finding 5)', () => {
+    const note = 'U1: USB-C charge input is not simulated: the module runs from its battery only'
+    const fed = buildCircuit(sheet([{ uid: 'h1', module: 'computer-usb-port' }, { uid: 'u1', module: 'ip5306-usbc-module' }], [['h1.USB', 'u1.USB-C']]))
+    expect(fed.notes).toContain(note)
+    expect(buildCircuit(sheet([{ uid: 'u1', module: 'ip5306-usbc-module' }], [])).notes).not.toContain(note)
+    // A port that feeds a rail says nothing.
+    expect(buildCircuit(sheet([{ uid: 'h1', module: 'computer-usb-port' }, { uid: 'u1', module: 'esp32-devkit-v1-30' }], [['h1.USB', 'u1.USB']])).notes.join(' ')).not.toContain('charge input')
+  })
   it("lists what each simulated part's data leaves out (sim.unaccounted, Phase C checkpoint finding 4)", () => {
     const c = buildCircuit(sheet([{ uid: 'u1', module: 'esp32-devkit-v1-30' }, { uid: 'u2', module: 'ams1117-33-module' }, R10], []))
     expect(c.unaccounted.map((x) => x.part)).toEqual(['u1', 'u2'])
