@@ -1,7 +1,8 @@
 // Boards and modules with electrical.sim.power (spec 3.2, 3.3, 4, 4.6, 4.7): each domain's pin and
 // return, the board's own draw as a voltage-aware load per domain, its rails (LDO, buck, boost,
 // load switch or diode) with the spec's defaults, its GPIO states hanging off the real IO domain
-// node, an external source (an AC-DC converter only when powered in the saved state), and USB
+// node, an external source (an AC-DC converter only when powered in the saved state, a plug-in
+// supply whose plug is not on the sheet assumed plugged in), and USB
 // links as two cable conductors between the port nets. Node references are pins or `<usbPin>#vbus`
 // / `<usbPin>#gnd` (ruling R5), each tapped like a pin.
 import type { Diagram, PartInstance } from '../format/diagram.ts'
@@ -119,8 +120,14 @@ export function powerPart(b: Builder, p: PartInstance, m: ModuleDef): void {
   const sd = s && domains.get(s.domain)
   let imaxOver: number | null = null
   if (s && sd) {
-    // An AC-DC converter is a source only when its mains input is powered in the saved state.
-    if (mainsOf(m).acInput && !b.converterPowered(p.uid)) b.note(`${ref}: its mains input is off in the saved switch state, so its output is off`)
+    // An AC-DC converter is a source only when its mains input is powered in the saved state. A
+    // plug-in supply (a USB charger, a barrel adapter) whose plug and AC side are not on the sheet is
+    // a standalone source (spec 4.7), assumed plugged in (Phase C checkpoint ruling); a wired-in module
+    // (HLK, IRM) always follows the mains gate.
+    const ac = mainsOf(m)
+    const assumed = !!ac.acInput && !!ac.plug && !b.acOnSheet(p, m)
+    if (assumed) b.note(`${ref}: assumed plugged into a live outlet (its plug is not on the sheet)`)
+    if (ac.acInput && !assumed && !b.converterPowered(p.uid)) b.note(`${ref}: its mains input is off in the saved switch state, so its output is off`)
     else {
       const rOver = simOverride(p, 'sim.rInternal')
       const iOver = simOverride(p, 'sim.imax')

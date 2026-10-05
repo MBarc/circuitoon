@@ -216,6 +216,14 @@ export class Builder {
     return this.converters.get(uid)?.state === 'powered'
   }
 
+  /** Whether a plug-in supply's AC side is on the sheet: put in an outlet (mounted) or its plug or AC input wired. */
+  acOnSheet(p: PartInstance, m: ModuleDef): boolean {
+    if (p.mount) return true
+    const info = mainsOf(m)
+    const ac = new Set([info.acInput?.a, info.acInput?.b, ...(info.plug?.profiles.flatMap((pr) => pr.contacts.map((c) => c.pin)) ?? [])])
+    return this.d.connections.some((c) => [c.from, c.to].some((e) => e.part === p.uid && ac.has(e.pin)))
+  }
+
   private isHeld(uid: string, group: string): boolean {
     return this.opts.held?.part === uid && this.opts.held.group === group
   }

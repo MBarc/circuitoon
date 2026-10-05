@@ -5,8 +5,12 @@ import { describe, expect, it } from 'vitest'
 import { buildCircuit } from './build.ts'
 import { boardModule, boostModule, buckModule, cellModule, hostModule, ldoModule, q, sheet } from './testing.ts'
 import { type Device, gpioBranch } from './model.ts'
-import type { ModuleDef } from '../format/module.ts'
+import type { Diagram, PartInstance } from '../format/diagram.ts'
+import { type ModuleDef, layoutModule } from '../format/module.ts'
 import { load } from '../format/builtinModules.testing.ts'
+import { pivot } from '../format/geometry.ts'
+import { mainsOf } from '../format/mainsModel.ts'
+import { SOCKET_PATTERNS } from '../format/plugging.ts'
 
 const byId = (devs: Device[], id: string) => devs.find((d) => d.id === id)
 const branch = (d: Device | undefined) => (d?.kind === 'gpio' ? gpioBranch(d) : undefined)
@@ -111,7 +115,48 @@ describe('power models', () => {
     expect(byId(off.devices, 'p1.source')).toBeUndefined()
     expect(off.notes.join(' ')).toContain('P1: its mains input is off')
   })
+  it('takes a plug-in supply whose plug is not on the sheet as plugged in, with a note (Phase C checkpoint)', () => {
+    for (const id of ['charger-usb-5v-us', 'adapter-barrel-eu']) {
+      const out = id.startsWith('charger') ? ['5V', 'GND'] : ['+', '-']
+      const c = buildCircuit(sheet([{ uid: 'ps1', module: id }, R10], [[`ps1.${out[0]}`, 'r1.1'], ['r1.2', `ps1.${out[1]}`]]))
+      expect(byId(c.devices, 'ps1.source')).toMatchObject({ kind: 'cell', role: 'external' })
+      expect(c.notes).toContain('PS1: assumed plugged into a live outlet (its plug is not on the sheet)')
+    }
+  })
+  it('a charger plugged into a switched outlet follows the saved switch state', () => {
+    // A split-wired duplex (the tab between the sockets broken off, so no internal L1-L2 join; the
+    // library outlets keep it): the lower socket is fed from L1 through a KCD1 rocker.
+    const { internal: _, ...duplex } = load('outlet-us-5-15r-duplex')
+    const split: ModuleDef = { ...duplex, id: 'test-outlet-split' }
+    const parts = (values: Record<string, unknown>): Diagram => {
+      const d = sheet([{ uid: 'o1', module: split }, { uid: 's1', module: 'rocker-switch-kcd1', values }, R10],
+        [['o1.L1', 's1.1'], ['s1.2', 'o1.L2'], ['o1.N1', 'o1.N2']])
+      const o1 = d.parts[0]
+      const charger = onSocket('ps1', 'charger-usb-5v-us', o1, split, 1)
+      return {
+        ...d, modules: { ...d.modules, 'charger-usb-5v-us': load('charger-usb-5v-us') }, parts: [...d.parts, charger],
+        connections: [...d.connections, { uid: 'w9', from: { part: 'ps1', pin: '5V' }, to: { part: 'r1', pin: '1' } }, { uid: 'w10', from: { part: 'r1', pin: '2' }, to: { part: 'ps1', pin: 'GND' } }],
+      }
+    }
+    const on = buildCircuit(parts({ 'contact.s': 'closed' }))
+    expect(byId(on.devices, 'ps1.source')).toMatchObject({ kind: 'cell', role: 'external' })
+    expect(on.notes.join(' ')).not.toContain('assumed plugged')
+    const off = buildCircuit(parts({}))
+    expect(byId(off.devices, 'ps1.source')).toBeUndefined()
+    expect(off.notes).toContain('PS1: its mains input is off in the saved switch state, so its output is off')
+  })
 })
+
+const R10 = { uid: 'r1', module: 'resistor', values: { resistance: { value: 10, unit: 'ohm' } } }
+/** A plug-in device placed and mounted so its plug sits in the outlet's socket `index` (as in mainsCircuits.test.ts). */
+function onSocket(uid: string, module: string, outlet: PartInstance, om: ModuleDef, index: number): PartInstance {
+  const s = mainsOf(om).sockets[index]
+  const holes = new Map((om.holes ?? []).map((h) => [h.name, h.at]))
+  const [[lx, ly]] = holes.get(s.contacts.find((c) => c.role === 'L')!.group)!
+  const [[px, py]] = SOCKET_PATTERNS[s.family].L
+  const c = pivot(layoutModule(load(module)).w, layoutModule(load(module)).h)
+  return { uid, designator: uid.toUpperCase(), module, x: outlet.x + lx - px - c.x, y: outlet.y + ly - py - c.y, rotation: 0, mount: { board: outlet.uid } }
+}
 
 // Fix round 1: no crash or silent 0 A without draw data, USB ends that are not simulated, unclear
 // roles, notes for rails it cannot place, and the remaining GPIO, rail and USB cases.

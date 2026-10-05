@@ -243,3 +243,14 @@ describe('unloaded regulator outputs (Phase C checkpoint, finding 1)', () => {
     expect(Math.abs((await solve(rig(stiff(), 5, 33))).v[OUT] - 3.3)).toBeLessThan(0.005)
   }, 60_000)
 })
+
+describe('plug-in supplies (Phase C checkpoint, finding 2)', () => {
+  it('a USB charger whose plug is not on the sheet powers a 10 ohm load, with a note', async () => {
+    const d = sheet([{ uid: 'ps1', module: 'charger-usb-5v-us' }, R('r1', 10)], [['ps1.5V', 'r1.1'], ['r1.2', 'ps1.GND']])
+    expect(buildCircuit(d).notes).toContain('PS1: assumed plugged into a live outlet (its plug is not on the sheet)')
+    const raw = await solve(d)
+    // Before: no source at all (gated on mains it never had). 5 V less the charger's rInternal sag.
+    expect(raw.v['ps1:5V'] - raw.v['ps1:GND']).toBeGreaterThan(4.9)
+    near(raw.dev['ps1.source'], (raw.v['ps1:5V'] - raw.v['ps1:GND']) / 10)
+  }, 60_000)
+})
