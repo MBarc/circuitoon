@@ -178,13 +178,16 @@ export function usbLinks(b: Builder, d: Diagram): void {
     const sides = usbSides(link.from, link.to)
     if (!sides) continue
     const [host, dev] = sides
+    // The modules as simulated: a built-in part's sim from the library (withLibrarySim).
+    const hm = b.module(host.part.module) ?? host.module
+    const dm = b.module(dev.part.module) ?? dev.module
     // A device that is not simulated has nothing for the cable to feed.
     if (!b.simulated(dev.part.uid)) continue
     if (host.usb.hub === 'downstream') {
       b.unsimulated(dev.part.uid, 'powered through a hub: not simulated yet')
       continue
     }
-    if (!simOf(host.module)?.power) {
+    if (!simOf(hm)?.power) {
       b.unsimulated(dev.part.uid, `powered from ${b.ref(host.part.uid)} over USB, which has no power data`)
       continue
     }
@@ -195,10 +198,10 @@ export function usbLinks(b: Builder, d: Diagram): void {
     const ohms = link.direct ? PLUG_OHMS : CABLE_OHMS
     const label = `${link.direct ? 'plug' : 'cable'}.${c.uid}`
     // The cable is outside both parts: it joins the port nets, so each port's sense carries its current.
-    const hv = b.node(host.part.uid, usbPin(host.module, host.name, 'vbus'))
-    const dv = b.node(dev.part.uid, usbPin(dev.module, dev.name, 'vbus'))
-    const hg = b.node(host.part.uid, usbPin(host.module, host.name, 'gnd'))
-    const dg = b.node(dev.part.uid, usbPin(dev.module, dev.name, 'gnd'))
+    const hv = b.node(host.part.uid, usbPin(hm, host.name, 'vbus'))
+    const dv = b.node(dev.part.uid, usbPin(dm, dev.name, 'vbus'))
+    const hg = b.node(host.part.uid, usbPin(hm, host.name, 'gnd'))
+    const dg = b.node(dev.part.uid, usbPin(dm, dev.name, 'gnd'))
     if (!hv || !dv || !hg || !dg) continue
     const vbus = `usb.${c.uid}.vbus`
     const gnd = `usb.${c.uid}.gnd`
@@ -206,7 +209,7 @@ export function usbLinks(b: Builder, d: Diagram): void {
     b.add({ kind: 'resistor', id: gnd, part: host.part.uid, a: hg, b: dg, ohms: b.param(ohms, `${label}.gnd`), role: 'cable' })
     const declared = host.usb.source
     const limit: Param = declared !== undefined
-      ? { value: declared / 1000, basis: 'datasheet', label: `${host.module.id}.${b.ref(host.part.uid)}.usb.${host.name}.source` }
+      ? { value: declared / 1000, basis: 'datasheet', label: `${hm.id}.${b.ref(host.part.uid)}.usb.${host.name}.source` }
       : { value: DEFAULT_SOURCE[host.usb.version ?? '2.0'] / 1000, basis: 'representative', label: `usb-default.${host.usb.version ?? '2.0'}`, note: 'the USB default for the port version' }
     b.usbPath({ host: host.part.uid, hostPort: host.name, device: dev.part.uid, devicePort: dev.name, vbus, gnd, limit })
   }

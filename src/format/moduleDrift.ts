@@ -11,8 +11,9 @@
 //   settings, ratings, a footprint, art, name, source, description, category, version, or any field
 //   the stored copy lacks that the library has. The sheet is right as drawn; the library only knows
 //   more. `circuitoon update` and the editor's Update parts take the library copy.
-// - neither: the KiCad mapping (`kicad`). It is export data that a KiCad export reads from the
-//   library, so a copy saved before the library had it is not out of date.
+// - neither: the KiCad mapping (`kicad`) and the simulation data (`electrical.sim`). They are data
+//   that a KiCad export and the simulator read from the library, so a copy saved before the
+//   library had them is not out of date.
 //
 // Pure: shared by verify, the CLI's update command and the editor.
 import type { Diagram } from './diagram.ts'
@@ -105,18 +106,24 @@ function withoutAddedUsb(sp: unknown[], lp: unknown[]): { pins: unknown[]; added
   return { pins, added }
 }
 
-/** The module's fields without `kicad`. */
-function withoutKicad(m: ModuleDef): Record<string, unknown> {
+/** The module's fields without `kicad` and `electrical.sim` (an `electrical` left empty goes too). */
+function withoutLibraryData(m: ModuleDef): Record<string, unknown> {
   const rest: Record<string, unknown> = { ...m }
   delete rest.kicad
+  if (isObj(rest.electrical)) {
+    const e: Record<string, unknown> = { ...rest.electrical }
+    delete e.sim
+    if (Object.keys(e).length) rest.electrical = e
+    else delete rest.electrical
+  }
   return rest
 }
 
-/** How `stored` differs from the library's `lib`, or null when they are the same by content (the KiCad mapping aside). */
+/** How `stored` differs from the library's `lib`, or null when they are the same by content (the KiCad mapping and sim data aside). */
 export function moduleDrift(stored: ModuleDef, lib: ModuleDef): ModuleDriftResult | null {
-  // The KiCad mapping is export data, read from the library when a sheet is exported
-  // (format/kicad.ts): a copy with an older one, or none, is not out of date.
-  const [s, l] = [withoutKicad(stored), withoutKicad(lib)]
+  // The KiCad mapping and the sim data are read from the library when a sheet is exported
+  // (format/kicad.ts) or simulated (sim/build.ts): a copy with an older one, or none, is not out of date.
+  const [s, l] = [withoutLibraryData(stored), withoutLibraryData(lib)]
   if (canonical(s) === canonical(l)) return null
   const block: string[] = []
   const update: string[] = []

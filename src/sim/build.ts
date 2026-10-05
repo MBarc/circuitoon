@@ -4,7 +4,8 @@
 // model. Boards and modules with `electrical.sim.power` go through power.ts. Pure and
 // deterministic: parts in uid order, devices in id order.
 import { type Diagram, type PartInstance, moduleOf } from '../format/diagram.ts'
-import { type ModuleDef, isBoard, isNetLabel, isNum, isObj, isSpacer, partSetting } from '../format/module.ts'
+import { type ModuleDef, isBoard, isCustom, isNetLabel, isNum, isObj, isSpacer, partSetting } from '../format/module.ts'
+import { terminalKey } from '../format/kicad.ts'
 import { nodeKey } from '../format/netlist.ts'
 import { analyseMainsCached } from '../format/mains.ts'
 import { convertersInState } from '../format/mainsRules.ts'
@@ -14,12 +15,36 @@ import { contactPosition, isActive, simOverride, switchGroups } from '../format/
 import { paramValue } from '../format/values.ts'
 import { sheetNets } from '../agent/extract.ts'
 import { naturalCompare } from '../agent/order.ts'
+import { libraryLookup } from '../agent/catalog.ts'
+import type { ModuleLookup } from '../agent/netlist.ts'
 import { CONTACT_OHMS, NO_POWER_DATA, cellEstimate } from './estimates.ts'
 import { LED_COLOURS, ledModel } from './ledModels.ts'
 import { type Circuit, type Device, type GpioPin, type Param, type PinTap, type ResolvedLimit, type SimDomain, type SimPart, type UsbPath, netNode } from './model.ts'
 import { powerPart, usbLinks } from './power.ts'
 
-export interface BuildOptions { held?: { part: string; group: string } | null }
+export interface BuildOptions {
+  held?: { part: string; group: string } | null
+  /** The built-in parts, whose `electrical.sim` the simulator reads (default: the library). */
+  library?: ModuleLookup
+}
+
+/**
+ * The module to simulate a stored copy as. `electrical.sim` is library data, like the KiCad mapping
+ * (format/kicad.ts mappingOf): a built-in part whose stored copy has the library's pins takes the
+ * library's sim, so a sheet saved before the library had it still simulates. A custom part, or a
+ * copy whose pins changed, keeps its own.
+ */
+export function withLibrarySim(stored: ModuleDef, library: ModuleLookup): ModuleDef {
+  if (isCustom(stored)) return stored
+  const lib = library(stored.id)
+  if (!lib || lib === stored || terminalKey(stored) !== terminalKey(lib)) return stored
+  const sim = isObj(lib.electrical) ? lib.electrical.sim : undefined
+  const e: Record<string, unknown> = isObj(stored.electrical) ? { ...stored.electrical } : {}
+  if (e.sim === sim) return stored
+  if (sim === undefined) delete e.sim
+  else e.sim = sim
+  return { ...stored, electrical: e }
+}
 
 const modelOf = (m: ModuleDef): string => (isObj(m.electrical) && typeof m.electrical.model === 'string' ? m.electrical.model : '')
 const terminals = (m: ModuleDef): Record<string, string> => {
@@ -38,6 +63,8 @@ const hasPowerPin = (m: ModuleDef) => [...m.pins, ...(m.holes ?? [])].some((p) =
 export class Builder {
   d: Diagram
   private opts: BuildOptions
+  /** The sheet's modules, each with the sim it is simulated with (withLibrarySim). */
+  private modules: Record<string, ModuleDef>
   private mainsKeys: Set<string>
   private netOfKey = new Map<string, string>()
   private names = new Set<string>()
@@ -58,6 +85,8 @@ export class Builder {
   constructor(d: Diagram, opts: BuildOptions) {
     this.d = d
     this.opts = opts
+    const library = opts.library ?? libraryLookup
+    this.modules = Object.fromEntries(Object.entries(d.modules).map(([id, m]) => [id, withLibrarySim(m, library)]))
     this.mainsKeys = analyseMainsCached(d)?.mainsKeys ?? new Set()
     const sn = sheetNets(d)
     this.refOf = sn.refOf
@@ -80,7 +109,11 @@ export class Builder {
 
   modulesOf(uid: string): ModuleDef | undefined {
     const p = this.d.parts.find((x) => x.uid === uid)
-    return p ? moduleOf(this.d, p.module) : undefined
+    return p ? this.module(p.module) : undefined
+  }
+
+  module(id: string): ModuleDef | undefined {
+    return moduleOf({ modules: this.modules }, id)
   }
 
   private firstComponent(keys: string[]): [string, string] {
@@ -194,7 +227,7 @@ export class Builder {
   converterPowered(uid: string): boolean {
     if (!this.converters) {
       this.converters = convertersInState(this.d, (part, groupId) => {
-        const m = moduleOf(this.d, part.module)
+        const m = this.module(part.module)
         const g = m && switchGroups(m).find((x) => x.id === groupId)
         return !!m && !!g && isActive(contactPosition(part, m, g, this.isHeld(part.uid, groupId)))
       })
@@ -226,7 +259,7 @@ export class Builder {
   }
 
   private compile(p: PartInstance): void {
-    const m = moduleOf(this.d, p.module)
+    const m = this.module(p.module)
     if (!m) return this.unsimulated(p.uid, 'its module is not embedded in the sheet')
     if (isNetLabel(m) || isBoard(m)) return
     const model = modelOf(m)

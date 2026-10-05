@@ -85614,15 +85614,21 @@ function withoutAddedUsb(sp, lp) {
 		added
 	};
 }
-/** The module's fields without `kicad`. */
-function withoutKicad(m) {
+/** The module's fields without `kicad` and `electrical.sim` (an `electrical` left empty goes too). */
+function withoutLibraryData(m) {
 	const rest = { ...m };
 	delete rest.kicad;
+	if (isObj(rest.electrical)) {
+		const e = { ...rest.electrical };
+		delete e.sim;
+		if (Object.keys(e).length) rest.electrical = e;
+		else delete rest.electrical;
+	}
 	return rest;
 }
-/** How `stored` differs from the library's `lib`, or null when they are the same by content (the KiCad mapping aside). */
+/** How `stored` differs from the library's `lib`, or null when they are the same by content (the KiCad mapping and sim data aside). */
 function moduleDrift(stored, lib) {
-	const [s, l] = [withoutKicad(stored), withoutKicad(lib)];
+	const [s, l] = [withoutLibraryData(stored), withoutLibraryData(lib)];
 	if (canonical(s) === canonical(l)) return null;
 	const block = [];
 	const update = [];

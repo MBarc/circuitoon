@@ -4,7 +4,7 @@
 // emitted; mains nodes stay out; the build is deterministic.
 import { describe, expect, it } from 'vitest'
 import { Builder, buildCircuit } from './build.ts'
-import { cellModule, sheet } from './testing.ts'
+import { boardModule, cellModule, sheet } from './testing.ts'
 import { type Device, netNode } from './model.ts'
 import type { ModuleDef } from '../format/module.ts'
 import { load } from '../format/builtinModules.testing.ts'
@@ -109,7 +109,8 @@ describe('buildCircuit: fix round 1', () => {
     return { ...m, electrical: { ...(m.electrical as object), sim: { power: { domains: [], rails: [{ id: 'r', inputs: [], output: 'X', kind: 'ldo', reverse: 'blocks' }] }, limits: [{ of: { part: true }, kind: 'current', value: 1, provenance: 'datasheet', source: 'https://example.com/x' }] } } }
   }
   it('purges a skipped part: a relay or latching switch with sim.power leaves no taps, notes, devices or open contacts', () => {
-    const c = buildCircuit(sheet([{ uid: 'k1', module: withPower('relay-module-1ch-5v') }, { uid: 's1', module: withPower('rocker-switch-kcd1') }], []))
+    // No library: the stored copies' test sim is what is simulated (a built-in part's comes from the library).
+    const c = buildCircuit(sheet([{ uid: 'k1', module: withPower('relay-module-1ch-5v') }, { uid: 's1', module: withPower('rocker-switch-kcd1') }], []), { library: () => undefined })
     expect([c.taps, c.devices, c.limits, c.openContacts, c.notes, c.parts]).toEqual([[], [], [], [], [], {}])
     const reason = 'incomplete power data: rail r needs vout, dropout, ioutMax'
     expect(c.unsimulated).toEqual([{ part: 'k1', reason }, { part: 's1', reason }])
@@ -165,5 +166,23 @@ describe('buildCircuit: net names shared with extract and KiCad (spec 2, fix wav
       expect(extract.has(name)).toBe(true)
       expect(kicad.has(name)).toBe(true)
     }
+  })
+})
+
+describe('a built-in part is simulated with the library sim (library data, like kicad)', () => {
+  const oldDevkit = (): ModuleDef => {
+    const m = structuredClone(load('esp32-devkitc-v4'))
+    delete (m.electrical as Record<string, unknown>).sim
+    return m
+  }
+  it('simulates a copy saved before the library had sim data with the library sim: domains and a load', () => {
+    const c = buildCircuit(sheet([{ uid: 'u1', module: oldDevkit() }], []))
+    expect(c.domains.filter((d) => d.part === 'u1').map((d) => d.name).sort()).toEqual(['3V3', '5V', 'USB'])
+    expect(c.devices.some((d) => d.kind === 'load' && d.part === 'u1')).toBe(true)
+  })
+  it("uses a custom part's embedded sim, whatever the library has", () => {
+    const custom: ModuleDef = { ...boardModule(), id: 'custom-board', custom: true }
+    const c = buildCircuit(sheet([{ uid: 'u1', module: custom }], []), { library: () => load('esp32-devkitc-v4') })
+    expect(c.domains.map((d) => d.name).sort()).toEqual(['3V3', 'USB', 'VIN'])
   })
 })
