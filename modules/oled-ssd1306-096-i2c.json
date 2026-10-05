@@ -48,6 +48,44 @@
       "address": {
         "setting": "address"
       }
+    },
+    "sim": {
+      "power": {
+        "domains": [
+          {
+            "name": "VCC",
+            "pin": "VCC",
+            "ret": "GND",
+            "nominal": 3.3
+          }
+        ],
+        "draw": [
+          {
+            "domain": "VCC",
+            "typical": {
+              "value": 0.01,
+              "unit": "A",
+              "provenance": "estimate",
+              "source": "https://cdn-shop.adafruit.com/datasheets/SSD1306.pdf https://www.lcdwiki.com/res/MC096VX/0.96inch-OLED-MC096VX-schematic-diagram.pdf https://www.lcdwiki.com/0.96inch_OLED_Module_MC096GX",
+              "note": "Pixel-dependent: about a third to a half of the pixels lit (text and graphics), contrast FFh. Same arithmetic as peak with the 5.6 mA segment current scaled by the lit fraction: (1.9 to 2.8 mA + ICC 0.43 mA) x 7.5 V / 0.7 / 3.3 V = 7.5 to 10.5 mA. The module page (lcdwiki MC096GX) states 0.06 W 'in normal condition' with no voltage, which is 12 mA at 5 V or 18 mA at 3.3 V. 10 mA taken, at the top of the arithmetic range and below the page's figure. SSD1306 chip values (chip, not board) plus the module's IREF resistor; not a measured board value."
+            },
+            "peak": {
+              "value": 0.02,
+              "unit": "A",
+              "provenance": "estimate",
+              "source": "https://cdn-shop.adafruit.com/datasheets/SSD1306.pdf https://www.lcdwiki.com/res/MC096VX/0.96inch-OLED-MC096VX-schematic-diagram.pdf",
+              "note": "All pixels on, contrast FFh. IREF = (VCC 7.5 V - 2.5 V) / 910 kohm (module R4, schematic) = 5.5 uA; ISEG = 255/256 x IREF x 8 = 43.8 uA (SSD1306 datasheet section 8, Figure 8-15, p. 26); 128 segments x 43.8 uA = 5.6 mA, plus ICC 0.43 mA typ (Table 12-1, p. 48; given at VCC 12 V, IREF 12.5 uA, all on, contrast FFh, used here unscaled) = 6.0 mA at the 7.5 V charge-pump output (App Note section 2) = 45 mW; from VBAT 3.3 V at an assumed 70 % charge-pump efficiency = 19.5 mA, plus IDD 0.05 mA, rounded to 20 mA. Chip values (chip, not board); pump efficiency assumed."
+            },
+            "minVolts": {
+              "value": 3,
+              "unit": "V",
+              "provenance": "representative",
+              "source": "https://www.lcdwiki.com/0.96inch_OLED_Module_MC096GX",
+              "note": "lcdwiki MC096GX (a GND VCC SCL SDA module of this kind; clones vary): 'Wide voltage supply (3V~5V)'. The SSD1306 App Note gives VBAT 3.3 to 4.2 V for the charge pump; on this module VBAT is the XC6206 3.3 V output, which follows VCC minus about 75 mV (Torex XC6206 3.3 V, Vdif1 typ at 30 mA, https://cdn.eicom.ru/media/PDF/1021087.pdf p. 5) when VCC is below 3.3 V. The module is documented to run from 3 V, so the module's figure is used rather than 3.3 V + dropout."
+            }
+          }
+        ]
+      }
     }
   },
   "art": {

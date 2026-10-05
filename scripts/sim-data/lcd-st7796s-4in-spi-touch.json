@@ -1,0 +1,99 @@
+{
+  "id": "lcd-st7796s-4in-spi-touch",
+  "researched": "2026-10-05",
+  "sim": {
+    "power": {
+      "domains": [
+        {
+          "name": "VCC",
+          "pin": "VCC",
+          "ret": "GND",
+          "nominal": 3.3
+        },
+        {
+          "name": "LED",
+          "pin": "LED",
+          "ret": "GND",
+          "nominal": 3.3
+        }
+      ],
+      "draw": [
+        {
+          "domain": "VCC",
+          "typical": {
+            "value": 0.067,
+            "unit": "A",
+            "provenance": "estimate",
+            "source": "https://www.lcdwiki.com/res/MSP4021/ST7796S-Sitronix.pdf https://www.lcdwiki.com/res/MSP4021/4.0inch_SPI_Schematic.pdf https://www.lcdwiki.com/res/MSP4021/QD-40037C1-00_specification_V1.0.pdf",
+            "note": "Backlight on. Controller: ST7796S normal mode IDD 12 mA typ (section 7.3 Power Consumption, p. 50; 60 Hz, all pixels black, VDDI 1.8 V, VDDA 2.8 V; chip, not board). Backlight: 8 white LEDs in parallel (panel QD40037C1 outline, backlight circuit), anode LEDA on the module's 3.3 V net, cathodes through R5 5.6 ohm and an S8050 switch to GND (module schematic). The documentation gives no backlight current; I = (3.3 V - Vf - Vce(sat)) / 5.6 ohm with an assumed Vce(sat) of 0.1 V (not from an S8050 datasheet) and an assumed white-LED Vf of 2.8 to 3.0 V gives 36 to 71 mA; 55 mA taken. 12 + 55 = 67 mA. Note the backlight current flows from VCC, not from the LED pin."
+          },
+          "peak": {
+            "value": 0.087,
+            "unit": "A",
+            "provenance": "estimate",
+            "source": "https://www.lcdwiki.com/res/MSP4021/ST7796S-Sitronix.pdf https://www.lcdwiki.com/res/MSP4021/4.0inch_SPI_Schematic.pdf",
+            "note": "Backlight on at the top of its range plus the controller maximum: ST7796S IDD 16 mA max (section 7.3, p. 50, VDDI = VDDA = 3.3 V; chip, not board) + 71 mA backlight (Vf 2.8 V in the arithmetic of typical) = 87 mA. Pixel content changes the controller draw only slightly; the backlight dominates. The module page's 'Power Consumption 0.78W(have touch)/0.93W(no touch)' (no voltage given) would mean 156 to 282 mA, which would need a white-LED Vf of about 1.6 to 2.3 V across the 5.6 ohm resistor and 0.1 V Vce(sat) on the 3.3 V net (implausible for white LEDs); so it is not used."
+          }
+        },
+        {
+          "domain": "LED",
+          "typical": {
+            "value": 0.0025,
+            "unit": "A",
+            "provenance": "estimate",
+            "source": "https://www.lcdwiki.com/res/MSP4021/4.0inch_SPI_Schematic.pdf",
+            "note": "The LED pin drives the base of the S8050 backlight switch through R6 1 kohm (module schematic; 'TFT_BL high level enables'). (3.3 V - Vbe about 0.8 V) / 1 kohm = 2.5 mA when driven at 3.3 V; about 4.2 mA at 5 V. Vbe assumed, not from an S8050 datasheet."
+          }
+        }
+      ]
+    }
+  },
+  "notes": [
+    "Module schematic (lcdwiki MSP4021, QDtech 2019-09-27): VCC feeds an XC6206 3.3 V LDO to the 3.3 V net; jumper J1 (0 ohm) shorts VCC to the 3.3 V net for a 3.3 V supply and is to be left open for 5 V. The 3.3 V net powers the ST7796S, the XPT2046 touch controller, the SD socket and the backlight anode. It is not a pin, so the LDO is not modelled as a rail.",
+    "The brief asked for the backlight as the draw on the LED domain. The schematic shows LED is only the base drive of a transistor switch, so the LED domain carries the base current and the backlight current is in the VCC draw. Putting the backlight on LED would make the driving GPIO source 50 to 70 mA, which it does not.",
+    "The VCC draw assumes the backlight is on (LED pin high, or tied to 3.3 V as the module page suggests). With LED low the real draw falls to the controller's, which this static draw cannot express.",
+    "Nominal 3.3 V for both domains; the module accepts 3.3 V or 5 V on VCC (lcdwiki page). With J1 open and 5 V in, the XC6206 (200 mA min IOUTMAX for 3.3 V types) carries the whole draw."
+  ],
+  "unaccounted": [
+    "XPT2046 touch controller supply current - not looked up; small next to the backlight.",
+    "SD card in the socket - card current varies by card (tens of mA when writing); not modelled.",
+    "XC6206 quiescent current (1 uA typ) - negligible.",
+    "White-LED forward voltage of the panel backlight - not given in the panel outline; the backlight current is an estimate that depends on it strongly."
+  ],
+  "review": [
+    {
+      "date": "2026-10-06",
+      "reviewer": "independent reviewer 1",
+      "checked": 3,
+      "corrected": [
+        {
+          "path": "sim.power.draw[0].typical.note",
+          "was": "Vce(sat) 0.1 V given as if sourced",
+          "now": "Vce(sat) 0.1 V marked as assumed (not from an S8050 datasheet)",
+          "why": "No S8050 datasheet is cited; the value is an assumption. Arithmetic (36 to 71 mA, 12 + 55 = 67 mA) and ST7796S IDD 12 mA typ (p. 50, VDDI 1.8 V, VDDA 2.8 V, all pixels black) confirmed."
+        },
+        {
+          "path": "sim.power.draw[0].peak.note",
+          "was": "...which the 5.6 ohm backlight resistor on a 3.3 V net cannot pass...",
+          "now": "...would need a white-LED Vf of about 1.7 to 2.4 V... and more than the XC6206's 200 mA minimum IOUTMAX at 5 V...",
+          "why": "5.6 ohm on 3.3 V can pass well over 156 mA if Vf were low; the argument only holds with a white-LED Vf, so it is stated. Value 87 mA (16 + 71) confirmed; page quote '0.78W(have touch)/0.93W(no touch)' confirmed on lcdwiki 4.0inch_SPI_Module_ST7796."
+        }
+      ],
+      "disputed": []
+    },
+    {
+      "date": "2026-10-06",
+      "reviewer": "independent reviewer 2",
+      "checked": 3,
+      "corrected": [
+        {
+          "path": "sim.power.draw[0].peak.note",
+          "was": "...would need a white-LED Vf of about 1.7 to 2.4 V ... and, at 5 V, more than the XC6206's 200 mA minimum IOUTMAX...",
+          "now": "...would need a white-LED Vf of about 1.6 to 2.3 V across the 5.6 ohm resistor and 0.1 V Vce(sat)...",
+          "why": "At 5 V the page's 0.78 W / 0.93 W is 156 / 186 mA, below the XC6206 3.3 V types' 200 mA minimum IOUTMAX (Torex chart E-4, p. 5), so that clause was false. With the 0.1 V Vce(sat) used in typical, 156 to 282 mA needs Vf = 3.3 - 0.1 - I x 5.6 = 2.33 to 1.62 V. Value 87 mA unchanged. Checked: ST7796S p. 50 IDD 12 typ / 16 max mA; module schematic (LEDA pin 42 on VCC3.3, LEDK via R5 5R6 to S8050 collector, LED via R6 1K to base, so backlight current comes from VCC, not LED); panel outline backlight circuit 1 anode, 8 cathodes; 36 to 71 mA, 67 mA, 2.5 / 4.2 mA arithmetic."
+        }
+      ],
+      "disputed": []
+    }
+  ]
+}

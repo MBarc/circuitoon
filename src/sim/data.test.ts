@@ -76,3 +76,21 @@ describe('ESP32 DevKits (spec 3.4)', () => {
       expect(sim.limits!.some((l) => l.kind === 'ioTotalCurrent')).toBe(true)
     })
 })
+
+describe('displays and the MCP23017 breakout (spec 3.4)', () => {
+  it('gives the OLED a pixel-dependent draw with its conditions', () => {
+    const d = simOf(load('oled-ssd1306-096-i2c'))!.power!.draw!.find((x) => x.domain === 'VCC')!
+    expect(d.peak!.value).toBeGreaterThan(d.typical.value)
+    expect(d.peak!.note).toMatch(/pixel/i)
+  })
+  it('splits the LCD into its controller and its backlight', () => {
+    const sim = simOf(load('lcd-st7796s-4in-spi-touch'))!
+    expect(sim.power!.draw!.map((d) => d.domain).sort()).toEqual(['LED', 'VCC'])
+  })
+  it('gives the MCP23017 breakout a chip draw and per-pin limits', () => {
+    const sim = simOf(load('mcp23017-cjmcu-2317'))!
+    expect(sim.power!.draw!.length).toBeGreaterThan(0)
+    // The datasheet's 25 mA per pin is an absolute maximum, so the pins carry absMaxCurrent only (controller ruling).
+    expect(sim.limits!.some((l) => l.kind === 'absMaxCurrent' && 'pin' in l.of && l.of.pin === 'GPA0')).toBe(true)
+  })
+})

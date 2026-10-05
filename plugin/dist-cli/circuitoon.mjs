@@ -37028,7 +37028,46 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 		},
 		electrical: {
 			"model": "display",
-			"params": {}
+			"params": {},
+			"sim": { "power": {
+				"domains": [{
+					"name": "VCC",
+					"pin": "VCC",
+					"ret": "GND",
+					"nominal": 3.3
+				}, {
+					"name": "LED",
+					"pin": "LED",
+					"ret": "GND",
+					"nominal": 3.3
+				}],
+				"draw": [{
+					"domain": "VCC",
+					"typical": {
+						"value": .067,
+						"unit": "A",
+						"provenance": "estimate",
+						"source": "https://www.lcdwiki.com/res/MSP4021/ST7796S-Sitronix.pdf https://www.lcdwiki.com/res/MSP4021/4.0inch_SPI_Schematic.pdf https://www.lcdwiki.com/res/MSP4021/QD-40037C1-00_specification_V1.0.pdf",
+						"note": "Backlight on. Controller: ST7796S normal mode IDD 12 mA typ (section 7.3 Power Consumption, p. 50; 60 Hz, all pixels black, VDDI 1.8 V, VDDA 2.8 V; chip, not board). Backlight: 8 white LEDs in parallel (panel QD40037C1 outline, backlight circuit), anode LEDA on the module's 3.3 V net, cathodes through R5 5.6 ohm and an S8050 switch to GND (module schematic). The documentation gives no backlight current; I = (3.3 V - Vf - Vce(sat)) / 5.6 ohm with an assumed Vce(sat) of 0.1 V (not from an S8050 datasheet) and an assumed white-LED Vf of 2.8 to 3.0 V gives 36 to 71 mA; 55 mA taken. 12 + 55 = 67 mA. Note the backlight current flows from VCC, not from the LED pin."
+					},
+					"peak": {
+						"value": .087,
+						"unit": "A",
+						"provenance": "estimate",
+						"source": "https://www.lcdwiki.com/res/MSP4021/ST7796S-Sitronix.pdf https://www.lcdwiki.com/res/MSP4021/4.0inch_SPI_Schematic.pdf",
+						"note": "Backlight on at the top of its range plus the controller maximum: ST7796S IDD 16 mA max (section 7.3, p. 50, VDDI = VDDA = 3.3 V; chip, not board) + 71 mA backlight (Vf 2.8 V in the arithmetic of typical) = 87 mA. Pixel content changes the controller draw only slightly; the backlight dominates. The module page's 'Power Consumption 0.78W(have touch)/0.93W(no touch)' (no voltage given) would mean 156 to 282 mA, which would need a white-LED Vf of about 1.6 to 2.3 V across the 5.6 ohm resistor and 0.1 V Vce(sat) on the 3.3 V net (implausible for white LEDs); so it is not used."
+					}
+				}, {
+					"domain": "LED",
+					"typical": {
+						"value": .0025,
+						"unit": "A",
+						"provenance": "estimate",
+						"source": "https://www.lcdwiki.com/res/MSP4021/4.0inch_SPI_Schematic.pdf",
+						"note": "The LED pin drives the base of the S8050 backlight switch through R6 1 kohm (module schematic; 'TFT_BL high level enables'). (3.3 V - Vbe about 0.8 V) / 1 kohm = 2.5 mA when driven at 3.3 V; about 4.2 mA at 5 V. Vbe assumed, not from an S8050 datasheet."
+					}
+				}]
+			} }
 		},
 		art: {
 			"w": 360,
@@ -38564,6 +38603,188 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 						}
 					]
 				}
+			},
+			"sim": {
+				"power": {
+					"domains": [{
+						"name": "VCC",
+						"pin": "VCC",
+						"ret": "GND",
+						"nominal": 3.3
+					}],
+					"draw": [{
+						"domain": "VCC",
+						"typical": {
+							"value": .001,
+							"unit": "A",
+							"source": "https://ww1.microchip.com/downloads/aemDocuments/documents/APID/ProductDocuments/DataSheets/MCP23017-Data-Sheet-DS20001952.pdf",
+							"provenance": "datasheet",
+							"note": "Table 1-1 D004, p. 4: IDD 1 mA max at SCL = 1 MHz, 1.8 to 5.5 V, -40 to +125 C. No typical is stated, so the maximum is used (an upper bound; idle is D005 standby, 1 uA max). Chip, not board. Excludes current the GPIO pins source into loads, which is solved."
+						},
+						"minVolts": {
+							"value": 1.8,
+							"unit": "V",
+							"source": "https://ww1.microchip.com/downloads/aemDocuments/documents/APID/ProductDocuments/DataSheets/MCP23017-Data-Sheet-DS20001952.pdf",
+							"provenance": "datasheet",
+							"note": "Table 1-1 D001, p. 4: VDD 1.8 V min. Chip, not board (the board has no regulator, so VCC is VDD)."
+						}
+					}]
+				},
+				"limits": [
+					{
+						"of": { "pin": "GPA0" },
+						"kind": "absMaxCurrent",
+						"value": .025,
+						"source": "https://ww1.microchip.com/downloads/aemDocuments/documents/APID/ProductDocuments/DataSheets/MCP23017-Data-Sheet-DS20001952.pdf",
+						"provenance": "datasheet",
+						"conditions": "absolute maximum rating, sunk or sourced by any output pin",
+						"note": "Section 1.0 Absolute Maximum Ratings, p. 3. Chip, not board."
+					},
+					{
+						"of": { "pin": "GPA1" },
+						"kind": "absMaxCurrent",
+						"value": .025,
+						"source": "https://ww1.microchip.com/downloads/aemDocuments/documents/APID/ProductDocuments/DataSheets/MCP23017-Data-Sheet-DS20001952.pdf",
+						"provenance": "datasheet",
+						"conditions": "absolute maximum rating, sunk or sourced by any output pin",
+						"note": "Section 1.0 Absolute Maximum Ratings, p. 3. Chip, not board."
+					},
+					{
+						"of": { "pin": "GPA2" },
+						"kind": "absMaxCurrent",
+						"value": .025,
+						"source": "https://ww1.microchip.com/downloads/aemDocuments/documents/APID/ProductDocuments/DataSheets/MCP23017-Data-Sheet-DS20001952.pdf",
+						"provenance": "datasheet",
+						"conditions": "absolute maximum rating, sunk or sourced by any output pin",
+						"note": "Section 1.0 Absolute Maximum Ratings, p. 3. Chip, not board."
+					},
+					{
+						"of": { "pin": "GPA3" },
+						"kind": "absMaxCurrent",
+						"value": .025,
+						"source": "https://ww1.microchip.com/downloads/aemDocuments/documents/APID/ProductDocuments/DataSheets/MCP23017-Data-Sheet-DS20001952.pdf",
+						"provenance": "datasheet",
+						"conditions": "absolute maximum rating, sunk or sourced by any output pin",
+						"note": "Section 1.0 Absolute Maximum Ratings, p. 3. Chip, not board."
+					},
+					{
+						"of": { "pin": "GPA4" },
+						"kind": "absMaxCurrent",
+						"value": .025,
+						"source": "https://ww1.microchip.com/downloads/aemDocuments/documents/APID/ProductDocuments/DataSheets/MCP23017-Data-Sheet-DS20001952.pdf",
+						"provenance": "datasheet",
+						"conditions": "absolute maximum rating, sunk or sourced by any output pin",
+						"note": "Section 1.0 Absolute Maximum Ratings, p. 3. Chip, not board."
+					},
+					{
+						"of": { "pin": "GPA5" },
+						"kind": "absMaxCurrent",
+						"value": .025,
+						"source": "https://ww1.microchip.com/downloads/aemDocuments/documents/APID/ProductDocuments/DataSheets/MCP23017-Data-Sheet-DS20001952.pdf",
+						"provenance": "datasheet",
+						"conditions": "absolute maximum rating, sunk or sourced by any output pin",
+						"note": "Section 1.0 Absolute Maximum Ratings, p. 3. Chip, not board."
+					},
+					{
+						"of": { "pin": "GPA6" },
+						"kind": "absMaxCurrent",
+						"value": .025,
+						"source": "https://ww1.microchip.com/downloads/aemDocuments/documents/APID/ProductDocuments/DataSheets/MCP23017-Data-Sheet-DS20001952.pdf",
+						"provenance": "datasheet",
+						"conditions": "absolute maximum rating, sunk or sourced by any output pin",
+						"note": "Section 1.0 Absolute Maximum Ratings, p. 3. Chip, not board."
+					},
+					{
+						"of": { "pin": "GPA7" },
+						"kind": "absMaxCurrent",
+						"value": .025,
+						"source": "https://ww1.microchip.com/downloads/aemDocuments/documents/APID/ProductDocuments/DataSheets/MCP23017-Data-Sheet-DS20001952.pdf",
+						"provenance": "datasheet",
+						"conditions": "absolute maximum rating, sunk or sourced by any output pin",
+						"note": "Section 1.0 Absolute Maximum Ratings, p. 3. Chip, not board."
+					},
+					{
+						"of": { "pin": "GPB0" },
+						"kind": "absMaxCurrent",
+						"value": .025,
+						"source": "https://ww1.microchip.com/downloads/aemDocuments/documents/APID/ProductDocuments/DataSheets/MCP23017-Data-Sheet-DS20001952.pdf",
+						"provenance": "datasheet",
+						"conditions": "absolute maximum rating, sunk or sourced by any output pin",
+						"note": "Section 1.0 Absolute Maximum Ratings, p. 3. Chip, not board."
+					},
+					{
+						"of": { "pin": "GPB1" },
+						"kind": "absMaxCurrent",
+						"value": .025,
+						"source": "https://ww1.microchip.com/downloads/aemDocuments/documents/APID/ProductDocuments/DataSheets/MCP23017-Data-Sheet-DS20001952.pdf",
+						"provenance": "datasheet",
+						"conditions": "absolute maximum rating, sunk or sourced by any output pin",
+						"note": "Section 1.0 Absolute Maximum Ratings, p. 3. Chip, not board."
+					},
+					{
+						"of": { "pin": "GPB2" },
+						"kind": "absMaxCurrent",
+						"value": .025,
+						"source": "https://ww1.microchip.com/downloads/aemDocuments/documents/APID/ProductDocuments/DataSheets/MCP23017-Data-Sheet-DS20001952.pdf",
+						"provenance": "datasheet",
+						"conditions": "absolute maximum rating, sunk or sourced by any output pin",
+						"note": "Section 1.0 Absolute Maximum Ratings, p. 3. Chip, not board."
+					},
+					{
+						"of": { "pin": "GPB3" },
+						"kind": "absMaxCurrent",
+						"value": .025,
+						"source": "https://ww1.microchip.com/downloads/aemDocuments/documents/APID/ProductDocuments/DataSheets/MCP23017-Data-Sheet-DS20001952.pdf",
+						"provenance": "datasheet",
+						"conditions": "absolute maximum rating, sunk or sourced by any output pin",
+						"note": "Section 1.0 Absolute Maximum Ratings, p. 3. Chip, not board."
+					},
+					{
+						"of": { "pin": "GPB4" },
+						"kind": "absMaxCurrent",
+						"value": .025,
+						"source": "https://ww1.microchip.com/downloads/aemDocuments/documents/APID/ProductDocuments/DataSheets/MCP23017-Data-Sheet-DS20001952.pdf",
+						"provenance": "datasheet",
+						"conditions": "absolute maximum rating, sunk or sourced by any output pin",
+						"note": "Section 1.0 Absolute Maximum Ratings, p. 3. Chip, not board."
+					},
+					{
+						"of": { "pin": "GPB5" },
+						"kind": "absMaxCurrent",
+						"value": .025,
+						"source": "https://ww1.microchip.com/downloads/aemDocuments/documents/APID/ProductDocuments/DataSheets/MCP23017-Data-Sheet-DS20001952.pdf",
+						"provenance": "datasheet",
+						"conditions": "absolute maximum rating, sunk or sourced by any output pin",
+						"note": "Section 1.0 Absolute Maximum Ratings, p. 3. Chip, not board."
+					},
+					{
+						"of": { "pin": "GPB6" },
+						"kind": "absMaxCurrent",
+						"value": .025,
+						"source": "https://ww1.microchip.com/downloads/aemDocuments/documents/APID/ProductDocuments/DataSheets/MCP23017-Data-Sheet-DS20001952.pdf",
+						"provenance": "datasheet",
+						"conditions": "absolute maximum rating, sunk or sourced by any output pin",
+						"note": "Section 1.0 Absolute Maximum Ratings, p. 3. Chip, not board."
+					},
+					{
+						"of": { "pin": "GPB7" },
+						"kind": "absMaxCurrent",
+						"value": .025,
+						"source": "https://ww1.microchip.com/downloads/aemDocuments/documents/APID/ProductDocuments/DataSheets/MCP23017-Data-Sheet-DS20001952.pdf",
+						"provenance": "datasheet",
+						"conditions": "absolute maximum rating, sunk or sourced by any output pin",
+						"note": "Section 1.0 Absolute Maximum Ratings, p. 3. Chip, not board."
+					},
+					{
+						"of": { "domain": "VCC" },
+						"kind": "ioTotalCurrent",
+						"value": .125,
+						"source": "https://ww1.microchip.com/downloads/aemDocuments/documents/APID/ProductDocuments/DataSheets/MCP23017-Data-Sheet-DS20001952.pdf",
+						"provenance": "datasheet",
+						"conditions": "absolute maximum rating",
+						"note": "Section 1.0 Absolute Maximum Ratings, p. 3: maximum current into VDD pin 125 mA (out of VSS pin 150 mA). Chip, not board."
+					}
+				]
 			}
 		},
 		art: {
@@ -42479,7 +42700,39 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 				"sda": "SDA",
 				"scl": "SCL",
 				"address": { "setting": "address" }
-			}
+			},
+			"sim": { "power": {
+				"domains": [{
+					"name": "VCC",
+					"pin": "VCC",
+					"ret": "GND",
+					"nominal": 3.3
+				}],
+				"draw": [{
+					"domain": "VCC",
+					"typical": {
+						"value": .01,
+						"unit": "A",
+						"provenance": "estimate",
+						"source": "https://cdn-shop.adafruit.com/datasheets/SSD1306.pdf https://www.lcdwiki.com/res/MC096VX/0.96inch-OLED-MC096VX-schematic-diagram.pdf https://www.lcdwiki.com/0.96inch_OLED_Module_MC096GX",
+						"note": "Pixel-dependent: about a third to a half of the pixels lit (text and graphics), contrast FFh. Same arithmetic as peak with the 5.6 mA segment current scaled by the lit fraction: (1.9 to 2.8 mA + ICC 0.43 mA) x 7.5 V / 0.7 / 3.3 V = 7.5 to 10.5 mA. The module page (lcdwiki MC096GX) states 0.06 W 'in normal condition' with no voltage, which is 12 mA at 5 V or 18 mA at 3.3 V. 10 mA taken, at the top of the arithmetic range and below the page's figure. SSD1306 chip values (chip, not board) plus the module's IREF resistor; not a measured board value."
+					},
+					"peak": {
+						"value": .02,
+						"unit": "A",
+						"provenance": "estimate",
+						"source": "https://cdn-shop.adafruit.com/datasheets/SSD1306.pdf https://www.lcdwiki.com/res/MC096VX/0.96inch-OLED-MC096VX-schematic-diagram.pdf",
+						"note": "All pixels on, contrast FFh. IREF = (VCC 7.5 V - 2.5 V) / 910 kohm (module R4, schematic) = 5.5 uA; ISEG = 255/256 x IREF x 8 = 43.8 uA (SSD1306 datasheet section 8, Figure 8-15, p. 26); 128 segments x 43.8 uA = 5.6 mA, plus ICC 0.43 mA typ (Table 12-1, p. 48; given at VCC 12 V, IREF 12.5 uA, all on, contrast FFh, used here unscaled) = 6.0 mA at the 7.5 V charge-pump output (App Note section 2) = 45 mW; from VBAT 3.3 V at an assumed 70 % charge-pump efficiency = 19.5 mA, plus IDD 0.05 mA, rounded to 20 mA. Chip values (chip, not board); pump efficiency assumed."
+					},
+					"minVolts": {
+						"value": 3,
+						"unit": "V",
+						"provenance": "representative",
+						"source": "https://www.lcdwiki.com/0.96inch_OLED_Module_MC096GX",
+						"note": "lcdwiki MC096GX (a GND VCC SCL SDA module of this kind; clones vary): 'Wide voltage supply (3V~5V)'. The SSD1306 App Note gives VBAT 3.3 to 4.2 V for the charge pump; on this module VBAT is the XC6206 3.3 V output, which follows VCC minus about 75 mV (Torex XC6206 3.3 V, Vdif1 typ at 30 mA, https://cdn.eicom.ru/media/PDF/1021087.pdf p. 5) when VCC is below 3.3 V. The module is documented to run from 3 V, so the module's figure is used rather than 3.3 V + dropout."
+					}
+				}]
+			} }
 		},
 		art: {
 			"w": 130,

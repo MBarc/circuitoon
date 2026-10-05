@@ -1,0 +1,83 @@
+{
+  "id": "oled-ssd1306-096-i2c",
+  "researched": "2026-10-05",
+  "sim": {
+    "power": {
+      "domains": [
+        {
+          "name": "VCC",
+          "pin": "VCC",
+          "ret": "GND",
+          "nominal": 3.3
+        }
+      ],
+      "draw": [
+        {
+          "domain": "VCC",
+          "typical": {
+            "value": 0.01,
+            "unit": "A",
+            "provenance": "estimate",
+            "source": "https://cdn-shop.adafruit.com/datasheets/SSD1306.pdf https://www.lcdwiki.com/res/MC096VX/0.96inch-OLED-MC096VX-schematic-diagram.pdf https://www.lcdwiki.com/0.96inch_OLED_Module_MC096GX",
+            "note": "Pixel-dependent: about a third to a half of the pixels lit (text and graphics), contrast FFh. Same arithmetic as peak with the 5.6 mA segment current scaled by the lit fraction: (1.9 to 2.8 mA + ICC 0.43 mA) x 7.5 V / 0.7 / 3.3 V = 7.5 to 10.5 mA. The module page (lcdwiki MC096GX) states 0.06 W 'in normal condition' with no voltage, which is 12 mA at 5 V or 18 mA at 3.3 V. 10 mA taken, at the top of the arithmetic range and below the page's figure. SSD1306 chip values (chip, not board) plus the module's IREF resistor; not a measured board value."
+          },
+          "peak": {
+            "value": 0.02,
+            "unit": "A",
+            "provenance": "estimate",
+            "source": "https://cdn-shop.adafruit.com/datasheets/SSD1306.pdf https://www.lcdwiki.com/res/MC096VX/0.96inch-OLED-MC096VX-schematic-diagram.pdf",
+            "note": "All pixels on, contrast FFh. IREF = (VCC 7.5 V - 2.5 V) / 910 kohm (module R4, schematic) = 5.5 uA; ISEG = 255/256 x IREF x 8 = 43.8 uA (SSD1306 datasheet section 8, Figure 8-15, p. 26); 128 segments x 43.8 uA = 5.6 mA, plus ICC 0.43 mA typ (Table 12-1, p. 48; given at VCC 12 V, IREF 12.5 uA, all on, contrast FFh, used here unscaled) = 6.0 mA at the 7.5 V charge-pump output (App Note section 2) = 45 mW; from VBAT 3.3 V at an assumed 70 % charge-pump efficiency = 19.5 mA, plus IDD 0.05 mA, rounded to 20 mA. Chip values (chip, not board); pump efficiency assumed."
+          },
+          "minVolts": {
+            "value": 3,
+            "unit": "V",
+            "provenance": "representative",
+            "source": "https://www.lcdwiki.com/0.96inch_OLED_Module_MC096GX",
+            "note": "lcdwiki MC096GX (a GND VCC SCL SDA module of this kind; clones vary): 'Wide voltage supply (3V~5V)'. The SSD1306 App Note gives VBAT 3.3 to 4.2 V for the charge pump; on this module VBAT is the XC6206 3.3 V output, which follows VCC minus about 75 mV (Torex XC6206 3.3 V, Vdif1 typ at 30 mA, https://cdn.eicom.ru/media/PDF/1021087.pdf p. 5) when VCC is below 3.3 V. The module is documented to run from 3 V, so the module's figure is used rather than 3.3 V + dropout."
+          }
+        }
+      ]
+    }
+  },
+  "notes": [
+    "Regulator and IREF resistor from the lcdwiki 0.96inch OLED schematic that the MC096GX page links (file name MC096VX, an I2C board with a VCC-first header): XC6206 3.3 V LDO from VCC to the panel's VDD/VBAT, 910 kohm on IREF, 4.7 kohm pull-ups on SCL, SDA and RESET to the 3.3 V net. Clones of this module (often a 662K, which is an XC6206P332 marking) are assumed to match.",
+    "Nominal 3.3 V chosen for the domain; the module accepts 3.3 V or 5 V on VCC. The draw is the same at either voltage because the LDO passes the load current.",
+    "The internal 3.3 V net is not a pin, so the XC6206 is not modelled as a rail: the module is one load on VCC.",
+    "Contrast and pixel content set the draw; the model cannot see either, so typical and peak bracket them."
+  ],
+  "unaccounted": [
+    "XC6206 quiescent current (1 uA typ, Torex datasheet) - negligible.",
+    "Current through the on-board 4.7 kohm I2C pull-ups when SDA or SCL is held low (up to 0.7 mA each at 3.3 V) - depends on bus traffic, flows through the bus master's pin rather than as a constant draw.",
+    "Charge-pump efficiency is not given in the SSD1306 datasheet; 70 % is assumed."
+  ],
+  "review": [
+    {
+      "date": "2026-10-06",
+      "reviewer": "independent reviewer 1",
+      "checked": 3,
+      "corrected": [
+        {
+          "path": "sim.power.draw[0].typical.note",
+          "was": "...roughly 6 to 12 mA ... 10 mA taken between the two...",
+          "now": "7.5 to 10.5 mA arithmetic; 10 mA taken at its top, below the page's 12 to 18 mA",
+          "why": "Scaling the peak arithmetic by 1/3 to 1/2 lit gives 7.5 to 10.5 mA, not 6 to 12; and 10 mA is not between the page's 12 mA (5 V) and 18 mA (3.3 V) readings, so 'between the two' was wrong. Value kept."
+        }
+      ],
+      "disputed": []
+    },
+    {
+      "date": "2026-10-06",
+      "reviewer": "independent reviewer 2",
+      "checked": 3,
+      "corrected": [
+        {
+          "path": "sim.power.draw[0].peak.note",
+          "was": "plus ICC 0.43 mA typ (Table 12-1, p. 48)",
+          "now": "plus ICC 0.43 mA typ (Table 12-1, p. 48; given at VCC 12 V, IREF 12.5 uA, all on, contrast FFh, used here unscaled)",
+          "why": "Protocol item 2: the note gives the datasheet test conditions, which differ from the module's 7.5 V / 5.5 uA. Values unchanged. Checked: ISEG formula and Figure 8-15 p. 26; App Note section 2 (7.5 V pump, VBAT 3.3 to 4.2 V); schematic R4 910K on IREF, XC6206, 4.7K on SCL/SDA/RESET; 5.5 uA, 43.8 uA, 5.6 mA, 19.6 mA and 7.5 to 10.5 mA arithmetic; lcdwiki MC096GX '0.06w in normal condition' and '3V~5V'; Torex XC6206 3.3 V Vdif1 75 mV typ (p. 5) and IDD 1.0 uA typ (p. 4)."
+        }
+      ],
+      "disputed": []
+    }
+  ]
+}

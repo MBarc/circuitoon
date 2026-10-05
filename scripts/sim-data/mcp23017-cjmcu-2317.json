@@ -1,0 +1,263 @@
+{
+  "id": "mcp23017-cjmcu-2317",
+  "researched": "2026-10-05",
+  "sim": {
+    "power": {
+      "domains": [
+        {
+          "name": "VCC",
+          "pin": "VCC",
+          "ret": "GND",
+          "nominal": 3.3
+        }
+      ],
+      "draw": [
+        {
+          "domain": "VCC",
+          "typical": {
+            "value": 0.001,
+            "unit": "A",
+            "source": "https://ww1.microchip.com/downloads/aemDocuments/documents/APID/ProductDocuments/DataSheets/MCP23017-Data-Sheet-DS20001952.pdf",
+            "provenance": "datasheet",
+            "note": "Table 1-1 D004, p. 4: IDD 1 mA max at SCL = 1 MHz, 1.8 to 5.5 V, -40 to +125 C. No typical is stated, so the maximum is used (an upper bound; idle is D005 standby, 1 uA max). Chip, not board. Excludes current the GPIO pins source into loads, which is solved."
+          },
+          "minVolts": {
+            "value": 1.8,
+            "unit": "V",
+            "source": "https://ww1.microchip.com/downloads/aemDocuments/documents/APID/ProductDocuments/DataSheets/MCP23017-Data-Sheet-DS20001952.pdf",
+            "provenance": "datasheet",
+            "note": "Table 1-1 D001, p. 4: VDD 1.8 V min. Chip, not board (the board has no regulator, so VCC is VDD)."
+          }
+        }
+      ]
+    },
+    "limits": [
+      {
+        "of": {
+          "pin": "GPA0"
+        },
+        "kind": "absMaxCurrent",
+        "value": 0.025,
+        "source": "https://ww1.microchip.com/downloads/aemDocuments/documents/APID/ProductDocuments/DataSheets/MCP23017-Data-Sheet-DS20001952.pdf",
+        "provenance": "datasheet",
+        "conditions": "absolute maximum rating, sunk or sourced by any output pin",
+        "note": "Section 1.0 Absolute Maximum Ratings, p. 3. Chip, not board."
+      },
+      {
+        "of": {
+          "pin": "GPA1"
+        },
+        "kind": "absMaxCurrent",
+        "value": 0.025,
+        "source": "https://ww1.microchip.com/downloads/aemDocuments/documents/APID/ProductDocuments/DataSheets/MCP23017-Data-Sheet-DS20001952.pdf",
+        "provenance": "datasheet",
+        "conditions": "absolute maximum rating, sunk or sourced by any output pin",
+        "note": "Section 1.0 Absolute Maximum Ratings, p. 3. Chip, not board."
+      },
+      {
+        "of": {
+          "pin": "GPA2"
+        },
+        "kind": "absMaxCurrent",
+        "value": 0.025,
+        "source": "https://ww1.microchip.com/downloads/aemDocuments/documents/APID/ProductDocuments/DataSheets/MCP23017-Data-Sheet-DS20001952.pdf",
+        "provenance": "datasheet",
+        "conditions": "absolute maximum rating, sunk or sourced by any output pin",
+        "note": "Section 1.0 Absolute Maximum Ratings, p. 3. Chip, not board."
+      },
+      {
+        "of": {
+          "pin": "GPA3"
+        },
+        "kind": "absMaxCurrent",
+        "value": 0.025,
+        "source": "https://ww1.microchip.com/downloads/aemDocuments/documents/APID/ProductDocuments/DataSheets/MCP23017-Data-Sheet-DS20001952.pdf",
+        "provenance": "datasheet",
+        "conditions": "absolute maximum rating, sunk or sourced by any output pin",
+        "note": "Section 1.0 Absolute Maximum Ratings, p. 3. Chip, not board."
+      },
+      {
+        "of": {
+          "pin": "GPA4"
+        },
+        "kind": "absMaxCurrent",
+        "value": 0.025,
+        "source": "https://ww1.microchip.com/downloads/aemDocuments/documents/APID/ProductDocuments/DataSheets/MCP23017-Data-Sheet-DS20001952.pdf",
+        "provenance": "datasheet",
+        "conditions": "absolute maximum rating, sunk or sourced by any output pin",
+        "note": "Section 1.0 Absolute Maximum Ratings, p. 3. Chip, not board."
+      },
+      {
+        "of": {
+          "pin": "GPA5"
+        },
+        "kind": "absMaxCurrent",
+        "value": 0.025,
+        "source": "https://ww1.microchip.com/downloads/aemDocuments/documents/APID/ProductDocuments/DataSheets/MCP23017-Data-Sheet-DS20001952.pdf",
+        "provenance": "datasheet",
+        "conditions": "absolute maximum rating, sunk or sourced by any output pin",
+        "note": "Section 1.0 Absolute Maximum Ratings, p. 3. Chip, not board."
+      },
+      {
+        "of": {
+          "pin": "GPA6"
+        },
+        "kind": "absMaxCurrent",
+        "value": 0.025,
+        "source": "https://ww1.microchip.com/downloads/aemDocuments/documents/APID/ProductDocuments/DataSheets/MCP23017-Data-Sheet-DS20001952.pdf",
+        "provenance": "datasheet",
+        "conditions": "absolute maximum rating, sunk or sourced by any output pin",
+        "note": "Section 1.0 Absolute Maximum Ratings, p. 3. Chip, not board."
+      },
+      {
+        "of": {
+          "pin": "GPA7"
+        },
+        "kind": "absMaxCurrent",
+        "value": 0.025,
+        "source": "https://ww1.microchip.com/downloads/aemDocuments/documents/APID/ProductDocuments/DataSheets/MCP23017-Data-Sheet-DS20001952.pdf",
+        "provenance": "datasheet",
+        "conditions": "absolute maximum rating, sunk or sourced by any output pin",
+        "note": "Section 1.0 Absolute Maximum Ratings, p. 3. Chip, not board."
+      },
+      {
+        "of": {
+          "pin": "GPB0"
+        },
+        "kind": "absMaxCurrent",
+        "value": 0.025,
+        "source": "https://ww1.microchip.com/downloads/aemDocuments/documents/APID/ProductDocuments/DataSheets/MCP23017-Data-Sheet-DS20001952.pdf",
+        "provenance": "datasheet",
+        "conditions": "absolute maximum rating, sunk or sourced by any output pin",
+        "note": "Section 1.0 Absolute Maximum Ratings, p. 3. Chip, not board."
+      },
+      {
+        "of": {
+          "pin": "GPB1"
+        },
+        "kind": "absMaxCurrent",
+        "value": 0.025,
+        "source": "https://ww1.microchip.com/downloads/aemDocuments/documents/APID/ProductDocuments/DataSheets/MCP23017-Data-Sheet-DS20001952.pdf",
+        "provenance": "datasheet",
+        "conditions": "absolute maximum rating, sunk or sourced by any output pin",
+        "note": "Section 1.0 Absolute Maximum Ratings, p. 3. Chip, not board."
+      },
+      {
+        "of": {
+          "pin": "GPB2"
+        },
+        "kind": "absMaxCurrent",
+        "value": 0.025,
+        "source": "https://ww1.microchip.com/downloads/aemDocuments/documents/APID/ProductDocuments/DataSheets/MCP23017-Data-Sheet-DS20001952.pdf",
+        "provenance": "datasheet",
+        "conditions": "absolute maximum rating, sunk or sourced by any output pin",
+        "note": "Section 1.0 Absolute Maximum Ratings, p. 3. Chip, not board."
+      },
+      {
+        "of": {
+          "pin": "GPB3"
+        },
+        "kind": "absMaxCurrent",
+        "value": 0.025,
+        "source": "https://ww1.microchip.com/downloads/aemDocuments/documents/APID/ProductDocuments/DataSheets/MCP23017-Data-Sheet-DS20001952.pdf",
+        "provenance": "datasheet",
+        "conditions": "absolute maximum rating, sunk or sourced by any output pin",
+        "note": "Section 1.0 Absolute Maximum Ratings, p. 3. Chip, not board."
+      },
+      {
+        "of": {
+          "pin": "GPB4"
+        },
+        "kind": "absMaxCurrent",
+        "value": 0.025,
+        "source": "https://ww1.microchip.com/downloads/aemDocuments/documents/APID/ProductDocuments/DataSheets/MCP23017-Data-Sheet-DS20001952.pdf",
+        "provenance": "datasheet",
+        "conditions": "absolute maximum rating, sunk or sourced by any output pin",
+        "note": "Section 1.0 Absolute Maximum Ratings, p. 3. Chip, not board."
+      },
+      {
+        "of": {
+          "pin": "GPB5"
+        },
+        "kind": "absMaxCurrent",
+        "value": 0.025,
+        "source": "https://ww1.microchip.com/downloads/aemDocuments/documents/APID/ProductDocuments/DataSheets/MCP23017-Data-Sheet-DS20001952.pdf",
+        "provenance": "datasheet",
+        "conditions": "absolute maximum rating, sunk or sourced by any output pin",
+        "note": "Section 1.0 Absolute Maximum Ratings, p. 3. Chip, not board."
+      },
+      {
+        "of": {
+          "pin": "GPB6"
+        },
+        "kind": "absMaxCurrent",
+        "value": 0.025,
+        "source": "https://ww1.microchip.com/downloads/aemDocuments/documents/APID/ProductDocuments/DataSheets/MCP23017-Data-Sheet-DS20001952.pdf",
+        "provenance": "datasheet",
+        "conditions": "absolute maximum rating, sunk or sourced by any output pin",
+        "note": "Section 1.0 Absolute Maximum Ratings, p. 3. Chip, not board."
+      },
+      {
+        "of": {
+          "pin": "GPB7"
+        },
+        "kind": "absMaxCurrent",
+        "value": 0.025,
+        "source": "https://ww1.microchip.com/downloads/aemDocuments/documents/APID/ProductDocuments/DataSheets/MCP23017-Data-Sheet-DS20001952.pdf",
+        "provenance": "datasheet",
+        "conditions": "absolute maximum rating, sunk or sourced by any output pin",
+        "note": "Section 1.0 Absolute Maximum Ratings, p. 3. Chip, not board."
+      },
+      {
+        "of": {
+          "domain": "VCC"
+        },
+        "kind": "ioTotalCurrent",
+        "value": 0.125,
+        "source": "https://ww1.microchip.com/downloads/aemDocuments/documents/APID/ProductDocuments/DataSheets/MCP23017-Data-Sheet-DS20001952.pdf",
+        "provenance": "datasheet",
+        "conditions": "absolute maximum rating",
+        "note": "Section 1.0 Absolute Maximum Ratings, p. 3: maximum current into VDD pin 125 mA (out of VSS pin 150 mA). Chip, not board."
+      }
+    ]
+  },
+  "notes": [
+    "VCC and VCC 2, GND and GND 2 are joined on the board (module internal), so one domain on VCC to GND covers both pads.",
+    "Nominal 3.3 V chosen; the chip runs from 1.8 to 5.5 V and the board has no regulator.",
+    "Per-pin limits on GPA0-GPA7 and GPB0-GPB7 only. GPA7 and GPB7 are output-only in this datasheet revision; the limit applies the same. INTA and INTB are not given limits.",
+    "The per-pin 25 mA is an absolute maximum (sunk or sourced), so it is entered as absMaxCurrent only; exceeding it is reported as over the absolute maximum. The datasheet gives no lower recommended per-pin current."
+  ],
+  "unaccounted": [
+    "Power LED: none of the opened sources (digitaltown, ShillehTek manual, EasyEDA component page) show a power LED or a board schematic for the CJMCU-2317, so none is counted. If the board has one, its current is missing.",
+    "Any on-board pull-up resistors (I2C, RESET, address pins): no schematic found; their current depends on the pin states."
+  ],
+  "review": [
+    {
+      "date": "2026-10-06",
+      "reviewer": "independent reviewer 1",
+      "checked": 19,
+      "corrected": [
+        {
+          "path": "sim.power.draw[0].minVolts.note",
+          "was": "Table 1-1 D001, p. 4: VDD 1.8 V min.",
+          "now": "... Chip, not board (the board has no regulator, so VCC is VDD).",
+          "why": "Protocol item 3: a chip value used for the board must say 'chip, not board'. Value 1.8 V confirmed."
+        },
+        {
+          "path": "notes[3]",
+          "was": "The per-pin 25 mA is an absolute maximum; it is entered as both current (the brief) and absMaxCurrent (its real kind), so exceeding it is reported as over the absolute maximum.",
+          "now": "The per-pin 25 mA is an absolute maximum (sunk or sourced), so it is entered as absMaxCurrent only; exceeding it is reported as over the absolute maximum. The datasheet gives no lower recommended per-pin current.",
+          "why": "The patch has no 'current' limit, only absMaxCurrent, so the note's claim that it is entered as both was false."
+        }
+      ],
+      "disputed": []
+    },
+    {
+      "date": "2026-10-06",
+      "reviewer": "independent reviewer 2",
+      "checked": 19,
+      "corrected": [],
+      "disputed": []
+    }
+  ]
+}

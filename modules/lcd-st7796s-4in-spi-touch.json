@@ -104,7 +104,54 @@
   },
   "electrical": {
     "model": "display",
-    "params": {}
+    "params": {},
+    "sim": {
+      "power": {
+        "domains": [
+          {
+            "name": "VCC",
+            "pin": "VCC",
+            "ret": "GND",
+            "nominal": 3.3
+          },
+          {
+            "name": "LED",
+            "pin": "LED",
+            "ret": "GND",
+            "nominal": 3.3
+          }
+        ],
+        "draw": [
+          {
+            "domain": "VCC",
+            "typical": {
+              "value": 0.067,
+              "unit": "A",
+              "provenance": "estimate",
+              "source": "https://www.lcdwiki.com/res/MSP4021/ST7796S-Sitronix.pdf https://www.lcdwiki.com/res/MSP4021/4.0inch_SPI_Schematic.pdf https://www.lcdwiki.com/res/MSP4021/QD-40037C1-00_specification_V1.0.pdf",
+              "note": "Backlight on. Controller: ST7796S normal mode IDD 12 mA typ (section 7.3 Power Consumption, p. 50; 60 Hz, all pixels black, VDDI 1.8 V, VDDA 2.8 V; chip, not board). Backlight: 8 white LEDs in parallel (panel QD40037C1 outline, backlight circuit), anode LEDA on the module's 3.3 V net, cathodes through R5 5.6 ohm and an S8050 switch to GND (module schematic). The documentation gives no backlight current; I = (3.3 V - Vf - Vce(sat)) / 5.6 ohm with an assumed Vce(sat) of 0.1 V (not from an S8050 datasheet) and an assumed white-LED Vf of 2.8 to 3.0 V gives 36 to 71 mA; 55 mA taken. 12 + 55 = 67 mA. Note the backlight current flows from VCC, not from the LED pin."
+            },
+            "peak": {
+              "value": 0.087,
+              "unit": "A",
+              "provenance": "estimate",
+              "source": "https://www.lcdwiki.com/res/MSP4021/ST7796S-Sitronix.pdf https://www.lcdwiki.com/res/MSP4021/4.0inch_SPI_Schematic.pdf",
+              "note": "Backlight on at the top of its range plus the controller maximum: ST7796S IDD 16 mA max (section 7.3, p. 50, VDDI = VDDA = 3.3 V; chip, not board) + 71 mA backlight (Vf 2.8 V in the arithmetic of typical) = 87 mA. Pixel content changes the controller draw only slightly; the backlight dominates. The module page's 'Power Consumption 0.78W(have touch)/0.93W(no touch)' (no voltage given) would mean 156 to 282 mA, which would need a white-LED Vf of about 1.6 to 2.3 V across the 5.6 ohm resistor and 0.1 V Vce(sat) on the 3.3 V net (implausible for white LEDs); so it is not used."
+            }
+          },
+          {
+            "domain": "LED",
+            "typical": {
+              "value": 0.0025,
+              "unit": "A",
+              "provenance": "estimate",
+              "source": "https://www.lcdwiki.com/res/MSP4021/4.0inch_SPI_Schematic.pdf",
+              "note": "The LED pin drives the base of the S8050 backlight switch through R6 1 kohm (module schematic; 'TFT_BL high level enables'). (3.3 V - Vbe about 0.8 V) / 1 kohm = 2.5 mA when driven at 3.3 V; about 4.2 mA at 5 V. Vbe assumed, not from an S8050 datasheet."
+            }
+          }
+        ]
+      }
+    }
   },
   "art": {
     "w": 360,
