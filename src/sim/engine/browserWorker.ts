@@ -34,9 +34,15 @@ serve(
   (m) => scope.postMessage(m),
   (cb) => scope.addEventListener('message', (e) => cb(e.data)),
   async (progress) => {
-    const manifest = (await (await fetch(`${BASE}engine.json`)).json()) as EngineManifest
-    const wasm = await fetchBytes(`${BASE}ngspice.wasm`, manifest.wasmBytes, progress)
-    const glue = `${BASE}ngspice.mjs`
+    // engine.json is revalidated every time; the engine files are named by its hash, so a new
+    // engine is never mixed with a cached old one.
+    const res = await fetch(`${BASE}engine.json`, { cache: 'no-cache' })
+    if (!res.ok) throw new Error(`the simulation engine is not installed (${BASE}engine.json: HTTP ${res.status})`)
+    const manifest = (await res.json()) as EngineManifest
+    const v = `?v=${manifest.wasmSha256}`
+    const wasm = await fetchBytes(`${BASE}ngspice.wasm${v}`, manifest.wasmBytes, progress)
+    // An absolute URL: Vite's dev server rewrites a relative or root import of a public file (?import) and refuses it.
+    const glue = new URL(`${BASE}ngspice.mjs${v}`, self.location.href).href
     const { default: factory } = (await import(/* @vite-ignore */ glue)) as { default: NgFactory }
     return { core: await createCore(factory, wasm), info: { name: 'ngspice', version: manifest.ngspice, build: manifest.build } }
   },

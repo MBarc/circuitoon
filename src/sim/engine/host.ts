@@ -1,7 +1,8 @@
 // The engine's worker lifecycle (spec 2.3), shared by the browser and Node: the worker is spawned
 // on first use; each run has a 5 s timeout, after which the worker is terminated and recreated and
-// the run retried once (a second timeout is a failure); the worker is recycled after any failure
-// and after 2,000 engine runs, always between runs. Loading has its own timeout, after which the
+// the run retried once (a second timeout is a failure); the worker is recycled when the engine is
+// dead (ngspice exited, a WASM trap, a timeout, the worker exiting) and after 2,000 engine runs,
+// always between runs, but not after an ordinary circuit failure (ruling, amending spec 2.3). Loading has its own timeout, after which the
 // engine is "unavailable", so a caller (sim, gate) always gets an answer. Requests run one at a time.
 
 export interface EngineInfo { name: 'ngspice'; version: string; build: string }
@@ -9,8 +10,9 @@ export type ToWorker = { type: 'run'; id: number; text: string }
 export type FromWorker =
   | { type: 'ready'; engine: EngineInfo }
   | { type: 'progress'; loaded: number; total: number }
-  | { type: 'result'; id: number; ok: true; vectors: Record<string, number>; ms: number; heap: number }
-  | { type: 'result'; id: number; ok: false; error: string; ms: number; heap: number }
+  | { type: 'result'; id: number; ok: true; vectors: Record<string, number>; warnings?: string[]; ms: number; heap: number }
+  /** `dead`: the engine cannot be used again (ngspice exited or the run trapped), so the worker is recycled. */
+  | { type: 'result'; id: number; ok: false; error: string; dead?: boolean; ms: number; heap: number }
   | { type: 'fatal'; error: string }
 export interface WorkerLike {
   post(m: ToWorker): void
@@ -18,7 +20,7 @@ export interface WorkerLike {
   onExit(cb: () => void): void
   terminate(): void
 }
-export type TextOutcome = { status: 'ok'; vectors: Record<string, number>; ms: number } | { status: 'failed'; error: string } | { status: 'unavailable'; reason: string }
+export type TextOutcome = { status: 'ok'; vectors: Record<string, number>; warnings?: string[]; ms: number } | { status: 'failed'; error: string } | { status: 'unavailable'; reason: string }
 
 export const RUN_TIMEOUT_MS = 5000
 export const RECYCLE_RUNS = 2000
@@ -43,6 +45,8 @@ export class EngineHost {
   private opts: HostOptions
   private worker: WorkerLike | null = null
   private ready: Promise<EngineInfo> | null = null
+  /** While the engine loads: fails the load now (dispose or recycle during a load). */
+  private abortLoad: ((why: string) => void) | null = null
   private waiting = new Map<number, (a: Answer) => void>()
   private onWorker = 0
   private seq = 0
@@ -70,15 +74,19 @@ export class EngineHost {
       this.spawned++
       this.worker = w
       const limit = this.opts.loadTimeoutMs ?? LOAD_TIMEOUT_MS
-      const timer = setTimeout(() => reject(new Error(`the simulation engine did not load within ${limit / 1000} s`)), limit)
+      const fail = (why: string) => {
+        clearTimeout(timer)
+        this.abortLoad = null
+        reject(new Error(why))
+      }
+      const timer = setTimeout(() => fail(`the simulation engine did not load within ${limit / 1000} s`), limit)
+      this.abortLoad = fail
       w.onMessage((m) => {
         if (m.type === 'ready') {
           clearTimeout(timer)
+          this.abortLoad = null
           resolve((this.info = m.engine))
-        } else if (m.type === 'fatal') {
-          clearTimeout(timer)
-          reject(new Error(m.error))
-        }
+        } else if (m.type === 'fatal') fail(m.error)
         else if (m.type === 'progress') this.opts.onProgress?.(m.loaded, m.total)
         else if (m.type === 'result') {
           this.lastHeap = m.heap
@@ -86,12 +94,12 @@ export class EngineHost {
           this.waiting.delete(m.id)
         }
       })
+      // The worker exited on its own (loading, mid-run or idle): fail what waits on it and start
+      // a fresh one on the next request.
       w.onExit(() => {
         if (this.worker !== w) return
-        clearTimeout(timer)
-        reject(new Error('the simulation engine stopped while loading'))
-        for (const done of this.waiting.values()) done('timeout')
-        this.waiting.clear()
+        fail('the simulation engine stopped while loading')
+        this.recycle()
       })
     })
     this.ready = ready
@@ -123,6 +131,7 @@ export class EngineHost {
   }
 
   private recycle(): void {
+    this.abortLoad?.('the simulation engine was stopped while loading')
     this.worker?.terminate()
     this.worker = null
     this.ready = null
@@ -153,11 +162,12 @@ export class EngineHost {
       this.runs++
       this.onWorker++
       if (!a.ok) {
-        this.recycle()
+        // An ordinary circuit failure leaves the engine usable; only a dead engine is replaced.
+        if (a.dead || this.onWorker >= (this.opts.recycleRuns ?? RECYCLE_RUNS)) this.recycle()
         return { status: 'failed', error: a.error }
       }
       if (this.onWorker >= (this.opts.recycleRuns ?? RECYCLE_RUNS)) this.recycle()
-      return { status: 'ok', vectors: a.vectors, ms: a.ms }
+      return a.warnings ? { status: 'ok', vectors: a.vectors, warnings: a.warnings, ms: a.ms } : { status: 'ok', vectors: a.vectors, ms: a.ms }
     }
     return { status: 'failed', error: `the simulation engine did not answer within ${this.timeout() / 1000} s, twice` }
   }

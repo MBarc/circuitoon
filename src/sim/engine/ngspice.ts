@@ -24,7 +24,8 @@ export interface NgModule {
   FS: { writeFile(path: string, data: string): void }
 }
 export type NgFactory = (opts: { wasmBinary: Uint8Array; print?: (s: string) => void; printErr?: (s: string) => void }) => Promise<NgModule>
-export type OpResult = { ok: true; vectors: Record<string, number> } | { ok: false; error: string }
+/** `warnings`: the stderr lines of a run that solved. `error`: a failed run's stderr lines, the `Error` lines first. */
+export type OpResult = { ok: true; vectors: Record<string, number>; warnings?: string[] } | { ok: false; error: string }
 export interface EngineManifest { ngspice: string; build: string; mode: 'shared' | 'shared-noxspice' | 'exe'; emsdk: string; wasmBytes: number; wasmSha256: string; release: string }
 
 /** vector_info on wasm32 (sharedspice.h): v_name 0, v_type 4, v_flags 8, v_realdata 12, v_compdata 16, v_length 20. */
@@ -112,8 +113,12 @@ export class NgspiceCore {
       }
     this.command('remcirc')
     this.command('destroy all')
-    if (this.dead || Object.keys(vectors).length === 0) return { ok: false, error: this.errors.join('\n') || 'the operating point produced no data' }
-    return { ok: true, vectors }
+    if (this.dead || Object.keys(vectors).length === 0) {
+      const isError = (l: string) => l.startsWith('Error')
+      const error = [...this.errors.filter(isError), ...this.errors.filter((l) => !isError(l))].join('\n')
+      return { ok: false, error: error || 'the operating point produced no data' }
+    }
+    return this.errors.length ? { ok: true, vectors, warnings: this.errors } : { ok: true, vectors }
   }
 
   setBreakpoint(t: number): boolean {
@@ -128,16 +133,4 @@ export class NgspiceCore {
 export async function createCore(factory: NgFactory, wasmBinary: Uint8Array): Promise<NgspiceCore> {
   const m = await factory({ wasmBinary, print: () => {}, printErr: () => {} })
   return new NgspiceCore(m)
-}
-
-/** Node only: the factory, wasm bytes and manifest from an engine directory (public/sim or plugin/dist-cli). */
-export async function loadEngineFiles(dir: string): Promise<{ factory: NgFactory; wasm: Uint8Array; manifest: EngineManifest }> {
-  const { readFileSync } = await import('node:fs')
-  const { join } = await import('node:path')
-  const { pathToFileURL } = await import('node:url')
-  const manifest = JSON.parse(readFileSync(join(dir, 'engine.json'), 'utf8')) as EngineManifest
-  // A variable specifier: bundlers leave it alone, so the glue is loaded from disk at run time.
-  const glue = pathToFileURL(join(dir, 'ngspice.mjs')).href
-  const mod = (await import(/* @vite-ignore */ glue)) as { default: NgFactory }
-  return { factory: mod.default, wasm: new Uint8Array(readFileSync(join(dir, 'ngspice.wasm'))), manifest }
 }

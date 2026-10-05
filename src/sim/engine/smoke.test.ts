@@ -3,7 +3,8 @@
 // accepted, and a failed op is a failure that leaves the instance usable.
 import { describe, expect, it } from 'vitest'
 import { join } from 'node:path'
-import { createCore, loadEngineFiles } from './ngspice.ts'
+import { createCore } from './ngspice.ts'
+import { loadEngineFiles } from './nodeEngine.ts'
 
 const DIR = join(import.meta.dirname, '..', '..', '..', 'public', 'sim')
 const LED = `* led
@@ -41,9 +42,18 @@ describe('ngspice engine (smoke)', () => {
     // (A malformed line such as 'R1 a' is only a warning in ngspice 45.2: it is dropped and the rest solves.)
     const bad = core.op('* bad\nV1 a 0 DC 5\nV2 a 0 DC 3\n.end')
     expect(bad.ok).toBe(false)
-    if (!bad.ok) expect(bad.error.length).toBeGreaterThan(0)
+    // The Error lines come first, ahead of the warnings and notes printed before them.
+    if (!bad.ok) expect(bad.error.split('\n').slice(0, 2).every((l) => l.startsWith('Error'))).toBe(true)
+    if (!bad.ok) expect(bad.error).toContain('Warning: singular matrix')
     const again = core.op(LED)
     expect(again.ok && Math.abs(again.vectors.a - 2.000761) < 1e-5).toBe(true)
     expect(core.runs).toBe(3)
+  })
+  it('returns the stderr warnings of a run that solves, and none from a clean one', async () => {
+    const { factory, wasm } = await loadEngineFiles(DIR)
+    const core = await createCore(factory, wasm)
+    const r = core.op('* warn\nV1 a 0 DC 5\nR1 a 0 1k\nR2 b\n.end')
+    expect(r).toMatchObject({ ok: true, vectors: { a: 5 }, warnings: ["Warning: 'r2 b' is not a valid resistor instance line, ignored!"] })
+    expect(core.op(LED)).not.toHaveProperty('warnings')
   })
 })

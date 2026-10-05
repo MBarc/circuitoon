@@ -114,10 +114,10 @@ The checker (`src/format/checks.ts`) is unchanged, and **it never suppresses or 
 - **Loading:** the engine loads the first time Simulate is turned on (or on the first `sim` in the CLI).
 - **Instances:** one ngspice instance per worker.
 - **Each run:** `source` + `op` + read + `remcirc`.
-- **Recycling:** the worker is recycled after 2,000 **engine runs** (not solves), and after any failure, always between runs.
+- **Recycling:** the worker is recycled after 2,000 **engine runs** (not solves), and when the engine is dead (ngspice called its exit, a WASM trap, a timeout, the worker exited), always between runs. An ordinary circuit failure (`ok: false`) keeps the worker (section 15).
 - **Timeouts:** 5 s per run. On a timeout the worker is terminated and recreated, and the run is retried once. A second timeout gives `status: 'failed'`.
 - **Failures:** an `op` with no data vector is a failure, with `getError()` text kept as `raw`.
-- **Tested sequences:** success, then failure, then success on the same session, plus worker cleanup after a failure.
+- **Tested sequences:** success, then failure, then success on the same worker, plus worker cleanup after a dead engine.
 
 ## 3. Module data
 
@@ -666,3 +666,5 @@ From an independent review of the implementation plan (`docs/superpowers/plans/2
 | 2.2 | The fallback is a ladder: rung 1 shared library with XSPICE; rung 2, tried automatically, shared library without XSPICE (same adapter, XSPICE recorded as debt); rung 3 the executable build, which means stop and redesign. |
 | 3.1 | Module `electrical.params` values, defaults included, count as `user` (the designer's stated value); only `sim` data carries datasheet, representative or estimate provenance. |
 | 5.2 | A load that nothing on the sheet powers in the current state gives `sim-brownout` as a warning (basis `topology`, "not powered in the current state"), the same whether the board is unplugged or behind an open switch with ground shared; the message names the open switch when one is the cause. The `circuitoon-design` skill tells agents to set switches to their operating position before `sim` or `gate`. |
+| 2.3 | Phase A checkpoint ruling: the worker is recycled only when the engine is dead (ngspice's exit callback, a thrown trap, a timeout, the worker exiting) and after 2,000 engine runs, not after an ordinary circuit failure (`ok: false`), which leaves the instance usable. |
+| 2.2 | The engine has XSPICE without code models: the `icm` and `cmpp` code-model tools are not built (ruling R11), so `A` devices are unavailable. This is recorded debt; adding code models later is a patch plus a rebuild, with no adapter change. |

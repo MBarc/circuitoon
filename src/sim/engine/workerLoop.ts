@@ -27,10 +27,10 @@ export function serve(
           const r = core.op(m.text)
           const ms = performance.now() - t0
           post(r.ok
-            ? { type: 'result', id: m.id, ok: true, vectors: r.vectors, ms, heap: core.heapBytes() }
-            : { type: 'result', id: m.id, ok: false, error: r.error, ms, heap: core.heapBytes() })
+            ? { type: 'result', id: m.id, ok: true, vectors: r.vectors, ...(r.warnings && { warnings: r.warnings }), ms, heap: core.heapBytes() }
+            : { type: 'result', id: m.id, ok: false, error: r.error, dead: core.dead, ms, heap: core.heapBytes() })
         } catch (e) {
-          post({ type: 'result', id: m.id, ok: false, error: `the simulation engine stopped: ${why(e)}`, ms: performance.now() - t0, heap: 0 })
+          post({ type: 'result', id: m.id, ok: false, error: `the simulation engine stopped: ${why(e)}`, dead: true, ms: performance.now() - t0, heap: 0 })
         }
       }, () => undefined)
     } catch (e) {
