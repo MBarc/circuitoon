@@ -6732,7 +6732,69 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 		footprint: "legs",
 		electrical: {
 			"model": "regulator",
-			"params": {}
+			"params": {},
+			"sim": {
+				"power": {
+					"domains": [{
+						"name": "VIN",
+						"pin": "VIN",
+						"ret": "GND",
+						"nominal": 5
+					}, {
+						"name": "OUT",
+						"pin": "OUT",
+						"ret": "GND",
+						"nominal": 3.3
+					}],
+					"rails": [{
+						"id": "ldo",
+						"inputs": [{
+							"domain": "VIN",
+							"via": "direct"
+						}],
+						"output": "OUT",
+						"kind": "ldo",
+						"vout": {
+							"value": 3.3,
+							"unit": "V",
+							"source": "http://www.advanced-monolithic.com/pdf/ds1117.pdf",
+							"provenance": "datasheet",
+							"note": "Output Voltage, AMS1117-3.3: 3.300 V typ (3.251 to 3.349 V at VIN = 4.8 V, IOUT = 0 mA, TJ = 25 C; 3.201 to 3.399 V over the full operating temperature range, boldface row), Electrical Characteristics, p. 2."
+						},
+						"dropout": {
+							"value": 1.1,
+							"unit": "V",
+							"source": "http://www.advanced-monolithic.com/pdf/ds1117.pdf",
+							"provenance": "datasheet",
+							"note": "Dropout Voltage (VIN - VOUT), AMS1117-3.3: 1.1 V typ, 1.3 V max, at delta VOUT, delta VREF = 1%, IOUT = 0.8 A (Electrical Characteristics, p. 3; boldface, so over the full operating temperature range). This is the only dropout point given; p. 1 says it decreases at lower load currents, and Note 4 says it is higher above 0.8 A. Taken at 0.8 A, just above the module's 0.7 A rating, so it is slightly pessimistic at lighter loads."
+						},
+						"iq": {
+							"value": .005,
+							"unit": "A",
+							"source": "http://www.advanced-monolithic.com/pdf/ds1117.pdf",
+							"provenance": "datasheet",
+							"note": "Quiescent Current, fixed versions (-1.5 to -5.0): 5 mA typ, 11 mA max at (VIN - VOUT) = 1.5 V (Electrical Characteristics, p. 3). Chip, not board: the module's power LED is not included."
+						},
+						"ioutMax": {
+							"value": .7,
+							"unit": "A",
+							"source": "https://protosupplies.com/product/ams1117-5v-to-3-3v-step-down-regulator-module/ http://www.advanced-monolithic.com/pdf/ds1117.pdf",
+							"provenance": "representative",
+							"note": "Representative module: ProtoSupplies AMS1117 5V to 3.3V module (3-pin VIN/OUT/GND, the module's cited source), 'Maximum Output Current 700mA (5V Input)' in its specification table; recommended max 600 mA. A thermal limit of the small board, so it falls with input voltage: the same page measured about 200 mA at 9 V and 75 mA at 12 V in. The chip itself is rated 1 A (AMS datasheet p. 1) with a current limit of 900 mA min, 1.1 A typ (p. 3)."
+						},
+						"reverse": "body-diode"
+					}]
+				},
+				"limits": [{
+					"of": { "domain": "VIN" },
+					"kind": "vinMax",
+					"value": 12,
+					"source": "https://protosupplies.com/product/ams1117-5v-to-3-3v-step-down-regulator-module/ http://www.advanced-monolithic.com/pdf/ds1117.pdf",
+					"provenance": "representative",
+					"conditions": "module maximum input voltage (5 V typical)",
+					"note": "Representative module: ProtoSupplies AMS1117 5V to 3.3V module, 'Maximum Input Voltage 12V (5V Typical)'. The AMS1117 chip's absolute maximum input is 15 V (Absolute Maximum Ratings, p. 2); the module's lower figure presumably covers its capacitors and heat, which this source does not explain."
+				}]
+			}
 		},
 		art: {
 			"w": 80,
@@ -33383,7 +33445,107 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 		},
 		electrical: {
 			"model": "power_bank",
-			"params": {}
+			"params": {},
+			"sim": {
+				"usbPorts": { "USB-C": { "gnd": "B-" } },
+				"power": {
+					"domains": [
+						{
+							"name": "BAT",
+							"pin": "B+",
+							"ret": "B-",
+							"nominal": 3.7
+						},
+						{
+							"name": "OUT",
+							"pin": "5V+",
+							"ret": "5V-",
+							"nominal": 5
+						},
+						{
+							"name": "USB",
+							"pin": "USB-C#vbus",
+							"ret": "USB-C#gnd",
+							"nominal": 5
+						}
+					],
+					"draw": [{
+						"domain": "BAT",
+						"typical": {
+							"value": 5e-5,
+							"unit": "A",
+							"source": "https://static.chipdip.ru/lib/688/DOC045688389.pdf https://wmsc.lcsc.com/wmsc/upload/file/pdf/v2/lcsc/1810262207_INJOINIC-IP5306_C181692.pdf",
+							"provenance": "datasheet",
+							"note": "Battery standby current ISTB 50 uA typ, VIN = 0 V, VBAT = 3.7 V (Electrical Characteristics, p. 5 of English V1.31; p. 6 of English V1.10). The IP5306-I2C datasheet (Chinese; its electrical pages are footed V1.2, its register pages V1.21) also gives ISTB 50 uA (VIN = 0 V, VBAT = 3.7 V); a Chinese V1.3 reading of 100 uA was not verified (no URL), and the front page of every version opened says '<100 uA standby'. Chip, not board: the module's charge-indicator LEDs are not included. While the boost runs, the chip's own operating current (IBAT 3 mA typ, VBAT = 3.7 V, p. 5) is not added here; it is folded into the rail's efficiency estimate."
+						}
+					}],
+					"rails": [{
+						"id": "boost",
+						"inputs": [{
+							"domain": "BAT",
+							"via": "direct"
+						}],
+						"output": "OUT",
+						"kind": "boost",
+						"vout": {
+							"value": 5,
+							"unit": "V",
+							"source": "https://static.chipdip.ru/lib/688/DOC045688389.pdf https://wmsc.lcsc.com/wmsc/upload/file/pdf/v2/lcsc/1810262207_INJOINIC-IP5306_C181692.pdf",
+							"provenance": "datasheet",
+							"note": "DC-DC output voltage VOUT 5.0 V typ at VBAT = 3.7 V (Electrical Characteristics, Boost system, p. 5 of English V1.31; the Chinese V1.3 also gives 5.0 V). The older English V1.10 gives 5.10 V for the same row. No min or max is stated."
+						},
+						"efficiency": {
+							"value": .88,
+							"unit": "1",
+							"provenance": "estimate",
+							"source": "https://static.chipdip.ru/lib/688/DOC045688389.pdf https://wmsc.lcsc.com/wmsc/upload/file/pdf/v2/lcsc/1810262207_INJOINIC-IP5306_C181692.pdf",
+							"note": "No IP5306 datasheet version found (English V1.10 and V1.31, Chinese V1.3, IP5306-I2C V1.2/V1.21) has an efficiency curve; they state only a peak, 'up to 92%' (V1.31 and V1.3, p. 1) or 'up to 96%' (V1.10, p. 1). Operating point assumed: about 1 A out at VBAT = 3.7 V. 0.88 assumes a synchronous boost of this class runs a few points below its quoted peak at 1 A (switch, inductor and sense losses grow with current); it would be lower near 2.4 A and at low battery voltage. Includes the chip's 3 mA operating current."
+						},
+						"vinMin": {
+							"value": 3,
+							"unit": "V",
+							"source": "https://static.chipdip.ru/lib/688/DOC045688389.pdf https://atta.szlcsc.com/upload/public/pdf/source/20231017/AB6A25E64E1038420E9A7039637542A8.pdf",
+							"provenance": "datasheet",
+							"note": "Battery operation voltage VBAT min 3.0 V (Electrical Characteristics, Boost system, p. 5 of English V1.31). The IP5306-I2C datasheet V1.21 (the I2C variant, not this chip; register SYS_CTL1 0x01 bit 0, 'Batlow 3.0V low-battery shutdown enable', reset 1; PDF p. 15) supports a default low-battery shutdown at 3.0 V. No hysteresis or restart voltage is given. Third-party readings differ and are not used: done.land's X-150 module page says output cuts off below 2.8-2.9 V, and its IP5306 page (https://done.land/components/power/powersupplies/battery/chargers/charge-discharge/ip5306/) says over-discharge 'turns off battery when voltage <3.25V (may vary with internal configuration)'."
+						},
+						"vinMax": {
+							"value": 4.4,
+							"unit": "V",
+							"source": "https://static.chipdip.ru/lib/688/DOC045688389.pdf",
+							"provenance": "datasheet",
+							"note": "Battery operation voltage VBAT max 4.4 V (Electrical Characteristics, Boost system, p. 5 of English V1.31; 4.4 V is the highest charge voltage option, 4.40 V cells)."
+						},
+						"ioutMax": {
+							"value": 2.4,
+							"unit": "A",
+							"source": "https://static.chipdip.ru/lib/688/DOC045688389.pdf",
+							"provenance": "datasheet",
+							"note": "Boost output current Ivout 2.4 A typ, no condition stated (Electrical Characteristics, p. 5 of English V1.31; Chinese V1.3 also 2.4 A). The older English V1.10 gives 2.1 A, and V1.31's Recommended operation conditions (p. 4) list load current 2.1 A typical (its MAX cell is printed as 0, a typo), so 2.4 A is the boost row's figure, not a recommended continuous load. Protection: the output shuts off when VOUT stays below 4.4 V for 30 ms (TUVD) or the current exceeds 4 A for 150-200 us (TOCD), same page."
+						},
+						"reverse": "blocks",
+						"offPath": "diode",
+						"minLoad": {
+							"amps": {
+								"value": .045,
+								"unit": "A",
+								"source": "https://static.chipdip.ru/lib/688/DOC045688389.pdf",
+								"provenance": "datasheet",
+								"note": "Load removal detect timer TloadD: 'Load current continuously lower than 45mA', 32 s typ (p. 6 of English V1.31; same in V1.10 and Chinese V1.3)."
+							},
+							"note": "Light-load automatic shutdown: with the output load below 45 mA continuously for 32 s (typ), the IP5306 turns the boost off and goes to standby. A short press on KEY (30 ms to 2 s) turns it back on (Push Button, p. 9 of V1.31)."
+						}
+					}]
+				},
+				"limits": [{
+					"of": { "domain": "USB" },
+					"kind": "vinMax",
+					"value": 5.5,
+					"source": "https://static.chipdip.ru/lib/688/DOC045688389.pdf https://wmsc.lcsc.com/wmsc/upload/file/pdf/v2/lcsc/1810262207_INJOINIC-IP5306_C181692.pdf",
+					"provenance": "datasheet",
+					"conditions": "recommended operating conditions, input voltage VIN max (4.65 to 5.5 V; 4.75 to 5.5 V in V1.10)",
+					"note": "Recommended operation conditions, p. 4 of English V1.31 (and V1.10). Absolute maximum VIN is -0.3 to 6 V in V1.31 and -0.3 to 5.5 V in V1.10 (p. 4). Chip, not board: assumes the module's USB-C VBUS goes straight to the IP5306 VIN pin with no protection in between."
+				}]
+			}
 		},
 		art: {
 			"w": 120,

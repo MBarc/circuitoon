@@ -94,3 +94,17 @@ describe('displays and the MCP23017 breakout (spec 3.4)', () => {
     expect(sim.limits!.some((l) => l.kind === 'absMaxCurrent' && 'pin' in l.of && l.of.pin === 'GPA0')).toBe(true)
   })
 })
+
+describe('the IP5306 and AMS1117 modules (spec 3.4)', () => {
+  it('models the IP5306 as a boost with its light-load shutdown', () => {
+    const r = simOf(load('ip5306-usbc-module'))!.power!.rails!.find((x) => x.kind === 'boost')!
+    expect(r.inputs).toEqual([{ domain: 'BAT', via: 'direct' }])
+    expect(r.output).toBe('OUT')
+    expect(r.minLoad?.note).toBeTruthy()
+    expect(r.efficiency!.note).toBeTruthy()
+  })
+  it('models the AMS1117 as an LDO from VIN to OUT', () => {
+    const r = simOf(load('ams1117-33-module'))!.power!.rails![0]
+    expect([r.kind, r.output, r.vout?.value]).toEqual(['ldo', 'OUT', 3.3])
+  })
+})

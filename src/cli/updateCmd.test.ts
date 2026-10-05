@@ -20,7 +20,7 @@ describe('circuitoon update', () => {
     const r = await cli(['update', 'sheet.json'], { cwd: dir })
     expect(r.code).toBe(0)
     expect(r.out).toMatch(/^Updated U\d+ \(esp32-devkit-v1-30\): USB port USB, pins VP\/VN\/D34\/D35\/D12\/D5\/D2\/D15 \(pin data\), electrical sim\.$/m)
-    expect(r.out).toMatch(/^Updated U\d+ \(ip5306-usbc-module\): USB port USB-C\.$/m)
+    expect(r.out).toMatch(/^Updated U\d+ \(ip5306-usbc-module\): USB port USB-C, electrical sim\.$/m)
     expect(r.out).toMatch(/^Updated \S+ \(oled-ssd1306-096-i2c\): .*footprint.*I2C data, electrical sim\.$/m)
     expect(r.out).toContain('Updated oled-ssd1306-096-i2c-vcc-gnd (no parts on the sheet): ')
     expect(r.out).toContain('Wrote sheet.json.')
