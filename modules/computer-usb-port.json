@@ -53,7 +53,42 @@
   },
   "electrical": {
     "model": "computer",
-    "params": {}
+    "params": {},
+    "sim": {
+      "power": {
+        "domains": [
+          {
+            "name": "USB",
+            "pin": "USB#vbus",
+            "ret": "USB#gnd",
+            "nominal": 5
+          }
+        ],
+        "source": {
+          "domain": "USB",
+          "voltage": {
+            "value": 5,
+            "unit": "V",
+            "source": "https://www.usb.org/document-library/usb-20-specification https://www.usb.org/sites/default/files/usb_20_20250603.zip",
+            "provenance": "representative",
+            "note": "Nominal 5.0 V. USB 2.0 specification (usb_20.pdf in the zip), Table 7-7, p. 178: high-power port VBUS 4.75 to 5.25 V (low-power port 4.40 to 5.25 V); section 7.2.2, p. 175, says the same. The ECN \"USB 2.0 VBUS Max Limit\" in the same zip raises the maximum to 5.50 V. Real computer ports vary within that range."
+          },
+          "rInternal": {
+            "value": 0.1,
+            "unit": "ohm",
+            "provenance": "estimate",
+            "note": "Assumed: the host's port power switch plus board traces and connector contact, of the order of 0.1 ohm. Not from any datasheet. Upper bound from the spec: a 5.0 V port that stays at or above 4.75 V at 500 mA has at most (5.0 - 4.75) / 0.5 = 0.5 ohm."
+          },
+          "imax": {
+            "value": 0.5,
+            "unit": "A",
+            "source": "https://www.usb.org/document-library/usb-20-specification https://www.usb.org/sites/default/files/usb_20_20250603.zip",
+            "provenance": "representative",
+            "note": "USB 2.0 specification, Table 7-7, p. 178: ICCPRT, high-power hub port (out), 500 mA minimum (five unit loads of 100 mA, section 7.2.1). A device may draw only 100 mA until configured. Many real ports trip above 500 mA; 500 mA is the guaranteed figure."
+          }
+        }
+      }
+    }
   },
   "art": {
     "w": 140,

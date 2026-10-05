@@ -6001,6 +6001,32 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			"params": { "voltage": {
 				"unit": "V",
 				"default": 12
+			} },
+			"sim": { "power": {
+				"domains": [{
+					"name": "OUT",
+					"pin": "+",
+					"ret": "-",
+					"nominal": 12
+				}],
+				"source": {
+					"domain": "OUT",
+					"voltage": "param:voltage",
+					"rInternal": {
+						"value": .36,
+						"unit": "ohm",
+						"source": "https://www.meanwell.com/Upload/PDF/NGE12/NGE12-SPEC.PDF",
+						"provenance": "estimate",
+						"note": "Typical 12 V barrel adapter, assumed to be the Mean Well NGE12 12-P1J (the module's own source; 12 V is electrical.params.voltage's default): load regulation +/-3.0% (SPECIFICATION p. 2), band +/-3% x 12 V = +/-0.36 V, whole swing up to 0.72 V over 0 to 1.0 A, 0.72 ohm. Mean Well NGE12 SPECIFICATION p. 3, Note 6, reads \"Load regulation is measured from 0% to 100% rated load\"; the plus-minus figure is a band about the output at a reference load, so the whole 0 to rated-load swing can be up to twice the figure. This value uses that upper bound (real units usually droop less). The same value is used whatever voltage the user sets. Controller ruling (reviewers disagreed): the two readings are 0.36 ohm (the +/-x% figure taken as the whole no-load to full-load swing) and 0.72 ohm (a band about a reference, up to twice the swing). 0.36 ohm is used: it is nearer typical droop, and this estimate never blocks."
+					},
+					"imax": {
+						"value": 1,
+						"unit": "A",
+						"source": "https://www.meanwell.com/Upload/PDF/NGE12/NGE12-SPEC.PDF",
+						"provenance": "estimate",
+						"note": "Typical 12 V barrel adapter, assumed to be the Mean Well NGE12 12-P1J: rated current 1.0 A (12 W), SPECIFICATION p. 2. The same value is used whatever voltage the user sets; in the same series the 5 V model is rated 2.4 A and the 24 V model 0.625 A."
+					}
+				}
 			} }
 		},
 		art: {
@@ -6277,6 +6303,32 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			"params": { "voltage": {
 				"unit": "V",
 				"default": 12
+			} },
+			"sim": { "power": {
+				"domains": [{
+					"name": "OUT",
+					"pin": "+",
+					"ret": "-",
+					"nominal": 12
+				}],
+				"source": {
+					"domain": "OUT",
+					"voltage": "param:voltage",
+					"rInternal": {
+						"value": .36,
+						"unit": "ohm",
+						"source": "https://www.meanwell.com/Upload/PDF/NGE12/NGE12-SPEC.PDF",
+						"provenance": "estimate",
+						"note": "Typical 12 V barrel adapter, assumed to be the Mean Well NGE12 12-P1J (the module's own source; 12 V is electrical.params.voltage's default): load regulation +/-3.0% (SPECIFICATION p. 2), band +/-3% x 12 V = +/-0.36 V, whole swing up to 0.72 V over 0 to 1.0 A, 0.72 ohm. Mean Well NGE12 SPECIFICATION p. 3, Note 6, reads \"Load regulation is measured from 0% to 100% rated load\"; the plus-minus figure is a band about the output at a reference load, so the whole 0 to rated-load swing can be up to twice the figure. This value uses that upper bound (real units usually droop less). The same value is used whatever voltage the user sets. Controller ruling (reviewers disagreed): the two readings are 0.36 ohm (the +/-x% figure taken as the whole no-load to full-load swing) and 0.72 ohm (a band about a reference, up to twice the swing). 0.36 ohm is used: it is nearer typical droop, and this estimate never blocks."
+					},
+					"imax": {
+						"value": 1,
+						"unit": "A",
+						"source": "https://www.meanwell.com/Upload/PDF/NGE12/NGE12-SPEC.PDF",
+						"provenance": "estimate",
+						"note": "Typical 12 V barrel adapter, assumed to be the Mean Well NGE12 12-P1J: rated current 1.0 A (12 W), SPECIFICATION p. 2. The same value is used whatever voltage the user sets; in the same series the 5 V model is rated 2.4 A and the 24 V model 0.625 A."
+					}
+				}
 			} }
 		},
 		art: {
@@ -6448,6 +6500,32 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			"params": { "voltage": {
 				"unit": "V",
 				"default": 12
+			} },
+			"sim": { "power": {
+				"domains": [{
+					"name": "OUT",
+					"pin": "+",
+					"ret": "-",
+					"nominal": 12
+				}],
+				"source": {
+					"domain": "OUT",
+					"voltage": "param:voltage",
+					"rInternal": {
+						"value": .36,
+						"unit": "ohm",
+						"source": "https://www.meanwell.com/Upload/PDF/NGE12/NGE12-SPEC.PDF",
+						"provenance": "estimate",
+						"note": "Typical 12 V barrel adapter, assumed to be the Mean Well NGE12 12-P1J (the module's own source; 12 V is electrical.params.voltage's default): load regulation +/-3.0% (SPECIFICATION p. 2), band +/-3% x 12 V = +/-0.36 V, whole swing up to 0.72 V over 0 to 1.0 A, 0.72 ohm. Mean Well NGE12 SPECIFICATION p. 3, Note 6, reads \"Load regulation is measured from 0% to 100% rated load\"; the plus-minus figure is a band about the output at a reference load, so the whole 0 to rated-load swing can be up to twice the figure. This value uses that upper bound (real units usually droop less). The same value is used whatever voltage the user sets. Controller ruling (reviewers disagreed): the two readings are 0.36 ohm (the +/-x% figure taken as the whole no-load to full-load swing) and 0.72 ohm (a band about a reference, up to twice the swing). 0.36 ohm is used: it is nearer typical droop, and this estimate never blocks."
+					},
+					"imax": {
+						"value": 1,
+						"unit": "A",
+						"source": "https://www.meanwell.com/Upload/PDF/NGE12/NGE12-SPEC.PDF",
+						"provenance": "estimate",
+						"note": "Typical 12 V barrel adapter, assumed to be the Mean Well NGE12 12-P1J: rated current 1.0 A (12 W), SPECIFICATION p. 2. The same value is used whatever voltage the user sets; in the same series the 5 V model is rated 2.4 A and the 24 V model 0.625 A."
+					}
+				}
 			} }
 		},
 		art: {
@@ -6614,6 +6692,32 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			"params": { "voltage": {
 				"unit": "V",
 				"default": 12
+			} },
+			"sim": { "power": {
+				"domains": [{
+					"name": "OUT",
+					"pin": "+",
+					"ret": "-",
+					"nominal": 12
+				}],
+				"source": {
+					"domain": "OUT",
+					"voltage": "param:voltage",
+					"rInternal": {
+						"value": .36,
+						"unit": "ohm",
+						"source": "https://www.meanwell.com/Upload/PDF/NGE12/NGE12-SPEC.PDF",
+						"provenance": "estimate",
+						"note": "Typical 12 V barrel adapter, assumed to be the Mean Well NGE12 12-P1J (the module's own source; 12 V is electrical.params.voltage's default): load regulation +/-3.0% (SPECIFICATION p. 2), band +/-3% x 12 V = +/-0.36 V, whole swing up to 0.72 V over 0 to 1.0 A, 0.72 ohm. Mean Well NGE12 SPECIFICATION p. 3, Note 6, reads \"Load regulation is measured from 0% to 100% rated load\"; the plus-minus figure is a band about the output at a reference load, so the whole 0 to rated-load swing can be up to twice the figure. This value uses that upper bound (real units usually droop less). The same value is used whatever voltage the user sets. Controller ruling (reviewers disagreed): the two readings are 0.36 ohm (the +/-x% figure taken as the whole no-load to full-load swing) and 0.72 ohm (a band about a reference, up to twice the swing). 0.36 ohm is used: it is nearer typical droop, and this estimate never blocks."
+					},
+					"imax": {
+						"value": 1,
+						"unit": "A",
+						"source": "https://www.meanwell.com/Upload/PDF/NGE12/NGE12-SPEC.PDF",
+						"provenance": "estimate",
+						"note": "Typical 12 V barrel adapter, assumed to be the Mean Well NGE12 12-P1J: rated current 1.0 A (12 W), SPECIFICATION p. 2. The same value is used whatever voltage the user sets; in the same series the 5 V model is rated 2.4 A and the 24 V model 0.625 A."
+					}
+				}
 			} }
 		},
 		art: {
@@ -26587,7 +26691,39 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 						"mains": "N"
 					}]
 				}]
-			}
+			},
+			"sim": { "power": {
+				"domains": [{
+					"name": "5V",
+					"pin": "5V",
+					"ret": "GND",
+					"nominal": 5
+				}],
+				"source": {
+					"domain": "5V",
+					"voltage": {
+						"value": 5,
+						"unit": "V",
+						"source": "https://www.meanwell.com/Upload/PDF/NGE12/NGE12-SPEC.PDF",
+						"provenance": "representative",
+						"note": "Mean Well NGE12 05-USB (12 W wall adapter with a USB Type-A output, the 5 V model of the NGE12 series), SPECIFICATION p. 2: DC voltage 5 V, voltage tolerance +/-5.0%."
+					},
+					"rInternal": {
+						"value": .1,
+						"unit": "ohm",
+						"source": "https://www.meanwell.com/Upload/PDF/NGE12/NGE12-SPEC.PDF",
+						"provenance": "estimate",
+						"note": "Derived from the Mean Well NGE12 05-USB load regulation, +/-5.0% (SPECIFICATION p. 2): band +/-5% x 5 V = +/-0.25 V, whole swing up to 0.5 V over 0 to 2.4 A, 0.5 / 2.4 = 0.208 ohm, rounded to 0.21. Mean Well NGE12 SPECIFICATION p. 3, Note 6, reads \"Load regulation is measured from 0% to 100% rated load\"; the plus-minus figure is a band about the output at a reference load, so the whole 0 to rated-load swing can be up to twice the figure. This value uses that upper bound (real units usually droop less). Controller ruling (reviewers disagreed): the two readings are 0.1 ohm (the +/-x% figure taken as the whole no-load to full-load swing) and 0.21 ohm (a band about a reference, up to twice the swing). 0.1 ohm is used: it is nearer typical droop, and this estimate never blocks."
+					},
+					"imax": {
+						"value": 2.4,
+						"unit": "A",
+						"source": "https://www.meanwell.com/Upload/PDF/NGE12/NGE12-SPEC.PDF",
+						"provenance": "representative",
+						"note": "Mean Well NGE12 05-USB, SPECIFICATION p. 2: rated current 2.4 A, current range 0 to 2.4 A. Other 5 V USB chargers are commonly rated between 1 A and 3 A."
+					}
+				}
+			} }
 		},
 		art: {
 			"w": 60,
@@ -26860,7 +26996,39 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 						"mains": "N"
 					}]
 				}]
-			}
+			},
+			"sim": { "power": {
+				"domains": [{
+					"name": "5V",
+					"pin": "5V",
+					"ret": "GND",
+					"nominal": 5
+				}],
+				"source": {
+					"domain": "5V",
+					"voltage": {
+						"value": 5,
+						"unit": "V",
+						"source": "https://www.meanwell.com/Upload/PDF/NGE12/NGE12-SPEC.PDF",
+						"provenance": "representative",
+						"note": "Mean Well NGE12 05-USB (12 W wall adapter with a USB Type-A output, the 5 V model of the NGE12 series), SPECIFICATION p. 2: DC voltage 5 V, voltage tolerance +/-5.0%."
+					},
+					"rInternal": {
+						"value": .1,
+						"unit": "ohm",
+						"source": "https://www.meanwell.com/Upload/PDF/NGE12/NGE12-SPEC.PDF",
+						"provenance": "estimate",
+						"note": "Derived from the Mean Well NGE12 05-USB load regulation, +/-5.0% (SPECIFICATION p. 2): band +/-5% x 5 V = +/-0.25 V, whole swing up to 0.5 V over 0 to 2.4 A, 0.5 / 2.4 = 0.208 ohm, rounded to 0.21. Mean Well NGE12 SPECIFICATION p. 3, Note 6, reads \"Load regulation is measured from 0% to 100% rated load\"; the plus-minus figure is a band about the output at a reference load, so the whole 0 to rated-load swing can be up to twice the figure. This value uses that upper bound (real units usually droop less). Controller ruling (reviewers disagreed): the two readings are 0.1 ohm (the +/-x% figure taken as the whole no-load to full-load swing) and 0.21 ohm (a band about a reference, up to twice the swing). 0.1 ohm is used: it is nearer typical droop, and this estimate never blocks."
+					},
+					"imax": {
+						"value": 2.4,
+						"unit": "A",
+						"source": "https://www.meanwell.com/Upload/PDF/NGE12/NGE12-SPEC.PDF",
+						"provenance": "representative",
+						"note": "Mean Well NGE12 05-USB, SPECIFICATION p. 2: rated current 2.4 A, current range 0 to 2.4 A. Other 5 V USB chargers are commonly rated between 1 A and 3 A."
+					}
+				}
+			} }
 		},
 		art: {
 			"w": 80,
@@ -27028,7 +27196,39 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 						}
 					]
 				}]
-			}
+			},
+			"sim": { "power": {
+				"domains": [{
+					"name": "5V",
+					"pin": "5V",
+					"ret": "GND",
+					"nominal": 5
+				}],
+				"source": {
+					"domain": "5V",
+					"voltage": {
+						"value": 5,
+						"unit": "V",
+						"source": "https://www.meanwell.com/Upload/PDF/NGE12/NGE12-SPEC.PDF",
+						"provenance": "representative",
+						"note": "Mean Well NGE12 05-USB (12 W wall adapter with a USB Type-A output, the 5 V model of the NGE12 series), SPECIFICATION p. 2: DC voltage 5 V, voltage tolerance +/-5.0%."
+					},
+					"rInternal": {
+						"value": .1,
+						"unit": "ohm",
+						"source": "https://www.meanwell.com/Upload/PDF/NGE12/NGE12-SPEC.PDF",
+						"provenance": "estimate",
+						"note": "Derived from the Mean Well NGE12 05-USB load regulation, +/-5.0% (SPECIFICATION p. 2): band +/-5% x 5 V = +/-0.25 V, whole swing up to 0.5 V over 0 to 2.4 A, 0.5 / 2.4 = 0.208 ohm, rounded to 0.21. Mean Well NGE12 SPECIFICATION p. 3, Note 6, reads \"Load regulation is measured from 0% to 100% rated load\"; the plus-minus figure is a band about the output at a reference load, so the whole 0 to rated-load swing can be up to twice the figure. This value uses that upper bound (real units usually droop less). Controller ruling (reviewers disagreed): the two readings are 0.1 ohm (the +/-x% figure taken as the whole no-load to full-load swing) and 0.21 ohm (a band about a reference, up to twice the swing). 0.1 ohm is used: it is nearer typical droop, and this estimate never blocks."
+					},
+					"imax": {
+						"value": 2.4,
+						"unit": "A",
+						"source": "https://www.meanwell.com/Upload/PDF/NGE12/NGE12-SPEC.PDF",
+						"provenance": "representative",
+						"note": "Mean Well NGE12 05-USB, SPECIFICATION p. 2: rated current 2.4 A, current range 0 to 2.4 A. Other 5 V USB chargers are commonly rated between 1 A and 3 A."
+					}
+				}
+			} }
 		},
 		art: {
 			"w": 80,
@@ -27191,7 +27391,39 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 						"mains": "N"
 					}]
 				}]
-			}
+			},
+			"sim": { "power": {
+				"domains": [{
+					"name": "5V",
+					"pin": "5V",
+					"ret": "GND",
+					"nominal": 5
+				}],
+				"source": {
+					"domain": "5V",
+					"voltage": {
+						"value": 5,
+						"unit": "V",
+						"source": "https://www.meanwell.com/Upload/PDF/NGE12/NGE12-SPEC.PDF",
+						"provenance": "representative",
+						"note": "Mean Well NGE12 05-USB (12 W wall adapter with a USB Type-A output, the 5 V model of the NGE12 series), SPECIFICATION p. 2: DC voltage 5 V, voltage tolerance +/-5.0%."
+					},
+					"rInternal": {
+						"value": .1,
+						"unit": "ohm",
+						"source": "https://www.meanwell.com/Upload/PDF/NGE12/NGE12-SPEC.PDF",
+						"provenance": "estimate",
+						"note": "Derived from the Mean Well NGE12 05-USB load regulation, +/-5.0% (SPECIFICATION p. 2): band +/-5% x 5 V = +/-0.25 V, whole swing up to 0.5 V over 0 to 2.4 A, 0.5 / 2.4 = 0.208 ohm, rounded to 0.21. Mean Well NGE12 SPECIFICATION p. 3, Note 6, reads \"Load regulation is measured from 0% to 100% rated load\"; the plus-minus figure is a band about the output at a reference load, so the whole 0 to rated-load swing can be up to twice the figure. This value uses that upper bound (real units usually droop less). Controller ruling (reviewers disagreed): the two readings are 0.1 ohm (the +/-x% figure taken as the whole no-load to full-load swing) and 0.21 ohm (a band about a reference, up to twice the swing). 0.1 ohm is used: it is nearer typical droop, and this estimate never blocks."
+					},
+					"imax": {
+						"value": 2.4,
+						"unit": "A",
+						"source": "https://www.meanwell.com/Upload/PDF/NGE12/NGE12-SPEC.PDF",
+						"provenance": "representative",
+						"note": "Mean Well NGE12 05-USB, SPECIFICATION p. 2: rated current 2.4 A, current range 0 to 2.4 A. Other 5 V USB chargers are commonly rated between 1 A and 3 A."
+					}
+				}
+			} }
 		},
 		art: {
 			"w": 60,
@@ -27331,7 +27563,38 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 		},
 		electrical: {
 			"model": "computer",
-			"params": {}
+			"params": {},
+			"sim": { "power": {
+				"domains": [{
+					"name": "USB",
+					"pin": "USB#vbus",
+					"ret": "USB#gnd",
+					"nominal": 5
+				}],
+				"source": {
+					"domain": "USB",
+					"voltage": {
+						"value": 5,
+						"unit": "V",
+						"source": "https://www.usb.org/document-library/usb-20-specification https://www.usb.org/sites/default/files/usb_20_20250603.zip",
+						"provenance": "representative",
+						"note": "Nominal 5.0 V. USB 2.0 specification (usb_20.pdf in the zip), Table 7-7, p. 178: high-power port VBUS 4.75 to 5.25 V (low-power port 4.40 to 5.25 V); section 7.2.2, p. 175, says the same. The ECN \"USB 2.0 VBUS Max Limit\" in the same zip raises the maximum to 5.50 V. Real computer ports vary within that range."
+					},
+					"rInternal": {
+						"value": .1,
+						"unit": "ohm",
+						"provenance": "estimate",
+						"note": "Assumed: the host's port power switch plus board traces and connector contact, of the order of 0.1 ohm. Not from any datasheet. Upper bound from the spec: a 5.0 V port that stays at or above 4.75 V at 500 mA has at most (5.0 - 4.75) / 0.5 = 0.5 ohm."
+					},
+					"imax": {
+						"value": .5,
+						"unit": "A",
+						"source": "https://www.usb.org/document-library/usb-20-specification https://www.usb.org/sites/default/files/usb_20_20250603.zip",
+						"provenance": "representative",
+						"note": "USB 2.0 specification, Table 7-7, p. 178: ICCPRT, high-power hub port (out), 500 mA minimum (five unit loads of 100 mA, section 7.2.1). A device may draw only 100 mA until configured. Many real ports trip above 500 mA; 500 mA is the guaranteed figure."
+					}
+				}
+			} }
 		},
 		art: {
 			"w": 140,
@@ -33142,7 +33405,39 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 				"pins": ["+Vo", "-Vo"],
 				"kind": "selv"
 			}],
-			"isolation": "unknown"
+			"isolation": "unknown",
+			"sim": { "power": {
+				"domains": [{
+					"name": "5V",
+					"pin": "+Vo",
+					"ret": "-Vo",
+					"nominal": 5
+				}],
+				"source": {
+					"domain": "5V",
+					"voltage": {
+						"value": 5,
+						"unit": "V",
+						"source": "https://drive.google.com/file/d/1akkTcKPDKsjRavcggvhdrLv0_S19H-UG/view https://www.hlktech.net/index.php?id=105",
+						"provenance": "datasheet",
+						"note": "Hi-Link \"3W Ultra small series power module\" datasheet V2.9 (Aug. 2022), section 5.3 (5V/600mA): no-load rated output voltage 5 +/-0.1 V, full-load rated output voltage 5 +/-0.2 V. Room temperature."
+					},
+					"rInternal": {
+						"value": .042,
+						"unit": "ohm",
+						"source": "https://drive.google.com/file/d/1akkTcKPDKsjRavcggvhdrLv0_S19H-UG/view https://www.hlktech.net/index.php?id=105",
+						"provenance": "estimate",
+						"note": "Derived from the load regulation, +/-0.5% (datasheet V2.9 section 5.3 (5V/600mA); the product page says the same): band +/-0.5% x 5 V = +/-0.025 V, whole swing up to 0.05 V over 0 to 0.6 A, 0.05 / 0.6 = 0.0833 ohm. The datasheet does not define how load regulation is measured; read the same way as Mean Well's, a plus-minus band, so the whole 0 to rated-load swing can be up to twice the figure and this value uses that upper bound (real units usually droop less). The no-load (+/-0.1 V) and full-load (+/-0.2 V) windows would allow a larger drop. Controller ruling (reviewers disagreed): the two readings are 0.042 ohm (the +/-x% figure taken as the whole no-load to full-load swing) and 0.083 ohm (a band about a reference, up to twice the swing). 0.042 ohm is used: it is nearer typical droop, and this estimate never blocks."
+					},
+					"imax": {
+						"value": .6,
+						"unit": "A",
+						"source": "https://drive.google.com/file/d/1akkTcKPDKsjRavcggvhdrLv0_S19H-UG/view",
+						"provenance": "datasheet",
+						"note": "Hi-Link 3W series datasheet V2.9, section 2 (Product model) and section 5.3 (5V/600mA): rated output current 600 mA; short-time maximum output current at least 700 mA (table lists >=700). Room temperature."
+					}
+				}
+			} }
 		},
 		art: {
 			"w": 130,
@@ -33274,7 +33569,39 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 				"pins": ["+Vo", "-Vo"],
 				"kind": "selv"
 			}],
-			"isolation": "unknown"
+			"isolation": "unknown",
+			"sim": { "power": {
+				"domains": [{
+					"name": "3V3",
+					"pin": "+Vo",
+					"ret": "-Vo",
+					"nominal": 3.3
+				}],
+				"source": {
+					"domain": "3V3",
+					"voltage": {
+						"value": 3.3,
+						"unit": "V",
+						"source": "https://drive.google.com/file/d/1akkTcKPDKsjRavcggvhdrLv0_S19H-UG/view https://www.hlktech.net/index.php?id=106",
+						"provenance": "datasheet",
+						"note": "Hi-Link \"3W Ultra small series power module\" datasheet V2.9 (Aug. 2022), section 5.2 (3.3V/1000mA): no-load rated output voltage 3.3 +/-0.1 V, full-load rated output voltage 3.3 +/-0.2 V. Room temperature."
+					},
+					"rInternal": {
+						"value": .017,
+						"unit": "ohm",
+						"source": "https://drive.google.com/file/d/1akkTcKPDKsjRavcggvhdrLv0_S19H-UG/view https://www.hlktech.net/index.php?id=106",
+						"provenance": "estimate",
+						"note": "Derived from the load regulation, +/-0.5% (datasheet V2.9 section 5.2 (3.3V/1000mA); the product page says the same): band +/-0.5% x 3.3 V = +/-0.0165 V, whole swing up to 0.033 V over 0 to 1 A, 0.033 ohm. The datasheet does not define how load regulation is measured; read the same way as Mean Well's, a plus-minus band, so the whole 0 to rated-load swing can be up to twice the figure and this value uses that upper bound (real units usually droop less). The no-load (+/-0.1 V) and full-load (+/-0.2 V) windows would allow a larger drop. Controller ruling (reviewers disagreed): the two readings are 0.017 ohm (the +/-x% figure taken as the whole no-load to full-load swing) and 0.033 ohm (a band about a reference, up to twice the swing). 0.017 ohm is used: it is nearer typical droop, and this estimate never blocks."
+					},
+					"imax": {
+						"value": 1,
+						"unit": "A",
+						"source": "https://drive.google.com/file/d/1akkTcKPDKsjRavcggvhdrLv0_S19H-UG/view",
+						"provenance": "datasheet",
+						"note": "Hi-Link 3W series datasheet V2.9, section 2 (Product model) and section 5.2 (3.3V/1000mA): rated output current 1000 mA; short-time maximum output current at least 1100 mA (table lists >=1100). Room temperature. Doubt: the series is sold as 3 W, but 3.3 V x 1.0 A = 3.3 W (3 W / 3.3 V would be 0.91 A). The datasheet states 1000 mA, so that is used."
+					}
+				}
+			} }
 		},
 		art: {
 			"w": 130,
@@ -33998,7 +34325,39 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			}],
 			"isolation": "double",
 			"isolationProvenance": "datasheet",
-			"protection": "class-2"
+			"protection": "class-2",
+			"sim": { "power": {
+				"domains": [{
+					"name": "3V3",
+					"pin": "+V",
+					"ret": "-V",
+					"nominal": 3.3
+				}],
+				"source": {
+					"domain": "3V3",
+					"voltage": {
+						"value": 3.3,
+						"unit": "V",
+						"source": "https://www.meanwell.com/Upload/PDF/IRM-03/IRM-03-SPEC.PDF",
+						"provenance": "datasheet",
+						"note": "Mean Well IRM-03-3.3, SPECIFICATION p. 2: DC voltage 3.3 V, voltage tolerance +/-2.5% (Note 3: includes set-up tolerance, line and load regulation). Note 1: 230 VAC input, rated load, 25 C."
+					},
+					"rInternal": {
+						"value": .037,
+						"unit": "ohm",
+						"source": "https://www.meanwell.com/Upload/PDF/IRM-03/IRM-03-SPEC.PDF",
+						"provenance": "estimate",
+						"note": "Derived from the load regulation, +/-1.0% (IRM-03-3.3, SPECIFICATION p. 2): band +/-1% x 3.3 V = +/-0.033 V, whole swing up to 0.066 V over 0 to 900 mA, 0.066 / 0.9 = 0.0733 ohm. Mean Well's IRM datasheet does not define load regulation (Note 3 only says the tolerance includes it); its NGE12 sibling Note 6 says it is measured from 0% to 100% rated load, and the plus-minus figure is a band, so the whole 0 to rated-load swing can be up to twice the figure. This value uses that upper bound (real units usually droop less). Controller ruling (reviewers disagreed): the two readings are 0.037 ohm (the +/-x% figure taken as the whole no-load to full-load swing) and 0.073 ohm (a band about a reference, up to twice the swing). 0.037 ohm is used: it is nearer typical droop, and this estimate never blocks."
+					},
+					"imax": {
+						"value": .9,
+						"unit": "A",
+						"source": "https://www.meanwell.com/Upload/PDF/IRM-03/IRM-03-SPEC.PDF",
+						"provenance": "datasheet",
+						"note": "Mean Well IRM-03-3.3, SPECIFICATION p. 2: rated current 900 mA, current range 0 to 900 mA. Note 1: 230 VAC input, 25 C; derate at high temperature per the \"Derating Curve\"."
+					}
+				}
+			} }
 		},
 		art: {
 			"w": 160,
@@ -34214,7 +34573,39 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			}],
 			"isolation": "double",
 			"isolationProvenance": "datasheet",
-			"protection": "class-2"
+			"protection": "class-2",
+			"sim": { "power": {
+				"domains": [{
+					"name": "5V",
+					"pin": "+V",
+					"ret": "-V",
+					"nominal": 5
+				}],
+				"source": {
+					"domain": "5V",
+					"voltage": {
+						"value": 5,
+						"unit": "V",
+						"source": "https://www.meanwell.com/Upload/PDF/IRM-03/IRM-03-SPEC.PDF",
+						"provenance": "datasheet",
+						"note": "Mean Well IRM-03-5, SPECIFICATION p. 2: DC voltage 5 V, voltage tolerance +/-2.5% (Note 3: includes set-up tolerance, line and load regulation). Note 1: 230 VAC input, rated load, 25 C."
+					},
+					"rInternal": {
+						"value": .042,
+						"unit": "ohm",
+						"source": "https://www.meanwell.com/Upload/PDF/IRM-03/IRM-03-SPEC.PDF",
+						"provenance": "estimate",
+						"note": "Derived from the load regulation, +/-0.5% (IRM-03-5, SPECIFICATION p. 2): band +/-0.5% x 5 V = +/-0.025 V, whole swing up to 0.05 V over 0 to 600 mA, 0.05 / 0.6 = 0.0833 ohm. Mean Well's IRM datasheet does not define load regulation (Note 3 only says the tolerance includes it); its NGE12 sibling Note 6 says it is measured from 0% to 100% rated load, and the plus-minus figure is a band, so the whole 0 to rated-load swing can be up to twice the figure. This value uses that upper bound (real units usually droop less). Controller ruling (reviewers disagreed): the two readings are 0.042 ohm (the +/-x% figure taken as the whole no-load to full-load swing) and 0.083 ohm (a band about a reference, up to twice the swing). 0.042 ohm is used: it is nearer typical droop, and this estimate never blocks."
+					},
+					"imax": {
+						"value": .6,
+						"unit": "A",
+						"source": "https://www.meanwell.com/Upload/PDF/IRM-03/IRM-03-SPEC.PDF",
+						"provenance": "datasheet",
+						"note": "Mean Well IRM-03-5, SPECIFICATION p. 2: rated current 600 mA, current range 0 to 600 mA. Note 1: 230 VAC input, 25 C; derate at high temperature per the \"Derating Curve\"."
+					}
+				}
+			} }
 		},
 		art: {
 			"w": 160,
@@ -34390,7 +34781,39 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			}],
 			"isolation": "double",
 			"isolationProvenance": "datasheet",
-			"protection": "class-2"
+			"protection": "class-2",
+			"sim": { "power": {
+				"domains": [{
+					"name": "5V",
+					"pin": "+V",
+					"ret": "-V",
+					"nominal": 5
+				}],
+				"source": {
+					"domain": "5V",
+					"voltage": {
+						"value": 5,
+						"unit": "V",
+						"source": "https://www.meanwell.com/Upload/PDF/IRM-05/IRM-05-SPEC.PDF",
+						"provenance": "datasheet",
+						"note": "Mean Well IRM-05-5, SPECIFICATION p. 2: DC voltage 5 V, voltage tolerance +/-2.5% (Note 3: includes set-up tolerance, line and load regulation). Note 1: 230 VAC input, rated load, 25 C."
+					},
+					"rInternal": {
+						"value": .025,
+						"unit": "ohm",
+						"source": "https://www.meanwell.com/Upload/PDF/IRM-05/IRM-05-SPEC.PDF",
+						"provenance": "estimate",
+						"note": "Derived from the load regulation, +/-0.5% (IRM-05-5, SPECIFICATION p. 2): band +/-0.5% x 5 V = +/-0.025 V, whole swing up to 0.05 V over 0 to 1 A, 0.05 ohm. Mean Well's IRM datasheet does not define load regulation (Note 3 only says the tolerance includes it); its NGE12 sibling Note 6 says it is measured from 0% to 100% rated load, and the plus-minus figure is a band, so the whole 0 to rated-load swing can be up to twice the figure. This value uses that upper bound (real units usually droop less). Controller ruling (reviewers disagreed): the two readings are 0.025 ohm (the +/-x% figure taken as the whole no-load to full-load swing) and 0.05 ohm (a band about a reference, up to twice the swing). 0.025 ohm is used: it is nearer typical droop, and this estimate never blocks."
+					},
+					"imax": {
+						"value": 1,
+						"unit": "A",
+						"source": "https://www.meanwell.com/Upload/PDF/IRM-05/IRM-05-SPEC.PDF",
+						"provenance": "datasheet",
+						"note": "Mean Well IRM-05-5, SPECIFICATION p. 2: rated current 1 A, current range 0 to 1 A. Note 1: 230 VAC input, 25 C; derate at high temperature per the \"Derating Curve\"."
+					}
+				}
+			} }
 		},
 		art: {
 			"w": 180,

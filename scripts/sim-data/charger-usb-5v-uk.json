@@ -1,0 +1,71 @@
+{
+  "id": "charger-usb-5v-uk",
+  "researched": "2026-10-05",
+  "sim": {
+    "power": {
+      "domains": [
+        {
+          "name": "5V",
+          "pin": "5V",
+          "ret": "GND",
+          "nominal": 5
+        }
+      ],
+      "source": {
+        "domain": "5V",
+        "voltage": {
+          "value": 5,
+          "unit": "V",
+          "source": "https://www.meanwell.com/Upload/PDF/NGE12/NGE12-SPEC.PDF",
+          "provenance": "representative",
+          "note": "Mean Well NGE12 05-USB (12 W wall adapter with a USB Type-A output, the 5 V model of the NGE12 series), SPECIFICATION p. 2: DC voltage 5 V, voltage tolerance +/-5.0%."
+        },
+        "rInternal": {
+          "value": 0.1,
+          "unit": "ohm",
+          "source": "https://www.meanwell.com/Upload/PDF/NGE12/NGE12-SPEC.PDF",
+          "provenance": "estimate",
+          "note": "Derived from the Mean Well NGE12 05-USB load regulation, +/-5.0% (SPECIFICATION p. 2): band +/-5% x 5 V = +/-0.25 V, whole swing up to 0.5 V over 0 to 2.4 A, 0.5 / 2.4 = 0.208 ohm, rounded to 0.21. Mean Well NGE12 SPECIFICATION p. 3, Note 6, reads \"Load regulation is measured from 0% to 100% rated load\"; the plus-minus figure is a band about the output at a reference load, so the whole 0 to rated-load swing can be up to twice the figure. This value uses that upper bound (real units usually droop less). Controller ruling (reviewers disagreed): the two readings are 0.1 ohm (the +/-x% figure taken as the whole no-load to full-load swing) and 0.21 ohm (a band about a reference, up to twice the swing). 0.1 ohm is used: it is nearer typical droop, and this estimate never blocks."
+        },
+        "imax": {
+          "value": 2.4,
+          "unit": "A",
+          "source": "https://www.meanwell.com/Upload/PDF/NGE12/NGE12-SPEC.PDF",
+          "provenance": "representative",
+          "note": "Mean Well NGE12 05-USB, SPECIFICATION p. 2: rated current 2.4 A, current range 0 to 2.4 A. Other 5 V USB chargers are commonly rated between 1 A and 3 A."
+        }
+      }
+    }
+  },
+  "notes": [
+    "The DC output is a source only when the converter is powered in the saved contact state (spec 4 table); otherwise it is open. That is solver logic, not data.",
+    "imax is the rated output current, compared as a rating; the module's own protection (NGE12 overload 110% to 150% of rated output power, hiccup mode) is not modelled.",
+    "The charger is generic; the Mean Well NGE12 05-USB (the module's own source) stands in for it. A cheaper charger may droop much more under load."
+  ],
+  "unaccounted": [
+    "USB charger signalling on D+/D- (BC 1.2, Apple divider) is not modelled: devices see only VBUS."
+  ],
+  "review": [
+    {
+      "date": "2026-10-06",
+      "reviewer": "independent reviewer 1",
+      "checked": 5,
+      "corrected": [],
+      "disputed": []
+    },
+    {
+      "date": "2026-10-06",
+      "reviewer": "independent reviewer 2",
+      "checked": 4,
+      "corrected": [
+        {
+          "path": "sim.power.source.rInternal.value",
+          "was": 0.1,
+          "now": 0.21,
+          "why": "load regulation +/-x% is a band about a reference output, so the 0 to rated-load swing can be up to 2x%; doubled (NGE12 Note 6: measured from 0% to 100% rated load)"
+        }
+      ],
+      "disputed": []
+    }
+  ]
+}

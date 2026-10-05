@@ -150,7 +150,43 @@
     ],
     "isolation": "double",
     "isolationProvenance": "datasheet",
-    "protection": "class-2"
+    "protection": "class-2",
+    "sim": {
+      "power": {
+        "domains": [
+          {
+            "name": "5V",
+            "pin": "+V",
+            "ret": "-V",
+            "nominal": 5
+          }
+        ],
+        "source": {
+          "domain": "5V",
+          "voltage": {
+            "value": 5,
+            "unit": "V",
+            "source": "https://www.meanwell.com/Upload/PDF/IRM-03/IRM-03-SPEC.PDF",
+            "provenance": "datasheet",
+            "note": "Mean Well IRM-03-5, SPECIFICATION p. 2: DC voltage 5 V, voltage tolerance +/-2.5% (Note 3: includes set-up tolerance, line and load regulation). Note 1: 230 VAC input, rated load, 25 C."
+          },
+          "rInternal": {
+            "value": 0.042,
+            "unit": "ohm",
+            "source": "https://www.meanwell.com/Upload/PDF/IRM-03/IRM-03-SPEC.PDF",
+            "provenance": "estimate",
+            "note": "Derived from the load regulation, +/-0.5% (IRM-03-5, SPECIFICATION p. 2): band +/-0.5% x 5 V = +/-0.025 V, whole swing up to 0.05 V over 0 to 600 mA, 0.05 / 0.6 = 0.0833 ohm. Mean Well's IRM datasheet does not define load regulation (Note 3 only says the tolerance includes it); its NGE12 sibling Note 6 says it is measured from 0% to 100% rated load, and the plus-minus figure is a band, so the whole 0 to rated-load swing can be up to twice the figure. This value uses that upper bound (real units usually droop less). Controller ruling (reviewers disagreed): the two readings are 0.042 ohm (the +/-x% figure taken as the whole no-load to full-load swing) and 0.083 ohm (a band about a reference, up to twice the swing). 0.042 ohm is used: it is nearer typical droop, and this estimate never blocks."
+          },
+          "imax": {
+            "value": 0.6,
+            "unit": "A",
+            "source": "https://www.meanwell.com/Upload/PDF/IRM-03/IRM-03-SPEC.PDF",
+            "provenance": "datasheet",
+            "note": "Mean Well IRM-03-5, SPECIFICATION p. 2: rated current 600 mA, current range 0 to 600 mA. Note 1: 230 VAC input, 25 C; derate at high temperature per the \"Derating Curve\"."
+          }
+        }
+      }
+    }
   },
   "art": {
     "w": 160,

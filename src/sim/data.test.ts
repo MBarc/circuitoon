@@ -108,3 +108,15 @@ describe('the IP5306 and AMS1117 modules (spec 3.4)', () => {
     expect([r.kind, r.output, r.vout?.value]).toEqual(['ldo', 'OUT', 3.3])
   })
 })
+
+describe('external supplies (spec 4.7)', () => {
+  const ids = ['computer-usb-port', 'charger-usb-5v-us', 'hlk-pm01', 'irm-05-5', 'adapter-barrel-us']
+  it.each(ids)('%s is a standalone source with an imax', (id) => {
+    const s = simOf(load(id))!.power!.source!
+    expect(s.imax?.unit).toBe('A')
+    expect(s.rInternal.provenance).toBe('estimate')
+  })
+  it('lets a barrel adapter take the user voltage', () => {
+    expect(simOf(load('adapter-barrel-us'))!.power!.source!.voltage).toBe('param:voltage')
+  })
+})
