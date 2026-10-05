@@ -1,0 +1,59 @@
+{
+  "id": "battery-holder-2xaa",
+  "researched": "2026-10-05",
+  "sim": {
+    "modelParams": {
+      "rInternal": {
+        "value": 0.3,
+        "unit": "ohm",
+        "source": "https://data.energizer.com/pdfs/e91.pdf https://data.energizer.com/pdfs/batteryir.pdf",
+        "provenance": "estimate",
+        "note": "The holder is not the cell: estimate for a generic alkaline AA cell (Energizer E91 assumed) in each slot, 2 cells in series: 2 x 0.15 ohm = 0.3 ohm. Per-cell value: Energizer E91 (alkaline AA). E91 datasheet, Specifications: \"Nominal IR: 150 to 300 milliohms (fresh)\". Energizer technical bulletin \"Battery Internal Resistance\" (2005), fig. 2 on p. 2, shows a fresh E91 at about 0.14 ohm at 20 to 21 C (read from the graph; 0.15 ohm is the low end of the datasheet range) (total effective resistance, dual pulse 5 mA / 505 mA for 100 ms). Fresh cell."
+      }
+    },
+    "limits": [
+      {
+        "of": {
+          "part": true
+        },
+        "kind": "sourceCurrent",
+        "value": 1,
+        "source": "https://data.energizer.com/pdfs/en91.pdf",
+        "provenance": "estimate",
+        "conditions": "fresh alkaline AA, 21 C",
+        "note": "The holder is not the cell: estimate for a generic alkaline AA cell (Energizer E91 assumed) in each slot; in series every cell carries the same current, so the limit is one cell's (1 A). Per-cell value (estimate): No maximum discharge current is published for an alkaline AA. 1 A is the heaviest constant-current discharge the Energizer EN91 (alkaline AA) datasheet charts (\"Constant Current Performance\", axis to 1000 mA); delivered capacity falls steeply with drain (its \"Milliamp-Hours Capacity\" chart: about 2850 mAh at 25 mA, about 1400 mAh at 500 mA)."
+      }
+    ]
+  },
+  "notes": [
+    "rInternal is a fresh cell at room temperature: it rises as the cell discharges and in the cold.",
+    "sourceCurrent is compared as a rating (sim-over-limit warning), not as a hard cut-off.",
+    "The holder is not the cell: the values assume the cell named in each note; a user enters their actual cell on the part (spec 3.5)."
+  ],
+  "unaccounted": [
+    "Contact and lead resistance of the holder itself (springs, tabs, wires): no datasheet for a generic holder, so it is not added to rInternal."
+  ],
+  "review": [
+    {
+      "date": "2026-10-06",
+      "reviewer": "independent reviewer 1",
+      "checked": 2,
+      "corrected": [],
+      "disputed": []
+    },
+    {
+      "date": "2026-10-06",
+      "reviewer": "independent reviewer 2",
+      "checked": 2,
+      "corrected": [
+        {
+          "path": "sim.modelParams.rInternal.note",
+          "was": "The holder is not the cell: estimate for a generic alkaline AA cell (Energizer E91 assumed) in each slot, 2 cells in series: 2 x 0.15 ohm = 0.3 ohm. Per-cell value: Energizer E91 (alkaline AA). E91 datasheet, Specifications: \"Nominal IR: 150 to 300 milliohms (fresh)\". Energizer technical bulletin \"Battery Internal Resistance\" (2005), fig. 2 on p. 2, shows a fresh E91 at about 0.15 ohm at 20 to 21 C (total effective resistance, dual pulse 5 mA / 505 mA for 100 ms). Fresh cell.",
+          "now": "The holder is not the cell: estimate for a generic alkaline AA cell (Energizer E91 assumed) in each slot, 2 cells in series: 2 x 0.15 ohm = 0.3 ohm. Per-cell value: Energizer E91 (alkaline AA). E91 datasheet, Specifications: \"Nominal IR: 150 to 300 milliohms (fresh)\". Energizer technical bulletin \"Battery Internal Resistance\" (2005), fig. 2 on p. 2, shows a fresh E91 at about 0.14 ohm at 20 to 21 C (read from the graph; 0.15 ohm is the low end of the datasheet range) (total effective resistance, dual pulse 5 mA / 505 mA for 100 ms). Fresh cell.",
+          "why": "fig. 2 read by pixel against its gridlines: about 0.14 ohm at 20 to 21 C, not 0.15; value 0.15 stays (low end of E91 \"Nominal IR: 150 to 300 milliohms (fresh)\")"
+        }
+      ],
+      "disputed": []
+    }
+  ]
+}

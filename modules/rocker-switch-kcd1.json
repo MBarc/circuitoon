@@ -59,7 +59,18 @@
         "amps": 10,
         "provenance": "datasheet"
       }
-    ]
+    ],
+    "sim": {
+      "modelParams": {
+        "contactResistance": {
+          "value": 0.05,
+          "unit": "ohm",
+          "source": "https://www.chinadaier.com/wp-content/uploads/2017/07/KCD1-2-101.pdf",
+          "provenance": "datasheet",
+          "note": "Daier KCD1-2-101 drawing, \"The Main Technology Performance\" table: \"Contact resistance <= 50m ohm\" (a maximum; no test current stated). The specified maximum is used."
+        }
+      }
+    }
   },
   "states": [
     "off",

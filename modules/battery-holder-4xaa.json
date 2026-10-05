@@ -32,6 +32,30 @@
         "unit": "V",
         "default": 6
       }
+    },
+    "sim": {
+      "modelParams": {
+        "rInternal": {
+          "value": 0.6,
+          "unit": "ohm",
+          "source": "https://data.energizer.com/pdfs/e91.pdf https://data.energizer.com/pdfs/batteryir.pdf",
+          "provenance": "estimate",
+          "note": "The holder is not the cell: estimate for a generic alkaline AA cell (Energizer E91 assumed) in each slot, 4 cells in series: 4 x 0.15 ohm = 0.6 ohm. Per-cell value: Energizer E91 (alkaline AA). E91 datasheet, Specifications: \"Nominal IR: 150 to 300 milliohms (fresh)\". Energizer technical bulletin \"Battery Internal Resistance\" (2005), fig. 2 on p. 2, shows a fresh E91 at about 0.14 ohm at 20 to 21 C (read from the graph; 0.15 ohm is the low end of the datasheet range) (total effective resistance, dual pulse 5 mA / 505 mA for 100 ms). Fresh cell."
+        }
+      },
+      "limits": [
+        {
+          "of": {
+            "part": true
+          },
+          "kind": "sourceCurrent",
+          "value": 1,
+          "source": "https://data.energizer.com/pdfs/en91.pdf",
+          "provenance": "estimate",
+          "conditions": "fresh alkaline AA, 21 C",
+          "note": "The holder is not the cell: estimate for a generic alkaline AA cell (Energizer E91 assumed) in each slot; in series every cell carries the same current, so the limit is one cell's (1 A). Per-cell value (estimate): No maximum discharge current is published for an alkaline AA. 1 A is the heaviest constant-current discharge the Energizer EN91 (alkaline AA) datasheet charts (\"Constant Current Performance\", axis to 1000 mA); delivered capacity falls steeply with drain (its \"Milliamp-Hours Capacity\" chart: about 2850 mAh at 25 mA, about 1400 mAh at 500 mA)."
+        }
+      ]
     }
   },
   "art": {

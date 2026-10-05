@@ -28,6 +28,30 @@
         "unit": "V",
         "default": 3
       }
+    },
+    "sim": {
+      "modelParams": {
+        "rInternal": {
+          "value": 21,
+          "unit": "ohm",
+          "source": "https://data.energizer.com/pdfs/cr1220.pdf",
+          "provenance": "representative",
+          "note": "Energizer CR1220 (Li/MnO2). Datasheet \"Internal Resistance Characteristics\" graph (pulse test, 62K background, 1K 2 s pulse): IR about 21 to 22 ohm on a fresh cell, dipping to about 20.5 ohm near 5 mAh (read from the graph, right axis 0 to 80 ohm), rising past 70 ohm near end of life. 21 C."
+        }
+      },
+      "limits": [
+        {
+          "of": {
+            "part": true
+          },
+          "kind": "sourceCurrent",
+          "value": 0.003,
+          "source": "https://energy.panasonic.com/dam/master/pdf/en/datasheet/lithium/CR1220_Datasheet_EN.pdf",
+          "provenance": "estimate",
+          "conditions": "fresh CR1220, 20 C",
+          "note": "No maximum continuous current is published. The Panasonic CR1220 datasheet gives \"Continuous drain 0.1mA\" as its standard drain and charts continuous loads only down to 1 kOhm; 3 V across 1 kOhm is about 3 mA, where capacity is already about halved (about 17 of 35 mAh at 20 C), so 3 mA is a generous ceiling for this small cell."
+        }
+      ]
     }
   },
   "art": {

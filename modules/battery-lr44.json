@@ -28,6 +28,30 @@
         "unit": "V",
         "default": 1.5
       }
+    },
+    "sim": {
+      "modelParams": {
+        "rInternal": {
+          "value": 6,
+          "unit": "ohm",
+          "source": "https://data.energizer.com/pdfs/a76.pdf",
+          "provenance": "estimate",
+          "note": "Estimate from Energizer A76 (alkaline LR44). Datasheet Specifications: \"Impedance (40 Hz): 3 to 9 ohms\"; 6 ohm is the midpoint of that range, (3 + 9) / 2 (the sheet does not say where a fresh cell sits in it)."
+        }
+      },
+      "limits": [
+        {
+          "of": {
+            "part": true
+          },
+          "kind": "sourceCurrent",
+          "value": 0.01,
+          "source": "https://data.energizer.com/pdfs/a76.pdf",
+          "provenance": "estimate",
+          "conditions": "fresh alkaline LR44, 21 C",
+          "note": "No maximum current is published: the Energizer A76 datasheet characterises only a 7.5 kOhm continuous drain (about 0.17 mA) and says the cell is \"designed for electronic applications which may require high rate pulses\". 10 mA is an assumed ceiling for a 150 mAh button cell with 3 to 9 ohm impedance, not a sourced figure."
+        }
+      ]
     }
   },
   "art": {

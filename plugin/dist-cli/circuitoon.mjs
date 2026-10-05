@@ -19292,7 +19292,25 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			"params": { "voltage": {
 				"unit": "V",
 				"default": 3.7
-			} }
+			} },
+			"sim": {
+				"modelParams": { "rInternal": {
+					"value": .1,
+					"unit": "ohm",
+					"source": "https://e2e.ti.com/cfs-file/__key/communityserver-discussions-components-files/196/ICR18650_2D00_26J_2D00_Samsung.pdf",
+					"provenance": "representative",
+					"note": "Samsung SDI ICR18650-26J (2600 mAh Li-ion), Specification of Product, 7.3 \"Initial internal impedance\" (p. 4): <= 100 mOhm, AC 1 kHz after the standard charge, 23 C. This is the specified maximum, not a typical: a fresh cell usually measures lower at 1 kHz, while its DC effective resistance is above the 1 kHz figure."
+				} },
+				"limits": [{
+					"of": { "part": true },
+					"kind": "sourceCurrent",
+					"value": 5.2,
+					"source": "https://e2e.ti.com/cfs-file/__key/communityserver-discussions-components-files/196/ICR18650_2D00_26J_2D00_Samsung.pdf",
+					"provenance": "representative",
+					"conditions": "23 C (room temperature)",
+					"note": "Samsung SDI ICR18650-26J, Specification of Product, 3.6 \"Max. continuous discharge 5.2A (@ RT)\". High-drain 18650s are rated far higher and protected cells lower; a user can enter their cell on the part (spec 3.5)."
+				}]
+			}
 		},
 		art: {
 			"w": 70,
@@ -19390,7 +19408,25 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			"params": { "voltage": {
 				"unit": "V",
 				"default": 7.4
-			} }
+			} },
+			"sim": {
+				"modelParams": { "rInternal": {
+					"value": .2,
+					"unit": "ohm",
+					"source": "https://e2e.ti.com/cfs-file/__key/communityserver-discussions-components-files/196/ICR18650_2D00_26J_2D00_Samsung.pdf",
+					"provenance": "estimate",
+					"note": "The holder is not the cell: estimate for a generic Li-ion 18650 cell (Samsung SDI ICR18650-26J assumed) in each slot, 2 cells in series: 2 x 0.1 ohm = 0.2 ohm. Per-cell value: Samsung SDI ICR18650-26J (2600 mAh Li-ion), Specification of Product, 7.3 \"Initial internal impedance\" (p. 4): <= 100 mOhm, AC 1 kHz after the standard charge, 23 C. This is the specified maximum, not a typical: a fresh cell usually measures lower at 1 kHz, while its DC effective resistance is above the 1 kHz figure."
+				} },
+				"limits": [{
+					"of": { "part": true },
+					"kind": "sourceCurrent",
+					"value": 5.2,
+					"source": "https://e2e.ti.com/cfs-file/__key/communityserver-discussions-components-files/196/ICR18650_2D00_26J_2D00_Samsung.pdf",
+					"provenance": "estimate",
+					"conditions": "23 C (room temperature)",
+					"note": "The holder is not the cell: estimate for a generic Li-ion 18650 cell (Samsung SDI ICR18650-26J assumed) in each slot; in series every cell carries the same current, so the limit is one cell's (5.2 A). Per-cell value (representative): Samsung SDI ICR18650-26J, Specification of Product, 3.6 \"Max. continuous discharge 5.2A (@ RT)\". High-drain 18650s are rated far higher and protected cells lower; a user can enter their cell on the part (spec 3.5)."
+				}]
+			}
 		},
 		art: {
 			"w": 100,
@@ -19522,7 +19558,25 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			"params": { "voltage": {
 				"unit": "V",
 				"default": 3.7
-			} }
+			} },
+			"sim": {
+				"modelParams": { "rInternal": {
+					"value": .1,
+					"unit": "ohm",
+					"source": "https://e2e.ti.com/cfs-file/__key/communityserver-discussions-components-files/196/ICR18650_2D00_26J_2D00_Samsung.pdf",
+					"provenance": "estimate",
+					"note": "The holder is not the cell: estimate for a generic Li-ion 18650 cell (Samsung SDI ICR18650-26J assumed) in each slot: 0.1 ohm. Per-cell value: Samsung SDI ICR18650-26J (2600 mAh Li-ion), Specification of Product, 7.3 \"Initial internal impedance\" (p. 4): <= 100 mOhm, AC 1 kHz after the standard charge, 23 C. This is the specified maximum, not a typical: a fresh cell usually measures lower at 1 kHz, while its DC effective resistance is above the 1 kHz figure."
+				} },
+				"limits": [{
+					"of": { "part": true },
+					"kind": "sourceCurrent",
+					"value": 5.2,
+					"source": "https://e2e.ti.com/cfs-file/__key/communityserver-discussions-components-files/196/ICR18650_2D00_26J_2D00_Samsung.pdf",
+					"provenance": "estimate",
+					"conditions": "23 C (room temperature)",
+					"note": "The holder is not the cell: estimate for a generic Li-ion 18650 cell (Samsung SDI ICR18650-26J assumed) in each slot. Per-cell value (representative): Samsung SDI ICR18650-26J, Specification of Product, 3.6 \"Max. continuous discharge 5.2A (@ RT)\". High-drain 18650s are rated far higher and protected cells lower; a user can enter their cell on the part (spec 3.5)."
+				}]
+			}
 		},
 		art: {
 			"w": 100,
@@ -19639,7 +19693,25 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			"params": { "voltage": {
 				"unit": "V",
 				"default": 9
-			} }
+			} },
+			"sim": {
+				"modelParams": { "rInternal": {
+					"value": 2.3,
+					"unit": "ohm",
+					"source": "https://www.farnell.com/datasheets/3625657.pdf",
+					"provenance": "representative",
+					"note": "Duracell MN1604 Coppertop (alkaline 9 V, 6LR61). Datasheet p. 2, \"Typical Duracell 9V Performance\" graph, right axis \"DC Resistance (ohms)\": about 2.3 ohm at the start of the curve (about 6% DOD), rising to about 4.1 ohm at 100% DOD (read from the graph). The p. 1 table gives \"Impedance 1,700 m-ohm @ 1 kHz\", which reads below the DC value. Fresh cell, room temperature."
+				} },
+				"limits": [{
+					"of": { "part": true },
+					"kind": "sourceCurrent",
+					"value": .25,
+					"source": "https://www.farnell.com/datasheets/3625657.pdf",
+					"provenance": "estimate",
+					"conditions": "fresh alkaline 9 V, room temperature",
+					"note": "No maximum discharge current is published for an alkaline 9 V. 250 mA is the heaviest constant-current discharge the Duracell MN1604 datasheet charts (\"Coppertop 9V Constant Current\", 50/100/250 mA; about 1 hour to 5 V at 250 mA)."
+				}]
+			}
 		},
 		art: {
 			"w": 80,
@@ -19730,7 +19802,25 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			"params": { "voltage": {
 				"unit": "V",
 				"default": 1.5
-			} }
+			} },
+			"sim": {
+				"modelParams": { "rInternal": {
+					"value": .15,
+					"unit": "ohm",
+					"source": "https://data.energizer.com/pdfs/e91.pdf https://data.energizer.com/pdfs/batteryir.pdf",
+					"provenance": "representative",
+					"note": "Energizer E91 (alkaline AA). E91 datasheet, Specifications: \"Nominal IR: 150 to 300 milliohms (fresh)\". Energizer technical bulletin \"Battery Internal Resistance\" (2005), fig. 2 on p. 2, shows a fresh E91 at about 0.14 ohm at 20 to 21 C (read from the graph; 0.15 ohm is the low end of the datasheet range) (total effective resistance, dual pulse 5 mA / 505 mA for 100 ms). Fresh cell."
+				} },
+				"limits": [{
+					"of": { "part": true },
+					"kind": "sourceCurrent",
+					"value": 1,
+					"source": "https://data.energizer.com/pdfs/en91.pdf",
+					"provenance": "estimate",
+					"conditions": "fresh alkaline AA, 21 C",
+					"note": "No maximum discharge current is published for an alkaline AA. 1 A is the heaviest constant-current discharge the Energizer EN91 (alkaline AA) datasheet charts (\"Constant Current Performance\", axis to 1000 mA); delivered capacity falls steeply with drain (its \"Milliamp-Hours Capacity\" chart: about 2850 mAh at 25 mA, about 1400 mAh at 500 mA)."
+				}]
+			}
 		},
 		art: {
 			"w": 60,
@@ -19821,7 +19911,25 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			"params": { "voltage": {
 				"unit": "V",
 				"default": 1.5
-			} }
+			} },
+			"sim": {
+				"modelParams": { "rInternal": {
+					"value": .3,
+					"unit": "ohm",
+					"source": "https://data.energizer.com/pdfs/e92.pdf https://data.energizer.com/pdfs/lithiumcoin_appman.pdf",
+					"provenance": "representative",
+					"note": "Energizer E92 (alkaline AAA). E92 datasheet, Specifications: \"Nominal IR: 150 to 300 milliohms (fresh)\"; Energizer Lithium Coin Handbook, \"Internal Resistance\" section: \"the starting IR of an E92 AAA alkaline battery is near 0.3 ohms\". Fresh cell."
+				} },
+				"limits": [{
+					"of": { "part": true },
+					"kind": "sourceCurrent",
+					"value": .5,
+					"source": "https://data.energizer.com/pdfs/e92.pdf",
+					"provenance": "estimate",
+					"conditions": "fresh alkaline AAA, 21 C",
+					"note": "No maximum discharge current is published for an alkaline AAA. 0.5 A is the heaviest continuous discharge the Energizer E92 datasheet charts (\"Milliamp-Hours Capacity\", continuous discharge to 0.8 V at 21 C, bars at 25/100/250/500 mA; about 450 mAh at 500 mA vs about 1150 mAh at 25 mA)."
+				}]
+			}
 		},
 		art: {
 			"w": 40,
@@ -19912,7 +20020,25 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			"params": { "voltage": {
 				"unit": "V",
 				"default": 3
-			} }
+			} },
+			"sim": {
+				"modelParams": { "rInternal": {
+					"value": 21,
+					"unit": "ohm",
+					"source": "https://data.energizer.com/pdfs/cr1220.pdf",
+					"provenance": "representative",
+					"note": "Energizer CR1220 (Li/MnO2). Datasheet \"Internal Resistance Characteristics\" graph (pulse test, 62K background, 1K 2 s pulse): IR about 21 to 22 ohm on a fresh cell, dipping to about 20.5 ohm near 5 mAh (read from the graph, right axis 0 to 80 ohm), rising past 70 ohm near end of life. 21 C."
+				} },
+				"limits": [{
+					"of": { "part": true },
+					"kind": "sourceCurrent",
+					"value": .003,
+					"source": "https://energy.panasonic.com/dam/master/pdf/en/datasheet/lithium/CR1220_Datasheet_EN.pdf",
+					"provenance": "estimate",
+					"conditions": "fresh CR1220, 20 C",
+					"note": "No maximum continuous current is published. The Panasonic CR1220 datasheet gives \"Continuous drain 0.1mA\" as its standard drain and charts continuous loads only down to 1 kOhm; 3 V across 1 kOhm is about 3 mA, where capacity is already about halved (about 17 of 35 mAh at 20 C), so 3 mA is a generous ceiling for this small cell."
+				}]
+			}
 		},
 		art: {
 			"w": 40,
@@ -19994,7 +20120,25 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			"params": { "voltage": {
 				"unit": "V",
 				"default": 3
-			} }
+			} },
+			"sim": {
+				"modelParams": { "rInternal": {
+					"value": 14,
+					"unit": "ohm",
+					"source": "https://data.energizer.com/pdfs/cr2016.pdf",
+					"provenance": "representative",
+					"note": "Energizer CR2016 (Li/MnO2). Datasheet \"Internal Resistance Characteristics\" graph: IR about 14 ohm on a fresh cell, about 13 ohm over the first third of capacity (read from the graph, right axis 0 to 120 ohm), rising past 100 ohm near end of life. 21 C."
+				} },
+				"limits": [{
+					"of": { "part": true },
+					"kind": "sourceCurrent",
+					"value": .003,
+					"source": "https://energy.panasonic.com/dam/master/pdf/en/datasheet/lithium/CR2016_Datasheet_EN.pdf",
+					"provenance": "estimate",
+					"conditions": "fresh CR2016, 20 C",
+					"note": "No maximum continuous current is published. The Panasonic CR2016 datasheet gives \"Continuous drain 0.1mA\" as its standard drain and charts continuous loads only down to 1 kOhm; 3 V across 1 kOhm is about 3 mA, where capacity is about 75 of 90 mAh at 20 C."
+				}]
+			}
 		},
 		art: {
 			"w": 50,
@@ -20077,7 +20221,25 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			"params": { "voltage": {
 				"unit": "V",
 				"default": 3
-			} }
+			} },
+			"sim": {
+				"modelParams": { "rInternal": {
+					"value": 8.5,
+					"unit": "ohm",
+					"source": "https://data.energizer.com/pdfs/cr2025.pdf",
+					"provenance": "representative",
+					"note": "Energizer CR2025 (Li/MnO2). Datasheet \"Internal Resistance Characteristics\" graph: IR about 8.5 ohm on a fresh cell, about 9 ohm by 25 mAh (read from the graph, right axis 0 to 120 ohm), rising past 100 ohm near end of life. 21 C."
+				} },
+				"limits": [{
+					"of": { "part": true },
+					"kind": "sourceCurrent",
+					"value": .003,
+					"source": "https://energy.panasonic.com/dam/master/pdf/en/datasheet/lithium/CR2025_Datasheet_EN.pdf",
+					"provenance": "estimate",
+					"conditions": "fresh CR2025, 20 C",
+					"note": "No maximum continuous current is published. The Panasonic CR2025 datasheet gives \"Continuous drain 0.2mA\" as its standard drain and charts continuous loads only down to 1 kOhm; 3 V across 1 kOhm is about 3 mA, where capacity is about 120 of 165 mAh at 20 C."
+				}]
+			}
 		},
 		art: {
 			"w": 50,
@@ -20159,7 +20321,25 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			"params": { "voltage": {
 				"unit": "V",
 				"default": 3
-			} }
+			} },
+			"sim": {
+				"modelParams": { "rInternal": {
+					"value": 10,
+					"unit": "ohm",
+					"source": "https://data.energizer.com/pdfs/cr2032.pdf https://data.energizer.com/pdfs/lithiumcoin_appman.pdf",
+					"provenance": "representative",
+					"note": "Energizer CR2032 (Li/MnO2). CR2032 datasheet \"Pulse Discharge Characteristics\" graph: IR about 9.5 ohm on a fresh cell (read from the graph, right axis 0 to 140 ohm), rising past 100 ohm near end of life. Energizer Lithium Coin Handbook, \"Internal Resistance\" section: \"the starting IR of a 2032 battery is near 10 ohms\" (dual pulse, 1000K background, 50 ms 25 ohm pulse, worked example gives 9 ohm). Fresh cell, 21 C."
+				} },
+				"limits": [{
+					"of": { "part": true },
+					"kind": "sourceCurrent",
+					"value": .003,
+					"source": "https://energy.panasonic.com/dam/master/pdf/en/datasheet/lithium/CR2032_Datasheet_EN.pdf",
+					"provenance": "estimate",
+					"conditions": "fresh CR2032, 20 C",
+					"note": "No maximum continuous current is published. The Panasonic CR2032 datasheet gives \"Continuous drain 0.2mA\" as its standard drain and charts continuous loads only down to 1 kOhm (\"Capacity vs. load resistance\", \"Operating voltage vs. load resistance\"); 3 V across 1 kOhm is about 3 mA, where capacity is already down to about 160 of 225 mAh at 20 C. Short pulses of tens of mA are possible (Energizer handbook, 75 ohm pulse) but are not continuous."
+				}]
+			}
 		},
 		art: {
 			"w": 50,
@@ -20248,7 +20428,25 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			"params": { "voltage": {
 				"unit": "V",
 				"default": 3
-			} }
+			} },
+			"sim": {
+				"modelParams": { "rInternal": {
+					"value": .3,
+					"unit": "ohm",
+					"source": "https://data.energizer.com/pdfs/e91.pdf https://data.energizer.com/pdfs/batteryir.pdf",
+					"provenance": "estimate",
+					"note": "The holder is not the cell: estimate for a generic alkaline AA cell (Energizer E91 assumed) in each slot, 2 cells in series: 2 x 0.15 ohm = 0.3 ohm. Per-cell value: Energizer E91 (alkaline AA). E91 datasheet, Specifications: \"Nominal IR: 150 to 300 milliohms (fresh)\". Energizer technical bulletin \"Battery Internal Resistance\" (2005), fig. 2 on p. 2, shows a fresh E91 at about 0.14 ohm at 20 to 21 C (read from the graph; 0.15 ohm is the low end of the datasheet range) (total effective resistance, dual pulse 5 mA / 505 mA for 100 ms). Fresh cell."
+				} },
+				"limits": [{
+					"of": { "part": true },
+					"kind": "sourceCurrent",
+					"value": 1,
+					"source": "https://data.energizer.com/pdfs/en91.pdf",
+					"provenance": "estimate",
+					"conditions": "fresh alkaline AA, 21 C",
+					"note": "The holder is not the cell: estimate for a generic alkaline AA cell (Energizer E91 assumed) in each slot; in series every cell carries the same current, so the limit is one cell's (1 A). Per-cell value (estimate): No maximum discharge current is published for an alkaline AA. 1 A is the heaviest constant-current discharge the Energizer EN91 (alkaline AA) datasheet charts (\"Constant Current Performance\", axis to 1000 mA); delivered capacity falls steeply with drain (its \"Milliamp-Hours Capacity\" chart: about 2850 mAh at 25 mA, about 1400 mAh at 500 mA)."
+				}]
+			}
 		},
 		art: {
 			"w": 100,
@@ -20377,7 +20575,25 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			"params": { "voltage": {
 				"unit": "V",
 				"default": 4.5
-			} }
+			} },
+			"sim": {
+				"modelParams": { "rInternal": {
+					"value": .9,
+					"unit": "ohm",
+					"source": "https://data.energizer.com/pdfs/e92.pdf https://data.energizer.com/pdfs/lithiumcoin_appman.pdf",
+					"provenance": "estimate",
+					"note": "The holder is not the cell: estimate for a generic alkaline AAA cell (Energizer E92 assumed) in each slot, 3 cells in series: 3 x 0.3 ohm = 0.9 ohm. Per-cell value: Energizer E92 (alkaline AAA). E92 datasheet, Specifications: \"Nominal IR: 150 to 300 milliohms (fresh)\"; Energizer Lithium Coin Handbook, \"Internal Resistance\" section: \"the starting IR of an E92 AAA alkaline battery is near 0.3 ohms\". Fresh cell."
+				} },
+				"limits": [{
+					"of": { "part": true },
+					"kind": "sourceCurrent",
+					"value": .5,
+					"source": "https://data.energizer.com/pdfs/e92.pdf",
+					"provenance": "estimate",
+					"conditions": "fresh alkaline AAA, 21 C",
+					"note": "The holder is not the cell: estimate for a generic alkaline AAA cell (Energizer E92 assumed) in each slot; in series every cell carries the same current, so the limit is one cell's (0.5 A). Per-cell value (estimate): No maximum discharge current is published for an alkaline AAA. 0.5 A is the heaviest continuous discharge the Energizer E92 datasheet charts (\"Milliamp-Hours Capacity\", continuous discharge to 0.8 V at 21 C, bars at 25/100/250/500 mA; about 450 mAh at 500 mA vs about 1150 mAh at 25 mA)."
+				}]
+			}
 		},
 		art: {
 			"w": 100,
@@ -20536,7 +20752,25 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			"params": { "voltage": {
 				"unit": "V",
 				"default": 6
-			} }
+			} },
+			"sim": {
+				"modelParams": { "rInternal": {
+					"value": .6,
+					"unit": "ohm",
+					"source": "https://data.energizer.com/pdfs/e91.pdf https://data.energizer.com/pdfs/batteryir.pdf",
+					"provenance": "estimate",
+					"note": "The holder is not the cell: estimate for a generic alkaline AA cell (Energizer E91 assumed) in each slot, 4 cells in series: 4 x 0.15 ohm = 0.6 ohm. Per-cell value: Energizer E91 (alkaline AA). E91 datasheet, Specifications: \"Nominal IR: 150 to 300 milliohms (fresh)\". Energizer technical bulletin \"Battery Internal Resistance\" (2005), fig. 2 on p. 2, shows a fresh E91 at about 0.14 ohm at 20 to 21 C (read from the graph; 0.15 ohm is the low end of the datasheet range) (total effective resistance, dual pulse 5 mA / 505 mA for 100 ms). Fresh cell."
+				} },
+				"limits": [{
+					"of": { "part": true },
+					"kind": "sourceCurrent",
+					"value": 1,
+					"source": "https://data.energizer.com/pdfs/en91.pdf",
+					"provenance": "estimate",
+					"conditions": "fresh alkaline AA, 21 C",
+					"note": "The holder is not the cell: estimate for a generic alkaline AA cell (Energizer E91 assumed) in each slot; in series every cell carries the same current, so the limit is one cell's (1 A). Per-cell value (estimate): No maximum discharge current is published for an alkaline AA. 1 A is the heaviest constant-current discharge the Energizer EN91 (alkaline AA) datasheet charts (\"Constant Current Performance\", axis to 1000 mA); delivered capacity falls steeply with drain (its \"Milliamp-Hours Capacity\" chart: about 2850 mAh at 25 mA, about 1400 mAh at 500 mA)."
+				}]
+			}
 		},
 		art: {
 			"w": 100,
@@ -20725,7 +20959,25 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			"params": { "voltage": {
 				"unit": "V",
 				"default": 3
-			} }
+			} },
+			"sim": {
+				"modelParams": { "rInternal": {
+					"value": 10,
+					"unit": "ohm",
+					"source": "https://data.energizer.com/pdfs/cr2032.pdf https://data.energizer.com/pdfs/lithiumcoin_appman.pdf",
+					"provenance": "estimate",
+					"note": "The holder is not the cell: estimate for a generic CR2032 lithium coin cell (Energizer CR2032 assumed) in each slot: 10 ohm. Per-cell value: Energizer CR2032 (Li/MnO2). CR2032 datasheet \"Pulse Discharge Characteristics\" graph: IR about 9.5 ohm on a fresh cell (read from the graph, right axis 0 to 140 ohm), rising past 100 ohm near end of life. Energizer Lithium Coin Handbook, \"Internal Resistance\" section: \"the starting IR of a 2032 battery is near 10 ohms\" (dual pulse, 1000K background, 50 ms 25 ohm pulse, worked example gives 9 ohm). Fresh cell, 21 C."
+				} },
+				"limits": [{
+					"of": { "part": true },
+					"kind": "sourceCurrent",
+					"value": .003,
+					"source": "https://energy.panasonic.com/dam/master/pdf/en/datasheet/lithium/CR2032_Datasheet_EN.pdf",
+					"provenance": "estimate",
+					"conditions": "fresh CR2032, 20 C",
+					"note": "The holder is not the cell: estimate for a generic CR2032 lithium coin cell (Energizer CR2032 assumed) in each slot. Per-cell value (estimate): No maximum continuous current is published. The Panasonic CR2032 datasheet gives \"Continuous drain 0.2mA\" as its standard drain and charts continuous loads only down to 1 kOhm (\"Capacity vs. load resistance\", \"Operating voltage vs. load resistance\"); 3 V across 1 kOhm is about 3 mA, where capacity is already down to about 160 of 225 mAh at 20 C. Short pulses of tens of mA are possible (Energizer handbook, 75 ohm pulse) but are not continuous."
+				}]
+			}
 		},
 		art: {
 			"w": 80,
@@ -20826,7 +21078,25 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			"params": { "voltage": {
 				"unit": "V",
 				"default": 1.5
-			} }
+			} },
+			"sim": {
+				"modelParams": { "rInternal": {
+					"value": 6,
+					"unit": "ohm",
+					"source": "https://data.energizer.com/pdfs/a76.pdf",
+					"provenance": "estimate",
+					"note": "Estimate from Energizer A76 (alkaline LR44). Datasheet Specifications: \"Impedance (40 Hz): 3 to 9 ohms\"; 6 ohm is the midpoint of that range, (3 + 9) / 2 (the sheet does not say where a fresh cell sits in it)."
+				} },
+				"limits": [{
+					"of": { "part": true },
+					"kind": "sourceCurrent",
+					"value": .01,
+					"source": "https://data.energizer.com/pdfs/a76.pdf",
+					"provenance": "estimate",
+					"conditions": "fresh alkaline LR44, 21 C",
+					"note": "No maximum current is published: the Energizer A76 datasheet characterises only a 7.5 kOhm continuous drain (about 0.17 mA) and says the cell is \"designed for electronic applications which may require high rate pulses\". 10 mA is an assumed ceiling for a 150 mAh button cell with 3 to 9 ohm impedance, not a sourced figure."
+				}]
+			}
 		},
 		art: {
 			"w": 40,
@@ -47106,7 +47376,16 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			"params": { "resistance": {
 				"unit": "ohm",
 				"default": 1e3
-			} }
+			} },
+			"sim": { "limits": [{
+				"of": { "part": true },
+				"kind": "power",
+				"value": .5,
+				"source": "https://cdn.sparkfun.com/assets/a/9/3/0/e/yageo-cfr_datasheet.pdf",
+				"provenance": "representative",
+				"conditions": "ambient up to 70 C; derated linearly to 0 at 155 C",
+				"note": "Yageo CFR series carbon film resistor, CFR-50 (1/2 W axial): Table 1 (p. 3) \"Power Rating at 70 C\" 1/2W; derating curve (Rated Power % vs ambient temperature) 100 % up to 70 C falling to 0 at 155 C."
+			}] }
 		},
 		art: {
 			"w": 80,
@@ -47214,7 +47493,16 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			"params": { "resistance": {
 				"unit": "ohm",
 				"default": 1e3
-			} }
+			} },
+			"sim": { "limits": [{
+				"of": { "part": true },
+				"kind": "power",
+				"value": .25,
+				"source": "https://cdn.sparkfun.com/assets/a/9/3/0/e/yageo-cfr_datasheet.pdf",
+				"provenance": "representative",
+				"conditions": "ambient up to 70 C; derated linearly to 0 at 155 C",
+				"note": "Yageo CFR series carbon film resistor, CFR-25 (1/4 W axial): Table 1 (p. 3) \"Power Rating at 70 C\" 1/4W; derating curve (Rated Power % vs ambient temperature) 100 % up to 70 C falling to 0 at 155 C."
+			}] }
 		},
 		art: {
 			"w": 60,
@@ -47997,7 +48285,14 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 				"volts": 125,
 				"amps": 10,
 				"provenance": "datasheet"
-			}]
+			}],
+			"sim": { "modelParams": { "contactResistance": {
+				"value": .05,
+				"unit": "ohm",
+				"source": "https://www.chinadaier.com/wp-content/uploads/2017/07/KCD1-2-101.pdf",
+				"provenance": "datasheet",
+				"note": "Daier KCD1-2-101 drawing, \"The Main Technology Performance\" table: \"Contact resistance <= 50m ohm\" (a maximum; no test current stated). The specified maximum is used."
+			} } }
 		},
 		states: ["off", "on"],
 		art: {

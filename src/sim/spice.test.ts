@@ -69,7 +69,7 @@ describe('compile', () => {
     const d = (contact: string, io1: string) => sheet([{ uid: 'bt1', module: cellModule(5, 0.1) }, { uid: 's1', module: 'rocker-switch-kcd1', values: { 'contact.s': contact } }, { uid: 'u1', module: boardModule({ leak: true }), values: { 'gpio.IO1': io1 } }],
       [['bt1.+', 's1.1'], ['s1.2', 'u1.VIN'], ['bt1.-', 'u1.GND']])
     const on = text(d('closed', 'high'))
-    expect(on).toMatch(/^r_s1_s_1_no n\d+ n\d+ 0\.02$/m)
+    expect(on).toMatch(/^r_s1_s_1_no n\d+ n\d+ 0\.05$/m)
     expect(on).toMatch(/^r_u1_gpio_io1 n\d+ n\d+ 30$/m)
     // IO2 is an input: its leakage, 3.3 V / 50 nA.
     expect(on).toMatch(/^r_u1_gpio_io2 n\d+ n\d+ 66000000$/m)

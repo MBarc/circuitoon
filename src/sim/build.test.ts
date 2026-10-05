@@ -65,7 +65,7 @@ describe('buildCircuit: primitives', () => {
   it('closes a switch only in its saved position, and a button only while held', () => {
     const open = buildCircuit(sheet([{ uid: 's1', module: 'rocker-switch-kcd1' }], []))
     expect(states(open.devices)).toEqual(['s1.s.1.no:open'])
-    expect(open.devices[0]).toMatchObject({ a: 's1:1', b: 's1:2', latching: true, ron: { value: 0.02, basis: 'estimate' } })
+    expect(open.devices[0]).toMatchObject({ a: 's1:1', b: 's1:2', latching: true, ron: { value: 0.05, basis: 'datasheet' } })
     const closed = buildCircuit(sheet([{ uid: 's1', module: 'rocker-switch-kcd1', values: { 'contact.s': 'closed' } }], []))
     expect(states(closed.devices)).toEqual(['s1.s.1.no:closed'])
     const b = sheet([{ uid: 'b1', module: 'push-button' }], [])

@@ -28,6 +28,30 @@
         "unit": "V",
         "default": 3
       }
+    },
+    "sim": {
+      "modelParams": {
+        "rInternal": {
+          "value": 14,
+          "unit": "ohm",
+          "source": "https://data.energizer.com/pdfs/cr2016.pdf",
+          "provenance": "representative",
+          "note": "Energizer CR2016 (Li/MnO2). Datasheet \"Internal Resistance Characteristics\" graph: IR about 14 ohm on a fresh cell, about 13 ohm over the first third of capacity (read from the graph, right axis 0 to 120 ohm), rising past 100 ohm near end of life. 21 C."
+        }
+      },
+      "limits": [
+        {
+          "of": {
+            "part": true
+          },
+          "kind": "sourceCurrent",
+          "value": 0.003,
+          "source": "https://energy.panasonic.com/dam/master/pdf/en/datasheet/lithium/CR2016_Datasheet_EN.pdf",
+          "provenance": "estimate",
+          "conditions": "fresh CR2016, 20 C",
+          "note": "No maximum continuous current is published. The Panasonic CR2016 datasheet gives \"Continuous drain 0.1mA\" as its standard drain and charts continuous loads only down to 1 kOhm; 3 V across 1 kOhm is about 3 mA, where capacity is about 75 of 90 mAh at 20 C."
+        }
+      ]
     }
   },
   "art": {

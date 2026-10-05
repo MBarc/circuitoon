@@ -28,6 +28,30 @@
         "unit": "V",
         "default": 3
       }
+    },
+    "sim": {
+      "modelParams": {
+        "rInternal": {
+          "value": 10,
+          "unit": "ohm",
+          "source": "https://data.energizer.com/pdfs/cr2032.pdf https://data.energizer.com/pdfs/lithiumcoin_appman.pdf",
+          "provenance": "representative",
+          "note": "Energizer CR2032 (Li/MnO2). CR2032 datasheet \"Pulse Discharge Characteristics\" graph: IR about 9.5 ohm on a fresh cell (read from the graph, right axis 0 to 140 ohm), rising past 100 ohm near end of life. Energizer Lithium Coin Handbook, \"Internal Resistance\" section: \"the starting IR of a 2032 battery is near 10 ohms\" (dual pulse, 1000K background, 50 ms 25 ohm pulse, worked example gives 9 ohm). Fresh cell, 21 C."
+        }
+      },
+      "limits": [
+        {
+          "of": {
+            "part": true
+          },
+          "kind": "sourceCurrent",
+          "value": 0.003,
+          "source": "https://energy.panasonic.com/dam/master/pdf/en/datasheet/lithium/CR2032_Datasheet_EN.pdf",
+          "provenance": "estimate",
+          "conditions": "fresh CR2032, 20 C",
+          "note": "No maximum continuous current is published. The Panasonic CR2032 datasheet gives \"Continuous drain 0.2mA\" as its standard drain and charts continuous loads only down to 1 kOhm (\"Capacity vs. load resistance\", \"Operating voltage vs. load resistance\"); 3 V across 1 kOhm is about 3 mA, where capacity is already down to about 160 of 225 mAh at 20 C. Short pulses of tens of mA are possible (Energizer handbook, 75 ohm pulse) but are not continuous."
+        }
+      ]
     }
   },
   "art": {

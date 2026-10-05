@@ -1,0 +1,56 @@
+{
+  "id": "battery-cr2016",
+  "researched": "2026-10-05",
+  "sim": {
+    "modelParams": {
+      "rInternal": {
+        "value": 14,
+        "unit": "ohm",
+        "source": "https://data.energizer.com/pdfs/cr2016.pdf",
+        "provenance": "representative",
+        "note": "Energizer CR2016 (Li/MnO2). Datasheet \"Internal Resistance Characteristics\" graph: IR about 14 ohm on a fresh cell, about 13 ohm over the first third of capacity (read from the graph, right axis 0 to 120 ohm), rising past 100 ohm near end of life. 21 C."
+      }
+    },
+    "limits": [
+      {
+        "of": {
+          "part": true
+        },
+        "kind": "sourceCurrent",
+        "value": 0.003,
+        "source": "https://energy.panasonic.com/dam/master/pdf/en/datasheet/lithium/CR2016_Datasheet_EN.pdf",
+        "provenance": "estimate",
+        "conditions": "fresh CR2016, 20 C",
+        "note": "No maximum continuous current is published. The Panasonic CR2016 datasheet gives \"Continuous drain 0.1mA\" as its standard drain and charts continuous loads only down to 1 kOhm; 3 V across 1 kOhm is about 3 mA, where capacity is about 75 of 90 mAh at 20 C."
+      }
+    ]
+  },
+  "notes": [
+    "rInternal is a fresh cell at room temperature: it rises as the cell discharges and in the cold.",
+    "sourceCurrent is compared as a rating (sim-over-limit warning), not as a hard cut-off."
+  ],
+  "unaccounted": [],
+  "review": [
+    {
+      "date": "2026-10-06",
+      "reviewer": "independent reviewer 1",
+      "checked": 2,
+      "corrected": [
+        {
+          "path": "sim.modelParams.rInternal",
+          "was": 15,
+          "now": 14,
+          "why": "IR curve read by pixel against the 0 to 120 ohm right axis: about 14 ohm at 0 mAh, about 13 ohm from 10 to 30 mAh; \"14 to 16\" was high"
+        }
+      ],
+      "disputed": []
+    },
+    {
+      "date": "2026-10-06",
+      "reviewer": "independent reviewer 2",
+      "checked": 2,
+      "corrected": [],
+      "disputed": []
+    }
+  ]
+}

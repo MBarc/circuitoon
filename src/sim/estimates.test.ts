@@ -55,7 +55,7 @@ describe('category load estimates (spec 3.4 table)', () => {
 
 describe('simOf', () => {
   it('reads electrical.sim, and is null without it', () => {
-    const m = load('resistor')
+    const m = load('capacitor-ceramic')
     expect(simOf(m)).toBeNull()
     expect(simOf({ ...m, electrical: { ...(m.electrical as object), sim: { limits: [] } } })).toEqual({ limits: [] })
   })

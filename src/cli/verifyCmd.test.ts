@@ -207,8 +207,9 @@ describe('circuitoon verify and check', () => {
     // The hand-drawn sheet also has readability warnings (many crossings, and wires drawn into
     // neighbouring holes of one strip that lie on top of each other there): never blocking.
     const readable = new Set<string>(READABILITY_RULES)
-    // Its ESP32, OLED and IP5306 copies predate the library's pin, I2C and USB port data (Rulings D1, U1): warnings, never blocking.
-    expect(out.findings.filter((f: CliFinding) => !readable.has(f.rule)).map((f: CliFinding) => `${f.severity} ${f.rule}`)).toEqual(['warning module-drift', 'warning module-drift', 'warning module-drift', 'warning module-drift', 'info battery-bank'])
+    // Its ESP32, OLED and IP5306 copies predate the library's pin, I2C and USB port data (Rulings D1, U1), and its
+    // 18650 holder, resistor and KCD1 copies predate their sourced sim data: warnings, never blocking.
+    expect(out.findings.filter((f: CliFinding) => !readable.has(f.rule)).map((f: CliFinding) => `${f.severity} ${f.rule}`)).toEqual([...Array(7).fill('warning module-drift'), 'info battery-bank'])
     expect(out.findings.filter((f: CliFinding) => f.rule === 'module-drift').every((f: CliFinding) => f.message.includes('the library has newer data for this part; run `circuitoon update` or use Update parts in the editor') || f.message.includes('The library has newer data for this part; run `circuitoon update` or use Update parts in the editor'))).toBe(true)
     expect(out.findings.filter((f: CliFinding) => readable.has(f.rule)).every((f: CliFinding) => f.severity === 'warning')).toBe(true)
     const text = await cli(['check', 'sheet.json'], { cwd: dir })
