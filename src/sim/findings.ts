@@ -7,9 +7,10 @@ import { formatValue } from '../format/values.ts'
 import { andList } from '../format/words.ts'
 import { naturalCompare } from '../agent/order.ts'
 import { NO_POWER_DATA } from './estimates.ts'
-import { type Classification, deviceNodes, pinState } from './floating.ts'
-import { type Circuit, type Corner, type Device, type Param, netNode } from './model.ts'
-import { type SimCode, type SimFinding, basisOf } from './results.ts'
+import { type Classification, deviceNodes, openSwitchFor, pinState, powered } from './floating.ts'
+import { type Circuit, type Corner, type Device, type Param, type ResolvedLimit, netNode } from './model.ts'
+import { type Outside, type SimCode, type SimFinding, basisOf } from './results.ts'
+import { type RawRun, enableValue } from './spice.ts'
 
 export const SIM_TITLES: Record<SimCode, string> = {
   'sim-short': 'Short circuit',
@@ -227,4 +228,227 @@ export function noConvergence(c: Circuit, error: string, nodes: string[]): SimFi
     code: 'sim-no-convergence', severity: 'error', parts, basis: 'topology', inputs: [], raw: error,
     message: `The simulator could not solve this circuit; this may be our model, not your circuit.${parts.length ? ` The parts on the nets it could not solve: ${andList(parts.map((p) => refOf(c, p)))}.` : ''}`,
   }
+}
+
+type Load = Extract<Device, { kind: 'load' }>
+type RailDev = Extract<Device, { kind: 'rail' }>
+/** A node's net in node form (netNode of a pin tap's net), else the node itself (an internal node). */
+const netOfNode = (c: Circuit) => {
+  const m = new Map(c.taps.map((t) => [t.node, netNode(t.net)]))
+  return (node: string) => m.get(node) ?? node
+}
+
+/** The value findings of one solved corner (spec 5.2), and the rails that ran outside their model. */
+export function runDrafts(c: Circuit, cls: Classification, raw: RawRun, corner: Corner): { drafts: Draft[]; outside: Set<string> } {
+  const drafts: Draft[] = []
+  const outside = new Set<string>()
+  const add = (d: Omit<Draft, 'corner'>) => void drafts.push({ ...d, corner })
+  const solved = (n: string) => Number.isFinite(raw.v[n])
+  const v = (n: string) => raw.v[n]
+  // Drive is directed reach: a return is never driven, only defined (plan amendment), so a domain is
+  // checked when its pin is driven and its return defined, both solved.
+  const on = (pin: string, ret: string) => powered(c, cls, pin, ret) && solved(pin) && solved(ret)
+  const pinI = (part: string, pin: string) => {
+    const i = raw.pins[part]?.[pin]
+    return i !== undefined && Number.isFinite(i) ? i : undefined
+  }
+  const taps = (part: string) => c.taps.filter((t) => t.part === part)
+  const netOf = netOfNode(c)
+  const ref = (uid: string) => refOf(c, uid)
+  const fmt = (x: number, unit: 'A' | 'V' | 'W') => (unit === 'A' ? A(x) : unit === 'V' ? V(x) : W(x))
+  const cond = (l: ResolvedLimit) => (l.conditions ? ` (${l.conditions})` : '')
+  const delivered = (part: string, domain?: string) => {
+    const src = c.devices.find((x) => x.kind === 'cell' && x.part === part && (domain === undefined || x.domain === domain))
+    const x = src ? raw.dev[src.id] : undefined
+    return x === undefined || !Number.isFinite(x) ? null : { value: Math.abs(x), what: `${ref(part)} delivers ${A(Math.abs(x))}`, unit: 'A' as const }
+  }
+
+  const measure = (l: ResolvedLimit): { value: number; what: string; unit: 'A' | 'V' | 'W' } | null => {
+    const r = ref(l.part)
+    if ('pin' in l.of) {
+      const i = pinI(l.part, l.of.pin)
+      return i === undefined ? null : { value: Math.abs(i), what: `${r} ${l.of.pin} carries ${A(Math.abs(i))}`, unit: 'A' }
+    }
+    if ('domain' in l.of) {
+      const name = l.of.domain
+      const dom = c.domains.find((x) => x.part === l.part && x.name === name)
+      if (!dom) return null
+      if (l.kind === 'vinMax' || l.kind === 'vinMin') {
+        if (!on(dom.pin, dom.ret)) return null
+        const x = v(dom.pin) - v(dom.ret)
+        return { value: x, what: `${r} ${name} is at ${V(x)}`, unit: 'V' }
+      }
+      if (l.kind === 'ioTotalCurrent') {
+        const sum = c.gpio.filter((g) => g.part === l.part && g.domain === name && (g.state === 'high' || g.state === 'low')).reduce((s, g) => s + Math.abs(pinI(g.part, g.pin) ?? 0), 0)
+        return { value: sum, what: `${r}'s GPIO pins on ${name} carry ${A(sum)} in all`, unit: 'A' }
+      }
+      return delivered(l.part, name)
+    }
+    if (l.kind === 'power') {
+      const p = Math.abs(taps(l.part).reduce((s, t) => s + (solved(t.node) ? v(t.node) : 0) * (pinI(l.part, t.pin) ?? 0), 0))
+      return { value: p, what: `${r} dissipates ${W(p)}`, unit: 'W' }
+    }
+    if (l.kind === 'sourceCurrent') return delivered(l.part)
+    if (l.kind === 'vinMax' || l.kind === 'vinMin') return null
+    const i = Math.max(0, ...taps(l.part).map((t) => Math.abs(pinI(l.part, t.pin) ?? 0)))
+    return { value: i, what: `${r} carries ${A(i)}`, unit: 'A' }
+  }
+
+  // Limits: an absolute maximum is sim-over-abs-max; any other rating is sim-over-limit, unless the
+  // same subject is over an absolute maximum (then that one says it).
+  const subject = (l: ResolvedLimit) => `${l.part}|${JSON.stringify(l.of)}`
+  const overAbs = new Set<string>()
+  for (const l of c.limits) {
+    if (l.kind !== 'absMaxCurrent' && l.kind !== 'vinMax') continue
+    const m = measure(l)
+    if (!m || m.value <= l.value.value) continue
+    overAbs.add(subject(l))
+    add({ code: 'sim-over-abs-max', severity: 'error', parts: [l.part], inputs: [l.value], key: `abs|${subject(l)}|${l.kind}`, message: `${m.what}, above its ${fmt(l.value.value, m.unit)} absolute maximum${cond(l)}: damage is likely.` })
+  }
+  for (const l of c.limits) {
+    if (l.kind === 'absMaxCurrent' || l.kind === 'vinMax' || overAbs.has(subject(l))) continue
+    const m = measure(l)
+    if (!m) continue
+    const under = l.kind === 'vinMin'
+    if (under ? m.value >= l.value.value : m.value <= l.value.value) continue
+    const advice = c.parts[l.part]?.model === 'led' ? ' Add a series resistor, or a larger one, to bring it under the rating.' : ''
+    add({ code: 'sim-over-limit', severity: 'warning', parts: [l.part], inputs: [l.value], key: `limit|${subject(l)}|${l.kind}`, message: `${m.what}, ${under ? 'below' : 'above'} its ${fmt(l.value.value, m.unit)} ${under ? 'minimum' : 'rating'}${cond(l)}.${advice}` })
+  }
+  for (const d of c.devices)
+    if (d.kind === 'cell' && d.role === 'external' && d.imax && (raw.dev[d.id] ?? 0) > d.imax.value)
+      add({ code: 'sim-over-limit', severity: 'warning', parts: [d.part], inputs: [d.imax], key: `imax|${d.id}`, message: `${ref(d.part)} delivers ${A(raw.dev[d.id])}, above the ${A(d.imax.value)} it can supply.` })
+  for (const u of c.usb) {
+    // The cable joins the two port nets (net nodes).
+    const cable = c.devices.find((x) => x.id === u.vbus)
+    if (cable?.kind !== 'resistor' || !cls.driven.has(cable.a) || !solved(cable.a) || !solved(cable.b)) continue
+    const i = (v(cable.a) - v(cable.b)) / Math.max(cable.ohms.value, 1e-6)
+    if (i > u.limit.value)
+      add({ code: 'sim-over-limit', severity: 'warning', parts: [u.host, u.device], inputs: [u.limit], key: `usb|${u.vbus}`, message: `${ref(u.host)} ${u.hostPort} supplies ${A(i)} over USB to ${ref(u.device)}, above the ${A(u.limit.value)} the port gives.` })
+  }
+
+  // Rails (spec 4.1, 4.2): outside the model past ioutMax (a shorted output too: the model does not
+  // limit it, so its current is huge and its voltages untrusted); dropout; a converter off or at the
+  // edge of its enable; minimum load. Checked only while the rail's input is powered. `iout` is what
+  // the rail delivers: the 1 mA internal feedback load sits inside the output sense.
+  for (const d of c.devices) {
+    if (d.kind !== 'rail' || !on(d.in, d.inRet) || !solved(d.out)) continue
+    const r = d.rail
+    const iout = raw.dev[d.id] ?? 0
+    const name = `${ref(d.part)} ${r.output} ${r.kind === 'ldo' ? 'regulator' : r.kind}`
+    const outNet = netOf(d.out)
+    const loads = c.devices.filter((x): x is Load => x.kind === 'load' && netOf(x.p) === outNet)
+    const expecting = c.devices.filter((x) => (x.kind === 'load' && netOf(x.p) === outNet) || ((x.kind === 'resistor' || x.kind === 'diode') && x.role === 'rail-input' && netOf(x.a) === outNet))
+    if (r.ioutMax && iout > r.ioutMax.value) {
+      outside.add(d.id)
+      add({ code: 'sim-outside-model', severity: 'warning', parts: [d.part], inputs: [r.ioutMax], key: `outside|${d.id}`, message: `${name} supplies ${A(iout)}, beyond the ${A(r.ioutMax.value)} its model covers: its voltages, and the readings upstream of it, cannot be trusted.` })
+      add({ code: 'sim-over-limit', severity: 'warning', parts: [d.part], inputs: [r.ioutMax], key: `iout|${d.id}`, message: `${name} supplies ${A(iout)}, above its ${A(r.ioutMax.value)} rating.` })
+    }
+    const vin = v(d.in) - v(d.inRet)
+    if (r.kind === 'ldo' && solved(d.ctl)) {
+      const vctl = v(d.ctl) - v(d.ret)
+      // An output held more than 10 mV above Vctl is backfed by another supply (a DevKit's own LDO
+      // behind its 3V3 pin fed from outside): the regulator delivers nothing, so it is not in dropout.
+      if (vctl < r.vout!.value - 0.01 && v(d.out) - v(d.ret) <= vctl + 0.01)
+        add({ code: 'sim-dropout', severity: 'error', parts: [d.part], inputs: [r.vout!, r.dropout!, ...loads.map((l) => (corner === 'peak' ? l.peak : l.typical))], key: `dropout|${d.id}`, message: `${name} cannot hold ${V(r.vout!.value)}: its input is too low (${V(vin)}), so its output follows it down to about ${V(vctl)}.` })
+    }
+    let enabled = true
+    if (r.kind === 'buck' || r.kind === 'boost') {
+      const e = enableValue(vin, r.vinMin!.value, r.vinMax!.value)
+      enabled = e >= 0.5
+      if (e > 0.01 && e < 0.99) {
+        outside.add(d.id)
+        add({ code: 'sim-converter-off', severity: 'error', parts: [d.part], inputs: [r.vinMin!, r.vinMax!], key: `edge|${d.id}`, message: `${name}'s input (${V(vin)}) is at the edge of its range; it would cycle on and off, so its output and the readings upstream of it cannot be trusted.` })
+      } else if (!enabled && expecting.length) {
+        const users = [...new Set(expecting.map((x) => x.part))].filter((p) => p !== d.part)
+        add({
+          code: 'sim-converter-off', severity: 'error', parts: [d.part, ...users], inputs: [r.vinMin!, r.vinMax!], key: `off|${d.id}`,
+          message: `${name} is off: its input (${V(vin)}) is ${vin < r.vinMin!.value ? `below its ${V(r.vinMin!.value)} minimum` : `above its ${V(r.vinMax!.value)} maximum`}, but ${andList(users.map(ref))} ${users.length === 1 ? 'expects' : 'expect'} power from it.`,
+        })
+      }
+    }
+    if (r.minLoad && enabled && iout < r.minLoad.amps.value)
+      add({ code: 'sim-min-load', severity: 'warning', parts: [d.part], inputs: [r.minLoad.amps], key: `minload|${d.id}`, message: `${name} supplies ${A(iout)}, below the ${A(r.minLoad.amps.value)} it needs to stay on: ${r.minLoad.note}.` })
+  }
+
+  // Loads (spec 5.2 sim-brownout).
+  // Ruling R30 (spec 5.2 revision 5): a load whose domain is not powered in the current state is a
+  // sim-brownout warning with basis topology ("not powered in the current state"), never an error:
+  // the checker's "external power assumed" view covers an undrawn supply, so blocking on it would
+  // answer the checker's question, not the simulator's (spec 2.1). When an open switch is what
+  // separates it from a source (openSwitchFor, with the return so a low-side switch is named too),
+  // the message names it. It triggers the same way for an unplugged board and for one behind an open
+  // switch with its ground shared, because loads and returns are not DC paths. A board back-powered
+  // through another board's GPIO (phantom power) is powered, so a low voltage there is a brownout.
+  for (const l of c.devices) {
+    if (l.kind !== 'load') continue
+    if (!on(l.p, l.n)) {
+      if (corner === 'typical') {
+        const sw = openSwitchFor(c, l.p, l.n)
+        add({
+          code: 'sim-brownout', severity: 'warning', parts: sw ? [l.part, sw] : [l.part], inputs: [], key: `unpowered|${l.id}`,
+          message: sw
+            ? `${ref(l.part)} ${l.domain} is not powered in the current state: ${ref(sw)} is open. Set ${ref(sw)} to its operating position to simulate ${ref(l.part)} running.`
+            : `${ref(l.part)} ${l.domain} is not powered in the current state: nothing on the sheet supplies it. Draw its supply (a battery, an adapter, or a computer USB port on its USB socket) to simulate it.`,
+        })
+      }
+      continue
+    }
+    const x = v(l.p) - v(l.n)
+    if (x < l.minVolts.value)
+      add({ code: 'sim-brownout', severity: 'error', parts: [l.part], inputs: [corner === 'peak' ? l.peak : l.typical, l.minVolts], key: `brownout|${l.id}`, message: `${ref(l.part)} ${l.domain} is at ${V(x)}, below the ${V(l.minVolts.value)} it needs: it browns out.` })
+  }
+  return { drafts, outside }
+}
+
+/**
+ * Spec 4.2: a rail outside its model marks its output and input nets, and every rail, path and
+ * source feeding them, transitively. Paths are rail inputs, switch rails, cables, closed contacts,
+ * jumpers and fuses (plain resistors are loads, not supply paths). Nets come back as display names,
+ * as readings key them; parts are the marked rails', the paths' and the sources'.
+ */
+export function propagate(c: Circuit, rails: Set<string>): Outside {
+  const netOf = netOfNode(c)
+  const marked = new Set(rails)
+  const nodes = new Set<string>()
+  const parts = new Set<string>()
+  const railDevs = c.devices.filter((d): d is RailDev => d.kind === 'rail')
+  const mark = (d: RailDev) => {
+    nodes.add(netOf(d.out)).add(netOf(d.in))
+    parts.add(d.part)
+  }
+  const paths = c.devices.flatMap((d): { part: string; a: string; b: string }[] => {
+    if ((d.kind === 'resistor' || d.kind === 'diode') && (d.role === 'rail-input' || d.role === 'switch-rail' || d.role === 'cable')) return [{ part: d.part, a: netOf(d.a), b: netOf(d.kind === 'resistor' ? d.b : d.k) }]
+    if ((d.kind === 'resistor' && d.role === 'contact') || (d.kind === 'switch' && d.closed)) return [{ part: d.part, a: netOf(d.a), b: netOf(d.b) }]
+    return []
+  })
+  for (const d of railDevs) if (marked.has(d.id)) mark(d)
+  for (let changed = true; changed; ) {
+    changed = false
+    for (const d of railDevs)
+      if (!marked.has(d.id) && nodes.has(netOf(d.out))) {
+        marked.add(d.id)
+        mark(d)
+        changed = true
+      }
+    for (const p of paths)
+      if (nodes.has(p.a) !== nodes.has(p.b)) {
+        nodes.add(p.a).add(p.b)
+        parts.add(p.part)
+        changed = true
+      }
+  }
+  for (const d of c.devices) if (d.kind === 'cell' && nodes.has(netOf(d.p))) parts.add(d.part)
+  const NET = netNode('')
+  const nets = new Set([...nodes].filter((n) => n.startsWith(NET)).map((n) => n.slice(NET.length)))
+  return { nets, parts, rails: marked }
+}
+
+/** Every finding of a solve, and what is outside the model (spec 4.1, 4.2, 4.5, 5.2). */
+export function analyseFindings(c: Circuit, cls: Classification, raws: Record<Corner, RawRun>): { findings: SimFinding[]; outside: Outside } {
+  const topo = topologyFindings(c, cls)
+  const typical = runDrafts(c, cls, raws.typical, 'typical')
+  const peak = runDrafts(c, cls, raws.peak, 'peak')
+  const outside = propagate(c, new Set([...topo.shortedRails, ...typical.outside, ...peak.outside]))
+  const peakNote = [...new Set(c.devices.flatMap((d) => (d.kind === 'load' && d.peakNote ? [d.peakNote] : [])))].join(', ')
+  return { findings: finalize([...topo.drafts, ...typical.drafts, ...peak.drafts], peakNote), outside }
 }
