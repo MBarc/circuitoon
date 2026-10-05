@@ -1,18 +1,23 @@
 // Layout on the fixture sizes of spec 10 (5, 30, 120 parts and the typewriter-like topology): every
 // part placed, zero body and caption overlaps, nothing blocked, mounts seated, and a clean verify.
-import { describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it } from 'vitest'
 import { mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { serializeDiagram } from '../format/diagram.ts'
 import { openLinkPayload, payloadFromHash } from '../format/link.ts'
-import { runGate } from '../cli/gate.ts'
+import { gateEngine, runGate } from '../cli/gate.ts'
 import { mountIssues } from '../format/breadboard.ts'
 import { libraryLookup } from './catalog.ts'
 import { layoutNetlist } from './layout.ts'
 import { verifyDiagram } from './verify.ts'
 import { channelTable } from './tables.ts'
 import { fiveParts, ledRails, typewriter } from './fixtures.testing.ts'
+
+// Gate tests that do not test simulation never start the engine (Task 31's stub seam).
+beforeEach(() => {
+  gateEngine.make = () => null
+})
 
 const cases: [string, () => unknown, number][] = [
   ['5 parts', fiveParts, 5],

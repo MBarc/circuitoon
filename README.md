@@ -148,7 +148,7 @@ One net per electrical node. A part that plugs into a breadboard says so with `"
 - `sheet.png` and `sheet.svg`, plus `focus-<copy>.png` for the first copy of a repeat;
 - `link.txt`, or the sheet file when the link would be too long;
 - `bom.csv` with the columns Type, Qty, Description, Value, Designators, Category, Source and Notes;
-- `gate.json` (format `circuitoon-cli/gate/3`).
+- `gate.json` (format `circuitoon-cli/gate/4`).
 
 `gate.json` holds `ok`, `ready`, the SHA-256 of the sheet and of every artifact, the blocking findings, warnings, notes, the "not checked" list, the link and the bill of materials. Only hand over files whose hash matches it.
 

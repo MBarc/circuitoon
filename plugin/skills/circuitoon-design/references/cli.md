@@ -66,7 +66,7 @@ The readability report lists:
 - `focus-<copy>.png` for the first copy of a repeat;
 - `link.txt`, or the sheet file when the link would be too long;
 - `bom.csv`, the bill of materials (the same file `bom -o` writes);
-- `gate.json` (format `circuitoon-cli/gate/3`; version 2 added the required `bom` field and the `bom` artifact, version 3 the required `ready`: true only when the gate passed and no readability warning remains), with the SHA-256 of the sheet and of every artifact, the blocking findings, the warnings, the notes (each custom part on the sheet is one, rule `custom-part`), the "not checked" list, the link, the bill of materials (`bom`, the rows `bom.csv` is written from), the bill of quantities (the bill's parts summed per module; `added` is how many of each part the layout added as routing infrastructure) and the channel table.
+- `gate.json` (format `circuitoon-cli/gate/4`; version 2 added the required `bom` field and the `bom` artifact, version 3 the required `ready`: true only when the gate passed and no readability warning remains, version 4 added the required `sim` (status, findings, budget, provenance counts)), with the SHA-256 of the sheet and of every artifact, the blocking findings, the warnings, the notes (each custom part on the sheet is one, rule `custom-part`), the "not checked" list, the link, the bill of materials (`bom`, the rows `bom.csv` is written from), the bill of quantities (the bill's parts summed per module; `added` is how many of each part the layout added as routing infrastructure) and the channel table.
 
 ## Bill of materials
 
@@ -78,7 +78,7 @@ The readability report lists:
 
 The CSV has the columns `Type` (Part, Wire or Connector), `Qty`, `Description`, `Value`, `Designators`, `Category`, `Source` and `Notes`. Every field is quoted (RFC 4180, CRLF line ends), units are plain ASCII (`4.7 kohm`), and a value that starts with `=`, `+`, `-` or `@` gets a leading `'` so no spreadsheet runs it as a formula.
 
-Text mode starts with `GATE PASSED`, `GATE BLOCKED` or `GATE INCOMPLETE`. When readability warnings remain, a line `NOT READY: N readability warnings` comes first (the exit code is unchanged: they never block). A sheet that is not ready is presented only with each of those warnings listed to the user, with why it stays.
+Text mode starts with `GATE PASSED`, `GATE PASSED, with warnings`, `GATE FAILED`, `GATE FAILED (simulation)`, `GATE INCOMPLETE (simulation did not converge; this may be our model, not your circuit)`, `GATE INCOMPLETE (simulation unavailable)` or `GATE INCOMPLETE: nothing blocks, but not every render could be made`. When readability warnings remain, a line `NOT READY: N readability warnings` comes first (the exit code is unchanged: they never block). A sheet that is not ready is presented only with each of those warnings listed to the user, with why it stays.
 
 ## KiCad netlist
 

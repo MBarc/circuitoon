@@ -1,6 +1,6 @@
 // circuitoon bom: the bill of materials as text, as CSV with -o, and as JSON matching its schema;
 // invalid input exits 2 like every command, with one error envelope under --json.
-import { describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it } from 'vitest'
 import { readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { bomCsv, bomLines } from '../format/bom.ts'
@@ -8,6 +8,12 @@ import { cli, tempDir } from './cliHarness.testing.ts'
 import { loadSchema, schemaErrors } from './jsonSchema.testing.ts'
 import { tiltSensors } from '../agent/fixtures.testing.ts'
 import { USAGE } from './main.ts'
+import { gateEngine } from './gate.ts'
+
+// Gate tests that do not test simulation never start the engine (Task 31's stub seam).
+beforeEach(() => {
+  gateEngine.make = () => null
+})
 
 // Wires only (--labels none), so the repeat block keeps its local rail strips (DP1...), which the bill marks as added.
 const laidOut = async () => {

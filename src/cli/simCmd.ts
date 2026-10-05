@@ -12,7 +12,7 @@ import { type Intent, intentLookup, parseNetlist } from '../agent/netlist.ts'
 import { type Engine, makeEngine } from '../sim/engine/engine.ts'
 import { createNodeEngineHost } from '../sim/engine/nodeEngine.ts'
 import { nextProbeId, probesForSheet } from '../sim/probes.ts'
-import type { CurrentReading, Reading, SimFinding, SimOutcome } from '../sim/results.ts'
+import type { CurrentReading, Reading, SimOutcome } from '../sim/results.ts'
 import { solve } from '../sim/session.ts'
 import type { Args } from './args.ts'
 import { CliError, EXIT, type Io, printJson, readJson } from './io.ts'
@@ -55,7 +55,8 @@ const amps = (r: CurrentReading) => (r.kind === 'value' ? `${(r.value * 1000).to
 // Ruling R30 leaves one "not powered" warning per load behind an open switch (ten on a typical
 // sheet); the summary folds a run of them for the same switch into one line. The JSON keeps them all.
 const OFF = /^(.+?) is not powered in the current state: (\S+) is open\./
-function findingLines(findings: SimFinding[]): string[] {
+// `line` formats one line from a finding and its (possibly folded) message; gate passes its own.
+export function findingLines<F extends { severity: string; message: string }>(findings: F[], line: (f: F, message: string) => string = (f, m) => `  ${f.severity}: ${m}`): string[] {
   const lines: string[] = []
   for (let i = 0; i < findings.length; i++) {
     const m = findings[i].severity === 'warning' ? OFF.exec(findings[i].message) : null
@@ -66,8 +67,8 @@ function findingLines(findings: SimFinding[]): string[] {
       run.push(next[1])
       i++
     }
-    if (m && run.length > 1) lines.push(`  warning: not powered in the current state because ${m[2]} is open: ${run.join(', ')}. Set ${m[2]} to its operating position to simulate them running.`)
-    else lines.push(`  ${findings[i].severity}: ${findings[i].message}`)
+    if (m && run.length > 1) lines.push(line(findings[i], `not powered in the current state because ${m[2]} is open: ${run.join(', ')}. Set ${m[2]} to its operating position to simulate them running.`))
+    else lines.push(line(findings[i], findings[i].message))
   }
   return lines
 }

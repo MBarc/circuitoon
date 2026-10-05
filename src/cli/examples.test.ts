@@ -2,12 +2,18 @@
 // blocking, passes the gate where a browser exists, and yields a link. The Spirit Typewriter example
 // (amendment A20) is four sheets, each laid out from its partial with `layout --keep`; each partial's
 // intent is exactly its netlist, so the two files cannot drift.
-import { describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it } from 'vitest'
 import { copyFileSync, readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { libraryLookup } from '../agent/catalog.ts'
 import { cli, tempDir } from './cliHarness.testing.ts'
 import { findBrowser } from './png.ts'
+import { gateEngine } from './gate.ts'
+
+// Gate tests that do not test simulation never start the engine (Task 31's stub seam).
+beforeEach(() => {
+  gateEngine.make = () => null
+})
 
 const DIR = join(import.meta.dirname, '..', '..', 'plugin', 'skills', 'circuitoon-design', 'references', 'examples')
 const TW = join(DIR, 'spirit-typewriter')

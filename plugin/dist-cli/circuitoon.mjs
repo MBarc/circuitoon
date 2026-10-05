@@ -87039,7 +87039,7 @@ var isStale = (u, stale) => stale.has(u.cover.by) || !!u.leg && stale.has(u.leg.
 //#endregion
 //#region src/agent/notChecked.ts
 var NOT_CHECKED = [
-	"Current and heat: wire gauge against current, regulator and battery limits, and part temperatures.",
+	"Current and heat beyond the simulated DC operating point: wire gauge against current, part temperatures, and anything that changes over time (PWM, start-up, inrush, battery discharge). The simulation solves the saved switch and GPIO state only.",
 	"SPI bus conflicts; I2C addresses and pull-ups only as far as the parts declare them (not a part with no I2C data, nor a bus that continues on another sheet).",
 	"Required configuration inputs left floating (for example an MCP23017 RESET): unless the intent lists them, only I2C address pins are checked.",
 	"Firmware behaviour: pin modes, the internal pull-ups firmware turns on, and what drives a strapping pin at reset (only what is wired to it is checked).",
@@ -88028,267 +88028,6 @@ function renderCommand$1(args, io) {
 	});
 	else io.stdout(`${outputs.map((o) => `Wrote ${o.path} (${o.width} x ${o.height} px)`).join("\n")}\n`);
 	return EXIT.ok;
-}
-//#endregion
-//#region src/cli/gate.ts
-var GATE_FORMAT = "circuitoon-cli/gate/3";
-var sha256 = (bytes) => createHash("sha256").update(bytes).digest("hex");
-/** The loader's warning for a part whose module the file does not embed (a missing module blocks). */
-var MISSING_MODULE = "is not embedded in this file";
-var plural$2 = (n, one) => `${n} ${one}${n === 1 ? "" : "s"}`;
-/** Removes `path` when it is a file inside `dir` and not `keep` (the sheet being gated); anything else stays. */
-function removeStale(dir, path, keep) {
-	const full = resolve(dir, path);
-	const rel = relative(resolve(dir), full);
-	if (rel === "" || rel.startsWith("..") || isAbsolute(rel) || keep !== void 0 && full === resolve(keep)) return;
-	try {
-		if (!statSync(full).isFile()) return;
-	} catch {
-		return;
-	}
-	try {
-		rmSync(full);
-	} catch (err) {
-		throw writeError(full, err);
-	}
-}
-/** The artifacts of an earlier run in `outDir` that a new run replaces: renders, focused PNGs, the link. */
-function clearArtifacts(outDir, keep) {
-	let names = [];
-	try {
-		names = readdirSync(outDir);
-	} catch {
-		return;
-	}
-	for (const name of names) if (/^focus-.*\.png$/.test(name)) removeStale(outDir, name, keep);
-	for (const name of [
-		"sheet.svg",
-		"sheet.png",
-		"link.txt",
-		"bom.csv"
-	]) removeStale(outDir, name, keep);
-}
-/** Removes an earlier gate.json, and the file fallback it names, before anything else runs. */
-function clearReport(outDir, keep) {
-	const path = join(outDir, "gate.json");
-	let old;
-	try {
-		old = JSON.parse(readFileSync(path, "utf8"));
-	} catch {}
-	removeStale(outDir, "gate.json", keep);
-	const artifacts = old?.artifacts;
-	if (Array.isArray(artifacts)) {
-		for (const a of artifacts) if (a && typeof a === "object" && a.kind === "file" && typeof a.path === "string") removeStale(outDir, a.path, keep);
-	}
-}
-async function runGate(bytes, opts) {
-	const { io, outDir } = opts;
-	const png = opts.png ?? writePng;
-	clearArtifacts(outDir, pathIn(io, opts.sheetPath));
-	const found = [];
-	const note = (rule, cause, severity, message, more = {}) => found.push({
-		id: `${rule}|${cause}`,
-		rule,
-		severity,
-		message,
-		parts: more.parts ?? [],
-		pins: [],
-		wires: more.wires ?? []
-	});
-	const artifacts = [];
-	const artifact = (kind, path) => {
-		const content = readFileSync(join(outDir, path));
-		artifacts.push({
-			kind,
-			path,
-			sha256: sha256(content),
-			bytes: content.length
-		});
-	};
-	const required = [];
-	let link = {
-		url: null,
-		file: null,
-		chars: 0
-	};
-	let rows = {
-		bom: null,
-		quantities: [],
-		channels: []
-	};
-	const finish = () => {
-		const have = new Set(artifacts.map((a) => a.kind));
-		const missing = required.filter((r) => r.kind === "link-or-file" ? !have.has("link") && !have.has("file") : !have.has(r.kind));
-		if (missing.length) note("environment", "incomplete", "warning", `The gate is incomplete: ${missing.map((m) => m.path).join(", ")} could not be made, so the gate cannot pass.`);
-		const all = uniqueIds(found);
-		const blocking = all.filter((f) => f.severity === "error");
-		const code = blocking.length ? EXIT.blocked : missing.length ? EXIT.environment : EXIT.ok;
-		return {
-			code,
-			report: {
-				format: GATE_FORMAT,
-				ok: code === EXIT.ok,
-				ready: code === EXIT.ok && all.every((f) => f.severity !== "warning" || !READABILITY_RULES.includes(f.rule)),
-				diagram: {
-					path: opts.sheetPath,
-					sha256: sha256(bytes)
-				},
-				artifacts,
-				blocking,
-				warnings: all.filter((f) => f.severity === "warning"),
-				notes: all.filter((f) => f.severity === "info"),
-				notChecked: NOT_CHECKED,
-				link,
-				...rows
-			}
-		};
-	};
-	let raw;
-	try {
-		raw = JSON.parse(new TextDecoder().decode(bytes));
-	} catch (e) {
-		note("load", "json", "error", `${opts.sheetPath} is not valid JSON (${e.message})`);
-		return finish();
-	}
-	const v = validateDiagram(raw, { library: libraryLookup });
-	if (!v.ok) {
-		v.errors.forEach((e, i) => note("load", String(i), "error", `${opts.sheetPath} is not a Circuitoon sheet: ${e}`));
-		return finish();
-	}
-	const d = v.diagram;
-	v.warnings.forEach((w, i) => note("load", String(i), w.includes("it was dropped and the module default is shown") || w.includes(MISSING_MODULE) ? "error" : "warning", w));
-	const verified = verifyDiagram(d, libraryLookup);
-	const checked = withoutStale(checkDiagram(d), verified);
-	found.push(...verified.filter((f) => !alsoChecked(f, checked)).map(cliFinding));
-	found.push(...checked.map(cliFinding));
-	const routes = computeRoutes(d);
-	for (const { conn: c, blocked } of wirePaths(d, routes)) if (blocked) note("blocked-route", c.uid, "error", `The wire ${c.label ?? `${endpointName(d, c.from)} to ${endpointName(d, c.to)}`} has no clear route: it runs through a part.`, {
-		parts: [c.from.part, c.to.part],
-		wires: [c.uid]
-	});
-	for (const c of d.connections) if (routes.get(c.uid)?.fallback) note("wire-over-holes", c.uid, "warning", `The wire ${c.label ?? `${endpointName(d, c.from)} to ${endpointName(d, c.to)}`} runs over breadboard holes in use that it is not plugged into, so in the picture it may look plugged in there.`, {
-		parts: [c.from.part, c.to.part],
-		wires: [c.uid]
-	});
-	found.push(...readabilityFindings(d, routes).map(cliFinding));
-	for (const c of sheetCustomParts(d, libraryLookup)) found.push({
-		id: `custom-part|${c.module}`,
-		rule: "custom-part",
-		severity: "info",
-		message: customPartNote(c),
-		parts: c.parts,
-		pins: [],
-		wires: []
-	});
-	const parsed = d.intent !== void 0 ? parseNetlist(d.intent, intentLookup(d, libraryLookup)) : null;
-	const bom = sheetBom(d, libraryLookup);
-	rows = {
-		bom,
-		quantities: bomQuantities(bom),
-		channels: parsed?.ok ? channelTable(parsed.intent) : []
-	};
-	required.push({
-		kind: "bom",
-		path: "bom.csv"
-	});
-	writeFile(io, join(outDir, "bom.csv"), bomCsv(bom));
-	artifact("bom", "bom.csv");
-	const shoot = (drawn, kind, name) => {
-		required.push({
-			kind,
-			path: name
-		});
-		let shot;
-		try {
-			shot = png(drawn, 2, join(outDir, name), io.env);
-		} catch (err) {
-			throw writeError(join(outDir, name), err);
-		}
-		if (shot.ok) artifact(kind, name);
-		else note("environment", name, "warning", shot.message);
-		return shot.ok;
-	};
-	required.push({
-		kind: "svg",
-		path: "sheet.svg"
-	});
-	const full = renderSheetSvg(d);
-	writeFile(io, join(outDir, "sheet.svg"), full.svg);
-	artifact("svg", "sheet.svg");
-	const fullOk = shoot(full, "png", "sheet.png");
-	const copy = parsed?.ok ? parsed.intent.copies[0] : void 0;
-	if (copy) {
-		const name = `focus-${copy.id}.png`;
-		const uids = focusParts(d, copy.id);
-		if (uids && fullOk) shoot(renderSheetSvg(d, { box: focusBounds(d, uids, routes) }), "focus-png", name);
-		else required.push({
-			kind: "focus-png",
-			path: name
-		});
-	}
-	required.push({
-		kind: "link-or-file",
-		path: "link.txt"
-	});
-	try {
-		const l = await linkFor(d, outDir, io, pathIn(io, opts.sheetPath));
-		const file = l.file ? relative(outDir, pathIn(io, l.file)) : null;
-		link = {
-			url: l.url,
-			file,
-			chars: l.chars
-		};
-		if (l.url) {
-			writeFile(io, join(outDir, "link.txt"), `${l.url}\n`);
-			artifact("link", "link.txt");
-		} else {
-			artifact("file", file);
-			note("link", "file", "warning", `${l.reason} ${file} was written instead: open it in Circuitoon with Import JSON.`);
-		}
-	} catch (err) {
-		note("link", "none", "error", `No link could be made and the file fallback could not be written: ${err instanceof Error ? err.message : String(err)}`);
-	}
-	return finish();
-}
-/** The readability warnings in a gate report (the rules readabilityFindings raises). */
-function readabilityCount(report) {
-	return report.warnings.filter((w) => READABILITY_RULES.includes(w.rule)).length;
-}
-async function gateCommand(args, io) {
-	const [input, ...rest] = args.positionals;
-	const out = flag(args, "--out");
-	if (out) clearReport(pathIn(io, out), input ? pathIn(io, input) : void 0);
-	if (!input || !out) throw new CliError("gate: usage: circuitoon gate <sheet.json> -o <dir>", EXIT.input);
-	if (rest.length) throw new CliError(`gate: give one sheet file, not ${args.positionals.length}`, EXIT.input);
-	let bytes;
-	try {
-		bytes = readFileSync(pathIn(io, input));
-	} catch {
-		throw new CliError(`${input}: cannot read the file`, EXIT.input);
-	}
-	const { code, report } = await runGate(bytes, {
-		sheetPath: input,
-		outDir: pathIn(io, out),
-		io
-	});
-	writeFile(io, join(out, "gate.json"), `${JSON.stringify(report, null, 2)}\n`);
-	if (code === EXIT.environment) {
-		for (const w of report.warnings) if (w.rule === "environment") io.stderr(`${w.message}\n`);
-	}
-	if (args.flags.has("--json")) printJson(io, report);
-	else {
-		const head = code === EXIT.ok ? `GATE PASSED: ${input} (sha256 ${report.diagram.sha256})` : code === EXIT.environment ? `GATE INCOMPLETE: nothing blocks, but not every render could be made (${input})` : `GATE BLOCKED: ${plural$2(report.blocking.length, "blocking finding")} (${input})`;
-		const notReady = readabilityCount(report);
-		const lines = [...notReady ? [`NOT READY: ${plural$2(notReady, "readability warning")}`] : [], head];
-		if (report.blocking.length) lines.push("", "Blocking:", findingsText(report.blocking));
-		if (report.warnings.length) lines.push("", "Warnings (report these to the user):", findingsText(report.warnings));
-		if (report.notes.length) lines.push("", "Notes (not problems; pass them on to the user):", findingsText(report.notes));
-		lines.push("", `Artifacts in ${out}:`, ...report.artifacts.map((a) => `  ${a.path}  sha256 ${a.sha256}`), `  gate.json`);
-		if (report.link.url) lines.push("", `Link: ${report.link.url}`, LINK_NOTICE);
-		lines.push("", notCheckedText());
-		io.stdout(`${lines.join("\n")}\n`);
-	}
-	return code;
 }
 //#endregion
 //#region src/agent/footprint.ts
@@ -91073,349 +90812,6 @@ function bundled(d, connections) {
 	})).sort((a, b) => size.get(b.k) - size.get(a.k) || first.get(a.k) - first.get(b.k) || a.p.y - b.p.y || a.p.x - b.p.x || a.i - b.i).map((x) => x.c);
 }
 //#endregion
-//#region src/agent/partial.ts
-var PARTIAL_FORMAT = "circuitoon-partial/1";
-var ROTATIONS = [
-	0,
-	90,
-	180,
-	270
-];
-function loadPartial(raw) {
-	if (!isObj(raw)) return {
-		ok: false,
-		errors: ["partial must be a JSON object"]
-	};
-	const errors = [];
-	if (raw.format !== "circuitoon-partial/1") errors.push(`format: must be "${PARTIAL_FORMAT}" (copy the sheet, change its format, and delete x and y on the parts to place again)`);
-	if (!isObj(raw.intent)) errors.push("intent: required, the netlist the sheet was laid out from");
-	const keep = /* @__PURE__ */ new Map();
-	const seen = /* @__PURE__ */ new Map();
-	if (!Array.isArray(raw.parts)) errors.push("parts: required list");
-	else raw.parts.forEach((p, i) => {
-		const at = `parts[${i}]`;
-		if (!isObj(p) || typeof p.designator !== "string") return void errors.push(`${at}.designator: required`);
-		const first = seen.get(p.designator);
-		if (first !== void 0) return void errors.push(`${at}.designator: ${p.designator} is already listed at parts[${first}]`);
-		seen.set(p.designator, i);
-		if (p.x === void 0 && p.y === void 0) return;
-		if (!isNum(p.x) || !isNum(p.y)) return void errors.push(`${at}: give both x and y, or neither`);
-		if (p.x % 10 !== 0 || p.y % 10 !== 0) return void errors.push(`${at}: x and y must be on the 10 px grid`);
-		const rotation = p.rotation === void 0 ? 0 : p.rotation;
-		if (!ROTATIONS.includes(rotation)) return void errors.push(`${at}.rotation: must be 0, 90, 180 or 270`);
-		keep.set(p.designator, {
-			x: p.x,
-			y: p.y,
-			rotation
-		});
-	});
-	return errors.length ? {
-		ok: false,
-		errors
-	} : {
-		ok: true,
-		intent: raw.intent,
-		keep
-	};
-}
-//#endregion
-//#region src/cli/layoutCmd.ts
-/** Designators the partial keeps that are not parts of its intent (after repeat expansion). */
-function unknownKept(path, intent, keep) {
-	const parsed = parseNetlist(intent, libraryLookup);
-	if (!parsed.ok) return [];
-	const refs = new Set(parsed.intent.parts.map((p) => p.ref));
-	return [...keep.keys()].filter((ref) => !refs.has(ref)).sort(naturalCompare).map((ref) => `${path} names ${ref}, which is not a part of its intent; its position is ignored`);
-}
-function layoutCommand(args, io) {
-	const json = args.flags.has("--json");
-	const out = flag(args, "--out");
-	const keepPath = flag(args, "--keep");
-	const labels = flag(args, "--labels") ?? "none";
-	if (!LABEL_MODES.includes(labels)) throw new CliError(`layout: --labels must be ${LABEL_MODES.join(", ")}`, EXIT.input);
-	const [input] = args.positionals;
-	if (!out) throw new CliError("layout: -o <sheet.json> is required", EXIT.input);
-	if (!input === !keepPath) throw new CliError("layout: give a netlist file, or --keep <partial.json>, but not both", EXIT.input);
-	let raw;
-	let keep;
-	let warnings = [];
-	if (keepPath) {
-		const p = loadPartial(readJson(io, keepPath));
-		if (!p.ok) throw new CliError(`${keepPath}: ${p.errors.join("; ")}`, EXIT.input);
-		raw = p.intent;
-		keep = p.keep;
-		warnings = unknownKept(keepPath, raw, keep);
-	} else raw = readJson(io, input);
-	if (!json) for (const w of warnings) io.stderr(`warning: ${w}\n`);
-	const r = layoutNetlist(raw, {
-		keep,
-		labels
-	});
-	if (!r.ok) {
-		if (json) printJson(io, {
-			format: "circuitoon-cli/layout/1",
-			ok: false,
-			output: null,
-			attempts: 0,
-			report: null,
-			quantities: [],
-			channels: [],
-			warnings,
-			errors: r.errors
-		});
-		else io.stderr(`${r.stage === "input" ? "The netlist is not valid" : "The netlist cannot be laid out"}:\n${r.errors.map((e) => `  - ${e}`).join("\n")}\n`);
-		return r.stage === "input" ? EXIT.input : EXIT.blocked;
-	}
-	const { diagram, report, intent, attempts } = r.value;
-	warnings = [...warnings, ...intent.probeWarnings];
-	if (!json) for (const w of intent.probeWarnings) io.stderr(`warning: ${w}\n`);
-	writeFile(io, out, serializeDiagram(diagram));
-	const q = bomQuantities(sheetBom(diagram));
-	const ch = channelTable(intent);
-	if (json) {
-		printJson(io, {
-			format: "circuitoon-cli/layout/1",
-			ok: true,
-			output: out,
-			attempts,
-			report,
-			quantities: q,
-			channels: ch,
-			warnings,
-			errors: []
-		});
-		return EXIT.ok;
-	}
-	io.stdout([
-		`Laid out "${diagram.title}" into ${out}: ${diagram.parts.length} parts, ${diagram.connections.length} wires (placement ${attempts} of ${SPACINGS.length}).`,
-		reportText(report),
-		"Bill of quantities:",
-		quantitiesText(q),
-		...ch.length ? ["Channel allocation:", channelsText(ch)] : [],
-		...intent.custom.length ? [`Custom parts (unverified): ${intent.custom.join(", ")}`] : []
-	].join("\n") + "\n");
-	return EXIT.ok;
-}
-//#endregion
-//#region src/cli/bomCmd.ts
-var BOM_FORMAT = "circuitoon-cli/bom/1";
-function bomCommand(args, io) {
-	const [input, ...rest] = args.positionals;
-	if (!input) throw new CliError("bom: give a sheet file", EXIT.input);
-	if (rest.length) throw new CliError(`bom: give one sheet file, not ${args.positionals.length}`, EXIT.input);
-	const { diagram, warnings } = loadSheet(io, input);
-	for (const w of warnings) io.stderr(`warning: ${w}\n`);
-	const bom = sheetBom(diagram);
-	const out = flag(args, "--out") ?? null;
-	if (out) writeFile(io, out, bomCsv(bom));
-	const lines = bomLines(bom);
-	if (args.flags.has("--json")) printJson(io, {
-		format: BOM_FORMAT,
-		ok: true,
-		sheet: input,
-		output: out,
-		bom,
-		lines
-	});
-	else io.stdout([
-		`Bill of materials: ${diagram.title}`,
-		...lines.map((l) => `  ${l}`),
-		...out ? [`Wrote ${out}`] : []
-	].join("\n") + "\n");
-	return EXIT.ok;
-}
-//#endregion
-//#region src/cli/explain.ts
-var EXPLAIN_FORMAT = "circuitoon-cli/explain/1";
-/** The rules explain reports: the pin-capability, I2C and USB port rules. */
-var isPinRule = (rule) => /^(pin|i2c|usb)-/.test(rule);
-/** A module's short name: its name up to the first " (" ("ESP32 DevKit V1 (30 pin, DOIT)" is "ESP32 DevKit V1"). */
-var shortName$1 = (m) => m.name.split(" (")[0];
-var model = (m) => m.electrical?.model;
-/** Explain lists real parts only: no breadboards, rail strips or net labels. */
-var listed = (m) => !isBoard(m) && !isNetLabel(m);
-function fromSheet(d) {
-	const nl = netlist(d, plugsOf(d));
-	const pm = buildPinModel(d.parts.flatMap((p) => {
-		const m = moduleOf(d, p.module);
-		return m ? [{
-			id: p.uid,
-			designator: p.designator,
-			module: m,
-			settings: p.settings
-		}] : [];
-	}), nl.nets.map((keys) => keys.map((k) => JSON.parse(k))));
-	const names = nl.nets.map(() => null);
-	for (const l of labelsOf(d)) {
-		const i = nl.netOf.get(JSON.stringify([l.part.uid, l.pin]));
-		if (i !== void 0 && l.name && names[i] === null) names[i] = l.name;
-	}
-	const findings = uniqueIds(checkDiagram(d).filter((f) => isPinRule(f.rule)).map(cliFinding));
-	const notes = [...sheetCustomParts(d, libraryLookup).map(customPartNote), ...verifyDiagram(d, libraryLookup).filter((f) => f.rule === "module-drift").map((f) => `${f.message} Until then, its pin capabilities and I2C data are the old copy's.`)];
-	return {
-		source: "sheet",
-		title: d.title,
-		model: pm,
-		names,
-		findings,
-		notes
-	};
-}
-function fromNetlist(raw, path) {
-	const r = parseNetlist(raw, libraryLookup);
-	if (!r.ok) throw new CliError(`${path} is not a valid netlist: ${r.errors.slice(0, 5).join("; ")}`, EXIT.input);
-	const intent = r.intent;
-	const pm = buildPinModel(intent.parts.flatMap((p) => {
-		const m = intent.modules[p.module];
-		return m ? [{
-			id: p.ref,
-			designator: p.ref,
-			module: m,
-			...p.settings ? { settings: p.settings } : {}
-		}] : [];
-	}), intent.nets.map((n) => n.terminals.map((t) => [t.ref, t.name])));
-	const findings = uniqueIds(pinFindings(pm).map((f) => ({
-		id: `${f.rule}|${[...new Set(f.causes)].sort().join(",")}`,
-		rule: f.rule,
-		severity: RULES[f.rule].severity,
-		message: f.message,
-		parts: f.parts,
-		pins: f.pins,
-		wires: []
-	})));
-	const notes = netlistCustomParts(intent.parts, intent.modules, libraryLookup).map(customPartNote);
-	return {
-		source: "netlist",
-		title: intent.title,
-		model: pm,
-		names: intent.nets.map((n) => n.name),
-		findings,
-		notes
-	};
-}
-/** A net's ends in reading order: the MCU first, then by designator and pin. */
-var ordered = (net) => [...net].sort((a, b) => Number(model(b.part.module) === "mcu") - Number(model(a.part.module) === "mcu") || natural$1.compare(a.part.designator, b.part.designator) || natural$1.compare(a.label, b.label) || natural$1.compare(a.pin, b.pin));
-/** A sheet net's name when no label names it: GND, the supply pin's label, else a pin of the first part that is not the MCU. */
-function autoName(net, role) {
-	const ends = ordered(net);
-	if (role === "ground") return "GND";
-	if (role === "supply") {
-		const e = ends.find((x) => x.type === "power_out" || x.external) ?? ends.find((x) => x.type === "power_in") ?? ends[0];
-		return /[A-Za-z0-9]/.test(e.label) ? e.label : endName(e);
-	}
-	return endName(ends.find((e) => model(e.part.module) !== "mcu") ?? ends[0]);
-}
-var endText = (e) => `${shortName$1(e.part.module)} (${e.part.designator}) ${e.label}`;
-function explain(x) {
-	const pm = x.model;
-	const used = /* @__PURE__ */ new Set();
-	const taken = /* @__PURE__ */ new Map();
-	const all = Array.from({ length: pm.count }, (_, i) => pm.net(i));
-	const nets = all.flatMap((net, i) => {
-		const seen = /* @__PURE__ */ new Set();
-		const ends = ordered(net.filter((e) => listed(e.part.module))).filter((e) => {
-			const k = JSON.stringify([e.part.id, (e.part.module.internal ?? []).find((g) => g.includes(e.pin))?.[0] ?? e.pin]);
-			return !seen.has(k) && !!seen.add(k);
-		});
-		if (new Set(ends.map((e) => e.part)).size < 2) return [];
-		for (const e of ends) used.add(JSON.stringify([e.part.id, e.pin]));
-		const role = roleOf$2(ends);
-		let name = x.names[i] ?? autoName(ends, role);
-		const n = (taken.get(name) ?? 0) + 1;
-		taken.set(name, n);
-		if (n > 1) name = `${name} (${n})`;
-		return [{
-			name,
-			role,
-			text: `${name}: ${ends.map(endText).join(" -> ")}`,
-			ends: ends.map((e) => ({
-				part: e.part.id,
-				designator: e.part.designator,
-				module: e.part.module.id,
-				pin: e.pin,
-				label: e.label
-			}))
-		}];
-	});
-	const parts = pm.parts.filter((p) => listed(p.module)).sort((a, b) => natural$1.compare(a.designator, b.designator));
-	const connected = new Set([...used].map((k) => JSON.parse(k)[0]));
-	const perPart = parts.filter((p) => connected.has(p.id)).map((p) => {
-		const pins = all.flat().filter((e) => e.part === p && used.has(JSON.stringify([p.id, e.pin]))).sort((a, b) => natural$1.compare(a.label, b.label));
-		const addr = i2cOf(p.module) ? i2cAddress(pm, p) : null;
-		return {
-			part: p.id,
-			designator: p.designator,
-			module: p.module.id,
-			name: p.module.name,
-			i2cAddress: addr ? {
-				address: addr.address === null ? null : addressText(addr.address),
-				how: addr.how
-			} : null,
-			pins: pins.map((e) => ({
-				pin: e.pin,
-				label: e.label,
-				does: pinDoes(e),
-				caps: e.caps ?? null
-			}))
-		};
-	});
-	const unconnected = parts.filter((p) => !connected.has(p.id)).map((p) => ({
-		part: p.id,
-		designator: p.designator,
-		module: p.module.id,
-		name: p.module.name
-	}));
-	return {
-		format: EXPLAIN_FORMAT,
-		source: x.source,
-		title: x.title,
-		ok: !x.findings.some((f) => f.severity === "error"),
-		notes: x.notes,
-		nets,
-		parts: perPart,
-		unconnected,
-		findings: x.findings
-	};
-}
-function explainText(r) {
-	const lines = [`Explain: ${r.title} (${r.source})`, ""];
-	if (r.notes.length) lines.push("Notes:", ...r.notes.map((n) => `  ${n}`), "");
-	lines.push("Connections, by net:");
-	lines.push(...r.nets.length ? r.nets.map((n) => `  ${n.text}`) : ["  none"]);
-	lines.push("", "Pins in use, by part:");
-	for (const p of r.parts) {
-		const addr = p.i2cAddress ? `: I2C address ${p.i2cAddress.address ?? "undefined"} (${p.i2cAddress.how})` : "";
-		lines.push(`  ${p.designator} ${p.name} [${p.module}]${addr}`);
-		for (const pin of p.pins) lines.push(`    ${p.designator} ${pin.label}: ${pin.does}`);
-	}
-	if (!r.parts.length) lines.push("  none");
-	lines.push("", "Not connected:");
-	lines.push(...r.unconnected.length ? r.unconnected.map((p) => `  ${p.designator} ${p.name} [${p.module}]`) : ["  none"]);
-	lines.push("", "Pin rule findings:");
-	lines.push(r.findings.length ? findingsText(r.findings).split("\n").map((l) => `  ${l}`).join("\n") : "  none");
-	return `${lines.join("\n")}\n`;
-}
-function explainCommand(args, io) {
-	const [input, ...rest] = args.positionals;
-	if (!input) throw new CliError("explain: give a sheet or a netlist file", EXIT.input);
-	if (rest.length) throw new CliError(`explain: give one file, not ${args.positionals.length}`, EXIT.input);
-	const raw = readJson(io, input);
-	const format = raw?.format;
-	let x;
-	if (format === "circuitoon-netlist/1") x = fromNetlist(raw, input);
-	else if (format === "circuitoon-partial/1") x = fromNetlist(raw.intent, input);
-	else {
-		const r = validateDiagram(raw, { library: libraryLookup });
-		if (!r.ok) throw new CliError(`${input} is not a Circuitoon sheet or netlist: ${r.errors.slice(0, 5).join("; ")}`, EXIT.input);
-		for (const w of r.warnings) io.stderr(`warning: ${w}\n`);
-		x = fromSheet(r.diagram);
-	}
-	const result = explain(x);
-	if (args.flags.has("--json")) printJson(io, result);
-	else io.stdout(explainText(result));
-	return EXIT.ok;
-}
-//#endregion
 //#region src/format/netNames.ts
 /** A pin's (or a header pad's) type and supply. Breadboard strips have neither. */
 var pinDef = (m, name) => m.pins.find((p) => !isSpacer(p) && p.name === name) ?? holeGroupOf(m, name);
@@ -91618,1274 +91014,6 @@ function extractNetlist(d, warn) {
 		} } : {},
 		...probes.length ? { probes } : {}
 	};
-}
-//#endregion
-//#region src/cli/netlistCmd.ts
-var NETLIST_CMD_FORMAT = "circuitoon-cli/netlist/1";
-function netlistCommand(args, io) {
-	const [input, ...rest] = args.positionals;
-	if (!input) throw new CliError("netlist: give a sheet file", EXIT.input);
-	if (rest.length) throw new CliError(`netlist: give one sheet file, not ${args.positionals.length}`, EXIT.input);
-	const { diagram, warnings } = loadSheet(io, input);
-	for (const w of warnings) io.stderr(`warning: ${w}\n`);
-	const netlist = extractNetlist(diagram, (w) => io.stderr(`warning: ${w}\n`));
-	const out = flag(args, "--out") ?? null;
-	const text = `${JSON.stringify(netlist, null, 2)}\n`;
-	if (out) writeFile(io, out, text);
-	if (args.flags.has("--json")) printJson(io, {
-		format: NETLIST_CMD_FORMAT,
-		ok: true,
-		sheet: input,
-		output: out,
-		netlist
-	});
-	else if (out) io.stdout(`Wrote ${out}: ${netlist.parts.length} parts, ${netlist.nets.length} nets. Lay it out with: circuitoon layout ${out} -o <sheet.json>\n`);
-	else io.stdout(text);
-	return EXIT.ok;
-}
-//#endregion
-//#region src/format/kicad.ts
-var collator = new Intl.Collator("en", {
-	numeric: true,
-	sensitivity: "base"
-});
-var natural = (a, b) => collator.compare(a, b) || (a < b ? -1 : a > b ? 1 : 0);
-var andWords = (xs) => xs.length < 2 ? xs.join("") : `${xs.slice(0, -1).join(", ")} and ${xs[xs.length - 1]}`;
-/** A string as a KiCad S-expression atom: always quoted, with `\` and `"` escaped and line breaks as `\n`. */
-var quote = (s) => `"${s.replace(/\\/g, "\\\\").replace(/"/g, "\\\"").replace(/\r?\n/g, "\\n")}"`;
-/** A reference KiCad takes: letters, digits and `_`, starting with a letter ("R1", "DS1", "U2_2"). */
-function kicadRef(designator) {
-	const base = designator.trim().replace(/[^A-Za-z0-9_]/g, "_") || "X";
-	return /^[A-Za-z]/.test(base) ? base : `X${base}`;
-}
-/** A net name KiCad takes: letters, digits and `_ + - . ( )`, anything else (spaces, `/`, `~`) as `_`. */
-var kicadNetName = (name) => name.trim().replace(/[^A-Za-z0-9_+\-.()]/g, "_") || "N";
-var PREFIX = [
-	[1e9, "G"],
-	[1e6, "M"],
-	[1e3, "k"],
-	[1, ""],
-	[.001, "m"],
-	[1e-6, "u"],
-	[1e-9, "n"],
-	[1e-12, "p"]
-];
-/** A number the way KiCad values read: 330, 4.7k, 100n, 10u (3 significant digits, ASCII prefixes). */
-function siValue(v) {
-	if (v === 0) return "0";
-	const abs = Math.abs(v);
-	let i = PREFIX.findIndex(([f]) => abs >= f * .9995);
-	if (i < 0) i = PREFIX.length - 1;
-	let n = Number((v / PREFIX[i][0]).toPrecision(3));
-	if (Math.abs(n) >= 1e3 && i > 0) {
-		i--;
-		n = Number((v / PREFIX[i][0]).toPrecision(3));
-	}
-	return `${n}${PREFIX[i][1]}`;
-}
-/** The module's name up to the first " (": "ESP32 DevKit V1 (30 pin, DOIT)" is "ESP32 DevKit V1". */
-var shortName = (m) => m.name.split(" (")[0];
-/** The KiCad value: a resistance or capacitance (330, 100n), else the mapping's value, else the part's short name. */
-function kicadValue(part, m, k) {
-	const v = partValue(part, m);
-	if (v && (v.name === "resistance" || v.name === "capacitance")) return siValue(v.value);
-	return (k?.value ?? shortName(m)).replace(/\s+/g, " ").trim();
-}
-/**
-* The mapping to export a part with: the library's, when the part is built in and its stored copy
-* has the same pins in the same order (the mapping is export data the library refines, and a copy
-* saved before the library had it, or with older pin data, still names the same pins); else the
-* stored copy's own. `stale` is set when the library has a mapping the copy cannot use because its
-* pins changed.
-*/
-function mappingOf(stored, library) {
-	if (isCustom(stored)) return {};
-	const lib = library?.(stored.id);
-	if (lib?.kicad) {
-		if (lib === stored || terminalsKey(stored) === terminalsKey(lib)) return { kicad: lib.kicad };
-		if (!stored.kicad) return { stale: true };
-	}
-	return stored.kicad ? { kicad: stored.kicad } : {};
-}
-/** Breadboards, rail strips and net labels: no PCB meaning. A board with a mapping (an outlet) is a real part. */
-var isInfrastructure = (m, k) => isNetLabel(m) || isBoard(m) && !k;
-/** A sheet as the export sees it: its parts and its nets, from what conducts on it. */
-function sheetSource(d) {
-	const parts = d.parts.flatMap((p) => {
-		const m = moduleOf(d, p.module);
-		return m ? [{
-			key: p.uid,
-			designator: p.designator,
-			module: m,
-			...p.values ? { values: p.values } : {}
-		}] : [];
-	});
-	const byUid = new Map(d.parts.map((p) => [p.uid, p]));
-	const nets = netlist(d, plugsOf(d)).nets.map((keys) => {
-		const nodes = keys.map((k) => JSON.parse(k));
-		const labels = nodes.flatMap(([uid]) => {
-			const p = byUid.get(uid);
-			const m = p && moduleOf(d, p.module);
-			return p && isNetLabel(m) && labelName(p) ? [labelName(p)] : [];
-		}).sort(natural);
-		return {
-			nodes,
-			...labels.length ? { name: labels[0] } : {}
-		};
-	});
-	return {
-		title: d.title,
-		parts,
-		nets
-	};
-}
-/** The intent of a parsed netlist as the export sees it: its nets joined where a part joins pins inside itself. */
-function intentSource(intent) {
-	const parts = intent.parts.flatMap((p) => {
-		const m = Object.hasOwn(intent.modules, p.module) ? intent.modules[p.module] : void 0;
-		return m ? [{
-			key: p.ref,
-			designator: p.ref,
-			module: m,
-			...p.values ? { values: p.values } : {}
-		}] : [];
-	});
-	const parent = /* @__PURE__ */ new Map();
-	const find = (k) => {
-		let r = k;
-		while (parent.get(r) !== r) r = parent.get(r);
-		parent.set(k, r);
-		return r;
-	};
-	const add = (k) => void (parent.has(k) || parent.set(k, k));
-	const join = (a, b) => {
-		add(a);
-		add(b);
-		const [ra, rb] = [find(a), find(b)];
-		if (ra !== rb) parent.set(ra, rb);
-	};
-	const key = (ref, name) => JSON.stringify([ref, name]);
-	const nameOf = /* @__PURE__ */ new Map();
-	for (const net of intent.nets) {
-		const keys = net.terminals.map((t) => key(t.ref, t.name));
-		keys.forEach((k) => add(k));
-		for (let i = 1; i < keys.length; i++) join(keys[0], keys[i]);
-		if (keys.length && !nameOf.has(keys[0])) nameOf.set(keys[0], net.name);
-	}
-	for (const p of parts) for (const g of p.module.internal ?? []) if (g.some((n) => parent.has(key(p.key, n)))) for (let i = 1; i < g.length; i++) join(key(p.key, g[0]), key(p.key, g[i]));
-	const groups = /* @__PURE__ */ new Map();
-	for (const k of parent.keys()) {
-		const r = find(k);
-		groups.set(r, [...groups.get(r) ?? [], k]);
-	}
-	const nets = [...groups.values()].map((keys) => {
-		const names = keys.flatMap((k) => nameOf.has(k) ? [nameOf.get(k)] : []).sort(natural);
-		return {
-			nodes: keys.sort().map((k) => JSON.parse(k)),
-			...names.length ? { name: names[0] } : {}
-		};
-	});
-	return {
-		title: intent.title,
-		parts,
-		nets
-	};
-}
-/** KiCad's electrical pin type for a Circuitoon pin type. */
-var PIN_TYPE = {
-	power_in: "power_in",
-	power_out: "power_out",
-	ground: "power_in",
-	input: "input",
-	output: "output",
-	io: "bidirectional",
-	passive: "passive",
-	nc: "no_connect",
-	usb: "passive"
-};
-/** Every pin and pad group of a module, in order: pins (no spacers), then hole groups. */
-function terminalsOf(m) {
-	return [...m.pins.filter((p) => !isSpacer(p) && p.type !== "usb"), ...m.holes ?? []];
-}
-var pad2 = (n) => String(n).padStart(2, "0");
-/** The generic footprint an unmapped part comes in on: a 0.1 in pin header with a pad per pin. */
-function genericFootprint(pins) {
-	if (pins <= 40) return `Connector_PinHeader_2.54mm:PinHeader_1x${pad2(Math.max(1, pins))}_P2.54mm_Vertical`;
-	return `Connector_PinHeader_2.54mm:PinHeader_2x${pad2(Math.min(40, Math.ceil(pins / 2)))}_P2.54mm_Vertical`;
-}
-/**
-* A stable UUID from a string (a part's uid, plus the header): the same part keeps its UUID from
-* export to export, so Pcbnew can link footprints by it. Four 32-bit FNV-style hashes, shaped as
-* a version 8 (custom) UUID.
-*/
-function stableUuid(seed) {
-	const h = [
-		2166136261,
-		2654435769,
-		2246822507,
-		3266489909
-	];
-	const mul = [
-		16777619,
-		1540483477,
-		668265261,
-		374761393
-	];
-	for (let i = 0; i < seed.length; i++) {
-		const c = seed.charCodeAt(i);
-		for (let j = 0; j < 4; j++) h[j] = Math.imul(h[j] ^ c, mul[j]);
-	}
-	for (let j = 0; j < 4; j++) {
-		let x = h[j] ^ h[(j + 1) % 4];
-		x = Math.imul(x ^ x >>> 16, 2246822507);
-		x = Math.imul(x ^ x >>> 13, 3266489909);
-		h[j] = x ^ x >>> 16;
-	}
-	const hex = h.map((x) => (x >>> 0).toString(16).padStart(8, "0")).join("");
-	const variant = (parseInt(hex[16], 16) & 3 | 8).toString(16);
-	return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-8${hex.slice(13, 16)}-${variant}${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
-}
-/** Writes an export source (a sheet's or a netlist's) as a KiCad netlist. */
-function writeKicad(src, opts = {}) {
-	const warnings = [];
-	const unmapped = [];
-	const placeholders = [];
-	/** Each mapping note, with the parts it is about. */
-	const noteRefs = /* @__PURE__ */ new Map();
-	const taken = /* @__PURE__ */ new Set();
-	const claimRef = (base) => {
-		let ref = base;
-		for (let k = 2; taken.has(ref); k++) ref = `${base}_${k}`;
-		taken.add(ref);
-		return ref;
-	};
-	const kept = src.parts.map((p) => ({
-		p,
-		map: mappingOf(p.module, opts.library)
-	})).filter(({ p, map }) => !isInfrastructure(p.module, map.kicad)).sort((a, b) => natural(a.p.designator, b.p.designator) || natural(a.p.key, b.p.key));
-	const comps = [];
-	/** Part key and pin name to the component and pad it lands on. */
-	const padOf = /* @__PURE__ */ new Map();
-	/** Part key to its reference (a part's own, before any header letter), for naming nets. */
-	const partRef = /* @__PURE__ */ new Map();
-	const modOf = new Map(kept.map(({ p }) => [p.key, p.module]));
-	const portName = (key, pin) => {
-		const part = src.parts.find((x) => x.key === key);
-		const port = part && usbPorts(part.module).find((q) => q.name === pin);
-		return port ? {
-			title: `${part.designator} ${port.label ?? port.name}`,
-			plug: port.usb.gender === "plug"
-		} : void 0;
-	};
-	const usbNotes = [];
-	for (const net of src.nets) {
-		const ports = net.nodes.flatMap(([k, pin]) => modOf.has(k) ? [portName(k, pin)].filter((x) => x !== void 0) : []).sort((a, b) => natural(a.title, b.title));
-		if (!ports.length) continue;
-		if (ports.length === net.nodes.length) for (const q of ports.slice(1)) usbNotes.push(`${ports[0].title} to ${q.title} is ${ports[0].plug || q.plug ? "a USB plug-in" : "a USB cable"}, off-board`);
-		else warnings.push(`${andWords(ports.map((q) => q.title))}: a USB port on a net with other pins is left out of it. Connect USB ports only to USB ports.`);
-	}
-	for (const { p, map } of kept) {
-		const m = p.module;
-		const ref = claimRef(kicadRef(p.designator || p.key));
-		partRef.set(p.key, ref);
-		const k = map.kicad;
-		const value = kicadValue(p, m, k);
-		const terms = new Map(terminalsOf(m).map((t) => [t.name, t]));
-		const typeOf = (name) => {
-			const t = terms.get(name);
-			return t ? PIN_TYPE[t.type ?? ("side" in t ? "io" : "passive")] : "passive";
-		};
-		const describe = (extra) => `${m.name}${extra ? `, ${extra}` : ""} (Circuitoon part ${m.id})`;
-		const make = (cref, footprint, pins, lib, part, description, seed) => {
-			const pads = /* @__PURE__ */ new Map();
-			for (const [name, pad] of Object.entries(pins)) {
-				const entry = pads.get(pad);
-				if (entry) entry.names.push(name);
-				else pads.set(pad, {
-					names: [name],
-					type: typeOf(name)
-				});
-			}
-			const c = {
-				ref: cref,
-				value,
-				footprint,
-				lib,
-				part,
-				description,
-				uuid: stableUuid(seed),
-				module: m.id,
-				pads: new Map([...pads].sort((a, b) => natural(a[0], b[0])))
-			};
-			for (const [name, pad] of Object.entries(pins)) padOf.set(JSON.stringify([p.key, name]), {
-				comp: c,
-				pad
-			});
-			comps.push(c);
-			return c;
-		};
-		const [symLib, symPart] = k?.symbol ? k.symbol.split(":") : ["Circuitoon", m.id];
-		if (!k && !terminalsOf(m).length) continue;
-		if (!k) {
-			const names = terminalsOf(m).map((t) => t.name);
-			const pins = Object.fromEntries(names.map((n, i) => [n, String(i + 1)]));
-			const fp = genericFootprint(names.length);
-			make(ref, fp, pins, "Circuitoon", m.id, describe(), p.key);
-			unmapped.push({
-				ref,
-				module: m.id
-			});
-			warnings.push(isCustom(m) ? `${ref} (${m.id}): a custom part, unverified, so it comes in on a generic ${fp.split(":")[1]} with a pad per pin in Circuitoon's order. Choose its real footprint in KiCad.` : map.stale ? `${ref} (${m.id}): its pins differ from the library's part, so the library's KiCad footprint does not fit it; it comes in on a generic ${fp.split(":")[1]}. Place the part again, or choose its footprint in KiCad.` : `${ref} (${m.id}): no KiCad footprint is known for this part, so it comes in on a generic ${fp.split(":")[1]} with a pad per pin in Circuitoon's order. Choose its real footprint in KiCad.`);
-			continue;
-		}
-		if (k.headers) k.headers.forEach((h, i) => {
-			const letter = String.fromCharCode(65 + i % 26);
-			const cref = claimRef(/\d$/.test(ref) ? `${ref}${letter}` : `${ref}_${letter}`);
-			const n = new Set(Object.values(h.pins)).size;
-			make(cref, h.footprint, h.pins, "Connector_Generic", `Conn_01x${pad2(n)}`, describe(h.name), `${p.key}#${i}`);
-		});
-		else {
-			const pins = k.pins ?? Object.fromEntries(terminalsOf(m).map((t) => [t.name, t.name]));
-			make(ref, k.footprint, pins, symLib, symPart, describe(), p.key);
-		}
-		if (k.placeholder) {
-			placeholders.push({
-				ref,
-				module: m.id
-			});
-			warnings.push(`${ref} (${m.id}): ${k.note ?? "the footprint is a placeholder, not the part's own."}`);
-		} else if (k.note) noteRefs.set(k.note, [...noteRefs.get(k.note) ?? [], ref]);
-	}
-	const notes = [...[...noteRefs].map(([note, refs]) => `${refs.join(", ")}: ${note}`), ...usbNotes];
-	const built = [];
-	for (const net of src.nets) {
-		const nodes = [];
-		const pins = [];
-		const seen = /* @__PURE__ */ new Set();
-		for (const [key, pin] of net.nodes) {
-			const m = modOf.get(key);
-			if (!m) continue;
-			const at = padOf.get(JSON.stringify([key, pin]));
-			if (!at) {
-				if (terminalsOf(m).some((t) => t.name === pin)) warnings.push(`${partRef.get(key)} ${pin} (${m.id}) has no pad on its KiCad footprint, so it is left out of its net.`);
-				continue;
-			}
-			pins.push({
-				ref: partRef.get(key),
-				name: pin,
-				m
-			});
-			const id = `${at.comp.ref}\u0000${at.pad}`;
-			if (seen.has(id)) continue;
-			seen.add(id);
-			nodes.push(at);
-		}
-		const footprints = new Set(nodes.map((n) => n.comp));
-		const names = [...new Set(pins.map((p) => p.name))];
-		const internalOnly = footprints.size === 1 && (pins[0]?.m.internal ?? []).some((g) => names.every((n) => g.includes(n)));
-		if (!nodes.length || net.name === void 0 && (nodes.length < 2 || internalOnly)) continue;
-		pins.sort((a, b) => natural(a.ref, b.ref) || natural(a.name, b.name));
-		built.push({
-			nodes,
-			pins,
-			...net.name !== void 0 ? { label: net.name } : {}
-		});
-	}
-	const rawNames = nameNets(built);
-	const used = /* @__PURE__ */ new Set();
-	const names = rawNames.map((n) => {
-		const base = kicadNetName(n);
-		let name = base;
-		for (let k = 2; used.has(name); k++) name = `${base}_${k}`;
-		used.add(name);
-		return name;
-	});
-	const order = built.map((_, i) => i).sort((a, b) => natural(names[a], names[b]));
-	const out = [];
-	out.push("(export (version \"E\")");
-	out.push("  (design");
-	out.push(`    (source ${quote(opts.source ?? `${src.title || "Untitled sheet"}.circuitoon.json`)})`);
-	out.push("    (tool \"Circuitoon\"))");
-	out.push("  (components");
-	for (const c of comps) {
-		out.push(`    (comp (ref ${quote(c.ref)})`);
-		out.push(`      (value ${quote(c.value)})`);
-		out.push(`      (footprint ${quote(c.footprint)})`);
-		out.push(`      (libsource (lib ${quote(c.lib)}) (part ${quote(c.part)}) (description ${quote(c.description)}))`);
-		out.push(`      (fields (field (name "Footprint") ${quote(c.footprint)}) (field (name "Description") ${quote(c.description)}))`);
-		out.push(`      (property (name "Circuitoon part") (value ${quote(c.module)}))`);
-		out.push("      (sheetpath (names \"/\") (tstamps \"/\"))");
-		out.push(`      (tstamps ${quote(c.uuid)}))`);
-	}
-	out.push("  )");
-	out.push("  (libparts");
-	const libparts = /* @__PURE__ */ new Map();
-	for (const c of comps) if (!libparts.has(`${c.lib}:${c.part}`)) libparts.set(`${c.lib}:${c.part}`, c);
-	for (const c of [...libparts.values()].sort((a, b) => natural(`${a.lib}:${a.part}`, `${b.lib}:${b.part}`))) {
-		const own = c.lib === "Circuitoon";
-		const header = c.lib === "Connector_Generic";
-		out.push(`    (libpart (lib ${quote(c.lib)}) (part ${quote(c.part)})`);
-		out.push(`      (description ${quote(header ? `Generic connector, single row, ${c.part.slice(5)}` : own ? c.description : `KiCad symbol ${c.lib}:${c.part}`)})`);
-		out.push("      (pins");
-		for (const [pad, { names: pn, type }] of c.pads) out.push(`        (pin (num ${quote(pad)}) (name ${quote(own ? pn.join("/") : header ? `Pin_${pad}` : "~")}) (type ${quote(header ? "passive" : type)}))`);
-		out.push("      ))");
-	}
-	out.push("  )");
-	out.push("  (nets");
-	order.forEach((i, code) => {
-		out.push(`    (net (code ${quote(String(code + 1))}) (name ${quote(names[i])})`);
-		const nodes = [...built[i].nodes].sort((a, b) => natural(a.comp.ref, b.comp.ref) || natural(a.pad, b.pad));
-		for (const { comp, pad } of nodes) {
-			const info = comp.pads.get(pad);
-			out.push(`      (node (ref ${quote(comp.ref)}) (pin ${quote(pad)}) (pinfunction ${quote(info.names.join("/"))}) (pintype ${quote(info.type)}))`);
-		}
-		out[out.length - 1] += ")";
-	});
-	out.push("  )");
-	out.push(")");
-	return {
-		text: `${out.join("\n")}\n`,
-		warnings,
-		components: comps.length,
-		nets: built.length,
-		unmapped,
-		placeholders,
-		notes
-	};
-}
-//#endregion
-//#region src/cli/kicadCmd.ts
-var KICAD_FORMAT = "circuitoon-cli/kicad/1";
-function kicadCommand(args, io) {
-	const [input, ...rest] = args.positionals;
-	if (!input) throw new CliError("kicad: give a sheet or netlist file", EXIT.input);
-	if (rest.length) throw new CliError(`kicad: give one sheet or netlist file, not ${args.positionals.length}`, EXIT.input);
-	const raw = readJson(io, input);
-	const name = input.split(/[\\/]/).pop();
-	let source;
-	let x;
-	if (raw?.format === "circuitoon-netlist/1") {
-		const r = parseNetlist(raw, libraryLookup);
-		if (!r.ok) throw new CliError(`${input} is not a valid netlist: ${r.errors.slice(0, 5).join("; ")}`, EXIT.input);
-		source = "netlist";
-		x = writeKicad(intentSource(r.intent), {
-			library: libraryLookup,
-			source: name
-		});
-	} else {
-		const r = validateDiagram(raw, { library: libraryLookup });
-		if (!r.ok) throw new CliError(`${input} is neither a Circuitoon sheet nor a netlist: ${r.errors.slice(0, 5).join("; ")}`, EXIT.input);
-		for (const w of r.warnings) io.stderr(`warning: ${w}\n`);
-		source = "sheet";
-		x = writeKicad(sheetSource(r.diagram), {
-			library: libraryLookup,
-			source: name
-		});
-	}
-	const out = flag(args, "--out") ?? null;
-	if (out) writeFile(io, out, x.text);
-	if (args.flags.has("--json")) {
-		printJson(io, {
-			format: KICAD_FORMAT,
-			ok: true,
-			input,
-			source,
-			output: out,
-			components: x.components,
-			nets: x.nets,
-			unmapped: x.unmapped,
-			placeholders: x.placeholders,
-			warnings: x.warnings,
-			notes: x.notes,
-			...out ? {} : { netlist: x.text }
-		});
-		return EXIT.ok;
-	}
-	for (const w of x.warnings) io.stderr(`warning: ${w}\n`);
-	for (const n of x.notes) io.stderr(`note: ${n}\n`);
-	const plural = (n, one) => `${n} ${one}${n === 1 ? "" : "s"}`;
-	if (out) io.stdout(`Wrote ${out}: ${plural(x.components, "component")}, ${plural(x.nets, "net")}${x.unmapped.length ? `, ${x.unmapped.length} on a generic footprint` : ""}. Open it in KiCad's PCB Editor with File > Import > Netlist.\n`);
-	else io.stdout(x.text);
-	return EXIT.ok;
-}
-//#endregion
-//#region src/cli/updateCmd.ts
-var UPDATE_CMD_FORMAT = "circuitoon-cli/update/1";
-function updateCommand(args, io) {
-	const [input, ...rest] = args.positionals;
-	if (!input) throw new CliError("update: give a sheet file", EXIT.input);
-	if (rest.length) throw new CliError(`update: give one sheet file, not ${args.positionals.length}`, EXIT.input);
-	const { diagram, warnings } = loadSheet(io, input);
-	for (const w of warnings) io.stderr(`warning: ${w}\n`);
-	const u = updateParts(diagram, libraryLookup);
-	const out = flag(args, "--out") ?? input;
-	const changed = u.updated.length > 0;
-	if (changed || out !== input) {
-		const raw = readJson(io, input);
-		for (const x of u.updated) raw.modules[x.id] = u.diagram.modules[x.id];
-		writeFile(io, out, `${JSON.stringify(raw, null, 2)}\n`);
-	}
-	const ok = u.blocked.length === 0;
-	if (args.flags.has("--json")) printJson(io, {
-		format: UPDATE_CMD_FORMAT,
-		ok,
-		sheet: input,
-		output: changed || out !== input ? out : null,
-		updated: u.updated,
-		blocked: u.blocked
-	});
-	else {
-		const lines = updateLines(u);
-		if (!lines.length) io.stdout("Every part is up to date with the library.\n");
-		else io.stdout(`${lines.join("\n")}\n`);
-		if (changed || out !== input) io.stdout(`Wrote ${out}.\n`);
-	}
-	return ok ? EXIT.ok : EXIT.blocked;
-}
-//#endregion
-//#region src/format/partMaker.ts
-var SPEC_FORMAT = "circuitoon-part-spec/1";
-var DEFAULT_COLORS = {
-	board: "#2F9E6E",
-	chip: "#2B2F36"
-};
-var UNITS_MAX = MODULE_PX_MAX / 10;
-var NAME_MAX = 120;
-/** Pins and gaps a side may hold: each takes 10 px, and the body keeps a unit at each end, within the 4000 px cap. */
-var SLOTS_MAX = UNITS_MAX - 2;
-var PIN_NAME_MAX = 60;
-var ID_MAX = 200;
-var GOLD = "#E0B43C";
-var HOLE_FILL = "#8A6A1E";
-var PLATE = "#F7F8F3";
-var INK = "#23282F";
-var METAL = "#C9CED6";
-/** Pin labels: 7 px bold, about 4.5 px a character plus the halo (as module.ts pinRoom). */
-var labelPx = (n) => n ? Math.ceil(n * 4.5 + 3) : 0;
-/** The renderer's inset for labels inside a body with a header strip (Part.tsx HEADER_INSET). */
-var INSET = 12;
-var PLATE_H = 16;
-var PLATE_CHARS = 22;
-var COLOR_RE = /^#[0-9a-f]{6}$/i;
-var ID_RE = /^[a-z0-9]+(-[a-z0-9]+)*$/;
-var SPEC_KEYS = [
-	"format",
-	"name",
-	"id",
-	"category",
-	"source",
-	"version",
-	"style",
-	"body",
-	"pins",
-	"internal"
-];
-var PIN_KEYS = [
-	"name",
-	"label",
-	"type",
-	"supply",
-	"caps",
-	"spacer"
-];
-/** A name made kebab-case for an id: "My Sensor (v2)" is "my-sensor-v2". */
-function slugify(s) {
-	return s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60).replace(/-+$/, "") || "part";
-}
-/** The module id for a spec: its id exactly ("custom-" added when missing), else "custom-" + its name, kebab-case. */
-function customId(spec) {
-	const base = spec.id ?? slugify(spec.name);
-	return base.startsWith("custom-") ? base : CUSTOM_PREFIX + base;
-}
-/** Checks a parsed JSON value against the part spec format. Errors name the exact path. */
-function validateSpec(raw) {
-	const errors = [];
-	if (!isObj(raw)) return {
-		ok: false,
-		errors: ["spec must be a JSON object"]
-	};
-	for (const k of Object.keys(raw)) if (!SPEC_KEYS.includes(k)) errors.push(`${k}: unknown field (allowed: ${SPEC_KEYS.join(", ")})`);
-	if (raw.format !== void 0 && raw.format !== "circuitoon-part-spec/1") errors.push(`format: must be "${SPEC_FORMAT}" when present`);
-	if (typeof raw.name !== "string" || raw.name.trim() === "") errors.push("name: required");
-	else if (raw.name.length > NAME_MAX) errors.push(`name: at most ${NAME_MAX} characters`);
-	if (raw.id !== void 0 && (typeof raw.id !== "string" || !ID_RE.test(raw.id) || raw.id.length > ID_MAX)) errors.push(`id: must be lowercase kebab-case, for example "my-sensor", at most ${ID_MAX} characters`);
-	if (raw.category !== void 0 && (typeof raw.category !== "string" || raw.category.trim() === "" || raw.category.length > 60)) errors.push("category: must be a non-empty string, at most 60 characters");
-	if (raw.source !== void 0 && typeof raw.source !== "string" && !(Array.isArray(raw.source) && raw.source.every((s) => typeof s === "string"))) errors.push("source: must be a string or a list of strings (URLs)");
-	if (raw.version !== void 0 && !(Number.isInteger(raw.version) && raw.version >= 1)) errors.push("version: must be a whole number, 1 or more");
-	if (raw.style !== void 0 && raw.style !== "board" && raw.style !== "chip") errors.push("style: must be \"board\" or \"chip\"");
-	if (raw.body !== void 0) {
-		const b = raw.body;
-		if (!isObj(b)) errors.push("body: must be { \"w\"?, \"h\"?, \"color\"? }");
-		else {
-			for (const k of Object.keys(b)) if (![
-				"w",
-				"h",
-				"color"
-			].includes(k)) errors.push(`body.${k}: unknown field`);
-			for (const k of ["w", "h"]) if (b[k] !== void 0 && !(Number.isInteger(b[k]) && b[k] >= 2 && b[k] <= UNITS_MAX)) errors.push(`body.${k}: must be a whole number of grid units from 2 to ${UNITS_MAX}`);
-			if (b.color !== void 0 && (typeof b.color !== "string" || !COLOR_RE.test(b.color))) errors.push("body.color: must be a colour like \"#2F9E6E\"");
-		}
-	}
-	let count = 0;
-	if (!isObj(raw.pins)) errors.push("pins: required, { \"left\": [...], \"right\": [...], \"top\": [...], \"bottom\": [...] }");
-	else for (const [side, list] of Object.entries(raw.pins)) {
-		if (!SIDES.includes(side)) {
-			errors.push(`pins.${side}: unknown side (left, right, top or bottom)`);
-			continue;
-		}
-		if (!Array.isArray(list)) {
-			errors.push(`pins.${side}: must be a list`);
-			continue;
-		}
-		if (list.length > SLOTS_MAX) {
-			errors.push(`pins.${side}: at most ${SLOTS_MAX} pins and gaps a side (${list.length} given), so the body stays within ${MODULE_PX_MAX} px`);
-			continue;
-		}
-		list.forEach((p, i) => {
-			const at = `pins.${side}[${i}]`;
-			if (p === null) return;
-			if (typeof p === "string") {
-				if (p.trim() === "") errors.push(`${at}: a pin name may not be empty`);
-				else if (p.trim().length > PIN_NAME_MAX) errors.push(`${at}: a pin name is at most ${PIN_NAME_MAX} characters`);
-				else count++;
-				return;
-			}
-			if (!isObj(p)) return void errors.push(`${at}: must be a name, null (a gap) or { "name", "type"?, "supply"?, ... }`);
-			for (const k of Object.keys(p)) if (!PIN_KEYS.includes(k)) errors.push(`${at}.${k}: unknown field`);
-			if (p.spacer !== void 0) {
-				if (p.spacer !== true) errors.push(`${at}.spacer: must be true`);
-				else if (Object.keys(p).length > 1) errors.push(`${at}: a spacer takes no other field`);
-				return;
-			}
-			if (typeof p.name !== "string" || p.name.trim() === "") errors.push(`${at}.name: required`);
-			else if (p.name.trim().length > PIN_NAME_MAX) errors.push(`${at}.name: at most ${PIN_NAME_MAX} characters`);
-			else count++;
-			if (p.label !== void 0 && (typeof p.label !== "string" || p.label.length > PIN_NAME_MAX)) errors.push(`${at}.label: must be a string, at most ${PIN_NAME_MAX} characters`);
-			if (p.type !== void 0 && (!PIN_TYPES.includes(p.type) || p.type === "usb")) errors.push(`${at}.type: must be one of ${PIN_TYPES.filter((t) => t !== "usb").join(", ")}`);
-			if (p.supply !== void 0 && typeof p.supply !== "string") errors.push(`${at}.supply: must be a string such as "3V3" or "3V3/5V"`);
-		});
-	}
-	if (isObj(raw.pins) && count === 0) errors.push("pins: at least one pin");
-	if (raw.internal !== void 0 && !(Array.isArray(raw.internal) && raw.internal.every((g) => Array.isArray(g) && g.every((n) => typeof n === "string")))) errors.push("internal: must be a list of pin-name groups");
-	return errors.length ? {
-		ok: false,
-		errors
-	} : {
-		ok: true,
-		spec: raw
-	};
-}
-/**
-* Pin entries for one side, from the spec, in order. Every pin gets an explicit label (its name
-* unless the spec gives one): the renderer hides unlabelled names on a part with one or two pins
-* (a resistor's "1" and "2"), and a custom part's names are the point of it.
-*/
-function sideEntries(side, list) {
-	return list.map((p) => {
-		if (p === null || typeof p === "object" && p.spacer) return {
-			spacer: true,
-			side
-		};
-		if (typeof p === "string") return {
-			name: p.trim(),
-			side,
-			label: p.trim()
-		};
-		const pin = {
-			name: p.name.trim(),
-			side,
-			label: p.label !== void 0 && p.label !== "" ? p.label : p.name.trim()
-		};
-		if (p.type) pin.type = p.type;
-		if (p.supply !== void 0 && p.supply.trim() !== "") pin.supply = p.supply.trim();
-		if (p.caps && Object.keys(p.caps).length) pin.caps = p.caps;
-		return pin;
-	});
-}
-/**
-* Repeated names get a number in physical order, the add-part convention: a second GND becomes
-* "GND 2" with the label "GND", so the sheet still shows the silkscreen. Returns what was renamed.
-*/
-function numberRepeats(pins) {
-	const named = pins.filter((p) => !isSpacer(p));
-	const taken = new Set(named.map((p) => p.name));
-	const seen = /* @__PURE__ */ new Map();
-	const renamed = [];
-	for (const p of named) {
-		const n = (seen.get(p.name) ?? 0) + 1;
-		seen.set(p.name, n);
-		if (n === 1) continue;
-		let k = n;
-		while (taken.has(`${p.name} ${k}`)) k++;
-		const base = p.name;
-		p.label ??= base;
-		p.name = `${base} ${k}`;
-		taken.add(p.name);
-		renamed.push(`${base} -> ${p.name}`);
-	}
-	return renamed;
-}
-/** Slot positions (px) along a side `len` units long with `n` slots, as module.ts computeLayout places them. */
-function slotPx(len, n) {
-	const s0 = Math.ceil((len - (n - 1)) / 2);
-	return Array.from({ length: n }, (_, i) => (s0 + i) * 10);
-}
-/** A module's short name for its plate: up to the first " (", cut to PLATE_CHARS. */
-function plateText(name) {
-	const short = name.split(" (")[0].trim() || name.trim();
-	return short.length > PLATE_CHARS ? `${short.slice(0, 19).trimEnd()}...` : short;
-}
-var plateWidth = (text, size) => Math.ceil(text.length * size * .62) + 12;
-var labelText = (p) => isSpacer(p) ? "" : p.label ?? p.name;
-/** Positions (px) of each side's non-spacer pins on a wu x hu body. */
-function pinPositions(pins, wu, hu) {
-	const out = {
-		top: [],
-		right: [],
-		bottom: [],
-		left: []
-	};
-	for (const side of SIDES) {
-		const entries = pins.filter((p) => p.side === side);
-		const at = slotPx(side === "top" || side === "bottom" ? wu : hu, entries.length);
-		entries.forEach((p, i) => {
-			if (!isSpacer(p)) out[side].push(at[i]);
-		});
-	}
-	return out;
-}
-/** Board style: does a corner hold labels from two sides that cross? */
-function cornersCross(pins, wu, hu, zone) {
-	const at = pinPositions(pins, wu, hu);
-	const W = wu * 10;
-	const H = hu * 10;
-	for (const [h, hx0, hx1] of [[
-		"left",
-		8,
-		zone.left + 4
-	], [
-		"right",
-		W - zone.right - 4,
-		W - INSET + 4
-	]]) for (const [v, vy0, vy1] of [[
-		"top",
-		8,
-		zone.top + 4
-	], [
-		"bottom",
-		H - zone.bottom - 4,
-		H - INSET + 4
-	]]) {
-		if (!at[h].length || !at[v].length) continue;
-		const rows = at[h].some((y) => y > vy0 && y < vy1);
-		const cols = at[v].some((x) => x > hx0 && x < hx1);
-		if (rows && cols) return true;
-	}
-	return false;
-}
-/** Body size in units: the given size, else the smallest that fits the pins, their labels and the name plate. */
-function geometry(pins, style, plate, given) {
-	const slots = (s) => pins.filter((p) => p.side === s).length;
-	const has = (s) => pins.some((p) => p.side === s && !isSpacer(p));
-	const longest = (s) => pins.reduce((n, p) => p.side === s ? Math.max(n, labelText(p).length) : n, 0);
-	const zone = {
-		top: 6,
-		right: 6,
-		bottom: 6,
-		left: 6
-	};
-	if (style === "board") {
-		for (const s of SIDES) if (has(s)) zone[s] = INSET + labelPx(longest(s)) + 4;
-	}
-	const pw = plateWidth(plate, 8);
-	const minW = Math.max(slots("top"), slots("bottom")) + 2;
-	const minH = Math.max(slots("left"), slots("right")) + 2;
-	const fits = (wu, hu) => wu * 10 - zone.left - zone.right >= pw && hu * 10 - zone.top - zone.bottom >= PLATE_H;
-	if (given?.w !== void 0 || given?.h !== void 0) {
-		const wu = Math.max(given.w ?? minW, minW, 4);
-		const hu = Math.max(given.h ?? minH, minH, 3);
-		return {
-			wu,
-			hu,
-			zone,
-			plate: fits(wu, hu),
-			crowded: style === "board" && cornersCross(pins, wu, hu, zone)
-		};
-	}
-	let wu = Math.max(minW, 4, Math.ceil((zone.left + zone.right + pw) / 10));
-	let hu = Math.max(minH, 3, Math.ceil((zone.top + zone.bottom + PLATE_H) / 10));
-	while (style === "board" && cornersCross(pins, wu, hu, zone) && (wu < UNITS_MAX || hu < UNITS_MAX)) if (hu <= wu && hu < UNITS_MAX) hu++;
-	else wu++;
-	return {
-		wu,
-		hu,
-		zone,
-		plate: true,
-		crowded: style === "board" && cornersCross(pins, wu, hu, zone)
-	};
-}
-/** A Sticker rect. */
-var rect = (x, y, w, h, fill, extra = {}) => ({
-	type: "rect",
-	x,
-	y,
-	w,
-	h,
-	fill,
-	...extra
-});
-/** Gold header strips along each side with pins, one per run of pins, and a hole per pin, kept in the outer INSET px. */
-function headers(pins, W, H) {
-	const out = [];
-	for (const side of SIDES) {
-		const entries = pins.filter((p) => p.side === side);
-		const at = slotPx(side === "top" || side === "bottom" ? W / 10 : H / 10, entries.length);
-		const runs = [];
-		let run = [];
-		entries.forEach((p, i) => {
-			if (isSpacer(p)) {
-				if (run.length) runs.push(run);
-				run = [];
-			} else run.push(at[i]);
-		});
-		if (run.length) runs.push(run);
-		for (const r of runs) {
-			const a0 = r[0] - 5;
-			const len = r[r.length - 1] + 5 - a0;
-			if (side === "left") out.push(rect(2, a0, 8, len, GOLD, {
-				radius: 2,
-				outline: false
-			}));
-			if (side === "right") out.push(rect(W - 10, a0, 8, len, GOLD, {
-				radius: 2,
-				outline: false
-			}));
-			if (side === "top") out.push(rect(a0, 2, len, 8, GOLD, {
-				radius: 2,
-				outline: false
-			}));
-			if (side === "bottom") out.push(rect(a0, H - 10, len, 8, GOLD, {
-				radius: 2,
-				outline: false
-			}));
-			for (const a of r) {
-				if (side === "left") out.push(rect(4.5, a - 1.5, 3, 3, HOLE_FILL, {
-					radius: 1.5,
-					outline: false
-				}));
-				if (side === "right") out.push(rect(W - 7.5, a - 1.5, 3, 3, HOLE_FILL, {
-					radius: 1.5,
-					outline: false
-				}));
-				if (side === "top") out.push(rect(a - 1.5, 4.5, 3, 3, HOLE_FILL, {
-					radius: 1.5,
-					outline: false
-				}));
-				if (side === "bottom") out.push(rect(a - 1.5, H - 7.5, 3, 3, HOLE_FILL, {
-					radius: 1.5,
-					outline: false
-				}));
-			}
-		}
-	}
-	return out;
-}
-/** Relative luminance of a #RRGGBB colour, 0 (black) to 1 (white). */
-function luminance(hex) {
-	const [r, g, b] = [
-		1,
-		3,
-		5
-	].map((i) => {
-		const c = parseInt(hex.slice(i, i + 2), 16) / 255;
-		return c <= .03928 ? c / 12.92 : ((c + .055) / 1.055) ** 2.4;
-	});
-	return .2126 * r + .7152 * g + .0722 * b;
-}
-/** The art for a spec on a W x H px body. */
-function partArt(pins, style, color, name, g) {
-	const W = g.wu * 10;
-	const H = g.hu * 10;
-	const text = plateText(name);
-	if (style === "chip") {
-		const light = luminance(color) > .3;
-		const shapes = [rect(0, 0, W, H, color, { radius: 3 }), rect(5, pins.some((p) => p.side === "left") || !pins.some((p) => p.side === "bottom") ? 5 : H - 11, 6, 6, light ? INK : METAL, {
-			radius: 3,
-			outline: false
-		})];
-		if (g.plate) shapes.push(rect((W - plateWidth(text, 8)) / 2, (H - PLATE_H) / 2, plateWidth(text, 8), PLATE_H, color, {
-			outline: false,
-			label: text,
-			labelColor: light ? INK : PLATE,
-			labelSize: 8
-		}));
-		return {
-			w: W,
-			h: H,
-			pinLabels: "tips",
-			shapes
-		};
-	}
-	const shapes = [rect(0, 0, W, H, color, { radius: 6 }), ...headers(pins, W, H)];
-	if (g.plate) {
-		const x0 = g.zone.left;
-		const y0 = g.zone.top;
-		const pw = plateWidth(text, 8);
-		const cx = x0 + (W - g.zone.right - x0) / 2;
-		const cy = y0 + (H - g.zone.bottom - y0) / 2;
-		shapes.push(rect(Math.round(cx - pw / 2), Math.round(cy - PLATE_H / 2), pw, PLATE_H, PLATE, {
-			radius: 3,
-			label: text,
-			labelColor: INK,
-			labelSize: 8
-		}));
-	}
-	return {
-		w: W,
-		h: H,
-		pinLabels: "inside",
-		shapes
-	};
-}
-/** A part spec as a custom module, with what was adjusted on the way (`notes`). Never throws. */
-function buildPart(raw) {
-	const v = validateSpec(raw);
-	if (!v.ok) return v;
-	const spec = v.spec;
-	const style = spec.style ?? "board";
-	const notes = [];
-	const pins = [];
-	for (const side of [
-		"left",
-		"right",
-		"top",
-		"bottom"
-	]) for (const p of sideEntries(side, spec.pins[side] ?? [])) pins.push(p);
-	const renamed = numberRepeats(pins);
-	if (renamed.length) notes.push(`Repeated pin names were numbered in physical order: ${renamed.join(", ")}. If they are joined inside the part, list them in "internal".`);
-	const g = geometry(pins, style, plateText(spec.name), spec.body);
-	if (!g.plate) notes.push("The body is too small for the name plate, so it was left out.");
-	if (g.crowded) notes.push("Pin labels on two sides meet in a corner at this body size; make the body larger or leave the size out.");
-	const color = spec.body?.color ?? DEFAULT_COLORS[style];
-	const source = Array.isArray(spec.source) ? spec.source.map((s) => s.trim()).filter(Boolean).join(" ") : spec.source?.trim();
-	const m = {
-		format: MODULE_FORMAT,
-		id: customId(spec),
-		version: spec.version ?? 1,
-		name: spec.name.trim(),
-		category: spec.category?.trim() || "Custom",
-		...source ? { source } : {},
-		custom: true,
-		pins,
-		...spec.internal?.length ? { internal: spec.internal } : {},
-		size: {
-			w: g.wu,
-			h: g.hu
-		},
-		art: partArt(pins, style, color, spec.name, g)
-	};
-	const r = validateModule(m);
-	if (!r.ok) return {
-		ok: false,
-		errors: r.errors
-	};
-	return {
-		ok: true,
-		module: m,
-		notes
-	};
-}
-/** Pin names that are power or ground by convention. */
-var POWER_NAME = /^(v(cc|dd|in|bus|bat|sys|s|\+)?|vcc\d*|vdd\d*|gnd\d*|vss|agnd|dgnd|pgnd|3v3|3\.3v|5v|12v|v\+|v-|\+|-|\+?\d+(\.\d+)?v\d*)$/i;
-var GROUND_NAME = /^(gnd\d*|vss|agnd|dgnd|pgnd|v-|-|0v)$/i;
-/**
-* What is wrong (errors) or doubtful (warnings) about a module: everything validateModule finds,
-* plus duplicate pin names, art that does not match its pins, impossible pin capabilities, power
-* pins without a type or supply, supplies that do not parse and a missing source.
-*/
-function lintModule(raw) {
-	const errors = [];
-	const warnings = [];
-	const v = validateModule(raw);
-	if (!v.ok) {
-		for (const e of v.errors) {
-			const dup = /duplicate pin name "(.*)"/.exec(e);
-			errors.push(dup ? {
-				code: "duplicate-pin",
-				message: `Two pins are named "${dup[1]}": every pin needs its own name (a second GND is "GND 2" with the label "GND").`,
-				pin: dup[1]
-			} : {
-				code: "invalid",
-				message: e
-			});
-		}
-		return {
-			ok: false,
-			errors,
-			warnings
-		};
-	}
-	const m = v.module;
-	const pins = m.pins.filter((p) => !isSpacer(p));
-	for (const p of pins) {
-		const shown = p.label ?? p.name;
-		const c = p.caps;
-		if (c?.outputOnly && p.type === "input") errors.push({
-			code: "type-caps",
-			message: `${p.name} is typed input but marked output only.`,
-			pin: p.name
-		});
-		if (c?.inputOnly && p.type === "output") errors.push({
-			code: "type-caps",
-			message: `${p.name} is typed output but marked input only.`,
-			pin: p.name
-		});
-		const power = p.type === "power_in" || p.type === "power_out" || p.type === "ground";
-		if (c && power && (c.inputOnly || c.outputOnly || c.strapping || c.flash)) warnings.push({
-			code: "caps-on-power",
-			message: `${p.name} is a power or ground pin with signal capabilities (input only, output only, strapping or flash); check the datasheet.`,
-			pin: p.name
-		});
-		if (!p.type && POWER_NAME.test(shown)) {
-			const want = GROUND_NAME.test(shown) ? "ground" : "power_in (or power_out if the part supplies it)";
-			warnings.push({
-				code: "power-untyped",
-				message: `${p.name} looks like a power pin but has no type, so the checker cannot check its supply. Set it to ${want} if the datasheet agrees.`,
-				pin: p.name
-			});
-		}
-		if ((p.type === "power_in" || p.type === "power_out") && !p.supply) warnings.push({
-			code: "power-no-supply",
-			message: `${p.name} is a power pin with no supply voltage, so wrong-voltage hookups are not caught. Give the rails it takes, for example "3V3/5V".`,
-			pin: p.name
-		});
-		if (p.type === "ground" && p.supply) warnings.push({
-			code: "ground-supply",
-			message: `${p.name} is a ground pin with a supply voltage; a ground takes none.`,
-			pin: p.name
-		});
-		if (p.supply && parseSupply(p.supply).unknown === "unknown") warnings.push({
-			code: "supply-unknown",
-			message: `${p.name}'s supply "${p.supply}" is not a voltage the checker reads; write rails like "3V3", "5V" or "3V3/5V" ("ADJ" when it is set by the user).`,
-			pin: p.name
-		});
-	}
-	if (pins.length && pins.every((p) => !p.type)) warnings.push({
-		code: "no-types",
-		message: "No pin has a type, so the wiring checker can check nothing about this part."
-	});
-	const urls = (m.source ?? "").split(/\s+/).filter(Boolean);
-	if (!urls.length) warnings.push({
-		code: "no-source",
-		message: "No source: cite the maker's datasheet or pinout page (and a second source that agrees) in \"source\"."
-	});
-	else if (urls.some((u) => !/^https?:\/\/\S+$/.test(u))) warnings.push({
-		code: "source-not-url",
-		message: "\"source\" should be URLs separated by spaces."
-	});
-	if (!isCustom(m)) warnings.push({
-		code: "not-custom",
-		message: `Not marked as a custom part: a part made outside the library should have "custom": true and an id starting with "${CUSTOM_PREFIX}".`
-	});
-	if (m.name.length > NAME_MAX) warnings.push({
-		code: "long-name",
-		message: `The name is over ${NAME_MAX} characters.`
-	});
-	lintArt(m, errors, warnings);
-	return {
-		ok: errors.length === 0,
-		errors,
-		warnings
-	};
-}
-/** Art that does not match the pins: a body that grows past the drawing, or header holes off every pin. */
-function lintArt(m, errors, warnings) {
-	const art = m.art;
-	if (!art) return;
-	const lay = layoutModule(m);
-	if (art.w < lay.w || art.h < lay.h) warnings.push({
-		code: "art-pins",
-		message: `The art is ${art.w} x ${art.h} px but the pins need a body of ${lay.w} x ${lay.h} px, so some pins would stick out of empty paper.`
-	});
-	if (!isCustom(m)) return;
-	const ax = (lay.w - art.w) / 2;
-	const ay = (lay.h - art.h) / 2;
-	for (const s of art.shapes) {
-		if (s.fill !== "#8A6A1E" || s.w > 4 || s.h > 4) continue;
-		const x = ax + s.x + s.w / 2;
-		const y = ay + s.y + s.h / 2;
-		if (!lay.pins.some((p) => p.dir.x !== 0 ? Math.abs(p.edge.y - y) < .5 && Math.abs(p.edge.x - x) <= INSET : Math.abs(p.edge.x - x) < .5 && Math.abs(p.edge.y - y) <= INSET)) {
-			errors.push({
-				code: "art-pins",
-				message: `A header hole is drawn at ${x}, ${y} with no pin there: the art does not match the pins. Rebuild the part from its spec.`
-			});
-			return;
-		}
-	}
-}
-//#endregion
-//#region src/cli/moduleCmd.ts
-var MODULE_NEW_FORMAT = "circuitoon-cli/module-new/1";
-var MODULE_CHECK_FORMAT = "circuitoon-cli/module-check/1";
-var MODULE_USAGE = "module: usage: circuitoon module new [--spec <spec.json>] [-o <part.json>] | module check <part.json> | module render <part.json> -o <part.png> [--svg <part.svg>] [--dark] [--scale n]";
-var issueLines = (errors, warnings) => [...errors.map((e) => `error [${e.code}] ${e.message}`), ...warnings.map((w) => `warning [${w.code}] ${w.message}`)];
-function parseJson(text, what) {
-	try {
-		return JSON.parse(text);
-	} catch (e) {
-		throw new CliError(`${what}: not valid JSON (${e.message})`, EXIT.input);
-	}
-}
-/** The spec from --spec <file>, or standard input when --spec is left out or "-". */
-function readSpec(args, io) {
-	const path = flag(args, "--spec");
-	if (path !== void 0 && path !== "-") return {
-		raw: readJson(io, path),
-		from: path
-	};
-	const text = io.stdin?.() ?? "";
-	if (!text.trim()) throw new CliError("module new: give --spec <spec.json>, or pipe the spec on standard input", EXIT.input);
-	return {
-		raw: parseJson(text, "standard input"),
-		from: "standard input"
-	};
-}
-function newCommand(args, io) {
-	if (args.positionals.length > 1) throw new CliError("module new: takes no file argument; give the spec with --spec <spec.json> or on standard input", EXIT.input);
-	const { raw, from } = readSpec(args, io);
-	const built = buildPart(raw);
-	if (!built.ok) throw new CliError(`${from} is not a valid part spec: ${built.errors.slice(0, 8).join("; ")}`, EXIT.input);
-	const m = built.module;
-	const lint = lintModule(m);
-	const out = flag(args, "--out");
-	const text = `${JSON.stringify(m, null, 2)}\n`;
-	if (out && lint.ok) writeFile(io, out, text);
-	const code = lint.ok ? EXIT.ok : EXIT.blocked;
-	if (args.flags.has("--json")) {
-		printJson(io, {
-			format: MODULE_NEW_FORMAT,
-			ok: lint.ok,
-			path: out && lint.ok ? out : null,
-			module: m,
-			notes: built.notes,
-			errors: lint.errors,
-			warnings: lint.warnings
-		});
-		return code;
-	}
-	const lines = [...built.notes.map((n) => `note: ${n}`), ...issueLines(lint.errors, lint.warnings)];
-	if (out) {
-		const lay = layoutModule(m);
-		const head = lint.ok ? `Wrote ${out}: ${m.id} (${m.pins.filter((p) => !isSpacer(p)).length} pins, ${lay.w} x ${lay.h} px), a custom part, unverified.` : `Not written: ${m.id} has lint errors.`;
-		io.stdout(`${[head, ...lines].join("\n")}\n`);
-	} else {
-		if (lint.ok) io.stdout(text);
-		if (lines.length) io.stderr(`${lines.join("\n")}\n`);
-	}
-	return code;
-}
-function checkModuleFile(raw, path) {
-	const lint = lintModule(raw);
-	const v = validateModule(raw);
-	const m = v.ok ? v.module : null;
-	const lay = m ? layoutModule(m) : null;
-	const o = raw;
-	return {
-		format: MODULE_CHECK_FORMAT,
-		ok: lint.ok,
-		path,
-		id: typeof o?.id === "string" ? o.id : null,
-		name: typeof o?.name === "string" ? o.name : null,
-		custom: isCustom(m ?? void 0),
-		pins: m ? m.pins.filter((p) => !isSpacer(p)).length : 0,
-		size: lay ? {
-			w: lay.w,
-			h: lay.h
-		} : null,
-		errors: lint.errors,
-		warnings: lint.warnings
-	};
-}
-function checkCommand(args, io) {
-	const [, input, ...rest] = args.positionals;
-	if (!input) throw new CliError("module check: give a part file", EXIT.input);
-	if (rest.length) throw new CliError("module check: give one part file", EXIT.input);
-	const r = checkModuleFile(readJson(io, input), input);
-	if (args.flags.has("--json")) printJson(io, r);
-	else {
-		const what = r.id ? `${r.id}${r.name ? ` (${r.name})` : ""}` : input;
-		const facts = r.size ? `, ${r.pins} pins, ${r.size.w} x ${r.size.h} px${r.custom ? ", custom (unverified)" : ""}` : "";
-		const head = r.ok ? `OK: ${what}${facts}` : `PROBLEMS: ${what}: ${r.errors.length} error${r.errors.length === 1 ? "" : "s"}`;
-		io.stdout(`${[head, ...issueLines(r.errors, r.warnings)].join("\n")}\n`);
-	}
-	return r.ok ? EXIT.ok : EXIT.blocked;
-}
-/** A sheet holding one part, alone, for a render. */
-function partSheet(m) {
-	return {
-		format: DIAGRAM_FORMAT,
-		title: m.name,
-		modules: { [m.id]: m },
-		parts: [{
-			uid: "p1",
-			designator: "U1",
-			module: m.id,
-			x: 0,
-			y: 0,
-			rotation: 0
-		}],
-		connections: []
-	};
-}
-function renderCommand(args, io) {
-	const [, input] = args.positionals;
-	const png = flag(args, "--out");
-	const svgPath = flag(args, "--svg");
-	if (!input) throw new CliError("module render: give a part file", EXIT.input);
-	if (!png && !svgPath) throw new CliError("module render: give -o <part.png>, --svg <part.svg>, or both", EXIT.input);
-	const scale = Number(flag(args, "--scale") ?? "3");
-	if (!(scale > 0 && scale <= 8)) throw new CliError("module render: --scale must be a number above 0, at most 8", EXIT.input);
-	const v = validateModule(readJson(io, input));
-	if (!v.ok) throw new CliError(`${input} is not a valid module: ${v.errors.slice(0, 5).join("; ")}`, EXIT.input);
-	const drawn = renderSheetSvg(partSheet(v.module), { dark: args.flags.has("--dark") });
-	const outputs = [];
-	if (svgPath) {
-		writeFile(io, svgPath, drawn.svg);
-		outputs.push({
-			kind: "svg",
-			path: svgPath,
-			width: drawn.width,
-			height: drawn.height
-		});
-	}
-	if (png) {
-		let shot;
-		try {
-			shot = writePng(drawn, scale, pathIn(io, png), io.env);
-		} catch (err) {
-			throw writeError(png, err);
-		}
-		if (!shot.ok) throw new CliError(shot.message, EXIT.environment);
-		outputs.push({
-			kind: "png",
-			path: png,
-			width: shot.width,
-			height: shot.height
-		});
-	}
-	if (args.flags.has("--json")) printJson(io, {
-		format: "circuitoon-cli/render/1",
-		outputs
-	});
-	else io.stdout(`${outputs.map((o) => `Wrote ${o.path} (${o.width} x ${o.height} px)`).join("\n")}\n`);
-	return EXIT.ok;
-}
-function moduleCommand(args, io) {
-	const sub = args.positionals[0];
-	if (sub === "new") return newCommand(args, io);
-	if (sub === "check") return checkCommand(args, io);
-	if (sub === "render") return renderCommand(args, io);
-	throw new CliError(sub ? `module: unknown subcommand "${sub}"; ${MODULE_USAGE.slice(8)}` : MODULE_USAGE, EXIT.input);
 }
 //#endregion
 //#region src/sim/model.ts
@@ -95087,7 +93215,7 @@ var V = (x) => formatValue(Number(x.toPrecision(3)), "V");
 var A = (x) => formatValue(Number(x.toPrecision(3)), "A");
 var W = (x) => formatValue(Number(x.toPrecision(3)), "W");
 var refOf = (c, uid) => c.refs[uid] ?? uid;
-var plural$1 = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+var plural$2 = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 /** Every parameter a device was built from: what sim-estimate counts. */
 function deviceParams(d) {
 	switch (d.kind) {
@@ -95259,7 +93387,7 @@ function topologyFindings(c, cls) {
 			parts: missing,
 			inputs: [],
 			key: "sim-incomplete",
-			message: `${plural$1(missing.length, "powered part")} ${missing.length === 1 ? "has" : "have"} no power data, so ${missing.length === 1 ? "it is" : "they are"} not simulated: ${andList(designators)}.`
+			message: `${plural$2(missing.length, "powered part")} ${missing.length === 1 ? "has" : "have"} no power data, so ${missing.length === 1 ? "it is" : "they are"} not simulated: ${andList(designators)}.`
 		});
 	}
 	const estimates = /* @__PURE__ */ new Map();
@@ -95270,7 +93398,7 @@ function topologyFindings(c, cls) {
 		parts: [...new Set(c.devices.filter((d) => deviceParams(d).some((p) => p.basis === "estimate")).map((d) => d.part))].sort(naturalCompare),
 		inputs: [...estimates.values()],
 		key: "sim-estimate",
-		message: `${plural$1(estimates.size, "value")} in this result ${estimates.size === 1 ? "is an estimate" : "are estimates"}: ${[...estimates.keys()].join(", ")}.`
+		message: `${plural$2(estimates.size, "value")} in this result ${estimates.size === 1 ? "is an estimate" : "are estimates"}: ${[...estimates.keys()].join(", ")}.`
 	});
 	return {
 		drafts,
@@ -95712,7 +93840,7 @@ async function solve(d, engine, revision, opts = {}) {
 //#endregion
 //#region src/cli/simCmd.ts
 var USAGE$1 = "sim: usage: circuitoon sim <sheet.json|netlist.json> [--probe <ref[.pin]|net:NAME>]...";
-var plural = (n, one) => `${n} ${one}${n === 1 ? "" : "s"}`;
+var plural$1 = (n, one) => `${n} ${one}${n === 1 ? "" : "s"}`;
 /**
 * One --probe: "REF.PIN", "REF" or "net:NAME" on the sheet (refs as the netlist names them). A net
 * name is the sheet's (extract's: labels, GND, rails, REF_PIN), else the intent's (the netlist's own
@@ -95774,7 +93902,7 @@ function probeOf(spec, d, uidOf, nets, intent, id) {
 var volts = (r) => r.kind === "value" ? `${r.value.toFixed(3)} V` : r.kind;
 var amps = (r) => r.kind === "value" ? `${(r.value * 1e3).toFixed(1)} mA` : r.kind;
 var OFF = /^(.+?) is not powered in the current state: (\S+) is open\./;
-function findingLines(findings) {
+function findingLines(findings, line = (f, m) => `  ${f.severity}: ${m}`) {
 	const lines = [];
 	for (let i = 0; i < findings.length; i++) {
 		const m = findings[i].severity === "warning" ? OFF.exec(findings[i].message) : null;
@@ -95785,8 +93913,8 @@ function findingLines(findings) {
 			run.push(next[1]);
 			i++;
 		}
-		if (m && run.length > 1) lines.push(`  warning: not powered in the current state because ${m[2]} is open: ${run.join(", ")}. Set ${m[2]} to its operating position to simulate them running.`);
-		else lines.push(`  ${findings[i].severity}: ${findings[i].message}`);
+		if (m && run.length > 1) lines.push(line(findings[i], `not powered in the current state because ${m[2]} is open: ${run.join(", ")}. Set ${m[2]} to its operating position to simulate them running.`));
+		else lines.push(line(findings[i], findings[i].message));
 	}
 	return lines;
 }
@@ -95796,7 +93924,7 @@ function summary(o, refOf = /* @__PURE__ */ new Map()) {
 	if (o.status === "failed") return `Simulation failed: ${o.finding.message}\n`;
 	const r = o.result;
 	const count = (s) => r.findings.filter((f) => f.severity === s).length;
-	const lines = [`Simulation: typical and peak solved in ${Math.round(r.engine.ms)} ms (${r.engine.runs} engine runs). ${plural(count("error"), "blocking finding")}, ${plural(count("warning"), "warning")}, ${plural(count("note"), "note")}.`];
+	const lines = [`Simulation: typical and peak solved in ${Math.round(r.engine.ms)} ms (${r.engine.runs} engine runs). ${plural$1(count("error"), "blocking finding")}, ${plural$1(count("warning"), "warning")}, ${plural$1(count("note"), "note")}.`];
 	lines.push(...findingLines(r.findings));
 	for (const b of r.budget) lines.push(`  budget ${b.label}: ${volts(b.volts.typical)}, ${amps(b.amps.typical)} (peak ${amps(b.amps.peak)})${b.limit ? `, limit ${(b.limit.value * 1e3).toFixed(0)} mA` : ""}`);
 	for (const u of r.unaccounted) lines.push(`  not in the budget: ${refOf.get(u.part) ?? u.part}: ${u.items.join("; ")}`);
@@ -95852,6 +93980,1950 @@ async function simCommand(args, io, opts = {}) {
 	} finally {
 		if (!opts.engine) engine.dispose();
 	}
+}
+//#endregion
+//#region src/cli/gate.ts
+var GATE_FORMAT = "circuitoon-cli/gate/4";
+var sha256 = (bytes) => createHash("sha256").update(bytes).digest("hex");
+/** The loader's warning for a part whose module the file does not embed (a missing module blocks). */
+var MISSING_MODULE = "is not embedded in this file";
+var plural = (n, one) => `${n} ${one}${n === 1 ? "" : "s"}`;
+/** Removes `path` when it is a file inside `dir` and not `keep` (the sheet being gated); anything else stays. */
+function removeStale(dir, path, keep) {
+	const full = resolve(dir, path);
+	const rel = relative(resolve(dir), full);
+	if (rel === "" || rel.startsWith("..") || isAbsolute(rel) || keep !== void 0 && full === resolve(keep)) return;
+	try {
+		if (!statSync(full).isFile()) return;
+	} catch {
+		return;
+	}
+	try {
+		rmSync(full);
+	} catch (err) {
+		throw writeError(full, err);
+	}
+}
+/** The artifacts of an earlier run in `outDir` that a new run replaces: renders, focused PNGs, the link. */
+function clearArtifacts(outDir, keep) {
+	let names = [];
+	try {
+		names = readdirSync(outDir);
+	} catch {
+		return;
+	}
+	for (const name of names) if (/^focus-.*\.png$/.test(name)) removeStale(outDir, name, keep);
+	for (const name of [
+		"sheet.svg",
+		"sheet.png",
+		"link.txt",
+		"bom.csv"
+	]) removeStale(outDir, name, keep);
+}
+/** Removes an earlier gate.json, and the file fallback it names, before anything else runs. */
+function clearReport(outDir, keep) {
+	const path = join(outDir, "gate.json");
+	let old;
+	try {
+		old = JSON.parse(readFileSync(path, "utf8"));
+	} catch {}
+	removeStale(outDir, "gate.json", keep);
+	const artifacts = old?.artifacts;
+	if (Array.isArray(artifacts)) {
+		for (const a of artifacts) if (a && typeof a === "object" && a.kind === "file" && typeof a.path === "string") removeStale(outDir, a.path, keep);
+	}
+}
+/** Where gate gets its engine when the caller passes none. Tests that do not test simulation set `make` to `() => null`. */
+var gateEngine = { make: () => makeEngine(createNodeEngineHost()) };
+async function runGate(bytes, opts) {
+	const { io, outDir } = opts;
+	const png = opts.png ?? writePng;
+	clearArtifacts(outDir, pathIn(io, opts.sheetPath));
+	const found = [];
+	const note = (rule, cause, severity, message, more = {}) => found.push({
+		id: `${rule}|${cause}`,
+		rule,
+		severity,
+		message,
+		parts: more.parts ?? [],
+		pins: [],
+		wires: more.wires ?? []
+	});
+	const artifacts = [];
+	const artifact = (kind, path) => {
+		const content = readFileSync(join(outDir, path));
+		artifacts.push({
+			kind,
+			path,
+			sha256: sha256(content),
+			bytes: content.length
+		});
+	};
+	const required = [];
+	let link = {
+		url: null,
+		file: null,
+		chars: 0
+	};
+	let rows = {
+		bom: null,
+		quantities: [],
+		channels: []
+	};
+	let sim = {
+		status: "not-run",
+		findings: [],
+		budget: [],
+		provenanceCounts: {
+			datasheet: 0,
+			representative: 0,
+			estimate: 0,
+			user: 0,
+			topology: 0
+		}
+	};
+	const finish = () => {
+		const have = new Set(artifacts.map((a) => a.kind));
+		const missing = required.filter((r) => r.kind === "link-or-file" ? !have.has("link") && !have.has("file") : !have.has(r.kind));
+		if (missing.length) note("environment", "incomplete", "warning", `The gate is incomplete: ${missing.map((m) => m.path).join(", ")} could not be made, so the gate cannot pass.`);
+		const all = uniqueIds(found);
+		const blocking = all.filter((f) => f.severity === "error");
+		const simIncomplete = sim.status === "failed" || sim.status === "unavailable";
+		const code = blocking.length ? EXIT.blocked : missing.length || simIncomplete ? EXIT.environment : EXIT.ok;
+		return {
+			code,
+			report: {
+				format: GATE_FORMAT,
+				ok: code === EXIT.ok,
+				ready: code === EXIT.ok && all.every((f) => f.severity !== "warning" || !READABILITY_RULES.includes(f.rule)),
+				diagram: {
+					path: opts.sheetPath,
+					sha256: sha256(bytes)
+				},
+				artifacts,
+				blocking,
+				warnings: all.filter((f) => f.severity === "warning"),
+				notes: all.filter((f) => f.severity === "info"),
+				sim,
+				notChecked: NOT_CHECKED,
+				link,
+				...rows
+			}
+		};
+	};
+	let raw;
+	try {
+		raw = JSON.parse(new TextDecoder().decode(bytes));
+	} catch (e) {
+		note("load", "json", "error", `${opts.sheetPath} is not valid JSON (${e.message})`);
+		return finish();
+	}
+	const v = validateDiagram(raw, { library: libraryLookup });
+	if (!v.ok) {
+		v.errors.forEach((e, i) => note("load", String(i), "error", `${opts.sheetPath} is not a Circuitoon sheet: ${e}`));
+		return finish();
+	}
+	const d = v.diagram;
+	v.warnings.forEach((w, i) => note("load", String(i), w.includes("it was dropped and the module default is shown") || w.includes(MISSING_MODULE) ? "error" : "warning", w));
+	const verified = verifyDiagram(d, libraryLookup);
+	const checked = withoutStale(checkDiagram(d), verified);
+	found.push(...verified.filter((f) => !alsoChecked(f, checked)).map(cliFinding));
+	found.push(...checked.map(cliFinding));
+	const routes = computeRoutes(d);
+	for (const { conn: c, blocked } of wirePaths(d, routes)) if (blocked) note("blocked-route", c.uid, "error", `The wire ${c.label ?? `${endpointName(d, c.from)} to ${endpointName(d, c.to)}`} has no clear route: it runs through a part.`, {
+		parts: [c.from.part, c.to.part],
+		wires: [c.uid]
+	});
+	for (const c of d.connections) if (routes.get(c.uid)?.fallback) note("wire-over-holes", c.uid, "warning", `The wire ${c.label ?? `${endpointName(d, c.from)} to ${endpointName(d, c.to)}`} runs over breadboard holes in use that it is not plugged into, so in the picture it may look plugged in there.`, {
+		parts: [c.from.part, c.to.part],
+		wires: [c.uid]
+	});
+	found.push(...readabilityFindings(d, routes).map(cliFinding));
+	for (const c of sheetCustomParts(d, libraryLookup)) found.push({
+		id: `custom-part|${c.module}`,
+		rule: "custom-part",
+		severity: "info",
+		message: customPartNote(c),
+		parts: c.parts,
+		pins: [],
+		wires: []
+	});
+	const engine = opts.engine !== void 0 ? opts.engine : gateEngine.make();
+	if (engine) try {
+		const { outcome } = await solve(d, engine, 1, { library: libraryLookup });
+		if (outcome.status === "ok") {
+			const r = outcome.result;
+			const counts = { ...sim.provenanceCounts };
+			for (const f of r.findings) counts[f.basis]++;
+			sim = {
+				status: "ok",
+				findings: r.findings,
+				budget: r.budget,
+				provenanceCounts: counts
+			};
+			for (const f of r.findings) found.push({
+				id: `${f.code}|${f.parts.join(",")}|${f.corner ?? ""}`,
+				rule: f.code,
+				severity: f.severity === "note" ? "info" : f.severity,
+				message: f.message,
+				parts: f.parts,
+				pins: [],
+				wires: []
+			});
+		} else if (outcome.status === "failed") {
+			sim = {
+				...sim,
+				status: "failed",
+				findings: [outcome.finding],
+				reason: outcome.finding.message
+			};
+			found.push({
+				id: "sim-no-convergence",
+				rule: "sim-no-convergence",
+				severity: "warning",
+				message: outcome.finding.message,
+				parts: outcome.finding.parts,
+				pins: [],
+				wires: []
+			});
+		} else sim = {
+			...sim,
+			status: "unavailable",
+			reason: outcome.reason
+		};
+	} finally {
+		if (opts.engine === void 0) engine.dispose();
+	}
+	const parsed = d.intent !== void 0 ? parseNetlist(d.intent, intentLookup(d, libraryLookup)) : null;
+	const bom = sheetBom(d, libraryLookup);
+	rows = {
+		bom,
+		quantities: bomQuantities(bom),
+		channels: parsed?.ok ? channelTable(parsed.intent) : []
+	};
+	required.push({
+		kind: "bom",
+		path: "bom.csv"
+	});
+	writeFile(io, join(outDir, "bom.csv"), bomCsv(bom));
+	artifact("bom", "bom.csv");
+	const shoot = (drawn, kind, name) => {
+		required.push({
+			kind,
+			path: name
+		});
+		let shot;
+		try {
+			shot = png(drawn, 2, join(outDir, name), io.env);
+		} catch (err) {
+			throw writeError(join(outDir, name), err);
+		}
+		if (shot.ok) artifact(kind, name);
+		else note("environment", name, "warning", shot.message);
+		return shot.ok;
+	};
+	required.push({
+		kind: "svg",
+		path: "sheet.svg"
+	});
+	const full = renderSheetSvg(d);
+	writeFile(io, join(outDir, "sheet.svg"), full.svg);
+	artifact("svg", "sheet.svg");
+	const fullOk = shoot(full, "png", "sheet.png");
+	const copy = parsed?.ok ? parsed.intent.copies[0] : void 0;
+	if (copy) {
+		const name = `focus-${copy.id}.png`;
+		const uids = focusParts(d, copy.id);
+		if (uids && fullOk) shoot(renderSheetSvg(d, { box: focusBounds(d, uids, routes) }), "focus-png", name);
+		else required.push({
+			kind: "focus-png",
+			path: name
+		});
+	}
+	required.push({
+		kind: "link-or-file",
+		path: "link.txt"
+	});
+	try {
+		const l = await linkFor(d, outDir, io, pathIn(io, opts.sheetPath));
+		const file = l.file ? relative(outDir, pathIn(io, l.file)) : null;
+		link = {
+			url: l.url,
+			file,
+			chars: l.chars
+		};
+		if (l.url) {
+			writeFile(io, join(outDir, "link.txt"), `${l.url}\n`);
+			artifact("link", "link.txt");
+		} else {
+			artifact("file", file);
+			note("link", "file", "warning", `${l.reason} ${file} was written instead: open it in Circuitoon with Import JSON.`);
+		}
+	} catch (err) {
+		note("link", "none", "error", `No link could be made and the file fallback could not be written: ${err instanceof Error ? err.message : String(err)}`);
+	}
+	return finish();
+}
+/** The readability warnings in a gate report (the rules readabilityFindings raises). */
+function readabilityCount(report) {
+	return report.warnings.filter((w) => READABILITY_RULES.includes(w.rule)).length;
+}
+/** The gate's verdict line (spec 7 matrix, ruling R15). */
+function gateBanner(code, report, input) {
+	if (code === EXIT.ok) return `${report.warnings.length ? "GATE PASSED, with warnings" : "GATE PASSED"}: ${input} (sha256 ${report.diagram.sha256})`;
+	if (code === EXIT.environment) {
+		if (report.sim.status === "failed") return `GATE INCOMPLETE (simulation did not converge; this may be our model, not your circuit): ${input}`;
+		if (report.sim.status === "unavailable") return `GATE INCOMPLETE (simulation unavailable): ${input}`;
+		return `GATE INCOMPLETE: nothing blocks, but not every render could be made (${input})`;
+	}
+	return `${report.blocking.every((f) => f.rule.startsWith("sim-")) ? "GATE FAILED (simulation)" : "GATE FAILED"}: ${plural(report.blocking.length, "blocking finding")} (${input})`;
+}
+async function gateCommand(args, io) {
+	const [input, ...rest] = args.positionals;
+	const out = flag(args, "--out");
+	if (out) clearReport(pathIn(io, out), input ? pathIn(io, input) : void 0);
+	if (!input || !out) throw new CliError("gate: usage: circuitoon gate <sheet.json> -o <dir>", EXIT.input);
+	if (rest.length) throw new CliError(`gate: give one sheet file, not ${args.positionals.length}`, EXIT.input);
+	let bytes;
+	try {
+		bytes = readFileSync(pathIn(io, input));
+	} catch {
+		throw new CliError(`${input}: cannot read the file`, EXIT.input);
+	}
+	const { code, report } = await runGate(bytes, {
+		sheetPath: input,
+		outDir: pathIn(io, out),
+		io
+	});
+	writeFile(io, join(out, "gate.json"), `${JSON.stringify(report, null, 2)}\n`);
+	if (code === EXIT.environment) {
+		for (const w of report.warnings) if (w.rule === "environment") io.stderr(`${w.message}\n`);
+	}
+	if (args.flags.has("--json")) printJson(io, report);
+	else {
+		const head = gateBanner(code, report, input);
+		const notReady = readabilityCount(report);
+		const lines = [...notReady ? [`NOT READY: ${plural(notReady, "readability warning")}`] : [], head];
+		if (report.blocking.length) lines.push("", "Blocking:", findingsText(report.blocking));
+		if (report.warnings.length) lines.push("", "Warnings (report these to the user):", ...findingLines(report.warnings, (f, m) => `${f.severity.toUpperCase()} ${f.rule}: ${m}`));
+		if (report.notes.length) lines.push("", "Notes (not problems; pass them on to the user):", findingsText(report.notes));
+		lines.push("", `Artifacts in ${out}:`, ...report.artifacts.map((a) => `  ${a.path}  sha256 ${a.sha256}`), `  gate.json`);
+		if (report.link.url) lines.push("", `Link: ${report.link.url}`, LINK_NOTICE);
+		lines.push("", notCheckedText());
+		io.stdout(`${lines.join("\n")}\n`);
+	}
+	return code;
+}
+//#endregion
+//#region src/agent/partial.ts
+var PARTIAL_FORMAT = "circuitoon-partial/1";
+var ROTATIONS = [
+	0,
+	90,
+	180,
+	270
+];
+function loadPartial(raw) {
+	if (!isObj(raw)) return {
+		ok: false,
+		errors: ["partial must be a JSON object"]
+	};
+	const errors = [];
+	if (raw.format !== "circuitoon-partial/1") errors.push(`format: must be "${PARTIAL_FORMAT}" (copy the sheet, change its format, and delete x and y on the parts to place again)`);
+	if (!isObj(raw.intent)) errors.push("intent: required, the netlist the sheet was laid out from");
+	const keep = /* @__PURE__ */ new Map();
+	const seen = /* @__PURE__ */ new Map();
+	if (!Array.isArray(raw.parts)) errors.push("parts: required list");
+	else raw.parts.forEach((p, i) => {
+		const at = `parts[${i}]`;
+		if (!isObj(p) || typeof p.designator !== "string") return void errors.push(`${at}.designator: required`);
+		const first = seen.get(p.designator);
+		if (first !== void 0) return void errors.push(`${at}.designator: ${p.designator} is already listed at parts[${first}]`);
+		seen.set(p.designator, i);
+		if (p.x === void 0 && p.y === void 0) return;
+		if (!isNum(p.x) || !isNum(p.y)) return void errors.push(`${at}: give both x and y, or neither`);
+		if (p.x % 10 !== 0 || p.y % 10 !== 0) return void errors.push(`${at}: x and y must be on the 10 px grid`);
+		const rotation = p.rotation === void 0 ? 0 : p.rotation;
+		if (!ROTATIONS.includes(rotation)) return void errors.push(`${at}.rotation: must be 0, 90, 180 or 270`);
+		keep.set(p.designator, {
+			x: p.x,
+			y: p.y,
+			rotation
+		});
+	});
+	return errors.length ? {
+		ok: false,
+		errors
+	} : {
+		ok: true,
+		intent: raw.intent,
+		keep
+	};
+}
+//#endregion
+//#region src/cli/layoutCmd.ts
+/** Designators the partial keeps that are not parts of its intent (after repeat expansion). */
+function unknownKept(path, intent, keep) {
+	const parsed = parseNetlist(intent, libraryLookup);
+	if (!parsed.ok) return [];
+	const refs = new Set(parsed.intent.parts.map((p) => p.ref));
+	return [...keep.keys()].filter((ref) => !refs.has(ref)).sort(naturalCompare).map((ref) => `${path} names ${ref}, which is not a part of its intent; its position is ignored`);
+}
+function layoutCommand(args, io) {
+	const json = args.flags.has("--json");
+	const out = flag(args, "--out");
+	const keepPath = flag(args, "--keep");
+	const labels = flag(args, "--labels") ?? "none";
+	if (!LABEL_MODES.includes(labels)) throw new CliError(`layout: --labels must be ${LABEL_MODES.join(", ")}`, EXIT.input);
+	const [input] = args.positionals;
+	if (!out) throw new CliError("layout: -o <sheet.json> is required", EXIT.input);
+	if (!input === !keepPath) throw new CliError("layout: give a netlist file, or --keep <partial.json>, but not both", EXIT.input);
+	let raw;
+	let keep;
+	let warnings = [];
+	if (keepPath) {
+		const p = loadPartial(readJson(io, keepPath));
+		if (!p.ok) throw new CliError(`${keepPath}: ${p.errors.join("; ")}`, EXIT.input);
+		raw = p.intent;
+		keep = p.keep;
+		warnings = unknownKept(keepPath, raw, keep);
+	} else raw = readJson(io, input);
+	if (!json) for (const w of warnings) io.stderr(`warning: ${w}\n`);
+	const r = layoutNetlist(raw, {
+		keep,
+		labels
+	});
+	if (!r.ok) {
+		if (json) printJson(io, {
+			format: "circuitoon-cli/layout/1",
+			ok: false,
+			output: null,
+			attempts: 0,
+			report: null,
+			quantities: [],
+			channels: [],
+			warnings,
+			errors: r.errors
+		});
+		else io.stderr(`${r.stage === "input" ? "The netlist is not valid" : "The netlist cannot be laid out"}:\n${r.errors.map((e) => `  - ${e}`).join("\n")}\n`);
+		return r.stage === "input" ? EXIT.input : EXIT.blocked;
+	}
+	const { diagram, report, intent, attempts } = r.value;
+	warnings = [...warnings, ...intent.probeWarnings];
+	if (!json) for (const w of intent.probeWarnings) io.stderr(`warning: ${w}\n`);
+	writeFile(io, out, serializeDiagram(diagram));
+	const q = bomQuantities(sheetBom(diagram));
+	const ch = channelTable(intent);
+	if (json) {
+		printJson(io, {
+			format: "circuitoon-cli/layout/1",
+			ok: true,
+			output: out,
+			attempts,
+			report,
+			quantities: q,
+			channels: ch,
+			warnings,
+			errors: []
+		});
+		return EXIT.ok;
+	}
+	io.stdout([
+		`Laid out "${diagram.title}" into ${out}: ${diagram.parts.length} parts, ${diagram.connections.length} wires (placement ${attempts} of ${SPACINGS.length}).`,
+		reportText(report),
+		"Bill of quantities:",
+		quantitiesText(q),
+		...ch.length ? ["Channel allocation:", channelsText(ch)] : [],
+		...intent.custom.length ? [`Custom parts (unverified): ${intent.custom.join(", ")}`] : []
+	].join("\n") + "\n");
+	return EXIT.ok;
+}
+//#endregion
+//#region src/cli/bomCmd.ts
+var BOM_FORMAT = "circuitoon-cli/bom/1";
+function bomCommand(args, io) {
+	const [input, ...rest] = args.positionals;
+	if (!input) throw new CliError("bom: give a sheet file", EXIT.input);
+	if (rest.length) throw new CliError(`bom: give one sheet file, not ${args.positionals.length}`, EXIT.input);
+	const { diagram, warnings } = loadSheet(io, input);
+	for (const w of warnings) io.stderr(`warning: ${w}\n`);
+	const bom = sheetBom(diagram);
+	const out = flag(args, "--out") ?? null;
+	if (out) writeFile(io, out, bomCsv(bom));
+	const lines = bomLines(bom);
+	if (args.flags.has("--json")) printJson(io, {
+		format: BOM_FORMAT,
+		ok: true,
+		sheet: input,
+		output: out,
+		bom,
+		lines
+	});
+	else io.stdout([
+		`Bill of materials: ${diagram.title}`,
+		...lines.map((l) => `  ${l}`),
+		...out ? [`Wrote ${out}`] : []
+	].join("\n") + "\n");
+	return EXIT.ok;
+}
+//#endregion
+//#region src/cli/explain.ts
+var EXPLAIN_FORMAT = "circuitoon-cli/explain/1";
+/** The rules explain reports: the pin-capability, I2C and USB port rules. */
+var isPinRule = (rule) => /^(pin|i2c|usb)-/.test(rule);
+/** A module's short name: its name up to the first " (" ("ESP32 DevKit V1 (30 pin, DOIT)" is "ESP32 DevKit V1"). */
+var shortName$1 = (m) => m.name.split(" (")[0];
+var model = (m) => m.electrical?.model;
+/** Explain lists real parts only: no breadboards, rail strips or net labels. */
+var listed = (m) => !isBoard(m) && !isNetLabel(m);
+function fromSheet(d) {
+	const nl = netlist(d, plugsOf(d));
+	const pm = buildPinModel(d.parts.flatMap((p) => {
+		const m = moduleOf(d, p.module);
+		return m ? [{
+			id: p.uid,
+			designator: p.designator,
+			module: m,
+			settings: p.settings
+		}] : [];
+	}), nl.nets.map((keys) => keys.map((k) => JSON.parse(k))));
+	const names = nl.nets.map(() => null);
+	for (const l of labelsOf(d)) {
+		const i = nl.netOf.get(JSON.stringify([l.part.uid, l.pin]));
+		if (i !== void 0 && l.name && names[i] === null) names[i] = l.name;
+	}
+	const findings = uniqueIds(checkDiagram(d).filter((f) => isPinRule(f.rule)).map(cliFinding));
+	const notes = [...sheetCustomParts(d, libraryLookup).map(customPartNote), ...verifyDiagram(d, libraryLookup).filter((f) => f.rule === "module-drift").map((f) => `${f.message} Until then, its pin capabilities and I2C data are the old copy's.`)];
+	return {
+		source: "sheet",
+		title: d.title,
+		model: pm,
+		names,
+		findings,
+		notes
+	};
+}
+function fromNetlist(raw, path) {
+	const r = parseNetlist(raw, libraryLookup);
+	if (!r.ok) throw new CliError(`${path} is not a valid netlist: ${r.errors.slice(0, 5).join("; ")}`, EXIT.input);
+	const intent = r.intent;
+	const pm = buildPinModel(intent.parts.flatMap((p) => {
+		const m = intent.modules[p.module];
+		return m ? [{
+			id: p.ref,
+			designator: p.ref,
+			module: m,
+			...p.settings ? { settings: p.settings } : {}
+		}] : [];
+	}), intent.nets.map((n) => n.terminals.map((t) => [t.ref, t.name])));
+	const findings = uniqueIds(pinFindings(pm).map((f) => ({
+		id: `${f.rule}|${[...new Set(f.causes)].sort().join(",")}`,
+		rule: f.rule,
+		severity: RULES[f.rule].severity,
+		message: f.message,
+		parts: f.parts,
+		pins: f.pins,
+		wires: []
+	})));
+	const notes = netlistCustomParts(intent.parts, intent.modules, libraryLookup).map(customPartNote);
+	return {
+		source: "netlist",
+		title: intent.title,
+		model: pm,
+		names: intent.nets.map((n) => n.name),
+		findings,
+		notes
+	};
+}
+/** A net's ends in reading order: the MCU first, then by designator and pin. */
+var ordered = (net) => [...net].sort((a, b) => Number(model(b.part.module) === "mcu") - Number(model(a.part.module) === "mcu") || natural$1.compare(a.part.designator, b.part.designator) || natural$1.compare(a.label, b.label) || natural$1.compare(a.pin, b.pin));
+/** A sheet net's name when no label names it: GND, the supply pin's label, else a pin of the first part that is not the MCU. */
+function autoName(net, role) {
+	const ends = ordered(net);
+	if (role === "ground") return "GND";
+	if (role === "supply") {
+		const e = ends.find((x) => x.type === "power_out" || x.external) ?? ends.find((x) => x.type === "power_in") ?? ends[0];
+		return /[A-Za-z0-9]/.test(e.label) ? e.label : endName(e);
+	}
+	return endName(ends.find((e) => model(e.part.module) !== "mcu") ?? ends[0]);
+}
+var endText = (e) => `${shortName$1(e.part.module)} (${e.part.designator}) ${e.label}`;
+function explain(x) {
+	const pm = x.model;
+	const used = /* @__PURE__ */ new Set();
+	const taken = /* @__PURE__ */ new Map();
+	const all = Array.from({ length: pm.count }, (_, i) => pm.net(i));
+	const nets = all.flatMap((net, i) => {
+		const seen = /* @__PURE__ */ new Set();
+		const ends = ordered(net.filter((e) => listed(e.part.module))).filter((e) => {
+			const k = JSON.stringify([e.part.id, (e.part.module.internal ?? []).find((g) => g.includes(e.pin))?.[0] ?? e.pin]);
+			return !seen.has(k) && !!seen.add(k);
+		});
+		if (new Set(ends.map((e) => e.part)).size < 2) return [];
+		for (const e of ends) used.add(JSON.stringify([e.part.id, e.pin]));
+		const role = roleOf$2(ends);
+		let name = x.names[i] ?? autoName(ends, role);
+		const n = (taken.get(name) ?? 0) + 1;
+		taken.set(name, n);
+		if (n > 1) name = `${name} (${n})`;
+		return [{
+			name,
+			role,
+			text: `${name}: ${ends.map(endText).join(" -> ")}`,
+			ends: ends.map((e) => ({
+				part: e.part.id,
+				designator: e.part.designator,
+				module: e.part.module.id,
+				pin: e.pin,
+				label: e.label
+			}))
+		}];
+	});
+	const parts = pm.parts.filter((p) => listed(p.module)).sort((a, b) => natural$1.compare(a.designator, b.designator));
+	const connected = new Set([...used].map((k) => JSON.parse(k)[0]));
+	const perPart = parts.filter((p) => connected.has(p.id)).map((p) => {
+		const pins = all.flat().filter((e) => e.part === p && used.has(JSON.stringify([p.id, e.pin]))).sort((a, b) => natural$1.compare(a.label, b.label));
+		const addr = i2cOf(p.module) ? i2cAddress(pm, p) : null;
+		return {
+			part: p.id,
+			designator: p.designator,
+			module: p.module.id,
+			name: p.module.name,
+			i2cAddress: addr ? {
+				address: addr.address === null ? null : addressText(addr.address),
+				how: addr.how
+			} : null,
+			pins: pins.map((e) => ({
+				pin: e.pin,
+				label: e.label,
+				does: pinDoes(e),
+				caps: e.caps ?? null
+			}))
+		};
+	});
+	const unconnected = parts.filter((p) => !connected.has(p.id)).map((p) => ({
+		part: p.id,
+		designator: p.designator,
+		module: p.module.id,
+		name: p.module.name
+	}));
+	return {
+		format: EXPLAIN_FORMAT,
+		source: x.source,
+		title: x.title,
+		ok: !x.findings.some((f) => f.severity === "error"),
+		notes: x.notes,
+		nets,
+		parts: perPart,
+		unconnected,
+		findings: x.findings
+	};
+}
+function explainText(r) {
+	const lines = [`Explain: ${r.title} (${r.source})`, ""];
+	if (r.notes.length) lines.push("Notes:", ...r.notes.map((n) => `  ${n}`), "");
+	lines.push("Connections, by net:");
+	lines.push(...r.nets.length ? r.nets.map((n) => `  ${n.text}`) : ["  none"]);
+	lines.push("", "Pins in use, by part:");
+	for (const p of r.parts) {
+		const addr = p.i2cAddress ? `: I2C address ${p.i2cAddress.address ?? "undefined"} (${p.i2cAddress.how})` : "";
+		lines.push(`  ${p.designator} ${p.name} [${p.module}]${addr}`);
+		for (const pin of p.pins) lines.push(`    ${p.designator} ${pin.label}: ${pin.does}`);
+	}
+	if (!r.parts.length) lines.push("  none");
+	lines.push("", "Not connected:");
+	lines.push(...r.unconnected.length ? r.unconnected.map((p) => `  ${p.designator} ${p.name} [${p.module}]`) : ["  none"]);
+	lines.push("", "Pin rule findings:");
+	lines.push(r.findings.length ? findingsText(r.findings).split("\n").map((l) => `  ${l}`).join("\n") : "  none");
+	return `${lines.join("\n")}\n`;
+}
+function explainCommand(args, io) {
+	const [input, ...rest] = args.positionals;
+	if (!input) throw new CliError("explain: give a sheet or a netlist file", EXIT.input);
+	if (rest.length) throw new CliError(`explain: give one file, not ${args.positionals.length}`, EXIT.input);
+	const raw = readJson(io, input);
+	const format = raw?.format;
+	let x;
+	if (format === "circuitoon-netlist/1") x = fromNetlist(raw, input);
+	else if (format === "circuitoon-partial/1") x = fromNetlist(raw.intent, input);
+	else {
+		const r = validateDiagram(raw, { library: libraryLookup });
+		if (!r.ok) throw new CliError(`${input} is not a Circuitoon sheet or netlist: ${r.errors.slice(0, 5).join("; ")}`, EXIT.input);
+		for (const w of r.warnings) io.stderr(`warning: ${w}\n`);
+		x = fromSheet(r.diagram);
+	}
+	const result = explain(x);
+	if (args.flags.has("--json")) printJson(io, result);
+	else io.stdout(explainText(result));
+	return EXIT.ok;
+}
+//#endregion
+//#region src/cli/netlistCmd.ts
+var NETLIST_CMD_FORMAT = "circuitoon-cli/netlist/1";
+function netlistCommand(args, io) {
+	const [input, ...rest] = args.positionals;
+	if (!input) throw new CliError("netlist: give a sheet file", EXIT.input);
+	if (rest.length) throw new CliError(`netlist: give one sheet file, not ${args.positionals.length}`, EXIT.input);
+	const { diagram, warnings } = loadSheet(io, input);
+	for (const w of warnings) io.stderr(`warning: ${w}\n`);
+	const netlist = extractNetlist(diagram, (w) => io.stderr(`warning: ${w}\n`));
+	const out = flag(args, "--out") ?? null;
+	const text = `${JSON.stringify(netlist, null, 2)}\n`;
+	if (out) writeFile(io, out, text);
+	if (args.flags.has("--json")) printJson(io, {
+		format: NETLIST_CMD_FORMAT,
+		ok: true,
+		sheet: input,
+		output: out,
+		netlist
+	});
+	else if (out) io.stdout(`Wrote ${out}: ${netlist.parts.length} parts, ${netlist.nets.length} nets. Lay it out with: circuitoon layout ${out} -o <sheet.json>\n`);
+	else io.stdout(text);
+	return EXIT.ok;
+}
+//#endregion
+//#region src/format/kicad.ts
+var collator = new Intl.Collator("en", {
+	numeric: true,
+	sensitivity: "base"
+});
+var natural = (a, b) => collator.compare(a, b) || (a < b ? -1 : a > b ? 1 : 0);
+var andWords = (xs) => xs.length < 2 ? xs.join("") : `${xs.slice(0, -1).join(", ")} and ${xs[xs.length - 1]}`;
+/** A string as a KiCad S-expression atom: always quoted, with `\` and `"` escaped and line breaks as `\n`. */
+var quote = (s) => `"${s.replace(/\\/g, "\\\\").replace(/"/g, "\\\"").replace(/\r?\n/g, "\\n")}"`;
+/** A reference KiCad takes: letters, digits and `_`, starting with a letter ("R1", "DS1", "U2_2"). */
+function kicadRef(designator) {
+	const base = designator.trim().replace(/[^A-Za-z0-9_]/g, "_") || "X";
+	return /^[A-Za-z]/.test(base) ? base : `X${base}`;
+}
+/** A net name KiCad takes: letters, digits and `_ + - . ( )`, anything else (spaces, `/`, `~`) as `_`. */
+var kicadNetName = (name) => name.trim().replace(/[^A-Za-z0-9_+\-.()]/g, "_") || "N";
+var PREFIX = [
+	[1e9, "G"],
+	[1e6, "M"],
+	[1e3, "k"],
+	[1, ""],
+	[.001, "m"],
+	[1e-6, "u"],
+	[1e-9, "n"],
+	[1e-12, "p"]
+];
+/** A number the way KiCad values read: 330, 4.7k, 100n, 10u (3 significant digits, ASCII prefixes). */
+function siValue(v) {
+	if (v === 0) return "0";
+	const abs = Math.abs(v);
+	let i = PREFIX.findIndex(([f]) => abs >= f * .9995);
+	if (i < 0) i = PREFIX.length - 1;
+	let n = Number((v / PREFIX[i][0]).toPrecision(3));
+	if (Math.abs(n) >= 1e3 && i > 0) {
+		i--;
+		n = Number((v / PREFIX[i][0]).toPrecision(3));
+	}
+	return `${n}${PREFIX[i][1]}`;
+}
+/** The module's name up to the first " (": "ESP32 DevKit V1 (30 pin, DOIT)" is "ESP32 DevKit V1". */
+var shortName = (m) => m.name.split(" (")[0];
+/** The KiCad value: a resistance or capacitance (330, 100n), else the mapping's value, else the part's short name. */
+function kicadValue(part, m, k) {
+	const v = partValue(part, m);
+	if (v && (v.name === "resistance" || v.name === "capacitance")) return siValue(v.value);
+	return (k?.value ?? shortName(m)).replace(/\s+/g, " ").trim();
+}
+/**
+* The mapping to export a part with: the library's, when the part is built in and its stored copy
+* has the same pins in the same order (the mapping is export data the library refines, and a copy
+* saved before the library had it, or with older pin data, still names the same pins); else the
+* stored copy's own. `stale` is set when the library has a mapping the copy cannot use because its
+* pins changed.
+*/
+function mappingOf(stored, library) {
+	if (isCustom(stored)) return {};
+	const lib = library?.(stored.id);
+	if (lib?.kicad) {
+		if (lib === stored || terminalsKey(stored) === terminalsKey(lib)) return { kicad: lib.kicad };
+		if (!stored.kicad) return { stale: true };
+	}
+	return stored.kicad ? { kicad: stored.kicad } : {};
+}
+/** Breadboards, rail strips and net labels: no PCB meaning. A board with a mapping (an outlet) is a real part. */
+var isInfrastructure = (m, k) => isNetLabel(m) || isBoard(m) && !k;
+/** A sheet as the export sees it: its parts and its nets, from what conducts on it. */
+function sheetSource(d) {
+	const parts = d.parts.flatMap((p) => {
+		const m = moduleOf(d, p.module);
+		return m ? [{
+			key: p.uid,
+			designator: p.designator,
+			module: m,
+			...p.values ? { values: p.values } : {}
+		}] : [];
+	});
+	const byUid = new Map(d.parts.map((p) => [p.uid, p]));
+	const nets = netlist(d, plugsOf(d)).nets.map((keys) => {
+		const nodes = keys.map((k) => JSON.parse(k));
+		const labels = nodes.flatMap(([uid]) => {
+			const p = byUid.get(uid);
+			const m = p && moduleOf(d, p.module);
+			return p && isNetLabel(m) && labelName(p) ? [labelName(p)] : [];
+		}).sort(natural);
+		return {
+			nodes,
+			...labels.length ? { name: labels[0] } : {}
+		};
+	});
+	return {
+		title: d.title,
+		parts,
+		nets
+	};
+}
+/** The intent of a parsed netlist as the export sees it: its nets joined where a part joins pins inside itself. */
+function intentSource(intent) {
+	const parts = intent.parts.flatMap((p) => {
+		const m = Object.hasOwn(intent.modules, p.module) ? intent.modules[p.module] : void 0;
+		return m ? [{
+			key: p.ref,
+			designator: p.ref,
+			module: m,
+			...p.values ? { values: p.values } : {}
+		}] : [];
+	});
+	const parent = /* @__PURE__ */ new Map();
+	const find = (k) => {
+		let r = k;
+		while (parent.get(r) !== r) r = parent.get(r);
+		parent.set(k, r);
+		return r;
+	};
+	const add = (k) => void (parent.has(k) || parent.set(k, k));
+	const join = (a, b) => {
+		add(a);
+		add(b);
+		const [ra, rb] = [find(a), find(b)];
+		if (ra !== rb) parent.set(ra, rb);
+	};
+	const key = (ref, name) => JSON.stringify([ref, name]);
+	const nameOf = /* @__PURE__ */ new Map();
+	for (const net of intent.nets) {
+		const keys = net.terminals.map((t) => key(t.ref, t.name));
+		keys.forEach((k) => add(k));
+		for (let i = 1; i < keys.length; i++) join(keys[0], keys[i]);
+		if (keys.length && !nameOf.has(keys[0])) nameOf.set(keys[0], net.name);
+	}
+	for (const p of parts) for (const g of p.module.internal ?? []) if (g.some((n) => parent.has(key(p.key, n)))) for (let i = 1; i < g.length; i++) join(key(p.key, g[0]), key(p.key, g[i]));
+	const groups = /* @__PURE__ */ new Map();
+	for (const k of parent.keys()) {
+		const r = find(k);
+		groups.set(r, [...groups.get(r) ?? [], k]);
+	}
+	const nets = [...groups.values()].map((keys) => {
+		const names = keys.flatMap((k) => nameOf.has(k) ? [nameOf.get(k)] : []).sort(natural);
+		return {
+			nodes: keys.sort().map((k) => JSON.parse(k)),
+			...names.length ? { name: names[0] } : {}
+		};
+	});
+	return {
+		title: intent.title,
+		parts,
+		nets
+	};
+}
+/** KiCad's electrical pin type for a Circuitoon pin type. */
+var PIN_TYPE = {
+	power_in: "power_in",
+	power_out: "power_out",
+	ground: "power_in",
+	input: "input",
+	output: "output",
+	io: "bidirectional",
+	passive: "passive",
+	nc: "no_connect",
+	usb: "passive"
+};
+/** Every pin and pad group of a module, in order: pins (no spacers), then hole groups. */
+function terminalsOf(m) {
+	return [...m.pins.filter((p) => !isSpacer(p) && p.type !== "usb"), ...m.holes ?? []];
+}
+var pad2 = (n) => String(n).padStart(2, "0");
+/** The generic footprint an unmapped part comes in on: a 0.1 in pin header with a pad per pin. */
+function genericFootprint(pins) {
+	if (pins <= 40) return `Connector_PinHeader_2.54mm:PinHeader_1x${pad2(Math.max(1, pins))}_P2.54mm_Vertical`;
+	return `Connector_PinHeader_2.54mm:PinHeader_2x${pad2(Math.min(40, Math.ceil(pins / 2)))}_P2.54mm_Vertical`;
+}
+/**
+* A stable UUID from a string (a part's uid, plus the header): the same part keeps its UUID from
+* export to export, so Pcbnew can link footprints by it. Four 32-bit FNV-style hashes, shaped as
+* a version 8 (custom) UUID.
+*/
+function stableUuid(seed) {
+	const h = [
+		2166136261,
+		2654435769,
+		2246822507,
+		3266489909
+	];
+	const mul = [
+		16777619,
+		1540483477,
+		668265261,
+		374761393
+	];
+	for (let i = 0; i < seed.length; i++) {
+		const c = seed.charCodeAt(i);
+		for (let j = 0; j < 4; j++) h[j] = Math.imul(h[j] ^ c, mul[j]);
+	}
+	for (let j = 0; j < 4; j++) {
+		let x = h[j] ^ h[(j + 1) % 4];
+		x = Math.imul(x ^ x >>> 16, 2246822507);
+		x = Math.imul(x ^ x >>> 13, 3266489909);
+		h[j] = x ^ x >>> 16;
+	}
+	const hex = h.map((x) => (x >>> 0).toString(16).padStart(8, "0")).join("");
+	const variant = (parseInt(hex[16], 16) & 3 | 8).toString(16);
+	return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-8${hex.slice(13, 16)}-${variant}${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
+}
+/** Writes an export source (a sheet's or a netlist's) as a KiCad netlist. */
+function writeKicad(src, opts = {}) {
+	const warnings = [];
+	const unmapped = [];
+	const placeholders = [];
+	/** Each mapping note, with the parts it is about. */
+	const noteRefs = /* @__PURE__ */ new Map();
+	const taken = /* @__PURE__ */ new Set();
+	const claimRef = (base) => {
+		let ref = base;
+		for (let k = 2; taken.has(ref); k++) ref = `${base}_${k}`;
+		taken.add(ref);
+		return ref;
+	};
+	const kept = src.parts.map((p) => ({
+		p,
+		map: mappingOf(p.module, opts.library)
+	})).filter(({ p, map }) => !isInfrastructure(p.module, map.kicad)).sort((a, b) => natural(a.p.designator, b.p.designator) || natural(a.p.key, b.p.key));
+	const comps = [];
+	/** Part key and pin name to the component and pad it lands on. */
+	const padOf = /* @__PURE__ */ new Map();
+	/** Part key to its reference (a part's own, before any header letter), for naming nets. */
+	const partRef = /* @__PURE__ */ new Map();
+	const modOf = new Map(kept.map(({ p }) => [p.key, p.module]));
+	const portName = (key, pin) => {
+		const part = src.parts.find((x) => x.key === key);
+		const port = part && usbPorts(part.module).find((q) => q.name === pin);
+		return port ? {
+			title: `${part.designator} ${port.label ?? port.name}`,
+			plug: port.usb.gender === "plug"
+		} : void 0;
+	};
+	const usbNotes = [];
+	for (const net of src.nets) {
+		const ports = net.nodes.flatMap(([k, pin]) => modOf.has(k) ? [portName(k, pin)].filter((x) => x !== void 0) : []).sort((a, b) => natural(a.title, b.title));
+		if (!ports.length) continue;
+		if (ports.length === net.nodes.length) for (const q of ports.slice(1)) usbNotes.push(`${ports[0].title} to ${q.title} is ${ports[0].plug || q.plug ? "a USB plug-in" : "a USB cable"}, off-board`);
+		else warnings.push(`${andWords(ports.map((q) => q.title))}: a USB port on a net with other pins is left out of it. Connect USB ports only to USB ports.`);
+	}
+	for (const { p, map } of kept) {
+		const m = p.module;
+		const ref = claimRef(kicadRef(p.designator || p.key));
+		partRef.set(p.key, ref);
+		const k = map.kicad;
+		const value = kicadValue(p, m, k);
+		const terms = new Map(terminalsOf(m).map((t) => [t.name, t]));
+		const typeOf = (name) => {
+			const t = terms.get(name);
+			return t ? PIN_TYPE[t.type ?? ("side" in t ? "io" : "passive")] : "passive";
+		};
+		const describe = (extra) => `${m.name}${extra ? `, ${extra}` : ""} (Circuitoon part ${m.id})`;
+		const make = (cref, footprint, pins, lib, part, description, seed) => {
+			const pads = /* @__PURE__ */ new Map();
+			for (const [name, pad] of Object.entries(pins)) {
+				const entry = pads.get(pad);
+				if (entry) entry.names.push(name);
+				else pads.set(pad, {
+					names: [name],
+					type: typeOf(name)
+				});
+			}
+			const c = {
+				ref: cref,
+				value,
+				footprint,
+				lib,
+				part,
+				description,
+				uuid: stableUuid(seed),
+				module: m.id,
+				pads: new Map([...pads].sort((a, b) => natural(a[0], b[0])))
+			};
+			for (const [name, pad] of Object.entries(pins)) padOf.set(JSON.stringify([p.key, name]), {
+				comp: c,
+				pad
+			});
+			comps.push(c);
+			return c;
+		};
+		const [symLib, symPart] = k?.symbol ? k.symbol.split(":") : ["Circuitoon", m.id];
+		if (!k && !terminalsOf(m).length) continue;
+		if (!k) {
+			const names = terminalsOf(m).map((t) => t.name);
+			const pins = Object.fromEntries(names.map((n, i) => [n, String(i + 1)]));
+			const fp = genericFootprint(names.length);
+			make(ref, fp, pins, "Circuitoon", m.id, describe(), p.key);
+			unmapped.push({
+				ref,
+				module: m.id
+			});
+			warnings.push(isCustom(m) ? `${ref} (${m.id}): a custom part, unverified, so it comes in on a generic ${fp.split(":")[1]} with a pad per pin in Circuitoon's order. Choose its real footprint in KiCad.` : map.stale ? `${ref} (${m.id}): its pins differ from the library's part, so the library's KiCad footprint does not fit it; it comes in on a generic ${fp.split(":")[1]}. Place the part again, or choose its footprint in KiCad.` : `${ref} (${m.id}): no KiCad footprint is known for this part, so it comes in on a generic ${fp.split(":")[1]} with a pad per pin in Circuitoon's order. Choose its real footprint in KiCad.`);
+			continue;
+		}
+		if (k.headers) k.headers.forEach((h, i) => {
+			const letter = String.fromCharCode(65 + i % 26);
+			const cref = claimRef(/\d$/.test(ref) ? `${ref}${letter}` : `${ref}_${letter}`);
+			const n = new Set(Object.values(h.pins)).size;
+			make(cref, h.footprint, h.pins, "Connector_Generic", `Conn_01x${pad2(n)}`, describe(h.name), `${p.key}#${i}`);
+		});
+		else {
+			const pins = k.pins ?? Object.fromEntries(terminalsOf(m).map((t) => [t.name, t.name]));
+			make(ref, k.footprint, pins, symLib, symPart, describe(), p.key);
+		}
+		if (k.placeholder) {
+			placeholders.push({
+				ref,
+				module: m.id
+			});
+			warnings.push(`${ref} (${m.id}): ${k.note ?? "the footprint is a placeholder, not the part's own."}`);
+		} else if (k.note) noteRefs.set(k.note, [...noteRefs.get(k.note) ?? [], ref]);
+	}
+	const notes = [...[...noteRefs].map(([note, refs]) => `${refs.join(", ")}: ${note}`), ...usbNotes];
+	const built = [];
+	for (const net of src.nets) {
+		const nodes = [];
+		const pins = [];
+		const seen = /* @__PURE__ */ new Set();
+		for (const [key, pin] of net.nodes) {
+			const m = modOf.get(key);
+			if (!m) continue;
+			const at = padOf.get(JSON.stringify([key, pin]));
+			if (!at) {
+				if (terminalsOf(m).some((t) => t.name === pin)) warnings.push(`${partRef.get(key)} ${pin} (${m.id}) has no pad on its KiCad footprint, so it is left out of its net.`);
+				continue;
+			}
+			pins.push({
+				ref: partRef.get(key),
+				name: pin,
+				m
+			});
+			const id = `${at.comp.ref}\u0000${at.pad}`;
+			if (seen.has(id)) continue;
+			seen.add(id);
+			nodes.push(at);
+		}
+		const footprints = new Set(nodes.map((n) => n.comp));
+		const names = [...new Set(pins.map((p) => p.name))];
+		const internalOnly = footprints.size === 1 && (pins[0]?.m.internal ?? []).some((g) => names.every((n) => g.includes(n)));
+		if (!nodes.length || net.name === void 0 && (nodes.length < 2 || internalOnly)) continue;
+		pins.sort((a, b) => natural(a.ref, b.ref) || natural(a.name, b.name));
+		built.push({
+			nodes,
+			pins,
+			...net.name !== void 0 ? { label: net.name } : {}
+		});
+	}
+	const rawNames = nameNets(built);
+	const used = /* @__PURE__ */ new Set();
+	const names = rawNames.map((n) => {
+		const base = kicadNetName(n);
+		let name = base;
+		for (let k = 2; used.has(name); k++) name = `${base}_${k}`;
+		used.add(name);
+		return name;
+	});
+	const order = built.map((_, i) => i).sort((a, b) => natural(names[a], names[b]));
+	const out = [];
+	out.push("(export (version \"E\")");
+	out.push("  (design");
+	out.push(`    (source ${quote(opts.source ?? `${src.title || "Untitled sheet"}.circuitoon.json`)})`);
+	out.push("    (tool \"Circuitoon\"))");
+	out.push("  (components");
+	for (const c of comps) {
+		out.push(`    (comp (ref ${quote(c.ref)})`);
+		out.push(`      (value ${quote(c.value)})`);
+		out.push(`      (footprint ${quote(c.footprint)})`);
+		out.push(`      (libsource (lib ${quote(c.lib)}) (part ${quote(c.part)}) (description ${quote(c.description)}))`);
+		out.push(`      (fields (field (name "Footprint") ${quote(c.footprint)}) (field (name "Description") ${quote(c.description)}))`);
+		out.push(`      (property (name "Circuitoon part") (value ${quote(c.module)}))`);
+		out.push("      (sheetpath (names \"/\") (tstamps \"/\"))");
+		out.push(`      (tstamps ${quote(c.uuid)}))`);
+	}
+	out.push("  )");
+	out.push("  (libparts");
+	const libparts = /* @__PURE__ */ new Map();
+	for (const c of comps) if (!libparts.has(`${c.lib}:${c.part}`)) libparts.set(`${c.lib}:${c.part}`, c);
+	for (const c of [...libparts.values()].sort((a, b) => natural(`${a.lib}:${a.part}`, `${b.lib}:${b.part}`))) {
+		const own = c.lib === "Circuitoon";
+		const header = c.lib === "Connector_Generic";
+		out.push(`    (libpart (lib ${quote(c.lib)}) (part ${quote(c.part)})`);
+		out.push(`      (description ${quote(header ? `Generic connector, single row, ${c.part.slice(5)}` : own ? c.description : `KiCad symbol ${c.lib}:${c.part}`)})`);
+		out.push("      (pins");
+		for (const [pad, { names: pn, type }] of c.pads) out.push(`        (pin (num ${quote(pad)}) (name ${quote(own ? pn.join("/") : header ? `Pin_${pad}` : "~")}) (type ${quote(header ? "passive" : type)}))`);
+		out.push("      ))");
+	}
+	out.push("  )");
+	out.push("  (nets");
+	order.forEach((i, code) => {
+		out.push(`    (net (code ${quote(String(code + 1))}) (name ${quote(names[i])})`);
+		const nodes = [...built[i].nodes].sort((a, b) => natural(a.comp.ref, b.comp.ref) || natural(a.pad, b.pad));
+		for (const { comp, pad } of nodes) {
+			const info = comp.pads.get(pad);
+			out.push(`      (node (ref ${quote(comp.ref)}) (pin ${quote(pad)}) (pinfunction ${quote(info.names.join("/"))}) (pintype ${quote(info.type)}))`);
+		}
+		out[out.length - 1] += ")";
+	});
+	out.push("  )");
+	out.push(")");
+	return {
+		text: `${out.join("\n")}\n`,
+		warnings,
+		components: comps.length,
+		nets: built.length,
+		unmapped,
+		placeholders,
+		notes
+	};
+}
+//#endregion
+//#region src/cli/kicadCmd.ts
+var KICAD_FORMAT = "circuitoon-cli/kicad/1";
+function kicadCommand(args, io) {
+	const [input, ...rest] = args.positionals;
+	if (!input) throw new CliError("kicad: give a sheet or netlist file", EXIT.input);
+	if (rest.length) throw new CliError(`kicad: give one sheet or netlist file, not ${args.positionals.length}`, EXIT.input);
+	const raw = readJson(io, input);
+	const name = input.split(/[\\/]/).pop();
+	let source;
+	let x;
+	if (raw?.format === "circuitoon-netlist/1") {
+		const r = parseNetlist(raw, libraryLookup);
+		if (!r.ok) throw new CliError(`${input} is not a valid netlist: ${r.errors.slice(0, 5).join("; ")}`, EXIT.input);
+		source = "netlist";
+		x = writeKicad(intentSource(r.intent), {
+			library: libraryLookup,
+			source: name
+		});
+	} else {
+		const r = validateDiagram(raw, { library: libraryLookup });
+		if (!r.ok) throw new CliError(`${input} is neither a Circuitoon sheet nor a netlist: ${r.errors.slice(0, 5).join("; ")}`, EXIT.input);
+		for (const w of r.warnings) io.stderr(`warning: ${w}\n`);
+		source = "sheet";
+		x = writeKicad(sheetSource(r.diagram), {
+			library: libraryLookup,
+			source: name
+		});
+	}
+	const out = flag(args, "--out") ?? null;
+	if (out) writeFile(io, out, x.text);
+	if (args.flags.has("--json")) {
+		printJson(io, {
+			format: KICAD_FORMAT,
+			ok: true,
+			input,
+			source,
+			output: out,
+			components: x.components,
+			nets: x.nets,
+			unmapped: x.unmapped,
+			placeholders: x.placeholders,
+			warnings: x.warnings,
+			notes: x.notes,
+			...out ? {} : { netlist: x.text }
+		});
+		return EXIT.ok;
+	}
+	for (const w of x.warnings) io.stderr(`warning: ${w}\n`);
+	for (const n of x.notes) io.stderr(`note: ${n}\n`);
+	const plural = (n, one) => `${n} ${one}${n === 1 ? "" : "s"}`;
+	if (out) io.stdout(`Wrote ${out}: ${plural(x.components, "component")}, ${plural(x.nets, "net")}${x.unmapped.length ? `, ${x.unmapped.length} on a generic footprint` : ""}. Open it in KiCad's PCB Editor with File > Import > Netlist.\n`);
+	else io.stdout(x.text);
+	return EXIT.ok;
+}
+//#endregion
+//#region src/cli/updateCmd.ts
+var UPDATE_CMD_FORMAT = "circuitoon-cli/update/1";
+function updateCommand(args, io) {
+	const [input, ...rest] = args.positionals;
+	if (!input) throw new CliError("update: give a sheet file", EXIT.input);
+	if (rest.length) throw new CliError(`update: give one sheet file, not ${args.positionals.length}`, EXIT.input);
+	const { diagram, warnings } = loadSheet(io, input);
+	for (const w of warnings) io.stderr(`warning: ${w}\n`);
+	const u = updateParts(diagram, libraryLookup);
+	const out = flag(args, "--out") ?? input;
+	const changed = u.updated.length > 0;
+	if (changed || out !== input) {
+		const raw = readJson(io, input);
+		for (const x of u.updated) raw.modules[x.id] = u.diagram.modules[x.id];
+		writeFile(io, out, `${JSON.stringify(raw, null, 2)}\n`);
+	}
+	const ok = u.blocked.length === 0;
+	if (args.flags.has("--json")) printJson(io, {
+		format: UPDATE_CMD_FORMAT,
+		ok,
+		sheet: input,
+		output: changed || out !== input ? out : null,
+		updated: u.updated,
+		blocked: u.blocked
+	});
+	else {
+		const lines = updateLines(u);
+		if (!lines.length) io.stdout("Every part is up to date with the library.\n");
+		else io.stdout(`${lines.join("\n")}\n`);
+		if (changed || out !== input) io.stdout(`Wrote ${out}.\n`);
+	}
+	return ok ? EXIT.ok : EXIT.blocked;
+}
+//#endregion
+//#region src/format/partMaker.ts
+var SPEC_FORMAT = "circuitoon-part-spec/1";
+var DEFAULT_COLORS = {
+	board: "#2F9E6E",
+	chip: "#2B2F36"
+};
+var UNITS_MAX = MODULE_PX_MAX / 10;
+var NAME_MAX = 120;
+/** Pins and gaps a side may hold: each takes 10 px, and the body keeps a unit at each end, within the 4000 px cap. */
+var SLOTS_MAX = UNITS_MAX - 2;
+var PIN_NAME_MAX = 60;
+var ID_MAX = 200;
+var GOLD = "#E0B43C";
+var HOLE_FILL = "#8A6A1E";
+var PLATE = "#F7F8F3";
+var INK = "#23282F";
+var METAL = "#C9CED6";
+/** Pin labels: 7 px bold, about 4.5 px a character plus the halo (as module.ts pinRoom). */
+var labelPx = (n) => n ? Math.ceil(n * 4.5 + 3) : 0;
+/** The renderer's inset for labels inside a body with a header strip (Part.tsx HEADER_INSET). */
+var INSET = 12;
+var PLATE_H = 16;
+var PLATE_CHARS = 22;
+var COLOR_RE = /^#[0-9a-f]{6}$/i;
+var ID_RE = /^[a-z0-9]+(-[a-z0-9]+)*$/;
+var SPEC_KEYS = [
+	"format",
+	"name",
+	"id",
+	"category",
+	"source",
+	"version",
+	"style",
+	"body",
+	"pins",
+	"internal"
+];
+var PIN_KEYS = [
+	"name",
+	"label",
+	"type",
+	"supply",
+	"caps",
+	"spacer"
+];
+/** A name made kebab-case for an id: "My Sensor (v2)" is "my-sensor-v2". */
+function slugify(s) {
+	return s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60).replace(/-+$/, "") || "part";
+}
+/** The module id for a spec: its id exactly ("custom-" added when missing), else "custom-" + its name, kebab-case. */
+function customId(spec) {
+	const base = spec.id ?? slugify(spec.name);
+	return base.startsWith("custom-") ? base : CUSTOM_PREFIX + base;
+}
+/** Checks a parsed JSON value against the part spec format. Errors name the exact path. */
+function validateSpec(raw) {
+	const errors = [];
+	if (!isObj(raw)) return {
+		ok: false,
+		errors: ["spec must be a JSON object"]
+	};
+	for (const k of Object.keys(raw)) if (!SPEC_KEYS.includes(k)) errors.push(`${k}: unknown field (allowed: ${SPEC_KEYS.join(", ")})`);
+	if (raw.format !== void 0 && raw.format !== "circuitoon-part-spec/1") errors.push(`format: must be "${SPEC_FORMAT}" when present`);
+	if (typeof raw.name !== "string" || raw.name.trim() === "") errors.push("name: required");
+	else if (raw.name.length > NAME_MAX) errors.push(`name: at most ${NAME_MAX} characters`);
+	if (raw.id !== void 0 && (typeof raw.id !== "string" || !ID_RE.test(raw.id) || raw.id.length > ID_MAX)) errors.push(`id: must be lowercase kebab-case, for example "my-sensor", at most ${ID_MAX} characters`);
+	if (raw.category !== void 0 && (typeof raw.category !== "string" || raw.category.trim() === "" || raw.category.length > 60)) errors.push("category: must be a non-empty string, at most 60 characters");
+	if (raw.source !== void 0 && typeof raw.source !== "string" && !(Array.isArray(raw.source) && raw.source.every((s) => typeof s === "string"))) errors.push("source: must be a string or a list of strings (URLs)");
+	if (raw.version !== void 0 && !(Number.isInteger(raw.version) && raw.version >= 1)) errors.push("version: must be a whole number, 1 or more");
+	if (raw.style !== void 0 && raw.style !== "board" && raw.style !== "chip") errors.push("style: must be \"board\" or \"chip\"");
+	if (raw.body !== void 0) {
+		const b = raw.body;
+		if (!isObj(b)) errors.push("body: must be { \"w\"?, \"h\"?, \"color\"? }");
+		else {
+			for (const k of Object.keys(b)) if (![
+				"w",
+				"h",
+				"color"
+			].includes(k)) errors.push(`body.${k}: unknown field`);
+			for (const k of ["w", "h"]) if (b[k] !== void 0 && !(Number.isInteger(b[k]) && b[k] >= 2 && b[k] <= UNITS_MAX)) errors.push(`body.${k}: must be a whole number of grid units from 2 to ${UNITS_MAX}`);
+			if (b.color !== void 0 && (typeof b.color !== "string" || !COLOR_RE.test(b.color))) errors.push("body.color: must be a colour like \"#2F9E6E\"");
+		}
+	}
+	let count = 0;
+	if (!isObj(raw.pins)) errors.push("pins: required, { \"left\": [...], \"right\": [...], \"top\": [...], \"bottom\": [...] }");
+	else for (const [side, list] of Object.entries(raw.pins)) {
+		if (!SIDES.includes(side)) {
+			errors.push(`pins.${side}: unknown side (left, right, top or bottom)`);
+			continue;
+		}
+		if (!Array.isArray(list)) {
+			errors.push(`pins.${side}: must be a list`);
+			continue;
+		}
+		if (list.length > SLOTS_MAX) {
+			errors.push(`pins.${side}: at most ${SLOTS_MAX} pins and gaps a side (${list.length} given), so the body stays within ${MODULE_PX_MAX} px`);
+			continue;
+		}
+		list.forEach((p, i) => {
+			const at = `pins.${side}[${i}]`;
+			if (p === null) return;
+			if (typeof p === "string") {
+				if (p.trim() === "") errors.push(`${at}: a pin name may not be empty`);
+				else if (p.trim().length > PIN_NAME_MAX) errors.push(`${at}: a pin name is at most ${PIN_NAME_MAX} characters`);
+				else count++;
+				return;
+			}
+			if (!isObj(p)) return void errors.push(`${at}: must be a name, null (a gap) or { "name", "type"?, "supply"?, ... }`);
+			for (const k of Object.keys(p)) if (!PIN_KEYS.includes(k)) errors.push(`${at}.${k}: unknown field`);
+			if (p.spacer !== void 0) {
+				if (p.spacer !== true) errors.push(`${at}.spacer: must be true`);
+				else if (Object.keys(p).length > 1) errors.push(`${at}: a spacer takes no other field`);
+				return;
+			}
+			if (typeof p.name !== "string" || p.name.trim() === "") errors.push(`${at}.name: required`);
+			else if (p.name.trim().length > PIN_NAME_MAX) errors.push(`${at}.name: at most ${PIN_NAME_MAX} characters`);
+			else count++;
+			if (p.label !== void 0 && (typeof p.label !== "string" || p.label.length > PIN_NAME_MAX)) errors.push(`${at}.label: must be a string, at most ${PIN_NAME_MAX} characters`);
+			if (p.type !== void 0 && (!PIN_TYPES.includes(p.type) || p.type === "usb")) errors.push(`${at}.type: must be one of ${PIN_TYPES.filter((t) => t !== "usb").join(", ")}`);
+			if (p.supply !== void 0 && typeof p.supply !== "string") errors.push(`${at}.supply: must be a string such as "3V3" or "3V3/5V"`);
+		});
+	}
+	if (isObj(raw.pins) && count === 0) errors.push("pins: at least one pin");
+	if (raw.internal !== void 0 && !(Array.isArray(raw.internal) && raw.internal.every((g) => Array.isArray(g) && g.every((n) => typeof n === "string")))) errors.push("internal: must be a list of pin-name groups");
+	return errors.length ? {
+		ok: false,
+		errors
+	} : {
+		ok: true,
+		spec: raw
+	};
+}
+/**
+* Pin entries for one side, from the spec, in order. Every pin gets an explicit label (its name
+* unless the spec gives one): the renderer hides unlabelled names on a part with one or two pins
+* (a resistor's "1" and "2"), and a custom part's names are the point of it.
+*/
+function sideEntries(side, list) {
+	return list.map((p) => {
+		if (p === null || typeof p === "object" && p.spacer) return {
+			spacer: true,
+			side
+		};
+		if (typeof p === "string") return {
+			name: p.trim(),
+			side,
+			label: p.trim()
+		};
+		const pin = {
+			name: p.name.trim(),
+			side,
+			label: p.label !== void 0 && p.label !== "" ? p.label : p.name.trim()
+		};
+		if (p.type) pin.type = p.type;
+		if (p.supply !== void 0 && p.supply.trim() !== "") pin.supply = p.supply.trim();
+		if (p.caps && Object.keys(p.caps).length) pin.caps = p.caps;
+		return pin;
+	});
+}
+/**
+* Repeated names get a number in physical order, the add-part convention: a second GND becomes
+* "GND 2" with the label "GND", so the sheet still shows the silkscreen. Returns what was renamed.
+*/
+function numberRepeats(pins) {
+	const named = pins.filter((p) => !isSpacer(p));
+	const taken = new Set(named.map((p) => p.name));
+	const seen = /* @__PURE__ */ new Map();
+	const renamed = [];
+	for (const p of named) {
+		const n = (seen.get(p.name) ?? 0) + 1;
+		seen.set(p.name, n);
+		if (n === 1) continue;
+		let k = n;
+		while (taken.has(`${p.name} ${k}`)) k++;
+		const base = p.name;
+		p.label ??= base;
+		p.name = `${base} ${k}`;
+		taken.add(p.name);
+		renamed.push(`${base} -> ${p.name}`);
+	}
+	return renamed;
+}
+/** Slot positions (px) along a side `len` units long with `n` slots, as module.ts computeLayout places them. */
+function slotPx(len, n) {
+	const s0 = Math.ceil((len - (n - 1)) / 2);
+	return Array.from({ length: n }, (_, i) => (s0 + i) * 10);
+}
+/** A module's short name for its plate: up to the first " (", cut to PLATE_CHARS. */
+function plateText(name) {
+	const short = name.split(" (")[0].trim() || name.trim();
+	return short.length > PLATE_CHARS ? `${short.slice(0, 19).trimEnd()}...` : short;
+}
+var plateWidth = (text, size) => Math.ceil(text.length * size * .62) + 12;
+var labelText = (p) => isSpacer(p) ? "" : p.label ?? p.name;
+/** Positions (px) of each side's non-spacer pins on a wu x hu body. */
+function pinPositions(pins, wu, hu) {
+	const out = {
+		top: [],
+		right: [],
+		bottom: [],
+		left: []
+	};
+	for (const side of SIDES) {
+		const entries = pins.filter((p) => p.side === side);
+		const at = slotPx(side === "top" || side === "bottom" ? wu : hu, entries.length);
+		entries.forEach((p, i) => {
+			if (!isSpacer(p)) out[side].push(at[i]);
+		});
+	}
+	return out;
+}
+/** Board style: does a corner hold labels from two sides that cross? */
+function cornersCross(pins, wu, hu, zone) {
+	const at = pinPositions(pins, wu, hu);
+	const W = wu * 10;
+	const H = hu * 10;
+	for (const [h, hx0, hx1] of [[
+		"left",
+		8,
+		zone.left + 4
+	], [
+		"right",
+		W - zone.right - 4,
+		W - INSET + 4
+	]]) for (const [v, vy0, vy1] of [[
+		"top",
+		8,
+		zone.top + 4
+	], [
+		"bottom",
+		H - zone.bottom - 4,
+		H - INSET + 4
+	]]) {
+		if (!at[h].length || !at[v].length) continue;
+		const rows = at[h].some((y) => y > vy0 && y < vy1);
+		const cols = at[v].some((x) => x > hx0 && x < hx1);
+		if (rows && cols) return true;
+	}
+	return false;
+}
+/** Body size in units: the given size, else the smallest that fits the pins, their labels and the name plate. */
+function geometry(pins, style, plate, given) {
+	const slots = (s) => pins.filter((p) => p.side === s).length;
+	const has = (s) => pins.some((p) => p.side === s && !isSpacer(p));
+	const longest = (s) => pins.reduce((n, p) => p.side === s ? Math.max(n, labelText(p).length) : n, 0);
+	const zone = {
+		top: 6,
+		right: 6,
+		bottom: 6,
+		left: 6
+	};
+	if (style === "board") {
+		for (const s of SIDES) if (has(s)) zone[s] = INSET + labelPx(longest(s)) + 4;
+	}
+	const pw = plateWidth(plate, 8);
+	const minW = Math.max(slots("top"), slots("bottom")) + 2;
+	const minH = Math.max(slots("left"), slots("right")) + 2;
+	const fits = (wu, hu) => wu * 10 - zone.left - zone.right >= pw && hu * 10 - zone.top - zone.bottom >= PLATE_H;
+	if (given?.w !== void 0 || given?.h !== void 0) {
+		const wu = Math.max(given.w ?? minW, minW, 4);
+		const hu = Math.max(given.h ?? minH, minH, 3);
+		return {
+			wu,
+			hu,
+			zone,
+			plate: fits(wu, hu),
+			crowded: style === "board" && cornersCross(pins, wu, hu, zone)
+		};
+	}
+	let wu = Math.max(minW, 4, Math.ceil((zone.left + zone.right + pw) / 10));
+	let hu = Math.max(minH, 3, Math.ceil((zone.top + zone.bottom + PLATE_H) / 10));
+	while (style === "board" && cornersCross(pins, wu, hu, zone) && (wu < UNITS_MAX || hu < UNITS_MAX)) if (hu <= wu && hu < UNITS_MAX) hu++;
+	else wu++;
+	return {
+		wu,
+		hu,
+		zone,
+		plate: true,
+		crowded: style === "board" && cornersCross(pins, wu, hu, zone)
+	};
+}
+/** A Sticker rect. */
+var rect = (x, y, w, h, fill, extra = {}) => ({
+	type: "rect",
+	x,
+	y,
+	w,
+	h,
+	fill,
+	...extra
+});
+/** Gold header strips along each side with pins, one per run of pins, and a hole per pin, kept in the outer INSET px. */
+function headers(pins, W, H) {
+	const out = [];
+	for (const side of SIDES) {
+		const entries = pins.filter((p) => p.side === side);
+		const at = slotPx(side === "top" || side === "bottom" ? W / 10 : H / 10, entries.length);
+		const runs = [];
+		let run = [];
+		entries.forEach((p, i) => {
+			if (isSpacer(p)) {
+				if (run.length) runs.push(run);
+				run = [];
+			} else run.push(at[i]);
+		});
+		if (run.length) runs.push(run);
+		for (const r of runs) {
+			const a0 = r[0] - 5;
+			const len = r[r.length - 1] + 5 - a0;
+			if (side === "left") out.push(rect(2, a0, 8, len, GOLD, {
+				radius: 2,
+				outline: false
+			}));
+			if (side === "right") out.push(rect(W - 10, a0, 8, len, GOLD, {
+				radius: 2,
+				outline: false
+			}));
+			if (side === "top") out.push(rect(a0, 2, len, 8, GOLD, {
+				radius: 2,
+				outline: false
+			}));
+			if (side === "bottom") out.push(rect(a0, H - 10, len, 8, GOLD, {
+				radius: 2,
+				outline: false
+			}));
+			for (const a of r) {
+				if (side === "left") out.push(rect(4.5, a - 1.5, 3, 3, HOLE_FILL, {
+					radius: 1.5,
+					outline: false
+				}));
+				if (side === "right") out.push(rect(W - 7.5, a - 1.5, 3, 3, HOLE_FILL, {
+					radius: 1.5,
+					outline: false
+				}));
+				if (side === "top") out.push(rect(a - 1.5, 4.5, 3, 3, HOLE_FILL, {
+					radius: 1.5,
+					outline: false
+				}));
+				if (side === "bottom") out.push(rect(a - 1.5, H - 7.5, 3, 3, HOLE_FILL, {
+					radius: 1.5,
+					outline: false
+				}));
+			}
+		}
+	}
+	return out;
+}
+/** Relative luminance of a #RRGGBB colour, 0 (black) to 1 (white). */
+function luminance(hex) {
+	const [r, g, b] = [
+		1,
+		3,
+		5
+	].map((i) => {
+		const c = parseInt(hex.slice(i, i + 2), 16) / 255;
+		return c <= .03928 ? c / 12.92 : ((c + .055) / 1.055) ** 2.4;
+	});
+	return .2126 * r + .7152 * g + .0722 * b;
+}
+/** The art for a spec on a W x H px body. */
+function partArt(pins, style, color, name, g) {
+	const W = g.wu * 10;
+	const H = g.hu * 10;
+	const text = plateText(name);
+	if (style === "chip") {
+		const light = luminance(color) > .3;
+		const shapes = [rect(0, 0, W, H, color, { radius: 3 }), rect(5, pins.some((p) => p.side === "left") || !pins.some((p) => p.side === "bottom") ? 5 : H - 11, 6, 6, light ? INK : METAL, {
+			radius: 3,
+			outline: false
+		})];
+		if (g.plate) shapes.push(rect((W - plateWidth(text, 8)) / 2, (H - PLATE_H) / 2, plateWidth(text, 8), PLATE_H, color, {
+			outline: false,
+			label: text,
+			labelColor: light ? INK : PLATE,
+			labelSize: 8
+		}));
+		return {
+			w: W,
+			h: H,
+			pinLabels: "tips",
+			shapes
+		};
+	}
+	const shapes = [rect(0, 0, W, H, color, { radius: 6 }), ...headers(pins, W, H)];
+	if (g.plate) {
+		const x0 = g.zone.left;
+		const y0 = g.zone.top;
+		const pw = plateWidth(text, 8);
+		const cx = x0 + (W - g.zone.right - x0) / 2;
+		const cy = y0 + (H - g.zone.bottom - y0) / 2;
+		shapes.push(rect(Math.round(cx - pw / 2), Math.round(cy - PLATE_H / 2), pw, PLATE_H, PLATE, {
+			radius: 3,
+			label: text,
+			labelColor: INK,
+			labelSize: 8
+		}));
+	}
+	return {
+		w: W,
+		h: H,
+		pinLabels: "inside",
+		shapes
+	};
+}
+/** A part spec as a custom module, with what was adjusted on the way (`notes`). Never throws. */
+function buildPart(raw) {
+	const v = validateSpec(raw);
+	if (!v.ok) return v;
+	const spec = v.spec;
+	const style = spec.style ?? "board";
+	const notes = [];
+	const pins = [];
+	for (const side of [
+		"left",
+		"right",
+		"top",
+		"bottom"
+	]) for (const p of sideEntries(side, spec.pins[side] ?? [])) pins.push(p);
+	const renamed = numberRepeats(pins);
+	if (renamed.length) notes.push(`Repeated pin names were numbered in physical order: ${renamed.join(", ")}. If they are joined inside the part, list them in "internal".`);
+	const g = geometry(pins, style, plateText(spec.name), spec.body);
+	if (!g.plate) notes.push("The body is too small for the name plate, so it was left out.");
+	if (g.crowded) notes.push("Pin labels on two sides meet in a corner at this body size; make the body larger or leave the size out.");
+	const color = spec.body?.color ?? DEFAULT_COLORS[style];
+	const source = Array.isArray(spec.source) ? spec.source.map((s) => s.trim()).filter(Boolean).join(" ") : spec.source?.trim();
+	const m = {
+		format: MODULE_FORMAT,
+		id: customId(spec),
+		version: spec.version ?? 1,
+		name: spec.name.trim(),
+		category: spec.category?.trim() || "Custom",
+		...source ? { source } : {},
+		custom: true,
+		pins,
+		...spec.internal?.length ? { internal: spec.internal } : {},
+		size: {
+			w: g.wu,
+			h: g.hu
+		},
+		art: partArt(pins, style, color, spec.name, g)
+	};
+	const r = validateModule(m);
+	if (!r.ok) return {
+		ok: false,
+		errors: r.errors
+	};
+	return {
+		ok: true,
+		module: m,
+		notes
+	};
+}
+/** Pin names that are power or ground by convention. */
+var POWER_NAME = /^(v(cc|dd|in|bus|bat|sys|s|\+)?|vcc\d*|vdd\d*|gnd\d*|vss|agnd|dgnd|pgnd|3v3|3\.3v|5v|12v|v\+|v-|\+|-|\+?\d+(\.\d+)?v\d*)$/i;
+var GROUND_NAME = /^(gnd\d*|vss|agnd|dgnd|pgnd|v-|-|0v)$/i;
+/**
+* What is wrong (errors) or doubtful (warnings) about a module: everything validateModule finds,
+* plus duplicate pin names, art that does not match its pins, impossible pin capabilities, power
+* pins without a type or supply, supplies that do not parse and a missing source.
+*/
+function lintModule(raw) {
+	const errors = [];
+	const warnings = [];
+	const v = validateModule(raw);
+	if (!v.ok) {
+		for (const e of v.errors) {
+			const dup = /duplicate pin name "(.*)"/.exec(e);
+			errors.push(dup ? {
+				code: "duplicate-pin",
+				message: `Two pins are named "${dup[1]}": every pin needs its own name (a second GND is "GND 2" with the label "GND").`,
+				pin: dup[1]
+			} : {
+				code: "invalid",
+				message: e
+			});
+		}
+		return {
+			ok: false,
+			errors,
+			warnings
+		};
+	}
+	const m = v.module;
+	const pins = m.pins.filter((p) => !isSpacer(p));
+	for (const p of pins) {
+		const shown = p.label ?? p.name;
+		const c = p.caps;
+		if (c?.outputOnly && p.type === "input") errors.push({
+			code: "type-caps",
+			message: `${p.name} is typed input but marked output only.`,
+			pin: p.name
+		});
+		if (c?.inputOnly && p.type === "output") errors.push({
+			code: "type-caps",
+			message: `${p.name} is typed output but marked input only.`,
+			pin: p.name
+		});
+		const power = p.type === "power_in" || p.type === "power_out" || p.type === "ground";
+		if (c && power && (c.inputOnly || c.outputOnly || c.strapping || c.flash)) warnings.push({
+			code: "caps-on-power",
+			message: `${p.name} is a power or ground pin with signal capabilities (input only, output only, strapping or flash); check the datasheet.`,
+			pin: p.name
+		});
+		if (!p.type && POWER_NAME.test(shown)) {
+			const want = GROUND_NAME.test(shown) ? "ground" : "power_in (or power_out if the part supplies it)";
+			warnings.push({
+				code: "power-untyped",
+				message: `${p.name} looks like a power pin but has no type, so the checker cannot check its supply. Set it to ${want} if the datasheet agrees.`,
+				pin: p.name
+			});
+		}
+		if ((p.type === "power_in" || p.type === "power_out") && !p.supply) warnings.push({
+			code: "power-no-supply",
+			message: `${p.name} is a power pin with no supply voltage, so wrong-voltage hookups are not caught. Give the rails it takes, for example "3V3/5V".`,
+			pin: p.name
+		});
+		if (p.type === "ground" && p.supply) warnings.push({
+			code: "ground-supply",
+			message: `${p.name} is a ground pin with a supply voltage; a ground takes none.`,
+			pin: p.name
+		});
+		if (p.supply && parseSupply(p.supply).unknown === "unknown") warnings.push({
+			code: "supply-unknown",
+			message: `${p.name}'s supply "${p.supply}" is not a voltage the checker reads; write rails like "3V3", "5V" or "3V3/5V" ("ADJ" when it is set by the user).`,
+			pin: p.name
+		});
+	}
+	if (pins.length && pins.every((p) => !p.type)) warnings.push({
+		code: "no-types",
+		message: "No pin has a type, so the wiring checker can check nothing about this part."
+	});
+	const urls = (m.source ?? "").split(/\s+/).filter(Boolean);
+	if (!urls.length) warnings.push({
+		code: "no-source",
+		message: "No source: cite the maker's datasheet or pinout page (and a second source that agrees) in \"source\"."
+	});
+	else if (urls.some((u) => !/^https?:\/\/\S+$/.test(u))) warnings.push({
+		code: "source-not-url",
+		message: "\"source\" should be URLs separated by spaces."
+	});
+	if (!isCustom(m)) warnings.push({
+		code: "not-custom",
+		message: `Not marked as a custom part: a part made outside the library should have "custom": true and an id starting with "${CUSTOM_PREFIX}".`
+	});
+	if (m.name.length > NAME_MAX) warnings.push({
+		code: "long-name",
+		message: `The name is over ${NAME_MAX} characters.`
+	});
+	lintArt(m, errors, warnings);
+	return {
+		ok: errors.length === 0,
+		errors,
+		warnings
+	};
+}
+/** Art that does not match the pins: a body that grows past the drawing, or header holes off every pin. */
+function lintArt(m, errors, warnings) {
+	const art = m.art;
+	if (!art) return;
+	const lay = layoutModule(m);
+	if (art.w < lay.w || art.h < lay.h) warnings.push({
+		code: "art-pins",
+		message: `The art is ${art.w} x ${art.h} px but the pins need a body of ${lay.w} x ${lay.h} px, so some pins would stick out of empty paper.`
+	});
+	if (!isCustom(m)) return;
+	const ax = (lay.w - art.w) / 2;
+	const ay = (lay.h - art.h) / 2;
+	for (const s of art.shapes) {
+		if (s.fill !== "#8A6A1E" || s.w > 4 || s.h > 4) continue;
+		const x = ax + s.x + s.w / 2;
+		const y = ay + s.y + s.h / 2;
+		if (!lay.pins.some((p) => p.dir.x !== 0 ? Math.abs(p.edge.y - y) < .5 && Math.abs(p.edge.x - x) <= INSET : Math.abs(p.edge.x - x) < .5 && Math.abs(p.edge.y - y) <= INSET)) {
+			errors.push({
+				code: "art-pins",
+				message: `A header hole is drawn at ${x}, ${y} with no pin there: the art does not match the pins. Rebuild the part from its spec.`
+			});
+			return;
+		}
+	}
+}
+//#endregion
+//#region src/cli/moduleCmd.ts
+var MODULE_NEW_FORMAT = "circuitoon-cli/module-new/1";
+var MODULE_CHECK_FORMAT = "circuitoon-cli/module-check/1";
+var MODULE_USAGE = "module: usage: circuitoon module new [--spec <spec.json>] [-o <part.json>] | module check <part.json> | module render <part.json> -o <part.png> [--svg <part.svg>] [--dark] [--scale n]";
+var issueLines = (errors, warnings) => [...errors.map((e) => `error [${e.code}] ${e.message}`), ...warnings.map((w) => `warning [${w.code}] ${w.message}`)];
+function parseJson(text, what) {
+	try {
+		return JSON.parse(text);
+	} catch (e) {
+		throw new CliError(`${what}: not valid JSON (${e.message})`, EXIT.input);
+	}
+}
+/** The spec from --spec <file>, or standard input when --spec is left out or "-". */
+function readSpec(args, io) {
+	const path = flag(args, "--spec");
+	if (path !== void 0 && path !== "-") return {
+		raw: readJson(io, path),
+		from: path
+	};
+	const text = io.stdin?.() ?? "";
+	if (!text.trim()) throw new CliError("module new: give --spec <spec.json>, or pipe the spec on standard input", EXIT.input);
+	return {
+		raw: parseJson(text, "standard input"),
+		from: "standard input"
+	};
+}
+function newCommand(args, io) {
+	if (args.positionals.length > 1) throw new CliError("module new: takes no file argument; give the spec with --spec <spec.json> or on standard input", EXIT.input);
+	const { raw, from } = readSpec(args, io);
+	const built = buildPart(raw);
+	if (!built.ok) throw new CliError(`${from} is not a valid part spec: ${built.errors.slice(0, 8).join("; ")}`, EXIT.input);
+	const m = built.module;
+	const lint = lintModule(m);
+	const out = flag(args, "--out");
+	const text = `${JSON.stringify(m, null, 2)}\n`;
+	if (out && lint.ok) writeFile(io, out, text);
+	const code = lint.ok ? EXIT.ok : EXIT.blocked;
+	if (args.flags.has("--json")) {
+		printJson(io, {
+			format: MODULE_NEW_FORMAT,
+			ok: lint.ok,
+			path: out && lint.ok ? out : null,
+			module: m,
+			notes: built.notes,
+			errors: lint.errors,
+			warnings: lint.warnings
+		});
+		return code;
+	}
+	const lines = [...built.notes.map((n) => `note: ${n}`), ...issueLines(lint.errors, lint.warnings)];
+	if (out) {
+		const lay = layoutModule(m);
+		const head = lint.ok ? `Wrote ${out}: ${m.id} (${m.pins.filter((p) => !isSpacer(p)).length} pins, ${lay.w} x ${lay.h} px), a custom part, unverified.` : `Not written: ${m.id} has lint errors.`;
+		io.stdout(`${[head, ...lines].join("\n")}\n`);
+	} else {
+		if (lint.ok) io.stdout(text);
+		if (lines.length) io.stderr(`${lines.join("\n")}\n`);
+	}
+	return code;
+}
+function checkModuleFile(raw, path) {
+	const lint = lintModule(raw);
+	const v = validateModule(raw);
+	const m = v.ok ? v.module : null;
+	const lay = m ? layoutModule(m) : null;
+	const o = raw;
+	return {
+		format: MODULE_CHECK_FORMAT,
+		ok: lint.ok,
+		path,
+		id: typeof o?.id === "string" ? o.id : null,
+		name: typeof o?.name === "string" ? o.name : null,
+		custom: isCustom(m ?? void 0),
+		pins: m ? m.pins.filter((p) => !isSpacer(p)).length : 0,
+		size: lay ? {
+			w: lay.w,
+			h: lay.h
+		} : null,
+		errors: lint.errors,
+		warnings: lint.warnings
+	};
+}
+function checkCommand(args, io) {
+	const [, input, ...rest] = args.positionals;
+	if (!input) throw new CliError("module check: give a part file", EXIT.input);
+	if (rest.length) throw new CliError("module check: give one part file", EXIT.input);
+	const r = checkModuleFile(readJson(io, input), input);
+	if (args.flags.has("--json")) printJson(io, r);
+	else {
+		const what = r.id ? `${r.id}${r.name ? ` (${r.name})` : ""}` : input;
+		const facts = r.size ? `, ${r.pins} pins, ${r.size.w} x ${r.size.h} px${r.custom ? ", custom (unverified)" : ""}` : "";
+		const head = r.ok ? `OK: ${what}${facts}` : `PROBLEMS: ${what}: ${r.errors.length} error${r.errors.length === 1 ? "" : "s"}`;
+		io.stdout(`${[head, ...issueLines(r.errors, r.warnings)].join("\n")}\n`);
+	}
+	return r.ok ? EXIT.ok : EXIT.blocked;
+}
+/** A sheet holding one part, alone, for a render. */
+function partSheet(m) {
+	return {
+		format: DIAGRAM_FORMAT,
+		title: m.name,
+		modules: { [m.id]: m },
+		parts: [{
+			uid: "p1",
+			designator: "U1",
+			module: m.id,
+			x: 0,
+			y: 0,
+			rotation: 0
+		}],
+		connections: []
+	};
+}
+function renderCommand(args, io) {
+	const [, input] = args.positionals;
+	const png = flag(args, "--out");
+	const svgPath = flag(args, "--svg");
+	if (!input) throw new CliError("module render: give a part file", EXIT.input);
+	if (!png && !svgPath) throw new CliError("module render: give -o <part.png>, --svg <part.svg>, or both", EXIT.input);
+	const scale = Number(flag(args, "--scale") ?? "3");
+	if (!(scale > 0 && scale <= 8)) throw new CliError("module render: --scale must be a number above 0, at most 8", EXIT.input);
+	const v = validateModule(readJson(io, input));
+	if (!v.ok) throw new CliError(`${input} is not a valid module: ${v.errors.slice(0, 5).join("; ")}`, EXIT.input);
+	const drawn = renderSheetSvg(partSheet(v.module), { dark: args.flags.has("--dark") });
+	const outputs = [];
+	if (svgPath) {
+		writeFile(io, svgPath, drawn.svg);
+		outputs.push({
+			kind: "svg",
+			path: svgPath,
+			width: drawn.width,
+			height: drawn.height
+		});
+	}
+	if (png) {
+		let shot;
+		try {
+			shot = writePng(drawn, scale, pathIn(io, png), io.env);
+		} catch (err) {
+			throw writeError(png, err);
+		}
+		if (!shot.ok) throw new CliError(shot.message, EXIT.environment);
+		outputs.push({
+			kind: "png",
+			path: png,
+			width: shot.width,
+			height: shot.height
+		});
+	}
+	if (args.flags.has("--json")) printJson(io, {
+		format: "circuitoon-cli/render/1",
+		outputs
+	});
+	else io.stdout(`${outputs.map((o) => `Wrote ${o.path} (${o.width} x ${o.height} px)`).join("\n")}\n`);
+	return EXIT.ok;
+}
+function moduleCommand(args, io) {
+	const sub = args.positionals[0];
+	if (sub === "new") return newCommand(args, io);
+	if (sub === "check") return checkCommand(args, io);
+	if (sub === "render") return renderCommand(args, io);
+	throw new CliError(sub ? `module: unknown subcommand "${sub}"; ${MODULE_USAGE.slice(8)}` : MODULE_USAGE, EXIT.input);
 }
 //#endregion
 //#region src/cli/main.ts
