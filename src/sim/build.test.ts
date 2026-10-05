@@ -3,9 +3,11 @@
 // contact branches; open switches and buttons add nothing; relays sit at rest; capacitors are
 // emitted; mains nodes stay out; the build is deterministic.
 import { describe, expect, it } from 'vitest'
-import { buildCircuit } from './build.ts'
+import { Builder, buildCircuit } from './build.ts'
 import { cellModule, sheet } from './testing.ts'
-import type { Device } from './model.ts'
+import { type Device, netNode } from './model.ts'
+import type { ModuleDef } from '../format/module.ts'
+import { load } from '../format/builtinModules.testing.ts'
 
 const kinds = (devs: Device[]) => devs.map((d) => `${d.kind}:${d.id}`)
 
@@ -82,5 +84,57 @@ describe('buildCircuit: primitives', () => {
     const a = buildCircuit(ledSheet)
     const b = buildCircuit({ ...ledSheet, parts: [...ledSheet.parts].reverse() })
     expect(JSON.stringify(b)).toBe(JSON.stringify(a))
+  })
+})
+
+describe('buildCircuit: fix round 1', () => {
+  it('lets a battery sim.imax override replace the module sourceCurrent limit, as user', () => {
+    const bt = (values?: Record<string, unknown>) => buildCircuit(sheet([{ uid: 'bt1', module: cellModule(5, 0.1), ...(values ? { values } : {}) }], [])).limits.map((l) => [l.kind, l.value.value, l.value.basis])
+    expect(bt()).toEqual([['sourceCurrent', 2, 'representative']])
+    expect(bt({ 'sim.imax': { value: 3, unit: 'A' } })).toEqual([['sourceCurrent', 3, 'user']])
+  })
+
+  const withPower = (id: string): ModuleDef => {
+    const m = load(id)
+    return { ...m, electrical: { ...(m.electrical as object), sim: { power: { domains: [] }, limits: [{ of: { part: true }, kind: 'current', value: 1, provenance: 'datasheet', source: 'https://example.com/x' }] } } }
+  }
+  it('purges a skipped part: a relay or latching switch with sim.power leaves no taps, notes, devices or open contacts', () => {
+    const c = buildCircuit(sheet([{ uid: 'k1', module: withPower('relay-module-1ch-5v') }, { uid: 's1', module: withPower('rocker-switch-kcd1') }], []))
+    expect([c.taps, c.devices, c.limits, c.openContacts, c.notes, c.parts]).toEqual([[], [], [], [], [], {}])
+    expect(c.unsimulated).toEqual([{ part: 'k1', reason: 'power models arrive in Task 11' }, { part: 's1', reason: 'power models arrive in Task 11' }])
+  })
+  it('purges limits, domains, GPIOs and USB paths of a skipped part', () => {
+    const b = new Builder(sheet([{ uid: 'r1', module: 'resistor' }], []), {})
+    b.limit({ part: 'r1', of: { part: true }, kind: 'current', value: b.user(1, 'x') })
+    b.domain({ part: 'r1', name: 'VIN', pin: '1', ret: '2', nominal: 5 })
+    b.gpio({ part: 'r1', pin: '1', state: null, domain: 'VIN', key: 'k' })
+    b.usbPath({ host: 'h1', hostPort: 'USB', device: 'r1', devicePort: 'USB', vbus: 'a', gnd: 'b', limit: b.user(0.5, 'y') })
+    b.skip('r1', 'test')
+    const c = b.done()
+    expect([c.limits, c.domains, c.gpio, c.usb]).toEqual([[], [], [], []])
+  })
+
+  it('keeps a net label spelled "d1:A" apart from part d1 pin A', () => {
+    const d = sheet(
+      [{ uid: 'd1', module: 'led' }, { uid: 'r1', module: 'resistor' }, { uid: 'r2', module: 'resistor' }, { uid: 'l1', module: 'net-label', values: { net: 'd1:A' } }],
+      [['r1.1', 'l1.NET'], ['r2.1', 'l1.NET']],
+    )
+    const c = buildCircuit(d)
+    const tap = (node: string) => c.taps.find((t) => t.node === node)!
+    expect([tap('r1:1').net, tap('d1:A').net]).toEqual(['d1:A', 'D1_A'])
+    expect(c.pinNet[JSON.stringify(['r1', '1'])]).toBe('d1:A')
+    const b = new Builder(d, {})
+    expect(b.node('r1', '1')).toBe(netNode('d1:A'))
+    const nodes = new Set(c.taps.map((t) => t.node))
+    expect(c.taps.filter((t) => nodes.has(netNode(t.net)))).toEqual([])
+  })
+
+  it('skips a resistor or voltage source with no value (only an explicit 0 ohm is a jumper)', () => {
+    const bare = (model: string, terminals: Record<string, string>): ModuleDef => ({
+      format: 'circuitoon-module/1', id: `bare-${model}`, name: model, pins: [{ name: '1', side: 'left' }, { name: '2', side: 'right' }], electrical: { model, terminals },
+    })
+    const c = buildCircuit(sheet([{ uid: 'r1', module: bare('resistor', { a: '1', b: '2' }) }, { uid: 'v1', module: bare('voltage_source', { pos: '1', neg: '2' }) }], []))
+    expect([c.devices, c.taps, c.parts]).toEqual([[], [], {}])
+    expect(c.unsimulated).toEqual([{ part: 'r1', reason: 'no resistance value' }, { part: 'v1', reason: 'no voltage value' }])
   })
 })

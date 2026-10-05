@@ -16,7 +16,7 @@ import { sheetNets } from '../agent/extract.ts'
 import { naturalCompare } from '../agent/order.ts'
 import { CONTACT_OHMS, NO_POWER_DATA, cellEstimate } from './estimates.ts'
 import { LED_COLOURS, ledModel } from './ledModels.ts'
-import type { Circuit, Device, GpioPin, Param, PinTap, ResolvedLimit, SimDomain, SimPart, UsbPath } from './model.ts'
+import { type Circuit, type Device, type GpioPin, type Param, type PinTap, type ResolvedLimit, type SimDomain, type SimPart, type UsbPath, netNode } from './model.ts'
 import { powerPart, usbLinks } from './power.ts'
 
 export interface BuildOptions { held?: { part: string; group: string } | null }
@@ -50,7 +50,9 @@ export class Builder {
   private gpios: GpioPin[] = []
   private usb: UsbPath[] = []
   private unsim: { part: string; reason: string }[] = []
-  private notes: string[] = []
+  private notes: { part: string | null; text: string }[] = []
+  /** The part being built, which owns the notes made meanwhile. */
+  private current: string | null = null
   private open: { part: string; group: string; a: string; b: string }[] = []
   private converters: Map<string, { state: string }> | null = null
 
@@ -99,8 +101,8 @@ export class Builder {
     return name
   }
 
-  /** The net a part pin is on (named on first use for a singleton); null on mains wiring. */
-  node(uid: string, pin: string): string | null {
+  /** The display name of the net a part pin is on (named on first use for a singleton); null on mains wiring. */
+  private netName(uid: string, pin: string): string | null {
     const key = nodeKey(uid, pin)
     if (this.mainsKeys.has(key)) return null
     let net = this.netOfKey.get(key)
@@ -111,13 +113,19 @@ export class Builder {
     return net
   }
 
+  /** The node id (netNode) of the net a part pin is on; null on mains wiring. */
+  node(uid: string, pin: string): string | null {
+    const net = this.netName(uid, pin)
+    return net === null ? null : netNode(net)
+  }
+
   /** The pin node behind the pin's 0 V sense (ruling R19), made on first use; null on mains wiring. */
   tap(uid: string, pin: string): string | null {
     const key = nodeKey(uid, pin)
     const hit = this.tapsByKey.get(key)
     if (hit) return hit.node
-    const net = this.node(uid, pin)
-    if (!net) return null
+    const net = this.netName(uid, pin)
+    if (net === null) return null
     const t: PinTap = { part: uid, pin, net, node: `${uid}:${pin}` }
     this.tapsByKey.set(key, t)
     return t.node
@@ -132,18 +140,28 @@ export class Builder {
   user(value: number, label: string): Param {
     return { value, basis: 'user', label }
   }
-  /** The part is not simulated at all. */
+  /** The part is not simulated at all: everything recorded for it goes, and its notes give way to the reason. */
   skip(uid: string, reason: string): void {
+    const other = (x: { part: string | null }) => x.part !== uid
     delete this.parts[uid]
-    this.devices = this.devices.filter((x) => x.part !== uid)
+    this.devices = this.devices.filter(other)
+    for (const [k, t] of this.tapsByKey) if (t.part === uid) this.tapsByKey.delete(k)
+    this.open = this.open.filter(other)
+    this.limits = this.limits.filter(other)
+    this.domains = this.domains.filter(other)
+    this.gpios = this.gpios.filter(other)
+    this.usb = this.usb.filter((x) => x.host !== uid && x.device !== uid)
+    this.notes = this.notes.filter(other)
+    this.unsim = this.unsim.filter(other)
     this.unsim.push({ part: uid, reason })
   }
   /** One path or pin of a simulated part is not simulated (ruling R7, an unset output-only pin). */
   unsimulated(uid: string, reason: string): void {
     this.unsim.push({ part: uid, reason })
   }
+  /** A note, owned by the part being built (if any) so that skip() can drop it. */
   note(text: string): void {
-    this.notes.push(text)
+    this.notes.push({ part: this.current, text })
   }
   limit(l: ResolvedLimit): void {
     this.limits.push(l)
@@ -198,6 +216,14 @@ export class Builder {
   }
 
   part(p: PartInstance): void {
+    try {
+      this.compile(p)
+    } finally {
+      this.current = null
+    }
+  }
+
+  private compile(p: PartInstance): void {
     const m = moduleOf(this.d, p.module)
     if (!m) return this.unsimulated(p.uid, 'its module is not embedded in the sheet')
     if (isNetLabel(m) || isBoard(m)) return
@@ -205,6 +231,7 @@ export class Builder {
     // Connectors, breadboard strips and Wago blocks are one conductor in netlist() already (spec 4 table).
     if (model === 'connector') return
     const ref = this.ref(p.uid)
+    this.current = p.uid
     this.parts[p.uid] = { uid: p.uid, ref, designator: p.designator, module: m.id, name: m.name, model }
     const t = terminals(m)
     const label = (path: string) => `${m.id}.${ref}.${path}`
@@ -212,7 +239,9 @@ export class Builder {
       case 'resistor': {
         const a = this.tap(p.uid, t.a)
         const b = this.tap(p.uid, t.b)
-        const ohms = paramValue(p, m, 'resistance') ?? 0
+        const ohms = paramValue(p, m, 'resistance')
+        // Only an explicit 0 ohm is a jumper (spec 4); no value at all is not simulated.
+        if (ohms === null) return this.skip(p.uid, 'no resistance value')
         if (a && b) this.add({ kind: 'resistor', id: `${p.uid}.r`, part: p.uid, a, b, ohms: ohms === 0 ? this.contactOhms(p, m) : this.user(ohms, label('resistance')), role: ohms === 0 ? 'contact' : 'resistor' })
         return this.partLimits(p, m)
       }
@@ -256,7 +285,8 @@ export class Builder {
       case 'voltage_source': {
         const plus = this.tap(p.uid, t.pos)
         const minus = this.tap(p.uid, t.neg)
-        const volts = paramValue(p, m, 'voltage') ?? 0
+        const volts = paramValue(p, m, 'voltage')
+        if (volts === null) return this.skip(p.uid, 'no voltage value')
         const sim = simOf(m)
         const rOver = simOverride(p, 'sim.rInternal')
         const rInternal = rOver !== null ? this.user(rOver, label('rInternal')) : this.param(sim?.modelParams?.rInternal ?? cellEstimate(volts).rInternal, label('rInternal'))
@@ -265,7 +295,10 @@ export class Builder {
         const imax = iOver !== null ? this.user(iOver, label('imax')) : limit ? { value: limit.value, basis: limit.provenance, label: label('limits.sourceCurrent') } : undefined
         const id = `${p.uid}.cell`
         if (plus && minus) this.add({ kind: 'cell', id, part: p.uid, p: plus, n: minus, int: `${id}#int`, volts: this.user(volts, label('voltage')), rInternal, ...(imax ? { imax } : {}), role: 'cell' })
-        return this.partLimits(p, m)
+        // Spec 3.5: the override replaces the module's sourceCurrent limit, and only that value is `user`.
+        if (iOver === null) return this.partLimits(p, m)
+        this.partLimits(p, m, ['sourceCurrent'])
+        return this.limit({ part: p.uid, of: { part: true }, kind: 'sourceCurrent', value: this.user(iOver, label('imax')) })
       }
       case 'capacitor': {
         const a = this.tap(p.uid, t.a)
@@ -288,8 +321,8 @@ export class Builder {
           // A latching switch at rest: remember what it would join (ruling R30 names it).
           if (g.kind === 'switch' && !g.momentary && !isActive(pos))
             for (const [x, y] of closedPairs(g, g.changeover ? 'no' : 'closed')) {
-              const a = this.node(p.uid, x)
-              const b = this.node(p.uid, y)
+              const a = this.netName(p.uid, x)
+              const b = this.netName(p.uid, y)
               if (a && b) this.open.push({ part: p.uid, group: g.id, a, b })
             }
           if (g.kind !== 'switch') this.note(`${ref}: shown at rest; coil switching is simulated with firmware`)
@@ -323,7 +356,7 @@ export class Builder {
       mains: [...this.mainsKeys].sort(),
       openContacts: this.open,
       unsimulated: this.unsim,
-      notes: [...new Set(this.notes)],
+      notes: [...new Set(this.notes.map((n) => n.text))],
     }
   }
 }

@@ -1,9 +1,17 @@
 // The engine-neutral circuit (spec 2): what build.ts makes from a sheet and spice.ts compiles. A
 // Device keeps its component identity and its full values; reducing it for an analysis happens in
-// the compiler. Node ids are net names (nameNets), `<ref>_<pin>` singletons, `<uid>:<pin>` pin taps
-// (each behind a 0 V sense, ruling R19) and `<device id>#<name>` internal nodes. Pure types.
+// the compiler. Node ids are `net:<name>` nets (netNode; names are sheetNets names or `<ref>_<pin>`
+// singletons, user text that must never meet a pin id), `<uid>:<pin>` pin taps (each behind a 0 V
+// sense, ruling R19) and `<device id>#<name>` internal nodes. Types, plus netNode.
 import type { Limit, LimitKind, Provenance, RailKind } from '../format/simModel.ts'
 import type { GpioState } from '../format/simState.ts'
+
+/**
+ * The node id of the net with this display name. Names are user text (a label "d1:A"), so the
+ * prefix keeps them apart from `<uid>:<pin>` taps.
+ */
+// ponytail: collides only with a part whose uid is literally "net"; editor uids are p<N>. Escape uids if that ever matters.
+export const netNode = (name: string): string => `net:${name}`
 
 export type Basis = Provenance | 'user' | 'topology'
 export type Corner = 'typical' | 'peak'
@@ -39,7 +47,7 @@ export type Device =
   | { kind: 'load'; id: string; part: string; p: string; n: string; domain: string; typical: Param; peak: Param; peakNote?: string; minVolts: Param }
   | { kind: 'rail'; id: string; part: string; rail: ResolvedRail; in: string; inRet: string; out: string; ret: string; ctl: string; o: string; outDomain: string }
 
-/** A part pin that carries a device: its net and the pin node behind the sense. */
+/** A part pin that carries a device: its net (display name; the net node is netNode(net)) and the pin node behind the sense. */
 export interface PinTap { part: string; pin: string; net: string; node: string }
 export interface SimDomain { part: string; name: string; pin: string; ret: string; nominal: number }
 /** A limit to check results against, resolved to a part. */
