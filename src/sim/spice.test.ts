@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest'
 import { buildCircuit } from './build.ts'
 import { classify } from './floating.ts'
 import { compile, enableValue, foldValue } from './spice.ts'
-import { buckModule, cellModule, ldoModule, sheet } from './testing.ts'
+import { boardModule, boostModule, buckModule, cellModule, ldoModule, q, sheet } from './testing.ts'
 import type { Diagram } from '../format/diagram.ts'
 
 const op = { kind: 'op', corner: 'typical' } as const
@@ -84,6 +84,43 @@ describe('compile', () => {
   it('writes a buck input as the control-node power over efficiency, guarded below 0.5 V', () => {
     const t = text(sheet([{ uid: 'bt1', module: cellModule(12, 0.01) }, { uid: 'u1', module: buckModule() }, R('r1', 10)], [['bt1.+', 'u1.IN'], ['bt1.-', 'u1.GND'], ['u1.OUT', 'r1.1'], ['r1.2', 'u1.GND']]))
     expect(t).toMatch(/^b_u1_rail_buck_in n\d+ n\d+ i=v\(n\d+,n\d+\)\*i\(v_u1_rail_buck_o\)\/\(0\.9\*max\(v\(n\d+,n\d+\),0\.5\)\)$/m)
+  })
+  it('floors rout at 1 mOhm (0 fails op in our ngspice) and guards the efficiency divisor', () => {
+    const wire: [string, string][] = [['bt1.+', 'u1.IN'], ['bt1.-', 'u1.GND'], ['u1.OUT', 'r1.1'], ['r1.2', 'u1.GND']]
+    const ldo = text(sheet([{ uid: 'bt1', module: cellModule(5, 0.01) }, { uid: 'u1', module: ldoModule({ rout: q(0, 'ohm') }) }, R('r1', 33)], wire))
+    expect(ldo).toMatch(/^b_u1_rail_ldo_out n\d+ n\d+ i=.*\/0\.001$/m)
+    const buck = text(sheet([{ uid: 'bt1', module: cellModule(12, 0.01) }, { uid: 'u1', module: buckModule({ efficiency: q(0, '1') }) }, R('r1', 10)], wire))
+    expect(buck).toMatch(/^b_u1_rail_buck_in .*\/\(0\.01\*max\(/m)
+  })
+  it('emits the off paths only as configured, and omits iq = 0', () => {
+    const wire: [string, string][] = [['bt1.+', 'u1.IN'], ['bt1.-', 'u1.GND'], ['u1.OUT', 'r1.1'], ['r1.2', 'u1.GND']]
+    const boost = text(sheet([{ uid: 'bt1', module: cellModule(3.7, 0.01) }, { uid: 'u1', module: boostModule() }, R('r1', 100)], wire))
+    expect(boost).toMatch(/^d_u1_rail_boost_off n\d+ n\d+ m_d_u1_rail_boost_off$/m)
+    expect(boost).not.toContain('_body')
+    const ldo = text(sheet([{ uid: 'bt1', module: cellModule(5, 0.01) }, { uid: 'u1', module: ldoModule({ iq: q(0, 'A') }) }, R('r1', 33)], wire))
+    expect(ldo).not.toContain('_body')
+    expect(ldo).not.toContain('_iq')
+  })
+  it('uses the load peak at the peak corner', () => {
+    const d = sheet([{ uid: 'bt1', module: cellModule(5, 0.1) }, { uid: 'u1', module: boardModule() }], [['bt1.+', 'u1.VIN'], ['bt1.-', 'u1.GND']])
+    const c = buildCircuit(d)
+    expect(compile(c, classify(c), op).text).toMatch(/^b_u1_draw_3v3 n\d+ n\d+ i=0\.05\*/m)
+    expect(compile(c, classify(c), { kind: 'op', corner: 'peak' }).text).toMatch(/^b_u1_draw_3v3 n\d+ n\d+ i=0\.25\*/m)
+  })
+  it('reads vectors back: cell delivered = -i(v), rail output = +i(vo), a pin sense = current into the pin', () => {
+    const d = sheet([{ uid: 'bt1', module: cellModule(5, 0.01) }, { uid: 'u1', module: ldoModule() }, R('r1', 33)], [['bt1.+', 'u1.IN'], ['bt1.-', 'u1.GND'], ['u1.OUT', 'r1.1'], ['r1.2', 'u1.GND']])
+    const c = buildCircuit(d)
+    const out = compile(c, classify(c), op)
+    // The last sense is u1's OUT (parts in uid order, pins in order).
+    const tap = [...out.text.matchAll(/^(vs_\d+) (n\d+) (n\d+) dc 0$/gm)].at(-1)!
+    const raw = out.read({ 'v_bt1_cell#branch': -0.1, 'v_u1_rail_ldo_o#branch': 0.09, [`${tap[1]}#branch`]: 0.09, [tap[2]]: 3.29 })
+    expect(raw.dev['bt1.cell']).toBe(0.1)
+    expect(raw.dev['u1.rail.ldo']).toBe(0.09)
+    expect(raw.v['bt1:-']).toBe(0) // node 0, the reference
+    const [part, pins] = Object.entries(raw.pins).find(([, p]) => Object.values(p).includes(0.09))!
+    expect(part).toBe('u1')
+    expect(Object.keys(pins).find((k) => pins[k] === 0.09)).toBe('OUT')
+    expect(raw.v['net:U1_OUT']).toBe(3.29)
   })
   it('computes the same smooth functions in TypeScript', () => {
     expect(foldValue(3.3, 2.97)).toBeCloseTo(1, 6)

@@ -1,14 +1,14 @@
 // The SPICE compiler (spec 2, 4): Circuit + classification + analysis to text and a map back. Pure
 // and deterministic: elements in part-uid order (each part's devices by id, then its pin senses by
-// pin); nodes renamed n1..nN, nets first, each in code-point order, node 0 the first island's reference, so no user name
-// reaches the parser; element names sanitised and lowercase (ngspice lowercases); R never 0.
-// Elements whose nodes are all floating are omitted, so an element stays when it touches any defined
-// node (driven, or held by a return: grounds and pull-downs are defined, never driven); a floating
-// node that still touches one, and every other island's reference, get 1 G to node 0 for numerics
-// only (spec 4.4). Reducing a part
-// for DC happens here: a capacitor is emitted and ngspice opens it in `op`.
+// pin); nodes renamed n1..nN, nets first, each in code-point order, node 0 the first island's
+// reference, so no user name reaches the parser; element names sanitised and lowercase (ngspice
+// lowercases); R never 0. Elements whose nodes are all floating are omitted, so an element stays
+// when it touches any defined node (driven, or held by a return: grounds and pull-downs are
+// defined, never driven); a floating node that still touches one, and every other island's
+// reference, get 1 G to node 0 for numerics only (spec 4.4). Reducing a part for DC happens here: a
+// capacitor is emitted and ngspice opens it in `op`.
 import { naturalCompare } from '../agent/order.ts'
-import { type Classification, deviceNodes } from './floating.ts'
+import type { Classification } from './floating.ts'
 import { BODY_DIODE, schottky } from './ledModels.ts'
 import { type Analysis, type Circuit, type Device, type DiodeModel, type PinTap, netNode } from './model.ts'
 
@@ -17,6 +17,11 @@ const KV = 0.005
 const KR = 0.005
 /** The smallest resistance ever written: R is never 0 (spec 2). */
 const R_MIN = 1e-6
+/** A rail's smallest rout: measured in our ngspice, an LDO with rout 0 or 1e-6 fails op ("Timestep too small"), 1 mOhm solves. */
+const ROUT_MIN = 1e-3
+/** Divisor guards; Task 16 validation rejects such values anyway, these only keep the text finite. */
+const MIN_VOLTS_MIN = 1e-3
+const EFFICIENCY_MIN = 0.01
 /** The numerical join of floating nodes and second islands (spec 4.4). */
 const R_TIE = 1e9
 /** A boost's pass-through diode (spec 4.2), Schottky at 100 mA: a modelling choice. */
@@ -34,7 +39,7 @@ const sp = (x: string, k = KV) => `(max(${x},0)+${num(k)}*ln(1+exp(-abs(${x})/${
 const smax = (a: string, b: string, k = KV) => `(${b}+${sp(`(${a})-(${b})`, k)})`
 const smin = (a: string, b: string, k = KV) => `(${a}-${sp(`(${a})-(${b})`, k)})`
 /** The load fold-back f(V): 1 above minVolts, falling smoothly to 0 at 0 V (spec 4 table). */
-const fold = (v: string, minVolts: number) => smin('1', `${smax(v, '0')}/${num(minVolts)}`, KR)
+const fold = (v: string, minVolts: number) => smin('1', `${smax(v, '0')}/${num(Math.max(minVolts, MIN_VOLTS_MIN))}`, KR)
 const step = (a: number, b: number, x: string) => {
   const t = `min(max((${x}-${num(a)})/${num(b - a)},0),1)`
   return `(${t}*${t}*(3-2*${t}))`
@@ -44,7 +49,7 @@ const enable = (vin: string, lo: number, hi: number) => `(${step(lo - 0.05, lo, 
 
 /** The same functions on numbers, for results and findings. */
 export const softplus = (x: number, k = KV): number => Math.max(x, 0) + k * Math.log1p(Math.exp(-Math.abs(x) / k))
-export const foldValue = (v: number, minVolts: number): number => 1 - softplus(1 - softplus(v) / minVolts, KR)
+export const foldValue = (v: number, minVolts: number): number => 1 - softplus(1 - softplus(v) / Math.max(minVolts, MIN_VOLTS_MIN), KR)
 const stepValue = (a: number, b: number, x: number) => {
   const t = Math.min(Math.max((x - a) / (b - a), 0), 1)
   return t * t * (3 - 2 * t)
@@ -110,12 +115,13 @@ export function compile(c: Circuit, cls: Classification, a: Analysis): Compiled 
             const vctl = r.kind === 'ldo' ? smin(num(r.vout!.value), smax(`${vin}-${num(r.dropout!.value)}`, '0')) : `${enable(vin, r.vinMin!.value, r.vinMax!.value)}*${num(r.vout!.value)}`
             const out = [
               `${bctl} ${n(d.ctl)} ${n(d.ret)} v=${vctl}`,
-              `${bout} ${n(d.ret)} ${n(d.o)} i=${sp(`v(${n(d.ctl)},${n(d.ret)})-v(${n(d.o)},${n(d.ret)})`)}/${num(r.rout.value)}`,
+              `${bout} ${n(d.ret)} ${n(d.o)} i=${sp(`v(${n(d.ctl)},${n(d.ret)})-v(${n(d.o)},${n(d.ret)})`)}/${num(Math.max(r.rout.value, ROUT_MIN))}`,
               `${vo} ${n(d.o)} ${n(d.out)} dc 0`,
               r.kind === 'ldo'
                 ? `${fin} ${n(d.in)} ${n(d.inRet)} ${vo} 1`
-                : `${bin} ${n(d.in)} ${n(d.inRet)} i=v(${n(d.ctl)},${n(d.ret)})*i(${vo})/(${num(r.efficiency!.value)}*max(${vin},0.5))`,
+                : `${bin} ${n(d.in)} ${n(d.inRet)} i=v(${n(d.ctl)},${n(d.ret)})*i(${vo})/(${num(Math.max(r.efficiency!.value, EFFICIENCY_MIN))}*max(${vin},0.5))`,
             ]
+            // iq folds back below a 1 V knee on the input (smin(1, Vin)), so a dead input draws about 0.
             if (r.iq.value > 0) out.push(`${biq} ${n(d.in)} ${n(d.inRet)} i=${num(r.iq.value)}*${smin('1', smax(vin, '0'), KR)}`)
             return out
           },
