@@ -26,7 +26,7 @@ const REQUIRED: Record<Rail['kind'], (keyof Rail)[]> = {
 
 /** The required fields a rail lacks (spec 3.2 table) in words, or null. */
 export function railProblem(r: Rail): string | null {
-  const missing = REQUIRED[r.kind].filter((k) => r[k] === undefined)
+  const missing: string[] = REQUIRED[r.kind].filter((k) => r[k] === undefined)
   if (r.kind === 'switch' && r.ron === undefined && r.vf === undefined) missing.push('ron or vf')
   return missing.length ? `rail ${r.id} needs ${missing.join(', ')}` : null
 }
