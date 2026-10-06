@@ -92075,6 +92075,30 @@ if (!isMainThread && data?.circuitoonSim) {
 		};
 	});
 }
+var OFF = /^(.+?) is not powered in the current state: (\S+) is open\./;
+/**
+* The findings with each run of "not powered: SW1 is open" warnings for one switch folded into one
+* entry (`members` holds the run, `message` names them all); every other finding stands alone.
+*/
+function foldNotPowered(findings) {
+	const out = [];
+	for (let i = 0; i < findings.length; i++) {
+		const m = findings[i].severity === "warning" ? OFF.exec(findings[i].message) : null;
+		const members = [findings[i]];
+		const loads = [m?.[1]];
+		while (m && i + 1 < findings.length && findings[i + 1].severity === "warning") {
+			const next = OFF.exec(findings[i + 1].message);
+			if (next?.[2] !== m[2]) break;
+			members.push(findings[++i]);
+			loads.push(next[1]);
+		}
+		out.push({
+			members,
+			message: m && members.length > 1 ? `not powered in the current state because ${m[2]} is open: ${loads.join(", ")}. Set ${m[2]} to its operating position to simulate them running.` : findings[i].message
+		});
+	}
+	return out;
+}
 //#endregion
 //#region src/sim/estimates.ts
 var est = (value, unit, note) => ({
@@ -94136,22 +94160,8 @@ function connectionSheet(intent, raw) {
 		...probes.length ? { probes } : {}
 	};
 }
-var OFF = /^(.+?) is not powered in the current state: (\S+) is open\./;
 function findingLines(findings, line = (f, m) => `  ${f.severity}: ${m}`) {
-	const lines = [];
-	for (let i = 0; i < findings.length; i++) {
-		const m = findings[i].severity === "warning" ? OFF.exec(findings[i].message) : null;
-		const run = [m?.[1]];
-		while (m && i + 1 < findings.length && findings[i + 1].severity === "warning") {
-			const next = OFF.exec(findings[i + 1].message);
-			if (next?.[2] !== m[2]) break;
-			run.push(next[1]);
-			i++;
-		}
-		if (m && run.length > 1) lines.push(line(findings[i], `not powered in the current state because ${m[2]} is open: ${run.join(", ")}. Set ${m[2]} to its operating position to simulate them running.`));
-		else lines.push(line(findings[i], findings[i].message));
-	}
-	return lines;
+	return foldNotPowered(findings).map((g) => line(g.members[g.members.length - 1], g.message));
 }
 /** The stderr summary; `refOf` names parts by ref where the result keeps uids. */
 function summary(o, refOf = /* @__PURE__ */ new Map()) {
