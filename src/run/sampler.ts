@@ -10,7 +10,7 @@ import { type BoardMemory, MODE, NPINS, readAllOut } from './memory.ts'
 export const PWM_MIN_HZ = 50
 export const WINDOW_MS = 100
 export const DUTY_STEP = 1 / 64
-const INPUT_STATE: Record<number, RunPinState> = { [MODE.input]: 'input', [MODE.pullup]: 'input-pullup', [MODE.pulldown]: 'input-pulldown' }
+export const INPUT_STATE: Record<number, RunPinState> = { [MODE.input]: 'input', [MODE.pullup]: 'input-pullup', [MODE.pulldown]: 'input-pulldown' }
 
 export function quantize(prev: number | null, duty: number): number {
   const q = Math.round(duty / DUTY_STEP) * DUTY_STEP
