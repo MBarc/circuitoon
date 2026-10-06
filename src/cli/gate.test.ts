@@ -644,7 +644,7 @@ describe('gate/4: simulation (spec 7)', () => {
       expect(gateBanner(code, report, 'sheet.json')).toContain(banner)
     }
   }, 240_000)
-  it('reports an unplugged board in its own group: the checker findings are what checkDiagram gives, and the sim adds its warning', async () => {
+  it('reports an unplugged board in its own group: the checker findings are what checkDiagram gives, and the sim adds its note', async () => {
     const dir = tempDir()
     writeFileSync(join(dir, 'n.json'), JSON.stringify({ format: 'circuitoon-netlist/1', title: 'devkit', parts: [{ ref: 'U1', module: 'esp32-devkit-v1-30' }, { ref: 'R1', module: 'resistor' }], nets: [{ name: 'IO', pins: ['U1.D4', 'R1.1'] }, { name: 'GND', pins: ['R1.2', 'U1.GND'] }] }))
     expect((await cli(['layout', 'n.json', '-o', 'sheet.json'], { cwd: dir })).code).toBe(0)
@@ -655,6 +655,7 @@ describe('gate/4: simulation (spec 7)', () => {
     const checker = checkDiagram(v.diagram).map((f) => f.id).sort()
     const gated = [...report.blocking, ...report.warnings, ...report.notes].filter((f) => !f.rule.startsWith('sim-') && checker.includes(f.id)).map((f) => f.id).sort()
     expect(gated).toEqual(checker)
-    expect(report.warnings.some((f) => f.rule === 'sim-brownout' && f.message.includes('is not powered'))).toBe(true)
+    expect(report.notes.some((f) => f.rule === 'sim-brownout' && f.message.includes('nothing on the sheet supplies it'))).toBe(true)
+    expect(report.warnings.some((f) => f.rule === 'sim-brownout')).toBe(false)
   }, 120_000)
 })

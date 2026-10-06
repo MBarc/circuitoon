@@ -196,10 +196,11 @@ describe('value findings', () => {
     expect(b.length).toBeGreaterThan(0)
     expect(b.every((f) => f.basis !== 'topology' && f.message.includes('browns out'))).toBe(true)
   }, 60_000)
-  it('an unplugged board: not powered, a topology warning that never blocks (ruling R30)', async () => {
+  it('an unplugged board: not powered, a topology note (nothing on the sheet supplies it) that never blocks (final-wave ruling)', async () => {
     const r = await analyse(sheet([{ uid: 'u1', module: boardModule() }], []))
     const [f] = of(r, 'sim-brownout')
-    expect(f).toMatchObject({ severity: 'warning', basis: 'topology' })
+    expect(f).toMatchObject({ severity: 'note', basis: 'topology' })
+    expect(f.message).toContain('nothing on the sheet supplies it')
     expect(f.message).toContain('is not powered in the current state')
     expect(r.findings.some((x) => x.severity === 'error')).toBe(false)
   }, 60_000)

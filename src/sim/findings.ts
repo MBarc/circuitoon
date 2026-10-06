@@ -477,8 +477,10 @@ export function runDrafts(c: Circuit, cls: Classification, raw: RawRun, corner: 
     if (!on(l.p, l.n)) {
       if (corner === 'typical') {
         const sw = openSwitchFor(c, l.p, l.n)
+        // Final-wave ruling: with no source at all it is a note (the checker covers an undrawn supply);
+        // an open switch stays a warning.
         add({
-          code: 'sim-brownout', severity: 'warning', parts: sw ? [l.part, sw] : [l.part], inputs: [], key: `unpowered|${l.id}`,
+          code: 'sim-brownout', severity: sw ? 'warning' : 'note', parts: sw ? [l.part, sw] : [l.part], inputs: [], key: `unpowered|${l.id}`,
           message: sw
             ? `${ref(l.part)} ${l.domain} is not powered in the current state: ${ref(sw)} is open. Set ${ref(sw)} to its operating position to simulate ${ref(l.part)} running.`
             : `${ref(l.part)} ${l.domain} is not powered in the current state: nothing on the sheet supplies it. Draw its supply (a battery, an adapter, or a computer USB port on its USB socket) to simulate it.`,
