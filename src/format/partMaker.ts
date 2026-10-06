@@ -499,6 +499,7 @@ export function lintModule(raw: unknown): LintReport {
   else if (urls.some((u) => !/^https?:\/\/\S+$/.test(u))) warnings.push({ code: 'source-not-url', message: '"source" should be URLs separated by spaces.' })
   if (!isCustom(m)) warnings.push({ code: 'not-custom', message: `Not marked as a custom part: a part made outside the library should have "custom": true and an id starting with "${CUSTOM_PREFIX}".` })
   if (m.name.length > NAME_MAX) warnings.push({ code: 'long-name', message: `The name is over ${NAME_MAX} characters.` })
+  if (m.firmware) warnings.push({ code: 'firmware-custom', message: 'Code on custom parts is not supported yet, so this part\'s "firmware" is ignored.' })
   lintArt(m, errors, warnings)
   return { ok: errors.length === 0, errors, warnings }
 }

@@ -119,6 +119,7 @@ const USB2_HOST = { connector: 'A', gender: 'receptacle', role: 'host', version:
     r(30, 150, 120, 14, PI_GREEN, { outline: false, label: 'Raspberry Pi 4 Model B', labelColor: SILK, labelSize: 7 }),
   ]
   write('rpi-4-model-b.json', moduleJson({
+    firmware: { languages: ['python-rpi'] },
     inside: true, id: 'rpi-4-model-b', name: 'Raspberry Pi 4 Model B', category: 'Computers',
     source: 'https://www.raspberrypi.com/documentation/computers/raspberry-pi.html https://pip.raspberrypi.com/documents/RP-008343-DS https://github.com/gpiozero/gpiozero/blob/master/gpiozero/pins/data.py https://pinout.xyz/',
     pins, wu, hu, holes, internal: j8Internal(holes),
@@ -173,6 +174,7 @@ const CAM_DISP_NOTE = "Which connector is 0 and which is 1 rests on one source (
     r(30, 162, 70, 14, PI_GREEN, { outline: false, label: 'Raspberry Pi 5', labelColor: SILK, labelSize: 7 }),
   ]
   write('rpi-5.json', moduleJson({
+    firmware: { languages: ['python-rpi'] },
     inside: true, id: 'rpi-5', name: 'Raspberry Pi 5', category: 'Computers',
     source: 'https://www.raspberrypi.com/documentation/computers/raspberry-pi.html https://pip.raspberrypi.com/documents/RP-008347-DS https://github.com/gpiozero/gpiozero/blob/master/gpiozero/pins/data.py https://pinout.xyz/ https://aegisdigitalmuseum.kennesaw.edu/items/show/300',
     pins, wu, hu, holes, internal: j8Internal(holes),
@@ -221,6 +223,7 @@ const CAM_DISP_NOTE = "Which connector is 0 and which is 1 rests on one source (
     r(130, 60, 96, 12, PI_GREEN, { outline: false, label: 'Raspberry Pi Zero 2 W', labelColor: SILK, labelSize: 6 }),
   ]
   write('rpi-zero-2-w.json', moduleJson({
+    firmware: { languages: ['python-rpi'] },
     inside: true, id: 'rpi-zero-2-w', name: 'Raspberry Pi Zero 2 W', category: 'Computers',
     source: 'https://www.raspberrypi.com/documentation/computers/raspberry-pi.html https://pip.raspberrypi.com/documents/RP-008358-DS https://github.com/gpiozero/gpiozero/blob/master/gpiozero/pins/data.py https://pinout.xyz/ https://www.wevolver.com/article/raspberry-pi-zero-2-w-pinout-comprehensive-guide-for-engineers https://industrialmonitordirect.com/blogs/knowledgebase/raspberry-pi-zero-w-2-usb-hub-not-working-fix',
     pins, wu, hu, holes, internal: j8Internal(holes),

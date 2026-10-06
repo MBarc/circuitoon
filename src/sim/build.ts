@@ -9,7 +9,7 @@ import { nodeKey } from '../format/netlist.ts'
 import { analyseMainsCached } from '../format/mains.ts'
 import { convertersInState } from '../format/mainsRules.ts'
 import { mainsOf } from '../format/mainsModel.ts'
-import { type Quantity, simOf, withLibrarySim } from '../format/simModel.ts'
+import { type Quantity, simOf, withLibraryData } from '../format/simModel.ts'
 import { contactPosition, isActive, simOverride, switchGroups } from '../format/simState.ts'
 import { paramValue } from '../format/values.ts'
 import { sheetNets } from '../agent/extract.ts'
@@ -50,7 +50,7 @@ const hasPowerPin = (m: ModuleDef) => [...m.pins, ...(m.holes ?? [])].some((p) =
 export class Builder {
   d: Diagram
   private opts: BuildOptions
-  /** The sheet's modules, each with the sim it is simulated with (withLibrarySim). */
+  /** The sheet's modules, each with the sim it is simulated with (withLibraryData). */
   private modules: Record<string, ModuleDef>
   private mainsKeys: Set<string>
   private netOfKey = new Map<string, string>()
@@ -74,7 +74,7 @@ export class Builder {
     this.d = d
     this.opts = opts
     const library = opts.library ?? libraryLookup
-    this.modules = Object.fromEntries(Object.entries(d.modules).map(([id, m]) => [id, withLibrarySim(m, library)]))
+    this.modules = Object.fromEntries(Object.entries(d.modules).map(([id, m]) => [id, withLibraryData(m, library)]))
     this.mainsKeys = analyseMainsCached(d)?.mainsKeys ?? new Set()
     const sn = sheetNets(d)
     this.refOf = sn.refOf

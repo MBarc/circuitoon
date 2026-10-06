@@ -188,7 +188,7 @@ export function usbLinks(b: Builder, d: Diagram): void {
     const sides = usbSides(link.from, link.to)
     if (!sides) continue
     const [host, dev] = sides
-    // The modules as simulated: a built-in part's sim from the library (withLibrarySim).
+    // The modules as simulated: a built-in part's sim from the library (withLibraryData).
     const hm = b.module(host.part.module) ?? host.module
     const dm = b.module(dev.part.module) ?? dev.module
     // A device that is not simulated has nothing for the cable to feed.

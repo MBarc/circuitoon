@@ -2,6 +2,7 @@
 // Spec: docs/PRD.md, "Module definition format". Erasable TS only, so node can run it directly.
 import { REQUIREMENTS, type Requirement, claimInternalNodes, validateMains } from './mainsModel.ts'
 import { validateSim } from './simModel.ts'
+import { KNOWN_LANGUAGES } from './code.ts'
 
 export const MODULE_FORMAT = 'circuitoon-module/1'
 export const GRID = 10 // px per grid unit at 100% zoom; also the pin pitch
@@ -222,6 +223,8 @@ export interface ModuleDef {
    * library: unverified. Its id starts with "custom-", which no built-in id does.
    */
   custom?: true
+  /** The languages code on this part may be in (firmware spec 3.2); read only through languagesOf. */
+  firmware?: { languages: string[] }
 }
 
 /** The id prefix every custom part has and no built-in part may use. */
@@ -355,6 +358,14 @@ export function validateModule(raw: unknown): ValidationResult {
   if (raw.custom !== undefined) {
     if (raw.custom !== true) errors.push('custom: must be true when present')
     else if (typeof raw.id === 'string' && !raw.id.startsWith(CUSTOM_PREFIX)) errors.push(`custom: a custom part's id must start with "${CUSTOM_PREFIX}"`)
+  }
+  if (raw.firmware !== undefined) {
+    const f = raw.firmware
+    if (!isObj(f) || Object.keys(f).some((k) => k !== 'languages') || !Array.isArray(f.languages) || !f.languages.length) errors.push('firmware: must be { "languages": [<language id>, ...] }')
+    else
+      f.languages.forEach((l, i) => {
+        if (!(KNOWN_LANGUAGES as readonly unknown[]).includes(l)) errors.push(`firmware.languages[${i}]: unknown language "${show(l)}" (${KNOWN_LANGUAGES.join(', ')})`)
+      })
   }
 
   // Electrical metadata shared by pins and hole groups.

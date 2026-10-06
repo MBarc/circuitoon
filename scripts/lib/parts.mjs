@@ -48,7 +48,7 @@ export function side(sideName, list, types, len) {
  * a part drawn from the side (see ModuleDef.footprint); left out, nothing is written,
  * so generators that pass neither produce the same bytes as before.
  */
-export function moduleJson({ id, name, category, source, pins, internal, wu, hu, electrical, states, inside = false, shapes, holes, obstacle, footprint }) {
+export function moduleJson({ id, name, category, source, pins, internal, wu, hu, electrical, states, inside = false, shapes, holes, obstacle, footprint, firmware }) {
   const m = { format: 'circuitoon-module/1', id, version: 1, name, category, source, pins }
   if (internal) m.internal = internal
   m.size = { w: wu, h: hu }
@@ -57,6 +57,7 @@ export function moduleJson({ id, name, category, source, pins, internal, wu, hu,
   // A part drawn from the side: what it covers seen from above on a breadboard ("legs" or a rect).
   if (footprint) m.footprint = footprint
   m.electrical = electrical
+  if (firmware) m.firmware = firmware
   if (states) m.states = states
   m.art = inside ? { w: wu * 10, h: hu * 10, pinLabels: 'inside', shapes } : { w: wu * 10, h: hu * 10, shapes }
   return m

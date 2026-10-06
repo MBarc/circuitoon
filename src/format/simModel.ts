@@ -71,21 +71,24 @@ export function simOf(m: ModuleDef | undefined): SimSpec | null {
 }
 
 /**
- * The module a stored copy is simulated and validated as. `electrical.sim` is library data, like
- * the KiCad mapping (format/kicad.ts mappingOf): a built-in part whose stored copy has the
- * library's pins takes the library's sim, so a sheet saved before the library had it still
- * simulates and keeps its saved sim values. A custom part, or a copy whose pins changed, keeps its own.
+ * The module a stored copy is simulated, validated and run as (firmware spec 3.2). `electrical.sim`
+ * and `firmware` are library data, like the KiCad mapping (format/kicad.ts mappingOf): a built-in
+ * part whose stored copy has the library's terminals takes both from the library, so a sheet saved
+ * before the library had them still simulates and runs code. The stored copy comes back unchanged
+ * only when both already match; a custom part, or a copy whose pins changed, keeps its own.
  */
-export function withLibrarySim(stored: ModuleDef, library: ((id: string) => ModuleDef | undefined) | undefined): ModuleDef {
+export function withLibraryData(stored: ModuleDef, library: ((id: string) => ModuleDef | undefined) | undefined): ModuleDef {
   if (!library || isCustom(stored)) return stored
   const lib = library(stored.id)
   if (!lib || lib === stored || terminalsKey(stored) !== terminalsKey(lib)) return stored
   const sim = isObj(lib.electrical) ? lib.electrical.sim : undefined
+  const storedSim = isObj(stored.electrical) ? stored.electrical.sim : undefined
+  if (storedSim === sim && stored.firmware === lib.firmware) return stored
   const e: Record<string, unknown> = isObj(stored.electrical) ? { ...stored.electrical } : {}
-  if (e.sim === sim) return stored
   if (sim === undefined) delete e.sim
   else e.sim = sim
-  return { ...stored, electrical: e }
+  const { firmware: _old, ...rest } = stored
+  return { ...rest, electrical: e, ...(lib.firmware ? { firmware: lib.firmware } : {}) }
 }
 
 const RAIL_REQUIRED: Record<RailKind, (keyof Rail)[]> = {

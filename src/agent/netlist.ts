@@ -5,7 +5,7 @@
 import { type ModuleDef, type PinDef, PARAM_RULES, isBoard, isNetLabel, isObj, isNum, isSpacer, moduleSettings, usbOf, validParamValue, validateModule } from '../format/module.ts'
 import { mainsOf } from '../format/mainsModel.ts'
 import { isSimValueKey, simValueProblem } from '../format/simState.ts'
-import { withLibrarySim } from '../format/simModel.ts'
+import { withLibraryData } from '../format/simModel.ts'
 import { type Diagram, ANNOTATION_LABEL_MAX, PROBE_ID, ANNOTATION_TEXT_MAX, isValidColor, moduleOf } from '../format/diagram.ts'
 import { type EndKind, isEndKind, isUsbEnd } from '../format/cables.ts'
 import { type RawNet, type RawPart, type RepeatCopy, endpointText, expandRepeat } from './repeat.ts'
@@ -173,7 +173,7 @@ export function parseNetlist(raw: unknown, library: ModuleLookup): IntentResult 
     if (p.values !== undefined) {
       if (!isObj(p.values)) errors.push(`${at}.values: must be an object`)
       else {
-        errors.push(...valueErrors(p.values, `${at}.values`, withLibrarySim(m, library)))
+        errors.push(...valueErrors(p.values, `${at}.values`, withLibraryData(m, library)))
         part.values = p.values
       }
     }
@@ -464,13 +464,13 @@ export function parseNetlist(raw: unknown, library: ModuleLookup): IntentResult 
  * change never breaks an old sheet), then the library. Ids the intent embeds itself are left to it,
  * unless they are library ids: the netlist then rejects the embedded copy as a built-in part, and
  * module-drift compares it with the library. An embedded copy carries the library's sim data
- * (withLibrarySim), which is library data like the KiCad mapping.
+ * (withLibraryData), which is library data like the KiCad mapping.
  */
 export function intentLookup(d: Diagram, library: ModuleLookup): ModuleLookup {
   const own = isObj(d.intent) && isObj(d.intent.modules) ? new Set(Object.keys(d.intent.modules)) : new Set<string>()
   return (id) => {
     if (own.has(id) && !library(id)) return undefined
     const m = moduleOf(d, id)
-    return m ? withLibrarySim(m, library) : library(id)
+    return m ? withLibraryData(m, library) : library(id)
   }
 }

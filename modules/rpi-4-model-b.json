@@ -856,6 +856,11 @@
       }
     ]
   },
+  "firmware": {
+    "languages": [
+      "python-rpi"
+    ]
+  },
   "art": {
     "w": 340,
     "h": 220,

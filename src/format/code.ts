@@ -4,6 +4,8 @@
 // does not know is kept with a warning, so newer sheets survive older editors. Pure; imports only
 // types from module.ts (Task 5), which imports KNOWN_LANGUAGES from here.
 
+import type { ModuleDef } from './module.ts'
+
 /** Every language a slice plans (ruling R2): modules may name any of them; RUNNABLE is what this build runs. */
 export const KNOWN_LANGUAGES = ['python-rpi', 'arduino-avr', 'micropython'] as const
 export const RUNNABLE: readonly string[] = ['python-rpi']
@@ -45,3 +47,14 @@ export function checkCode(raw: unknown, who: string): { code: PartCode | null; w
   return { code: { language: raw.language, source: raw.source, ...(raw.file !== undefined && !badFile ? { file: raw.file as string } : {}) }, warnings }
 }
 
+
+/** The languages a module's code may be in (firmware spec 3.2): none on a custom part in this slice. */
+export function languagesOf(m: ModuleDef | undefined): string[] {
+  return m && m.custom !== true ? (m.firmware?.languages ?? []) : []
+}
+
+/** "U1 is an Arduino Uno R3; its code is Raspberry Pi Python and won't run" for a known language the board does not take (kept, spec 3.1); else null. `m` is the module with its library data. */
+export function languageMismatch(who: string, m: ModuleDef, language: string): string | null {
+  if (!(KNOWN_LANGUAGES as readonly string[]).includes(language) || languagesOf(m).includes(language)) return null
+  return `${who} is ${/^[aeiou]/i.test(m.name) ? 'an' : 'a'} ${m.name}; its code is ${languageName(language)} and won't run`
+}
