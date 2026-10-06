@@ -96,7 +96,7 @@ The plan rules on these so no task has to. Each is referenced where it applies.
 | R13 | "the start screen's sample list" (the start screen has one sample card) | A "Raspberry Pi samples" row of two smaller cards under the three start cards. |
 | R14 | "placed with the existing badge placement" | The run badge is a pill at the body's top-right corner: the checker's mark owns the top left and simulation findings the top centre. |
 | R15 | The Pyodide budget is "measured on the live site at the Pyodide checkpoint", before anything of this slice ships | The checkpoint measures GitHub Pages' `Content-Encoding` rule on the live site with the files it already serves (`sim/ngspice.wasm`, `sim/ngspice.mjs`, `sim/engine.json`), then computes the transfer from that rule (gzip -6 where Pages compresses, raw where it does not). The ship gate (final checkpoint) re-measures the real `py/<version>/` files on the deployed site. |
-| R16 | Several boards on one virtual clock (spec 7 describes one board's waits) | Discrete events: every worker reports `block(now, until)`; when all are blocked the driver sets the clock to the earliest `until`, press or end, samples, solves if needed, writes inputs and wakes every worker; a worker that is not due blocks again. A pin read past the driver's horizon (the next press, the next 16 ms sample or the end) syncs too, so polling loops reach presses; time calls only step 10 us. |
+| R16 | Several boards on one virtual clock (spec 7 describes one board's waits) | Discrete events: every worker reports `block(now, until)`; when all are blocked the driver sets the clock to the earliest `until`, press or end, samples, solves if needed, writes inputs and then grants every worker its clock: it writes `F.clockMs` and `F.horizonMs`, then bumps `H.grant` and wakes (`grant()` in memory.ts). A worker moves on only when `H.grant` changes (or Stop is set), never on another wake such as an input write or a line, so nothing the driver writes before the grant is read early; a worker that is not due blocks again. A pin read past the driver's horizon (the next press, the next 16 ms sample or the end) syncs too, so polling loops reach presses, and so does a read while a setup is not yet solved (`codeSeq > solvedThrough`), so it gets its solve at the same instant; time calls only step 10 us. (Amended by the CP3 fix.) |
 | R17 | Overlapping `--press` events | `BuildOptions.held` is one button, as in the editor (one pointer): two presses that overlap in time are a usage error (exit 2). A latching switch's press flips it at its time (the duration is ignored). |
 | R18 | `circuitoon netlist` without `-o` has no "next to the netlist" | The code is inlined as `{ "language", "source", "file" }`, a form `parseNetlist` accepts beside `{ "language", "path" }`. |
 | R19 | The code worker's CSP needs a header GitHub Pages cannot set, from a vendored worker the spec calls pinned | `coi-serviceworker` 0.1.7 is vendored verbatim plus one patch marked `Circuitoon patch`: the fetch handler adds the CSP to the code worker's script (`/assets/codeWorker-*.js`). In dev and preview a small Vite plugin adds the same header to the worker's URL. |
@@ -2045,7 +2045,7 @@ CHECKPOINT: the controller reads the checkpoint output in the ledger before Task
   - `interface PinIn { level: 0 | 1; rising: number; falling: number; status: InStatus; volts: number }`
   - `function writeLocked(m: BoardMemory, seq: number, fn: () => void): void`; `function readLocked<T>(m: BoardMemory, seq: number, fn: () => T): T`
   - `function readOut(m, bcm): PinOut`, `function setOut(m, bcm, p: Partial<PinOut>): void` (inside the out seqlock); `function readIn(m, bcm): PinIn`, `function setIn(m, bcm, p: PinIn): void` (inside the in seqlock)
-  - `function readAllOut(m: BoardMemory): PinOut[]` (locked); `function writeIn(m: BoardMemory, rows: (PinIn | null)[], solvedThrough: number): void` (locked, then wakes)
+  - `function readAllOut(m: BoardMemory): { rows: PinOut[]; codeSeq: number }` (one locked read: the code sequence is bumped inside setup's locked write, so it always numbers these rows; changed by the CP3 fix); `function writeIn(m: BoardMemory, rows: (PinIn | null)[], solvedThrough: number): void` (locked, then wakes)
   - `function wake(m): void`; `function interrupt(m): void`; `function writeLine(m, text: string): void`; `function takeLine(m): string`
 
 - [ ] **Step 1: Write the failing test**
@@ -5318,7 +5318,7 @@ MSG
 - Create: `src/run/sampler.ts`, `src/run/sampler.test.ts`
 
 **Interfaces:**
-- Consumes: `readAllOut`, `MODE`, `H`, `BoardMemory` (Task 12); `gpioPin` (Task 12); `RunPinState` (Task 20); `makeHw` (Task 13, for the test).
+- Consumes: `readAllOut` (returns `{ rows, codeSeq }` from one locked read), `MODE`, `BoardMemory` (Task 12); `gpioPin` (Task 12); `RunPinState` (Task 20); `makeHw` (Task 13, for the test).
 - Produces:
   - `const PWM_MIN_HZ = 50`, `const WINDOW_MS = 100`, `const DUTY_STEP = 1 / 64`
   - `function quantize(prev: number | null, duty: number): number`
@@ -5424,7 +5424,7 @@ Expected: FAIL, `./sampler.ts` cannot be found.
 // stays a blink. Duty is quantised to 1/64 and only moves past a step, so jitter never re-solves.
 import type { RunPinState } from '../format/simState.ts'
 import { gpioPin } from './boards.ts'
-import { type BoardMemory, H, MODE, NPINS, readAllOut } from './memory.ts'
+import { type BoardMemory, MODE, NPINS, readAllOut } from './memory.ts'
 
 export const PWM_MIN_HZ = 50
 export const WINDOW_MS = 100
@@ -5448,8 +5448,8 @@ export class BoardSampler {
 
   /** The board's pins at run time `nowMs` (its own clock). Unused pins are left out: their saved states apply. */
   sample(m: BoardMemory, nowMs: number): { pins: Record<string, RunPinState>; detail: Record<string, SampledPin>; seq: number } {
-    const rows = readAllOut(m)
-    const seq = Atomics.load(m.i32, H.codeSeq)
+    // One snapshot: the code sequence numbers exactly these modes (never read it separately).
+    const { rows, codeSeq: seq } = readAllOut(m)
     const nowUs = Math.round(nowMs * 1000) >>> 0
     const pins: Record<string, RunPinState> = {}
     const detail: Record<string, SampledPin> = {}
@@ -6810,7 +6810,7 @@ export class RunCore {
     for (const e of this.entries.values()) {
       const now = at(e.b)
       const rows: (PinIn | null)[] = Array.from({ length: NPINS }, () => null)
-      readAllOut(e.b.memory).forEach((r, bcm) => {
+      readAllOut(e.b.memory).rows.forEach((r, bcm) => {
         if (r.mode === MODE.unused || r.mode === MODE.output) return
         const pin = gpioPin(bcm)
         const net = c.pinNet[nodeKey(e.b.uid, pin)]
@@ -7026,7 +7026,7 @@ Expected: FAIL, `./driver.ts` cannot be found.
 // clock. Every wait reports where its board is and until when; when every board waits, the driver
 // moves the clock to the earliest of those, the next press or release and the end; samples; solves
 // when a run pin state, a code sequence, a press or a servo's motion changed; writes the inputs back;
-// and wakes every board. Pin reads and time calls step 10 us and sync at the horizon (the next 16 ms,
+// and grants every board its clock (H.grant: other wakes never move a board). Pin reads and time calls step 10 us and sync at the horizon (the next 16 ms,
 // press or end), so busy-waits end and polling loops reach presses. Deterministic: the same sheet and
 // options give the same run. A board that sends nothing for `realLimitMs` of real time never pauses.
 import type { Diagram } from '../format/diagram.ts'
@@ -7043,7 +7043,7 @@ import { solve } from '../sim/session.ts'
 import { boardKindOf } from './boards.ts'
 import { type CoreBoard, NEVER_PAUSES, RunCore, type RunFinding } from './core.ts'
 import { BoardRun, type CodeWorkerLike } from './host.ts'
-import { F, H, INPUT, wake, writeLine } from './memory.ts'
+import { H, INPUT, grant, writeLine } from './memory.ts'
 import { spawnNodeCodeWorker } from './node/codeWorker.ts'
 import { LOST_POWER, NO_POWER, boardPower, underVoltage, underVoltageNote } from './power.ts'
 import type { RunStatus } from './protocol.ts'
@@ -7270,13 +7270,12 @@ export async function drive(o: DriveOptions): Promise<DriveResult> {
     const horizon = Math.min(T + 16, events[0]?.atMs ?? Infinity, o.forMs)
     for (const e of running) {
       if (e.ended) continue
-      e.run.memory.f64[F.clockMs] = T
-      e.run.memory.f64[F.horizonMs] = horizon
       e.blocked = null
       // Its clock jumps to at least T, so what it prints next is stamped from there.
       e.t = Math.max(e.t, T)
       e.heard = performance.now()
-      wake(e.run.memory)
+      // The grant last: the inputs and lines written above only woke it; this lets it move (ruling R16).
+      grant(e.run.memory, T, horizon)
     }
   }
   await Promise.all(live.map((e) => e.run.done))
