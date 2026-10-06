@@ -28,6 +28,8 @@ import type { Selection } from './ops.ts'
 import { partCaption } from '../format/values.ts'
 import { SeverityMark } from './SeverityMark.tsx'
 import { SimLayer, currentFindings, shownResult } from './SimLayer.tsx'
+import { ProbeLayer } from './ProbeLayer.tsx'
+import { addProbe } from '../sim/probes.ts'
 import { gridOnly, snapMove, type SnapResult } from './snap.ts'
 import { dragSnap, overlaps, type DragSnap } from './dragSnap.ts'
 import { GuideLayer } from './GuideLayer.tsx'
@@ -124,7 +126,7 @@ export interface CanvasApi {
 }
 
 export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api: CanvasApi) => void }) {
-  const { diagram, selection, highlight, reveal, snapObjects, simulate, sim } = useEditorState(store)
+  const { diagram, selection, highlight, reveal, snapObjects, simulate, simTool, sim } = useEditorState(store)
   // While simulating: the readings to draw (the last good ones, stale, after a failed solve) and the current findings.
   const simOutcome = simulate && sim?.phase === 'done' ? sim.outcome : undefined
   const simShown = shownResult(simOutcome)
@@ -472,6 +474,27 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
     if (badge) {
       store.select({ parts: badge.getAttribute('data-sim-badge')!.split(' '), wires: [] })
       store.reveal()
+      return
+    }
+    // The Probe tool (spec 6.2): a pin or hole, the nearer end of a wire, or a part. Anything else does nothing.
+    if (store.getState().simTool === 'probe') {
+      const d0 = store.getState().diagram
+      const end = endUnder(e)
+      let at: { part: string; pin?: string } | null = end ? { part: end.part, pin: end.pin } : null
+      const wireEl = at ? null : target.closest('[data-wire]')
+      const conn = wireEl ? d0.connections.find((c) => c.uid === wireEl.getAttribute('data-wire')) : undefined
+      if (conn) {
+        const p = toWorld(e)
+        const dist = (ep: Endpoint) => {
+          const r = resolveEndpoint(d0, ep)
+          return r ? Math.hypot(r.end.x - p.x, r.end.y - p.y) : Infinity
+        }
+        const ep = dist(conn.from) <= dist(conn.to) ? conn.from : conn.to
+        at = { part: ep.part, pin: ep.pin }
+      }
+      const partEl = at ? null : target.closest('[data-part]')
+      if (partEl) at = { part: partEl.getAttribute('data-part')! }
+      if (at) store.commit(addProbe(d0, at).diagram)
       return
     }
     // Explicit wire-edit handles of the selected wire come first: they sit on top of everything.
@@ -831,7 +854,7 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
     >
       <svg
         ref={svgRef}
-        className={drag?.kind === 'pan' ? 'canvas panning' : spaceDown ? 'canvas space-pan' : 'canvas'}
+        className={`${drag?.kind === 'pan' ? 'canvas panning' : spaceDown ? 'canvas space-pan' : 'canvas'}${simTool === 'probe' ? ' probing' : ''}`}
         viewBox={`${view.x} ${view.y} ${vw} ${vh}`}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
@@ -934,6 +957,8 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
         {simOutcome && (
           <SimLayer diagram={diagram} result={simShown?.result ?? null} stale={!!simShown?.stale} circuit={sim?.phase === 'done' ? sim.circuit : null} findings={simFindings} />
         )}
+        {/* Probes (saved with the sheet) show "-" until Simulate gives them readings. */}
+        {(diagram.probes?.length ?? 0) > 0 && <ProbeLayer diagram={diagram} readings={simShown?.result.probes ?? null} stale={!!simShown?.stale} />}
         {/* A connection the netlist could not join (a missing part, pin, group or hole) has no
             route to draw, but a short dashed red stub at whichever end still resolves lets a
             user find and repair it instead of a wire silently vanishing from the sheet. Drawn after the

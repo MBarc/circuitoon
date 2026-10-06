@@ -134,6 +134,7 @@
 .canvas-wrap { grid-area: canvas; position: relative; overflow: hidden; }
 .canvas { display: block; width: 100%; height: 100%; touch-action: none; user-select: none; font-family: "Atkinson Hyperlegible", system-ui, sans-serif; }
 .canvas.panning { cursor: grabbing; }
+.canvas.probing, .canvas.probing * { cursor: crosshair; }
 .canvas.space-pan, .canvas.space-pan [data-part], .canvas.space-pan .annotation-grab { cursor: grab; }
 /* The selection rectangle: the selection outline's accent and dash, over a faint wash of the same colour. */
 .marquee { fill: var(--focus); fill-opacity: 0.08; stroke: var(--focus); stroke-width: 1.5; stroke-dasharray: 5 4; vector-effect: non-scaling-stroke; }
@@ -467,6 +468,11 @@ button.wordmark { background: none; border: 0; padding: 0; cursor: pointer; }
 .sim-pin.error { stroke: #E0483E; }
 .sim-pin.warning { stroke: #D49B00; }
 .sim-readings.stale { opacity: 0.45; }
+/* Probe tags (ProbeLayer): a white sticker in the probe's colour; dashed when the reading is outside the model. */
+.probe-box { fill: #FFFFFF; stroke-width: 1.4; }
+.probe-tag.outside .probe-box { stroke-dasharray: 3 2; }
+.probe-text { font: 700 7px "Atkinson Hyperlegible", system-ui, sans-serif; fill: #23282F; }
+.probe-layer.stale { opacity: 0.45; }
 .sim-badge { cursor: pointer; }
 .sim-fold { font-weight: 400; color: var(--muted); }
 /* The long group headings while simulating: the count wraps to its own line rather than squeezing. */
