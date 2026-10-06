@@ -174,9 +174,10 @@ export function makeHw(m: BoardMemory, clock: RunClock, o: { board: BoardKind; o
     },
     monotonic: () => clock.now() / 1000,
     epoch: () => (clock.epochMs + clock.now()) / 1000,
-    /** Python's scheduler: wait until run time `untilS` seconds (negative: until woken). */
+    /** Python's scheduler: wait until run time `untilS` seconds (negative or infinite: until woken). */
     block(untilS: number) {
-      check(untilS < 0 || Number.isFinite(untilS), () => `wait time must be a finite number, not ${py(untilS)}`)
+      // Infinity and negatives (the scheduler's -1) mean until woken; only NaN has no meaning.
+      check(!Number.isNaN(untilS), () => `wait time must be a number, not ${py(untilS)}`)
       clock.block(untilS < 0 ? Infinity : untilS * 1000)
     },
     /** A yield point: real time of the last one (the never-pauses check), whether timers or callbacks wait, and an output flush. */

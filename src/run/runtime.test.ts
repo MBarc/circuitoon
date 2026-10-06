@@ -82,17 +82,24 @@ describe('the Python run-time (spec 5.2, 5.3)', () => {
     expect(r.out).toBe('still here\n')
   })
   it('raises ValueError for anything circuitoon_hw cannot store, and stores nothing', async () => {
-    const calls = ['hw.setup(17, 99)', 'hw.setup(17, -1)', 'hw.setup(17, 1.5)', "hw.setup(17, '4')", 'hw.setup(99, 4)', "hw.pwm(18, True, float('nan'), 50)", "hw.pwm(18, True, float('inf'), 50)", "hw.pwm(18, True, 0.5, float('nan'))", 'hw.pwm(18, True, 0.5, 0)', "hw.block(float('nan'))", "hw.block(float('inf'))"]
+    const calls = ['hw.setup(17, 99)', 'hw.setup(17, -1)', 'hw.setup(17, 1.5)', "hw.setup(17, '4')", 'hw.setup(99, 4)', "hw.pwm(18, True, float('nan'), 50)", "hw.pwm(18, True, float('inf'), 50)", "hw.pwm(18, True, 0.5, float('nan'))", 'hw.pwm(18, True, 0.5, 0)', "hw.block(float('nan'))"]
     const r = await runScript(`import circuitoon_hw as hw\nfor call in (${calls.map((c) => `lambda: ${c}`).join(', ')}):\n    try:\n        call()\n        print('stored')\n    except ValueError as e:\n        print(e)\n`)
     expect(r.out.split('\n').slice(0, -1)).toEqual([
       'pin mode must be a whole number from 0 to 4, not 99', 'pin mode must be a whole number from 0 to 4, not -1', 'pin mode must be a whole number from 0 to 4, not 1.5', 'pin mode must be a whole number from 0 to 4, not 4', 'there is no GPIO99',
       'PWM duty cycle must be a number, not nan', 'PWM duty cycle must be a number, not inf', 'PWM frequency must be a number greater than 0, not nan', 'PWM frequency must be a number greater than 0, not 0',
-      'wait time must be a finite number, not nan', 'wait time must be a finite number, not inf',
+      'wait time must be a number, not nan',
     ])
     // Only the end of run's reset to unused: nothing the calls above tried was stored.
     expect(r.trace.filter((x) => x.mode !== 0)).toEqual([])
   })
-  it('refuses time.sleep(inf) with a ValueError (sleep(nan) is sleep(0): wait clamps it)', async () => {
-    expect((await runScript("import time\ntime.sleep(float('inf'))\n")).err).toContain('ValueError: wait time must be a finite number, not inf')
+  it('still waits until woken on an infinite wait: pause() with no timers, blink(on_time=inf), sleep(inf)', async () => {
+    const stopped = async (body: string) => {
+      const r = await runScript(`import time\nfrom signal import pause\nfrom gpiozero import LED\ntry:\n${body}\nfinally:\n    print(round(time.monotonic(), 1))\n`, { untilMs: 2000 })
+      return [r.status, r.err, r.out]
+    }
+    expect(await stopped('    pause()')).toEqual(['stopped', '', '2.0\n'])
+    expect(await stopped("    LED(17).blink(on_time=float('inf'))\n    pause()")).toEqual(['stopped', '', '2.0\n'])
+    expect(await stopped("    LED(17).blink(on_time=float('inf'), background=False)")).toEqual(['stopped', '', '2.0\n'])
+    expect(await stopped("    time.sleep(float('inf'))")).toEqual(['stopped', '', '2.0\n'])
   })
 })
