@@ -157,6 +157,11 @@ describe('Phase D fixes (topology)', () => {
     // Unplugged (no supply drawn at all): quiet too.
     expect(codes(sheet([{ uid: 'u1', module: boardModule() }, R('r9', 1000)], [['u1.IO1', 'r9.1']])).filter((x) => x.code === 'sim-floating-input')).toEqual([])
   })
+  it("does not count a board's own internal joins as wiring: an Uno with only D13 wired has no A4/A5 warning", () => {
+    const f = codes(sheet([{ uid: 'bt1', module: cellModule(9, 0.05) }, { uid: 'u1', module: 'arduino-uno-r3' }, R('r9', 1000)],
+      [['bt1.+', 'u1.VIN'], ['bt1.-', 'u1.GND'], ['u1.D13', 'r9.1']])).filter((x) => x.code === 'sim-floating-input')
+    expect(f.flatMap((x) => x.pins!.map((p) => p.pin))).toEqual(['D13'])
+  })
   it('does not flag an input whose net reaches a connector pin that leads off the sheet; a Wago splice does not count', () => {
     const f = (connector: string) =>
       codes(sheet([{ uid: 'bt1', module: cellModule(5, 0.05) }, { uid: 'u1', module: boardModule() }, { uid: 'j1', module: connector }],

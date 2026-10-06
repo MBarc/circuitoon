@@ -168,8 +168,9 @@ export function topologyFindings(c: Circuit, cls: Classification): { drafts: Dra
     if (dom && !powered(c, cls, dom.pin, dom.ret)) continue
     const keys = Object.keys(c.pinNet).filter((k) => k !== gp.key && c.pinNet[k] === c.pinNet[gp.key])
     if (keys.some((k) => offSheet.has(k))) continue
-    const others = keys.map((k) => (JSON.parse(k) as [string, string])[0])
-    if (others.length && !others.some((uid) => uid !== gp.part && unknown.has(uid)))
+    // Only other parts count: a board's own internal joins (the Uno's SDA on A4) are not a wire.
+    const others = keys.map((k) => (JSON.parse(k) as [string, string])[0]).filter((uid) => uid !== gp.part)
+    if (others.length && !others.some((uid) => unknown.has(uid)))
       drafts.push({
         code: 'sim-floating-input', severity: 'warning', parts: [gp.part], pins: [{ part: gp.part, pin: gp.pin }], inputs: [], key: `sim-floating-input|${gp.part}|${gp.pin}`,
         message: `${refOf(c, gp.part)} ${gp.pin} is an input with nothing driving it: it floats, so it reads at random. Wire it to a signal, add a pull-up or pull-down resistor, or set its simulated state to input-pullup or input-pulldown.`,
