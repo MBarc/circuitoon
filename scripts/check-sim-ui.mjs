@@ -2,7 +2,7 @@
 // sections 6, 8 and 9), in the built app, light and dark:
 //   1. LEDs: glow at three currents (100 ohm, 1 k, 10 k from 3 V), an LED with no resistor over its
 //      absolute maximum (dark red, warning ring, badge); probes of every kind: a pin, a part, a
-//      breadboard hole, a capacitor-only plate ("floating") and an outlet's live hole ("undefined").
+//      breadboard hole, a capacitor-only plate ("floating") and an outlet's live hole ("not simulated (mains)").
 //   2. Brownout: a DevKit on 3 V: the brownout badge, and both finding groups in the side panel.
 //   3. Supplies: the Probes panel with the Supplies table.
 //   4. Failure: a solve that cannot finish (every run is swapped for the engine's debug hang text and
@@ -50,7 +50,7 @@ const ledFile = file('leds', 'LEDs and probes', ledParts, ledWires, [
   { id: 'P5', name: 'mains L', at: { part: 'o1', pin: 'L1' } },
 ])
 // 2. A DevKit V1 fed 3 V on VIN: it browns out; the OLED shares its 3V3.
-const brownFile = file('brownout', 'DevKit on 3 V', [at('bt1', 'BT1', 'battery-holder-2xaa', 40, 120), at('u1', 'U1', 'esp32-devkit-v1-30', 300, 40), at('ds1', 'DS1', 'oled-ssd1306-096-i2c', 640, 60)],
+const brownFile = file('brownout', 'DevKit on 3 V', [at('bt1', 'BT1', 'battery-holder-2xaa', 40, 120), at('u1', 'U1', 'esp32-devkit-v1-30', 300, 40), at('ds1', 'DS1', 'oled-ssd1306-096-i2c', 580, 60)],
   [w('w1', 'bt1', '+', 'u1', 'VIN'), w('w2', 'bt1', '-', 'u1', 'GND'), w('w3', 'u1', '3V3', 'ds1', 'VCC'), w('w4', 'u1', 'GND 2', 'ds1', 'GND')])
 // 5. 200 parts: a battery and 99 resistor-LED pairs, for the drag budget.
 const bigParts = [at('bt1', 'BT1', 'battery-holder-2xaa', 0, 0)]
@@ -137,14 +137,14 @@ for (const scheme of ['light', 'dark']) {
     check(cold.sawProgress, 'load progress was shown')
   }
   const levels = await page.$$eval('[data-sim-led]', (els) => Object.fromEntries(els.map((e) => [e.getAttribute('data-sim-led'), Number(e.getAttribute('data-sim-level'))])))
-  check(levels.d0 > levels.d1 && levels.d1 > levels.d2 && levels.d2 >= 0, `glow follows current: ${JSON.stringify(levels)}`)
+  check(levels.d0 > levels.d1 && levels.d1 > levels.d2 && levels.d2 > 0, `glow follows current: ${JSON.stringify(levels)}`)
   check((await page.locator('[data-sim-led="d9"] .sim-ring').count()) === 1, 'the LED with no resistor has the warning ring')
   check((await page.locator('[data-sim-badge]').count()) > 0, 'simulation badges are drawn')
   const tags = await page.$$eval('[data-probe] .probe-text', (els) => els.map((e) => e.textContent))
   console.log('tags', JSON.stringify(tags))
   check(tags.length === 5, `five probe tags (${tags.length})`)
+  check(tags.every((t) => !/undefined/.test(t)) && tags.some((t) => /not simulated \(mains\)/.test(t)), 'the mains probe says why in words, never "undefined"')
   check(tags.some((t) => /floating/.test(t)), 'a floating tag reads "floating"')
-  check(tags.some((t) => /undefined/.test(t)), 'a mains tag reads "undefined"')
   check(tags.some((t) => /mA/.test(t)), 'a part probe reads current')
   check(tags.filter((t) => /\d V\b|\dV\b/.test(t)).length >= 2, 'the pin and hole probes read volts')
   await shot('leds')
@@ -177,6 +177,8 @@ for (const scheme of ['light', 'dark']) {
   await page.locator('#part-value').press('Enter')
   await page.waitForSelector('.sim-status.failed', { timeout: 20000 })
   check((await page.locator('[data-sim-stale]').count()) === 1, 'the last good readings stay, dimmed and marked stale')
+  const staleTag = await page.$eval('[data-probe-stale] [data-probe] .probe-box', (box) => ({ layer: getComputedStyle(box.closest('.probe-layer')).opacity, box: getComputedStyle(box).opacity, text: getComputedStyle(box.parentElement.querySelector('.probe-text')).fill }))
+  check(staleTag.layer === '1' && staleTag.box === '1' && staleTag.text !== 'rgb(35, 40, 47)', `stale probe tags dim their words only, the tag stays opaque: ${JSON.stringify(staleTag)}`)
   check(!(await page.locator('.sim-status.failed details').getAttribute('open').catch(() => null)), 'the failure details start closed')
   await page.keyboard.press('Escape')
   await shot('failure')
@@ -206,14 +208,18 @@ for (const scheme of ['light', 'dark']) {
     // Only the drag's own frames: idle frames after the drop would pull the median toward 16.7 ms.
     const frames = (await page.evaluate(() => (window.__stop = true) && window.__frames)).slice(5).sort((a, b) => a - b)
     const median = frames[Math.floor(frames.length / 2)]
+    const p95 = frames[Math.min(frames.length - 1, Math.floor(frames.length * 0.95))]
+    const max = frames[frames.length - 1]
     const moved = await body('r0')
     check(Math.abs(moved.x - grab.x - 300) < 30 && Math.abs(moved.y - grab.y - 120) < 30, 'the drag moved R1 with the pointer')
     budgets.drag = median
-    check(median <= 17.5, `200-part drag median frame ${median.toFixed(1)} ms over ${frames.length} frames (budget 17.5 ms; 60 fps is 16.7 ms)`)
+    budgets.dragP95 = p95
+    budgets.dragMax = max
+    check(median <= 17.5, `200-part drag median frame ${median.toFixed(1)} ms over ${frames.length} frames (budget 17.5 ms; 60 fps is 16.7 ms); p95 ${p95.toFixed(1)} ms, max ${max.toFixed(1)} ms`)
   }
   check(errors.length === 0, `no page errors (${errors.join('; ')})`)
   await context.close()
 }
 await browser.close()
-console.log(`budgets: cold start ${budgets.cold?.toFixed(0)} ms (<= 1500), 200-part drag median frame ${budgets.drag?.toFixed(1)} ms (<= 17.5); both depend on machine load`)
+console.log(`budgets: cold start ${budgets.cold?.toFixed(0)} ms (<= 1500), 200-part drag median frame ${budgets.drag?.toFixed(1)} ms (<= 17.5), p95 ${budgets.dragP95?.toFixed(1)} ms, max ${budgets.dragMax?.toFixed(1)} ms; both depend on machine load`)
 done()

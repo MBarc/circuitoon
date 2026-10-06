@@ -472,7 +472,8 @@ button.wordmark { background: none; border: 0; padding: 0; cursor: pointer; }
 .probe-box { fill: #FFFFFF; stroke-width: 1.4; }
 .probe-tag.outside .probe-box { stroke-dasharray: 3 2; }
 .probe-text { font: 700 9px "Atkinson Hyperlegible", system-ui, sans-serif; fill: #23282F; }
-.probe-layer.stale { opacity: 0.45; }
+/* Stale: the words dim (still 4.5:1 on the white tag); the tag stays opaque so the sheet never shows through. */
+.probe-layer.stale .probe-text { fill: #646A72; }
 .sim-badge { cursor: pointer; }
 .sim-fold { font-weight: 400; color: var(--muted); }
 /* The long group headings while simulating: the count wraps to its own line rather than squeezing. */
