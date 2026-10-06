@@ -26,9 +26,9 @@
     <meta name="twitter:description" content="Circuit diagrams AI agents can design, check and hand you." />
     <meta name="twitter:image" content="https://mbarc.github.io/circuitoon/og-card.png" />
     <meta name="twitter:image:alt" content="The Circuitoon logo, a cartoon chip, beside a wiring sheet of a 9 volt battery, push button, resistor and LED." />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Fredoka:wght@500;600&display=swap" />
+    <!-- Self-hosted fonts (firmware spec 2.5): nothing cross-origin, so COEP require-corp loads the page. -->
+    <link rel="preload" href="/circuitoon/fonts/atkinson-hyperlegible-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/circuitoon/fonts/fredoka-latin-600-normal.woff2" as="font" type="font/woff2" crossorigin />
     <title>Circuitoon: circuit diagrams for AI agents</title>
   </head>
   <body>
