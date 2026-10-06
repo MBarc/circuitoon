@@ -3558,15 +3558,19 @@ function flagWidth(name, ground = false) {
 * ground mark widens a ground label's flag; `ground` says whether it is drawn.
 */
 function flagRect(part, m, ground = false) {
+	return flagBox(part, m, flagWidth(labelName(part), ground), FLAG_H);
+}
+/** A box `w` long from the label's point and `h` across, centred on its pin, in world px: a flag of any size (a probe's tag). */
+function flagBox(part, m, w, h) {
 	const lay = layoutModule(m);
 	const mid = lay.pins[0]?.edge.y ?? lay.h / 2;
 	const a = toWorld(part, lay, {
 		x: 0,
-		y: mid - FLAG_H / 2
+		y: mid - h / 2
 	});
 	const b = toWorld(part, lay, {
-		x: flagWidth(labelName(part), ground),
-		y: mid + FLAG_H / 2
+		x: w,
+		y: mid + h / 2
 	});
 	return {
 		x: Math.min(a.x, b.x),
@@ -5640,8 +5644,8 @@ function isValidColor(c) {
 /** Largest |x| or |y|, in px, a part position or a stored route point may have. */
 var COORD_LIMIT = 1e5;
 /** What is wrong with one stored probe, or null. `pinsOf` gives a part's pin and hole names, null when its module is not embedded, undefined when there is no such part. */
-function probeProblem(p, ids, pinsOf) {
-	if (!isObj(p)) return "must be { \"id\", \"name\"?, \"at\": { \"part\", \"pin\"? } }";
+function probeProblem(p, ids, pinsOf, holesOf) {
+	if (!isObj(p)) return "must be { \"id\", \"name\"?, \"at\": { \"part\", \"pin\"?, \"hole\"? } }";
 	for (const k of Object.keys(p)) if (![
 		"id",
 		"name",
@@ -5651,12 +5655,21 @@ function probeProblem(p, ids, pinsOf) {
 	if (ids.has(p.id)) return `its id ${p.id} is used twice`;
 	if (p.name !== void 0 && !(typeof p.name === "string" && p.name.trim() && p.name.length <= 40)) return "its name must be text, at most 40 characters";
 	if (isObj(p.at)) {
-		for (const k of Object.keys(p.at)) if (!["part", "pin"].includes(k)) return `unknown field "at.${k}"`;
+		for (const k of Object.keys(p.at)) if (![
+			"part",
+			"pin",
+			"hole"
+		].includes(k)) return `unknown field "at.${k}"`;
 	}
-	if (!isObj(p.at) || typeof p.at.part !== "string" || p.at.pin !== void 0 && typeof p.at.pin !== "string") return "its anchor must be { \"part\", \"pin\"? }";
+	if (!isObj(p.at) || typeof p.at.part !== "string" || p.at.pin !== void 0 && typeof p.at.pin !== "string") return "its anchor must be { \"part\", \"pin\"?, \"hole\"? }";
 	const pins = pinsOf(p.at.part);
 	if (pins === void 0) return `no part "${p.at.part}"`;
 	if (typeof p.at.pin === "string" && pins && !pins.has(p.at.pin)) return `part "${p.at.part}" has no pin "${p.at.pin}"`;
+	if (p.at.hole !== void 0) {
+		const count = typeof p.at.pin === "string" ? holesOf(p.at.part, p.at.pin) : void 0;
+		if (count === void 0) return "its hole needs a hole group as its pin";
+		if (!(Number.isInteger(p.at.hole) && p.at.hole >= 0 && p.at.hole < count)) return `its hole must be a whole number from 0 to ${count - 1}`;
+	}
 	return null;
 }
 /**
@@ -5917,7 +5930,8 @@ function validateDiagram(raw, opts = {}) {
 				return m ? /* @__PURE__ */ new Set([...m.pins.flatMap((x) => "name" in x && typeof x.name === "string" ? [x.name] : []), ...(m.holes ?? []).map((h) => h.name)]) : null;
 			};
 			raw.probes.forEach((p, i) => {
-				const why = probeProblem(p, ids, pinsOf);
+				const holesOf = (uid, group) => modules.get(partModule.get(uid))?.holes?.find((h) => h.name === group)?.at.length;
+				const why = probeProblem(p, ids, pinsOf, holesOf);
 				if (why) return void warnings.push(`probes[${i}]: ${why}, so the probe was dropped`);
 				kept.push(p);
 				ids.add(p.id);
@@ -88229,6 +88243,7 @@ var LabelPlacer = class {
 	* A spot for a label named `name` whose pin tip sits `s` px out from `from` along `dir` (for each
 	* s in LABEL_STUBS, from `base`, the point the distance is measured from, `from` by default), or
 	* null. The stub from `from` to the tip may cross `own` (the endpoint's part: a pad inside it).
+	* `size` keeps a box of that size clear instead of the label's flag (a probe's tag).
 	*/
 	spot(name, from, dir, opts = {}) {
 		const rotation = [
@@ -88270,14 +88285,15 @@ var LabelPlacer = class {
 				rotation,
 				values: { net: name }
 			};
-			const flag = flagRect(part, this.m, true);
+			const flag = opts.size ? flagBox(part, this.m, opts.size.w, opts.size.h) : flagRect(part, this.m, true);
 			if (this.flagsOff.hits(flag)) continue;
 			if ([line(exit, elbow), line(elbow, tip)].some((r) => this.stubsOff.hits(r, opts.own))) continue;
 			return {
 				part,
 				tip,
 				elbow,
-				base: exit
+				base: exit,
+				...opts.size ? { flag } : {}
 			};
 		}
 		return null;
@@ -88360,7 +88376,7 @@ var LabelPlacer = class {
 			uid,
 			designator: uid
 		};
-		const flag = flagRect(part, this.m, true);
+		const flag = s.flag ?? flagRect(part, this.m, true);
 		this.flagsOff.push({ r: flag }, { r: line(s.base, s.elbow) }, { r: line(s.elbow, s.tip) });
 		this.stubsOff.push({ r: flag }, { r: line(s.base, s.elbow) }, { r: line(s.elbow, s.tip) });
 		return part;
