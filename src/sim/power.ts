@@ -75,7 +75,9 @@ export function powerPart(b: Builder, p: PartInstance, m: ModuleDef): void {
     if (!dn) continue
     const tOver = simOverride(p, `sim.draw.${dr.domain}.typical`)
     const pOver = simOverride(p, `sim.draw.${dr.domain}.peak`)
-    const typical = tOver !== null ? b.user(tOver, L(`draw.${dr.domain}.typical`)) : P(dr.typical, `draw.${dr.domain}.typical`)
+    // A servo whose horn is travelling draws its moving current (firmware spec 3.4); else the stated draw.
+    const moving = sim.servo && b.isMoving(p.uid) ? P(sim.servo.moving, 'servo.moving') : null
+    const typical = moving ?? (tOver !== null ? b.user(tOver, L(`draw.${dr.domain}.typical`)) : P(dr.typical, `draw.${dr.domain}.typical`))
     const peak = pOver !== null ? b.user(pOver, L(`draw.${dr.domain}.peak`)) : dr.peak ? P(dr.peak, `draw.${dr.domain}.peak`) : typical
     const minVolts = 'minVolts' in dr && dr.minVolts ? P(dr.minVolts, `draw.${dr.domain}.minVolts`)
       : { value: MIN_VOLTS_FRACTION * dn.nominal, basis: 'estimate' as const, label: L(`draw.${dr.domain}.minVolts`), note: '90 % of the domain nominal (spec 3.2)' }

@@ -114,3 +114,14 @@ export function runAllOf(run: Engine['run']): Engine['runAll'] {
     return out
   }
 }
+
+/** An SG90-like servo for tests: VCC 5 V draws 10 mA idle and 200 mA moving; PWM is a 20 kohm load; 500 to 2400 us, 0.1 s per 60 degrees. */
+export function servoModule(id = 'servo-sg90-test'): ModuleDef {
+  return mod(id, pins([{ name: 'GND', type: 'ground' }, { name: 'VCC', type: 'power_in' }, { name: 'PWM', type: 'input' }]), {
+    model: 'servo',
+    sim: {
+      power: { domains: [{ name: 'VCC', pin: 'VCC', ret: 'GND', nominal: 5 }], draw: [{ domain: 'VCC', typical: q(0.01, 'A', 'estimate') }] },
+      servo: { signal: 'PWM', pulseMin: q(0.0005, 's', 'estimate'), pulseMax: q(0.0024, 's', 'estimate'), slew: q(0.1, 's'), moving: q(0.2, 'A', 'estimate'), signalLoad: q(20000, 'ohm', 'estimate') },
+    },
+  })
+}

@@ -6,7 +6,7 @@ import { type ModuleDef, isCustom, isNum, isObj, show, terminalsKey } from './mo
 
 export type Provenance = 'datasheet' | 'representative' | 'estimate'
 export const PROVENANCES: readonly Provenance[] = ['datasheet', 'representative', 'estimate']
-export type SimUnit = 'ohm' | 'V' | 'A' | 'W' | 'F' | '1'
+export type SimUnit = 'ohm' | 'V' | 'A' | 'W' | 'F' | '1' | 's'
 /** One number with its unit and where it came from: provenance is per value, never per part. */
 export interface Quantity { value: number; unit: SimUnit; source?: string; provenance: Provenance; note?: string }
 export const LIMIT_KINDS = ['current', 'absMaxCurrent', 'power', 'vinMax', 'vinMin', 'sourceCurrent', 'ioTotalCurrent'] as const
@@ -58,12 +58,19 @@ export interface GpioSpec { domain: string; pins: string[]; outputResistance: Qu
   /** Always-present pull-ups to the GPIO domain on the board itself (the Pi's 1.8 kohm on GPIO2 and GPIO3), ruling R3. */
   fixedPullups?: { pin: string; ohms: Quantity }[]
 }
+/**
+ * A hobby servo (firmware spec 3.4, ruling R4): the signal pin, the pulse widths that map to 0 and
+ * 180 degrees, the slew time per 60 degrees, the current while the horn travels (its idle current
+ * is the ordinary sim.power draw) and the signal pin's input load.
+ */
+export interface ServoSpec { signal: string; pulseMin: Quantity; pulseMax: Quantity; slew: Quantity; moving: Quantity; signalLoad: Quantity }
 export interface SimSpec {
   /** Physics: diode is, n, rs; rInternal; contactResistance; dcr. */
   modelParams?: Record<string, Quantity>
   limits?: Limit[]
   power?: PowerSpec
   gpio?: GpioSpec
+  servo?: ServoSpec
   /** A USB pin's ground pin (spec 4.7). */
   usbPorts?: Record<string, { gnd: string }>
   /** What the data leaves out, in words (sourcing protocol item 3: a board extra with no sourced number). */
@@ -156,7 +163,7 @@ export function validateSim(raw: Record<string, unknown>, names: Set<string>, er
   }
   /** A quantity's value when it is a finite number. */
   const val = (v: unknown) => (isObj(v) && isNum(v.value) ? v.value : undefined)
-  keys(s, ['modelParams', 'limits', 'power', 'gpio', 'usbPorts', 'unaccounted'], at)
+  keys(s, ['modelParams', 'limits', 'power', 'gpio', 'servo', 'usbPorts', 'unaccounted'], at)
   if (s.unaccounted !== undefined && !(Array.isArray(s.unaccounted) && s.unaccounted.every((x) => typeof x === 'string' && x.trim())))
     errors.push(`${at}.unaccounted: must be a list of non-empty strings`)
 
@@ -284,6 +291,20 @@ export function validateSim(raw: Record<string, unknown>, names: Set<string>, er
           quantity(fp.ohms, `${at2}.ohms`, 'ohm', { positive: true })
         })
       }
+    }
+  }
+
+  if (s.servo !== undefined) {
+    const w = `${at}.servo`
+    const v = s.servo
+    if (!isObj(v)) errors.push(`${w}: must be an object`)
+    else {
+      keys(v, ['signal', 'pulseMin', 'pulseMax', 'slew', 'moving', 'signalLoad'], w)
+      if (typeof v.signal !== 'string' || !names.has(v.signal)) errors.push(`${w}.signal: no pin "${show(v.signal)}"`)
+      for (const [k, unit] of [['pulseMin', 's'], ['pulseMax', 's'], ['slew', 's'], ['moving', 'A'], ['signalLoad', 'ohm']] as const) quantity(v[k], `${w}.${k}`, unit, { positive: true })
+      const lo = val(v.pulseMin)
+      const hi = val(v.pulseMax)
+      if (lo !== undefined && hi !== undefined && lo >= hi) errors.push(`${w}.pulseMin: must be below pulseMax`)
     }
   }
 

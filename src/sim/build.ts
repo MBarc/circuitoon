@@ -23,6 +23,8 @@ import { powerPart, usbLinks } from './power.ts'
 
 export interface BuildOptions {
   held?: { part: string; group: string } | null
+  /** Servos whose horn is travelling (firmware spec 2.3): they draw their moving current. Transient, never saved. */
+  moving?: string[]
   /** The built-in parts, whose `electrical.sim` the simulator reads (default: the library). */
   library?: ModuleLookup
   /**
@@ -254,6 +256,9 @@ export class Builder {
     return this.d.connections.some((c) => [c.from, c.to].some((e) => e.part === p.uid && ac.has(e.pin)))
   }
 
+  isMoving(uid: string): boolean {
+    return this.opts.moving?.includes(uid) ?? false
+  }
   private isHeld(uid: string, group: string): boolean {
     return this.opts.held?.part === uid && this.opts.held.group === group
   }
@@ -384,6 +389,18 @@ export class Builder {
         // The coil (or any electronics) is a load only when the module has sim.power (spec 4 table); powerPart adds the limits then.
         if (simOf(m)?.power) return powerPart(this, p, m)
         return this.partLimits(p, m)
+      }
+      case 'servo': {
+        // Firmware spec 3.4: a load on its supply (idle, or moving while the horn travels) and an input load on its signal pin.
+        const sim = simOf(m)
+        if (!sim?.power) return this.skip(p.uid, NO_POWER_DATA)
+        powerPart(this, p, m)
+        const s = sim.servo
+        const ret = sim.power.domains[0]?.ret
+        const a = s && this.simulated(p.uid) ? this.tap(p.uid, s.signal) : null
+        const g = a && ret ? this.tap(p.uid, ret) : null
+        if (s && a && g) this.add({ kind: 'resistor', id: `${p.uid}.signal`, part: p.uid, a, b: g, ohms: this.param(s.signalLoad, label('servo.signalLoad')), role: 'internal' })
+        return
       }
     }
     if (simOf(m)?.power) return powerPart(this, p, m)

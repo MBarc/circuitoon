@@ -810,6 +810,7 @@ function validateSim(raw, names, errors) {
 		"limits",
 		"power",
 		"gpio",
+		"servo",
 		"usbPorts",
 		"unaccounted"
 	], at);
@@ -970,6 +971,32 @@ function validateSim(raw, names, errors) {
 					quantity(fp.ohms, `${at2}.ohms`, "ohm", { positive: true });
 				});
 			}
+		}
+	}
+	if (s.servo !== void 0) {
+		const w = `${at}.servo`;
+		const v = s.servo;
+		if (!isObj(v)) errors.push(`${w}: must be an object`);
+		else {
+			keys(v, [
+				"signal",
+				"pulseMin",
+				"pulseMax",
+				"slew",
+				"moving",
+				"signalLoad"
+			], w);
+			if (typeof v.signal !== "string" || !names.has(v.signal)) errors.push(`${w}.signal: no pin "${show(v.signal)}"`);
+			for (const [k, unit] of [
+				["pulseMin", "s"],
+				["pulseMax", "s"],
+				["slew", "s"],
+				["moving", "A"],
+				["signalLoad", "ohm"]
+			]) quantity(v[k], `${w}.${k}`, unit, { positive: true });
+			const lo = val(v.pulseMin);
+			const hi = val(v.pulseMax);
+			if (lo !== void 0 && hi !== void 0 && lo >= hi) errors.push(`${w}.pulseMin: must be below pulseMax`);
 		}
 	}
 	if (s.usbPorts !== void 0) {
@@ -92424,7 +92451,7 @@ function powerPart(b, p, m) {
 		if (!dn) continue;
 		const tOver = simOverride(p, `sim.draw.${dr.domain}.typical`);
 		const pOver = simOverride(p, `sim.draw.${dr.domain}.peak`);
-		const typical = tOver !== null ? b.user(tOver, L(`draw.${dr.domain}.typical`)) : P(dr.typical, `draw.${dr.domain}.typical`);
+		const typical = (sim.servo && b.isMoving(p.uid) ? P(sim.servo.moving, "servo.moving") : null) ?? (tOver !== null ? b.user(tOver, L(`draw.${dr.domain}.typical`)) : P(dr.typical, `draw.${dr.domain}.typical`));
 		const peak = pOver !== null ? b.user(pOver, L(`draw.${dr.domain}.peak`)) : dr.peak ? P(dr.peak, `draw.${dr.domain}.peak`) : typical;
 		const minVolts = "minVolts" in dr && dr.minVolts ? P(dr.minVolts, `draw.${dr.domain}.minVolts`) : {
 			value: MIN_VOLTS_FRACTION * dn.nominal,
@@ -92961,6 +92988,9 @@ var Builder = class {
 		]);
 		return this.d.connections.some((c) => [c.from, c.to].some((e) => e.part === p.uid && ac.has(e.pin)));
 	}
+	isMoving(uid) {
+		return this.opts.moving?.includes(uid) ?? false;
+	}
 	isHeld(uid, group) {
 		return this.opts.held?.part === uid && this.opts.held.group === group;
 	}
@@ -93189,6 +93219,25 @@ var Builder = class {
 				}
 				if (simOf(m)?.power) return powerPart(this, p, m);
 				return this.partLimits(p, m);
+			case "servo": {
+				const sim = simOf(m);
+				if (!sim?.power) return this.skip(p.uid, NO_POWER_DATA);
+				powerPart(this, p, m);
+				const s = sim.servo;
+				const ret = sim.power.domains[0]?.ret;
+				const a = s && this.simulated(p.uid) ? this.tap(p.uid, s.signal) : null;
+				const g = a && ret ? this.tap(p.uid, ret) : null;
+				if (s && a && g) this.add({
+					kind: "resistor",
+					id: `${p.uid}.signal`,
+					part: p.uid,
+					a,
+					b: g,
+					ohms: this.param(s.signalLoad, label("servo.signalLoad")),
+					role: "internal"
+				});
+				return;
+			}
 		}
 		if (simOf(m)?.power) return powerPart(this, p, m);
 		if (mainsOf(m).any) return this.skip(p.uid, "mains wiring is not simulated");
