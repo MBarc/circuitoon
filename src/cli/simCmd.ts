@@ -92,7 +92,9 @@ export function summary(o: SimOutcome, refOf: Map<string, string> = new Map()): 
   // The topological findings decided before the engine ran still stand.
   if (o.status !== 'ok') return `${[o.status === 'failed' ? `Simulation failed: ${o.finding.message}` : `Simulation unavailable: ${o.reason}`, ...findingLines(o.findings)].join('\n')}\n`
   const r = o.result
-  const count = (s: string) => r.findings.filter((f) => f.severity === s).length
+  // Folded groups count once, so the header matches the lines printed below.
+  const folded = foldNotPowered(r.findings)
+  const count = (s: string) => folded.filter((g) => g.members[0].severity === s).length
   // No engine run: nothing on the sheet is driven, so there was nothing to solve.
   const solved = r.engine.runs ? `typical and peak solved in ${Math.round(r.engine.ms)} ms (${r.engine.runs} engine runs)` : 'nothing powered; not solved'
   const lines = [`Simulation: ${solved}. ${plural(count('error'), 'blocking finding')}, ${plural(count('warning'), 'warning')}, ${plural(count('note'), 'note')}.`]

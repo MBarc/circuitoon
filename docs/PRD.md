@@ -12,7 +12,7 @@ Circuitoon is a diagramming tool specialized for electronics wiring diagrams: dr
 
 **What Circuitoon adds.**
 
-- A live, editable canvas with Lucid-style interaction for both parts and wires.
+- A live, editable canvas with direct-manipulation interaction for both parts and wires.
 - Modules defined by a small JSON file: a name and pins, each pinned to the top, bottom, left or right edge in order.
 - An art studio to draw your own cartoon module out of colored rectangles, because good pictures of most modules do not exist.
 - A diagram file (JSON) that is the source of truth: parts plus connections. Export to JSON or PDF.

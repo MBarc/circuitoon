@@ -174,6 +174,12 @@ describe('circuitoon sim', () => {
     expect(out).not.toContain('U1 3V3')
     expect(out).toContain('  P1: 3.300 V (to GND)')
   })
+  it('summary: the header counts a folded not-powered group once, matching the lines shown', () => {
+    const off = (part: string): SimFinding => ({ code: 'sim-brownout', severity: 'warning', parts: [part, 'SW1'], inputs: [], basis: 'topology', message: `${part} VCC is not powered in the current state: SW1 is open. Set SW1 to its operating position to simulate ${part} running.` })
+    const out = summary({ status: 'ok', result: { findings: [off('U1'), off('U2'), off('U3')], probes: [], budget: [], unaccounted: [], engine: { ms: 5, runs: 2 } } } as unknown as SimOutcome)
+    expect(out.split('\n')[0]).toContain('1 warning,')
+    expect(out.split('\n').filter((l) => l.startsWith('  warning:'))).toHaveLength(1)
+  })
   it('summary: nothing solved says so; a domain row prints its own draw, not the pin current', () => {
     const none = { status: 'ok', result: { findings: [], probes: [], budget: [], unaccounted: [], engine: { ms: 0, runs: 0 } } } as unknown as SimOutcome
     expect(summary(none).split('\n')[0]).toBe('Simulation: nothing powered; not solved. 0 blocking findings, 0 warnings, 0 notes.')

@@ -33,7 +33,7 @@
             "provenance": "estimate",
             "source": "https://www.lcdwiki.com/res/MSP4021/ST7796S-Sitronix.pdf https://www.lcdwiki.com/res/MSP4021/4.0inch_SPI_Schematic.pdf",
             "note": "Backlight on at the top of its range plus the controller maximum: ST7796S IDD 16 mA max (section 7.3, p. 50, VDDI = VDDA = 3.3 V; chip, not board) + 71 mA backlight (Vf 2.8 V in the arithmetic of typical) = 87 mA. Pixel content changes the controller draw only slightly; the backlight dominates. The module page's 'Power Consumption 0.78W(have touch)/0.93W(no touch)' (no voltage given) would mean 156 to 282 mA, which would need a white-LED Vf of about 1.6 to 2.3 V across the 5.6 ohm resistor and 0.1 V Vce(sat) on the 3.3 V net (implausible for white LEDs); so it is not used.",
-            "label": "backlight full, controller max"
+            "label": "backlight and controller max"
           }
         },
         {

@@ -37732,7 +37732,7 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 							"provenance": "estimate",
 							"source": "https://www.lcdwiki.com/res/MSP4021/ST7796S-Sitronix.pdf https://www.lcdwiki.com/res/MSP4021/4.0inch_SPI_Schematic.pdf",
 							"note": "Backlight on at the top of its range plus the controller maximum: ST7796S IDD 16 mA max (section 7.3, p. 50, VDDI = VDDA = 3.3 V; chip, not board) + 71 mA backlight (Vf 2.8 V in the arithmetic of typical) = 87 mA. Pixel content changes the controller draw only slightly; the backlight dominates. The module page's 'Power Consumption 0.78W(have touch)/0.93W(no touch)' (no voltage given) would mean 156 to 282 mA, which would need a white-LED Vf of about 1.6 to 2.3 V across the 5.6 ohm resistor and 0.1 V Vce(sat) on the 3.3 V net (implausible for white LEDs); so it is not used.",
-							"label": "backlight full, controller max"
+							"label": "backlight and controller max"
 						}
 					}, {
 						"domain": "LED",
@@ -94238,7 +94238,8 @@ function findingLines(findings, line = (f, m) => `  ${f.severity}: ${m}`) {
 function summary(o, refOf = /* @__PURE__ */ new Map()) {
 	if (o.status !== "ok") return `${[o.status === "failed" ? `Simulation failed: ${o.finding.message}` : `Simulation unavailable: ${o.reason}`, ...findingLines(o.findings)].join("\n")}\n`;
 	const r = o.result;
-	const count = (s) => r.findings.filter((f) => f.severity === s).length;
+	const folded = foldNotPowered(r.findings);
+	const count = (s) => folded.filter((g) => g.members[0].severity === s).length;
 	const lines = [`Simulation: ${r.engine.runs ? `typical and peak solved in ${Math.round(r.engine.ms)} ms (${r.engine.runs} engine runs)` : "nothing powered; not solved"}. ${plural$1(count("error"), "blocking finding")}, ${plural$1(count("warning"), "warning")}, ${plural$1(count("note"), "note")}.`];
 	lines.push(...findingLines(r.findings));
 	for (const b of r.budget) {
