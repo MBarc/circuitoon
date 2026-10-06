@@ -1,0 +1,10 @@
+Python in Circuitoon runs on Pyodide, unmodified official release files:
+
+  Pyodide 314.0.7 (Python 3.14.2)
+  Source: https://github.com/pyodide/pyodide/releases/tag/314.0.7
+  Files: pyodide.mjs, pyodide.asm.mjs, pyodide.asm.wasm, python_stdlib.zip, pyodide-lock.json
+
+Pyodide is under the Mozilla Public License 2.0 (LICENSE-MPL-2.0.txt).
+CPython and its standard library are under the Python Software Foundation License (LICENSE-PSF.txt),
+which also lists the licences of the libraries CPython bundles.
+Pyodide's build of CPython links further libraries; their notices are in the source release above.
