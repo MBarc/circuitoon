@@ -472,3 +472,11 @@ button.wordmark { background: none; border: 0; padding: 0; cursor: pointer; }
 /* The long group headings while simulating: the count wraps to its own line rather than squeezing. */
 .problems h3 { flex-wrap: wrap; }
 .problems-count { white-space: nowrap; }
+
+/* A part's saved simulation state (Task 35): switch positions and GPIO states. */
+.sim-part { display: grid; gap: 8px; border-top: 1.5px solid var(--rule); padding-top: 10px; }
+.sim-part h3 { margin: 0; font: 600 16px/1.2 "Fredoka", system-ui, sans-serif; }
+.sim-gpio summary { cursor: pointer; font-weight: 700; font-size: 14px; border-radius: 6px; }
+.sim-gpio summary:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+.sim-gpio-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 8px; margin-top: 8px; }
+.sim-gpio-grid select { font-size: 13px; min-width: 0; }

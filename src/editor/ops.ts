@@ -2,7 +2,7 @@
 // so the store can keep old versions for undo.
 import { portOf, usbEndsFor } from '../format/usb.ts'
 import { ANNOTATION_LABEL_MAX, ANNOTATION_TEXT_MAX, COORD_LIMIT, type Connection, type Diagram, type Endpoint, type PartInstance, colorFamily, moduleOf } from '../format/diagram.ts'
-import { isBoard, isNetLabel, layoutModule, moduleSettings, partSetting, type ModuleDef } from '../format/module.ts'
+import { isBoard, isNetLabel, layoutModule, moduleSettings, partSetting, pinCaps, type ModuleDef } from '../format/module.ts'
 import { FLAG_MAX_CHARS, LABEL_VALUE, labelName } from '../format/netLabels.ts'
 import { type Plug, type Seat, mountIssues, plugsOf, seatOf, seatOn } from '../format/breadboard.ts'
 import { bodyRect, pivot, rotateVec, type Rect, type Rotation } from '../format/geometry.ts'
@@ -10,6 +10,9 @@ import { annotationRect } from '../render/annotationGeometry.ts'
 import { editableParams, paramValue } from '../format/values.ts'
 import { normalizeEnds, type WireEnds } from '../format/cables.ts'
 import { mainsOf } from '../format/mainsModel.ts'
+import { GPIO_CYCLE, GPIO_STATES, type GpioState, contactPosition, gpioProblem, gpioState, isActive, switchGroups } from '../format/simState.ts'
+import { simOf, withLibrarySim } from '../format/simModel.ts'
+import { libraryLookup } from '../agent/catalog.ts'
 
 export interface Selection {
   parts: string[]
@@ -542,4 +545,54 @@ export function updatePartSetting(d: Diagram, uid: string, name: string, choice:
   const offered = moduleSettings(m)
   if (!Object.hasOwn(offered, name) || !offered[name].includes(choice) || partSetting(part, m, name) === choice) return d
   return { ...d, parts: d.parts.map((p) => (p.uid === uid ? { ...p, settings: { ...p.settings, [name]: choice } } : p)) }
+}
+
+/** A sheet module as the simulation reads it: a built-in part takes the library's sim (withLibrarySim), so an old sheet's copy still has its GPIOs. */
+export function simModule(d: Diagram, id: string): ModuleDef | undefined {
+  const m = moduleOf(d, id)
+  return m && withLibrarySim(m, libraryLookup)
+}
+
+/** The GPIO states a pin can take: its caps and the module's sim.gpio (a pull it does not state) forbid the rest. */
+export function gpioChoices(m: ModuleDef, pin: string): GpioState[] {
+  return GPIO_STATES.filter((s) => gpioProblem(pinCaps(m, pin), s, simOf(m)?.gpio) === null)
+}
+
+/** Sets one `values` key of a part (a switch position, a GPIO state), or removes it with undefined. Same diagram when nothing changes. */
+export function setSimValue(d: Diagram, uid: string, key: string, value: string | undefined): Diagram {
+  if (value === undefined) return clearPartValue(d, uid, key)
+  const part = d.parts.find((p) => p.uid === uid)
+  if (!part || part.values?.[key] === value) return d
+  return { ...d, parts: d.parts.map((p) => (p.uid === uid ? { ...p, values: { ...p.values, [key]: value } } : p)) }
+}
+
+/** Spec 6.3: a click on a latching switch while simulating flips its first switch group and saves it; null for a button, a relay or a part with no switch. */
+export function flipContact(d: Diagram, uid: string): Diagram | null {
+  const part = d.parts.find((p) => p.uid === uid)
+  const m = part && moduleOf(d, part.module)
+  const g = m ? switchGroups(m).find((x) => x.kind === 'switch' && !x.momentary) : undefined
+  if (!part || !m || !g) return null
+  const active = isActive(contactPosition(part, m, g))
+  return setSimValue(d, uid, `contact.${g.id}`, g.changeover ? (active ? 'nc' : 'no') : active ? 'open' : 'closed')
+}
+
+/** The momentary group a press holds closed (spec 4.0: never saved), or null. */
+export function momentaryGroup(d: Diagram, uid: string): string | null {
+  const part = d.parts.find((p) => p.uid === uid)
+  const m = part && moduleOf(d, part.module)
+  return (m && switchGroups(m).find((x) => x.momentary)?.id) ?? null
+}
+
+/**
+ * Spec 6.3: a click on a GPIO pin cycles input, high, low, skipping states the pin cannot take (an
+ * output-only pin with none set starts at high). Null for a pin that is not GPIO-capable or has nothing to cycle to.
+ */
+export function cycleGpio(d: Diagram, uid: string, pin: string): Diagram | null {
+  const part = d.parts.find((p) => p.uid === uid)
+  const m = part && simModule(d, part.module)
+  if (!part || !m || !simOf(m)?.gpio?.pins.includes(pin)) return null
+  const now = gpioState(part, m, pin)
+  const allowed = gpioChoices(m, pin).filter((s) => GPIO_CYCLE.includes(s))
+  const next = allowed[(allowed.indexOf(now ?? allowed[allowed.length - 1]) + 1) % allowed.length]
+  return next && next !== now ? setSimValue(d, uid, `gpio.${pin}`, next) : null
 }

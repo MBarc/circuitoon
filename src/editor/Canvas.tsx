@@ -16,7 +16,7 @@ import { type LabelLook, type WireLook, drawnColor, holdLabelLooks, holdLooks, n
 import { flagRect, labelName, labelsOf } from '../format/netLabels.ts'
 import { cellGate } from './hoverCell.ts'
 import { seatedLabels } from '../format/seatedLabels.ts'
-import { addWire, EMPTY_SELECTION, marqueeSelection, moveAnnotations, moveParts, reconnectWire, sameEndpoint, setWireRoute, settleDrop, settleMounts, settleSeats, settlingOf, updateWire, withMounted } from './ops.ts'
+import { addWire, cycleGpio, EMPTY_SELECTION, flipContact, momentaryGroup, marqueeSelection, moveAnnotations, moveParts, reconnectWire, sameEndpoint, setWireRoute, settleDrop, settleMounts, settleSeats, settlingOf, updateWire, withMounted } from './ops.ts'
 import { netlist, netPoints } from '../format/netlist.ts'
 import { bendHandleAt, insertBend, isOrthogonal, moveSegment, removeBend, segmentHandleAt, segmentsOf, toRoute, type Axis } from '../format/wireEdit.ts'
 import { lookupModule, placeOnSheet, placementModule } from './myParts.ts'
@@ -146,6 +146,8 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
   }, [store, panActive])
   // The last pointer position over the sheet (client px), for pasting under the pointer.
   const lastClient = useRef<Pt | null>(null)
+  // A momentary button this press holds while simulating (spec 4.0): released on pointer up or cancel.
+  const heldRef = useRef(false)
   // The pin or hole under the pointer while nothing is being dragged, for net highlighting.
   const [hover, setHover] = useState<Endpoint | null>(null)
   // The net label under the pointer (its body or its pin), for lighting every label of its name.
@@ -433,10 +435,16 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
   }, [editing])
 
   /** Ends a part drag as one undo step: moved parts that are seated mount, the rest unmount. */
-  function finishPartsDrag(d: Extract<Drag, { kind: 'parts' }>) {
+  function finishPartsDrag(d: Extract<Drag, { kind: 'parts' }>, click: boolean) {
     // A press without movement changes nothing, mounts included (settleDrop returns `now` then).
+    const moved = store.getState().diagram !== d.base
     if (store.dragging) store.preview(settleDrop(d.base, store.getState().diagram, d.settling))
     store.end()
+    // Spec 6.3: a click on a switch while simulating flips it and saves the new position.
+    if (click && !moved && store.getState().simulate && d.uids.length === 1) {
+      const next = flipContact(store.getState().diagram, d.uids[0])
+      if (next) store.commit(next)
+    }
   }
 
   function onPointerDown(e: React.PointerEvent<SVGSVGElement>) {
@@ -547,6 +555,14 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
       if (e.shiftKey) parts = parts.includes(uid) ? parts.filter((u) => u !== uid) : [...parts, uid]
       else if (!parts.includes(uid)) parts = [uid]
       store.select({ parts, wires: e.shiftKey ? sel.wires : [] })
+      // Spec 4.0: a button is held closed while the pointer is down, never saved.
+      if (store.getState().simulate && !e.shiftKey) {
+        const group = momentaryGroup(store.getState().diagram, uid)
+        if (group) {
+          heldRef.current = true
+          store.setHeld({ part: uid, group })
+        }
+      }
       if (parts.includes(uid)) {
         const base = store.begin()
         const moving = withMounted(base, parts)
@@ -706,9 +722,15 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
     // Re-bound every render, so the key sees the current view (the wheel can zoom mid-drag).
   })
 
+  function releaseHeld() {
+    if (!heldRef.current) return
+    heldRef.current = false
+    store.setHeld(null)
+  }
   function onPointerUp(e: React.PointerEvent<SVGSVGElement>) {
+    releaseHeld()
     if (!drag || e.pointerId !== drag.pointer) return
-    if (drag.kind === 'parts') finishPartsDrag(drag)
+    if (drag.kind === 'parts') finishPartsDrag(drag, true)
     if (drag.kind === 'segment') store.end()
     if (drag.kind === 'annotations') store.end()
     if (drag.kind === 'marquee' && !drag.moved && !drag.add) store.select(EMPTY_SELECTION)
@@ -721,6 +743,11 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
       if (added) {
         store.commit(added.diagram)
         store.select({ parts: [], wires: [added.uid] })
+      }
+      // Spec 6.3: a click on a GPIO pin while simulating cycles its state.
+      else if (to && s.simulate && s.simTool === 'select' && sameEndpoint(s.diagram, to, drag.from)) {
+        const next = cycleGpio(s.diagram, drag.from.part, drag.from.pin)
+        if (next) store.commit(next)
       }
     }
     if (drag.kind === 'reconnect') {
@@ -736,8 +763,9 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
     setHover(null)
   }
   function onPointerCancel(e: React.PointerEvent<SVGSVGElement>) {
+    releaseHeld()
     if (!drag || e.pointerId !== drag.pointer) return
-    if (drag.kind === 'parts') finishPartsDrag(drag)
+    if (drag.kind === 'parts') finishPartsDrag(drag, false)
     // A reshape the browser took away (lost capture, cancelled touch) is abandoned, not kept.
     if (drag.kind === 'segment') store.cancel()
     if (drag.kind === 'annotations') store.end()
