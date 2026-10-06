@@ -118,7 +118,7 @@ def dispatch():
     if _in_callback:
         return
     for poll in list(_pollers):
-        poll()
+        _run(poll)
     while _queue:
         _run(_queue.pop(0))
     t = now()

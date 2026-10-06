@@ -38,9 +38,11 @@ export function realClock(m: BoardMemory, checkInterrupt: () => void): RunClock 
 /**
  * A clock for in-process tests (pyHarness.testing.ts): no other thread exists, so block() jumps
  * straight to its time; `onStep` runs on every step (scheduled inputs, instant solves); past
- * `limitMs` it calls `stop` (a KeyboardInterrupt), so a script that waits forever ends.
+ * `limitMs` it calls `stop` once (a KeyboardInterrupt, as the worker sets it once), so a script that
+ * waits forever ends and its finally blocks may still sleep.
  */
 export function testClock(o: { onStep: (tMs: number) => void; limitMs: number; stop: () => void }): RunClock & { t: number } {
+  let stopped = false
   const c = {
     t: 0,
     epochMs: Date.UTC(2026, 0, 1),
@@ -52,7 +54,10 @@ export function testClock(o: { onStep: (tMs: number) => void; limitMs: number; s
     block(untilMs: number) {
       c.t = Math.max(c.t, Math.min(untilMs, c.t + 50))
       o.onStep(c.t)
-      if (c.t >= o.limitMs) o.stop()
+      if (c.t >= o.limitMs && !stopped) {
+        stopped = true
+        o.stop()
+      }
     },
     poll() {},
   }
