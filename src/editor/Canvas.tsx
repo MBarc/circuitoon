@@ -27,6 +27,7 @@ import type { Connection, Diagram, Endpoint } from '../format/diagram.ts'
 import type { Selection } from './ops.ts'
 import { partCaption } from '../format/values.ts'
 import { SeverityMark } from './SeverityMark.tsx'
+import { SimLayer, currentFindings, shownResult } from './SimLayer.tsx'
 import { gridOnly, snapMove, type SnapResult } from './snap.ts'
 import { dragSnap, overlaps, type DragSnap } from './dragSnap.ts'
 import { GuideLayer } from './GuideLayer.tsx'
@@ -123,7 +124,10 @@ export interface CanvasApi {
 }
 
 export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api: CanvasApi) => void }) {
-  const { diagram, selection, highlight, reveal, snapObjects } = useEditorState(store)
+  const { diagram, selection, highlight, reveal, snapObjects, simulate, sim } = useEditorState(store)
+  // While simulating: the readings to draw (the last good ones, stale, after a failed solve) and the current findings.
+  const simOutcome = simulate && sim?.phase === 'done' ? sim.outcome : undefined
+  const simShown = shownResult(simOutcome)
   const svgRef = useRef<SVGSVGElement>(null)
   const [size, setSize] = useState({ w: 800, h: 600 })
   const [view, setView] = useState<View>({ x: -20, y: -40, scale: 1.5 })
@@ -453,6 +457,13 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
     }
     // Everything else (wires, part and mark drags, the selection rectangle) is the primary button only.
     if (e.button !== 0) return
+    // A simulation badge selects the parts its findings name (spec 6.3).
+    const badge = target.closest('[data-sim-badge]')
+    if (badge) {
+      store.select({ parts: badge.getAttribute('data-sim-badge')!.split(' '), wires: [] })
+      store.reveal()
+      return
+    }
     // Explicit wire-edit handles of the selected wire come first: they sit on top of everything.
     const handleEl = target.closest('[data-wire-end]')
     if (handleEl) {
@@ -890,6 +901,9 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
         {(diagram.annotations ?? []).filter((a) => a.type === 'text').map((a) => (
           <NoteMark key={a.uid} a={a} interactive selected={!!selection.annotations?.includes(a.uid)} />
         ))}
+        {simOutcome && (
+          <SimLayer diagram={diagram} result={simShown?.result ?? null} stale={!!simShown?.stale} circuit={sim?.phase === 'done' ? sim.circuit : null} findings={currentFindings(simOutcome)} />
+        )}
         {/* A connection the netlist could not join (a missing part, pin, group or hole) has no
             route to draw, but a short dashed red stub at whichever end still resolves lets a
             user find and repair it instead of a wire silently vanishing from the sheet. Drawn after the

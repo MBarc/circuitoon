@@ -454,3 +454,20 @@ button.wordmark { background: none; border: 0; padding: 0; cursor: pointer; }
 .update-parts-report:focus { outline: 2px solid var(--text); outline-offset: 2px; }
 .update-parts-report h3 { margin: 0; font: 600 15px/1.2 "Fredoka", system-ui, sans-serif; }
 .update-parts-report ul { margin: 0; padding-left: 18px; font-size: 13.5px; line-height: 1.35; }
+
+/* Simulating (spec 6.3): LED glow with its current as a tag, a dashed warning ring on an LED over
+   its absolute maximum, a ring on each pin a finding names, finding badges; stale readings dim. */
+.sim-tag rect { fill: #FFFFFF; stroke: #23282F; stroke-width: 1.2; }
+.sim-tag text { font: 700 8px "Atkinson Hyperlegible", system-ui, sans-serif; fill: #23282F; }
+.sim-led.over .sim-tag rect { fill: #8E1E17; stroke: #23282F; }
+.sim-led.over .sim-tag text { fill: #FFFFFF; }
+.sim-ring { fill: none; stroke: #E0483E; stroke-width: 2.5; stroke-dasharray: 5 3; }
+.sim-pin { fill: none; stroke-width: 2.5; stroke-dasharray: 3 2; }
+.sim-pin.error { stroke: #E0483E; }
+.sim-pin.warning { stroke: #D49B00; }
+.sim-readings.stale { opacity: 0.45; }
+.sim-badge { cursor: pointer; }
+.sim-fold { font-weight: 400; color: var(--muted); }
+/* The long group headings while simulating: the count wraps to its own line rather than squeezing. */
+.problems h3 { flex-wrap: wrap; }
+.problems-count { white-space: nowrap; }

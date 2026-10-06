@@ -13,21 +13,7 @@ import { type Circuit, type Corner, type Device, type Param, type ResolvedLimit,
 import { type Outside, type SimCode, type SimFinding, basisOf } from './results.ts'
 import { type RawRun, enableValue } from './spice.ts'
 
-export const SIM_TITLES: Record<SimCode, string> = {
-  'sim-short': 'Short circuit',
-  'sim-source-conflict': 'Supplies fight',
-  'sim-over-abs-max': 'Over its absolute maximum',
-  'sim-over-limit': 'Over its rating',
-  'sim-brownout': 'Not enough voltage',
-  'sim-dropout': 'Regulator out of regulation',
-  'sim-converter-off': 'Converter off',
-  'sim-min-load': 'Below its minimum load',
-  'sim-outside-model': 'Outside the model',
-  'sim-floating-input': 'Floating input',
-  'sim-no-convergence': 'Could not be solved',
-  'sim-incomplete': 'Not simulated',
-  'sim-estimate': 'Estimates used',
-}
+export { SIM_TITLES } from './display.ts'
 
 export interface Draft {
   code: SimCode

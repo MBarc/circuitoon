@@ -15,6 +15,7 @@ import { hexEditChanged, shownHex } from './color.ts'
 import { canUpdateParts, checkFailed, highlightOf, isProblem, severityCounts, updatePartsInStore, useProblems } from './problems.ts'
 import { type Finding, RULES, brokenConnection } from '../format/checks.ts'
 import { SeverityMark } from './SeverityMark.tsx'
+import { SimulationGroup } from './SimulationGroup.tsx'
 import { CAPACITOR_VALUES, RESISTOR_VALUES, editableParams, formatValue, paramValue, parseValueIn, pickUnitExp, scaledNumber, unitChoices } from '../format/values.ts'
 import { isCustom, isNetLabel, moduleSettings, partSetting } from '../format/module.ts'
 import { labelMates, labelName } from '../format/netLabels.ts'
@@ -347,7 +348,10 @@ function selectLabels(findings: Finding[]): string[] {
  * parallel battery bank) are not problems: they are listed apart, under Notes, and a sheet with
  * only notes still reads "No problems found".
  */
-export function ProblemList({ store, findings, onUpdateParts }: { store: EditorStore; findings: Finding[]; onUpdateParts?: () => void }) {
+/** The checker's heading while simulating, beside the "Simulation (current state)" group (spec 2.1). */
+export const WIRING_HEADING = 'Wiring checks (any switch position, external power assumed)'
+
+export function ProblemList({ store, findings, onUpdateParts, heading }: { store: EditorStore; findings: Finding[]; onUpdateParts?: () => void; heading?: string }) {
   const errors = findings.filter((f) => f.severity === 'error').length
   // The canvas light belongs to this list: it goes out when the list does (a selection, an empty list).
   useEffect(() => () => store.setHighlight(null), [store])
@@ -356,7 +360,7 @@ export function ProblemList({ store, findings, onUpdateParts }: { store: EditorS
   if (checkFailed(store))
     return (
       <section className="problems has-warnings" aria-labelledby="problems-title">
-        <h3 id="problems-title" tabIndex={-1}>Problems</h3>
+        <h3 id="problems-title" tabIndex={-1}>{heading ?? 'Problems'}</h3>
         {notice}
         <ul>
           <li className="warning" data-checker-failed="">
@@ -467,8 +471,9 @@ export function ProblemList({ store, findings, onUpdateParts }: { store: EditorS
       <section className="problems clean" aria-labelledby="problems-title">
         <h3 id="problems-title" tabIndex={-1}>
           <SeverityMark severity="ok" />
-          No problems found in the drawn connections.
+          {heading ?? 'No problems found in the drawn connections.'}
         </h3>
+        {heading && <p className="hint">No problems found in the drawn connections.</p>}
         {notice}
         {noteList}
       </section>
@@ -476,7 +481,7 @@ export function ProblemList({ store, findings, onUpdateParts }: { store: EditorS
   return (
     <section className={`problems ${errors ? 'has-errors' : 'has-warnings'}`} aria-labelledby="problems-title">
       <h3 id="problems-title" tabIndex={-1}>
-        Problems
+        {heading ?? 'Problems'}
         <span className="problems-count">{severityCounts(problems)}</span>
       </h3>
       {notice}
@@ -497,7 +502,7 @@ function HandShapedWarning({ diagram, wire }: { diagram: Diagram; wire: Connecti
 
 export function Inspector({ store, onEditPart, onUpdatePart }: { store: EditorStore; onEditPart?: (moduleId: string) => void; onUpdatePart?: (moduleId: string) => void }) {
   const mine = useSyncExternalStore(myParts.subscribe, myParts.getSnapshot)
-  const { diagram, selection, wireStyle } = useEditorState(store)
+  const { diagram, selection, wireStyle, simulate } = useEditorState(store)
   const findings = useProblems(store)
   // What the last Update parts to current library changed, shown while the sheet is the one it made (an undo hides it).
   const [updated, setUpdated] = useState<{ diagram: Diagram; lines: string[] } | null>(null)
@@ -538,7 +543,8 @@ export function Inspector({ store, onEditPart, onUpdatePart }: { store: EditorSt
           </div>
         )}
         <p className="hint">Drag from a pin tip or a hole to another pin or hole to add a wire. Drag on the paper to select, middle-drag or Space+drag to pan, scroll to zoom. Shift+drag adds to the selection. Ctrl+C, Ctrl+X and Ctrl+V copy, cut and paste. R rotates, Delete removes, Ctrl+Z undoes. Arrow keys nudge a grid step (Shift for five). A drag snaps to other parts; hold Ctrl or Cmd to drag on the grid alone.</p>
-        <ProblemList store={store} findings={findings} onUpdateParts={updateParts} />
+        <ProblemList store={store} findings={findings} onUpdateParts={updateParts} heading={simulate ? WIRING_HEADING : undefined} />
+        {simulate && <SimulationGroup store={store} />}
       </aside>
     )
 

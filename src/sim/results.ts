@@ -7,6 +7,7 @@
 import type { Probe, ProbeAnchor } from '../format/diagram.ts'
 import type { Provenance } from '../format/simModel.ts'
 import { nodeKey } from '../format/netlist.ts'
+import { LIT_AMPS } from './display.ts'
 import { type Classification, nodeState } from './floating.ts'
 import { type Basis, type Circuit, type Corner, type Device, indexOf, netNode } from './model.ts'
 import { type RawRun, foldValue } from './spice.ts'
@@ -74,9 +75,8 @@ export type SimOutcome =
   | { status: 'unavailable'; reason: string; findings: SimFinding[] }
 
 export interface Outside { nets: Set<string>; parts: Set<string>; rails: Set<string> }
+export { LIT_AMPS }
 export const NO_OUTSIDE: Outside = { nets: new Set(), parts: new Set(), rails: new Set() }
-/** An LED is drawn lit above this current (ruling R18). */
-export const LIT_AMPS = 1e-4
 
 const RANK = { user: 0, datasheet: 0, representative: 1, estimate: 2 } as const
 /** The weakest provenance among the inputs (user = datasheet > representative > estimate); topology with none (spec 5.1). */
