@@ -161,6 +161,19 @@ describe('circuitoon sim', () => {
     expect(summary(o)).toContain('  P1 L: not simulated (mains)\n')
     expect(summary(o)).not.toContain('undefined')
   })
+  it('summary: no -0.0 mA, no double space for an unnamed probe, no unpowered domain rows', () => {
+    const v = { kind: 'value', value: 3.3, reference: 'GND', trust: 'ok' } as const
+    const a = (x: number) => ({ kind: 'value', value: x, trust: 'ok' }) as const
+    const nothing = { kind: 'indeterminate', why: 'not solved (floating)' } as const
+    const src = { id: 'bt1', kind: 'source', part: 'bt1', label: 'BT1 delivering', volts: { typical: v, peak: v }, amps: { typical: a(-0.00001), peak: a(-0.00001) }, basis: 'datasheet' }
+    const off = { id: 'u1.domain.3V3', kind: 'domain', part: 'u1', label: 'U1 3V3', volts: { typical: { kind: 'floating' }, peak: { kind: 'floating' } }, amps: { typical: nothing, peak: nothing }, ownDraw: { typical: nothing, peak: nothing }, basis: 'datasheet' }
+    const probe = { id: 'P1', at: { part: 'u1', pin: '3V3' }, voltage: { typical: v, peak: v } }
+    const out = summary({ status: 'ok', result: { findings: [], probes: [probe], budget: [src, off], unaccounted: [], engine: { ms: 5, runs: 2 } } } as unknown as SimOutcome)
+    expect(out).toContain('  budget BT1 delivering: 3.300 V, 0.0 mA (peak 0.0 mA)')
+    expect(out).not.toContain('-0.0')
+    expect(out).not.toContain('U1 3V3')
+    expect(out).toContain('  P1: 3.300 V (to GND)')
+  })
   it('summary: nothing solved says so; a domain row prints its own draw, not the pin current', () => {
     const none = { status: 'ok', result: { findings: [], probes: [], budget: [], unaccounted: [], engine: { ms: 0, runs: 0 } } } as unknown as SimOutcome
     expect(summary(none).split('\n')[0]).toBe('Simulation: nothing powered; not solved. 0 blocking findings, 0 warnings, 0 notes.')

@@ -53,7 +53,8 @@ function probeOf(spec: string, d: Diagram, uidOf: Map<string, string>, nets: Ret
 }
 
 const volts = (r: Reading) => (r.kind === 'value' ? `${r.value.toFixed(3)} V` : r.kind === 'undefined' ? r.why : r.kind)
-const amps = (r: CurrentReading) => (r.kind === 'value' ? `${(r.value * 1000).toFixed(1)} mA` : r.kind)
+// Under 0.05 mA prints as 0.0 mA, never -0.0 mA.
+const amps = (r: CurrentReading) => (r.kind === 'value' ? `${(Math.abs(r.value) < 5e-5 ? 0 : r.value * 1000).toFixed(1)} mA` : r.kind)
 const watts = (r: Reading) => (r.kind === 'value' ? `${(r.value * 1000).toFixed(1)} mW` : r.kind === 'undefined' ? `power ${r.why}` : r.kind)
 
 /**
@@ -99,16 +100,19 @@ export function summary(o: SimOutcome, refOf: Map<string, string> = new Map()): 
   // A domain row reads its own draw (what the part takes); its amps are whatever passes through the pin.
   for (const b of r.budget) {
     const a = b.kind === 'domain' && b.ownDraw ? b.ownDraw : b.amps
+    // An unpowered domain has nothing to say ("floating, indeterminate"); its finding says why.
+    if (b.kind === 'domain' && b.volts.typical.kind === 'floating' && a.typical.kind === 'indeterminate') continue
     lines.push(`  budget ${b.label}: ${volts(b.volts.typical)}, ${amps(a.typical)} (peak ${amps(a.peak)})${b.kind === 'domain' ? ' own draw' : ''}${b.limit ? `, limit ${(b.limit.value * 1000).toFixed(0)} mA` : ''}`)
   }
   for (const u of r.unaccounted) lines.push(`  not in the budget: ${refOf.get(u.part) ?? u.part}: ${u.items.join('; ')}`)
   for (const p of r.probes) {
     const v = p.voltage?.typical
+    const label = p.name ? `${p.id} ${p.name}` : p.id
     const part = p.part?.typical
-    if (v) lines.push(`  ${p.id} ${p.name ?? ''}: ${v.kind === 'value' ? `${v.value.toFixed(3)} V (to ${v.reference})` : volts(v)}`)
+    if (v) lines.push(`  ${label}: ${v.kind === 'value' ? `${v.value.toFixed(3)} V (to ${v.reference})` : volts(v)}`)
     else if (part) {
       const pins = Object.entries(part.pins).map(([pin, i]) => `${pin} ${amps(i)}`)
-      lines.push(`  ${p.id} ${p.name ?? ''}: ${[...(part.state ? [part.state] : []), watts(part.power), ...(pins.length ? [`into ${pins.join(', ')}`] : [])].join(', ')}`)
+      lines.push(`  ${label}: ${[...(part.state ? [part.state] : []), watts(part.power), ...(pins.length ? [`into ${pins.join(', ')}`] : [])].join(', ')}`)
     }
   }
   return `${lines.join('\n')}\n`
