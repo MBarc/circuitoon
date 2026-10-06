@@ -7,7 +7,8 @@
 //   4. A first visit that holds an unsaved diagram when the worker arrives is never reloaded. (Once a
 //      page is controlled and isolated the worker's page script returns early, so a later worker
 //      update never reloads it at all: the first visit is the only reload the guard has to stop.)
-//   5. The kill switch (scripts/rollback/coi-serviceworker.js) unregisters cleanly and reloads.
+//   5. A window that bypasses the service worker reloads at most once (no reload loop).
+//   6. The kill switch (scripts/rollback/coi-serviceworker.js) unregisters cleanly and reloads.
 // Usage (after `npm run build`): npm run check:isolation-ui -- [--out <dir>] [--port 4213]
 import { createServer } from 'node:http'
 import { existsSync, mkdirSync, readFileSync } from 'node:fs'
@@ -167,7 +168,27 @@ for (const scheme of ['light', 'dark']) {
     await fresh.context.close()
   }
 
-  // 5. The kill switch unregisters and reloads into an uncontrolled page. As a page script it does
+  // 5. A window that bypasses the worker (DevTools "Bypass for network") is never controlled, so every
+  // load finds an active worker not controlling it; the reload guard allows one reload per 10 s, not a loop.
+  {
+    const fresh = await freshPage(scheme)
+    const cdp = await fresh.context.newCDPSession(fresh.page)
+    await cdp.send('Network.enable')
+    await cdp.send('Network.setBypassServiceWorker', { bypass: true })
+    // Counts document requests: in a loop, pages are replaced before their load event fires.
+    let docs = 0
+    fresh.page.on('request', (r) => r.isNavigationRequest() && r.frame() === fresh.page.mainFrame() && docs++)
+    // 'commit' and no throw: in a reload loop the first document never settles.
+    await fresh.page.goto(base, { waitUntil: 'commit' }).catch(() => {})
+    await fresh.page.waitForTimeout(5000)
+    check(docs <= 2, `${scheme}: bypass: at most one reload (${docs} page loads in 5 s)`)
+    const usable = await fresh.page.getByRole('link', { name: 'Open the editor' }).first().isVisible().catch(() => false)
+    check(usable && (await fresh.page.evaluate(() => !navigator.serviceWorker.controller)), `${scheme}: bypass: the page is usable, uncontrolled`)
+    await fresh.page.screenshot({ path: join(out, `isolation-bypass-${scheme}.png`) })
+    await fresh.context.close()
+  }
+
+  // 6. The kill switch unregisters and reloads into an uncontrolled page. As a page script it does
   // nothing, so the reloaded page registers nothing again (no reload loop).
   swFile = 'scripts/rollback/coi-serviceworker.js'
   const killed = seen.loads

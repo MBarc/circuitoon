@@ -8,6 +8,22 @@ import config, { CODE_WORKER_CSP, codeWorkerCsp } from '../vite.config.ts'
 
 const html = readFileSync('index.html', 'utf8')
 const sw = readFileSync('public/coi-serviceworker.js', 'utf8')
+const killSwitch = readFileSync('scripts/rollback/coi-serviceworker.js', 'utf8')
+// A deployed rollback (the kill switch copied over the worker, see its header) skips the isolating
+// worker's tests, so the emergency deploy's `npm test` passes.
+const rolledBack = sw === killSwitch
+
+/** A tab's sessionStorage; `broken` throws on every access, as in some locked-down windows. */
+function fakeSession(broken = false) {
+  const m = new Map<string, string>()
+  const guard = () => {
+    if (broken) throw new Error('SecurityError')
+  }
+  return {
+    getItem: (k: string) => (guard(), m.get(k) ?? null),
+    setItem: (k: string, v: unknown) => void (guard(), m.set(k, String(v))),
+  }
+}
 
 /** The service worker half of the file, run in a fake worker scope; returns the response headers for a URL. */
 async function swHeaders(url: string): Promise<Headers> {
@@ -24,7 +40,7 @@ async function swHeaders(url: string): Promise<Headers> {
  * reload fires, the app clears the share link's hash as EditorApp does. Resolves to the URL the page
  * reloads at, or null when it does not reload.
  */
-async function pageReload(unsaved: boolean, start = 'https://mbarc.github.io/circuitoon/#/editor?d=abc'): Promise<string | null> {
+async function pageReload(unsaved: boolean, start = 'https://mbarc.github.io/circuitoon/#/editor?d=abc', sessionStorage = fakeSession()): Promise<string | null> {
   const config = /<script>(window\.coi[\s\S]*?)<\/script>/.exec(html)![1]
   let reloadedAt: string | null = null
   const registration = { active: {}, addEventListener() {} }
@@ -35,7 +51,7 @@ async function pageReload(unsaved: boolean, start = 'https://mbarc.github.io/cir
     document: { currentScript: { src: '/circuitoon/coi-serviceworker.js' } },
   }
   const navigator = { serviceWorker: { controller: null, register: async () => registration } }
-  const ctx = vm.createContext({ window, navigator, console })
+  const ctx = vm.createContext({ window, navigator, console, sessionStorage })
   vm.runInContext(config, ctx)
   vm.runInContext(sw, ctx)
   location.href = 'https://mbarc.github.io/circuitoon/#/editor'
@@ -43,7 +59,31 @@ async function pageReload(unsaved: boolean, start = 'https://mbarc.github.io/cir
   return reloadedAt
 }
 
-describe('cross-origin isolation (spec 2.5)', () => {
+describe('the kill switch (scripts/rollback/coi-serviceworker.js)', () => {
+  it('installs at once, unregisters and reloads every window it controlled, and serves nothing', async () => {
+    const listeners: Record<string, (e: unknown) => void> = {}
+    const calls: string[] = []
+    const clients = [{ url: 'https://mbarc.github.io/circuitoon/#/editor' }, { url: 'https://mbarc.github.io/circuitoon/' }].map((c) => ({ ...c, navigate: async (u: string) => void calls.push(`navigate ${u}`) }))
+    const self = {
+      addEventListener: (t: string, f: (e: unknown) => void) => void (listeners[t] = f),
+      skipWaiting: () => void calls.push('skipWaiting'),
+      registration: { unregister: async () => (calls.push('unregister'), true) },
+      clients: { matchAll: async (o: unknown) => (calls.push(`matchAll ${JSON.stringify(o)}`), clients) },
+    }
+    vm.runInNewContext(killSwitch, { self })
+    expect(Object.keys(listeners).sort()).toEqual(['activate', 'install'])
+    listeners.install({})
+    let done: Promise<unknown> | undefined
+    listeners.activate({ waitUntil: (p: Promise<unknown>) => void (done = p) })
+    await done
+    expect(calls).toEqual(['skipWaiting', 'unregister', 'matchAll {"type":"window"}', ...clients.map((c) => `navigate ${c.url}`)])
+  })
+  it('does nothing as a page script', () => {
+    expect(() => vm.runInNewContext(killSwitch, { window: {} })).not.toThrow()
+  })
+})
+
+describe.skipIf(rolledBack)('cross-origin isolation (spec 2.5; skipped while the kill switch is deployed as public/coi-serviceworker.js)', () => {
   it('loads the config and the service worker first in <head>, before the theme script and the app', () => {
     const scripts = [...html.matchAll(/<script\b[^>]*>/g)].map((m) => m.index!)
     const coi = html.indexOf('<script src="/circuitoon/coi-serviceworker.js"></script>')
@@ -59,6 +99,14 @@ describe('cross-origin isolation (spec 2.5)', () => {
   it('reloads to take control, but never over an unsaved diagram', async () => {
     expect(await pageReload(false)).not.toBeNull()
     expect(await pageReload(true)).toBeNull()
+  })
+  it('reloads at most once per 10 s per tab, so a window that never gets controlled does not loop', async () => {
+    const session = fakeSession()
+    expect(await pageReload(false, undefined, session)).not.toBeNull()
+    expect(await pageReload(false, undefined, session)).toBeNull()
+  })
+  it('does not reload when sessionStorage throws', async () => {
+    expect(await pageReload(false, undefined, fakeSession(true))).toBeNull()
   })
   it('reloads at the URL the page loaded with, so a share link the app already cleared survives', async () => {
     expect(await pageReload(false)).toBe('https://mbarc.github.io/circuitoon/#/editor?d=abc')

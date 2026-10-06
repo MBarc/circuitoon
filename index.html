@@ -7,8 +7,10 @@
          service worker, first in <head> so its one reload happens before the app boots and a
          share link's hash survives. doReload never reloads over an unsaved diagram (src/isolation.ts);
          Run then stays disabled until the next load. The reload is asynchronous, so the app may
-         already have read a share link and cleared its hash: doReload restores the URL from head time. -->
-    <script>window.coi = ((u) => ({ coepCredentialless: () => false, quiet: true, doReload: () => { if (!window.__circuitoonUnsaved) { window.history.replaceState(null, '', u); window.location.reload() } } }))(window.location.href)</script>
+         already have read a share link and cleared its hash: doReload restores the URL from head time.
+         It reloads at most once per 10 s per tab (none if sessionStorage throws): a window that bypasses
+         the worker (DevTools "Bypass for network") is never controlled and would otherwise reload forever. -->
+    <script>window.coi = ((u) => ({ coepCredentialless: () => false, quiet: true, doReload: () => { if (window.__circuitoonUnsaved) return; try { var k = 'circuitoon.coiReload', t = +sessionStorage.getItem(k) || 0; if (Date.now() - t < 10000) return; sessionStorage.setItem(k, Date.now()) } catch (e) { return } window.history.replaceState(null, '', u); window.location.reload() } }))(window.location.href)</script>
     <script src="/circuitoon/coi-serviceworker.js"></script>
     <meta name="description" content="Circuit diagrams AI agents can design, check and hand you." />
     <meta name="theme-color" content="#E9EEE6" media="(prefers-color-scheme: light)" />
