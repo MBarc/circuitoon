@@ -90,7 +90,8 @@ describe('applyTheme', () => {
 
 describe('index.html keeps in step with theme.ts', () => {
   const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8')
-  const script = html.match(/<script>(.*?)<\/script>/s)?.[1] ?? ''
+  // The theme script, not the isolation config that comes first in <head> (src/isolation.test.ts).
+  const script = [...html.matchAll(/<script>(.*?)<\/script>/gs)].map((m) => m[1]).find((s) => s.includes('localStorage')) ?? ''
   it('applies the stored choice before the app loads, with the same key and colours', () => {
     expect(html.indexOf(script)).toBeLessThan(html.indexOf('src="/src/main.tsx"'))
     expect(script).toContain(`'${THEME_KEY}'`)

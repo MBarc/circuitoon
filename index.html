@@ -3,6 +3,12 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- Cross-origin isolation for SharedArrayBuffer (firmware spec 2.5): the config, then the
+         service worker, first in <head> so its one reload happens before the app boots and a
+         share link's hash survives. doReload never reloads over an unsaved diagram (src/isolation.ts);
+         Run then stays disabled until the next load. -->
+    <script>window.coi = { coepCredentialless: () => false, quiet: true, doReload: () => { if (!window.__circuitoonUnsaved) window.location.reload() } }</script>
+    <script src="/circuitoon/coi-serviceworker.js"></script>
     <meta name="description" content="Circuit diagrams AI agents can design, check and hand you." />
     <meta name="theme-color" content="#E9EEE6" media="(prefers-color-scheme: light)" />
     <meta name="theme-color" content="#1B1D20" media="(prefers-color-scheme: dark)" />
