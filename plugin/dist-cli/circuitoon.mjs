@@ -192,7 +192,7 @@ var words$1 = (list) => list.map((x) => `"${x}"`).join(", ");
 /** `electrical.internalNodes`: named terminals inside the part (a plug's prongs), added to `names`. */
 function claimInternalNodes(raw, names, errors) {
 	const el = raw.electrical;
-	if (!isObj(el) || el.internalNodes === void 0) return;
+	if (!isObj$1(el) || el.internalNodes === void 0) return;
 	if (!Array.isArray(el.internalNodes)) return void errors.push("electrical.internalNodes: must be a list of names");
 	el.internalNodes.forEach((n, i) => {
 		if (!isStr(n)) errors.push(`electrical.internalNodes[${i}]: must be a name`);
@@ -203,7 +203,7 @@ function claimInternalNodes(raw, names, errors) {
 /** Checks every mains field of `electrical` against `names` (pins, hole groups and internal nodes). */
 function validateMains(raw, names, errors) {
 	const el = raw.electrical;
-	if (!isObj(el)) return;
+	if (!isObj$1(el)) return;
 	const nodes = new Set(Array.isArray(el.internalNodes) ? el.internalNodes.filter(isStr) : []);
 	const term = (v, at) => {
 		if (!isStr(v) || !names.has(v)) errors.push(`${at}: no pin, hole group or internal node named "${show(v)}"`);
@@ -219,7 +219,7 @@ function validateMains(raw, names, errors) {
 		const v = el[key];
 		if (v === void 0) return;
 		if (!Array.isArray(v)) return void errors.push(`electrical.${key}: must be a list`);
-		v.forEach((x, i) => isObj(x) ? check(x, `electrical.${key}[${i}]`) : errors.push(`electrical.${key}[${i}]: must be an object`));
+		v.forEach((x, i) => isObj$1(x) ? check(x, `electrical.${key}[${i}]`) : errors.push(`electrical.${key}[${i}]: must be an object`));
 	};
 	const named = (seen, v, at) => {
 		if (!isStr(v)) errors.push(`${at}: required, a name`);
@@ -249,10 +249,10 @@ function validateMains(raw, names, errors) {
 		}
 	});
 	if (Array.isArray(el.acSources) && el.acSources.length) {
-		if (!(isObj(el.params) && isObj(el.params.acVoltage))) errors.push("electrical.acSources: needs an acVoltage param (electrical.params.acVoltage), the source voltage");
+		if (!(isObj$1(el.params) && isObj$1(el.params.acVoltage))) errors.push("electrical.acSources: needs an acVoltage param (electrical.params.acVoltage), the source voltage");
 		if (el.ac === void 0) errors.push("electrical.ac: required with acSources ({ \"hz\", \"region\" })");
 	}
-	if (el.ac !== void 0 && !(isObj(el.ac) && isNum(el.ac.hz) && el.ac.hz > 0 && oneOf(REGIONS, el.ac.region))) errors.push(`electrical.ac: must be { "hz": <above 0>, "region": one of ${words$1(REGIONS)} }`);
+	if (el.ac !== void 0 && !(isObj$1(el.ac) && isNum(el.ac.hz) && el.ac.hz > 0 && oneOf(REGIONS, el.ac.region))) errors.push(`electrical.ac: must be { "hz": <above 0>, "region": one of ${words$1(REGIONS)} }`);
 	each("conducts", (c, at) => {
 		if (!(Array.isArray(c.pins) && c.pins.length === 2 && c.pins[0] !== c.pins[1])) errors.push(`${at}.pins: must be two different terminal names`);
 		else c.pins.forEach((n, i) => term(n, `${at}.pins[${i}]`));
@@ -281,7 +281,7 @@ function validateMains(raw, names, errors) {
 	if (el.isolation !== void 0 && !oneOf(ISOLATIONS, el.isolation)) errors.push(`electrical.isolation: must be one of ${words$1(ISOLATIONS)}`);
 	if (el.isolationProvenance !== void 0 && !oneOf(PROVENANCES$1, el.isolationProvenance)) errors.push("electrical.isolationProvenance: must be \"datasheet\" or \"unverified\"");
 	if (el.safeguard !== void 0 && el.safeguard !== "protective-screen") errors.push("electrical.safeguard: must be \"protective-screen\"");
-	const kinds = Array.isArray(el.domains) ? el.domains.filter(isObj).map((x) => x.kind) : [];
+	const kinds = Array.isArray(el.domains) ? el.domains.filter(isObj$1).map((x) => x.kind) : [];
 	const barrier = kinds.includes("mains") && kinds.some((k) => k === "selv" || k === "pelv");
 	const sides = "needs a mains domain and a selv or pelv domain, the two sides of the barrier it rates";
 	if (el.isolation !== void 0 && !barrier) errors.push(`electrical.isolation: ${sides}`);
@@ -290,7 +290,7 @@ function validateMains(raw, names, errors) {
 	if (oneOf(STATED_CLASSES, el.isolation) && el.isolationProvenance === void 0) errors.push(`electrical.isolationProvenance: required with isolation "${el.isolation}" ("datasheet" or "unverified")`);
 	if (el.acInput !== void 0) {
 		const a = el.acInput;
-		if (!isObj(a)) errors.push("electrical.acInput: must be { \"a\", \"b\", \"range\": [min, max] }");
+		if (!isObj$1(a)) errors.push("electrical.acInput: must be { \"a\", \"b\", \"range\": [min, max] }");
 		else {
 			term(a.a, "electrical.acInput.a");
 			term(a.b, "electrical.acInput.b");
@@ -315,7 +315,7 @@ function validateMains(raw, names, errors) {
 		if (!Array.isArray(c.poles) || !c.poles.length) return void errors.push(`${at}.poles: must be a list of 1 or more { "com", "no"?, "nc"? }`);
 		c.poles.forEach((pole, j) => {
 			const pat = `${at}.poles[${j}]`;
-			if (!isObj(pole)) return void errors.push(`${pat}: must be an object`);
+			if (!isObj$1(pole)) return void errors.push(`${pat}: must be an object`);
 			term(pole.com, `${pat}.com`);
 			if (pole.no !== void 0) term(pole.no, `${pat}.no`);
 			if (pole.nc !== void 0) term(pole.nc, `${pat}.nc`);
@@ -341,8 +341,8 @@ function validateMains(raw, names, errors) {
 		});
 	});
 	if (el.protection !== void 0) {
-		const prongs = isObj(el.plug) && Array.isArray(el.plug.profiles) ? el.plug.profiles.filter(isObj).flatMap((pr) => Array.isArray(pr.contacts) ? pr.contacts.filter(isObj) : []) : [];
-		const pe = [...Array.isArray(raw.pins) ? raw.pins : [], ...Array.isArray(raw.holes) ? raw.holes : []].some((p) => isObj(p) && p.mains === "PE") || prongs.some((c) => c.mains === "PE" && isStr(c.pin) && nodes.has(c.pin));
+		const prongs = isObj$1(el.plug) && Array.isArray(el.plug.profiles) ? el.plug.profiles.filter(isObj$1).flatMap((pr) => Array.isArray(pr.contacts) ? pr.contacts.filter(isObj$1) : []) : [];
+		const pe = [...Array.isArray(raw.pins) ? raw.pins : [], ...Array.isArray(raw.holes) ? raw.holes : []].some((p) => isObj$1(p) && p.mains === "PE") || prongs.some((c) => c.mains === "PE" && isStr(c.pin) && nodes.has(c.pin));
 		if (el.protection !== "class-1" && el.protection !== "class-2") errors.push("electrical.protection: must be \"class-1\" or \"class-2\"");
 		else if (el.protection === "class-1" && !pe) errors.push("electrical.protection: a class 1 part needs a terminal marked \"mains\": \"PE\" or a PE plug contact");
 	}
@@ -350,7 +350,7 @@ function validateMains(raw, names, errors) {
 	const pinRole = /* @__PURE__ */ new Map();
 	if (el.plug !== void 0) {
 		const p = el.plug;
-		if (!isObj(p)) errors.push("electrical.plug: must be { \"family\", \"profiles\": [...] }");
+		if (!isObj$1(p)) errors.push("electrical.plug: must be { \"family\", \"profiles\": [...] }");
 		else {
 			if (!oneOf(PLUG_FAMILIES, p.family)) errors.push(`electrical.plug.family: must be one of ${words$1(PLUG_FAMILIES)}`);
 			if (raw.obstacle === false) errors.push("electrical.plug: a plug-in device cannot be a board (\"obstacle\": false)");
@@ -359,7 +359,7 @@ function validateMains(raw, names, errors) {
 				const seen = /* @__PURE__ */ new Set();
 				p.profiles.forEach((pr, i) => {
 					const at = `electrical.plug.profiles[${i}]`;
-					if (!isObj(pr)) return void errors.push(`${at}: must be an object`);
+					if (!isObj$1(pr)) return void errors.push(`${at}: must be an object`);
 					named(seen, pr.id, `${at}.id`);
 					if (!Array.isArray(pr.contacts) || !pr.contacts.length) return void errors.push(`${at}.contacts: must be a list of 1 or more contacts`);
 					const roleOfPin = /* @__PURE__ */ new Map();
@@ -372,13 +372,13 @@ function validateMains(raw, names, errors) {
 					let rolesKnown = true;
 					pr.contacts.forEach((c, j) => {
 						const cat = `${at}.contacts[${j}]`;
-						if (!isObj(c)) {
+						if (!isObj$1(c)) {
 							rolesKnown = false;
 							errors.push(`${cat}: must be an object`);
 							return;
 						}
 						if (!isStr(c.pin) || !nodes.has(c.pin)) errors.push(`${cat}.pin: must name an internal node (electrical.internalNodes), the prong`);
-						if (!(isObj(c.at) && isNum(c.at.x) && isNum(c.at.y) && c.at.x % 10 === 0 && c.at.y % 10 === 0)) errors.push(`${cat}.at: must be { "x", "y" } on the 10 px grid`);
+						if (!(isObj$1(c.at) && isNum(c.at.x) && isNum(c.at.y) && c.at.x % 10 === 0 && c.at.y % 10 === 0)) errors.push(`${cat}.at: must be { "x", "y" } on the 10 px grid`);
 						else {
 							const spot = `${c.at.x}, ${c.at.y}`;
 							if (spots.has(spot)) errors.push(`${cat}.at: another contact of this profile sits at ${spot}`);
@@ -406,13 +406,13 @@ function validateMains(raw, names, errors) {
 		}
 	}
 	if (el.sockets !== void 0) {
-		const holes = (Array.isArray(raw.holes) ? raw.holes : []).filter(isObj).map((g) => g.name).filter(isStr);
+		const holes = (Array.isArray(raw.holes) ? raw.holes : []).filter(isObj$1).map((g) => g.name).filter(isStr);
 		if (!(raw.obstacle === false && holes.length)) errors.push("electrical.sockets: only a board (hole groups and \"obstacle\": false) has sockets");
 		if (!(Array.isArray(el.acSources) && el.acSources.length && el.ac !== void 0)) errors.push("electrical.sockets: an outlet needs electrical.acSources and electrical.ac (its source and region)");
 		const owner = /* @__PURE__ */ new Map();
 		const socketContacts = [];
 		const ids = /* @__PURE__ */ new Set();
-		const region = isObj(el.ac) && oneOf(REGIONS, el.ac.region) ? el.ac.region : null;
+		const region = isObj$1(el.ac) && oneOf(REGIONS, el.ac.region) ? el.ac.region : null;
 		each("sockets", (s, at) => {
 			named(ids, s.id, `${at}.id`);
 			if (!oneOf(SOCKET_FAMILIES, s.family)) errors.push(`${at}.family: must be one of ${words$1(SOCKET_FAMILIES)}`);
@@ -424,7 +424,7 @@ function validateMains(raw, names, errors) {
 			const roles = /* @__PURE__ */ new Set();
 			s.contacts.forEach((c, j) => {
 				const cat = `${at}.contacts[${j}]`;
-				if (!isObj(c)) return void errors.push(`${cat}: must be an object`);
+				if (!isObj$1(c)) return void errors.push(`${cat}: must be an object`);
 				if (!isStr(c.group) || !holes.includes(c.group)) errors.push(`${cat}.group: no hole group named "${show(c.group)}"`);
 				else if (owner.has(c.group)) errors.push(`${cat}.group: "${c.group}" already belongs to socket "${owner.get(c.group)}"`);
 				else {
@@ -458,35 +458,35 @@ function validateMains(raw, names, errors) {
 			}
 		}
 	}
-	const pinsAndHoles = [...Array.isArray(raw.pins) ? raw.pins : [], ...Array.isArray(raw.holes) ? raw.holes : []].filter(isObj);
+	const pinsAndHoles = [...Array.isArray(raw.pins) ? raw.pins : [], ...Array.isArray(raw.holes) ? raw.holes : []].filter(isObj$1);
 	const strsOf = (v) => Array.isArray(v) ? v.filter(isStr) : [];
 	const declared = /* @__PURE__ */ new Set([
-		...Array.isArray(el.acSources) ? el.acSources.filter(isObj).flatMap((s) => [
+		...Array.isArray(el.acSources) ? el.acSources.filter(isObj$1).flatMap((s) => [
 			...strsOf(s.live),
 			...strsOf(s.neutral),
 			...strsOf(s.earth)
 		]) : [],
-		...isObj(el.acInput) ? [el.acInput.a, el.acInput.b].filter(isStr) : [],
-		...Array.isArray(el.contacts) ? el.contacts.filter(isObj).flatMap((c) => Array.isArray(c.poles) ? c.poles.filter(isObj).flatMap((p) => [
+		...isObj$1(el.acInput) ? [el.acInput.a, el.acInput.b].filter(isStr) : [],
+		...Array.isArray(el.contacts) ? el.contacts.filter(isObj$1).flatMap((c) => Array.isArray(c.poles) ? c.poles.filter(isObj$1).flatMap((p) => [
 			p.com,
 			p.no,
 			p.nc
 		].filter(isStr)) : []) : [],
-		...Array.isArray(el.protective) ? el.protective.filter(isObj).flatMap((e) => [e.from, e.to].filter(isStr)) : [],
+		...Array.isArray(el.protective) ? el.protective.filter(isObj$1).flatMap((e) => [e.from, e.to].filter(isStr)) : [],
 		...[...pinRole].filter(([, r]) => r !== "mechanical").map(([n]) => n),
-		...Array.isArray(el.sockets) ? el.sockets.filter(isObj).flatMap((s) => Array.isArray(s.contacts) ? s.contacts.filter(isObj).map((c) => c.group).filter(isStr) : []) : [],
+		...Array.isArray(el.sockets) ? el.sockets.filter(isObj$1).flatMap((s) => Array.isArray(s.contacts) ? s.contacts.filter(isObj$1).map((c) => c.group).filter(isStr) : []) : [],
 		...pinsAndHoles.filter((p) => oneOf(REQUIREMENTS, p.mains)).map((p) => p.name).filter(isStr)
 	]);
 	const conducting = /* @__PURE__ */ new Set([
 		...declared,
 		...Array.isArray(raw.internal) ? raw.internal.filter(Array.isArray).flat().filter(isStr) : [],
-		...Array.isArray(el.conducts) ? el.conducts.filter(isObj).flatMap((c) => strsOf(c.pins)) : [],
-		...Array.isArray(el.domains) ? el.domains.filter(isObj).flatMap((x) => strsOf(x.pins)) : [],
-		...Array.isArray(el.ratings) ? el.ratings.filter(isObj).flatMap((r) => strsOf(r.pins)) : []
+		...Array.isArray(el.conducts) ? el.conducts.filter(isObj$1).flatMap((c) => strsOf(c.pins)) : [],
+		...Array.isArray(el.domains) ? el.domains.filter(isObj$1).flatMap((x) => strsOf(x.pins)) : [],
+		...Array.isArray(el.ratings) ? el.ratings.filter(isObj$1).flatMap((r) => strsOf(r.pins)) : []
 	]);
 	for (const [n, r] of pinRole) if (r === "mechanical" && conducting.has(n)) errors.push(`electrical.plug: "${n}" is a mechanical contact (it carries no conductor), so no internal join, source, conduction, domain, rating or contact may name it`);
 	if (Array.isArray(el.domains)) el.domains.forEach((x, i) => {
-		if (!isObj(x) || x.kind !== "selv" && x.kind !== "pelv" || !Array.isArray(x.pins)) return;
+		if (!isObj$1(x) || x.kind !== "selv" && x.kind !== "pelv" || !Array.isArray(x.pins)) return;
 		for (const n of x.pins) if (isStr(n) && declared.has(n) && inDomain.get(n) === x.name) errors.push(`electrical.domains[${i}].pins: "${n}" is declared for mains but sits in ${x.kind} domain "${x.name}"`);
 	});
 }
@@ -503,8 +503,8 @@ var cache$4 = /* @__PURE__ */ new WeakMap();
 function mainsOf(m) {
 	const hit = cache$4.get(m);
 	if (hit) return hit;
-	const el = isObj(m.electrical) ? m.electrical : {};
-	const list = (k) => Array.isArray(el[k]) ? el[k].filter(isObj) : [];
+	const el = isObj$1(m.electrical) ? m.electrical : {};
+	const list = (k) => Array.isArray(el[k]) ? el[k].filter(isObj$1) : [];
 	const strs = (v) => Array.isArray(v) ? v.filter(isStr) : [];
 	const internalNodes = strs(el.internalNodes);
 	const acSources = list("acSources").map((s) => ({
@@ -513,7 +513,7 @@ function mainsOf(m) {
 		neutral: strs(s.neutral),
 		earth: strs(s.earth)
 	}));
-	const ac = isObj(el.ac) ? el.ac : null;
+	const ac = isObj$1(el.ac) ? el.ac : null;
 	const conducts = list("conducts").map((c) => ({
 		pins: strs(c.pins),
 		kind: c.kind,
@@ -532,7 +532,7 @@ function mainsOf(m) {
 	}));
 	const domainOf = /* @__PURE__ */ new Map();
 	for (const x of domains) for (const p of x.pins) domainOf.set(p, x);
-	const acInput = isObj(el.acInput) ? {
+	const acInput = isObj$1(el.acInput) ? {
 		a: show(el.acInput.a),
 		b: show(el.acInput.b),
 		range: el.acInput.range
@@ -549,7 +549,7 @@ function mainsOf(m) {
 	const contacts = list("contacts").map((c) => ({
 		id: show(c.id),
 		kind: c.kind,
-		poles: (Array.isArray(c.poles) ? c.poles.filter(isObj) : []).map((p) => ({
+		poles: (Array.isArray(c.poles) ? c.poles.filter(isObj$1) : []).map((p) => ({
 			com: show(p.com),
 			no: isStr(p.no) ? p.no : null,
 			nc: isStr(p.nc) ? p.nc : null
@@ -560,12 +560,12 @@ function mainsOf(m) {
 		p.no,
 		p.nc
 	].filter(isStr))));
-	const plugRaw = isObj(el.plug) ? el.plug : null;
+	const plugRaw = isObj$1(el.plug) ? el.plug : null;
 	const plug = plugRaw ? {
 		family: plugRaw.family,
-		profiles: (Array.isArray(plugRaw.profiles) ? plugRaw.profiles.filter(isObj) : []).map((pr) => ({
+		profiles: (Array.isArray(plugRaw.profiles) ? plugRaw.profiles.filter(isObj$1) : []).map((pr) => ({
 			id: show(pr.id),
-			contacts: (Array.isArray(pr.contacts) ? pr.contacts.filter(isObj) : []).map((c) => ({
+			contacts: (Array.isArray(pr.contacts) ? pr.contacts.filter(isObj$1) : []).map((c) => ({
 				pin: show(c.pin),
 				at: c.at,
 				mains: c.mains
@@ -576,7 +576,7 @@ function mainsOf(m) {
 	const sockets = list("sockets").map((s) => ({
 		id: show(s.id),
 		family: s.family,
-		contacts: (Array.isArray(s.contacts) ? s.contacts.filter(isObj) : []).map((c) => ({
+		contacts: (Array.isArray(s.contacts) ? s.contacts.filter(isObj$1) : []).map((c) => ({
 			group: show(c.group),
 			role: c.role
 		}))
@@ -675,7 +675,7 @@ var RAIL_KINDS = [
 /** The module's `electrical.sim`, or null. Trusts validateModule (validateSim). */
 function simOf(m) {
 	const e = m?.electrical;
-	return isObj(e) && isObj(e.sim) ? e.sim : null;
+	return isObj$1(e) && isObj$1(e.sim) ? e.sim : null;
 }
 /**
 * The module a stored copy is simulated and validated as. `electrical.sim` is library data, like
@@ -687,8 +687,8 @@ function withLibrarySim(stored, library) {
 	if (!library || isCustom(stored)) return stored;
 	const lib = library(stored.id);
 	if (!lib || lib === stored || terminalsKey(stored) !== terminalsKey(lib)) return stored;
-	const sim = isObj(lib.electrical) ? lib.electrical.sim : void 0;
-	const e = isObj(stored.electrical) ? { ...stored.electrical } : {};
+	const sim = isObj$1(lib.electrical) ? lib.electrical.sim : void 0;
+	const e = isObj$1(stored.electrical) ? { ...stored.electrical } : {};
 	if (e.sim === sim) return stored;
 	if (sim === void 0) delete e.sim;
 	else e.sim = sim;
@@ -761,11 +761,11 @@ var ROUT_MIN$1 = .001;
 /** Checks `electrical.sim` (spec 3.1): shape, units by kind, provenance, and every name it uses. */
 function validateSim(raw, names, errors) {
 	const el = raw.electrical;
-	if (!isObj(el) || el.sim === void 0) return;
+	if (!isObj$1(el) || el.sim === void 0) return;
 	const at = "electrical.sim";
 	const s = el.sim;
-	if (!isObj(s)) return void errors.push(`${at}: must be an object`);
-	const pins = [...Array.isArray(raw.pins) ? raw.pins : [], ...Array.isArray(raw.holes) ? raw.holes : []].filter(isObj);
+	if (!isObj$1(s)) return void errors.push(`${at}: must be an object`);
+	const pins = [...Array.isArray(raw.pins) ? raw.pins : [], ...Array.isArray(raw.holes) ? raw.holes : []].filter(isObj$1);
 	const usb = new Set(pins.filter((p) => p.type === "usb").map((p) => p.name));
 	const grounds = new Set(pins.filter((p) => p.type === "ground").map((p) => p.name));
 	/** USB port to the first `#vbus` / `#gnd` reference sim.power makes to it. */
@@ -786,7 +786,7 @@ function validateSim(raw, names, errors) {
 		if (o.note !== void 0 && !(typeof o.note === "string" && o.note.trim())) errors.push(`${where}.note: must be a non-empty string`);
 	};
 	const quantity = (v, where, unit, opts = {}) => {
-		if (!isObj(v)) return void errors.push(`${where}: must be { "value", "unit", "provenance", "source" or "note" }`);
+		if (!isObj$1(v)) return void errors.push(`${where}: must be { "value", "unit", "provenance", "source" or "note" }`);
 		keys(v, [
 			"value",
 			"unit",
@@ -801,7 +801,7 @@ function validateSim(raw, names, errors) {
 		sourced(v, where);
 	};
 	/** A quantity's value when it is a finite number. */
-	const val = (v) => isObj(v) && isNum(v.value) ? v.value : void 0;
+	const val = (v) => isObj$1(v) && isNum(v.value) ? v.value : void 0;
 	keys(s, [
 		"modelParams",
 		"limits",
@@ -812,7 +812,7 @@ function validateSim(raw, names, errors) {
 	], at);
 	if (s.unaccounted !== void 0 && !(Array.isArray(s.unaccounted) && s.unaccounted.every((x) => typeof x === "string" && x.trim()))) errors.push(`${at}.unaccounted: must be a list of non-empty strings`);
 	if (s.modelParams !== void 0) {
-		if (!isObj(s.modelParams)) errors.push(`${at}.modelParams: must be an object`);
+		if (!isObj$1(s.modelParams)) errors.push(`${at}.modelParams: must be an object`);
 		else for (const [k, v] of Object.entries(s.modelParams)) if (!Object.hasOwn(MODEL_PARAMS, k)) errors.push(`${at}.modelParams.${k}: unknown model parameter (${Object.keys(MODEL_PARAMS).join(", ")})`);
 		else quantity(v, `${at}.modelParams.${k}`, MODEL_PARAMS[k], { positive: true });
 	}
@@ -820,7 +820,7 @@ function validateSim(raw, names, errors) {
 	const p = s.power;
 	if (p !== void 0) {
 		const pa = `${at}.power`;
-		if (!isObj(p)) errors.push(`${pa}: must be an object`);
+		if (!isObj$1(p)) errors.push(`${pa}: must be an object`);
 		else {
 			keys(p, [
 				"domains",
@@ -831,7 +831,7 @@ function validateSim(raw, names, errors) {
 			if (!Array.isArray(p.domains) || !p.domains.length) errors.push(`${pa}.domains: required, a list of { "name", "pin", "ret", "nominal" }`);
 			else p.domains.forEach((d, i) => {
 				const w = `${pa}.domains[${i}]`;
-				if (!isObj(d)) return void errors.push(`${w}: must be an object`);
+				if (!isObj$1(d)) return void errors.push(`${w}: must be an object`);
 				keys(d, [
 					"name",
 					"pin",
@@ -850,7 +850,7 @@ function validateSim(raw, names, errors) {
 			};
 			if (p.draw !== void 0) (Array.isArray(p.draw) ? p.draw : [null]).forEach((d, i) => {
 				const w = `${pa}.draw[${i}]`;
-				if (!isObj(d)) return void errors.push(`${w}: must be { "domain", "typical", "peak"?, "minVolts"? }`);
+				if (!isObj$1(d)) return void errors.push(`${w}: must be { "domain", "typical", "peak"?, "minVolts"? }`);
 				keys(d, [
 					"domain",
 					"typical",
@@ -861,15 +861,15 @@ function validateSim(raw, names, errors) {
 				quantity(d.typical, `${w}.typical`, "A");
 				if (d.peak !== void 0) {
 					quantity(d.peak, `${w}.peak`, "A", { extra: ["note", "label"] });
-					if (isObj(d.peak) && !(typeof d.peak.note === "string" && d.peak.note.trim())) errors.push(`${w}.peak.note: required (what the peak is, for example "Wi-Fi transmit")`);
-					if (isObj(d.peak) && d.peak.label !== void 0 && !(typeof d.peak.label === "string" && d.peak.label.trim() && d.peak.label.length <= 32)) errors.push(`${w}.peak.label: must be a short name of 1 to 32 characters (for example "Wi-Fi transmit")`);
+					if (isObj$1(d.peak) && !(typeof d.peak.note === "string" && d.peak.note.trim())) errors.push(`${w}.peak.note: required (what the peak is, for example "Wi-Fi transmit")`);
+					if (isObj$1(d.peak) && d.peak.label !== void 0 && !(typeof d.peak.label === "string" && d.peak.label.trim() && d.peak.label.length <= 32)) errors.push(`${w}.peak.label: must be a short name of 1 to 32 characters (for example "Wi-Fi transmit")`);
 				}
 				if (d.minVolts !== void 0) quantity(d.minVolts, `${w}.minVolts`, "V", { positive: true });
 			});
 			const railIds = /* @__PURE__ */ new Set();
 			if (p.rails !== void 0) (Array.isArray(p.rails) ? p.rails : [null]).forEach((r, i) => {
 				const w = `${pa}.rails[${i}]`;
-				if (!isObj(r)) return void errors.push(`${w}: must be an object`);
+				if (!isObj$1(r)) return void errors.push(`${w}: must be an object`);
 				keys(r, [
 					"id",
 					"inputs",
@@ -885,7 +885,7 @@ function validateSim(raw, names, errors) {
 				if (!RAIL_KINDS.includes(r.kind)) errors.push(`${w}.kind: must be "ldo", "buck", "boost" or "switch"`);
 				if (!Array.isArray(r.inputs) || !r.inputs.length) errors.push(`${w}.inputs: required, a list of { "domain", "via" }`);
 				else r.inputs.forEach((x, j) => {
-					if (!isObj(x)) return void errors.push(`${w}.inputs[${j}]: must be { "domain", "via" }`);
+					if (!isObj$1(x)) return void errors.push(`${w}.inputs[${j}]: must be { "domain", "via" }`);
 					keys(x, ["domain", "via"], `${w}.inputs[${j}]`);
 					domain(x.domain, `${w}.inputs[${j}].domain`);
 					if (x.via !== "direct" && x.via !== "diode") errors.push(`${w}.inputs[${j}].via: must be "direct" or "diode"`);
@@ -904,14 +904,14 @@ function validateSim(raw, names, errors) {
 				if (r.kind === "ldo" && vout !== void 0 && dropout !== void 0 && dropout >= vout) errors.push(`${w}.dropout: must be below vout (${vout} V)`);
 				if ((r.ron !== void 0 || r.vf !== void 0) && r.kind !== "switch") errors.push(`${w}: ron and vf are for a "switch" rail`);
 				if (r.minLoad !== void 0) {
-					if (!isObj(r.minLoad) || typeof r.minLoad.note !== "string" || !r.minLoad.note.trim()) errors.push(`${w}.minLoad: must be { "amps", "note" }`);
+					if (!isObj$1(r.minLoad) || typeof r.minLoad.note !== "string" || !r.minLoad.note.trim()) errors.push(`${w}.minLoad: must be { "amps", "note" }`);
 					else quantity(r.minLoad.amps, `${w}.minLoad.amps`, "A", { positive: true });
 				}
 			});
 			if (p.source !== void 0) {
 				const w = `${pa}.source`;
 				const src = p.source;
-				if (!isObj(src)) errors.push(`${w}: must be { "domain", "voltage", "rInternal", "imax"? }`);
+				if (!isObj$1(src)) errors.push(`${w}: must be { "domain", "voltage", "rInternal", "imax"? }`);
 				else {
 					keys(src, [
 						"domain",
@@ -921,7 +921,7 @@ function validateSim(raw, names, errors) {
 					], w);
 					domain(src.domain, `${w}.domain`);
 					if (src.voltage === "param:voltage") {
-						if ((isObj(el.params) ? el.params : {}).voltage === void 0) errors.push(`${w}.voltage: "param:voltage" needs electrical.params.voltage`);
+						if ((isObj$1(el.params) ? el.params : {}).voltage === void 0) errors.push(`${w}.voltage: "param:voltage" needs electrical.params.voltage`);
 					} else quantity(src.voltage, `${w}.voltage`, "V", { positive: true });
 					quantity(src.rInternal, `${w}.rInternal`, "ohm", { positive: true });
 					if (src.imax !== void 0) quantity(src.imax, `${w}.imax`, "A", { positive: true });
@@ -932,7 +932,7 @@ function validateSim(raw, names, errors) {
 	if (s.gpio !== void 0) {
 		const w = `${at}.gpio`;
 		const g = s.gpio;
-		if (!isObj(g)) errors.push(`${w}: must be an object`);
+		if (!isObj$1(g)) errors.push(`${w}: must be an object`);
 		else {
 			keys(g, [
 				"domain",
@@ -954,19 +954,19 @@ function validateSim(raw, names, errors) {
 	}
 	if (s.usbPorts !== void 0) {
 		const w = `${at}.usbPorts`;
-		if (!isObj(s.usbPorts)) errors.push(`${w}: must be an object of USB pin to { "gnd" }`);
+		if (!isObj$1(s.usbPorts)) errors.push(`${w}: must be an object of USB pin to { "gnd" }`);
 		else for (const [port, v] of Object.entries(s.usbPorts)) {
 			if (!usb.has(port)) errors.push(`${w}.${port}: no USB pin "${port}"`);
-			if (!isObj(v) || typeof v.gnd !== "string") errors.push(`${w}.${port}: must be { "gnd": <ground pin> }`);
+			if (!isObj$1(v) || typeof v.gnd !== "string") errors.push(`${w}.${port}: must be { "gnd": <ground pin> }`);
 			else if (!grounds.has(v.gnd)) errors.push(`${w}.${port}.gnd: "${v.gnd}" is not a ground pin`);
 		}
 	}
 	if (grounds.size) {
-		for (const [port, ref] of usbRefs) if (!(isObj(s.usbPorts) && Object.hasOwn(s.usbPorts, port))) errors.push(`${at}.usbPorts.${port}: required, ${at}.power uses "${ref}" (name the ground pin, so the return flows through the cable)`);
+		for (const [port, ref] of usbRefs) if (!(isObj$1(s.usbPorts) && Object.hasOwn(s.usbPorts, port))) errors.push(`${at}.usbPorts.${port}: required, ${at}.power uses "${ref}" (name the ground pin, so the return flows through the cable)`);
 	}
 	if (s.limits !== void 0) (Array.isArray(s.limits) ? s.limits : [null]).forEach((l, i) => {
 		const w = `${at}.limits[${i}]`;
-		if (!isObj(l)) return void errors.push(`${w}: must be { "of", "kind", "value", "provenance", ... }`);
+		if (!isObj$1(l)) return void errors.push(`${w}: must be { "of", "kind", "value", "provenance", ... }`);
 		keys(l, [
 			"of",
 			"kind",
@@ -977,7 +977,7 @@ function validateSim(raw, names, errors) {
 			"note"
 		], w);
 		const of = l.of;
-		if (!isObj(of) || Object.keys(of).length !== 1) errors.push(`${w}.of: must be { "pin" }, { "domain" } or { "part": true }`);
+		if (!isObj$1(of) || Object.keys(of).length !== 1) errors.push(`${w}.of: must be { "pin" }, { "domain" } or { "part": true }`);
 		else if ("pin" in of) {
 			if (typeof of.pin !== "string" || !names.has(of.pin)) errors.push(`${w}.of.pin: no pin "${show(of.pin)}"`);
 		} else if ("domain" in of) {
@@ -1077,7 +1077,7 @@ function pinRoom(m) {
 var insideLabelSides = (m) => usesInsideLabels(m) ? [...SIDES] : [];
 /** A board accepts mounted parts: it has hole groups and is not a routing obstacle (breadboards, rail strips). */
 var isBoard = (m) => !!m && !!m.holes?.length && m.obstacle === false;
-var isObj = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
+var isObj$1 = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
 var isNum = (v) => typeof v === "number" && Number.isFinite(v);
 /**
 * Any untrusted value as text for a message, never throwing: String() throws on an object whose
@@ -1147,7 +1147,7 @@ function validParamValue(name, v) {
 /** Checks a parsed JSON value against the module format. Errors name the exact path. */
 function validateModule(raw) {
 	const errors = [];
-	if (!isObj(raw)) return {
+	if (!isObj$1(raw)) return {
 		ok: false,
 		errors: ["module must be a JSON object"]
 	};
@@ -1172,7 +1172,7 @@ function validateModule(raw) {
 	const checkCaps = (t, at) => {
 		if (t.caps === void 0) return;
 		const c = t.caps;
-		if (!isObj(c)) return void errors.push(`${at}.caps: must be an object (inputOnly, outputOnly, flash, noPullup, strapping, note)`);
+		if (!isObj$1(c)) return void errors.push(`${at}.caps: must be an object (inputOnly, outputOnly, flash, noPullup, strapping, note)`);
 		for (const k of Object.keys(c)) if (![
 			"inputOnly",
 			"outputOnly",
@@ -1201,7 +1201,7 @@ function validateModule(raw) {
 	const checkUsb = (t, at) => {
 		if (t.type !== "usb") return void (t.usb !== void 0 && errors.push(`${at}.usb: only on a pin with type "usb"`));
 		const u = t.usb;
-		if (!isObj(u)) return void errors.push(`${at}.usb: required on a USB port, { "connector", "gender", "role", ... }`);
+		if (!isObj$1(u)) return void errors.push(`${at}.usb: required on a USB port, { "connector", "gender", "role", ... }`);
 		for (const k of Object.keys(u)) if (![
 			"connector",
 			"gender",
@@ -1235,7 +1235,7 @@ function validateModule(raw) {
 	if (!Array.isArray(raw.pins) || raw.pins.length === 0 && !hasHoles) errors.push("pins: required, at least one pin");
 	else raw.pins.forEach((p, i) => {
 		const at = `pins[${i}]`;
-		if (!isObj(p)) return void errors.push(`${at}: must be an object`);
+		if (!isObj$1(p)) return void errors.push(`${at}: must be an object`);
 		if (!SIDES.includes(p.side)) errors.push(`${at}.side: must be top, bottom, left or right`);
 		if (p.spacer !== void 0) {
 			if (p.spacer !== true) errors.push(`${at}.spacer: must be true`);
@@ -1247,7 +1247,7 @@ function validateModule(raw) {
 		names.add(p.name);
 		checkType(p, at);
 		checkMains(p, at);
-		if (p.bus !== void 0 && !(isObj(p.bus) && Number.isInteger(p.bus.length) && p.bus.length >= 2 && p.bus.length <= MODULE_UNITS_MAX)) errors.push(`${at}.bus: must be { "length": <whole number, 2 to ${MODULE_UNITS_MAX}> } (at most ${MODULE_PX_MAX} px)`);
+		if (p.bus !== void 0 && !(isObj$1(p.bus) && Number.isInteger(p.bus.length) && p.bus.length >= 2 && p.bus.length <= MODULE_UNITS_MAX)) errors.push(`${at}.bus: must be { "length": <whole number, 2 to ${MODULE_UNITS_MAX}> } (at most ${MODULE_PX_MAX} px)`);
 		if (p.label !== void 0 && typeof p.label !== "string") errors.push(`${at}.label: must be a string`);
 		checkSupply(p, at);
 		checkCaps(p, at);
@@ -1259,7 +1259,7 @@ function validateModule(raw) {
 		if (!Array.isArray(raw.holes)) errors.push("holes: must be a list of hole groups");
 		else raw.holes.forEach((g, i) => {
 			const at = `holes[${i}]`;
-			if (!isObj(g)) return void errors.push(`${at}: must be an object`);
+			if (!isObj$1(g)) return void errors.push(`${at}: must be an object`);
 			if (typeof g.name !== "string" || g.name === "") errors.push(`${at}.name: required`);
 			else if (names.has(g.name)) errors.push(`${at}.name: duplicate name "${g.name}" (pins and hole groups share one namespace)`);
 			else names.add(g.name);
@@ -1291,7 +1291,7 @@ function validateModule(raw) {
 		if (raw.netLabel !== true) errors.push("netLabel: must be true when present");
 		else if (!Array.isArray(raw.pins) || raw.pins.length !== 1 || Array.isArray(raw.holes) && raw.holes.length || raw.internal !== void 0) errors.push("netLabel: a net label has exactly one pin and no hole groups or internal joins");
 	}
-	if (raw.footprint !== void 0 && raw.footprint !== "legs" && !(isObj(raw.footprint) && inBounds(raw.footprint.x) && inBounds(raw.footprint.y) && sizeInBounds(raw.footprint.w) && sizeInBounds(raw.footprint.h))) errors.push(`footprint: must be "legs" or { "x", "y", "w", "h" } in module px, x and y within +-${MODULE_PX_MAX}, w and h above 0 and at most ${MODULE_PX_MAX}`);
+	if (raw.footprint !== void 0 && raw.footprint !== "legs" && !(isObj$1(raw.footprint) && inBounds(raw.footprint.x) && inBounds(raw.footprint.y) && sizeInBounds(raw.footprint.w) && sizeInBounds(raw.footprint.h))) errors.push(`footprint: must be "legs" or { "x", "y", "w", "h" } in module px, x and y within +-${MODULE_PX_MAX}, w and h above 0 and at most ${MODULE_PX_MAX}`);
 	const pinNames = new Set(names);
 	if (raw.kicad !== void 0) validateKicad(raw.kicad, pinNames, Array.isArray(raw.internal) ? raw.internal : [], errors);
 	claimInternalNodes(raw, names, errors);
@@ -1304,15 +1304,15 @@ function validateModule(raw) {
 			});
 		});
 	}
-	if (raw.size !== void 0 && !(isObj(raw.size) && isPos(raw.size.w) && isPos(raw.size.h) && raw.size.w <= MODULE_UNITS_MAX && raw.size.h <= MODULE_UNITS_MAX)) errors.push(`size: must be { "w": <units>, "h": <units> } with positive numbers, at most ${MODULE_UNITS_MAX} units (${MODULE_PX_MAX} px)`);
+	if (raw.size !== void 0 && !(isObj$1(raw.size) && isPos(raw.size.w) && isPos(raw.size.h) && raw.size.w <= MODULE_UNITS_MAX && raw.size.h <= MODULE_UNITS_MAX)) errors.push(`size: must be { "w": <units>, "h": <units> } with positive numbers, at most ${MODULE_UNITS_MAX} units (${MODULE_PX_MAX} px)`);
 	if (raw.art !== void 0) {
 		const art = raw.art;
-		if (!isObj(art) || !sizeInBounds(art.w) || !sizeInBounds(art.h) || !Array.isArray(art.shapes)) errors.push(`art: must be { "w", "h", "shapes": [...] } with w and h above 0 and at most ${MODULE_PX_MAX}`);
+		if (!isObj$1(art) || !sizeInBounds(art.w) || !sizeInBounds(art.h) || !Array.isArray(art.shapes)) errors.push(`art: must be { "w", "h", "shapes": [...] } with w and h above 0 and at most ${MODULE_PX_MAX}`);
 		else {
 			if (art.pinLabels !== void 0 && art.pinLabels !== "inside" && art.pinLabels !== "tips") errors.push("art.pinLabels: must be \"inside\" or \"tips\"");
 			art.shapes.forEach((s, i) => {
 				const at = `art.shapes[${i}]`;
-				if (!isObj(s) || s.type !== "rect") return void errors.push(`${at}: only "rect" shapes are supported`);
+				if (!isObj$1(s) || s.type !== "rect") return void errors.push(`${at}: only "rect" shapes are supported`);
 				for (const k of [
 					"x",
 					"y",
@@ -1339,14 +1339,14 @@ function validateModule(raw) {
 			if (x < 0 || y < 0 || x > lay.w || y > lay.h) errors.push(`holes[${i}].at[${j}]: outside the body (0 to ${lay.w}, 0 to ${lay.h})`);
 		}));
 	}
-	if (isObj(raw.electrical) && raw.electrical.params !== void 0) {
+	if (isObj$1(raw.electrical) && raw.electrical.params !== void 0) {
 		const params = raw.electrical.params;
-		if (!isObj(params)) errors.push("electrical.params: must be an object");
+		if (!isObj$1(params)) errors.push("electrical.params: must be an object");
 		else for (const [name, rule] of Object.entries(PARAM_RULES)) {
 			if (!Object.hasOwn(params, name)) continue;
 			const p = params[name];
 			const at = `electrical.params.${name}`;
-			if (!isObj(p)) {
+			if (!isObj$1(p)) {
 				errors.push(`${at}: must be { "unit": "${rule.unit}", "default": <number> }`);
 				continue;
 			}
@@ -1354,18 +1354,18 @@ function validateModule(raw) {
 			if (!(rule.optional && p.default === void 0) && !validParamValue(name, p.default)) errors.push(`${at}.default: must be ${rule.range}${rule.optional ? ", or left out" : ""}`);
 		}
 	}
-	if (isObj(raw.electrical) && raw.electrical.settings !== void 0) {
+	if (isObj$1(raw.electrical) && raw.electrical.settings !== void 0) {
 		const s = raw.electrical.settings;
-		if (!isObj(s)) errors.push("electrical.settings: must be an object of setting name to a list of choices");
+		if (!isObj$1(s)) errors.push("electrical.settings: must be an object of setting name to a list of choices");
 		else for (const [k, v] of Object.entries(s)) if (!Array.isArray(v) || v.length < 2 || v.some((c) => typeof c !== "string" || c === "") || new Set(v).size !== v.length) errors.push(`electrical.settings.${k}: must be a list of 2 or more different choices, the first the default`);
 	}
-	if (isObj(raw.electrical) && raw.electrical.i2c !== void 0) validateI2c(raw.electrical.i2c, raw.electrical.settings, pinNames, errors);
-	if (isObj(raw.electrical) && raw.electrical.external !== void 0) {
+	if (isObj$1(raw.electrical) && raw.electrical.i2c !== void 0) validateI2c(raw.electrical.i2c, raw.electrical.settings, pinNames, errors);
+	if (isObj$1(raw.electrical) && raw.electrical.external !== void 0) {
 		const ext = raw.electrical.external;
 		if (!Array.isArray(ext)) errors.push("electrical.external: must be a list of { \"pin\", \"volts\", \"via\" }");
 		else ext.forEach((e, i) => {
 			const at = `electrical.external[${i}]`;
-			if (!isObj(e)) return void errors.push(`${at}: must be { "pin", "volts", "via" }`);
+			if (!isObj$1(e)) return void errors.push(`${at}: must be { "pin", "volts", "via" }`);
 			if (typeof e.pin !== "string" || !pinNames.has(e.pin)) errors.push(`${at}.pin: no pin named "${show(e.pin)}"`);
 			if (!isPos(e.volts)) errors.push(`${at}.volts: must be a number above 0`);
 			if (typeof e.via !== "string" || e.via.trim() === "") errors.push(`${at}.via: required, what powers the pin (for example "USB")`);
@@ -1373,9 +1373,9 @@ function validateModule(raw) {
 			if (e.max !== void 0 && !(isNum(e.max) && isPos(e.volts) && e.max >= e.volts)) errors.push(`${at}.max: must be a number, at least volts`);
 		});
 	}
-	if (isObj(raw.electrical) && raw.electrical.commonReturn !== void 0) {
+	if (isObj$1(raw.electrical) && raw.electrical.commonReturn !== void 0) {
 		const groups = raw.electrical.commonReturn;
-		const grounds = new Set([...Array.isArray(raw.pins) ? raw.pins : [], ...Array.isArray(raw.holes) ? raw.holes : []].filter((p) => isObj(p) && p.type === "ground" && typeof p.name === "string").map((p) => p.name));
+		const grounds = new Set([...Array.isArray(raw.pins) ? raw.pins : [], ...Array.isArray(raw.holes) ? raw.holes : []].filter((p) => isObj$1(p) && p.type === "ground" && typeof p.name === "string").map((p) => p.name));
 		if (!Array.isArray(groups)) errors.push("electrical.commonReturn: must be a list of ground pin name groups");
 		else groups.forEach((g, i) => {
 			if (!Array.isArray(g) || g.length < 2) return void errors.push(`electrical.commonReturn[${i}]: needs 2 or more ground pin names`);
@@ -1384,22 +1384,22 @@ function validateModule(raw) {
 			});
 		});
 	}
-	if (isObj(raw.electrical) && raw.electrical.returns !== void 0) {
+	if (isObj$1(raw.electrical) && raw.electrical.returns !== void 0) {
 		const returns = raw.electrical.returns;
-		const items = [...Array.isArray(raw.pins) ? raw.pins : [], ...Array.isArray(raw.holes) ? raw.holes : []].filter((p) => isObj(p) && typeof p.name === "string");
-		const ext = Array.isArray(raw.electrical.external) ? raw.electrical.external.filter(isObj).map((e) => e.pin) : [];
+		const items = [...Array.isArray(raw.pins) ? raw.pins : [], ...Array.isArray(raw.holes) ? raw.holes : []].filter((p) => isObj$1(p) && typeof p.name === "string");
+		const ext = Array.isArray(raw.electrical.external) ? raw.electrical.external.filter(isObj$1).map((e) => e.pin) : [];
 		const outs = new Set(items.filter((p) => p.type === "power_out" || ext.includes(p.name)).map((p) => p.name));
 		const grounds = new Set(items.filter((p) => p.type === "ground").map((p) => p.name));
-		if (!isObj(returns)) errors.push("electrical.returns: must be an object of output pin name to ground pin name");
+		if (!isObj$1(returns)) errors.push("electrical.returns: must be an object of output pin name to ground pin name");
 		else for (const [out, g] of Object.entries(returns)) {
 			if (!outs.has(out)) errors.push(`electrical.returns.${out}: no power_out or external pin named "${out}"`);
 			if (typeof g !== "string" || !grounds.has(g)) errors.push(`electrical.returns.${out}: no ground pin named "${show(g)}"`);
 		}
 	}
-	if (isObj(raw.electrical)) {
+	if (isObj$1(raw.electrical)) {
 		const el = raw.electrical;
-		const hasVoltage = isObj(el.params) && el.params.voltage !== void 0;
-		const outs = [...Array.isArray(raw.pins) ? raw.pins : [], ...Array.isArray(raw.holes) ? raw.holes : []].filter((p) => isObj(p) && p.type === "power_out" && typeof p.name === "string").map((p) => p.name);
+		const hasVoltage = isObj$1(el.params) && el.params.voltage !== void 0;
+		const outs = [...Array.isArray(raw.pins) ? raw.pins : [], ...Array.isArray(raw.holes) ? raw.holes : []].filter((p) => isObj$1(p) && p.type === "power_out" && typeof p.name === "string").map((p) => p.name);
 		if (el.voltageOutputs !== void 0) {
 			if (!hasVoltage) errors.push("electrical.voltageOutputs: only for a module with a voltage param");
 			if (!Array.isArray(el.voltageOutputs) || el.voltageOutputs.length === 0) errors.push("electrical.voltageOutputs: must be a list of power_out pin names");
@@ -1411,7 +1411,7 @@ function validateModule(raw) {
 	validateUsb(raw, errors);
 	validateMains(raw, names, errors);
 	validateSim(raw, names, errors);
-	if (!errors.length && isObj(raw.electrical) && isObj(raw.electrical.plug) && Array.isArray(raw.electrical.plug.profiles)) {
+	if (!errors.length && isObj$1(raw.electrical) && isObj$1(raw.electrical.plug) && Array.isArray(raw.electrical.plug.profiles)) {
 		const lay = computeLayout(raw);
 		raw.electrical.plug.profiles.forEach((pr, i) => pr.contacts.forEach((c, j) => {
 			if (c.at.x < 0 || c.at.y < 0 || c.at.x > lay.w || c.at.y > lay.h) errors.push(`electrical.plug.profiles[${i}].contacts[${j}].at: outside the body (0 to ${lay.w}, 0 to ${lay.h})`);
@@ -1427,8 +1427,8 @@ function validateModule(raw) {
 }
 /** Cross-pin USB data: passthrough partners, shared budgets and hub power (one port's own fields are checked with its pin). */
 function validateUsb(raw, errors) {
-	const ports = new Map((Array.isArray(raw.pins) ? raw.pins : []).filter((p) => isObj(p) && p.type === "usb" && typeof p.name === "string" && isObj(p.usb)).map((p) => [p.name, p.usb]));
-	const powerPins = new Set([...Array.isArray(raw.pins) ? raw.pins : [], ...Array.isArray(raw.holes) ? raw.holes : []].filter((p) => isObj(p) && p.type !== "usb").map((p) => p.name));
+	const ports = new Map((Array.isArray(raw.pins) ? raw.pins : []).filter((p) => isObj$1(p) && p.type === "usb" && typeof p.name === "string" && isObj$1(p.usb)).map((p) => [p.name, p.usb]));
+	const powerPins = new Set([...Array.isArray(raw.pins) ? raw.pins : [], ...Array.isArray(raw.holes) ? raw.holes : []].filter((p) => isObj$1(p) && p.type !== "usb").map((p) => p.name));
 	for (const [name, u] of ports) if (u.vbus !== void 0 && !(typeof u.vbus === "string" && powerPins.has(u.vbus))) errors.push(`pins: USB port "${name}" has vbus "${show(u.vbus)}", which must name one of the part's own pins or pads (not a USB port)`);
 	for (const [name, u] of ports) {
 		if (u.role !== "passthrough" || typeof u.through !== "string") continue;
@@ -1437,7 +1437,7 @@ function validateUsb(raw, errors) {
 	}
 	const el = raw.electrical;
 	const hubPorts = [...ports.values()].filter((u) => u.hub !== void 0);
-	if (!isObj(el)) {
+	if (!isObj$1(el)) {
 		if (hubPorts.length) errors.push("electrical.usbHub: required on a part with hub ports (how its downstream ports are powered)");
 		return;
 	}
@@ -1445,7 +1445,7 @@ function validateUsb(raw, errors) {
 		if (!Array.isArray(el.usbBudget)) errors.push("electrical.usbBudget: must be a list of { \"ports\", \"mA\", \"setting\"?, \"note\"? }");
 		else el.usbBudget.forEach((b, i) => {
 			const at = `electrical.usbBudget[${i}]`;
-			if (!isObj(b)) return void errors.push(`${at}: must be { "ports", "mA", "setting"?, "note"? }`);
+			if (!isObj$1(b)) return void errors.push(`${at}: must be { "ports", "mA", "setting"?, "note"? }`);
 			for (const k of Object.keys(b)) if (![
 				"ports",
 				"mA",
@@ -1460,34 +1460,34 @@ function validateUsb(raw, errors) {
 			if (b.note !== void 0 && (typeof b.note !== "string" || !b.note.trim())) errors.push(`${at}.note: must be a non-empty string`);
 			if (b.setting !== void 0) {
 				const s = b.setting;
-				const choices = Array.isArray(s) && s.length === 2 && typeof s[0] === "string" && isObj(el.settings) && Object.hasOwn(el.settings, s[0]) ? el.settings[s[0]] : void 0;
+				const choices = Array.isArray(s) && s.length === 2 && typeof s[0] === "string" && isObj$1(el.settings) && Object.hasOwn(el.settings, s[0]) ? el.settings[s[0]] : void 0;
 				if (!Array.isArray(choices) || !Array.isArray(s) || !choices.includes(s[1])) errors.push(`${at}.setting: must be [setting name, choice] from electrical.settings`);
 			}
 		});
 	}
 	if (el.usbHub !== void 0) {
 		const h = el.usbHub;
-		if (!(isObj(h) && Object.keys(h).length === 1 && (h.power === "bus" || h.power === "self" || isObj(h.power) && Object.keys(h.power).length === 1 && typeof h.power.pin === "string" && powerPins.has(h.power.pin)))) errors.push("electrical.usbHub: must be { \"power\": \"bus\" }, { \"power\": \"self\" } or { \"power\": { \"pin\": <a pin or pad name, not a USB port> } }");
+		if (!(isObj$1(h) && Object.keys(h).length === 1 && (h.power === "bus" || h.power === "self" || isObj$1(h.power) && Object.keys(h.power).length === 1 && typeof h.power.pin === "string" && powerPins.has(h.power.pin)))) errors.push("electrical.usbHub: must be { \"power\": \"bus\" }, { \"power\": \"self\" } or { \"power\": { \"pin\": <a pin or pad name, not a USB port> } }");
 		if (hubPorts.filter((u) => u.hub === "upstream").length !== 1 || !hubPorts.some((u) => u.hub === "downstream")) errors.push("electrical.usbHub: a hub has exactly one upstream port and at least one downstream port");
 	} else if (hubPorts.length) errors.push("electrical.usbHub: required on a part with hub ports (how its downstream ports are powered)");
 }
 /** A part's USB ports (pins with `type: "usb"`), in pin order. Trusts validateModule. */
 function usbPorts(m) {
-	return m.pins.filter((p) => !isSpacer(p) && p.type === "usb" && isObj(p.usb));
+	return m.pins.filter((p) => !isSpacer(p) && p.type === "usb" && isObj$1(p.usb));
 }
 /** The USB port named `name`, or undefined (not a pin, or not a USB port). */
 function usbOf(m, name) {
 	const p = m.pins.find((q) => !isSpacer(q) && q.name === name);
-	return p?.type === "usb" && isObj(p.usb) ? p.usb : void 0;
+	return p?.type === "usb" && isObj$1(p.usb) ? p.usb : void 0;
 }
 function usbHubOf(m) {
 	const e = m.electrical;
-	return isObj(e) && isObj(e.usbHub) ? e.usbHub : null;
+	return isObj$1(e) && isObj$1(e.usbHub) ? e.usbHub : null;
 }
 /** The shared USB current limits (`electrical.usbBudget`) that apply with the part's settings. */
 function usbBudgets(part, m) {
 	const e = m.electrical;
-	if (!isObj(e) || !Array.isArray(e.usbBudget)) return [];
+	if (!isObj$1(e) || !Array.isArray(e.usbBudget)) return [];
 	return e.usbBudget.filter((b) => !b.setting || partSetting(part, m, b.setting[0]) === b.setting[1]);
 }
 /** A KiCad library id, "Library:Name": no spaces, quotes or second colon. */
@@ -1505,7 +1505,7 @@ var KICAD_KEYS = [
 ];
 function validateKicad(k, pins, internal, errors) {
 	const at = "kicad";
-	if (!isObj(k)) return void errors.push(`${at}: must be { "footprint", "pins"?, "symbol"?, "value"? } or { "headers": [...] }`);
+	if (!isObj$1(k)) return void errors.push(`${at}: must be { "footprint", "pins"?, "symbol"?, "value"? } or { "headers": [...] }`);
 	for (const key of Object.keys(k)) if (!KICAD_KEYS.includes(key)) errors.push(`${at}.${key}: unknown field`);
 	if (k.footprint === void 0 === (k.headers === void 0)) errors.push(`${at}: give exactly one of "footprint" or "headers"`);
 	if (k.symbol !== void 0 && !(typeof k.symbol === "string" && KICAD_LIB_ID.test(k.symbol))) errors.push(`${at}.symbol: must be a KiCad library id, "Library:Symbol"`);
@@ -1513,7 +1513,7 @@ function validateKicad(k, pins, internal, errors) {
 	if (k.placeholder !== void 0 && k.placeholder !== true) errors.push(`${at}.placeholder: must be true when present`);
 	const joined = (a, b) => internal.some((g) => Array.isArray(g) && g.includes(a) && g.includes(b));
 	const checkPins = (p, where, seen) => {
-		if (!isObj(p) || !Object.keys(p).length) return void errors.push(`${where}: must be an object of pin name to pad number, at least one pin`);
+		if (!isObj$1(p) || !Object.keys(p).length) return void errors.push(`${where}: must be an object of pin name to pad number, at least one pin`);
 		const byPad = /* @__PURE__ */ new Map();
 		for (const [name, pad] of Object.entries(p)) {
 			if (!pins.has(name)) errors.push(`${where}.${name}: no pin or hole group named "${name}"`);
@@ -1538,7 +1538,7 @@ function validateKicad(k, pins, internal, errors) {
 		const seen = /* @__PURE__ */ new Set();
 		k.headers.forEach((h, i) => {
 			const where = `${at}.headers[${i}]`;
-			if (!isObj(h)) return void errors.push(`${where}: must be { "footprint", "pins", "name"? }`);
+			if (!isObj$1(h)) return void errors.push(`${where}: must be { "footprint", "pins", "name"? }`);
 			for (const key of Object.keys(h)) if (![
 				"name",
 				"footprint",
@@ -1558,7 +1558,7 @@ var parseAddress = (s) => /^0x[0-9a-f]{1,2}$/i.test(s) && isAddress(parseInt(s, 
 var addressText = (a) => `0x${a.toString(16).toUpperCase().padStart(2, "0")}`;
 function validateI2c(i2c, settings, pins, errors) {
 	const at = "electrical.i2c";
-	if (!isObj(i2c)) return void errors.push(`${at}: must be { "sda", "scl", "address"?, "pullups"? }`);
+	if (!isObj$1(i2c)) return void errors.push(`${at}: must be { "sda", "scl", "address"?, "pullups"? }`);
 	for (const k of Object.keys(i2c)) if (![
 		"sda",
 		"scl",
@@ -1570,7 +1570,7 @@ function validateI2c(i2c, settings, pins, errors) {
 	const a = i2c.address;
 	if (a === void 0) return;
 	const forms = "{ \"fixed\" }, { \"base\", \"pins\" } or { \"setting\" }";
-	if (!isObj(a)) return void errors.push(`${at}.address: must be ${forms}`);
+	if (!isObj$1(a)) return void errors.push(`${at}.address: must be ${forms}`);
 	if (a.fixed !== void 0) {
 		if (!isAddress(a.fixed)) errors.push(`${at}.address.fixed: must be a 7-bit address (0 to 127)`);
 		if (Object.keys(a).length > 1) errors.push(`${at}.address: "fixed" takes no other field`);
@@ -1579,13 +1579,13 @@ function validateI2c(i2c, settings, pins, errors) {
 		if (!Array.isArray(a.pins) || !a.pins.length) return void errors.push(`${at}.address.pins: required, a list of { "pin", "add", "floating"? }`);
 		a.pins.forEach((p, i) => {
 			const pa = `${at}.address.pins[${i}]`;
-			if (!isObj(p)) return void errors.push(`${pa}: must be { "pin", "add", "floating"? }`);
+			if (!isObj$1(p)) return void errors.push(`${pa}: must be { "pin", "add", "floating"? }`);
 			if (typeof p.pin !== "string" || !pins.has(p.pin)) errors.push(`${pa}.pin: no pin named "${show(p.pin)}"`);
 			if (!(Number.isInteger(p.add) && p.add > 0 && p.add <= 127)) errors.push(`${pa}.add: must be a whole number from 1 to 127`);
 			if (p.floating !== void 0 && p.floating !== 0 && p.floating !== 1) errors.push(`${pa}.floating: must be 0 or 1 (the level the board pulls the pin to when nothing is connected)`);
 		});
 	} else if (a.setting !== void 0) {
-		const choices = isObj(settings) && typeof a.setting === "string" && Object.hasOwn(settings, a.setting) ? settings[a.setting] : void 0;
+		const choices = isObj$1(settings) && typeof a.setting === "string" && Object.hasOwn(settings, a.setting) ? settings[a.setting] : void 0;
 		if (typeof a.setting !== "string" || !Array.isArray(choices)) errors.push(`${at}.address.setting: no setting named "${show(a.setting)}" in electrical.settings`);
 		else if (choices.some((c) => typeof c !== "string" || parseAddress(c) === null)) errors.push(`${at}.address.setting: every choice of electrical.settings.${a.setting} must be an address such as "0x3C"`);
 	} else errors.push(`${at}.address: must be ${forms}`);
@@ -1593,7 +1593,7 @@ function validateI2c(i2c, settings, pins, errors) {
 /** The module's I2C device data (`electrical.i2c`), or null. Trusts validateModule. */
 function i2cOf(m) {
 	const e = m.electrical;
-	return isObj(e) && isObj(e.i2c) && typeof e.i2c.sda === "string" && typeof e.i2c.scl === "string" ? e.i2c : null;
+	return isObj$1(e) && isObj$1(e.i2c) && typeof e.i2c.sda === "string" && typeof e.i2c.scl === "string" ? e.i2c : null;
 }
 /** A pin's or hole group's capabilities, or undefined. */
 function pinCaps(m, name) {
@@ -1606,13 +1606,13 @@ function pinCaps(m, name) {
 */
 function commonReturn(m) {
 	const e = m.electrical;
-	if (!isObj(e) || !Array.isArray(e.commonReturn)) return [];
+	if (!isObj$1(e) || !Array.isArray(e.commonReturn)) return [];
 	return e.commonReturn.filter((g) => Array.isArray(g) && g.every((n) => typeof n === "string"));
 }
 /** The ground pin each output or USB pin returns to (`electrical.returns`), as declared. */
 function declaredReturns(m) {
 	const e = m.electrical;
-	if (!isObj(e) || !isObj(e.returns)) return {};
+	if (!isObj$1(e) || !isObj$1(e.returns)) return {};
 	return Object.fromEntries(Object.entries(e.returns).filter((x) => typeof x[1] === "string"));
 }
 /**
@@ -1621,7 +1621,7 @@ function declaredReturns(m) {
 */
 function voltageOutputs(m) {
 	const e = m.electrical;
-	if (!isObj(e) || !isObj(e.params) || e.params.voltage === void 0) return [];
+	if (!isObj$1(e) || !isObj$1(e.params) || e.params.voltage === void 0) return [];
 	if (Array.isArray(e.voltageOutputs)) return e.voltageOutputs.filter((n) => typeof n === "string");
 	const outs = [...m.pins.filter((p) => !isSpacer(p)), ...m.holes ?? []].filter((p) => p.type === "power_out");
 	return outs.length === 1 ? [outs[0].name] : [];
@@ -1629,8 +1629,8 @@ function voltageOutputs(m) {
 /** The module's `electrical.external` entries that are well formed (validateModule reports the rest). */
 function externalPower(m) {
 	const e = m.electrical;
-	if (!isObj(e) || !Array.isArray(e.external)) return [];
-	return e.external.filter((x) => isObj(x) && typeof x.pin === "string" && isPos(x.volts) && typeof x.via === "string");
+	if (!isObj$1(e) || !Array.isArray(e.external)) return [];
+	return e.external.filter((x) => isObj$1(x) && typeof x.pin === "string" && isPos(x.volts) && typeof x.via === "string");
 }
 var slotsOn = (m, side) => m.pins.filter((p) => p.side === side).reduce((n, p) => n + (!isSpacer(p) && p.bus ? p.bus.length : 1), 0);
 /**
@@ -1738,7 +1738,7 @@ function terminalCapacity(m, name) {
 /** A module's enumerated part settings (`electrical.settings`): each name with its choices, the first the default. */
 function moduleSettings(m) {
 	const e = m.electrical;
-	if (!isObj(e) || !isObj(e.settings)) return {};
+	if (!isObj$1(e) || !isObj$1(e.settings)) return {};
 	return Object.fromEntries(Object.entries(e.settings).filter((x) => Array.isArray(x[1]) && x[1].length > 1 && x[1].every((c) => typeof c === "string")));
 }
 /** A part's choice for one setting: its stored choice when the module offers it, else the module's first choice; null when the module has no such setting. */
@@ -3776,10 +3776,10 @@ var PRIMARY_PARAM_NAMES = Object.keys(PARAM_RULES);
 */
 function primaryParam(m) {
 	const electrical = m.electrical;
-	if (!isObj(electrical) || !isObj(electrical.params)) return null;
+	if (!isObj$1(electrical) || !isObj$1(electrical.params)) return null;
 	for (const name of PRIMARY_PARAM_NAMES) {
 		const param = electrical.params[name];
-		if (!isObj(param)) continue;
+		if (!isObj$1(param)) continue;
 		const def = param.default;
 		if (param.unit === PARAM_RULES[name].unit && validParamValue(name, def)) return {
 			name,
@@ -3799,7 +3799,7 @@ function partValue(part, m) {
 	const p = primaryParam(m);
 	if (!p) return null;
 	const stored = part.values?.[p.name];
-	if (isObj(stored) && stored.unit === p.unit && validParamValue(p.name, stored.value)) return {
+	if (isObj$1(stored) && stored.unit === p.unit && validParamValue(p.name, stored.value)) return {
 		name: p.name,
 		unit: p.unit,
 		value: stored.value
@@ -3816,11 +3816,11 @@ function partValue(part, m) {
 */
 function editableParams(m) {
 	const e = m.electrical;
-	if (!isObj(e) || !isObj(e.params)) return [];
+	if (!isObj$1(e) || !isObj$1(e.params)) return [];
 	const out = [];
 	for (const name of PRIMARY_PARAM_NAMES) {
 		const p = e.params[name];
-		if (!isObj(p) || p.unit !== PARAM_RULES[name].unit) continue;
+		if (!isObj$1(p) || p.unit !== PARAM_RULES[name].unit) continue;
 		if (validParamValue(name, p.default)) out.push({
 			name,
 			unit: p.unit,
@@ -3839,7 +3839,7 @@ function paramValue(part, m, name) {
 	const p = editableParams(m).find((x) => x.name === name);
 	if (!p) return null;
 	const stored = part.values?.[name];
-	if (isObj(stored) && stored.unit === p.unit && validParamValue(name, stored.value)) return stored.value;
+	if (isObj$1(stored) && stored.unit === p.unit && validParamValue(name, stored.value)) return stored.value;
 	return p.default;
 }
 /** "R1  4.7 kΩ" when the part has an editable value, else just its designator. Shared by the live editor canvas and the read-only sheet preview. */
@@ -4057,11 +4057,11 @@ var GPIO_STATES = [
 	"high",
 	"low"
 ];
-var modelOf$2 = (m) => isObj(m.electrical) ? m.electrical.model : void 0;
+var modelOf$2 = (m) => isObj$1(m.electrical) ? m.electrical.model : void 0;
 var words = (list) => list.map((s) => `"${s}"`).join(", ");
 /** Every contact group: `electrical.contacts`, or ruling R2's implicit group "s" on a switch with terminals a and b. */
 function switchGroups(m) {
-	const momentary = (isObj(m.electrical) && isObj(m.electrical.params) ? m.electrical.params : {}).normallyOpen !== void 0;
+	const momentary = (isObj$1(m.electrical) && isObj$1(m.electrical.params) ? m.electrical.params : {}).normallyOpen !== void 0;
 	const declared = mainsOf(m).contacts;
 	if (declared.length) return declared.map((g) => ({
 		id: g.id,
@@ -4070,7 +4070,7 @@ function switchGroups(m) {
 		changeover: g.poles.some((p) => p.no !== null && p.nc !== null),
 		momentary: momentary && g.kind === "switch"
 	}));
-	const t = isObj(m.electrical) && isObj(m.electrical.terminals) ? m.electrical.terminals : null;
+	const t = isObj$1(m.electrical) && isObj$1(m.electrical.terminals) ? m.electrical.terminals : null;
 	if (modelOf$2(m) !== "switch" || !t || typeof t.a !== "string" || typeof t.b !== "string") return [];
 	return [{
 		id: "s",
@@ -4139,7 +4139,7 @@ function gpioState(part, m, pin) {
 	return caps?.outputOnly ? null : "input";
 }
 var isSimValueKey = (key) => key.startsWith("gpio.") || key.startsWith("contact.") || key.startsWith("sim.");
-var amount = (entry, unit, allowZero) => isObj(entry) && isNum(entry.value) && entry.unit === unit && (allowZero ? entry.value >= 0 : entry.value > 0) && entry.value <= 1e6 ? null : `it must be { "value": <number ${allowZero ? "0 or more" : "above 0"}>, "unit": "${unit}" }`;
+var amount = (entry, unit, allowZero) => isObj$1(entry) && isNum(entry.value) && entry.unit === unit && (allowZero ? entry.value >= 0 : entry.value > 0) && entry.value <= 1e6 ? null : `it must be { "value": <number ${allowZero ? "0 or more" : "above 0"}>, "unit": "${unit}" }`;
 /**
 * What is wrong with one simulation value on a part, or null. `electrical` marks a `sim.*`
 * number (dropping it changes the solved circuit: the loader ends its warning with VALUE_DROPPED).
@@ -4184,7 +4184,7 @@ function simValueProblem(key, entry, m) {
 		};
 	}
 	const sim = simOf(m);
-	const isCell = isObj(m.electrical) && m.electrical.model === "voltage_source";
+	const isCell = isObj$1(m.electrical) && m.electrical.model === "voltage_source";
 	if (key === "sim.rInternal" || key === "sim.imax") {
 		if (!isCell && !sim?.power?.source) return {
 			text: `${m.name} is not a battery or supply`,
@@ -4216,7 +4216,53 @@ function simValueProblem(key, entry, m) {
 /** A `sim.*` override's number (validated on load), or null. */
 function simOverride(part, key) {
 	const v = part.values?.[key];
-	return isObj(v) && isNum(v.value) ? v.value : null;
+	return isObj$1(v) && isNum(v.value) ? v.value : null;
+}
+//#endregion
+//#region src/format/code.ts
+/** Every language a slice plans (ruling R2): modules may name any of them; RUNNABLE is what this build runs. */
+var KNOWN_LANGUAGES = [
+	"python-rpi",
+	"arduino-avr",
+	"micropython"
+];
+var isObj = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
+var utf8Bytes = (s) => new TextEncoder().encode(s).length;
+/** Why a code file name cannot be kept (spec 3.1: at most 255 characters, no path separators), or null. */
+function fileProblem(name) {
+	if (typeof name !== "string" || name === "") return "it must be text";
+	if (name.length > 255) return `it is over 255 characters`;
+	if (/[\\/]/.test(name)) return "it has a path separator";
+	return null;
+}
+/** A part's `code` as loaded: the value to keep (the same object when nothing changed), or null to drop it, and the warnings in words. */
+function checkCode(raw, who) {
+	const drop = (why) => ({
+		code: null,
+		warnings: [`${who}'s code was dropped: ${why}`]
+	});
+	if (!isObj(raw)) return drop("it must be { \"language\", \"source\", \"file\" }");
+	if (typeof raw.language !== "string" || raw.language === "") return drop("its language must be text");
+	if (typeof raw.source !== "string") return drop("its source must be text");
+	if (utf8Bytes(raw.source) > 262144) return drop("its source is over 256 KB");
+	const warnings = [];
+	const extra = Object.keys(raw).filter((k) => k !== "language" && k !== "source" && k !== "file");
+	if (extra.length) warnings.push(`${who}'s code had keys this version does not know (${extra.join(", ")}), which were dropped`);
+	const badFile = raw.file === void 0 ? null : fileProblem(raw.file);
+	if (badFile) warnings.push(`${who}'s code file name was dropped: ${badFile}`);
+	if (!KNOWN_LANGUAGES.includes(raw.language)) warnings.push(`${who}'s code is in "${raw.language}", which this version of Circuitoon does not know; it is kept but will not run`);
+	if (!extra.length && !badFile) return {
+		code: raw,
+		warnings
+	};
+	return {
+		code: {
+			language: raw.language,
+			source: raw.source,
+			...raw.file !== void 0 && !badFile ? { file: raw.file } : {}
+		},
+		warnings
+	};
 }
 //#endregion
 //#region src/format/boardEntry.ts
@@ -5646,7 +5692,7 @@ function isValidColor(c) {
 var COORD_LIMIT = 1e5;
 /** What is wrong with one stored probe, or null. `pinsOf` gives a part's pin and hole names, null when its module is not embedded, undefined when there is no such part. */
 function probeProblem(p, ids, pinsOf, holesOf) {
-	if (!isObj(p)) return "must be { \"id\", \"name\"?, \"at\": { \"part\", \"pin\"?, \"hole\"? } }";
+	if (!isObj$1(p)) return "must be { \"id\", \"name\"?, \"at\": { \"part\", \"pin\"?, \"hole\"? } }";
 	for (const k of Object.keys(p)) if (![
 		"id",
 		"name",
@@ -5655,14 +5701,14 @@ function probeProblem(p, ids, pinsOf, holesOf) {
 	if (typeof p.id !== "string" || !PROBE_ID.test(p.id)) return "its id must be P and a number (P1, P2, ...)";
 	if (ids.has(p.id)) return `its id ${p.id} is used twice`;
 	if (p.name !== void 0 && !(typeof p.name === "string" && p.name.trim() && p.name.length <= 40)) return "its name must be text, at most 40 characters";
-	if (isObj(p.at)) {
+	if (isObj$1(p.at)) {
 		for (const k of Object.keys(p.at)) if (![
 			"part",
 			"pin",
 			"hole"
 		].includes(k)) return `unknown field "at.${k}"`;
 	}
-	if (!isObj(p.at) || typeof p.at.part !== "string" || p.at.pin !== void 0 && typeof p.at.pin !== "string") return "its anchor must be { \"part\", \"pin\"?, \"hole\"? }";
+	if (!isObj$1(p.at) || typeof p.at.part !== "string" || p.at.pin !== void 0 && typeof p.at.pin !== "string") return "its anchor must be { \"part\", \"pin\"?, \"hole\"? }";
 	const pins = pinsOf(p.at.part);
 	if (pins === void 0) return `no part "${p.at.part}"`;
 	if (typeof p.at.pin === "string" && pins && !pins.has(p.at.pin)) return `part "${p.at.part}" has no pin "${p.at.pin}"`;
@@ -5682,7 +5728,7 @@ function probeProblem(p, ids, pinsOf, holesOf) {
 function validateDiagram(raw, opts = {}) {
 	const errors = [];
 	const warnings = [];
-	if (!isObj(raw)) return {
+	if (!isObj$1(raw)) return {
 		ok: false,
 		errors: ["diagram must be a JSON object"]
 	};
@@ -5690,7 +5736,7 @@ function validateDiagram(raw, opts = {}) {
 	else if (raw.format !== "circuitoon-diagram/1") errors.push(`format: unsupported "${String(raw.format)}" (expected "${DIAGRAM_FORMAT}")`);
 	if (typeof raw.title !== "string") errors.push("title: required");
 	const modules = /* @__PURE__ */ new Map();
-	if (!isObj(raw.modules)) errors.push("modules: required, an object of embedded modules");
+	if (!isObj$1(raw.modules)) errors.push("modules: required, an object of embedded modules");
 	else for (const [key, m] of Object.entries(raw.modules)) {
 		const r = validateModule(m);
 		if (!r.ok) errors.push(...r.errors.map((e) => `modules.${key}: ${e}`));
@@ -5714,7 +5760,7 @@ function validateDiagram(raw, opts = {}) {
 	if (!Array.isArray(raw.parts)) errors.push("parts: required list");
 	else raw.parts.forEach((p, i) => {
 		const at = `parts[${i}]`;
-		if (!isObj(p)) return void errors.push(`${at}: must be an object`);
+		if (!isObj$1(p)) return void errors.push(`${at}: must be an object`);
 		claim(p.uid, at);
 		if (typeof p.designator !== "string") errors.push(`${at}.designator: required`);
 		if (typeof p.module !== "string") errors.push(`${at}.module: required`);
@@ -5737,9 +5783,9 @@ function validateDiagram(raw, opts = {}) {
 			180,
 			270
 		].includes(p.rotation)) errors.push(`${at}.rotation: must be 0, 90, 180 or 270`);
-		if (p.mount !== void 0 && !(isObj(p.mount) && typeof p.mount.board === "string" && p.mount.board !== "")) errors.push(`${at}.mount: must be { "board": <part uid> }`);
+		if (p.mount !== void 0 && !(isObj$1(p.mount) && typeof p.mount.board === "string" && p.mount.board !== "")) errors.push(`${at}.mount: must be { "board": <part uid> }`);
 		if (p.values !== void 0) {
-			if (!isObj(p.values)) errors.push(`${at}.values: must be an object`);
+			if (!isObj$1(p.values)) errors.push(`${at}.values: must be an object`);
 			else {
 				const who = typeof p.designator === "string" && p.designator !== "" ? p.designator : `part ${i}`;
 				const dropped = [];
@@ -5769,14 +5815,14 @@ function validateDiagram(raw, opts = {}) {
 					if (Object.hasOwn(PARAM_RULES, key)) {
 						const rule = PARAM_RULES[key];
 						const where = `${at}.values.${key}: ${who} has ${key}`;
-						const problem = !(isObj(entry) && isNum(entry.value) && typeof entry.unit === "string") ? `${where} ${JSON.stringify(entry)}, which is not a number with a unit` : entry.unit !== rule.unit ? `${where} ${entry.value} ${entry.unit}, but ${key} must be in ${rule.unit}` : !validParamValue(key, entry.value) ? `${where} ${entry.value} ${entry.unit}, but ${key} must be ${rule.range}` : null;
+						const problem = !(isObj$1(entry) && isNum(entry.value) && typeof entry.unit === "string") ? `${where} ${JSON.stringify(entry)}, which is not a number with a unit` : entry.unit !== rule.unit ? `${where} ${entry.value} ${entry.unit}, but ${key} must be in ${rule.unit}` : !validParamValue(key, entry.value) ? `${where} ${entry.value} ${entry.unit}, but ${key} must be ${rule.range}` : null;
 						if (problem) {
 							dropped.push(key);
 							warnings.push(`${problem}; ${VALUE_DROPPED}`);
 						}
 						continue;
 					}
-					if (isObj(entry) && "value" in entry && !(isNum(entry.value) && typeof entry.unit === "string")) warnings.push(`${at}.values.${key}: value must be a finite number with a string unit`);
+					if (isObj$1(entry) && "value" in entry && !(isNum(entry.value) && typeof entry.unit === "string")) warnings.push(`${at}.values.${key}: value must be a finite number with a string unit`);
 					if (key === "net" && typeof p.module === "string" && isNetLabel(modules.get(p.module)) && typeof entry !== "string") {
 						dropped.push(key);
 						warnings.push(`${at}.values.net: ${who}'s label name must be text, not ${JSON.stringify(entry)}; it was dropped, so the label has no name`);
@@ -5791,7 +5837,7 @@ function validateDiagram(raw, opts = {}) {
 		if (p.settings !== void 0) {
 			const who = typeof p.designator === "string" && p.designator !== "" ? p.designator : `part ${i}`;
 			const m = typeof p.module === "string" ? modules.get(p.module) : void 0;
-			if (!isObj(p.settings)) {
+			if (!isObj$1(p.settings)) {
 				fix(i, { settings: void 0 });
 				warnings.push(`${at}.settings: must be an object of setting name to choice, so it was dropped and the defaults are used`);
 			} else {
@@ -5812,9 +5858,15 @@ function validateDiagram(raw, opts = {}) {
 				if (changed) fix(i, { settings: Object.keys(kept).length ? kept : void 0 });
 			}
 		}
+		if (p.code !== void 0) {
+			const who = typeof p.designator === "string" && p.designator !== "" ? p.designator : `part ${i}`;
+			const r = checkCode(p.code, who);
+			for (const w of r.warnings) warnings.push(`${at}.code: ${w}`);
+			if (r.code !== p.code) fix(i, { code: r.code ?? void 0 });
+		}
 	});
 	if (Array.isArray(raw.parts)) raw.parts.forEach((p, i) => {
-		if (!isObj(p) || !isObj(p.mount) || typeof p.mount.board !== "string" || p.mount.board === "") return;
+		if (!isObj$1(p) || !isObj$1(p.mount) || typeof p.mount.board !== "string" || p.mount.board === "") return;
 		const board = p.mount.board;
 		const at = `parts[${i}].mount.board`;
 		if (board === p.uid) return void warnings.push(`${at}: a part cannot be mounted on itself`);
@@ -5824,7 +5876,7 @@ function validateDiagram(raw, opts = {}) {
 		if (m && !isBoard(m)) warnings.push(`${at}: part "${board}" is not a board (a module with holes and "obstacle": false)`);
 	});
 	const checkEnd = (ep, at) => {
-		if (!isObj(ep) || typeof ep.part !== "string" || typeof ep.pin !== "string") return void errors.push(`${at}: must be { "part": <uid>, "pin": <name> }`);
+		if (!isObj$1(ep) || typeof ep.part !== "string" || typeof ep.pin !== "string") return void errors.push(`${at}: must be { "part": <uid>, "pin": <name> }`);
 		if (ep.offset !== void 0 && !isNum(ep.offset)) errors.push(`${at}.offset: must be a number`);
 		if (ep.hole !== void 0 && !(Number.isInteger(ep.hole) && ep.hole >= 0)) errors.push(`${at}.hole: must be a whole number, 0 or more`);
 		const modId = partModule.get(ep.part);
@@ -5846,7 +5898,7 @@ function validateDiagram(raw, opts = {}) {
 	if (!Array.isArray(raw.connections)) errors.push("connections: required list");
 	else raw.connections.forEach((c, i) => {
 		const at = `connections[${i}]`;
-		if (!isObj(c)) return void errors.push(`${at}: must be an object`);
+		if (!isObj$1(c)) return void errors.push(`${at}: must be an object`);
 		claim(c.uid, at);
 		checkEnd(c.from, `${at}.from`);
 		checkEnd(c.to, `${at}.to`);
@@ -5868,7 +5920,7 @@ function validateDiagram(raw, opts = {}) {
 		if (c.label !== void 0 && typeof c.label !== "string") errors.push(`${at}.label: must be a string`);
 		if (c.routing !== void 0 && typeof c.routing !== "boolean") errors.push(`${at}.routing: must be true or false`);
 		if (c.ends !== void 0) {
-			if (!isObj(c.ends)) {
+			if (!isObj$1(c.ends)) {
 				endFixes.set(i, void 0);
 				warnings.push(`${at}.ends: must be an object like { "from": "dupont-male", "to": "dupont-female" }, so it was dropped and the wire is drawn plain`);
 			} else {
@@ -5890,7 +5942,7 @@ function validateDiagram(raw, opts = {}) {
 		if (!Array.isArray(raw.annotations)) errors.push("annotations: must be a list");
 		else raw.annotations.forEach((a, i) => {
 			const at = `annotations[${i}]`;
-			if (!isObj(a)) return void errors.push(`${at}: must be an object`);
+			if (!isObj$1(a)) return void errors.push(`${at}: must be an object`);
 			claim(a.uid, at);
 			if (a.type !== "frame" && a.type !== "text") errors.push(`${at}.type: must be "frame" or "text"`);
 			const coord = (v) => isNum(v) && Math.abs(v) <= 1e5;
@@ -5906,7 +5958,7 @@ function validateDiagram(raw, opts = {}) {
 			if (a.type === "text" && a.text === void 0) errors.push(`${at}.text: required on a text note`);
 		});
 	}
-	if (raw.intent !== void 0 && !isObj(raw.intent)) errors.push("intent: must be an object (a circuitoon-netlist/1 document)");
+	if (raw.intent !== void 0 && !isObj$1(raw.intent)) errors.push("intent: must be an object (a circuitoon-netlist/1 document)");
 	let notesFix = null;
 	if (raw.notes !== void 0) {
 		if (!Array.isArray(raw.notes)) {
@@ -85818,7 +85870,7 @@ function renderSheetSvg(d, opts = {}) {
 /** JSON with object keys sorted, so two modules compare by content whatever their key order. */
 function canonical(v) {
 	if (Array.isArray(v)) return `[${v.map(canonical).join(",")}]`;
-	if (isObj(v)) return `{${Object.keys(v).sort().filter((k) => v[k] !== void 0).map((k) => `${JSON.stringify(k)}:${canonical(v[k])}`).join(",")}}`;
+	if (isObj$1(v)) return `{${Object.keys(v).sort().filter((k) => v[k] !== void 0).map((k) => `${JSON.stringify(k)}:${canonical(v[k])}`).join(",")}}`;
 	return JSON.stringify(v) ?? "null";
 }
 /** Top-level fields that only describe or draw the part (the footprint changes covered holes, never connections). */
@@ -85866,7 +85918,7 @@ var ELECTRICAL_NAMES = {
 /** True when everything `a` says, `b` says too: `b` may only add (an absent value in `a` is nothing said). */
 function adds(a, b) {
 	if (a === void 0) return true;
-	if (isObj(a) && isObj(b)) return Object.keys(a).every((k) => adds(a[k], b[k]));
+	if (isObj$1(a) && isObj$1(b)) return Object.keys(a).every((k) => adds(a[k], b[k]));
 	return canonical(a) === canonical(b);
 }
 /** "pins A/B", or "12 pins" for a redrawn part (Ruling C2), from pin names (spacers as "spacer"). */
@@ -85874,7 +85926,7 @@ function pinWords(names) {
 	if (names.size > 8) return `${names.size} pins`;
 	return names.size ? `pins ${[...names].join("/")}` : "pins";
 }
-var pinLabel = (p) => isObj(p) && typeof p.name === "string" ? p.name : "spacer";
+var pinLabel = (p) => isObj$1(p) && typeof p.name === "string" ? p.name : "spacer";
 var typeOf$1 = (p) => p.type === void 0 ? "io" : p.type;
 /**
 * Whether the part's geometry moved: a different body size, or pin positions (side and place on the
@@ -85890,7 +85942,7 @@ function movedGeometry(stored, lib, added) {
 		return !q || added.has(p.name) || p.side !== q.side || p.edge.x !== q.edge.x || p.edge.y !== q.edge.y;
 	});
 }
-var isUsbPin = (p) => isObj(p) && p.type === "usb" && typeof p.name === "string" && !isSpacer(p);
+var isUsbPin = (p) => isObj$1(p) && p.type === "usb" && typeof p.name === "string" && !isSpacer(p);
 /**
 * Ruling U1 (USB design 1.3): the library may add USB ports to a part, each in a slot the stored copy
 * holds as a spacer or appended after its last entry. Returns the library's pin list with those
@@ -85898,19 +85950,19 @@ var isUsbPin = (p) => isObj(p) && p.type === "usb" && typeof p.name === "string"
 * sees only what else changed, and the names of the ports it took out.
 */
 function withoutAddedUsb(sp, lp) {
-	const stored = new Set(sp.filter((p) => isObj(p) && typeof p.name === "string").map((p) => p.name));
+	const stored = new Set(sp.filter((p) => isObj$1(p) && typeof p.name === "string").map((p) => p.name));
 	const added = /* @__PURE__ */ new Set();
 	const pins = [];
 	lp.forEach((b, i) => {
 		const fresh = isUsbPin(b) && !stored.has(b.name);
 		if (i < sp.length) {
 			const a = sp[i];
-			if (fresh && isObj(a) && isSpacer(a) && a.side === b.side) {
+			if (fresh && isObj$1(a) && isSpacer(a) && a.side === b.side) {
 				added.add(b.name);
 				pins.push(a);
 			} else pins.push(b);
 		} else if (fresh) added.add(b.name);
-		else if (!(isObj(b) && isSpacer(b))) pins.push(b);
+		else if (!(isObj$1(b) && isSpacer(b))) pins.push(b);
 	});
 	return {
 		pins,
@@ -85921,7 +85973,7 @@ function withoutAddedUsb(sp, lp) {
 function withoutLibraryData(m) {
 	const rest = { ...m };
 	delete rest.kicad;
-	if (isObj(rest.electrical)) {
+	if (isObj$1(rest.electrical)) {
 		const e = { ...rest.electrical };
 		delete e.sim;
 		if (Object.keys(e).length) rest.electrical = e;
@@ -85944,7 +85996,7 @@ function moduleDrift(stored, lib) {
 		const [a, b] = [sp[i], lp[i]];
 		if (canonical(a) === canonical(b)) continue;
 		const names = [i < lp.length ? pinLabel(b) : null, i < sp.length ? pinLabel(a) : null].filter((x) => x !== null);
-		const structural = !isObj(a) || !isObj(b) || isSpacer(a) !== isSpacer(b) || PIN_STRUCTURAL.some((k) => k === "type" ? typeOf$1(a) !== typeOf$1(b) : canonical(a[k]) !== canonical(b[k])) || Object.keys(a).some((k) => !PIN_STRUCTURAL.includes(k) && !PIN_DESCRIPTIVE.has(k) && !adds(a[k], b[k]));
+		const structural = !isObj$1(a) || !isObj$1(b) || isSpacer(a) !== isSpacer(b) || PIN_STRUCTURAL.some((k) => k === "type" ? typeOf$1(a) !== typeOf$1(b) : canonical(a[k]) !== canonical(b[k])) || Object.keys(a).some((k) => !PIN_STRUCTURAL.includes(k) && !PIN_DESCRIPTIVE.has(k) && !adds(a[k], b[k]));
 		for (const n of names) (structural ? pinsBlock : pinsUpdate).add(n);
 	}
 	if (pinsBlock.size) block.push(pinWords(pinsBlock));
@@ -85953,7 +86005,7 @@ function moduleDrift(stored, lib) {
 		if (k === "pins" || canonical(s[k]) === canonical(l[k])) continue;
 		if (DESCRIPTIVE.has(k)) update.push(k);
 		else if (STRUCTURAL.has(k)) block.push(FIELD_NAMES[k] ?? k);
-		else if (k === "electrical" && isObj(l.electrical) && (s.electrical === void 0 || isObj(s.electrical))) {
+		else if (k === "electrical" && isObj$1(l.electrical) && (s.electrical === void 0 || isObj$1(s.electrical))) {
 			const [se, le] = [s.electrical ?? {}, l.electrical];
 			for (const e of [.../* @__PURE__ */ new Set([...Object.keys(le), ...Object.keys(se)])]) {
 				if (canonical(se[e]) === canonical(le[e])) continue;
@@ -86025,7 +86077,7 @@ var NAME = /^[A-Za-z][A-Za-z0-9_]*$/;
 /** An endpoint as text, for binding reuse checks and the channel table: "U2.GPA0", "BB1.c5-top hole 2". */
 function endpointText(ep) {
 	if (typeof ep === "string") return ep;
-	if (!isObj(ep) || typeof ep.ref !== "string") return null;
+	if (!isObj$1(ep) || typeof ep.ref !== "string") return null;
 	if (typeof ep.pin === "string") return `${ep.ref}.${ep.pin}`;
 	if (typeof ep.group === "string") return `${ep.ref}.${ep.group}${ep.hole !== void 0 ? ` hole ${String(ep.hole)}` : ""}`;
 	return null;
@@ -86036,7 +86088,7 @@ function renameEndpoint(ep, rename) {
 		const dot = ep.indexOf(".");
 		return dot < 1 ? ep : `${rename(ep.slice(0, dot))}${ep.slice(dot)}`;
 	}
-	if (isObj(ep) && typeof ep.ref === "string") return {
+	if (isObj$1(ep) && typeof ep.ref === "string") return {
 		...ep,
 		ref: rename(ep.ref)
 	};
@@ -86054,18 +86106,18 @@ function expandRepeat(raw, topRefs, topNets) {
 		out.errors.push(e);
 		return out;
 	};
-	if (!isObj(raw)) return fail("repeat: must be { \"name\", \"count\", \"template\", \"bindings\", \"shared\" }");
+	if (!isObj$1(raw)) return fail("repeat: must be { \"name\", \"count\", \"template\", \"bindings\", \"shared\" }");
 	const { name, count, template, bindings } = raw;
 	if (typeof name !== "string" || !NAME.test(name)) return fail("repeat.name: required, a letter then letters, digits or _");
 	if (!(Number.isInteger(count) && count >= 1 && count <= 500)) return fail(`repeat.count: must be a whole number from 1 to 500`);
 	const n = count;
-	if (!isObj(template) || !Array.isArray(template.parts) || !Array.isArray(template.nets) || !Array.isArray(template.ports)) return fail("repeat.template: must be { \"parts\", \"nets\", \"ports\" }");
+	if (!isObj$1(template) || !Array.isArray(template.parts) || !Array.isArray(template.nets) || !Array.isArray(template.ports)) return fail("repeat.template: must be { \"parts\", \"nets\", \"ports\" }");
 	const shared = raw.shared ?? {};
-	if (!isObj(shared)) return fail("repeat.shared: must map a port to an outside net name");
+	if (!isObj$1(shared)) return fail("repeat.shared: must map a port to an outside net name");
 	const tParts = template.parts;
 	const tNets = template.nets;
-	const tRefs = tParts.flatMap((p) => isObj(p) && typeof p.ref === "string" ? [p.ref] : []);
-	const netNames = tNets.flatMap((x) => isObj(x) && typeof x.name === "string" ? [x.name] : []);
+	const tRefs = tParts.flatMap((p) => isObj$1(p) && typeof p.ref === "string" ? [p.ref] : []);
+	const netNames = tNets.flatMap((x) => isObj$1(x) && typeof x.name === "string" ? [x.name] : []);
 	const ports = template.ports.filter((p) => typeof p === "string");
 	template.ports.forEach((p, i) => {
 		if (typeof p !== "string" || !netNames.includes(p)) out.errors.push(`repeat.template.ports[${i}]: must name a template net`);
@@ -86083,7 +86135,7 @@ function expandRepeat(raw, topRefs, topNets) {
 		const refs = [];
 		tParts.forEach((p, i) => {
 			const at = `repeat.template.parts[${i}]`;
-			if (!isObj(p) || typeof p.ref !== "string") {
+			if (!isObj$1(p) || typeof p.ref !== "string") {
 				if (k === 1) out.errors.push(`${at}.ref: required`);
 				return;
 			}
@@ -86106,7 +86158,7 @@ function expandRepeat(raw, topRefs, topNets) {
 		const entry = bindings[k - 1];
 		const at = `repeat.bindings[${k - 1}]`;
 		const chosen = {};
-		if (!isObj(entry)) out.errors.push(`${at}: must map every port except shared ones (${bound.join(", ")}) to an outside pin`);
+		if (!isObj$1(entry)) out.errors.push(`${at}: must map every port except shared ones (${bound.join(", ")}) to an outside pin`);
 		else {
 			for (const port of bound) {
 				if (!Object.hasOwn(entry, port)) {
@@ -86130,7 +86182,7 @@ function expandRepeat(raw, topRefs, topNets) {
 		}
 		tNets.forEach((net, i) => {
 			const nat = `repeat.template.nets[${i}]`;
-			if (!isObj(net) || typeof net.name !== "string" || !Array.isArray(net.pins)) {
+			if (!isObj$1(net) || typeof net.name !== "string" || !Array.isArray(net.pins)) {
 				if (k === 1) out.errors.push(`${nat}: must be { "name", "pins": [...] }`);
 				return;
 			}
@@ -86144,7 +86196,7 @@ function expandRepeat(raw, topRefs, topNets) {
 				out.shared.set(target, [...out.shared.get(target) ?? [], ...pins]);
 				return;
 			}
-			if (port !== null && isObj(entry) && Object.hasOwn(entry, port)) pins.push({
+			if (port !== null && isObj$1(entry) && Object.hasOwn(entry, port)) pins.push({
 				ep: entry[port],
 				at: `${at}.${port}`,
 				binding: `copy ${k} port ${port}`
@@ -86187,7 +86239,7 @@ function valueErrors(values, at, m) {
 		}
 		if (!Object.hasOwn(PARAM_RULES, key)) continue;
 		const rule = PARAM_RULES[key];
-		if (!(isObj(entry) && isNum(entry.value) && entry.unit === rule.unit && validParamValue(key, entry.value))) out.push(`${at}.${key}: must be { "value": <number>, "unit": "${rule.unit}" } within ${rule.range}`);
+		if (!(isObj$1(entry) && isNum(entry.value) && entry.unit === rule.unit && validParamValue(key, entry.value))) out.push(`${at}.${key}: must be { "value": <number>, "unit": "${rule.unit}" } within ${rule.range}`);
 	}
 	return out;
 }
@@ -86231,7 +86283,7 @@ function byName(m, ref, pin, at) {
 }
 function parseNetlist(raw, library) {
 	const errors = [];
-	if (!isObj(raw)) return {
+	if (!isObj$1(raw)) return {
 		ok: false,
 		errors: ["netlist must be a JSON object"]
 	};
@@ -86240,7 +86292,7 @@ function parseNetlist(raw, library) {
 	if (typeof raw.title !== "string" || raw.title.trim() === "") errors.push("title: required");
 	const embedded = /* @__PURE__ */ new Map();
 	if (raw.modules !== void 0) {
-		if (!isObj(raw.modules)) errors.push("modules: must be an object of module definitions by id");
+		if (!isObj$1(raw.modules)) errors.push("modules: must be an object of module definitions by id");
 		else for (const [key, m] of Object.entries(raw.modules)) {
 			const r = validateModule(m);
 			if (!r.ok) errors.push(...r.errors.map((e) => `modules.${key}: ${e}`));
@@ -86258,8 +86310,8 @@ function parseNetlist(raw, library) {
 	};
 	const topParts = raw.parts;
 	const topNets = raw.nets;
-	const topRefs = new Set(topParts.flatMap((p) => isObj(p) && typeof p.ref === "string" ? [p.ref] : []));
-	const topNetNames = topNets.flatMap((n) => isObj(n) && typeof n.name === "string" ? [n.name] : []);
+	const topRefs = new Set(topParts.flatMap((p) => isObj$1(p) && typeof p.ref === "string" ? [p.ref] : []));
+	const topNetNames = topNets.flatMap((n) => isObj$1(n) && typeof n.name === "string" ? [n.name] : []);
 	const rep = raw.repeat === void 0 ? null : expandRepeat(raw.repeat, topRefs, topNetNames);
 	const rawParts = [...topParts.map((p, i) => ({
 		p,
@@ -86269,7 +86321,7 @@ function parseNetlist(raw, library) {
 	const byRef = /* @__PURE__ */ new Map();
 	const used = /* @__PURE__ */ new Map();
 	for (const { p, at } of rawParts) {
-		if (!isObj(p)) {
+		if (!isObj$1(p)) {
 			errors.push(`${at}: must be an object`);
 			continue;
 		}
@@ -86300,14 +86352,14 @@ function parseNetlist(raw, library) {
 			module: p.module
 		};
 		if (p.values !== void 0) {
-			if (!isObj(p.values)) errors.push(`${at}.values: must be an object`);
+			if (!isObj$1(p.values)) errors.push(`${at}.values: must be an object`);
 			else {
 				errors.push(...valueErrors(p.values, `${at}.values`, withLibrarySim(m, library)));
 				part.values = p.values;
 			}
 		}
 		if (p.settings !== void 0) {
-			if (!isObj(p.settings)) errors.push(`${at}.settings: must be an object of setting name to choice`);
+			if (!isObj$1(p.settings)) errors.push(`${at}.settings: must be an object of setting name to choice`);
 			else {
 				const offered = moduleSettings(m);
 				const names = Object.keys(offered);
@@ -86354,7 +86406,7 @@ function parseNetlist(raw, library) {
 			}
 			ref = ep.slice(0, dot);
 			pin = ep.slice(dot + 1);
-		} else if (isObj(ep)) ({ref, pin, group, hole} = ep);
+		} else if (isObj$1(ep)) ({ref, pin, group, hole} = ep);
 		else {
 			errors.push(`${at}: must be "REF.PIN", { "ref", "pin" } or { "ref", "group", "hole" }`);
 			return null;
@@ -86397,7 +86449,7 @@ function parseNetlist(raw, library) {
 	const rawNets = [];
 	topNets.forEach((n, i) => {
 		const at = `nets[${i}]`;
-		if (!isObj(n) || !Array.isArray(n.pins)) return void errors.push(`${at}: must be { "name", "pins": [...] }`);
+		if (!isObj$1(n) || !Array.isArray(n.pins)) return void errors.push(`${at}: must be { "name", "pins": [...] }`);
 		const extra = typeof n.name === "string" ? rep?.shared.get(n.name) ?? [] : [];
 		rawNets.push({
 			name: n.name,
@@ -86500,7 +86552,7 @@ function parseNetlist(raw, library) {
 		if (!Array.isArray(raw.groups)) errors.push("groups: must be a list of { \"name\", \"parts\" }");
 		else raw.groups.forEach((g, i) => {
 			const at = `groups[${i}]`;
-			if (!isObj(g) || typeof g.name !== "string" || g.name === "" || !Array.isArray(g.parts)) return void errors.push(`${at}: must be { "name", "parts": [refs] }`);
+			if (!isObj$1(g) || typeof g.name !== "string" || g.name === "" || !Array.isArray(g.parts)) return void errors.push(`${at}: must be { "name", "parts": [refs] }`);
 			const gname = g.name;
 			if (gname.length > 80) return void errors.push(`${at}.name: at most 80 characters`);
 			if (groups.some((x) => x.name === gname)) return void errors.push(`${at}.name: duplicate group "${gname}"`);
@@ -86523,7 +86575,7 @@ function parseNetlist(raw, library) {
 		if (!Array.isArray(raw.notes)) errors.push("notes: must be a list of { \"text\", \"near\" }");
 		else raw.notes.forEach((n, i) => {
 			const at = `notes[${i}]`;
-			if (!isObj(n) || typeof n.text !== "string" || n.text.trim() === "") return void errors.push(`${at}.text: required`);
+			if (!isObj$1(n) || typeof n.text !== "string" || n.text.trim() === "") return void errors.push(`${at}.text: required`);
 			if (n.text.length > 500) return void errors.push(`${at}.text: at most 500 characters`);
 			const near = n.near;
 			if (typeof near !== "string" || !(byRef.has(near) || groups.some((g) => g.name === near))) return void errors.push(`${at}.near: must name a part ref or a group`);
@@ -86535,11 +86587,11 @@ function parseNetlist(raw, library) {
 	}
 	let ends;
 	if (raw.wires !== void 0) {
-		if (!isObj(raw.wires)) errors.push("wires: must be { \"color\": { NET: color }, \"ends\": kind }");
+		if (!isObj$1(raw.wires)) errors.push("wires: must be { \"color\": { NET: color }, \"ends\": kind }");
 		else {
 			const { color, ends: kind } = raw.wires;
 			if (color !== void 0) {
-				if (!isObj(color)) errors.push("wires.color: must map net names to colors");
+				if (!isObj$1(color)) errors.push("wires.color: must map net names to colors");
 				else for (const [net, c] of Object.entries(color)) {
 					const target = nets.find((x) => x.name === net);
 					if (!target) errors.push(`wires.color.${net}: no net "${net}"`);
@@ -86563,7 +86615,7 @@ function parseNetlist(raw, library) {
 			const netNames = new Set(nets.map((n) => n.name));
 			raw.probes.forEach((p, i) => {
 				const drop = (why) => void probeWarnings.push(`probes[${i}]: ${why}, so the probe was dropped`);
-				if (!isObj(p) || typeof p.at !== "string") return drop("must be { \"id\", \"name\"?, \"at\", \"ref\"? }");
+				if (!isObj$1(p) || typeof p.at !== "string") return drop("must be { \"id\", \"name\"?, \"at\", \"ref\"? }");
 				const extra = Object.keys(p).find((k) => ![
 					"id",
 					"name",
@@ -86630,7 +86682,7 @@ function parseNetlist(raw, library) {
 * (withLibrarySim), which is library data like the KiCad mapping.
 */
 function intentLookup(d, library) {
-	const own = isObj(d.intent) && isObj(d.intent.modules) ? new Set(Object.keys(d.intent.modules)) : /* @__PURE__ */ new Set();
+	const own = isObj$1(d.intent) && isObj$1(d.intent.modules) ? new Set(Object.keys(d.intent.modules)) : /* @__PURE__ */ new Set();
 	return (id) => {
 		if (own.has(id) && !library(id)) return void 0;
 		const m = moduleOf(d, id);
@@ -86691,7 +86743,7 @@ var NO_INTENT = "no intent: lay out from a netlist or add intent";
 * only adds or describes (pin caps, I2C data, a footprint, art) warns, with how to update.
 */
 function driftFindings(d, library, add) {
-	const own = isObj(d.intent) && isObj(d.intent.modules) ? d.intent.modules : {};
+	const own = isObj$1(d.intent) && isObj$1(d.intent.modules) ? d.intent.modules : {};
 	const copies = [...Object.entries(d.modules).map(([id, m]) => [
 		id,
 		"The sheet's copy",
@@ -86703,7 +86755,7 @@ function driftFindings(d, library, add) {
 	])];
 	for (const [id, whose, raw] of copies) {
 		const lib = library(id);
-		if (!lib || !isObj(raw)) continue;
+		if (!lib || !isObj$1(raw)) continue;
 		const drift = moduleDrift(raw, lib);
 		if (!drift) continue;
 		const parts = d.parts.filter((p) => p.module === id).map((p) => p.uid);
@@ -86768,15 +86820,15 @@ function verifyDiagram(d, library) {
 function effective(values, m, key) {
 	const rule = PARAM_RULES[key];
 	const stored = values?.[key];
-	const v = isObj(stored) ? stored.value : void 0;
-	if (isObj(stored) && stored.unit === rule.unit && validParamValue(key, v)) return v;
-	const param = (isObj(m.electrical) && isObj(m.electrical.params) ? m.electrical.params : {})[key];
-	const dflt = isObj(param) ? param.default : void 0;
+	const v = isObj$1(stored) ? stored.value : void 0;
+	if (isObj$1(stored) && stored.unit === rule.unit && validParamValue(key, v)) return v;
+	const param = (isObj$1(m.electrical) && isObj$1(m.electrical.params) ? m.electrical.params : {})[key];
+	const dflt = isObj$1(param) ? param.default : void 0;
 	return validParamValue(key, dflt) ? dflt : void 0;
 }
 /** The params either module declares, in PARAM_RULES order. */
 function paramKeys(...ms) {
-	return Object.keys(PARAM_RULES).filter((key) => ms.some((m) => isObj(m.electrical) && isObj(m.electrical.params) && Object.hasOwn(m.electrical.params, key)));
+	return Object.keys(PARAM_RULES).filter((key) => ms.some((m) => isObj$1(m.electrical) && isObj$1(m.electrical.params) && Object.hasOwn(m.electrical.params, key)));
 }
 /**
 * Every value that differs between the intent and the sheet (amendment A2). Value params compare
@@ -87564,7 +87616,7 @@ function labelledWires(d, toLabel) {
 		g.roots.add(find(nodeKey(end.part, end.pin)));
 		g.stubs.push(c);
 	}
-	const raw = isObj(d.intent) && isObj(d.intent.wires) ? d.intent.wires.ends : void 0;
+	const raw = isObj$1(d.intent) && isObj$1(d.intent.wires) ? d.intent.wires.ends : void 0;
 	const kind = isEndKind(raw) ? raw : "bare";
 	return [...byName.values()].filter((g) => g.roots.size > 1).map((g) => ({
 		ends: [kind, kind],
@@ -92610,17 +92662,17 @@ function usbLinks(b, d) {
 }
 //#endregion
 //#region src/sim/build.ts
-var modelOf = (m) => isObj(m.electrical) && typeof m.electrical.model === "string" ? m.electrical.model : "";
+var modelOf = (m) => isObj$1(m.electrical) && typeof m.electrical.model === "string" ? m.electrical.model : "";
 var terminals = (m) => {
-	const t = isObj(m.electrical) && isObj(m.electrical.terminals) ? m.electrical.terminals : {};
+	const t = isObj$1(m.electrical) && isObj$1(m.electrical.terminals) ? m.electrical.terminals : {};
 	return Object.fromEntries(Object.entries(t).filter((x) => typeof x[1] === "string"));
 };
 /** A number param outside PARAM_RULES (forwardVoltage, maxCurrent): a stored { value } override, else the module default. */
 function numParam(part, m, name) {
 	const stored = part.values?.[name];
-	if (isObj(stored) && isNum(stored.value)) return stored.value;
-	const p = isObj(m.electrical) && isObj(m.electrical.params) ? m.electrical.params[name] : void 0;
-	return isObj(p) && isNum(p.default) ? p.default : null;
+	if (isObj$1(stored) && isNum(stored.value)) return stored.value;
+	const p = isObj$1(m.electrical) && isObj$1(m.electrical.params) ? m.electrical.params[name] : void 0;
+	return isObj$1(p) && isNum(p.default) ? p.default : null;
 }
 var hasPowerPin = (m) => [...m.pins, ...m.holes ?? []].some((p) => !("spacer" in p && isSpacer(p)) && "type" in p && p.type === "power_in");
 var Builder = class {
@@ -92937,8 +92989,8 @@ var Builder = class {
 			case "led": {
 				const a = this.tap(p.uid, t.anode);
 				const k = this.tap(p.uid, t.cathode);
-				const params = isObj(m.electrical) && isObj(m.electrical.params) ? m.electrical.params : {};
-				const colourDefault = isObj(params.color) && typeof params.color.default === "string" ? params.color.default : "red";
+				const params = isObj$1(m.electrical) && isObj$1(m.electrical.params) ? m.electrical.params : {};
+				const colourDefault = isObj$1(params.color) && typeof params.color.default === "string" ? params.color.default : "red";
 				const colour = typeof p.values?.color === "string" ? p.values.color : colourDefault;
 				const inBand = (v) => v !== null && Number.isFinite(v) && v >= 1 && v <= 5;
 				const fallback = numParam({
@@ -94271,7 +94323,7 @@ async function simCommand(args, io, opts = {}) {
 	const raw = readJson(io, input);
 	let d;
 	let intent = null;
-	if (isObj(raw) && raw.format === "circuitoon-netlist/1") {
+	if (isObj$1(raw) && raw.format === "circuitoon-netlist/1") {
 		const r = layoutNetlist(raw, { library: libraryLookup });
 		if (!r.ok && r.stage === "input") throw new CliError(`${input}: ${r.errors.slice(0, 5).join("; ")}`, EXIT.input);
 		const parsed = r.ok ? {
@@ -94682,19 +94734,19 @@ var ROTATIONS = [
 	270
 ];
 function loadPartial(raw) {
-	if (!isObj(raw)) return {
+	if (!isObj$1(raw)) return {
 		ok: false,
 		errors: ["partial must be a JSON object"]
 	};
 	const errors = [];
 	if (raw.format !== "circuitoon-partial/1") errors.push(`format: must be "${PARTIAL_FORMAT}" (copy the sheet, change its format, and delete x and y on the parts to place again)`);
-	if (!isObj(raw.intent)) errors.push("intent: required, the netlist the sheet was laid out from");
+	if (!isObj$1(raw.intent)) errors.push("intent: required, the netlist the sheet was laid out from");
 	const keep = /* @__PURE__ */ new Map();
 	const seen = /* @__PURE__ */ new Map();
 	if (!Array.isArray(raw.parts)) errors.push("parts: required list");
 	else raw.parts.forEach((p, i) => {
 		const at = `parts[${i}]`;
-		if (!isObj(p) || typeof p.designator !== "string") return void errors.push(`${at}.designator: required`);
+		if (!isObj$1(p) || typeof p.designator !== "string") return void errors.push(`${at}.designator: required`);
 		const first = seen.get(p.designator);
 		if (first !== void 0) return void errors.push(`${at}.designator: ${p.designator} is already listed at parts[${first}]`);
 		seen.set(p.designator, i);
@@ -95596,7 +95648,7 @@ function customId(spec) {
 /** Checks a parsed JSON value against the part spec format. Errors name the exact path. */
 function validateSpec(raw) {
 	const errors = [];
-	if (!isObj(raw)) return {
+	if (!isObj$1(raw)) return {
 		ok: false,
 		errors: ["spec must be a JSON object"]
 	};
@@ -95611,7 +95663,7 @@ function validateSpec(raw) {
 	if (raw.style !== void 0 && raw.style !== "board" && raw.style !== "chip") errors.push("style: must be \"board\" or \"chip\"");
 	if (raw.body !== void 0) {
 		const b = raw.body;
-		if (!isObj(b)) errors.push("body: must be { \"w\"?, \"h\"?, \"color\"? }");
+		if (!isObj$1(b)) errors.push("body: must be { \"w\"?, \"h\"?, \"color\"? }");
 		else {
 			for (const k of Object.keys(b)) if (![
 				"w",
@@ -95623,7 +95675,7 @@ function validateSpec(raw) {
 		}
 	}
 	let count = 0;
-	if (!isObj(raw.pins)) errors.push("pins: required, { \"left\": [...], \"right\": [...], \"top\": [...], \"bottom\": [...] }");
+	if (!isObj$1(raw.pins)) errors.push("pins: required, { \"left\": [...], \"right\": [...], \"top\": [...], \"bottom\": [...] }");
 	else for (const [side, list] of Object.entries(raw.pins)) {
 		if (!SIDES.includes(side)) {
 			errors.push(`pins.${side}: unknown side (left, right, top or bottom)`);
@@ -95646,7 +95698,7 @@ function validateSpec(raw) {
 				else count++;
 				return;
 			}
-			if (!isObj(p)) return void errors.push(`${at}: must be a name, null (a gap) or { "name", "type"?, "supply"?, ... }`);
+			if (!isObj$1(p)) return void errors.push(`${at}: must be a name, null (a gap) or { "name", "type"?, "supply"?, ... }`);
 			for (const k of Object.keys(p)) if (!PIN_KEYS.includes(k)) errors.push(`${at}.${k}: unknown field`);
 			if (p.spacer !== void 0) {
 				if (p.spacer !== true) errors.push(`${at}.spacer: must be true`);
@@ -95661,7 +95713,7 @@ function validateSpec(raw) {
 			if (p.supply !== void 0 && typeof p.supply !== "string") errors.push(`${at}.supply: must be a string such as "3V3" or "3V3/5V"`);
 		});
 	}
-	if (isObj(raw.pins) && count === 0) errors.push("pins: at least one pin");
+	if (isObj$1(raw.pins) && count === 0) errors.push("pins: at least one pin");
 	if (raw.internal !== void 0 && !(Array.isArray(raw.internal) && raw.internal.every((g) => Array.isArray(g) && g.every((n) => typeof n === "string")))) errors.push("internal: must be a list of pin-name groups");
 	return errors.length ? {
 		ok: false,

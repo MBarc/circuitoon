@@ -11,6 +11,7 @@ import { seatedLabels } from './seatedLabels.ts'
 import { LABEL_VALUE, flagRect } from './netLabels.ts'
 import { annotationRect, frameTab } from '../render/annotationGeometry.ts'
 import { isSimValueKey, simValueProblem, switchGroups } from './simState.ts'
+import { type PartCode, checkCode } from './code.ts'
 import { withLibrarySim } from './simModel.ts'
 import { type BoardStrip, exitDirt, holeExits } from './boardEntry.ts'
 
@@ -32,6 +33,8 @@ export interface PartInstance {
   settings?: Record<string, string>
   /** The board this part is plugged into. Its pins join the hole groups their plug points sit on. */
   mount?: { board: string }
+  /** Code on a board (firmware spec 3.1), saved with the sheet. */
+  code?: PartCode
 }
 export interface Endpoint {
   part: string
@@ -1585,6 +1588,13 @@ export function validateDiagram(raw: unknown, opts: { library?: (id: string) => 
           }
           if (changed) fix(i, { settings: Object.keys(kept).length ? kept : undefined })
         }
+      }
+      // Code on a board (firmware spec 3.1): bad code is dropped with a warning naming the part.
+      if (p.code !== undefined) {
+        const who = typeof p.designator === 'string' && p.designator !== '' ? p.designator : `part ${i}`
+        const r = checkCode(p.code, who)
+        for (const w of r.warnings) warnings.push(`${at}.code: ${w}`)
+        if (r.code !== p.code) fix(i, { code: r.code ?? undefined })
       }
     })
 
