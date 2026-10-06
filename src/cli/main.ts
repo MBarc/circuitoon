@@ -55,8 +55,8 @@ export const USAGE = `circuitoon <command> [options]
   module render <part.json> -o <part.png> [--svg <part.svg>] [--dark] [--scale n]
                                             draw one part alone, to look at it
 
-Exit codes: 0 ok, 1 findings that block, 2 invalid input, 3 environment problem (such as no browser)
-or an internal error of the tool.
+Exit codes: 0 ok, 1 findings that block, 2 invalid input, 3 environment problem (such as no browser),
+a simulation that failed or could not run (sim and gate, when nothing else blocks), or an internal error of the tool.
 `
 
 export type Command = (args: Args, io: Io) => number | Promise<number>

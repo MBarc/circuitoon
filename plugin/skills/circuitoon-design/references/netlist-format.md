@@ -34,6 +34,7 @@ A netlist says what connects to what. The layout decides where everything goes. 
 | `wires` | Two optional settings for every wire: `color` and `ends`. See below. |
 | `modules` | Embedded parts, keyed by id (see `module-schema.md`). An id may not reuse a built-in id. |
 | `repeat` | Repeated sub-circuits (see below). |
+| `probes` | Optional simulation probes, read by `sim` and the editor (see "Simulation values and probes" below). |
 
 The part fields:
 
@@ -41,7 +42,7 @@ The part fields:
 
 - `ref`: a letter, then letters, digits or `_`. It must be unique.
 - `module`: a built-in id from `circuitoon parts`, or an id under `modules`.
-- `values` (optional): `resistance` in ohm, `capacitance` in F, or `voltage` in V, written as `{ "value": 220, "unit": "ohm" }`.
+- `values` (optional): `resistance` in ohm, `capacitance` in F, or `voltage` in V, written as `{ "value": 220, "unit": "ohm" }`, plus the simulation values below (GPIO states, switch positions, draw and cell overrides).
 - `settings` (optional): choices for the part's enumerated settings, as listed in its module's `electrical.settings`, written as `{ "address": "0x3D" }`. A setting the module does not have, or a choice it does not offer, is an error. Leave one out for the module's default (its first choice). Use it to give two identical I2C parts different addresses (two OLEDs at `0x3C` and `0x3D`), or to mark a fuse holder's fuse `absent`. The layout sets them on the sheet, `netlist` extracts them, and verify reports a setting that differs from the intent as `value-drift`.
 - `on` (optional): the ref of a breadboard or rail strip the part plugs into.
 
@@ -58,6 +59,28 @@ The `wires` settings:
 - `ends` is one cable end for every wire: `bare`, `dupont-male`, `dupont-female`, `solid-jumper`, `alligator`, `stripped`, `ferrule`, `jst-xh`, `jst-ph`, `jst-sh`, `grove` or `banana`. A net of two USB ports (pins of type `usb`) is a USB link: the layout gives it the USB cable whose plugs fit the two ports, or no cable when one port is a plug, so USB plug ends are never set here.
 - By default the layout follows the wire color convention: ground nets are black, positive supply rails (3V3, 5V, VIN, a battery's +, a regulator's output) are red, and each signal net gets a color from a palette without red or black. Signal nets that share a part get different colors while the palette lasts.
 - A `color` you give wins, so keep it to the convention: black for ground, red for a positive supply, never red or black for a signal. The checker warns (`wire-color-ground`, `wire-color-supply`, `wire-color-signal`) on any wire that breaks it. Mains wiring is exempt: it keeps its regional identity colors.
+
+## Simulation values and probes
+
+`sim` and `gate` solve the circuit in the state the netlist saves. These go in a part's `values`; the layout copies them to the sheet and `netlist` extracts them:
+
+- `"gpio.<pin>"`: a GPIO pin's state, `"input"` (the default), `"input-pullup"`, `"input-pulldown"`, `"high"` or `"low"`, for example `{ "gpio.IO5": "high" }`. Only pins the board lists as GPIO take one, and only pulls the chip has: the ESP32 boards and the Pi Pico have pull-ups and pull-downs, the Arduino Uno and Nano and the MCP23017 pull-ups only. An input-only pin takes no `high` or `low`; an output-only pin takes no input state and is open until one is set.
+- `"contact.<group>"`: a switch's position, where `<group>` is a contact group id of the part (`s` on a plain switch and on the KCD1 rocker). `"open"` (the default) or `"closed"`; a changeover group takes `"no"` or `"nc"` (the default). A momentary button's position is never saved, and a relay is always at rest.
+- `"sim.draw.<domain>.typical"` and `"sim.draw.<domain>.peak"`: a part's own draw on one of its supply domains, in amps (`{ "value": 0.12, "unit": "A" }`), when the user knows it better than the part's data.
+- `"sim.rInternal"` (ohm) and `"sim.imax"` (A): a battery's or supply's actual internal resistance and maximum current.
+
+Each override counts as the user's value: a finding decided on it can block. A value the part cannot take (no such pin, group or domain, a pull the chip lacks) is an error.
+
+`probes` is a list of `{ "id": "P1", "name"?, "at", "ref"? }`:
+
+- `id` is `P` and a number, unique. `name` is optional text of up to 40 characters.
+- `at` is `"REF.PIN"` (a pin's voltage; a hole group such as `"BB1.top+"` works too, and the layout puts the probe on one of its holes), `"REF"` (a part's current per pin and its power) or `"net:NAME"` (a net of this netlist; the layout puts the probe on a pin of that net, the part whose ref starts the probe's `name` if it is on the net, else the lowest ref).
+- `ref` is optional, `"net:NAME"`: it is checked, but readings are always relative to the reference their part of the circuit names (usually `GND`).
+- A probe that names no part, pin or net is dropped with a warning, never an error.
+
+```json
+"probes": [ { "id": "P1", "name": "battery +", "at": "BT1.+" }, { "id": "P2", "at": "D1" }, { "id": "P3", "at": "net:3V3" } ]
+```
 
 ## Endpoints
 

@@ -45,7 +45,33 @@ Without `art`, the part is drawn as a plain box with its pins, which is enough f
 | `caps` | On a pin or pad, what it cannot do, from the chip's datasheet only: `inputOnly`, `outputOnly`, `flash`, `noPullup` (each `true`), `strapping` (`"high"`, `"low"` or `"either"`: the level the boot needs at reset), `downloadOnly` (`true` when that level only matters for flashing over serial) and `note` (one sentence on why). Leave it out when the datasheet does not say. The pin rules fire only on what is set. |
 | `electrical.i2c` | For an I2C device: `{ "sda": "SDA", "scl": "SCL", "address": { "base": 32, "pins": [{ "pin": "A0", "add": 1 }] }, "pullups": false }`. `address` may instead be `{ "fixed": 118 }`. Set `pullups` only when the maker says whether the board has SDA/SCL pull-ups; leave it out otherwise. |
 | `electrical.params` | Values the part carries, for example `{ "resistance": { "unit": "ohm", "default": 1000 } }`. |
+| `electrical.sim` | Optional: the part's simulation data (see "electrical.sim" below). Without it, a board or module is listed as not simulated ("no power data"); resistors, LEDs, batteries, capacitors, switches, potentiometers and fuses simulate from their model and values alone. |
 | `kicad` | Optional: the part's KiCad footprint for `circuitoon kicad`. `{ "footprint": "Connector_PinSocket_2.54mm:PinSocket_1x04_P2.54mm_Vertical", "pins": { "VCC": "1", "GND": "2", "IN1": "3", "IN2": "4" } }`: a footprint from KiCad's standard libraries and each pin's pad number, read from the footprint file. A board with several header rows uses `"headers": [{ "name", "footprint", "pins" }, ...]` instead, one socket strip per row. Leave it out when unsure: the part then exports on a generic pin header, with a warning. |
+
+## electrical.sim
+
+Everything the simulator needs beyond the pins lives in one optional object, `electrical.sim`. It is validated in full: an unknown key, a unit that does not match its kind, or a pin or domain that does not exist is an error. Its fields:
+
+- `modelParams`: physics, by name and unit: `rInternal` (ohm), `contactResistance` (ohm), `is` (A), `n` (1), `rs` (ohm), `dcr` (ohm).
+- `power`: the supply topology.
+  - `domains` (required): `{ "name", "pin", "ret", "nominal" }`, a named supply: the pin, its explicit return and its nominal voltage, for example `{ "name": "3V3", "pin": "3V3", "ret": "GND", "nominal": 3.3 }`.
+  - `draw`: `{ "domain", "typical", "peak"?, "minVolts"? }`, the part's own consumption on a domain (not what its GPIOs source; those are solved). `peak` needs a `note` saying what the peak is ("Wi-Fi transmit"). Without `minVolts`, 90 % of the domain's nominal is used, as an estimate.
+  - `rails`: `{ "id", "inputs": [{ "domain", "via": "direct" | "diode" }], "output", "kind", "reverse": "blocks" | "body-diode", ... }`. Required per kind: `ldo` needs `vout`, `dropout` and `ioutMax`; `buck` and `boost` need `vout`, `efficiency`, `vinMin`, `vinMax` and `ioutMax`; `switch` (a load switch or a diode path) needs `ron` or `vf`. Optional: `iq`, `rout` (at least 1 milliohm; 0.1 ohm when absent), `offPath` (`"open"` or `"diode"`, buck and boost only), `minLoad` (`{ "amps", "note" }`, a converter that shuts off at light load).
+  - `source`: `{ "domain", "voltage": "param:voltage" | <quantity>, "rInternal", "imax"? }`, for a part that is itself a supply.
+- `gpio`: `{ "domain", "pins", "outputResistance", "pullup"?, "pulldown"?, "inputLeakage"? }`. Only the listed pins take a GPIO state, and only the pulls given here are allowed on a sheet.
+- `limits`: `{ "of": { "pin" } | { "domain" } | { "part": true }, "kind", "value", "provenance", "source"?, "conditions"?, "note"? }`, with `kind` one of `current`, `absMaxCurrent` (A), `power` (W), `vinMax`, `vinMin` (V), `sourceCurrent`, `ioTotalCurrent` (A).
+- `usbPorts`: `{ "<usb pin>": { "gnd": "<ground pin>" } }`, required for a port that `power` refers to, so the return current flows through the cable.
+- `unaccounted`: a list of what the data leaves out, in plain words (a power LED with no sourced current).
+
+**Every number is a quantity with its own provenance**: `{ "value", "unit", "provenance", "source"?, "note"? }`. Provenance is per value, never per part:
+
+- `datasheet`: from the part's own datasheet. `source` (one or more URLs, space separated) is required; say in `note` which table or page.
+- `representative`: from a representative datasheet for a generic part ("a typical 5 mm red LED"). `source` is required, and names that datasheet.
+- `estimate`: no source; `note` is required and says what was assumed.
+
+Findings decided on `representative` or `estimate` values are "Likely" warnings and do not block, so an honest estimate costs little. **A wrong number is worse than a missing one**: never present a guess as `datasheet`. When you have no number, leave the field out or mark an estimate with its assumption.
+
+**Node references**: a domain's `pin` and `ret` name a pin or hole group of the part, or a USB port's simulation node, `<usb pin>#vbus` (its 5 V conductor) or `<usb pin>#gnd` (its ground conductor). A DevKit's USB-to-VIN diode is a `switch` rail from a domain on `USB#vbus` to the `VIN` domain.
 
 ## Pins
 
