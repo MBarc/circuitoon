@@ -58,7 +58,7 @@ describe('value findings', () => {
     const [f] = of(r, 'sim-over-abs-max')
     expect(f).toMatchObject({ severity: 'error', basis: 'representative', corner: 'typical', parts: ['d1'] })
     // (5 V - 2.0 V at 20 mA) / 20 mA = 150 ohm, an E12 value.
-    expect(f.message).toMatch(/^D1 carries .* absolute maximum: damage is likely\. Add a series resistor \(about 150 ohm at 5 V\)\. This is decided on representative values/)
+    expect(f.message).toMatch(/^D1 carries .* absolute maximum: damage is likely\. Add a series resistor \(about 150 ohm at 5 V\)\. This is decided on typical values for a red LED, but it is more than twice the limit\.$/)
     expect(of(r, 'sim-over-limit')).toEqual([])
   }, 60_000)
   it('an LED straight across 2xAA blocks; at 1.5x its representative absolute maximum it is a "likely" warning', async () => {

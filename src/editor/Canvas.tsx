@@ -128,6 +128,8 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
   // While simulating: the readings to draw (the last good ones, stale, after a failed solve) and the current findings.
   const simOutcome = simulate && sim?.phase === 'done' ? sim.outcome : undefined
   const simShown = shownResult(simOutcome)
+  // A failed outcome's findings are a new array per call; memoised so SimLayer's memo holds.
+  const simFindings = useMemo(() => currentFindings(simOutcome), [simOutcome])
   const svgRef = useRef<SVGSVGElement>(null)
   const [size, setSize] = useState({ w: 800, h: 600 })
   const [view, setView] = useState<View>({ x: -20, y: -40, scale: 1.5 })
@@ -902,7 +904,7 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
           <NoteMark key={a.uid} a={a} interactive selected={!!selection.annotations?.includes(a.uid)} />
         ))}
         {simOutcome && (
-          <SimLayer diagram={diagram} result={simShown?.result ?? null} stale={!!simShown?.stale} circuit={sim?.phase === 'done' ? sim.circuit : null} findings={currentFindings(simOutcome)} />
+          <SimLayer diagram={diagram} result={simShown?.result ?? null} stale={!!simShown?.stale} circuit={sim?.phase === 'done' ? sim.circuit : null} findings={simFindings} />
         )}
         {/* A connection the netlist could not join (a missing part, pin, group or hole) has no
             route to draw, but a short dashed red stub at whichever end still resolves lets a

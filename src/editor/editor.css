@@ -459,6 +459,7 @@ button.wordmark { background: none; border: 0; padding: 0; cursor: pointer; }
    its absolute maximum, a ring on each pin a finding names, finding badges; stale readings dim. */
 .sim-tag rect { fill: #FFFFFF; stroke: #23282F; stroke-width: 1.2; }
 .sim-tag text { font: 700 8px "Atkinson Hyperlegible", system-ui, sans-serif; fill: #23282F; }
+.sim-tag.quiet text { font-weight: 400; fill: #56615B; }
 .sim-led.over .sim-tag rect { fill: #8E1E17; stroke: #23282F; }
 .sim-led.over .sim-tag text { fill: #FFFFFF; }
 .sim-ring { fill: none; stroke: #E0483E; stroke-width: 2.5; stroke-dasharray: 5 3; }

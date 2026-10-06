@@ -5,7 +5,7 @@
 import { describe, expect, it } from 'vitest'
 import { buildCircuit } from './build.ts'
 import { classify } from './floating.ts'
-import { type Draft, finalize, noConvergence, topologyFindings } from './findings.ts'
+import { type Draft, finalize, noConvergence, subjectOf, subjectsOf, topologyFindings } from './findings.ts'
 import { netNode } from './model.ts'
 import { boardModule, cellModule, ldoModule, q, sheet } from './testing.ts'
 import type { Diagram } from '../format/diagram.ts'
@@ -93,6 +93,12 @@ describe('topological findings', () => {
     const est = all.find((f) => f.code === 'sim-estimate')!
     expect(est.severity).toBe('note')
     expect(est.inputs).toContain('test-board.U2.draw.3V3.minVolts: estimate')
+    // Plain words (spec 5.2): the parts by ref; the parameter paths stay in inputs.
+    expect(est.message).toMatch(/^\d+ values? in this result (is an estimate|are estimates), for U2\.$/)
+  })
+  it('names who a parameter is about in plain words', () => {
+    expect(['esp32-devkitc-v4.U1.rails.ldo.rout', 'led-colours.red.absMaxCurrent', 'usb-default.2.0', 'battery-9v.BT1.limits.sourceCurrent'].map(subjectOf)).toEqual(['U1', 'a red LED', 'a USB 2.0 port', 'BT1'])
+    expect(subjectsOf(['battery-9v.BT2.x', 'battery-9v.BT10.y', 'battery-9v.BT2.z'])).toBe('BT2 and BT10')
   })
 })
 
@@ -111,7 +117,7 @@ describe('finalize (spec 4.5, 5.2)', () => {
     const [f] = finalize([draft({ corner: 'typical', inputs: [p('estimate')] }), draft({ corner: 'peak', inputs: [p('estimate')] })], '')
     expect(f.severity).toBe('warning')
     expect(f.message).toMatch(/^Likely: /)
-    expect(f.message).toContain('x.estimate')
+    expect(f.message).toContain('This is decided on estimated values for estimate.')
     expect(finalize([draft({ corner: 'typical' }), draft({ corner: 'peak' })], '')).toHaveLength(1)
   })
   it('words a solver failure without SPICE vocabulary, naming the parts on the nets it reported', () => {
@@ -163,7 +169,7 @@ describe('finalize: an over-abs-max past twice a representative limit (Phase D r
   it('stays a blocking error past 2x, saying it is decided on representative values', () => {
     const [f] = finalize([abs(3)], '')
     expect(f).toMatchObject({ severity: 'error', basis: 'representative' })
-    expect(f.message).toBe('D1 carries 90 mA, above its 30 mA absolute maximum: damage is likely. This is decided on representative values (led.representative), but it is more than twice the limit.')
+    expect(f.message).toBe('D1 carries 90 mA, above its 30 mA absolute maximum: damage is likely. This is decided on typical values for representative, but it is more than twice the limit.')
   })
   it('is a "likely" warning at 2x or under, on an estimate whatever the ratio, and at peak', () => {
     expect(finalize([abs(1.5)], '')[0]).toMatchObject({ severity: 'warning', message: expect.stringMatching(/^Likely: /) })

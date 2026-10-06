@@ -189,12 +189,27 @@ export function topologyFindings(c: Circuit, cls: Classification): { drafts: Dra
     drafts.push({
       code: 'sim-estimate', severity: 'note', parts: [...new Set(c.devices.filter((d) => deviceParams(d).some((p) => p.basis === 'estimate')).map((d) => d.part))].sort(naturalCompare),
       inputs: [...estimates.values()], key: 'sim-estimate',
-      message: `${plural(estimates.size, 'value')} in this result ${estimates.size === 1 ? 'is an estimate' : 'are estimates'}: ${[...estimates.keys()].join(', ')}.`,
+      message: `${plural(estimates.size, 'value')} in this result ${estimates.size === 1 ? 'is an estimate' : 'are estimates'}, for ${subjectsOf([...estimates.keys()])}.`,
     })
   return { drafts, shortedRails }
 }
 
 const ORDER = { error: 0, warning: 1, note: 2 } as const
+
+/**
+ * Who a parameter's label is about, in plain words (spec 5.2): the part ref of `<module>.<ref>.<path>`,
+ * "a red LED" for the per-colour table, "a USB 2.0 port" for the USB default. The label itself
+ * stays in the finding's `inputs`.
+ */
+export function subjectOf(label: string): string {
+  const [head, second] = label.split('.')
+  if (head === 'led-colours' && second) return `a ${second} LED`
+  if (head === 'usb-default') return `a USB ${label.slice(head.length + 1)} port`
+  return second ?? label
+}
+/** The subjects of some labels, once each, in natural order, as a list ("BT1, U1 and a red LED"). */
+export const subjectsOf = (labels: string[]) => andList([...new Set(labels.map(subjectOf))].sort(naturalCompare))
+const WORD = { representative: 'typical', estimate: 'estimated' } as const
 
 /** The severity rules of spec 4.5 and 5.2, then one finding per key (typical wins over peak). */
 export function finalize(drafts: Draft[], peakNote: string): SimFinding[] {
@@ -209,14 +224,14 @@ export function finalize(drafts: Draft[], peakNote: string): SimFinding[] {
       message = `At peak${peakNote ? ` (${peakNote})` : ''}: ${message}`
     }
     if (severity === 'error' && (basis === 'representative' || basis === 'estimate')) {
-      const uncertain = d.inputs.filter((p) => p.basis === 'representative' || p.basis === 'estimate').map((p) => p.label)
+      const uncertain = subjectsOf(d.inputs.filter((p) => p.basis === 'representative' || p.basis === 'estimate').map((p) => p.label))
       // Phase D ruling: past twice a representative absolute maximum (an LED with no resistor), part
       // variation cannot save it, so it still blocks. An estimate never does.
       if (d.code === 'sim-over-abs-max' && basis === 'representative' && (d.overBy ?? 0) > 2)
-        message = `${message} This is decided on representative values (${uncertain.join(', ')}), but it is more than twice the limit.`
+        message = `${message} This is decided on typical values for ${uncertain}, but it is more than twice the limit.`
       else {
         severity = 'warning'
-        message = `Likely: ${message} This is decided on ${basis} values: ${uncertain.join(', ')}.`
+        message = `Likely: ${message} This is decided on ${WORD[basis]} values for ${uncertain}.`
       }
     }
     out.set(d.key, {

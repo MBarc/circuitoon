@@ -1,7 +1,7 @@
 // What simulating draws on the sheet (spec 6.3): each LED's glow from its current (log scale, full
 // at its current limit, in its colour) with the current as a text tag, an LED over its absolute
 // maximum drawn dark red with a warning ring (never "burnt"), and the simulation's finding badges
-// (the checker's SeverityMark, at the top right of a part; the checker lights its own at the top
+// (the checker's SeverityMark, centred above a part; the checker lights its own at the top
 // left), with a ring on each pin a finding names. Static, so reduced motion needs nothing more.
 // Stale readings (the last good result while a solve fails) are dimmed and say so.
 // Imports from src/sim are types and display.ts only: the compute code stays in the lazy chunk.
@@ -94,7 +94,9 @@ export const SimLayer = memo(function SimLayer({ diagram, result, stale, circuit
           <radialGradient key={name} id={`sim-glow-${name}`}>
             <stop offset="0" stopColor={c} stopOpacity={0.9} />
             <stop offset="0.35" stopColor={c} stopOpacity={0.6} />
-            <stop offset="1" stopColor={c} stopOpacity={0} />
+            {/* White on light paper: a soft grey edge so the glow still reads. */}
+            {name === 'white' && <stop offset="0.7" stopColor="#7C8794" stopOpacity={0.35} />}
+            <stop offset="1" stopColor={name === 'white' ? '#7C8794' : c} stopOpacity={0} />
           </radialGradient>
         ))}
       </defs>
@@ -116,8 +118,9 @@ export const SimLayer = memo(function SimLayer({ diagram, result, stale, circuit
               ) : (
                 level > 0 && <circle className="sim-glow" cx={cx} cy={cy} r={r * (1 + 1.4 * level)} fill={`url(#sim-glow-${colour})`} opacity={0.35 + 0.65 * level} />
               )}
-              <g className="sim-tag">
-                <rect x={cx - tagW / 2} y={tagY} width={tagW} height={13} rx={4} />
+              {/* An unlit LED says so quietly (text, not colour alone); a reading gets a sticker tag. */}
+              <g className={level > 0 || over ? 'sim-tag' : 'sim-tag quiet'}>
+                {(level > 0 || over) && <rect x={cx - tagW / 2} y={tagY} width={tagW} height={13} rx={4} />}
                 <text x={cx} y={tagY + 6.5} textAnchor="middle" dominantBaseline="central">{reading}</text>
               </g>
             </g>
@@ -138,7 +141,8 @@ export const SimLayer = memo(function SimLayer({ diagram, result, stale, circuit
         return (
           <g key={uid} className="sim-badge" data-sim-badge={[...b.parts].join(' ')}>
             <title>{`Simulation: ${b.messages.join('\n')}`}</title>
-            <SeverityMark severity={b.severity} at={{ x: box.x + box.w - 2, y: box.y - 16, size: 18 }} />
+            {/* Centred above the body, clear of the side pins' wire ends and the checker's top-left mark. */}
+            <SeverityMark severity={b.severity} at={{ x: box.x + box.w / 2 - 9, y: box.y - 20, size: 18 }} />
           </g>
         )
       })}
