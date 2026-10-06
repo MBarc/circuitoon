@@ -48,15 +48,16 @@ describe('board memory (spec 2.2)', () => {
     // Wait for the worker's first write: its start-up (loading the .ts) takes longer than any fixed sleep we could trust.
     while (readOut(m, 5).rising === 0) await new Promise((r) => setTimeout(r, 5))
     let torn = 0
-    let seen = 0
+    const seen = new Set<number>()
     for (let i = 0; i < 200_000; i++) {
       const o = readLocked(m, H.outSeq, () => readOut(m, 5))
       if (o.rising !== o.falling || o.rising !== o.highUs || o.duty !== o.rising) torn++
-      seen = o.rising
+      seen.add(o.rising)
     }
     Atomics.store(m.i32, H.wake, -1)
     await w.terminate()
-    expect(seen).toBeGreaterThan(0)
+    // The writer must have advanced through the loop, or torn === 0 would prove nothing.
+    expect(seen.size).toBeGreaterThan(100)
     expect(torn).toBe(0)
   })
 })

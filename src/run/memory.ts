@@ -55,7 +55,8 @@ export function readLocked<T>(m: BoardMemory, seq: number, fn: () => T): T {
     const a = Atomics.load(m.i32, seq)
     if (a & 1) continue
     const v = fn()
-    if (Atomics.load(m.i32, seq) === a) return v
+    // An RMW, not a load: earlier plain loads (the Float64 fields) cannot be reordered past it on weakly ordered CPUs.
+    if (Atomics.compareExchange(m.i32, seq, a, a) === a) return v
   }
 }
 
@@ -63,20 +64,20 @@ export function readOut(m: BoardMemory, bcm: number): PinOut {
   const i = OUT_I + bcm * OUT_W
   const f = OUT_F + bcm * 2
   const v = m.i32
-  return { mode: v[i] as ModeCode, latch: v[i + 1] ? 1 : 0, pwmActive: v[i + 2] !== 0, duty: m.f64[f], freq: m.f64[f + 1], rising: v[i + 3] >>> 0, falling: v[i + 4] >>> 0, highUs: v[i + 5] >>> 0, changedUs: v[i + 6] >>> 0 }
+  return { mode: Atomics.load(v, i) as ModeCode, latch: Atomics.load(v, i + 1) ? 1 : 0, pwmActive: Atomics.load(v, i + 2) !== 0, duty: m.f64[f], freq: m.f64[f + 1], rising: Atomics.load(v, i + 3) >>> 0, falling: Atomics.load(v, i + 4) >>> 0, highUs: Atomics.load(v, i + 5) >>> 0, changedUs: Atomics.load(v, i + 6) >>> 0 }
 }
 
 export function setOut(m: BoardMemory, bcm: number, p: Partial<PinOut>): void {
   const i = OUT_I + bcm * OUT_W
   const f = OUT_F + bcm * 2
   const v = m.i32
-  if (p.mode !== undefined) v[i] = p.mode
-  if (p.latch !== undefined) v[i + 1] = p.latch
-  if (p.pwmActive !== undefined) v[i + 2] = p.pwmActive ? 1 : 0
-  if (p.rising !== undefined) v[i + 3] = p.rising | 0
-  if (p.falling !== undefined) v[i + 4] = p.falling | 0
-  if (p.highUs !== undefined) v[i + 5] = p.highUs | 0
-  if (p.changedUs !== undefined) v[i + 6] = p.changedUs | 0
+  if (p.mode !== undefined) Atomics.store(v, i, p.mode)
+  if (p.latch !== undefined) Atomics.store(v, i + 1, p.latch)
+  if (p.pwmActive !== undefined) Atomics.store(v, i + 2, p.pwmActive ? 1 : 0)
+  if (p.rising !== undefined) Atomics.store(v, i + 3, p.rising | 0)
+  if (p.falling !== undefined) Atomics.store(v, i + 4, p.falling | 0)
+  if (p.highUs !== undefined) Atomics.store(v, i + 5, p.highUs | 0)
+  if (p.changedUs !== undefined) Atomics.store(v, i + 6, p.changedUs | 0)
   if (p.duty !== undefined) m.f64[f] = p.duty
   if (p.freq !== undefined) m.f64[f + 1] = p.freq
 }
@@ -84,16 +85,16 @@ export function setOut(m: BoardMemory, bcm: number, p: Partial<PinOut>): void {
 export function readIn(m: BoardMemory, bcm: number): PinIn {
   const i = IN_I + bcm * IN_W
   const v = m.i32
-  return { level: v[i] ? 1 : 0, rising: v[i + 1] >>> 0, falling: v[i + 2] >>> 0, status: STATUS_OF[v[i + 3]] ?? 'none', volts: m.f64[IN_F + bcm] }
+  return { level: Atomics.load(v, i) ? 1 : 0, rising: Atomics.load(v, i + 1) >>> 0, falling: Atomics.load(v, i + 2) >>> 0, status: STATUS_OF[Atomics.load(v, i + 3)] ?? 'none', volts: m.f64[IN_F + bcm] }
 }
 
 export function setIn(m: BoardMemory, bcm: number, p: PinIn): void {
   const i = IN_I + bcm * IN_W
   const v = m.i32
-  v[i] = p.level
-  v[i + 1] = p.rising | 0
-  v[i + 2] = p.falling | 0
-  v[i + 3] = IN_STATUS[p.status]
+  Atomics.store(v, i, p.level)
+  Atomics.store(v, i + 1, p.rising | 0)
+  Atomics.store(v, i + 2, p.falling | 0)
+  Atomics.store(v, i + 3, IN_STATUS[p.status])
   m.f64[IN_F + bcm] = p.volts
 }
 
