@@ -2,7 +2,7 @@
 // 2.7), so a plugin pinned to an older Pyodide keeps working after a deploy (deploy.sh force-pushes
 // dist/). The version this build copied is never overwritten. Usage:
 //   node scripts/carry-py.mjs --remote <git url or path> [--dist dist]
-import { execFileSync } from 'node:child_process'
+import { execFileSync, spawnSync } from 'node:child_process'
 import { cpSync, existsSync, mkdtempSync, readdirSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -19,11 +19,21 @@ if (!remote) {
 }
 const tmp = mkdtempSync(join(tmpdir(), 'carry-py-'))
 try {
-  try {
-    execFileSync('git', ['clone', '-q', '--depth', '1', '--branch', 'gh-pages', remote, tmp], { stdio: 'pipe' })
-  } catch {
+  // Only a missing gh-pages branch is benign; any other failure must stop the deploy (it force-pushes dist/).
+  const ls = spawnSync('git', ['ls-remote', '--exit-code', '--heads', remote, 'gh-pages'], { encoding: 'utf8' })
+  if (ls.status === 2) {
     console.log('carry-py: no gh-pages branch yet; nothing to carry')
     process.exit(0)
+  }
+  if (ls.status !== 0) {
+    console.error(`carry-py: cannot reach ${remote} (git ls-remote exited ${ls.status}); not deploying without the older py/<version>/ folders. ${ls.stderr.trim()}`)
+    process.exit(1)
+  }
+  try {
+    execFileSync('git', ['clone', '-q', '--depth', '1', '--branch', 'gh-pages', remote, tmp], { stdio: 'pipe' })
+  } catch (e) {
+    console.error(`carry-py: cloning gh-pages from ${remote} failed; not deploying without the older py/<version>/ folders. ${String(e.stderr ?? e.message).trim()}`)
+    process.exit(1)
   }
   const old = existsSync(join(tmp, 'py')) ? readdirSync(join(tmp, 'py')) : []
   const carried = old.filter((v) => !existsSync(join(dist, 'py', v)))

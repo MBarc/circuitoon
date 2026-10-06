@@ -47,4 +47,16 @@ describe('Pyodide files (spec 2.7)', () => {
     expect(readFileSync(join(dist, 'py', '0.1.0', 'pyodide.mjs'), 'utf8')).toBe('old')
     expect(readFileSync(join(dist, 'py', PY.version, 'pyodide.mjs'), 'utf8')).toBe('current')
   })
+  it('succeeds when the remote has no gh-pages branch yet', () => {
+    const repo = mkdtempSync(join(tmpdir(), 'py-nobranch-'))
+    execFileSync('git', ['init', '-q', '-b', 'main'], { cwd: repo })
+    execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@example.invalid', 'commit', '-q', '--allow-empty', '-m', 'x'], { cwd: repo })
+    const r = node('scripts/carry-py.mjs', ['--remote', repo, '--dist', mkdtempSync(join(tmpdir(), 'py-dist-'))])
+    expect(r.status, r.stderr).toBe(0)
+  })
+  it('fails (so the deploy aborts) when the remote cannot be reached', () => {
+    const r = node('scripts/carry-py.mjs', ['--remote', join(tmpdir(), 'py-no-such-remote-dir'), '--dist', mkdtempSync(join(tmpdir(), 'py-dist-'))])
+    expect(r.status).not.toBe(0)
+    expect(r.stderr).toContain('not deploying')
+  })
 })
