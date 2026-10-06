@@ -5,7 +5,7 @@
 import { describe, expect, it } from 'vitest'
 import { buildCircuit } from './build.ts'
 import { classify } from './floating.ts'
-import { type Draft, finalize, noConvergence, subjectOf, subjectsOf, topologyFindings } from './findings.ts'
+import { type Draft, finalize, noConvergence, past, subjectOf, subjectsOf, topologyFindings } from './findings.ts'
 import { netNode } from './model.ts'
 import { boardModule, cellModule, ldoModule, q, sheet } from './testing.ts'
 import type { Diagram } from '../format/diagram.ts'
@@ -186,5 +186,14 @@ describe('finalize: an over-abs-max past twice a representative limit (Phase D r
     expect(finalize([abs(2)], '')[0].severity).toBe('warning')
     expect(finalize([abs(5, 'estimate')], '')[0].severity).toBe('warning')
     expect(finalize([{ ...abs(5), corner: 'peak' }], '')[0].severity).toBe('warning')
+  })
+})
+
+describe('a reading beside its limit', () => {
+  it('takes one more figure when three would read the same as the limit', () => {
+    expect(past(0.02004, 0.02, 'A')).toBe('20.04 mA')
+    expect(past(0.0251, 0.02, 'A')).toBe('25.1 mA')
+    expect(past(2.9996, 3, 'V')).toBe('2.9996 V')
+    expect(past(0.5001, 0.5, 'W')).toBe('500.1 mW')
   })
 })

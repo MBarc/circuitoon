@@ -33,6 +33,22 @@ export interface Draft {
 export const V = (x: number) => formatValue(Number(x.toPrecision(3)), 'V')
 export const A = (x: number) => formatValue(Number(x.toPrecision(3)), 'A')
 export const W = (x: number) => formatValue(Number(x.toPrecision(3)), 'W')
+/**
+ * A reading set beside its limit: three figures, or more when those round to the limit's own text
+ * ("20.04 mA, above its 20 mA rating", never "20 mA, above its 20 mA rating").
+ */
+export function past(x: number, limit: number, unit: 'A' | 'V' | 'W'): string {
+  const three = (y: number) => formatValue(Number(y.toPrecision(3)), unit)
+  const s = three(x)
+  if (s !== three(limit) || x === 0) return s
+  const [num, prefixed] = s.split(' ')
+  const scale = Number(num) / Number(x.toPrecision(3))
+  for (let p = 4; p <= 7; p++) {
+    const t = `${Number((x * scale).toPrecision(p))} ${prefixed}`
+    if (t !== s) return t
+  }
+  return s
+}
 export const refOf = (c: Circuit, uid: string) => c.refs[uid] ?? uid
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`
 
@@ -306,15 +322,16 @@ export function runDrafts(c: Circuit, cls: Classification, raw: RawRun, corner: 
   const delivered = (part: string, domain?: string) => {
     const src = ix.devicesOf.get(part)?.find((x) => x.kind === 'cell' && (domain === undefined || x.domain === domain))
     const x = src ? raw.dev[src.id] : undefined
-    return x === undefined || !Number.isFinite(x) ? null : { value: Math.abs(x), what: `${ref(part)} delivers ${A(Math.abs(x))}`, unit: 'A' as const }
+    return x === undefined || !Number.isFinite(x) ? null : { value: Math.abs(x), what: (q: string) => `${ref(part)} delivers ${q}`, unit: 'A' as const }
   }
 
-  type Measured = { value: number; what: string; unit: 'A' | 'V' | 'W'; pins?: { part: string; pin: string }[] }
+  type Measured = { value: number; what: (shown: string) => string; unit: 'A' | 'V' | 'W'; pins?: { part: string; pin: string }[] }
   const measure = (l: ResolvedLimit): Measured | null => {
     const r = ref(l.part)
     if ('pin' in l.of) {
-      const i = pinI(l.part, l.of.pin)
-      return i === undefined ? null : { value: Math.abs(i), what: `${r} ${l.of.pin} carries ${A(Math.abs(i))}`, unit: 'A', pins: [{ part: l.part, pin: l.of.pin }] }
+      const pin = l.of.pin
+      const i = pinI(l.part, pin)
+      return i === undefined ? null : { value: Math.abs(i), what: (q) => `${r} ${pin} carries ${q}`, unit: 'A', pins: [{ part: l.part, pin }] }
     }
     if ('domain' in l.of) {
       const name = l.of.domain
@@ -323,24 +340,24 @@ export function runDrafts(c: Circuit, cls: Classification, raw: RawRun, corner: 
       if (l.kind === 'vinMax' || l.kind === 'vinMin') {
         if (!on(dom.pin, dom.ret)) return null
         const x = v(dom.pin) - v(dom.ret)
-        return { value: x, what: `${r} ${name} is at ${V(x)}`, unit: 'V' }
+        return { value: x, what: (q) => `${r} ${name} is at ${q}`, unit: 'V' }
       }
       if (l.kind === 'ioTotalCurrent') {
         const outs = c.gpio.filter((g) => g.part === l.part && g.domain === name && (g.state === 'high' || g.state === 'low'))
         const sum = outs.reduce((s, g) => s + Math.abs(pinI(g.part, g.pin) ?? 0), 0)
         const pins = outs.filter((g) => Math.abs(pinI(g.part, g.pin) ?? 0) > 0).map((g) => ({ part: g.part, pin: g.pin }))
-        return { value: sum, what: `${r}'s GPIO pins on ${name} carry ${A(sum)} in all`, unit: 'A', ...(pins.length ? { pins } : {}) }
+        return { value: sum, what: (q) => `${r}'s GPIO pins on ${name} carry ${q} in all`, unit: 'A', ...(pins.length ? { pins } : {}) }
       }
       return delivered(l.part, name)
     }
     if (l.kind === 'power') {
       const p = Math.abs(taps(l.part).reduce((s, t) => s + (solved(t.node) ? v(t.node) : 0) * (pinI(l.part, t.pin) ?? 0), 0))
-      return { value: p, what: `${r} dissipates ${W(p)}`, unit: 'W' }
+      return { value: p, what: (q) => `${r} dissipates ${q}`, unit: 'W' }
     }
     if (l.kind === 'sourceCurrent') return delivered(l.part)
     if (l.kind === 'vinMax' || l.kind === 'vinMin') return null
     const i = Math.max(0, ...taps(l.part).map((t) => Math.abs(pinI(l.part, t.pin) ?? 0)))
-    return { value: i, what: `${r} carries ${A(i)}`, unit: 'A' }
+    return { value: i, what: (q) => `${r} carries ${q}`, unit: 'A' }
   }
 
   /**
@@ -386,7 +403,7 @@ export function runDrafts(c: Circuit, cls: Classification, raw: RawRun, corner: 
     const advice = l.kind === 'absMaxCurrent' ? ledAdvice(l.part, Math.min(rating ?? LED_FIT_AMPS, l.value.value)) : ''
     add({
       code: 'sim-over-abs-max', severity: 'error', parts: [l.part], inputs: [l.value], key: `abs|${subject(l)}|${l.kind}`, overBy: m.value / l.value.value, ...(m.pins ? { pins: m.pins } : {}),
-      message: `${m.what}, above its ${fmt(l.value.value, m.unit)} absolute maximum${cond(l)}: damage is likely.${advice}`,
+      message: `${m.what(past(m.value, l.value.value, m.unit))}, above its ${fmt(l.value.value, m.unit)} absolute maximum${cond(l)}: damage is likely.${advice}`,
     })
   }
   for (const l of c.limits) {
@@ -398,19 +415,19 @@ export function runDrafts(c: Circuit, cls: Classification, raw: RawRun, corner: 
     const advice = l.kind === 'current' ? ledAdvice(l.part, l.value.value) : ''
     add({
       code: 'sim-over-limit', severity: 'warning', parts: [l.part], inputs: [l.value], key: `limit|${subject(l)}|${l.kind}`, ...(m.pins ? { pins: m.pins } : {}),
-      message: `${m.what}, ${under ? 'below' : 'above'} its ${fmt(l.value.value, m.unit)} ${under ? 'minimum' : 'rating'}${cond(l)}.${advice}`,
+      message: `${m.what(past(m.value, l.value.value, m.unit))}, ${under ? 'below' : 'above'} its ${fmt(l.value.value, m.unit)} ${under ? 'minimum' : 'rating'}${cond(l)}.${advice}`,
     })
   }
   for (const d of c.devices)
     if (d.kind === 'cell' && d.role === 'external' && d.imax && (raw.dev[d.id] ?? 0) > d.imax.value)
-      add({ code: 'sim-over-limit', severity: 'warning', parts: [d.part], inputs: [d.imax], key: `imax|${d.id}`, message: `${ref(d.part)} delivers ${A(raw.dev[d.id])}, above the ${A(d.imax.value)} it can supply.` })
+      add({ code: 'sim-over-limit', severity: 'warning', parts: [d.part], inputs: [d.imax], key: `imax|${d.id}`, message: `${ref(d.part)} delivers ${past(raw.dev[d.id], d.imax.value, 'A')}, above the ${A(d.imax.value)} it can supply.` })
   for (const u of c.usb) {
     // The cable joins the two port nets (net nodes).
     const cable = c.devices.find((x) => x.id === u.vbus)
     if (cable?.kind !== 'resistor' || !cls.driven.has(cable.a) || !solved(cable.a) || !solved(cable.b)) continue
     const i = (v(cable.a) - v(cable.b)) / Math.max(cable.ohms.value, 1e-6)
     if (i > u.limit.value)
-      add({ code: 'sim-over-limit', severity: 'warning', parts: [u.host, u.device], inputs: [u.limit], key: `usb|${u.vbus}`, message: `${ref(u.host)} ${u.hostPort} supplies ${A(i)} over USB to ${ref(u.device)}, above the ${A(u.limit.value)} the port gives.` })
+      add({ code: 'sim-over-limit', severity: 'warning', parts: [u.host, u.device], inputs: [u.limit], key: `usb|${u.vbus}`, message: `${ref(u.host)} ${u.hostPort} supplies ${past(i, u.limit.value, 'A')} over USB to ${ref(u.device)}, above the ${A(u.limit.value)} the port gives.` })
   }
 
   /** An open switch on `net` (a net node) whose closing would power a load that is unpowered now. */
@@ -431,8 +448,8 @@ export function runDrafts(c: Circuit, cls: Classification, raw: RawRun, corner: 
     const expecting = c.devices.filter((x) => (x.kind === 'load' && netOf(x.p) === outNet) || ((x.kind === 'resistor' || x.kind === 'diode') && x.role === 'rail-input' && netOf(x.a) === outNet))
     if (r.ioutMax && iout > r.ioutMax.value) {
       outside.add(d.id)
-      add({ code: 'sim-outside-model', severity: 'warning', parts: [d.part], inputs: [r.ioutMax], key: `outside|${d.id}`, message: `${name} supplies ${A(iout)}, beyond the ${A(r.ioutMax.value)} its model covers: its voltages, and the readings upstream of it, cannot be trusted.` })
-      add({ code: 'sim-over-limit', severity: 'warning', parts: [d.part], inputs: [r.ioutMax], key: `iout|${d.id}`, message: `${name} supplies ${A(iout)}, above its ${A(r.ioutMax.value)} rating.` })
+      add({ code: 'sim-outside-model', severity: 'warning', parts: [d.part], inputs: [r.ioutMax], key: `outside|${d.id}`, message: `${name} supplies ${past(iout, r.ioutMax.value, 'A')}, beyond the ${A(r.ioutMax.value)} its model covers: its voltages, and the readings upstream of it, cannot be trusted.` })
+      add({ code: 'sim-over-limit', severity: 'warning', parts: [d.part], inputs: [r.ioutMax], key: `iout|${d.id}`, message: `${name} supplies ${past(iout, r.ioutMax.value, 'A')}, above its ${A(r.ioutMax.value)} rating.` })
     }
     const vin = v(d.in) - v(d.inRet)
     if (r.kind === 'ldo' && solved(d.ctl)) {
@@ -460,7 +477,7 @@ export function runDrafts(c: Circuit, cls: Classification, raw: RawRun, corner: 
     // Not when an open switch cuts its output from what it feeds: that switch's "not powered" warning
     // says why the load is light, and setting it to its operating position settles both.
     if (r.minLoad && enabled && iout < r.minLoad.amps.value && !cutBySwitch(outNet))
-      add({ code: 'sim-min-load', severity: 'warning', parts: [d.part], inputs: [r.minLoad.amps], key: `minload|${d.id}`, message: `${name} supplies ${A(iout)}, below the ${A(r.minLoad.amps.value)} it needs to stay on: ${r.minLoad.note.replace(/\.+$/, '')}.` })
+      add({ code: 'sim-min-load', severity: 'warning', parts: [d.part], inputs: [r.minLoad.amps], key: `minload|${d.id}`, message: `${name} supplies ${past(iout, r.minLoad.amps.value, 'A')}, below the ${A(r.minLoad.amps.value)} it needs to stay on: ${r.minLoad.note.replace(/\.+$/, '')}.` })
   }
 
   // Loads (spec 5.2 sim-brownout).
@@ -490,7 +507,7 @@ export function runDrafts(c: Circuit, cls: Classification, raw: RawRun, corner: 
     }
     const x = v(l.p) - v(l.n)
     if (x < l.minVolts.value)
-      add({ code: 'sim-brownout', severity: 'error', parts: [l.part], inputs: [corner === 'peak' ? l.peak : l.typical, l.minVolts], key: `brownout|${l.id}`, message: `${ref(l.part)} ${l.domain} is at ${V(x)}, below the ${V(l.minVolts.value)} it needs: it browns out.` })
+      add({ code: 'sim-brownout', severity: 'error', parts: [l.part], inputs: [corner === 'peak' ? l.peak : l.typical, l.minVolts], key: `brownout|${l.id}`, message: `${ref(l.part)} ${l.domain} is at ${past(x, l.minVolts.value, 'V')}, below the ${V(l.minVolts.value)} it needs: it browns out.` })
   }
   return { drafts, outside }
 }
