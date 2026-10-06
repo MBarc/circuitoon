@@ -73,7 +73,7 @@ export function boardModule(o: { draw?: boolean; minVolts?: number; leak?: boole
       usbPorts: { USB: { gnd: 'GND' } },
       power: {
         domains: [{ name: 'VIN', pin: 'VIN', ret: 'GND', nominal: 5 }, { name: 'USB', pin: 'USB#vbus', ret: 'USB#gnd', nominal: 5 }, { name: '3V3', pin: '3V3', ret: 'GND', nominal: 3.3 }],
-        ...(o.draw === false ? {} : { draw: [{ domain: '3V3', typical: q(0.05, 'A'), peak: { ...q(0.25, 'A'), note: 'radio' }, ...(o.minVolts ? { minVolts: q(o.minVolts, 'V') } : {}) }] }),
+        ...(o.draw === false ? {} : { draw: [{ domain: '3V3', typical: q(0.05, 'A'), peak: { ...q(0.25, 'A'), note: 'radio', label: 'radio' }, ...(o.minVolts ? { minVolts: q(o.minVolts, 'V') } : {}) }] }),
         rails: [
           { id: 'usb-diode', inputs: [{ domain: 'USB', via: 'direct' }], output: 'VIN', kind: 'switch', vf: q(0.3, 'V'), reverse: 'blocks' },
           { id: 'ldo', inputs: [{ domain: 'VIN', via: 'direct' }], output: '3V3', kind: 'ldo', vout: q(3.3, 'V'), dropout: q(1.1, 'V'), ioutMax: q(0.8, 'A'), iq: q(0.005, 'A'), reverse: 'blocks' },

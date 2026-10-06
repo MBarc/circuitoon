@@ -23,7 +23,8 @@ export interface Limit {
 }
 /** A named supply domain: a pin, its explicit return and a nominal voltage (spec 3.2). */
 export interface PowerDomain { name: string; pin: string; ret: string; nominal: number }
-export interface Draw { domain: string; typical: Quantity; peak?: Quantity & { note: string }; minVolts?: Quantity }
+/** A draw's `peak.label` is the short name findings show ("Wi-Fi transmit"); `note` keeps the citation. */
+export interface Draw { domain: string; typical: Quantity; peak?: Quantity & { note: string; label?: string }; minVolts?: Quantity }
 export const RAIL_KINDS = ['ldo', 'buck', 'boost', 'switch'] as const
 export type RailKind = (typeof RAIL_KINDS)[number]
 export interface Rail {
@@ -190,8 +191,10 @@ export function validateSim(raw: Record<string, unknown>, names: Set<string>, er
           domain(d.domain, `${w}.domain`)
           quantity(d.typical, `${w}.typical`, 'A')
           if (d.peak !== undefined) {
-            quantity(d.peak, `${w}.peak`, 'A', { extra: ['note'] })
+            quantity(d.peak, `${w}.peak`, 'A', { extra: ['note', 'label'] })
             if (isObj(d.peak) && !(typeof d.peak.note === 'string' && d.peak.note.trim())) errors.push(`${w}.peak.note: required (what the peak is, for example "Wi-Fi transmit")`)
+            if (isObj(d.peak) && d.peak.label !== undefined && !(typeof d.peak.label === 'string' && d.peak.label.trim() && d.peak.label.length <= 32))
+              errors.push(`${w}.peak.label: must be a short name of 1 to 32 characters (for example "Wi-Fi transmit")`)
           }
           if (d.minVolts !== undefined) quantity(d.minVolts, `${w}.minVolts`, 'V', { positive: true })
         })

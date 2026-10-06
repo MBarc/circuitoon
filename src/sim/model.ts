@@ -62,7 +62,7 @@ export type Device =
   | { kind: 'diode'; id: string; part: string; a: string; k: string; model: DiodeModel; role: 'led' | 'rail-input' | 'switch-rail' }
   | { kind: 'cell'; id: string; part: string; p: string; n: string; int: string; volts: Param; rInternal: Param; imax?: Param; role: 'cell' | 'external'; domain?: string }
   | { kind: 'capacitor'; id: string; part: string; a: string; b: string; farads: number }
-  | { kind: 'load'; id: string; part: string; p: string; n: string; domain: string; typical: Param; peak: Param; peakNote?: string; minVolts: Param }
+  | { kind: 'load'; id: string; part: string; p: string; n: string; domain: string; typical: Param; peak: Param; peakLabel?: string; minVolts: Param }
   | { kind: 'rail'; id: string; part: string; rail: ResolvedRail; in: string; inRet: string; out: string; ret: string; ctl: string; o: string; outDomain: string }
   | SwitchDevice
   | GpioDevice

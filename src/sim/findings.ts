@@ -231,7 +231,7 @@ export const subjectsOf = (labels: string[]) => andList([...new Set(labels.map(s
 const WORD = { representative: 'typical', estimate: 'estimated' } as const
 
 /** The severity rules of spec 4.5 and 5.2, then one finding per key (typical wins over peak). */
-export function finalize(drafts: Draft[], peakNote: string): SimFinding[] {
+export function finalize(drafts: Draft[], peakLabel: string): SimFinding[] {
   const out = new Map<string, SimFinding>()
   for (const d of [...drafts].sort((a, b) => Number(a.corner === 'peak') - Number(b.corner === 'peak'))) {
     if (out.has(d.key)) continue
@@ -240,7 +240,7 @@ export function finalize(drafts: Draft[], peakNote: string): SimFinding[] {
     let message = d.message
     if (d.corner === 'peak') {
       if (severity === 'error') severity = 'warning'
-      message = `At peak${peakNote ? ` (${peakNote})` : ''}: ${message}`
+      message = `At peak${peakLabel ? ` (${peakLabel})` : ''}: ${message}`
     }
     if (severity === 'error' && (basis === 'representative' || basis === 'estimate')) {
       const uncertain = subjectsOf(d.inputs.filter((p) => p.basis === 'representative' || p.basis === 'estimate').map((p) => p.label))
@@ -559,10 +559,11 @@ export function analyseFindings(c: Circuit, cls: Classification, raws: Record<Co
   const typical = runDrafts(c, cls, raws.typical, 'typical')
   const peak = runDrafts(c, cls, raws.peak, 'peak')
   const outside = propagate(c, new Set([...topo.shortedRails, ...typical.outside, ...peak.outside]))
-  const peakNote = [...new Set(c.devices.flatMap((d) => (d.kind === 'load' && d.peakNote ? [d.peakNote] : [])))].join(', ')
+  // Spec 4.5: the peak's short label ("Wi-Fi transmit"), never its datasheet citation; none, "At peak" alone.
+  const peakLabel = [...new Set(c.devices.flatMap((d) => (d.kind === 'load' && d.peakLabel ? [d.peakLabel] : [])))].join(', ')
   // A shorted source's sim-short says it all: its delivered current over a rating (any subject but a
   // pin) is the short's current, so it is not repeated as sim-over-limit.
   const shorted = new Set(topo.drafts.filter((d) => d.code === 'sim-short').map((d) => d.parts[0]))
   const value = [...typical.drafts, ...peak.drafts].filter((d) => !(d.code === 'sim-over-limit' && shorted.has(d.parts[0]) && !d.pins))
-  return { findings: finalize([...topo.drafts, ...value], peakNote), outside }
+  return { findings: finalize([...topo.drafts, ...value], peakLabel), outside }
 }

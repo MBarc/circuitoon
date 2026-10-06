@@ -175,7 +175,7 @@ interface Limit {
 ```ts
 interface PowerSpec {
   domains: { name: string; pin: string; ret: string; nominal: number }[]   // named supply domains, explicit return
-  draw?: { domain: string; typical: Quantity; peak?: Quantity & { note: string }; minVolts?: Quantity }[]
+  draw?: { domain: string; typical: Quantity; peak?: Quantity & { note: string; label?: string }; minVolts?: Quantity }[]
   rails?: Rail[]
   source?: { domain: string; voltage: 'param:voltage' | Quantity; rInternal: Quantity; imax?: Quantity }
 }
@@ -357,7 +357,7 @@ For each of the LDO, buck and boost models:
 ### 4.5 Typical and peak corners
 
 - Each solve runs twice: every load at `typical`, then at `peak`.
-- **Findings at peak are warnings** and are labelled with the peak's note ("at peak: Wi-Fi transmit").
+- **Findings at peak are warnings** and are labelled with the peak's short `label` ("at peak: Wi-Fi transmit"; section 15).
 - **Findings at typical** have their normal severity.
 - **This applies to every code consistently** (Astra finding 9), `sim-converter-off` included.
 
@@ -687,3 +687,4 @@ From an independent review of the implementation plan (`docs/superpowers/plans/2
 | 2.3 | Phase D performance: a solve sends both corners to the worker in one message (a batch); the 5 s timeout, the retry and recycling apply per message, the worker stops a batch at its first failure, and every run answered counts toward the 2,000-run recycle (still 2 engine runs per solve). |
 | 6.2 | Task 36 fix ruling: a probe anchor may carry an optional `hole` (a whole number within its hole group), so a probe placed on a breadboard hole is drawn on that hole; a bad hole drops the probe with a warning. A netlist keeps the group only (`BB1.top+`), and layout puts the probe on a hole of it. |
 | 5.2 | Final-wave ruling: a load with no source on the sheet at all ("not powered in the current state: nothing on the sheet supplies it") is a `sim-brownout` **note**, not a warning; the checker's "external power assumed" view already covers an undrawn supply. A load cut off by an open switch ("SWx is open") stays a warning. |
+| 3.1, 4.5 | Final-wave ruling: a draw's `peak` may carry an optional `label`, a short name of 1 to 32 characters ("Wi-Fi transmit", "all pixels on"), validated with the module. Findings at peak read "At peak (label): ..."; with no label, "At peak: ...". The datasheet citation stays in `peak.note`, for the JSON and details, and never enters a message. |

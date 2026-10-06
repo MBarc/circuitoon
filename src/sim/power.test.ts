@@ -22,7 +22,7 @@ describe('power models', () => {
     const c = buildCircuit(sheet([{ uid: 'u1', module: boardModule() }], []))
     expect(c.domains.map((d) => `${d.name}:${d.pin}/${d.ret}`)).toEqual(['VIN:u1:VIN/u1:GND', 'USB:u1:USB#vbus/u1:GND', '3V3:u1:3V3/u1:GND'])
     const load3 = byId(c.devices, 'u1.draw.3V3')!
-    expect(load3.kind === 'load' && [load3.typical.value, load3.peak.value, load3.peakNote, load3.minVolts.value, load3.minVolts.basis]).toEqual([0.05, 0.25, 'radio', 0.9 * 3.3, 'estimate'])
+    expect(load3.kind === 'load' && [load3.typical.value, load3.peak.value, load3.peakLabel, load3.minVolts.value, load3.minVolts.basis]).toEqual([0.05, 0.25, 'radio', 0.9 * 3.3, 'estimate'])
     const ldo = byId(c.devices, 'u1.rail.ldo')!
     expect(ldo.kind === 'rail' && [ldo.in, ldo.out, ldo.ret, ldo.rail.rout.value, ldo.rail.rout.basis, ldo.rail.offPath]).toEqual(['u1.rail.ldo#in', 'u1:3V3', 'u1:GND', 0.1, 'estimate', 'open'])
     expect(byId(c.devices, 'u1.rail.ldo.in.VIN')).toMatchObject({ kind: 'resistor', role: 'rail-input', a: 'u1:VIN', b: 'u1.rail.ldo#in' })

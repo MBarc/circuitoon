@@ -74,7 +74,8 @@
               "unit": "A",
               "provenance": "estimate",
               "source": "https://cdn-shop.adafruit.com/datasheets/SSD1306.pdf https://www.lcdwiki.com/res/MC096VX/0.96inch-OLED-MC096VX-schematic-diagram.pdf",
-              "note": "All pixels on, contrast FFh. IREF = (VCC 7.5 V - 2.5 V) / 910 kohm (module R4, schematic) = 5.5 uA; ISEG = 255/256 x IREF x 8 = 43.8 uA (SSD1306 datasheet section 8, Figure 8-15, p. 26); 128 segments x 43.8 uA = 5.6 mA, plus ICC 0.43 mA typ (Table 12-1, p. 48; given at VCC 12 V, IREF 12.5 uA, all on, contrast FFh, used here unscaled) = 6.0 mA at the 7.5 V charge-pump output (App Note section 2) = 45 mW; from VBAT 3.3 V at an assumed 70 % charge-pump efficiency = 19.5 mA, plus IDD 0.05 mA, rounded to 20 mA. Chip values (chip, not board); pump efficiency assumed."
+              "note": "All pixels on, contrast FFh. IREF = (VCC 7.5 V - 2.5 V) / 910 kohm (module R4, schematic) = 5.5 uA; ISEG = 255/256 x IREF x 8 = 43.8 uA (SSD1306 datasheet section 8, Figure 8-15, p. 26); 128 segments x 43.8 uA = 5.6 mA, plus ICC 0.43 mA typ (Table 12-1, p. 48; given at VCC 12 V, IREF 12.5 uA, all on, contrast FFh, used here unscaled) = 6.0 mA at the 7.5 V charge-pump output (App Note section 2) = 45 mW; from VBAT 3.3 V at an assumed 70 % charge-pump efficiency = 19.5 mA, plus IDD 0.05 mA, rounded to 20 mA. Chip values (chip, not board); pump efficiency assumed.",
+              "label": "all pixels on"
             },
             "minVolts": {
               "value": 3,

@@ -315,7 +315,8 @@
             "unit": "A",
             "source": "https://www.espressif.com/sites/default/files/documentation/esp32_datasheet_en.pdf",
             "provenance": "datasheet",
-            "note": "Wi-Fi transmit 802.11b, DSSS 1 Mbps, POUT = +19.5 dBm: 240 mA typ, Table 5-4 (p. 52), 3.3 V, 25 C, measured at 50 % duty cycle; chip, not board."
+            "note": "Wi-Fi transmit 802.11b, DSSS 1 Mbps, POUT = +19.5 dBm: 240 mA typ, Table 5-4 (p. 52), 3.3 V, 25 C, measured at 50 % duty cycle; chip, not board.",
+            "label": "Wi-Fi transmit"
           },
           "minVolts": {
             "value": 3,

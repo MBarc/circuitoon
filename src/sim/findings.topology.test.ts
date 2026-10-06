@@ -115,6 +115,9 @@ describe('finalize (spec 4.5, 5.2)', () => {
     expect(f.severity).toBe('warning')
     expect(f.message).toMatch(/^At peak \(Wi-Fi transmit\): /)
   })
+  it('says "At peak" alone, with no citation, when the peak has no label', () => {
+    expect(finalize([draft({ corner: 'peak' })], '')[0].message).toMatch(/^At peak: U1 3V3 is at/)
+  })
   it('makes an error on estimates a "likely" warning that lists them, and drops a peak twin of a typical finding', () => {
     const [f] = finalize([draft({ corner: 'typical', inputs: [p('estimate')] }), draft({ corner: 'peak', inputs: [p('estimate')] })], '')
     expect(f.severity).toBe('warning')

@@ -367,7 +367,8 @@
               "unit": "A",
               "source": "https://datasheets.raspberrypi.com/rp2040/rp2040-datasheet.pdf",
               "provenance": "estimate",
-              "note": "Worst-case device, BOOTSEL mode - Active, Table 637 (p. 623) maximum average: DVDD 14.7 + IOVDD 4.3 + USB_VDD 2.0 = 21.0 mA, across temperature extremes and maximum voltage; chip, not board."
+              "note": "Worst-case device, BOOTSEL mode - Active, Table 637 (p. 623) maximum average: DVDD 14.7 + IOVDD 4.3 + USB_VDD 2.0 = 21.0 mA, across temperature extremes and maximum voltage; chip, not board.",
+              "label": "busiest code"
             },
             "minVolts": {
               "value": 1.62,

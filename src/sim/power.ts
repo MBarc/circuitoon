@@ -79,7 +79,7 @@ export function powerPart(b: Builder, p: PartInstance, m: ModuleDef): void {
     const peak = pOver !== null ? b.user(pOver, L(`draw.${dr.domain}.peak`)) : dr.peak ? P(dr.peak, `draw.${dr.domain}.peak`) : typical
     const minVolts = 'minVolts' in dr && dr.minVolts ? P(dr.minVolts, `draw.${dr.domain}.minVolts`)
       : { value: MIN_VOLTS_FRACTION * dn.nominal, basis: 'estimate' as const, label: L(`draw.${dr.domain}.minVolts`), note: '90 % of the domain nominal (spec 3.2)' }
-    b.add({ kind: 'load', id: `${p.uid}.draw.${dr.domain}`, part: p.uid, p: dn.pin, n: dn.ret, domain: dr.domain, typical, peak, ...(dr.peak?.note ? { peakNote: dr.peak.note } : {}), minVolts })
+    b.add({ kind: 'load', id: `${p.uid}.draw.${dr.domain}`, part: p.uid, p: dn.pin, n: dn.ret, domain: dr.domain, typical, peak, ...(dr.peak?.label ? { peakLabel: dr.peak.label } : {}), minVolts })
   }
 
   for (const r of power.rails ?? []) {

@@ -36,7 +36,7 @@ export function cellEstimate(nominal: number): { rInternal: Quantity; assumed: s
   return { rInternal: est(0.1, 'ohm', 'unknown chemistry: 0.1 ohm assumed'), assumed: 'unknown' }
 }
 
-export interface LoadEstimate { typical: Quantity; peak: Quantity & { note: string }; row: string }
+export interface LoadEstimate { typical: Quantity; peak: Quantity & { note: string; label: string }; row: string }
 const modelOf = (m: ModuleDef) => (m.electrical as { model?: unknown } | undefined)?.model
 const C3_CLASS = /esp32-?c[36]/
 const ROWS: { row: string; match: (m: ModuleDef) => boolean; typical: number; peak: number; note: string }[] = [
@@ -56,6 +56,6 @@ export function loadEstimate(m: ModuleDef): LoadEstimate | null {
   return {
     row: r.row,
     typical: est(r.typical, 'A', `category estimate: ${r.row}`),
-    peak: { ...est(r.peak, 'A', `category estimate: ${r.row}`), note: r.note },
+    peak: { ...est(r.peak, 'A', `category estimate: ${r.row}`), note: r.note, label: r.note },
   }
 }

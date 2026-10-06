@@ -234,4 +234,14 @@ describe('value findings on the sourced modules', () => {
     if (d!.corner === 'peak') expect(d!.severity).toBe('warning')
     else expect(d!.severity).toBe(['datasheet', 'user', 'topology'].includes(d!.basis) ? 'error' : 'warning')
   }, 60_000)
+  it("a finding at peak names the peak by its short label, never its datasheet citation (final-wave ruling)", async () => {
+    const r = await analyse(sheet([{ uid: 'bt1', module: 'battery-holder-3xaaa' }, { uid: 'u2', module: 'ams1117-33-module' }, { uid: 'u1', module: 'esp32-devkit-v1-30' }],
+      [['bt1.+', 'u2.VIN'], ['bt1.-', 'u2.GND'], ['u2.OUT', 'u1.3V3'], ['u2.GND', 'u1.GND']]))
+    const peak = r.findings.filter((f) => f.corner === 'peak')
+    expect(peak.length).toBeGreaterThan(0)
+    for (const f of peak) {
+      expect(f.message).toMatch(/^At peak \(Wi-Fi transmit\): /)
+      expect(f.message).not.toMatch(/Table|DSSS|dBm|p\. 52/)
+    }
+  }, 60_000)
 })

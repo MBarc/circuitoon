@@ -32,6 +32,8 @@ describe('validateSim', () => {
     ['a GPIO pin that does not exist', (s: Record<string, unknown>) => (s.gpio as { pins: string[] }).pins.push('IO9'), 'electrical.sim.gpio.pins[2]: no pin "IO9"'],
     ['a USB ground that is not a ground pin', (s: Record<string, unknown>) => (s.usbPorts = { USB: { gnd: 'VIN' } }), 'electrical.sim.usbPorts.USB.gnd: "VIN" is not a ground pin'],
     ['a peak with no note', (s: Record<string, unknown>) => delete ((s.power as { draw: { peak: { note?: string } }[] }).draw[0].peak.note), 'electrical.sim.power.draw[0].peak.note: required (what the peak is, for example "Wi-Fi transmit")'],
+    ['a peak label over 32 characters', (s: Record<string, unknown>) => ((s.power as { draw: { peak: { label?: string } }[] }).draw[0].peak.label = 'Wi-Fi transmit at full power, 802.11b'), 'electrical.sim.power.draw[0].peak.label: must be a short name of 1 to 32 characters (for example "Wi-Fi transmit")'],
+    ['a blank peak label', (s: Record<string, unknown>) => ((s.power as { draw: { peak: { label?: string } }[] }).draw[0].peak.label = ' '), 'electrical.sim.power.draw[0].peak.label: must be a short name of 1 to 32 characters (for example "Wi-Fi transmit")'],
     ['an efficiency above 1', (s: Record<string, unknown>) => ((s.power as { rails: { kind: string; efficiency?: unknown }[] }).rails[1].efficiency = { value: 1.2, unit: '1', provenance: 'estimate', note: 'x' }), 'electrical.sim.power.rails[1].efficiency.value: must be above 0 and at most 1'],
     // Carried from earlier reviews.
     ['an efficiency of 0', (s: Record<string, unknown>) => (rail(s, 1).efficiency = { value: 0, unit: '1', provenance: 'estimate', note: 'x' }), 'electrical.sim.power.rails[1].efficiency.value: must be above 0 and at most 1'],
