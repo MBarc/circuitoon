@@ -1,0 +1,185 @@
+{
+  "id": "servo-sg90",
+  "researched": "2026-10-06",
+  "sim": {
+    "power": {
+      "domains": [
+        {
+          "name": "VCC",
+          "pin": "VCC",
+          "ret": "GND",
+          "nominal": 5
+        }
+      ],
+      "draw": [
+        {
+          "domain": "VCC",
+          "typical": {
+            "value": 0.01,
+            "unit": "A",
+            "source": "https://protosupplies.com/product/servo-motor-micro-sg90/",
+            "provenance": "estimate",
+            "note": "Idle current, horn holding position. ProtoSupplies (a distributor, not Tower Pro) product page, specifications table, for a unit it lists as \"Generic SG90 (China)\": \"Current (idle) 10mA (typical)\", and the text \"current draw about 10mA at idle\" on 5 V. Tower Pro's SG90 pages give no idle current, so this is flagged."
+          },
+          "peak": {
+            "value": 0.36,
+            "unit": "A",
+            "source": "https://protosupplies.com/product/servo-motor-micro-sg90/",
+            "provenance": "estimate",
+            "note": "Stall current. DISPUTED, readings differ widely: ProtoSupplies (a distributor, not Tower Pro; unit listed as \"Generic SG90 (China)\") specifications table: \"Current (stall) 360mA (measured)\" on 5 V, sample size and test conditions not given; Circuit Rocks' SG90 page (https://docs.circuit.rocks/motors/sg90-servo/): \"Stall current ~550 mA\", no conditions; Tower Pro's SG90 Digital page (https://towerpro.com.tw/product/sg90-7/), an admin reply in its reviews: \"The operation current for our SG90 is about 0.5A - 2A\", not stated as a stall figure and not on the SG90 Analog page. 0.36 A is the lowest of these. Kept at or above servo.moving (0.175 A), as the solver needs.",
+            "label": "stalled"
+          }
+        }
+      ]
+    },
+    "servo": {
+      "signal": "PWM",
+      "pulseMin": {
+        "value": 0.0005,
+        "unit": "s",
+        "source": "https://www.friendlywire.com/projects/ne555-servo-safe/SG90-datasheet.pdf https://handsontec.com/dataspecs/motor_fan/SG90-Servo.pdf",
+        "provenance": "estimate",
+        "note": "500 us for 0 degrees: the travel real units show, as sellers list it (FriendlyWire's compiled SG90 PDF p. 2 \"TowerPro SG90 - Micro Servo\": \"Pulse Width: 500-2400 us\", \"Rotational Range: 180\"; Handsontec SG90 user guide p. 1: \"Pulse Width: 500-2400 us\"). Flagged because it conflicts with the Tower Pro SG90 sheet's 1 to 2 ms for -90 to +90 degrees (FriendlyWire PDF p. 1: \"-90\" (~1ms pulse), \"0\" (1.5 ms), \"90\" (~2ms)). Individual units differ; the mechanical end stop may come before 500 us."
+      },
+      "pulseMax": {
+        "value": 0.0024,
+        "unit": "s",
+        "source": "https://www.friendlywire.com/projects/ne555-servo-safe/SG90-datasheet.pdf https://handsontec.com/dataspecs/motor_fan/SG90-Servo.pdf",
+        "provenance": "estimate",
+        "note": "2400 us for 180 degrees: the travel real units show, as sellers list it (FriendlyWire's compiled SG90 PDF p. 2: \"Pulse Width: 500-2400 us\"; Handsontec SG90 user guide p. 1: \"Pulse Width: 500-2400 us\"). Flagged because it conflicts with the Tower Pro SG90 sheet's 1 to 2 ms for -90 to +90 degrees (FriendlyWire PDF p. 1). Individual units differ."
+      },
+      "slew": {
+        "value": 0.1,
+        "unit": "s",
+        "source": "https://towerpro.com.tw/product/sg90-analog/ https://www.friendlywire.com/projects/ne555-servo-safe/SG90-datasheet.pdf",
+        "provenance": "datasheet",
+        "note": "Time per 60 degrees of travel, at 4.8 V; load not stated by Tower Pro (servo speeds are conventionally quoted unloaded). Tower Pro's SG90 Analog product page, PRODUCT CONFIGURE TABLE: \"Speed(sec/60deg) 0.1\" (torque column at 4.8v); Tower Pro's SG90 Digital page (https://towerpro.com.tw/product/sg90-7/): \"Operating speed: 0.1sec/60degree(4.8v)\" and 0.1 in its table; the widely copied SG90 sheet (unbranded, pictures a Tower Pro unit; FriendlyWire's compiled PDF, p. 1): \"Operating speed: 0.1 s/60 degree\", operating voltage 4.8 V (~5V). Conflict: the same SG90 Analog page's Specifications list says \"0.12 sec/60degree(4.8v)\", as do Handsontec's guide p. 1 and ProtoSupplies' table (\"0.12s / 60 degree\"). Kept as datasheet because Tower Pro's own pages state 0.1 s; real units may be up to 20% slower."
+      },
+      "moving": {
+        "value": 0.175,
+        "unit": "A",
+        "source": "https://protosupplies.com/product/servo-motor-micro-sg90/",
+        "provenance": "estimate",
+        "note": "Current while the horn travels. ProtoSupplies (a distributor, not Tower Pro; unit listed as \"Generic SG90 (China)\") product page, specifications table: \"Current (typical during movement) 100-250mA\", on 5 V, \"depending on how it is being operated\"; the midpoint is taken. Tower Pro publishes no moving current in its specifications; an admin reply on its SG90 Digital page (https://towerpro.com.tw/product/sg90-7/) says \"The operation current for our SG90 is about 0.5A - 2A\", without conditions. Below the stall peak (0.36 A)."
+      },
+      "signalLoad": {
+        "value": 100000,
+        "unit": "ohm",
+        "provenance": "estimate",
+        "note": "The PWM input's resistance to GND. No source: Tower Pro publishes no schematic and does not name the control IC, and no input impedance figure was found. A hobby servo's signal pin drives a logic input, so the DC load is small; 100 kohm assumed, about 33 uA from a 3.3 V GPIO or 50 uA from 5 V. Treat the number as a placeholder for \"a light load\", not a measurement."
+      }
+    }
+  },
+  "notes": [
+    "Tower Pro's own SG90 pages (https://towerpro.com.tw/product/sg90-analog/ and https://towerpro.com.tw/product/sg90-7/) were reachable; their specifications give speed, stall torque (1.8kg/cm at 4.8v), operating voltage 4.8v and dead band 1us, but no currents and no pulse range. Admin replies in the SG90 Digital page's reviews add: \"The operation current for our SG90 is about 0.5A - 2A. Voltages from 4.8V - 6V are fine.\" and, asked about 1ms-2ms, \"all of our normal servos are operating 0-150 degrees unless specify 180 or 360 degrees\" (so a genuine Tower Pro unit may travel about 150 degrees, not 180). The pulse figures come from the widely copied SG90 sheet (unbranded, attributed to Tower Pro by convention) in FriendlyWire's compiled PDF (a third-party compilation, not a Tower Pro document; p. 1 is that sheet, p. 2 a seller's \"TowerPro SG90\" listing) and from Handsontec's guide.",
+    "Domain VCC nominal 5 V: the usual hobby supply; Tower Pro rates the speed and torque at 4.8 V. No voltage limit is in Tower Pro's specifications (only \"Operating voltage: 4.8v\"); an admin reply on the SG90 Digital page says \"Voltages from 4.8V - 6V are fine\", and ProtoSupplies lists 4.8-6VDC. The module's pin label 4.8V/5V/6V is unsourced here.",
+    "All three currents come from one distributor page (ProtoSupplies, for a unit it lists as \"Generic SG90 (China)\"), so they are estimates. Stall figures vary widely: 360 mA measured by ProtoSupplies, ~550 mA by Circuit Rocks, and Tower Pro's admin gives an operation current of about 0.5-2 A."
+  ],
+  "unaccounted": [
+    "Inrush and start-up spikes when the motor starts: no sourced figure; the simulation uses only the idle, moving and stall currents.",
+    "Current under a load on the horn: the moving current is for bench use; a loaded horn draws more, up to the stall current."
+  ],
+  "review": [
+    {
+      "date": "2026-10-06",
+      "reviewer": "A",
+      "checked": [
+        "sim.power.domains[0]",
+        "sim.power.draw[0].domain",
+        "sim.power.draw[0].typical",
+        "sim.power.draw[0].peak",
+        "sim.power.draw[0].peak.label",
+        "sim.servo.signal",
+        "sim.servo.pulseMin",
+        "sim.servo.pulseMax",
+        "sim.servo.slew",
+        "sim.servo.moving",
+        "sim.servo.signalLoad",
+        "notes[0]",
+        "notes[1]",
+        "notes[2]",
+        "unaccounted[0]",
+        "unaccounted[1]"
+      ],
+      "corrected": [
+        {
+          "path": "sim.power.draw[0].typical.note",
+          "was": "Idle current, horn holding position. ProtoSupplies (a distributor, not Tower Pro) product page, specifications table: \"Current (idle) 10mA (typical)\", and the text \"current draw about 10mA at idle\" on 5 V. Tower Pro's own SG90 pages give no current figures, so this is flagged.",
+          "now": "Idle current, horn holding position. ProtoSupplies (a distributor, not Tower Pro) product page, specifications table, for a unit it lists as \"Generic SG90 (China)\": \"Current (idle) 10mA (typical)\", and the text \"current draw about 10mA at idle\" on 5 V. Tower Pro's SG90 pages give no idle current, so this is flagged.",
+          "why": "ProtoSupplies lists its unit as a generic Chinese SG90, not a Tower Pro part; 'no current figures' was too broad (Tower Pro's SG90 Digital page has an admin reply with an operation current)."
+        },
+        {
+          "path": "sim.power.draw[0].peak.note",
+          "was": "Stall current. ProtoSupplies (a distributor, not Tower Pro) product page, specifications table: \"Current (stall) 360mA (measured)\", on 5 V; their own measurement of one sample, no test conditions given. Other sellers state more: Circuit Rocks' SG90 page gives \"~550 mA\" stall (https://docs.circuit.rocks/motors/sg90-servo/), no conditions. Tower Pro gives no current. Kept at or above servo.moving (0.175 A), as the solver needs.",
+          "now": "Stall current. DISPUTED, readings differ widely: ProtoSupplies (a distributor, not Tower Pro; unit listed as \"Generic SG90 (China)\") specifications table: \"Current (stall) 360mA (measured)\" on 5 V, sample size and test conditions not given; Circuit Rocks' SG90 page (https://docs.circuit.rocks/motors/sg90-servo/): \"Stall current ~550 mA\", no conditions; Tower Pro's SG90 Digital page (https://towerpro.com.tw/product/sg90-7/), an admin reply in its reviews: \"The operation current for our SG90 is about 0.5A - 2A\", not stated as a stall figure and not on the SG90 Analog page. 0.36 A is the lowest of these. Kept at or above servo.moving (0.175 A), as the solver needs.",
+          "why": "Page says only '(measured)', not 'one sample'; adds the generic-unit fact and Tower Pro's own (informal) 0.5-2 A reading, which contradicts 'Tower Pro gives no current'."
+        },
+        {
+          "path": "sim.servo.moving.note",
+          "was": "Current while the horn travels. ProtoSupplies (a distributor, not Tower Pro) product page, specifications table: \"Current (typical during movement) 100-250mA\", on 5 V, \"depending on how it is being operated\"; the midpoint is taken. Tower Pro gives no current. Below the stall peak (0.36 A).",
+          "now": "Current while the horn travels. ProtoSupplies (a distributor, not Tower Pro; unit listed as \"Generic SG90 (China)\") product page, specifications table: \"Current (typical during movement) 100-250mA\", on 5 V, \"depending on how it is being operated\"; the midpoint is taken. Tower Pro publishes no moving current in its specifications; an admin reply on its SG90 Digital page (https://towerpro.com.tw/product/sg90-7/) says \"The operation current for our SG90 is about 0.5A - 2A\", without conditions. Below the stall peak (0.36 A).",
+          "why": "'Tower Pro gives no current' is false: Tower Pro's admin states 0.5-2 A on the SG90 Digital page; reading added so the conflict is visible."
+        },
+        {
+          "path": "sim.servo.slew.note",
+          "was": "Time per 60 degrees of travel, at 4.8 V, no load. Tower Pro's SG90 Analog product page, PRODUCT CONFIGURE TABLE: \"Speed(sec/60deg) 0.1\" (torque column at 4.8 v); the Tower Pro SG90 sheet (copy in FriendlyWire's compiled PDF, p. 1): \"Operating speed: 0.1 s/60 degree\", operating voltage 4.8 V (~5V). Conflict: the same Tower Pro page's Specifications list says \"0.12 sec/60degree(4.8v)\", and Handsontec's guide p. 1 says 0.12 sec/60 at 4.8 V; Tower Pro's SG90 Digital page (https://towerpro.com.tw/product/sg90-7/) says 0.1 sec/60degree(4.8v).",
+          "now": "Time per 60 degrees of travel, at 4.8 V; load not stated by Tower Pro (servo speeds are conventionally quoted unloaded). Tower Pro's SG90 Analog product page, PRODUCT CONFIGURE TABLE: \"Speed(sec/60deg) 0.1\" (torque column at 4.8v); Tower Pro's SG90 Digital page (https://towerpro.com.tw/product/sg90-7/): \"Operating speed: 0.1sec/60degree(4.8v)\" and 0.1 in its table; the widely copied SG90 sheet (unbranded, pictures a Tower Pro unit; FriendlyWire's compiled PDF, p. 1): \"Operating speed: 0.1 s/60 degree\", operating voltage 4.8 V (~5V). Conflict: the same SG90 Analog page's Specifications list says \"0.12 sec/60degree(4.8v)\", as do Handsontec's guide p. 1 and ProtoSupplies' table (\"0.12s / 60 degree\"). Kept as datasheet because Tower Pro's own pages state 0.1 s; real units may be up to 20% slower.",
+          "why": "'no load' is not on any Tower Pro page or the p. 1 sheet (only FriendlyWire p. 3, a different 1.2 kg listing); p. 1 sheet is unbranded; Digital page quote corrected to its exact wording; ProtoSupplies' 0.12 added."
+        },
+        {
+          "path": "notes[0]",
+          "was": "Tower Pro's own SG90 pages (https://towerpro.com.tw/product/sg90-analog/ and https://towerpro.com.tw/product/sg90-7/) were reachable; they give speed, stall torque (1.8 kg/cm at 4.8 v), operating voltage 4.8 v and dead band 1 us, but no currents and no pulse range. The pulse figures come from the widely copied Tower Pro SG90 sheet text in FriendlyWire's compiled PDF (a third-party compilation, not a Tower Pro document; p. 1 is the Tower Pro sheet, p. 2 a seller's \"TowerPro SG90\" listing) and from Handsontec's guide.",
+          "now": "Tower Pro's own SG90 pages (https://towerpro.com.tw/product/sg90-analog/ and https://towerpro.com.tw/product/sg90-7/) were reachable; their specifications give speed, stall torque (1.8kg/cm at 4.8v), operating voltage 4.8v and dead band 1us, but no currents and no pulse range. Admin replies in the SG90 Digital page's reviews add: \"The operation current for our SG90 is about 0.5A - 2A. Voltages from 4.8V - 6V are fine.\" and, asked about 1ms-2ms, \"all of our normal servos are operating 0-150 degrees unless specify 180 or 360 degrees\" (so a genuine Tower Pro unit may travel about 150 degrees, not 180). The pulse figures come from the widely copied SG90 sheet (unbranded, attributed to Tower Pro by convention) in FriendlyWire's compiled PDF (a third-party compilation, not a Tower Pro document; p. 1 is that sheet, p. 2 a seller's \"TowerPro SG90\" listing) and from Handsontec's guide.",
+          "why": "Tower Pro's Digital page does carry admin statements on current, voltage and travel; p. 1 sheet carries no Tower Pro name."
+        },
+        {
+          "path": "notes[1]",
+          "was": "Domain VCC nominal 5 V: the usual hobby supply; Tower Pro rates the speed and torque at 4.8 V. No voltage limit is stated: Tower Pro gives only \"Operating voltage: 4.8v\" with no maximum, and the module's pin label 4.8V/5V/6V is unsourced here.",
+          "now": "Domain VCC nominal 5 V: the usual hobby supply; Tower Pro rates the speed and torque at 4.8 V. No voltage limit is in Tower Pro's specifications (only \"Operating voltage: 4.8v\"); an admin reply on the SG90 Digital page says \"Voltages from 4.8V - 6V are fine\", and ProtoSupplies lists 4.8-6VDC. The module's pin label 4.8V/5V/6V is unsourced here.",
+          "why": "'No voltage limit is stated' missed Tower Pro's admin 4.8-6 V and ProtoSupplies' 4.8-6VDC."
+        },
+        {
+          "path": "notes[2]",
+          "was": "All three currents come from one distributor page (ProtoSupplies), so they are estimates. Stall figures vary widely between sellers and clones (360 mA measured by ProtoSupplies, ~550 mA by Circuit Rocks).",
+          "now": "All three currents come from one distributor page (ProtoSupplies, for a unit it lists as \"Generic SG90 (China)\"), so they are estimates. Stall figures vary widely: 360 mA measured by ProtoSupplies, ~550 mA by Circuit Rocks, and Tower Pro's admin gives an operation current of about 0.5-2 A.",
+          "why": "Adds the generic-unit fact and Tower Pro's own reading."
+        }
+      ],
+      "disputed": [
+        {
+          "path": "sim.power.draw[0].peak.value",
+          "readings": [
+            "0.36 A (ProtoSupplies, measured, generic unit)",
+            "~0.55 A (Circuit Rocks)",
+            "0.5-2 A operation current (Tower Pro admin reply, SG90 Digital page)"
+          ],
+          "note": "Value left at 0.36 A (already an estimate, all readings in its note); controller to decide whether the stall peak should be raised."
+        }
+      ]
+    },
+    {
+      "date": "2026-10-06",
+      "reviewer": "B",
+      "checked": [
+        "sim.power.domains[0]",
+        "sim.power.draw[0].domain",
+        "sim.power.draw[0].typical",
+        "sim.power.draw[0].peak",
+        "sim.power.draw[0].peak.label",
+        "sim.servo.signal",
+        "sim.servo.pulseMin",
+        "sim.servo.pulseMax",
+        "sim.servo.slew",
+        "sim.servo.moving",
+        "sim.servo.signalLoad",
+        "notes[0]",
+        "notes[1]",
+        "notes[2]",
+        "unaccounted[0]",
+        "unaccounted[1]"
+      ],
+      "corrected": [],
+      "disputed": []
+    }
+  ]
+}

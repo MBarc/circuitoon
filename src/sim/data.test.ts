@@ -144,3 +144,14 @@ describe('Arduino Uno, Nano and Pi Pico (spec 3.4)', () => {
     expect(sim.gpio!.domain).toBe(io)
   })
 })
+
+describe('the SG90 servo (firmware spec 3.4)', () => {
+  it('maps 500 to 2400 us as a flagged estimate and slews 0.1 s per 60 degrees from the datasheet', () => {
+    const s = simOf(load('servo-sg90'))!.servo!
+    expect([s.pulseMin.value, s.pulseMax.value]).toEqual([0.0005, 0.0024])
+    expect([s.pulseMin.provenance, s.pulseMax.provenance]).toEqual(['estimate', 'estimate'])
+    expect(s.pulseMin.note).toMatch(/1 to 2 ms/)
+    expect(s).toMatchObject({ signal: 'PWM', slew: { value: 0.1, unit: 's', provenance: 'datasheet' } })
+    expect(simOf(load('servo-sg90'))!.power!.domains).toEqual([{ name: 'VCC', pin: 'VCC', ret: 'GND', nominal: 5 }])
+  })
+})
