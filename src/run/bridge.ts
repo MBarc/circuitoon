@@ -52,6 +52,7 @@ export function testClock(o: { onStep: (tMs: number) => void; limitMs: number; s
       return c.t
     },
     block(untilMs: number) {
+      if (c.t >= o.limitMs + 10_000) throw new Error('test clock ran past its limit')
       c.t = Math.max(c.t, Math.min(untilMs, c.t + 50))
       o.onStep(c.t)
       if (c.t >= o.limitMs && !stopped) {

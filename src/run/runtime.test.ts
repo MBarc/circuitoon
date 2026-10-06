@@ -70,6 +70,11 @@ describe('the Python run-time (spec 5.2, 5.3)', () => {
     const r = await runScript("import time\ntry:\n    time.sleep(10)\nfinally:\n    time.sleep(0.1)\n    print('cleaned')\n", { untilMs: 1000 })
     expect([r.status, r.out]).toEqual(['stopped', 'cleaned\n'])
   })
+  it('fails a test whose finally block waits forever after Stop, instead of hanging', async () => {
+    const r = await runScript('from signal import pause\ntry:\n    pause()\nfinally:\n    pause()\n', { untilMs: 500 })
+    expect(r.status).toBe('error')
+    expect(r.err).toContain('test clock ran past its limit')
+  })
   it('prints an exception in a poller and goes on (ruling R10)', async () => {
     const r = await runScript("import time, _circuitoon as rt\nn = []\ndef p():\n    if not n:\n        n.append(1)\n        raise ValueError('poll oops')\nrt.add_poller(p)\ntime.sleep(0.5)\nprint('still here')\n", { file: 'blink.py' })
     expect(r.status).toBe('done')
