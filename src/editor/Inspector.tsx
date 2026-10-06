@@ -25,7 +25,7 @@ import { simOf } from '../format/simModel.ts'
 
 const GAUGES = Array.from({ length: 15 }, (_, i) => 16 + i)
 
-function CommitInput({ id, label, value, onCommit }: { id: string; label: string; value: string; onCommit: (v: string) => void }) {
+export function CommitInput({ id, label, value, onCommit }: { id: string; label: string; value: string; onCommit: (v: string) => void }) {
   return (
     <label className="field" htmlFor={id}>
       {label}

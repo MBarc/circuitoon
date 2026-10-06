@@ -486,3 +486,51 @@ button.wordmark { background: none; border: 0; padding: 0; cursor: pointer; }
 .sim-gpio summary:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
 .sim-gpio-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 8px; margin-top: 8px; }
 .sim-gpio-grid select { font-size: 13px; min-width: 0; }
+
+/* The Probes panel (Task 37): in the inspector's place while the Probe tool is on, a little wider
+   for the Supplies table. Probes are small sticker cards, then a plain table, the notes and About. */
+@media (min-width: 901px) {
+  .editor:has(.probes-panel) { grid-template-columns: 220px minmax(0, 1fr) 440px; }
+}
+.probes-panel h2 { margin: 0; font: 600 20px/1.2 "Fredoka", system-ui, sans-serif; }
+.probe-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.probe-list > li {
+  display: grid; grid-template-columns: 8px minmax(0, 1fr) auto; gap: 8px; align-items: start;
+  background: var(--bg); border: 1.5px solid var(--card-edge); border-radius: 8px; padding: 8px;
+}
+.probe-chip { width: 8px; align-self: stretch; border-radius: 4px; }
+.probe-body { display: grid; gap: 4px; min-width: 0; }
+.probe-head { display: flex; gap: 8px; align-items: baseline; min-width: 0; }
+.probe-head strong { font: 600 15px/1.2 "Fredoka", system-ui, sans-serif; }
+.probe-where { color: var(--muted); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.probe-reading { margin: 0; font: 700 15px/1.3 "Atkinson Hyperlegible", system-ui, sans-serif; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.probe-stale, .probe-ref { font-weight: 400; color: var(--muted); font-size: 12.5px; }
+.probe-body .field { grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 8px; font-size: 13px; }
+.probe-body .field input { padding: 3px 6px; font-size: 13px; background: var(--panel); }
+.probe-pins { margin: 0; padding-left: 16px; font-size: 13px; font-variant-numeric: tabular-nums; }
+.probes-panel.stale .probe-reading, .probes-panel.stale .supplies td { opacity: 0.55; }
+.supplies, .sim-notes, .about-sim { display: grid; gap: 6px; border-top: 1.5px solid var(--rule); padding-top: 10px; }
+.supplies h3, .sim-notes h3 { margin: 0; font: 600 16px/1.2 "Fredoka", system-ui, sans-serif; }
+.supplies h4 { margin: 0; font: 600 14px/1.2 "Fredoka", system-ui, sans-serif; color: var(--muted); }
+.supplies-scroll { overflow-x: auto; border: 1.5px solid var(--rule); border-radius: 8px; background: var(--bg); }
+.supplies table { border-collapse: collapse; font-size: 12px; width: 100%; font-variant-numeric: tabular-nums; }
+.supplies th, .supplies td { text-align: left; vertical-align: top; padding: 5px 4px; border-bottom: 1px solid var(--rule); }
+.supplies td { white-space: nowrap; }
+.supplies .typ, .supplies .peak, .supplies .kind { display: block; }
+.supplies .kind { color: var(--muted); font-size: 11px; font-weight: 700; }
+.supplies .peak { color: var(--muted); font-size: 11.5px; }
+.supplies tbody tr:last-child > * { border-bottom: 0; }
+.supplies thead th { color: var(--muted); font-weight: 700; white-space: nowrap; }
+.supplies tbody th { font-weight: 700; min-width: 72px; }
+.supplies .own-draw { display: block; margin-top: 3px; padding-top: 3px; border-top: 1px dashed var(--rule); }
+.supplies td.over { color: var(--error); font-weight: 700; }
+.supplies tr.outside td:not(.basis) { color: var(--error); font-style: italic; }
+.supplies .basis.estimate { color: var(--muted); font-style: italic; }
+.unaccounted ul ul { padding-left: 14px; margin-top: 2px; list-style: circle; }
+.unaccounted ul, .sim-notes ul { margin: 0; padding-left: 18px; font-size: 13px; display: grid; gap: 4px; }
+.note-parts { display: block; color: var(--muted); }
+.about-sim summary { cursor: pointer; font-weight: 700; font-size: 14px; border-radius: 6px; }
+.about-sim p { font-size: 13.5px; margin: 0; }
+.about-notice { margin: 0; max-height: 30vh; overflow: auto; font-size: 11px; line-height: 1.45; white-space: pre-wrap; background: var(--bg); border: 1.5px solid var(--rule); border-radius: 8px; padding: 8px; }
+.about-links { margin: 0; padding-left: 18px; font-size: 13px; display: grid; gap: 2px; }
+.about-links a { color: var(--focus); }

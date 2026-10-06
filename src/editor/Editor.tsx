@@ -4,6 +4,7 @@ import { EditorStore } from './store.ts'
 import { Canvas, type CanvasApi } from './Canvas.tsx'
 import { Inspector } from './Inspector.tsx'
 import { LibraryPanel } from './LibraryPanel.tsx'
+import { ProbesPanel } from './ProbesPanel.tsx'
 import { Toolbar } from './Toolbar.tsx'
 import { useSimulation } from './simulation.ts'
 import { deleteSelection, EMPTY_SELECTION, rotateParts } from './ops.ts'
@@ -326,12 +327,14 @@ export function Editor({ initial, warnings, onClose, onDirty }: { initial: Diagr
     onDirty?.(dirty)
   }, [dirty, onDirty])
   const parts = usePartMaker(store, canvasApi)
+  // Only the tool: the whole state would re-render the editor (and the canvas) on every change.
+  const simTool = useSyncExternalStore(store.subscribe, () => store.getState().simTool)
   return (
     <div className="editor">
       <Toolbar store={store} warnings={warnings} onClose={onClose} />
       <LibraryPanel onAdd={(id) => canvasApi.current?.addAtCenter(id)} parts={parts.handlers} />
       <Canvas store={store} onReady={(api) => (canvasApi.current = api)} />
-      <Inspector store={store} onEditPart={parts.editModule} onUpdatePart={parts.updateModule} />
+      {simTool === 'probe' ? <ProbesPanel store={store} /> : <Inspector store={store} onEditPart={parts.editModule} onUpdatePart={parts.updateModule} />}
       {parts.ui}
     </div>
   )
