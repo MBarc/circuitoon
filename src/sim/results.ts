@@ -20,6 +20,7 @@ export interface Run { nets: Record<string, Reading>; parts: Record<string, Part
 export type SimCode =
   | 'sim-short' | 'sim-source-conflict' | 'sim-over-abs-max' | 'sim-over-limit' | 'sim-brownout' | 'sim-dropout' | 'sim-converter-off'
   | 'sim-min-load' | 'sim-outside-model' | 'sim-floating-input' | 'sim-no-convergence' | 'sim-incomplete' | 'sim-estimate'
+  | 'pwm-approximate'
 export interface SimFinding {
   code: SimCode
   severity: 'error' | 'warning' | 'note'
@@ -62,6 +63,8 @@ export interface SimResult {
   unaccounted: { part: string; items: string[] }[]
   /** Notes the circuit carries (a relay shown at rest, an LED colour with no model); ruling R29. */
   notes: string[]
+  /** PWM pins in this solve (firmware spec 4.2): every reading is then their duty-weighted average. */
+  pwm?: { pins: { part: string; pin: string; duty: number }[]; runs: number; approximate: boolean }
   engine: { name: 'ngspice'; version: string; build: string; runs: number; ms: number }
 }
 /**

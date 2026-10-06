@@ -1,13 +1,14 @@
 // The solve loop the editor and the CLI share (spec 2): build the circuit, run the typical and peak
-// corners (2 engine runs), and assemble the SimResult. SimSession keeps at most one solve in flight
-// and one pending (a newer request replaces the pending one); a result for an older revision, or
+// corners (2 engine runs; with PWM pins, every run of the plan, firmware spec 4.2), and assemble the
+// SimResult. SimSession keeps at most one solve in flight and one pending (a newer request replaces the pending one); a result for an older revision, or
 // one that arrives after stop(), is discarded; a failure carries the last good result.
 import type { Diagram, Probe } from '../format/diagram.ts'
 import { type BuildOptions, buildCircuit } from './build.ts'
 import type { Engine } from './engine/engine.ts'
 import { classifyCached } from './floating.ts'
-import { analyseFindings, finalize, noConvergence, topologyFindings } from './findings.ts'
-import type { Circuit, Corner } from './model.ts'
+import { analyseRuns, finalize, noConvergence, topologyFindings } from './findings.ts'
+import type { Analysis, Circuit, Corner } from './model.ts'
+import { mixRaws, pwmPlan } from './pwm.ts'
 import { type SimOutcome, type SimResult, budget, probeReadings, readRun } from './results.ts'
 import type { RawRun } from './spice.ts'
 
@@ -19,21 +20,28 @@ export async function solve(d: Diagram, engine: Engine, revision: number, opts: 
   const cls = classifyCached(c, { kind: 'op' })
   // Decided before the engine runs, so a failed or unavailable outcome still names a real short.
   const topo = topologyFindings(c, cls)
-  const raws = {} as Record<Corner, RawRun>
+  // PWM pins (spec 4.2): the plan's typical runs and the two peak runs, every text in one runAll.
+  const plan = pwmPlan(c)
+  const typical: Analysis[] = plan ? plan.runs.map((pins) => ({ kind: 'op', corner: 'typical', pins })) : [{ kind: 'op', corner: 'typical' }]
+  const peak: Analysis[] = plan ? plan.peak.map((pins) => ({ kind: 'op', corner: 'peak', pins })) : [{ kind: 'op', corner: 'peak' }]
+  const analyses = [...typical, ...peak]
   const before = engine.host.runs
   let ms = 0
-  // Both corners in one worker round trip.
-  const corners = ['typical', 'peak'] as const
-  const runs = await engine.runAll(c, corners.map((corner) => ({ kind: 'op', corner })), revision)
-  for (const [i, corner] of corners.entries()) {
+  const runs = await engine.runAll(c, analyses, revision)
+  const got: RawRun[] = []
+  for (const [i, a] of analyses.entries()) {
     const r = runs[i]
-    if (!r) throw new Error(`the engine gave no answer for the ${corner} corner`)
+    if (!r) throw new Error(`the engine gave no answer for the ${a.corner} corner`)
     if (r.status === 'unavailable') return { circuit: c, outcome: { status: 'unavailable', reason: r.reason, findings: finalize(topo.drafts, '') } }
     if (r.status === 'failed') return { circuit: c, outcome: { status: 'failed', revision, finding: noConvergence(c, r.error, r.nodes), findings: finalize(topo.drafts, '') } }
-    raws[corner] = r.raw
+    got.push(r.raw)
     ms += r.ms
   }
-  const { findings, outside } = analyseFindings(c, cls, raws, topo)
+  const typRaws = got.slice(0, typical.length)
+  const peakRaws = got.slice(typical.length)
+  // Readings, glow and budget use the duty-weighted average; the peak corner reads the all-high run.
+  const raws: Record<Corner, RawRun> = { typical: plan ? mixRaws(typRaws, plan.weights) : typRaws[0], peak: peakRaws[0] }
+  const { findings, outside } = analyseRuns(c, cls, { typical: typRaws, peak: peakRaws }, topo, plan)
   const read = { typical: readRun(c, cls, raws.typical, outside), peak: readRun(c, cls, raws.peak, outside) }
   const info = engine.host.info
   const result: SimResult = {
@@ -47,6 +55,7 @@ export async function solve(d: Diagram, engine: Engine, revision: number, opts: 
     unaccounted: c.unaccounted,
     notes: c.notes,
     engine: { name: 'ngspice', version: info?.version ?? '', build: info?.build ?? '', runs: engine.host.runs - before, ms },
+    ...(plan ? { pwm: { pins: plan.pins.map((p) => ({ part: p.part, pin: p.pin, duty: p.duty })), runs: analyses.length, approximate: plan.approximate.length > 0 } } : {}),
   }
   return { circuit: c, outcome: { status: 'ok', result } }
 }

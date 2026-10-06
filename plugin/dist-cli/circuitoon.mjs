@@ -94037,6 +94037,7 @@ function runDrafts(c, cls, raw, corner) {
 			parts: [l.part],
 			inputs: [l.value],
 			key: `limit|${subject(l)}|${l.kind}`,
+			worse: under ? l.value.value / m.value : m.value / l.value.value,
 			...m.pins ? { pins: m.pins } : {},
 			message: `${m.what(past(m.value, l.value.value, m.unit))}, ${under ? "below" : "above"} its ${fmt(l.value.value, m.unit)} ${under ? "minimum" : "rating"}${cond(l)}.${advice}`
 		});
@@ -94047,6 +94048,7 @@ function runDrafts(c, cls, raw, corner) {
 		parts: [d.part],
 		inputs: [d.imax],
 		key: `imax|${d.id}`,
+		worse: raw.dev[d.id] / d.imax.value,
 		message: `${ref(d.part)} delivers ${past(raw.dev[d.id], d.imax.value, "A")}, above the ${A(d.imax.value)} it can supply.`
 	});
 	for (const u of c.usb) {
@@ -94059,6 +94061,7 @@ function runDrafts(c, cls, raw, corner) {
 			parts: [u.host, u.device],
 			inputs: [u.limit],
 			key: `usb|${u.vbus}`,
+			worse: i / u.limit.value,
 			message: `${ref(u.host)} ${u.hostPort} supplies ${past(i, u.limit.value, "A")} over USB to ${ref(u.device)}, above the ${A(u.limit.value)} the port gives.`
 		});
 	}
@@ -94080,6 +94083,7 @@ function runDrafts(c, cls, raw, corner) {
 				parts: [d.part],
 				inputs: [r.ioutMax],
 				key: `outside|${d.id}`,
+				worse: iout / r.ioutMax.value,
 				message: `${name} supplies ${past(iout, r.ioutMax.value, "A")}, beyond the ${A(r.ioutMax.value)} its model covers: its voltages, and the readings upstream of it, cannot be trusted.`
 			});
 			add({
@@ -94088,6 +94092,7 @@ function runDrafts(c, cls, raw, corner) {
 				parts: [d.part],
 				inputs: [r.ioutMax],
 				key: `iout|${d.id}`,
+				worse: iout / r.ioutMax.value,
 				message: `${name} supplies ${past(iout, r.ioutMax.value, "A")}, above its ${A(r.ioutMax.value)} rating.`
 			});
 		}
@@ -94104,6 +94109,7 @@ function runDrafts(c, cls, raw, corner) {
 					...loads.map((l) => corner === "peak" ? l.peak : l.typical)
 				],
 				key: `dropout|${d.id}`,
+				worse: r.vout.value / Math.max(vctl, 1e-9),
 				message: `${name} cannot hold ${V(r.vout.value)}: its input is too low (${V(vin)}), so its output follows it down to about ${V(vctl)}.`
 			});
 		}
@@ -94165,6 +94171,7 @@ function runDrafts(c, cls, raw, corner) {
 			parts: [l.part],
 			inputs: [corner === "peak" ? l.peak : l.typical, l.minVolts],
 			key: `brownout|${l.id}`,
+			worse: l.minVolts.value / Math.max(x, 1e-9),
 			message: `${ref(l.part)} ${l.domain} is at ${past(x, l.minVolts.value, "V")}, below the ${V(l.minVolts.value)} it needs: it browns out.`
 		});
 	}
@@ -94223,22 +94230,145 @@ function propagate(c, rails) {
 		rails: marked
 	};
 }
-/** Every finding of a solve, and what is outside the model (spec 4.1, 4.2, 4.5, 5.2). */
-function analyseFindings(c, cls, raws, topo = topologyFindings(c, cls)) {
-	const typical = runDrafts(c, cls, raws.typical, "typical");
-	const peak = runDrafts(c, cls, raws.peak, "peak");
-	const outside = propagate(c, /* @__PURE__ */ new Set([
-		...topo.shortedRails,
-		...typical.outside,
-		...peak.outside
-	]));
+/** pwm-approximate (firmware spec 4.2, ruling R6): one note per group of two or more PWM pins. */
+function approximateDrafts(c, plan) {
+	return (plan?.approximate ?? []).map((g) => {
+		const parts = [...new Set(g.map((p) => p.part))];
+		const who = parts.map((part) => `${refOf(c, part)} ${andList(g.filter((p) => p.part === part).map((p) => p.pin))}`);
+		return {
+			code: "pwm-approximate",
+			severity: "note",
+			parts,
+			pins: g.map((p) => ({
+				part: p.part,
+				pin: p.pin
+			})),
+			inputs: [],
+			key: `pwm-approximate|${g.map((p) => p.id).join("|")}`,
+			message: `${andList(who)} share part of the circuit, so their averaged readings assume their PWM cycles overlap at random; the real overlap depends on timing and may differ.`
+		};
+	});
+}
+/**
+* Every finding of a solve made of several runs (firmware spec 4.2): the union over each corner's
+* runs, one finding per key keeping the worst reading, plus pwm-approximate; and what is outside the
+* model in any run.
+*/
+function analyseRuns(c, cls, runs, topo = topologyFindings(c, cls), plan = null) {
+	const typical = runs.typical.map((raw) => runDrafts(c, cls, raw, "typical"));
+	const peak = runs.peak.map((raw) => runDrafts(c, cls, raw, "peak"));
+	const outside = propagate(c, /* @__PURE__ */ new Set([...topo.shortedRails, ...[...typical, ...peak].flatMap((r) => [...r.outside])]));
 	const peakLabel = [...new Set(c.devices.flatMap((d) => d.kind === "load" && d.peakLabel ? [d.peakLabel] : []))].join(", ");
 	const shorted = new Set(topo.drafts.filter((d) => d.code === "sim-short").map((d) => d.parts[0]));
-	const value = [...typical.drafts, ...peak.drafts].filter((d) => !(d.code === "sim-over-limit" && shorted.has(d.parts[0]) && !d.pins));
+	const value = [...typical, ...peak].flatMap((r) => r.drafts).filter((d) => !(d.code === "sim-over-limit" && shorted.has(d.parts[0]) && !d.pins)).sort((a, b) => (b.worse ?? b.overBy ?? 0) - (a.worse ?? a.overBy ?? 0));
 	return {
-		findings: finalize([...topo.drafts, ...value], peakLabel),
+		findings: finalize([
+			...topo.drafts,
+			...approximateDrafts(c, plan),
+			...value
+		], peakLabel),
 		outside
 	};
+}
+var pwmPins = (c) => c.devices.filter((d) => d.kind === "gpio" && d.state === "pwm").map((d) => ({
+	id: d.id,
+	part: d.part,
+	pin: d.pin,
+	duty: d.duty ?? .5
+}));
+function pwmGroups(c) {
+	const pins = pwmPins(c);
+	if (!pins.length) return [];
+	const tapNet = new Map(c.taps.map((t) => [t.node, netNode(t.net)]));
+	const cut = /* @__PURE__ */ new Set();
+	const supply = (node) => {
+		cut.add(node);
+		const net = tapNet.get(node);
+		if (net) cut.add(net);
+	};
+	for (const dom of c.domains) supply(dom.pin), supply(dom.ret);
+	for (const d of c.devices) if (d.kind === "cell") supply(d.p), supply(d.n);
+	const parent = /* @__PURE__ */ new Map();
+	const find = (x) => {
+		let r = x;
+		while (parent.has(r) && parent.get(r) !== r) r = parent.get(r);
+		return r;
+	};
+	const join = (a, b) => {
+		if (cut.has(a) || cut.has(b)) return;
+		const [ra, rb] = [find(a), find(b)];
+		if (ra !== rb) parent.set(ra, rb);
+	};
+	for (const t of c.taps) join(t.node, netNode(t.net));
+	for (const d of c.devices) if (d.kind !== "gpio" && d.kind !== "load" && d.kind !== "rail" && d.kind !== "cell") for (const [a, b] of dcEdges(d)) join(a, b);
+	const byRoot = /* @__PURE__ */ new Map();
+	for (const p of pins) {
+		const root = find(c.devices.find((d) => d.id === p.id).node);
+		byRoot.set(root, [...byRoot.get(root) ?? [], p]);
+	}
+	return [...byRoot.values()];
+}
+function pwmPlan(c) {
+	const pins = pwmPins(c);
+	if (!pins.length) return null;
+	const groups = pwmGroups(c);
+	const base = {};
+	for (const g of groups) for (const p of g) base[p.id] = g.length > 3 && p.duty >= .5 ? "high" : "low";
+	const runs = [base];
+	const weights = [1];
+	for (const g of groups) if (g.length <= 3) for (let k = 1; k < 1 << g.length; k++) {
+		const run = { ...base };
+		let w = 1;
+		g.forEach((p, i) => {
+			const hi = k >> i & 1;
+			run[p.id] = hi ? "high" : "low";
+			w *= hi ? p.duty : 1 - p.duty;
+		});
+		runs.push(run);
+		weights.push(w);
+	}
+	else for (const p of g) {
+		runs.push({
+			...base,
+			[p.id]: base[p.id] === "high" ? "low" : "high"
+		});
+		weights.push(Math.abs(p.duty - (base[p.id] === "high" ? 1 : 0)));
+	}
+	weights[0] = 1 - weights.slice(1).reduce((s, w) => s + w, 0);
+	const all = (level) => Object.fromEntries(pins.map((p) => [p.id, level]));
+	return {
+		pins,
+		groups,
+		runs,
+		weights,
+		approximate: groups.filter((g) => g.length > 1),
+		peak: [all("high"), all("low")]
+	};
+}
+/** The weighted sum of raw runs (the duty-weighted average). A value missing or not finite in any run is NaN. */
+function mixRaws(raws, weights) {
+	const mix = (get) => {
+		let s = 0;
+		for (const [i, r] of raws.entries()) {
+			const x = get(r);
+			if (x === void 0 || !Number.isFinite(x)) return NaN;
+			s += weights[i] * x;
+		}
+		return s;
+	};
+	const keys = (pick) => [...new Set(raws.flatMap((r) => Object.keys(pick(r))))];
+	const out = {
+		v: {},
+		pins: {},
+		dev: {}
+	};
+	for (const k of keys((r) => r.v)) out.v[k] = mix((r) => r.v[k]);
+	for (const k of keys((r) => r.dev)) out.dev[k] = mix((r) => r.dev[k]);
+	for (const part of keys((r) => r.pins)) {
+		out.pins[part] = {};
+		for (const pin of [...new Set(raws.flatMap((r) => Object.keys(r.pins[part] ?? {})))]) out.pins[part][pin] = mix((r) => r.pins[part]?.[pin]);
+	}
+	return out;
 }
 //#endregion
 //#region src/sim/session.ts
@@ -94246,17 +94376,31 @@ async function solve(d, engine, revision, opts = {}) {
 	const c = buildCircuit(d, opts);
 	const cls = classifyCached(c, { kind: "op" });
 	const topo = topologyFindings(c, cls);
-	const raws = {};
+	const plan = pwmPlan(c);
+	const typical = plan ? plan.runs.map((pins) => ({
+		kind: "op",
+		corner: "typical",
+		pins
+	})) : [{
+		kind: "op",
+		corner: "typical"
+	}];
+	const peak = plan ? plan.peak.map((pins) => ({
+		kind: "op",
+		corner: "peak",
+		pins
+	})) : [{
+		kind: "op",
+		corner: "peak"
+	}];
+	const analyses = [...typical, ...peak];
 	const before = engine.host.runs;
 	let ms = 0;
-	const corners = ["typical", "peak"];
-	const runs = await engine.runAll(c, corners.map((corner) => ({
-		kind: "op",
-		corner
-	})), revision);
-	for (const [i, corner] of corners.entries()) {
+	const runs = await engine.runAll(c, analyses, revision);
+	const got = [];
+	for (const [i, a] of analyses.entries()) {
 		const r = runs[i];
-		if (!r) throw new Error(`the engine gave no answer for the ${corner} corner`);
+		if (!r) throw new Error(`the engine gave no answer for the ${a.corner} corner`);
 		if (r.status === "unavailable") return {
 			circuit: c,
 			outcome: {
@@ -94274,10 +94418,19 @@ async function solve(d, engine, revision, opts = {}) {
 				findings: finalize(topo.drafts, "")
 			}
 		};
-		raws[corner] = r.raw;
+		got.push(r.raw);
 		ms += r.ms;
 	}
-	const { findings, outside } = analyseFindings(c, cls, raws, topo);
+	const typRaws = got.slice(0, typical.length);
+	const peakRaws = got.slice(typical.length);
+	const raws = {
+		typical: plan ? mixRaws(typRaws, plan.weights) : typRaws[0],
+		peak: peakRaws[0]
+	};
+	const { findings, outside } = analyseRuns(c, cls, {
+		typical: typRaws,
+		peak: peakRaws
+	}, topo, plan);
 	const read = {
 		typical: readRun(c, cls, raws.typical, outside),
 		peak: readRun(c, cls, raws.peak, outside)
@@ -94303,7 +94456,16 @@ async function solve(d, engine, revision, opts = {}) {
 					build: info?.build ?? "",
 					runs: engine.host.runs - before,
 					ms
-				}
+				},
+				...plan ? { pwm: {
+					pins: plan.pins.map((p) => ({
+						part: p.part,
+						pin: p.pin,
+						duty: p.duty
+					})),
+					runs: analyses.length,
+					approximate: plan.approximate.length > 0
+				} } : {}
 			}
 		}
 	};

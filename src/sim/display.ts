@@ -17,6 +17,7 @@ export const SIM_TITLES: Record<SimCode, string> = {
   'sim-no-convergence': 'Could not be solved',
   'sim-incomplete': 'Not simulated',
   'sim-estimate': 'Estimates used',
+  'pwm-approximate': 'PWM average is approximate',
 }
 
 /** An LED is drawn lit above this current (ruling R18). */
