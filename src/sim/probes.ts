@@ -1,6 +1,6 @@
 // Probes (spec 6.2): the mapping between a sheet's probes (part uids and pins) and a netlist's (refs
 // and net names), and the sheet's probe editing ops (add, remove, rename). Pure.
-import type { Diagram, Probe, ProbeAnchor } from '../format/diagram.ts'
+import { type Diagram, type Probe, type ProbeAnchor, PROBE_ID } from '../format/diagram.ts'
 import type { Intent, NetlistProbe } from '../agent/netlist.ts'
 import { naturalCompare } from '../agent/order.ts'
 import { nodeKey } from '../format/netlist.ts'
@@ -41,9 +41,10 @@ export function probesForNetlist(probes: Probe[], refOf: Map<string, string>, ne
 export function sameAnchor(a: ProbeAnchor, b: ProbeAnchor): boolean {
   return a.part === b.part && a.pin === b.pin && (a.hole ?? 0) === (b.hole ?? 0)
 }
+/** One past the highest saved id. BigInt, so a long saved id never comes back as P1e+21. */
 export function nextProbeId(d: Diagram): string {
-  const n = Math.max(0, ...(d.probes ?? []).map((p) => Number(p.id.slice(1))))
-  return `P${n + 1}`
+  const n = (d.probes ?? []).reduce((max, p) => (PROBE_ID.test(p.id) && BigInt(p.id.slice(1)) > max ? BigInt(p.id.slice(1)) : max), 0n)
+  return `P${n + 1n}`
 }
 /** A probe name as saved: trimmed, at most 40 characters; blank is no name. */
 const probeName = (name: string | undefined) => name?.trim().slice(0, 40) || undefined

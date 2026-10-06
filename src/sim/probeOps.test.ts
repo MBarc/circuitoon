@@ -4,9 +4,14 @@ import { describe, expect, it } from 'vitest'
 import { layoutNetlist } from '../agent/layout.ts'
 import { ledNetlist } from '../agent/fixtures.testing.ts'
 import { deleteSelection } from '../editor/ops.ts'
-import { addProbe, removeProbe, renameProbe } from './probes.ts'
+import { addProbe, nextProbeId, removeProbe, renameProbe } from './probes.ts'
 
 describe('probe editing ops', () => {
+  it('never gives an exponent id after a long saved one', () => {
+    const d = { probes: [{ id: 'P999999999999999999999', at: { part: 'R1' } }] } as unknown as Parameters<typeof nextProbeId>[0]
+    expect(nextProbeId(d)).toBe('P1000000000000000000000')
+    expect(nextProbeId({ probes: [] } as unknown as Parameters<typeof nextProbeId>[0])).toBe('P1')
+  })
   it('adds, renames and removes probes, and deleting a part takes its probes with it', () => {
     const laid = layoutNetlist(ledNetlist())
     if (!laid.ok) throw new Error(laid.errors.join('; '))
