@@ -4,7 +4,7 @@
 import { makeHw, realClock } from '../bridge.ts'
 import { F, H, INPUT, boardMemory, takeLine } from '../memory.ts'
 import type { FromCode, ToCode } from '../protocol.ts'
-import { sandbox } from './sandbox.ts'
+import { noCodeGeneration, sandbox } from './sandbox.ts'
 
 /** What we use of Pyodide's API. */
 export interface PyodideLike {
@@ -108,6 +108,7 @@ export function serveCode(post: (m: FromCode) => void, listen: (cb: (m: ToCode) 
       py.runPython("import sys\nsys.modules.pop('pyodide_js', None)")
       for (const name of ['mountNodeFS', 'useNodeSockFS', 'mountNativeFS']) Reflect.deleteProperty(py, name)
       delete py.FS.filesystems.NODEFS
+      noCodeGeneration()
       // The never-pauses check counts from here, not from the spawn (loading is not the code's fault).
       mem.f64[F.lastYieldMs] = performance.timeOrigin + performance.now()
       post({ type: 'ready', sandboxed })

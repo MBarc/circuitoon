@@ -18,3 +18,16 @@ export function sandbox(scope: object): string[] {
     }
   return removed
 }
+
+/**
+ * No code from strings (firmware spec 2.6): a JS function's constructor (Function, and its async and
+ * generator relatives) would evaluate text in the worker's global scope. In the browser the CSP
+ * refuses it; in Node nothing does, so every one of them throws. Call once Pyodide has loaded.
+ */
+export function noCodeGeneration(): void {
+  const refuse = function () {
+    throw new EvalError('Code generation is disabled in the simulator')
+  }
+  for (const f of [function () {}, async function () {}, function* () {}, async function* () {}])
+    Object.defineProperty(Object.getPrototypeOf(f), 'constructor', { value: refuse, writable: false, configurable: false })
+}

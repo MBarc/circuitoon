@@ -83,10 +83,10 @@ describe('the code worker (spec 5.3, 5.4)', () => {
     expect(await r.exited).toBe('done')
     expect(out(r.messages)).toBe('0\n')
   }, 60_000)
-  it('gives user code no host access: no fetch, no pyodide_js, no mounts, an empty scope', async () => {
-    // jsglobals is curated and pyodide_js (Node file system mounts and sockets) is unregistered. A JS
-    // function's constructor still evaluates in the Node worker's global scope (in the browser the CSP
-    // refuses it; blocking it in Node awaits a ruling), so the backstop must have emptied that scope.
+  it('gives user code no host access: no fetch, no pyodide_js, no mounts, no eval, an empty scope', async () => {
+    // jsglobals is curated, pyodide_js (Node file system mounts and sockets) is unregistered, and a JS
+    // function's constructor (Function, which would evaluate in the worker's global scope) throws.
+    // circuitoon_hw hands Python no async or generator function; noCodeGeneration covers those too.
     // The stand-ins still work afterwards.
     const r = runNode(`import js
 print(hasattr(js, 'fetch'))
@@ -102,15 +102,19 @@ def has(o):
     except Exception:
         return False
 print([n for n, mod in list(sys.modules.items()) if has(mod)] + [f'{n}.{a}' for n, mod in list(sys.modules.items()) for a in dir(mod) if has(getattr(mod, a, None))])
-import circuitoon_hw
-f = circuitoon_hw.read.constructor
-print(f('return typeof fetch')(), f('return typeof WebSocket')(), f('return typeof importScripts')())
+import circuitoon_hw as hw
+for route in (lambda: hw.read.constructor('return globalThis'), lambda: hw.constructor.constructor('return globalThis')):
+    try:
+        route()
+        print('eval ran')
+    except Exception as e:
+        print('EvalError: Code generation is disabled in the simulator' in str(e))
 from gpiozero import LED
 LED(17).on()
 print('gpiozero ok')
 `)
     expect(await r.exited).toBe('done')
-    expect(out(r.messages)).toBe('False\nno pyodide_js\n[]\nundefined undefined undefined\ngpiozero ok\n')
+    expect(out(r.messages)).toBe('False\nno pyodide_js\n[]\nTrue\nTrue\ngpiozero ok\n')
     // The JS side: what left the worker's scope (Node has fetch and WebSocket, no importScripts).
     const ready = r.messages.find((m) => m.type === 'ready')
     expect(ready && 'sandboxed' in ready && [...ready.sandboxed].sort()).toEqual(expect.arrayContaining(['WebSocket', 'fetch']))
