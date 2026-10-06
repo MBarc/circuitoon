@@ -498,18 +498,18 @@ class PWMLED(PWMOutputDevice):
 class RGBLED(Device):
     def __init__(self, red=None, green=None, blue=None, *, active_high=True, initial_value=(0, 0, 0), pwm=True, pin_factory=None):
         cls = PWMLED if pwm else LED
+        super().__init__()
+        self._pwm = pwm
+        self._seq = None
         self._leds = []
         try:
             for p in (red, green, blue):
                 self._leds.append(cls(p, active_high=active_high))
+            self._write(initial_value)
         except BaseException:
             for led in self._leds:
                 led.close()
             raise
-        super().__init__()
-        self._pwm = pwm
-        self._seq = None
-        self._write(initial_value)
 
     def _write(self, color):
         self._check()

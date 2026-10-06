@@ -51,7 +51,7 @@ describe('gpiozero PWM devices (spec 5.1, 2.2)', () => {
     expect((await runScript(`${head}Servo(18).value = 2\n`)).err).toContain('gpiozero.OutputDeviceBadValue: Servo value must be between -1 and 1, or None')
   })
   it('does not leak the pin when a constructor refuses its arguments', async () => {
-    const bad = ['PWMLED(18, initial_value=2)', 'Servo(18, initial_value=2)', 'Servo(18, min_pulse_width=0.003)']
+    const bad = ['PWMLED(18, initial_value=2)', 'Servo(18, initial_value=2)', 'Servo(18, min_pulse_width=0.003)', 'RGBLED(17, 27, 22, initial_value=(2, 0, 0))', 'RGBLED(17, 27, 22, initial_value=(1, 0))', 'RGBLED(17, 27, 22, pwm=False, initial_value=(0.5, 0, 0))']
     const r = await runScript(`${head}for make in (${bad.map((b) => `lambda: ${b}`).join(', ')}):\n    try:\n        make()\n    except Exception:\n        pass\nPWMLED(18)\nprint('ok')\n`)
     expect(r.out).toBe('ok\n')
   })
