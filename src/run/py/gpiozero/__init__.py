@@ -10,10 +10,10 @@ import _circuitoon as _rt
 import circuitoon_hw as _hw
 from _circuitoon import BOARD_TO_BCM as _BOARD_TO_BCM
 
-# `from gpiozero import *` takes exactly these (Task 16 adds the PWM devices).
+# `from gpiozero import *` takes exactly these.
 __all__ = ['GPIOZeroError', 'DeviceClosed', 'GPIOPinInUse', 'PinInvalidPin', 'PinInvalidState', 'OutputDeviceBadValue',
            'Device', 'OutputDevice', 'DigitalOutputDevice', 'LED', 'Buzzer', 'InputDevice', 'DigitalInputDevice', 'Button',
-           'LineSensor', 'MotionSensor', 'pause']
+           'LineSensor', 'MotionSensor', 'PWMOutputDevice', 'PWMLED', 'RGBLED', 'Servo', 'AngularServo', 'Motor', 'pause']
 
 # Names gpiozero has that need devices not simulated yet (spec 5.1); one entry per line, read by
 # src/run/unsupported.ts for the gate's static scan.
@@ -440,6 +440,291 @@ class MotionSensor(DigitalInputDevice):
     when_no_motion = property(lambda self: self.when_deactivated, lambda self, fn: setattr(self, 'when_deactivated', fn))
     wait_for_motion = DigitalInputDevice.wait_for_active
     wait_for_no_motion = DigitalInputDevice.wait_for_inactive
+
+
+class PWMOutputDevice(OutputDevice):
+    """Declares duty and frequency (spec 2.2); value is the duty, 0 to 1."""
+
+    def __init__(self, pin=None, *, active_high=True, initial_value=0, frequency=100, pin_factory=None):
+        if not 0 <= float(initial_value) <= 1:
+            raise OutputDeviceBadValue('PWM value must be between 0 and 1')
+        self._duty = 0.0
+        self._freq = float(frequency)
+        super().__init__(pin, active_high=active_high, initial_value=None)
+        self._write(initial_value)
+
+    def _write(self, value):
+        self._check()
+        v = float(value)
+        if not 0 <= v <= 1:
+            raise OutputDeviceBadValue('PWM value must be between 0 and 1')
+        self._duty = v
+        _hw.pwm(self._bcm, True, v if self.active_high else 1 - v, self._freq)
+
+    @property
+    def value(self):
+        self._check()
+        return self._duty
+
+    @value.setter
+    def value(self, v):
+        self._stop_seq()
+        self._write(v)
+
+    def toggle(self):
+        self._stop_seq()
+        self._write(1 - self._duty)
+
+    @property
+    def frequency(self):
+        return self._freq
+
+    @frequency.setter
+    def frequency(self, f):
+        self._freq = float(f)
+        self._write(self._duty)
+
+    def blink(self, on_time=1, off_time=1, fade_in_time=0, fade_out_time=0, n=None, background=True):
+        self._run_seq(_fade_steps(on_time, off_time, fade_in_time, fade_out_time, 0, 1), n, background, 0)
+
+    def pulse(self, fade_in_time=1, fade_out_time=1, n=None, background=True):
+        self.blink(0, 0, fade_in_time, fade_out_time, n, background)
+
+
+class PWMLED(PWMOutputDevice):
+    is_lit = Device.is_active
+
+
+class RGBLED(Device):
+    def __init__(self, red=None, green=None, blue=None, *, active_high=True, initial_value=(0, 0, 0), pwm=True, pin_factory=None):
+        cls = PWMLED if pwm else LED
+        self._leds = []
+        try:
+            for p in (red, green, blue):
+                self._leds.append(cls(p, active_high=active_high))
+        except BaseException:
+            for led in self._leds:
+                led.close()
+            raise
+        super().__init__()
+        self._pwm = pwm
+        self._seq = None
+        self._write(initial_value)
+
+    def _write(self, color):
+        self._check()
+        if len(color) != 3:
+            raise OutputDeviceBadValue('RGBLED color must be a 3-tuple')
+        for led, v in zip(self._leds, color):
+            if not self._pwm and v not in (0, 1):
+                raise OutputDeviceBadValue('RGBLED with pwm=False takes only 0 or 1 per channel')
+            led._write(v)
+
+    def _stop_seq(self):
+        if self._seq is not None:
+            self._seq.cancel()
+            self._seq = None
+
+    def _release(self):
+        self._stop_seq()
+        for led in self._leds:
+            led.close()
+
+    @property
+    def value(self):
+        self._check()
+        return tuple(float(led._duty) if self._pwm else float(led.value) for led in self._leds)
+
+    @value.setter
+    def value(self, color):
+        self._stop_seq()
+        self._write(color)
+
+    color = value
+
+    red = property(lambda self: self.value[0], lambda self, v: setattr(self, 'value', (v,) + self.value[1:]))
+    green = property(lambda self: self.value[1], lambda self, v: setattr(self, 'value', self.value[:1] + (v,) + self.value[2:]))
+    blue = property(lambda self: self.value[2], lambda self, v: setattr(self, 'value', self.value[:2] + (v,)))
+
+    @property
+    def is_active(self):
+        return self.value != (0, 0, 0)
+
+    is_lit = is_active
+
+    def on(self):
+        self.value = (1, 1, 1)
+
+    def off(self):
+        self.value = (0, 0, 0)
+
+    def toggle(self):
+        self.value = tuple(1 - v for v in self.value)
+
+    def blink(self, on_time=1, off_time=1, fade_in_time=0, fade_out_time=0, on_color=(1, 1, 1), off_color=(0, 0, 0), n=None, background=True):
+        self._stop_seq()
+        seq = self._seq = _Sequence(self, _fade_steps(on_time, off_time, fade_in_time, fade_out_time, tuple(off_color), tuple(on_color)), n, tuple(off_color))
+        if not background:
+            _rt.wait(until=lambda: seq.done)
+
+    def pulse(self, fade_in_time=1, fade_out_time=1, on_color=(1, 1, 1), off_color=(0, 0, 0), n=None, background=True):
+        self.blink(0, 0, fade_in_time, fade_out_time, on_color, off_color, n, background)
+
+
+class Servo(Device):
+    """value -1 to 1 maps to min_pulse_width to max_pulse_width in a frame (spec 5.1); None detaches."""
+
+    def __init__(self, pin=None, *, initial_value=0.0, min_pulse_width=1 / 1000, max_pulse_width=2 / 1000, frame_width=20 / 1000, pin_factory=None):
+        if min_pulse_width >= max_pulse_width:
+            raise ValueError('min_pulse_width must be less than max_pulse_width')
+        if max_pulse_width >= frame_width:
+            raise ValueError('max_pulse_width must be less than frame_width')
+        if initial_value is not None and not -1 <= float(initial_value) <= 1:
+            raise OutputDeviceBadValue('Servo value must be between -1 and 1, or None')
+        super().__init__(pin)
+        self._bcm = self._pins[0]
+        self._min_pw, self._max_pw, self._frame = min_pulse_width, max_pulse_width, frame_width
+        self._value = None
+        _hw.setup(self._bcm, 4)
+        self.value = initial_value
+
+    @property
+    def frame_width(self):
+        return self._frame
+
+    @property
+    def min_pulse_width(self):
+        return self._min_pw
+
+    @property
+    def max_pulse_width(self):
+        return self._max_pw
+
+    @property
+    def pulse_width(self):
+        return None if self._value is None else self._min_pw + (self._value + 1) / 2 * (self._max_pw - self._min_pw)
+
+    @property
+    def value(self):
+        return self._value
+
+    @value.setter
+    def value(self, v):
+        self._check()
+        if v is None:
+            self._value = None
+            _hw.pwm(self._bcm, False, 0, 1 / self._frame)
+            return
+        v = float(v)
+        if not -1 <= v <= 1:
+            raise OutputDeviceBadValue('Servo value must be between -1 and 1, or None')
+        self._value = v
+        _hw.pwm(self._bcm, True, self.pulse_width / self._frame, 1 / self._frame)
+
+    @property
+    def is_active(self):
+        return self._value is not None
+
+    def min(self):
+        self.value = -1
+
+    def mid(self):
+        self.value = 0
+
+    def max(self):
+        self.value = 1
+
+    def detach(self):
+        self.value = None
+
+
+class AngularServo(Servo):
+    def __init__(self, pin=None, *, initial_angle=0.0, min_angle=-90, max_angle=90, min_pulse_width=1 / 1000, max_pulse_width=2 / 1000, frame_width=20 / 1000, pin_factory=None):
+        self._min_angle, self._max_angle = min_angle, max_angle
+        super().__init__(pin, initial_value=None if initial_angle is None else self._to_value(initial_angle), min_pulse_width=min_pulse_width, max_pulse_width=max_pulse_width, frame_width=frame_width)
+
+    def _to_value(self, angle):
+        return (angle - self._min_angle) / (self._max_angle - self._min_angle) * 2 - 1
+
+    @property
+    def min_angle(self):
+        return self._min_angle
+
+    @property
+    def max_angle(self):
+        return self._max_angle
+
+    @property
+    def angle(self):
+        v = self.value
+        return None if v is None else self._min_angle + (v + 1) / 2 * (self._max_angle - self._min_angle)
+
+    @angle.setter
+    def angle(self, a):
+        self.value = None if a is None else self._to_value(a)
+
+
+class Motor(Device):
+    """A motor on two pins (spec 5.1): forward on one, backward on the other."""
+
+    def __init__(self, forward=None, backward=None, *, enable=None, pwm=True, pin_factory=None):
+        if enable is not None:
+            raise NotImplementedError("Motor's enable pin is not simulated yet; wire it high and leave enable out")
+        cls = PWMOutputDevice if pwm else DigitalOutputDevice
+        self._fwd = cls(forward)
+        try:
+            self._bwd = cls(backward)
+        except BaseException:
+            self._fwd.close()
+            raise
+        super().__init__()
+        self._pwm = pwm
+
+    def _set(self, dev, speed):
+        if not 0 <= speed <= 1:
+            raise ValueError('speed must be between 0 and 1')
+        if self._pwm:
+            dev.value = speed
+        elif speed in (0, 1):
+            dev.value = speed
+        else:
+            raise ValueError('a Motor with pwm=False runs only at speed 0 or 1')
+
+    def forward(self, speed=1):
+        self._set(self._bwd, 0)
+        self._set(self._fwd, speed)
+
+    def backward(self, speed=1):
+        self._set(self._fwd, 0)
+        self._set(self._bwd, speed)
+
+    def stop(self):
+        self._set(self._fwd, 0)
+        self._set(self._bwd, 0)
+
+    def reverse(self):
+        self.value = -self.value
+
+    @property
+    def value(self):
+        return float(self._fwd.value) - float(self._bwd.value)
+
+    @value.setter
+    def value(self, v):
+        if v > 0:
+            self.forward(v)
+        elif v < 0:
+            self.backward(-v)
+        else:
+            self.stop()
+
+    @property
+    def is_active(self):
+        return self.value != 0
+
+    def _release(self):
+        self._fwd.close()
+        self._bwd.close()
 
 
 def pause():
