@@ -44,8 +44,6 @@ export class BoardRun {
 
   start(): void {
     this.memory.f64[F.startMs] = this.o.mode === 'virtual' ? VIRTUAL_EPOCH_MS : performance.timeOrigin + performance.now()
-    // The never-pauses check counts from the start until the first yield.
-    this.memory.f64[F.lastYieldMs] = performance.timeOrigin + performance.now()
     const w = (this.worker = this.o.spawn())
     w.onMessage((m) => {
       if (m.type === 'ready') this.status = 'running'
@@ -63,6 +61,8 @@ export class BoardRun {
 
   private finish(status: RunStatus): void {
     if (this.status === 'starting' || this.status === 'running') this.status = status
+    // A finished run keeps no Pyodide heap or thread.
+    this.worker?.terminate()
     this.ended()
   }
 

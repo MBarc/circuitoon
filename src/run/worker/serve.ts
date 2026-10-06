@@ -2,15 +2,16 @@
 // into Pyodide's file system, a fresh interpreter state per run, and running the script through
 // _circuitoon.main. Worker side: nothing Vite-specific.
 import { makeHw, realClock } from '../bridge.ts'
-import { H, INPUT, boardMemory, takeLine } from '../memory.ts'
+import { F, H, INPUT, boardMemory, takeLine } from '../memory.ts'
 import type { FromCode, ToCode } from '../protocol.ts'
 import { sandbox } from './sandbox.ts'
 
 /** What we use of Pyodide's API. */
 export interface PyodideLike {
-  FS: { mkdirTree(path: string): void; writeFile(path: string, data: string): void }
+  FS: { mkdirTree(path: string): void; writeFile(path: string, data: string): void; filesystems: Record<string, unknown> }
   runPython(code: string, o?: { globals?: unknown }): unknown
   registerJsModule(name: string, module: object): void
+  unregisterJsModule(name: string): void
   setStdout(o: { batched: (line: string) => void }): void
   setStderr(o: { batched: (line: string) => void }): void
   setStdin(o: { stdin: () => string | null }): void
@@ -80,7 +81,7 @@ export function serveCode(post: (m: FromCode) => void, listen: (cb: (m: ToCode) 
       } catch (e) {
         return post({ type: 'fatal', error: why(e) })
       }
-      sandbox(globalThis)
+      const sandboxed = sandbox(globalThis)
       const mem = boardMemory(m.sab)
       const check = () => py.checkInterrupt()
       // Task 18 adds the virtual clock for mode 'virtual'.
@@ -101,7 +102,15 @@ export function serveCode(post: (m: FromCode) => void, listen: (cb: (m: ToCode) 
       py.setInterruptBuffer(new Int32Array(m.sab, H.interrupt * 4, 1))
       installFiles(py, m.files)
       py.registerJsModule('circuitoon_hw', hw)
-      post({ type: 'ready' })
+      // No host access for user code (spec 2.6): Pyodide registers its own API as pyodide_js whatever
+      // jsglobals says, and in Node that API mounts host directories and opens sockets.
+      py.unregisterJsModule('pyodide_js')
+      py.runPython("import sys\nsys.modules.pop('pyodide_js', None)")
+      for (const name of ['mountNodeFS', 'useNodeSockFS', 'mountNativeFS']) Reflect.deleteProperty(py, name)
+      delete py.FS.filesystems.NODEFS
+      // The never-pauses check counts from here, not from the spawn (loading is not the code's fault).
+      mem.f64[F.lastYieldMs] = performance.timeOrigin + performance.now()
+      post({ type: 'ready', sandboxed })
       let status: 'done' | 'stopped' | 'error'
       try {
         status = runMain(py, m.source, m.file)

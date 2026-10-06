@@ -18,8 +18,8 @@ export interface StartMessage {
 }
 export type ToCode = StartMessage
 export type FromCode =
-  /** Pyodide is loaded and the script starts now. */
-  | { type: 'ready' }
+  /** Pyodide is loaded and the script starts now; `sandboxed` names what left the worker's scope (spec 2.6). */
+  | { type: 'ready'; sandboxed: string[] }
   /** Serial output, batched (spec 5.3); `text` may hold several lines. */
   | { type: 'out'; stream: 'out' | 'err'; text: string }
   /** input() is waiting; the prompt labels the input box (ruling R12). */
