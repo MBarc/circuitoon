@@ -4,6 +4,7 @@
 // Vite-specific (Node runs this file directly in its worker).
 import type { BoardKind } from './boards.ts'
 import { type BoardMemory, F, H, INPUT, MODE, type ModeCode, NPINS, readIn, readLocked, readOut, setOut, takeLine, writeLocked } from './memory.ts'
+import type { FromCode } from './protocol.ts'
 
 /** Run time for one board. */
 export interface RunClock {
@@ -32,6 +33,36 @@ export function realClock(m: BoardMemory, checkInterrupt: () => void): RunClock 
       checkInterrupt()
     },
     poll() {},
+  }
+}
+
+/** Every time call and pin read on the virtual clock advances the board by this much (spec 7). */
+export const QUANTUM_MS = 0.01
+
+/**
+ * The CLI's clock (spec 7, ruling R16): the board keeps its own time, stepping 10 us per call; a wait
+ * posts where it is and until when, and waits for the driver, which sets F.clockMs (where the board
+ * may move to) and F.horizonMs (when a pin read must sync next) before waking it.
+ */
+export function virtualClock(m: BoardMemory, post: (msg: FromCode) => void, checkInterrupt: () => void): RunClock {
+  let t = 0
+  const sync = (untilMs: number) => {
+    const seen = Atomics.load(m.i32, H.wake)
+    post({ type: 'block', nowMs: t, untilMs })
+    Atomics.wait(m.i32, H.wake, seen)
+    t = Math.max(t, m.f64[F.clockMs])
+    checkInterrupt()
+  }
+  return {
+    epochMs: m.f64[F.startMs],
+    now() {
+      t += QUANTUM_MS
+      return t
+    },
+    block: (untilMs) => sync(untilMs),
+    poll() {
+      if (t >= m.f64[F.horizonMs]) sync(t)
+    },
   }
 }
 

@@ -1,7 +1,7 @@
 // The code worker's Python side, shared by both workers and the in-process test harness: our files
 // into Pyodide's file system, a fresh interpreter state per run, and running the script through
 // _circuitoon.main. Worker side: nothing Vite-specific.
-import { makeHw, realClock } from '../bridge.ts'
+import { makeHw, realClock, virtualClock } from '../bridge.ts'
 import { F, H, INPUT, boardMemory, takeLine } from '../memory.ts'
 import type { FromCode, ToCode } from '../protocol.ts'
 import { noCodeGeneration, sandbox } from './sandbox.ts'
@@ -84,8 +84,7 @@ export function serveCode(post: (m: FromCode) => void, listen: (cb: (m: ToCode) 
       const sandboxed = sandbox(globalThis)
       const mem = boardMemory(m.sab)
       const check = () => py.checkInterrupt()
-      // Task 18 adds the virtual clock for mode 'virtual'.
-      const clock = realClock(mem, check)
+      const clock = m.mode === 'virtual' ? virtualClock(mem, post, check) : realClock(mem, check)
       const out = outBuffer(post)
       const hw = makeHw(mem, clock, { board: m.board, onPrompt: (text) => post({ type: 'prompt', text }), flush: out.flush })
       py.setStdout({ batched: (s) => out.push('out', s) })
