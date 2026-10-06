@@ -8,7 +8,7 @@
 
 **Tech Stack:** Pyodide (exact release pinned at the Pyodide checkpoint, Task 11; `314.0.7` is the candidate); TypeScript (erasable syntax only); React 19; Vite 8; vitest 5; CodeMirror 6 (`@codemirror/*`, lazy chunk); `coi-serviceworker` 0.1.7 (MIT, vendored with one marked patch); Fontsource packages for the self-hosted fonts (OFL); Node `worker_threads`; Web Workers; `Atomics`; playwright-core for the browser checks.
 
-**Spec:** `docs/superpowers/specs/2026-10-06-firmware-pi-python-design.md` (revision 3). Read it fully before any task. It builds on the live simulation (`docs/superpowers/specs/2026-10-05-live-simulation-design.md`, shipped as df3328b); its plan (`docs/superpowers/plans/2026-10-05-live-simulation.md`) shows the sourcing protocol and the test conventions this plan reuses.
+**Spec:** `docs/superpowers/specs/2026-10-06-firmware-pi-python-design.md` (revision 5). Read it fully before any task. It builds on the live simulation (`docs/superpowers/specs/2026-10-05-live-simulation-design.md`, shipped as df3328b); its plan (`docs/superpowers/plans/2026-10-05-live-simulation.md`) shows the sourcing protocol and the test conventions this plan reuses.
 
 ## Global Constraints
 
@@ -73,7 +73,7 @@ Copied verbatim from the spec. Every task's requirements include this section.
 - Research subagents never put Michael's email or any personal data in a User-Agent or any request field.
 - Every commit message ends with:
   `Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>`
-- Checkpoints: a Claude reviewer stands in for Astra until 2026-10-10 (Codex is rate-limited); Astra reviews afterwards. The controller records every checkpoint outcome and ruling in its ledger (`.superpowers/firmware-ledger.md`, git-ignored).
+- Checkpoints: a Claude reviewer stands in for Astra until 2026-10-10 (Codex is rate-limited); Astra reviews afterwards. The controller records every checkpoint outcome and ruling in its ledger (`.superpowers/sdd/2026-10-06-firmware-pi-python/progress.md`, git-ignored).
 
 ## Rulings on spec ambiguities
 
@@ -96,7 +96,7 @@ The plan rules on these so no task has to. Each is referenced where it applies.
 | R13 | "the start screen's sample list" (the start screen has one sample card) | A "Raspberry Pi samples" row of two smaller cards under the three start cards. |
 | R14 | "placed with the existing badge placement" | The run badge is a pill at the body's top-right corner: the checker's mark owns the top left and simulation findings the top centre. |
 | R15 | The Pyodide budget is "measured on the live site at the Pyodide checkpoint", before anything of this slice ships | The checkpoint measures GitHub Pages' `Content-Encoding` rule on the live site with the files it already serves (`sim/ngspice.wasm`, `sim/ngspice.mjs`, `sim/engine.json`), then computes the transfer from that rule (gzip -6 where Pages compresses, raw where it does not). The ship gate (final checkpoint) re-measures the real `py/<version>/` files on the deployed site. |
-| R16 | Several boards on one virtual clock (spec 7 describes one board's waits) | Discrete events: every worker reports `block(now, until)`; when all are blocked the driver sets the clock to the earliest `until`, press or end, samples, solves if needed, writes inputs and wakes every worker; a worker that is not due blocks again. A pin read or time call past the driver's horizon (the next press, the next 16 ms sample or the end) syncs too, so polling loops reach presses. |
+| R16 | Several boards on one virtual clock (spec 7 describes one board's waits) | Discrete events: every worker reports `block(now, until)`; when all are blocked the driver sets the clock to the earliest `until`, press or end, samples, solves if needed, writes inputs and wakes every worker; a worker that is not due blocks again. A pin read past the driver's horizon (the next press, the next 16 ms sample or the end) syncs too, so polling loops reach presses; time calls only step 10 us. |
 | R17 | Overlapping `--press` events | `BuildOptions.held` is one button, as in the editor (one pointer): two presses that overlap in time are a usage error (exit 2). A latching switch's press flips it at its time (the duration is ignored). |
 | R18 | `circuitoon netlist` without `-o` has no "next to the netlist" | The code is inlined as `{ "language", "source", "file" }`, a form `parseNetlist` accepts beside `{ "language", "path" }`. |
 | R19 | The code worker's CSP needs a header GitHub Pages cannot set, from a vendored worker the spec calls pinned | `coi-serviceworker` 0.1.7 is vendored verbatim plus one patch marked `Circuitoon patch`: the fetch handler adds the CSP to the code worker's script (`/assets/codeWorker-*.js`). In dev and preview a small Vite plugin adds the same header to the worker's URL. |
@@ -109,6 +109,8 @@ The plan rules on these so no task has to. Each is referenced where it applies.
 | R26 | Whether `circuitoon run` takes a netlist | Sheets only, as the spec's synopsis says; a netlist is laid out first (`layout` embeds its code, Task 38). |
 | R27 | A page that is not isolated although service workers exist (the reload was held back over an unsaved diagram, spec 2.5) | Run is disabled with "Reload the page to run code (save your work first)."; the spec's own message is for windows without service workers. |
 | R28 | The never-pauses signal for code that has not reached a single yield point (`LED(17).blink()` then `while True: pass`) | Registering a timer, callback or poller marks it pending at once (`circuitoon_hw.pending`), and the last yield counts from the run's start, so that case is caught. |
+
+Pre-flight rulings C1-C28 (2026-10-06) are applied in the task text.
 
 ## File Structure
 
@@ -954,6 +956,7 @@ MSG
   - `ModuleDef.firmware?: { languages: string[] }`
   - `function withLibraryData(stored: ModuleDef, library: ((id: string) => ModuleDef | undefined) | undefined): ModuleDef` (in `simModel.ts`, replacing `withLibrarySim` everywhere)
   - `function languagesOf(m: ModuleDef | undefined): string[]` (final form)
+  - `function languageMismatch(who: string, m: ModuleDef, language: string): string | null` (`code.ts`; the sentence below without a full stop, or null when the language is unknown or the board takes it; the loader and the gate both use it)
   - the load warning "U1 is a Raspberry Pi 4 Model B; its code is Arduino C++ and won't run"
   - lint warning code `firmware-custom`
 
@@ -1053,6 +1056,12 @@ In `src/format/code.ts`, add `import type { ModuleDef } from './module.ts'` at t
 export function languagesOf(m: ModuleDef | undefined): string[] {
   return m && m.custom !== true ? (m.firmware?.languages ?? []) : []
 }
+
+/** "U1 is an Arduino Uno R3; its code is Raspberry Pi Python and won't run" for a known language the board does not take (kept, spec 3.1); else null. `m` is the module with its library data. */
+export function languageMismatch(who: string, m: ModuleDef, language: string): string | null {
+  if (!(KNOWN_LANGUAGES as readonly string[]).includes(language) || languagesOf(m).includes(language)) return null
+  return `${who} is ${/^[aeiou]/i.test(m.name) ? 'an' : 'a'} ${m.name}; its code is ${languageName(language)} and won't run`
+}
 ```
 
 - [ ] **Step 4: `withLibraryData`**
@@ -1086,16 +1095,14 @@ Then rename every caller: `grep -rln withLibrarySim src scripts` lists `src/sim/
 
 - [ ] **Step 5: The board warning on load**
 
-In `src/format/diagram.ts`, import `languagesOf` and `languageName` from `'./code.ts'` and extend the Task 4 block after `if (r.code !== p.code) ...`:
+In `src/format/diagram.ts`, import `languageMismatch` from `'./code.ts'` and extend the Task 4 block after `if (r.code !== p.code) ...`:
 
 ```ts
         // A known language this board does not take is kept (spec 3.1) and said once.
         const lm = typeof p.module === 'string' ? modules.get(p.module) : undefined
-        if (r.code && lm && (KNOWN_LANGUAGES as readonly string[]).includes(r.code.language) && !languagesOf(withLibraryData(lm, opts.library)).includes(r.code.language))
-          warnings.push(`${at}.code: ${who} is ${/^[aeiou]/i.test(lm.name) ? 'an' : 'a'} ${lm.name}; its code is ${languageName(r.code.language)} and won't run`)
+        const mismatch = r.code && lm ? languageMismatch(who, withLibraryData(lm, opts.library), r.code.language) : null
+        if (mismatch) warnings.push(`${at}.code: ${mismatch}`)
 ```
-
-(import `KNOWN_LANGUAGES` too).
 
 - [ ] **Step 6: The part check**
 
@@ -1466,7 +1473,7 @@ Datasheet numbers are not in this plan: they are found, written and checked by t
 **Files:**
 - Create: `scripts/sim-data/rpi-4-model-b.json`, `scripts/sim-data/rpi-5.json`, `scripts/sim-data/rpi-zero-2-w.json`
 - Modify (generated): `modules/rpi-4-model-b.json`, `modules/rpi-5.json`, `modules/rpi-zero-2-w.json`
-- Modify: `src/run/power.ts` is created in Task 28; this task only verifies the 4.63 V value (ruling R8) and records its URL in the ledger
+- Modify: `src/run/power.ts` is created in Task 28; this task only verifies the 4.63 V value (ruling R8) and records its URL in the `notes` of `scripts/sim-data/rpi-4-model-b.json` (Task 28 reads it from there)
 - Test: `src/sim/data.test.ts` (add a block)
 
 **Interfaces:**
@@ -1888,7 +1895,7 @@ import { extname, join } from 'node:path'
 import { flagOf, launchChrome } from './lib/browser-check.mjs'
 
 const PY = JSON.parse(readFileSync('src/run/pyManifest.json', 'utf8'))
-const CSP = "default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; connect-src 'self'"
+const CSP = /CODE_WORKER_CSP = "([^"]+)"/.exec(readFileSync('vite.config.ts', 'utf8'))[1] // the one definition (Task 2)
 const globals = JSON.parse(/PY_JSGLOBALS[^=]*=\s*(\[[^\]]*\])/.exec(existsSync('src/run/limits.ts') ? readFileSync('src/run/limits.ts', 'utf8') : 'PY_JSGLOBALS = []')[1].replace(/'/g, '"'))
 const port = Number(flagOf('--port', '4214'))
 const WORKER = `
@@ -2322,7 +2329,7 @@ MSG
   - `src/run/pyFiles.ts`: `const PY_FILES: Record<string, string>` (keys `_circuitoon.py`, `RPi/__init__.py`, `RPi/GPIO.py`, `gpiozero/__init__.py`)
   - `src/run/worker/serve.ts`: `interface PyodideLike`; `const PY_ROOT = '/lib/circuitoon'`; `function installFiles(py: PyodideLike, files: Record<string, string>): void`; `function runMain(py: PyodideLike, source: string, file: string): 'done' | 'stopped' | 'error'`; `function resetModules(py: PyodideLike): void`
   - `src/run/pyHarness.testing.ts`: `runScript(source: string, o?: { inputs?: ScriptInput[]; untilMs?: number; board?: BoardKind; file?: string }): Promise<RunResult>` with `type ScriptInput = { atMs: number; bcm: number; level: 0 | 1 } | { atMs: number; line: string }`, `interface RunResult { status: string; out: string; err: string; trace: Trace[]; prompts: string[]; yields: { t: number; pending: boolean }[]; t: number }`, `interface Trace { t: number; bcm: number; mode?: number; latch?: 0 | 1; pwm?: { active: boolean; duty: number; freq: number } }`
-  - Python module `_circuitoon`: `UNSUPPORTED`, `THREADS`, `Timer`, `reset()`, `now()`, `call_later(delay, fn, period=None)`, `queue(fn)`, `add_poller(fn)`, `remove_poller(fn)`, `dispatch()`, `yield_point()`, `wait(seconds=None, until=None)`, `format_error(e)`, `install()`, `shutdown()`, `main(source, filename)`
+  - Python module `_circuitoon`: `UNSUPPORTED`, `THREADS`, `BOARD_TO_BCM` (the 40-pin BOARD to BCM map, Tasks 14 and 15 import it), `Timer`, `reset()`, `now()`, `call_later(delay, fn, period=None)`, `queue(fn)`, `add_poller(fn)`, `remove_poller(fn)`, `dispatch()`, `yield_point()`, `wait(seconds=None, until=None)`, `format_error(e)`, `install()`, `shutdown()`, `main(source, filename)`
 
 - [ ] **Step 1: Write the failing test**
 
@@ -2623,6 +2630,10 @@ UNSUPPORTED = {
 }
 THREADS = "Threads aren't supported in the simulator yet; use gpiozero callbacks or a loop with time.sleep()"
 NPINS = 28
+# The 40-pin header: BOARD pin number to BCM GPIO number (RPi.GPIO and gpiozero both read it).
+BOARD_TO_BCM = {3: 2, 5: 3, 7: 4, 8: 14, 10: 15, 11: 17, 12: 18, 13: 27, 15: 22, 16: 23, 18: 24, 19: 10,
+                21: 9, 22: 25, 23: 11, 24: 8, 26: 7, 27: 0, 28: 1, 29: 5, 31: 6, 32: 12, 33: 13, 35: 19,
+                36: 16, 37: 26, 38: 20, 40: 21}
 
 _timers = []
 _queue = []
@@ -2907,7 +2918,7 @@ export function runMain(py: PyodideLike, source: string, file: string): 'done' |
 import { loadPyodide } from 'pyodide'
 import type { BoardKind } from './boards.ts'
 import { makeHw, testClock } from './bridge.ts'
-import { H, INPUT, type PinIn, boardMemory, readOut, writeIn, writeLine } from './memory.ts'
+import { H, INPUT, MODE, type PinIn, boardMemory, readOut, writeIn, writeLine } from './memory.ts'
 import { PY_FILES } from './pyFiles.ts'
 import { type PyodideLike, installFiles, resetModules, runMain } from './worker/serve.ts'
 
@@ -2945,7 +2956,8 @@ export async function runScript(source: string, o: { inputs?: ScriptInput[]; unt
         continue
       }
       events.shift()
-      const was = levels.get(e.bcm) ?? { level: 0, rising: 0, falling: 0, status: 'value', volts: 0 }
+      // Like LevelTracker's first result: a pulled-up pin starts high and the first scripted level is an edge only if it differs.
+      const was = levels.get(e.bcm) ?? { level: readOut(m, e.bcm).mode === MODE.pullup ? 1 : 0, rising: 0, falling: 0, status: 'value', volts: 0 }
       const row: PinIn = { level: e.level, status: 'value', volts: e.level ? 3.3 : 0, rising: was.rising + (e.level && !was.level ? 1 : 0), falling: was.falling + (!e.level && was.level ? 1 : 0) }
       levels.set(e.bcm, row)
       writeIn(m, Array.from({ length: e.bcm + 1 }, (_, b) => (b === e.bcm ? row : null)), Atomics.load(m.i32, H.codeSeq))
@@ -3131,10 +3143,7 @@ RPI_INFO = dict(P1_REVISION=3, REVISION='unknown', MANUFACTURER='unknown', RAM='
 if _board == 'pi5':
     sys.stderr.write('RPi.GPIO does not work on a real Pi 5; use gpiozero, or install rpi-lgpio\n')
 
-# The 40-pin header: BOARD pin number to BCM GPIO number.
-_BOARD_TO_BCM = {3: 2, 5: 3, 7: 4, 8: 14, 10: 15, 11: 17, 12: 18, 13: 27, 15: 22, 16: 23, 18: 24, 19: 10,
-                 21: 9, 22: 25, 23: 11, 24: 8, 26: 7, 27: 0, 28: 1, 29: 5, 31: 6, 32: 12, 33: 13, 35: 19,
-                 36: 16, 37: 26, 38: 20, 40: 21}
+from _circuitoon import BOARD_TO_BCM as _BOARD_TO_BCM
 _PULL_MODE = {PUD_OFF: 1, PUD_UP: 2, PUD_DOWN: 3}
 _mode = None
 _warn = True
@@ -3403,7 +3412,7 @@ MSG
 
 **Interfaces:**
 - Consumes: Task 13's `_circuitoon` and `circuitoon_hw`; `runScript`.
-- Produces (Python `gpiozero`): `GPIOZeroError`, `DeviceClosed`, `GPIOPinInUse`, `PinInvalidPin`, `PinInvalidState`, `OutputDeviceBadValue`; `Device`, `OutputDevice`, `DigitalOutputDevice`, `LED`, `Buzzer`, `InputDevice`, `DigitalInputDevice`, `Button`, `LineSensor`, `MotionSensor`, `pause`; the private helpers `_bcm_of(spec)`, `_Sequence`, `_fade_steps` (Task 16 uses them); `UNSUPPORTED_NAMES` (read by Task 41's gate scan); module `__getattr__` for names not simulated.
+- Produces (Python `gpiozero`): `GPIOZeroError`, `DeviceClosed`, `GPIOPinInUse`, `PinInvalidPin`, `PinInvalidState`, `OutputDeviceBadValue`; `Device`, `OutputDevice`, `DigitalOutputDevice`, `LED`, `Buzzer` (a digital device, as in gpiozero and spec revision 5: it never declares PWM), `InputDevice`, `DigitalInputDevice`, `Button`, `LineSensor`, `MotionSensor`, `pause`; the private helpers `_bcm_of(spec)`, `_Sequence`, `_fade_steps` (Task 16 uses them); `UNSUPPORTED_NAMES` (read by Task 40's gate scan); module `__getattr__` for names not simulated.
 
 - [ ] **Step 1: Check the gpiozero aliases this task copies**
 
@@ -3526,9 +3535,7 @@ UNSUPPORTED_NAMES = {
 }
 _M32 = 0xFFFFFFFF
 _FPS = 25
-_BOARD_TO_BCM = {3: 2, 5: 3, 7: 4, 8: 14, 10: 15, 11: 17, 12: 18, 13: 27, 15: 22, 16: 23, 18: 24, 19: 10,
-                 21: 9, 22: 25, 23: 11, 24: 8, 26: 7, 27: 0, 28: 1, 29: 5, 31: 6, 32: 12, 33: 13, 35: 19,
-                 36: 16, 37: 26, 38: 20, 40: 21}
+from _circuitoon import BOARD_TO_BCM as _BOARD_TO_BCM
 _used = {}
 
 
@@ -3971,7 +3978,7 @@ MSG
 
 **Interfaces:**
 - Consumes: Task 15's `Device`, `OutputDevice`, `DigitalOutputDevice`, `LED`, `_Sequence`, `_fade_steps`, `_rt`, `_hw`, `OutputDeviceBadValue`.
-- Produces (Python `gpiozero`): `PWMOutputDevice`, `PWMLED`, `RGBLED`, `Servo`, `AngularServo`, `Motor` (two pins). Every one writes the declared PWM descriptor (spec 2.2).
+- Produces (Python `gpiozero`): `PWMOutputDevice`, `PWMLED`, `RGBLED`, `Servo`, `AngularServo`, `Motor` (two pins). Every one writes the declared PWM descriptor (spec 2.2); `Buzzer` stays the digital device of Task 15 (spec revision 5).
 
 - [ ] **Step 1: Write the failing test**
 
@@ -4763,6 +4770,23 @@ export function runNode(source: string, o: { file?: string; board?: BoardKind; m
 }
 ```
 
+- [ ] **Step 8: Run the tests**
+
+Run: `npx vitest run src/run/worker.test.ts`
+Expected: PASS (10 tests).
+
+- [ ] **Step 9: Commit**
+
+```bash
+git add src/run/worker/sandbox.ts src/run/worker/serve.ts src/run/host.ts src/run/node/codeWorker.ts src/run/browser/codeWorker.ts src/run/worker.test.ts src/run/testing.ts
+git commit -m "$(cat <<'MSG'
+Run: the code worker (sandbox, Pyodide, Stop) and the host that owns it
+
+Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
+MSG
+)"
+```
+
 
 ### Task 18: The virtual clock in the worker
 
@@ -5366,7 +5390,7 @@ describe('the sampler (spec 2.3)', () => {
     expect(s.sample(m, 48).pins.GPIO18).toBe('high')
   })
   it('quantises duty to 1/64 and moves only past a step', () => {
-    expect(quantize(null, 0.51)).toBe(0.5)
+    expect(quantize(null, 0.505)).toBe(0.5)
     expect(quantize(0.5, 0.51)).toBe(0.5)
     expect(quantize(0.5, 0.52)).toBe(33 / 64)
   })
@@ -5986,7 +6010,7 @@ In `src/sim/display.ts` `SIM_TITLES`, add `'pwm-approximate': 'PWM average is ap
 
 In `src/sim/findings.ts`:
 - `Draft` gains `/** How far past its limit (larger is worse), so the union over PWM runs keeps the worst reading (firmware spec 4.2). */ worse?: number`;
-- in `runDrafts`, set `worse` on every limit-type draft: in the abs-max loop `worse: m.value / l.value.value`; in the limit loop `worse: under ? l.value.value / m.value : m.value / l.value.value`; on the `imax` draft `worse: raw.dev[d.id] / d.imax.value`; on the USB draft `worse: i / u.limit.value`; on the two `iout` drafts `worse: iout / r.ioutMax.value`; on the dropout draft `worse: r.vout!.value / Math.max(vctl, 1e-9)`; on the brownout error draft `worse: l.minVolts.value / Math.max(x, 1e-9)`;
+- in `runDrafts`, set `worse` on every limit-type draft except the abs-max one (it already carries the same value as `overBy`, which the sort below reads): in the limit loop `worse: under ? l.value.value / m.value : m.value / l.value.value`; on the `imax` draft `worse: raw.dev[d.id] / d.imax.value`; on the USB draft `worse: i / u.limit.value`; on the two `iout` drafts `worse: iout / r.ioutMax.value`; on the dropout draft `worse: r.vout!.value / Math.max(vctl, 1e-9)`; on the brownout error draft `worse: l.minVolts.value / Math.max(x, 1e-9)`;
 - import `type PwmPlan` from `'./pwm.ts'`;
 - replace `analyseFindings` with:
 
@@ -6018,7 +6042,7 @@ export function analyseRuns(c: Circuit, cls: Classification, runs: Record<Corner
   const value = [...typical, ...peak]
     .flatMap((r) => r.drafts)
     .filter((d) => !(d.code === 'sim-over-limit' && shorted.has(d.parts[0]) && !d.pins))
-    .sort((a, b) => (b.worse ?? 0) - (a.worse ?? 0))
+    .sort((a, b) => (b.worse ?? b.overBy ?? 0) - (a.worse ?? a.overBy ?? 0))
   return { findings: finalize([...topo.drafts, ...approximateDrafts(c, plan), ...value], peakLabel), outside }
 }
 
@@ -6437,7 +6461,7 @@ MSG
 **Interfaces:**
 - Consumes: `solve` (Task 24), `Circuit`, `SimResult`; `boardModule`, `cellModule`, `sheet` (`src/sim/testing.ts`).
 - Produces:
-  - `const PI_UNDER_VOLTAGE = 4.63` (V; its source URL from Task 8's ledger entry in the comment, ruling R8)
+  - `const PI_UNDER_VOLTAGE = 4.63` (V; its source URL in the comment, copied from the `PI_UNDER_VOLTAGE` entry of the Pi 4 patch `notes` that Task 8 wrote, ruling R8)
   - `interface BoardPower { powered: boolean; inputVolts: number | null; lowest: { domain: string; volts: number | null; minVolts: number } | null }`
   - `function boardPower(c: Circuit, r: SimResult, uid: string): BoardPower` (from the typical corner's duty-weighted average, spec 4.5)
   - `function underVoltage(p: BoardPower): boolean`
@@ -6452,6 +6476,7 @@ MSG
 // duty-weighted average) at or above its minVolts. A PWM combination that browns out is reported
 // (the union) but, averaged at 10 % duty, does not stop the board. The 5V input below 4.63 V gives a
 // note. The words are the spec's.
+import { readFileSync } from 'node:fs'
 import { afterAll, describe, expect, it } from 'vitest'
 import { makeEngine } from '../sim/engine/engine.ts'
 import { createNodeEngineHost } from '../sim/engine/nodeEngine.ts'
@@ -6491,6 +6516,12 @@ describe('power while running (spec 4.5)', () => {
     expect(underVoltageNote('U1', 4.5)).toBe("U1's 5V input is at 4.5 V, below the 4.63 V where a real Raspberry Pi warns of under-voltage.")
     expect([NO_POWER('U1'), LOST_POWER('U1')]).toEqual(['U1 has no power: connect 5V and GND', 'U1 lost power'])
   }, 60_000)
+  it('cites the source URL that Task 8 recorded in the Pi 4 patch notes', () => {
+    const note = (JSON.parse(readFileSync('scripts/sim-data/rpi-4-model-b.json', 'utf8')).notes as string[]).find((n) => n.includes('PI_UNDER_VOLTAGE'))
+    const url = note?.match(/https:\/\/\S+/)?.[0].replace(/[.,;)]+$/, '')
+    expect(url).toBeDefined()
+    expect(readFileSync('src/run/power.ts', 'utf8')).toContain(`Source: ${url}`)
+  })
 })
 ```
 
@@ -6513,7 +6544,7 @@ Expected: FAIL, `./power.ts` cannot be found.
 import type { Circuit } from '../sim/model.ts'
 import type { SimResult } from '../sim/results.ts'
 
-/** Raspberry Pi's under-voltage warning threshold, volts (ruling R8). Source: <the URL Task 8 recorded in the ledger>. */
+/** Raspberry Pi's under-voltage warning threshold, volts (ruling R8). Source: <the URL in the PI_UNDER_VOLTAGE note of scripts/sim-data/rpi-4-model-b.json>. */
 export const PI_UNDER_VOLTAGE = 4.63
 
 export interface BoardPower {
@@ -6552,12 +6583,12 @@ export function boardPower(c: Circuit, r: SimResult, uid: string): BoardPower {
 export const underVoltage = (p: BoardPower): boolean => p.inputVolts !== null && p.inputVolts < PI_UNDER_VOLTAGE
 ```
 
-Replace the comment's `<the URL Task 8 recorded in the ledger>` with that URL (Task 8 verified it with the two reviewers).
+Replace the comment's `<the URL in the PI_UNDER_VOLTAGE note of scripts/sim-data/rpi-4-model-b.json>` with the URL in that note (Task 8 verified it with the two reviewers); the last test fails until the comment holds exactly that URL after `Source: `.
 
 - [ ] **Step 4: Run the tests**
 
 Run: `npx vitest run src/run/power.test.ts`
-Expected: PASS (3 tests).
+Expected: PASS (4 tests).
 
 - [ ] **Step 5: Commit**
 
@@ -7089,7 +7120,7 @@ export async function drive(o: DriveOptions): Promise<DriveResult> {
     }
   }
   let revision = 0
-  let last: { outcome: SimOutcome; circuit: Circuit } | null = null
+  let last = null as { outcome: SimOutcome; circuit: Circuit } | null
   let pins: RunPins = {}
   let seq: Record<string, number> = {}
   let moving: string[] = []
@@ -7300,7 +7331,7 @@ UI tasks follow the repo's way of testing the editor: logic in plain modules get
   - `EditorState` gains `run: RunView`, `dock: DockState`, `linkCode: boolean`; `SimView`'s `done` phase gains `runSeq?: Record<string, number>`
   - `new EditorStore(diagram, opts?: { linkCode?: boolean })`; methods `setRun(patch: Partial<RunView>)`, `setBoardRun(uid: string, patch: Partial<BoardRunView> | null)`, `appendSerial(uid: string, lines: SerialLine[])`, `setDock(patch: Partial<DockState>)`, `confirmLinkCode()`, getter `activeRuns: string[]` (status starting or running)
 - Produces (`src/editor/ops.ts`): `function setPartCode(d: Diagram, uid: string, code: PartCode | undefined): Diagram`
-- Produces (`src/editor/simulation.ts`): `function solveKey(d: Diagram, held: unknown, run?: { pins: RunPins; moving: string[] }): string`; `followStore(store, request: (d: Diagram, held: EditorState['held'], run: { pins: RunPins; moving: string[]; seq: Record<string, number> }) => void)`
+- Produces (`src/editor/simulation.ts`): `function solveKey(d: Diagram, held: unknown, run?: { pins: RunPins; moving: string[]; seq: Record<string, number> }): string`; `followStore(store, request: (d: Diagram, held: EditorState['held'], run: { pins: RunPins; moving: string[]; seq: Record<string, number> }) => void)`
 
 - [ ] **Step 0: Record the main bundle's size before the editor changes**
 
@@ -7366,9 +7397,11 @@ describe('run state in the editor store', () => {
 describe('the simulation follows run pin states (spec 2.3, 4.1)', () => {
   it('changes the solve key with run pin states and servo motion only', () => {
     const d = piBlink()
-    expect(solveKey(d, null, { pins: { u1: { GPIO17: 'high' } }, moving: [] })).not.toBe(solveKey(d, null, { pins: { u1: { GPIO17: 'low' } }, moving: [] }))
-    expect(solveKey(d, null, { pins: {}, moving: ['m1'] })).not.toBe(solveKey(d, null, { pins: {}, moving: [] }))
-    expect(solveKey(d, null)).toBe(solveKey(d, null, { pins: {}, moving: [] }))
+    expect(solveKey(d, null, { pins: { u1: { GPIO17: 'high' } }, moving: [], seq: {} })).not.toBe(solveKey(d, null, { pins: { u1: { GPIO17: 'low' } }, moving: [], seq: {} }))
+    expect(solveKey(d, null, { pins: {}, moving: ['m1'], seq: {} })).not.toBe(solveKey(d, null, { pins: {}, moving: [], seq: {} }))
+    // A re-setup alone (a new code sequence) re-solves: spec 4.4's read after setup waits for a result solved through that sequence.
+    expect(solveKey(d, null, { pins: {}, moving: [], seq: { u1: 2 } })).not.toBe(solveKey(d, null, { pins: {}, moving: [], seq: { u1: 1 } }))
+    expect(solveKey(d, null)).toBe(solveKey(d, null, { pins: {}, moving: [], seq: {} }))
   })
   it('requests a solve for a run-state change even mid-drag, and not for a plain drag frame', () => {
     const s = new EditorStore(piBlink())
@@ -7525,10 +7558,10 @@ function netsKey(d: Diagram): string {
   netKeys.set(d.connections, { parts: d.parts, key })
   return key
 }
-const NO_RUN = { pins: {}, moving: [] as string[] }
+const NO_RUN = { pins: {}, moving: [] as string[], seq: {} }
 
-/** What decides a solve: connectivity (mounts included), values, settings, module identity, probes, a held button, run pin states and moving servos. Never positions, never frequencies. */
-export function solveKey(d: Diagram, held: unknown, run: { pins: RunPins; moving: string[] } = NO_RUN): string {
+/** What decides a solve: connectivity (mounts included), values, settings, module identity, probes, a held button, run pin states, moving servos and each board's code sequence. Never positions, never frequencies. */
+export function solveKey(d: Diagram, held: unknown, run: { pins: RunPins; moving: string[]; seq: Record<string, number> } = NO_RUN): string {
   return JSON.stringify([
     netsKey(d),
     d.parts.map((p) => [p.uid, p.module, p.values ?? null, p.settings ?? null]),
@@ -7537,6 +7570,7 @@ export function solveKey(d: Diagram, held: unknown, run: { pins: RunPins; moving
     held,
     run.pins,
     run.moving,
+    run.seq,
   ])
 }
 ```
@@ -7555,8 +7589,8 @@ export function followStore(store: EditorStore, request: (d: Diagram, held: Edit
   const check = () => {
     const { diagram: d, held, simulate, run } = store.getState()
     if (!simulate) return
-    const now = [d.parts, d.connections, d.modules, d.probes, held, run.pins, run.moving]
-    const runMoved = !seen || now[5] !== seen[5] || now[6] !== seen[6]
+    const now = [d.parts, d.connections, d.modules, d.probes, held, run.pins, run.moving, run.seq]
+    const runMoved = !seen || now[5] !== seen[5] || now[6] !== seen[6] || now[7] !== seen[7]
     // A press and its release both solve, even mid-drag (the release may come before the drop).
     if (store.dragging && !held && !seen?.[4] && !runMoved) return
     if (seen && now.every((x, i) => x === seen![i])) return
@@ -8133,6 +8167,8 @@ export class RunController {
         if (!p || p.module !== r.module) void this.stop(uid)
       }
     }
+    // store.load (Open, New) resets `run` to EMPTY_RUN: a running board with no view left means the sheet was replaced, even if the new sheet has a part with the same uid.
+    for (const uid of this.runs.keys()) if (!st.run.boards[uid]) void this.stop(uid)
     if (st.sim !== this.seenSim && st.sim?.phase === 'done') {
       this.seenSim = st.sim
       this.inFlight = false
@@ -8362,6 +8398,7 @@ export function SerialPanel({ store, uid, onGoto }: { store: EditorStore; uid: s
         ref={log}
         className="serial-log"
         role="log"
+        aria-live="off"
         tabIndex={0}
         aria-label="Serial output"
         onScroll={(e) => {
@@ -8461,6 +8498,7 @@ Expected: six exact versions in `dependencies` (they ship in the site).
 //   8. link: code that came in a link asks once before running.
 // Screenshots go to --out as code-<case>-<scheme>.png; open and look at each one.
 // Usage (after `npm run build`): npm run check:code-ui -- [--out <dir>] [--port 4215]
+import { execFileSync } from 'node:child_process'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { checker, flagOf, launchChrome, startPreview } from './lib/browser-check.mjs'
@@ -8560,7 +8598,7 @@ for (const scheme of ['light', 'dark']) {
   await page.locator('[data-run="u1"]').click()
   await waitStatus('stopped')
   check((await page.getAttribute('[data-sim-led="d1"]', 'data-sim-level').catch(() => '0')) === '0.00' || !(await page.locator('[data-sim-led="d1"]').count()), `${scheme}: Stop restores the saved states (LED dark)`)
-  check(undoBefore === false, `${scheme}: the code edit is on the undo stack, the run is not`)
+  check(undoBefore === false, `${scheme}: the code edit is on the undo stack`)
   await shot('stopped')
 
   // 7. collapsed, Ctrl+`, Escape then Tab
@@ -8584,6 +8622,27 @@ for (const scheme of ['light', 'dark']) {
   await ref.click()
   check((await page.locator('.cm-activeLine').textContent())?.includes("raise RuntimeError('boom')"), `${scheme}: the link moves the cursor to line 4`)
   await shot('error')
+
+  // 8. link: code that came in a link asks once before running (spec 2.6)
+  const link = JSON.parse(execFileSync(process.execPath, ['plugin/bin/circuitoon.mjs', 'link', blinkFile, '--json'], { encoding: 'utf8' }))
+  check(link.url !== null, `${scheme}: the CLI made a link for blink.py`)
+  await page.goto(link.url.replace('https://mbarc.github.io/circuitoon/', base), { waitUntil: 'networkidle' })
+  await page.waitForSelector('#code-dock')
+  await page.locator('[data-run="u1"]').click()
+  const confirm = page.locator('.code-confirm')
+  check((await confirm.textContent())?.includes('This code came with the link. Run runs it in your browser, with no access to other sites.'), `${scheme}: the first Run of linked code asks`)
+  check((await status()) === 'idle', `${scheme}: nothing runs before the answer`)
+  await shot('link')
+  await confirm.getByRole('button', { name: 'Cancel' }).click()
+  check((await confirm.count()) === 0 && (await status()) === 'idle', `${scheme}: Cancel closes the question and runs nothing`)
+  await page.locator('[data-run="u1"]').click()
+  await confirm.getByRole('button', { name: 'Run', exact: true }).click()
+  await waitStatus('running', 30000)
+  await page.locator('[data-run="u1"]').click()
+  await waitStatus('stopped')
+  await page.locator('[data-run="u1"]').click()
+  await waitStatus('running', 30000)
+  check((await confirm.count()) === 0, `${scheme}: it asks once, not on the next Run`)
 
   check(!errors.length, `${scheme}: no page errors (${errors.join(' | ')})`)
   await context.close()
@@ -8668,6 +8727,8 @@ export default function CodeEditor({ value, onChange, label, goto }: { value: st
 }
 ```
 
+Now that CodeMirror is installed, check whether it already does Escape then Tab: `grep -n "tabFocus\|TabFocus" node_modules/@codemirror/view/dist/index.js node_modules/@codemirror/commands/dist/index.js`. If a built-in focus mode lets Escape then Tab leave the editor (`indentWithTab` and the default keymap honour it), delete `escapeThenTab` (the function, its comment and its entry in `extensions`) and keep the dock's help text; case 7 of the browser check is then the proof. If it is not built in, keep `escapeThenTab` as written.
+
 - [ ] **Step 4: The dock**
 
 `src/editor/CodeDock.tsx`:
@@ -8714,7 +8775,7 @@ export function CodeDock({ store }: { store: EditorStore }) {
   const tabs = dockTabs(s)
   const [goto, setGoto] = useState<{ line: number; at: number } | null>(null)
   const [refused, setRefused] = useState<string | null>(null)
-  const [asking, setAsking] = useState(false)
+  const [asking, setAsking] = useState<'run' | 'runAll' | null>(null)
   const upload = useRef<HTMLInputElement>(null)
   const drag = useRef<{ y: number; h: number } | null>(null)
   if (!tabs.length) return null
@@ -8730,7 +8791,7 @@ export function CodeDock({ store }: { store: EditorStore }) {
   const many = codeBoards(s).length >= 2
   const run = () => {
     if (live) return runAction(store, 'stop', uid)
-    if (s.linkCode) return setAsking(true)
+    if (s.linkCode) return setAsking('run')
     runAction(store, 'run', uid)
   }
   const height = s.dock.open ? s.dock.height : 28
@@ -8757,13 +8818,26 @@ export function CodeDock({ store }: { store: EditorStore }) {
         }}
       />
       <div className="code-dock-bar">
-        <div role="tablist" aria-label="Boards with code" className="code-dock-tabs">
+        <div
+          role="tablist"
+          aria-label="Boards with code"
+          className="code-dock-tabs"
+          onKeyDown={(e) => {
+            // A proper tablist (spec 6.4): arrows, Home and End select and focus the neighbour; only the selected tab is in the Tab order.
+            const i = tabs.indexOf(uid)
+            const to = e.key === 'ArrowRight' ? (i + 1) % tabs.length : e.key === 'ArrowLeft' ? (i - 1 + tabs.length) % tabs.length : e.key === 'Home' ? 0 : e.key === 'End' ? tabs.length - 1 : -1
+            if (to < 0) return
+            e.preventDefault()
+            store.setDock({ tab: tabs[to], open: true })
+            e.currentTarget.querySelectorAll<HTMLElement>('[role=tab]')[to]?.focus()
+          }}
+        >
           {tabs.map((t) => {
             const p = s.diagram.parts.find((x) => x.uid === t)!
             const ts = tabStatus(s.run.boards[t], p.code)
             const name = s.diagram.modules[p.module]?.name ?? p.module
             return (
-              <button key={t} type="button" role="tab" aria-selected={t === uid} data-dock-tab={t} data-status={ts.key} className="code-dock-tab" onClick={() => store.setDock({ tab: t, open: true })}>
+              <button key={t} type="button" role="tab" aria-selected={t === uid} tabIndex={t === uid ? 0 : -1} data-dock-tab={t} data-status={ts.key} className="code-dock-tab" onClick={() => store.setDock({ tab: t, open: true })}>
                 <span className={`code-dot ${ts.key}`} aria-hidden="true" />
                 <span className="code-tab-name">{p.designator}</span>
                 <span className="code-tab-board">{name}</span>
@@ -8775,7 +8849,7 @@ export function CodeDock({ store }: { store: EditorStore }) {
         </div>
         {many && s.dock.open && (
           <div className="code-dock-all">
-            <button type="button" className="tool small" onClick={() => runAction(store, 'runAll')}>Run all</button>
+            <button type="button" className="tool small" onClick={() => (s.linkCode ? setAsking('runAll') : runAction(store, 'runAll'))}>Run all</button>
             <button type="button" className="tool small" onClick={() => runAction(store, 'stopAll')}>Stop all</button>
           </div>
         )}
@@ -8821,8 +8895,8 @@ export function CodeDock({ store }: { store: EditorStore }) {
             {asking && (
               <div className="code-confirm" role="alertdialog" aria-label="Run code from a link">
                 <p>This code came with the link. Run runs it in your browser, with no access to other sites.</p>
-                <button type="button" className="tool small" onClick={() => (setAsking(false), store.confirmLinkCode(), runAction(store, 'run', uid))}>Run</button>
-                <button type="button" className="tool small" onClick={() => setAsking(false)}>Cancel</button>
+                <button type="button" className="tool small" onClick={() => (setAsking(null), store.confirmLinkCode(), runAction(store, asking, uid))}>Run</button>
+                <button type="button" className="tool small" onClick={() => setAsking(null)}>Cancel</button>
               </div>
             )}
             {(refused || b?.message || blocker) && <p className="code-message" role="alert">{refused ?? b?.message ?? blocker}</p>}
@@ -8944,7 +9018,7 @@ In `src/editor/Editor.tsx`: import `{ CodeDock }` from `./CodeDock.tsx` and rend
       }
 ```
 
-In `src/editor/Toolbar.tsx`, as the toolbar's first child: `{dockTabs(state).length > 0 && <a className="skip-link" href="#code-dock">Skip to code</a>}` (import `dockTabs` from `./CodeDock.tsx`; `state` is the toolbar's `useEditorState(store)` value).
+In `src/editor/Toolbar.tsx`, as the toolbar's first child: `{dockTabs(state).length > 0 && <a className="skip-link" href="#code-dock">Skip to code</a>}` (import `dockTabs` from `./CodeDock.tsx`). `Toolbar` has no `state` today: change line 108 from `const { diagram, selection, snapObjects, simulate, simTool, sim } = useEditorState(store)` to `const state = useEditorState(store)` followed by `const { diagram, selection, snapObjects, simulate, simTool, sim } = state`.
 
 - [ ] **Step 6: Run the check and look at every screenshot**
 
@@ -9253,7 +9327,7 @@ Append to `src/editor/editor.css`:
 In `src/editor/ProbesPanel.tsx`, inside the "About the simulator" `<details>`, after the engine paragraph, add:
 
 ```tsx
-        <h3 className="about-head">Running code</h3>
+        <h3>Running code</h3>
         <p>
           A Raspberry Pi's Python runs in your browser on Pyodide, with RPi.GPIO and most of gpiozero. Pins, PWM, servos and print() reach the simulation;
           I2C and SPI devices, serial ports and threads are not simulated yet. Callbacks do not run at the same time as each other: a callback that sleeps holds
@@ -9611,7 +9685,7 @@ export function writeCode(netlist: { parts: Record<string, unknown>[] }, outFile
 }
 ```
 
-In `src/cli/layoutCmd.ts`, right after `raw = readJson(io, input!)` (the netlist branch): `raw = embedCode(raw, dirname(pathIn(io, input!)), input!)` (import `dirname` from `node:path`, `pathIn` from `./io.ts`, `embedCode` from `./codeFiles.ts`). In `src/cli/netlistCmd.ts`, after extracting and before writing: `if (out) writeCode(netlist as { parts: Record<string, unknown>[] }, out, io)`.
+In `src/cli/layoutCmd.ts`, right after `raw = readJson(io, input!)` (the netlist branch): `raw = embedCode(raw, dirname(pathIn(io, input!)), input!)` (import `dirname` from `node:path`, `pathIn` from `./io.ts`, `embedCode` from `./codeFiles.ts`). In `src/cli/netlistCmd.ts`, after `const out = flag(args, '--out') ?? null` and before `const text = JSON.stringify(netlist, null, 2)` is built (it must serialize the netlist after `writeCode` has replaced each inline code with its path): `if (out) writeCode(netlist as { parts: Record<string, unknown>[] }, out, io)`.
 
 In `netlist.schema.json`, give the netlist part's properties a `code` entry: `{ "type": "object", "required": ["language"], "properties": { "language": { "type": "string" }, "path": { "type": "string" }, "source": { "type": "string" }, "file": { "type": "string" } }, "additionalProperties": false }`. In `netlist-format.md`, document the `code` key on a part: `{ "language": "python-rpi", "path": "blink.py" }`, the path rules, and that `circuitoon netlist -o` writes `<ref>.py` beside the netlist.
 
@@ -9659,6 +9733,7 @@ import { join, resolve } from 'node:path'
 import { serializeDiagram } from '../format/diagram.ts'
 import { piBlink, piButton } from '../run/sheets.testing.ts'
 import { cli, tempDir } from './cliHarness.testing.ts'
+import { CliError } from './io.ts'
 import { loadSchema, schemaErrors } from './jsonSchema.testing.ts'
 import { NO_LONGER_PUBLISHED } from '../run/node/pyCache.ts'
 import { parseDuration, parsePress, runCommand } from './runCmd.ts'
@@ -9712,7 +9787,9 @@ describe('circuitoon run (spec 7)', () => {
     let err = ''
     const parsed = parseArgs(['run', 's.json'])
     if (!parsed.ok) throw new Error(parsed.error)
-    const code = await runCommand(parsed.value, { stdout() {}, stderr: (s) => void (err += s), cwd: dir, env: { CIRCUITOON_CACHE: tempDir() } }, { fetch: (async () => new Response('', { status: 404 })) as typeof fetch })
+    // runCommand throws a CliError; main.ts turns it into the message and exit code asserted here.
+    const code = await runCommand(parsed.value, { stdout() {}, stderr: (s) => void (err += s), cwd: dir, env: { CIRCUITOON_CACHE: tempDir() } }, { fetch: (async () => new Response('', { status: 404 })) as typeof fetch }).catch((e: CliError) => ((err += `${e.message}
+`), e.code))
     expect([code, err]).toEqual([3, `${NO_LONGER_PUBLISHED}\n`])
   }, 60_000)
 })
@@ -9747,6 +9824,7 @@ import { libraryLookup } from '../agent/catalog.ts'
 import { type Engine, makeEngine } from '../sim/engine/engine.ts'
 import { createNodeEngineHost } from '../sim/engine/nodeEngine.ts'
 import { type Press, drive } from '../run/driver.ts'
+import { boardKindOf } from '../run/boards.ts'
 import { cacheRoot, ensurePy } from '../run/node/pyCache.ts'
 import type { Args } from './args.ts'
 import { CliError, EXIT, type Io, flag, loadSheet, pathIn, printJson } from './io.ts'
@@ -9786,7 +9864,7 @@ export async function runCommand(args: Args, io: Io, opts: { engine?: Engine; fe
     boards = [p.uid]
   }
   if (!boards.length) {
-    const names = d.parts.filter((p) => /^rpi-/.test(p.module)).map((p) => p.designator)
+    const names = d.parts.filter((p) => boardKindOf(d.modules[p.module])).map((p) => p.designator)
     if (json) printJson(io, { format: RUN_FORMAT, ok: false, exit: EXIT.environment, simulatedSeconds: 0, boards: [], timeline: [], findings: [], incomplete: names.map((ref) => ({ ref, why: `${ref} has no code` })), neverPauses: [], lostPower: [] })
     io.stderr(`${names.length ? names.map((n) => `${n} has no code`).join('\n') : 'The sheet has no board with code'}\n`)
     return EXIT.environment
@@ -9912,7 +9990,7 @@ MSG
 - Modify: `src/cli/gate.ts`, `src/cli/gate.test.ts` (add), `plugin/skills/circuitoon-design/SKILL.md` ("Reading the gate")
 
 **Interfaces:**
-- Consumes: `PY_FILES` (the Python lists), `languagesOf`, `languageName`, `KNOWN_LANGUAGES`, `withLibraryData`; `CliFinding` (`verifyCmd.ts`).
+- Consumes: `PY_FILES` (the Python lists), `languageMismatch` (Task 5), `withLibraryData`; `CliFinding` (`verifyCmd.ts`).
 - Produces:
   - `src/run/unsupported.ts`: `const UNSUPPORTED_MODULES: Record<string, string>`, `const UNSUPPORTED_GPIOZERO: Record<string, string>` (read from `_circuitoon.py`'s `UNSUPPORTED` and gpiozero's `UNSUPPORTED_NAMES`), `function unsupportedImports(source: string): { name: string; why: string }[]`
   - `src/cli/codeFindings.ts`: `function codeFindings(d: Diagram, library: ModuleLookup): CliFinding[]` (rule `code-language`, an error; rule `code-unsupported-import`, a warning). The gate does not run code; `gate/4`'s format is unchanged.
@@ -9958,6 +10036,7 @@ describe('gate: code on boards (firmware spec 7)', () => {
     const { report } = await runGate(new TextEncoder().encode(serializeDiagram(d)), { sheetPath: 'sheet.json', outDir: join(dir, 'out'), io: quietIo(dir) })
     expect(report.blocking.find((f) => f.rule === 'code-language')?.message).toBe("U2 is an Arduino Uno R3; its code is Raspberry Pi Python and won't run.")
     expect(report.warnings.find((f) => f.rule === 'code-unsupported-import')?.message).toBe("U1's code: smbus needs I2C devices, coming in a later update.")
+    expect([...report.blocking, ...report.warnings].filter((f) => f.message.includes("won't run"))).toHaveLength(1)
     expect(report.format).toBe('circuitoon-cli/gate/4')
   })
 })
@@ -9991,13 +10070,13 @@ export function unsupportedImports(source: string): { name: string; why: string 
   const found = new Map<string, string>()
   const gz = (name: string) => name in UNSUPPORTED_GPIOZERO && found.set(`gpiozero.${name}`, `gpiozero.${name} ${UNSUPPORTED_GPIOZERO[name]}`)
   const code = source.replace(/#[^\n]*/g, '')
-  for (const m of code.matchAll(/^[ \t]*(?:import[ \t]+([\w., \t]+)|from[ \t]+([\w.]+)[ \t]+import[ \t]+\(?([\w., \t\n]+)\)?)/gm)) {
+  for (const m of code.matchAll(/^[ \t]*(?:import[ \t]+([\w., \t]+)|from[ \t]+([\w.]+)[ \t]+import[ \t]+(?:\(([\w., \t\n]+)\)|([\w., \t]+)))/gm)) {
     const mods = m[1] ? m[1].split(',').map((s) => s.trim().split(/\s+as\s+/)[0]) : [m[2]]
     for (const mod of mods) {
       const root = mod.split('.')[0]
       if (root in UNSUPPORTED_MODULES) found.set(root, UNSUPPORTED_MODULES[root])
     }
-    if (m[2] === 'gpiozero') for (const n of m[3].split(',')) gz(n.trim().split(/\s+as\s+/)[0])
+    if (m[2] === 'gpiozero') for (const n of (m[3] ?? m[4]).split(',')) gz(n.trim().split(/\s+as\s+/)[0])
   }
   for (const m of code.matchAll(/\bgpiozero\.(\w+)/g)) gz(m[1])
   return [...found].map(([name, why]) => ({ name, why }))
@@ -10013,7 +10092,7 @@ export function unsupportedImports(source: string): { name: string; why: string 
 // a module or gpiozero name the simulator does not have is a warning (`code-unsupported-import`), from
 // a static scan. The gate never runs code.
 import type { Diagram } from '../format/diagram.ts'
-import { KNOWN_LANGUAGES, languageName, languagesOf } from '../format/code.ts'
+import { languageMismatch } from '../format/code.ts'
 import { withLibraryData } from '../format/simModel.ts'
 import type { ModuleLookup } from '../agent/netlist.ts'
 import { unsupportedImports } from '../run/unsupported.ts'
@@ -10026,8 +10105,8 @@ export function codeFindings(d: Diagram, library: ModuleLookup): CliFinding[] {
     const stored = d.modules[p.module]
     const m = stored && withLibraryData(stored, library)
     const lang = p.code.language
-    if (m && (KNOWN_LANGUAGES as readonly string[]).includes(lang) && !languagesOf(m).includes(lang))
-      out.push({ id: `code-language|${p.uid}`, rule: 'code-language', severity: 'error', parts: [p.uid], pins: [], wires: [], message: `${p.designator} is ${/^[aeiou]/i.test(m.name) ? 'an' : 'a'} ${m.name}; its code is ${languageName(lang)} and won't run.` })
+    const mismatch = m ? languageMismatch(p.designator, m, lang) : null
+    if (mismatch) out.push({ id: `code-language|${p.uid}`, rule: 'code-language', severity: 'error', parts: [p.uid], pins: [], wires: [], message: `${mismatch}.` })
     if (lang === 'python-rpi')
       for (const u of unsupportedImports(p.code.source))
         out.push({ id: `code-unsupported-import|${p.uid}|${u.name}`, rule: 'code-unsupported-import', severity: 'warning', parts: [p.uid], pins: [], wires: [], message: `${p.designator}'s code: ${u.why}.` })
@@ -10036,7 +10115,7 @@ export function codeFindings(d: Diagram, library: ModuleLookup): CliFinding[] {
 }
 ```
 
-In `src/cli/gate.ts`, after `found.push(...checked.map(cliFinding))`, add `found.push(...codeFindings(d, libraryLookup))` (import it). In `plugin/skills/circuitoon-design/SKILL.md`, "Reading the gate" gains: `code-language` (error: the board cannot run that language; move the code to a board that can, or remove it) and `code-unsupported-import` (warning: the script uses a module the simulator does not have yet; `circuitoon run` will stop at that import).
+In `src/cli/gate.ts`, after `found.push(...checked.map(cliFinding))`, add `found.push(...codeFindings(d, libraryLookup))` (import it). The loader's warning for the same mismatch ("... and won't run", Task 5) would report it a second time, so line 204 skips it: `v.warnings.forEach((w, i) => w.endsWith("won't run") || note('load', String(i), w.includes(VALUE_DROPPED) || w.includes(MISSING_MODULE) ? 'error' : 'warning', w))`. In `plugin/skills/circuitoon-design/SKILL.md`, "Reading the gate" gains: `code-language` (error: the board cannot run that language; move the code to a board that can, or remove it) and `code-unsupported-import` (warning: the script uses a module the simulator does not have yet; `circuitoon run` will stop at that import).
 
 - [ ] **Step 5: Run the tests**
 
