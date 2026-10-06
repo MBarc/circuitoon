@@ -57,6 +57,7 @@ export interface GpioDevice {
   params: { outputResistance: Param; pullup?: Param; pulldown?: Param; leakage?: Param }
 }
 
+// `internal`: an always-present resistor inside a part (a board's fixed pull-up, a servo's signal load), never a user resistor.
 export type Device =
   | { kind: 'resistor'; id: string; part: string; a: string; b: string; ohms: Param; role: 'resistor' | 'contact' | 'cable' | 'rail-input' | 'switch-rail' | 'internal' }
   | { kind: 'diode'; id: string; part: string; a: string; k: string; model: DiodeModel; role: 'led' | 'rail-input' | 'switch-rail' }
