@@ -9,7 +9,7 @@ import { libraryLookup } from '../agent/catalog.ts'
 import { layoutNetlist } from '../agent/layout.ts'
 import { extractNetlist } from '../agent/extract.ts'
 import { ledNetlist, tiltSensors } from '../agent/fixtures.testing.ts'
-import { probesForNetlist, probesForSheet } from './probes.ts'
+import { probesForNetlist, probesForSheet, sameAnchor } from './probes.ts'
 
 const withProbes = () => ({
   ...ledNetlist(),
@@ -72,6 +72,31 @@ describe('probes', () => {
       'probes[5]: its id P1 is used twice, so the probe was dropped',
       'probes[6]: its id must be P and a number (P1, P2, ...), so the probe was dropped',
     ])
+  })
+  it('keeps the hole a probe was placed on through save and load; an out-of-range hole is dropped with a warning', () => {
+    const s = laid(withProbes()).diagram
+    const bb = s.parts.find((p) => p.uid === 'BB1')!
+    const count = s.modules[bb.module].holes!.find((h) => h.name === 'top+')!.at.length
+    const probes = [
+      { id: 'P5', at: { part: 'BB1', pin: 'top+', hole: 10 } },
+      { id: 'P6', at: { part: 'BB1', pin: 'top+', hole: count } },
+      { id: 'P7', at: { part: 'BB1', pin: 'top+', hole: 1.5 } },
+      { id: 'P8', at: { part: 'D1', pin: 'A', hole: 0 } },
+    ]
+    const r = validateDiagram(JSON.parse(JSON.stringify({ ...s, probes })))
+    expect(r.ok).toBe(true)
+    if (!r.ok) return
+    expect(r.diagram.probes).toEqual([{ id: 'P5', at: { part: 'BB1', pin: 'top+', hole: 10 } }])
+    expect(r.warnings.filter((w) => w.startsWith('probes['))).toEqual([
+      `probes[1]: its hole must be a whole number from 0 to ${count - 1}, so the probe was dropped`,
+      `probes[2]: its hole must be a whole number from 0 to ${count - 1}, so the probe was dropped`,
+      'probes[3]: its hole needs a hole group as its pin, so the probe was dropped',
+    ])
+  })
+  it('tells the same point apart from another (part, pin and hole; no hole is hole 0)', () => {
+    expect(sameAnchor({ part: 'BB1', pin: 'top+' }, { part: 'BB1', pin: 'top+', hole: 0 })).toBe(true)
+    expect(sameAnchor({ part: 'BB1', pin: 'top+', hole: 3 }, { part: 'BB1', pin: 'top+', hole: 4 })).toBe(false)
+    expect(sameAnchor({ part: 'D1' }, { part: 'D1', pin: 'A' })).toBe(false)
   })
   it('drops a netlist probe that names nothing, with a warning in the intent', () => {
     const r = layoutNetlist({ ...ledNetlist(), probes: [{ id: 'P1', at: 'Q9.1' }, { id: 'P2', at: 'net:NOPE' }] })

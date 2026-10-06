@@ -73,8 +73,12 @@ export interface Annotation {
   label?: string
   text?: string
 }
-/** Where a probe reads (live-simulation spec 6.2): a part (current per pin, and power) or one of its pins or hole groups. */
-export interface ProbeAnchor { part: string; pin?: string }
+/**
+ * Where a probe reads (live-simulation spec 6.2): a part (current per pin, and power) or one of its
+ * pins or hole groups; `hole` is the hole of the group it was placed on (0 when absent), so the
+ * probe is drawn where it was clicked. A netlist keeps the group only (BB1.top+): layout picks a hole.
+ */
+export interface ProbeAnchor { part: string; pin?: string; hole?: number }
 export interface Probe { id: string; name?: string; at: ProbeAnchor }
 /** A probe id: P and a whole number from 1. */
 export const PROBE_ID = /^P[1-9]\d*$/
@@ -1415,17 +1419,22 @@ export const ANNOTATION_LABEL_MAX = 80
 export const ANNOTATION_TEXT_MAX = 500
 
 /** What is wrong with one stored probe, or null. `pinsOf` gives a part's pin and hole names, null when its module is not embedded, undefined when there is no such part. */
-function probeProblem(p: unknown, ids: Set<string>, pinsOf: (uid: string) => Set<string> | null | undefined): string | null {
-  if (!isObj(p)) return 'must be { "id", "name"?, "at": { "part", "pin"? } }'
+function probeProblem(p: unknown, ids: Set<string>, pinsOf: (uid: string) => Set<string> | null | undefined, holesOf: (uid: string, group: string) => number | undefined): string | null {
+  if (!isObj(p)) return 'must be { "id", "name"?, "at": { "part", "pin"?, "hole"? } }'
   for (const k of Object.keys(p)) if (!['id', 'name', 'at'].includes(k)) return `unknown field "${k}"`
   if (typeof p.id !== 'string' || !PROBE_ID.test(p.id)) return 'its id must be P and a number (P1, P2, ...)'
   if (ids.has(p.id)) return `its id ${p.id} is used twice`
   if (p.name !== undefined && !(typeof p.name === 'string' && p.name.trim() && p.name.length <= 40)) return 'its name must be text, at most 40 characters'
-  if (isObj(p.at)) for (const k of Object.keys(p.at)) if (!['part', 'pin'].includes(k)) return `unknown field "at.${k}"`
-  if (!isObj(p.at) || typeof p.at.part !== 'string' || (p.at.pin !== undefined && typeof p.at.pin !== 'string')) return 'its anchor must be { "part", "pin"? }'
+  if (isObj(p.at)) for (const k of Object.keys(p.at)) if (!['part', 'pin', 'hole'].includes(k)) return `unknown field "at.${k}"`
+  if (!isObj(p.at) || typeof p.at.part !== 'string' || (p.at.pin !== undefined && typeof p.at.pin !== 'string')) return 'its anchor must be { "part", "pin"?, "hole"? }'
   const pins = pinsOf(p.at.part)
   if (pins === undefined) return `no part "${p.at.part}"`
   if (typeof p.at.pin === 'string' && pins && !pins.has(p.at.pin)) return `part "${p.at.part}" has no pin "${p.at.pin}"`
+  if (p.at.hole !== undefined) {
+    const count = typeof p.at.pin === 'string' ? holesOf(p.at.part, p.at.pin) : undefined
+    if (count === undefined) return 'its hole needs a hole group as its pin'
+    if (!(Number.isInteger(p.at.hole) && (p.at.hole as number) >= 0 && (p.at.hole as number) < count)) return `its hole must be a whole number from 0 to ${count - 1}`
+  }
   return null
 }
 
@@ -1722,7 +1731,8 @@ export function validateDiagram(raw: unknown, opts: { library?: (id: string) => 
         return m ? new Set([...m.pins.flatMap((x) => ('name' in x && typeof x.name === 'string' ? [x.name] : [])), ...(m.holes ?? []).map((h) => h.name)]) : null
       }
       raw.probes.forEach((p, i) => {
-        const why = probeProblem(p, ids, pinsOf)
+        const holesOf = (uid: string, group: string) => modules.get(partModule.get(uid)!)?.holes?.find((h) => h.name === group)?.at.length
+        const why = probeProblem(p, ids, pinsOf, holesOf)
         if (why) return void warnings.push(`probes[${i}]: ${why}, so the probe was dropped`)
         kept.push(p as Probe)
         ids.add((p as Probe).id)

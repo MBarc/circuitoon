@@ -23,13 +23,13 @@ import { lookupModule, placeOnSheet, placementModule } from './myParts.ts'
 import { bodyRect } from '../format/geometry.ts'
 import { isNetLabel, layoutModule, type ModuleDef } from '../format/module.ts'
 import { MODULE_MIME } from './LibraryPanel.tsx'
-import type { Connection, Diagram, Endpoint } from '../format/diagram.ts'
+import type { Connection, Diagram, Endpoint, ProbeAnchor } from '../format/diagram.ts'
 import type { Selection } from './ops.ts'
 import { partCaption } from '../format/values.ts'
 import { SeverityMark } from './SeverityMark.tsx'
 import { SimLayer, currentFindings, shownResult } from './SimLayer.tsx'
 import { ProbeLayer } from './ProbeLayer.tsx'
-import { addProbe } from '../sim/probes.ts'
+import { addProbe, sameAnchor } from '../sim/probes.ts'
 import { gridOnly, snapMove, type SnapResult } from './snap.ts'
 import { dragSnap, overlaps, type DragSnap } from './dragSnap.ts'
 import { GuideLayer } from './GuideLayer.tsx'
@@ -479,8 +479,10 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
     // The Probe tool (spec 6.2): a pin or hole, the nearer end of a wire, or a part. Anything else does nothing.
     if (store.getState().simTool === 'probe') {
       const d0 = store.getState().diagram
+      // A hole probe keeps the hole clicked, so it is drawn there.
+      const anchor = (ep: Endpoint): ProbeAnchor => ({ part: ep.part, pin: ep.pin, ...(ep.hole !== undefined ? { hole: ep.hole } : {}) })
       const end = endUnder(e)
-      let at: { part: string; pin?: string } | null = end ? { part: end.part, pin: end.pin } : null
+      let at: ProbeAnchor | null = end ? anchor(end) : null
       const wireEl = at ? null : target.closest('[data-wire]')
       const conn = wireEl ? d0.connections.find((c) => c.uid === wireEl.getAttribute('data-wire')) : undefined
       if (conn) {
@@ -489,12 +491,12 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
           const r = resolveEndpoint(d0, ep)
           return r ? Math.hypot(r.end.x - p.x, r.end.y - p.y) : Infinity
         }
-        const ep = dist(conn.from) <= dist(conn.to) ? conn.from : conn.to
-        at = { part: ep.part, pin: ep.pin }
+        at = anchor(dist(conn.from) <= dist(conn.to) ? conn.from : conn.to)
       }
       const partEl = at ? null : target.closest('[data-part]')
       if (partEl) at = { part: partEl.getAttribute('data-part')! }
-      if (at) store.commit(addProbe(d0, at).diagram)
+      // One probe per point: a second click where one already reads keeps that one.
+      if (at && !(d0.probes ?? []).some((q) => sameAnchor(q.at, at))) store.commit(addProbe(d0, at).diagram)
       return
     }
     // Explicit wire-edit handles of the selected wire come first: they sit on top of everything.

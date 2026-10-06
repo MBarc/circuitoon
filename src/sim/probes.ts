@@ -23,6 +23,7 @@ export function probesForSheet(intent: Intent): Probe[] {
 }
 
 /** Extract (spec 6.2): sheet probes in ref form; a pin probe on a part the netlist leaves out becomes net:<its net>; a part probe there is dropped with a warning. */
+// A hole probe keeps its group only (BB1.top+): a netlist has no holes, and layout puts it on the group's first hole.
 export function probesForNetlist(probes: Probe[], refOf: Map<string, string>, nets: { name: string; keys: string[] }[], warn?: (m: string) => void): NetlistProbe[] {
   return probes.flatMap((p): NetlistProbe[] => {
     const base = { id: p.id, ...(p.name ? { name: p.name } : {}) }
@@ -36,6 +37,10 @@ export function probesForNetlist(probes: Probe[], refOf: Map<string, string>, ne
   })
 }
 
+/** Whether two anchors are the same point: the same part, pin and hole (no hole is hole 0). */
+export function sameAnchor(a: ProbeAnchor, b: ProbeAnchor): boolean {
+  return a.part === b.part && a.pin === b.pin && (a.hole ?? 0) === (b.hole ?? 0)
+}
 export function nextProbeId(d: Diagram): string {
   const n = Math.max(0, ...(d.probes ?? []).map((p) => Number(p.id.slice(1))))
   return `P${n + 1}`

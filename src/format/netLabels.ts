@@ -94,10 +94,14 @@ export function flagWidth(name: string, ground = false): number {
  * ground mark widens a ground label's flag; `ground` says whether it is drawn.
  */
 export function flagRect(part: { x: number; y: number; rotation?: Rotation; values?: Record<string, unknown> }, m: ModuleDef, ground = false): Rect {
+  return flagBox(part, m, flagWidth(labelName(part), ground), FLAG_H)
+}
+/** A box `w` long from the label's point and `h` across, centred on its pin, in world px: a flag of any size (a probe's tag). */
+export function flagBox(part: { x: number; y: number; rotation?: Rotation }, m: ModuleDef, w: number, h: number): Rect {
   const lay = layoutModule(m)
   const mid = lay.pins[0]?.edge.y ?? lay.h / 2
-  const a = toWorld(part, lay, { x: 0, y: mid - FLAG_H / 2 })
-  const b = toWorld(part, lay, { x: flagWidth(labelName(part), ground), y: mid + FLAG_H / 2 })
+  const a = toWorld(part, lay, { x: 0, y: mid - h / 2 })
+  const b = toWorld(part, lay, { x: w, y: mid + h / 2 })
   return { x: Math.min(a.x, b.x), y: Math.min(a.y, b.y), w: Math.abs(a.x - b.x), h: Math.abs(a.y - b.y) }
 }
 

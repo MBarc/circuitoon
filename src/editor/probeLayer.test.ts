@@ -2,7 +2,10 @@
 // "floating", "undefined" or "-" (Simulate off) as words, mark readings outside the model, and
 // use eight colours with 3:1 contrast on the sheet paper in both themes. Tags keep off parts.
 import { describe, expect, it } from 'vitest'
-import { PROBE_COLORS, partText, placeTags, readingText } from './ProbeLayer.tsx'
+import { createElement } from 'react'
+import { renderToStaticMarkup } from 'react-dom/server'
+import { PROBE_COLORS, ProbeLayer, TAG_RESERVE, partText, placeTags, probeColor, readingText, tagText, tagWidth } from './ProbeLayer.tsx'
+import { resolveEndpoint } from '../format/diagram.ts'
 import { bodyRect } from '../format/geometry.ts'
 import { layoutModule } from '../format/module.ts'
 import { sheet } from '../sim/testing.ts'
@@ -21,7 +24,8 @@ describe('probe tags', () => {
     expect(readingText({ typical: { kind: 'floating' }, peak: { kind: 'floating' } })).toBe('floating')
     expect(readingText({ typical: { kind: 'undefined', why: 'mains' }, peak: { kind: 'undefined', why: 'mains' } })).toBe('undefined')
     expect(readingText(undefined)).toBe('-')
-    expect(readingText({ typical: v(2.1, 'outside-model'), peak: v(2.1, 'outside-model') })).toBe('2.1 V (outside the model)')
+    expect(readingText({ typical: v(2.1, 'outside-model'), peak: v(2.1, 'outside-model') })).toBe('2.1 V, outside model')
+    expect(readingText({ typical: v(4.38, 'outside-model'), peak: v(4.21, 'outside-model') })).toBe('4.38 V (peak 4.21 V), outside model')
   })
   it('reads a part probe as its largest pin current and its power', () => {
     const run = { pins: { A: { kind: 'value' as const, value: 0.0123, trust: 'ok' as const }, K: { kind: 'value' as const, value: -0.0123, trust: 'ok' as const } }, power: v(0.0251) }
@@ -47,6 +51,46 @@ describe('probe tags', () => {
     const d = sheet([{ uid: 'bb', module: 'breadboard-half' }], [])
     const [t] = placeTags({ ...d, probes: [{ id: 'P1', at: { part: 'bb', pin: 'top+' } }] }, [{ id: 'P1', text: 'P1 5 V' }])
     const board = bodyRect(d.parts[0], layoutModule(d.modules['breadboard-half']))
-    expect(t.box.y + t.box.h).toBeLessThanOrEqual(board.y)
+    expect(t.box.x + t.box.w <= board.x || t.box.x >= board.x + board.w || t.box.y + t.box.h <= board.y || t.box.y >= board.y + board.h).toBe(true)
+  })
+  it('lands a hole probe on the hole it was placed on', () => {
+    const d = sheet([{ uid: 'bb', module: 'breadboard-half' }], [])
+    const [t] = placeTags({ ...d, probes: [{ id: 'P1', at: { part: 'bb', pin: 'top+', hole: 10 } }] }, [{ id: 'P1', text: 'P1 5 V' }])
+    expect(t.from).toEqual(resolveEndpoint(d, { part: 'bb', pin: 'top+', hole: 10 })!.end)
+    expect(t.from).not.toEqual(resolveEndpoint(d, { part: 'bb', pin: 'top+' })!.end)
+  })
+  it('shows a reading whole, cutting only a long name', () => {
+    expect(tagText('P5', '4.38 V (peak 4.21 V), outside model')).toBe('P5 4.38 V (peak 4.21 V), outside model')
+    expect(tagText('battery plus terminal after switch', '3.3 V')).toBe('battery plus te… 3.3 V')
+    const d = sheet([{ uid: 'r1', module: 'resistor' }], [])
+    const long = 'P5 4.38 V (peak 4.21 V), outside model'
+    const [t] = placeTags({ ...d, probes: [{ id: 'P5', at: { part: 'r1', pin: '2' } }] }, [{ id: 'P5', text: long }])
+    expect(Math.max(t.box.w, t.box.h)).toBe(tagWidth(long))
+    const html = renderToStaticMarkup(createElement('svg', null, createElement(ProbeLayer, { diagram: { ...d, probes: [{ id: 'P5', at: { part: 'r1', pin: '2' } }] }, readings: [{ id: 'P5', at: { part: 'r1', pin: '2' }, voltage: { typical: v(4.38, 'outside-model'), peak: v(4.21, 'outside-model') } }] })))
+    expect(html).toContain('>P5 4.38 V (peak 4.21 V), outside model</text>')
+  })
+  it('dashes a tag whose reading is outside the model, and only that one', () => {
+    const d = sheet([{ uid: 'r1', module: 'resistor' }], [])
+    const probes = [{ id: 'P1', at: { part: 'r1', pin: '1' } }, { id: 'P2', at: { part: 'r1', pin: '2' } }]
+    const readings = [{ id: 'P1', at: probes[0].at, voltage: { typical: v(3.1, 'outside-model'), peak: v(3.1, 'outside-model') } }, { id: 'P2', at: probes[1].at, voltage: { typical: v(1), peak: v(1) } }]
+    const html = renderToStaticMarkup(createElement('svg', null, createElement(ProbeLayer, { diagram: { ...d, probes }, readings })))
+    expect(html).toMatch(/class="probe-tag outside" data-probe="P1"/)
+    expect(html).toMatch(/class="probe-tag" data-probe="P2"/)
+  })
+  it('keeps a tag in place whatever it reads (Simulate on or off)', () => {
+    const d = { ...sheet([{ uid: 'r1', module: 'resistor' }], []), probes: [{ id: 'P1', at: { part: 'r1', pin: '2' } }] }
+    const off = placeTags(d, [{ id: 'P1', text: 'P1 -', reserve: tagText('P1', TAG_RESERVE) }])[0]
+    const on = placeTags(d, [{ id: 'P1', text: 'P1 1.88 V', reserve: tagText('P1', TAG_RESERVE) }])[0]
+    expect([on.tip, on.box.y]).toEqual([off.tip, off.box.y])
+  })
+  it('puts tags level where a level spot fits', () => {
+    const d = { ...sheet([{ uid: 'r1', module: 'resistor' }], []), probes: [{ id: 'P1', at: { part: 'r1' } }] }
+    expect(placeTags(d, [{ id: 'P1', text: 'P1 4 mA, 2 mW' }])[0].vertical).toBe(false)
+  })
+  it('colours a probe by its number, so removing one never recolours the rest', () => {
+    expect(probeColor('P1', 5)).toBe(PROBE_COLORS[0])
+    expect(probeColor('P3', 0)).toBe(PROBE_COLORS[2])
+    expect(probeColor('P9', 0)).toBe(PROBE_COLORS[0])
+    expect(probeColor('X', 3)).toBe(PROBE_COLORS[3])
   })
 })
