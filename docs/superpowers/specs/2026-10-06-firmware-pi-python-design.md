@@ -1,6 +1,8 @@
 # Code on boards, slice 1: run loop and Raspberry Pi Python
 
-Status: revision 1 (2026-10-06). Sections 1-3 approved by Michael in chat; the rest are rulings made under his standing instruction to decide technical calls ("whatever is best for the user experience", "stop asking me so many things"). Astra reviews after the Codex reset (2026-10-10); a Claude reviewer stands in until then.
+Status: revision 2 (2026-10-06).
+- Sections 1-3 and the dock layout were approved by Michael in chat. The rest are rulings made under his standing instruction to decide technical calls ("whatever is best for the user experience", "stop asking me so many things").
+- Revision 1 was reviewed by a Claude reviewer standing in for Astra (Codex is rate-limited until 2026-10-10). Section 13 answers that review. Astra reviews after the reset.
 
 This is the first of five firmware slices:
 
@@ -19,48 +21,104 @@ Inputs:
 
 Select a Raspberry Pi 4, Pi 5 or Pi Zero 2 W on the sheet, upload or write a Python script that uses `RPi.GPIO` or `gpiozero`, press Run, and watch the circuit respond: LEDs blink and dim, buttons pressed on the sheet reach the code, servos turn, `print()` appears in a Serial panel. Agents get the same through `circuitoon run`.
 
-**In scope:** the `code` key on parts; the code dock; Pyodide in a worker; `RPi.GPIO` and a `gpiozero` subset; digital in/out, pulls, edge callbacks, software and hardware PWM, servo; Serial (`print`/`input`); time-averaged PWM solves; a servo model; Pi sim data; cross-origin isolation for GitHub Pages; self-hosted fonts; `circuitoon run`; samples.
+**In scope:** the `code` key on parts; the code dock; Pyodide in a worker; `RPi.GPIO` and a `gpiozero` subset; digital in/out, pulls, edge callbacks, PWM (`RPi.GPIO.PWM` and gpiozero's PWM devices), servo; Serial (`print`/`input`); PWM solves; a servo model; Pi sim data; cross-origin isolation for GitHub Pages; self-hosted fonts; `circuitoon run` on a virtual clock; samples.
 
-**Out of scope:** I2C/SPI devices and `smbus`/`spidev` (slice 4); UART/`pyserial`; camera; `pigpio`, `lgpio` and other Pi libraries; Python threads; Arduino and Pico (slices 2-3); the part sprites showing switch positions (separate small change).
+**Out of scope:** I2C/SPI devices and `smbus`/`spidev` (slice 4); UART/`pyserial`; camera; `pigpio`, `lgpio` and other Pi libraries; Python threads; the Pis' USB-A ports as power sources (they stay "not simulated", with a test); Arduino and Pico (slices 2-3); the part sprites showing switch positions (separate small change).
 
 ## 2. Architecture
 
 ```
-editor (main thread)                        worker per running board
--------------------------------------       ---------------------------------
-store.run[uid] {status, pinsOut}  <--SAB--  RPi.GPIO / gpiozero stand-ins
- |  read each animation frame                 Pyodide (CPython 3.12 WASM)
- v                                            user script
-solveKey includes run pin states            Atomics.wait for sleep and input()
- |                                     --SAB-> pin voltages + interrupt flag
-SimSession.request -> ngspice worker
+editor (main thread)                          worker per running board
+---------------------------------------       ----------------------------------
+sampler (solve done, or every 16 ms)  <-SAB-  pin table: mode, latch, PWM descriptor,
+ |                                             bit-bang counters      (seqlock)
+ v                                            Python scheduler (sleep, input, waits)
+store.run[uid] (quantised run pin states)     RPi.GPIO / gpiozero stand-ins
+ |                                            Pyodide (pinned release)
+buildCircuit(..., {held, runPins})            user script
  |
-results -> pin voltages written to SAB
+SimSession (running mode) -> ngspice worker
+ |
+results -> thresholds + edge counters ---SAB-> input table: level, edges, voltage,
+                                               "solved through code seq N" (seqlock)
+                                               wake word, interrupt buffer, input line
 ```
 
-- **One worker per running board**, each with its own Pyodide. At most 4 boards run at once; a fifth Run says "Stop a board first: at most 4 run at once".
-- **Shared memory (SharedArrayBuffer) per board:**
-  - *code to editor*, per pin: mode (unused/input/input-pullup/input-pulldown/output), level, high-time accumulator (ns), edge count, PWM frequency hint; plus a sequence number.
-  - *editor to code*, per pin: solved voltage (float), a status (value/floating/undefined), the result's revision; plus the interrupt flag (Pyodide's interrupt buffer) and the `input()` line buffer.
-- **Each animation frame** the editor reads every running board's table. A pin whose level changed during the frame becomes a PWM pin for that frame, with duty = high time / frame time and frequency from the edge count or the PWM object. Otherwise it is a steady level. These become the board's *run pin states* (section 4).
-- **Run pin states are transient**, like a held button: never saved, no undo entries, the file is not marked changed. Stop restores the saved `gpio.*` states.
-- **Live sheet:** wiring stays editable while code runs. Deleting a running board, or changing its code or module, stops that board first.
+### 2.1 Boards and workers
+
+- **One worker per running board**, each with its own Pyodide. The cap is 4 running boards if the measured heap per board is ≤ 120 MB, otherwise 2 (decided at the Pyodide checkpoint). Run past the cap says "Stop a board first: at most N run at once".
+- **Live sheet:** wiring stays editable while code runs, and run-state solves continue during drags (the drag gate in `followStore` exempts them).
+- **Deleting** a running board, or changing its module, stops it. **Editing its code** stops nothing: the tab shows "Code changed: Reset to apply". Undo behaves the same.
 - **Simulate:** Run turns Simulate on. Turning Simulate off stops every board.
+- **Starting:** Run shows status "starting" while Pyodide and the first solve load, then starts the code, or refuses if that first solve shows the board unpowered (section 4.5).
 
-### 2.1 Cross-origin isolation on GitHub Pages
+### 2.2 Shared memory
 
-SharedArrayBuffer needs `Cross-Origin-Opener-Policy: same-origin` and `Cross-Origin-Embedder-Policy: require-corp`. GitHub Pages cannot set headers, so we vendor `coi-serviceworker` (MIT, pinned):
-- On the first visit the service worker installs and the page reloads once. Later visits are isolated from the first byte.
-- **Fonts are self-hosted** (Atkinson Hyperlegible, Fredoka; both OFL, licence files shipped), so the page loads nothing cross-origin. This also removes the only third-party request.
-- If isolation is unavailable (service workers blocked, private modes that refuse them), the editor works as today and Run is disabled with "Running code needs a browser feature this window has turned off (service workers). Try a normal window."
+Each board has one SharedArrayBuffer with two tables. Each table is guarded by a **seqlock** (a sequence word that is odd while the writer is mid-update; readers retry until they read the same even value before and after). Integer fields use `Int32Array`/`BigInt64Array`; floats use a `Float64Array` view read inside the seqlock.
+
+- **Code to editor**, per pin:
+  - mode (unused, input, input-pullup, input-pulldown, output);
+  - output latch (0/1);
+  - a **declared PWM descriptor** (active, duty, freqHz), written by `RPi.GPIO.PWM` and every gpiozero PWM device (`PWMOutputDevice`, `PWMLED`, `RGBLED`, `Buzzer`, `Servo`, `AngularServo`, `Motor`);
+  - for plain writes: wrapping uint32 counters of rising edges, falling edges and high time in µs (read as differences);
+  - a code sequence number, bumped on every mode or pull change.
+- **Editor to code**, per pin:
+  - logic level (0/1, already thresholded by the editor, section 4.4);
+  - wrapping rising- and falling-edge counters from the solved levels;
+  - solved voltage and status (value, floating, undefined), for warnings and `RPi.GPIO`-style debugging;
+  - plus, per board: "solved through code sequence N", the **wake word**, Pyodide's interrupt buffer, and the `input()` line buffer.
+
+### 2.3 The sampler
+
+One sampler is shared by the editor and the CLI. It samples every running board when a solve completes, or every 16 ms by `setTimeout`, whichever comes later (not `requestAnimationFrame`, which stops in hidden tabs). Each sample turns each pin into a **run pin state**:
+
+| Pin | Run pin state |
+|---|---|
+| unused | none (the saved `gpio.*` state applies) |
+| input / pulled | that mode |
+| declared PWM active | `pwm {duty}` from the descriptor (duty 0 or 1 becomes `low`/`high`) |
+| plain output | over a window of max(100 ms, 4 observed periods): if it shows at least 2 edges in the window, `pwm {duty = high time / window}`; otherwise the latch level |
+
+- Duty is quantised to 1/64 and only changes past that step, so jitter never re-solves.
+- `store.run` is written only when a board's quantised states change. Frequency is not part of the solve key (a DC average does not depend on it); it is kept for the servo.
+- **Run pin states are transient**, like a held button: passed to the solve as `BuildOptions.runPins`, never stored in `values`, no undo entries, the file is not marked changed. Stop removes them, so the saved `gpio.*` states apply again.
+
+### 2.4 SimSession while code runs
+
+Today a finished solve that is not the latest request is dropped (`session.ts:94`). With requests every sample, that would starve the display. In **running mode** (any board running):
+- at most one solve is in flight; when it finishes, its result is delivered if it is newer than the one displayed, and the newest pending request starts;
+- when no board runs, the existing rule applies unchanged.
+
+A session test drives a request every tick while solves take 3 ticks and requires a delivered result at least every 4 ticks.
+
+### 2.5 Cross-origin isolation on GitHub Pages
+
+SharedArrayBuffer needs `Cross-Origin-Opener-Policy: same-origin` and `Cross-Origin-Embedder-Policy: require-corp`. GitHub Pages cannot set headers, so we vendor `coi-serviceworker` (MIT, pinned version):
+- Configured with `coepCredentialless: () => false` (require-corp, which Chrome, Firefox and Safari 15.2+ support), `quiet: true`, and a `doReload` that never reloads a page holding an unsaved diagram. In that case Run stays disabled until the next load.
+- Loaded first in `<head>` as a classic blocking script, before the theme script and the app module, so its reload happens before the app boots and the share-link hash survives.
+- It reloads once on the first visit, and once after a hard reload (the page is then uncontrolled).
+- `vite.config.ts` sets COOP/COEP in `server.headers` and `preview.headers`, so dev and the UI checks do not depend on the service worker.
+- **Fonts are self-hosted:** Atkinson Hyperlegible and Fredoka, latin and latin-ext subsets, the weights in use, with the two above-the-fold weights preloaded; OFL licence files shipped. The Google Fonts lines are the only cross-origin loads today (`index.html:29-31`), so the page then loads nothing cross-origin.
+- **Rollback:** a kill-switch service worker (one that unregisters itself and reloads) is kept ready in the repo, because a deployed service worker outlives a revert.
+- If isolation is unavailable (service workers refused), the editor works as today and Run is disabled with "Running code needs a browser feature this window has turned off (service workers). Try a normal window."
 - Every existing feature is re-checked under isolation: share links, file open/save, clipboard, PNG/SVG export, the GitHub issue form link, the sim worker.
 
-### 2.2 Pyodide
+### 2.6 The code worker is a sandbox
 
-- Pinned Pyodide release, self-hosted under `public/py/` with a manifest (`py.json`: version, per-file sha256 and bytes), hash-versioned URLs and determinate progress, mirroring `public/sim/`.
-- Only the core and the stdlib are fetched; no package downloads at run time. `micropip` is not shipped.
-- Licences (MPL-2.0 for Pyodide, PSF for CPython, and the bundled libraries' own) and a NOTICE ship next to it. We ship the official binaries unmodified and link the exact source release.
-- Loading is lazy (first Run) and the loader is its own chunk; the main bundle grows by at most 20 KB gzip for the dock shell.
+A share link carries someone else's code, so the worker must not reach the network or the site's storage:
+- After Pyodide loads and before user code runs, the worker deletes or replaces `fetch`, `XMLHttpRequest`, `WebSocket`, `EventSource`, `importScripts`, `indexedDB`, `caches`, `BroadcastChannel` and nested `Worker` creation.
+- The service worker adds `Content-Security-Policy: default-src 'self'; connect-src 'none'` to the code worker script's response. (Pyodide's files are fetched by the editor and handed to the worker, section 2.7, so the worker itself needs no network.)
+- The first Run of code that arrived in a share link asks once in the dock: "This code came with the link. Run runs it in your browser, with no network access." with Run and Cancel.
+
+### 2.7 Pyodide
+
+- A pinned Pyodide release (the exact version, and so the Python version, is fixed at the Pyodide checkpoint). Only the core files and the stdlib are used; no packages, no `micropip`.
+- **Web:** the build copies the files from the pinned `pyodide` npm package into `dist/py/<version>/` with a `py.json` manifest (file names, sha256, bytes). Nothing is committed: GitHub Pages is deployed from `dist/`.
+- **Loading:** on the first Run the editor prefetches each file with a streamed `fetch` (determinate progress, warms the HTTP cache), verifies the hashes, then passes the bytes to the worker, which calls `loadPyodide` with them (`indexURL` for the fixed sibling names, `stdLibURL`/`lockFileURL` as Blob URLs).
+- GitHub Pages serves `Cache-Control: max-age=600`, so later visits revalidate (cheap 304s) rather than refetch.
+- **CLI:** the plugin does not ship Pyodide. On the first `circuitoon run`, the CLI fetches the exact files from the project's own Pages site (`https://mbarc.github.io/circuitoon/py/<version>/`), verifies them against sha256 hashes compiled into `circuitoon.mjs`, and caches them in the user's cache directory. Later runs are offline. `--py-dir <path>` uses a local copy instead (the repo's tests use `node_modules/pyodide`).
+- Licences (MPL-2.0 for Pyodide, PSF for CPython, the bundled libraries' own) and a NOTICE ship next to the files. They are the official binaries, unmodified, with a link to the exact source release.
+- The loader is its own chunk. The main bundle grows by at most 20 KB gzip for the dock shell.
 
 ## 3. Data
 
@@ -70,187 +128,269 @@ SharedArrayBuffer needs `Cross-Origin-Opener-Policy: same-origin` and `Cross-Ori
 { "uid": "u1", "module": "rpi-4-model-b", "code": { "language": "python-rpi", "source": "from gpiozero import LED\n...", "file": "blink.py" } }
 ```
 
-- `language`: `python-rpi` in this slice. Later slices add `arduino-avr` and `micropython`.
-- `source`: UTF-8 text, at most 256 KB. `file`: optional original file name, at most 255 characters, no path separators.
-- **Validation** (diagram load): a malformed `code` (wrong types, too large) is dropped with a load warning naming the part. Unknown keys inside `code` are dropped with a warning.
-- A language the module does not accept is **kept** and warned about ("U1 is an Arduino Uno; its code is Raspberry Pi Python and won't run").
-- The diagram format stays `circuitoon-diagram/1`: the key is optional and old readers already preserve unknown part keys.
-- **Share links:** code counts against the existing 64K-character compressed payload. A too-large sheet gives the existing "too big for a link, save a file instead" message.
-- **Undo:** uploading, editing (coalesced per editing pause of 1 s) and removing code are undoable commits.
+- `language`: a string. `python-rpi` runs in this slice; later slices add `arduino-avr` and `micropython`. A language this build does not know is **kept** with a warning, so newer sheets survive older editors.
+- `source`: text, at most 256 KB of UTF-8 bytes. `file`: optional original file name, at most 255 characters, no path separators.
+- **Validation** (diagram load): wrong types or an oversized source drop the `code` with a load warning naming the part; unknown keys inside `code` are dropped with a warning.
+- A language the board does not accept is **kept** and warned about ("U1 is an Arduino Uno; its code is Raspberry Pi Python and won't run").
+- The diagram format stays `circuitoon-diagram/1`: the key is optional and old readers already preserve unknown part keys (`diagram.ts:1745-1758`).
+- **Share links:** code counts against the existing 64K-character compressed payload; a too-large sheet gets the existing "too big for a link, save a file instead" message.
+- **Undo:** uploading, editing and removing code are undoable commits. Typing coalesces through the existing sliding window (`commit(next, 'code:<uid>')`). At the 200-entry history cap, large sources can hold tens of MB; accepted.
 
 ### 3.2 Which boards accept which languages
 
-Modules gain an optional top-level `firmware: { languages: string[] }`. In this slice `rpi-4-model-b`, `rpi-5` and `rpi-zero-2-w` get `["python-rpi"]`. Module validation accepts only known language ids.
+- Modules gain an optional top-level `firmware: { languages: string[] }`. Module validation accepts only known language ids.
+- In this slice `rpi-4-model-b`, `rpi-5` and `rpi-zero-2-w` get `["python-rpi"]`.
+- **Read from the library**, like sim data: `withLibrarySim` is extended to carry `firmware` from the built-in module with the same id and terminals, so sheets saved before this slice get the Code section.
+- `firmware` on a custom module (`custom: true`) is ignored in this slice, and the part maker's module check says so.
 
 ### 3.3 Pi sim data
 
 The three Pis get `electrical.sim.power` and `electrical.sim.gpio`, sourced the same way as the simulator's other boards (per-value provenance, every number checked by two independent reviewers, estimates flagged):
-- power topology: 5V in (header 5V pins and the USB-C/micro-USB input), the on-board 3V3 rail, the board's typical and peak draw;
-- `gpio`: domain `3V3`, pins `GPIO2`-`GPIO27`, output resistance, the internal pull-up and pull-down (BCM2711/BCM2712/RP3A0), input leakage;
-- the fixed 1.8 kΩ pull-ups on GPIO2/GPIO3 (I2C) as always-present resistors;
-- logic thresholds (new optional `gpio.inputLow` / `gpio.inputHigh`, Quantity volts) used by pin reads.
-
-Where a number has no primary source (Pi 5's RP1 drive strength is configurable and only partly documented), the value is a flagged estimate and the existing `estimate` note shows it.
+- **Power:** 5V in (the header 5V pins and the USB-C/micro-USB input), the on-board 3V3 rail, the board's typical and peak draw, and the load's `draw.minVolts` (sourced or flagged).
+- **GPIO:** domain `3V3`, pins `GPIO2`-`GPIO27`, output resistance, the internal pull-up and pull-down (documented as about 50-65 kΩ), input leakage.
+- **The fixed 1.8 kΩ pull-ups on GPIO2/GPIO3** are built as always-present resistors with their own role, so `floating.ts` sees those pins as defined, and `sim-over-limit` and the resistor lists do not show them as user resistors. A build test covers this.
+- **Logic thresholds:** new optional `gpio.inputLow` / `gpio.inputHigh` (Quantity volts). BCM2711 is about 0.8 V / 2.0 V at 3.3 V IO, subject to the two-source check. RP1 (Pi 5) values are partly undocumented and are flagged estimates.
+- **USB-A ports** on the Pis stay "not simulated": `usbLinks` keeps its current behaviour for these boards, with a test, so adding Pi power data does not turn USB devices into "not powered".
 
 ### 3.4 Servo model
 
-`servo-sg90` gets `electrical.sim`: the PWM pin is an input load (estimate), VCC draws idle and moving current (sourced or flagged estimates). Angle = linear map of pulse width 500-2400 µs to 0-180°, clamped; pulses outside 400-2600 µs or a frequency outside 40-330 Hz hold the last angle and give a warning `servo-signal`. The pulse width comes from the PWM pin state (`duty / frequency`).
+`servo-sg90` gets `electrical.sim`, each value with provenance:
+- `pulseMin`, `pulseMax`: 500 µs and 2400 µs, the travel real units show. This is a flagged estimate, because it conflicts with the Tower Pro sheet's 1-2 ms for -90 to +90 degrees.
+- `slew`: 0.1 s per 60 degrees at 4.8 V (datasheet).
+- The PWM pin is an input load (estimate). VCC draws an idle current, and a moving current while the horn is travelling (sourced or flagged).
+- Angle = linear map of pulse width (`duty / frequency`) from pulseMin..pulseMax to 0-180 degrees, clamped. The drawn horn moves toward the target at the slew rate.
+- A pulse outside 400-2600 µs, or a frequency outside 40-330 Hz, holds the last angle and gives `servo-signal`.
+- gpiozero's `Servo` defaults to 1-2 ms, so `Servo.min()` draws at about 47 degrees under this map. That matches many real SG90s, and About the simulator says so.
 
 ## 4. Simulation changes
 
-### 4.1 Run pin states
+### 4.1 Run pin states in the build
 
-A running board's pins override its saved `gpio.*` states for the solve:
+`BuildOptions.runPins` overrides a running board's GPIO states for the solve:
 
-| Code says | Solved as |
+| Run pin state | Solved as |
 |---|---|
-| unused | the saved state (default `input`) |
-| input / pull-up / pull-down | the same as the saved states of those names |
-| output, steady level | `high` / `low` |
-| output, toggling in this frame | `pwm {duty, freqHz}` |
+| input / pull-up / pull-down | the saved states of those names |
+| `high` / `low` | `high` / `low` |
+| `pwm {duty}` | a PWM pin (4.2) |
 
-`solveKey` includes the run pin states, quantised (duty to 1/256, frequency to 1 Hz) so jitter does not cause re-solves.
+`followStore` includes `runPins` in its identity array next to `held`, and the netlist part of `solveKey` is cached by diagram identity so per-sample keys stay cheap.
 
-### 4.2 Time-averaged PWM solves
+### 4.2 PWM solves
 
-- With k PWM pins on the sheet, the solve runs every high/low combination of those pins (2^k runs at the typical corner) and averages each reading weighted by the product of duties. This is exact for the average current through LEDs and resistors when the pins' phases are independent.
-- Up to k = 3 exactly. Above 3, the 3 pins with duty nearest 50% are combined exactly and the rest use their majority level; the result carries a note `pwm-approximate` naming the pins.
-- The peak corner is solved once, with every PWM pin high (the worst case for current limits).
-- Readings for a pin's own net under PWM report the average voltage, and the probe tag says "avg".
-- LED glow uses the averaged current, so a 30% PWM LED is visibly dimmer.
+- **Compilation:** a PWM pin compiles to two branches, `outputResistance` to the IO domain node and `outputResistance` to the return, and the `Analysis` gains `pins?: Record<deviceId, 'high' | 'low'>`. Each run sets the inactive branch to an open-circuit value with `alter`, so one netlist serves every combination in a single `runAll` message to the engine worker.
+- **Groups:** PWM pins are split into groups that interact (connected through anything other than the boards' supply and ground nets). Groups that do not interact share runs: run r sets each group to its r-th combination, so a solve costs max over groups of 2^k runs, not 2 to the total.
+- **Weights:** a run's weight is the product over its group's pins of d_i (pin high in that run) or 1 - d_i (pin low). That is exact for pins in separate parts of the circuit, and approximate for pins in the same group, whose real overlap depends on phase. RGBLED channels start their periods together, so a common resistor sees min(d1, d2) overlap rather than d1 x d2; the result carries `pwm-approximate` naming the pins when a group's pins share a resistor.
+- **More than 3 pins in one group:** per-pin superposition. Each pin is toggled with the group's other pins at their nearest level, and the result carries `pwm-approximate`.
+- **What uses the average:** readings, probe tags ("avg 1.21 V"), LED glow (a 30% LED is visibly dimmer), and the servo's pulse.
+- **What does not:** findings. Typical-corner findings are the union over every combination run, deduplicated by the existing finding key, keeping the worst reading. An LED with no resistor at 50% duty still blocks. The peak corner runs the same combinations (with the existing peak warnings).
 
-### 4.3 Reading pins
+### 4.3 Budgets for these solves
 
-When the code reads a pin, the stand-in uses the latest solved voltage for that pin:
-- above `inputHigh` gives 1; below `inputLow` gives 0;
-- in between, it keeps the pin's previous value and raises a warning `undefined-level` ("U1 GPIO17 reads 1.4 V, between the low and high thresholds");
-- floating gives a random bit per read and a warning `floating-read` once per pin per run;
-- no result yet (first frame, solve pending) gives the last known value, or 0 before any.
+- Without PWM: run-state changes re-solve within the existing 50 ms end-to-end budget at 200 parts.
+- With one group of 3 PWM pins: ≤ 150 ms end to end at 200 parts (8 typical + 8 peak runs in one engine message), measured in a perf test next to `solve.perf.test.ts`. If over, peak runs only all-high and all-low for that group.
 
-The voltage a read uses can lag the code's own writes by one solve. That is acceptable at the speeds hobby scripts run (edge callbacks and button polling work); it is stated in About the simulator.
+### 4.4 Reading pins
 
-### 4.4 Power
+- **Output pins read their own latch** (as a real Pi pad reads its driven level), so gpiozero's `toggle()`, `is_lit` and `value` behave.
+- **Input levels are thresholded in the editor**, from the solved voltage, by one shared function the CLI uses too:
+  - above `inputHigh` gives 1; below `inputLow` gives 0;
+  - in between keeps the previous level (Pi inputs have Schmitt hysteresis); a pin that dwells there for more than 100 ms gives the warning `undefined-level` once per run ("U1 GPIO17 reads 1.4 V, between the low and high thresholds");
+  - floating gives a random level per result and `floating-read` once per pin per run;
+  - before any result, a pulled input reads its pull level and an unpulled input reads 0.
+- **Edges are counted in the editor** from successive solved levels and written as counters, so a press and release while the code sleeps still fires `when_pressed` and `event_detected`.
+- **Reads after the code's own setup:** a read after a mode or pull change waits (interruptibly, at most 200 ms) for a result solved through that code sequence, so the first read after `setup(..., PUD_UP)` is not random.
+- The voltage behind a read can lag the circuit by one solve. That is fine for hobby scripts (callbacks and button polling work) and is stated in About the simulator.
 
-- A board with no power (its 5V node not powered by the solve) refuses Run: "U1 has no power: connect 5V and GND".
-- A running board whose 5V input falls below its brownout voltage stops: Serial shows "U1 lost power (5V input 4.1 V)".
+### 4.5 Power
+
+- Run waits for the first solve ("starting") and refuses if the board's 5V input is not powered: "U1 has no power: connect 5V and GND".
+- A running board stops only on a typical-corner `sim-brownout` error on its own load (its `draw.minVolts`): Serial shows "U1 lost power". Peak-corner findings never stop a board.
+- A sourced under-voltage note shows when the 5V input is below 4.63 V (Raspberry Pi's documented warning threshold) without stopping anything.
 
 ## 5. The Python environment
 
 ### 5.1 Stand-ins
 
-- **`RPi.GPIO`** (our own module): `setmode` (BCM and BOARD, with the 40-pin physical-to-BCM map), `setup` (with `pull_up_down` and `initial`), `output`, `input`, `cleanup`, `setwarnings`, `PWM` (`start`, `ChangeDutyCycle`, `ChangeFrequency`, `stop`), `add_event_detect`, `remove_event_detect`, `event_detected`, `add_event_callback`, `wait_for_edge`, `gpio_function`, `RPI_INFO`. Constants as in RPi.GPIO 0.7.
-- **`gpiozero`** (our own subset, same names and signatures): `LED`, `PWMLED`, `RGBLED`, `Buzzer`, `Button`, `LineSensor`, `MotionSensor`, `DigitalInputDevice`, `DigitalOutputDevice`, `PWMOutputDevice`, `Servo`, `AngularServo`, `Motor` (two pins), and `pause`. Background behaviour (`blink`, `pulse`, `when_pressed`, `when_released`, `when_held`) runs from a cooperative scheduler, below.
+- **`RPi.GPIO`** (our own module): `setmode` (BCM and BOARD, with the 40-pin physical-to-BCM map), `setup` (with `pull_up_down` and `initial`), `output`, `input`, `cleanup`, `setwarnings`, `PWM` (`start`, `ChangeDutyCycle`, `ChangeFrequency`, `stop`), `add_event_detect`, `remove_event_detect`, `event_detected`, `add_event_callback`, `wait_for_edge`, `gpio_function`, `RPI_INFO`. Constants as in RPi.GPIO 0.7. On a Pi 5, importing it prints a one-time warning: "RPi.GPIO does not work on a real Pi 5; use gpiozero, or install rpi-lgpio".
+- **`gpiozero`** (our own subset, same names and signatures): `LED`, `PWMLED`, `RGBLED`, `Buzzer`, `Button`, `LineSensor`, `MotionSensor`, `DigitalInputDevice`, `DigitalOutputDevice`, `PWMOutputDevice`, `Servo`, `AngularServo`, `Motor` (two pins), and `pause`. `blink`, `pulse`, `when_pressed`, `when_released` and `when_held` run from the scheduler (5.2).
+- PWM objects write the declared descriptor (2.2); nothing toggles pins to fake PWM.
 - Pin names accept BCM numbers, `"GPIO17"`, `"BCM17"`, `"BOARD11"` and `"J8:11"`, as gpiozero does.
-- **Unsupported** names fail with a clear error naming the call ("`gpiozero.MCP3008` needs SPI devices, coming in a later update"). Importing `smbus`, `spidev`, `serial`, `pigpio`, `lgpio` or `picamera2` raises the same kind of error.
+- The stand-ins reach the shared memory through a small JS module registered with `pyodide.registerJsModule` (a few functions), never through raw typed arrays in user-visible code.
+- **Unsupported** names fail with an error naming the call ("`gpiozero.MCP3008` needs SPI devices, coming in a later update"). Importing `smbus`, `smbus2`, `spidev`, `serial`, `pigpio`, `lgpio` or `picamera2` raises the same kind of error.
 
-### 5.2 Time and the cooperative scheduler
+### 5.2 The scheduler
 
-- `time.sleep` blocks for real time with `Atomics.wait`, and wakes early to run due callbacks and timers. `time.time` and `time.monotonic` are real clocks.
-- **Yield points:** `time.sleep`, `gpiozero.pause`, `Event.wait` inside our modules, `wait_for_edge`, `wait_for_press`/`wait_for_release`, `input()`, and every pin read. At each yield point the scheduler runs due timers (`blink`, `pulse`, software PWM bookkeeping) and edge callbacks.
-- A script that loops without ever reaching a yield point keeps running (and Stop still works), but background behaviour cannot run. After 2 s without a yield point while a background behaviour is pending, Serial shows a one-time warning: "U1's code never pauses, so blink() and button callbacks can't run. Add time.sleep() in your loop."
+- The scheduler is **Python**, in our runtime module. `time.sleep`, `builtins.input`, `gpiozero.pause`, `wait_for_edge`, `wait_for_press`/`wait_for_release` and waits inside our modules all loop: run due timers and callbacks, then block in JS until the next due time, a wake, or the end of the wait. JS only blocks and reports why it woke.
+- **Blocking and waking:** JS blocks with `Atomics.wait` on the wake word, for at most 50 ms at a time, calling `pyodide.checkInterrupt()` after each wake. Stop and every new result `Atomics.notify` the wake word, so Stop is prompt and edge callbacks fire as soon as a result lands.
+- **Yield points** (where timers and callbacks run): the waits above and every pin read.
+- **Not re-entrant:** while a callback runs, yield points inside it only wait; they do not dispatch other callbacks. So `blink()` pauses while a callback sleeps. This differs from real gpiozero, whose callbacks run on threads, and About the simulator says so.
+- `time.time` and `time.monotonic` follow the run's clock (real time in the editor, virtual time in the CLI, section 7).
+- A script that loops without reaching a yield point keeps running, and Stop still works. After 2 s without a yield point while a timer or callback is pending, Serial shows once: "U1's code never pauses, so blink() and button callbacks can't run. Add time.sleep() in your loop."
 - `threading.Thread.start` raises "Threads aren't supported in the simulator yet; use gpiozero callbacks or a loop with time.sleep()".
 
 ### 5.3 Serial
 
-- `print` and stderr go to the board's Serial panel (stderr in the error colour). Output is batched per frame; the panel keeps the last 5,000 lines.
-- `input()` shows an input box in the panel and blocks the code until Enter.
-- An uncaught exception prints the traceback with file `blink.py` (or `main.py`) line numbers. Each line reference is a link that jumps to that line in the editor. The board stops with status "error".
+- `print` and stderr go to the board's Serial panel (stderr in the error colour), batched per sample. The panel keeps the last 5,000 lines.
+- `input()` (our replacement) shows an input box in the panel and waits until Enter. `setStdin` is also set, only so `sys.stdin.readline()` works; no callbacks run inside it.
+- An uncaught exception prints the traceback with file `blink.py` (or `main.py`) line numbers. Each line reference links to that line in the editor. The board stops with status "error".
 
 ### 5.4 Stop and Reset
 
-- Stop sets the interrupt flag (`KeyboardInterrupt` in Python, which also wakes `Atomics.wait`), runs `cleanup`, and terminates the worker if it has not finished after 1 s.
-- Reset is Stop then Run, reusing the cached Pyodide files (the worker restarts; the interpreter is not reused, so no state leaks between runs).
+- Stop writes the interrupt buffer and notifies the wake word. Python raises `KeyboardInterrupt`, `except`/`finally` blocks and `cleanup` run, and the worker is terminated if it has not finished after 1 s.
+- Reset is Stop then Run in a fresh worker, using the already-fetched files. No interpreter state survives between runs.
 
 ## 6. Editor
 
 ### 6.1 Code dock (mockup option B)
 
 - A dock under the sheet, resizable by a drag handle (height kept in localStorage `circuitoon.dockHeight`), collapsible to a 28 px bar that still shows each board's status.
-- **One tab per board that has code** (plus the selected board's tab, if it has none yet). The tab label is the designator, the board name and the file name; a dot shows status (idle, loading, running, error).
-- **Left: the editor.** CodeMirror 6 with Python highlighting, line numbers, the light and dark themes, and a lazy chunk (not in the main bundle). Toolbar: Run/Stop, Reset, Upload, Download, and a language label.
+- **One tab per board that has code**, plus the selected board's tab if it has none yet. The tab label is the designator, the board name and the file name; a dot with a text equivalent shows the status (idle, starting, running, error, code changed).
+- **Left: the editor.** CodeMirror 6 with Python highlighting, line numbers and the light and dark themes, in a lazy chunk. Toolbar: one Run/Stop button (its accessible name changes; status changes are announced politely), Reset, Upload, Download, and a language label.
 - **Right: Serial.** Output, the input box when `input()` is waiting, and Clear.
 - The dock is hidden on a sheet with no coded boards until a board is selected and its Code action is used.
 - **Run all / Stop all** appear in the dock bar when two or more boards have code.
 
 ### 6.2 Inspector
 
-A **Code** section for boards whose module declares `firmware`, after Simulation state:
-- with no code: **Upload code** (file picker, `.py`), **Write code** (opens the dock tab with an empty file and a starter comment);
+A **Code** section for boards whose module accepts a language (3.2), after Simulation state:
+- with no code: **Upload code** (file picker, `.py`) and **Write code** (opens the dock tab with an empty file and a starter comment);
 - with code: file name, language, line count, Run/Stop, **Edit** (focuses the dock tab), **Download** (`<file>` or `<designator>.py`), **Remove code** (undoable).
-- On a board without `firmware`: no section. Slices 2-5 add their boards.
 
-Uploading reads the file as UTF-8 text; a file over 256 KB or with invalid UTF-8 is refused with the reason. A file whose extension does not fit the language (`.ino` on a Pi) is refused with a hint.
+Uploading reads the file as UTF-8. A file over 256 KB, with invalid UTF-8, or with an extension that does not fit the language (`.ino` on a Pi) is refused with the reason.
 
 ### 6.3 On the sheet
 
 - A running board shows a small green "running" badge (red "error" when stopped by an exception), placed with the existing badge placement.
-- A servo's horn is drawn at its angle in the sim overlay layer.
+- A servo's horn is drawn at its angle in the sim overlay layer. With `prefers-reduced-motion` it jumps to the angle.
 - PWM probe tags read "avg 1.21 V".
 - The findings groups gain the run-time findings (`undefined-level`, `floating-read`, `servo-signal`, `pwm-approximate`), deduplicated per pin per run.
 
 ### 6.4 Accessibility
 
-The dock is keyboard reachable (a skip-link from the toolbar, Ctrl+` toggles it), tabs are a proper tablist, the Serial output is an `aria-live="polite"` log throttled to one announcement per second, status dots have text equivalents, and all controls meet the existing focus style.
+- The dock is keyboard reachable: a skip-link from the toolbar, and Ctrl+` toggles it.
+- Tabs are a proper tablist; status dots have text equivalents; all controls use the existing focus style.
+- CodeMirror's Tab indents; Escape then Tab leaves the editor, and the dock's help text says so.
+- Serial output is an `aria-live="polite"` log, throttled to one announcement per second.
 
 ## 7. Agents
 
-- **Netlist:** a part entry may carry `code: { language, path }`; `layout` reads the file (relative to the netlist) and embeds it. `circuitoon netlist` writes the code out next to the netlist as `<designator>.<ext>` and references it.
-- **`circuitoon run <sheet> [--board U1|all] [--for 5s] [--input "line"]... [--press S1@1.5s[:0.2s]]... [--json]`**
-  - Runs the code in Node (`worker_threads`, the same Pyodide files shipped in the plugin, the same stand-ins) against the same simulator, in real time, for the given duration (default 5 s, maximum 60 s).
+- **Netlist:** a part entry may carry `code: { language, path }`. `IntentPart` gains `code`. `layout` reads the file and embeds it; the path must be relative, inside the netlist's directory, with no `..`, and must not resolve outside it through a symlink. `circuitoon netlist` writes each board's code next to the netlist as `<designator>.<ext>` and references it. Round-trip tests cover `netlist` and `extract`.
+- **`circuitoon run <sheet> [--board U1|all] [--for 5s] [--input "line"]... [--press S1@1.5s[:0.2s]]... [--json] [--py-dir <path>]`**
+  - Runs the code in Node (`worker_threads`, the same stand-ins and simulator) on a **virtual clock**: every wait and sleep is ours, so at each yield the driver solves synchronously and advances time to the next due timer, wait end or `--press` event. Runs are deterministic and faster than real time. Default 5 s of simulated time, maximum 600 s.
   - `--press` holds a button or flips a switch at a time; `--input` feeds `input()` lines in order.
-  - Prints Serial output, a pin timeline (changes with timestamps, steady PWM as one line per change), and the findings seen during the run. `--json` gives `circuitoon-cli/run/1`.
-  - Exit codes: 0 ran clean; 1 Python error, blocking finding, or lost power; 2 usage; 3 incomplete (a board with no sim data, no code, or no power).
+  - Prints Serial output, a pin timeline (changes with timestamps; steady PWM as one line per duty change), and the findings seen during the run. `--json` gives `circuitoon-cli/run/1`.
+  - A script that never yields is stopped after 5 s of real time with "U1's code never pauses" (exit 1).
+  - Exit codes: 0 ran clean; 1 Python error, blocking finding, lost power, or a script that never yields; 2 usage; 3 incomplete (a board with no sim data, no code, or no power).
 - **gate:** a `code-language` error for code a board does not accept, and a `code-unsupported-import` warning from a static scan for the unsupported modules in 5.1. The gate does not run code. No gate format change.
 - **The `circuitoon-design` skill:** when a sheet has a Pi with code, run `circuitoon run` and read its findings before handing over.
-- **Plugin:** the Pyodide files ship in the plugin's `dist-cli` (offline, deterministic). Plugin version 0.11.0.
+- **Plugin:** version 0.11.0. Pyodide is fetched on first use (2.7), not shipped.
 
 ## 8. Samples and docs
 
 - Sample sheets: **"Blink on a Raspberry Pi"** (Pi 4, LED, 330 Ω, gpiozero `LED.blink`) and **"Button lights an LED on a Pi"** (button on GPIO27 with the internal pull-up, `when_pressed`), both in the start screen's sample list.
-- README: what runs, which libraries, the limits (no threads, no I2C/SPI yet, timing lag of one solve).
-- About the simulator: a "Running code" paragraph with the same limits.
+- README: what runs, which libraries, the limits (no threads, callbacks not concurrent, no I2C/SPI yet, a one-solve read lag).
+- About the simulator: a "Running code" paragraph with the same limits, plus the servo range note.
 
 ## 9. Budgets
 
 | Item | Budget |
 |---|---|
-| Pyodide transfer on first Run (compressed) | ≤ 8 MB, measured at the Pyodide checkpoint; trim the stdlib if over |
-| Cold start to "running" (dev machine, files cached) | ≤ 2.5 s; first visit ≤ 6 s on a 50 Mbit/s line, with progress |
-| Pin change in code to the re-solved glow | ≤ 2 frames at 200 parts with no PWM; ≤ 100 ms with 3 PWM pins (8 runs) |
+| Pyodide transfer on first Run | ≤ 8 MB as actually served by GitHub Pages (its `Content-Encoding` for `.wasm` and `.js` measured on the live site at the Pyodide checkpoint); trim the stdlib if over |
+| Starting to "running" (dev machine, files cached) | ≤ 2.5 s; first visit ≤ 6 s on a 50 Mbit/s line, with progress |
+| Run-state change to re-solved glow, 200 parts, no PWM | ≤ 50 ms (the existing re-solve budget) |
+| Same, one group of 3 PWM pins | ≤ 150 ms |
 | Editor main bundle | ≤ +20 KB gzip |
 | Code dock chunk (CodeMirror + Python mode) | ≤ 150 KB gzip |
-| Memory per running board | ≤ 120 MB worker heap |
-| `circuitoon run --for 1s` on the Pi blink sample, cold | ≤ 4 s total |
+| Memory per running board | ≤ 120 MB worker heap (sets the 2-or-4 cap) |
+| `circuitoon run --for 5s` on the Pi blink sample, Pyodide cached | ≤ 4 s wall time |
 
-Timing budgets are measured on a quiet machine (as for the simulator).
+Timing budgets are measured on a quiet machine, as for the simulator.
 
 ## 10. Testing
 
-- **Unit (Vitest, Node):** `code` key validation; module `firmware` validation; run pin states to solve states; PWM combination weights (k = 0-4, the approximation note); servo pulse-to-angle; pin read thresholds, hysteresis and floating.
-- **Python stand-ins against real Pyodide in Node:** every listed `RPi.GPIO` call and `gpiozero` class, BCM/BOARD mapping, edge callbacks at yield points, the never-yields warning, the thread error, unsupported-import errors, KeyboardInterrupt on Stop, `input()` blocking and resuming.
-- **Integration:** the blink sample in Node shows GPIO17 toggling at 1 Hz ± 5% for 3 s, and the LED's averaged current at the expected duty; a button press via `--press` fires `when_pressed`.
-- **Sim data:** Pi values validate, provenance present, two-reviewer checks recorded.
-- **Browser check (`npm run check:code-ui`, playwright-core on our own Chrome):** isolation active after one reload; the blink sample's LED glow toggles; Serial shows output; an exception's line link jumps to the line; Stop restores saved states and leaves the file unchanged and the undo stack untouched; budgets measured; screenshots of idle, loading, running, error and stopped in light and dark at desktop and 390 px width, all viewed.
-- **Regression under isolation:** the existing UI checks (sim, guides, part maker) pass with the service worker active.
+- **Unit (Vitest, Node):**
+  - `code` key validation, including unknown languages and oversized sources;
+  - module `firmware` validation and library carry-over;
+  - the sampler: declared PWM, bit-bang windows, quantisation and hysteresis;
+  - SimSession running mode (2.4);
+  - PWM groups, weights, superposition and the union of findings (an LED with no resistor at 50% still blocks);
+  - servo pulse-to-angle and slew;
+  - thresholds, hysteresis, the 100 ms dwell warning, floating reads and edge counters.
+- **Python stand-ins against real Pyodide in Node:**
+  - every listed `RPi.GPIO` call and `gpiozero` class, and BCM/BOARD mapping;
+  - output latch reads (`toggle`, `is_lit`), and `Button` not firing at start;
+  - callbacks at yield points, non-reentrancy, the never-yields warning, the thread error, unsupported-import errors;
+  - Stop during `sleep(10)` raising `KeyboardInterrupt` within 100 ms;
+  - `input()` blocking and resuming;
+  - the worker sandbox (`fetch`, `WebSocket` and `importScripts` unavailable to user code).
+- **Integration on the virtual clock:**
+  - the blink sample shows GPIO17 toggling at exactly 1 Hz for 3 s, with the LED's averaged current at the expected duty;
+  - `--press` fires `when_pressed`;
+  - a press shorter than a solve still fires (edge counters).
+- **Sim data:** Pi values validate, provenance is present, two-reviewer checks are recorded, the GPIO2/3 pull-up build test passes, and Pi USB ports stay "not simulated".
+- **Browser check (`npm run check:code-ui`, playwright-core on our own Chrome):**
+  - isolation is active after one reload, and the share-link hash survives it;
+  - the blink sample's glow toggles, and Serial shows output;
+  - an exception's line link jumps to the line;
+  - Stop restores the saved states and leaves the file unchanged and the undo stack untouched;
+  - running continues during a drag;
+  - budgets measured;
+  - screenshots of idle, starting, running, error, code-changed and stopped, in light and dark, at desktop and 390 px width, all viewed.
+- **Regression under isolation:** the existing UI checks (sim, guides, part maker) pass with the service worker active, and the kill-switch worker unregisters cleanly in a test page.
 
 ## 11. Delivery
 
-1. Cross-origin isolation + self-hosted fonts (ships first and alone if needed: it changes every page load).
-2. `code` key, module `firmware`, Pi sim data (sourced, reviewed).
-3. Pyodide engine files, loader, worker, shared-memory protocol, stand-ins, Node runner.
-4. Run pin states, PWM solves, servo model, pin reads.
+1. Cross-origin isolation, self-hosted fonts, kill switch. This changes every page load, so it ships first and alone.
+2. `code` key, module `firmware` with library carry-over, Pi sim data (sourced, reviewed), servo data.
+3. Pyodide files, loader, worker sandbox, shared memory and seqlocks, Python scheduler, stand-ins, Node runner with the virtual clock.
+4. Sampler, run pin states, SimSession running mode, PWM groups and findings union, servo model, thresholds and edges.
 5. Code dock, Inspector section, badges, Serial.
 6. `circuitoon run`, netlist/layout code, gate checks, skill, samples, docs.
 
-Checkpoints: a Claude reviewer (Astra after 2026-10-10) reviews the spec, the shared-memory protocol after step 3, and the whole branch before merge. Ship through `circuitoon-ship` after the ship gates (full tests + timing on a quiet machine, browser check, live verification of Run on the deployed site).
+Checkpoints: a Claude reviewer (Astra after 2026-10-10) reviews this spec, the shared-memory protocol and scheduler after step 3, and the whole branch before merge. Shipping goes through `circuitoon-ship` after the ship gates (full tests and timing on a quiet machine, the browser check, and live verification of Run on the deployed site).
 
 ## 12. Risks
 
 | Risk | Mitigation |
 |---|---|
-| The service worker breaks something on first load or in some browser | Ships as its own step, regression checks under isolation, Run disabled (not the editor) when isolation fails |
-| Pyodide too large or slow on first Run | Budget checkpoint; stdlib trim; progress shown; files cached by hash |
-| Users' scripts use threads or unsupported libraries | Clear errors naming the call and the alternative; the gate's static scan for agents |
-| One-solve read lag confuses tight polling loops | Documented; callbacks fire at yield points; reads never return stale values older than the last finished solve |
-| PWM combinations slow the solve | k ≤ 3 exact, approximate note above that; budgets |
-| Pi 5 RP1 drive data partly undocumented | Flagged estimates, never a blocking finding from an estimate (existing rule) |
+| The service worker breaks something on first load or in some browser | Ships as its own step; regression checks under isolation; Run is disabled (not the editor) when isolation fails; kill-switch worker ready |
+| A reload after a deploy loses unsaved work | `doReload` never reloads a page with an unsaved diagram |
+| Shared-link code misuses the browser | Worker sandbox (2.6), CSP, first-run confirmation |
+| Pyodide too large or slow on first Run | Budget checkpoint on the served size; stdlib trim; progress; HTTP cache |
+| Users' scripts use threads, concurrent callbacks or unsupported libraries | Clear errors naming the call and the alternative; About the simulator; the gate's static scan for agents |
+| The one-solve read lag confuses tight polling loops | Output latch reads; edge counters; sequence waits after setup; documented |
+| PWM combinations slow the solve | Grouping, the 3-pin exact limit, the peak fallback, the perf test |
+| Pi 5 RP1 data partly undocumented | Flagged estimates; estimates never block (existing rule) |
+| The CLI's first run needs the network | Stated in the README; `--py-dir` for offline use |
+
+## 13. Answers to review 1
+
+| # | Finding | Answer |
+|---|---|---|
+| F1 | SimSession starves under continuous requests | Running mode delivers any newer result (2.4), with a test |
+| F2 | Frame sampling aliases PWM and servos | Declared PWM descriptors; bit-bang windows of max(100 ms, 4 periods); 1/64 hysteresis (2.2, 2.3) |
+| F3 | Findings on averaged solves hide over-current | Findings are the union over combination runs; averages only for readings and glow; weights spelled out (4.2) |
+| F4 | Interrupt buffer does not wake `Atomics.wait` | Wake word, 50 ms bounded waits, `checkInterrupt` (5.2, 5.4) |
+| F5 | Re-entrancy and `input()` | Python scheduler, non-reentrant, our own `input`, `registerJsModule` (5.1-5.3) |
+| F6 | Output latch, start-up reads, reads after setup | Latch reads, pull-level defaults, sequence waits (4.4) |
+| F7 | Lost edges | Editor-side thresholds and edge counters (2.2, 4.4) |
+| F8 | k > 3 approximation, "exact" overstated | Interaction groups, superposition, honest wording (4.2) |
+| F9 | Compilation path and budgets | Two-branch PWM pins with `alter`, `Analysis.pins`, restated budgets (4.2, 4.3, 9) |
+| F10 | Brownout, Run before the first solve, USB ports | `minVolts` at typical only, "starting", 4.63 V note, USB ports stay unsimulated (3.3, 4.5) |
+| F11 | `firmware` on old sheets and custom modules | Library carry-over; ignored on custom modules (3.2) |
+| F12 | The worker is not a sandbox | Globals removed, CSP, first-run confirmation for link code (2.6) |
+| F13 | coi-serviceworker configuration | require-corp config, guarded reload, head placement, Vite headers, kill switch (2.5) |
+| F14 | No sampling clock; counter overflow; float atomics | One sampler on solve or 16 ms timers; wrapping counters; seqlocks (2.2, 2.3) |
+| F15 | CLI real time; Pyodide in git twice | Virtual clock; Pyodide copied at build for the web and fetched on first use by the CLI, nothing committed (2.7, 7). Ruled by me under Michael's standing instruction |
+| F16 | followStore and SimSession integration | `runPins` beside `held`, drag exemption, quantised writes, cached netlist key, no frequency in the key (2.3, 4.1) |
+| F17 | Pyodide layout, progress, caching | Versioned directory, prefetch with progress, honest caching note (2.7) |
+| F18 | Budget depends on Pages compression | Measured as served (9) |
+| F19 | Servo data | Pulse range and slew in data with provenance; slewed horn (3.4) |
+| F20 | RPi.GPIO on Pi 5, "hardware PWM" | Pi 5 warning; wording fixed (1, 5.1) |
+| F21 | `code` key details | UTF-8 bytes, unknown languages kept, edits do not stop runs, history note (2.1, 3.1) |
+| F22 | Netlist `code.path` | Confined relative paths, `IntentPart.code`, round-trip tests (7) |
+| F23 | Accessibility | Escape-Tab, reduced motion, one Run/Stop button (6.1, 6.3, 6.4) |
+| F24 | Fonts | latin + latin-ext, preloads (2.5) |
+| F25 | Pi data | Pull-up role and build test, 100 ms dwell before warning (3.3, 4.4) |
+| F26 | YAGNI | Frequency hint and frame measurement for library PWM removed; the cap depends on measured memory (2.1, 2.2) |
