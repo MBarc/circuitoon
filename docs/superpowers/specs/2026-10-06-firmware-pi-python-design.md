@@ -1,6 +1,6 @@
 # Code on boards, slice 1: run loop and Raspberry Pi Python
 
-Status: revision 4 (2026-10-06). Revision 4 amends 4.2's cross-group combination after the plan found a defect (plan ruling R1).
+Status: revision 5 (2026-10-06). Revision 5 moves `Buzzer` to the digital devices, as in gpiozero (pre-flight C12). Revision 4 amends 4.2's cross-group combination after the plan found a defect (plan ruling R1).
 - Sections 1-3 and the dock layout were approved by Michael in chat. The rest are rulings made under his standing instruction to decide technical calls ("whatever is best for the user experience", "stop asking me so many things").
 - Revision 1 was reviewed by a Claude reviewer standing in for Astra (Codex is rate-limited until 2026-10-10). Section 13 answers that review and section 14 the re-review of revision 2. Astra reviews after the reset.
 
@@ -59,7 +59,7 @@ Each board has one SharedArrayBuffer with two tables. Each table is guarded by a
 - **Code to editor**, per pin:
   - mode (unused, input, input-pullup, input-pulldown, output);
   - output latch (0/1);
-  - a **declared PWM descriptor** (active, duty, freqHz), written by `RPi.GPIO.PWM` and every gpiozero PWM device (`PWMOutputDevice`, `PWMLED`, `RGBLED`, `Buzzer`, `Servo`, `AngularServo`, `Motor`);
+  - a **declared PWM descriptor** (active, duty, freqHz), written by `RPi.GPIO.PWM` and every gpiozero PWM device (`PWMOutputDevice`, `PWMLED`, `RGBLED`, `Servo`, `AngularServo`, `Motor`; `Buzzer` is digital, as in gpiozero);
   - for plain writes: wrapping uint32 counters of rising edges, falling edges and high time in µs (read as differences);
   - a code sequence number, bumped on every mode or pull change.
 - **Editor to code**, per pin:
