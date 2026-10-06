@@ -51,7 +51,7 @@ export class BoardSampler {
         continue
       }
       // A plain output: the bit-bang window (high time counts the current high stretch too).
-      const high = (r.highUs + (r.latch ? (nowUs - r.changedUs) >>> 0 : 0)) >>> 0
+      const high = (r.highUs + (r.latch ? Math.max(0, (nowUs - r.changedUs) | 0) : 0)) >>> 0
       const hist = this.history.get(bcm) ?? []
       hist.push({ tMs: nowMs, rising: r.rising, falling: r.falling, highUs: high })
       // Keep the window and the newest point at least a window old (the base).
@@ -70,7 +70,7 @@ export class BoardSampler {
         detail[name] = { state: (pins[name] = latch), duty: null, freqHz: null }
         continue
       }
-      const raw = ((high - base.highUs) >>> 0) / 1000 / span
+      const raw = Math.min(1, Math.max(0, ((high - base.highUs) | 0) / 1000 / span))
       const d = quantize(this.duty.get(bcm) ?? null, raw)
       this.duty.set(bcm, d)
       detail[name] = { state: (pins[name] = asState(d)), duty: raw, freqHz: edges / 2 / (span / 1000) }

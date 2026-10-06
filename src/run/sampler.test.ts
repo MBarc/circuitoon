@@ -74,4 +74,16 @@ describe('the sampler (spec 2.3)', () => {
     expect(r.pins).toEqual({ GPIO4: 'input', GPIO22: 'input-pulldown', GPIO27: 'input-pullup' })
     expect(r.seq).toBe(7)
   })
+  it('stays sane when an edge lands after the sample time was taken (changedUs later than now)', () => {
+    const m = boardMemory()
+    const s = new BoardSampler()
+    const put = (latch: 0 | 1, rising: number, falling: number, changedUs: number) =>
+      writeLocked(m, H.outSeq, () => setOut(m, 17, { mode: MODE.output, latch, rising, falling, highUs: 0, changedUs }))
+    put(1, 10, 10, 0)
+    s.sample(m, 0)
+    put(1, 30, 29, 200_000) // the worker wrote at 200 ms; the main thread took now = 112 ms first
+    const r = s.sample(m, 112).pins.GPIO17
+    // no high time was recorded, so it must not read as high (the wrapped elapsed time made it 'high')
+    expect(r).toBe('low')
+  })
 })
