@@ -2,7 +2,7 @@
   "format": "circuitoon-netlist/1",
   "title": "Spirit Typewriter 1 of 4: power, ESP32 and displays",
   "parts": [
-    { "ref": "U1", "module": "esp32-devkitc-v4" },
+    { "ref": "U1", "module": "esp32-devkitc-v4", "values": { "gpio.IO5": "high", "gpio.IO26": "high", "gpio.IO27": "high", "gpio.IO4": "high" } },
     { "ref": "BB1", "module": "breadboard-half" },
     { "ref": "BT1", "module": "battery-18650-holder" },
     { "ref": "U5", "module": "ip5306-usbc-module" },
