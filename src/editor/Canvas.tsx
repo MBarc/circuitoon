@@ -16,17 +16,20 @@ import { type LabelLook, type WireLook, drawnColor, holdLabelLooks, holdLooks, n
 import { flagRect, labelName, labelsOf } from '../format/netLabels.ts'
 import { cellGate } from './hoverCell.ts'
 import { seatedLabels } from '../format/seatedLabels.ts'
-import { addWire, EMPTY_SELECTION, marqueeSelection, moveAnnotations, moveParts, reconnectWire, sameEndpoint, setWireRoute, settleDrop, settleMounts, settleSeats, settlingOf, updateWire, withMounted } from './ops.ts'
+import { addWire, cycleGpio, EMPTY_SELECTION, flipContact, momentaryGroup, marqueeSelection, moveAnnotations, moveParts, reconnectWire, sameEndpoint, setWireRoute, settleDrop, settleMounts, settleSeats, settlingOf, updateWire, withMounted } from './ops.ts'
 import { netlist, netPoints } from '../format/netlist.ts'
 import { bendHandleAt, insertBend, isOrthogonal, moveSegment, removeBend, segmentHandleAt, segmentsOf, toRoute, type Axis } from '../format/wireEdit.ts'
 import { lookupModule, placeOnSheet, placementModule } from './myParts.ts'
 import { bodyRect } from '../format/geometry.ts'
 import { isNetLabel, layoutModule, type ModuleDef } from '../format/module.ts'
 import { MODULE_MIME } from './LibraryPanel.tsx'
-import type { Connection, Diagram, Endpoint } from '../format/diagram.ts'
+import type { Connection, Diagram, Endpoint, ProbeAnchor } from '../format/diagram.ts'
 import type { Selection } from './ops.ts'
 import { partCaption } from '../format/values.ts'
 import { SeverityMark } from './SeverityMark.tsx'
+import { SimLayer, currentFindings, shownResult } from './SimLayer.tsx'
+import { ProbeLayer } from './ProbeLayer.tsx'
+import { addProbe, sameAnchor } from '../sim/probes.ts'
 import { gridOnly, snapMove, type SnapResult } from './snap.ts'
 import { dragSnap, overlaps, type DragSnap } from './dragSnap.ts'
 import { GuideLayer } from './GuideLayer.tsx'
@@ -123,7 +126,12 @@ export interface CanvasApi {
 }
 
 export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api: CanvasApi) => void }) {
-  const { diagram, selection, highlight, reveal, snapObjects } = useEditorState(store)
+  const { diagram, selection, highlight, reveal, snapObjects, simulate, simTool, sim } = useEditorState(store)
+  // While simulating: the readings to draw (the last good ones, stale, after a failed solve) and the current findings.
+  const simOutcome = simulate && sim?.phase === 'done' ? sim.outcome : undefined
+  const simShown = shownResult(simOutcome)
+  // A failed outcome's findings are a new array per call; memoised so SimLayer's memo holds.
+  const simFindings = useMemo(() => currentFindings(simOutcome), [simOutcome])
   const svgRef = useRef<SVGSVGElement>(null)
   const [size, setSize] = useState({ w: 800, h: 600 })
   const [view, setView] = useState<View>({ x: -20, y: -40, scale: 1.5 })
@@ -140,6 +148,8 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
   }, [store, panActive])
   // The last pointer position over the sheet (client px), for pasting under the pointer.
   const lastClient = useRef<Pt | null>(null)
+  // A momentary button this press holds while simulating (spec 4.0): released on pointer up or cancel.
+  const heldRef = useRef(false)
   // The pin or hole under the pointer while nothing is being dragged, for net highlighting.
   const [hover, setHover] = useState<Endpoint | null>(null)
   // The net label under the pointer (its body or its pin), for lighting every label of its name.
@@ -427,10 +437,16 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
   }, [editing])
 
   /** Ends a part drag as one undo step: moved parts that are seated mount, the rest unmount. */
-  function finishPartsDrag(d: Extract<Drag, { kind: 'parts' }>) {
+  function finishPartsDrag(d: Extract<Drag, { kind: 'parts' }>, click: boolean) {
     // A press without movement changes nothing, mounts included (settleDrop returns `now` then).
+    const moved = store.getState().diagram !== d.base
     if (store.dragging) store.preview(settleDrop(d.base, store.getState().diagram, d.settling))
     store.end()
+    // Spec 6.3: a click on a switch while simulating flips it and saves the new position.
+    if (click && !moved && store.getState().simulate && d.uids.length === 1) {
+      const next = flipContact(store.getState().diagram, d.uids[0])
+      if (next) store.commit(next)
+    }
   }
 
   function onPointerDown(e: React.PointerEvent<SVGSVGElement>) {
@@ -453,6 +469,36 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
     }
     // Everything else (wires, part and mark drags, the selection rectangle) is the primary button only.
     if (e.button !== 0) return
+    // A simulation badge selects the parts its findings name (spec 6.3).
+    const badge = target.closest('[data-sim-badge]')
+    if (badge) {
+      store.select({ parts: badge.getAttribute('data-sim-badge')!.split(' '), wires: [] })
+      store.reveal()
+      return
+    }
+    // The Probe tool (spec 6.2): a pin or hole, the nearer end of a wire, or a part. Anything else does nothing.
+    if (store.getState().simTool === 'probe') {
+      const d0 = store.getState().diagram
+      // A hole probe keeps the hole clicked, so it is drawn there.
+      const anchor = (ep: Endpoint): ProbeAnchor => ({ part: ep.part, pin: ep.pin, ...(ep.hole !== undefined ? { hole: ep.hole } : {}) })
+      const end = endUnder(e)
+      let at: ProbeAnchor | null = end ? anchor(end) : null
+      const wireEl = at ? null : target.closest('[data-wire]')
+      const conn = wireEl ? d0.connections.find((c) => c.uid === wireEl.getAttribute('data-wire')) : undefined
+      if (conn) {
+        const p = toWorld(e)
+        const dist = (ep: Endpoint) => {
+          const r = resolveEndpoint(d0, ep)
+          return r ? Math.hypot(r.end.x - p.x, r.end.y - p.y) : Infinity
+        }
+        at = anchor(dist(conn.from) <= dist(conn.to) ? conn.from : conn.to)
+      }
+      const partEl = at ? null : target.closest('[data-part]')
+      if (partEl) at = { part: partEl.getAttribute('data-part')! }
+      // One probe per point: a second click where one already reads keeps that one.
+      if (at && !(d0.probes ?? []).some((q) => sameAnchor(q.at, at))) store.commit(addProbe(d0, at).diagram)
+      return
+    }
     // Explicit wire-edit handles of the selected wire come first: they sit on top of everything.
     const handleEl = target.closest('[data-wire-end]')
     if (handleEl) {
@@ -534,6 +580,14 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
       if (e.shiftKey) parts = parts.includes(uid) ? parts.filter((u) => u !== uid) : [...parts, uid]
       else if (!parts.includes(uid)) parts = [uid]
       store.select({ parts, wires: e.shiftKey ? sel.wires : [] })
+      // Spec 4.0: a button is held closed while the pointer is down, never saved.
+      if (store.getState().simulate && !e.shiftKey) {
+        const group = momentaryGroup(store.getState().diagram, uid)
+        if (group) {
+          heldRef.current = true
+          store.setHeld({ part: uid, group })
+        }
+      }
       if (parts.includes(uid)) {
         const base = store.begin()
         const moving = withMounted(base, parts)
@@ -693,9 +747,15 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
     // Re-bound every render, so the key sees the current view (the wheel can zoom mid-drag).
   })
 
+  function releaseHeld() {
+    if (!heldRef.current) return
+    heldRef.current = false
+    store.setHeld(null)
+  }
   function onPointerUp(e: React.PointerEvent<SVGSVGElement>) {
+    releaseHeld()
     if (!drag || e.pointerId !== drag.pointer) return
-    if (drag.kind === 'parts') finishPartsDrag(drag)
+    if (drag.kind === 'parts') finishPartsDrag(drag, true)
     if (drag.kind === 'segment') store.end()
     if (drag.kind === 'annotations') store.end()
     if (drag.kind === 'marquee' && !drag.moved && !drag.add) store.select(EMPTY_SELECTION)
@@ -708,6 +768,11 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
       if (added) {
         store.commit(added.diagram)
         store.select({ parts: [], wires: [added.uid] })
+      }
+      // Spec 6.3: a click on a GPIO pin while simulating cycles its state.
+      else if (to && s.simulate && s.simTool === 'select' && sameEndpoint(s.diagram, to, drag.from)) {
+        const next = cycleGpio(s.diagram, drag.from.part, drag.from.pin)
+        if (next) store.commit(next)
       }
     }
     if (drag.kind === 'reconnect') {
@@ -723,8 +788,9 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
     setHover(null)
   }
   function onPointerCancel(e: React.PointerEvent<SVGSVGElement>) {
+    releaseHeld()
     if (!drag || e.pointerId !== drag.pointer) return
-    if (drag.kind === 'parts') finishPartsDrag(drag)
+    if (drag.kind === 'parts') finishPartsDrag(drag, false)
     // A reshape the browser took away (lost capture, cancelled touch) is abandoned, not kept.
     if (drag.kind === 'segment') store.cancel()
     if (drag.kind === 'annotations') store.end()
@@ -790,7 +856,7 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
     >
       <svg
         ref={svgRef}
-        className={drag?.kind === 'pan' ? 'canvas panning' : spaceDown ? 'canvas space-pan' : 'canvas'}
+        className={`${drag?.kind === 'pan' ? 'canvas panning' : spaceDown ? 'canvas space-pan' : 'canvas'}${simTool === 'probe' ? ' probing' : ''}`}
         viewBox={`${view.x} ${view.y} ${vw} ${vh}`}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
@@ -890,6 +956,11 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
         {(diagram.annotations ?? []).filter((a) => a.type === 'text').map((a) => (
           <NoteMark key={a.uid} a={a} interactive selected={!!selection.annotations?.includes(a.uid)} />
         ))}
+        {simOutcome && (
+          <SimLayer diagram={diagram} result={simShown?.result ?? null} stale={!!simShown?.stale} circuit={sim?.phase === 'done' ? sim.circuit : null} findings={simFindings} />
+        )}
+        {/* Probes (saved with the sheet) show "-" until Simulate gives them readings. */}
+        {(diagram.probes?.length ?? 0) > 0 && <ProbeLayer diagram={diagram} readings={simShown?.result.probes ?? null} stale={!!simShown?.stale} />}
         {/* A connection the netlist could not join (a missing part, pin, group or hole) has no
             route to draw, but a short dashed red stub at whichever end still resolves lets a
             user find and repair it instead of a wire silently vanishing from the sheet. Drawn after the

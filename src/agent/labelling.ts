@@ -7,7 +7,7 @@ import type { Annotation, Diagram, PartInstance } from '../format/diagram.ts'
 import { moduleOf } from '../format/diagram.ts'
 import { type Pt, type Rect, type Rotation, bodyRect, worldPins } from '../format/geometry.ts'
 import { LEAD, type ModuleDef, isBoard, layoutModule } from '../format/module.ts'
-import { flagRect } from '../format/netLabels.ts'
+import { flagBox, flagRect } from '../format/netLabels.ts'
 import { placedCaptionBox, tipLabelBoxes } from '../render/captionBox.ts'
 import { annotationRect, frameTab } from '../render/annotationGeometry.ts'
 import { seatedLabels } from '../format/seatedLabels.ts'
@@ -58,6 +58,8 @@ export interface LabelSpot {
   elbow: Pt
   /** Where the stub leaves its body (the pin tip, or the body edge for a pad or hole). */
   base: Pt
+  /** The box kept clear, when it is not the label's own flag (`spot`'s `size`). */
+  flag?: Rect
 }
 
 /**
@@ -160,8 +162,9 @@ export class LabelPlacer {
    * A spot for a label named `name` whose pin tip sits `s` px out from `from` along `dir` (for each
    * s in LABEL_STUBS, from `base`, the point the distance is measured from, `from` by default), or
    * null. The stub from `from` to the tip may cross `own` (the endpoint's part: a pad inside it).
+   * `size` keeps a box of that size clear instead of the label's flag (a probe's tag).
    */
-  spot(name: string, from: Pt, dir: Pt, opts: { base?: Pt; own?: string } = {}): LabelSpot | null {
+  spot(name: string, from: Pt, dir: Pt, opts: { base?: Pt; own?: string; size?: { w: number; h: number } } = {}): LabelSpot | null {
     const rotation = ([0, 90, 180, 270] as Rotation[]).find((r) => {
       const p = this.pinAt(r)
       return p.dir.x === -dir.x && p.dir.y === -dir.y
@@ -178,13 +181,13 @@ export class LabelPlacer {
       const elbow = { x: exit.x + dir.x * s, y: exit.y + dir.y * s }
       const tip = inside ? elbow : { x: elbow.x + side.x * o, y: elbow.y + side.y * o }
       const part: PartInstance = { uid: '', designator: '', module: this.m.id, x: tip.x - pin.end.x, y: tip.y - pin.end.y, rotation, values: { net: name } }
-      const flag = flagRect(part, this.m, true)
+      const flag = opts.size ? flagBox(part, this.m, opts.size.w, opts.size.h) : flagRect(part, this.m, true)
       if (this.flagsOff.hits(flag)) continue
       // From a pad or a hole, only the part of the stub outside the body counts: inside it the wire
       // crosses the part's own art (or its own board) whichever way it goes.
       const stub = [line(exit, elbow), line(elbow, tip)]
       if (stub.some((r) => this.stubsOff.hits(r, opts.own))) continue
-      return { part, tip, elbow, base: exit }
+      return { part, tip, elbow, base: exit, ...(opts.size ? { flag } : {}) }
     }
     return null
   }
@@ -240,7 +243,7 @@ export class LabelPlacer {
     while (this.used.has(uid))
     this.used.add(uid)
     const part = { ...s.part, uid, designator: uid }
-    const flag = flagRect(part, this.m, true)
+    const flag = s.flag ?? flagRect(part, this.m, true)
     this.flagsOff.push({ r: flag }, { r: line(s.base, s.elbow) }, { r: line(s.elbow, s.tip) })
     this.stubsOff.push({ r: flag }, { r: line(s.base, s.elbow) }, { r: line(s.elbow, s.tip) })
     return part

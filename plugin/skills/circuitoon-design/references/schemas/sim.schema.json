@@ -1,0 +1,516 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "circuitoon sim: a SimOutcome",
+  "type": "object",
+  "required": [
+    "status"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "status": {
+      "enum": [
+        "ok",
+        "failed",
+        "unavailable"
+      ]
+    },
+    "result": {
+      "$ref": "#/$defs/result"
+    },
+    "revision": {
+      "type": "integer"
+    },
+    "finding": {
+      "$ref": "#/$defs/finding"
+    },
+    "lastGood": {
+      "type": "object",
+      "required": [
+        "revision",
+        "result"
+      ],
+      "properties": {
+        "revision": {
+          "type": "integer"
+        },
+        "result": {
+          "$ref": "#/$defs/result"
+        }
+      }
+    },
+    "reason": {
+      "type": "string"
+    },
+    "findings": {
+      "type": "array",
+      "description": "A failed or unavailable outcome: the topological findings decided before the engine ran (empty when the solve threw before the circuit was built).",
+      "items": {
+        "$ref": "#/$defs/finding"
+      }
+    }
+  },
+  "$defs": {
+    "reading": {
+      "type": "object",
+      "required": [
+        "kind"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "enum": [
+            "value",
+            "floating",
+            "undefined",
+            "indeterminate"
+          ]
+        },
+        "value": {
+          "type": "number"
+        },
+        "reference": {
+          "type": "string"
+        },
+        "trust": {
+          "enum": [
+            "ok",
+            "outside-model"
+          ]
+        },
+        "why": {
+          "type": "string"
+        }
+      }
+    },
+    "partRun": {
+      "type": "object",
+      "required": [
+        "pins",
+        "power"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "pins": {
+          "type": "object"
+        },
+        "power": {
+          "$ref": "#/$defs/reading"
+        },
+        "state": {
+          "enum": [
+            "lit",
+            "dark"
+          ]
+        }
+      }
+    },
+    "run": {
+      "type": "object",
+      "required": [
+        "nets",
+        "parts"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "nets": {
+          "type": "object"
+        },
+        "parts": {
+          "type": "object"
+        }
+      }
+    },
+    "finding": {
+      "type": "object",
+      "required": [
+        "code",
+        "severity",
+        "parts",
+        "message",
+        "basis",
+        "inputs"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "enum": [
+            "sim-short",
+            "sim-source-conflict",
+            "sim-over-abs-max",
+            "sim-over-limit",
+            "sim-brownout",
+            "sim-dropout",
+            "sim-converter-off",
+            "sim-min-load",
+            "sim-outside-model",
+            "sim-floating-input",
+            "sim-no-convergence",
+            "sim-incomplete",
+            "sim-estimate"
+          ]
+        },
+        "severity": {
+          "enum": [
+            "error",
+            "warning",
+            "note"
+          ]
+        },
+        "parts": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "message": {
+          "type": "string"
+        },
+        "corner": {
+          "enum": [
+            "typical",
+            "peak"
+          ]
+        },
+        "basis": {
+          "enum": [
+            "datasheet",
+            "representative",
+            "estimate",
+            "user",
+            "topology"
+          ]
+        },
+        "inputs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "raw": {
+          "type": "string"
+        },
+        "pins": {
+          "type": "array",
+          "description": "The pins a pin-level finding is about (a floating input, a pin over its limit).",
+          "items": {
+            "type": "object",
+            "required": [
+              "part",
+              "pin"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "part": {
+                "type": "string"
+              },
+              "pin": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    },
+    "budget": {
+      "type": "object",
+      "required": [
+        "id",
+        "kind",
+        "part",
+        "label",
+        "volts",
+        "amps",
+        "basis"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "source",
+            "rail",
+            "domain"
+          ]
+        },
+        "part": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "volts": {
+          "type": "object",
+          "required": [
+            "typical",
+            "peak"
+          ],
+          "properties": {
+            "typical": {
+              "$ref": "#/$defs/reading"
+            },
+            "peak": {
+              "$ref": "#/$defs/reading"
+            }
+          }
+        },
+        "amps": {
+          "type": "object",
+          "required": [
+            "typical",
+            "peak"
+          ],
+          "properties": {
+            "typical": {
+              "$ref": "#/$defs/reading"
+            },
+            "peak": {
+              "$ref": "#/$defs/reading"
+            }
+          }
+        },
+        "limit": {
+          "type": "object",
+          "required": [
+            "value",
+            "kind",
+            "basis"
+          ],
+          "properties": {
+            "value": {
+              "type": "number"
+            },
+            "kind": {
+              "type": "string"
+            },
+            "basis": {
+              "type": "string"
+            }
+          }
+        },
+        "headroom": {
+          "type": "number"
+        },
+        "basis": {
+          "enum": [
+            "datasheet",
+            "representative",
+            "estimate",
+            "user",
+            "topology"
+          ]
+        },
+        "ownDraw": {
+          "type": "object",
+          "required": [
+            "typical",
+            "peak"
+          ],
+          "properties": {
+            "typical": {
+              "$ref": "#/$defs/reading"
+            },
+            "peak": {
+              "$ref": "#/$defs/reading"
+            }
+          }
+        }
+      }
+    },
+    "probe": {
+      "type": "object",
+      "required": [
+        "id",
+        "at"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "at": {
+          "type": "object",
+          "required": [
+            "part"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "part": {
+              "type": "string"
+            },
+            "pin": {
+              "type": "string"
+            }
+          }
+        },
+        "voltage": {
+          "type": "object",
+          "required": [
+            "typical",
+            "peak"
+          ],
+          "properties": {
+            "typical": {
+              "$ref": "#/$defs/reading"
+            },
+            "peak": {
+              "$ref": "#/$defs/reading"
+            }
+          }
+        },
+        "part": {
+          "type": "object",
+          "required": [
+            "typical",
+            "peak"
+          ],
+          "properties": {
+            "typical": {
+              "$ref": "#/$defs/partRun"
+            },
+            "peak": {
+              "$ref": "#/$defs/partRun"
+            }
+          }
+        }
+      }
+    },
+    "result": {
+      "type": "object",
+      "required": [
+        "format",
+        "revision",
+        "corners",
+        "budget",
+        "findings",
+        "unsimulated",
+        "probes",
+        "unaccounted",
+        "notes",
+        "engine"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "format": {
+          "const": "circuitoon-sim/1"
+        },
+        "revision": {
+          "type": "integer"
+        },
+        "corners": {
+          "type": "object",
+          "required": [
+            "typical",
+            "peak"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "typical": {
+              "$ref": "#/$defs/run"
+            },
+            "peak": {
+              "$ref": "#/$defs/run"
+            }
+          }
+        },
+        "budget": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/budget"
+          }
+        },
+        "findings": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/finding"
+          }
+        },
+        "unsimulated": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "part",
+              "reason"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "part": {
+                "type": "string"
+              },
+              "reason": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "probes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/probe"
+          }
+        },
+        "unaccounted": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "part",
+              "items"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "part": {
+                "type": "string"
+              },
+              "items": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "notes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "engine": {
+          "type": "object",
+          "required": [
+            "name",
+            "version",
+            "build",
+            "runs",
+            "ms"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "name": {
+              "const": "ngspice"
+            },
+            "version": {
+              "type": "string"
+            },
+            "build": {
+              "type": "string"
+            },
+            "runs": {
+              "type": "integer"
+            },
+            "ms": {
+              "type": "number"
+            }
+          }
+        }
+      }
+    }
+  }
+}

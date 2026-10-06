@@ -1,18 +1,23 @@
 // circuitoon module new|check|render: a custom part from a spec (file or standard input), the lint as
 // a report and an exit code, a render of the part alone, and the round trip a custom part has to
 // survive: spec to module, embedded in a netlist, laid out, gated, and opened like the editor opens it.
-import { describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it } from 'vitest'
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { cli, tempDir } from './cliHarness.testing.ts'
 import { loadSchema, schemaErrors } from './jsonSchema.testing.ts'
 import { findBrowser } from './png.ts'
 import { EXIT, type Io } from './io.ts'
-import { runGate } from './gate.ts'
+import { gateEngine, runGate } from './gate.ts'
 import { USAGE } from './main.ts'
 import { validateDiagram } from '../format/diagram.ts'
 import { openLinkPayload, payloadFromHash } from '../format/link.ts'
 import { checkDiagram } from '../format/checks.ts'
+
+// Gate tests that do not test simulation never start the engine (Task 31's stub seam).
+beforeEach(() => {
+  gateEngine.make = () => null
+})
 
 const browser = findBrowser(process.env)
 // A made-up breakout for the tests; the URLs are placeholders.

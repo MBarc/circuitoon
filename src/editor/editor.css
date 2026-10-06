@@ -134,6 +134,7 @@
 .canvas-wrap { grid-area: canvas; position: relative; overflow: hidden; }
 .canvas { display: block; width: 100%; height: 100%; touch-action: none; user-select: none; font-family: "Atkinson Hyperlegible", system-ui, sans-serif; }
 .canvas.panning { cursor: grabbing; }
+.canvas.probing, .canvas.probing * { cursor: crosshair; }
 .canvas.space-pan, .canvas.space-pan [data-part], .canvas.space-pan .annotation-grab { cursor: grab; }
 /* The selection rectangle: the selection outline's accent and dash, over a faint wash of the same colour. */
 .marquee { fill: var(--focus); fill-opacity: 0.08; stroke: var(--focus); stroke-width: 1.5; stroke-dasharray: 5 4; vector-effect: non-scaling-stroke; }
@@ -367,6 +368,26 @@ button.wordmark { background: none; border: 0; padding: 0; cursor: pointer; }
 .tool.toggle svg { width: 18px; height: 18px; flex: none; }
 .tool.toggle[aria-pressed="true"] { background: color-mix(in srgb, var(--yellow) 24%, transparent); border-color: var(--text); }
 .tool.toggle[aria-pressed="false"] svg .snap-line { stroke: var(--muted); }
+/* Simulate: the yellow wash of a pressed toggle, plus a green wave while results are live. */
+.tool.sim-toggle[aria-pressed="true"] .sim-wave { stroke: var(--green); }
+.tool.sim-toggle[data-sim-phase="loading"] .sim-wave, .tool.sim-toggle[data-sim-phase="solving"] .sim-wave { stroke: var(--muted); }
+.tool.sim-toggle[data-sim-phase="failed"] .sim-wave { stroke: var(--error); }
+/* The simulation's status: a sticker-edged note under the toolbar, like the KiCad notice. */
+.sim-status {
+  flex-basis: 100%;
+  display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px;
+  background: var(--bg); color: var(--text);
+  border: 1.5px solid var(--card-edge); border-left: 6px solid var(--green); border-radius: 8px;
+  padding: 8px 10px 8px 12px; font-size: 14px;
+}
+.sim-status strong { font: 600 16px/1.2 "Fredoka", system-ui, sans-serif; }
+.sim-status.failed { border-left-color: var(--error); }
+.sim-status progress { flex: 1 1 160px; max-width: 320px; height: 10px; accent-color: var(--green); }
+.sim-status .sim-pct { font-variant-numeric: tabular-nums; color: var(--muted); }
+.sim-status details { flex-basis: 100%; }
+.sim-status summary { cursor: pointer; font-weight: 700; color: var(--muted); }
+.sim-status pre { margin: 6px 0 0; max-height: 20vh; overflow: auto; font-size: 12px; white-space: pre-wrap; }
+.sim-note { color: var(--muted); }
 
 /* Arrange (a multi-selection): Align and Distribute as compact sticker icon buttons. */
 .arrange { display: grid; gap: 8px; border-top: 1.5px solid var(--rule); padding-top: 12px; }
@@ -434,3 +455,88 @@ button.wordmark { background: none; border: 0; padding: 0; cursor: pointer; }
 .update-parts-report:focus { outline: 2px solid var(--text); outline-offset: 2px; }
 .update-parts-report h3 { margin: 0; font: 600 15px/1.2 "Fredoka", system-ui, sans-serif; }
 .update-parts-report ul { margin: 0; padding-left: 18px; font-size: 13.5px; line-height: 1.35; }
+
+/* Simulating (spec 6.3): LED glow with its current as a tag, a dashed warning ring on an LED over
+   its absolute maximum, a ring on each pin a finding names, finding badges; stale readings dim. */
+.sim-tag rect { fill: #FFFFFF; stroke: #23282F; stroke-width: 1.2; }
+.sim-tag text { font: 700 8px "Atkinson Hyperlegible", system-ui, sans-serif; fill: #23282F; }
+.sim-tag.quiet text { font-weight: 400; fill: #56615B; }
+.sim-led.over .sim-tag rect { fill: #8E1E17; stroke: #23282F; }
+.sim-led.over .sim-tag text { fill: #FFFFFF; }
+.sim-ring { fill: none; stroke: #E0483E; stroke-width: 2.5; stroke-dasharray: 5 3; }
+.sim-pin { fill: none; stroke-width: 2.5; stroke-dasharray: 3 2; }
+.sim-pin.error { stroke: #E0483E; }
+.sim-pin.warning { stroke: #D49B00; }
+.sim-readings.stale { opacity: 0.45; }
+/* Probe tags (ProbeLayer): a white sticker in the probe's colour; dashed when the reading is outside the model. */
+.probe-box { fill: #FFFFFF; stroke-width: 1.4; }
+.probe-tag.outside .probe-box { stroke-dasharray: 3 2; }
+.probe-text { font: 700 9px "Atkinson Hyperlegible", system-ui, sans-serif; fill: #23282F; }
+/* Stale: the words dim (still 4.5:1 on the white tag); the tag stays opaque so the sheet never shows through. */
+.probe-layer.stale .probe-text { fill: #646A72; }
+.sim-badge { cursor: pointer; }
+.sim-fold { font-weight: 400; color: var(--muted); }
+/* The long group headings while simulating: the count wraps to its own line rather than squeezing. */
+.problems h3 { flex-wrap: wrap; }
+.problems-count { white-space: nowrap; }
+
+/* A part's saved simulation state (Task 35): switch positions and GPIO states. */
+.sim-part { display: grid; gap: 8px; border-top: 1.5px solid var(--rule); padding-top: 10px; }
+.sim-part h3 { margin: 0; font: 600 16px/1.2 "Fredoka", system-ui, sans-serif; }
+.sim-gpio summary { cursor: pointer; font-weight: 700; font-size: 14px; border-radius: 6px; }
+.sim-gpio summary:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+.sim-gpio-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 8px; margin-top: 8px; }
+.sim-gpio-grid select { font-size: 13px; min-width: 0; }
+
+/* The Probes panel (Task 37): in the inspector's place while the Probe tool is on, a little wider
+   for the Supplies table. Probes are small sticker cards, then a plain table, the notes and About. */
+@media (min-width: 901px) {
+  .editor:has(.probes-panel) { grid-template-columns: 220px minmax(0, 1fr) 340px; }
+}
+@media (min-width: 1200px) {
+  .editor:has(.probes-panel) { grid-template-columns: 220px minmax(0, 1fr) 440px; }
+}
+.probes-panel h2 { margin: 0; font: 600 20px/1.2 "Fredoka", system-ui, sans-serif; }
+.probe-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.probe-list > li {
+  display: grid; grid-template-columns: 8px minmax(0, 1fr) auto; gap: 8px; align-items: start;
+  background: var(--bg); border: 1.5px solid var(--card-edge); border-radius: 8px; padding: 8px;
+}
+.probe-chip { width: 8px; align-self: stretch; border-radius: 4px; }
+.probe-body { display: grid; gap: 4px; min-width: 0; }
+.probe-head { display: flex; gap: 8px; align-items: baseline; min-width: 0; }
+.probe-head strong { font: 600 15px/1.2 "Fredoka", system-ui, sans-serif; }
+.probe-where { color: var(--muted); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.probe-reading { margin: 0; font: 700 15px/1.3 "Atkinson Hyperlegible", system-ui, sans-serif; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.probe-stale, .probe-ref { font-weight: 400; color: var(--muted); font-size: 12.5px; }
+.probe-body .field { grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 8px; font-size: 13px; }
+.probe-body .field input { padding: 3px 6px; font-size: 13px; background: var(--panel); }
+.probe-pins { margin: 0; padding-left: 16px; font-size: 13px; font-variant-numeric: tabular-nums; }
+/* Stale: only the main-colour numbers dim (to .75, still well over 4.5:1); muted text keeps its
+   contrast, and the status line and "(stale)" say it in words. */
+.probes-panel.stale .probe-value, .probes-panel.stale .supplies .typ { opacity: 0.75; }
+.supplies, .sim-notes, .about-sim { display: grid; gap: 6px; border-top: 1.5px solid var(--rule); padding-top: 10px; }
+.supplies h3, .sim-notes h3 { margin: 0; font: 600 16px/1.2 "Fredoka", system-ui, sans-serif; }
+.supplies h4 { margin: 0; font: 600 14px/1.2 "Fredoka", system-ui, sans-serif; color: var(--muted); }
+.supplies-scroll { overflow-x: auto; border: 1.5px solid var(--rule); border-radius: 8px; background: var(--bg); }
+.supplies table { border-collapse: collapse; font-size: 12px; width: 100%; font-variant-numeric: tabular-nums; }
+.supplies th, .supplies td { text-align: left; vertical-align: top; padding: 5px 4px; border-bottom: 1px solid var(--rule); }
+.supplies td { white-space: nowrap; }
+.supplies .typ, .supplies .peak, .supplies .kind { display: block; }
+.supplies .kind { color: var(--muted); font-size: 11px; font-weight: 700; }
+.supplies .peak { color: var(--muted); font-size: 11.5px; }
+.supplies tbody tr:last-child > * { border-bottom: 0; }
+.supplies thead th { color: var(--muted); font-weight: 700; white-space: nowrap; }
+.supplies tbody th { font-weight: 700; min-width: 72px; }
+.supplies .own-draw { display: block; margin-top: 3px; padding-top: 3px; border-top: 1px dashed var(--rule); }
+.supplies td.over { color: var(--error); font-weight: 700; }
+.supplies tr.outside td:not(.basis) { color: var(--error); font-style: italic; }
+.supplies .basis.estimate { color: var(--muted); font-style: italic; }
+.unaccounted ul ul { padding-left: 14px; margin-top: 2px; list-style: circle; }
+.unaccounted ul, .sim-notes ul { margin: 0; padding-left: 18px; font-size: 13px; display: grid; gap: 4px; }
+.note-parts { display: block; color: var(--muted); }
+.about-sim summary { cursor: pointer; font-weight: 700; font-size: 14px; border-radius: 6px; }
+.about-sim p { font-size: 13.5px; margin: 0; }
+.about-notice { margin: 0; max-height: 30vh; overflow: auto; font-size: 11px; line-height: 1.45; white-space: pre-wrap; background: var(--bg); border: 1.5px solid var(--rule); border-radius: 8px; padding: 8px; }
+.about-links { margin: 0; padding-left: 18px; font-size: 13px; display: grid; gap: 2px; }
+.about-links a { color: var(--focus); }

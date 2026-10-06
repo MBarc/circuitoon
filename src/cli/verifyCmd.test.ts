@@ -1,6 +1,6 @@
 // circuitoon verify and check: exit codes, stable finding ids, JSON schema, the not-checked list,
 // check working on a sheet without an intent, and the --json error envelope (amendment A10).
-import { describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it } from 'vitest'
 import { readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { NO_INTENT } from '../agent/verify.ts'
@@ -12,6 +12,12 @@ import { ledNetlist } from '../agent/fixtures.testing.ts'
 import { validateDiagram } from '../format/diagram.ts'
 import { coveredHoles, holeKey, plugsOf, takenHoles } from '../format/breadboard.ts'
 import { type CliFinding, cliFinding, findingsText, notCheckedText, uniqueIds } from './verifyCmd.ts'
+import { gateEngine } from './gate.ts'
+
+// Gate tests that do not test simulation never start the engine (Task 31's stub seam).
+beforeEach(() => {
+  gateEngine.make = () => null
+})
 
 const laidOut = async () => {
   const dir = tempDir()

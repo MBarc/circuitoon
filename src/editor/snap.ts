@@ -1,4 +1,4 @@
-// Smart guides for a drag, Lucidchart style: while parts, frames or notes move, their bounding box
+// Smart guides for a drag, as in diagramming tools: while parts, frames or notes move, their bounding box
 // snaps to the edges and centres of the other objects, a pin lines up with the pin it is wired to,
 // and a gap to a neighbour snaps to match an equal gap in the same row or column. Pure: the canvas
 // builds a SnapIndex once when a drag starts, then asks snapMove for every pointer move.

@@ -15,7 +15,7 @@ export function netlistCommand(args: Args, io: Io): number {
   if (rest.length) throw new CliError(`netlist: give one sheet file, not ${args.positionals.length}`, EXIT.input)
   const { diagram, warnings } = loadSheet(io, input)
   for (const w of warnings) io.stderr(`warning: ${w}\n`)
-  const netlist = extractNetlist(diagram) as { parts: unknown[]; nets: unknown[] }
+  const netlist = extractNetlist(diagram, (w) => io.stderr(`warning: ${w}\n`)) as { parts: unknown[]; nets: unknown[] }
   const out = flag(args, '--out') ?? null
   const text = `${JSON.stringify(netlist, null, 2)}\n`
   if (out) writeFile(io, out, text)

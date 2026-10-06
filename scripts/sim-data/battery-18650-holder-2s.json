@@ -1,0 +1,52 @@
+{
+  "id": "battery-18650-holder-2s",
+  "researched": "2026-10-05",
+  "sim": {
+    "modelParams": {
+      "rInternal": {
+        "value": 0.2,
+        "unit": "ohm",
+        "source": "https://e2e.ti.com/cfs-file/__key/communityserver-discussions-components-files/196/ICR18650_2D00_26J_2D00_Samsung.pdf",
+        "provenance": "estimate",
+        "note": "The holder is not the cell: estimate for a generic Li-ion 18650 cell (Samsung SDI ICR18650-26J assumed) in each slot, 2 cells in series: 2 x 0.1 ohm = 0.2 ohm. Per-cell value: Samsung SDI ICR18650-26J (2600 mAh Li-ion), Specification of Product, 7.3 \"Initial internal impedance\" (p. 4): <= 100 mOhm, AC 1 kHz after the standard charge, 23 C. This is the specified maximum, not a typical: a fresh cell usually measures lower at 1 kHz, while its DC effective resistance is above the 1 kHz figure."
+      }
+    },
+    "limits": [
+      {
+        "of": {
+          "part": true
+        },
+        "kind": "sourceCurrent",
+        "value": 5.2,
+        "source": "https://e2e.ti.com/cfs-file/__key/communityserver-discussions-components-files/196/ICR18650_2D00_26J_2D00_Samsung.pdf",
+        "provenance": "estimate",
+        "conditions": "23 C (room temperature)",
+        "note": "The holder is not the cell: estimate for a generic Li-ion 18650 cell (Samsung SDI ICR18650-26J assumed) in each slot; in series every cell carries the same current, so the limit is one cell's (5.2 A). Per-cell value (representative): Samsung SDI ICR18650-26J, Specification of Product, 3.6 \"Max. continuous discharge 5.2A (@ RT)\". High-drain 18650s are rated far higher and protected cells lower; a user can enter their cell on the part (spec 3.5)."
+      }
+    ]
+  },
+  "notes": [
+    "rInternal is a fresh cell at room temperature: it rises as the cell discharges and in the cold.",
+    "sourceCurrent is compared as a rating (sim-over-limit warning), not as a hard cut-off.",
+    "The holder is not the cell: the values assume the cell named in each note; a user enters their actual cell on the part (spec 3.5)."
+  ],
+  "unaccounted": [
+    "Contact and lead resistance of the holder itself (springs, tabs, wires): no datasheet for a generic holder, so it is not added to the internal resistance."
+  ],
+  "review": [
+    {
+      "date": "2026-10-06",
+      "reviewer": "independent reviewer 1",
+      "checked": 2,
+      "corrected": [],
+      "disputed": []
+    },
+    {
+      "date": "2026-10-06",
+      "reviewer": "independent reviewer 2",
+      "checked": 2,
+      "corrected": [],
+      "disputed": []
+    }
+  ]
+}

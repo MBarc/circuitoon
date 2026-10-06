@@ -112,7 +112,127 @@
   },
   "electrical": {
     "model": "power_bank",
-    "params": {}
+    "params": {},
+    "sim": {
+      "usbPorts": {
+        "USB-C": {
+          "gnd": "B-"
+        }
+      },
+      "power": {
+        "domains": [
+          {
+            "name": "BAT",
+            "pin": "B+",
+            "ret": "B-",
+            "nominal": 3.7
+          },
+          {
+            "name": "OUT",
+            "pin": "5V+",
+            "ret": "5V-",
+            "nominal": 5
+          },
+          {
+            "name": "USB",
+            "pin": "USB-C#vbus",
+            "ret": "USB-C#gnd",
+            "nominal": 5
+          }
+        ],
+        "draw": [
+          {
+            "domain": "BAT",
+            "typical": {
+              "value": 0.00005,
+              "unit": "A",
+              "source": "https://static.chipdip.ru/lib/688/DOC045688389.pdf https://wmsc.lcsc.com/wmsc/upload/file/pdf/v2/lcsc/1810262207_INJOINIC-IP5306_C181692.pdf",
+              "provenance": "datasheet",
+              "note": "Battery standby current ISTB 50 uA typ, VIN = 0 V, VBAT = 3.7 V (Electrical Characteristics, p. 5 of English V1.31; p. 6 of English V1.10). The IP5306-I2C datasheet (Chinese; its electrical pages are footed V1.2, its register pages V1.21) also gives ISTB 50 uA (VIN = 0 V, VBAT = 3.7 V); a Chinese V1.3 reading of 100 uA was not verified (no URL), and the front page of every version opened says '<100 uA standby'. Chip, not board: the module's charge-indicator LEDs are not included. While the boost runs, the chip's own operating current (IBAT 3 mA typ, VBAT = 3.7 V, p. 5) is not added here; it is folded into the rail's efficiency estimate."
+            }
+          }
+        ],
+        "rails": [
+          {
+            "id": "boost",
+            "inputs": [
+              {
+                "domain": "BAT",
+                "via": "direct"
+              }
+            ],
+            "output": "OUT",
+            "kind": "boost",
+            "vout": {
+              "value": 5,
+              "unit": "V",
+              "source": "https://static.chipdip.ru/lib/688/DOC045688389.pdf https://wmsc.lcsc.com/wmsc/upload/file/pdf/v2/lcsc/1810262207_INJOINIC-IP5306_C181692.pdf",
+              "provenance": "datasheet",
+              "note": "DC-DC output voltage VOUT 5.0 V typ at VBAT = 3.7 V (Electrical Characteristics, Boost system, p. 5 of English V1.31; the Chinese V1.3 also gives 5.0 V). The older English V1.10 gives 5.10 V for the same row. No min or max is stated."
+            },
+            "efficiency": {
+              "value": 0.88,
+              "unit": "1",
+              "provenance": "estimate",
+              "source": "https://static.chipdip.ru/lib/688/DOC045688389.pdf https://wmsc.lcsc.com/wmsc/upload/file/pdf/v2/lcsc/1810262207_INJOINIC-IP5306_C181692.pdf",
+              "note": "No IP5306 datasheet version found (English V1.10 and V1.31, Chinese V1.3, IP5306-I2C V1.2/V1.21) has an efficiency curve; they state only a peak, 'up to 92%' (V1.31 and V1.3, p. 1) or 'up to 96%' (V1.10, p. 1). Operating point assumed: about 1 A out at VBAT = 3.7 V. 0.88 assumes a synchronous boost of this class runs a few points below its quoted peak at 1 A (switch, inductor and sense losses grow with current); it would be lower near 2.4 A and at low battery voltage. Includes the chip's 3 mA operating current."
+            },
+            "vinMin": {
+              "value": 3,
+              "unit": "V",
+              "source": "https://static.chipdip.ru/lib/688/DOC045688389.pdf https://atta.szlcsc.com/upload/public/pdf/source/20231017/AB6A25E64E1038420E9A7039637542A8.pdf",
+              "provenance": "datasheet",
+              "note": "Battery operation voltage VBAT min 3.0 V (Electrical Characteristics, Boost system, p. 5 of English V1.31). The IP5306-I2C datasheet V1.21 (the I2C variant, not this chip; register SYS_CTL1 0x01 bit 0, 'Batlow 3.0V low-battery shutdown enable', reset 1; PDF p. 15) supports a default low-battery shutdown at 3.0 V. No hysteresis or restart voltage is given. Third-party readings differ and are not used: done.land's X-150 module page says output cuts off below 2.8-2.9 V, and its IP5306 page (https://done.land/components/power/powersupplies/battery/chargers/charge-discharge/ip5306/) says over-discharge 'turns off battery when voltage <3.25V (may vary with internal configuration)'."
+            },
+            "vinMax": {
+              "value": 4.4,
+              "unit": "V",
+              "source": "https://static.chipdip.ru/lib/688/DOC045688389.pdf",
+              "provenance": "datasheet",
+              "note": "Battery operation voltage VBAT max 4.4 V (Electrical Characteristics, Boost system, p. 5 of English V1.31; 4.4 V is the highest charge voltage option, 4.40 V cells)."
+            },
+            "ioutMax": {
+              "value": 2.4,
+              "unit": "A",
+              "source": "https://static.chipdip.ru/lib/688/DOC045688389.pdf",
+              "provenance": "datasheet",
+              "note": "Boost output current Ivout 2.4 A typ, no condition stated (Electrical Characteristics, p. 5 of English V1.31; Chinese V1.3 also 2.4 A). The older English V1.10 gives 2.1 A, and V1.31's Recommended operation conditions (p. 4) list load current 2.1 A typical (its MAX cell is printed as 0, a typo), so 2.4 A is the boost row's figure, not a recommended continuous load. Protection: the output shuts off when VOUT stays below 4.4 V for 30 ms (TUVD) or the current exceeds 4 A for 150-200 us (TOCD), same page."
+            },
+            "reverse": "blocks",
+            "offPath": "diode",
+            "minLoad": {
+              "amps": {
+                "value": 0.045,
+                "unit": "A",
+                "source": "https://static.chipdip.ru/lib/688/DOC045688389.pdf",
+                "provenance": "datasheet",
+                "note": "Load removal detect timer TloadD: 'Load current continuously lower than 45mA', 32 s typ (p. 6 of English V1.31; same in V1.10 and Chinese V1.3)."
+              },
+              "note": "Light-load automatic shutdown: with the output load below 45 mA continuously for 32 s (typ), the IP5306 turns the boost off and goes to standby. A short press on KEY (30 ms to 2 s) turns it back on (Push Button, p. 9 of V1.31)."
+            }
+          }
+        ]
+      },
+      "limits": [
+        {
+          "of": {
+            "domain": "USB"
+          },
+          "kind": "vinMax",
+          "value": 5.5,
+          "source": "https://static.chipdip.ru/lib/688/DOC045688389.pdf https://wmsc.lcsc.com/wmsc/upload/file/pdf/v2/lcsc/1810262207_INJOINIC-IP5306_C181692.pdf",
+          "provenance": "datasheet",
+          "conditions": "recommended operating conditions, input voltage VIN max (4.65 to 5.5 V; 4.75 to 5.5 V in V1.10)",
+          "note": "Recommended operation conditions, p. 4 of English V1.31 (and V1.10). Absolute maximum VIN is -0.3 to 6 V in V1.31 and -0.3 to 5.5 V in V1.10 (p. 4). Chip, not board: assumes the module's USB-C VBUS goes straight to the IP5306 VIN pin with no protection in between."
+        }
+      ],
+      "unaccounted": [
+        "Charge-indicator LEDs (four in the module art): IP5306 LED indicator current is 4 mA in V1.31 (p. 6) but 10 mA in Chinese V1.3 and 25 mA in the I2C datasheet, and the LEDs are lit only for a while after a key press or while charging. Not modelled.",
+        "Flashlight LED driver on KEY (25 mA, V1.31 p. 6): whether the module fits a flashlight LED is not known; not modelled.",
+        "Boost operating current (3 mA typ from a 3.7 V battery) is counted in the efficiency estimate rather than as a separate idle draw, because a separate idle draw would be counted even while the boost is off.",
+        "Efficiency variation with load and battery voltage: one point (0.88) is used for the whole range."
+      ]
+    }
   },
   "art": {
     "w": 120,

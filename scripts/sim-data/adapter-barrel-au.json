@@ -1,0 +1,64 @@
+{
+  "id": "adapter-barrel-au",
+  "researched": "2026-10-05",
+  "sim": {
+    "power": {
+      "domains": [
+        {
+          "name": "OUT",
+          "pin": "+",
+          "ret": "-",
+          "nominal": 12
+        }
+      ],
+      "source": {
+        "domain": "OUT",
+        "voltage": "param:voltage",
+        "rInternal": {
+          "value": 0.36,
+          "unit": "ohm",
+          "source": "https://www.meanwell.com/Upload/PDF/NGE12/NGE12-SPEC.PDF",
+          "provenance": "estimate",
+          "note": "Typical 12 V barrel adapter, assumed to be the Mean Well NGE12 12-P1J (the module's own source; 12 V is electrical.params.voltage's default): load regulation +/-3.0% (SPECIFICATION p. 2), band +/-3% x 12 V = +/-0.36 V, whole swing up to 0.72 V over 0 to 1.0 A, 0.72 ohm. Mean Well NGE12 SPECIFICATION p. 3, Note 6, reads \"Load regulation is measured from 0% to 100% rated load\"; the plus-minus figure is a band about the output at a reference load, so the whole 0 to rated-load swing can be up to twice the figure. This value uses that upper bound (real units usually droop less). The same value is used whatever voltage the user sets. Controller ruling (reviewers disagreed): the two readings are 0.36 ohm (the +/-x% figure taken as the whole no-load to full-load swing) and 0.72 ohm (a band about a reference, up to twice the swing). 0.36 ohm is used: it is nearer typical droop, and this estimate never blocks."
+        },
+        "imax": {
+          "value": 1,
+          "unit": "A",
+          "source": "https://www.meanwell.com/Upload/PDF/NGE12/NGE12-SPEC.PDF",
+          "provenance": "estimate",
+          "note": "Typical 12 V barrel adapter, assumed to be the Mean Well NGE12 12-P1J: rated current 1.0 A (12 W), SPECIFICATION p. 2. The same value is used whatever voltage the user sets; in the same series the 5 V model is rated 2.4 A and the 24 V model 0.625 A."
+        }
+      }
+    }
+  },
+  "notes": [
+    "The DC output is a source only when the converter is powered in the saved contact state (spec 4 table); otherwise it is open. That is solver logic, not data.",
+    "voltage is the user's setting (electrical.params.voltage, default 12 V); the domain's nominal is that 12 V default.",
+    "imax and rInternal assume a 12 W, 12 V adapter and do not scale with the user's voltage.",
+    "imax is compared as a rating; the adapter's overload protection (hiccup mode on the NGE12) is not modelled."
+  ],
+  "unaccounted": [],
+  "review": [
+    {
+      "date": "2026-10-06",
+      "reviewer": "independent reviewer 1",
+      "checked": 4,
+      "corrected": [],
+      "disputed": []
+    },
+    {
+      "date": "2026-10-06",
+      "reviewer": "independent reviewer 2",
+      "checked": 4,
+      "corrected": [
+        {
+          "path": "sim.power.source.rInternal.value",
+          "was": 0.36,
+          "now": 0.72,
+          "why": "load regulation +/-x% is a band about a reference output, so the 0 to rated-load swing can be up to 2x%; doubled (NGE12 Note 6: measured from 0% to 100% rated load)"
+        }
+      ],
+      "disputed": []
+    }
+  ]
+}

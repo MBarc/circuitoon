@@ -14,6 +14,7 @@ import { ExportDialog } from './ExportDialog.tsx'
 import { LoadWarnings } from './LoadWarnings.tsx'
 import { MAINS_NOTICE, hasMains, withSheetNotes } from '../format/mains.ts'
 import { ThemeSwitch } from '../ThemeSwitch.tsx'
+import { SimStatus, simPhase } from './SimStatus.tsx'
 
 /**
  * The File menu: a button with a dropdown of the sheet's file actions. Arrow keys move, Home and End
@@ -104,7 +105,7 @@ function FileMenu({ items }: { items: { label: string; title?: string; haspopup?
 const plural = (n: number, one: string) => `${n} ${one}${n === 1 ? '' : 's'}`
 
 export function Toolbar({ store, warnings, onClose }: { store: EditorStore; warnings?: string[]; onClose: () => void }) {
-  const { diagram, selection, snapObjects } = useEditorState(store)
+  const { diagram, selection, snapObjects, simulate, simTool, sim } = useEditorState(store)
   const fileRef = useRef<HTMLInputElement>(null)
   // The sheet the user agreed to replace when they chose Import, and the latest import request.
   const importBase = useRef<Diagram | null>(null)
@@ -129,6 +130,7 @@ export function Toolbar({ store, warnings, onClose }: { store: EditorStore; warn
   const findings = useProblems(store).filter(isProblem)
   const errors = findings.filter((f) => f.severity === 'error').length
   const mains = hasMains(diagram)
+  const phase = simPhase({ simulate, sim })
 
   /** True when there is nothing to lose, or the user agrees to discard it. */
   const okToDiscard = () => !store.dirty || window.confirm(`Discard unsaved changes to ${diagram.title}?`)
@@ -253,6 +255,37 @@ export function Toolbar({ store, warnings, onClose }: { store: EditorStore; warn
         Snap to objects
       </button>
       <span className="sep" aria-hidden="true" />
+      <button
+        type="button"
+        className="tool toggle sim-toggle"
+        aria-pressed={simulate}
+        aria-keyshortcuts="S"
+        aria-describedby="sim-phase"
+        data-sim-phase={phase.mark}
+        title={`Solve the sheet as a DC circuit in its current switch and GPIO state, and keep it solved as you edit (S). Now: ${phase.text}`}
+        onClick={() => store.setSimulate(!simulate)}
+      >
+        <svg viewBox="0 0 18 18" aria-hidden="true">
+          <path className="sim-wave" d="M1.5 9.5h3.2l2-5.5 3.1 10 2.2-6.5 1.3 2h3.2" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+        Simulate
+      </button>
+      <span id="sim-phase" className="sr-only">{phase.text}</span>
+      <button
+        type="button"
+        className="tool toggle"
+        aria-pressed={simTool === 'probe'}
+        aria-keyshortcuts="P"
+        title="Place probes: click a pin, a breadboard hole, the end of a wire or a part (P)"
+        onClick={() => store.setSimTool(simTool === 'probe' ? 'select' : 'probe')}
+      >
+        <svg viewBox="0 0 18 18" aria-hidden="true">
+          <path d="M3 15l4.5-4.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+          <rect x="7" y="2.8" width="5" height="9" rx="1.6" transform="rotate(45 9.5 7.3)" fill="var(--paper)" stroke="currentColor" strokeWidth="1.5" />
+        </svg>
+        Probe
+      </button>
+      <span className="sep" aria-hidden="true" />
       <FileMenu
         items={[
           {
@@ -321,6 +354,7 @@ export function Toolbar({ store, warnings, onClose }: { store: EditorStore; warn
           )}
         </section>
       )}
+      <SimStatus store={store} />
       {loadWarnings && <LoadWarnings key={loadWarnings.key} warnings={loadWarnings.list} onDismiss={() => setLoadWarnings(null)} />}
       {mains && <p className="print-notice">{MAINS_NOTICE}</p>}
       {naming !== null && (

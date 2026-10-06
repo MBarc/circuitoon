@@ -1,0 +1,76 @@
+{
+  "id": "hlk-pm03",
+  "researched": "2026-10-05",
+  "sim": {
+    "power": {
+      "domains": [
+        {
+          "name": "3V3",
+          "pin": "+Vo",
+          "ret": "-Vo",
+          "nominal": 3.3
+        }
+      ],
+      "source": {
+        "domain": "3V3",
+        "voltage": {
+          "value": 3.3,
+          "unit": "V",
+          "source": "https://drive.google.com/file/d/1akkTcKPDKsjRavcggvhdrLv0_S19H-UG/view https://www.hlktech.net/index.php?id=106",
+          "provenance": "datasheet",
+          "note": "Hi-Link \"3W Ultra small series power module\" datasheet V2.9 (Aug. 2022), section 5.2 (3.3V/1000mA): no-load rated output voltage 3.3 +/-0.1 V, full-load rated output voltage 3.3 +/-0.2 V. Room temperature."
+        },
+        "rInternal": {
+          "value": 0.017,
+          "unit": "ohm",
+          "source": "https://drive.google.com/file/d/1akkTcKPDKsjRavcggvhdrLv0_S19H-UG/view https://www.hlktech.net/index.php?id=106",
+          "provenance": "estimate",
+          "note": "Derived from the load regulation, +/-0.5% (datasheet V2.9 section 5.2 (3.3V/1000mA); the product page says the same): band +/-0.5% x 3.3 V = +/-0.0165 V, whole swing up to 0.033 V over 0 to 1 A, 0.033 ohm. The datasheet does not define how load regulation is measured; read the same way as Mean Well's, a plus-minus band, so the whole 0 to rated-load swing can be up to twice the figure and this value uses that upper bound (real units usually droop less). The no-load (+/-0.1 V) and full-load (+/-0.2 V) windows would allow a larger drop. Controller ruling (reviewers disagreed): the two readings are 0.017 ohm (the +/-x% figure taken as the whole no-load to full-load swing) and 0.033 ohm (a band about a reference, up to twice the swing). 0.017 ohm is used: it is nearer typical droop, and this estimate never blocks."
+        },
+        "imax": {
+          "value": 1,
+          "unit": "A",
+          "source": "https://drive.google.com/file/d/1akkTcKPDKsjRavcggvhdrLv0_S19H-UG/view",
+          "provenance": "datasheet",
+          "note": "Hi-Link 3W series datasheet V2.9, section 2 (Product model) and section 5.2 (3.3V/1000mA): rated output current 1000 mA; short-time maximum output current at least 1100 mA (table lists >=1100). Room temperature. Doubt: the series is sold as 3 W, but 3.3 V x 1.0 A = 3.3 W (3 W / 3.3 V would be 0.91 A). The datasheet states 1000 mA, so that is used."
+        }
+      }
+    }
+  },
+  "notes": [
+    "The DC output is a source only when the converter is powered in the saved contact state (spec 4 table); otherwise it is open. That is solver logic, not data.",
+    "imax is the rated output current, compared as a rating; the module's own protection (output over-current protection at 110% to 150% of maximum load, self-recovering) is not modelled.",
+    "The datasheet is Hi-Link's own PDF in the Google Drive folder its product page links for the 3 W series; the geeksvalley copy in the module's source is an earlier printing with the same output tables."
+  ],
+  "unaccounted": [],
+  "review": [
+    {
+      "date": "2026-10-06",
+      "reviewer": "independent reviewer 1",
+      "checked": 5,
+      "corrected": [
+        {
+          "path": "sim.power.source.imax.note",
+          "was": "short-time maximum output current N mA",
+          "now": "at least N mA",
+          "why": "datasheet table gives the short-time maximum as a minimum (>=700 / >=1100 mA); imax value unchanged"
+        }
+      ],
+      "disputed": []
+    },
+    {
+      "date": "2026-10-06",
+      "reviewer": "independent reviewer 2",
+      "checked": 4,
+      "corrected": [
+        {
+          "path": "sim.power.source.rInternal.value",
+          "was": 0.017,
+          "now": 0.033,
+          "why": "load regulation +/-x% is a band about a reference output, so the 0 to rated-load swing can be up to 2x%; doubled (NGE12 Note 6: measured from 0% to 100% rated load)"
+        }
+      ],
+      "disputed": []
+    }
+  ]
+}

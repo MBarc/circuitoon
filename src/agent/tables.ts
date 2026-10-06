@@ -8,7 +8,7 @@ import type { Diagram } from '../format/diagram.ts'
 import { type Bom, billOfMaterials } from '../format/bom.ts'
 import { type Intent, type ModuleLookup, parseNetlist } from './netlist.ts'
 import { libraryLookup } from './catalog.ts'
-import { intentLookup } from './verify.ts'
+import { intentLookup } from './netlist.ts'
 import { naturalCompare } from './order.ts'
 
 export interface QuantityRow {

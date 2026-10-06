@@ -25,6 +25,9 @@ describe('moduleDrift', () => {
   it('is null for a copy equal to the library', () => {
     expect(moduleDrift(load('esp32-devkitc-v4'), load('esp32-devkitc-v4'))).toBeNull()
   })
+  it('is null for a copy saved before the library had its sim data, which the simulator reads from the library like kicad', () => {
+    expect(kindOf('esp32-devkitc-v4', (m) => void delete (m.electrical as Record<string, unknown>).sim)).toBeUndefined()
+  })
   it('is an update for data the library adds or describes', () => {
     const cases: [string, (m: Raw) => void][] = [
       ['esp32-devkitc-v4', (m) => m.pins.forEach((p) => delete p.caps)],

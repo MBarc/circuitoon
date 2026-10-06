@@ -4,7 +4,7 @@ import { ArrangePanel } from './ArrangePanel.tsx'
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { myParts, updateSheetModule } from './myParts.ts'
 import { type EditorStore, useEditorState } from './store.ts'
-import { LABEL_NAME_MAX, carryWireStyle, clearPartValue, clearWireRoute, deleteSelection, renameLabel, rotateParts, setWireEnds, updateAnnotation, updatePart, updatePartSetting, updatePartValue, updateWire, type WireStyle } from './ops.ts'
+import { LABEL_NAME_MAX, carryWireStyle, clearPartValue, clearWireRoute, deleteSelection, gpioChoices, renameLabel, setSimValue, simModule, rotateParts, setWireEnds, updateAnnotation, updatePart, updatePartSetting, updatePartValue, updateWire, type WireStyle } from './ops.ts'
 import { ANNOTATION_LABEL_MAX, ANNOTATION_TEXT_MAX, type Connection, type Diagram, type Endpoint, NAMED_COLORS, STRIPED_COLORS, isValidColor, moduleOf, partObstacles, routeWire, wireColor, wireStripe, wireWidth } from '../format/diagram.ts'
 import { type WireLook, holdLooks } from '../format/mainsLook.ts'
 import { usbLink } from '../format/usb.ts'
@@ -15,14 +15,17 @@ import { hexEditChanged, shownHex } from './color.ts'
 import { canUpdateParts, checkFailed, highlightOf, isProblem, severityCounts, updatePartsInStore, useProblems } from './problems.ts'
 import { type Finding, RULES, brokenConnection } from '../format/checks.ts'
 import { SeverityMark } from './SeverityMark.tsx'
+import { SimulationGroup } from './SimulationGroup.tsx'
 import { CAPACITOR_VALUES, RESISTOR_VALUES, editableParams, formatValue, paramValue, parseValueIn, pickUnitExp, scaledNumber, unitChoices } from '../format/values.ts'
-import { isCustom, isNetLabel, moduleSettings, partSetting } from '../format/module.ts'
+import { isCustom, isNetLabel, moduleSettings, partSetting, type ModuleDef } from '../format/module.ts'
 import { labelMates, labelName } from '../format/netLabels.ts'
 import { MAINS_NOTICE, hasMains } from '../format/mains.ts'
+import { contactPosition, gpioState, switchGroups } from '../format/simState.ts'
+import { simOf } from '../format/simModel.ts'
 
 const GAUGES = Array.from({ length: 15 }, (_, i) => 16 + i)
 
-function CommitInput({ id, label, value, onCommit }: { id: string; label: string; value: string; onCommit: (v: string) => void }) {
+export function CommitInput({ id, label, value, onCommit }: { id: string; label: string; value: string; onCommit: (v: string) => void }) {
   return (
     <label className="field" htmlFor={id}>
       {label}
@@ -347,7 +350,10 @@ function selectLabels(findings: Finding[]): string[] {
  * parallel battery bank) are not problems: they are listed apart, under Notes, and a sheet with
  * only notes still reads "No problems found".
  */
-export function ProblemList({ store, findings, onUpdateParts }: { store: EditorStore; findings: Finding[]; onUpdateParts?: () => void }) {
+/** The checker's heading while simulating, beside the "Simulation (current state)" group (spec 2.1). */
+export const WIRING_HEADING = 'Wiring checks (any switch position, external power assumed)'
+
+export function ProblemList({ store, findings, onUpdateParts, heading }: { store: EditorStore; findings: Finding[]; onUpdateParts?: () => void; heading?: string }) {
   const errors = findings.filter((f) => f.severity === 'error').length
   // The canvas light belongs to this list: it goes out when the list does (a selection, an empty list).
   useEffect(() => () => store.setHighlight(null), [store])
@@ -356,7 +362,7 @@ export function ProblemList({ store, findings, onUpdateParts }: { store: EditorS
   if (checkFailed(store))
     return (
       <section className="problems has-warnings" aria-labelledby="problems-title">
-        <h3 id="problems-title" tabIndex={-1}>Problems</h3>
+        <h3 id="problems-title" tabIndex={-1}>{heading ?? 'Problems'}</h3>
         {notice}
         <ul>
           <li className="warning" data-checker-failed="">
@@ -467,8 +473,9 @@ export function ProblemList({ store, findings, onUpdateParts }: { store: EditorS
       <section className="problems clean" aria-labelledby="problems-title">
         <h3 id="problems-title" tabIndex={-1}>
           <SeverityMark severity="ok" />
-          No problems found in the drawn connections.
+          {heading ?? 'No problems found in the drawn connections.'}
         </h3>
+        {heading && <p className="hint">No problems found in the drawn connections.</p>}
         {notice}
         {noteList}
       </section>
@@ -476,7 +483,7 @@ export function ProblemList({ store, findings, onUpdateParts }: { store: EditorS
   return (
     <section className={`problems ${errors ? 'has-errors' : 'has-warnings'}`} aria-labelledby="problems-title">
       <h3 id="problems-title" tabIndex={-1}>
-        Problems
+        {heading ?? 'Problems'}
         <span className="problems-count">{severityCounts(problems)}</span>
       </h3>
       {notice}
@@ -497,7 +504,7 @@ function HandShapedWarning({ diagram, wire }: { diagram: Diagram; wire: Connecti
 
 export function Inspector({ store, onEditPart, onUpdatePart }: { store: EditorStore; onEditPart?: (moduleId: string) => void; onUpdatePart?: (moduleId: string) => void }) {
   const mine = useSyncExternalStore(myParts.subscribe, myParts.getSnapshot)
-  const { diagram, selection, wireStyle } = useEditorState(store)
+  const { diagram, selection, wireStyle, simulate } = useEditorState(store)
   const findings = useProblems(store)
   // What the last Update parts to current library changed, shown while the sheet is the one it made (an undo hides it).
   const [updated, setUpdated] = useState<{ diagram: Diagram; lines: string[] } | null>(null)
@@ -538,7 +545,8 @@ export function Inspector({ store, onEditPart, onUpdatePart }: { store: EditorSt
           </div>
         )}
         <p className="hint">Drag from a pin tip or a hole to another pin or hole to add a wire. Drag on the paper to select, middle-drag or Space+drag to pan, scroll to zoom. Shift+drag adds to the selection. Ctrl+C, Ctrl+X and Ctrl+V copy, cut and paste. R rotates, Delete removes, Ctrl+Z undoes. Arrow keys nudge a grid step (Shift for five). A drag snaps to other parts; hold Ctrl or Cmd to drag on the grid alone.</p>
-        <ProblemList store={store} findings={findings} onUpdateParts={updateParts} />
+        <ProblemList store={store} findings={findings} onUpdateParts={updateParts} heading={simulate ? WIRING_HEADING : undefined} />
+        {simulate && <SimulationGroup store={store} />}
       </aside>
     )
 
@@ -696,6 +704,7 @@ export function Inspector({ store, onEditPart, onUpdatePart }: { store: EditorSt
             </select>
           </label>
         ))}
+        {m && <SimPartState store={store} diagram={diagram} part={part} m={m} />}
         <p className="hint">Rotation: {part.rotation ?? 0} degrees</p>
         <button type="button" className="tool" onClick={() => store.commit(rotateParts(diagram, [part.uid]))}>Rotate 90 degrees</button>
         {remove}
@@ -822,5 +831,54 @@ export function Inspector({ store, onEditPart, onUpdatePart }: { store: EditorSt
       )}
       {remove}
     </aside>
+  )
+}
+
+const CONTACT_LABELS: Record<string, string> = { open: 'Off (open)', closed: 'On (closed)', nc: 'Rest (NC closed)', no: 'Switched (NO closed)' }
+
+/**
+ * Spec 3.3, 4.6 and 6.3: a part's saved simulation state, its latching switch positions and its
+ * GPIO states. A built-in part reads the library's sim (simModule), so an old sheet's copy has its
+ * GPIOs; each pin offers only the states its caps and the module's sim.gpio allow.
+ */
+function SimPartState({ store, diagram, part, m }: { store: EditorStore; diagram: Diagram; part: Diagram['parts'][number]; m: ModuleDef }) {
+  const sm = simModule(diagram, part.module) ?? m
+  const groups = switchGroups(sm)
+  const latching = groups.filter((g) => g.kind === 'switch' && !g.momentary)
+  const gpio = simOf(sm)?.gpio
+  if (!latching.length && !gpio) return null
+  const set = gpio ? gpio.pins.filter((pin) => part.values?.[`gpio.${pin}`] !== undefined).length : 0
+  return (
+    <section className="sim-part" aria-labelledby="sim-part-title">
+      <h3 id="sim-part-title">Simulation state</h3>
+      <p className="hint">Saved with the sheet, and what the simulation solves. While simulating, click the {latching.length ? 'switch' : 'GPIO pin'} on the sheet to change it.</p>
+      {latching.map((g) => (
+        <label key={g.id} className="field" htmlFor={`sim-contact-${g.id}`}>
+          {groups.length > 1 ? `Position (${g.id})` : 'Position'}
+          <select id={`sim-contact-${g.id}`} value={contactPosition(part, sm, g)} onChange={(e) => store.commit(setSimValue(diagram, part.uid, `contact.${g.id}`, e.target.value))}>
+            {(g.changeover ? ['nc', 'no'] : ['open', 'closed']).map((v) => <option key={v} value={v}>{CONTACT_LABELS[v]}</option>)}
+          </select>
+        </label>
+      ))}
+      {gpio && (
+        <details className="sim-gpio">
+          <summary>GPIO states ({set} set)</summary>
+          <div className="sim-gpio-grid">
+            {gpio.pins.map((pin) => {
+              const now = gpioState(part, sm, pin)
+              return (
+                <label key={pin} className="field" htmlFor={`sim-gpio-${pin}`}>
+                  {pin}
+                  <select id={`sim-gpio-${pin}`} value={now ?? ''} onChange={(e) => store.commit(setSimValue(diagram, part.uid, `gpio.${pin}`, e.target.value || undefined))}>
+                    {now === null && <option value="">not set (open)</option>}
+                    {gpioChoices(sm, pin).map((s) => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                </label>
+              )
+            })}
+          </div>
+        </details>
+      )}
+    </section>
   )
 }

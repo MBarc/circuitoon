@@ -6,18 +6,18 @@ Sep 24, 2026 · @Michael
 
 ## Overview
 
-Circuitoon is Lucidchart specialized for electronics wiring diagrams: drag cartoon pictures of real modules onto a canvas, wire pin to pin, and move anything while the wires follow.
+Circuitoon is a diagramming tool specialized for electronics wiring diagrams: drag cartoon pictures of real modules onto a canvas, wire pin to pin, and move anything while the wires follow.
 
 **Problem.** Hobbyist wiring diagrams today are either hand-built static drawings or tools that assume you can find a good photo or footprint for every module. The hand-built Spirit Typewriter wiring sheet shows the kind of output Circuitoon should make for any project: it reads clearly (part pictures, pins in real order, colored nets, wire hops, breadboard rails) but every coordinate was placed by hand. Moving one part means redrawing every wire.
 
 **What Circuitoon adds.**
 
-- A live, editable canvas with Lucid-style interaction for both parts and wires.
+- A live, editable canvas with direct-manipulation interaction for both parts and wires.
 - Modules defined by a small JSON file: a name and pins, each pinned to the top, bottom, left or right edge in order.
 - An art studio to draw your own cartoon module out of colored rectangles, because good pictures of most modules do not exist.
 - A diagram file (JSON) that is the source of truth: parts plus connections. Export to JSON or PDF.
 
-**Pitch:** "Lucidchart for wiring diagrams." Pictorial, not symbolic: parts look like the physical thing (Fritzing breadboard view, Wokwi), not IEEE schematic symbols (KiCad).
+**Pitch:** "A drag-and-drop diagramming tool for wiring diagrams." Pictorial, not symbolic: parts look like the physical thing (Fritzing breadboard view, Wokwi), not IEEE schematic symbols (KiCad).
 
 ## Goals and non-goals
 
@@ -53,7 +53,7 @@ Each release is usable on its own; V2 and V3 build on data V1 already stores.
 
 ## V1 canvas and interaction
 
-Parts and wires are both first-class objects you click, drag, select and delete, exactly as shapes and connectors behave in Lucidchart.
+Parts and wires are both first-class objects you click, drag, select and delete, exactly as shapes and connectors behave in a general diagramming tool.
 
 **Canvas**
 
@@ -464,16 +464,21 @@ Circuitoon is a static single-page app served from GitHub Pages, with no backend
 
 ## V2 simulation and V3 animation
 
-V2 computes real voltages and currents in the browser; V3 draws that state on the parts. V1 reserves the fields they need (`electrical`, `states`, pin `supply`, valued `parts[].values`); if V2 needs more, the `format` version bumps and old files migrate automatically on load.
+V2 computes real voltages and currents in the browser; V3 draws that state on the parts. V1 reserves the fields they need (`electrical`, `states`, pin `supply`, valued `parts[].values`); if V2 needs more, the `format` version bumps and old files migrate automatically on load. The live DC simulation added only optional fields (`electrical.sim`, `probes`, simulation values in `parts[].values`), so the format stays `circuitoon-diagram/1`.
 
-**V2: electrical simulation**
+**V2: electrical simulation (live DC, shipped in plugin 0.10.0)**
 
-- DC operating point plus simple transient analysis (RC charge and discharge), solved with modified nodal analysis in the browser, in the style of the Falstad circuit simulator. An ngspice WebAssembly build is the fallback if accuracy demands it.
-- Each module's `electrical.model` names a built-in model (resistor, capacitor, inductor, diode, LED, BJT, MOSFET, switch, voltage source, regulator) and maps its terminals to pins. A part with no model is treated as open at every pin and flagged "not simulated".
-- Switches are models with switchable connectivity, never `internal` joins, which are permanent.
-- Microcontroller and module pins are modeled at the pin level (a GPIO is a source you set high or low, a sensor pin is a load). No firmware emulation.
-- Run and stop control. Hover a net to read its voltage; hover a part to read the current through each of its terminals. Current is not shown per drawn wire, because parallel ideal wires on one net have no single well-defined current.
-- Warnings: overcurrent on a part, short circuit, floating input, LED without a current-limiting resistor.
+Spec: `docs/superpowers/specs/2026-10-05-live-simulation-design.md` (revision 5; section 15 lists the amendments made while building it).
+
+- **What is solved.** The DC operating point of the sheet in its saved state: switch positions and GPIO states as saved. Each solve runs twice, every load at its typical draw and then at its peak (Wi-Fi transmit, all pixels on); findings at the peak are warnings labelled with the peak's condition.
+- **The engine.** Our own WebAssembly build of ngspice 45.2 (shared library with XSPICE, no code models yet), built from pinned source in Docker (`npm run engine:build`), committed to `public/sim/` and `plugin/dist-cli/`, and run in a terminable worker: a Web Worker in the browser, fetched only on the first Simulate, and a `worker_threads` Worker in the CLI. The earlier plan, modified nodal analysis in our own code in the style of Falstad, is superseded: the engine spike (2026-10-04) found ngspice WASM within 0.5 uV of native ngspice on a 204-part circuit and exact on the LED hand calculation, while the TypeScript MNA engine it was measured against was 146 mV low on a red LED (it ignored the diode's series resistance) and gave wrong answers when stepped for co-simulation; ngspice also has behavioural sources and switches, which the regulator models need, and a working stop, alter and resume path for firmware co-simulation later.
+- **Module data.** Everything new lives under one optional object, `electrical.sim` (spec section 3; the plugin's `module-schema.md` has the authoring rules): `modelParams`, `limits`, `power` (supply domains, draws, LDO, buck, boost and switch rails, a source), `gpio` and `usbPorts`. **Provenance is per value**: each number is `datasheet`, `representative` or `estimate`, with its source URL or a note on what was assumed. Resistors, LEDs, batteries, capacitors, switches, potentiometers and fuses simulate from their existing model and values; a board without `sim.power` is listed as not simulated. The built-in boards and modules the Spirit Typewriter uses carry sourced data, each number checked by two reviewers; other powered parts use flagged category estimates.
+- **Saved state on a part** (`parts[].values`): `gpio.<pin>` (`input`, the default, `input-pullup`, `input-pulldown`, `high` or `low`; only the pulls the chip has: the ESP32 boards and the Pi Pico have both, the Arduino Uno and Nano and the MCP23017 pull-ups only), `contact.<group>` (`open` or `closed`, `no` or `nc` for a changeover; buttons are momentary and never saved, relays always at rest), and the user's overrides `sim.draw.<domain>.typical`, `sim.draw.<domain>.peak`, `sim.rInternal` and `sim.imax`, each marked as the user's value.
+- **Probes.** A new optional top-level `probes` list in the sheet: `{ "id": "P1", "name"?, "at": { "part", "pin"?, "hole"? } }`, anchored to part uids and pins (a `hole` pins a probe to one hole of a breadboard group), never to wires. A netlist writes them in ref form: `"at": "BT1.+"`, `"D1"` or `"net:VBAT"`; `layout` resolves `net:` to a pin on that net and `netlist` writes them back. A pin probe reads a voltage against its island's reference; a part probe reads current per pin and power.
+- **In the editor.** Simulate (`S`) loads the engine with progress and solves on every connectivity or value change; a pure move never re-solves. LEDs glow by current on a log scale (dark red with a warning ring over an absolute maximum); clicking a switch flips and saves it, a button is held while pressed, clicking a GPIO pin cycles input, high and low. The Probe tool (`P`) places probes, and the Probes panel holds the readings, the Supplies table (each source, rail and domain: load against limit, typical and peak, headroom, provenance) and the incomplete and estimate notes. Readings are text, never colour alone, and are never saved.
+- **Findings, in two groups.** The wiring checker is unchanged; simulation findings (`sim-*`) are a separate group that never suppresses it. Codes: `sim-short` and `sim-source-conflict` (topological), `sim-over-abs-max`, `sim-over-limit`, `sim-brownout` (a warning "not powered in the current state" naming the open switch when one is the cause; only a note when nothing on the sheet supplies the part at all), `sim-dropout`, `sim-converter-off`, `sim-min-load`, `sim-outside-model`, `sim-floating-input`, `sim-no-convergence`, and the notes `sim-incomplete` and `sim-estimate`. A finding blocks only if it is an error at the typical corner decided on datasheet, user or topology values, or a reading more than twice a representative absolute maximum; otherwise it is a "Likely" warning listing its uncertain inputs.
+- **For agents.** `circuitoon sim <sheet|netlist> [--probe <ref[.pin]|net:NAME>]...` prints the outcome JSON (`circuitoon-sim/1`) with a summary on stderr; exit 0, 1 on a blocking finding (including a failed or unavailable solve whose topological findings block), 2 on bad input, 3 when the solve failed or the engine is unavailable and nothing blocks. `gate` runs the same simulation and writes `circuitoon-cli/gate/4` with a `sim` field (status, findings, budget, provenance counts); banners `GATE FAILED (simulation)` and `GATE INCOMPLETE (simulation did not converge; ...)` or `(simulation unavailable)`.
+- **Later:** transient analysis and waveforms, PWM, firmware co-simulation, current per drawn wire, hubs, and differential probes.
 
 **V3: animation**
 
@@ -522,6 +527,14 @@ V1 is done when someone can build a wiring sheet for a real breadboard project f
 - [x] Hosting: GitHub Pages from the public repo `MBarc/circuitoon` (https://mbarc.github.io/circuitoon/).
 
 ## Changelog
+
+### Live DC simulation (plugin 0.10.0)
+
+- **Simulate** in the editor and **`circuitoon sim`** in the CLI solve the sheet's DC operating point in its saved switch and GPIO state, at typical and peak draw, with our own ngspice 45.2 WebAssembly build in a worker (see "V2 simulation and V3 animation").
+- **Module data** `electrical.sim` with provenance per value (datasheet, representative or estimate, with a source or a note), sourced for the Spirit Typewriter's boards and modules, and category estimates elsewhere. Parts save `gpio.<pin>`, `contact.<group>` and the user's draw and cell overrides in `values`.
+- **Probes** saved in the sheet (`probes`, anchored to parts, pins and holes) and in netlists (`REF.PIN`, `REF`, `net:NAME`), drawn with reading tags; the Probes panel shows the readings and the Supplies table; LEDs glow by current.
+- **Two finding groups**: the wiring checker is unchanged, and `sim-*` findings block only on datasheet, user or topology values (or more than twice a representative absolute maximum); the rest are "Likely" warnings.
+- **`gate` becomes `circuitoon-cli/gate/4`** with a `sim` field and the simulation banners; the `circuitoon-design` skill tells agents to set GPIO states and switch positions, run `sim` and fix every blocking finding before gating.
 
 ### USB (plugin 0.9.0)
 

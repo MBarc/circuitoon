@@ -1,0 +1,49 @@
+{
+  "id": "battery-aaa",
+  "researched": "2026-10-05",
+  "sim": {
+    "modelParams": {
+      "rInternal": {
+        "value": 0.3,
+        "unit": "ohm",
+        "source": "https://data.energizer.com/pdfs/e92.pdf https://data.energizer.com/pdfs/lithiumcoin_appman.pdf",
+        "provenance": "representative",
+        "note": "Energizer E92 (alkaline AAA). E92 datasheet, Specifications: \"Nominal IR: 150 to 300 milliohms (fresh)\"; Energizer Lithium Coin Handbook, \"Internal Resistance\" section: \"the starting IR of an E92 AAA alkaline battery is near 0.3 ohms\". Fresh cell."
+      }
+    },
+    "limits": [
+      {
+        "of": {
+          "part": true
+        },
+        "kind": "sourceCurrent",
+        "value": 0.5,
+        "source": "https://data.energizer.com/pdfs/e92.pdf",
+        "provenance": "estimate",
+        "conditions": "fresh alkaline AAA, 21 C",
+        "note": "No maximum discharge current is published for an alkaline AAA. 0.5 A is the heaviest continuous discharge the Energizer E92 datasheet charts (\"Milliamp-Hours Capacity\", continuous discharge to 0.8 V at 21 C, bars at 25/100/250/500 mA; about 450 mAh at 500 mA vs about 1150 mAh at 25 mA)."
+      }
+    ]
+  },
+  "notes": [
+    "rInternal is a fresh cell at room temperature: it rises as the cell discharges and in the cold.",
+    "sourceCurrent is compared as a rating (sim-over-limit warning), not as a hard cut-off."
+  ],
+  "unaccounted": [],
+  "review": [
+    {
+      "date": "2026-10-06",
+      "reviewer": "independent reviewer 1",
+      "checked": 2,
+      "corrected": [],
+      "disputed": []
+    },
+    {
+      "date": "2026-10-06",
+      "reviewer": "independent reviewer 2",
+      "checked": 2,
+      "corrected": [],
+      "disputed": []
+    }
+  ]
+}

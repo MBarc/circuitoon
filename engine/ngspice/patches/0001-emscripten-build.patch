@@ -1,0 +1,118 @@
+diff -ruN a/configure.ac b/configure.ac
+--- a/configure.ac
++++ b/configure.ac
+@@ -345,7 +345,7 @@
+     fi
+ 
+     if test "x$GCC" = xyes; then
+-        CFLAGS="$CFLAGS -Wall -Wextra -Wmissing-prototypes -Wstrict-prototypes -Wnested-externs -Wold-style-definition -Wredundant-decls -Wconversion -Wno-unused-but-set-variable"
++        CFLAGS="$CFLAGS -Wall -Wextra -Wmissing-prototypes -Wstrict-prototypes -Wnested-externs -Wold-style-definition -Wredundant-decls -Wconversion -Wno-unused-const-variable"
+     fi
+ else
+     AC_MSG_RESULT([Use external CFLAGS])
+@@ -867,8 +867,6 @@
+ AM_CONDITIONAL([NO_HELP], [test "x$has_no_help" = xtrue])
+ 
+ # Additional libs of hicum group
+-AC_CHECK_LIB(stdc++, main, XTRALIBS="$XTRALIBS -lstdc++",,)
+-AC_SUBST(XTRALIBS, $XTRALIBS)
+ 
+ LIBS="$LIBS $XTRALIBS"
+ 
+@@ -911,7 +909,7 @@
+ AC_CHECK_FUNCS([queryperformancecounter clock_gettime gettimeofday ftime])
+ # Do not use times or getrusage function for CPU time measurement under OpenMP
+ if test "x$enable_openmp" = xno; then
+-    AC_CHECK_FUNCS([times getrusage])
++    AC_CHECK_FUNCS([times])
+ fi
+ AC_CHECK_FUNCS([utimes])
+ AC_CHECK_FUNCS([getrlimit ulimit], [break])
+@@ -1375,7 +1373,6 @@
+                  src/spicelib/devices/isrc/Makefile
+                  src/spicelib/devices/hfet1/Makefile
+                  src/spicelib/devices/hfet2/Makefile
+-                 src/spicelib/devices/hicum2/Makefile
+                  src/spicelib/devices/hisim2/Makefile
+                  src/spicelib/devices/hisimhv1/Makefile
+                  src/spicelib/devices/hisimhv2/Makefile
+@@ -1457,7 +1454,6 @@
+                  tests/filters/Makefile
+                  tests/general/Makefile
+                  tests/hfet/Makefile
+-                 tests/hicum2/Makefile
+                  tests/hisim/Makefile
+                  tests/hisimhv1/Makefile
+                  tests/hisimhv2/Makefile
+diff -ruN a/src/Makefile.am b/src/Makefile.am
+--- a/src/Makefile.am
++++ b/src/Makefile.am
+@@ -73,7 +73,6 @@
+ 	spicelib/devices/isrc/libisrc.la		\
+ 	spicelib/devices/hfet1/libhfet.la		\
+ 	spicelib/devices/hfet2/libhfet2.la		\
+-	spicelib/devices/hicum2/libhicum2.la		\
+ 	spicelib/devices/hisim2/libhisim2.la		\
+ 	spicelib/devices/hisimhv1/libhisimhv1.la	\
+ 	spicelib/devices/hisimhv2/libhisimhv2.la	\
+diff -ruN a/src/spicelib/devices/Makefile.am b/src/spicelib/devices/Makefile.am
+--- a/src/spicelib/devices/Makefile.am
++++ b/src/spicelib/devices/Makefile.am
+@@ -27,7 +27,6 @@
+ 	isrc	\
+ 	hfet1	\
+ 	hfet2	\
+-	hicum2	\
+ 	hisim2	\
+ 	hisimhv1	\
+ 	hisimhv2	\
+@@ -88,7 +87,6 @@
+ 	isrc	\
+ 	hfet1	\
+ 	hfet2	\
+-	hicum2	\
+ 	hisim2	\
+ 	hisimhv1	\
+ 	hisimhv2	\
+diff -ruN a/src/spicelib/devices/dev.c b/src/spicelib/devices/dev.c
+--- a/src/spicelib/devices/dev.c
++++ b/src/spicelib/devices/dev.c
+@@ -165,7 +165,6 @@
+     get_dio_info,
+     get_hfeta_info,
+     get_hfet2_info,
+-    get_hicum_info,
+     get_hsm2_info,
+     get_hsmhv_info,
+     get_hsmhv2_info,
+diff -ruN a/src/xspice/Makefile.am b/src/xspice/Makefile.am
+--- a/src/xspice/Makefile.am
++++ b/src/xspice/Makefile.am
+@@ -9,7 +9,7 @@
+              tlines/msline_common.c tlines/msline_common.h \
+              tlines/tline_common.c tlines/tline_common.h
+ 
+-SUBDIRS = mif cm enh evt ipc idn cmpp icm verilog vhdl
++SUBDIRS = mif cm enh evt ipc idn
+ 
+ dist-hook:
+ 	rm -f "$(distdir)/icm/makedefs"
+diff -ruN a/tests/Makefile.am b/tests/Makefile.am
+--- a/tests/Makefile.am
++++ b/tests/Makefile.am
+@@ -19,7 +19,6 @@
+ 	bsim4		\
+ 	bsimsoi		\
+ 	hisim		\
+-	hicum2		\
+ 	hisimhv1	\
+ 	hisimhv2
+ endif
+@@ -36,7 +35,6 @@
+ 	filters		\
+ 	general		\
+ 	hfet		\
+-	hicum2		\
+ 	hisim		\
+ 	hisimhv1	\
+ 	hisimhv2	\

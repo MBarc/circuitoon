@@ -1,0 +1,56 @@
+{
+  "id": "battery-cr1220",
+  "researched": "2026-10-05",
+  "sim": {
+    "modelParams": {
+      "rInternal": {
+        "value": 21,
+        "unit": "ohm",
+        "source": "https://data.energizer.com/pdfs/cr1220.pdf",
+        "provenance": "representative",
+        "note": "Energizer CR1220 (Li/MnO2). Datasheet \"Internal Resistance Characteristics\" graph (pulse test, 62K background, 1K 2 s pulse): IR about 21 to 22 ohm on a fresh cell, dipping to about 20.5 ohm near 5 mAh (read from the graph, right axis 0 to 80 ohm), rising past 70 ohm near end of life. 21 C."
+      }
+    },
+    "limits": [
+      {
+        "of": {
+          "part": true
+        },
+        "kind": "sourceCurrent",
+        "value": 0.003,
+        "source": "https://energy.panasonic.com/dam/master/pdf/en/datasheet/lithium/CR1220_Datasheet_EN.pdf",
+        "provenance": "estimate",
+        "conditions": "fresh CR1220, 20 C",
+        "note": "No maximum continuous current is published. The Panasonic CR1220 datasheet gives \"Continuous drain 0.1mA\" as its standard drain and charts continuous loads only down to 1 kOhm; 3 V across 1 kOhm is about 3 mA, where capacity is already about halved (about 17 of 35 mAh at 20 C), so 3 mA is a generous ceiling for this small cell."
+      }
+    ]
+  },
+  "notes": [
+    "rInternal is a fresh cell at room temperature: it rises as the cell discharges and in the cold.",
+    "sourceCurrent is compared as a rating (sim-over-limit warning), not as a hard cut-off."
+  ],
+  "unaccounted": [],
+  "review": [
+    {
+      "date": "2026-10-06",
+      "reviewer": "independent reviewer 1",
+      "checked": 2,
+      "corrected": [
+        {
+          "path": "sim.modelParams.rInternal",
+          "was": 20,
+          "now": 21,
+          "why": "IR curve read by pixel against the 0 to 80 ohm right axis: about 22 ohm at 0 mAh, minimum about 20.5 ohm near 5 mAh, about 21 ohm at 10 mAh; \"18 to 20\" was low"
+        }
+      ],
+      "disputed": []
+    },
+    {
+      "date": "2026-10-06",
+      "reviewer": "independent reviewer 2",
+      "checked": 2,
+      "corrected": [],
+      "disputed": []
+    }
+  ]
+}

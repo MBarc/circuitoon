@@ -20,6 +20,7 @@ import { verifyDiagram } from './verify.ts'
 import type { LabelMode } from './labelling.ts'
 import { readabilityFindings } from './readabilityWarnings.ts'
 import { naturalCompare } from './order.ts'
+import { probesForSheet } from '../sim/probes.ts'
 
 export const SPACINGS = [30, 60, 90]
 /** How many placements with more spacing labels that found no room get (each costs a full placement; the layout stays inside its 2 s budget). */
@@ -108,8 +109,10 @@ export function layoutNetlist(raw: unknown, opts: { library?: ModuleLookup; keep
     if (blocked.length) continue attempt
     const findings = verifyDiagram(diagram, library).filter((f) => f.severity === 'error')
     if (findings.length) return { ok: false, stage: 'layout', errors: findings.map((f) => `verify ${f.rule}: ${f.message}`) }
+    const probes = probesForSheet(intent)
+    const probed = probes.length ? { ...diagram, probes } : diagram
     const report = { ...readability(diagram, routes, real.value.netOfWire), readabilityWarnings: readabilityFindings(diagram, routes).length, labels: { mode, nets: real.value.labelled, unplaced: [...new Set(real.value.unlabelled)] } }
-    return { ok: true, value: { diagram, report, intent, attempts: i + 1, netOfWire: real.value.netOfWire } }
+    return { ok: true, value: { diagram: probed, report, intent, attempts: i + 1, netOfWire: real.value.netOfWire } }
   }
   return { ok: false, stage: 'layout', errors: [`routes blocked after ${SPACINGS.length} placements with more spacing each time: ${blocked.join(', ')}`] }
 }

@@ -12,7 +12,7 @@ import { UPDATE_ADVICE, moduleDrift } from '../format/moduleDrift.ts'
 import { netlist, nodeKey } from '../format/netlist.ts'
 import { coveredMessage, coveredUses, endpointName } from '../format/checks.ts'
 import { formatValue } from '../format/values.ts'
-import { type Intent, type IntentPart, type ModuleLookup, type Terminal, parseNetlist } from './netlist.ts'
+import { type Intent, type IntentPart, type ModuleLookup, type Terminal, intentLookup, parseNetlist } from './netlist.ts'
 import { internalComponent } from './internal.ts'
 
 export type VerifyRule =
@@ -88,16 +88,6 @@ function libraryBoard(d: Diagram, library: ModuleLookup, id: string): boolean {
   return moduleOf(d, id) !== undefined && (isBoard(library(id)) || isNetLabel(moduleOf(d, id)))
 }
 
-/**
- * How a sheet's intent finds its modules: the sheet's embedded copy first (so a later library
- * change never breaks an old sheet), then the library. Ids the intent embeds itself are left to it,
- * unless they are library ids: the netlist then rejects the embedded copy as a built-in part, and
- * module-drift compares it with the library.
- */
-export function intentLookup(d: Diagram, library: ModuleLookup): ModuleLookup {
-  const own = isObj(d.intent) && isObj(d.intent.modules) ? new Set(Object.keys(d.intent.modules)) : new Set<string>()
-  return (id) => (own.has(id) && !library(id) ? undefined : (moduleOf(d, id) ?? library(id)))
-}
 
 export function verifyDiagram(d: Diagram, library: ModuleLookup): VerifyFinding[] {
   const found: Draft[] = []

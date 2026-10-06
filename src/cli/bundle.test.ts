@@ -7,6 +7,7 @@ import { builtinModules } from 'node:module'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { ledNetlist } from '../agent/fixtures.testing.ts'
+import { netSheet } from '../sim/testing.ts'
 
 /**
  * Module specifiers of real import and export statements and dynamic imports (amendment A12): the
@@ -60,6 +61,19 @@ describe('CLI bundle', () => {
     const code = await new Promise<number | null>((done) => child.on('close', done))
     expect(err).toBe('')
     expect(code).toBe(0)
+  }, 60_000)
+  it('runs sim on the Spirit Typewriter sheet from a copy of the plugin folder, cold, within 2 s (spec 8)', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'circuitoon-plugin-'))
+    cpSync(resolve('plugin/bin'), join(dir, 'bin'), { recursive: true })
+    cpSync(resolve('plugin/dist-cli'), join(dir, 'dist-cli'), { recursive: true })
+    const n = JSON.parse(readFileSync(resolve('src/sim/fixtures/spirit-typewriter.netlist.json'), 'utf8'))
+    writeFileSync(join(dir, 'spirit.json'), JSON.stringify(netSheet(n)))
+    const t0 = performance.now()
+    const r = spawnSync(process.execPath, [join(dir, 'bin', 'circuitoon.mjs'), 'sim', 'spirit.json'], { encoding: 'utf8', cwd: dir })
+    const ms = performance.now() - t0
+    expect(r.status).toBe(0)
+    expect(JSON.parse(r.stdout).status).toBe('ok')
+    expect(ms).toBeLessThanOrEqual(2000)
   }, 60_000)
   it('finds real imports and ignores import-like text inside strings', () => {
     const code = [

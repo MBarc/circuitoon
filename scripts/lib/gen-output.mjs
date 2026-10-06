@@ -7,13 +7,15 @@
 // `npm run check:gen` (scripts/check-gen.mjs) runs every generator this way; the deploy calls it.
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { basename } from 'node:path'
+import { withSim } from './sim-data.mjs'
 
 export const CHECK = process.argv.includes('--check')
 const drifted = []
 let count = 0
 
-/** Writes `content` to `path`, or in --check mode records whether the file on disk differs. */
-export function emit(path, content) {
+/** Writes `content` to `path`, or in --check mode records whether the file on disk differs. A module gets its sourced electrical.sim first (ruling R1). */
+export function emit(path, text) {
+  const content = withSim(path, text)
   count++
   if (!CHECK) return void writeFileSync(path, content)
   const onDisk = existsSync(path) ? readFileSync(path, 'utf8').replace(/\r\n/g, '\n') : null

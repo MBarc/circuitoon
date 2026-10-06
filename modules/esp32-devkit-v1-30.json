@@ -246,7 +246,453 @@
         "via": "USB",
         "diode": true
       }
-    ]
+    ],
+    "sim": {
+      "limits": [
+        {
+          "of": {
+            "pin": "D32"
+          },
+          "kind": "current",
+          "value": 0.028,
+          "source": "https://www.espressif.com/sites/default/files/documentation/esp32_datasheet_en.pdf",
+          "provenance": "datasheet",
+          "conditions": "VDD = 3.3 V, VOL = 0.495 V, drive strength at maximum, 25 C",
+          "note": "chip, not board. Table 5-3 (p. 52): IOL sink typ 28 mA; IOH source typ 40 mA (VDD3P3_CPU / VDD3P3_RTC domains), so the one limit for both directions takes the smaller, 28 mA. Note 2: the per-pin source current falls from ~40 mA to ~29 mA as more pins source. A rated drive figure, not an absolute maximum (the datasheet gives no per-pin absolute maximum)."
+        },
+        {
+          "of": {
+            "pin": "D33"
+          },
+          "kind": "current",
+          "value": 0.028,
+          "source": "https://www.espressif.com/sites/default/files/documentation/esp32_datasheet_en.pdf",
+          "provenance": "datasheet",
+          "conditions": "VDD = 3.3 V, VOL = 0.495 V, drive strength at maximum, 25 C",
+          "note": "chip, not board. Table 5-3 (p. 52): IOL sink typ 28 mA; IOH source typ 40 mA (VDD3P3_CPU / VDD3P3_RTC domains), so the one limit for both directions takes the smaller, 28 mA. Note 2: the per-pin source current falls from ~40 mA to ~29 mA as more pins source. A rated drive figure, not an absolute maximum (the datasheet gives no per-pin absolute maximum)."
+        },
+        {
+          "of": {
+            "pin": "D25"
+          },
+          "kind": "current",
+          "value": 0.028,
+          "source": "https://www.espressif.com/sites/default/files/documentation/esp32_datasheet_en.pdf",
+          "provenance": "datasheet",
+          "conditions": "VDD = 3.3 V, VOL = 0.495 V, drive strength at maximum, 25 C",
+          "note": "chip, not board. Table 5-3 (p. 52): IOL sink typ 28 mA; IOH source typ 40 mA (VDD3P3_CPU / VDD3P3_RTC domains), so the one limit for both directions takes the smaller, 28 mA. Note 2: the per-pin source current falls from ~40 mA to ~29 mA as more pins source. A rated drive figure, not an absolute maximum (the datasheet gives no per-pin absolute maximum)."
+        },
+        {
+          "of": {
+            "pin": "D26"
+          },
+          "kind": "current",
+          "value": 0.028,
+          "source": "https://www.espressif.com/sites/default/files/documentation/esp32_datasheet_en.pdf",
+          "provenance": "datasheet",
+          "conditions": "VDD = 3.3 V, VOL = 0.495 V, drive strength at maximum, 25 C",
+          "note": "chip, not board. Table 5-3 (p. 52): IOL sink typ 28 mA; IOH source typ 40 mA (VDD3P3_CPU / VDD3P3_RTC domains), so the one limit for both directions takes the smaller, 28 mA. Note 2: the per-pin source current falls from ~40 mA to ~29 mA as more pins source. A rated drive figure, not an absolute maximum (the datasheet gives no per-pin absolute maximum)."
+        },
+        {
+          "of": {
+            "pin": "D27"
+          },
+          "kind": "current",
+          "value": 0.028,
+          "source": "https://www.espressif.com/sites/default/files/documentation/esp32_datasheet_en.pdf",
+          "provenance": "datasheet",
+          "conditions": "VDD = 3.3 V, VOL = 0.495 V, drive strength at maximum, 25 C",
+          "note": "chip, not board. Table 5-3 (p. 52): IOL sink typ 28 mA; IOH source typ 40 mA (VDD3P3_CPU / VDD3P3_RTC domains), so the one limit for both directions takes the smaller, 28 mA. Note 2: the per-pin source current falls from ~40 mA to ~29 mA as more pins source. A rated drive figure, not an absolute maximum (the datasheet gives no per-pin absolute maximum)."
+        },
+        {
+          "of": {
+            "pin": "D14"
+          },
+          "kind": "current",
+          "value": 0.028,
+          "source": "https://www.espressif.com/sites/default/files/documentation/esp32_datasheet_en.pdf",
+          "provenance": "datasheet",
+          "conditions": "VDD = 3.3 V, VOL = 0.495 V, drive strength at maximum, 25 C",
+          "note": "chip, not board. Table 5-3 (p. 52): IOL sink typ 28 mA; IOH source typ 40 mA (VDD3P3_CPU / VDD3P3_RTC domains), so the one limit for both directions takes the smaller, 28 mA. Note 2: the per-pin source current falls from ~40 mA to ~29 mA as more pins source. A rated drive figure, not an absolute maximum (the datasheet gives no per-pin absolute maximum)."
+        },
+        {
+          "of": {
+            "pin": "D12"
+          },
+          "kind": "current",
+          "value": 0.028,
+          "source": "https://www.espressif.com/sites/default/files/documentation/esp32_datasheet_en.pdf",
+          "provenance": "datasheet",
+          "conditions": "VDD = 3.3 V, VOL = 0.495 V, drive strength at maximum, 25 C",
+          "note": "chip, not board. Table 5-3 (p. 52): IOL sink typ 28 mA; IOH source typ 40 mA (VDD3P3_CPU / VDD3P3_RTC domains), so the one limit for both directions takes the smaller, 28 mA. Note 2: the per-pin source current falls from ~40 mA to ~29 mA as more pins source. A rated drive figure, not an absolute maximum (the datasheet gives no per-pin absolute maximum)."
+        },
+        {
+          "of": {
+            "pin": "D13"
+          },
+          "kind": "current",
+          "value": 0.028,
+          "source": "https://www.espressif.com/sites/default/files/documentation/esp32_datasheet_en.pdf",
+          "provenance": "datasheet",
+          "conditions": "VDD = 3.3 V, VOL = 0.495 V, drive strength at maximum, 25 C",
+          "note": "chip, not board. Table 5-3 (p. 52): IOL sink typ 28 mA; IOH source typ 40 mA (VDD3P3_CPU / VDD3P3_RTC domains), so the one limit for both directions takes the smaller, 28 mA. Note 2: the per-pin source current falls from ~40 mA to ~29 mA as more pins source. A rated drive figure, not an absolute maximum (the datasheet gives no per-pin absolute maximum)."
+        },
+        {
+          "of": {
+            "pin": "D23"
+          },
+          "kind": "current",
+          "value": 0.028,
+          "source": "https://www.espressif.com/sites/default/files/documentation/esp32_datasheet_en.pdf",
+          "provenance": "datasheet",
+          "conditions": "VDD = 3.3 V, VOL = 0.495 V, drive strength at maximum, 25 C",
+          "note": "chip, not board. Table 5-3 (p. 52): IOL sink typ 28 mA; IOH source typ 40 mA (VDD3P3_CPU / VDD3P3_RTC domains), so the one limit for both directions takes the smaller, 28 mA. Note 2: the per-pin source current falls from ~40 mA to ~29 mA as more pins source. A rated drive figure, not an absolute maximum (the datasheet gives no per-pin absolute maximum)."
+        },
+        {
+          "of": {
+            "pin": "D22"
+          },
+          "kind": "current",
+          "value": 0.028,
+          "source": "https://www.espressif.com/sites/default/files/documentation/esp32_datasheet_en.pdf",
+          "provenance": "datasheet",
+          "conditions": "VDD = 3.3 V, VOL = 0.495 V, drive strength at maximum, 25 C",
+          "note": "chip, not board. Table 5-3 (p. 52): IOL sink typ 28 mA; IOH source typ 40 mA (VDD3P3_CPU / VDD3P3_RTC domains), so the one limit for both directions takes the smaller, 28 mA. Note 2: the per-pin source current falls from ~40 mA to ~29 mA as more pins source. A rated drive figure, not an absolute maximum (the datasheet gives no per-pin absolute maximum)."
+        },
+        {
+          "of": {
+            "pin": "TX0"
+          },
+          "kind": "current",
+          "value": 0.028,
+          "source": "https://www.espressif.com/sites/default/files/documentation/esp32_datasheet_en.pdf",
+          "provenance": "datasheet",
+          "conditions": "VDD = 3.3 V, VOL = 0.495 V, drive strength at maximum, 25 C",
+          "note": "chip, not board. Table 5-3 (p. 52): IOL sink typ 28 mA; IOH source typ 40 mA (VDD3P3_CPU / VDD3P3_RTC domains), so the one limit for both directions takes the smaller, 28 mA. Note 2: the per-pin source current falls from ~40 mA to ~29 mA as more pins source. A rated drive figure, not an absolute maximum (the datasheet gives no per-pin absolute maximum)."
+        },
+        {
+          "of": {
+            "pin": "RX0"
+          },
+          "kind": "current",
+          "value": 0.028,
+          "source": "https://www.espressif.com/sites/default/files/documentation/esp32_datasheet_en.pdf",
+          "provenance": "datasheet",
+          "conditions": "VDD = 3.3 V, VOL = 0.495 V, drive strength at maximum, 25 C",
+          "note": "chip, not board. Table 5-3 (p. 52): IOL sink typ 28 mA; IOH source typ 40 mA (VDD3P3_CPU / VDD3P3_RTC domains), so the one limit for both directions takes the smaller, 28 mA. Note 2: the per-pin source current falls from ~40 mA to ~29 mA as more pins source. A rated drive figure, not an absolute maximum (the datasheet gives no per-pin absolute maximum)."
+        },
+        {
+          "of": {
+            "pin": "D21"
+          },
+          "kind": "current",
+          "value": 0.028,
+          "source": "https://www.espressif.com/sites/default/files/documentation/esp32_datasheet_en.pdf",
+          "provenance": "datasheet",
+          "conditions": "VDD = 3.3 V, VOL = 0.495 V, drive strength at maximum, 25 C",
+          "note": "chip, not board. Table 5-3 (p. 52): IOL sink typ 28 mA; IOH source typ 40 mA (VDD3P3_CPU / VDD3P3_RTC domains), so the one limit for both directions takes the smaller, 28 mA. Note 2: the per-pin source current falls from ~40 mA to ~29 mA as more pins source. A rated drive figure, not an absolute maximum (the datasheet gives no per-pin absolute maximum)."
+        },
+        {
+          "of": {
+            "pin": "D19"
+          },
+          "kind": "current",
+          "value": 0.028,
+          "source": "https://www.espressif.com/sites/default/files/documentation/esp32_datasheet_en.pdf",
+          "provenance": "datasheet",
+          "conditions": "VDD = 3.3 V, VOL = 0.495 V, drive strength at maximum, 25 C",
+          "note": "chip, not board. Table 5-3 (p. 52): IOL sink typ 28 mA; IOH source typ 40 mA (VDD3P3_CPU / VDD3P3_RTC domains), so the one limit for both directions takes the smaller, 28 mA. Note 2: the per-pin source current falls from ~40 mA to ~29 mA as more pins source. A rated drive figure, not an absolute maximum (the datasheet gives no per-pin absolute maximum)."
+        },
+        {
+          "of": {
+            "pin": "D18"
+          },
+          "kind": "current",
+          "value": 0.028,
+          "source": "https://www.espressif.com/sites/default/files/documentation/esp32_datasheet_en.pdf",
+          "provenance": "datasheet",
+          "conditions": "VDD = 3.3 V, VOL = 0.495 V, drive strength at maximum, 25 C",
+          "note": "chip, not board. Table 5-3 (p. 52): IOL sink typ 28 mA; IOH source typ 40 mA (VDD3P3_CPU / VDD3P3_RTC domains), so the one limit for both directions takes the smaller, 28 mA. Note 2: the per-pin source current falls from ~40 mA to ~29 mA as more pins source. A rated drive figure, not an absolute maximum (the datasheet gives no per-pin absolute maximum)."
+        },
+        {
+          "of": {
+            "pin": "D5"
+          },
+          "kind": "current",
+          "value": 0.028,
+          "source": "https://www.espressif.com/sites/default/files/documentation/esp32_datasheet_en.pdf",
+          "provenance": "datasheet",
+          "conditions": "VDD = 3.3 V, VOL = 0.495 V, drive strength at maximum, 25 C",
+          "note": "chip, not board. Table 5-3 (p. 52): IOL sink typ 28 mA; IOH source typ 40 mA (VDD3P3_CPU / VDD3P3_RTC domains), so the one limit for both directions takes the smaller, 28 mA. Note 2: the per-pin source current falls from ~40 mA to ~29 mA as more pins source. A rated drive figure, not an absolute maximum (the datasheet gives no per-pin absolute maximum)."
+        },
+        {
+          "of": {
+            "pin": "TX2"
+          },
+          "kind": "current",
+          "value": 0.02,
+          "source": "https://www.espressif.com/sites/default/files/documentation/esp32_datasheet_en.pdf",
+          "provenance": "datasheet",
+          "conditions": "VDD = 3.3 V, VOH >= 2.64 V, drive strength at maximum, 25 C",
+          "note": "chip, not board. Table 5-3 (p. 52) IOH for the VDD_SDIO power domain, typ 20 mA (GPIO16/17 are in VDD_SDIO, Table 2-1 p. 15); below the 28 mA IOL sink figure, so the one limit takes 20 mA. Note 3: falls toward ~10 mA as more pins in the domain source current. A rated drive figure, not an absolute maximum (the datasheet gives no per-pin absolute maximum)."
+        },
+        {
+          "of": {
+            "pin": "RX2"
+          },
+          "kind": "current",
+          "value": 0.02,
+          "source": "https://www.espressif.com/sites/default/files/documentation/esp32_datasheet_en.pdf",
+          "provenance": "datasheet",
+          "conditions": "VDD = 3.3 V, VOH >= 2.64 V, drive strength at maximum, 25 C",
+          "note": "chip, not board. Table 5-3 (p. 52) IOH for the VDD_SDIO power domain, typ 20 mA (GPIO16/17 are in VDD_SDIO, Table 2-1 p. 15); below the 28 mA IOL sink figure, so the one limit takes 20 mA. Note 3: falls toward ~10 mA as more pins in the domain source current. A rated drive figure, not an absolute maximum (the datasheet gives no per-pin absolute maximum)."
+        },
+        {
+          "of": {
+            "pin": "D4"
+          },
+          "kind": "current",
+          "value": 0.028,
+          "source": "https://www.espressif.com/sites/default/files/documentation/esp32_datasheet_en.pdf",
+          "provenance": "datasheet",
+          "conditions": "VDD = 3.3 V, VOL = 0.495 V, drive strength at maximum, 25 C",
+          "note": "chip, not board. Table 5-3 (p. 52): IOL sink typ 28 mA; IOH source typ 40 mA (VDD3P3_CPU / VDD3P3_RTC domains), so the one limit for both directions takes the smaller, 28 mA. Note 2: the per-pin source current falls from ~40 mA to ~29 mA as more pins source. A rated drive figure, not an absolute maximum (the datasheet gives no per-pin absolute maximum)."
+        },
+        {
+          "of": {
+            "pin": "D2"
+          },
+          "kind": "current",
+          "value": 0.028,
+          "source": "https://www.espressif.com/sites/default/files/documentation/esp32_datasheet_en.pdf",
+          "provenance": "datasheet",
+          "conditions": "VDD = 3.3 V, VOL = 0.495 V, drive strength at maximum, 25 C",
+          "note": "chip, not board. Table 5-3 (p. 52): IOL sink typ 28 mA; IOH source typ 40 mA (VDD3P3_CPU / VDD3P3_RTC domains), so the one limit for both directions takes the smaller, 28 mA. Note 2: the per-pin source current falls from ~40 mA to ~29 mA as more pins source. A rated drive figure, not an absolute maximum (the datasheet gives no per-pin absolute maximum)."
+        },
+        {
+          "of": {
+            "pin": "D15"
+          },
+          "kind": "current",
+          "value": 0.028,
+          "source": "https://www.espressif.com/sites/default/files/documentation/esp32_datasheet_en.pdf",
+          "provenance": "datasheet",
+          "conditions": "VDD = 3.3 V, VOL = 0.495 V, drive strength at maximum, 25 C",
+          "note": "chip, not board. Table 5-3 (p. 52): IOL sink typ 28 mA; IOH source typ 40 mA (VDD3P3_CPU / VDD3P3_RTC domains), so the one limit for both directions takes the smaller, 28 mA. Note 2: the per-pin source current falls from ~40 mA to ~29 mA as more pins source. A rated drive figure, not an absolute maximum (the datasheet gives no per-pin absolute maximum)."
+        },
+        {
+          "of": {
+            "domain": "3V3"
+          },
+          "kind": "ioTotalCurrent",
+          "value": 1.1,
+          "source": "https://www.espressif.com/sites/default/files/documentation/esp32-wroom-32_datasheet_en.pdf",
+          "provenance": "datasheet",
+          "conditions": "absolute maximum rating",
+          "note": "The module, not the board. ESP32-WROOM-32 datasheet v3.8, Table 12 Absolute Maximum Ratings (p. 26): Ioutput, cumulative IO output current max 1,100 mA (the bare ESP32 chip datasheet, Table 5-1 p. 51, gives 1,200 mA)."
+        },
+        {
+          "of": {
+            "domain": "3V3"
+          },
+          "kind": "vinMax",
+          "value": 3.6,
+          "source": "https://www.espressif.com/sites/default/files/documentation/esp32-wroom-32_datasheet_en.pdf",
+          "provenance": "datasheet",
+          "conditions": "recommended operating maximum, which is also the absolute maximum",
+          "note": "ESP32 Series Datasheet v5.3, Table 5-2 Recommended Power Supply Characteristics (p. 51): VDDA, VDD3P3_RTC, VDD3P3, VDD_SDIO (3.3 V mode) and VDD3P3_CPU 3.6 V max; Table 5-1 Absolute Maximum Ratings (p. 51): allowed input voltage 3.6 V max. The module agrees: ESP32-WROOM-32 datasheet v3.8, Table 13 Recommended Operating Conditions (p. 26), VDD33 3.0 to 3.6 V, and Table 12 (p. 26) 3.6 V absolute maximum. Chip and module, not board: the board's 3V3 pin is the module's 3V3 supply."
+        },
+        {
+          "of": {
+            "domain": "VIN"
+          },
+          "kind": "vinMax",
+          "value": 15,
+          "source": "http://www.advanced-monolithic.com/pdf/ds1117.pdf",
+          "provenance": "estimate",
+          "conditions": "board limit (regulator varies)",
+          "note": "Two readings: the DOIT schematic names U1 NCP1117, which allows 20 V input (onsemi NCP1117/D Rev. 28, Maximum Ratings p. 2, https://datasheet.lcsc.com/datasheet/pdf/41a2561fccbd9856f05aa9b1636142b5.pdf), but retail DOIT-style boards commonly carry an AMS1117-3.3, 15 V absolute maximum input (AMS1117 datasheet p. 2, the cited source), and the schematic gives the VIN capacitor C1 (10 uF) no voltage rating. The lower, 15 V, is used."
+        }
+      ],
+      "power": {
+        "domains": [
+          {
+            "name": "VIN",
+            "pin": "VIN",
+            "ret": "GND",
+            "nominal": 5
+          },
+          {
+            "name": "USB",
+            "pin": "USB#vbus",
+            "ret": "USB#gnd",
+            "nominal": 5
+          },
+          {
+            "name": "3V3",
+            "pin": "3V3",
+            "ret": "GND",
+            "nominal": 3.3
+          }
+        ],
+        "draw": [
+          {
+            "domain": "3V3",
+            "typical": {
+              "value": 0.1,
+              "unit": "A",
+              "source": "https://www.espressif.com/sites/default/files/documentation/esp32_datasheet_en.pdf",
+              "provenance": "datasheet",
+              "note": "chip, not board. Table 5-4 (p. 52): Wi-Fi receive 802.11b/g/n 95 ~ 100 mA typ (upper end taken), 3.3 V, 25 C. With the radio off, Modem-sleep at 240 MHz dual-core is 30 ~ 68 mA (Table 4-2, p. 30). Excludes the USB-UART bridge and LEDs (see unaccounted)."
+            },
+            "peak": {
+              "value": 0.24,
+              "unit": "A",
+              "source": "https://www.espressif.com/sites/default/files/documentation/esp32_datasheet_en.pdf",
+              "provenance": "datasheet",
+              "note": "Wi-Fi transmit 802.11b, DSSS 1 Mbps, POUT = +19.5 dBm: 240 mA typ, Table 5-4 (p. 52), 3.3 V, 25 C, measured at 50 % duty cycle; chip, not board.",
+              "label": "Wi-Fi transmit"
+            },
+            "minVolts": {
+              "value": 3,
+              "unit": "V",
+              "source": "https://www.espressif.com/sites/default/files/documentation/esp32-wroom-32_datasheet_en.pdf",
+              "provenance": "datasheet",
+              "note": "ESP32-WROOM-32 module, Table 13 Recommended Operating Conditions (p. 26): VDD33 min 3.0 V. The module, not the board."
+            }
+          }
+        ],
+        "rails": [
+          {
+            "id": "usb-diode",
+            "inputs": [
+              {
+                "domain": "USB",
+                "via": "direct"
+              }
+            ],
+            "output": "VIN",
+            "kind": "switch",
+            "vf": {
+              "value": 0.5,
+              "unit": "V",
+              "source": "https://www.vishay.com/docs/88746/ss12.pdf",
+              "provenance": "representative",
+              "note": "The DOIT schematic names D1 \"SS14\" (VCCUSB to VIN) with no maker; Vishay SS14 as the representative part. Maximum instantaneous forward voltage 0.50 V at IF = 1.0 A, 25 C, pulse test (Electrical Characteristics, p. 2). At the board's 0.1 to 0.3 A the typical drop is lower (Fig. 3, p. 3), so this overstates the loss."
+            },
+            "reverse": "blocks"
+          },
+          {
+            "id": "ldo",
+            "inputs": [
+              {
+                "domain": "VIN",
+                "via": "direct"
+              }
+            ],
+            "output": "3V3",
+            "kind": "ldo",
+            "vout": {
+              "value": 3.3,
+              "unit": "V",
+              "source": "https://datasheet.lcsc.com/datasheet/pdf/41a2561fccbd9856f05aa9b1636142b5.pdf",
+              "provenance": "datasheet",
+              "note": "onsemi NCP1117 (U1 on the DOIT schematic, output net VDD3V3, so the fixed 3.3 V version). Electrical Characteristics (p. 3): 3.3 V typ (3.267 to 3.333 V at Vin = 5.3 V, Iout = 10 mA, 25 C). Distributor (LCSC) copy of onsemi NCP1117/D Rev. 28."
+            },
+            "dropout": {
+              "value": 1.01,
+              "unit": "V",
+              "source": "https://datasheet.lcsc.com/datasheet/pdf/41a2561fccbd9856f05aa9b1636142b5.pdf",
+              "provenance": "datasheet",
+              "note": "Electrical Characteristics (p. 3): dropout typ 1.01 V at Iout = 500 mA (0.95 V at 100 mA, 1.07 V at 800 mA; max 1.15 V at 500 mA), measured at Vout - 100 mV. 500 mA covers the board's Wi-Fi transmit peak."
+            },
+            "ioutMax": {
+              "value": 1,
+              "unit": "A",
+              "source": "https://datasheet.lcsc.com/datasheet/pdf/41a2561fccbd9856f05aa9b1636142b5.pdf",
+              "provenance": "datasheet",
+              "note": "Output current limit min 1000 mA (Vin - Vout = 5 V, 25 C), Electrical Characteristics p. 3; p. 1 rates the series for \"in excess of 1.0 A\"."
+            },
+            "iq": {
+              "value": 0.006,
+              "unit": "A",
+              "source": "https://datasheet.lcsc.com/datasheet/pdf/41a2561fccbd9856f05aa9b1636142b5.pdf",
+              "provenance": "datasheet",
+              "note": "Quiescent current, 3.3 V version, typ 6.0 mA (max 10 mA) at Vin = 15 V, Electrical Characteristics continued, p. 4."
+            },
+            "reverse": "body-diode"
+          }
+        ]
+      },
+      "gpio": {
+        "domain": "3V3",
+        "pins": [
+          "VP",
+          "VN",
+          "D34",
+          "D35",
+          "D32",
+          "D33",
+          "D25",
+          "D26",
+          "D27",
+          "D14",
+          "D12",
+          "D13",
+          "D23",
+          "D22",
+          "TX0",
+          "RX0",
+          "D21",
+          "D19",
+          "D18",
+          "D5",
+          "TX2",
+          "RX2",
+          "D4",
+          "D2",
+          "D15"
+        ],
+        "outputResistance": {
+          "value": 34,
+          "unit": "ohm",
+          "source": "https://www.espressif.com/sites/default/files/documentation/esp32_datasheet_en.pdf",
+          "provenance": "estimate",
+          "note": "Linear approximation at the default drive strength 2 (~20 mA; the datasheet notes on the pin list give 0: ~5, 1: ~10, 2: ~20, 3: ~40 mA, default 2). Table 5-3 (p. 52) at the maximum strength: high (3.3 - 2.64 V) / 40 mA = 16.5 ohm, low 0.495 V / 28 mA = 17.7 ohm, about 17 ohm; halving the strength roughly doubles it, about 34 ohm. A pin set to strength 3 is nearer 17 ohm. Chip, not board."
+        },
+        "pullup": {
+          "value": 45000,
+          "unit": "ohm",
+          "source": "https://www.espressif.com/sites/default/files/documentation/esp32_datasheet_en.pdf",
+          "provenance": "datasheet",
+          "note": "chip, not board. Table 5-3 (p. 52) RPU typ 45 kohm, 3.3 V, 25 C."
+        },
+        "pulldown": {
+          "value": 45000,
+          "unit": "ohm",
+          "source": "https://www.espressif.com/sites/default/files/documentation/esp32_datasheet_en.pdf",
+          "provenance": "datasheet",
+          "note": "chip, not board. Table 5-3 (p. 52) RPD typ 45 kohm, 3.3 V, 25 C."
+        },
+        "inputLeakage": {
+          "value": 5e-8,
+          "unit": "A",
+          "source": "https://www.espressif.com/sites/default/files/documentation/esp32_datasheet_en.pdf",
+          "provenance": "datasheet",
+          "note": "chip, not board. Table 5-3 (p. 52) IIH / IIL max 50 nA, 3.3 V, 25 C."
+        }
+      },
+      "usbPorts": {
+        "USB": {
+          "gnd": "GND"
+        }
+      },
+      "unaccounted": [
+        "The board's CP2102 USB-UART bridge, powered from the 3.3 V supply: no idle current on the schematic and no measurement.",
+        "The board's red power LED and its 1 kohm resistor from the 3.3 V supply to GND: the schematic gives the resistor, not the current (roughly (3.3 V - LED Vf) / 1 kohm, about 1 to 1.5 mA for a red LED Vf of 1.8 to 2.2 V, LED part unknown).",
+        "Module extras beyond the chip (SPI flash, crystal): the draw values are the chip's."
+      ]
+    }
   },
   "art": {
     "w": 120,

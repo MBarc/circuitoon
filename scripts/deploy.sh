@@ -6,6 +6,13 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
+# The site serves the simulation engine; its source release (spec 2.2) must be public first.
+tag=$(node -p "require('./public/sim/engine.json').release.split('/').pop()")
+if ! gh release view "$tag" -R MBarc/circuitoon >/dev/null 2>&1; then
+  echo "deploy: the engine release $tag is not on MBarc/circuitoon. Publish the engine release first: npm run engine:release from the worktree that built the engine." >&2
+  exit 1
+fi
+
 npm run validate
 npm run check:gen
 npm test

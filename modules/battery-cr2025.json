@@ -28,6 +28,30 @@
         "unit": "V",
         "default": 3
       }
+    },
+    "sim": {
+      "modelParams": {
+        "rInternal": {
+          "value": 8.5,
+          "unit": "ohm",
+          "source": "https://data.energizer.com/pdfs/cr2025.pdf",
+          "provenance": "representative",
+          "note": "Energizer CR2025 (Li/MnO2). Datasheet \"Internal Resistance Characteristics\" graph: IR about 8.5 ohm on a fresh cell, about 9 ohm by 25 mAh (read from the graph, right axis 0 to 120 ohm), rising past 100 ohm near end of life. 21 C."
+        }
+      },
+      "limits": [
+        {
+          "of": {
+            "part": true
+          },
+          "kind": "sourceCurrent",
+          "value": 0.003,
+          "source": "https://energy.panasonic.com/dam/master/pdf/en/datasheet/lithium/CR2025_Datasheet_EN.pdf",
+          "provenance": "estimate",
+          "conditions": "fresh CR2025, 20 C",
+          "note": "No maximum continuous current is published. The Panasonic CR2025 datasheet gives \"Continuous drain 0.2mA\" as its standard drain and charts continuous loads only down to 1 kOhm; 3 V across 1 kOhm is about 3 mA, where capacity is about 120 of 165 mAh at 20 C."
+        }
+      ]
     }
   },
   "art": {

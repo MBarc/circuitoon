@@ -1,7 +1,7 @@
 {
   "name": "circuitoon",
   "private": true,
-  "version": "0.9.1",
+  "version": "0.10.0",
   "license": "MIT",
   "type": "module",
   "scripts": {
@@ -32,6 +32,9 @@
     "check:kicad-ui": "node scripts/check-kicad-ui.mjs",
     "check:partmaker-ui": "node scripts/check-partmaker-ui.mjs",
     "check:usb-ui": "node scripts/check-usb-ui.mjs",
+    "check:sim-ui": "node scripts/check-sim-ui.mjs",
+    "engine:build": "node scripts/engine-build.mjs",
+    "engine:release": "node scripts/engine-release.mjs",
     "deploy": "bash scripts/deploy.sh"
   },
   "dependencies": {

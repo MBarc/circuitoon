@@ -1,0 +1,35 @@
+{
+  "id": "rocker-switch-kcd1",
+  "researched": "2026-10-05",
+  "sim": {
+    "modelParams": {
+      "contactResistance": {
+        "value": 0.05,
+        "unit": "ohm",
+        "source": "https://www.chinadaier.com/wp-content/uploads/2017/07/KCD1-2-101.pdf",
+        "provenance": "datasheet",
+        "note": "Daier KCD1-2-101 drawing, \"The Main Technology Performance\" table: \"Contact resistance <= 50m ohm\" (a maximum; no test current stated). The specified maximum is used."
+      }
+    }
+  },
+  "notes": [
+    "Contact resistance is the specified maximum; a new switch is usually lower."
+  ],
+  "unaccounted": [],
+  "review": [
+    {
+      "date": "2026-10-06",
+      "reviewer": "independent reviewer 1",
+      "checked": 1,
+      "corrected": [],
+      "disputed": []
+    },
+    {
+      "date": "2026-10-06",
+      "reviewer": "independent reviewer 2",
+      "checked": 1,
+      "corrected": [],
+      "disputed": []
+    }
+  ]
+}

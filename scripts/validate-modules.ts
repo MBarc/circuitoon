@@ -2,6 +2,7 @@
 import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { CUSTOM_PREFIX, validateModule } from '../src/format/module.ts'
+import { railProblem, simOf } from '../src/format/simModel.ts'
 
 const dir = join(import.meta.dirname, '..', 'modules')
 const ids = new Map<string, string>()
@@ -25,6 +26,14 @@ for (const file of readdirSync(dir).filter((f) => f.endsWith('.json')).sort()) {
   // The custom- prefix and flag belong to parts made in the part maker, never to the library.
   if (r.module.custom || r.module.id.startsWith(CUSTOM_PREFIX)) {
     console.error(`FAIL ${file}: built-in parts may not be custom or use an id starting with "${CUSTOM_PREFIX}"`)
+    failed++
+    continue
+  }
+  // Spec 3.1: a built-in module must state every field its rails need (an embedded one is listed
+  // as not simulated instead, by the simulator).
+  const incomplete = (simOf(r.module)?.power?.rails ?? []).map(railProblem).filter((x) => x !== null)
+  if (incomplete.length) {
+    console.error(`FAIL ${file}: electrical.sim: ${incomplete.join('; ')}`)
     failed++
     continue
   }

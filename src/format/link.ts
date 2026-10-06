@@ -5,7 +5,7 @@
 // decoder apply one eligibility check, `linkLimit` (amendment A9), so every link the encoder makes
 // the decoder opens.
 import { type Diagram, serializeDiagram, validateDiagram } from './diagram.ts'
-import { isObj } from './module.ts'
+import { type ModuleDef, isObj } from './module.ts'
 
 export const SITE_URL = 'https://mbarc.github.io/circuitoon/'
 export const LINK_VERSION = 'v1.'
@@ -117,8 +117,8 @@ export async function decodePayload(payload: string): Promise<{ ok: true; json: 
   }
 }
 
-/** A payload as the editor opens it: decoded, within the limits, and loaded like a file. Never rejects. */
-export async function openLinkPayload(payload: string): Promise<{ ok: true; diagram: Diagram; warnings: string[] } | { ok: false; message: string }> {
+/** A payload as the editor opens it: decoded, within the limits, and loaded like a file (`library`: the built-in parts, see validateDiagram). Never rejects. */
+export async function openLinkPayload(payload: string, library?: (id: string) => ModuleDef | undefined): Promise<{ ok: true; diagram: Diagram; warnings: string[] } | { ok: false; message: string }> {
   try {
     const r = await decodePayload(payload)
     if (!r.ok) return r
@@ -131,7 +131,7 @@ export async function openLinkPayload(payload: string): Promise<{ ok: true; diag
     const count = (key: string) => (isObj(raw) && Array.isArray(raw[key]) ? (raw[key] as unknown[]).length : 0)
     const over = linkLimit({ parts: count('parts'), connections: count('connections') })
     if (over) return { ok: false, message: `This link's diagram has ${limitText(over)}, so it was not opened.` }
-    const v = validateDiagram(raw)
+    const v = validateDiagram(raw, { library })
     if (!v.ok) return { ok: false, message: `This link is not a Circuitoon diagram: ${v.errors.slice(0, 3).join('; ')}` }
     return { ok: true, diagram: v.diagram, warnings: v.warnings }
   } catch (err) {

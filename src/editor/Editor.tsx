@@ -4,7 +4,9 @@ import { EditorStore } from './store.ts'
 import { Canvas, type CanvasApi } from './Canvas.tsx'
 import { Inspector } from './Inspector.tsx'
 import { LibraryPanel } from './LibraryPanel.tsx'
+import { ProbesPanel } from './ProbesPanel.tsx'
 import { Toolbar } from './Toolbar.tsx'
+import { useSimulation } from './simulation.ts'
 import { deleteSelection, EMPTY_SELECTION, rotateParts } from './ops.ts'
 import { nudgeSelection } from './align.ts'
 import { GRID } from './snap.ts'
@@ -20,6 +22,12 @@ import './partMaker.css'
 
 /** Arrow keys as a one-grid-step move. */
 const ARROWS: Record<string, [number, number]> = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }
+
+/** True when focus is on the canvas or nowhere: where the sheet's single-key shortcuts apply. */
+const onSheet = () => {
+  const focus = document.activeElement
+  return !focus || focus === document.body || !!focus.closest('.canvas-wrap')
+}
 
 /** Keys that belong to a text field, where the editor's shortcuts never apply. */
 const TEXT_FIELD = 'input, textarea, select, [contenteditable]:not([contenteditable="false"])'
@@ -126,15 +134,19 @@ function useEditorKeys(store: EditorStore) {
         // A nudge: one grid step, five with Shift. A run of nudges to the same selection is one undo step.
         // Only from the sheet (focus on the canvas or nowhere): in the Inspector or the Parts list
         // arrows scroll and move between controls. Never while the canvas pans.
-        if (gesture || store.panning) return
-        const focus = document.activeElement
-        if (focus && focus !== document.body && !focus.closest('.canvas-wrap')) return
+        if (gesture || store.panning || !onSheet()) return
         const sel = s.selection
         if (!sel.parts.length && !sel.annotations?.length) return
         e.preventDefault()
         const step = GRID * (e.shiftKey ? 5 : 1)
         const [ux, uy] = ARROWS[e.key]
         store.commit(nudgeSelection(s.diagram, sel, ux * step, uy * step), `nudge:${JSON.stringify([sel.parts, sel.annotations ?? []])}`)
+      } else if ((key === 's' || key === 'p') && !mod && !e.altKey) {
+        // Only from the sheet (focus on the canvas or nowhere), like the arrow-key nudge.
+        if (gesture || !onSheet()) return
+        e.preventDefault()
+        if (key === 's') store.setSimulate(!s.simulate)
+        else store.setSimTool(s.simTool === 'probe' ? 'select' : 'probe')
       } else if (key === 'r' && !mod) {
         if (gesture) return
         if (s.selection.parts.length) store.commit(rotateParts(s.diagram, s.selection.parts))
@@ -142,6 +154,7 @@ function useEditorKeys(store: EditorStore) {
         // A wire-draw or reconnect gesture handles its own Escape (Canvas.tsx cancels the drag);
         // clearing the selection here too would fight with that.
         if (gesture) return
+        if (s.simTool === 'probe') return store.setSimTool('select')
         store.select(EMPTY_SELECTION)
       }
     }
@@ -305,6 +318,7 @@ export function Editor({ initial, warnings, onClose, onDirty }: { initial: Diagr
   useEditorKeys(store)
   useEditorClipboard(store, canvasApi)
   useUnloadGuard(store)
+  useSimulation(store)
   // Tells the owner whether there are unsaved changes (EditorApp asks before a link replaces them).
   const dirty = useSyncExternalStore(store.subscribe, () => store.dirty)
   // A block body: an expression body would return onDirty's result, which React would later call as
@@ -313,12 +327,14 @@ export function Editor({ initial, warnings, onClose, onDirty }: { initial: Diagr
     onDirty?.(dirty)
   }, [dirty, onDirty])
   const parts = usePartMaker(store, canvasApi)
+  // Only the tool: the whole state would re-render the editor (and the canvas) on every change.
+  const simTool = useSyncExternalStore(store.subscribe, () => store.getState().simTool)
   return (
     <div className="editor">
       <Toolbar store={store} warnings={warnings} onClose={onClose} />
       <LibraryPanel onAdd={(id) => canvasApi.current?.addAtCenter(id)} parts={parts.handlers} />
       <Canvas store={store} onReady={(api) => (canvasApi.current = api)} />
-      <Inspector store={store} onEditPart={parts.editModule} onUpdatePart={parts.updateModule} />
+      {simTool === 'probe' ? <ProbesPanel store={store} /> : <Inspector store={store} onEditPart={parts.editModule} onUpdatePart={parts.updateModule} />}
       {parts.ui}
     </div>
   )

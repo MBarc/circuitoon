@@ -1,0 +1,120 @@
+{
+  "id": "ams1117-33-module",
+  "researched": "2026-10-05",
+  "sim": {
+    "power": {
+      "domains": [
+        {
+          "name": "VIN",
+          "pin": "VIN",
+          "ret": "GND",
+          "nominal": 5
+        },
+        {
+          "name": "OUT",
+          "pin": "OUT",
+          "ret": "GND",
+          "nominal": 3.3
+        }
+      ],
+      "rails": [
+        {
+          "id": "ldo",
+          "inputs": [
+            {
+              "domain": "VIN",
+              "via": "direct"
+            }
+          ],
+          "output": "OUT",
+          "kind": "ldo",
+          "vout": {
+            "value": 3.3,
+            "unit": "V",
+            "source": "http://www.advanced-monolithic.com/pdf/ds1117.pdf",
+            "provenance": "datasheet",
+            "note": "Output Voltage, AMS1117-3.3: 3.300 V typ (3.251 to 3.349 V at VIN = 4.8 V, IOUT = 0 mA, TJ = 25 C; 3.201 to 3.399 V over the full operating temperature range, boldface row), Electrical Characteristics, p. 2."
+          },
+          "dropout": {
+            "value": 1.1,
+            "unit": "V",
+            "source": "http://www.advanced-monolithic.com/pdf/ds1117.pdf",
+            "provenance": "datasheet",
+            "note": "Dropout Voltage (VIN - VOUT), AMS1117-3.3: 1.1 V typ, 1.3 V max, at delta VOUT, delta VREF = 1%, IOUT = 0.8 A (Electrical Characteristics, p. 3; boldface, so over the full operating temperature range). This is the only dropout point given; p. 1 says it decreases at lower load currents, and Note 4 says it is higher above 0.8 A. Taken at 0.8 A, just above the module's 0.7 A rating, so it is slightly pessimistic at lighter loads."
+          },
+          "iq": {
+            "value": 0.005,
+            "unit": "A",
+            "source": "http://www.advanced-monolithic.com/pdf/ds1117.pdf",
+            "provenance": "datasheet",
+            "note": "Quiescent Current, fixed versions (-1.5 to -5.0): 5 mA typ, 11 mA max at (VIN - VOUT) = 1.5 V (Electrical Characteristics, p. 3). Chip, not board: the module's power LED is not included."
+          },
+          "ioutMax": {
+            "value": 0.7,
+            "unit": "A",
+            "source": "https://protosupplies.com/product/ams1117-5v-to-3-3v-step-down-regulator-module/ http://www.advanced-monolithic.com/pdf/ds1117.pdf",
+            "provenance": "representative",
+            "note": "Representative module: ProtoSupplies AMS1117 5V to 3.3V module (3-pin VIN/OUT/GND, the module's cited source), 'Maximum Output Current 700mA (5V Input)' in its specification table; recommended max 600 mA. A thermal limit of the small board, so it falls with input voltage: the same page measured about 200 mA at 9 V and 75 mA at 12 V in. The chip itself is rated 1 A (AMS datasheet p. 1) with a current limit of 900 mA min, 1.1 A typ (p. 3)."
+          },
+          "reverse": "body-diode"
+        }
+      ]
+    },
+    "limits": [
+      {
+        "of": {
+          "domain": "VIN"
+        },
+        "kind": "vinMax",
+        "value": 12,
+        "source": "https://protosupplies.com/product/ams1117-5v-to-3-3v-step-down-regulator-module/ http://www.advanced-monolithic.com/pdf/ds1117.pdf",
+        "provenance": "representative",
+        "conditions": "module maximum input voltage (5 V typical)",
+        "note": "Representative module: ProtoSupplies AMS1117 5V to 3.3V module, 'Maximum Input Voltage 12V (5V Typical)'. The AMS1117 chip's absolute maximum input is 15 V (Absolute Maximum Ratings, p. 2); the module's lower figure presumably covers its capacitors and heat, which this source does not explain."
+      }
+    ]
+  },
+  "notes": [
+    "reverse 'body-diode': the AMS1117 datasheet (Application Hints, 'Protection Diodes', p. 4) says 'Microsecond surge currents of 50A to 100A can be handled by the internal diode between the input and output pins of the device', in the context of the input being shorted to ground with output capacitors charged, so an internal output-to-input diode exists.",
+    "Minimum load current: 5 mA typ, 10 mA max for regulation (p. 3, Note 5). Not set as minLoad: the module's own power LED (unmodelled, see unaccounted) likely draws a few mA of it, and the datasheet gives no behaviour below it beyond 'not guaranteed to regulate'.",
+    "Thermal limits are not modelled: SOT-223 theta-JA 90 C/W (p. 2), and regulation is only guaranteed up to 1.2 W dissipation for SOT-223 (Note 2, p. 3). At 5 V in and 0.7 A out that is (5 - 3.3) x 0.7 = 1.19 W. Thermal shutdown at 165 C junction (p. 4).",
+    "Domain nominal for VIN is 5 V, the module's typical input (ProtoSupplies)."
+  ],
+  "unaccounted": [
+    "Red power LED on the module (ProtoSupplies: 'The module has a red power LED when power is applied'): its resistor value and current are not documented, so it is not added as a draw. Whether it sits on VIN or OUT is not known either."
+  ],
+  "review": [
+    {
+      "date": "2026-10-06",
+      "reviewer": "independent reviewer 1",
+      "checked": 7,
+      "corrected": [],
+      "disputed": [
+        "ProtoSupplies' intro text says '800mA maximum rated current. 500mA recommended max' while its specification table says 700 mA max and 600 mA recommended; the patch uses the table (700 mA), which also matches its 5 V test row (700 mA, 120 C tab). Accepted, noted for the controller."
+      ]
+    },
+    {
+      "date": "2026-10-06",
+      "reviewer": "independent reviewer 2",
+      "checked": 8,
+      "corrected": [
+        {
+          "path": "sim.power.rails[0].vout.note",
+          "was": "3.201 to 3.399 V over the full temperature range)",
+          "now": "3.201 to 3.399 V over the full operating temperature range, boldface row)",
+          "why": "Wording: the p. 2 table marks the second row in bold, which the footnote on p. 3 defines as the full operating temperature range. Value 3.300 V typ at VIN = 4.8 V confirmed."
+        },
+        {
+          "path": "sim.power.rails[0].dropout.note",
+          "was": "at delta VOUT = 1%, IOUT = 0.8 A (Electrical Characteristics, p. 3).",
+          "now": "at delta VOUT, delta VREF = 1%, IOUT = 0.8 A (Electrical Characteristics, p. 3; boldface, so over the full operating temperature range).",
+          "why": "Condition as printed is 'delta VOUT, delta VREF = 1%, IOUT = 0.8A (Note 4)', and the row is bold (full temperature range). Values 1.1 V typ / 1.3 V max confirmed."
+        }
+      ],
+      "disputed": [
+        "ioutMax 0.7 A: ProtoSupplies' feature list says '800mA maximum rated current. 500mA recommended max', its evaluation says 'best to consider it a 500-600 mA max device', and its spec table says 700 mA max (5 V input), 600 mA recommended. The table value is defensible (700 mA ran at 120 C tab without shutdown; 800 mA shut down after about 5 minutes). Accepted.",
+        "No minLoad on the LDO although the datasheet gives 10 mA max (Note 5); accepted because the module LED likely supplies part of it and the solver has no out-of-regulation model for an LDO below it."
+      ]
+    }
+  ]
+}

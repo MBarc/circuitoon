@@ -11,12 +11,13 @@
 import { type Diagram, type PartInstance, moduleOf } from '../format/diagram.ts'
 import { isBoard, isNetLabel, type ModuleDef, moduleSettings } from '../format/module.ts'
 import { plugsOf } from '../format/breadboard.ts'
-import { netlist, nodeKey } from '../format/netlist.ts'
+import { type Netlist, netlist, nodeKey } from '../format/netlist.ts'
 import { labelName } from '../format/netLabels.ts'
 import { nameNets } from '../format/netNames.ts'
-import { NETLIST_FORMAT, REF_PATTERN, parseNetlist } from './netlist.ts'
+import { NETLIST_FORMAT, REF_PATTERN, intentLookup, parseNetlist } from './netlist.ts'
 import { libraryLookup } from './catalog.ts'
 import { naturalCompare } from './order.ts'
+import { probesForNetlist } from '../sim/probes.ts'
 
 /** A valid, unique netlist ref for a designator: other characters become `_`, and a leading non-letter gets a `P`. */
 function refMaker() {
@@ -38,13 +39,20 @@ function settingsOf(p: PartInstance, m: ModuleDef): Record<string, string> | und
   return kept.length ? Object.fromEntries(kept) : undefined
 }
 
-export function extractNetlist(d: Diagram): Record<string, unknown> {
+export interface SheetNet { name: string; keys: string[]; pins: { ref: string; name: string; m: ModuleDef }[]; label?: string }
+
+/**
+ * The nets extract writes, named by nameNets, each with the node keys of the netlist() net it came
+ * from (spec 2: the simulator names its nodes from this, so net:GND means the same net in the CLI,
+ * extract, KiCad and the simulator).
+ */
+export function sheetNets(d: Diagram): { refOf: Map<string, string>; kept: PartInstance[]; nets: SheetNet[]; netlist: Netlist } {
   const modOf = (uid: string) => {
     const p = d.parts.find((x) => x.uid === uid)
     return p ? moduleOf(d, p.module) : undefined
   }
   // A sheet laid out from an intent: boards it never named were added by the layout for routing.
-  const intent = d.intent !== undefined ? parseNetlist(d.intent, (id) => moduleOf(d, id) ?? libraryLookup(id)) : null
+  const intent = d.intent !== undefined ? parseNetlist(d.intent, intentLookup(d, libraryLookup)) : null
   // Intent refs are designators (as verify reads them), never uids: a cut and paste gives a part a
   // new uid but keeps its designator. A board that hosts a mounted part stays whatever the intent
   // says, so that part keeps its mount (`on`).
@@ -64,7 +72,7 @@ export function extractNetlist(d: Diagram): Record<string, unknown> {
   const n = netlist(d)
 
   type Pin = { ref: string; name: string; m: ModuleDef }
-  const nets: { pins: Pin[]; label?: string }[] = []
+  const nets: { pins: Pin[]; keys: string[]; label?: string }[] = []
   for (const keys of n.nets) {
     const pins: Pin[] = []
     const strips: Pin[] = []
@@ -90,10 +98,21 @@ export function extractNetlist(d: Diagram): Record<string, unknown> {
     // and a net with one component pin keeps its name (Michael's VIN).
     if (!pins.length || pins.length + strips.length < 2) continue
     const order = (a: Pin, b: Pin) => naturalCompare(a.ref, b.ref) || naturalCompare(a.name, b.name)
-    nets.push({ pins: [...pins, ...strips].sort(order), ...(label !== undefined ? { label } : {}) })
+    nets.push({ pins: [...pins, ...strips].sort(order), keys, ...(label !== undefined ? { label } : {}) })
   }
 
   const named = nameNets(nets)
+  return { refOf, kept, netlist: n, nets: nets.map((net, i) => ({ ...net, name: named[i]! })) }
+}
+
+/** `warn` hears of each probe extraction had to drop (spec 6.2). */
+export function extractNetlist(d: Diagram, warn?: (message: string) => void): Record<string, unknown> {
+  const modOf = (uid: string) => {
+    const p = d.parts.find((x) => x.uid === uid)
+    return p ? moduleOf(d, p.module) : undefined
+  }
+  const { refOf, kept, nets, netlist: n } = sheetNets(d)
+  const named = nets.map((x) => x.name)
 
   // One color per net when all its wires agree, and the cable ends when every wire has the same both ends.
   const nodeNet = new Map<string, number>()
@@ -131,6 +150,7 @@ export function extractNetlist(d: Diagram): Record<string, unknown> {
   const custom: Record<string, ModuleDef> = {}
   for (const p of kept) if (!libraryLookup(p.module)) custom[p.module] = moduleOf(d, p.module)!
 
+  const probes = probesForNetlist(d.probes ?? [], refOf, nets, warn)
   const order = nets.map((_, i) => i).sort((a, b) => naturalCompare(named[a]!, named[b]!))
   return {
     format: NETLIST_FORMAT,
@@ -144,5 +164,6 @@ export function extractNetlist(d: Diagram): Record<string, unknown> {
     }),
     nets: order.map((i) => ({ name: named[i]!, pins: nets[i].pins.map((p) => `${p.ref}.${p.name}`) })),
     ...(Object.keys(color).length || ends ? { wires: { ...(Object.keys(color).length ? { color } : {}), ...(ends ? { ends } : {}) } } : {}),
+    ...(probes.length ? { probes } : {}),
   }
 }

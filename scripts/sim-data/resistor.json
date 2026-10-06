@@ -1,0 +1,39 @@
+{
+  "id": "resistor",
+  "researched": "2026-10-05",
+  "sim": {
+    "limits": [
+      {
+        "of": {
+          "part": true
+        },
+        "kind": "power",
+        "value": 0.25,
+        "source": "https://cdn.sparkfun.com/assets/a/9/3/0/e/yageo-cfr_datasheet.pdf",
+        "provenance": "representative",
+        "conditions": "ambient up to 70 C; derated linearly to 0 at 155 C",
+        "note": "Yageo CFR series carbon film resistor, CFR-25 (1/4 W axial): Table 1 (p. 3) \"Power Rating at 70 C\" 1/4W; derating curve (Rated Power % vs ambient temperature) 100 % up to 70 C falling to 0 at 155 C."
+      }
+    ]
+  },
+  "notes": [
+    "The rating applies at an ambient of 70 C or below; the derating above it is not modelled."
+  ],
+  "unaccounted": [],
+  "review": [
+    {
+      "date": "2026-10-06",
+      "reviewer": "independent reviewer 1",
+      "checked": 1,
+      "corrected": [],
+      "disputed": []
+    },
+    {
+      "date": "2026-10-06",
+      "reviewer": "independent reviewer 2",
+      "checked": 1,
+      "corrected": [],
+      "disputed": []
+    }
+  ]
+}

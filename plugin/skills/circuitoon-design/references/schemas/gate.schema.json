@@ -11,6 +11,7 @@
     "blocking",
     "warnings",
     "notes",
+    "sim",
     "notChecked",
     "link",
     "bom",
@@ -20,7 +21,7 @@
   "additionalProperties": false,
   "properties": {
     "format": {
-      "const": "circuitoon-cli/gate/3"
+      "const": "circuitoon-cli/gate/4"
     },
     "ok": {
       "type": "boolean"
@@ -284,6 +285,68 @@
               "type": "string"
             }
           }
+        }
+      }
+    },
+    "sim": {
+      "type": "object",
+      "required": [
+        "status",
+        "findings",
+        "budget",
+        "provenanceCounts"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "status": {
+          "enum": [
+            "ok",
+            "failed",
+            "unavailable",
+            "not-run"
+          ]
+        },
+        "findings": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "code",
+              "severity",
+              "parts",
+              "message",
+              "basis",
+              "inputs"
+            ]
+          }
+        },
+        "budget": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "id",
+              "kind",
+              "part",
+              "label",
+              "volts",
+              "amps",
+              "basis"
+            ]
+          }
+        },
+        "provenanceCounts": {
+          "type": "object",
+          "required": [
+            "datasheet",
+            "representative",
+            "estimate",
+            "user",
+            "topology"
+          ]
+        },
+        "reason": {
+          "type": "string"
         }
       }
     },

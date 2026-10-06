@@ -2,10 +2,11 @@
 // enumeration unit and report findings by a stable key; each finding keeps one bit per state it holds
 // in, so its wording names exactly the conditions it needs (Resolution 24). Static rules run once
 // afterwards on what the states established (which nodes were ever hazardous, at what voltage). Pure.
-import { type Endpoint, type PartInstance, moduleOf } from './diagram.ts'
+import { type Diagram, type Endpoint, type PartInstance, moduleOf } from './diagram.ts'
 import type { RuleId } from './checks.ts'
-import { nodeKey } from './netlist.ts'
-import { type GConverter, type GEdge, type GLoad, type GSource, type GTerm, type MainsGraph, type Prepared, FrontMap, LN_MASK as LN, L_MASK as L_, MAINS_POW as M_POW, MAX_SOURCES, N_MASK as N_, PE_MASK as PE_, bareRoots, baseReps, steadyOf, bitOf, decodeSingle, groupName, hazardAt, identAt, minimalWitnesses, plainPath, plainRef, statePhrase, termAt, termName } from './mainsGraph.ts'
+import { netlist, nodeKey } from './netlist.ts'
+import { plugsOf } from './breadboard.ts'
+import { type GConverter, type GEdge, type GLoad, type GSource, type GTerm, type MainsGraph, type Prepared, FrontMap, LN_MASK as LN, L_MASK as L_, MAINS_POW as M_POW, MAX_SOURCES, N_MASK as N_, PE_MASK as PE_, analyseState, bareRoots, buildMainsGraph, baseReps, steadyOf, bitOf, decodeSingle, groupName, hazardAt, identAt, minimalWitnesses, plainPath, plainRef, prepare, statePhrase, termAt, termName } from './mainsGraph.ts'
 import { type Conductor, type ContactGroup, type MainsInfo, type Rating, type Region, isolationAdequate, mainsOf, uncoveredPins } from './mainsModel.ts'
 import { type ThroughKind, protectivePaths } from './mainsProtective.ts'
 import { andList, natural, orList } from './words.ts'
@@ -2341,3 +2342,20 @@ function incompleteRule(acc: Acc): MainsDraft[] {
 
 STATE_RULES.push(unprotectedRule)
 STATIC_RULES.push(fuseRules, cableRules, incompleteRule)
+
+/**
+ * Converter availability in one contact state, the saved one, by part uid (live-simulation spec,
+ * section 4 table): the spec section 1 availability rules applied to the state `active` gives
+ * each contact group, instead of aggregated over every state. A sheet past MAX_SOURCES is not
+ * judged: every converter is unknown, as in the enumeration.
+ */
+export function convertersInState(d: Diagram, active: (part: PartInstance, groupId: string) => boolean): Map<string, ConverterStatus> {
+  const plugs = plugsOf(d)
+  const g = buildMainsGraph(d, plugs, netlist(d, plugs))
+  if (!g) return new Map()
+  const p = prepare(g)
+  if (p.sources.length > MAX_SOURCES) return new Map(g.converters.map((c) => [c.part.uid, notChecked(c)]))
+  for (const gi of p.groupIdx) p.groupState[gi] = active(g.groups[gi].part, g.groups[gi].def.id) ? 1 : 0
+  analyseState(p)
+  return new Map(g.converters.map((c, i) => [c.part.uid, p.converterIdx.includes(i) ? inputState(p, c) : UNPOWERED]))
+}

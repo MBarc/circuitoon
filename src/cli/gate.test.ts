@@ -2,7 +2,7 @@
 // intent, a dropped value override and a hand edit; blocking findings win over a missing browser; a
 // missing browser alone is exit 3; a missing required artifact (a failed focused render, A8) never
 // passes; an oversized link falls back to the file without blocking.
-import { describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it } from 'vitest'
 import { createHash, randomBytes } from 'node:crypto'
 import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -15,13 +15,17 @@ import { cli, tempDir } from './cliHarness.testing.ts'
 import { loadSchema, schemaErrors } from './jsonSchema.testing.ts'
 import { findBrowser } from './png.ts'
 import { EXIT, type Io } from './io.ts'
-import { runGate } from './gate.ts'
+import { gateBanner, gateEngine, runGate } from './gate.ts'
+import { checkDiagram } from '../format/checks.ts'
+import type { Engine } from '../sim/engine/engine.ts'
+import type { EngineHost } from '../sim/engine/host.ts'
 import { bomCsv } from '../format/bom.ts'
 import { bomQuantities } from '../agent/tables.ts'
 import { READABILITY_RULES } from '../agent/readabilityWarnings.ts'
 import { captionBox } from '../render/captionBox.ts'
 import { layoutModule } from '../format/module.ts'
 import { ledNetlist, tiltSensors } from '../agent/fixtures.testing.ts'
+import { runAllOf } from '../sim/testing.ts'
 
 const browser = findBrowser(process.env)
 const noBrowser = (dir: string) => ({ CIRCUITOON_BROWSER: join(dir, 'no-such-browser.exe') })
@@ -40,6 +44,12 @@ const edit = (dir: string, change: (s: Sheet) => void) => {
 }
 const gateJson = (dir: string) => JSON.parse(readFileSync(join(dir, 'out', 'gate.json'), 'utf8'))
 const quietIo = (dir: string): Io => ({ stdout: () => {}, stderr: () => {}, cwd: dir, env: noBrowser(dir) })
+
+// Gate tests that do not test simulation never start the engine (Task 31's stub seam).
+const realEngine = gateEngine.make
+beforeEach(() => {
+  gateEngine.make = () => null
+})
 
 describe('circuitoon gate', () => {
   it.skipIf(!browser)('passes a laid-out sheet, and every hash in gate.json matches its file', async () => {
@@ -96,7 +106,7 @@ describe('circuitoon gate', () => {
     edit(dir, (s) => void delete s.intent)
     const r = await cli(['gate', 'sheet.json', '-o', 'out'], { cwd: dir, env: noBrowser(dir) })
     expect(r.code).toBe(1)
-    expect(r.out).toContain('GATE BLOCKED')
+    expect(r.out).toContain('GATE FAILED')
     const g = gateJson(dir)
     expect(g.ok).toBe(false)
     expect(g.blocking.map((f: { message: string }) => f.message)).toContain(NO_INTENT)
@@ -135,7 +145,7 @@ describe('circuitoon gate', () => {
     expect(r.out).toContain('GATE INCOMPLETE')
     expect(r.err).toContain('No Chrome or Edge found')
     const g = gateJson(dir)
-    expect(g.format).toBe('circuitoon-cli/gate/3')
+    expect(g.format).toBe('circuitoon-cli/gate/4')
     expect(schemaErrors(loadSchema('gate'), g)).toEqual([])
     expect(g.ok).toBe(false)
     expect(g.blocking).toEqual([])
@@ -488,7 +498,7 @@ describe('gate readiness (Ruling W1)', () => {
     const dir = await laidOut(example)
     const { code, report } = await runGate(readFileSync(join(dir, 'sheet.json')), { sheetPath: 'sheet.json', outDir: join(dir, 'out'), io: quietIo(dir), png: fakePng })
     expect(code).toBe(EXIT.ok)
-    expect(report.format).toBe('circuitoon-cli/gate/3')
+    expect(report.format).toBe('circuitoon-cli/gate/4')
     expect(report.ready).toBe(true)
     expect(schemaErrors(loadSchema('gate'), report)).toEqual([])
   })
@@ -511,4 +521,141 @@ describe('gate readiness (Ruling W1)', () => {
     expect(g.ready).toBe(false)
     expect(r.out.split('\n')[0]).toBe(`NOT READY: ${n} readability warning${n === 1 ? '' : 's'}`)
   })
+})
+
+describe('gate/4: simulation (spec 7)', () => {
+  beforeEach(() => {
+    gateEngine.make = realEngine
+  })
+  const failing = (status: 'failed' | 'unavailable'): Engine => {
+    const run: Engine['run'] = async (_c, _a, revision) => (status === 'failed' ? { status, revision, error: 'singular matrix', nodes: [] } : { status, reason: 'no engine' })
+    return { host: { runs: 0, info: null } as unknown as EngineHost, init: async () => ({ name: 'ngspice', version: '45.2', build: 'fake' }), run, runAll: runAllOf(run), dispose() {} }
+  }
+  const shorted = async () => {
+    const dir = tempDir()
+    writeFileSync(join(dir, 'n.json'), JSON.stringify({
+      format: 'circuitoon-netlist/1', title: 'short',
+      parts: [{ ref: 'BT1', module: 'battery-holder-2xaa' }, { ref: 'S1', module: 'rocker-switch-kcd1', values: { 'contact.s': 'closed' } }],
+      nets: [{ name: 'A', pins: ['BT1.+', 'S1.1'] }, { name: 'GND', pins: ['S1.2', 'BT1.-'] }],
+    }))
+    expect((await cli(['layout', 'n.json', '-o', 'sheet.json'], { cwd: dir })).code).toBe(0)
+    return dir
+  }
+  it('fails on a blocking simulation finding when the checker is clean of errors', async () => {
+    const dir = await shorted()
+    const r = await cli(['gate', 'sheet.json', '-o', 'out'], { cwd: dir, env: noBrowser(dir) })
+    const g = gateJson(dir)
+    expect(schemaErrors(loadSchema('gate'), g)).toEqual([])
+    expect(g.sim.status).toBe('ok')
+    expect(g.blocking.some((f: { rule: string }) => f.rule === 'sim-short')).toBe(true)
+    expect(r.code).toBe(1)
+    expect(r.out).toContain('GATE FAILED (simulation): 1 blocking finding (sheet.json)')
+  }, 120_000)
+  it('fails on a real short even when the engine fails or is unavailable: the topological findings still block', async () => {
+    for (const status of ['failed', 'unavailable'] as const) {
+      const dir = await shorted()
+      gateEngine.make = () => failing(status)
+      const r = await cli(['gate', 'sheet.json', '-o', 'out'], { cwd: dir, env: noBrowser(dir) })
+      const g = gateJson(dir)
+      expect(schemaErrors(loadSchema('gate'), g)).toEqual([])
+      expect(r.code).toBe(1)
+      expect(g.sim.status).toBe(status)
+      expect(g.sim.findings.some((f: { code: string }) => f.code === 'sim-short')).toBe(true)
+      expect(g.blocking.filter((f: { rule: string }) => f.rule.startsWith('sim-')).map((f: { rule: string }) => f.rule)).toEqual(['sim-short'])
+      expect(r.out).toContain('GATE FAILED (simulation): 1 blocking finding (sheet.json)')
+    }
+  }, 240_000)
+  it('fails on an LED straight across 2xAA (Phase D ruling: past twice a representative absolute maximum)', async () => {
+    const dir = tempDir()
+    writeFileSync(join(dir, 'n.json'), JSON.stringify({
+      format: 'circuitoon-netlist/1', title: 'bare LED',
+      parts: [{ ref: 'BT1', module: 'battery-holder-2xaa' }, { ref: 'D1', module: 'led' }],
+      nets: [{ name: 'A', pins: ['BT1.+', 'D1.A'] }, { name: 'GND', pins: ['D1.K', 'BT1.-'] }],
+    }))
+    expect((await cli(['layout', 'n.json', '-o', 'sheet.json'], { cwd: dir })).code).toBe(0)
+    const r = await cli(['gate', 'sheet.json', '-o', 'out'], { cwd: dir, env: noBrowser(dir) })
+    expect(r.code).toBe(1)
+    expect(gateJson(dir).blocking.some((f: { rule: string; message: string }) => f.rule === 'sim-over-abs-max' && f.message.includes('Add a series resistor (about '))).toBe(true)
+  }, 120_000)
+  it('fails with the plain banner when the checker and the simulation both block (matrix row 1)', async () => {
+    const dir = await shorted()
+    edit(dir, (s) => void delete s.intent)
+    const r = await cli(['gate', 'sheet.json', '-o', 'out'], { cwd: dir, env: noBrowser(dir) })
+    const g = gateJson(dir)
+    expect(r.code).toBe(1)
+    expect(g.ok).toBe(false)
+    expect(g.ready).toBe(false)
+    expect(g.blocking.map((f: { message: string }) => f.message)).toContain(NO_INTENT)
+    expect(g.blocking.some((f: { rule: string }) => f.rule === 'sim-short')).toBe(true)
+    expect(r.out).toMatch(/GATE FAILED: \d+ blocking findings \(sheet\.json\)/)
+  }, 120_000)
+  it('is incomplete (exit 3), keeping the checker findings, when the engine throws', async () => {
+    const dir = await laidOut()
+    edit(dir, (s) => void delete s.intent)
+    const bytes = readFileSync(join(dir, 'sheet.json'))
+    const crash = async (): Promise<never> => { throw new Error('worker crashed') }
+    const throwing: Engine = { ...failing('failed'), run: crash, runAll: crash }
+    const withSim = await runGate(bytes, { sheetPath: 'sheet.json', outDir: join(dir, 'out'), io: quietIo(dir), engine: throwing })
+    const without = await runGate(bytes, { sheetPath: 'sheet.json', outDir: join(dir, 'out2'), io: quietIo(dir), engine: null })
+    // The checker's verdict is untouched: the intent still blocks.
+    expect(withSim.report.blocking).toEqual(without.report.blocking)
+    expect(withSim.code).toBe(EXIT.blocked)
+    expect(withSim.report.sim.status).toBe('failed')
+    expect(withSim.report.sim.findings.map((f) => f.severity)).toEqual(['warning'])
+    expect(withSim.report.sim.findings[0].raw).toContain('worker crashed')
+    // With nothing blocking, the throw is exit 3 and the INCOMPLETE banner.
+    const clean = await laidOut()
+    const r = await runGate(readFileSync(join(clean, 'sheet.json')), { sheetPath: 'sheet.json', outDir: join(clean, 'out'), io: quietIo(clean), engine: throwing })
+    expect(r.code).toBe(EXIT.environment)
+    expect(r.report.blocking).toEqual([])
+    expect(r.report.warnings.some((f) => f.rule === 'sim-no-convergence')).toBe(true)
+    expect(gateBanner(r.code, r.report, 'sheet.json')).toContain('GATE INCOMPLETE (simulation did not converge')
+  }, 120_000)
+  it('says why the simulation is unavailable on stderr in text mode', async () => {
+    const dir = await laidOut()
+    gateEngine.make = () => failing('unavailable')
+    const r = await cli(['gate', 'sheet.json', '-o', 'out'], { cwd: dir, env: noBrowser(dir) })
+    expect(r.code).toBe(EXIT.environment)
+    expect(r.err).toContain('Simulation unavailable: no engine')
+    expect(r.out).toContain('GATE INCOMPLETE (simulation unavailable): sheet.json')
+  }, 120_000)
+  it('folds the "not powered: S1 is open" warnings into one line in the text output (ruling R30)', async () => {
+    const dir = tempDir()
+    writeFileSync(join(dir, 'n.json'), JSON.stringify({
+      format: 'circuitoon-netlist/1', title: 'off',
+      parts: [{ ref: 'BB1', module: 'breadboard-half' }, { ref: 'BT1', module: 'battery-holder-2xaa' }, { ref: 'S1', module: 'rocker-switch-kcd1' }, { ref: 'U1', module: 'esp32-devkit-v1-30' }, { ref: 'U2', module: 'esp32-devkit-v1-30' }],
+      nets: [{ name: 'VB', pins: ['BT1.+', 'S1.1'] }, { name: 'V', pins: ['S1.2', 'U1.3V3', 'U2.3V3'] }, { name: 'GND', pins: ['BT1.-', 'U1.GND', 'U2.GND'] }],
+    }))
+    expect((await cli(['layout', 'n.json', '-o', 'sheet.json'], { cwd: dir })).code).toBe(0)
+    const r = await cli(['gate', 'sheet.json', '-o', 'out'], { cwd: dir, env: noBrowser(dir) })
+    const off = r.out.split('\n').filter((l) => l.includes('S1 is open'))
+    expect(off).toEqual(['WARNING sim-brownout: not powered in the current state because S1 is open: U1 3V3, U2 3V3. Set S1 to its operating position to simulate them running.'])
+    expect(gateJson(dir).warnings.filter((f: { rule: string }) => f.rule === 'sim-brownout')).toHaveLength(2)
+  }, 120_000)
+  it('is incomplete (exit 3) when the solve fails or the engine is unavailable, and never blocks on it', async () => {
+    for (const [status, banner] of [['failed', 'simulation did not converge'], ['unavailable', 'simulation unavailable']] as const) {
+      const dir = await laidOut()
+      const { code, report } = await runGate(readFileSync(join(dir, 'sheet.json')), { sheetPath: 'sheet.json', outDir: join(dir, 'out'), io: quietIo(dir), engine: failing(status) })
+      expect(code).toBe(EXIT.environment)
+      expect(report.ok).toBe(false)
+      expect(report.ready).toBe(false)
+      expect(report.blocking).toEqual([])
+      expect(report.sim.status).toBe(status)
+      expect(gateBanner(code, report, 'sheet.json')).toContain(banner)
+    }
+  }, 240_000)
+  it('reports an unplugged board in its own group: the checker findings are what checkDiagram gives, and the sim adds its note', async () => {
+    const dir = tempDir()
+    writeFileSync(join(dir, 'n.json'), JSON.stringify({ format: 'circuitoon-netlist/1', title: 'devkit', parts: [{ ref: 'U1', module: 'esp32-devkit-v1-30' }, { ref: 'R1', module: 'resistor' }], nets: [{ name: 'IO', pins: ['U1.D4', 'R1.1'] }, { name: 'GND', pins: ['R1.2', 'U1.GND'] }] }))
+    expect((await cli(['layout', 'n.json', '-o', 'sheet.json'], { cwd: dir })).code).toBe(0)
+    const bytes = readFileSync(join(dir, 'sheet.json'))
+    const { report } = await runGate(bytes, { sheetPath: 'sheet.json', outDir: join(dir, 'out'), io: quietIo(dir) })
+    const v = validateDiagram(JSON.parse(bytes.toString('utf8')))
+    if (!v.ok) throw new Error('sheet')
+    const checker = checkDiagram(v.diagram).map((f) => f.id).sort()
+    const gated = [...report.blocking, ...report.warnings, ...report.notes].filter((f) => !f.rule.startsWith('sim-') && checker.includes(f.id)).map((f) => f.id).sort()
+    expect(gated).toEqual(checker)
+    expect(report.notes.some((f) => f.rule === 'sim-brownout' && f.message.includes('nothing on the sheet supplies it'))).toBe(true)
+    expect(report.warnings.some((f) => f.rule === 'sim-brownout')).toBe(false)
+  }, 120_000)
 })

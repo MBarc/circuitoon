@@ -19,7 +19,8 @@ import { VALUE_DROPPED, computeRoutes, validateDiagram, wirePaths } from '../for
 import { checkDiagram, endpointName } from '../format/checks.ts'
 import { LINK_NOTICE } from '../format/link.ts'
 import { focusBounds, renderSheetSvg } from '../render/exportSvg.tsx'
-import { intentLookup, verifyDiagram } from '../agent/verify.ts'
+import { verifyDiagram } from '../agent/verify.ts'
+import { intentLookup } from '../agent/netlist.ts'
 import { parseNetlist } from '../agent/netlist.ts'
 import { libraryLookup } from '../agent/catalog.ts'
 import { NOT_CHECKED } from '../agent/notChecked.ts'
@@ -33,8 +34,23 @@ import { type CliFinding, alsoChecked, cliFinding, findingsText, notCheckedText,
 import { writePng } from './png.ts'
 import { linkFor } from './linkCmd.ts'
 import { focusParts } from './render.ts'
+import { findingLines } from './simCmd.ts'
+import { type Engine, makeEngine } from '../sim/engine/engine.ts'
+import { createNodeEngineHost } from '../sim/engine/nodeEngine.ts'
+import { solve } from '../sim/session.ts'
+import type { DomainBudget, SimFinding, SimOutcome } from '../sim/results.ts'
+import { noConvergence } from '../sim/findings.ts'
+import type { Basis } from '../sim/model.ts'
 
-export const GATE_FORMAT = 'circuitoon-cli/gate/3'
+export const GATE_FORMAT = 'circuitoon-cli/gate/4'
+
+export interface GateSim {
+  status: 'ok' | 'failed' | 'unavailable' | 'not-run'
+  findings: SimFinding[]
+  budget: DomainBudget[]
+  provenanceCounts: Record<Basis, number>
+  reason?: string
+}
 
 export interface GateArtifact {
   kind: 'svg' | 'png' | 'focus-png' | 'link' | 'file' | 'bom'
@@ -58,6 +74,8 @@ export interface GateReport {
   warnings: CliFinding[]
   /** Notes (severity info): never blocking, for the user to read. */
   notes: CliFinding[]
+  /** The DC simulation (spec 7); its findings are also filed in blocking, warnings and notes. */
+  sim: GateSim
   notChecked: string[]
   link: { url: string | null; file: string | null; chars: number }
   /** The bill of materials bom.csv is written from (null when the sheet did not load); `quantities` sums its parts per module. */
@@ -118,7 +136,10 @@ function clearReport(outDir: string, keep?: string) {
     for (const a of artifacts) if (a && typeof a === 'object' && (a as GateArtifact).kind === 'file' && typeof (a as GateArtifact).path === 'string') removeStale(outDir, (a as GateArtifact).path, keep)
 }
 
-export async function runGate(bytes: Uint8Array, opts: { sheetPath: string; outDir: string; io: Io; png?: PngWriter }): Promise<{ code: number; report: GateReport }> {
+/** Where gate gets its engine when the caller passes none. Tests that do not test simulation set `make` to `() => null`. */
+export const gateEngine: { make: () => Engine | null } = { make: () => makeEngine(createNodeEngineHost()) }
+
+export async function runGate(bytes: Uint8Array, opts: { sheetPath: string; outDir: string; io: Io; png?: PngWriter; engine?: Engine | null }): Promise<{ code: number; report: GateReport }> {
   const { io, outDir } = opts
   const png = opts.png ?? writePng
   const keep = pathIn(io, opts.sheetPath)
@@ -136,6 +157,7 @@ export async function runGate(bytes: Uint8Array, opts: { sheetPath: string; outD
   const required: { kind: GateArtifact['kind'] | 'link-or-file'; path: string }[] = []
   let link: GateReport['link'] = { url: null, file: null, chars: 0 }
   let rows: Pick<GateReport, 'bom' | 'quantities' | 'channels'> = { bom: null, quantities: [], channels: [] }
+  let sim: GateSim = { status: 'not-run', findings: [], budget: [], provenanceCounts: { datasheet: 0, representative: 0, estimate: 0, user: 0, topology: 0 } }
 
   const finish = (): { code: number; report: GateReport } => {
     const have = new Set(artifacts.map((a) => a.kind))
@@ -143,7 +165,11 @@ export async function runGate(bytes: Uint8Array, opts: { sheetPath: string; outD
     if (missing.length) note('environment', 'incomplete', 'warning', `The gate is incomplete: ${missing.map((m) => m.path).join(', ')} could not be made, so the gate cannot pass.`)
     const all = uniqueIds(found)
     const blocking = all.filter((f) => f.severity === 'error')
-    const code = blocking.length ? EXIT.blocked : missing.length ? EXIT.environment : EXIT.ok
+    // Spec 7 matrix: blocking wins, then an incomplete gate (a missing render, or a simulation that
+    // failed or could not run). A sim finding blocks on its severity alone, never on its corner:
+    // finalize leaves only blocking-eligible ones at error, and topological ones carry no corner.
+    const simIncomplete = sim.status === 'failed' || sim.status === 'unavailable'
+    const code = blocking.length ? EXIT.blocked : missing.length || simIncomplete ? EXIT.environment : EXIT.ok
     const report: GateReport = {
       format: GATE_FORMAT,
       ok: code === EXIT.ok,
@@ -153,6 +179,7 @@ export async function runGate(bytes: Uint8Array, opts: { sheetPath: string; outD
       blocking,
       warnings: all.filter((f) => f.severity === 'warning'),
       notes: all.filter((f) => f.severity === 'info'),
+      sim,
       notChecked: NOT_CHECKED,
       link,
       ...rows,
@@ -168,7 +195,7 @@ export async function runGate(bytes: Uint8Array, opts: { sheetPath: string; outD
     note('load', 'json', 'error', `${opts.sheetPath} is not valid JSON (${(e as Error).message})`)
     return finish()
   }
-  const v = validateDiagram(raw)
+  const v = validateDiagram(raw, { library: libraryLookup })
   if (!v.ok) {
     v.errors.forEach((e, i) => note('load', String(i), 'error', `${opts.sheetPath} is not a Circuitoon sheet: ${e}`))
     return finish()
@@ -197,6 +224,40 @@ export async function runGate(bytes: Uint8Array, opts: { sheetPath: string; outD
   // Custom parts (never blocking): user-made and unverified, named so the user knows which to check.
   for (const c of sheetCustomParts(d, libraryLookup))
     found.push({ id: `custom-part|${c.module}`, rule: 'custom-part', severity: 'info', message: customPartNote(c), parts: c.parts, pins: [], wires: [] })
+  // Simulation (spec 7): its own findings, never suppressing or suppressed by the checker (2.1).
+  // No engine (the tests' stub, or a caller's null): not run, which the matrix ignores.
+  const engine = opts.engine !== undefined ? opts.engine : gateEngine.make()
+  if (engine)
+    try {
+      // A throwing solve is a failed outcome, as in the session: the checker's findings still stand.
+      const outcome: SimOutcome = await solve(d, engine, 1, { library: libraryLookup }).then(
+        (s) => s.outcome,
+        (e) => ({ status: 'failed', revision: 1, finding: noConvergence(null, String(e), []), findings: [] }),
+      )
+      // Filed with the gate's findings; a failed or unavailable solve still carries the topological
+      // ones (a short blocks with no engine), which block on the same rule as an ok solve's.
+      const file = (findings: SimFinding[]) => {
+        for (const f of findings) {
+          sim.provenanceCounts[f.basis]++
+          found.push({ id: `${f.code}|${f.parts.join(',')}|${f.corner ?? ''}`, rule: f.code, severity: f.severity === 'note' ? 'info' : f.severity, message: f.message, parts: f.parts, pins: f.pins ?? [], wires: [] })
+        }
+      }
+      if (outcome.status === 'ok') {
+        const r = outcome.result
+        sim = { ...sim, status: 'ok', findings: r.findings, budget: r.budget }
+        file(r.findings)
+      } else if (outcome.status === 'failed') {
+        // A failed solve never blocks (it may be our model, not the circuit): a warning, here and in sim.
+        sim = { ...sim, status: 'failed', findings: [{ ...outcome.finding, severity: 'warning' }, ...outcome.findings], reason: outcome.finding.message }
+        found.push({ id: 'sim-no-convergence', rule: 'sim-no-convergence', severity: 'warning', message: outcome.finding.message, parts: outcome.finding.parts, pins: [], wires: [] })
+        file(outcome.findings)
+      } else {
+        sim = { ...sim, status: 'unavailable', findings: outcome.findings, reason: outcome.reason }
+        file(outcome.findings)
+      }
+    } finally {
+      if (opts.engine === undefined) engine.dispose()
+    }
   const parsed = d.intent !== undefined ? parseNetlist(d.intent, intentLookup(d, libraryLookup)) : null
   // The bill of materials: bom.csv and gate.json's bill of quantities both come from this one bill.
   const bom = sheetBom(d, libraryLookup)
@@ -258,6 +319,18 @@ export function readabilityCount(report: GateReport): number {
   return report.warnings.filter((w) => (READABILITY_RULES as readonly string[]).includes(w.rule)).length
 }
 
+/** The gate's verdict line (spec 7 matrix, ruling R15). */
+export function gateBanner(code: number, report: GateReport, input: string): string {
+  if (code === EXIT.ok) return `${report.warnings.length ? 'GATE PASSED, with warnings' : 'GATE PASSED'}: ${input} (sha256 ${report.diagram.sha256})`
+  if (code === EXIT.environment) {
+    if (report.sim.status === 'failed') return `GATE INCOMPLETE (simulation did not converge; this may be our model, not your circuit): ${input}`
+    if (report.sim.status === 'unavailable') return `GATE INCOMPLETE (simulation unavailable): ${input}`
+    return `GATE INCOMPLETE: nothing blocks, but not every render could be made (${input})`
+  }
+  const simOnly = report.blocking.every((f) => f.rule.startsWith('sim-'))
+  return `${simOnly ? 'GATE FAILED (simulation)' : 'GATE FAILED'}: ${plural(report.blocking.length, 'blocking finding')} (${input})`
+}
+
 export async function gateCommand(args: Args, io: Io): Promise<number> {
   const [input, ...rest] = args.positionals
   const out = flag(args, '--out')
@@ -279,17 +352,13 @@ export async function gateCommand(args: Args, io: Io): Promise<number> {
     for (const w of report.warnings) if (w.rule === 'environment') io.stderr(`${w.message}\n`)
   if (args.flags.has('--json')) printJson(io, report)
   else {
-    const head =
-      code === EXIT.ok
-        ? `GATE PASSED: ${input} (sha256 ${report.diagram.sha256})`
-        : code === EXIT.environment
-          ? `GATE INCOMPLETE: nothing blocks, but not every render could be made (${input})`
-          : `GATE BLOCKED: ${plural(report.blocking.length, 'blocking finding')} (${input})`
+    if (report.sim.status === 'unavailable') io.stderr(`Simulation unavailable: ${report.sim.reason}\n`)
+    const head = gateBanner(code, report, input)
     // Ruling W1: a sheet with readability warnings left is not ready, whatever the exit code says.
     const notReady = readabilityCount(report)
     const lines = [...(notReady ? [`NOT READY: ${plural(notReady, 'readability warning')}`] : []), head]
     if (report.blocking.length) lines.push('', 'Blocking:', findingsText(report.blocking))
-    if (report.warnings.length) lines.push('', 'Warnings (report these to the user):', findingsText(report.warnings))
+    if (report.warnings.length) lines.push('', 'Warnings (report these to the user):', ...findingLines(report.warnings, (f, m) => `${f.severity.toUpperCase()} ${f.rule}: ${m}`))
     if (report.notes.length) lines.push('', 'Notes (not problems; pass them on to the user):', findingsText(report.notes))
     lines.push('', `Artifacts in ${out}:`, ...report.artifacts.map((a) => `  ${a.path}  sha256 ${a.sha256}`), `  gate.json`)
     if (report.link.url) lines.push('', `Link: ${report.link.url}`, LINK_NOTICE)

@@ -4,12 +4,14 @@ import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import { Worker, isMainThread, parentPort, workerData } from "node:worker_threads";
 //#region \0rolldown/runtime.js
 var __commonJSMin = (cb, mod) => () => (mod || (cb((mod = { exports: {} }).exports, mod), cb = null), mod.exports);
 var __require = /* #__PURE__ */ (() => createRequire(import.meta.url))();
 //#endregion
 //#region src/cli/args.ts
+var LIST_FLAGS = /* @__PURE__ */ new Set(["--probe"]);
 var VALUE_FLAGS = /* @__PURE__ */ new Set([
 	"--out",
 	"--svg",
@@ -33,6 +35,7 @@ var ALIASES = {
 function parseArgs(argv) {
 	const positionals = [];
 	const flags = /* @__PURE__ */ new Map();
+	const lists = /* @__PURE__ */ new Map();
 	for (let i = 0; i < argv.length; i++) {
 		const raw = argv[i];
 		const name = Object.hasOwn(ALIASES, raw) ? ALIASES[raw] : raw;
@@ -42,6 +45,16 @@ function parseArgs(argv) {
 		}
 		if (BOOL_FLAGS.has(name)) {
 			flags.set(name, true);
+			continue;
+		}
+		if (LIST_FLAGS.has(name)) {
+			const v = argv[i + 1];
+			if (v === void 0 || v.startsWith("--")) return {
+				ok: false,
+				error: `${raw} needs a value`
+			};
+			lists.set(name, [...lists.get(name) ?? [], v]);
+			i++;
 			continue;
 		}
 		if (!VALUE_FLAGS.has(name)) return {
@@ -62,7 +75,8 @@ function parseArgs(argv) {
 		value: {
 			command,
 			positionals: rest,
-			flags
+			flags,
+			lists
 		}
 	};
 }
@@ -139,7 +153,7 @@ var SERVICES = [
 	"dc",
 	"ac/dc"
 ];
-var PROVENANCES = ["datasheet", "unverified"];
+var PROVENANCES$1 = ["datasheet", "unverified"];
 var STATED_CLASSES = [
 	"reinforced",
 	"double",
@@ -174,7 +188,7 @@ var SOURCE_LISTS = [
 var article = (c) => c === "PE" ? "a" : "an";
 var isStr = (v) => typeof v === "string" && v !== "";
 var oneOf = (list, v) => typeof v === "string" && list.includes(v);
-var words = (list) => list.map((x) => `"${x}"`).join(", ");
+var words$1 = (list) => list.map((x) => `"${x}"`).join(", ");
 /** `electrical.internalNodes`: named terminals inside the part (a plug's prongs), added to `names`. */
 function claimInternalNodes(raw, names, errors) {
 	const el = raw.electrical;
@@ -238,7 +252,7 @@ function validateMains(raw, names, errors) {
 		if (!(isObj(el.params) && isObj(el.params.acVoltage))) errors.push("electrical.acSources: needs an acVoltage param (electrical.params.acVoltage), the source voltage");
 		if (el.ac === void 0) errors.push("electrical.ac: required with acSources ({ \"hz\", \"region\" })");
 	}
-	if (el.ac !== void 0 && !(isObj(el.ac) && isNum(el.ac.hz) && el.ac.hz > 0 && oneOf(REGIONS, el.ac.region))) errors.push(`electrical.ac: must be { "hz": <above 0>, "region": one of ${words(REGIONS)} }`);
+	if (el.ac !== void 0 && !(isObj(el.ac) && isNum(el.ac.hz) && el.ac.hz > 0 && oneOf(REGIONS, el.ac.region))) errors.push(`electrical.ac: must be { "hz": <above 0>, "region": one of ${words$1(REGIONS)} }`);
 	each("conducts", (c, at) => {
 		if (!(Array.isArray(c.pins) && c.pins.length === 2 && c.pins[0] !== c.pins[1])) errors.push(`${at}.pins: must be two different terminal names`);
 		else c.pins.forEach((n, i) => term(n, `${at}.pins[${i}]`));
@@ -264,8 +278,8 @@ function validateMains(raw, names, errors) {
 			else inDomain.set(n, show(x.name));
 		}
 	});
-	if (el.isolation !== void 0 && !oneOf(ISOLATIONS, el.isolation)) errors.push(`electrical.isolation: must be one of ${words(ISOLATIONS)}`);
-	if (el.isolationProvenance !== void 0 && !oneOf(PROVENANCES, el.isolationProvenance)) errors.push("electrical.isolationProvenance: must be \"datasheet\" or \"unverified\"");
+	if (el.isolation !== void 0 && !oneOf(ISOLATIONS, el.isolation)) errors.push(`electrical.isolation: must be one of ${words$1(ISOLATIONS)}`);
+	if (el.isolationProvenance !== void 0 && !oneOf(PROVENANCES$1, el.isolationProvenance)) errors.push("electrical.isolationProvenance: must be \"datasheet\" or \"unverified\"");
 	if (el.safeguard !== void 0 && el.safeguard !== "protective-screen") errors.push("electrical.safeguard: must be \"protective-screen\"");
 	const kinds = Array.isArray(el.domains) ? el.domains.filter(isObj).map((x) => x.kind) : [];
 	const barrier = kinds.includes("mains") && kinds.some((k) => k === "selv" || k === "pelv");
@@ -290,7 +304,7 @@ function validateMains(raw, names, errors) {
 		if (!oneOf(SERVICES, r.service)) errors.push(`${at}.service: must be "ac", "dc" or "ac/dc"`);
 		if (!(isNum(r.volts) && r.volts > 0)) errors.push(`${at}.volts: must be a number above 0`);
 		if (r.amps !== void 0 && !(isNum(r.amps) && r.amps > 0)) errors.push(`${at}.amps: must be a number above 0`);
-		if (!oneOf(PROVENANCES, r.provenance)) errors.push(`${at}.provenance: must be "datasheet" or "unverified"`);
+		if (!oneOf(PROVENANCES$1, r.provenance)) errors.push(`${at}.provenance: must be "datasheet" or "unverified"`);
 		if (r.conditions !== void 0 && !isStr(r.conditions)) errors.push(`${at}.conditions: must be a non-empty string`);
 	});
 	const contactIds = /* @__PURE__ */ new Set();
@@ -338,7 +352,7 @@ function validateMains(raw, names, errors) {
 		const p = el.plug;
 		if (!isObj(p)) errors.push("electrical.plug: must be { \"family\", \"profiles\": [...] }");
 		else {
-			if (!oneOf(PLUG_FAMILIES, p.family)) errors.push(`electrical.plug.family: must be one of ${words(PLUG_FAMILIES)}`);
+			if (!oneOf(PLUG_FAMILIES, p.family)) errors.push(`electrical.plug.family: must be one of ${words$1(PLUG_FAMILIES)}`);
 			if (raw.obstacle === false) errors.push("electrical.plug: a plug-in device cannot be a board (\"obstacle\": false)");
 			if (!Array.isArray(p.profiles) || !p.profiles.length) errors.push("electrical.plug.profiles: must be a list of 1 or more profiles");
 			else {
@@ -401,10 +415,10 @@ function validateMains(raw, names, errors) {
 		const region = isObj(el.ac) && oneOf(REGIONS, el.ac.region) ? el.ac.region : null;
 		each("sockets", (s, at) => {
 			named(ids, s.id, `${at}.id`);
-			if (!oneOf(SOCKET_FAMILIES, s.family)) errors.push(`${at}.family: must be one of ${words(SOCKET_FAMILIES)}`);
+			if (!oneOf(SOCKET_FAMILIES, s.family)) errors.push(`${at}.family: must be one of ${words$1(SOCKET_FAMILIES)}`);
 			else if (region && !REGION_SOCKETS[region].includes(s.family)) {
 				const ok = REGION_SOCKETS[region];
-				errors.push(`${at}.family: "${s.family}" is not a socket of region "${region}" (expected ${ok.length > 1 ? "one of " : ""}${words(ok)})`);
+				errors.push(`${at}.family: "${s.family}" is not a socket of region "${region}" (expected ${ok.length > 1 ? "one of " : ""}${words$1(ok)})`);
 			}
 			if (!Array.isArray(s.contacts) || !s.contacts.length) return void errors.push(`${at}.contacts: must be a list of { "group", "role" }`);
 			const roles = /* @__PURE__ */ new Set();
@@ -618,7 +632,7 @@ function mainsOf(m) {
 		domains,
 		domainOf,
 		isolation: oneOf(ISOLATIONS, el.isolation) ? el.isolation : null,
-		isolationProvenance: oneOf(PROVENANCES, el.isolationProvenance) ? el.isolationProvenance : null,
+		isolationProvenance: oneOf(PROVENANCES$1, el.isolationProvenance) ? el.isolationProvenance : null,
 		safeguard: el.safeguard === "protective-screen" ? "protective-screen" : null,
 		acInput,
 		ratings,
@@ -635,6 +649,346 @@ function mainsOf(m) {
 	};
 	cache$4.set(m, info);
 	return info;
+}
+//#endregion
+//#region src/format/simModel.ts
+var PROVENANCES = [
+	"datasheet",
+	"representative",
+	"estimate"
+];
+var LIMIT_KINDS = [
+	"current",
+	"absMaxCurrent",
+	"power",
+	"vinMax",
+	"vinMin",
+	"sourceCurrent",
+	"ioTotalCurrent"
+];
+var RAIL_KINDS = [
+	"ldo",
+	"buck",
+	"boost",
+	"switch"
+];
+/** The module's `electrical.sim`, or null. Trusts validateModule (validateSim). */
+function simOf(m) {
+	const e = m?.electrical;
+	return isObj(e) && isObj(e.sim) ? e.sim : null;
+}
+/**
+* The module a stored copy is simulated and validated as. `electrical.sim` is library data, like
+* the KiCad mapping (format/kicad.ts mappingOf): a built-in part whose stored copy has the
+* library's pins takes the library's sim, so a sheet saved before the library had it still
+* simulates and keeps its saved sim values. A custom part, or a copy whose pins changed, keeps its own.
+*/
+function withLibrarySim(stored, library) {
+	if (!library || isCustom(stored)) return stored;
+	const lib = library(stored.id);
+	if (!lib || lib === stored || terminalsKey(stored) !== terminalsKey(lib)) return stored;
+	const sim = isObj(lib.electrical) ? lib.electrical.sim : void 0;
+	const e = isObj(stored.electrical) ? { ...stored.electrical } : {};
+	if (e.sim === sim) return stored;
+	if (sim === void 0) delete e.sim;
+	else e.sim = sim;
+	return {
+		...stored,
+		electrical: e
+	};
+}
+var RAIL_REQUIRED = {
+	ldo: [
+		"vout",
+		"dropout",
+		"ioutMax"
+	],
+	buck: [
+		"vout",
+		"efficiency",
+		"vinMin",
+		"vinMax",
+		"ioutMax"
+	],
+	boost: [
+		"vout",
+		"efficiency",
+		"vinMin",
+		"vinMax",
+		"ioutMax"
+	],
+	switch: []
+};
+/** The required fields a rail lacks (spec 3.2 table) in words, or null. */
+function railProblem(r) {
+	const missing = RAIL_REQUIRED[r.kind].filter((k) => r[k] === void 0);
+	if (r.kind === "switch" && r.ron === void 0 && r.vf === void 0) missing.push("ron or vf");
+	return missing.length ? `rail ${r.id} needs ${missing.join(", ")}` : null;
+}
+/** The physics a module may state in sim.modelParams, with their units. */
+var MODEL_PARAMS = {
+	rInternal: "ohm",
+	contactResistance: "ohm",
+	is: "A",
+	n: "1",
+	rs: "ohm",
+	dcr: "ohm"
+};
+var RAIL_UNITS = {
+	vout: "V",
+	dropout: "V",
+	iq: "A",
+	ioutMax: "A",
+	efficiency: "1",
+	vinMin: "V",
+	vinMax: "V",
+	rout: "ohm",
+	ron: "ohm",
+	vf: "V"
+};
+var LIMIT_UNITS = {
+	current: "A",
+	absMaxCurrent: "A",
+	power: "W",
+	vinMax: "V",
+	vinMin: "V",
+	sourceCurrent: "A",
+	ioTotalCurrent: "A"
+};
+var URLS = /^https?:\/\/\S+( https?:\/\/\S+)*$/;
+/** The compiler floors a rail's rout here (0 fails the solve), so a smaller stated value is an error. */
+var ROUT_MIN$1 = .001;
+/** Checks `electrical.sim` (spec 3.1): shape, units by kind, provenance, and every name it uses. */
+function validateSim(raw, names, errors) {
+	const el = raw.electrical;
+	if (!isObj(el) || el.sim === void 0) return;
+	const at = "electrical.sim";
+	const s = el.sim;
+	if (!isObj(s)) return void errors.push(`${at}: must be an object`);
+	const pins = [...Array.isArray(raw.pins) ? raw.pins : [], ...Array.isArray(raw.holes) ? raw.holes : []].filter(isObj);
+	const usb = new Set(pins.filter((p) => p.type === "usb").map((p) => p.name));
+	const grounds = new Set(pins.filter((p) => p.type === "ground").map((p) => p.name));
+	/** USB port to the first `#vbus` / `#gnd` reference sim.power makes to it. */
+	const usbRefs = /* @__PURE__ */ new Map();
+	const keys = (o, allowed, where) => {
+		for (const k of Object.keys(o)) if (!allowed.includes(k)) errors.push(`${where}.${k}: unknown field`);
+	};
+	const nodeRef = (v, where) => {
+		const u = typeof v === "string" ? /^(.+)#(vbus|gnd)$/.exec(v) : null;
+		if (typeof v !== "string" || !(u ? usb.has(u[1]) : names.has(v))) errors.push(`${where}: no pin, hole group or USB node "${show(v)}"`);
+		else if (u && !usbRefs.has(u[1])) usbRefs.set(u[1], v);
+	};
+	const sourced = (o, where) => {
+		if (!PROVENANCES.includes(o.provenance)) return void errors.push(`${where}.provenance: must be "datasheet", "representative" or "estimate"`);
+		if (o.provenance !== "estimate" && !(typeof o.source === "string" && URLS.test(o.source))) errors.push(`${where}.source: required for a datasheet or representative value (a URL)`);
+		if (o.source !== void 0 && !(typeof o.source === "string" && URLS.test(o.source))) errors.push(`${where}.source: must be one or more URLs separated by a space`);
+		if (o.provenance === "estimate" && !(typeof o.note === "string" && o.note.trim())) errors.push(`${where}.note: required on an estimate (say what was assumed)`);
+		if (o.note !== void 0 && !(typeof o.note === "string" && o.note.trim())) errors.push(`${where}.note: must be a non-empty string`);
+	};
+	const quantity = (v, where, unit, opts = {}) => {
+		if (!isObj(v)) return void errors.push(`${where}: must be { "value", "unit", "provenance", "source" or "note" }`);
+		keys(v, [
+			"value",
+			"unit",
+			"source",
+			"provenance",
+			"note",
+			...opts.extra ?? []
+		], where);
+		if (v.unit !== unit) errors.push(`${where}.unit: must be "${unit}"`);
+		const lo = opts.positive ? "above 0" : "0 or more";
+		if (!isNum(v.value) || (opts.positive ? v.value <= 0 : v.value < 0) || opts.max !== void 0 && v.value > opts.max || v.value > 1e6) errors.push(`${where}.value: must be ${lo}${opts.max !== void 0 ? ` and at most ${opts.max}` : ""}`);
+		sourced(v, where);
+	};
+	/** A quantity's value when it is a finite number. */
+	const val = (v) => isObj(v) && isNum(v.value) ? v.value : void 0;
+	keys(s, [
+		"modelParams",
+		"limits",
+		"power",
+		"gpio",
+		"usbPorts",
+		"unaccounted"
+	], at);
+	if (s.unaccounted !== void 0 && !(Array.isArray(s.unaccounted) && s.unaccounted.every((x) => typeof x === "string" && x.trim()))) errors.push(`${at}.unaccounted: must be a list of non-empty strings`);
+	if (s.modelParams !== void 0) {
+		if (!isObj(s.modelParams)) errors.push(`${at}.modelParams: must be an object`);
+		else for (const [k, v] of Object.entries(s.modelParams)) if (!Object.hasOwn(MODEL_PARAMS, k)) errors.push(`${at}.modelParams.${k}: unknown model parameter (${Object.keys(MODEL_PARAMS).join(", ")})`);
+		else quantity(v, `${at}.modelParams.${k}`, MODEL_PARAMS[k], { positive: true });
+	}
+	const domainNames = /* @__PURE__ */ new Set();
+	const p = s.power;
+	if (p !== void 0) {
+		const pa = `${at}.power`;
+		if (!isObj(p)) errors.push(`${pa}: must be an object`);
+		else {
+			keys(p, [
+				"domains",
+				"draw",
+				"rails",
+				"source"
+			], pa);
+			if (!Array.isArray(p.domains) || !p.domains.length) errors.push(`${pa}.domains: required, a list of { "name", "pin", "ret", "nominal" }`);
+			else p.domains.forEach((d, i) => {
+				const w = `${pa}.domains[${i}]`;
+				if (!isObj(d)) return void errors.push(`${w}: must be an object`);
+				keys(d, [
+					"name",
+					"pin",
+					"ret",
+					"nominal"
+				], w);
+				if (typeof d.name !== "string" || !d.name) errors.push(`${w}.name: required`);
+				else if (domainNames.has(d.name)) errors.push(`${w}.name: duplicate domain "${d.name}"`);
+				else domainNames.add(d.name);
+				nodeRef(d.pin, `${w}.pin`);
+				nodeRef(d.ret, `${w}.ret`);
+				if (!(isNum(d.nominal) && d.nominal > 0)) errors.push(`${w}.nominal: must be a voltage above 0`);
+			});
+			const domain = (v, where) => {
+				if (typeof v !== "string" || !domainNames.has(v)) errors.push(`${where}: no domain "${show(v)}" in ${pa}.domains`);
+			};
+			if (p.draw !== void 0) (Array.isArray(p.draw) ? p.draw : [null]).forEach((d, i) => {
+				const w = `${pa}.draw[${i}]`;
+				if (!isObj(d)) return void errors.push(`${w}: must be { "domain", "typical", "peak"?, "minVolts"? }`);
+				keys(d, [
+					"domain",
+					"typical",
+					"peak",
+					"minVolts"
+				], w);
+				domain(d.domain, `${w}.domain`);
+				quantity(d.typical, `${w}.typical`, "A");
+				if (d.peak !== void 0) {
+					quantity(d.peak, `${w}.peak`, "A", { extra: ["note", "label"] });
+					if (isObj(d.peak) && !(typeof d.peak.note === "string" && d.peak.note.trim())) errors.push(`${w}.peak.note: required (what the peak is, for example "Wi-Fi transmit")`);
+					if (isObj(d.peak) && d.peak.label !== void 0 && !(typeof d.peak.label === "string" && d.peak.label.trim() && d.peak.label.length <= 32)) errors.push(`${w}.peak.label: must be a short name of 1 to 32 characters (for example "Wi-Fi transmit")`);
+				}
+				if (d.minVolts !== void 0) quantity(d.minVolts, `${w}.minVolts`, "V", { positive: true });
+			});
+			const railIds = /* @__PURE__ */ new Set();
+			if (p.rails !== void 0) (Array.isArray(p.rails) ? p.rails : [null]).forEach((r, i) => {
+				const w = `${pa}.rails[${i}]`;
+				if (!isObj(r)) return void errors.push(`${w}: must be an object`);
+				keys(r, [
+					"id",
+					"inputs",
+					"output",
+					"kind",
+					"reverse",
+					"offPath",
+					"minLoad",
+					...Object.keys(RAIL_UNITS)
+				], w);
+				if (typeof r.id !== "string" || !r.id || railIds.has(r.id)) errors.push(`${w}.id: required and unique`);
+				else railIds.add(r.id);
+				if (!RAIL_KINDS.includes(r.kind)) errors.push(`${w}.kind: must be "ldo", "buck", "boost" or "switch"`);
+				if (!Array.isArray(r.inputs) || !r.inputs.length) errors.push(`${w}.inputs: required, a list of { "domain", "via" }`);
+				else r.inputs.forEach((x, j) => {
+					if (!isObj(x)) return void errors.push(`${w}.inputs[${j}]: must be { "domain", "via" }`);
+					keys(x, ["domain", "via"], `${w}.inputs[${j}]`);
+					domain(x.domain, `${w}.inputs[${j}].domain`);
+					if (x.via !== "direct" && x.via !== "diode") errors.push(`${w}.inputs[${j}].via: must be "direct" or "diode"`);
+				});
+				domain(r.output, `${w}.output`);
+				if (r.reverse !== "blocks" && r.reverse !== "body-diode") errors.push(`${w}.reverse: required, "blocks" or "body-diode"`);
+				if (r.offPath !== void 0 && !((r.kind === "buck" || r.kind === "boost") && (r.offPath === "open" || r.offPath === "diode"))) errors.push(`${w}.offPath: "open" or "diode", on a buck or boost only`);
+				for (const [k, unit] of Object.entries(RAIL_UNITS)) if (r[k] !== void 0) quantity(r[k], `${w}.${k}`, unit, k === "efficiency" ? {
+					positive: true,
+					max: 1
+				} : k === "iq" ? {} : { positive: true });
+				const rout = val(r.rout);
+				if (rout !== void 0 && rout > 0 && rout < ROUT_MIN$1) errors.push(`${w}.rout.value: must be at least ${ROUT_MIN$1} (${ROUT_MIN$1 * 1e3} milliohm)`);
+				const vout = val(r.vout);
+				const dropout = val(r.dropout);
+				if (r.kind === "ldo" && vout !== void 0 && dropout !== void 0 && dropout >= vout) errors.push(`${w}.dropout: must be below vout (${vout} V)`);
+				if ((r.ron !== void 0 || r.vf !== void 0) && r.kind !== "switch") errors.push(`${w}: ron and vf are for a "switch" rail`);
+				if (r.minLoad !== void 0) {
+					if (!isObj(r.minLoad) || typeof r.minLoad.note !== "string" || !r.minLoad.note.trim()) errors.push(`${w}.minLoad: must be { "amps", "note" }`);
+					else quantity(r.minLoad.amps, `${w}.minLoad.amps`, "A", { positive: true });
+				}
+			});
+			if (p.source !== void 0) {
+				const w = `${pa}.source`;
+				const src = p.source;
+				if (!isObj(src)) errors.push(`${w}: must be { "domain", "voltage", "rInternal", "imax"? }`);
+				else {
+					keys(src, [
+						"domain",
+						"voltage",
+						"rInternal",
+						"imax"
+					], w);
+					domain(src.domain, `${w}.domain`);
+					if (src.voltage === "param:voltage") {
+						if ((isObj(el.params) ? el.params : {}).voltage === void 0) errors.push(`${w}.voltage: "param:voltage" needs electrical.params.voltage`);
+					} else quantity(src.voltage, `${w}.voltage`, "V", { positive: true });
+					quantity(src.rInternal, `${w}.rInternal`, "ohm", { positive: true });
+					if (src.imax !== void 0) quantity(src.imax, `${w}.imax`, "A", { positive: true });
+				}
+			}
+		}
+	}
+	if (s.gpio !== void 0) {
+		const w = `${at}.gpio`;
+		const g = s.gpio;
+		if (!isObj(g)) errors.push(`${w}: must be an object`);
+		else {
+			keys(g, [
+				"domain",
+				"pins",
+				"outputResistance",
+				"pullup",
+				"pulldown",
+				"inputLeakage"
+			], w);
+			if (typeof g.domain !== "string" || !domainNames.has(g.domain)) errors.push(`${w}.domain: no domain "${show(g.domain)}" in ${at}.power.domains`);
+			if (!Array.isArray(g.pins) || !g.pins.length) errors.push(`${w}.pins: required, a list of GPIO pin names`);
+			else g.pins.forEach((n, i) => {
+				if (typeof n !== "string" || !names.has(n)) errors.push(`${w}.pins[${i}]: no pin "${show(n)}"`);
+			});
+			quantity(g.outputResistance, `${w}.outputResistance`, "ohm", { positive: true });
+			for (const k of ["pullup", "pulldown"]) if (g[k] !== void 0) quantity(g[k], `${w}.${k}`, "ohm", { positive: true });
+			if (g.inputLeakage !== void 0) quantity(g.inputLeakage, `${w}.inputLeakage`, "A");
+		}
+	}
+	if (s.usbPorts !== void 0) {
+		const w = `${at}.usbPorts`;
+		if (!isObj(s.usbPorts)) errors.push(`${w}: must be an object of USB pin to { "gnd" }`);
+		else for (const [port, v] of Object.entries(s.usbPorts)) {
+			if (!usb.has(port)) errors.push(`${w}.${port}: no USB pin "${port}"`);
+			if (!isObj(v) || typeof v.gnd !== "string") errors.push(`${w}.${port}: must be { "gnd": <ground pin> }`);
+			else if (!grounds.has(v.gnd)) errors.push(`${w}.${port}.gnd: "${v.gnd}" is not a ground pin`);
+		}
+	}
+	if (grounds.size) {
+		for (const [port, ref] of usbRefs) if (!(isObj(s.usbPorts) && Object.hasOwn(s.usbPorts, port))) errors.push(`${at}.usbPorts.${port}: required, ${at}.power uses "${ref}" (name the ground pin, so the return flows through the cable)`);
+	}
+	if (s.limits !== void 0) (Array.isArray(s.limits) ? s.limits : [null]).forEach((l, i) => {
+		const w = `${at}.limits[${i}]`;
+		if (!isObj(l)) return void errors.push(`${w}: must be { "of", "kind", "value", "provenance", ... }`);
+		keys(l, [
+			"of",
+			"kind",
+			"value",
+			"source",
+			"provenance",
+			"conditions",
+			"note"
+		], w);
+		const of = l.of;
+		if (!isObj(of) || Object.keys(of).length !== 1) errors.push(`${w}.of: must be { "pin" }, { "domain" } or { "part": true }`);
+		else if ("pin" in of) {
+			if (typeof of.pin !== "string" || !names.has(of.pin)) errors.push(`${w}.of.pin: no pin "${show(of.pin)}"`);
+		} else if ("domain" in of) {
+			if (typeof of.domain !== "string" || !domainNames.has(of.domain)) errors.push(`${w}.of.domain: no domain "${show(of.domain)}" in ${at}.power.domains`);
+		} else if (of.part !== true) errors.push(`${w}.of: must be { "pin" }, { "domain" } or { "part": true }`);
+		const kindOk = LIMIT_KINDS.includes(l.kind);
+		if (!kindOk) errors.push(`${w}.kind: must be one of ${LIMIT_KINDS.join(", ")}`);
+		if (!(isNum(l.value) && l.value > 0)) errors.push(`${w}.value: must be above 0 (in ${kindOk ? LIMIT_UNITS[l.kind] : "its unit"})`);
+		if (l.conditions !== void 0 && !(typeof l.conditions === "string" && l.conditions.trim())) errors.push(`${w}.conditions: must be a non-empty string`);
+		sourced(l, w);
+	});
 }
 //#endregion
 //#region src/format/module.ts
@@ -692,6 +1046,12 @@ var CUSTOM_PREFIX = "custom-";
 /** A part made in the part maker (`custom: true`): user-made and unverified. */
 var isCustom = (m) => m?.custom === true;
 var isSpacer = (p) => "spacer" in p && p.spacer === true;
+/**
+* Pin names with their sides, then hole group names, in order: what library data read by name (the
+* KiCad mapping, the sim data) relies on. USB ports are left out: a copy saved before the library
+* added them still names the same header pins.
+*/
+var terminalsKey = (m) => JSON.stringify([m.pins.filter((p) => !isSpacer(p) && p.type !== "usb").map((p) => [p.name, p.side]), (m.holes ?? []).map((g) => g.name)]);
 /** A net label module (`netLabel: true`): see ModuleDef.netLabel. */
 var isNetLabel = (m) => m?.netLabel === true;
 /** Opt-in flag (`art.pinLabels: "inside"`) for drawing pin names inside the body, like board
@@ -1050,6 +1410,7 @@ function validateModule(raw) {
 	}
 	validateUsb(raw, errors);
 	validateMains(raw, names, errors);
+	validateSim(raw, names, errors);
 	if (!errors.length && isObj(raw.electrical) && isObj(raw.electrical.plug) && Array.isArray(raw.electrical.plug.profiles)) {
 		const lay = computeLayout(raw);
 		raw.electrical.plug.profiles.forEach((pr, i) => pr.contacts.forEach((c, j) => {
@@ -1233,6 +1594,11 @@ function validateI2c(i2c, settings, pins, errors) {
 function i2cOf(m) {
 	const e = m.electrical;
 	return isObj(e) && isObj(e.i2c) && typeof e.i2c.sda === "string" && typeof e.i2c.scl === "string" ? e.i2c : null;
+}
+/** A pin's or hole group's capabilities, or undefined. */
+function pinCaps(m, name) {
+	const pin = m.pins.find((p) => !isSpacer(p) && p.name === name);
+	return pin ? pin.caps : holeGroupOf(m, name)?.caps;
 }
 /**
 * Groups of ground pins the wiring checker treats as one return (`electrical.commonReturn`): a
@@ -2301,14 +2667,14 @@ var PLUG_FOR = {
 };
 //#endregion
 //#region src/format/breadboard.ts
-var OFF = 2 ** 25;
+var OFF$1 = 2 ** 25;
 var NONE_SET = /* @__PURE__ */ new Set();
 /**
 * One number per world grid point. Unique only for whole-number x and y within +-2^25 px, so
 * lookups go through `holeAt`, which checks both and compares the found hole exactly.
 */
-var pointKey = (x, y) => (x + OFF) * 2 ** 26 + (y + OFF);
-var inRange = (n) => Number.isInteger(n) && n > -OFF && n < OFF;
+var pointKey = (x, y) => (x + OFF$1) * 2 ** 26 + (y + OFF$1);
+var inRange = (n) => Number.isInteger(n) && n > -OFF$1 && n < OFF$1;
 var indexCache$1 = /* @__PURE__ */ new WeakMap();
 /** World hole positions of a part with hole groups, and a lookup from grid point to hole. */
 function holeIndex(part, m) {
@@ -3193,15 +3559,19 @@ function flagWidth(name, ground = false) {
 * ground mark widens a ground label's flag; `ground` says whether it is drawn.
 */
 function flagRect(part, m, ground = false) {
+	return flagBox(part, m, flagWidth(labelName(part), ground), FLAG_H);
+}
+/** A box `w` long from the label's point and `h` across, centred on its pin, in world px: a flag of any size (a probe's tag). */
+function flagBox(part, m, w, h) {
 	const lay = layoutModule(m);
 	const mid = lay.pins[0]?.edge.y ?? lay.h / 2;
 	const a = toWorld(part, lay, {
 		x: 0,
-		y: mid - FLAG_H / 2
+		y: mid - h / 2
 	});
 	const b = toWorld(part, lay, {
-		x: flagWidth(labelName(part), ground),
-		y: mid + FLAG_H / 2
+		x: w,
+		y: mid + h / 2
 	});
 	return {
 		x: Math.min(a.x, b.x),
@@ -3679,6 +4049,176 @@ function wrapNote(text, width = 48) {
 	}).join("\n");
 }
 //#endregion
+//#region src/format/simState.ts
+var GPIO_STATES = [
+	"input",
+	"input-pullup",
+	"input-pulldown",
+	"high",
+	"low"
+];
+var modelOf$2 = (m) => isObj(m.electrical) ? m.electrical.model : void 0;
+var words = (list) => list.map((s) => `"${s}"`).join(", ");
+/** Every contact group: `electrical.contacts`, or ruling R2's implicit group "s" on a switch with terminals a and b. */
+function switchGroups(m) {
+	const momentary = (isObj(m.electrical) && isObj(m.electrical.params) ? m.electrical.params : {}).normallyOpen !== void 0;
+	const declared = mainsOf(m).contacts;
+	if (declared.length) return declared.map((g) => ({
+		id: g.id,
+		kind: g.kind,
+		poles: g.poles,
+		changeover: g.poles.some((p) => p.no !== null && p.nc !== null),
+		momentary: momentary && g.kind === "switch"
+	}));
+	const t = isObj(m.electrical) && isObj(m.electrical.terminals) ? m.electrical.terminals : null;
+	if (modelOf$2(m) !== "switch" || !t || typeof t.a !== "string" || typeof t.b !== "string") return [];
+	return [{
+		id: "s",
+		kind: "switch",
+		poles: [{
+			com: t.a,
+			no: t.b,
+			nc: null
+		}],
+		changeover: false,
+		momentary
+	}];
+}
+var LEGACY_CLOSED = /* @__PURE__ */ new Set([
+	"on",
+	"closed",
+	"pressed"
+]);
+var LEGACY_OPEN = /* @__PURE__ */ new Set([
+	"off",
+	"open",
+	"released"
+]);
+var positions = (g) => g.changeover ? ["no", "nc"] : ["open", "closed"];
+/** A position that is not the rest one: com joins no. Index 1 of the mains model's groupState. */
+var isActive = (pos) => pos === "closed" || pos === "no";
+/**
+* A group's position now: `values["contact.<id>"]`; else, on a one-group switch, the legacy
+* `values.state` (ruling R3); else the rest position (open, or nc for a changeover), which is the
+* mains model's groupState 0. Relays and SSRs are always at rest (ruling R4); a momentary button
+* is active only while `held` (never saved).
+*/
+function contactPosition(part, m, g, held) {
+	const rest = g.changeover ? "nc" : "open";
+	const active = g.changeover ? "no" : "closed";
+	if (g.kind !== "switch") return rest;
+	if (g.momentary) return held ? active : rest;
+	const v = part.values?.[`contact.${g.id}`];
+	if (typeof v === "string" && positions(g).includes(v)) return v;
+	const legacy = part.values?.state;
+	if (switchGroups(m).length === 1 && typeof legacy === "string") {
+		if (LEGACY_CLOSED.has(legacy)) return active;
+		if (LEGACY_OPEN.has(legacy)) return rest;
+	}
+	return rest;
+}
+/**
+* Why a GPIO state is not allowed on a pin with these caps (spec 3.3), or null. With the module's
+* sim.gpio, a pull its data does not state is refused too (an MCP23017 or an AVR has pull-ups only).
+*/
+function gpioProblem(caps, v, gpio) {
+	if (!GPIO_STATES.includes(v)) return `must be one of ${words(GPIO_STATES)}`;
+	if (caps?.inputOnly && (v === "high" || v === "low")) return "the pin is input only, so it cannot drive high or low";
+	if (caps?.outputOnly && v.startsWith("input")) return "the pin is output only, so it cannot be an input";
+	if (caps?.noPullup && (v === "input-pullup" || v === "input-pulldown")) return "the pin has no internal pull-up or pull-down";
+	if (gpio && v === "input-pullup" && !gpio.pullup) return "the pin has no internal pull-up";
+	if (gpio && v === "input-pulldown" && !gpio.pulldown) return "the pin has no internal pull-down";
+	return null;
+}
+/** A GPIO pin's state: its admissible saved state, else "input"; null for an output-only pin with none set (open) and for a pin that is not GPIO-capable. */
+function gpioState(part, m, pin) {
+	if (!simOf(m)?.gpio?.pins.includes(pin)) return null;
+	const caps = pinCaps(m, pin);
+	const v = part.values?.[`gpio.${pin}`];
+	if (typeof v === "string" && gpioProblem(caps, v, simOf(m)?.gpio) === null) return v;
+	return caps?.outputOnly ? null : "input";
+}
+var isSimValueKey = (key) => key.startsWith("gpio.") || key.startsWith("contact.") || key.startsWith("sim.");
+var amount = (entry, unit, allowZero) => isObj(entry) && isNum(entry.value) && entry.unit === unit && (allowZero ? entry.value >= 0 : entry.value > 0) && entry.value <= 1e6 ? null : `it must be { "value": <number ${allowZero ? "0 or more" : "above 0"}>, "unit": "${unit}" }`;
+/**
+* What is wrong with one simulation value on a part, or null. `electrical` marks a `sim.*`
+* number (dropping it changes the solved circuit: the loader ends its warning with VALUE_DROPPED).
+* With no module to check against (not embedded), nothing is claimed.
+*/
+function simValueProblem(key, entry, m) {
+	if (!m) return null;
+	if (key.startsWith("gpio.")) {
+		const pin = key.slice(5);
+		if (!simOf(m)?.gpio?.pins.includes(pin)) return {
+			text: `pin "${pin}" is not a GPIO pin of ${m.name}`,
+			electrical: false
+		};
+		if (typeof entry !== "string") return {
+			text: `it must be one of ${words(GPIO_STATES)}`,
+			electrical: false
+		};
+		const p = gpioProblem(pinCaps(m, pin), entry, simOf(m)?.gpio);
+		return p ? {
+			text: p,
+			electrical: false
+		} : null;
+	}
+	if (key.startsWith("contact.")) {
+		const g = switchGroups(m).find((x) => x.id === key.slice(8));
+		if (!g) return {
+			text: `${m.name} has no contact group "${key.slice(8)}"`,
+			electrical: false
+		};
+		if (g.kind !== "switch") return {
+			text: `a ${g.kind} is always shown at rest`,
+			electrical: false
+		};
+		if (g.momentary) return {
+			text: "it is a momentary button; its position is never saved",
+			electrical: false
+		};
+		const allowed = positions(g);
+		return typeof entry === "string" && allowed.includes(entry) ? null : {
+			text: `it must be ${allowed.map((s) => `"${s}"`).join(" or ")}`,
+			electrical: false
+		};
+	}
+	const sim = simOf(m);
+	const isCell = isObj(m.electrical) && m.electrical.model === "voltage_source";
+	if (key === "sim.rInternal" || key === "sim.imax") {
+		if (!isCell && !sim?.power?.source) return {
+			text: `${m.name} is not a battery or supply`,
+			electrical: true
+		};
+		const p = amount(entry, key === "sim.imax" ? "A" : "ohm", false);
+		return p ? {
+			text: p,
+			electrical: true
+		} : null;
+	}
+	const draw = /^sim\.draw\.(.+)\.(typical|peak)$/.exec(key);
+	if (draw) {
+		if (!sim?.power?.domains.some((d) => d.name === draw[1])) return {
+			text: `${m.name} has no supply domain "${draw[1]}"`,
+			electrical: true
+		};
+		const p = amount(entry, "A", true);
+		return p ? {
+			text: p,
+			electrical: true
+		} : null;
+	}
+	return {
+		text: "unknown simulation value (sim.draw.<domain>.typical, sim.draw.<domain>.peak, sim.rInternal or sim.imax)",
+		electrical: true
+	};
+}
+/** A `sim.*` override's number (validated on load), or null. */
+function simOverride(part, key) {
+	const v = part.values?.[key];
+	return isObj(v) && isNum(v.value) ? v.value : null;
+}
+//#endregion
 //#region src/format/boardEntry.ts
 /**
 * How unclean a way out is, lowest best. Every hole the run passes over counts: one in use most
@@ -3763,6 +4303,8 @@ function holeExits(rect, strips, own, p, used) {
 * default instead of the value the file asked for. The editor lists these warnings first. */
 var VALUE_DROPPED = "it was dropped and the module default is shown";
 var DIAGRAM_FORMAT = "circuitoon-diagram/1";
+/** A probe id: P and a whole number from 1. */
+var PROBE_ID = /^P[1-9]\d*$/;
 var NAMED_COLORS = {
 	red: "#E0483E",
 	black: "#2B2F36",
@@ -5102,11 +5644,42 @@ function isValidColor(c) {
 }
 /** Largest |x| or |y|, in px, a part position or a stored route point may have. */
 var COORD_LIMIT = 1e5;
+/** What is wrong with one stored probe, or null. `pinsOf` gives a part's pin and hole names, null when its module is not embedded, undefined when there is no such part. */
+function probeProblem(p, ids, pinsOf, holesOf) {
+	if (!isObj(p)) return "must be { \"id\", \"name\"?, \"at\": { \"part\", \"pin\"?, \"hole\"? } }";
+	for (const k of Object.keys(p)) if (![
+		"id",
+		"name",
+		"at"
+	].includes(k)) return `unknown field "${k}"`;
+	if (typeof p.id !== "string" || !PROBE_ID.test(p.id)) return "its id must be P and a number (P1, P2, ...)";
+	if (ids.has(p.id)) return `its id ${p.id} is used twice`;
+	if (p.name !== void 0 && !(typeof p.name === "string" && p.name.trim() && p.name.length <= 40)) return "its name must be text, at most 40 characters";
+	if (isObj(p.at)) {
+		for (const k of Object.keys(p.at)) if (![
+			"part",
+			"pin",
+			"hole"
+		].includes(k)) return `unknown field "at.${k}"`;
+	}
+	if (!isObj(p.at) || typeof p.at.part !== "string" || p.at.pin !== void 0 && typeof p.at.pin !== "string") return "its anchor must be { \"part\", \"pin\"?, \"hole\"? }";
+	const pins = pinsOf(p.at.part);
+	if (pins === void 0) return `no part "${p.at.part}"`;
+	if (typeof p.at.pin === "string" && pins && !pins.has(p.at.pin)) return `part "${p.at.part}" has no pin "${p.at.pin}"`;
+	if (p.at.hole !== void 0) {
+		const count = typeof p.at.pin === "string" ? holesOf(p.at.part, p.at.pin) : void 0;
+		if (count === void 0) return "its hole needs a hole group as its pin";
+		if (!(Number.isInteger(p.at.hole) && p.at.hole >= 0 && p.at.hole < count)) return `its hole must be a whole number from 0 to ${count - 1}`;
+	}
+	return null;
+}
 /**
 * Checks a parsed diagram file. Structural problems refuse the load (errors); a connection
 * that names a missing part or pin still loads (warning), so no wire is silently dropped.
+* `library` is the built-in parts: a saved sim value is checked against the library's sim data
+* (withLibrarySim), so a copy saved before the library had it keeps its values. Pass it on every load.
 */
-function validateDiagram(raw) {
+function validateDiagram(raw, opts = {}) {
 	const errors = [];
 	const warnings = [];
 	if (!isObj(raw)) return {
@@ -5170,7 +5743,29 @@ function validateDiagram(raw) {
 			else {
 				const who = typeof p.designator === "string" && p.designator !== "" ? p.designator : `part ${i}`;
 				const dropped = [];
+				const stored = typeof p.module === "string" ? modules.get(p.module) : void 0;
+				const simModule = stored && withLibrarySim(stored, opts.library);
 				for (const [key, entry] of Object.entries(p.values)) {
+					if (isSimValueKey(key)) {
+						const problem = simValueProblem(key, entry, simModule);
+						if (problem) {
+							dropped.push(key);
+							warnings.push(`${at}.values.${key}: ${who} has ${key} ${JSON.stringify(entry)}, but ${problem.text}; ${problem.electrical ? VALUE_DROPPED : "it was dropped, so the default state is used"}`);
+						}
+						continue;
+					}
+					if (key === "state" && typeof p.module === "string") {
+						const sm = modules.get(p.module);
+						const groups = sm ? switchGroups(sm) : [];
+						if (groups.length > 1 || groups.length === 1 && ![
+							"on",
+							"closed",
+							"pressed",
+							"off",
+							"open",
+							"released"
+						].includes(String(entry))) warnings.push(`${at}.values.state: ${who}'s state ${JSON.stringify(entry)} is not a switch position the simulator can read, so the switch is simulated open`);
+					}
 					if (Object.hasOwn(PARAM_RULES, key)) {
 						const rule = PARAM_RULES[key];
 						const where = `${at}.values.${key}: ${who} has ${key}`;
@@ -5322,6 +5917,29 @@ function validateDiagram(raw) {
 			notesFix = raw.notes.filter((n) => typeof n === "string");
 		}
 	}
+	let probesFix = null;
+	if (raw.probes !== void 0) {
+		if (!Array.isArray(raw.probes)) {
+			probesFix = void 0;
+			warnings.push("probes: must be a list, so it was dropped");
+		} else {
+			const kept = [];
+			const ids = /* @__PURE__ */ new Set();
+			const pinsOf = (uid) => {
+				if (!partModule.has(uid)) return void 0;
+				const m = modules.get(partModule.get(uid));
+				return m ? /* @__PURE__ */ new Set([...m.pins.flatMap((x) => "name" in x && typeof x.name === "string" ? [x.name] : []), ...(m.holes ?? []).map((h) => h.name)]) : null;
+			};
+			raw.probes.forEach((p, i) => {
+				const holesOf = (uid, group) => modules.get(partModule.get(uid))?.holes?.find((h) => h.name === group)?.at.length;
+				const why = probeProblem(p, ids, pinsOf, holesOf);
+				if (why) return void warnings.push(`probes[${i}]: ${why}, so the probe was dropped`);
+				kept.push(p);
+				ids.add(p.id);
+			});
+			if (kept.length !== raw.probes.length) probesFix = kept;
+		}
+	}
 	if (errors.length) return {
 		ok: false,
 		errors
@@ -5332,6 +5950,13 @@ function validateDiagram(raw) {
 		diagram = notesFix ? {
 			...rest,
 			notes: notesFix
+		} : rest;
+	}
+	if (probesFix !== null) {
+		const { probes: _p, ...rest } = diagram;
+		diagram = probesFix?.length ? {
+			...rest,
+			probes: probesFix
 		} : rest;
 	}
 	if (partFixes.size || droppedRoutes.size || endFixes.size) diagram = {
@@ -5382,117 +6007,6 @@ function serializeDiagram(d) {
 		})
 	} : d;
 	return JSON.stringify(out, null, 2) + "\n";
-}
-//#endregion
-//#region src/cli/io.ts
-/** Spec 4.2: 0 ok, 1 findings that block, 2 invalid input, 3 environment problem (no browser). */
-var EXIT = {
-	ok: 0,
-	blocked: 1,
-	input: 2,
-	environment: 3
-};
-var CliError = class extends Error {
-	code;
-	constructor(message, code) {
-		if (code !== EXIT.blocked && code !== EXIT.input && code !== EXIT.environment) throw new RangeError(`CliError exit code must be 1, 2 or 3, not ${String(code)}`);
-		super(message);
-		this.code = code;
-	}
-};
-var pathIn = (io, path) => resolve(io.cwd, path);
-function readJson(io, path) {
-	let text;
-	try {
-		text = readFileSync(pathIn(io, path), "utf8");
-	} catch {
-		throw new CliError(`${path}: cannot read the file`, EXIT.input);
-	}
-	try {
-		return JSON.parse(text);
-	} catch (e) {
-		throw new CliError(`${path}: not valid JSON (${e.message})`, EXIT.input);
-	}
-}
-/** Why a write failed, by Node error code: the path is at fault (exit 2) or the machine is (exit 3). */
-var WRITE_ERRORS = {
-	EISDIR: {
-		why: "it is a directory",
-		exit: EXIT.input
-	},
-	ERR_FS_EISDIR: {
-		why: "it is a directory",
-		exit: EXIT.input
-	},
-	ENOTDIR: {
-		why: "a folder on its path is a file",
-		exit: EXIT.input
-	},
-	EEXIST: {
-		why: "a folder on its path is a file",
-		exit: EXIT.input
-	},
-	ENOENT: {
-		why: "its folder cannot be created",
-		exit: EXIT.input
-	},
-	EINVAL: {
-		why: "not a valid path",
-		exit: EXIT.input
-	},
-	ENAMETOOLONG: {
-		why: "the path is too long",
-		exit: EXIT.input
-	},
-	EACCES: {
-		why: "permission denied",
-		exit: EXIT.environment
-	},
-	EPERM: {
-		why: "permission denied",
-		exit: EXIT.environment
-	},
-	EROFS: {
-		why: "the file system is read-only",
-		exit: EXIT.environment
-	},
-	ENOSPC: {
-		why: "no space left on the device",
-		exit: EXIT.environment
-	},
-	EDQUOT: {
-		why: "the disk quota is used up",
-		exit: EXIT.environment
-	}
-};
-/** A failed write as a CliError that names the path; an unknown cause is an environment problem. */
-function writeError(path, err) {
-	const code = err?.code;
-	const known = code !== void 0 && Object.hasOwn(WRITE_ERRORS, code) ? WRITE_ERRORS[code] : void 0;
-	return new CliError(`${path}: cannot write the file (${known?.why ?? (err instanceof Error ? err.message : String(err))})`, known?.exit ?? EXIT.environment);
-}
-function writeFile(io, path, content) {
-	const full = pathIn(io, path);
-	try {
-		mkdirSync(dirname(full), { recursive: true });
-		writeFileSync(full, content);
-	} catch (err) {
-		throw writeError(path, err);
-	}
-}
-var printJson = (io, value) => io.stdout(`${JSON.stringify(value, null, 2)}\n`);
-function flag(args, name) {
-	const v = args.flags.get(name);
-	return typeof v === "string" ? v : void 0;
-}
-/** A sheet loaded like the site loads it; one that does not load is invalid input (exit 2). */
-function loadSheet(io, path) {
-	const r = validateDiagram(readJson(io, path));
-	if (!r.ok) throw new CliError(`${path} is not a Circuitoon sheet: ${r.errors.slice(0, 5).join("; ")}`, EXIT.input);
-	return {
-		diagram: r.diagram,
-		warnings: r.warnings
-	};
 }
 var library = Object.entries(/* @__PURE__ */ Object.assign({
 	"../modules/adapter-barrel-au.json": {
@@ -5566,6 +6080,32 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			"params": { "voltage": {
 				"unit": "V",
 				"default": 12
+			} },
+			"sim": { "power": {
+				"domains": [{
+					"name": "OUT",
+					"pin": "+",
+					"ret": "-",
+					"nominal": 12
+				}],
+				"source": {
+					"domain": "OUT",
+					"voltage": "param:voltage",
+					"rInternal": {
+						"value": .36,
+						"unit": "ohm",
+						"source": "https://www.meanwell.com/Upload/PDF/NGE12/NGE12-SPEC.PDF",
+						"provenance": "estimate",
+						"note": "Typical 12 V barrel adapter, assumed to be the Mean Well NGE12 12-P1J (the module's own source; 12 V is electrical.params.voltage's default): load regulation +/-3.0% (SPECIFICATION p. 2), band +/-3% x 12 V = +/-0.36 V, whole swing up to 0.72 V over 0 to 1.0 A, 0.72 ohm. Mean Well NGE12 SPECIFICATION p. 3, Note 6, reads \"Load regulation is measured from 0% to 100% rated load\"; the plus-minus figure is a band about the output at a reference load, so the whole 0 to rated-load swing can be up to twice the figure. This value uses that upper bound (real units usually droop less). The same value is used whatever voltage the user sets. Controller ruling (reviewers disagreed): the two readings are 0.36 ohm (the +/-x% figure taken as the whole no-load to full-load swing) and 0.72 ohm (a band about a reference, up to twice the swing). 0.36 ohm is used: it is nearer typical droop, and this estimate never blocks."
+					},
+					"imax": {
+						"value": 1,
+						"unit": "A",
+						"source": "https://www.meanwell.com/Upload/PDF/NGE12/NGE12-SPEC.PDF",
+						"provenance": "estimate",
+						"note": "Typical 12 V barrel adapter, assumed to be the Mean Well NGE12 12-P1J: rated current 1.0 A (12 W), SPECIFICATION p. 2. The same value is used whatever voltage the user sets; in the same series the 5 V model is rated 2.4 A and the 24 V model 0.625 A."
+					}
+				}
 			} }
 		},
 		art: {
@@ -5842,6 +6382,32 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			"params": { "voltage": {
 				"unit": "V",
 				"default": 12
+			} },
+			"sim": { "power": {
+				"domains": [{
+					"name": "OUT",
+					"pin": "+",
+					"ret": "-",
+					"nominal": 12
+				}],
+				"source": {
+					"domain": "OUT",
+					"voltage": "param:voltage",
+					"rInternal": {
+						"value": .36,
+						"unit": "ohm",
+						"source": "https://www.meanwell.com/Upload/PDF/NGE12/NGE12-SPEC.PDF",
+						"provenance": "estimate",
+						"note": "Typical 12 V barrel adapter, assumed to be the Mean Well NGE12 12-P1J (the module's own source; 12 V is electrical.params.voltage's default): load regulation +/-3.0% (SPECIFICATION p. 2), band +/-3% x 12 V = +/-0.36 V, whole swing up to 0.72 V over 0 to 1.0 A, 0.72 ohm. Mean Well NGE12 SPECIFICATION p. 3, Note 6, reads \"Load regulation is measured from 0% to 100% rated load\"; the plus-minus figure is a band about the output at a reference load, so the whole 0 to rated-load swing can be up to twice the figure. This value uses that upper bound (real units usually droop less). The same value is used whatever voltage the user sets. Controller ruling (reviewers disagreed): the two readings are 0.36 ohm (the +/-x% figure taken as the whole no-load to full-load swing) and 0.72 ohm (a band about a reference, up to twice the swing). 0.36 ohm is used: it is nearer typical droop, and this estimate never blocks."
+					},
+					"imax": {
+						"value": 1,
+						"unit": "A",
+						"source": "https://www.meanwell.com/Upload/PDF/NGE12/NGE12-SPEC.PDF",
+						"provenance": "estimate",
+						"note": "Typical 12 V barrel adapter, assumed to be the Mean Well NGE12 12-P1J: rated current 1.0 A (12 W), SPECIFICATION p. 2. The same value is used whatever voltage the user sets; in the same series the 5 V model is rated 2.4 A and the 24 V model 0.625 A."
+					}
+				}
 			} }
 		},
 		art: {
@@ -6013,6 +6579,32 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			"params": { "voltage": {
 				"unit": "V",
 				"default": 12
+			} },
+			"sim": { "power": {
+				"domains": [{
+					"name": "OUT",
+					"pin": "+",
+					"ret": "-",
+					"nominal": 12
+				}],
+				"source": {
+					"domain": "OUT",
+					"voltage": "param:voltage",
+					"rInternal": {
+						"value": .36,
+						"unit": "ohm",
+						"source": "https://www.meanwell.com/Upload/PDF/NGE12/NGE12-SPEC.PDF",
+						"provenance": "estimate",
+						"note": "Typical 12 V barrel adapter, assumed to be the Mean Well NGE12 12-P1J (the module's own source; 12 V is electrical.params.voltage's default): load regulation +/-3.0% (SPECIFICATION p. 2), band +/-3% x 12 V = +/-0.36 V, whole swing up to 0.72 V over 0 to 1.0 A, 0.72 ohm. Mean Well NGE12 SPECIFICATION p. 3, Note 6, reads \"Load regulation is measured from 0% to 100% rated load\"; the plus-minus figure is a band about the output at a reference load, so the whole 0 to rated-load swing can be up to twice the figure. This value uses that upper bound (real units usually droop less). The same value is used whatever voltage the user sets. Controller ruling (reviewers disagreed): the two readings are 0.36 ohm (the +/-x% figure taken as the whole no-load to full-load swing) and 0.72 ohm (a band about a reference, up to twice the swing). 0.36 ohm is used: it is nearer typical droop, and this estimate never blocks."
+					},
+					"imax": {
+						"value": 1,
+						"unit": "A",
+						"source": "https://www.meanwell.com/Upload/PDF/NGE12/NGE12-SPEC.PDF",
+						"provenance": "estimate",
+						"note": "Typical 12 V barrel adapter, assumed to be the Mean Well NGE12 12-P1J: rated current 1.0 A (12 W), SPECIFICATION p. 2. The same value is used whatever voltage the user sets; in the same series the 5 V model is rated 2.4 A and the 24 V model 0.625 A."
+					}
+				}
 			} }
 		},
 		art: {
@@ -6179,6 +6771,32 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			"params": { "voltage": {
 				"unit": "V",
 				"default": 12
+			} },
+			"sim": { "power": {
+				"domains": [{
+					"name": "OUT",
+					"pin": "+",
+					"ret": "-",
+					"nominal": 12
+				}],
+				"source": {
+					"domain": "OUT",
+					"voltage": "param:voltage",
+					"rInternal": {
+						"value": .36,
+						"unit": "ohm",
+						"source": "https://www.meanwell.com/Upload/PDF/NGE12/NGE12-SPEC.PDF",
+						"provenance": "estimate",
+						"note": "Typical 12 V barrel adapter, assumed to be the Mean Well NGE12 12-P1J (the module's own source; 12 V is electrical.params.voltage's default): load regulation +/-3.0% (SPECIFICATION p. 2), band +/-3% x 12 V = +/-0.36 V, whole swing up to 0.72 V over 0 to 1.0 A, 0.72 ohm. Mean Well NGE12 SPECIFICATION p. 3, Note 6, reads \"Load regulation is measured from 0% to 100% rated load\"; the plus-minus figure is a band about the output at a reference load, so the whole 0 to rated-load swing can be up to twice the figure. This value uses that upper bound (real units usually droop less). The same value is used whatever voltage the user sets. Controller ruling (reviewers disagreed): the two readings are 0.36 ohm (the +/-x% figure taken as the whole no-load to full-load swing) and 0.72 ohm (a band about a reference, up to twice the swing). 0.36 ohm is used: it is nearer typical droop, and this estimate never blocks."
+					},
+					"imax": {
+						"value": 1,
+						"unit": "A",
+						"source": "https://www.meanwell.com/Upload/PDF/NGE12/NGE12-SPEC.PDF",
+						"provenance": "estimate",
+						"note": "Typical 12 V barrel adapter, assumed to be the Mean Well NGE12 12-P1J: rated current 1.0 A (12 W), SPECIFICATION p. 2. The same value is used whatever voltage the user sets; in the same series the 5 V model is rated 2.4 A and the 24 V model 0.625 A."
+					}
+				}
 			} }
 		},
 		art: {
@@ -6297,7 +6915,70 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 		footprint: "legs",
 		electrical: {
 			"model": "regulator",
-			"params": {}
+			"params": {},
+			"sim": {
+				"power": {
+					"domains": [{
+						"name": "VIN",
+						"pin": "VIN",
+						"ret": "GND",
+						"nominal": 5
+					}, {
+						"name": "OUT",
+						"pin": "OUT",
+						"ret": "GND",
+						"nominal": 3.3
+					}],
+					"rails": [{
+						"id": "ldo",
+						"inputs": [{
+							"domain": "VIN",
+							"via": "direct"
+						}],
+						"output": "OUT",
+						"kind": "ldo",
+						"vout": {
+							"value": 3.3,
+							"unit": "V",
+							"source": "http://www.advanced-monolithic.com/pdf/ds1117.pdf",
+							"provenance": "datasheet",
+							"note": "Output Voltage, AMS1117-3.3: 3.300 V typ (3.251 to 3.349 V at VIN = 4.8 V, IOUT = 0 mA, TJ = 25 C; 3.201 to 3.399 V over the full operating temperature range, boldface row), Electrical Characteristics, p. 2."
+						},
+						"dropout": {
+							"value": 1.1,
+							"unit": "V",
+							"source": "http://www.advanced-monolithic.com/pdf/ds1117.pdf",
+							"provenance": "datasheet",
+							"note": "Dropout Voltage (VIN - VOUT), AMS1117-3.3: 1.1 V typ, 1.3 V max, at delta VOUT, delta VREF = 1%, IOUT = 0.8 A (Electrical Characteristics, p. 3; boldface, so over the full operating temperature range). This is the only dropout point given; p. 1 says it decreases at lower load currents, and Note 4 says it is higher above 0.8 A. Taken at 0.8 A, just above the module's 0.7 A rating, so it is slightly pessimistic at lighter loads."
+						},
+						"iq": {
+							"value": .005,
+							"unit": "A",
+							"source": "http://www.advanced-monolithic.com/pdf/ds1117.pdf",
+							"provenance": "datasheet",
+							"note": "Quiescent Current, fixed versions (-1.5 to -5.0): 5 mA typ, 11 mA max at (VIN - VOUT) = 1.5 V (Electrical Characteristics, p. 3). Chip, not board: the module's power LED is not included."
+						},
+						"ioutMax": {
+							"value": .7,
+							"unit": "A",
+							"source": "https://protosupplies.com/product/ams1117-5v-to-3-3v-step-down-regulator-module/ http://www.advanced-monolithic.com/pdf/ds1117.pdf",
+							"provenance": "representative",
+							"note": "Representative module: ProtoSupplies AMS1117 5V to 3.3V module (3-pin VIN/OUT/GND, the module's cited source), 'Maximum Output Current 700mA (5V Input)' in its specification table; recommended max 600 mA. A thermal limit of the small board, so it falls with input voltage: the same page measured about 200 mA at 9 V and 75 mA at 12 V in. The chip itself is rated 1 A (AMS datasheet p. 1) with a current limit of 900 mA min, 1.1 A typ (p. 3)."
+						},
+						"reverse": "body-diode"
+					}]
+				},
+				"limits": [{
+					"of": { "domain": "VIN" },
+					"kind": "vinMax",
+					"value": 12,
+					"source": "https://protosupplies.com/product/ams1117-5v-to-3-3v-step-down-regulator-module/ http://www.advanced-monolithic.com/pdf/ds1117.pdf",
+					"provenance": "representative",
+					"conditions": "module maximum input voltage (5 V typical)",
+					"note": "Representative module: ProtoSupplies AMS1117 5V to 3.3V module, 'Maximum Input Voltage 12V (5V Typical)'. The AMS1117 chip's absolute maximum input is 15 V (Absolute Maximum Ratings, p. 2); the module's lower figure presumably covers its capacitors and heat, which this source does not explain."
+				}],
+				"unaccounted": ["Red power LED on the module (ProtoSupplies: 'The module has a red power LED when power is applied'): its resistor value and current are not documented, so it is not added as a draw. Whether it sits on VIN or OUT is not known either."]
+			}
 		},
 		art: {
 			"w": 80,
@@ -13305,16 +13986,7 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			"w": 8,
 			"h": 18
 		},
-		electrical: {
-			"model": "mcu",
-			"params": {},
-			"external": [{
-				"pin": "5V",
-				"volts": 5,
-				"via": "USB",
-				"diode": true
-			}]
-		},
+		electrical: /* @__PURE__ */ JSON.parse("{\"model\":\"mcu\",\"params\":{},\"external\":[{\"pin\":\"5V\",\"volts\":5,\"via\":\"USB\",\"diode\":true}],\"sim\":{\"limits\":[{\"of\":{\"pin\":\"RX0\"},\"kind\":\"absMaxCurrent\",\"value\":0.04,\"source\":\"https://ww1.microchip.com/downloads/aemDocuments/documents/MCU08/ProductDocuments/DataSheets/ATmega48A-PA-88A-PA-168A-PA-328-P-DS-DS40002061B.pdf\",\"provenance\":\"datasheet\",\"conditions\":\"absolute maximum rating\",\"note\":\"chip, not board. Section 29.1 Absolute Maximum Ratings (p. 308): DC current per I/O pin 40.0 mA. The datasheet gives no continuous per-pin rating: the 20 mA in Table 30-1 is a VOH/VOL test condition (notes 3 and 4, p. 323).\"},{\"of\":{\"pin\":\"TX1\"},\"kind\":\"absMaxCurrent\",\"value\":0.04,\"source\":\"https://ww1.microchip.com/downloads/aemDocuments/documents/MCU08/ProductDocuments/DataSheets/ATmega48A-PA-88A-PA-168A-PA-328-P-DS-DS40002061B.pdf\",\"provenance\":\"datasheet\",\"conditions\":\"absolute maximum rating\",\"note\":\"chip, not board. Section 29.1 Absolute Maximum Ratings (p. 308): DC current per I/O pin 40.0 mA. The datasheet gives no continuous per-pin rating: the 20 mA in Table 30-1 is a VOH/VOL test condition (notes 3 and 4, p. 323).\"},{\"of\":{\"pin\":\"D2\"},\"kind\":\"absMaxCurrent\",\"value\":0.04,\"source\":\"https://ww1.microchip.com/downloads/aemDocuments/documents/MCU08/ProductDocuments/DataSheets/ATmega48A-PA-88A-PA-168A-PA-328-P-DS-DS40002061B.pdf\",\"provenance\":\"datasheet\",\"conditions\":\"absolute maximum rating\",\"note\":\"chip, not board. Section 29.1 Absolute Maximum Ratings (p. 308): DC current per I/O pin 40.0 mA. The datasheet gives no continuous per-pin rating: the 20 mA in Table 30-1 is a VOH/VOL test condition (notes 3 and 4, p. 323).\"},{\"of\":{\"pin\":\"D3\"},\"kind\":\"absMaxCurrent\",\"value\":0.04,\"source\":\"https://ww1.microchip.com/downloads/aemDocuments/documents/MCU08/ProductDocuments/DataSheets/ATmega48A-PA-88A-PA-168A-PA-328-P-DS-DS40002061B.pdf\",\"provenance\":\"datasheet\",\"conditions\":\"absolute maximum rating\",\"note\":\"chip, not board. Section 29.1 Absolute Maximum Ratings (p. 308): DC current per I/O pin 40.0 mA. The datasheet gives no continuous per-pin rating: the 20 mA in Table 30-1 is a VOH/VOL test condition (notes 3 and 4, p. 323).\"},{\"of\":{\"pin\":\"D4\"},\"kind\":\"absMaxCurrent\",\"value\":0.04,\"source\":\"https://ww1.microchip.com/downloads/aemDocuments/documents/MCU08/ProductDocuments/DataSheets/ATmega48A-PA-88A-PA-168A-PA-328-P-DS-DS40002061B.pdf\",\"provenance\":\"datasheet\",\"conditions\":\"absolute maximum rating\",\"note\":\"chip, not board. Section 29.1 Absolute Maximum Ratings (p. 308): DC current per I/O pin 40.0 mA. The datasheet gives no continuous per-pin rating: the 20 mA in Table 30-1 is a VOH/VOL test condition (notes 3 and 4, p. 323).\"},{\"of\":{\"pin\":\"D5\"},\"kind\":\"absMaxCurrent\",\"value\":0.04,\"source\":\"https://ww1.microchip.com/downloads/aemDocuments/documents/MCU08/ProductDocuments/DataSheets/ATmega48A-PA-88A-PA-168A-PA-328-P-DS-DS40002061B.pdf\",\"provenance\":\"datasheet\",\"conditions\":\"absolute maximum rating\",\"note\":\"chip, not board. Section 29.1 Absolute Maximum Ratings (p. 308): DC current per I/O pin 40.0 mA. The datasheet gives no continuous per-pin rating: the 20 mA in Table 30-1 is a VOH/VOL test condition (notes 3 and 4, p. 323).\"},{\"of\":{\"pin\":\"D6\"},\"kind\":\"absMaxCurrent\",\"value\":0.04,\"source\":\"https://ww1.microchip.com/downloads/aemDocuments/documents/MCU08/ProductDocuments/DataSheets/ATmega48A-PA-88A-PA-168A-PA-328-P-DS-DS40002061B.pdf\",\"provenance\":\"datasheet\",\"conditions\":\"absolute maximum rating\",\"note\":\"chip, not board. Section 29.1 Absolute Maximum Ratings (p. 308): DC current per I/O pin 40.0 mA. The datasheet gives no continuous per-pin rating: the 20 mA in Table 30-1 is a VOH/VOL test condition (notes 3 and 4, p. 323).\"},{\"of\":{\"pin\":\"D7\"},\"kind\":\"absMaxCurrent\",\"value\":0.04,\"source\":\"https://ww1.microchip.com/downloads/aemDocuments/documents/MCU08/ProductDocuments/DataSheets/ATmega48A-PA-88A-PA-168A-PA-328-P-DS-DS40002061B.pdf\",\"provenance\":\"datasheet\",\"conditions\":\"absolute maximum rating\",\"note\":\"chip, not board. Section 29.1 Absolute Maximum Ratings (p. 308): DC current per I/O pin 40.0 mA. The datasheet gives no continuous per-pin rating: the 20 mA in Table 30-1 is a VOH/VOL test condition (notes 3 and 4, p. 323).\"},{\"of\":{\"pin\":\"D8\"},\"kind\":\"absMaxCurrent\",\"value\":0.04,\"source\":\"https://ww1.microchip.com/downloads/aemDocuments/documents/MCU08/ProductDocuments/DataSheets/ATmega48A-PA-88A-PA-168A-PA-328-P-DS-DS40002061B.pdf\",\"provenance\":\"datasheet\",\"conditions\":\"absolute maximum rating\",\"note\":\"chip, not board. Section 29.1 Absolute Maximum Ratings (p. 308): DC current per I/O pin 40.0 mA. The datasheet gives no continuous per-pin rating: the 20 mA in Table 30-1 is a VOH/VOL test condition (notes 3 and 4, p. 323).\"},{\"of\":{\"pin\":\"D9\"},\"kind\":\"absMaxCurrent\",\"value\":0.04,\"source\":\"https://ww1.microchip.com/downloads/aemDocuments/documents/MCU08/ProductDocuments/DataSheets/ATmega48A-PA-88A-PA-168A-PA-328-P-DS-DS40002061B.pdf\",\"provenance\":\"datasheet\",\"conditions\":\"absolute maximum rating\",\"note\":\"chip, not board. Section 29.1 Absolute Maximum Ratings (p. 308): DC current per I/O pin 40.0 mA. The datasheet gives no continuous per-pin rating: the 20 mA in Table 30-1 is a VOH/VOL test condition (notes 3 and 4, p. 323).\"},{\"of\":{\"pin\":\"D10\"},\"kind\":\"absMaxCurrent\",\"value\":0.04,\"source\":\"https://ww1.microchip.com/downloads/aemDocuments/documents/MCU08/ProductDocuments/DataSheets/ATmega48A-PA-88A-PA-168A-PA-328-P-DS-DS40002061B.pdf\",\"provenance\":\"datasheet\",\"conditions\":\"absolute maximum rating\",\"note\":\"chip, not board. Section 29.1 Absolute Maximum Ratings (p. 308): DC current per I/O pin 40.0 mA. The datasheet gives no continuous per-pin rating: the 20 mA in Table 30-1 is a VOH/VOL test condition (notes 3 and 4, p. 323).\"},{\"of\":{\"pin\":\"D11\"},\"kind\":\"absMaxCurrent\",\"value\":0.04,\"source\":\"https://ww1.microchip.com/downloads/aemDocuments/documents/MCU08/ProductDocuments/DataSheets/ATmega48A-PA-88A-PA-168A-PA-328-P-DS-DS40002061B.pdf\",\"provenance\":\"datasheet\",\"conditions\":\"absolute maximum rating\",\"note\":\"chip, not board. Section 29.1 Absolute Maximum Ratings (p. 308): DC current per I/O pin 40.0 mA. The datasheet gives no continuous per-pin rating: the 20 mA in Table 30-1 is a VOH/VOL test condition (notes 3 and 4, p. 323).\"},{\"of\":{\"pin\":\"D12\"},\"kind\":\"absMaxCurrent\",\"value\":0.04,\"source\":\"https://ww1.microchip.com/downloads/aemDocuments/documents/MCU08/ProductDocuments/DataSheets/ATmega48A-PA-88A-PA-168A-PA-328-P-DS-DS40002061B.pdf\",\"provenance\":\"datasheet\",\"conditions\":\"absolute maximum rating\",\"note\":\"chip, not board. Section 29.1 Absolute Maximum Ratings (p. 308): DC current per I/O pin 40.0 mA. The datasheet gives no continuous per-pin rating: the 20 mA in Table 30-1 is a VOH/VOL test condition (notes 3 and 4, p. 323).\"},{\"of\":{\"pin\":\"D13\"},\"kind\":\"absMaxCurrent\",\"value\":0.04,\"source\":\"https://ww1.microchip.com/downloads/aemDocuments/documents/MCU08/ProductDocuments/DataSheets/ATmega48A-PA-88A-PA-168A-PA-328-P-DS-DS40002061B.pdf\",\"provenance\":\"datasheet\",\"conditions\":\"absolute maximum rating\",\"note\":\"chip, not board. Section 29.1 Absolute Maximum Ratings (p. 308): DC current per I/O pin 40.0 mA. The datasheet gives no continuous per-pin rating: the 20 mA in Table 30-1 is a VOH/VOL test condition (notes 3 and 4, p. 323).\"},{\"of\":{\"pin\":\"A0\"},\"kind\":\"absMaxCurrent\",\"value\":0.04,\"source\":\"https://ww1.microchip.com/downloads/aemDocuments/documents/MCU08/ProductDocuments/DataSheets/ATmega48A-PA-88A-PA-168A-PA-328-P-DS-DS40002061B.pdf\",\"provenance\":\"datasheet\",\"conditions\":\"absolute maximum rating\",\"note\":\"chip, not board. Section 29.1 Absolute Maximum Ratings (p. 308): DC current per I/O pin 40.0 mA. The datasheet gives no continuous per-pin rating: the 20 mA in Table 30-1 is a VOH/VOL test condition (notes 3 and 4, p. 323).\"},{\"of\":{\"pin\":\"A1\"},\"kind\":\"absMaxCurrent\",\"value\":0.04,\"source\":\"https://ww1.microchip.com/downloads/aemDocuments/documents/MCU08/ProductDocuments/DataSheets/ATmega48A-PA-88A-PA-168A-PA-328-P-DS-DS40002061B.pdf\",\"provenance\":\"datasheet\",\"conditions\":\"absolute maximum rating\",\"note\":\"chip, not board. Section 29.1 Absolute Maximum Ratings (p. 308): DC current per I/O pin 40.0 mA. The datasheet gives no continuous per-pin rating: the 20 mA in Table 30-1 is a VOH/VOL test condition (notes 3 and 4, p. 323).\"},{\"of\":{\"pin\":\"A2\"},\"kind\":\"absMaxCurrent\",\"value\":0.04,\"source\":\"https://ww1.microchip.com/downloads/aemDocuments/documents/MCU08/ProductDocuments/DataSheets/ATmega48A-PA-88A-PA-168A-PA-328-P-DS-DS40002061B.pdf\",\"provenance\":\"datasheet\",\"conditions\":\"absolute maximum rating\",\"note\":\"chip, not board. Section 29.1 Absolute Maximum Ratings (p. 308): DC current per I/O pin 40.0 mA. The datasheet gives no continuous per-pin rating: the 20 mA in Table 30-1 is a VOH/VOL test condition (notes 3 and 4, p. 323).\"},{\"of\":{\"pin\":\"A3\"},\"kind\":\"absMaxCurrent\",\"value\":0.04,\"source\":\"https://ww1.microchip.com/downloads/aemDocuments/documents/MCU08/ProductDocuments/DataSheets/ATmega48A-PA-88A-PA-168A-PA-328-P-DS-DS40002061B.pdf\",\"provenance\":\"datasheet\",\"conditions\":\"absolute maximum rating\",\"note\":\"chip, not board. Section 29.1 Absolute Maximum Ratings (p. 308): DC current per I/O pin 40.0 mA. The datasheet gives no continuous per-pin rating: the 20 mA in Table 30-1 is a VOH/VOL test condition (notes 3 and 4, p. 323).\"},{\"of\":{\"pin\":\"A4\"},\"kind\":\"absMaxCurrent\",\"value\":0.04,\"source\":\"https://ww1.microchip.com/downloads/aemDocuments/documents/MCU08/ProductDocuments/DataSheets/ATmega48A-PA-88A-PA-168A-PA-328-P-DS-DS40002061B.pdf\",\"provenance\":\"datasheet\",\"conditions\":\"absolute maximum rating\",\"note\":\"chip, not board. Section 29.1 Absolute Maximum Ratings (p. 308): DC current per I/O pin 40.0 mA. The datasheet gives no continuous per-pin rating: the 20 mA in Table 30-1 is a VOH/VOL test condition (notes 3 and 4, p. 323).\"},{\"of\":{\"pin\":\"A5\"},\"kind\":\"absMaxCurrent\",\"value\":0.04,\"source\":\"https://ww1.microchip.com/downloads/aemDocuments/documents/MCU08/ProductDocuments/DataSheets/ATmega48A-PA-88A-PA-168A-PA-328-P-DS-DS40002061B.pdf\",\"provenance\":\"datasheet\",\"conditions\":\"absolute maximum rating\",\"note\":\"chip, not board. Section 29.1 Absolute Maximum Ratings (p. 308): DC current per I/O pin 40.0 mA. The datasheet gives no continuous per-pin rating: the 20 mA in Table 30-1 is a VOH/VOL test condition (notes 3 and 4, p. 323).\"},{\"of\":{\"domain\":\"5V\"},\"kind\":\"ioTotalCurrent\",\"value\":0.2,\"source\":\"https://ww1.microchip.com/downloads/aemDocuments/documents/MCU08/ProductDocuments/DataSheets/ATmega48A-PA-88A-PA-168A-PA-328-P-DS-DS40002061B.pdf\",\"provenance\":\"estimate\",\"conditions\":\"absolute maximum rating\",\"note\":\"chip, not board. Section 29.1 (p. 308): DC current VCC and GND pins 200.0 mA, stated per pin; used here as the package total for GPIO current, which is conservative when the package has more than one VCC/GND pin. Table 30-1 notes 3 and 4 (p. 323) also cap port-group sums: IOH 150 mA for C0-C5, D0-D4, ADC7, RESET and 150 mA for B0-B5, D5-D7, ADC6, XTAL1, XTAL2; IOL 100 mA each for C0-C5/ADC6/ADC7, B0-B5/D5-D7/XTAL, D0-D4/RESET. Group sums cannot be expressed here.\"},{\"of\":{\"domain\":\"5V\"},\"kind\":\"vinMax\",\"value\":5.5,\"source\":\"https://ww1.microchip.com/downloads/aemDocuments/documents/MCU08/ProductDocuments/DataSheets/ATmega48A-PA-88A-PA-168A-PA-328-P-DS-DS40002061B.pdf\",\"provenance\":\"datasheet\",\"conditions\":\"operating range, -40 to 85 C\",\"note\":\"chip, not board. Table 29-8 (p. 312) heading: VCC = 1.8 V to 5.5 V. Section 29.1 (p. 308) gives 6.0 V as the maximum operating voltage under absolute maximum ratings.\"},{\"of\":{\"domain\":\"VIN\"},\"kind\":\"vinMax\",\"value\":15,\"source\":\"https://www.ti.com/lit/ds/symlink/lm1117.pdf https://docs.arduino.cc/resources/datasheets/A000005-datasheet.pdf\",\"provenance\":\"datasheet\",\"conditions\":\"recommended operating condition\",\"note\":\"LM1117 (IC2 LM1117IMPX-5.0 on the Nano V3.3 schematic) Recommended Operating Conditions 7.3 (p. 4): input voltage max 15 V; absolute maximum 20 V (7.1, p. 4). The Nano datasheet (A000005, p. 2) gives \\\"7-15V unregulated external power supply (pin 30)\\\".\"},{\"of\":{\"domain\":\"USB\"},\"kind\":\"current\",\"value\":0.5,\"source\":\"https://www.bourns.com/docs/Product-Datasheets/mf-fsmf.pdf\",\"provenance\":\"datasheet\",\"conditions\":\"Ihold at 23 C, still air\",\"note\":\"F1 on the Nano V3.3 schematic is \\\"MFFSMF050\\\" (Bourns MF-FSMF050X) on USB VBUS. MF-FSMF Electrical Characteristic (p. 1): Ihold 0.50 A, Itrip 1.00 A at 23 C; the thermal derating table (p. 2) lowers Ihold with temperature.\"}],\"power\":{\"domains\":[{\"name\":\"VIN\",\"pin\":\"VIN\",\"ret\":\"GND\",\"nominal\":9},{\"name\":\"USB\",\"pin\":\"USB#vbus\",\"ret\":\"USB#gnd\",\"nominal\":5},{\"name\":\"5V\",\"pin\":\"5V\",\"ret\":\"GND\",\"nominal\":5},{\"name\":\"3V3\",\"pin\":\"3V3\",\"ret\":\"GND\",\"nominal\":3.3}],\"draw\":[{\"domain\":\"5V\",\"typical\":{\"value\":0.0095,\"unit\":\"A\",\"source\":\"https://ww1.microchip.com/downloads/aemDocuments/documents/MCU08/ProductDocuments/DataSheets/ATmega48A-PA-88A-PA-168A-PA-328-P-DS-DS40002061B.pdf\",\"provenance\":\"estimate\",\"note\":\"chip, not board (ATmega328P-MU, VQFN-32 \\\"328P-MUR\\\" on the schematic). Read from Figure 31-333 (p. 502, typical active supply current vs frequency, 1-20 MHz): about 9.5 mA on the 5.0 V curve at 16 MHz, 25 C. Table 29-8 (p. 312) gives only 8 MHz: 5.2 mA typ, 9 mA max at VCC = 5 V. A value read off a typical curve, so an estimate. Excludes the board's USB-UART bridge and LEDs (see unaccounted).\"},\"minVolts\":{\"value\":3.78,\"unit\":\"V\",\"source\":\"https://ww1.microchip.com/downloads/aemDocuments/documents/MCU08/ProductDocuments/DataSheets/ATmega48A-PA-88A-PA-168A-PA-328-P-DS-DS40002061B.pdf\",\"provenance\":\"estimate\",\"note\":\"Figure 29-1 Maximum Frequency vs. VCC (p. 312): linear from 10 MHz at 2.7 V to 20 MHz at 4.5 V, so 16 MHz needs 2.7 + (16 - 10) / (20 - 10) x 1.8 = 3.78 V. Chip, not board.\"}}],\"rails\":[{\"id\":\"vin-ldo\",\"inputs\":[{\"domain\":\"VIN\",\"via\":\"direct\"}],\"output\":\"5V\",\"kind\":\"ldo\",\"vout\":{\"value\":5,\"unit\":\"V\",\"source\":\"https://www.ti.com/lit/ds/symlink/lm1117.pdf\",\"provenance\":\"datasheet\",\"note\":\"LM1117IMPX-5.0 (IC2 on the Nano V3.3 schematic; the \\\"I\\\" grade, so table 7.6). 7.6 LM1117I Electrical Characteristics (p. 7): LM1117I-5.0 output voltage 5.00 V typ (4.95 to 5.05 V at 25 C).\"},\"dropout\":{\"value\":1.1,\"unit\":\"V\",\"source\":\"https://www.ti.com/lit/ds/symlink/lm1117.pdf\",\"provenance\":\"datasheet\",\"note\":\"7.6 LM1117I Electrical Characteristics continued (p. 8): dropout typ 1.1 V at IOUT = 100 mA, 25 C (max 1.3 V over -40 to 125 C); 1.15 V at 500 mA, 1.2 V at 800 mA. The 100 mA point is nearest the board's typical load.\"},\"ioutMax\":{\"value\":0.8,\"unit\":\"A\",\"source\":\"https://www.ti.com/lit/ds/symlink/lm1117.pdf\",\"provenance\":\"datasheet\",\"note\":\"p. 1 Features: output current 800 mA; 7.6 (p. 8) current limit min 800 mA (typ 1200) at VIN - VOUT = 5 V, 25 C. Thermal limits (SOT-223) cap the real current lower at high VIN.\"},\"iq\":{\"value\":0.005,\"unit\":\"A\",\"source\":\"https://www.ti.com/lit/ds/symlink/lm1117.pdf\",\"provenance\":\"datasheet\",\"note\":\"7.6 (p. 8): LM1117I-5.0 quiescent current typ 5 mA at VIN <= 15 V, 25 C (max 15 mA over temperature).\"},\"reverse\":\"body-diode\"},{\"id\":\"usb-diode\",\"inputs\":[{\"domain\":\"USB\",\"via\":\"direct\"}],\"output\":\"5V\",\"kind\":\"switch\",\"vf\":{\"value\":0.31,\"unit\":\"V\",\"source\":\"https://www.vishay.com/docs/88915/ss1p3l.pdf\",\"provenance\":\"estimate\",\"note\":\"D1 on the Nano V3.3 schematic is an SS1P3L (Vishay), VUSB anode to +5V cathode (\\\"+5V AUTO SELECTOR\\\"). Read from Fig. 3 Typical Instantaneous Forward Characteristics (p. 3), 25 C curve at about 0.1 A: about 0.31 V. The only tabulated value is the maximum, 0.45 V at IF = 1.0 A, 25 C (Electrical Characteristics, p. 2).\"},\"reverse\":\"blocks\"},{\"id\":\"3v3-ft232\",\"inputs\":[{\"domain\":\"5V\",\"via\":\"direct\"}],\"output\":\"3V3\",\"kind\":\"ldo\",\"vout\":{\"value\":3.3,\"unit\":\"V\",\"source\":\"https://cdn.sparkfun.com/datasheets/BreakoutBoards/DS_FT232R.pdf\",\"provenance\":\"datasheet\",\"note\":\"The Nano's 3V3 pin is the FT232RL 3V3OUT (pin 17, IC1 on the Nano V3.3 schematic). FT232R datasheet v2.10, Table 5.2 (p. 18): 3.3 V regulator output min 3.0, typ 3.3, max 3.6 V.\"},\"dropout\":{\"value\":0.7,\"unit\":\"V\",\"source\":\"https://cdn.sparkfun.com/datasheets/BreakoutBoards/DS_FT232R.pdf\",\"provenance\":\"estimate\",\"note\":\"The FT232R datasheet gives no dropout. Table 5.2 (p. 18): VCC operating supply min 4.0 V with the internal oscillator, so the 3.3 V output is assumed to hold down to VCC = 4.0 V: 4.0 - 3.3 = 0.7 V.\"},\"ioutMax\":{\"value\":0.05,\"unit\":\"A\",\"source\":\"https://cdn.sparkfun.com/datasheets/BreakoutBoards/DS_FT232R.pdf\",\"provenance\":\"datasheet\",\"note\":\"Pin description (p. 8) and section 4 (p. 15): \\\"Up to 50mA can be drawn from this pin to power external logic\\\"; \\\"a maximum current of 50mA\\\". The LDO also feeds the FT232R's own USB transceiver.\"},\"reverse\":\"body-diode\"}]},\"gpio\":{\"domain\":\"5V\",\"pins\":[\"RX0\",\"TX1\",\"D2\",\"D3\",\"D4\",\"D5\",\"D6\",\"D7\",\"D8\",\"D9\",\"D10\",\"D11\",\"D12\",\"D13\",\"A0\",\"A1\",\"A2\",\"A3\",\"A4\",\"A5\",\"A6\",\"A7\"],\"outputResistance\":{\"value\":25,\"unit\":\"ohm\",\"source\":\"https://ww1.microchip.com/downloads/aemDocuments/documents/MCU08/ProductDocuments/DataSheets/ATmega48A-PA-88A-PA-168A-PA-328-P-DS-DS40002061B.pdf\",\"provenance\":\"estimate\",\"note\":\"Read from the typical 25 C curves at VCC = 5 V: Figure 31-353 (p. 513) VOL about 0.47 V at 20 mA sink = 23.5 ohm; Figure 31-355 (p. 514) VOH about 4.48 V at 20 mA source = (5 - 4.48) / 0.02 = 26 ohm; mean about 25 ohm. Worst case from Table 30-1 (pp. 322-323): VOL max 0.9 V at 20 mA (45 ohm), VOH min 4.2 V at 20 mA (40 ohm). Chip, not board.\"},\"pullup\":{\"value\":35000,\"unit\":\"ohm\",\"source\":\"https://ww1.microchip.com/downloads/aemDocuments/documents/MCU08/ProductDocuments/DataSheets/ATmega48A-PA-88A-PA-168A-PA-328-P-DS-DS40002061B.pdf\",\"provenance\":\"estimate\",\"note\":\"Table 30-1 (p. 323) RPU I/O pin pull-up resistor min 20 kohm, max 50 kohm, no typical; midpoint taken. Chip, not board.\"},\"inputLeakage\":{\"value\":0.000001,\"unit\":\"A\",\"source\":\"https://ww1.microchip.com/downloads/aemDocuments/documents/MCU08/ProductDocuments/DataSheets/ATmega48A-PA-88A-PA-168A-PA-328-P-DS-DS40002061B.pdf\",\"provenance\":\"datasheet\",\"note\":\"chip, not board. Table 30-1 (p. 323) IIL / IIH input leakage current I/O pin max 1 uA at VCC = 5.5 V (absolute value).\"}},\"usbPorts\":{\"USB\":{\"gnd\":\"GND\"}},\"unaccounted\":[\"The board's FT232RL USB-UART bridge on +5V: its datasheet gives 15 mA typ operating current (Table 5.2, p. 18), but a bridge's idle current is only counted from the board schematic or a measurement, so it is not added to the draw.\",\"The board's green PWR LED from +5V through a 1 kohm resistor to GND: roughly (5 V - 2 V) / 1 kohm = 3 mA for a green LED Vf of about 2 V (LED part unknown).\",\"The board's RX (red) and TX (green) LEDs through 1 kohm resistors from +5V, lit by the USB-UART bridge when serial traffic flows.\"]}}"),
 		art: {
 			"w": 80,
 			"h": 180,
@@ -15558,15 +16230,7 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			"w": 21,
 			"h": 27
 		},
-		electrical: {
-			"model": "mcu",
-			"params": {},
-			"external": [{
-				"pin": "5V",
-				"volts": 5,
-				"via": "USB"
-			}]
-		},
+		electrical: /* @__PURE__ */ JSON.parse("{\"model\":\"mcu\",\"params\":{},\"external\":[{\"pin\":\"5V\",\"volts\":5,\"via\":\"USB\"}],\"sim\":{\"limits\":[{\"of\":{\"pin\":\"D0\"},\"kind\":\"absMaxCurrent\",\"value\":0.04,\"source\":\"https://ww1.microchip.com/downloads/aemDocuments/documents/MCU08/ProductDocuments/DataSheets/ATmega48A-PA-88A-PA-168A-PA-328-P-DS-DS40002061B.pdf\",\"provenance\":\"datasheet\",\"conditions\":\"absolute maximum rating\",\"note\":\"chip, not board. Section 29.1 Absolute Maximum Ratings (p. 308): DC current per I/O pin 40.0 mA. The datasheet gives no continuous per-pin rating: the 20 mA in Table 30-1 is a VOH/VOL test condition (notes 3 and 4, p. 323).\"},{\"of\":{\"pin\":\"D1\"},\"kind\":\"absMaxCurrent\",\"value\":0.04,\"source\":\"https://ww1.microchip.com/downloads/aemDocuments/documents/MCU08/ProductDocuments/DataSheets/ATmega48A-PA-88A-PA-168A-PA-328-P-DS-DS40002061B.pdf\",\"provenance\":\"datasheet\",\"conditions\":\"absolute maximum rating\",\"note\":\"chip, not board. Section 29.1 Absolute Maximum Ratings (p. 308): DC current per I/O pin 40.0 mA. The datasheet gives no continuous per-pin rating: the 20 mA in Table 30-1 is a VOH/VOL test condition (notes 3 and 4, p. 323).\"},{\"of\":{\"pin\":\"D2\"},\"kind\":\"absMaxCurrent\",\"value\":0.04,\"source\":\"https://ww1.microchip.com/downloads/aemDocuments/documents/MCU08/ProductDocuments/DataSheets/ATmega48A-PA-88A-PA-168A-PA-328-P-DS-DS40002061B.pdf\",\"provenance\":\"datasheet\",\"conditions\":\"absolute maximum rating\",\"note\":\"chip, not board. Section 29.1 Absolute Maximum Ratings (p. 308): DC current per I/O pin 40.0 mA. The datasheet gives no continuous per-pin rating: the 20 mA in Table 30-1 is a VOH/VOL test condition (notes 3 and 4, p. 323).\"},{\"of\":{\"pin\":\"D3\"},\"kind\":\"absMaxCurrent\",\"value\":0.04,\"source\":\"https://ww1.microchip.com/downloads/aemDocuments/documents/MCU08/ProductDocuments/DataSheets/ATmega48A-PA-88A-PA-168A-PA-328-P-DS-DS40002061B.pdf\",\"provenance\":\"datasheet\",\"conditions\":\"absolute maximum rating\",\"note\":\"chip, not board. Section 29.1 Absolute Maximum Ratings (p. 308): DC current per I/O pin 40.0 mA. The datasheet gives no continuous per-pin rating: the 20 mA in Table 30-1 is a VOH/VOL test condition (notes 3 and 4, p. 323).\"},{\"of\":{\"pin\":\"D4\"},\"kind\":\"absMaxCurrent\",\"value\":0.04,\"source\":\"https://ww1.microchip.com/downloads/aemDocuments/documents/MCU08/ProductDocuments/DataSheets/ATmega48A-PA-88A-PA-168A-PA-328-P-DS-DS40002061B.pdf\",\"provenance\":\"datasheet\",\"conditions\":\"absolute maximum rating\",\"note\":\"chip, not board. Section 29.1 Absolute Maximum Ratings (p. 308): DC current per I/O pin 40.0 mA. The datasheet gives no continuous per-pin rating: the 20 mA in Table 30-1 is a VOH/VOL test condition (notes 3 and 4, p. 323).\"},{\"of\":{\"pin\":\"D5\"},\"kind\":\"absMaxCurrent\",\"value\":0.04,\"source\":\"https://ww1.microchip.com/downloads/aemDocuments/documents/MCU08/ProductDocuments/DataSheets/ATmega48A-PA-88A-PA-168A-PA-328-P-DS-DS40002061B.pdf\",\"provenance\":\"datasheet\",\"conditions\":\"absolute maximum rating\",\"note\":\"chip, not board. Section 29.1 Absolute Maximum Ratings (p. 308): DC current per I/O pin 40.0 mA. The datasheet gives no continuous per-pin rating: the 20 mA in Table 30-1 is a VOH/VOL test condition (notes 3 and 4, p. 323).\"},{\"of\":{\"pin\":\"D6\"},\"kind\":\"absMaxCurrent\",\"value\":0.04,\"source\":\"https://ww1.microchip.com/downloads/aemDocuments/documents/MCU08/ProductDocuments/DataSheets/ATmega48A-PA-88A-PA-168A-PA-328-P-DS-DS40002061B.pdf\",\"provenance\":\"datasheet\",\"conditions\":\"absolute maximum rating\",\"note\":\"chip, not board. Section 29.1 Absolute Maximum Ratings (p. 308): DC current per I/O pin 40.0 mA. The datasheet gives no continuous per-pin rating: the 20 mA in Table 30-1 is a VOH/VOL test condition (notes 3 and 4, p. 323).\"},{\"of\":{\"pin\":\"D7\"},\"kind\":\"absMaxCurrent\",\"value\":0.04,\"source\":\"https://ww1.microchip.com/downloads/aemDocuments/documents/MCU08/ProductDocuments/DataSheets/ATmega48A-PA-88A-PA-168A-PA-328-P-DS-DS40002061B.pdf\",\"provenance\":\"datasheet\",\"conditions\":\"absolute maximum rating\",\"note\":\"chip, not board. Section 29.1 Absolute Maximum Ratings (p. 308): DC current per I/O pin 40.0 mA. The datasheet gives no continuous per-pin rating: the 20 mA in Table 30-1 is a VOH/VOL test condition (notes 3 and 4, p. 323).\"},{\"of\":{\"pin\":\"D8\"},\"kind\":\"absMaxCurrent\",\"value\":0.04,\"source\":\"https://ww1.microchip.com/downloads/aemDocuments/documents/MCU08/ProductDocuments/DataSheets/ATmega48A-PA-88A-PA-168A-PA-328-P-DS-DS40002061B.pdf\",\"provenance\":\"datasheet\",\"conditions\":\"absolute maximum rating\",\"note\":\"chip, not board. Section 29.1 Absolute Maximum Ratings (p. 308): DC current per I/O pin 40.0 mA. The datasheet gives no continuous per-pin rating: the 20 mA in Table 30-1 is a VOH/VOL test condition (notes 3 and 4, p. 323).\"},{\"of\":{\"pin\":\"D9\"},\"kind\":\"absMaxCurrent\",\"value\":0.04,\"source\":\"https://ww1.microchip.com/downloads/aemDocuments/documents/MCU08/ProductDocuments/DataSheets/ATmega48A-PA-88A-PA-168A-PA-328-P-DS-DS40002061B.pdf\",\"provenance\":\"datasheet\",\"conditions\":\"absolute maximum rating\",\"note\":\"chip, not board. Section 29.1 Absolute Maximum Ratings (p. 308): DC current per I/O pin 40.0 mA. The datasheet gives no continuous per-pin rating: the 20 mA in Table 30-1 is a VOH/VOL test condition (notes 3 and 4, p. 323).\"},{\"of\":{\"pin\":\"D10\"},\"kind\":\"absMaxCurrent\",\"value\":0.04,\"source\":\"https://ww1.microchip.com/downloads/aemDocuments/documents/MCU08/ProductDocuments/DataSheets/ATmega48A-PA-88A-PA-168A-PA-328-P-DS-DS40002061B.pdf\",\"provenance\":\"datasheet\",\"conditions\":\"absolute maximum rating\",\"note\":\"chip, not board. Section 29.1 Absolute Maximum Ratings (p. 308): DC current per I/O pin 40.0 mA. The datasheet gives no continuous per-pin rating: the 20 mA in Table 30-1 is a VOH/VOL test condition (notes 3 and 4, p. 323).\"},{\"of\":{\"pin\":\"D11\"},\"kind\":\"absMaxCurrent\",\"value\":0.04,\"source\":\"https://ww1.microchip.com/downloads/aemDocuments/documents/MCU08/ProductDocuments/DataSheets/ATmega48A-PA-88A-PA-168A-PA-328-P-DS-DS40002061B.pdf\",\"provenance\":\"datasheet\",\"conditions\":\"absolute maximum rating\",\"note\":\"chip, not board. Section 29.1 Absolute Maximum Ratings (p. 308): DC current per I/O pin 40.0 mA. The datasheet gives no continuous per-pin rating: the 20 mA in Table 30-1 is a VOH/VOL test condition (notes 3 and 4, p. 323).\"},{\"of\":{\"pin\":\"D12\"},\"kind\":\"absMaxCurrent\",\"value\":0.04,\"source\":\"https://ww1.microchip.com/downloads/aemDocuments/documents/MCU08/ProductDocuments/DataSheets/ATmega48A-PA-88A-PA-168A-PA-328-P-DS-DS40002061B.pdf\",\"provenance\":\"datasheet\",\"conditions\":\"absolute maximum rating\",\"note\":\"chip, not board. Section 29.1 Absolute Maximum Ratings (p. 308): DC current per I/O pin 40.0 mA. The datasheet gives no continuous per-pin rating: the 20 mA in Table 30-1 is a VOH/VOL test condition (notes 3 and 4, p. 323).\"},{\"of\":{\"pin\":\"D13\"},\"kind\":\"absMaxCurrent\",\"value\":0.04,\"source\":\"https://ww1.microchip.com/downloads/aemDocuments/documents/MCU08/ProductDocuments/DataSheets/ATmega48A-PA-88A-PA-168A-PA-328-P-DS-DS40002061B.pdf\",\"provenance\":\"datasheet\",\"conditions\":\"absolute maximum rating\",\"note\":\"chip, not board. Section 29.1 Absolute Maximum Ratings (p. 308): DC current per I/O pin 40.0 mA. The datasheet gives no continuous per-pin rating: the 20 mA in Table 30-1 is a VOH/VOL test condition (notes 3 and 4, p. 323).\"},{\"of\":{\"pin\":\"A0\"},\"kind\":\"absMaxCurrent\",\"value\":0.04,\"source\":\"https://ww1.microchip.com/downloads/aemDocuments/documents/MCU08/ProductDocuments/DataSheets/ATmega48A-PA-88A-PA-168A-PA-328-P-DS-DS40002061B.pdf\",\"provenance\":\"datasheet\",\"conditions\":\"absolute maximum rating\",\"note\":\"chip, not board. Section 29.1 Absolute Maximum Ratings (p. 308): DC current per I/O pin 40.0 mA. The datasheet gives no continuous per-pin rating: the 20 mA in Table 30-1 is a VOH/VOL test condition (notes 3 and 4, p. 323).\"},{\"of\":{\"pin\":\"A1\"},\"kind\":\"absMaxCurrent\",\"value\":0.04,\"source\":\"https://ww1.microchip.com/downloads/aemDocuments/documents/MCU08/ProductDocuments/DataSheets/ATmega48A-PA-88A-PA-168A-PA-328-P-DS-DS40002061B.pdf\",\"provenance\":\"datasheet\",\"conditions\":\"absolute maximum rating\",\"note\":\"chip, not board. Section 29.1 Absolute Maximum Ratings (p. 308): DC current per I/O pin 40.0 mA. The datasheet gives no continuous per-pin rating: the 20 mA in Table 30-1 is a VOH/VOL test condition (notes 3 and 4, p. 323).\"},{\"of\":{\"pin\":\"A2\"},\"kind\":\"absMaxCurrent\",\"value\":0.04,\"source\":\"https://ww1.microchip.com/downloads/aemDocuments/documents/MCU08/ProductDocuments/DataSheets/ATmega48A-PA-88A-PA-168A-PA-328-P-DS-DS40002061B.pdf\",\"provenance\":\"datasheet\",\"conditions\":\"absolute maximum rating\",\"note\":\"chip, not board. Section 29.1 Absolute Maximum Ratings (p. 308): DC current per I/O pin 40.0 mA. The datasheet gives no continuous per-pin rating: the 20 mA in Table 30-1 is a VOH/VOL test condition (notes 3 and 4, p. 323).\"},{\"of\":{\"pin\":\"A3\"},\"kind\":\"absMaxCurrent\",\"value\":0.04,\"source\":\"https://ww1.microchip.com/downloads/aemDocuments/documents/MCU08/ProductDocuments/DataSheets/ATmega48A-PA-88A-PA-168A-PA-328-P-DS-DS40002061B.pdf\",\"provenance\":\"datasheet\",\"conditions\":\"absolute maximum rating\",\"note\":\"chip, not board. Section 29.1 Absolute Maximum Ratings (p. 308): DC current per I/O pin 40.0 mA. The datasheet gives no continuous per-pin rating: the 20 mA in Table 30-1 is a VOH/VOL test condition (notes 3 and 4, p. 323).\"},{\"of\":{\"pin\":\"A4\"},\"kind\":\"absMaxCurrent\",\"value\":0.04,\"source\":\"https://ww1.microchip.com/downloads/aemDocuments/documents/MCU08/ProductDocuments/DataSheets/ATmega48A-PA-88A-PA-168A-PA-328-P-DS-DS40002061B.pdf\",\"provenance\":\"datasheet\",\"conditions\":\"absolute maximum rating\",\"note\":\"chip, not board. Section 29.1 Absolute Maximum Ratings (p. 308): DC current per I/O pin 40.0 mA. The datasheet gives no continuous per-pin rating: the 20 mA in Table 30-1 is a VOH/VOL test condition (notes 3 and 4, p. 323).\"},{\"of\":{\"pin\":\"A5\"},\"kind\":\"absMaxCurrent\",\"value\":0.04,\"source\":\"https://ww1.microchip.com/downloads/aemDocuments/documents/MCU08/ProductDocuments/DataSheets/ATmega48A-PA-88A-PA-168A-PA-328-P-DS-DS40002061B.pdf\",\"provenance\":\"datasheet\",\"conditions\":\"absolute maximum rating\",\"note\":\"chip, not board. Section 29.1 Absolute Maximum Ratings (p. 308): DC current per I/O pin 40.0 mA. The datasheet gives no continuous per-pin rating: the 20 mA in Table 30-1 is a VOH/VOL test condition (notes 3 and 4, p. 323).\"},{\"of\":{\"domain\":\"5V\"},\"kind\":\"ioTotalCurrent\",\"value\":0.2,\"source\":\"https://ww1.microchip.com/downloads/aemDocuments/documents/MCU08/ProductDocuments/DataSheets/ATmega48A-PA-88A-PA-168A-PA-328-P-DS-DS40002061B.pdf\",\"provenance\":\"estimate\",\"conditions\":\"absolute maximum rating\",\"note\":\"chip, not board. Section 29.1 (p. 308): DC current VCC and GND pins 200.0 mA, stated per pin; used here as the package total for GPIO current, which is conservative when the package has more than one VCC/GND pin. Table 30-1 notes 3 and 4 (p. 323) also cap port-group sums: IOH 150 mA for C0-C5, D0-D4, ADC7, RESET and 150 mA for B0-B5, D5-D7, ADC6, XTAL1, XTAL2; IOL 100 mA each for C0-C5/ADC6/ADC7, B0-B5/D5-D7/XTAL, D0-D4/RESET. Group sums cannot be expressed here.\"},{\"of\":{\"domain\":\"5V\"},\"kind\":\"vinMax\",\"value\":5.5,\"source\":\"https://ww1.microchip.com/downloads/aemDocuments/documents/MCU08/ProductDocuments/DataSheets/ATmega48A-PA-88A-PA-168A-PA-328-P-DS-DS40002061B.pdf\",\"provenance\":\"datasheet\",\"conditions\":\"operating range, -40 to 85 C\",\"note\":\"chip, not board. Table 29-8 (p. 312) heading: VCC = 1.8 V to 5.5 V. Section 29.1 (p. 308) gives 6.0 V as the maximum operating voltage under absolute maximum ratings.\"},{\"of\":{\"domain\":\"VIN\"},\"kind\":\"vinMax\",\"value\":20,\"source\":\"https://docs.arduino.cc/resources/datasheets/A000066-datasheet.pdf https://www.onsemi.com/pdf/datasheet/ncp1117-d.pdf\",\"provenance\":\"datasheet\",\"conditions\":\"board maximum rating\",\"note\":\"Arduino UNO R3 datasheet (A000066) section 2.2 Power Consumption (p. 6): VINMax maximum input voltage from VIN pad 20 V (min 6 V). Equals the NCP1117 absolute maximum input voltage, 20 V (Maximum Ratings, p. 2). NCP1117 note 6 (p. 4): output current must not exceed 1.0 A with Vin above 12 V; the regulator's dissipation (Vin - 5 V) x Iout limits current long before that.\"},{\"of\":{\"domain\":\"USB\"},\"kind\":\"vinMax\",\"value\":5.5,\"source\":\"https://docs.arduino.cc/resources/datasheets/A000066-datasheet.pdf\",\"provenance\":\"datasheet\",\"conditions\":\"board maximum rating\",\"note\":\"Arduino UNO R3 datasheet (A000066) section 2.2 Power Consumption (p. 6): VUSBMax maximum input voltage from USB connector 5.5 V.\"},{\"of\":{\"domain\":\"USB\"},\"kind\":\"current\",\"value\":0.5,\"source\":\"https://www.bourns.com/docs/Product-Datasheets/mf-msmf.pdf\",\"provenance\":\"datasheet\",\"conditions\":\"Ihold at 23 C, still air\",\"note\":\"F1 on the Uno schematic is a Bourns MF-MSMF050-2 (500 mA) from USB VBUS to USBVCC. MF-MSMF Electrical Characteristics (p. 1), MF-MSMF050: Ihold 0.50 A, Itrip 1.00 A at 23 C. Hold current falls with temperature (derating table in the same datasheet).\"}],\"power\":{\"domains\":[{\"name\":\"VIN\",\"pin\":\"VIN\",\"ret\":\"GND\",\"nominal\":9},{\"name\":\"USB\",\"pin\":\"USB#vbus\",\"ret\":\"USB#gnd\",\"nominal\":5},{\"name\":\"5V\",\"pin\":\"5V\",\"ret\":\"GND\",\"nominal\":5},{\"name\":\"3V3\",\"pin\":\"3V3\",\"ret\":\"GND\",\"nominal\":3.3}],\"draw\":[{\"domain\":\"5V\",\"typical\":{\"value\":0.0095,\"unit\":\"A\",\"source\":\"https://ww1.microchip.com/downloads/aemDocuments/documents/MCU08/ProductDocuments/DataSheets/ATmega48A-PA-88A-PA-168A-PA-328-P-DS-DS40002061B.pdf\",\"provenance\":\"estimate\",\"note\":\"chip, not board (ATmega328P-PU, DIP-28). Read from Figure 31-333 (p. 502, typical active supply current vs frequency, 1-20 MHz): about 9.5 mA on the 5.0 V curve at 16 MHz, 25 C. Table 29-8 (p. 312) gives only 8 MHz: 5.2 mA typ, 9 mA max at VCC = 5 V. A value read off a typical curve, so an estimate. Excludes the board's USB-UART bridge and LEDs (see unaccounted).\"},\"minVolts\":{\"value\":3.78,\"unit\":\"V\",\"source\":\"https://ww1.microchip.com/downloads/aemDocuments/documents/MCU08/ProductDocuments/DataSheets/ATmega48A-PA-88A-PA-168A-PA-328-P-DS-DS40002061B.pdf\",\"provenance\":\"estimate\",\"note\":\"Figure 29-1 Maximum Frequency vs. VCC (p. 312): linear from 10 MHz at 2.7 V to 20 MHz at 4.5 V, so 16 MHz needs 2.7 + (16 - 10) / (20 - 10) x 1.8 = 3.78 V. Chip, not board.\"}}],\"rails\":[{\"id\":\"vin-ldo\",\"inputs\":[{\"domain\":\"VIN\",\"via\":\"direct\"}],\"output\":\"5V\",\"kind\":\"ldo\",\"vout\":{\"value\":5,\"unit\":\"V\",\"source\":\"https://www.onsemi.com/pdf/datasheet/ncp1117-d.pdf\",\"provenance\":\"datasheet\",\"note\":\"NCP1117ST50T3G (U1 on the Uno Rev3 schematic). Electrical Characteristics (p. 3): 5.0 V version 5.000 V typ (4.950 to 5.050 V at Vin = 7.0 V, Iout = 10 mA, 25 C).\"},\"dropout\":{\"value\":0.95,\"unit\":\"V\",\"source\":\"https://www.onsemi.com/pdf/datasheet/ncp1117-d.pdf\",\"provenance\":\"datasheet\",\"note\":\"Electrical Characteristics (p. 3): dropout (measured at Vout - 100 mV) typ 0.95 V at Iout = 100 mA (max 1.10 V); 1.01 V at 500 mA, 1.07 V typ / 1.20 V max at 800 mA. The 100 mA point is nearest the board's typical load.\"},\"ioutMax\":{\"value\":1,\"unit\":\"A\",\"source\":\"https://www.onsemi.com/pdf/datasheet/ncp1117-d.pdf\",\"provenance\":\"datasheet\",\"note\":\"p. 1: \\\"output current in excess of 1.0 A\\\"; Electrical Characteristics (p. 3) output current limit min 1000 mA (typ 1500) at Vin - Vout = 5 V, 25 C; note 6 (p. 4): not above 1.0 A with Vin above 12 V. Thermal limits (SOT-223, RthJA 160 C/W minimum pad, p. 2) cap the real current far lower at high VIN.\"},\"iq\":{\"value\":0.006,\"unit\":\"A\",\"source\":\"https://www.onsemi.com/pdf/datasheet/ncp1117-d.pdf\",\"provenance\":\"datasheet\",\"note\":\"Electrical Characteristics continued (p. 4): quiescent current, 5.0 V version at Vin = 15 V, typ 6.0 mA, max 10 mA.\"},\"reverse\":\"body-diode\"},{\"id\":\"usb-switch\",\"inputs\":[{\"domain\":\"USB\",\"via\":\"direct\"}],\"output\":\"5V\",\"kind\":\"switch\",\"ron\":{\"value\":0.21,\"unit\":\"ohm\",\"source\":\"https://www.onsemi.com/pdf/datasheet/fdn340p-d.pdf https://www.bourns.com/docs/Product-Datasheets/mf-msmf.pdf\",\"provenance\":\"estimate\",\"note\":\"Series path USB VBUS -> F1 MF-MSMF050-2 -> USBVCC -> T1 FDN340P -> +5V (Uno Rev3 schematic). FDN340P RDS(on) typ 60 mohm (max 70) at VGS = -4.5 V, ID = -2 A, 25 C (Electrical Characteristics, p. 2; the gate is pulled to about 0 V by the LMV358 comparator, so VGS is about -5 V). MF-MSMF050 resistance Rmin 0.15 ohm, R1max 1.0 ohm (p. 1). 0.06 + 0.15 = 0.21 ohm; after a trip or reflow the fuse can sit up to 1.0 ohm, about 1.07 ohm in total.\"},\"reverse\":\"blocks\"},{\"id\":\"3v3-ldo\",\"inputs\":[{\"domain\":\"5V\",\"via\":\"direct\"}],\"output\":\"3V3\",\"kind\":\"ldo\",\"vout\":{\"value\":3.3,\"unit\":\"V\",\"source\":\"https://www.ti.com/lit/ds/symlink/lp2985.pdf\",\"provenance\":\"datasheet\",\"note\":\"LP2985-33DBVR (U2 on the Uno Rev3 schematic; standard grade, not the LP2985A), fixed 3.3 V output. Electrical Characteristics (p. 5): output voltage tolerance +/-3.0 % over 1 mA to 150 mA for the legacy standard-grade chip (+/-2.5 % over 1 to 50 mA; new chip +/-0.5 %).\"},\"dropout\":{\"value\":0.12,\"unit\":\"V\",\"source\":\"https://www.ti.com/lit/ds/symlink/lp2985.pdf\",\"provenance\":\"datasheet\",\"note\":\"Electrical Characteristics continued (p. 6): dropout typ 120 mV at IOUT = 50 mA, 25 C, for both the legacy and the new chip (max 150 / 145 mV). At 150 mA: 280 mV typ legacy, 180 mV new chip. Which die a given board carries is not known.\"},\"ioutMax\":{\"value\":0.15,\"unit\":\"A\",\"source\":\"https://www.ti.com/lit/ds/symlink/lp2985.pdf\",\"provenance\":\"datasheet\",\"note\":\"Recommended Operating Conditions (p. 4): output current 0 to 150 mA. Peak output current min 300 mA (p. 7).\"},\"iq\":{\"value\":0.000069,\"unit\":\"A\",\"source\":\"https://www.ti.com/lit/ds/symlink/lp2985.pdf\",\"provenance\":\"datasheet\",\"note\":\"Electrical Characteristics continued (p. 6): GND pin current at IOUT = 0 mA typ 69 uA (new chip; 65 uA legacy chip), max 95 uA; it rises with load (765 to 850 uA typ at 150 mA).\"},\"reverse\":\"body-diode\"}]},\"gpio\":{\"domain\":\"5V\",\"pins\":[\"D0\",\"D1\",\"D2\",\"D3\",\"D4\",\"D5\",\"D6\",\"D7\",\"D8\",\"D9\",\"D10\",\"D11\",\"D12\",\"D13\",\"A0\",\"A1\",\"A2\",\"A3\",\"A4\",\"A5\"],\"outputResistance\":{\"value\":25,\"unit\":\"ohm\",\"source\":\"https://ww1.microchip.com/downloads/aemDocuments/documents/MCU08/ProductDocuments/DataSheets/ATmega48A-PA-88A-PA-168A-PA-328-P-DS-DS40002061B.pdf\",\"provenance\":\"estimate\",\"note\":\"Read from the typical 25 C curves at VCC = 5 V: Figure 31-353 (p. 513) VOL about 0.47 V at 20 mA sink = 23.5 ohm; Figure 31-355 (p. 514) VOH about 4.48 V at 20 mA source = (5 - 4.48) / 0.02 = 26 ohm; mean about 25 ohm. Worst case from Table 30-1 (pp. 322-323): VOL max 0.9 V at 20 mA (45 ohm), VOH min 4.2 V at 20 mA (40 ohm). Chip, not board.\"},\"pullup\":{\"value\":35000,\"unit\":\"ohm\",\"source\":\"https://ww1.microchip.com/downloads/aemDocuments/documents/MCU08/ProductDocuments/DataSheets/ATmega48A-PA-88A-PA-168A-PA-328-P-DS-DS40002061B.pdf\",\"provenance\":\"estimate\",\"note\":\"Table 30-1 (p. 323) RPU I/O pin pull-up resistor min 20 kohm, max 50 kohm, no typical; midpoint taken. Chip, not board.\"},\"inputLeakage\":{\"value\":0.000001,\"unit\":\"A\",\"source\":\"https://ww1.microchip.com/downloads/aemDocuments/documents/MCU08/ProductDocuments/DataSheets/ATmega48A-PA-88A-PA-168A-PA-328-P-DS-DS40002061B.pdf\",\"provenance\":\"datasheet\",\"note\":\"chip, not board. Table 30-1 (p. 323) IIL / IIH input leakage current I/O pin max 1 uA at VCC = 5.5 V (absolute value).\"}},\"usbPorts\":{\"USB\":{\"gnd\":\"GND\"}},\"unaccounted\":[\"The board's ATmega16U2 USB-UART bridge on +5V: no idle current on the schematic and no measurement (its own datasheet was not consulted).\",\"The board's green ON LED from +5V through two 1 kohm resistors in parallel (500 ohm) to GND: the schematic gives the resistors, not the LED; roughly (5 V - 2 V) / 500 ohm = 6 mA for a green LED Vf of about 2 V (LED part unknown).\",\"The board's TX and RX LEDs (1 kohm each from +5V, lit by the USB-UART bridge when serial traffic flows) and the \\\"L\\\" LED (1 kohm, driven by the board's op-amp from D13).\",\"The board's LMV358 dual op-amp supply current on +5V.\",\"The board's VIN sense divider (10 kohm + 10 kohm) from VIN to GND: VIN / 20 kohm, 0.45 mA at 9 V (arithmetic from the schematic).\"]}}"),
 		art: {
 			"w": 210,
 			"h": 270,
@@ -18857,7 +19521,25 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			"params": { "voltage": {
 				"unit": "V",
 				"default": 3.7
-			} }
+			} },
+			"sim": {
+				"modelParams": { "rInternal": {
+					"value": .1,
+					"unit": "ohm",
+					"source": "https://e2e.ti.com/cfs-file/__key/communityserver-discussions-components-files/196/ICR18650_2D00_26J_2D00_Samsung.pdf",
+					"provenance": "representative",
+					"note": "Samsung SDI ICR18650-26J (2600 mAh Li-ion), Specification of Product, 7.3 \"Initial internal impedance\" (p. 4): <= 100 mOhm, AC 1 kHz after the standard charge, 23 C. This is the specified maximum, not a typical: a fresh cell usually measures lower at 1 kHz, while its DC effective resistance is above the 1 kHz figure."
+				} },
+				"limits": [{
+					"of": { "part": true },
+					"kind": "sourceCurrent",
+					"value": 5.2,
+					"source": "https://e2e.ti.com/cfs-file/__key/communityserver-discussions-components-files/196/ICR18650_2D00_26J_2D00_Samsung.pdf",
+					"provenance": "representative",
+					"conditions": "23 C (room temperature)",
+					"note": "Samsung SDI ICR18650-26J, Specification of Product, 3.6 \"Max. continuous discharge 5.2A (@ RT)\". High-drain 18650s are rated far higher and protected cells lower; a user can enter their cell on the part (spec 3.5)."
+				}]
+			}
 		},
 		art: {
 			"w": 70,
@@ -18955,7 +19637,26 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			"params": { "voltage": {
 				"unit": "V",
 				"default": 7.4
-			} }
+			} },
+			"sim": {
+				"modelParams": { "rInternal": {
+					"value": .2,
+					"unit": "ohm",
+					"source": "https://e2e.ti.com/cfs-file/__key/communityserver-discussions-components-files/196/ICR18650_2D00_26J_2D00_Samsung.pdf",
+					"provenance": "estimate",
+					"note": "The holder is not the cell: estimate for a generic Li-ion 18650 cell (Samsung SDI ICR18650-26J assumed) in each slot, 2 cells in series: 2 x 0.1 ohm = 0.2 ohm. Per-cell value: Samsung SDI ICR18650-26J (2600 mAh Li-ion), Specification of Product, 7.3 \"Initial internal impedance\" (p. 4): <= 100 mOhm, AC 1 kHz after the standard charge, 23 C. This is the specified maximum, not a typical: a fresh cell usually measures lower at 1 kHz, while its DC effective resistance is above the 1 kHz figure."
+				} },
+				"limits": [{
+					"of": { "part": true },
+					"kind": "sourceCurrent",
+					"value": 5.2,
+					"source": "https://e2e.ti.com/cfs-file/__key/communityserver-discussions-components-files/196/ICR18650_2D00_26J_2D00_Samsung.pdf",
+					"provenance": "estimate",
+					"conditions": "23 C (room temperature)",
+					"note": "The holder is not the cell: estimate for a generic Li-ion 18650 cell (Samsung SDI ICR18650-26J assumed) in each slot; in series every cell carries the same current, so the limit is one cell's (5.2 A). Per-cell value (representative): Samsung SDI ICR18650-26J, Specification of Product, 3.6 \"Max. continuous discharge 5.2A (@ RT)\". High-drain 18650s are rated far higher and protected cells lower; a user can enter their cell on the part (spec 3.5)."
+				}],
+				"unaccounted": ["Contact and lead resistance of the holder itself (springs, tabs, wires): no datasheet for a generic holder, so it is not added to the internal resistance."]
+			}
 		},
 		art: {
 			"w": 100,
@@ -19087,7 +19788,26 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			"params": { "voltage": {
 				"unit": "V",
 				"default": 3.7
-			} }
+			} },
+			"sim": {
+				"modelParams": { "rInternal": {
+					"value": .1,
+					"unit": "ohm",
+					"source": "https://e2e.ti.com/cfs-file/__key/communityserver-discussions-components-files/196/ICR18650_2D00_26J_2D00_Samsung.pdf",
+					"provenance": "estimate",
+					"note": "The holder is not the cell: estimate for a generic Li-ion 18650 cell (Samsung SDI ICR18650-26J assumed) in each slot: 0.1 ohm. Per-cell value: Samsung SDI ICR18650-26J (2600 mAh Li-ion), Specification of Product, 7.3 \"Initial internal impedance\" (p. 4): <= 100 mOhm, AC 1 kHz after the standard charge, 23 C. This is the specified maximum, not a typical: a fresh cell usually measures lower at 1 kHz, while its DC effective resistance is above the 1 kHz figure."
+				} },
+				"limits": [{
+					"of": { "part": true },
+					"kind": "sourceCurrent",
+					"value": 5.2,
+					"source": "https://e2e.ti.com/cfs-file/__key/communityserver-discussions-components-files/196/ICR18650_2D00_26J_2D00_Samsung.pdf",
+					"provenance": "estimate",
+					"conditions": "23 C (room temperature)",
+					"note": "The holder is not the cell: estimate for a generic Li-ion 18650 cell (Samsung SDI ICR18650-26J assumed) in each slot. Per-cell value (representative): Samsung SDI ICR18650-26J, Specification of Product, 3.6 \"Max. continuous discharge 5.2A (@ RT)\". High-drain 18650s are rated far higher and protected cells lower; a user can enter their cell on the part (spec 3.5)."
+				}],
+				"unaccounted": ["Contact and lead resistance of the holder itself (springs, tabs, wires): no datasheet for a generic holder, so it is not added to the internal resistance."]
+			}
 		},
 		art: {
 			"w": 100,
@@ -19204,7 +19924,25 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			"params": { "voltage": {
 				"unit": "V",
 				"default": 9
-			} }
+			} },
+			"sim": {
+				"modelParams": { "rInternal": {
+					"value": 2.3,
+					"unit": "ohm",
+					"source": "https://www.farnell.com/datasheets/3625657.pdf",
+					"provenance": "representative",
+					"note": "Duracell MN1604 Coppertop (alkaline 9 V, 6LR61). Datasheet p. 2, \"Typical Duracell 9V Performance\" graph, right axis \"DC Resistance (ohms)\": about 2.3 ohm at the start of the curve (about 6% DOD), rising to about 4.1 ohm at 100% DOD (read from the graph). The p. 1 table gives \"Impedance 1,700 m-ohm @ 1 kHz\", which reads below the DC value. Fresh cell, room temperature."
+				} },
+				"limits": [{
+					"of": { "part": true },
+					"kind": "sourceCurrent",
+					"value": .25,
+					"source": "https://www.farnell.com/datasheets/3625657.pdf",
+					"provenance": "estimate",
+					"conditions": "fresh alkaline 9 V, room temperature",
+					"note": "No maximum discharge current is published for an alkaline 9 V. 250 mA is the heaviest constant-current discharge the Duracell MN1604 datasheet charts (\"Coppertop 9V Constant Current\", 50/100/250 mA; about 1 hour to 5 V at 250 mA)."
+				}]
+			}
 		},
 		art: {
 			"w": 80,
@@ -19295,7 +20033,25 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			"params": { "voltage": {
 				"unit": "V",
 				"default": 1.5
-			} }
+			} },
+			"sim": {
+				"modelParams": { "rInternal": {
+					"value": .15,
+					"unit": "ohm",
+					"source": "https://data.energizer.com/pdfs/e91.pdf https://data.energizer.com/pdfs/batteryir.pdf",
+					"provenance": "representative",
+					"note": "Energizer E91 (alkaline AA). E91 datasheet, Specifications: \"Nominal IR: 150 to 300 milliohms (fresh)\". Energizer technical bulletin \"Battery Internal Resistance\" (2005), fig. 2 on p. 2, shows a fresh E91 at about 0.14 ohm at 20 to 21 C (read from the graph; 0.15 ohm is the low end of the datasheet range) (total effective resistance, dual pulse 5 mA / 505 mA for 100 ms). Fresh cell."
+				} },
+				"limits": [{
+					"of": { "part": true },
+					"kind": "sourceCurrent",
+					"value": 1,
+					"source": "https://data.energizer.com/pdfs/en91.pdf",
+					"provenance": "estimate",
+					"conditions": "fresh alkaline AA, 21 C",
+					"note": "No maximum discharge current is published for an alkaline AA. 1 A is the heaviest constant-current discharge the Energizer EN91 (alkaline AA) datasheet charts (\"Constant Current Performance\", axis to 1000 mA); delivered capacity falls steeply with drain (its \"Milliamp-Hours Capacity\" chart: about 2850 mAh at 25 mA, about 1400 mAh at 500 mA)."
+				}]
+			}
 		},
 		art: {
 			"w": 60,
@@ -19386,7 +20142,25 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			"params": { "voltage": {
 				"unit": "V",
 				"default": 1.5
-			} }
+			} },
+			"sim": {
+				"modelParams": { "rInternal": {
+					"value": .3,
+					"unit": "ohm",
+					"source": "https://data.energizer.com/pdfs/e92.pdf https://data.energizer.com/pdfs/lithiumcoin_appman.pdf",
+					"provenance": "representative",
+					"note": "Energizer E92 (alkaline AAA). E92 datasheet, Specifications: \"Nominal IR: 150 to 300 milliohms (fresh)\"; Energizer Lithium Coin Handbook, \"Internal Resistance\" section: \"the starting IR of an E92 AAA alkaline battery is near 0.3 ohms\". Fresh cell."
+				} },
+				"limits": [{
+					"of": { "part": true },
+					"kind": "sourceCurrent",
+					"value": .5,
+					"source": "https://data.energizer.com/pdfs/e92.pdf",
+					"provenance": "estimate",
+					"conditions": "fresh alkaline AAA, 21 C",
+					"note": "No maximum discharge current is published for an alkaline AAA. 0.5 A is the heaviest continuous discharge the Energizer E92 datasheet charts (\"Milliamp-Hours Capacity\", continuous discharge to 0.8 V at 21 C, bars at 25/100/250/500 mA; about 450 mAh at 500 mA vs about 1150 mAh at 25 mA)."
+				}]
+			}
 		},
 		art: {
 			"w": 40,
@@ -19477,7 +20251,25 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			"params": { "voltage": {
 				"unit": "V",
 				"default": 3
-			} }
+			} },
+			"sim": {
+				"modelParams": { "rInternal": {
+					"value": 21,
+					"unit": "ohm",
+					"source": "https://data.energizer.com/pdfs/cr1220.pdf",
+					"provenance": "representative",
+					"note": "Energizer CR1220 (Li/MnO2). Datasheet \"Internal Resistance Characteristics\" graph (pulse test, 62K background, 1K 2 s pulse): IR about 21 to 22 ohm on a fresh cell, dipping to about 20.5 ohm near 5 mAh (read from the graph, right axis 0 to 80 ohm), rising past 70 ohm near end of life. 21 C."
+				} },
+				"limits": [{
+					"of": { "part": true },
+					"kind": "sourceCurrent",
+					"value": .003,
+					"source": "https://energy.panasonic.com/dam/master/pdf/en/datasheet/lithium/CR1220_Datasheet_EN.pdf",
+					"provenance": "estimate",
+					"conditions": "fresh CR1220, 20 C",
+					"note": "No maximum continuous current is published. The Panasonic CR1220 datasheet gives \"Continuous drain 0.1mA\" as its standard drain and charts continuous loads only down to 1 kOhm; 3 V across 1 kOhm is about 3 mA, where capacity is already about halved (about 17 of 35 mAh at 20 C), so 3 mA is a generous ceiling for this small cell."
+				}]
+			}
 		},
 		art: {
 			"w": 40,
@@ -19559,7 +20351,25 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			"params": { "voltage": {
 				"unit": "V",
 				"default": 3
-			} }
+			} },
+			"sim": {
+				"modelParams": { "rInternal": {
+					"value": 14,
+					"unit": "ohm",
+					"source": "https://data.energizer.com/pdfs/cr2016.pdf",
+					"provenance": "representative",
+					"note": "Energizer CR2016 (Li/MnO2). Datasheet \"Internal Resistance Characteristics\" graph: IR about 14 ohm on a fresh cell, about 13 ohm over the first third of capacity (read from the graph, right axis 0 to 120 ohm), rising past 100 ohm near end of life. 21 C."
+				} },
+				"limits": [{
+					"of": { "part": true },
+					"kind": "sourceCurrent",
+					"value": .003,
+					"source": "https://energy.panasonic.com/dam/master/pdf/en/datasheet/lithium/CR2016_Datasheet_EN.pdf",
+					"provenance": "estimate",
+					"conditions": "fresh CR2016, 20 C",
+					"note": "No maximum continuous current is published. The Panasonic CR2016 datasheet gives \"Continuous drain 0.1mA\" as its standard drain and charts continuous loads only down to 1 kOhm; 3 V across 1 kOhm is about 3 mA, where capacity is about 75 of 90 mAh at 20 C."
+				}]
+			}
 		},
 		art: {
 			"w": 50,
@@ -19642,7 +20452,25 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			"params": { "voltage": {
 				"unit": "V",
 				"default": 3
-			} }
+			} },
+			"sim": {
+				"modelParams": { "rInternal": {
+					"value": 8.5,
+					"unit": "ohm",
+					"source": "https://data.energizer.com/pdfs/cr2025.pdf",
+					"provenance": "representative",
+					"note": "Energizer CR2025 (Li/MnO2). Datasheet \"Internal Resistance Characteristics\" graph: IR about 8.5 ohm on a fresh cell, about 9 ohm by 25 mAh (read from the graph, right axis 0 to 120 ohm), rising past 100 ohm near end of life. 21 C."
+				} },
+				"limits": [{
+					"of": { "part": true },
+					"kind": "sourceCurrent",
+					"value": .003,
+					"source": "https://energy.panasonic.com/dam/master/pdf/en/datasheet/lithium/CR2025_Datasheet_EN.pdf",
+					"provenance": "estimate",
+					"conditions": "fresh CR2025, 20 C",
+					"note": "No maximum continuous current is published. The Panasonic CR2025 datasheet gives \"Continuous drain 0.2mA\" as its standard drain and charts continuous loads only down to 1 kOhm; 3 V across 1 kOhm is about 3 mA, where capacity is about 120 of 165 mAh at 20 C."
+				}]
+			}
 		},
 		art: {
 			"w": 50,
@@ -19724,7 +20552,25 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			"params": { "voltage": {
 				"unit": "V",
 				"default": 3
-			} }
+			} },
+			"sim": {
+				"modelParams": { "rInternal": {
+					"value": 10,
+					"unit": "ohm",
+					"source": "https://data.energizer.com/pdfs/cr2032.pdf https://data.energizer.com/pdfs/lithiumcoin_appman.pdf",
+					"provenance": "representative",
+					"note": "Energizer CR2032 (Li/MnO2). CR2032 datasheet \"Pulse Discharge Characteristics\" graph: IR about 9.5 ohm on a fresh cell (read from the graph, right axis 0 to 140 ohm), rising past 100 ohm near end of life. Energizer Lithium Coin Handbook, \"Internal Resistance\" section: \"the starting IR of a 2032 battery is near 10 ohms\" (dual pulse, 1000K background, 50 ms 25 ohm pulse, worked example gives 9 ohm). Fresh cell, 21 C."
+				} },
+				"limits": [{
+					"of": { "part": true },
+					"kind": "sourceCurrent",
+					"value": .003,
+					"source": "https://energy.panasonic.com/dam/master/pdf/en/datasheet/lithium/CR2032_Datasheet_EN.pdf",
+					"provenance": "estimate",
+					"conditions": "fresh CR2032, 20 C",
+					"note": "No maximum continuous current is published. The Panasonic CR2032 datasheet gives \"Continuous drain 0.2mA\" as its standard drain and charts continuous loads only down to 1 kOhm (\"Capacity vs. load resistance\", \"Operating voltage vs. load resistance\"); 3 V across 1 kOhm is about 3 mA, where capacity is already down to about 160 of 225 mAh at 20 C. Short pulses of tens of mA are possible (Energizer handbook, 75 ohm pulse) but are not continuous."
+				}]
+			}
 		},
 		art: {
 			"w": 50,
@@ -19813,7 +20659,26 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			"params": { "voltage": {
 				"unit": "V",
 				"default": 3
-			} }
+			} },
+			"sim": {
+				"modelParams": { "rInternal": {
+					"value": .3,
+					"unit": "ohm",
+					"source": "https://data.energizer.com/pdfs/e91.pdf https://data.energizer.com/pdfs/batteryir.pdf",
+					"provenance": "estimate",
+					"note": "The holder is not the cell: estimate for a generic alkaline AA cell (Energizer E91 assumed) in each slot, 2 cells in series: 2 x 0.15 ohm = 0.3 ohm. Per-cell value: Energizer E91 (alkaline AA). E91 datasheet, Specifications: \"Nominal IR: 150 to 300 milliohms (fresh)\". Energizer technical bulletin \"Battery Internal Resistance\" (2005), fig. 2 on p. 2, shows a fresh E91 at about 0.14 ohm at 20 to 21 C (read from the graph; 0.15 ohm is the low end of the datasheet range) (total effective resistance, dual pulse 5 mA / 505 mA for 100 ms). Fresh cell."
+				} },
+				"limits": [{
+					"of": { "part": true },
+					"kind": "sourceCurrent",
+					"value": 1,
+					"source": "https://data.energizer.com/pdfs/en91.pdf",
+					"provenance": "estimate",
+					"conditions": "fresh alkaline AA, 21 C",
+					"note": "The holder is not the cell: estimate for a generic alkaline AA cell (Energizer E91 assumed) in each slot; in series every cell carries the same current, so the limit is one cell's (1 A). Per-cell value (estimate): No maximum discharge current is published for an alkaline AA. 1 A is the heaviest constant-current discharge the Energizer EN91 (alkaline AA) datasheet charts (\"Constant Current Performance\", axis to 1000 mA); delivered capacity falls steeply with drain (its \"Milliamp-Hours Capacity\" chart: about 2850 mAh at 25 mA, about 1400 mAh at 500 mA)."
+				}],
+				"unaccounted": ["Contact and lead resistance of the holder itself (springs, tabs, wires): no datasheet for a generic holder, so it is not added to the internal resistance."]
+			}
 		},
 		art: {
 			"w": 100,
@@ -19942,7 +20807,26 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			"params": { "voltage": {
 				"unit": "V",
 				"default": 4.5
-			} }
+			} },
+			"sim": {
+				"modelParams": { "rInternal": {
+					"value": .9,
+					"unit": "ohm",
+					"source": "https://data.energizer.com/pdfs/e92.pdf https://data.energizer.com/pdfs/lithiumcoin_appman.pdf",
+					"provenance": "estimate",
+					"note": "The holder is not the cell: estimate for a generic alkaline AAA cell (Energizer E92 assumed) in each slot, 3 cells in series: 3 x 0.3 ohm = 0.9 ohm. Per-cell value: Energizer E92 (alkaline AAA). E92 datasheet, Specifications: \"Nominal IR: 150 to 300 milliohms (fresh)\"; Energizer Lithium Coin Handbook, \"Internal Resistance\" section: \"the starting IR of an E92 AAA alkaline battery is near 0.3 ohms\". Fresh cell."
+				} },
+				"limits": [{
+					"of": { "part": true },
+					"kind": "sourceCurrent",
+					"value": .5,
+					"source": "https://data.energizer.com/pdfs/e92.pdf",
+					"provenance": "estimate",
+					"conditions": "fresh alkaline AAA, 21 C",
+					"note": "The holder is not the cell: estimate for a generic alkaline AAA cell (Energizer E92 assumed) in each slot; in series every cell carries the same current, so the limit is one cell's (0.5 A). Per-cell value (estimate): No maximum discharge current is published for an alkaline AAA. 0.5 A is the heaviest continuous discharge the Energizer E92 datasheet charts (\"Milliamp-Hours Capacity\", continuous discharge to 0.8 V at 21 C, bars at 25/100/250/500 mA; about 450 mAh at 500 mA vs about 1150 mAh at 25 mA)."
+				}],
+				"unaccounted": ["Contact and lead resistance of the holder itself (springs, tabs, wires): no datasheet for a generic holder, so it is not added to the internal resistance."]
+			}
 		},
 		art: {
 			"w": 100,
@@ -20101,7 +20985,26 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			"params": { "voltage": {
 				"unit": "V",
 				"default": 6
-			} }
+			} },
+			"sim": {
+				"modelParams": { "rInternal": {
+					"value": .6,
+					"unit": "ohm",
+					"source": "https://data.energizer.com/pdfs/e91.pdf https://data.energizer.com/pdfs/batteryir.pdf",
+					"provenance": "estimate",
+					"note": "The holder is not the cell: estimate for a generic alkaline AA cell (Energizer E91 assumed) in each slot, 4 cells in series: 4 x 0.15 ohm = 0.6 ohm. Per-cell value: Energizer E91 (alkaline AA). E91 datasheet, Specifications: \"Nominal IR: 150 to 300 milliohms (fresh)\". Energizer technical bulletin \"Battery Internal Resistance\" (2005), fig. 2 on p. 2, shows a fresh E91 at about 0.14 ohm at 20 to 21 C (read from the graph; 0.15 ohm is the low end of the datasheet range) (total effective resistance, dual pulse 5 mA / 505 mA for 100 ms). Fresh cell."
+				} },
+				"limits": [{
+					"of": { "part": true },
+					"kind": "sourceCurrent",
+					"value": 1,
+					"source": "https://data.energizer.com/pdfs/en91.pdf",
+					"provenance": "estimate",
+					"conditions": "fresh alkaline AA, 21 C",
+					"note": "The holder is not the cell: estimate for a generic alkaline AA cell (Energizer E91 assumed) in each slot; in series every cell carries the same current, so the limit is one cell's (1 A). Per-cell value (estimate): No maximum discharge current is published for an alkaline AA. 1 A is the heaviest constant-current discharge the Energizer EN91 (alkaline AA) datasheet charts (\"Constant Current Performance\", axis to 1000 mA); delivered capacity falls steeply with drain (its \"Milliamp-Hours Capacity\" chart: about 2850 mAh at 25 mA, about 1400 mAh at 500 mA)."
+				}],
+				"unaccounted": ["Contact and lead resistance of the holder itself (springs, tabs, wires): no datasheet for a generic holder, so it is not added to the internal resistance."]
+			}
 		},
 		art: {
 			"w": 100,
@@ -20290,7 +21193,26 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			"params": { "voltage": {
 				"unit": "V",
 				"default": 3
-			} }
+			} },
+			"sim": {
+				"modelParams": { "rInternal": {
+					"value": 10,
+					"unit": "ohm",
+					"source": "https://data.energizer.com/pdfs/cr2032.pdf https://data.energizer.com/pdfs/lithiumcoin_appman.pdf",
+					"provenance": "estimate",
+					"note": "The holder is not the cell: estimate for a generic CR2032 lithium coin cell (Energizer CR2032 assumed) in each slot: 10 ohm. Per-cell value: Energizer CR2032 (Li/MnO2). CR2032 datasheet \"Pulse Discharge Characteristics\" graph: IR about 9.5 ohm on a fresh cell (read from the graph, right axis 0 to 140 ohm), rising past 100 ohm near end of life. Energizer Lithium Coin Handbook, \"Internal Resistance\" section: \"the starting IR of a 2032 battery is near 10 ohms\" (dual pulse, 1000K background, 50 ms 25 ohm pulse, worked example gives 9 ohm). Fresh cell, 21 C."
+				} },
+				"limits": [{
+					"of": { "part": true },
+					"kind": "sourceCurrent",
+					"value": .003,
+					"source": "https://energy.panasonic.com/dam/master/pdf/en/datasheet/lithium/CR2032_Datasheet_EN.pdf",
+					"provenance": "estimate",
+					"conditions": "fresh CR2032, 20 C",
+					"note": "The holder is not the cell: estimate for a generic CR2032 lithium coin cell (Energizer CR2032 assumed) in each slot. Per-cell value (estimate): No maximum continuous current is published. The Panasonic CR2032 datasheet gives \"Continuous drain 0.2mA\" as its standard drain and charts continuous loads only down to 1 kOhm (\"Capacity vs. load resistance\", \"Operating voltage vs. load resistance\"); 3 V across 1 kOhm is about 3 mA, where capacity is already down to about 160 of 225 mAh at 20 C. Short pulses of tens of mA are possible (Energizer handbook, 75 ohm pulse) but are not continuous."
+				}],
+				"unaccounted": ["Contact and lead resistance of the holder itself (springs, tabs, wires): no datasheet for a generic holder, so it is not added to the internal resistance."]
+			}
 		},
 		art: {
 			"w": 80,
@@ -20391,7 +21313,25 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			"params": { "voltage": {
 				"unit": "V",
 				"default": 1.5
-			} }
+			} },
+			"sim": {
+				"modelParams": { "rInternal": {
+					"value": 6,
+					"unit": "ohm",
+					"source": "https://data.energizer.com/pdfs/a76.pdf",
+					"provenance": "estimate",
+					"note": "Estimate from Energizer A76 (alkaline LR44). Datasheet Specifications: \"Impedance (40 Hz): 3 to 9 ohms\"; 6 ohm is the midpoint of that range, (3 + 9) / 2 (the sheet does not say where a fresh cell sits in it)."
+				} },
+				"limits": [{
+					"of": { "part": true },
+					"kind": "sourceCurrent",
+					"value": .01,
+					"source": "https://data.energizer.com/pdfs/a76.pdf",
+					"provenance": "estimate",
+					"conditions": "fresh alkaline LR44, 21 C",
+					"note": "No maximum current is published: the Energizer A76 datasheet characterises only a 7.5 kOhm continuous drain (about 0.17 mA) and says the cell is \"designed for electronic applications which may require high rate pulses\". 10 mA is an assumed ceiling for a 150 mAh button cell with 3 to 9 ohm impedance, not a sourced figure."
+				}]
+			}
 		},
 		art: {
 			"w": 40,
@@ -25820,6 +26760,41 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 						"mains": "N"
 					}]
 				}]
+			},
+			"sim": {
+				"power": {
+					"domains": [{
+						"name": "5V",
+						"pin": "5V",
+						"ret": "GND",
+						"nominal": 5
+					}],
+					"source": {
+						"domain": "5V",
+						"voltage": {
+							"value": 5,
+							"unit": "V",
+							"source": "https://www.meanwell.com/Upload/PDF/NGE12/NGE12-SPEC.PDF",
+							"provenance": "representative",
+							"note": "Mean Well NGE12 05-USB (12 W wall adapter with a USB Type-A output, the 5 V model of the NGE12 series), SPECIFICATION p. 2: DC voltage 5 V, voltage tolerance +/-5.0%."
+						},
+						"rInternal": {
+							"value": .1,
+							"unit": "ohm",
+							"source": "https://www.meanwell.com/Upload/PDF/NGE12/NGE12-SPEC.PDF",
+							"provenance": "estimate",
+							"note": "Derived from the Mean Well NGE12 05-USB load regulation, +/-5.0% (SPECIFICATION p. 2): band +/-5% x 5 V = +/-0.25 V, whole swing up to 0.5 V over 0 to 2.4 A, 0.5 / 2.4 = 0.208 ohm, rounded to 0.21. Mean Well NGE12 SPECIFICATION p. 3, Note 6, reads \"Load regulation is measured from 0% to 100% rated load\"; the plus-minus figure is a band about the output at a reference load, so the whole 0 to rated-load swing can be up to twice the figure. This value uses that upper bound (real units usually droop less). Controller ruling (reviewers disagreed): the two readings are 0.1 ohm (the +/-x% figure taken as the whole no-load to full-load swing) and 0.21 ohm (a band about a reference, up to twice the swing). 0.1 ohm is used: it is nearer typical droop, and this estimate never blocks."
+						},
+						"imax": {
+							"value": 2.4,
+							"unit": "A",
+							"source": "https://www.meanwell.com/Upload/PDF/NGE12/NGE12-SPEC.PDF",
+							"provenance": "representative",
+							"note": "Mean Well NGE12 05-USB, SPECIFICATION p. 2: rated current 2.4 A, current range 0 to 2.4 A. Other 5 V USB chargers are commonly rated between 1 A and 3 A."
+						}
+					}
+				},
+				"unaccounted": ["USB charger signalling on D+/D- (BC 1.2, Apple divider) is not modelled: devices see only VBUS."]
 			}
 		},
 		art: {
@@ -26093,6 +27068,41 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 						"mains": "N"
 					}]
 				}]
+			},
+			"sim": {
+				"power": {
+					"domains": [{
+						"name": "5V",
+						"pin": "5V",
+						"ret": "GND",
+						"nominal": 5
+					}],
+					"source": {
+						"domain": "5V",
+						"voltage": {
+							"value": 5,
+							"unit": "V",
+							"source": "https://www.meanwell.com/Upload/PDF/NGE12/NGE12-SPEC.PDF",
+							"provenance": "representative",
+							"note": "Mean Well NGE12 05-USB (12 W wall adapter with a USB Type-A output, the 5 V model of the NGE12 series), SPECIFICATION p. 2: DC voltage 5 V, voltage tolerance +/-5.0%."
+						},
+						"rInternal": {
+							"value": .1,
+							"unit": "ohm",
+							"source": "https://www.meanwell.com/Upload/PDF/NGE12/NGE12-SPEC.PDF",
+							"provenance": "estimate",
+							"note": "Derived from the Mean Well NGE12 05-USB load regulation, +/-5.0% (SPECIFICATION p. 2): band +/-5% x 5 V = +/-0.25 V, whole swing up to 0.5 V over 0 to 2.4 A, 0.5 / 2.4 = 0.208 ohm, rounded to 0.21. Mean Well NGE12 SPECIFICATION p. 3, Note 6, reads \"Load regulation is measured from 0% to 100% rated load\"; the plus-minus figure is a band about the output at a reference load, so the whole 0 to rated-load swing can be up to twice the figure. This value uses that upper bound (real units usually droop less). Controller ruling (reviewers disagreed): the two readings are 0.1 ohm (the +/-x% figure taken as the whole no-load to full-load swing) and 0.21 ohm (a band about a reference, up to twice the swing). 0.1 ohm is used: it is nearer typical droop, and this estimate never blocks."
+						},
+						"imax": {
+							"value": 2.4,
+							"unit": "A",
+							"source": "https://www.meanwell.com/Upload/PDF/NGE12/NGE12-SPEC.PDF",
+							"provenance": "representative",
+							"note": "Mean Well NGE12 05-USB, SPECIFICATION p. 2: rated current 2.4 A, current range 0 to 2.4 A. Other 5 V USB chargers are commonly rated between 1 A and 3 A."
+						}
+					}
+				},
+				"unaccounted": ["USB charger signalling on D+/D- (BC 1.2, Apple divider) is not modelled: devices see only VBUS."]
 			}
 		},
 		art: {
@@ -26261,6 +27271,41 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 						}
 					]
 				}]
+			},
+			"sim": {
+				"power": {
+					"domains": [{
+						"name": "5V",
+						"pin": "5V",
+						"ret": "GND",
+						"nominal": 5
+					}],
+					"source": {
+						"domain": "5V",
+						"voltage": {
+							"value": 5,
+							"unit": "V",
+							"source": "https://www.meanwell.com/Upload/PDF/NGE12/NGE12-SPEC.PDF",
+							"provenance": "representative",
+							"note": "Mean Well NGE12 05-USB (12 W wall adapter with a USB Type-A output, the 5 V model of the NGE12 series), SPECIFICATION p. 2: DC voltage 5 V, voltage tolerance +/-5.0%."
+						},
+						"rInternal": {
+							"value": .1,
+							"unit": "ohm",
+							"source": "https://www.meanwell.com/Upload/PDF/NGE12/NGE12-SPEC.PDF",
+							"provenance": "estimate",
+							"note": "Derived from the Mean Well NGE12 05-USB load regulation, +/-5.0% (SPECIFICATION p. 2): band +/-5% x 5 V = +/-0.25 V, whole swing up to 0.5 V over 0 to 2.4 A, 0.5 / 2.4 = 0.208 ohm, rounded to 0.21. Mean Well NGE12 SPECIFICATION p. 3, Note 6, reads \"Load regulation is measured from 0% to 100% rated load\"; the plus-minus figure is a band about the output at a reference load, so the whole 0 to rated-load swing can be up to twice the figure. This value uses that upper bound (real units usually droop less). Controller ruling (reviewers disagreed): the two readings are 0.1 ohm (the +/-x% figure taken as the whole no-load to full-load swing) and 0.21 ohm (a band about a reference, up to twice the swing). 0.1 ohm is used: it is nearer typical droop, and this estimate never blocks."
+						},
+						"imax": {
+							"value": 2.4,
+							"unit": "A",
+							"source": "https://www.meanwell.com/Upload/PDF/NGE12/NGE12-SPEC.PDF",
+							"provenance": "representative",
+							"note": "Mean Well NGE12 05-USB, SPECIFICATION p. 2: rated current 2.4 A, current range 0 to 2.4 A. Other 5 V USB chargers are commonly rated between 1 A and 3 A."
+						}
+					}
+				},
+				"unaccounted": ["USB charger signalling on D+/D- (BC 1.2, Apple divider) is not modelled: devices see only VBUS."]
 			}
 		},
 		art: {
@@ -26424,6 +27469,41 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 						"mains": "N"
 					}]
 				}]
+			},
+			"sim": {
+				"power": {
+					"domains": [{
+						"name": "5V",
+						"pin": "5V",
+						"ret": "GND",
+						"nominal": 5
+					}],
+					"source": {
+						"domain": "5V",
+						"voltage": {
+							"value": 5,
+							"unit": "V",
+							"source": "https://www.meanwell.com/Upload/PDF/NGE12/NGE12-SPEC.PDF",
+							"provenance": "representative",
+							"note": "Mean Well NGE12 05-USB (12 W wall adapter with a USB Type-A output, the 5 V model of the NGE12 series), SPECIFICATION p. 2: DC voltage 5 V, voltage tolerance +/-5.0%."
+						},
+						"rInternal": {
+							"value": .1,
+							"unit": "ohm",
+							"source": "https://www.meanwell.com/Upload/PDF/NGE12/NGE12-SPEC.PDF",
+							"provenance": "estimate",
+							"note": "Derived from the Mean Well NGE12 05-USB load regulation, +/-5.0% (SPECIFICATION p. 2): band +/-5% x 5 V = +/-0.25 V, whole swing up to 0.5 V over 0 to 2.4 A, 0.5 / 2.4 = 0.208 ohm, rounded to 0.21. Mean Well NGE12 SPECIFICATION p. 3, Note 6, reads \"Load regulation is measured from 0% to 100% rated load\"; the plus-minus figure is a band about the output at a reference load, so the whole 0 to rated-load swing can be up to twice the figure. This value uses that upper bound (real units usually droop less). Controller ruling (reviewers disagreed): the two readings are 0.1 ohm (the +/-x% figure taken as the whole no-load to full-load swing) and 0.21 ohm (a band about a reference, up to twice the swing). 0.1 ohm is used: it is nearer typical droop, and this estimate never blocks."
+						},
+						"imax": {
+							"value": 2.4,
+							"unit": "A",
+							"source": "https://www.meanwell.com/Upload/PDF/NGE12/NGE12-SPEC.PDF",
+							"provenance": "representative",
+							"note": "Mean Well NGE12 05-USB, SPECIFICATION p. 2: rated current 2.4 A, current range 0 to 2.4 A. Other 5 V USB chargers are commonly rated between 1 A and 3 A."
+						}
+					}
+				},
+				"unaccounted": ["USB charger signalling on D+/D- (BC 1.2, Apple divider) is not modelled: devices see only VBUS."]
 			}
 		},
 		art: {
@@ -26564,7 +27644,41 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 		},
 		electrical: {
 			"model": "computer",
-			"params": {}
+			"params": {},
+			"sim": {
+				"power": {
+					"domains": [{
+						"name": "USB",
+						"pin": "USB#vbus",
+						"ret": "USB#gnd",
+						"nominal": 5
+					}],
+					"source": {
+						"domain": "USB",
+						"voltage": {
+							"value": 5,
+							"unit": "V",
+							"source": "https://www.usb.org/document-library/usb-20-specification https://www.usb.org/sites/default/files/usb_20_20250603.zip",
+							"provenance": "representative",
+							"note": "Nominal 5.0 V. USB 2.0 specification (usb_20.pdf in the zip), Table 7-7, p. 178: high-power port VBUS 4.75 to 5.25 V (low-power port 4.40 to 5.25 V); section 7.2.2, p. 175, says the same. The ECN \"USB 2.0 VBUS Max Limit\" in the same zip raises the maximum to 5.50 V. Real computer ports vary within that range."
+						},
+						"rInternal": {
+							"value": .1,
+							"unit": "ohm",
+							"provenance": "estimate",
+							"note": "Assumed: the host's port power switch plus board traces and connector contact, of the order of 0.1 ohm. Not from any datasheet. Upper bound from the spec: a 5.0 V port that stays at or above 4.75 V at 500 mA has at most (5.0 - 4.75) / 0.5 = 0.5 ohm."
+						},
+						"imax": {
+							"value": .5,
+							"unit": "A",
+							"source": "https://www.usb.org/document-library/usb-20-specification https://www.usb.org/sites/default/files/usb_20_20250603.zip",
+							"provenance": "representative",
+							"note": "USB 2.0 specification, Table 7-7, p. 178: ICCPRT, high-power hub port (out), 500 mA minimum (five unit loads of 100 mA, section 7.2.1). A device may draw only 100 mA until configured. Many real ports trip above 500 mA; 500 mA is the guaranteed figure."
+						}
+					}
+				},
+				"unaccounted": ["USB 3.x ports (900 mA) and BC 1.2 charging ports (up to 1.5 A) supply more; the module is declared USB 2.0, so these are left out."]
+			}
 		},
 		art: {
 			"w": 140,
@@ -29023,16 +30137,7 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			"w": 12,
 			"h": 19
 		},
-		electrical: {
-			"model": "mcu",
-			"params": {},
-			"external": [{
-				"pin": "VIN",
-				"volts": 5,
-				"via": "USB",
-				"diode": true
-			}]
-		},
+		electrical: /* @__PURE__ */ JSON.parse("{\"model\":\"mcu\",\"params\":{},\"external\":[{\"pin\":\"VIN\",\"volts\":5,\"via\":\"USB\",\"diode\":true}],\"sim\":{\"limits\":[{\"of\":{\"pin\":\"D32\"},\"kind\":\"current\",\"value\":0.028,\"source\":\"https://www.espressif.com/sites/default/files/documentation/esp32_datasheet_en.pdf\",\"provenance\":\"datasheet\",\"conditions\":\"VDD = 3.3 V, VOL = 0.495 V, drive strength at maximum, 25 C\",\"note\":\"chip, not board. Table 5-3 (p. 52): IOL sink typ 28 mA; IOH source typ 40 mA (VDD3P3_CPU / VDD3P3_RTC domains), so the one limit for both directions takes the smaller, 28 mA. Note 2: the per-pin source current falls from ~40 mA to ~29 mA as more pins source. A rated drive figure, not an absolute maximum (the datasheet gives no per-pin absolute maximum).\"},{\"of\":{\"pin\":\"D33\"},\"kind\":\"current\",\"value\":0.028,\"source\":\"https://www.espressif.com/sites/default/files/documentation/esp32_datasheet_en.pdf\",\"provenance\":\"datasheet\",\"conditions\":\"VDD = 3.3 V, VOL = 0.495 V, drive strength at maximum, 25 C\",\"note\":\"chip, not board. Table 5-3 (p. 52): IOL sink typ 28 mA; IOH source typ 40 mA (VDD3P3_CPU / VDD3P3_RTC domains), so the one limit for both directions takes the smaller, 28 mA. Note 2: the per-pin source current falls from ~40 mA to ~29 mA as more pins source. A rated drive figure, not an absolute maximum (the datasheet gives no per-pin absolute maximum).\"},{\"of\":{\"pin\":\"D25\"},\"kind\":\"current\",\"value\":0.028,\"source\":\"https://www.espressif.com/sites/default/files/documentation/esp32_datasheet_en.pdf\",\"provenance\":\"datasheet\",\"conditions\":\"VDD = 3.3 V, VOL = 0.495 V, drive strength at maximum, 25 C\",\"note\":\"chip, not board. Table 5-3 (p. 52): IOL sink typ 28 mA; IOH source typ 40 mA (VDD3P3_CPU / VDD3P3_RTC domains), so the one limit for both directions takes the smaller, 28 mA. Note 2: the per-pin source current falls from ~40 mA to ~29 mA as more pins source. A rated drive figure, not an absolute maximum (the datasheet gives no per-pin absolute maximum).\"},{\"of\":{\"pin\":\"D26\"},\"kind\":\"current\",\"value\":0.028,\"source\":\"https://www.espressif.com/sites/default/files/documentation/esp32_datasheet_en.pdf\",\"provenance\":\"datasheet\",\"conditions\":\"VDD = 3.3 V, VOL = 0.495 V, drive strength at maximum, 25 C\",\"note\":\"chip, not board. Table 5-3 (p. 52): IOL sink typ 28 mA; IOH source typ 40 mA (VDD3P3_CPU / VDD3P3_RTC domains), so the one limit for both directions takes the smaller, 28 mA. Note 2: the per-pin source current falls from ~40 mA to ~29 mA as more pins source. A rated drive figure, not an absolute maximum (the datasheet gives no per-pin absolute maximum).\"},{\"of\":{\"pin\":\"D27\"},\"kind\":\"current\",\"value\":0.028,\"source\":\"https://www.espressif.com/sites/default/files/documentation/esp32_datasheet_en.pdf\",\"provenance\":\"datasheet\",\"conditions\":\"VDD = 3.3 V, VOL = 0.495 V, drive strength at maximum, 25 C\",\"note\":\"chip, not board. Table 5-3 (p. 52): IOL sink typ 28 mA; IOH source typ 40 mA (VDD3P3_CPU / VDD3P3_RTC domains), so the one limit for both directions takes the smaller, 28 mA. Note 2: the per-pin source current falls from ~40 mA to ~29 mA as more pins source. A rated drive figure, not an absolute maximum (the datasheet gives no per-pin absolute maximum).\"},{\"of\":{\"pin\":\"D14\"},\"kind\":\"current\",\"value\":0.028,\"source\":\"https://www.espressif.com/sites/default/files/documentation/esp32_datasheet_en.pdf\",\"provenance\":\"datasheet\",\"conditions\":\"VDD = 3.3 V, VOL = 0.495 V, drive strength at maximum, 25 C\",\"note\":\"chip, not board. Table 5-3 (p. 52): IOL sink typ 28 mA; IOH source typ 40 mA (VDD3P3_CPU / VDD3P3_RTC domains), so the one limit for both directions takes the smaller, 28 mA. Note 2: the per-pin source current falls from ~40 mA to ~29 mA as more pins source. A rated drive figure, not an absolute maximum (the datasheet gives no per-pin absolute maximum).\"},{\"of\":{\"pin\":\"D12\"},\"kind\":\"current\",\"value\":0.028,\"source\":\"https://www.espressif.com/sites/default/files/documentation/esp32_datasheet_en.pdf\",\"provenance\":\"datasheet\",\"conditions\":\"VDD = 3.3 V, VOL = 0.495 V, drive strength at maximum, 25 C\",\"note\":\"chip, not board. Table 5-3 (p. 52): IOL sink typ 28 mA; IOH source typ 40 mA (VDD3P3_CPU / VDD3P3_RTC domains), so the one limit for both directions takes the smaller, 28 mA. Note 2: the per-pin source current falls from ~40 mA to ~29 mA as more pins source. A rated drive figure, not an absolute maximum (the datasheet gives no per-pin absolute maximum).\"},{\"of\":{\"pin\":\"D13\"},\"kind\":\"current\",\"value\":0.028,\"source\":\"https://www.espressif.com/sites/default/files/documentation/esp32_datasheet_en.pdf\",\"provenance\":\"datasheet\",\"conditions\":\"VDD = 3.3 V, VOL = 0.495 V, drive strength at maximum, 25 C\",\"note\":\"chip, not board. Table 5-3 (p. 52): IOL sink typ 28 mA; IOH source typ 40 mA (VDD3P3_CPU / VDD3P3_RTC domains), so the one limit for both directions takes the smaller, 28 mA. Note 2: the per-pin source current falls from ~40 mA to ~29 mA as more pins source. A rated drive figure, not an absolute maximum (the datasheet gives no per-pin absolute maximum).\"},{\"of\":{\"pin\":\"D23\"},\"kind\":\"current\",\"value\":0.028,\"source\":\"https://www.espressif.com/sites/default/files/documentation/esp32_datasheet_en.pdf\",\"provenance\":\"datasheet\",\"conditions\":\"VDD = 3.3 V, VOL = 0.495 V, drive strength at maximum, 25 C\",\"note\":\"chip, not board. Table 5-3 (p. 52): IOL sink typ 28 mA; IOH source typ 40 mA (VDD3P3_CPU / VDD3P3_RTC domains), so the one limit for both directions takes the smaller, 28 mA. Note 2: the per-pin source current falls from ~40 mA to ~29 mA as more pins source. A rated drive figure, not an absolute maximum (the datasheet gives no per-pin absolute maximum).\"},{\"of\":{\"pin\":\"D22\"},\"kind\":\"current\",\"value\":0.028,\"source\":\"https://www.espressif.com/sites/default/files/documentation/esp32_datasheet_en.pdf\",\"provenance\":\"datasheet\",\"conditions\":\"VDD = 3.3 V, VOL = 0.495 V, drive strength at maximum, 25 C\",\"note\":\"chip, not board. Table 5-3 (p. 52): IOL sink typ 28 mA; IOH source typ 40 mA (VDD3P3_CPU / VDD3P3_RTC domains), so the one limit for both directions takes the smaller, 28 mA. Note 2: the per-pin source current falls from ~40 mA to ~29 mA as more pins source. A rated drive figure, not an absolute maximum (the datasheet gives no per-pin absolute maximum).\"},{\"of\":{\"pin\":\"TX0\"},\"kind\":\"current\",\"value\":0.028,\"source\":\"https://www.espressif.com/sites/default/files/documentation/esp32_datasheet_en.pdf\",\"provenance\":\"datasheet\",\"conditions\":\"VDD = 3.3 V, VOL = 0.495 V, drive strength at maximum, 25 C\",\"note\":\"chip, not board. Table 5-3 (p. 52): IOL sink typ 28 mA; IOH source typ 40 mA (VDD3P3_CPU / VDD3P3_RTC domains), so the one limit for both directions takes the smaller, 28 mA. Note 2: the per-pin source current falls from ~40 mA to ~29 mA as more pins source. A rated drive figure, not an absolute maximum (the datasheet gives no per-pin absolute maximum).\"},{\"of\":{\"pin\":\"RX0\"},\"kind\":\"current\",\"value\":0.028,\"source\":\"https://www.espressif.com/sites/default/files/documentation/esp32_datasheet_en.pdf\",\"provenance\":\"datasheet\",\"conditions\":\"VDD = 3.3 V, VOL = 0.495 V, drive strength at maximum, 25 C\",\"note\":\"chip, not board. Table 5-3 (p. 52): IOL sink typ 28 mA; IOH source typ 40 mA (VDD3P3_CPU / VDD3P3_RTC domains), so the one limit for both directions takes the smaller, 28 mA. Note 2: the per-pin source current falls from ~40 mA to ~29 mA as more pins source. A rated drive figure, not an absolute maximum (the datasheet gives no per-pin absolute maximum).\"},{\"of\":{\"pin\":\"D21\"},\"kind\":\"current\",\"value\":0.028,\"source\":\"https://www.espressif.com/sites/default/files/documentation/esp32_datasheet_en.pdf\",\"provenance\":\"datasheet\",\"conditions\":\"VDD = 3.3 V, VOL = 0.495 V, drive strength at maximum, 25 C\",\"note\":\"chip, not board. Table 5-3 (p. 52): IOL sink typ 28 mA; IOH source typ 40 mA (VDD3P3_CPU / VDD3P3_RTC domains), so the one limit for both directions takes the smaller, 28 mA. Note 2: the per-pin source current falls from ~40 mA to ~29 mA as more pins source. A rated drive figure, not an absolute maximum (the datasheet gives no per-pin absolute maximum).\"},{\"of\":{\"pin\":\"D19\"},\"kind\":\"current\",\"value\":0.028,\"source\":\"https://www.espressif.com/sites/default/files/documentation/esp32_datasheet_en.pdf\",\"provenance\":\"datasheet\",\"conditions\":\"VDD = 3.3 V, VOL = 0.495 V, drive strength at maximum, 25 C\",\"note\":\"chip, not board. Table 5-3 (p. 52): IOL sink typ 28 mA; IOH source typ 40 mA (VDD3P3_CPU / VDD3P3_RTC domains), so the one limit for both directions takes the smaller, 28 mA. Note 2: the per-pin source current falls from ~40 mA to ~29 mA as more pins source. A rated drive figure, not an absolute maximum (the datasheet gives no per-pin absolute maximum).\"},{\"of\":{\"pin\":\"D18\"},\"kind\":\"current\",\"value\":0.028,\"source\":\"https://www.espressif.com/sites/default/files/documentation/esp32_datasheet_en.pdf\",\"provenance\":\"datasheet\",\"conditions\":\"VDD = 3.3 V, VOL = 0.495 V, drive strength at maximum, 25 C\",\"note\":\"chip, not board. Table 5-3 (p. 52): IOL sink typ 28 mA; IOH source typ 40 mA (VDD3P3_CPU / VDD3P3_RTC domains), so the one limit for both directions takes the smaller, 28 mA. Note 2: the per-pin source current falls from ~40 mA to ~29 mA as more pins source. A rated drive figure, not an absolute maximum (the datasheet gives no per-pin absolute maximum).\"},{\"of\":{\"pin\":\"D5\"},\"kind\":\"current\",\"value\":0.028,\"source\":\"https://www.espressif.com/sites/default/files/documentation/esp32_datasheet_en.pdf\",\"provenance\":\"datasheet\",\"conditions\":\"VDD = 3.3 V, VOL = 0.495 V, drive strength at maximum, 25 C\",\"note\":\"chip, not board. Table 5-3 (p. 52): IOL sink typ 28 mA; IOH source typ 40 mA (VDD3P3_CPU / VDD3P3_RTC domains), so the one limit for both directions takes the smaller, 28 mA. Note 2: the per-pin source current falls from ~40 mA to ~29 mA as more pins source. A rated drive figure, not an absolute maximum (the datasheet gives no per-pin absolute maximum).\"},{\"of\":{\"pin\":\"TX2\"},\"kind\":\"current\",\"value\":0.02,\"source\":\"https://www.espressif.com/sites/default/files/documentation/esp32_datasheet_en.pdf\",\"provenance\":\"datasheet\",\"conditions\":\"VDD = 3.3 V, VOH >= 2.64 V, drive strength at maximum, 25 C\",\"note\":\"chip, not board. Table 5-3 (p. 52) IOH for the VDD_SDIO power domain, typ 20 mA (GPIO16/17 are in VDD_SDIO, Table 2-1 p. 15); below the 28 mA IOL sink figure, so the one limit takes 20 mA. Note 3: falls toward ~10 mA as more pins in the domain source current. A rated drive figure, not an absolute maximum (the datasheet gives no per-pin absolute maximum).\"},{\"of\":{\"pin\":\"RX2\"},\"kind\":\"current\",\"value\":0.02,\"source\":\"https://www.espressif.com/sites/default/files/documentation/esp32_datasheet_en.pdf\",\"provenance\":\"datasheet\",\"conditions\":\"VDD = 3.3 V, VOH >= 2.64 V, drive strength at maximum, 25 C\",\"note\":\"chip, not board. Table 5-3 (p. 52) IOH for the VDD_SDIO power domain, typ 20 mA (GPIO16/17 are in VDD_SDIO, Table 2-1 p. 15); below the 28 mA IOL sink figure, so the one limit takes 20 mA. Note 3: falls toward ~10 mA as more pins in the domain source current. A rated drive figure, not an absolute maximum (the datasheet gives no per-pin absolute maximum).\"},{\"of\":{\"pin\":\"D4\"},\"kind\":\"current\",\"value\":0.028,\"source\":\"https://www.espressif.com/sites/default/files/documentation/esp32_datasheet_en.pdf\",\"provenance\":\"datasheet\",\"conditions\":\"VDD = 3.3 V, VOL = 0.495 V, drive strength at maximum, 25 C\",\"note\":\"chip, not board. Table 5-3 (p. 52): IOL sink typ 28 mA; IOH source typ 40 mA (VDD3P3_CPU / VDD3P3_RTC domains), so the one limit for both directions takes the smaller, 28 mA. Note 2: the per-pin source current falls from ~40 mA to ~29 mA as more pins source. A rated drive figure, not an absolute maximum (the datasheet gives no per-pin absolute maximum).\"},{\"of\":{\"pin\":\"D2\"},\"kind\":\"current\",\"value\":0.028,\"source\":\"https://www.espressif.com/sites/default/files/documentation/esp32_datasheet_en.pdf\",\"provenance\":\"datasheet\",\"conditions\":\"VDD = 3.3 V, VOL = 0.495 V, drive strength at maximum, 25 C\",\"note\":\"chip, not board. Table 5-3 (p. 52): IOL sink typ 28 mA; IOH source typ 40 mA (VDD3P3_CPU / VDD3P3_RTC domains), so the one limit for both directions takes the smaller, 28 mA. Note 2: the per-pin source current falls from ~40 mA to ~29 mA as more pins source. A rated drive figure, not an absolute maximum (the datasheet gives no per-pin absolute maximum).\"},{\"of\":{\"pin\":\"D15\"},\"kind\":\"current\",\"value\":0.028,\"source\":\"https://www.espressif.com/sites/default/files/documentation/esp32_datasheet_en.pdf\",\"provenance\":\"datasheet\",\"conditions\":\"VDD = 3.3 V, VOL = 0.495 V, drive strength at maximum, 25 C\",\"note\":\"chip, not board. Table 5-3 (p. 52): IOL sink typ 28 mA; IOH source typ 40 mA (VDD3P3_CPU / VDD3P3_RTC domains), so the one limit for both directions takes the smaller, 28 mA. Note 2: the per-pin source current falls from ~40 mA to ~29 mA as more pins source. A rated drive figure, not an absolute maximum (the datasheet gives no per-pin absolute maximum).\"},{\"of\":{\"domain\":\"3V3\"},\"kind\":\"ioTotalCurrent\",\"value\":1.1,\"source\":\"https://www.espressif.com/sites/default/files/documentation/esp32-wroom-32_datasheet_en.pdf\",\"provenance\":\"datasheet\",\"conditions\":\"absolute maximum rating\",\"note\":\"The module, not the board. ESP32-WROOM-32 datasheet v3.8, Table 12 Absolute Maximum Ratings (p. 26): Ioutput, cumulative IO output current max 1,100 mA (the bare ESP32 chip datasheet, Table 5-1 p. 51, gives 1,200 mA).\"},{\"of\":{\"domain\":\"3V3\"},\"kind\":\"vinMax\",\"value\":3.6,\"source\":\"https://www.espressif.com/sites/default/files/documentation/esp32-wroom-32_datasheet_en.pdf\",\"provenance\":\"datasheet\",\"conditions\":\"recommended operating maximum, which is also the absolute maximum\",\"note\":\"ESP32 Series Datasheet v5.3, Table 5-2 Recommended Power Supply Characteristics (p. 51): VDDA, VDD3P3_RTC, VDD3P3, VDD_SDIO (3.3 V mode) and VDD3P3_CPU 3.6 V max; Table 5-1 Absolute Maximum Ratings (p. 51): allowed input voltage 3.6 V max. The module agrees: ESP32-WROOM-32 datasheet v3.8, Table 13 Recommended Operating Conditions (p. 26), VDD33 3.0 to 3.6 V, and Table 12 (p. 26) 3.6 V absolute maximum. Chip and module, not board: the board's 3V3 pin is the module's 3V3 supply.\"},{\"of\":{\"domain\":\"VIN\"},\"kind\":\"vinMax\",\"value\":15,\"source\":\"http://www.advanced-monolithic.com/pdf/ds1117.pdf\",\"provenance\":\"estimate\",\"conditions\":\"board limit (regulator varies)\",\"note\":\"Two readings: the DOIT schematic names U1 NCP1117, which allows 20 V input (onsemi NCP1117/D Rev. 28, Maximum Ratings p. 2, https://datasheet.lcsc.com/datasheet/pdf/41a2561fccbd9856f05aa9b1636142b5.pdf), but retail DOIT-style boards commonly carry an AMS1117-3.3, 15 V absolute maximum input (AMS1117 datasheet p. 2, the cited source), and the schematic gives the VIN capacitor C1 (10 uF) no voltage rating. The lower, 15 V, is used.\"}],\"power\":{\"domains\":[{\"name\":\"VIN\",\"pin\":\"VIN\",\"ret\":\"GND\",\"nominal\":5},{\"name\":\"USB\",\"pin\":\"USB#vbus\",\"ret\":\"USB#gnd\",\"nominal\":5},{\"name\":\"3V3\",\"pin\":\"3V3\",\"ret\":\"GND\",\"nominal\":3.3}],\"draw\":[{\"domain\":\"3V3\",\"typical\":{\"value\":0.1,\"unit\":\"A\",\"source\":\"https://www.espressif.com/sites/default/files/documentation/esp32_datasheet_en.pdf\",\"provenance\":\"datasheet\",\"note\":\"chip, not board. Table 5-4 (p. 52): Wi-Fi receive 802.11b/g/n 95 ~ 100 mA typ (upper end taken), 3.3 V, 25 C. With the radio off, Modem-sleep at 240 MHz dual-core is 30 ~ 68 mA (Table 4-2, p. 30). Excludes the USB-UART bridge and LEDs (see unaccounted).\"},\"peak\":{\"value\":0.24,\"unit\":\"A\",\"source\":\"https://www.espressif.com/sites/default/files/documentation/esp32_datasheet_en.pdf\",\"provenance\":\"datasheet\",\"note\":\"Wi-Fi transmit 802.11b, DSSS 1 Mbps, POUT = +19.5 dBm: 240 mA typ, Table 5-4 (p. 52), 3.3 V, 25 C, measured at 50 % duty cycle; chip, not board.\",\"label\":\"Wi-Fi transmit\"},\"minVolts\":{\"value\":3,\"unit\":\"V\",\"source\":\"https://www.espressif.com/sites/default/files/documentation/esp32-wroom-32_datasheet_en.pdf\",\"provenance\":\"datasheet\",\"note\":\"ESP32-WROOM-32 module, Table 13 Recommended Operating Conditions (p. 26): VDD33 min 3.0 V. The module, not the board.\"}}],\"rails\":[{\"id\":\"usb-diode\",\"inputs\":[{\"domain\":\"USB\",\"via\":\"direct\"}],\"output\":\"VIN\",\"kind\":\"switch\",\"vf\":{\"value\":0.5,\"unit\":\"V\",\"source\":\"https://www.vishay.com/docs/88746/ss12.pdf\",\"provenance\":\"representative\",\"note\":\"The DOIT schematic names D1 \\\"SS14\\\" (VCCUSB to VIN) with no maker; Vishay SS14 as the representative part. Maximum instantaneous forward voltage 0.50 V at IF = 1.0 A, 25 C, pulse test (Electrical Characteristics, p. 2). At the board's 0.1 to 0.3 A the typical drop is lower (Fig. 3, p. 3), so this overstates the loss.\"},\"reverse\":\"blocks\"},{\"id\":\"ldo\",\"inputs\":[{\"domain\":\"VIN\",\"via\":\"direct\"}],\"output\":\"3V3\",\"kind\":\"ldo\",\"vout\":{\"value\":3.3,\"unit\":\"V\",\"source\":\"https://datasheet.lcsc.com/datasheet/pdf/41a2561fccbd9856f05aa9b1636142b5.pdf\",\"provenance\":\"datasheet\",\"note\":\"onsemi NCP1117 (U1 on the DOIT schematic, output net VDD3V3, so the fixed 3.3 V version). Electrical Characteristics (p. 3): 3.3 V typ (3.267 to 3.333 V at Vin = 5.3 V, Iout = 10 mA, 25 C). Distributor (LCSC) copy of onsemi NCP1117/D Rev. 28.\"},\"dropout\":{\"value\":1.01,\"unit\":\"V\",\"source\":\"https://datasheet.lcsc.com/datasheet/pdf/41a2561fccbd9856f05aa9b1636142b5.pdf\",\"provenance\":\"datasheet\",\"note\":\"Electrical Characteristics (p. 3): dropout typ 1.01 V at Iout = 500 mA (0.95 V at 100 mA, 1.07 V at 800 mA; max 1.15 V at 500 mA), measured at Vout - 100 mV. 500 mA covers the board's Wi-Fi transmit peak.\"},\"ioutMax\":{\"value\":1,\"unit\":\"A\",\"source\":\"https://datasheet.lcsc.com/datasheet/pdf/41a2561fccbd9856f05aa9b1636142b5.pdf\",\"provenance\":\"datasheet\",\"note\":\"Output current limit min 1000 mA (Vin - Vout = 5 V, 25 C), Electrical Characteristics p. 3; p. 1 rates the series for \\\"in excess of 1.0 A\\\".\"},\"iq\":{\"value\":0.006,\"unit\":\"A\",\"source\":\"https://datasheet.lcsc.com/datasheet/pdf/41a2561fccbd9856f05aa9b1636142b5.pdf\",\"provenance\":\"datasheet\",\"note\":\"Quiescent current, 3.3 V version, typ 6.0 mA (max 10 mA) at Vin = 15 V, Electrical Characteristics continued, p. 4.\"},\"reverse\":\"body-diode\"}]},\"gpio\":{\"domain\":\"3V3\",\"pins\":[\"VP\",\"VN\",\"D34\",\"D35\",\"D32\",\"D33\",\"D25\",\"D26\",\"D27\",\"D14\",\"D12\",\"D13\",\"D23\",\"D22\",\"TX0\",\"RX0\",\"D21\",\"D19\",\"D18\",\"D5\",\"TX2\",\"RX2\",\"D4\",\"D2\",\"D15\"],\"outputResistance\":{\"value\":34,\"unit\":\"ohm\",\"source\":\"https://www.espressif.com/sites/default/files/documentation/esp32_datasheet_en.pdf\",\"provenance\":\"estimate\",\"note\":\"Linear approximation at the default drive strength 2 (~20 mA; the datasheet notes on the pin list give 0: ~5, 1: ~10, 2: ~20, 3: ~40 mA, default 2). Table 5-3 (p. 52) at the maximum strength: high (3.3 - 2.64 V) / 40 mA = 16.5 ohm, low 0.495 V / 28 mA = 17.7 ohm, about 17 ohm; halving the strength roughly doubles it, about 34 ohm. A pin set to strength 3 is nearer 17 ohm. Chip, not board.\"},\"pullup\":{\"value\":45000,\"unit\":\"ohm\",\"source\":\"https://www.espressif.com/sites/default/files/documentation/esp32_datasheet_en.pdf\",\"provenance\":\"datasheet\",\"note\":\"chip, not board. Table 5-3 (p. 52) RPU typ 45 kohm, 3.3 V, 25 C.\"},\"pulldown\":{\"value\":45000,\"unit\":\"ohm\",\"source\":\"https://www.espressif.com/sites/default/files/documentation/esp32_datasheet_en.pdf\",\"provenance\":\"datasheet\",\"note\":\"chip, not board. Table 5-3 (p. 52) RPD typ 45 kohm, 3.3 V, 25 C.\"},\"inputLeakage\":{\"value\":5e-8,\"unit\":\"A\",\"source\":\"https://www.espressif.com/sites/default/files/documentation/esp32_datasheet_en.pdf\",\"provenance\":\"datasheet\",\"note\":\"chip, not board. Table 5-3 (p. 52) IIH / IIL max 50 nA, 3.3 V, 25 C.\"}},\"usbPorts\":{\"USB\":{\"gnd\":\"GND\"}},\"unaccounted\":[\"The board's CP2102 USB-UART bridge, powered from the 3.3 V supply: no idle current on the schematic and no measurement.\",\"The board's red power LED and its 1 kohm resistor from the 3.3 V supply to GND: the schematic gives the resistor, not the current (roughly (3.3 V - LED Vf) / 1 kohm, about 1 to 1.5 mA for a red LED Vf of 1.8 to 2.2 V, LED part unknown).\",\"Module extras beyond the chip (SPI flash, crystal): the draw values are the chip's.\"]}}"),
 		art: {
 			"w": 120,
 			"h": 190,
@@ -29853,16 +30958,7 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			"w": 12,
 			"h": 23
 		},
-		electrical: {
-			"model": "mcu",
-			"params": {},
-			"external": [{
-				"pin": "5V",
-				"volts": 5,
-				"via": "USB",
-				"diode": true
-			}]
-		},
+		electrical: /* @__PURE__ */ JSON.parse("{\"model\":\"mcu\",\"params\":{},\"external\":[{\"pin\":\"5V\",\"volts\":5,\"via\":\"USB\",\"diode\":true}],\"sim\":{\"limits\":[{\"of\":{\"pin\":\"IO32\"},\"kind\":\"current\",\"value\":0.028,\"source\":\"https://www.espressif.com/sites/default/files/documentation/esp32_datasheet_en.pdf\",\"provenance\":\"datasheet\",\"conditions\":\"VDD = 3.3 V, VOL = 0.495 V, drive strength at maximum, 25 C\",\"note\":\"chip, not board. Table 5-3 (p. 52): IOL sink typ 28 mA; IOH source typ 40 mA (VDD3P3_CPU / VDD3P3_RTC domains), so the one limit for both directions takes the smaller, 28 mA. Note 2: the per-pin source current falls from ~40 mA to ~29 mA as more pins source. A rated drive figure, not an absolute maximum (the datasheet gives no per-pin absolute maximum).\"},{\"of\":{\"pin\":\"IO33\"},\"kind\":\"current\",\"value\":0.028,\"source\":\"https://www.espressif.com/sites/default/files/documentation/esp32_datasheet_en.pdf\",\"provenance\":\"datasheet\",\"conditions\":\"VDD = 3.3 V, VOL = 0.495 V, drive strength at maximum, 25 C\",\"note\":\"chip, not board. Table 5-3 (p. 52): IOL sink typ 28 mA; IOH source typ 40 mA (VDD3P3_CPU / VDD3P3_RTC domains), so the one limit for both directions takes the smaller, 28 mA. Note 2: the per-pin source current falls from ~40 mA to ~29 mA as more pins source. A rated drive figure, not an absolute maximum (the datasheet gives no per-pin absolute maximum).\"},{\"of\":{\"pin\":\"IO25\"},\"kind\":\"current\",\"value\":0.028,\"source\":\"https://www.espressif.com/sites/default/files/documentation/esp32_datasheet_en.pdf\",\"provenance\":\"datasheet\",\"conditions\":\"VDD = 3.3 V, VOL = 0.495 V, drive strength at maximum, 25 C\",\"note\":\"chip, not board. Table 5-3 (p. 52): IOL sink typ 28 mA; IOH source typ 40 mA (VDD3P3_CPU / VDD3P3_RTC domains), so the one limit for both directions takes the smaller, 28 mA. Note 2: the per-pin source current falls from ~40 mA to ~29 mA as more pins source. A rated drive figure, not an absolute maximum (the datasheet gives no per-pin absolute maximum).\"},{\"of\":{\"pin\":\"IO26\"},\"kind\":\"current\",\"value\":0.028,\"source\":\"https://www.espressif.com/sites/default/files/documentation/esp32_datasheet_en.pdf\",\"provenance\":\"datasheet\",\"conditions\":\"VDD = 3.3 V, VOL = 0.495 V, drive strength at maximum, 25 C\",\"note\":\"chip, not board. Table 5-3 (p. 52): IOL sink typ 28 mA; IOH source typ 40 mA (VDD3P3_CPU / VDD3P3_RTC domains), so the one limit for both directions takes the smaller, 28 mA. Note 2: the per-pin source current falls from ~40 mA to ~29 mA as more pins source. A rated drive figure, not an absolute maximum (the datasheet gives no per-pin absolute maximum).\"},{\"of\":{\"pin\":\"IO27\"},\"kind\":\"current\",\"value\":0.028,\"source\":\"https://www.espressif.com/sites/default/files/documentation/esp32_datasheet_en.pdf\",\"provenance\":\"datasheet\",\"conditions\":\"VDD = 3.3 V, VOL = 0.495 V, drive strength at maximum, 25 C\",\"note\":\"chip, not board. Table 5-3 (p. 52): IOL sink typ 28 mA; IOH source typ 40 mA (VDD3P3_CPU / VDD3P3_RTC domains), so the one limit for both directions takes the smaller, 28 mA. Note 2: the per-pin source current falls from ~40 mA to ~29 mA as more pins source. A rated drive figure, not an absolute maximum (the datasheet gives no per-pin absolute maximum).\"},{\"of\":{\"pin\":\"IO14\"},\"kind\":\"current\",\"value\":0.028,\"source\":\"https://www.espressif.com/sites/default/files/documentation/esp32_datasheet_en.pdf\",\"provenance\":\"datasheet\",\"conditions\":\"VDD = 3.3 V, VOL = 0.495 V, drive strength at maximum, 25 C\",\"note\":\"chip, not board. Table 5-3 (p. 52): IOL sink typ 28 mA; IOH source typ 40 mA (VDD3P3_CPU / VDD3P3_RTC domains), so the one limit for both directions takes the smaller, 28 mA. Note 2: the per-pin source current falls from ~40 mA to ~29 mA as more pins source. A rated drive figure, not an absolute maximum (the datasheet gives no per-pin absolute maximum).\"},{\"of\":{\"pin\":\"IO12\"},\"kind\":\"current\",\"value\":0.028,\"source\":\"https://www.espressif.com/sites/default/files/documentation/esp32_datasheet_en.pdf\",\"provenance\":\"datasheet\",\"conditions\":\"VDD = 3.3 V, VOL = 0.495 V, drive strength at maximum, 25 C\",\"note\":\"chip, not board. Table 5-3 (p. 52): IOL sink typ 28 mA; IOH source typ 40 mA (VDD3P3_CPU / VDD3P3_RTC domains), so the one limit for both directions takes the smaller, 28 mA. Note 2: the per-pin source current falls from ~40 mA to ~29 mA as more pins source. A rated drive figure, not an absolute maximum (the datasheet gives no per-pin absolute maximum).\"},{\"of\":{\"pin\":\"IO13\"},\"kind\":\"current\",\"value\":0.028,\"source\":\"https://www.espressif.com/sites/default/files/documentation/esp32_datasheet_en.pdf\",\"provenance\":\"datasheet\",\"conditions\":\"VDD = 3.3 V, VOL = 0.495 V, drive strength at maximum, 25 C\",\"note\":\"chip, not board. Table 5-3 (p. 52): IOL sink typ 28 mA; IOH source typ 40 mA (VDD3P3_CPU / VDD3P3_RTC domains), so the one limit for both directions takes the smaller, 28 mA. Note 2: the per-pin source current falls from ~40 mA to ~29 mA as more pins source. A rated drive figure, not an absolute maximum (the datasheet gives no per-pin absolute maximum).\"},{\"of\":{\"pin\":\"IO23\"},\"kind\":\"current\",\"value\":0.028,\"source\":\"https://www.espressif.com/sites/default/files/documentation/esp32_datasheet_en.pdf\",\"provenance\":\"datasheet\",\"conditions\":\"VDD = 3.3 V, VOL = 0.495 V, drive strength at maximum, 25 C\",\"note\":\"chip, not board. Table 5-3 (p. 52): IOL sink typ 28 mA; IOH source typ 40 mA (VDD3P3_CPU / VDD3P3_RTC domains), so the one limit for both directions takes the smaller, 28 mA. Note 2: the per-pin source current falls from ~40 mA to ~29 mA as more pins source. A rated drive figure, not an absolute maximum (the datasheet gives no per-pin absolute maximum).\"},{\"of\":{\"pin\":\"IO22\"},\"kind\":\"current\",\"value\":0.028,\"source\":\"https://www.espressif.com/sites/default/files/documentation/esp32_datasheet_en.pdf\",\"provenance\":\"datasheet\",\"conditions\":\"VDD = 3.3 V, VOL = 0.495 V, drive strength at maximum, 25 C\",\"note\":\"chip, not board. Table 5-3 (p. 52): IOL sink typ 28 mA; IOH source typ 40 mA (VDD3P3_CPU / VDD3P3_RTC domains), so the one limit for both directions takes the smaller, 28 mA. Note 2: the per-pin source current falls from ~40 mA to ~29 mA as more pins source. A rated drive figure, not an absolute maximum (the datasheet gives no per-pin absolute maximum).\"},{\"of\":{\"pin\":\"TX\"},\"kind\":\"current\",\"value\":0.028,\"source\":\"https://www.espressif.com/sites/default/files/documentation/esp32_datasheet_en.pdf\",\"provenance\":\"datasheet\",\"conditions\":\"VDD = 3.3 V, VOL = 0.495 V, drive strength at maximum, 25 C\",\"note\":\"chip, not board. Table 5-3 (p. 52): IOL sink typ 28 mA; IOH source typ 40 mA (VDD3P3_CPU / VDD3P3_RTC domains), so the one limit for both directions takes the smaller, 28 mA. Note 2: the per-pin source current falls from ~40 mA to ~29 mA as more pins source. A rated drive figure, not an absolute maximum (the datasheet gives no per-pin absolute maximum).\"},{\"of\":{\"pin\":\"RX\"},\"kind\":\"current\",\"value\":0.028,\"source\":\"https://www.espressif.com/sites/default/files/documentation/esp32_datasheet_en.pdf\",\"provenance\":\"datasheet\",\"conditions\":\"VDD = 3.3 V, VOL = 0.495 V, drive strength at maximum, 25 C\",\"note\":\"chip, not board. Table 5-3 (p. 52): IOL sink typ 28 mA; IOH source typ 40 mA (VDD3P3_CPU / VDD3P3_RTC domains), so the one limit for both directions takes the smaller, 28 mA. Note 2: the per-pin source current falls from ~40 mA to ~29 mA as more pins source. A rated drive figure, not an absolute maximum (the datasheet gives no per-pin absolute maximum).\"},{\"of\":{\"pin\":\"IO21\"},\"kind\":\"current\",\"value\":0.028,\"source\":\"https://www.espressif.com/sites/default/files/documentation/esp32_datasheet_en.pdf\",\"provenance\":\"datasheet\",\"conditions\":\"VDD = 3.3 V, VOL = 0.495 V, drive strength at maximum, 25 C\",\"note\":\"chip, not board. Table 5-3 (p. 52): IOL sink typ 28 mA; IOH source typ 40 mA (VDD3P3_CPU / VDD3P3_RTC domains), so the one limit for both directions takes the smaller, 28 mA. Note 2: the per-pin source current falls from ~40 mA to ~29 mA as more pins source. A rated drive figure, not an absolute maximum (the datasheet gives no per-pin absolute maximum).\"},{\"of\":{\"pin\":\"IO19\"},\"kind\":\"current\",\"value\":0.028,\"source\":\"https://www.espressif.com/sites/default/files/documentation/esp32_datasheet_en.pdf\",\"provenance\":\"datasheet\",\"conditions\":\"VDD = 3.3 V, VOL = 0.495 V, drive strength at maximum, 25 C\",\"note\":\"chip, not board. Table 5-3 (p. 52): IOL sink typ 28 mA; IOH source typ 40 mA (VDD3P3_CPU / VDD3P3_RTC domains), so the one limit for both directions takes the smaller, 28 mA. Note 2: the per-pin source current falls from ~40 mA to ~29 mA as more pins source. A rated drive figure, not an absolute maximum (the datasheet gives no per-pin absolute maximum).\"},{\"of\":{\"pin\":\"IO18\"},\"kind\":\"current\",\"value\":0.028,\"source\":\"https://www.espressif.com/sites/default/files/documentation/esp32_datasheet_en.pdf\",\"provenance\":\"datasheet\",\"conditions\":\"VDD = 3.3 V, VOL = 0.495 V, drive strength at maximum, 25 C\",\"note\":\"chip, not board. Table 5-3 (p. 52): IOL sink typ 28 mA; IOH source typ 40 mA (VDD3P3_CPU / VDD3P3_RTC domains), so the one limit for both directions takes the smaller, 28 mA. Note 2: the per-pin source current falls from ~40 mA to ~29 mA as more pins source. A rated drive figure, not an absolute maximum (the datasheet gives no per-pin absolute maximum).\"},{\"of\":{\"pin\":\"IO5\"},\"kind\":\"current\",\"value\":0.028,\"source\":\"https://www.espressif.com/sites/default/files/documentation/esp32_datasheet_en.pdf\",\"provenance\":\"datasheet\",\"conditions\":\"VDD = 3.3 V, VOL = 0.495 V, drive strength at maximum, 25 C\",\"note\":\"chip, not board. Table 5-3 (p. 52): IOL sink typ 28 mA; IOH source typ 40 mA (VDD3P3_CPU / VDD3P3_RTC domains), so the one limit for both directions takes the smaller, 28 mA. Note 2: the per-pin source current falls from ~40 mA to ~29 mA as more pins source. A rated drive figure, not an absolute maximum (the datasheet gives no per-pin absolute maximum).\"},{\"of\":{\"pin\":\"IO17\"},\"kind\":\"current\",\"value\":0.02,\"source\":\"https://www.espressif.com/sites/default/files/documentation/esp32_datasheet_en.pdf\",\"provenance\":\"datasheet\",\"conditions\":\"VDD = 3.3 V, VOH >= 2.64 V, drive strength at maximum, 25 C\",\"note\":\"chip, not board. Table 5-3 (p. 52) IOH for the VDD_SDIO power domain, typ 20 mA (GPIO16/17 are in VDD_SDIO, Table 2-1 p. 15); below the 28 mA IOL sink figure, so the one limit takes 20 mA. Note 3: falls toward ~10 mA as more pins in the domain source current. A rated drive figure, not an absolute maximum (the datasheet gives no per-pin absolute maximum).\"},{\"of\":{\"pin\":\"IO16\"},\"kind\":\"current\",\"value\":0.02,\"source\":\"https://www.espressif.com/sites/default/files/documentation/esp32_datasheet_en.pdf\",\"provenance\":\"datasheet\",\"conditions\":\"VDD = 3.3 V, VOH >= 2.64 V, drive strength at maximum, 25 C\",\"note\":\"chip, not board. Table 5-3 (p. 52) IOH for the VDD_SDIO power domain, typ 20 mA (GPIO16/17 are in VDD_SDIO, Table 2-1 p. 15); below the 28 mA IOL sink figure, so the one limit takes 20 mA. Note 3: falls toward ~10 mA as more pins in the domain source current. A rated drive figure, not an absolute maximum (the datasheet gives no per-pin absolute maximum).\"},{\"of\":{\"pin\":\"IO4\"},\"kind\":\"current\",\"value\":0.028,\"source\":\"https://www.espressif.com/sites/default/files/documentation/esp32_datasheet_en.pdf\",\"provenance\":\"datasheet\",\"conditions\":\"VDD = 3.3 V, VOL = 0.495 V, drive strength at maximum, 25 C\",\"note\":\"chip, not board. Table 5-3 (p. 52): IOL sink typ 28 mA; IOH source typ 40 mA (VDD3P3_CPU / VDD3P3_RTC domains), so the one limit for both directions takes the smaller, 28 mA. Note 2: the per-pin source current falls from ~40 mA to ~29 mA as more pins source. A rated drive figure, not an absolute maximum (the datasheet gives no per-pin absolute maximum).\"},{\"of\":{\"pin\":\"IO0\"},\"kind\":\"current\",\"value\":0.028,\"source\":\"https://www.espressif.com/sites/default/files/documentation/esp32_datasheet_en.pdf\",\"provenance\":\"datasheet\",\"conditions\":\"VDD = 3.3 V, VOL = 0.495 V, drive strength at maximum, 25 C\",\"note\":\"chip, not board. Table 5-3 (p. 52): IOL sink typ 28 mA; IOH source typ 40 mA (VDD3P3_CPU / VDD3P3_RTC domains), so the one limit for both directions takes the smaller, 28 mA. Note 2: the per-pin source current falls from ~40 mA to ~29 mA as more pins source. A rated drive figure, not an absolute maximum (the datasheet gives no per-pin absolute maximum).\"},{\"of\":{\"pin\":\"IO2\"},\"kind\":\"current\",\"value\":0.028,\"source\":\"https://www.espressif.com/sites/default/files/documentation/esp32_datasheet_en.pdf\",\"provenance\":\"datasheet\",\"conditions\":\"VDD = 3.3 V, VOL = 0.495 V, drive strength at maximum, 25 C\",\"note\":\"chip, not board. Table 5-3 (p. 52): IOL sink typ 28 mA; IOH source typ 40 mA (VDD3P3_CPU / VDD3P3_RTC domains), so the one limit for both directions takes the smaller, 28 mA. Note 2: the per-pin source current falls from ~40 mA to ~29 mA as more pins source. A rated drive figure, not an absolute maximum (the datasheet gives no per-pin absolute maximum).\"},{\"of\":{\"pin\":\"IO15\"},\"kind\":\"current\",\"value\":0.028,\"source\":\"https://www.espressif.com/sites/default/files/documentation/esp32_datasheet_en.pdf\",\"provenance\":\"datasheet\",\"conditions\":\"VDD = 3.3 V, VOL = 0.495 V, drive strength at maximum, 25 C\",\"note\":\"chip, not board. Table 5-3 (p. 52): IOL sink typ 28 mA; IOH source typ 40 mA (VDD3P3_CPU / VDD3P3_RTC domains), so the one limit for both directions takes the smaller, 28 mA. Note 2: the per-pin source current falls from ~40 mA to ~29 mA as more pins source. A rated drive figure, not an absolute maximum (the datasheet gives no per-pin absolute maximum).\"},{\"of\":{\"domain\":\"3V3\"},\"kind\":\"ioTotalCurrent\",\"value\":1.1,\"source\":\"https://www.espressif.com/sites/default/files/documentation/esp32-wroom-32_datasheet_en.pdf\",\"provenance\":\"datasheet\",\"conditions\":\"absolute maximum rating\",\"note\":\"The module, not the board. ESP32-WROOM-32 datasheet v3.8, Table 12 Absolute Maximum Ratings (p. 26): Ioutput, cumulative IO output current max 1,100 mA (the bare ESP32 chip datasheet, Table 5-1 p. 51, gives 1,200 mA).\"},{\"of\":{\"domain\":\"3V3\"},\"kind\":\"vinMax\",\"value\":3.6,\"source\":\"https://www.espressif.com/sites/default/files/documentation/esp32-wroom-32_datasheet_en.pdf\",\"provenance\":\"datasheet\",\"conditions\":\"recommended operating maximum, which is also the absolute maximum\",\"note\":\"ESP32 Series Datasheet v5.3, Table 5-2 Recommended Power Supply Characteristics (p. 51): VDDA, VDD3P3_RTC, VDD3P3, VDD_SDIO (3.3 V mode) and VDD3P3_CPU 3.6 V max; Table 5-1 Absolute Maximum Ratings (p. 51): allowed input voltage 3.6 V max. The module agrees: ESP32-WROOM-32 datasheet v3.8, Table 13 Recommended Operating Conditions (p. 26), VDD33 3.0 to 3.6 V, and Table 12 (p. 26) 3.6 V absolute maximum. Chip and module, not board: the board's 3V3 pin is the module's 3V3 supply.\"},{\"of\":{\"domain\":\"5V\"},\"kind\":\"vinMax\",\"value\":10,\"source\":\"http://www.advanced-monolithic.com/pdf/ds1117.pdf\",\"provenance\":\"estimate\",\"conditions\":\"board limit\",\"note\":\"Board limit, not the regulator's: the DevKitC V4 schematic's input capacitor C1 is 22 uF/10 V, below the AMS1117's 15 V absolute maximum input (p. 2, the cited source). 10 V is the lower of the two.\"}],\"power\":{\"domains\":[{\"name\":\"5V\",\"pin\":\"5V\",\"ret\":\"GND\",\"nominal\":5},{\"name\":\"USB\",\"pin\":\"USB#vbus\",\"ret\":\"USB#gnd\",\"nominal\":5},{\"name\":\"3V3\",\"pin\":\"3V3\",\"ret\":\"GND\",\"nominal\":3.3}],\"draw\":[{\"domain\":\"3V3\",\"typical\":{\"value\":0.1,\"unit\":\"A\",\"source\":\"https://www.espressif.com/sites/default/files/documentation/esp32_datasheet_en.pdf\",\"provenance\":\"datasheet\",\"note\":\"chip, not board. Table 5-4 (p. 52): Wi-Fi receive 802.11b/g/n 95 ~ 100 mA typ (upper end taken), 3.3 V, 25 C. With the radio off, Modem-sleep at 240 MHz dual-core is 30 ~ 68 mA (Table 4-2, p. 30). Excludes the USB-UART bridge and LEDs (see unaccounted).\"},\"peak\":{\"value\":0.24,\"unit\":\"A\",\"source\":\"https://www.espressif.com/sites/default/files/documentation/esp32_datasheet_en.pdf\",\"provenance\":\"datasheet\",\"note\":\"Wi-Fi transmit 802.11b, DSSS 1 Mbps, POUT = +19.5 dBm: 240 mA typ, Table 5-4 (p. 52), 3.3 V, 25 C, measured at 50 % duty cycle; chip, not board.\",\"label\":\"Wi-Fi transmit\"},\"minVolts\":{\"value\":3,\"unit\":\"V\",\"source\":\"https://www.espressif.com/sites/default/files/documentation/esp32-wroom-32_datasheet_en.pdf\",\"provenance\":\"datasheet\",\"note\":\"ESP32-WROOM-32 module, Table 13 Recommended Operating Conditions (p. 26): VDD33 min 3.0 V. The module, not the board.\"}}],\"rails\":[{\"id\":\"usb-diode\",\"inputs\":[{\"domain\":\"USB\",\"via\":\"direct\"}],\"output\":\"5V\",\"kind\":\"switch\",\"vf\":{\"value\":0.32,\"unit\":\"V\",\"source\":\"https://www.diodes.com/assets/Datasheets/BAT760.pdf\",\"provenance\":\"datasheet\",\"note\":\"D3 on the DevKitC V4 schematic is a BAT760-7 (Diodes Inc.), VBUS to EXT_5V. Electrical Characteristics (p. 2): forward voltage typ 320 mV at IF = 100 mA (max 350 mV; typ 495 mV at 1 A), 25 C. 100 mA is near the board's typical load.\"},\"reverse\":\"blocks\"},{\"id\":\"ldo\",\"inputs\":[{\"domain\":\"5V\",\"via\":\"direct\"}],\"output\":\"3V3\",\"kind\":\"ldo\",\"vout\":{\"value\":3.3,\"unit\":\"V\",\"source\":\"http://www.advanced-monolithic.com/pdf/ds1117.pdf\",\"provenance\":\"datasheet\",\"note\":\"AMS1117-3.3 (U2 on the DevKitC V4 schematic). Electrical Characteristics (p. 2): output voltage 3.300 V typ (3.251 to 3.349 V at 25 C).\"},\"dropout\":{\"value\":1.1,\"unit\":\"V\",\"source\":\"http://www.advanced-monolithic.com/pdf/ds1117.pdf\",\"provenance\":\"datasheet\",\"note\":\"Electrical Characteristics (p. 3): dropout typ 1.1 V (max 1.3 V) at IOUT = 0.8 A, delta VOUT = 1 %. The only point the datasheet gives; at the board's 0.1 to 0.3 A the real dropout is likely lower (no curve given).\"},\"ioutMax\":{\"value\":0.8,\"unit\":\"A\",\"source\":\"http://www.advanced-monolithic.com/pdf/ds1117.pdf\",\"provenance\":\"datasheet\",\"note\":\"Every load specification (load regulation, dropout, Note 4) is stated up to 0.8 A, and the current limit is min 0.9 A (p. 3); p. 1 headlines \\\"output current of 1A\\\", which the guaranteed limit does not cover.\"},\"iq\":{\"value\":0.005,\"unit\":\"A\",\"source\":\"http://www.advanced-monolithic.com/pdf/ds1117.pdf\",\"provenance\":\"datasheet\",\"note\":\"Quiescent current typ 5 mA (max 11 mA) at VIN - VOUT = 1.5 V, Electrical Characteristics p. 3.\"},\"reverse\":\"body-diode\"}]},\"gpio\":{\"domain\":\"3V3\",\"pins\":[\"VP\",\"VN\",\"IO34\",\"IO35\",\"IO32\",\"IO33\",\"IO25\",\"IO26\",\"IO27\",\"IO14\",\"IO12\",\"IO13\",\"IO23\",\"IO22\",\"TX\",\"RX\",\"IO21\",\"IO19\",\"IO18\",\"IO5\",\"IO17\",\"IO16\",\"IO4\",\"IO0\",\"IO2\",\"IO15\"],\"outputResistance\":{\"value\":34,\"unit\":\"ohm\",\"source\":\"https://www.espressif.com/sites/default/files/documentation/esp32_datasheet_en.pdf\",\"provenance\":\"estimate\",\"note\":\"Linear approximation at the default drive strength 2 (~20 mA; the datasheet notes on the pin list give 0: ~5, 1: ~10, 2: ~20, 3: ~40 mA, default 2). Table 5-3 (p. 52) at the maximum strength: high (3.3 - 2.64 V) / 40 mA = 16.5 ohm, low 0.495 V / 28 mA = 17.7 ohm, about 17 ohm; halving the strength roughly doubles it, about 34 ohm. A pin set to strength 3 is nearer 17 ohm. Chip, not board.\"},\"pullup\":{\"value\":45000,\"unit\":\"ohm\",\"source\":\"https://www.espressif.com/sites/default/files/documentation/esp32_datasheet_en.pdf\",\"provenance\":\"datasheet\",\"note\":\"chip, not board. Table 5-3 (p. 52) RPU typ 45 kohm, 3.3 V, 25 C.\"},\"pulldown\":{\"value\":45000,\"unit\":\"ohm\",\"source\":\"https://www.espressif.com/sites/default/files/documentation/esp32_datasheet_en.pdf\",\"provenance\":\"datasheet\",\"note\":\"chip, not board. Table 5-3 (p. 52) RPD typ 45 kohm, 3.3 V, 25 C.\"},\"inputLeakage\":{\"value\":5e-8,\"unit\":\"A\",\"source\":\"https://www.espressif.com/sites/default/files/documentation/esp32_datasheet_en.pdf\",\"provenance\":\"datasheet\",\"note\":\"chip, not board. Table 5-3 (p. 52) IIH / IIL max 50 nA, 3.3 V, 25 C.\"}},\"usbPorts\":{\"USB\":{\"gnd\":\"GND\"}},\"unaccounted\":[\"The board's CP2102N USB-UART bridge, on the 3.3 V supply: no idle current on the schematic and no measurement.\",\"The board's red power LED and its 2 kohm resistor from the 5V supply to GND: the schematic gives the resistor, not the current (roughly (5 V - LED Vf) / 2 kohm, about 1.4 to 1.6 mA for a red LED Vf of 1.8 to 2.2 V, LED part unknown).\",\"The board's USB voltage sense divider (22.1 kohm + 47.5 kohm) from USB 5 V to GND: about 5 V / 69.6 kohm = 72 uA on the USB domain (arithmetic from the schematic, not modelled).\",\"Module extras beyond the chip (SPI flash, crystal): the draw values are the chip's.\"]}}"),
 		art: {
 			"w": 120,
 			"h": 230,
@@ -32393,7 +33489,39 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 				"pins": ["+Vo", "-Vo"],
 				"kind": "selv"
 			}],
-			"isolation": "unknown"
+			"isolation": "unknown",
+			"sim": { "power": {
+				"domains": [{
+					"name": "5V",
+					"pin": "+Vo",
+					"ret": "-Vo",
+					"nominal": 5
+				}],
+				"source": {
+					"domain": "5V",
+					"voltage": {
+						"value": 5,
+						"unit": "V",
+						"source": "https://drive.google.com/file/d/1akkTcKPDKsjRavcggvhdrLv0_S19H-UG/view https://www.hlktech.net/index.php?id=105",
+						"provenance": "datasheet",
+						"note": "Hi-Link \"3W Ultra small series power module\" datasheet V2.9 (Aug. 2022), section 5.3 (5V/600mA): no-load rated output voltage 5 +/-0.1 V, full-load rated output voltage 5 +/-0.2 V. Room temperature."
+					},
+					"rInternal": {
+						"value": .042,
+						"unit": "ohm",
+						"source": "https://drive.google.com/file/d/1akkTcKPDKsjRavcggvhdrLv0_S19H-UG/view https://www.hlktech.net/index.php?id=105",
+						"provenance": "estimate",
+						"note": "Derived from the load regulation, +/-0.5% (datasheet V2.9 section 5.3 (5V/600mA); the product page says the same): band +/-0.5% x 5 V = +/-0.025 V, whole swing up to 0.05 V over 0 to 0.6 A, 0.05 / 0.6 = 0.0833 ohm. The datasheet does not define how load regulation is measured; read the same way as Mean Well's, a plus-minus band, so the whole 0 to rated-load swing can be up to twice the figure and this value uses that upper bound (real units usually droop less). The no-load (+/-0.1 V) and full-load (+/-0.2 V) windows would allow a larger drop. Controller ruling (reviewers disagreed): the two readings are 0.042 ohm (the +/-x% figure taken as the whole no-load to full-load swing) and 0.083 ohm (a band about a reference, up to twice the swing). 0.042 ohm is used: it is nearer typical droop, and this estimate never blocks."
+					},
+					"imax": {
+						"value": .6,
+						"unit": "A",
+						"source": "https://drive.google.com/file/d/1akkTcKPDKsjRavcggvhdrLv0_S19H-UG/view",
+						"provenance": "datasheet",
+						"note": "Hi-Link 3W series datasheet V2.9, section 2 (Product model) and section 5.3 (5V/600mA): rated output current 600 mA; short-time maximum output current at least 700 mA (table lists >=700). Room temperature."
+					}
+				}
+			} }
 		},
 		art: {
 			"w": 130,
@@ -32525,7 +33653,39 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 				"pins": ["+Vo", "-Vo"],
 				"kind": "selv"
 			}],
-			"isolation": "unknown"
+			"isolation": "unknown",
+			"sim": { "power": {
+				"domains": [{
+					"name": "3V3",
+					"pin": "+Vo",
+					"ret": "-Vo",
+					"nominal": 3.3
+				}],
+				"source": {
+					"domain": "3V3",
+					"voltage": {
+						"value": 3.3,
+						"unit": "V",
+						"source": "https://drive.google.com/file/d/1akkTcKPDKsjRavcggvhdrLv0_S19H-UG/view https://www.hlktech.net/index.php?id=106",
+						"provenance": "datasheet",
+						"note": "Hi-Link \"3W Ultra small series power module\" datasheet V2.9 (Aug. 2022), section 5.2 (3.3V/1000mA): no-load rated output voltage 3.3 +/-0.1 V, full-load rated output voltage 3.3 +/-0.2 V. Room temperature."
+					},
+					"rInternal": {
+						"value": .017,
+						"unit": "ohm",
+						"source": "https://drive.google.com/file/d/1akkTcKPDKsjRavcggvhdrLv0_S19H-UG/view https://www.hlktech.net/index.php?id=106",
+						"provenance": "estimate",
+						"note": "Derived from the load regulation, +/-0.5% (datasheet V2.9 section 5.2 (3.3V/1000mA); the product page says the same): band +/-0.5% x 3.3 V = +/-0.0165 V, whole swing up to 0.033 V over 0 to 1 A, 0.033 ohm. The datasheet does not define how load regulation is measured; read the same way as Mean Well's, a plus-minus band, so the whole 0 to rated-load swing can be up to twice the figure and this value uses that upper bound (real units usually droop less). The no-load (+/-0.1 V) and full-load (+/-0.2 V) windows would allow a larger drop. Controller ruling (reviewers disagreed): the two readings are 0.017 ohm (the +/-x% figure taken as the whole no-load to full-load swing) and 0.033 ohm (a band about a reference, up to twice the swing). 0.017 ohm is used: it is nearer typical droop, and this estimate never blocks."
+					},
+					"imax": {
+						"value": 1,
+						"unit": "A",
+						"source": "https://drive.google.com/file/d/1akkTcKPDKsjRavcggvhdrLv0_S19H-UG/view",
+						"provenance": "datasheet",
+						"note": "Hi-Link 3W series datasheet V2.9, section 2 (Product model) and section 5.2 (3.3V/1000mA): rated output current 1000 mA; short-time maximum output current at least 1100 mA (table lists >=1100). Room temperature. Doubt: the series is sold as 3 W, but 3.3 V x 1.0 A = 3.3 W (3 W / 3.3 V would be 0.91 A). The datasheet states 1000 mA, so that is used."
+					}
+				}
+			} }
 		},
 		art: {
 			"w": 130,
@@ -32696,7 +33856,113 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 		},
 		electrical: {
 			"model": "power_bank",
-			"params": {}
+			"params": {},
+			"sim": {
+				"usbPorts": { "USB-C": { "gnd": "B-" } },
+				"power": {
+					"domains": [
+						{
+							"name": "BAT",
+							"pin": "B+",
+							"ret": "B-",
+							"nominal": 3.7
+						},
+						{
+							"name": "OUT",
+							"pin": "5V+",
+							"ret": "5V-",
+							"nominal": 5
+						},
+						{
+							"name": "USB",
+							"pin": "USB-C#vbus",
+							"ret": "USB-C#gnd",
+							"nominal": 5
+						}
+					],
+					"draw": [{
+						"domain": "BAT",
+						"typical": {
+							"value": 5e-5,
+							"unit": "A",
+							"source": "https://static.chipdip.ru/lib/688/DOC045688389.pdf https://wmsc.lcsc.com/wmsc/upload/file/pdf/v2/lcsc/1810262207_INJOINIC-IP5306_C181692.pdf",
+							"provenance": "datasheet",
+							"note": "Battery standby current ISTB 50 uA typ, VIN = 0 V, VBAT = 3.7 V (Electrical Characteristics, p. 5 of English V1.31; p. 6 of English V1.10). The IP5306-I2C datasheet (Chinese; its electrical pages are footed V1.2, its register pages V1.21) also gives ISTB 50 uA (VIN = 0 V, VBAT = 3.7 V); a Chinese V1.3 reading of 100 uA was not verified (no URL), and the front page of every version opened says '<100 uA standby'. Chip, not board: the module's charge-indicator LEDs are not included. While the boost runs, the chip's own operating current (IBAT 3 mA typ, VBAT = 3.7 V, p. 5) is not added here; it is folded into the rail's efficiency estimate."
+						}
+					}],
+					"rails": [{
+						"id": "boost",
+						"inputs": [{
+							"domain": "BAT",
+							"via": "direct"
+						}],
+						"output": "OUT",
+						"kind": "boost",
+						"vout": {
+							"value": 5,
+							"unit": "V",
+							"source": "https://static.chipdip.ru/lib/688/DOC045688389.pdf https://wmsc.lcsc.com/wmsc/upload/file/pdf/v2/lcsc/1810262207_INJOINIC-IP5306_C181692.pdf",
+							"provenance": "datasheet",
+							"note": "DC-DC output voltage VOUT 5.0 V typ at VBAT = 3.7 V (Electrical Characteristics, Boost system, p. 5 of English V1.31; the Chinese V1.3 also gives 5.0 V). The older English V1.10 gives 5.10 V for the same row. No min or max is stated."
+						},
+						"efficiency": {
+							"value": .88,
+							"unit": "1",
+							"provenance": "estimate",
+							"source": "https://static.chipdip.ru/lib/688/DOC045688389.pdf https://wmsc.lcsc.com/wmsc/upload/file/pdf/v2/lcsc/1810262207_INJOINIC-IP5306_C181692.pdf",
+							"note": "No IP5306 datasheet version found (English V1.10 and V1.31, Chinese V1.3, IP5306-I2C V1.2/V1.21) has an efficiency curve; they state only a peak, 'up to 92%' (V1.31 and V1.3, p. 1) or 'up to 96%' (V1.10, p. 1). Operating point assumed: about 1 A out at VBAT = 3.7 V. 0.88 assumes a synchronous boost of this class runs a few points below its quoted peak at 1 A (switch, inductor and sense losses grow with current); it would be lower near 2.4 A and at low battery voltage. Includes the chip's 3 mA operating current."
+						},
+						"vinMin": {
+							"value": 3,
+							"unit": "V",
+							"source": "https://static.chipdip.ru/lib/688/DOC045688389.pdf https://atta.szlcsc.com/upload/public/pdf/source/20231017/AB6A25E64E1038420E9A7039637542A8.pdf",
+							"provenance": "datasheet",
+							"note": "Battery operation voltage VBAT min 3.0 V (Electrical Characteristics, Boost system, p. 5 of English V1.31). The IP5306-I2C datasheet V1.21 (the I2C variant, not this chip; register SYS_CTL1 0x01 bit 0, 'Batlow 3.0V low-battery shutdown enable', reset 1; PDF p. 15) supports a default low-battery shutdown at 3.0 V. No hysteresis or restart voltage is given. Third-party readings differ and are not used: done.land's X-150 module page says output cuts off below 2.8-2.9 V, and its IP5306 page (https://done.land/components/power/powersupplies/battery/chargers/charge-discharge/ip5306/) says over-discharge 'turns off battery when voltage <3.25V (may vary with internal configuration)'."
+						},
+						"vinMax": {
+							"value": 4.4,
+							"unit": "V",
+							"source": "https://static.chipdip.ru/lib/688/DOC045688389.pdf",
+							"provenance": "datasheet",
+							"note": "Battery operation voltage VBAT max 4.4 V (Electrical Characteristics, Boost system, p. 5 of English V1.31; 4.4 V is the highest charge voltage option, 4.40 V cells)."
+						},
+						"ioutMax": {
+							"value": 2.4,
+							"unit": "A",
+							"source": "https://static.chipdip.ru/lib/688/DOC045688389.pdf",
+							"provenance": "datasheet",
+							"note": "Boost output current Ivout 2.4 A typ, no condition stated (Electrical Characteristics, p. 5 of English V1.31; Chinese V1.3 also 2.4 A). The older English V1.10 gives 2.1 A, and V1.31's Recommended operation conditions (p. 4) list load current 2.1 A typical (its MAX cell is printed as 0, a typo), so 2.4 A is the boost row's figure, not a recommended continuous load. Protection: the output shuts off when VOUT stays below 4.4 V for 30 ms (TUVD) or the current exceeds 4 A for 150-200 us (TOCD), same page."
+						},
+						"reverse": "blocks",
+						"offPath": "diode",
+						"minLoad": {
+							"amps": {
+								"value": .045,
+								"unit": "A",
+								"source": "https://static.chipdip.ru/lib/688/DOC045688389.pdf",
+								"provenance": "datasheet",
+								"note": "Load removal detect timer TloadD: 'Load current continuously lower than 45mA', 32 s typ (p. 6 of English V1.31; same in V1.10 and Chinese V1.3)."
+							},
+							"note": "Light-load automatic shutdown: with the output load below 45 mA continuously for 32 s (typ), the IP5306 turns the boost off and goes to standby. A short press on KEY (30 ms to 2 s) turns it back on (Push Button, p. 9 of V1.31)."
+						}
+					}]
+				},
+				"limits": [{
+					"of": { "domain": "USB" },
+					"kind": "vinMax",
+					"value": 5.5,
+					"source": "https://static.chipdip.ru/lib/688/DOC045688389.pdf https://wmsc.lcsc.com/wmsc/upload/file/pdf/v2/lcsc/1810262207_INJOINIC-IP5306_C181692.pdf",
+					"provenance": "datasheet",
+					"conditions": "recommended operating conditions, input voltage VIN max (4.65 to 5.5 V; 4.75 to 5.5 V in V1.10)",
+					"note": "Recommended operation conditions, p. 4 of English V1.31 (and V1.10). Absolute maximum VIN is -0.3 to 6 V in V1.31 and -0.3 to 5.5 V in V1.10 (p. 4). Chip, not board: assumes the module's USB-C VBUS goes straight to the IP5306 VIN pin with no protection in between."
+				}],
+				"unaccounted": [
+					"Charge-indicator LEDs (four in the module art): IP5306 LED indicator current is 4 mA in V1.31 (p. 6) but 10 mA in Chinese V1.3 and 25 mA in the I2C datasheet, and the LEDs are lit only for a while after a key press or while charging. Not modelled.",
+					"Flashlight LED driver on KEY (25 mA, V1.31 p. 6): whether the module fits a flashlight LED is not known; not modelled.",
+					"Boost operating current (3 mA typ from a 3.7 V battery) is counted in the efficiency estimate rather than as a separate idle draw, because a separate idle draw would be counted even while the boost is off.",
+					"Efficiency variation with load and battery voltage: one point (0.88) is used for the whole range."
+				]
+			}
 		},
 		art: {
 			"w": 120,
@@ -33149,7 +34415,39 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			}],
 			"isolation": "double",
 			"isolationProvenance": "datasheet",
-			"protection": "class-2"
+			"protection": "class-2",
+			"sim": { "power": {
+				"domains": [{
+					"name": "3V3",
+					"pin": "+V",
+					"ret": "-V",
+					"nominal": 3.3
+				}],
+				"source": {
+					"domain": "3V3",
+					"voltage": {
+						"value": 3.3,
+						"unit": "V",
+						"source": "https://www.meanwell.com/Upload/PDF/IRM-03/IRM-03-SPEC.PDF",
+						"provenance": "datasheet",
+						"note": "Mean Well IRM-03-3.3, SPECIFICATION p. 2: DC voltage 3.3 V, voltage tolerance +/-2.5% (Note 3: includes set-up tolerance, line and load regulation). Note 1: 230 VAC input, rated load, 25 C."
+					},
+					"rInternal": {
+						"value": .037,
+						"unit": "ohm",
+						"source": "https://www.meanwell.com/Upload/PDF/IRM-03/IRM-03-SPEC.PDF",
+						"provenance": "estimate",
+						"note": "Derived from the load regulation, +/-1.0% (IRM-03-3.3, SPECIFICATION p. 2): band +/-1% x 3.3 V = +/-0.033 V, whole swing up to 0.066 V over 0 to 900 mA, 0.066 / 0.9 = 0.0733 ohm. Mean Well's IRM datasheet does not define load regulation (Note 3 only says the tolerance includes it); its NGE12 sibling Note 6 says it is measured from 0% to 100% rated load, and the plus-minus figure is a band, so the whole 0 to rated-load swing can be up to twice the figure. This value uses that upper bound (real units usually droop less). Controller ruling (reviewers disagreed): the two readings are 0.037 ohm (the +/-x% figure taken as the whole no-load to full-load swing) and 0.073 ohm (a band about a reference, up to twice the swing). 0.037 ohm is used: it is nearer typical droop, and this estimate never blocks."
+					},
+					"imax": {
+						"value": .9,
+						"unit": "A",
+						"source": "https://www.meanwell.com/Upload/PDF/IRM-03/IRM-03-SPEC.PDF",
+						"provenance": "datasheet",
+						"note": "Mean Well IRM-03-3.3, SPECIFICATION p. 2: rated current 900 mA, current range 0 to 900 mA. Note 1: 230 VAC input, 25 C; derate at high temperature per the \"Derating Curve\"."
+					}
+				}
+			} }
 		},
 		art: {
 			"w": 160,
@@ -33365,7 +34663,39 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			}],
 			"isolation": "double",
 			"isolationProvenance": "datasheet",
-			"protection": "class-2"
+			"protection": "class-2",
+			"sim": { "power": {
+				"domains": [{
+					"name": "5V",
+					"pin": "+V",
+					"ret": "-V",
+					"nominal": 5
+				}],
+				"source": {
+					"domain": "5V",
+					"voltage": {
+						"value": 5,
+						"unit": "V",
+						"source": "https://www.meanwell.com/Upload/PDF/IRM-03/IRM-03-SPEC.PDF",
+						"provenance": "datasheet",
+						"note": "Mean Well IRM-03-5, SPECIFICATION p. 2: DC voltage 5 V, voltage tolerance +/-2.5% (Note 3: includes set-up tolerance, line and load regulation). Note 1: 230 VAC input, rated load, 25 C."
+					},
+					"rInternal": {
+						"value": .042,
+						"unit": "ohm",
+						"source": "https://www.meanwell.com/Upload/PDF/IRM-03/IRM-03-SPEC.PDF",
+						"provenance": "estimate",
+						"note": "Derived from the load regulation, +/-0.5% (IRM-03-5, SPECIFICATION p. 2): band +/-0.5% x 5 V = +/-0.025 V, whole swing up to 0.05 V over 0 to 600 mA, 0.05 / 0.6 = 0.0833 ohm. Mean Well's IRM datasheet does not define load regulation (Note 3 only says the tolerance includes it); its NGE12 sibling Note 6 says it is measured from 0% to 100% rated load, and the plus-minus figure is a band, so the whole 0 to rated-load swing can be up to twice the figure. This value uses that upper bound (real units usually droop less). Controller ruling (reviewers disagreed): the two readings are 0.042 ohm (the +/-x% figure taken as the whole no-load to full-load swing) and 0.083 ohm (a band about a reference, up to twice the swing). 0.042 ohm is used: it is nearer typical droop, and this estimate never blocks."
+					},
+					"imax": {
+						"value": .6,
+						"unit": "A",
+						"source": "https://www.meanwell.com/Upload/PDF/IRM-03/IRM-03-SPEC.PDF",
+						"provenance": "datasheet",
+						"note": "Mean Well IRM-03-5, SPECIFICATION p. 2: rated current 600 mA, current range 0 to 600 mA. Note 1: 230 VAC input, 25 C; derate at high temperature per the \"Derating Curve\"."
+					}
+				}
+			} }
 		},
 		art: {
 			"w": 160,
@@ -33541,7 +34871,39 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			}],
 			"isolation": "double",
 			"isolationProvenance": "datasheet",
-			"protection": "class-2"
+			"protection": "class-2",
+			"sim": { "power": {
+				"domains": [{
+					"name": "5V",
+					"pin": "+V",
+					"ret": "-V",
+					"nominal": 5
+				}],
+				"source": {
+					"domain": "5V",
+					"voltage": {
+						"value": 5,
+						"unit": "V",
+						"source": "https://www.meanwell.com/Upload/PDF/IRM-05/IRM-05-SPEC.PDF",
+						"provenance": "datasheet",
+						"note": "Mean Well IRM-05-5, SPECIFICATION p. 2: DC voltage 5 V, voltage tolerance +/-2.5% (Note 3: includes set-up tolerance, line and load regulation). Note 1: 230 VAC input, rated load, 25 C."
+					},
+					"rInternal": {
+						"value": .025,
+						"unit": "ohm",
+						"source": "https://www.meanwell.com/Upload/PDF/IRM-05/IRM-05-SPEC.PDF",
+						"provenance": "estimate",
+						"note": "Derived from the load regulation, +/-0.5% (IRM-05-5, SPECIFICATION p. 2): band +/-0.5% x 5 V = +/-0.025 V, whole swing up to 0.05 V over 0 to 1 A, 0.05 ohm. Mean Well's IRM datasheet does not define load regulation (Note 3 only says the tolerance includes it); its NGE12 sibling Note 6 says it is measured from 0% to 100% rated load, and the plus-minus figure is a band, so the whole 0 to rated-load swing can be up to twice the figure. This value uses that upper bound (real units usually droop less). Controller ruling (reviewers disagreed): the two readings are 0.025 ohm (the +/-x% figure taken as the whole no-load to full-load swing) and 0.05 ohm (a band about a reference, up to twice the swing). 0.025 ohm is used: it is nearer typical droop, and this estimate never blocks."
+					},
+					"imax": {
+						"value": 1,
+						"unit": "A",
+						"source": "https://www.meanwell.com/Upload/PDF/IRM-05/IRM-05-SPEC.PDF",
+						"provenance": "datasheet",
+						"note": "Mean Well IRM-05-5, SPECIFICATION p. 2: rated current 1 A, current range 0 to 1 A. Note 1: 230 VAC input, 25 C; derate at high temperature per the \"Derating Curve\"."
+					}
+				}
+			} }
 		},
 		art: {
 			"w": 180,
@@ -36341,7 +37703,55 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 		},
 		electrical: {
 			"model": "display",
-			"params": {}
+			"params": {},
+			"sim": {
+				"power": {
+					"domains": [{
+						"name": "VCC",
+						"pin": "VCC",
+						"ret": "GND",
+						"nominal": 3.3
+					}, {
+						"name": "LED",
+						"pin": "LED",
+						"ret": "GND",
+						"nominal": 3.3
+					}],
+					"draw": [{
+						"domain": "VCC",
+						"typical": {
+							"value": .067,
+							"unit": "A",
+							"provenance": "estimate",
+							"source": "https://www.lcdwiki.com/res/MSP4021/ST7796S-Sitronix.pdf https://www.lcdwiki.com/res/MSP4021/4.0inch_SPI_Schematic.pdf https://www.lcdwiki.com/res/MSP4021/QD-40037C1-00_specification_V1.0.pdf",
+							"note": "Backlight on. Controller: ST7796S normal mode IDD 12 mA typ (section 7.3 Power Consumption, p. 50; 60 Hz, all pixels black, VDDI 1.8 V, VDDA 2.8 V; chip, not board). Backlight: 8 white LEDs in parallel (panel QD40037C1 outline, backlight circuit), anode LEDA on the module's 3.3 V net, cathodes through R5 5.6 ohm and an S8050 switch to GND (module schematic). The documentation gives no backlight current; I = (3.3 V - Vf - Vce(sat)) / 5.6 ohm with an assumed Vce(sat) of 0.1 V (not from an S8050 datasheet) and an assumed white-LED Vf of 2.8 to 3.0 V gives 36 to 71 mA; 55 mA taken. 12 + 55 = 67 mA. Note the backlight current flows from VCC, not from the LED pin."
+						},
+						"peak": {
+							"value": .087,
+							"unit": "A",
+							"provenance": "estimate",
+							"source": "https://www.lcdwiki.com/res/MSP4021/ST7796S-Sitronix.pdf https://www.lcdwiki.com/res/MSP4021/4.0inch_SPI_Schematic.pdf",
+							"note": "Backlight on at the top of its range plus the controller maximum: ST7796S IDD 16 mA max (section 7.3, p. 50, VDDI = VDDA = 3.3 V; chip, not board) + 71 mA backlight (Vf 2.8 V in the arithmetic of typical) = 87 mA. Pixel content changes the controller draw only slightly; the backlight dominates. The module page's 'Power Consumption 0.78W(have touch)/0.93W(no touch)' (no voltage given) would mean 156 to 282 mA, which would need a white-LED Vf of about 1.6 to 2.3 V across the 5.6 ohm resistor and 0.1 V Vce(sat) on the 3.3 V net (implausible for white LEDs); so it is not used.",
+							"label": "backlight and controller max"
+						}
+					}, {
+						"domain": "LED",
+						"typical": {
+							"value": .0025,
+							"unit": "A",
+							"provenance": "estimate",
+							"source": "https://www.lcdwiki.com/res/MSP4021/4.0inch_SPI_Schematic.pdf",
+							"note": "The LED pin drives the base of the S8050 backlight switch through R6 1 kohm (module schematic; 'TFT_BL high level enables'). (3.3 V - Vbe about 0.8 V) / 1 kohm = 2.5 mA when driven at 3.3 V; about 4.2 mA at 5 V. Vbe assumed, not from an S8050 datasheet."
+						}
+					}]
+				},
+				"unaccounted": [
+					"XPT2046 touch controller supply current - not looked up; small next to the backlight.",
+					"SD card in the socket - card current varies by card (tens of mA when writing); not modelled.",
+					"XC6206 quiescent current (1 uA typ) - negligible.",
+					"White-LED forward voltage of the panel backlight - not given in the panel outline; the backlight current is an estimate that depends on it strongly."
+				]
+			}
 		},
 		art: {
 			"w": 360,
@@ -37877,6 +39287,229 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 						}
 					]
 				}
+			},
+			"sim": {
+				"power": {
+					"domains": [{
+						"name": "VCC",
+						"pin": "VCC",
+						"ret": "GND",
+						"nominal": 3.3
+					}],
+					"draw": [{
+						"domain": "VCC",
+						"typical": {
+							"value": .001,
+							"unit": "A",
+							"source": "https://ww1.microchip.com/downloads/aemDocuments/documents/APID/ProductDocuments/DataSheets/MCP23017-Data-Sheet-DS20001952.pdf",
+							"provenance": "datasheet",
+							"note": "Table 1-1 D004, p. 4: IDD 1 mA max at SCL = 1 MHz, 1.8 to 5.5 V, -40 to +125 C. No typical is stated, so the maximum is used (an upper bound; idle is D005 standby, 1 uA max). Chip, not board. Excludes current the GPIO pins source into loads, which is solved."
+						},
+						"minVolts": {
+							"value": 1.8,
+							"unit": "V",
+							"source": "https://ww1.microchip.com/downloads/aemDocuments/documents/APID/ProductDocuments/DataSheets/MCP23017-Data-Sheet-DS20001952.pdf",
+							"provenance": "datasheet",
+							"note": "Table 1-1 D001, p. 4: VDD 1.8 V min. Chip, not board (the board has no regulator, so VCC is VDD)."
+						}
+					}]
+				},
+				"limits": [
+					{
+						"of": { "pin": "GPA0" },
+						"kind": "absMaxCurrent",
+						"value": .025,
+						"source": "https://ww1.microchip.com/downloads/aemDocuments/documents/APID/ProductDocuments/DataSheets/MCP23017-Data-Sheet-DS20001952.pdf",
+						"provenance": "datasheet",
+						"conditions": "absolute maximum rating, sunk or sourced by any output pin",
+						"note": "Section 1.0 Absolute Maximum Ratings, p. 3. Chip, not board."
+					},
+					{
+						"of": { "pin": "GPA1" },
+						"kind": "absMaxCurrent",
+						"value": .025,
+						"source": "https://ww1.microchip.com/downloads/aemDocuments/documents/APID/ProductDocuments/DataSheets/MCP23017-Data-Sheet-DS20001952.pdf",
+						"provenance": "datasheet",
+						"conditions": "absolute maximum rating, sunk or sourced by any output pin",
+						"note": "Section 1.0 Absolute Maximum Ratings, p. 3. Chip, not board."
+					},
+					{
+						"of": { "pin": "GPA2" },
+						"kind": "absMaxCurrent",
+						"value": .025,
+						"source": "https://ww1.microchip.com/downloads/aemDocuments/documents/APID/ProductDocuments/DataSheets/MCP23017-Data-Sheet-DS20001952.pdf",
+						"provenance": "datasheet",
+						"conditions": "absolute maximum rating, sunk or sourced by any output pin",
+						"note": "Section 1.0 Absolute Maximum Ratings, p. 3. Chip, not board."
+					},
+					{
+						"of": { "pin": "GPA3" },
+						"kind": "absMaxCurrent",
+						"value": .025,
+						"source": "https://ww1.microchip.com/downloads/aemDocuments/documents/APID/ProductDocuments/DataSheets/MCP23017-Data-Sheet-DS20001952.pdf",
+						"provenance": "datasheet",
+						"conditions": "absolute maximum rating, sunk or sourced by any output pin",
+						"note": "Section 1.0 Absolute Maximum Ratings, p. 3. Chip, not board."
+					},
+					{
+						"of": { "pin": "GPA4" },
+						"kind": "absMaxCurrent",
+						"value": .025,
+						"source": "https://ww1.microchip.com/downloads/aemDocuments/documents/APID/ProductDocuments/DataSheets/MCP23017-Data-Sheet-DS20001952.pdf",
+						"provenance": "datasheet",
+						"conditions": "absolute maximum rating, sunk or sourced by any output pin",
+						"note": "Section 1.0 Absolute Maximum Ratings, p. 3. Chip, not board."
+					},
+					{
+						"of": { "pin": "GPA5" },
+						"kind": "absMaxCurrent",
+						"value": .025,
+						"source": "https://ww1.microchip.com/downloads/aemDocuments/documents/APID/ProductDocuments/DataSheets/MCP23017-Data-Sheet-DS20001952.pdf",
+						"provenance": "datasheet",
+						"conditions": "absolute maximum rating, sunk or sourced by any output pin",
+						"note": "Section 1.0 Absolute Maximum Ratings, p. 3. Chip, not board."
+					},
+					{
+						"of": { "pin": "GPA6" },
+						"kind": "absMaxCurrent",
+						"value": .025,
+						"source": "https://ww1.microchip.com/downloads/aemDocuments/documents/APID/ProductDocuments/DataSheets/MCP23017-Data-Sheet-DS20001952.pdf",
+						"provenance": "datasheet",
+						"conditions": "absolute maximum rating, sunk or sourced by any output pin",
+						"note": "Section 1.0 Absolute Maximum Ratings, p. 3. Chip, not board."
+					},
+					{
+						"of": { "pin": "GPA7" },
+						"kind": "absMaxCurrent",
+						"value": .025,
+						"source": "https://ww1.microchip.com/downloads/aemDocuments/documents/APID/ProductDocuments/DataSheets/MCP23017-Data-Sheet-DS20001952.pdf",
+						"provenance": "datasheet",
+						"conditions": "absolute maximum rating, sunk or sourced by any output pin",
+						"note": "Section 1.0 Absolute Maximum Ratings, p. 3. Chip, not board."
+					},
+					{
+						"of": { "pin": "GPB0" },
+						"kind": "absMaxCurrent",
+						"value": .025,
+						"source": "https://ww1.microchip.com/downloads/aemDocuments/documents/APID/ProductDocuments/DataSheets/MCP23017-Data-Sheet-DS20001952.pdf",
+						"provenance": "datasheet",
+						"conditions": "absolute maximum rating, sunk or sourced by any output pin",
+						"note": "Section 1.0 Absolute Maximum Ratings, p. 3. Chip, not board."
+					},
+					{
+						"of": { "pin": "GPB1" },
+						"kind": "absMaxCurrent",
+						"value": .025,
+						"source": "https://ww1.microchip.com/downloads/aemDocuments/documents/APID/ProductDocuments/DataSheets/MCP23017-Data-Sheet-DS20001952.pdf",
+						"provenance": "datasheet",
+						"conditions": "absolute maximum rating, sunk or sourced by any output pin",
+						"note": "Section 1.0 Absolute Maximum Ratings, p. 3. Chip, not board."
+					},
+					{
+						"of": { "pin": "GPB2" },
+						"kind": "absMaxCurrent",
+						"value": .025,
+						"source": "https://ww1.microchip.com/downloads/aemDocuments/documents/APID/ProductDocuments/DataSheets/MCP23017-Data-Sheet-DS20001952.pdf",
+						"provenance": "datasheet",
+						"conditions": "absolute maximum rating, sunk or sourced by any output pin",
+						"note": "Section 1.0 Absolute Maximum Ratings, p. 3. Chip, not board."
+					},
+					{
+						"of": { "pin": "GPB3" },
+						"kind": "absMaxCurrent",
+						"value": .025,
+						"source": "https://ww1.microchip.com/downloads/aemDocuments/documents/APID/ProductDocuments/DataSheets/MCP23017-Data-Sheet-DS20001952.pdf",
+						"provenance": "datasheet",
+						"conditions": "absolute maximum rating, sunk or sourced by any output pin",
+						"note": "Section 1.0 Absolute Maximum Ratings, p. 3. Chip, not board."
+					},
+					{
+						"of": { "pin": "GPB4" },
+						"kind": "absMaxCurrent",
+						"value": .025,
+						"source": "https://ww1.microchip.com/downloads/aemDocuments/documents/APID/ProductDocuments/DataSheets/MCP23017-Data-Sheet-DS20001952.pdf",
+						"provenance": "datasheet",
+						"conditions": "absolute maximum rating, sunk or sourced by any output pin",
+						"note": "Section 1.0 Absolute Maximum Ratings, p. 3. Chip, not board."
+					},
+					{
+						"of": { "pin": "GPB5" },
+						"kind": "absMaxCurrent",
+						"value": .025,
+						"source": "https://ww1.microchip.com/downloads/aemDocuments/documents/APID/ProductDocuments/DataSheets/MCP23017-Data-Sheet-DS20001952.pdf",
+						"provenance": "datasheet",
+						"conditions": "absolute maximum rating, sunk or sourced by any output pin",
+						"note": "Section 1.0 Absolute Maximum Ratings, p. 3. Chip, not board."
+					},
+					{
+						"of": { "pin": "GPB6" },
+						"kind": "absMaxCurrent",
+						"value": .025,
+						"source": "https://ww1.microchip.com/downloads/aemDocuments/documents/APID/ProductDocuments/DataSheets/MCP23017-Data-Sheet-DS20001952.pdf",
+						"provenance": "datasheet",
+						"conditions": "absolute maximum rating, sunk or sourced by any output pin",
+						"note": "Section 1.0 Absolute Maximum Ratings, p. 3. Chip, not board."
+					},
+					{
+						"of": { "pin": "GPB7" },
+						"kind": "absMaxCurrent",
+						"value": .025,
+						"source": "https://ww1.microchip.com/downloads/aemDocuments/documents/APID/ProductDocuments/DataSheets/MCP23017-Data-Sheet-DS20001952.pdf",
+						"provenance": "datasheet",
+						"conditions": "absolute maximum rating, sunk or sourced by any output pin",
+						"note": "Section 1.0 Absolute Maximum Ratings, p. 3. Chip, not board."
+					},
+					{
+						"of": { "domain": "VCC" },
+						"kind": "ioTotalCurrent",
+						"value": .125,
+						"source": "https://ww1.microchip.com/downloads/aemDocuments/documents/APID/ProductDocuments/DataSheets/MCP23017-Data-Sheet-DS20001952.pdf",
+						"provenance": "datasheet",
+						"conditions": "absolute maximum rating",
+						"note": "Section 1.0 Absolute Maximum Ratings, p. 3: maximum current into VDD pin 125 mA (out of VSS pin 150 mA). Chip, not board."
+					}
+				],
+				"gpio": {
+					"domain": "VCC",
+					"pins": [
+						"GPA0",
+						"GPA1",
+						"GPA2",
+						"GPA3",
+						"GPA4",
+						"GPA5",
+						"GPA6",
+						"GPA7",
+						"GPB0",
+						"GPB1",
+						"GPB2",
+						"GPB3",
+						"GPB4",
+						"GPB5",
+						"GPB6",
+						"GPB7"
+					],
+					"outputResistance": {
+						"value": 75,
+						"unit": "ohm",
+						"provenance": "estimate",
+						"note": "Derived from Table 1-1 D080, p. 4 (DS20001952D): GPIO VOL 0.6 V max at IOL = 8.0 mA, VDD = 4.5 V, so 0.6 / 0.008 = 75 ohm (sink side, an upper bound at 4.5 V). The source side is weaker on paper: D090 VOH VDD - 0.7 V min at IOH = -3.0 mA, VDD = 4.5 V, so 0.7 / 0.003 = 233 ohm at most. One resistance serves both states here, so 75 ohm is used: a high pin's current may read high, never low. At the 3.3 V nominal the drivers are somewhat weaker than at 4.5 V (not stated). Chip, not board."
+					},
+					"pullup": {
+						"value": 66700,
+						"unit": "ohm",
+						"provenance": "estimate",
+						"note": "Derived from Table 1-1 D070, p. 4 (DS20001952D): GPIO weak pull-up current IPU 40 min, 75 typ, 115 max uA at VDD = 5 V with the pin at VSS, so 5 V / 75 uA = 66.7 kohm typical (5 / 115 uA = 43.5 kohm to 5 / 40 uA = 125 kohm). The datasheet states a current, not a resistance, and none at 3.3 V. Enabled per pin by the GPPU register (section 3.5.7, Register 3-6). Chip, not board."
+					},
+					"inputLeakage": {
+						"value": 1e-6,
+						"unit": "A",
+						"source": "https://ww1.microchip.com/downloads/aemDocuments/documents/APID/ProductDocuments/DataSheets/MCP23017-Data-Sheet-DS20001952.pdf",
+						"provenance": "datasheet",
+						"note": "Table 1-1 D060, p. 4 (DS20001952D): I/O port pins input leakage IIL +/-1 uA max, VSS <= VPIN <= VDD, 1.8 to 5.5 V, -40 to +125 C. Chip, not board."
+					}
+				},
+				"unaccounted": ["Power LED: none of the opened sources (digitaltown, ShillehTek manual, EasyEDA component page) show a power LED or a board schematic for the CJMCU-2317, so none is counted. If the board has one, its current is missing.", "Any on-board pull-up resistors (I2C, RESET, address pins): no schematic found; their current depends on the pin states."]
 			}
 		},
 		art: {
@@ -41792,6 +43425,46 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 				"sda": "SDA",
 				"scl": "SCL",
 				"address": { "setting": "address" }
+			},
+			"sim": {
+				"power": {
+					"domains": [{
+						"name": "VCC",
+						"pin": "VCC",
+						"ret": "GND",
+						"nominal": 3.3
+					}],
+					"draw": [{
+						"domain": "VCC",
+						"typical": {
+							"value": .01,
+							"unit": "A",
+							"provenance": "estimate",
+							"source": "https://cdn-shop.adafruit.com/datasheets/SSD1306.pdf https://www.lcdwiki.com/res/MC096VX/0.96inch-OLED-MC096VX-schematic-diagram.pdf https://www.lcdwiki.com/0.96inch_OLED_Module_MC096GX",
+							"note": "Pixel-dependent: about a third to a half of the pixels lit (text and graphics), contrast FFh. Same arithmetic as peak with the 5.6 mA segment current scaled by the lit fraction: (1.9 to 2.8 mA + ICC 0.43 mA) x 7.5 V / 0.7 / 3.3 V = 7.5 to 10.5 mA. The module page (lcdwiki MC096GX) states 0.06 W 'in normal condition' with no voltage, which is 12 mA at 5 V or 18 mA at 3.3 V. 10 mA taken, at the top of the arithmetic range and below the page's figure. SSD1306 chip values (chip, not board) plus the module's IREF resistor; not a measured board value."
+						},
+						"peak": {
+							"value": .02,
+							"unit": "A",
+							"provenance": "estimate",
+							"source": "https://cdn-shop.adafruit.com/datasheets/SSD1306.pdf https://www.lcdwiki.com/res/MC096VX/0.96inch-OLED-MC096VX-schematic-diagram.pdf",
+							"note": "All pixels on, contrast FFh. IREF = (VCC 7.5 V - 2.5 V) / 910 kohm (module R4, schematic) = 5.5 uA; ISEG = 255/256 x IREF x 8 = 43.8 uA (SSD1306 datasheet section 8, Figure 8-15, p. 26); 128 segments x 43.8 uA = 5.6 mA, plus ICC 0.43 mA typ (Table 12-1, p. 48; given at VCC 12 V, IREF 12.5 uA, all on, contrast FFh, used here unscaled) = 6.0 mA at the 7.5 V charge-pump output (App Note section 2) = 45 mW; from VBAT 3.3 V at an assumed 70 % charge-pump efficiency = 19.5 mA, plus IDD 0.05 mA, rounded to 20 mA. Chip values (chip, not board); pump efficiency assumed.",
+							"label": "all pixels on"
+						},
+						"minVolts": {
+							"value": 3,
+							"unit": "V",
+							"provenance": "representative",
+							"source": "https://www.lcdwiki.com/0.96inch_OLED_Module_MC096GX",
+							"note": "lcdwiki MC096GX (a GND VCC SCL SDA module of this kind; clones vary): 'Wide voltage supply (3V~5V)'. The SSD1306 App Note gives VBAT 3.3 to 4.2 V for the charge pump; on this module VBAT is the XC6206 3.3 V output, which follows VCC minus about 75 mV (Torex XC6206 3.3 V, Vdif1 typ at 30 mA, https://cdn.eicom.ru/media/PDF/1021087.pdf p. 5) when VCC is below 3.3 V. The module is documented to run from 3 V, so the module's figure is used rather than 3.3 V + dropout."
+						}
+					}]
+				},
+				"unaccounted": [
+					"XC6206 quiescent current (1 uA typ, Torex datasheet) - negligible.",
+					"Current through the on-board 4.7 kohm I2C pull-ups when SDA or SCL is held low (up to 0.7 mA each at 3.3 V) - depends on bus traffic, flows through the bus master's pin rather than as a constant draw.",
+					"Charge-pump efficiency is not given in the SSD1306 datasheet; 70 % is assumed."
+				]
 			}
 		},
 		art: {
@@ -46671,7 +48344,16 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			"params": { "resistance": {
 				"unit": "ohm",
 				"default": 1e3
-			} }
+			} },
+			"sim": { "limits": [{
+				"of": { "part": true },
+				"kind": "power",
+				"value": .5,
+				"source": "https://cdn.sparkfun.com/assets/a/9/3/0/e/yageo-cfr_datasheet.pdf",
+				"provenance": "representative",
+				"conditions": "ambient up to 70 C; derated linearly to 0 at 155 C",
+				"note": "Yageo CFR series carbon film resistor, CFR-50 (1/2 W axial): Table 1 (p. 3) \"Power Rating at 70 C\" 1/2W; derating curve (Rated Power % vs ambient temperature) 100 % up to 70 C falling to 0 at 155 C."
+			}] }
 		},
 		art: {
 			"w": 80,
@@ -46779,7 +48461,16 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 			"params": { "resistance": {
 				"unit": "ohm",
 				"default": 1e3
-			} }
+			} },
+			"sim": { "limits": [{
+				"of": { "part": true },
+				"kind": "power",
+				"value": .25,
+				"source": "https://cdn.sparkfun.com/assets/a/9/3/0/e/yageo-cfr_datasheet.pdf",
+				"provenance": "representative",
+				"conditions": "ambient up to 70 C; derated linearly to 0 at 155 C",
+				"note": "Yageo CFR series carbon film resistor, CFR-25 (1/4 W axial): Table 1 (p. 3) \"Power Rating at 70 C\" 1/4W; derating curve (Rated Power % vs ambient temperature) 100 % up to 70 C falling to 0 at 155 C."
+			}] }
 		},
 		art: {
 			"w": 60,
@@ -47562,7 +49253,14 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 				"volts": 125,
 				"amps": 10,
 				"provenance": "datasheet"
-			}]
+			}],
+			"sim": { "modelParams": { "contactResistance": {
+				"value": .05,
+				"unit": "ohm",
+				"source": "https://www.chinadaier.com/wp-content/uploads/2017/07/KCD1-2-101.pdf",
+				"provenance": "datasheet",
+				"note": "Daier KCD1-2-101 drawing, \"The Main Technology Performance\" table: \"Contact resistance <= 50m ohm\" (a maximum; no test current stated). The specified maximum is used."
+			} } }
 		},
 		states: ["off", "on"],
 		art: {
@@ -53751,7 +55449,256 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 				"via": "USB",
 				"diode": true,
 				"max": 5.5
-			}]
+			}],
+			"sim": {
+				"limits": [
+					{
+						"of": { "domain": "3V3" },
+						"kind": "ioTotalCurrent",
+						"value": .05,
+						"source": "https://datasheets.raspberrypi.com/rp2040/rp2040-datasheet.pdf",
+						"provenance": "datasheet",
+						"conditions": "IOVDD = 3.3 V, -40 to 85 C",
+						"note": "chip, not board. Table 625 Digital IO characteristics (p. 616): IIOVDD_MAX maximum total IOVDD current 50 mA (sum of all current sourced by GPIO and QSPI pins) and IIOVSS_MAX 50 mA (sum sunk). The QSPI flash pins share this budget."
+					},
+					{
+						"of": { "domain": "3V3" },
+						"kind": "vinMax",
+						"value": 3.63,
+						"source": "https://datasheets.raspberrypi.com/rp2040/rp2040-datasheet.pdf",
+						"provenance": "datasheet",
+						"conditions": "absolute maximum rating",
+						"note": "chip, not board. Table 622 Absolute maximum ratings for digital IO (p. 614): IOVDD max 3.63 V. Applies when 3V3(OUT) is driven from outside."
+					},
+					{
+						"of": { "domain": "VSYS" },
+						"kind": "vinMax",
+						"value": 5.5,
+						"source": "https://datasheets.raspberrypi.com/pico/pico-datasheet.pdf https://www.richtek.com/assets/product_file/RT6150A=RT6150B/DS6150AB-06.pdf",
+						"provenance": "datasheet",
+						"conditions": "recommended operating condition",
+						"note": "Pico datasheet section 2.3 Recommended operating conditions (pp. 10-11): VSYS max 5.5 V. RT6150A/B Recommended Operating Conditions (p. 4): supply input voltage 1.8 to 5.5 V (absolute maximum 6 V on VIN)."
+					},
+					{
+						"of": { "domain": "VBUS" },
+						"kind": "vinMax",
+						"value": 5.5,
+						"source": "https://datasheets.raspberrypi.com/pico/pico-datasheet.pdf",
+						"provenance": "datasheet",
+						"conditions": "recommended operating condition",
+						"note": "Pico datasheet section 2.3 Recommended operating conditions (p. 10): VBUS 5 V +/- 10 %, so 5.5 V."
+					}
+				],
+				"power": {
+					"domains": [
+						{
+							"name": "USB",
+							"pin": "USB#vbus",
+							"ret": "USB#gnd",
+							"nominal": 5
+						},
+						{
+							"name": "VBUS",
+							"pin": "VBUS",
+							"ret": "GND",
+							"nominal": 5
+						},
+						{
+							"name": "VSYS",
+							"pin": "VSYS",
+							"ret": "GND",
+							"nominal": 4.7
+						},
+						{
+							"name": "3V3",
+							"pin": "3V3(OUT)",
+							"ret": "GND",
+							"nominal": 3.3
+						}
+					],
+					"draw": [{
+						"domain": "3V3",
+						"typical": {
+							"value": .012,
+							"unit": "A",
+							"source": "https://datasheets.raspberrypi.com/rp2040/rp2040-datasheet.pdf",
+							"provenance": "estimate",
+							"note": "chip, not board. Table 637 Power Consumption (p. 623), BOOTSEL mode - Active, typical average: DVDD 9.4 mA + IOVDD 1.2 mA + USB_VDD 1.4 mA = 12.0 mA. On the Pico, DVDD comes from the on-chip LDO fed from 3.3 V, so its input current is about the DVDD current. In BOOTSEL the bootrom's USB bootloader chains clk_sys from clk_usb (48 MHz; RP2040-E16 erratum, p. 634); user code at the default 125 MHz draws more DVDD (Table 635, p. 622, gives per-MHz figures per peripheral). Excludes flash, LED and board extras (see unaccounted)."
+						},
+						"peak": {
+							"value": .021,
+							"unit": "A",
+							"source": "https://datasheets.raspberrypi.com/rp2040/rp2040-datasheet.pdf",
+							"provenance": "estimate",
+							"note": "Worst-case device, BOOTSEL mode - Active, Table 637 (p. 623) maximum average: DVDD 14.7 + IOVDD 4.3 + USB_VDD 2.0 = 21.0 mA, across temperature extremes and maximum voltage; chip, not board.",
+							"label": "busiest code"
+						},
+						"minVolts": {
+							"value": 1.62,
+							"unit": "V",
+							"source": "https://datasheets.raspberrypi.com/rp2040/rp2040-datasheet.pdf",
+							"provenance": "datasheet",
+							"note": "chip, not board. Table 634 Power Supply Specifications (p. 622): IOVDD and VREG_VIN min 1.62 V. USB_VDD needs 3.135 V and ADC performance is compromised below 2.97 V (Table 634 note c), so USB and the ADC fail before this."
+						}
+					}],
+					"rails": [
+						{
+							"id": "usb-vbus",
+							"inputs": [{
+								"domain": "USB",
+								"via": "direct"
+							}],
+							"output": "VBUS",
+							"kind": "switch",
+							"ron": {
+								"value": .01,
+								"unit": "ohm",
+								"source": "https://datasheets.raspberrypi.com/pico/RPi-Pico-R3-PUBLIC-20200119.zip",
+								"provenance": "estimate",
+								"note": "Pico R3 schematic (RPI-PICO-R3-PUBLIC-SCHEMATIC.pdf in the design files): micro-USB J1 VBUS is wired straight to the VBUS net and pin 40, no part in series. 10 mohm stands for the copper trace (assumed; not measured)."
+							},
+							"reverse": "body-diode"
+						},
+						{
+							"id": "vbus-diode",
+							"inputs": [{
+								"domain": "VBUS",
+								"via": "direct"
+							}],
+							"output": "VSYS",
+							"kind": "switch",
+							"vf": {
+								"value": .245,
+								"unit": "V",
+								"source": "https://www.onsemi.com/pdf/datasheet/mbr120vlsft1-d.pdf",
+								"provenance": "estimate",
+								"note": "D1 on the Pico R3 schematic and BOM is an onsemi MBR120VLSFT1G. Read from Figure 1 Typical Forward Voltage (p. 3), TJ = 25 C curve at IF = 0.1 A (the graph floor): about 0.245 V. The tabulated values are maxima: 0.275 V at 0.1 A, 0.315 V at 0.5 A, 0.340 V at 1.0 A, TJ = 25 C (Electrical Characteristics, p. 2)."
+							},
+							"reverse": "blocks"
+						},
+						{
+							"id": "buck-boost",
+							"inputs": [{
+								"domain": "VSYS",
+								"via": "direct"
+							}],
+							"output": "3V3",
+							"kind": "buck",
+							"vout": {
+								"value": 3.3,
+								"unit": "V",
+								"source": "https://www.richtek.com/assets/product_file/RT6150A=RT6150B/DS6150AB-06.pdf",
+								"provenance": "datasheet",
+								"note": "RT6150B-33GQW (U2 on the Pico R3 schematic and BOM), fixed 3.3 V output option (p. 1 Features: \"Fixed 3.3V and Adjustable Output Voltage Options\")."
+							},
+							"efficiency": {
+								"value": .8,
+								"unit": "1",
+								"source": "https://www.richtek.com/assets/product_file/RT6150A=RT6150B/DS6150AB-06.pdf",
+								"provenance": "estimate",
+								"note": "Read from Typical Operating Characteristics (p. 7), PS = L (the Pico default, GPIO23 low): \"Efficiency vs. Input Voltage\" at VIN about 4.7 V gives about 78 % at 10 mA and about 89 % at 100 mA; \"Buck-Boost 3.3V Efficiency\" at 10 to 30 mA lies between about 69 % (VIN 5.5 V) and 87 % (VIN 4.2 V). 0.8 for the Pico's 10 to 50 mA at VSYS about 4.7 V."
+							},
+							"vinMin": {
+								"value": 1.8,
+								"unit": "V",
+								"source": "https://www.richtek.com/assets/product_file/RT6150A=RT6150B/DS6150AB-06.pdf https://datasheets.raspberrypi.com/pico/pico-datasheet.pdf",
+								"provenance": "datasheet",
+								"note": "RT6150A/B Recommended Operating Conditions (p. 4): supply input voltage 1.8 to 5.5 V; input UVLO falling 1.55 V typ (1.4 V min), rising 1.65 V typ (1.8 V max), Electrical Characteristics (p. 4). Pico datasheet section 2.3 (pp. 10-11): VSYS min 1.8 V. Below vout the converter boosts (see notes)."
+							},
+							"vinMax": {
+								"value": 5.5,
+								"unit": "V",
+								"source": "https://www.richtek.com/assets/product_file/RT6150A=RT6150B/DS6150AB-06.pdf",
+								"provenance": "datasheet",
+								"note": "RT6150A/B Recommended Operating Conditions (p. 4): supply input voltage max 5.5 V (absolute maximum 6 V)."
+							},
+							"ioutMax": {
+								"value": .8,
+								"unit": "A",
+								"source": "https://www.richtek.com/assets/product_file/RT6150A=RT6150B/DS6150AB-06.pdf",
+								"provenance": "datasheet",
+								"note": "p. 1 Features: \"Up to 800mA Continuous Output Current\". The \"Maximum Output Current vs. Input Voltage\" curve (p. 7) shows the limit falls to about 350 mA at VIN = 1.8 V. The Pico datasheet pin descriptions (p. 8) recommend keeping the 3V3 pin load below 300 mA."
+							},
+							"iq": {
+								"value": 6e-5,
+								"unit": "A",
+								"source": "https://www.richtek.com/assets/product_file/RT6150A=RT6150B/DS6150AB-06.pdf",
+								"provenance": "datasheet",
+								"note": "Electrical Characteristics (p. 4): quiescent current 60 uA typ at IOUT = 0 mA, PS = 0 V (Power Save Mode), VIN = VOUT = 3.6 V."
+							},
+							"offPath": "open",
+							"reverse": "blocks"
+						}
+					]
+				},
+				"gpio": {
+					"domain": "3V3",
+					"pins": [
+						"GP0",
+						"GP1",
+						"GP2",
+						"GP3",
+						"GP4",
+						"GP5",
+						"GP6",
+						"GP7",
+						"GP8",
+						"GP9",
+						"GP10",
+						"GP11",
+						"GP12",
+						"GP13",
+						"GP14",
+						"GP15",
+						"GP16",
+						"GP17",
+						"GP18",
+						"GP19",
+						"GP20",
+						"GP21",
+						"GP22",
+						"GP26/ADC0",
+						"GP27/ADC1",
+						"GP28/ADC2"
+					],
+					"outputResistance": {
+						"value": 38,
+						"unit": "ohm",
+						"source": "https://datasheets.raspberrypi.com/rp2040/rp2040-datasheet.pdf",
+						"provenance": "estimate",
+						"note": "Default drive strength 4 mA (PADS_BANK0 GPIO DRIVE reset 0x1 = 4MA, Table 341, p. 301). Read from Figure 171 typical IV curves (p. 618), 4 mA setting at 10 mA: output high about 2.85 V, (3.3 - 2.85) / 0.01 = 45 ohm; output low about 0.30 V, 0.30 / 0.01 = 30 ohm; mean about 38 ohm. Worst case from Table 625 (p. 616): VOH min 2.62 V and VOL max 0.5 V at the selected current. Chip, not board."
+					},
+					"pullup": {
+						"value": 65e3,
+						"unit": "ohm",
+						"source": "https://datasheets.raspberrypi.com/rp2040/rp2040-datasheet.pdf",
+						"provenance": "estimate",
+						"note": "Table 625 (p. 616): RPU pull-up resistance min 50 kohm, max 80 kohm, no typical; midpoint taken. Chip, not board."
+					},
+					"pulldown": {
+						"value": 65e3,
+						"unit": "ohm",
+						"source": "https://datasheets.raspberrypi.com/rp2040/rp2040-datasheet.pdf",
+						"provenance": "estimate",
+						"note": "Table 625 (p. 616): RPD pull-down resistance min 50 kohm, max 80 kohm, no typical; midpoint taken. Chip, not board."
+					},
+					"inputLeakage": {
+						"value": 1e-6,
+						"unit": "A",
+						"source": "https://datasheets.raspberrypi.com/rp2040/rp2040-datasheet.pdf",
+						"provenance": "datasheet",
+						"note": "chip, not board. Table 625 (p. 615): pin input leakage current IIN max 1 uA."
+					}
+				},
+				"usbPorts": { "USB": { "gnd": "GND" } },
+				"unaccounted": [
+					"The board's W25Q16JV flash chip on 3V3: no number from the schematic or a measurement (it shares the RP2040 IOVDD budget for its pin currents).",
+					"The board's green LED on GPIO25, through a 470 ohm resistor (paired from the parts list, not traced on the schematic): drawn only when firmware lights it; about (3.3 V - 2 V) / 470 ohm = 2.8 mA (LED Vf assumed).",
+					"The board's USB voltage sense divider (5.6 kohm + 10 kohm) to GND: about 5 V / 15.6 kohm = 0.32 mA on VBUS (arithmetic from the schematic).",
+					"The board's VSYS sense divider (200 kohm + 100 kohm): about 4.7 V / 300 kohm = 16 uA; 3V3_EN 100 kohm pull-up to VSYS (no current unless 3V3_EN is pulled low, then VSYS / 100 kohm).",
+					"Crystal oscillator and the RP2040 at clocks other than BOOTSEL's 48 MHz: the draw uses the BOOTSEL figures."
+				]
+			}
 		},
 		art: {
 			"w": 120,
@@ -65925,6 +67872,120 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 })).sort((a, b) => a.file.localeCompare(b.file));
 var modulesById = Object.fromEntries(library.flatMap((e) => e.ok ? [[e.module.id, e.module]] : []));
 //#endregion
+//#region src/agent/catalog.ts
+var libraryLookup = (id) => Object.hasOwn(modulesById, id) ? modulesById[id] : void 0;
+//#endregion
+//#region src/cli/io.ts
+/** Spec 4.2: 0 ok, 1 findings that block, 2 invalid input, 3 environment problem (no browser). */
+var EXIT = {
+	ok: 0,
+	blocked: 1,
+	input: 2,
+	environment: 3
+};
+var CliError = class extends Error {
+	code;
+	constructor(message, code) {
+		if (code !== EXIT.blocked && code !== EXIT.input && code !== EXIT.environment) throw new RangeError(`CliError exit code must be 1, 2 or 3, not ${String(code)}`);
+		super(message);
+		this.code = code;
+	}
+};
+var pathIn = (io, path) => resolve(io.cwd, path);
+function readJson(io, path) {
+	let text;
+	try {
+		text = readFileSync(pathIn(io, path), "utf8");
+	} catch {
+		throw new CliError(`${path}: cannot read the file`, EXIT.input);
+	}
+	try {
+		return JSON.parse(text);
+	} catch (e) {
+		throw new CliError(`${path}: not valid JSON (${e.message})`, EXIT.input);
+	}
+}
+/** Why a write failed, by Node error code: the path is at fault (exit 2) or the machine is (exit 3). */
+var WRITE_ERRORS = {
+	EISDIR: {
+		why: "it is a directory",
+		exit: EXIT.input
+	},
+	ERR_FS_EISDIR: {
+		why: "it is a directory",
+		exit: EXIT.input
+	},
+	ENOTDIR: {
+		why: "a folder on its path is a file",
+		exit: EXIT.input
+	},
+	EEXIST: {
+		why: "a folder on its path is a file",
+		exit: EXIT.input
+	},
+	ENOENT: {
+		why: "its folder cannot be created",
+		exit: EXIT.input
+	},
+	EINVAL: {
+		why: "not a valid path",
+		exit: EXIT.input
+	},
+	ENAMETOOLONG: {
+		why: "the path is too long",
+		exit: EXIT.input
+	},
+	EACCES: {
+		why: "permission denied",
+		exit: EXIT.environment
+	},
+	EPERM: {
+		why: "permission denied",
+		exit: EXIT.environment
+	},
+	EROFS: {
+		why: "the file system is read-only",
+		exit: EXIT.environment
+	},
+	ENOSPC: {
+		why: "no space left on the device",
+		exit: EXIT.environment
+	},
+	EDQUOT: {
+		why: "the disk quota is used up",
+		exit: EXIT.environment
+	}
+};
+/** A failed write as a CliError that names the path; an unknown cause is an environment problem. */
+function writeError(path, err) {
+	const code = err?.code;
+	const known = code !== void 0 && Object.hasOwn(WRITE_ERRORS, code) ? WRITE_ERRORS[code] : void 0;
+	return new CliError(`${path}: cannot write the file (${known?.why ?? (err instanceof Error ? err.message : String(err))})`, known?.exit ?? EXIT.environment);
+}
+function writeFile(io, path, content) {
+	const full = pathIn(io, path);
+	try {
+		mkdirSync(dirname(full), { recursive: true });
+		writeFileSync(full, content);
+	} catch (err) {
+		throw writeError(path, err);
+	}
+}
+var printJson = (io, value) => io.stdout(`${JSON.stringify(value, null, 2)}\n`);
+function flag(args, name) {
+	const v = args.flags.get(name);
+	return typeof v === "string" ? v : void 0;
+}
+/** A sheet loaded like the site loads it; one that does not load is invalid input (exit 2). */
+function loadSheet(io, path) {
+	const r = validateDiagram(readJson(io, path), { library: libraryLookup });
+	if (!r.ok) throw new CliError(`${path} is not a Circuitoon sheet: ${r.errors.slice(0, 5).join("; ")}`, EXIT.input);
+	return {
+		diagram: r.diagram,
+		warnings: r.warnings
+	};
+}
+//#endregion
 //#region src/agent/order.ts
 var collator$1 = new Intl.Collator("en", {
 	numeric: true,
@@ -70660,6 +72721,22 @@ function incompleteRule(acc) {
 }
 STATE_RULES.push(unprotectedRule);
 STATIC_RULES.push(fuseRules, cableRules, incompleteRule);
+/**
+* Converter availability in one contact state, the saved one, by part uid (live-simulation spec,
+* section 4 table): the spec section 1 availability rules applied to the state `active` gives
+* each contact group, instead of aggregated over every state. A sheet past MAX_SOURCES is not
+* judged: every converter is unknown, as in the enumeration.
+*/
+function convertersInState(d, active) {
+	const plugs = plugsOf(d);
+	const g = buildMainsGraph(d, plugs, netlist(d, plugs));
+	if (!g) return /* @__PURE__ */ new Map();
+	const p = prepare(g);
+	if (p.sources.length > 10) return new Map(g.converters.map((c) => [c.part.uid, notChecked(c)]));
+	for (const gi of p.groupIdx) p.groupState[gi] = active(g.groups[gi].part, g.groups[gi].def.id) ? 1 : 0;
+	analyseState(p);
+	return new Map(g.converters.map((c, i) => [c.part.uid, p.converterIdx.includes(i) ? inputState(p, c) : UNPOWERED]));
+}
 //#endregion
 //#region src/format/mains.ts
 /** True when some part's module declares mains data. */
@@ -71079,7 +73156,7 @@ function knownRails(supply) {
 var EPS = 1e-9;
 /** An input is taken to work down to this share of its lowest listed rail (no real ranges yet). */
 var LOW_TOLERANCE = .9;
-var volts = (v) => `${Number(v.toFixed(2))} V`;
+var volts$1 = (v) => `${Number(v.toFixed(2))} V`;
 /** A wire end as the user reads it: the part's designator (its uid when missing), the pin label or name, and the hole or bus offset. */
 function endpointName(d, ep) {
 	const part = d.parts.find((p) => p.uid === ep.part);
@@ -71335,7 +73412,7 @@ function supplyFor(ins) {
 	if (!common?.length) return "a compatible supply";
 	const r = common;
 	const [min, max] = [r[0], r[r.length - 1]];
-	const what = r.length <= 2 ? `a ${orList(r.map(volts))} supply` : `a ${volts(min)} to ${volts(max)} supply`;
+	const what = r.length <= 2 ? `a ${orList(r.map(volts$1))} supply` : `a ${volts$1(min)} to ${volts$1(max)} supply`;
 	const pins = [[3.3, "3V3"], [5, "5V"]].filter(([v]) => r.some((x) => Math.abs(x - v) <= EPS)).map(([, n]) => n);
 	const cell = [
 		9,
@@ -71345,7 +73422,7 @@ function supplyFor(ins) {
 		7.4,
 		3
 	].find((v) => v >= min - EPS && v <= max + EPS);
-	const example = pins.length ? `a board's ${orList(pins)} pin` : cell !== void 0 ? `a ${volts(cell)} battery` : "";
+	const example = pins.length ? `a board's ${orList(pins)} pin` : cell !== void 0 ? `a ${volts$1(cell)} battery` : "";
 	return example ? `${what}, such as ${example}` : what;
 }
 /** The rails every one of the inputs accepts, sorted; null when any input's rails are unknown. */
@@ -71361,7 +73438,7 @@ function commonRails(ins) {
 /** What an input accepts, in words: "needs 3.3 V", "accepts 3.3 V or 5 V", "accepts 7 V to 12 V". */
 function acceptsText(rails) {
 	const r = [...new Set(rails)].sort((a, b) => a - b);
-	return r.length === 1 ? `needs ${volts(r[0])}` : r.length === 2 ? `accepts ${orList(r.map(volts))}` : `accepts ${volts(r[0])} to ${volts(r[r.length - 1])}`;
+	return r.length === 1 ? `needs ${volts$1(r[0])}` : r.length === 2 ? `accepts ${orList(r.map(volts$1))}` : `accepts ${volts$1(r[0])} to ${volts$1(r[r.length - 1])}`;
 }
 /**
 * The advice for unfed power inputs (`it`: "it" or "them"), given every load on their nets. A rail
@@ -72120,7 +74197,7 @@ var lin0 = () => ({
 	u: /* @__PURE__ */ new Map()
 });
 /** `a` plus `sign` times edge `e`. */
-function step(a, e, sign) {
+function step$1(a, e, sign) {
 	const u = new Map(a.u);
 	if (e.v === null) {
 		const k = (u.get(e.src.id) ?? 0) + sign;
@@ -72330,7 +74407,7 @@ function checkPotentials({ d, nl, netTerms, netWires, terminal, plugs, shorted, 
 						loops.push(i);
 						continue;
 					}
-					pot.set(other, step(pot.get(n), e, e.from === n ? 1 : -1));
+					pot.set(other, step$1(pot.get(n), e, e.from === n ? 1 : -1));
 					up.set(other, i);
 					depth.set(other, depth.get(n) + 1);
 					groupOf.set(other, root);
@@ -72413,16 +74490,16 @@ function checkPotentials({ d, nl, netTerms, netWires, terminal, plugs, shorted, 
 			const from = s.external ? ` from ${s.external.via}` : shown !== s.term ? ` from ${andList(bank.map((x) => x.term.part.designator))}` : "";
 			if (bank.length > 1 && shown === s.term) return {
 				v,
-				text: `${andList(bank.map((x) => termName(x.term)))} (${volts(v)} in parallel)`
+				text: `${andList(bank.map((x) => termName(x.term)))} (${volts$1(v)} in parallel)`
 			};
 			return {
 				v,
-				text: `${termName(shown)} (${volts(v)}${from})`
+				text: `${termName(shown)} (${volts$1(v)}${from})`
 			};
 		}
 		return {
 			v,
-			text: `${andList(sorted(list).map((s) => termName(s.term)))} (${volts(v)} in series)`
+			text: `${andList(sorted(list).map((s) => termName(s.term)))} (${volts$1(v)} in series)`
 		};
 	};
 	/**
@@ -72551,7 +74628,7 @@ function checkPotentials({ d, nl, netTerms, netWires, terminal, plugs, shorted, 
 			if (only && !around.some((x) => only.has(x.e))) continue;
 			const cycle = around.filter((x) => x.e.src);
 			if (!cycle.length) continue;
-			const residual = minus(minus(pot.get(e.to), pot.get(e.from)), step(lin0(), e, 1));
+			const residual = minus(minus(pot.get(e.to), pot.get(e.from)), step$1(lin0(), e, 1));
 			if (residual.u.size) continue;
 			const mismatch = Math.abs(residual.c) > EPS;
 			const ahead = cycle.filter((x) => x.forward).map((x) => x.e.src);
@@ -72588,7 +74665,7 @@ function checkPotentials({ d, nl, netTerms, netWires, terminal, plugs, shorted, 
 						rule: "supplies-parallel",
 						subject: ext.term.part.designator,
 						target: termName(ext.term),
-						message: `${termName(ext.term)} also gets ${volts(ext.v)} from ${ext.external.via}; do not power ${ext.term.label} and ${connector} at the same time.`,
+						message: `${termName(ext.term)} also gets ${volts$1(ext.v)} from ${ext.external.via}; do not power ${ext.term.label} and ${connector} at the same time.`,
 						...involve(all)
 					});
 				} else add({
@@ -72607,15 +74684,15 @@ function checkPotentials({ d, nl, netTerms, netWires, terminal, plugs, shorted, 
 	/** How to bring a supply to `target` volts: set it when it is a value on the part, else move the wire or change the supply. */
 	const fixTo = (from, target) => {
 		const one = from.length === 1 ? from[0] : void 0;
-		if (one && settable(one)) return `Set ${one.term.part.designator} to ${volts(target)} or move the wire to a ${volts(target)} pin.`;
-		if (one && (one.external || one.term.info.external.size)) return `Move the wire to a ${volts(target)} pin.`;
-		return `Use a ${volts(target)} supply instead.`;
+		if (one && settable(one)) return `Set ${one.term.part.designator} to ${volts$1(target)} or move the wire to a ${volts$1(target)} pin.`;
+		if (one && (one.external || one.term.info.external.size)) return `Move the wire to a ${volts$1(target)} pin.`;
+		return `Use a ${volts$1(target)} supply instead.`;
 	};
 	/** Too high: where the voltage comes from ("is set to" for a value on the part) and the fix. */
 	const tooHigh = (t, max, v, from, what) => {
 		const one = from.length === 1 ? from[0] : void 0;
-		const gets = one && settable(one) ? `but ${termName(one.term)} is set to ${volts(v)}` : `but gets ${volts(v)} from ${what}`;
-		return `${termName(t)} accepts up to ${volts(max)} ${gets}. ${fixTo(from, max)}`;
+		const gets = one && settable(one) ? `but ${termName(one.term)} is set to ${volts$1(v)}` : `but gets ${volts$1(v)} from ${what}`;
+		return `${termName(t)} accepts up to ${volts$1(max)} ${gets}. ${fixTo(from, max)}`;
 	};
 	/** A diode-fed USB pin above what holds its net down: what happens and what to do. */
 	const backFeed = (pin, ext, under, what, v) => {
@@ -72624,7 +74701,7 @@ function checkPotentials({ d, nl, netTerms, netWires, terminal, plugs, shorted, 
 		const name = low ? cells ?? supplyName(low) : what;
 		const harm = low && isCell(low) ? "the cells" : under.length > 1 ? "them" : "it";
 		const fix = low && isCell(low) ? `Add a diode from ${termName(low)} to ${pin.label}, or unplug ${cells} before plugging in ${ext.via}.` : low ? removeWire(d, pin, low, `Do not wire ${termName(low)} to ${termName(pin)}.`) : `Do not wire ${what} to ${termName(pin)}.`;
-		return `When ${ext.via} is plugged in, ${termName(pin)} gets ${volts(ext.volts)} from ${ext.via}, which pushes current back into ${name} (${volts(v)}) and can damage ${harm}. ${fix}`;
+		return `When ${ext.via} is plugged in, ${termName(pin)} gets ${volts$1(ext.volts)} from ${ext.via}, which pushes current back into ${name} (${volts$1(v)}) and can damage ${harm}. ${fix}`;
 	};
 	const level = (e) => {
 		const [a, b] = [pot.get(e.from) ?? lin0(), pot.get(e.to) ?? lin0()];
@@ -72746,7 +74823,7 @@ function checkPotentials({ d, nl, netTerms, netWires, terminal, plugs, shorted, 
 			rule: "battery-bank",
 			subject: list[0].term.part.designator,
 			target: name,
-			message: `${name} form a parallel battery bank (${list.length}P, ${volts(list[0].v)}). Charge every cell to the same voltage, within about 0.1 V, before connecting them, and use matching cells.`,
+			message: `${name} form a parallel battery bank (${list.length}P, ${volts$1(list[0].v)}). Charge every cell to the same voltage, within about 0.1 V, before connecting them, and use matching cells.`,
 			parts: list.map((s) => s.term.part.uid),
 			pins: [...list.map((s) => termPin(s.term)), ...grounds.map(termPin)],
 			wires: [.../* @__PURE__ */ new Set([...wiresOf(netOfKey(list[0].term.key)), ...wiresOf(netOfKey(grounds[0].key))])],
@@ -72811,7 +74888,7 @@ function checkPotentials({ d, nl, netTerms, netWires, terminal, plugs, shorted, 
 					const gname = termName(terminal(nodeKey(t.part.uid, groundPin)));
 					if (adj && settings.every((x) => x > EPS)) add({
 						rule: "supply-unknown",
-						message: Math.abs(diff.c) <= EPS ? `${termName(adj.term)} is adjustable; set it to a voltage ${termName(t)} accepts (${orList(rails.map(volts))}).` : `${termName(adj.term)} is adjustable; set it so ${termName(t)} sees ${orList(rails.map(volts))}: ${orList(settings.map(volts))} on ${termName(adj.term)}, since the other supplies between ${termName(t)} and ${gname} ${diff.c > 0 ? "add" : "take away"} ${volts(Math.abs(diff.c))}.`,
+						message: Math.abs(diff.c) <= EPS ? `${termName(adj.term)} is adjustable; set it to a voltage ${termName(t)} accepts (${orList(rails.map(volts$1))}).` : `${termName(adj.term)} is adjustable; set it so ${termName(t)} sees ${orList(rails.map(volts$1))}: ${orList(settings.map(volts$1))} on ${termName(adj.term)}, since the other supplies between ${termName(t)} and ${gname} ${diff.c > 0 ? "add" : "take away"} ${volts$1(Math.abs(diff.c))}.`,
 						...base([adj])
 					});
 					else add({
@@ -72833,7 +74910,7 @@ function checkPotentials({ d, nl, netTerms, netWires, terminal, plugs, shorted, 
 					const x = on(net, (o) => o.type === "ground");
 					const y = on(ground, (o) => o.type === "power_out" || o.info.external.has(o.name));
 					const cells = from.length === 1 && isCell(from[0].term) ? mates(from[0]).map((s) => s.term.part.designator) : [];
-					const message = x && y && cells.length ? `${andList(cells)} ${cells.length > 1 ? "are" : "is"} wired in backwards: ${termName(t)} is wired to ${termName(x)} and ${termName(g)} to ${termName(y)}. This will damage ${t.part.designator}. Swap the two wires.` : x && y ? `${termName(t)} is wired to ${termName(x)} and ${termName(g)} to ${termName(y)}: the power is reversed and will damage ${t.part.designator}. Swap the two wires.` : `${termName(t)} sits ${volts(-v)} below ${termName(g)}: the power is reversed and will damage ${t.part.designator}. Swap its power wires.`;
+					const message = x && y && cells.length ? `${andList(cells)} ${cells.length > 1 ? "are" : "is"} wired in backwards: ${termName(t)} is wired to ${termName(x)} and ${termName(g)} to ${termName(y)}. This will damage ${t.part.designator}. Swap the two wires.` : x && y ? `${termName(t)} is wired to ${termName(x)} and ${termName(g)} to ${termName(y)}: the power is reversed and will damage ${t.part.designator}. Swap the two wires.` : `${termName(t)} sits ${volts$1(-v)} below ${termName(g)}: the power is reversed and will damage ${t.part.designator}. Swap its power wires.`;
 					reversed.add(t.part.uid);
 					add({
 						rule: "reversed",
@@ -72877,7 +74954,7 @@ function checkPotentials({ d, nl, netTerms, netWires, terminal, plugs, shorted, 
 			const floor = LOW_TOLERANCE * min;
 			if (v !== null && !unknown.length && v < floor - EPS) add({
 				rule: "supply-too-low",
-				message: `${termName(t)} needs at least ${floor.toFixed(1)} V; ${what} ${from.length === 1 && mates(from[0]).length === 1 ? "gives" : "give"} only ${volts(v)}. ${fixTo(from, min)}`,
+				message: `${termName(t)} needs at least ${floor.toFixed(1)} V; ${what} ${from.length === 1 && mates(from[0]).length === 1 ? "gives" : "give"} only ${volts$1(v)}. ${fixTo(from, min)}`,
 				...base(from)
 			});
 		}
@@ -83840,15 +85917,21 @@ function withoutAddedUsb(sp, lp) {
 		added
 	};
 }
-/** The module's fields without `kicad`. */
-function withoutKicad(m) {
+/** The module's fields without `kicad` and `electrical.sim` (an `electrical` left empty goes too). */
+function withoutLibraryData(m) {
 	const rest = { ...m };
 	delete rest.kicad;
+	if (isObj(rest.electrical)) {
+		const e = { ...rest.electrical };
+		delete e.sim;
+		if (Object.keys(e).length) rest.electrical = e;
+		else delete rest.electrical;
+	}
 	return rest;
 }
-/** How `stored` differs from the library's `lib`, or null when they are the same by content (the KiCad mapping aside). */
+/** How `stored` differs from the library's `lib`, or null when they are the same by content (the KiCad mapping and sim data aside). */
 function moduleDrift(stored, lib) {
-	const [s, l] = [withoutKicad(stored), withoutKicad(lib)];
+	const [s, l] = [withoutLibraryData(stored), withoutLibraryData(lib)];
 	if (canonical(s) === canonical(l)) return null;
 	const block = [];
 	const update = [];
@@ -84089,14 +86172,19 @@ var NETLIST_FORMAT = "circuitoon-netlist/1";
 /** A part reference: a letter, then letters, digits or underscores. */
 var REF_PATTERN = /^[A-Za-z][A-Za-z0-9_]*$/;
 /** One key per pin or hole group of a part (a hole index never makes a second key). */
-var terminalKey$1 = (ref, name) => JSON.stringify([ref, name]);
+var terminalKey = (ref, name) => JSON.stringify([ref, name]);
 /** "U1 GND", or "BB1 c5-top hole 2". */
 var terminalName = (t) => `${t.ref} ${t.name}${t.hole !== void 0 ? ` hole ${t.hole}` : ""}`;
 /** A part that can plug into a board: not a board, with legs, none of them a bus. */
 var mountable = (m) => !isBoard(m) && m.pins.some((p) => !isSpacer(p)) && !m.pins.some((p) => !isSpacer(p) && p.bus);
-function valueErrors(values, at) {
+function valueErrors(values, at, m) {
 	const out = [];
 	for (const [key, entry] of Object.entries(values)) {
+		if (isSimValueKey(key)) {
+			const p = simValueProblem(key, entry, m);
+			if (p) out.push(`${at}.${key}: ${p.text}`);
+			continue;
+		}
 		if (!Object.hasOwn(PARAM_RULES, key)) continue;
 		const rule = PARAM_RULES[key];
 		if (!(isObj(entry) && isNum(entry.value) && entry.unit === rule.unit && validParamValue(key, entry.value))) out.push(`${at}.${key}: must be { "value": <number>, "unit": "${rule.unit}" } within ${rule.range}`);
@@ -84214,7 +86302,7 @@ function parseNetlist(raw, library) {
 		if (p.values !== void 0) {
 			if (!isObj(p.values)) errors.push(`${at}.values: must be an object`);
 			else {
-				errors.push(...valueErrors(p.values, `${at}.values`));
+				errors.push(...valueErrors(p.values, `${at}.values`, withLibrarySim(m, library)));
 				part.values = p.values;
 			}
 		}
@@ -84338,7 +86426,7 @@ function parseNetlist(raw, library) {
 		for (const { ep, at: pat, binding } of pins) {
 			const t = resolve(ep, pat);
 			if (!t) continue;
-			const key = terminalKey$1(t.ref, t.name);
+			const key = terminalKey(t.ref, t.name);
 			const other = inNet.get(key);
 			const prior = boundAs.get(key);
 			if (other !== void 0 && binding !== void 0 && prior !== void 0) {
@@ -84401,7 +86489,7 @@ function parseNetlist(raw, library) {
 			const t = resolve(ep, `nc[${i}]`);
 			if (!t) return;
 			if (t.infra) return void errors.push(`nc[${i}]: ${terminalName(t)} is a breadboard hole group, not a pin`);
-			const net = inNet.get(terminalKey$1(t.ref, t.name));
+			const net = inNet.get(terminalKey(t.ref, t.name));
 			if (net !== void 0) return void errors.push(`nc[${i}]: ${terminalName(t)} is in net "${net}", so it cannot be not connected`);
 			nc.push(t);
 		});
@@ -84466,6 +86554,51 @@ function parseNetlist(raw, library) {
 			}
 		}
 	}
+	const probes = [];
+	const probeWarnings = [];
+	if (raw.probes !== void 0) {
+		if (!Array.isArray(raw.probes)) probeWarnings.push("probes: must be a list, so it was dropped");
+		else {
+			const ids = /* @__PURE__ */ new Set();
+			const netNames = new Set(nets.map((n) => n.name));
+			raw.probes.forEach((p, i) => {
+				const drop = (why) => void probeWarnings.push(`probes[${i}]: ${why}, so the probe was dropped`);
+				if (!isObj(p) || typeof p.at !== "string") return drop("must be { \"id\", \"name\"?, \"at\", \"ref\"? }");
+				const extra = Object.keys(p).find((k) => ![
+					"id",
+					"name",
+					"at",
+					"ref"
+				].includes(k));
+				if (extra) return drop(`unknown field "${extra}"`);
+				if (typeof p.id !== "string" || !PROBE_ID.test(p.id)) return drop("its id must be P and a number (P1, P2, ...)");
+				if (ids.has(p.id)) return drop(`its id ${p.id} is used twice`);
+				if (p.name !== void 0 && !(typeof p.name === "string" && p.name.trim() && p.name.length <= 40)) return drop("its name must be text, at most 40 characters");
+				if (p.ref !== void 0 && !(typeof p.ref === "string" && p.ref.startsWith("net:") && netNames.has(p.ref.slice(4)))) return drop("its ref must be net:<a net of this netlist>");
+				let at = p.at;
+				if (at.startsWith("net:")) {
+					if (!netNames.has(at.slice(4))) return drop(`no net "${at.slice(4)}"`);
+				} else {
+					const dot = at.indexOf(".");
+					const ref = dot < 0 ? at : at.slice(0, dot);
+					const hit = byRef.get(ref);
+					if (!hit) return drop(`no part "${ref}"`);
+					if (dot >= 0) {
+						const r = byName(hit.module, ref, at.slice(dot + 1), `probes[${i}].at`);
+						if (!r.ok) return drop(r.error.replace(/^probes\[\d+\]\.at: /, ""));
+						at = `${ref}.${r.t.name}`;
+					}
+				}
+				ids.add(p.id);
+				probes.push({
+					id: p.id,
+					...typeof p.name === "string" ? { name: p.name } : {},
+					at,
+					...typeof p.ref === "string" ? { ref: p.ref } : {}
+				});
+			});
+		}
+	}
 	if (errors.length) return {
 		ok: false,
 		errors
@@ -84481,10 +86614,27 @@ function parseNetlist(raw, library) {
 			groups,
 			notes,
 			copies: rep?.copies ?? [],
+			probes,
+			probeWarnings,
 			modules: Object.fromEntries(ids.map((id) => [id, used.get(id)])),
 			custom: ids.filter((id) => embedded.has(id)),
 			...ends ? { ends } : {}
 		}
+	};
+}
+/**
+* How a sheet's intent finds its modules: the sheet's embedded copy first (so a later library
+* change never breaks an old sheet), then the library. Ids the intent embeds itself are left to it,
+* unless they are library ids: the netlist then rejects the embedded copy as a built-in part, and
+* module-drift compares it with the library. An embedded copy carries the library's sim data
+* (withLibrarySim), which is library data like the KiCad mapping.
+*/
+function intentLookup(d, library) {
+	const own = isObj(d.intent) && isObj(d.intent.modules) ? new Set(Object.keys(d.intent.modules)) : /* @__PURE__ */ new Set();
+	return (id) => {
+		if (own.has(id) && !library(id)) return void 0;
+		const m = moduleOf(d, id);
+		return m ? withLibrarySim(m, library) : library(id);
 	};
 }
 //#endregion
@@ -84514,7 +86664,7 @@ function internalComponent(m, name) {
 }
 //#endregion
 //#region src/agent/verify.ts
-var ORDER = [
+var ORDER$1 = [
 	"intent",
 	"module-drift",
 	"part-missing",
@@ -84581,16 +86731,6 @@ function driftFindings(d, library, add) {
 function libraryBoard(d, library, id) {
 	return moduleOf(d, id) !== void 0 && (isBoard(library(id)) || isNetLabel(moduleOf(d, id)));
 }
-/**
-* How a sheet's intent finds its modules: the sheet's embedded copy first (so a later library
-* change never breaks an old sheet), then the library. Ids the intent embeds itself are left to it,
-* unless they are library ids: the netlist then rejects the embedded copy as a built-in part, and
-* module-drift compares it with the library.
-*/
-function intentLookup(d, library) {
-	const own = isObj(d.intent) && isObj(d.intent.modules) ? new Set(Object.keys(d.intent.modules)) : /* @__PURE__ */ new Set();
-	return (id) => own.has(id) && !library(id) ? void 0 : moduleOf(d, id) ?? library(id);
-}
 function verifyDiagram(d, library) {
 	const found = [];
 	const add = (rule, message, causes, more = {}) => found.push({
@@ -84612,7 +86752,7 @@ function verifyDiagram(d, library) {
 	}
 	capacity(d, add);
 	covered(d, add, driftedParts(found));
-	found.sort((a, b) => ORDER.indexOf(a.rule) - ORDER.indexOf(b.rule) || (a.message < b.message ? -1 : a.message > b.message ? 1 : 0));
+	found.sort((a, b) => ORDER$1.indexOf(a.rule) - ORDER$1.indexOf(b.rule) || (a.message < b.message ? -1 : a.message > b.message ? 1 : 0));
 	const seen = /* @__PURE__ */ new Map();
 	return found.map(({ causes, ...f }) => {
 		const base = `${f.rule}|${[...new Set(causes)].sort().join(",")}`;
@@ -84915,12 +87055,9 @@ function driftedParts(findings) {
 /** A covered-hole use that comes from a stale embedded copy: its covering part, or its leg's part, drifted. */
 var isStale = (u, stale) => stale.has(u.cover.by) || !!u.leg && stale.has(u.leg.part);
 //#endregion
-//#region src/agent/catalog.ts
-var libraryLookup = (id) => Object.hasOwn(modulesById, id) ? modulesById[id] : void 0;
-//#endregion
 //#region src/agent/notChecked.ts
 var NOT_CHECKED = [
-	"Current and heat: wire gauge against current, regulator and battery limits, and part temperatures.",
+	"Current and heat beyond the simulated DC operating point: wire gauge against current, part temperatures, and anything that changes over time (PWM, start-up, inrush, battery discharge). The simulation solves the saved switch and GPIO state only.",
 	"SPI bus conflicts; I2C addresses and pull-ups only as far as the parts declare them (not a part with no I2C data, nor a bus that continues on another sheet).",
 	"Required configuration inputs left floating (for example an MCP23017 RESET): unless the intent lists them, only I2C address pins are checked.",
 	"Firmware behaviour: pin modes, the internal pull-ups firmware turns on, and what drives a strapping pin at reset (only what is wired to it is checked).",
@@ -85911,267 +88048,6 @@ function renderCommand$1(args, io) {
 	return EXIT.ok;
 }
 //#endregion
-//#region src/cli/gate.ts
-var GATE_FORMAT = "circuitoon-cli/gate/3";
-var sha256 = (bytes) => createHash("sha256").update(bytes).digest("hex");
-/** The loader's warning for a part whose module the file does not embed (a missing module blocks). */
-var MISSING_MODULE = "is not embedded in this file";
-var plural = (n, one) => `${n} ${one}${n === 1 ? "" : "s"}`;
-/** Removes `path` when it is a file inside `dir` and not `keep` (the sheet being gated); anything else stays. */
-function removeStale(dir, path, keep) {
-	const full = resolve(dir, path);
-	const rel = relative(resolve(dir), full);
-	if (rel === "" || rel.startsWith("..") || isAbsolute(rel) || keep !== void 0 && full === resolve(keep)) return;
-	try {
-		if (!statSync(full).isFile()) return;
-	} catch {
-		return;
-	}
-	try {
-		rmSync(full);
-	} catch (err) {
-		throw writeError(full, err);
-	}
-}
-/** The artifacts of an earlier run in `outDir` that a new run replaces: renders, focused PNGs, the link. */
-function clearArtifacts(outDir, keep) {
-	let names = [];
-	try {
-		names = readdirSync(outDir);
-	} catch {
-		return;
-	}
-	for (const name of names) if (/^focus-.*\.png$/.test(name)) removeStale(outDir, name, keep);
-	for (const name of [
-		"sheet.svg",
-		"sheet.png",
-		"link.txt",
-		"bom.csv"
-	]) removeStale(outDir, name, keep);
-}
-/** Removes an earlier gate.json, and the file fallback it names, before anything else runs. */
-function clearReport(outDir, keep) {
-	const path = join(outDir, "gate.json");
-	let old;
-	try {
-		old = JSON.parse(readFileSync(path, "utf8"));
-	} catch {}
-	removeStale(outDir, "gate.json", keep);
-	const artifacts = old?.artifacts;
-	if (Array.isArray(artifacts)) {
-		for (const a of artifacts) if (a && typeof a === "object" && a.kind === "file" && typeof a.path === "string") removeStale(outDir, a.path, keep);
-	}
-}
-async function runGate(bytes, opts) {
-	const { io, outDir } = opts;
-	const png = opts.png ?? writePng;
-	clearArtifacts(outDir, pathIn(io, opts.sheetPath));
-	const found = [];
-	const note = (rule, cause, severity, message, more = {}) => found.push({
-		id: `${rule}|${cause}`,
-		rule,
-		severity,
-		message,
-		parts: more.parts ?? [],
-		pins: [],
-		wires: more.wires ?? []
-	});
-	const artifacts = [];
-	const artifact = (kind, path) => {
-		const content = readFileSync(join(outDir, path));
-		artifacts.push({
-			kind,
-			path,
-			sha256: sha256(content),
-			bytes: content.length
-		});
-	};
-	const required = [];
-	let link = {
-		url: null,
-		file: null,
-		chars: 0
-	};
-	let rows = {
-		bom: null,
-		quantities: [],
-		channels: []
-	};
-	const finish = () => {
-		const have = new Set(artifacts.map((a) => a.kind));
-		const missing = required.filter((r) => r.kind === "link-or-file" ? !have.has("link") && !have.has("file") : !have.has(r.kind));
-		if (missing.length) note("environment", "incomplete", "warning", `The gate is incomplete: ${missing.map((m) => m.path).join(", ")} could not be made, so the gate cannot pass.`);
-		const all = uniqueIds(found);
-		const blocking = all.filter((f) => f.severity === "error");
-		const code = blocking.length ? EXIT.blocked : missing.length ? EXIT.environment : EXIT.ok;
-		return {
-			code,
-			report: {
-				format: GATE_FORMAT,
-				ok: code === EXIT.ok,
-				ready: code === EXIT.ok && all.every((f) => f.severity !== "warning" || !READABILITY_RULES.includes(f.rule)),
-				diagram: {
-					path: opts.sheetPath,
-					sha256: sha256(bytes)
-				},
-				artifacts,
-				blocking,
-				warnings: all.filter((f) => f.severity === "warning"),
-				notes: all.filter((f) => f.severity === "info"),
-				notChecked: NOT_CHECKED,
-				link,
-				...rows
-			}
-		};
-	};
-	let raw;
-	try {
-		raw = JSON.parse(new TextDecoder().decode(bytes));
-	} catch (e) {
-		note("load", "json", "error", `${opts.sheetPath} is not valid JSON (${e.message})`);
-		return finish();
-	}
-	const v = validateDiagram(raw);
-	if (!v.ok) {
-		v.errors.forEach((e, i) => note("load", String(i), "error", `${opts.sheetPath} is not a Circuitoon sheet: ${e}`));
-		return finish();
-	}
-	const d = v.diagram;
-	v.warnings.forEach((w, i) => note("load", String(i), w.includes("it was dropped and the module default is shown") || w.includes(MISSING_MODULE) ? "error" : "warning", w));
-	const verified = verifyDiagram(d, libraryLookup);
-	const checked = withoutStale(checkDiagram(d), verified);
-	found.push(...verified.filter((f) => !alsoChecked(f, checked)).map(cliFinding));
-	found.push(...checked.map(cliFinding));
-	const routes = computeRoutes(d);
-	for (const { conn: c, blocked } of wirePaths(d, routes)) if (blocked) note("blocked-route", c.uid, "error", `The wire ${c.label ?? `${endpointName(d, c.from)} to ${endpointName(d, c.to)}`} has no clear route: it runs through a part.`, {
-		parts: [c.from.part, c.to.part],
-		wires: [c.uid]
-	});
-	for (const c of d.connections) if (routes.get(c.uid)?.fallback) note("wire-over-holes", c.uid, "warning", `The wire ${c.label ?? `${endpointName(d, c.from)} to ${endpointName(d, c.to)}`} runs over breadboard holes in use that it is not plugged into, so in the picture it may look plugged in there.`, {
-		parts: [c.from.part, c.to.part],
-		wires: [c.uid]
-	});
-	found.push(...readabilityFindings(d, routes).map(cliFinding));
-	for (const c of sheetCustomParts(d, libraryLookup)) found.push({
-		id: `custom-part|${c.module}`,
-		rule: "custom-part",
-		severity: "info",
-		message: customPartNote(c),
-		parts: c.parts,
-		pins: [],
-		wires: []
-	});
-	const parsed = d.intent !== void 0 ? parseNetlist(d.intent, intentLookup(d, libraryLookup)) : null;
-	const bom = sheetBom(d, libraryLookup);
-	rows = {
-		bom,
-		quantities: bomQuantities(bom),
-		channels: parsed?.ok ? channelTable(parsed.intent) : []
-	};
-	required.push({
-		kind: "bom",
-		path: "bom.csv"
-	});
-	writeFile(io, join(outDir, "bom.csv"), bomCsv(bom));
-	artifact("bom", "bom.csv");
-	const shoot = (drawn, kind, name) => {
-		required.push({
-			kind,
-			path: name
-		});
-		let shot;
-		try {
-			shot = png(drawn, 2, join(outDir, name), io.env);
-		} catch (err) {
-			throw writeError(join(outDir, name), err);
-		}
-		if (shot.ok) artifact(kind, name);
-		else note("environment", name, "warning", shot.message);
-		return shot.ok;
-	};
-	required.push({
-		kind: "svg",
-		path: "sheet.svg"
-	});
-	const full = renderSheetSvg(d);
-	writeFile(io, join(outDir, "sheet.svg"), full.svg);
-	artifact("svg", "sheet.svg");
-	const fullOk = shoot(full, "png", "sheet.png");
-	const copy = parsed?.ok ? parsed.intent.copies[0] : void 0;
-	if (copy) {
-		const name = `focus-${copy.id}.png`;
-		const uids = focusParts(d, copy.id);
-		if (uids && fullOk) shoot(renderSheetSvg(d, { box: focusBounds(d, uids, routes) }), "focus-png", name);
-		else required.push({
-			kind: "focus-png",
-			path: name
-		});
-	}
-	required.push({
-		kind: "link-or-file",
-		path: "link.txt"
-	});
-	try {
-		const l = await linkFor(d, outDir, io, pathIn(io, opts.sheetPath));
-		const file = l.file ? relative(outDir, pathIn(io, l.file)) : null;
-		link = {
-			url: l.url,
-			file,
-			chars: l.chars
-		};
-		if (l.url) {
-			writeFile(io, join(outDir, "link.txt"), `${l.url}\n`);
-			artifact("link", "link.txt");
-		} else {
-			artifact("file", file);
-			note("link", "file", "warning", `${l.reason} ${file} was written instead: open it in Circuitoon with Import JSON.`);
-		}
-	} catch (err) {
-		note("link", "none", "error", `No link could be made and the file fallback could not be written: ${err instanceof Error ? err.message : String(err)}`);
-	}
-	return finish();
-}
-/** The readability warnings in a gate report (the rules readabilityFindings raises). */
-function readabilityCount(report) {
-	return report.warnings.filter((w) => READABILITY_RULES.includes(w.rule)).length;
-}
-async function gateCommand(args, io) {
-	const [input, ...rest] = args.positionals;
-	const out = flag(args, "--out");
-	if (out) clearReport(pathIn(io, out), input ? pathIn(io, input) : void 0);
-	if (!input || !out) throw new CliError("gate: usage: circuitoon gate <sheet.json> -o <dir>", EXIT.input);
-	if (rest.length) throw new CliError(`gate: give one sheet file, not ${args.positionals.length}`, EXIT.input);
-	let bytes;
-	try {
-		bytes = readFileSync(pathIn(io, input));
-	} catch {
-		throw new CliError(`${input}: cannot read the file`, EXIT.input);
-	}
-	const { code, report } = await runGate(bytes, {
-		sheetPath: input,
-		outDir: pathIn(io, out),
-		io
-	});
-	writeFile(io, join(out, "gate.json"), `${JSON.stringify(report, null, 2)}\n`);
-	if (code === EXIT.environment) {
-		for (const w of report.warnings) if (w.rule === "environment") io.stderr(`${w.message}\n`);
-	}
-	if (args.flags.has("--json")) printJson(io, report);
-	else {
-		const head = code === EXIT.ok ? `GATE PASSED: ${input} (sha256 ${report.diagram.sha256})` : code === EXIT.environment ? `GATE INCOMPLETE: nothing blocks, but not every render could be made (${input})` : `GATE BLOCKED: ${plural(report.blocking.length, "blocking finding")} (${input})`;
-		const notReady = readabilityCount(report);
-		const lines = [...notReady ? [`NOT READY: ${plural(notReady, "readability warning")}`] : [], head];
-		if (report.blocking.length) lines.push("", "Blocking:", findingsText(report.blocking));
-		if (report.warnings.length) lines.push("", "Warnings (report these to the user):", findingsText(report.warnings));
-		if (report.notes.length) lines.push("", "Notes (not problems; pass them on to the user):", findingsText(report.notes));
-		lines.push("", `Artifacts in ${out}:`, ...report.artifacts.map((a) => `  ${a.path}  sha256 ${a.sha256}`), `  gate.json`);
-		if (report.link.url) lines.push("", `Link: ${report.link.url}`, LINK_NOTICE);
-		lines.push("", notCheckedText());
-		io.stdout(`${lines.join("\n")}\n`);
-	}
-	return code;
-}
-//#endregion
 //#region src/agent/footprint.ts
 /** Room kept around a free part's body for its pin stubs and the labels beside them. */
 var PIN_ROOM = 18;
@@ -86371,6 +88247,7 @@ var LabelPlacer = class {
 	* A spot for a label named `name` whose pin tip sits `s` px out from `from` along `dir` (for each
 	* s in LABEL_STUBS, from `base`, the point the distance is measured from, `from` by default), or
 	* null. The stub from `from` to the tip may cross `own` (the endpoint's part: a pad inside it).
+	* `size` keeps a box of that size clear instead of the label's flag (a probe's tag).
 	*/
 	spot(name, from, dir, opts = {}) {
 		const rotation = [
@@ -86412,14 +88289,15 @@ var LabelPlacer = class {
 				rotation,
 				values: { net: name }
 			};
-			const flag = flagRect(part, this.m, true);
+			const flag = opts.size ? flagBox(part, this.m, opts.size.w, opts.size.h) : flagRect(part, this.m, true);
 			if (this.flagsOff.hits(flag)) continue;
 			if ([line(exit, elbow), line(elbow, tip)].some((r) => this.stubsOff.hits(r, opts.own))) continue;
 			return {
 				part,
 				tip,
 				elbow,
-				base: exit
+				base: exit,
+				...opts.size ? { flag } : {}
 			};
 		}
 		return null;
@@ -86502,7 +88380,7 @@ var LabelPlacer = class {
 			uid,
 			designator: uid
 		};
-		const flag = flagRect(part, this.m, true);
+		const flag = s.flag ?? flagRect(part, this.m, true);
 		this.flagsOff.push({ r: flag }, { r: line(s.base, s.elbow) }, { r: line(s.elbow, s.tip) });
 		this.stubsOff.push({ r: flag }, { r: line(s.base, s.elbow) }, { r: line(s.elbow, s.tip) });
 		return part;
@@ -86617,9 +88495,9 @@ function realize(intent, d, locals = [], opts = {}) {
 		const parts = [...new Set(list.flatMap((s) => [...coveredBy.get(s.key) ?? []]))].sort(naturalCompare);
 		return parts.length ? ` (the other holes there lie under ${joinList(parts.map((u) => `${partBy.get(u)?.designator ?? u}'s body`))})` : "";
 	};
-	const legBy = new Map(plugs.map((pl) => [terminalKey$1(pl.part, pl.pin), pl]));
+	const legBy = new Map(plugs.map((pl) => [terminalKey(pl.part, pl.pin), pl]));
 	const netOfTerminal = /* @__PURE__ */ new Map();
-	intent.nets.forEach((n, i) => n.terminals.forEach((t) => netOfTerminal.set(terminalKey$1(t.ref, t.name), i)));
+	intent.nets.forEach((n, i) => n.terminals.forEach((t) => netOfTerminal.set(terminalKey(t.ref, t.name), i)));
 	const strips = /* @__PURE__ */ new Map();
 	for (const p of [...d.parts].sort((a, b) => naturalCompare(a.uid, b.uid))) {
 		const m = moduleOf(d, p.module);
@@ -86635,7 +88513,7 @@ function realize(intent, d, locals = [], opts = {}) {
 	const owner = /* @__PURE__ */ new Map();
 	const reserved = /* @__PURE__ */ new Set();
 	for (const pl of plugs) {
-		const ni = netOfTerminal.get(terminalKey$1(pl.part, pl.pin));
+		const ni = netOfTerminal.get(terminalKey(pl.part, pl.pin));
 		if (ni === void 0) reserved.add(groupKey(pl.board, pl.group));
 		else owner.set(groupKey(pl.board, pl.group), ni);
 	}
@@ -86847,7 +88725,7 @@ function realize(intent, d, locals = [], opts = {}) {
 		return pinEnd(best);
 	};
 	const capOf = (n) => [...n.left.values()].reduce((a, b) => a + b, 0);
-	const ncKeys = new Set(intent.nc.map((t) => terminalKey$1(t.ref, t.name)));
+	const ncKeys = new Set(intent.nc.map((t) => terminalKey(t.ref, t.name)));
 	/** Pins joined inside a part that one net borrowed (below), so no other net takes them too. */
 	const borrowed = /* @__PURE__ */ new Set();
 	/**
@@ -86860,7 +88738,7 @@ function realize(intent, d, locals = [], opts = {}) {
 		const comp = internalComponent(m, n.members[0].name);
 		const names = new Set(n.members.map((t) => t.name));
 		return [...new Set((m.internal ?? []).flat())].filter((name) => !names.has(name) && internalComponent(m, name) === comp && !m.holes?.some((g) => g.name === name)).filter((name) => {
-			const k = terminalKey$1(ref, name);
+			const k = terminalKey(ref, name);
 			return !netOfTerminal.has(k) && !ncKeys.has(k) && !legBy.has(k) && !borrowed.has(k);
 		}).sort(naturalCompare).map((name) => ({
 			ref,
@@ -86950,7 +88828,7 @@ function realize(intent, d, locals = [], opts = {}) {
 		const byComp = /* @__PURE__ */ new Map();
 		let strip;
 		for (const t of net.terminals) {
-			const pl = legBy.get(terminalKey$1(t.ref, t.name));
+			const pl = legBy.get(terminalKey(t.ref, t.name));
 			if (t.infra || pl) {
 				strip ??= strips.get(t.infra ? groupKey(t.ref, t.name) : groupKey(pl.board, pl.group));
 				continue;
@@ -87262,7 +89140,7 @@ function realize(intent, d, locals = [], opts = {}) {
 	const nodesOfNet = (net) => {
 		const byComp = /* @__PURE__ */ new Map();
 		for (const t of net.terminals) {
-			if (t.infra || legBy.has(terminalKey$1(t.ref, t.name))) continue;
+			if (t.infra || legBy.has(terminalKey(t.ref, t.name))) continue;
 			const c = `${t.ref} ${internalComponent(modOf(t.ref), t.name)}`;
 			byComp.set(c, [...byComp.get(c) ?? [], t]);
 		}
@@ -87272,7 +89150,7 @@ function realize(intent, d, locals = [], opts = {}) {
 		const keys = /* @__PURE__ */ new Set();
 		for (const t of net.terminals) {
 			if (t.infra) keys.add(groupKey(t.ref, t.name));
-			const pl = legBy.get(terminalKey$1(t.ref, t.name));
+			const pl = legBy.get(terminalKey(t.ref, t.name));
 			if (pl) keys.add(groupKey(pl.board, pl.group));
 		}
 		return [...keys].flatMap((k) => strips.get(k) ? [strips.get(k)] : []);
@@ -87435,13 +89313,13 @@ function realize(intent, d, locals = [], opts = {}) {
 		};
 		for (const t of net.terminals) if (t.infra) addDp(strips.get(groupKey(t.ref, t.name)));
 		const legStrips = net.terminals.flatMap((t) => {
-			const pl = legBy.get(terminalKey$1(t.ref, t.name));
+			const pl = legBy.get(terminalKey(t.ref, t.name));
 			return pl ? [groupKey(pl.board, pl.group)] : [];
 		});
 		for (const k of [...new Set(legStrips)].sort(naturalCompare)) addDp(strips.get(k));
 		const byComp = /* @__PURE__ */ new Map();
 		for (const t of net.terminals) {
-			if (t.infra || legBy.has(terminalKey$1(t.ref, t.name))) continue;
+			if (t.infra || legBy.has(terminalKey(t.ref, t.name))) continue;
 			const c = `${t.ref} ${internalComponent(modOf(t.ref), t.name)}`;
 			byComp.set(c, [...byComp.get(c) ?? [], t]);
 		}
@@ -87495,7 +89373,7 @@ function realize(intent, d, locals = [], opts = {}) {
 					left: new Map([...n.left, ...spares[i].map((t) => [t.name, terminalCapacity(modOf(t.ref), t.name)])])
 				}));
 				if (chainable(grown)) {
-					for (const t of spares.flat()) borrowed.add(terminalKey$1(t.ref, t.name));
+					for (const t of spares.flat()) borrowed.add(terminalKey(t.ref, t.name));
 					chainUp(ni, grown);
 					continue;
 				}
@@ -87897,10 +89775,10 @@ function placeParts(intent, opts) {
 	const pinNet = /* @__PURE__ */ new Map();
 	const netsOf = /* @__PURE__ */ new Map();
 	intent.nets.forEach((n, i) => n.terminals.forEach((t) => {
-		pinNet.set(terminalKey$1(t.ref, t.name), i);
+		pinNet.set(terminalKey(t.ref, t.name), i);
 		netsOf.set(t.ref, (netsOf.get(t.ref) ?? /* @__PURE__ */ new Set()).add(i));
 	}));
-	const netOfPin = (part, pin) => pinNet.get(terminalKey$1(part, pin));
+	const netOfPin = (part, pin) => pinNet.get(terminalKey(part, pin));
 	const refs = intent.parts.map((p) => p.ref).sort(naturalCompare);
 	const units = [];
 	const grouped = /* @__PURE__ */ new Set();
@@ -88310,7 +90188,7 @@ function placeParts(intent, opts) {
 			return worldPins({
 				...inst.get(ref),
 				rotation: r
-			}, m).filter((w) => placed.has(pinNet.get(terminalKey$1(ref, w.name)) ?? -1)).reduce((a, w) => a + w.dir.x * want.x + w.dir.y * want.y, 0);
+			}, m).filter((w) => placed.has(pinNet.get(terminalKey(ref, w.name)) ?? -1)).reduce((a, w) => a + w.dir.x * want.x + w.dir.y * want.y, 0);
 		};
 		const now = inst.get(ref).rotation ?? 0;
 		let best = now;
@@ -88728,6 +90606,65 @@ function reportText(r) {
 	return `Readability: body overlaps ${r.bodyOverlaps}, caption overlaps ${r.captionOverlaps}, wire crossings ${r.wireCrossings}, wire length ${r.wireLength} px, sheet ${r.sheet.w} x ${r.sheet.h} px, blocked nets ${r.blockedNets.length ? r.blockedNets.join(", ") : "none"}${r.readabilityWarnings !== void 0 ? `, readability warnings ${r.readabilityWarnings}` : ""}${r.labels ? `, labels ${r.labels.mode} (${r.labels.nets.length ? `nets ${r.labels.nets.join(", ")}` : "no nets labelled"}${r.labels.unplaced.length ? `; no room for a label at some endpoints of ${r.labels.unplaced.join(", ")}, wired instead` : ""})` : ""}.`;
 }
 //#endregion
+//#region src/sim/probes.ts
+/** Layout (spec 6.2): netlist probes on the laid-out sheet, whose uids are the refs. net: picks a pin of the part the probe's name starts with, else the lowest ref. */
+function probesForSheet(intent) {
+	return intent.probes.flatMap((p) => {
+		const base = {
+			id: p.id,
+			...p.name ? { name: p.name } : {}
+		};
+		if (p.at.startsWith("net:")) {
+			const net = intent.nets.find((n) => n.name === p.at.slice(4));
+			if (!net?.terminals.length) return [];
+			const pins = net.terminals.some((t) => !t.infra) ? net.terminals.filter((t) => !t.infra) : net.terminals;
+			const named = p.name?.trim().split(/\s+/)[0];
+			const pick = pins.find((t) => t.ref === named) ?? [...pins].sort((a, b) => naturalCompare(a.ref, b.ref) || naturalCompare(a.name, b.name))[0];
+			return [{
+				...base,
+				at: {
+					part: pick.ref,
+					pin: pick.name
+				}
+			}];
+		}
+		const dot = p.at.indexOf(".");
+		return [{
+			...base,
+			at: dot < 0 ? { part: p.at } : {
+				part: p.at.slice(0, dot),
+				pin: p.at.slice(dot + 1)
+			}
+		}];
+	});
+}
+/** Extract (spec 6.2): sheet probes in ref form; a pin probe on a part the netlist leaves out becomes net:<its net>; a part probe there is dropped with a warning. */
+function probesForNetlist(probes, refOf, nets, warn) {
+	return probes.flatMap((p) => {
+		const base = {
+			id: p.id,
+			...p.name ? { name: p.name } : {}
+		};
+		const ref = refOf.get(p.at.part);
+		if (ref) return [{
+			...base,
+			at: p.at.pin !== void 0 ? `${ref}.${p.at.pin}` : ref
+		}];
+		const key = p.at.pin !== void 0 ? nodeKey(p.at.part, p.at.pin) : null;
+		const net = key ? nets.find((n) => n.keys.includes(key)) : void 0;
+		if (net) return [{
+			...base,
+			at: `net:${net.name}`
+		}];
+		warn?.(`probe ${p.id} sat on a part the netlist leaves out (${p.at.part}), so it was dropped`);
+		return [];
+	});
+}
+/** One past the highest saved id. BigInt, so a long saved id never comes back as P1e+21. */
+function nextProbeId(d) {
+	return `P${(d.probes ?? []).reduce((max, p) => PROBE_ID.test(p.id) && BigInt(p.id.slice(1)) > max ? BigInt(p.id.slice(1)) : max, 0n) + 1n}`;
+}
+//#endregion
 //#region src/agent/layout.ts
 var SPACINGS = [
 	30,
@@ -88835,10 +90772,14 @@ function layoutNetlist(raw, opts = {}) {
 			stage: "layout",
 			errors: findings.map((f) => `verify ${f.rule}: ${f.message}`)
 		};
+		const probes = probesForSheet(intent);
 		return {
 			ok: true,
 			value: {
-				diagram,
+				diagram: probes.length ? {
+					...diagram,
+					probes
+				} : diagram,
 				report: {
 					...readability(diagram, routes, real.value.netOfWire),
 					readabilityWarnings: readabilityFindings(diagram, routes).length,
@@ -88890,6 +90831,3846 @@ function bundled(d, connections) {
 		k: JSON.stringify(keyOf(c)),
 		p: at(c)
 	})).sort((a, b) => size.get(b.k) - size.get(a.k) || first.get(a.k) - first.get(b.k) || a.p.y - b.p.y || a.p.x - b.p.x || a.i - b.i).map((x) => x.c);
+}
+//#endregion
+//#region src/format/netNames.ts
+/** A pin's (or a header pad's) type and supply. Breadboard strips have neither. */
+var pinDef = (m, name) => m.pins.find((p) => !isSpacer(p) && p.name === name) ?? holeGroupOf(m, name);
+/** A supply rail name worth naming a net after: 5V, 3V3, 12V (not 3.7V or 5V/7V). */
+var RAIL = /^\d+V\d*$/;
+/**
+* One unique name per net: its net label first, then ground (GND, GND_2 ...), then a supply rail
+* the consumers share or one source gives (5V, 3V3), then `<ref>_<pin>` of an MCU pin, else a
+* source's pin, else the first component pin. `pins` must be in a stable order (they decide the
+* fallback name). Shared by the netlist extractor and the KiCad export.
+*/
+function nameNets(nets) {
+	const names = /* @__PURE__ */ new Set();
+	const named = nets.map(() => void 0);
+	const claim = (i, name) => {
+		if (named[i] !== void 0 || !name || names.has(name)) return;
+		named[i] = name;
+		names.add(name);
+	};
+	const types = (net) => net.pins.map((p) => pinDef(p.m, p.name));
+	nets.forEach((net, i) => claim(i, net.label));
+	nets.forEach((net, i) => {
+		if (!types(net).some((t) => t?.type === "ground")) return;
+		let name = "GND";
+		for (let k = 2; names.has(name) && named[i] === void 0; k++) name = `GND_${k}`;
+		claim(i, name);
+	});
+	nets.forEach((net, i) => {
+		const ins = types(net).filter((t) => t?.type === "power_in" && t.supply).map((t) => t.supply.split("/"));
+		if (!ins.length) return;
+		const common = ins.reduce((a, b) => a.filter((r) => b.includes(r)));
+		if (common.length === 1 && RAIL.test(common[0])) claim(i, common[0]);
+	});
+	nets.forEach((net, i) => {
+		const outs = [...new Set(types(net).filter((t) => t?.type === "power_out" && t.supply && RAIL.test(t.supply)).map((t) => t.supply))];
+		if (outs.length === 1) claim(i, outs[0]);
+	});
+	nets.forEach((net, i) => {
+		if (named[i] !== void 0 || !net.pins.length) return;
+		const pick = net.pins.find((p) => p.m.category === "Microcontrollers") ?? net.pins.find((p) => pinDef(p.m, p.name)?.type === "power_out") ?? net.pins.find((p) => !isBoard(p.m)) ?? net.pins[0];
+		let name = `${pick.ref}_${pick.name}`;
+		for (let k = 2; names.has(name); k++) name = `${pick.ref}_${pick.name}_${k}`;
+		claim(i, name);
+	});
+	return named.map((n) => n);
+}
+//#endregion
+//#region src/agent/extract.ts
+/** A valid, unique netlist ref for a designator: other characters become `_`, and a leading non-letter gets a `P`. */
+function refMaker() {
+	const taken = /* @__PURE__ */ new Set();
+	return (designator) => {
+		let base = designator.trim().replace(/[^A-Za-z0-9_]/g, "_") || "P";
+		if (!/^[A-Za-z]/.test(base)) base = `P${base}`;
+		let ref = base;
+		for (let k = 2; taken.has(ref) || !REF_PATTERN.test(ref); k++) ref = `${base}_${k}`;
+		taken.add(ref);
+		return ref;
+	};
+}
+/** A part's setting choices its module offers (an OLED's address, a fuse holder's fuse), or undefined when it stores none. */
+function settingsOf(p, m) {
+	const offered = moduleSettings(m);
+	const kept = Object.entries(p.settings ?? {}).filter(([k, v]) => Object.hasOwn(offered, k) && offered[k].includes(v));
+	return kept.length ? Object.fromEntries(kept) : void 0;
+}
+/**
+* The nets extract writes, named by nameNets, each with the node keys of the netlist() net it came
+* from (spec 2: the simulator names its nodes from this, so net:GND means the same net in the CLI,
+* extract, KiCad and the simulator).
+*/
+function sheetNets(d) {
+	const modOf = (uid) => {
+		const p = d.parts.find((x) => x.uid === uid);
+		return p ? moduleOf(d, p.module) : void 0;
+	};
+	const intent = d.intent !== void 0 ? parseNetlist(d.intent, intentLookup(d, libraryLookup)) : null;
+	const intentRefs = intent?.ok ? new Set(intent.intent.parts.map((p) => p.ref)) : null;
+	const hosts = new Set(d.parts.flatMap((p) => p.mount && !isNetLabel(moduleOf(d, p.module)) ? [p.mount.board] : []));
+	const kept = d.parts.filter((p) => {
+		const m = moduleOf(d, p.module);
+		return m && !isNetLabel(m) && !(intentRefs && isBoard(m) && !intentRefs.has(p.designator) && !hosts.has(p.uid));
+	});
+	const make = refMaker();
+	const refOf = new Map(kept.map((p) => [p.uid, make(p.designator || p.uid)]));
+	const direct = /* @__PURE__ */ new Set();
+	for (const c of d.connections) for (const e of [c.from, c.to]) direct.add(nodeKey(e.part, e.pin));
+	for (const pl of plugsOf(d)) if (!pl.mechanical) direct.add(nodeKey(pl.part, pl.pin));
+	const n = netlist(d);
+	const nets = [];
+	for (const keys of n.nets) {
+		const pins = [];
+		const strips = [];
+		let label;
+		for (const k of keys) {
+			const [uid, name] = JSON.parse(k);
+			const m = modOf(uid);
+			if (!m) continue;
+			if (isNetLabel(m)) {
+				const ln = labelName(d.parts.find((p) => p.uid === uid));
+				if (ln && (label === void 0 || naturalCompare(ln, label) < 0)) label = ln;
+				continue;
+			}
+			const ref = refOf.get(uid);
+			if (ref && isBoard(m) && direct.has(k)) strips.push({
+				ref,
+				name,
+				m
+			});
+			if (!ref || isBoard(m) || !direct.has(k)) continue;
+			pins.push({
+				ref,
+				name,
+				m
+			});
+		}
+		if (!pins.length || pins.length + strips.length < 2) continue;
+		const order = (a, b) => naturalCompare(a.ref, b.ref) || naturalCompare(a.name, b.name);
+		nets.push({
+			pins: [...pins, ...strips].sort(order),
+			keys,
+			...label !== void 0 ? { label } : {}
+		});
+	}
+	const named = nameNets(nets);
+	return {
+		refOf,
+		kept,
+		netlist: n,
+		nets: nets.map((net, i) => ({
+			...net,
+			name: named[i]
+		}))
+	};
+}
+/** `warn` hears of each probe extraction had to drop (spec 6.2). */
+function extractNetlist(d, warn) {
+	const modOf = (uid) => {
+		const p = d.parts.find((x) => x.uid === uid);
+		return p ? moduleOf(d, p.module) : void 0;
+	};
+	const { refOf, kept, nets, netlist: n } = sheetNets(d);
+	const named = nets.map((x) => x.name);
+	const nodeNet = /* @__PURE__ */ new Map();
+	nets.forEach((net, i) => net.pins.forEach((p) => nodeNet.set(JSON.stringify([p.ref, p.name]), i)));
+	const netOfKey = (k) => {
+		const at = n.netOf.get(k);
+		if (at === void 0) return void 0;
+		for (const kk of n.nets[at]) {
+			const [uid, name] = JSON.parse(kk);
+			const ref = refOf.get(uid);
+			const i = ref ? nodeNet.get(JSON.stringify([ref, name])) : void 0;
+			if (i !== void 0) return i;
+		}
+	};
+	const colors = /* @__PURE__ */ new Map();
+	const endKinds = /* @__PURE__ */ new Set();
+	let wires = 0;
+	for (const c of d.connections) {
+		const labelEnd = [c.from.part, c.to.part].some((u) => isNetLabel(modOf(u)));
+		const i = netOfKey(nodeKey(c.from.part, c.from.pin));
+		if (i !== void 0 && c.color) colors.set(i, (colors.get(i) ?? /* @__PURE__ */ new Set()).add(c.color));
+		if (labelEnd) continue;
+		wires++;
+		endKinds.add(c.ends?.from && c.ends.from === c.ends.to ? c.ends.from : "");
+	}
+	const color = {};
+	nets.forEach((_, i) => {
+		const set = colors.get(i);
+		if (set?.size === 1) color[named[i]] = [...set][0];
+	});
+	const ends = wires && endKinds.size === 1 && !endKinds.has("") ? [...endKinds][0] : void 0;
+	const custom = {};
+	for (const p of kept) if (!libraryLookup(p.module)) custom[p.module] = moduleOf(d, p.module);
+	const probes = probesForNetlist(d.probes ?? [], refOf, nets, warn);
+	const order = nets.map((_, i) => i).sort((a, b) => naturalCompare(named[a], named[b]));
+	return {
+		format: NETLIST_FORMAT,
+		title: d.title.trim() || "Untitled sheet",
+		...Object.keys(custom).length ? { modules: custom } : {},
+		parts: kept.map((p) => {
+			const board = p.mount?.board;
+			const on = board !== void 0 ? refOf.get(board) : void 0;
+			const settings = settingsOf(p, moduleOf(d, p.module));
+			return {
+				ref: refOf.get(p.uid),
+				module: p.module,
+				...p.values && Object.keys(p.values).length ? { values: p.values } : {},
+				...settings ? { settings } : {},
+				...on ? { on } : {}
+			};
+		}),
+		nets: order.map((i) => ({
+			name: named[i],
+			pins: nets[i].pins.map((p) => `${p.ref}.${p.name}`)
+		})),
+		...Object.keys(color).length || ends ? { wires: {
+			...Object.keys(color).length ? { color } : {},
+			...ends ? { ends } : {}
+		} } : {},
+		...probes.length ? { probes } : {}
+	};
+}
+//#endregion
+//#region src/sim/model.ts
+/**
+* The node id of the net with this display name. Names are user text (a label "d1:A"), so the
+* prefix keeps them apart from `<uid>:<pin>` taps.
+*/
+var netNode = (name) => `net:${name}`;
+/**
+* The one resistor a GPIO pin's state compiles to (spec 4.6), or null: the output resistance from
+* the IO domain (high) or to its return (low), a pull, else the input leakage to the return.
+* `leak` marks the leakage, which is never a DC path (spec 2).
+*/
+function gpioBranch(d) {
+	const p = d.params;
+	if (d.state === "high") return {
+		a: d.vdd,
+		b: d.node,
+		ohms: p.outputResistance,
+		leak: false
+	};
+	if (d.state === "low") return {
+		a: d.node,
+		b: d.ret,
+		ohms: p.outputResistance,
+		leak: false
+	};
+	if (d.state === "input-pullup" && p.pullup) return {
+		a: d.vdd,
+		b: d.node,
+		ohms: p.pullup,
+		leak: false
+	};
+	if (d.state === "input-pulldown" && p.pulldown) return {
+		a: d.node,
+		b: d.ret,
+		ohms: p.pulldown,
+		leak: false
+	};
+	return p.leakage ? {
+		a: d.node,
+		b: d.ret,
+		ohms: p.leakage,
+		leak: true
+	} : null;
+}
+var indexes = /* @__PURE__ */ new WeakMap();
+var push = (m, k, v) => {
+	const list = m.get(k);
+	if (list) list.push(v);
+	else m.set(k, [v]);
+};
+/** The circuit's index, built once per circuit (a circuit is never changed after build). */
+function indexOf(c) {
+	let ix = indexes.get(c);
+	if (!ix) {
+		ix = {
+			tapsOf: /* @__PURE__ */ new Map(),
+			devicesOf: /* @__PURE__ */ new Map(),
+			tapAt: /* @__PURE__ */ new Map(),
+			tapsOn: /* @__PURE__ */ new Map()
+		};
+		for (const t of c.taps) {
+			push(ix.tapsOf, t.part, t);
+			push(ix.tapsOn, t.net, t);
+			ix.tapAt.set(t.node, t);
+		}
+		for (const d of c.devices) push(ix.devicesOf, d.part, d);
+		indexes.set(c, ix);
+	}
+	return ix;
+}
+//#endregion
+//#region src/sim/floating.ts
+var OP = { kind: "op" };
+function deviceNodes(d) {
+	switch (d.kind) {
+		case "resistor":
+		case "capacitor": return [d.a, d.b];
+		case "diode": return [d.a, d.k];
+		case "cell": return [
+			d.p,
+			d.int,
+			d.n
+		];
+		case "load": return [d.p, d.n];
+		case "rail": return [
+			d.in,
+			d.inRet,
+			d.out,
+			d.ret,
+			d.ctl,
+			d.o
+		];
+		case "switch": return [d.a, d.b];
+		case "gpio": return [
+			d.node,
+			d.vdd,
+			d.ret
+		];
+	}
+}
+/** The resistive pairs, conducting both ways: resistors, closed contacts and a GPIO's state resistor (never its leakage). */
+function resistive(d) {
+	if (d.kind === "resistor" || d.kind === "switch" && d.closed) return [[d.a, d.b]];
+	const g = d.kind === "gpio" ? gpioBranch(d) : null;
+	return g && !g.leak ? [[g.a, g.b]] : [];
+}
+/** A capacitor is open in `op`; later analyses couple its plates. */
+var capacitorPairs = (d, a) => d.kind === "capacitor" && a.kind !== "op" ? [[d.a, d.b]] : [];
+/** The undirected terminal pairs that group nodes into islands (numerics and references only, not driven). */
+function dcEdges(d, a = OP) {
+	switch (d.kind) {
+		case "diode": return [[d.a, d.k]];
+		case "cell": return [[d.p, d.int], [d.int, d.n]];
+		case "rail": return [
+			[d.in, d.ctl],
+			[d.in, d.o],
+			[d.o, d.out]
+		];
+		default: return [...resistive(d), ...capacitorPairs(d, a)];
+	}
+}
+/** The directed arcs along which a device carries drive (the fix-round ruling on Task 12). */
+function driveArcs(d, a = OP) {
+	switch (d.kind) {
+		case "diode": return [[d.a, d.k]];
+		case "rail": return [
+			[d.in, d.ctl],
+			[d.in, d.o],
+			[d.o, d.out],
+			...d.rail.reverse === "body-diode" ? [[d.out, d.o], [d.o, d.in]] : []
+		];
+		default: return [...resistive(d), ...capacitorPairs(d, a)].flatMap(([x, y]) => [[x, y], [y, x]]);
+	}
+}
+/** Union-find over the DC paths and the pin senses, with `extra` joins (a switch closed in thought). */
+function dcFind(c, extra = [], a = OP) {
+	const parent = /* @__PURE__ */ new Map();
+	const find = (x) => {
+		let r = x;
+		while (parent.has(r) && parent.get(r) !== r) r = parent.get(r);
+		for (let cur = x; cur !== r;) {
+			const next = parent.get(cur);
+			parent.set(cur, r);
+			cur = next;
+		}
+		return r;
+	};
+	const join = (a, b) => {
+		const ra = find(a);
+		const rb = find(b);
+		if (ra !== rb) parent.set(ra, rb);
+	};
+	for (const t of c.taps) join(netNode(t.net), t.node);
+	for (const d of c.devices) for (const [x, y] of dcEdges(d, a)) join(x, y);
+	for (const [x, y] of extra) join(x, y);
+	return find;
+}
+var cellsOf = (c) => c.devices.filter((d) => d.kind === "cell");
+/** Breadth-first walk from `seeds` along `adj`, never entering a `stop` node (seeds always count). */
+function walk(seeds, adj, stop) {
+	const seen = new Set(seeds);
+	const queue = [...seeds];
+	for (let i = 0; i < queue.length; i++) for (const nb of adj.get(queue[i]) ?? []) if (!seen.has(nb) && !stop(nb)) {
+		seen.add(nb);
+		queue.push(nb);
+	}
+	return seen;
+}
+/** `off`: devices left out (they carry no drive), as if removed from the sheet. */
+function reach(c, extra = [], a = OP, off = /* @__PURE__ */ new Set()) {
+	const all = reachWith(c, extra, a, off);
+	const dead = /* @__PURE__ */ new Set([...off, ...c.devices.filter((d) => d.kind === "rail" && !all.defined.has(d.inRet))]);
+	return dead.size > off.size ? reachWith(c, extra, a, dead) : all;
+}
+function reachWith(c, extra, a, dead) {
+	const drive = /* @__PURE__ */ new Map();
+	const hold = /* @__PURE__ */ new Map();
+	const arc = (m, a, b) => {
+		const l = m.get(a);
+		if (l) l.push(b);
+		else m.set(a, [b]);
+	};
+	const both = (a, b) => {
+		for (const m of [drive, hold]) arc(m, a, b), arc(m, b, a);
+	};
+	const netOf = /* @__PURE__ */ new Map();
+	for (const t of c.taps) {
+		netOf.set(t.node, netNode(t.net));
+		both(netNode(t.net), t.node);
+	}
+	for (const [x, y] of extra) both(x, y);
+	for (const d of c.devices) {
+		if (!dead.has(d)) for (const [x, y] of driveArcs(d, a)) arc(drive, x, y);
+		for (const [x, y] of resistive(d)) arc(hold, x, y), arc(hold, y, x);
+	}
+	const cells = cellsOf(c);
+	const seeds = cells.flatMap((d) => [d.p, d.int]);
+	const netOrSelf = (n) => netOf.get(n) ?? n;
+	const returns = /* @__PURE__ */ new Set();
+	for (const d of c.devices) if (d.kind === "cell" || d.kind === "load") returns.add(netOrSelf(d.n));
+	else if (d.kind === "rail") returns.add(netOrSelf(d.ret)).add(netOrSelf(d.inRet));
+	for (const n of seeds) returns.delete(netOrSelf(n));
+	const driven = walk(seeds, drive, (n) => returns.has(netOrSelf(n)));
+	const held = walk(cells.map((d) => d.n), hold, (n) => driven.has(n));
+	return {
+		driven,
+		defined: /* @__PURE__ */ new Set([...driven, ...held])
+	};
+}
+/** A domain is powered when its pin node is driven and its return node is defined (both node ids). */
+function powered(_c, cls, pin, ret) {
+	return cls.driven.has(pin) && cls.defined.has(ret);
+}
+/**
+* Whether a rail's input is powered by something other than the rail itself: its own body diode,
+* backfed from its output (a DevKit's 3V3 pin fed from a battery), does not count.
+*/
+function inputPowered(c, rail) {
+	const r = reach(c, [], OP, /* @__PURE__ */ new Set([rail]));
+	return r.driven.has(rail.in) && r.defined.has(rail.inRet);
+}
+/**
+* Ruling R30: the part uid of the open latching switch whose closing alone would power `node`, or
+* null. When `node` is not driven, the switch that would drive it (high side, or a low-side switch
+* that would let its rail regulate); else, given `ret` that is not defined, the switch that would
+* define it (low side). A group's poles close together (a DPST breaking both sides).
+*/
+function openSwitchFor(c, node, ret) {
+	const base = reach(c);
+	const fixes = !base.driven.has(node) ? (r) => r.driven.has(node) : ret !== void 0 && !base.defined.has(ret) ? (r) => r.defined.has(ret) : null;
+	if (!fixes) return null;
+	for (const o of c.openContacts) if (fixes(reach(c, o.pairs))) return o.part;
+	return null;
+}
+/** `analysis` decides what conducts: a capacitor is open only in `op`. */
+function classify(c, analysis = OP) {
+	const find = dcFind(c, [], analysis);
+	const nodes = /* @__PURE__ */ new Set();
+	for (const t of c.taps) nodes.add(netNode(t.net)).add(t.node);
+	for (const d of c.devices) for (const n of deviceNodes(d)) nodes.add(n);
+	const byRoot = /* @__PURE__ */ new Map();
+	for (const cell of cellsOf(c)) {
+		const r = find(cell.p);
+		const list = byRoot.get(r);
+		if (list) list.push(cell);
+		else byRoot.set(r, [cell]);
+	}
+	const groundOf = (n) => {
+		const net = c.taps.find((t) => t.node === n)?.net;
+		const cable = net === void 0 ? void 0 : c.devices.find((d) => d.kind === "resistor" && d.role === "cable" && d.id.endsWith(".gnd") && d.a === netNode(net));
+		return cable?.kind === "resistor" ? cable.b : n;
+	};
+	const strongest = (list) => [...list].sort((a, b) => (b.imax?.value ?? -1) - (a.imax?.value ?? -1) || b.volts.value - a.volts.value || naturalCompare(a.part, b.part) || (a.id < b.id ? -1 : 1))[0];
+	const members = /* @__PURE__ */ new Map();
+	for (const n of [...nodes].sort()) {
+		const r = find(n);
+		if (!byRoot.has(r)) continue;
+		const list = members.get(r);
+		if (list) list.push(n);
+		else members.set(r, [n]);
+	}
+	const islands = [...byRoot.entries()].map(([root, list]) => ({
+		ref: strongest(list),
+		nodes: members.get(root) ?? []
+	})).sort((a, b) => naturalCompare(a.ref.part, b.ref.part) || (a.ref.id < b.ref.id ? -1 : 1)).map(({ ref, nodes: ns }) => ({
+		reference: groundOf(ref.n),
+		source: ref.id,
+		nodes: ns
+	}));
+	const islandOf = /* @__PURE__ */ new Map();
+	islands.forEach((isl, i) => isl.nodes.forEach((n) => islandOf.set(n, i)));
+	return {
+		...reach(c, [], analysis),
+		islands,
+		islandOf
+	};
+}
+var memo = /* @__PURE__ */ new WeakMap();
+function classifyCached(c, analysis = OP) {
+	let byKind = memo.get(c);
+	if (!byKind) memo.set(c, byKind = /* @__PURE__ */ new Map());
+	let hit = byKind.get(analysis.kind);
+	if (!hit) byKind.set(analysis.kind, hit = classify(c, analysis));
+	return hit;
+}
+/** A node's state: driven (powered), defined (held by a return through resistance) or floating. */
+function nodeState(cls, node) {
+	return cls.driven.has(node) ? "driven" : cls.defined.has(node) ? "defined" : "floating";
+}
+/** A sheet pin's state (by node key); floating when it is on no simulated net. */
+function pinState(c, cls, key) {
+	const net = c.pinNet[key];
+	return net === void 0 ? "floating" : nodeState(cls, netNode(net));
+}
+//#endregion
+//#region src/sim/ledModels.ts
+/** Thermal voltage at 27 C, the temperature ngspice solves at (TNOM). */
+var VT = 41440179735e-31 / 1602176634e-28;
+var LED_FIT_AMPS = .02;
+var LED_COLOURS = {
+	red: {
+		n: 3.73,
+		rs: 7.5,
+		shape: "spike curve; limit from Kingbright WP7113ID datasheet, p. 2",
+		absMaxCurrent: {
+			value: .03,
+			source: "https://www.kingbrightusa.com/images/catalog/SPEC/WP7113ID.pdf"
+		}
+	},
+	green: {
+		n: 3.73,
+		rs: 7.5,
+		shape: "spike curve; limit from Kingbright WP7113GD datasheet, p. 2",
+		absMaxCurrent: {
+			value: .025,
+			source: "https://www.kingbrightusa.com/images/catalog/SPEC/WP7113GD.pdf"
+		}
+	},
+	yellow: {
+		n: 3.73,
+		rs: 7.5,
+		shape: "spike curve; limit from Kingbright WP7113YD datasheet, p. 2",
+		absMaxCurrent: {
+			value: .03,
+			source: "https://www.kingbrightusa.com/images/catalog/SPEC/WP7113YD.pdf"
+		}
+	},
+	orange: {
+		n: 3.73,
+		rs: 7.5,
+		shape: "spike curve; limit from Kingbright WP7113SED datasheet, p. 2",
+		absMaxCurrent: {
+			value: .03,
+			source: "https://www.kingbrightusa.com/images/catalog/SPEC/WP7113SED.pdf"
+		}
+	},
+	blue: {
+		n: 3.73,
+		rs: 23.3,
+		shape: "fitted to Kingbright WP7113QBC/D datasheet points: 3.0 V at 10 mA, 3.3 V at 20 mA (p. 3 graph, p. 2 table), representative",
+		absMaxCurrent: {
+			value: .03,
+			source: "https://www.kingbrightusa.com/images/catalog/SPEC/WP7113QBC-D.pdf"
+		}
+	},
+	white: {
+		n: 3.73,
+		rs: 23.3,
+		shape: "fitted to Kingbright WP7113QWC/D datasheet points: 3.0 V at 10 mA, 3.3 V at 20 mA (p. 3 graph, p. 2 table), representative",
+		absMaxCurrent: {
+			value: .03,
+			source: "https://www.kingbrightusa.com/images/catalog/SPEC/WP7113QWC-D.pdf"
+		}
+	}
+};
+/** The IS that puts the diode at `v` volts when `i` amps flow. */
+function fitIs(v, i, n, rs) {
+	return i / (Math.exp((v - i * rs) / (n * VT)) - 1);
+}
+function diodeVoltage(m, i) {
+	return m.n * VT * Math.log(i / m.is + 1) + i * m.rs;
+}
+function ledModel(colour, forwardVoltage) {
+	const key = (colour ?? "red").trim().toLowerCase();
+	const known = Object.hasOwn(LED_COLOURS, key);
+	const c = known ? LED_COLOURS[key] : LED_COLOURS.red;
+	return {
+		model: {
+			is: fitIs(forwardVoltage, LED_FIT_AMPS, c.n, c.rs),
+			n: c.n,
+			rs: c.rs
+		},
+		colour: known ? key : "red",
+		known
+	};
+}
+/** A regulator's body diode: silicon (modelling choice). */
+var BODY_DIODE = {
+	is: 1e-12,
+	n: 1,
+	rs: .01
+};
+/**
+* A near-ideal diode (modelling choice): a blocking `ron` switch rail's one-way element, in series
+* with ron. N 0.01 gives about 3 mV at 50 mA; IS 0.1 uA is its reverse leakage.
+*/
+var IDEAL_DIODE = {
+	is: 1e-7,
+	n: .01,
+	rs: 0
+};
+/** A Schottky with `vf` volts at `at` amps (N 1.05, no RS): OR inputs, off paths and `vf` switch rails. */
+function schottky(vf, at = .1) {
+	return {
+		is: fitIs(vf, at, 1.05, 0),
+		n: 1.05,
+		rs: 0
+	};
+}
+//#endregion
+//#region src/sim/spice.ts
+/** Smoothing (ruling R18): k = 5 mV on volts, 0.005 on ratios. */
+var KV = .005;
+var KR = .005;
+/** The smallest resistance ever written: R is never 0 (spec 2). */
+var R_MIN = 1e-6;
+/** A rail's smallest rout: measured in our ngspice, an LDO with rout 0 or 1e-6 fails op ("Timestep too small"), 1 mOhm solves. */
+var ROUT_MIN = .001;
+/** Divisor guards; Task 16 validation rejects such values anyway, these only keep the text finite. */
+var MIN_VOLTS_MIN = .001;
+var EFFICIENCY_MIN = .01;
+/** The numerical join of floating nodes and second islands (spec 4.4). */
+var R_TIE = 1e9;
+/**
+* The internal feedback load on every rail output (Phase C checkpoint ruling): a softplus output
+* cannot sink, so an unloaded output would climb above vout. 1 mA from out to ret, only while Vctl
+* is above 0 (full from FEEDBACK_ON), so a dead rail supplies and draws nothing; the input pays for
+* it. A fixed 1 mA rather than max(iq, 1 mA): a fixed-output regulator's datasheet iq already holds
+* its internal divider, so iq-sized would count it twice; the cost is at most 1 mA of extra draw.
+*/
+var FEEDBACK_LOAD = .001;
+var FEEDBACK_ON = .1;
+/** A boost's pass-through diode (spec 4.2), Schottky at 100 mA: a modelling choice. */
+var OFF_PATH_VF = .35;
+var num = (x) => {
+	if (!Number.isFinite(x)) throw new Error(`spice: not a finite number (${x})`);
+	return String(Number(x.toPrecision(12)));
+};
+/** softplus(x) = k ln(1 + e^(x/k)), written so exp never overflows: max(x, 0) + k ln(1 + e^(-|x|/k)). */
+var sp = (x, k = KV) => `(max(${x},0)+${num(k)}*ln(1+exp(-abs(${x})/${num(k)})))`;
+var smax = (a, b, k = KV) => `(${b}+${sp(`(${a})-(${b})`, k)})`;
+var smin = (a, b, k = KV) => `(${a}-${sp(`(${a})-(${b})`, k)})`;
+/**
+* A smooth max(x, 0) that is exactly 0 at x = 0: softplus less its k ln 2 floor. Every gate of
+* something that must be off at 0 (a load, iq) uses it, else a dead rail still draws or supplies.
+*/
+var pos = (x, k = KV) => `(${sp(x, k)}-${num(k * Math.LN2)})`;
+/** The load fold-back f(V): 1 above minVolts, falling smoothly to exactly 0 at 0 V (spec 4 table). */
+var fold = (v, minVolts) => smin("1", `${pos(v)}/${num(Math.max(minVolts, MIN_VOLTS_MIN))}`, KR);
+var step = (a, b, x) => {
+	const t = `min(max((${x}-${num(a)})/${num(b - a)},0),1)`;
+	return `(${t}*${t}*(3-2*${t}))`;
+};
+/** A buck or boost's enable (spec 4.2). */
+var enable = (vin, lo, hi) => `(${step(lo - .05, lo, vin)}*(1-${step(hi, hi + .05, vin)}))`;
+/** The same functions on numbers, for results and findings. */
+var softplus = (x, k = KV) => Math.max(x, 0) + k * Math.log1p(Math.exp(-Math.abs(x) / k));
+var foldValue = (v, minVolts) => 1 - softplus(1 - (softplus(v) - KV * Math.LN2) / Math.max(minVolts, MIN_VOLTS_MIN), KR);
+var stepValue = (a, b, x) => {
+	const t = Math.min(Math.max((x - a) / (b - a), 0), 1);
+	return t * t * (3 - 2 * t);
+};
+var enableValue = (vin, lo, hi) => stepValue(lo - .05, lo, vin) * (1 - stepValue(hi, hi + .05, vin));
+function compile(c, cls, a) {
+	const used = /* @__PURE__ */ new Set();
+	const name = (prefix, id) => {
+		const base = `${prefix}_${id.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "")}`;
+		let n = base;
+		for (let k = 2; used.has(n); k++) n = `${base}_${k}`;
+		used.add(n);
+		return n;
+	};
+	const diode = (id, an, kn, m) => {
+		const d = name("d", id);
+		return {
+			nodes: [an, kn],
+			lines: (n) => [`.model m_${d} d(is=${num(m.is)} n=${num(m.n)} rs=${num(m.rs)})`, `${d} ${n(an)} ${n(kn)} m_${d}`]
+		};
+	};
+	let taps = 0;
+	const tapEl = (t) => {
+		const v = `vs_${++taps}`;
+		const net = netNode(t.net);
+		return {
+			nodes: [net, t.node],
+			lines: (n) => [`${v} ${n(net)} ${n(t.node)} dc 0`],
+			read: {
+				tap: t,
+				name: v
+			}
+		};
+	};
+	const resistor = (id, x, y, ohms) => {
+		const r = name("r", id);
+		return {
+			nodes: [x, y],
+			lines: (n) => [`${r} ${n(x)} ${n(y)} ${num(Math.max(ohms.value, R_MIN))}`]
+		};
+	};
+	const devEls = (d) => {
+		switch (d.kind) {
+			case "resistor": return [resistor(d.id, d.a, d.b, d.ohms)];
+			case "switch": return d.closed ? [resistor(d.id, d.a, d.b, d.ron)] : [];
+			case "gpio": {
+				const g = gpioBranch(d);
+				return g ? [resistor(d.id, g.a, g.b, g.ohms)] : [];
+			}
+			case "capacitor": {
+				const cn = name("c", d.id);
+				return [{
+					nodes: [d.a, d.b],
+					lines: (n) => [`${cn} ${n(d.a)} ${n(d.b)} ${num(d.farads)}`]
+				}];
+			}
+			case "diode": return [diode(d.id, d.a, d.k, d.model)];
+			case "cell": {
+				const v = name("v", d.id);
+				const r = name("r", `${d.id}.int`);
+				return [{
+					nodes: [
+						d.p,
+						d.int,
+						d.n
+					],
+					lines: (n) => [`${v} ${n(d.p)} ${n(d.int)} dc ${num(d.volts.value)}`, `${r} ${n(d.int)} ${n(d.n)} ${num(Math.max(d.rInternal.value, R_MIN))}`],
+					read: {
+						dev: d.id,
+						name: v,
+						sign: -1
+					}
+				}];
+			}
+			case "load": {
+				const b = name("b", d.id);
+				const amps = a.corner === "peak" ? d.peak.value : d.typical.value;
+				return [{
+					nodes: [d.p, d.n],
+					lines: (n) => [`${b} ${n(d.p)} ${n(d.n)} i=${num(amps)}*${fold(`v(${n(d.p)},${n(d.n)})`, d.minVolts.value)}`]
+				}];
+			}
+			case "rail": {
+				const r = d.rail;
+				const [bctl, bout, vo, fin, bin, biq, bsink, bpay] = [
+					"ctl",
+					"out",
+					"o",
+					"in",
+					"in",
+					"iq",
+					"sink",
+					"sinkin"
+				].map((s, i) => name(i === 3 ? "f" : i === 2 ? "v" : "b", `${d.id}.${s}`));
+				const rout = Math.max(r.rout.value, ROUT_MIN);
+				const ko = FEEDBACK_LOAD * rout / Math.LN2;
+				const els = [{
+					nodes: [
+						d.in,
+						d.inRet,
+						d.out,
+						d.ret,
+						d.ctl,
+						d.o
+					],
+					read: {
+						dev: d.id,
+						name: vo,
+						sign: 1
+					},
+					lines: (n) => {
+						const vin = `v(${n(d.in)},${n(d.inRet)})`;
+						const vc = `v(${n(d.ctl)},${n(d.ret)})`;
+						const vctl = r.kind === "ldo" ? smin(num(r.vout.value), smax(`${vin}-${num(r.dropout.value)}`, "0")) : `${enable(vin, r.vinMin.value, r.vinMax.value)}*${num(r.vout.value)}`;
+						const iout = `(${sp(`${vc}-v(${n(d.o)},${n(d.ret)})`, ko)}-${sp(`-v(${n(d.o)},${n(d.ret)})`, ko)})/${num(rout)}`;
+						const sink = `${num(FEEDBACK_LOAD)}*${fold(vc, FEEDBACK_ON)}`;
+						const out = [
+							`${bctl} ${n(d.ctl)} ${n(d.ret)} v=${vctl}`,
+							`${bout} ${n(d.ret)} ${n(d.o)} i=${iout}`,
+							`${bsink} ${n(d.o)} ${n(d.ret)} i=${sink}`,
+							`${vo} ${n(d.o)} ${n(d.out)} dc 0`,
+							...r.kind === "ldo" ? [`${fin} ${n(d.in)} ${n(d.inRet)} ${vo} 1`, `${bpay} ${n(d.in)} ${n(d.inRet)} i=${sink}`] : [`${bin} ${n(d.in)} ${n(d.inRet)} i=${vc}*(${iout})/(${num(Math.max(r.efficiency.value, EFFICIENCY_MIN))}*max(${vin},0.5))`]
+						];
+						if (r.iq.value > 0) out.push(`${biq} ${n(d.in)} ${n(d.inRet)} i=${num(r.iq.value)}*${smin("1", pos(vin), KR)}`);
+						return out;
+					}
+				}];
+				if (r.reverse === "body-diode") els.push(diode(`${d.id}.body`, d.out, d.in, BODY_DIODE));
+				if (r.kind !== "ldo" && r.offPath === "diode") els.push(diode(`${d.id}.off`, d.in, d.out, schottky(OFF_PATH_VF)));
+				return els;
+			}
+		}
+	};
+	const cp = (x, y) => x < y ? -1 : x > y ? 1 : 0;
+	const live = [...c.devices.map((dev) => ({
+		part: dev.part,
+		rank: 0,
+		key: dev.id,
+		dev
+	})), ...c.taps.map((tap) => ({
+		part: tap.part,
+		rank: 1,
+		key: tap.pin,
+		tap
+	}))].sort((x, y) => naturalCompare(x.part, y.part) || x.rank - y.rank || cp(x.key, y.key)).flatMap((e) => "dev" in e && e.dev ? devEls(e.dev) : [tapEl(e.tap)]).filter((e) => e.nodes.some((n) => cls.defined.has(n)));
+	const ground = cls.islands[0]?.reference;
+	if (!ground || !live.length) return {
+		text: "",
+		empty: true,
+		read: () => ({
+			v: {},
+			pins: {},
+			dev: {}
+		}),
+		nodesIn: () => []
+	};
+	const isNet = (node) => node.startsWith(netNode("")) ? 0 : 1;
+	const touched = [...new Set(live.flatMap((e) => e.nodes))].sort((x, y) => isNet(x) - isNet(y) || cp(x, y));
+	const spice = /* @__PURE__ */ new Map([[ground, "0"]]);
+	let k = 0;
+	for (const node of touched) if (!spice.has(node)) spice.set(node, `n${++k}`);
+	const n = (node) => spice.get(node);
+	const ties = [];
+	let f = 0;
+	for (const node of touched) if (!cls.defined.has(node)) ties.push(`r_float_${++f} ${n(node)} 0 ${num(R_TIE)}`);
+	let j = 0;
+	for (const isl of cls.islands.slice(1)) if (spice.has(isl.reference)) ties.push(`r_join_${++j} ${n(isl.reference)} 0 ${num(R_TIE)}`);
+	const text = [
+		"* circuitoon",
+		...live.flatMap((e) => e.lines(n)),
+		...ties,
+		".end",
+		""
+	].join("\n");
+	const back = new Map([...spice].map(([node, s]) => [s, node]));
+	return {
+		text,
+		empty: false,
+		read(vectors) {
+			const raw = {
+				v: {},
+				pins: {},
+				dev: {}
+			};
+			for (const node of touched) raw.v[node] = spice.get(node) === "0" ? 0 : vectors[spice.get(node)] ?? NaN;
+			for (const e of live) {
+				if (!e.read) continue;
+				const amps = vectors[`${e.read.name}#branch`] ?? NaN;
+				if ("tap" in e.read) (raw.pins[e.read.tap.part] ??= {})[e.read.tap.pin] = amps;
+				else raw.dev[e.read.dev] = e.read.sign * amps;
+			}
+			return raw;
+		},
+		nodesIn(error) {
+			return [...new Set([...error.matchAll(/\bn\d+\b/g)].map((m) => back.get(m[0])).filter((x) => !!x))];
+		}
+	};
+}
+//#endregion
+//#region src/sim/engine/engine.ts
+function makeEngine(host) {
+	const runAll = async (c, analyses, revision) => {
+		const compiled = analyses.map((a) => compile(c, classifyCached(c, a), a));
+		const texts = compiled.filter((x) => !x.empty).map((x) => x.text);
+		const answers = texts.length ? await host.runTexts(texts) : [];
+		const out = [];
+		let next = 0;
+		for (const x of compiled) {
+			if (x.empty) {
+				out.push({
+					status: "ok",
+					revision,
+					raw: x.read({}),
+					ms: 0
+				});
+				continue;
+			}
+			const r = answers[next++];
+			if (!r) break;
+			if (r.status === "unavailable") return [...out, r];
+			if (r.status === "failed") return [...out, {
+				status: "failed",
+				revision,
+				error: r.error,
+				nodes: x.nodesIn(r.error)
+			}];
+			out.push({
+				status: "ok",
+				revision,
+				raw: x.read(r.vectors),
+				ms: r.ms
+			});
+		}
+		return out;
+	};
+	return {
+		host,
+		init: () => host.init(),
+		run: async (c, a, revision) => (await runAll(c, [a], revision))[0],
+		runAll,
+		dispose: () => host.dispose()
+	};
+}
+var message = (e) => e instanceof Error ? e.message : String(e);
+var EngineHost = class {
+	opts;
+	worker = null;
+	ready = null;
+	/** While the engine loads: fails the load now (dispose or recycle during a load). */
+	abortLoad = null;
+	waiting = /* @__PURE__ */ new Map();
+	onWorker = 0;
+	seq = 0;
+	queue = Promise.resolve();
+	info = null;
+	/** Engine runs that returned an answer, over every worker. */
+	runs = 0;
+	spawned = 0;
+	/** The WASM heap size the last run reported, in bytes. */
+	lastHeap = 0;
+	constructor(opts) {
+		this.opts = opts;
+	}
+	init() {
+		if (this.ready) return this.ready;
+		const ready = new Promise((resolve, reject) => {
+			let w;
+			try {
+				w = this.opts.spawn();
+			} catch (e) {
+				return reject(new Error(message(e)));
+			}
+			this.spawned++;
+			this.worker = w;
+			const limit = this.opts.loadTimeoutMs ?? 3e4;
+			const fail = (why) => {
+				clearTimeout(timer);
+				this.abortLoad = null;
+				reject(new Error(why));
+			};
+			const timer = setTimeout(() => fail(`the simulation engine did not load within ${limit / 1e3} s`), limit);
+			this.abortLoad = fail;
+			w.onMessage((m) => {
+				if (m.type === "ready") {
+					clearTimeout(timer);
+					this.abortLoad = null;
+					resolve(this.info = m.engine);
+				} else if (m.type === "fatal") fail(m.error);
+				else if (m.type === "progress") this.opts.onProgress?.(m.loaded, m.total);
+				else if (m.type === "result") {
+					this.lastHeap = m.heap;
+					this.waiting.get(m.id)?.(m);
+					this.waiting.delete(m.id);
+				}
+			});
+			w.onExit(() => {
+				if (this.worker !== w) return;
+				fail("the simulation engine stopped while loading");
+				this.recycle();
+			});
+		});
+		this.ready = ready;
+		ready.catch(() => {
+			if (this.ready === ready) this.recycle();
+		});
+		return ready;
+	}
+	timeout() {
+		const t = this.opts.timeoutMs;
+		return typeof t === "function" ? t() : t ?? 5e3;
+	}
+	once(texts) {
+		const id = ++this.seq;
+		return new Promise((resolve) => {
+			const timer = setTimeout(() => {
+				this.waiting.delete(id);
+				resolve("timeout");
+			}, this.timeout());
+			this.waiting.set(id, (a) => {
+				clearTimeout(timer);
+				resolve(a);
+			});
+			this.worker.post({
+				type: "run",
+				id,
+				texts
+			});
+		});
+	}
+	recycle() {
+		this.abortLoad?.("the simulation engine was stopped while loading");
+		this.worker?.terminate();
+		this.worker = null;
+		this.ready = null;
+		this.onWorker = 0;
+		for (const done of this.waiting.values()) done("timeout");
+		this.waiting.clear();
+	}
+	/** One engine run of a SPICE text, queued behind any run in progress. */
+	async runText(text) {
+		return (await this.runTexts([text]))[0];
+	}
+	/**
+	* Engine runs of several SPICE texts in one worker message, queued behind any request in
+	* progress: one outcome per text, in order, up to and including the first that is not ok.
+	*/
+	runTexts(texts) {
+		const next = this.queue.then(() => this.attempt(texts));
+		this.queue = next.catch(() => void 0);
+		return next;
+	}
+	async attempt(texts) {
+		for (let attempt = 0; attempt < 2; attempt++) {
+			try {
+				await this.init();
+			} catch (e) {
+				return [{
+					status: "unavailable",
+					reason: message(e)
+				}];
+			}
+			const a = await this.once(texts);
+			if (a === "timeout") {
+				this.recycle();
+				continue;
+			}
+			this.runs += a.runs.length;
+			this.onWorker += a.runs.length;
+			if (a.runs.some((r) => !r.ok && r.dead) || this.onWorker >= (this.opts.recycleRuns ?? 2e3)) this.recycle();
+			return a.runs.map((r) => !r.ok ? {
+				status: "failed",
+				error: r.error
+			} : r.warnings ? {
+				status: "ok",
+				vectors: r.vectors,
+				warnings: r.warnings,
+				ms: r.ms
+			} : {
+				status: "ok",
+				vectors: r.vectors,
+				ms: r.ms
+			});
+		}
+		return [{
+			status: "failed",
+			error: `the simulation engine did not answer within ${this.timeout() / 1e3} s, twice`
+		}];
+	}
+	dispose() {
+		this.recycle();
+	}
+};
+//#endregion
+//#region src/sim/engine/ngspice.ts
+/** vector_info on wasm32 (sharedspice.h): v_name 0, v_type 4, v_flags 8, v_realdata 12, v_compdata 16, v_length 20. */
+var V_REALDATA = 12;
+var V_LENGTH = 20;
+var CIRCUIT = "/circuit.cir";
+var NgspiceCore = class {
+	m;
+	errors = [];
+	/** Set when ngspice called its exit callback: the instance is not used again (host.ts recycles it). */
+	dead = false;
+	runs = 0;
+	constructor(m) {
+		this.m = m;
+		const sendChar = m.addFunction((p) => {
+			const line = m.UTF8ToString(p);
+			if (line.startsWith("stderr ")) this.errors.push(line.slice(7));
+			return 0;
+		}, "iiii");
+		const exit = m.addFunction(() => {
+			this.dead = true;
+			return 0;
+		}, "iiiiii");
+		m._ngSpice_nospinit();
+		if (m._ngSpice_Init(sendChar, 0, exit, 0, 0, 0, 0) !== 0) throw new Error("ngSpice_Init failed");
+	}
+	withString(s, f) {
+		const n = this.m.lengthBytesUTF8(s) + 1;
+		const p = this.m._malloc(n);
+		this.m.stringToUTF8(s, p, n);
+		try {
+			return f(p);
+		} finally {
+			this.m._free(p);
+		}
+	}
+	command(c) {
+		this.withString(c, (p) => this.m._ngSpice_Command(p));
+	}
+	vectorNames(plot) {
+		return this.withString(plot, (p) => {
+			const list = this.m._ngSpice_AllVecs(p);
+			const out = [];
+			for (let i = 0; list; i++) {
+				const s = this.m.getValue(list + 4 * i, "*");
+				if (!s) break;
+				out.push(this.m.UTF8ToString(s));
+			}
+			return out;
+		});
+	}
+	vector(name) {
+		return this.withString(name, (p) => {
+			const info = this.m._ngGet_Vec_Info(p);
+			if (!info) return null;
+			const data = this.m.getValue(info + V_REALDATA, "*");
+			const length = this.m.getValue(info + V_LENGTH, "i32");
+			return data && length > 0 ? this.m.getValue(data, "double") : null;
+		});
+	}
+	/** One DC operating point: source + op + read + remcirc (spec 2.3). */
+	op(text) {
+		this.runs++;
+		this.errors = [];
+		this.m.FS.writeFile(CIRCUIT, text);
+		this.command("destroy all");
+		this.command(`source ${CIRCUIT}`);
+		this.command("op");
+		const plot = this.m.UTF8ToString(this.m._ngSpice_CurPlot());
+		const vectors = {};
+		if (!this.dead && plot && plot !== "const") for (const name of this.vectorNames(plot)) {
+			const v = this.vector(name);
+			if (v !== null) vectors[name] = v;
+		}
+		this.command("remcirc");
+		this.command("destroy all");
+		if (this.dead || Object.keys(vectors).length === 0) {
+			const isError = (l) => l.startsWith("Error");
+			return {
+				ok: false,
+				error: [...this.errors.filter(isError), ...this.errors.filter((l) => !isError(l))].join("\n") || "the operating point produced no data"
+			};
+		}
+		return this.errors.length ? {
+			ok: true,
+			vectors,
+			warnings: this.errors
+		} : {
+			ok: true,
+			vectors
+		};
+	}
+	setBreakpoint(t) {
+		return this.m._ngSpice_SetBkpt(t) !== 0;
+	}
+	heapBytes() {
+		return this.m.HEAPU8.length;
+	}
+};
+async function createCore(factory, wasmBinary) {
+	return new NgspiceCore(await factory({
+		wasmBinary,
+		print: () => {},
+		printErr: () => {}
+	}));
+}
+//#endregion
+//#region src/sim/engine/workerLoop.ts
+var why = (e) => e instanceof Error ? e.message : String(e);
+function serve(post, listen, load) {
+	const loading = load((loaded, total) => post({
+		type: "progress",
+		loaded,
+		total
+	}));
+	loading.then(({ info }) => post({
+		type: "ready",
+		engine: info
+	}), (e) => post({
+		type: "fatal",
+		error: e instanceof Error ? e.message : String(e)
+	}));
+	listen((m) => {
+		try {
+			if (m.type !== "run") return;
+			loading.then(({ core }) => {
+				const runs = [];
+				let heap = 0;
+				for (const text of m.texts) {
+					const t0 = performance.now();
+					try {
+						if (text === "* circuitoon: debug hang") for (;;) performance.now();
+						const r = core.op(text);
+						const ms = performance.now() - t0;
+						heap = core.heapBytes();
+						runs.push(r.ok ? {
+							ok: true,
+							vectors: r.vectors,
+							...r.warnings && { warnings: r.warnings },
+							ms
+						} : {
+							ok: false,
+							error: r.error,
+							dead: core.dead,
+							ms
+						});
+					} catch (e) {
+						heap = 0;
+						runs.push({
+							ok: false,
+							error: `the simulation engine stopped: ${why(e)}`,
+							dead: true,
+							ms: performance.now() - t0
+						});
+					}
+					if (!runs[runs.length - 1].ok) break;
+				}
+				post({
+					type: "result",
+					id: m.id,
+					runs,
+					heap
+				});
+			}, () => void 0);
+		} catch (e) {
+			post({
+				type: "fatal",
+				error: why(e)
+			});
+		}
+	});
+}
+//#endregion
+//#region src/sim/engine/nodeEngine.ts
+var WASM = "ngspice.wasm";
+/** The directory with the engine: beside this file (the bundle), else public/sim from the source tree. */
+function engineDir() {
+	const here = dirname(fileURLToPath(import.meta.url));
+	for (const dir of [here, join(here, "..", "..", "..", "public", "sim")]) if (existsSync(join(dir, WASM))) return dir;
+	return null;
+}
+/** The factory, wasm bytes and manifest from an engine directory (public/sim or plugin/dist-cli). */
+async function loadEngineFiles(dir) {
+	const manifest = JSON.parse(readFileSync(join(dir, "engine.json"), "utf8"));
+	return {
+		factory: (await import(
+			/* @vite-ignore */
+			pathToFileURL(join(dir, "ngspice.mjs")).href
+)).default,
+		wasm: new Uint8Array(readFileSync(join(dir, "ngspice.wasm"))),
+		manifest
+	};
+}
+function createNodeEngineHost(opts = {}) {
+	return new EngineHost({
+		...opts,
+		spawn: () => {
+			const dir = engineDir();
+			if (!dir) throw new Error(`the simulation engine (${WASM}) is not installed beside the circuitoon CLI`);
+			const w = new Worker(fileURLToPath(import.meta.url), { workerData: { circuitoonSim: dir } });
+			return {
+				post: (m) => w.postMessage(m),
+				onMessage: (cb) => void w.on("message", (m) => cb(m)).unref(),
+				onExit: (cb) => void w.on("exit", cb),
+				terminate: () => void w.terminate()
+			};
+		}
+	});
+}
+var data = workerData;
+if (!isMainThread && data?.circuitoonSim) {
+	const dir = data.circuitoonSim;
+	serve((m) => parentPort.postMessage(m), (cb) => void parentPort.on("message", cb), async () => {
+		const { factory, wasm, manifest } = await loadEngineFiles(dir);
+		return {
+			core: await createCore(factory, wasm),
+			info: {
+				name: "ngspice",
+				version: manifest.ngspice,
+				build: manifest.build
+			}
+		};
+	});
+}
+var OFF = /^(.+?) is not powered in the current state: (\S+) is open\./;
+/**
+* The findings with the "not powered: SW1 is open" warnings for each switch folded into one entry,
+* placed where the first of them was (`members` holds them, `message` names them all); every other
+* finding stands alone.
+*/
+function foldNotPowered(findings) {
+	const out = [];
+	const bySwitch = /* @__PURE__ */ new Map();
+	for (const f of findings) {
+		const m = f.severity === "warning" ? OFF.exec(f.message) : null;
+		if (!m) {
+			out.push({
+				members: [f],
+				message: f.message
+			});
+			continue;
+		}
+		let g = bySwitch.get(m[2]);
+		if (!g) {
+			g = {
+				members: [],
+				message: f.message,
+				loads: []
+			};
+			bySwitch.set(m[2], g);
+			out.push(g);
+		}
+		g.members.push(f);
+		g.loads.push(m[1]);
+		if (g.members.length > 1) g.message = `not powered in the current state because ${m[2]} is open: ${g.loads.join(", ")}. Set ${m[2]} to its operating position to simulate them running.`;
+	}
+	return out.map(({ members, message }) => ({
+		members,
+		message
+	}));
+}
+//#endregion
+//#region src/sim/estimates.ts
+var est = (value, unit, note) => ({
+	value,
+	unit,
+	provenance: "estimate",
+	note
+});
+var CONTACT_OHMS = est(.02, "ohm", "default contact resistance of a closed switch, jumper or fuse");
+var ROUT_DEFAULT = est(.1, "ohm", "default regulator output resistance");
+var IQ_DEFAULT = est(0, "A", "quiescent current not given; taken as 0");
+var CABLE_OHMS = {
+	value: .1,
+	unit: "ohm",
+	provenance: "representative",
+	note: "one conductor of a typical 1 m USB cable (spec 4.7)"
+};
+var PLUG_OHMS = est(.02, "ohm", "a plug pushed straight into a socket: contact resistance per conductor");
+var OR_DIODE_VF = est(.35, "V", "Schottky OR diode, 0.35 V at 100 mA (modelling choice)");
+/** A `direct` rail input (ruling R17): 1 milliohm, never 0. */
+var RAIL_DIRECT_OHMS = .001;
+/** A load's minimum voltage when its draw gives none: 90 % of its domain's nominal (spec 3.2). */
+var MIN_VOLTS_FRACTION = .9;
+/** The unsimulated reason sim-incomplete counts (spec 3.1). */
+var NO_POWER_DATA = "no power data";
+/** The voltage-keyed fallback for a battery without its own rInternal (spec 3.1 table). */
+function cellEstimate(nominal) {
+	if (nominal >= 2.4 && nominal < 3) return {
+		rInternal: est(15, "ohm", "assumed a lithium coin cell"),
+		assumed: "lithium coin cell"
+	};
+	if (nominal === 9) return {
+		rInternal: est(1.5, "ohm", "assumed an alkaline 9 V battery"),
+		assumed: "alkaline 9 V"
+	};
+	for (let k = 1; k <= 6; k++) {
+		const per = nominal / k;
+		const cells = `${k} cell${k > 1 ? "s" : ""} in series`;
+		if (k <= 2 && per >= 3.6 && per <= 4.2) return {
+			rInternal: est(.05 * k, "ohm", `assumed Li-ion 18650, ${cells}, 0.05 ohm each`),
+			assumed: "Li-ion 18650"
+		};
+		if (per >= 1.2 && per <= 1.6) return {
+			rInternal: est(.15 * k, "ohm", `assumed alkaline AA, ${cells}, 0.15 ohm each`),
+			assumed: "alkaline AA"
+		};
+	}
+	return {
+		rInternal: est(.1, "ohm", "unknown chemistry: 0.1 ohm assumed"),
+		assumed: "unknown"
+	};
+}
+var modelOf$1 = (m) => m.electrical?.model;
+var C3_CLASS = /esp32-?c[36]/;
+var ROWS = [
+	{
+		row: "mcu, ESP32/ESP32-S3 class",
+		match: (m) => modelOf$1(m) === "mcu" && m.id.includes("esp32") && !C3_CLASS.test(m.id),
+		typical: .08,
+		peak: .5,
+		note: "Wi-Fi transmit bursts"
+	},
+	{
+		row: "mcu, ESP32-C3/C6 class",
+		match: (m) => modelOf$1(m) === "mcu" && C3_CLASS.test(m.id),
+		typical: .03,
+		peak: .35,
+		note: "radio transmit bursts"
+	},
+	{
+		row: "mcu, AVR/RP2040 boards",
+		match: (m) => modelOf$1(m) === "mcu",
+		typical: .025,
+		peak: .06,
+		note: "every peripheral busy"
+	},
+	{
+		row: "display, OLED",
+		match: (m) => modelOf$1(m) === "display" && m.id.includes("oled"),
+		typical: .015,
+		peak: .04,
+		note: "all pixels on"
+	},
+	{
+		row: "display, TFT with backlight",
+		match: (m) => modelOf$1(m) === "display",
+		typical: .06,
+		peak: .12,
+		note: "backlight dominates"
+	},
+	{
+		row: "sensor, breakout",
+		match: (m) => modelOf$1(m) === "sensor" || modelOf$1(m) === "breakout",
+		typical: .002,
+		peak: .01,
+		note: "measuring"
+	},
+	{
+		row: "radio",
+		match: (m) => modelOf$1(m) === "radio",
+		typical: .03,
+		peak: .25,
+		note: "transmit"
+	}
+];
+/** The load a powered part draws by category (spec 3.4), or null outside the table. */
+function loadEstimate(m) {
+	const r = ROWS.find((x) => x.match(m));
+	if (!r) return null;
+	return {
+		row: r.row,
+		typical: est(r.typical, "A", `category estimate: ${r.row}`),
+		peak: {
+			...est(r.peak, "A", `category estimate: ${r.row}`),
+			note: r.note,
+			label: r.note
+		}
+	};
+}
+//#endregion
+//#region src/sim/power.ts
+/**
+* The pin a USB port's simulation node is on: `<port>#gnd` is the board's ground pin when
+* `sim.usbPorts` names it; else `<port>#vbus` / `<port>#gnd` is a pin of its own, tapped like any
+* other, so the current the port carries is sensed and the part's pin currents sum to 0.
+*/
+function usbPin(m, port, side) {
+	const gnd = simOf(m)?.usbPorts?.[port]?.gnd;
+	return side === "gnd" && gnd ? gnd : `${port}#${side}`;
+}
+/** The node a `sim` node reference names on part `uid`: a pin's tap (a USB port's node included). */
+function nodeRef(b, uid, m, ref) {
+	const usb = /^(.+)#(vbus|gnd)$/.exec(ref);
+	return b.tap(uid, usb ? usbPin(m, usb[1], usb[2]) : ref);
+}
+function powerPart(b, p, m) {
+	const sim = simOf(m);
+	const power = sim.power;
+	const ref = b.ref(p.uid);
+	const L = (path) => `${m.id}.${ref}.${path}`;
+	const P = (x, path) => b.param(x, L(path));
+	const bad = (power.rails ?? []).map(railProblem).find((x) => x !== null);
+	if (bad) return b.skip(p.uid, `incomplete power data: ${bad}`);
+	const domains = /* @__PURE__ */ new Map();
+	for (const dom of power.domains) {
+		const pin = nodeRef(b, p.uid, m, dom.pin);
+		const ret = nodeRef(b, p.uid, m, dom.ret);
+		if (!pin || !ret) continue;
+		domains.set(dom.name, {
+			pin,
+			ret,
+			nominal: dom.nominal
+		});
+		b.domain({
+			part: p.uid,
+			name: dom.name,
+			pin,
+			ret,
+			nominal: dom.nominal
+		});
+	}
+	let list = power.draw ?? [];
+	if (!list.length) {
+		const est = loadEstimate(m);
+		if (est && !power.domains.length) return b.skip(p.uid, NO_POWER_DATA);
+		if (est) {
+			const names = power.domains.map((x) => x.name);
+			const rails = power.rails ?? [];
+			const outs = rails.map((r) => r.output);
+			const last = outs.filter((o) => !rails.some((r) => r.inputs.some((x) => x.domain === o)));
+			list = [{
+				domain: [
+					sim.gpio?.domain,
+					...last,
+					...outs
+				].find((x) => x !== void 0 && names.includes(x)) ?? names[0],
+				typical: est.typical,
+				peak: est.peak
+			}];
+		} else if (!power.rails?.length && !power.source) b.unsimulated(p.uid, NO_POWER_DATA);
+	}
+	for (const dr of list) {
+		const dn = domains.get(dr.domain);
+		if (!dn) continue;
+		const tOver = simOverride(p, `sim.draw.${dr.domain}.typical`);
+		const pOver = simOverride(p, `sim.draw.${dr.domain}.peak`);
+		const typical = tOver !== null ? b.user(tOver, L(`draw.${dr.domain}.typical`)) : P(dr.typical, `draw.${dr.domain}.typical`);
+		const peak = pOver !== null ? b.user(pOver, L(`draw.${dr.domain}.peak`)) : dr.peak ? P(dr.peak, `draw.${dr.domain}.peak`) : typical;
+		const minVolts = "minVolts" in dr && dr.minVolts ? P(dr.minVolts, `draw.${dr.domain}.minVolts`) : {
+			value: MIN_VOLTS_FRACTION * dn.nominal,
+			basis: "estimate",
+			label: L(`draw.${dr.domain}.minVolts`),
+			note: "90 % of the domain nominal (spec 3.2)"
+		};
+		b.add({
+			kind: "load",
+			id: `${p.uid}.draw.${dr.domain}`,
+			part: p.uid,
+			p: dn.pin,
+			n: dn.ret,
+			domain: dr.domain,
+			typical,
+			peak,
+			...dr.peak?.label ? { peakLabel: dr.peak.label } : {},
+			minVolts
+		});
+	}
+	for (const r of power.rails ?? []) {
+		const out = domains.get(r.output);
+		const ins = r.inputs.map((x) => ({
+			...x,
+			d: domains.get(x.domain)
+		})).filter((x) => {
+			if (!x.d) b.note(`${ref}: rail ${r.id}: input domain ${x.domain} is not simulated, so that input is left out`);
+			return x.d;
+		});
+		if (!out) b.note(`${ref}: rail ${r.id}: output domain ${r.output} is not simulated, so the rail is left out`);
+		else if (!ins.length) b.note(`${ref}: rail ${r.id} has no simulated input, so the rail is left out`);
+		if (!out || !ins.length) continue;
+		const id = `${p.uid}.rail.${r.id}`;
+		const inNode = `${id}#in`;
+		for (const x of ins) if (x.via === "diode") b.add({
+			kind: "diode",
+			id: `${id}.in.${x.domain}`,
+			part: p.uid,
+			a: x.d.pin,
+			k: inNode,
+			model: schottky(OR_DIODE_VF.value),
+			role: "rail-input"
+		});
+		else b.add({
+			kind: "resistor",
+			id: `${id}.in.${x.domain}`,
+			part: p.uid,
+			a: x.d.pin,
+			b: inNode,
+			ohms: b.param({
+				value: RAIL_DIRECT_OHMS,
+				unit: "ohm",
+				provenance: "estimate",
+				note: "direct rail input (ruling R17)"
+			}, L(`rails.${r.id}.input`)),
+			role: "rail-input"
+		});
+		if (r.kind === "switch") {
+			const block = r.reverse === "blocks";
+			if (r.ron) b.add({
+				kind: "resistor",
+				id,
+				part: p.uid,
+				a: inNode,
+				b: block ? `${id}#block` : out.pin,
+				ohms: P(r.ron, `rails.${r.id}.ron`),
+				role: "switch-rail"
+			});
+			if (r.ron && block) b.add({
+				kind: "diode",
+				id: `${id}.block`,
+				part: p.uid,
+				a: `${id}#block`,
+				k: out.pin,
+				model: IDEAL_DIODE,
+				role: "switch-rail"
+			});
+			if (!r.ron) b.add({
+				kind: "diode",
+				id,
+				part: p.uid,
+				a: inNode,
+				k: out.pin,
+				model: schottky(r.vf.value),
+				role: "switch-rail"
+			});
+			continue;
+		}
+		const opt = (x, key) => x ? P(x, `rails.${r.id}.${key}`) : void 0;
+		const rail = {
+			id: r.id,
+			kind: r.kind,
+			output: r.output,
+			inputs: r.inputs.map((x) => x.domain),
+			vout: opt(r.vout, "vout"),
+			dropout: opt(r.dropout, "dropout"),
+			ioutMax: opt(r.ioutMax, "ioutMax"),
+			efficiency: opt(r.efficiency, "efficiency"),
+			vinMin: opt(r.vinMin, "vinMin"),
+			vinMax: opt(r.vinMax, "vinMax"),
+			iq: P(r.iq ?? IQ_DEFAULT, `rails.${r.id}.iq`),
+			rout: P(r.rout ?? ROUT_DEFAULT, `rails.${r.id}.rout`),
+			reverse: r.reverse,
+			offPath: r.offPath ?? "open",
+			...r.minLoad ? { minLoad: {
+				amps: P(r.minLoad.amps, `rails.${r.id}.minLoad`),
+				note: r.minLoad.note
+			} } : {}
+		};
+		b.add({
+			kind: "rail",
+			id,
+			part: p.uid,
+			rail,
+			in: inNode,
+			inRet: ins[0].d.ret,
+			out: out.pin,
+			ret: out.ret,
+			ctl: `${id}#ctl`,
+			o: `${id}#o`,
+			outDomain: r.output
+		});
+	}
+	const s = power.source;
+	const sd = s && domains.get(s.domain);
+	let imaxOver = null;
+	if (s && sd) {
+		const ac = mainsOf(m);
+		const assumed = !!ac.acInput && !!ac.plug && !b.acOnSheet(p, m);
+		if (assumed) b.note(`${ref}: assumed plugged into a live outlet (its plug is not on the sheet)`);
+		if (ac.acInput && !assumed && !b.converterPowered(p.uid)) b.note(`${ref}: its mains input is off in the saved switch state, so its output is off`);
+		else {
+			const rOver = simOverride(p, "sim.rInternal");
+			const iOver = simOverride(p, "sim.imax");
+			imaxOver = iOver;
+			let volts;
+			if (s.voltage === "param:voltage") {
+				const v = paramValue(p, m, "voltage");
+				if (v === null) return b.skip(p.uid, "no voltage value");
+				volts = b.user(v, L("voltage"));
+			} else volts = P(s.voltage, "source.voltage");
+			const imax = iOver !== null ? b.user(iOver, L("imax")) : s.imax ? P(s.imax, "source.imax") : void 0;
+			const id = `${p.uid}.source`;
+			b.add({
+				kind: "cell",
+				id,
+				part: p.uid,
+				p: sd.pin,
+				n: sd.ret,
+				int: `${id}#int`,
+				volts,
+				rInternal: rOver !== null ? b.user(rOver, L("rInternal")) : P(s.rInternal, "source.rInternal"),
+				...imax ? { imax } : {},
+				role: "external",
+				domain: s.domain
+			});
+		}
+	}
+	const g = sim.gpio;
+	const io = g && domains.get(g.domain);
+	if (g && io) for (const pin of g.pins) {
+		const state = gpioState(p, m, pin);
+		b.gpio({
+			part: p.uid,
+			pin,
+			state,
+			domain: g.domain,
+			key: nodeKey(p.uid, pin)
+		});
+		if (state === null) {
+			b.unsimulated(p.uid, `pin ${pin}: output-only pin with no state set`);
+			continue;
+		}
+		const R = (x, key) => P(x, `gpio.${key}`);
+		const node = b.tap(p.uid, pin);
+		if (node) b.add({
+			kind: "gpio",
+			id: `${p.uid}.gpio.${pin}`,
+			part: p.uid,
+			pin,
+			node,
+			vdd: io.pin,
+			ret: io.ret,
+			domain: g.domain,
+			state,
+			params: {
+				outputResistance: R(g.outputResistance, "outputResistance"),
+				...g.pullup ? { pullup: R(g.pullup, "pullup") } : {},
+				...g.pulldown ? { pulldown: R(g.pulldown, "pulldown") } : {},
+				...g.inputLeakage && g.inputLeakage.value > 0 ? { leakage: {
+					...R(g.inputLeakage, "inputLeakage"),
+					value: io.nominal / g.inputLeakage.value,
+					note: "derived: domain nominal / inputLeakage"
+				} } : {}
+			}
+		});
+	}
+	if (imaxOver === null) return b.partLimits(p, m);
+	b.partLimits(p, m, ["sourceCurrent"]);
+	b.limit({
+		part: p.uid,
+		of: { part: true },
+		kind: "sourceCurrent",
+		value: b.user(imaxOver, L("imax"))
+	});
+}
+/** Each USB link that carries power: both conductors as cable resistances (spec 4.7). */
+function usbLinks(b, d) {
+	for (const c of [...d.connections].sort((x, y) => x.uid < y.uid ? -1 : 1)) {
+		const link = usbLink(d, c);
+		if (!link) continue;
+		const sides = usbSides(link.from, link.to);
+		if (!sides) continue;
+		const [host, dev] = sides;
+		const hm = b.module(host.part.module) ?? host.module;
+		const dm = b.module(dev.part.module) ?? dev.module;
+		if (!b.simulated(dev.part.uid)) continue;
+		if (host.usb.hub === "downstream") {
+			b.unsimulated(dev.part.uid, "powered through a hub: not simulated yet");
+			continue;
+		}
+		if (!simOf(hm)?.power) {
+			b.unsimulated(dev.part.uid, `powered from ${b.ref(host.part.uid)} over USB, which has no power data`);
+			continue;
+		}
+		if (!b.simulated(host.part.uid)) {
+			b.unsimulated(dev.part.uid, `powered over USB from ${b.ref(host.part.uid)}, which is not simulated`);
+			continue;
+		}
+		const ohms = link.direct ? PLUG_OHMS : CABLE_OHMS;
+		const label = `${link.direct ? "plug" : "cable"}.${c.uid}`;
+		const hv = b.node(host.part.uid, usbPin(hm, host.name, "vbus"));
+		const dv = b.node(dev.part.uid, usbPin(dm, dev.name, "vbus"));
+		const hg = b.node(host.part.uid, usbPin(hm, host.name, "gnd"));
+		const dg = b.node(dev.part.uid, usbPin(dm, dev.name, "gnd"));
+		if (!hv || !dv || !hg || !dg) continue;
+		const vbus = `usb.${c.uid}.vbus`;
+		const gnd = `usb.${c.uid}.gnd`;
+		b.add({
+			kind: "resistor",
+			id: vbus,
+			part: host.part.uid,
+			a: hv,
+			b: dv,
+			ohms: b.param(ohms, `${label}.vbus`),
+			role: "cable"
+		});
+		b.add({
+			kind: "resistor",
+			id: gnd,
+			part: host.part.uid,
+			a: hg,
+			b: dg,
+			ohms: b.param(ohms, `${label}.gnd`),
+			role: "cable"
+		});
+		const declared = host.usb.source;
+		const limit = declared !== void 0 ? {
+			value: declared / 1e3,
+			basis: "datasheet",
+			label: `${hm.id}.${b.ref(host.part.uid)}.usb.${host.name}.source`
+		} : {
+			value: DEFAULT_SOURCE[host.usb.version ?? "2.0"] / 1e3,
+			basis: "representative",
+			label: `usb-default.${host.usb.version ?? "2.0"}`,
+			note: "the USB default for the port version"
+		};
+		b.usbPath({
+			host: host.part.uid,
+			hostPort: host.name,
+			device: dev.part.uid,
+			devicePort: dev.name,
+			vbus,
+			gnd,
+			limit
+		});
+		const pw = simOf(dm)?.power;
+		if (!pw) continue;
+		const fed = pw.domains.filter((x) => x.pin === `${dev.name}#vbus`).map((x) => x.name);
+		const used = (n) => pw.rails?.some((r) => r.inputs.some((x) => x.domain === n)) || pw.draw?.some((x) => x.domain === n) || pw.source?.domain === n;
+		if (fed.length && !fed.some(used)) b.note(`${b.ref(dev.part.uid)}: ${dev.name} charge input is not simulated: the module runs from its battery only`);
+	}
+}
+//#endregion
+//#region src/sim/build.ts
+var modelOf = (m) => isObj(m.electrical) && typeof m.electrical.model === "string" ? m.electrical.model : "";
+var terminals = (m) => {
+	const t = isObj(m.electrical) && isObj(m.electrical.terminals) ? m.electrical.terminals : {};
+	return Object.fromEntries(Object.entries(t).filter((x) => typeof x[1] === "string"));
+};
+/** A number param outside PARAM_RULES (forwardVoltage, maxCurrent): a stored { value } override, else the module default. */
+function numParam(part, m, name) {
+	const stored = part.values?.[name];
+	if (isObj(stored) && isNum(stored.value)) return stored.value;
+	const p = isObj(m.electrical) && isObj(m.electrical.params) ? m.electrical.params[name] : void 0;
+	return isObj(p) && isNum(p.default) ? p.default : null;
+}
+var hasPowerPin = (m) => [...m.pins, ...m.holes ?? []].some((p) => !("spacer" in p && isSpacer(p)) && "type" in p && p.type === "power_in");
+var Builder = class {
+	d;
+	opts;
+	/** The sheet's modules, each with the sim it is simulated with (withLibrarySim). */
+	modules;
+	mainsKeys;
+	netOfKey = /* @__PURE__ */ new Map();
+	names = /* @__PURE__ */ new Set();
+	refOf;
+	tapsByKey = /* @__PURE__ */ new Map();
+	devices = [];
+	parts = {};
+	domains = [];
+	limits = [];
+	gpios = [];
+	usb = [];
+	unsim = [];
+	offSheet = [];
+	notes = [];
+	/** The part being built, which owns the notes made meanwhile. */
+	current = null;
+	converters = null;
+	constructor(d, opts) {
+		this.d = d;
+		this.opts = opts;
+		const library = opts.library ?? libraryLookup;
+		this.modules = Object.fromEntries(Object.entries(d.modules).map(([id, m]) => [id, withLibrarySim(m, library)]));
+		this.mainsKeys = analyseMainsCached(d)?.mainsKeys ?? /* @__PURE__ */ new Set();
+		const sn = sheetNets(d);
+		this.refOf = sn.refOf;
+		for (const net of sn.nets) {
+			this.names.add(net.name);
+			for (const k of net.keys) this.netOfKey.set(k, net.name);
+		}
+		for (const keys of sn.netlist.nets) {
+			const named = keys.find((k) => this.netOfKey.has(k));
+			const name = named ? this.netOfKey.get(named) : this.fresh(this.firstComponent(keys));
+			for (const k of keys) this.netOfKey.set(k, name);
+		}
+		if (opts.netNames) this.rename(opts.netNames);
+	}
+	/** Sheet net names to the netlist's own (BuildOptions.netNames); an unnamed net clashing with one gets a suffix. */
+	rename(netNames) {
+		const alias = /* @__PURE__ */ new Map();
+		const taken = /* @__PURE__ */ new Set();
+		for (const n of netNames) {
+			const sheet = n.keys.map((k) => this.netOfKey.get(k)).find((x) => x !== void 0);
+			if (sheet === void 0 || alias.has(sheet) || taken.has(n.name)) continue;
+			alias.set(sheet, n.name);
+			taken.add(n.name);
+		}
+		this.names = new Set(taken);
+		for (const sheet of [...new Set(this.netOfKey.values())].sort()) {
+			if (alias.has(sheet)) continue;
+			let name = sheet;
+			for (let k = 2; this.names.has(name); k++) name = `${sheet}_${k}`;
+			this.names.add(name);
+			alias.set(sheet, name);
+		}
+		for (const [k, net] of this.netOfKey) this.netOfKey.set(k, alias.get(net));
+	}
+	ref(uid) {
+		return this.refOf.get(uid) ?? this.d.parts.find((p) => p.uid === uid)?.designator ?? uid;
+	}
+	modulesOf(uid) {
+		const p = this.d.parts.find((x) => x.uid === uid);
+		return p ? this.module(p.module) : void 0;
+	}
+	module(id) {
+		return moduleOf({ modules: this.modules }, id);
+	}
+	firstComponent(keys) {
+		const pins = keys.map((k) => JSON.parse(k));
+		const real = pins.filter(([uid]) => {
+			const m = this.modulesOf(uid);
+			return m && !isBoard(m) && !isNetLabel(m);
+		});
+		return (real.length ? real : pins).sort((a, b) => naturalCompare(this.ref(a[0]), this.ref(b[0])) || naturalCompare(a[1], b[1]))[0];
+	}
+	fresh([uid, pin]) {
+		const base = `${this.ref(uid)}_${pin.replace(/#(.*)$/, (_, x) => `_${x.toUpperCase()}`)}`;
+		let name = base;
+		for (let k = 2; this.names.has(name); k++) name = `${base}_${k}`;
+		this.names.add(name);
+		return name;
+	}
+	/** The display name of the net a part pin is on (named on first use for a singleton); null on mains wiring. */
+	netName(uid, pin) {
+		const key = nodeKey(uid, pin);
+		if (this.mainsKeys.has(key)) return null;
+		let net = this.netOfKey.get(key);
+		if (!net) {
+			net = this.fresh([uid, pin]);
+			this.netOfKey.set(key, net);
+		}
+		return net;
+	}
+	/** The node id (netNode) of the net a part pin is on; null on mains wiring. */
+	node(uid, pin) {
+		const net = this.netName(uid, pin);
+		return net === null ? null : netNode(net);
+	}
+	/** The pin node behind the pin's 0 V sense (ruling R19), made on first use; null on mains wiring. */
+	tap(uid, pin) {
+		const key = nodeKey(uid, pin);
+		const hit = this.tapsByKey.get(key);
+		if (hit) return hit.node;
+		const net = this.netName(uid, pin);
+		if (net === null) return null;
+		const t = {
+			part: uid,
+			pin,
+			net,
+			node: `${uid}:${pin}`
+		};
+		this.tapsByKey.set(key, t);
+		return t.node;
+	}
+	add(dev) {
+		this.devices.push(dev);
+	}
+	param(q, label) {
+		return {
+			value: q.value,
+			basis: q.provenance,
+			label,
+			...q.note ? { note: q.note } : {}
+		};
+	}
+	user(value, label) {
+		return {
+			value,
+			basis: "user",
+			label
+		};
+	}
+	/** The part is not simulated at all: everything recorded for it goes, and its notes give way to the reason. */
+	skip(uid, reason) {
+		const other = (x) => x.part !== uid;
+		delete this.parts[uid];
+		this.devices = this.devices.filter(other);
+		for (const [k, t] of this.tapsByKey) if (t.part === uid) this.tapsByKey.delete(k);
+		this.limits = this.limits.filter(other);
+		this.domains = this.domains.filter(other);
+		this.gpios = this.gpios.filter(other);
+		this.usb = this.usb.filter((x) => x.host !== uid && x.device !== uid);
+		this.notes = this.notes.filter(other);
+		this.unsim = this.unsim.filter(other);
+		this.unsim.push({
+			part: uid,
+			reason
+		});
+	}
+	/** Whether the part is simulated (compiled and not skipped). */
+	simulated(uid) {
+		return uid in this.parts;
+	}
+	/** One path or pin of a simulated part is not simulated (ruling R7, an unset output-only pin). */
+	unsimulated(uid, reason) {
+		this.unsim.push({
+			part: uid,
+			reason
+		});
+	}
+	/** A note, owned by the part being built (if any) so that skip() can drop it. */
+	note(text) {
+		this.notes.push({
+			part: this.current,
+			text
+		});
+	}
+	limit(l) {
+		this.limits.push(l);
+	}
+	domain(x) {
+		this.domains.push(x);
+	}
+	gpio(x) {
+		this.gpios.push(x);
+	}
+	usbPath(x) {
+		this.usb.push(x);
+	}
+	/** The module's sim.limits, as resolved limits of the part (spec 3.1). */
+	partLimits(p, m, skipKinds = []) {
+		for (const l of simOf(m)?.limits ?? []) {
+			if (skipKinds.includes(l.kind)) continue;
+			const what = "pin" in l.of ? l.of.pin : "domain" in l.of ? l.of.domain : "part";
+			this.limit({
+				part: p.uid,
+				of: l.of,
+				kind: l.kind,
+				...l.conditions ? { conditions: l.conditions } : {},
+				value: {
+					value: l.value,
+					basis: l.provenance,
+					label: `${m.id}.${this.ref(p.uid)}.limits.${l.kind}.${what}`,
+					...l.note ? { note: l.note } : {}
+				}
+			});
+		}
+	}
+	/** Whether an AC-DC converter's mains input is powered in the saved contact state (spec 4 table). */
+	converterPowered(uid) {
+		if (!this.converters) this.converters = convertersInState(this.d, (part, groupId) => {
+			const m = this.module(part.module);
+			const g = m && switchGroups(m).find((x) => x.id === groupId);
+			return !!m && !!g && isActive(contactPosition(part, m, g, this.isHeld(part.uid, groupId)));
+		});
+		return this.converters.get(uid)?.state === "powered";
+	}
+	/** Whether a plug-in supply's AC side is on the sheet: put in an outlet (mounted) or its plug or AC input wired. */
+	acOnSheet(p, m) {
+		if (p.mount) return true;
+		const info = mainsOf(m);
+		const ac = /* @__PURE__ */ new Set([
+			info.acInput?.a,
+			info.acInput?.b,
+			...info.plug?.profiles.flatMap((pr) => pr.contacts.map((c) => c.pin)) ?? []
+		]);
+		return this.d.connections.some((c) => [c.from, c.to].some((e) => e.part === p.uid && ac.has(e.pin)));
+	}
+	isHeld(uid, group) {
+		return this.opts.held?.part === uid && this.opts.held.group === group;
+	}
+	contactOhms(p, m) {
+		const q = simOf(m)?.modelParams?.contactResistance;
+		return this.param(q ?? CONTACT_OHMS, `${m.id}.${this.ref(p.uid)}.contactResistance`);
+	}
+	contact(p, m, id, x, y) {
+		const a = this.tap(p.uid, x);
+		const b = this.tap(p.uid, y);
+		if (a && b) this.add({
+			kind: "resistor",
+			id,
+			part: p.uid,
+			a,
+			b,
+			ohms: this.contactOhms(p, m),
+			role: "contact"
+		});
+	}
+	part(p) {
+		try {
+			this.compile(p);
+		} finally {
+			this.current = null;
+		}
+	}
+	compile(p) {
+		const m = this.module(p.module);
+		if (!m) return this.unsimulated(p.uid, "its module is not embedded in the sheet");
+		if (isNetLabel(m) || isBoard(m)) return;
+		const model = modelOf(m);
+		if (model === "connector") return this.connector(p, m);
+		const ref = this.ref(p.uid);
+		this.current = p.uid;
+		this.parts[p.uid] = {
+			uid: p.uid,
+			ref,
+			designator: p.designator,
+			module: m.id,
+			name: m.name,
+			model
+		};
+		const t = terminals(m);
+		const label = (path) => `${m.id}.${ref}.${path}`;
+		switch (model) {
+			case "resistor": {
+				const a = this.tap(p.uid, t.a);
+				const b = this.tap(p.uid, t.b);
+				const ohms = paramValue(p, m, "resistance");
+				if (ohms === null) return this.skip(p.uid, "no resistance value");
+				if (a && b) this.add({
+					kind: "resistor",
+					id: `${p.uid}.r`,
+					part: p.uid,
+					a,
+					b,
+					ohms: ohms === 0 ? this.contactOhms(p, m) : this.user(ohms, label("resistance")),
+					role: ohms === 0 ? "contact" : "resistor"
+				});
+				return this.partLimits(p, m);
+			}
+			case "potentiometer": {
+				const total = paramValue(p, m, "resistance") ?? 1e4;
+				const raw = p.values?.position;
+				const pos = isNum(raw) && raw >= 0 && raw <= 1 ? raw : .5;
+				const a = this.tap(p.uid, t.a);
+				const w = this.tap(p.uid, t.wiper);
+				const b = this.tap(p.uid, t.b);
+				if (a && w) this.add({
+					kind: "resistor",
+					id: `${p.uid}.aw`,
+					part: p.uid,
+					a,
+					b: w,
+					ohms: this.user(Math.max(1, total * pos), label("resistance")),
+					role: "resistor"
+				});
+				if (w && b) this.add({
+					kind: "resistor",
+					id: `${p.uid}.wb`,
+					part: p.uid,
+					a: w,
+					b,
+					ohms: this.user(Math.max(1, total * (1 - pos)), label("resistance")),
+					role: "resistor"
+				});
+				return this.partLimits(p, m);
+			}
+			case "led": {
+				const a = this.tap(p.uid, t.anode);
+				const k = this.tap(p.uid, t.cathode);
+				const params = isObj(m.electrical) && isObj(m.electrical.params) ? m.electrical.params : {};
+				const colourDefault = isObj(params.color) && typeof params.color.default === "string" ? params.color.default : "red";
+				const colour = typeof p.values?.color === "string" ? p.values.color : colourDefault;
+				const inBand = (v) => v !== null && Number.isFinite(v) && v >= 1 && v <= 5;
+				const fallback = numParam({
+					...p,
+					values: void 0
+				}, m, "forwardVoltage");
+				const vfDefault = inBand(fallback) ? fallback : 2;
+				const vf = numParam(p, m, "forwardVoltage") ?? vfDefault;
+				if (!inBand(vf)) this.note(`${ref}: forwardVoltage ${vf} V is outside 1.0 to 5.0 V; the default ${vfDefault} V is used`);
+				const fit = ledModel(colour, inBand(vf) ? vf : vfDefault);
+				if (!fit.known) this.note(`${ref}: no LED model for the colour "${colour}"; a red LED's curve is used`);
+				if (a && k) this.add({
+					kind: "diode",
+					id: `${p.uid}.led`,
+					part: p.uid,
+					a,
+					k,
+					model: fit.model,
+					role: "led"
+				});
+				const sim = simOf(m)?.limits ?? [];
+				const legacy = numParam(p, m, "maxCurrent");
+				if (!sim.some((l) => l.kind === "current") && legacy !== null) this.limit({
+					part: p.uid,
+					of: { part: true },
+					kind: "current",
+					value: {
+						value: legacy,
+						basis: "representative",
+						label: label("maxCurrent")
+					}
+				});
+				const abs = LED_COLOURS[fit.colour].absMaxCurrent;
+				if (!sim.some((l) => l.kind === "absMaxCurrent") && abs && fit.known) this.limit({
+					part: p.uid,
+					of: { part: true },
+					kind: "absMaxCurrent",
+					value: {
+						value: abs.value,
+						basis: "representative",
+						label: `led-colours.${fit.colour}.absMaxCurrent`
+					}
+				});
+				return this.partLimits(p, m);
+			}
+			case "voltage_source": {
+				const plus = this.tap(p.uid, t.pos);
+				const minus = this.tap(p.uid, t.neg);
+				const volts = paramValue(p, m, "voltage");
+				if (volts === null) return this.skip(p.uid, "no voltage value");
+				const sim = simOf(m);
+				const rOver = simOverride(p, "sim.rInternal");
+				const rInternal = rOver !== null ? this.user(rOver, label("rInternal")) : this.param(sim?.modelParams?.rInternal ?? cellEstimate(volts).rInternal, label("rInternal"));
+				const iOver = simOverride(p, "sim.imax");
+				const limit = sim?.limits?.find((l) => l.kind === "sourceCurrent");
+				const imax = iOver !== null ? this.user(iOver, label("imax")) : limit ? {
+					value: limit.value,
+					basis: limit.provenance,
+					label: label("limits.sourceCurrent"),
+					...limit.note ? { note: limit.note } : {}
+				} : void 0;
+				const id = `${p.uid}.cell`;
+				if (plus && minus) this.add({
+					kind: "cell",
+					id,
+					part: p.uid,
+					p: plus,
+					n: minus,
+					int: `${id}#int`,
+					volts: this.user(volts, label("voltage")),
+					rInternal,
+					...imax ? { imax } : {},
+					role: "cell"
+				});
+				if (iOver === null) return this.partLimits(p, m);
+				this.partLimits(p, m, ["sourceCurrent"]);
+				return this.limit({
+					part: p.uid,
+					of: { part: true },
+					kind: "sourceCurrent",
+					value: this.user(iOver, label("imax"))
+				});
+			}
+			case "capacitor": {
+				const a = this.tap(p.uid, t.a);
+				const b = this.tap(p.uid, t.b);
+				if (a && b) this.add({
+					kind: "capacitor",
+					id: `${p.uid}.c`,
+					part: p.uid,
+					a,
+					b,
+					farads: paramValue(p, m, "capacitance") ?? 1e-7
+				});
+				return;
+			}
+			case "fuse": {
+				if (partSetting(p, m, "fuse") !== "absent") for (const [i, e] of mainsOf(m).protective.entries()) this.contact(p, m, `${p.uid}.fuse.${i + 1}`, e.from, e.to);
+				const rating = paramValue(p, m, "fuseRating");
+				if (rating !== null) this.limit({
+					part: p.uid,
+					of: { part: true },
+					kind: "fuse",
+					value: this.user(rating, label("fuseRating"))
+				});
+				return;
+			}
+			case "switch":
+			case "relay":
+			case "ssr":
+				for (const g of switchGroups(m)) {
+					const active = isActive(contactPosition(p, m, g, this.isHeld(p.uid, g.id)));
+					g.poles.forEach((pole, i) => {
+						for (const [contact, to] of [["no", pole.no], ["nc", pole.nc]]) {
+							const a = to ? this.tap(p.uid, pole.com) : null;
+							const b = to ? this.tap(p.uid, to) : null;
+							if (a && b) this.add({
+								kind: "switch",
+								id: `${p.uid}.${g.id}.${i + 1}.${contact}`,
+								part: p.uid,
+								group: g.id,
+								contact,
+								latching: g.kind === "switch" && !g.momentary,
+								a,
+								b,
+								closed: active === (contact === "no"),
+								ron: this.contactOhms(p, m)
+							});
+						}
+					});
+					if (g.kind !== "switch") this.note(`${ref}: shown at rest; coil switching is simulated with firmware`);
+				}
+				if (simOf(m)?.power) return powerPart(this, p, m);
+				return this.partLimits(p, m);
+		}
+		if (simOf(m)?.power) return powerPart(this, p, m);
+		if (mainsOf(m).any) return this.skip(p.uid, "mains wiring is not simulated");
+		this.skip(p.uid, hasPowerPin(m) ? NO_POWER_DATA : "no simulation model");
+	}
+	/**
+	* Phase D ruling: a `connector` part's pin leads off the sheet (a header, a JST-XH plug, a USB
+	* panel socket: J1 to J3 carry the Spirit's I2C bus to its bank sheets), so an input on its net is
+	* driven from elsewhere. A pin joined to another inside the part (`internal`: a Wago lever splice)
+	* only joins wires on the sheet, so it does not count.
+	*/
+	connector(p, m) {
+		const spliced = new Set((m.internal ?? []).flat());
+		for (const pin of [...m.pins, ...m.holes ?? []]) if ("name" in pin && typeof pin.name === "string" && !spliced.has(pin.name)) this.offSheet.push(nodeKey(p.uid, pin.name));
+	}
+	done() {
+		const taps = [...this.tapsByKey.values()].sort((a, b) => naturalCompare(a.part, b.part) || (a.pin < b.pin ? -1 : a.pin > b.pin ? 1 : 0));
+		const devices = [...this.devices].sort((a, b) => naturalCompare(a.part, b.part) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+		const open = /* @__PURE__ */ new Map();
+		for (const d of devices) {
+			if (d.kind !== "switch" || !d.latching || d.contact !== "no" || d.closed) continue;
+			const key = JSON.stringify([d.part, d.group]);
+			if (!open.has(key)) open.set(key, {
+				part: d.part,
+				group: d.group,
+				pairs: []
+			});
+			open.get(key).pairs.push([d.a, d.b]);
+		}
+		const pinNet = {};
+		for (const [k, net] of [...this.netOfKey].sort((a, b) => a[0] < b[0] ? -1 : 1)) pinNet[k] = net;
+		return {
+			nets: [...new Set(taps.map((t) => t.net))].sort(),
+			taps,
+			devices,
+			parts: Object.fromEntries(Object.entries(this.parts).sort((a, b) => naturalCompare(a[0], b[0]))),
+			refs: Object.fromEntries(this.d.parts.map((p) => p.uid).sort(naturalCompare).map((uid) => [uid, this.ref(uid)])),
+			domains: this.domains,
+			limits: this.limits,
+			gpio: this.gpios,
+			usb: this.usb,
+			pinNet,
+			mains: [...this.mainsKeys].sort(),
+			openContacts: [...open.values()],
+			unsimulated: this.unsim,
+			offSheet: [...this.offSheet].sort(),
+			unaccounted: Object.keys(this.parts).sort(naturalCompare).flatMap((uid) => {
+				const items = simOf(this.modulesOf(uid))?.unaccounted ?? [];
+				return items.length ? [{
+					part: uid,
+					items
+				}] : [];
+			}),
+			notes: [...new Set(this.notes.map((n) => n.text))]
+		};
+	}
+};
+function buildCircuit(d, opts = {}) {
+	const b = new Builder(d, opts);
+	for (const p of [...d.parts].sort((x, y) => naturalCompare(x.uid, y.uid))) b.part(p);
+	usbLinks(b, d);
+	return b.done();
+}
+//#endregion
+//#region src/sim/results.ts
+var NO_OUTSIDE = {
+	nets: /* @__PURE__ */ new Set(),
+	parts: /* @__PURE__ */ new Set(),
+	rails: /* @__PURE__ */ new Set()
+};
+var RANK = {
+	user: 0,
+	datasheet: 0,
+	representative: 1,
+	estimate: 2
+};
+/** The weakest provenance among the inputs (user = datasheet > representative > estimate); topology with none (spec 5.1). */
+function basisOf(params) {
+	if (!params.length) return "topology";
+	const worst = Math.max(...params.map((p) => RANK[p.basis]));
+	if (worst === 2) return "estimate";
+	if (worst === 1) return "representative";
+	return params.some((p) => p.basis === "datasheet") ? "datasheet" : "user";
+}
+var NET$1 = netNode("");
+/** A node's display name: a net node's name, a pin tap's net, else the node id (an internal node). */
+var nameOf = (c, node) => node.startsWith(NET$1) ? node.slice(NET$1.length) : indexOf(c).tapAt.get(node)?.net ?? node;
+var trustOf = (out, net, part) => out.nets.has(net) || part !== void 0 && out.parts.has(part) ? "outside-model" : "ok";
+/** A solved, non-floating node's island (spec 2: islandOf includes floating nodes, which a tie gives a solver number). */
+function islandOf(cls, raw, node) {
+	return nodeState(cls, node) === "floating" || raw.v[node] === void 0 || !Number.isFinite(raw.v[node]) ? void 0 : cls.islandOf.get(node);
+}
+/** A node's voltage to its island's reference, or floating (spec 4.4). */
+function voltageOf(c, cls, raw, node, out, part) {
+	const isl = islandOf(cls, raw, node);
+	if (isl === void 0) return { kind: "floating" };
+	const ref = cls.islands[isl].reference;
+	return {
+		kind: "value",
+		value: raw.v[node] - (raw.v[ref] ?? 0),
+		reference: nameOf(c, ref),
+		trust: trustOf(out, nameOf(c, node), part)
+	};
+}
+/** The voltage between two nodes of one island, or floating. Its reference is `b`, the row's own return, not spec 4.4's island reference (which node readings name). */
+function across(c, cls, raw, a, b, out, part) {
+	const ia = islandOf(cls, raw, a);
+	if (ia === void 0 || ia !== islandOf(cls, raw, b)) return { kind: "floating" };
+	return {
+		kind: "value",
+		value: raw.v[a] - raw.v[b],
+		reference: nameOf(c, b),
+		trust: trustOf(out, nameOf(c, a), part)
+	};
+}
+function readRun(c, cls, raw, out = NO_OUTSIDE) {
+	const mains = new Set(c.mains.map((k) => c.pinNet[k]).filter((n) => !!n));
+	const nets = {};
+	for (const net of [...new Set(Object.values(c.pinNet))].sort()) nets[net] = mains.has(net) ? {
+		kind: "undefined",
+		why: "not simulated (mains)"
+	} : voltageOf(c, cls, raw, netNode(net), out);
+	const parts = {};
+	const ix = indexOf(c);
+	for (const uid of Object.keys(c.parts)) {
+		const taps = ix.tapsOf.get(uid) ?? [];
+		const trust = out.parts.has(uid) ? "outside-model" : "ok";
+		const pins = {};
+		let power = 0;
+		const islands = /* @__PURE__ */ new Set();
+		for (const t of taps) {
+			const i = raw.pins[uid]?.[t.pin];
+			const isl = i === void 0 || !Number.isFinite(i) ? void 0 : islandOf(cls, raw, t.node);
+			if (isl === void 0) {
+				pins[t.pin] = {
+					kind: "indeterminate",
+					why: "nothing drives this pin (floating)"
+				};
+				continue;
+			}
+			pins[t.pin] = {
+				kind: "value",
+				value: i,
+				trust
+			};
+			power += raw.v[t.node] * i;
+			islands.add(isl);
+		}
+		const [only] = islands;
+		const run = {
+			pins,
+			power: islands.size === 1 ? {
+				kind: "value",
+				value: power,
+				reference: nameOf(c, cls.islands[only].reference),
+				trust
+			} : {
+				kind: "undefined",
+				why: !taps.length ? "not simulated" : islands.size ? "it spans separate circuits" : "nothing drives it (floating)"
+			}
+		};
+		const led = ix.devicesOf.get(uid)?.find((d) => d.kind === "diode" && d.role === "led");
+		if (led) {
+			const anode = ix.tapAt.get(led.a);
+			const i = anode && pins[anode.pin]?.kind === "value" ? raw.pins[uid]?.[anode.pin] : void 0;
+			run.state = i !== void 0 && Math.abs(i) > 1e-4 ? "lit" : "dark";
+		}
+		parts[uid] = run;
+	}
+	return {
+		nets,
+		parts
+	};
+}
+var amps$1 = (value, trust) => value === void 0 || !Number.isFinite(value) ? {
+	kind: "indeterminate",
+	why: "not solved (floating)"
+} : {
+	kind: "value",
+	value,
+	trust
+};
+function budget(c, cls, raws, out = NO_OUTSIDE) {
+	const both = (f) => ({
+		typical: f(raws.typical, "typical"),
+		peak: f(raws.peak, "peak")
+	});
+	const headroom = (limit, a) => limit !== void 0 && a.typical.kind === "value" && a.peak.kind === "value" ? { headroom: limit - Math.max(Math.abs(a.typical.value), Math.abs(a.peak.value)) } : {};
+	const ref = (uid) => c.parts[uid]?.ref ?? uid;
+	const rows = [];
+	for (const d of c.devices) {
+		if (d.kind === "cell") {
+			const lim = d.imax;
+			const a = both((raw) => amps$1(raw.dev[d.id], out.parts.has(d.part) ? "outside-model" : "ok"));
+			rows.push({
+				id: d.id,
+				kind: "source",
+				part: d.part,
+				label: `${d.role === "cell" ? ref(d.part) : `${ref(d.part)} ${d.domain ?? "output"}`} delivering`,
+				volts: both((raw) => across(c, cls, raw, d.p, d.n, out, d.part)),
+				amps: a,
+				...lim ? { limit: {
+					value: lim.value,
+					kind: lim.label.endsWith("sourceCurrent") ? "sourceCurrent" : "imax",
+					basis: lim.basis
+				} } : {},
+				...headroom(lim?.value, a),
+				basis: basisOf([
+					d.volts,
+					d.rInternal,
+					...lim ? [lim] : []
+				])
+			});
+		}
+		if (d.kind === "rail") {
+			const a = both((raw) => amps$1(raw.dev[d.id], out.rails.has(d.id) ? "outside-model" : "ok"));
+			const r = d.rail;
+			rows.push({
+				id: d.id,
+				kind: "rail",
+				part: d.part,
+				label: `${ref(d.part)} ${r.output} ${r.kind === "ldo" ? "regulator" : r.kind}`,
+				volts: both((raw) => across(c, cls, raw, d.out, d.ret, out, d.part)),
+				amps: a,
+				...r.ioutMax ? { limit: {
+					value: r.ioutMax.value,
+					kind: "ioutMax",
+					basis: r.ioutMax.basis
+				} } : {},
+				...headroom(r.ioutMax?.value, a),
+				basis: basisOf([
+					r.vout,
+					r.dropout,
+					r.ioutMax,
+					r.iq,
+					r.rout
+				].filter((x) => x !== void 0))
+			});
+		}
+	}
+	for (const dom of c.domains) {
+		const loads = (indexOf(c).devicesOf.get(dom.part) ?? []).filter((d) => d.kind === "load" && d.domain === dom.name);
+		const volts = both((raw) => across(c, cls, raw, dom.pin, dom.ret, out, dom.part));
+		const tap = indexOf(c).tapAt.get(dom.pin);
+		const a = both((raw, corner) => {
+			const v = volts[corner];
+			const i = tap && raw.pins[tap.part]?.[tap.pin];
+			return v.kind === "value" && i !== void 0 ? amps$1(Math.abs(i), v.trust) : amps$1(void 0, "ok");
+		});
+		const ownDraw = both((raw, corner) => {
+			const v = volts[corner];
+			if (v.kind !== "value") return amps$1(void 0, "ok");
+			return amps$1(loads.reduce((s, l) => s + (corner === "peak" ? l.peak.value : l.typical.value) * foldValue(v.value, l.minVolts.value), 0), v.trust);
+		});
+		rows.push({
+			id: `${dom.part}.domain.${dom.name}`,
+			kind: "domain",
+			part: dom.part,
+			label: `${ref(dom.part)} ${dom.name}`,
+			volts,
+			amps: a,
+			ownDraw,
+			basis: basisOf(loads.flatMap((l) => [l.typical, l.peak]))
+		});
+	}
+	return rows;
+}
+var NOT_SIMULATED = {
+	pins: {},
+	power: {
+		kind: "undefined",
+		why: "not simulated"
+	}
+};
+function probeReadings(probes, c, corners) {
+	return probes.map((p) => {
+		const base = {
+			id: p.id,
+			...p.name ? { name: p.name } : {},
+			at: p.at
+		};
+		if (p.at.pin === void 0) return {
+			...base,
+			part: {
+				typical: corners.typical.parts[p.at.part] ?? NOT_SIMULATED,
+				peak: corners.peak.parts[p.at.part] ?? NOT_SIMULATED
+			}
+		};
+		const net = c.pinNet[nodeKey(p.at.part, p.at.pin)];
+		const read = (run) => net !== void 0 && run.nets[net] || { kind: "floating" };
+		return {
+			...base,
+			voltage: {
+				typical: read(corners.typical),
+				peak: read(corners.peak)
+			}
+		};
+	});
+}
+//#endregion
+//#region src/sim/findings.ts
+var V = (x) => formatValue(Number(x.toPrecision(3)), "V");
+var A = (x) => formatValue(Number(x.toPrecision(3)), "A");
+var W = (x) => formatValue(Number(x.toPrecision(3)), "W");
+/**
+* A reading set beside its limit: three figures, or more when those round to the limit's own text
+* ("20.04 mA, above its 20 mA rating", never "20 mA, above its 20 mA rating").
+*/
+function past(x, limit, unit) {
+	const three = (y) => formatValue(Number(y.toPrecision(3)), unit);
+	const s = three(x);
+	if (s !== three(limit) || x === 0) return s;
+	const [num, prefixed] = s.split(" ");
+	const scale = Number(num) / Number(x.toPrecision(3));
+	for (let p = 4; p <= 7; p++) {
+		const t = `${Number((x * scale).toPrecision(p))} ${prefixed}`;
+		if (t !== s) return t;
+	}
+	return s;
+}
+var refOf = (c, uid) => c.refs[uid] ?? uid;
+var plural$2 = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+/** Every parameter a device was built from: what sim-estimate counts. */
+function deviceParams(d) {
+	switch (d.kind) {
+		case "resistor": return [d.ohms];
+		case "cell": return [
+			d.volts,
+			d.rInternal,
+			...d.imax ? [d.imax] : []
+		];
+		case "load": return [
+			d.typical,
+			d.peak,
+			d.minVolts
+		];
+		case "switch": return [d.ron];
+		case "gpio": {
+			const p = d.params;
+			return [
+				p.outputResistance,
+				p.pullup,
+				p.pulldown,
+				p.leakage
+			].filter((x) => !!x);
+		}
+		case "rail": {
+			const r = d.rail;
+			return [
+				r.vout,
+				r.dropout,
+				r.iq,
+				r.ioutMax,
+				r.efficiency,
+				r.vinMin,
+				r.vinMax,
+				r.rout,
+				r.minLoad?.amps
+			].filter((p) => !!p);
+		}
+		default: return [];
+	}
+}
+/**
+* The low paths (spec 5.2): wire joins (a pin tap to its net node), closed switch contacts, jumpers
+* and fuses (`contact` resistors) and USB cable conductors, as a union-find over node ids with the
+* part each step goes through.
+*/
+function lowGraph(c) {
+	const parent = /* @__PURE__ */ new Map();
+	const adj = /* @__PURE__ */ new Map();
+	const find = (x) => {
+		let r = x;
+		while (parent.has(r) && parent.get(r) !== r) r = parent.get(r);
+		return r;
+	};
+	const link = (a, b, part) => {
+		for (const n of [a, b]) if (!parent.has(n)) parent.set(n, n);
+		const [ra, rb] = [find(a), find(b)];
+		if (ra !== rb) parent.set(ra, rb);
+		for (const [x, to] of [[a, b], [b, a]]) {
+			const list = adj.get(x);
+			if (list) list.push({
+				to,
+				part
+			});
+			else adj.set(x, [{
+				to,
+				part
+			}]);
+		}
+	};
+	for (const t of c.taps) link(netNode(t.net), t.node, null);
+	for (const d of c.devices) if (d.kind === "resistor" && (d.role === "contact" || d.role === "cable") || d.kind === "switch" && d.closed) link(d.a, d.b, d.part);
+	/** The parts a low path from a to b passes through (breadth first, so the shortest). */
+	const pathParts = (a, b) => {
+		const seen = /* @__PURE__ */ new Map([[a, null]]);
+		const queue = [a];
+		for (let q = 0; q < queue.length && !seen.has(b); q++) for (const e of adj.get(queue[q]) ?? []) if (!seen.has(e.to)) {
+			seen.set(e.to, {
+				from: queue[q],
+				part: e.part
+			});
+			queue.push(e.to);
+		}
+		const parts = [];
+		for (let at = seen.get(b); at; at = seen.get(at.from)) if (at.part && !parts.includes(at.part)) parts.unshift(at.part);
+		return parts;
+	};
+	return {
+		same: (a, b) => parent.has(a) && parent.has(b) && find(a) === find(b),
+		pathParts
+	};
+}
+function sources(c) {
+	return c.devices.flatMap((d) => {
+		if (d.kind === "cell") return [{
+			device: d.id,
+			part: d.part,
+			label: refOf(c, d.part),
+			p: d.p,
+			n: d.n,
+			volts: d.volts,
+			blocks: false
+		}];
+		if (d.kind === "rail" && d.rail.vout) return [{
+			device: d.id,
+			part: d.part,
+			label: `${refOf(c, d.part)} ${d.rail.output}`,
+			p: d.out,
+			n: d.ret,
+			volts: d.rail.vout,
+			blocks: d.rail.reverse === "blocks",
+			rail: d
+		}];
+		return [];
+	});
+}
+function topologyFindings(c, cls) {
+	const drafts = [];
+	const shortedRails = /* @__PURE__ */ new Set();
+	const g = lowGraph(c);
+	const srcs = sources(c);
+	const shorted = /* @__PURE__ */ new Set();
+	for (const s of srcs) {
+		if (!g.same(s.p, s.n)) continue;
+		shorted.add(s.device);
+		const path = g.pathParts(s.p, s.n);
+		const via = path.filter((p) => p !== s.part);
+		const through = andList([...path.map((p) => p === s.part ? `${refOf(c, p)} itself` : refOf(c, p)), "wires"]);
+		if (s.rail) shortedRails.add(s.device);
+		drafts.push({
+			code: "sim-short",
+			severity: "error",
+			parts: [s.part, ...via],
+			inputs: [],
+			key: `sim-short|${s.device}`,
+			message: s.rail ? `${s.label} output is shorted to its return through ${through}: the regulator is outside its model, so the voltages on it cannot be trusted.` : `${s.label} is shorted: its + and - are joined through ${through}. Nothing limits the current, so ${s.label} and the wires can overheat.`
+		});
+	}
+	const fighters = srcs.filter((s) => !s.blocks && !shorted.has(s.device));
+	const liveCache = /* @__PURE__ */ new Map();
+	const live = (s) => {
+		if (!s.rail) return true;
+		if (!liveCache.has(s.device)) liveCache.set(s.device, inputPowered(c, s.rail));
+		return liveCache.get(s.device);
+	};
+	for (let i = 0; i < fighters.length; i++) for (let j = i + 1; j < fighters.length; j++) {
+		const [a, b] = [fighters[i], fighters[j]];
+		if (a.part === b.part && a.p === b.p || !g.same(a.p, b.p) || !g.same(a.n, b.n) || Math.abs(a.volts.value - b.volts.value) <= .1 || !live(a) || !live(b)) continue;
+		drafts.push({
+			code: "sim-source-conflict",
+			severity: "error",
+			parts: [a.part, b.part],
+			inputs: [a.volts, b.volts],
+			key: `sim-source-conflict|${a.device}|${b.device}`,
+			message: `${a.label} (${V(a.volts.value)}) and ${b.label} (${V(b.volts.value)}) are wired in parallel, plus to plus and minus to minus: the higher one drives current into the lower one, which can damage both.`
+		});
+	}
+	const unknown = new Set(c.unsimulated.map((u) => u.part));
+	const offSheet = new Set(c.offSheet);
+	for (const gp of c.gpio) {
+		if (gp.state !== "input" || pinState(c, cls, gp.key) !== "floating") continue;
+		const dom = c.domains.find((x) => x.part === gp.part && x.name === gp.domain);
+		if (dom && !powered(c, cls, dom.pin, dom.ret)) continue;
+		const keys = Object.keys(c.pinNet).filter((k) => k !== gp.key && c.pinNet[k] === c.pinNet[gp.key]);
+		if (keys.some((k) => offSheet.has(k))) continue;
+		const others = keys.map((k) => JSON.parse(k)[0]).filter((uid) => uid !== gp.part);
+		if (others.length && !others.some((uid) => unknown.has(uid))) drafts.push({
+			code: "sim-floating-input",
+			severity: "warning",
+			parts: [gp.part],
+			pins: [{
+				part: gp.part,
+				pin: gp.pin
+			}],
+			inputs: [],
+			key: `sim-floating-input|${gp.part}|${gp.pin}`,
+			message: `${refOf(c, gp.part)} ${gp.pin} is an input with nothing driving it: it floats, so it reads at random. Wire it to a signal, add a pull-up or pull-down resistor, or set its simulated state to input-pullup or input-pulldown.`
+		});
+	}
+	const missing = [...new Set(c.unsimulated.filter((u) => u.reason === NO_POWER_DATA).map((u) => u.part))].sort(naturalCompare);
+	if (missing.length) {
+		const designators = missing.map((uid) => refOf(c, uid));
+		drafts.push({
+			code: "sim-incomplete",
+			severity: "note",
+			parts: missing,
+			inputs: [],
+			key: "sim-incomplete",
+			message: `${plural$2(missing.length, "powered part")} ${missing.length === 1 ? "has" : "have"} no power data, so ${missing.length === 1 ? "it is" : "they are"} not simulated: ${andList(designators)}.`
+		});
+	}
+	const estimates = /* @__PURE__ */ new Map();
+	for (const p of [...c.devices.flatMap(deviceParams), ...c.limits.map((l) => l.value)]) if (p.basis === "estimate") estimates.set(p.label, p);
+	if (estimates.size) drafts.push({
+		code: "sim-estimate",
+		severity: "note",
+		parts: [...new Set(c.devices.filter((d) => deviceParams(d).some((p) => p.basis === "estimate")).map((d) => d.part))].sort(naturalCompare),
+		inputs: [...estimates.values()],
+		key: "sim-estimate",
+		message: `${plural$2(estimates.size, "value")} in this result ${estimates.size === 1 ? "is an estimate" : "are estimates"}, for ${subjectsOf([...estimates.keys()])}.`
+	});
+	return {
+		drafts,
+		shortedRails
+	};
+}
+var ORDER = {
+	error: 0,
+	warning: 1,
+	note: 2
+};
+/**
+* Who a parameter's label is about, in plain words (spec 5.2): the part ref of `<module>.<ref>.<path>`,
+* "a red LED" for the per-colour table, "a USB 2.0 port" for the USB default, "a USB cable" or "a
+* USB plug" for a link's conductors (power.ts: `cable.<connection uid>.vbus`). The label itself
+* stays in the finding's `inputs`.
+*/
+function subjectOf(label) {
+	const [head, second] = label.split(".");
+	if (head === "led-colours" && second) return `a ${second} LED`;
+	if (head === "cable" || head === "plug") return `a USB ${head}`;
+	if (head === "usb-default") return `a USB ${label.slice(head.length + 1)} port`;
+	return second ?? label;
+}
+/** The subjects of some labels, once each, in natural order, as a list ("BT1, U1 and a red LED"). */
+var subjectsOf = (labels) => andList([...new Set(labels.map(subjectOf))].sort(naturalCompare));
+var WORD = {
+	representative: "typical",
+	estimate: "estimated"
+};
+/** The severity rules of spec 4.5 and 5.2, then one finding per key (typical wins over peak). */
+function finalize(drafts, peakLabel) {
+	const out = /* @__PURE__ */ new Map();
+	for (const d of [...drafts].sort((a, b) => Number(a.corner === "peak") - Number(b.corner === "peak"))) {
+		if (out.has(d.key)) continue;
+		const basis = basisOf(d.inputs);
+		let severity = d.severity;
+		let message = d.message;
+		if (d.corner === "peak") {
+			if (severity === "error") severity = "warning";
+			message = `At peak${peakLabel ? ` (${peakLabel})` : ""}: ${message}`;
+		}
+		if (severity === "error" && (basis === "representative" || basis === "estimate")) {
+			const uncertain = subjectsOf(d.inputs.filter((p) => p.basis === "representative" || p.basis === "estimate").map((p) => p.label));
+			if (d.code === "sim-over-abs-max" && basis === "representative" && (d.overBy ?? 0) > 2) message = `${message} This is decided on typical values for ${uncertain}, but it is more than twice the limit.`;
+			else {
+				severity = "warning";
+				message = `Likely: ${message} This is decided on ${WORD[basis]} values for ${uncertain}.`;
+			}
+		}
+		out.set(d.key, {
+			code: d.code,
+			severity,
+			parts: d.parts,
+			message,
+			...d.corner ? { corner: d.corner } : {},
+			basis,
+			inputs: d.inputs.map((p) => `${p.label}: ${p.basis}`),
+			...d.raw ? { raw: d.raw } : {},
+			...d.pins ? { pins: d.pins } : {}
+		});
+	}
+	return [...out.values()].sort((a, b) => ORDER[a.severity] - ORDER[b.severity] || (a.code < b.code ? -1 : a.code > b.code ? 1 : 0) || naturalCompare(a.parts.join(), b.parts.join()));
+}
+/**
+* A run ngspice could not solve (spec 5.2): plain words, the parts on the nodes it named (node ids,
+* as Compiled.nodesIn gives them: a net, a pin tap or a device's internal node), its text kept as raw.
+* With no circuit (the solve threw before one was built) it names no parts.
+*/
+function noConvergence(c, error, nodes) {
+	const named = new Set(nodes);
+	const parts = !c ? [] : [.../* @__PURE__ */ new Set([...c.taps.filter((t) => named.has(netNode(t.net)) || named.has(t.node)).map((t) => t.part), ...c.devices.filter((d) => deviceNodes(d).some((n) => named.has(n))).map((d) => d.part)])].sort(naturalCompare);
+	return {
+		code: "sim-no-convergence",
+		severity: "error",
+		parts,
+		basis: "topology",
+		inputs: [],
+		raw: error,
+		message: `The simulator could not solve this circuit; this may be our model, not your circuit.${parts.length ? ` The parts on the nets it could not solve: ${andList(parts.map((p) => refOf(c, p)))}.` : ""}`
+	};
+}
+var E12 = [
+	10,
+	12,
+	15,
+	18,
+	22,
+	27,
+	33,
+	39,
+	47,
+	56,
+	68,
+	82,
+	100
+];
+/** The smallest E12 resistor value at or above `ohms`. */
+function e12Up(ohms) {
+	const decade = 10 ** Math.floor(Math.log10(ohms) - 1);
+	return Number((E12.find((x) => x * decade >= ohms * .999) * decade).toPrecision(2));
+}
+var NET = netNode("");
+/** A node's net in node form (netNode of a pin tap's net), else the node itself (an internal node). */
+var netOfNode = (c) => {
+	const at = indexOf(c).tapAt;
+	return (node) => {
+		const t = at.get(node);
+		return t ? netNode(t.net) : node;
+	};
+};
+/** The value findings of one solved corner (spec 5.2), and the rails that ran outside their model. */
+function runDrafts(c, cls, raw, corner) {
+	const drafts = [];
+	const outside = /* @__PURE__ */ new Set();
+	const add = (d) => void drafts.push({
+		...d,
+		corner
+	});
+	const solved = (n) => Number.isFinite(raw.v[n]);
+	const v = (n) => raw.v[n];
+	const on = (pin, ret) => powered(c, cls, pin, ret) && solved(pin) && solved(ret);
+	const pinI = (part, pin) => {
+		const i = raw.pins[part]?.[pin];
+		return i !== void 0 && Number.isFinite(i) ? i : void 0;
+	};
+	const ix = indexOf(c);
+	const taps = (part) => ix.tapsOf.get(part) ?? [];
+	const netOf = netOfNode(c);
+	const ref = (uid) => refOf(c, uid);
+	const fmt = (x, unit) => unit === "A" ? A(x) : unit === "V" ? V(x) : W(x);
+	const cond = (l) => l.conditions ? ` (${l.conditions})` : "";
+	const delivered = (part, domain) => {
+		const src = ix.devicesOf.get(part)?.find((x) => x.kind === "cell" && (domain === void 0 || x.domain === domain));
+		const x = src ? raw.dev[src.id] : void 0;
+		return x === void 0 || !Number.isFinite(x) ? null : {
+			value: Math.abs(x),
+			what: (q) => `${ref(part)} delivers ${q}`,
+			unit: "A"
+		};
+	};
+	const measure = (l) => {
+		const r = ref(l.part);
+		if ("pin" in l.of) {
+			const pin = l.of.pin;
+			const i = pinI(l.part, pin);
+			return i === void 0 ? null : {
+				value: Math.abs(i),
+				what: (q) => `${r} ${pin} carries ${q}`,
+				unit: "A",
+				pins: [{
+					part: l.part,
+					pin
+				}]
+			};
+		}
+		if ("domain" in l.of) {
+			const name = l.of.domain;
+			const dom = c.domains.find((x) => x.part === l.part && x.name === name);
+			if (!dom) return null;
+			if (l.kind === "vinMax" || l.kind === "vinMin") {
+				if (!on(dom.pin, dom.ret)) return null;
+				return {
+					value: v(dom.pin) - v(dom.ret),
+					what: (q) => `${r} ${name} is at ${q}`,
+					unit: "V"
+				};
+			}
+			if (l.kind === "ioTotalCurrent") {
+				const outs = c.gpio.filter((g) => g.part === l.part && g.domain === name && (g.state === "high" || g.state === "low"));
+				const sum = outs.reduce((s, g) => s + Math.abs(pinI(g.part, g.pin) ?? 0), 0);
+				const pins = outs.filter((g) => Math.abs(pinI(g.part, g.pin) ?? 0) > 0).map((g) => ({
+					part: g.part,
+					pin: g.pin
+				}));
+				return {
+					value: sum,
+					what: (q) => `${r}'s GPIO pins on ${name} carry ${q} in all`,
+					unit: "A",
+					...pins.length ? { pins } : {}
+				};
+			}
+			return delivered(l.part, name);
+		}
+		if (l.kind === "power") return {
+			value: Math.abs(taps(l.part).reduce((s, t) => s + (solved(t.node) ? v(t.node) : 0) * (pinI(l.part, t.pin) ?? 0), 0)),
+			what: (q) => `${r} dissipates ${q}`,
+			unit: "W"
+		};
+		if (l.kind === "sourceCurrent") return delivered(l.part);
+		if (l.kind === "vinMax" || l.kind === "vinMin") return null;
+		return {
+			value: Math.max(0, ...taps(l.part).map((t) => Math.abs(pinI(l.part, t.pin) ?? 0))),
+			what: (q) => `${r} carries ${q}`,
+			unit: "A"
+		};
+	};
+	/**
+	* An LED's resistor advice (spec 5.2's example): the series resistance, rounded up to an E12 value,
+	* that brings `amps` through it from the voltage across its string unloaded (the far end of a
+	* resistor already on its anode or cathode net, else the LED's own pins).
+	*/
+	const ledAdvice = (part, amps) => {
+		if (c.parts[part]?.model !== "led") return "";
+		const generic = " Add a series resistor, or a larger one, to bring it under the rating.";
+		const led = ix.devicesOf.get(part)?.find((x) => x.kind === "diode" && x.role === "led");
+		if (!led) return generic;
+		const far = (node) => {
+			const net = netOf(node);
+			const r = net.startsWith(NET) && ix.tapsOn.get(net.slice(NET.length))?.length === 2 ? c.devices.find((x) => x.kind === "resistor" && x.role === "resistor" && netOf(x.a) === net !== (netOf(x.b) === net)) : void 0;
+			return r ? {
+				node: netOf(r.a) === net ? r.b : r.a,
+				resistor: true
+			} : {
+				node,
+				resistor: false
+			};
+		};
+		const [a, k] = [far(led.a), far(led.k)];
+		if (!solved(a.node) || !solved(k.node)) return generic;
+		const src = sources(c).find((x) => netOf(x.p) === netOf(a.node) && solved(x.n));
+		const drive = src ? src.volts.value - (v(k.node) - v(src.n)) : v(a.node) - v(k.node);
+		const ohms = (drive - diodeVoltage(led.model, amps)) / amps;
+		if (!(ohms > 0)) return generic;
+		return ` ${a.resistor || k.resistor ? "Use a larger series resistor" : "Add a series resistor"} (about ${e12Up(ohms)} ohm at ${V(drive)}).`;
+	};
+	const subject = (l) => `${l.part}|${JSON.stringify(l.of)}`;
+	const overAbs = /* @__PURE__ */ new Set();
+	for (const l of c.limits) {
+		if (l.kind !== "absMaxCurrent" && l.kind !== "vinMax") continue;
+		const m = measure(l);
+		if (!m || m.value <= l.value.value) continue;
+		overAbs.add(subject(l));
+		const rating = c.limits.find((x) => x.kind === "current" && subject(x) === subject(l))?.value.value;
+		const advice = l.kind === "absMaxCurrent" ? ledAdvice(l.part, Math.min(rating ?? .02, l.value.value)) : "";
+		add({
+			code: "sim-over-abs-max",
+			severity: "error",
+			parts: [l.part],
+			inputs: [l.value],
+			key: `abs|${subject(l)}|${l.kind}`,
+			overBy: m.value / l.value.value,
+			...m.pins ? { pins: m.pins } : {},
+			message: `${m.what(past(m.value, l.value.value, m.unit))}, above its ${fmt(l.value.value, m.unit)} absolute maximum${cond(l)}: damage is likely.${advice}`
+		});
+	}
+	for (const l of c.limits) {
+		if (l.kind === "absMaxCurrent" || l.kind === "vinMax" || overAbs.has(subject(l))) continue;
+		const m = measure(l);
+		if (!m) continue;
+		const under = l.kind === "vinMin";
+		if (under ? m.value >= l.value.value : m.value <= l.value.value) continue;
+		const advice = l.kind === "current" ? ledAdvice(l.part, l.value.value) : "";
+		add({
+			code: "sim-over-limit",
+			severity: "warning",
+			parts: [l.part],
+			inputs: [l.value],
+			key: `limit|${subject(l)}|${l.kind}`,
+			...m.pins ? { pins: m.pins } : {},
+			message: `${m.what(past(m.value, l.value.value, m.unit))}, ${under ? "below" : "above"} its ${fmt(l.value.value, m.unit)} ${under ? "minimum" : "rating"}${cond(l)}.${advice}`
+		});
+	}
+	for (const d of c.devices) if (d.kind === "cell" && d.role === "external" && d.imax && (raw.dev[d.id] ?? 0) > d.imax.value) add({
+		code: "sim-over-limit",
+		severity: "warning",
+		parts: [d.part],
+		inputs: [d.imax],
+		key: `imax|${d.id}`,
+		message: `${ref(d.part)} delivers ${past(raw.dev[d.id], d.imax.value, "A")}, above the ${A(d.imax.value)} it can supply.`
+	});
+	for (const u of c.usb) {
+		const cable = c.devices.find((x) => x.id === u.vbus);
+		if (cable?.kind !== "resistor" || !cls.driven.has(cable.a) || !solved(cable.a) || !solved(cable.b)) continue;
+		const i = (v(cable.a) - v(cable.b)) / Math.max(cable.ohms.value, 1e-6);
+		if (i > u.limit.value) add({
+			code: "sim-over-limit",
+			severity: "warning",
+			parts: [u.host, u.device],
+			inputs: [u.limit],
+			key: `usb|${u.vbus}`,
+			message: `${ref(u.host)} ${u.hostPort} supplies ${past(i, u.limit.value, "A")} over USB to ${ref(u.device)}, above the ${A(u.limit.value)} the port gives.`
+		});
+	}
+	/** An open switch on `net` (a net node) whose closing would power a load that is unpowered now. */
+	const cutBySwitch = (net) => c.openContacts.some((o) => o.pairs.some(([a, b]) => netOf(a) === net || netOf(b) === net) && c.devices.some((l) => l.kind === "load" && !on(l.p, l.n) && openSwitchFor(c, l.p, l.n) === o.part));
+	for (const d of c.devices) {
+		if (d.kind !== "rail" || !on(d.in, d.inRet) || !solved(d.out)) continue;
+		const r = d.rail;
+		const iout = raw.dev[d.id] ?? 0;
+		const name = `${ref(d.part)} ${r.output} ${r.kind === "ldo" ? "regulator" : r.kind}`;
+		const outNet = netOf(d.out);
+		const loads = c.devices.filter((x) => x.kind === "load" && netOf(x.p) === outNet);
+		const expecting = c.devices.filter((x) => x.kind === "load" && netOf(x.p) === outNet || (x.kind === "resistor" || x.kind === "diode") && x.role === "rail-input" && netOf(x.a) === outNet);
+		if (r.ioutMax && iout > r.ioutMax.value) {
+			outside.add(d.id);
+			add({
+				code: "sim-outside-model",
+				severity: "warning",
+				parts: [d.part],
+				inputs: [r.ioutMax],
+				key: `outside|${d.id}`,
+				message: `${name} supplies ${past(iout, r.ioutMax.value, "A")}, beyond the ${A(r.ioutMax.value)} its model covers: its voltages, and the readings upstream of it, cannot be trusted.`
+			});
+			add({
+				code: "sim-over-limit",
+				severity: "warning",
+				parts: [d.part],
+				inputs: [r.ioutMax],
+				key: `iout|${d.id}`,
+				message: `${name} supplies ${past(iout, r.ioutMax.value, "A")}, above its ${A(r.ioutMax.value)} rating.`
+			});
+		}
+		const vin = v(d.in) - v(d.inRet);
+		if (r.kind === "ldo" && solved(d.ctl)) {
+			const vctl = v(d.ctl) - v(d.ret);
+			if (vctl < r.vout.value - .01 && v(d.out) - v(d.ret) <= vctl + .01) add({
+				code: "sim-dropout",
+				severity: "error",
+				parts: [d.part],
+				inputs: [
+					r.vout,
+					r.dropout,
+					...loads.map((l) => corner === "peak" ? l.peak : l.typical)
+				],
+				key: `dropout|${d.id}`,
+				message: `${name} cannot hold ${V(r.vout.value)}: its input is too low (${V(vin)}), so its output follows it down to about ${V(vctl)}.`
+			});
+		}
+		let enabled = true;
+		if (r.kind === "buck" || r.kind === "boost") {
+			const e = enableValue(vin, r.vinMin.value, r.vinMax.value);
+			enabled = e >= .5;
+			if (e > .01 && e < .99) {
+				outside.add(d.id);
+				add({
+					code: "sim-converter-off",
+					severity: "error",
+					parts: [d.part],
+					inputs: [r.vinMin, r.vinMax],
+					key: `edge|${d.id}`,
+					message: `${name}'s input (${V(vin)}) is at the edge of its range; it would cycle on and off, so its output and the readings upstream of it cannot be trusted.`
+				});
+			} else if (!enabled && expecting.length) {
+				const users = [...new Set(expecting.map((x) => x.part))].filter((p) => p !== d.part);
+				add({
+					code: "sim-converter-off",
+					severity: "error",
+					parts: [d.part, ...users],
+					inputs: [r.vinMin, r.vinMax],
+					key: `off|${d.id}`,
+					message: `${name} is off: its input (${V(vin)}) is ${vin < r.vinMin.value ? `below its ${V(r.vinMin.value)} minimum` : `above its ${V(r.vinMax.value)} maximum`}, but ${andList(users.map(ref))} ${users.length === 1 ? "expects" : "expect"} power from it.`
+				});
+			}
+		}
+		if (r.minLoad && enabled && iout < r.minLoad.amps.value && !cutBySwitch(outNet)) add({
+			code: "sim-min-load",
+			severity: "warning",
+			parts: [d.part],
+			inputs: [r.minLoad.amps],
+			key: `minload|${d.id}`,
+			message: `${name} supplies ${past(iout, r.minLoad.amps.value, "A")}, below the ${A(r.minLoad.amps.value)} it needs to stay on: ${r.minLoad.note.replace(/\.+$/, "")}.`
+		});
+	}
+	for (const l of c.devices) {
+		if (l.kind !== "load") continue;
+		if (!on(l.p, l.n)) {
+			if (corner === "typical") {
+				const sw = openSwitchFor(c, l.p, l.n);
+				add({
+					code: "sim-brownout",
+					severity: sw ? "warning" : "note",
+					parts: sw ? [l.part, sw] : [l.part],
+					inputs: [],
+					key: `unpowered|${l.id}`,
+					message: sw ? `${ref(l.part)} ${l.domain} is not powered in the current state: ${ref(sw)} is open. Set ${ref(sw)} to its operating position to simulate ${ref(l.part)} running.` : `${ref(l.part)} ${l.domain} is not powered in the current state: nothing on the sheet supplies it. Draw its supply (a battery, an adapter, or a computer USB port on its USB socket) to simulate it.`
+				});
+			}
+			continue;
+		}
+		const x = v(l.p) - v(l.n);
+		if (x < l.minVolts.value) add({
+			code: "sim-brownout",
+			severity: "error",
+			parts: [l.part],
+			inputs: [corner === "peak" ? l.peak : l.typical, l.minVolts],
+			key: `brownout|${l.id}`,
+			message: `${ref(l.part)} ${l.domain} is at ${past(x, l.minVolts.value, "V")}, below the ${V(l.minVolts.value)} it needs: it browns out.`
+		});
+	}
+	return {
+		drafts,
+		outside
+	};
+}
+/**
+* Spec 4.2: a rail outside its model marks its output and input nets, and every rail, path and
+* source feeding them, transitively. Paths are rail inputs, switch rails, cables, closed contacts,
+* jumpers and fuses (plain resistors are loads, not supply paths). Nets come back as display names,
+* as readings key them; parts are the marked rails', the paths' and the sources'.
+*/
+function propagate(c, rails) {
+	const netOf = netOfNode(c);
+	const marked = new Set(rails);
+	const nodes = /* @__PURE__ */ new Set();
+	const parts = /* @__PURE__ */ new Set();
+	const railDevs = c.devices.filter((d) => d.kind === "rail");
+	const mark = (d) => {
+		nodes.add(netOf(d.out)).add(netOf(d.in));
+		parts.add(d.part);
+	};
+	const paths = c.devices.flatMap((d) => {
+		if ((d.kind === "resistor" || d.kind === "diode") && (d.role === "rail-input" || d.role === "switch-rail" || d.role === "cable")) return [{
+			part: d.part,
+			a: netOf(d.a),
+			b: netOf(d.kind === "resistor" ? d.b : d.k)
+		}];
+		if (d.kind === "resistor" && d.role === "contact" || d.kind === "switch" && d.closed) return [{
+			part: d.part,
+			a: netOf(d.a),
+			b: netOf(d.b)
+		}];
+		return [];
+	});
+	for (const d of railDevs) if (marked.has(d.id)) mark(d);
+	for (let changed = true; changed;) {
+		changed = false;
+		for (const d of railDevs) if (!marked.has(d.id) && nodes.has(netOf(d.out))) {
+			marked.add(d.id);
+			mark(d);
+			changed = true;
+		}
+		for (const p of paths) if (nodes.has(p.a) !== nodes.has(p.b)) {
+			nodes.add(p.a).add(p.b);
+			parts.add(p.part);
+			changed = true;
+		}
+	}
+	for (const d of c.devices) if (d.kind === "cell" && nodes.has(netOf(d.p))) parts.add(d.part);
+	return {
+		nets: new Set([...nodes].filter((n) => n.startsWith(NET)).map((n) => n.slice(NET.length))),
+		parts,
+		rails: marked
+	};
+}
+/** Every finding of a solve, and what is outside the model (spec 4.1, 4.2, 4.5, 5.2). */
+function analyseFindings(c, cls, raws, topo = topologyFindings(c, cls)) {
+	const typical = runDrafts(c, cls, raws.typical, "typical");
+	const peak = runDrafts(c, cls, raws.peak, "peak");
+	const outside = propagate(c, /* @__PURE__ */ new Set([
+		...topo.shortedRails,
+		...typical.outside,
+		...peak.outside
+	]));
+	const peakLabel = [...new Set(c.devices.flatMap((d) => d.kind === "load" && d.peakLabel ? [d.peakLabel] : []))].join(", ");
+	const shorted = new Set(topo.drafts.filter((d) => d.code === "sim-short").map((d) => d.parts[0]));
+	const value = [...typical.drafts, ...peak.drafts].filter((d) => !(d.code === "sim-over-limit" && shorted.has(d.parts[0]) && !d.pins));
+	return {
+		findings: finalize([...topo.drafts, ...value], peakLabel),
+		outside
+	};
+}
+//#endregion
+//#region src/sim/session.ts
+async function solve(d, engine, revision, opts = {}) {
+	const c = buildCircuit(d, opts);
+	const cls = classifyCached(c, { kind: "op" });
+	const topo = topologyFindings(c, cls);
+	const raws = {};
+	const before = engine.host.runs;
+	let ms = 0;
+	const corners = ["typical", "peak"];
+	const runs = await engine.runAll(c, corners.map((corner) => ({
+		kind: "op",
+		corner
+	})), revision);
+	for (const [i, corner] of corners.entries()) {
+		const r = runs[i];
+		if (!r) throw new Error(`the engine gave no answer for the ${corner} corner`);
+		if (r.status === "unavailable") return {
+			circuit: c,
+			outcome: {
+				status: "unavailable",
+				reason: r.reason,
+				findings: finalize(topo.drafts, "")
+			}
+		};
+		if (r.status === "failed") return {
+			circuit: c,
+			outcome: {
+				status: "failed",
+				revision,
+				finding: noConvergence(c, r.error, r.nodes),
+				findings: finalize(topo.drafts, "")
+			}
+		};
+		raws[corner] = r.raw;
+		ms += r.ms;
+	}
+	const { findings, outside } = analyseFindings(c, cls, raws, topo);
+	const read = {
+		typical: readRun(c, cls, raws.typical, outside),
+		peak: readRun(c, cls, raws.peak, outside)
+	};
+	const info = engine.host.info;
+	return {
+		circuit: c,
+		outcome: {
+			status: "ok",
+			result: {
+				format: "circuitoon-sim/1",
+				revision,
+				corners: read,
+				budget: budget(c, cls, raws, outside),
+				findings,
+				unsimulated: c.unsimulated,
+				probes: probeReadings([...d.probes ?? [], ...opts.probes ?? []], c, read),
+				unaccounted: c.unaccounted,
+				notes: c.notes,
+				engine: {
+					name: "ngspice",
+					version: info?.version ?? "",
+					build: info?.build ?? "",
+					runs: engine.host.runs - before,
+					ms
+				}
+			}
+		}
+	};
+}
+//#endregion
+//#region src/cli/simCmd.ts
+var USAGE$1 = "sim: usage: circuitoon sim <sheet.json|netlist.json> [--probe <ref[.pin]|net:NAME>]...";
+var plural$1 = (n, one) => `${n} ${one}${n === 1 ? "" : "s"}`;
+/**
+* One --probe: "REF.PIN", "REF" or "net:NAME" on the sheet (refs as the netlist names them). A net
+* name is the intent's (the netlist's own names, which the readings use), else the sheet's
+* (extract's: labels, GND, rails, REF_PIN).
+*/
+function probeOf(spec, d, uidOf, nets, intent, id) {
+	if (spec.startsWith("net:")) {
+		const [p] = intent ? probesForSheet({
+			...intent,
+			probes: [{
+				id,
+				at: spec
+			}]
+		}) : [];
+		const uid = p && (uidOf.get(p.at.part) ?? d.parts.find((x) => x.uid === p.at.part)?.uid);
+		if (uid) return {
+			id,
+			name: spec,
+			at: {
+				part: uid,
+				pin: p.at.pin
+			}
+		};
+		const net = nets.find((n) => n.name === spec.slice(4));
+		if (!net) throw new CliError(`sim: --probe ${spec}: no net "${spec.slice(4)}"`, EXIT.input);
+		const pin = [...net.pins].sort((a, b) => naturalCompare(a.ref, b.ref) || naturalCompare(a.name, b.name))[0];
+		return {
+			id,
+			name: spec,
+			at: {
+				part: uidOf.get(pin.ref),
+				pin: pin.name
+			}
+		};
+	}
+	const dot = spec.indexOf(".");
+	const ref = dot < 0 ? spec : spec.slice(0, dot);
+	const uid = uidOf.get(ref) ?? d.parts.find((p) => p.uid === ref)?.uid;
+	if (!uid) throw new CliError(`sim: --probe ${spec}: no part "${ref}"`, EXIT.input);
+	if (dot < 0) return {
+		id,
+		name: spec,
+		at: { part: uid }
+	};
+	const pin = spec.slice(dot + 1);
+	const m = d.modules[d.parts.find((p) => p.uid === uid).module];
+	if (!(m && (m.pins.some((x) => "name" in x && x.name === pin) || (m.holes ?? []).some((h) => h.name === pin)))) throw new CliError(`sim: --probe ${spec}: ${ref} has no pin "${pin}"`, EXIT.input);
+	return {
+		id,
+		name: spec,
+		at: {
+			part: uid,
+			pin
+		}
+	};
+}
+var volts = (r) => r.kind === "value" ? `${r.value.toFixed(3)} V` : r.kind === "undefined" ? r.why : r.kind;
+var amps = (r) => r.kind === "value" ? `${(Math.abs(r.value) < 5e-5 ? 0 : r.value * 1e3).toFixed(1)} mA` : r.kind;
+var watts = (r) => r.kind === "value" ? `${(r.value * 1e3).toFixed(1)} mW` : r.kind === "undefined" ? `power ${r.why}` : r.kind;
+/**
+* Phase D ruling: sim checks connectivity, not layout readability. A netlist the layout cannot draw
+* (a net that needs a distribution point) is simulated from a sheet with each net wired pin to pin;
+* uids are the refs, as on a laid-out sheet, and board strips are left out (they only join pins the
+* net already lists).
+*/
+function connectionSheet(intent, raw) {
+	const connections = intent.nets.flatMap((n) => {
+		const pins = n.terminals.filter((t) => !t.infra);
+		return pins.slice(1).map((t, i) => ({
+			uid: "",
+			from: {
+				part: pins[i].ref,
+				pin: pins[i].name
+			},
+			to: {
+				part: t.ref,
+				pin: t.name
+			}
+		}));
+	});
+	const probes = probesForSheet(intent);
+	return {
+		format: DIAGRAM_FORMAT,
+		title: intent.title,
+		modules: intent.modules,
+		parts: intent.parts.map((p, i) => ({
+			uid: p.ref,
+			designator: p.ref,
+			module: p.module,
+			x: i % 8 * 400,
+			y: Math.floor(i / 8) * 400,
+			...p.values ? { values: p.values } : {},
+			...p.settings ? { settings: p.settings } : {}
+		})),
+		connections: connections.map((c, i) => ({
+			...c,
+			uid: `w${i + 1}`
+		})),
+		intent: structuredClone(raw),
+		...probes.length ? { probes } : {}
+	};
+}
+function findingLines(findings, line = (f, m) => `  ${f.severity}: ${m}`) {
+	return foldNotPowered(findings).map((g) => line(g.members[g.members.length - 1], g.message));
+}
+/** The stderr summary; `refOf` names parts by ref where the result keeps uids. */
+function summary(o, refOf = /* @__PURE__ */ new Map()) {
+	if (o.status !== "ok") return `${[o.status === "failed" ? `Simulation failed: ${o.finding.message}` : `Simulation unavailable: ${o.reason}`, ...findingLines(o.findings)].join("\n")}\n`;
+	const r = o.result;
+	const folded = foldNotPowered(r.findings);
+	const count = (s) => folded.filter((g) => g.members[0].severity === s).length;
+	const lines = [`Simulation: ${r.engine.runs ? `typical and peak solved in ${Math.round(r.engine.ms)} ms (${r.engine.runs} engine runs)` : "nothing powered; not solved"}. ${plural$1(count("error"), "blocking finding")}, ${plural$1(count("warning"), "warning")}, ${plural$1(count("note"), "note")}.`];
+	lines.push(...findingLines(r.findings));
+	for (const b of r.budget) {
+		const a = b.kind === "domain" && b.ownDraw ? b.ownDraw : b.amps;
+		if (b.kind === "domain" && b.volts.typical.kind === "floating" && a.typical.kind === "indeterminate") continue;
+		lines.push(`  budget ${b.label}: ${volts(b.volts.typical)}, ${amps(a.typical)} (peak ${amps(a.peak)})${b.kind === "domain" ? " own draw" : ""}${b.limit ? `, limit ${(b.limit.value * 1e3).toFixed(0)} mA` : ""}`);
+	}
+	for (const u of r.unaccounted) lines.push(`  not in the budget: ${refOf.get(u.part) ?? u.part}: ${u.items.join("; ")}`);
+	for (const p of r.probes) {
+		const v = p.voltage?.typical;
+		const label = p.name ? `${p.id} ${p.name}` : p.id;
+		const part = p.part?.typical;
+		if (v) lines.push(`  ${label}: ${v.kind === "value" ? `${v.value.toFixed(3)} V (to ${v.reference})` : volts(v)}`);
+		else if (part) {
+			const pins = Object.entries(part.pins).map(([pin, i]) => `${pin} ${amps(i)}`);
+			lines.push(`  ${label}: ${[
+				...part.state ? [part.state] : [],
+				watts(part.power),
+				...pins.length ? [`into ${pins.join(", ")}`] : []
+			].join(", ")}`);
+		}
+	}
+	return `${lines.join("\n")}\n`;
+}
+async function simCommand(args, io, opts = {}) {
+	const [input, ...rest] = args.positionals;
+	if (!input) throw new CliError(USAGE$1, EXIT.input);
+	if (rest.length) throw new CliError(`sim: give one sheet or netlist file, not ${args.positionals.length}`, EXIT.input);
+	const raw = readJson(io, input);
+	let d;
+	let intent = null;
+	if (isObj(raw) && raw.format === "circuitoon-netlist/1") {
+		const r = layoutNetlist(raw, { library: libraryLookup });
+		if (!r.ok && r.stage === "input") throw new CliError(`${input}: ${r.errors.slice(0, 5).join("; ")}`, EXIT.input);
+		const parsed = r.ok ? {
+			ok: true,
+			intent: r.value.intent
+		} : parseNetlist(raw, libraryLookup);
+		if (!parsed.ok) throw new CliError(`${input}: ${parsed.errors.slice(0, 5).join("; ")}`, EXIT.input);
+		intent = parsed.intent;
+		d = r.ok ? r.value.diagram : connectionSheet(intent, raw);
+		for (const w of intent.probeWarnings) io.stderr(`warning: ${w}\n`);
+		for (const p of intent.probes) if (p.ref) io.stderr(`note: probe ${p.id} names ref ${p.ref}; readings are relative to its island's reference (differential probes come later)\n`);
+	} else {
+		const v = validateDiagram(raw, { library: libraryLookup });
+		if (!v.ok) throw new CliError(`${input} is not a Circuitoon sheet or netlist: ${v.errors.slice(0, 5).join("; ")}`, EXIT.input);
+		d = v.diagram;
+		const parsed = d.intent !== void 0 ? parseNetlist(d.intent, intentLookup(d, libraryLookup)) : null;
+		if (parsed?.ok) intent = parsed.intent;
+		for (const w of v.warnings) io.stderr(`warning: ${w}\n`);
+	}
+	const sn = sheetNets(d);
+	const uidOf = new Map([...sn.refOf].map(([uid, ref]) => [ref, uid]));
+	let next = d;
+	const probes = (args.lists?.get("--probe") ?? []).map((s) => {
+		const p = probeOf(s, d, uidOf, sn.nets, intent, nextProbeId(next));
+		next = {
+			...next,
+			probes: [...next.probes ?? [], p]
+		};
+		return p;
+	});
+	const netNames = intent?.nets.map((n) => ({
+		name: n.name,
+		keys: n.terminals.flatMap((t) => t.infra || !uidOf.has(t.ref) ? [] : [nodeKey(uidOf.get(t.ref), t.name)])
+	}));
+	const engine = opts.engine ?? makeEngine(createNodeEngineHost());
+	try {
+		const { outcome } = await solve(d, engine, 1, {
+			probes,
+			library: libraryLookup,
+			...netNames ? { netNames } : {}
+		});
+		printJson(io, outcome);
+		io.stderr(summary(outcome, sn.refOf));
+		if ((outcome.status === "ok" ? outcome.result.findings : outcome.findings).some((f) => f.severity === "error")) return EXIT.blocked;
+		return outcome.status === "ok" ? EXIT.ok : EXIT.environment;
+	} finally {
+		if (!opts.engine) engine.dispose();
+	}
+}
+//#endregion
+//#region src/cli/gate.ts
+var GATE_FORMAT = "circuitoon-cli/gate/4";
+var sha256 = (bytes) => createHash("sha256").update(bytes).digest("hex");
+/** The loader's warning for a part whose module the file does not embed (a missing module blocks). */
+var MISSING_MODULE = "is not embedded in this file";
+var plural = (n, one) => `${n} ${one}${n === 1 ? "" : "s"}`;
+/** Removes `path` when it is a file inside `dir` and not `keep` (the sheet being gated); anything else stays. */
+function removeStale(dir, path, keep) {
+	const full = resolve(dir, path);
+	const rel = relative(resolve(dir), full);
+	if (rel === "" || rel.startsWith("..") || isAbsolute(rel) || keep !== void 0 && full === resolve(keep)) return;
+	try {
+		if (!statSync(full).isFile()) return;
+	} catch {
+		return;
+	}
+	try {
+		rmSync(full);
+	} catch (err) {
+		throw writeError(full, err);
+	}
+}
+/** The artifacts of an earlier run in `outDir` that a new run replaces: renders, focused PNGs, the link. */
+function clearArtifacts(outDir, keep) {
+	let names = [];
+	try {
+		names = readdirSync(outDir);
+	} catch {
+		return;
+	}
+	for (const name of names) if (/^focus-.*\.png$/.test(name)) removeStale(outDir, name, keep);
+	for (const name of [
+		"sheet.svg",
+		"sheet.png",
+		"link.txt",
+		"bom.csv"
+	]) removeStale(outDir, name, keep);
+}
+/** Removes an earlier gate.json, and the file fallback it names, before anything else runs. */
+function clearReport(outDir, keep) {
+	const path = join(outDir, "gate.json");
+	let old;
+	try {
+		old = JSON.parse(readFileSync(path, "utf8"));
+	} catch {}
+	removeStale(outDir, "gate.json", keep);
+	const artifacts = old?.artifacts;
+	if (Array.isArray(artifacts)) {
+		for (const a of artifacts) if (a && typeof a === "object" && a.kind === "file" && typeof a.path === "string") removeStale(outDir, a.path, keep);
+	}
+}
+/** Where gate gets its engine when the caller passes none. Tests that do not test simulation set `make` to `() => null`. */
+var gateEngine = { make: () => makeEngine(createNodeEngineHost()) };
+async function runGate(bytes, opts) {
+	const { io, outDir } = opts;
+	const png = opts.png ?? writePng;
+	clearArtifacts(outDir, pathIn(io, opts.sheetPath));
+	const found = [];
+	const note = (rule, cause, severity, message, more = {}) => found.push({
+		id: `${rule}|${cause}`,
+		rule,
+		severity,
+		message,
+		parts: more.parts ?? [],
+		pins: [],
+		wires: more.wires ?? []
+	});
+	const artifacts = [];
+	const artifact = (kind, path) => {
+		const content = readFileSync(join(outDir, path));
+		artifacts.push({
+			kind,
+			path,
+			sha256: sha256(content),
+			bytes: content.length
+		});
+	};
+	const required = [];
+	let link = {
+		url: null,
+		file: null,
+		chars: 0
+	};
+	let rows = {
+		bom: null,
+		quantities: [],
+		channels: []
+	};
+	let sim = {
+		status: "not-run",
+		findings: [],
+		budget: [],
+		provenanceCounts: {
+			datasheet: 0,
+			representative: 0,
+			estimate: 0,
+			user: 0,
+			topology: 0
+		}
+	};
+	const finish = () => {
+		const have = new Set(artifacts.map((a) => a.kind));
+		const missing = required.filter((r) => r.kind === "link-or-file" ? !have.has("link") && !have.has("file") : !have.has(r.kind));
+		if (missing.length) note("environment", "incomplete", "warning", `The gate is incomplete: ${missing.map((m) => m.path).join(", ")} could not be made, so the gate cannot pass.`);
+		const all = uniqueIds(found);
+		const blocking = all.filter((f) => f.severity === "error");
+		const simIncomplete = sim.status === "failed" || sim.status === "unavailable";
+		const code = blocking.length ? EXIT.blocked : missing.length || simIncomplete ? EXIT.environment : EXIT.ok;
+		return {
+			code,
+			report: {
+				format: GATE_FORMAT,
+				ok: code === EXIT.ok,
+				ready: code === EXIT.ok && all.every((f) => f.severity !== "warning" || !READABILITY_RULES.includes(f.rule)),
+				diagram: {
+					path: opts.sheetPath,
+					sha256: sha256(bytes)
+				},
+				artifacts,
+				blocking,
+				warnings: all.filter((f) => f.severity === "warning"),
+				notes: all.filter((f) => f.severity === "info"),
+				sim,
+				notChecked: NOT_CHECKED,
+				link,
+				...rows
+			}
+		};
+	};
+	let raw;
+	try {
+		raw = JSON.parse(new TextDecoder().decode(bytes));
+	} catch (e) {
+		note("load", "json", "error", `${opts.sheetPath} is not valid JSON (${e.message})`);
+		return finish();
+	}
+	const v = validateDiagram(raw, { library: libraryLookup });
+	if (!v.ok) {
+		v.errors.forEach((e, i) => note("load", String(i), "error", `${opts.sheetPath} is not a Circuitoon sheet: ${e}`));
+		return finish();
+	}
+	const d = v.diagram;
+	v.warnings.forEach((w, i) => note("load", String(i), w.includes("it was dropped and the module default is shown") || w.includes(MISSING_MODULE) ? "error" : "warning", w));
+	const verified = verifyDiagram(d, libraryLookup);
+	const checked = withoutStale(checkDiagram(d), verified);
+	found.push(...verified.filter((f) => !alsoChecked(f, checked)).map(cliFinding));
+	found.push(...checked.map(cliFinding));
+	const routes = computeRoutes(d);
+	for (const { conn: c, blocked } of wirePaths(d, routes)) if (blocked) note("blocked-route", c.uid, "error", `The wire ${c.label ?? `${endpointName(d, c.from)} to ${endpointName(d, c.to)}`} has no clear route: it runs through a part.`, {
+		parts: [c.from.part, c.to.part],
+		wires: [c.uid]
+	});
+	for (const c of d.connections) if (routes.get(c.uid)?.fallback) note("wire-over-holes", c.uid, "warning", `The wire ${c.label ?? `${endpointName(d, c.from)} to ${endpointName(d, c.to)}`} runs over breadboard holes in use that it is not plugged into, so in the picture it may look plugged in there.`, {
+		parts: [c.from.part, c.to.part],
+		wires: [c.uid]
+	});
+	found.push(...readabilityFindings(d, routes).map(cliFinding));
+	for (const c of sheetCustomParts(d, libraryLookup)) found.push({
+		id: `custom-part|${c.module}`,
+		rule: "custom-part",
+		severity: "info",
+		message: customPartNote(c),
+		parts: c.parts,
+		pins: [],
+		wires: []
+	});
+	const engine = opts.engine !== void 0 ? opts.engine : gateEngine.make();
+	if (engine) try {
+		const outcome = await solve(d, engine, 1, { library: libraryLookup }).then((s) => s.outcome, (e) => ({
+			status: "failed",
+			revision: 1,
+			finding: noConvergence(null, String(e), []),
+			findings: []
+		}));
+		const file = (findings) => {
+			for (const f of findings) {
+				sim.provenanceCounts[f.basis]++;
+				found.push({
+					id: `${f.code}|${f.parts.join(",")}|${f.corner ?? ""}`,
+					rule: f.code,
+					severity: f.severity === "note" ? "info" : f.severity,
+					message: f.message,
+					parts: f.parts,
+					pins: f.pins ?? [],
+					wires: []
+				});
+			}
+		};
+		if (outcome.status === "ok") {
+			const r = outcome.result;
+			sim = {
+				...sim,
+				status: "ok",
+				findings: r.findings,
+				budget: r.budget
+			};
+			file(r.findings);
+		} else if (outcome.status === "failed") {
+			sim = {
+				...sim,
+				status: "failed",
+				findings: [{
+					...outcome.finding,
+					severity: "warning"
+				}, ...outcome.findings],
+				reason: outcome.finding.message
+			};
+			found.push({
+				id: "sim-no-convergence",
+				rule: "sim-no-convergence",
+				severity: "warning",
+				message: outcome.finding.message,
+				parts: outcome.finding.parts,
+				pins: [],
+				wires: []
+			});
+			file(outcome.findings);
+		} else {
+			sim = {
+				...sim,
+				status: "unavailable",
+				findings: outcome.findings,
+				reason: outcome.reason
+			};
+			file(outcome.findings);
+		}
+	} finally {
+		if (opts.engine === void 0) engine.dispose();
+	}
+	const parsed = d.intent !== void 0 ? parseNetlist(d.intent, intentLookup(d, libraryLookup)) : null;
+	const bom = sheetBom(d, libraryLookup);
+	rows = {
+		bom,
+		quantities: bomQuantities(bom),
+		channels: parsed?.ok ? channelTable(parsed.intent) : []
+	};
+	required.push({
+		kind: "bom",
+		path: "bom.csv"
+	});
+	writeFile(io, join(outDir, "bom.csv"), bomCsv(bom));
+	artifact("bom", "bom.csv");
+	const shoot = (drawn, kind, name) => {
+		required.push({
+			kind,
+			path: name
+		});
+		let shot;
+		try {
+			shot = png(drawn, 2, join(outDir, name), io.env);
+		} catch (err) {
+			throw writeError(join(outDir, name), err);
+		}
+		if (shot.ok) artifact(kind, name);
+		else note("environment", name, "warning", shot.message);
+		return shot.ok;
+	};
+	required.push({
+		kind: "svg",
+		path: "sheet.svg"
+	});
+	const full = renderSheetSvg(d);
+	writeFile(io, join(outDir, "sheet.svg"), full.svg);
+	artifact("svg", "sheet.svg");
+	const fullOk = shoot(full, "png", "sheet.png");
+	const copy = parsed?.ok ? parsed.intent.copies[0] : void 0;
+	if (copy) {
+		const name = `focus-${copy.id}.png`;
+		const uids = focusParts(d, copy.id);
+		if (uids && fullOk) shoot(renderSheetSvg(d, { box: focusBounds(d, uids, routes) }), "focus-png", name);
+		else required.push({
+			kind: "focus-png",
+			path: name
+		});
+	}
+	required.push({
+		kind: "link-or-file",
+		path: "link.txt"
+	});
+	try {
+		const l = await linkFor(d, outDir, io, pathIn(io, opts.sheetPath));
+		const file = l.file ? relative(outDir, pathIn(io, l.file)) : null;
+		link = {
+			url: l.url,
+			file,
+			chars: l.chars
+		};
+		if (l.url) {
+			writeFile(io, join(outDir, "link.txt"), `${l.url}\n`);
+			artifact("link", "link.txt");
+		} else {
+			artifact("file", file);
+			note("link", "file", "warning", `${l.reason} ${file} was written instead: open it in Circuitoon with Import JSON.`);
+		}
+	} catch (err) {
+		note("link", "none", "error", `No link could be made and the file fallback could not be written: ${err instanceof Error ? err.message : String(err)}`);
+	}
+	return finish();
+}
+/** The readability warnings in a gate report (the rules readabilityFindings raises). */
+function readabilityCount(report) {
+	return report.warnings.filter((w) => READABILITY_RULES.includes(w.rule)).length;
+}
+/** The gate's verdict line (spec 7 matrix, ruling R15). */
+function gateBanner(code, report, input) {
+	if (code === EXIT.ok) return `${report.warnings.length ? "GATE PASSED, with warnings" : "GATE PASSED"}: ${input} (sha256 ${report.diagram.sha256})`;
+	if (code === EXIT.environment) {
+		if (report.sim.status === "failed") return `GATE INCOMPLETE (simulation did not converge; this may be our model, not your circuit): ${input}`;
+		if (report.sim.status === "unavailable") return `GATE INCOMPLETE (simulation unavailable): ${input}`;
+		return `GATE INCOMPLETE: nothing blocks, but not every render could be made (${input})`;
+	}
+	return `${report.blocking.every((f) => f.rule.startsWith("sim-")) ? "GATE FAILED (simulation)" : "GATE FAILED"}: ${plural(report.blocking.length, "blocking finding")} (${input})`;
+}
+async function gateCommand(args, io) {
+	const [input, ...rest] = args.positionals;
+	const out = flag(args, "--out");
+	if (out) clearReport(pathIn(io, out), input ? pathIn(io, input) : void 0);
+	if (!input || !out) throw new CliError("gate: usage: circuitoon gate <sheet.json> -o <dir>", EXIT.input);
+	if (rest.length) throw new CliError(`gate: give one sheet file, not ${args.positionals.length}`, EXIT.input);
+	let bytes;
+	try {
+		bytes = readFileSync(pathIn(io, input));
+	} catch {
+		throw new CliError(`${input}: cannot read the file`, EXIT.input);
+	}
+	const { code, report } = await runGate(bytes, {
+		sheetPath: input,
+		outDir: pathIn(io, out),
+		io
+	});
+	writeFile(io, join(out, "gate.json"), `${JSON.stringify(report, null, 2)}\n`);
+	if (code === EXIT.environment) {
+		for (const w of report.warnings) if (w.rule === "environment") io.stderr(`${w.message}\n`);
+	}
+	if (args.flags.has("--json")) printJson(io, report);
+	else {
+		if (report.sim.status === "unavailable") io.stderr(`Simulation unavailable: ${report.sim.reason}\n`);
+		const head = gateBanner(code, report, input);
+		const notReady = readabilityCount(report);
+		const lines = [...notReady ? [`NOT READY: ${plural(notReady, "readability warning")}`] : [], head];
+		if (report.blocking.length) lines.push("", "Blocking:", findingsText(report.blocking));
+		if (report.warnings.length) lines.push("", "Warnings (report these to the user):", ...findingLines(report.warnings, (f, m) => `${f.severity.toUpperCase()} ${f.rule}: ${m}`));
+		if (report.notes.length) lines.push("", "Notes (not problems; pass them on to the user):", findingsText(report.notes));
+		lines.push("", `Artifacts in ${out}:`, ...report.artifacts.map((a) => `  ${a.path}  sha256 ${a.sha256}`), `  gate.json`);
+		if (report.link.url) lines.push("", `Link: ${report.link.url}`, LINK_NOTICE);
+		lines.push("", notCheckedText());
+		io.stdout(`${lines.join("\n")}\n`);
+	}
+	return code;
 }
 //#endregion
 //#region src/agent/partial.ts
@@ -88986,6 +94767,8 @@ function layoutCommand(args, io) {
 		return r.stage === "input" ? EXIT.input : EXIT.blocked;
 	}
 	const { diagram, report, intent, attempts } = r.value;
+	warnings = [...warnings, ...intent.probeWarnings];
+	if (!json) for (const w of intent.probeWarnings) io.stderr(`warning: ${w}\n`);
 	writeFile(io, out, serializeDiagram(diagram));
 	const q = bomQuantities(sheetBom(diagram));
 	const ch = channelTable(intent);
@@ -89222,7 +95005,7 @@ function explainCommand(args, io) {
 	if (format === "circuitoon-netlist/1") x = fromNetlist(raw, input);
 	else if (format === "circuitoon-partial/1") x = fromNetlist(raw.intent, input);
 	else {
-		const r = validateDiagram(raw);
+		const r = validateDiagram(raw, { library: libraryLookup });
 		if (!r.ok) throw new CliError(`${input} is not a Circuitoon sheet or netlist: ${r.errors.slice(0, 5).join("; ")}`, EXIT.input);
 		for (const w of r.warnings) io.stderr(`warning: ${w}\n`);
 		x = fromSheet(r.diagram);
@@ -89233,184 +95016,6 @@ function explainCommand(args, io) {
 	return EXIT.ok;
 }
 //#endregion
-//#region src/format/netNames.ts
-/** A pin's (or a header pad's) type and supply. Breadboard strips have neither. */
-var pinDef = (m, name) => m.pins.find((p) => !isSpacer(p) && p.name === name) ?? holeGroupOf(m, name);
-/** A supply rail name worth naming a net after: 5V, 3V3, 12V (not 3.7V or 5V/7V). */
-var RAIL = /^\d+V\d*$/;
-/**
-* One unique name per net: its net label first, then ground (GND, GND_2 ...), then a supply rail
-* the consumers share or one source gives (5V, 3V3), then `<ref>_<pin>` of an MCU pin, else a
-* source's pin, else the first component pin. `pins` must be in a stable order (they decide the
-* fallback name). Shared by the netlist extractor and the KiCad export.
-*/
-function nameNets(nets) {
-	const names = /* @__PURE__ */ new Set();
-	const named = nets.map(() => void 0);
-	const claim = (i, name) => {
-		if (named[i] !== void 0 || !name || names.has(name)) return;
-		named[i] = name;
-		names.add(name);
-	};
-	const types = (net) => net.pins.map((p) => pinDef(p.m, p.name));
-	nets.forEach((net, i) => claim(i, net.label));
-	nets.forEach((net, i) => {
-		if (!types(net).some((t) => t?.type === "ground")) return;
-		let name = "GND";
-		for (let k = 2; names.has(name) && named[i] === void 0; k++) name = `GND_${k}`;
-		claim(i, name);
-	});
-	nets.forEach((net, i) => {
-		const ins = types(net).filter((t) => t?.type === "power_in" && t.supply).map((t) => t.supply.split("/"));
-		if (!ins.length) return;
-		const common = ins.reduce((a, b) => a.filter((r) => b.includes(r)));
-		if (common.length === 1 && RAIL.test(common[0])) claim(i, common[0]);
-	});
-	nets.forEach((net, i) => {
-		const outs = [...new Set(types(net).filter((t) => t?.type === "power_out" && t.supply && RAIL.test(t.supply)).map((t) => t.supply))];
-		if (outs.length === 1) claim(i, outs[0]);
-	});
-	nets.forEach((net, i) => {
-		if (named[i] !== void 0 || !net.pins.length) return;
-		const pick = net.pins.find((p) => p.m.category === "Microcontrollers") ?? net.pins.find((p) => pinDef(p.m, p.name)?.type === "power_out") ?? net.pins.find((p) => !isBoard(p.m)) ?? net.pins[0];
-		let name = `${pick.ref}_${pick.name}`;
-		for (let k = 2; names.has(name); k++) name = `${pick.ref}_${pick.name}_${k}`;
-		claim(i, name);
-	});
-	return named.map((n) => n);
-}
-//#endregion
-//#region src/agent/extract.ts
-/** A valid, unique netlist ref for a designator: other characters become `_`, and a leading non-letter gets a `P`. */
-function refMaker() {
-	const taken = /* @__PURE__ */ new Set();
-	return (designator) => {
-		let base = designator.trim().replace(/[^A-Za-z0-9_]/g, "_") || "P";
-		if (!/^[A-Za-z]/.test(base)) base = `P${base}`;
-		let ref = base;
-		for (let k = 2; taken.has(ref) || !REF_PATTERN.test(ref); k++) ref = `${base}_${k}`;
-		taken.add(ref);
-		return ref;
-	};
-}
-/** A part's setting choices its module offers (an OLED's address, a fuse holder's fuse), or undefined when it stores none. */
-function settingsOf(p, m) {
-	const offered = moduleSettings(m);
-	const kept = Object.entries(p.settings ?? {}).filter(([k, v]) => Object.hasOwn(offered, k) && offered[k].includes(v));
-	return kept.length ? Object.fromEntries(kept) : void 0;
-}
-function extractNetlist(d) {
-	const modOf = (uid) => {
-		const p = d.parts.find((x) => x.uid === uid);
-		return p ? moduleOf(d, p.module) : void 0;
-	};
-	const intent = d.intent !== void 0 ? parseNetlist(d.intent, (id) => moduleOf(d, id) ?? libraryLookup(id)) : null;
-	const intentRefs = intent?.ok ? new Set(intent.intent.parts.map((p) => p.ref)) : null;
-	const hosts = new Set(d.parts.flatMap((p) => p.mount && !isNetLabel(moduleOf(d, p.module)) ? [p.mount.board] : []));
-	const kept = d.parts.filter((p) => {
-		const m = moduleOf(d, p.module);
-		return m && !isNetLabel(m) && !(intentRefs && isBoard(m) && !intentRefs.has(p.designator) && !hosts.has(p.uid));
-	});
-	const make = refMaker();
-	const refOf = new Map(kept.map((p) => [p.uid, make(p.designator || p.uid)]));
-	const direct = /* @__PURE__ */ new Set();
-	for (const c of d.connections) for (const e of [c.from, c.to]) direct.add(nodeKey(e.part, e.pin));
-	for (const pl of plugsOf(d)) if (!pl.mechanical) direct.add(nodeKey(pl.part, pl.pin));
-	const n = netlist(d);
-	const nets = [];
-	for (const keys of n.nets) {
-		const pins = [];
-		const strips = [];
-		let label;
-		for (const k of keys) {
-			const [uid, name] = JSON.parse(k);
-			const m = modOf(uid);
-			if (!m) continue;
-			if (isNetLabel(m)) {
-				const ln = labelName(d.parts.find((p) => p.uid === uid));
-				if (ln && (label === void 0 || naturalCompare(ln, label) < 0)) label = ln;
-				continue;
-			}
-			const ref = refOf.get(uid);
-			if (ref && isBoard(m) && direct.has(k)) strips.push({
-				ref,
-				name,
-				m
-			});
-			if (!ref || isBoard(m) || !direct.has(k)) continue;
-			pins.push({
-				ref,
-				name,
-				m
-			});
-		}
-		if (!pins.length || pins.length + strips.length < 2) continue;
-		const order = (a, b) => naturalCompare(a.ref, b.ref) || naturalCompare(a.name, b.name);
-		nets.push({
-			pins: [...pins, ...strips].sort(order),
-			...label !== void 0 ? { label } : {}
-		});
-	}
-	const named = nameNets(nets);
-	const nodeNet = /* @__PURE__ */ new Map();
-	nets.forEach((net, i) => net.pins.forEach((p) => nodeNet.set(JSON.stringify([p.ref, p.name]), i)));
-	const netOfKey = (k) => {
-		const at = n.netOf.get(k);
-		if (at === void 0) return void 0;
-		for (const kk of n.nets[at]) {
-			const [uid, name] = JSON.parse(kk);
-			const ref = refOf.get(uid);
-			const i = ref ? nodeNet.get(JSON.stringify([ref, name])) : void 0;
-			if (i !== void 0) return i;
-		}
-	};
-	const colors = /* @__PURE__ */ new Map();
-	const endKinds = /* @__PURE__ */ new Set();
-	let wires = 0;
-	for (const c of d.connections) {
-		const labelEnd = [c.from.part, c.to.part].some((u) => isNetLabel(modOf(u)));
-		const i = netOfKey(nodeKey(c.from.part, c.from.pin));
-		if (i !== void 0 && c.color) colors.set(i, (colors.get(i) ?? /* @__PURE__ */ new Set()).add(c.color));
-		if (labelEnd) continue;
-		wires++;
-		endKinds.add(c.ends?.from && c.ends.from === c.ends.to ? c.ends.from : "");
-	}
-	const color = {};
-	nets.forEach((_, i) => {
-		const set = colors.get(i);
-		if (set?.size === 1) color[named[i]] = [...set][0];
-	});
-	const ends = wires && endKinds.size === 1 && !endKinds.has("") ? [...endKinds][0] : void 0;
-	const custom = {};
-	for (const p of kept) if (!libraryLookup(p.module)) custom[p.module] = moduleOf(d, p.module);
-	const order = nets.map((_, i) => i).sort((a, b) => naturalCompare(named[a], named[b]));
-	return {
-		format: NETLIST_FORMAT,
-		title: d.title.trim() || "Untitled sheet",
-		...Object.keys(custom).length ? { modules: custom } : {},
-		parts: kept.map((p) => {
-			const board = p.mount?.board;
-			const on = board !== void 0 ? refOf.get(board) : void 0;
-			const settings = settingsOf(p, moduleOf(d, p.module));
-			return {
-				ref: refOf.get(p.uid),
-				module: p.module,
-				...p.values && Object.keys(p.values).length ? { values: p.values } : {},
-				...settings ? { settings } : {},
-				...on ? { on } : {}
-			};
-		}),
-		nets: order.map((i) => ({
-			name: named[i],
-			pins: nets[i].pins.map((p) => `${p.ref}.${p.name}`)
-		})),
-		...Object.keys(color).length || ends ? { wires: {
-			...Object.keys(color).length ? { color } : {},
-			...ends ? { ends } : {}
-		} } : {}
-	};
-}
-//#endregion
 //#region src/cli/netlistCmd.ts
 var NETLIST_CMD_FORMAT = "circuitoon-cli/netlist/1";
 function netlistCommand(args, io) {
@@ -89419,7 +95024,7 @@ function netlistCommand(args, io) {
 	if (rest.length) throw new CliError(`netlist: give one sheet file, not ${args.positionals.length}`, EXIT.input);
 	const { diagram, warnings } = loadSheet(io, input);
 	for (const w of warnings) io.stderr(`warning: ${w}\n`);
-	const netlist = extractNetlist(diagram);
+	const netlist = extractNetlist(diagram, (w) => io.stderr(`warning: ${w}\n`));
 	const out = flag(args, "--out") ?? null;
 	const text = `${JSON.stringify(netlist, null, 2)}\n`;
 	if (out) writeFile(io, out, text);
@@ -89482,8 +95087,6 @@ function kicadValue(part, m, k) {
 	if (v && (v.name === "resistance" || v.name === "capacitance")) return siValue(v.value);
 	return (k?.value ?? shortName(m)).replace(/\s+/g, " ").trim();
 }
-/** Pin names with their sides, then hole group names, in order: what a mapping by name relies on. */
-var terminalKey = (m) => JSON.stringify([m.pins.filter((p) => !isSpacer(p) && p.type !== "usb").map((p) => [p.name, p.side]), (m.holes ?? []).map((g) => g.name)]);
 /**
 * The mapping to export a part with: the library's, when the part is built in and its stored copy
 * has the same pins in the same order (the mapping is export data the library refines, and a copy
@@ -89495,7 +95098,7 @@ function mappingOf(stored, library) {
 	if (isCustom(stored)) return {};
 	const lib = library?.(stored.id);
 	if (lib?.kicad) {
-		if (lib === stored || terminalKey(stored) === terminalKey(lib)) return { kicad: lib.kicad };
+		if (lib === stored || terminalsKey(stored) === terminalsKey(lib)) return { kicad: lib.kicad };
 		if (!stored.kicad) return { stale: true };
 	}
 	return stored.kicad ? { kicad: stored.kicad } : {};
@@ -89866,7 +95469,7 @@ function kicadCommand(args, io) {
 			source: name
 		});
 	} else {
-		const r = validateDiagram(raw);
+		const r = validateDiagram(raw, { library: libraryLookup });
 		if (!r.ok) throw new CliError(`${input} is neither a Circuitoon sheet nor a netlist: ${r.errors.slice(0, 5).join("; ")}`, EXIT.input);
 		for (const w of r.warnings) io.stderr(`warning: ${w}\n`);
 		source = "sheet";
@@ -90705,14 +96308,17 @@ var USAGE = `circuitoon <command> [options]
                                             the design as a KiCad netlist (.net) for the PCB Editor's Import > Netlist;
                                             parts without a KiCad footprint come in on a generic header, with a warning
   gate <sheet.json> -o <dir> [--json]       every check, the renders, the bill and the link; exits 0 only when nothing blocks
+  sim <sheet.json|netlist.json> [--probe <ref[.pin]|net:NAME>]...
+                                            solve the sheet as a DC circuit in its saved switch and GPIO state:
+                                            the outcome JSON on stdout (simulation findings only), a summary on stderr
   module new [--spec <spec.json>] [-o <part.json>] [--json]
                                             a custom part from a part spec (or the spec on standard input), with Sticker art
   module check <part.json> [--json]         lint a part: duplicate pins, art against pins, impossible caps, untyped power pins
   module render <part.json> -o <part.png> [--svg <part.svg>] [--dark] [--scale n]
                                             draw one part alone, to look at it
 
-Exit codes: 0 ok, 1 findings that block, 2 invalid input, 3 environment problem (such as no browser)
-or an internal error of the tool.
+Exit codes: 0 ok, 1 findings that block, 2 invalid input, 3 environment problem (such as no browser),
+a simulation that failed or could not run (sim and gate, when nothing else blocks), or an internal error of the tool.
 `;
 var COMMANDS = {
 	parts: partsCommand,
@@ -90728,6 +96334,7 @@ var COMMANDS = {
 	explain: explainCommand,
 	update: updateCommand,
 	gate: gateCommand,
+	sim: simCommand,
 	module: moduleCommand
 };
 var CODE_OF = {

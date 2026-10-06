@@ -32,6 +32,33 @@
         "unit": "V",
         "default": 4.5
       }
+    },
+    "sim": {
+      "modelParams": {
+        "rInternal": {
+          "value": 0.9,
+          "unit": "ohm",
+          "source": "https://data.energizer.com/pdfs/e92.pdf https://data.energizer.com/pdfs/lithiumcoin_appman.pdf",
+          "provenance": "estimate",
+          "note": "The holder is not the cell: estimate for a generic alkaline AAA cell (Energizer E92 assumed) in each slot, 3 cells in series: 3 x 0.3 ohm = 0.9 ohm. Per-cell value: Energizer E92 (alkaline AAA). E92 datasheet, Specifications: \"Nominal IR: 150 to 300 milliohms (fresh)\"; Energizer Lithium Coin Handbook, \"Internal Resistance\" section: \"the starting IR of an E92 AAA alkaline battery is near 0.3 ohms\". Fresh cell."
+        }
+      },
+      "limits": [
+        {
+          "of": {
+            "part": true
+          },
+          "kind": "sourceCurrent",
+          "value": 0.5,
+          "source": "https://data.energizer.com/pdfs/e92.pdf",
+          "provenance": "estimate",
+          "conditions": "fresh alkaline AAA, 21 C",
+          "note": "The holder is not the cell: estimate for a generic alkaline AAA cell (Energizer E92 assumed) in each slot; in series every cell carries the same current, so the limit is one cell's (0.5 A). Per-cell value (estimate): No maximum discharge current is published for an alkaline AAA. 0.5 A is the heaviest continuous discharge the Energizer E92 datasheet charts (\"Milliamp-Hours Capacity\", continuous discharge to 0.8 V at 21 C, bars at 25/100/250/500 mA; about 450 mAh at 500 mA vs about 1150 mAh at 25 mA)."
+        }
+      ],
+      "unaccounted": [
+        "Contact and lead resistance of the holder itself (springs, tabs, wires): no datasheet for a generic holder, so it is not added to the internal resistance."
+      ]
     }
   },
   "art": {

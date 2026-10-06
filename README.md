@@ -43,7 +43,6 @@ It also works backwards. `circuitoon netlist` reads a sheet someone drew by hand
 
 - PCB layout or Gerber files. Circuitoon stops at the wiring. It can hand the design to KiCad as a netlist (`circuitoon kicad`), and the board is drawn there.
 - Symbolic schematics. Parts are drawn as pictures, never as IEEE symbols, and there is no schematic-symbol editor.
-- Simulation. Nothing solves the circuit yet. The checker compares declared pin types and supply rails, and DC simulation is planned for V2.
 - Parts it doesn't know, unless you can source them. You can make one with `circuitoon module new` from its maker's documentation, but it is reported as custom and unverified.
 
 ### Install
@@ -101,6 +100,7 @@ If `gate.json` says `"ready": false`, readability warnings remain (overlapping w
 | `verify <sheet.json>` | The sheet against the netlist stored in it: parts, values, mounts, missing and extra connections. |
 | `check <sheet.json>` | The wiring checker, plus verify when the sheet has a netlist, plus readability warnings. |
 | `gate <sheet.json> -o <dir>` | Everything: checks, renders, bill of materials, link and `gate.json`. Exits 0 only when nothing blocks. |
+| `sim <sheet.json\|netlist.json> [--probe <ref[.pin]\|net:NAME>]` | A DC simulation of the sheet in its current switch and GPIO states: voltages, currents, supply budgets and simulation findings (shorts, overcurrent, brownout). JSON on stdout, a short summary on stderr. `gate` runs it too. |
 | `link <sheet.json>` | A link that opens the sheet in the editor. Past 64 KB of payload it writes the sheet file instead. |
 | `bom <sheet.json> [-o bom.csv]` | The bill of materials: parts, wires by cable, gauge and color, and connectors. |
 | `netlist <sheet.json>` | The `circuitoon-netlist/1` of any drawn sheet, read from what actually conducts on it. |
@@ -148,7 +148,7 @@ One net per electrical node. A part that plugs into a breadboard says so with `"
 - `sheet.png` and `sheet.svg`, plus `focus-<copy>.png` for the first copy of a repeat;
 - `link.txt`, or the sheet file when the link would be too long;
 - `bom.csv` with the columns Type, Qty, Description, Value, Designators, Category, Source and Notes;
-- `gate.json` (format `circuitoon-cli/gate/3`).
+- `gate.json` (format `circuitoon-cli/gate/4`).
 
 `gate.json` holds `ok`, `ready`, the SHA-256 of the sheet and of every artifact, the blocking findings, warnings, notes, the "not checked" list, the link and the bill of materials. Only hand over files whose hash matches it.
 
@@ -217,6 +217,7 @@ What you can do in it:
 - Drag parts and the wires follow. Rotate, nudge, undo, redo.
 - Plug parts into breadboards. Legs seat in real holes and the strips conduct.
 - Watch the Problems panel. The wiring checker runs on every edit, so a short shows up as soon as you draw it.
+- Turn on Simulate for a live DC simulation as you edit: LEDs glow, probes read voltages and currents, and the Probes panel lists the supply budget.
 - Pick a cable: Dupont M-M, M-F or F-F, solid-core jumpers, alligator leads, JST-XH and JST-PH, Qwiic, Grove, ferrules or banana leads, with a wire gauge.
 - Snap to edges, centres, wired pins and equal gaps, then align and distribute.
 - Copy and paste parts, wires, frames and notes, across sheets and browser tabs.
@@ -285,9 +286,9 @@ The CLI bundle `plugin/dist-cli/circuitoon.mjs` is committed. After any change u
 
 ## Status and roadmap
 
-Early development. The editor, the wiring checker, the part maker and the agent toolkit (plugin 0.9.1) work today. Still to come in V1: saving sheets in the browser, PDF export, and an art studio for drawing a part's artwork by hand.
+Early development. The editor, the wiring checker, the part maker and the agent toolkit (plugin 0.10.0) and live DC simulation work today. Still to come in V1: saving sheets in the browser, PDF export, and an art studio for drawing a part's artwork by hand.
 
-- V2: DC simulation in the browser, with voltages, currents and overcurrent.
+- V2 (shipped): live DC simulation in the editor and in `circuitoon sim`, with voltages, currents, supply budgets and overcurrent.
 - V3: animation driven by that simulation. LEDs light up, switches flip.
 - Being explored: firmware for the boards on a sheet, and taking KiCad export past the netlist.
 
