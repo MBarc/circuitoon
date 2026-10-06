@@ -155,6 +155,12 @@ describe('circuitoon sim', () => {
     const open = r.err.split('\n').filter((l) => l.includes('S1 is open'))
     expect(open).toEqual([expect.stringMatching(/^ {2}warning: not powered in the current state because S1 is open: DS1 VCC, /)])
   }, 60_000)
+  it('summary: a probe with no voltage gives its reason in words, never "undefined"', () => {
+    const u = { kind: 'undefined', why: 'not simulated (mains)' } as const
+    const o = { status: 'ok', result: { findings: [], probes: [{ id: 'P1', name: 'L', at: { part: 'o1', pin: 'L1' }, voltage: { typical: u, peak: u } }], budget: [], unaccounted: [], engine: { ms: 5, runs: 2 } } } as unknown as SimOutcome
+    expect(summary(o)).toContain('  P1 L: not simulated (mains)\n')
+    expect(summary(o)).not.toContain('undefined')
+  })
   it('summary: nothing solved says so; a domain row prints its own draw, not the pin current', () => {
     const none = { status: 'ok', result: { findings: [], probes: [], budget: [], unaccounted: [], engine: { ms: 0, runs: 0 } } } as unknown as SimOutcome
     expect(summary(none).split('\n')[0]).toBe('Simulation: nothing powered; not solved. 0 blocking findings, 0 warnings, 0 notes.')

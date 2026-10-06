@@ -22,7 +22,7 @@ describe('probe tags', () => {
     expect(readingText({ typical: v(4.38), peak: v(4.21) })).toBe('4.38 V (peak 4.21 V)')
     expect(readingText({ typical: v(3.3), peak: v(3.3) })).toBe('3.3 V')
     expect(readingText({ typical: { kind: 'floating' }, peak: { kind: 'floating' } })).toBe('floating')
-    expect(readingText({ typical: { kind: 'undefined', why: 'mains' }, peak: { kind: 'undefined', why: 'mains' } })).toBe('undefined')
+    expect(readingText({ typical: { kind: 'undefined', why: 'not simulated (mains)' }, peak: { kind: 'undefined', why: 'not simulated (mains)' } })).toBe('not simulated (mains)')
     expect(readingText(undefined)).toBe('-')
     expect(readingText({ typical: v(2.1, 'outside-model'), peak: v(2.1, 'outside-model') })).toBe('2.1 V, outside model')
     expect(readingText({ typical: v(4.38, 'outside-model'), peak: v(4.21, 'outside-model') })).toBe('4.38 V (peak 4.21 V), outside model')
@@ -30,6 +30,8 @@ describe('probe tags', () => {
   it('reads a part probe as its largest pin current and its power', () => {
     const run = { pins: { A: { kind: 'value' as const, value: 0.0123, trust: 'ok' as const }, K: { kind: 'value' as const, value: -0.0123, trust: 'ok' as const } }, power: v(0.0251) }
     expect(partText({ typical: run, peak: run })).toBe('12.3 mA, 25.1 mW')
+    const none = { pins: {}, power: { kind: 'undefined' as const, why: 'not simulated' } }
+    expect(partText({ typical: none, peak: none })).toBe('not simulated')
   })
   it('uses eight colours with at least 3:1 contrast on both papers', () => {
     expect(PROBE_COLORS).toHaveLength(8)

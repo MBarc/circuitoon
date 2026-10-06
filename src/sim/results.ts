@@ -115,7 +115,7 @@ export function readRun(c: Circuit, cls: Classification, raw: RawRun, out: Outsi
   const mains = new Set(c.mains.map((k) => c.pinNet[k]).filter((n): n is string => !!n))
   const nets: Record<string, Reading> = {}
   for (const net of [...new Set(Object.values(c.pinNet))].sort())
-    nets[net] = mains.has(net) ? { kind: 'undefined', why: 'mains wiring is not simulated' } : voltageOf(c, cls, raw, netNode(net), out)
+    nets[net] = mains.has(net) ? { kind: 'undefined', why: 'not simulated (mains)' } : voltageOf(c, cls, raw, netNode(net), out)
   const parts: Record<string, PartRun> = {}
   const ix = indexOf(c)
   for (const uid of Object.keys(c.parts)) {

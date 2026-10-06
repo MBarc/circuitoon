@@ -1,9 +1,9 @@
 // Probes on the sheet (spec 6.2): each probe is a coloured lead from its pin, hole or part to a
 // reading tag. Tags are placed by the existing label placement (ruling R8: LabelPlacer with the
 // net-label module, keeping a box of the tag's size clear), so they keep off parts, captions and
-// each other, level first. A tag shows typical, with peak when it differs; "floating",
-// "undefined" or "-" (Simulate off) in words; a reading outside the model says so (and its tag is
-// dashed). Every tag reserves the room of a long reading, so turning Simulate on or off never moves
+// each other, level first. A tag shows typical, with peak when it differs; "floating", the reason
+// a node has no voltage in plain words ("not simulated (mains)", never "undefined") or "-"
+// (Simulate off); a reading outside the model says so (and its tag is dashed). Every tag reserves the room of a long reading, so turning Simulate on or off never moves
 // it. Colours come from a fixed order of eight, each at least 3:1 on the sheet paper in both themes
 // (light in both). Stale readings (the last good result while a solve fails) are dimmed and say so,
 // as in SimLayer. Imports from src/sim are types only: the readings come in the result (SimResult.probes).
@@ -31,7 +31,7 @@ export const TAG_RESERVE = '-00.00 V (peak -00.00 V)'
 const NAME_CHARS = 16
 
 function one(r: Reading): string {
-  return r.kind === 'value' ? formatValue(sig(r.value), 'V') : r.kind
+  return r.kind === 'value' ? formatValue(sig(r.value), 'V') : r.kind === 'undefined' ? r.why : r.kind
 }
 const outside = (...rs: Reading[]) => rs.some((r) => r.kind === 'value' && r.trust === 'outside-model')
 export function readingText(r: { typical: Reading; peak: Reading } | undefined): string {
@@ -44,7 +44,7 @@ export function partText(p: { typical: PartRun; peak: PartRun } | undefined): st
   if (!p) return '-'
   const amps = Math.max(0, ...Object.values(p.typical.pins).map((x) => (x.kind === 'value' ? Math.abs(x.value) : 0)))
   const power = p.typical.power.kind === 'value' ? `, ${formatValue(sig(Math.abs(p.typical.power.value)), 'W')}` : ''
-  return Object.keys(p.typical.pins).length ? `${formatValue(sig(amps), 'A')}${power}` : p.typical.power.kind === 'undefined' ? 'undefined' : 'floating'
+  return Object.keys(p.typical.pins).length ? `${formatValue(sig(amps), 'A')}${power}` : p.typical.power.kind === 'undefined' ? p.typical.power.why : 'floating'
 }
 /** The tag's words: the probe's name (a long one cut) and its whole reading. */
 export function tagText(name: string, reading: string): string {

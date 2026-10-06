@@ -52,7 +52,7 @@ function probeOf(spec: string, d: Diagram, uidOf: Map<string, string>, nets: Ret
   return { id, name: spec, at: { part: uid, pin } }
 }
 
-const volts = (r: Reading) => (r.kind === 'value' ? `${r.value.toFixed(3)} V` : r.kind)
+const volts = (r: Reading) => (r.kind === 'value' ? `${r.value.toFixed(3)} V` : r.kind === 'undefined' ? r.why : r.kind)
 const amps = (r: CurrentReading) => (r.kind === 'value' ? `${(r.value * 1000).toFixed(1)} mA` : r.kind)
 const watts = (r: Reading) => (r.kind === 'value' ? `${(r.value * 1000).toFixed(1)} mW` : r.kind === 'undefined' ? `power ${r.why}` : r.kind)
 
@@ -105,7 +105,7 @@ export function summary(o: SimOutcome, refOf: Map<string, string> = new Map()): 
   for (const p of r.probes) {
     const v = p.voltage?.typical
     const part = p.part?.typical
-    if (v) lines.push(`  ${p.id} ${p.name ?? ''}: ${v.kind === 'value' ? `${v.value.toFixed(3)} V (to ${v.reference})` : v.kind}`)
+    if (v) lines.push(`  ${p.id} ${p.name ?? ''}: ${v.kind === 'value' ? `${v.value.toFixed(3)} V (to ${v.reference})` : volts(v)}`)
     else if (part) {
       const pins = Object.entries(part.pins).map(([pin, i]) => `${pin} ${amps(i)}`)
       lines.push(`  ${p.id} ${p.name ?? ''}: ${[...(part.state ? [part.state] : []), watts(part.power), ...(pins.length ? [`into ${pins.join(', ')}`] : [])].join(', ')}`)

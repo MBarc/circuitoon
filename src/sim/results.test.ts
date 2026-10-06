@@ -58,7 +58,7 @@ describe('readings', () => {
     const c = buildCircuit(d)
     const run = readRun(c, classify(c), { v: {}, pins: {}, dev: {} })
     const net = c.pinNet[JSON.stringify(['o1', 'L1'])]
-    expect(run.nets[net]).toEqual({ kind: 'undefined', why: 'mains wiring is not simulated' })
+    expect(run.nets[net]).toEqual({ kind: 'undefined', why: 'not simulated (mains)' })
   })
   it('budgets each source, rail and domain with its limit and headroom', async () => {
     const { c, cls, raws } = await solved(sheet([{ uid: 'bt1', module: cellModule(5, 0.05) }, { uid: 'u1', module: ldoModule() }, R('r1', 33)], [['bt1.+', 'u1.IN'], ['bt1.-', 'u1.GND'], ['u1.OUT', 'r1.1'], ['r1.2', 'u1.GND']]))
