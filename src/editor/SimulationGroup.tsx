@@ -1,6 +1,6 @@
 // The "Simulation (current state)" group (spec 2.1, 6.3): the simulation's findings in their own
-// group after the checker's, errors first, each with Select (its parts, panned into view); a run of
-// "not powered: SW1 is open" warnings for one switch is one row (ruling R30, as the CLI folds it);
+// group after the checker's, errors first, each with Select (its parts, panned into view); the
+// "not powered: SW1 is open" warnings for one switch are one row (ruling R30, as the CLI folds it);
 // notes below. Hovering or focusing a row lights its parts and pins. After a failed solve it lists
 // the failure and the findings decided before solving, and says the sheet's readings are stale.
 import { useEffect } from 'react'

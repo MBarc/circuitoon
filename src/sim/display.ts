@@ -23,31 +23,30 @@ export const SIM_TITLES: Record<SimCode, string> = {
 export const LIT_AMPS = 1e-4
 
 // Ruling R30 leaves one "not powered" warning per load behind an open switch (ten on a typical
-// sheet); a run of them for the same switch folds into one. The JSON keeps them all.
+// sheet); all of them for the same switch fold into one, wherever they sit in the list. The JSON
+// keeps them all.
 const OFF = /^(.+?) is not powered in the current state: (\S+) is open\./
 
 /**
- * The findings with each run of "not powered: SW1 is open" warnings for one switch folded into one
- * entry (`members` holds the run, `message` names them all); every other finding stands alone.
+ * The findings with the "not powered: SW1 is open" warnings for each switch folded into one entry,
+ * placed where the first of them was (`members` holds them, `message` names them all); every other
+ * finding stands alone.
  */
 export function foldNotPowered<F extends { severity: string; message: string }>(findings: F[]): { members: F[]; message: string }[] {
   const out: { members: F[]; message: string }[] = []
-  for (let i = 0; i < findings.length; i++) {
-    const m = findings[i].severity === 'warning' ? OFF.exec(findings[i].message) : null
-    const members = [findings[i]]
-    const loads = [m?.[1]]
-    while (m && i + 1 < findings.length && findings[i + 1].severity === 'warning') {
-      const next = OFF.exec(findings[i + 1].message)
-      if (next?.[2] !== m[2]) break
-      members.push(findings[++i])
-      loads.push(next[1])
+  const bySwitch = new Map<string, { members: F[]; message: string; loads: string[] }>()
+  for (const f of findings) {
+    const m = f.severity === 'warning' ? OFF.exec(f.message) : null
+    if (!m) { out.push({ members: [f], message: f.message }); continue }
+    let g = bySwitch.get(m[2])
+    if (!g) {
+      g = { members: [], message: f.message, loads: [] }
+      bySwitch.set(m[2], g)
+      out.push(g)
     }
-    out.push({
-      members,
-      message: m && members.length > 1
-        ? `not powered in the current state because ${m[2]} is open: ${loads.join(', ')}. Set ${m[2]} to its operating position to simulate them running.`
-        : findings[i].message,
-    })
+    g.members.push(f)
+    g.loads.push(m[1])
+    if (g.members.length > 1) g.message = `not powered in the current state because ${m[2]} is open: ${g.loads.join(', ')}. Set ${m[2]} to its operating position to simulate them running.`
   }
-  return out
+  return out.map(({ members, message }) => ({ members, message }))
 }

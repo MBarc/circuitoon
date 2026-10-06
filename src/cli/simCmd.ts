@@ -81,7 +81,7 @@ function connectionSheet(intent: Intent, raw: unknown): Diagram {
 }
 
 // `line` formats one line from a finding and its (possibly folded) message; gate passes its own.
-// A run of R30 "not powered" warnings for one switch folds into one line (display.ts).
+// The R30 "not powered" warnings for one switch fold into one line (display.ts).
 export function findingLines<F extends { severity: string; message: string }>(findings: F[], line: (f: F, message: string) => string = (f, m) => `  ${f.severity}: ${m}`): string[] {
   return foldNotPowered(findings).map((g) => line(g.members[g.members.length - 1], g.message))
 }

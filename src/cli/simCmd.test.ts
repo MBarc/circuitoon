@@ -148,6 +148,13 @@ describe('circuitoon sim', () => {
     expect(lines.filter((l) => l.includes('S1 is open'))).toEqual(['  warning: not powered in the current state because S1 is open: U1 VCC, U2 VCC. Set S1 to its operating position to simulate them running.'])
     expect(lines.filter((l) => l.includes('S2 is open'))).toHaveLength(1)
   })
+  it('folds every "S1 is open" warning on the battery-bank sheet into one line, even when other findings sit between them (ruling R30)', async () => {
+    const dir = tempDir()
+    writeFileSync(join(dir, 'sheet.json'), readFileSync(join(import.meta.dirname, '../format/fixtures/battery-bank-1s4p.circuitoon.json')))
+    const r = await cli(['sim', 'sheet.json'], { cwd: dir })
+    const open = r.err.split('\n').filter((l) => l.includes('S1 is open'))
+    expect(open).toEqual([expect.stringMatching(/^ {2}warning: not powered in the current state because S1 is open: DS1 VCC, /)])
+  }, 60_000)
   it('summary: nothing solved says so; a domain row prints its own draw, not the pin current', () => {
     const none = { status: 'ok', result: { findings: [], probes: [], budget: [], unaccounted: [], engine: { ms: 0, runs: 0 } } } as unknown as SimOutcome
     expect(summary(none).split('\n')[0]).toBe('Simulation: nothing powered; not solved. 0 blocking findings, 0 warnings, 0 notes.')

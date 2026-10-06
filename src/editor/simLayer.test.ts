@@ -40,4 +40,8 @@ describe('currentFindings', () => {
     expect(groups.map((g) => g.members.length)).toEqual([2, 1])
     expect(groups[0].message).toBe('not powered in the current state because SW1 is open: DS1 VCC, DS2 VCC. Set SW1 to its operating position to simulate them running.')
   })
+  it('folds the warnings for one switch wherever they sit, placing the group where its first one was', () => {
+    const groups = foldNotPowered([f('U1 is low'), f('DS1 VCC is not powered in the current state: SW1 is open. x'), f('U2 is low'), f('DS3 VCC is not powered in the current state: SW2 is open. x'), f('DS2 VCC is not powered in the current state: SW1 is open. x')])
+    expect(groups.map((g) => g.message)).toEqual(['U1 is low', 'not powered in the current state because SW1 is open: DS1 VCC, DS2 VCC. Set SW1 to its operating position to simulate them running.', 'U2 is low', 'DS3 VCC is not powered in the current state: SW2 is open. x'])
+  })
 })
